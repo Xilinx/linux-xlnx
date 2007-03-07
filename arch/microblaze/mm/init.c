@@ -17,6 +17,8 @@
 #include <asm/sections.h>
 #include <asm/xparameters.h>
 
+#include <linux/initrd.h>
+
 #ifdef CONFIG_BLUECAT_RFS
 extern unsigned long bluecat_rfs_phys;
 extern unsigned long bluecat_rfs_size;
@@ -28,6 +30,15 @@ char *klimit = _end;
 void __init setup_memory(void)
 {
 	unsigned long m_start, m_end, map_size;
+
+#ifdef CONFIG_BLK_DEV_INITRD
+	extern char __initramfs_start[], __initramfs_end[];
+
+	initrd_start	= (unsigned long) __initramfs_start;
+	initrd_end	= (unsigned long) __initramfs_end;
+	initrd_below_start_ok = 1;
+#endif
+
 
 #ifdef CONFIG_BLUECAT_RFS
 	m_start = PAGE_ALIGN((unsigned long)bluecat_rfs_phys + bluecat_rfs_size);
@@ -89,9 +100,22 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 void free_initmem(void)
 {
-	free_init_pages("unused kernel memory",
-			(unsigned long)(&__init_begin),
-			(unsigned long)(&__init_end));
+	unsigned long begin = (unsigned long)(&__init_begin);
+	unsigned long end   = (unsigned long)(&__init_end);
+
+	/* If we are using an initramfs, the memory for the initramfs section
+	 * will be freed by the initramfs code and we must not free it here.
+	 */
+#ifdef CONFIG_BLK_DEV_INITRD
+	if (initrd_start) {
+		extern char __init_end_before_initramfs[];
+		/* Adjust 'end' to point _before_ the initramfs image.
+		 */
+		end = (unsigned long)(&__init_end_before_initramfs);
+	}
+#endif
+
+	free_init_pages("unused kernel memory", begin, end);
 }
 
 /* FIXME */
@@ -109,6 +133,21 @@ void __init mem_init(void)
 	       (unsigned long) nr_free_pages() << (PAGE_SHIFT-10),
 	       num_physpages << (PAGE_SHIFT-10));
 }
+
+#ifdef CONFIG_BLK_DEV_INITRD
+void free_initrd_mem(unsigned long start, unsigned long end)
+{
+	if (start < end)
+		printk (KERN_INFO "Freeing initrd memory: %ldk freed\n", (end - start) >> 10);
+	for (; start < end; start += PAGE_SIZE) {
+		ClearPageReserved(virt_to_page(start));
+		set_page_count(virt_to_page(start), 1);
+		free_page(start);
+		totalram_pages++;
+	}
+}
+#endif
+
 
 #ifdef CONFIG_BLUECAT_RFS
 void free_bluecat_rfs_mem(unsigned long start, unsigned long end)
