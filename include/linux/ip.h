@@ -102,7 +102,11 @@ struct iphdr {
 	__be32	saddr;
 	__be32	daddr;
 	/*The options start here. */
+#if defined(__MICROBLAZE__)
+} __attribute__((packed));
+#else
 };
+#endif
 
 struct ip_auth_hdr {
 	__u8  nexthdr;

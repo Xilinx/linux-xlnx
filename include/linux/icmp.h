@@ -80,7 +80,11 @@ struct icmphdr {
 		__be16	mtu;
 	} frag;
   } un;
+#if defined(__MICROBLAZE__)
+} __attribute__((packed));
+#else
 };
+#endif
 
 /*
  *	constants for (set|get)sockopt

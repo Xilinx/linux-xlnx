@@ -54,7 +54,11 @@ struct tcphdr {
 	__be16	window;
 	__sum16	check;
 	__be16	urg_ptr;
+#if defined(__MICROBLAZE__)
+} __attribute__((packed));
+#else
 };
+#endif
 
 /*
  *	The union cast uses a gcc extension to avoid aliasing problems
@@ -66,7 +70,11 @@ union tcp_word_hdr {
 	__be32 		  words[5];
 }; 
 
+#if defined(__MICROBLAZE__)
+#define tcp_flag_word(tp) ((unsigned int)(((unsigned short *)(tp))[6]) << 16)
+#else
 #define tcp_flag_word(tp) ( ((union tcp_word_hdr *)(tp))->words [3]) 
+#endif
 
 enum { 
 	TCP_FLAG_CWR = __constant_htonl(0x00800000), 
