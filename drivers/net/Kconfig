@@ -1901,6 +1901,12 @@ config NE_H8300
 	  Say Y here if you want to use the NE2000 compatible
 	  controller on the Renesas H8/300 processor.
 
+config XILINX_EMAC
+	tristate "Xilinx 10/100 OPB EMAC support"
+	depends on XILINX_VIRTEX_4_FX  || MICROBLAZE_ML401 || MICROBLAZE_SP3E
+	help
+	  This driver supports the Virtex-4(TM) 10/100 OPB EMAC.
+
 source "drivers/net/fec_8xx/Kconfig"
 source "drivers/net/fs_enet/Kconfig"
 
