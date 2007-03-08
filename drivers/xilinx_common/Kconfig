@@ -1,0 +1,4 @@
+config XILINX_EDK
+	bool
+	default y
+	

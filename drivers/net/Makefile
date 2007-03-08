@@ -214,6 +214,7 @@ obj-$(CONFIG_IRDA) += irda/
 obj-$(CONFIG_ETRAX_ETHERNET) += cris/
 obj-$(CONFIG_ENP2611_MSF_NET) += ixp2000/
 obj-$(CONFIG_ETH_KS8695) += ks8695/
+obj-$(CONFIG_XILINX_EMAC) += xilinx_emac/
 
 obj-$(CONFIG_NETCONSOLE) += netconsole.o
 

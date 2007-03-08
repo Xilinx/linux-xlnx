@@ -68,6 +68,15 @@ int uclinux_point(struct mtd_info *mtd, loff_t from, size_t len,
 
 /****************************************************************************/
 
+inline unsigned get_rootfs_len(unsigned *addr)
+{
+        if (memcmp(&addr[0], "-rom1fs-", 8) == 0)       /* romfs */
+                return be32_to_cpu(addr[2]);
+        else if(addr[0] == le32_to_cpu(0x28cd3d45)) /* cramfs */
+                return le32_to_cpu(addr[1]);
+        return 0;
+}
+
 int __init uclinux_mtd_init(void)
 {
 	struct mtd_info *mtd;
@@ -76,7 +85,7 @@ int __init uclinux_mtd_init(void)
 
 	mapp = &uclinux_map;
 	mapp->phys = addr;
-	mapp->size = PAGE_ALIGN(ntohl(*((unsigned long *)(addr + 8))));
+	mapp->size = PAGE_ALIGN(get_rootfs_len((unsigned *)addr));
 	mapp->bankwidth = 4;
 
 	printk("uclinux[mtd]: RAM probe address=0x%x size=0x%x\n",

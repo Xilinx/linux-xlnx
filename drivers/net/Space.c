@@ -90,6 +90,7 @@ extern struct net_device *mac89x0_probe(int unit);
 extern struct net_device *mc32_probe(int unit);
 extern struct net_device *cops_probe(int unit);
 extern struct net_device *ltpc_probe(void);
+extern struct net_device *xemac_probe(int unit);
 
 /* Detachable devices ("pocket adaptors") */
 extern struct net_device *de620_probe(int unit);
@@ -203,6 +204,9 @@ static struct devprobe2 isa_probes[] __initdata = {
 #endif
 #ifdef CONFIG_CS89x0
  	{cs89x0_probe, 0},
+#endif
+#ifdef CONFIG_XILINX_EMAC
+	{xemac_probe, 0},
 #endif
 #ifdef CONFIG_AT1700
 	{at1700_probe, 0},
