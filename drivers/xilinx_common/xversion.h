@@ -52,8 +52,8 @@
 *
 ******************************************************************************/
 
-#ifndef XVERSION_H    /* prevent circular inclusions */
-#define XVERSION_H    /* by using protection macros */
+#ifndef XVERSION_H		/* prevent circular inclusions */
+#define XVERSION_H		/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,28 +72,27 @@ extern "C" {
 /* the following data type is used to hold a null terminated version string
  * consisting of the following format, "X.YYX"
  */
-typedef Xint8 XVersion[6];
+typedef s8 XVersion[6];
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
 
 /************************** Function Prototypes ******************************/
 
-void XVersion_UnPack(XVersion *InstancePtr, Xuint16 PackedVersion);
+void XVersion_UnPack(XVersion * InstancePtr, u16 PackedVersion);
 
-XStatus XVersion_Pack(XVersion *InstancePtr, Xuint16 *PackedVersion);
+int XVersion_Pack(XVersion * InstancePtr, u16 *PackedVersion);
 
-Xboolean XVersion_IsEqual(XVersion *InstancePtr, XVersion *VersionPtr);
+u32 XVersion_IsEqual(XVersion * InstancePtr, XVersion * VersionPtr);
 
-void XVersion_ToString(XVersion *InstancePtr, Xint8 *StringPtr);
+void XVersion_ToString(XVersion * InstancePtr, s8 *StringPtr);
 
-XStatus XVersion_FromString(XVersion *InstancePtr, Xint8 *StringPtr);
+int XVersion_FromString(XVersion * InstancePtr, s8 *StringPtr);
 
-void XVersion_Copy(XVersion *InstancePtr, XVersion *VersionPtr);
+void XVersion_Copy(XVersion * InstancePtr, XVersion * VersionPtr);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif              /* end of protection macro */
-
+#endif /* end of protection macro */

@@ -41,8 +41,8 @@
 * </pre>
 *
 *****************************************************************************/
-#ifndef XPACKET_FIFO_L_V200A_H    /* prevent circular inclusions */
-#define XPACKET_FIFO_L_V200A_H    /* by using protection macros */
+#ifndef XPACKET_FIFO_L_V200A_H	/* prevent circular inclusions */
+#define XPACKET_FIFO_L_V200A_H	/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,8 +60,8 @@ extern "C" {
  * These constants specify the FIFO type and are mutually exclusive
  * @{
  */
-#define XPF_V200A_READ_FIFO_TYPE      0     /**< a read FIFO */
-#define XPF_V200A_WRITE_FIFO_TYPE     1     /**< a write FIFO */
+#define XPF_V200A_READ_FIFO_TYPE      0	    /**< a read FIFO */
+#define XPF_V200A_WRITE_FIFO_TYPE     1	    /**< a write FIFO */
 /* @} */
 
 /** @name Register offsets
@@ -126,23 +126,20 @@ extern "C" {
 
 /************************** Function Prototypes ******************************/
 
-XStatus XPacketFifoV200a_L0Read(Xuint32 RegBaseAddress,
-                                Xuint32 DataBaseAddress,
-                                Xuint8 *ReadBufferPtr,
-                                Xuint32 ByteCount);
+int XPacketFifoV200a_L0Read(u32 RegBaseAddress,
+			    u32 DataBaseAddress,
+			    u8 *ReadBufferPtr, u32 ByteCount);
 
-XStatus XPacketFifoV200a_L0Write(Xuint32 RegBaseAddress,
-                                 Xuint32 DataBaseAddress,
-                                 Xuint8 *WriteBufferPtr,
-                                 Xuint32 ByteCount);
+int XPacketFifoV200a_L0Write(u32 RegBaseAddress,
+			     u32 DataBaseAddress,
+			     u8 *WriteBufferPtr, u32 ByteCount);
 
-XStatus XPacketFifoV200a_L0WriteDre(Xuint32 RegBaseAddress,
-                                    Xuint32 DataBaseAddress,
-                                    Xuint8 *BufferPtr,
-                                    Xuint32 ByteCount);
+int XPacketFifoV200a_L0WriteDre(u32 RegBaseAddress,
+				u32 DataBaseAddress,
+				u8 *BufferPtr, u32 ByteCount);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif              /* end of protection macro */
+#endif /* end of protection macro */

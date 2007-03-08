@@ -47,8 +47,8 @@
 *
 ******************************************************************************/
 
-#ifndef XIO_H           /* prevent circular inclusions */
-#define XIO_H           /* by using protection macros */
+#ifndef XIO_H			/* prevent circular inclusions */
+#define XIO_H			/* by using protection macros */
 
 /***************************** Include Files *********************************/
 
@@ -63,7 +63,7 @@
  * Typedef for an I/O address.  Typically correlates to the width of the
  * address bus.
  */
-typedef Xuint32 XIo_Address;
+typedef u32 XIo_Address;
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
@@ -84,7 +84,7 @@ typedef Xuint32 XIo_Address;
 * @return   The value read from the specified input address.
 *
 ******************************************************************************/
-#define XIo_In8(InputPtr)  (*(volatile Xuint8  *)(InputPtr))
+#define XIo_In8(InputPtr)  (*(volatile u8  *)(InputPtr))
 
 /*****************************************************************************/
 /**
@@ -97,7 +97,7 @@ typedef Xuint32 XIo_Address;
 * @return   The value read from the specified input address.
 *
 ******************************************************************************/
-#define XIo_In16(InputPtr) (*(volatile Xuint16 *)(InputPtr))
+#define XIo_In16(InputPtr) (*(volatile u16 *)(InputPtr))
 
 /*****************************************************************************/
 /**
@@ -110,7 +110,7 @@ typedef Xuint32 XIo_Address;
 * @return   The value read from the specified input address.
 *
 ******************************************************************************/
-#define XIo_In32(InputPtr)  (*(volatile Xuint32 *)(InputPtr))
+#define XIo_In32(InputPtr)  (*(volatile u32 *)(InputPtr))
 
 
 /*****************************************************************************/
@@ -126,7 +126,7 @@ typedef Xuint32 XIo_Address;
 *
 ******************************************************************************/
 #define XIo_Out8(OutputPtr, Value)  \
-    (*(volatile Xuint8  *)((OutputPtr)) = (Value))
+    (*(volatile u8  *)((OutputPtr)) = (Value))
 
 /*****************************************************************************/
 /**
@@ -141,7 +141,7 @@ typedef Xuint32 XIo_Address;
 *
 ******************************************************************************/
 #define XIo_Out16(OutputPtr, Value) \
-    (*(volatile Xuint16 *)((OutputPtr)) = (Value))
+    (*(volatile u16 *)((OutputPtr)) = (Value))
 
 /*****************************************************************************/
 /**
@@ -156,7 +156,7 @@ typedef Xuint32 XIo_Address;
 *
 ******************************************************************************/
 #define XIo_Out32(OutputPtr, Value) \
-    (*(volatile Xuint32 *)((OutputPtr)) = (Value))
+    (*(volatile u32 *)((OutputPtr)) = (Value))
 
 
 /* The following macros allow the software to be transportable across
@@ -203,15 +203,15 @@ typedef Xuint32 XIo_Address;
  * XIo_To/FromBigEndianXX should be used to allow the endian conversion to only
  * be performed when necessary.
  */
-void XIo_EndianSwap16(Xuint16 Source, Xuint16* DestPtr);
-void XIo_EndianSwap32(Xuint32 Source, Xuint32* DestPtr);
+void XIo_EndianSwap16(u16 Source, u16 *DestPtr);
+void XIo_EndianSwap32(u32 Source, u32 *DestPtr);
 
 /* The following functions handle IO addresses where data must be swapped
  * They cannot be implemented as macros
  */
-Xuint16 XIo_InSwap16(XIo_Address InAddress);
-Xuint32 XIo_InSwap32(XIo_Address InAddress);
-void XIo_OutSwap16(XIo_Address OutAddress, Xuint16 Value);
-void XIo_OutSwap32(XIo_Address OutAddress, Xuint32 Value);
+u16 XIo_InSwap16(XIo_Address InAddress);
+u32 XIo_InSwap32(XIo_Address InAddress);
+void XIo_OutSwap16(XIo_Address OutAddress, u16 Value);
+void XIo_OutSwap32(XIo_Address OutAddress, u32 Value);
 
-#endif          /* end of protection macro */
+#endif /* end of protection macro */

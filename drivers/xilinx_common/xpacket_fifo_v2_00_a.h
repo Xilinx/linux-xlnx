@@ -60,8 +60,8 @@
 * </pre>
 *
 *****************************************************************************/
-#ifndef XPACKET_FIFO_V200A_H    /* prevent circular inclusions */
-#define XPACKET_FIFO_V200A_H    /* by using protection macros */
+#ifndef XPACKET_FIFO_V200A_H	/* prevent circular inclusions */
+#define XPACKET_FIFO_V200A_H	/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,11 +83,10 @@ extern "C" {
  * The XPacketFifo driver instance data. The driver is required to allocate a
  * variable of this type for every packet FIFO in the device.
  */
-typedef struct
-{
-    Xuint32 RegBaseAddress;     /**< Base address of registers */
-    Xuint32 IsReady;            /**< Device is initialized and ready */
-    Xuint32 DataBaseAddress;    /**< Base address of data for FIFOs */
+typedef struct {
+	u32 RegBaseAddress; /**< Base address of registers */
+	u32 IsReady;	    /**< Device is initialized and ready */
+	u32 DataBaseAddress;/**< Base address of data for FIFOs */
 } XPacketFifoV200a;
 
 /***************** Macros (Inline Functions) Definitions *********************/
@@ -123,7 +122,7 @@ typedef struct
 *
 * @note
 *
-* C Signature: Xuint32 XPF_V200A_GET_COUNT(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_GET_COUNT(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_GET_COUNT(InstancePtr) \
@@ -141,11 +140,11 @@ typedef struct
 *
 * @return
 *
-* XTRUE if the packet FIFO is almost empty, XFALSE otherwise.
+* TRUE if the packet FIFO is almost empty, FALSE otherwise.
 *
 * @note
 *
-* C Signature: Xboolean XPF_V200A_IS_ALMOST_EMPTY(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_IS_ALMOST_EMPTY(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_IS_ALMOST_EMPTY(InstancePtr) \
@@ -164,11 +163,11 @@ typedef struct
 *
 * @return
 *
-* XTRUE if the packet FIFO is almost full, XFALSE otherwise.
+* TRUE if the packet FIFO is almost full, FALSE otherwise.
 *
 * @note
 *
-* C Signature: Xboolean XPF_V200A_IS_ALMOST_FULL(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_IS_ALMOST_FULL(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_IS_ALMOST_FULL(InstancePtr) \
@@ -186,11 +185,11 @@ typedef struct
 *
 * @return
 *
-* XTRUE if the packet FIFO is empty, XFALSE otherwise.
+* TRUE if the packet FIFO is empty, FALSE otherwise.
 *
 * @note
 *
-* C Signature: Xboolean XPF_V200A_IS_EMPTY(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_IS_EMPTY(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_IS_EMPTY(InstancePtr) \
@@ -208,11 +207,11 @@ typedef struct
 *
 * @return
 *
-* XTRUE if the packet FIFO is full, XFALSE otherwise.
+* TRUE if the packet FIFO is full, FALSE otherwise.
 *
 * @note
 *
-* C Signature: Xboolean XPF_V200A_IS_FULL(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_IS_FULL(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_IS_FULL(InstancePtr) \
@@ -234,7 +233,7 @@ typedef struct
 *
 * @return
 *
-* XTRUE if the packet FIFO is deadlocked, XFALSE otherwise.
+* TRUE if the packet FIFO is deadlocked, FALSE otherwise.
 *
 * @note
 *
@@ -248,7 +247,7 @@ typedef struct
 * to prevent other problems. This error condition could occur as a normal part
 * of operation if the size of the FIFO is not setup correctly.
 * <br><br>
-* C Signature: Xboolean XPF_V200A_IS_DEADLOCKED(XPacketFifoV200a *InstancePtr)
+* C Signature: u32 XPF_V200A_IS_DEADLOCKED(XPacketFifoV200a *InstancePtr)
 *
 ******************************************************************************/
 #define XPF_V200A_IS_DEADLOCKED(InstancePtr) \
@@ -261,27 +260,22 @@ typedef struct
 /**
  * Standard functions
  */
-XStatus XPacketFifoV200a_Initialize(XPacketFifoV200a *InstancePtr,
-                                    Xuint32 RegBaseAddress,
-                                    Xuint32 DataBaseAddress);
-XStatus XPacketFifoV200a_SelfTest(XPacketFifoV200a *InstancePtr,
-                                  Xuint32 FifoType);
+int XPacketFifoV200a_Initialize(XPacketFifoV200a * InstancePtr,
+				u32 RegBaseAddress, u32 DataBaseAddress);
+int XPacketFifoV200a_SelfTest(XPacketFifoV200a * InstancePtr, u32 FifoType);
 
 /**
  * Data functions
  */
-XStatus XPacketFifoV200a_Read(XPacketFifoV200a *InstancePtr,
-                              Xuint8 *ReadBufferPtr,
-                              Xuint32 ByteCount);
-XStatus XPacketFifoV200a_Write(XPacketFifoV200a *InstancePtr,
-                               Xuint8 *WriteBufferPtr,
-                               Xuint32 ByteCount);
-XStatus XPacketFifoV200a_WriteDre(XPacketFifoV200a *InstancePtr,
-                                  Xuint8 *WriteBufferPtr,
-                                  Xuint32 ByteCount);
+int XPacketFifoV200a_Read(XPacketFifoV200a * InstancePtr,
+			  u8 *ReadBufferPtr, u32 ByteCount);
+int XPacketFifoV200a_Write(XPacketFifoV200a * InstancePtr,
+			   u8 *WriteBufferPtr, u32 ByteCount);
+int XPacketFifoV200a_WriteDre(XPacketFifoV200a * InstancePtr,
+			      u8 *WriteBufferPtr, u32 ByteCount);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif              /* end of protection macro */
+#endif /* end of protection macro */

@@ -61,10 +61,10 @@ unsigned int XAssertStatus;
  * such that it does not wait infinitely. Use the debugger to disable the
  * waiting during testing of asserts.
  */
-Xboolean XWaitInAssert = XTRUE;
+u32 XWaitInAssert = TRUE;
 
 /* The callback function to be invoked when an assert is taken */
-static XAssertCallback XAssertCallbackRoutine = (XAssertCallback)XNULL;
+static XAssertCallback XAssertCallbackRoutine = (XAssertCallback) NULL;
 
 /************************** Function Prototypes ******************************/
 
@@ -85,18 +85,16 @@ static XAssertCallback XAssertCallbackRoutine = (XAssertCallback)XNULL;
 ******************************************************************************/
 void XAssert(char *File, int Line)
 {
-    /* if the callback has been set then invoke it */
-    if (XAssertCallbackRoutine != XNULL)
-    {
-        (*XAssertCallbackRoutine)(File, Line);
-    }
+	/* if the callback has been set then invoke it */
+	if (XAssertCallbackRoutine != NULL) {
+		(*XAssertCallbackRoutine) (File, Line);
+	}
 
-    /* if specified, wait indefinitely such that the assert will show up
-     * in testing
-     */
-    while (XWaitInAssert)
-    {
-    }
+	/* if specified, wait indefinitely such that the assert will show up
+	 * in testing
+	 */
+	while (XWaitInAssert) {
+	}
 }
 
 /*****************************************************************************/
@@ -114,7 +112,7 @@ void XAssert(char *File, int Line)
 ******************************************************************************/
 void XAssertSetCallback(XAssertCallback Routine)
 {
-    XAssertCallbackRoutine = Routine;
+	XAssertCallbackRoutine = Routine;
 }
 
 
@@ -135,4 +133,3 @@ void XAssertSetCallback(XAssertCallback Routine)
 void XNullHandler(void *NullParameter)
 {
 }
-

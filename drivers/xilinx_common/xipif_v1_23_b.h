@@ -90,8 +90,8 @@
 *
 ******************************************************************************/
 
-#ifndef XIPIF_V123B_H /* prevent circular inclusions */
-#define XIPIF_V123B_H /* by using protection macros */
+#ifndef XIPIF_V123B_H		/* prevent circular inclusions */
+#define XIPIF_V123B_H		/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,14 +113,14 @@ extern "C" {
  * controller registers
  * @{
  */
-#define XIIF_V123B_DISR_OFFSET     0UL  /**< device interrupt status register */
-#define XIIF_V123B_DIPR_OFFSET     4UL  /**< device interrupt pending register */
-#define XIIF_V123B_DIER_OFFSET     8UL  /**< device interrupt enable register */
-#define XIIF_V123B_DIIR_OFFSET     24UL /**< device interrupt ID register */
-#define XIIF_V123B_DGIER_OFFSET    28UL /**< device global interrupt enable register */
-#define XIIF_V123B_IISR_OFFSET     32UL /**< IP interrupt status register */
-#define XIIF_V123B_IIER_OFFSET     40UL /**< IP interrupt enable register */
-#define XIIF_V123B_RESETR_OFFSET   64UL /**< reset register */
+#define XIIF_V123B_DISR_OFFSET     0UL	/**< device interrupt status register */
+#define XIIF_V123B_DIPR_OFFSET     4UL	/**< device interrupt pending register */
+#define XIIF_V123B_DIER_OFFSET     8UL	/**< device interrupt enable register */
+#define XIIF_V123B_DIIR_OFFSET     24UL	/**< device interrupt ID register */
+#define XIIF_V123B_DGIER_OFFSET    28UL	/**< device global interrupt enable register */
+#define XIIF_V123B_IISR_OFFSET     32UL	/**< IP interrupt status register */
+#define XIIF_V123B_IIER_OFFSET     40UL	/**< IP interrupt enable register */
+#define XIIF_V123B_RESETR_OFFSET   64UL	/**< reset register */
 /* @} */
 
 /**
@@ -140,7 +140,7 @@ extern "C" {
  * registers of the IPIF. Interrupts are assigned in the register from LSB
  * to the MSB
  */
-#define XIIF_V123B_ERROR_MASK             1UL     /**< LSB of the register */
+#define XIIF_V123B_ERROR_MASK             1UL	  /**< LSB of the register */
 
 /** @name Interrupt IDs
  *
@@ -295,8 +295,8 @@ extern "C" {
 *
 * @note
 *
-* Signature: Xuint32 XIIF_V123B_WRITE_DIER(Xuint32 RegBaseAddress,
-*                                          Xuint32 Enable)
+* Signature: u32 XIIF_V123B_WRITE_DIER(u32 RegBaseAddress,
+*                                          u32 Enable)
 *
 ******************************************************************************/
 #define XIIF_V123B_WRITE_DIER(RegBaseAddress, Enable) \
@@ -494,7 +494,7 @@ extern "C" {
 *
 * @return
 *
-* XTRUE if interrupts are enabled for the IPIF, XFALSE otherwise.
+* TRUE if interrupts are enabled for the IPIF, FALSE otherwise.
 *
 * @note
 *
@@ -637,7 +637,7 @@ extern "C" {
 *
 * @note
 *
-* Signature: Xuint32 XIIF_V123B_READ_IIER(Xuint32 RegBaseAddress)
+* Signature: u32 XIIF_V123B_READ_IIER(u32 RegBaseAddress)
 *
 ******************************************************************************/
 #define XIIF_V123B_READ_IIER(RegBaseAddress) \
@@ -648,10 +648,10 @@ extern "C" {
 /**
  * Initialization Functions
  */
-XStatus XIpIfV123b_SelfTest(Xuint32 RegBaseAddress, Xuint8 IpRegistersWidth);
+int XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif            /* end of protection macro */
+#endif /* end of protection macro */

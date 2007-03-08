@@ -47,8 +47,8 @@
 *
 ******************************************************************************/
 
-#ifndef XBASIC_TYPES_H      /* prevent circular inclusions */
-#define XBASIC_TYPES_H      /* by using protection macros */
+#ifndef XBASIC_TYPES_H		/* prevent circular inclusions */
+#define XBASIC_TYPES_H		/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,25 +61,13 @@ extern "C" {
 
 /************************** Constant Definitions *****************************/
 
-/** Xboolean true */
-#define XTRUE       1
-/** Xboolean false */
-#define XFALSE      0
-
-#ifndef TRUE 
+#ifndef TRUE
 #define TRUE 1
-#endif 
-
-#ifndef FALSE 
-#define FALSE 0
-#endif 
-
-
-#ifndef NULL
-#define NULL 0
 #endif
-/** Null */
-#define XNULL NULL
+
+#ifndef FALSE
+#define FALSE !(TRUE)
+#endif
 
 #define XCOMPONENT_IS_READY     0x11111111  /**< component has been initialized */
 #define XCOMPONENT_IS_STARTED   0x22222222  /**< component has been started */
@@ -97,76 +85,25 @@ extern unsigned int XAssertStatus;
 extern void XAssert(char *, int);
 
 /**************************** Type Definitions *******************************/
-
-/** @name Primitive types
- * These primitive types are created for transportability.
- * They are dependent upon the target architecture.
- * @{
- */
-typedef unsigned char   Xuint8;     /**< unsigned 8-bit */
-typedef char            Xint8;      /**< signed 8-bit */
-typedef unsigned short  Xuint16;    /**< unsigned 16-bit */
-typedef short           Xint16;     /**< signed 16-bit */
-typedef unsigned long   Xuint32;    /**< unsigned 32-bit */
-typedef long            Xint32;     /**< signed 32-bit */
-typedef float           Xfloat32;   /**< 32-bit floating point */
-typedef double          Xfloat64;   /**< 64-bit double precision floating point */
-typedef unsigned long   Xboolean;   /**< boolean (XTRUE or XFALSE) */
-
-typedef struct
-{
-    Xuint32 Upper;
-    Xuint32 Lower;
-} Xuint64;
-
-/*@}*/
-
 /**
  * This data type defines an interrupt handler for a device.
  * The argument points to the instance of the component
  */
-typedef void (*XInterruptHandler)(void *InstancePtr);
+typedef void (*XInterruptHandler) (void *InstancePtr);
 
 /**
  * This data type defines an exception handler for a processor.
  * The argument points to the instance of the component
  */
-typedef void (*XExceptionHandler)(void *InstancePtr);
+typedef void (*XExceptionHandler) (void *InstancePtr);
 
 /**
  * This data type defines a callback to be invoked when an
  * assert occurs. The callback is invoked only when asserts are enabled
  */
-typedef void (*XAssertCallback)(char* FilenamePtr, int LineNumber);
+typedef void (*XAssertCallback) (char *FilenamePtr, int LineNumber);
 
 /***************** Macros (Inline Functions) Definitions *********************/
-
-/*****************************************************************************/
-/**
-* Return the most significant half of the 64 bit data type.
-*
-* @param    x is the 64 bit word.
-*
-* @return   The upper 32 bits of the 64 bit word.
-*
-* @note     None.
-*
-******************************************************************************/
-#define XUINT64_MSW(x) ((x).Upper)
-
-/*****************************************************************************/
-/**
-* Return the least significant half of the 64 bit data type.
-*
-* @param    x is the 64 bit word.
-*
-* @return   The lower 32 bits of the 64 bit word.
-*
-* @note     None.
-*
-******************************************************************************/
-#define XUINT64_LSW(x) ((x).Lower)
-
 
 #ifndef NDEBUG
 
@@ -283,5 +220,4 @@ void XNullHandler(void *NullParameter);
 }
 #endif
 
-#endif          /* end of protection macro */
-
+#endif /* end of protection macro */

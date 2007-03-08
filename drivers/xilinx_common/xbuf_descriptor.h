@@ -50,8 +50,8 @@
 *
 ******************************************************************************/
 
-#ifndef XBUF_DESCRIPTOR_H    /* prevent circular inclusions */
-#define XBUF_DESCRIPTOR_H    /* by using protection macros */
+#ifndef XBUF_DESCRIPTOR_H	/* prevent circular inclusions */
+#define XBUF_DESCRIPTOR_H	/* by using protection macros */
 
 /***************************** Include Files *********************************/
 
@@ -1084,4 +1084,4 @@ void XBufDescriptor_Copy(XBufDescriptor* InstancePtr,
 
 */
 
-#endif              /* end of protection macro */
+#endif /* end of protection macro */

@@ -103,45 +103,44 @@
 * None.
 *
 ******************************************************************************/
-XStatus XDmaChannel_Initialize(XDmaChannel *InstancePtr,
-                                    u32 BaseAddress)
+int XDmaChannel_Initialize(XDmaChannel * InstancePtr, u32 BaseAddress)
 {
-    /* assert to verify input arguments, don't assert base address */
+	/* assert to verify input arguments, don't assert base address */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /* setup the base address of the registers for the DMA channel such
-     * that register accesses can be done
-     */
-    InstancePtr->RegBaseAddress = BaseAddress;
+	/* setup the base address of the registers for the DMA channel such
+	 * that register accesses can be done
+	 */
+	InstancePtr->RegBaseAddress = BaseAddress;
 
-    /* initialize the scatter gather list such that it indicates it has not
-     * been created yet and the DMA channel is ready to use (initialized)
-     */
-    InstancePtr->GetPtr = NULL;
-    InstancePtr->PutPtr = NULL;
-    InstancePtr->CommitPtr = NULL;
-    InstancePtr->LastPtr = NULL;
+	/* initialize the scatter gather list such that it indicates it has not
+	 * been created yet and the DMA channel is ready to use (initialized)
+	 */
+	InstancePtr->GetPtr = NULL;
+	InstancePtr->PutPtr = NULL;
+	InstancePtr->CommitPtr = NULL;
+	InstancePtr->LastPtr = NULL;
 
-    InstancePtr->TotalDescriptorCount = 0;
-    InstancePtr->ActiveDescriptorCount = 0;
+	InstancePtr->TotalDescriptorCount = 0;
+	InstancePtr->ActiveDescriptorCount = 0;
 
-    InstancePtr->ActivePacketCount = 0;
-    InstancePtr->Committed = FALSE;
+	InstancePtr->ActivePacketCount = 0;
+	InstancePtr->Committed = FALSE;
 
-    InstancePtr->IsReady = XCOMPONENT_IS_READY;
+	InstancePtr->IsReady = XCOMPONENT_IS_READY;
 
-    /* initialize the version of the component
-     */
-    XVersion_FromString(&InstancePtr->Version, "1.00a");
+	/* initialize the version of the component
+	 */
+	XVersion_FromString(&InstancePtr->Version, "1.00a");
 
-    /* reset the DMA channel such that it's in a known state and ready
-     * and indicate the initialization occurred with no errors, note that
-     * the is ready variable must be set before this call or reset will assert
-     */
-    XDmaChannel_Reset(InstancePtr);
+	/* reset the DMA channel such that it's in a known state and ready
+	 * and indicate the initialization occurred with no errors, note that
+	 * the is ready variable must be set before this call or reset will assert
+	 */
+	XDmaChannel_Reset(InstancePtr);
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -163,13 +162,13 @@ XStatus XDmaChannel_Initialize(XDmaChannel *InstancePtr,
 * None.
 *
 ******************************************************************************/
-u32 XDmaChannel_IsReady(XDmaChannel *InstancePtr)
+u32 XDmaChannel_IsReady(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments used by the base component */
+	/* assert to verify input arguments used by the base component */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    return InstancePtr->IsReady == XCOMPONENT_IS_READY;
+	return InstancePtr->IsReady == XCOMPONENT_IS_READY;
 }
 
 /*****************************************************************************/
@@ -191,16 +190,16 @@ u32 XDmaChannel_IsReady(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-XVersion *XDmaChannel_GetVersion(XDmaChannel *InstancePtr)
+XVersion *XDmaChannel_GetVersion(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* return a pointer to the version of the DMA channel */
+	/* return a pointer to the version of the DMA channel */
 
-    return &InstancePtr->Version;
+	return &InstancePtr->Version;
 }
 
 /*****************************************************************************/
@@ -231,33 +230,32 @@ XVersion *XDmaChannel_GetVersion(XDmaChannel *InstancePtr)
 *
 ******************************************************************************/
 
-#define XDC_CONTROL_REG_RESET_MASK  0x98000000UL /* control reg reset value */
+#define XDC_CONTROL_REG_RESET_MASK  0x98000000UL	/* control reg reset value */
 
-XStatus XDmaChannel_SelfTest(XDmaChannel *InstancePtr)
+int XDmaChannel_SelfTest(XDmaChannel * InstancePtr)
 {
-    u32 ControlReg;
+	u32 ControlReg;
 
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* reset the DMA channel such that it's in a known state before the test
-     * it resets to no interrupts enabled, the desired state for the test
-     */
-    XDmaChannel_Reset(InstancePtr);
+	/* reset the DMA channel such that it's in a known state before the test
+	 * it resets to no interrupts enabled, the desired state for the test
+	 */
+	XDmaChannel_Reset(InstancePtr);
 
-    /* this should be the first test to help prevent a lock up with the polling
-     * loop that occurs later in the test, check the reset value of the DMA
-     * control register to make sure it's correct, return with an error if not
-     */
-    ControlReg = XDmaChannel_GetControl(InstancePtr);
-    if (ControlReg != XDC_CONTROL_REG_RESET_MASK)
-    {
-        return XST_DMA_RESET_REGISTER_ERROR;
-    }
+	/* this should be the first test to help prevent a lock up with the polling
+	 * loop that occurs later in the test, check the reset value of the DMA
+	 * control register to make sure it's correct, return with an error if not
+	 */
+	ControlReg = XDmaChannel_GetControl(InstancePtr);
+	if (ControlReg != XDC_CONTROL_REG_RESET_MASK) {
+		return XST_DMA_RESET_REGISTER_ERROR;
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -283,17 +281,18 @@ XStatus XDmaChannel_SelfTest(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XDmaChannel_Reset(XDmaChannel *InstancePtr)
+void XDmaChannel_Reset(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* reset the DMA channel such that it's in a known state, the reset
-     * register is self clearing such that it only has to be set
-     */
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_RST_REG_OFFSET, XDC_RESET_MASK);
+	/* reset the DMA channel such that it's in a known state, the reset
+	 * register is self clearing such that it only has to be set
+	 */
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_RST_REG_OFFSET,
+		  XDC_RESET_MASK);
 }
 
 /*****************************************************************************/
@@ -330,16 +329,16 @@ void XDmaChannel_Reset(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-u32 XDmaChannel_GetControl(XDmaChannel *InstancePtr)
+u32 XDmaChannel_GetControl(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* return the contents of the DMA control register */
+	/* return the contents of the DMA control register */
 
-    return XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET);
+	return XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET);
 }
 
 /*****************************************************************************/
@@ -374,24 +373,25 @@ u32 XDmaChannel_GetControl(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XDmaChannel_SetControl(XDmaChannel *InstancePtr, u32 Control)
+void XDmaChannel_SetControl(XDmaChannel * InstancePtr, u32 Control)
 {
-    u32 Register;
-    /* assert to verify input arguments except the control which can't be
-     * asserted since all values are valid
-     */
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	u32 Register;
 
-    /*
-     * set the DMA control register to the specified value, not altering the
-     * other fields in the register
-     */
+	/* assert to verify input arguments except the control which can't be
+	 * asserted since all values are valid
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    Register = XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET);
-    Register &= XDC_DMACR_TX_CS_INIT_MASK;
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET,
-              Register | Control);
+	/*
+	 * set the DMA control register to the specified value, not altering the
+	 * other fields in the register
+	 */
+
+	Register = XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET);
+	Register &= XDC_DMACR_TX_CS_INIT_MASK;
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_DMAC_REG_OFFSET,
+		  Register | Control);
 }
 
 /*****************************************************************************/
@@ -422,16 +422,16 @@ void XDmaChannel_SetControl(XDmaChannel *InstancePtr, u32 Control)
 * None.
 *
 ******************************************************************************/
-u32 XDmaChannel_GetStatus(XDmaChannel *InstancePtr)
+u32 XDmaChannel_GetStatus(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* return the contents of the DMA status register */
+	/* return the contents of the DMA status register */
 
-    return XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAS_REG_OFFSET);
+	return XIo_In32(InstancePtr->RegBaseAddress + XDC_DMAS_REG_OFFSET);
 }
 
 /*****************************************************************************/
@@ -470,19 +470,19 @@ u32 XDmaChannel_GetStatus(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XDmaChannel_SetIntrStatus(XDmaChannel *InstancePtr, u32 Status)
+void XDmaChannel_SetIntrStatus(XDmaChannel * InstancePtr, u32 Status)
 {
-    /* assert to verify input arguments except the status which can't be
-     * asserted since all values are valid
-     */
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify input arguments except the status which can't be
+	 * asserted since all values are valid
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* set the interrupt status register with the specified value such that
-     * all bits which are set in the register are cleared effectively clearing
-     * any active interrupts
-     */
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_IS_REG_OFFSET, Status);
+	/* set the interrupt status register with the specified value such that
+	 * all bits which are set in the register are cleared effectively clearing
+	 * any active interrupts
+	 */
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_IS_REG_OFFSET, Status);
 }
 
 /*****************************************************************************/
@@ -526,16 +526,16 @@ void XDmaChannel_SetIntrStatus(XDmaChannel *InstancePtr, u32 Status)
 * None.
 *
 ******************************************************************************/
-u32 XDmaChannel_GetIntrStatus(XDmaChannel *InstancePtr)
+u32 XDmaChannel_GetIntrStatus(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* return the contents of the interrupt status register */
+	/* return the contents of the interrupt status register */
 
-    return XIo_In32(InstancePtr->RegBaseAddress + XDC_IS_REG_OFFSET);
+	return XIo_In32(InstancePtr->RegBaseAddress + XDC_IS_REG_OFFSET);
 }
 
 /*****************************************************************************/
@@ -576,17 +576,17 @@ u32 XDmaChannel_GetIntrStatus(XDmaChannel *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XDmaChannel_SetIntrEnable(XDmaChannel *InstancePtr, u32 Enable)
+void XDmaChannel_SetIntrEnable(XDmaChannel * InstancePtr, u32 Enable)
 {
-    /* assert to verify input arguments except the enable which can't be
-     * asserted since all values are valid
-     */
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify input arguments except the enable which can't be
+	 * asserted since all values are valid
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* set the interrupt enable register to the specified value */
+	/* set the interrupt enable register to the specified value */
 
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_IE_REG_OFFSET, Enable);
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_IE_REG_OFFSET, Enable);
 }
 
 /*****************************************************************************/
@@ -625,16 +625,16 @@ void XDmaChannel_SetIntrEnable(XDmaChannel *InstancePtr, u32 Enable)
 * None.
 *
 ******************************************************************************/
-u32 XDmaChannel_GetIntrEnable(XDmaChannel *InstancePtr)
+u32 XDmaChannel_GetIntrEnable(XDmaChannel * InstancePtr)
 {
-    /* assert to verify input arguments */
+	/* assert to verify input arguments */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* return the contents of the interrupt enable register */
+	/* return the contents of the interrupt enable register */
 
-    return XIo_In32(InstancePtr->RegBaseAddress + XDC_IE_REG_OFFSET);
+	return XIo_In32(InstancePtr->RegBaseAddress + XDC_IE_REG_OFFSET);
 }
 
 /*****************************************************************************/
@@ -685,32 +685,30 @@ u32 XDmaChannel_GetIntrEnable(XDmaChannel *InstancePtr)
 * if address translation is being used.
 *
 ******************************************************************************/
-void XDmaChannel_Transfer(XDmaChannel *InstancePtr,
-                               u32 *SourcePtr,
-                               u32 *DestinationPtr,
-                               u32 ByteCount)
+void XDmaChannel_Transfer(XDmaChannel * InstancePtr,
+			  u32 *SourcePtr, u32 *DestinationPtr, u32 ByteCount)
 {
-    /* assert to verify input arguments and the alignment of any arguments
-     * which have expected alignments
-     */
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(SourcePtr != NULL);
-    XASSERT_VOID(((u32)SourcePtr & 3) == 0);
-    XASSERT_VOID(DestinationPtr != NULL);
-    XASSERT_VOID(((u32)DestinationPtr & 3) == 0);
-    XASSERT_VOID(ByteCount != 0);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify input arguments and the alignment of any arguments
+	 * which have expected alignments
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(SourcePtr != NULL);
+	XASSERT_VOID(((u32) SourcePtr & 3) == 0);
+	XASSERT_VOID(DestinationPtr != NULL);
+	XASSERT_VOID(((u32) DestinationPtr & 3) == 0);
+	XASSERT_VOID(ByteCount != 0);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* setup the source and destination address registers for the transfer */
+	/* setup the source and destination address registers for the transfer */
 
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_SA_REG_OFFSET,
-              (u32)SourcePtr);
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_SA_REG_OFFSET,
+		  (u32) SourcePtr);
 
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_DA_REG_OFFSET,
-              (u32)DestinationPtr);
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_DA_REG_OFFSET,
+		  (u32) DestinationPtr);
 
-    /* start the DMA transfer to copy from the source buffer to the
-     * destination buffer by writing the length to the length register
-     */
-    XIo_Out32(InstancePtr->RegBaseAddress + XDC_LEN_REG_OFFSET, ByteCount);
+	/* start the DMA transfer to copy from the source buffer to the
+	 * destination buffer by writing the length to the length register
+	 */
+	XIo_Out32(InstancePtr->RegBaseAddress + XDC_LEN_REG_OFFSET, ByteCount);
 }

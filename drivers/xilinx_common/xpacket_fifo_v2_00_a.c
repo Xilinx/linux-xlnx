@@ -83,27 +83,26 @@
 * @note     None.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_Initialize(XPacketFifoV200a *InstancePtr,
-                                    Xuint32 RegBaseAddress,
-                                    Xuint32 DataBaseAddress)
+int XPacketFifoV200a_Initialize(XPacketFifoV200a * InstancePtr,
+				u32 RegBaseAddress, u32 DataBaseAddress)
 {
-    /* assert to verify input argument are valid */
+	/* assert to verify input argument are valid */
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /* initialize the component variables to the specified state */
+	/* initialize the component variables to the specified state */
 
-    InstancePtr->RegBaseAddress = RegBaseAddress;
-    InstancePtr->DataBaseAddress = DataBaseAddress;
-    InstancePtr->IsReady = XCOMPONENT_IS_READY;
+	InstancePtr->RegBaseAddress = RegBaseAddress;
+	InstancePtr->DataBaseAddress = DataBaseAddress;
+	InstancePtr->IsReady = XCOMPONENT_IS_READY;
 
-    /* reset the FIFO such that it's empty and ready to use and indicate the
-     * initialization was successful, note that the is ready variable must be
-     * set prior to calling the reset function to prevent an assert
-     */
-    XPF_V200A_RESET(InstancePtr);
+	/* reset the FIFO such that it's empty and ready to use and indicate the
+	 * initialization was successful, note that the is ready variable must be
+	 * set prior to calling the reset function to prevent an assert
+	 */
+	XPF_V200A_RESET(InstancePtr);
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -132,70 +131,64 @@ XStatus XPacketFifoV200a_Initialize(XPacketFifoV200a *InstancePtr,
 * None.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_SelfTest(XPacketFifoV200a *InstancePtr,
-                                  Xuint32 FifoType)
+int XPacketFifoV200a_SelfTest(XPacketFifoV200a * InstancePtr, u32 FifoType)
 {
-    Xuint32 Register;
+	u32 Register;
 
-    /* assert to verify valid input arguments */
+	/* assert to verify valid input arguments */
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID((FifoType == XPF_V200A_READ_FIFO_TYPE) ||
-                    (FifoType == XPF_V200A_WRITE_FIFO_TYPE));
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID((FifoType == XPF_V200A_READ_FIFO_TYPE) ||
+			(FifoType == XPF_V200A_WRITE_FIFO_TYPE));
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /* reset the FIFO and then check to make sure the occupancy/vacancy
-     * register contents are correct for a reset condition
-     */
-    XPF_V200A_RESET(InstancePtr);
+	/* reset the FIFO and then check to make sure the occupancy/vacancy
+	 * register contents are correct for a reset condition
+	 */
+	XPF_V200A_RESET(InstancePtr);
 
-    Register = XIo_In32(InstancePtr->RegBaseAddress +
-                        XPF_V200A_COUNT_STATUS_REG_OFFSET);
+	Register = XIo_In32(InstancePtr->RegBaseAddress +
+			    XPF_V200A_COUNT_STATUS_REG_OFFSET);
 
-    /* check the value of the register to ensure that it's correct for the
-     * specified FIFO type since both FIFO types reset to empty, but a bit
-     * in the register changes definition based upon FIFO type
-     */
+	/* check the value of the register to ensure that it's correct for the
+	 * specified FIFO type since both FIFO types reset to empty, but a bit
+	 * in the register changes definition based upon FIFO type
+	 */
 
-    if (FifoType == XPF_V200A_READ_FIFO_TYPE)
-    {
-        /* check the register value for a read FIFO which should be empty */
+	if (FifoType == XPF_V200A_READ_FIFO_TYPE) {
+		/* check the register value for a read FIFO which should be empty */
 
-        if ((Register & ~(XPF_V200A_FIFO_WIDTH_MASK)) !=
-                                XPF_V200A_EMPTY_FULL_MASK)
-        {
-            return XST_PFIFO_BAD_REG_VALUE;
-        }
-    }
-    else
-    {
-        /* check the register value for a write FIFO which should not be full
-         * on reset
-         */
-        if (((Register & ~(XPF_V200A_FIFO_WIDTH_MASK) &
-                           XPF_V200A_EMPTY_FULL_MASK)) != 0)
-        {
-            return XST_PFIFO_BAD_REG_VALUE;
-        }
-    }
+		if ((Register & ~(XPF_V200A_FIFO_WIDTH_MASK)) !=
+		    XPF_V200A_EMPTY_FULL_MASK) {
+			return XST_PFIFO_BAD_REG_VALUE;
+		}
+	}
+	else {
+		/* check the register value for a write FIFO which should not be full
+		 * on reset
+		 */
+		if (((Register & ~(XPF_V200A_FIFO_WIDTH_MASK) &
+		      XPF_V200A_EMPTY_FULL_MASK)) != 0) {
+			return XST_PFIFO_BAD_REG_VALUE;
+		}
+	}
 
-    /* check the register value for the proper FIFO width */
+	/* check the register value for the proper FIFO width */
 
-    Register &= ~XPF_V200A_EMPTY_FULL_MASK;
+	Register &= ~XPF_V200A_EMPTY_FULL_MASK;
 
-    if (((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
-                            XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) &&
-        ((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
-                                XPF_V200A_FIFO_WIDTH_32BITS_TYPE) &&
-        ((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
-                                XPF_V200A_FIFO_WIDTH_64BITS_TYPE))
-    {
-        return XST_PFIFO_BAD_REG_VALUE;
-    }
+	if (((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
+	     XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) &&
+	    ((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
+	     XPF_V200A_FIFO_WIDTH_32BITS_TYPE) &&
+	    ((Register & XPF_V200A_FIFO_WIDTH_MASK) !=
+	     XPF_V200A_FIFO_WIDTH_64BITS_TYPE)) {
+		return XST_PFIFO_BAD_REG_VALUE;
+	}
 
-    /* the test was successful */
+	/* the test was successful */
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 
@@ -227,23 +220,22 @@ XStatus XPacketFifoV200a_SelfTest(XPacketFifoV200a *InstancePtr,
 * None.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_Read(XPacketFifoV200a *InstancePtr,
-                              Xuint8 *BufferPtr,
-                              Xuint32 ByteCount)
+int XPacketFifoV200a_Read(XPacketFifoV200a * InstancePtr,
+			  u8 *BufferPtr, u32 ByteCount)
 {
-    /* assert to verify valid input arguments including 32 bit alignment of
-     * the buffer pointer
-     */
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BufferPtr != XNULL);
-    XASSERT_NONVOID(((Xuint32)BufferPtr &
-                    (XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT - 1)) == 0);
-    XASSERT_NONVOID(ByteCount != 0);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify valid input arguments including 32 bit alignment of
+	 * the buffer pointer
+	 */
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BufferPtr != NULL);
+	XASSERT_NONVOID(((u32) BufferPtr &
+			 (XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT - 1)) == 0);
+	XASSERT_NONVOID(ByteCount != 0);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    return XPacketFifoV200a_L0Read(InstancePtr->RegBaseAddress,
-                                   InstancePtr->DataBaseAddress,
-                                   BufferPtr, ByteCount);
+	return XPacketFifoV200a_L0Read(InstancePtr->RegBaseAddress,
+				       InstancePtr->DataBaseAddress,
+				       BufferPtr, ByteCount);
 }
 
 /*****************************************************************************/
@@ -273,24 +265,23 @@ XStatus XPacketFifoV200a_Read(XPacketFifoV200a *InstancePtr,
 * None.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_Write(XPacketFifoV200a *InstancePtr,
-                               Xuint8 *BufferPtr,
-                               Xuint32 ByteCount)
+int XPacketFifoV200a_Write(XPacketFifoV200a * InstancePtr,
+			   u8 *BufferPtr, u32 ByteCount)
 {
-    /* assert to verify valid input arguments including 32 bit alignment of
-     * the buffer pointer
-     */
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BufferPtr != XNULL);
-    XASSERT_NONVOID(((Xuint32)BufferPtr &
-                    (XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT - 1)) == 0);
-    XASSERT_NONVOID(ByteCount != 0);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify valid input arguments including 32 bit alignment of
+	 * the buffer pointer
+	 */
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BufferPtr != NULL);
+	XASSERT_NONVOID(((u32) BufferPtr &
+			 (XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT - 1)) == 0);
+	XASSERT_NONVOID(ByteCount != 0);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
 
-    return XPacketFifoV200a_L0Write(InstancePtr->RegBaseAddress,
-                                    InstancePtr-> DataBaseAddress,
-                                    BufferPtr, ByteCount);
+	return XPacketFifoV200a_L0Write(InstancePtr->RegBaseAddress,
+					InstancePtr->DataBaseAddress,
+					BufferPtr, ByteCount);
 }
 
 
@@ -323,17 +314,16 @@ XStatus XPacketFifoV200a_Write(XPacketFifoV200a *InstancePtr,
 * significant byte to the least significant byte.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_WriteDre(XPacketFifoV200a *InstancePtr,
-                                  Xuint8 *BufferPtr,
-                                  Xuint32 ByteCount)
+int XPacketFifoV200a_WriteDre(XPacketFifoV200a * InstancePtr,
+			      u8 *BufferPtr, u32 ByteCount)
 {
-    /* assert to verify valid input arguments */
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BufferPtr != XNULL);
-    XASSERT_NONVOID(ByteCount != 0);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/* assert to verify valid input arguments */
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BufferPtr != NULL);
+	XASSERT_NONVOID(ByteCount != 0);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    return XPacketFifoV200a_L0WriteDre(InstancePtr->RegBaseAddress,
-                                       InstancePtr-> DataBaseAddress,
-                                       BufferPtr, ByteCount);
+	return XPacketFifoV200a_L0WriteDre(InstancePtr->RegBaseAddress,
+					   InstancePtr->DataBaseAddress,
+					   BufferPtr, ByteCount);
 }

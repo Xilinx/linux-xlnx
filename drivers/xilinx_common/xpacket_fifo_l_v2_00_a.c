@@ -62,17 +62,17 @@
 
 /************************** Function Prototypes ******************************/
 
-static XStatus Write32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                       Xuint8 *BufferPtr, Xuint32 ByteCount);
+static int Write32(u32 RegBaseAddress, u32 DataBaseAddress,
+		   u8 *BufferPtr, u32 ByteCount);
 
-static XStatus Write64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                       Xuint8 *BufferPtr, Xuint32 ByteCount);
+static int Write64(u32 RegBaseAddress, u32 DataBaseAddress,
+		   u8 *BufferPtr, u32 ByteCount);
 
-static XStatus Read32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                      Xuint8 *BufferPtr, Xuint32 ByteCount);
+static int Read32(u32 RegBaseAddress, u32 DataBaseAddress,
+		  u8 *BufferPtr, u32 ByteCount);
 
-static XStatus Read64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                      Xuint8 *BufferPtr, Xuint32 ByteCount);
+static int Read64(u32 RegBaseAddress, u32 DataBaseAddress,
+		  u8 *BufferPtr, u32 ByteCount);
 
 
 /*****************************************************************************/
@@ -122,28 +122,28 @@ static XStatus Read64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
 * from the FIFO.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_L0Read(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                                Xuint8 *BufferPtr, Xuint32 ByteCount)
+int XPacketFifoV200a_L0Read(u32 RegBaseAddress, u32 DataBaseAddress,
+			    u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 Width;
-    XStatus Result = XST_FIFO_ERROR;
+	u32 Width;
+	int Result = XST_FIFO_ERROR;
 
-    /* determine the width of the FIFO
-     */
-    Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-            XPF_V200A_FIFO_WIDTH_MASK;
+	/* determine the width of the FIFO
+	 */
+	Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_FIFO_WIDTH_MASK;
 
-    if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
-        (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE))
-    {
-        Result = Read32(RegBaseAddress, DataBaseAddress, BufferPtr, ByteCount);
-    }
-    else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE)
-    {
-        Result = Read64(RegBaseAddress, DataBaseAddress, BufferPtr, ByteCount);
-    }
+	if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
+	    (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE)) {
+		Result = Read32(RegBaseAddress, DataBaseAddress, BufferPtr,
+				ByteCount);
+	}
+	else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE) {
+		Result = Read64(RegBaseAddress, DataBaseAddress, BufferPtr,
+				ByteCount);
+	}
 
-    return Result;
+	return Result;
 
 }
 
@@ -182,31 +182,29 @@ XStatus XPacketFifoV200a_L0Read(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
 * significant byte to the least significant byte.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_L0Write(Xuint32 RegBaseAddress,
-                                 Xuint32 DataBaseAddress,
-                                 Xuint8 *BufferPtr,
-                                 Xuint32 ByteCount)
+int XPacketFifoV200a_L0Write(u32 RegBaseAddress,
+			     u32 DataBaseAddress, u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 Width;
-    XStatus Result = XST_FIFO_ERROR;
+	u32 Width;
+	int Result = XST_FIFO_ERROR;
 
 
-    /* determine the width of the FIFO
-     */
-    Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-            XPF_V200A_FIFO_WIDTH_MASK;
+	/* determine the width of the FIFO
+	 */
+	Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_FIFO_WIDTH_MASK;
 
-    if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
-        (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE))
-    {
-        Result = Write32(RegBaseAddress, DataBaseAddress, BufferPtr, ByteCount);
-    }
-    else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE)
-    {
-        Result = Write64(RegBaseAddress, DataBaseAddress, BufferPtr, ByteCount);
-    }
+	if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
+	    (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE)) {
+		Result = Write32(RegBaseAddress, DataBaseAddress, BufferPtr,
+				 ByteCount);
+	}
+	else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE) {
+		Result = Write64(RegBaseAddress, DataBaseAddress, BufferPtr,
+				 ByteCount);
+	}
 
-    return Result;
+	return Result;
 
 }
 
@@ -243,69 +241,63 @@ XStatus XPacketFifoV200a_L0Write(Xuint32 RegBaseAddress,
 * significant byte to the least significant byte.
 *
 ******************************************************************************/
-XStatus XPacketFifoV200a_L0WriteDre(Xuint32 RegBaseAddress,
-                                    Xuint32 DataBaseAddress,
-                                    Xuint8 *BufferPtr,
-                                    Xuint32 ByteCount)
+int XPacketFifoV200a_L0WriteDre(u32 RegBaseAddress,
+				u32 DataBaseAddress,
+				u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 FifoRoomLeft;
-    Xuint32 BytesLeft;
-    Xuint32 Width;
+	u32 FifoRoomLeft;
+	u32 BytesLeft;
+	u32 Width;
 
-    /* calculate how many slots are left in the FIFO
-     */
-    FifoRoomLeft = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET)
-        & XPF_V200A_COUNT_MASK;
+	/* calculate how many slots are left in the FIFO
+	 */
+	FifoRoomLeft =
+		XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET)
+		& XPF_V200A_COUNT_MASK;
 
-    /* determine the width of the FIFO
-     */
-    Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-            XPF_V200A_FIFO_WIDTH_MASK;
+	/* determine the width of the FIFO
+	 */
+	Width = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_FIFO_WIDTH_MASK;
 
-    /* from the width, determine how many bytes can be written to the FIFO
-     */
-    if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
-        (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE))
-    {
-        FifoRoomLeft *= 4;
-    }
-    else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE)
-    {
-        FifoRoomLeft *= 8;
-    }
+	/* from the width, determine how many bytes can be written to the FIFO
+	 */
+	if ((Width == XPF_V200A_FIFO_WIDTH_LEGACY_TYPE) ||
+	    (Width == XPF_V200A_FIFO_WIDTH_32BITS_TYPE)) {
+		FifoRoomLeft *= 4;
+	}
+	else if (Width == XPF_V200A_FIFO_WIDTH_64BITS_TYPE) {
+		FifoRoomLeft *= 8;
+	}
 
-    /* Make sure there's enough room in the FIFO */
-    if (FifoRoomLeft < ByteCount)
-    {
-        return XST_PFIFO_NO_ROOM;
-    }
+	/* Make sure there's enough room in the FIFO */
+	if (FifoRoomLeft < ByteCount) {
+		return XST_PFIFO_NO_ROOM;
+	}
 
-    /* Determine the number of bytes to write until 32 bit alignment is
-     * reached, then write those bytes to the FIFO one byte at a time
-     */
-    BytesLeft = (unsigned)BufferPtr % sizeof(Xuint32);
-    ByteCount -= BytesLeft;
-    while (BytesLeft--)
-    {
-        XIo_Out8(DataBaseAddress, *BufferPtr++);
-    }
+	/* Determine the number of bytes to write until 32 bit alignment is
+	 * reached, then write those bytes to the FIFO one byte at a time
+	 */
+	BytesLeft = (unsigned) BufferPtr % sizeof(u32);
+	ByteCount -= BytesLeft;
+	while (BytesLeft--) {
+		XIo_Out8(DataBaseAddress, *BufferPtr++);
+	}
 
-    /* Write as many 32 bit words as we can */
-    BytesLeft = ByteCount;
-    while (BytesLeft >= sizeof(Xuint32))
-    {
-        XIo_Out32(DataBaseAddress, *(Xuint32*)BufferPtr);
-        BufferPtr += sizeof(Xuint32);
-        BytesLeft -= sizeof(Xuint32);
-    }
+	/* Write as many 32 bit words as we can */
+	BytesLeft = ByteCount;
+	while (BytesLeft >= sizeof(u32)) {
+		XIo_Out32(DataBaseAddress, *(u32 *) BufferPtr);
+		BufferPtr += sizeof(u32);
+		BytesLeft -= sizeof(u32);
+	}
 
-    /* Write remaining bytes */
-    while (BytesLeft--)
-    {
-        XIo_Out8(DataBaseAddress, *BufferPtr++);
-    }
+	/* Write remaining bytes */
+	while (BytesLeft--) {
+		XIo_Out8(DataBaseAddress, *BufferPtr++);
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 
 }
 
@@ -356,87 +348,83 @@ XStatus XPacketFifoV200a_L0WriteDre(Xuint32 RegBaseAddress,
 * from the FIFO.
 *
 ******************************************************************************/
-static XStatus Read32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                      Xuint8 *BufferPtr, Xuint32 ByteCount)
+static int Read32(u32 RegBaseAddress, u32 DataBaseAddress,
+		  u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 FifoCount;
-    Xuint32 WordCount;
-    Xuint32 ExtraByteCount;
-    Xuint32 *WordBuffer = (Xuint32 *)BufferPtr;
+	u32 FifoCount;
+	u32 WordCount;
+	u32 ExtraByteCount;
+	u32 *WordBuffer = (u32 *) BufferPtr;
 
-    /* get the count of how many 32 bit words are in the FIFO, if there
-     * aren't enough words to satisfy the request, return an error
-     */
+	/* get the count of how many 32 bit words are in the FIFO, if there
+	 * aren't enough words to satisfy the request, return an error
+	 */
 
-    FifoCount = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-                XPF_V200A_COUNT_MASK;
+	FifoCount =
+		XIo_In32(RegBaseAddress +
+			 XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_COUNT_MASK;
 
-    if ((FifoCount * XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT) < ByteCount)
-    {
-        return XST_PFIFO_LACK_OF_DATA;
-    }
+	if ((FifoCount * XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT) < ByteCount) {
+		return XST_PFIFO_LACK_OF_DATA;
+	}
 
-    /* calculate the number of words to read from the FIFO before the word
-     * containing the extra bytes, and calculate the number of extra bytes
-     * the extra bytes are defined as those at the end of the buffer when
-     * the buffer does not end on a 32 bit boundary
-     */
-    WordCount = ByteCount / XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
-    ExtraByteCount = ByteCount % XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
+	/* calculate the number of words to read from the FIFO before the word
+	 * containing the extra bytes, and calculate the number of extra bytes
+	 * the extra bytes are defined as those at the end of the buffer when
+	 * the buffer does not end on a 32 bit boundary
+	 */
+	WordCount = ByteCount / XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
+	ExtraByteCount = ByteCount % XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
 
-    /* Read the 32 bit words from the FIFO for all the buffer except the
-     * last word which contains the extra bytes, the following code assumes
-     * that the buffer is 32 bit aligned, otherwise an alignment exception
-     * could be generated
-     */
-    for (FifoCount = 0; FifoCount < WordCount; FifoCount++)
-    {
-        WordBuffer[FifoCount] = XIo_In32(DataBaseAddress);
-    }
+	/* Read the 32 bit words from the FIFO for all the buffer except the
+	 * last word which contains the extra bytes, the following code assumes
+	 * that the buffer is 32 bit aligned, otherwise an alignment exception
+	 * could be generated
+	 */
+	for (FifoCount = 0; FifoCount < WordCount; FifoCount++) {
+		WordBuffer[FifoCount] = XIo_In32(DataBaseAddress);
+	}
 
-    /* if there are extra bytes to handle, read the last word from the FIFO
-     * and insert the extra bytes into the buffer
-     */
-    if (ExtraByteCount > 0)
-    {
-        Xuint32 LastWord;
-        Xuint8 *WordPtr;
-        Xuint8 *ExtraBytesBuffer = (Xuint8 *)(WordBuffer + WordCount);
+	/* if there are extra bytes to handle, read the last word from the FIFO
+	 * and insert the extra bytes into the buffer
+	 */
+	if (ExtraByteCount > 0) {
+		u32 LastWord;
+		u8 *WordPtr;
+		u8 *ExtraBytesBuffer = (u8 *) (WordBuffer + WordCount);
 
-        /* get the last word from the FIFO for the extra bytes */
+		/* get the last word from the FIFO for the extra bytes */
 
-        LastWord = XIo_In32(DataBaseAddress);
+		LastWord = XIo_In32(DataBaseAddress);
 
-        /* one extra byte in the last word, put the byte into the next
-         * location of the buffer, bytes in a word of the FIFO are ordered
-         * from most significant byte to least
-         */
-        WordPtr = (Xuint8 *)&LastWord;
-        if (ExtraByteCount == 1)
-        {
-            ExtraBytesBuffer[0] = WordPtr[0];
-        }
+		/* one extra byte in the last word, put the byte into the next
+		 * location of the buffer, bytes in a word of the FIFO are ordered
+		 * from most significant byte to least
+		 */
+		WordPtr = (u8 *) &LastWord;
+		if (ExtraByteCount == 1) {
+			ExtraBytesBuffer[0] = WordPtr[0];
+		}
 
-        /* two extra bytes in the last word, put each byte into the next
-         * two locations of the buffer
-         */
-        else if (ExtraByteCount == 2)
-        {
-            ExtraBytesBuffer[0] = WordPtr[0];
-            ExtraBytesBuffer[1] = WordPtr[1];
-        }
-        /* three extra bytes in the last word, put each byte into the next
-         * three locations of the buffer
-         */
-        else if (ExtraByteCount == 3)
-        {
-            ExtraBytesBuffer[0] = WordPtr[0];
-            ExtraBytesBuffer[1] = WordPtr[1];
-            ExtraBytesBuffer[2] = WordPtr[2];
-        }
-    }
+		/* two extra bytes in the last word, put each byte into the next
+		 * two locations of the buffer
+		 */
+		else if (ExtraByteCount == 2) {
+			ExtraBytesBuffer[0] = WordPtr[0];
+			ExtraBytesBuffer[1] = WordPtr[1];
+		}
+		/* three extra bytes in the last word, put each byte into the next
+		 * three locations of the buffer
+		 */
+		else if (ExtraByteCount == 3) {
+			ExtraBytesBuffer[0] = WordPtr[0];
+			ExtraBytesBuffer[1] = WordPtr[1];
+			ExtraBytesBuffer[2] = WordPtr[2];
+		}
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 
@@ -487,110 +475,102 @@ static XStatus Read32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
 * from the FIFO.
 *
 ******************************************************************************/
-static XStatus Read64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                      Xuint8 *BufferPtr, Xuint32 ByteCount)
+static int Read64(u32 RegBaseAddress, u32 DataBaseAddress,
+		  u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 FifoCount;
-    Xuint32 WordCount;
-    Xuint32 ExtraByteCount;
-    Xuint32 *WordBuffer = (Xuint32 *)BufferPtr;
+	u32 FifoCount;
+	u32 WordCount;
+	u32 ExtraByteCount;
+	u32 *WordBuffer = (u32 *) BufferPtr;
 
-    /* get the count of how many 64 bit words are in the FIFO, if there
-     * aren't enough words to satisfy the request, return an error
-     */
+	/* get the count of how many 64 bit words are in the FIFO, if there
+	 * aren't enough words to satisfy the request, return an error
+	 */
 
-    FifoCount = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-                XPF_V200A_COUNT_MASK;
+	FifoCount =
+		XIo_In32(RegBaseAddress +
+			 XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_COUNT_MASK;
 
-    if ((FifoCount * XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT) < ByteCount)
-    {
-        return XST_PFIFO_LACK_OF_DATA;
-    }
+	if ((FifoCount * XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT) < ByteCount) {
+		return XST_PFIFO_LACK_OF_DATA;
+	}
 
-    /* calculate the number of words to read from the FIFO before the word
-     * containing the extra bytes, and calculate the number of extra bytes
-     * the extra bytes are defined as those at the end of the buffer when
-     * the buffer does not end on a 32 bit boundary
-     */
-    WordCount = ByteCount / XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
-    ExtraByteCount = ByteCount % XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
+	/* calculate the number of words to read from the FIFO before the word
+	 * containing the extra bytes, and calculate the number of extra bytes
+	 * the extra bytes are defined as those at the end of the buffer when
+	 * the buffer does not end on a 32 bit boundary
+	 */
+	WordCount = ByteCount / XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
+	ExtraByteCount = ByteCount % XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
 
-    /* Read the 64 bit words from the FIFO for all the buffer except the
-     * last word which contains the extra bytes, the following code assumes
-     * that the buffer is 32 bit aligned, otherwise an alignment exception
-     * could be generated. The MSWord must be read first followed by the
-     * LSWord
-     */
-    for (FifoCount = 0; FifoCount < WordCount; FifoCount++)
-    {
-        WordBuffer[(FifoCount * 2)] =
-                            XIo_In32(DataBaseAddress);
-        WordBuffer[(FifoCount * 2) + 1] =
-                            XIo_In32(DataBaseAddress + 4);
-    }
+	/* Read the 64 bit words from the FIFO for all the buffer except the
+	 * last word which contains the extra bytes, the following code assumes
+	 * that the buffer is 32 bit aligned, otherwise an alignment exception
+	 * could be generated. The MSWord must be read first followed by the
+	 * LSWord
+	 */
+	for (FifoCount = 0; FifoCount < WordCount; FifoCount++) {
+		WordBuffer[(FifoCount * 2)] = XIo_In32(DataBaseAddress);
+		WordBuffer[(FifoCount * 2) + 1] = XIo_In32(DataBaseAddress + 4);
+	}
 
-    /* if there are extra bytes to handle, read the last word from the FIFO
-     * and insert the extra bytes into the buffer
-     */
-    if (ExtraByteCount > 0)
-    {
-        Xuint32 MSLastWord;
-        Xuint32 LSLastWord;
-        Xuint8 *WordPtr;
-        Xuint8 *ExtraBytesBuffer =
-                    (Xuint8 *)(WordBuffer + (WordCount * 2));
-        Xuint8 Index = 0;
+	/* if there are extra bytes to handle, read the last word from the FIFO
+	 * and insert the extra bytes into the buffer
+	 */
+	if (ExtraByteCount > 0) {
+		u32 MSLastWord;
+		u32 LSLastWord;
+		u8 *WordPtr;
+		u8 *ExtraBytesBuffer = (u8 *) (WordBuffer + (WordCount * 2));
+		u8 Index = 0;
 
-        /* get the last word from the FIFO for the extra bytes */
+		/* get the last word from the FIFO for the extra bytes */
 
-        MSLastWord = XIo_In32(DataBaseAddress);
-        LSLastWord = XIo_In32(DataBaseAddress + 4);
+		MSLastWord = XIo_In32(DataBaseAddress);
+		LSLastWord = XIo_In32(DataBaseAddress + 4);
 
-        /* four or more extra bytes in the last word, put the byte into
-         * the next location of the buffer, bytes in a word of the FIFO
-         * are ordered from most significant byte to least
-         */
-        WordPtr = (Xuint8 *)&MSLastWord;
-        if (ExtraByteCount >= 4)
-        {
-            ExtraBytesBuffer[Index] = WordPtr[0];
-            ExtraBytesBuffer[Index + 1] = WordPtr[1];
-            ExtraBytesBuffer[Index + 2] = WordPtr[2];
-            ExtraBytesBuffer[Index + 3] = WordPtr[3];
-            ExtraByteCount = ExtraByteCount - 4;
-            MSLastWord = LSLastWord;
-            Index = 4;
-        }
+		/* four or more extra bytes in the last word, put the byte into
+		 * the next location of the buffer, bytes in a word of the FIFO
+		 * are ordered from most significant byte to least
+		 */
+		WordPtr = (u8 *) &MSLastWord;
+		if (ExtraByteCount >= 4) {
+			ExtraBytesBuffer[Index] = WordPtr[0];
+			ExtraBytesBuffer[Index + 1] = WordPtr[1];
+			ExtraBytesBuffer[Index + 2] = WordPtr[2];
+			ExtraBytesBuffer[Index + 3] = WordPtr[3];
+			ExtraByteCount = ExtraByteCount - 4;
+			MSLastWord = LSLastWord;
+			Index = 4;
+		}
 
-        /* one extra byte in the last word, put the byte into the next
-         * location of the buffer, bytes in a word of the FIFO are
-         * ordered from most significant byte to least
-         */
-        if (ExtraByteCount == 1)
-        {
-            ExtraBytesBuffer[Index] = WordPtr[0];
-        }
+		/* one extra byte in the last word, put the byte into the next
+		 * location of the buffer, bytes in a word of the FIFO are
+		 * ordered from most significant byte to least
+		 */
+		if (ExtraByteCount == 1) {
+			ExtraBytesBuffer[Index] = WordPtr[0];
+		}
 
-        /* two extra bytes in the last word, put each byte into the next
-         * two locations of the buffer
-         */
-        else if (ExtraByteCount == 2)
-        {
-            ExtraBytesBuffer[Index] = WordPtr[0];
-            ExtraBytesBuffer[Index + 1] = WordPtr[1];
-        }
-        /* three extra bytes in the last word, put each byte into the next
-         * three locations of the buffer
-         */
-        else if (ExtraByteCount == 3)
-        {
-            ExtraBytesBuffer[Index] = WordPtr[0];
-            ExtraBytesBuffer[Index + 1] = WordPtr[1];
-            ExtraBytesBuffer[Index + 2] = WordPtr[2];
-        }
-    }
+		/* two extra bytes in the last word, put each byte into the next
+		 * two locations of the buffer
+		 */
+		else if (ExtraByteCount == 2) {
+			ExtraBytesBuffer[Index] = WordPtr[0];
+			ExtraBytesBuffer[Index + 1] = WordPtr[1];
+		}
+		/* three extra bytes in the last word, put each byte into the next
+		 * three locations of the buffer
+		 */
+		else if (ExtraByteCount == 3) {
+			ExtraBytesBuffer[Index] = WordPtr[0];
+			ExtraBytesBuffer[Index + 1] = WordPtr[1];
+			ExtraBytesBuffer[Index + 2] = WordPtr[2];
+		}
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 
@@ -628,104 +608,98 @@ static XStatus Read64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
 * significant byte to the least significant byte.
 *
 ******************************************************************************/
-static XStatus Write32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                       Xuint8 *BufferPtr, Xuint32 ByteCount)
+static int Write32(u32 RegBaseAddress, u32 DataBaseAddress,
+		   u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 FifoCount;
-    Xuint32 WordCount;
-    Xuint32 ExtraByteCount;
-    Xuint32 *WordBuffer = (Xuint32 *)BufferPtr;
+	u32 FifoCount;
+	u32 WordCount;
+	u32 ExtraByteCount;
+	u32 *WordBuffer = (u32 *) BufferPtr;
 
-    /* get the count of how many words may be inserted into the FIFO */
+	/* get the count of how many words may be inserted into the FIFO */
 
-    FifoCount = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-                XPF_V200A_COUNT_MASK;
+	FifoCount =
+		XIo_In32(RegBaseAddress +
+			 XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_COUNT_MASK;
 
-    /* Calculate the number of 32 bit words required to insert the
-     * specified number of bytes in the FIFO and determine the number
-     * of extra bytes if the buffer length is not a multiple of 32 bit
-     * words
-     */
+	/* Calculate the number of 32 bit words required to insert the
+	 * specified number of bytes in the FIFO and determine the number
+	 * of extra bytes if the buffer length is not a multiple of 32 bit
+	 * words
+	 */
 
-    WordCount = ByteCount / XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
-    ExtraByteCount = ByteCount % XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
+	WordCount = ByteCount / XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
+	ExtraByteCount = ByteCount % XPF_V200A_32BIT_FIFO_WIDTH_BYTE_COUNT;
 
-    /* take into account the extra bytes in the total word count */
+	/* take into account the extra bytes in the total word count */
 
-    if (ExtraByteCount > 0)
-    {
-        WordCount++;
-    }
+	if (ExtraByteCount > 0) {
+		WordCount++;
+	}
 
-    /* if there's not enough room in the FIFO to hold the specified
-     * number of bytes, then indicate an error,
-     */
-    if (FifoCount < WordCount)
-    {
-        return XST_PFIFO_NO_ROOM;
-    }
+	/* if there's not enough room in the FIFO to hold the specified
+	 * number of bytes, then indicate an error,
+	 */
+	if (FifoCount < WordCount) {
+		return XST_PFIFO_NO_ROOM;
+	}
 
-    /* readjust the word count to not take into account the extra bytes */
+	/* readjust the word count to not take into account the extra bytes */
 
-    if (ExtraByteCount > 0)
-    {
-        WordCount--;
-    }
+	if (ExtraByteCount > 0) {
+		WordCount--;
+	}
 
-    /* Write all the bytes of the buffer which can be written as 32 bit
-     * words into the FIFO, waiting to handle the extra bytes separately
-     */
-    for (FifoCount = 0; FifoCount < WordCount; FifoCount++)
-    {
-        XIo_Out32(DataBaseAddress, WordBuffer[FifoCount]);
-    }
+	/* Write all the bytes of the buffer which can be written as 32 bit
+	 * words into the FIFO, waiting to handle the extra bytes separately
+	 */
+	for (FifoCount = 0; FifoCount < WordCount; FifoCount++) {
+		XIo_Out32(DataBaseAddress, WordBuffer[FifoCount]);
+	}
 
-    /* if there are extra bytes to handle, extract them from the buffer
-     * and create a 32 bit word and write it to the FIFO
-     */
-    if (ExtraByteCount > 0)
-    {
-        Xuint32 LastWord = 0;
-        Xuint8 *WordPtr;
-        Xuint8 *ExtraBytesBuffer = (Xuint8 *)(WordBuffer + WordCount);
+	/* if there are extra bytes to handle, extract them from the buffer
+	 * and create a 32 bit word and write it to the FIFO
+	 */
+	if (ExtraByteCount > 0) {
+		u32 LastWord = 0;
+		u8 *WordPtr;
+		u8 *ExtraBytesBuffer = (u8 *) (WordBuffer + WordCount);
 
-        /* one extra byte in the buffer, put the byte into the last word
-         * to be inserted into the FIFO, perform this processing inline
-         * rather than in a loop to help performance
-         */
-        WordPtr = (Xuint8 *)&LastWord;
-        if (ExtraByteCount == 1)
-        {
-            WordPtr[0] = ExtraBytesBuffer[0];
-        }
+		/* one extra byte in the buffer, put the byte into the last word
+		 * to be inserted into the FIFO, perform this processing inline
+		 * rather than in a loop to help performance
+		 */
+		WordPtr = (u8 *) &LastWord;
+		if (ExtraByteCount == 1) {
+			WordPtr[0] = ExtraBytesBuffer[0];
+		}
 
-        /* two extra bytes in the buffer, put each byte into the last word
-         * to be inserted into the FIFO
-         */
-        else if (ExtraByteCount == 2)
-        {
-            WordPtr[0] = ExtraBytesBuffer[0];
-            WordPtr[1] = ExtraBytesBuffer[1];
-        }
+		/* two extra bytes in the buffer, put each byte into the last word
+		 * to be inserted into the FIFO
+		 */
+		else if (ExtraByteCount == 2) {
+			WordPtr[0] = ExtraBytesBuffer[0];
+			WordPtr[1] = ExtraBytesBuffer[1];
+		}
 
-        /* three extra bytes in the buffer, put each byte into the last
-         * word to be inserted into the FIFO
-         */
-        else if (ExtraByteCount == 3)
-        {
-            WordPtr[0] = ExtraBytesBuffer[0];
-            WordPtr[1] = ExtraBytesBuffer[1];
-            WordPtr[2] = ExtraBytesBuffer[2];
-        }
+		/* three extra bytes in the buffer, put each byte into the last
+		 * word to be inserted into the FIFO
+		 */
+		else if (ExtraByteCount == 3) {
+			WordPtr[0] = ExtraBytesBuffer[0];
+			WordPtr[1] = ExtraBytesBuffer[1];
+			WordPtr[2] = ExtraBytesBuffer[2];
+		}
 
-        /* write the last 32 bit word to the FIFO and return with
-         * no errors
-         */
+		/* write the last 32 bit word to the FIFO and return with
+		 * no errors
+		 */
 
-        XIo_Out32(DataBaseAddress, LastWord);
-    }
+		XIo_Out32(DataBaseAddress, LastWord);
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -763,123 +737,116 @@ static XStatus Write32(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
 * significant byte to the least significant byte.
 *
 ******************************************************************************/
-static XStatus Write64(Xuint32 RegBaseAddress, Xuint32 DataBaseAddress,
-                       Xuint8 *BufferPtr, Xuint32 ByteCount)
+static int Write64(u32 RegBaseAddress, u32 DataBaseAddress,
+		   u8 *BufferPtr, u32 ByteCount)
 {
-    Xuint32 FifoCount;
-    Xuint32 WordCount;
-    Xuint32 ExtraByteCount;
-    Xuint32 *WordBuffer = (Xuint32 *)BufferPtr;
+	u32 FifoCount;
+	u32 WordCount;
+	u32 ExtraByteCount;
+	u32 *WordBuffer = (u32 *) BufferPtr;
 
-    /* get the count of how many words may be inserted into the FIFO */
+	/* get the count of how many words may be inserted into the FIFO */
 
-    FifoCount = XIo_In32(RegBaseAddress + XPF_V200A_COUNT_STATUS_REG_OFFSET) &
-                XPF_V200A_COUNT_MASK;
+	FifoCount =
+		XIo_In32(RegBaseAddress +
+			 XPF_V200A_COUNT_STATUS_REG_OFFSET) &
+		XPF_V200A_COUNT_MASK;
 
-    /* Calculate the number of 64 bit words required to insert the
-     * specified number of bytes in the FIFO and determine the number
-     * of extra bytes if the buffer length is not a multiple of 64 bit
-     * words
-     */
+	/* Calculate the number of 64 bit words required to insert the
+	 * specified number of bytes in the FIFO and determine the number
+	 * of extra bytes if the buffer length is not a multiple of 64 bit
+	 * words
+	 */
 
-    WordCount = ByteCount / XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
-    ExtraByteCount = ByteCount % XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
+	WordCount = ByteCount / XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
+	ExtraByteCount = ByteCount % XPF_V200A_64BIT_FIFO_WIDTH_BYTE_COUNT;
 
-    /* take into account the extra bytes in the total word count */
+	/* take into account the extra bytes in the total word count */
 
-    if (ExtraByteCount > 0)
-    {
-        WordCount++;
-    }
+	if (ExtraByteCount > 0) {
+		WordCount++;
+	}
 
-    /* if there's not enough room in the FIFO to hold the specified
-     * number of bytes, then indicate an error,
-     */
-    if (FifoCount < WordCount)
-    {
-        return XST_PFIFO_NO_ROOM;
-    }
+	/* if there's not enough room in the FIFO to hold the specified
+	 * number of bytes, then indicate an error,
+	 */
+	if (FifoCount < WordCount) {
+		return XST_PFIFO_NO_ROOM;
+	}
 
-    /* readjust the word count to not take into account the extra bytes */
+	/* readjust the word count to not take into account the extra bytes */
 
-    if (ExtraByteCount > 0)
-    {
-        WordCount--;
-    }
+	if (ExtraByteCount > 0) {
+		WordCount--;
+	}
 
-    /* Write all the bytes of the buffer which can be written as 32 bit
-     * words into the FIFO, waiting to handle the extra bytes separately
-     * The MSWord must be written first followed by the LSWord
-     */
-    for (FifoCount = 0; FifoCount < WordCount; FifoCount++)
-    {
-        XIo_Out32(DataBaseAddress, WordBuffer[(FifoCount * 2)]);
-        XIo_Out32(DataBaseAddress + 4, WordBuffer[(FifoCount * 2) + 1]);
-    }
+	/* Write all the bytes of the buffer which can be written as 32 bit
+	 * words into the FIFO, waiting to handle the extra bytes separately
+	 * The MSWord must be written first followed by the LSWord
+	 */
+	for (FifoCount = 0; FifoCount < WordCount; FifoCount++) {
+		XIo_Out32(DataBaseAddress, WordBuffer[(FifoCount * 2)]);
+		XIo_Out32(DataBaseAddress + 4, WordBuffer[(FifoCount * 2) + 1]);
+	}
 
-    /* if there are extra bytes to handle, extract them from the buffer
-     * and create two 32 bit words and write to the FIFO
-     */
-    if (ExtraByteCount > 0)
-    {
+	/* if there are extra bytes to handle, extract them from the buffer
+	 * and create two 32 bit words and write to the FIFO
+	 */
+	if (ExtraByteCount > 0) {
 
-        Xuint32 MSLastWord = 0;
-        Xuint32 LSLastWord = 0;
-        Xuint8 Index = 0;
-        Xuint8 *WordPtr;
-        Xuint8 *ExtraBytesBuffer = (Xuint8 *)(WordBuffer + (WordCount * 2));
+		u32 MSLastWord = 0;
+		u32 LSLastWord = 0;
+		u8 Index = 0;
+		u8 *WordPtr;
+		u8 *ExtraBytesBuffer = (u8 *) (WordBuffer + (WordCount * 2));
 
-        /* four extra bytes in the buffer, put the bytes into the last word
-         * to be inserted into the FIFO, perform this processing inline
-         * rather than in a loop to help performance
-         */
-        WordPtr = (Xuint8 *)&MSLastWord;
+		/* four extra bytes in the buffer, put the bytes into the last word
+		 * to be inserted into the FIFO, perform this processing inline
+		 * rather than in a loop to help performance
+		 */
+		WordPtr = (u8 *) &MSLastWord;
 
-        if (ExtraByteCount >= 4)
-        {
-            WordPtr[0] = ExtraBytesBuffer[Index];
-            WordPtr[1] = ExtraBytesBuffer[Index + 1];
-            WordPtr[2] = ExtraBytesBuffer[Index + 2];
-            WordPtr[3] = ExtraBytesBuffer[Index + 3];
-            ExtraByteCount = ExtraByteCount - 4;
-            WordPtr = (Xuint8 *)&LSLastWord;
-            Index = 4;
-        }
+		if (ExtraByteCount >= 4) {
+			WordPtr[0] = ExtraBytesBuffer[Index];
+			WordPtr[1] = ExtraBytesBuffer[Index + 1];
+			WordPtr[2] = ExtraBytesBuffer[Index + 2];
+			WordPtr[3] = ExtraBytesBuffer[Index + 3];
+			ExtraByteCount = ExtraByteCount - 4;
+			WordPtr = (u8 *) &LSLastWord;
+			Index = 4;
+		}
 
-        /* one extra byte in the buffer, put the byte into the last word
-         * to be inserted into the FIFO, perform this processing inline
-         * rather than in a loop to help performance
-         */
-        if (ExtraByteCount == 1)
-        {
-            WordPtr[0] = ExtraBytesBuffer[Index];
-        }
+		/* one extra byte in the buffer, put the byte into the last word
+		 * to be inserted into the FIFO, perform this processing inline
+		 * rather than in a loop to help performance
+		 */
+		if (ExtraByteCount == 1) {
+			WordPtr[0] = ExtraBytesBuffer[Index];
+		}
 
-        /* two extra bytes in the buffer, put each byte into the last word
-         * to be inserted into the FIFO
-         */
-        else if (ExtraByteCount == 2)
-        {
-            WordPtr[0] = ExtraBytesBuffer[Index];
-            WordPtr[1] = ExtraBytesBuffer[Index + 1];
-        }
+		/* two extra bytes in the buffer, put each byte into the last word
+		 * to be inserted into the FIFO
+		 */
+		else if (ExtraByteCount == 2) {
+			WordPtr[0] = ExtraBytesBuffer[Index];
+			WordPtr[1] = ExtraBytesBuffer[Index + 1];
+		}
 
-        /* three extra bytes in the buffer, put each byte into the last
-         * word to be inserted into the FIFO
-         */
-        else if (ExtraByteCount == 3)
-        {
-            WordPtr[0] = ExtraBytesBuffer[Index];
-            WordPtr[1] = ExtraBytesBuffer[Index + 1];
-            WordPtr[2] = ExtraBytesBuffer[Index + 2];
-        }
+		/* three extra bytes in the buffer, put each byte into the last
+		 * word to be inserted into the FIFO
+		 */
+		else if (ExtraByteCount == 3) {
+			WordPtr[0] = ExtraBytesBuffer[Index];
+			WordPtr[1] = ExtraBytesBuffer[Index + 1];
+			WordPtr[2] = ExtraBytesBuffer[Index + 2];
+		}
 
-        /* write the last 64 bit word to the FIFO and return with no errors
-         * The MSWord must be written first followed by the LSWord
-         */
-        XIo_Out32(DataBaseAddress, MSLastWord);
-        XIo_Out32(DataBaseAddress + 4, LSLastWord);
-    }
+		/* write the last 64 bit word to the FIFO and return with no errors
+		 * The MSWord must be written first followed by the LSWord
+		 */
+		XIo_Out32(DataBaseAddress, MSLastWord);
+		XIo_Out32(DataBaseAddress + 4, LSLastWord);
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }

@@ -47,8 +47,8 @@
 *
 ******************************************************************************/
 
-#ifndef XDMA_CHANNEL_I_H    /* prevent circular inclusions */
-#define XDMA_CHANNEL_I_H    /* by using protection macros */
+#ifndef XDMA_CHANNEL_I_H	/* prevent circular inclusions */
+#define XDMA_CHANNEL_I_H	/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,20 +93,20 @@ extern "C" {
  * channel
  * @{
  */
-#define XDC_RST_REG_OFFSET  0   /**< reset register */
-#define XDC_MI_REG_OFFSET   0   /**< module information register */
-#define XDC_DMAC_REG_OFFSET 4   /**< DMA control register */
-#define XDC_SA_REG_OFFSET   8   /**< source address register */
-#define XDC_DA_REG_OFFSET   12  /**< destination address register */
-#define XDC_LEN_REG_OFFSET  16  /**< length register */
-#define XDC_DMAS_REG_OFFSET 20  /**< DMA status register */
-#define XDC_BDA_REG_OFFSET  24  /**< buffer descriptor address register */
-#define XDC_SWCR_REG_OFFSET 28  /**< software control register */
-#define XDC_UPC_REG_OFFSET  32  /**< unserviced packet count register */
-#define XDC_PCT_REG_OFFSET  36  /**< packet count threshold register */
-#define XDC_PWB_REG_OFFSET  40  /**< packet wait bound register */
-#define XDC_IS_REG_OFFSET   44  /**< interrupt status register */
-#define XDC_IE_REG_OFFSET   48  /**< interrupt enable register */
+#define XDC_RST_REG_OFFSET  0	/**< reset register */
+#define XDC_MI_REG_OFFSET   0	/**< module information register */
+#define XDC_DMAC_REG_OFFSET 4	/**< DMA control register */
+#define XDC_SA_REG_OFFSET   8	/**< source address register */
+#define XDC_DA_REG_OFFSET   12	/**< destination address register */
+#define XDC_LEN_REG_OFFSET  16	/**< length register */
+#define XDC_DMAS_REG_OFFSET 20	/**< DMA status register */
+#define XDC_BDA_REG_OFFSET  24	/**< buffer descriptor address register */
+#define XDC_SWCR_REG_OFFSET 28	/**< software control register */
+#define XDC_UPC_REG_OFFSET  32	/**< unserviced packet count register */
+#define XDC_PCT_REG_OFFSET  36	/**< packet count threshold register */
+#define XDC_PWB_REG_OFFSET  40	/**< packet wait bound register */
+#define XDC_IS_REG_OFFSET   44	/**< interrupt status register */
+#define XDC_IE_REG_OFFSET   48	/**< interrupt enable register */
 /* @} */
 
 /**
@@ -128,4 +128,4 @@ extern "C" {
 }
 #endif
 
-#endif              /* end of protection macro */
+#endif /* end of protection macro */
