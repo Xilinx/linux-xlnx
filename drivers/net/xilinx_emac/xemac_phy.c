@@ -130,8 +130,8 @@ void XEmac_PhyReset(XEmac * InstancePtr)
 * PhyRead thread.
 *
 ******************************************************************************/
-XStatus XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
-		      u32 RegisterNum, u16 *PhyDataPtr)
+int XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
+		  u32 RegisterNum, u16 *PhyDataPtr)
 {
 	u32 MiiControl;
 	u32 MiiData;
@@ -239,8 +239,8 @@ XStatus XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
 * PhyWrite thread.
 *
 ******************************************************************************/
-XStatus XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
-		       u32 RegisterNum, u16 PhyData)
+int XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
+		   u32 RegisterNum, u16 PhyData)
 {
 	u32 MiiControl;
 

@@ -118,9 +118,9 @@ static void HandleEmacFifoIntr(XEmac * InstancePtr);
 * when reading or writing to them.
 *
 ******************************************************************************/
-XStatus XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount)
+int XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount)
 {
-	XStatus Result;
+	int Result;
 	volatile u32 StatusReg;
 
 	XASSERT_NONVOID(InstancePtr != NULL);
@@ -288,9 +288,9 @@ XStatus XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount)
 * when reading or writing to them.
 *
 ******************************************************************************/
-XStatus XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr)
+int XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr)
 {
-	XStatus Result;
+	int Result;
 	u32 PktLength;
 	u32 StatusReg;
 

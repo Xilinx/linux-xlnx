@@ -120,7 +120,7 @@ static OptionMap OptionsTable[] = {
 * protection of this shared data (typically using a semaphore) is required.
 *
 ******************************************************************************/
-XStatus XEmac_SetOptions(XEmac * InstancePtr, u32 OptionsFlag)
+int XEmac_SetOptions(XEmac * InstancePtr, u32 OptionsFlag)
 {
 	u32 ControlReg;
 	int Index;
@@ -268,7 +268,7 @@ u32 XEmac_GetOptions(XEmac * InstancePtr)
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2)
+int XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2)
 {
 	u32 Ifg;
 

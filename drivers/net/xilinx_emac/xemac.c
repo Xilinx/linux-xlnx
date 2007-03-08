@@ -53,6 +53,8 @@
 
 /***************************** Include Files *********************************/
 
+#include <linux/string.h>
+
 #include "xbasic_types.h"
 #include "asm/xparameters.h"
 #include "xemac_i.h"
@@ -70,10 +72,10 @@
 
 /************************** Function Prototypes ******************************/
 
-static XStatus ConfigureDma(XEmac * InstancePtr);
-static XStatus ConfigureFifo(XEmac * InstancePtr);
+static int ConfigureDma(XEmac * InstancePtr);
+static int ConfigureFifo(XEmac * InstancePtr);
 static void StubFifoHandler(void *CallBackRef);
-static void StubErrorHandler(void *CallBackRef, XStatus ErrorCode);
+static void StubErrorHandler(void *CallBackRef, int ErrorCode);
 static void StubSgHandler(void *CallBackRef, XBufDescriptor * BdPtr,
 			  u32 NumBds);
 
@@ -110,9 +112,9 @@ static void StubSgHandler(void *CallBackRef, XBufDescriptor * BdPtr,
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId)
+int XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId)
 {
-	XStatus Result;
+	int Result;
 
 	XASSERT_NONVOID(InstancePtr != NULL);
 
@@ -237,10 +239,10 @@ XStatus XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId)
 * provide protection of this shared data (typically using a semaphore).
 *
 ******************************************************************************/
-XStatus XEmac_Start(XEmac * InstancePtr)
+int XEmac_Start(XEmac * InstancePtr)
 {
 	u32 ControlReg;
-	XStatus Result;
+	int Result;
 
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -391,7 +393,7 @@ XStatus XEmac_Start(XEmac * InstancePtr)
 * provide protection of this shared data (typically using a semaphore).
 *
 ******************************************************************************/
-XStatus XEmac_Stop(XEmac * InstancePtr)
+int XEmac_Stop(XEmac * InstancePtr)
 {
 	u32 ControlReg;
 
@@ -563,7 +565,7 @@ void XEmac_Reset(XEmac * InstancePtr)
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_SetMacAddress(XEmac * InstancePtr, u8 *AddressPtr)
+int XEmac_SetMacAddress(XEmac * InstancePtr, u8 *AddressPtr)
 {
 	u32 MacAddr = 0;
 
@@ -647,9 +649,9 @@ void XEmac_GetMacAddress(XEmac * InstancePtr, u8 *BufferPtr)
 * None.
 *
 ******************************************************************************/
-static XStatus ConfigureDma(XEmac * InstancePtr)
+static int ConfigureDma(XEmac * InstancePtr)
 {
-	XStatus Result;
+	int Result;
 
 	/*
 	 * Initialize the DMA channels with their base addresses. We assume
@@ -687,9 +689,9 @@ static XStatus ConfigureDma(XEmac * InstancePtr)
 * None.
 *
 ******************************************************************************/
-static XStatus ConfigureFifo(XEmac * InstancePtr)
+static int ConfigureFifo(XEmac * InstancePtr)
 {
-	XStatus Result;
+	int Result;
 
 	/*
 	 * Return status from the packet FIFOs initialization is ignored since
@@ -776,7 +778,7 @@ static void StubFifoHandler(void *CallBackRef)
 * None.
 *
 ******************************************************************************/
-static void StubErrorHandler(void *CallBackRef, XStatus ErrorCode)
+static void StubErrorHandler(void *CallBackRef, int ErrorCode)
 {
 	XASSERT_VOID_ALWAYS();
 }

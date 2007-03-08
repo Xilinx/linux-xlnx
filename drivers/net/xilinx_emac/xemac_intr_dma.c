@@ -150,9 +150,9 @@ static void HandleEmacDmaIntr(XEmac * InstancePtr);
 * started.
 *
 ******************************************************************************/
-XStatus XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay)
+int XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay)
 {
-	XStatus Result;
+	int Result;
 	u32 BdControl;
 
 	XASSERT_NONVOID(InstancePtr != NULL);
@@ -262,9 +262,9 @@ XStatus XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay)
 * started.
 *
 ******************************************************************************/
-XStatus XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr)
+int XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr)
 {
-	XStatus Result;
+	int Result;
 	u32 BdControl;
 
 	XASSERT_NONVOID(InstancePtr != NULL);
@@ -436,7 +436,7 @@ void XEmac_IntrHandlerDma(void *InstancePtr)
 * caused confustion.
 *
 ******************************************************************************/
-XStatus XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold)
+int XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
@@ -502,7 +502,7 @@ XStatus XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold)
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 *ThreshPtr)
+int XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 *ThreshPtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
@@ -567,8 +567,7 @@ XStatus XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 *ThreshPtr)
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction,
-			      u32 TimerValue)
+int XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 TimerValue)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
@@ -638,7 +637,7 @@ XStatus XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction,
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr)
+int XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
@@ -703,8 +702,8 @@ XStatus XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr)
 * components must be initialized before the memory space is set.
 *
 ******************************************************************************/
-XStatus XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
-			     u32 ByteCount, void *PhyPtr)
+int XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			 u32 ByteCount, void *PhyPtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(MemoryPtr != NULL);
@@ -749,8 +748,8 @@ XStatus XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
 * components must be initialized before the memory space is set.
 *
 ******************************************************************************/
-XStatus XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
-			     u32 ByteCount, void *PhyPtr)
+int XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			 u32 ByteCount, void *PhyPtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(MemoryPtr != NULL);
@@ -970,7 +969,7 @@ void XEmac_SetSgSendHandler(XEmac * InstancePtr, void *CallBackRef,
 ******************************************************************************/
 static void HandleDmaRecvIntr(XEmac * InstancePtr)
 {
-	XStatus Result;
+	int Result;
 	u32 IntrStatus;
 	u32 NumBds;
 	u32 PacketsLeft;
@@ -1158,7 +1157,7 @@ static void HandleDmaRecvIntr(XEmac * InstancePtr)
 ******************************************************************************/
 static void HandleDmaSendIntr(XEmac * InstancePtr)
 {
-	XStatus Result;
+	int Result;
 	u32 IntrStatus;
 	u32 NumBds;
 	u32 PacketsLeft;

@@ -502,7 +502,7 @@ typedef void (*XEmac_FifoHandler) (void *CallBackRef);
  * @param ErrorCode is a Xilinx error code defined in xstatus.h.  Also see
  *        XEmac_SetErrorHandler() for a description of possible errors.
  */
-typedef void (*XEmac_ErrorHandler) (void *CallBackRef, XStatus ErrorCode);
+typedef void (*XEmac_ErrorHandler) (void *CallBackRef, int ErrorCode);
 
 /*@}*/
 
@@ -678,38 +678,36 @@ typedef struct {
 /*
  * Initialization functions in xemac.c
  */
-XStatus XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId);
-XStatus XEmac_Start(XEmac * InstancePtr);
-XStatus XEmac_Stop(XEmac * InstancePtr);
+int XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId);
+int XEmac_Start(XEmac * InstancePtr);
+int XEmac_Stop(XEmac * InstancePtr);
 void XEmac_Reset(XEmac * InstancePtr);
 XEmac_Config *XEmac_LookupConfig(u16 DeviceId);
 
 /*
  * Diagnostic functions in xemac_selftest.c
  */
-XStatus XEmac_SelfTest(XEmac * InstancePtr);
+int XEmac_SelfTest(XEmac * InstancePtr);
 
 /*
  * Polled functions in xemac_polled.c
  */
-XStatus XEmac_PollSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
-XStatus XEmac_PollRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
+int XEmac_PollSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
+int XEmac_PollRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
 
 /*
  * Interrupts with scatter-gather DMA functions in xemac_intr_dma.c
  */
-XStatus XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay);
-XStatus XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr);
-XStatus XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold);
-XStatus XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction,
-			      u8 *ThreshPtr);
-XStatus XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction,
-			      u32 TimerValue);
-XStatus XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr);
-XStatus XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
-			     u32 ByteCount, void *PhyPtr);
-XStatus XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
-			     u32 ByteCount, void *PhyPtr);
+int XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay);
+int XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr);
+int XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold);
+int XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 *ThreshPtr);
+int XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 TimerValue);
+int XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr);
+int XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			 u32 ByteCount, void *PhyPtr);
+int XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			 u32 ByteCount, void *PhyPtr);
 void XEmac_SetSgRecvHandler(XEmac * InstancePtr, void *CallBackRef,
 			    XEmac_SgHandler FuncPtr);
 void XEmac_SetSgSendHandler(XEmac * InstancePtr, void *CallBackRef,
@@ -723,8 +721,8 @@ void XEmac_IntrHandlerDma(void *InstancePtr);	/* interrupt handler */
  * Interrupts with direct FIFO functions in xemac_intr_fifo.c. Also used
  * for simple DMA.
  */
-XStatus XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
-XStatus XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
+int XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
+int XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
 void XEmac_SetFifoRecvHandler(XEmac * InstancePtr, void *CallBackRef,
 			      XEmac_FifoHandler FuncPtr);
 void XEmac_SetFifoSendHandler(XEmac * InstancePtr, void *CallBackRef,
@@ -741,27 +739,27 @@ void XEmac_SetErrorHandler(XEmac * InstancePtr, void *CallBackRef,
 /*
  * MAC configuration in xemac_options.c
  */
-XStatus XEmac_SetOptions(XEmac * InstancePtr, u32 OptionFlag);
+int XEmac_SetOptions(XEmac * InstancePtr, u32 OptionFlag);
 u32 XEmac_GetOptions(XEmac * InstancePtr);
-XStatus XEmac_SetMacAddress(XEmac * InstancePtr, u8 *AddressPtr);
+int XEmac_SetMacAddress(XEmac * InstancePtr, u8 *AddressPtr);
 void XEmac_GetMacAddress(XEmac * InstancePtr, u8 *BufferPtr);
-XStatus XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2);
+int XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2);
 void XEmac_GetInterframeGap(XEmac * InstancePtr, u8 *Part1Ptr, u8 *Part2Ptr);
 
 /*
  * Multicast functions in xemac_multicast.c
  */
-XStatus XEmac_MulticastAdd(XEmac * InstancePtr, u8 *AddressPtr, int Entry);
-XStatus XEmac_MulticastClear(XEmac * InstancePtr, int Entry);
+int XEmac_MulticastAdd(XEmac * InstancePtr, u8 *AddressPtr, int Entry);
+int XEmac_MulticastClear(XEmac * InstancePtr, int Entry);
 
 /*
  * PHY configuration in xemac_phy.c
  */
 void XEmac_PhyReset(XEmac * InstancePtr);
-XStatus XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
-		      u32 RegisterNum, u16 *PhyDataPtr);
-XStatus XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
-		       u32 RegisterNum, u16 PhyData);
+int XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
+		  u32 RegisterNum, u16 *PhyDataPtr);
+int XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
+		   u32 RegisterNum, u16 PhyData);
 
 /*
  * Statistics in xemac_stats.c

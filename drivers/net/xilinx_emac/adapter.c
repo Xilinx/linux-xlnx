@@ -375,8 +375,7 @@ static void reset(struct net_device *dev, DUPLEX duplex)
 			}
 			avail_plus++;
 			XBufDescriptor_Unlock(BdPtr);
-			pci_unmap_single(NULL,
-					 (u32)
+			pci_unmap_single(NULL, (u32)
 					 XBufDescriptor_GetSrcAddress(BdPtr),
 					 XBufDescriptor_GetLength(BdPtr),
 					 PCI_DMA_TODEVICE);
@@ -876,8 +875,7 @@ static void SgSendHandlerBH(unsigned long p)
 			NumBds--;
 
 			len = XBufDescriptor_GetLength(BdPtr);
-			pci_unmap_single(NULL,
-					 (u32)
+			pci_unmap_single(NULL, (u32)
 					 XBufDescriptor_GetSrcAddress(BdPtr),
 					 len, PCI_DMA_TODEVICE);
 
@@ -958,8 +956,7 @@ static void SgRecvHandlerBH(unsigned long p)
 			BdPtr = P_TO_V(&lp->Emac.RecvChannel,
 				       XBufDescriptor_GetNextPtr(curbd));
 
-			skb_vaddr =
-				(dma_addr_t)
+			skb_vaddr = (dma_addr_t)
 				XBufDescriptor_GetDestAddress(curbd);
 			pci_unmap_single(NULL, skb_vaddr, len,
 					 PCI_DMA_FROMDEVICE);
