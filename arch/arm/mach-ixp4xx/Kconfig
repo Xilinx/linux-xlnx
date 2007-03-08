@@ -1,3 +1,4 @@
+
 if ARCH_IXP4XX
 
 config ARCH_SUPPORTS_BIG_ENDIAN
@@ -63,14 +64,89 @@ config MACH_IXDP465
 config ARCH_IXCDP1100
 	bool 
 	depends on ARCH_IXDP425
+	select DMABOUNCE
+	select PCI
 	default y
 
 config ARCH_PRPMC1100
 	bool "PrPMC1100"
+	select DMABOUNCE
+	select PCI
 	help
 	  Say 'Y' here if you want your kernel to support the Motorola
 	  PrPCM1100 Processor Mezanine Module. For more information on
 	  this platform, see <file:Documentation/arm/IXP4xx>.
+
+config ARCH_SE4000
+	bool "SnapGear SE4000"
+	select DMABOUNCE
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SE4000 VPN Router.
+
+config MACH_SG560
+	bool "SnapGear SG560"
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SG560 VPN Router.
+
+config MACH_SG565
+	bool "SnapGear SG565"
+	select DMABOUNCE
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SG565 VPN Router.
+
+config MACH_SG580
+	bool "SnapGear SG580"
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SG580 VPN Router.
+
+config MACH_SG590
+	bool "SecureComputing SG590"
+	select DMABOUNCE
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for Secure Computing SG590 VPN Router.
+
+config MACH_SG640
+	bool "SecureComputing SG640"
+	depends on ARCH_IXP4XX
+	help
+	  Support for SecureComputing SG640 PCI Router.
+
+config MACH_SGARMAUTO
+	bool "SecureComputing 'AutoSelect' ARM Platform"
+	depends on ARCH_IXP4XX
+	help
+	  Support for SecureComputing generic ARM platform based on IXP4XX.
+
+config MACH_ESS710
+	bool "SnapGear SG710"
+	select DMABOUNCE
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SG710 VPN Router.
+
+config MACH_SG720
+	bool "SnapGear SG720"
+	select DMABOUNCE
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for SnapGear SG720 VPN Router.
+
+config MACH_SG8100
+	bool "SecureComputing SG8100"
+	select PCI
+	depends on ARCH_IXP4XX
+	help
+	  Support for Secure Computing SG8100 Internet VPN Router.
 
 config MACH_NAS100D
 	bool
@@ -87,6 +163,8 @@ config MACH_NAS100D
 config	ARCH_IXDP4XX
 	bool
 	depends on ARCH_IXDP425 || ARCH_AVILA || MACH_IXDP465
+	select DMABOUNCE
+	select PCI
 	default y
 
 #
@@ -94,7 +172,7 @@ config	ARCH_IXDP4XX
 #
 config CPU_IXP46X
 	bool
-	depends on MACH_IXDP465
+	depends on MACH_IXDP465 || MACH_SG590 || MACH_SG720
 	default y
 
 config MACH_GTWX5715
@@ -148,6 +226,33 @@ config IXP4XX_INDIRECT_PCI
 	  need to use the indirect method instead. If you don't know
 	  what you need, leave this option unselected.
 
+config IXP4XX_CLOCK_FORCE
+	bool "Select the master clock frequency"
+	depends on ARCH_IXP4XX
+	help
+	  Some hardware platforms using the IXP4XX CPU family use a non-
+	  standard clock frequency. Select this option so you can specify
+	  the actual clock frequency input to the CPU.
+	
+config IXP4XX_CLOCK
+	int "Select the core clock frequency"
+	default "66666666"
+	depends on IXP4XX_CLOCK_FORCE
+	help
+	  You can set the actual CPU master clock frequency here, so that
+	  you get accurate kernel timing. For example some platforms use a
+	  66MHz crystal instead of a 66.666666MHz.
+
+config IXP4XX_DEBUG_FIQ
+	bool "Select IXP4XX button FIQ debug support"
+	default n
+	help
+	  Enable the Factory "Erase" switch on the SnapGear hardware
+	  platforms to be a debug FIQ. When pushed it will dump the
+	  PC address that it interrupted. Useful for debugging hang and
+	  lockup conditions since the FIQ can and will interrupt on top
+	  of standard interrupts and when standard interrupts are locked
+	  out.
 endmenu
 
 endif

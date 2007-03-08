@@ -11,6 +11,10 @@
 #include "sysdep/stub.h"
 #include "kern_constants.h"
 
+#ifndef CLONE_PARENT
+# define CLONE_PARENT  0x00008000
+#endif
+
 /* This is in a separate file because it needs to be compiled with any
  * extraneous gcc flags (-pg, -fprofile-arcs, -ftest-coverage) disabled
  *

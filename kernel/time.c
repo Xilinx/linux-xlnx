@@ -48,6 +48,63 @@ struct timezone sys_tz;
 
 EXPORT_SYMBOL(sys_tz);
 
+#ifndef __ARCH_WANT_SYS_TIME
+#error ICSA specification requires the logging of time changes.  This architecture will not log changes.
+#endif
+
+static void print_time_change(const char *msg, struct timeval new_tv)
+{
+	long s, j, d, m, y;
+
+	j = new_tv.tv_sec / 86400L + 719469;
+	s = new_tv.tv_sec % 86400L;
+
+	if( s < 0 ) { s += 86400L; j--; }
+
+	y = (4L * j - 1L) / 146097L;
+	j = 4L * j - 1L - 146097L * y;
+	d = j / 4L;
+	j = (4L * d + 3L) / 1461L;
+	d = 4L * d + 3L - 1461L * j;
+	d = (d + 4L) / 4L;
+	m = (5L * d - 3L) / 153L;
+	d = 5L * d - 3 - 153L * m;
+	d = (d + 5L) / 5L;
+	y = 100L * y + j;
+	if (m < 10)
+		m += 2;
+	else
+	{
+		m -= 10;
+		++y;
+	}
+	printk(KERN_NOTICE "Clock: %s time %04d/%02d/%02d - %02d:%02d:%02d GMT\n",
+		msg, (int) y, (int) m + 1, (int) d, (int) (s / 3600 ), (int) (s / 60) % 60, (int) s % 60);
+}
+
+#ifndef ABS
+#define ABS(X) ((X) < 0 ? -(X) : (X))
+#endif
+
+static void check_print_time_change(const struct timeval old_tv, const struct timeval new_tv)
+{
+	static long accumulated_usecs;
+
+	if (ABS(new_tv.tv_sec - old_tv.tv_sec) <= 2) {
+		/* No more than 2 seconds of change */
+		accumulated_usecs += (new_tv.tv_sec - old_tv.tv_sec) * 1000000L + (new_tv.tv_usec - old_tv.tv_usec);
+		if (ABS(accumulated_usecs) < 1000000L) {
+			/* Less than 1 second of accumulated change */
+			return;
+		}
+	}
+
+	accumulated_usecs = 0;
+
+	print_time_change("old", old_tv);
+	print_time_change("new", new_tv);
+}
+
 #ifdef __ARCH_WANT_SYS_TIME
 
 /*
@@ -82,6 +139,7 @@ asmlinkage long sys_stime(time_t __user *tptr)
 {
 	struct timespec tv;
 	int err;
+	struct timeval old_tv, new_tv;
 
 	if (get_user(tv.tv_sec, tptr))
 		return -EFAULT;
@@ -92,7 +150,10 @@ asmlinkage long sys_stime(time_t __user *tptr)
 	if (err)
 		return err;
 
+	do_gettimeofday(&old_tv);
 	do_settimeofday(&tv);
+	do_gettimeofday(&new_tv);
+	check_print_time_change(old_tv, new_tv);
 	return 0;
 }
 
@@ -154,6 +215,7 @@ int do_sys_settimeofday(struct timespec *tv, struct timezone *tz)
 {
 	static int firsttime = 1;
 	int error = 0;
+	struct timeval old_tv, new_tv;
 
 	if (tv && !timespec_valid(tv))
 		return -EINVAL;
@@ -176,9 +238,12 @@ int do_sys_settimeofday(struct timespec *tv, struct timezone *tz)
 		/* SMP safe, again the code in arch/foo/time.c should
 		 * globally block out interrupts when it runs.
 		 */
-		return do_settimeofday(tv);
+		do_gettimeofday(&old_tv);
+		error = do_settimeofday(tv);
+		do_gettimeofday(&new_tv);
+		check_print_time_change(old_tv, new_tv);
 	}
-	return 0;
+	return error;
 }
 
 asmlinkage long sys_settimeofday(struct timeval __user *tv,

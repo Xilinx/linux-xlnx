@@ -22,8 +22,11 @@ config GENERIC_TIME
 	default n
 
 config MMU
-	bool
+	bool "MMU-based Paged Memory Management Support"
 	default y
+	help
+	  Select if you want MMU-based virtualised addressing space
+	  support by paged memory management. If unsure, say 'Y'.
 
 config EISA
 	bool
@@ -120,6 +123,8 @@ menu "System Type"
 choice
 	prompt "ARM system type"
 	default ARCH_VERSATILE
+	default ARCH_S3C2500 if !MMU
+	default ARCH_ATMEL if !MMU
 
 config ARCH_AAEC2000
 	bool "Agilent AAEC-2000 based"
@@ -251,6 +256,13 @@ config ARCH_IXP2000
 	help
 	  Support for Intel's IXP2400/2800 (XScale) family of processors.
 
+config ARCH_KS8695
+	bool "Kendin-Micrel KS8695"
+	help
+	  The Kendin-Micrel KS8695 "Centaur" family is an ARM920 based
+	  System-On-Chip device. It is commonly used on small routers and
+	  other small scale embedded devices.
+
 config ARCH_IXP23XX
  	bool "IXP23XX-based"
 	depends on MMU
@@ -331,6 +343,82 @@ config ARCH_OMAP
 	help
 	  Support for TI's OMAP platform (OMAP1 and OMAP2).
 
+config ARCH_S5C7375
+	bool "Samsung S5C7375"
+	depends !MMU
+	help
+	  Samsung's S5C7375 16/32-bit SOC(ARM920T) for internal use.
+	  It can be supported for memory management type MMU(Linux) and
+
+
+config ARCH_S3C24A0 
+	bool "Samsung S3C24A0"
+	depends !MMU
+	help 
+	  Samsung's S3C24A0 media processor based on ARM926EJ core.
+
+config ARCH_S3C2500
+	bool "Samsung S3C2500"
+	help
+	  Samsung's S3C2500 SOC(ARM940T).
+
+config ARCH_ATMEL
+	bool "Atmel AT91xxx"
+	depends on !MMU
+	help
+	  The AT91xxx Series is a subset of the Atmel AT91 16/32-bit
+	  microcontroller family, which is based on the ARM7TDMI
+	  processor core.
+	  refer <http://www.atmel.com>
+
+	  You can also choose this architecture for The GDB/Armulator.
+	  It emulates AT91F40, include ARM7TDMI core and timers/serial.
+	  refer <http://www.uclinux.org/pub/uClinux/utilities/armulator/>.
+
+config ARCH_S3C3410
+	bool "Samsung S3C3410X"
+	depends on !MMU
+	help
+	  Samsung's S3C3410X(KS17C40100) 16/32-bit RISC MCU
+	  is a cost-effective and high-performance MCU solution for PDA and
+	  general purpose application. The core is ARM7TDMI. 
+	  
+	  refer <http://www.samsungsemi.com>.
+
+config ARCH_ESPD_4510B
+	bool "ESPD 4510B / Samsung S3C4510B"
+	depends on !MMU
+	help
+	  ESPD 4510B evaluation board built on Samsung's
+	  S3C4510B(KS32C50100) 16/32-bit RISC MCU
+	  is a high performance network controller based
+	  on the ARM7TDMI core.
+	  
+	  refer to  <http://www.espd-inc.com/prod01-arm-samsung4510.htm>
+
+config ARCH_S3C44B0
+	bool "Samsung S3C44B0"
+	depends on !MMU
+	help
+	  Samsung's S3C44B0X 16/32-bit SOC(ARM7TDMI) without coprocessor 
+ 
+config ARCH_P2001
+	bool "P2001"
+	depends on !MMU
+	help
+	  The LPEC P2001 evaluation board has an P2001 processor from
+	  MAZ Brandenburg GmbH, which is based an ARM9TDMI processor core.
+
+config ARCH_LPC22XX
+	bool "NXP LPC22XX Family"
+	depends on !MMU
+	help
+	  NXP LPC22xx series are based on ARM7TDMI-S core,
+	  housed in LQFP144 packages, equipped with 
+	  16/64KB on-chip RAM and up to 256KB of on-chip Flash, 
+	  operating at up to 60MHz together with 
+	  a wide range of peripherals and external bus options.
+
 endchoice
 
 source "arch/arm/mach-clps711x/Kconfig"
@@ -348,6 +436,8 @@ source "arch/arm/mach-iop33x/Kconfig"
 source "arch/arm/mach-iop13xx/Kconfig"
 
 source "arch/arm/mach-ixp4xx/Kconfig"
+
+source "arch/arm/mach-ks8695/Kconfig"
 
 source "arch/arm/mach-ixp2000/Kconfig"
 
@@ -372,6 +462,22 @@ source "arch/arm/mach-imx/Kconfig"
 source "arch/arm/mach-h720x/Kconfig"
 
 source "arch/arm/mach-versatile/Kconfig"
+
+source "arch/arm/mach-atmel/Kconfig"
+
+source "arch/arm/mach-s3c3410/Kconfig"
+
+source "arch/arm/mach-s3c44b0x/Kconfig"
+
+source "arch/arm/mach-s5c7375/Kconfig"
+
+source "arch/arm/mach-espd_4510b/Kconfig"
+
+source "arch/arm/mach-lpc22xx/Kconfig"
+
+source "arch/arm/mach-s3c24a0/Kconfig" 
+
+source "arch/arm/mach-p2001/Kconfig"
 
 source "arch/arm/mach-aaec2000/Kconfig"
 
@@ -441,7 +547,7 @@ config ISA_DMA_API
 	bool
 
 config PCI
-	bool "PCI support" if ARCH_INTEGRATOR_AP || ARCH_VERSATILE_PB || ARCH_IXP4XX
+	bool "PCI support" if ARCH_INTEGRATOR_AP || ARCH_VERSATILE_PB || ARCH_IXP4XX || ARCH_KS8695
 	help
 	  Find out whether you have a PCI motherboard. PCI is the name of a
 	  bus system, i.e. the way the CPU talks to the other stuff inside
@@ -651,7 +757,7 @@ config LEDS_CPU
 config ALIGNMENT_TRAP
 	bool
 	depends on CPU_CP15_MMU
-	default y if !ARCH_EBSA110
+	default y if !ARCH_EBSA110 && !ARCH_S3C3410 && !ARCH_ATMEL && !ARCH_ESPD_4510B
 	help
 	  ARM processors cannot fetch/store information which is not
 	  naturally aligned on the bus, i.e., a 4 byte fetch must start at an
@@ -708,6 +814,12 @@ config CMDLINE
 	  time by entering them here. As a minimum, you should specify the
 	  memory size and the root device (e.g., mem=64M root=/dev/nfs).
 
+config CMDLINE_FORCE
+	bool "Force default kernel command string"
+	help
+	  Set this to have arguments from the default kernel command string
+	  override those passed by the boot loader.
+
 config XIP_KERNEL
 	bool "Kernel Execute-In-Place from ROM"
 	depends on !ZBOOT_ROM
@@ -738,9 +850,16 @@ config XIP_PHYS_ADDR
 	  be linked for and stored to.  This address is dependent on your
 	  own flash usage.
 
+config INITRD_MTD
+	bool "Use initrd as MTD RAM root filesystem"
+	depends on MTD_PLATRAM && !BLK_DEV_INITRD
+	help
+	  Create an MTD RAM device at the memory range specified by the
+	  initrd parameters, and mount this as the root filesystem.
+
 endmenu
 
-if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX )
+if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_P2001)
 
 menu "CPU Frequency scaling"
 
@@ -775,6 +894,13 @@ config CPU_FREQ_IMX
 	  This enables the CPUfreq driver for i.MX CPUs.
 
 	  If in doubt, say N.
+
+config CPU_FREQ_P2001
+	tristate 'P2001 cpufreq support'
+	depends on ARCH_P2001 && CPU_FREQ && CPU_FREQ_TABLE
+	default n
+	help
+	  Compiles P2001 cpu frequency scaling module.
 
 endmenu
 
@@ -933,8 +1059,6 @@ source "drivers/input/Kconfig"
 source "drivers/char/Kconfig"
 
 source "drivers/i2c/Kconfig"
-
-source "drivers/spi/Kconfig"
 
 source "drivers/w1/Kconfig"
 

@@ -61,6 +61,13 @@ static inline void wakeup_softirqd(void)
 		wake_up_process(tsk);
 }
 
+static inline int softirqd_is_waken(void)
+{
+	struct task_struct *tsk = __get_cpu_var(ksoftirqd);
+
+	return tsk && tsk->state == TASK_RUNNING;
+}
+
 /*
  * This one is for softirq.c-internal use,
  * where hardirqs are disabled legitimately:
@@ -203,7 +210,7 @@ EXPORT_SYMBOL(local_bh_enable_ip);
  */
 #define MAX_SOFTIRQ_RESTART 10
 
-asmlinkage void __do_softirq(void)
+static asmlinkage void __do_softirq2(void)
 {
 	struct softirq_action *h;
 	__u32 pending;
@@ -247,6 +254,12 @@ restart:
 
 	account_system_vtime(current);
 	_local_bh_enable();
+}
+
+asmlinkage void __do_softirq(void)
+{
+	if (!softirqd_is_waken())
+		__do_softirq2();
 }
 
 #ifndef __ARCH_HAS_DO_SOFTIRQ
@@ -469,6 +482,8 @@ void __init softirq_init(void)
 
 static int ksoftirqd(void * __bind_cpu)
 {
+	unsigned long flags;
+
 	set_user_nice(current, 19);
 	current->flags |= PF_NOFREEZE;
 
@@ -490,7 +505,11 @@ static int ksoftirqd(void * __bind_cpu)
 			   don't process */
 			if (cpu_is_offline((long)__bind_cpu))
 				goto wait_to_die;
-			do_softirq();
+
+			local_irq_save(flags);
+			__do_softirq2();
+			local_irq_restore(flags);
+
 			preempt_enable_no_resched();
 			cond_resched();
 			preempt_disable();

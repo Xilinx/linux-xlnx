@@ -13,7 +13,6 @@
 #include <linux/ioport.h>
 #include <linux/init.h>
 #include <linux/initrd.h>
-#include <linux/bootmem.h>
 #include <linux/console.h>
 #include <linux/seq_file.h>
 #include <linux/root_dev.h>
@@ -21,6 +20,7 @@
 #include <linux/cpu.h>
 #include <linux/pfn.h>
 #include <linux/fs.h>
+#include <linux/bootmem.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/sections.h>
@@ -214,7 +214,7 @@ void __init setup_arch(char **cmdline_p)
 	unsigned long start_pfn, max_pfn, max_low_pfn;
 
 #ifdef CONFIG_CMDLINE_BOOL
-        strcpy(COMMAND_LINE, CONFIG_CMDLINE);
+	strcpy(COMMAND_LINE, CONFIG_CMDLINE);
 #endif
 
 	ROOT_DEV = old_decode_dev(ORIG_ROOT_DEV);
@@ -254,6 +254,11 @@ void __init setup_arch(char **cmdline_p)
 	 * Partially used pages are not usable - thus
 	 * we are rounding upwards:
 	 */
+#if defined(CONFIG_BLK_DEV_INITRD) || defined(CONFIG_SH_CONCAT_FS)
+	if (INITRD_START == __pa(_end))
+		start_pfn = PFN_UP(__pa(_end) + INITRD_SIZE);
+	else
+#endif
 	start_pfn = PFN_UP(__pa(_end));
 
 	/*
@@ -316,10 +321,14 @@ void __init setup_arch(char **cmdline_p)
 
 	if (LOADER_TYPE && INITRD_START) {
 		if (INITRD_START + INITRD_SIZE <= (max_low_pfn << PAGE_SHIFT)) {
+			if (INITRD_START == __pa(_end))
+				initrd_start = INITRD_START + PAGE_OFFSET;
+			else {
 			reserve_bootmem_node(NODE_DATA(0), INITRD_START +
 						__MEMORY_START, INITRD_SIZE);
 			initrd_start = INITRD_START + PAGE_OFFSET +
 					__MEMORY_START;
+			}
 			initrd_end = initrd_start + INITRD_SIZE;
 		} else {
 			printk("initrd extends beyond end of memory "
@@ -587,3 +596,66 @@ static int __init kgdb_parse_options(char *options)
 }
 __setup("kgdb=", kgdb_parse_options);
 #endif /* CONFIG_SH_KGDB */
+
+#if defined(CONFIG_SH_CONCAT_FS)
+/*
+ * do not call printk in here,  bad things will happen,  the kernel isn't
+ * actually up yet,  we are called from head.S before BSS is cleared.
+ */
+
+extern void copy_romfs(void);
+void copy_romfs()
+{
+#ifdef CONFIG_SH_SECUREEDGE5410
+	volatile char dummy;
+#define SERVICE_WATCHDOG() (dummy = * (volatile char *) 0xb8000000)
+#else
+#define SERVICE_WATCHDOG()
+#endif
+	unsigned char	*sp, *dp;
+	unsigned long	 len;
+	/*
+	 * we used to use __bss_start,  but that is padded to 4K now and doesn't
+	 * work, basically we need the last non-padded symbol before __bss_start
+	 * and that is now __machvec_end
+	 */
+	extern long __machvec_end;
+#define CURRENT_ROMFS_LOC	((unsigned long)(&__machvec_end))
+#ifdef CONFIG_SH_ROMBOOT
+	extern int _mem_start, _rom_store;
+	sp = (unsigned char *) CURRENT_ROMFS_LOC - ((_mem_start - _rom_store) / 4);
+#else
+	sp = (unsigned char *) CURRENT_ROMFS_LOC;
+#endif
+	dp = (unsigned char *) &_end[0];
+
+	if (memcmp(&sp[0], "-rom1fs-", 8) == 0) {
+		/* romfs */
+		memcpy(&len, sp, sizeof(len));
+		len = be32_to_cpu(len);
+	} else if (sp[0]==0x45 && sp[1]==0x3d && sp[2]==0xcd && sp[3]==0x28) {
+		/* cramfs */
+		memcpy(&len, &sp[4], sizeof(len));
+	} else {
+		*dp = 0; /* make sure we don't see an old FS there */
+		return;
+	}
+
+	len = (len + 0xfff) & ~0xfff; /* make it a multiple of a page */
+	LOADER_TYPE = 0;
+	INITRD_SIZE = len;
+	INITRD_START = __pa(_end);
+
+	sp += len;
+	dp += len;
+
+	/* copy backwards to avoid writing over ourselves */
+	SERVICE_WATCHDOG();
+	while (dp >= ((unsigned char *) (&_end[0]))) {
+		*dp-- = *sp--;
+		if ((((unsigned long) dp) & 0x7ffff) == 0)
+			SERVICE_WATCHDOG();
+	}
+	SERVICE_WATCHDOG();
+}
+#endif

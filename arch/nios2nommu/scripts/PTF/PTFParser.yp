@@ -1,0 +1,178 @@
+%{#
+# Altera PTF file parser
+#
+# Copyright (c) 2004 Microtronix Datacom Ltd.
+#
+
+package PTFParser;
+
+use PTF::PTFSection;
+
+%}
+
+%%
+section: section_title '{' section_element '}' { 
+			my $sectionStack = $_[0]->YYData->{sectionStack};
+			pop @{$sectionStack}; 
+		}
+;
+
+section_title: IDENTIFIER section_name { 
+			my $section = PTFSection->new (type => $_[1], name => $_[2]); 
+			my $sectionStack = $_[0]->YYData->{sectionStack};
+			
+			if (scalar(@{$sectionStack}) == 0) {
+				$_[0]->YYData->{root} = $section;
+			} else {
+				my $parent = $sectionStack->[$#{$sectionStack}];
+				$parent->addSection ($section);
+			}
+
+			push @{$sectionStack}, $section;
+		}
+;
+
+section_name: # empty string
+	| IDENTIFIER 
+	| NUMBER 
+	| STRING_LITERAL 
+;
+
+section_element: # empty element
+	| assignment section_element
+	| section section_element
+;
+
+assignment: assignment_name '=' assignment_value ';' { 
+			my $sectionStack = $_[0]->YYData->{sectionStack};
+			my $parent= $sectionStack->[$#{$sectionStack}]; 
+			$parent->addAssignment ($_[1], $_[3]); 
+		}
+;
+
+assignment_name: IDENTIFIER
+	| HIERARCHICAL_NAME 
+;
+
+assignment_value: STRING_LITERAL
+	| NUMBER 
+;
+
+%%
+
+sub _Error {
+# TODO: update this error function to be more useful
+        exists $_[0]->YYData->{ERRMSG}
+    and do {
+        print $_[0]->YYData->{ERRMSG};
+        delete $_[0]->YYData->{ERRMSG};
+        return;
+    };
+    print "Syntax error on line $_[0]->YYData->{line}.\n";
+}
+
+sub _Lexer {
+	my($parser)=shift;
+
+	if (! $parser->YYData->{INPUT}) {
+		if ($parser->YYData->{INPUT} = <PTFFILE>) {
+			$parser->YYData->{line} += 1;
+		} else {
+			return ('', undef);
+		}
+	}
+
+	$parser->YYData->{INPUT} and
+		$parser->YYData->{INPUT} =~ s/^\s*//;
+
+	while (1) {
+		
+		# skip blank lines
+		if ($parser->YYData->{INPUT} =~ s/^[ \t\r\n]*$//) {
+			if ($parser->YYData->{INPUT} = <PTFFILE>) {
+				$parser->YYData->{line} += 1;
+			} else {
+				return ('', undef);
+			}
+			$parser->YYData->{INPUT} and
+				$parser->YYData->{INPUT} =~ s/^\s*//;
+			next;
+		}	
+		
+		# Skip comments
+		if ($parser->YYData->{INPUT} =~ s/^#.*//) {
+			if ($parser->YYData->{INPUT} = <PTFFILE>) {
+				$parser->YYData->{line} += 1;
+			} else {
+				return ('', undef);
+			}
+			$parser->YYData->{INPUT} and
+				$parser->YYData->{INPUT} =~ s/^\s*//;
+			next;
+		}	
+
+		# Don't continue if the line length is 0;
+		if (length $parser->YYData->{INPUT} == 0) {
+			if ($parser->YYData->{INPUT} = <PTFFILE>) {
+				$parser->YYData->{line} += 1;
+			} else {
+				return ('', undef);
+			}
+			$parser->YYData->{INPUT} and
+				$parser->YYData->{INPUT} =~ s/^\s*//;
+			next;
+		}
+
+		# tokenize input
+    		$parser->YYData->{INPUT} =~ s/^([a-zA-Z_][a-zA-Z_0-9\/]*)//
+			and return('IDENTIFIER',$1);
+		$parser->YYData->{INPUT} =~ s/^"([^"\\]*(\\.[^"\\]*)*)"//
+			and return('STRING_LITERAL',$1);
+		$parser->YYData->{INPUT} =~ s/^"([^"\\]*(\\.[^"\\]*)*)//
+			and do {
+				my $literal = $1;
+
+				do {
+					if ($parser->YYData->{INPUT} = <PTFFILE>) {
+						$parser->YYData->{line} += 1;
+					} else {
+						return ('', undef);
+					}
+
+					$parser->YYData->{INPUT} =~ s/([^"\\]*(\\.[^"\\]*)*)"//
+						and do {
+							$literal .= $1;
+							return ('STRING_LITERAL', $literal);
+						};
+
+					$parser->YYData->{INPUT} =~ s/([^"\\]*(\\.[^"\\]*)*)// 
+						and $literal .= $1;
+				} while (1);
+			};
+		$parser->YYData->{INPUT} =~ s/^([0-9]+)//
+			and return('NUMBER',$1);
+		$parser->YYData->{INPUT} =~ s/^([\$]{1,2}[a-zA-Z0-9 \/_]+)//
+			and return('HIERARCHICAL_NAME',$1);
+		$parser->YYData->{INPUT} =~ s/^(.)//
+			and return($1,$1);
+	}
+}
+
+sub readPTF {
+	my $self = shift;
+	my $filename = shift;
+
+	# store information for later use
+	$self->YYData->{line} = 0;
+	$self->YYData->{sectionStack} = [];
+	undef $self->YYData->{root};
+	
+	open (PTFFILE, $filename) or return undef;
+	$self->YYParse (
+		yylex => \&_Lexer,
+		yyerror => \&_Error,
+		);
+	close PTFFILE;
+
+	return $self->YYData->{root};
+}

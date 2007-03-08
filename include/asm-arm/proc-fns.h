@@ -209,6 +209,7 @@
 
 #define cpu_switch_mm(pgd,mm) cpu_do_switch_mm(virt_to_phys(pgd),mm)
 
+#ifdef CONFIG_MMU
 #define cpu_get_pgd()	\
 	({						\
 		unsigned long pg;			\
@@ -217,6 +218,7 @@
 		pg &= ~0x3fff;				\
 		(pgd_t *)phys_to_virt(pg);		\
 	})
+#endif
 
 #endif
 

@@ -145,6 +145,11 @@ static inline void gpio_line_config(u8 line, u32 direction)
 		*IXP4XX_GPIO_GPOER &= ~(1 << line);
 }
 
+static inline void gpio_line_isr_clear(u8 line)
+{
+	*IXP4XX_GPIO_GPISR = (1 << line);
+}
+
 static inline void gpio_line_get(u8 line, int *value)
 {
 	*value = (*IXP4XX_GPIO_GPINR >> line) & 0x1;

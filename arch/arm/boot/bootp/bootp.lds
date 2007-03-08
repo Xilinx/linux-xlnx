@@ -2,12 +2,17 @@
  *  linux/arch/arm/boot/bootp/bootp.lds
  *
  *  Copyright (C) 2000-2002 Russell King
+ *  Modified by Hyok S. Choi, 2004
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
+#ifdef CONFIG_MMU
 OUTPUT_ARCH(arm)
+#endif
+
 ENTRY(_start)
 SECTIONS
 {

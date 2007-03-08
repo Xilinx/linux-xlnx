@@ -24,6 +24,9 @@
  * Physical DRAM offset.
  */
 #define PHYS_OFFSET	UL(0x00000000)
+
+#ifdef CONFIG_MMU
+
 #define BUS_OFFSET	UL(0x80000000)
 
 /*
@@ -35,5 +38,12 @@
  */
 #define __virt_to_bus(x)	(x - PAGE_OFFSET + BUS_OFFSET)
 #define __bus_to_virt(x)	(x - BUS_OFFSET + PAGE_OFFSET)
+
+#else
+
+#define __virt_to_bus(x)	(x)
+#define __bus_to_virt(x)	(x)
+
+#endif /* CONFIG_MMU */
 
 #endif

@@ -184,7 +184,11 @@ retry:
 		bar_size = ~(bar_response & addr_mask) + 1;
 
 		/* Allocate a base address */
-		bar_value = ((*lower_limit - 1) & ~(bar_size - 1)) + bar_size;
+		bar_value = (*lower_limit + (bar_size - 1)) & ~(bar_size - 1);
+
+		/* some combos can wrap,  check for this */
+		if (bar_value < *lower_limit)
+			continue;
 
 		if ((bar_value + bar_size) > *upper_limit) {
 			if (bar_response & PCI_BASE_ADDRESS_SPACE) {

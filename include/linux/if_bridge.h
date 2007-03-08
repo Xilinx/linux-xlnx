@@ -107,6 +107,7 @@ struct __fdb_entry
 extern void brioctl_set(int (*ioctl_hook)(unsigned int, void __user *));
 extern int (*br_handle_frame_hook)(struct net_bridge_port *p, struct sk_buff **pskb);
 extern int (*br_should_route_hook)(struct sk_buff **pskb);
+extern void br_stp_rcv_raw(struct sk_buff *skb, struct net_device *dev);
 
 #endif
 

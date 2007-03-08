@@ -19,16 +19,19 @@
 
 #define TX_DONE (UART_LSR_TEMT|UART_LSR_THRE)
 
+static int console_output = 1;
 static volatile u32* uart_base;
 
 static inline void putc(int c)
 {
 	/* Check THRE and TEMT bits before we transmit the character.
 	 */
-	while ((uart_base[UART_LSR] & TX_DONE) != TX_DONE)
-		barrier();
+	if (console_output) {
+		while ((uart_base[UART_LSR] & TX_DONE) != TX_DONE)
+			barrier();
 
-	*uart_base = c;
+		*uart_base = c;
+	}
 }
 
 static void flush(void)
@@ -44,6 +47,11 @@ static __inline__ void __arch_decomp_setup(unsigned long arch_id)
 		uart_base = (volatile u32*) IXP4XX_UART2_BASE_PHYS;
 	else
 		uart_base = (volatile u32*) IXP4XX_UART1_BASE_PHYS;
+
+	if (machine_is_ess710() || machine_is_ivpn() || machine_is_sg560() ||
+	    machine_is_sg565() || machine_is_sg580() || machine_is_sg720() ||
+	    machine_is_shiva1100() || machine_is_sg590())
+		console_output = 0;
 }
 
 /*
@@ -51,6 +59,16 @@ static __inline__ void __arch_decomp_setup(unsigned long arch_id)
  */
 #define arch_decomp_setup()	__arch_decomp_setup(arch_id)
 
+#if defined(CONFIG_MACH_SG560) || defined(CONFIG_MACH_SG580) || \
+    defined(CONFIG_MACH_ESS710) || defined(CONFIG_MACH_SG720) || \
+    defined(CONFIG_MACH_SG590) || defined(CONFIG_MACH_IVPN)
+#define arch_decomp_wdog() \
+	 *((volatile u32 *)(IXP4XX_GPIO_BASE_PHYS+IXP4XX_GPIO_GPOUTR_OFFSET)) ^= 0x00004000
+#elif defined(CONFIG_MACH_SG565) || defined(CONFIG_MACH_SHIVA1100)
+#define arch_decomp_wdog() \
+	*((volatile unsigned char *) SG565_WATCHDOG_BASE_PHYS) = 0
+#else
 #define arch_decomp_wdog()
+#endif
 
 #endif

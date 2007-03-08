@@ -15,4 +15,8 @@
 #define CLOCKS_PER_SEC (USER_HZ)  /* frequency at which times() counts */
 #endif
 
+#ifndef HZ
+#define HZ 100
+#endif
+
 #endif

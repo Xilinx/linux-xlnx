@@ -54,6 +54,7 @@ obj-$(CONFIG_VIOCONS)		+= viocons.o
 obj-$(CONFIG_VIOTAPE)		+= viotape.o
 obj-$(CONFIG_HVCS)		+= hvcs.o
 obj-$(CONFIG_SGI_MBCS)		+= mbcs.o
+obj-$(CONFIG_MCF_QSPI)		+= mcf_qspi.o
 obj-$(CONFIG_BRIQ_PANEL)	+= briq_panel.o
 
 obj-$(CONFIG_PRINTER)		+= lp.o
@@ -90,8 +91,14 @@ obj-$(CONFIG_CS5535_GPIO)	+= cs5535_gpio.o
 obj-$(CONFIG_GPIO_VR41XX)	+= vr41xx_giu.o
 obj-$(CONFIG_TANBAC_TB0219)	+= tb0219.o
 obj-$(CONFIG_TELCLOCK)		+= tlclk.o
+obj-$(CONFIG_LEDMAN)		+= ledman.o
+obj-$(CONFIG_M41T11M6)		+= m41t11m6.o
+obj-$(CONFIG_RESETSWITCH)	+= resetswitch.o
 
 obj-$(CONFIG_WATCHDOG)		+= watchdog/
+obj-$(CONFIG_MCFWATCHDOG)	+= mcfwatchdog.o
+obj-$(CONFIG_SNAPDOG)		+= snapdog.o
+obj-$(CONFIG_FAST_TIMER)	+= fast_timer.o
 obj-$(CONFIG_MWAVE)		+= mwave/
 obj-$(CONFIG_AGP)		+= agp/
 obj-$(CONFIG_DRM)		+= drm/

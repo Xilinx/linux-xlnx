@@ -42,6 +42,15 @@
 #include <linux/cpufreq.h>
 #endif
 
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
+
+#include <asm/system.h>
+#include <asm/io.h>
+#include <asm/irq.h>
+#include <asm/uaccess.h>
+
 #if defined(CONFIG_SUPERH) && !defined(CONFIG_SUPERH64)
 #include <asm/clock.h>
 #include <asm/sh_bios.h>
@@ -78,6 +87,10 @@ struct sci_port {
 	/* Break timer */
 	struct timer_list	break_timer;
 	int			break_flag;
+
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	int			open;
+#endif
 };
 
 #ifdef CONFIG_SH_KGDB
@@ -199,6 +212,41 @@ static void put_string(struct sci_port *sci_port, const char *buffer, int count)
 	}
 }
 #endif /* CONFIG_SERIAL_SH_SCI_CONSOLE */
+
+#if defined(CONFIG_SH_SECUREEDGE5410)
+#include <asm/snapgear.h>
+struct timer_list sci_timer_struct;
+static unsigned char sci_dcdstatus[2];
+
+/*
+ * This subroutine is called when the RS_TIMER goes off. It is used
+ * to monitor the state of the DCD lines - since they have no edge
+ * sensors and interrupt generators.
+ */
+static void sci_timer(unsigned long data)
+{
+	unsigned short s, i;
+	unsigned char  dcdstatus[2];
+        
+	s = SECUREEDGE_READ_IOPORT();
+	dcdstatus[0] = !(s & 0x10);
+	dcdstatus[1] = !(s & 0x1);
+
+	for (i = 0; i < 2; i++) {
+		if (dcdstatus[i] != sci_dcdstatus[i]) {
+			if (sci_ports[i].open != 0) {
+				uart_handle_dcd_change(&sci_ports[i].port, dcdstatus[i]);
+			}
+		}
+		sci_dcdstatus[i] = dcdstatus[i];
+	}
+
+	sci_timer_struct.expires = jiffies + HZ/25;
+	add_timer(&sci_timer_struct);
+}
+        
+#endif
+
 
 #ifdef CONFIG_SH_KGDB
 static int kgdb_sci_getchar(void)
@@ -407,6 +455,11 @@ static void sci_transmit_chars(struct uart_port *port)
 	unsigned short ctrl;
 	int count;
 
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+		port == &sci_ports[0].port ? LEDMAN_COM1_TX : LEDMAN_COM2_TX);
+#endif
+
 	status = sci_in(port, SCxSR);
 	if (!(status & SCxSR_TDxE(port))) {
 		ctrl = sci_in(port, SCSCR);
@@ -479,6 +532,11 @@ static inline void sci_receive_chars(struct uart_port *port)
 	status = sci_in(port, SCxSR);
 	if (!(status & SCxSR_RDxF(port)))
 		return;
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+		port == &sci_ports[0].port ? LEDMAN_COM1_RX : LEDMAN_COM2_RX);
+#endif
 
 	while (1) {
 #if !defined(SCI_ONLY)
@@ -879,6 +937,36 @@ static void sci_set_mctrl(struct uart_port *port, unsigned int mctrl)
 	/* This routine is used for seting signals of: DTR, DCD, CTS/RTS */
 	/* We use SCIF's hardware for CTS/RTS, so don't need any for that. */
 	/* If you have signals for DTR and DCD, please implement here. */
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	int flags;
+
+	local_irq_save(flags);
+	switch (port->line) {
+		case 1: /* port 1 only */
+			if (mctrl & TIOCM_DTR)
+				SECUREEDGE_WRITE_IOPORT(0x0000, 0x0080);
+			else 
+				SECUREEDGE_WRITE_IOPORT(0x0080, 0x0080);
+			if ((sci_in(port, SCFCR) & SCFCR_MCE) == 0) {
+				if (mctrl & TIOCM_RTS)
+					sci_out(port, SCSPTR, sci_in(port, SCSPTR) & ~0x40);
+				else
+					sci_out(port, SCSPTR, sci_in(port, SCSPTR) | 0x40);
+			}
+			break;
+		case 0: /* port 0 only */
+			if (mctrl & TIOCM_DTR)
+				SECUREEDGE_WRITE_IOPORT(0x0000, 0x0200);
+			else 
+				SECUREEDGE_WRITE_IOPORT(0x0200, 0x0200);
+			if (mctrl & TIOCM_RTS)
+				SECUREEDGE_WRITE_IOPORT(0x0000, 0x0100);
+			else 
+				SECUREEDGE_WRITE_IOPORT(0x0100, 0x0100);
+			break;
+	}
+	local_irq_restore(flags);
+#endif
 }
 
 static unsigned int sci_get_mctrl(struct uart_port *port)
@@ -886,6 +974,46 @@ static unsigned int sci_get_mctrl(struct uart_port *port)
 	/* This routine is used for geting signals of: DTR, DCD, DSR, RI,
 	   and CTS/RTS */
 
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	int rc = TIOCM_DTR | TIOCM_RTS | TIOCM_DSR;
+
+	switch (port->line) {
+		case 1: /* port 1 only */
+			{
+				unsigned short s = SECUREEDGE_READ_IOPORT();
+				rc = TIOCM_RTS|TIOCM_DSR|TIOCM_CTS;
+
+				if ((sci_in(port, SCFCR) & SCFCR_MCE) == 0) {
+					if (sci_in(port, SCSPTR) & 0x0040)
+						rc &= ~TIOCM_RTS;
+					if (sci_in(port, SCSPTR) & 0x0010)
+						rc &= ~TIOCM_CTS;
+				}
+
+				if ((s & 0x0001) == 0)
+					rc |= TIOCM_CAR;
+				if ((SECUREEDGE_READ_IOPORT() & 0x0080) == 0)
+					rc |= TIOCM_DTR;
+			}
+			break;
+		case 0: /* port 0 only */
+			{
+				unsigned short s = SECUREEDGE_READ_IOPORT();
+				rc = TIOCM_DSR;
+
+				if ((s & 0x0010) == 0)
+					rc |= TIOCM_CAR;
+				if ((s & 0x0004) == 0)
+					rc |= TIOCM_CTS;
+				if ((SECUREEDGE_READ_IOPORT() & 0x0200) == 0)
+					rc |= TIOCM_DTR;
+				if ((SECUREEDGE_READ_IOPORT() & 0x0100) == 0)
+					rc |= TIOCM_RTS;
+			}
+			break;
+	}
+	return(rc);
+#endif
 	return TIOCM_DTR | TIOCM_RTS | TIOCM_DSR;
 }
 
@@ -943,6 +1071,12 @@ static int sci_startup(struct uart_port *port)
 {
 	struct sci_port *s = &sci_ports[port->line];
 
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	sci_ports[port->line].open++;
+#endif
+#if defined(__H8300S__)
+	h8300_sci_enable(port, sci_enable);
+#endif
 	if (s->enable)
 		s->enable(port);
 
@@ -961,6 +1095,12 @@ static void sci_shutdown(struct uart_port *port)
 	sci_stop_tx(port);
 	sci_free_irq(s);
 
+#if defined(__H8300S__)
+	h8300_sci_enable(port, sci_disable);
+#endif
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	sci_ports[port->line].open--;
+#endif
 	if (s->disable)
 		s->disable(port);
 }
@@ -1456,6 +1596,21 @@ static int __init sci_init(void)
 
 	ret = uart_register_driver(&sci_uart_driver);
 	if (likely(ret == 0)) {
+
+#if defined(CONFIG_SH_SECUREEDGE5410)
+		unsigned short s;
+
+		init_timer(&sci_timer_struct);
+		sci_timer_struct.function = sci_timer;
+		sci_timer_struct.data = 0;
+		sci_timer_struct.expires = jiffies + HZ/25;
+		add_timer(&sci_timer_struct);
+
+		s = SECUREEDGE_READ_IOPORT();
+		sci_dcdstatus[0] = !(s & 0x10);
+		sci_dcdstatus[1] = !(s & 0x1);
+#endif
+
 		ret = platform_driver_register(&sci_driver);
 		if (unlikely(ret))
 			uart_unregister_driver(&sci_uart_driver);
@@ -1466,6 +1621,9 @@ static int __init sci_init(void)
 
 static void __exit sci_exit(void)
 {
+#if defined(CONFIG_SH_SECUREEDGE5410)
+	del_timer(&sci_timer_struct);
+#endif
 	platform_driver_unregister(&sci_driver);
 	uart_unregister_driver(&sci_uart_driver);
 }

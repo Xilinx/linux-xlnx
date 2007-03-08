@@ -129,6 +129,7 @@ blkdev_get_block(struct inode *inode, sector_t iblock,
 	return 0;
 }
 
+#ifdef CONFIG_DIRECTIO
 static int
 blkdev_get_blocks(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh, int create)
@@ -167,6 +168,7 @@ blkdev_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	return blockdev_direct_IO_no_locking(rw, iocb, inode, I_BDEV(inode),
 				iov, offset, nr_segs, blkdev_get_blocks, NULL);
 }
+#endif
 
 #if 0
 static int blk_end_aio(struct bio *bio, unsigned int bytes_done, int error)
@@ -1323,7 +1325,9 @@ const struct address_space_operations def_blk_aops = {
 	.prepare_write	= blkdev_prepare_write,
 	.commit_write	= blkdev_commit_write,
 	.writepages	= generic_writepages,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= blkdev_direct_IO,
+#endif
 };
 
 const struct file_operations def_blk_fops = {

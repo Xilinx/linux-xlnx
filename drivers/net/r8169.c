@@ -65,6 +65,9 @@ VERSION 2.2LK	<2005/01/25>
 #include <linux/tcp.h>
 #include <linux/init.h>
 #include <linux/dma-mapping.h>
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -532,8 +535,9 @@ static int mdio_read(void __iomem *ioaddr, int RegAddr)
 static void rtl8169_irq_mask_and_ack(void __iomem *ioaddr)
 {
 	RTL_W16(IntrMask, 0x0000);
-
+#if 0
 	RTL_W16(IntrStatus, 0xffff);
+#endif
 }
 
 static void rtl8169_asic_down(void __iomem *ioaddr)
@@ -1875,6 +1879,10 @@ static void rtl8169_hw_start(struct net_device *dev)
 
 	RTL_W8(EarlyTxThres, EarlyTxThld);
 
+	/* Restore our idea of the MAC address */
+	for (i = 0; i < MAC_ADDR_LEN; i++)
+		RTL_W8(MAC0 + i, dev->dev_addr[i]);
+
 	/* Low hurts. Let's disable the filtering. */
 	RTL_W16(RxMaxSize, 16383);
 
@@ -2290,6 +2298,13 @@ static int rtl8169_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	u32 status, len;
 	u32 opts1;
 	int ret = NETDEV_TX_OK;
+	
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+			(dev->name[3] == '0') ? LEDMAN_LAN1_TX :
+			(dev->name[3] == '1') ? LEDMAN_LAN2_TX :
+			LEDMAN_LAN3_TX);
+#endif
 
 	if (unlikely(TX_BUFFS_AVAIL(tp) < skb_shinfo(skb)->nr_frags)) {
 		if (netif_msg_drv(tp)) {
@@ -2511,6 +2526,13 @@ rtl8169_rx_interrupt(struct net_device *dev, struct rtl8169_private *tp,
 	cur_rx = tp->cur_rx;
 	rx_left = NUM_RX_DESC + tp->dirty_rx - cur_rx;
 	rx_left = rtl8169_rx_quota(rx_left, (u32) dev->quota);
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+			(dev->name[3] == '0') ? LEDMAN_LAN1_RX :
+			(dev->name[3] == '1') ? LEDMAN_LAN2_RX :
+			LEDMAN_LAN3_RX);
+#endif
 
 	for (; rx_left > 0; rx_left--, cur_rx++) {
 		unsigned int entry = cur_rx % NUM_RX_DESC;

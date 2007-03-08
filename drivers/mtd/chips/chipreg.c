@@ -54,6 +54,21 @@ static struct mtd_chip_driver *get_mtd_chip_driver (const char *name)
 	return ret;
 }
 
+static int mtd_generic_point(struct mtd_info *mtd, loff_t from, size_t len,
+	size_t *retlen, u_char **mtdbuf)
+{
+	struct map_info *map = (struct map_info *) mtd->priv;
+	*mtdbuf = (u_char *) (map->virt + ((int) from));
+	*retlen = len;
+	return(0);
+}
+
+static void mtd_generic_unpoint (struct mtd_info *mtd, u_char *addr,
+	loff_t from, size_t len)
+{
+	/* I don't know what we should do here */
+}
+
 	/* Hide all the horrid details, like some silly person taking
 	   get_module_symbol() away from us, from the caller. */
 
@@ -79,8 +94,13 @@ struct mtd_info *do_map_probe(const char *name, struct map_info *map)
 	*/
 	module_put(drv->module);
 
-	if (ret)
+	if (ret) {
+		if (!ret->point)
+			ret->point = mtd_generic_point;
+		if (!ret->unpoint)
+			ret->unpoint = mtd_generic_unpoint;
 		return ret;
+	}
 
 	return NULL;
 }

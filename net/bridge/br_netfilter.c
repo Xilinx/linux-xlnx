@@ -729,6 +729,20 @@ static unsigned int br_nf_local_out(unsigned int hook, struct sk_buff **pskb,
 	return NF_STOLEN;
 }
 
+/*
+ * We've finished passing through netfilter, so we can remove the fake dst.
+ * This is required by some lower layers, eg ip_gre
+ */
+static int br_nf_dev_queue_xmit_finish(struct sk_buff *skb)
+{
+	if (skb->dst == (struct dst_entry *)&__fake_rtable) {
+		dst_release(skb->dst);
+		skb->dst = NULL;
+	}
+
+	return br_dev_queue_push_xmit(skb);
+}
+
 static int br_nf_dev_queue_xmit(struct sk_buff *skb)
 {
 	if (skb->protocol == htons(ETH_P_IP) &&
@@ -736,7 +750,7 @@ static int br_nf_dev_queue_xmit(struct sk_buff *skb)
 	    !skb_is_gso(skb))
 		return ip_fragment(skb, br_dev_queue_push_xmit);
 	else
-		return br_dev_queue_push_xmit(skb);
+		return br_nf_dev_queue_xmit_finish(skb);
 }
 
 /* PF_BRIDGE/POST_ROUTING ********************************************/

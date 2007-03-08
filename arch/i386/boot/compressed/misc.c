@@ -98,6 +98,11 @@
  *
  */
 
+#undef	__BOOT_CS
+#define	__BOOT_CS	0x10
+#undef	__BOOT_DS
+#define	__BOOT_DS	0x18
+
 /*
  * gzip declarations
  */

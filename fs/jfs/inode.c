@@ -287,6 +287,7 @@ static sector_t jfs_bmap(struct address_space *mapping, sector_t block)
 	return generic_block_bmap(mapping, block, jfs_get_block);
 }
 
+#ifdef CONFIG_DIRECTIO
 static ssize_t jfs_direct_IO(int rw, struct kiocb *iocb,
 	const struct iovec *iov, loff_t offset, unsigned long nr_segs)
 {
@@ -296,6 +297,7 @@ static ssize_t jfs_direct_IO(int rw, struct kiocb *iocb,
 	return blockdev_direct_IO(rw, iocb, inode, inode->i_sb->s_bdev, iov,
 				offset, nr_segs, jfs_get_block, NULL);
 }
+#endif
 
 const struct address_space_operations jfs_aops = {
 	.readpage	= jfs_readpage,
@@ -306,7 +308,9 @@ const struct address_space_operations jfs_aops = {
 	.prepare_write	= jfs_prepare_write,
 	.commit_write	= nobh_commit_write,
 	.bmap		= jfs_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= jfs_direct_IO,
+#endif
 };
 
 /*

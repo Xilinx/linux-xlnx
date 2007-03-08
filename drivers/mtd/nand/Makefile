@@ -8,6 +8,7 @@ obj-$(CONFIG_MTD_NAND_IDS)		+= nand_ids.o
 
 obj-$(CONFIG_MTD_NAND_CAFE)		+= cafe_nand.o
 obj-$(CONFIG_MTD_NAND_SPIA)		+= spia.o
+obj-$(CONFIG_MTD_NAND_M5329)		+= m5329.o
 obj-$(CONFIG_MTD_NAND_AMS_DELTA)	+= ams-delta.o
 obj-$(CONFIG_MTD_NAND_TOTO)		+= toto.o
 obj-$(CONFIG_MTD_NAND_AUTCPU12)		+= autcpu12.o

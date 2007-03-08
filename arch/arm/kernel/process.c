@@ -186,7 +186,32 @@ void machine_power_off(void)
 
 void machine_restart(char * __unused)
 {
-	arm_pm_restart(reboot_mode);
+	/*
+	 * Clean and disable cache, and turn off interrupts
+	 */
+	cpu_proc_fin();
+
+#ifdef CONFIG_MMU
+	/*
+	 * Tell the mm system that we are going to reboot -
+	 * we may need it to insert some 1:1 mappings so that
+	 * soft boot works.
+	 */
+	setup_mm_for_reboot(reboot_mode);
+#endif
+
+	/*
+	 * Now call the architecture specific reboot code.
+	 */
+	arch_reset(reboot_mode);
+
+	/*
+	 * Whoops - the architecture was unable to reboot.
+	 * Tell the user!
+	 */
+	mdelay(1000);
+	printk("Reboot failed -- System halted\n");
+	while (1);
 }
 
 void __show_regs(struct pt_regs *regs)

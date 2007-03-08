@@ -13,6 +13,9 @@
 #ifndef __ASM_ARM_MMU_CONTEXT_H
 #define __ASM_ARM_MMU_CONTEXT_H
 
+#ifndef CONFIG_MMU
+#include "nommu_context.h"
+#else /* !CONFIG_MMU */
 #include <linux/compiler.h>
 #include <asm/cacheflush.h>
 #include <asm/proc-fns.h>
@@ -108,4 +111,5 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 #define deactivate_mm(tsk,mm)	do { } while (0)
 #define activate_mm(prev,next)	switch_mm(prev, next, NULL)
 
+#endif /* CONFIG_MMU */
 #endif

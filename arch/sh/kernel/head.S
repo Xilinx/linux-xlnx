@@ -78,7 +78,14 @@ ENTRY(_stext)
 #ifdef CONFIG_CPU_HAS_SR_RB
 	ldc	r0, r7_bank	! ... and initial thread_info
 #endif
-	
+
+#if defined(CONFIG_SH_CONCAT_FS)
+	! move the fs to after the bss
+	mov.l   7f, r0
+	jsr @r0
+	nop
+#endif
+
 	!			Clear BSS area
 	mov.l	3f, r1
 	add	#4, r1
@@ -111,3 +118,6 @@ ENTRY(_stext)
 4:	.long	_end
 5:	.long	start_kernel
 6:	.long	sh_cpu_init
+#if defined(CONFIG_SH_CONCAT_FS)
+7:  .long   copy_romfs
+#endif

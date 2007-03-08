@@ -68,7 +68,7 @@ quiet_cmd_modpost = MODPOST $(words $(filter-out vmlinux FORCE, $^)) modules
 
 PHONY += __modpost
 __modpost: $(modules:.ko=.o) FORCE
-	$(call cmd,modpost)
+	-$(call cmd,modpost)
 
 quiet_cmd_kernel-mod = MODPOST $@
       cmd_kernel-mod = $(cmd_modpost)

@@ -14,7 +14,7 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  *
- * $Id: checksum.c,v 1.1 2002/09/28 14:58:40 gerg Exp $
+ * $Id: checksum.c,v 1.5 2007/02/05 01:32:10 gerg Exp $
  */
 #include <net/checksum.h>
 #include <linux/module.h>

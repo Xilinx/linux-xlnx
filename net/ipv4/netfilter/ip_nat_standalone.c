@@ -37,6 +37,7 @@
 #include <linux/netfilter_ipv4/ip_nat_helper.h>
 #include <linux/netfilter_ipv4/ip_tables.h>
 #include <linux/netfilter_ipv4/ip_conntrack_core.h>
+#include <linux/netfilter_ipv4/ip_conntrack_protocol.h>
 
 #if 0
 #define DEBUGP printk
@@ -116,8 +117,13 @@ ip_nat_fn(unsigned int hooknum,
 						(*pskb)->nh.iph->ihl*4,
 						sizeof(_hdr), &_hdr);
 			if (hp != NULL &&
-			    hp->type == ICMP_REDIRECT)
+			    hp->type == ICMP_REDIRECT) {
+				if (LOG_INVALID(IPPROTO_ICMP))
+					nf_log_packet(PF_INET, 0, *pskb,
+						NULL, NULL, NULL, "ip_nat_fn: "
+						"untracked ICMP redirect ");
 				return NF_DROP;
+			}
 		}
 		return NF_ACCEPT;
 	}

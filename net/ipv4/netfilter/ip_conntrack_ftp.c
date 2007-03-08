@@ -414,8 +414,14 @@ static int help(struct sk_buff **pskb,
 		   problem (DMZ machines opening holes to internal
 		   networks, or the packet filter itself). */
 		if (!loose) {
-			ret = NF_ACCEPT;
-			goto out_put_expect;
+			if (net_ratelimit())
+				printk("conntrack_ftp: ip mismatch: "
+				       "%u,%u,%u,%u != %u.%u.%u.%u\n",
+				       array[0], array[1], array[2], array[3],
+				       NIPQUAD(ct->tuplehash[dir].tuple.src.ip));
+			ret = NF_DROP;
+			ip_conntrack_expect_put(exp);
+			goto out;
 		}
 		exp->tuple.dst.ip = htonl((array[0] << 24) | (array[1] << 16)
 					 | (array[2] << 8) | array[3]);
@@ -446,7 +452,6 @@ static int help(struct sk_buff **pskb,
 			ret = NF_ACCEPT;
 	}
 
-out_put_expect:
 	ip_conntrack_expect_put(exp);
 
 out_update_nl:

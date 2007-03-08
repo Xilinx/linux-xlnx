@@ -667,6 +667,7 @@ static sector_t ext2_bmap(struct address_space *mapping, sector_t block)
 	return generic_block_bmap(mapping,block,ext2_get_block);
 }
 
+#ifdef CONFIG_DIRECTIO
 static ssize_t
 ext2_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 			loff_t offset, unsigned long nr_segs)
@@ -677,6 +678,7 @@ ext2_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	return blockdev_direct_IO(rw, iocb, inode, inode->i_sb->s_bdev, iov,
 				offset, nr_segs, ext2_get_block, NULL);
 }
+#endif
 
 static int
 ext2_writepages(struct address_space *mapping, struct writeback_control *wbc)
@@ -692,7 +694,9 @@ const struct address_space_operations ext2_aops = {
 	.prepare_write		= ext2_prepare_write,
 	.commit_write		= generic_commit_write,
 	.bmap			= ext2_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO		= ext2_direct_IO,
+#endif
 	.writepages		= ext2_writepages,
 	.migratepage		= buffer_migrate_page,
 };
@@ -710,7 +714,9 @@ const struct address_space_operations ext2_nobh_aops = {
 	.prepare_write		= ext2_nobh_prepare_write,
 	.commit_write		= nobh_commit_write,
 	.bmap			= ext2_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO		= ext2_direct_IO,
+#endif
 	.writepages		= ext2_writepages,
 	.migratepage		= buffer_migrate_page,
 };

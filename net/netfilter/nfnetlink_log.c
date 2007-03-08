@@ -592,7 +592,7 @@ nfulnl_log_packet(unsigned int pf,
 		  const struct nf_loginfo *li_user,
 		  const char *prefix)
 {
-	unsigned int size, data_len;
+	unsigned int size, data_len, prefix_len;
 	struct nfulnl_instance *inst;
 	const struct nf_loginfo *li;
 	unsigned int qthreshold;
@@ -634,6 +634,12 @@ nfulnl_log_packet(unsigned int pf,
 		+ NFA_SPACE(plen)		/* prefix */
 		+ NFA_SPACE(sizeof(struct nfulnl_msg_packet_hw))
 		+ NFA_SPACE(sizeof(struct nfulnl_msg_packet_timestamp));
+
+	if (prefix) {
+		prefix_len = strlen(prefix) + 1;
+		size += NFA_SPACE(prefix_len);
+	} else
+		prefix_len = 0;
 
 	UDEBUG("initial size=%u\n", size);
 

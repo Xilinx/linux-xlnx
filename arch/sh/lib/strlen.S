@@ -1,4 +1,4 @@
-/* $Id: strlen.S,v 1.2 2001/06/29 14:07:15 gniibe Exp $
+/* $Id: strlen.S,v 1.1.1.1 2001/10/15 20:44:53 mrbrown Exp $
  *
  * "strlen" implementation of SuperH
  *

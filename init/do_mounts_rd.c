@@ -5,6 +5,7 @@
 #include <linux/ext2_fs.h>
 #include <linux/romfs_fs.h>
 #include <linux/cramfs_fs.h>
+#include <linux/squashfs_fs.h>
 #include <linux/initrd.h>
 #include <linux/string.h>
 
@@ -39,6 +40,7 @@ static int __init crd_load(int in_fd, int out_fd);
  * numbers could not be found.
  *
  * We currently check for the following magic numbers:
+ *	squashfs
  * 	minix
  * 	ext2
  *	romfs
@@ -53,6 +55,7 @@ identify_ramdisk_image(int fd, int start_block)
 	struct ext2_super_block *ext2sb;
 	struct romfs_super_block *romfsb;
 	struct cramfs_super *cramfsb;
+	struct squashfs_super_block *squashfsb;
 	int nblocks = -1;
 	unsigned char *buf;
 
@@ -64,6 +67,7 @@ identify_ramdisk_image(int fd, int start_block)
 	ext2sb = (struct ext2_super_block *) buf;
 	romfsb = (struct romfs_super_block *) buf;
 	cramfsb = (struct cramfs_super *) buf;
+	squashfsb = (struct squashfs_super_block *) buf;
 	memset(buf, 0xe5, size);
 
 	/*
@@ -93,11 +97,20 @@ identify_ramdisk_image(int fd, int start_block)
 		goto done;
 	}
 
-	if (cramfsb->magic == CRAMFS_MAGIC) {
+	if (cramfsb->magic == le32_to_cpu(CRAMFS_MAGIC)) {
 		printk(KERN_NOTICE
 		       "RAMDISK: cramfs filesystem found at block %d\n",
 		       start_block);
-		nblocks = (cramfsb->size + BLOCK_SIZE - 1) >> BLOCK_SIZE_BITS;
+		nblocks = (le32_to_cpu(cramfsb->size) + BLOCK_SIZE - 1) >> BLOCK_SIZE_BITS;
+		goto done;
+	}
+
+	/* squashfs is at block zero too */
+	if (squashfsb->s_magic == SQUASHFS_MAGIC) {
+		printk(KERN_NOTICE
+		       "RAMDISK: squashfs filesystem found at block %d\n",
+		       start_block);
+		nblocks = (squashfsb->bytes_used+BLOCK_SIZE-1)>>BLOCK_SIZE_BITS;
 		goto done;
 	}
 

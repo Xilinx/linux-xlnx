@@ -124,35 +124,23 @@ void br_send_tcn_bpdu(struct net_bridge_port *p)
 	br_send_bpdu(p, buf, 4);
 }
 
-/*
- * Called from llc.
- *
- * NO locks, but rcu_read_lock (preempt_disabled)
- */
-int br_stp_rcv(struct sk_buff *skb, struct net_device *dev,
-	       struct packet_type *pt, struct net_device *orig_dev)
+static void __br_stp_rcv(struct sk_buff *skb, struct net_device *dev,
+			 const unsigned char *dest)
 {
-	const struct llc_pdu_un *pdu = llc_pdu_un_hdr(skb);
-	const unsigned char *dest = eth_hdr(skb)->h_dest;
 	struct net_bridge_port *p = rcu_dereference(dev->br_port);
 	struct net_bridge *br;
 	const unsigned char *buf;
 
 	if (!p)
-		goto err;
-
-	if (pdu->ssap != LLC_SAP_BSPAN
-	    || pdu->dsap != LLC_SAP_BSPAN
-	    || pdu->ctrl_1 != LLC_PDU_TYPE_U)
-		goto err;
+		return;
 
 	if (!pskb_may_pull(skb, 4))
-		goto err;
+		return;
 
 	/* compare of protocol id and version */
 	buf = skb->data;
 	if (buf[0] != 0 || buf[1] != 0 || buf[2] != 0)
-		goto err;
+		return;
 
 	br = p->br;
 	spin_lock(&br->lock);
@@ -162,7 +150,7 @@ int br_stp_rcv(struct sk_buff *skb, struct net_device *dev,
 	    || !(br->dev->flags & IFF_UP))
 		goto out;
 
-	if (compare_ether_addr(dest, br->group_addr) != 0)
+	if (dest && compare_ether_addr(dest, br->group_addr) != 0)
 		goto out;
 
 	buf = skb_pull(skb, 3);
@@ -213,7 +201,34 @@ int br_stp_rcv(struct sk_buff *skb, struct net_device *dev,
 	}
  out:
 	spin_unlock(&br->lock);
+}
+
+/*
+ * Called from llc.
+ *
+ * NO locks, but rcu_read_lock (preempt_disabled)
+ */
+int br_stp_rcv(struct sk_buff *skb, struct net_device *dev,
+	       struct packet_type *pt, struct net_device *orig_dev)
+{
+	const struct llc_pdu_un *pdu = llc_pdu_un_hdr(skb);
+	const unsigned char *dest = eth_hdr(skb)->h_dest;
+
+	if (pdu->ssap != LLC_SAP_BSPAN
+	    || pdu->dsap != LLC_SAP_BSPAN
+	    || pdu->ctrl_1 != LLC_PDU_TYPE_U)
+		goto err;
+
+	__br_stp_rcv(skb, dev, dest);
+
  err:
 	kfree_skb(skb);
 	return 0;
+}
+
+void br_stp_rcv_raw(struct sk_buff *skb, struct net_device *dev)
+{
+	rcu_read_lock();
+	__br_stp_rcv(skb, dev, NULL);
+	rcu_read_unlock();
 }

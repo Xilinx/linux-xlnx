@@ -2,6 +2,7 @@
  *  linux/include/asm-arm/procinfo.h
  *
  *  Copyright (C) 1996-1999 Russell King
+ *  Modified by Hyok S. Choi, 2004
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -12,8 +13,10 @@
 
 #ifdef __KERNEL__
 
+#ifdef CONFIG_MMU
 struct cpu_tlb_fns;
 struct cpu_user_fns;
+#endif
 struct cpu_cache_fns;
 struct processor;
 

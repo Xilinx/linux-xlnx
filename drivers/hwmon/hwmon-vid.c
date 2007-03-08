@@ -132,7 +132,9 @@ int vid_from_reg(int val, u8 vrm)
 		val &= 0x7f;
 		return(val > 0x77 ? 0 : (1500000 - (val * 12500) + 500) / 1000);
 	default:		/* report 0 for unknown */
+#ifndef CONFIG_ARM
 		printk(KERN_INFO "hwmon-vid: requested unknown VRM version\n");
+#endif
 		return 0;
 	}
 }

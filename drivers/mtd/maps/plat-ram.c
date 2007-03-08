@@ -32,6 +32,9 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/kdev_t.h>
+#include <linux/major.h>
+#include <linux/root_dev.h>
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
@@ -47,7 +50,6 @@ struct platram_info {
 	struct mtd_info		*mtd;
 	struct map_info		 map;
 	struct mtd_partition	*partitions;
-	struct resource		*area;
 	struct platdata_mtd_ram	*pdata;
 };
 
@@ -96,10 +98,9 @@ static int platram_remove(struct platform_device *pdev)
 
 	if (info->mtd) {
 #ifdef CONFIG_MTD_PARTITIONS
-		if (info->partitions) {
-			del_mtd_partitions(info->mtd);
+		del_mtd_partitions(info->mtd);
+		if (info->partitions)
 			kfree(info->partitions);
-		}
 #endif
 		del_mtd_device(info->mtd);
 		map_destroy(info->mtd);
@@ -110,11 +111,6 @@ static int platram_remove(struct platform_device *pdev)
 	platram_setrw(info, PLATRAM_RO);
 
 	/* release resources */
-
-	if (info->area) {
-		release_resource(info->area);
-		kfree(info->area);
-	}
 
 	if (info->map.virt != NULL)
 		iounmap(info->map.virt);
@@ -178,15 +174,6 @@ static int platram_probe(struct platform_device *pdev)
 	info->map.name = pdata->mapname != NULL ? pdata->mapname : (char *)pdev->name;
 	info->map.bankwidth = pdata->bankwidth;
 
-	/* register our usage of the memory area */
-
-	info->area = request_mem_region(res->start, info->map.size, pdev->name);
-	if (info->area == NULL) {
-		dev_err(&pdev->dev, "failed to request memory region\n");
-		err = -EIO;
-		goto exit_free;
-	}
-
 	/* remap the memory area */
 
 	info->map.virt = ioremap(res->start, info->map.size);
@@ -220,27 +207,34 @@ static int platram_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_MTD_PARTITIONS
 	if (pdata->nr_partitions > 0) {
-		const char **probes = { NULL };
-
-		if (pdata->probes)
-			probes = (const char **)pdata->probes;
-
-		err = parse_mtd_partitions(info->mtd, probes,
+		err = add_mtd_partitions(info->mtd, pdata->partitions,
+					 pdata->nr_partitions);
+		if (err < 0)
+			goto exit_free;
+	} else if (pdata->probes) {
+		err = parse_mtd_partitions(info->mtd, pdata->probes,
 					   &info->partitions, 0);
 		if (err > 0) {
 			err = add_mtd_partitions(info->mtd, info->partitions,
 						 err);
 		}
+		if (err < 0)
+			goto exit_free;
 	}
 #endif /* CONFIG_MTD_PARTITIONS */
 
 	if (add_mtd_device(info->mtd)) {
 		dev_err(&pdev->dev, "add_mtd_device() failed\n");
 		err = -ENOMEM;
+		goto exit_free;
 	}
 
 	dev_info(&pdev->dev, "registered mtd device\n");
-	return err;
+
+	if (pdata->root_dev)
+		ROOT_DEV = MKDEV(MTD_BLOCK_MAJOR, info->mtd->index);
+
+	return 0;
 
  exit_free:
 	platram_remove(pdev);

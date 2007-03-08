@@ -268,6 +268,13 @@ config RTC_DRV_SH
  	  To compile this driver as a module, choose M here: the
 	  module will be called rtc-sh.
 
+config RTC_DRV_DS1302
+	tristate "DS1302 on SnapGear SuperH platforms"
+	depends on RTC_CLASS && SH_SECUREEDGE5410
+	help
+	  Say Y here to enable the DS1302 RTC on some SnapGear SuperH
+	  based hardware platforms.
+
 config RTC_DRV_VR41XX
 	tristate "NEC VR41XX"
 	depends on RTC_CLASS && CPU_VR41XX

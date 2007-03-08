@@ -5,8 +5,6 @@
  *
  *      (C) Copyright 2000-2001, Greg Ungerer (gerg@snapgear.com)
  *      (C) Copyright 2001-2002, SnapGear (www.snapgear.com)
- *
- *	$Id: nettel.c,v 1.12 2005/11/29 14:30:00 gleixner Exp $
  */
 
 /****************************************************************************/
@@ -15,6 +13,9 @@
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/major.h>
+#include <linux/fs.h>
+#include <linux/root_dev.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
 #include <linux/mtd/partitions.h>

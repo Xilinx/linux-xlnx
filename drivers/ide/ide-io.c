@@ -1574,7 +1574,7 @@ irqreturn_t ide_intr (int irq, void *dev_id)
 	spin_lock_irqsave(&ide_lock, flags);
 	hwif = hwgroup->hwif;
 
-	if (!ide_ack_intr(hwif)) {
+	if (hwif->hw.ack_intr && (hwif->hw.ack_intr(hwif) == 0)) {
 		spin_unlock_irqrestore(&ide_lock, flags);
 		return IRQ_NONE;
 	}
@@ -1614,6 +1614,10 @@ irqreturn_t ide_intr (int irq, void *dev_id)
 #endif /* CONFIG_BLK_DEV_IDEPCI */
 		}
 		spin_unlock_irqrestore(&ide_lock, flags);
+#if 1
+		/* FIXME: otherwise we get "nobody cared?" messages */
+		return IRQ_HANDLED;
+#endif
 		return IRQ_NONE;
 	}
 	drive = hwgroup->drive;

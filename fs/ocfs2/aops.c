@@ -523,6 +523,7 @@ bail:
 	return status;
 }
 
+#ifdef CONFIG_DIRECTIO
 /*
  * TODO: Make this into a generic get_blocks function.
  *
@@ -653,6 +654,7 @@ out:
 	mlog_exit(ret);
 	return ret;
 }
+#endif
 
 const struct address_space_operations ocfs2_aops = {
 	.readpage	= ocfs2_readpage,
@@ -661,5 +663,7 @@ const struct address_space_operations ocfs2_aops = {
 	.commit_write	= ocfs2_commit_write,
 	.bmap		= ocfs2_bmap,
 	.sync_page	= block_sync_page,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= ocfs2_direct_IO
+#endif
 };

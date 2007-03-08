@@ -23,6 +23,6 @@ CFLAGS_user_syms.o += -DSUBARCH_$(SUBARCH)
 
 HAVE_AIO_ABI := $(shell [ -r /usr/include/linux/aio_abi.h ] && \
 	echo -DHAVE_AIO_ABI )
-CFLAGS_aio.o += $(HAVE_AIO_ABI)
+CFLAGS_aio.o += -I/usr/include $(HAVE_AIO_ABI)
 
 include arch/um/scripts/Makefile.rules

@@ -2,6 +2,7 @@
  *  linux/arch/arm/mm/proc-syms.c
  *
  *  Copyright (C) 2000-2002 Russell King
+ *  Modified by Hyok S. Choi, 2004
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

@@ -1003,6 +1003,13 @@ P:	Guennadi Liakhovetski
 M:	g.liakhovetski@gmx.de
 S:	Maintained
 
+DCC(JTAG) Console driver
+P:	Hyok S. Choi
+M:	hyok.choi@samsung.com
+M:	hyok.choi@gmail.com
+W:	http://opensrc.sec.samsung.com/
+S:	Maintained
+
 DCCP PROTOCOL
 P:	Arnaldo Carvalho de Melo
 M:	acme@mandriva.com
@@ -3578,6 +3585,12 @@ P:	Greg Ungerer
 M:	gerg@uclinux.org
 W:	http://www.uclinux.org/
 L:	uclinux-dev@uclinux.org  (subscribers-only)
+S:	Maintained
+
+UCLINUX FOR ARM
+P:	Hyok S. Choi
+M:	hyok.choi@samsung.com
+W:	http://opensrc.sec.samsung.com/
 S:	Maintained
 
 UCLINUX FOR NEC V850

@@ -1,0 +1,45 @@
+menu "S3C44B0X Board Options" 
+	depends on ARCH_S3C44B0
+
+config DEBUG_NICKMIT
+	bool 'DEBUG_NICKMIT'
+	default n
+
+config SKIP_DUMP_CPU_INFO
+	bool 'Skip Dump CPU Info'
+	default y
+	help
+	S3C44B0X(ARM7TDMI) core does not support cache size
+	recognition instructions which uses MMU features.
+
+config REMAP_VECTORS_TO_RAM
+	bool 'Remap Vectors To Ram'
+	default y
+	help
+	S3C44B0X core does not support ROM and RAM remap
+	function. we set the trap_init to be initialized
+	at the begining of DRAM_BASE.
+
+config ARM_CLK
+	int 'Arm Core Clock'
+	default 60000000
+	help
+	the default host clock of 51EDA-S3C44B0X Board is 60MHz.
+	otherwise, change the value in clock.
+	
+config ARM_CLK_ADJUST
+	bool "Arm Core Clock Adjust(EXPERIMENTAL)"
+	default n && EXPERIMENTAL
+	help
+	use this option to adjust the CPU frequence
+
+config ARM_CLK_FIN
+	int 'External OSC Clock Frequence' 
+	default 8000000
+	depends on ARM_CLK_ADJUST && EXPERIMENTAL
+	help
+	this is the input frequence of system clock
+
+source "arch/arm/mach-s3c44b0x/driver/Kconfig"
+
+endmenu

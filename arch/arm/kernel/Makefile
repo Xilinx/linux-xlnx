@@ -1,5 +1,6 @@
 #
 # Makefile for the linux kernel.
+# modified for uClinux by Hyok S. Choi, 2004
 #
 
 AFLAGS_head.o := -DTEXT_OFFSET=$(TEXT_OFFSET)
@@ -20,6 +21,7 @@ obj-$(CONFIG_ISA_DMA)		+= dma-isa.o
 obj-$(CONFIG_PCI)		+= bios32.o isa.o
 obj-$(CONFIG_SMP)		+= smp.o
 obj-$(CONFIG_OABI_COMPAT)	+= sys_oabi-compat.o
+obj-$(CONFIG_INITRD_MTD)	+= initrd-mtd.o
 
 obj-$(CONFIG_CRUNCH)		+= crunch.o crunch-bits.o
 AFLAGS_crunch-bits.o		:= -Wa,-mcpu=ep9312

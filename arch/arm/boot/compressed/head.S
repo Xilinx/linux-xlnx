@@ -565,6 +565,17 @@ proc_types:
 		b	__armv4_mmu_cache_on
 		b	__armv4_mmu_cache_off
 		mov	pc, lr
+		.word	0x41007400		@ ARM74x
+		.word	0xff00ff00
+		b	__armv3_mpu_cache_on
+		b	__armv3_mpu_cache_off
+		b	__armv3_mpu_cache_flush
+		
+		.word	0x41009400		@ ARM94x
+		.word	0xff00ff00
+		b	__armv4_mpu_cache_on
+		b	__armv4_mpu_cache_off
+		b	__armv4_mpu_cache_flush
 
 		.word	0x41007400		@ ARM74x
 		.word	0xff00ff00

@@ -5,6 +5,8 @@
  *  Copyright (C) 2000 Deep Blue Solutions Ltd.
  *  Copyright (C) 2002 RidgeRun, Inc.
  *  Copyright (C) 2002-2003 MontaVista Software, Inc.
+ *  Copyright (C) 2003 Hyok S. Choi <hyok.choi@samsung.com>
+ *  modified for NON-PAGED MMU version.
  *
  *  Update for Linux-2.6 and cache flush improvements
  *  Copyright (C) 2004 Nokia Corporation by Tony Lindgren <tony@atomide.com>
@@ -428,7 +430,6 @@ ENTRY(cpu_arm925_set_pte_ext)
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
 #endif /* CONFIG_MMU */
 	mov	pc, lr
-
 	__INIT
 
 	.type	__arm925_setup, #function

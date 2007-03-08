@@ -680,6 +680,16 @@ void abort(void)
 }
 EXPORT_SYMBOL(abort);
 
+#ifdef CONFIG_MMU
+# define VECTORS_BASE (0xffff0000)
+#else
+# ifndef CONFIG_REMAP_VECTORS_TO_RAM
+#  define VECTORS_BASE (0)
+# else
+#  define VECTORS_BASE (CONFIG_DRAM_BASE)
+# endif
+#endif /* CONFIG_MMU */
+
 void __init trap_init(void)
 {
 	unsigned long vectors = CONFIG_VECTORS_BASE;

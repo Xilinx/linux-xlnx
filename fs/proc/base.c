@@ -691,8 +691,8 @@ static ssize_t oom_adjust_write(struct file *file, const char __user *buf,
 	if (copy_from_user(buffer, buf, count))
 		return -EFAULT;
 	oom_adjust = simple_strtol(buffer, &end, 0);
-	if ((oom_adjust < OOM_ADJUST_MIN || oom_adjust > OOM_ADJUST_MAX) &&
-	     oom_adjust != OOM_DISABLE)
+	if ((oom_adjust < -16 || oom_adjust > 15) && oom_adjust != OOM_DISABLE
+	    && oom_adjust != OOM_DISABLE_NOINHERIT)
 		return -EINVAL;
 	if (*end == '\n')
 		end++;

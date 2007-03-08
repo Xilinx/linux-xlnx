@@ -40,9 +40,18 @@
 
 #include <asm/mman.h>
 
+#ifdef CONFIG_DIRECTIO
 static ssize_t
 generic_file_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	loff_t offset, unsigned long nr_segs);
+#else
+static inline ssize_t
+generic_file_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
+	loff_t offset, unsigned long nr_segs)
+{
+	return -EINVAL;
+}
+#endif
 
 /*
  * Shared mappings implemented 30.11.1994. It's not fully working yet,
@@ -2382,6 +2391,7 @@ ssize_t generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 }
 EXPORT_SYMBOL(generic_file_aio_write);
 
+#ifdef CONFIG_DIRECTIO
 /*
  * Called under i_mutex for writes to S_ISREG files.   Returns -EIO if something
  * went wrong during pagecache shootdown.
@@ -2421,6 +2431,7 @@ generic_file_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	}
 	return retval;
 }
+#endif
 
 /**
  * try_to_release_page() - release old fs-specific metadata on a page

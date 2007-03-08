@@ -585,6 +585,20 @@ config WDT_RM9K_GPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called rm9k_wdt.
 
+# Nios2 Architecture
+config AVALON_WDT
+	tristate "Nios2 Watchdog (Avalon)"
+	depends on WATCHDOG && NIOS2
+	help
+	  This is a driver for a timer connected to the avalon switch fabric wich is 
+	  configured as a watchdog. 
+	  Once started the watchdog cannot be stopped!
+	  This driver assumes you named the watchdog timer watchdog. 
+	  If you didn't you should rename the component or change the definition in 
+	  drivers/char/watchdog/avalonwdt.c
+	  
+	  Most people will say N.
+
 # S390 Architecture
 
 config ZVM_WATCHDOG
@@ -649,6 +663,15 @@ config WATCHDOG_RIO
 	  Say Y here to support the hardware watchdog capability on Sun RIO
 	  machines.  The watchdog timeout period is normally one minute but
 	  can be changed with a boot-time parameter.
+
+# M68KNOMMU Architecture
+
+config WDT_M5272
+	tristate "MCF5272 Hardware Watchdog support"
+	depends on WATCHDOG && M5272
+	help
+	  Say Y here to suuport the hardware watchdog capability on Freescale
+	  Coldfire MCF5272 machines.  
 
 #
 # ISA-based Watchdog Cards

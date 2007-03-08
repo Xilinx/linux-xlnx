@@ -67,6 +67,8 @@ tune-$(CONFIG_CPU_ARM920T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_ARM922T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_ARM925T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_ARM926T)	:=-mtune=arm9tdmi
+tune-$(CONFIG_CPU_ARM940T)	:=-mtune=arm9tdmi
+tune-$(CONFIG_CPU_ARM946T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_SA110)	:=-mtune=strongarm110
 tune-$(CONFIG_CPU_SA1100)	:=-mtune=strongarm1100
 tune-$(CONFIG_CPU_XSCALE)	:=$(call cc-option,-mtune=xscale,-mtune=strongarm110) -Wa,-mcpu=xscale
@@ -114,6 +116,7 @@ endif
  machine-$(CONFIG_ARCH_IXP4XX)	   := ixp4xx
  machine-$(CONFIG_ARCH_IXP2000)    := ixp2000
  machine-$(CONFIG_ARCH_IXP23XX)    := ixp23xx
+ machine-$(CONFIG_ARCH_KS8695)     := ks8695
  machine-$(CONFIG_ARCH_OMAP1)	   := omap1
  machine-$(CONFIG_ARCH_OMAP2)	   := omap2
   incdir-$(CONFIG_ARCH_OMAP)	   := omap
@@ -123,6 +126,24 @@ endif
  machine-$(CONFIG_ARCH_IMX)	   := imx
  machine-$(CONFIG_ARCH_H720X)	   := h720x
  machine-$(CONFIG_ARCH_AAEC2000)   := aaec2000
+ machine-$(CONFIG_ARCH_ATMEL)	   := atmel
+textaddr-$(CONFIG_ARCH_ATMEL)	   := 0x01000000
+ machine-$(CONFIG_ARCH_ESPD_4510B) := espd_4510b
+textaddr-$(CONFIG_ARCH_ESPD_4510B) := 0x00008000
+ machine-$(CONFIG_ARCH_S3C3410)	   := s3c3410
+textaddr-$(CONFIG_ARCH_S3C3410)	   := 0x01020000
+ machine-$(CONFIG_ARCH_S3C44B0)	   := s3c44b0x
+textaddr-$(CONFIG_ARCH_S3C44B0)	   := 0x0c008000
+ machine-$(CONFIG_ARCH_S5C7375)	   := s5c7375
+textaddr-$(CONFIG_ARCH_S5C7375)	   := 0x00008000
+ machine-$(CONFIG_ARCH_S3C24A0)	   := s3c24a0
+ifeq ($(CONFIG_MMU),)
+textaddr-$(CONFIG_ARCH_S3C24A0)	   := 0x10008000
+endif
+ machine-$(CONFIG_ARCH_P2001)	   := p2001
+textaddr-$(CONFIG_ARCH_P2001)	   := 0x40100000
+ machine-$(CONFIG_ARCH_LPC22XX)	   := lpc22xx
+textaddr-$(CONFIG_ARCH_LPC22XX)	   := 0x81008000
  machine-$(CONFIG_ARCH_REALVIEW)   := realview
  machine-$(CONFIG_ARCH_AT91)       := at91rm9200
  machine-$(CONFIG_ARCH_EP93XX)     := ep93xx

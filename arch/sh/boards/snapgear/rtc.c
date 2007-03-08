@@ -18,6 +18,7 @@
 #include <linux/rtc.h>
 #include <linux/mc146818rtc.h>
 #include <asm/io.h>
+#include <asm/snapgear.h>
 
 static int use_ds1302;
 

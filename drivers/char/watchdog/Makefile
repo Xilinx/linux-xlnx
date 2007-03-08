@@ -82,5 +82,10 @@ obj-$(CONFIG_SH_WDT) += shwdt.o
 
 # SPARC64 Architecture
 
+# NIOS2 Architecture
+obj-$(CONFIG_AVALON_WDT) +=avalonwdt.o
+
 # Architecture Independant
 obj-$(CONFIG_SOFT_WATCHDOG) += softdog.o
+
+obj-$(CONFIG_WDT_M5272) += m5272_wdt.o

@@ -20,6 +20,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/thread_info.h>
 #include <asm/system.h>
+#include <asm/arch/hardware.h>
 
 /*
  * Kernel startup entry point.
@@ -36,6 +37,7 @@
 	__INIT
 	.type	stext, %function
 ENTRY(stext)
+	ldr	r1, =machine_arch_type		@ find the machine type
 	msr	cpsr_c, #PSR_F_BIT | PSR_I_BIT | SVC_MODE @ ensure svc mode
 						@ and irqs disabled
 #ifndef CONFIG_CPU_CP15
@@ -45,7 +47,7 @@ ENTRY(stext)
 #endif
 	bl	__lookup_processor_type		@ r5=procinfo r9=cpuid
 	movs	r10, r5				@ invalid processor (r5=0)?
-	beq	__error_p				@ yes, error 'p'
+	beq	__error_p			@ yes, error 'p'
 	bl	__lookup_machine_type		@ r5=machinfo
 	movs	r8, r5				@ invalid machine (r5=0)?
 	beq	__error_a			@ yes, error 'a'

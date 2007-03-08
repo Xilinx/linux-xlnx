@@ -1,5 +1,5 @@
 /*
- * arch/arm/mach-ixp4xx/common.c
+ * arch/arm/mach-ixp4xx/generic.c
  *
  * Generic code shared across all IXP4XX platforms
  *
@@ -32,6 +32,7 @@
 #include <asm/hardware.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
+#include <asm/mach-types.h>
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/irq.h>
@@ -146,7 +147,6 @@ static int ixp4xx_set_irq_type(unsigned int irq, unsigned int type)
 		ixp4xx_irq_edge &= ~(1 << irq);
 
 	if (line >= 8) {	/* pins 8-15 */
-		line -= 8;
 		int_reg = IXP4XX_GPIO_GPIT2R;
 	} else {		/* pins 0-7 */
 		int_reg = IXP4XX_GPIO_GPIT1R;
@@ -154,12 +154,12 @@ static int ixp4xx_set_irq_type(unsigned int irq, unsigned int type)
 
 	/* Clear the style for the appropriate pin */
 	*int_reg &= ~(IXP4XX_GPIO_STYLE_CLEAR <<
-	    		(line * IXP4XX_GPIO_STYLE_SIZE));
+	    		((line%8) * IXP4XX_GPIO_STYLE_SIZE));
 
 	*IXP4XX_GPIO_GPISR = (1 << line);
 
 	/* Set the new style */
-	*int_reg |= (int_style << (line * IXP4XX_GPIO_STYLE_SIZE));
+	*int_reg |= (int_style << ((line%8) * IXP4XX_GPIO_STYLE_SIZE));
 
 	/* Configure the line as an input */
 	gpio_line_config(line, IXP4XX_GPIO_IN);

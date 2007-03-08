@@ -1,0 +1,33 @@
+menu "S3C3410 Options"
+	depends on ARCH_S3C3410
+
+config ARCH_SUPPORTS_BIG_ENDIAN
+        bool
+        default y
+	help
+	S3C3410 core supports BIG-ENDIAN only,
+	both for CPU core and the external memory access.
+
+config ARM_CLK
+	int 'Arm Core Clock'
+	default 40000000
+	help
+	the default host clock of SMDK40100 is 40MHz.
+	otherwise, change the value in clock.
+
+config SKIP_DUMP_CPU_INFO
+	bool
+	default y
+	help
+	S3C3410(ARM7TDMI) core does not support cache size
+	recognition instructions which uses MMU features.
+
+config REMAP_VECTORS_TO_RAM
+	bool
+	default y
+	help
+	S3C3410 core does not support ROM and RAM remap
+	function. we set the trap_init to be initialized
+	at the begining of DRAM_BASE.
+
+endmenu

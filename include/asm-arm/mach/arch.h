@@ -2,6 +2,7 @@
  *  linux/include/asm-arm/mach/arch.h
  *
  *  Copyright (C) 2000 Russell King
+ *  Modified by Hyok S. Choi for uClinux, 2004
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

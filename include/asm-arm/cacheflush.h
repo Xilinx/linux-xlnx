@@ -41,6 +41,22 @@
 # endif
 #endif
 
+#if defined(CONFIG_CPU_ARM7TDMI) || defined(CONFIG_CPU_ARM9TDMI)
+# ifdef _CACHE
+#  define MULTI_CACHE 1
+# else
+#  define _CACHE v4
+# endif
+#endif
+
+#if defined(CONFIG_CPU_S3C4510B)
+# ifdef _CACHE
+#  define MULTI_CACHE 1
+# else
+#  define _CACHE s3c4510b
+# endif
+#endif
+
 #if defined(CONFIG_CPU_ARM920T) || defined(CONFIG_CPU_ARM922T) || \
     defined(CONFIG_CPU_ARM925T) || defined(CONFIG_CPU_ARM1020)
 # define MULTI_CACHE 1

@@ -88,6 +88,8 @@ obj-$(CONFIG_PCMCIA_PCNET) += 8390.o
 obj-$(CONFIG_SHAPER) += shaper.o
 obj-$(CONFIG_HP100) += hp100.o
 obj-$(CONFIG_SMC9194) += smc9194.o
+obj-$(CONFIG_OPEN_ETH) += open_eth.o
+obj-$(CONFIG_MTIP1000_ETH) += mtip1000.o
 obj-$(CONFIG_FEC) += fec.o
 obj-$(CONFIG_68360_ENET) += 68360enet.o
 obj-$(CONFIG_WD80x3) += wd.o 8390.o
@@ -211,6 +213,7 @@ obj-$(CONFIG_HAMRADIO) += hamradio/
 obj-$(CONFIG_IRDA) += irda/
 obj-$(CONFIG_ETRAX_ETHERNET) += cris/
 obj-$(CONFIG_ENP2611_MSF_NET) += ixp2000/
+obj-$(CONFIG_ETH_KS8695) += ks8695/
 
 obj-$(CONFIG_NETCONSOLE) += netconsole.o
 

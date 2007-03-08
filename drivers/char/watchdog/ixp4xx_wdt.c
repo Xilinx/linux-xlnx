@@ -5,11 +5,11 @@
  *
  * Author: Deepak Saxena <dsaxena@plexity.net>
  *
- * Copyright 2004 (c) MontaVista, Software, Inc.
+ * Copyright 2004 (c) MontaVista, Software, Inc. 
  * Based on sa1100 driver, Copyright (C) 2000 Oleg Drokin <green@crimea.edu>
- *
- * This file is licensed under  the terms of the GNU General Public
- * License version 2. This program is licensed "as is" without any
+ * 
+ * This file is licensed under  the terms of the GNU General Public 
+ * License version 2. This program is licensed "as is" without any 
  * warranty of any kind, whether express or implied.
  */
 
@@ -28,7 +28,7 @@
 
 static int nowayout = WATCHDOG_NOWAYOUT;
 static int heartbeat = 60;	/* (secs) Default is 1 minute */
-static unsigned long wdt_status;
+static unsigned long wdt_status;	
 static unsigned long boot_status;
 
 #define WDT_TICK_RATE (IXP4XX_PERIPHERAL_BUS_CLOCK * 1000000UL)
@@ -46,7 +46,7 @@ wdt_enable(void)
 	*IXP4XX_OSWK = 0;
 }
 
-static void
+static void 
 wdt_disable(void)
 {
 	*IXP4XX_OSWK = IXP4XX_WDT_KEY;
@@ -67,7 +67,7 @@ ixp4xx_wdt_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t
+static ssize_t 
 ixp4xx_wdt_write(struct file *file, const char *data, size_t len, loff_t *ppos)
 {
 	if (len) {
@@ -98,8 +98,8 @@ static struct watchdog_info ident = {
 };
 
 
-static int
-ixp4xx_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
+static int 
+ixp4xx_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			unsigned long arg)
 {
 	int ret = -ENOTTY;
@@ -196,7 +196,7 @@ static int __init ixp4xx_wdt_init(void)
 	if (ret == 0)
 		printk("IXP4xx Watchdog Timer: heartbeat %d sec\n", heartbeat);
 
-	boot_status = (*IXP4XX_OSST & IXP4XX_OSST_TIMER_WARM_RESET) ?
+	boot_status = (*IXP4XX_OSST & IXP4XX_OSST_TIMER_WARM_RESET) ? 
 			WDIOF_CARDRESET : 0;
 
 	return ret;

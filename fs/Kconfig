@@ -628,6 +628,21 @@ config FUSE_FS
 	  If you want to develop a userspace FS, or if you want to use
 	  a filesystem based on FUSE, answer Y or M.
 
+config DIRECTIO
+	bool "Direct I/O support" if EMBEDDED
+	default y
+	help
+	  This option enables applications to perform uncached I/O on files
+	  using the O_DIRECT open() flag.  When O_DIRECT is set for a file,
+	  its data is not cached in the system's page cache.  Data is moved
+	  to and from user-level application buffers directly.
+
+	  In addition to enabling this option, the file system must also
+	  support direct I/O.
+
+	  If unsure, say Y.  Saying N here causes open() to return EINVAL if
+	  a file is opened with the O_DIRECT flag.
+
 config GENERIC_ACL
 	bool
 	select FS_POSIX_ACL
@@ -1404,6 +1419,83 @@ config CRAMFS
 
 	  If unsure, say N.
 
+config SQUASHFS
+	tristate "SquashFS 2.2 - Squashed file system support"
+	select ZLIB_INFLATE
+	help
+	  Saying Y here includes support for SquashFS 2.2 (Compressed Read-Only File
+	  System).  Squashfs is a highly compressed read-only filesystem for Linux.
+	  It uses zlib compression to compress both files, inodes and directories.
+	  Inodes in the system are very small and all blocks are packed to minimise
+	  data overhead. Block sizes greater than 4K are supported up to a maximum of 64K.
+
+	  Squashfs is intended for general read-only filesystem use, for archival
+	  use (i.e. in cases where a .tar.gz file may be used), and in embedded
+	  systems where low overhead is needed.  Further information and filesystem tools
+	  are available from http://squashfs.sourceforge.net.
+
+	  If you want to compile this as a module ( = code which can be
+	  inserted in and removed from the running kernel whenever you want),
+	  say M here and read <file:Documentation/modules.txt>.  The module
+	  will be called squashfs.  Note that the root file system (the one
+	  containing the directory /) cannot be compiled as a module.
+
+	  If unsure, say N.
+
+config SQUASHFS_CRAMFS_MAGIC
+	bool "Image has a dummy cramfs header (8 bytes)"
+	depends on SQUASHFS
+	default n
+	help
+	  The squashfs image has a dummy cramfs header so that old boot
+	  loaders and initrd tools will know it's size/type.
+
+config SQUASHFS_LZMA
+	bool "Use LZMA for better compression"
+	depends on SQUASHFS
+	default n
+	help
+	  Use LZMA compression (p7zip) for even better space savings.
+
+config SQUASHFS_EMBEDDED
+	bool "Additional options for memory-constrained systems" 
+	depends on SQUASHFS
+	default n
+	help
+	  Saying Y here allows you to specify cache sizes and how Squashfs
+	  allocates memory.  This is only intended for memory constrained
+	  systems.
+
+	  If unsure, say N.
+
+config SQUASHFS_FRAGMENT_CACHE_SIZE
+	int "Number of fragments cached" if SQUASHFS_EMBEDDED
+	depends on SQUASHFS
+	default "3"
+	help
+	  By default SquashFS caches the last 3 fragments read from
+	  the filesystem.  Increasing this amount may mean SquashFS
+	  has to re-read fragments less often from disk, at the expense
+	  of extra system memory.  Decreasing this amount will mean
+	  SquashFS uses less memory at the expense of extra reads from disk.
+
+	  Note there must be at least one cached fragment.  Anything
+	  much more than three will probably not make much difference.
+
+config SQUASHFS_VMALLOC
+	bool "Use Vmalloc rather than Kmalloc" if SQUASHFS_EMBEDDED
+	depends on SQUASHFS
+	default n
+	help
+	  By default SquashFS uses kmalloc to obtain fragment cache memory.
+	  Kmalloc memory is the standard kernel allocator, but it can fail
+	  on memory constrained systems.  Because of the way Vmalloc works,
+	  Vmalloc can succeed when kmalloc fails.  Specifying this option
+	  will make SquashFS always use Vmalloc to allocate the
+	  fragment cache memory.
+
+	  If unsure, say N.
+
 config VXFS_FS
 	tristate "FreeVxFS file system support (VERITAS VxFS(TM) compatible)"
 	depends on BLOCK
@@ -1632,7 +1724,7 @@ config NFS_V4
 
 config NFS_DIRECTIO
 	bool "Allow direct I/O on NFS files"
-	depends on NFS_FS
+	depends on NFS_FS && DIRECTIO
 	help
 	  This option enables applications to perform uncached I/O on files
 	  in NFS file systems using the O_DIRECT open() flag.  When O_DIRECT
@@ -2094,6 +2186,19 @@ endif
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
+
+menu "Debug"
+
+config COREDUMP_PRINTK
+	bool "Coredump printk support (for embedded systems)"
+	help
+	  If you say Y here, you will get printk/console output whenever
+	  an application crashes.  On Embedded systems with RO filesystems
+	  and little storage,  coredumps are not practical,  this allows
+	  problems to be noticed and fixed.
+	  If unsure, say N.
+
+endmenu
 
 endmenu
 

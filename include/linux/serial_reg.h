@@ -169,7 +169,15 @@
 				 * In: Fifo count
 				 * Out: Fifo custom trigger levels */
 /*
- * These are the definitions for the Programmable Trigger Register
+ * The Intel XScale UARTS define these
+ */
+#define UART_IER_DMAE	0x80	/* DMA Requests Enable */
+#define UART_IER_UUE	0x40	/* UART Unit Enable */
+#define UART_IER_NRZE	0x20	/* NRZ coding Enable */
+#define UART_IER_RTOIE	0x10	/* Receiver Time Out Interrupt Enable */
+
+/*
+ * These are the definitions for the Modem Control Register
  */
 #define UART_TRG_1		0x01
 #define UART_TRG_4		0x04

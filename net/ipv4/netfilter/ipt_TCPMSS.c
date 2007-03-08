@@ -21,6 +21,22 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Marc Boucher <marc@mbsi.ca>");
 MODULE_DESCRIPTION("iptables TCP MSS modification module");
 
+#if 0
+#define DEBUGP printk
+#else
+#define DEBUGP(format, args...)
+#endif
+
+#define HDRSIZE (sizeof(struct iphdr) + sizeof(struct tcphdr))
+
+static u_int16_t
+cheat_check(u_int32_t oldvalinv, u_int32_t newval, u_int16_t oldcheck)
+{
+	u_int32_t diffs[] = { oldvalinv, newval };
+	return csum_fold(csum_partial((char *)diffs, sizeof(diffs),
+                                      oldcheck^0xFFFF));
+}
+
 static inline unsigned int
 optlen(const u_int8_t *opt, unsigned int offset)
 {
@@ -64,7 +80,7 @@ ipt_tcpmss_target(struct sk_buff **pskb,
 			printk(KERN_ERR
 			       "ipt_tcpmss_target: bad length (%d bytes)\n",
 			       (*pskb)->len);
-		return NF_DROP;
+		return IPT_CONTINUE;
 	}
 
 	if (tcpmssinfo->mss == IPT_TCPMSS_CLAMP_PMTU) {

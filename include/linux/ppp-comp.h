@@ -193,6 +193,13 @@ struct compressor {
 #define DEFLATE_CHK_SEQUENCE	0
 
 /*
+ * Definitions for Stac LZS.
+ */
+
+#define CI_LZS          17  /* config option for Stac LZS */
+#define CILEN_LZS       5   /* length of config option */
+
+/*
  * Definitions for MPPE.
  */
 

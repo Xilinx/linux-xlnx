@@ -7,7 +7,7 @@ source "lib/Kconfig.debug"
 # traces, you can get a slightly smaller kernel by setting this option to
 # n, but then RMK will have to kill you ;).
 config FRAME_POINTER
-	bool
+	bool "Enable frame pointer"
 	default y
 	help
 	  If you say N here, the resulting kernel will be slightly smaller and

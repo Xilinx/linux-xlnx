@@ -44,6 +44,7 @@
 
 #include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/mm.h>
 #include <asm/atomic.h>
 #include <linux/bio.h>
 #include <linux/module.h>

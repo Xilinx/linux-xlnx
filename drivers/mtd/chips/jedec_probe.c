@@ -12,6 +12,7 @@
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
 #include <asm/io.h>
 #include <asm/byteorder.h>
 #include <linux/errno.h>
@@ -52,13 +53,18 @@
 #define AM29LV800BT	0x22DA
 #define AM29LV160DT	0x22C4
 #define AM29LV160DB	0x2249
+#define AM29BDD160GB	0x7E08
 #define AM29F017D	0x003D
 #define AM29F016D	0x00AD
 #define AM29F080	0x00D5
 #define AM29F040	0x00A4
 #define AM29LV040B	0x004F
 #define AM29F032B	0x0041
+#define AM29LV065D	0x0093
+#define AM29DL323GB 0x2253
 #define AM29F002T	0x00B0
+#define AM29LV004T	0x00B5
+#define AM29LV004B	0x00B6
 
 /* Atmel */
 #define AT49BV512	0x0003
@@ -277,6 +283,66 @@ struct amd_flash_info {
 static const struct amd_flash_info jedec_table[] = {
 	{
 		.mfr_id		= MANUFACTURER_AMD,
+		.dev_id		= AM29LV004T,
+		.name		= "AMD AM29LV004T",
+		.uaddr		= {
+			[0] = MTD_UADDR_0x0555_0x02AA /* x8 */
+		},
+		.DevSize	= SIZE_512KiB,
+		.CmdSet		= P_ID_AMD_STD,
+		.NumEraseRegions= 4,
+		.regions	= {
+			ERASEINFO(0x10000,7),
+			ERASEINFO(0x08000,1),
+			ERASEINFO(0x02000,2),
+			ERASEINFO(0x04000,1)
+		}
+	}, {
+		.mfr_id		= MANUFACTURER_AMD,
+		.dev_id		= AM29LV004B,
+		.name		= "AMD AM29LV004B",
+		.uaddr		= {
+			[0] = MTD_UADDR_0x0555_0x02AA /* x8 */
+		},
+		.DevSize	= SIZE_512KiB,
+		.CmdSet		= P_ID_AMD_STD,
+		.NumEraseRegions= 4,
+		.regions	= {
+			ERASEINFO(0x04000,1),
+			ERASEINFO(0x02000,2),
+			ERASEINFO(0x08000,1),
+			ERASEINFO(0x10000,7)
+		}
+	}, {
+		.mfr_id		= MANUFACTURER_AMD,
+		.dev_id		= AM29LV065D,
+		.name		= "AMD AM29LV065D",
+		.uaddr		= {
+			[0] = MTD_UADDR_DONT_CARE /* x8 */
+		},
+		.DevSize	= SIZE_8MiB,
+		.CmdSet		= P_ID_AMD_STD,
+		.NumEraseRegions= 1,
+		.regions	= {
+			ERASEINFO(0x10000,128)
+		}
+	},{
+		.mfr_id		= MANUFACTURER_AMD,
+		.dev_id		= AM29DL323GB,
+		.name		= "AMD AM29DL323GB",
+		.uaddr		= {
+			[0] = MTD_UADDR_0x0AAA_0x0555,  /* x8 */
+			[1] = MTD_UADDR_0x0AAA_0x0555   /* x16 */
+		},
+		.DevSize	= SIZE_4MiB,
+		.CmdSet		= P_ID_AMD_STD,
+		.NumEraseRegions= 2,
+		.regions	= {
+			ERASEINFO(0x2000,8),
+			ERASEINFO(0x10000,63)
+		}
+	},{
+		.mfr_id		= MANUFACTURER_AMD,
 		.dev_id		= AM29F032B,
 		.name		= "AMD AM29F032B",
 		.uaddr		= {
@@ -321,6 +387,21 @@ static const struct amd_flash_info jedec_table[] = {
 			ERASEINFO(0x02000,2),
 			ERASEINFO(0x08000,1),
 			ERASEINFO(0x10000,31)
+		}
+	}, {
+		.mfr_id		= MANUFACTURER_AMD,
+		.dev_id		= AM29BDD160GB,
+		.name		= "AMD AM29BDD160GB",
+		.uaddr		= {
+			[0] = MTD_UADDR_0x1554_0x0AAA   /* x32 */
+		},
+		.DevSize	= SIZE_2MiB,
+		.CmdSet		= P_ID_AMD_STD,
+		.NumEraseRegions= 3,
+		.regions	= {
+			ERASEINFO(0x01000,8),
+			ERASEINFO(0x10000,32),
+			ERASEINFO(0x01000,8)
 		}
 	}, {
 		.mfr_id		= MANUFACTURER_AMD,

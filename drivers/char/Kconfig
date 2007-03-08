@@ -95,6 +95,24 @@ config SERIAL_NONSTANDARD
 
 	  Most people can say N here.
 
+config NIOS_LCD_16207
+	bool "Nios LCD 16207 device support"
+	depends on NIOS || NIOS2
+	help
+	  This driver supports the Nios LCD 16207 device.
+
+config NIOS_BUTTON
+	bool "Nios PIO buttons support"
+	depends on ALTERA_STRATIX || ALTERA_STRATIX_PRO || ALTERA_CYCLONE || ALTERA_STRATIX_II
+	---help---
+	This driver takes the 4 user buttons on Altera's Nios Development Kit
+	as a source of input: users can input '1','2','4' or '8' by pressing
+	one of the 4 buttons. The device node is a character device with a
+	major of 62 and minor of 0. Users can view input using the following
+	command:
+		$ cat /dev/btn
+	where /dev/btn is the device node file.
+
 config COMPUTONE
 	tristate "Computone IntelliPort Plus serial support"
 	depends on SERIAL_NONSTANDARD && (ISA || EISA || PCI)
@@ -402,6 +420,26 @@ config A2232
 	  will also be built as a module. This has to be loaded before
 	  "ser_a2232". If you want to do this, answer M here.
 
+config LEDMAN
+	bool "LED Manager support"
+	help
+	  Enbale the LED manager driver.
+
+config SNAPDOG
+	bool "SnapGear Watchdog Support"
+	help
+	  Support the SnapGear common watchdog driver.
+
+config FAST_TIMER
+	bool "Fast Timer"
+	help
+	  Support the SnapGear common watchdog driver.
+
+config RESETSWITCH
+	bool "Reset switch support"
+	help
+	  Support the hardware reset switch.
+
 config SGI_SNSC
 	bool "SGI Altix system controller communication support"
 	depends on (IA64_SGI_SN2 || IA64_GENERIC)
@@ -630,6 +668,14 @@ config HVCS
 source "drivers/char/ipmi/Kconfig"
 
 source "drivers/char/watchdog/Kconfig"
+
+config MCFWATCHDOG
+	tristate "Coldfire Watchdog"
+	default n
+	depends on COLDFIRE
+	help
+	  Watchdog for Coldfire processors. /dev/watchdog is not used
+	  for this driver. A timer-interrupt is updating the watchdog instead.
 
 config DS1620
 	tristate "NetWinder thermometer support"
@@ -1017,6 +1063,17 @@ config MMTIMER
 	  Altix system timer.
 
 source "drivers/char/tpm/Kconfig"
+
+config MCF_QSPI
+	tristate "QSPI driver for Coldfire processors"
+	depends on COLDFIRE
+	help
+	  Driver for Coldfire processors QSPI
+
+config M41T11M6
+	tristate "M41T11M6 Real Time Clock (RTC) support"
+	help
+	  Driver for the M41T11M6 Real Time Clock Chip.
 
 config TELCLOCK
 	tristate "Telecom clock driver for MPBL0010 ATCA SBC"

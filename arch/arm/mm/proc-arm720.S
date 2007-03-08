@@ -162,7 +162,11 @@ __arm710_setup:
 arm710_cr1_clear:
 	.word	0x0f3f
 arm710_cr1_set:
+#if defined(CONFIG_MMU) || defined(CONFIG_CPU_MXU_ENABLE)
 	.word	0x013d
+#else
+	.word	0x013c
+#endif
 
 	.type	__arm720_setup, #function
 __arm720_setup:

@@ -1,0 +1,30 @@
+
+menu "ADIFCC Implementation Options"
+
+comment "ADI Board Types"
+
+config ARCH_ADI_EVB
+	bool "80200 EVB"
+	depends on ARCH_ADIFCC
+	help
+	  Say Y here if you want to run your kernel on the ADI 80200EVB platform.
+
+config ARCH_BRH
+	bool "BRH"
+	depends on ARCH_ADIFCC
+	help
+	  Say Y here if you want to run your kernel on the ADI BRH platform.
+
+config ARCH_QUINQUE
+	bool "Quinque"
+	depends on ARCH_ADIFCC
+	help
+	  Say Y here if you want to run your kernel on the ADI Quinque platform.
+
+
+config ARCH_SUPPORTS_BIG_ENDIAN
+	bool
+	default y if ARCH_BRH || ARCH_QUINQUE
+
+endmenu
+

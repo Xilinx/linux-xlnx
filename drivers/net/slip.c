@@ -783,6 +783,8 @@ sl_alloc(dev_t line)
 	if (dev) {
 		sl = netdev_priv(dev);
 		if (test_bit(SLF_INUSE, &sl->flags)) {
+			printk(KERN_WARNING "%s: netdev in use on open, will fail.\n",
+					sl->dev->name);
 			unregister_netdevice(dev);
 			dev = NULL;
 			slip_devs[i] = NULL;
@@ -934,11 +936,13 @@ static void
 slip_close(struct tty_struct *tty)
 {
 	struct slip *sl = (struct slip *) tty->disc_data;
+	struct net_device *dev = sl->dev;
 
 	/* First make sure we're connected. */
 	if (!sl || sl->magic != SLIP_MAGIC || sl->tty != tty)
 		return;
 
+	rtnl_lock();
 	tty->disc_data = NULL;
 	sl->tty = NULL;
 	if (!sl->leased)
@@ -951,6 +955,17 @@ slip_close(struct tty_struct *tty)
 #endif
 
 	/* Count references from TTY module */
+
+	/* unregister the netdev,  otherwise the sysfs workq'd unregister
+	 * causes us to fail with EEXIST when registering on open */
+
+	if (dev && test_bit(SLF_INUSE, &sl->flags)) {
+		slip_devs[dev->base_addr] = NULL;
+		sl->dev = NULL;
+		unregister_netdevice(dev);
+		clear_bit(SLF_INUSE, &sl->flags);
+	}
+	rtnl_unlock();
 }
 
  /************************************************************************

@@ -1,0 +1,35 @@
+menu "Kernel hacking"
+
+source "lib/Kconfig.debug"
+
+config FULLDEBUG
+	bool "Full Symbolic/Source Debugging support"
+	help
+	  Enable debuging symbols on kernel build.
+
+config FRAME_POINTER
+	bool "Compile the kernel with frame pointers"
+	help
+	  If you say Y here the resulting kernel image will be slightly larger
+	  and slower, but it will give very useful debugging information.
+	  If you don't debug the kernel, you can say N, but we may not be able
+	  to solve problems without frame pointers.
+
+config MAGIC_SYSRQ
+	bool "Magic SysRq key"
+	help
+	  Enables console device to interpret special characters as
+	  commands to dump state information.
+
+config HIGHPROFILE
+	bool "Use fast second timer for profiling"
+	depends on COLDFIRE
+	help
+	  Use a fast secondary clock to produce profiling information.
+
+config NO_KERNEL_MSG
+	bool "Suppress Kernel BUG Messages"
+	help
+	  Do not output any debug BUG messages within the kernel.
+
+endmenu 

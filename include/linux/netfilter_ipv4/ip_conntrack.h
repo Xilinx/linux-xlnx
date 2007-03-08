@@ -128,6 +128,15 @@ struct ip_conntrack
 	/* Traversed often, so hopefully in different cacheline to top */
 	/* These are my tuples; original and reply */
 	struct ip_conntrack_tuple_hash tuplehash[IP_CT_DIR_MAX];
+
+#if defined(CONFIG_IP_NF_MATCH_LAYER7) || defined(CONFIG_IP_NF_MATCH_LAYER7_MODULE)
+        struct {
+                char * app_proto; /* e.g. "http". NULL before decision. "unknown" after decision if no match */
+                char * app_data;  /* application layer data so far.  NULL after match decision */
+                unsigned int app_data_len;
+        } layer7;
+#endif
+
 };
 
 struct ip_conntrack_expect

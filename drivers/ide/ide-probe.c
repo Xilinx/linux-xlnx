@@ -55,6 +55,7 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
+
 /**
  *	generic_id		-	add a generic drive id
  *	@drive:	drive to make an ID block for
@@ -876,10 +877,9 @@ static int hwif_init(ide_hwif_t *hwif);
 
 int probe_hwif_init_with_fixup(ide_hwif_t *hwif, void (*fixup)(ide_hwif_t *hwif))
 {
-	probe_hwif(hwif);
-
 	if (fixup)
 		fixup(hwif);
+	probe_hwif(hwif);
 
 	if (!hwif_init(hwif)) {
 		printk(KERN_INFO "%s: failed to initialize IDE interface\n",
@@ -1021,7 +1021,6 @@ static int init_irq (ide_hwif_t *hwif)
 	unsigned int index;
 	ide_hwgroup_t *hwgroup;
 	ide_hwif_t *match = NULL;
-
 
 	BUG_ON(in_interrupt());
 	BUG_ON(irqs_disabled());	

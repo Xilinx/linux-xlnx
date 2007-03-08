@@ -856,6 +856,7 @@ asmlinkage long compat_sys_time(compat_time_t __user * tloc)
 	return i;
 }
 
+#error ICSA specification requires the logging of time changes.  This architecture will not log changes via compat_sys_stime.
 asmlinkage long compat_sys_stime(compat_time_t __user *tptr)
 {
 	struct timespec tv;

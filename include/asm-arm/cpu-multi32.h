@@ -2,6 +2,7 @@
  *  linux/include/asm-arm/cpu-multi32.h
  *
  *  Copyright (C) 2000 Russell King
+ *  Modified by Hyok S. Choi, 2004
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -49,6 +50,7 @@ extern struct processor {
 	 * Set the page table
 	 */
 	void (*switch_mm)(unsigned long pgd_phys, struct mm_struct *mm);
+#ifdef CONFIG_MMU
 	/*
 	 * Set a possibly extended PTE.  Non-extended PTEs should
 	 * ignore 'ext'.

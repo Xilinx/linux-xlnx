@@ -22,10 +22,11 @@
 
 struct platdata_mtd_ram {
 	char			*mapname;
-	char		       **probes;
+	const char	       **probes;
 	struct mtd_partition	*partitions;
 	int			 nr_partitions;
 	int			 bankwidth;
+	int			 root_dev;
 
 	/* control callbacks */
 

@@ -1,0 +1,14 @@
+2004-06-29  Ken Hill  <khill@microtronix.com>
+
+	* bitops.h (find_next_zero_bit): Fix problem with with masking for found_first
+	handling. The masking of the upper bits for size < 32 bits would set all
+	the bits to 1. Removing any zero's there may have been.
+
+2004-06-02  Ken Hill  <khill@microtronix.com>
+
+	* processor.h (TASK_SIZE): Change na_sdram_end to nasys_program_mem_end to remove
+	dependancy on quartus memory component name.
+
+	* page.h (PAGE_OFFSET): Change na_sdram to nasys_program_mem to remove
+	dependancy on quartus memory component name.
+

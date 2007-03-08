@@ -51,7 +51,7 @@ static void dummy_waitbut(void)
 {
 }
 
-void (*mach_sched_init) (irqreturn_t (*handler)(int, void *, struct pt_regs *));
+void (*mach_sched_init) (irq_handler_t handler);
 void (*mach_tick)( void );
 /* machine dependent keyboard functions */
 int (*mach_keyb_init) (void);
@@ -66,10 +66,14 @@ void (*mach_trap_init) (void);
 /* machine dependent timer functions */
 unsigned long (*mach_gettimeoffset) (void);
 void (*mach_gettod) (int*, int*, int*, int*, int*, int*);
-int (*mach_hwclk) (int, struct hwclk_time*);
+int (*mach_hwclk) (int, struct rtc_time*) = NULL;
 int (*mach_set_clock_mmss) (unsigned long);
+unsigned int (*mach_get_ss)(void) = NULL;
+int (*mach_get_rtc_pll)(struct rtc_pll_info *pll) = NULL;
+int (*mach_set_rtc_pll)(struct rtc_pll_info *pll) = NULL;
 void (*mach_mksound)( unsigned int count, unsigned int ticks );
 void (*mach_reset)( void );
+void (*mach_heartbeat)(int) = NULL;
 void (*waitbut)(void) = dummy_waitbut;
 void (*mach_debug_init)(void);
 void (*mach_halt)( void );

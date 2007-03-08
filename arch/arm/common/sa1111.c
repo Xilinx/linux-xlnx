@@ -564,6 +564,22 @@ sa1111_init_one_child(struct sa1111 *sachip, struct resource *parent,
 	dev->skpcr_mask  = info->skpcr_mask;
 	memmove(dev->irq, info->irq, sizeof(dev->irq));
 
+	/*
+	 * If the parent device has a DMA mask associated with it,
+	 * propagate it down to the children.
+	 */
+	if (sachip->dev->dma_mask) {
+		dev->dma_mask = *sachip->dev->dma_mask;
+		dev->dev.dma_mask = &dev->dma_mask;
+
+		if (dev->dma_mask != 0xffffffffUL) {
+			ret = dmabounce_register_dev(&dev->dev, 1024, 4096);
+			if (ret) {
+				printk("SA1111: Failed to register %s with dmabounce", dev->dev.bus_id);
+			}
+		}
+	}
+
 	ret = request_resource(parent, &dev->res);
 	if (ret) {
 		printk("SA1111: failed to allocate resource for %s\n",

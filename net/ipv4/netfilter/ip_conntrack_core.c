@@ -332,6 +332,13 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	 * too. */
 	ip_ct_remove_expectations(ct);
 
+	#if defined(CONFIG_IP_NF_MATCH_LAYER7) || defined(CONFIG_IP_NF_MATCH_LAYER7_MODULE)
+	if(ct->layer7.app_proto)
+		kfree(ct->layer7.app_proto);
+	if(ct->layer7.app_data)
+		kfree(ct->layer7.app_data);
+	#endif
+
 	/* We overload first tuple to link into unconfirmed list. */
 	if (!is_confirmed(ct)) {
 		BUG_ON(list_empty(&ct->tuplehash[IP_CT_DIR_ORIGINAL].list));

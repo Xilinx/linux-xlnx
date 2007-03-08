@@ -73,7 +73,7 @@
  * too old from the very beginning.
  */
 #if (__GNUC__ < 3) || (__GNUC__ == 3 && __GNUC_MINOR__ < 2)
-#error Sorry, your GCC is too old. It builds incorrect kernels.
+#warning Sorry, your GCC is too old. It may build incorrect kernels.
 #endif
 
 #if __GNUC__ == 4 && __GNUC_MINOR__ == 1 && __GNUC_PATCHLEVEL__ == 0

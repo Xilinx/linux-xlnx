@@ -3348,6 +3348,14 @@ void *__init alloc_large_system_hash(const char *tablename,
 	if (numentries > max)
 		numentries = max;
 
+	/*
+	 * we will allocate at least a page (even on low memory systems)
+	 * so do a fixup here to ensure we utilise the space that will be
+	 * allocated,  this also prevents us reporting -ve orders
+	 */
+	if (bucketsize * numentries < PAGE_SIZE)
+		numentries = (PAGE_SIZE + bucketsize - 1) / bucketsize;
+
 	log2qty = ilog2(numentries);
 
 	do {

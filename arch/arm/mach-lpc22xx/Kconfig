@@ -1,0 +1,50 @@
+#	linux/arch/arm/mach-lpc22xx/Kconfig	
+#	Copyright (C) 2004 Philips Semiconductors
+#
+
+
+menu "LPC22xx Options"
+	depends on ARCH_LPC22XX
+
+config MACH_LPC22XX
+	bool
+	default y
+	help
+		Phillips LPC22XX Family
+
+config ARCH_SUPPORTS_BIG_ENDIAN
+    bool "Default Big Endian mode"
+    default n
+	help
+	LPC22xx core supports LITTLE-ENDIAN only,
+	both for CPU core and the external memory access.
+
+config LPC22xx_Fosc
+    int	"Oscillator Frequency"
+    default 10000000
+    help
+	Oscillator frequency. The defualt is 10MHz. 
+	Change it according to your board.
+	(PhyCORE HD200 Dev board(LPC22xx) use 10MHZ Oscillator)
+	
+config ARM_CLK
+	int 'Arm Core Clock'
+	default 40000000
+	help
+	CPU core clock frequency. The default is 40MHz.
+	Change it according to your application needs.
+
+config SKIP_DUMP_CPU_INFO
+	bool
+	default	y 
+	help
+	LPC22xx(ARM7TDMI) core has no cache and does not support cache size
+	recognition instructions which uses MMU features.
+
+config REMAP_VECTORS_TO_RAM
+	bool "Remap Vectors to external RAM"
+	default n
+	help
+	LPC22xx suppports ROM and RAM remap function. 
+
+endmenu

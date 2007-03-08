@@ -48,14 +48,24 @@
 
 #define INTCP_PA_CLCD_BASE		0xc0000000
 
+#ifdef CONFIG_MMU
 #define INTCP_VA_CIC_BASE		0xf1000040
 #define INTCP_VA_PIC_BASE		0xf1400000
 #define INTCP_VA_SIC_BASE		0xfca00000
+#else
+#define INTCP_VA_CIC_BASE		0x10000040
+#define INTCP_VA_PIC_BASE		0x14000000
+#define INTCP_VA_SIC_BASE		0xca000000
+#endif
 
 #define INTCP_PA_ETH_BASE		0xc8000000
 #define INTCP_ETH_SIZE			0x10
 
+#ifdef CONFIG_MMU
 #define INTCP_VA_CTRL_BASE		0xfcb00000
+#else
+#define INTCP_VA_CTRL_BASE		0xcb000000
+#endif
 #define INTCP_FLASHPROG			0x04
 #define CINTEGRATOR_FLASHPROG_FLVPPEN	(1 << 0)
 #define CINTEGRATOR_FLASHPROG_FLWREN	(1 << 1)
@@ -73,6 +83,7 @@
  * f1b00000	1b000000	GPIO
  */
 
+#ifdef CONFIG_MMU
 static struct map_desc intcp_io_desc[] __initdata = {
 	{
 		.virtual	= IO_ADDRESS(INTEGRATOR_HDR_BASE),
@@ -136,6 +147,7 @@ static void __init intcp_map_io(void)
 {
 	iotable_init(intcp_io_desc, ARRAY_SIZE(intcp_io_desc));
 }
+#endif
 
 #define cic_writel	__raw_writel
 #define cic_readl	__raw_readl
@@ -393,8 +405,8 @@ static struct platform_device *intcp_devs[] __initdata = {
  */
 static unsigned int mmc_status(struct device *dev)
 {
-	unsigned int status = readl(0xfca00004);
-	writel(8, 0xfcb00008);
+	unsigned int status = readl(INTCP_VA_SIC_BASE + 4);
+	writel(8, INTCP_VA_CTRL_BASE + 8);
 
 	return status & 8;
 }
@@ -581,9 +593,13 @@ static struct sys_timer cp_timer = {
 MACHINE_START(CINTEGRATOR, "ARM-IntegratorCP")
 	/* Maintainer: ARM Ltd/Deep Blue Solutions Ltd */
 	.phys_io	= 0x16000000,
+#ifdef CONFIG_MMU
 	.io_pg_offst	= ((0xf1600000) >> 18) & 0xfffc,
+#endif
 	.boot_params	= 0x00000100,
+#ifdef CONFIG_MMU
 	.map_io		= intcp_map_io,
+#endif
 	.init_irq	= intcp_init_irq,
 	.timer		= &cp_timer,
 	.init_machine	= intcp_init,

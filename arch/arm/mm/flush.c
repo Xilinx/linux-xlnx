@@ -13,6 +13,9 @@
 
 #include <asm/cacheflush.h>
 #include <asm/system.h>
+
+#ifdef CONFIG_MMU
+
 #include <asm/tlbflush.h>
 
 #include "mm.h"
@@ -116,6 +119,9 @@ void flush_ptrace_access(struct vm_area_struct *vma, struct page *page,
 #else
 #define flush_pfn_alias(pfn,vaddr)	do { } while (0)
 #endif
+#else
+#define flush_pfn_alias(pfn,vaddr)	do { } while (0)
+#endif /* CONFIG_MMU */
 
 void __flush_dcache_page(struct address_space *mapping, struct page *page)
 {

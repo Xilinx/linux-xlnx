@@ -1,0 +1,13 @@
+if ARCH_S3C24A0
+
+menu "S3C24A0 Implementations" 
+
+config ARCH_SMDK24A0 
+        bool "Meritek SMDK24A0" 
+     
+config ARCH_SPJ
+        depends on ARCH_SMDK24A0 
+        bool "Bluetek SPJ Daughter Board for SMDK24A0" 
+endmenu 
+
+endif 

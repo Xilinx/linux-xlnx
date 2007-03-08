@@ -616,6 +616,15 @@ S: Stanford University
 S: Stanford, California 94305
 S: USA
 
+N: Hyok S. Choi
+W: http://opensrc.sec.samsung.com/
+E: hyok.choi@samsung.com
+D: Author and Maintainer of uClinux/ARM port (MPU/noMMU)
+D: Author of DCC(JTAG1) serial console emulation driver
+S: Samsung Electronics Co.,Ltd.
+S: Suwon, Gyeonggi, 443-742
+S: South Korea
+
 N: Randolph Chung
 E: tausq@debian.org
 D: Linux/PA-RISC hacker

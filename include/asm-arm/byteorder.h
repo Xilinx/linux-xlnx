@@ -11,6 +11,8 @@
  *  0 = d24...d31, 1 = d16...d23, 2 = d8...d15, 3 = d0...d7
  * and word accesses (data or instruction) appear as:
  *  d0...d31
+ * 
+ * modified for some compatibility trouble with 2.9x GCC by Hyok S. Choi
  */
 #ifndef __ASM_ARM_BYTEORDER_H
 #define __ASM_ARM_BYTEORDER_H
@@ -46,6 +48,12 @@ static inline __attribute_const__ __u32 ___arch__swab32(__u32 x)
 #if !defined(__STRICT_ANSI__) || defined(__KERNEL__)
 #  define __BYTEORDER_HAS_U64__
 #  define __SWAB_64_THRU_32__
+#endif
+
+#if !defined(__KERNEL__)
+# ifndef __attribute_const__
+#  define __attribute_const__    /* unimplemented */
+# endif
 #endif
 
 #ifdef __ARMEB__

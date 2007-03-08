@@ -1,0 +1,24 @@
+# Platfrom drivers configuration
+
+source "arch/nios2nommu/drivers/pci/Kconfig"
+
+config FB_ALTERA
+	tristate "Avalon VGA controller support"
+	select FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This is the frame buffer device driver for the VGA controller 
+	  in SOPC Builder.
+
+config SERIO_ALTPS2
+	tristate "PS2 controller"
+	select SERIO
+
+config I2C_GPIO
+	tristate "GPIO-Based I2C Interface"
+	select I2C
+	select I2C_ALGOBIT
+	help
+	  Say Y here if you use GPIO lines for an I2C bus.

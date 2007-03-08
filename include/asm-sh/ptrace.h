@@ -85,6 +85,7 @@ struct pt_dspregs {
 #define	PTRACE_SETDSPREGS	56
 
 #ifdef __KERNEL__
+#define user_stack(regs) ((regs)->regs[15])
 #define user_mode(regs) (((regs)->sr & 0x40000000)==0)
 #define instruction_pointer(regs) ((regs)->pc)
 extern void show_regs(struct pt_regs *);

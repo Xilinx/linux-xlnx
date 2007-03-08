@@ -56,6 +56,13 @@ config MTD_NAND_SPIA
 	depends on ARCH_P720T && MTD_NAND
 	help
 	  If you had to ask, you don't have one. Say 'N'.
+	  
+config MTD_NAND_M5329
+	tristate "NAND Flash device on M5329 board"
+	depends on M5329EVB && MTD_NAND
+	help
+	  If you had to ask, you don't have one. Say 'N'.  
+	  
 
 config MTD_NAND_AMS_DELTA
 	tristate "NAND Flash device on Amstrad E3"

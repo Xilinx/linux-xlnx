@@ -409,6 +409,12 @@ config INET_TUNNEL
 	tristate
 	default n
 
+config IPSEC_NAT_TRAVERSAL
+	bool "IPSEC NAT-Traversal (KLIPS compatible)"
+	depends on INET
+	---help---
+          Includes support for RFC3947/RFC3948 NAT-Traversal of ESP over UDP.
+
 config INET_XFRM_MODE_TRANSPORT
 	tristate "IP: IPsec transport mode"
 	default y

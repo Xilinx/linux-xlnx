@@ -1,35 +1,65 @@
 /*
- *  linux/arch/arm/mm/arm940.S: utility functions for ARM940T
- *
- *  Copyright (C) 2004-2006 Hyok S. Choi (hyok.choi@samsung.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
+ *  linux/arch/armnommu/mm/arm940.S: MPU functions for ARM940
+ *  2001 Minspeed
+ * 
+ *  2004/03/22  modified for 2.6 kernel by heechul.yun@samsung.com 
+ *  2004/04/20  clean-up by Hyok S. Choi
  */
+	
 #include <linux/linkage.h>
-#include <linux/init.h>
+#include <linux/init.h>	
 #include <asm/assembler.h>
 #include <asm/elf.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
+#include "proc-macros.S"
 
-/* ARM940T has a 4KB DCache comprising 256 lines of 4 words */
-#define CACHE_DLINESIZE	16
-#define CACHE_DSEGMENTS	4
-#define CACHE_DENTRIES	64
+	/* FIXME - this is also defined in cache-v4wb.S */ 
+#define CACHE_DSIZE	4096	/* 4K */
+#define CACHE_DLINESIZE	16	/* 4word */
+#define CACHE_DLIMIT	(CACHE_DSIZE * 4)
 
-	.text
+/*
+ * cpu_arm940_data_abort()
+ *
+ * obtain information about current aborted instruction
+ *
+ * r0 = address of aborted instruction
+ *
+ * Returns:
+ *  r0 = address of abort
+ *  r1 != 0 if writing
+ *  r3 = FSR
+ */
+	.align	5
+ENTRY(cpu_arm940_data_abort)
+	mrc	p15, 0, r3, c5, c0, 0		@ get FSR
+	mrc	p15, 0, r0, c6, c0, 0		@ get FAR
+	ldr	r1, [r0]			@ read aborted instruction
+	tst	r1, r1, lsr #21			@ C = bit 20
+	sbc	r1, r1, r1			@ r1 = C - 1
+	and	r3, r3, #255
+	mov	pc, lr
+
+/*
+ * cpu_arm940_check_bugs()
+ */
+ENTRY(cpu_arm940_check_bugs)
+	mrs	ip, cpsr
+	bic	ip, ip, #PSR_F_BIT
+	msr	cpsr, ip
+	mov	pc, lr
+
 /*
  * cpu_arm940_proc_init()
- * cpu_arm940_switch_mm()
- *
- * These are not required.
+ *	
+ *  setup_processor()  - setup.c
+ *  +-> cpu_proc_init() - cpu-multi32.h --> proc-arm940.S
+ *	
+ *  TODO: cp15 initialization code can be placed here - hcyun 
  */
 ENTRY(cpu_arm940_proc_init)
-ENTRY(cpu_arm940_switch_mm)
 	mov	pc, lr
 
 /*
@@ -39,278 +69,92 @@ ENTRY(cpu_arm940_proc_fin)
 	stmfd	sp!, {lr}
 	mov	ip, #PSR_F_BIT | PSR_I_BIT | SVC_MODE
 	msr	cpsr_c, ip
-	bl	arm940_flush_kern_cache_all
+#if defined(CONFIG_CPU_CACHE_V4WT)
+	bl	v4wt_flush_kern_cache_all	@ write-through
+#elif defined(CONFIG_CPU_CACHE_V4WB)
+	bl	v4wb_flush_kern_cache_all	@ write-back
+#endif /* CONFIG_CPU_CACHE_V4WT */
 	mrc	p15, 0, r0, c1, c0, 0		@ ctrl register
-	bic	r0, r0, #0x00001000		@ i-cache
-	bic	r0, r0, #0x00000004		@ d-cache
+	bic	r0, r0, #0x1000			@ ...i............
+	bic	r0, r0, #0x000e			@ ............wca.
 	mcr	p15, 0, r0, c1, c0, 0		@ disable caches
 	ldmfd	sp!, {pc}
 
 /*
  * cpu_arm940_reset(loc)
- * Params  : r0 = address to jump to
- * Notes   : This sets up everything for a reset
+ *
+ * Perform a soft reset of the system.  Put the CPU into the
+ * same state as it would be if it had been reset, and branch
+ * to what would be the reset vector.
+ *
+ * loc: location to jump to for soft reset
  */
 ENTRY(cpu_arm940_reset)
 	mov	ip, #0
-	mcr	p15, 0, ip, c7, c5, 0		@ flush I cache
-	mcr	p15, 0, ip, c7, c6, 0		@ flush D cache
-	mcr	p15, 0, ip, c7, c10, 4		@ drain WB
+	mcr	p15, 0, ip, c7, c7, 0		@ invalidate I,D caches
 	mrc	p15, 0, ip, c1, c0, 0		@ ctrl register
-	bic	ip, ip, #0x00000005		@ .............c.p
-	bic	ip, ip, #0x00001000		@ i-cache
+	bic	ip, ip, #0x000f			@ ............wcam
+	bic	ip, ip, #0x1100			@ ...i...s........
 	mcr	p15, 0, ip, c1, c0, 0		@ ctrl register
 	mov	pc, r0
 
 /*
- * cpu_arm940_do_idle()
+ * idle mode processing 
  */
-	.align	5
-ENTRY(cpu_arm940_do_idle)
+ENTRY(cpu_arm940_do_idle)  
+#if defined(CONFIG_CPU_ARM940_CPU_IDLE)
 	mcr	p15, 0, r0, c7, c0, 4		@ Wait for interrupt
-	mov	pc, lr
-
-/*
- *	flush_user_cache_all()
- */
-ENTRY(arm940_flush_user_cache_all)
-	/* FALLTHROUGH */
-
-/*
- *	flush_kern_cache_all()
- *
- *	Clean and invalidate the entire cache.
- */
-ENTRY(arm940_flush_kern_cache_all)
-	mov	r2, #VM_EXEC
-	/* FALLTHROUGH */
-
-/*
- *	flush_user_cache_range(start, end, flags)
- *
- *	There is no efficient way to flush a range of cache entries
- *	in the specified address range. Thus, flushes all.
- *
- *	- start	- start address (inclusive)
- *	- end	- end address (exclusive)
- *	- flags	- vm_flags describing address space
- */
-ENTRY(arm940_flush_user_cache_range)
-	mov	ip, #0
-#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
-	mcr	p15, 0, ip, c7, c6, 0		@ flush D cache
-#else
-	mov	r1, #(CACHE_DSEGMENTS - 1) << 4	@ 4 segments
-1:	orr	r3, r1, #(CACHE_DENTRIES - 1) << 26 @ 64 entries
-2:	mcr	p15, 0, r3, c7, c14, 2		@ clean/flush D index
-	subs	r3, r3, #1 << 26
-	bcs	2b				@ entries 63 to 0
-	subs	r1, r1, #1 << 4
-	bcs	1b				@ segments 3 to 0
 #endif
-	tst	r2, #VM_EXEC
-	mcrne	p15, 0, ip, c7, c5, 0		@ invalidate I cache
-	mcrne	p15, 0, ip, c7, c10, 4		@ drain WB
 	mov	pc, lr
 
-/*
- *	coherent_kern_range(start, end)
- *
- *	Ensure coherency between the Icache and the Dcache in the
- *	region described by start, end.  If you have non-snooping
- *	Harvard caches, you need to implement this function.
- *
- *	- start	- virtual start address
- *	- end	- virtual end address
- */
-ENTRY(arm940_coherent_kern_range)
-	/* FALLTHROUGH */
-
-/*
- *	coherent_user_range(start, end)
- *
- *	Ensure coherency between the Icache and the Dcache in the
- *	region described by start, end.  If you have non-snooping
- *	Harvard caches, you need to implement this function.
- *
- *	- start	- virtual start address
- *	- end	- virtual end address
- */
-ENTRY(arm940_coherent_user_range)
-	/* FALLTHROUGH */
-
-/*
- *	flush_kern_dcache_page(void *page)
- *
- *	Ensure no D cache aliasing occurs, either with itself or
- *	the I cache
- *
- *	- addr	- page aligned address
- */
-ENTRY(arm940_flush_kern_dcache_page)
-	mov	ip, #0
-	mov	r1, #(CACHE_DSEGMENTS - 1) << 4	@ 4 segments
-1:	orr	r3, r1, #(CACHE_DENTRIES - 1) << 26 @ 64 entries
-2:	mcr	p15, 0, r3, c7, c14, 2		@ clean/flush D index
-	subs	r3, r3, #1 << 26
-	bcs	2b				@ entries 63 to 0
-	subs	r1, r1, #1 << 4
-	bcs	1b				@ segments 7 to 0
-	mcr	p15, 0, ip, c7, c5, 0		@ invalidate I cache
-	mcr	p15, 0, ip, c7, c10, 4		@ drain WB
-	mov	pc, lr
-
-/*
- *	dma_inv_range(start, end)
- *
- *	There is no efficient way to invalidate a specifid virtual
- *	address range. Thus, invalidates all.
- *
- *	- start	- virtual start address
- *	- end	- virtual end address
- */
-ENTRY(arm940_dma_inv_range)
-	mov	ip, #0
-	mov	r1, #(CACHE_DSEGMENTS - 1) << 4	@ 4 segments
-1:	orr	r3, r1, #(CACHE_DENTRIES - 1) << 26 @ 64 entries
-2:	mcr	p15, 0, r3, c7, c6, 2		@ flush D entry
-	subs	r3, r3, #1 << 26
-	bcs	2b				@ entries 63 to 0
-	subs	r1, r1, #1 << 4
-	bcs	1b				@ segments 7 to 0
-	mcr	p15, 0, ip, c7, c10, 4		@ drain WB
-	mov	pc, lr
-
-/*
- *	dma_clean_range(start, end)
- *
- *	There is no efficient way to clean a specifid virtual
- *	address range. Thus, cleans all.
- *
- *	- start	- virtual start address
- *	- end	- virtual end address
- */
-ENTRY(arm940_dma_clean_range)
+/* 
+ * *FIXME* 
+ */ 	
 ENTRY(cpu_arm940_dcache_clean_area)
-	mov	ip, #0
-#ifndef CONFIG_CPU_DCACHE_WRITETHROUGH
-	mov	r1, #(CACHE_DSEGMENTS - 1) << 4	@ 4 segments
-1:	orr	r3, r1, #(CACHE_DENTRIES - 1) << 26 @ 64 entries
-2:	mcr	p15, 0, r3, c7, c10, 2		@ clean D entry
-	subs	r3, r3, #1 << 26
-	bcs	2b				@ entries 63 to 0
-	subs	r1, r1, #1 << 4
-	bcs	1b				@ segments 7 to 0
-#endif
-	mcr	p15, 0, ip, c7, c10, 4		@ drain WB
+1:	mcr	p15, 0, r0, c7, c10, 1		@ clean D entry
+	add	r0, r0, #CACHE_DLINESIZE
+	subs	r1, r1, #CACHE_DLINESIZE
+	bhi	1b
 	mov	pc, lr
-
 /*
- *	dma_flush_range(start, end)
- *
- *	There is no efficient way to clean and invalidate a specifid
- *	virtual address range.
- *
- *	- start	- virtual start address
- *	- end	- virtual end address
- */
-ENTRY(arm940_dma_flush_range)
-	mov	ip, #0
-	mov	r1, #(CACHE_DSEGMENTS - 1) << 4	@ 4 segments
-1:	orr	r3, r1, #(CACHE_DENTRIES - 1) << 26 @ 64 entries
-2:
-#ifndef CONFIG_CPU_DCACHE_WRITETHROUGH
-	mcr	p15, 0, r3, c7, c14, 2		@ clean/flush D entry
-#else
-	mcr	p15, 0, r3, c7, c10, 2		@ clean D entry
-#endif
-	subs	r3, r3, #1 << 26
-	bcs	2b				@ entries 63 to 0
-	subs	r1, r1, #1 << 4
-	bcs	1b				@ segments 7 to 0
-	mcr	p15, 0, ip, c7, c10, 4		@ drain WB
-	mov	pc, lr
+ * Function: arm940_switch_mm(unsigned long pgd_phys)
+ * Params  : pgd_phys	Physical address of page table
+ * Purpose : Perform a task switch, 
+ */	
+ENTRY(cpu_arm940_switch_mm)
+	mov	pc, lr	
 
-ENTRY(arm940_cache_fns)
-	.long	arm940_flush_kern_cache_all
-	.long	arm940_flush_user_cache_all
-	.long	arm940_flush_user_cache_range
-	.long	arm940_coherent_kern_range
-	.long	arm940_coherent_user_range
-	.long	arm940_flush_kern_dcache_page
-	.long	arm940_dma_inv_range
-	.long	arm940_dma_clean_range
-	.long	arm940_dma_flush_range
-
+	
+	/* .section ".text.init", #alloc, #execinstr */ 
 	__INIT
-
-	.type	__arm940_setup, #function
+	
 __arm940_setup:
-	mov	r0, #0
-	mcr	p15, 0, r0, c7, c5, 0		@ invalidate I cache
-	mcr	p15, 0, r0, c7, c6, 0		@ invalidate D cache
-	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
-
-	mcr	p15, 0, r0, c6, c3, 0		@ disable data area 3~7
-	mcr	p15, 0, r0, c6, c4, 0
-	mcr	p15, 0, r0, c6, c5, 0
-	mcr	p15, 0, r0, c6, c6, 0
-	mcr	p15, 0, r0, c6, c7, 0
-
-	mcr	p15, 0, r0, c6, c3, 1		@ disable instruction area 3~7
-	mcr	p15, 0, r0, c6, c4, 1
-	mcr	p15, 0, r0, c6, c5, 1
-	mcr	p15, 0, r0, c6, c6, 1
-	mcr	p15, 0, r0, c6, c7, 1
-
-	mov	r0, #0x0000003F			@ base = 0, size = 4GB
-	mcr	p15, 0, r0, c6,	c0, 0		@ set area 0, default
-	mcr	p15, 0, r0, c6,	c0, 1
-
-	ldr	r0, =(CONFIG_DRAM_BASE & 0xFFFFF000) @ base[31:12] of RAM
-	ldr	r1, =(CONFIG_DRAM_SIZE >> 12)	@ size of RAM (must be >= 4KB)
-	mov	r2, #10				@ 11 is the minimum (4KB)
-1:	add	r2, r2, #1			@ area size *= 2
-	mov	r1, r1, lsr #1
-	bne	1b				@ count not zero r-shift
-	orr	r0, r0, r2, lsl #1		@ the area register value
-	orr	r0, r0, #1			@ set enable bit
-	mcr	p15, 0, r0, c6,	c1, 0		@ set area 1, RAM
-	mcr	p15, 0, r0, c6,	c1, 1
-
-	ldr	r0, =(CONFIG_FLASH_MEM_BASE & 0xFFFFF000) @ base[31:12] of FLASH
-	ldr	r1, =(CONFIG_FLASH_SIZE >> 12)	@ size of FLASH (must be >= 4KB)
-	mov	r2, #10				@ 11 is the minimum (4KB)
-1:	add	r2, r2, #1			@ area size *= 2
-	mov	r1, r1, lsr #1
-	bne	1b				@ count not zero r-shift
-	orr	r0, r0, r2, lsl #1		@ the area register value
-	orr	r0, r0, #1			@ set enable bit
-	mcr	p15, 0, r0, c6,	c2, 0		@ set area 2, ROM/FLASH
-	mcr	p15, 0, r0, c6,	c2, 1
-
-	mov	r0, #0x06
-	mcr	p15, 0, r0, c2, c0, 0		@ Region 1&2 cacheable
-	mcr	p15, 0, r0, c2, c0, 1
-#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
-	mov	r0, #0x00			@ disable whole write buffer
+	MRC     p15, 0, R0, c1, c0, 0		@ get control register
+		
+/*
+ * Clear out 'unwanted' bits (then put them in if we need them)
+ */
+	bic	r0, r0, #0x0e00			@ ....??r.........
+	bic	r0, r0, #0x0002			@ ..............a.
+	bic	r0, r0, #0x000c			@ W,D
+	bic	r0, r0, #0x1000			@ I
+/*
+ * Turn on what we want
+ */
+#ifdef CONFIG_CPU_MXU_ENABLE
+	orr	r0, r0, #0x0001			@ Enable PU
 #else
-	mov	r0, #0x02			@ Region 1 write bufferred
+	bic	r0, r0, #0x0001			@ Disable PU
 #endif
-	mcr	p15, 0, r0, c3, c0, 0
 
-	mov	r0, #0x10000
-	sub	r0, r0, #1			@ r0 = 0xffff
-	mcr	p15, 0, r0, c5, c0, 0		@ all read/write access
-	mcr	p15, 0, r0, c5, c0, 1
-
-	mrc	p15, 0, r0, c1, c0		@ get control register
-	orr	r0, r0, #0x00001000		@ I-cache
-	orr	r0, r0, #0x00000005		@ MPU/D-cache
-
+#ifdef CONFIG_CPU_ARM940_D_CACHE_ON
+	orr	r0, r0, #0x0004			@ Enable D cache
+#endif
+#ifdef CONFIG_CPU_ARM940_I_CACHE_ON
+	orr	r0, r0, #0x1000                 @ I Cache on
+#endif
 	mov	pc, lr
-
-	.size	__arm940_setup, . - __arm940_setup
+	.size	__arm940_setup, . - __arm940_setup	
 
 	__INITDATA
 
@@ -320,19 +164,18 @@ __arm940_setup:
  */
 	.type	arm940_processor_functions, #object
 ENTRY(arm940_processor_functions)
-	.word	nommu_early_abort
+	.word	cpu_arm940_data_abort
 	.word	cpu_arm940_proc_init
 	.word	cpu_arm940_proc_fin
 	.word	cpu_arm940_reset
 	.word   cpu_arm940_do_idle
+
 	.word	cpu_arm940_dcache_clean_area
 	.word	cpu_arm940_switch_mm
-	.word	0		@ cpu_*_set_pte
 	.size	arm940_processor_functions, . - arm940_processor_functions
 
-	.section ".rodata"
-
-.type	cpu_arch_name, #object
+	.section ".rodata"	
+	.type	cpu_arch_name, #object
 cpu_arch_name:
 	.asciz	"armv4t"
 	.size	cpu_arch_name, . - cpu_arch_name
@@ -349,21 +192,26 @@ cpu_arm940_name:
 
 	.align
 
-	.section ".proc.info.init", #alloc, #execinstr
 
+	.section ".proc.info.init", #alloc, #execinstr
 	.type	__arm940_proc_info,#object
 __arm940_proc_info:
 	.long	0x41009400
 	.long	0xff00fff0
 	.long	0
+	.long	0
 	b	__arm940_setup
 	.long	cpu_arch_name
 	.long	cpu_elf_name
-	.long	HWCAP_SWP | HWCAP_HALF | HWCAP_THUMB
-	.long	cpu_arm940_name
-	.long	arm940_processor_functions
+	.long	HWCAP_SWP | HWCAP_HALF | HWCAP_26BIT
+	.long	cpu_arm940_name  
+	.long	arm940_processor_functions 
 	.long	0
 	.long	0
-	.long	arm940_cache_fns
+#if defined(CONFIG_CPU_CACHE_V4WT)
+	.long	v4wt_cache_fns			@ cache model
+#elif defined(CONFIG_CPU_CACHE_V4WB)
+	.long	v4wb_cache_fns			@ cache model
+#endif /* CONFIG_CPU_CACHE_V4WT */
 	.size	__arm940_proc_info, . - __arm940_proc_info
 

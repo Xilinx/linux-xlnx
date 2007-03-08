@@ -35,7 +35,7 @@ static struct resource sh7751_io_resource = {
 static struct resource sh7751_mem_resource = {
 	.name		= "SH7751 mem",
 	.start		= SNAPGEAR_PCI_MEM,
-	.end		= SNAPGEAR_PCI_MEM + (64*1024*1024) - 1, /* 64MiB mem */
+	.end		= SNAPGEAR_PCI_MEM + (32*1024*1024) - 1, /* 32MiB mem */
 	.flags		= IORESOURCE_MEM,
 };
 

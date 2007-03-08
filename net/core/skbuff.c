@@ -149,6 +149,9 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	struct sk_buff *skb;
 	u8 *data;
 
+#if defined(CONFIG_ARCH_IXP4XX)
+	gfp_mask |= GFP_DMA;
+#endif
 	cache = fclone ? skbuff_fclone_cache : skbuff_head_cache;
 
 	/* Get the HEAD */

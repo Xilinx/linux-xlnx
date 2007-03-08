@@ -7,11 +7,12 @@
 struct pt_regs;
 struct kbd_repeat;
 struct mktime;
-struct hwclk_time;
+struct rtc_time;
+struct rtc_pll_info;
 struct gendisk;
 struct buffer_head;
 
-extern void (*mach_sched_init) (irqreturn_t (*handler)(int, void *, struct pt_regs *));
+extern void (*mach_sched_init) (irq_handler_t handler);
 /* machine dependent keyboard functions */
 extern int (*mach_keyb_init) (void);
 extern int (*mach_kbdrate) (struct kbd_repeat *);
@@ -30,8 +31,11 @@ extern void (*mach_process_int) (int irq, struct pt_regs *fp);
 extern unsigned long (*mach_gettimeoffset)(void);
 extern void (*mach_gettod)(int *year, int *mon, int *day, int *hour,
 			   int *min, int *sec);
-extern int (*mach_hwclk)(int, struct hwclk_time*);
+extern int (*mach_hwclk)(int, struct rtc_time*);
 extern int (*mach_set_clock_mmss)(unsigned long);
+extern unsigned int (*mach_get_ss)(void);
+extern int (*mach_get_rtc_pll)(struct rtc_pll_info *pll);
+extern int (*mach_set_rtc_pll)(struct rtc_pll_info *pll);
 extern void (*mach_reset)( void );
 extern void (*mach_halt)( void );
 extern void (*mach_power_off)( void );

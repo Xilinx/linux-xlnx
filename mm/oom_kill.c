@@ -251,7 +251,8 @@ static struct task_struct *select_bad_process(unsigned long *ppoints)
 			*ppoints = ULONG_MAX;
 		}
 
-		if (p->oomkilladj == OOM_DISABLE)
+		if (p->oomkilladj == OOM_DISABLE ||
+		    p->oomkilladj == OOM_DISABLE_NOINHERIT)
 			continue;
 
 		points = badness(p, uptime.tv_sec);

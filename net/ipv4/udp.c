@@ -101,11 +101,14 @@
 #include <net/route.h>
 #include <net/checksum.h>
 #include <net/xfrm.h>
+#include <net/xfrmudp.h>
 #include "udp_impl.h"
 
 /*
  *	Snmp MIB for the UDP layer
  */
+
+static xfrm4_rcv_encap_t xfrm4_rcv_encap_func;
 
 DEFINE_SNMP_STAT(struct udp_mib, udp_statistics) __read_mostly;
 
@@ -914,6 +917,47 @@ int udp_disconnect(struct sock *sk, int flags)
 	return 0;
 }
 
+static void udp_close(struct sock *sk, long timeout)
+{
+	sk_common_release(sk);
+}
+
+#if defined(CONFIG_XFRM) || defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+
+/* if XFRM isn't a module, then register it directly. */
+#if 0 && !defined(CONFIG_XFRM_MODULE) && !defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+static xfrm4_rcv_encap_t xfrm4_rcv_encap_func = xfrm4_rcv_encap;
+#else
+static xfrm4_rcv_encap_t xfrm4_rcv_encap_func = NULL;
+#endif
+
+int udp4_register_esp_rcvencap(xfrm4_rcv_encap_t func
+			       , xfrm4_rcv_encap_t *oldfunc)
+{
+  if(oldfunc != NULL) {
+    *oldfunc = xfrm4_rcv_encap_func;
+  }
+
+#if 0
+  if(xfrm4_rcv_encap_func != NULL)
+    return -1;
+#endif
+
+  xfrm4_rcv_encap_func = func;
+  return 0;
+}
+
+int udp4_unregister_esp_rcvencap(xfrm4_rcv_encap_t func)
+{
+  if(xfrm4_rcv_encap_func != func)
+    return -1;
+
+  xfrm4_rcv_encap_func = NULL;
+  return 0;
+}
+#endif /* CONFIG_XFRM_MODULE || CONFIG_IPSEC_NAT_TRAVERSAL */
+
+
 /* return:
  * 	1  if the the UDP system should process it
  *	0  if we should drop this packet
@@ -921,9 +965,9 @@ int udp_disconnect(struct sock *sk, int flags)
  */
 static int udp_encap_rcv(struct sock * sk, struct sk_buff *skb)
 {
-#ifndef CONFIG_XFRM
+#if !defined(CONFIG_XFRM) && !defined(CONFIG_IPSEC_NAT_TRAVERSAL)
 	return 1; 
-#else
+#else /* either CONFIG_XFRM or CONFIG_IPSEC_NAT_TRAVERSAL */
 	struct udp_sock *up = udp_sk(sk);
   	struct udphdr *uh;
 	struct iphdr *iph;
@@ -940,7 +984,7 @@ static int udp_encap_rcv(struct sock * sk, struct sk_buff *skb)
 
 	/* if this is not encapsulated socket, then just return now */
 	if (!encap_type)
-		return 1;
+		return 3;
 
 	/* If this is a paged skb, make sure we pull up
 	 * whatever data we need to look at. */
@@ -963,7 +1007,7 @@ static int udp_encap_rcv(struct sock * sk, struct sk_buff *skb)
 			len = sizeof(struct udphdr);
 		} else
 			/* Must be an IKE packet.. pass it through */
-			return 1;
+			return 4;
 		break;
 	case UDP_ENCAP_ESPINUDP_NON_IKE:
 		/* Check if this is a keepalive packet.  If so, eat it. */
@@ -976,7 +1020,7 @@ static int udp_encap_rcv(struct sock * sk, struct sk_buff *skb)
 			len = sizeof(struct udphdr) + 2 * sizeof(u32);
 		} else
 			/* Must be an IKE packet.. pass it through */
-			return 1;
+			return 5;
 		break;
 	}
 
@@ -985,6 +1029,8 @@ static int udp_encap_rcv(struct sock * sk, struct sk_buff *skb)
 	 * header and optional ESP marker bytes) and then modify the
 	 * protocol to ESP, and then call into the transform receiver.
 	 */
+	if (skb_cloned(skb) && pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
+		return 0;
 	if (skb_cloned(skb) && pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
 		return 0;
 
@@ -1050,9 +1096,13 @@ int udp_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
 			return 0;
 		}
 		if (ret < 0) {
-			/* process the ESP packet */
-			ret = xfrm4_rcv_encap(skb, up->encap_type);
-			UDP_INC_STATS_BH(UDP_MIB_INDATAGRAMS, up->pcflag);
+			if(xfrm4_rcv_encap_func != NULL) {
+			  ret = (*xfrm4_rcv_encap_func)(skb, up->encap_type);
+			  UDP_INC_STATS_BH(UDP_MIB_INDATAGRAMS, up->pcflag);
+			} else {
+			  UDP_INC_STATS_BH(UDP_MIB_INERRORS, up->pcflag);
+			  ret = 1;
+			}
 			return -ret;
 		}
 		/* FALLTHROUGH -- it's a UDP Packet */
@@ -1731,3 +1781,9 @@ EXPORT_SYMBOL(udp_poll);
 EXPORT_SYMBOL(udp_proc_register);
 EXPORT_SYMBOL(udp_proc_unregister);
 #endif
+
+#if defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+EXPORT_SYMBOL(udp4_register_esp_rcvencap);
+EXPORT_SYMBOL(udp4_unregister_esp_rcvencap);
+#endif
+

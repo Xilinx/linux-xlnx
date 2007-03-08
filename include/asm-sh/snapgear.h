@@ -1,5 +1,5 @@
 /*
- * include/asm-sh/snapgear/io.h
+ * include/asm-sh/snapgear.h
  *
  * Modified version of io_se.h for the snapgear-specific functions.
  *
@@ -38,6 +38,11 @@
 #define IRL3_IPR_ADDR	INTC_IPRD
 #define IRL3_IPR_POS	0
 #define IRL3_PRIORITY	4
+
+#define RTC_BASE	0xffc80000
+#define RTC_ATI_IRQ	20
+#define RTC_PRI_IRQ	21
+#define RTC_CUI_IRQ	22
 #endif
 
 #define __IO_PREFIX	snapgear

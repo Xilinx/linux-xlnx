@@ -218,6 +218,15 @@ config MTD_RAM
 	  This option enables basic support for RAM chips accessed through
 	  a bus mapping driver.
 
+config MTD_EPCS
+	tristate "Support for Altera EPCS Device"
+	depends on MTD
+	help
+	  This option enables basic support for Alteras EPCS Device. Currently, 
+	  1,4,16 and 64 MBit EPCS Devices are supported (EPCS1,EPCS4,EPCS16 and EPCS64).
+	  Driver will automatically detect an EPCS chip if present and setup the size/sector size
+	  accordingly.
+
 config MTD_ROM
 	tristate "Support for ROM chips in bus mapping"
 	depends on MTD

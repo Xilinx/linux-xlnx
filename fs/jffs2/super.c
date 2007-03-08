@@ -322,6 +322,7 @@ static struct file_system_type jffs2_fs_type = {
 	.name =		"jffs2",
 	.get_sb =	jffs2_get_sb,
 	.kill_sb =	jffs2_kill_sb,
+	.fs_flags =	FS_REQUIRES_DEV,
 };
 
 static int __init init_jffs2_fs(void)

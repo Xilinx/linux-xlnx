@@ -29,6 +29,9 @@
 #include <linux/igmp.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/if_ether.h>
+#include <linux/if_bridge.h>
+#include <linux/etherdevice.h>
+#include <linux/llc.h>
 
 #include <net/sock.h>
 #include <net/ip.h>
@@ -118,6 +121,7 @@
 
 static int ipgre_tunnel_init(struct net_device *dev);
 static void ipgre_tunnel_setup(struct net_device *dev);
+static void ipgre_ether_tunnel_setup(struct net_device *dev);
 
 /* Fallback tunnel: no source, no destination, no key, no options */
 
@@ -273,7 +277,10 @@ static struct ip_tunnel * ipgre_tunnel_locate(struct ip_tunnel_parm *parms, int 
 			goto failed;
 	}
 
-	dev = alloc_netdev(sizeof(*t), name, ipgre_tunnel_setup);
+	if (parms->iph.id == htons(ETH_P_BRIDGE))
+		dev = alloc_netdev(sizeof(*t), name, ipgre_ether_tunnel_setup);
+	else
+		dev = alloc_netdev(sizeof(*t), name, ipgre_tunnel_setup);
 	if (!dev)
 	  return NULL;
 
@@ -552,6 +559,23 @@ ipgre_ecn_encapsulate(u8 tos, struct iphdr *old_iph, struct sk_buff *skb)
 	return INET_ECN_encapsulate(tos, inner);
 }
 
+static __be16 ipgre_type_trans(struct sk_buff *skb, struct net_device *dev)
+{
+	if (skb->protocol == htons(ETH_P_BRIDGE)) {
+		if (!pskb_may_pull(skb, ETH_HLEN))
+			return 0;
+		return eth_type_trans(skb, dev);
+	}
+#if defined(CONFIG_BRIDGE) || defined (CONFIG_BRIDGE_MODULE)
+	else if (skb->protocol == htons(LLC_SAP_BSPAN)) {
+		br_stp_rcv_raw(skb, dev);
+		return 0;
+	}
+#endif
+
+	return 0;
+}
+
 static int ipgre_rcv(struct sk_buff *skb)
 {
 	struct iphdr *iph;
@@ -646,6 +670,13 @@ static int ipgre_rcv(struct sk_buff *skb)
 			}
 			tunnel->i_seqno = seqno + 1;
 		}
+		if (tunnel->dev->type == ARPHRD_ETHER) {
+			skb->protocol = ipgre_type_trans(skb, tunnel->dev);
+			if (!skb->protocol) {
+				tunnel->stat.rx_errors++;
+				goto drop;
+			}
+		}
 		tunnel->stat.rx_packets++;
 		tunnel->stat.rx_bytes += skb->len;
 		skb->dev = tunnel->dev;
@@ -687,11 +718,18 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_error;
 	}
 
-	if (dev->hard_header) {
-		gre_hlen = 0;
+	if (dev->type == ARPHRD_ETHER) {
+		skb->protocol = htons(ETH_P_BRIDGE);
+		gre_hlen = tunnel->hlen - ETH_HLEN;
+		push_hlen = gre_hlen;
+		tiph = &tunnel->parms.iph;
+	} else if (dev->hard_header) {
+		gre_hlen = tunnel->hlen;
+		push_hlen = 0;
 		tiph = (struct iphdr*)skb->data;
 	} else {
 		gre_hlen = tunnel->hlen;
+		push_hlen = gre_hlen;
 		tiph = &tunnel->parms.iph;
 	}
 
@@ -793,7 +831,8 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 			}
 		}
 
-		if (mtu >= IPV6_MIN_MTU && mtu < skb->len - tunnel->hlen + gre_hlen) {
+		if (mtu >= IPV6_MIN_MTU &&
+		    mtu < skb->len - tunnel->hlen + push_hlen) {
 			icmpv6_send(skb, ICMPV6_PKT_TOOBIG, 0, mtu, dev);
 			ip_rt_put(rt);
 			goto tx_error;
@@ -810,7 +849,7 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 			tunnel->err_count = 0;
 	}
 
-	max_headroom = LL_RESERVED_SPACE(tdev) + gre_hlen;
+	max_headroom = LL_RESERVED_SPACE(tdev) + push_hlen;
 
 	if (skb_headroom(skb) < max_headroom || skb_cloned(skb) || skb_shared(skb)) {
 		struct sk_buff *new_skb = skb_realloc_headroom(skb, max_headroom);
@@ -829,7 +868,7 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	skb->h.raw = skb->nh.raw;
-	skb->nh.raw = skb_push(skb, gre_hlen);
+	skb->nh.raw = skb_push(skb, push_hlen);
 	memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
 	IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED |
 			      IPSKB_REROUTED);
@@ -936,6 +975,8 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 		    p.iph.ihl != 5 || (p.iph.frag_off&htons(~IP_DF)) ||
 		    ((p.i_flags|p.o_flags)&(GRE_VERSION|GRE_ROUTING)))
 			goto done;
+		if (p.iph.id != 0 && p.iph.id != htons(ETH_P_BRIDGE))
+			goto done;
 		if (p.iph.ttl)
 			p.iph.frag_off |= htons(IP_DF);
 
@@ -957,7 +998,9 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 
 				t = netdev_priv(dev);
 
-				if (MULTICAST(p.iph.daddr))
+				if (t->dev->type == ARPHRD_ETHER)
+					nflags = IFF_BROADCAST;
+				else if (MULTICAST(p.iph.daddr))
 					nflags = IFF_BROADCAST;
 				else if (p.iph.daddr)
 					nflags = IFF_POINTOPOINT;
@@ -1148,6 +1191,18 @@ static void ipgre_tunnel_setup(struct net_device *dev)
 	dev->addr_len		= 4;
 }
 
+static void ipgre_ether_tunnel_setup(struct net_device *dev)
+{
+	ether_setup(dev);
+
+	SET_MODULE_OWNER(dev);
+	dev->uninit		= ipgre_tunnel_uninit;
+	dev->destructor 	= free_netdev;
+	dev->hard_start_xmit	= ipgre_tunnel_xmit;
+	dev->get_stats		= ipgre_tunnel_get_stats;
+	dev->do_ioctl		= ipgre_tunnel_ioctl;
+}
+
 static int ipgre_tunnel_init(struct net_device *dev)
 {
 	struct net_device *tdev = NULL;
@@ -1163,8 +1218,27 @@ static int ipgre_tunnel_init(struct net_device *dev)
 	tunnel->dev = dev;
 	strcpy(tunnel->parms.name, dev->name);
 
-	memcpy(dev->dev_addr, &tunnel->parms.iph.saddr, 4);
-	memcpy(dev->broadcast, &tunnel->parms.iph.daddr, 4);
+	if (dev->type == ARPHRD_ETHER)
+		random_ether_addr(dev->dev_addr);
+	else {
+		memcpy(dev->dev_addr, &tunnel->parms.iph.saddr, 4);
+		memcpy(dev->broadcast, &tunnel->parms.iph.daddr, 4);
+	}
+
+	if (dev->type == ARPHRD_ETHER)
+		dev->flags |= IFF_BROADCAST;
+#ifdef CONFIG_NET_IPGRE_BROADCAST
+	else if (MULTICAST(iph->daddr)) {
+		if (!iph->saddr)
+			return -EINVAL;
+		dev->flags = IFF_BROADCAST;
+		dev->hard_header = ipgre_header;
+		dev->open = ipgre_open;
+		dev->stop = ipgre_close;
+	}
+#endif
+	else if (iph->daddr)
+		dev->flags |= IFF_POINTOPOINT;
 
 	/* Guess output device to choose reasonable mtu and hard_header_len */
 
@@ -1180,19 +1254,6 @@ static int ipgre_tunnel_init(struct net_device *dev)
 			tdev = rt->u.dst.dev;
 			ip_rt_put(rt);
 		}
-
-		dev->flags |= IFF_POINTOPOINT;
-
-#ifdef CONFIG_NET_IPGRE_BROADCAST
-		if (MULTICAST(iph->daddr)) {
-			if (!iph->saddr)
-				return -EINVAL;
-			dev->flags = IFF_BROADCAST;
-			dev->hard_header = ipgre_header;
-			dev->open = ipgre_open;
-			dev->stop = ipgre_close;
-		}
-#endif
 	}
 
 	if (!tdev && tunnel->parms.link)
@@ -1213,6 +1274,8 @@ static int ipgre_tunnel_init(struct net_device *dev)
 		if (tunnel->parms.o_flags&GRE_SEQ)
 			addend += 4;
 	}
+	if (dev->type == ARPHRD_ETHER)
+		addend += ETH_HLEN;
 	dev->hard_header_len = hlen + addend;
 	dev->mtu = mtu - addend;
 	tunnel->hlen = addend;

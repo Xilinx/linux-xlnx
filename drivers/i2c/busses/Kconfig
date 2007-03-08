@@ -250,6 +250,16 @@ config I2C_POWERMAC
 	  This support is also available as a module.  If so, the module
 	  will be called i2c-powermac.
 
+config I2C_MCF
+	tristate "MCF ColdFire"
+	depends on I2C && EXPERIMENTAL
+	help
+	  If you say yes to this option, support will be included for the
+	  I2C on most ColdFire CPUs
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called i2c-mcf.
+
 config I2C_MPC
 	tristate "MPC107/824x/85xx/52xx/86xx"
 	depends on I2C && PPC32

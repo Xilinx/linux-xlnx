@@ -451,7 +451,8 @@ static int reiserfs_get_block_create_0(struct inode *inode, sector_t block,
 {
 	return reiserfs_get_block(inode, block, bh_result, GET_BLOCK_NO_HOLE);
 }
-
+ 
+#ifdef CONFIG_DIRECTIO
 /* This is special helper for reiserfs_get_block in case we are executing
    direct_IO request. */
 static int reiserfs_get_blocks_direct_io(struct inode *inode,
@@ -495,6 +496,7 @@ static int reiserfs_get_blocks_direct_io(struct inode *inode,
       out:
 	return ret;
 }
+#endif
 
 /*
 ** helper function for when reiserfs_get_block is called for a hole
@@ -2886,6 +2888,7 @@ static int reiserfs_releasepage(struct page *page, gfp_t unused_gfp_flags)
 	return ret;
 }
 
+#ifdef CONFIG_DIRECTIO
 /* We thank Mingming Cao for helping us understand in great detail what
    to do in this section of the code. */
 static ssize_t reiserfs_direct_IO(int rw, struct kiocb *iocb,
@@ -2899,6 +2902,7 @@ static ssize_t reiserfs_direct_IO(int rw, struct kiocb *iocb,
 				  offset, nr_segs,
 				  reiserfs_get_blocks_direct_io, NULL);
 }
+#endif
 
 int reiserfs_setattr(struct dentry *dentry, struct iattr *attr)
 {
@@ -3010,6 +3014,8 @@ const struct address_space_operations reiserfs_address_space_operations = {
 	.prepare_write = reiserfs_prepare_write,
 	.commit_write = reiserfs_commit_write,
 	.bmap = reiserfs_aop_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO = reiserfs_direct_IO,
+#endif
 	.set_page_dirty = reiserfs_set_page_dirty,
 };

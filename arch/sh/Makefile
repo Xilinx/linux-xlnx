@@ -161,7 +161,7 @@ include/asm-sh/.mach: $(wildcard include/config/sh/*.h) \
 		      include/config/auto.conf FORCE
 	@echo -n '  SYMLINK include/asm-sh/mach -> '
 	$(Q)if [ ! -d include/asm-sh ]; then mkdir -p include/asm-sh; fi
-	$(Q)if [ -d $(incdir-prefix)$(incdir-y) ]; then \
+	$(Q)if [ -d $(srctree)/include/asm-sh/$(incdir-y) ]; then \
 		echo -e 'include/asm-sh/$(incdir-y)'; \
 		ln -fsn $(incdir-prefix)$(incdir-y) \
 			include/asm-sh/mach; \

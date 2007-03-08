@@ -1454,6 +1454,14 @@ fail:
 	return core_waiters;
 }
 
+/* for systems with sizeof(void*) == 4: */
+#define MAPS_LINE_FORMAT4	  KERN_ERR "%08lx-%08lx %s %08lx %02x:%02x %lu %s\n"
+
+/* for systems with sizeof(void*) == 8: */
+#define MAPS_LINE_FORMAT8	  KERN_ERR "%016lx-%016lx %s %016lx %02x:%02x %lu %s\n"
+
+#define MAPS_LINE_FORMAT	(sizeof(void*) == 4 ? MAPS_LINE_FORMAT4 : MAPS_LINE_FORMAT8)
+
 int do_coredump(long signr, int exit_code, struct pt_regs * regs)
 {
 	char corename[CORENAME_MAX_SIZE + 1];
@@ -1465,6 +1473,104 @@ int do_coredump(long signr, int exit_code, struct pt_regs * regs)
 	int fsuid = current->fsuid;
 	int flag = 0;
 	int ispipe = 0;
+
+#ifdef CONFIG_COREDUMP_PRINTK
+	int32_t *stack=NULL;
+	int lines=0;
+	char output_buf[80];
+	char *output = output_buf;
+	int32_t value = 0;
+
+	printk(KERN_ERR "%s[%d] killed because of sig - %ld", current->comm, 
+			current->pid, signr);
+	/* TODO
+	 * print out mmaps.
+	 */
+
+	/*
+	 * We print out the stack.  We start by pointing the stack before the
+	 * call to do_coredump.  Note that we are assuming the kernel stack is 
+	 * the same as the user stack when we are calling do_coredump.
+	 */
+	printk("\n");
+	printk(KERN_ERR"STACK DUMP:\n");
+	for (lines=0,stack=(int32_t *)user_stack(regs);(lines < 10) && 
+			(stack <= (int32_t *)current->mm->start_stack);lines++) {
+		/* print out the address */
+		output+=snprintf(output, 79-(output-output_buf), "0x%08x: ", 
+				(unsigned)stack);
+		/* now print out the stack contents */
+		for (;(stack <= (int32_t*)current->mm->start_stack) && 
+				(79-(output-output_buf) > sizeof("FFFF0000 "));stack++) {
+			copy_from_user(&value, stack, sizeof(int32_t));
+			output += snprintf(output, 79-(output-output_buf),
+					"%08x ", value);
+		}
+		output--;
+		*output++ = '\n';
+		*output = '\0';
+		printk(KERN_ERR "%s", output_buf);
+		output = output_buf;
+	}
+	show_regs(regs);
+#ifdef CONFIG_MMU
+	{
+	struct mm_struct *mm=NULL;
+	struct vm_area_struct *map;
+	char buf[PAGE_SIZE]={0};
+	int flags=0;
+	char *line;
+	dev_t dev = 0;
+	unsigned long ino = 0;
+
+	mm = current->mm;
+	if (mm) 
+		atomic_inc(&mm->mm_users);
+	if (!mm)
+		goto finished;
+
+	down_read(&mm->mmap_sem);
+	map = mm->mmap;
+
+	while (map) {
+		char str[5];
+
+		if (map->vm_file != NULL) {
+			dev = map->vm_file->f_dentry->d_inode->i_sb->s_dev;
+			ino = map->vm_file->f_dentry->d_inode->i_ino;
+			line = d_path(map->vm_file->f_dentry,
+			      map->vm_file->f_vfsmnt,
+			      buf, sizeof(buf));
+		} else {
+			line=NULL;
+		}
+
+		flags = map->vm_flags;
+
+		str[0] = flags & VM_READ ? 'r' : '-';
+		str[1] = flags & VM_WRITE ? 'w' : '-';
+		str[2] = flags & VM_EXEC ? 'x' : '-';
+		str[3] = flags & VM_MAYSHARE ? 's' : 'p';
+		str[4] = 0;
+
+		printk(MAPS_LINE_FORMAT, map->vm_start, map->vm_end,
+				str,
+				map->vm_pgoff << PAGE_SHIFT,
+				MAJOR(dev), MINOR(dev), ino, line?line:"");
+		map = map->vm_next;
+	}
+	up_read(&mm->mmap_sem);
+	mmput(mm);
+	}
+#else
+	/*
+	 * How do we find base address of shared libs??
+	 */
+#endif
+
+finished:
+#endif
+
 
 	binfmt = current->binfmt;
 	if (!binfmt || !binfmt->core_dump)

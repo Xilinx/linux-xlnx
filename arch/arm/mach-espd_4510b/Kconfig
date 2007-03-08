@@ -1,0 +1,26 @@
+menu "ESPD_4510B Options"
+	depends on ARCH_ESPD_4510B
+
+config ARM_CLK
+	int 'Arm Core Clock'
+	default 50000000
+	help
+	the default host clock of S3C4510B is 50MHz.
+	otherwise, change the value in clock.
+
+config SKIP_DUMP_CPU_INFO
+	bool
+	default y
+	help
+	S3C4510B(ARM7TDMI) core does not support cache size
+	recognition instructions which uses MMU features.
+
+config REMAP_VECTORS_TO_RAM
+	bool
+	default y
+	help
+	S3C4510B core does not support ROM and RAM remap
+	function. we set the trap_init to be initialized
+	at the begining of DRAM_BASE.
+
+endmenu

@@ -3,8 +3,6 @@
 #
 
 klibcdirs:;
-PHONY += klibcdirs
-
 
 # Generate builtin.o based on initramfs_data.o
 obj-y := initramfs_data.o
@@ -20,7 +18,7 @@ $(obj)/initramfs_data.o: $(obj)/initramfs_data.cpio.gz FORCE
 hostprogs-y := gen_init_cpio
 initramfs   := $(CONFIG_SHELL) $(srctree)/scripts/gen_initramfs_list.sh
 ramfs-input := $(if $(filter-out "",$(CONFIG_INITRAMFS_SOURCE)), \
-			$(shell echo $(CONFIG_INITRAMFS_SOURCE)),-d)
+                    $(CONFIG_INITRAMFS_SOURCE),-d)
 ramfs-args  := \
         $(if $(CONFIG_INITRAMFS_ROOT_UID), -u $(CONFIG_INITRAMFS_ROOT_UID)) \
         $(if $(CONFIG_INITRAMFS_ROOT_GID), -g $(CONFIG_INITRAMFS_ROOT_GID))

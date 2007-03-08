@@ -30,6 +30,9 @@
 #include <asm/ptrace.h>
 #include "proc-macros.S"
 
+#ifndef CONFIG_MMU
+#error "need to be revisited"
+#endif
 /*
  * This is the maximum size of an area which will be flushed.  If the area
  * is larger than this, then we flush the whole cache

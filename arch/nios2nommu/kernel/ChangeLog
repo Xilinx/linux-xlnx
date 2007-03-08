@@ -1,0 +1,27 @@
+2004-06-17  Ken Hill  <khill@microtronix.com>
+
+	* process.c (machine_restart): Add code to disable interrups and
+	jump to the cpu reset address.
+	(machine_halt): Add code to disable interrupts and spinlock.
+	(machine_power_off): Add code to disable interrupts and spinlock.
+
+2004-06-16  Ken Hill  <khill@microtronix.com>
+
+	* nios2_ksyms.c: Remove hard_reset_now.
+
+2004-06-10  Ken Hill  <khill@microtronix.com>
+
+	* nios2_ksyms.c: Add EXPORT_SYMBOL_NOVERS(__down) to solve insmod for 
+	some modules.
+
+2004-06-02  Ken Hill  <khill@microtronix.com>
+
+	* entry.S (software_exception): Add a safety catch for old applications that may
+	have been linked against an older library. This does not add any overhead to
+	system call processing.
+
+2004-04-15  Ken Hill  <khill@microtronix.com>
+
+	* setup.c (setup_arch): Remove ROMFS message from debug printk kernel message.
+	Add copyright and GNU license notice.
+

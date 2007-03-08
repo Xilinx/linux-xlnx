@@ -1,0 +1,23 @@
+menu "S3C44B0X Board Driver Options" 
+
+config SERIAL_S3C44B0X
+	bool 'S3C44B0X Serial Support'
+	default y
+	help
+	Samsung S3C44B0X Chips has built-in serial controler
+
+config SERIAL_S3C44B0X_CONSOLE
+	bool 'S3C44B0X Serial Console Support'
+	depends on SERIAL_S3C44B0X
+	help
+	use serial port 0 as console
+	
+config ETH_RTL8019AS
+	bool 'Realtek 8019AS NIC support'
+	default n
+
+config S3C44B0X_GPIO_LED
+	bool 'Use onboard led'
+	default n
+
+endmenu

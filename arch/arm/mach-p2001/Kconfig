@@ -1,0 +1,61 @@
+if ARCH_P2001
+
+menu "P2001 Options"
+	depends on ARCH_P2001
+
+config SYSCLK
+	int 'SysClk'
+	default 73728000
+	help
+	  The default sysclk is 73.728 MHz. For the ethernet unit to
+	  work more than 25 MHz are needed. Overclocking starts at
+	  75 MHz. The following system clock frequencies are allowed:
+	   12288000:  12.288 MHz
+	   24576000:  24.576 MHz
+	   36864000:  36.864 MHz
+	   49152000:  49.152 MHz
+	   61440000:  61.440 MHz
+	   73728000:  73.728 MHz
+	   86016000:  86.016 MHz
+	   98304000:  98.304 MHz
+	  110592000: 110.592 MHz
+
+config P2001_AUTO_DETECT_SDRAM
+	bool 'Automatic SDRAM detection'
+	default y
+	help
+	  The automatic SDRAM detection is done by writing at each
+	  memory bank. The memory is over, when a read/write error
+	  occured or a wrap to the first memory bank is detected.
+
+	  The search area is specified by CONFIG_DRAM_BASE and
+	  CONFIG_DRAM_SIZE !
+
+	  The P2001 can have up to 64 MB SDRAM. So just keep the
+	  default values:
+	  CONFIG_DRAM_BASE = 0x40000000
+	  CONFIG_DRAM_SIZE = 0x04000000 = SZ_64M
+
+config SKIP_DUMP_CPU_INFO
+	bool
+	default y
+	help
+	  ARM9TDMI cores do not support cache size
+	  recognition instructions which use MMU features.
+
+config P2001_WATCHDOG
+	bool 'P2001 watchdog timer support'
+	default y
+	help
+	  Activate P2001 watchdog timer with reset in idle function.
+
+config P2001_TIMER2_LED_FREQ_INDICATOR
+	bool 'P2001 timer2 led frequency indicator'
+	default y
+	help
+	  Use timer2 interrupt to blink leds with 10 Hz at 73.728 MHz.
+	  Lower SYSCLK scales down blinking as well.
+
+endmenu
+
+endif

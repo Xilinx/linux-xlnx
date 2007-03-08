@@ -111,6 +111,10 @@
 #include <asm/uaccess.h>
 #include <asm/irq.h>
 
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
+
 #define RTL8139_DRIVER_NAME   DRV_NAME " Fast Ethernet driver " DRV_VERSION
 #define PFX DRV_NAME ": "
 
@@ -258,7 +262,7 @@ static struct pci_device_id rtl8139_pci_tbl[] = {
 	{0x1743, 0x8139, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 	{0x021b, 0x8139, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 
-#ifdef CONFIG_SH_SECUREEDGE5410
+#if defined(CONFIG_MTD_NETtel) || defined(CONFIG_SH_SECUREEDGE5410)
 	/* Bogus 8139 silicon reports 8129 without external PROM :-( */
 	{0x10ec, 0x8129, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 #endif
@@ -970,10 +974,16 @@ static int __devinit rtl8139_init_one (struct pci_dev *pdev,
 	ioaddr = tp->mmio_addr;
 	assert (ioaddr != NULL);
 
+#if defined(CONFIG_MTD_NETtel) || defined(CONFIG_SH_SECUREEDGE5410)
+	/* Don't rely on the eeprom, get MAC from chip. */
+	for (i = 0; i < 6; i++)
+		dev->dev_addr[i] = readb(ioaddr + MAC0 + i);
+#else
 	addr_len = read_eeprom (ioaddr, 0, 8) == 0x8129 ? 8 : 6;
 	for (i = 0; i < 3; i++)
 		((u16 *) (dev->dev_addr))[i] =
 		    le16_to_cpu (read_eeprom (ioaddr, i + 7, addr_len));
+#endif
 	memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
 
 	/* The Rtl8139-specific entries in the device structure. */
@@ -1712,6 +1722,11 @@ static int rtl8139_start_xmit (struct sk_buff *skb, struct net_device *dev)
 	unsigned int len = skb->len;
 	unsigned long flags;
 
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+		(dev->name[3] == '0') ? LEDMAN_LAN1_TX : LEDMAN_LAN2_TX);
+#endif
+
 	/* Calculate the next Tx descriptor entry. */
 	entry = tp->cur_tx % NUM_TX_DESC;
 
@@ -1974,6 +1989,11 @@ static int rtl8139_rx(struct net_device *dev, struct rtl8139_private *tp,
 					rx_ring[ring_offset + i]);
 			printk (".\n");
 		}
+#endif
+
+#ifdef CONFIG_LEDMAN
+		ledman_cmd(LEDMAN_CMD_SET, (dev->name[3] == '0') ?
+			LEDMAN_LAN1_RX : LEDMAN_LAN2_RX);
 #endif
 
 		/* Packet copy from FIFO still in progress.

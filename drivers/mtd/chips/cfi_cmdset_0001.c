@@ -607,6 +607,15 @@ static int cfi_intelext_partition_fixup(struct mtd_info *mtd,
 		map->fldrv_priv = newcfi;
 		*pcfi = newcfi;
 		kfree(cfi);
+	} else {
+		struct flchip *chip;
+		int i;
+		for (i = 0; i < cfi->numchips; i++) {
+			chip = &cfi->chips[i];
+			init_waitqueue_head(&chip->wq);
+			spin_lock_init(&chip->_spinlock);
+			chip->mutex = &chip->_spinlock;
+		}
 	}
 
 	return 0;
@@ -1871,7 +1880,7 @@ static int __xipram do_xxlock_oneblock(struct map_info *map, struct flchip *chip
 	 * If Instant Individual Block Locking supported then no need
 	 * to delay.
 	 */
-	udelay = (!extp || !(extp->FeatureSupport & (1 << 5))) ? 1000000/HZ : 0;
+	udelay = (!extp || !(extp->FeatureSupport & (1 << 5))) ? 1000000 : 0;
 
 	ret = WAIT_TIMEOUT(map, chip, adr, udelay);
 	if (ret) {

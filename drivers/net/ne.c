@@ -30,6 +30,7 @@
     Richard Guenther    : Added support for ISAPnP cards
     Paul Gortmaker	: Discontinued PCI support - use ne2k-pci.c instead.
     Hayato Fujiwara	: Add m32r support.
+    Greg Ungerer	: added some coldfire addressing code.
 
 */
 
@@ -61,7 +62,22 @@ static const char version2[] =
 
 #include "8390.h"
 
+#ifdef CONFIG_COLDFIRE
+#define COLDFIRE_NE2000_FUNCS
+#include <asm/coldfire.h>
+#include <asm/mcfsim.h>
+#include <asm/mcfne.h>
+unsigned char   ne_defethaddr[] = { 0x00, 0xd0, 0xcf, 0x00, 0x00, 0x01 };
+#endif /* CONFIG_COLDFIRE */
+#if defined(CONFIG_M5307) && defined(CONFIG_NETtel)
+static unsigned int ne_portlist[] = { NE2000_ADDR0, NE2000_ADDR1, 0 };
+static unsigned int ne_irqlist[] =  { NE2000_IRQ_VECTOR0,NE2000_IRQ_VECTOR1,0 };
+#endif
+
 #define DRV_NAME "ne"
+#if defined(CONFIG_CPU_H8300H)
+#include <asm/h8300_ne.h>
+#endif
 
 /* Some defines that people can play with if so inclined. */
 
@@ -189,6 +205,31 @@ static int __init do_ne_probe(struct net_device *dev)
 	int orig_irq = dev->irq;
 #endif
 
+#if defined (CONFIG_NETtel) && defined (CONFIG_M5307)
+	static int index = 0;
+	if (!ne_portlist[index])
+		return -ENXIO;
+	dev->base_addr = base_addr = ne_portlist[index];
+	dev->irq = ne_irqlist[index++];
+#elif defined(CONFIG_COLDFIRE)
+	static int once = 0;
+
+	if (once)
+		return -ENXIO;
+	if (base_addr == 0) {
+		dev->base_addr = base_addr = NE2000_ADDR;
+		dev->irq = NE2000_IRQ_VECTOR;
+		once++;
+	}
+#elif defined(CONFIG_CPU_H8300H)
+	static int once = 0;
+	if (once)
+		return -ENXIO;
+	dev->base_addr = base_addr = NE2000_ADDR;
+	dev->irq = NE2000_IRQ_VECTOR;
+	once++;
+#endif
+
 	SET_MODULE_OWNER(dev);
 
 	/* First check any supplied i/o locations. User knows best. <cough> */
@@ -222,7 +263,6 @@ struct net_device * __init ne_probe(int unit)
 
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
-
 	sprintf(dev->name, "eth%d", unit);
 	netdev_boot_setup_check(dev);
 
@@ -296,9 +336,10 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 	int reg0, ret;
 	static unsigned version_printed;
 
-	if (!request_region(ioaddr, NE_IO_EXTENT, DRV_NAME))
+#if !defined(CONFIG_COLDFIRE) && !defined(CONFIG_CPU_H8300H)
+	if (!request_region(ioaddr, NE_IO_EXTENT, dev->name))
 		return -EBUSY;
-
+#endif
 	reg0 = inb_p(ioaddr);
 	if (reg0 == 0xFF) {
 		ret = -ENODEV;
@@ -390,10 +431,92 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 			wordlength = 1;
 	}
 
+#if defined(CONFIG_M5307) || defined(CONFIG_M5407)
+	{
+		outb_p(E8390_NODMA+E8390_PAGE1+E8390_STOP, ioaddr + E8390_CMD);
+		for(i = 0; i < 6; i++)
+		{
+			SA_prom[i] = inb(ioaddr + i + 1);
+		}
+		SA_prom[14] = SA_prom[15] = 0x57;
+	}
+#endif /* CONFIG_M5307 || CONFIG_M5407 */
+#if defined(CONFIG_NETtel) || defined(CONFIG_SECUREEDGEMP3)
+	{
+		unsigned char *ep;
+		static int nr = 0;
+		ep = (unsigned char *) (0xf0006000 + (nr++ * 6));
+		/*
+		* MAC address should be in FLASH, check that it is valid.
+		* If good use it, otherwise use the default.
+		*/
+		if (((ep[0] == 0xff) && (ep[1] == 0xff) && (ep[2] == 0xff) &&
+		    (ep[3] == 0xff) && (ep[4] == 0xff) && (ep[5] == 0xff)) ||
+		    ((ep[0] == 0) && (ep[1] == 0) && (ep[2] == 0) &&
+		    (ep[3] == 0) && (ep[4] == 0) && (ep[5] == 0))) {
+			ep = (unsigned char *) &ne_defethaddr[0];
+			ne_defethaddr[5]++;
+		}
+ 
+		for(i = 0; i < 6; i++)
+			SA_prom[i] = ep[i];
+		SA_prom[14] = SA_prom[15] = 0x57;
+ 
+#if defined(CONFIG_M5206e) && defined(CONFIG_NETtel)
+		wordlength = 1;
+ 
+		/* We must set the 8390 for 8bit mode. */
+		outb_p(0x48, ioaddr + EN0_DCFG);
+#endif
+		start_page = NESM_START_PG;
+		stop_page = NESM_STOP_PG;
+	}
+#elif defined(CONFIG_CFV240)
+	{
+		unsigned char *ep = (unsigned char *) 0xffc0406b;
+		/*
+		 * MAC address should be in FLASH, check that it is valid.
+		 * If good use it, otherwise use the default.
+		 */
+		if (((ep[0] == 0xff) && (ep[1] == 0xff) && (ep[2] == 0xff) &&
+		     (ep[3] == 0xff) && (ep[4] == 0xff) && (ep[5] == 0xff)) ||
+		     ((ep[0] == 0) && (ep[1] == 0) && (ep[2] == 0) &&
+		     (ep[3] == 0) && (ep[4] == 0) && (ep[5] == 0))) {
+			ep = (unsigned char *) &ne_defethaddr[0];
+			ne_defethaddr[5]++;
+		}
+		outb_p(E8390_NODMA+E8390_PAGE1+E8390_STOP, ioaddr + E8390_CMD);
+		for(i = 0; i < 6; i++)
+			SA_prom[i] = ep[i];
+		SA_prom[14] = SA_prom[15] = 0x57;
+	}
+#elif defined(CONFIG_M5206e)
+	{
+		outb_p(E8390_NODMA+E8390_PAGE1+E8390_STOP, ioaddr + E8390_CMD);
+		for(i = 0; i < 6; i++)
+		{
+			SA_prom[i] = inb(ioaddr + i + 1);
+		}
+		SA_prom[14] = SA_prom[15] = 0x57;
+		if(!SA_prom[0] && !SA_prom[1] && !SA_prom[2]) {
+		  /* It doesn't seem to be a correct start of a mac-address... */
+			printk("(change MAC=[%02X %02X %02X]->[%02X %02X %02X])",
+			       SA_prom[0], SA_prom[1], SA_prom[2],
+			       ne_defethaddr[0],ne_defethaddr[1],ne_defethaddr[2]);
+			SA_prom[0] = ne_defethaddr[0];
+			SA_prom[1] = ne_defethaddr[1];
+			SA_prom[2] = ne_defethaddr[2];
+		}
+	}
+#endif /* CONFIG_M5206e */
+ 
+#if !(defined(CONFIG_M5206e) && defined(CONFIG_NETtel))
 	if (wordlength == 2)
 	{
+#ifndef CONFIG_COLDFIRE
 		for (i = 0; i < 16; i++)
 			SA_prom[i] = SA_prom[i+i];
+#endif
 		/* We must set the 8390 for word mode. */
 		outb_p(DCR_VAL, ioaddr + EN0_DCFG);
 		start_page = NESM_START_PG;
@@ -414,6 +537,12 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 		start_page = NE1SM_START_PG;
 		stop_page  = NE1SM_STOP_PG;
 	}
+#endif
+#if defined(CONFIG_CPU_H8300H)
+	start_page = NESM_START_PG;
+	stop_page = NESM_STOP_PG;
+	H8300_INIT_NE();
+#endif
 
 #if  defined(CONFIG_PLAT_MAPPI) || defined(CONFIG_PLAT_OAKS32R)
 	neX000 = ((SA_prom[14] == 0x57  &&  SA_prom[15] == 0x57)
@@ -494,6 +623,10 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 	/* Snarf the interrupt now.  There's no point in waiting since we cannot
 	   share and the board will usually be enabled. */
 	ret = request_irq(dev->irq, ei_interrupt, 0, name, dev);
+#ifdef CONFIG_COLDFIRE
+	if (ret == 0)
+		ne2000_irqsetup(dev->irq);
+#endif
 	if (ret) {
 		printk (" unable to get IRQ %d (errno=%d).\n", dev->irq, ret);
 		goto err_out;
@@ -552,7 +685,9 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 out_irq:
 	free_irq(dev->irq, dev);
 err_out:
+#if !defined(CONFIG_COLDFIRE) && !defined(CONFIG_CPU_H8300H)
 	release_region(ioaddr, NE_IO_EXTENT);
+#endif
 	return ret;
 }
 
@@ -864,7 +999,9 @@ static void cleanup_card(struct net_device *dev)
 	if (idev)
 		pnp_device_detach(idev);
 	free_irq(dev->irq, dev);
+#if !defined(CONFIG_COLDFIRE) && !defined(CONFIG_CPU_H8300H)
 	release_region(dev->base_addr, NE_IO_EXTENT);
+#endif
 }
 
 void __exit cleanup_module(void)

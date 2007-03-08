@@ -25,19 +25,46 @@
 #include <asm/sizes.h>
 #include <asm/arch/platform.h>
 
+#ifndef CONFIG_MMU
+#define MEM_SIZE	CONFIG_DRAM_SIZE
+#define PA_SDRAM_BASE	CONFIG_DRAM_BASE
+#endif
+
 /*
  * Where in virtual memory the IO devices (timers, system controllers
  * and so on)
  */
+#ifdef CONFIG_MMU
 #define IO_BASE			0xF0000000                 // VA of IO 
 #define IO_SIZE			0x0B000000                 // How much?
 #define IO_START		INTEGRATOR_HDR_BASE        // PA of IO
+#endif
+
+/*
+ * Similar to above, but for PCI addresses (memory, IO, Config and the
+ * V3 chip itself).  WARNING: this has to mirror definitions in platform.h
+ */
+#ifdef CONFIG_MMU
+#define PCI_MEMORY_VADDR        0xe8000000
+#define PCI_CONFIG_VADDR        0xec000000
+#define PCI_V3_VADDR            0xed000000
+#define PCI_IO_VADDR            0xee000000
+#else
+#define PCI_MEMORY_VADDR        PHYS_PCI_MEM_BASE
+#define PCI_CONFIG_VADDR        PHYS_PCI_CONFIG_BASE
+#define PCI_V3_VADDR            PHYS_PCI_V3_BASE
+#define PCI_IO_VADDR            PHYS_PCI_IO_BASE
+#endif
 
 #define PCIO_BASE		PCI_IO_VADDR
 #define PCIMEM_BASE		PCI_MEMORY_VADDR
 
 /* macro to get at IO space when running virtually */
+#ifdef CONFIG_MMU
 #define IO_ADDRESS(x) (((x) >> 4) + IO_BASE) 
+#else
+#define IO_ADDRESS(x)		(x)
+#endif
 
 #define pcibios_assign_all_busses()	1
 

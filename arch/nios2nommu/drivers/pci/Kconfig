@@ -1,0 +1,6 @@
+config PCI_ALTPCI
+	bool "Altera PCI host bridge"
+	select PCI
+	select PCI_AUTO
+	select PCI_AUTO_UPDATE_RESOURCES
+	default n

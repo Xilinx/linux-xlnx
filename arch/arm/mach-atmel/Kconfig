@@ -1,0 +1,61 @@
+menu "ATMEL Options"
+	depends on ARCH_ATMEL
+
+config ARCH_SUPPORTS_BIG_ENDIAN
+	bool "big endian mode"
+	default n
+	help
+	  AT91 core supports both of little and big endian.
+
+config ARM_CLK
+	int 'Arm Core Clock'
+	default 40000000
+	help
+	  The default host clock of EB01 is 40MHz.
+	  Otherwise, change the value in clock.
+
+config SKIP_DUMP_CPU_INFO
+	bool
+	default y
+	help
+	  AT91(ARM7TDMI) core does not support cache size
+	  recognition instructions which uses MMU features.
+
+config MEM16_BASE
+	hex 'Memory mapped 16-bit io base'
+	default 0x03000000
+
+config MEM8_BASE
+	hex 'Memory mapped 8-bit io base'
+	default 0x03000000
+
+config IO16_BASE
+	hex '16-bit io base'
+	default 0x02000000
+
+config IO8_BASE
+	hex '8-bit io base'
+	default 0x02000000
+
+choice
+	prompt "Atmel CPU"
+	default CPU_AT91X40
+
+config CPU_AT91X40
+	bool "AT91x40"
+
+config CPU_AT91X63
+	bool "AT91X63"
+
+endchoice
+
+config ATMEL_DEBUG
+	bool "Atmel Kernel-Debug hack"
+	default n
+
+config AT91_DEBUG_BASE
+	depends on ATMEL_DEBUG
+	hex 'Debug buffer address'
+	default 0x01400000
+
+endmenu

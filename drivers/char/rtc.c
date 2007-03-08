@@ -103,6 +103,8 @@ static int rtc_irq = PCI_IRQ_NONE;
 
 #ifdef RTC_IRQ
 static int rtc_has_irq = 1;
+#else
+#define rtc_has_irq 0
 #endif
 
 #ifndef CONFIG_HPET_EMULATE_RTC
@@ -401,7 +403,6 @@ static int rtc_do_ioctl(unsigned int cmd, unsigned long arg, int kernel)
 {
 	struct rtc_time wtime; 
 
-#ifdef RTC_IRQ
 	if (rtc_has_irq == 0) {
 		switch (cmd) {
 		case RTC_AIE_OFF:
@@ -415,7 +416,6 @@ static int rtc_do_ioctl(unsigned int cmd, unsigned long arg, int kernel)
 			return -EINVAL;
 		};
 	}
-#endif
 
 	switch (cmd) {
 #ifdef RTC_IRQ

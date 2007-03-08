@@ -80,7 +80,7 @@
  * On PPC, it's mmap'd and 16-bit wide.
  * Others use readb/writeb
  */
-#if defined(__arm__)
+#if defined(__arm__) && !defined(CONFIG_MACH_ESS710) && !defined(CONFIG_MACH_SE5100)
 #define ReadDOC_(adr, reg)      ((unsigned char)(*(volatile __u32 *)(((unsigned long)adr)+((reg)<<2))))
 #define WriteDOC_(d, adr, reg)  do{ *(volatile __u32 *)(((unsigned long)adr)+((reg)<<2)) = (__u32)d; wmb();} while(0)
 #define DOC_IOREMAP_LEN 0x8000
@@ -88,6 +88,25 @@
 #define ReadDOC_(adr, reg)      ((unsigned char)(*(volatile __u16 *)(((unsigned long)adr)+((reg)<<1))))
 #define WriteDOC_(d, adr, reg)  do{ *(volatile __u16 *)(((unsigned long)adr)+((reg)<<1)) = (__u16)d; wmb();} while(0)
 #define DOC_IOREMAP_LEN 0x4000
+
+#elif defined(CONFIG_SH_SECUREEDGE5410)
+
+static inline unsigned char _ReadDOC_(unsigned long adr, int reg)
+{
+	readb((adr ^ 0x04000000) & 0xf4000000); /* read other flash chip */
+	return(readb(((unsigned long)adr)+(reg)));
+}
+
+static inline void _WriteDOC_(unsigned char d, unsigned long adr, int reg)
+{
+	readb((adr ^ 0x04000000) & 0xf4000000); /* read other flash chip */
+	writeb(d, ((unsigned long)adr) + (reg));
+}
+
+#define ReadDOC_(adr, reg) _ReadDOC_((unsigned long)(adr), (int)(reg))
+#define WriteDOC_(d, adr, reg) _WriteDOC_((unsigned char)(d), (unsigned long)(adr), (int)(reg))
+
+#define DOC_IOREMAP_LEN 0x2000
 #else
 #define ReadDOC_(adr, reg)      readb((void __iomem *)(adr) + (reg))
 #define WriteDOC_(d, adr, reg)  writeb(d, (void __iomem *)(adr) + (reg))

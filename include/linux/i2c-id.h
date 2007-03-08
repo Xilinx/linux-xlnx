@@ -198,6 +198,9 @@
 #define I2C_HW_P_ISA		0x020001 /* generic ISA Bus inteface card */
 #define I2C_HW_P_ELEK		0x020002 /* Elektor ISA Bus inteface card */
 
+/* --- Opencores I2C based adaptors */
+#define I2C_HW_OC_UKIT		0x180000 /* what is on Microtronix uKit	*/
+
 /* --- PCA 9564 based algorithms */
 #define I2C_HW_A_ISA		0x1a0000 /* generic ISA Bus interface card */
 

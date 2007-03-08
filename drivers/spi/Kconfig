@@ -106,6 +106,28 @@ config SPI_S3C24XX_GPIO
 #
 # Add new SPI master controllers in alphabetical order above this line
 #
+config MCFQSPI
+	tristate "Coldfire Queued SPI"
+	depends on SPI
+	help
+	  Say Y here to compile in support for the coldfire Queued SPI driver.
+	  This driver provides a standard character driver interface, and
+	  provides symbols required for some other drivers on the SoM-5282EM.
+	  
+	  This support is also available as a module.  If so, the module 
+	  will be called mcf_qspi.
+
+config DS1305
+	tristate "DS1305 Real time Clock"
+	depends on MCFQSPI
+	help
+	  Say Y here to compile in support for the qspi stacked DS1305 real
+	  time clock driver. This driver stacks on top of the mcf_qspi driver
+	  and provides a misc RTC driver, which takes the standard RTC minor
+	  number.
+	  
+	  This support is also available as a module. If so, the module will
+	  be called DS1305RTC.
 
 
 config SPI_S3C24XX
@@ -130,4 +152,5 @@ comment "SPI Protocol Masters"
 # (slave support would go here)
 
 endmenu # "SPI support"
+
 

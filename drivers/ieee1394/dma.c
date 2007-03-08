@@ -34,7 +34,11 @@ int dma_prog_region_alloc(struct dma_prog_region *prog, unsigned long n_bytes,
 
 	prog->n_pages = n_bytes >> PAGE_SHIFT;
 
+#ifdef CONFIG_PCI
 	prog->kvirt = pci_alloc_consistent(dev, n_bytes, &prog->bus_addr);
+#else
+	prog->kvirt = kmalloc(n_bytes, in_interrupt()? GFP_ATOMIC: GFP_KERNEL);
+#endif
 	if (!prog->kvirt) {
 		printk(KERN_ERR
 		       "dma_prog_region_alloc: pci_alloc_consistent() failed\n");
@@ -50,8 +54,12 @@ int dma_prog_region_alloc(struct dma_prog_region *prog, unsigned long n_bytes,
 void dma_prog_region_free(struct dma_prog_region *prog)
 {
 	if (prog->kvirt) {
+#ifdef CONFIG_PCI
 		pci_free_consistent(prog->dev, prog->n_pages << PAGE_SHIFT,
 				    prog->kvirt, prog->bus_addr);
+#else
+		kfree(prog->kvirt);
+#endif
 	}
 
 	prog->kvirt = NULL;
@@ -110,8 +118,15 @@ int dma_region_alloc(struct dma_region *dma, unsigned long n_bytes,
 	}
 
 	/* map sglist to the IOMMU */
+#ifdef CONFIG_PCI
 	dma->n_dma_pages =
 	    pci_map_sg(dev, dma->sglist, dma->n_pages, direction);
+#else
+	dma->n_dma_pages = dma->n_pages;
+	for (i = 0; i < dma->n_pages; i++) {
+		dma->sglist[i].dma_address = virt_to_bus(page_address(dma->sglist[i].page));
+	}
+#endif
 
 	if (dma->n_dma_pages == 0) {
 		printk(KERN_ERR "dma_region_alloc: pci_map_sg() failed\n");
@@ -131,8 +146,10 @@ int dma_region_alloc(struct dma_region *dma, unsigned long n_bytes,
 void dma_region_free(struct dma_region *dma)
 {
 	if (dma->n_dma_pages) {
+#ifdef CONFIG_PCI
 		pci_unmap_sg(dma->dev, dma->sglist, dma->n_pages,
 			     dma->direction);
+#endif
 		dma->n_dma_pages = 0;
 		dma->dev = NULL;
 	}
@@ -180,6 +197,7 @@ dma_addr_t dma_region_offset_to_bus(struct dma_region * dma,
 void dma_region_sync_for_cpu(struct dma_region *dma, unsigned long offset,
 			     unsigned long len)
 {
+#ifdef CONFIG_PCI
 	int first, last;
 	unsigned long rem = 0;
 
@@ -191,11 +209,13 @@ void dma_region_sync_for_cpu(struct dma_region *dma, unsigned long offset,
 
 	pci_dma_sync_sg_for_cpu(dma->dev, &dma->sglist[first], last - first + 1,
 				dma->direction);
+#endif
 }
 
 void dma_region_sync_for_device(struct dma_region *dma, unsigned long offset,
 				unsigned long len)
 {
+#ifdef CONFIG_PCI
 	int first, last;
 	unsigned long rem = 0;
 
@@ -207,6 +227,7 @@ void dma_region_sync_for_device(struct dma_region *dma, unsigned long offset,
 
 	pci_dma_sync_sg_for_device(dma->dev, &dma->sglist[first],
 				   last - first + 1, dma->direction);
+#endif
 }
 
 #ifdef CONFIG_MMU

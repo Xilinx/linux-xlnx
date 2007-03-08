@@ -387,6 +387,7 @@ static void print_cfi_ident(struct cfi_ident *cfip)
 		break;
 
 	case 4:
+	case 5:
 		printk("  - supports x16 and x32 via Word# with asynchronous interface\n");
 		break;
 

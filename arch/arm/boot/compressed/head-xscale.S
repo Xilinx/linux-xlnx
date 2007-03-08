@@ -41,6 +41,105 @@ __XScale_start:
 		mov	r7, #MACH_TYPE_COTULLA_IDP
 #endif
 
+#ifdef CONFIG_ARCH_IQ80310
+		/*
+		 * Crank the CPU up to 733MHz
+		 */
+		mov	r1, #9
+		mcr	p14, 0, r1, c6, c0, 0
+
+		/*
+		 * Disable ECC error notification
+		 * At some point, we should add an ECC handler to Linux
+		 */
+		mov	r1, #0x1500
+		mov	r0, #0x4
+		str	r0, [r1, #0x34]
+
+		mov	r7, #MACH_TYPE_IQ80310
+#endif
+
+#ifdef CONFIG_ARCH_IXDP425
+		mov	r7, #MACH_TYPE_IXDP425
+#endif
+
+#ifdef CONFIG_MACH_IXDP465
+		mov r7, #MACH_TYPE_IXDP465 & 0xff
+		orr r7, r7, #MACH_TYPE_IXDP465 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_IXDPG425
+		mov r7, #MACH_TYPE_IXDPG425 & 0xff
+		orr r7, r7, #MACH_TYPE_IXDPG425 & 0xff00
+#endif
+
+#ifdef CONFIG_ARCH_PRPMC1100
+		mov	r7, #(MACH_TYPE_PRPMC1100 & 0xff)
+		orr	r7, r7, #(MACH_TYPE_PRPMC1100 & 0xff00)
+#endif
+
+#ifdef CONFIG_ARCH_ADI_COYOTE
+		# Set machine ID into r7 (Coyote ID > 255 hence needs
+		# two instructions to build the ID safely).
+		mov r7, #MACH_TYPE_ADI_COYOTE & 0xff
+		orr r7, r7, #MACH_TYPE_ADI_COYOTE & 0xff00
+#endif
+
+#ifdef CONFIG_ARCH_SE4000
+		mov r7, #MACH_TYPE_SE4000 & 0xff
+		orr r7, r7, #MACH_TYPE_SE4000 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_ESS710
+		mov r7, #MACH_TYPE_ESS710 & 0xff
+		orr r7, r7, #MACH_TYPE_ESS710 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG720
+		mov r7, #MACH_TYPE_SG720 & 0xff
+		orr r7, r7, #MACH_TYPE_SG720 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_MONTEJADE
+		mov r7, #MACH_TYPE_MONTEJADE & 0xff
+		orr r7, r7, #MACH_TYPE_MONTEJADE & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_IVPN
+		mov r7, #MACH_TYPE_IVPN & 0xff
+		orr r7, r7, #MACH_TYPE_IVPN & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SE5100
+		mov r7, #MACH_TYPE_SE5100 & 0xff
+		orr r7, r7, #MACH_TYPE_SE5100 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG560
+		mov r7, #MACH_TYPE_SG560 & 0xff
+		orr r7, r7, #MACH_TYPE_SG560 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG565
+		mov r7, #MACH_TYPE_SG565 & 0xff
+		orr r7, r7, #MACH_TYPE_SG565 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG580
+		mov r7, #MACH_TYPE_SG580 & 0xff
+		orr r7, r7, #MACH_TYPE_SG580 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG590
+		mov r7, #MACH_TYPE_SG590 & 0xff
+		orr r7, r7, #MACH_TYPE_SG590 & 0xff00
+#endif
+
+#ifdef CONFIG_MACH_SG640
+		mov r7, #MACH_TYPE_SG640 & 0xff
+		orr r7, r7, #MACH_TYPE_SG640 & 0xff00
+#endif
+
 #ifdef  CONFIG_MACH_GTWX5715
                mov     r7, #(MACH_TYPE_GTWX5715 & 0xff)
                orr     r7, r7, #(MACH_TYPE_GTWX5715 & 0xff00)

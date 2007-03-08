@@ -78,6 +78,9 @@ struct doc_priv {
 	int curchip;
 	int mh0_page;
 	int mh1_page;
+	int setcol;
+	int activecol;
+	int page_addr;
 	struct mtd_info *nextdoc;
 };
 
@@ -553,6 +556,191 @@ static int doc2001_verifybuf(struct mtd_info *mtd, const u_char *buf, int len)
 	return 0;
 }
 
+static int doc2001plus_addroffset(struct mtd_info *mtd, int *columnp)
+{
+	if (*columnp >= 512) {
+		/* OOB area */
+		*columnp -= 512;
+		return NAND_CMD_READOOB;
+	}
+	if (*columnp < 256) {
+		/* First 256 bytes --> READ0 */
+		return NAND_CMD_READ0;
+	}
+	*columnp -= 256;
+	return NAND_CMD_READ1;
+}
+
+/*
+ * Translate the given offset into the appropriate command and offset.
+ * This does the mapping using the 16bit interleave layout defined by
+ * M-Systems, and looks like this for a sector pair:
+ *  +-----------+-------+-------+-------+--------------+---------+-----------+
+ *  | 0 --- 511 |512-517|518-519|520-521| 522 --- 1033 |1034-1039|1040 - 1055|
+ *  +-----------+-------+-------+-------+--------------+---------+-----+-----+
+ *  | Data 0    | ECC 0 |Flags0 |Flags1 | Data 1       |ECC 1    | OOB0| OOB1|
+ *  +-----------+-------+-------+-------+--------------+---------+-----+-----+
+ * Thing to remember is that 2 physical pages are interleaved together, and
+ * then mapped in the above odd looking way.
+ */
+static int doc2001plus_addroffset32(struct mtd_info *mtd, int command, int *columnp, int page_addr)
+{
+	struct nand_chip *this = mtd->priv;
+	struct doc_priv *doc = this->priv;
+	int col = *columnp;
+
+	if (command == NAND_CMD_READ1)
+		col += 256;
+	if (command == NAND_CMD_READOOB)
+		col += 512;
+	doc->setcol = col;
+	doc->activecol = col;
+	doc->page_addr = page_addr;
+
+	/* Even numbered pages first. */
+	if ((page_addr & 0x1) == 0) {
+		if (col < 512) {
+			*columnp = (col >> 1);
+			return NAND_CMD_READ0;
+		}
+		if (col < 520) {
+			*columnp = (col - 512) >> 1;
+			return NAND_CMD_READ1;
+		}
+		*columnp = ((col - 520) + 16) >> 1;
+		return NAND_CMD_READOOB;
+	}
+
+	/* Odd number pages next */
+	if (col < 502) {
+		*columnp = (col + 10) >> 1;
+		return NAND_CMD_READ1;
+	}
+	if (col < 518) {
+		*columnp = (col - 502) >> 1;
+		return NAND_CMD_READOOB;
+	}
+	if (col < 520) {
+		*columnp = ((col - 518) + 8) >> 1;
+		return NAND_CMD_READ1;
+	}
+	*columnp = ((col - 520) + 24) >> 1;
+	return NAND_CMD_READOOB;
+}
+
+static void doc2001plus_command (struct mtd_info *mtd, unsigned command, int column, int page_addr)
+{
+	struct nand_chip *this = mtd->priv;
+	struct doc_priv *doc = this->priv;
+        void __iomem *docptr = doc->virtadr;
+	int readcmd = NAND_CMD_READ0;
+
+	/*
+	 * Must terminate write pipeline before sending any commands
+	 * to the device.
+	 */
+	if (command == NAND_CMD_PAGEPROG) {
+		WriteDOC(0x00, docptr, Mplus_WritePipeTerm);
+		WriteDOC(0x00, docptr, Mplus_WritePipeTerm);
+	}
+
+	/*
+	 * Write out the command to the device. If using the interleaved
+	 * device then we may need to map the command and address parts.
+	 * Ick :-(
+	 */
+	switch (command) {
+	case NAND_CMD_SEQIN:
+		if (doc->ChipID == DOC_ChipID_DocMilPlus32) {
+			readcmd = doc2001plus_addroffset32(mtd, command, &column, page_addr);
+			page_addr >>= 1;
+		} else {
+			readcmd = doc2001plus_addroffset(mtd, &column);
+		}
+		WriteDOC(readcmd, docptr, Mplus_FlashCmd);
+		break;
+	case NAND_CMD_READ0:
+	case NAND_CMD_READ1:
+	case NAND_CMD_READOOB:
+		if (doc->ChipID == DOC_ChipID_DocMilPlus32) {
+			command = doc2001plus_addroffset32(mtd, command, &column, page_addr);
+			page_addr >>= 1;
+		}
+		break;
+	default:
+		break;
+	}
+
+	WriteDOC(command, docptr, Mplus_FlashCmd);
+	WriteDOC(0, docptr, Mplus_WritePipeTerm);
+	WriteDOC(0, docptr, Mplus_WritePipeTerm);
+
+	if (column != -1 || page_addr != -1) {
+		/* Serially input address */
+		if (column != -1) {
+			/* Adjust columns for 16 bit buswidth */
+			if (this->options & NAND_BUSWIDTH_16)
+				column >>= 1;
+			WriteDOC(column, docptr, Mplus_FlashAddress);
+		}
+		if (page_addr != -1) {
+			WriteDOC((unsigned char) (page_addr & 0xff), docptr, Mplus_FlashAddress);
+			WriteDOC((unsigned char) ((page_addr >> 8) & 0xff), docptr, Mplus_FlashAddress);
+			/* One more address cycle for higher density devices */
+			if (this->chipsize & 0x0c000000) {
+				WriteDOC((unsigned char) ((page_addr >> 16) & 0x0f), docptr, Mplus_FlashAddress);
+				printk("high density\n");
+			}
+		}
+		WriteDOC(0, docptr, Mplus_WritePipeTerm);
+		WriteDOC(0, docptr, Mplus_WritePipeTerm);
+		/* deassert ALE */
+		if (command == NAND_CMD_READ0 || command == NAND_CMD_READ1 || command == NAND_CMD_READOOB || command == NAND_CMD_READID)
+			WriteDOC(0, docptr, Mplus_FlashControl);
+	}
+
+	/*
+	 * program and erase have their own busy handlers
+	 * status and sequential in needs no delay
+	*/
+	switch (command) {
+
+	case NAND_CMD_PAGEPROG:
+	case NAND_CMD_ERASE1:
+	case NAND_CMD_ERASE2:
+	case NAND_CMD_SEQIN:
+	case NAND_CMD_STATUS:
+		return;
+
+	case NAND_CMD_RESET:
+		if (this->dev_ready)
+			break;
+		udelay(this->chip_delay);
+		WriteDOC(NAND_CMD_STATUS, docptr, Mplus_FlashCmd);
+		WriteDOC(0, docptr, Mplus_WritePipeTerm);
+		WriteDOC(0, docptr, Mplus_WritePipeTerm);
+		while ( !(this->read_byte(mtd) & 0x40));
+		return;
+
+	/* This applies to read commands */
+	default:
+		/*
+		 * If we don't have access to the busy pin, we apply the given
+		 * command delay
+		*/
+		if (!this->dev_ready) {
+			udelay (this->chip_delay);
+			return;
+		}
+	}
+
+	/* Apply this short delay always to ensure that we do wait tWB in
+	 * any case on any machine. */
+	ndelay (100);
+	/* wait until command is processed */
+	while (!this->dev_ready(mtd));
+}
+
 static u_char doc2001plus_read_byte(struct mtd_info *mtd)
 {
 	struct nand_chip *this = mtd->priv;
@@ -568,19 +756,51 @@ static u_char doc2001plus_read_byte(struct mtd_info *mtd)
 	return ret;
 }
 
+static int doc2001plus_maxlinesiz(struct doc_priv *doc)
+{
+	if (doc->ChipID == DOC_ChipID_DocMilPlus32) {
+		if (doc->activecol < (512+6))
+			return (512+6 - doc->activecol);
+		if (doc->activecol < (512+8))
+			return (512+8 - doc->activecol);
+	}
+	return (512+16 - doc->activecol);
+}
+
 static void doc2001plus_writebuf(struct mtd_info *mtd, const u_char *buf, int len)
 {
 	struct nand_chip *this = mtd->priv;
 	struct doc_priv *doc = this->priv;
-	void __iomem *docptr = doc->virtadr;
-	int i;
+        void __iomem *docptr = doc->virtadr;
+	int i, want, siz, loop;
 
-	if (debug)
-		printk("writebuf of %d bytes: ", len);
-	for (i = 0; i < len; i++) {
-		WriteDOC_(buf[i], docptr, DoC_Mil_CDSN_IO + i);
-		if (debug && i < 16)
-			printk("%02x ", buf[i]);
+	for (loop = 0, want = len; ((loop < 3) && (want > 0)); loop++) {
+		if (debug)printk("writebuf of %d bytes: ", len);
+
+		/* Figure out maximum strait line read size */
+		siz = doc2001plus_maxlinesiz(doc);
+		if (siz > want)
+			siz = want;
+
+		if (doc->setcol != doc->activecol) {
+			/* Finish existing write, and restart at new pos */
+			doc2001plus_command(mtd, NAND_CMD_PAGEPROG, -1, -1);
+			doc200x_wait(mtd, this);
+			/* FIXME: handle failure cases */
+
+			doc2001plus_command(mtd, NAND_CMD_RESET, -1, -1);
+			doc2001plus_command(mtd, NAND_CMD_SEQIN, doc->activecol, doc->page_addr);
+		}
+
+		for (i=0; i < len; i++) {
+			WriteDOC_(buf[i], docptr, DoC_Mil_CDSN_IO + i);
+			if (debug && i < 16)
+				printk("%02x ", buf[i]);
+		}
+		if (debug) printk("\n");
+
+		want -= siz;
+		doc->activecol += siz;
 	}
 	if (debug)
 		printk("\n");
@@ -590,31 +810,45 @@ static void doc2001plus_readbuf(struct mtd_info *mtd, u_char *buf, int len)
 {
 	struct nand_chip *this = mtd->priv;
 	struct doc_priv *doc = this->priv;
-	void __iomem *docptr = doc->virtadr;
-	int i;
+        void __iomem *docptr = doc->virtadr;
+	u_char *nbuf = buf;
+	int i, want, siz, loop;
 
-	if (debug)
-		printk("readbuf of %d bytes: ", len);
+	for (loop = 0, want = len; ((loop < 3) && (want > 0)); loop++) {
+		if (debug)printk("readbuf of %d bytes: ", len);
 
-	/* Start read pipeline */
-	ReadDOC(docptr, Mplus_ReadPipeInit);
-	ReadDOC(docptr, Mplus_ReadPipeInit);
+		/* Figure out maximum strait line read size */
+		siz = doc2001plus_maxlinesiz(doc);
+		if (siz > want)
+			siz = want;
 
-	for (i = 0; i < len - 2; i++) {
-		buf[i] = ReadDOC(docptr, Mil_CDSN_IO);
+		if (doc->setcol != doc->activecol)
+			doc2001plus_command(mtd, NAND_CMD_READ0, doc->activecol, doc->page_addr);
+
+		/* Start read pipeline */
+		ReadDOC(docptr, Mplus_ReadPipeInit);
+		ReadDOC(docptr, Mplus_ReadPipeInit);
+	
+		for (i=0; i < siz-2; i++, nbuf++) {
+			*nbuf = ReadDOC(docptr, Mil_CDSN_IO);
+			if (debug && i < 16)
+				printk("%02x ", *nbuf);
+		}
+
+		/* Terminate read pipeline */
+		*nbuf = ReadDOC(docptr, Mplus_LastDataRead);
 		if (debug && i < 16)
-			printk("%02x ", buf[i]);
-	}
+			printk("%02x ", *nbuf);
+		nbuf++;
+		*nbuf = ReadDOC(docptr, Mplus_LastDataRead);
+		if (debug && i < 16)
+			printk("%02x ", *nbuf);
+		nbuf++;
+		if (debug) printk("\n");
 
-	/* Terminate read pipeline */
-	buf[len - 2] = ReadDOC(docptr, Mplus_LastDataRead);
-	if (debug && i < 16)
-		printk("%02x ", buf[len - 2]);
-	buf[len - 1] = ReadDOC(docptr, Mplus_LastDataRead);
-	if (debug && i < 16)
-		printk("%02x ", buf[len - 1]);
-	if (debug)
-		printk("\n");
+		want -= siz;
+		doc->activecol += siz;
+	}
 }
 
 static int doc2001plus_verifybuf(struct mtd_info *mtd, const u_char *buf, int len)
@@ -723,111 +957,6 @@ static void doc200x_hwcontrol(struct mtd_info *mtd, int cmd,
 		else
 			doc2001_write_byte(mtd, cmd);
 	}
-}
-
-static void doc2001plus_command(struct mtd_info *mtd, unsigned command, int column, int page_addr)
-{
-	struct nand_chip *this = mtd->priv;
-	struct doc_priv *doc = this->priv;
-	void __iomem *docptr = doc->virtadr;
-
-	/*
-	 * Must terminate write pipeline before sending any commands
-	 * to the device.
-	 */
-	if (command == NAND_CMD_PAGEPROG) {
-		WriteDOC(0x00, docptr, Mplus_WritePipeTerm);
-		WriteDOC(0x00, docptr, Mplus_WritePipeTerm);
-	}
-
-	/*
-	 * Write out the command to the device.
-	 */
-	if (command == NAND_CMD_SEQIN) {
-		int readcmd;
-
-		if (column >= mtd->writesize) {
-			/* OOB area */
-			column -= mtd->writesize;
-			readcmd = NAND_CMD_READOOB;
-		} else if (column < 256) {
-			/* First 256 bytes --> READ0 */
-			readcmd = NAND_CMD_READ0;
-		} else {
-			column -= 256;
-			readcmd = NAND_CMD_READ1;
-		}
-		WriteDOC(readcmd, docptr, Mplus_FlashCmd);
-	}
-	WriteDOC(command, docptr, Mplus_FlashCmd);
-	WriteDOC(0, docptr, Mplus_WritePipeTerm);
-	WriteDOC(0, docptr, Mplus_WritePipeTerm);
-
-	if (column != -1 || page_addr != -1) {
-		/* Serially input address */
-		if (column != -1) {
-			/* Adjust columns for 16 bit buswidth */
-			if (this->options & NAND_BUSWIDTH_16)
-				column >>= 1;
-			WriteDOC(column, docptr, Mplus_FlashAddress);
-		}
-		if (page_addr != -1) {
-			WriteDOC((unsigned char)(page_addr & 0xff), docptr, Mplus_FlashAddress);
-			WriteDOC((unsigned char)((page_addr >> 8) & 0xff), docptr, Mplus_FlashAddress);
-			/* One more address cycle for higher density devices */
-			if (this->chipsize & 0x0c000000) {
-				WriteDOC((unsigned char)((page_addr >> 16) & 0x0f), docptr, Mplus_FlashAddress);
-				printk("high density\n");
-			}
-		}
-		WriteDOC(0, docptr, Mplus_WritePipeTerm);
-		WriteDOC(0, docptr, Mplus_WritePipeTerm);
-		/* deassert ALE */
-		if (command == NAND_CMD_READ0 || command == NAND_CMD_READ1 ||
-		    command == NAND_CMD_READOOB || command == NAND_CMD_READID)
-			WriteDOC(0, docptr, Mplus_FlashControl);
-	}
-
-	/*
-	 * program and erase have their own busy handlers
-	 * status and sequential in needs no delay
-	 */
-	switch (command) {
-
-	case NAND_CMD_PAGEPROG:
-	case NAND_CMD_ERASE1:
-	case NAND_CMD_ERASE2:
-	case NAND_CMD_SEQIN:
-	case NAND_CMD_STATUS:
-		return;
-
-	case NAND_CMD_RESET:
-		if (this->dev_ready)
-			break;
-		udelay(this->chip_delay);
-		WriteDOC(NAND_CMD_STATUS, docptr, Mplus_FlashCmd);
-		WriteDOC(0, docptr, Mplus_WritePipeTerm);
-		WriteDOC(0, docptr, Mplus_WritePipeTerm);
-		while (!(this->read_byte(mtd) & 0x40)) ;
-		return;
-
-		/* This applies to read commands */
-	default:
-		/*
-		 * If we don't have access to the busy pin, we apply the given
-		 * command delay
-		 */
-		if (!this->dev_ready) {
-			udelay(this->chip_delay);
-			return;
-		}
-	}
-
-	/* Apply this short delay always to ensure that we do wait tWB in
-	 * any case on any machine. */
-	ndelay(100);
-	/* wait until command is processed */
-	while (!this->dev_ready(mtd)) ;
 }
 
 static int doc200x_dev_ready(struct mtd_info *mtd)
@@ -1392,7 +1521,11 @@ static int __init inftl_scan_bbt(struct mtd_info *mtd)
 		this->bbt_td->options = NAND_BBT_2BIT | NAND_BBT_ABSPAGE;
 		if (inftl_bbt_write)
 			this->bbt_td->options |= NAND_BBT_WRITE;
-		this->bbt_td->pages[0] = 2;
+		if (doc->ChipID == DOC_ChipID_DocMilPlus32) {
+			mtd->erasesize <<= 1;
+			this->bbt_td->pages[0] = 4;
+		} else
+			this->bbt_td->pages[0] = 2;
 		this->bbt_md = NULL;
 	} else {
 		this->bbt_td->options = NAND_BBT_LASTBLOCK | NAND_BBT_8BIT | NAND_BBT_VERSION;
@@ -1426,7 +1559,8 @@ static int __init inftl_scan_bbt(struct mtd_info *mtd)
 	   do without it for non-INFTL use, since all it gives us is
 	   autopartitioning, but I want to give it more thought. */
 	if (!numparts)
-		return -EIO;
+		numparts = nftl_partscan(mtd, parts);
+	if (!numparts) return -EIO;
 	add_mtd_device(mtd);
 #ifdef CONFIG_MTD_PARTITIONS
 	if (!no_autopart)
@@ -1576,7 +1710,8 @@ static int __init doc_probe(unsigned long physadr)
 			reg = DoC_Mplus_Toggle;
 			break;
 		case DOC_ChipID_DocMilPlus32:
-			printk(KERN_ERR "DiskOnChip Millennium Plus 32MB is not supported, ignoring.\n");
+			reg = DoC_Mplus_Toggle;
+			break;
 		default:
 			ret = -ENODEV;
 			goto notfound;
@@ -1606,7 +1741,8 @@ static int __init doc_probe(unsigned long physadr)
 		   in fact the same DOC aliased to a new address.  If writes
 		   to one chip's alias resolution register change the value on
 		   the other chip, they're the same chip. */
-		if (ChipID == DOC_ChipID_DocMilPlus16) {
+		if ((ChipID == DOC_ChipID_DocMilPlus16) || 
+		    (ChipID == DOC_ChipID_DocMilPlus32)) {
 			oldval = ReadDOC(doc->virtadr, Mplus_AliasResolution);
 			newval = ReadDOC(virtadr, Mplus_AliasResolution);
 		} else {
@@ -1615,7 +1751,8 @@ static int __init doc_probe(unsigned long physadr)
 		}
 		if (oldval != newval)
 			continue;
-		if (ChipID == DOC_ChipID_DocMilPlus16) {
+		if ((ChipID == DOC_ChipID_DocMilPlus16) ||
+		    (ChipID == DOC_ChipID_DocMilPlus32)) {
 			WriteDOC(~newval, virtadr, Mplus_AliasResolution);
 			oldval = ReadDOC(doc->virtadr, Mplus_AliasResolution);
 			WriteDOC(newval, virtadr, Mplus_AliasResolution);	// restore it
@@ -1677,7 +1814,8 @@ static int __init doc_probe(unsigned long physadr)
 
 	if (ChipID == DOC_ChipID_Doc2k)
 		numchips = doc2000_init(mtd);
-	else if (ChipID == DOC_ChipID_DocMilPlus16)
+	else if ((ChipID == DOC_ChipID_DocMilPlus16) ||
+	         (ChipID == DOC_ChipID_DocMilPlus32))
 		numchips = doc2001plus_init(mtd);
 	else
 		numchips = doc2001_init(mtd);

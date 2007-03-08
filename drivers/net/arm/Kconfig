@@ -46,3 +46,30 @@ config EP93XX_ETH
 	help
 	  This is a driver for the ethernet hardware included in EP93xx CPUs.
 	  Say Y if you are building a kernel for EP93xx based devices.
+
+config ARM_ETHER00
+	tristate "Altera Ether00 support"
+	depends on NET_ETHERNET && ARM && ARCH_CAMELOT
+	help
+	  This is the driver for Altera's ether00 ethernet mac IP core. Say
+	  Y here if you want to build support for this into the kernel. It
+	  is also available as a module (say M here) that can be inserted/
+	  removed from the kernel at the same time as the PLD is configured.
+	  If this driver is running on an epxa10 development board then it
+	  will generate a suitable hw address based on the board serial
+	  number (MTD support is required for this). Otherwise you will
+	  need to set a suitable hw address using ifconfig.
+
+config ETH_S3C4510B
+	bool "Samsung S3C4510B Ethernet Support"
+	depends on NET_ETHERNET && ARM && CPU_S3C4510B
+	help
+	  This is the driver for Samsung's S3C4510B SoC MAC IP core. Say
+	  Y here if you want to build support for this into the kernel.
+
+config P2001_ETH
+	tristate "P2001 ethernet driver"
+	depends on NET_ETHERNET && ARM && MII && ARCH_P2001
+	default y
+	help
+	  P2001 ethernet driver

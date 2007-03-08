@@ -238,6 +238,18 @@ config MTD_NETtel
 	help
 	  Support for flash chips on NETtel/SecureEdge/SnapGear boards.
 
+config MTD_SNAPGEODE
+	tristate "CFI flash device on SnapGear/GEODE boards"
+	depends on X86 && MTD_PARTITIONS
+	help
+	  Support for flash chips on SnapGear GEODE based boards.
+
+config MTD_SNAPARM
+	tristate 'CFI Flash device mapped on SnapGear/Cyberguard ARM/XSCALE boards'
+	depends on MTD_CFI && MTD_PARTITIONS && MTD_COMPLEX_MAPPINGS
+	help
+	  Support for flash chips on the SnapGear/Cyberguard ARM/XSCALE platforms.
+
 config MTD_ALCHEMY
 	tristate "AMD Alchemy Pb1xxx/Db1xxx/RDK MTD support"
 	depends on SOC_AU1X00
@@ -548,6 +560,79 @@ config MTD_UCLINUX
 	help
 	  Map driver to support image based filesystems for uClinux.
 
+config MTD_UCLINUX_EBSS
+	bool "uClinux RAM/ROM filesystem is located at ebss"
+	depends on MTD_UCLINUX
+	default y
+	help
+	  The filesystem is located directly after the kernel in memory.
+
+config MTD_UCLINUX_ADDRESS
+	hex "uClinux RAM/ROM filesystem address"
+	default 0x1400000
+	depends on MTD_UCLINUX && !MTD_UCLINUX_EBSS
+	help
+	  The filesystem is located at the given address.
+
+choice
+	prompt "uClinux RAM/ROM is located in ROM/RAM"
+	default MTD_UCLINUX_RAM
+	depends on MTD_UCLINUX && !MTD_UCLINUX_EBSS
+
+config MTD_UCLINUX_RAM
+	bool "RAM"
+config MTD_UCLINUX_ROM
+	bool "ROM"
+endchoice
+
+config MTD_COBRA5329
+	tristate "Cobra5329 mapping"
+	depends on MTD_PARTITIONS && COBRA5329
+	help
+	  Map driver to support Cobra5329 Flash.
+
+config MTD_SNAPGEARuC
+	tristate "SnapGear uClinux RAM/ROM filesystem support"
+	depends on MTD_PARTITIONS
+	help
+	  Map driver for Flash and RAM in the SnapGear devices.
+
+config MTD_M520x
+	tristate "Freescale M520xEVB Flash filesystem support"
+	depends on MTD_PARTITIONS
+	help
+	  Map for M5208EVB & M5207EVB Flash Partition.
+
+config MTD_CPU16B
+	tristate "RAM/ROM filesystem support for Sarasvati from Sneha Technologies S.L."
+	depends on MTD_PARTITIONS && SNEHA && CPU16B
+	help
+	  Map driver to support image based filesystems for CPU16B.
+
+choice
+	prompt "Flash Size"
+	depends on MTD_SNAPGEARuC
+	default AUTO
+
+config FLASHAUTO
+	bool "AUTO"
+config FLASH128KB
+	bool "128KB"
+config FLASH1MB
+	bool "1MB"
+config FLASH2MB
+	bool "2MB"
+config FLASH4MB
+	bool "4MB"
+config FLASH6MB
+	bool "6MB"
+config FLASH8MB
+	bool "8MB"
+config FLASH16MB
+	bool "16MB"
+
+endchoice
+
 config MTD_WRSBC8260
 	tristate "Map driver for WindRiver PowerQUICC II MPC82xx board"
 	depends on (SBC82xx || SBC8560)
@@ -589,11 +674,33 @@ config MTD_BAST_MAXSIZE
 	depends on MTD_BAST
 	default "4"
 
+config MTD_DM270
+	tristate "CFI Flash device mapped on TI TMS320DM270"
+	depends on ARM && MACH_DM270 && MTD_CFI
+	help
+	  This enables access to the flash chips on TI TMS320DM270 based
+	  boards.
+
 config MTD_SHARP_SL
 	bool "ROM mapped on Sharp SL Series"
 	depends on MTD && ARCH_PXA
 	help
 	  This enables access to the flash chip on the Sharp SL Series of PDAs.
+
+config MTD_COBRA5272
+        tristate "Flash device mapped on COBRA5272"
+        depends on MTD && COBRA5272
+        help
+          This enables access to the flash chips (2MB) on the COBRA5272.
+          If you have such board, say 'Y'.
+
+config MTD_COBRA5282
+        tristate "Flash device mapped on COBRA5282"
+        depends on MTD && COBRA5282
+        help
+          This enables access to the flash chips (4MB) on the COBRA5282.
+          If you have such board, say 'Y'.
+
 
 config MTD_PLATRAM
 	tristate "Map driver for platform device RAM (mtd-ram)"
@@ -604,6 +711,41 @@ config MTD_PLATRAM
 	  system.
 
 	  This selection automatically selects the map_ram driver.
+
+config MTD_AVNET5282
+	tristate "CFI Flash device mapped on AVNET5282"
+	depends on MTD_PARTITIONS && !MMU
+	help
+	  Support for flash chip on Avnet5282 board
+
+config MTD_MICROTRONIX
+	tristate "Maps for Microtronix boards, or Altera Cyclone 1C12 Eval board"
+	depends on MTD_PARTITIONS && !MMU && ( MICROTRONIX_UKIT || MICROTRONIX_STRATIX || MICROTRONIX_CYCLONE || ALTERA_CYCLONE_1C12_EVAL || MICROTRONIX_PSK)
+	default n
+	help
+	  Map driver for accessing flash memory on Microtronix Development
+	  board (including Stratix, Cyclone and ukit), or Altera Cyclone 1C12
+	  Evaluation board.
+
+config MTD_EPCS_MAP
+	tristate "Maps for Altera EPCS Configuration Device"
+	depends on MTD_PARTITIONS && !MMU && MTD_EPCS
+	default y
+	help
+		Map driver for accessing EPCS Flash by Altera. Please edit epcs_map.c
+		to setup the appropriate partitions. Since the driver will automatically
+		detect the EPCS chip present, it is your responsibility to setup 
+		appropriate partition sizes/offsets such that you do not conflict with
+		the detected size. IE: Don't specify a partition size of 4 Megabytes when
+		you only have a 1 Megabit chip available!
+
+config MTD_ALTERA
+	tristate "Maps for Altera Nios Development Kit"
+	depends on MTD_PARTITIONS && !MMU && ( ALTERA_STRATIX || ALTERA_STRATIX_PRO || ALTERA_CYCLONE || ALTERA_STRATIX_II)
+	default y
+	help
+	  Map driver for accessing flash memory on Altera Nios Development kit,
+	  Cyclone, Stratix or Stratix Pro edition.
 
 endmenu
 

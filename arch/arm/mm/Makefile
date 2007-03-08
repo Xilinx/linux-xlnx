@@ -2,14 +2,13 @@
 # Makefile for the linux arm-specific parts of the memory manager.
 #
 
-obj-y				:= consistent.o extable.o fault.o init.o \
-				   iomap.o
+obj-y				:= extable.o fault.o init.o iomap.o
 
 obj-$(CONFIG_MMU)		+= fault-armv.o flush.o ioremap.o mmap.o \
-				   pgd.o mmu.o
+				   pgd.o mmu.o consistent.o
 
 ifneq ($(CONFIG_MMU),y)
-obj-y				+= nommu.o
+obj-y				+= nommu.o consistent-nommu.o
 endif
 
 obj-$(CONFIG_MODULES)		+= proc-syms.o
@@ -45,6 +44,8 @@ obj-$(CONFIG_CPU_TLB_V4WB)	+= tlb-v4wb.o
 obj-$(CONFIG_CPU_TLB_V4WBI)	+= tlb-v4wbi.o
 obj-$(CONFIG_CPU_TLB_V6)	+= tlb-v6.o
 
+obj-$(CONFIG_CPU_S3C4510B)	+= proc-s3c4510b.o
+obj-$(CONFIG_CPU_LPC22XX)	+= proc-lpc22xx.o
 obj-$(CONFIG_CPU_ARM610)	+= proc-arm6_7.o
 obj-$(CONFIG_CPU_ARM710)	+= proc-arm6_7.o
 obj-$(CONFIG_CPU_ARM7TDMI)	+= proc-arm7tdmi.o

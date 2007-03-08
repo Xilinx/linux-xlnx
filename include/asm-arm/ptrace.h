@@ -150,6 +150,8 @@ extern unsigned long profile_pc(struct pt_regs *regs);
 #define profile_pc(regs) instruction_pointer(regs)
 #endif
 
+#define user_stack(regs) ((regs)->ARM_sp)
+
 #ifdef __KERNEL__
 #define predicate(x)		((x) & 0xf0000000)
 #define PREDICATE_ALWAYS	0xe0000000
