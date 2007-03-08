@@ -15,6 +15,8 @@
 #include <asm/registers.h>
 #include <linux/autoconf.h>
 
+#include "xparameters.h"
+
 #ifndef L1_CACHE_BYTES
 /* word-granular cache in microblaze */
 #define L1_CACHE_BYTES		4
@@ -22,21 +24,21 @@
 
 /* Detect cache style used, to set cache line size*/
 /* FSL caches (CacheLink) uses 16 byte cache line */
-#if CONFIG_XILINX_MICROBLAZE0_ICACHE_USE_FSL
+#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL
 #define ICACHE_LINE_SIZE 16
 #else
 #define ICACHE_LINE_SIZE 4
 #endif
 
-#if CONFIG_XILINX_MICROBLAZE0_DCACHE_USE_FSL
+#if XPAR_MICROBLAZE_0_DCACHE_USE_FSL
 #define DCACHE_LINE_SIZE 16
 #else
 #define DCACHE_LINE_SIZE 4
 #endif
 
-#if CONFIG_XILINX_MICROBLAZE0_USE_ICACHE		/* Cache support? */
+#if XPAR_MICROBLAZE_0_USE_ICACHE		/* Cache support? */
 
-#if CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR
+#if XPAR_MICROBLAZE_0_USE_MSR_INSTR
 #define __enable_icache()						\
 	__asm__ __volatile__ ("	msrset	r0, %0;				\
 				nop;"					\
@@ -52,7 +54,7 @@
 				: "memory")
 
 
-#else /* !CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR */
+#else /* !XPAR_MICROBLAZE_0_USE_MSR_INSTR */
 #define __enable_icache()						\
 	__asm__ __volatile__ ("						\
 				mfs	r12, rmsr;			\
@@ -74,7 +76,7 @@
 				: "memory", "r12")
 
  
-#endif /* CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR */
+#endif /* XPAR_MICROBLAZE_0_USE_MSR_INSTR */
 
 #define __invalidate_icache(addr)					\
 	__asm__ __volatile__ ("						\
@@ -87,9 +89,9 @@
 #define __invalidate_icache(addr)
 #endif
 
-#if CONFIG_XILINX_MICROBLAZE0_USE_DCACHE
+#if XPAR_MICROBLAZE_0_USE_DCACHE
 
-#if CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR
+#if XPAR_MICROBLAZE_0_USE_MSR_INSTR
 #define __enable_dcache()						\
 	__asm__ __volatile__ (" msrset	r0, %0;				\
 				nop;"					\
@@ -104,7 +106,7 @@
 				: "i" (MSR_DCE)			\
 				: "memory")
 
-#else /* !CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR */
+#else /* !XPAR_MICROBLAZE_0_USE_MSR_INSTR */
 #define __enable_dcache()						\
 	__asm__ __volatile__ ("						\
 				mfs	r12, rmsr;			\
@@ -125,7 +127,7 @@
 				: "i" (MSR_DCE)			\
 				: "memory", "r12")
 
-#endif /* CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR */
+#endif /* XPAR_MICROBLAZE_0_USE_MSR_INSTR */
 
 #define __invalidate_dcache(addr)					\
 	__asm__ __volatile__ ("						\
@@ -136,6 +138,6 @@
 #define __enable_dcache()
 #define __disable_dcache()
 #define __invalidate_dcache(addr)
-#endif /* CONFIG_XILINX_MICROBLAZE0_USE_DCACHE */
+#endif /* XPAR_MICROBLAZE_0_USE_DCACHE */
 
 #endif /* __MICROBLAZE_CACHE_H__ */

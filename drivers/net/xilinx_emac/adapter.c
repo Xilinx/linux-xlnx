@@ -50,6 +50,7 @@
 #include <linux/ethtool.h>
 
 #include <xbasic_types.h>
+#include <asm/xparameters.h>
 #include "xemac.h"
 #include "xemac_i.h"
 #include "xipif_v1_23_b.h"

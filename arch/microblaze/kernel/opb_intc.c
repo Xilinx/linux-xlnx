@@ -9,9 +9,9 @@
  */
 #include <linux/init.h>
 #include <linux/irq.h>
-#include <linux/autoconf.h>
 #include <asm/page.h>
 #include <asm/io.h>
+#include <asm/xparameters.h>
 
 /* No one else should require these constants, so define them locally here. */
 #define ISR 0x00			/* Interrupt Status Register */
@@ -26,7 +26,8 @@
 #define MER_ME  (1<<0)
 #define MER_HIE (1<<1)
 
-#define BASE_ADDR CONFIG_XILINX_INTC_0_BASEADDR
+#define BASE_ADDR XPAR_OPB_INTC_0_BASEADDR
+#define XPAR_INTC_0_KIND_OF_INTR XPAR_OPB_INTC_0_KIND_OF_INTR
 
 static void opb_intc_enable(unsigned int irq)
 {
@@ -111,7 +112,7 @@ void __init init_IRQ(void)
 	for (i = 0; i < NR_IRQS; ++i) {
 		irq_desc[i].chip = &obp_intc;
 
-		if (CONFIG_XILINX_INTC_0_KIND_OF_INTR & (0x00000001 << i))
+		if (XPAR_INTC_0_KIND_OF_INTR & (0x00000001 << i))
 			irq_desc[i].status &= ~IRQ_LEVEL;
 		else
 			irq_desc[i].status |= IRQ_LEVEL;

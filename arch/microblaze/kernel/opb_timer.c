@@ -15,6 +15,7 @@
 #include <linux/profile.h>
 #include <linux/irq.h>
 #include <asm/io.h>
+#include <asm/xparameters.h>
 
 #define BASE_ADDR CONFIG_XILINX_TIMER_0_BASEADDR
 

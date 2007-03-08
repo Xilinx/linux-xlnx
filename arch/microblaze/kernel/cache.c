@@ -18,7 +18,7 @@
 
 void flush_icache (void)
 {
-#if CONFIG_XILINX_MICROBLAZE0_USE_ICACHE==1
+#if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	unsigned int i;
 	unsigned flags;
 
@@ -27,25 +27,25 @@ void flush_icache (void)
 
 	/* Just loop through cache size and invalidate, no need to add
 	   CACHE_BASE address */
-	for(i=0;i<CONFIG_XILINX_MICROBLAZE0_CACHE_BYTE_SIZE;i+=ICACHE_LINE_SIZE)                __invalidate_icache(i);
+	for(i=0;i<XPAR_MICROBLAZE_0_CACHE_BYTE_SIZE;i+=ICACHE_LINE_SIZE)                __invalidate_icache(i);
 
 	__enable_icache();
 	local_irq_restore(flags);
-#endif /* CONFIG_XILINX_MICROBLAZE0_USE_ICACHE */
+#endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
 }
 
 void flush_icache_range (unsigned long start, unsigned long end)
 { 
-#if CONFIG_XILINX_MICROBLAZE0_USE_ICACHE==1
+#if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	unsigned int i;
 	unsigned flags;
-#if CONFIG_XILINX_MICROBLAZE0_ICACHE_USE_FSL==1
+#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
 	unsigned int align = ~(ICACHE_LINE_SIZE - 1);
 #endif
 
 /* No need to cover entire cache range, just cover cache footprint */
-	end=min(start+CONFIG_XILINX_MICROBLAZE0_CACHE_BYTE_SIZE, end);
-#if CONFIG_XILINX_MICROBLAZE0_ICACHE_USE_FSL==1
+	end=min(start+XPAR_MICROBLAZE_0_CACHE_BYTE_SIZE, end);
+#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
 	start &= align;		/* Make sure we are aligned */
 	end  = ((end & align) + ICACHE_LINE_SIZE);              /* Push end up to the next cache line */
 #endif
@@ -57,7 +57,7 @@ void flush_icache_range (unsigned long start, unsigned long end)
 
 	__enable_icache();
 	local_irq_restore(flags);
-#endif /* CONFIG_XILINX_MICROBLAZE0_USE_ICACHE */
+#endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
 }
 
 void flush_icache_page (struct vm_area_struct *vma, struct page *page)

@@ -42,6 +42,7 @@
 
 /***************************** Include Files *********************************/
 #include "xemac.h"
+#include <asm/xparameters.h>
 
 /************************** Constant Definitions *****************************/
 

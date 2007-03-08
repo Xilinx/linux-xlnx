@@ -9,6 +9,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/sched.h>
 
 /* FIXME */
 void show_regs(struct pt_regs *regs)

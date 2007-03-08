@@ -87,8 +87,10 @@ inline unsigned get_romfs_len(unsigned *addr)
 void machine_early_init(const char *cmdline)
 {
 	unsigned long *src, *dst = (unsigned long *)0x0;
+#ifdef CONFIG_BLUECAT_RFS
 	unsigned char buf[4];
 	unsigned long temp_buf[2];
+#endif
 
 #ifdef __bluecat__
 	cmdline = (char *)_stext - 0x200 - 0x6c00 + 12;

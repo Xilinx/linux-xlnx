@@ -1,9 +1,18 @@
 UTS_SYSNAME = -DUTS_SYSNAME=\"uClinux\"
 
-CROSS_COMPILE=microblaze-uclinux-
+#CROSS_COMPILE=microblaze-uclinux-
 
+# Those flags are hardcoded for now.
+#
+# FIXME: Add right flags once new MLD is finished.
+#
 CFLAGS += -g
+CFLAGS += -mno-xl-soft-mul
+CFLAGS += -mno-xl-soft-div
+CFLAGS += -mxl-barrel-shift
 
+# The following flags are activate when using the autoconfig mechanism.
+#
 # Use cpu-related CONFIG_ vars to set compile options.
 CPUFLAGS-$(CONFIG_XILINX_MICROBLAZE0_USE_HW_MUL) += -mno-xl-soft-mul
 CPUFLAGS-$(CONFIG_XILINX_MICROBLAZE0_USE_DIV) += -mno-xl-soft-div
@@ -15,7 +24,7 @@ CPUFLAGS-$(CONFIG_XILINX_MICROBLAZE0_USE_PCMP) += -mxl-pattern-compare
 # the rest of the kernel
 CFLAGS += $(CPUFLAGS-1)
 
-# r31 holds current when in kernel moed
+# r31 holds current when in kernel mode
 CFLAGS += -ffixed-r31
 
 LDFLAGS_BLOB := --format binary --oformat elf32-microblaze

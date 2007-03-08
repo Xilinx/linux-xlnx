@@ -16,11 +16,12 @@
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/fcntl.h>
+#include <asm/xparameters.h>
 
 #ifdef CONFIG_EARLY_PRINTK_UARTLITE_ADDRESS
 #define BASE_ADDR ((unsigned char *)CONFIG_EARLY_PRINTK_UARTLITE_ADDRESS)
 #else
-#define BASE_ADDR ((unsigned char *)CONFIG_XILINX_UARTLITE_0_BASEADDR)
+#define BASE_ADDR ((unsigned char *)XPAR_RS232_UART_BASEADDR)
 #endif
 #define RX_FIFO   BASE_ADDR
 #define TX_FIFO   ((unsigned long *)(BASE_ADDR + 4))

@@ -15,6 +15,7 @@
 #include <linux/bootmem.h>
 #include <linux/pfn.h>
 #include <asm/sections.h>
+#include <asm/xparameters.h>
 
 #ifdef CONFIG_BLUECAT_RFS
 extern unsigned long bluecat_rfs_phys;
