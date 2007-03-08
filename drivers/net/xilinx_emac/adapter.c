@@ -1990,9 +1990,6 @@ static void remove_head_dev(void)
 
 static int __init probe(int index)
 {
-	static const unsigned long remap_size =
-		CONFIG_XILINX_ETHERNET_0_HIGHADDR -
-		CONFIG_XILINX_ETHERNET_0_BASEADDR + 1;
 	struct net_device *dev;
 	struct net_local *lp;
 	XEmac_Config *cfg;
@@ -2059,7 +2056,9 @@ static int __init probe(int index)
 
 	/* Change the addresses to be virtual */
 	cfg->PhysAddress = cfg->BaseAddress;
-	cfg->BaseAddress = (u32) ioremap(cfg->PhysAddress, remap_size);
+	cfg->BaseAddress = (u32) ioremap(cfg->PhysAddress,
+					CONFIG_XILINX_ETHERNET_0_HIGHADDR -
+					CONFIG_XILINX_ETHERNET_0_BASEADDR + 1);
 
 	if (emac_mac_line[0]) {
 		setup_emac_mac(emac_mac_line);
