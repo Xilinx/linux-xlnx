@@ -52,7 +52,7 @@
 #include "xbasic_types.h"
 #include "xemac_i.h"
 #include "xio.h"
-#include "xipif_v1_23_b.h"      /* Uses v1.23b of the IPIF */
+#include "xipif_v1_23_b.h"	/* Uses v1.23b of the IPIF */
 
 /************************** Constant Definitions *****************************/
 
@@ -68,7 +68,7 @@
 
 /************************** Function Prototypes ******************************/
 
-static void HandleEmacFifoIntr(XEmac *InstancePtr);
+static void HandleEmacFifoIntr(XEmac * InstancePtr);
 
 /*****************************************************************************/
 /**
@@ -118,127 +118,122 @@ static void HandleEmacFifoIntr(XEmac *InstancePtr);
 * when reading or writing to them.
 *
 ******************************************************************************/
-XStatus XEmac_FifoSend(XEmac *InstancePtr, Xuint8 *BufPtr, Xuint32 ByteCount)
+XStatus XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount)
 {
-    XStatus Result;
-    volatile Xuint32 StatusReg;
+	XStatus Result;
+	volatile u32 StatusReg;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BufPtr != XNULL);
-    XASSERT_NONVOID(ByteCount > XEM_HDR_SIZE);   /* send at least 1 byte */
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BufPtr != NULL);
+	XASSERT_NONVOID(ByteCount > XEM_HDR_SIZE);	/* send at least 1 byte */
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure the device is configured for interrupt mode and it is started
-     */
-    if (InstancePtr->IsPolled)
-    {
-        return XST_NOT_INTERRUPT;
-    }
+	/*
+	 * Be sure the device is configured for interrupt mode and it is started
+	 */
+	if (InstancePtr->IsPolled) {
+		return XST_NOT_INTERRUPT;
+	}
 
-    if (InstancePtr->IsStarted != XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STOPPED;
-    }
+	if (InstancePtr->IsStarted != XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STOPPED;
+	}
 
-    /*
-     * Before writing to the data FIFO, make sure the length FIFO is not
-     * full.  The data FIFO might not be full yet even though the length FIFO
-     * is. This avoids an overrun condition on the length FIFO and keeps the
-     * FIFOs in sync.
-     */
-    StatusReg = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
-    if (StatusReg & XEM_EIR_XMIT_LFIFO_FULL_MASK)
-    {
-        return XST_FIFO_NO_ROOM;
-    }
+	/*
+	 * Before writing to the data FIFO, make sure the length FIFO is not
+	 * full.  The data FIFO might not be full yet even though the length FIFO
+	 * is. This avoids an overrun condition on the length FIFO and keeps the
+	 * FIFOs in sync.
+	 */
+	StatusReg = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
+	if (StatusReg & XEM_EIR_XMIT_LFIFO_FULL_MASK) {
+		return XST_FIFO_NO_ROOM;
+	}
 
-    /*
-     * Send either by directly writing to the FIFOs or using the DMA engine
-     */
-    if (!XEmac_mIsDma(InstancePtr))
-    {
-        /*
-         * This is a non-blocking write. The packet FIFO returns an error if there
-         * is not enough room in the FIFO for this frame.
-         */
-        Result = XPacketFifoV200a_Write(&InstancePtr->SendFifo, BufPtr, ByteCount);
-        if (Result != XST_SUCCESS)
-        {
-            return Result;
-        }
-    }
-    else
-    {
-        Xuint32 Vacancy;
+	/*
+	 * Send either by directly writing to the FIFOs or using the DMA engine
+	 */
+	if (!XEmac_mIsDma(InstancePtr)) {
+		/*
+		 * This is a non-blocking write. The packet FIFO returns an error if there
+		 * is not enough room in the FIFO for this frame.
+		 */
+		Result = XPacketFifoV200a_Write(&InstancePtr->SendFifo, BufPtr,
+						ByteCount);
+		if (Result != XST_SUCCESS) {
+			return Result;
+		}
+	}
+	else {
+		u32 Vacancy;
 
-        /*
-         * Need to make sure there is room in the data FIFO for the packet
-         * before trying to DMA into it. Get the vacancy count (in words)
-         * and make sure the packet will fit.
-         */
-        Vacancy = XPF_V200A_GET_COUNT(&InstancePtr->SendFifo);
-        if ((Vacancy * sizeof(Xuint32)) < ByteCount)
-        {
-            return XST_FIFO_NO_ROOM;
-        }
+		/*
+		 * Need to make sure there is room in the data FIFO for the packet
+		 * before trying to DMA into it. Get the vacancy count (in words)
+		 * and make sure the packet will fit.
+		 */
+		Vacancy = XPF_V200A_GET_COUNT(&InstancePtr->SendFifo);
+		if ((Vacancy * sizeof(u32)) < ByteCount) {
+			return XST_FIFO_NO_ROOM;
+		}
 
-        /*
-         * Check the DMA engine to make sure it is not already busy
-         */
-        if (XDmaChannel_GetStatus(&InstancePtr->SendChannel) & XDC_DMASR_BUSY_MASK)
-        {
-            return XST_DEVICE_BUSY;
-        }
+		/*
+		 * Check the DMA engine to make sure it is not already busy
+		 */
+		if (XDmaChannel_GetStatus(&InstancePtr->SendChannel) &
+		    XDC_DMASR_BUSY_MASK) {
+			return XST_DEVICE_BUSY;
+		}
 
-        /*
-         * Set the DMA control register up properly
-         */
-        XDmaChannel_SetControl(&InstancePtr->SendChannel,
-                               XDC_DMACR_SOURCE_INCR_MASK |
-                               XDC_DMACR_DEST_LOCAL_MASK |
-                               XDC_DMACR_SG_DISABLE_MASK);
+		/*
+		 * Set the DMA control register up properly
+		 */
+		XDmaChannel_SetControl(&InstancePtr->SendChannel,
+				       XDC_DMACR_SOURCE_INCR_MASK |
+				       XDC_DMACR_DEST_LOCAL_MASK |
+				       XDC_DMACR_SG_DISABLE_MASK);
 
-        /*
-         * Now transfer the data from the buffer to the FIFO
-         */
-        XDmaChannel_Transfer(&InstancePtr->SendChannel, (u32 *)BufPtr,
-                 (u32 *)(InstancePtr->BaseAddress + XEM_PFIFO_TXDATA_OFFSET),
-                  ByteCount);
+		/*
+		 * Now transfer the data from the buffer to the FIFO
+		 */
+		XDmaChannel_Transfer(&InstancePtr->SendChannel, (u32 *) BufPtr,
+				     (u32 *) (InstancePtr->BaseAddress +
+					      XEM_PFIFO_TXDATA_OFFSET),
+				     ByteCount);
 
-        /*
-         * Poll here waiting for DMA to be not busy. We think this will
-         * typically be a single read since DMA should be ahead of the SW.
-         */
-        do
-        {
-            StatusReg = XDmaChannel_GetStatus(&InstancePtr->SendChannel);
-        }
-        while (StatusReg & XDC_DMASR_BUSY_MASK);
+		/*
+		 * Poll here waiting for DMA to be not busy. We think this will
+		 * typically be a single read since DMA should be ahead of the SW.
+		 */
+		do {
+			StatusReg =
+				XDmaChannel_GetStatus(&InstancePtr->
+						      SendChannel);
+		}
+		while (StatusReg & XDC_DMASR_BUSY_MASK);
 
-        /* Return an error if there was a problem with DMA */
-        if ((StatusReg & XDC_DMASR_BUS_ERROR_MASK) ||
-            (StatusReg & XDC_DMASR_BUS_TIMEOUT_MASK))
-        {
-            InstancePtr->Stats.DmaErrors++;
-            return XST_DMA_ERROR;
-        }
-    }
+		/* Return an error if there was a problem with DMA */
+		if ((StatusReg & XDC_DMASR_BUS_ERROR_MASK) ||
+		    (StatusReg & XDC_DMASR_BUS_TIMEOUT_MASK)) {
+			InstancePtr->Stats.DmaErrors++;
+			return XST_DMA_ERROR;
+		}
+	}
 
-    /*
-     * Set the MAC's transmit packet length register to tell it to transmit
-     */
-    XIo_Out32(InstancePtr->BaseAddress + XEM_TPLR_OFFSET, ByteCount);
+	/*
+	 * Set the MAC's transmit packet length register to tell it to transmit
+	 */
+	XIo_Out32(InstancePtr->BaseAddress + XEM_TPLR_OFFSET, ByteCount);
 
-    /*
-     * Bump stats here instead of the Isr since we know the byte count
-     * here but would have to save it in the instance in order to know the
-     * byte count at interrupt time.
-     */
-    InstancePtr->Stats.XmitFrames++;
-    InstancePtr->Stats.XmitBytes += ByteCount;
+	/*
+	 * Bump stats here instead of the Isr since we know the byte count
+	 * here but would have to save it in the instance in order to know the
+	 * byte count at interrupt time.
+	 */
+	InstancePtr->Stats.XmitFrames++;
+	InstancePtr->Stats.XmitBytes += ByteCount;
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -293,144 +288,136 @@ XStatus XEmac_FifoSend(XEmac *InstancePtr, Xuint8 *BufPtr, Xuint32 ByteCount)
 * when reading or writing to them.
 *
 ******************************************************************************/
-XStatus XEmac_FifoRecv(XEmac *InstancePtr, Xuint8 *BufPtr,
-                       Xuint32 *ByteCountPtr)
+XStatus XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr)
 {
-    XStatus Result;
-    Xuint32 PktLength;
-    Xuint32 StatusReg;
+	XStatus Result;
+	u32 PktLength;
+	u32 StatusReg;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BufPtr != XNULL);
-    XASSERT_NONVOID(ByteCountPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BufPtr != NULL);
+	XASSERT_NONVOID(ByteCountPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure the device is not configured for polled mode and it is started
-     */
-    if (InstancePtr->IsPolled)
-    {
-        return XST_NOT_INTERRUPT;
-    }
+	/*
+	 * Be sure the device is not configured for polled mode and it is started
+	 */
+	if (InstancePtr->IsPolled) {
+		return XST_NOT_INTERRUPT;
+	}
 
-    if (InstancePtr->IsStarted != XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STOPPED;
-    }
+	if (InstancePtr->IsStarted != XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STOPPED;
+	}
 
-    /*
-     * Make sure the buffer is big enough to hold the maximum frame size.
-     * We need to do this because as soon as we read the MAC's packet length
-     * register, which is actually a FIFO, we remove that length from the
-     * FIFO.  We do not want to read the length FIFO without also reading the
-     * data FIFO since this would get the FIFOs out of sync.  So we have to
-     * make this restriction.
-     */
-    if (*ByteCountPtr < XEM_MAX_FRAME_SIZE)
-    {
-        return XST_BUFFER_TOO_SMALL;
-    }
+	/*
+	 * Make sure the buffer is big enough to hold the maximum frame size.
+	 * We need to do this because as soon as we read the MAC's packet length
+	 * register, which is actually a FIFO, we remove that length from the
+	 * FIFO.  We do not want to read the length FIFO without also reading the
+	 * data FIFO since this would get the FIFOs out of sync.  So we have to
+	 * make this restriction.
+	 */
+	if (*ByteCountPtr < XEM_MAX_FRAME_SIZE) {
+		return XST_BUFFER_TOO_SMALL;
+	}
 
-    /*
-     * Before reading from the length FIFO, make sure the length FIFO is not
-     * empty. We could cause an underrun error if we try to read from an
-     * empty FIFO.
-     */
-    StatusReg = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
-    if (StatusReg & XEM_EIR_RECV_LFIFO_EMPTY_MASK)
-    {
-        /*
-         * Clear the empty status so the next time through the current status
-         * of the hardware is reflected (we have to do this because the status
-         * is level in the device but latched in the interrupt status register).
-         */
-        XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress,
-                               XEM_EIR_RECV_LFIFO_EMPTY_MASK);
-        return XST_NO_DATA;
-    }
+	/*
+	 * Before reading from the length FIFO, make sure the length FIFO is not
+	 * empty. We could cause an underrun error if we try to read from an
+	 * empty FIFO.
+	 */
+	StatusReg = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
+	if (StatusReg & XEM_EIR_RECV_LFIFO_EMPTY_MASK) {
+		/*
+		 * Clear the empty status so the next time through the current status
+		 * of the hardware is reflected (we have to do this because the status
+		 * is level in the device but latched in the interrupt status register).
+		 */
+		XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress,
+				      XEM_EIR_RECV_LFIFO_EMPTY_MASK);
+		return XST_NO_DATA;
+	}
 
-    /*
-     * If configured with DMA, make sure the DMA engine is not busy
-     */
-    if (XEmac_mIsDma(InstancePtr))
-    {
-        if (XDmaChannel_GetStatus(&InstancePtr->RecvChannel) & XDC_DMASR_BUSY_MASK)
-        {
-            return XST_DEVICE_BUSY;
-        }
-    }
+	/*
+	 * If configured with DMA, make sure the DMA engine is not busy
+	 */
+	if (XEmac_mIsDma(InstancePtr)) {
+		if (XDmaChannel_GetStatus(&InstancePtr->RecvChannel) &
+		    XDC_DMASR_BUSY_MASK) {
+			return XST_DEVICE_BUSY;
+		}
+	}
 
-    /*
-     * Determine, from the MAC, the length of the next packet available
-     * in the data FIFO (there should be a non-zero length here)
-     */
-    PktLength = XIo_In32(InstancePtr->BaseAddress + XEM_RPLR_OFFSET);
-    if (PktLength == 0)
-    {
-        return XST_NO_DATA;
-    }
+	/*
+	 * Determine, from the MAC, the length of the next packet available
+	 * in the data FIFO (there should be a non-zero length here)
+	 */
+	PktLength = XIo_In32(InstancePtr->BaseAddress + XEM_RPLR_OFFSET);
+	if (PktLength == 0) {
+		return XST_NO_DATA;
+	}
 
-    /*
-     * We assume that the MAC never has a length bigger than the largest
-     * Ethernet frame, so no need to make another check here.
-     *
-     * Receive either by directly reading the FIFO or using the DMA engine
-     */
-    if (!XEmac_mIsDma(InstancePtr))
-    {
-        /*
-         * This is a non-blocking read. The FIFO returns an error if there is
-         * not at least the requested amount of data in the FIFO.
-         */
-        Result = XPacketFifoV200a_Read(&InstancePtr->RecvFifo, BufPtr, PktLength);
-        if (Result != XST_SUCCESS)
-        {
-            return Result;
-        }
-    }
-    else
-    {
-        /*
-         * Call on DMA to transfer from the FIFO to the buffer. First set up
-         * the DMA control register.
-         */
-        XDmaChannel_SetControl(&InstancePtr->RecvChannel,
-                               XDC_DMACR_DEST_INCR_MASK |
-                               XDC_DMACR_SOURCE_LOCAL_MASK |
-                               XDC_DMACR_SG_DISABLE_MASK);
+	/*
+	 * We assume that the MAC never has a length bigger than the largest
+	 * Ethernet frame, so no need to make another check here.
+	 *
+	 * Receive either by directly reading the FIFO or using the DMA engine
+	 */
+	if (!XEmac_mIsDma(InstancePtr)) {
+		/*
+		 * This is a non-blocking read. The FIFO returns an error if there is
+		 * not at least the requested amount of data in the FIFO.
+		 */
+		Result = XPacketFifoV200a_Read(&InstancePtr->RecvFifo, BufPtr,
+					       PktLength);
+		if (Result != XST_SUCCESS) {
+			return Result;
+		}
+	}
+	else {
+		/*
+		 * Call on DMA to transfer from the FIFO to the buffer. First set up
+		 * the DMA control register.
+		 */
+		XDmaChannel_SetControl(&InstancePtr->RecvChannel,
+				       XDC_DMACR_DEST_INCR_MASK |
+				       XDC_DMACR_SOURCE_LOCAL_MASK |
+				       XDC_DMACR_SG_DISABLE_MASK);
 
-        /*
-         * Now transfer the data
-         */
-        XDmaChannel_Transfer(&InstancePtr->RecvChannel,
-                (u32 *)(InstancePtr->BaseAddress + XEM_PFIFO_RXDATA_OFFSET),
-                (u32 *)BufPtr, PktLength);
+		/*
+		 * Now transfer the data
+		 */
+		XDmaChannel_Transfer(&InstancePtr->RecvChannel,
+				     (u32 *) (InstancePtr->BaseAddress +
+					      XEM_PFIFO_RXDATA_OFFSET),
+				     (u32 *) BufPtr, PktLength);
 
-        /*
-         * Poll here waiting for DMA to be not busy. We think this will
-         * typically be a single read since DMA should be ahead of the SW.
-         */
-        do
-        {
-            StatusReg = XDmaChannel_GetStatus(&InstancePtr->RecvChannel);
-        }
-        while (StatusReg & XDC_DMASR_BUSY_MASK);
+		/*
+		 * Poll here waiting for DMA to be not busy. We think this will
+		 * typically be a single read since DMA should be ahead of the SW.
+		 */
+		do {
+			StatusReg =
+				XDmaChannel_GetStatus(&InstancePtr->
+						      RecvChannel);
+		}
+		while (StatusReg & XDC_DMASR_BUSY_MASK);
 
-        /* Return an error if there was a problem with DMA */
-        if ((StatusReg & XDC_DMASR_BUS_ERROR_MASK) ||
-            (StatusReg & XDC_DMASR_BUS_TIMEOUT_MASK))
-        {
-            InstancePtr->Stats.DmaErrors++;
-            return XST_DMA_ERROR;
-        }
-    }
+		/* Return an error if there was a problem with DMA */
+		if ((StatusReg & XDC_DMASR_BUS_ERROR_MASK) ||
+		    (StatusReg & XDC_DMASR_BUS_TIMEOUT_MASK)) {
+			InstancePtr->Stats.DmaErrors++;
+			return XST_DMA_ERROR;
+		}
+	}
 
-    *ByteCountPtr = PktLength;
+	*ByteCountPtr = PktLength;
 
-    InstancePtr->Stats.RecvFrames++;
-    InstancePtr->Stats.RecvBytes += PktLength;
+	InstancePtr->Stats.RecvFrames++;
+	InstancePtr->Stats.RecvBytes += PktLength;
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -457,45 +444,42 @@ XStatus XEmac_FifoRecv(XEmac *InstancePtr, Xuint8 *BufPtr,
 ******************************************************************************/
 void XEmac_IntrHandlerFifo(void *InstancePtr)
 {
-    Xuint32 IntrStatus;
-    XEmac *EmacPtr = (XEmac *)InstancePtr;
+	u32 IntrStatus;
+	XEmac *EmacPtr = (XEmac *) InstancePtr;
 
-    EmacPtr->Stats.TotalIntrs++;
+	EmacPtr->Stats.TotalIntrs++;
 
-    /*
-     * Get the interrupt status from the IPIF. There is no clearing of
-     * interrupts in the IPIF. Interrupts must be cleared at the source.
-     */
-    IntrStatus = XIIF_V123B_READ_DIPR(EmacPtr->BaseAddress);
+	/*
+	 * Get the interrupt status from the IPIF. There is no clearing of
+	 * interrupts in the IPIF. Interrupts must be cleared at the source.
+	 */
+	IntrStatus = XIIF_V123B_READ_DIPR(EmacPtr->BaseAddress);
 
-    if (IntrStatus & XEM_IPIF_EMAC_MASK)        /* MAC interrupt */
-    {
-        EmacPtr->Stats.EmacInterrupts++;
-        HandleEmacFifoIntr(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_EMAC_MASK) {	/* MAC interrupt */
+		EmacPtr->Stats.EmacInterrupts++;
+		HandleEmacFifoIntr(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_RECV_FIFO_MASK)   /* Receive FIFO interrupt */
-    {
-        EmacPtr->Stats.RecvInterrupts++;
-        XEmac_CheckFifoRecvError(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_RECV_FIFO_MASK) {	/* Receive FIFO interrupt */
+		EmacPtr->Stats.RecvInterrupts++;
+		XEmac_CheckFifoRecvError(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_SEND_FIFO_MASK)   /* Send FIFO interrupt */
-    {
-        EmacPtr->Stats.XmitInterrupts++;
-        XEmac_CheckFifoSendError(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_SEND_FIFO_MASK) {	/* Send FIFO interrupt */
+		EmacPtr->Stats.XmitInterrupts++;
+		XEmac_CheckFifoSendError(EmacPtr);
+	}
 
-    if (IntrStatus & XIIF_V123B_ERROR_MASK)
-    {
-        /*
-         * An error occurred internal to the IPIF. This is more of a debug and
-         * integration issue rather than a production error. Don't do anything
-         * other than clear it, which provides a spot for software to trap
-         * on the interrupt and begin debugging.
-         */
-        XIIF_V123B_WRITE_DISR(EmacPtr->BaseAddress, XIIF_V123B_ERROR_MASK);
-    }
+	if (IntrStatus & XIIF_V123B_ERROR_MASK) {
+		/*
+		 * An error occurred internal to the IPIF. This is more of a debug and
+		 * integration issue rather than a production error. Don't do anything
+		 * other than clear it, which provides a spot for software to trap
+		 * on the interrupt and begin debugging.
+		 */
+		XIIF_V123B_WRITE_DISR(EmacPtr->BaseAddress,
+				      XIIF_V123B_ERROR_MASK);
+	}
 }
 
 /*****************************************************************************/
@@ -526,15 +510,15 @@ void XEmac_IntrHandlerFifo(void *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XEmac_SetFifoRecvHandler(XEmac *InstancePtr, void *CallBackRef,
-                              XEmac_FifoHandler FuncPtr)
+void XEmac_SetFifoRecvHandler(XEmac * InstancePtr, void *CallBackRef,
+			      XEmac_FifoHandler FuncPtr)
 {
-    XASSERT_VOID(InstancePtr != XNULL);
-    XASSERT_VOID(FuncPtr != XNULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->FifoRecvHandler = FuncPtr;
-    InstancePtr->FifoRecvRef = CallBackRef;
+	InstancePtr->FifoRecvHandler = FuncPtr;
+	InstancePtr->FifoRecvRef = CallBackRef;
 }
 
 /*****************************************************************************/
@@ -566,15 +550,15 @@ void XEmac_SetFifoRecvHandler(XEmac *InstancePtr, void *CallBackRef,
 * None.
 *
 ******************************************************************************/
-void XEmac_SetFifoSendHandler(XEmac *InstancePtr, void *CallBackRef,
-                              XEmac_FifoHandler FuncPtr)
+void XEmac_SetFifoSendHandler(XEmac * InstancePtr, void *CallBackRef,
+			      XEmac_FifoHandler FuncPtr)
 {
-    XASSERT_VOID(InstancePtr != XNULL);
-    XASSERT_VOID(FuncPtr != XNULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->FifoSendHandler = FuncPtr;
-    InstancePtr->FifoSendRef = CallBackRef;
+	InstancePtr->FifoSendHandler = FuncPtr;
+	InstancePtr->FifoSendRef = CallBackRef;
 }
 
 /******************************************************************************
@@ -599,87 +583,86 @@ void XEmac_SetFifoSendHandler(XEmac *InstancePtr, void *CallBackRef,
 * None.
 *
 ******************************************************************************/
-static void HandleEmacFifoIntr(XEmac *InstancePtr)
+static void HandleEmacFifoIntr(XEmac * InstancePtr)
 {
-    Xuint32 IntrStatus;
+	u32 IntrStatus;
 
-    /*
-     * The EMAC generates interrupts for errors and generates the transmit
-     * and receive done interrupts for data. We clear the interrupts
-     * immediately so that any latched status interrupt bits will reflect the
-     * true status of the device, and so any pulsed interrupts (non-status)
-     * generated during the Isr will not be lost.
-     */
-    IntrStatus = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
-    XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, IntrStatus);
+	/*
+	 * The EMAC generates interrupts for errors and generates the transmit
+	 * and receive done interrupts for data. We clear the interrupts
+	 * immediately so that any latched status interrupt bits will reflect the
+	 * true status of the device, and so any pulsed interrupts (non-status)
+	 * generated during the Isr will not be lost.
+	 */
+	IntrStatus = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
+	XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, IntrStatus);
 
-    if (IntrStatus & XEM_EIR_RECV_DONE_MASK)
-    {
-        /*
-         * Configured for direct memory-mapped I/O using FIFO with interrupts.
-         * This interrupt means the RPLR is non-empty, indicating a frame has
-         * arrived.
-         */
-        InstancePtr->Stats.RecvInterrupts++;
+	if (IntrStatus & XEM_EIR_RECV_DONE_MASK) {
+		/*
+		 * Configured for direct memory-mapped I/O using FIFO with interrupts.
+		 * This interrupt means the RPLR is non-empty, indicating a frame has
+		 * arrived.
+		 */
+		InstancePtr->Stats.RecvInterrupts++;
 
-        InstancePtr->FifoRecvHandler(InstancePtr->FifoRecvRef);
+		InstancePtr->FifoRecvHandler(InstancePtr->FifoRecvRef);
 
-        /*
-         * The upper layer has removed as many frames as it wants to, so we
-         * need to clear the RECV_DONE bit before leaving the ISR so that it
-         * reflects the current state of the hardware (because it's a level
-         * interrupt that is latched in the IPIF interrupt status register).
-         * Note that if we've reached this point the bit is guaranteed to be
-         * set because it was cleared at the top of this ISR before any frames
-         * were serviced, so the bit was set again immediately by hardware
-         * because the RPLR was not yet emptied by software.
-         */
-        XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, XEM_EIR_RECV_DONE_MASK);
-    }
+		/*
+		 * The upper layer has removed as many frames as it wants to, so we
+		 * need to clear the RECV_DONE bit before leaving the ISR so that it
+		 * reflects the current state of the hardware (because it's a level
+		 * interrupt that is latched in the IPIF interrupt status register).
+		 * Note that if we've reached this point the bit is guaranteed to be
+		 * set because it was cleared at the top of this ISR before any frames
+		 * were serviced, so the bit was set again immediately by hardware
+		 * because the RPLR was not yet emptied by software.
+		 */
+		XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress,
+				      XEM_EIR_RECV_DONE_MASK);
+	}
 
-    /*
-     * If configured for direct memory-mapped I/O using FIFO, the xmit status
-     * FIFO must be read and the callback invoked regardless of success or not.
-     */
-    if (IntrStatus & XEM_EIR_XMIT_DONE_MASK)
-    {
-        Xuint32 XmitStatus;
+	/*
+	 * If configured for direct memory-mapped I/O using FIFO, the xmit status
+	 * FIFO must be read and the callback invoked regardless of success or not.
+	 */
+	if (IntrStatus & XEM_EIR_XMIT_DONE_MASK) {
+		u32 XmitStatus;
 
-        InstancePtr->Stats.XmitInterrupts++;
+		InstancePtr->Stats.XmitInterrupts++;
 
-        XmitStatus = XIo_In32(InstancePtr->BaseAddress + XEM_TSR_OFFSET);
+		XmitStatus =
+			XIo_In32(InstancePtr->BaseAddress + XEM_TSR_OFFSET);
 
-        /*
-         * Collision errors are stored in the transmit status register
-         * instead of the interrupt status register
-         */
-        if (XmitStatus & XEM_TSR_EXCESS_DEFERRAL_MASK)
-        {
-            InstancePtr->Stats.XmitExcessDeferral++;
-        }
+		/*
+		 * Collision errors are stored in the transmit status register
+		 * instead of the interrupt status register
+		 */
+		if (XmitStatus & XEM_TSR_EXCESS_DEFERRAL_MASK) {
+			InstancePtr->Stats.XmitExcessDeferral++;
+		}
 
-        if (XmitStatus & XEM_TSR_LATE_COLLISION_MASK)
-        {
-            InstancePtr->Stats.XmitLateCollisionErrors++;
-        }
+		if (XmitStatus & XEM_TSR_LATE_COLLISION_MASK) {
+			InstancePtr->Stats.XmitLateCollisionErrors++;
+		}
 
-        InstancePtr->FifoSendHandler(InstancePtr->FifoSendRef);
+		InstancePtr->FifoSendHandler(InstancePtr->FifoSendRef);
 
-        /*
-         * Only one status is retrieved per interrupt. We need to clear the
-         * XMIT_DONE bit before leaving the ISR so that it reflects the current
-         * state of the hardware (because it's a level interrupt that is latched
-         * in the IPIF interrupt status register). Note that if we've reached
-         * this point the bit is guaranteed to be set because it was cleared at
-         * the top of this ISR before any statuses were serviced, so the bit was
-         * set again immediately by hardware because the TSR was not yet emptied
-         * by software.
-         */
-        XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, XEM_EIR_XMIT_DONE_MASK);
-    }
+		/*
+		 * Only one status is retrieved per interrupt. We need to clear the
+		 * XMIT_DONE bit before leaving the ISR so that it reflects the current
+		 * state of the hardware (because it's a level interrupt that is latched
+		 * in the IPIF interrupt status register). Note that if we've reached
+		 * this point the bit is guaranteed to be set because it was cleared at
+		 * the top of this ISR before any statuses were serviced, so the bit was
+		 * set again immediately by hardware because the TSR was not yet emptied
+		 * by software.
+		 */
+		XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress,
+				      XEM_EIR_XMIT_DONE_MASK);
+	}
 
-    /*
-     * Check the MAC for errors
-     */
-    XEmac_CheckEmacError(InstancePtr, IntrStatus);
+	/*
+	 * Check the MAC for errors
+	 */
+	XEmac_CheckEmacError(InstancePtr, IntrStatus);
 }

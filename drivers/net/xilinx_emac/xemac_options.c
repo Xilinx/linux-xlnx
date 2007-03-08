@@ -71,28 +71,26 @@
  * corresponding entry in the control register, so it does not exist in the
  * table.
  */
-typedef struct
-{
-    Xuint32 Option;
-    Xuint32 Mask;
+typedef struct {
+	u32 Option;
+	u32 Mask;
 } OptionMap;
 
-static OptionMap OptionsTable[] =
-{
-        {XEM_UNICAST_OPTION, XEM_ECR_UNICAST_ENABLE_MASK},
-        {XEM_BROADCAST_OPTION, XEM_ECR_BROAD_ENABLE_MASK},
-        {XEM_PROMISC_OPTION, XEM_ECR_PROMISC_ENABLE_MASK},
-        {XEM_FDUPLEX_OPTION, XEM_ECR_FULL_DUPLEX_MASK},
-        {XEM_LOOPBACK_OPTION, XEM_ECR_LOOPBACK_MASK},
-        {XEM_MULTICAST_OPTION, XEM_ECR_MULTI_ENABLE_MASK},
-        {XEM_FLOW_CONTROL_OPTION, XEM_ECR_PAUSE_FRAME_MASK},
-        {XEM_INSERT_PAD_OPTION, XEM_ECR_XMIT_PAD_ENABLE_MASK},
-        {XEM_INSERT_FCS_OPTION, XEM_ECR_XMIT_FCS_ENABLE_MASK},
-        {XEM_INSERT_ADDR_OPTION, XEM_ECR_XMIT_ADDR_INSERT_MASK},
-        {XEM_OVWRT_ADDR_OPTION, XEM_ECR_XMIT_ADDR_OVWRT_MASK},
-        {XEM_STRIP_PAD_FCS_OPTION, XEM_ECR_RECV_STRIP_ENABLE_MASK},
-        {XEM_MULTICAST_CAM_OPTION, XEM_ECR_CAM_ENABLE_MASK},
-        {XEM_JUMBO_OPTION, XEM_ECR_RECV_JUMBO_ENABLE_MASK}
+static OptionMap OptionsTable[] = {
+	{XEM_UNICAST_OPTION, XEM_ECR_UNICAST_ENABLE_MASK},
+	{XEM_BROADCAST_OPTION, XEM_ECR_BROAD_ENABLE_MASK},
+	{XEM_PROMISC_OPTION, XEM_ECR_PROMISC_ENABLE_MASK},
+	{XEM_FDUPLEX_OPTION, XEM_ECR_FULL_DUPLEX_MASK},
+	{XEM_LOOPBACK_OPTION, XEM_ECR_LOOPBACK_MASK},
+	{XEM_MULTICAST_OPTION, XEM_ECR_MULTI_ENABLE_MASK},
+	{XEM_FLOW_CONTROL_OPTION, XEM_ECR_PAUSE_FRAME_MASK},
+	{XEM_INSERT_PAD_OPTION, XEM_ECR_XMIT_PAD_ENABLE_MASK},
+	{XEM_INSERT_FCS_OPTION, XEM_ECR_XMIT_FCS_ENABLE_MASK},
+	{XEM_INSERT_ADDR_OPTION, XEM_ECR_XMIT_ADDR_INSERT_MASK},
+	{XEM_OVWRT_ADDR_OPTION, XEM_ECR_XMIT_ADDR_OVWRT_MASK},
+	{XEM_STRIP_PAD_FCS_OPTION, XEM_ECR_RECV_STRIP_ENABLE_MASK},
+	{XEM_MULTICAST_CAM_OPTION, XEM_ECR_CAM_ENABLE_MASK},
+	{XEM_JUMBO_OPTION, XEM_ECR_RECV_JUMBO_ENABLE_MASK}
 };
 
 #define XEM_NUM_OPTIONS     (sizeof(OptionsTable) / sizeof(OptionMap))
@@ -122,72 +120,64 @@ static OptionMap OptionsTable[] =
 * protection of this shared data (typically using a semaphore) is required.
 *
 ******************************************************************************/
-XStatus XEmac_SetOptions(XEmac *InstancePtr, Xuint32 OptionsFlag)
+XStatus XEmac_SetOptions(XEmac * InstancePtr, u32 OptionsFlag)
 {
-    Xuint32 ControlReg;
-    int Index;
+	u32 ControlReg;
+	int Index;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STARTED;
-    }
+	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STARTED;
+	}
 
-    ControlReg = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
+	ControlReg = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
 
-    /*
-     * Loop through the options table, turning the option on or off
-     * depending on whether the bit is set in the incoming options flag.
-     */
-    for (Index = 0; Index < XEM_NUM_OPTIONS; Index++)
-    {
-        if (OptionsFlag & OptionsTable[Index].Option)
-        {
-            ControlReg |= OptionsTable[Index].Mask;     /* turn it on */
-        }
-        else
-        {
-            ControlReg &= ~OptionsTable[Index].Mask;    /* turn it off */
-        }
-    }
+	/*
+	 * Loop through the options table, turning the option on or off
+	 * depending on whether the bit is set in the incoming options flag.
+	 */
+	for (Index = 0; Index < XEM_NUM_OPTIONS; Index++) {
+		if (OptionsFlag & OptionsTable[Index].Option) {
+			ControlReg |= OptionsTable[Index].Mask;	/* turn it on */
+		}
+		else {
+			ControlReg &= ~OptionsTable[Index].Mask;	/* turn it off */
+		}
+	}
 
-    /*
-     * TODO: need to validate addr-overwrite only if addr-insert?
-     */
+	/*
+	 * TODO: need to validate addr-overwrite only if addr-insert?
+	 */
 
-    /*
-     * Now write the control register. Leave it to the upper layers
-     * to restart the device.
-     */
-    XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET, ControlReg);
+	/*
+	 * Now write the control register. Leave it to the upper layers
+	 * to restart the device.
+	 */
+	XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET, ControlReg);
 
-    /*
-     * Check the polled option
-     */
-    if (OptionsFlag & XEM_POLLED_OPTION)
-    {
-        InstancePtr->IsPolled = XTRUE;
-    }
-    else
-    {
-        InstancePtr->IsPolled = XFALSE;
-    }
+	/*
+	 * Check the polled option
+	 */
+	if (OptionsFlag & XEM_POLLED_OPTION) {
+		InstancePtr->IsPolled = TRUE;
+	}
+	else {
+		InstancePtr->IsPolled = FALSE;
+	}
 
-    /*
-     * Check the No SGEND option
-     */
-    if (OptionsFlag & XEM_NO_SGEND_INT_OPTION)
-    {
-        InstancePtr->IsSgEndDisable = XTRUE;
-    }
-    else
-    {
-        InstancePtr->IsSgEndDisable = XFALSE;
-    }
+	/*
+	 * Check the No SGEND option
+	 */
+	if (OptionsFlag & XEM_NO_SGEND_INT_OPTION) {
+		InstancePtr->IsSgEndDisable = TRUE;
+	}
+	else {
+		InstancePtr->IsSgEndDisable = FALSE;
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -210,42 +200,38 @@ XStatus XEmac_SetOptions(XEmac *InstancePtr, Xuint32 OptionsFlag)
 * None.
 *
 ******************************************************************************/
-Xuint32 XEmac_GetOptions(XEmac *InstancePtr)
+u32 XEmac_GetOptions(XEmac * InstancePtr)
 {
-    Xuint32 OptionsFlag = 0;
-    Xuint32 ControlReg;
-    int Index;
+	u32 OptionsFlag = 0;
+	u32 ControlReg;
+	int Index;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Get the control register to determine which options are currently set.
-     */
-    ControlReg = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
+	/*
+	 * Get the control register to determine which options are currently set.
+	 */
+	ControlReg = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
 
-    /*
-     * Loop through the options table to determine which options are set
-     */
-    for (Index = 0; Index < XEM_NUM_OPTIONS; Index++)
-    {
-        if (ControlReg & OptionsTable[Index].Mask)
-        {
-            OptionsFlag |= OptionsTable[Index].Option;
-        }
-    }
+	/*
+	 * Loop through the options table to determine which options are set
+	 */
+	for (Index = 0; Index < XEM_NUM_OPTIONS; Index++) {
+		if (ControlReg & OptionsTable[Index].Mask) {
+			OptionsFlag |= OptionsTable[Index].Option;
+		}
+	}
 
-    if (InstancePtr->IsPolled)
-    {
-        OptionsFlag |= XEM_POLLED_OPTION;
-    }
+	if (InstancePtr->IsPolled) {
+		OptionsFlag |= XEM_POLLED_OPTION;
+	}
 
-    if (InstancePtr->IsSgEndDisable)
-    {
-        OptionsFlag |= XEM_NO_SGEND_INT_OPTION;
-    }
-    
-    return OptionsFlag;
+	if (InstancePtr->IsSgEndDisable) {
+		OptionsFlag |= XEM_NO_SGEND_INT_OPTION;
+	}
+
+	return OptionsFlag;
 }
 
 
@@ -282,29 +268,27 @@ Xuint32 XEmac_GetOptions(XEmac *InstancePtr)
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_SetInterframeGap(XEmac *InstancePtr, Xuint8 Part1,
-                               Xuint8 Part2)
+XStatus XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2)
 {
-    Xuint32 Ifg;
+	u32 Ifg;
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(Part1 <= XEM_IFGP_PART1_MAX);
-    XASSERT_NONVOID(Part2 <= XEM_IFGP_PART2_MAX);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(Part1 <= XEM_IFGP_PART1_MAX);
+	XASSERT_NONVOID(Part2 <= XEM_IFGP_PART2_MAX);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure device has been stopped
-     */
-    if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STARTED;
-    }
+	/*
+	 * Be sure device has been stopped
+	 */
+	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STARTED;
+	}
 
-    Ifg = Part1 << XEM_IFGP_PART1_SHIFT;
-    Ifg |= (Part2 << XEM_IFGP_PART2_SHIFT);
-    XIo_Out32(InstancePtr->BaseAddress + XEM_IFGP_OFFSET, Ifg);
+	Ifg = Part1 << XEM_IFGP_PART1_SHIFT;
+	Ifg |= (Part2 << XEM_IFGP_PART2_SHIFT);
+	XIo_Out32(InstancePtr->BaseAddress + XEM_IFGP_OFFSET, Ifg);
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -325,18 +309,16 @@ XStatus XEmac_SetInterframeGap(XEmac *InstancePtr, Xuint8 Part1,
 * output parameters.
 *
 ******************************************************************************/
-void XEmac_GetInterframeGap(XEmac *InstancePtr, Xuint8 *Part1Ptr,
-                            Xuint8 *Part2Ptr)
+void XEmac_GetInterframeGap(XEmac * InstancePtr, u8 *Part1Ptr, u8 *Part2Ptr)
 {
-    Xuint32 Ifg;
+	u32 Ifg;
 
-    XASSERT_VOID(InstancePtr != XNULL);
-    XASSERT_VOID(Part1Ptr != XNULL);
-    XASSERT_VOID(Part2Ptr != XNULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(Part1Ptr != NULL);
+	XASSERT_VOID(Part2Ptr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    Ifg = XIo_In32(InstancePtr->BaseAddress + XEM_IFGP_OFFSET);
-    *Part1Ptr = (Ifg & XEM_IFGP_PART1_MASK) >> XEM_IFGP_PART1_SHIFT;
-    *Part2Ptr = (Ifg & XEM_IFGP_PART2_MASK) >> XEM_IFGP_PART2_SHIFT;
+	Ifg = XIo_In32(InstancePtr->BaseAddress + XEM_IFGP_OFFSET);
+	*Part1Ptr = (Ifg & XEM_IFGP_PART1_MASK) >> XEM_IFGP_PART1_SHIFT;
+	*Part2Ptr = (Ifg & XEM_IFGP_PART2_MASK) >> XEM_IFGP_PART2_SHIFT;
 }
-

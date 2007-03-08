@@ -77,20 +77,20 @@
 * This function will always leave the PHY enabled.
 *
 ******************************************************************************/
-void XEmac_PhyReset(XEmac *InstancePtr)
+void XEmac_PhyReset(XEmac * InstancePtr)
 {
-    Xuint32 RegECR;
-    
-    XASSERT_VOID(InstancePtr != XNULL);
+	u32 RegECR;
 
-    /* Disable/reset the PHY */
-    RegECR = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
-    XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET,
-              RegECR & ~XEM_ECR_PHY_ENABLE_MASK);
+	XASSERT_VOID(InstancePtr != NULL);
 
-    /* Re-enable the PHY */
-    XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET,
-              RegECR | XEM_ECR_PHY_ENABLE_MASK);    
+	/* Disable/reset the PHY */
+	RegECR = XIo_In32(InstancePtr->BaseAddress + XEM_ECR_OFFSET);
+	XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET,
+		  RegECR & ~XEM_ECR_PHY_ENABLE_MASK);
+
+	/* Re-enable the PHY */
+	XIo_Out32(InstancePtr->BaseAddress + XEM_ECR_OFFSET,
+		  RegECR | XEM_ECR_PHY_ENABLE_MASK);
 }
 
 
@@ -130,79 +130,76 @@ void XEmac_PhyReset(XEmac *InstancePtr)
 * PhyRead thread.
 *
 ******************************************************************************/
-XStatus XEmac_PhyRead(XEmac *InstancePtr, Xuint32 PhyAddress,
-                      Xuint32 RegisterNum, Xuint16 *PhyDataPtr)
+XStatus XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
+		      u32 RegisterNum, u16 *PhyDataPtr)
 {
-    Xuint32 MiiControl;
-    Xuint32 MiiData;
+	u32 MiiControl;
+	u32 MiiData;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(PhyAddress <= XEM_MGTCR_MAX_PHY_ADDR);
-    XASSERT_NONVOID(RegisterNum <= XEM_MGTCR_MAX_PHY_REG);
-    XASSERT_NONVOID(PhyDataPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(PhyAddress <= XEM_MGTCR_MAX_PHY_ADDR);
+	XASSERT_NONVOID(RegisterNum <= XEM_MGTCR_MAX_PHY_REG);
+	XASSERT_NONVOID(PhyDataPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Make sure the device has the management interface
-     */
-    if (!XEmac_mHasMii(InstancePtr))
-    {
-        return XST_NO_FEATURE;
-    }
+	/*
+	 * Make sure the device has the management interface
+	 */
+	if (!XEmac_mHasMii(InstancePtr)) {
+		return XST_NO_FEATURE;
+	}
 
-    /*
-     * Verify that there is no operation in progress already
-     */
-    MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
-    if (MiiControl & XEM_MGTCR_START_MASK)
-    {
-        /* operation in progress */
-        return XST_EMAC_MII_BUSY;
-    }
+	/*
+	 * Verify that there is no operation in progress already
+	 */
+	MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
+	if (MiiControl & XEM_MGTCR_START_MASK) {
+		/* operation in progress */
+		return XST_EMAC_MII_BUSY;
+	}
 
-    /*
-     * Set up the MII control register first.  We set up a control word with
-     * the PHY address and register number, then indicate the direction (read),
-     * then start the operation.
-     */
-    MiiControl = PhyAddress << XEM_MGTCR_PHY_ADDR_SHIFT;
-    MiiControl |= (RegisterNum << XEM_MGTCR_REG_ADDR_SHIFT);
-    MiiControl |= (XEM_MGTCR_RW_NOT_MASK | XEM_MGTCR_START_MASK |
-                   XEM_MGTCR_MII_ENABLE_MASK);
+	/*
+	 * Set up the MII control register first.  We set up a control word with
+	 * the PHY address and register number, then indicate the direction (read),
+	 * then start the operation.
+	 */
+	MiiControl = PhyAddress << XEM_MGTCR_PHY_ADDR_SHIFT;
+	MiiControl |= (RegisterNum << XEM_MGTCR_REG_ADDR_SHIFT);
+	MiiControl |= (XEM_MGTCR_RW_NOT_MASK | XEM_MGTCR_START_MASK |
+		       XEM_MGTCR_MII_ENABLE_MASK);
 
-    XIo_Out32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET, MiiControl);
+	XIo_Out32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET, MiiControl);
 
-    /*
-     * Wait for the operation to complete
-     */
-    do
-    {
-        MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
-    }
-    while (MiiControl & XEM_MGTCR_START_MASK);
+	/*
+	 * Wait for the operation to complete
+	 */
+	do {
+		MiiControl =
+			XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
+	}
+	while (MiiControl & XEM_MGTCR_START_MASK);
 
-    /*
-     * Now read the resulting MII data register.  First check to see if
-     * an error occurred before reading and returning the value in
-     * the MII data register.
-     */
-    if (MiiControl & XEM_MGTCR_RD_ERROR_MASK)
-    {
-        /*
-         * MII read error occurred.  Upper layer will need to retry.
-         */
-        return XST_EMAC_MII_READ_ERROR;
-    }
+	/*
+	 * Now read the resulting MII data register.  First check to see if
+	 * an error occurred before reading and returning the value in
+	 * the MII data register.
+	 */
+	if (MiiControl & XEM_MGTCR_RD_ERROR_MASK) {
+		/*
+		 * MII read error occurred.  Upper layer will need to retry.
+		 */
+		return XST_EMAC_MII_READ_ERROR;
+	}
 
-    /*
-     * Retrieve the data from the 32-bit register, then copy it to
-     * the 16-bit output parameter.
-     */
-    MiiData = XIo_In32(InstancePtr->BaseAddress + XEM_MGTDR_OFFSET);
+	/*
+	 * Retrieve the data from the 32-bit register, then copy it to
+	 * the 16-bit output parameter.
+	 */
+	MiiData = XIo_In32(InstancePtr->BaseAddress + XEM_MGTDR_OFFSET);
 
-    *PhyDataPtr = (Xuint16)MiiData;
+	*PhyDataPtr = (u16) MiiData;
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -242,63 +239,61 @@ XStatus XEmac_PhyRead(XEmac *InstancePtr, Xuint32 PhyAddress,
 * PhyWrite thread.
 *
 ******************************************************************************/
-XStatus XEmac_PhyWrite(XEmac *InstancePtr, Xuint32 PhyAddress,
-                       Xuint32 RegisterNum, Xuint16 PhyData)
+XStatus XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
+		       u32 RegisterNum, u16 PhyData)
 {
-    Xuint32 MiiControl;
+	u32 MiiControl;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(PhyAddress <= XEM_MGTCR_MAX_PHY_ADDR);
-    XASSERT_NONVOID(RegisterNum <= XEM_MGTCR_MAX_PHY_REG);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(PhyAddress <= XEM_MGTCR_MAX_PHY_ADDR);
+	XASSERT_NONVOID(RegisterNum <= XEM_MGTCR_MAX_PHY_REG);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Make sure the device has the management interface
-     */
-    if (!XEmac_mHasMii(InstancePtr))
-    {
-        return XST_NO_FEATURE;
-    }
+	/*
+	 * Make sure the device has the management interface
+	 */
+	if (!XEmac_mHasMii(InstancePtr)) {
+		return XST_NO_FEATURE;
+	}
 
-    /*
-     * Verify that there is no operation in progress already
-     */
-    MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
-    if (MiiControl & XEM_MGTCR_START_MASK)
-    {
-        /* operation in progress */
-        return XST_EMAC_MII_BUSY;
-    }
+	/*
+	 * Verify that there is no operation in progress already
+	 */
+	MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
+	if (MiiControl & XEM_MGTCR_START_MASK) {
+		/* operation in progress */
+		return XST_EMAC_MII_BUSY;
+	}
 
-    /*
-     * Set up the MII data register first.  Write the 16-bit input
-     * value to the 32-bit data register.
-     */
-    XIo_Out32(InstancePtr->BaseAddress + XEM_MGTDR_OFFSET, (Xuint32)PhyData);
+	/*
+	 * Set up the MII data register first.  Write the 16-bit input
+	 * value to the 32-bit data register.
+	 */
+	XIo_Out32(InstancePtr->BaseAddress + XEM_MGTDR_OFFSET, (u32) PhyData);
 
-    /*
-     * Now set up the MII control register.  We set up a control
-     * word with the PHY address and register number, then indicate
-     * the direction (write), then start the operation.
-     */
-    MiiControl = PhyAddress << XEM_MGTCR_PHY_ADDR_SHIFT;
-    MiiControl |= (RegisterNum << XEM_MGTCR_REG_ADDR_SHIFT);
-    MiiControl |= (XEM_MGTCR_START_MASK | XEM_MGTCR_MII_ENABLE_MASK);
+	/*
+	 * Now set up the MII control register.  We set up a control
+	 * word with the PHY address and register number, then indicate
+	 * the direction (write), then start the operation.
+	 */
+	MiiControl = PhyAddress << XEM_MGTCR_PHY_ADDR_SHIFT;
+	MiiControl |= (RegisterNum << XEM_MGTCR_REG_ADDR_SHIFT);
+	MiiControl |= (XEM_MGTCR_START_MASK | XEM_MGTCR_MII_ENABLE_MASK);
 
-    XIo_Out32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET, MiiControl);
+	XIo_Out32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET, MiiControl);
 
-    /*
-     * Wait for the operation to complete
-     */
-    do
-    {
-        MiiControl = XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
-    }
-    while (MiiControl & XEM_MGTCR_START_MASK);
+	/*
+	 * Wait for the operation to complete
+	 */
+	do {
+		MiiControl =
+			XIo_In32(InstancePtr->BaseAddress + XEM_MGTCR_OFFSET);
+	}
+	while (MiiControl & XEM_MGTCR_START_MASK);
 
-    /*
-     * There is no status indicating whether the operation was
-     * successful or not.
-     */
-    return XST_SUCCESS;
+	/*
+	 * There is no status indicating whether the operation was
+	 * successful or not.
+	 */
+	return XST_SUCCESS;
 }

@@ -43,8 +43,8 @@
 *
 ******************************************************************************/
 
-#ifndef XEMAC_I_H /* prevent circular inclusions */
-#define XEMAC_I_H /* by using protection macros */
+#ifndef XEMAC_I_H		/* prevent circular inclusions */
+#define XEMAC_I_H		/* by using protection macros */
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,11 +73,11 @@ extern "C" {
 /*
  * Masks for the IPIF Device Interrupt enable and status registers.
  */
-#define XEM_IPIF_EMAC_MASK      0x00000004UL /* MAC interrupt */
-#define XEM_IPIF_SEND_DMA_MASK  0x00000008UL /* Send DMA interrupt */
-#define XEM_IPIF_RECV_DMA_MASK  0x00000010UL /* Receive DMA interrupt */
-#define XEM_IPIF_RECV_FIFO_MASK 0x00000020UL /* Receive FIFO interrupt */
-#define XEM_IPIF_SEND_FIFO_MASK 0x00000040UL /* Send FIFO interrupt */
+#define XEM_IPIF_EMAC_MASK      0x00000004UL	/* MAC interrupt */
+#define XEM_IPIF_SEND_DMA_MASK  0x00000008UL	/* Send DMA interrupt */
+#define XEM_IPIF_RECV_DMA_MASK  0x00000010UL	/* Receive DMA interrupt */
+#define XEM_IPIF_RECV_FIFO_MASK 0x00000020UL	/* Receive FIFO interrupt */
+#define XEM_IPIF_SEND_FIFO_MASK 0x00000040UL	/* Send FIFO interrupt */
 
 /*
  * Default IPIF Device Interrupt mask when configured for DMA
@@ -95,10 +95,10 @@ extern "C" {
                                  XEM_IPIF_SEND_FIFO_MASK |  \
                                  XEM_IPIF_RECV_FIFO_MASK)
 
-#define XEM_IPIF_DMA_DEV_INTR_COUNT   7   /* Number of interrupt sources */
-#define XEM_IPIF_FIFO_DEV_INTR_COUNT  5   /* Number of interrupt sources */
-#define XEM_IPIF_DEVICE_INTR_COUNT  7   /* Number of interrupt sources */
-#define XEM_IPIF_IP_INTR_COUNT      22  /* Number of MAC interrupts */
+#define XEM_IPIF_DMA_DEV_INTR_COUNT   7	/* Number of interrupt sources */
+#define XEM_IPIF_FIFO_DEV_INTR_COUNT  5	/* Number of interrupt sources */
+#define XEM_IPIF_DEVICE_INTR_COUNT  7	/* Number of interrupt sources */
+#define XEM_IPIF_IP_INTR_COUNT      22	/* Number of MAC interrupts */
 
 
 /* a mask for all transmit interrupts, used in polled mode */
@@ -174,13 +174,13 @@ extern "C" {
 *
 * @note
 *
-* Signature: void XEmac_mClearStruct(Xuint8 *StructPtr, unsigned int NumBytes)
+* Signature: void XEmac_mClearStruct(u8 *StructPtr, unsigned int NumBytes)
 *
 ******************************************************************************/
 #define XEmac_mClearStruct(StructPtr, NumBytes)     \
 {                                                   \
     int i;                                          \
-    Xuint8 *BytePtr = (Xuint8 *)(StructPtr);        \
+    u8 *BytePtr = (u8 *)(StructPtr);        \
     for (i=0; i < (unsigned int)(NumBytes); i++)    \
     {                                               \
         *BytePtr++ = 0;                             \
@@ -193,12 +193,12 @@ extern XEmac_Config XEmac_ConfigTable[];
 
 /************************** Function Prototypes ******************************/
 
-void XEmac_CheckEmacError(XEmac *InstancePtr, Xuint32 IntrStatus);
-void XEmac_CheckFifoRecvError(XEmac *InstancePtr);
-void XEmac_CheckFifoSendError(XEmac *InstancePtr);
+void XEmac_CheckEmacError(XEmac * InstancePtr, u32 IntrStatus);
+void XEmac_CheckFifoRecvError(XEmac * InstancePtr);
+void XEmac_CheckFifoSendError(XEmac * InstancePtr);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  /* end of protection macro */
+#endif /* end of protection macro */

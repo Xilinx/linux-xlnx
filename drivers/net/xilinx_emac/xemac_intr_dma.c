@@ -65,7 +65,7 @@
 #include "xio.h"
 #include "xbuf_descriptor.h"
 #include "xdma_channel.h"
-#include "xipif_v1_23_b.h"      /* Uses v1.23b of the IPIF */
+#include "xipif_v1_23_b.h"	/* Uses v1.23b of the IPIF */
 
 /************************** Constant Definitions *****************************/
 
@@ -81,9 +81,9 @@
 
 /************************** Function Prototypes ******************************/
 
-static void HandleDmaRecvIntr(XEmac *InstancePtr);
-static void HandleDmaSendIntr(XEmac *InstancePtr);
-static void HandleEmacDmaIntr(XEmac *InstancePtr);
+static void HandleDmaRecvIntr(XEmac * InstancePtr);
+static void HandleDmaSendIntr(XEmac * InstancePtr);
+static void HandleEmacDmaIntr(XEmac * InstancePtr);
 
 /*****************************************************************************/
 /**
@@ -150,78 +150,74 @@ static void HandleEmacDmaIntr(XEmac *InstancePtr);
 * started.
 *
 ******************************************************************************/
-XStatus XEmac_SgSend(XEmac *InstancePtr, XBufDescriptor *BdPtr, int Delay)
+XStatus XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay)
 {
-    XStatus Result;
-    Xuint32 BdControl;
+	XStatus Result;
+	u32 BdControl;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BdPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BdPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure the device is configured for scatter-gather DMA, then be sure
-     * it is started.
-     */
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	/*
+	 * Be sure the device is configured for scatter-gather DMA, then be sure
+	 * it is started.
+	 */
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    /*
-     * Set some descriptor control word defaults (source address increment
-     * and local destination address) and the destination address
-     * (the FIFO).  These are the same for every transmit descriptor.
-     */
-    BdControl = XBufDescriptor_GetControl(BdPtr);
-    XBufDescriptor_SetControl(BdPtr, BdControl | XEM_DFT_SEND_BD_MASK);
+	/*
+	 * Set some descriptor control word defaults (source address increment
+	 * and local destination address) and the destination address
+	 * (the FIFO).  These are the same for every transmit descriptor.
+	 */
+	BdControl = XBufDescriptor_GetControl(BdPtr);
+	XBufDescriptor_SetControl(BdPtr, BdControl | XEM_DFT_SEND_BD_MASK);
 
-    XBufDescriptor_SetDestAddress(BdPtr,
-                    InstancePtr->PhysAddress + XEM_PFIFO_TXDATA_OFFSET);
+	XBufDescriptor_SetDestAddress(BdPtr,
+				      InstancePtr->PhysAddress +
+				      XEM_PFIFO_TXDATA_OFFSET);
 
-    /*
-     * Put the descriptor in the send list. The DMA component accesses data
-     * here that can also be modified in interrupt context, so a critical
-     * section is required.
-     */
-    XIIF_V123B_GINTR_DISABLE(InstancePtr->BaseAddress);
+	/*
+	 * Put the descriptor in the send list. The DMA component accesses data
+	 * here that can also be modified in interrupt context, so a critical
+	 * section is required.
+	 */
+	XIIF_V123B_GINTR_DISABLE(InstancePtr->BaseAddress);
 
-    Result = XDmaChannel_PutDescriptor(&InstancePtr->SendChannel, BdPtr);
-    if (Result != XST_SUCCESS)
-    {
-        XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
-        return Result;
-    }
+	Result = XDmaChannel_PutDescriptor(&InstancePtr->SendChannel, BdPtr);
+	if (Result != XST_SUCCESS) {
+		XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+		return Result;
+	}
 
-    /*
-     * If this is the last buffer in the frame, commit the inserts and start
-     * the DMA engine if necessary
-     */
-    if (XBufDescriptor_IsLastControl(BdPtr))
-    {
-        Result = XDmaChannel_CommitPuts(&InstancePtr->SendChannel);
-        if (Result != XST_SUCCESS)
-        {
-            XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
-            return Result;
-        }
+	/*
+	 * If this is the last buffer in the frame, commit the inserts and start
+	 * the DMA engine if necessary
+	 */
+	if (XBufDescriptor_IsLastControl(BdPtr)) {
+		Result = XDmaChannel_CommitPuts(&InstancePtr->SendChannel);
+		if (Result != XST_SUCCESS) {
+			XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+			return Result;
+		}
 
-        if (Delay == XEM_SGDMA_NODELAY)
-        {
-            /*
-             * Start the DMA channel. Ignore the return status since we know the
-             * list exists and has at least one entry and we don't care if the
-             * channel is already started.  The DMA component accesses data here
-             * that can be modified at interrupt or task levels, so a critical
-             * section is required.
-             */
-            (void)XDmaChannel_SgStart(&InstancePtr->SendChannel);
-        }
-    }
+		if (Delay == XEM_SGDMA_NODELAY) {
+			/*
+			 * Start the DMA channel. Ignore the return status since we know the
+			 * list exists and has at least one entry and we don't care if the
+			 * channel is already started.  The DMA component accesses data here
+			 * that can be modified at interrupt or task levels, so a critical
+			 * section is required.
+			 */
+			(void) XDmaChannel_SgStart(&InstancePtr->SendChannel);
+		}
+	}
 
-    XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+	XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -266,67 +262,65 @@ XStatus XEmac_SgSend(XEmac *InstancePtr, XBufDescriptor *BdPtr, int Delay)
 * started.
 *
 ******************************************************************************/
-XStatus XEmac_SgRecv(XEmac *InstancePtr, XBufDescriptor *BdPtr)
+XStatus XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr)
 {
-    XStatus Result;
-    Xuint32 BdControl;
+	XStatus Result;
+	u32 BdControl;
 
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(BdPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(BdPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure the device is configured for scatter-gather DMA
-     */
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	/*
+	 * Be sure the device is configured for scatter-gather DMA
+	 */
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    /*
-     * Set some descriptor control word defaults (destination address increment
-     * and local source address) and the source address (the FIFO). These are
-     * the same for every receive descriptor.
-     */
-    BdControl = XBufDescriptor_GetControl(BdPtr);
-    XBufDescriptor_SetControl(BdPtr, BdControl | XEM_DFT_RECV_BD_MASK);
-    XBufDescriptor_SetSrcAddress(BdPtr,
-                      InstancePtr->PhysAddress + XEM_PFIFO_RXDATA_OFFSET);
+	/*
+	 * Set some descriptor control word defaults (destination address increment
+	 * and local source address) and the source address (the FIFO). These are
+	 * the same for every receive descriptor.
+	 */
+	BdControl = XBufDescriptor_GetControl(BdPtr);
+	XBufDescriptor_SetControl(BdPtr, BdControl | XEM_DFT_RECV_BD_MASK);
+	XBufDescriptor_SetSrcAddress(BdPtr,
+				     InstancePtr->PhysAddress +
+				     XEM_PFIFO_RXDATA_OFFSET);
 
-    /*
-     * Put the descriptor into the channel's descriptor list and commit.
-     * Although this function is likely called within interrupt context, there
-     * is the possibility that the upper layer software queues it to a task.
-     * In this case, a critical section is needed here to protect shared data
-     * in the DMA component.
-     */
-    XIIF_V123B_GINTR_DISABLE(InstancePtr->BaseAddress);
+	/*
+	 * Put the descriptor into the channel's descriptor list and commit.
+	 * Although this function is likely called within interrupt context, there
+	 * is the possibility that the upper layer software queues it to a task.
+	 * In this case, a critical section is needed here to protect shared data
+	 * in the DMA component.
+	 */
+	XIIF_V123B_GINTR_DISABLE(InstancePtr->BaseAddress);
 
-    Result = XDmaChannel_PutDescriptor(&InstancePtr->RecvChannel, BdPtr);
-    if (Result != XST_SUCCESS)
-    {
-        XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
-        return Result;
-    }
+	Result = XDmaChannel_PutDescriptor(&InstancePtr->RecvChannel, BdPtr);
+	if (Result != XST_SUCCESS) {
+		XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+		return Result;
+	}
 
-    Result = XDmaChannel_CommitPuts(&InstancePtr->RecvChannel);
-    if (Result != XST_SUCCESS)
-    {
-        XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
-        return Result;
-    }
+	Result = XDmaChannel_CommitPuts(&InstancePtr->RecvChannel);
+	if (Result != XST_SUCCESS) {
+		XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+		return Result;
+	}
 
-    /*
-     * Start the DMA channel. Ignore the return status since we know the list
-     * exists and has at least one entry and we don't care if the channel is
-     * already started. The DMA component accesses data here that can be
-     * modified at interrupt or task levels, so a critical section is required.
-     */
-    (void)XDmaChannel_SgStart(&InstancePtr->RecvChannel);
+	/*
+	 * Start the DMA channel. Ignore the return status since we know the list
+	 * exists and has at least one entry and we don't care if the channel is
+	 * already started. The DMA component accesses data here that can be
+	 * modified at interrupt or task levels, so a critical section is required.
+	 */
+	(void) XDmaChannel_SgStart(&InstancePtr->RecvChannel);
 
-    XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
+	XIIF_V123B_GINTR_ENABLE(InstancePtr->BaseAddress);
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 
@@ -354,60 +348,55 @@ XStatus XEmac_SgRecv(XEmac *InstancePtr, XBufDescriptor *BdPtr)
 ******************************************************************************/
 void XEmac_IntrHandlerDma(void *InstancePtr)
 {
-    Xuint32 IntrStatus;
-    XEmac *EmacPtr = (XEmac *)InstancePtr;
+	u32 IntrStatus;
+	XEmac *EmacPtr = (XEmac *) InstancePtr;
 
-    EmacPtr->Stats.TotalIntrs++;
+	EmacPtr->Stats.TotalIntrs++;
 
-    /*
-     * Get the interrupt status from the IPIF. There is no clearing of
-     * interrupts in the IPIF. Interrupts must be cleared at the source.
-     */
-    IntrStatus = XIIF_V123B_READ_DIPR(EmacPtr->BaseAddress);
+	/*
+	 * Get the interrupt status from the IPIF. There is no clearing of
+	 * interrupts in the IPIF. Interrupts must be cleared at the source.
+	 */
+	IntrStatus = XIIF_V123B_READ_DIPR(EmacPtr->BaseAddress);
 
-    /*
-     * See which type of interrupt is being requested, and service it
-     */
-    if (IntrStatus & XEM_IPIF_RECV_DMA_MASK)    /* Receive DMA interrupt */
-    {
-        EmacPtr->Stats.RecvInterrupts++;
-        HandleDmaRecvIntr(EmacPtr);
-    }
+	/*
+	 * See which type of interrupt is being requested, and service it
+	 */
+	if (IntrStatus & XEM_IPIF_RECV_DMA_MASK) {	/* Receive DMA interrupt */
+		EmacPtr->Stats.RecvInterrupts++;
+		HandleDmaRecvIntr(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_SEND_DMA_MASK)    /* Send DMA interrupt */
-    {
-        EmacPtr->Stats.XmitInterrupts++;
-        HandleDmaSendIntr(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_SEND_DMA_MASK) {	/* Send DMA interrupt */
+		EmacPtr->Stats.XmitInterrupts++;
+		HandleDmaSendIntr(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_EMAC_MASK)        /* MAC interrupt */
-    {
-        EmacPtr->Stats.EmacInterrupts++;
-        HandleEmacDmaIntr(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_EMAC_MASK) {	/* MAC interrupt */
+		EmacPtr->Stats.EmacInterrupts++;
+		HandleEmacDmaIntr(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_RECV_FIFO_MASK)   /* Receive FIFO interrupt */
-    {
-        EmacPtr->Stats.RecvInterrupts++;
-        XEmac_CheckFifoRecvError(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_RECV_FIFO_MASK) {	/* Receive FIFO interrupt */
+		EmacPtr->Stats.RecvInterrupts++;
+		XEmac_CheckFifoRecvError(EmacPtr);
+	}
 
-    if (IntrStatus & XEM_IPIF_SEND_FIFO_MASK)   /* Send FIFO interrupt */
-    {
-        EmacPtr->Stats.XmitInterrupts++;
-        XEmac_CheckFifoSendError(EmacPtr);
-    }
+	if (IntrStatus & XEM_IPIF_SEND_FIFO_MASK) {	/* Send FIFO interrupt */
+		EmacPtr->Stats.XmitInterrupts++;
+		XEmac_CheckFifoSendError(EmacPtr);
+	}
 
-    if (IntrStatus & XIIF_V123B_ERROR_MASK)
-    {
-        /*
-         * An error occurred internal to the IPIF. This is more of a debug and
-         * integration issue rather than a production error. Don't do anything
-         * other than clear it, which provides a spot for software to trap
-         * on the interrupt and begin debugging.
-         */
-        XIIF_V123B_WRITE_DISR(EmacPtr->BaseAddress, XIIF_V123B_ERROR_MASK);
-    }
+	if (IntrStatus & XIIF_V123B_ERROR_MASK) {
+		/*
+		 * An error occurred internal to the IPIF. This is more of a debug and
+		 * integration issue rather than a production error. Don't do anything
+		 * other than clear it, which provides a spot for software to trap
+		 * on the interrupt and begin debugging.
+		 */
+		XIIF_V123B_WRITE_DISR(EmacPtr->BaseAddress,
+				      XIIF_V123B_ERROR_MASK);
+	}
 }
 
 /*****************************************************************************/
@@ -447,44 +436,40 @@ void XEmac_IntrHandlerDma(void *InstancePtr)
 * caused confustion.
 *
 ******************************************************************************/
-XStatus XEmac_SetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint8 Threshold)
+XStatus XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold)
 {
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure device is configured for scatter-gather DMA and has been stopped
-     */
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	/*
+	 * Be sure device is configured for scatter-gather DMA and has been stopped
+	 */
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STARTED;
-    }
+	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STARTED;
+	}
 
-    /*
-     * Based on the direction, set the packet threshold in the
-     * corresponding DMA channel component.  Default to the receive
-     * channel threshold register (if an invalid Direction is passed).
-     */
-    switch (Direction)
-    {
-        case XEM_SEND:
-            return XDmaChannel_SetPktThreshold(&InstancePtr->SendChannel,
-                                               Threshold);
+	/*
+	 * Based on the direction, set the packet threshold in the
+	 * corresponding DMA channel component.  Default to the receive
+	 * channel threshold register (if an invalid Direction is passed).
+	 */
+	switch (Direction) {
+	case XEM_SEND:
+		return XDmaChannel_SetPktThreshold(&InstancePtr->SendChannel,
+						   Threshold);
 
-        case XEM_RECV:
-            return XDmaChannel_SetPktThreshold(&InstancePtr->RecvChannel,
-                                               Threshold);
+	case XEM_RECV:
+		return XDmaChannel_SetPktThreshold(&InstancePtr->RecvChannel,
+						   Threshold);
 
-        default:
-            return XST_INVALID_PARAM;
-    }
+	default:
+		return XST_INVALID_PARAM;
+	}
 }
 
 /*****************************************************************************/
@@ -517,40 +502,39 @@ XStatus XEmac_SetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_GetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint8 *ThreshPtr)
+XStatus XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 *ThreshPtr)
 {
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
-    XASSERT_NONVOID(ThreshPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
+	XASSERT_NONVOID(ThreshPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    /*
-     * Based on the direction, return the packet threshold set in the
-     * corresponding DMA channel component.  Default to the value in
-     * the receive channel threshold register (if an invalid Direction
-     * is passed).
-     */
-    switch (Direction)
-    {
-        case XEM_SEND:
-            *ThreshPtr = XDmaChannel_GetPktThreshold(&InstancePtr->SendChannel);
-            break;
+	/*
+	 * Based on the direction, return the packet threshold set in the
+	 * corresponding DMA channel component.  Default to the value in
+	 * the receive channel threshold register (if an invalid Direction
+	 * is passed).
+	 */
+	switch (Direction) {
+	case XEM_SEND:
+		*ThreshPtr =
+			XDmaChannel_GetPktThreshold(&InstancePtr->SendChannel);
+		break;
 
-        case XEM_RECV:
-            *ThreshPtr = XDmaChannel_GetPktThreshold(&InstancePtr->RecvChannel);
-            break;
+	case XEM_RECV:
+		*ThreshPtr =
+			XDmaChannel_GetPktThreshold(&InstancePtr->RecvChannel);
+		break;
 
-        default:
-            return XST_INVALID_PARAM;
-    }
+	default:
+		return XST_INVALID_PARAM;
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -583,47 +567,46 @@ XStatus XEmac_GetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_SetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint32 TimerValue)
+XStatus XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction,
+			      u32 TimerValue)
 {
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
-    XASSERT_NONVOID(TimerValue <= XEM_SGDMA_MAX_WAITBOUND);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
+	XASSERT_NONVOID(TimerValue <= XEM_SGDMA_MAX_WAITBOUND);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Be sure device is configured for scatter-gather DMA and has been stopped
-     */
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	/*
+	 * Be sure device is configured for scatter-gather DMA and has been stopped
+	 */
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED)
-    {
-        return XST_DEVICE_IS_STARTED;
-    }
+	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
+		return XST_DEVICE_IS_STARTED;
+	}
 
-    /*
-     * Based on the direction, set the packet wait bound in the
-     * corresponding DMA channel component.  Default to the receive
-     * channel wait bound register (if an invalid Direction is passed).
-     */
-    switch (Direction)
-    {
-        case XEM_SEND:
-            XDmaChannel_SetPktWaitBound(&InstancePtr->SendChannel, TimerValue);
-            break;
+	/*
+	 * Based on the direction, set the packet wait bound in the
+	 * corresponding DMA channel component.  Default to the receive
+	 * channel wait bound register (if an invalid Direction is passed).
+	 */
+	switch (Direction) {
+	case XEM_SEND:
+		XDmaChannel_SetPktWaitBound(&InstancePtr->SendChannel,
+					    TimerValue);
+		break;
 
-        case XEM_RECV:
-            XDmaChannel_SetPktWaitBound(&InstancePtr->RecvChannel, TimerValue);
-            break;
+	case XEM_RECV:
+		XDmaChannel_SetPktWaitBound(&InstancePtr->RecvChannel,
+					    TimerValue);
+		break;
 
-        default:
-            return XST_INVALID_PARAM;
-    }
+	default:
+		return XST_INVALID_PARAM;
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -655,40 +638,39 @@ XStatus XEmac_SetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
 * None.
 *
 ******************************************************************************/
-XStatus XEmac_GetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint32 *WaitPtr)
+XStatus XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr)
 {
-    XASSERT_NONVOID(InstancePtr != XNULL);
-    XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
-    XASSERT_NONVOID(WaitPtr != XNULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(Direction == XEM_SEND || Direction == XEM_RECV);
+	XASSERT_NONVOID(WaitPtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    /*
-     * Based on the direction, return the packet wait bound set in the
-     * corresponding DMA channel component.  Default to the value in
-     * the receive channel wait bound register (if an invalid Direction
-     * is passed).
-     */
-    switch (Direction)
-    {
-        case XEM_SEND:
-            *WaitPtr = XDmaChannel_GetPktWaitBound(&InstancePtr->SendChannel);
-            break;
+	/*
+	 * Based on the direction, return the packet wait bound set in the
+	 * corresponding DMA channel component.  Default to the value in
+	 * the receive channel wait bound register (if an invalid Direction
+	 * is passed).
+	 */
+	switch (Direction) {
+	case XEM_SEND:
+		*WaitPtr =
+			XDmaChannel_GetPktWaitBound(&InstancePtr->SendChannel);
+		break;
 
-        case XEM_RECV:
-            *WaitPtr = XDmaChannel_GetPktWaitBound(&InstancePtr->RecvChannel);
-            break;
+	case XEM_RECV:
+		*WaitPtr =
+			XDmaChannel_GetPktWaitBound(&InstancePtr->RecvChannel);
+		break;
 
-        default:
-            return XST_INVALID_PARAM;
-    }
+	default:
+		return XST_INVALID_PARAM;
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -721,21 +703,20 @@ XStatus XEmac_GetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
 * components must be initialized before the memory space is set.
 *
 ******************************************************************************/
-XStatus XEmac_SetSgRecvSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
-                             Xuint32 ByteCount, void *PhyPtr)
+XStatus XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			     u32 ByteCount, void *PhyPtr)
 {
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(MemoryPtr != NULL);
-    XASSERT_NONVOID(ByteCount != 0);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(MemoryPtr != NULL);
+	XASSERT_NONVOID(ByteCount != 0);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    return XDmaChannel_CreateSgList(&InstancePtr->RecvChannel, (u32*)MemoryPtr,
-                                    ByteCount, PhyPtr);
+	return XDmaChannel_CreateSgList(&InstancePtr->RecvChannel,
+					(u32 *) MemoryPtr, ByteCount, PhyPtr);
 }
 
 /*****************************************************************************/
@@ -768,21 +749,20 @@ XStatus XEmac_SetSgRecvSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
 * components must be initialized before the memory space is set.
 *
 ******************************************************************************/
-XStatus XEmac_SetSgSendSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
-                             Xuint32 ByteCount, void *PhyPtr)
+XStatus XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			     u32 ByteCount, void *PhyPtr)
 {
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(MemoryPtr != NULL);
-    XASSERT_NONVOID(ByteCount != 0);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(MemoryPtr != NULL);
+	XASSERT_NONVOID(ByteCount != 0);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    if (!XEmac_mIsSgDma(InstancePtr))
-    {
-        return XST_NOT_SGDMA;
-    }
+	if (!XEmac_mIsSgDma(InstancePtr)) {
+		return XST_NOT_SGDMA;
+	}
 
-    return XDmaChannel_CreateSgList(&InstancePtr->SendChannel, (u32*)MemoryPtr,
-                                    ByteCount, PhyPtr);
+	return XDmaChannel_CreateSgList(&InstancePtr->SendChannel,
+					(u32 *) MemoryPtr, ByteCount, PhyPtr);
 }
 
 /*****************************************************************************/
@@ -803,17 +783,17 @@ XStatus XEmac_SetSgSendSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
 * None.
 *
 ******************************************************************************/
-unsigned XEmac_GetSgSendFreeDesc(XEmac *InstancePtr)
+unsigned XEmac_GetSgSendFreeDesc(XEmac * InstancePtr)
 {
-    unsigned Slots;
+	unsigned Slots;
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    Slots = InstancePtr->SendChannel.TotalDescriptorCount -
-        InstancePtr->SendChannel.ActiveDescriptorCount;
+	Slots = InstancePtr->SendChannel.TotalDescriptorCount -
+		InstancePtr->SendChannel.ActiveDescriptorCount;
 
-    return Slots;
+	return Slots;
 }
 
 
@@ -835,17 +815,17 @@ unsigned XEmac_GetSgSendFreeDesc(XEmac *InstancePtr)
 * None.
 *
 ******************************************************************************/
-unsigned XEmac_GetSgRecvFreeDesc(XEmac *InstancePtr)
+unsigned XEmac_GetSgRecvFreeDesc(XEmac * InstancePtr)
 {
-    unsigned Slots;
+	unsigned Slots;
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    Slots = InstancePtr->RecvChannel.TotalDescriptorCount -
-        InstancePtr->RecvChannel.ActiveDescriptorCount;
+	Slots = InstancePtr->RecvChannel.TotalDescriptorCount -
+		InstancePtr->RecvChannel.ActiveDescriptorCount;
 
-    return Slots;
+	return Slots;
 }
 
 
@@ -879,20 +859,20 @@ unsigned XEmac_GetSgRecvFreeDesc(XEmac *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XEmac_SetSgRecvHandler(XEmac *InstancePtr, void *CallBackRef,
-                            XEmac_SgHandler FuncPtr)
+void XEmac_SetSgRecvHandler(XEmac * InstancePtr, void *CallBackRef,
+			    XEmac_SgHandler FuncPtr)
 {
-    /*
-     * Asserted IsDmaSg here instead of run-time check because there is really
-     * no ill-effects of setting these when not configured for scatter-gather.
-     */
-    XASSERT_VOID(InstancePtr != XNULL);
-    XASSERT_VOID(FuncPtr != XNULL);
-    XASSERT_VOID(XEmac_mIsSgDma(InstancePtr));
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/*
+	 * Asserted IsDmaSg here instead of run-time check because there is really
+	 * no ill-effects of setting these when not configured for scatter-gather.
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(XEmac_mIsSgDma(InstancePtr));
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->SgRecvHandler = FuncPtr;
-    InstancePtr->SgRecvRef = CallBackRef;
+	InstancePtr->SgRecvHandler = FuncPtr;
+	InstancePtr->SgRecvRef = CallBackRef;
 }
 
 /*****************************************************************************/
@@ -924,20 +904,20 @@ void XEmac_SetSgRecvHandler(XEmac *InstancePtr, void *CallBackRef,
 * None.
 *
 ******************************************************************************/
-void XEmac_SetSgSendHandler(XEmac *InstancePtr, void *CallBackRef,
-                            XEmac_SgHandler FuncPtr)
+void XEmac_SetSgSendHandler(XEmac * InstancePtr, void *CallBackRef,
+			    XEmac_SgHandler FuncPtr)
 {
-    /*
-     * Asserted IsDmaSg here instead of run-time check because there is really
-     * no ill-effects of setting these when not configured for scatter-gather.
-     */
-    XASSERT_VOID(InstancePtr != XNULL);
-    XASSERT_VOID(FuncPtr != XNULL);
-    XASSERT_VOID(XEmac_mIsSgDma(InstancePtr));
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	/*
+	 * Asserted IsDmaSg here instead of run-time check because there is really
+	 * no ill-effects of setting these when not configured for scatter-gather.
+	 */
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(XEmac_mIsSgDma(InstancePtr));
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->SgSendHandler = FuncPtr;
-    InstancePtr->SgSendRef = CallBackRef;
+	InstancePtr->SgSendHandler = FuncPtr;
+	InstancePtr->SgSendRef = CallBackRef;
 }
 
 /*****************************************************************************/
@@ -988,146 +968,144 @@ void XEmac_SetSgSendHandler(XEmac *InstancePtr, void *CallBackRef,
 * None.
 *
 ******************************************************************************/
-static void HandleDmaRecvIntr(XEmac *InstancePtr)
+static void HandleDmaRecvIntr(XEmac * InstancePtr)
 {
-    XStatus Result;
-    Xuint32 IntrStatus;
-    Xuint32 NumBds;
-    Xuint32 PacketsLeft;
-    XBufDescriptor *BdHeadPtr;
-    XBufDescriptor *BdPtr;
+	XStatus Result;
+	u32 IntrStatus;
+	u32 NumBds;
+	u32 PacketsLeft;
+	XBufDescriptor *BdHeadPtr;
+	XBufDescriptor *BdPtr;
 
-    /*
-     * Read the interrupt status
-     */
-    IntrStatus = XDmaChannel_GetIntrStatus(&InstancePtr->RecvChannel);
+	/*
+	 * Read the interrupt status
+	 */
+	IntrStatus = XDmaChannel_GetIntrStatus(&InstancePtr->RecvChannel);
 
-    /*
-     * For packet threshold or wait bound interrupts, process desciptors. Also
-     * process descriptors on a SG end acknowledgement, which means the end of
-     * the descriptor list has been reached by the hardware. For receive, this
-     * is potentially trouble since it means the descriptor list is full,
-     * unless software can process enough packets quickly enough so the
-     * hardware has room to put new packets.
-     */
-    if (IntrStatus & (XDC_IXR_PKT_THRESHOLD_MASK |
-        XDC_IXR_PKT_WAIT_BOUND_MASK | XDC_IXR_SG_END_MASK))
-    {
-        /* Get the number of packets that need processing */
-        PacketsLeft = XDmaChannel_GetPktCount(&InstancePtr->RecvChannel);
+	/*
+	 * For packet threshold or wait bound interrupts, process desciptors. Also
+	 * process descriptors on a SG end acknowledgement, which means the end of
+	 * the descriptor list has been reached by the hardware. For receive, this
+	 * is potentially trouble since it means the descriptor list is full,
+	 * unless software can process enough packets quickly enough so the
+	 * hardware has room to put new packets.
+	 */
+	if (IntrStatus & (XDC_IXR_PKT_THRESHOLD_MASK |
+			  XDC_IXR_PKT_WAIT_BOUND_MASK | XDC_IXR_SG_END_MASK)) {
+		/* Get the number of packets that need processing */
+		PacketsLeft =
+			XDmaChannel_GetPktCount(&InstancePtr->RecvChannel);
 
-        if (PacketsLeft)
-        {
-            /* Get the buffer descriptor at the head of the list */
-            Result = XDmaChannel_GetDescriptor(&InstancePtr->RecvChannel,
-                                               &BdHeadPtr);
-            BdPtr = BdHeadPtr;
-            NumBds = 0;
+		if (PacketsLeft) {
+			/* Get the buffer descriptor at the head of the list */
+			Result = XDmaChannel_GetDescriptor(&InstancePtr->
+							   RecvChannel,
+							   &BdHeadPtr);
+			BdPtr = BdHeadPtr;
+			NumBds = 0;
 
-            /* Loop until all packets have been pulled or an error occurs */
-            while(1)
-            {
-                NumBds++;
+			/* Loop until all packets have been pulled or an error occurs */
+			while (1) {
+				NumBds++;
 
-                /*
-                 * An error getting a buffer descriptor from the list.
-                 * This should not happen, but if it does, report it to
-                 * the error callback and break out of the loop to service
-                 * other interrupts.
-                 */
-                if (Result != XST_SUCCESS)
-                {
-                    InstancePtr->ErrorHandler(InstancePtr->ErrorRef, Result);
-                    break;
-                }
+				/*
+				 * An error getting a buffer descriptor from the list.
+				 * This should not happen, but if it does, report it to
+				 * the error callback and break out of the loop to service
+				 * other interrupts.
+				 */
+				if (Result != XST_SUCCESS) {
+					InstancePtr->ErrorHandler(InstancePtr->
+								  ErrorRef,
+								  Result);
+					break;
+				}
 
-                /* Bump statistics */
-                InstancePtr->Stats.RecvBytes += XBufDescriptor_GetLength(BdPtr);
+				/* Bump statistics */
+				InstancePtr->Stats.RecvBytes +=
+					XBufDescriptor_GetLength(BdPtr);
 
-                /* Have all BDs been read for this packet */
-                if (XBufDescriptor_IsLastStatus(BdPtr))
-                {
-                    /*
-                     * Decrement the packet count register to reflect the fact
-                     * we just processed a packet
-                     */
-                    XDmaChannel_DecrementPktCount(&InstancePtr->RecvChannel);
+				/* Have all BDs been read for this packet */
+				if (XBufDescriptor_IsLastStatus(BdPtr)) {
+					/*
+					 * Decrement the packet count register to reflect the fact
+					 * we just processed a packet
+					 */
+					XDmaChannel_DecrementPktCount
+						(&InstancePtr->RecvChannel);
 
-                    /* Bump statistics */
-                    InstancePtr->Stats.RecvFrames++;
+					/* Bump statistics */
+					InstancePtr->Stats.RecvFrames++;
 
-                    /* Test loop exit condition */
-                    if (--PacketsLeft == 0)
-                    {
-                        break;
-                    }
-                }
+					/* Test loop exit condition */
+					if (--PacketsLeft == 0) {
+						break;
+					}
+				}
 
-                /* Get the next buffer descriptor in the list */
-                Result = XDmaChannel_GetDescriptor(&InstancePtr->RecvChannel,
-                                                   &BdPtr);
-            } /* while */
+				/* Get the next buffer descriptor in the list */
+				Result = XDmaChannel_GetDescriptor
+					(&InstancePtr->RecvChannel, &BdPtr);
+			}	/* while */
 
-            /*
-             * Check for error that occurred inside the while loop, and break
-             * out of the for loop if there was one so other interrupts can
-             * be serviced.
-             */
-            if (Result == XST_SUCCESS)
-            {
-                /*
-                 * Make the callback to the upper layers, passing it the first
-                 * descriptor in the first packet and the number of descriptors
-                 * in the list.
-                 */
-                InstancePtr->SgRecvHandler(InstancePtr->SgRecvRef, BdHeadPtr,
-                                           NumBds);
-            }
-        } /* if (PacketsLeft) */
+			/*
+			 * Check for error that occurred inside the while loop, and break
+			 * out of the for loop if there was one so other interrupts can
+			 * be serviced.
+			 */
+			if (Result == XST_SUCCESS) {
+				/*
+				 * Make the callback to the upper layers, passing it the first
+				 * descriptor in the first packet and the number of descriptors
+				 * in the list.
+				 */
+				InstancePtr->SgRecvHandler(InstancePtr->
+							   SgRecvRef, BdHeadPtr,
+							   NumBds);
+			}
+		}		/* if (PacketsLeft) */
 
-        /*
-         * If the interrupt was an end-ack, check the descriptor list again to
-         * see if it is empty. If not, go ahead and restart the scatter-gather
-         * channel. This is to fix a possible race condition where, on receive,
-         * the driver attempted to start a scatter-gather channel that was
-         * already started, which resulted in no action from the XDmaChannel
-         * component. But, just after the XDmaChannel component saw that the
-         * hardware was already started, the hardware stopped because it
-         * reached the end of the list.  In that case, this interrupt is
-         * generated and we can restart the hardware here.
-         */
-        if (IntrStatus & XDC_IXR_SG_END_MASK)
-        {
-            /*
-             * Ignore the return status since we know the list exists and we
-             * don't care if the list is empty or the channel is already started.
-             */
-            (void)XDmaChannel_SgStart(&InstancePtr->RecvChannel);
-        }
-    }
+		/*
+		 * If the interrupt was an end-ack, check the descriptor list again to
+		 * see if it is empty. If not, go ahead and restart the scatter-gather
+		 * channel. This is to fix a possible race condition where, on receive,
+		 * the driver attempted to start a scatter-gather channel that was
+		 * already started, which resulted in no action from the XDmaChannel
+		 * component. But, just after the XDmaChannel component saw that the
+		 * hardware was already started, the hardware stopped because it
+		 * reached the end of the list.  In that case, this interrupt is
+		 * generated and we can restart the hardware here.
+		 */
+		if (IntrStatus & XDC_IXR_SG_END_MASK) {
+			/*
+			 * Ignore the return status since we know the list exists and we
+			 * don't care if the list is empty or the channel is already started.
+			 */
+			(void) XDmaChannel_SgStart(&InstancePtr->RecvChannel);
+		}
+	}
 
-    /*
-     * All interrupts are handled (except the error below) so acknowledge
-     * (clear) the interrupts by writing the value read above back to the status
-     * register. The packet count interrupt must be acknowledged after the
-     * decrement, otherwise it will come right back. We clear the interrupts
-     * before we handle the error interrupt because the ErrorHandler should
-     * result in a reset, which clears the interrupt status register. So we
-     * don't want to toggle the interrupt back on by writing the interrupt
-     * status register with an old value after a reset.
-     */
-    XDmaChannel_SetIntrStatus(&InstancePtr->RecvChannel, IntrStatus);
+	/*
+	 * All interrupts are handled (except the error below) so acknowledge
+	 * (clear) the interrupts by writing the value read above back to the status
+	 * register. The packet count interrupt must be acknowledged after the
+	 * decrement, otherwise it will come right back. We clear the interrupts
+	 * before we handle the error interrupt because the ErrorHandler should
+	 * result in a reset, which clears the interrupt status register. So we
+	 * don't want to toggle the interrupt back on by writing the interrupt
+	 * status register with an old value after a reset.
+	 */
+	XDmaChannel_SetIntrStatus(&InstancePtr->RecvChannel, IntrStatus);
 
-    /*
-     * Check for DMA errors and call the error callback function if an error
-     * occurred (DMA bus or timeout error), which should result in a reset of
-     * the device by the upper layer software.
-     */
-    if (IntrStatus & XDC_IXR_DMA_ERROR_MASK)
-    {
-        InstancePtr->Stats.DmaErrors++;
-        InstancePtr->ErrorHandler(InstancePtr->ErrorRef, XST_DMA_ERROR);
-    }
+	/*
+	 * Check for DMA errors and call the error callback function if an error
+	 * occurred (DMA bus or timeout error), which should result in a reset of
+	 * the device by the upper layer software.
+	 */
+	if (IntrStatus & XDC_IXR_DMA_ERROR_MASK) {
+		InstancePtr->Stats.DmaErrors++;
+		InstancePtr->ErrorHandler(InstancePtr->ErrorRef, XST_DMA_ERROR);
+	}
 }
 
 /*****************************************************************************/
@@ -1178,169 +1156,170 @@ static void HandleDmaRecvIntr(XEmac *InstancePtr)
 * None.
 *
 ******************************************************************************/
-static void HandleDmaSendIntr(XEmac *InstancePtr)
+static void HandleDmaSendIntr(XEmac * InstancePtr)
 {
-    XStatus Result;
-    Xuint32 IntrStatus;
-    Xuint32 NumBds;
-    Xuint32 PacketsLeft;
-    Xuint32 XmitStatus;
-    int PacketStart;
-    XBufDescriptor *BdHeadPtr;
-    XBufDescriptor *BdPtr;
+	XStatus Result;
+	u32 IntrStatus;
+	u32 NumBds;
+	u32 PacketsLeft;
+	u32 XmitStatus;
+	int PacketStart;
+	XBufDescriptor *BdHeadPtr;
+	XBufDescriptor *BdPtr;
 
-    /*
-     * Read the interrupt status
-     */
-    IntrStatus = XDmaChannel_GetIntrStatus(&InstancePtr->SendChannel);
+	/*
+	 * Read the interrupt status
+	 */
+	IntrStatus = XDmaChannel_GetIntrStatus(&InstancePtr->SendChannel);
 
-    /*
-     * For packet threshold or wait bound interrupt, process descriptors. Also
-     * process descriptors on a SG end acknowledgement, which means the end of
-     * the descriptor list has been reached by the hardware. For transmit,
-     * this is a normal condition during times of light traffic.  In fact, the
-     * wait bound interrupt may be masked for transmit since the end-ack would
-     * always occur before the wait bound expires.
-     */
-    if (IntrStatus & (XDC_IXR_PKT_THRESHOLD_MASK |
-        XDC_IXR_PKT_WAIT_BOUND_MASK | XDC_IXR_SG_END_MASK))
-    {
-        /* Get the number of packets that need processing */
-        PacketsLeft = XDmaChannel_GetPktCount(&InstancePtr->SendChannel);
+	/*
+	 * For packet threshold or wait bound interrupt, process descriptors. Also
+	 * process descriptors on a SG end acknowledgement, which means the end of
+	 * the descriptor list has been reached by the hardware. For transmit,
+	 * this is a normal condition during times of light traffic.  In fact, the
+	 * wait bound interrupt may be masked for transmit since the end-ack would
+	 * always occur before the wait bound expires.
+	 */
+	if (IntrStatus & (XDC_IXR_PKT_THRESHOLD_MASK |
+			  XDC_IXR_PKT_WAIT_BOUND_MASK | XDC_IXR_SG_END_MASK)) {
+		/* Get the number of packets that need processing */
+		PacketsLeft =
+			XDmaChannel_GetPktCount(&InstancePtr->SendChannel);
 
-        if (PacketsLeft)
-        {
-            /* Get the buffer descriptor at the head of the list */
-            Result = XDmaChannel_GetDescriptor(&InstancePtr->SendChannel,
-                                               &BdHeadPtr);
-            BdPtr = BdHeadPtr;
-            NumBds = 0;
-            PacketStart = 1;
+		if (PacketsLeft) {
+			/* Get the buffer descriptor at the head of the list */
+			Result = XDmaChannel_GetDescriptor(&InstancePtr->
+							   SendChannel,
+							   &BdHeadPtr);
+			BdPtr = BdHeadPtr;
+			NumBds = 0;
+			PacketStart = 1;
 
-            /* Loop until all packets have been pulled or an error occurs */
-            while(1)
-            {
-                NumBds++;
+			/* Loop until all packets have been pulled or an error occurs */
+			while (1) {
+				NumBds++;
 
-                /*
-                 * An error getting a buffer descriptor from the list.
-                 * This should not happen, but if it does, report it to
-                 * the error callback and break out of the loop to service
-                 * other interrupts.
-                 */
-                if (Result != XST_SUCCESS)
-                {
-                    InstancePtr->ErrorHandler(InstancePtr->ErrorRef, Result);
-                    break;
-                }
+				/*
+				 * An error getting a buffer descriptor from the list.
+				 * This should not happen, but if it does, report it to
+				 * the error callback and break out of the loop to service
+				 * other interrupts.
+				 */
+				if (Result != XST_SUCCESS) {
+					InstancePtr->ErrorHandler(InstancePtr->
+								  ErrorRef,
+								  Result);
+					break;
+				}
 
-                /* Bump statistics */
-                InstancePtr->Stats.XmitBytes += XBufDescriptor_GetLength(BdPtr);
+				/* Bump statistics */
+				InstancePtr->Stats.XmitBytes +=
+					XBufDescriptor_GetLength(BdPtr);
 
-                /* If 1st BD in a packet, then check xmit status */
-                if (PacketStart)
-                {
-                    XmitStatus = XBufDescriptor_GetDeviceStatus(BdPtr);
-                    if (XmitStatus & XEM_TSR_EXCESS_DEFERRAL_MASK)
-                    {
-                        InstancePtr->Stats.XmitExcessDeferral++;
-                    }
+				/* If 1st BD in a packet, then check xmit status */
+				if (PacketStart) {
+					XmitStatus =
+						XBufDescriptor_GetDeviceStatus
+						(BdPtr);
+					if (XmitStatus &
+					    XEM_TSR_EXCESS_DEFERRAL_MASK) {
+						InstancePtr->Stats.
+							XmitExcessDeferral++;
+					}
 
-                    if (XmitStatus & XEM_TSR_LATE_COLLISION_MASK)
-                    {
-                        InstancePtr->Stats.XmitLateCollisionErrors++;
-                    }
+					if (XmitStatus &
+					    XEM_TSR_LATE_COLLISION_MASK) {
+						InstancePtr->Stats.
+							XmitLateCollisionErrors++;
+					}
 
-                    PacketStart = 0;
-                }
+					PacketStart = 0;
+				}
 
-                /* Have all BDs been read for this packet */
-                if (XBufDescriptor_IsLastStatus(BdPtr))
-                {
-                    /*
-                     * Decrement the packet count register to reflect the fact
-                     * we just processed a packet
-                     */
-                    XDmaChannel_DecrementPktCount(&InstancePtr->SendChannel);
+				/* Have all BDs been read for this packet */
+				if (XBufDescriptor_IsLastStatus(BdPtr)) {
+					/*
+					 * Decrement the packet count register to reflect the fact
+					 * we just processed a packet
+					 */
+					XDmaChannel_DecrementPktCount
+						(&InstancePtr->SendChannel);
 
-                    /* Bump statistics */
-                    InstancePtr->Stats.XmitFrames++;
+					/* Bump statistics */
+					InstancePtr->Stats.XmitFrames++;
 
-                    /* Test loop exit condition */
-                    if (--PacketsLeft == 0)
-                    {
-                        break;
-                    }
+					/* Test loop exit condition */
+					if (--PacketsLeft == 0) {
+						break;
+					}
 
-                    /* Next BD will mark the beginning of a new packet */
-                    PacketStart = 1;
-                }
+					/* Next BD will mark the beginning of a new packet */
+					PacketStart = 1;
+				}
 
-                /* Get the next buffer descriptor in the list */
-                Result = XDmaChannel_GetDescriptor(&InstancePtr->SendChannel,
-                                                   &BdPtr);
-            } /* while */
+				/* Get the next buffer descriptor in the list */
+				Result = XDmaChannel_GetDescriptor
+					(&InstancePtr->SendChannel, &BdPtr);
+			}	/* while */
 
-            /*
-             * Check for error that occurred inside the while loop, and break
-             * out of the for loop if there was one so other interrupts can
-             * be serviced.
-             */
-            if (Result == XST_SUCCESS)
-            {
-                /*
-                 * Make the callback to the upper layers, passing it the first
-                 * descriptor in the first packet and the number of descriptors
-                 * in the list.
-                 */
-                InstancePtr->SgSendHandler(InstancePtr->SgSendRef, BdHeadPtr,
-                                           NumBds);
-            }
-        } /* if (PacketsLeft) */
+			/*
+			 * Check for error that occurred inside the while loop, and break
+			 * out of the for loop if there was one so other interrupts can
+			 * be serviced.
+			 */
+			if (Result == XST_SUCCESS) {
+				/*
+				 * Make the callback to the upper layers, passing it the first
+				 * descriptor in the first packet and the number of descriptors
+				 * in the list.
+				 */
+				InstancePtr->SgSendHandler(InstancePtr->
+							   SgSendRef, BdHeadPtr,
+							   NumBds);
+			}
+		}		/* if (PacketsLeft) */
 
-        /*
-         * If the interrupt was an end-ack, check the descriptor list again to
-         * see if it is empty. If not, go ahead and restart the scatter-gather
-         * channel. This is to fix a possible race condition where, on transmit,
-         * the driver attempted to start a scatter-gather channel that was
-         * already started, which resulted in no action from the XDmaChannel
-         * component. But, just after the XDmaChannel component saw that the
-         * hardware was already started, the hardware stopped because it
-         * reached the end of the list.  In that case, this interrupt is
-         * generated and we can restart the hardware here.
-         */
-        if (IntrStatus & XDC_IXR_SG_END_MASK)
-        {
-            /*
-             * Ignore the return status since we know the list exists and we
-             * don't care if the list is empty or the channel is already started.
-             */
-            (void)XDmaChannel_SgStart(&InstancePtr->SendChannel);
-        }
-    }
+		/*
+		 * If the interrupt was an end-ack, check the descriptor list again to
+		 * see if it is empty. If not, go ahead and restart the scatter-gather
+		 * channel. This is to fix a possible race condition where, on transmit,
+		 * the driver attempted to start a scatter-gather channel that was
+		 * already started, which resulted in no action from the XDmaChannel
+		 * component. But, just after the XDmaChannel component saw that the
+		 * hardware was already started, the hardware stopped because it
+		 * reached the end of the list.  In that case, this interrupt is
+		 * generated and we can restart the hardware here.
+		 */
+		if (IntrStatus & XDC_IXR_SG_END_MASK) {
+			/*
+			 * Ignore the return status since we know the list exists and we
+			 * don't care if the list is empty or the channel is already started.
+			 */
+			(void) XDmaChannel_SgStart(&InstancePtr->SendChannel);
+		}
+	}
 
-    /*
-     * All interrupts are handled (except the error below) so acknowledge
-     * (clear) the interrupts by writing the value read above back to the status
-     * register. The packet count interrupt must be acknowledged after the
-     * decrement, otherwise it will come right back. We clear the interrupts
-     * before we handle the error interrupt because the ErrorHandler should
-     * result in a reset, which clears the interrupt status register. So we
-     * don't want to toggle the interrupt back on by writing the interrupt
-     * status register with an old value after a reset.
-     */
-    XDmaChannel_SetIntrStatus(&InstancePtr->SendChannel, IntrStatus);
+	/*
+	 * All interrupts are handled (except the error below) so acknowledge
+	 * (clear) the interrupts by writing the value read above back to the status
+	 * register. The packet count interrupt must be acknowledged after the
+	 * decrement, otherwise it will come right back. We clear the interrupts
+	 * before we handle the error interrupt because the ErrorHandler should
+	 * result in a reset, which clears the interrupt status register. So we
+	 * don't want to toggle the interrupt back on by writing the interrupt
+	 * status register with an old value after a reset.
+	 */
+	XDmaChannel_SetIntrStatus(&InstancePtr->SendChannel, IntrStatus);
 
-    /*
-     * Check for DMA errors and call the error callback function if an error
-     * occurred (DMA bus or timeout error), which should result in a reset of
-     * the device by the upper layer software.
-     */
-    if (IntrStatus & XDC_IXR_DMA_ERROR_MASK)
-    {
-        InstancePtr->Stats.DmaErrors++;
-        InstancePtr->ErrorHandler(InstancePtr->ErrorRef, XST_DMA_ERROR);
-    }
+	/*
+	 * Check for DMA errors and call the error callback function if an error
+	 * occurred (DMA bus or timeout error), which should result in a reset of
+	 * the device by the upper layer software.
+	 */
+	if (IntrStatus & XDC_IXR_DMA_ERROR_MASK) {
+		InstancePtr->Stats.DmaErrors++;
+		InstancePtr->ErrorHandler(InstancePtr->ErrorRef, XST_DMA_ERROR);
+	}
 }
 
 /*****************************************************************************/
@@ -1360,21 +1339,21 @@ static void HandleDmaSendIntr(XEmac *InstancePtr)
 * None.
 *
 ******************************************************************************/
-static void HandleEmacDmaIntr(XEmac *InstancePtr)
+static void HandleEmacDmaIntr(XEmac * InstancePtr)
 {
-    Xuint32 IntrStatus;
+	u32 IntrStatus;
 
-    /*
-     * When configured with DMA, the EMAC generates interrupts only when errors
-     * occur. We clear the interrupts immediately so that any latched status
-     * interrupt bits will reflect the true status of the device, and so any
-     * pulsed interrupts (non-status) generated during the Isr will not be lost.
-     */
-    IntrStatus = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
-    XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, IntrStatus);
+	/*
+	 * When configured with DMA, the EMAC generates interrupts only when errors
+	 * occur. We clear the interrupts immediately so that any latched status
+	 * interrupt bits will reflect the true status of the device, and so any
+	 * pulsed interrupts (non-status) generated during the Isr will not be lost.
+	 */
+	IntrStatus = XIIF_V123B_READ_IISR(InstancePtr->BaseAddress);
+	XIIF_V123B_WRITE_IISR(InstancePtr->BaseAddress, IntrStatus);
 
-    /*
-     * Check the MAC for errors
-     */
-    XEmac_CheckEmacError(InstancePtr, IntrStatus);
+	/*
+	 * Check the MAC for errors
+	 */
+	XEmac_CheckEmacError(InstancePtr, IntrStatus);
 }

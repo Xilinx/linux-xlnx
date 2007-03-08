@@ -268,14 +268,14 @@
 *
 ******************************************************************************/
 
-#ifndef XEMAC_H /* prevent circular inclusions */
-#define XEMAC_H /* by using protection macros */
+#ifndef XEMAC_H			/* prevent circular inclusions */
+#define XEMAC_H			/* by using protection macros */
 
 /***************************** Include Files *********************************/
 
 #include "xbasic_types.h"
 #include "xstatus.h"
-#include "xpacket_fifo_v2_00_a.h"   /* Uses v2.00a of Packet Fifo */
+#include "xpacket_fifo_v2_00_a.h"	/* Uses v2.00a of Packet Fifo */
 #include "xdma_channel.h"
 
 /************************** Constant Definitions *****************************/
@@ -340,10 +340,10 @@
  * Some default values for interrupt coalescing within the scatter-gather
  * DMA engine.
  */
-#define XEM_SGDMA_DFT_THRESHOLD     1       /* Default pkt threshold */
-#define XEM_SGDMA_MAX_THRESHOLD     255     /* Maximum pkt theshold */
-#define XEM_SGDMA_DFT_WAITBOUND     5       /* Default pkt wait bound (msec) */
-#define XEM_SGDMA_MAX_WAITBOUND     1023    /* Maximum pkt wait bound (msec) */
+#define XEM_SGDMA_DFT_THRESHOLD     1	/* Default pkt threshold */
+#define XEM_SGDMA_MAX_THRESHOLD     255	/* Maximum pkt theshold */
+#define XEM_SGDMA_DFT_WAITBOUND     5	/* Default pkt wait bound (msec) */
+#define XEM_SGDMA_MAX_WAITBOUND     1023	/* Maximum pkt wait bound (msec) */
 
 /*
  * Direction identifiers. These are used for setting values like packet
@@ -356,31 +356,31 @@
  * Arguments to SgSend function to indicate whether to hold off starting
  * the scatter-gather engine.
  */
-#define XEM_SGDMA_NODELAY     0     /* start SG DMA immediately */
-#define XEM_SGDMA_DELAY       1     /* do not start SG DMA */
+#define XEM_SGDMA_NODELAY     0	/* start SG DMA immediately */
+#define XEM_SGDMA_DELAY       1	/* do not start SG DMA */
 
 /*
  * Constants to determine the configuration of the hardware device. They are
  * used to allow the driver to verify it can operate with the hardware.
  */
-#define XEM_CFG_NO_IPIF             0       /* Not supported by the driver */
-#define XEM_CFG_NO_DMA              1       /* No DMA */
-#define XEM_CFG_SIMPLE_DMA          2       /* Simple DMA */
-#define XEM_CFG_DMA_SG              3       /* DMA scatter gather */
+#define XEM_CFG_NO_IPIF             0	/* Not supported by the driver */
+#define XEM_CFG_NO_DMA              1	/* No DMA */
+#define XEM_CFG_SIMPLE_DMA          2	/* Simple DMA */
+#define XEM_CFG_DMA_SG              3	/* DMA scatter gather */
 
-#define XEM_MULTI_CAM_ENTRIES       64      /* Number of storable addresses in
-                                               the CAM */
+#define XEM_MULTI_CAM_ENTRIES       64	/* Number of storable addresses in
+					   the CAM */
 
 /*
  * The next few constants help upper layers determine the size of memory
  * pools used for Ethernet buffers and descriptor lists.
  */
-#define XEM_MAC_ADDR_SIZE   6       /* six-byte MAC address */
-#define XEM_MTU             1500    /* max size of Ethernet frame */
-#define XEM_JUMBO_MTU       8982    /* max payload size of jumbo frame */
-#define XEM_HDR_SIZE        14      /* size of Ethernet header */
-#define XEM_HDR_VLAN_SIZE   18      /* size of Ethernet header with VLAN */
-#define XEM_TRL_SIZE        4       /* size of Ethernet trailer (FCS) */
+#define XEM_MAC_ADDR_SIZE   6	/* six-byte MAC address */
+#define XEM_MTU             1500	/* max size of Ethernet frame */
+#define XEM_JUMBO_MTU       8982	/* max payload size of jumbo frame */
+#define XEM_HDR_SIZE        14	/* size of Ethernet header */
+#define XEM_HDR_VLAN_SIZE   18	/* size of Ethernet header with VLAN */
+#define XEM_TRL_SIZE        4	/* size of Ethernet trailer (FCS) */
 #define XEM_MAX_FRAME_SIZE  (XEM_MTU + XEM_HDR_SIZE + XEM_TRL_SIZE)
 #define XEM_MAX_VLAN_FRAME_SIZE  (XEM_MTU + XEM_HDR_VLAN_SIZE + XEM_TRL_SIZE)
 #define XEM_MAX_JUMBO_FRAME_SIZE (XEM_JUMBO_MTU + XEM_HDR_SIZE + XEM_TRL_SIZE)
@@ -388,11 +388,11 @@
 /*
  * Define a default number of send and receive buffers
  */
-#define XEM_MIN_RECV_BUFS   32      /* minimum # of recv buffers */
-#define XEM_DFT_RECV_BUFS   64      /* default # of recv buffers */
+#define XEM_MIN_RECV_BUFS   32	/* minimum # of recv buffers */
+#define XEM_DFT_RECV_BUFS   64	/* default # of recv buffers */
 
-#define XEM_MIN_SEND_BUFS   16      /* minimum # of send buffers */
-#define XEM_DFT_SEND_BUFS   32      /* default # of send buffers */
+#define XEM_MIN_SEND_BUFS   16	/* minimum # of send buffers */
+#define XEM_DFT_SEND_BUFS   32	/* default # of send buffers */
 
 #define XEM_MIN_BUFFERS     (XEM_MIN_RECV_BUFS + XEM_MIN_SEND_BUFS)
 #define XEM_DFT_BUFFERS     (XEM_DFT_RECV_BUFS + XEM_DFT_SEND_BUFS)
@@ -401,11 +401,11 @@
  * Define the number of send and receive buffer descriptors, used for
  * scatter-gather DMA
  */
-#define XEM_MIN_RECV_DESC   16      /* minimum # of recv descriptors */
-#define XEM_DFT_RECV_DESC   32      /* default # of recv descriptors */
+#define XEM_MIN_RECV_DESC   16	/* minimum # of recv descriptors */
+#define XEM_DFT_RECV_DESC   32	/* default # of recv descriptors */
 
-#define XEM_MIN_SEND_DESC   8       /* minimum # of send descriptors */
-#define XEM_DFT_SEND_DESC   16      /* default # of send descriptors */
+#define XEM_MIN_SEND_DESC   8	/* minimum # of send descriptors */
+#define XEM_DFT_SEND_DESC   16	/* default # of send descriptors */
 
 
 /**************************** Type Definitions *******************************/
@@ -413,53 +413,54 @@
 /**
  * Ethernet statistics (see XEmac_GetStats() and XEmac_ClearStats())
  */
-typedef struct
-{
-    Xuint32 XmitFrames;              /**< Number of frames transmitted */
-    Xuint32 XmitBytes;               /**< Number of bytes transmitted */
-    Xuint32 XmitLateCollisionErrors; /**< Number of transmission failures
+typedef struct {
+	u32 XmitFrames;		 /**< Number of frames transmitted */
+	u32 XmitBytes;		 /**< Number of bytes transmitted */
+	u32 XmitLateCollisionErrors;
+				 /**< Number of transmission failures
                                           due to late collisions */
-    Xuint32 XmitExcessDeferral;      /**< Number of transmission failures
+	u32 XmitExcessDeferral;	 /**< Number of transmission failures
                                           due o excess collision deferrals */
-    Xuint32 XmitOverrunErrors;       /**< Number of transmit overrun errors */
-    Xuint32 XmitUnderrunErrors;      /**< Number of transmit underrun errors */
-    Xuint32 RecvFrames;              /**< Number of frames received */
-    Xuint32 RecvBytes;               /**< Number of bytes received */
-    Xuint32 RecvFcsErrors;           /**< Number of frames discarded due
+	u32 XmitOverrunErrors;	 /**< Number of transmit overrun errors */
+	u32 XmitUnderrunErrors;	 /**< Number of transmit underrun errors */
+	u32 RecvFrames;		 /**< Number of frames received */
+	u32 RecvBytes;		 /**< Number of bytes received */
+	u32 RecvFcsErrors;	 /**< Number of frames discarded due
                                           to FCS errors */
-    Xuint32 RecvAlignmentErrors;     /**< Number of frames received with
+	u32 RecvAlignmentErrors; /**< Number of frames received with
                                           alignment errors */
-    Xuint32 RecvOverrunErrors;       /**< Number of frames discarded due
+	u32 RecvOverrunErrors;	 /**< Number of frames discarded due
                                           to overrun errors */
-    Xuint32 RecvUnderrunErrors;      /**< Number of recv underrun errors */
-    Xuint32 RecvMissedFrameErrors;   /**< Number of frames missed by MAC */
-    Xuint32 RecvCollisionErrors;     /**< Number of frames discarded due
+	u32 RecvUnderrunErrors;	 /**< Number of recv underrun errors */
+	u32 RecvMissedFrameErrors;
+				 /**< Number of frames missed by MAC */
+	u32 RecvCollisionErrors; /**< Number of frames discarded due
                                           to collisions */
-    Xuint32 RecvLengthFieldErrors;   /**< Number of frames discarded with
+	u32 RecvLengthFieldErrors;
+				 /**< Number of frames discarded with
                                           invalid length field */
-    Xuint32 RecvShortErrors;         /**< Number of short frames discarded */
-    Xuint32 RecvLongErrors;          /**< Number of long frames discarded */
-    Xuint32 DmaErrors;               /**< Number of DMA errors since init */
-    Xuint32 FifoErrors;              /**< Number of FIFO errors since init */
-    Xuint32 RecvInterrupts;          /**< Number of receive interrupts */
-    Xuint32 XmitInterrupts;          /**< Number of transmit interrupts */
-    Xuint32 EmacInterrupts;          /**< Number of MAC (device) interrupts */
-    Xuint32 TotalIntrs;              /**< Total interrupts */
+	u32 RecvShortErrors;	 /**< Number of short frames discarded */
+	u32 RecvLongErrors;	 /**< Number of long frames discarded */
+	u32 DmaErrors;		 /**< Number of DMA errors since init */
+	u32 FifoErrors;		 /**< Number of FIFO errors since init */
+	u32 RecvInterrupts;	 /**< Number of receive interrupts */
+	u32 XmitInterrupts;	 /**< Number of transmit interrupts */
+	u32 EmacInterrupts;	 /**< Number of MAC (device) interrupts */
+	u32 TotalIntrs;		 /**< Total interrupts */
 } XEmac_Stats;
 
 /**
  * This typedef contains configuration information for a device.
  */
-typedef struct
-{
-    Xuint16 DeviceId;           /**< Unique ID  of device */
-    Xuint32 BaseAddress;        /**< Register base address */
-    Xuint32 PhysAddress;        /**< Physical Base address */
-    Xboolean HasCounters;       /**< Does device have counters? */
-    Xuint8  IpIfDmaConfig;      /**< IPIF/DMA hardware configuration */
-    Xboolean HasMii;            /**< Does device support MII? */
-    Xboolean HasCam;            /**< Does device have multicast CAM */
-    Xboolean HasJumbo;          /**< Can device transfer jumbo frames */
+typedef struct {
+	u16 DeviceId;	    /**< Unique ID  of device */
+	u32 BaseAddress;    /**< Register base address */
+	u32 PhysAddress;    /**< Physical Base address */
+	u32 HasCounters;   /**< Does device have counters? */
+	u8 IpIfDmaConfig;   /**< IPIF/DMA hardware configuration */
+	u32 HasMii;	   /**< Does device support MII? */
+	u32 HasCam;	   /**< Does device have multicast CAM */
+	u32 HasJumbo;	   /**< Can device transfer jumbo frames */
 } XEmac_Config;
 
 
@@ -478,8 +479,8 @@ typedef struct
  * @param NumBds is the number of buffer descriptors in the list pointed
  *        to by BdPtr.
  */
-typedef void (*XEmac_SgHandler)(void *CallBackRef, XBufDescriptor *BdPtr,
-                                Xuint32 NumBds);
+typedef void (*XEmac_SgHandler) (void *CallBackRef, XBufDescriptor * BdPtr,
+				 u32 NumBds);
 
 /**
  * Callback when data is sent or received with direct FIFO communication or
@@ -490,7 +491,7 @@ typedef void (*XEmac_SgHandler)(void *CallBackRef, XBufDescriptor *BdPtr,
  *        when setting the callback functions, and passed back to the upper
  *        layer when the callback is invoked.
  */
-typedef void (*XEmac_FifoHandler)(void *CallBackRef);
+typedef void (*XEmac_FifoHandler) (void *CallBackRef);
 
 /**
  * Callback when an asynchronous error occurs.
@@ -501,7 +502,8 @@ typedef void (*XEmac_FifoHandler)(void *CallBackRef);
  * @param ErrorCode is a Xilinx error code defined in xstatus.h.  Also see
  *        XEmac_SetErrorHandler() for a description of possible errors.
  */
-typedef void (*XEmac_ErrorHandler)(void *CallBackRef, XStatus ErrorCode);
+typedef void (*XEmac_ErrorHandler) (void *CallBackRef, XStatus ErrorCode);
+
 /*@}*/
 
 /**
@@ -509,37 +511,36 @@ typedef void (*XEmac_ErrorHandler)(void *CallBackRef, XStatus ErrorCode);
  * variable of this type for every EMAC device in the system. A pointer
  * to a variable of this type is then passed to the driver API functions.
  */
-typedef struct
-{
-    Xuint32 BaseAddress;         /* Base address (of IPIF) */
-    Xuint32 PhysAddress;         /* Base address, physical  (of IPIF) */
-    Xuint32 IsStarted;           /* Device is currently started */
-    Xuint32 IsReady;             /* Device is initialized and ready */
-    Xboolean IsPolled;           /* Device is in polled mode */
-    XEmac_Config *ConfigPtr;     /* Configuration table entry */
+typedef struct {
+	u32 BaseAddress;	/* Base address (of IPIF) */
+	u32 PhysAddress;	/* Base address, physical  (of IPIF) */
+	u32 IsStarted;		/* Device is currently started */
+	u32 IsReady;		/* Device is initialized and ready */
+	u32 IsPolled;		/* Device is in polled mode */
+	XEmac_Config *ConfigPtr;	/* Configuration table entry */
 
-    XEmac_Stats Stats;
-    XPacketFifoV200a RecvFifo;   /* FIFO used to receive frames */
-    XPacketFifoV200a SendFifo;   /* FIFO used to send frames */
+	XEmac_Stats Stats;
+	XPacketFifoV200a RecvFifo;	/* FIFO used to receive frames */
+	XPacketFifoV200a SendFifo;	/* FIFO used to send frames */
 
-    /*
-     * Callbacks
-     */
-    XEmac_FifoHandler FifoRecvHandler;  /* for non-DMA/simple DMA interrupts */
-    void *FifoRecvRef;
-    XEmac_FifoHandler FifoSendHandler;  /* for non-DMA/simple DMA interrupts */
-    void *FifoSendRef;
-    XEmac_ErrorHandler ErrorHandler;    /* for asynchronous errors */
-    void *ErrorRef;
+	/*
+	 * Callbacks
+	 */
+	XEmac_FifoHandler FifoRecvHandler;	/* for non-DMA/simple DMA interrupts */
+	void *FifoRecvRef;
+	XEmac_FifoHandler FifoSendHandler;	/* for non-DMA/simple DMA interrupts */
+	void *FifoSendRef;
+	XEmac_ErrorHandler ErrorHandler;	/* for asynchronous errors */
+	void *ErrorRef;
 
-    XDmaChannel RecvChannel;            /* DMA receive channel driver */
-    XDmaChannel SendChannel;            /* DMA send channel driver */
-    Xboolean    IsSgEndDisable;         /* Does SG DMA enable SGEND interrupt */
+	XDmaChannel RecvChannel;	/* DMA receive channel driver */
+	XDmaChannel SendChannel;	/* DMA send channel driver */
+	u32 IsSgEndDisable;	/* Does SG DMA enable SGEND interrupt */
 
-    XEmac_SgHandler SgRecvHandler;      /* callback for scatter-gather DMA */
-    void *SgRecvRef;
-    XEmac_SgHandler SgSendHandler;      /* callback for scatter-gather DMA */
-    void *SgSendRef;
+	XEmac_SgHandler SgRecvHandler;	/* callback for scatter-gather DMA */
+	void *SgRecvRef;
+	XEmac_SgHandler SgSendHandler;	/* callback for scatter-gather DMA */
+	void *SgSendRef;
 } XEmac;
 
 
@@ -555,17 +556,17 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured for scatter-gather DMA, or XFALSE
+* Boolean TRUE if the device is configured for scatter-gather DMA, or FALSE
 * if it is not.
 *
 * @note
 *
-* Signature: Xboolean XEmac_mIsSgDma(XEmac *InstancePtr)
+* Signature: u32 XEmac_mIsSgDma(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mIsSgDma(InstancePtr) \
     (((InstancePtr)->ConfigPtr->IpIfDmaConfig == XEM_CFG_DMA_SG) ? \
-     XTRUE : XFALSE)
+     TRUE : FALSE)
 
 
 /*****************************************************************************/
@@ -577,16 +578,16 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured for simple DMA, or XFALSE otherwise
+* Boolean TRUE if the device is configured for simple DMA, or FALSE otherwise
 *
 * @note
 *
-* Signature: Xboolean XEmac_mIsSimpleDma(XEmac *InstancePtr)
+* Signature: u32 XEmac_mIsSimpleDma(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mIsSimpleDma(InstancePtr) \
     (((InstancePtr)->ConfigPtr->IpIfDmaConfig == XEM_CFG_SIMPLE_DMA) ? \
-     XTRUE : XFALSE)
+     TRUE : FALSE)
 
 
 /*****************************************************************************/
@@ -599,16 +600,16 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured with DMA, or XFALSE otherwise
+* Boolean TRUE if the device is configured with DMA, or FALSE otherwise
 *
 * @note
 *
-* Signature: Xboolean XEmac_mIsDma(XEmac *InstancePtr)
+* Signature: u32 XEmac_mIsDma(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mIsDma(InstancePtr) \
     ((XEmac_mIsSimpleDma(InstancePtr) || XEmac_mIsSgDma(InstancePtr)) ? \
-     XTRUE : XFALSE)
+     TRUE : FALSE)
 
 /*****************************************************************************/
 /**
@@ -620,15 +621,15 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured with the CAM, or XFALSE otherwise
+* Boolean TRUE if the device is configured with the CAM, or FALSE otherwise
 *
 * @note
 *
-* Signature: Xboolean XEmac_mHasCam(XEmac *InstancePtr)
+* Signature: u32 XEmac_mHasCam(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mHasCam(InstancePtr) \
-    (((InstancePtr)->ConfigPtr->HasCam == 1) ? XTRUE : XFALSE)
+    (((InstancePtr)->ConfigPtr->HasCam == 1) ? TRUE : FALSE)
 
 /*****************************************************************************/
 /**
@@ -640,15 +641,15 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured with MII, or XFALSE otherwise
+* Boolean TRUE if the device is configured with MII, or FALSE otherwise
 *
 * @note
 *
-* Signature: Xboolean XEmac_mHasMii(XEmac *InstancePtr)
+* Signature: u32 XEmac_mHasMii(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mHasMii(InstancePtr) \
-    (((InstancePtr)->ConfigPtr->HasMii == 1) ? XTRUE : XFALSE)
+    (((InstancePtr)->ConfigPtr->HasMii == 1) ? TRUE : FALSE)
 
 /*****************************************************************************/
 /**
@@ -660,16 +661,16 @@ typedef struct
 *
 * @return
 *
-* Boolean XTRUE if the device is configured with jubmo frame capability, or
-* XFALSE otherwise
+* Boolean TRUE if the device is configured with jubmo frame capability, or
+* FALSE otherwise
 *
 * @note
 *
-* Signature: Xboolean XEmac_mHasJumbo(XEmac *InstancePtr)
+* Signature: u32 XEmac_mHasJumbo(XEmac *InstancePtr)
 *
 ******************************************************************************/
 #define XEmac_mHasJumbo(InstancePtr) \
-    (((InstancePtr)->ConfigPtr->HasJumbo == 1) ? XTRUE : XFALSE)
+    (((InstancePtr)->ConfigPtr->HasJumbo == 1) ? TRUE : FALSE)
 
 
 /************************** Function Prototypes ******************************/
@@ -677,100 +678,95 @@ typedef struct
 /*
  * Initialization functions in xemac.c
  */
-XStatus XEmac_Initialize(XEmac *InstancePtr, Xuint16 DeviceId);
-XStatus XEmac_Start(XEmac *InstancePtr);
-XStatus XEmac_Stop(XEmac *InstancePtr);
-void XEmac_Reset(XEmac *InstancePtr);
-XEmac_Config *XEmac_LookupConfig(Xuint16 DeviceId);
+XStatus XEmac_Initialize(XEmac * InstancePtr, u16 DeviceId);
+XStatus XEmac_Start(XEmac * InstancePtr);
+XStatus XEmac_Stop(XEmac * InstancePtr);
+void XEmac_Reset(XEmac * InstancePtr);
+XEmac_Config *XEmac_LookupConfig(u16 DeviceId);
 
 /*
  * Diagnostic functions in xemac_selftest.c
  */
-XStatus XEmac_SelfTest(XEmac *InstancePtr);
+XStatus XEmac_SelfTest(XEmac * InstancePtr);
 
 /*
  * Polled functions in xemac_polled.c
  */
-XStatus XEmac_PollSend(XEmac *InstancePtr, Xuint8 *BufPtr, Xuint32 ByteCount);
-XStatus XEmac_PollRecv(XEmac *InstancePtr, Xuint8 *BufPtr,
-                       Xuint32 *ByteCountPtr);
+XStatus XEmac_PollSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
+XStatus XEmac_PollRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
 
 /*
  * Interrupts with scatter-gather DMA functions in xemac_intr_dma.c
  */
-XStatus XEmac_SgSend(XEmac *InstancePtr, XBufDescriptor *BdPtr, int Delay);
-XStatus XEmac_SgRecv(XEmac *InstancePtr, XBufDescriptor *BdPtr);
-XStatus XEmac_SetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint8 Threshold);
-XStatus XEmac_GetPktThreshold(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint8 *ThreshPtr);
-XStatus XEmac_SetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint32 TimerValue);
-XStatus XEmac_GetPktWaitBound(XEmac *InstancePtr, Xuint32 Direction,
-                              Xuint32 *WaitPtr);
-XStatus XEmac_SetSgRecvSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
-                             Xuint32 ByteCount, void *PhyPtr);
-XStatus XEmac_SetSgSendSpace(XEmac *InstancePtr, Xuint32 *MemoryPtr,
-                             Xuint32 ByteCount, void *PhyPtr);
-void XEmac_SetSgRecvHandler(XEmac *InstancePtr, void *CallBackRef,
-                            XEmac_SgHandler FuncPtr);
-void XEmac_SetSgSendHandler(XEmac *InstancePtr, void *CallBackRef,
-                            XEmac_SgHandler FuncPtr);
-unsigned XEmac_GetSgSendFreeDesc(XEmac *InstancePtr);
-unsigned XEmac_GetSgRecvFreeDesc(XEmac *InstancePtr);
+XStatus XEmac_SgSend(XEmac * InstancePtr, XBufDescriptor * BdPtr, int Delay);
+XStatus XEmac_SgRecv(XEmac * InstancePtr, XBufDescriptor * BdPtr);
+XStatus XEmac_SetPktThreshold(XEmac * InstancePtr, u32 Direction, u8 Threshold);
+XStatus XEmac_GetPktThreshold(XEmac * InstancePtr, u32 Direction,
+			      u8 *ThreshPtr);
+XStatus XEmac_SetPktWaitBound(XEmac * InstancePtr, u32 Direction,
+			      u32 TimerValue);
+XStatus XEmac_GetPktWaitBound(XEmac * InstancePtr, u32 Direction, u32 *WaitPtr);
+XStatus XEmac_SetSgRecvSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			     u32 ByteCount, void *PhyPtr);
+XStatus XEmac_SetSgSendSpace(XEmac * InstancePtr, u32 *MemoryPtr,
+			     u32 ByteCount, void *PhyPtr);
+void XEmac_SetSgRecvHandler(XEmac * InstancePtr, void *CallBackRef,
+			    XEmac_SgHandler FuncPtr);
+void XEmac_SetSgSendHandler(XEmac * InstancePtr, void *CallBackRef,
+			    XEmac_SgHandler FuncPtr);
+unsigned XEmac_GetSgSendFreeDesc(XEmac * InstancePtr);
+unsigned XEmac_GetSgRecvFreeDesc(XEmac * InstancePtr);
 
-void XEmac_IntrHandlerDma(void *InstancePtr);       /* interrupt handler */
+void XEmac_IntrHandlerDma(void *InstancePtr);	/* interrupt handler */
 
 /*
  * Interrupts with direct FIFO functions in xemac_intr_fifo.c. Also used
  * for simple DMA.
  */
-XStatus XEmac_FifoSend(XEmac *InstancePtr, Xuint8 *BufPtr, Xuint32 ByteCount);
-XStatus XEmac_FifoRecv(XEmac *InstancePtr, Xuint8 *BufPtr,
-                       Xuint32 *ByteCountPtr);
-void XEmac_SetFifoRecvHandler(XEmac *InstancePtr, void *CallBackRef,
-                              XEmac_FifoHandler FuncPtr);
-void XEmac_SetFifoSendHandler(XEmac *InstancePtr, void *CallBackRef,
-                              XEmac_FifoHandler FuncPtr);
+XStatus XEmac_FifoSend(XEmac * InstancePtr, u8 *BufPtr, u32 ByteCount);
+XStatus XEmac_FifoRecv(XEmac * InstancePtr, u8 *BufPtr, u32 *ByteCountPtr);
+void XEmac_SetFifoRecvHandler(XEmac * InstancePtr, void *CallBackRef,
+			      XEmac_FifoHandler FuncPtr);
+void XEmac_SetFifoSendHandler(XEmac * InstancePtr, void *CallBackRef,
+			      XEmac_FifoHandler FuncPtr);
 
-void XEmac_IntrHandlerFifo(void *InstancePtr);      /* interrupt handler */
+void XEmac_IntrHandlerFifo(void *InstancePtr);	/* interrupt handler */
 
 /*
  * General interrupt-related functions in xemac_intr.c
  */
-void XEmac_SetErrorHandler(XEmac *InstancePtr, void *CallBackRef,
-                           XEmac_ErrorHandler FuncPtr);
+void XEmac_SetErrorHandler(XEmac * InstancePtr, void *CallBackRef,
+			   XEmac_ErrorHandler FuncPtr);
 
 /*
  * MAC configuration in xemac_options.c
  */
-XStatus XEmac_SetOptions(XEmac *InstancePtr, Xuint32 OptionFlag);
-Xuint32 XEmac_GetOptions(XEmac *InstancePtr);
-XStatus XEmac_SetMacAddress(XEmac *InstancePtr, Xuint8 *AddressPtr);
-void XEmac_GetMacAddress(XEmac *InstancePtr, Xuint8 *BufferPtr);
-XStatus XEmac_SetInterframeGap(XEmac *InstancePtr, Xuint8 Part1, Xuint8 Part2);
-void XEmac_GetInterframeGap(XEmac *InstancePtr, Xuint8 *Part1Ptr,
-                            Xuint8* Part2Ptr);
+XStatus XEmac_SetOptions(XEmac * InstancePtr, u32 OptionFlag);
+u32 XEmac_GetOptions(XEmac * InstancePtr);
+XStatus XEmac_SetMacAddress(XEmac * InstancePtr, u8 *AddressPtr);
+void XEmac_GetMacAddress(XEmac * InstancePtr, u8 *BufferPtr);
+XStatus XEmac_SetInterframeGap(XEmac * InstancePtr, u8 Part1, u8 Part2);
+void XEmac_GetInterframeGap(XEmac * InstancePtr, u8 *Part1Ptr, u8 *Part2Ptr);
 
 /*
  * Multicast functions in xemac_multicast.c
  */
-XStatus XEmac_MulticastAdd(XEmac *InstancePtr, Xuint8 *AddressPtr, int Entry);
-XStatus XEmac_MulticastClear(XEmac *InstancePtr, int Entry);
+XStatus XEmac_MulticastAdd(XEmac * InstancePtr, u8 *AddressPtr, int Entry);
+XStatus XEmac_MulticastClear(XEmac * InstancePtr, int Entry);
 
 /*
  * PHY configuration in xemac_phy.c
  */
-void    XEmac_PhyReset(XEmac *InstancePtr);
-XStatus XEmac_PhyRead(XEmac *InstancePtr, Xuint32 PhyAddress,
-                      Xuint32 RegisterNum, Xuint16 *PhyDataPtr);
-XStatus XEmac_PhyWrite(XEmac *InstancePtr, Xuint32 PhyAddress,
-                       Xuint32 RegisterNum, Xuint16 PhyData);
+void XEmac_PhyReset(XEmac * InstancePtr);
+XStatus XEmac_PhyRead(XEmac * InstancePtr, u32 PhyAddress,
+		      u32 RegisterNum, u16 *PhyDataPtr);
+XStatus XEmac_PhyWrite(XEmac * InstancePtr, u32 PhyAddress,
+		       u32 RegisterNum, u16 PhyData);
 
 /*
  * Statistics in xemac_stats.c
  */
-void XEmac_GetStats(XEmac *InstancePtr, XEmac_Stats *StatsPtr);
-void XEmac_ClearStats(XEmac *InstancePtr);
+void XEmac_GetStats(XEmac * InstancePtr, XEmac_Stats * StatsPtr);
+void XEmac_ClearStats(XEmac * InstancePtr);
 
-#endif            /* end of protection macro */
+#endif /* end of protection macro */
