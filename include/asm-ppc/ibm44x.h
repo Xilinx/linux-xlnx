@@ -22,16 +22,27 @@
 #define NR_BOARD_IRQS 0
 #endif
 
+#ifdef CONFIG_XILINX_ML5E
+#define _IO_BASE	0
+#define _ISA_MEM_BASE	0
+#define PCI_DRAM_OFFSET	0
+#else
 #define _IO_BASE	isa_io_base
 #define _ISA_MEM_BASE	isa_mem_base
 #define PCI_DRAM_OFFSET	pci_dram_offset
+#endif
 
 /* TLB entry offset/size used for pinning kernel lowmem */
 #define PPC44x_PIN_SHIFT	28
 #define PPC_PIN_SIZE		(1 << PPC44x_PIN_SHIFT)
 
 /* Lowest TLB slot consumed by the default pinned TLBs */
+#ifdef CONFIG_SERIAL_TEXT_DEBUG
+/* Reserve one more pinned TLB for the UART mapping */
+#define PPC44x_LOW_SLOT		62
+#else
 #define PPC44x_LOW_SLOT		63
+#endif
 
 /*
  * Least significant 32-bits and extended real page number (ERPN) of
@@ -45,6 +56,8 @@
 #define UART0_PHYS_IO_BASE	0xf0000200
 #elif defined(CONFIG_440EP)
 #define UART0_PHYS_IO_BASE	0xe0000000
+#elif defined(CONFIG_XILINX_ML5E)
+#define UART0_PHYS_IO_BASE	XPAR_UARTNS550_0_BASEADDR
 #else
 #define UART0_PHYS_ERPN		1
 #define UART0_PHYS_IO_BASE	0x40000200
@@ -68,7 +81,7 @@
 #define	PPC44x_PCICFG_PAGE	0x0000000c00000000ULL
 #define	PPC44x_PCIIO_PAGE	PPC44x_PCICFG_PAGE
 #define	PPC44x_PCIMEM_PAGE	0x0000000d00000000ULL
-#elif defined(CONFIG_440EP)
+#elif defined(CONFIG_440EP) || defined(CONFIG_XILINX_ML5E)
 #define PPC44x_IO_PAGE		0x0000000000000000ULL
 #define PPC44x_PCICFG_PAGE	0x0000000000000000ULL
 #define PPC44x_PCIIO_PAGE	PPC44x_PCICFG_PAGE

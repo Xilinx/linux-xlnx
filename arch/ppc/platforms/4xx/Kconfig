@@ -61,6 +61,7 @@ config XILINX_ML403
 	bool "Xilinx-ML403"
 	help
 	  This option enables support for the Xilinx ML403 evaluation board.
+
 endchoice
 
 choice
@@ -98,6 +99,23 @@ config OCOTEA
 	help
 	  This option enables support for the IBM PPC440GX evaluation board.
 
+config XILINX_ML5E
+	bool "Xilinx-ML5 PPC440 Emulation Board"
+	help
+	  This option enables support for the Xilinx ML5 PPC440 emulation
+	  board.  This configuration runs a soft-core PPC440 on a Virtex4 LX200
+	  part in combination with a ML410 motherboard.
+	  Use only for PPC440 evaluation purposes. This is not an official
+	  board.
+
+config XILINX_DISABLE_44x_CACHE
+	depends on XILINX_ML5E
+	bool "Disable PPC440 caches"
+	help
+	  This option allows to disable the caches on the PPC440. Some early
+	  PPC440 soft-cores do not work with caches enabled. If you have any
+	  problems running the ML5, try using this option.
+
 endchoice
 
 config EP405PC
@@ -106,7 +124,7 @@ config EP405PC
 
 
 # It's often necessary to know the specific 4xx processor type.
-# Fortunately, it is impled (so far) from the board type, so we
+# Fortunately, it is implied (so far) from the board type, so we
 # don't need to ask more redundant questions.
 config NP405H
 	bool
@@ -212,6 +230,14 @@ config XILINX_VIRTEX_II_PRO
 	depends on XILINX_ML300
 	default y
 
+# The XILINX_ML5E actually is running a soft-core PPC440 on a Virtex-4 LX200
+# chip. However, as "real" Virtex-5 boards become available, we can still use
+# this definition and extend the 'depends' list with the new board names.
+config XILINX_VIRTEX_5_FX
+	bool
+	depends on XILINX_ML5E
+	default y
+
 config XILINX_VIRTEX_4_FX
 	bool
 	depends on XILINX_ML403
@@ -219,7 +245,7 @@ config XILINX_VIRTEX_4_FX
 
 config XILINX_VIRTEX
 	bool
-	depends on XILINX_VIRTEX_II_PRO || XILINX_VIRTEX_4_FX
+	depends on XILINX_VIRTEX_II_PRO || XILINX_VIRTEX_4_FX || XILINX_VIRTEX_5_FX
 	default y
 
 config STB03xxx
@@ -229,7 +255,7 @@ config STB03xxx
 
 config EMBEDDEDBOOT
 	bool
-	depends on EP405 || XILINX_ML300 || XILINX_ML403
+	depends on EP405 || XILINX_ML300 || XILINX_ML403 || XILINX_ML5E
 	default y
 
 config IBM_OPENBIOS
@@ -253,7 +279,7 @@ config PPC_GEN550
 
 choice
 	prompt "TTYS0 device and default console"
-	depends on 40x
+	depends on 40x || 44x
 	default UART0_TTYS0
 
 config UART0_TTYS0

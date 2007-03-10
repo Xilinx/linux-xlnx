@@ -17,23 +17,27 @@ obj-$(CONFIG_440GX)		+= ibm440gx_common.o
 obj-$(CONFIG_440SP)		+= ibm440gx_common.o ibm440sp_common.o
 obj-$(CONFIG_440SPE)		+= ibm440gx_common.o ibm440sp_common.o ppc440spe_pcie.o
 ifeq ($(CONFIG_4xx),y)
-ifeq ($(CONFIG_XILINX_VIRTEX),y)
-obj-$(CONFIG_40x)		+= xilinx_pic.o ppc_sys.o
-else
-ifeq ($(CONFIG_403),y)
-obj-$(CONFIG_40x)		+= ppc403_pic.o
-else
-obj-$(CONFIG_40x)		+= ppc4xx_pic.o
-endif
-endif
-obj-$(CONFIG_44x)		+= ppc4xx_pic.o
-obj-$(CONFIG_40x)		+= ppc4xx_setup.o
-obj-$(CONFIG_GEN_RTC)		+= todc_time.o
-obj-$(CONFIG_PPC4xx_DMA)	+= ppc4xx_dma.o
-obj-$(CONFIG_PPC4xx_EDMA)	+= ppc4xx_sgdma.o
-ifeq ($(CONFIG_40x),y)
-obj-$(CONFIG_PCI)		+= pci_auto.o ppc405_pci.o
-endif
+  ifeq ($(CONFIG_XILINX_VIRTEX),y)
+    obj-$(CONFIG_40x)		+= xilinx_pic.o
+    obj-$(CONFIG_40x)		+= ppc4xx_setup.o
+    obj-$(CONFIG_44x)		+= xilinx_pic.o
+#    obj-$(CONFIG_44x)		+= xilinx_ml5_setup.o
+    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
+  else
+    obj-$(CONFIG_403)		+= ppc403_pic.o
+    obj-$(CONFIG_40x)		+= ppc4xx_pic.o
+    obj-$(CONFIG_40x)		+= ppc4xx_setup.o
+    obj-$(CONFIG_44x)		+= ppc4xx_pic.o
+    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
+  endif
+
+  obj-$(CONFIG_GEN_RTC)		+= todc_time.o
+  obj-$(CONFIG_PPC4xx_DMA)	+= ppc4xx_dma.o
+  obj-$(CONFIG_PPC4xx_EDMA)	+= ppc4xx_sgdma.o
+
+  ifeq ($(CONFIG_40x),y)
+    obj-$(CONFIG_PCI)		+= indirect_pci.o pci_auto.o ppc405_pci.o
+  endif
 endif
 obj-$(CONFIG_8xx)		+= m8xx_setup.o ppc8xx_pic.o $(wdt-mpc8xx-y) \
 				   ppc_sys.o mpc8xx_devices.o mpc8xx_sys.o

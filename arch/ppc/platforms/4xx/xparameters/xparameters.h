@@ -17,6 +17,9 @@
   #include "xparameters_ml300.h"
 #elif defined(CONFIG_XILINX_ML403)
   #include "xparameters_ml403.h"
+#elif defined(CONFIG_XILINX_ML5E)
+  #include "xparameters_ml5e.h"
+#endif
 #else
   /* Add other board xparameter includes here before the #else */
   #error No xparameters_*.h file included

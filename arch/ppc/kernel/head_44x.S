@@ -147,9 +147,14 @@ skpinv:	addi	r4,r4,1				/* Increment */
 					/* ERPN is 0 for first 4GB page */
 
 	/* attrib fields */
-	/* Added guarded bit to protect against speculative loads/stores */
+	/* Added guarded bit to protect against speculative loads/stores.
+	 *
+	 * NOTE:
+	 *   PPC44x_XILINX_TLB_I is defined according to
+	 *   CONFIG_XILINX_DISABLE_44x_CACHE.
+	 */
 	li	r5,0
-	ori	r5,r5,(PPC44x_TLB_SW | PPC44x_TLB_SR | PPC44x_TLB_SX | PPC44x_TLB_G)
+	ori	r5,r5,(PPC44x_TLB_SW | PPC44x_TLB_SR | PPC44x_TLB_SX | PPC44x_TLB_G | PPC44x_XILINX_TLB_I) /* SEG 2005-12-16: turn caches off */
 
         li      r0,63                    /* TLB slot 63 */
 
@@ -183,7 +188,16 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	 */
  	/* pageid fields */
 	lis	r3,UART0_IO_BASE@h
-	ori	r3,r3,PPC44x_TLB_VALID | PPC44x_TLB_4K
+#ifdef CONFIG_XILINX_ML5E
+	/* In the case of the ML5E we only want to map a 16k page. Otherwise,
+	 * we will interfere with the mapping of other peripherals in the
+	 * region because We use the "early debug" even after the MMU is set
+	 * up.  The 16k page will cover the UART0 and UART1 address range.
+	 */
+	ori	r3,r3,PPC44x_TLB_VALID | PPC44x_TLB_16K
+#else
+	ori	r3,r3,PPC44x_TLB_VALID | PPC44x_TLB_256M
+#endif
 
 	/* xlat fields */
 	lis	r4,UART0_PHYS_IO_BASE@h		/* RPN depends on SoC */
@@ -195,7 +209,7 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	li	r5,0
 	ori	r5,r5,(PPC44x_TLB_SW | PPC44x_TLB_SR | PPC44x_TLB_I | PPC44x_TLB_G)
 
-        li      r0,0                    /* TLB slot 0 */
+        li      r0,62                   /* TLB slot 62 */
 
 	tlbwe	r3,r0,PPC44x_TLB_PAGEID	/* Load the pageid fields */
 	tlbwe	r4,r0,PPC44x_TLB_XLAT	/* Load the translation fields */
@@ -396,6 +410,9 @@ interrupt_base:
 	/* find the TLB index that caused the fault.  It has to be here. */
 	tlbsx	r10, 0, r10
 
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+	ori	r11, r11, PPC44x_XILINX_TLB_I	/* SEG 2005-12-16: set/unset I */
+#endif
 	tlbwe	r11, r10, PPC44x_TLB_ATTRIB	/* Write ATTRIB */
 
 	/* Done...restore registers and get out of here.
@@ -677,6 +694,9 @@ finish_tlb_load:
 
 	rlwimi	r12, r10, 0, 26, 31		/* Insert static perms */
 	rlwinm	r12, r12, 0, 20, 15		/* Clear U0-U3 */
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+	ori	r12, r12, PPC44x_XILINX_TLB_I	/* SEG: 2005-12-16: set/unset I */
+#endif
 	tlbwe	r12, r13, PPC44x_TLB_ATTRIB	/* Write ATTRIB */
 
 	/* Done...restore registers and get out of here.

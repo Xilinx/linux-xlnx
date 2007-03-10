@@ -1,11 +1,12 @@
 /*
- * arch/ppc/platforms/4xx/xilinx_ml403.h
+ * arch/ppc/platforms/4xx/xilinx_ml5e.h
  *
- * Include file that defines the Xilinx ML403 reference design
+ * Include file that defines the Xilinx ML5E PPC440 EMULATION System
  *
  * Author: Grant Likely <grant.likely@secretlab.ca>
  * 	   Wolfgang Reissnegger <w.reissnegger@gmx.net>
  *
+ * 2007 (c) Xilinx, Inc.
  * 2005 (c) Secret Lab Technologies Ltd.
  * 2002-2004 (c) MontaVista Software, Inc.
  *
@@ -15,10 +16,9 @@
  */
 
 #ifdef __KERNEL__
-#ifndef __ASM_XILINX_ML403_H__
-#define __ASM_XILINX_ML403_H__
+#ifndef __ASM_XILINX_ML5E_H__
+#define __ASM_XILINX_ML5E_H__
 
-/* ML403 has a Xilinx Virtex-4 FPGA with a PPC405 hard core */
 #include <platforms/4xx/virtex.h>
 
 #ifndef __ASSEMBLY__
@@ -44,7 +44,7 @@ typedef struct board_info {
 #define PPC4xx_ONB_IO_VADDR	0u
 #define PPC4xx_ONB_IO_SIZE	0u
 
-#define PPC4xx_MACHINE_NAME "Xilinx ML403 Reference Design"
+#define PPC4xx_MACHINE_NAME "Xilinx ML5E PPC440 EMULATION System"
 
-#endif /* __ASM_XILINX_ML403_H__ */
+#endif /* __ASM_XILINX_ML5E_H__ */
 #endif /* __KERNEL__ */
