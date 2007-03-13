@@ -381,8 +381,12 @@ static __inline__ int irq_canonicalize(int irq)
 #elif defined(CONFIG_44x)
 #include <asm/ibm44x.h>
 
+#ifdef CONFIG_XILINX_ML5E
+#define NR_IRQS		32
+#else
 #define	NR_UIC_IRQS	32
 #define	NR_IRQS		((NR_UIC_IRQS * NR_UICS) + NR_BOARD_IRQS)
+#endif /* ifdef CONFIG_XILINX_ML5E */
 
 #elif defined(CONFIG_8xx)
 

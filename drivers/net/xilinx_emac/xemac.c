@@ -55,8 +55,8 @@
 
 #include <linux/string.h>
 
+#include <cfg/xparameters.h>
 #include "xbasic_types.h"
-#include "asm/xparameters.h"
 #include "xemac_i.h"
 #include "xio.h"
 #include "xipif_v1_23_b.h"	/* Uses v1.23b of the IPIF */

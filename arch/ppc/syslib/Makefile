@@ -16,19 +16,27 @@ obj-$(CONFIG_440GP)		+= ibm440gp_common.o
 obj-$(CONFIG_440GX)		+= ibm440gx_common.o
 obj-$(CONFIG_440SP)		+= ibm440gx_common.o ibm440sp_common.o
 obj-$(CONFIG_440SPE)		+= ibm440gx_common.o ibm440sp_common.o ppc440spe_pcie.o
+
 ifeq ($(CONFIG_4xx),y)
   ifeq ($(CONFIG_XILINX_VIRTEX),y)
+
     obj-$(CONFIG_40x)		+= xilinx_pic.o
     obj-$(CONFIG_40x)		+= ppc4xx_setup.o
+
     obj-$(CONFIG_44x)		+= xilinx_pic.o
+#    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
 #    obj-$(CONFIG_44x)		+= xilinx_ml5_setup.o
-    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
+
   else
+
     obj-$(CONFIG_403)		+= ppc403_pic.o
+
     obj-$(CONFIG_40x)		+= ppc4xx_pic.o
     obj-$(CONFIG_40x)		+= ppc4xx_setup.o
+
     obj-$(CONFIG_44x)		+= ppc4xx_pic.o
     obj-$(CONFIG_44x)		+= ppc4xx_setup.o
+
   endif
 
   obj-$(CONFIG_GEN_RTC)		+= todc_time.o

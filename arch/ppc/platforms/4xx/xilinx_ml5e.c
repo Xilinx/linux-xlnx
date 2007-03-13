@@ -27,7 +27,7 @@
 #include <asm/ppc_sys.h>
 
 #include <syslib/gen550.h>
-#include <platforms/4xx/xparameters/xparameters.h>
+#include <cfg/xparameters.h>
 
 /*
  * As an overview of how the following functions (platform_init,
@@ -163,6 +163,7 @@ ml5e_init_irq(void)
 	 */
 #if (NR_IRQS != 32)
 #error NR_IRQS must be 32 for ML300/ML403/ML5xx
+#endif
 
 	for (i = 0; i < NR_IRQS; i++) {
 		if (XPAR_INTC_0_KIND_OF_INTR & (0x80000000 >> i))

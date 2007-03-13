@@ -15,9 +15,19 @@
 #ifndef __ASM_VIRTEX_H__
 #define __ASM_VIRTEX_H__
 
-/* serial defines */
-
-#include <asm/ibm405.h>
+/* We have to distinguish between the PPC405 based Virtex chips and the PPC440
+ * based chipts (Virtex 5). At this point we are still using virtex.[ch],
+ * however in the future we may be transitioning to the flat device tree and
+ * therefore eliminating virtex.[ch]. For the time being, though, we add the
+ * PPC440 includes here.
+ */
+#if defined(CONFIG_XILINX_ML5E)
+  /* PPC 440 based boards */
+  #include <asm/ibm44x.h>
+#else
+  /* PPC405 based boards */
+  #include <asm/ibm405.h>
+#endif
 
 /* Ugly, ugly, ugly! BASE_BAUD defined here to keep 8250.c happy. */
 #if !defined(BASE_BAUD)

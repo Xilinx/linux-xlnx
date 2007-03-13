@@ -19,7 +19,7 @@
 #include <linux/serial_8250.h>
 #include <asm/ppc_sys.h>
 #include <platforms/4xx/virtex.h>
-#include <platforms/4xx/xparameters/xparameters.h>
+#include <cfg/xparameters.h>
 
 #define XPAR_UART(num) { \
 		.mapbase  = XPAR_UARTNS550_##num##_BASEADDR + 3, \

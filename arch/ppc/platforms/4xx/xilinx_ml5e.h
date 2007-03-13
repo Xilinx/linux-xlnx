@@ -23,6 +23,10 @@
 
 #ifndef __ASSEMBLY__
 
+/* bd_t is now defined in include/asm-ppc/ppcboot.h
+ */
+#include <asm/ppcboot.h>
+#if 0
 #include <linux/types.h>
 
 typedef struct board_info {
@@ -36,6 +40,7 @@ typedef struct board_info {
 /* Some 4xx parts use a different timebase frequency from the internal clock.
 */
 #define bi_tbfreq bi_intfreq
+#endif
 
 #endif /* !__ASSEMBLY__ */
 
