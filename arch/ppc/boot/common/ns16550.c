@@ -8,7 +8,7 @@
 #include <asm/serial.h>
 
 #if defined(CONFIG_XILINX_VIRTEX)
-#include <platforms/4xx/xparameters/xparameters.h>
+#include <cfg/xparameters.h>
 #endif
 #include "nonstdio.h"
 #include "serial.h"

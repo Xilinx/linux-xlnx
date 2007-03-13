@@ -106,13 +106,6 @@ ppc4xx_show_cpuinfo(struct seq_file *m)
 static unsigned long __init
 ppc4xx_find_end_of_memory(void)
 {
-	// wgr HACK
-	// Does printk work here already?
-	//
-	printk("*** HACK: Assuming 64MB memory size. %s, line %d\n",
-			__FILE__, __LINE__ +1);
-	return 64 * 1024 * 1024;
-	// wgr HACK end
 	return ((unsigned long) __res.bi_memsize);
 }
 
@@ -177,14 +170,6 @@ ppc4xx_calibrate_decr(void)
 	mtdcr(DCRN_CHCR1, mfdcr(DCRN_CHCR1) & ~CHR1_CETE);
 #endif
 	freq = bip->bi_tbfreq;
-	// wgr HACK
-	// Does printk work here already?
-	//
-	printk("*** HACK: Assuming 500000000 Hz freq. %s, line %d\n",
-			__FILE__, __LINE__ +1);
-	freq = 500000000;
-// -wgr- 	us_to_tb = freq / 1000000;
-	// wgr HACK end
 	tb_ticks_per_jiffy = freq / HZ;
 	tb_to_us = mulhwu_scale_factor(freq, 1000000);
 

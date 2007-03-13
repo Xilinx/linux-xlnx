@@ -10,7 +10,6 @@ wdt-mpc8xx-$(CONFIG_8xx_WDT)	+= m8xx_wdt.o
 obj-$(CONFIG_PPCBUG_NVRAM)	+= prep_nvram.o
 obj-$(CONFIG_PPC_OCP)		+= ocp.o
 obj-$(CONFIG_IBM_OCP)		+= ibm_ocp.o
-obj-$(CONFIG_44x)		+= ibm44x_common.o
 obj-$(CONFIG_440EP)		+= ibm440gx_common.o
 obj-$(CONFIG_440GP)		+= ibm440gp_common.o
 obj-$(CONFIG_440GX)		+= ibm440gx_common.o
@@ -24,8 +23,12 @@ ifeq ($(CONFIG_4xx),y)
     obj-$(CONFIG_40x)		+= ppc4xx_setup.o
 
     obj-$(CONFIG_44x)		+= xilinx_pic.o
-#    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
-#    obj-$(CONFIG_44x)		+= xilinx_ml5_setup.o
+    obj-$(CONFIG_44x)		+= ppc4xx_setup.o
+
+    # Not sure about this one. We need the function ppc_sys_get_pdata() to set
+    # up the early serial port. But we seem to be the only ones that need it.
+    # Have to re-visit that...
+    obj-$(CONFIG_44x)		+= ppc_sys.o
 
   else
 
@@ -34,6 +37,7 @@ ifeq ($(CONFIG_4xx),y)
     obj-$(CONFIG_40x)		+= ppc4xx_pic.o
     obj-$(CONFIG_40x)		+= ppc4xx_setup.o
 
+    obj-$(CONFIG_44x)		+= ibm44x_common.o
     obj-$(CONFIG_44x)		+= ppc4xx_pic.o
     obj-$(CONFIG_44x)		+= ppc4xx_setup.o
 

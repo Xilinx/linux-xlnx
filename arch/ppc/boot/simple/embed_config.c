@@ -21,7 +21,7 @@
 #include <asm/io.h>
 #endif
 #ifdef CONFIG_XILINX_VIRTEX
-#include <platforms/4xx/xparameters/xparameters.h>
+#include <cfg/xparameters.h>
 #endif
 extern unsigned long timebase_period_ns;
 
@@ -749,11 +749,13 @@ embed_config(bd_t **bdp)
 void
 embed_config(bd_t ** bdp)
 {
+	bd_t *bd;
+
+#ifdef CONFIG_405
 	static const unsigned long line_size = 32;
 	static const unsigned long congruence_classes = 256;
 	unsigned long addr;
 	unsigned long dccr;
-	bd_t *bd;
 
 	/*
 	 * Invalidate the data cache if the data cache is turned off.
@@ -764,7 +766,6 @@ embed_config(bd_t ** bdp)
 	 *   a bootloader and we assume that the cache contents are
 	 *   valid.
 	 */
-#ifdef CONFIG_405
 	__asm__("mfdccr %0": "=r" (dccr));
 	if (dccr == 0) {
 		for (addr = 0;
@@ -782,25 +783,24 @@ embed_config(bd_t ** bdp)
 	bd->bi_busfreq = XPAR_PLB_CLOCK_FREQ_HZ;
 	bd->bi_pci_busfreq = XPAR_PCI_0_CLOCK_FREQ_HZ;
 
-	if (get_mac_addr(bd->bi_enetaddr)) {
-		/* The SEEPROM is corrupted. set the address to
-		 * Xilinx's preferred default. However, first to
-		 * eliminate a compiler warning because we don't really
-		 * use def_enet_addr, we'll reference it. The compiler
-		 * optimizes it away so no harm done. */
-		bd->bi_enetaddr[0] = def_enet_addr[0];
-		bd->bi_enetaddr[0] = 0x00;
-		bd->bi_enetaddr[1] = 0x0A;
-		bd->bi_enetaddr[2] = 0x35;
-		bd->bi_enetaddr[3] = 0x00;
-		bd->bi_enetaddr[4] = 0x22;
-		bd->bi_enetaddr[5] = 0x00;
-	}
+	/* The SEEPROM is corrupted. set the address to
+	 * Xilinx's preferred default. However, first to
+	 * eliminate a compiler warning because we don't really
+	 * use def_enet_addr, we'll reference it. The compiler
+	 * optimizes it away so no harm done. */
+#warning ##### HACK: Assuming fixed ethernet MAC address.
+	bd->bi_enetaddr[0] = def_enet_addr[0];
+	bd->bi_enetaddr[0] = 0x00;
+	bd->bi_enetaddr[1] = 0x0A;
+	bd->bi_enetaddr[2] = 0x35;
+	bd->bi_enetaddr[3] = 0x00;
+	bd->bi_enetaddr[4] = 0x22;
+	bd->bi_enetaddr[5] = 0x00;
 
 	timebase_period_ns = 1000000000 / bd->bi_tbfreq;
 	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_ml300.h */
 }
-#endif /* CONFIG_XILINX_ML300 || CONFIG_XILINX_ML403 */
+#endif /* CONFIG_XILINX_ML300 || CONFIG_XILINX_ML403 || CONFIG_XILINX_ML5E */
 
 #ifdef CONFIG_IBM_OPENBIOS
 /* This could possibly work for all treeboot roms.
