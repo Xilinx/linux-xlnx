@@ -243,6 +243,7 @@ config XILINX_VIRTEX_4_FX
 
 config XILINX_VIRTEX
 	bool
+	select XILINX_DRIVERS
 
 config STB03xxx
 	bool
