@@ -594,6 +594,15 @@ static int xenet_open(struct net_device *dev)
 		}
 	}
 
+        /* Only advertise 10/100 modes, since we can't talk to a
+         * Tri-mode PHY if it autonegotiates a gigabit link. (e.g. ML403, ML410)
+         */
+        XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_ADVERTISE, ADVERTISE_ALL | ADVERTISE_CSMA);
+        XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_CTRL1000, 0);
+ 
+        /* Give the system enough time to establish a link */
+        mdelay(2000);
+
 	/* Set the EMAC's duplex setting based upon what the PHY says. */
 	if (!get_phy_status(dev, &phy_duplex, &phy_carrier)) {
 		/* We successfully got the PHY status. */
