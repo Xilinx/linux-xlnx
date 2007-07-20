@@ -1,0 +1,4 @@
+config XILINX_EDK
+	bool
+	depends on XILINX_VIRTEX
+	default y
