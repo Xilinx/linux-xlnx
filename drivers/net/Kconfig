@@ -1889,6 +1889,18 @@ config NE_H8300
 	  Say Y here if you want to use the NE2000 compatible
 	  controller on the Renesas H8/300 processor.
 
+config XILINX_EMAC
+	tristate "Xilinx 10/100 OPB EMAC support"
+	depends on XILINX_EDK
+	help
+	  This driver supports the Xilinx 10/100 opb_emac
+
+config XILINX_EMACLITE
+	tristate "Xilinx 10/100 OPB EMACLITE support"
+	depends on XILINX_EDK
+	help
+	  This driver supports the 10/100 OPB EMACLITE.
+
 source "drivers/net/fec_8xx/Kconfig"
 source "drivers/net/fs_enet/Kconfig"
 
