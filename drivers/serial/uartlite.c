@@ -100,7 +100,7 @@ static int ulite_receive(struct uart_port *port, int stat)
 
 static int ulite_transmit(struct uart_port *port, int stat)
 {
-	struct circ_buf *xmit  = &port->info->xmit;
+	struct circ_buf *xmit = &port->info->xmit;
 
 	if (stat & ULITE_STATUS_TXFULL)
 		return 0;
@@ -116,7 +116,7 @@ static int ulite_transmit(struct uart_port *port, int stat)
 		return 0;
 
 	writeb(xmit->buf[xmit->tail], port->membase + ULITE_TX);
-	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE-1);
+	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 	port->icount.tx++;
 
 	/* wake up */
@@ -128,12 +128,13 @@ static int ulite_transmit(struct uart_port *port, int stat)
 
 static irqreturn_t ulite_isr(int irq, void *dev_id)
 {
-	struct uart_port *port = (struct uart_port *)dev_id;
+	struct uart_port *port = (struct uart_port *) dev_id;
 	int busy;
 
 	do {
 		int stat = readb(port->membase + ULITE_STATUS);
-		busy  = ulite_receive(port, stat);
+
+		busy = ulite_receive(port, stat);
 		busy |= ulite_transmit(port, stat);
 	} while (busy);
 
@@ -210,7 +211,7 @@ static int ulite_startup(struct uart_port *port)
 static void ulite_shutdown(struct uart_port *port)
 {
 	writeb(0, port->membase + ULITE_CONTROL);
-	readb(port->membase + ULITE_CONTROL); /* dummy */
+	readb(port->membase + ULITE_CONTROL);	/* dummy */
 	free_irq(port->irq, port);
 }
 
@@ -289,25 +290,25 @@ static int ulite_verify_port(struct uart_port *port, struct serial_struct *ser)
 }
 
 static struct uart_ops ulite_ops = {
-	.tx_empty	= ulite_tx_empty,
-	.set_mctrl	= ulite_set_mctrl,
-	.get_mctrl	= ulite_get_mctrl,
-	.stop_tx	= ulite_stop_tx,
-	.start_tx	= ulite_start_tx,
-	.stop_rx	= ulite_stop_rx,
-	.enable_ms	= ulite_enable_ms,
-	.break_ctl	= ulite_break_ctl,
-	.startup	= ulite_startup,
-	.shutdown	= ulite_shutdown,
-	.set_termios	= ulite_set_termios,
-	.type		= ulite_type,
-	.release_port	= ulite_release_port,
-	.request_port	= ulite_request_port,
-	.config_port	= ulite_config_port,
-	.verify_port	= ulite_verify_port
+	.tx_empty = ulite_tx_empty,
+	.set_mctrl = ulite_set_mctrl,
+	.get_mctrl = ulite_get_mctrl,
+	.stop_tx = ulite_stop_tx,
+	.start_tx = ulite_start_tx,
+	.stop_rx = ulite_stop_rx,
+	.enable_ms = ulite_enable_ms,
+	.break_ctl = ulite_break_ctl,
+	.startup = ulite_startup,
+	.shutdown = ulite_shutdown,
+	.set_termios = ulite_set_termios,
+	.type = ulite_type,
+	.release_port = ulite_release_port,
+	.request_port = ulite_request_port,
+	.config_port = ulite_config_port,
+	.verify_port = ulite_verify_port
 };
 
-#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
+#ifdef CONFIG_SERIAL_XILINX_UARTLITE_CONSOLE
 static void ulite_console_wait_tx(struct uart_port *port)
 {
 	int i;
@@ -336,7 +337,8 @@ static void ulite_console_write(struct console *co, const char *s,
 
 	if (oops_in_progress) {
 		locked = spin_trylock_irqsave(&port->lock, flags);
-	} else
+	}
+	else
 		spin_lock_irqsave(&port->lock, flags);
 
 	/* save and disable interrupt */
@@ -381,13 +383,13 @@ static int __init ulite_console_setup(struct console *co, char *options)
 static struct uart_driver ulite_uart_driver;
 
 static struct console ulite_console = {
-	.name	= "ttyUL",
-	.write	= ulite_console_write,
-	.device	= uart_console_device,
-	.setup	= ulite_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1, /* Specified on the cmdline (e.g. console=ttyUL0 ) */
-	.data	= &ulite_uart_driver,
+	.name = "ttyUL",
+	.write = ulite_console_write,
+	.device = uart_console_device,
+	.setup = ulite_console_setup,
+	.flags = CON_PRINTBUFFER,
+	.index = -1,		/* Specified on the cmdline (e.g. console=ttyUL0 ) */
+	.data = &ulite_uart_driver,
 };
 
 static int __init ulite_console_init(void)
@@ -398,17 +400,17 @@ static int __init ulite_console_init(void)
 
 console_initcall(ulite_console_init);
 
-#endif /* CONFIG_SERIAL_UARTLITE_CONSOLE */
+#endif /* CONFIG_SERIAL_XILINX_UARTLITE_CONSOLE */
 
 static struct uart_driver ulite_uart_driver = {
-	.owner		= THIS_MODULE,
-	.driver_name	= "uartlite",
-	.dev_name	= "ttyUL",
-	.major		= ULITE_MAJOR,
-	.minor		= ULITE_MINOR,
-	.nr		= ULITE_NR_UARTS,
-#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
-	.cons		= &ulite_console,
+	.owner = THIS_MODULE,
+	.driver_name = "uartlite",
+	.dev_name = "ttyUL",
+	.major = ULITE_MAJOR,
+	.minor = ULITE_MINOR,
+	.nr = ULITE_NR_UARTS,
+#ifdef CONFIG_SERIAL_XILINX_UARTLITE_CONSOLE
+	.cons = &ulite_console,
 #endif
 };
 
@@ -468,11 +470,11 @@ static int ulite_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver ulite_platform_driver = {
-	.probe	= ulite_probe,
-	.remove	= ulite_remove,
-	.driver	= {
+	.probe = ulite_probe,
+	.remove = ulite_remove,
+	.driver = {
 		   .owner = THIS_MODULE,
-		   .name  = "uartlite",
+		   .name = "uartlite",
 		   },
 };
 

@@ -11,7 +11,7 @@ menu "Serial drivers"
 # The new 8250/16550 serial drivers
 config SERIAL_8250
 	tristate "8250/16550 and compatible serial support"
-	depends on (BROKEN || !SPARC)
+ 	depends on (BROKEN || !(SPARC64 || SPARC32)) || HAVE_XILINX_UARTNS550
 	select SERIAL_CORE
 	---help---
 	  This selects whether you want to include the driver for the standard
@@ -1150,5 +1150,28 @@ config SERIAL_OF_PLATFORM
 	  on a platform specific bus, you should enable this option.
 	  Currently, only 8250 compatible ports are supported, but
 	  others can easily be added.
+
+config SERIAL_XILINX_UARTLITE
+	bool "Xilinx UART Lite driver"
+	depends on HAVE_XILINX_UARTLITE
+	select SERIAL_CORE
+	help
+	  Say Y here if you want to support Xilinx UART Lite
+
+config SERIAL_XILINX_UARTLITE_ALTERNATE
+	bool "Xilinx UART Lite driver (alternate version)"
+	depends on HAVE_XILINX_UARTLITE
+	select SERIAL_CORE
+	help
+	  Say Y here if you want to support Xilinx UART Lite by using the
+	  alternate driver. This driver is the 'original' Xilinx driver. If in
+	  doubt say N here and select the driver above.
+
+config SERIAL_XILINX_UARTLITE_CONSOLE
+	bool "Xilinx UART Lite Console support"
+	depends on SERIAL_XILINX_UARTLITE=y || SERIAL_XILINX_UARTLITE_ALTERNATE=y
+	select SERIAL_CORE_CONSOLE
+	help
+	  Say Y here if you want to support a serial console on Xilinx UART Lite.
 
 endmenu
