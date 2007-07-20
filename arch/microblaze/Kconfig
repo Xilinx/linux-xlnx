@@ -1,0 +1,129 @@
+# For a description of the syntax of this configuration file,
+# see Documentation/kbuild/config-language.txt.
+
+mainmenu "Linux/Microblaze Kernel Configuration"
+
+config MICROBLAZE
+	bool
+	default y
+
+config MMU
+	bool
+	default n
+
+config SWAP
+	bool
+	default n
+
+config RWSEM_GENERIC_SPINLOCK
+	bool
+	default y
+
+config RWSEM_XCHGADD_ALGORITHM
+	bool
+
+config GENERIC_FIND_NEXT_BIT
+	bool
+	default y
+
+config GENERIC_HWEIGHT
+	bool
+	default y
+
+config GENERIC_HARDIRQS
+	bool
+	default y
+
+config GENERIC_IRQ_PROBE
+	bool
+	default y
+
+config GENERIC_CALIBRATE_DELAY
+	bool
+	default y
+
+config PCI
+	bool
+	default n
+
+config UID16
+	bool
+	default y
+
+config NO_IOPORT
+	bool
+	default y
+
+# source arch/microblaze/Kconfig.auto
+
+source "init/Kconfig"
+
+menu "Processor type and features"
+
+choice
+	prompt "Subarchitecture Type"
+	default MICROBLAZE_ML401
+
+config MICROBLAZE_ML401
+	bool "ML401"
+	help
+	  Choose this option if you are using Xilinx ML401
+
+config MICROBLAZE_SP3E
+	bool "SP3E/1600"
+	help
+	  Choose this option if you are using Xilinx Spartan-3E/1600
+
+endchoice
+
+config ML401
+	bool
+	depends on MICROBLAZE_ML401
+	default y
+
+config SP3E
+	bool
+	depends on MICROBLAZE_SP3E
+	default y
+
+config XILINX_UNCACHED_SHADOW
+    bool "Are you using uncached shadow for RAM ?"
+    depends on MICROBLAZE
+    default y
+    help
+      This is needed to be able to allocate uncachable memory regions.
+      The feature requires the design to define the RAM memory controller window
+      to be twice as large as the actual physical memory.
+
+config LARGE_ALLOCS
+	bool "Allow allocating large blocks (> 1MB) of memory"
+	help
+	     Allow the slab memory allocator to keep chains for very large
+	     memory sizes - upto 32MB. You may need this if your system has
+	     a lot of RAM, and you need to able to allocate very large
+	     contiguous chunks. If unsure, say N.
+
+endmenu
+
+
+source "mm/Kconfig"
+
+menu "Exectuable file formats"
+
+source "fs/Kconfig.binfmt"
+
+endmenu
+
+source "net/Kconfig"
+
+source "drivers/Kconfig"
+
+source "fs/Kconfig"
+
+source "arch/microblaze/Kconfig.debug"
+
+source "security/Kconfig"
+
+source "crypto/Kconfig"
+
+source "lib/Kconfig"

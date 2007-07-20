@@ -1,0 +1,21 @@
+menu "Kernel hacking"
+
+source "lib/Kconfig.debug"
+
+config EARLY_PRINTK
+	bool
+	default y
+
+config EARLY_PRINTK_UARTLITE_ADDRESS
+	hex "Physical address where UART Lite for early printk is mapped"
+	default "0x40600000"
+	help
+	  Please enter physcal address where your uart lite is mapped
+
+config DEBUG_BOOTMEM
+	depends on DEBUG_KERNEL
+	bool "Debug BOOTMEM initialization"
+
+endmenu
+
+
