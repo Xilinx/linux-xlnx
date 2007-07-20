@@ -15,7 +15,9 @@ obj-$(CONFIG_SYCAMORE)		+= sycamore.o
 obj-$(CONFIG_TAISHAN)		+= taishan.o
 obj-$(CONFIG_WALNUT)		+= walnut.o
 obj-$(CONFIG_XILINX_ML300)	+= xilinx_ml300.o
+obj-$(CONFIG_XILINX_XUPV2P)	+= xilinx_generic_ppc.o xilinx_xupv2p.o
 obj-$(CONFIG_XILINX_ML403)	+= xilinx_ml403.o
+obj-$(CONFIG_XILINX_ML41x)	+= xilinx_generic_ppc.o
 
 obj-$(CONFIG_405GP)		+= ibm405gp.o
 obj-$(CONFIG_REDWOOD_5)		+= ibmstb4.o

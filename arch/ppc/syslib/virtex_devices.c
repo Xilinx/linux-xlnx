@@ -71,6 +71,48 @@
 	}, \
 }
 
+#define XPAR_PS2(num) { \
+	.name = "xilinx_ps2", \
+	.id = num, \
+	.num_resources = 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_PS2_##num##_BASEADDR, \
+			.end = XPAR_PS2_##num##_HIGHADDR, \
+			.flags = IORESOURCE_MEM, \
+		}, \
+		{ \
+			.start = XPAR_INTC_0_PS2_##num##_VEC_ID, \
+			.flags = IORESOURCE_IRQ, \
+		}, \
+	}, \
+}
+
+#define XPAR_HWICAP(num) { \
+	.name = "xilinx_icap", \
+	.id = num, \
+	.num_resources = 1, \
+	.resource = (struct resource[]) { \
+		{ \
+                        .start = XPAR_HWICAP_##num##_BASEADDR,  \
+			.end   = XPAR_HWICAP_##num##_HIGHADDR,    \
+			.flags = IORESOURCE_MEM, \
+		}, \
+	}, \
+}
+
+#define XPAR_AC97(num) { \
+	.name = "xilinx_ac97", \
+	.id = num, \
+	.num_resources = 1, \
+	.resource = (struct resource[]) { \
+		{ \
+                        .start = XPAR_AC97_##num##_BASEADDR,  \
+			.end   = XPAR_AC97_##num##_HIGHADDR,    \
+			.flags = IORESOURCE_MEM, \
+		}, \
+	}, \
+}
 
 /* UART 8250 driver platform data table */
 struct plat_serial8250_port virtex_serial_platform_data[] = {
@@ -144,6 +186,27 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #if defined(XPAR_SYSACE_1_BASEADDR)
 	XPAR_SYSACE(1),
+#endif
+
+#if defined(XPAR_PS2_0_BASEADDR)
+	XPAR_PS2(0),
+#endif
+#if defined(XPAR_PS2_1_BASEADDR)
+	XPAR_PS2(1),
+#endif
+#if defined(XPAR_PS2_2_BASEADDR)
+	XPAR_PS2(2),
+#endif
+#if defined(XPAR_PS2_3_BASEADDR)
+	XPAR_PS2(3),
+#endif
+
+#if defined(XPAR_HWICAP_0_BASEADDR)
+	XPAR_HWICAP(0),
+#endif
+
+#if defined(XPAR_AC97_0_BASEADDR)
+	XPAR_AC97(0),
 #endif
 
 	/* ML300/403 reference design framebuffer */
@@ -221,6 +284,8 @@ static int __init virtex_init(void)
 		if (virtex_device_fixup(index) != 0)
 			continue;
 
+                printk(KERN_INFO "Registering device %s:%d\n",
+                        index->name, index->id);
 		if (platform_device_register(index)) {
 			ret = 1;
 			printk(KERN_ERR "cannot register dev %s:%d\n",

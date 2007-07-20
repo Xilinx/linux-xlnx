@@ -60,12 +60,27 @@ config XILINX_ML300
 	help
 	  This option enables support for the Xilinx ML300 evaluation board.
 
+config XILINX_XUPV2P
+	bool "Xilinx-XUPV2P"
+	select XILINX_VIRTEX_II_PRO
+	select EMBEDDEDBOOT
+	help
+	  This option enables support for the Xilinx University Program (XUP) Virtex 2 Pro board.
+
 config XILINX_ML403
 	bool "Xilinx-ML403"
 	select XILINX_VIRTEX_4_FX
 	select EMBEDDEDBOOT
 	help
 	  This option enables support for the Xilinx ML403 evaluation board.
+
+config XILINX_ML41x
+	bool "Xilinx-ML41x"
+	select XILINX_VIRTEX_4_FX
+	select EMBEDDEDBOOT
+	help
+	  This option enables support for the Xilinx ML410/411 evaluation boards.
+
 endchoice
 
 choice
