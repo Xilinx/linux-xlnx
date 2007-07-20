@@ -1,7 +1,7 @@
 VERSION = 2
 PATCHLEVEL = 6
 SUBLEVEL = 22
-EXTRAVERSION =
+EXTRAVERSION = -xlnx
 NAME = Holy Dancing Manatees, Batman!
 
 # *DOCUMENTATION*
@@ -985,7 +985,7 @@ _modinst_:
 # If System.map exists, run depmod.  This deliberately does not have a
 # dependency on System.map since that would run the dependency tree on
 # vmlinux.  This depmod is only for convenience to give the initial
-# boot a modules.dep even before / is mounted read-write.  However the
+# boot a modules.dep even before / is mounted read-write. However the
 # boot script depmod is the master version.
 ifeq "$(strip $(INSTALL_MOD_PATH))" ""
 depmod_opts	:=

@@ -84,4 +84,6 @@ source "drivers/auxdisplay/Kconfig"
 
 source "drivers/kvm/Kconfig"
 
+source "drivers/xilinx_common/Kconfig"
+
 endmenu

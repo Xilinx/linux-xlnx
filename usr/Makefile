@@ -17,7 +17,7 @@ $(obj)/initramfs_data.o: $(obj)/initramfs_data.cpio.gz FORCE
 #####
 # Generate the initramfs cpio archive
 
-hostprogs-y := gen_init_cpio
+hostprogs-y := gen_init_cpio bin2asm
 initramfs   := $(CONFIG_SHELL) $(srctree)/scripts/gen_initramfs_list.sh
 ramfs-input := $(if $(filter-out "",$(CONFIG_INITRAMFS_SOURCE)), \
 			$(shell echo $(CONFIG_INITRAMFS_SOURCE)),-d)
@@ -50,3 +50,6 @@ $(obj)/initramfs_data.cpio.gz: $(obj)/gen_init_cpio $(deps_initramfs) klibcdirs
 	$(Q)$(initramfs) -l $(ramfs-input) > $(obj)/.initramfs_data.cpio.gz.d
 	$(call if_changed,initfs)
 
+$(obj)/initramfs_data.S: $(obj)/initramfs_data.S.in $(obj)/bin2asm $(obj)/initramfs_data.cpio.gz
+	@cat $(obj)/initramfs_data.S.in >$(obj)/initramfs_data.S
+	@$(obj)/bin2asm $(obj)/initramfs_data.cpio.gz >>$(obj)/initramfs_data.S

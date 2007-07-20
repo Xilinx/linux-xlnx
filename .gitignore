@@ -21,7 +21,7 @@
 #
 tags
 TAGS
-vmlinux*
+vmlinux
 System.map
 Module.symvers
 
