@@ -11,6 +11,7 @@
 #ifndef _ASM_ATOMIC_H
 #define _ASM_ATOMIC_H
 
+#include <linux/compiler.h>
 #include <asm/system.h>	/* local_irq_XXX and friends */
 
 typedef struct { volatile int counter; } atomic_t;
@@ -32,6 +33,8 @@ typedef struct { volatile int counter; } atomic_t;
 #define atomic_dec_and_test(v)	(atomic_sub_return(1, (v)) == 0)
 
 #define atomic_inc_not_zero(v)	(atomic_add_unless((v), 1, 0))
+
+#define atomic_sub_and_test(i,v) (atomic_sub_return((i), (v)) == 0)
 
 static inline int atomic_cmpxchg(atomic_t *v, int old, int new)
 {

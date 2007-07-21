@@ -71,7 +71,7 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long usp,
  */
 unsigned long thread_saved_pc(struct task_struct *tsk)
 {
-	struct cpu_context *ctx=&(tsk->thread_info->cpu_context);
+	struct cpu_context *ctx=&(((struct thread_info *)(tsk->stack))->cpu_context);
 
 	/* Check whether the thread is blocked in resume() */
 	if (in_sched_functions(ctx->r15))

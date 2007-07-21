@@ -17,7 +17,6 @@
 
 #ifndef __MICROBLAZE_CACHEFLUSH_H__
 #define __MICROBLAZE_CACHEFLUSH_H__
-#include <linux/config.h>
 #include <linux/kernel.h>	/* For min/max macros */
 #include <asm/setup.h>
 #include <asm/page.h>

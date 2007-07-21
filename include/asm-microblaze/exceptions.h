@@ -11,7 +11,6 @@
 #ifndef _ASM_EXCEPTIONS_H
 #define _ASM_EXCEPTIONS_H
 
-#include <linux/config.h>
 #include <asm/xparameters.h>
 
 /* Some helper macros to let the exception handler code cleaner */

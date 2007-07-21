@@ -41,7 +41,6 @@
  * get multiple re-entrancy if interrupt handles themselves cause exceptions. JW
  */
 
-#include <linux/config.h>
 #include <asm/exceptions.h>
 #include <asm/registers.h>
 #include <asm/unistd.h>
@@ -204,6 +203,7 @@ handle_other_ex:                                        /* Handle Other exceptio
 
 	/* ESR[EC] is already in r5 */
 	addk	r6, r17, r0;				/* Load exception address */
+	addk	r7, r1, r0;				/* Load stack frame */
 	bralid	r15, other_exception_handler;		/* Branch to the handler */
 	nop;
 

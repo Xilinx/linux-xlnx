@@ -11,6 +11,7 @@
 #ifndef _ASM_UACCESS_H
 #define _ASM_UACCESS_H
 
+#include <linux/kernel.h>
 #include <linux/errno.h>
 #include <asm/segment.h>
 
@@ -88,6 +89,23 @@ extern inline int bad_user_access_length (void)
 #define __copy_to_user_inatomic(to,from,n)	(__copy_to_user(to,from,n))
 #define __copy_from_user_inatomic(to,from,n)	(__copy_from_user(to,from,n))
 
+/*
+ * __clear_user: - Zero a block of memory in user space, with less checking.
+ * @to:   Destination address, in user space.
+ * @n:    Number of bytes to zero.
+ *
+ * Zero a block of memory in user space.  Caller must check
+ * the specified block with access_ok() before calling this function.
+ *
+ * Returns number of bytes that could not be cleared.
+ * On success, this will be zero.
+ */
+static inline __kernel_size_t
+__clear_user(void __user *addr, __kernel_size_t size)
+{
+	/* FIXME */
+	return 0;
+}
 
 /*
  * The exception table consists of pairs of addresses: the first is the

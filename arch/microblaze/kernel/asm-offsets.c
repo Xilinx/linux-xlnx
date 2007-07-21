@@ -9,11 +9,7 @@
  * Copyright (C) 2006 Atmark Techno, Inc.
  */
 
-#include <linux/stddef.h>
-#include <linux/sched.h>
-#include <linux/kernel_stat.h>
 #include <linux/ptrace.h>
-#include <linux/hardirq.h>
 #include <linux/thread_info.h>
 
 #define DEFINE(sym, val) asm volatile("\n->" #sym " %0 " #val : : "i" (val))
@@ -63,7 +59,7 @@ int main(int argc, char *argv[])
 	BLANK();
 
 	/* struct task_struct */
-	DEFINE(TS_THREAD_INFO,	offsetof(struct task_struct, thread_info));
+	DEFINE(TS_THREAD_INFO,	offsetof(struct task_struct, stack));
 
 	/* struct thread_info */
 	DEFINE(TI_TASK,		 offsetof(struct thread_info, task));

@@ -76,9 +76,6 @@ extern unsigned long get_wchan(struct task_struct *p);
  */
 extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
 
-#define task_thread_info(task) (task)->thread_info
-#define task_stack_page(task) ((void*)((task)->thread_info))
-
 #define task_pt_regs(tsk) (((struct pt_regs *)(THREAD_SIZE + task_stack_page(tsk))) - 1)
 
 

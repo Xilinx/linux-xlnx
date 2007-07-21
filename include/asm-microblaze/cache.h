@@ -12,7 +12,6 @@
 #ifndef __MICROBLAZE_CACHE_H__
 #define __MICROBLAZE_CACHE_H__
 
-#include <linux/config.h>
 #include <asm/xparameters.h>
 #include <asm/registers.h>
 #include <linux/autoconf.h>

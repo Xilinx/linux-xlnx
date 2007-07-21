@@ -11,7 +11,6 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/hardirq.h>
-#include <linux/irqflags.h>
 #include <linux/seq_file.h>
 
 /*

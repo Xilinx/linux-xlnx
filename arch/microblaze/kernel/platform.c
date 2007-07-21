@@ -8,7 +8,6 @@
  * kind, whether express or implied.
  */
 
-#include <linux/config.h>
 #include <linux/init.h>
 #include <linux/resource.h>
 #include <linux/xilinx_devices.h>

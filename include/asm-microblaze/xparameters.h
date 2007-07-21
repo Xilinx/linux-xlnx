@@ -3,10 +3,7 @@
 
 #ifdef __KERNEL__
 
-#include <linux/config.h>
-
 #if defined (CONFIG_SP3E)
-
 
 #include <asm/xparameters-sp3e.h>
 
