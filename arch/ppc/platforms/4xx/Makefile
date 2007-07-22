@@ -17,6 +17,8 @@ obj-$(CONFIG_WALNUT)		+= walnut.o
 obj-$(CONFIG_XILINX_ML300)	+= xilinx_ml300.o
 obj-$(CONFIG_XILINX_XUPV2P)	+= xilinx_generic_ppc.o xilinx_xupv2p.o
 obj-$(CONFIG_XILINX_ML403)	+= xilinx_ml403.o
+obj-$(CONFIG_XILINX_ML5E)	+= xilinx_ml5e.o
+obj-$(CONFIG_XILINX_ML507)	+= xilinx_ml507.o
 obj-$(CONFIG_XILINX_ML41x)	+= xilinx_generic_ppc.o
 
 obj-$(CONFIG_405GP)		+= ibm405gp.o

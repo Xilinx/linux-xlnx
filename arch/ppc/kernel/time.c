@@ -79,6 +79,7 @@ time_t last_rtc_update;
 unsigned tb_ticks_per_jiffy;
 unsigned tb_to_us;
 unsigned tb_last_stamp;
+unsigned us_to_tb;
 unsigned long tb_to_ns_scale;
 
 /* used for timezone offset */

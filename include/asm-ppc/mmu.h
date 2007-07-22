@@ -352,6 +352,11 @@ typedef struct _P601_BAT {
 #define PPC44x_TLB_U2		0x00002000      /* User 2 */
 #define PPC44x_TLB_U3		0x00001000      /* User 3 */
 #define PPC44x_TLB_W		0x00000800      /* Caching is write-through */
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+#define PPC44x_XILINX_TLB_I	0x00000400      /* Caching is inhibited */
+#else
+#define PPC44x_XILINX_TLB_I	0x00000000      /* Caching is uninhibited */
+#endif
 #define PPC44x_TLB_I		0x00000400      /* Caching is inhibited */
 #define PPC44x_TLB_M		0x00000200      /* Memory is coherent */
 #define PPC44x_TLB_G		0x00000100      /* Memory is guarded */

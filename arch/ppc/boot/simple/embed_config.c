@@ -17,7 +17,7 @@
 #include <asm/mpc8260.h>
 #include <asm/immap_cpm2.h>
 #endif
-#ifdef CONFIG_40x
+#if defined (CONFIG_40x) || defined (CONFIG_44x)
 #include <asm/io.h>
 #endif
 #ifdef CONFIG_XILINX_VIRTEX
@@ -748,11 +748,13 @@ embed_config(bd_t **bdp)
 void
 embed_config(bd_t ** bdp)
 {
+	bd_t *bd;
+
+#ifdef CONFIG_405
 	static const unsigned long line_size = 32;
 	static const unsigned long congruence_classes = 256;
 	unsigned long addr;
 	unsigned long dccr;
-	bd_t *bd;
 
 	/*
 	 * Invalidate the data cache if the data cache is turned off.
@@ -771,6 +773,7 @@ embed_config(bd_t ** bdp)
 			__asm__("dccci 0,%0": :"b"(addr));
 		}
 	}
+#endif
 
 	bd = &bdinfo;
 	*bdp = bd;
@@ -778,6 +781,21 @@ embed_config(bd_t ** bdp)
 	bd->bi_intfreq = XPAR_CORE_CLOCK_FREQ_HZ;
 	bd->bi_busfreq = XPAR_PLB_CLOCK_FREQ_HZ;
 	bd->bi_pci_busfreq = XPAR_PCI_0_CLOCK_FREQ_HZ;
+
+	/* The SEEPROM is corrupted. set the address to
+	 * Xilinx's preferred default. However, first to
+	 * eliminate a compiler warning because we don't really
+	 * use def_enet_addr, we'll reference it. The compiler
+	 * optimizes it away so no harm done. */
+#warning ##### HACK: Assuming fixed ethernet MAC address.
+	bd->bi_enetaddr[0] = def_enet_addr[0];
+	bd->bi_enetaddr[0] = 0x00;
+	bd->bi_enetaddr[1] = 0x0A;
+	bd->bi_enetaddr[2] = 0x35;
+	bd->bi_enetaddr[3] = 0x00;
+	bd->bi_enetaddr[4] = 0x22;
+	bd->bi_enetaddr[5] = 0x00;
+
 	timebase_period_ns = 1000000000 / bd->bi_tbfreq;
 	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_ml300.h */
 }

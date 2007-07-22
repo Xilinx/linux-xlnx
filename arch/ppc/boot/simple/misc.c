@@ -258,7 +258,9 @@ decompress_kernel(unsigned long load_addr, int num_words, unsigned long cksum)
 		bootinfo_append(BI_INITRD, sizeof(initrd), &initrd);
 	}
 	puts("Now booting the kernel\n");
+#if defined(CONFIG_SERIAL_8250_CONSOLE) || defined(CONFIG_SERIAL_MPSC_CONSOLE)
 	serial_close(com_port);
+#endif
 
 	return rec;
 }

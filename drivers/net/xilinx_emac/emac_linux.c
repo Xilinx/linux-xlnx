@@ -783,7 +783,7 @@ static int xenet_SgSend(struct sk_buff *skb, struct net_device *dev)
 	XBufDescriptor bd;
 	int result;
 	u32 physAddr;
-	u32 flags;
+	unsigned long flags;
 	u8 *virtAddr;
 
 	len = skb->len;
@@ -858,7 +858,7 @@ static int xenet_SgSendDre(struct sk_buff *skb, struct net_device *dev)
 	u32 physAddr;
 	u8 *virtAddr;
 	u32 i;
-	u32 flags;
+	unsigned long flags;
 	u16 csum_insert_offset;
 	u16 IpHeaderLength;
 	u16 ProtoTTL;
@@ -1954,7 +1954,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 	u16 mii_reg_sset;
 	u16 mii_reg_spause;
 	u16 mii_reg_autoneg;
-	u32 flags;
+	unsigned long flags;
 
 	if (copy_from_user(&ecmd, rq->ifr_data, sizeof(ecmd.cmd)))
 		return -EFAULT;

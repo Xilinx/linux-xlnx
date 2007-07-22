@@ -74,7 +74,7 @@ void ppc4xx_init(unsigned long r3, unsigned long r4, unsigned long r5,
 
 
 /* IO_BASE is for PCI I/O.
- * ISA not supported, just here to resolve copilation.
+ * ISA not supported, just here to resolve compilation.
  */
 
 #ifndef _IO_BASE
@@ -84,6 +84,7 @@ void ppc4xx_init(unsigned long r3, unsigned long r4, unsigned long r5,
 #endif
 
 #elif defined(CONFIG_44x)
+
 
 #if defined(CONFIG_BAMBOO)
 #include <platforms/4xx/bamboo.h>
@@ -109,7 +110,17 @@ void ppc4xx_init(unsigned long r3, unsigned long r4, unsigned long r5,
 #include <platforms/4xx/taishan.h>
 #endif
 
+#if defined(CONFIG_XILINX_VIRTEX)
+#include <platforms/4xx/virtex.h>
+#endif
+
 #ifndef __ASSEMBLY__
+
+/* ppc4xx_init() is called from platform_init() in xilinx_ml5.c. I'm a little
+ * confused if we should actually call this function for ML5...
+ */
+void ppc4xx_init(unsigned long r3, unsigned long r4, unsigned long r5,
+		 unsigned long r6, unsigned long r7);
 #ifdef CONFIG_40x
 /*
  * The "residual" board information structure the boot loader passes

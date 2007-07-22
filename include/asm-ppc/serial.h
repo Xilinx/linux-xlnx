@@ -6,6 +6,10 @@
 #ifndef __ASM_SERIAL_H__
 #define __ASM_SERIAL_H__
 
+// FIXME HACK TODO wgr
+#ifdef CONFIG_XILINX_ML5XX
+#include <platforms/4xx/xparameters/xparameters.h>
+#endif
 
 #if defined(CONFIG_EV64260)
 #include <platforms/ev64260.h>

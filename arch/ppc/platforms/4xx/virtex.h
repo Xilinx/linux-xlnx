@@ -13,13 +13,33 @@
 #ifndef __ASM_VIRTEX_H__
 #define __ASM_VIRTEX_H__
 
-#include <asm/ibm405.h>
+#include <platforms/4xx/xparameters/xparameters.h>
+
+/* We have to distinguish between the PPC405 based Virtex chips and the PPC440
+ * based chipts (Virtex 5). At this point we are still using virtex.[ch],
+ * however in the future we may be transitioning to the flat device tree and
+ * therefore eliminating virtex.[ch]. For the time being, though, we add the
+ * PPC440 includes here.
+ */
+#if defined(CONFIG_XILINX_ML5XX)
+  /* PPC 440 based boards */
+  #include <asm/ibm44x.h>
+#else
+  /* PPC405 based boards */
+  #include <asm/ibm405.h>
+#endif
 #include <asm/ppcboot.h>
 
 /* Ugly, ugly, ugly! BASE_BAUD defined here to keep 8250.c happy. */
 #if !defined(BASE_BAUD)
  #define BASE_BAUD		(0) /* dummy value; not used */
 #endif
+
+/* Virtual address used to set up fixed TLB entry for UART mapping if kernel
+ * debugging is enabled. This can be any address as long as it does not overlap
+ * with any other mapped io address space.
+ */
+#define UART0_IO_BASE		0xD0000000
 
 #ifndef __ASSEMBLY__
 extern const char* virtex_machine_name;
@@ -36,6 +56,8 @@ extern const char* virtex_machine_name;
 #define XILINX_ARCH "Virtex-II Pro"
 #elif defined(CONFIG_XILINX_VIRTEX_4_FX)
 #define XILINX_ARCH "Virtex-4 FX"
+#elif defined(CONFIG_XILINX_ML5XX)
+#define XILINX_ARCH "Virtex-5"
 #else
 #error "No Xilinx Architecture recognized."
 #endif
