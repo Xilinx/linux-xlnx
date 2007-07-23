@@ -71,6 +71,88 @@
 	}, \
 }
 
+/*
+ * EMAC: shortcut macro for single instance
+ */
+#define XPAR_EMAC(num) { \
+	.name		= "xilinx_emac", \
+	.id		= num, \
+	.num_resources	= 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start	= XPAR_EMAC_##num##_BASEADDR, \
+			.end	= XPAR_EMAC_##num##_HIGHADDR, \
+			.flags	= IORESOURCE_MEM, \
+		}, \
+		{ \
+			.start	= XPAR_INTC_0_EMAC_##num##_VEC_ID, \
+			.flags	= IORESOURCE_IRQ, \
+		}, \
+	}, \
+	.dev.platform_data = &(struct xemac_platform_data) { \
+		.dma_mode = XPAR_EMAC_##num##_DMA_PRESENT, \
+		.has_mii = XPAR_EMAC_##num##_MII_EXIST, \
+		.has_cam = XPAR_EMAC_##num##_CAM_EXIST, \
+		.has_err_cnt = XPAR_EMAC_##num##_ERR_COUNT_EXIST, \
+		.has_jumbo = XPAR_EMAC_##num##_JUMBO_EXIST, \
+		.tx_dre = XPAR_EMAC_##num##_TX_DRE_TYPE, \
+		.rx_dre = XPAR_EMAC_##num##_RX_DRE_TYPE, \
+		.tx_hw_csum = XPAR_EMAC_##num##_TX_INCLUDE_CSUM, \
+		.rx_hw_csum = XPAR_EMAC_##num##_RX_INCLUDE_CSUM, \
+		/* locally administered default address */ \
+		.mac_addr = {2, 0, 0, 0, 0, num}, \
+	}, \
+}
+
+/*
+ * Tri-mode EMAC (TEMAC): shortcut macro for single instance
+ */
+#define XPAR_TEMAC_RESOURCES(num) \
+	.name = "xilinx_temac", \
+	.id = XPAR_TEMAC_##num##_DEVICE_ID, \
+	.num_resources = 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_TEMAC_##num##_BASEADDR, \
+			.end = XPAR_TEMAC_##num##_HIGHADDR, \
+			.flags = IORESOURCE_MEM \
+		}, \
+		{ \
+			.start = XPAR_INTC_0_TEMAC_##num##_VEC_ID, \
+			.end = XPAR_INTC_0_TEMAC_##num##_VEC_ID, \
+			.flags = IORESOURCE_IRQ \
+		} \
+	}
+
+#define XPAR_TEMAC_RX_CSUM(num) { \
+	XPAR_TEMAC_RESOURCES(num), \
+	.dev.platform_data = &(struct xtemac_platform_data) { \
+		.tx_dre = XPAR_TEMAC_0_TX_DRE_TYPE, \
+		.rx_dre = XPAR_TEMAC_0_RX_DRE_TYPE, \
+		.tx_csum = XPAR_TEMAC_0_INCLUDE_TX_CSUM, \
+		.rx_csum = XPAR_TEMAC_0_INCLUDE_RX_CSUM, \
+		.phy_type = XPAR_HARD_TEMAC_0_PHY_TYPE, \
+		.rx_pkt_fifo_depth = XPAR_TEMAC_0_RXFIFO_DEPTH, \
+		.tx_pkt_fifo_depth = XPAR_TEMAC_0_TXFIFO_DEPTH, \
+		.dma_mode = XPAR_TEMAC_0_DMA_TYPE, \
+		.mac_fifo_depth = XPAR_TEMAC_0_MAC_FIFO_DEPTH, \
+	}, \
+}
+
+#define XPAR_TEMAC_NO_RX_CSUM(num) { \
+	XPAR_TEMAC_RESOURCES(num), \
+	.dev.platform_data = &(struct xtemac_platform_data) { \
+		.dcr_host = XPAR_TEMAC_0_TEMAC_DCR_HOST, \
+		.dre = XPAR_TEMAC_0_INCLUDE_DRE, \
+		.rx_pkt_fifo_depth = XPAR_TEMAC_0_IPIF_RDFIFO_DEPTH, \
+		.tx_pkt_fifo_depth = XPAR_TEMAC_0_IPIF_WRFIFO_DEPTH, \
+		.dma_mode = XPAR_TEMAC_0_DMA_TYPE, \
+		.mac_fifo_depth = XPAR_TEMAC_0_MAC_FIFO_DEPTH \
+	}, \
+}
+
+
+
 #define XPAR_PS2(num) { \
 	.name = "xilinx_ps2", \
 	.id = num, \
@@ -186,6 +268,53 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #if defined(XPAR_SYSACE_1_BASEADDR)
 	XPAR_SYSACE(1),
+#endif
+
+	/* EMAC instances */
+#if defined(XPAR_EMAC_0_BASEADDR)
+	XPAR_EMAC(0),
+#endif
+#if defined(XPAR_EMAC_1_BASEADDR)
+	XPAR_EMAC(1),
+#endif
+#if defined(XPAR_EMAC_2_BASEADDR)
+	XPAR_EMAC(2),
+#endif
+#if defined(XPAR_EMAC_3_BASEADDR)
+	XPAR_EMAC(3),
+#endif
+
+	/* TEMAC instances */
+#if defined(XPAR_TEMAC_0_BASEADDR)
+#if defined(XPAR_TEMAC_0_INCLUDE_RX_CSUM)
+	XPAR_TEMAC_RX_CSUM(0),
+#else
+	XPAR_TEMAC_NO_RX_CSUM(0),
+#endif
+#endif
+
+#if defined(XPAR_TEMAC_1_BASEADDR)
+#if defined(XPAR_TEMAC_1_INCLUDE_RX_CSUM)
+	XPAR_TEMAC_RX_CSUM(1),
+#else
+	XPAR_TEMAC_NO_RX_CSUM(1),
+#endif
+#endif
+
+#if defined(XPAR_TEMAC_2_BASEADDR)
+#if defined(XPAR_TEMAC_2_INCLUDE_RX_CSUM)
+	XPAR_TEMAC_RX_CSUM(2),
+#else
+	XPAR_TEMAC_NO_RX_CSUM(2),
+#endif
+#endif
+
+#if defined(XPAR_TEMAC_3_BASEADDR)
+#if defined(XPAR_TEMAC_3_INCLUDE_RX_CSUM)
+	XPAR_TEMAC_RX_CSUM(3),
+#else
+	XPAR_TEMAC_NO_RX_CSUM(3),
+#endif
 #endif
 
 #if defined(XPAR_PS2_0_BASEADDR)
