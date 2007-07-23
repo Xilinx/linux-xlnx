@@ -149,6 +149,9 @@ static int sis_pre_reset(struct ata_port *ap, unsigned long deadline)
 	if (!pci_test_config_bits(pdev, &sis_enable_bits[ap->port_no]))
 		return -ENOENT;
 
+	/* Clear the FIFO settings. We can't enable the FIFO until
+	   we know we are poking at a disk */
+	pci_write_config_byte(pdev, 0x4B, 0);
 	return ata_std_prereset(ap, deadline);
 }
 
@@ -732,7 +735,7 @@ static const struct ata_port_operations sis_old_ops = {
 
 static const struct ata_port_info sis_info = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.mwdma_mask	= 0x07,
 	.udma_mask	= 0,
@@ -740,7 +743,7 @@ static const struct ata_port_info sis_info = {
 };
 static const struct ata_port_info sis_info33 = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.mwdma_mask	= 0x07,
 	.udma_mask	= ATA_UDMA2,	/* UDMA 33 */
@@ -748,28 +751,28 @@ static const struct ata_port_info sis_info33 = {
 };
 static const struct ata_port_info sis_info66 = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.udma_mask	= ATA_UDMA4,	/* UDMA 66 */
 	.port_ops	= &sis_66_ops,
 };
 static const struct ata_port_info sis_info100 = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.udma_mask	= ATA_UDMA5,
 	.port_ops	= &sis_100_ops,
 };
 static const struct ata_port_info sis_info100_early = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.udma_mask	= ATA_UDMA5,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.port_ops	= &sis_66_ops,
 };
 static const struct ata_port_info sis_info133 = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.udma_mask	= ATA_UDMA6,
 	.port_ops	= &sis_133_ops,
@@ -783,7 +786,7 @@ const struct ata_port_info sis_info133_for_sata = {
 };
 static const struct ata_port_info sis_info133_early = {
 	.sht		= &sis_sht,
-	.flags		= ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+	.flags		= ATA_FLAG_SLAVE_POSS,
 	.pio_mask	= 0x1f,	/* pio0-4 */
 	.udma_mask	= ATA_UDMA6,
 	.port_ops	= &sis_133_early_ops,
@@ -928,9 +931,7 @@ static int sis_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		if (host != NULL) {
 			chipset = sets;			/* Match found */
 			if (sets->device == 0x630) {	/* SIS630 */
-				u8 host_rev;
-				pci_read_config_byte(host, PCI_REVISION_ID, &host_rev);
-				if (host_rev >= 0x30)	/* 630 ET */
+				if (host->revision >= 0x30)	/* 630 ET */
 					chipset = &sis100_early;
 			}
 			break;
@@ -974,7 +975,6 @@ static int sis_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		u16 trueid;
 		u8 prefctl;
 		u8 idecfg;
-		u8 sbrev;
 
 		/* Try the second unmasking technique */
 		pci_read_config_byte(pdev, 0x4a, &idecfg);
@@ -987,11 +987,10 @@ static int sis_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 			lpc_bridge = pci_get_slot(pdev->bus, 0x10); /* Bus 0 Dev 2 Fn 0 */
 			if (lpc_bridge == NULL)
 				break;
-			pci_read_config_byte(lpc_bridge, PCI_REVISION_ID, &sbrev);
 			pci_read_config_byte(pdev, 0x49, &prefctl);
 			pci_dev_put(lpc_bridge);
 
-			if (sbrev == 0x10 && (prefctl & 0x80)) {
+			if (lpc_bridge->revision == 0x10 && (prefctl & 0x80)) {
 				chipset = &sis133_early;
 				break;
 			}

@@ -44,7 +44,7 @@ struct task_struct;
  * different thread.
  */
 
-#define switch_to(prev,next,last)					\
+#define __mips_mt_fpaff_switch_to(prev)					\
 do {									\
 	if (cpu_has_fpu &&						\
 	    (prev->thread.mflags & MF_FPUBOUND) &&			\
@@ -52,34 +52,24 @@ do {									\
 		prev->thread.mflags &= ~MF_FPUBOUND;			\
 		prev->cpus_allowed = prev->thread.user_cpus_allowed;	\
 	}								\
-	if (cpu_has_dsp)						\
-		__save_dsp(prev);					\
 	next->thread.emulated_fp = 0;					\
-	(last) = resume(prev, next, task_thread_info(next));		\
-	if (cpu_has_dsp)						\
-		__restore_dsp(current);					\
 } while(0)
 
 #else
+#define __mips_mt_fpaff_switch_to(prev) do { (void) (prev); } while (0)
+#endif
+
 #define switch_to(prev,next,last)					\
 do {									\
+	__mips_mt_fpaff_switch_to(prev);				\
 	if (cpu_has_dsp)						\
 		__save_dsp(prev);					\
 	(last) = resume(prev, next, task_thread_info(next));		\
 	if (cpu_has_dsp)						\
 		__restore_dsp(current);					\
+	if (cpu_has_userlocal)						\
+		write_c0_userlocal(task_thread_info(current)->tp_value);\
 } while(0)
-#endif
-
-/*
- * On SMP systems, when the scheduler does migration-cost autodetection,
- * it needs a way to flush as much of the CPU's caches as possible.
- *
- * TODO: fill this in!
- */
-static inline void sched_cacheflush(void)
-{
-}
 
 static inline unsigned long __xchg_u32(volatile int * m, unsigned int val)
 {
@@ -127,7 +117,7 @@ static inline unsigned long __xchg_u32(volatile int * m, unsigned int val)
 		raw_local_irq_restore(flags);	/* implies memory barrier  */
 	}
 
-	smp_mb();
+	smp_llsc_mb();
 
 	return retval;
 }
@@ -175,7 +165,7 @@ static inline __u64 __xchg_u64(volatile __u64 * m, __u64 val)
 		raw_local_irq_restore(flags);	/* implies memory barrier  */
 	}
 
-	smp_mb();
+	smp_llsc_mb();
 
 	return retval;
 }
@@ -256,7 +246,7 @@ static inline unsigned long __cmpxchg_u32(volatile int * m, unsigned long old,
 		raw_local_irq_restore(flags);	/* implies memory barrier  */
 	}
 
-	smp_mb();
+	smp_llsc_mb();
 
 	return retval;
 }
@@ -362,7 +352,7 @@ static inline unsigned long __cmpxchg_u64(volatile int * m, unsigned long old,
 		raw_local_irq_restore(flags);	/* implies memory barrier  */
 	}
 
-	smp_mb();
+	smp_llsc_mb();
 
 	return retval;
 }
@@ -480,6 +470,6 @@ extern int stop_a_enabled;
  */
 #define __ARCH_WANT_UNLOCKED_CTXSW
 
-#define arch_align_stack(x) (x)
+extern unsigned long arch_align_stack(unsigned long sp);
 
 #endif /* _ASM_SYSTEM_H */

@@ -71,9 +71,6 @@
 	}, \
 }
 
-/*
- * EMAC: shortcut macro for single instance
- */
 #define XPAR_EMAC(num) { \
 	.name		= "xilinx_emac", \
 	.id		= num, \
@@ -153,6 +150,28 @@
 
 
 
+#define XPAR_HWICAP(num) { \
+	.name = "xilinx_icap", \
+	.id = num, \
+	.num_resources = 1, \
+	.resource = (struct resource[]) { \
+		{ \
+                        .start = XPAR_HWICAP_##num##_BASEADDR,  \
+			.end   = XPAR_HWICAP_##num##_HIGHADDR,    \
+			.flags = IORESOURCE_MEM, \
+		}, \
+	}, \
+}
+
+#define XPAR_AC97(num) { \
+	.name = "xilinx_ac97", \
+                        .start = XPAR_AC97_##num##_BASEADDR,  \
+			.end   = XPAR_AC97_##num##_HIGHADDR,    \
+			.flags = IORESOURCE_MEM, \
+		}, \
+	}, \
+}
+
 #define XPAR_PS2(num) { \
 	.name = "xilinx_ps2", \
 	.id = num, \
@@ -170,28 +189,18 @@
 	}, \
 }
 
-#define XPAR_HWICAP(num) { \
-	.name = "xilinx_icap", \
+/*
+ * ML300/ML403 Video Device: shortcut macro for single instance
+ */
+#define XPAR_TFT(num) { \
+	.name = "xilinxfb", \
 	.id = num, \
 	.num_resources = 1, \
 	.resource = (struct resource[]) { \
 		{ \
-                        .start = XPAR_HWICAP_##num##_BASEADDR,  \
-			.end   = XPAR_HWICAP_##num##_HIGHADDR,    \
-			.flags = IORESOURCE_MEM, \
-		}, \
-	}, \
-}
-
-#define XPAR_AC97(num) { \
-	.name = "xilinx_ac97", \
-	.id = num, \
-	.num_resources = 1, \
-	.resource = (struct resource[]) { \
-		{ \
-                        .start = XPAR_AC97_##num##_BASEADDR,  \
-			.end   = XPAR_AC97_##num##_HIGHADDR,    \
-			.flags = IORESOURCE_MEM, \
+			.start = XPAR_TFT_##num##_BASEADDR, \
+			.end = XPAR_TFT_##num##_BASEADDR+7, \
+			.flags = IORESOURCE_IO, \
 		}, \
 	}, \
 }
@@ -317,6 +326,15 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #endif
 
+#if defined(XPAR_HWICAP_0_BASEADDR)
+	XPAR_HWICAP(0),
+#endif
+
+#if defined(XPAR_AC97_0_BASEADDR)
+	XPAR_AC97(0),
+#endif
+
+
 #if defined(XPAR_PS2_0_BASEADDR)
 	XPAR_PS2(0),
 #endif
@@ -330,28 +348,18 @@ struct platform_device virtex_platform_devices[] = {
 	XPAR_PS2(3),
 #endif
 
-#if defined(XPAR_HWICAP_0_BASEADDR)
-	XPAR_HWICAP(0),
-#endif
-
-#if defined(XPAR_AC97_0_BASEADDR)
-	XPAR_AC97(0),
-#endif
-
 	/* ML300/403 reference design framebuffer */
 #if defined(XPAR_TFT_0_BASEADDR)
-	{
-		.name		= "xilinxfb",
-		.id		= 0,
-		.num_resources	= 1,
-		.resource = (struct resource[]) {
-			{
-				.start	= XPAR_TFT_0_BASEADDR,
-				.end	= XPAR_TFT_0_BASEADDR+7,
-				.flags	= IORESOURCE_IO,
-			},
-		},
-	},
+	XPAR_TFT(0),
+#endif
+#if defined(XPAR_TFT_1_BASEADDR)
+	XPAR_TFT(1),
+#endif
+#if defined(XPAR_TFT_2_BASEADDR)
+	XPAR_TFT(2),
+#endif
+#if defined(XPAR_TFT_3_BASEADDR)
+	XPAR_TFT(3),
 #endif
 };
 

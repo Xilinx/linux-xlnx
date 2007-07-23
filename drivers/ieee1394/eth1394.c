@@ -599,9 +599,7 @@ static void ether1394_add_host(struct hpsb_host *host)
 	}
 
 	SET_MODULE_OWNER(dev);
-
-	/* This used to be &host->device in Linux 2.6.20 and before. */
-	SET_NETDEV_DEV(dev, host->device.parent);
+	SET_NETDEV_DEV(dev, &host->device);
 
 	priv = netdev_priv(dev);
 	INIT_LIST_HEAD(&priv->ip_node_list);
@@ -1731,7 +1729,7 @@ static int __init ether1394_init_module(void)
 
 	packet_task_cache = kmem_cache_create("packet_task",
 					      sizeof(struct packet_task),
-					      0, 0, NULL, NULL);
+					      0, 0, NULL);
 	if (!packet_task_cache)
 		return -ENOMEM;
 

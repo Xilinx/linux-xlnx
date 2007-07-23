@@ -224,6 +224,7 @@ ohci_update_phy_reg(struct fw_card *card, int addr,
 	u32 val, old;
 
 	reg_write(ohci, OHCI1394_PhyControl, OHCI1394_PhyControl_Read(addr));
+	flush_writes(ohci);
 	msleep(2);
 	val = reg_read(ohci, OHCI1394_PhyControl);
 	if ((val & OHCI1394_PhyControl_ReadDone) == 0) {
@@ -586,7 +587,7 @@ static void context_stop(struct context *ctx)
 			break;
 
 		fw_notify("context_stop: still active (0x%08x)\n", reg);
-		msleep(1);
+		mdelay(1);
 	}
 }
 
@@ -1934,12 +1935,12 @@ static int pci_suspend(struct pci_dev *pdev, pm_message_t state)
 	free_irq(pdev->irq, ohci);
 	err = pci_save_state(pdev);
 	if (err) {
-		fw_error("pci_save_state failed with %d", err);
+		fw_error("pci_save_state failed\n");
 		return err;
 	}
 	err = pci_set_power_state(pdev, pci_choose_state(pdev, state));
 	if (err) {
-		fw_error("pci_set_power_state failed with %d", err);
+		fw_error("pci_set_power_state failed\n");
 		return err;
 	}
 
@@ -1955,7 +1956,7 @@ static int pci_resume(struct pci_dev *pdev)
 	pci_restore_state(pdev);
 	err = pci_enable_device(pdev);
 	if (err) {
-		fw_error("pci_enable_device failed with %d", err);
+		fw_error("pci_enable_device failed\n");
 		return err;
 	}
 

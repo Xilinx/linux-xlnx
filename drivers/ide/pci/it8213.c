@@ -82,7 +82,7 @@ static void it8213_tuneproc (ide_drive_t *drive, u8 pio)
 					{ 2, 1 },
 					{ 2, 3 }, };
 
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 
 	spin_lock_irqsave(&tune_lock, flags);
 	pci_read_config_word(dev, master_port, &master_data);
@@ -214,7 +214,7 @@ static int it8213_config_drive_for_dma (ide_drive_t *drive)
 	if (ide_tune_dma(drive))
 		return 0;
 
-	pio = ide_get_best_pio_mode(drive, 255, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, 255, 4);
 	it8213_tune_chipset(drive, XFER_PIO_0 + pio);
 
 	return -1;
@@ -231,7 +231,7 @@ static int it8213_config_drive_for_dma (ide_drive_t *drive)
 
 static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 {
-	u8 reg42h = 0, ata66 = 0;
+	u8 reg42h = 0;
 
 	hwif->speedproc = &it8213_tune_chipset;
 	hwif->tuneproc	= &it8213_tuneproc;
@@ -250,11 +250,11 @@ static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 	hwif->swdma_mask = 0x04;
 
 	pci_read_config_byte(hwif->pci_dev, 0x42, &reg42h);
-	ata66 = (reg42h & 0x02) ? 0 : 1;
 
 	hwif->ide_dma_check = &it8213_config_drive_for_dma;
-	if (!(hwif->udma_four))
-		hwif->udma_four = ata66;
+
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+		hwif->cbl = (reg42h & 0x02) ? ATA_CBL_PATA40 : ATA_CBL_PATA80;
 
 	/*
 	 *	The BIOS often doesn't set up DMA on this controller
@@ -272,10 +272,11 @@ static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 	{						\
 		.name		= name_str,		\
 		.init_hwif	= init_hwif_it8213,	\
-		.channels	= 1,			\
 		.autodma	= AUTODMA,		\
 		.enablebits	= {{0x41,0x80,0x80}}, \
 		.bootable	= ON_BOARD,		\
+		.host_flags	= IDE_HFLAG_SINGLE,	\
+		.pio_mask	= ATA_PIO4,		\
 	}
 
 static ide_pci_device_t it8213_chipsets[] __devinitdata = {

@@ -262,7 +262,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		brq.data.sg = mq->sg;
-		brq.data.sg_len = blk_rq_map_sg(req->q, req, brq.data.sg);
+		brq.data.sg_len = mmc_queue_map_sg(mq);
+
+		mmc_queue_bounce_pre(mq);
 
 		if (brq.data.blocks !=
 		    (req->nr_sectors >> (md->block_bits - 9))) {
@@ -279,6 +281,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		mmc_wait_for_req(card->host, &brq.mrq);
+
+		mmc_queue_bounce_post(mq);
+
 		if (brq.cmd.error) {
 			printk(KERN_ERR "%s: error %d sending read/write command\n",
 			       req->rq_disk->disk_name, brq.cmd.error);
@@ -409,13 +414,12 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 		return ERR_PTR(-ENOSPC);
 	__set_bit(devidx, dev_use);
 
-	md = kmalloc(sizeof(struct mmc_blk_data), GFP_KERNEL);
+	md = kzalloc(sizeof(struct mmc_blk_data), GFP_KERNEL);
 	if (!md) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	memset(md, 0, sizeof(struct mmc_blk_data));
 
 	/*
 	 * Set the read-only status based on the supported commands

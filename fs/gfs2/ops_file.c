@@ -489,6 +489,29 @@ static int gfs2_fsync(struct file *file, struct dentry *dentry, int datasync)
 }
 
 /**
+ * gfs2_setlease - acquire/release a file lease
+ * @file: the file pointer
+ * @arg: lease type
+ * @fl: file lock
+ *
+ * Returns: errno
+ */
+
+static int gfs2_setlease(struct file *file, long arg, struct file_lock **fl)
+{
+	struct gfs2_sbd *sdp = GFS2_SB(file->f_mapping->host);
+
+	/*
+	 * We don't currently have a way to enforce a lease across the whole
+	 * cluster; until we do, disable leases (by just returning -EINVAL),
+	 * unless the administrator has requested purely local locking.
+	 */
+	if (!sdp->sd_args.ar_localflocks)
+		return -EINVAL;
+	return setlease(file, arg, fl);
+}
+
+/**
  * gfs2_lock - acquire/release a posix lock on a file
  * @file: the file pointer
  * @cmd: either modify or retrieve lock state, possibly wait
@@ -502,7 +525,7 @@ static int gfs2_lock(struct file *file, int cmd, struct file_lock *fl)
 	struct gfs2_inode *ip = GFS2_I(file->f_mapping->host);
 	struct gfs2_sbd *sdp = GFS2_SB(file->f_mapping->host);
 	struct lm_lockname name =
-		{ .ln_number = ip->i_num.no_addr,
+		{ .ln_number = ip->i_no_addr,
 		  .ln_type = LM_TYPE_PLOCK };
 
 	if (!(fl->fl_flags & FL_POSIX))
@@ -557,7 +580,7 @@ static int do_flock(struct file *file, int cmd, struct file_lock *fl)
 		gfs2_glock_dq_uninit(fl_gh);
 	} else {
 		error = gfs2_glock_get(GFS2_SB(&ip->i_inode),
-				      ip->i_num.no_addr, &gfs2_flock_glops,
+				      ip->i_no_addr, &gfs2_flock_glops,
 				      CREATE, &gl);
 		if (error)
 			goto out;
@@ -635,10 +658,10 @@ const struct file_operations gfs2_file_fops = {
 	.release	= gfs2_close,
 	.fsync		= gfs2_fsync,
 	.lock		= gfs2_lock,
-	.sendfile	= generic_file_sendfile,
 	.flock		= gfs2_flock,
 	.splice_read	= generic_file_splice_read,
 	.splice_write	= generic_file_splice_write,
+	.setlease	= gfs2_setlease,
 };
 
 const struct file_operations gfs2_dir_fops = {

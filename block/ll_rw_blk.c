@@ -256,6 +256,7 @@ static void rq_init(request_queue_t *q, struct request *rq)
 	rq->end_io = NULL;
 	rq->end_io_data = NULL;
 	rq->completion_data = NULL;
+	rq->next_rq = NULL;
 }
 
 /**
@@ -527,8 +528,6 @@ int blk_do_ordered(request_queue_t *q, struct request **rqp)
 static int flush_dry_bio_endio(struct bio *bio, unsigned int bytes, int error)
 {
 	request_queue_t *q = bio->bi_private;
-	struct bio_vec *bvec;
-	int i;
 
 	/*
 	 * This is dry run, restore bio_sector and size.  We'll finish
@@ -539,13 +538,6 @@ static int flush_dry_bio_endio(struct bio *bio, unsigned int bytes, int error)
 
 	if (bio->bi_size)
 		return 1;
-
-	/* Rewind bvec's */
-	bio->bi_idx = 0;
-	bio_for_each_segment(bvec, bio, i) {
-		bvec->bv_len += bvec->bv_offset;
-		bvec->bv_offset = 0;
-	}
 
 	/* Reset bio */
 	set_bit(BIO_UPTODATE, &bio->bi_flags);
@@ -1304,9 +1296,9 @@ static int blk_hw_contig_segment(request_queue_t *q, struct bio *bio,
 	if (unlikely(!bio_flagged(nxt, BIO_SEG_VALID)))
 		blk_recount_segments(q, nxt);
 	if (!BIOVEC_VIRT_MERGEABLE(__BVEC_END(bio), __BVEC_START(nxt)) ||
-	    BIOVEC_VIRT_OVERSIZE(bio->bi_hw_front_size + bio->bi_hw_back_size))
+	    BIOVEC_VIRT_OVERSIZE(bio->bi_hw_back_size + nxt->bi_hw_front_size))
 		return 0;
-	if (bio->bi_size + nxt->bi_size > q->max_segment_size)
+	if (bio->bi_hw_back_size + nxt->bi_hw_front_size > q->max_segment_size)
 		return 0;
 
 	return 1;
@@ -1837,11 +1829,11 @@ request_queue_t *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 {
 	request_queue_t *q;
 
-	q = kmem_cache_alloc_node(requestq_cachep, gfp_mask, node_id);
+	q = kmem_cache_alloc_node(requestq_cachep,
+				gfp_mask | __GFP_ZERO, node_id);
 	if (!q)
 		return NULL;
 
-	memset(q, 0, sizeof(*q));
 	init_timer(&q->unplug_timer);
 
 	snprintf(q->kobj.name, KOBJ_NAME_LEN, "%s", "queue");
@@ -3706,13 +3698,13 @@ int __init blk_dev_init(void)
 		panic("Failed to create kblockd\n");
 
 	request_cachep = kmem_cache_create("blkdev_requests",
-			sizeof(struct request), 0, SLAB_PANIC, NULL, NULL);
+			sizeof(struct request), 0, SLAB_PANIC, NULL);
 
 	requestq_cachep = kmem_cache_create("blkdev_queue",
-			sizeof(request_queue_t), 0, SLAB_PANIC, NULL, NULL);
+			sizeof(request_queue_t), 0, SLAB_PANIC, NULL);
 
 	iocontext_cachep = kmem_cache_create("blkdev_ioc",
-			sizeof(struct io_context), 0, SLAB_PANIC, NULL, NULL);
+			sizeof(struct io_context), 0, SLAB_PANIC, NULL);
 
 	for_each_possible_cpu(i)
 		INIT_LIST_HEAD(&per_cpu(blk_cpu_done, i));
