@@ -1302,52 +1302,28 @@ static void SgRecvHandlerBH(unsigned long p)
 					/*
 					 * 16-bit alignment case
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-4];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-2];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-1];
 				}
 				else if ((IpDataLen & 0x0003) == 1) {
 					/*
 					 * 8-bit alignment case one
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-2];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-1];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-4];
 				}
 				else if ((IpDataLen & 0x0003) == 3) {
 					/*
 					 * 8-bit alignment case two
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-1];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-4];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-2];
 				}
 
 				CalcCSum +=
