@@ -1957,13 +1957,13 @@ config NE_H8300
 
 config XILINX_EMAC
 	tristate "Xilinx 10/100 OPB EMAC support"
-	depends on XILINX_EDK
+	depends on XILINX_DRIVERS
 	help
 	  This driver supports the Xilinx 10/100 opb_emac
 
 config XILINX_EMACLITE
 	tristate "Xilinx 10/100 OPB EMACLITE support"
-	depends on XILINX_EDK
+	depends on XILINX_DRIVERS
 	help
 	  This driver supports the 10/100 OPB EMACLITE.
 

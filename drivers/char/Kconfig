@@ -830,19 +830,19 @@ config DTLK
 
 config XILINX_SPI
 	tristate "Xilinx OPB SPI Support"
-	depends on XILINX_EDK
+	depends on XILINX_DRIVERS
 	help
 	  This option enables support for the Xilinx OPB SPI controller.
 
 config XILINX_GPIO
 	tristate "Xilinx OPB GPIO Support"
-	depends on XILINX_EDK
+	depends on XILINX_DRIVERS
 	help
 	This option enables support for Xilinx GPIO.
 
 config XILINX_HWICAP
 	tristate "Xilinx OPB HWICAP Support"
-	depends on XILINX_EDK
+	depends on XILINX_DRIVERS
 	help
 	This option enables support for Xilinx Internal Configuration Access Port (ICAP) driver.
 

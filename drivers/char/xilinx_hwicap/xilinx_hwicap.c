@@ -110,179 +110,183 @@ module_param(xhwicap_no_minors, int, S_IRUGO);
 
 static struct class *icap_class;
 
-int xhwicap_initialize_xhwicap(struct xhwicap_drvdata *drvdata) 
+int xhwicap_initialize_xhwicap(struct xhwicap_drvdata *drvdata)
 {
 
-        u32 DeviceIdCode; 
-        u32 Packet;
-        int Status;
-        
-        dev_dbg(drvdata->dev, "Reset...\n");
+	u32 DeviceIdCode;
+	u32 Packet;
+	int Status;
 
-        // Abort any current transaction, to make sure we have the ICAP in
-        // a good state.
-        XHwIcap_mReset(drvdata->baseAddress); 
+	dev_dbg(drvdata->dev, "Reset...\n");
 
-        /* Read the IDCODE from ICAP if specified. */
-        {
-                dev_dbg(drvdata->dev, "Reading IDCODE...\n");
-                
-                /* Write bitstream to bram */
-                Packet = XHwIcap_Type1Read(XHI_IDCODE) | 1;
-                XHwIcap_StorageBufferWrite(drvdata, 0, XHI_DUMMY_PACKET);
-                XHwIcap_StorageBufferWrite(drvdata, 1, XHI_SYNC_PACKET);
-                XHwIcap_StorageBufferWrite(drvdata, 2, Packet);
-                XHwIcap_StorageBufferWrite(drvdata, 3, XHI_NOOP_PACKET);
-                XHwIcap_StorageBufferWrite(drvdata, 4, XHI_NOOP_PACKET);
-                
-                /* Transfer Bitstream from Bram to ICAP */
-                Status = XHwIcap_DeviceWrite(drvdata, 0, 5);
-                if (Status) {
-                        return Status;
-                }
-                
-                /* Now readback one word into bram position
-                 * XHI_EX_BITSTREAM_LENGTH*/
-                Status = XHwIcap_DeviceRead(drvdata, 5, 1);
-                if (Status) {
-                        return Status;
-                }
-                
-                /* Return the Register value */
-                DeviceIdCode = XHwIcap_StorageBufferRead(drvdata, 5);
-                
-                /* Mask out the version section of the DeviceIdCode */
-                DeviceIdCode = DeviceIdCode & 0x0FFFFFFF;
-                
-                dev_dbg(drvdata->dev, "Desync...\n");
-                Status = XHwIcap_CommandDesync(drvdata);
-                
-                if (Status) {
-                        return Status;
-                }
-        }
-    
-        // Abort any current transaction, to make sure we have the ICAP in
-        // a good state.
-        XHwIcap_mReset(drvdata->baseAddress); 
+	// Abort any current transaction, to make sure we have the ICAP in
+	// a good state.
+	XHwIcap_mReset(drvdata->baseAddress);
 
-        dev_info(drvdata->dev, "Device IDCODE = %x\n", DeviceIdCode);
+	/* Read the IDCODE from ICAP if specified. */
+	{
+		dev_dbg(drvdata->dev, "Reading IDCODE...\n");
 
-        return 0;
+		/* Write bitstream to bram */
+		Packet = XHwIcap_Type1Read(XHI_IDCODE) | 1;
+		XHwIcap_StorageBufferWrite(drvdata, 0, XHI_DUMMY_PACKET);
+		XHwIcap_StorageBufferWrite(drvdata, 1, XHI_SYNC_PACKET);
+		XHwIcap_StorageBufferWrite(drvdata, 2, Packet);
+		XHwIcap_StorageBufferWrite(drvdata, 3, XHI_NOOP_PACKET);
+		XHwIcap_StorageBufferWrite(drvdata, 4, XHI_NOOP_PACKET);
+
+		/* Transfer Bitstream from Bram to ICAP */
+		Status = XHwIcap_DeviceWrite(drvdata, 0, 5);
+		if (Status) {
+			return Status;
+		}
+
+		/* Now readback one word into bram position
+		 * XHI_EX_BITSTREAM_LENGTH*/
+		Status = XHwIcap_DeviceRead(drvdata, 5, 1);
+		if (Status) {
+			return Status;
+		}
+
+		/* Return the Register value */
+		DeviceIdCode = XHwIcap_StorageBufferRead(drvdata, 5);
+
+		/* Mask out the version section of the DeviceIdCode */
+		DeviceIdCode = DeviceIdCode & 0x0FFFFFFF;
+
+		dev_dbg(drvdata->dev, "Desync...\n");
+		Status = XHwIcap_CommandDesync(drvdata);
+
+		if (Status) {
+			return Status;
+		}
+	}
+
+	// Abort any current transaction, to make sure we have the ICAP in
+	// a good state.
+	XHwIcap_mReset(drvdata->baseAddress);
+
+	dev_info(drvdata->dev, "Device IDCODE = %x\n", DeviceIdCode);
+
+	return 0;
 }
 
 static ssize_t
-xhwicap_read (struct file *file, char *buf, size_t count, loff_t *ppos)
+xhwicap_read(struct file *file, char *buf, size_t count, loff_t * ppos)
 {
 	struct xhwicap_drvdata *drvdata = file->private_data;
 	ssize_t bytes_to_read = 0;
 	u32 *kbuf;
-        u32 words;
-        u32 bytes_remaining;
-        int Status;
+	u32 words;
+	u32 bytes_remaining;
+	int Status;
 
-       if(drvdata->read_buffer_in_use) {
-                // If there are leftover bytes in the buffer, just
-                // return them and don't try to read more from the
-                // ICAP device.
-                bytes_to_read = (count < drvdata->read_buffer_in_use) ? count : drvdata->read_buffer_in_use;
-                
-                // Return the data currently in the read buffer.
-                if(copy_to_user(buf, drvdata->read_buffer, bytes_to_read)) {
-                        return -EFAULT;
+	if (drvdata->read_buffer_in_use) {
+		// If there are leftover bytes in the buffer, just
+		// return them and don't try to read more from the
+		// ICAP device.
+		bytes_to_read =
+		    (count <
+		     drvdata->read_buffer_in_use) ? count : drvdata->
+		    read_buffer_in_use;
+
+		// Return the data currently in the read buffer.
+		if (copy_to_user(buf, drvdata->read_buffer, bytes_to_read)) {
+			return -EFAULT;
 		}
-                drvdata->read_buffer_in_use -= bytes_to_read;
-                memcpy(drvdata->read_buffer + bytes_to_read, drvdata->read_buffer, 4-bytes_to_read);
-        } else {
-                // Get new data from the ICAP, and return was was requested.
-                kbuf = (u32 *)get_zeroed_page(GFP_KERNEL);
-                if (!kbuf)
-                        return -ENOMEM;
+		drvdata->read_buffer_in_use -= bytes_to_read;
+		memcpy(drvdata->read_buffer + bytes_to_read,
+		       drvdata->read_buffer, 4 - bytes_to_read);
+	} else {
+		// Get new data from the ICAP, and return was was requested.
+		kbuf = (u32 *) get_zeroed_page(GFP_KERNEL);
+		if (!kbuf)
+			return -ENOMEM;
 
-                // The ICAP device is only able to read complete
-                // words.  If a number of bytes that do not correspond
-                // to complete words is requested, then we read enough
-                // words to get the required number of bytes, and then
-                // save the remaining bytes for the next read.
+		// The ICAP device is only able to read complete
+		// words.  If a number of bytes that do not correspond
+		// to complete words is requested, then we read enough
+		// words to get the required number of bytes, and then
+		// save the remaining bytes for the next read.
 
-                // Determine the number of words to read, rounding up
-                // if necessary.
-                words = ((count + 3) >> 2);
-                bytes_to_read = words << 2;
+		// Determine the number of words to read, rounding up
+		// if necessary.
+		words = ((count + 3) >> 2);
+		bytes_to_read = words << 2;
 
 		if (bytes_to_read > PAGE_SIZE) {
 			bytes_to_read = PAGE_SIZE;
-                }
-
-                // Ensure we only read a complete number of words.
-                // BUG: should be count & 3?
-                bytes_remaining = bytes_to_read & 3;
+		}
+		// Ensure we only read a complete number of words.
+		// BUG: should be count & 3?
+		bytes_remaining = bytes_to_read & 3;
 		bytes_to_read &= ~3;
-                words = bytes_to_read >> 2;
+		words = bytes_to_read >> 2;
 
 		Status = XHwIcap_GetConfiguration(drvdata, kbuf, words);
-                // If we didn't read correctly, then bail out.
+		// If we didn't read correctly, then bail out.
 		if (Status) {
 			free_page((unsigned long)kbuf);
 			return -EFAULT;
 		}
-               
-                // If we fail to return the data to the user, then bail out.
-                if (copy_to_user(buf, kbuf, bytes_to_read)) {
-                        free_page((unsigned long)kbuf);
-                        return -EFAULT;
+		// If we fail to return the data to the user, then bail out.
+		if (copy_to_user(buf, kbuf, bytes_to_read)) {
+			free_page((unsigned long)kbuf);
+			return -EFAULT;
 		}
-                memcpy(kbuf, drvdata->read_buffer, bytes_remaining);
-                drvdata->read_buffer_in_use = bytes_remaining;
-                free_page((unsigned long)kbuf);
+		memcpy(kbuf, drvdata->read_buffer, bytes_remaining);
+		drvdata->read_buffer_in_use = bytes_remaining;
+		free_page((unsigned long)kbuf);
 	}
 	return bytes_to_read;
 }
 
-static ssize_t xhwicap_write (struct file *file, const char *buf,
-                size_t count, loff_t *ppos)
+static ssize_t xhwicap_write(struct file *file, const char *buf,
+			     size_t count, loff_t * ppos)
 {
 	struct xhwicap_drvdata *drvdata = file->private_data;
 	ssize_t written = 0;
 	ssize_t left = count;
 	u32 *kbuf;
-        int len;
-        int Status;
+	int len;
+	int Status;
 
 	left += drvdata->write_buffer_in_use;
 
-	if (left < 4)	// only write multiples of 4 bytes.
+	if (left < 4)		// only write multiples of 4 bytes.
 		return 0;
 
-	kbuf = (u32 *)__get_free_page(GFP_KERNEL);
+	kbuf = (u32 *) __get_free_page(GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
-	while(left > 3) {	
-                // only write multiples of 4 bytes, so there might
-                // be as many as 3 bytes left (at the end).
-                len = left;
-		
+	while (left > 3) {
+		// only write multiples of 4 bytes, so there might
+		// be as many as 3 bytes left (at the end).
+		len = left;
+
 		if (len > PAGE_SIZE)
 			len = PAGE_SIZE;
 		len &= ~3;
 
 		if (drvdata->write_buffer_in_use) {
-			memcpy(kbuf,drvdata->write_buffer,drvdata->write_buffer_in_use);
-			if (copy_from_user(
-                                            (((char*)kbuf)+(drvdata->write_buffer_in_use)),
-                                            buf+written, len-(drvdata->write_buffer_in_use))) {
+			memcpy(kbuf, drvdata->write_buffer,
+			       drvdata->write_buffer_in_use);
+			if (copy_from_user
+			    ((((char *)kbuf) + (drvdata->write_buffer_in_use)),
+			     buf + written,
+			     len - (drvdata->write_buffer_in_use))) {
 				free_page((unsigned long)kbuf);
 				return -EFAULT;
 			}
 		} else {
-			if (copy_from_user(kbuf, buf+written, len)) {
+			if (copy_from_user(kbuf, buf + written, len)) {
 				free_page((unsigned long)kbuf);
 				return -EFAULT;
 			}
 		}
-                
-		Status = XHwIcap_SetConfiguration(drvdata, kbuf, len>>2);
+
+		Status = XHwIcap_SetConfiguration(drvdata, kbuf, len >> 2);
 
 		if (Status) {
 			free_page((unsigned long)kbuf);
@@ -296,83 +300,85 @@ static ssize_t xhwicap_write (struct file *file, const char *buf,
 		written += len;
 		left -= len;
 	}
-        if ((left > 0) && (left < 4)) {
-		if (!copy_from_user(drvdata->write_buffer, buf+written, left)) {
+	if ((left > 0) && (left < 4)) {
+		if (!copy_from_user(drvdata->write_buffer, buf + written, left)) {
 			drvdata->write_buffer_in_use = left;
 			written += left;
 			left = 0;
 		}
-        }
+	}
 
 	free_page((unsigned long)kbuf);
 	return written;
 }
 
-static int xhwicap_open (struct inode * inode, struct file * file)
+static int xhwicap_open(struct inode *inode, struct file *file)
 {
 	struct xhwicap_drvdata *drvdata;
 	int status;
 
-        drvdata = container_of(inode->i_cdev, struct xhwicap_drvdata, cdev);
+	drvdata = container_of(inode->i_cdev, struct xhwicap_drvdata, cdev);
 
 	status = xhwicap_initialize_xhwicap(drvdata);
-        if(status) {
-                dev_err(drvdata->dev, "Failed to open file");
-                return -status;
-        }
+	if (status) {
+		dev_err(drvdata->dev, "Failed to open file");
+		return -status;
+	}
 
 	drvdata->flags = 0;
 	file->private_data = drvdata;
-        drvdata->write_buffer_in_use = 0;
-        drvdata->read_buffer_in_use = 0;
+	drvdata->write_buffer_in_use = 0;
+	drvdata->read_buffer_in_use = 0;
 
 	return 0;
 }
 
-static int xhwicap_release (struct inode * inode, struct file * file)
+static int xhwicap_release(struct inode *inode, struct file *file)
 {
 	struct xhwicap_drvdata *drvdata = file->private_data;
-        int i;
-        int Status;
+	int i;
+	int Status;
 
 	if (drvdata->write_buffer_in_use) {
-                // Fluch write buffer.
-                for(i = drvdata->write_buffer_in_use; i < 4; i++) {
-                        drvdata->write_buffer[i] = 0;
-                }
-		Status = XHwIcap_SetConfiguration(drvdata, (u32 *)drvdata->write_buffer, 1);
-                if (Status) {
-                        return Status;
-                }
+		// Fluch write buffer.
+		for (i = drvdata->write_buffer_in_use; i < 4; i++) {
+			drvdata->write_buffer[i] = 0;
+		}
+		Status =
+		    XHwIcap_SetConfiguration(drvdata,
+					     (u32 *) drvdata->write_buffer, 1);
+		if (Status) {
+			return Status;
+		}
 	}
 
-        Status = XHwIcap_CommandDesync(drvdata);
-        if (Status) {
-                return Status;
-        }
+	Status = XHwIcap_CommandDesync(drvdata);
+	if (Status) {
+		return Status;
+	}
 
 	return 0;
 }
 
 static struct file_operations xhwicap_fops = {
-	owner:		THIS_MODULE,
-	write:		xhwicap_write,
-	read:		xhwicap_read,
-	open:		xhwicap_open,
-	release:	xhwicap_release,
+      owner:THIS_MODULE,
+      write:xhwicap_write,
+      read:xhwicap_read,
+      open:xhwicap_open,
+      release:xhwicap_release,
 };
 
 static int __init xhwicap_drv_probe(struct device *dev)
 {
 	dev_t devt;
 	struct platform_device *pdev = to_platform_device(dev);
-        struct xhwicap_drvdata *drvdata = NULL;
+	struct xhwicap_drvdata *drvdata = NULL;
 	struct resource *regs_res;
 	int retval = 0;
 
 	if (!dev) {
 		return -EINVAL;
-        }
+	}
 
 	dev_info(dev, "Xilinx icap port driver\n");
 
@@ -383,12 +389,12 @@ static int __init xhwicap_drv_probe(struct device *dev)
 		dev_err(dev, "Couldn't allocate device private record\n");
 		return -ENOMEM;
 	}
-	memset((void*)drvdata, 0, sizeof(struct xhwicap_drvdata));
-        dev_set_drvdata(dev, (void *)drvdata);
+	memset((void *)drvdata, 0, sizeof(struct xhwicap_drvdata));
+	dev_set_drvdata(dev, (void *)drvdata);
 
 	/* Map the control registers in */
 	regs_res = platform_get_resource(to_platform_device(dev),
-			IORESOURCE_MEM, 0);
+					 IORESOURCE_MEM, 0);
 	if (!regs_res || (regs_res->end - regs_res->start + 1 < XHWICAP_REGS)) {
 		dev_err(dev, "Couldn't get registers resource\n");
 		retval = -EFAULT;
@@ -397,25 +403,25 @@ static int __init xhwicap_drv_probe(struct device *dev)
 
 	if (!request_mem_region(regs_res->start, XHWICAP_REGS, DRIVER_NAME)) {
 		dev_err(dev, "Couldn't lock memory region at %p\n",
-                                (void *)regs_res->start);
+			(void *)regs_res->start);
 		retval = -EBUSY;
 		goto failed1;
 	}
 
 	drvdata->regs_phys = regs_res->start;
-        drvdata->devt = devt;
-        drvdata->dev = dev; 
-        drvdata->baseAddress = ioremap(drvdata->regs_phys, XHWICAP_REGS);
-        if(!drvdata->baseAddress) {
-                dev_err(dev, "ioremap() failed\n");
-                goto failed2;
-        }
+	drvdata->devt = devt;
+	drvdata->dev = dev;
+	drvdata->baseAddress = ioremap(drvdata->regs_phys, XHWICAP_REGS);
+	if (!drvdata->baseAddress) {
+		dev_err(dev, "ioremap() failed\n");
+		goto failed2;
+	}
 
-        dev_info(dev, "ioremap %lx to %lx with size %x\n",
-                        (unsigned long int)drvdata->baseAddress,
-                        (unsigned long int)drvdata->regs_phys,
-                        (unsigned int)XHWICAP_REGS);
-    
+	dev_info(dev, "ioremap %lx to %lx with size %x\n",
+		 (unsigned long int)drvdata->baseAddress,
+		 (unsigned long int)drvdata->regs_phys,
+		 (unsigned int)XHWICAP_REGS);
+
 	cdev_init(&drvdata->cdev, &xhwicap_fops);
 	drvdata->cdev.owner = THIS_MODULE;
 	retval = cdev_add(&drvdata->cdev, devt, 1);
@@ -423,17 +429,17 @@ static int __init xhwicap_drv_probe(struct device *dev)
 		dev_err(dev, "cdev_add() failed\n");
 		goto failed3;
 	}
-        //  devfs_mk_cdev(devt, S_IFCHR|S_IRUGO|S_IWUGO, DRIVER_NAME);
-        class_device_create(icap_class, NULL, devt, NULL, DRIVER_NAME);
-	return 0;	/* success */
+	//  devfs_mk_cdev(devt, S_IFCHR|S_IRUGO|S_IWUGO, DRIVER_NAME);
+	class_device_create(icap_class, NULL, devt, NULL, DRIVER_NAME);
+	return 0;		/* success */
 
- failed3:
+      failed3:
 	iounmap(drvdata->baseAddress);
 
- failed2:
+      failed2:
 	release_mem_region(regs_res->start, XHWICAP_REGS);
 
- failed1:
+      failed1:
 	kfree(drvdata);
 
 	return retval;
@@ -441,46 +447,46 @@ static int __init xhwicap_drv_probe(struct device *dev)
 
 static int __exit xhwicap_drv_remove(struct device *dev)
 {
- 	struct xhwicap_drvdata *drvdata;
+	struct xhwicap_drvdata *drvdata;
 
 	if (!dev)
 		return -EINVAL;
 
-	drvdata = (struct xhwicap_drvdata *) dev_get_drvdata(dev);
+	drvdata = (struct xhwicap_drvdata *)dev_get_drvdata(dev);
 
-        class_device_destroy(icap_class, drvdata->devt);
+	class_device_destroy(icap_class, drvdata->devt);
 	cdev_del(&drvdata->cdev);
 	iounmap(drvdata->baseAddress);
 	release_mem_region(drvdata->regs_phys, XHWICAP_REGS);
 	kfree(drvdata);
 	dev_set_drvdata(dev, NULL);
 
-	return 0;	/* success */
+	return 0;		/* success */
 }
 
 static struct device_driver xhwicap_module_driver = {
-	.name		= DRIVER_NAME,
-	.bus		= &platform_bus_type,
+	.name = DRIVER_NAME,
+	.bus = &platform_bus_type,
 
-	.probe		= xhwicap_drv_probe,
-	.remove		= xhwicap_drv_remove,
+	.probe = xhwicap_drv_probe,
+	.remove = xhwicap_drv_remove,
 };
 
-static int __init
-xhwicap_module_init(void)
+static int __init xhwicap_module_init(void)
 {
 	dev_t devt;
 	int retval;
 
-        icap_class = class_create(THIS_MODULE, "xilinx_config");
+	icap_class = class_create(THIS_MODULE, "xilinx_config");
 
 	if (xhwicap_major) {
 		devt = MKDEV(xhwicap_major, xhwicap_minor);
 		retval = register_chrdev_region(devt, xhwicap_no_minors,
-                                DRIVER_NAME);
+						DRIVER_NAME);
 	} else {
-		retval = alloc_chrdev_region(&devt, xhwicap_minor, xhwicap_no_minors,
-                                DRIVER_NAME);
+		retval =
+		    alloc_chrdev_region(&devt, xhwicap_minor, xhwicap_no_minors,
+					DRIVER_NAME);
 		xhwicap_major = MAJOR(devt);
 	}
 	if (retval < 0) {
@@ -496,12 +502,11 @@ xhwicap_module_init(void)
 	return retval;
 }
 
-static void __exit
-xhwicap_module_cleanup(void)
-{    
-        dev_t devt = MKDEV(xhwicap_major, xhwicap_minor);
+static void __exit xhwicap_module_cleanup(void)
+{
+	dev_t devt = MKDEV(xhwicap_major, xhwicap_minor);
 
-        class_destroy(icap_class);
+	class_destroy(icap_class);
 
 	driver_unregister(&xhwicap_module_driver);
 	unregister_chrdev_region(devt, xhwicap_no_minors);
