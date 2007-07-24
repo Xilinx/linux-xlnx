@@ -20,7 +20,6 @@
  *
  *****************************************************************************/
 
-
 #include "xilinx_hwicap.h"
 
 #define XHI_BUFFER_START 0
@@ -41,11 +40,11 @@
  * @note     None.
  *
 *****************************************************************************/
-void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr, u32 Address,
-                u32 Data)
+void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr,
+				u32 Address, u32 Data)
 {
-        /* Write data to storage buffer. */
-        XHwIcap_mSetBram(InstancePtr->baseAddress, Address, Data);  
+	/* Write data to storage buffer. */
+	XHwIcap_mSetBram(InstancePtr->baseAddress, Address, Data);
 }
 
 /****************************************************************************/
@@ -62,14 +61,14 @@ void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr, u32 Address
  * @note     None.
  *
 *****************************************************************************/
-u32 XHwIcap_StorageBufferRead(struct xhwicap_drvdata *InstancePtr, u32 Address) 
+u32 XHwIcap_StorageBufferRead(struct xhwicap_drvdata *InstancePtr, u32 Address)
 {
-        u32 Data;
+	u32 Data;
 
-        /* Read data from address. Multiply Address by 4 since 4 bytes per
-         * word.*/
-        Data = XHwIcap_mGetBram(InstancePtr->baseAddress, Address);
-        return Data;
+	/* Read data from address. Multiply Address by 4 since 4 bytes per
+	 * word.*/
+	Data = XHwIcap_mGetBram(InstancePtr->baseAddress, Address);
+	return Data;
 
 }
 
@@ -90,36 +89,35 @@ u32 XHwIcap_StorageBufferRead(struct xhwicap_drvdata *InstancePtr, u32 Address)
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset, 
-                u32 NumInts) 
-
+int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset,
+		       u32 NumInts)
 {
 
-        s32 Retries = 0;
+	s32 Retries = 0;
 
-        if(XHwIcap_mGetDoneReg(InstancePtr->baseAddress)==XHI_NOT_FINISHED) {
-                return -EBUSY;
-        }
+	if (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) == XHI_NOT_FINISHED) {
+		return -EBUSY;
+	}
 
-        if ((Offset+NumInts)<=XHI_MAX_BUFFER_INTS) {
-                /* setSize NumInts*4 to get bytes. */ 
-                XHwIcap_mSetSizeReg((InstancePtr->baseAddress),(NumInts<<2));  
-                XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
-                XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_READBACK);
-                
-                while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress)==XHI_NOT_FINISHED) {
-                        Retries++;
-                        if (Retries > XHI_MAX_RETRIES) {
-                                return -EBUSY;
-                        }
-                }
-        } else {
-                return -EINVAL;
-        }
-        return 0;
-        
+	if ((Offset + NumInts) <= XHI_MAX_BUFFER_INTS) {
+		/* setSize NumInts*4 to get bytes. */
+		XHwIcap_mSetSizeReg((InstancePtr->baseAddress), (NumInts << 2));
+		XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
+		XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_READBACK);
+
+		while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) ==
+		       XHI_NOT_FINISHED) {
+			Retries++;
+			if (Retries > XHI_MAX_RETRIES) {
+				return -EBUSY;
+			}
+		}
+	} else {
+		return -EINVAL;
+	}
+	return 0;
+
 };
-
 
 /****************************************************************************/
 /**
@@ -138,35 +136,35 @@ int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset,
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset, 
-                u32 NumInts) 
+int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset,
+			u32 NumInts)
 {
 
-        s32 Retries = 0;
+	s32 Retries = 0;
 
-        if(XHwIcap_mGetDoneReg(InstancePtr->baseAddress)==XHI_NOT_FINISHED) {
-                return -EBUSY;
-        }
+	if (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) == XHI_NOT_FINISHED) {
+		return -EBUSY;
+	}
 
-        if ((Offset+NumInts)<=XHI_MAX_BUFFER_INTS) {
-                /* setSize NumInts*4 to get bytes.  */
-                XHwIcap_mSetSizeReg((InstancePtr->baseAddress),NumInts<<2);  
-                XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
-                XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_CONFIGURE);
-                
-                while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress)==XHI_NOT_FINISHED) {
-                        Retries++;
-                        if (Retries > XHI_MAX_RETRIES) {
-                                return -EBUSY;
-                        }
-                }
-        } else {
-                return -EINVAL;
-        }
-        return 0;
+	if ((Offset + NumInts) <= XHI_MAX_BUFFER_INTS) {
+		/* setSize NumInts*4 to get bytes.  */
+		XHwIcap_mSetSizeReg((InstancePtr->baseAddress), NumInts << 2);
+		XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
+		XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_CONFIGURE);
+
+		while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) ==
+		       XHI_NOT_FINISHED) {
+			Retries++;
+			if (Retries > XHI_MAX_RETRIES) {
+				return -EBUSY;
+			}
+		}
+	} else {
+		return -EINVAL;
+	}
+	return 0;
 
 };
-
 
 /****************************************************************************/
 /**
@@ -180,22 +178,22 @@ int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset,
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr) 
+int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr)
 {
-        int status;
+	int status;
 
-        XHwIcap_StorageBufferWrite(InstancePtr, 0, 
-                        (XHwIcap_Type1Write(XHI_CMD) | 1));
-        XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_CMD_DESYNCH);
-        XHwIcap_StorageBufferWrite(InstancePtr, 2, XHI_NOOP_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 0,
+				   (XHwIcap_Type1Write(XHI_CMD) | 1));
+	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_CMD_DESYNCH);
+	XHwIcap_StorageBufferWrite(InstancePtr, 2, XHI_NOOP_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
 
-        status = XHwIcap_DeviceWrite(InstancePtr, 0, 4); /* send four words */
-        if(status) { 
-                return status;
-        }
-            
-        return 0;  
+	status = XHwIcap_DeviceWrite(InstancePtr, 0, 4);	/* send four words */
+	if (status) {
+		return status;
+	}
+
+	return 0;
 }
 
 /****************************************************************************/
@@ -213,25 +211,25 @@ int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr)
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_CommandCapture(struct xhwicap_drvdata *InstancePtr) 
+int XHwIcap_CommandCapture(struct xhwicap_drvdata *InstancePtr)
 {
-        int status;
+	int status;
 
-        /* DUMMY and SYNC */
-        XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 2, 
-                        (XHwIcap_Type1Write(XHI_CMD) | 1));
-        XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_CMD_GCAPTURE);
-        XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_DUMMY_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 5, XHI_DUMMY_PACKET);
+	/* DUMMY and SYNC */
+	XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 2,
+				   (XHwIcap_Type1Write(XHI_CMD) | 1));
+	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_CMD_GCAPTURE);
+	XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_DUMMY_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 5, XHI_DUMMY_PACKET);
 
-        status = XHwIcap_DeviceWrite(InstancePtr, 0, 6);  /* send six words */
-        if(status) { /* send six words */
-                return status;
-        }
-            
-        return 0;  
+	status = XHwIcap_DeviceWrite(InstancePtr, 0, 6);	/* send six words */
+	if (status) {		/* send six words */
+		return status;
+	}
+
+	return 0;
 }
 
 /****************************************************************************/
@@ -252,32 +250,32 @@ int XHwIcap_CommandCapture(struct xhwicap_drvdata *InstancePtr)
  *
 *****************************************************************************/
 
-u32 XHwIcap_GetConfigReg(struct xhwicap_drvdata *InstancePtr, u32 ConfigReg)
+u32 XHwIcap_GetConfigReg(struct xhwicap_drvdata * InstancePtr, u32 ConfigReg)
 {
-        u32 Packet;
-        int status;
+	u32 Packet;
+	int status;
 
-        /* Write bitstream to bram */
-        Packet = XHwIcap_Type1Read(ConfigReg) | 1;
-        XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 2, Packet);
-        XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
-        XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_NOOP_PACKET);
+	/* Write bitstream to bram */
+	Packet = XHwIcap_Type1Read(ConfigReg) | 1;
+	XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 2, Packet);
+	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
+	XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_NOOP_PACKET);
 
-        /* Transfer Bitstream from Bram to ICAP */
-        if ((status = XHwIcap_DeviceWrite(InstancePtr, 0, 5))) {
-                return status;
-        }
+	/* Transfer Bitstream from Bram to ICAP */
+	if ((status = XHwIcap_DeviceWrite(InstancePtr, 0, 5))) {
+		return status;
+	}
 
-        /* Now readback one word into bram position
-         * XHI_EX_BITSTREAM_LENGTH*/
-        if ((status = XHwIcap_DeviceRead(InstancePtr, 5, 1))) {
-                return status;
-        }
-        
-        /* Return the Register value */
-        return XHwIcap_StorageBufferRead(InstancePtr, 5);
+	/* Now readback one word into bram position
+	 * XHI_EX_BITSTREAM_LENGTH*/
+	if ((status = XHwIcap_DeviceRead(InstancePtr, 5, 1))) {
+		return status;
+	}
+
+	/* Return the Register value */
+	return XHwIcap_StorageBufferRead(InstancePtr, 5);
 }
 
 /****************************************************************************
@@ -295,51 +293,52 @@ u32 XHwIcap_GetConfigReg(struct xhwicap_drvdata *InstancePtr, u32 ConfigReg)
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 *Data,
-                u32 Size)
+int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
+			     u32 Size)
 {
-        int status;
-        s32 BufferCount=0;
-        s32 NumWrites=0;
-        bool Dirty=0;
-        u32 I;
+	int status;
+	s32 BufferCount = 0;
+	s32 NumWrites = 0;
+	bool Dirty = 0;
+	u32 I;
 
-        /* Loop through all the data */
-        for (I=0,BufferCount=0;I<Size;I++) {
+	/* Loop through all the data */
+	for (I = 0, BufferCount = 0; I < Size; I++) {
 
-                /* Copy data to bram */
-                XHwIcap_StorageBufferWrite(InstancePtr, BufferCount, Data[I]);
-                Dirty=1;
+		/* Copy data to bram */
+		XHwIcap_StorageBufferWrite(InstancePtr, BufferCount, Data[I]);
+		Dirty = 1;
 
-                if (BufferCount == XHI_MAX_BUFFER_INTS-1) {
-                        /* Write data to ICAP */
-                        status = XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
-                                        XHI_MAX_BUFFER_INTS);
-                        if (status != 0) {
-                                XHwIcap_mReset(InstancePtr->baseAddress); // abort.
-                                return status;
-                        }
+		if (BufferCount == XHI_MAX_BUFFER_INTS - 1) {
+			/* Write data to ICAP */
+			status =
+			    XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
+						XHI_MAX_BUFFER_INTS);
+			if (status != 0) {
+				XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
+				return status;
+			}
 
-                        BufferCount=0;
-                        NumWrites++;
-                        Dirty=0;
-                } else {
-                        BufferCount++;
-                }
-        }
+			BufferCount = 0;
+			NumWrites++;
+			Dirty = 0;
+		} else {
+			BufferCount++;
+		}
+	}
 
-        /* Write unwritten data to ICAP */
-        if (Dirty) {
-                /* Write data to ICAP */
-                status = XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
-                                BufferCount);
-                if (status != 0) {
-                        XHwIcap_mReset(InstancePtr->baseAddress); // abort.
-                }
-                return status;
-        }
+	/* Write unwritten data to ICAP */
+	if (Dirty) {
+		/* Write data to ICAP */
+		status = XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
+					     BufferCount);
+		if (status != 0) {
+			XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
+		}
+		return status;
+	}
 
-        return 0;
+	return 0;
 };
 
 /****************************************************************************
@@ -357,37 +356,41 @@ int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 *Data,
  * @note     None.
  *
 *****************************************************************************/
-int XHwIcap_GetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 *Data,
-                u32 Size) {
-        int status;
-        s32 BufferCount=0;
-        s32 NumReads=0;
-        u32 I;
+int XHwIcap_GetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
+			     u32 Size)
+{
+	int status;
+	s32 BufferCount = 0;
+	s32 NumReads = 0;
+	u32 I;
 
-        /* Loop through all the data */
-        for (I=0,BufferCount = XHI_MAX_BUFFER_INTS;I<Size;I++) {
-                if (BufferCount == XHI_MAX_BUFFER_INTS) {
-                        u32 intsRemaining = Size - I;
-                        u32 intsToRead = intsRemaining < XHI_MAX_BUFFER_INTS ? intsRemaining : XHI_MAX_BUFFER_INTS;
-            
-                        /* Read data from ICAP */
-            
-                        status = XHwIcap_DeviceRead(InstancePtr, XHI_BUFFER_START,
-                                        intsToRead);
-                        if (status != 0) {
-                                XHwIcap_mReset(InstancePtr->baseAddress); // abort.
-                                return status;
-                        }
-            
-                        BufferCount = 0;
-                        NumReads++;
-                }
-        
-                /* Copy data from bram */
-                Data[I] = XHwIcap_StorageBufferRead(InstancePtr, BufferCount);
-                BufferCount++;
-        }
-    
-        return 0;
+	/* Loop through all the data */
+	for (I = 0, BufferCount = XHI_MAX_BUFFER_INTS; I < Size; I++) {
+		if (BufferCount == XHI_MAX_BUFFER_INTS) {
+			u32 intsRemaining = Size - I;
+			u32 intsToRead =
+			    intsRemaining <
+			    XHI_MAX_BUFFER_INTS ? intsRemaining :
+			    XHI_MAX_BUFFER_INTS;
+
+			/* Read data from ICAP */
+
+			status =
+			    XHwIcap_DeviceRead(InstancePtr, XHI_BUFFER_START,
+					       intsToRead);
+			if (status != 0) {
+				XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
+				return status;
+			}
+
+			BufferCount = 0;
+			NumReads++;
+		}
+
+		/* Copy data from bram */
+		Data[I] = XHwIcap_StorageBufferRead(InstancePtr, BufferCount);
+		BufferCount++;
+	}
+
+	return 0;
 };
-
