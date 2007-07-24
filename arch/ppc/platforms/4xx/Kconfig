@@ -281,8 +281,7 @@ config XILINX_VIRTEX_4_FX
 
 config XILINX_VIRTEX
 	bool
-	depends on XILINX_VIRTEX_II_PRO || XILINX_VIRTEX_4_FX || XILINX_VIRTEX_5_FX
-	default y
+	select XILINX_DRIVERS
 
 config STB03xxx
 	bool

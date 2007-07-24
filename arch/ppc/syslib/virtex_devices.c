@@ -151,8 +151,6 @@
 	}, \
 }
 
-
-
 #define XPAR_PS2(num) { \
 	.name = "xilinx_ps2", \
 	.id = num, \
@@ -222,9 +220,8 @@ struct plat_serial8250_port virtex_serial_platform_data[] = {
 #if defined(XPAR_UARTNS550_7_BASEADDR)
 	XPAR_UART(7),
 #endif
-	{ }, /* terminated by empty record */
+	{},			/* terminated by empty record */
 };
-
 
 struct platform_device virtex_platform_devices[] = {
 	/* UARTLITE instances */
@@ -256,10 +253,10 @@ struct platform_device virtex_platform_devices[] = {
 	/* Full UART instances */
 #if defined(XPAR_UARTNS550_0_BASEADDR)
 	{
-		.name		= "serial8250",
-		.id		= 0,
-		.dev.platform_data = virtex_serial_platform_data,
-	},
+	 .name = "serial8250",
+	 .id = 0,
+	 .dev.platform_data = virtex_serial_platform_data,
+	 },
 #endif
 
 	/* SystemACE instances */
@@ -341,17 +338,25 @@ struct platform_device virtex_platform_devices[] = {
 	/* ML300/403 reference design framebuffer */
 #if defined(XPAR_TFT_0_BASEADDR)
 	{
-		.name		= "xilinxfb",
-		.id		= 0,
-		.num_resources	= 1,
-		.resource = (struct resource[]) {
-			{
-				.start	= XPAR_TFT_0_BASEADDR,
-				.end	= XPAR_TFT_0_BASEADDR+7,
-				.flags	= IORESOURCE_IO,
-			},
-		},
-	},
+	 .name = "xilinxfb",
+	 .id = 0,
+	 .num_resources = 1,
+	 .resource = (struct resource[]){
+					 {
+					  .start = XPAR_TFT_0_BASEADDR,
+					  .end = XPAR_TFT_0_BASEADDR + 7,
+					  .flags = IORESOURCE_IO,
+					  },
+					 },
+	 .dev.platform_data = &(struct xilinxfb_platform_data){.rotate_screen =
+							       0,
+							       .
+							       screen_height_mm
+							       = 99,
+							       .
+							       screen_width_mm =
+							       132},
+	 },
 #endif
 };
 
@@ -363,32 +368,31 @@ virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
 	struct uart_port serial_req;
 
 	memset(&serial_req, 0, sizeof(serial_req));
-	serial_req.mapbase	= pdata->mapbase;
-	serial_req.membase	= pdata->membase;
-	serial_req.irq		= pdata->irq;
-	serial_req.uartclk	= pdata->uartclk;
-	serial_req.regshift	= pdata->regshift;
-	serial_req.iotype	= pdata->iotype;
-	serial_req.flags	= pdata->flags;
+	serial_req.mapbase = pdata->mapbase;
+	serial_req.membase = pdata->membase;
+	serial_req.irq = pdata->irq;
+	serial_req.uartclk = pdata->uartclk;
+	serial_req.regshift = pdata->regshift;
+	serial_req.iotype = pdata->iotype;
+	serial_req.flags = pdata->flags;
 	gen550_init(num, &serial_req);
 #endif
 }
 
-void __init
-virtex_early_serial_map(void)
+void __init virtex_early_serial_map(void)
 {
 #ifdef CONFIG_SERIAL_8250
 	struct plat_serial8250_port *pdata;
 	int i = 0;
 
 	pdata = virtex_serial_platform_data;
-	while(pdata && pdata->flags) {
+	while (pdata && pdata->flags) {
 		pdata->membase = ioremap(pdata->mapbase, 0x100);
 		virtex_early_serial_init(i, pdata);
 		pdata++;
 		i++;
 	}
-#endif /* CONFIG_SERIAL_8250 */
+#endif				/* CONFIG_SERIAL_8250 */
 }
 
 /*
@@ -398,7 +402,7 @@ virtex_early_serial_map(void)
  * override the default behaviour
  */
 int __attribute__ ((weak))
-virtex_device_fixup(struct platform_device *dev)
+    virtex_device_fixup(struct platform_device *dev)
 {
 	return 0;
 }
@@ -413,8 +417,8 @@ static int __init virtex_init(void)
 		if (virtex_device_fixup(index) != 0)
 			continue;
 
-                printk(KERN_INFO "Registering device %s:%d\n",
-                        index->name, index->id);
+		printk(KERN_INFO "Registering device %s:%d\n",
+		       index->name, index->id);
 		if (platform_device_register(index)) {
 			ret = 1;
 			printk(KERN_ERR "cannot register dev %s:%d\n",

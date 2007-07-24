@@ -187,5 +187,6 @@ config THINKPAD_ACPI_BAY
 
 	  If you are not sure, say Y here.
 
+source "drivers/misc/xilinx/Kconfig"
 
 endmenu
