@@ -36,8 +36,8 @@
 *
 ******************************************************************************/
 
-#ifndef XILINX_HWICAP_H_ /* prevent circular inclusions */
-#define XILINX_HWICAP_H_ /* by using protection macros */
+#ifndef XILINX_HWICAP_H_	/* prevent circular inclusions */
+#define XILINX_HWICAP_H_	/* by using protection macros */
 
 #include <linux/types.h>
 #include <linux/cdev.h>
@@ -52,18 +52,17 @@
 #include <asm/io.h>
 
 struct xhwicap_drvdata {
-        u32 flags;
-        u32 write_buffer_in_use; // Always in [0,3]
-        u8 write_buffer[4];
-        u32 read_buffer_in_use;  // Always in [0,3]
-        u8 read_buffer[4];
-	u32 regs_phys;	         /* phys. address of the control registers */
-        u8 *baseAddress;         /* virt. address of the control registers */
-        struct device *dev;
-	struct cdev cdev;	 /* Char device structure */
+	u32 flags;
+	u32 write_buffer_in_use;	// Always in [0,3]
+	u8 write_buffer[4];
+	u32 read_buffer_in_use;	// Always in [0,3]
+	u8 read_buffer[4];
+	u32 regs_phys;		/* phys. address of the control registers */
+	u8 *baseAddress;	/* virt. address of the control registers */
+	struct device *dev;
+	struct cdev cdev;	/* Char device structure */
 	dev_t devt;
 };
-
 
 /***************************** Include Files ********************************/
 
@@ -76,9 +75,7 @@ struct xhwicap_drvdata {
 #define XHI_FAMILY virtex2
 #endif
 
-
 /************************** Constant Definitions ****************************/
-
 
 #define XHI_PAD_FRAMES              0x1
 
@@ -154,11 +151,11 @@ struct xhwicap_drvdata {
 #define XHI_DUMMY_PACKET            0xFFFFFFFFUL
 #define XHI_NOOP_PACKET             (XHI_TYPE_1 << XHI_TYPE_SHIFT)
 #define XHI_TYPE_2_READ ( (XHI_TYPE_2 << XHI_TYPE_SHIFT) | \
-        (XHI_OP_READ << XHI_OP_SHIFT) ) 
+        (XHI_OP_READ << XHI_OP_SHIFT) )
 
 #define XHI_TYPE_2_WRITE ( (XHI_TYPE_2 << XHI_TYPE_SHIFT) | \
         (XHI_OP_WRITE << XHI_OP_SHIFT) )
-        
+
 #define XHI_TYPE2_CNT_MASK          0x07FFFFFF
 
 #define XHI_TYPE_1_PACKET_MAX_WORDS 2047UL
@@ -168,7 +165,6 @@ struct xhwicap_drvdata {
 /* Indicates how many bytes will fit in a buffer. (1 BRAM) */
 #define XHI_MAX_BUFFER_BYTES        2048
 #define XHI_MAX_BUFFER_INTS         512
-
 
 /* Number of frames in different tile types */
 #if XHI_FAMILY == virtex4
@@ -205,7 +201,7 @@ struct xhwicap_drvdata {
 #define BLOCKTYPE1                  1
 #define BLOCKTYPE2                  2
 
-/* The number of words reserved for the header in the storage buffer. */ /* MAY CHANGE FOR V4*/
+									 /* The number of words reserved for the header in the storage buffer. *//* MAY CHANGE FOR V4 */
 #define XHI_HEADER_BUFFER_WORDS     20
 #define XHI_HEADER_BUFFER_BYTES     (XHI_HEADER_BUFFER_WORDS << 2)
 
@@ -213,7 +209,6 @@ struct xhwicap_drvdata {
  * column numbers that start at 1, when the column is added to this offset, 
  * that first one will be 3 as required. */
 #define XHI_CLB_MAJOR_FRAME_OFFSET  2
-
 
 /* File access and error constants */
 #define XHI_DEVICE_READ_ERROR       -1
@@ -240,12 +235,12 @@ struct xhwicap_drvdata {
 
 /* XHwIcap register offsets */
 
-#define XHI_SIZE_REG_OFFSET        0x800L  /* Size of transfer, read & write */
-#define XHI_BRAM_OFFSET_REG_OFFSET 0x804L  /* Offset into bram, read & write */
-#define XHI_RNC_REG_OFFSET         0x808L  /* Read not Configure, direction of
-                                                transfer.  Write only */
-#define XHI_STATUS_REG_OFFSET      0x80CL  /* Indicates transfer complete. Read
-                                                only */
+#define XHI_SIZE_REG_OFFSET        0x800L	/* Size of transfer, read & write */
+#define XHI_BRAM_OFFSET_REG_OFFSET 0x804L	/* Offset into bram, read & write */
+#define XHI_RNC_REG_OFFSET         0x808L	/* Read not Configure, direction of
+						   transfer.  Write only */
+#define XHI_STATUS_REG_OFFSET      0x80CL	/* Indicates transfer complete. Read
+						   only */
 
 /* Constants for setting the RNC register */
 #define XHI_CONFIGURE              0x0UL
@@ -377,8 +372,6 @@ struct xhwicap_drvdata {
 #define XHwIcap_mGetBram(BaseAddress, Offset) \
     ( in_be32((u32 *)((BaseAddress+(Offset<<2)))) )
 
-
-
 /****************************************************************************/
 /**
 * Set the size register.
@@ -467,7 +460,6 @@ struct xhwicap_drvdata {
 #define XHwIcap_mSetBram(BaseAddress, Offset, Data) \
     ( out_be32((u32*)((BaseAddress+(Offset<<2))), (Data)) )
 
-
 /****************************************************************************/
 /**
 * 
@@ -504,58 +496,38 @@ struct xhwicap_drvdata {
     ( (XHI_TYPE_1 << XHI_TYPE_SHIFT) | (Register << XHI_REGISTER_SHIFT) | \
     (XHI_OP_WRITE << XHI_OP_SHIFT) )
 
-
 /************************** Function Prototypes *****************************/
-
 
 /* These functions are the ones defined in the lower level
  * Self-Reconfiguration Platform (SRP) API.
  */
 
 /* Initializes a XHwIcap instance.. */
-int XHwIcap_Initialize(struct xhwicap_drvdata *InstancePtr,  u16 DeviceId,
-                           u32 DeviceIdCode);
+int XHwIcap_Initialize(struct xhwicap_drvdata *InstancePtr, u16 DeviceId,
+		       u32 DeviceIdCode);
 
 /* Reads integers from the device into the storage buffer. */
 int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset,
-                           u32 NumInts);
+		       u32 NumInts);
 
 /* Writes integers to the device from the storage buffer. */
 int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset,
-                            u32 NumInts);
+			u32 NumInts);
 
 /* Writes word to the storage buffer. */
-void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr, u32 Address,
-                                u32 Data);
+void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr,
+				u32 Address, u32 Data);
 
 /* Reads word from the storage buffer. */
 u32 XHwIcap_StorageBufferRead(struct xhwicap_drvdata *InstancePtr, u32 Address);
 
-/* Reads one frame from the device and puts it in the storage buffer. */
-int XHwIcap_DeviceReadFrame(struct xhwicap_drvdata *InstancePtr, s32 Block,
-                               s32 MajorFrame, s32 MinorFrame);
-
-/* Reads one frame from the device and puts it in the storage buffer. */
-int XHwIcap_DeviceReadFrameV4(struct xhwicap_drvdata *InstancePtr, s32 Top,
-                                s32 Block, s32 HClkRow,
-                                s32 MajorFrame, s32 MinorFrame);
-
-/* Writes one frame from the storage buffer and puts it in the device. */
-int XHwIcap_DeviceWriteFrame(struct xhwicap_drvdata *InstancePtr, s32 Block,
-                                s32 MajorFrame, s32 MinorFrame);
-
-/* Writes one frame from the storage buffer and puts it in the device. */
-int XHwIcap_DeviceWriteFrameV4(struct xhwicap_drvdata *InstancePtr, s32 Top,
-                                s32 Block, s32 HClkRow,
-                                 s32 MajorFrame, s32 MinorFrame);
+/* Loads a partial bitstream from system memory. */
+int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
+			     u32 Size);
 
 /* Loads a partial bitstream from system memory. */
-int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 *Data,
-                                u32 Size);
-
-/* Loads a partial bitstream from system memory. */
-int XHwIcap_GetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 *Data,
-                                u32 Size);
+int XHwIcap_GetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
+			     u32 Size);
 
 /* Sends a DESYNC command to the ICAP */
 int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr);
