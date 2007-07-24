@@ -10,6 +10,7 @@ config WANT_EARLY_SERIAL
 
 config XILINX_ML5XX
 	bool
+	select XILINX_VIRTEX
 	default n
 
 menu "IBM 4xx options"
