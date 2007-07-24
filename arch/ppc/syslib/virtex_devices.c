@@ -17,6 +17,7 @@
 #include <linux/serial_8250.h>
 #include <syslib/virtex_devices.h>
 #include <platforms/4xx/xparameters/xparameters.h>
+#include <linux/xilinx_devices.h>
 #include <asm/io.h>
 
 /*
@@ -71,6 +72,9 @@
 	}, \
 }
 
+/*
+ * EMAC: shortcut macro for single instance
+ */
 #define XPAR_EMAC(num) { \
 	.name		= "xilinx_emac", \
 	.id		= num, \
@@ -148,7 +152,22 @@
 	}, \
 }
 
-
+#define XPAR_PS2(num) { \
+	.name = "xilinx_ps2", \
+	.id = num, \
+	.num_resources = 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_PS2_##num##_BASEADDR, \
+			.end = XPAR_PS2_##num##_HIGHADDR, \
+			.flags = IORESOURCE_MEM, \
+		}, \
+		{ \
+			.start = XPAR_INTC_0_PS2_##num##_VEC_ID, \
+			.flags = IORESOURCE_IRQ, \
+		}, \
+	}, \
+}
 
 #define XPAR_HWICAP(num) { \
 	.name = "xilinx_icap", \
@@ -168,23 +187,6 @@
                         .start = XPAR_AC97_##num##_BASEADDR,  \
 			.end   = XPAR_AC97_##num##_HIGHADDR,    \
 			.flags = IORESOURCE_MEM, \
-		}, \
-	}, \
-}
-
-#define XPAR_PS2(num) { \
-	.name = "xilinx_ps2", \
-	.id = num, \
-	.num_resources = 2, \
-	.resource = (struct resource[]) { \
-		{ \
-			.start = XPAR_PS2_##num##_BASEADDR, \
-			.end = XPAR_PS2_##num##_HIGHADDR, \
-			.flags = IORESOURCE_MEM, \
-		}, \
-		{ \
-			.start = XPAR_INTC_0_PS2_##num##_VEC_ID, \
-			.flags = IORESOURCE_IRQ, \
 		}, \
 	}, \
 }
@@ -231,9 +233,8 @@ struct plat_serial8250_port virtex_serial_platform_data[] = {
 #if defined(XPAR_UARTNS550_7_BASEADDR)
 	XPAR_UART(7),
 #endif
-	{ }, /* terminated by empty record */
+	{},			/* terminated by empty record */
 };
-
 
 struct platform_device virtex_platform_devices[] = {
 	/* UARTLITE instances */
@@ -326,15 +327,6 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #endif
 
-#if defined(XPAR_HWICAP_0_BASEADDR)
-	XPAR_HWICAP(0),
-#endif
-
-#if defined(XPAR_AC97_0_BASEADDR)
-	XPAR_AC97(0),
-#endif
-
-
 #if defined(XPAR_PS2_0_BASEADDR)
 	XPAR_PS2(0),
 #endif
@@ -346,6 +338,14 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #if defined(XPAR_PS2_3_BASEADDR)
 	XPAR_PS2(3),
+#endif
+
+#if defined(XPAR_HWICAP_0_BASEADDR)
+	XPAR_HWICAP(0),
+#endif
+
+#if defined(XPAR_AC97_0_BASEADDR)
+	XPAR_AC97(0),
 #endif
 
 	/* ML300/403 reference design framebuffer */
@@ -390,7 +390,7 @@ virtex_early_serial_map(void)
 	int i = 0;
 
 	pdata = virtex_serial_platform_data;
-	while(pdata && pdata->flags) {
+	while (pdata && pdata->flags) {
 		pdata->membase = ioremap(pdata->mapbase, 0x100);
 		virtex_early_serial_init(i, pdata);
 		pdata++;
@@ -421,8 +421,8 @@ static int __init virtex_init(void)
 		if (virtex_device_fixup(index) != 0)
 			continue;
 
-                printk(KERN_INFO "Registering device %s:%d\n",
-                        index->name, index->id);
+		printk(KERN_INFO "Registering device %s:%d\n",
+		       index->name, index->id);
 		if (platform_device_register(index)) {
 			ret = 1;
 			printk(KERN_ERR "cannot register dev %s:%d\n",

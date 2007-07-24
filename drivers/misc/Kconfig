@@ -209,5 +209,6 @@ config THINKPAD_ACPI_INPUT_ENABLED
 	  If you are not sure, say Y here.  Say N to retain the deprecated
 	  behavior of ibm-acpi, and thinkpad-acpi for kernels up to 2.6.21.
 
+source "drivers/misc/xilinx/Kconfig"
 
 endif # MISC_DEVICES

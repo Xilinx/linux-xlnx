@@ -594,6 +594,15 @@ static int xenet_open(struct net_device *dev)
 		}
 	}
 
+        /* Only advertise 10/100 modes, since we can't talk to a
+         * Tri-mode PHY if it autonegotiates a gigabit link. (e.g. ML403, ML410)
+         */
+        XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_ADVERTISE, ADVERTISE_ALL | ADVERTISE_CSMA);
+        XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_CTRL1000, 0);
+ 
+        /* Give the system enough time to establish a link */
+        mdelay(2000);
+
 	/* Set the EMAC's duplex setting based upon what the PHY says. */
 	if (!get_phy_status(dev, &phy_duplex, &phy_carrier)) {
 		/* We successfully got the PHY status. */
@@ -1302,52 +1311,28 @@ static void SgRecvHandlerBH(unsigned long p)
 					/*
 					 * 16-bit alignment case
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-4];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-2];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-1];
 				}
 				else if ((IpDataLen & 0x0003) == 1) {
 					/*
 					 * 8-bit alignment case one
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-2];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-1];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-4];
 				}
 				else if ((IpDataLen & 0x0003) == 3) {
 					/*
 					 * 8-bit alignment case two
 					 */
-					EmacFCSPtr[0] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 1));
-					EmacFCSPtr[1] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 4));
-					EmacFCSPtr[2] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 3));
-					EmacFCSPtr[3] =
-						(*(u8 *)
-						 (skb->mac.raw + len - 2));
+					EmacFCSPtr[0] = skb_mac_header(skb)[len-1];
+					EmacFCSPtr[1] = skb_mac_header(skb)[len-4];
+					EmacFCSPtr[2] = skb_mac_header(skb)[len-3];
+					EmacFCSPtr[3] = skb_mac_header(skb)[len-2];
 				}
 
 				CalcCSum +=
