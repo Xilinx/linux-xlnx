@@ -90,6 +90,7 @@ typedef struct { unsigned long	pgprot;	} pgprot_t;
 #define page_to_phys(page)	(pfn_to_phys(page_to_pfn(page)))
 #define phys_to_page(paddr)	(pfn_to_page(phys_to_pfn(paddr)))
 
+// wgr check this...
 //#define pfn_valid(pfn)		((pfn) >= min_low_pfn && (pfn) <= max_mapnr)
 #define pfn_valid(pfn)		((pfn) >= PFN_UP(CONFIG_XILINX_ERAM_START) && \
 	       			 (pfn) <= PFN_DOWN((CONFIG_XILINX_ERAM_START+CONFIG_XILINX_ERAM_SIZE-1)))

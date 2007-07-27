@@ -30,7 +30,6 @@
 #include <asm/uaccess.h>
 #include <asm/ipc.h>
 #include <asm/semaphore.h>
-#include <asm/mb_interface.h>
 
 #include <linux/module.h>
 #include <linux/ptrace.h>
@@ -44,7 +43,7 @@ long execve(const char *filename, char **argv, char **envp)
 	int ret;
 
 	memset(&regs, 0, sizeof(struct pt_regs));
-	regs.msr = mfmsr();
+	local_save_flags(regs.msr);
 	ret = do_execve((char *)filename, (char __user * __user *)argv,
 			(char __user * __user *)envp, &regs);
 
@@ -79,12 +78,12 @@ EXPORT_SYMBOL(execve);
 
 asmlinkage int sys_vfork(struct pt_regs *regs)
 {
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, 0, NULL, NULL);
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->r1, regs, 0, NULL, NULL);
 }
 
 asmlinkage int sys_clone(int flags, unsigned long stack, struct pt_regs *regs)
 {
-	if (!stack) stack = regs->sp;
+	if (!stack) stack = regs->r1;
 	return do_fork(flags, stack, regs, 0, NULL, NULL);
 }
 
@@ -93,6 +92,7 @@ asmlinkage int sys_execve(char __user *filenamei, char __user * __user *argv,
 {
 	int error;
 	char * filename;
+
 	filename = getname(filenamei);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))

@@ -84,7 +84,7 @@ void *consistent_alloc(int gfp, size_t size, dma_addr_t *dma_handle)
 	   it's up to the calling code to also test that condition and make
 	   other arranegments, such as manually flushing the cache and so on.
 	*/
-#if CONFIG_XILINX_UNCACHED_SHADOW
+#ifdef CONFIG_XILINX_UNCACHED_SHADOW
 	ret = (void *)((unsigned) ret | UNCACHED_SHADOW_MASK);
 #endif
 	/* For !MMU, dma_handle is same as physical (shadowed) address */
@@ -124,7 +124,7 @@ void consistent_free(void *vaddr)
 		BUG();
 
 	/* Clear SHADOW_MASK bit in address, and free as per usual */
-#if CONFIG_XILINX_UNCACHED_SHADOW
+#ifdef CONFIG_XILINX_UNCACHED_SHADOW
 	vaddr = (void *)((unsigned)vaddr & ~UNCACHED_SHADOW_MASK);
 #endif
 	vfree(vaddr);
@@ -141,7 +141,7 @@ void consistent_sync(void *vaddr, size_t size, int direction)
 	start=(unsigned long)vaddr;
 
 	/* Convert start address back down to unshadowed memory region */
-#if CONFIG_XILINX_UNCACHED_SHADOW
+#ifdef CONFIG_XILINX_UNCACHED_SHADOW
 	start &= UNCACHED_SHADOW_MASK;
 #endif
 	end = start+size;

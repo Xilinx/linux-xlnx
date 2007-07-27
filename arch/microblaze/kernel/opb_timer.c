@@ -94,3 +94,18 @@ void system_timer_init(void)
 
 	setup_irq(CONFIG_XILINX_TIMER_0_IRQ, &timer_irqaction);
 }
+
+unsigned long do_gettimeoffset(void)
+{
+	/* Current counter value */
+	unsigned int tcr=ioread32(BASE_ADDR + TCR0);
+
+	/* Load register value (couting down */
+	unsigned int tcmp=ioread32(BASE_ADDR + TLR0);
+
+	/* Offset, in nanoseconds */
+	unsigned long offset =(tcmp-tcr)/(CONFIG_XILINX_CPU_CLOCK_FREQ/1000000);
+
+	return offset;
+}
+

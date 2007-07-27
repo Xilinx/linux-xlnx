@@ -28,6 +28,8 @@
 #include <linux/unistd.h>
 #include <linux/stddef.h>
 #include <linux/personality.h>
+#include <linux/percpu.h>
+#include <asm/entry.h>
 #include <asm/ucontext.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
@@ -125,7 +127,7 @@ asmlinkage int
 sys_sigaltstack(const stack_t *uss, stack_t *uoss,
 		struct pt_regs *regs)
 {
-	return do_sigaltstack(uss, uoss, regs->sp);
+	return do_sigaltstack(uss, uoss, regs->r1);
 }
 
 
@@ -153,6 +155,7 @@ restore_sigcontext(struct pt_regs *regs, struct sigcontext *sc, int *rval_p)
 	unsigned int err = 0;
 
 #define COPY(x)		err |= __get_user(regs->x, &sc->regs.x)
+	COPY(r0);	COPY(r1);
 	COPY(r2);	COPY(r3);	COPY(r4);	COPY(r5);
 	COPY(r6);	COPY(r7);	COPY(r8);	COPY(r9);
 	COPY(r10);	COPY(r11);	COPY(r12);	COPY(r13);
@@ -161,8 +164,7 @@ restore_sigcontext(struct pt_regs *regs, struct sigcontext *sc, int *rval_p)
 	COPY(r22);	COPY(r23);	COPY(r24);	COPY(r25);
 	COPY(r26);	COPY(r27);	COPY(r28);	COPY(r29);
 	COPY(r30);	COPY(r31);
-	COPY(pc);	COPY(sp);	COPY(ear);	COPY(esr);
-	COPY(fsr);
+	COPY(pc);	COPY(ear);	COPY(esr);	COPY(fsr);
 #undef COPY
 
 	*rval_p = regs->r3;
@@ -172,7 +174,7 @@ restore_sigcontext(struct pt_regs *regs, struct sigcontext *sc, int *rval_p)
 
 asmlinkage int sys_sigreturn(struct pt_regs *regs)
 {
-	struct sigframe *frame = (struct sigframe *)regs->sp;
+	struct sigframe *frame = (struct sigframe *)regs->r1;
 	sigset_t set;
 	int rval;
 
@@ -203,7 +205,7 @@ badframe:
 
 asmlinkage int sys_rt_sigreturn(struct pt_regs *regs)
 {
-	struct rt_sigframe *frame = (struct rt_sigframe *)regs->sp;
+	struct rt_sigframe *frame = (struct rt_sigframe *)regs->r1;
 	sigset_t set;
 	stack_t st;
 	int rval;
@@ -227,7 +229,7 @@ asmlinkage int sys_rt_sigreturn(struct pt_regs *regs)
 		goto badframe;
 	/* It is more difficult to avoid calling this function than to
 	   call it and ignore errors.  */
-	do_sigaltstack(&st, NULL, regs->sp);
+	do_sigaltstack(&st, NULL, regs->r1);
 
 	return rval;
 
@@ -247,6 +249,7 @@ setup_sigcontext(struct sigcontext *sc, struct pt_regs *regs,
 	int err = 0;
 
 #define COPY(x)		err |= __put_user(regs->x, &sc->regs.x)
+	COPY(r0);	COPY(r1);
 	COPY(r2);	COPY(r3);	COPY(r4);	COPY(r5);
 	COPY(r6);	COPY(r7);	COPY(r8);	COPY(r9);
 	COPY(r10);	COPY(r11);	COPY(r12);	COPY(r13);
@@ -255,8 +258,7 @@ setup_sigcontext(struct sigcontext *sc, struct pt_regs *regs,
 	COPY(r22);	COPY(r23);	COPY(r24);	COPY(r25);
 	COPY(r26);	COPY(r27);	COPY(r28);	COPY(r29);
 	COPY(r30);	COPY(r31);
-	COPY(pc);	COPY(sp);	COPY(ear);	COPY(esr);
-	COPY(fsr);
+	COPY(pc);	COPY(ear);	COPY(esr);	COPY(fsr);
 #undef COPY
 
 	err |= __put_user(mask, &sc->oldmask);
@@ -271,7 +273,7 @@ static inline void *
 get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size)
 {
 	/* Default to using normal stack */
-	unsigned long sp = regs->sp;
+	unsigned long sp = regs->r1;
 
 	if ((ka->sa.sa_flags & SA_ONSTACK) != 0 && ! on_sig_stack(sp))
 		sp = current->sas_ss_sp + current->sas_ss_size;
@@ -331,7 +333,7 @@ static void setup_frame(int sig, struct k_sigaction *ka,
 		goto give_sigsegv;
 
 	/* Set up registers for signal handler */
-	regs->sp = (unsigned long) frame;
+	regs->r1 = (unsigned long) frame;
 	/* Signal handler args: */
 	regs->r5 = signal; /* Arg 0: signum */
 	regs->r6 = (unsigned long) &frame->sc; /* arg 1: sigcontext */
@@ -379,7 +381,7 @@ static void setup_rt_frame(int sig, struct k_sigaction *ka, siginfo_t *info,
 	err |= __put_user(0, &frame->uc.uc_link);
 	err |= __put_user((void *)current->sas_ss_sp,
 			  &frame->uc.uc_stack.ss_sp);
-	err |= __put_user(sas_ss_flags(regs->sp),
+	err |= __put_user(sas_ss_flags(regs->r1),
 			  &frame->uc.uc_stack.ss_flags);
 	err |= __put_user(current->sas_ss_size, &frame->uc.uc_stack.ss_size);
 	err |= setup_sigcontext(&frame->uc.uc_mcontext,
@@ -411,7 +413,7 @@ static void setup_rt_frame(int sig, struct k_sigaction *ka, siginfo_t *info,
 		goto give_sigsegv;
 
 	/* Set up registers for signal handler */
-	regs->sp = (unsigned long) frame;
+	regs->r1 = (unsigned long) frame;
 	/* Signal handler args: */
 	regs->r5 = signal; /* arg 0: signum */
 	regs->r6 = (unsigned long) &frame->info; /* arg 1: siginfo */
@@ -453,11 +455,8 @@ handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
 	/* fallthrough */
 	case -ERESTARTNOINTR:
 	do_restart:
-		/* offset of 8 bytes required = 4 for rtbd
-		   offset, plus 4 for size of 
-			"brki r14,8"
-		   instruction. */
-		regs->pc -= 8; 
+		/* offset of 4 bytes to re-execute trap (brki) instruction */
+		regs->pc -= 4; 
 		break;  
 	}       
 }
@@ -504,7 +503,7 @@ int do_signal(struct pt_regs *regs, sigset_t *oldset, int in_syscall)
 	struct k_sigaction ka;
 #ifdef DEBUG_SIG
 	printk("do signal: %p %p %d\n", regs, oldset, in_syscall);
-	printk("do signal2: %lx %lx %ld [%lx]\n", regs->pc, regs->sp, regs->r12, current_thread_info()->flags);
+	printk("do signal2: %lx %lx %ld [%lx]\n", regs->pc, regs->r1, regs->r12, current_thread_info()->flags);
 #endif
 	/*
 	 * We want the common case to go fast, which
