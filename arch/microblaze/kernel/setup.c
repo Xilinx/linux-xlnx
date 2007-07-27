@@ -42,7 +42,7 @@ extern int __init setup_early_printk(char *opt);
 extern void __init paging_init(void);
 
 static char command_line[COMMAND_LINE_SIZE];
-static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
+static char default_command_line[COMMAND_LINE_SIZE] = CONFIG_CMDLINE;
 
 void __init setup_arch(char **cmdline_p)
 {

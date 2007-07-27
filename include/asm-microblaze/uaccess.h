@@ -22,9 +22,8 @@
 /* Check against bounds of physical memory */
 static inline int ___range_ok(unsigned long addr, unsigned long size)
 {
-	return ((addr < CONFIG_XILINX_ERAM_START) ||
-		((addr + size) >= (CONFIG_XILINX_ERAM_START + 
-				   CONFIG_XILINX_ERAM_SIZE)));
+	return ((addr < XPAR_ERAM_START) ||
+		((addr + size) >= (XPAR_ERAM_START + XPAR_ERAM_SIZE)));
 }
 
 #define __range_ok(addr, size) ___range_ok((unsigned long)(addr), (unsigned long)(size))

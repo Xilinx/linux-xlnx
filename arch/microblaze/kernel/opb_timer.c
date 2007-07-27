@@ -17,7 +17,7 @@
 #include <asm/io.h>
 #include <asm/xparameters.h>
 
-#define BASE_ADDR CONFIG_XILINX_TIMER_0_BASEADDR
+#define BASE_ADDR XPAR_TIMER_0_BASEADDR
 
 #define TCSR0 (0x00)
 #define TLR0  (0x04)
@@ -71,7 +71,7 @@ struct irqaction timer_irqaction = {
 void system_timer_init(void)
 {
 	/* set the initial value to the load register */
-	iowrite32(CONFIG_XILINX_CPU_CLOCK_FREQ/HZ, BASE_ADDR + TLR0);
+	iowrite32(XPAR_CPU_CLOCK_FREQ/HZ, BASE_ADDR + TLR0);
 
 	/* load the initial value */
 	iowrite32(TCSR_LOAD, BASE_ADDR + TCSR0);
@@ -92,7 +92,7 @@ void system_timer_init(void)
 	 */
 	iowrite32(TCSR_TINT|TCSR_ENT|TCSR_ENIT|TCSR_ARHT|TCSR_UDT, BASE_ADDR + TCSR0);
 
-	setup_irq(CONFIG_XILINX_TIMER_0_IRQ, &timer_irqaction);
+	setup_irq(XPAR_TIMER_0_IRQ, &timer_irqaction);
 }
 
 unsigned long do_gettimeoffset(void)
@@ -104,7 +104,7 @@ unsigned long do_gettimeoffset(void)
 	unsigned int tcmp=ioread32(BASE_ADDR + TLR0);
 
 	/* Offset, in nanoseconds */
-	unsigned long offset =(tcmp-tcr)/(CONFIG_XILINX_CPU_CLOCK_FREQ/1000000);
+	unsigned long offset =(tcmp-tcr)/(XPAR_CPU_CLOCK_FREQ/1000000);
 
 	return offset;
 }

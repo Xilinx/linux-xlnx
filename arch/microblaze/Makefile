@@ -2,6 +2,7 @@ UTS_SYSNAME = -DUTS_SYSNAME=\"uClinux\"
 
 
 CFLAGS += -g
+
 # r31 holds current when in kernel mode
 CFLAGS += -ffixed-r31
 

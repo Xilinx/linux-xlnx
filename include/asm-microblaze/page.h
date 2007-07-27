@@ -59,7 +59,7 @@ typedef struct { unsigned long	pgprot;	} pgprot_t;
 /* to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr)	(((addr) + PAGE_SIZE - 1) & PAGE_MASK)
 
-#define PAGE_OFFSET		(CONFIG_XILINX_ERAM_START)
+#define PAGE_OFFSET		(XPAR_ERAM_START)
 
 /**
  * Conversions for virtual address, physical address, pfn, and struct
@@ -92,8 +92,8 @@ typedef struct { unsigned long	pgprot;	} pgprot_t;
 
 // wgr check this...
 //#define pfn_valid(pfn)		((pfn) >= min_low_pfn && (pfn) <= max_mapnr)
-#define pfn_valid(pfn)		((pfn) >= PFN_UP(CONFIG_XILINX_ERAM_START) && \
-	       			 (pfn) <= PFN_DOWN((CONFIG_XILINX_ERAM_START+CONFIG_XILINX_ERAM_SIZE-1)))
+#define pfn_valid(pfn)		((pfn) >= PFN_UP(XPAR_ERAM_START) && \
+	       			 (pfn) <= PFN_DOWN((XPAR_ERAM_START+XPAR_ERAM_SIZE-1)))
 #define	virt_addr_valid(vaddr)	(pfn_valid(virt_to_pfn(vaddr)))
 
 #define ARCH_PFN_OFFSET		(PAGE_OFFSET >> PAGE_SHIFT)
