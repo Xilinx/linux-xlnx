@@ -67,12 +67,17 @@ choice
 config MICROBLAZE_ML401
 	bool "ML401"
 	help
-	  Choose this option if you are using Xilinx ML401
+	  Choose this option if you are using the Xilinx ML401 reference design
 
 config MICROBLAZE_SP3E
 	bool "SP3E/1600"
 	help
-	  Choose this option if you are using Xilinx Spartan-3E/1600
+	  Choose this option if you are using the Xilinx Spartan-3E/1600 reference design
+
+config MICROBLAZE_OTHER
+	bool "Other"
+	help
+	  Choose this option if you are using some other design with an automatically generated BSP.
 
 endchoice
 
