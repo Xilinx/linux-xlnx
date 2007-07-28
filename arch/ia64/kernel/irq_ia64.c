@@ -145,6 +145,9 @@ static int __bind_irq_vector(int irq, int vector, cpumask_t domain)
 	int cpu;
 	struct irq_cfg *cfg = &irq_cfg[irq];
 
+	BUG_ON((unsigned)irq >= NR_IRQS);
+	BUG_ON((unsigned)vector >= IA64_NUM_VECTORS);
+
 	cpus_and(mask, domain, cpu_online_map);
 	if (cpus_empty(mask))
 		return -EINVAL;
@@ -286,7 +289,7 @@ static int __init parse_vector_domain(char *arg)
 		vector_domain_type = VECTOR_DOMAIN_PERCPU;
 		no_int_routing = 1;
 	}
-	return 1;
+	return 0;
 }
 early_param("vector", parse_vector_domain);
 #else
