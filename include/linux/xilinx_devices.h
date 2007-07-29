@@ -18,11 +18,14 @@
 
 #include <linux/types.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-#include <linux/device.h>
-#else
 #include <linux/platform_device.h>
-#endif
+
+/* ML300/403 reference design framebuffer driver platform data struct */
+struct xilinxfb_platform_data {
+       u32 rotate_screen;
+       u32 screen_height_mm;
+       u32 screen_width_mm;
+};
 
 /*- 10/100 Mb Ethernet Controller IP (XEMAC) -*/
 
