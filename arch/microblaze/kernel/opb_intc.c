@@ -26,8 +26,7 @@
 #define MER_ME  (1<<0)
 #define MER_HIE (1<<1)
 
-#define BASE_ADDR XPAR_OPB_INTC_0_BASEADDR
-#define XPAR_INTC_0_KIND_OF_INTR XPAR_OPB_INTC_0_KIND_OF_INTR
+#define BASE_ADDR XPAR_INTC_0_BASEADDR
 
 static void opb_intc_enable(unsigned int irq)
 {
