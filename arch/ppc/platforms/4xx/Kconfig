@@ -129,12 +129,6 @@ config TAISHAN
 	help
 	  This option enables support for the AMCC PPC440GX evaluation board.
 
-config XILINX_ML507
-	bool "Xilinx-ML507 Board"
-	select XILINX_ML5XX
-	help
-	  This option enables support for the Xilinx ML507 board.
-
 config XILINX_ML5E
 	bool "Xilinx-ML5 PPC440 Emulation Board"
 	select XILINX_ML5XX
@@ -145,15 +139,23 @@ config XILINX_ML5E
 	  Use only for PPC440 evaluation purposes. This is not an official
 	  board.
 
-config XILINX_DISABLE_44x_CACHE
-	depends on XILINX_ML5E
-	bool "Disable PPC440 caches"
+config XILINX_ML507
+	bool "Xilinx-ML507 (Virtex-5 FX70T) Board"
+	select XILINX_ML5XX
 	help
-	  This option allows to disable the caches on the PPC440. Some early
-	  PPC440 soft-cores do not work with caches enabled. If you have any
-	  problems running the ML5, try using this option.
+	  This option enables support for the Xilinx ML507 board.
+
 
 endchoice
+
+config XILINX_DISABLE_44x_CACHE
+	bool "Disable PPC440 caches"
+	depends on XILINX_ML5E || XILINX_ML507
+	help
+	  This option allows to disable the caches on the PPC440. Some early
+	  PPC440 soft-cores do not work with caches enabled. Also, some early
+	  ML507 boards do have a non-functioning cache. If you have any
+	  problems running the ML5, try using this option.
 
 config EP405PC
 	bool "EP405PC Support"
@@ -266,11 +268,6 @@ config XILINX_VIRTEX_II_PRO
 	bool
 	select XILINX_VIRTEX
 
-# The XILINX_ML5E actually is running a soft-core PPC440 on a Virtex-4 LX200
-# chip. However, as "real" Virtex-5 boards become available, we can still use
-# this definition and extend the 'depends' list with the new board names.
-#
-# Update 07/05/22: Added XILINX_ML507    (wgr)
 config XILINX_VIRTEX_5_FX
 	bool
 	depends on XILINX_ML5E || XILINX_ML507
