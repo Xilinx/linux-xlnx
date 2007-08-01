@@ -65,6 +65,8 @@ extern "C" {
 #define TRUE 1
 #endif
 
+#define XStatus int
+
 #ifndef FALSE
 #define FALSE !(TRUE)
 #endif

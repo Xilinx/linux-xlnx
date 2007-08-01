@@ -194,18 +194,23 @@
 /*
  * ML300/ML403 Video Device: shortcut macro for single instance
  */
-#define XPAR_TFT(num) { \
-	.name = "xilinxfb", \
-	.id = num, \
-	.num_resources = 1, \
-	.resource = (struct resource[]) { \
-		{ \
-			.start = XPAR_TFT_##num##_BASEADDR, \
-			.end = XPAR_TFT_##num##_BASEADDR+7, \
-			.flags = IORESOURCE_IO, \
-		}, \
-	}, \
-}
+#define XPAR_TFT(num) {						\
+		.name = "xilinxfb",				\
+			.id = num,				\
+			.num_resources = 1,			\
+			.resource = (struct resource[]) {	\
+			{					\
+				.start = XPAR_TFT_##num##_BASEADDR,	\
+				.end = XPAR_TFT_##num##_BASEADDR+7,	\
+				.flags = IORESOURCE_IO,			\
+			},						\
+		},							\
+			.dev.platform_data = &(struct xilinxfb_platform_data) {	\
+			 .rotate_screen = 0,				\
+			 .screen_height_mm = 99,			\
+			 .screen_width_mm = 132,			\
+		 },							\
+				 }
 
 /* UART 8250 driver platform data table */
 struct plat_serial8250_port virtex_serial_platform_data[] = {
@@ -266,10 +271,10 @@ struct platform_device virtex_platform_devices[] = {
 	/* Full UART instances */
 #if defined(XPAR_UARTNS550_0_BASEADDR)
 	{
-		.name		= "serial8250",
-		.id		= 0,
-		.dev.platform_data = virtex_serial_platform_data,
-	},
+	 .name = "serial8250",
+	 .id = 0,
+	 .dev.platform_data = virtex_serial_platform_data,
+	 },
 #endif
 
 	/* SystemACE instances */
@@ -371,19 +376,18 @@ virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
 	struct uart_port serial_req;
 
 	memset(&serial_req, 0, sizeof(serial_req));
-	serial_req.mapbase	= pdata->mapbase;
-	serial_req.membase	= pdata->membase;
-	serial_req.irq		= pdata->irq;
-	serial_req.uartclk	= pdata->uartclk;
-	serial_req.regshift	= pdata->regshift;
-	serial_req.iotype	= pdata->iotype;
-	serial_req.flags	= pdata->flags;
+	serial_req.mapbase = pdata->mapbase;
+	serial_req.membase = pdata->membase;
+	serial_req.irq = pdata->irq;
+	serial_req.uartclk = pdata->uartclk;
+	serial_req.regshift = pdata->regshift;
+	serial_req.iotype = pdata->iotype;
+	serial_req.flags = pdata->flags;
 	gen550_init(num, &serial_req);
 #endif
 }
 
-void __init
-virtex_early_serial_map(void)
+void __init virtex_early_serial_map(void)
 {
 #ifdef CONFIG_SERIAL_8250
 	struct plat_serial8250_port *pdata;
@@ -396,7 +400,7 @@ virtex_early_serial_map(void)
 		pdata++;
 		i++;
 	}
-#endif /* CONFIG_SERIAL_8250 */
+#endif				/* CONFIG_SERIAL_8250 */
 }
 
 /*
@@ -406,7 +410,7 @@ virtex_early_serial_map(void)
  * override the default behaviour
  */
 int __attribute__ ((weak))
-virtex_device_fixup(struct platform_device *dev)
+    virtex_device_fixup(struct platform_device *dev)
 {
 	return 0;
 }
