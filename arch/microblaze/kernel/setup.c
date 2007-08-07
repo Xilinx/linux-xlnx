@@ -41,7 +41,12 @@ void __init setup_arch(char **cmdline_p)
 {
 	console_verbose();
 
-	strlcpy(saved_command_line, command_line, COMMAND_LINE_SIZE);
+        // Allow a default command line.
+#ifdef CONFIG_CMDLINE
+	strlcpy(command_line, CONFIG_CMDLINE, sizeof(command_line));
+#endif /* CONFIG_CMDLINE */
+
+	strlcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
