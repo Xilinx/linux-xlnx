@@ -76,8 +76,6 @@ ml507_setup_arch(void)
 void __init
 ml507_init_irq(void)
 {
-	unsigned int i;
-
 	ppc4xx_pic_init();
 
 	/*
@@ -88,13 +86,6 @@ ml507_init_irq(void)
 #if (NR_IRQS != 32)
 #error NR_IRQS must be 32 for ML300/ML403/ML5xx
 #endif
-
-	for (i = 0; i < NR_IRQS; i++) {
-		if (XPAR_INTC_0_KIND_OF_INTR & (0x80000000 >> i))
-			irq_desc[i].status &= ~IRQ_LEVEL;
-		else
-			irq_desc[i].status |= IRQ_LEVEL;
-	}
 }
 
 /*
@@ -119,11 +110,8 @@ ml507_calibrate_decr(void)
 	unsigned int freq;
 
 	freq = XPAR_CORE_CLOCK_FREQ_HZ;
-	
-	us_to_tb = freq / 1000000;
 
-	tb_ticks_per_jiffy = freq / HZ;
-	tb_to_us = mulhwu_scale_factor(freq, 1000000);
+	ibm44x_calibrate_decr(freq);
 }
 
 
