@@ -48,7 +48,6 @@
 #include <linux/platform_device.h>
 #endif
 
-#include <linux/config.h>
 #include <asm/io.h>
 
 struct xhwicap_drvdata {
@@ -151,10 +150,10 @@ struct xhwicap_drvdata {
 #define XHI_DUMMY_PACKET            0xFFFFFFFFUL
 #define XHI_NOOP_PACKET             (XHI_TYPE_1 << XHI_TYPE_SHIFT)
 #define XHI_TYPE_2_READ ( (XHI_TYPE_2 << XHI_TYPE_SHIFT) | \
-        (XHI_OP_READ << XHI_OP_SHIFT) )
+	(XHI_OP_READ << XHI_OP_SHIFT) )
 
 #define XHI_TYPE_2_WRITE ( (XHI_TYPE_2 << XHI_TYPE_SHIFT) | \
-        (XHI_OP_WRITE << XHI_OP_SHIFT) )
+	(XHI_OP_WRITE << XHI_OP_SHIFT) )
 
 #define XHI_TYPE2_CNT_MASK          0x07FFFFFF
 
@@ -273,7 +272,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mGetSizeReg(BaseAddress) \
-    ( in_be32((u32 *)((BaseAddress) + XHI_SIZE_REG_OFFSET)) )
+	( in_be32((u32 *)((BaseAddress) + XHI_SIZE_REG_OFFSET)) )
 
 /****************************************************************************/
 /**
@@ -294,7 +293,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mGetOffsetReg(BaseAddress) \
-    ( in_be32((u32 *)((BaseAddress + XHI_BRAM_OFFSET_REG_OFFSET))) )
+	( in_be32((u32 *)((BaseAddress + XHI_BRAM_OFFSET_REG_OFFSET))) )
 
 /****************************************************************************/
 /**
@@ -316,7 +315,7 @@ struct xhwicap_drvdata {
 *****************************************************************************/
 
 #define XHwIcap_mGetDoneReg(BaseAddress) \
-    ( in_be32((u32 *)((BaseAddress + XHI_STATUS_REG_OFFSET))) & 1)
+	( in_be32((u32 *)((BaseAddress + XHI_STATUS_REG_OFFSET))) & 1)
 
 /****************************************************************************/
 /**
@@ -346,10 +345,10 @@ struct xhwicap_drvdata {
 *****************************************************************************/
 
 #define XHwIcap_mGetStatusReg(BaseAddress) \
-    ( in_be32((u32 *)((BaseAddress + XHI_STATUS_REG_OFFSET))) )
+	( in_be32((u32 *)((BaseAddress + XHI_STATUS_REG_OFFSET))) )
 
 #define XHwIcap_mReset(BaseAddress) \
-    ( out_be32((u32*)((BaseAddress + XHI_STATUS_REG_OFFSET)), 0xFEFE) )
+	( out_be32((u32*)((BaseAddress + XHI_STATUS_REG_OFFSET)), 0xFEFE) )
 
 /****************************************************************************/
 /**
@@ -370,7 +369,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mGetBram(BaseAddress, Offset) \
-    ( in_be32((u32 *)((BaseAddress+(Offset<<2)))) )
+	( in_be32((u32 *)((BaseAddress+(Offset<<2)))) )
 
 /****************************************************************************/
 /**
@@ -391,7 +390,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mSetSizeReg(BaseAddress, Data) \
-    ( out_be32((u32*)((BaseAddress) + XHI_SIZE_REG_OFFSET), (Data)) )
+	( out_be32((u32*)((BaseAddress) + XHI_SIZE_REG_OFFSET), (Data)) )
 
 /****************************************************************************/
 /**
@@ -412,7 +411,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mSetOffsetReg(BaseAddress, Data) \
-    ( out_be32((u32*)((BaseAddress) + XHI_BRAM_OFFSET_REG_OFFSET), (Data)) )
+	( out_be32((u32*)((BaseAddress) + XHI_BRAM_OFFSET_REG_OFFSET), (Data)) )
 
 /****************************************************************************/
 /**
@@ -435,7 +434,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mSetRncReg(BaseAddress, Data) \
-    ( out_be32((u32*)((BaseAddress) + XHI_RNC_REG_OFFSET), (Data)) )
+	( out_be32((u32*)((BaseAddress) + XHI_RNC_REG_OFFSET), (Data)) )
 
 /****************************************************************************/
 /**
@@ -458,7 +457,7 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_mSetBram(BaseAddress, Offset, Data) \
-    ( out_be32((u32*)((BaseAddress+(Offset<<2))), (Data)) )
+	( out_be32((u32*)((BaseAddress+(Offset<<2))), (Data)) )
 
 /****************************************************************************/
 /**
@@ -475,8 +474,8 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_Type1Read(Register) \
-    ( (XHI_TYPE_1 << XHI_TYPE_SHIFT) | (Register << XHI_REGISTER_SHIFT) | \
-    (XHI_OP_READ << XHI_OP_SHIFT) )
+	( (XHI_TYPE_1 << XHI_TYPE_SHIFT) | (Register << XHI_REGISTER_SHIFT) | \
+	(XHI_OP_READ << XHI_OP_SHIFT) )
 
 /****************************************************************************/
 /**
@@ -493,8 +492,8 @@ struct xhwicap_drvdata {
 *
 *****************************************************************************/
 #define XHwIcap_Type1Write(Register) \
-    ( (XHI_TYPE_1 << XHI_TYPE_SHIFT) | (Register << XHI_REGISTER_SHIFT) | \
-    (XHI_OP_WRITE << XHI_OP_SHIFT) )
+	( (XHI_TYPE_1 << XHI_TYPE_SHIFT) | (Register << XHI_REGISTER_SHIFT) | \
+	(XHI_OP_WRITE << XHI_OP_SHIFT) )
 
 /************************** Function Prototypes *****************************/
 
