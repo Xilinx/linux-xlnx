@@ -115,13 +115,11 @@ void machine_early_init(const char *cmdline)
 		BUG_ON(size < 0); /* What else can we do? */
 
 		/* Use memmove to handle likely case of memory overlap */
-		early_printk("##### Moving 0x%08x bytes from 0x%08x to 0x%08x\n",
 			size, get_romfs_base(), &_ebss);
 		memmove(&_ebss, get_romfs_base(), size);
 
 		/* update klimit */
 		klimit += PAGE_ALIGN(size);
-		early_printk("##### New klimit: 0x%08x\n",klimit);
 	}
 #endif
 
