@@ -19,15 +19,16 @@ obj-$(CONFIG_440SPE)		+= ibm440gx_common.o ibm440sp_common.o ppc440spe_pcie.o
 ifeq ($(CONFIG_4xx),y)
 ifeq ($(CONFIG_XILINX_VIRTEX),y)
 obj-$(CONFIG_40x)		+= xilinx_pic.o
+obj-$(CONFIG_44x)		+= xilinx_pic.o
 obj-y				+= virtex_devices.o
 else
+obj-$(CONFIG_44x)		+= ppc4xx_pic.o
 ifeq ($(CONFIG_403),y)
 obj-$(CONFIG_40x)		+= ppc403_pic.o
 else
 obj-$(CONFIG_40x)		+= ppc4xx_pic.o
 endif
 endif
-obj-$(CONFIG_44x)		+= ppc4xx_pic.o
 obj-$(CONFIG_40x)		+= ppc4xx_setup.o
 obj-$(CONFIG_GEN_RTC)		+= todc_time.o
 obj-$(CONFIG_PPC4xx_DMA)	+= ppc4xx_dma.o
