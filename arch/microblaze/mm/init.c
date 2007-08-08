@@ -35,10 +35,10 @@ void __init setup_memory(void)
 
 
 	m_start = PAGE_ALIGN((unsigned long)klimit);
-	m_end   = (CONFIG_XILINX_ERAM_START+CONFIG_XILINX_ERAM_SIZE-1);
+	m_end   = (XPAR_ERAM_START+XPAR_ERAM_SIZE-1);
 
-	min_low_pfn = PFN_UP(CONFIG_XILINX_ERAM_START);
-	max_mapnr = PFN_DOWN((CONFIG_XILINX_ERAM_START+CONFIG_XILINX_ERAM_SIZE-1));
+	min_low_pfn = PFN_UP(XPAR_ERAM_START);
+	max_mapnr = PFN_DOWN((XPAR_ERAM_START+XPAR_ERAM_SIZE-1));
 	num_physpages = max_mapnr - min_low_pfn + 1;
 	/* max_low_pfn is mis-named.  it holds number of pages, not
 	 * the maximum page frame number in low memory */
@@ -98,7 +98,7 @@ void show_mem(void)
 
 void __init mem_init(void)
 {
-	high_memory = (void *)(CONFIG_XILINX_ERAM_START+CONFIG_XILINX_ERAM_SIZE-1);
+	high_memory = (void *)(XPAR_ERAM_START+XPAR_ERAM_SIZE-1);
 	/* this will put all memory onto the freelists */
 	totalram_pages += free_all_bootmem();
 

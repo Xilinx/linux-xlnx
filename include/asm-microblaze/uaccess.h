@@ -19,10 +19,11 @@
 #define VERIFY_WRITE	1
 
 
-/* FIXME: no function/macro are verified. those are just stubs */
+/* Check against bounds of physical memory */
 static inline int ___range_ok(unsigned long addr, unsigned long size)
 {
-	return 0;
+	return ((addr < XPAR_ERAM_START) ||
+		((addr + size) >= (XPAR_ERAM_START + XPAR_ERAM_SIZE)));
 }
 
 #define __range_ok(addr, size) ___range_ok((unsigned long)(addr), (unsigned long)(size))

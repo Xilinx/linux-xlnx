@@ -14,43 +14,46 @@
 #ifndef __ASSEMBLY__
 #include <asm/types.h>
 
+typedef unsigned long microblaze_reg_t;
+
 struct pt_regs {
-	unsigned long msr;
-	unsigned long ear;
-	unsigned long esr;
-	unsigned long fsr;
-	unsigned long pc;
-	unsigned long sp;
-	unsigned long r2;
-	unsigned long r3;
-	unsigned long r4;
-	unsigned long r5;
-	unsigned long r6;
-	unsigned long r7;
-	unsigned long r8;
-	unsigned long r9;
-	unsigned long r10;
-	unsigned long r11;
-	unsigned long r12;
-	unsigned long r13;
-	unsigned long r14;
-	unsigned long r15;
-	unsigned long r16;
-	unsigned long r17;
-	unsigned long r18;
-	unsigned long r19;
-	unsigned long r20;
-	unsigned long r21;
-	unsigned long r22;
-	unsigned long r23;
-	unsigned long r24;
-	unsigned long r25;
-	unsigned long r26;
-	unsigned long r27;
-	unsigned long r28;
-	unsigned long r29;
-	unsigned long r30;
-	unsigned long r31;
+	microblaze_reg_t r0;
+	microblaze_reg_t r1;
+	microblaze_reg_t r2;
+	microblaze_reg_t r3;
+	microblaze_reg_t r4;
+	microblaze_reg_t r5;
+	microblaze_reg_t r6;
+	microblaze_reg_t r7;
+	microblaze_reg_t r8;
+	microblaze_reg_t r9;
+	microblaze_reg_t r10;
+	microblaze_reg_t r11;
+	microblaze_reg_t r12;
+	microblaze_reg_t r13;
+	microblaze_reg_t r14;
+	microblaze_reg_t r15;
+	microblaze_reg_t r16;
+	microblaze_reg_t r17;
+	microblaze_reg_t r18;
+	microblaze_reg_t r19;
+	microblaze_reg_t r20;
+	microblaze_reg_t r21;
+	microblaze_reg_t r22;
+	microblaze_reg_t r23;
+	microblaze_reg_t r24;
+	microblaze_reg_t r25;
+	microblaze_reg_t r26;
+	microblaze_reg_t r27;
+	microblaze_reg_t r28;
+	microblaze_reg_t r29;
+	microblaze_reg_t r30;
+	microblaze_reg_t r31;
+	microblaze_reg_t pc;
+	microblaze_reg_t msr;
+	microblaze_reg_t ear;
+	microblaze_reg_t esr;
+	microblaze_reg_t fsr;
 	int kernel_mode;
 };
 
@@ -59,6 +62,8 @@ struct pt_regs {
 
 #define instruction_pointer(regs)	((regs)->pc)
 #define profile_pc(regs)		instruction_pointer(regs)
+
+extern void show_regs(struct pt_regs *);
 
 #endif /*  __ASSEMBLY__ */
 

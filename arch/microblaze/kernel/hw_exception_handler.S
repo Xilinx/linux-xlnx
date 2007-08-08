@@ -50,7 +50,6 @@
 /* Helpful Macros */
 #define EX_HANDLER_STACK_SIZ            (4*19)
 #define RMSR_OFFSET                     0       
-#define RESR_OFFSET                     4
 #define REG_OFFSET(regnum)              (4*regnum)
 #define NUM_TO_REG(num)                 r ## num
 
@@ -67,10 +66,9 @@
 
 #define PUSH_MSR_AND_ENABLE_EXC                                                 \
         mfs     r5, rmsr;                                                       \
-        ori     r5, r5, MSR_EE | MSR_BIP;     /* Turn ON the EE and BIP bits */ \
-        andi    r5, r5, ~MSR_EIP;                    /* Turn OFF the EIP bit */ \
         swi     r5, r1, RMSR_OFFSET;                                            \
-	andi	r5, r5, ~MSR_IE;		       /* Disable interrupts */ \
+        ori     r5, r5, 0x100;                          /* Turn ON the EE bit*/ \
+	andi	r5, r5, ~2;				/* Disable interrupts */\
         mts     rmsr, r5;
         
 /* Uses r5 */
@@ -133,9 +131,7 @@
  *      +-------------+         + 0
  *      |     MSR     |
  *      +-------------+         + 4                
- *      |     ESR     |
- *      +-------------+         + 8
- *      |     r2      |
+ *      |     r1      |
  *      |      .      |
  *      |      .      |
  *      |      .      |
@@ -158,30 +154,15 @@ _hw_exception_handler:
         PUSH_REG(5);              
         PUSH_REG(6);
 	mfs	r3, resr;
-        swi     r3, r1, RESR_OFFSET;
-
 #if XPAR_MICROBLAZE_0_EX_HANDLE_DELAY_SLOT
-	/*
-	 * MicroBlaze v5+ is able to handle exceptions occurred
-	 * in the delay slot.
-	 */
-	andi	r5, r3, 0x1000;				/* Did the exception occur in the delay slot?   */
-	beqi	r5, not_in_delay_slot;			/* No: r17 already contains the correct address */
-	mfs	r17, rbtr;				/* Yes:	get the return address from BTR         */
+	andi	r5, r3, 0x1000;
+	beqi	r5, not_in_delay_slot;
+	mfs	r17, rbtr;
 not_in_delay_slot:
 #endif
         PUSH_REG(17);
-        PUSH_MSR_AND_ENABLE_EXC;
+        PUSH_MSR_AND_ENABLE_EXC;                        /* Exceptions enabled here. This will allow nested exceptions */
                 
-	/*
-	 * All the critical data has been saved, interrupts are disabled.
-	 * It is safe now to pretend that the exception handling is completed.
-	 */
-	la	r5, r0, _hw_start_handling;
-	rted	r5, 0;
-	nop;
-_hw_start_handling:
-
         andi    r5, r3, 0x1F;                           /* Extract ESR[EXC]                     */
 
 #if XPAR_MICROBLAZE_0_UNALIGNED_EXCEPTIONS
@@ -201,26 +182,24 @@ handle_other_ex:                                        /* Handle Other exceptio
         PUSH_REG(15);
         PUSH_REG(18);        
 
-	/* ESR[EC] is already in r5 */
+	andi	r5, r3, 0x1F;				/* Load ESR[EC] */
 	addk	r6, r17, r0;				/* Load exception address */
-	addk	r7, r1, r0;				/* Load stack frame */
 	bralid	r15, other_exception_handler;		/* Branch to the handler */
 	nop;
 
 	/*
-	 * In the user mode, deliver the signal by enabling
+	 * Trigger execution of the signal handler by enabling
 	 * interrupts and calling an invalid syscall.
 	 */
-	lwi	r5, r0, 0x68;
-	bneid	r5, ret_to_caller
-	nop
 	mfs	r5, rmsr;
-	ori	r5, r5, MSR_IE;
+	ori	r5, r5, 2;
 	mts	rmsr, r5;
-	addik	r12, r0, NR_syscalls;
+	addi	r12, r0, NR_syscalls;
 	brki	r14, 0x08;
+	mfs	r5, rmsr;
+	andi	r5, r5, ~2;
+	mts	rmsr, r5;
 
-ret_to_caller:
         POP_REG(7);                                     /* Restore other volatiles */
         POP_REG(8);              
         POP_REG(9);               
@@ -282,7 +261,7 @@ ex_sw:
         add     r5, r5, r6;
         bra     r5;
 ex_sw_tail:             
-        lwi     r6, r1, RESR_OFFSET;
+        mfs     r6, resr;                               
         andi    r6, r6, 0x800;                          /* Extract ESR[W]       */
         beqi    r6, ex_shw;
         swi     r3, r0, ex_tmp_data_loc_0;
@@ -312,12 +291,7 @@ ex_handler_done:
         POP_REG(5);               
         POP_REG(6); 
         POP_REG(17); 
-	/*
-	 * At this point interrupts are already disabled due to the BIP bit
-	 * set in the saved MSR. It guarantees that r17 is correct when performing
-	 * rtbd.
-	 */
-        rtbd    r17, 0
+        rted    r17, 0
         addik   r1, r1, (EX_HANDLER_STACK_SIZ);         /* Restore stack frame  */        
 ex_handler_unhandled:   
         bri 0                                           /* UNHANDLED. TRAP HERE */                                                 

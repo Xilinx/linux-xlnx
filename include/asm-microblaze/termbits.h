@@ -38,6 +38,7 @@ struct ktermios {
 	speed_t c_ospeed;		/* output speed */
 };
 
+
 /* c_cc characters */
 
 #define VINTR 0

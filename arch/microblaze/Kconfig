@@ -23,6 +23,15 @@ config RWSEM_GENERIC_SPINLOCK
 config RWSEM_XCHGADD_ALGORITHM
 	bool
 
+
+config ARCH_HAS_ILOG2_U32
+	bool
+	default n
+
+config ARCH_HAS_ILOG2_U64
+	bool
+	default n
+
 config GENERIC_FIND_NEXT_BIT
 	bool
 	default y
@@ -50,6 +59,10 @@ config PCI
 config UID16
 	bool
 	default y
+
+config DEFCONFIG_LIST
+	string
+	default "arch/$ARCH/defconfig"
 
 config NO_IOPORT
 	bool
@@ -108,6 +121,23 @@ config LARGE_ALLOCS
 	     memory sizes - upto 32MB. You may need this if your system has
 	     a lot of RAM, and you need to able to allocate very large
 	     contiguous chunks. If unsure, say N.
+
+comment "Boot options"
+
+config CMDLINE
+	string "Default kernel command string"
+	default ""
+	help
+	  On some architectures there is currently no way for the boot loader
+	  to pass arguments to the kernel. For these architectures, you should
+	  supply some command-line options at build time by entering them 
+	  here. 
+
+config CMDLINE_FORCE
+	bool "Force default kernel command string"
+	help
+	  Set this to have arguments from the default kernel command string 
+	  override those passed by the boot loader
 
 endmenu
 

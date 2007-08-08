@@ -8,14 +8,24 @@
  * Copyright (C) 2006 Atmark Techno, Inc.
  */
 
-#include <asm/mb_interface.h>
 #include <linux/module.h>
 #include <linux/sched.h>
-#include <asm/cacheflush.h>
 
 /* FIXME */
 void show_regs(struct pt_regs *regs)
 {
+	unsigned long *p;
+	int i;
+	printk("pc:\t0x%08lx\tsp:\t0x%08lx\n", regs->pc, regs->r1);
+	printk("flags:\t0x%08lx\tear:\t0x%08lx\tesr:\t0x%08lx\tfsr:\t0x%08lx\n",
+		regs->msr, regs->ear, regs->esr, regs->fsr);
+	printk("r0:\t0x%08lx\tr1:\t0x%08lx\tr2:\t0x%08lx\tr3\t0x%08lx\n",
+		0L, regs->r1, regs->r2, regs->r3);
+	for(i=4,p=&(regs->r4);i<32;i+=4,p+=4) {
+		printk("r%i:\t0x%08lx\tr%i:\t0x%08lx\tr%i:\t0x%08lx\tr%i:\t0x%08lx\n",
+			i,*p, i+1,*(p+1),i+2,*(p+2),i+3,*(p+3));
+	}
+	printk("\n");
 }
 
 void (*pm_power_off)(void) = NULL;
@@ -50,13 +60,13 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long usp,
 	*childregs = *regs;
 
 	if (user_mode(regs))
-		childregs->sp = usp;
+		childregs->r1 = usp;
 	else
-		childregs->sp = ((unsigned long) ti) + THREAD_SIZE;
+		childregs->r1 = ((unsigned long) ti) + THREAD_SIZE;
 
 	memset(&ti->cpu_context, 0, sizeof(struct cpu_context));
 	ti->cpu_context.sp  = (unsigned long)childregs;
-	ti->cpu_context.msr  = (unsigned long)childregs->msr;
+	ti->cpu_context.msr = (unsigned long)childregs->msr;
 	ti->cpu_context.r15 = (unsigned long)ret_from_fork - 8;
 
 	if (clone_flags & CLONE_SETTLS)
@@ -95,7 +105,7 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 	/* store them in non-volatile registers */
 	regs.r5 = (unsigned long)fn;
 	regs.r6 = (unsigned long)arg;
-	regs.msr = (unsigned long)mfmsr();
+	local_save_flags(regs.msr);
 	regs.pc = (unsigned long)kernel_thread_helper;
 	regs.kernel_mode = 1;
 

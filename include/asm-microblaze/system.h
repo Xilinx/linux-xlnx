@@ -30,7 +30,6 @@ extern struct task_struct * _switch_to(struct thread_info *prev, struct thread_i
 	do {						\
 		asm volatile ("# local_irq_save	\n\t"	\
 			      "msrclr %0, %1	\n\t"	\
-			      "nop	\n\t"		\
 			      : "=r"(flags)		\
 			      : "i"(MSR_IE)		\
 			      : "memory");		\
@@ -40,7 +39,6 @@ extern struct task_struct * _switch_to(struct thread_info *prev, struct thread_i
 	do {						 \
 		asm volatile ("# local_irq_disable \n\t" \
 			      "msrclr r0, %0 \n\t"	 \
-			      "nop	\n\t"		 \
 			      :				 \
 			      :	"i"(MSR_IE)		 \
 			      : "memory");		 \
@@ -50,7 +48,6 @@ extern struct task_struct * _switch_to(struct thread_info *prev, struct thread_i
 	do {						\
 		asm volatile ("# local_irq_enable \n\t"	\
 			      "msrset	r0, %0 \n\t"	\
-			      "nop	\n\t"		\
 			      :				\
 			      : "i"(MSR_IE)		\
 			      : "memory");		\
@@ -112,7 +109,6 @@ extern struct task_struct * _switch_to(struct thread_info *prev, struct thread_i
 	do {						 \
 		asm volatile ("# local_irq_restore \n\t" \
 			      "mts	rmsr, %0 \n\t"	 \
-                              "nop \n\t"		 \
 			      : 			 \
 			      :	"r"(flags)		 \
 			      : "memory");		 \
@@ -171,5 +167,7 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
 }
 
 #define xchg(ptr,x) ((__typeof__(*(ptr)))__xchg((unsigned long)(x),(ptr),sizeof(*(ptr))))
+
+extern void *cacheable_memcpy(void *, const void *, unsigned int);
 
 #endif /* _ASM_SYSTEM_H */
