@@ -157,6 +157,16 @@ config XILINX_DISABLE_44x_CACHE
 	  ML507 boards do have a non-functioning cache. If you have any
 	  problems running the ML5, try using this option.
 
+config XILINX_INTC_IVR_WORKAROUND
+	bool "Enable Xilinx INTC IVR workaround"
+	depends on XILINX_ML5E || XILINX_ML507
+	help
+	  On some versions of the INTC core the IVR register is not working
+	  properly. Selecting this option will enable a workaround using the
+	  IPR register instead of the IVR register. Enabling this option is
+	  save even if the IVR register is working properly but will result in
+	  slightly lower performance.
+
 config EP405PC
 	bool "EP405PC Support"
 	depends on EP405

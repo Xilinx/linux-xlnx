@@ -1,4 +1,6 @@
 /*
+ * arch/ppc/syslib/xilinx_pic.c
+ *
  * Interrupt controller driver for Xilinx Virtex-II Pro.
  *
  * Author: MontaVista Software, Inc.
@@ -67,22 +69,22 @@ static void
 xilinx_intc_end(unsigned int irq)
 {
 	unsigned long mask = (0x00000001 << (irq & 31));
-
 	pr_debug("end: %d\n", irq);
 	if (!(irq_desc[irq].status & (IRQ_DISABLED | IRQ_INPROGRESS))) {
-		intc_out_be32(intc + SIE, mask);
 		/* ack level sensitive intr */
 		if (irq_desc[irq].status & IRQ_LEVEL)
 			intc_out_be32(intc + IAR, mask);
+		/* unmask the interrupt */
+		intc_out_be32(intc + SIE, mask);
 	}
 }
 
 static struct hw_interrupt_type xilinx_intc = {
-	.typename = "Xilinx Interrupt Controller",
-	.enable = xilinx_intc_enable,
-	.disable = xilinx_intc_disable,
-	.ack = xilinx_intc_disable_and_ack,
-	.end = xilinx_intc_end,
+	.typename	= "Xilinx Interrupt Controller",
+	.enable		= xilinx_intc_enable,
+	.disable	= xilinx_intc_disable,
+	.ack		= xilinx_intc_disable_and_ack,
+	.end		= xilinx_intc_end,
 };
 
 int
@@ -90,12 +92,24 @@ xilinx_pic_get_irq(void)
 {
 	u32 irq;
 
+#ifdef CONFIG_XILINX_INTC_IVR_WORKAROUND
+	u32 ipr;
+
 	/*
 	 * NOTE: This function is the one that needs to be improved in
 	 * order to handle multiple interrupt controllers.  It currently
 	 * is hardcoded to check for interrupts only on the first INTC.
 	 */
-
+	ipr = intc_in_be32(intc + IPR);
+	irq = 0;
+	while (irq <= XPAR_INTC_MAX_NUM_INTR_INPUTS) {
+		if (ipr & 0x1) {
+			break;
+		}
+		irq++;
+		ipr = ipr >> 1;
+	}
+#else
 	irq = intc_in_be32(intc + IVR);
 
 	/* If no interrupt is pending then all bits of the IVR are set to 1. As
@@ -107,7 +121,7 @@ xilinx_pic_get_irq(void)
 		irq = -1;	/* report no pending interrupt. */
 
 	pr_debug("get_irq: %d\n", irq);
-
+#endif
 	return (irq);
 }
 
