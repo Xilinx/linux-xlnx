@@ -13,46 +13,50 @@
 #include <linux/seq_file.h>
 #include <linux/cpu.h>
 #include <linux/initrd.h>
-
-#ifdef CONFIG_VT
 #include <linux/console.h>
-#endif
 
 #include <asm/setup.h>
-#include <asm/cacheflush.h>
 #include <asm/sections.h>
 #include <asm/page.h>
 #include <asm/io.h>
 #include <asm/bug.h>
+#include <asm/param.h>
+#include <asm/cache.h>
+#include <asm/cacheflush.h>
+#include <asm/entry.h>
+#include <asm/cpuinfo.h>
 
 #if defined CONFIG_MTD_ATTACHED_ROMFS
 #include <linux/romfs_fs.h>
 #endif
 
-extern void __init uart_16550_early_init(void);
+DEFINE_PER_CPU(unsigned int, KSP);	/* Saved kernel stack pointer */
+DEFINE_PER_CPU(unsigned int, KM);	/* Kernel/user mode */
+DEFINE_PER_CPU(unsigned int, ENTRY_SP);	/* Saved SP on kernel entry */
+DEFINE_PER_CPU(unsigned int, R11_SAVE);	/* Temp variable for entry */
+DEFINE_PER_CPU(unsigned int, CURRENT_SAVE);	/* Saved current pointer */
+
 extern void early_printk(const char *fmt, ...);
 extern void irq_early_init(void);
 extern int __init setup_early_printk(char *opt);
 extern void __init paging_init(void);
 
 static char command_line[COMMAND_LINE_SIZE];
+static char default_command_line[COMMAND_LINE_SIZE] = CONFIG_CMDLINE;
 
 void __init setup_arch(char **cmdline_p)
 {
+	setup_cpuinfo();
 	console_verbose();
 
 	strlcpy(saved_command_line, command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
-#if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	__flush_icache_all();
 	__enable_icache();
-#endif
 
-#if XPAR_MICROBLAZE_0_USE_DCACHE==1
 	__flush_dcache_all();
 	__enable_dcache();
-#endif
 
 	panic_timeout = 120;
 
@@ -61,14 +65,11 @@ void __init setup_arch(char **cmdline_p)
 
 #ifdef CONFIG_VT
 #if defined(CONFIG_XILINX_CONSOLE)
-        conswitchp = &xil_con;
+	conswitchp = &xil_con;
 #elif defined(CONFIG_DUMMY_CONSOLE)
-        conswitchp = &dummy_con;
+	conswitchp = &dummy_con;
 #endif
 #endif
-
-	uart_16550_early_init();
-
 }
 
 #ifdef CONFIG_MTD_UCLINUX_EBSS
@@ -100,7 +101,6 @@ void machine_early_init(const char *cmdline)
 {
 	unsigned long *src, *dst = (unsigned long *)0x0;
 
-
 #ifdef CONFIG_MTD_UCLINUX_EBSS
 	{
 		int size;
@@ -126,74 +126,52 @@ void machine_early_init(const char *cmdline)
 	memset(__bss_start, 0, __bss_stop-__bss_start);
 	memset(_ssbss, 0, _esbss-_ssbss);
 
-
-	if (cmdline) 
+	/* Copy command line passed from bootloader, or use default
+	   if none provided, or forced */
+#ifndef CONFIG_CMDLINE_FORCE
+	if (cmdline && cmdline[0]!='\0') 
 		strlcpy(command_line, cmdline, COMMAND_LINE_SIZE);
 	else
-		command_line[0] = 0;
+#endif
+		strlcpy(command_line, default_command_line, COMMAND_LINE_SIZE);
 
 
 	for (src = __ivt_start; src < __ivt_end; src++, dst++)
 		*dst = *src;
 
 	/* Initialize global data */
-	*((unsigned long *)0x68) = 0x1; /* in kernel mode */
-	*((unsigned long *)0x64) = (unsigned long)current;
-
-/*!!!!!!!!!! These two shall be removed in release !!!!!!!!!!!*/
-	*((unsigned long *)0x70) = 0x0; /* current syscall */
-	*((unsigned long *)0x74) = 0x0; /* debug */
+	per_cpu(KM,0)= 0x1;	/* We start in kernel mode */
+	per_cpu(CURRENT_SAVE,0) = (unsigned long)current;
 
 	irq_early_init();
 }
 
 void machine_restart(char * cmd)
 {
+	printk("Machine restart...\n");
 	dump_stack();
-	BUG();
+	while(1)
+		;
 }
 
 void machine_shutdown(char * cmd)
 {
+	printk("Machine shutdown...\n");
+	while(1)
+		;
 }
 
 void machine_halt(void)
 {
-	BUG();
+	printk("Machine halt...\n");
+	while(1)
+		;
 }
 
 void machine_power_off(void)
 {
-	BUG();
+	printk("Machine power off...\n");
+	while(1)
+		;
 }
-
-int show_cpuinfo(struct seq_file *m, void *v)
-{
-/* TBD (used by procfs) */
-	return 0;
-}
-
-static void *c_start(struct seq_file *m, loff_t *pos)
-{
-	int i = *pos;
-
-	return i <= NR_CPUS? (void *) (i + 1): NULL;
-}
-
-static void *c_next(struct seq_file *m, void *v, loff_t *pos)
-{
-	++*pos;
-	return c_start(m, pos);
-}
-
-static void c_stop(struct seq_file *m, void *v)
-{
-}
-
-struct seq_operations cpuinfo_op = {
-	.start =c_start,
-	.next =	c_next,
-	.stop =	c_stop,
-	.show =	show_cpuinfo,
-};
 

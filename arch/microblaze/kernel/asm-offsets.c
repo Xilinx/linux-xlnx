@@ -9,7 +9,11 @@
  * Copyright (C) 2006 Atmark Techno, Inc.
  */
 
+#include <linux/stddef.h>
+#include <linux/sched.h>
+#include <linux/kernel_stat.h>
 #include <linux/ptrace.h>
+#include <linux/hardirq.h>
 #include <linux/thread_info.h>
 
 #define DEFINE(sym, val) asm volatile("\n->" #sym " %0 " #val : : "i" (val))
@@ -24,7 +28,8 @@ int main(int argc, char *argv[])
 	DEFINE(PT_ESR, offsetof(struct pt_regs, esr));
 	DEFINE(PT_FSR, offsetof(struct pt_regs, fsr));
 	DEFINE(PT_PC, offsetof(struct pt_regs, pc));
-	DEFINE(PT_SP, offsetof(struct pt_regs, sp));
+	DEFINE(PT_R0, offsetof(struct pt_regs, r0));
+	DEFINE(PT_R1, offsetof(struct pt_regs, r1));
 	DEFINE(PT_R2, offsetof(struct pt_regs, r2));
 	DEFINE(PT_R3, offsetof(struct pt_regs, r3));
 	DEFINE(PT_R4, offsetof(struct pt_regs, r4));
@@ -56,6 +61,12 @@ int main(int argc, char *argv[])
 	DEFINE(PT_R30, offsetof(struct pt_regs, r30));
 	DEFINE(PT_R31, offsetof(struct pt_regs, r31));
 	DEFINE(PT_MODE, offsetof(struct pt_regs, kernel_mode));
+	BLANK();
+
+	/* Magic offsets for PTRACE PEEK/POKE etc */
+	DEFINE(PT_TEXT_ADDR, sizeof(struct pt_regs)+1);
+	DEFINE(PT_TEXT_LEN,  sizeof(struct pt_regs)+2);
+	DEFINE(PT_DATA_ADDR, sizeof(struct pt_regs)+3);
 	BLANK();
 
 	/* struct task_struct */

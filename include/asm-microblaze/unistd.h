@@ -510,7 +510,7 @@ extern long execve(const char *filename, char **argv, char **envp);
 #define __ARCH_WANT_SYS_LLSEEK
 #define __ARCH_WANT_SYS_NICE
 //#define __ARCH_WANT_SYS_OLD_GETRLIMIT
-//#define __ARCH_WANT_SYS_OLDUMOUNT
+#define __ARCH_WANT_SYS_OLDUMOUNT
 #define __ARCH_WANT_SYS_SIGPENDING
 #define __ARCH_WANT_SYS_SIGPROCMASK
 #define __ARCH_WANT_SYS_RT_SIGACTION

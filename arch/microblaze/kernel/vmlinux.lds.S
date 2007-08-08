@@ -20,7 +20,7 @@ jiffies = jiffies_64 + 4;
 
 SECTIONS {
 
-	. = CONFIG_XILINX_ERAM_START;
+	. = XPAR_ERAM_START;
 
 	.text : {
 		_text = . ;
@@ -113,6 +113,8 @@ SECTIONS {
 
 	.initcall.init : {
 		__initcall_start = .;
+		INITCALLS
+#if 0
 		*(.initcall1.init)
 		*(.initcall2.init)
 		*(.initcall3.init)
@@ -121,6 +123,7 @@ SECTIONS {
 		*(.initcallrootfs.init)
 		*(.initcall6.init)
 		*(.initcall7.init)
+#endif
 		__initcall_end = .;
 	}
 

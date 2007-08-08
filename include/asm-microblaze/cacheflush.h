@@ -18,6 +18,7 @@
 #ifndef __MICROBLAZE_CACHEFLUSH_H__
 #define __MICROBLAZE_CACHEFLUSH_H__
 #include <linux/kernel.h>	/* For min/max macros */
+#include <linux/mm.h>	/* For min/max macros */
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/cache.h>
@@ -31,94 +32,20 @@
  * after loading a user application into memory, we must invalidate the
  * instruction cache to make sure we don't fetch old, bad code.
  */
+void __flush_icache_all (void);
+void __flush_icache_range (unsigned long start, unsigned long end);
+void __flush_icache_page (struct vm_area_struct *vma, struct page *page);
+void __flush_icache_user_range (struct vm_area_struct *vma, struct page *page,
+			      unsigned long adr, int len);
 
+void __flush_cache_sigtramp (unsigned long addr);
 
-extern inline void __flush_dcache_all(void)
-{
-#if XPAR_MICROBLAZE_0_USE_DCACHE==1
-	unsigned int i;
-	unsigned long flags;
+void __flush_dcache_all (void);
+void __flush_dcache_range (unsigned long start, unsigned long end);
+void __flush_dcache_page (struct vm_area_struct *vma, struct page *page);
+void __flush_dcache_user_range (struct vm_area_struct *vma, struct page *page,
+			      unsigned long adr, int len);
 
-	local_irq_save(flags);
-	__disable_dcache();
-
-	for(i=0;i<XPAR_MICROBLAZE_0_DCACHE_BYTE_SIZE;i+=DCACHE_LINE_SIZE)
-		__invalidate_dcache(i);
-	local_irq_restore(flags);
-#else
-	do { } while(0);
-#endif /* XPAR_MICROBLAZE_0_USE_DCACHE */
-}
-
-extern inline void __flush_dcache_range(unsigned int start, unsigned int end)
-{
-#if XPAR_MICROBLAZE_0_USE_DCACHE==1
-	unsigned int i;
-	unsigned align = ~(DCACHE_LINE_SIZE - 1);
-	unsigned long flags;
-
-	local_irq_save(flags);
-	/* No need to cover entire cache range, just cover cache footprint */
-	end=min(start+XPAR_MICROBLAZE_0_DCACHE_BYTE_SIZE, end);
-
-	/* Make sure start and end are cache line aligned */
-	start &= align;
-	end = ((end & align) + DCACHE_LINE_SIZE);
-
-	__disable_dcache();
-
-	for(i=start;i<end;i+=DCACHE_LINE_SIZE)
-		__invalidate_dcache(i);
-	local_irq_restore(flags);
-#else
-	do { } while(0);
-#endif /* XPAR_MICROBLAZE_0_USE_DCACHE */
-}
-
-extern inline void __flush_icache_all(void)
-{
-#if XPAR_MICROBLAZE_0_USE_ICACHE==1
-	unsigned int i;
-	unsigned long flags;
-
-	local_irq_save(flags);
-	__disable_icache();
-
-	/* Just loop through cache size and invalidate, no need to add
-	   CACHE_BASE address */
-
-	for(i=0;i<XPAR_MICROBLAZE_0_CACHE_BYTE_SIZE;i+=ICACHE_LINE_SIZE)
-		__invalidate_icache(i);
-	local_irq_restore(flags);
-#else
-	do { } while(0);
-#endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
-}
-
-extern inline void __flush_icache_range(unsigned int start, unsigned int end)
-{
-#if XPAR_MICROBLAZE_0_USE_ICACHE==1
-	unsigned int i;
-	unsigned align = ~(ICACHE_LINE_SIZE - 1);
-	unsigned long flags;
-
-	local_irq_save(flags);
-	/* No need to cover entire cache range, just cover cache footprint */
-	end=min(start+XPAR_MICROBLAZE_0_CACHE_BYTE_SIZE, end);
-
-	/* Make sure start and end addresses are cache line aligned */
-	start &= align;
-	end = ((end & align) + ICACHE_LINE_SIZE);
-
-	__disable_icache();
-
-	for(i=start;i<end;i+=ICACHE_LINE_SIZE)
-		__invalidate_icache(i);
-	local_irq_restore(flags);
-#else
-	do { } while(0);
-#endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
-}
 
 #if XPAR_MICROBLAZE_0_DCACHE_USE_FSL == 1
 #define flush_cache_all()			__flush_icache_all()
@@ -157,13 +84,5 @@ extern inline void __flush_icache_range(unsigned int start, unsigned int end)
 #define copy_from_user_page(vma, page, vaddr, dst, src, len)	\
 	memcpy((dst), (src), (len))
 
-
-extern inline void __flush_cache_all(void)
-{
-__flush_icache_all();
-__flush_dcache_all();
-__enable_icache();
-__enable_dcache();
-}
 
 #endif /* __MICROBLAZE_CACHEFLUSH_H__ */

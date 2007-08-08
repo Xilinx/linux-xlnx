@@ -21,7 +21,7 @@ ENTRY(sys_call_table)
 	.long sys_lseek
 	.long sys_getpid		/* 20 */
 	.long sys_mount
-	.long sys_ni_syscall		/* oldumount */
+	.long sys_oldumount
 	.long sys_setuid16
 	.long sys_getuid16
 	.long sys_stime			/* 25 */
@@ -112,7 +112,7 @@ ENTRY(sys_call_table)
 	.long sys_ni_syscall		/* 110 */ /* iopl */
 	.long sys_vhangup
 	.long sys_ni_syscall		/* old "idle" system call */
-	.long sys_memory_ok		/* old sys_vm86old */
+	.long sys_ni_syscall		/* old sys_vm86old */
 	.long sys_wait4
 	.long sys_swapoff		/* 115 */
 	.long sys_sysinfo

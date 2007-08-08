@@ -15,11 +15,18 @@
 #include <asm/asm-offsets.h>
 #include <asm/registers.h>
 #include <asm/unistd.h>
-#include <asm/exceptions.h>
+#include <asm/percpu.h>
+#include <asm/signal.h>
+
+#define PER_CPU(var) per_cpu__##var
 
 #if XPAR_MICROBLAZE_0_USE_MSR_INSTR
 	.macro	disable_irq
 	msrclr r0, MSR_IE
+	.endm
+
+	.macro	enable_irq
+	msrset r0, MSR_IE
 	.endm
 
 	.macro	clear_bip
@@ -32,6 +39,12 @@
 	mts rmsr, r11
 	.endm
 
+	.macro	enable_irq
+	mfs r11, rmsr
+	ori r11, r11, MSR_IE
+	mts rmsr, r11
+	.endm
+
 	.macro	clear_bip
 	mfs r11, rmsr
 	andi r11, r11, ~MSR_BIP
@@ -39,27 +52,21 @@
 	.endm
 #endif
 
-/* Xilinx has been reserved interrupt vector area from 0x0 to
- * 0x4f. we'll use 0x60 to store temporary variable, 0x64 to store the
- * current, 0x68 to store kernel/user mode, 0x6c to store original
- * stack pointer */
-
 ENTRY(_interrupt)
-	swi	r1, r0, 0x6c		/* save the current sp */
-	swi	r11, r0, 0x60		/* temporarily save r11 */
-	lwi	r11, r0, 0x68		/* load mode indicator */
-	beqid	r11, switch_to_kernel_stack
+	swi	r1, r0, PER_CPU(ENTRY_SP)	/* save the current sp */
+	swi	r11, r0, PER_CPU(R11_SAVE) 	/* temporarily save r11 */
+	lwi	r11, r0, PER_CPU(KM)		/* load mode indicator */
+	beqid	r11, 1f
 	nop
-kernel_mode:
-	brid	save_context		/* jump over */
-	addik	r1, r1, (-PT_SIZE)
-switch_to_kernel_stack:
-	lwi	r1, r0, 0x64		/* get the saved current */
-	lwi	r1, r1, TS_THREAD_INFO	/* get the thread info */
-	addik	r1, r1, THREAD_SIZE - PT_SIZE	/* calcurate kernel stack pointer */
-save_context:
-	swi	r11, r1, PT_MODE	/* store the mode */
-	lwi	r11, r0, 0x60		/* reload r11 */
+	brid	2f				/* jump over */
+	addik	r1, r1, (-PT_SIZE)		/* room for pt_regs (delay slot) */
+1:						/* switch to kernel stack */
+	lwi	r1, r0, PER_CPU(CURRENT_SAVE)	/* get the saved current */
+	lwi	r1, r1, TS_THREAD_INFO		/* get the thread info */
+	addik	r1, r1, THREAD_SIZE - PT_SIZE	/* calculate kernel stack pointer */
+2:
+	swi	r11, r1, PT_MODE		/* store the mode */
+	lwi	r11, r0, PER_CPU(R11_SAVE)	/* reload r11 */
 	swi	r2, r1, PT_R2
 	swi	r3, r1, PT_R3
 	swi	r4, r1, PT_R4
@@ -101,13 +108,13 @@ save_context:
 	mfs	r11, rfsr
 	swi	r11, r1, PT_FSR
 	/* reload original stack pointer and save it */
-	lwi	r11, r0, 0x6c
-	swi	r11, r1, PT_SP
+	lwi	r11, r0, PER_CPU(ENTRY_SP)
+	swi	r11, r1, PT_R1
 	/* update mode indicator we are in kernel mode */
 	addik	r11, r0, 1
-	swi	r11, r0, 0x68	
+	swi	r11, r0, PER_CPU(KM)
 	/* restore r31 */
-	lwi	r31, r0, 0x64
+	lwi	r31, r0, PER_CPU(CURRENT_SAVE)
 	/* prepare the link register, the argument and jump */
 	la	r15, r0, ret_from_intr - 8
 	addk	r6, r0, r15
@@ -115,11 +122,6 @@ save_context:
 	add	r5, r0, r1
 
 ret_from_intr:
-	mfs	r11, rmsr
-	andi	r11, r11, MSR_EIP
-	bneid	r11, no_intr_reshed     /* Do not allow context switching when handling an exception */
-
-
 	lwi	r11, r1, PT_MODE
 	bneid	r11, 3f		
 
@@ -143,20 +145,18 @@ no_intr_reshed:
 	/* save mode indicator */
 	lwi	r11, r1, PT_MODE
 3:	
-	swi	r11, r0, 0x68
+	swi	r11, r0, PER_CPU(KM)
 
 	/* save r31 */
-	swi	r31, r0, 0x64
+	swi	r31, r0, PER_CPU(CURRENT_SAVE)
 restore_context:
-	/* sepcial purpose registers */
+	/* special purpose registers */
 	lwi	r11, r1, PT_FSR
 	mts	rfsr, r11
-#ifdef these_registers_are_read_only
 	lwi	r11, r1, PT_ESR
 	mts	resr, r11
 	lwi	r11, r1, PT_EAR
 	mts	rear, r11
-#endif
 	lwi	r11, r1, PT_MSR
 	mts	rmsr, r11
 
@@ -174,9 +174,7 @@ restore_context:
 	lwi	r20, r1, PT_R20
 	lwi	r19, r1, PT_R19
 	lwi	r18, r1, PT_R18
-#ifndef MICROBLAZE_EXCEPTIONS_ENABLED
 	lwi	r17, r1, PT_R17
-#endif
 	lwi	r16, r1, PT_R16
 	lwi	r15, r1, PT_R15
 	lwi	r14, r1, PT_PC
@@ -192,7 +190,7 @@ restore_context:
 	lwi	r4, r1, PT_R4
 	lwi	r3, r1, PT_R3
 	lwi	r2, r1, PT_R2
-	lwi	r1, r1, PT_SP
+	lwi	r1, r1, PT_R1
 	rtid	r14, 0
 	nop
 
@@ -200,20 +198,26 @@ ENTRY(_reset)
 	bri	0
 
 ENTRY(_user_exception)
-	swi	r12, r0, 0x70		/* sys num */
-	swi	r1, r0, 0x6c		/* save the current sp */
-	lwi	r1, r0, 0x64		/* get the saved current */
-	lwi	r1, r1, TS_THREAD_INFO	/* get the thread info */
-	addik	r1, r1, THREAD_SIZE - PT_SIZE	/* get the kernel stack */
-	swi	r11, r0, 0x60		/* temporarily save r11 */
-	lwi	r11, r0, 0x68		/* load mode indicator */
-//save_context:
-	swi	r11, r1, PT_MODE	/* store the mode */
-	lwi	r11, r0, 0x60		/* reload r11 */
+	swi	r1, r0, PER_CPU(ENTRY_SP)	/* save the current sp */
+	swi	r11, r0, PER_CPU(R11_SAVE) 	/* temporarily save r11 */
+	lwi	r11, r0, PER_CPU(KM)		/* load mode indicator */
+	beqid	r11, 1f				/* Already in kernel mode? */
+	nop
+	brid	2f				/* jump over */
+	addik	r1, r1, (-PT_SIZE)		/* Room for pt_regs (delay slot) */
+1:						/* Switch to kernel stack */
+	lwi	r1, r0, PER_CPU(CURRENT_SAVE)	/* get the saved current */
+	lwi	r1, r1, TS_THREAD_INFO		/* get the thread info */
+	addik	r1, r1, THREAD_SIZE - PT_SIZE	/* calculate kernel stack pointer */
+	swi	r11, r0, PER_CPU(R11_SAVE)	/* temporarily save r11 */
+	lwi	r11, r0, PER_CPU(KM)		/* load mode indicator */
+2:
+	swi	r11, r1, PT_MODE		/* store the mode */
+	lwi	r11, r0, PER_CPU(R11_SAVE)	/* reload r11 */
 	/* save them on stack */
 	swi	r2, r1, PT_R2
-	swi	r3, r1, PT_R3		/* r3: _always_ in clogger list; see unistd.h */
-	swi	r4, r1, PT_R4		/* r4: _always_ in clogger list; see unistd.h */
+	swi	r3, r1, PT_R3		/* r3: _always_ in clobber list; see unistd.h */
+	swi	r4, r1, PT_R4		/* r4: _always_ in clobber list; see unistd.h */
 	swi	r5, r1, PT_R5
 	swi	r6, r1, PT_R6
 	swi	r7, r1, PT_R7
@@ -221,9 +225,9 @@ ENTRY(_user_exception)
 	swi	r9, r1, PT_R9
 	swi	r10, r1, PT_R10
 	swi	r11, r1, PT_R11
-	swi	r12, r1, PT_R12		/* r12: _always_ in clogger list; see unistd.h */
+	swi	r12, r1, PT_R12		/* r12: _always_ in clobber list; see unistd.h */
 	swi	r13, r1, PT_R13
-	swi	r14, r1, PT_R14		/* r14: _always_ in clogger list; see unistd.h */
+	swi	r14, r1, PT_R14		/* r14: _always_ in clobber list; see unistd.h */
 	addik	r14, r14, 0x4		/* but we want to return to the next inst. */
 	swi	r14, r1, PT_PC		/* increment by 4 and store in pc */
 	swi	r15, r1, PT_R15
@@ -259,13 +263,15 @@ ENTRY(_user_exception)
 	mfs	r11, rfsr
 	swi	r11, r1, PT_FSR
 	/* reload original stack pointer and save it */
-	lwi	r11, r0, 0x6c
-	swi	r11, r1, PT_SP
+	lwi	r11, r0, PER_CPU(ENTRY_SP)
+	swi	r11, r1, PT_R1
 	/* update mode indicator we are in kernel mode */
 	addik	r11, r0, 1
-	swi	r11, r0, 0x68	
+	swi	r11, r0, PER_CPU(KM)
 	/* restore r31 */
-	lwi	r31, r0, 0x64
+	lwi	r31, r0, PER_CPU(CURRENT_SAVE)
+	/* re-enable interrupts now we are in kernel mode */
+	enable_irq
 
 	addi	r11, r12, -NR_syscalls		/* See if the system call number is valid. */
 	bgei	r11, 1f				/* return to user if not valid
@@ -274,13 +280,94 @@ ENTRY(_user_exception)
 	add	r12, r12, r12			/* convert num -> ptr */
 	add	r12, r12, r12
 	lwi	r12, r12, sys_call_table	/* Get function pointer */
-	la	r15, r0, ret_to_user-8		/* set retrun address */
+	la	r15, r0, ret_to_user-8		/* set return address */
 	bra	r12				/* Make the system call. */
 	bri	0				/* won't reach here */
 1:
 	brid	ret_to_user			/* jump to syscall epilogue */
 	addi	r3, r0, -ENOSYS			/* set errno in delay slot  */
 
+
+/* Debug traps are like a system call, but entered via brki r14, 0x60 
+   All we need to do is send the SIGTRAP signal to current, ptrace and do_signal
+   will handle the rest */
+ENTRY(_debug_exception)
+	swi	r1, r0, PER_CPU(ENTRY_SP)	/* save the current sp */
+	lwi	r1, r0, PER_CPU(CURRENT_SAVE)	/* get the saved current */
+	lwi	r1, r1, TS_THREAD_INFO		/* get the thread info */
+	addik	r1, r1, THREAD_SIZE - PT_SIZE	/* get the kernel stack */
+	swi	r11, r0, PER_CPU(R11_SAVE)	/* temporarily save r11 */
+	lwi	r11, r0, PER_CPU(KM)		/* load mode indicator */
+//save_context:
+	swi	r11, r1, PT_MODE	/* store the mode */
+	lwi	r11, r0, PER_CPU(R11_SAVE)	/* reload r11 */
+	/* save them on stack */
+	swi	r2, r1, PT_R2
+	swi	r3, r1, PT_R3		/* r3: _always_ in clobber list; see unistd.h */
+	swi	r4, r1, PT_R4		/* r4: _always_ in clobber list; see unistd.h */
+	swi	r5, r1, PT_R5
+	swi	r6, r1, PT_R6
+	swi	r7, r1, PT_R7
+	swi	r8, r1, PT_R8
+	swi	r9, r1, PT_R9
+	swi	r10, r1, PT_R10
+	swi	r11, r1, PT_R11
+	swi	r12, r1, PT_R12		/* r12: _always_ in clobber list; see unistd.h */
+	swi	r13, r1, PT_R13
+	swi	r14, r1, PT_R14		/* r14: _always_ in clobber list; see unistd.h */
+	swi	r14, r1, PT_PC		/* Will return to interrupted instruction */
+	swi	r15, r1, PT_R15
+	swi	r16, r1, PT_R16
+	swi	r17, r1, PT_R17
+	swi	r18, r1, PT_R18
+	swi	r19, r1, PT_R19
+	swi	r20, r1, PT_R20
+	swi	r21, r1, PT_R21
+	swi	r22, r1, PT_R22
+	swi	r23, r1, PT_R23
+	swi	r24, r1, PT_R24
+	swi	r25, r1, PT_R25
+	swi	r26, r1, PT_R26
+	swi	r27, r1, PT_R27
+	swi	r28, r1, PT_R28
+	swi	r29, r1, PT_R29
+	swi	r30, r1, PT_R30
+	swi	r31, r1, PT_R31
+
+	disable_irq
+	nop					/* make sure IE bit is in effect */
+	clear_bip				/* once IE is in effect it is safe to clear BIP */
+	nop
+
+	/* special purpose registers */
+	mfs	r11, rmsr
+	swi	r11, r1, PT_MSR
+	mfs	r11, rear
+	swi	r11, r1, PT_EAR
+	mfs	r11, resr
+	swi	r11, r1, PT_ESR
+	mfs	r11, rfsr
+	swi	r11, r1, PT_FSR
+	/* reload original stack pointer and save it */
+	lwi	r11, r0, PER_CPU(ENTRY_SP)
+	swi	r11, r1, PT_R1
+	/* update mode indicator we are in kernel mode */
+	addik	r11, r0, 1
+	swi	r11, r0, PER_CPU(KM)
+	/* restore r31 */
+	lwi	r31, r0, PER_CPU(CURRENT_SAVE)
+	/* re-enable interrupts now we are in kernel mode */
+	enable_irq
+
+	addi	r5, r0, SIGTRAP			/* sending the trap signal */
+	add	r6, r0, r31			/* to current */
+	bralid	r15, send_sig			
+	add	r7, r0, r0			/* 3rd param zero */
+
+	/* Restore r3/r4 to work around how ret_to_user works */
+	lwi	r3, r1, PT_R3
+	lwi	r4, r1, PT_R4
+	bri	ret_to_user
 
 ENTRY(_break)
 	bri	0
@@ -330,7 +417,7 @@ ENTRY(_switch_to)
 
 	/* update r31, the current */
 	lwi	r31, r6, TI_TASK
-	swi	r31, r0, 0x64
+	swi	r31, r0, PER_CPU(CURRENT_SAVE)
 
 	/* get new process' cpu context and restore */
 	addik	r11, r6, TI_CPU_CONTEXT
@@ -338,12 +425,10 @@ ENTRY(_switch_to)
 	/* special purpose registers */
 	lwi	r12, r11, CC_FSR
 	mts	rfsr, r12
-#ifdef these_registers_are_read_only
 	lwi	r12, r11, CC_ESR
 	mts	resr, r12
 	lwi	r12, r11, CC_EAR
 	mts	rear, r12
-#endif
 	lwi	r12, r11, CC_MSR
 	mts	rmsr, r12
 	/* non-volatile registers */
@@ -361,9 +446,7 @@ ENTRY(_switch_to)
 	lwi	r19, r11, CC_R19
 	/* dedicated registers */
 	lwi	r18, r11, CC_R18
-#ifndef MICROBLAZE_EXCEPTIONS_ENABLED
 	lwi	r17, r11, CC_R17
-#endif
 	lwi	r16, r11, CC_R16
 	lwi	r15, r11, CC_R15
 	lwi	r14, r11, CC_R14
@@ -404,8 +487,8 @@ work_pending:
 ENTRY(ret_to_user)
 	disable_irq
 
-	swi	r4, r1, PT_R4		/* retrun val */
-	swi	r3, r1, PT_R3		/* retrun val */
+	swi	r4, r1, PT_R4		/* return val */
+	swi	r3, r1, PT_R3		/* return val */
 
 	lwi	r6, r31, TS_THREAD_INFO	/* get thread info */
 	lwi	r19, r6, TI_FLAGS	/* get flags in thread info */
@@ -414,20 +497,18 @@ no_work_pending:
 	disable_irq
 
 	/* save r31 */
-	swi	r31, r0, 0x64
+	swi	r31, r0, PER_CPU(CURRENT_SAVE)
 	/* save mode indicator */
 	lwi	r18, r1, PT_MODE
-	swi	r18, r0, 0x68
+	swi	r18, r0, PER_CPU(KM)
 //restore_context:
 	/* special purpose registers */
 	lwi	r18, r1, PT_FSR
 	mts	rfsr, r18
-#ifdef these_registers_are_read_only
 	lwi	r18, r1, PT_ESR
 	mts	resr, r18
 	lwi	r18, r1, PT_EAR
 	mts	rear, r18
-#endif
 	lwi	r18, r1, PT_MSR
 	mts	rmsr, r18
 
@@ -445,9 +526,7 @@ no_work_pending:
 	lwi	r20, r1, PT_R20
 	lwi	r19, r1, PT_R19
 	lwi	r18, r1, PT_R18
-#ifndef MICROBLAZE_EXCEPTIONS_ENABLED
 	lwi	r17, r1, PT_R17
-#endif
 	lwi	r16, r1, PT_R16
 	lwi	r15, r1, PT_R15
 	lwi	r14, r1, PT_PC
@@ -460,10 +539,10 @@ no_work_pending:
 	lwi	r7, r1, PT_R7
 	lwi	r6, r1, PT_R6
 	lwi	r5, r1, PT_R5
-	lwi	r4, r1, PT_R4		/* retrun val */
-	lwi	r3, r1, PT_R3		/* retrun val */
+	lwi	r4, r1, PT_R4		/* return val */
+	lwi	r3, r1, PT_R3		/* return val */
 	lwi	r2, r1, PT_R2
-	lwi	r1, r1, PT_SP
+	lwi	r1, r1, PT_R1
 
 	rtid	r14, 0
 	nop
@@ -478,7 +557,6 @@ sys_clone_wrapper:
 	addk	r7, r1, r0
 	
 sys_execve_wrapper:
-	swi	r1, r0, 0x70
 	brid	sys_execve
 	addk	r8, r1, r0
 
@@ -506,6 +584,8 @@ sys_rt_sigsuspend_wrapper:
 	brai	_interrupt
 	brai	_break
 	brai	_hw_exception_handler
+	.org 0x60
+	brai	_debug_exception
 
 
 
