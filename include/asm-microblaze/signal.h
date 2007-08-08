@@ -15,11 +15,11 @@
 #ifndef __MICROBLAZE_SIGNAL_H__
 #define __MICROBLAZE_SIGNAL_H__
 
+#ifndef __ASSEMBLY__
 #include <linux/types.h>
 
 /* Avoid too many header ordering problems.  */
 struct siginfo;
-
 
 #ifdef __KERNEL__
 
@@ -44,6 +44,7 @@ typedef unsigned long sigset_t;
 
 #endif /* __KERNEL__ */
 
+#endif /* __ASSEMBLY__ */
 
 #define SIGHUP		 1
 #define SIGINT		 2
@@ -76,7 +77,9 @@ typedef unsigned long sigset_t;
 #define SIGWINCH	28
 #define SIGIO		29
 #define SIGPOLL		SIGIO
-/* #define SIGLOST		29 */
+/*
+#define SIGLOST		29
+*/
 #define SIGPWR		30
 #define SIGSYS		31
 #define	SIGUNUSED	31
@@ -89,7 +92,6 @@ typedef unsigned long sigset_t;
  * SA_FLAGS values:
  *
  * SA_ONSTACK indicates that a registered stack_t will be used.
- * SA_INTERRUPT is a no-op, but left due to historical reasons. Use the
  * SA_RESTART flag to get restarting signals (which were the default long ago)
  * SA_NOCLDSTOP flag to turn off SIGCHLD when children stop.
  * SA_RESETHAND clears the handler when the signal is delivered.
@@ -112,7 +114,7 @@ typedef unsigned long sigset_t;
 
 #define SA_RESTORER	0x04000000
 
-/*
+/* 
  * sigaltstack controls
  */
 #define SS_ONSTACK	1
@@ -121,6 +123,7 @@ typedef unsigned long sigset_t;
 #define MINSIGSTKSZ	2048
 #define SIGSTKSZ	8192
 
+#ifndef __ASSEMBLY__
 #include <asm-generic/signal.h>
 
 #ifdef __KERNEL__
@@ -135,7 +138,7 @@ struct old_sigaction {
 struct sigaction {
 	__sighandler_t sa_handler;
 	unsigned long sa_flags;
-	__sigrestore_t sa_restorer;
+	void (*sa_restorer)(void);
 	sigset_t sa_mask;		/* mask last for extensibility */
 };
 
@@ -164,7 +167,7 @@ struct sigaction {
 
 
 typedef struct sigaltstack {
-	void __user *ss_sp;
+	void *ss_sp;
 	int ss_flags;
 	size_t ss_size;
 } stack_t;
@@ -177,5 +180,7 @@ typedef struct sigaltstack {
 #define ptrace_signal_deliver(regs, cookie) do { } while (0)
 
 #endif /* __KERNEL__ */
+
+#endif /* __ASSEMBLY__ */
 
 #endif /* __MICROBLAZE_SIGNAL_H__ */

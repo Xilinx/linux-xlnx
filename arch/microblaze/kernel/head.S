@@ -32,7 +32,7 @@ ENTRY(_start)
 	/* Call platform dependent initialize function.
 	 * Please see $(ARCH)/mach-$(SUBARCH)/setup.c for
 	 * the function. */
-	la	r5, r0, 0 /* no command line */
+//	la	r5, r0, 0 /* no command line */
 	la	r6, r0, machine_early_init
 	brald	r15, r6
 	nop

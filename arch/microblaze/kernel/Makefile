@@ -9,4 +9,6 @@ obj-y += init_task.o setup.o traps.o process.o time.o ptrace.o irq.o \
 		sys_microblaze.o signal.o platform.o \
 		hw_exception_handler.o exceptions.o
 
+obj-y += cpu/
+
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o

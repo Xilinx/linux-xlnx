@@ -49,7 +49,7 @@ static inline void start_thread(struct pt_regs *regs,
 				unsigned long usp)
 {
 	regs->pc = pc;
-	regs->sp = usp;
+	regs->r1 = usp;
 	regs->kernel_mode = 0;
 }
 

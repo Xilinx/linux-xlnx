@@ -176,12 +176,27 @@ static inline  void *__ioremap(unsigned long address, unsigned long size,
  * The PPC out_be/in_be macros
  */
 
+/* 
+ * Big Endian 
+ */
 #define out_be32(a,v) __raw_writel((v),(a))
 #define out_be16(a,v) __raw_writew((v),(a))
-#define out_8(a,v)  __raw_writeb((v),(a))
 
 #define in_be32(a) __raw_readl(a)
 #define in_be16(a) __raw_readw(a)
+
+/*
+ * Little endian
+ */
+
+#define out_le32(a,v) __raw_writel(__cpu_to_le32(v),(a)); 
+#define out_le16(a,v) __raw_writew(__cpu_to_le16(v),(a))
+
+#define in_le32(a) __le32_to_cpu(__raw_readl(a))
+#define in_le16(a) __le16_to_cpu(__raw_readw(a))
+
+/* Byte ops */
+#define out_8(a,v)  __raw_writeb((v),(a))
 #define in_8(a)  __raw_readb(a)
 
 #endif /* _ASM_IO_H */

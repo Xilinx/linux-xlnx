@@ -12,6 +12,7 @@
 #define _ASM_CHECKSUM_H
 
 #include <linux/in6.h>
+#include <asm/string.h>
 
 /*
  * computes the checksum of a memory block at buff, length len,

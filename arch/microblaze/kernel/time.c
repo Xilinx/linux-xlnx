@@ -18,7 +18,6 @@
 
 extern void system_timer_init(void);
 
-
 void time_init(void)
 {
 	system_timer_init();
@@ -61,11 +60,6 @@ int do_settimeofday(struct timespec *tv)
 
 EXPORT_SYMBOL(do_settimeofday);
 
-unsigned long do_gettimeoffset(void)
-{
-	return 0UL;
-}
-
 /*
  * This version of gettimeofday has near microsecond resolution.
  */
@@ -73,6 +67,7 @@ void do_gettimeofday(struct timeval *tv)
 {
 	unsigned long seq;
 	unsigned long usec, sec;
+	unsigned long max_ntp_tick = tick_usec - tickadj;
 
 	do {
 		seq = read_seqbegin(&xtime_lock);

@@ -50,7 +50,7 @@
 #define SO_ATTACH_FILTER        26
 #define SO_DETACH_FILTER        27
 
-#define SO_PEERNAME		28
+#define SO_PEERNAME             28
 #define SO_TIMESTAMP		29
 #define SCM_TIMESTAMP		SO_TIMESTAMP
 
@@ -62,4 +62,3 @@
 #define SO_TIMESTAMPNS		35
 #define SCM_TIMESTAMPNS		SO_TIMESTAMPNS
 #endif /* __MICROBLAZE_SOCKET_H__ */
-
