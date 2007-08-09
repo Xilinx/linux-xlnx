@@ -128,29 +128,63 @@
 #define XPAR_TEMAC_RX_CSUM(num) { \
 	XPAR_TEMAC_RESOURCES(num), \
 	.dev.platform_data = &(struct xtemac_platform_data) { \
-		.tx_dre = XPAR_TEMAC_0_TX_DRE_TYPE, \
-		.rx_dre = XPAR_TEMAC_0_RX_DRE_TYPE, \
-		.tx_csum = XPAR_TEMAC_0_INCLUDE_TX_CSUM, \
-		.rx_csum = XPAR_TEMAC_0_INCLUDE_RX_CSUM, \
-		.phy_type = XPAR_HARD_TEMAC_0_PHY_TYPE, \
-		.rx_pkt_fifo_depth = XPAR_TEMAC_0_RXFIFO_DEPTH, \
-		.tx_pkt_fifo_depth = XPAR_TEMAC_0_TXFIFO_DEPTH, \
-		.dma_mode = XPAR_TEMAC_0_DMA_TYPE, \
-		.mac_fifo_depth = XPAR_TEMAC_0_MAC_FIFO_DEPTH, \
+		.tx_dre = XPAR_TEMAC_##num##_TX_DRE_TYPE, \
+		.rx_dre = XPAR_TEMAC_##num##_RX_DRE_TYPE, \
+		.tx_csum = XPAR_TEMAC_##num##_INCLUDE_TX_CSUM, \
+		.rx_csum = XPAR_TEMAC_##num##_INCLUDE_RX_CSUM, \
+		.phy_type = XPAR_HARD_TEMAC_##num##_PHY_TYPE, \
+		.rx_pkt_fifo_depth = XPAR_TEMAC_##num##_RXFIFO_DEPTH, \
+		.tx_pkt_fifo_depth = XPAR_TEMAC_##num##_TXFIFO_DEPTH, \
+		.dma_mode = XPAR_TEMAC_##num##_DMA_TYPE, \
+		.mac_fifo_depth = XPAR_TEMAC_##num##_MAC_FIFO_DEPTH, \
 	}, \
 }
 
 #define XPAR_TEMAC_NO_RX_CSUM(num) { \
 	XPAR_TEMAC_RESOURCES(num), \
 	.dev.platform_data = &(struct xtemac_platform_data) { \
-		.dcr_host = XPAR_TEMAC_0_TEMAC_DCR_HOST, \
-		.dre = XPAR_TEMAC_0_INCLUDE_DRE, \
-		.rx_pkt_fifo_depth = XPAR_TEMAC_0_IPIF_RDFIFO_DEPTH, \
-		.tx_pkt_fifo_depth = XPAR_TEMAC_0_IPIF_WRFIFO_DEPTH, \
-		.dma_mode = XPAR_TEMAC_0_DMA_TYPE, \
-		.mac_fifo_depth = XPAR_TEMAC_0_MAC_FIFO_DEPTH \
+		.dcr_host = XPAR_TEMAC_##num##_TEMAC_DCR_HOST, \
+		.dre = XPAR_TEMAC_##num##_INCLUDE_DRE, \
+		.rx_pkt_fifo_depth = XPAR_TEMAC_##num##_IPIF_RDFIFO_DEPTH, \
+		.tx_pkt_fifo_depth = XPAR_TEMAC_##num##_IPIF_WRFIFO_DEPTH, \
+		.dma_mode = XPAR_TEMAC_##num##_DMA_TYPE, \
+		.mac_fifo_depth = XPAR_TEMAC_##num##_MAC_FIFO_DEPTH \
 	}, \
 }
+
+// wgr TODO: Check with John about the address space size!!!
+#define XPAR_LLTEMAC_RESOURCES(num) \
+	.name = "xilinx_lltemac", \
+	.id = XPAR_XLLTEMAC_##num##_DEVICE_ID, \
+	.num_resources = 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_XLLTEMAC_##num##_BASEADDR, \
+			.end = XPAR_XLLTEMAC_##num##_BASEADDR + 0x1000, \
+			.flags = IORESOURCE_MEM \
+		}, \
+		{ \
+			.start = XPAR_INTC_0_LLTEMAC_##num##_VEC_ID, \
+			.end = XPAR_INTC_0_LLTEMAC_##num##_VEC_ID, \
+			.flags = IORESOURCE_IRQ \
+		} \
+	}
+
+#define XPAR_LLTEMAC(num) { \
+	XPAR_LLTEMAC_RESOURCES(num), \
+	.dev.platform_data = &(struct xlltemac_platform_data) { \
+		.tx_csum = XPAR_XLLTEMAC_0_TXCSUM, \
+		.rx_csum = XPAR_XLLTEMAC_0_RXCSUM, \
+		.phy_type = XPAR_XLLTEMAC_0_PHY_TYPE, \
+		.dcr_host = 0xff, \
+		.ll_dev_type = XPAR_XLLTEMAC_0_LLINK_CONNECTED_TYPE, \
+		.ll_dev_baseaddress = XPAR_XLLTEMAC_0_LLINK_CONNECTED_BASEADDR, \
+		.ll_dev_dma_rx_irq = XPAR_XLLTEMAC_0_LLINK_CONNECTED_DMARX_INTR, \
+		.ll_dev_dma_tx_irq = XPAR_XLLTEMAC_0_LLINK_CONNECTED_DMATX_INTR, \
+		.ll_dev_fifo_irq = 0xdeadbeef, \
+	}, \
+}
+
 
 #define XPAR_PS2(num) { \
 	.name = "xilinx_ps2", \
@@ -330,6 +364,20 @@ struct platform_device virtex_platform_devices[] = {
 #else
 	XPAR_TEMAC_NO_RX_CSUM(3),
 #endif
+#endif
+
+	/* LLTEMAC instances */
+#if defined(XPAR_XLLTEMAC_0_BASEADDR)
+	XPAR_LLTEMAC(0),
+#endif
+#if defined(XPAR_XLLTEMAC_1_BASEADDR)
+	XPAR_LLTEMAC(1),
+#endif
+#if defined(XPAR_XLLTEMAC_2_BASEADDR)
+	XPAR_LLTEMAC(2),
+#endif
+#if defined(XPAR_XLLTEMAC_3_BASEADDR)
+	XPAR_LLTEMAC(3),
 #endif
 
 #if defined(XPAR_PS2_0_BASEADDR)
