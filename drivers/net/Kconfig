@@ -1969,6 +1969,7 @@ config XILINX_EMACLITE
 	help
 	  This driver supports the 10/100 OPB EMACLITE.
 
+
 source "drivers/net/fec_8xx/Kconfig"
 source "drivers/net/fs_enet/Kconfig"
 
@@ -2342,6 +2343,13 @@ config ATL1
 
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1.
+
+config XILINX_LLTEMAC
+	tristate "Xilinx 10/100/1000 LLTEMAC support"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	help
+	  This driver supports the 10/100/1000 LLTEMAC.
 
 endif # NETDEV_1000
 

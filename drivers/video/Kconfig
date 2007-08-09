@@ -1602,7 +1602,7 @@ config FB_XILINX
 	  Xilinx ML300 board, and VGA output found on Xilinx ML40x.
 
 config FB_XILINX_ROTATE
-	bool "  Rotate display"
+	bool "Rotate display"
 	depends on FB_XILINX
 
 source "drivers/video/geode/Kconfig"
