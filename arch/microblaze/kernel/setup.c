@@ -49,6 +49,8 @@ void __init setup_arch(char **cmdline_p)
 	strlcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
+        parse_early_param();
+        
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	__flush_icache_all();
 	__enable_icache();
