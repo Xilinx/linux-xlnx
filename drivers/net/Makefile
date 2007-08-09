@@ -224,6 +224,7 @@ obj-$(CONFIG_ENP2611_MSF_NET) += ixp2000/
 
 obj-$(CONFIG_XILINX_EMAC) += xilinx_emac/
 obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite/
+obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
   
 obj-$(CONFIG_NETCONSOLE) += netconsole.o
 
