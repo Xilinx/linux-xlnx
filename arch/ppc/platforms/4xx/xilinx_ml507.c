@@ -98,8 +98,8 @@ ml507_find_end_of_memory(void)
 	//
 	unsigned long size = 256 * 1024 * 1024;
 
-	printk("*** HACK: Assuming %luMB memory size. %s, line %d\n",
-			size, __FILE__, __LINE__ +1);
+	printk("*** HACK: Assuming %lu MB memory size. %s, line %d\n",
+			size / (1024 * 1024), __FILE__, __LINE__ +1);
 	return size;
 	// wgr HACK end
 }
