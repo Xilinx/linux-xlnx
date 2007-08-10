@@ -2344,8 +2344,16 @@ config ATL1
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1.
 
+config XILINX_TEMAC
+	tristate "Xilinx TEMAC 10/100/1000 Ethernet MAC driver"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	help
+	  This driver supports the Xilinx TEMAC found in Virtex 4 FPGAs
+	  when the plb_temac adapter interface is used.
+
 config XILINX_LLTEMAC
-	tristate "Xilinx 10/100/1000 LLTEMAC support"
+	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"
 	depends on XILINX_DRIVERS
 	select XILINX_EDK
 	help
