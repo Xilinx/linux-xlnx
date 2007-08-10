@@ -50,12 +50,16 @@
 
 /************************** Function Prototypes ******************************/
 
-static void InitHw(XLlTemac *InstancePtr);	/* HW reset */
+static void InitHw(XLlTemac * InstancePtr);	/* HW reset */
 
 /************************** Variable Definitions *****************************/
 
-xdbg_stmnt(int indent_on = 0;)
-xdbg_stmnt(u32 _xlltemac_rir_value;)
+xdbg_stmnt(int indent_on = 0;
+
+	)
+	xdbg_stmnt(u32 _xlltemac_rir_value;
+
+	)
 
 /*****************************************************************************/
 /**
@@ -89,8 +93,8 @@ xdbg_stmnt(u32 _xlltemac_rir_value;)
  *
  *
  ******************************************************************************/
-XStatus XLlTemac_CfgInitialize(XLlTemac *InstancePtr, XLlTemac_Config *CfgPtr,
-			     u32 EffectiveAddress)
+     int XLlTemac_CfgInitialize(XLlTemac * InstancePtr,
+				XLlTemac_Config * CfgPtr, u32 EffectiveAddress)
 {
 	/* Verify arguments */
 	XASSERT_NONVOID(InstancePtr != NULL);
@@ -132,7 +136,7 @@ XStatus XLlTemac_CfgInitialize(XLlTemac *InstancePtr, XLlTemac_Config *CfgPtr,
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_Start(XLlTemac *InstancePtr)
+void XLlTemac_Start(XLlTemac * InstancePtr)
 {
 	u32 Reg;
 
@@ -144,7 +148,8 @@ void XLlTemac_Start(XLlTemac *InstancePtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	/* If already started, then there is nothing to do */
 	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
@@ -156,13 +161,13 @@ void XLlTemac_Start(XLlTemac *InstancePtr)
 	if (InstancePtr->Options & XTE_TRANSMITTER_ENABLE_OPTION) {
 		xdbg_printf(XDBG_DEBUG_GENERAL, "enabling transmitter\n");
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_TC_OFFSET);
+					       XTE_TC_OFFSET);
 		if (!(Reg & XTE_TC_TX_MASK)) {
 			xdbg_printf(XDBG_DEBUG_GENERAL,
 				    "transmitter not enabled, enabling now\n");
-			XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-					XTE_TC_OFFSET,
-			                Reg | XTE_TC_TX_MASK);
+			XLlTemac_WriteIndirectReg(InstancePtr->Config.
+						  BaseAddress, XTE_TC_OFFSET,
+						  Reg | XTE_TC_TX_MASK);
 		}
 		xdbg_printf(XDBG_DEBUG_GENERAL, "transmitter enabled\n");
 	}
@@ -171,14 +176,14 @@ void XLlTemac_Start(XLlTemac *InstancePtr)
 	if (InstancePtr->Options & XTE_RECEIVER_ENABLE_OPTION) {
 		xdbg_printf(XDBG_DEBUG_GENERAL, "enabling receiver\n");
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_RCW1_OFFSET);
+					       XTE_RCW1_OFFSET);
 		if (!(Reg & XTE_RCW1_RX_MASK)) {
 			xdbg_printf(XDBG_DEBUG_GENERAL,
 				    "receiver not enabled, enabling now\n");
 
-			XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-					XTE_RCW1_OFFSET,
-					Reg | XTE_RCW1_RX_MASK);
+			XLlTemac_WriteIndirectReg(InstancePtr->Config.
+						  BaseAddress, XTE_RCW1_OFFSET,
+						  Reg | XTE_RCW1_RX_MASK);
 		}
 		xdbg_printf(XDBG_DEBUG_GENERAL, "receiver enabled\n");
 	}
@@ -211,7 +216,7 @@ void XLlTemac_Start(XLlTemac *InstancePtr)
  * routines in this TEMAC driverr.
  * 
  ******************************************************************************/
-void XLlTemac_Stop(XLlTemac *InstancePtr)
+void XLlTemac_Stop(XLlTemac * InstancePtr)
 {
 	u32 Reg;
 
@@ -222,7 +227,8 @@ void XLlTemac_Stop(XLlTemac *InstancePtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	/* If already stopped, then there is nothing to do */
 	if (InstancePtr->IsStarted == 0) {
@@ -230,17 +236,18 @@ void XLlTemac_Stop(XLlTemac *InstancePtr)
 	}
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_Stop\n");
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_Stop: disabling interrupts\n");
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_Stop: disabling interrupts\n");
 	/* Disable interrupts */
 	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET, 0);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_Stop: disabling receiver\n");
 	/* Disable the receiver */
 	Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET);
+				       XTE_RCW1_OFFSET);
 	Reg &= ~XTE_RCW1_RX_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET, Reg);
+				  XTE_RCW1_OFFSET, Reg);
 
 	/* Stopping the receiver in mid-packet causes a dropped packet indication
 	 * from HW. Clear it.
@@ -249,8 +256,8 @@ void XLlTemac_Stop(XLlTemac *InstancePtr)
 	Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress, XTE_IP_OFFSET);
 	if (Reg & XTE_INT_RXRJECT_MASK) {
 		/* set the interrupt status register to clear the interrupt */
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IS_OFFSET,
-				XTE_INT_RXRJECT_MASK);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_IS_OFFSET, XTE_INT_RXRJECT_MASK);
 	}
 
 	/* Mark as stopped */
@@ -290,7 +297,7 @@ void XLlTemac_Stop(XLlTemac *InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
+void XLlTemac_Reset(XLlTemac * InstancePtr, int HardCoreAction)
 {
 	u32 Reg;
 	u32 TimeoutCount = 2;
@@ -302,7 +309,8 @@ void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_Reset\n");
 	/* Stop the device and reset HW */
@@ -312,26 +320,26 @@ void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
 	/* Reset the receiver */
 	xdbg_printf(XDBG_DEBUG_GENERAL, "resetting the receiver\n");
 	Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET);
+				       XTE_RCW1_OFFSET);
 	Reg |= XTE_RCW1_RST_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET, Reg);
-	
+				  XTE_RCW1_OFFSET, Reg);
+
 	/* Reset the transmitter */
 	xdbg_printf(XDBG_DEBUG_GENERAL, "resetting the transmitter\n");
 	Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_TC_OFFSET);
+				       XTE_TC_OFFSET);
 	Reg |= XTE_TC_RST_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_TC_OFFSET, Reg);
+				  XTE_TC_OFFSET, Reg);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "waiting until reset is done\n");
 	/* Poll until the reset is done */
 	while (Reg & (XTE_RCW1_RST_MASK | XTE_TC_RST_MASK)) {
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_RCW1_OFFSET);
+					       XTE_RCW1_OFFSET);
 		Reg |= XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_TC_OFFSET);
+						XTE_TC_OFFSET);
 	}
 
 	/* Reset hard core if required */
@@ -339,12 +347,13 @@ void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
 	if (HardCoreAction == XTE_RESET_HARD) {
 		xdbg_printf(XDBG_DEBUG_GENERAL, "hard reset\n");
 		Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RAF_OFFSET);
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_RAF_OFFSET,
-				Reg | XTE_RAF_HTRST_MASK);
+				       XTE_RAF_OFFSET);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_RAF_OFFSET, Reg | XTE_RAF_HTRST_MASK);
 		while (TimeoutCount &&
-		        (! (XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-		              XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK))) {
+		       (!(XLlTemac_ReadReg
+			  (InstancePtr->Config.BaseAddress,
+			   XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK))) {
 			udelay(XTE_RESET_HARD_DELAY_US);
 			TimeoutCount--;
 		}
@@ -369,7 +378,7 @@ void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-static void InitHw(XLlTemac *InstancePtr)
+static void InitHw(XLlTemac * InstancePtr)
 {
 	u32 Reg;
 
@@ -378,17 +387,19 @@ static void InitHw(XLlTemac *InstancePtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac InitHw\n");
 	/* Disable the receiver */
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac InitHw\n");
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac InitHw: disabling receiver\n");
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac InitHw: disabling receiver\n");
 	Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET);
+				       XTE_RCW1_OFFSET);
 	Reg &= ~XTE_RCW1_RX_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET, Reg);
+				  XTE_RCW1_OFFSET, Reg);
 
 	/*
 	 * Stopping the receiver in mid-packet causes a dropped packet
@@ -401,8 +412,8 @@ static void InitHw(XLlTemac *InstancePtr)
 		 * set the interrupt status register to clear the pending
 		 * interrupt
 		 */
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IS_OFFSET,
-				XTE_INT_RXRJECT_MASK);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_IS_OFFSET, XTE_INT_RXRJECT_MASK);
 	}
 
 	/* Sync default options with HW but leave receiver and transmitter
@@ -410,8 +421,8 @@ static void InitHw(XLlTemac *InstancePtr)
 	 * XTE_TRANSMITTER_ENABLE_OPTION and XTE_RECEIVER_ENABLE_OPTION are set
 	 */
 	XLlTemac_SetOptions(InstancePtr, InstancePtr->Options &
-			  ~(XTE_TRANSMITTER_ENABLE_OPTION |
-			    XTE_RECEIVER_ENABLE_OPTION));
+			    ~(XTE_TRANSMITTER_ENABLE_OPTION |
+			      XTE_RECEIVER_ENABLE_OPTION));
 
 	XLlTemac_ClearOptions(InstancePtr, ~InstancePtr->Options);
 
@@ -441,7 +452,7 @@ static void InitHw(XLlTemac *InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_SetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
+int XLlTemac_SetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
 {
 	u32 MacAddr;
 	u8 *Aptr = (u8 *) AddressPtr;
@@ -454,35 +465,38 @@ XStatus XLlTemac_SetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_NONVOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+					 XTE_RDY_OFFSET) &
+			XTE_RDY_HARD_ACS_RDY_MASK);
 
 	/* Be sure device has been stopped */
 	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
 		return (XST_DEVICE_IS_STARTED);
 	}
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetMacAddress: setting mac address to: 0x%08x%8x%8x%8x%8x%8x\n", Aptr[0],  Aptr[1], Aptr[2], Aptr[3], Aptr[4], Aptr[5]);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_SetMacAddress: setting mac address to: 0x%08x%8x%8x%8x%8x%8x\n",
+		    Aptr[0], Aptr[1], Aptr[2], Aptr[3], Aptr[4], Aptr[5]);
 	/*
- 	 * Set the MAC bits [31:0] in UAW0
- 	 * Having Aptr be unsigned type prevents the following operations from sign extending
+	 * Set the MAC bits [31:0] in UAW0
+	 * Having Aptr be unsigned type prevents the following operations from sign extending
 	 */
 	MacAddr = Aptr[0];
 	MacAddr |= Aptr[1] << 8;
 	MacAddr |= Aptr[2] << 16;
 	MacAddr |= Aptr[3] << 24;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_UAW0_OFFSET, MacAddr);
+				  XTE_UAW0_OFFSET, MacAddr);
 
 	/* There are reserved bits in UAW1 so don't affect them */
 	MacAddr = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_UAW1_OFFSET);
+					   XTE_UAW1_OFFSET);
 	MacAddr &= ~XTE_UAW1_UNICASTADDR_MASK;
 
 	/* Set MAC bits [47:32] in UAW1 */
 	MacAddr |= Aptr[4];
 	MacAddr |= Aptr[5] << 8;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_UAW1_OFFSET, MacAddr);
+				  XTE_UAW1_OFFSET, MacAddr);
 
 	return (XST_SUCCESS);
 }
@@ -507,7 +521,7 @@ XStatus XLlTemac_SetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
+void XLlTemac_GetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
 {
 	u32 MacAddr;
 	u8 *Aptr = (u8 *) AddressPtr;
@@ -519,11 +533,12 @@ void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	/* Read MAC bits [31:0] in UAW0 */
 	MacAddr = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_UAW0_OFFSET);
+					   XTE_UAW0_OFFSET);
 	Aptr[0] = (u8) MacAddr;
 	Aptr[1] = (u8) (MacAddr >> 8);
 	Aptr[2] = (u8) (MacAddr >> 16);
@@ -531,7 +546,7 @@ void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
 
 	/* Read MAC bits [47:32] in UAW1 */
 	MacAddr = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_UAW1_OFFSET);
+					   XTE_UAW1_OFFSET);
 	Aptr[4] = (u8) MacAddr;
 	Aptr[5] = (u8) (MacAddr >> 8);
 }
@@ -559,7 +574,7 @@ void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
+int XLlTemac_SetOptions(XLlTemac * InstancePtr, u32 Options)
 {
 	u32 Reg;		/* Generic register contents */
 	u32 RegRcw1;		/* Reflects original contents of RCW1 */
@@ -574,7 +589,8 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 	 * should never get into the following case.
 	 */
 	XASSERT_NONVOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+					 XTE_RDY_OFFSET) &
+			XTE_RDY_HARD_ACS_RDY_MASK);
 
 	/* Be sure device has been stopped */
 	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
@@ -589,14 +605,18 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 
 	/* Grab current register contents */
 	RegRcw1 = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET);
+					   XTE_RCW1_OFFSET);
 	RegTc = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_TC_OFFSET);
+					 XTE_TC_OFFSET);
 	RegNewRcw1 = RegRcw1;
 	RegNewTc = RegTc;
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "current control regs: RCW1: 0x%0x; TC: 0x%0x\n", RegRcw1, RegTc);
-	xdbg_printf(XDBG_DEBUG_GENERAL, "Options: 0x%0x; default options: 0x%0x\n", Options, XTE_DEFAULT_OPTIONS);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "current control regs: RCW1: 0x%0x; TC: 0x%0x\n", RegRcw1,
+		    RegTc);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "Options: 0x%0x; default options: 0x%0x\n", Options,
+		    XTE_DEFAULT_OPTIONS);
 
 	/* Turn on jumbo packet support for both Rx and Tx */
 	if (Options & XTE_JUMBO_OPTION) {
@@ -612,13 +632,15 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 
 	/* Turn on FCS stripping on receive packets */
 	if (Options & XTE_FCS_STRIP_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: enabling fcs stripping\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: enabling fcs stripping\n");
 		RegNewRcw1 &= ~XTE_RCW1_FCS_MASK;
 	}
 
 	/* Turn on FCS insertion on transmit packets */
 	if (Options & XTE_FCS_INSERT_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: enabling fcs insertion\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: enabling fcs insertion\n");
 		RegNewTc &= ~XTE_TC_FCS_MASK;
 	}
 
@@ -639,15 +661,17 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 
 	/* Change the TC or RCW1 registers if they need to be modified */
 	if (RegTc != RegNewTc) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: writting tc: 0x%0x\n", RegNewTc);
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: writting tc: 0x%0x\n", RegNewTc);
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_TC_OFFSET, RegNewTc);
+					  XTE_TC_OFFSET, RegNewTc);
 	}
 
 	if (RegRcw1 != RegNewRcw1) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: writting rcw1: 0x%0x\n", RegNewRcw1);
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: writting rcw1: 0x%0x\n", RegNewRcw1);
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_RCW1_OFFSET, RegNewRcw1);
+					  XTE_RCW1_OFFSET, RegNewRcw1);
 	}
 
 	/* Rest of options twiddle bits of other registers. Handle them one at
@@ -656,53 +680,59 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 
 	/* Turn on flow control */
 	if (Options & XTE_FLOW_CONTROL_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: endabling flow control\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: endabling flow control\n");
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_FCC_OFFSET);
+					       XTE_FCC_OFFSET);
 		Reg |= XTE_FCC_FCRX_MASK;
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_FCC_OFFSET, Reg);
+					  XTE_FCC_OFFSET, Reg);
 	}
-	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: rcw1 is now (fcc): 0x%0x\n",
-	XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET));
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "setOptions: rcw1 is now (fcc): 0x%0x\n",
+		    XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
+					     XTE_RCW1_OFFSET));
 
 	/* Turn on promiscuous frame filtering (all frames are received ) */
 	if (Options & XTE_PROMISC_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: endabling promiscuous mode\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "setOptions: endabling promiscuous mode\n");
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_AFM_OFFSET);
+					       XTE_AFM_OFFSET);
 		Reg |= XTE_AFM_PM_MASK;
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_AFM_OFFSET, Reg);
+					  XTE_AFM_OFFSET, Reg);
 	}
-	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: rcw1 is now (afm): 0x%0x\n",
-	XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET));
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "setOptions: rcw1 is now (afm): 0x%0x\n",
+		    XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
+					     XTE_RCW1_OFFSET));
 
 	/* Allow broadcast address filtering */
 	if (Options & XTE_BROADCAST_OPTION) {
 		Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RAF_OFFSET);
+				       XTE_RAF_OFFSET);
 		Reg &= ~XTE_RAF_BCSTREJ_MASK;
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_RAF_OFFSET,
-				Reg);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_RAF_OFFSET, Reg);
 	}
-	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: rcw1 is now (raf): 0x%0x\n",
-	XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET));
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "setOptions: rcw1 is now (raf): 0x%0x\n",
+		    XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
+					     XTE_RCW1_OFFSET));
 
 	/* Allow multicast address filtering */
 	if (Options & XTE_MULTICAST_OPTION) {
 		Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RAF_OFFSET);
+				       XTE_RAF_OFFSET);
 		Reg &= ~XTE_RAF_MCSTREJ_MASK;
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_RAF_OFFSET,
-				Reg);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_RAF_OFFSET, Reg);
 	}
-	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: rcw1 is now (raf2): 0x%0x\n",
-	XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET));
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "setOptions: rcw1 is now (raf2): 0x%0x\n",
+		    XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
+					     XTE_RCW1_OFFSET));
 
 	/* The remaining options not handled here are managed elsewhere in the
 	 * driver. No register modifications are needed at this time. Reflecting the
@@ -712,9 +742,10 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 	/* Set options word to its new value */
 	InstancePtr->Options |= Options;
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: rcw1 is now (end): 0x%0x\n",
-			XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET));
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "setOptions: rcw1 is now (end): 0x%0x\n",
+		    XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
+					     XTE_RCW1_OFFSET));
 	xdbg_printf(XDBG_DEBUG_GENERAL, "setOptions: returning SUCCESS\n");
 	return (XST_SUCCESS);
 }
@@ -742,9 +773,9 @@ XStatus XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
+int XLlTemac_ClearOptions(XLlTemac * InstancePtr, u32 Options)
 {
-	u32 Reg;	/* Generic */
+	u32 Reg;		/* Generic */
 	u32 RegRcw1;		/* Reflects original contents of RCW1 */
 	u32 RegTc;		/* Reflects original contents of TC  */
 	u32 RegNewRcw1;		/* Reflects new contents of RCW1 */
@@ -757,9 +788,11 @@ XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 	 * should never get into the following case.
 	 */
 	XASSERT_NONVOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+					 XTE_RDY_OFFSET) &
+			XTE_RDY_HARD_ACS_RDY_MASK);
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: 0x%08x\n", Options);
+	xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: 0x%08x\n",
+		    Options);
 	/* Be sure device has been stopped */
 	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
 		return (XST_DEVICE_IS_STARTED);
@@ -772,53 +805,60 @@ XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 
 	/* Grab current register contents */
 	RegRcw1 = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_RCW1_OFFSET);
+					   XTE_RCW1_OFFSET);
 	RegTc = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_TC_OFFSET);
+					 XTE_TC_OFFSET);
 	RegNewRcw1 = RegRcw1;
 	RegNewTc = RegTc;
 
 	/* Turn off jumbo packet support for both Rx and Tx */
 	if (Options & XTE_JUMBO_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling jumbo\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling jumbo\n");
 		RegNewTc &= ~XTE_TC_JUM_MASK;
 		RegNewRcw1 &= ~XTE_RCW1_JUM_MASK;
 	}
 
 	/* Turn off VLAN packet support for both Rx and Tx */
 	if (Options & XTE_VLAN_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling vlan\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling vlan\n");
 		RegNewTc &= ~XTE_TC_VLAN_MASK;
 		RegNewRcw1 &= ~XTE_RCW1_VLAN_MASK;
 	}
 
 	/* Turn off FCS stripping on receive packets */
 	if (Options & XTE_FCS_STRIP_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling fcs strip\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling fcs strip\n");
 		RegNewRcw1 |= XTE_RCW1_FCS_MASK;
 	}
 
 	/* Turn off FCS insertion on transmit packets */
 	if (Options & XTE_FCS_INSERT_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling fcs insert\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling fcs insert\n");
 		RegNewTc |= XTE_TC_FCS_MASK;
 	}
 
 	/* Turn off length/type field checking on receive packets */
 	if (Options & XTE_LENTYPE_ERR_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling lentype err\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling lentype err\n");
 		RegNewRcw1 |= XTE_RCW1_LT_DIS_MASK;
 	}
 
 	/* Disable transmitter */
 	if (Options & XTE_TRANSMITTER_ENABLE_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling transmitter\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling transmitter\n");
 		RegNewTc &= ~XTE_TC_TX_MASK;
 	}
 
 	/* Disable receiver */
 	if (Options & XTE_RECEIVER_ENABLE_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling receiver\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling receiver\n");
 		RegNewRcw1 &= ~XTE_RCW1_RX_MASK;
 	}
 
@@ -826,15 +866,19 @@ XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 	 * modified
 	 */
 	if (RegTc != RegNewTc) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: setting TC: 0x%0x\n", RegNewTc);
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: setting TC: 0x%0x\n",
+			    RegNewTc);
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_TC_OFFSET, RegNewTc);
+					  XTE_TC_OFFSET, RegNewTc);
 	}
 
 	if (RegRcw1 != RegNewRcw1) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: setting RCW1: 0x%0x\n", RegNewRcw1);
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: setting RCW1: 0x%0x\n",
+			    RegNewRcw1);
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_RCW1_OFFSET, RegNewRcw1);
+					  XTE_RCW1_OFFSET, RegNewRcw1);
 	}
 
 	/* Rest of options twiddle bits of other registers. Handle them one at
@@ -844,39 +888,41 @@ XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 	/* Turn off flow control */
 	if (Options & XTE_FLOW_CONTROL_OPTION) {
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_FCC_OFFSET);
+					       XTE_FCC_OFFSET);
 		Reg &= ~XTE_FCC_FCRX_MASK;
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_FCC_OFFSET, Reg);
+					  XTE_FCC_OFFSET, Reg);
 	}
 
 	/* Turn off promiscuous frame filtering */
 	if (Options & XTE_PROMISC_OPTION) {
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: disabling promiscuous mode\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: disabling promiscuous mode\n");
 		Reg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_AFM_OFFSET);
+					       XTE_AFM_OFFSET);
 		Reg &= ~XTE_AFM_PM_MASK;
-		xdbg_printf(XDBG_DEBUG_GENERAL, "Xtemac_ClearOptions: setting AFM: 0x%0x\n", Reg);
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "Xtemac_ClearOptions: setting AFM: 0x%0x\n", Reg);
 		XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_AFM_OFFSET, Reg);
+					  XTE_AFM_OFFSET, Reg);
 	}
 
 	/* Disable broadcast address filtering */
 	if (Options & XTE_BROADCAST_OPTION) {
 		Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RAF_OFFSET);
+				       XTE_RAF_OFFSET);
 		Reg |= XTE_RAF_BCSTREJ_MASK;
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_RAF_OFFSET,
-				Reg);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_RAF_OFFSET, Reg);
 	}
 
 	/* Disable multicast address filtering */
 	if (Options & XTE_MULTICAST_OPTION) {
 		Reg = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RAF_OFFSET);
+				       XTE_RAF_OFFSET);
 		Reg |= XTE_RAF_MCSTREJ_MASK;
-		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_RAF_OFFSET,
-				Reg);
+		XLlTemac_WriteReg(InstancePtr->Config.BaseAddress,
+				  XTE_RAF_OFFSET, Reg);
 	}
 
 	/* The remaining options not handled here are managed elsewhere in the
@@ -903,7 +949,7 @@ XStatus XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
  * See xlltemac.h for a description of the available options.
  *
  ******************************************************************************/
-u32 XLlTemac_GetOptions(XLlTemac *InstancePtr)
+u32 XLlTemac_GetOptions(XLlTemac * InstancePtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -929,7 +975,7 @@ u32 XLlTemac_GetOptions(XLlTemac *InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-u16 XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
+u16 XLlTemac_GetOperatingSpeed(XLlTemac * InstancePtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -938,21 +984,26 @@ u16 XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
 	 * should never get into the following case.
 	 */
 	XASSERT_NONVOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+					 XTE_RDY_OFFSET) &
+			XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_GetOperatingSpeed\n");
 	switch (XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-				XTE_EMMC_OFFSET) & XTE_EMMC_LINKSPEED_MASK) {
+					 XTE_EMMC_OFFSET) &
+		XTE_EMMC_LINKSPEED_MASK) {
 	case XTE_EMMC_LINKSPD_1000:
-		xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_GetOperatingSpeed: returning 1000\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "XLlTemac_GetOperatingSpeed: returning 1000\n");
 		return (1000);
 
 	case XTE_EMMC_LINKSPD_100:
-		xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_GetOperatingSpeed: returning 100\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "XLlTemac_GetOperatingSpeed: returning 100\n");
 		return (100);
 
 	case XTE_EMMC_LINKSPD_10:
-		xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_GetOperatingSpeed: returning 10\n");
+		xdbg_printf(XDBG_DEBUG_GENERAL,
+			    "XLlTemac_GetOperatingSpeed: returning 10\n");
 		return (10);
 
 	default:
@@ -979,7 +1030,7 @@ u16 XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
+void XLlTemac_SetOperatingSpeed(XLlTemac * InstancePtr, u16 Speed)
 {
 	u32 EmmcReg;
 
@@ -991,17 +1042,23 @@ void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetOperatingSpeed\n");
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetOperatingSpeed: setting speed to: %d (0x%0x)\n", Speed, Speed);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_SetOperatingSpeed: setting speed to: %d (0x%0x)\n",
+		    Speed, Speed);
 	/* Get the current contents of the EMAC config register and zero out
 	 * speed bits
 	 */
 	EmmcReg = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_EMMC_OFFSET) & ~XTE_EMMC_LINKSPEED_MASK;
+					   XTE_EMMC_OFFSET) &
+		~XTE_EMMC_LINKSPEED_MASK;
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetOperatingSpeed: current speed: 0x%0x\n", EmmcReg);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_SetOperatingSpeed: current speed: 0x%0x\n",
+		    EmmcReg);
 	switch (Speed) {
 	case 10:
 		break;
@@ -1018,10 +1075,11 @@ void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
 		return;
 	}
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetOperatingSpeed: new speed: 0x%0x\n", EmmcReg);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_SetOperatingSpeed: new speed: 0x%0x\n", EmmcReg);
 	/* Set register and return */
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_EMMC_OFFSET, EmmcReg);
+				  XTE_EMMC_OFFSET, EmmcReg);
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_SetOperatingSpeed: done\n");
 }
 
@@ -1057,22 +1115,24 @@ void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor)
+void XLlTemac_PhySetMdioDivisor(XLlTemac * InstancePtr, u8 Divisor)
 {
 	XASSERT_VOID(InstancePtr != NULL);
 	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY)
-	XASSERT_VOID(Divisor <= XTE_MC_CLOCK_DIVIDE_MAX);
+		XASSERT_VOID(Divisor <= XTE_MC_CLOCK_DIVIDE_MAX);
 
 	/*
 	 * If the mutual exclusion is enforced properly in the calling code, we
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_PhySetMdioDivisor\n");
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-			XTE_MC_OFFSET, (u32) Divisor | XTE_MC_MDIOEN_MASK);
+				  XTE_MC_OFFSET,
+				  (u32) Divisor | XTE_MC_MDIOEN_MASK);
 }
 
 /*****************************************************************************/
@@ -1114,8 +1174,8 @@ void XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor)
  * suitable for recovery.
  *
  ******************************************************************************/
-void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
-		       u32 RegisterNum, u16 *PhyDataPtr)
+void XLlTemac_PhyRead(XLlTemac * InstancePtr, u32 PhyAddress,
+		      u32 RegisterNum, u16 *PhyDataPtr)
 {
 	u32 MiiReg;
 	u32 Rdy;
@@ -1128,10 +1188,13 @@ void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_PhyRead: BaseAddress: 0x%08x\n", InstancePtr->Config.BaseAddress);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_PhyRead: BaseAddress: 0x%08x\n",
+		    InstancePtr->Config.BaseAddress);
 	/*
 	 * XLlTemac_PhyRead saves the state of the IE register so that it can
 	 * clear the HardAcsCmplt bit and later restore the state of the IE
@@ -1141,7 +1204,7 @@ void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 	 */
 	Ie = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET);
 	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET,
-			Ie & ~XTE_INT_HARDACSCMPLT_MASK);
+			  Ie & ~XTE_INT_HARDACSCMPLT_MASK);
 
 	/*
 	 * This is a double indirect mechanism. We indirectly write the
@@ -1165,25 +1228,27 @@ void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 	MiiReg = RegisterNum & XTE_MIIM_REGAD_MASK;
 	MiiReg |= ((PhyAddress << XTE_MIIM_PHYAD_SHIFT) & XTE_MIIM_PHYAD_MASK);
 
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_PhyRead: Mii Reg: 0x%0x; Value written: 0x%0x\n",
-		   RegisterNum, MiiReg);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_PhyRead: Mii Reg: 0x%0x; Value written: 0x%0x\n",
+		    RegisterNum, MiiReg);
 	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_LSW_OFFSET,
-		MiiReg);
+			  MiiReg);
 	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_CTL_OFFSET,
-		XTE_MIIMAI_OFFSET);
+			  XTE_MIIMAI_OFFSET);
 
 	/*
 	 * Wait here polling, until the value is ready to be read.
 	 */
 	do {
 		Rdy = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RDY_OFFSET);
+				       XTE_RDY_OFFSET);
 	} while (!(Rdy & XTE_RSE_MIIM_RR_MASK));
 
 	/* Read data */
 	*PhyDataPtr = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_LSW_OFFSET);
-	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_PhyRead: Value retrieved: 0x%0x\n", *PhyDataPtr);
+				       XTE_LSW_OFFSET);
+	xdbg_printf(XDBG_DEBUG_GENERAL,
+		    "XLlTemac_PhyRead: Value retrieved: 0x%0x\n", *PhyDataPtr);
 
 	/*
 	 * Clear MII status bits. The TIS register in the hard TEMAC doesn't
@@ -1191,10 +1256,10 @@ void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 	 * register, clear the MIIM RST bit, and then write it back out.
 	 */
 	Tis = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_TIS_OFFSET);
+				       XTE_TIS_OFFSET);
 	Tis &= ~XTE_RSE_MIIM_RR_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_TIS_OFFSET, Tis);
+				  XTE_TIS_OFFSET, Tis);
 
 	/*
 	 * restore the state of the IE reg
@@ -1240,8 +1305,8 @@ void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
  * suitable for recovery.
  *
  ******************************************************************************/
-void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
-			u32 RegisterNum, u16 PhyData)
+void XLlTemac_PhyWrite(XLlTemac * InstancePtr, u32 PhyAddress,
+		       u32 RegisterNum, u16 PhyData)
 {
 	u32 MiiReg;
 	u32 Rdy;
@@ -1254,7 +1319,8 @@ void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 	 * should never get into the following case.
 	 */
 	XASSERT_VOID(XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-			XTE_RDY_OFFSET) & XTE_RDY_HARD_ACS_RDY_MASK);
+				      XTE_RDY_OFFSET) &
+		     XTE_RDY_HARD_ACS_RDY_MASK);
 
 	xdbg_printf(XDBG_DEBUG_GENERAL, "XLlTemac_PhyWrite\n");
 	/*
@@ -1266,7 +1332,7 @@ void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 	 */
 	Ie = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET);
 	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET,
-			Ie & ~XTE_INT_HARDACSCMPLT_MASK);
+			  Ie & ~XTE_INT_HARDACSCMPLT_MASK);
 
 	/*
 	 * This is a double indirect mechanism. We indirectly write the
@@ -1274,20 +1340,20 @@ void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 	 * REGAD so the value in MIIMWD will get written to the PHY.
 	 */
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_MIIMWD_OFFSET, PhyData);
+				  XTE_MIIMWD_OFFSET, PhyData);
 
 	MiiReg = RegisterNum & XTE_MIIM_REGAD_MASK;
 	MiiReg |= ((PhyAddress << XTE_MIIM_PHYAD_SHIFT) & XTE_MIIM_PHYAD_MASK);
 
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_MIIMAI_OFFSET, MiiReg);
+				  XTE_MIIMAI_OFFSET, MiiReg);
 
 	/*
 	 * Wait here polling, until the value is ready to be read.
 	 */
 	do {
 		Rdy = XLlTemac_ReadReg(InstancePtr->Config.BaseAddress,
-				XTE_RDY_OFFSET);
+				       XTE_RDY_OFFSET);
 	} while (!(Rdy & XTE_RSE_MIIM_WR_MASK));
 
 	/*
@@ -1296,13 +1362,13 @@ void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 	 * register, clear the MIIM WST bit, and then write it back out.
 	 */
 	Tis = XLlTemac_ReadIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_TIS_OFFSET);
+				       XTE_TIS_OFFSET);
 	Tis &= XTE_RSE_MIIM_WR_MASK;
 	XLlTemac_WriteIndirectReg(InstancePtr->Config.BaseAddress,
-		XTE_TIS_OFFSET, Tis);
+				  XTE_TIS_OFFSET, Tis);
 
 	/*
 	 * restore the state of the IE reg
 	 */
-        XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET, Ie);
+	XLlTemac_WriteReg(InstancePtr->Config.BaseAddress, XTE_IE_OFFSET, Ie);
 }

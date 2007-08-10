@@ -164,9 +164,9 @@ struct net_local {
 	XLlDma Dma;
 	XLlTemac Emac;
 
-	unsigned int fifo_irq;  /* fifo irq */
-	unsigned int dma_irq_s; /* send irq */
-	unsigned int dma_irq_r; /* recv irq */
+	unsigned int fifo_irq;	/* fifo irq */
+	unsigned int dma_irq_s;	/* send irq */
+	unsigned int dma_irq_r;	/* recv irq */
 	unsigned int max_frame_size;
 
 	int cur_speed;
@@ -219,7 +219,7 @@ static char xenet_ethtool_gstrings_stats[][ETH_GSTRING_LEN] = {
 #define XENET_STATS_LEN sizeof(xenet_ethtool_gstrings_stats) / ETH_GSTRING_LEN
 
 /* Helper function to determine if a given XLlTemac error warrants a reset. */
-extern inline int status_requires_reset(XStatus s)
+extern inline int status_requires_reset(int s)
 {
 	return (s == XST_FIFO_ERROR ||
 		s == XST_PFIFO_DEADLOCK ||
@@ -257,7 +257,7 @@ static spinlock_t sentQueueSpin = SPIN_LOCK_UNLOCKED;
  * interface is accessed mutually exclusive for dual channel temac support.
  */
 
-static inline void _XLlTemac_Start(XLlTemac *InstancePtr)
+static inline void _XLlTemac_Start(XLlTemac * InstancePtr)
 {
 	unsigned long flags;
 
@@ -266,7 +266,7 @@ static inline void _XLlTemac_Start(XLlTemac *InstancePtr)
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline void _XLlTemac_Stop(XLlTemac *InstancePtr)
+static inline void _XLlTemac_Stop(XLlTemac * InstancePtr)
 {
 	unsigned long flags;
 
@@ -275,7 +275,7 @@ static inline void _XLlTemac_Stop(XLlTemac *InstancePtr)
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline void _XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
+static inline void _XLlTemac_Reset(XLlTemac * InstancePtr, int HardCoreAction)
 {
 	unsigned long flags;
 
@@ -284,21 +284,21 @@ static inline void _XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline XStatus _XLlTemac_SetMacAddress(XLlTemac *InstancePtr,
-                                              void *AddressPtr)
+static inline int _XLlTemac_SetMacAddress(XLlTemac * InstancePtr,
+					  void *AddressPtr)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
 	status = XLlTemac_SetMacAddress(InstancePtr, AddressPtr);
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 
-	return	status;
+	return status;
 }
 
-static inline void _XLlTemac_GetMacAddress(XLlTemac *InstancePtr,
-                                              void *AddressPtr)
+static inline void _XLlTemac_GetMacAddress(XLlTemac * InstancePtr,
+					   void *AddressPtr)
 {
 	unsigned long flags;
 
@@ -307,9 +307,9 @@ static inline void _XLlTemac_GetMacAddress(XLlTemac *InstancePtr,
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline XStatus _XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
+static inline int _XLlTemac_SetOptions(XLlTemac * InstancePtr, u32 Options)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
@@ -319,9 +319,9 @@ static inline XStatus _XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 	return status;
 }
 
-static inline XStatus _XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
+static inline int _XLlTemac_ClearOptions(XLlTemac * InstancePtr, u32 Options)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
@@ -331,7 +331,7 @@ static inline XStatus _XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 	return status;
 }
 
-static inline u16 _XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
+static inline u16 _XLlTemac_GetOperatingSpeed(XLlTemac * InstancePtr)
 {
 	u16 speed;
 	unsigned long flags;
@@ -343,7 +343,8 @@ static inline u16 _XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
 	return speed;
 }
 
-static inline void _XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
+static inline void _XLlTemac_SetOperatingSpeed(XLlTemac * InstancePtr,
+					       u16 Speed)
 {
 	unsigned long flags;
 
@@ -352,7 +353,8 @@ static inline void _XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline void _XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor)
+static inline void _XLlTemac_PhySetMdioDivisor(XLlTemac * InstancePtr,
+					       u8 Divisor)
 {
 	unsigned long flags;
 
@@ -361,8 +363,8 @@ static inline void _XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline void _XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
-                                     u32 RegisterNum, u16 *PhyDataPtr)
+static inline void _XLlTemac_PhyRead(XLlTemac * InstancePtr, u32 PhyAddress,
+				     u32 RegisterNum, u16 *PhyDataPtr)
 {
 	unsigned long flags;
 
@@ -371,8 +373,8 @@ static inline void _XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline void _XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
-                                     u32 RegisterNum, u16 PhyData)
+static inline void _XLlTemac_PhyWrite(XLlTemac * InstancePtr, u32 PhyAddress,
+				      u32 RegisterNum, u16 PhyData)
 {
 	unsigned long flags;
 
@@ -382,9 +384,9 @@ static inline void _XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 }
 
 
-static inline XStatus _XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry)
+static inline int _XLlTemac_MulticastClear(XLlTemac * InstancePtr, int Entry)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
@@ -394,9 +396,10 @@ static inline XStatus _XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry)
 	return status;
 }
 
-static inline XStatus _XLlTemac_SetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr)
+static inline int _XLlTemac_SetMacPauseAddress(XLlTemac * InstancePtr,
+					       void *AddressPtr)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
@@ -406,7 +409,8 @@ static inline XStatus _XLlTemac_SetMacPauseAddress(XLlTemac *InstancePtr, void *
 	return status;
 }
 
-static inline void _XLlTemac_GetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr)
+static inline void _XLlTemac_GetMacPauseAddress(XLlTemac * InstancePtr,
+						void *AddressPtr)
 {
 	unsigned long flags;
 
@@ -415,9 +419,10 @@ static inline void _XLlTemac_GetMacPauseAddress(XLlTemac *InstancePtr, void *Add
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 
-static inline XStatus _XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr)
+static inline int _XLlTemac_GetSgmiiStatus(XLlTemac * InstancePtr,
+					   u16 *SpeedPtr)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
@@ -427,16 +432,17 @@ static inline XStatus _XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *Speed
 	return status;
 }
 
-static inline XStatus _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
-                                               u16 *SpeedPtr,
-                                               int *IsFullDuplexPtr,
-                                               int *IsLinkUpPtr)
+static inline int _XLlTemac_GetRgmiiStatus(XLlTemac * InstancePtr,
+					   u16 *SpeedPtr,
+					   int *IsFullDuplexPtr,
+					   int *IsLinkUpPtr)
 {
-	XStatus status;
+	int status;
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_spinlock, flags);
-	status = XLlTemac_GetRgmiiStatus(InstancePtr, SpeedPtr, IsFullDuplexPtr, IsLinkUpPtr);
+	status = XLlTemac_GetRgmiiStatus(InstancePtr, SpeedPtr, IsFullDuplexPtr,
+					 IsLinkUpPtr);
 	spin_unlock_irqrestore(&XTE_spinlock, flags);
 
 	return status;
@@ -450,45 +456,45 @@ static inline XStatus _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 
 #ifdef ML410_PHY_MARVELL_88E1111_RGMII
 
-#  define C_RCW0_RD          0x00000200UL /* hard TEMAC Read Config Wd 0 read */
-#  define C_RCW0_WR          0x00008200UL /* hard TEMAC Read Config Wd 0 write */
-#  define C_RCW1_RD          0x00000240UL /* hard TEMAC Read Config Wd 1 read */
-#  define C_RCW1_WR          0x00008240UL /* hard TEMAC Read Config Wd 1 write */
-#  define C_TC_RD            0x00000280UL /* hard TEMAC Transmit Config read */
-#  define C_TC_WR            0x00008280UL /* hard TEMAC Transmit Config write */
-#  define C_FCC_RD           0x000002C0UL /* hard TEMAC Flow Control Config read */
-#  define C_FCC_WR           0x000082C0UL /* hard TEMAC Flow Control Config write */
-#  define C_EMMC_RD          0x00000300UL /* hard TEMAC Ethernet MAC Mode Config read */
-#  define C_EMMC_WR          0x00008300UL /* hard TEMAC Ethernet MAC Mode Config write */
-#  define C_PHYC_RD          0x00000320UL /* hard TEMAC RGMII/SGMII Config read */
-#  define C_MC_RD            0x00000340UL /* hard TEMAC Management Config read */
-#  define C_MC_WR            0x00008340UL /* hard TEMAC Management Config write */
-#  define C_UAW0_RD          0x00000380UL /* hard TEMAC Unicast Addr Word 0 read */
-#  define C_UAW0_WR          0x00008380UL /* hard TEMAC Unicast Addr Word 0 write */
-#  define C_UAW1_RD          0x00000384UL /* hard TEMAC Unicast Addr Word 1 read */
-#  define C_UAW1_WR          0x00008384UL /* hard TEMAC Unicast Addr Word 1 write */
-#  define C_MAW0_RD          0x00000388UL /* hard TEMAC Multicast Addr Word 0 read */
-#  define C_MAW0_WR          0x00008388UL /* hard TEMAC Multicast Addr Word 0 write */
-#  define C_MAW1_RD          0x0000038CUL /* hard TEMAC Multicast Addr Word 1 read */
-#  define C_MAW1_WR          0x0000838CUL /* hard TEMAC Multicast Addr Word 1 write */
-#  define C_AFM_RD           0x00000390UL /* hard TEMAC Address Filter Mode read */
-#  define C_AFM_WR           0x00008390UL /* hard TEMAC Address Filter Mode write */
-#  define C_IS_RD            0x000003A0UL /* hard TEMAC Interrupt Status read */
-#  define C_IS_WR            0x000083A0UL /* hard TEMAC Interrupt Status write */
-#  define C_IE_RD            0x000003A0UL /* hard TEMAC Interrupt Enable read */
-#  define C_IE_WR            0x000083A0UL /* hard TEMAC Interrupt Enable write */
-#  define C_MIIMWD_RD        0x000003B0UL /* hard TEMAC Management Write Data Reg read */
-#  define C_MIIMWD_WR        0x000083B0UL /* hard TEMAC Management Write Data Reg write */
-#  define C_MIIMAI_RD        0x000003B4UL /* hard TEMAC Management Access Initiate Reg read */
-#  define C_MIIMAI_WR        0x000083B4UL /* hard TEMAC Management Access Initiate Reg write */
+#  define C_RCW0_RD          0x00000200UL	/* hard TEMAC Read Config Wd 0 read */
+#  define C_RCW0_WR          0x00008200UL	/* hard TEMAC Read Config Wd 0 write */
+#  define C_RCW1_RD          0x00000240UL	/* hard TEMAC Read Config Wd 1 read */
+#  define C_RCW1_WR          0x00008240UL	/* hard TEMAC Read Config Wd 1 write */
+#  define C_TC_RD            0x00000280UL	/* hard TEMAC Transmit Config read */
+#  define C_TC_WR            0x00008280UL	/* hard TEMAC Transmit Config write */
+#  define C_FCC_RD           0x000002C0UL	/* hard TEMAC Flow Control Config read */
+#  define C_FCC_WR           0x000082C0UL	/* hard TEMAC Flow Control Config write */
+#  define C_EMMC_RD          0x00000300UL	/* hard TEMAC Ethernet MAC Mode Config read */
+#  define C_EMMC_WR          0x00008300UL	/* hard TEMAC Ethernet MAC Mode Config write */
+#  define C_PHYC_RD          0x00000320UL	/* hard TEMAC RGMII/SGMII Config read */
+#  define C_MC_RD            0x00000340UL	/* hard TEMAC Management Config read */
+#  define C_MC_WR            0x00008340UL	/* hard TEMAC Management Config write */
+#  define C_UAW0_RD          0x00000380UL	/* hard TEMAC Unicast Addr Word 0 read */
+#  define C_UAW0_WR          0x00008380UL	/* hard TEMAC Unicast Addr Word 0 write */
+#  define C_UAW1_RD          0x00000384UL	/* hard TEMAC Unicast Addr Word 1 read */
+#  define C_UAW1_WR          0x00008384UL	/* hard TEMAC Unicast Addr Word 1 write */
+#  define C_MAW0_RD          0x00000388UL	/* hard TEMAC Multicast Addr Word 0 read */
+#  define C_MAW0_WR          0x00008388UL	/* hard TEMAC Multicast Addr Word 0 write */
+#  define C_MAW1_RD          0x0000038CUL	/* hard TEMAC Multicast Addr Word 1 read */
+#  define C_MAW1_WR          0x0000838CUL	/* hard TEMAC Multicast Addr Word 1 write */
+#  define C_AFM_RD           0x00000390UL	/* hard TEMAC Address Filter Mode read */
+#  define C_AFM_WR           0x00008390UL	/* hard TEMAC Address Filter Mode write */
+#  define C_IS_RD            0x000003A0UL	/* hard TEMAC Interrupt Status read */
+#  define C_IS_WR            0x000083A0UL	/* hard TEMAC Interrupt Status write */
+#  define C_IE_RD            0x000003A0UL	/* hard TEMAC Interrupt Enable read */
+#  define C_IE_WR            0x000083A0UL	/* hard TEMAC Interrupt Enable write */
+#  define C_MIIMWD_RD        0x000003B0UL	/* hard TEMAC Management Write Data Reg read */
+#  define C_MIIMWD_WR        0x000083B0UL	/* hard TEMAC Management Write Data Reg write */
+#  define C_MIIMAI_RD        0x000003B4UL	/* hard TEMAC Management Access Initiate Reg read */
+#  define C_MIIMAI_WR        0x000083B4UL	/* hard TEMAC Management Access Initiate Reg write */
 
-#  define C_MAW_RD_EN        0x00800000UL /* Multicast Addr Table Read  Enable for MAW1 */
-#  define C_MAW_WR_EN        0x00000000UL /* Multicast Addr Table Write Enable for MAW1 */
+#  define C_MAW_RD_EN        0x00800000UL	/* Multicast Addr Table Read  Enable for MAW1 */
+#  define C_MAW_WR_EN        0x00000000UL	/* Multicast Addr Table Write Enable for MAW1 */
 
-#  define C_MAW_ADDR0        0x00000000UL /* Multicast Addr Table entry 0 for MAW1 */
-#  define C_MAW_ADDR1        0x00010000UL /* Multicast Addr Table entry 1 for MAW1 */
-#  define C_MAW_ADDR2        0x00020000UL /* Multicast Addr Table entry 2 for MAW1 */
-#  define C_MAW_ADDR3        0x00030000UL /* Multicast Addr Table entry 3 for MAW1 */
+#  define C_MAW_ADDR0        0x00000000UL	/* Multicast Addr Table entry 0 for MAW1 */
+#  define C_MAW_ADDR1        0x00010000UL	/* Multicast Addr Table entry 1 for MAW1 */
+#  define C_MAW_ADDR2        0x00020000UL	/* Multicast Addr Table entry 2 for MAW1 */
+#  define C_MAW_ADDR3        0x00030000UL	/* Multicast Addr Table entry 3 for MAW1 */
 
 
 #endif /* #ifdef ML410_PHY_MARVELL_88E1111_RGMII */
@@ -497,22 +503,22 @@ static inline XStatus _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 #define DEBUG_LOG(level, ...) printk(level __VA_ARGS__)
 
 #ifdef PHYSETUP
-static void PhySetup(XLlTemac *Mac, u32 Speed)
+static void PhySetup(XLlTemac * Mac, u32 Speed)
 {
-    u32 MacBaseAddr = Mac->Config.BaseAddress;
-    unsigned long flags;
+	u32 MacBaseAddr = Mac->Config.BaseAddress;
+	unsigned long flags;
 
 #ifdef ML410_PHY_MARVELL_88E1111_RGMII
-    u32 Register;
-    u32 PhyAddr, RegAddr;
+	u32 Register;
+	u32 PhyAddr, RegAddr;
 #endif
 
-    spin_lock_irqsave(&XTE_spinlock, flags);
-    /* Validate the input argument(s) */
-    if ((Speed != 10) && (Speed != 100) && (Speed != 1000))
-    {
-        DEBUG_LOG(DEBUG_ERROR, "PhySetup() received an invalid speed value.\n");
-    }
+	spin_lock_irqsave(&XTE_spinlock, flags);
+	/* Validate the input argument(s) */
+	if ((Speed != 10) && (Speed != 100) && (Speed != 1000)) {
+		DEBUG_LOG(DEBUG_ERROR,
+			  "PhySetup() received an invalid speed value.\n");
+	}
 
 #ifdef ML410_PHY_MARVELL_88E1111_RGMII
 
@@ -521,32 +527,30 @@ static void PhySetup(XLlTemac *Mac, u32 Speed)
      * - ML405 is PhyAddr = 7 by trying to read PHY ID Register (Mdio_Reg = 2)
      *************************************************************************/
 
-    /* PHY address 0 & Register address 2 */
-    PhyAddr = 0;
-    RegAddr = 2;
+	/* PHY address 0 & Register address 2 */
+	PhyAddr = 0;
+	RegAddr = 2;
 
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+			  ((PhyAddr << 5) | RegAddr));
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-    /* Loop until "Ready" signal is set */
-    do
-    {
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-    } while (Register != 0x0001007F);
+	/* Loop until "Ready" signal is set */
+	do {
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+	} while (Register != 0x0001007F);
 
-    /* Decide PHY address from Least significant word data register value */
-    Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-    if (Register == 0x141)
-    {
-        PhyAddr = 0;
-    }
-    else
-    {
-        PhyAddr = 7;
-    }
+	/* Decide PHY address from Least significant word data register value */
+	Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+	if (Register == 0x141) {
+		PhyAddr = 0;
+	}
+	else {
+		PhyAddr = 7;
+	}
 
 #ifdef XTEA_PRINT_BUF_INIT_DATA
-    printf("lltemac: PHY address = %d\n", PhyAddr);
+	printf("lltemac: PHY address = %d\n", PhyAddr);
 #endif
 
     /**************************************************************************
@@ -556,38 +560,37 @@ static void PhySetup(XLlTemac *Mac, u32 Speed)
      * -- add delay to rx_clk but not tx_clk
      *************************************************************************/
 
-    /* Register address 20 */
-    RegAddr = 20;
+	/* Register address 20 */
+	RegAddr = 20;
 
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00000cc3);
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00000cc3);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+			  ((PhyAddr << 5) | RegAddr));
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
 
-    /* Loop until "Ready" signal is set */
-    do
-    {
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-    } while (Register != 0x0001007F);
+	/* Loop until "Ready" signal is set */
+	do {
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+	} while (Register != 0x0001007F);
 
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+			  ((PhyAddr << 5) | RegAddr));
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-    /* Loop until "Ready" signal is set */
-    do
-    {
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-    } while (Register != 0x0001007F);
+	/* Loop until "Ready" signal is set */
+	do {
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+	} while (Register != 0x0001007F);
 
-    Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-    if (Register != 0x00000cc3)
-    {
-        DEBUG_LOG(DEBUG_ERROR,
-                  "PhySetup(): PHY register %d = 0x%x Expected = 0x00000cc3\n",
-                  RegAddr, Register);
-	spin_unlock_irqrestore(&XTE_spinlock, flags);
-        return;
-    }
+	Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+	if (Register != 0x00000cc3) {
+		DEBUG_LOG(DEBUG_ERROR,
+			  "PhySetup(): PHY register %d = 0x%x Expected = 0x00000cc3\n",
+			  RegAddr, Register);
+		spin_unlock_irqrestore(&XTE_spinlock, flags);
+		return;
+	}
 
     /**************************************************************************
      * -- Set RGMII to copper with correct hysterisis and correct mode
@@ -595,193 +598,186 @@ static void PhySetup(XLlTemac *Mac, u32 Speed)
      * -- RGMII /Modified MII to copper mode
      *************************************************************************/
 
-    /* Register address 27 */
-    RegAddr = 27;
+	/* Register address 27 */
+	RegAddr = 27;
 
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x0000848b);
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x0000848b);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+			  ((PhyAddr << 5) | RegAddr));
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
 
-    /* Loop until "Ready" signal is set */
-    do
-    {
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-    } while (Register != 0x0001007F);
+	/* Loop until "Ready" signal is set */
+	do {
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+	} while (Register != 0x0001007F);
 
-    XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-    XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+	XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+			  ((PhyAddr << 5) | RegAddr));
+	XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-    /* Loop until "Ready" signal is set */
-    do
-    {
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-    } while (Register != 0x0001007F);
+	/* Loop until "Ready" signal is set */
+	do {
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+	} while (Register != 0x0001007F);
 
-    Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-    if (Register != 0x0000848b)
-    {
-        DEBUG_LOG(DEBUG_ERROR,
-        	  "PhySetup(): PHY register %d = 0x%x Expected = 0x0000848b\n",
-                  RegAddr, Register);
-	spin_unlock_irqrestore(&XTE_spinlock, flags);
-        return;
-    }
+	Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+	if (Register != 0x0000848b) {
+		DEBUG_LOG(DEBUG_ERROR,
+			  "PhySetup(): PHY register %d = 0x%x Expected = 0x0000848b\n",
+			  RegAddr, Register);
+		spin_unlock_irqrestore(&XTE_spinlock, flags);
+		return;
+	}
 
     /**************************************************************************
      * -- Reset the PHY: Turn off auto neg and force to given speed
      *************************************************************************/
 
-    /* Register address 0 */
-    RegAddr = 0;
+	/* Register address 0 */
+	RegAddr = 0;
 
-    if (Speed == 10)
-    {
-        /* Write to force 10 Mbs full duplex  no autoneg and perform a reset */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00008100);
-        /* Reset required after changing auto neg, speed or duplex */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
+	if (Speed == 10) {
+		/* Write to force 10 Mbs full duplex  no autoneg and perform a reset */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00008100);
+		/* Reset required after changing auto neg, speed or duplex */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-        if (Register != 0x00000100)
-        {
-            DEBUG_LOG(DEBUG_ERROR,
-            	      "PhySetup(): LSW  = 0x%x Expected = 0x00000100\n" ,
-                      Register);
-	    spin_unlock_irqrestore(&XTE_spinlock, flags);
-            return;
-        }
-    }
-    else if (Speed == 100)
-    {
-         /* Force 100 Mbs full duplex. no autoneg and perform a reset */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x0000A100);
-        /* reset required after changing auto neg, speed or duplex */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+		if (Register != 0x00000100) {
+			DEBUG_LOG(DEBUG_ERROR,
+				  "PhySetup(): LSW  = 0x%x Expected = 0x00000100\n",
+				  Register);
+			spin_unlock_irqrestore(&XTE_spinlock, flags);
+			return;
+		}
+	}
+	else if (Speed == 100) {
+		/* Force 100 Mbs full duplex. no autoneg and perform a reset */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x0000A100);
+		/* reset required after changing auto neg, speed or duplex */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-        if (Register != 0x00002100)
-        {
-            DEBUG_LOG(DEBUG_ERROR,
-            	      "PhySetup(): LSW  = 0x%x Expected = 0x00002100\n" ,
-                      Register);
-	    spin_unlock_irqrestore(&XTE_spinlock, flags);
-            return;
-        }
-    }
-    else if (Speed == 1000)
-    {
-         /* Force 1000 Mbs full duplex. no autoneg and perform a reset */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00008140);
-        /* reset required after changing auto neg, speed or duplex */
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+		if (Register != 0x00002100) {
+			DEBUG_LOG(DEBUG_ERROR,
+				  "PhySetup(): LSW  = 0x%x Expected = 0x00002100\n",
+				  Register);
+			spin_unlock_irqrestore(&XTE_spinlock, flags);
+			return;
+		}
+	}
+	else if (Speed == 1000) {
+		/* Force 1000 Mbs full duplex. no autoneg and perform a reset */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, 0x00008140);
+		/* reset required after changing auto neg, speed or duplex */
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMWD_WR);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_WR);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET, ((PhyAddr << 5) | RegAddr));
-        XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
+		XLlTemac_WriteReg(MacBaseAddr, XTE_LSW_OFFSET,
+				  ((PhyAddr << 5) | RegAddr));
+		XLlTemac_WriteReg(MacBaseAddr, XTE_CTL_OFFSET, C_MIIMAI_RD);
 
-        /* Loop until "Ready" signal is set */
-        do
-        {
-            Register = XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
-        } while (Register != 0x0001007F);
+		/* Loop until "Ready" signal is set */
+		do {
+			Register =
+				XLlTemac_ReadReg(MacBaseAddr, XTE_RDY_OFFSET);
+		} while (Register != 0x0001007F);
 
-        Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
-        if (Register != 0x00000140)
-        {
-            DEBUG_LOG(DEBUG_ERROR,
-            	      "PhySetup(): LSW  = 0x%x Expected = 0x00000140\n" ,
-                      Register);
-	    spin_unlock_irqrestore(&XTE_spinlock, flags);
-            return;
-        }
-    }
+		Register = XLlTemac_ReadReg(MacBaseAddr, XTE_LSW_OFFSET);
+		if (Register != 0x00000140) {
+			DEBUG_LOG(DEBUG_ERROR,
+				  "PhySetup(): LSW  = 0x%x Expected = 0x00000140\n",
+				  Register);
+			spin_unlock_irqrestore(&XTE_spinlock, flags);
+			return;
+		}
+	}
 
 #endif /* #ifdef ML410_PHY_MARVELL_88E1111_RGMII */
 
 #ifdef ML405_PHY_MARVELL_88E1111_GMII_100
-    if (Speed == 100)
-    {
-	XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x0000a100);
-        XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B0);
+	if (Speed == 100) {
+		XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x0000a100);
+		XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B0);
 
 #ifdef XPAR_XLLTEMAC_0_DEVICE_ID
-        if (Mac->Config.DeviceId == XPAR_XLLTEMAC_0_DEVICE_ID)
-        {
-            XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x000000E0);
-        }
+		if (Mac->Config.DeviceId == XPAR_XLLTEMAC_0_DEVICE_ID) {
+			XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x000000E0);
+		}
 #endif
 #ifdef XPAR_XLLTEMAC_1_DEVICE_ID
-        if (Mac->Config.DeviceId == XPAR_XLLTEMAC_1_DEVICE_ID)
-        {
-            XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00000000);
-        }
+		if (Mac->Config.DeviceId == XPAR_XLLTEMAC_1_DEVICE_ID) {
+			XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00000000);
+		}
 #endif
-        XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B4);
-    }
-    else if (Speed == 10)
-    {
-	XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00008100);
-        XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B0);
+		XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B4);
+	}
+	else if (Speed == 10) {
+		XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00008100);
+		XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B0);
 
 #ifdef XPAR_XLLTEMAC_0_DEVICE_ID
-        if (Mac->Config.DeviceId == XPAR_XLLTEMAC_0_DEVICE_ID)
-        {
-            XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x000000E0);
-        }
+		if (Mac->Config.DeviceId == XPAR_XLLTEMAC_0_DEVICE_ID) {
+			XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x000000E0);
+		}
 #endif
 #ifdef XPAR_XLLTEMAC_1_DEVICE_ID
-        if (Mac->Config.DeviceId == XPAR_XLLTEMAC_1_DEVICE_ID)
-        {
-            XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00000000);
-        }
+		if (Mac->Config.DeviceId == XPAR_XLLTEMAC_1_DEVICE_ID) {
+			XLlTemac_WriteReg(MacBaseAddr, 0x24, 0x00000000);
+		}
 #endif
-        XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B4);
-    }
+		XLlTemac_WriteReg(MacBaseAddr, 0x28, 0x000083B4);
+	}
 
 #endif /* ML405_PHY_MARVELL_88E1111_GMII_100 */
-    spin_unlock_irqrestore(&XTE_spinlock, flags);
+	spin_unlock_irqrestore(&XTE_spinlock, flags);
 }
 #endif /* PHYSETUP */
 
@@ -846,16 +842,17 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 
 	while (retries--) {
 		/* initiate an autonegotiation of the speed */
-		_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, phy_reg0);
+		_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR,
+				   phy_reg0);
 
 		wait_count = 20;	/* so we don't loop forever */
 		while (wait_count--) {
 			/* wait a bit for the negotiation to complete */
 			mdelay(500);
 			_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR,
-				       &phy_reg1);
+					  &phy_reg1);
 			_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR,
-				       &phy_reg1);
+					  &phy_reg1);
 			if ((phy_reg1 & BMSR_LSTATUS) &&
 			    (phy_reg1 & BMSR_ANEGCAPABLE))
 				break;
@@ -892,7 +889,7 @@ void set_mac_speed(struct net_local *lp)
 {
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
-	XStatus ret;
+	int ret;
 
 #ifndef XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
 	int retry_count = 1;
@@ -914,8 +911,8 @@ void set_mac_speed(struct net_local *lp)
 	/* Loop until read of PHY specific status register is successful. */
 	do {
 		ret = _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
-				     MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET,
-				     &RegValue);
+					MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET,
+					&RegValue);
 	} while (ret != XST_SUCCESS);
 
 
@@ -1016,9 +1013,10 @@ static void reset(struct net_device *dev, u32 line_num)
 	u32 TxThreshold, TxWaitBound, RxThreshold, RxWaitBound;
 	u32 Options;
 	static u32 reset_cnt = 0;
-	XStatus status;
+	int status;
 
-	printk(KERN_INFO "%s: XLlTemac: resets (#%u) from adapter code line %d\n",
+	printk(KERN_INFO
+	       "%s: XLlTemac: resets (#%u) from adapter code line %d\n",
 	       dev->name, ++reset_cnt, line_num);
 
 	/* Shouldn't really be necessary, but shouldn't hurt. */
@@ -1040,12 +1038,13 @@ static void reset(struct net_device *dev, u32 line_num)
 	 */
 	if (XLlTemac_IsDma(&lp->Emac)) {
 		XLlDma_BdRingGetCoalesce(&XLlDma_mGetRxRing(&lp->Dma),
-				&RxThreshold, &RxWaitBound);
+					 &RxThreshold, &RxWaitBound);
 		XLlDma_BdRingGetCoalesce(&XLlDma_mGetTxRing(&lp->Dma),
-				&TxThreshold, &TxWaitBound);
+					 &TxThreshold, &TxWaitBound);
 
 		XLlDma_Reset(&lp->Dma);
-	} else {
+	}
+	else {
 		XLlFifo_Reset(&lp->Fifo);
 	}
 
@@ -1061,9 +1060,9 @@ static void reset(struct net_device *dev, u32 line_num)
 	 * EMAC is already started.  We just stopped it by calling
 	 * _XLlTemac_Reset() so we can safely ignore the return values.
 	 */
-	(XStatus) _XLlTemac_SetMacAddress(&lp->Emac, dev->dev_addr);
-	(XStatus) _XLlTemac_SetOptions(&lp->Emac, Options);
-	(XStatus) _XLlTemac_ClearOptions(&lp->Emac, ~Options);
+	(int) _XLlTemac_SetMacAddress(&lp->Emac, dev->dev_addr);
+	(int) _XLlTemac_SetOptions(&lp->Emac, Options);
+	(int) _XLlTemac_ClearOptions(&lp->Emac, ~Options);
 	Options = XLlTemac_GetOptions(&lp->Emac);
 	printk(KERN_INFO "%s: XLlTemac: Options: 0x%x\n", dev->name, Options);
 
@@ -1074,18 +1073,21 @@ static void reset(struct net_device *dev, u32 line_num)
 
 	if (XLlTemac_IsDma(&lp->Emac)) {	/* SG DMA mode */
 		status = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing,
-				RxThreshold, RxWaitBound);
+						  RxThreshold, RxWaitBound);
 		status |= XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing,
-				TxThreshold, TxWaitBound);
+						   TxThreshold, TxWaitBound);
 		if (status != XST_SUCCESS) {
 			/* Print the error, but keep on going as it's not a fatal error. */
-			printk(KERN_ERR "%s: XLlTemac: error setting coalesce values (probably out of range). status: %d\n",
+			printk(KERN_ERR
+			       "%s: XLlTemac: error setting coalesce values (probably out of range). status: %d\n",
 			       dev->name, status);
 		}
 		XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing, dma_rx_int_mask);
 		XLlDma_mBdRingIntEnable(&lp->Dma.TxBdRing, dma_tx_int_mask);
-	} else {			/* FIFO interrupt mode */
-		XLlFifo_IntEnable(&lp->Fifo, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK);
+	}
+	else {			/* FIFO interrupt mode */
+		XLlFifo_IntEnable(&lp->Fifo,
+				  XLLF_INT_TC_MASK | XLLF_INT_RC_MASK);
 	}
 	XLlTemac_IntEnable(&lp->Emac, XTE_INT_RXRJECT_MASK);
 
@@ -1157,7 +1159,8 @@ static void poll_gmii(unsigned long data)
 			netif_carrier_on(dev);
 		}
 		else {
-			printk(KERN_INFO "%s: XLlTemac: PHY Link carrier lost.\n",
+			printk(KERN_INFO
+			       "%s: XLlTemac: PHY Link carrier lost.\n",
 			       dev->name);
 			netif_carrier_off(dev);
 		}
@@ -1168,7 +1171,8 @@ static void poll_gmii(unsigned long data)
 	add_timer(&lp->phy_timer);
 }
 
-static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id,
+					 struct pt_regs *regs)
 {
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -1212,7 +1216,8 @@ static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id, struct pt_regs *
 static void FifoSendHandler(struct net_device *dev);
 static void FifoRecvHandler(struct net_device *dev);
 
-static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id,
+					struct pt_regs *regs)
 {
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -1232,16 +1237,19 @@ static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id, struct pt_regs *r
 			/* handle the receive completion */
 			FifoRecvHandler(dev);
 			irq_status &= ~XLLF_INT_RC_MASK;
-		} else if (irq_status & XLLF_INT_TC_MASK) {
+		}
+		else if (irq_status & XLLF_INT_TC_MASK) {
 			/* handle the transmit completion */
 			FifoSendHandler(dev);
 			irq_status &= ~XLLF_INT_TC_MASK;
-		} else if (irq_status & XLLF_INT_TXERROR_MASK) {
+		}
+		else if (irq_status & XLLF_INT_TXERROR_MASK) {
 			lp->stats.tx_errors++;
 			lp->stats.tx_fifo_errors++;
 			XLlFifo_Reset(&lp->Fifo);
 			irq_status &= ~XLLF_INT_TXERROR_MASK;
-		} else if (irq_status & XLLF_INT_RXERROR_MASK) {
+		}
+		else if (irq_status & XLLF_INT_RXERROR_MASK) {
 			lp->stats.rx_errors++;
 			XLlFifo_Reset(&lp->Fifo);
 			irq_status &= ~XLLF_INT_RXERROR_MASK;
@@ -1258,7 +1266,8 @@ static void DmaRecvHandlerBH(unsigned long p);
 DECLARE_TASKLET(DmaSendBH, DmaSendHandlerBH, 0);
 DECLARE_TASKLET(DmaRecvBH, DmaRecvHandlerBH, 0);
 
-static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id,
+					  struct pt_regs *regs)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
@@ -1285,7 +1294,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id, struct pt_regs 
 		if (cur_lp != &(lp->rcv)) {
 			list_add_tail(&lp->rcv, &receivedQueue);
 			XLlDma_mBdRingIntDisable(&lp->Dma.RxBdRing,
-					XLLDMA_CR_IRQ_ALL_EN_MASK);
+						 XLLDMA_CR_IRQ_ALL_EN_MASK);
 			tasklet_schedule(&DmaRecvBH);
 		}
 		spin_unlock(&receivedQueueSpin);
@@ -1293,7 +1302,8 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id, struct pt_regs 
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id,
+					  struct pt_regs *regs)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
@@ -1320,7 +1330,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id, struct pt_regs 
 		if (cur_lp != &(lp->xmit)) {
 			list_add_tail(&lp->xmit, &sentQueue);
 			XLlDma_mBdRingIntDisable(&lp->Dma.TxBdRing,
-					XLLDMA_CR_IRQ_ALL_EN_MASK);
+						 XLLDMA_CR_IRQ_ALL_EN_MASK);
 			tasklet_schedule(&DmaSendBH);
 		}
 		spin_unlock(&sentQueueSpin);
@@ -1413,14 +1423,15 @@ static int xenet_open(struct net_device *dev)
 	Options |= XTE_FCS_STRIP_OPTION;
 #endif
 
-	(XStatus) _XLlTemac_SetOptions(&lp->Emac, Options);
-	(XStatus) _XLlTemac_ClearOptions(&lp->Emac, ~Options);
+	(int) _XLlTemac_SetOptions(&lp->Emac, Options);
+	(int) _XLlTemac_ClearOptions(&lp->Emac, ~Options);
 	Options = XLlTemac_GetOptions(&lp->Emac);
 	printk(KERN_INFO "%s: XLlTemac: Options: 0x%x\n", dev->name, Options);
 
 	/* Just use interrupt driven methods - no polled mode */
 
-	irqval = request_irq(dev->irq, &xenet_temac_interrupt, SA_INTERRUPT, dev->name, dev);
+	irqval = request_irq(dev->irq, &xenet_temac_interrupt, SA_INTERRUPT,
+			     dev->name, dev);
 	if (irqval) {
 		printk(KERN_ERR
 		       "%s: XLlTemac: could not allocate interrupt %d.\n",
@@ -1432,7 +1443,8 @@ static int xenet_open(struct net_device *dev)
 		       "%s: XLlTemac: allocating interrupt %d for dma mode tx.\n",
 		       dev->name, lp->dma_irq_s);
 		irqval = request_irq(lp->dma_irq_s,
-			&xenet_dma_tx_interrupt, 0, "xilinx_dma_tx_int", dev);
+				     &xenet_dma_tx_interrupt, 0,
+				     "xilinx_dma_tx_int", dev);
 		if (irqval) {
 			printk(KERN_ERR
 			       "%s: XLlTemac: could not allocate interrupt %d.\n",
@@ -1443,14 +1455,16 @@ static int xenet_open(struct net_device *dev)
 		       "%s: XLlTemac: allocating interrupt %d for dma mode rx.\n",
 		       dev->name, lp->dma_irq_r);
 		irqval = request_irq(lp->dma_irq_r,
-			&xenet_dma_rx_interrupt, 0, "xilinx_dma_rx_int", dev);
+				     &xenet_dma_rx_interrupt, 0,
+				     "xilinx_dma_rx_int", dev);
 		if (irqval) {
 			printk(KERN_ERR
 			       "%s: XLlTemac: could not allocate interrupt %d.\n",
 			       dev->name, lp->dma_irq_r);
 			return irqval;
 		}
-	} else {
+	}
+	else {
 		printk(KERN_INFO
 		       "%s: XLlTemac: allocating interrupt %d for fifo mode.\n",
 		       dev->name, lp->fifo_irq);
@@ -1458,7 +1472,8 @@ static int xenet_open(struct net_device *dev)
 		 * fast interrupt handler.
 		 */
 		irqval = request_irq(lp->fifo_irq,
-			&xenet_fifo_interrupt, SA_INTERRUPT, "xilinx_fifo_int", dev);
+				     &xenet_fifo_interrupt, SA_INTERRUPT,
+				     "xilinx_fifo_int", dev);
 		if (irqval) {
 			printk(KERN_ERR
 			       "%s: XLlTemac: could not allocate interrupt %d.\n",
@@ -1480,26 +1495,28 @@ static int xenet_open(struct net_device *dev)
 
 	/* Enable interrupts  - no polled mode */
 	{
-		if (XLlTemac_IsFifo(&lp->Emac))
-		{		/*fifo direct interrupt driver mode */
-			XLlFifo_IntEnable(&lp->Fifo, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK);
-		} else {		/* SG DMA mode */
-			XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing, dma_rx_int_mask);
-			XLlDma_mBdRingIntEnable(&lp->Dma.TxBdRing, dma_tx_int_mask);
+		if (XLlTemac_IsFifo(&lp->Emac)) {	/*fifo direct interrupt driver mode */
+			XLlFifo_IntEnable(&lp->Fifo,
+					  XLLF_INT_TC_MASK | XLLF_INT_RC_MASK);
+		}
+		else {		/* SG DMA mode */
+			XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing,
+						dma_rx_int_mask);
+			XLlDma_mBdRingIntEnable(&lp->Dma.TxBdRing,
+						dma_tx_int_mask);
 		}
 		XLlTemac_IntEnable(&lp->Emac, XTE_INT_RXRJECT_MASK);
 	}
 
 	/* Start TEMAC device */
 	_XLlTemac_Start(&lp->Emac);
-	if (XLlTemac_IsDma(&lp->Emac))
-	{
+	if (XLlTemac_IsDma(&lp->Emac)) {
 		u32 threshold_s, timer_s, threshold_r, timer_r;
 
 		XLlDma_BdRingGetCoalesce(&lp->Dma.TxBdRing,
-			       &threshold_s, &timer_s);
+					 &threshold_s, &timer_s);
 		XLlDma_BdRingGetCoalesce(&lp->Dma.RxBdRing,
-			       &threshold_r, &timer_r);
+					 &threshold_r, &timer_r);
 		printk(KERN_INFO
 		       "%s: XLlTemac: Send Threshold = %d, Receive Threshold = %d\n",
 		       dev->name, threshold_s, threshold_r);
@@ -1507,11 +1524,15 @@ static int xenet_open(struct net_device *dev)
 		       "%s: XLlTemac: Send Wait bound = %d, Receive Wait bound = %d\n",
 		       dev->name, timer_s, timer_r);
 		if (XLlDma_BdRingStart(&lp->Dma.TxBdRing) == XST_FAILURE) {
-			printk(KERN_ERR "%s: XLlTemac: could not start dma tx channel\n", dev->name);
+			printk(KERN_ERR
+			       "%s: XLlTemac: could not start dma tx channel\n",
+			       dev->name);
 			return -EIO;
 		}
 		if (XLlDma_BdRingStart(&lp->Dma.RxBdRing) == XST_FAILURE) {
-			printk(KERN_ERR "%s: XLlTemac: could not start dma rx channel\n", dev->name);
+			printk(KERN_ERR
+			       "%s: XLlTemac: could not start dma rx channel\n",
+			       dev->name);
 			return -EIO;
 		}
 	}
@@ -1557,7 +1578,8 @@ static int xenet_close(struct net_device *dev)
 	if (XLlTemac_IsDma(&lp->Emac)) {
 		free_irq(lp->dma_irq_s, dev);
 		free_irq(lp->dma_irq_r, dev);
-	} else {
+	}
+	else {
 		free_irq(lp->fifo_irq, dev);
 	}
 
@@ -1697,8 +1719,7 @@ static inline unsigned int _xenet_rx_csum(struct sk_buff *skb)
  * Any locks that need to be acquired, should be acquired
  * prior to calling this routine.
  */
-static XStatus
-xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
+static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 {
 	struct net_local *lp;
 	XLlDma_Bd *bd_ptr;
@@ -1792,7 +1813,7 @@ xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 #else
 		BdCsumEnable(bd_ptr);
 		BdCsumSetup(bd_ptr, skb->h.raw - skb->data,
-					  (skb->h.raw - skb->data) + skb->csum);
+			    (skb->h.raw - skb->data) + skb->csum);
 
 #endif
 		lp->tx_hw_csums++;
@@ -1828,8 +1849,11 @@ xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	if (first_bd_ptr == last_bd_ptr) {
-		XLlDma_mBdSetStsCtrl(last_bd_ptr, XLLDMA_BD_STSCTRL_SOP_MASK | XLLDMA_BD_STSCTRL_EOP_MASK);
-	} else {
+		XLlDma_mBdSetStsCtrl(last_bd_ptr,
+				     XLLDMA_BD_STSCTRL_SOP_MASK |
+				     XLLDMA_BD_STSCTRL_EOP_MASK);
+	}
+	else {
 		XLlDma_mBdSetStsCtrl(first_bd_ptr, XLLDMA_BD_STSCTRL_SOP_MASK);
 		XLlDma_mBdSetStsCtrl(last_bd_ptr, XLLDMA_BD_STSCTRL_EOP_MASK);
 	}
@@ -1882,7 +1906,7 @@ static void DmaSendHandlerBH(unsigned long p)
 	unsigned long flags;
 	struct sk_buff *skb;
 	dma_addr_t skb_dma_addr;
-	XStatus result = XST_SUCCESS;
+	int result = XST_SUCCESS;
 	unsigned int bd_processed, bd_processed_save;
 
 	while (1) {
@@ -1902,15 +1926,13 @@ static void DmaSendHandlerBH(unsigned long p)
 		bd_processed_save = 0;
 		while ((bd_processed =
 			XLlDma_BdRingFromHw(&lp->Dma.TxBdRing, XTE_SEND_BD_CNT,
-					    &BdPtr)) > 0)
-		{
+					    &BdPtr)) > 0) {
 
 			bd_processed_save = bd_processed;
 			BdCurPtr = BdPtr;
 			do {
 				len = XLlDma_mBdGetLength(BdCurPtr);
-				skb_dma_addr =
-					(dma_addr_t)
+				skb_dma_addr = (dma_addr_t)
 					XLlDma_mBdGetBufAddr(BdCurPtr);
 				dma_unmap_single(NULL, skb_dma_addr, len,
 						 DMA_TO_DEVICE);
@@ -1925,12 +1947,13 @@ static void DmaSendHandlerBH(unsigned long p)
 				XLlDma_mBdSetId(BdCurPtr, NULL);
 
 				lp->stats.tx_bytes += len;
-				if (XLlDma_mBdGetStsCtrl(BdCurPtr) & XLLDMA_BD_STSCTRL_EOP_MASK) {
+				if (XLlDma_mBdGetStsCtrl(BdCurPtr) &
+				    XLLDMA_BD_STSCTRL_EOP_MASK) {
 					lp->stats.tx_packets++;
 				}
 
 				BdCurPtr = XLlDma_mBdRingNext(&lp->Dma.TxBdRing,
-							   BdCurPtr);
+							      BdCurPtr);
 				bd_processed--;
 			} while (bd_processed > 0);
 
@@ -2019,7 +2042,7 @@ static void FifoRecvHandler(struct net_device *dev)
 		for (; len > XTE_RX_SINK_BUFFER_SIZE;
 		     len -= XTE_RX_SINK_BUFFER_SIZE) {
 			XLlFifo_Read(&lp->Fifo, rx_buffer_sink,
-				       XTE_RX_SINK_BUFFER_SIZE);
+				     XTE_RX_SINK_BUFFER_SIZE);
 		}
 		XLlFifo_Read(&lp->Fifo, rx_buffer_sink, len);
 
@@ -2060,7 +2083,8 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 	u32 new_skb_baddr;
 	XLlDma_Bd *BdPtr, *BdCurPtr;
 	u32 align;
-	XStatus result;
+	int result;
+
 #if 0
 	int align_max = ALIGNMENT_RECV;
 #else
@@ -2115,7 +2139,9 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 		XLlDma_mBdSetBufAddr(BdCurPtr, new_skb_baddr);
 		XLlDma_mBdSetLength(BdCurPtr, lp->max_frame_size);
 		XLlDma_mBdSetId(BdCurPtr, new_skb);
-		XLlDma_mBdSetStsCtrl(BdCurPtr, XLLDMA_BD_STSCTRL_SOP_MASK | XLLDMA_BD_STSCTRL_EOP_MASK);
+		XLlDma_mBdSetStsCtrl(BdCurPtr,
+				     XLLDMA_BD_STSCTRL_SOP_MASK |
+				     XLLDMA_BD_STSCTRL_EOP_MASK);
 
 		BdCurPtr = XLlDma_mBdRingNext(&lp->Dma.RxBdRing, BdCurPtr);
 
@@ -2134,7 +2160,7 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 		while (num_sk_buffs > 0) {
 			XLlDma_mBdSetId(BdCurPtr, NULL);
 			BdCurPtr = XLlDma_mBdRingNext(&lp->Dma.RxBdRing,
-					BdCurPtr);
+						      BdCurPtr);
 			num_sk_buffs--;
 		}
 		reset(dev, __LINE__);
@@ -2148,7 +2174,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 	struct net_local *lp;
 	struct sk_buff *skb;
 	u32 len, skb_baddr;
-	XStatus result;
+	int result;
 	unsigned long flags;
 	XLlDma_Bd *BdPtr, *BdCurPtr;
 	unsigned int bd_processed, bd_processed_saved;
@@ -2168,8 +2194,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 		spin_lock(&XTE_rx_spinlock);
 		if ((bd_processed =
 		     XLlDma_BdRingFromHw(&lp->Dma.RxBdRing, XTE_RECV_BD_CNT,
-					 &BdPtr)) > 0)
-		{
+					 &BdPtr)) > 0) {
 
 			bd_processed_saved = bd_processed;
 			BdCurPtr = BdPtr;
@@ -2185,8 +2210,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 					XLlDma_mBdGetId(BdCurPtr);
 
 				/* get and free up dma handle used by skb->data */
-				skb_baddr =
-					(dma_addr_t)
+				skb_baddr = (dma_addr_t)
 					XLlDma_mBdGetBufAddr(BdCurPtr);
 				dma_unmap_single(NULL, skb_baddr,
 						 lp->max_frame_size,
@@ -2206,8 +2230,11 @@ static void DmaRecvHandlerBH(unsigned long p)
 				skb->ip_summed = CHECKSUM_NONE;
 
 				/* if we're doing rx csum offload, set it up */
-				if (((lp-> local_features & LOCAL_FEATURE_RX_CSUM) != 0) &&
-				    (skb->protocol == __constant_htons(ETH_P_IP)) &&
+				if (((lp->
+				      local_features & LOCAL_FEATURE_RX_CSUM) !=
+				     0) &&
+				    (skb->protocol ==
+				     __constant_htons(ETH_P_IP)) &&
 				    (skb->len > 64)) {
 					unsigned int csum;
 
@@ -2275,15 +2302,13 @@ static void DmaRecvHandlerBH(unsigned long p)
 								data[skb->len]);
 
 						/* subtract out the FCS from the csum value */
-						csum = csum_sub(csum,
-								*data
+						csum = csum_sub(csum, *data
 								/* & 0xffff */
-								);
+							);
 						data++;
-						csum = csum_sub(csum,
-								*data
+						csum = csum_sub(csum, *data
 								/* & 0xffff */
-								);
+							);
 					}
 #endif
 					skb->csum = csum;
@@ -2328,7 +2353,7 @@ static int descriptor_init(struct net_device *dev)
 	int dftsize;
 	u32 *recvpoolptr, *sendpoolptr;
 	void *recvpoolphy, *sendpoolphy;
-	XStatus result;
+	int result;
 
 /*
  * Buffer Descriptr
@@ -2349,7 +2374,7 @@ static int descriptor_init(struct net_device *dev)
 
 	/* calc size of descriptor space pool; alloc from non-cached memory */
 	dftsize = XLlDma_mBdRingMemCalc(ALIGNMENT_BD,
-				      XTE_RECV_BD_CNT + XTE_SEND_BD_CNT);
+					XTE_RECV_BD_CNT + XTE_SEND_BD_CNT);
 	printk(KERN_INFO "XLlTemac: buffer descriptor size: %d (0x%0x)\n",
 	       dftsize, dftsize);
 
@@ -2364,7 +2389,8 @@ static int descriptor_init(struct net_device *dev)
 	 */
 
 	lp->desc_space = kmalloc(dftsize, GFP_KERNEL);
-	lp->desc_space_handle = (dma_addr_t) page_to_phys(virt_to_page(lp->desc_space));
+	lp->desc_space_handle =
+		(dma_addr_t) page_to_phys(virt_to_page(lp->desc_space));
 #else
 	lp->desc_space_handle = BRAM_BASEADDR;
 	lp->desc_space = ioremap(lp->desc_space_handle, dftsize);
@@ -2393,18 +2419,18 @@ static int descriptor_init(struct net_device *dev)
 	result = XLlDma_BdRingCreate(&lp->Dma.RxBdRing, (u32) recvpoolphy,
 				     (u32) recvpoolptr, ALIGNMENT_BD,
 				     XTE_RECV_BD_CNT);
-	if (result != XST_SUCCESS)
-	{
-		printk(KERN_ERR "XLlTemac: DMA Ring Create (RECV). Error: %d\n", result);
+	if (result != XST_SUCCESS) {
+		printk(KERN_ERR "XLlTemac: DMA Ring Create (RECV). Error: %d\n",
+		       result);
 		return -EIO;
 	}
 
 	result = XLlDma_BdRingCreate(&lp->Dma.TxBdRing, (u32) sendpoolphy,
 				     (u32) sendpoolptr, ALIGNMENT_BD,
 				     XTE_SEND_BD_CNT);
-	if (result != XST_SUCCESS)
-	{
-		printk(KERN_ERR "XLlTemac: DMA Ring Create (SEND). Error: %d\n", result);
+	if (result != XST_SUCCESS) {
+		printk(KERN_ERR "XLlTemac: DMA Ring Create (SEND). Error: %d\n",
+		       result);
 		return -EIO;
 	}
 
@@ -2428,8 +2454,7 @@ void free_descriptor_skb(struct net_device *dev)
 	for (i = 0; i < XTE_RECV_BD_CNT; i++) {
 		skb = (struct sk_buff *) XLlDma_mBdGetId(BdPtr);
 		if (skb) {
-			skb_dma_addr =
-				(dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
+			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
 			dma_unmap_single(NULL, skb_dma_addr, lp->max_frame_size,
 					 DMA_FROM_DEVICE);
 			dev_kfree_skb(skb);
@@ -2449,8 +2474,7 @@ void free_descriptor_skb(struct net_device *dev)
 	for (i = 0; i < XTE_SEND_BD_CNT; i++) {
 		skb = (struct sk_buff *) XLlDma_mBdGetId(BdPtr);
 		if (skb) {
-			skb_dma_addr =
-				(dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
+			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
 			len = XLlDma_mBdGetLength(BdPtr);
 			dma_unmap_single(NULL, skb_dma_addr, len,
 					 DMA_TO_DEVICE);
@@ -2484,7 +2508,7 @@ xenet_ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &gmii_status);
 
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_ADVERTISE,
-		       &gmii_advControl);
+			  &gmii_advControl);
 
 	ecmd->duplex = DUPLEX_FULL;
 
@@ -2506,8 +2530,7 @@ xenet_ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 	}
 	ecmd->phy_address = lp->Emac.Config.BaseAddress;
 	ecmd->transceiver = XCVR_INTERNAL;
-	if (XLlTemac_IsDma(&lp->Emac))
-	{
+	if (XLlTemac_IsDma(&lp->Emac)) {
 		/* get TX threshold */
 
 		XLlDma_BdRingGetCoalesce(&lp->Dma.TxBdRing, &threshold, &timer);
@@ -2574,10 +2597,10 @@ xenet_ethtool_get_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 	return 0;
 }
 
-void disp_bd_ring(XLlDma_BdRing *bd_ring)
+void disp_bd_ring(XLlDma_BdRing * bd_ring)
 {
 	int num_bds = bd_ring->AllCnt;
-	u32 *cur_bd_ptr = (u32 *)bd_ring->FirstBdAddr;
+	u32 *cur_bd_ptr = (u32 *) bd_ring->FirstBdAddr;
 	int idx;
 
 	printk("ChanBase: %p\n", (void *) bd_ring->ChanBase);
@@ -2618,7 +2641,7 @@ void disp_bd_ring(XLlDma_BdRing *bd_ring)
 
 	for (idx = 0; idx < num_bds; idx++) {
 		printk("%3d %08x %08x %08x %08x %08x %08x %08x %08x %08x\n",
-		       idx, 
+		       idx,
 		       cur_bd_ptr[XLLDMA_BD_NDESC_OFFSET / sizeof(*cur_bd_ptr)],
 		       cur_bd_ptr[XLLDMA_BD_BUFA_OFFSET / sizeof(*cur_bd_ptr)],
 		       cur_bd_ptr[XLLDMA_BD_BUFL_OFFSET / sizeof(*cur_bd_ptr)],
@@ -2645,12 +2668,14 @@ xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 
 	if (ec->rx_coalesce_usecs == 0) {
 		ec->rx_coalesce_usecs = 1;
-		dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
+		dma_rx_int_mask =
+			XLLDMA_CR_IRQ_ALL_EN_MASK &
+			~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
 	}
 	if ((ret = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing,
-			(u16) (ec->rx_max_coalesced_frames),
-			(u16) (ec->rx_coalesce_usecs))) != XST_SUCCESS)
-	{
+					    (u16) (ec->rx_max_coalesced_frames),
+					    (u16) (ec->rx_coalesce_usecs))) !=
+	    XST_SUCCESS) {
 		printk(KERN_ERR "%s: XLlDma: BdRingSetCoalesce error %d\n",
 		       dev->name, ret);
 		return -EIO;
@@ -2659,12 +2684,14 @@ xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 
 	if (ec->tx_coalesce_usecs == 0) {
 		ec->tx_coalesce_usecs = 1;
-		dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
+		dma_tx_int_mask =
+			XLLDMA_CR_IRQ_ALL_EN_MASK &
+			~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
 	}
 	if ((ret = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing,
-			(u16) (ec->rx_max_coalesced_frames),
-			(u16) (ec->rx_coalesce_usecs))) != XST_SUCCESS)
-	{
+					    (u16) (ec->rx_max_coalesced_frames),
+					    (u16) (ec->rx_coalesce_usecs))) !=
+	    XST_SUCCESS) {
 		printk(KERN_ERR "%s: XLlDma: BdRingSetCoalesce error %d\n",
 		       dev->name, ret);
 		return -EIO;
@@ -2706,7 +2733,8 @@ xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 	memset(dump->data, 0, sizeof(dump->data));
 
 	for (i = 0; i < EMAC_REGS_N; i++) {
-		_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, i, &(dump->data[i]));
+		_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, i,
+				  &(dump->data[i]));
 	}
 
 	*(int *) ret = 0;
@@ -2844,8 +2872,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 				return -EFAULT;
 
 			if (edata.data) {
-				if (XLlTemac_IsDma(&lp->Emac))
-				{
+				if (XLlTemac_IsDma(&lp->Emac)) {
 					dev->features |=
 						NETIF_F_SG | NETIF_F_FRAGLIST;
 				}
@@ -2993,11 +3020,11 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		__u32 direction;
 	} wbnd_arg;
 
-	XStatus ret;
+	int ret;
 	u32 threshold, timer;
 	XLlDma_BdRing *RingPtr;
 	u32 *dma_int_mask_ptr;
-	
+
 	switch (cmd) {
 	case SIOCETHTOOL:
 		return xenet_do_ethtool_ioctl(dev, rq);
@@ -3015,7 +3042,7 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		del_timer_sync(&lp->phy_timer);
 
 		_XLlTemac_PhyRead(&lp->Emac, data->phy_id, data->reg_num,
-			       &data->val_out);
+				  &data->val_out);
 
 		/* Start the PHY timer up again. */
 		lp->phy_timer.expires = jiffies + 2 * HZ;
@@ -3034,7 +3061,7 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		del_timer_sync(&lp->phy_timer);
 
 		_XLlTemac_PhyWrite(&lp->Emac, data->phy_id, data->reg_num,
-				data->val_in);
+				   data->val_in);
 
 		/* Start the PHY timer up again. */
 		lp->phy_timer.expires = jiffies + 2 * HZ;
@@ -3050,18 +3077,19 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 		if (thr_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 		}
 		XLlDma_BdRingGetCoalesce(RingPtr, &threshold, &timer);
 		if (thr_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 		}
 		if ((ret = XLlDma_BdRingSetCoalesce(RingPtr, thr_arg.threshold,
-				timer)) != XST_SUCCESS)
-		{
+						    timer)) != XST_SUCCESS) {
 			return -EIO;
 		}
 		return 0;
@@ -3075,24 +3103,28 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 		if (wbnd_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 		}
 		XLlDma_BdRingGetCoalesce(RingPtr, &threshold, &timer);
 		if (wbnd_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
 			dma_int_mask_ptr = &dma_tx_int_mask;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 			dma_int_mask_ptr = &dma_rx_int_mask;
 		}
 		if (wbnd_arg.waitbound == 0) {
 			wbnd_arg.waitbound = 1;
-			*dma_int_mask_ptr = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
+			*dma_int_mask_ptr =
+				XLLDMA_CR_IRQ_ALL_EN_MASK &
+				~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
 		}
 		if ((ret = XLlDma_BdRingSetCoalesce(RingPtr, threshold,
-				wbnd_arg.waitbound)) != XST_SUCCESS)
-		{
+						    wbnd_arg.waitbound)) !=
+		    XST_SUCCESS) {
 			return -EIO;
 		}
 		XLlDma_mBdRingIntEnable(RingPtr, *dma_int_mask_ptr);
@@ -3108,11 +3140,12 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 		if (thr_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 		}
-		XLlDma_BdRingGetCoalesce(RingPtr, 
-				(u32 *) &(thr_arg.threshold), &timer);
+		XLlDma_BdRingGetCoalesce(RingPtr,
+					 (u32 *) &(thr_arg.threshold), &timer);
 		if (copy_to_user(rq->ifr_data, &thr_arg, sizeof(thr_arg))) {
 			return -EFAULT;
 		}
@@ -3127,10 +3160,12 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		}
 		if (thr_arg.direction == XTE_SEND) {
 			RingPtr = &lp->Dma.TxBdRing;
-		} else {
+		}
+		else {
 			RingPtr = &lp->Dma.RxBdRing;
 		}
-		XLlDma_BdRingGetCoalesce(RingPtr, &threshold, (u32 *) &(wbnd_arg.waitbound));
+		XLlDma_BdRingGetCoalesce(RingPtr, &threshold,
+					 (u32 *) &(wbnd_arg.waitbound));
 		if (copy_to_user(rq->ifr_data, &wbnd_arg, sizeof(wbnd_arg))) {
 			return -EFAULT;
 		}
@@ -3193,26 +3228,28 @@ static int detect_phy(struct net_local *lp, char *dev_name)
 	u32 phy_addr;
 
 	for (phy_addr = 31; phy_addr > 0; phy_addr--) {
-		_XLlTemac_PhyRead(&lp->Emac, phy_addr, PHY_DETECT_REG, &phy_reg);
+		_XLlTemac_PhyRead(&lp->Emac, phy_addr, PHY_DETECT_REG,
+				  &phy_reg);
 
 		if ((phy_reg != 0xFFFF) &&
-			((phy_reg & PHY_DETECT_MASK) == PHY_DETECT_MASK)) {
+		    ((phy_reg & PHY_DETECT_MASK) == PHY_DETECT_MASK)) {
 			/* Found a valid PHY address */
-			printk(KERN_INFO "XTemac: PHY detected at address %d.\n",
-					phy_addr);
+			printk(KERN_INFO
+			       "XTemac: PHY detected at address %d.\n",
+			       phy_addr);
 			return phy_addr;
 		}
 	}
 
 	printk(KERN_WARNING
-		"XTemac: No PHY detected.  Assuming a PHY at address 0\n");
-	return 0;   /* default to zero */
+	       "XTemac: No PHY detected.  Assuming a PHY at address 0\n");
+	return 0;		/* default to zero */
 }
 
 
 static int xtenet_probe(struct device *dev)
 {
-	XStatus xs;
+	int xs;
 	u32 virt_baddr;		/* virtual base address of TEMAC */
 
 	XLlTemac_Config Temac_Config;
@@ -3299,7 +3336,8 @@ static int xtenet_probe(struct device *dev)
 		goto error;
 	}
 
-	if (XLlTemac_CfgInitialize(&lp->Emac, &Temac_Config, virt_baddr) != XST_SUCCESS) {
+	if (XLlTemac_CfgInitialize(&lp->Emac, &Temac_Config, virt_baddr) !=
+	    XST_SUCCESS) {
 		printk(KERN_ERR "XLlTemac: Could not initialize device.\n");
 		rc = -ENODEV;
 		goto error;
@@ -3330,7 +3368,8 @@ static int xtenet_probe(struct device *dev)
 
 		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 		if (0 == virt_baddr) {
-			printk(KERN_ERR "XLlTemac: Could not allocate iomem for local link connected device.\n");
+			printk(KERN_ERR
+			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
 			rc = -EIO;
 			goto error;
 		}
@@ -3347,13 +3386,18 @@ static int xtenet_probe(struct device *dev)
 
 		/* set the packet threshold and wait bound for both TX/RX directions */
 		if (DFT_TX_WAITBOUND == 0) {
-			dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
-			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing, DFT_TX_THRESHOLD, 1);
-		} else {
-			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing, DFT_TX_THRESHOLD, DFT_TX_WAITBOUND);
+			dma_tx_int_mask =
+				XLLDMA_CR_IRQ_ALL_EN_MASK &
+				~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
+			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing,
+						      DFT_TX_THRESHOLD, 1);
 		}
-		if (xs != XST_SUCCESS)
-		{
+		else {
+			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing,
+						      DFT_TX_THRESHOLD,
+						      DFT_TX_WAITBOUND);
+		}
+		if (xs != XST_SUCCESS) {
 			printk(KERN_ERR
 			       "XLlTemac: could not set SEND pkt threshold/waitbound, ERROR %d",
 			       xs);
@@ -3361,25 +3405,32 @@ static int xtenet_probe(struct device *dev)
 		XLlDma_mBdRingIntEnable(&lp->Dma.TxBdRing, dma_tx_int_mask);
 
 		if (DFT_RX_WAITBOUND == 0) {
-			dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
-			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing, DFT_RX_THRESHOLD, 1);
-		} else {
-			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing, DFT_RX_THRESHOLD, DFT_RX_WAITBOUND);
+			dma_rx_int_mask =
+				XLLDMA_CR_IRQ_ALL_EN_MASK &
+				~XLLDMA_IRQ_COALESCE_COUNTER_MASK;
+			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing,
+						      DFT_RX_THRESHOLD, 1);
 		}
-		if (xs != XST_SUCCESS)
-		{
+		else {
+			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing,
+						      DFT_RX_THRESHOLD,
+						      DFT_RX_WAITBOUND);
+		}
+		if (xs != XST_SUCCESS) {
 			printk(KERN_ERR
 			       "XLlTemac: Could not set RECV pkt threshold/waitbound ERROR %d",
 			       xs);
 		}
 		XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing, dma_rx_int_mask);
-	} else {
+	}
+	else {
 		printk(KERN_INFO
 		       "XLlTemac: using FIFO direct interrupt driven mode.\n");
 
 		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 		if (0 == virt_baddr) {
-			printk(KERN_ERR "XLlTemac: Could not allocate iomem for local link connected device.\n");
+			printk(KERN_ERR
+			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
 			rc = -EIO;
 			goto error;
 		}
@@ -3442,7 +3493,7 @@ static int xtenet_probe(struct device *dev)
 
 	return 0;
 
-error:
+      error:
 	if (ndev) {
 		xtenet_remove_ndev(ndev);
 	}

@@ -92,7 +92,7 @@
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_MulticastAdd(XLlTemac *InstancePtr, void *AddressPtr, int Entry)
+int XLlTemac_MulticastAdd(XLlTemac *InstancePtr, void *AddressPtr, int Entry)
 {
 	u32 Maw0Reg;
 	u32 Maw1Reg;
@@ -295,7 +295,7 @@ void XLlTemac_MulticastGet(XLlTemac *InstancePtr, void *AddressPtr, int Entry)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry)
+int XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -350,7 +350,7 @@ XStatus XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_SetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr)
+int XLlTemac_SetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr)
 {
 	u32 MacAddr;
 	u8 *Aptr = (u8 *) AddressPtr;
@@ -470,7 +470,7 @@ void XLlTemac_GetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_SendPausePacket(XLlTemac *InstancePtr, u16 PauseValue)
+int XLlTemac_SendPausePacket(XLlTemac *InstancePtr, u16 PauseValue)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -521,7 +521,7 @@ XStatus XLlTemac_SendPausePacket(XLlTemac *InstancePtr, u16 PauseValue)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr)
+int XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr)
 {
 	int PhyType;
 	u32 EgmicReg;
@@ -602,7 +602,7 @@ XStatus XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-XStatus XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr,
+int XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr,
 			      int *IsFullDuplexPtr, int *IsLinkUpPtr)
 {
 	int PhyType;

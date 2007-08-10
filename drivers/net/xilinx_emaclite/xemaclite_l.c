@@ -87,26 +87,28 @@ void XEmacLite_AlignedRead(u32 *SrcPtr, void *DestPtr, unsigned ByteCount);
 ******************************************************************************/
 void XEmacLite_SendFrame(u32 BaseAddress, u8 *FramePtr, unsigned ByteCount)
 {
-    u32 Register;
+	u32 Register;
 
-    /*
-     * Write data to the EMAC Lite
-     */
-    XEmacLite_AlignedWrite(FramePtr, (u32 *) (BaseAddress), ByteCount);
+	/*
+	 * Write data to the EMAC Lite
+	 */
+	XEmacLite_AlignedWrite(FramePtr, (u32 *) (BaseAddress), ByteCount);
 
-    /*
-     * The frame is in the buffer, now send it
-     */
-    XIo_Out32(BaseAddress + XEL_TPLR_OFFSET,
-              (ByteCount & (XEL_TPLR_LENGTH_MASK_HI | XEL_TPLR_LENGTH_MASK_LO)));
+	/*
+	 * The frame is in the buffer, now send it
+	 */
+	XIo_Out32(BaseAddress + XEL_TPLR_OFFSET,
+		  (ByteCount &
+		   (XEL_TPLR_LENGTH_MASK_HI | XEL_TPLR_LENGTH_MASK_LO)));
 
 
-    Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
-    XIo_Out32(BaseAddress + XEL_TSR_OFFSET, (Register | XEL_TSR_XMIT_BUSY_MASK));
+	Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+	XIo_Out32(BaseAddress + XEL_TSR_OFFSET,
+		  (Register | XEL_TSR_XMIT_BUSY_MASK));
 
-    /*
-     * Loop on the status waiting for the transmit to be complete.
-     */
+	/*
+	 * Loop on the status waiting for the transmit to be complete.
+	 */
 //    while (!XEmacLite_mIsTxDone(BaseAddress));
 
 }
@@ -140,50 +142,48 @@ void XEmacLite_SendFrame(u32 BaseAddress, u8 *FramePtr, unsigned ByteCount)
 ******************************************************************************/
 u16 XEmacLite_RecvFrame(u32 BaseAddress, u8 *FramePtr)
 {
-    u16 LengthType;
-    u16 Length;
-    u32 Register;
+	u16 LengthType;
+	u16 Length;
+	u32 Register;
 
-    /*
-     * Wait for a frame to arrive - this is a blocking call
-     */
+	/*
+	 * Wait for a frame to arrive - this is a blocking call
+	 */
 
-    while (XEmacLite_mIsRxEmpty(BaseAddress));
+	while (XEmacLite_mIsRxEmpty(BaseAddress));
 
-    /*
-     * Get the length of the frame that arrived
-     */
-    LengthType = XIo_In32(BaseAddress + XEL_RPLR_OFFSET);
-    LengthType &= (XEL_RPLR_LENGTH_MASK_HI | XEL_RPLR_LENGTH_MASK_LO);
+	/*
+	 * Get the length of the frame that arrived
+	 */
+	LengthType = XIo_In32(BaseAddress + XEL_RPLR_OFFSET);
+	LengthType &= (XEL_RPLR_LENGTH_MASK_HI | XEL_RPLR_LENGTH_MASK_LO);
 
-    /* check if length is valid */
+	/* check if length is valid */
 
-    if (LengthType > XEL_MAX_FRAME_SIZE)
-    {
-        /* Field contain type, use max frame size and let user parse it */
-        Length = XEL_MAX_FRAME_SIZE;
-    }
-    else
-    {
-        /* Use the length in the frame, plus the header and trailer */
-        Length = LengthType + XEL_HEADER_SIZE + XEL_FCS_SIZE;
-    }
+	if (LengthType > XEL_MAX_FRAME_SIZE) {
+		/* Field contain type, use max frame size and let user parse it */
+		Length = XEL_MAX_FRAME_SIZE;
+	}
+	else {
+		/* Use the length in the frame, plus the header and trailer */
+		Length = LengthType + XEL_HEADER_SIZE + XEL_FCS_SIZE;
+	}
 
-    /*
-     * Read each byte from the EMAC Lite
-     */
-    XEmacLite_AlignedRead((u32 *) (BaseAddress + XEL_RXBUFF_OFFSET),
-                          FramePtr, Length);
+	/*
+	 * Read each byte from the EMAC Lite
+	 */
+	XEmacLite_AlignedRead((u32 *) (BaseAddress + XEL_RXBUFF_OFFSET),
+			      FramePtr, Length);
 
-    /*
-     * Acknowledge the frame
-     */
+	/*
+	 * Acknowledge the frame
+	 */
 
-    Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
-    Register &= ~XEL_RSR_RECV_DONE_MASK;
-    XIo_Out32(BaseAddress + XEL_RSR_OFFSET, Register);
+	Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
+	Register &= ~XEL_RSR_RECV_DONE_MASK;
+	XIo_Out32(BaseAddress + XEL_RSR_OFFSET, Register);
 
-    return LengthType;
+	return LengthType;
 }
 
 /******************************************************************************/
@@ -207,152 +207,143 @@ u16 XEmacLite_RecvFrame(u32 BaseAddress, u8 *FramePtr)
 ******************************************************************************/
 void XEmacLite_AlignedWrite(void *SrcPtr, u32 *DestPtr, unsigned ByteCount)
 {
-    unsigned i;
-    unsigned Length = ByteCount;
-    u32 AlignBuffer;
-    u32 *To32Ptr;
-    u32 *From32Ptr;
-    u16 *To16Ptr;
-    u16 *From16Ptr;
-    u8  *To8Ptr;
-    u8  *From8Ptr;
+	unsigned i;
+	unsigned Length = ByteCount;
+	u32 AlignBuffer;
+	u32 *To32Ptr;
+	u32 *From32Ptr;
+	u16 *To16Ptr;
+	u16 *From16Ptr;
+	u8 *To8Ptr;
+	u8 *From8Ptr;
 
-    To32Ptr = DestPtr;
+	To32Ptr = DestPtr;
 
-    if ((((u32)SrcPtr) & 0x00000003) == 0)
-    {
+	if ((((u32) SrcPtr) & 0x00000003) == 0) {
 
-        /*
-         * Word aligned buffer, no correction needed.
-         */
-//	printk("noaligned\n");
+		/*
+		 * Word aligned buffer, no correction needed.
+		 */
+//      printk("noaligned\n");
 
-        From32Ptr  = (u32 *)SrcPtr;
+		From32Ptr = (u32 *) SrcPtr;
 
-        while (Length > 3)
-        {
-            /*
-             * Output each word destination.
-             */
+		while (Length > 3) {
+			/*
+			 * Output each word destination.
+			 */
 
-            *To32Ptr++ = *From32Ptr++;
+			*To32Ptr++ = *From32Ptr++;
 
-            /*
-             * Adjust length accordingly
-             */
+			/*
+			 * Adjust length accordingly
+			 */
 
-            Length -= 4;
-        }
+			Length -= 4;
+		}
 
-        /*
-         * Set up to output the remaining data, zero the temp buffer first.
-         */
+		/*
+		 * Set up to output the remaining data, zero the temp buffer first.
+		 */
 
-        AlignBuffer = 0;
-        To8Ptr = (u8 *) &AlignBuffer;
-        From8Ptr = (u8 *) From32Ptr;
+		AlignBuffer = 0;
+		To8Ptr = (u8 *) &AlignBuffer;
+		From8Ptr = (u8 *) From32Ptr;
 
-    }
-    else if ((((u32)SrcPtr) & 0x00000001) != 0)
-    {
-        /*
-         * Byte aligned buffer, correct.
-         */
+	}
+	else if ((((u32) SrcPtr) & 0x00000001) != 0) {
+		/*
+		 * Byte aligned buffer, correct.
+		 */
 
-        AlignBuffer = 0;
-        To8Ptr = (u8 *) &AlignBuffer;
-        From8Ptr = (u8 *) SrcPtr;
+		AlignBuffer = 0;
+		To8Ptr = (u8 *) &AlignBuffer;
+		From8Ptr = (u8 *) SrcPtr;
 
-//	printk("aligned8\n");
-	
-        while (Length > 3)
-        {
-            /*
-             * Copy each byte into the temporary buffer.
-             */
+//      printk("aligned8\n");
 
-            for (i = 0; i < 4; i++)
-            {
-                *To8Ptr++ = *From8Ptr++;
-            }
+		while (Length > 3) {
+			/*
+			 * Copy each byte into the temporary buffer.
+			 */
 
-            /*
-             * Output the buffer
-             */
+			for (i = 0; i < 4; i++) {
+				*To8Ptr++ = *From8Ptr++;
+			}
 
-            *To32Ptr++ = AlignBuffer;
+			/*
+			 * Output the buffer
+			 */
 
-            /*.
-             * Reset the temporary buffer pointer and adjust length.
-             */
+			*To32Ptr++ = AlignBuffer;
 
-            To8Ptr = (u8 *) &AlignBuffer;
-            Length -= 4;
-        }
+			/*.
+			 * Reset the temporary buffer pointer and adjust length.
+			 */
 
-        /*
-         * Set up to output the remaining data, zero the temp buffer first.
-         */
+			To8Ptr = (u8 *) &AlignBuffer;
+			Length -= 4;
+		}
 
-        AlignBuffer = 0;
-        To8Ptr = (u8 *) &AlignBuffer;
+		/*
+		 * Set up to output the remaining data, zero the temp buffer first.
+		 */
 
-    }
-    else
-    {
-        /*
-         * Half-Word aligned buffer, correct.
-         */
+		AlignBuffer = 0;
+		To8Ptr = (u8 *) &AlignBuffer;
 
-        AlignBuffer = 0;
-        To16Ptr = (u16 *) &AlignBuffer;
-        From16Ptr  = (u16 *)SrcPtr;
+	}
+	else {
+		/*
+		 * Half-Word aligned buffer, correct.
+		 */
 
-//	printk("aligned16\n");
-	
-        while (Length > 3)
-        {
-            /*
-             * Copy each half word into the temporary buffer.
-             */
+		AlignBuffer = 0;
+		To16Ptr = (u16 *) &AlignBuffer;
+		From16Ptr = (u16 *) SrcPtr;
 
-            for (i = 0; i < 2; i++)
-            {
-                *To16Ptr++ = *From16Ptr++;
-            }
+//      printk("aligned16\n");
 
-            /*
-             * Output the buffer.
-             */
+		while (Length > 3) {
+			/*
+			 * Copy each half word into the temporary buffer.
+			 */
 
-            *To32Ptr++ = AlignBuffer;
+			for (i = 0; i < 2; i++) {
+				*To16Ptr++ = *From16Ptr++;
+			}
 
-            /*
-             * Reset the temporary buffer pointer and adjust length.
-             */
+			/*
+			 * Output the buffer.
+			 */
 
-            To16Ptr = (u16 *) &AlignBuffer;
-            Length -= 4;
-        }
+			*To32Ptr++ = AlignBuffer;
 
-        /*
-         * Set up to output the remaining data, zero the temp buffer first.
-         */
+			/*
+			 * Reset the temporary buffer pointer and adjust length.
+			 */
 
-        AlignBuffer = 0;
-        To8Ptr = (u8 *) &AlignBuffer;
-        From8Ptr = (u8 *) From16Ptr;
-    }
+			To16Ptr = (u16 *) &AlignBuffer;
+			Length -= 4;
+		}
 
-    /*
-     * Output the remaining data, zero the temp buffer first.
-     */
-    for (i = 0; i < Length; i++)
-    {
-        *To8Ptr++ = *From8Ptr++;
-    }
+		/*
+		 * Set up to output the remaining data, zero the temp buffer first.
+		 */
 
-    *To32Ptr++ = AlignBuffer;
+		AlignBuffer = 0;
+		To8Ptr = (u8 *) &AlignBuffer;
+		From8Ptr = (u8 *) From16Ptr;
+	}
+
+	/*
+	 * Output the remaining data, zero the temp buffer first.
+	 */
+	for (i = 0; i < Length; i++) {
+		*To8Ptr++ = *From8Ptr++;
+	}
+
+	*To32Ptr++ = AlignBuffer;
 
 }
 
@@ -377,131 +368,122 @@ void XEmacLite_AlignedWrite(void *SrcPtr, u32 *DestPtr, unsigned ByteCount)
 ******************************************************************************/
 void XEmacLite_AlignedRead(u32 *SrcPtr, void *DestPtr, unsigned ByteCount)
 {
-    unsigned i;
-    unsigned Length = ByteCount;
-    u32 AlignBuffer;
-    u32 *To32Ptr;
-    u32 *From32Ptr;
-    u16 *To16Ptr;
-    u16 *From16Ptr;
-    u8  *To8Ptr;
-    u8  *From8Ptr;
+	unsigned i;
+	unsigned Length = ByteCount;
+	u32 AlignBuffer;
+	u32 *To32Ptr;
+	u32 *From32Ptr;
+	u16 *To16Ptr;
+	u16 *From16Ptr;
+	u8 *To8Ptr;
+	u8 *From8Ptr;
 
-    From32Ptr = (u32 *)SrcPtr;
+	From32Ptr = (u32 *) SrcPtr;
 
-    if ((((u32)DestPtr) & 0x00000003) == 0)
-    {
+	if ((((u32) DestPtr) & 0x00000003) == 0) {
 
-        /*
-         * Word aligned buffer, no correction needed.
-         */
+		/*
+		 * Word aligned buffer, no correction needed.
+		 */
 
-        To32Ptr  = (u32 *)DestPtr;
+		To32Ptr = (u32 *) DestPtr;
 
-        while (Length > 3)
-        {
-            /*
-             * Output each word.
-             */
+		while (Length > 3) {
+			/*
+			 * Output each word.
+			 */
 
-            *To32Ptr++ = *From32Ptr++;
+			*To32Ptr++ = *From32Ptr++;
 
-            /*
-             * Adjust length accordingly.
-             */
-            Length -= 4;
-        }
+			/*
+			 * Adjust length accordingly.
+			 */
+			Length -= 4;
+		}
 
-        /*
-         * Set up to read the remaining data.
-         */
+		/*
+		 * Set up to read the remaining data.
+		 */
 
-        To8Ptr = (u8 *) To32Ptr;
+		To8Ptr = (u8 *) To32Ptr;
 
-    }
-    else if ((((u32)DestPtr) & 0x00000001) != 0)
-    {
-        /*
-         * Byte aligned buffer, correct.
-         */
+	}
+	else if ((((u32) DestPtr) & 0x00000001) != 0) {
+		/*
+		 * Byte aligned buffer, correct.
+		 */
 
-        To8Ptr = (u8 *)DestPtr;
+		To8Ptr = (u8 *) DestPtr;
 
-        while (Length > 3)
-        {
-            /*
-             * Copy each word into the temporary buffer.
-             */
+		while (Length > 3) {
+			/*
+			 * Copy each word into the temporary buffer.
+			 */
 
-            AlignBuffer = *From32Ptr++;
-            From8Ptr = (u8 *) &AlignBuffer;
+			AlignBuffer = *From32Ptr++;
+			From8Ptr = (u8 *) &AlignBuffer;
 
-            /*
-             * Write data to destination.
-             */
+			/*
+			 * Write data to destination.
+			 */
 
-            for (i = 0; i < 4; i++)
-            {
-                *To8Ptr++ = *From8Ptr++;
-            }
+			for (i = 0; i < 4; i++) {
+				*To8Ptr++ = *From8Ptr++;
+			}
 
-            /*
-             * Adjust length
-             */
+			/*
+			 * Adjust length
+			 */
 
-            Length -= 4;
-        }
+			Length -= 4;
+		}
 
-    }
-    else
-    {
-        /*
-         * Half-Word aligned buffer, correct.
-         */
+	}
+	else {
+		/*
+		 * Half-Word aligned buffer, correct.
+		 */
 
-        To16Ptr  = (u16 *)DestPtr;
+		To16Ptr = (u16 *) DestPtr;
 
-        while (Length > 3)
-        {
-            /*
-             * Copy each word into the temporary buffer.
-             */
+		while (Length > 3) {
+			/*
+			 * Copy each word into the temporary buffer.
+			 */
 
-            AlignBuffer = *From32Ptr++;
-            From16Ptr = (u16 *) &AlignBuffer;
+			AlignBuffer = *From32Ptr++;
+			From16Ptr = (u16 *) &AlignBuffer;
 
-            /*
-             * Write data to destination.
-             */
+			/*
+			 * Write data to destination.
+			 */
 
-            for (i = 0; i < 2; i++)
-            {
-                *To16Ptr++ = *From16Ptr++;
-            }
+			for (i = 0; i < 2; i++) {
+				*To16Ptr++ = *From16Ptr++;
+			}
 
-            /*
-             * Adjust length.
-             */
+			/*
+			 * Adjust length.
+			 */
 
-            Length -= 4;
-        }
+			Length -= 4;
+		}
 
-        /*
-         * Set up to read the remaining data.
-         */
+		/*
+		 * Set up to read the remaining data.
+		 */
 
-        To8Ptr = (u8 *) To16Ptr;
-    }
+		To8Ptr = (u8 *) To16Ptr;
+	}
 
-    /*
-     * Read the remaining data.
-     */
+	/*
+	 * Read the remaining data.
+	 */
 
-    AlignBuffer = *From32Ptr++;
-    From8Ptr = (u8 *) &AlignBuffer;
+	AlignBuffer = *From32Ptr++;
+	From8Ptr = (u8 *) &AlignBuffer;
 
-    for (i = 0; i < Length; i++)
-    {
-        *To8Ptr++ = *From8Ptr++;
-    }
+	for (i = 0; i < Length; i++) {
+		*To8Ptr++ = *From8Ptr++;
+	}
 }
