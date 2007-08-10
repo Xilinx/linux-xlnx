@@ -342,11 +342,6 @@
 * passing the associated BD to this driver. Buffers for receive MUST be
 * invalidated before passing the associated BD to this driver.
 *
-* If the application wishes that the BD space itself be in cached memory, then
-* XENV macros XCACHE_FLUSH_DCACHE_RANGE() and XCACHE_INVALIDATE_DCACHE_RANGE()
-* must be implemented via xenv.h. Otherwise this driver and hardware will NOT
-* work properly.
-*
 * <b>Alignment</b>
 *
 * For BDs:
