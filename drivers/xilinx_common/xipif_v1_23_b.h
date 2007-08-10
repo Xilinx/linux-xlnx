@@ -1,4 +1,4 @@
-/* $Id: xipif_v1_23_b.h,v 1.1 2006/12/13 14:22:44 imanuilov Exp $ */
+/* $Id: xipif_v1_23_b.h,v 1.5 2005/09/26 16:04:52 trujillo Exp $ */
 /******************************************************************************
 *
 *       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
@@ -17,6 +17,14 @@
 *
 *       (c) Copyright 2002-2004 Xilinx Inc.
 *       All rights reserved.
+* This program is free software; you can redistribute it and/or modify it
+* under the terms of the GNU General Public License as published by the
+* Free Software Foundation; either version 2 of the License, or (at your
+* option) any later version.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software
+* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 *
 ******************************************************************************/
 /*****************************************************************************/
