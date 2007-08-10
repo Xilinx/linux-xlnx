@@ -113,7 +113,6 @@
 extern "C" {
 #endif
 
-#include "xenv.h"
 #include "xbasic_types.h"
 #include "xstatus.h"
 #include "xdebug.h"
