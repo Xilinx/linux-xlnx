@@ -95,11 +95,12 @@ static unsigned long __init
 ml507_find_end_of_memory(void)
 {
 	// wgr HACK
-	// Does printk work here already?
 	//
-	printk("*** HACK: Assuming 64MB memory size. %s, line %d\n",
-			__FILE__, __LINE__ +1);
-	return 64 * 1024 * 1024;
+	unsigned long size = 256 * 1024 * 1024;
+
+	printk("*** HACK: Assuming %luMB memory size. %s, line %d\n",
+			size, __FILE__, __LINE__ +1);
+	return size;
 	// wgr HACK end
 }
 
