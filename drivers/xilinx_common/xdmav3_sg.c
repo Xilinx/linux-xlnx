@@ -47,8 +47,10 @@
 
 /***************************** Include Files *********************************/
 
-#include "xdmav3.h"
+#include <linux/string.h>
 #include <asm/delay.h>
+
+#include "xdmav3.h"
 
 /************************** Constant Definitions *****************************/
 
@@ -647,7 +649,7 @@ int XDmaV3_SgListClone(XDmaV3 * InstancePtr, XDmaBdV3 * SrcBdPtr)
 	for (i = 0, CurBd = Ring->BaseAddr;
 	     i < Ring->AllCnt; i++, CurBd += Ring->Separation) {
 		Save = XDmaV3_mReadBd(CurBd, XDMAV3_BD_BDA_OFFSET);
-		memcpy(CurBd, SrcBdPtr, sizeof(XDmaBdV3));
+		memcpy((void *) CurBd, SrcBdPtr, sizeof(XDmaBdV3));
 		XDmaV3_mWriteBd(CurBd, XDMAV3_BD_BDA_OFFSET, Save);
 		XDMAV3_CACHE_FLUSH(CurBd);
 	}

@@ -453,6 +453,18 @@ config ATA_OVER_ETH
 
 source "drivers/s390/block/Kconfig"
 
+config XILINX_SYSACE
+	tristate "Xilinx SystemACE support"
+	depends on XILINX_DRIVERS
+	help
+	  Include support for the Xilinx SystemACE CompactFlash interface
+
+config XILINX_SYSACE_OLD
+	tristate "Xilinx SystemACE support (old driver)"
+	depends on XILINX_DRIVERS
+	help
+	  Include support for the Xilinx SystemACE CompactFlash interface
+
 endmenu
 
 endif
