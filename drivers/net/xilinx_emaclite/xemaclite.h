@@ -139,8 +139,8 @@
 *
 ******************************************************************************/
 
-#ifndef XEMACLITE_H /* prevent circular inclusions */
-#define XEMACLITE_H /* by using protection macros */
+#ifndef XEMACLITE_H		/* prevent circular inclusions */
+#define XEMACLITE_H		/* by using protection macros */
 
 /***************************** Include Files *********************************/
 
@@ -160,13 +160,12 @@
 /**
  * This typedef contains configuration information for a device.
  */
-typedef struct
-{
-    u16 DeviceId;           /**< Unique ID  of device */
-    u32 BaseAddress;        /**< Device base address */
-    u32 PhysAddress;	/* < Physical address (for Linux)> */
-    u8  TxPingPong;         /**< 1 if TX Pong buffer configured,0 otherwise */
-    u8  RxPingPong;         /**< 1 if RX Pong buffer configured,0 otherwise */
+typedef struct {
+	u16 DeviceId;	    /**< Unique ID  of device */
+	u32 BaseAddress;    /**< Device base address */
+	u32 PhysAddress;	/* < Physical address (for Linux)> */
+	u8 TxPingPong;	    /**< 1 if TX Pong buffer configured,0 otherwise */
+	u8 RxPingPong;	    /**< 1 if RX Pong buffer configured,0 otherwise */
 } XEmacLite_Config;
 
 
@@ -176,7 +175,7 @@ typedef struct
  *        when setting the callback functions, and passed back to the upper
  *        layer when the callback is invoked.
  */
-typedef void (*XEmacLite_Handler)(void *CallBackRef);
+typedef void (*XEmacLite_Handler) (void *CallBackRef);
 
 /**
  * The XEmacLite driver instance data. The user is required to allocate a
@@ -184,22 +183,21 @@ typedef void (*XEmacLite_Handler)(void *CallBackRef);
  * to a variable of this type is then passed to the driver API functions.
  */
 
-typedef struct
-{
-    u32 BaseAddress;                /* Base address for device (IPIF) */
-    u32 IsReady;                    /* Device is initialized and ready */
-    u32 NextTxBufferToUse;          /* Next TX buffer to write to */
-    u32 NextRxBufferToUse;          /* Next RX buffer to read from */
-    XEmacLite_Config *ConfigPtr;        /* A pointer to the device configuration */
+typedef struct {
+	u32 BaseAddress;	/* Base address for device (IPIF) */
+	u32 IsReady;		/* Device is initialized and ready */
+	u32 NextTxBufferToUse;	/* Next TX buffer to write to */
+	u32 NextRxBufferToUse;	/* Next RX buffer to read from */
+	XEmacLite_Config *ConfigPtr;	/* A pointer to the device configuration */
 
-    /*
-     * Callbacks
-     */
+	/*
+	 * Callbacks
+	 */
 
-    XEmacLite_Handler RecvHandler;
-    void *RecvRef;
-    XEmacLite_Handler SendHandler;
-    void *SendRef;
+	XEmacLite_Handler RecvHandler;
+	void *RecvRef;
+	XEmacLite_Handler SendHandler;
+	void *SendRef;
 
 } XEmacLite;
 
@@ -245,33 +243,33 @@ typedef struct
 /*
  * Initialization functions in xemaclite.c
  */
-XStatus XEmacLite_Initialize(XEmacLite *InstancePtr, u16 DeviceId);
-void XEmacLite_SetMacAddress(XEmacLite *InstancePtr, u8 *AddressPtr);
-u32 XEmacLite_TxBufferAvailable(XEmacLite *InstancePtr);
-void XEmacLite_FlushReceive(XEmacLite *InstancePtr);
+int XEmacLite_Initialize(XEmacLite * InstancePtr, u16 DeviceId);
+void XEmacLite_SetMacAddress(XEmacLite * InstancePtr, u8 *AddressPtr);
+u32 XEmacLite_TxBufferAvailable(XEmacLite * InstancePtr);
+void XEmacLite_FlushReceive(XEmacLite * InstancePtr);
 
 XEmacLite_Config *XEmacLite_LookupConfig(u16 DeviceId);
 
-XStatus XEmacLite_Send(XEmacLite *InstancePtr, u8 *FramePtr, unsigned ByteCount);
-u16 XEmacLite_Recv(XEmacLite *InstancePtr, u8 *FramePtr);
+int XEmacLite_Send(XEmacLite * InstancePtr, u8 *FramePtr, unsigned ByteCount);
+u16 XEmacLite_Recv(XEmacLite * InstancePtr, u8 *FramePtr);
 
 /*
  * Interrupt driven functions in xemaclite_intr.c
  */
 
-XStatus XEmacLite_EnableInterrupts(XEmacLite *InstancePtr);
-void XEmacLite_DisableInterrupts(XEmacLite *InstancePtr);
+int XEmacLite_EnableInterrupts(XEmacLite * InstancePtr);
+void XEmacLite_DisableInterrupts(XEmacLite * InstancePtr);
 
 void XEmacLite_InterruptHandler(void *InstancePtr);
 
-void XEmacLite_SetRecvHandler(XEmacLite *InstancePtr, void *CallBackRef,
-                              XEmacLite_Handler FuncPtr);
-void XEmacLite_SetSendHandler(XEmacLite *InstancePtr, void *CallBackRef,
-                              XEmacLite_Handler FuncPtr);
+void XEmacLite_SetRecvHandler(XEmacLite * InstancePtr, void *CallBackRef,
+			      XEmacLite_Handler FuncPtr);
+void XEmacLite_SetSendHandler(XEmacLite * InstancePtr, void *CallBackRef,
+			      XEmacLite_Handler FuncPtr);
 
 /*
  * Selftest function in xemaclite_selftest.c
  */
-XStatus XEmacLite_SelfTest(XEmacLite *InstancePtr);
+int XEmacLite_SelfTest(XEmacLite * InstancePtr);
 
-#endif            /* end of protection macro */
+#endif /* end of protection macro */

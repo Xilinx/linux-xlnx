@@ -39,8 +39,8 @@
 * </pre>
 ******************************************************************************/
 
-#ifndef XEMACLITE_I_H /* prevent circular inclusions */
-#define XEMACLITE_I_H /* by using protection macros */
+#ifndef XEMACLITE_I_H		/* prevent circular inclusions */
+#define XEMACLITE_I_H		/* by using protection macros */
 
 /***************************** Include Files *********************************/
 
@@ -107,4 +107,4 @@ void XEmacLite_AlignedRead(u32 *SrcPtr, void *DestPtr, unsigned ByteCount);
 void StubHandler(void *CallBackRef);
 
 
-#endif  /* end of protection macro */
+#endif /* end of protection macro */

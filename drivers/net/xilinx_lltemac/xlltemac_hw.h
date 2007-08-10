@@ -310,9 +310,9 @@ extern "C" {
 /** @name Media Independent Interface Management (MIIM)
  * @{
  */
-#define XTE_MIIM_REGAD_MASK     0x1F    /**< MII Phy register address (REGAD) */
-#define XTE_MIIM_PHYAD_MASK     0x03E0  /**< MII Phy address (PHYAD) */
-#define XTE_MIIM_PHYAD_SHIFT    5       /**< MII Shift bits for PHYAD */
+#define XTE_MIIM_REGAD_MASK     0x1F	/**< MII Phy register address (REGAD) */
+#define XTE_MIIM_PHYAD_MASK     0x03E0	/**< MII Phy address (PHYAD) */
+#define XTE_MIIM_PHYAD_SHIFT    5	/**< MII Shift bits for PHYAD */
 /*@}*/
 
 
@@ -471,6 +471,7 @@ xdbg_stmnt(extern int indent_on);
  *****************************************************************************/
 #ifdef DEBUG
 extern u32 _xlltemac_rir_value;
+
 #define XLlTemac_ReadIndirectReg(BaseAddress, RegOffset) \
 ( \
 	indent_on = 1, \

@@ -75,47 +75,47 @@
 * None
 *
 ******************************************************************************/
-XStatus XEmacLite_EnableInterrupts(XEmacLite *InstancePtr)
+int XEmacLite_EnableInterrupts(XEmacLite * InstancePtr)
 {
-    u32 Register;
+	u32 Register;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
-    XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    /*
-     * Verify that the handlers are in place
-     */
+	/*
+	 * Verify that the handlers are in place
+	 */
 
-    if ((InstancePtr->RecvHandler == (XEmacLite_Handler) StubHandler) ||
-        (InstancePtr->SendHandler == (XEmacLite_Handler) StubHandler))
-    {
-        return XST_NO_CALLBACK;
-    }
- 
+	if ((InstancePtr->RecvHandler == (XEmacLite_Handler) StubHandler) ||
+	    (InstancePtr->SendHandler == (XEmacLite_Handler) StubHandler)) {
+		return XST_NO_CALLBACK;
+	}
 
-    /* Enable TX and RX interrupts */
 
-    Register = XIo_In32(InstancePtr->BaseAddress + XEL_TSR_OFFSET);
-    Register |= XEL_TSR_XMIT_IE_MASK;
-    XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, Register);
-    XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET +
-              XEL_BUFFER_OFFSET, Register);
+	/* Enable TX and RX interrupts */
 
-    Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
-    Register |= XEL_RSR_RECV_IE_MASK;
-    XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
-    XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
-              XEL_BUFFER_OFFSET, Register);
+	Register = XIo_In32(InstancePtr->BaseAddress + XEL_TSR_OFFSET);
+	Register |= XEL_TSR_XMIT_IE_MASK;
+	XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, Register);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET +
+		  XEL_BUFFER_OFFSET, Register);
 
-    /* Enable the global interrupt output. */
+	Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
+	Register |= XEL_RSR_RECV_IE_MASK;
+	XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
+		  XEL_BUFFER_OFFSET, Register);
 
-    XIo_Out32(InstancePtr->BaseAddress + XEL_GIER_OFFSET, XEL_GIER_GIE_MASK);
+	/* Enable the global interrupt output. */
 
-    return XST_SUCCESS;
+	XIo_Out32(InstancePtr->BaseAddress + XEL_GIER_OFFSET,
+		  XEL_GIER_GIE_MASK);
+
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -137,35 +137,35 @@ XStatus XEmacLite_EnableInterrupts(XEmacLite *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XEmacLite_DisableInterrupts(XEmacLite *InstancePtr)
+void XEmacLite_DisableInterrupts(XEmacLite * InstancePtr)
 {
-    u32 Register;
+	u32 Register;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
 
-    /* Disable the global interrupt output. */
+	/* Disable the global interrupt output. */
 
-    XIo_Out32(InstancePtr->BaseAddress + XEL_GIER_OFFSET, 0);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_GIER_OFFSET, 0);
 
-    /* Disable TX and RX interrupts */
+	/* Disable TX and RX interrupts */
 
-    Register = XIo_In32(InstancePtr->BaseAddress + XEL_TSR_OFFSET);
-    Register &= ~XEL_TSR_XMIT_IE_MASK;
-    XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, Register);
-    XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET +
-              XEL_BUFFER_OFFSET, Register);
+	Register = XIo_In32(InstancePtr->BaseAddress + XEL_TSR_OFFSET);
+	Register &= ~XEL_TSR_XMIT_IE_MASK;
+	XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, Register);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET +
+		  XEL_BUFFER_OFFSET, Register);
 
-    Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
-    Register &= ~XEL_RSR_RECV_IE_MASK;
-    XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
-    XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
-              XEL_BUFFER_OFFSET, Register);
+	Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
+	Register &= ~XEL_RSR_RECV_IE_MASK;
+	XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
+		  XEL_BUFFER_OFFSET, Register);
 
 }
 
@@ -194,71 +194,71 @@ void XEmacLite_DisableInterrupts(XEmacLite *InstancePtr)
 void XEmacLite_InterruptHandler(void *InstancePtr)
 {
 
-    XEmacLite *EmacLitePtr;
-    u32 Register = 0;
+	XEmacLite *EmacLitePtr;
+	u32 Register = 0;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr != NULL);
 
-    /*
-     * Convert the non-typed pointer to an EmacLite instance pointer
-     * such that there is access to the device.
-     */
-    EmacLitePtr = (XEmacLite *)InstancePtr;
+	/*
+	 * Convert the non-typed pointer to an EmacLite instance pointer
+	 * such that there is access to the device.
+	 */
+	EmacLitePtr = (XEmacLite *) InstancePtr;
 
-    if ((XEmacLite_mIsRxEmpty(EmacLitePtr->BaseAddress) != TRUE) ||
-        (XEmacLite_mIsRxEmpty(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET) != TRUE))
-    {
-        /*
-         * Call the RX callback.
-         */
+	if ((XEmacLite_mIsRxEmpty(EmacLitePtr->BaseAddress) != TRUE) ||
+	    (XEmacLite_mIsRxEmpty(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET)
+	     != TRUE)) {
+		/*
+		 * Call the RX callback.
+		 */
 
-        EmacLitePtr->RecvHandler(EmacLitePtr->RecvRef);
+		EmacLitePtr->RecvHandler(EmacLitePtr->RecvRef);
 
-    }
-    if ((XEmacLite_mIsTxDone(EmacLitePtr->BaseAddress) == TRUE) &&
-        ((XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress) & XEL_TSR_XMIT_ACTIVE_MASK) != 0))
-    {
+	}
+	if ((XEmacLite_mIsTxDone(EmacLitePtr->BaseAddress) == TRUE) &&
+	    ((XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress) &
+	      XEL_TSR_XMIT_ACTIVE_MASK) != 0)) {
 
-        /*
-         * Clear the Active bit
-         */
-        Register = XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress);
-        Register &= ~XEL_TSR_XMIT_ACTIVE_MASK;
-        XEmacLite_mSetTxActive(EmacLitePtr->BaseAddress, Register);
-    }
-    if ((XEmacLite_mIsTxDone(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET) ==
-         TRUE) &&
-        ((XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET)
-          & XEL_TSR_XMIT_ACTIVE_MASK) != 0))
-    {
+		/*
+		 * Clear the Active bit
+		 */
+		Register = XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress);
+		Register &= ~XEL_TSR_XMIT_ACTIVE_MASK;
+		XEmacLite_mSetTxActive(EmacLitePtr->BaseAddress, Register);
+	}
+	if ((XEmacLite_mIsTxDone(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET)
+	     == TRUE) &&
+	    ((XEmacLite_mGetTxActive
+	      (EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET)
+	      & XEL_TSR_XMIT_ACTIVE_MASK) != 0)) {
 
-        /*
-         * Clear the Active bit
-         */
-        Register =
-            XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET);
-        Register &= ~XEL_TSR_XMIT_ACTIVE_MASK;
-        XEmacLite_mSetTxActive(EmacLitePtr->BaseAddress + XEL_BUFFER_OFFSET,
-                               Register);
-    }
+		/*
+		 * Clear the Active bit
+		 */
+		Register =
+			XEmacLite_mGetTxActive(EmacLitePtr->BaseAddress +
+					       XEL_BUFFER_OFFSET);
+		Register &= ~XEL_TSR_XMIT_ACTIVE_MASK;
+		XEmacLite_mSetTxActive(EmacLitePtr->BaseAddress +
+				       XEL_BUFFER_OFFSET, Register);
+	}
 
-    /*
-     * If there was a TX interrupt, call the callback
-     */
-    if (Register != 0)
-    {
+	/*
+	 * If there was a TX interrupt, call the callback
+	 */
+	if (Register != 0) {
 
-        /*
-         * Call the TX callback.
-         */
+		/*
+		 * Call the TX callback.
+		 */
 
-        EmacLitePtr->SendHandler(EmacLitePtr->SendRef);
+		EmacLitePtr->SendHandler(EmacLitePtr->SendRef);
 
-    }
+	}
 }
 
 /*****************************************************************************/
@@ -289,15 +289,15 @@ void XEmacLite_InterruptHandler(void *InstancePtr)
 * None.
 *
 ******************************************************************************/
-void XEmacLite_SetRecvHandler(XEmacLite *InstancePtr, void *CallBackRef,
-                              XEmacLite_Handler FuncPtr)
+void XEmacLite_SetRecvHandler(XEmacLite * InstancePtr, void *CallBackRef,
+			      XEmacLite_Handler FuncPtr)
 {
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(FuncPtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->RecvHandler = FuncPtr;
-    InstancePtr->RecvRef = CallBackRef;
+	InstancePtr->RecvHandler = FuncPtr;
+	InstancePtr->RecvRef = CallBackRef;
 }
 
 
@@ -329,13 +329,13 @@ void XEmacLite_SetRecvHandler(XEmacLite *InstancePtr, void *CallBackRef,
 * None.
 *
 ******************************************************************************/
-void XEmacLite_SetSendHandler(XEmacLite *InstancePtr, void *CallBackRef,
-                              XEmacLite_Handler FuncPtr)
+void XEmacLite_SetSendHandler(XEmacLite * InstancePtr, void *CallBackRef,
+			      XEmacLite_Handler FuncPtr)
 {
-    XASSERT_VOID(InstancePtr != NULL);
-    XASSERT_VOID(FuncPtr != NULL);
-    XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(FuncPtr != NULL);
+	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
 
-    InstancePtr->SendHandler = FuncPtr;
-    InstancePtr->SendRef = CallBackRef;
+	InstancePtr->SendHandler = FuncPtr;
+	InstancePtr->SendRef = CallBackRef;
 }

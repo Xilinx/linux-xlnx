@@ -77,138 +77,128 @@
 * None.
 *
 ******************************************************************************/
-XStatus XEmacLite_SelfTest(XEmacLite *InstancePtr)
+int XEmacLite_SelfTest(XEmacLite * InstancePtr)
 {
-    u32 BaseAddress;
-    u8  i;
-    u8  TestString[4] = {0xDE, 0xAD, 0xBE, 0xEF};
-    u8  ReturnString[4] = {0x0, 0x0, 0x0, 0x0};
+	u32 BaseAddress;
+	u8 i;
+	u8 TestString[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+	u8 ReturnString[4] = { 0x0, 0x0, 0x0, 0x0 };
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /*
-     * Determine the TX buffer address
-     */
+	/*
+	 * Determine the TX buffer address
+	 */
 
-    BaseAddress = InstancePtr->BaseAddress + XEL_TXBUFF_OFFSET;
+	BaseAddress = InstancePtr->BaseAddress + XEL_TXBUFF_OFFSET;
 
-    /*
-     * Write the TestString to the TX buffer in EMAC Lite then
-     * back from the EMAC Lite and verify
-     */
-    XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
-                           sizeof(TestString));
-    XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
-                           sizeof(ReturnString));
+	/*
+	 * Write the TestString to the TX buffer in EMAC Lite then
+	 * back from the EMAC Lite and verify
+	 */
+	XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
+			       sizeof(TestString));
+	XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
+			      sizeof(ReturnString));
 
-    for (i=0; i < 4; i++)
-    {
+	for (i = 0; i < 4; i++) {
 
-        if (ReturnString[i] != TestString[i])
-        {
-            return XST_FAILURE;
-        }
+		if (ReturnString[i] != TestString[i]) {
+			return XST_FAILURE;
+		}
 
-        /*
-         * Zero thge return string for the next test
-         */
-        ReturnString[i] = 0;
-    }
+		/*
+		 * Zero thge return string for the next test
+		 */
+		ReturnString[i] = 0;
+	}
 
-    /*
-     * If the second buffer is configured, test it also
-     */
+	/*
+	 * If the second buffer is configured, test it also
+	 */
 
-    if (InstancePtr->ConfigPtr->TxPingPong != 0)
-    {
-        BaseAddress += XEL_BUFFER_OFFSET;
-        /*
-         * Write the TestString to the optional TX buffer in EMAC Lite then
-         * back from the EMAC Lite and verify
-         */
-        XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
-                               sizeof(TestString));
-        XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
-                              sizeof(ReturnString));
+	if (InstancePtr->ConfigPtr->TxPingPong != 0) {
+		BaseAddress += XEL_BUFFER_OFFSET;
+		/*
+		 * Write the TestString to the optional TX buffer in EMAC Lite then
+		 * back from the EMAC Lite and verify
+		 */
+		XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
+				       sizeof(TestString));
+		XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
+				      sizeof(ReturnString));
 
-        for (i=0; i < 4; i++)
-        {
+		for (i = 0; i < 4; i++) {
 
-            if (ReturnString[i] != TestString[i])
-            {
-                return XST_FAILURE;
-            }
+			if (ReturnString[i] != TestString[i]) {
+				return XST_FAILURE;
+			}
 
-            /*
-             * Zero thge return string for the next test
-             */
-            ReturnString[i] = 0;
-        }
-    }
+			/*
+			 * Zero thge return string for the next test
+			 */
+			ReturnString[i] = 0;
+		}
+	}
 
-    /*
-     * Determine the RX buffer address
-     */
+	/*
+	 * Determine the RX buffer address
+	 */
 
-    BaseAddress = InstancePtr->BaseAddress + XEL_RXBUFF_OFFSET;
+	BaseAddress = InstancePtr->BaseAddress + XEL_RXBUFF_OFFSET;
 
-    /*
-     * Write the TestString to the RX buffer in EMAC Lite then
-     * back from the EMAC Lite and verify
-     */
-    XEmacLite_AlignedWrite(TestString, (u32 *) (BaseAddress),
-                           sizeof(TestString));
-    XEmacLite_AlignedRead((u32 *) (BaseAddress), ReturnString,
-                           sizeof(ReturnString));
+	/*
+	 * Write the TestString to the RX buffer in EMAC Lite then
+	 * back from the EMAC Lite and verify
+	 */
+	XEmacLite_AlignedWrite(TestString, (u32 *) (BaseAddress),
+			       sizeof(TestString));
+	XEmacLite_AlignedRead((u32 *) (BaseAddress), ReturnString,
+			      sizeof(ReturnString));
 
-    for (i=0; i < 4; i++)
-    {
+	for (i = 0; i < 4; i++) {
 
-        if (ReturnString[i] != TestString[i])
-        {
-            return XST_FAILURE;
-        }
+		if (ReturnString[i] != TestString[i]) {
+			return XST_FAILURE;
+		}
 
-        /*
-         * Zero thge return string for the next test
-         */
-        ReturnString[i] = 0;
-    }
+		/*
+		 * Zero thge return string for the next test
+		 */
+		ReturnString[i] = 0;
+	}
 
-    /*
-     * If the second buffer is configured, test it also
-     */
+	/*
+	 * If the second buffer is configured, test it also
+	 */
 
-    if (InstancePtr->ConfigPtr->RxPingPong != 0)
-    {
-        BaseAddress += XEL_BUFFER_OFFSET;
-        /*
-         * Write the TestString to the optional RX buffer in EMAC Lite then
-         * back from the EMAC Lite and verify
-         */
-        XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
-                               sizeof(TestString));
-        XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
-                              sizeof(ReturnString));
+	if (InstancePtr->ConfigPtr->RxPingPong != 0) {
+		BaseAddress += XEL_BUFFER_OFFSET;
+		/*
+		 * Write the TestString to the optional RX buffer in EMAC Lite then
+		 * back from the EMAC Lite and verify
+		 */
+		XEmacLite_AlignedWrite(TestString, (u32 *) BaseAddress,
+				       sizeof(TestString));
+		XEmacLite_AlignedRead((u32 *) BaseAddress, ReturnString,
+				      sizeof(ReturnString));
 
-        for (i=0; i < 4; i++)
-        {
+		for (i = 0; i < 4; i++) {
 
-            if (ReturnString[i] != TestString[i])
-            {
-                return XST_FAILURE;
-            }
+			if (ReturnString[i] != TestString[i]) {
+				return XST_FAILURE;
+			}
 
-            /*
-             * Zero thge return string for the next test
-             */
-            ReturnString[i] = 0;
-        }
-    }
+			/*
+			 * Zero thge return string for the next test
+			 */
+			ReturnString[i] = 0;
+		}
+	}
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }

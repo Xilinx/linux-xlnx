@@ -72,23 +72,24 @@ struct ethernet_desc {
 
 static struct ethernet_desc ethernet_desc_table[] = {
 #ifdef XPAR_XEMACLITE_NUM_INSTANCES
-	{XPAR_ETHERNETLITE_0_BASEADDR, 
-		XPAR_ETHERNETLITE_0_IRQ,
-		XPAR_ETHERNETLITE_0_MACADDR },
+	{XPAR_ETHERNETLITE_0_BASEADDR,
+	 XPAR_ETHERNETLITE_0_IRQ,
+	 XPAR_ETHERNETLITE_0_MACADDR},
 #endif
 #ifdef CONFIG_XILINX_ETHERNETLITE_1_INSTANCE
-	{XPAR_ETHERNETLITE_1_BASEADDR, 
-		XPAR_ETHERNETLITE_1_IRQ,
-		XPAR_ETHERNETLITE_1_MACADDR },
+	{XPAR_ETHERNETLITE_1_BASEADDR,
+	 XPAR_ETHERNETLITE_1_IRQ,
+	 XPAR_ETHERNETLITE_1_MACADDR},
 #endif
 #ifdef CONFIG_XILINX_ETHERNETLITE_2_INSTANCE
-	{XPAR_ETHERNETLITE_2_BASEADDR, 
-		XPAR_ETHERNETLITE_2_IRQ,
-		XPAR_ETHERNETLITE_2_MACADDR },
+	{XPAR_ETHERNETLITE_2_BASEADDR,
+	 XPAR_ETHERNETLITE_2_IRQ,
+	 XPAR_ETHERNETLITE_2_MACADDR},
 #endif
 };
 
-static int num_ether_devices = sizeof(ethernet_desc_table)/sizeof(struct ethernet_desc);
+static int num_ether_devices =
+	sizeof(ethernet_desc_table) / sizeof(struct ethernet_desc);
 
 #define ALIGNMENT         4
 
@@ -111,7 +112,7 @@ struct net_local {
 
 	struct net_device_stats stats;	/* Statistics for this device */
 	struct net_device *next_dev;	/* The next device in dev_list */
-	struct net_device *dev;		/* this device */
+	struct net_device *dev;	/* this device */
 	u32 index;		/* Which interface is this */
 	XInterruptHandler Isr;	/* Pointer to the XEmac ISR routine */
 	u8 mii_addr;		/* The MII address of the PHY */
@@ -127,12 +128,12 @@ struct net_local {
 	void *desc_space;
 	dma_addr_t desc_space_handle;
 	int desc_space_size;
-    
-        u8 *ddrVirtPtr;
-        u32 ddrOffset;
-        u32 ddrSize;
 
-	struct sk_buff* deferred_skb;
+	u8 *ddrVirtPtr;
+	u32 ddrOffset;
+	u32 ddrSize;
+
+	struct sk_buff *deferred_skb;
 };
 
 /* List of devices we're handling and a lock to give us atomic access. */
@@ -143,8 +144,7 @@ static spinlock_t dev_lock = SPIN_LOCK_UNLOCKED;
 static spinlock_t reset_lock = SPIN_LOCK_UNLOCKED;
 
 /* Helper function to determine if a given XEmac error warrants a reset. */
-extern inline int
-status_requires_reset(XStatus s)
+extern inline int status_requires_reset(int s)
 {
 	return (s == XST_DMA_ERROR || s == XST_FIFO_ERROR ||
 		s == XST_RESET_ERROR || s == XST_DMA_SG_NO_LIST ||
@@ -174,8 +174,7 @@ static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 * None.
 *
 ******************************************************************************/
-XEmacLite_Config *
-XEmacLite_GetConfig(int Instance)
+XEmacLite_Config *XEmacLite_GetConfig(int Instance)
 {
 	if (Instance < 0 || Instance >= XPAR_XEMACLITE_NUM_INSTANCES) {
 		return NULL;
@@ -219,8 +218,7 @@ XEmacLite_GetConfig(int Instance)
  */
 
 typedef enum DUPLEX { UNKNOWN_DUPLEX, HALF_DUPLEX, FULL_DUPLEX } DUPLEX;
-static void
-reset(struct net_device *dev, DUPLEX duplex)
+static void reset(struct net_device *dev, DUPLEX duplex)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 
@@ -258,8 +256,7 @@ xemaclite_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 	return IRQ_HANDLED;
 }
 
-static int
-xemaclite_open(struct net_device *dev)
+static int xemaclite_open(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	int retval;
@@ -295,8 +292,7 @@ xemaclite_open(struct net_device *dev)
 
 	return 0;
 }
-static int
-xemaclite_close(struct net_device *dev)
+static int xemaclite_close(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	unsigned long flags;
@@ -315,15 +311,14 @@ xemaclite_close(struct net_device *dev)
 
 	return 0;
 }
-static struct net_device_stats *
-xemaclite_get_stats(struct net_device *dev)
+static struct net_device_stats *xemaclite_get_stats(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
+
 	return &lp->stats;
 }
 
-static int
-xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
+static int xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	struct sk_buff *new_skb;
@@ -332,10 +327,11 @@ xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
 
 	len = orig_skb->len;
 
-        new_skb = orig_skb;
+	new_skb = orig_skb;
 
-        spin_lock_irqsave(&reset_lock, flags);
-	if (XEmacLite_Send(&lp->EmacLite, (u8 *) new_skb->data, len) != XST_SUCCESS) {
+	spin_lock_irqsave(&reset_lock, flags);
+	if (XEmacLite_Send(&lp->EmacLite, (u8 *) new_skb->data, len) !=
+	    XST_SUCCESS) {
 		netif_stop_queue(dev);
 		lp->deferred_skb = new_skb;
 		spin_unlock_irqrestore(&reset_lock, flags);
@@ -344,23 +340,25 @@ xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
 	spin_unlock_irqrestore(&reset_lock, flags);
 
 	lp->stats.tx_bytes += len;
-        dev_kfree_skb(new_skb);
+	dev_kfree_skb(new_skb);
 	dev->trans_start = jiffies;
 
 	return 0;
 }
 
 /* The callback function for completed frames sent. */
-static void
-SendHandler(void *CallbackRef)
+static void SendHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
 	struct net_local *lp = (struct net_local *) dev->priv;
 
 	if (lp->deferred_skb) {
-		if (XEmacLite_Send(&lp->EmacLite, (u8 *) lp->deferred_skb->data, lp->deferred_skb->len) != XST_SUCCESS) {
+		if (XEmacLite_Send
+		    (&lp->EmacLite, (u8 *) lp->deferred_skb->data,
+		     lp->deferred_skb->len) != XST_SUCCESS) {
 			return;
-		} else {
+		}
+		else {
 			dev_kfree_skb(lp->deferred_skb);
 			lp->deferred_skb = NULL;
 			netif_wake_queue(dev);
@@ -369,8 +367,7 @@ SendHandler(void *CallbackRef)
 	lp->stats.tx_packets++;
 }
 
-static void
-xemaclite_tx_timeout(struct net_device *dev)
+static void xemaclite_tx_timeout(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	unsigned long flags;
@@ -385,8 +382,7 @@ xemaclite_tx_timeout(struct net_device *dev)
 }
 
 /* The callback function for frames received. */
-static void
-RecvHandler(void *CallbackRef)
+static void RecvHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -412,7 +408,7 @@ RecvHandler(void *CallbackRef)
 	if (align)
 		skb_reserve(skb, align);
 
-	skb_reserve(skb,2);
+	skb_reserve(skb, 2);
 
 	len = XEmacLite_Recv(&lp->EmacLite, (u8 *) skb->data);
 
@@ -433,7 +429,7 @@ RecvHandler(void *CallbackRef)
 
 
 	skb->protocol = eth_type_trans(skb, dev);
-        skb->ip_summed = CHECKSUM_NONE;
+	skb->ip_summed = CHECKSUM_NONE;
 
 	lp->stats.rx_packets++;
 	lp->stats.rx_bytes += len;
@@ -446,46 +442,46 @@ static int __init xilinx_emac_hw_addr_setup(char *addrs)
 {
 	unsigned int hw_addr[6];
 	int count;
-	static int interface=0;
+	static int interface = 0;
 
 	/* Scan the kernel param for HW MAC address */
-	count=sscanf(addrs, "%2x:%2x:%2x:%2x:%2x:%2x",hw_addr+0, hw_addr+1,
-						 hw_addr+2, hw_addr+3,
-						 hw_addr+4, hw_addr+5);
+	count = sscanf(addrs, "%2x:%2x:%2x:%2x:%2x:%2x", hw_addr + 0,
+		       hw_addr + 1, hw_addr + 2, hw_addr + 3, hw_addr + 4,
+		       hw_addr + 5);
 	/* Did we get 6 hex digits? */
-	if(count!=6)
+	if (count != 6)
 		return 0;
 
-	for(count=0;count<6;count++)
-	{
-		ethernet_desc_table[interface].macaddr[count] = hw_addr[count] & 0xFF;
+	for (count = 0; count < 6; count++) {
+		ethernet_desc_table[interface].macaddr[count] =
+			hw_addr[count] & 0xFF;
 	}
 
 	/* Increase interface number, for next time */
 	interface++;
-        return 1;
+	return 1;
 }
 
 
-static int
-xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+static int xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
-	struct hw_addr_data *hw_addr= (struct sockaddr *) &rq->ifr_hwaddr;
+	struct hw_addr_data *hw_addr = (struct sockaddr *) &rq->ifr_hwaddr;
 
 	switch (cmd) {
 	case SIOCETHTOOL:
 		return -EIO;
 
-        case SIOCSIFHWADDR:
-            {
-            	printk(KERN_INFO "%s: SIOCSIFHWADDR\n", dev->name);
+	case SIOCSIFHWADDR:
+		{
+			printk(KERN_INFO "%s: SIOCSIFHWADDR\n", dev->name);
 
-		/* Copy MAC address in from user space*/
-        	copy_from_user(dev->dev_addr, (void *)hw_addr, IFHWADDRLEN);
-		XEmacLite_SetMacAddress(&lp->EmacLite, dev->dev_addr);
-	    	break;
-	    }
+			/* Copy MAC address in from user space */
+			copy_from_user(dev->dev_addr, (void *) hw_addr,
+				       IFHWADDRLEN);
+			XEmacLite_SetMacAddress(&lp->EmacLite, dev->dev_addr);
+			break;
+		}
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -493,8 +489,7 @@ xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return 0;
 }
 
-static void
-remove_head_dev(void)
+static void remove_head_dev(void)
 {
 	struct net_local *lp;
 	struct net_device *dev;
@@ -512,20 +507,19 @@ remove_head_dev(void)
 	iounmap((void *) cfg->BaseAddress);
 	cfg->BaseAddress = cfg->PhysAddress;
 
-        if (lp->ddrVirtPtr) {
-	 	kfree (lp->ddrVirtPtr);
+	if (lp->ddrVirtPtr) {
+		kfree(lp->ddrVirtPtr);
 	}
 
 	unregister_netdev(dev);
 	kfree(dev);
 }
 
-static int __init
-probe(int index)
+static int __init probe(int index)
 {
 	static const unsigned long remap_size
-	    = XPAR_ETHERNETLITE_0_HIGHADDR - 
-		  XPAR_ETHERNETLITE_0_BASEADDR + 1;
+		= XPAR_ETHERNETLITE_0_HIGHADDR -
+		XPAR_ETHERNETLITE_0_BASEADDR + 1;
 	struct net_device *dev;
 	struct net_local *lp;
 	XEmacLite_Config *cfg;
@@ -533,17 +527,17 @@ probe(int index)
 	int err;
 	u32 maddr;
 
-	if(index>=num_ether_devices)
+	if (index >= num_ether_devices)
 		return -ENODEV;
 	else
-		irq=ethernet_desc_table[index].irq;
+		irq = ethernet_desc_table[index].irq;
 
 	/* Find the config for our device. */
 	cfg = XEmacLite_GetConfig(index);
 	if (!cfg)
 		return -ENODEV;
 
-    dev = alloc_etherdev(sizeof (struct net_local));
+	dev = alloc_etherdev(sizeof(struct net_local));
 	if (!dev) {
 		printk(KERN_ERR "Could not allocate Xilinx enet device %d.\n",
 		       index);
@@ -556,7 +550,7 @@ probe(int index)
 
 	/* Initialize our private data. */
 	lp = (struct net_local *) dev->priv;
-	memset(lp, 0, sizeof (struct net_local));
+	memset(lp, 0, sizeof(struct net_local));
 	lp->index = index;
 	lp->dev = dev;
 
@@ -579,13 +573,14 @@ probe(int index)
 
 	/* Copy MAC address in from descriptor table */
 	memcpy(dev->dev_addr, ethernet_desc_table[index].macaddr, IFHWADDRLEN);
-	XEmacLite_SetMacAddress(&lp->EmacLite, ethernet_desc_table[index].macaddr);
+	XEmacLite_SetMacAddress(&lp->EmacLite,
+				ethernet_desc_table[index].macaddr);
 
-    err = register_netdev(dev);
-    if (err) {
-    	remove_head_dev();
+	err = register_netdev(dev);
+	if (err) {
+		remove_head_dev();
 		return err;
-    }
+	}
 
 
 	printk(KERN_ERR "%s: using fifo mode.\n", dev->name);
@@ -593,7 +588,7 @@ probe(int index)
 	XEmacLite_SetSendHandler(&lp->EmacLite, dev, SendHandler);
 	dev->hard_start_xmit = xemaclite_Send;
 	lp->Isr = XEmacLite_InterruptHandler;
-	
+
 	lp->mii_addr = 0;
 	printk(KERN_WARNING
 	       "%s: No PHY detected.  Assuming a PHY at address %d.\n",
@@ -609,23 +604,21 @@ probe(int index)
 
 	printk(KERN_INFO
 	       "%s: Xilinx EMACLite #%d at 0x%08X mapped to 0x%08X, irq=%d\n",
-	       dev->name, index, cfg->PhysAddress, 
-		ethernet_desc_table[index].baseaddr, dev->irq); 
+	       dev->name, index, cfg->PhysAddress,
+	       ethernet_desc_table[index].baseaddr, dev->irq);
 	return 0;
 }
 
-static int __init
-xemaclite_init(void)
+static int __init xemaclite_init(void)
 {
 	int index = 0;
 
-	while (probe(index++) == 0) ;
+	while (probe(index++) == 0);
 	/* If we found at least one, report success. */
 	return (index > 1) ? 0 : -ENODEV;
 }
 
-static void __exit
-xemaclite_cleanup(void)
+static void __exit xemaclite_cleanup(void)
 {
 	while (dev_list)
 		remove_head_dev();
@@ -635,4 +628,3 @@ module_init(xemaclite_init);
 module_exit(xemaclite_cleanup);
 
 __setup("macaddr=", xilinx_emac_hw_addr_setup);
-

@@ -94,59 +94,59 @@
 * None
 *
 ******************************************************************************/
-XStatus XEmacLite_Initialize(XEmacLite *InstancePtr, u16 DeviceId)
+int XEmacLite_Initialize(XEmacLite * InstancePtr, u16 DeviceId)
 {
-    XEmacLite_Config *EmacLiteConfigPtr;   /* Pointer to Configuration data. */
+	XEmacLite_Config *EmacLiteConfigPtr;	/* Pointer to Configuration data. */
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
-    XASSERT_NONVOID(InstancePtr != NULL);
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /*
-     * Zero the provided instance memory
-     */
+	/*
+	 * Zero the provided instance memory
+	 */
 
-    //XENV_MEM_FILL(InstancePtr, 0, sizeof(XEmacLite));
-    memset(InstancePtr, 0, sizeof(XEmacLite));
+	//memset(InstancePtr, 0, sizeof(XEmacLite));
+	memset(InstancePtr, 0, sizeof(XEmacLite));
 
-    /*
-     * Lookup the device configuration in the configuration table. Use this
-     * configuration info down below when initializing this component.
-     */
+	/*
+	 * Lookup the device configuration in the configuration table. Use this
+	 * configuration info down below when initializing this component.
+	 */
 
-    EmacLiteConfigPtr = XEmacLite_LookupConfig(DeviceId);
-    if (EmacLiteConfigPtr == NULL)
-    {
-        return XST_DEVICE_NOT_FOUND;
-    }
+	EmacLiteConfigPtr = XEmacLite_LookupConfig(DeviceId);
+	if (EmacLiteConfigPtr == NULL) {
+		return XST_DEVICE_NOT_FOUND;
+	}
 
-    /*
-     * Set some default values for instance data, don't indicate the device
-     * is ready to use until everything has been initialized successfully
-     */
+	/*
+	 * Set some default values for instance data, don't indicate the device
+	 * is ready to use until everything has been initialized successfully
+	 */
 
-    InstancePtr->BaseAddress = EmacLiteConfigPtr->BaseAddress;
-    InstancePtr->ConfigPtr = EmacLiteConfigPtr;
+	InstancePtr->BaseAddress = EmacLiteConfigPtr->BaseAddress;
+	InstancePtr->ConfigPtr = EmacLiteConfigPtr;
 
-    InstancePtr->RecvHandler = (XEmacLite_Handler) StubHandler;
-    InstancePtr->SendHandler = (XEmacLite_Handler) StubHandler;
+	InstancePtr->RecvHandler = (XEmacLite_Handler) StubHandler;
+	InstancePtr->SendHandler = (XEmacLite_Handler) StubHandler;
 
 
-    /*
-     * Clear the TX CSR's in case this is a restart
-     */
+	/*
+	 * Clear the TX CSR's in case this is a restart
+	 */
 
-    XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, 0);
-    XIo_Out32(InstancePtr->BaseAddress + XEL_BUFFER_OFFSET + XEL_TSR_OFFSET, 0);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_TSR_OFFSET, 0);
+	XIo_Out32(InstancePtr->BaseAddress + XEL_BUFFER_OFFSET + XEL_TSR_OFFSET,
+		  0);
 
-    /*
-     * Since there were no failures, indicate the device is ready to use.
-     */
+	/*
+	 * Since there were no failures, indicate the device is ready to use.
+	 */
 
-    InstancePtr->IsReady = XCOMPONENT_IS_READY;
+	InstancePtr->IsReady = XCOMPONENT_IS_READY;
 
-    return XST_SUCCESS;
+	return XST_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -173,144 +173,144 @@ XStatus XEmacLite_Initialize(XEmacLite *InstancePtr, u16 DeviceId)
 * frame is transmitted.
 *
 ******************************************************************************/
-XStatus XEmacLite_Send(XEmacLite *InstancePtr, u8 *FramePtr, unsigned ByteCount)
+int XEmacLite_Send(XEmacLite * InstancePtr, u8 *FramePtr, unsigned ByteCount)
 {
-    u32 Register;
-    u32 BaseAddress;
+	u32 Register;
+	u32 BaseAddress;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /*
-     * Determine the expected TX buffer address
-     */
+	/*
+	 * Determine the expected TX buffer address
+	 */
 
-    BaseAddress = XEmacLite_mNextTransmitAddr(InstancePtr);
+	BaseAddress = XEmacLite_mNextTransmitAddr(InstancePtr);
 
-    /*
-     * Check the Length, of too large, truncate
-     */
+	/*
+	 * Check the Length, of too large, truncate
+	 */
 
-    if (ByteCount > XEL_MAX_FRAME_SIZE)
-    {
+	if (ByteCount > XEL_MAX_FRAME_SIZE) {
 
-        ByteCount = XEL_MAX_FRAME_SIZE;
-    }
-    /*
-     * Determine if the expected buffer address is empty
-     */
+		ByteCount = XEL_MAX_FRAME_SIZE;
+	}
+	/*
+	 * Determine if the expected buffer address is empty
+	 */
 
-    Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+	Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
 
-    /*
-     * If the expected buffer is available, fill it with the provided data
-     * Align if necessary.
-     */
-
-
-    if (((Register & XEL_TSR_XMIT_BUSY_MASK) == 0) &&
-        ((XEmacLite_mGetTxActive(BaseAddress) & XEL_TSR_XMIT_ACTIVE_MASK) == 0))
-    {
-
-        /*
-         * Switch to next buffer if configured
-         */
-
-        if (InstancePtr->ConfigPtr->TxPingPong != 0)
-        {
-            InstancePtr->NextTxBufferToUse ^= XEL_BUFFER_OFFSET;
-        }
-
-        /*
-         * Write the frame to the buffer.
-         */
-        XEmacLite_AlignedWrite(FramePtr, (u32 *) BaseAddress, ByteCount);
+	/*
+	 * If the expected buffer is available, fill it with the provided data
+	 * Align if necessary.
+	 */
 
 
-        /*
-         * The frame is in the buffer, now send it
-         */
-        XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, (ByteCount &
-                   (XEL_TPLR_LENGTH_MASK_HI | XEL_TPLR_LENGTH_MASK_LO)));
+	if (((Register & XEL_TSR_XMIT_BUSY_MASK) == 0) &&
+	    ((XEmacLite_mGetTxActive(BaseAddress) & XEL_TSR_XMIT_ACTIVE_MASK) ==
+	     0)) {
 
-        Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+		/*
+		 * Switch to next buffer if configured
+		 */
 
-        Register |= XEL_TSR_XMIT_BUSY_MASK;
+		if (InstancePtr->ConfigPtr->TxPingPong != 0) {
+			InstancePtr->NextTxBufferToUse ^= XEL_BUFFER_OFFSET;
+		}
 
-        if ((Register & XEL_TSR_XMIT_IE_MASK) != 0)
-        {
-             Register |= XEL_TSR_XMIT_ACTIVE_MASK;
-        }
-
-        XIo_Out32(BaseAddress + XEL_TSR_OFFSET, Register);
-
-        return XST_SUCCESS;
-    }
-
-    /*
-     * If the expected buffer was full, try the other buffer if configured
-     */
-
-    if (InstancePtr->ConfigPtr->TxPingPong != 0)
-    {
-
-        BaseAddress ^= XEL_BUFFER_OFFSET;
-
-        /*
-         * Determine if the expected buffer address is empty
-         */
-
-        Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
-
-        /*
-         * If the next buffer is available, fill it with the provided data
-         */
-
-        if (((Register & XEL_TSR_XMIT_BUSY_MASK) == 0) &&
-            ((XEmacLite_mGetTxActive(BaseAddress) & XEL_TSR_XMIT_ACTIVE_MASK) ==
-                0))
-        {
-
-            /*
-             * Write the frame to the buffer.
-             */
-            XEmacLite_AlignedWrite(FramePtr, (u32 *)BaseAddress, ByteCount);
-
-            /*
-             * The frame is in the buffer, now send it
-             */
-             XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, (ByteCount &
-                         (XEL_TPLR_LENGTH_MASK_HI | XEL_TPLR_LENGTH_MASK_LO)));
-
-            Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
-
-            Register |= XEL_TSR_XMIT_BUSY_MASK;
-
-            if ((Register & XEL_TSR_XMIT_IE_MASK) != 0)
-            {
-                 Register |= XEL_TSR_XMIT_ACTIVE_MASK;
-            }
-
-            XIo_Out32(BaseAddress + XEL_TSR_OFFSET, Register);
-
-            /*
-             * Do not switch to next buffer, there is a sync problem and
-             * the expected buffer should not change.
-             */
-
-            return XST_SUCCESS;
-        }
-    }
+		/*
+		 * Write the frame to the buffer.
+		 */
+		XEmacLite_AlignedWrite(FramePtr, (u32 *) BaseAddress,
+				       ByteCount);
 
 
-    /*
-     * Buffer(s) was(were) full, return failure to allow for polling usage
-     */
+		/*
+		 * The frame is in the buffer, now send it
+		 */
+		XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, (ByteCount &
+							  (XEL_TPLR_LENGTH_MASK_HI
+							   |
+							   XEL_TPLR_LENGTH_MASK_LO)));
 
-    return XST_FAILURE;
+		Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+
+		Register |= XEL_TSR_XMIT_BUSY_MASK;
+
+		if ((Register & XEL_TSR_XMIT_IE_MASK) != 0) {
+			Register |= XEL_TSR_XMIT_ACTIVE_MASK;
+		}
+
+		XIo_Out32(BaseAddress + XEL_TSR_OFFSET, Register);
+
+		return XST_SUCCESS;
+	}
+
+	/*
+	 * If the expected buffer was full, try the other buffer if configured
+	 */
+
+	if (InstancePtr->ConfigPtr->TxPingPong != 0) {
+
+		BaseAddress ^= XEL_BUFFER_OFFSET;
+
+		/*
+		 * Determine if the expected buffer address is empty
+		 */
+
+		Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+
+		/*
+		 * If the next buffer is available, fill it with the provided data
+		 */
+
+		if (((Register & XEL_TSR_XMIT_BUSY_MASK) == 0) &&
+		    ((XEmacLite_mGetTxActive(BaseAddress) &
+		      XEL_TSR_XMIT_ACTIVE_MASK) == 0)) {
+
+			/*
+			 * Write the frame to the buffer.
+			 */
+			XEmacLite_AlignedWrite(FramePtr, (u32 *) BaseAddress,
+					       ByteCount);
+
+			/*
+			 * The frame is in the buffer, now send it
+			 */
+			XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, (ByteCount &
+								  (XEL_TPLR_LENGTH_MASK_HI
+								   |
+								   XEL_TPLR_LENGTH_MASK_LO)));
+
+			Register = XIo_In32(BaseAddress + XEL_TSR_OFFSET);
+
+			Register |= XEL_TSR_XMIT_BUSY_MASK;
+
+			if ((Register & XEL_TSR_XMIT_IE_MASK) != 0) {
+				Register |= XEL_TSR_XMIT_ACTIVE_MASK;
+			}
+
+			XIo_Out32(BaseAddress + XEL_TSR_OFFSET, Register);
+
+			/*
+			 * Do not switch to next buffer, there is a sync problem and
+			 * the expected buffer should not change.
+			 */
+
+			return XST_SUCCESS;
+		}
+	}
+
+
+	/*
+	 * Buffer(s) was(were) full, return failure to allow for polling usage
+	 */
+
+	return XST_FAILURE;
 }
 
 /*****************************************************************************/
@@ -339,107 +339,100 @@ XStatus XEmacLite_Send(XEmacLite *InstancePtr, u8 *FramePtr, unsigned ByteCount)
 * a frame arrives.
 *
 ******************************************************************************/
-u16 XEmacLite_Recv(XEmacLite *InstancePtr, u8 *FramePtr)
+u16 XEmacLite_Recv(XEmacLite * InstancePtr, u8 *FramePtr)
 {
-    u16 LengthType;
-    u16 Length;
-    u32 Register;
-    u32 BaseAddress;
+	u16 LengthType;
+	u16 Length;
+	u32 Register;
+	u32 BaseAddress;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    /*
-     * Determine the expected buffer address
-     */
+	/*
+	 * Determine the expected buffer address
+	 */
 
-    BaseAddress = XEmacLite_mNextReceiveAddr(InstancePtr);
+	BaseAddress = XEmacLite_mNextReceiveAddr(InstancePtr);
 
-    /*
-     * Verify which buffer has valid data
-     */
+	/*
+	 * Verify which buffer has valid data
+	 */
 
-    Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
+	Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
 
-    if ((Register & XEL_RSR_RECV_DONE_MASK) == XEL_RSR_RECV_DONE_MASK)
-    {
+	if ((Register & XEL_RSR_RECV_DONE_MASK) == XEL_RSR_RECV_DONE_MASK) {
 
-        /*
-         * The driver is in sync, update the next expected buffer if configured
-         */
+		/*
+		 * The driver is in sync, update the next expected buffer if configured
+		 */
 
-        if (InstancePtr->ConfigPtr->RxPingPong != 0)
-        {
-            InstancePtr->NextRxBufferToUse ^= XEL_BUFFER_OFFSET;
-        }
-    }
-    else
-    {
-        /*
-         * The instance is out of sync, try other buffer if other
-         * buffer is configured, return 0 otherwise. If the instance is
-         * out of syne, do not update the 'NextRxBufferToUse' since it
-         * will ce correct on subsequent calls.
-         */
-        if (InstancePtr->ConfigPtr->RxPingPong != 0)
-        {
-            BaseAddress ^= XEL_BUFFER_OFFSET;
-        }
-        else
-        {
-            return 0; /* No data was available */
-        }
-        /*
-         * Verify that buffer has valid data
-         */
+		if (InstancePtr->ConfigPtr->RxPingPong != 0) {
+			InstancePtr->NextRxBufferToUse ^= XEL_BUFFER_OFFSET;
+		}
+	}
+	else {
+		/*
+		 * The instance is out of sync, try other buffer if other
+		 * buffer is configured, return 0 otherwise. If the instance is
+		 * out of syne, do not update the 'NextRxBufferToUse' since it
+		 * will ce correct on subsequent calls.
+		 */
+		if (InstancePtr->ConfigPtr->RxPingPong != 0) {
+			BaseAddress ^= XEL_BUFFER_OFFSET;
+		}
+		else {
+			return 0;	/* No data was available */
+		}
+		/*
+		 * Verify that buffer has valid data
+		 */
 
-        Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
+		Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
 
-        if ((Register & XEL_RSR_RECV_DONE_MASK) != XEL_RSR_RECV_DONE_MASK)
-        {
-            return 0; /* No data was available */
-        }
-    }
+		if ((Register & XEL_RSR_RECV_DONE_MASK) !=
+		    XEL_RSR_RECV_DONE_MASK) {
+			return 0;	/* No data was available */
+		}
+	}
 
-    /*
-     * Get the length of the frame that arrived
-     */
-    LengthType = XEmacLite_mGetReceiveDataLength(BaseAddress);
+	/*
+	 * Get the length of the frame that arrived
+	 */
+	LengthType = XEmacLite_mGetReceiveDataLength(BaseAddress);
 
-    /* Check if length is valid */
+	/* Check if length is valid */
 
-    if (LengthType > XEL_MAX_FRAME_SIZE)
-    {
-        /* Field contains type, use max frame size and let user parse it */
-        Length = XEL_MAX_FRAME_SIZE;
-    }
-    else
-    {
-        /* Use the length in the frame, plus the header and trailer */
-        Length = LengthType + XEL_HEADER_SIZE + XEL_FCS_SIZE;
-    }
+	if (LengthType > XEL_MAX_FRAME_SIZE) {
+		/* Field contains type, use max frame size and let user parse it */
+		Length = XEL_MAX_FRAME_SIZE;
+	}
+	else {
+		/* Use the length in the frame, plus the header and trailer */
+		Length = LengthType + XEL_HEADER_SIZE + XEL_FCS_SIZE;
+	}
 
-    /*
-     * Read from the EMAC Lite
-     */
-    XEmacLite_AlignedRead(((u32 *)(BaseAddress + XEL_RXBUFF_OFFSET)),
-                           FramePtr, Length);
+	/*
+	 * Read from the EMAC Lite
+	 */
+	XEmacLite_AlignedRead(((u32 *) (BaseAddress + XEL_RXBUFF_OFFSET)),
+			      FramePtr, Length);
 
-    /*
-     * Acknowledge the frame
-     */
+	/*
+	 * Acknowledge the frame
+	 */
 
-    Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
+	Register = XIo_In32(BaseAddress + XEL_RSR_OFFSET);
 
-    Register &= ~XEL_RSR_RECV_DONE_MASK;
+	Register &= ~XEL_RSR_RECV_DONE_MASK;
 
-    XIo_Out32(BaseAddress + XEL_RSR_OFFSET, Register);
+	XIo_Out32(BaseAddress + XEL_RSR_OFFSET, Register);
 
 
-    return Length;
+	return Length;
 }
 
 /*****************************************************************************/
@@ -463,52 +456,53 @@ u16 XEmacLite_Recv(XEmacLite *InstancePtr, u8 *FramePtr)
 * properly.
 *
 ******************************************************************************/
-void XEmacLite_SetMacAddress(XEmacLite *InstancePtr, u8 *AddressPtr)
+void XEmacLite_SetMacAddress(XEmacLite * InstancePtr, u8 *AddressPtr)
 {
-    u32 BaseAddress;
+	u32 BaseAddress;
 
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    XASSERT_VOID(InstancePtr != NULL);
+	XASSERT_VOID(InstancePtr != NULL);
 
-    BaseAddress = InstancePtr->BaseAddress + InstancePtr->NextTxBufferToUse +
-                  XEL_TXBUFF_OFFSET;
+	BaseAddress =
+		InstancePtr->BaseAddress + InstancePtr->NextTxBufferToUse +
+		XEL_TXBUFF_OFFSET;
 
-    /*
-     * Copy the MAC address to the Transmit buffer
-     */
-    XEmacLite_AlignedWrite(AddressPtr, (u32 *)BaseAddress, XEL_MAC_ADDR_SIZE);
+	/*
+	 * Copy the MAC address to the Transmit buffer
+	 */
+	XEmacLite_AlignedWrite(AddressPtr, (u32 *) BaseAddress,
+			       XEL_MAC_ADDR_SIZE);
 
-    /*
-     * Set the length
-     */
+	/*
+	 * Set the length
+	 */
 
-    XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, XEL_MAC_ADDR_SIZE);
+	XIo_Out32(BaseAddress + XEL_TPLR_OFFSET, XEL_MAC_ADDR_SIZE);
 
-    /*
-     * Update the MAC address in the EMAC Lite
-     */
+	/*
+	 * Update the MAC address in the EMAC Lite
+	 */
 
-    XIo_Out32(BaseAddress + XEL_TSR_OFFSET, XEL_TSR_PROG_MAC_ADDR);
+	XIo_Out32(BaseAddress + XEL_TSR_OFFSET, XEL_TSR_PROG_MAC_ADDR);
 
 
-    /*
-     * Wait for EMAC Lite to finish with the MAC address update
-     */
+	/*
+	 * Wait for EMAC Lite to finish with the MAC address update
+	 */
 
-    while ((XIo_In32(BaseAddress + XEL_TSR_OFFSET ) &
-           XEL_TSR_PROG_MAC_ADDR) != 0 );
+	while ((XIo_In32(BaseAddress + XEL_TSR_OFFSET) &
+		XEL_TSR_PROG_MAC_ADDR) != 0);
 
-    /*
-     * Switch to next buffer if configured
-     */
+	/*
+	 * Switch to next buffer if configured
+	 */
 
-    if (InstancePtr->ConfigPtr->TxPingPong != 0)
-    {
-        InstancePtr->NextTxBufferToUse ^= XEL_BUFFER_OFFSET;
-    }
+	if (InstancePtr->ConfigPtr->TxPingPong != 0) {
+		InstancePtr->NextTxBufferToUse ^= XEL_BUFFER_OFFSET;
+	}
 
 }
 
@@ -533,19 +527,17 @@ void XEmacLite_SetMacAddress(XEmacLite *InstancePtr, u8 *AddressPtr)
 ******************************************************************************/
 XEmacLite_Config *XEmacLite_LookupConfig(u16 DeviceId)
 {
-    XEmacLite_Config *CfgPtr = NULL;
-    int i;
+	XEmacLite_Config *CfgPtr = NULL;
+	int i;
 
-    for (i = 0; i < XPAR_XEMACLITE_NUM_INSTANCES; i++)
-    {
-        if (XEmacLite_ConfigTable[i].DeviceId == DeviceId)
-        {
-            CfgPtr = &XEmacLite_ConfigTable[i];
-            break;
-        }
-    }
+	for (i = 0; i < XPAR_XEMACLITE_NUM_INSTANCES; i++) {
+		if (XEmacLite_ConfigTable[i].DeviceId == DeviceId) {
+			CfgPtr = &XEmacLite_ConfigTable[i];
+			break;
+		}
+	}
 
-    return CfgPtr;
+	return CfgPtr;
 }
 
 /******************************************************************************/
@@ -567,7 +559,7 @@ XEmacLite_Config *XEmacLite_LookupConfig(u16 DeviceId)
 ******************************************************************************/
 void StubHandler(void *CallBackRef)
 {
-    XASSERT_VOID_ALWAYS();
+	XASSERT_VOID_ALWAYS();
 }
 
 
@@ -585,39 +577,41 @@ void StubHandler(void *CallBackRef)
 * @note
 *
 *****************************************************************************/
-u32 XEmacLite_TxBufferAvailable(XEmacLite *InstancePtr)
+u32 XEmacLite_TxBufferAvailable(XEmacLite * InstancePtr)
 {
 
-    u32 Register;
-    u32 TxPingBusy;
-    u32 TxPongBusy;
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	u32 Register;
+	u32 TxPingBusy;
+	u32 TxPongBusy;
 
-    XASSERT_NONVOID(InstancePtr != NULL);
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    /*
-     * Read the current buffer register and determine if the buffer is available
-     */
+	XASSERT_NONVOID(InstancePtr != NULL);
 
-    Register = XIo_In32(InstancePtr->BaseAddress +
-                        InstancePtr->NextTxBufferToUse +
-                        XEL_TXBUFF_OFFSET);
+	/*
+	 * Read the current buffer register and determine if the buffer is available
+	 */
 
-    TxPingBusy = ((Register & XEL_TSR_XMIT_BUSY_MASK) == XEL_TSR_XMIT_BUSY_MASK);
+	Register = XIo_In32(InstancePtr->BaseAddress +
+			    InstancePtr->NextTxBufferToUse + XEL_TXBUFF_OFFSET);
 
-    /*
-     * Read the other buffer register and determine if the other buffer is available
-     */
+	TxPingBusy =
+		((Register & XEL_TSR_XMIT_BUSY_MASK) == XEL_TSR_XMIT_BUSY_MASK);
 
-    Register = XIo_In32(InstancePtr->BaseAddress +
-                        (InstancePtr->NextTxBufferToUse^ XEL_TSR_OFFSET) +
-                        XEL_TXBUFF_OFFSET);
+	/*
+	 * Read the other buffer register and determine if the other buffer is available
+	 */
 
-    TxPongBusy = ((Register & XEL_TSR_XMIT_BUSY_MASK) == XEL_TSR_XMIT_BUSY_MASK);
+	Register = XIo_In32(InstancePtr->BaseAddress +
+			    (InstancePtr->NextTxBufferToUse ^ XEL_TSR_OFFSET) +
+			    XEL_TXBUFF_OFFSET);
 
-    return (!(TxPingBusy && TxPongBusy));
+	TxPongBusy =
+		((Register & XEL_TSR_XMIT_BUSY_MASK) == XEL_TSR_XMIT_BUSY_MASK);
+
+	return (!(TxPingBusy && TxPongBusy));
 
 }
 
@@ -635,59 +629,59 @@ u32 XEmacLite_TxBufferAvailable(XEmacLite *InstancePtr)
 * @note
 *
 *****************************************************************************/
-void XEmacLite_FlushReceive(XEmacLite *InstancePtr)
+void XEmacLite_FlushReceive(XEmacLite * InstancePtr)
 {
 
-    u32 Register;
-    /*
-     * Verify that each of the inputs are valid.
-     */
+	u32 Register;
 
-    XASSERT_VOID(InstancePtr != NULL);
+	/*
+	 * Verify that each of the inputs are valid.
+	 */
 
-    /*
-     * Read the current buffer register and determine if the buffer is available
-     */
+	XASSERT_VOID(InstancePtr != NULL);
 
-    Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
+	/*
+	 * Read the current buffer register and determine if the buffer is available
+	 */
 
-    /*
-     * Preserve the IE bit
-     */
-    Register &= XEL_RSR_RECV_IE_MASK;
+	Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET);
 
-    /*
-     * Write out the value to flush the RX buffer
-     */
+	/*
+	 * Preserve the IE bit
+	 */
+	Register &= XEL_RSR_RECV_IE_MASK;
 
-    XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
+	/*
+	 * Write out the value to flush the RX buffer
+	 */
 
-    /*
-     * If the pong buffer is available, flush it also
-     */
+	XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET, Register);
 
-    if (InstancePtr->ConfigPtr->RxPingPong != 0)
-    {
-        /*
-         * Read the current buffer register and determine if the buffer is
-         * available
-         */
+	/*
+	 * If the pong buffer is available, flush it also
+	 */
 
-        Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
-                            XEL_BUFFER_OFFSET);
+	if (InstancePtr->ConfigPtr->RxPingPong != 0) {
+		/*
+		 * Read the current buffer register and determine if the buffer is
+		 * available
+		 */
 
-        /*
-         * Preserve the IE bit
-         */
-        Register &= XEL_RSR_RECV_IE_MASK;
+		Register = XIo_In32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
+				    XEL_BUFFER_OFFSET);
 
-        /*
-         * Write out the value to flush the RX buffer
-         */
+		/*
+		 * Preserve the IE bit
+		 */
+		Register &= XEL_RSR_RECV_IE_MASK;
 
-        XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET + XEL_BUFFER_OFFSET,
-                  Register);
+		/*
+		 * Write out the value to flush the RX buffer
+		 */
 
-    }
+		XIo_Out32(InstancePtr->BaseAddress + XEL_RSR_OFFSET +
+			  XEL_BUFFER_OFFSET, Register);
+
+	}
 
 }
