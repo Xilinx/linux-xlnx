@@ -423,7 +423,13 @@ source "drivers/s390/block/Kconfig"
 
 config XILINX_SYSACE
 	tristate "Xilinx SystemACE support"
-	depends on 4xx
+	depends on XILINX_DRIVERS
+	help
+	  Include support for the Xilinx SystemACE CompactFlash interface
+
+config XILINX_SYSACE_OLD
+	tristate "Xilinx SystemACE support (old driver)"
+	depends on XILINX_DRIVERS
 	help
 	  Include support for the Xilinx SystemACE CompactFlash interface
 
@@ -435,5 +441,7 @@ config XEN_BLKDEV_FRONTEND
 	  This driver implements the front-end of the Xen virtual
 	  block device driver.  It communicates with a back-end driver
 	  in another domain which drives the actual block device.
+
+endmenu
 
 endif # BLK_DEV

@@ -458,7 +458,7 @@ static inline void ace_fsm_yieldirq(struct ace_device *ace)
 }
 
 /* Get the next read/write request; ending requests that we don't handle */
-struct request *ace_get_next_request(struct request_queue * q)
+struct request *ace_get_next_request(request_queue_t * q)
 {
 	struct request *req;
 
@@ -825,7 +825,7 @@ static irqreturn_t ace_interrupt(int irq, void *dev_id)
 /* ---------------------------------------------------------------------
  * Block ops
  */
-static void ace_request(struct request_queue * q)
+static void ace_request(request_queue_t * q)
 {
 	struct request *req;
 	struct ace_device *ace;
@@ -989,6 +989,7 @@ static int __devinit ace_setup(struct ace_device *ace)
 	ace->gd->queue = ace->queue;
 	ace->gd->private_data = ace;
 	snprintf(ace->gd->disk_name, 32, "xs%c", ace->id + 'a');
+	device_rename(ace->dev, ace->gd->disk_name);
 
 	/* set bus width */
 	if (ace->bus_width == 1) {
@@ -1157,7 +1158,9 @@ static void __exit ace_exit(void)
 {
 	pr_debug("Unregistering Xilinx SystemACE driver\n");
 	driver_unregister(&ace_driver);
-	unregister_blkdev(ace_major, "xsysace");
+	if (unregister_blkdev(ace_major, "xsysace"))
+		printk(KERN_WARNING "systemace unregister_blkdev(%i) failed\n",
+		       ace_major);
 }
 
 module_init(ace_init);

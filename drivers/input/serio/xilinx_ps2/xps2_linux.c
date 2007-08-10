@@ -1,7 +1,7 @@
 /*
- * adapter.c
+ * xps2_linux.c
  *
- * Xilinx PS/2 Adapter component to interface PS/2 component to Linux
+ * Xilinx PS/2 driver to interface PS/2 component to Linux
  *
  * Author: MontaVista Software, Inc.
  *         source@mvista.com
@@ -237,7 +237,7 @@ static int xps2_probe(struct device *dev)
 	remap_size = regs_res->end - regs_res->start + 1;
 	if (!request_mem_region(regs_res->start, remap_size, DRIVER_NAME)) {
 		printk(KERN_ERR
-		       "%s #%d: Couldn't lock memory region at 0x%08lX\n",
+		       "%s #%d: Couldn't lock memory region at 0x%08x\n",
 		       DRIVER_NAME, pdev->id, regs_res->start);
 		retval = -EBUSY;
 		goto failed1;
@@ -250,7 +250,7 @@ static int xps2_probe(struct device *dev)
 	xps2_cfg.BaseAddress = (u32) ioremap(regs_res->start, remap_size);
 	if (xps2_cfg.BaseAddress == 0) {
 		printk(KERN_ERR
-		       "%s #%d: Couldn't ioremap memory at 0x%08lX\n",
+		       "%s #%d: Couldn't ioremap memory at 0x%08x\n",
 		       DRIVER_NAME, pdev->id, regs_res->start);
 		retval = -EFAULT;
 		goto failed2;
