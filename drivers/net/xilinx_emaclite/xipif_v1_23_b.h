@@ -758,6 +758,6 @@
 /*
  * Initialization Functions
  */
-XStatus XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth);
+int XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth);
 
-#endif				/* end of protection macro */
+#endif /* end of protection macro */

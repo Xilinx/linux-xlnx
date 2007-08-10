@@ -139,7 +139,7 @@
 
 /************************** Function Prototypes ******************************/
 
-static XStatus IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth);
+static int IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth);
 
 /******************************************************************************
 *
@@ -197,10 +197,9 @@ static XStatus IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth);
  */
 #define XIIF_V123B_MAX_REG_BIT_COUNT 32
 
-XStatus
-XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth)
+int XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth)
 {
-	XStatus Status;
+	int Status;
 
 	/* assert to verify arguments are valid */
 
@@ -270,8 +269,7 @@ XIpIfV123b_SelfTest(u32 RegBaseAddress, u8 IpRegistersWidth)
 * None.
 *
 ******************************************************************************/
-static XStatus
-IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth)
+static int IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth)
 {
 	/* ensure that the IP interrupt interrupt enable register is  zero
 	 * as it should be at reset, the interrupt status is dependent upon the
@@ -313,8 +311,7 @@ IpIntrSelfTest(u32 RegBaseAddress, u32 IpRegistersWidth)
 		 */
 		XIIF_V123B_WRITE_IISR(RegBaseAddress, IpInterruptMask);
 		InterruptStatus = XIIF_V123B_READ_IISR(RegBaseAddress);
-		if ((InterruptStatus & IpInterruptMask) != IpInterruptMask)
-		{
+		if ((InterruptStatus & IpInterruptMask) != IpInterruptMask) {
 			return XST_IPIF_IP_STATUS_ERROR;
 		}
 

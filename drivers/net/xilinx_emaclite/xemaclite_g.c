@@ -58,14 +58,12 @@
  * in the system.
  */
 
-XEmacLite_Config XEmacLite_ConfigTable[XPAR_XEMACLITE_NUM_INSTANCES] =
-{
-    {
-	0,				/* Unique ID  of device */
-        XPAR_ETHERNETLITE_0_BASEADDR,	    /* Base address */
-	0,					    /* Physical address */
-        XPAR_ETHERNETLITE_0_TX_PING_PONG,  /* Hardware configuration */
-        XPAR_ETHERNETLITE_0_RX_PING_PONG   /* Hardware configuration */
-    }
+XEmacLite_Config XEmacLite_ConfigTable[XPAR_XEMACLITE_NUM_INSTANCES] = {
+	{
+	 0,			/* Unique ID  of device */
+	 XPAR_ETHERNETLITE_0_BASEADDR,	/* Base address */
+	 0,			/* Physical address */
+	 XPAR_ETHERNETLITE_0_TX_PING_PONG,	/* Hardware configuration */
+	 XPAR_ETHERNETLITE_0_RX_PING_PONG	/* Hardware configuration */
+	 }
 };
-
