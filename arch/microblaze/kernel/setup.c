@@ -62,9 +62,12 @@ void __init setup_arch(char **cmdline_p)
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	__flush_icache_all();
 	__enable_icache();
+#endif
 
+#if XPAR_MICROBLAZE_0_USE_DCACHE==1
 	__flush_dcache_all();
 	__enable_dcache();
+#endif
 
 	panic_timeout = 120;
 
