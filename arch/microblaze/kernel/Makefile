@@ -11,4 +11,6 @@ obj-y += init_task.o setup.o traps.o process.o time.o ptrace.o irq.o \
 
 obj-y += cpu/
 
+obj-y += of_platform.o of_device.o prom.o prom_parse.o system.dtb.o
+
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o

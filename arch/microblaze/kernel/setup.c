@@ -18,6 +18,7 @@
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/page.h>
+#include <asm/prom.h>
 #include <asm/io.h>
 #include <asm/bug.h>
 #include <asm/param.h>
@@ -36,28 +37,30 @@ DEFINE_PER_CPU(unsigned int, ENTRY_SP);	/* Saved SP on kernel entry */
 DEFINE_PER_CPU(unsigned int, R11_SAVE);	/* Temp variable for entry */
 DEFINE_PER_CPU(unsigned int, CURRENT_SAVE);	/* Saved current pointer */
 
+u32 boot_cpuid;
+EXPORT_SYMBOL_GPL(boot_cpuid);
+u32 memory_limit;
+EXPORT_SYMBOL_GPL(memory_limit);
+
+extern char _binary_system_dtb_start[];
+extern char _binary_system_dtb_end[];
+
 extern void early_printk(const char *fmt, ...);
 extern void irq_early_init(void);
 extern int __init setup_early_printk(char *opt);
 extern void __init paging_init(void);
 
-static char command_line[COMMAND_LINE_SIZE];
 static char default_command_line[COMMAND_LINE_SIZE] = CONFIG_CMDLINE;
+char command_line[COMMAND_LINE_SIZE];
 
 void __init setup_arch(char **cmdline_p)
 {
 	setup_cpuinfo();
 	console_verbose();
 
-        // Allow a default command line.
-#ifdef CONFIG_CMDLINE
-	strlcpy(command_line, CONFIG_CMDLINE, sizeof(command_line));
-#endif /* CONFIG_CMDLINE */
+	early_init_devtree(_binary_system_dtb_start);
 
-	strlcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
-	*cmdline_p = command_line;
-
-        parse_early_param();
+	unflatten_device_tree();
         
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	__flush_icache_all();
