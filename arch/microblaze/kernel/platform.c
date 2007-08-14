@@ -45,6 +45,43 @@ static struct platform_device xilinx_spi_0_device = {
 
 #endif /* XPAR_SPI_0_BASEADDR */
 
+/*
+ * EMAC: shortcut macro for single instance
+ */
+#define XPAR_EMAC(num) { \
+	.name		= "xilinx_emac", \
+	.id		= num, \
+	.num_resources	= 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start	= XPAR_EMAC_##num##_BASEADDR, \
+			.end	= XPAR_EMAC_##num##_HIGHADDR, \
+			.flags	= IORESOURCE_MEM, \
+		}, \
+		{ \
+			.start	= XPAR_EMAC_##num##_IRQ, \
+			.flags	= IORESOURCE_IRQ, \
+		}, \
+	}, \
+	.dev.platform_data = &(struct xemac_platform_data) { \
+		.dma_mode = XPAR_EMAC_##num##_DMA_PRESENT, \
+		.has_mii = XPAR_EMAC_##num##_MII_EXIST, \
+		.has_cam = XPAR_EMAC_##num##_CAM_EXIST, \
+		.has_err_cnt = XPAR_EMAC_##num##_ERR_COUNT_EXIST, \
+		.has_jumbo = XPAR_EMAC_##num##_JUMBO_EXIST, \
+		.tx_dre = XPAR_EMAC_##num##_TX_DRE_TYPE, \
+		.rx_dre = XPAR_EMAC_##num##_RX_DRE_TYPE, \
+		.tx_hw_csum = XPAR_EMAC_##num##_TX_INCLUDE_CSUM, \
+		.rx_hw_csum = XPAR_EMAC_##num##_RX_INCLUDE_CSUM, \
+		/* locally administered default address */ \
+		.mac_addr = {0x00, 0x0A, 0x35, 5, 5, 5}, \
+	}, \
+}
+
+#ifdef XPAR_EMAC_0_BASEADDR
+static struct platform_device xilinx_emac_0_device = XPAR_EMAC(0);
+#endif
+
 #ifdef XPAR_GPIO_0_BASEADDR
 
 static struct platform_device xilinx_gpio_0_device = {
@@ -298,6 +335,11 @@ static int __init xilinx_platform_init(void)
 #ifdef XPAR_SPI_0_BASEADDR
 	platform_device_register(&xilinx_spi_0_device);
 #endif /* XPAR_SPI_0_BASEADDR */
+
+	/* EMAC instances */
+#if defined(XPAR_EMAC_0_BASEADDR)
+	platform_device_register(&xilinx_emac_0_device);
+#endif
 
 #ifdef XPAR_GPIO_0_BASEADDR
 	platform_device_register(&xilinx_gpio_0_device);
