@@ -66,7 +66,7 @@
 #include "pcm-indirect2.h"
 
 
-#define SND_ML403_AC97CR_DRIVER "ml403-ac97cr"
+#define SND_ML403_AC97CR_DRIVER "ml403_ac97cr"
 
 MODULE_AUTHOR("Joachim Foerster <JOFT@gmx.de>");
 MODULE_DESCRIPTION("Xilinx ML403 AC97 Controller Reference");
