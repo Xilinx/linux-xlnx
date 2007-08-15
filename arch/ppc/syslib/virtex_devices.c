@@ -247,7 +247,7 @@
 				 }
 
 #define XPAR_AC97_CONTROLLER_REFERENCE(num) { \
-	.name = "ml403-ac97cr", \
+	.name = "ml403_ac97cr", \
 	.id = num, \
 	.num_resources = 3, \
 	.resource = (struct resource[]) { \
