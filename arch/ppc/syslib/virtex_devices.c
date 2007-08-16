@@ -44,7 +44,7 @@
  * Full UART: shortcut macro for single instance + platform data structure
  */
 #define XPAR_UART(num) { \
-	.mapbase = (u8 *) XPAR_UARTNS550_##num##_BASEADDR + 3, \
+	.mapbase = XPAR_UARTNS550_##num##_BASEADDR + 3, \
 	.irq = XPAR_INTC_0_UARTNS550_##num##_VEC_ID, \
 	.iotype = UPIO_MEM, \
 	.uartclk = XPAR_UARTNS550_##num##_CLOCK_FREQ_HZ, \
