@@ -217,7 +217,6 @@ config THINKPAD_ACPI_INPUT_ENABLED
 	  set up the thinkpad-acpi hot key handling using the sysfs interace
 	  after loading the driver.
 
-source "drivers/misc/xilinx/Kconfig"
 
 endif # MISC_DEVICES
 endmenu
