@@ -190,3 +190,12 @@ config THINKPAD_ACPI_BAY
 source "drivers/misc/xilinx/Kconfig"
 
 endmenu
+
+
+#
+# Xilinx devices and common device driver infrastructure
+#
+
+config XILINX_DRIVERS
+  bool
+
