@@ -1,9 +1,0 @@
-#
-# Xilinx devices and common device driver infrastructure
-#
-
-config XILINX_DRIVERS
-  bool
-  help
-    Enable visibility of all Xilinx device drivers.
-

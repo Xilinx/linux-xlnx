@@ -220,3 +220,13 @@ config THINKPAD_ACPI_INPUT_ENABLED
 source "drivers/misc/xilinx/Kconfig"
 
 endif # MISC_DEVICES
+endmenu
+
+
+#
+# Xilinx devices and common device driver infrastructure
+#
+
+config XILINX_DRIVERS
+  bool
+
