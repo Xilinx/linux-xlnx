@@ -4,5 +4,5 @@
 
 obj-y := init.o consistent.o
 
-obj-y := lmb.o
+obj-$(CONFIG_WANT_DEVICE_TREE) += lmb.o
 

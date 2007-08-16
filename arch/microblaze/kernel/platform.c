@@ -339,7 +339,9 @@ static struct of_device_id microblaze_of_bus[] = {
 
 static int __init xilinx_platform_init(void)
 {
+#ifdef CONFIG_DEVICE_TREE
     of_platform_bus_probe(NULL, microblaze_of_bus, NULL);
+#elif
 
 #ifdef XPAR_SPI_0_BASEADDR
 	platform_device_register(&xilinx_spi_0_device);
@@ -372,6 +374,7 @@ static int __init xilinx_platform_init(void)
 	platform_device_register(&xilinx_gpio_6_device);
 #endif /* XPAR_GPIO_6_BASEADDR */
 
+#endif /* CONFIG_DEVICE_TREE */
 	return 0;
 }
 
