@@ -18,13 +18,13 @@
 
 /* Ugly, ugly, ugly! BASE_BAUD defined here to keep 8250.c happy. */
 #if !defined(BASE_BAUD)
- #define BASE_BAUD		(0) /* dummy value; not used */
+#define BASE_BAUD		(0)	/* dummy value; not used */
 #endif
 
 #ifndef __ASSEMBLY__
-extern const char* virtex_machine_name;
+extern const char *virtex_machine_name;
 #define PPC4xx_MACHINE_NAME (virtex_machine_name)
-#endif /* !__ASSEMBLY__ */
+#endif				/* !__ASSEMBLY__ */
 
 /* We don't need anything mapped.  Size of zero will accomplish that. */
 #define PPC4xx_ONB_IO_PADDR	0u

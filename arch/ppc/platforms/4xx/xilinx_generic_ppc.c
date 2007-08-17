@@ -62,24 +62,22 @@
 #endif
 
 #if defined(CONFIG_XILINX_ML300)
-const char* virtex_machine_name = "Xilinx ML300";
+const char *virtex_machine_name = "Xilinx ML300";
 #elif defined(CONFIG_XILINX_XUPV2P)
-const char* virtex_machine_name = "Xilinx XUPV2P";
+const char *virtex_machine_name = "Xilinx XUPV2P";
 #elif defined(CONFIG_XILINX_ML40x)
-const char* virtex_machine_name = "Xilinx ML40x";
+const char *virtex_machine_name = "Xilinx ML40x";
 #elif defined(CONFIG_XILINX_ML41x)
-const char* virtex_machine_name = "Xilinx ML41x";
+const char *virtex_machine_name = "Xilinx ML41x";
 #else
-const char* virtex_machine_name = "Unknown Xilinx with PowerPC";
+const char *virtex_machine_name = "Unknown Xilinx with PowerPC";
 #endif
-
 
 #if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
 static void __iomem *powerdown_base =
-    (void __iomem *) XPAR_POWER_0_POWERDOWN_BASEADDR;
+    (void __iomem *)XPAR_POWER_0_POWERDOWN_BASEADDR;
 
-static void
-xilinx_power_off(void)
+static void xilinx_power_off(void)
 {
 	local_irq_disable();
 	out_be32(powerdown_base, XPAR_POWER_0_POWERDOWN_VALUE);
@@ -87,8 +85,7 @@ xilinx_power_off(void)
 }
 #endif
 
-void __init
-xilinx_generic_ppc_map_io(void)
+void __init xilinx_generic_ppc_map_io(void)
 {
 	ppc4xx_map_io();
 
@@ -99,24 +96,24 @@ xilinx_generic_ppc_map_io(void)
 #endif
 }
 
-void __init
-xilinx_generic_ppc_setup_arch(void)
+void __init xilinx_generic_ppc_setup_arch(void)
 {
 	virtex_early_serial_map();
 	ppc4xx_setup_arch();	/* calls ppc4xx_find_bridges() */
 
 	/* Identify the system */
-	printk(KERN_INFO "Xilinx Generic PowerPC board support package (%s) (%s)\n", PPC4xx_MACHINE_NAME, XILINX_ARCH);
+	printk(KERN_INFO
+	       "Xilinx Generic PowerPC board support package (%s) (%s)\n",
+	       PPC4xx_MACHINE_NAME, XILINX_ARCH);
 }
 
 /* Called after board_setup_irq from ppc4xx_init_IRQ(). */
-void __init
-xilinx_generic_ppc_init_irq(void)
+void __init xilinx_generic_ppc_init_irq(void)
 {
 	ppc4xx_init_IRQ();
 }
 
-void __init __attribute ((weak))
+void __init __attribute((weak))
 platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 	      unsigned long r6, unsigned long r7)
 {
@@ -134,4 +131,3 @@ platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 	ppc_md.early_serial_map = virtex_early_serial_map;
 #endif
 }
-
