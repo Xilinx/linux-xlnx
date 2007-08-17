@@ -218,7 +218,11 @@
 
 #define XPAR_AC97(num) { \
 	.name = "xilinx_ac97", \
-                        .start = XPAR_AC97_##num##_BASEADDR,  \
+	.id = num, \
+	.num_resources = 1, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_AC97_##num##_BASEADDR,	\
 			.end   = XPAR_AC97_##num##_HIGHADDR,    \
 			.flags = IORESOURCE_MEM, \
 		}, \

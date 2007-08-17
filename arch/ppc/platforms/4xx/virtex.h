@@ -18,27 +18,18 @@
 
 /* Ugly, ugly, ugly! BASE_BAUD defined here to keep 8250.c happy. */
 #if !defined(BASE_BAUD)
- #define BASE_BAUD		(0) /* dummy value; not used */
+#define BASE_BAUD		(0)	/* dummy value; not used */
 #endif
 
 #ifndef __ASSEMBLY__
-extern const char* virtex_machine_name;
+extern const char *virtex_machine_name;
 #define PPC4xx_MACHINE_NAME (virtex_machine_name)
-#endif /* !__ASSEMBLY__ */
+#endif				/* !__ASSEMBLY__ */
 
 /* We don't need anything mapped.  Size of zero will accomplish that. */
 #define PPC4xx_ONB_IO_PADDR	0u
 #define PPC4xx_ONB_IO_VADDR	0u
 #define PPC4xx_ONB_IO_SIZE	0u
-
-
-#if defined(CONFIG_XILINX_VIRTEX_II_PRO)
-#define XILINX_ARCH "Virtex-II Pro"
-#elif defined(CONFIG_XILINX_VIRTEX_4_FX)
-#define XILINX_ARCH "Virtex-4 FX"
-#else
-#error "No Xilinx Architecture recognized."
-#endif
 
 #endif				/* __ASM_VIRTEX_H__ */
 #endif				/* __KERNEL__ */

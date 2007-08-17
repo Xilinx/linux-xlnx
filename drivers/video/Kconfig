@@ -1591,20 +1591,6 @@ config FB_AU1200
 	  various panels and CRTs by passing in kernel cmd line option
 	  au1200fb:panel=<name>.
 
-config FB_XILINX
-	tristate "Xilinx frame buffer support"
-	depends on FB && XILINX_EDK
-	select FB_CFB_FILLRECT
-	select FB_CFB_COPYAREA
-	select FB_CFB_IMAGEBLIT
-	help
-	  Xilinx frame buffer support. This includes the LCD display found on
-	  Xilinx ML300 board, and VGA output found on Xilinx ML40x.
-
-config FB_XILINX_ROTATE
-	bool "Rotate display"
-	depends on FB_XILINX
-
 source "drivers/video/geode/Kconfig"
 
 config FB_HIT
