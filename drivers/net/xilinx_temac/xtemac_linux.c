@@ -3045,6 +3045,12 @@ static int xtenet_probe(struct device *dev)
 
 	/* Set the MAC address */
 	/* wgr TODO: Get the MAC address right! */
+	ndev->dev_addr[0] = 0x01;
+	ndev->dev_addr[1] = 0x02;
+	ndev->dev_addr[2] = 0x03;
+	ndev->dev_addr[3] = 0x04;
+	ndev->dev_addr[4] = 0x05;
+	ndev->dev_addr[5] = 0x06;
 // -wgr-     memcpy(ndev->dev_addr, ((bd_t *) &__res)->bi_enetaddr, 6);
 	if (XTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
 		/* should not fail right after an initialize */
