@@ -53,6 +53,14 @@
  *          ppc4xx_pic_init			arch/ppc/syslib/xilinx_pic.c
  */
 
+#if defined(CONFIG_XILINX_VIRTEX_II_PRO)
+#define XILINX_ARCH "Virtex-II Pro"
+#elif defined(CONFIG_XILINX_VIRTEX_4_FX)
+#define XILINX_ARCH "Virtex-4 FX"
+#else
+#error "No Xilinx Architecture recognized."
+#endif
+
 #if defined(CONFIG_XILINX_ML300)
 const char* virtex_machine_name = "Xilinx ML300";
 #elif defined(CONFIG_XILINX_XUPV2P)
@@ -67,8 +75,8 @@ const char* virtex_machine_name = "Unknown Xilinx with PowerPC";
 
 
 #if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
-static volatile unsigned *powerdown_base =
-    (volatile unsigned *) XPAR_POWER_0_POWERDOWN_BASEADDR;
+static void __iomem *powerdown_base =
+    (void __iomem *) XPAR_POWER_0_POWERDOWN_BASEADDR;
 
 static void
 xilinx_power_off(void)
@@ -85,7 +93,7 @@ xilinx_generic_ppc_map_io(void)
 	ppc4xx_map_io();
 
 #if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
-	powerdown_base = ioremap((unsigned long) powerdown_base,
+	powerdown_base = ioremap(XPAR_POWER_0_POWERDOWN_BASEADDR
 				 XPAR_POWER_0_POWERDOWN_HIGHADDR -
 				 XPAR_POWER_0_POWERDOWN_BASEADDR + 1);
 #endif
@@ -108,7 +116,7 @@ xilinx_generic_ppc_init_irq(void)
 	ppc4xx_init_IRQ();
 }
 
-void __init
+void __init __attribute ((weak))
 platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 	      unsigned long r6, unsigned long r7)
 {

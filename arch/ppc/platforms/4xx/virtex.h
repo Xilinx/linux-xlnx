@@ -31,14 +31,5 @@ extern const char* virtex_machine_name;
 #define PPC4xx_ONB_IO_VADDR	0u
 #define PPC4xx_ONB_IO_SIZE	0u
 
-
-#if defined(CONFIG_XILINX_VIRTEX_II_PRO)
-#define XILINX_ARCH "Virtex-II Pro"
-#elif defined(CONFIG_XILINX_VIRTEX_4_FX)
-#define XILINX_ARCH "Virtex-4 FX"
-#else
-#error "No Xilinx Architecture recognized."
-#endif
-
 #endif				/* __ASM_VIRTEX_H__ */
 #endif				/* __KERNEL__ */
