@@ -744,7 +744,7 @@ embed_config(bd_t **bdp)
 }
 #endif /* WILLOW */
 
-#if defined(CONFIG_XILINX_VIRTEX)
+#if defined(CONFIG_XILINX_EMBED_CONFIG)
 void
 embed_config(bd_t ** bdp)
 {
@@ -781,7 +781,7 @@ embed_config(bd_t ** bdp)
 	timebase_period_ns = 1000000000 / bd->bi_tbfreq;
 	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_ml300.h */
 }
-#endif /* CONFIG_XILINX_VIRTEX */
+#endif /* CONFIG_XILINX_EMBED_CONFIG */
 
 #ifdef CONFIG_IBM_OPENBIOS
 /* This could possibly work for all treeboot roms.
