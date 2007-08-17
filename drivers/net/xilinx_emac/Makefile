@@ -7,7 +7,7 @@ EXTRA_CFLAGS	+= -I$(TOPDIR)/drivers/xilinx_common
 obj-$(CONFIG_XILINX_EMAC) := xilinx_emac.o
 
 # The Linux driver for the Xilinx EMAC core.
-xilinx_emac-objs	:= emac_linux.o
+xilinx_emac-objs	:= xemac_linux.o
 
 # The Xilinx OS independent code.
 xilinx_emac-objs	+= xemac.o xemac_intr.o xemac_intr_dma.o \
