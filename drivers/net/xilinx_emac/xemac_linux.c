@@ -165,10 +165,10 @@ extern inline int status_requires_reset(int s)
 }
 
 /* BH statics */
-LIST_HEAD(receivedQueue);
+static LIST_HEAD(receivedQueue);
 static spinlock_t rcvSpin = SPIN_LOCK_UNLOCKED;
 
-LIST_HEAD(sentQueue);
+static LIST_HEAD(sentQueue);
 static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 
 /*
@@ -792,7 +792,7 @@ static int xenet_SgSend(struct sk_buff *skb, struct net_device *dev)
 	XBufDescriptor bd;
 	int result;
 	u32 physAddr;
-	u32 flags;
+	unsigned long flags;
 	u8 *virtAddr;
 
 	len = skb->len;
@@ -867,7 +867,7 @@ static int xenet_SgSendDre(struct sk_buff *skb, struct net_device *dev)
 	u32 physAddr;
 	u8 *virtAddr;
 	u32 i;
-	u32 flags;
+	unsigned long flags;
 	u16 csum_insert_offset;
 	u16 IpHeaderLength;
 	u16 ProtoTTL;
@@ -1595,7 +1595,7 @@ static int descriptor_init(struct net_device *dev)
 	return 0;
 }
 
-void free_descriptor_skb(struct net_device *dev)
+static void free_descriptor_skb(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	int i;
@@ -1939,7 +1939,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 	u16 mii_reg_sset;
 	u16 mii_reg_spause;
 	u16 mii_reg_autoneg;
-	u32 flags;
+	unsigned long flags;
 
 	if (copy_from_user(&ecmd, rq->ifr_data, sizeof(ecmd.cmd)))
 		return -EFAULT;

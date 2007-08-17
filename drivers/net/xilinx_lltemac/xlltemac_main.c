@@ -227,10 +227,10 @@ extern inline int status_requires_reset(int s)
 }
 
 /* Queues with locks */
-LIST_HEAD(receivedQueue);
+static LIST_HEAD(receivedQueue);
 static spinlock_t receivedQueueSpin = SPIN_LOCK_UNLOCKED;
 
-LIST_HEAD(sentQueue);
+static LIST_HEAD(sentQueue);
 static spinlock_t sentQueueSpin = SPIN_LOCK_UNLOCKED;
 
 
@@ -1171,8 +1171,7 @@ static void poll_gmii(unsigned long data)
 	add_timer(&lp->phy_timer);
 }
 
-static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id,
-					 struct pt_regs *regs)
+static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -1216,8 +1215,7 @@ static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id,
 static void FifoSendHandler(struct net_device *dev);
 static void FifoRecvHandler(struct net_device *dev);
 
-static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id,
-					struct pt_regs *regs)
+static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -1266,8 +1264,7 @@ static void DmaRecvHandlerBH(unsigned long p);
 DECLARE_TASKLET(DmaSendBH, DmaSendHandlerBH, 0);
 DECLARE_TASKLET(DmaRecvBH, DmaRecvHandlerBH, 0);
 
-static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id,
-					  struct pt_regs *regs)
+static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
@@ -1302,8 +1299,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id,
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id,
-					  struct pt_regs *regs)
+static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
@@ -1430,7 +1426,7 @@ static int xenet_open(struct net_device *dev)
 
 	/* Just use interrupt driven methods - no polled mode */
 
-	irqval = request_irq(dev->irq, &xenet_temac_interrupt, SA_INTERRUPT,
+	irqval = request_irq(dev->irq, &xenet_temac_interrupt, IRQF_DISABLED,
 			     dev->name, dev);
 	if (irqval) {
 		printk(KERN_ERR
@@ -1472,7 +1468,7 @@ static int xenet_open(struct net_device *dev)
 		 * fast interrupt handler.
 		 */
 		irqval = request_irq(lp->fifo_irq,
-				     &xenet_fifo_interrupt, SA_INTERRUPT,
+				     &xenet_fifo_interrupt, IRQF_DISABLED,
 				     "xilinx_fifo_int", dev);
 		if (irqval) {
 			printk(KERN_ERR
@@ -1699,7 +1695,7 @@ static void FifoSendHandler(struct net_device *dev)
 static unsigned int _xenet_tx_csum(struct sk_buff *skb)
 {
 	unsigned int csum = 0;
-	long csstart = skb->h.raw - skb->data;
+	long csstart = skb_transport_header(skb) - skb->data;
 
 	if (csstart != skb->len) {
 		csum = skb_checksum(skb, csstart, skb->len - csstart, 0);
@@ -1776,15 +1772,15 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	/* 
 	 * if tx checksum offloading is enabled, when the ethernet stack
 	 * wants us to perform the checksum in hardware,
-	 * skb->ip_summed is CHECKSUM_HW. Otherwise skb->ip_summed is
+	 * skb->ip_summed is CHECKSUM_COMPLETE. Otherwise skb->ip_summed is
 	 * CHECKSUM_NONE, meaning the checksum is already done, or
 	 * CHECKSUM_UNNECESSARY, meaning checksumming is turned off (e.g.
 	 * loopback interface)
 	 * 
 	 * skb->csum is an overloaded value. On send, skb->csum is the offset
-	 * into the buffer (skb->h.raw) to place the csum value. On receive
-	 * this feild gets set to the actual csum value, before it's passed up
-	 * the stack.
+	 * into the buffer (skb_transport_header(skb)) to place the csum value.
+	 * On receive this feild gets set to the actual csum value, before it's
+	 * passed up the stack.
 	 *
 	 * When we get here, the ethernet stack above will have already
 	 * computed the pseudoheader csum value and have placed it in the
@@ -1798,22 +1794,24 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	 * is called, which flushes the page from the cpu's cache.
 	 *
 	 * skb->data points to the beginning of the whole packet
-	 * skb->h.raw points to the beginning of the ip header
+	 * skb_transport_header(skb) points to the beginning of the ip header
 	 *
 	 */
-	if (skb->ip_summed == CHECKSUM_HW) {
+	if (skb->ip_summed == CHECKSUM_COMPLETE) {
+
+		unsigned char *raw = skb_transport_header(skb);
 #if 0
 		{
 			unsigned int csum = _xenet_tx_csum(skb);
 
-			*((unsigned short *) (skb->h.raw + skb->csum)) =
+			*((unsigned short *) (raw + skb->csum)) =
 				csum_fold(csum);
 			BdCsumDisable(bd_ptr);
 		}
 #else
 		BdCsumEnable(bd_ptr);
-		BdCsumSetup(bd_ptr, skb->h.raw - skb->data,
-			    (skb->h.raw - skb->data) + skb->csum);
+		BdCsumSetup(bd_ptr, raw - skb->data,
+			    (raw - skb->data) + skb->csum);
 
 #endif
 		lp->tx_hw_csums++;
@@ -2243,11 +2241,11 @@ static void DmaRecvHandlerBH(unsigned long p)
 					 * on TCP/UDP packets.
 					 *
 					 * skb->csum is an overloaded value. On send, skb->csum is
-					 * the offset into the buffer (skb->h.raw) to place the
-					 * csum value. On receive this feild gets set to the actual
-					 * csum value, before it's passed up the stack.
+					 * the offset into the buffer (skb_transport_header(skb))
+					 * to place the csum value. On receive this feild gets set
+					 * to the actual csum value, before it's passed up the stack.
 					 *
-					 * If we set skb->ip_summed to CHECKSUM_HW, the ethernet
+					 * If we set skb->ip_summed to CHECKSUM_COMPLETE, the ethernet
 					 * stack above will compute the pseudoheader csum value and
 					 * add it to the partial checksum already computed (to be
 					 * placed in skb->csum) and verify it.
@@ -2266,7 +2264,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 					 *    packet determined by parsing the packet. In this case
 					 *    the ethernet stack will assume any prior checksum
 					 *    value was miscomputed and throw it away.
-					 * 3) skb->ip_summed was set to CHECKSUM_HW, skb->csum was
+					 * 3) skb->ip_summed was set to CHECKSUM_COMPLETE, skb->csum was
 					 *    set, but the result does not check out ok by the
 					 *    ethernet stack.
 					 *
@@ -2312,7 +2310,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 					}
 #endif
 					skb->csum = csum;
-					skb->ip_summed = CHECKSUM_HW;
+					skb->ip_summed = CHECKSUM_COMPLETE;
 
 					lp->rx_hw_csums++;
 				}
@@ -2438,7 +2436,7 @@ static int descriptor_init(struct net_device *dev)
 	return 0;
 }
 
-void free_descriptor_skb(struct net_device *dev)
+static void free_descriptor_skb(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	XLlDma_Bd *BdPtr;
@@ -3344,7 +3342,14 @@ static int xtenet_probe(struct device *dev)
 	}
 
 	/* Set the MAC address */
-	memcpy(ndev->dev_addr, ((bd_t *) & __res)->bi_enetaddr, 6);
+	/* TODO: Get the right MAC address here... */
+	ndev->dev_addr[0] = 0x01;
+	ndev->dev_addr[1] = 0x02;
+	ndev->dev_addr[2] = 0x03;
+	ndev->dev_addr[3] = 0x04;
+	ndev->dev_addr[4] = 0x05;
+	ndev->dev_addr[5] = 0x06;
+// -wgr- 	memcpy(ndev->dev_addr, ((bd_t *) & __res)->bi_enetaddr, 6);
 	if (lp->index == 1) {
 		ndev->dev_addr[5]++;
 	}
