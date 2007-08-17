@@ -165,10 +165,10 @@ extern inline int status_requires_reset(int s)
 }
 
 /* BH statics */
-LIST_HEAD(receivedQueue);
+static LIST_HEAD(receivedQueue);
 static spinlock_t rcvSpin = SPIN_LOCK_UNLOCKED;
 
-LIST_HEAD(sentQueue);
+static LIST_HEAD(sentQueue);
 static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 
 /*
@@ -1595,7 +1595,7 @@ static int descriptor_init(struct net_device *dev)
 	return 0;
 }
 
-void free_descriptor_skb(struct net_device *dev)
+static void free_descriptor_skb(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
 	int i;
