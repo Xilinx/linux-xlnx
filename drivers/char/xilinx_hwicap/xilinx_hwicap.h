@@ -42,11 +42,7 @@
 #include <linux/types.h>
 #include <linux/cdev.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-#include <linux/device.h>
-#else
 #include <linux/platform_device.h>
-#endif
 
 #include <asm/io.h>
 
