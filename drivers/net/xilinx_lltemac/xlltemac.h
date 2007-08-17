@@ -262,7 +262,7 @@ extern "C" {
 
 /***************************** Include Files *********************************/
 
-#include "xenv.h"
+// -wgr- #include "xenv.h"
 #include "xbasic_types.h"
 #include "xstatus.h"
 #include "xparameters.h"
