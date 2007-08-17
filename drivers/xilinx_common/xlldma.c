@@ -38,6 +38,8 @@
 
 /***************************** Include Files *********************************/
 
+#include <linux/string.h>
+
 #include "xlldma.h"
 
 /************************** Constant Definitions *****************************/

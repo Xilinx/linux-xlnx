@@ -39,6 +39,8 @@
 
 /***************************** Include Files *********************************/
 
+#include <linux/string.h>
+
 #include "xllfifo_hw.h"
 #include "xllfifo.h"
 #include "xstatus.h"
@@ -54,7 +56,7 @@
  * is structured like so:
  *
  * +--------------------+
- * |     llfifo        |
+ * |     llfifo         |
  * |   +----------------+
  * |   | +--------------+
  * |   | |  xstreamer   |
