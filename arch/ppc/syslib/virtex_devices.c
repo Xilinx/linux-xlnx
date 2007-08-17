@@ -454,6 +454,7 @@ static void __init
 virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
 {
 #if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
+	extern void gen550_init(int i, struct uart_port *serial_req);
 	struct uart_port serial_req;
 
 	memset(&serial_req, 0, sizeof(serial_req));
