@@ -749,15 +749,14 @@ void
 embed_config(bd_t ** bdp)
 {
 	bd_t *bd;
+	uint8_t* cp;
+	int i;
 
 #ifdef CONFIG_405
 	static const unsigned long line_size = 32;
 	static const unsigned long congruence_classes = 256;
 	unsigned long addr;
 	unsigned long dccr;
-	uint8_t* cp;
-	bd_t *bd;
-	int i;
 
 	/*
 	 * Invalidate the data cache if the data cache is turned off.
