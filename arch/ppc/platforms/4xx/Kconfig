@@ -62,6 +62,7 @@ config XILINX_ML300
 	bool "Xilinx-ML300"
 	select XILINX_VIRTEX_II_PRO
 	select EMBEDDEDBOOT
+	select XILINX_EMBED_CONFIG
 	help
 	  This option enables support for the Xilinx ML300 evaluation board.
 
@@ -69,6 +70,7 @@ config XILINX_XUPV2P
 	bool "Xilinx-XUPV2P"
 	select XILINX_VIRTEX_II_PRO
 	select EMBEDDEDBOOT
+	select XILINX_EMBED_CONFIG
 	help
 	  This option enables support for the Xilinx University Program (XUP) Virtex 2 Pro board.
 
@@ -76,6 +78,7 @@ config XILINX_ML403
 	bool "Xilinx-ML403"
 	select XILINX_VIRTEX_4_FX
 	select EMBEDDEDBOOT
+	select XILINX_EMBED_CONFIG
 	help
 	  This option enables support for the Xilinx ML403 evaluation board.
 
@@ -83,6 +86,7 @@ config XILINX_ML41x
 	bool "Xilinx-ML41x"
 	select XILINX_VIRTEX_4_FX
 	select EMBEDDEDBOOT
+	select XILINX_EMBED_CONFIG
 	help
 	  This option enables support for the Xilinx ML410/411 evaluation boards.
 
@@ -280,6 +284,9 @@ config XILINX_VIRTEX_4_FX
 config XILINX_VIRTEX
 	bool
 	select XILINX_DRIVERS
+
+config XILINX_EMBED_CONFIG
+	bool
 
 config STB03xxx
 	bool

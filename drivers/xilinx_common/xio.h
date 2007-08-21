@@ -77,10 +77,8 @@ typedef u32 XIo_Address;
  * This macro is not necessarily portable across compilers since it uses
  * inline assembly.
  */
-#if defined __GNUC__
+#ifdef CONFIG_PPC
 #  define SYNCHRONIZE_IO __asm__ volatile ("eieio") /* should be 'mbar' ultimately */
-#elif defined __DCC__
-#  define SYNCHRONIZE_IO __asm volatile(" eieio")   /* should be 'mbar' ultimately */
 #else
 #  define SYNCHRONIZE_IO
 #endif
@@ -97,7 +95,7 @@ typedef u32 XIo_Address;
 
 #define XIo_EndianNoop(Source, DestPtr)    (*DestPtr = Source)
 
-#if defined __GNUC__
+#ifdef CONFIG_PPC
 
 #define XIo_EndianSwap16(Source, DestPtr)  __asm__ __volatile__(\
                                            "sthbrx %0,0,%1\n"\
@@ -108,22 +106,6 @@ typedef u32 XIo_Address;
                                            "stwbrx %0,0,%1\n"\
                                            : : "r" (Source), "r" (DestPtr)\
                                            )
-#elif defined __DCC__
-
-__asm void XIo_EndianSwap16(u16 Source, u16 *DestPtr)
-{
-    %reg Source;
-    reg DestPtr;
-    sthbrx Source, 0, DestPtr
-}
-
-__asm void XIo_EndianSwap32(u32 Source, u32 *DestPtr)
-{
-    %reg Source;
-    reg DestPtr;
-    stwbrx Source, 0, DestPtr
-}
-
 #else
 
 #define XIo_EndianSwap16(Source, DestPtr) \
@@ -146,21 +128,21 @@ __asm void XIo_EndianSwap32(u32 Source, u32 *DestPtr)
 
 #endif
 
-#ifdef XLITTLE_ENDIAN
-/* little-endian processor */
+// #ifdef XLITTLE_ENDIAN
+// /* little-endian processor */
 
-#define XIo_ToLittleEndian16                XIo_EndianNoop
-#define XIo_ToLittleEndian32                XIo_EndianNoop
-#define XIo_FromLittleEndian16              XIo_EndianNoop
-#define XIo_FromLittleEndian32              XIo_EndianNoop
+// #define XIo_ToLittleEndian16                XIo_EndianNoop
+// #define XIo_ToLittleEndian32                XIo_EndianNoop
+// #define XIo_FromLittleEndian16              XIo_EndianNoop
+// #define XIo_FromLittleEndian32              XIo_EndianNoop
 
-#define XIo_ToBigEndian16(Source, DestPtr)  XIo_EndianSwap16(Source, DestPtr)
-#define XIo_ToBigEndian32(Source, DestPtr)  XIo_EndianSwap32(Source, DestPtr)
-#define XIo_FromBigEndian16                 XIo_ToBigEndian16
-#define XIo_FromBigEndian32                 XIo_ToBigEndian32
+// #define XIo_ToBigEndian16(Source, DestPtr)  XIo_EndianSwap16(Source, DestPtr)
+// #define XIo_ToBigEndian32(Source, DestPtr)  XIo_EndianSwap32(Source, DestPtr)
+// #define XIo_FromBigEndian16                 XIo_ToBigEndian16
+// #define XIo_FromBigEndian32                 XIo_ToBigEndian32
 
-#else
-/* big-endian processor */
+// #else
+/* big-endian processor */ // ppc or microblaze
 
 #define XIo_ToLittleEndian16(Source, DestPtr) XIo_EndianSwap16(Source, DestPtr)
 #define XIo_ToLittleEndian32(Source, DestPtr) XIo_EndianSwap32(Source, DestPtr)
@@ -172,20 +154,16 @@ __asm void XIo_EndianSwap32(u32 Source, u32 *DestPtr)
 #define XIo_FromBigEndian16                   XIo_EndianNoop
 #define XIo_FromBigEndian32                   XIo_EndianNoop
 
-#endif
+// #endif
 
 
 /************************** Function Prototypes ******************************/
 
-/* The following functions allow the software to be transportable across
- * processors which may use memory mapped I/O or I/O which is mapped into a
- * seperate address space such as X86.  The functions are better suited for
- * debugging and are therefore the default implementation. Macros can instead
- * be used if USE_IO_MACROS is defined.
+/* The following macros allow optimized I/O operations for memory mapped I/O
+ * Note that the SYNCHRONIZE_IO may be moved by the compiler during
+ * optimization.
  */
-#ifndef USE_IO_MACROS
 
-/* Functions */
 u8 XIo_In8(XIo_Address InAddress);
 u16 XIo_In16(XIo_Address InAddress);
 u32 XIo_In32(XIo_Address InAddress);
@@ -194,13 +172,8 @@ void XIo_Out8(XIo_Address OutAddress, u8 Value);
 void XIo_Out16(XIo_Address OutAddress, u16 Value);
 void XIo_Out32(XIo_Address OutAddress, u32 Value);
 
-#else
 
-/* The following macros allow optimized I/O operations for memory mapped I/O
- * Note that the SYNCHRONIZE_IO may be moved by the compiler during
- * optimization.
- */
-
+/*
 #define XIo_In8(InputPtr)  (*(volatile u8  *)(InputPtr)); SYNCHRONIZE_IO;
 #define XIo_In16(InputPtr) (*(volatile u16 *)(InputPtr)); SYNCHRONIZE_IO;
 #define XIo_In32(InputPtr) (*(volatile u32 *)(InputPtr)); SYNCHRONIZE_IO;
@@ -211,8 +184,7 @@ void XIo_Out32(XIo_Address OutAddress, u32 Value);
     { (*(volatile u16 *)(OutputPtr) = Value); SYNCHRONIZE_IO; }
 #define XIo_Out32(OutputPtr, Value) \
     { (*(volatile u32 *)(OutputPtr) = Value); SYNCHRONIZE_IO; }
-
-#endif
+ */
 
 /* The following functions handle IO addresses where data must be swapped
  * They cannot be implemented as macros
