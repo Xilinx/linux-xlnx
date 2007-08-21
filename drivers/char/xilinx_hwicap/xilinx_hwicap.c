@@ -67,7 +67,6 @@
  */
 
 #include <linux/version.h>
-#include <linux/config.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
@@ -82,12 +81,7 @@
 #include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-#include <linux/device.h>
-#else
 #include <linux/platform_device.h>
-#endif
 
 #include <asm/io.h>
 #include <asm/uaccess.h>
@@ -417,10 +411,9 @@ static int __init xhwicap_drv_probe(struct device *dev)
 		goto failed2;
 	}
 
-	dev_info(dev, "ioremap %lx to %lx with size %x\n",
-		 (unsigned long int)drvdata->baseAddress,
+	dev_info(dev, "ioremap %lx to %p with size %x\n",
 		 (unsigned long int)drvdata->regs_phys,
-		 (unsigned int)XHWICAP_REGS);
+		 drvdata->baseAddress, (unsigned int)XHWICAP_REGS);
 
 	cdev_init(&drvdata->cdev, &xhwicap_fops);
 	drvdata->cdev.owner = THIS_MODULE;

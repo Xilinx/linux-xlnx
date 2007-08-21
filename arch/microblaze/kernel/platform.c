@@ -86,7 +86,7 @@ static struct platform_device xilinx_emac_0_device = XPAR_EMAC(0);
 
 static struct platform_device xilinx_gpio_0_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_0_DEVICE_ID,
+	.id = 0,
 	.dev.platform_data = (XPAR_GPIO_0_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_0_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -115,7 +115,7 @@ static struct platform_device xilinx_gpio_0_device = {
 
 static struct platform_device xilinx_gpio_1_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_1_DEVICE_ID,
+	.id = 1,
 	.dev.platform_data = (XPAR_GPIO_1_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_1_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -144,7 +144,7 @@ static struct platform_device xilinx_gpio_1_device = {
 
 static struct platform_device xilinx_gpio_2_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_2_DEVICE_ID,
+	.id = 2,
 	.dev.platform_data = (XPAR_GPIO_2_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_2_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -173,7 +173,7 @@ static struct platform_device xilinx_gpio_2_device = {
 
 static struct platform_device xilinx_gpio_3_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_3_DEVICE_ID,
+	.id = 3,
 	.dev.platform_data = (XPAR_GPIO_3_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_3_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -202,7 +202,7 @@ static struct platform_device xilinx_gpio_3_device = {
 
 static struct platform_device xilinx_gpio_4_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_4_DEVICE_ID,
+	.id = 4,
 	.dev.platform_data = (XPAR_GPIO_4_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_4_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -231,7 +231,7 @@ static struct platform_device xilinx_gpio_4_device = {
 
 static struct platform_device xilinx_gpio_5_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_5_DEVICE_ID,
+	.id = 5,
 	.dev.platform_data = (XPAR_GPIO_5_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_5_INTERRUPT_PRESENT
 	.num_resources = 2,
@@ -260,7 +260,7 @@ static struct platform_device xilinx_gpio_5_device = {
 
 static struct platform_device xilinx_gpio_6_device = {
 	.name = "xilinx_gpio",
-	.id = XPAR_GPIO_6_DEVICE_ID,
+	.id = 6,
 	.dev.platform_data = (XPAR_GPIO_6_IS_DUAL ? XGPIO_IS_DUAL : 0),
 #if XPAR_GPIO_6_INTERRUPT_PRESENT
 	.num_resources = 2,
