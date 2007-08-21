@@ -42,13 +42,8 @@
 #include <linux/types.h>
 #include <linux/cdev.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-#include <linux/device.h>
-#else
 #include <linux/platform_device.h>
-#endif
 
-#include <linux/config.h>
 #include <asm/io.h>
 
 struct xhwicap_drvdata {
@@ -58,7 +53,7 @@ struct xhwicap_drvdata {
 	u32 read_buffer_in_use;	// Always in [0,3]
 	u8 read_buffer[4];
 	u32 regs_phys;		/* phys. address of the control registers */
-	u8 *baseAddress;	/* virt. address of the control registers */
+	void __iomem *baseAddress;	/* virt. address of the control registers */
 	struct device *dev;
 	struct cdev cdev;	/* Char device structure */
 	dev_t devt;
@@ -201,7 +196,7 @@ struct xhwicap_drvdata {
 #define BLOCKTYPE1                  1
 #define BLOCKTYPE2                  2
 
-									 /* The number of words reserved for the header in the storage buffer. *//* MAY CHANGE FOR V4 */
+																		 /* The number of words reserved for the header in the storage buffer. *//* MAY CHANGE FOR V4 */
 #define XHI_HEADER_BUFFER_WORDS     20
 #define XHI_HEADER_BUFFER_BYTES     (XHI_HEADER_BUFFER_WORDS << 2)
 
