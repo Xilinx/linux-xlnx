@@ -11,11 +11,14 @@ obj-y += init_task.o setup.o traps.o process.o time.o ptrace.o irq.o \
 
 obj-y += cpu/
 
-obj-$(CONFIG_WANT_DEVICE_TREE) += of_platform.o of_device.o prom.o prom_parse.o system.dtb.o
+obj-y += of_platform.o of_device.o prom.o prom_parse.o system.dtb.o
 
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o
 
-system.dtb: ../boot/dts/$(CONFIG_DEVICE_TREE)
+dts = $(if $(shell echo $(CONFIG_DEVICE_TREE) | grep '^/'),\
+	,$(srctree)/$(src)/../boot/dts/)$(CONFIG_DEVICE_TREE:"%"=%)
+
+$(obj)/system.dtb: $(dts)
 	dtc -f -O dtb -b 0 -V 16 $< > $@
 
 %.dtb.o: %.dtb

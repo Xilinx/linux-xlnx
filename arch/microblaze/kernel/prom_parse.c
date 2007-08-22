@@ -905,50 +905,6 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 }
 EXPORT_SYMBOL_GPL(of_irq_map_raw);
 
-#if defined(CONFIG_PPC_PMAC) && defined(CONFIG_PPC32)
-static int of_irq_map_oldworld(struct device_node *device, int index,
-			       struct of_irq *out_irq)
-{
-	const u32 *ints = NULL;
-	int intlen;
-
-	/*
-	 * Old machines just have a list of interrupt numbers
-	 * and no interrupt-controller nodes. We also have dodgy
-	 * cases where the APPL,interrupts property is completely
-	 * missing behind pci-pci bridges and we have to get it
-	 * from the parent (the bridge itself, as apple just wired
-	 * everything together on these)
-	 */
-	while (device) {
-		ints = of_get_property(device, "AAPL,interrupts", &intlen);
-		if (ints != NULL)
-			break;
-		device = device->parent;
-		if (device && strcmp(device->type, "pci") != 0)
-			break;
-	}
-	if (ints == NULL)
-		return -EINVAL;
-	intlen /= sizeof(u32);
-
-	if (index >= intlen)
-		return -EINVAL;
-
-	out_irq->controller = NULL;
-	out_irq->specifier[0] = ints[index];
-	out_irq->size = 1;
-
-	return 0;
-}
-#else /* defined(CONFIG_PPC_PMAC) && defined(CONFIG_PPC32) */
-static int of_irq_map_oldworld(struct device_node *device, int index,
-			       struct of_irq *out_irq)
-{
-	return -EINVAL;
-}
-#endif /* !(defined(CONFIG_PPC_PMAC) && defined(CONFIG_PPC32)) */
-
 int of_irq_map_one(struct device_node *device, int index, struct of_irq *out_irq)
 {
 	struct device_node *p;
@@ -958,15 +914,13 @@ int of_irq_map_one(struct device_node *device, int index, struct of_irq *out_irq
 
 	pr_debug("of_irq_map_one: dev=%s, index=%d\n", device->full_name, index);
 
-	/* OldWorld mac stuff is "special", handle out of line */
-	if (of_irq_workarounds & OF_IMAP_OLDWORLD_MAC)
-		return of_irq_map_oldworld(device, index, out_irq);
-
 	/* Get the interrupts property */
 	intspec = of_get_property(device, "interrupts", &intlen);
 	if (intspec == NULL)
 		return -EINVAL;
 	intlen /= sizeof(u32);
+
+	pr_debug(" intspec=%d intlen=%d\n", *intspec, intlen);
 
 	/* Get the reg property (if any) */
 	addr = of_get_property(device, "reg", NULL);
@@ -1036,7 +990,6 @@ const void *of_get_mac_address(struct device_node *np)
 }
 EXPORT_SYMBOL(of_get_mac_address);
 
-#define DEBUG
 int of_irq_to_resource(struct device_node *dev, int index, struct resource *r)
 {
 	struct of_irq out_irq;
