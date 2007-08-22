@@ -42,8 +42,8 @@ EXPORT_SYMBOL_GPL(boot_cpuid);
 u32 memory_limit;
 EXPORT_SYMBOL_GPL(memory_limit);
 
-extern char _binary_arch_microblaze_kernel_system_dtb_start[];
-extern char _binary_arch_microblaze_kernel_system_dtb_end[];
+char __attribute ((weak)) _binary_arch_microblaze_kernel_system_dtb_start[];
+char __attribute ((weak)) _binary_arch_microblaze_kernel_system_dtb_end[];
 
 extern void early_printk(const char *fmt, ...);
 extern void irq_early_init(void);
@@ -61,7 +61,7 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_DEVICE_TREE
 	early_init_devtree(_binary_arch_microblaze_kernel_system_dtb_start);
 	unflatten_device_tree();
-#elif
+#else
 
         // Allow a default command line.
 #ifdef CONFIG_CMDLINE
@@ -95,6 +95,7 @@ void __init setup_arch(char **cmdline_p)
 #elif defined(CONFIG_DUMMY_CONSOLE)
 	conswitchp = &dummy_con;
 #endif
+
 #endif
 }
 

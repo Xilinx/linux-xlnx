@@ -14,6 +14,8 @@
 /* FIXME */
 #define NR_IRQS 32
 
+#define NO_IRQ NR_IRQS
+
 static inline int irq_canonicalize(int irq)
 {
 	return (irq);

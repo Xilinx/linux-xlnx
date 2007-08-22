@@ -9,12 +9,6 @@
 #include <asm/prom.h>
 #include <asm/pci-bridge.h>
 
-#ifdef DEBUG
-#define DBG(fmt...) do { printk(fmt); } while(0)
-#else
-#define DBG(fmt...) do { } while(0)
-#endif
-
 #ifdef CONFIG_PPC64
 #define PRu64	"%lx"
 #else
@@ -82,7 +76,7 @@ static u64 of_bus_default_map(u32 *addr, const u32 *range,
 	s  = of_read_number(range + na + pna, ns);
 	da = of_read_number(addr, na);
 
-	DBG("OF: default map, cp="PRu64", s="PRu64", da="PRu64"\n",
+	pr_debug("OF: default map, cp="PRu64", s="PRu64", da="PRu64"\n",
 	    cp, s, da);
 
 	if (da < cp || da >= (cp + s))
@@ -141,7 +135,7 @@ static u64 of_bus_pci_map(u32 *addr, const u32 *range, int na, int ns, int pna)
 	s  = of_read_number(range + na + pna, ns);
 	da = of_read_number(addr + 1, na - 1);
 
-	DBG("OF: PCI map, cp="PRu64", s="PRu64", da="PRu64"\n", cp, s, da);
+	pr_debug("OF: PCI map, cp="PRu64", s="PRu64", da="PRu64"\n", cp, s, da);
 
 	if (da < cp || da >= (cp + s))
 		return OF_BAD_ADDR;
@@ -342,7 +336,7 @@ static u64 of_bus_isa_map(u32 *addr, const u32 *range, int na, int ns, int pna)
 	s  = of_read_number(range + na + pna, ns);
 	da = of_read_number(addr + 1, na - 1);
 
-	DBG("OF: ISA map, cp="PRu64", s="PRu64", da="PRu64"\n", cp, s, da);
+	pr_debug("OF: ISA map, cp="PRu64", s="PRu64", da="PRu64"\n", cp, s, da);
 
 	if (da < cp || da >= (cp + s))
 		return OF_BAD_ADDR;
@@ -442,11 +436,11 @@ static int of_translate_one(struct device_node *parent, struct of_bus *bus,
 	if (ranges == NULL || rlen == 0) {
 		offset = of_read_number(addr, na);
 		memset(addr, 0, pna * 4);
-		DBG("OF: no ranges, 1:1 translation\n");
+		pr_debug("OF: no ranges, 1:1 translation\n");
 		goto finish;
 	}
 
-	DBG("OF: walking ranges...\n");
+	pr_debug("OF: walking ranges...\n");
 
 	/* Now walk through the ranges */
 	rlen /= 4;
@@ -457,14 +451,14 @@ static int of_translate_one(struct device_node *parent, struct of_bus *bus,
 			break;
 	}
 	if (offset == OF_BAD_ADDR) {
-		DBG("OF: not found !\n");
+		pr_debug("OF: not found !\n");
 		return 1;
 	}
 	memcpy(addr, ranges + na, 4 * pna);
 
  finish:
 	of_dump_addr("OF: parent translation for:", addr, pna);
-	DBG("OF: with offset: "PRu64"\n", offset);
+	pr_debug("OF: with offset: "PRu64"\n", offset);
 
 	/* Translate it into parent bus space */
 	return pbus->translate(addr, offset, pna);
@@ -489,7 +483,7 @@ u64 of_translate_address(struct device_node *dev, const u32 *in_addr)
 	int na, ns, pna, pns;
 	u64 result = OF_BAD_ADDR;
 
-	DBG("OF: ** translation for device %s **\n", dev->full_name);
+	pr_debug("OF: ** translation for device %s **\n", dev->full_name);
 
 	/* Increase refcount at current level */
 	of_node_get(dev);
@@ -509,7 +503,7 @@ u64 of_translate_address(struct device_node *dev, const u32 *in_addr)
 	}
 	memcpy(addr, in_addr, na * 4);
 
-	DBG("OF: bus is %s (na=%d, ns=%d) on %s\n",
+	pr_debug("OF: bus is %s (na=%d, ns=%d) on %s\n",
 	    bus->name, na, ns, parent->full_name);
 	of_dump_addr("OF: translating address:", addr, na);
 
@@ -522,7 +516,7 @@ u64 of_translate_address(struct device_node *dev, const u32 *in_addr)
 
 		/* If root, we have finished */
 		if (parent == NULL) {
-			DBG("OF: reached root node\n");
+			pr_debug("OF: reached root node\n");
 			result = of_read_number(addr, na);
 			break;
 		}
@@ -536,7 +530,7 @@ u64 of_translate_address(struct device_node *dev, const u32 *in_addr)
 			break;
 		}
 
-		DBG("OF: parent bus is %s (na=%d, ns=%d) on %s\n",
+		pr_debug("OF: parent bus is %s (na=%d, ns=%d) on %s\n",
 		    pbus->name, pna, pns, parent->full_name);
 
 		/* Apply bus translation */
@@ -745,7 +739,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 	u32 intsize = 1, addrsize, newintsize = 0, newaddrsize = 0;
 	int imaplen, match, i;
 
-	DBG("of_irq_map_raw: par=%s,intspec=[0x%08x 0x%08x...],ointsize=%d\n",
+	pr_debug("of_irq_map_raw: par=%s,intspec=[0x%08x 0x%08x...],ointsize=%d\n",
 	    parent->full_name, intspec[0], intspec[1], ointsize);
 
 	ipar = of_node_get(parent);
@@ -765,11 +759,11 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 		of_node_put(tnode);
 	} while (ipar);
 	if (ipar == NULL) {
-		DBG(" -> no parent found !\n");
+		pr_debug(" -> no parent found !\n");
 		goto fail;
 	}
 
-	DBG("of_irq_map_raw: ipar=%s, size=%d\n", ipar->full_name, intsize);
+	pr_debug("of_irq_map_raw: ipar=%s, size=%d\n", ipar->full_name, intsize);
 
 	if (ointsize != intsize)
 		return -EINVAL;
@@ -788,7 +782,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 	old = NULL;
 	addrsize = (tmp == NULL) ? 2 : *tmp;
 
-	DBG(" -> addrsize=%d\n", addrsize);
+	pr_debug(" -> addrsize=%d\n", addrsize);
 
 	/* Now start the actual "proper" walk of the interrupt tree */
 	while (ipar != NULL) {
@@ -797,7 +791,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 		 */
 		if (of_get_property(ipar, "interrupt-controller", NULL) !=
 				NULL) {
-			DBG(" -> got it !\n");
+			pr_debug(" -> got it !\n");
 			memcpy(out_irq->specifier, intspec,
 			       intsize * sizeof(u32));
 			out_irq->size = intsize;
@@ -810,7 +804,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 		imap = of_get_property(ipar, "interrupt-map", &imaplen);
 		/* No interrupt map, check for an interrupt parent */
 		if (imap == NULL) {
-			DBG(" -> no map, getting parent\n");
+			pr_debug(" -> no map, getting parent\n");
 			newpar = of_irq_find_parent(ipar);
 			goto skiplevel;
 		}
@@ -824,7 +818,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 		 * Fail if it's not.
 		 */
 		if (addr == NULL && addrsize != 0) {
-			DBG(" -> no reg passed in when needed !\n");
+			pr_debug(" -> no reg passed in when needed !\n");
 			goto fail;
 		}
 
@@ -845,7 +839,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 			imap += addrsize + intsize;
 			imaplen -= addrsize + intsize;
 
-			DBG(" -> match=%d (imaplen=%d)\n", match, imaplen);
+			pr_debug(" -> match=%d (imaplen=%d)\n", match, imaplen);
 
 			/* Get the interrupt parent */
 			if (of_irq_workarounds & OF_IMAP_NO_PHANDLE)
@@ -857,7 +851,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 
 			/* Check if not found */
 			if (newpar == NULL) {
-				DBG(" -> imap parent not found !\n");
+				pr_debug(" -> imap parent not found !\n");
 				goto fail;
 			}
 
@@ -866,14 +860,14 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 			 */
 			tmp = of_get_property(newpar, "#interrupt-cells", NULL);
 			if (tmp == NULL) {
-				DBG(" -> parent lacks #interrupt-cells !\n");
+				pr_debug(" -> parent lacks #interrupt-cells !\n");
 				goto fail;
 			}
 			newintsize = *tmp;
 			tmp = of_get_property(newpar, "#address-cells", NULL);
 			newaddrsize = (tmp == NULL) ? 0 : *tmp;
 
-			DBG(" -> newintsize=%d, newaddrsize=%d\n",
+			pr_debug(" -> newintsize=%d, newaddrsize=%d\n",
 			    newintsize, newaddrsize);
 
 			/* Check for malformed properties */
@@ -883,7 +877,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 			imap += newaddrsize + newintsize;
 			imaplen -= newaddrsize + newintsize;
 
-			DBG(" -> imaplen=%d\n", imaplen);
+			pr_debug(" -> imaplen=%d\n", imaplen);
 		}
 		if (!match)
 			goto fail;
@@ -897,7 +891,7 @@ int of_irq_map_raw(struct device_node *parent, const u32 *intspec, u32 ointsize,
 
 	skiplevel:
 		/* Iterate again with new parent */
-		DBG(" -> new parent: %s\n", newpar ? newpar->full_name : "<>");
+		pr_debug(" -> new parent: %s\n", newpar ? newpar->full_name : "<>");
 		of_node_put(ipar);
 		ipar = newpar;
 		newpar = NULL;
@@ -962,7 +956,7 @@ int of_irq_map_one(struct device_node *device, int index, struct of_irq *out_irq
 	u32 intsize, intlen;
 	int res;
 
-	DBG("of_irq_map_one: dev=%s, index=%d\n", device->full_name, index);
+	pr_debug("of_irq_map_one: dev=%s, index=%d\n", device->full_name, index);
 
 	/* OldWorld mac stuff is "special", handle out of line */
 	if (of_irq_workarounds & OF_IMAP_OLDWORLD_MAC)
@@ -990,7 +984,7 @@ int of_irq_map_one(struct device_node *device, int index, struct of_irq *out_irq
 	}
 	intsize = *tmp;
 
-	DBG(" intsize=%d intlen=%d\n", intsize, intlen);
+	pr_debug(" intsize=%d intlen=%d\n", intsize, intlen);
 
 	/* Check index */
 	if ((index + 1) * intsize > intlen)
@@ -1042,20 +1036,36 @@ const void *of_get_mac_address(struct device_node *np)
 }
 EXPORT_SYMBOL(of_get_mac_address);
 
-/* int of_irq_to_resource(struct device_node *dev, int index, struct resource *r) */
-/* { */
-/* 	int irq = irq_of_parse_and_map(dev, index); */
+#define DEBUG
+int of_irq_to_resource(struct device_node *dev, int index, struct resource *r)
+{
+	struct of_irq out_irq;
+	int irq;
+        int res;
+        
 
-/* 	/\* Only dereference the resource if both the */
-/* 	 * resource and the irq are valid. *\/ */
-/* 	if (r && irq != NO_IRQ) { */
-/* 		r->start = r->end = irq; */
-/* 		r->flags = IORESOURCE_IRQ; */
-/* 	} */
+	res = of_irq_map_one(dev, index, &out_irq);
+       
+        /* Get irq for the device */
+	if(res) {
+            pr_debug("IRQ not found... code = %d", res);
+            return NO_IRQ;
+        }
 
-/* 	return irq; */
-/* } */
-/* EXPORT_SYMBOL_GPL(of_irq_to_resource); */
+	irq = out_irq.specifier[0]; // Assuming single interrupt controller...
+
+        pr_debug("IRQ found = %d", irq);
+
+	/* Only dereference the resource if both the
+	 * resource and the irq are valid. */
+	if (r && irq != NO_IRQ) {
+		r->start = r->end = irq;
+		r->flags = IORESOURCE_IRQ;
+	}
+
+	return irq;
+}
+EXPORT_SYMBOL_GPL(of_irq_to_resource);
 
 void __iomem *of_iomap(struct device_node *np, int index)
 {
