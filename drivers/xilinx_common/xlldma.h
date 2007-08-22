@@ -411,9 +411,9 @@
 *
 * The constant XPAR_XLLDMA_USE_DCR (see xlldma_hw.h) is used to inform the
 * driver the type of the BUS the DMA device is on. If the DMA device is on DCR
-* BUS, XPAR_XLLDMA_USE_DCR must be defined in xparameters.h or as a compiler
-* option used in the Makefile BEFORE this driver is compiled; Otherwise,
-* the constant must NOT be defined.
+* BUS, XPAR_XLLDMA_USE_DCR must be defined as a compiler option used in the
+* Makefile BEFORE this driver is compiled; Otherwise, the constant must NOT be
+* defined.
 *
 * <b>User-IP Specific Definition</b>
 *
@@ -433,10 +433,10 @@
 *     to do so will cause the DMA driver to work improperly. This driver uses
 *     0xFFFFFFFF as the default value of this constant.
 *
-* If the User-IP uses different setting, the correct setting must be defined
-* in the xparameters.h or as compiler options used in the Makefile BEFORE this
-* driver is compiled. In either case the default definition of the constants
-* in this driver will be discarded.
+* If the User-IP uses different setting, the correct setting must be defined as
+* compiler options used in the Makefile BEFORE this driver is compiled. In
+* either case the default definition of the constants in this driver will be
+* discarded.
 *
 * <pre>
 * MODIFICATION HISTORY:

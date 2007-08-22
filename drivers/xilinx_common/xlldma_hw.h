@@ -54,14 +54,13 @@ extern "C" {
 /***************************** Include Files *********************************/
 
 #include "xbasic_types.h"
-#include "xparameters.h"
 
 /** @name Device Bus Type definition
  * The constant XPAR_XLLDMA_USE_DCR is used to inform this driver the type of
  * the BUS the DMA device is on. If the DMA core is on DCR BUS,
- * XPAR_XLLDMA_USE_DCR must be defined in xparameters.h or as a compiler option
- * used in the Makefile BEFORE this driver is compiled; Otherwise, the constant
- * must not be defined.
+ * XPAR_XLLDMA_USE_DCR must be defined as a compiler option used in the
+ * Makefile BEFORE this driver is compiled; Otherwise, the constant must not be
+ * defined.
  *  @{
  */
 #ifdef XPAR_XLLDMA_USE_DCR

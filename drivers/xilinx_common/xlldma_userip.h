@@ -57,9 +57,9 @@
 *     the end of any receive transaction. Failing to do so will cause the
 *     DMA driver to work improperly.
 *
-* If the User-IP uses different setting, the correct setting must be defined
-* in the xparameters.h or as compiler options used in the Makefile. In either
-* case the default definition of the constants in this file will be discarded.
+* If the User-IP uses different setting, the correct setting must be defined as
+* a compiler options used in the Makefile. In either case the default
+* definition of the constants in this file will be discarded.
 *
 *
 * <pre>
@@ -82,7 +82,6 @@ extern "C" {
 /***************************** Include Files *********************************/
 
 #include "xlldma_hw.h"
-#include "xparameters.h"
 
 /************************** Constant Definitions *****************************/
 

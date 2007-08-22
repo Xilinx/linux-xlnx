@@ -1,5 +1,4 @@
 # The Xilinx OS common code 
-# EXTRA_CFLAGS		+= -Iarch/ppc/platforms/4xx/xparameters
 
 obj-$(CONFIG_XILINX_EDK) += xbasic_types.o					\
 				xversion.o	xpacket_fifo_v2_00_a.o xpacket_fifo_l_v2_00_a.o	\
