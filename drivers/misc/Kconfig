@@ -197,3 +197,15 @@ endmenu
 config XILINX_DRIVERS
   bool
 
+config NEED_XILINX_DMAV3
+  bool
+
+config NEED_XILINX_LLDMA
+  bool
+
+config NEED_XILINX_IPIF
+  bool
+
+config NEED_XILINX_PPC_DCR
+  bool
+
