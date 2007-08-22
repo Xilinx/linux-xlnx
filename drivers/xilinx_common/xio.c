@@ -67,43 +67,90 @@
 
 
 /***************** Macros (Inline Functions) Definitions *********************/
-#if defined __DCC__
-asm volatile u16 InSwap16(XIo_Address InAddress)
-{
-%reg InAddress
-! "r3"
 
-	eieio
-	lhbrx r3, 0, InAddress
-}
-
-asm volatile u32 InSwap32(XIo_Address InAddress)
-{
-%reg InAddress
-! "r3"
-
-	eieio
-	lwbrx r3, 0, InAddress
-}
-
-asm volatile void OutSwap16(XIo_Address OutAddress, u16 Value)
-{
-%reg OutAddress; reg Value
-
-	sthbrx Value, 0, OutAddress
-        eieio
-}
-
-asm volatile void OutSwap32(XIo_Address OutAddress, u32 Value)
-{
-%reg OutAddress; reg Value
-
-	stwbrx Value, 0, OutAddress
-	eieio
-}
-
-#endif
 /************************** Function Prototypes ******************************/
+/*****************************************************************************/
+/**
+*
+* Performs a 16-bit endian converion.
+*
+* @param    Source contains the value to be converted.
+* @param    DestPtr contains a pointer to the location to put the
+*           converted value.
+*
+* @return
+*
+* None.
+*
+* @note
+*
+* None.
+*
+******************************************************************************/
+void OutSwap16(u16 Source, u16 *DestPtr)
+{
+    *DestPtr = (u16) (((Source & 0xFF00) >> 8) | ((Source & 0x00FF) << 8));
+}
+
+u16 InSwap16(u16 *DestPtr)
+{
+    u16 Source = *DestPtr;
+   return (u16) (((Source & 0xFF00) >> 8) | ((Source & 0x00FF) << 8));
+}
+/*****************************************************************************/
+/**
+*
+* Performs a 32-bit endian converion.
+*
+* @param    Source contains the value to be converted.
+* @param    DestPtr contains a pointer to the location to put the
+*           converted value.
+*
+* @return
+*
+* None.
+*
+* @note
+*
+* None.
+*
+******************************************************************************/
+void OutSwap32(u32 Source, u32 *DestPtr)
+{
+
+    /* get each of the half words from the 32 bit word */
+
+    u16 LoWord = (u16) (Source & 0x0000FFFF);
+    u16 HiWord = (u16) ((Source & 0xFFFF0000) >> 16);
+
+    /* byte swap each of the 16 bit half words */
+
+    LoWord = (((LoWord & 0xFF00) >> 8) | ((LoWord & 0x00FF) << 8));
+    HiWord = (((HiWord & 0xFF00) >> 8) | ((HiWord & 0x00FF) << 8));
+
+    /* swap the half words before returning the value */
+
+    *DestPtr = (u32) ((LoWord << 16) | HiWord);
+}
+
+u32 InSwap32(u32 *DestPtr)
+{
+   /* get each of the half words from the 32 bit word */
+    u32 Source = *DestPtr;
+
+    u16 LoWord = (u16) (Source & 0x0000FFFF);
+    u16 HiWord = (u16) ((Source & 0xFFFF0000) >> 16);
+
+    /* byte swap each of the 16 bit half words */
+
+    LoWord = (((LoWord & 0xFF00) >> 8) | ((LoWord & 0x00FF) << 8));
+    HiWord = (((HiWord & 0xFF00) >> 8) | ((HiWord & 0x00FF) << 8));
+
+    /* swap the half words before returning the value */
+
+    return (u32) ((LoWord << 16) | HiWord);
+}
+
 /*****************************************************************************/
 /**
 *
@@ -127,7 +174,7 @@ asm volatile void OutSwap32(XIo_Address OutAddress, u32 Value)
      * such that the I/O operation completes before proceeding on
      */
 
-#if defined __GNUC__
+#if defined CONFIG_PPC
 
     u8 IoContents;
     __asm__ volatile ("eieio; lbz %0,0(%1)":"=r" (IoContents):"b"
@@ -166,7 +213,7 @@ u16 XIo_In16(XIo_Address InAddress)
      * such that the I/O operation completes before proceeding on
      */
 
-#if defined __GNUC__
+#if defined CONFIG_PPC
 
     u16 IoContents;
     __asm__ volatile ("eieio; lhz %0,0(%1)":"=r" (IoContents):"b"
@@ -204,7 +251,7 @@ u32 XIo_In32(XIo_Address InAddress)
      * such that the I/O operation completes before proceeding on
      */
 
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
 
     u32 IoContents;
     __asm__ volatile ("eieio; lwz %0,0(%1)":"=r" (IoContents):"b"
@@ -243,7 +290,7 @@ u16 XIo_InSwap16(XIo_Address InAddress)
     /* read the contents of the I/O location and then synchronize the I/O
      * such that the I/O operation completes before proceeding on
      */
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
     u16 IoContents;
 
     __asm__ volatile ("eieio; lhbrx %0,0,%1":"=r" (IoContents):"b"
@@ -277,7 +324,7 @@ u32 XIo_InSwap32(XIo_Address InAddress)
     /* read the contents of the I/O location and then synchronize the I/O
      * such that the I/O operation completes before proceeding on
      */
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
     u32 IoContents;
 
     __asm__ volatile ("eieio; lwbrx %0,0,%1":"=r" (IoContents):"b"
@@ -314,7 +361,7 @@ void XIo_Out8(XIo_Address OutAddress, u8 Value)
      * such that the I/O operation completes before proceeding on
      */
 
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
 
     __asm__ volatile ("stb %0,0(%1); eieio"::"r" (Value), "b"(OutAddress));
 
@@ -351,7 +398,7 @@ void XIo_Out16(XIo_Address OutAddress, u16 Value)
      * such that the I/O operation completes before proceeding on
      */
 
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
 
     __asm__ volatile ("sth %0,0(%1); eieio"::"r" (Value), "b"(OutAddress));
 
@@ -387,7 +434,7 @@ void XIo_Out32(XIo_Address OutAddress, u32 Value)
      * such that the I/O operation completes before proceeding on
      */
 
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
 
     __asm__ volatile ("stw %0,0(%1); eieio"::"r" (Value), "b"(OutAddress));
 
@@ -397,65 +444,6 @@ void XIo_Out32(XIo_Address OutAddress, u32 Value)
     SYNCHRONIZE_IO;
 
 #endif
-}
-
-/*****************************************************************************/
-/**
-*
-* Performs a 16-bit endian converion.
-*
-* @param    Source contains the value to be converted.
-* @param    DestPtr contains a pointer to the location to put the
-*           converted value.
-*
-* @return
-*
-* None.
-*
-* @note
-*
-* None.
-*
-******************************************************************************/
-void XIo_EndianSwap16OLD(u16 Source, u16 *DestPtr)
-{
-    *DestPtr = (u16) (((Source & 0xFF00) >> 8) | ((Source & 0x00FF) << 8));
-}
-
-/*****************************************************************************/
-/**
-*
-* Performs a 32-bit endian converion.
-*
-* @param    Source contains the value to be converted.
-* @param    DestPtr contains a pointer to the location to put the
-*           converted value.
-*
-* @return
-*
-* None.
-*
-* @note
-*
-* None.
-*
-******************************************************************************/
-void XIo_EndianSwap32OLD(u32 Source, u32 *DestPtr)
-{
-
-    /* get each of the half words from the 32 bit word */
-
-    u16 LoWord = (u16) (Source & 0x0000FFFF);
-    u16 HiWord = (u16) ((Source & 0xFFFF0000) >> 16);
-
-    /* byte swap each of the 16 bit half words */
-
-    LoWord = (((LoWord & 0xFF00) >> 8) | ((LoWord & 0x00FF) << 8));
-    HiWord = (((HiWord & 0xFF00) >> 8) | ((HiWord & 0x00FF) << 8));
-
-    /* swap the half words before returning the value */
-
-    *DestPtr = (u32) ((LoWord << 16) | HiWord);
 }
 
 /*****************************************************************************/
@@ -482,7 +470,7 @@ void XIo_OutSwap16(XIo_Address OutAddress, u16 Value)
     /* write the contents of the I/O location and then synchronize the I/O
      * such that the I/O operation completes before proceeding on
      */
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
     __asm__ volatile ("sthbrx %0,0,%1; eieio"::"r" (Value),
               "b"(OutAddress));
 #else
@@ -514,7 +502,7 @@ void XIo_OutSwap32(XIo_Address OutAddress, u32 Value)
     /* write the contents of the I/O location and then synchronize the I/O
      * such that the I/O operation completes before proceeding on
      */
-#ifdef __GNUC__
+#ifdef CONFIG_PPC
     __asm__ volatile ("stwbrx %0,0,%1; eieio"::"r" (Value),
               "b"(OutAddress));
 #else
