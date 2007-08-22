@@ -70,8 +70,7 @@ extern "C" {
 /*
  *   256 internal DCR registers
  *   Base address: 2 most signifcant bits of 10-bit addr taken from
- *                 xparameters.h which, in turn, is read from the
- *         C_DCRBASEADDR parameter of the processor block.
+ *                 the C_DCRBASEADDR parameter of the processor block.
  *   Offset: 8 least significant bits
  */
 /* register base addresses */
