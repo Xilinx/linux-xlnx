@@ -224,7 +224,6 @@ config THINKPAD_ACPI_INPUT_ENABLED
 
 
 endif # MISC_DEVICES
-endmenu
 
 
 #

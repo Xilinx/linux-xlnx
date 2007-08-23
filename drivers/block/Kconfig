@@ -448,6 +448,4 @@ config XEN_BLKDEV_FRONTEND
 	  block device driver.  It communicates with a back-end driver
 	  in another domain which drives the actual block device.
 
-endmenu
-
 endif # BLK_DEV
