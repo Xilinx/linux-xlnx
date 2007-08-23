@@ -2818,9 +2818,8 @@ static int __devexit xenet_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xenet_of_match[] = {
-	{
-		.type = DRIVER_NAME,
-	},
+	{ .type = "opb_ethernet", },
+	{ .type = "plb_ethernet", },
 	{ /* end of list */ },
 };
 
