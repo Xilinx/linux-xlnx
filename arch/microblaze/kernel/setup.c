@@ -66,8 +66,6 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	*cmdline_p = command_line;
-        printk("command_line = %s\n", command_line);
-        printk("boot_command_line = %s\n", boot_command_line);
         parse_early_param();
 
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
