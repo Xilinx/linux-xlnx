@@ -108,6 +108,30 @@ config CMDLINE
 	  some command-line options at build time by entering them here.  In
 	  most cases you will need to specify the root device here.
 
+config WANT_DEVICE_TREE
+	bool "Static device tree configuration"
+	help
+		Enable configuration using a static device tree.  If a static
+		device tree is not used, then configuration will default to
+		using platform_devices via the xparameters mechanism.
+
+config DEVICE_TREE
+	string "Static device tree source file"
+	depends on WANT_DEVICE_TREE
+	help
+	  This specifies the device tree source (.dts) file to be
+	  compiled and included when building the bootwrapper.  If a
+	  relative filename is given, then it will be relative to
+	  arch/microblaze/boot/dts.
+
+	  For example, this is required when building a cuImage target
+	  for an older U-Boot, which cannot pass a device tree itself.
+	  Such a kernel will not work with a newer U-Boot that tries to
+	  pass a device tree (unless you tell it not to).  If your U-Boot
+	  does not mention a device tree in "help bootm", then use the
+	  cuImage target and specify a device tree here.  Otherwise, use
+	  the uImage target and leave this field blank.
+
 config ML401
 	bool
 	depends on MICROBLAZE_ML401

@@ -576,18 +576,16 @@ sys_rt_sigsuspend_wrapper:
 	brid	sys_rt_sigsuspend
 	addk	r7, r1, r0
 
-	/* Interrupt vector table */
-	.section	.init.ivt, "ax"
-	.org 0x0
+/* Interrupt vector table */
+.section	.init.ivt, "ax"
+.org 0x0
 	brai	_reset
 	brai	_user_exception
 	brai	_interrupt
 	brai	_break
 	brai	_hw_exception_handler
-	.org 0x60
+.org 0x60
 	brai	_debug_exception
-
-
 
 
 .section .rodata,"a"

@@ -16,11 +16,11 @@ ifdef CONFIG_MICROBLAZE_USE_PCMP_INSTR
 CFLAGS += -mxl-pattern-compare
 endif
 
-ifdef CONFIG_MICROBLAZE_USE_DIV
+ifdef CONFIG_MICROBLAZE_USE_HW_MUL
 CFLAGS += -mno-xl-soft-mul
 endif
 
-ifdef CONFIG_MICROBLAZE_USE_HW_MUL
+ifdef CONFIG_MICROBLAZE_USE_DIV
 CFLAGS += -mno-xl-soft-div
 endif
 
