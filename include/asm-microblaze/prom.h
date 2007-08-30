@@ -1,5 +1,5 @@
-#ifndef _POWERPC_PROM_H
-#define _POWERPC_PROM_H
+#ifndef _MICROBLAZE_PROM_H
+#define _MICROBLAZE_PROM_H
 #ifdef __KERNEL__
 
 /*
@@ -346,4 +346,4 @@ extern int of_irq_to_resource(struct device_node *dev, int index,
 extern void __iomem *of_iomap(struct device_node *device, int index);
 
 #endif /* __KERNEL__ */
-#endif /* _POWERPC_PROM_H */
+#endif /* _MICROBLAZE_PROM_H */
