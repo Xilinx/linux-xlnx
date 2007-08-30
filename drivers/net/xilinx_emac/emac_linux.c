@@ -2537,7 +2537,7 @@ static int probe_initialization(
 	       lp->Emac.PhysAddress, lp->Emac.BaseAddress, ndev->irq);
 
 	/* print h/w id  */
-	hwid = XIo_In32((lp->Emac).BaseAddress + XIIF_V123B_RESETR_OFFSET);
+	hwid = XIo_In32((lp->Emac).BaseAddress + XEM_EMIR_OFFSET);
 
 	printk(KERN_INFO
 	       "%s: XEmac id %d.%d%c, block id %d, type %d\n",
@@ -2557,6 +2557,12 @@ static int xenet_remove(struct device *dev)
 
 	unregister_netdev(ndev);
 	xenet_remove_ndev(ndev);
+
+        release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start+1);
+
+	free_netdev(ndev);
+
+	dev_set_drvdata(dev, NULL);
 
 	return 0;		/* success */
 }
@@ -2617,7 +2623,15 @@ static int xenet_probe(struct device *dev)
 		goto error;
 	}
 	ndev->irq = r_irq->start;
+        ndev->mem_start = r_mem->start;
+        ndev->mem_end = r_mem->end;
 
+	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
+		dev_err(dev, "Couldn't lock memory region at %p\n",
+			(void *)ndev->mem_start);
+		rc = -EBUSY;
+		goto error;
+	}
 
 	/* Initialize the private netdev structure
 	 */
@@ -2689,12 +2703,22 @@ static struct device_driver xenet_driver = {
 	.remove = xenet_remove
 };
 
-static get_bool(struct of_device *ofdev, const char *s) {
+static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
+		return *p;
+	} else {
 		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
+		return FALSE;
+	}
+}
+
+static bool get_bool(struct of_device *ofdev, const char *s) {
+	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	if(p) {
 		return (bool)*p;
 	} else {
+		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
 		return FALSE;
 	}
 }
@@ -2738,6 +2762,15 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
 		goto error;
 	}
+        ndev->mem_start = r_mem.start;
+        ndev->mem_end = r_mem.end;
+
+	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
+		dev_err(&ofdev->dev, "Couldn't lock memory region at %p\n",
+			(void *)ndev->mem_start);
+		rc = -EBUSY;
+		goto error;
+	}
 
 	/* Initialize the private netdev structure
 	 */
@@ -2748,14 +2781,14 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
 	Config.DeviceId		= 0; // FIXME:pdev->id;
 	Config.BaseAddress	= r_mem.start;	/* Physical address */
-	Config.IpIfDmaConfig	= get_bool(ofdev, "dma_mode");
-	Config.HasMii		= get_bool(ofdev, "has_mii");
-	Config.HasCam		= get_bool(ofdev, "has_cam");
-	Config.HasJumbo		= get_bool(ofdev, "has_jumbo");
-	Config.TxDre		= get_bool(ofdev, "tx_dre");
-	Config.RxDre		= get_bool(ofdev, "rx_dre");
-	Config.TxHwCsum		= get_bool(ofdev, "tx_hw_csum");
-	Config.RxHwCsum		= get_bool(ofdev, "tx_hw_csum");
+	Config.IpIfDmaConfig	= get_u32(ofdev, "C_DMA_PRESENT");
+	Config.HasMii		= get_u32(ofdev, "C_MII_EXIST");
+	Config.HasCam		= get_u32(ofdev, "C_CAM_EXIST");
+	Config.HasJumbo		= get_u32(ofdev, "C_JUMBO_EXIST");
+	Config.TxDre		= get_u32(ofdev, "C_TX_DRE_TYPE");
+	Config.RxDre		= get_u32(ofdev, "C_RX_DRE_TYPE");
+	Config.TxHwCsum		= get_u32(ofdev, "C_TX_INCLUDE_CSUM");
+	Config.RxHwCsum		= get_u32(ofdev, "C_RX_INCLUDE_CSUM");
 
 
 	/* Get the virtual base address for the device */
@@ -2809,6 +2842,8 @@ static int __devexit xenet_of_remove(struct of_device *dev)
 
 	unregister_netdev(ndev);
 	xenet_remove_ndev(ndev);
+
+        release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start+1);
 
 	free_netdev(ndev);
 
