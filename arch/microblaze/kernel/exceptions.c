@@ -18,6 +18,8 @@
 /* Initialize_exception_handlers() - called from setup.c/trap_init() */
 void initialize_exception_handlers(void)
 {
+    // Note that the exception handlers are initialized
+    // along with the interrupt vectors in setup.c/machine_early_init().
 }
 
 #define MICROBLAZE_ILL_OPCODE_EXCEPTION	0x02
