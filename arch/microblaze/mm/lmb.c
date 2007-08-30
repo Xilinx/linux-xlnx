@@ -21,13 +21,7 @@
 #include "mmu_decl.h"		/* for __max_low_memory */
 #endif
 
-#undef DEBUG
-
-#ifdef DEBUG
-#define DBG(fmt...) printk(fmt)
-#else
-#define DBG(fmt...)
-#endif
+#define DEBUG
 
 #define LMB_ALLOC_ANYWHERE	0
 
@@ -38,22 +32,22 @@ void lmb_dump_all(void)
 #ifdef DEBUG
 	unsigned long i;
 
-	DBG("lmb_dump_all:\n");
-	DBG("    memory.cnt		  = 0x%lx\n", lmb.memory.cnt);
-	DBG("    memory.size		  = 0x%lx\n", lmb.memory.size);
+	pr_debug("lmb_dump_all:\n");
+	pr_debug("    memory.cnt		  = 0x%lx\n", lmb.memory.cnt);
+	pr_debug("    memory.size		  = 0x%lx\n", lmb.memory.size);
 	for (i=0; i < lmb.memory.cnt ;i++) {
-		DBG("    memory.region[0x%x].base       = 0x%lx\n",
+		pr_debug("    memory.region[0x%x].base       = 0x%lx\n",
 			    i, lmb.memory.region[i].base);
-		DBG("		      .size     = 0x%lx\n",
+		pr_debug("		      .size     = 0x%lx\n",
 			    lmb.memory.region[i].size);
 	}
 
-	DBG("\n    reserved.cnt	  = 0x%lx\n", lmb.reserved.cnt);
-	DBG("    reserved.size	  = 0x%lx\n", lmb.reserved.size);
+	pr_debug("\n    reserved.cnt	  = 0x%lx\n", lmb.reserved.cnt);
+	pr_debug("    reserved.size	  = 0x%lx\n", lmb.reserved.size);
 	for (i=0; i < lmb.reserved.cnt ;i++) {
-		DBG("    reserved.region[0x%x].base       = 0x%lx\n",
+		pr_debug("    reserved.region[0x%x].base       = 0x%lx\n",
 			    i, lmb.reserved.region[i].base);
-		DBG("		      .size     = 0x%lx\n",
+		pr_debug("		      .size     = 0x%lx\n",
 			    lmb.reserved.region[i].size);
 	}
 #endif /* DEBUG */
