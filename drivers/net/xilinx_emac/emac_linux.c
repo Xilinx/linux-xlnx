@@ -59,14 +59,17 @@
 
 #include <linux/xilinx_devices.h>
 
-// For open firmware.
-#include <asm/of_platform.h>
-#include <asm/prom.h>
-
 #include <xbasic_types.h>
 #include "xemac.h"
 #include "xemac_i.h"
 #include "xipif_v1_23_b.h"
+
+#ifdef CONFIG_WANT_DEVICE_TREE
+// For open firmware.
+#include <asm/prom.h>
+#include <asm/of_device.h>
+#include <asm/of_platform.h>
+#endif
 
 /*
  * Add a delay (in ms) after resetting the EMAC since it
@@ -2703,6 +2706,7 @@ static struct device_driver xenet_driver = {
 	.remove = xenet_remove
 };
 
+#ifdef CONFIG_WANT_DEVICE_TREE
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -2866,7 +2870,7 @@ static struct of_platform_driver xenet_of_driver = {
 	.probe		= xenet_of_probe,
 	.remove		= __devexit_p(xenet_of_remove),
 };
-
+#endif
 
 static int __init xenet_init(void)
 {
@@ -2874,15 +2878,19 @@ static int __init xenet_init(void)
 	 * No kernel boot options used,
 	 * so we just need to register the driver
 	 */
-	int platform_status = driver_register(&xenet_driver);
-	int of_status = of_register_platform_driver(&xenet_of_driver);
-	return platform_status | of_status;
+	int status = driver_register(&xenet_driver);
+#ifdef CONFIG_WANT_DEVICE_TREE
+	status |= of_register_platform_driver(&xenet_of_driver);
+#endif
+	return status;
 }
 
 static void __exit xenet_cleanup(void)
 {
 	driver_unregister(&xenet_driver);
+#ifdef CONFIG_WANT_DEVICE_TREE
 	of_unregister_platform_driver(&xenet_of_driver);
+#endif
 }
 
 module_init(xenet_init);
