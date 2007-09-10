@@ -15,6 +15,7 @@
 #include <linux/serial.h>
 #include <asm/xparameters.h>
 #include <asm/io.h>
+#include <asm/of_platform.h>
 
 #ifdef XPAR_SPI_0_BASEADDR
 
@@ -329,14 +330,26 @@ void __init uart_16550_early_init(void)
 #endif /* defined(XPAR_HAVE_UART16550) && defined(CONFIG_SERIAL_8250) */
 }
 
+#ifdef CONFIG_DEVICE_TREE
+static struct of_device_id microblaze_of_bus[] = {
+	{ .compatible = "ibm,plb4", },
+	{ .compatible = "ibm,plb", },
+	{ .compatible = "ibm,opb", },
+	{},
+};
+#endif
+
 static int __init xilinx_platform_init(void)
 {
+#ifdef CONFIG_DEVICE_TREE
+    of_platform_bus_probe(NULL, microblaze_of_bus, NULL);
+#else
 
 #ifdef XPAR_SPI_0_BASEADDR
 	platform_device_register(&xilinx_spi_0_device);
 #endif /* XPAR_SPI_0_BASEADDR */
 
-	/* EMAC instances */
+/* EMAC instances */
 #if defined(XPAR_EMAC_0_BASEADDR)
 	platform_device_register(&xilinx_emac_0_device);
 #endif
@@ -363,6 +376,7 @@ static int __init xilinx_platform_init(void)
 	platform_device_register(&xilinx_gpio_6_device);
 #endif /* XPAR_GPIO_6_BASEADDR */
 
+#endif /* CONFIG_DEVICE_TREE */
 	return 0;
 }
 

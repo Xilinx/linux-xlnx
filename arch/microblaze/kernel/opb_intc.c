@@ -7,6 +7,7 @@
  *
  * Copyright (C) 2006 Atmark Techno, Inc.
  */
+
 #include <linux/init.h>
 #include <linux/irq.h>
 #include <asm/page.h>
@@ -83,6 +84,14 @@ int get_irq(struct pt_regs *regs)
 	 */
 
 	irq = ioread32(BASE_ADDR + IVR);
+
+	/* If no interrupt is pending then all bits of the IVR are set to 1. As
+	 * the IVR is as many bits wide as numbers of inputs are available.
+	 * Therefore, if all bits of the IVR are set to one, its content will
+	 * be bigger than XPAR_INTC_MAX_NUM_INTR_INPUTS.
+	 */
+	if (irq >= XPAR_INTC_MAX_NUM_INTR_INPUTS)
+		irq = -1;	/* report no pending interrupt. */
 
 	pr_debug("get_irq: %d\n", irq);
 
