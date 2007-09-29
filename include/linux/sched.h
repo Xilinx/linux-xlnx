@@ -438,7 +438,7 @@ struct sighand_struct {
 	atomic_t		count;
 	struct k_sigaction	action[_NSIG];
 	spinlock_t		siglock;
-	struct list_head        signalfd_list;
+	wait_queue_head_t	signalfd_wqh;
 };
 
 struct pacct_struct {
@@ -593,7 +593,7 @@ struct user_struct {
 #endif
 
 	/* Hash table maintenance information */
-	struct list_head uidhash_list;
+	struct hlist_node uidhash_node;
 	uid_t uid;
 };
 
@@ -1406,6 +1406,7 @@ extern unsigned int sysctl_sched_wakeup_granularity;
 extern unsigned int sysctl_sched_batch_wakeup_granularity;
 extern unsigned int sysctl_sched_stat_granularity;
 extern unsigned int sysctl_sched_runtime_limit;
+extern unsigned int sysctl_sched_compat_yield;
 extern unsigned int sysctl_sched_child_runs_first;
 extern unsigned int sysctl_sched_features;
 
@@ -1472,6 +1473,7 @@ static inline struct user_struct *get_uid(struct user_struct *u)
 }
 extern void free_uid(struct user_struct *);
 extern void switch_uid(struct user_struct *);
+extern void release_uids(struct user_namespace *ns);
 
 #include <asm/current.h>
 

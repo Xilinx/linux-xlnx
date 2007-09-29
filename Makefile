@@ -2,8 +2,8 @@ VERSION = 2
 PATCHLEVEL = 6
 SUBLEVEL = 22
 SUBLEVEL = 23
-EXTRAVERSION =-xlnx-rc6
-NAME = Pink Farting Weasel
+EXTRAVERSION =xlnx-rc8
+NAME = Arr Matey! A Hairy Bilge Rat!
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"

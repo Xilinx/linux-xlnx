@@ -1222,7 +1222,7 @@ static int mv643xx_eth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	spin_lock_irqsave(&mp->lock, flags);
 
 	eth_tx_submit_descs_for_skb(mp, skb);
-	stats->tx_bytes = skb->len;
+	stats->tx_bytes += skb->len;
 	stats->tx_packets++;
 	dev->trans_start = jiffies;
 
@@ -2768,8 +2768,6 @@ static const struct ethtool_ops mv643xx_ethtool_ops = {
 	.get_stats_count        = mv643xx_get_stats_count,
 	.get_ethtool_stats      = mv643xx_get_ethtool_stats,
 	.get_strings            = mv643xx_get_strings,
-	.get_stats_count        = mv643xx_get_stats_count,
-	.get_ethtool_stats      = mv643xx_get_ethtool_stats,
 	.nway_reset		= mv643xx_eth_nway_restart,
 };
 

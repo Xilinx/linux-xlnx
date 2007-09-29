@@ -1531,7 +1531,7 @@ no_hmac:
 	/* Also, add the destination address. */
 	if (list_empty(&retval->base.bind_addr.address_list)) {
 		sctp_add_bind_addr(&retval->base.bind_addr, &chunk->dest, 1,
-				   GFP_ATOMIC);
+				GFP_ATOMIC);
 	}
 
 	retval->next_tsn = retval->c.initial_tsn;
@@ -2499,6 +2499,52 @@ static __be16 sctp_process_asconf_param(struct sctp_association *asoc,
 	return SCTP_ERROR_NO_ERROR;
 }
 
+/* Verify the ASCONF packet before we process it.  */
+int sctp_verify_asconf(const struct sctp_association *asoc,
+		       struct sctp_paramhdr *param_hdr, void *chunk_end,
+		       struct sctp_paramhdr **errp) {
+	sctp_addip_param_t *asconf_param;
+	union sctp_params param;
+	int length, plen;
+
+	param.v = (sctp_paramhdr_t *) param_hdr;
+	while (param.v <= chunk_end - sizeof(sctp_paramhdr_t)) {
+		length = ntohs(param.p->length);
+		*errp = param.p;
+
+		if (param.v > chunk_end - length ||
+		    length < sizeof(sctp_paramhdr_t))
+			return 0;
+
+		switch (param.p->type) {
+		case SCTP_PARAM_ADD_IP:
+		case SCTP_PARAM_DEL_IP:
+		case SCTP_PARAM_SET_PRIMARY:
+			asconf_param = (sctp_addip_param_t *)param.v;
+			plen = ntohs(asconf_param->param_hdr.length);
+			if (plen < sizeof(sctp_addip_param_t) +
+			    sizeof(sctp_paramhdr_t))
+				return 0;
+			break;
+		case SCTP_PARAM_SUCCESS_REPORT:
+		case SCTP_PARAM_ADAPTATION_LAYER_IND:
+			if (length != sizeof(sctp_addip_param_t))
+				return 0;
+
+			break;
+		default:
+			break;
+		}
+
+		param.v += WORD_ROUND(length);
+	}
+
+	if (param.v != chunk_end)
+		return 0;
+
+	return 1;
+}
+
 /* Process an incoming ASCONF chunk with the next expected serial no. and
  * return an ASCONF_ACK chunk to be sent in response.
  */
@@ -2613,22 +2659,16 @@ static int sctp_asconf_param_success(struct sctp_association *asoc,
 
 	switch (asconf_param->param_hdr.type) {
 	case SCTP_PARAM_ADD_IP:
-		sctp_local_bh_disable();
-		sctp_write_lock(&asoc->base.addr_lock);
-		list_for_each(pos, &bp->address_list) {
-			saddr = list_entry(pos, struct sctp_sockaddr_entry, list);
+		/* This is always done in BH context with a socket lock
+		 * held, so the list can not change.
+		 */
+		list_for_each_entry(saddr, &bp->address_list, list) {
 			if (sctp_cmp_addr_exact(&saddr->a, &addr))
 				saddr->use_as_src = 1;
 		}
-		sctp_write_unlock(&asoc->base.addr_lock);
-		sctp_local_bh_enable();
 		break;
 	case SCTP_PARAM_DEL_IP:
-		sctp_local_bh_disable();
-		sctp_write_lock(&asoc->base.addr_lock);
-		retval = sctp_del_bind_addr(bp, &addr);
-		sctp_write_unlock(&asoc->base.addr_lock);
-		sctp_local_bh_enable();
+		retval = sctp_del_bind_addr(bp, &addr, call_rcu_bh);
 		list_for_each(pos, &asoc->peer.transport_addr_list) {
 			transport = list_entry(pos, struct sctp_transport,
 						 transports);
