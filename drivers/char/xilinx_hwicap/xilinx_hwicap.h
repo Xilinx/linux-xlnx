@@ -52,8 +52,11 @@ struct xhwicap_drvdata {
 	u8 write_buffer[4];
 	u32 read_buffer_in_use;	// Always in [0,3]
 	u8 read_buffer[4];
-	u32 regs_phys;		/* phys. address of the control registers */
-	void __iomem *baseAddress;	/* virt. address of the control registers */
+	u32 mem_start;		  /* phys. address of the control registers */
+	u32 mem_end;		  /* phys. address of the control registers */
+	u32 mem_size;
+	void __iomem *baseAddress;/* virt. address of the control registers */
+
 	struct device *dev;
 	struct cdev cdev;	/* Char device structure */
 	dev_t devt;
