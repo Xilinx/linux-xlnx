@@ -86,13 +86,19 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 #include <asm/system.h>
+
+#ifdef CONFIG_WANT_DEVICE_TREE
+// For open firmware.
 #include <asm/prom.h>
+#include <asm/of_device.h>
+#include <asm/of_platform.h>
+#endif
 
 #include "xilinx_hwicap.h"
 
 #define DRIVER_NAME "xilinx_icap"
 
-#define XHWICAP_REGS	(0x10000)
+#define XHWICAP_REGS   (0x10000)
 
 /* dynamically allocate device number */
 static int xhwicap_major = 0;
@@ -389,31 +395,40 @@ static int __init xhwicap_drv_probe(struct device *dev)
 	/* Map the control registers in */
 	regs_res = platform_get_resource(to_platform_device(dev),
 					 IORESOURCE_MEM, 0);
-	if (!regs_res || (regs_res->end - regs_res->start + 1 < XHWICAP_REGS)) {
+	if (!regs_res) {
 		dev_err(dev, "Couldn't get registers resource\n");
 		retval = -EFAULT;
 		goto failed1;
 	}
 
-	if (!request_mem_region(regs_res->start, XHWICAP_REGS, DRIVER_NAME)) {
+	drvdata->mem_start = regs_res->start;
+	drvdata->mem_end = regs_res->end;
+	drvdata->mem_size = regs_res->end - regs_res->start + 1;
+
+	if (drvdata->mem_size < XHWICAP_REGS) {
+		dev_err(dev, "Couldn't get registers resource\n");
+		retval = -EFAULT;
+		goto failed1;
+	}
+
+	if (!request_mem_region(drvdata->mem_start, drvdata->mem_size, DRIVER_NAME)) {
 		dev_err(dev, "Couldn't lock memory region at %p\n",
 			(void *)regs_res->start);
 		retval = -EBUSY;
 		goto failed1;
 	}
 
-	drvdata->regs_phys = regs_res->start;
 	drvdata->devt = devt;
 	drvdata->dev = dev;
-	drvdata->baseAddress = ioremap(drvdata->regs_phys, XHWICAP_REGS);
+	drvdata->baseAddress = ioremap(drvdata->mem_start, drvdata->mem_size);
 	if (!drvdata->baseAddress) {
 		dev_err(dev, "ioremap() failed\n");
 		goto failed2;
 	}
 
 	dev_info(dev, "ioremap %lx to %p with size %x\n",
-		 (unsigned long int)drvdata->regs_phys,
-		 drvdata->baseAddress, (unsigned int)XHWICAP_REGS);
+		 (unsigned long int)drvdata->mem_start,
+			drvdata->baseAddress, drvdata->mem_size);
 
 	cdev_init(&drvdata->cdev, &xhwicap_fops);
 	drvdata->cdev.owner = THIS_MODULE;
@@ -430,7 +445,7 @@ static int __init xhwicap_drv_probe(struct device *dev)
 	iounmap(drvdata->baseAddress);
 
       failed2:
-	release_mem_region(regs_res->start, XHWICAP_REGS);
+	release_mem_region(regs_res->start, drvdata->mem_size);
 
       failed1:
 	kfree(drvdata);
@@ -450,7 +465,7 @@ static int __exit xhwicap_drv_remove(struct device *dev)
 	class_device_destroy(icap_class, drvdata->devt);
 	cdev_del(&drvdata->cdev);
 	iounmap(drvdata->baseAddress);
-	release_mem_region(drvdata->regs_phys, XHWICAP_REGS);
+	release_mem_region(drvdata->mem_start, drvdata->mem_size);
 	kfree(drvdata);
 	dev_set_drvdata(dev, NULL);
 
@@ -488,6 +503,7 @@ static int __init xhwicap_module_init(void)
 	}
 
 	retval = driver_register(&xhwicap_module_driver);
+
 	if (retval) {
 		unregister_chrdev_region(devt, xhwicap_no_minors);
 	}
@@ -502,11 +518,49 @@ static void __exit xhwicap_module_cleanup(void)
 	class_destroy(icap_class);
 
 	driver_unregister(&xhwicap_module_driver);
+
 	unregister_chrdev_region(devt, xhwicap_no_minors);
 }
 
 module_init(xhwicap_module_init);
 module_exit(xhwicap_module_cleanup);
+
+#ifdef CONFIG_WANT_DEVICE_TREE
+
+static int __init xilinx_hwicap_of_init(void)
+{
+	struct device_node *np;
+	unsigned int i;
+	struct platform_device *pdev;
+	int ret;
+
+	for (np = NULL, i = 0;
+	     (np = of_find_compatible_node(np, NULL, "opb_hwicap")) != NULL;
+	     i++) {
+		struct resource r;
+
+		memset(&r, 0, sizeof(r));
+
+		ret = of_address_to_resource(np, 0, &r);
+		if (ret)
+			goto err;
+		pdev =
+		    platform_device_register_simple(DRIVER_NAME, i, &r, 3);
+
+		if (IS_ERR(pdev)) {
+			ret = PTR_ERR(pdev);
+			goto err;
+		}
+	}
+
+	return 0;
+err:
+	return ret;
+}
+
+module_init(xilinx_hwicap_of_init);
+
+#endif
 
 MODULE_AUTHOR("Xilinx, Inc; Xilinx Research Labs Group");
 MODULE_DESCRIPTION("Xilinx ICAP Port Driver");
