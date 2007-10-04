@@ -136,7 +136,6 @@ struct net_local {
 	struct net_device *next_dev;	/* The next device in dev_list */
 	struct net_device *ndev;	/* this device */
 	struct timer_list phy_timer;	/* PHY monitoring timer */
-	u32 index;		/* Which interface is this */
 	XInterruptHandler Isr;	/* Pointer to the XEmac ISR routine */
 	u8 mii_addr;		/* The MII address of the PHY */
 	/*
@@ -2535,9 +2534,10 @@ static int probe_initialization(
 	}
 
 	printk(KERN_INFO
-	       "%s: Xilinx 10/100 EMAC #%d at 0x%08X mapped to 0x%08X, irq=%d\n",
-	       ndev->name, lp->Emac.Config.DeviceId,
-	       lp->Emac.PhysAddress, lp->Emac.BaseAddress, ndev->irq);
+               "%s: Xilinx 10/100 EMAC at 0x%08X mapped to 0x%08X, irq=%d\n",
+               ndev->name,
+               lp->Emac.PhysAddress,
+               lp->Emac.BaseAddress, ndev->irq);
 
 	/* print h/w id  */
 	hwid = XIo_In32((lp->Emac).BaseAddress + XEM_EMIR_OFFSET);
@@ -2640,10 +2640,8 @@ static int xenet_probe(struct device *dev)
 	 */
 	lp = netdev_priv(ndev);
 	lp->ndev = ndev;
-	lp->index = pdev->id;
 
 	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
-	Config.DeviceId		= pdev->id;
 	Config.BaseAddress	= r_mem->start;	/* Physical address */
 	Config.IpIfDmaConfig	= pdata->dma_mode;
 	Config.HasMii		= pdata->has_mii;
@@ -2726,6 +2724,7 @@ static bool get_bool(struct of_device *ofdev, const char *s) {
 		return FALSE;
 	}
 }
+
 static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_device_id *match)
 {
 	u32 virt_baddr;		/* virtual base address of emac */
@@ -2780,10 +2779,8 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 	 */
 	lp = netdev_priv(ndev);
 	lp->ndev = ndev;
-	lp->index = 0; //FIXME: of_get_property(ofdev->node, "current-speed", NULL);
 
 	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
-	Config.DeviceId		= 0; // FIXME:pdev->id;
 	Config.BaseAddress	= r_mem.start;	/* Physical address */
 	Config.IpIfDmaConfig	= get_u32(ofdev, "C_DMA_PRESENT");
 	Config.HasMii		= get_u32(ofdev, "C_MII_EXIST");
@@ -2842,23 +2839,12 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 
 static int __devexit xenet_of_remove(struct of_device *dev)
 {
-	struct net_device *ndev = dev_get_drvdata(&dev->dev);
-
-	unregister_netdev(ndev);
-	xenet_remove_ndev(ndev);
-
-        release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start+1);
-
-	free_netdev(ndev);
-
-	dev_set_drvdata(&dev->dev, NULL);
-
-	return 0;
+	return xenet_remove(&dev->dev);
 }
 
 static struct of_device_id xenet_of_match[] = {
-	{ .type = "opb_ethernet", },
-	{ .type = "plb_ethernet", },
+	{ .compatible = "opb_ethernet", },
+	{ .compatible = "plb_ethernet", },
 	{ /* end of list */ },
 };
 
