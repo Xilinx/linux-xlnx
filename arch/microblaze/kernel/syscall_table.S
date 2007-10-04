@@ -116,7 +116,7 @@ ENTRY(sys_call_table)
 	.long sys_wait4
 	.long sys_swapoff		/* 115 */
 	.long sys_sysinfo
-	.long sys_ni_syscall		/* ipc */
+	.long sys_ipc
 	.long sys_fsync
 	.long sys_sigreturn_wrapper
 	.long sys_clone_wrapper		/* 120 */

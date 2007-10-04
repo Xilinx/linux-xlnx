@@ -6,17 +6,19 @@
  * for more details.
  *
  * Copyright (C) 2006 Atmark Techno, Inc.
+ *           (C) 2007 PetaLogix
  *
  * Authors:
+ *  John Williams <john.williams@petalogix.com>
  *  Yasushi SHOJI <yashi@atmark-techno.com>
  *  Tetsuya OHKAWA <tetsuya@atmark-techno.com>
  */
 
 #include <linux/errno.h>
-#include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
 #include <linux/smp_lock.h>
+#include <linux/syscalls.h>
 #include <linux/sem.h>
 #include <linux/msg.h>
 #include <linux/shm.h>
@@ -26,16 +28,113 @@
 #include <linux/ipc.h>
 #include <linux/utsname.h>
 #include <linux/file.h>
-
+#include <linux/module.h>
+                                                                                
 #include <asm/uaccess.h>
 #include <asm/ipc.h>
 #include <asm/semaphore.h>
-
-#include <linux/module.h>
-#include <linux/ptrace.h>
-#include <linux/fs.h>
-#include <asm/uaccess.h>
 #include <asm/unistd.h>
+
+
+/*
+ * sys_ipc() is the de-multiplexer for the SysV IPC calls..
+ *
+ * This is really horribly ugly.
+ */
+int
+sys_ipc (uint call, int first, int second, int third, void *ptr, long fifth)
+{
+	int version, ret;
+
+	version = call >> 16; /* hack for backward compatibility */
+	call &= 0xffff;
+
+	ret = -EINVAL;
+	switch (call) {
+	case SEMOP:
+		ret = sys_semop (first, (struct sembuf *)ptr, second);
+		break;
+	case SEMGET:
+		ret = sys_semget (first, second, third);
+		break;
+	case SEMCTL:
+	{
+		union semun fourth;
+
+		if (!ptr)
+			break;
+		if ((ret = access_ok(VERIFY_READ, ptr, sizeof(long)) ? 0 : -EFAULT)
+		    || (ret = get_user(fourth.__pad, (void **)ptr)))
+			break;
+		ret = sys_semctl (first, second, third, fourth);
+		break;
+	}
+	case MSGSND:
+		ret = sys_msgsnd (first, (struct msgbuf *) ptr, second, third);
+		break;
+	case MSGRCV:
+		switch (version) {
+		case 0: {
+			struct ipc_kludge tmp;
+
+			if (!ptr)
+				break;
+			if ((ret = access_ok(VERIFY_READ, ptr, sizeof(tmp)) ? 0 : -EFAULT)
+			    || (ret = copy_from_user(&tmp,
+						(struct ipc_kludge *) ptr,
+						sizeof (tmp))))
+				break;
+			ret = sys_msgrcv (first, tmp.msgp, second, tmp.msgtyp,
+					  third);
+			break;
+			}
+		default:
+			ret = sys_msgrcv (first, (struct msgbuf *) ptr,
+					  second, fifth, third);
+			break;
+		}
+		break;
+	case MSGGET:
+		ret = sys_msgget ((key_t) first, second);
+		break;
+	case MSGCTL:
+		ret = sys_msgctl (first, second, (struct msqid_ds *) ptr);
+		break;
+	case SHMAT:
+		switch (version) {
+		default: {
+			ulong raddr;
+
+			if ((ret = access_ok(VERIFY_WRITE, (ulong*) third,
+					       sizeof(ulong)) ? 0 : -EFAULT))
+				break;
+			ret = do_shmat (first, (char *) ptr, second, &raddr);
+			if (ret)
+				break;
+			ret = put_user (raddr, (ulong *) third);
+			break;
+			}
+		case 1:	/* iBCS2 emulator entry point */
+			if (!segment_eq(get_fs(), get_ds()))
+				break;
+			ret = do_shmat (first, (char *) ptr, second,
+					 (ulong *) third);
+			break;
+		}
+		break;
+	case SHMDT: 
+		ret = sys_shmdt ((char *)ptr);
+		break;
+	case SHMGET:
+		ret = sys_shmget (first, second, third);
+		break;
+	case SHMCTL:
+		ret = sys_shmctl (first, second, (struct shmid_ds *) ptr);
+		break;
+	}
+
+	return ret;
+}
 
 long execve(const char *filename, char **argv, char **envp)
 {
