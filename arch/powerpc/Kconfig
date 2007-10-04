@@ -394,6 +394,18 @@ config WANT_DEVICE_TREE
 	bool
 	default n
 
+config BUILD_RAW_IMAGE
+	bool "Build firmware-independent image"
+	select WANT_DEVICE_TREE
+	help
+	  If this is enabled, a firmware independent "raw" image will be
+	  built, as zImage.raw.  This requires a completely filled-in
+	  device tree, with the following labels:
+
+	  mem_size_cells: on /#address-cells
+	  memsize: on the size portion of /memory/reg
+	  timebase: on the boot CPU's timebase property
+
 config DEVICE_TREE
 	string "Static device tree source file"
 	depends on WANT_DEVICE_TREE
