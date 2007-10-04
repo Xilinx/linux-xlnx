@@ -53,6 +53,7 @@ extern void __init paging_init(void);
 static char default_command_line[COMMAND_LINE_SIZE] = CONFIG_CMDLINE;
 char command_line[COMMAND_LINE_SIZE];
 
+
 void __init setup_arch(char **cmdline_p)
 {
 	setup_cpuinfo();
@@ -68,15 +69,11 @@ void __init setup_arch(char **cmdline_p)
 	*cmdline_p = command_line;
         parse_early_param();
 
-#if XPAR_MICROBLAZE_0_USE_ICACHE==1
+        /* Flush caches, if necessary. */
 	__flush_icache_all();
 	__enable_icache();
-#endif
-
-#if XPAR_MICROBLAZE_0_USE_DCACHE==1
 	__flush_dcache_all();
 	__enable_dcache();
-#endif
 
 	panic_timeout = 120;
 
@@ -125,7 +122,7 @@ static void initialize_interrupt_and_exception_table() {
     for (src = __ivt_start; src < __ivt_end; src++, dst++)
         *dst = *src;
 }
- 
+
 /* This code is called before the kernel proper is started */
 void machine_early_init(const char *cmdline)
 {
@@ -157,7 +154,7 @@ void machine_early_init(const char *cmdline)
 	/* Copy command line passed from bootloader, or use default
 	   if none provided, or forced */
 #ifndef CONFIG_CMDLINE_FORCE
-	if (cmdline && cmdline[0]!='\0') 
+	if (cmdline && cmdline[0]!='\0')
 		strlcpy(command_line, cmdline, COMMAND_LINE_SIZE);
 	else
 #endif
