@@ -545,7 +545,7 @@ static int __init xilinx_hwicap_of_init(void)
 		if (ret)
 			goto err;
 		pdev =
-		    platform_device_register_simple(DRIVER_NAME, i, &r, 3);
+		    platform_device_register_simple(DRIVER_NAME, i, &r, 1);
 
 		if (IS_ERR(pdev)) {
 			ret = PTR_ERR(pdev);

@@ -18,6 +18,13 @@
 #include <linux/interrupt.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_WANT_DEVICE_TREE
+// For open firmware.
+#include <asm/prom.h>
+#include <asm/of_device.h>
+#include <asm/of_platform.h>
+#endif
+
 #define ULITE_MAJOR		204
 #define ULITE_MINOR		187
 #define ULITE_NR_UARTS		4
@@ -394,6 +401,7 @@ static struct console ulite_console = {
 
 static int __init ulite_console_init(void)
 {
+	printk(KERN_INFO "Console: Xilinx UART Lite\n");
 	register_console(&ulite_console);
 	return 0;
 }
@@ -501,6 +509,46 @@ void __exit ulite_exit(void)
 
 module_init(ulite_init);
 module_exit(ulite_exit);
+
+#ifdef CONFIG_WANT_DEVICE_TREE
+
+static int __init uartlite_of_init(void)
+{
+	struct device_node *np;
+	unsigned int i;
+	struct platform_device *pdev;
+	int ret;
+
+	for (np = NULL, i = 0;
+	     (np = of_find_compatible_node(np, NULL, "opb_uartlite")) != NULL;
+	     i++) {
+		struct resource r[2];
+
+		memset(r, 0, sizeof(r));
+
+		ret = of_address_to_resource(np, 0, &r[0]);
+		if (ret)
+			goto err;
+
+		of_irq_to_resource(np, 0, &r[1]);
+
+		pdev =
+		    platform_device_register_simple("uartlite", i, r, 2);
+
+		if (IS_ERR(pdev)) {
+			ret = PTR_ERR(pdev);
+			goto err;
+		}
+	}
+
+	return 0;
+err:
+	return ret;
+}
+
+module_init(uartlite_of_init);
+
+#endif
 
 MODULE_AUTHOR("Peter Korsgaard <jacmet@sunsite.dk>");
 MODULE_DESCRIPTION("Xilinx uartlite serial driver");

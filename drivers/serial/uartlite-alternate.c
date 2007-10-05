@@ -24,9 +24,9 @@
 #include <linux/serial_core.h>
 #include <linux/console.h>
 
-
 #include <asm/io.h>
 #include <asm/termios.h>
+
 
 /* #define XUL_SERIAL_MAJOR	204 */
 /* #define XUL_SERIAL_MINORS	100 */
@@ -365,8 +365,8 @@ static struct uart_ops xul_ops = {
 /* just define the port for console. every other ports on uart lite
  * needs to be manually binded */
 static struct uart_port xul_port = {
-	.mapbase	= XPAR_UART_0_BASEADDR,
-	.irq		= XPAR_UART_0_INTR,
+	.mapbase	= XPAR_UARTLITE_0_BASEADDR,
+	.irq		= XPAR_UARTLITE_0_INTR,
 	.iotype		= UPIO_MEM32,
 	.flags		= UPF_BOOT_AUTOCONF,
 	.type		= PORT_UARTLITE,
