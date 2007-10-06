@@ -136,6 +136,8 @@ config TAISHAN
 config XILINX_ML507
 	bool "Xilinx-ML507 (Virtex-5 FX70T) Board"
 	select XILINX_ML5XX
+	select EMBEDDEDBOOT
+	select XILINX_EMBED_CONFIG
 	help
 	  This option enables support for the Xilinx ML507 board.
 
