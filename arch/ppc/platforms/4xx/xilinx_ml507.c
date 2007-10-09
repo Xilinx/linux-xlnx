@@ -1,10 +1,11 @@
 /*
  * arch/ppc/platforms/4xx/xilinx_ml507.c
  *
- * Xilinx ML5 PPC440 EMULATION board initialization
+ * Initialization for Xilinx boards with PowerPC 440
  *
  * Author: Grant Likely <grant.likely@secretlab.ca>
  * 	   Wolfgang Reissnegger <w.reissnegger@gmx.net>
+ *         Peter Ryser <peter.ryser@xilinx.com>
  *
  * 2007 (c) Xilinx, Inc.
  * 2005 (c) Secret Lab Technologies Ltd.
@@ -33,44 +34,29 @@
 #include <syslib/virtex_devices.h>
 #include <platforms/4xx/xparameters/xparameters.h>
 
-const char* virtex_machine_name = "Xilinx ML507 Reference System";
-
-#if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
-static volatile unsigned *powerdown_base =
-    (volatile unsigned *) XPAR_POWER_0_POWERDOWN_BASEADDR;
-
-static void
-xilinx_power_off(void)
-{
-	local_irq_disable();
-	out_be32(powerdown_base, XPAR_POWER_0_POWERDOWN_VALUE);
-	while (1) ;
-}
+#if defined(CONFIG_XILINX_VIRTEX_5_FX)
+#define XILINX_ARCH "Virtex-5 FXT"
+#else
+#error "No Xilinx Architecture recognized."
 #endif
 
-#include <asm/pgtable.h>
-void __init
-ml507_map_io(void)
-{
-#if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
-	powerdown_base = ioremap((unsigned long) powerdown_base,
-				 XPAR_POWER_0_POWERDOWN_HIGHADDR -
-				 XPAR_POWER_0_POWERDOWN_BASEADDR + 1);
+#if defined(CONFIG_XILINX_ML507)
+const char *virtex_machine_name = "Xilinx ML507";
+#else
+const char *virtex_machine_name = "Unknown Xilinx with PowerPC 440";
 #endif
-}
 
+extern bd_t __res;
 
 void __init
 ml507_setup_arch(void)
 {
 	virtex_early_serial_map();
 
-#ifdef CONFIG_PCI
-	ppc4xx_find_bridges();
-#endif
-
 	/* Identify the system */
-	printk(KERN_INFO "Xilinx ML507 Reference System\n");
+	printk(KERN_INFO
+	       "Xilinx Generic PowerPC 440 board support package (%s) (%s)\n",
+	       PPC4xx_MACHINE_NAME, XILINX_ARCH);
 }
 
 void __init
@@ -79,12 +65,12 @@ ml507_init_irq(void)
 	ppc4xx_pic_init();
 
 	/*
-	 * For PowerPC 405 cores the default value for NR_IRQS is 32.
+	 * For PowerPC 440 cores the default value for NR_IRQS is 32.
 	 * See include/asm-ppc/irq.h for details.
-	 * This is just fine for ML300, ML403 and ML5xx
+	 * This is just fine for ML5xx
 	 */
 #if (NR_IRQS != 32)
-#error NR_IRQS must be 32 for ML300/ML403/ML5xx
+#error NR_IRQS must be 32 for ML5xx
 #endif
 }
 
@@ -94,25 +80,18 @@ ml507_init_irq(void)
 static unsigned long __init
 ml507_find_end_of_memory(void)
 {
-	// wgr HACK
-	//
-	unsigned long size = 64 * 1024 * 1024;
+	bd_t *bip = &__res;
 
-	printk("*** HACK: Assuming %lu MB memory size. %s, line %d\n",
-			size / (1024 * 1024), __FILE__, __LINE__ +1);
-	return size;
-	// wgr HACK end
+	return bip->bi_memsize;
 }
 
 
 static void __init
 ml507_calibrate_decr(void)
 {
-	unsigned int freq;
+	bd_t *bip = &__res;
 
-	freq = XPAR_CORE_CLOCK_FREQ_HZ;
-
-	ibm44x_calibrate_decr(freq);
+	ibm44x_calibrate_decr(bip->bi_intfreq);
 }
 
 
@@ -128,17 +107,11 @@ platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 	/* Overwrite the default settings with our platform specific hooks.
 	 */
 	ppc_md.setup_arch		= ml507_setup_arch;
-	ppc_md.setup_io_mappings	= ml507_map_io;
 	ppc_md.init_IRQ			= ml507_init_irq;
 	ppc_md.find_end_of_memory	= ml507_find_end_of_memory;
 	ppc_md.calibrate_decr		= ml507_calibrate_decr;
-
-#if defined(XPAR_POWER_0_POWERDOWN_BASEADDR)
-	ppc_md.power_off		= xilinx_power_off;
-#endif
 
 #ifdef CONFIG_KGDB
 	ppc_md.early_serial_map		= virtex_early_serial_map;
 #endif
 }
-
