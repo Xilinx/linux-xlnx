@@ -953,15 +953,6 @@ static int __devinit ace_setup(struct ace_device *ace)
 	if (!ace->baseaddr)
 		goto err_ioremap;
 
-	if (ace->irq != NO_IRQ) {
-		rc = request_irq(ace->irq, ace_interrupt, 0, "systemace", ace);
-		if (rc) {
-			/* Failure - fall back to polled mode */
-			dev_err(ace->dev, "request_irq failed\n");
-			ace->irq = NO_IRQ;
-		}
-	}
-
 	/*
 	 * Initialize the state machine tasklet and stall timer
 	 */
@@ -1014,6 +1005,15 @@ static int __devinit ace_setup(struct ace_device *ace)
 	/* Put sysace in a sane state by clearing most control reg bits */
 	ace_out(ace, ACE_CTRL, ACE_CTRL_FORCECFGMODE |
 		ACE_CTRL_DATABUFRDYIRQ | ACE_CTRL_ERRORIRQ);
+
+	if (ace->irq != NO_IRQ) {
+		rc = request_irq(ace->irq, ace_interrupt, 0, "systemace", ace);
+		if (rc) {
+			/* Failure - fall back to polled mode */
+			dev_err(ace->dev, "request_irq failed\n");
+			ace->irq = NO_IRQ;
+		}
+	}
 
 	/* Enable interrupts */
 	val = ace_in(ace, ACE_CTRL);
