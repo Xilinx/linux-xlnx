@@ -182,12 +182,12 @@
 // wgr TODO: Check with John about the address space size!!!
 #define XPAR_LLTEMAC_RESOURCES(num) \
 	.name = "xilinx_lltemac", \
-	.id = XPAR_XLLTEMAC_##num##_DEVICE_ID, \
+	.id = XPAR_LLTEMAC_##num##_DEVICE_ID, \
 	.num_resources = 2, \
 	.resource = (struct resource[]) { \
 		{ \
-			.start = XPAR_XLLTEMAC_##num##_BASEADDR, \
-			.end = XPAR_XLLTEMAC_##num##_BASEADDR + 0x1000, \
+			.start = XPAR_LLTEMAC_##num##_BASEADDR, \
+			.end = XPAR_LLTEMAC_##num##_BASEADDR + 0x1000, \
 			.flags = IORESOURCE_MEM \
 		}, \
 		{ \
@@ -200,15 +200,15 @@
 #define XPAR_LLTEMAC(num) { \
 	XPAR_LLTEMAC_RESOURCES(num), \
 	.dev.platform_data = &(struct xlltemac_platform_data) { \
-		.tx_csum = XPAR_XLLTEMAC_0_TXCSUM, \
-		.rx_csum = XPAR_XLLTEMAC_0_RXCSUM, \
-		.phy_type = XPAR_XLLTEMAC_0_PHY_TYPE, \
+		.tx_csum = XPAR_LLTEMAC_##num##_TXCSUM, \
+		.rx_csum = XPAR_LLTEMAC_##num##_RXCSUM, \
+		.phy_type = XPAR_LLTEMAC_##num##_PHY_TYPE, \
 		.dcr_host = 0xff, \
-		.ll_dev_type = XPAR_XLLTEMAC_0_LLINK_CONNECTED_TYPE, \
-		.ll_dev_baseaddress = XPAR_XLLTEMAC_0_LLINK_CONNECTED_BASEADDR, \
-		.ll_dev_dma_rx_irq = XPAR_XLLTEMAC_0_LLINK_CONNECTED_DMARX_INTR, \
-		.ll_dev_dma_tx_irq = XPAR_XLLTEMAC_0_LLINK_CONNECTED_DMATX_INTR, \
-		.ll_dev_fifo_irq = 0xdeadbeef, \
+		.ll_dev_type = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_TYPE, \
+		.ll_dev_baseaddress = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_BASEADDR, \
+		.ll_dev_dma_rx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMARX_INTR, \
+		.ll_dev_dma_tx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMATX_INTR, \
+		.ll_dev_fifo_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_FIFO_INTR, \
 	}, \
 }
 
@@ -435,16 +435,16 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 
 	/* LLTEMAC instances */
-#if defined(XPAR_XLLTEMAC_0_BASEADDR)
+#if defined(XPAR_LLTEMAC_0_BASEADDR)
 	XPAR_LLTEMAC(0),
 #endif
-#if defined(XPAR_XLLTEMAC_1_BASEADDR)
+#if defined(XPAR_LLTEMAC_1_BASEADDR)
 	XPAR_LLTEMAC(1),
 #endif
-#if defined(XPAR_XLLTEMAC_2_BASEADDR)
+#if defined(XPAR_LLTEMAC_2_BASEADDR)
 	XPAR_LLTEMAC(2),
 #endif
-#if defined(XPAR_XLLTEMAC_3_BASEADDR)
+#if defined(XPAR_LLTEMAC_3_BASEADDR)
 	XPAR_LLTEMAC(3),
 #endif
 
