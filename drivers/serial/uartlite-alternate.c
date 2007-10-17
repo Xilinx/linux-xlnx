@@ -366,7 +366,7 @@ static struct uart_ops xul_ops = {
  * needs to be manually binded */
 static struct uart_port xul_port = {
 	.mapbase	= XPAR_UARTLITE_0_BASEADDR,
-	.irq		= XPAR_UARTLITE_0_INTR,
+	.irq		= XPAR_UARTLITE_0_IRQ,
 	.iotype		= UPIO_MEM32,
 	.flags		= UPF_BOOT_AUTOCONF,
 	.type		= PORT_UARTLITE,
