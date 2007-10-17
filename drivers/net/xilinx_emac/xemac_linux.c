@@ -92,7 +92,7 @@
 #define DRIVER_VERSION "1.0"
 
 MODULE_AUTHOR("MontaVista Software, Inc. <source@mvista.com>");
-MODULE_DESCRIPTION(DRIVER_NAME);
+MODULE_DESCRIPTION("Xilinx Ethernet MAC driver");
 MODULE_LICENSE("GPL");
 
 #define TX_TIMEOUT   (60*HZ)	/* Transmission timeout is 60 seconds. */
@@ -133,7 +133,6 @@ struct net_local {
 	int xmitBds;
 
 	struct net_device_stats stats;	/* Statistics for this device */
-	struct net_device *next_dev;	/* The next device in dev_list */
 	struct net_device *ndev;	/* this device */
 	struct timer_list phy_timer;	/* PHY monitoring timer */
 	XInterruptHandler Isr;	/* Pointer to the XEmac ISR routine */
@@ -182,12 +181,6 @@ static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
  * The following are notes regarding the critical sections in this
  * driver and how they are protected.
  *
- * dev_list
- * There is a spinlock protecting the device list.  It isn't really
- * necessary yet because the list is only manipulated at init and
- * cleanup, but it's there because it is basically free and if we start
- * doing hot add and removal of ethernet devices when the FPGA is
- * reprogrammed while the system is up, we'll need to protect the list.
  *
  * XEmac_Start, XEmac_Stop and XEmac_SetOptions are not thread safe.
  * These functions are called from xenet_open(), xenet_close(), reset(),
@@ -266,7 +259,7 @@ static void reset(struct net_device *dev, DUPLEX duplex)
 		dma_works = 0;
 
 	XEmac_Reset(&lp->Emac);
-
+ 
 #ifdef RESET_DELAY
 	mdelay(RESET_DELAY);
 #endif
@@ -606,7 +599,7 @@ static int xenet_open(struct net_device *dev)
          */
         XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_ADVERTISE, ADVERTISE_ALL | ADVERTISE_CSMA);
         XEmac_PhyWrite(&lp->Emac, lp->mii_addr, MII_CTRL1000, 0);
- 
+
         /* Give the system enough time to establish a link */
         mdelay(2000);
 
@@ -2358,15 +2351,89 @@ static void xenet_remove_ndev(struct net_device *ndev)
 }
 
 /** Shared device initialization code */
-static int probe_initialization(
-	struct net_local *lp,
-	struct net_device *ndev,
-        XEmac_Config Config) {
+static int xenet_setup(
+		struct device *dev,
+		struct resource *r_mem,
+		struct resource *r_irq,
+		struct xemac_platform_data *pdata) {
+
+	u32 virt_baddr;		/* virtual base address of emac */
+
+	XEmac_Config Config;
+
+	struct net_device *ndev = NULL;
+	struct net_local *lp = NULL;
 
 	int rc;
 
 	u32 phy_addr;		/* used for scanning PHY address */
 	u32 hwid;		/* used for informational HW ID output */
+
+	/* Create an ethernet device instance */
+	ndev = alloc_etherdev(sizeof(struct net_local));
+	if (!ndev) {
+		dev_err(dev, "XEmac: Could not allocate net device.\n");
+		rc = -ENOMEM;
+		goto error;
+	}
+	dev_set_drvdata(dev, ndev);
+
+	ndev->irq = r_irq->start;
+        ndev->mem_start = r_mem->start;
+        ndev->mem_end = r_mem->end;
+
+	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
+		dev_err(dev, "Couldn't lock memory region at %p\n",
+			(void *)ndev->mem_start);
+		rc = -EBUSY;
+		goto error;
+	}
+
+	/* Initialize the private netdev structure
+	 */
+	lp = netdev_priv(ndev);
+	lp->ndev = ndev;
+
+	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
+	Config.BaseAddress	= r_mem->start;	/* Physical address */
+	Config.IpIfDmaConfig	= pdata->dma_mode;
+	Config.HasMii		= pdata->has_mii;
+	Config.HasCam		= pdata->has_cam;
+	Config.HasJumbo		= pdata->has_jumbo;
+	Config.TxDre		= pdata->tx_dre;
+	Config.RxDre		= pdata->rx_dre;
+	Config.TxHwCsum		= pdata->tx_hw_csum;
+	Config.RxHwCsum		= pdata->rx_hw_csum;
+
+
+	/* Get the virtual base address for the device */
+	virt_baddr = (u32) ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
+	if (0 == virt_baddr) {
+		dev_err(dev, "XEmac: Could not allocate iomem.\n");
+		rc = -EIO;
+		goto error;
+	}
+
+
+	if (XEmac_CfgInitialize(&lp->Emac, &Config, virt_baddr) != XST_SUCCESS) {
+		dev_err(dev, "XEmac: Could not initialize device.\n");
+		rc = -ENODEV;
+		goto error;
+	}
+
+	/* Set the MAC address */
+	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
+	if (XEmac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
+		/* should not fail right after an initialize */
+		dev_err(dev, "XEmac: could not set MAC address.\n");
+		rc = -EIO;
+		goto error;
+	}
+	dev_info(dev,
+			"MAC address is now %2x:%2x:%2x:%2x:%2x:%2x\n",
+			pdata->mac_addr[0], pdata->mac_addr[1],
+			pdata->mac_addr[2], pdata->mac_addr[3],
+			pdata->mac_addr[4], pdata->mac_addr[5]);
 
 	if (XEmac_mIsSgDma(&lp->Emac)) {
 		int result;
@@ -2573,28 +2640,16 @@ static int xenet_remove(struct device *dev)
 
 static int xenet_probe(struct device *dev)
 {
-	u32 virt_baddr;		/* virtual base address of emac */
-
-	XEmac_Config Config;
-
 	struct resource *r_irq = NULL;	/* Interrupt resources */
 	struct resource *r_mem = NULL;	/* IO mem resources */
-
 	struct xemac_platform_data *pdata;
-
 	struct platform_device *pdev = to_platform_device(dev);
-	struct net_device *ndev = NULL;
-	struct net_local *lp = NULL;
-
-	int rc = 0;
-
 
 	/* param check */
 	if (!pdev) {
 		printk(KERN_ERR
 		       "XEmac: Internal error. Probe called with NULL param.\n");
-		rc = -ENODEV;
-		goto error;
+		return -ENODEV;
 	}
 
 	pdata = (struct xemac_platform_data *) pdev->dev.platform_data;
@@ -2602,19 +2657,8 @@ static int xenet_probe(struct device *dev)
 		printk(KERN_ERR "XEmac %d: Couldn't find platform data.\n",
 		       pdev->id);
 
-		rc = -ENODEV;
-		goto error;
+		return -ENODEV;
 	}
-
-	/* Create an ethernet device instance */
-	ndev = alloc_etherdev(sizeof(struct net_local));
-	if (!ndev) {
-		printk(KERN_ERR "XEmac %d: Could not allocate net device.\n",
-		       pdev->id);
-		rc = -ENOMEM;
-		goto error;
-	}
-	dev_set_drvdata(dev, ndev);
 
 	/* Get iospace and an irq for the device */
 	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
@@ -2622,78 +2666,10 @@ static int xenet_probe(struct device *dev)
 	if (!r_irq || !r_mem) {
 		printk(KERN_ERR "XEmac %d: IO resource(s) not found.\n",
 		       pdev->id);
-		rc = -ENODEV;
-		goto error;
-	}
-	ndev->irq = r_irq->start;
-        ndev->mem_start = r_mem->start;
-        ndev->mem_end = r_mem->end;
-
-	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
-		dev_err(dev, "Couldn't lock memory region at %p\n",
-			(void *)ndev->mem_start);
-		rc = -EBUSY;
-		goto error;
+		return -ENODEV;
 	}
 
-	/* Initialize the private netdev structure
-	 */
-	lp = netdev_priv(ndev);
-	lp->ndev = ndev;
-
-	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
-	Config.BaseAddress	= r_mem->start;	/* Physical address */
-	Config.IpIfDmaConfig	= pdata->dma_mode;
-	Config.HasMii		= pdata->has_mii;
-	Config.HasCam		= pdata->has_cam;
-	Config.HasJumbo		= pdata->has_jumbo;
-	Config.TxDre		= pdata->tx_dre;
-	Config.RxDre		= pdata->rx_dre;
-	Config.TxHwCsum		= pdata->tx_hw_csum;
-	Config.RxHwCsum		= pdata->rx_hw_csum;
-
-
-	/* Get the virtual base address for the device */
-	virt_baddr = (u32) ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
-	if (0 == virt_baddr) {
-		printk(KERN_ERR "XEmac: Could not allocate iomem.\n");
-		rc = -EIO;
-		goto error;
-	}
-
-
-	if (XEmac_CfgInitialize(&lp->Emac, &Config, virt_baddr) != XST_SUCCESS) {
-		printk(KERN_ERR "XEmac: Could not initialize device.\n");
-		rc = -ENODEV;
-		goto error;
-	}
-
-	/* Set the MAC address */
-	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
-	if (XEmac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
-		/* should not fail right after an initialize */
-		printk(KERN_ERR "XEmac: could not set MAC address.\n");
-		rc = -EIO;
-		goto error;
-	}
-	dev_info(dev,
-			"MAC address is now %2x:%2x:%2x:%2x:%2x:%2x\n",
-			pdata->mac_addr[0], pdata->mac_addr[1],
-			pdata->mac_addr[2], pdata->mac_addr[3],
-			pdata->mac_addr[4], pdata->mac_addr[5]);
-
-        rc = probe_initialization(lp, ndev, Config);
-        if(rc) {
-            goto error;
-        }
-
-        return 0;
-
- error:
-	if (ndev) {
-		xenet_remove_ndev(ndev);
-	}
-	return rc;
+        return xenet_setup(dev, r_mem, r_irq, pdata);
 }
 
 static struct device_driver xenet_driver = {
@@ -2727,114 +2703,44 @@ static bool get_bool(struct of_device *ofdev, const char *s) {
 
 static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_device_id *match)
 {
-	u32 virt_baddr;		/* virtual base address of emac */
+	struct xemac_platform_data pdata_struct;
+	struct resource r_irq_struct;
+	struct resource r_mem_struct;
 
-	XEmac_Config Config;
-
-	struct resource r_irq;	/* IRQ resources */
-	struct resource r_mem;	/* IO mem resources */
-
-	struct net_device *ndev = NULL;
-	struct net_local *lp = NULL;
-
+	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
+	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
+	struct xemac_platform_data *pdata = &pdata_struct;
 	int rc = 0;
 
-	printk(KERN_ERR "Probing \'%s\'\n",
+	printk(KERN_ERR "Device Tree Probing \'%s\'\n",
                         ofdev->node->name);
-
-	/* Create an ethernet device instance */
-	ndev = alloc_etherdev(sizeof(struct net_local));
-	if (!ndev) {
-		printk(KERN_ERR "XEmac \'%s\': Could not allocate net device.\n",
-                        ofdev->node->name);
-		rc = -ENOMEM;
-		goto error;
-	}
-	dev_set_drvdata(&ofdev->dev, ndev);
 
 	/* Get iospace for the device */
-	rc = of_address_to_resource(ofdev->node, 0, &r_mem);
+	rc = of_address_to_resource(ofdev->node, 0, r_mem);
 	if(rc) {
 		dev_warn(&ofdev->dev, "invalid address\n");
-		goto error;
+		return rc;
 	}
 
 	/* Get IRQ for the device */
-	ndev->irq = of_irq_to_resource(ofdev->node, 0, &r_irq);
-	if(ndev->irq == NO_IRQ) {
+	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	if(rc == NO_IRQ) {
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
-		goto error;
-	}
-        ndev->mem_start = r_mem.start;
-        ndev->mem_end = r_mem.end;
-
-	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
-		dev_err(&ofdev->dev, "Couldn't lock memory region at %p\n",
-			(void *)ndev->mem_start);
-		rc = -EBUSY;
-		goto error;
+		return rc;
 	}
 
-	/* Initialize the private netdev structure
-	 */
-	lp = netdev_priv(ndev);
-	lp->ndev = ndev;
+	pdata_struct.dma_mode           = get_u32(ofdev, "C_DMA_PRESENT");
+	pdata_struct.has_mii		= get_u32(ofdev, "C_MII_EXIST");
+	pdata_struct.has_cam		= get_u32(ofdev, "C_CAM_EXIST");
+	pdata_struct.has_err_cnt	= get_u32(ofdev, "C_ERR_COUNT_EXIST");
+	pdata_struct.has_jumbo		= get_u32(ofdev, "C_JUMBO_EXIST");
+	pdata_struct.tx_dre		= get_u32(ofdev, "C_TX_DRE_TYPE");
+	pdata_struct.rx_dre		= get_u32(ofdev, "C_RX_DRE_TYPE");
+	pdata_struct.tx_hw_csum		= get_u32(ofdev, "C_TX_INCLUDE_CSUM");
+	pdata_struct.rx_hw_csum		= get_u32(ofdev, "C_RX_INCLUDE_CSUM");
+	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
 
-	/* Setup the Config structure for the XEmac_CfgInitialize() call. */
-	Config.BaseAddress	= r_mem.start;	/* Physical address */
-	Config.IpIfDmaConfig	= get_u32(ofdev, "C_DMA_PRESENT");
-	Config.HasMii		= get_u32(ofdev, "C_MII_EXIST");
-	Config.HasCam		= get_u32(ofdev, "C_CAM_EXIST");
-	Config.HasJumbo		= get_u32(ofdev, "C_JUMBO_EXIST");
-	Config.TxDre		= get_u32(ofdev, "C_TX_DRE_TYPE");
-	Config.RxDre		= get_u32(ofdev, "C_RX_DRE_TYPE");
-	Config.TxHwCsum		= get_u32(ofdev, "C_TX_INCLUDE_CSUM");
-	Config.RxHwCsum		= get_u32(ofdev, "C_RX_INCLUDE_CSUM");
-
-
-	/* Get the virtual base address for the device */
-	virt_baddr = (u32) ioremap(r_mem.start, r_mem.end - r_mem.start + 1);
-	if (0 == virt_baddr) {
-		printk(KERN_ERR "XEmac: Could not allocate iomem.\n");
-		rc = -EIO;
-		goto error;
-	}
-
-
-	if (XEmac_CfgInitialize(&lp->Emac, &Config, virt_baddr) != XST_SUCCESS) {
-		printk(KERN_ERR "XEmac: Could not initialize device.\n");
-		rc = -ENODEV;
-		goto error;
-	}
-
-	/* Set the MAC address */
-	memcpy(ndev->dev_addr, of_get_mac_address(ofdev->node), 6);
-	//	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
-	if (XEmac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
-		/* should not fail right after an initialize */
-		printk(KERN_ERR "XEmac: could not set MAC address.\n");
-		rc = -EIO;
-		goto error;
-	}
-
-	dev_info(&ofdev->dev,
-			"MAC address is now %2x:%2x:%2x:%2x:%2x:%2x\n",
-			ndev->dev_addr[0], ndev->dev_addr[1],
-			ndev->dev_addr[2], ndev->dev_addr[3],
-			ndev->dev_addr[4], ndev->dev_addr[5]);
-
-        rc = probe_initialization(lp, ndev, Config);
-        if(rc) {
-            goto error;
-        }
-
-        return 0;
-
- error:
-	if (ndev) {
-		xenet_remove_ndev(ndev);
-	}
-	return rc;
+        return xenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }
 
 static int __devexit xenet_of_remove(struct of_device *dev)
@@ -2845,6 +2751,7 @@ static int __devexit xenet_of_remove(struct of_device *dev)
 static struct of_device_id xenet_of_match[] = {
 	{ .compatible = "opb_ethernet", },
 	{ .compatible = "plb_ethernet", },
+	{ .compatible = "emac", },
 	{ /* end of list */ },
 };
 
