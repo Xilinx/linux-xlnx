@@ -184,6 +184,7 @@ typedef void (*XEmacLite_Handler) (void *CallBackRef);
  */
 
 typedef struct {
+	u32 PhysAddress;	/* Base address for device (IPIF) */
 	u32 BaseAddress;	/* Base address for device (IPIF) */
 	u32 IsReady;		/* Device is initialized and ready */
 	u32 NextTxBufferToUse;	/* Next TX buffer to write to */
@@ -243,12 +244,11 @@ typedef struct {
 /*
  * Initialization functions in xemaclite.c
  */
-int XEmacLite_Initialize(XEmacLite * InstancePtr, u16 DeviceId);
+int XEmacLite_CfgInitialize(XEmacLite * InstancePtr, XEmacLite_Config * CfgPtr,
+			u32 VirtualAddress);
 void XEmacLite_SetMacAddress(XEmacLite * InstancePtr, u8 *AddressPtr);
 u32 XEmacLite_TxBufferAvailable(XEmacLite * InstancePtr);
 void XEmacLite_FlushReceive(XEmacLite * InstancePtr);
-
-XEmacLite_Config *XEmacLite_LookupConfig(u16 DeviceId);
 
 int XEmacLite_Send(XEmacLite * InstancePtr, u8 *FramePtr, unsigned ByteCount);
 u16 XEmacLite_Recv(XEmacLite * InstancePtr, u8 *FramePtr);

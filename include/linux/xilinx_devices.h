@@ -54,6 +54,13 @@ struct xemac_platform_data {
 #define XEMAC_DMA_SIMPLE	2	/* simple 2 channel DMA */
 #define XEMAC_DMA_SGDMA		3	/* scatter gather DMA */
 
+/*- 10/100 Mb Ethernet Controller IP (XEMACLITE) -*/
+struct xemaclite_platform_data {
+	u32 tx_ping_pong;
+	u32 rx_ping_pong;
+	u8 mac_addr[6];
+};
+
 /*- 10/100/1000 Mb Ethernet Controller IP (XTEMAC) -*/
 
 struct xtemac_platform_data {
