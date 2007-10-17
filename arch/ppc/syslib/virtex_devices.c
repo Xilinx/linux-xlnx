@@ -106,6 +106,33 @@
 }
 
 /*
+ * EMAC: shortcut macro for single instance
+ */
+#define XPAR_EMACLITE(num) { \
+	.name		= "xilinx_emaclite", \
+	.id		= num, \
+	.num_resources	= 2, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start	= XPAR_EMACLITE_##num##_BASEADDR, \
+			.end	= XPAR_EMACLITE_##num##_HIGHADDR, \
+			.flags	= IORESOURCE_MEM, \
+		}, \
+		{ \
+			.start	= XPAR_INTC_0_EMACLITE_##num##_VEC_ID, \
+			.flags	= IORESOURCE_IRQ, \
+		}, \
+	}, \
+	.dev.platform_data = &(struct xemaclite_platform_data) { \
+		.tx_ping_pong = XPAR_EMACLITE_##num##_TX_PING_PONG, \
+		.rx_ping_pong = XPAR_EMACLITE_##num##_RX_PING_PONG, \
+		/* locally administered default address */ \
+		.mac_addr = {2, 0, 0, 0, 0, num}, \
+	}, \
+}
+
+
+/*
  * Tri-mode EMAC (TEMAC): shortcut macro for single instance
  */
 #define XPAR_TEMAC_RESOURCES(num) \
@@ -358,6 +385,20 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #if defined(XPAR_EMAC_3_BASEADDR)
 	XPAR_EMAC(3),
+#endif
+
+	/* EMACLITE instances */
+#if defined(XPAR_EMACLITE_0_BASEADDR)
+	XPAR_EMACLITE(0),
+#endif
+#if defined(XPAR_EMACLITE_1_BASEADDR)
+	XPAR_EMACLITE(1),
+#endif
+#if defined(XPAR_EMACLITE_2_BASEADDR)
+	XPAR_EMACLITE(2),
+#endif
+#if defined(XPAR_EMACLITE_3_BASEADDR)
+	XPAR_EMACLITE(3),
 #endif
 
 	/* TEMAC instances */
