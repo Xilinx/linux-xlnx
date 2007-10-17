@@ -2362,7 +2362,6 @@ config XILINX_LLTEMAC
 	depends on XILINX_DRIVERS
 	select XILINX_EDK
 	select NEED_XILINX_LLDMA
-	select NEED_XILINX_PPC_DCR
 	help
 	  This driver supports the 10/100/1000 LLTEMAC.
 
