@@ -40,11 +40,10 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 // For open firmware.
-#include <asm/prom.h>
-#include <asm/of_device.h>
-#include <asm/of_platform.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #endif
 
 #include "xbasic_types.h"
@@ -3511,7 +3510,7 @@ static struct device_driver xtenet_driver = {
 	.remove = xtenet_remove
 };
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -3600,7 +3599,7 @@ static int __init xtenet_init(void)
 	 * so we just need to register the driver
 	 */
 	status = driver_register(&xtenet_driver);
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 	status |= of_register_platform_driver(&xtenet_of_driver);
 #endif
         return status;
@@ -3610,7 +3609,7 @@ static int __init xtenet_init(void)
 static void __exit xtenet_cleanup(void)
 {
 	driver_unregister(&xtenet_driver);
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 	of_unregister_platform_driver(&xtenet_of_driver);
 #endif
 }

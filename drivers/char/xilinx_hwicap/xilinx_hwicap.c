@@ -87,11 +87,10 @@
 #include <asm/uaccess.h>
 #include <asm/system.h>
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 // For open firmware.
-#include <asm/prom.h>
-#include <asm/of_device.h>
-#include <asm/of_platform.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #endif
 
 #include "xilinx_hwicap.h"
@@ -525,7 +524,7 @@ static void __exit xhwicap_module_cleanup(void)
 module_init(xhwicap_module_init);
 module_exit(xhwicap_module_cleanup);
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 
 static int __init xilinx_hwicap_of_init(void)
 {

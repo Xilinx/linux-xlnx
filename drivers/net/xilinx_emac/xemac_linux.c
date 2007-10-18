@@ -65,11 +65,10 @@
 #include "xemac_i.h"
 #include "xipif_v1_23_b.h"
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 // For open firmware.
-#include <asm/prom.h>
-#include <asm/of_device.h>
-#include <asm/of_platform.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #endif
 
 /*
@@ -2681,7 +2680,7 @@ static struct device_driver xenet_driver = {
 	.remove = xenet_remove
 };
 
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -2773,7 +2772,7 @@ static int __init xenet_init(void)
 	 * so we just need to register the driver
 	 */
 	int status = driver_register(&xenet_driver);
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 	status |= of_register_platform_driver(&xenet_of_driver);
 #endif
 	return status;
@@ -2782,7 +2781,7 @@ static int __init xenet_init(void)
 static void __exit xenet_cleanup(void)
 {
 	driver_unregister(&xenet_driver);
-#ifdef CONFIG_WANT_DEVICE_TREE
+#ifdef CONFIG_OF
 	of_unregister_platform_driver(&xenet_of_driver);
 #endif
 }
