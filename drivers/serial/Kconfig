@@ -1247,18 +1247,9 @@ config SERIAL_XILINX_UARTLITE
 	help
 	  Say Y here if you want to support Xilinx UART Lite
 
-config SERIAL_XILINX_UARTLITE_ALTERNATE
-	bool "Xilinx UART Lite driver (alternate version)"
-	depends on XILINX_DRIVERS
-	select SERIAL_CORE
-	help
-	  Say Y here if you want to support Xilinx UART Lite by using the
-	  alternate driver. This driver is the 'original' Xilinx driver. If in
-	  doubt say N here and select the driver above.
-
 config SERIAL_XILINX_UARTLITE_CONSOLE
 	bool "Xilinx UART Lite Console support"
-	depends on SERIAL_XILINX_UARTLITE=y || SERIAL_XILINX_UARTLITE_ALTERNATE=y
+	depends on SERIAL_XILINX_UARTLITE=y
 	select SERIAL_CORE_CONSOLE
 	help
 	  Say Y here if you want to support a serial console on Xilinx UART Lite.
