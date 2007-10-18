@@ -8,6 +8,7 @@
  * "as is" without any warranty of any kind, whether express or implied.
  */
 
+#include <linux/io.h>
 #include <linux/xilinx_devices.h>
 #include <platforms/4xx/xparameters/xparameters.h>
 
