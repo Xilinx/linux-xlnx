@@ -261,7 +261,7 @@ void phy_sanitize_settings(struct phy_device *phydev)
 
 	/* Sanitize settings based on PHY capabilities */
 	if ((features & SUPPORTED_Autoneg) == 0)
-		phydev->autoneg = 0;
+		phydev->autoneg = AUTONEG_DISABLE;
 
 	idx = phy_find_valid(phy_find_setting(phydev->speed, phydev->duplex),
 			features);
@@ -374,7 +374,7 @@ int phy_mii_ioctl(struct phy_device *phydev,
 		if (mii_data->phy_id == phydev->addr) {
 			switch(mii_data->reg_num) {
 			case MII_BMCR:
-				if (val & (BMCR_RESET|BMCR_ANENABLE))
+				if ((val & (BMCR_RESET|BMCR_ANENABLE)) == 0)
 					phydev->autoneg = AUTONEG_DISABLE;
 				else
 					phydev->autoneg = AUTONEG_ENABLE;
@@ -409,6 +409,7 @@ int phy_mii_ioctl(struct phy_device *phydev,
 
 	return 0;
 }
+EXPORT_SYMBOL(phy_mii_ioctl);
 
 /**
  * phy_start_aneg - start auto-negotiation for this PHY device
@@ -755,7 +756,7 @@ out_unlock:
  */
 void phy_start(struct phy_device *phydev)
 {
-	spin_lock(&phydev->lock);
+	spin_lock_bh(&phydev->lock);
 
 	switch (phydev->state) {
 		case PHY_STARTING:
@@ -769,7 +770,7 @@ void phy_start(struct phy_device *phydev)
 		default:
 			break;
 	}
-	spin_unlock(&phydev->lock);
+	spin_unlock_bh(&phydev->lock);
 }
 EXPORT_SYMBOL(phy_stop);
 EXPORT_SYMBOL(phy_start);

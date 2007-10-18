@@ -83,7 +83,7 @@ void flush_fp_to_thread(struct task_struct *tsk)
 			 */
 			BUG_ON(tsk != current);
 #endif
-			giveup_fpu(current);
+			giveup_fpu(tsk);
 		}
 		preempt_enable();
 	}
@@ -143,7 +143,7 @@ void flush_altivec_to_thread(struct task_struct *tsk)
 #ifdef CONFIG_SMP
 			BUG_ON(tsk != current);
 #endif
-			giveup_altivec(current);
+			giveup_altivec(tsk);
 		}
 		preempt_enable();
 	}
@@ -182,7 +182,7 @@ void flush_spe_to_thread(struct task_struct *tsk)
 #ifdef CONFIG_SMP
 			BUG_ON(tsk != current);
 #endif
-			giveup_spe(current);
+			giveup_spe(tsk);
 		}
 		preempt_enable();
 	}
@@ -219,21 +219,25 @@ void discard_lazy_cpu_state(void)
 }
 #endif /* CONFIG_SMP */
 
-#ifdef CONFIG_PPC_MERGE		/* XXX for now */
 int set_dabr(unsigned long dabr)
 {
+#ifdef CONFIG_PPC_MERGE		/* XXX for now */
 	if (ppc_md.set_dabr)
 		return ppc_md.set_dabr(dabr);
+#endif
 
+	/* XXX should we have a CPU_FTR_HAS_DABR ? */
+#if defined(CONFIG_PPC64) || defined(CONFIG_6xx)
 	mtspr(SPRN_DABR, dabr);
+#endif
 	return 0;
 }
-#endif
 
 #ifdef CONFIG_PPC64
 DEFINE_PER_CPU(struct cpu_usage, cpu_usage_array);
-static DEFINE_PER_CPU(unsigned long, current_dabr);
 #endif
+
+static DEFINE_PER_CPU(unsigned long, current_dabr);
 
 struct task_struct *__switch_to(struct task_struct *prev,
 	struct task_struct *new)
@@ -299,12 +303,10 @@ struct task_struct *__switch_to(struct task_struct *prev,
 
 #endif /* CONFIG_SMP */
 
-#ifdef CONFIG_PPC64	/* for now */
 	if (unlikely(__get_cpu_var(current_dabr) != new->thread.dabr)) {
 		set_dabr(new->thread.dabr);
 		__get_cpu_var(current_dabr) = new->thread.dabr;
 	}
-#endif /* CONFIG_PPC64 */
 
 	new_thread = &new->thread;
 	old_thread = &current->thread;
@@ -421,7 +423,11 @@ void show_regs(struct pt_regs * regs)
 	printk("  CR: %08lx  XER: %08lx\n", regs->ccr, regs->xer);
 	trap = TRAP(regs);
 	if (trap == 0x300 || trap == 0x600)
+#if defined(CONFIG_4xx) || defined(CONFIG_BOOKE)
+		printk("DEAR: "REG", ESR: "REG"\n", regs->dar, regs->dsisr);
+#else
 		printk("DAR: "REG", DSISR: "REG"\n", regs->dar, regs->dsisr);
+#endif
 	printk("TASK = %p[%d] '%s' THREAD: %p",
 	       current, current->pid, current->comm, task_thread_info(current));
 
@@ -473,12 +479,10 @@ void flush_thread(void)
 
 	discard_lazy_cpu_state();
 
-#ifdef CONFIG_PPC64	/* for now */
 	if (current->thread.dabr) {
 		current->thread.dabr = 0;
 		set_dabr(0);
 	}
-#endif
 }
 
 void
@@ -600,6 +604,13 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 	regs->xer = 0;
 	regs->ccr = 0;
 	regs->gpr[1] = sp;
+
+	/*
+	 * We have just cleared all the nonvolatile GPRs, so make
+	 * FULL_REGS(regs) return true.  This is necessary to allow
+	 * ptrace to examine the thread immediately after exec.
+	 */
+	regs->trap &= ~1UL;
 
 #ifdef CONFIG_PPC32
 	regs->mq = 0;

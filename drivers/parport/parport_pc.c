@@ -2424,7 +2424,6 @@ static int __devinit sio_ite_8872_probe (struct pci_dev *pdev, int autoirq,
 	u32 ite8872set;
 	u32 ite8872_lpt, ite8872_lpthi;
 	u8 ite8872_irq, type;
-	char *fake_name = "parport probe";
 	int irq;
 	int i;
 
@@ -2432,11 +2431,11 @@ static int __devinit sio_ite_8872_probe (struct pci_dev *pdev, int autoirq,
 	
 	// make sure which one chip
 	for(i = 0; i < 5; i++) {
-		base_res = request_region(inta_addr[i], 0x8, fake_name);
+		base_res = request_region(inta_addr[i], 32, "it887x");
 		if (base_res) {
 			int test;
 			pci_write_config_dword (pdev, 0x60,
-						0xe7000000 | inta_addr[i]);
+						0xe5000000 | inta_addr[i]);
 			pci_write_config_dword (pdev, 0x78,
 						0x00000000 | inta_addr[i]);
 			test = inb (inta_addr[i]);
@@ -3446,7 +3445,6 @@ static void __exit parport_pc_exit(void)
 		pnp_unregister_driver (&parport_pc_pnp_driver);
 	platform_driver_unregister(&parport_pc_platform_driver);
 
-	spin_lock(&ports_lock);
 	while (!list_empty(&ports_list)) {
 		struct parport_pc_private *priv;
 		struct parport *port;
@@ -3456,11 +3454,8 @@ static void __exit parport_pc_exit(void)
 		if (port->dev && port->dev->bus == &platform_bus_type)
 			platform_device_unregister(
 				to_platform_device(port->dev));
-		spin_unlock(&ports_lock);
 		parport_pc_unregister_port(port);
-		spin_lock(&ports_lock);
 	}
-	spin_unlock(&ports_lock);
 }
 
 MODULE_AUTHOR("Phil Blundell, Tim Waugh, others");

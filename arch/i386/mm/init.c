@@ -87,7 +87,7 @@ static pte_t * __init one_page_table_init(pmd_t *pmd)
 	if (!(pmd_val(*pmd) & _PAGE_PRESENT)) {
 		pte_t *page_table = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
 
-		paravirt_alloc_pt(__pa(page_table) >> PAGE_SHIFT);
+		paravirt_alloc_pt(&init_mm, __pa(page_table) >> PAGE_SHIFT);
 		set_pmd(pmd, __pmd(__pa(page_table) | _PAGE_TABLE));
 		BUG_ON(page_table != pte_offset_kernel(pmd, 0));
 	}
@@ -432,7 +432,7 @@ static void __init pagetable_init (void)
 	paravirt_pagetable_setup_done(pgd_base);
 }
 
-#if defined(CONFIG_SOFTWARE_SUSPEND) || defined(CONFIG_ACPI_SLEEP)
+#if defined(CONFIG_HIBERNATION) || defined(CONFIG_ACPI)
 /*
  * Swap suspend & friends need this for resume because things like the intel-agp
  * driver might have split up a kernel 4MB mapping.
@@ -471,8 +471,13 @@ void zap_low_mappings (void)
 	flush_tlb_all();
 }
 
+int nx_enabled = 0;
+
+#ifdef CONFIG_X86_PAE
+
 static int disable_nx __initdata = 0;
 u64 __supported_pte_mask __read_mostly = ~_PAGE_NX;
+EXPORT_SYMBOL_GPL(__supported_pte_mask);
 
 /*
  * noexec = on|off
@@ -498,9 +503,6 @@ static int __init noexec_setup(char *str)
 	return 0;
 }
 early_param("noexec", noexec_setup);
-
-int nx_enabled = 0;
-#ifdef CONFIG_X86_PAE
 
 static void __init set_nx(void)
 {
@@ -751,8 +753,7 @@ void __init pgtable_cache_init(void)
 					PTRS_PER_PMD*sizeof(pmd_t),
 					PTRS_PER_PMD*sizeof(pmd_t),
 					SLAB_PANIC,
-					pmd_ctor,
-					NULL);
+					pmd_ctor);
 		if (!SHARED_KERNEL_PMD) {
 			/* If we're in PAE mode and have a non-shared
 			   kernel pmd, then the pgd size must be a

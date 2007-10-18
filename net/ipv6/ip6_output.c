@@ -521,6 +521,10 @@ static void ip6_copy_metadata(struct sk_buff *to, struct sk_buff *from)
 	to->tc_index = from->tc_index;
 #endif
 	nf_copy(to, from);
+#if defined(CONFIG_NETFILTER_XT_TARGET_TRACE) || \
+    defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
+	to->nf_trace = from->nf_trace;
+#endif
 	skb_copy_secmark(to, from);
 }
 
@@ -543,7 +547,7 @@ int ip6_find_1stfragopt(struct sk_buff *skb, u8 **nexthdr)
 			found_rhdr = 1;
 			break;
 		case NEXTHDR_DEST:
-#ifdef CONFIG_IPV6_MIP6
+#if defined(CONFIG_IPV6_MIP6) || defined(CONFIG_IPV6_MIP6_MODULE)
 			if (ipv6_find_tlv(skb, offset, IPV6_TLV_HAO) >= 0)
 				break;
 #endif
@@ -790,7 +794,7 @@ slow_path:
 		/*
 		 *	Copy a block of the IP datagram.
 		 */
-		if (skb_copy_bits(skb, ptr, skb_transport_header(skb), len))
+		if (skb_copy_bits(skb, ptr, skb_transport_header(frag), len))
 			BUG();
 		left -= len;
 
@@ -1423,8 +1427,9 @@ void ip6_flush_pending_frames(struct sock *sk)
 	struct sk_buff *skb;
 
 	while ((skb = __skb_dequeue_tail(&sk->sk_write_queue)) != NULL) {
-		IP6_INC_STATS(ip6_dst_idev(skb->dst),
-			      IPSTATS_MIB_OUTDISCARDS);
+		if (skb->dst)
+			IP6_INC_STATS(ip6_dst_idev(skb->dst),
+				      IPSTATS_MIB_OUTDISCARDS);
 		kfree_skb(skb);
 	}
 

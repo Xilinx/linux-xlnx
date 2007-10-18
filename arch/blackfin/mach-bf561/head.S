@@ -30,6 +30,8 @@
 #include <linux/linkage.h>
 #include <linux/init.h>
 #include <asm/blackfin.h>
+#include <asm/trace.h>
+
 #if CONFIG_BFIN_KERNEL_CLOCK
 #include <asm/mach/mem_init.h>
 #endif
@@ -92,6 +94,10 @@ ENTRY(__start)
 	M1 = r0;
 	M2 = r0;
 	M3 = r0;
+
+	trace_buffer_start(p0,r0);
+	P0 = R1;
+	R0 = R1;
 
 	/* Turn off the icache */
 	p0.l = (IMEM_CONTROL & 0xFFFF);
@@ -434,15 +440,15 @@ ENTRY(_bfin_reset)
 	SSYNC;
 
 	/* make sure SYSCR is set to use BMODE */
-	P0.h = hi(SICA_SYSCR);
-	P0.l = lo(SICA_SYSCR);
-	R0.l = 0x20;
+	P0.h = hi(SYSCR);
+	P0.l = lo(SYSCR);
+	R0.l = 0x20;		/* on BF561, disable core b */
 	W[P0] = R0.l;
 	SSYNC;
 
 	/* issue a system soft reset */
-	P1.h = hi(SICA_SWRST);
-	P1.l = lo(SICA_SWRST);
+	P1.h = hi(SWRST);
+	P1.l = lo(SWRST);
 	R1.l = 0x0007;
 	W[P1] = R1;
 	SSYNC;

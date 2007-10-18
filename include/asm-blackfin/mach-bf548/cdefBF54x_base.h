@@ -31,7 +31,8 @@
 #ifndef _CDEF_BF54X_H
 #define _CDEF_BF54X_H
 
-#include <defBF54x_base.h>
+#include "defBF54x_base.h"
+#include <asm/system.h>
 
 /* ************************************************************** */
 /* SYSTEM & MMR ADDRESS DEFINITIONS COMMON TO ALL ADSP-BF54x    */
@@ -44,7 +45,30 @@
 #define bfin_read_PLL_DIV()		bfin_read16(PLL_DIV)
 #define bfin_write_PLL_DIV(val)		bfin_write16(PLL_DIV, val)
 #define bfin_read_VR_CTL()		bfin_read16(VR_CTL)
-#define bfin_write_VR_CTL(val)		bfin_write16(VR_CTL, val)
+/* Writing to VR_CTL initiates a PLL relock sequence. */
+static __inline__ void bfin_write_VR_CTL(unsigned int val)
+{
+	unsigned long flags, iwr0, iwr1, iwr2;
+
+	/* Enable the PLL Wakeup bit in SIC IWR */
+	iwr0 = bfin_read32(SIC_IWR0);
+	iwr1 = bfin_read32(SIC_IWR1);
+	iwr2 = bfin_read32(SIC_IWR2);
+	/* Only allow PPL Wakeup) */
+	bfin_write32(SIC_IWR0, IWR_ENABLE(0));
+	bfin_write32(SIC_IWR1, 0);
+	bfin_write32(SIC_IWR2, 0);
+
+	bfin_write16(VR_CTL, val);
+	__builtin_bfin_ssync();
+
+	local_irq_save(flags);
+	asm("IDLE;");
+	local_irq_restore(flags);
+	bfin_write32(SIC_IWR0, iwr0);
+	bfin_write32(SIC_IWR1, iwr1);
+	bfin_write32(SIC_IWR2, iwr2);
+}
 #define bfin_read_PLL_STAT()		bfin_read16(PLL_STAT)
 #define bfin_write_PLL_STAT(val)	bfin_write16(PLL_STAT, val)
 #define bfin_read_PLL_LOCKCNT()		bfin_read16(PLL_LOCKCNT)
@@ -70,12 +94,18 @@
 #define bfin_write_SIC_IMASK1(val)	bfin_write32(SIC_IMASK1, val)
 #define bfin_read_SIC_IMASK2()		bfin_read32(SIC_IMASK2)
 #define bfin_write_SIC_IMASK2(val)	bfin_write32(SIC_IMASK2, val)
+#define bfin_read_SIC_IMASK(x)		bfin_read32(SIC_IMASK0 + (x << 2))
+#define bfin_write_SIC_IMASK(x, val)	bfin_write32((SIC_IMASK0 + (x << 2)), val)
+
 #define bfin_read_SIC_ISR0()		bfin_read32(SIC_ISR0)
 #define bfin_write_SIC_ISR0(val)	bfin_write32(SIC_ISR0, val)
 #define bfin_read_SIC_ISR1()		bfin_read32(SIC_ISR1)
 #define bfin_write_SIC_ISR1(val)	bfin_write32(SIC_ISR1, val)
 #define bfin_read_SIC_ISR2()		bfin_read32(SIC_ISR2)
 #define bfin_write_SIC_ISR2(val)	bfin_write32(SIC_ISR2, val)
+#define bfin_read_SIC_ISR(x)		bfin_read32(SIC_ISR0 + (x << 2))
+#define bfin_write_SIC_ISR(x, val)	bfin_write32((SIC_ISR0 + (x << 2)), val)
+
 #define bfin_read_SIC_IWR0()		bfin_read32(SIC_IWR0)
 #define bfin_write_SIC_IWR0(val)	bfin_write32(SIC_IWR0, val)
 #define bfin_read_SIC_IWR1()		bfin_read32(SIC_IWR1)
@@ -211,6 +241,39 @@
 #define bfin_write_TWI0_RCV_DATA8(val)		bfin_write16(TWI0_RCV_DATA8, val)
 #define bfin_read_TWI0_RCV_DATA16()		bfin_read16(TWI0_RCV_DATA16)
 #define bfin_write_TWI0_RCV_DATA16(val)		bfin_write16(TWI0_RCV_DATA16, val)
+
+#define bfin_read_TWI_CLKDIV()			bfin_read16(TWI0_CLKDIV)
+#define bfin_write_TWI_CLKDIV(val)		bfin_write16(TWI0_CLKDIV, val)
+#define bfin_read_TWI_CONTROL()			bfin_read16(TWI0_CONTROL)
+#define bfin_write_TWI_CONTROL(val)		bfin_write16(TWI0_CONTROL, val)
+#define bfin_read_TWI_SLAVE_CTRL()		bfin_read16(TWI0_SLAVE_CTRL)
+#define bfin_write_TWI_SLAVE_CTRL(val)		bfin_write16(TWI0_SLAVE_CTRL, val)
+#define bfin_read_TWI_SLAVE_STAT()		bfin_read16(TWI0_SLAVE_STAT)
+#define bfin_write_TWI_SLAVE_STAT(val)		bfin_write16(TWI0_SLAVE_STAT, val)
+#define bfin_read_TWI_SLAVE_ADDR()		bfin_read16(TWI0_SLAVE_ADDR)
+#define bfin_write_TWI_SLAVE_ADDR(val)		bfin_write16(TWI0_SLAVE_ADDR, val)
+#define bfin_read_TWI_MASTER_CTL()		bfin_read16(TWI0_MASTER_CTRL)
+#define bfin_write_TWI_MASTER_CTL(val)		bfin_write16(TWI0_MASTER_CTRL, val)
+#define bfin_read_TWI_MASTER_STAT()		bfin_read16(TWI0_MASTER_STAT)
+#define bfin_write_TWI_MASTER_STAT(val)		bfin_write16(TWI0_MASTER_STAT, val)
+#define bfin_read_TWI_MASTER_ADDR()		bfin_read16(TWI0_MASTER_ADDR)
+#define bfin_write_TWI_MASTER_ADDR(val)		bfin_write16(TWI0_MASTER_ADDR, val)
+#define bfin_read_TWI_INT_STAT()		bfin_read16(TWI0_INT_STAT)
+#define bfin_write_TWI_INT_STAT(val)		bfin_write16(TWI0_INT_STAT, val)
+#define bfin_read_TWI_INT_MASK()		bfin_read16(TWI0_INT_MASK)
+#define bfin_write_TWI_INT_MASK(val)		bfin_write16(TWI0_INT_MASK, val)
+#define bfin_read_TWI_FIFO_CTL()		bfin_read16(TWI0_FIFO_CTRL)
+#define bfin_write_TWI_FIFO_CTL(val)		bfin_write16(TWI0_FIFO_CTRL, val)
+#define bfin_read_TWI_FIFO_STAT()		bfin_read16(TWI0_FIFO_STAT)
+#define bfin_write_TWI_FIFO_STAT(val)		bfin_write16(TWI0_FIFO_STAT, val)
+#define bfin_read_TWI_XMT_DATA8()		bfin_read16(TWI0_XMT_DATA8)
+#define bfin_write_TWI_XMT_DATA8(val)		bfin_write16(TWI0_XMT_DATA8, val)
+#define bfin_read_TWI_XMT_DATA16()		bfin_read16(TWI0_XMT_DATA16)
+#define bfin_write_TWI_XMT_DATA16(val)		bfin_write16(TWI0_XMT_DATA16, val)
+#define bfin_read_TWI_RCV_DATA8()		bfin_read16(TWI0_RCV_DATA8)
+#define bfin_write_TWI_RCV_DATA8(val)		bfin_write16(TWI0_RCV_DATA8, val)
+#define bfin_read_TWI_RCV_DATA16()		bfin_read16(TWI0_RCV_DATA16)
+#define bfin_write_TWI_RCV_DATA16(val)		bfin_write16(TWI0_RCV_DATA16, val)
 
 /* SPORT0 is not defined in the shared file because it is not available on the ADSP-BF542 and ADSP-BF544 bfin_read_()rocessors */
 
@@ -710,21 +773,21 @@
 #define bfin_read_MDMA_D0_NEXT_DESC_PTR() 	bfin_read32(MDMA_D0_NEXT_DESC_PTR)
 #define bfin_write_MDMA_D0_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_D0_NEXT_DESC_PTR)
 #define bfin_read_MDMA_D0_START_ADDR() 		bfin_read32(MDMA_D0_START_ADDR)
-#define bfin_write_MDMA_D0_START_ADDR(val) 	bfin_write32(MDMA_D0_START_ADDR)
+#define bfin_write_MDMA_D0_START_ADDR(val) 	bfin_write32(MDMA_D0_START_ADDR, val)
 #define bfin_read_MDMA_D0_CONFIG()		bfin_read16(MDMA_D0_CONFIG)
 #define bfin_write_MDMA_D0_CONFIG(val)		bfin_write16(MDMA_D0_CONFIG, val)
 #define bfin_read_MDMA_D0_X_COUNT()		bfin_read16(MDMA_D0_X_COUNT)
 #define bfin_write_MDMA_D0_X_COUNT(val)		bfin_write16(MDMA_D0_X_COUNT, val)
 #define bfin_read_MDMA_D0_X_MODIFY()		bfin_read16(MDMA_D0_X_MODIFY)
-#define bfin_write_MDMA_D0_X_MODIFY(val) 	bfin_write16(MDMA_D0_X_MODIFY)
+#define bfin_write_MDMA_D0_X_MODIFY(val) 	bfin_write16(MDMA_D0_X_MODIFY, val)
 #define bfin_read_MDMA_D0_Y_COUNT()		bfin_read16(MDMA_D0_Y_COUNT)
 #define bfin_write_MDMA_D0_Y_COUNT(val)		bfin_write16(MDMA_D0_Y_COUNT, val)
 #define bfin_read_MDMA_D0_Y_MODIFY()		bfin_read16(MDMA_D0_Y_MODIFY)
-#define bfin_write_MDMA_D0_Y_MODIFY(val) 	bfin_write16(MDMA_D0_Y_MODIFY)
+#define bfin_write_MDMA_D0_Y_MODIFY(val) 	bfin_write16(MDMA_D0_Y_MODIFY, val)
 #define bfin_read_MDMA_D0_CURR_DESC_PTR() 	bfin_read32(MDMA_D0_CURR_DESC_PTR)
-#define bfin_write_MDMA_D0_CURR_DESC_PTR(val) 	bfin_write32(MDMA_D0_CURR_DESC_PTR)
+#define bfin_write_MDMA_D0_CURR_DESC_PTR(val) 	bfin_write32(MDMA_D0_CURR_DESC_PTR, val)
 #define bfin_read_MDMA_D0_CURR_ADDR() 		bfin_read32(MDMA_D0_CURR_ADDR)
-#define bfin_write_MDMA_D0_CURR_ADDR(val) 	bfin_write32(MDMA_D0_CURR_ADDR)
+#define bfin_write_MDMA_D0_CURR_ADDR(val) 	bfin_write32(MDMA_D0_CURR_ADDR, val)
 #define bfin_read_MDMA_D0_IRQ_STATUS()		bfin_read16(MDMA_D0_IRQ_STATUS)
 #define bfin_write_MDMA_D0_IRQ_STATUS(val)	bfin_write16(MDMA_D0_IRQ_STATUS, val)
 #define bfin_read_MDMA_D0_PERIPHERAL_MAP()	bfin_read16(MDMA_D0_PERIPHERAL_MAP)
@@ -734,23 +797,23 @@
 #define bfin_read_MDMA_D0_CURR_Y_COUNT()	bfin_read16(MDMA_D0_CURR_Y_COUNT)
 #define bfin_write_MDMA_D0_CURR_Y_COUNT(val)	bfin_write16(MDMA_D0_CURR_Y_COUNT, val)
 #define bfin_read_MDMA_S0_NEXT_DESC_PTR() 	bfin_read32(MDMA_S0_NEXT_DESC_PTR)
-#define bfin_write_MDMA_S0_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_S0_NEXT_DESC_PTR)
+#define bfin_write_MDMA_S0_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_S0_NEXT_DESC_PTR, val)
 #define bfin_read_MDMA_S0_START_ADDR() 		bfin_read32(MDMA_S0_START_ADDR)
-#define bfin_write_MDMA_S0_START_ADDR(val) 	bfin_write32(MDMA_S0_START_ADDR)
+#define bfin_write_MDMA_S0_START_ADDR(val) 	bfin_write32(MDMA_S0_START_ADDR, val)
 #define bfin_read_MDMA_S0_CONFIG()		bfin_read16(MDMA_S0_CONFIG)
 #define bfin_write_MDMA_S0_CONFIG(val)		bfin_write16(MDMA_S0_CONFIG, val)
 #define bfin_read_MDMA_S0_X_COUNT()		bfin_read16(MDMA_S0_X_COUNT)
 #define bfin_write_MDMA_S0_X_COUNT(val)		bfin_write16(MDMA_S0_X_COUNT, val)
 #define bfin_read_MDMA_S0_X_MODIFY()		bfin_read16(MDMA_S0_X_MODIFY)
-#define bfin_write_MDMA_S0_X_MODIFY(val) 	bfin_write16(MDMA_S0_X_MODIFY)
+#define bfin_write_MDMA_S0_X_MODIFY(val) 	bfin_write16(MDMA_S0_X_MODIFY, val)
 #define bfin_read_MDMA_S0_Y_COUNT()		bfin_read16(MDMA_S0_Y_COUNT)
 #define bfin_write_MDMA_S0_Y_COUNT(val)		bfin_write16(MDMA_S0_Y_COUNT, val)
 #define bfin_read_MDMA_S0_Y_MODIFY()		bfin_read16(MDMA_S0_Y_MODIFY)
-#define bfin_write_MDMA_S0_Y_MODIFY(val) 	bfin_write16(MDMA_S0_Y_MODIFY)
+#define bfin_write_MDMA_S0_Y_MODIFY(val) 	bfin_write16(MDMA_S0_Y_MODIFY, val)
 #define bfin_read_MDMA_S0_CURR_DESC_PTR() 	bfin_read32(MDMA_S0_CURR_DESC_PTR)
-#define bfin_write_MDMA_S0_CURR_DESC_PTR(val) 	bfin_write32(MDMA_S0_CURR_DESC_PTR)
+#define bfin_write_MDMA_S0_CURR_DESC_PTR(val) 	bfin_write32(MDMA_S0_CURR_DESC_PTR, val)
 #define bfin_read_MDMA_S0_CURR_ADDR() 		bfin_read32(MDMA_S0_CURR_ADDR)
-#define bfin_write_MDMA_S0_CURR_ADDR(val) 	bfin_write32(MDMA_S0_CURR_ADDR)
+#define bfin_write_MDMA_S0_CURR_ADDR(val) 	bfin_write32(MDMA_S0_CURR_ADDR, val)
 #define bfin_read_MDMA_S0_IRQ_STATUS()		bfin_read16(MDMA_S0_IRQ_STATUS)
 #define bfin_write_MDMA_S0_IRQ_STATUS(val)	bfin_write16(MDMA_S0_IRQ_STATUS, val)
 #define bfin_read_MDMA_S0_PERIPHERAL_MAP()	bfin_read16(MDMA_S0_PERIPHERAL_MAP)
@@ -763,9 +826,9 @@
 /* MDMA Stream 1 Registers */
 
 #define bfin_read_MDMA_D1_NEXT_DESC_PTR() 	bfin_read32(MDMA_D1_NEXT_DESC_PTR)
-#define bfin_write_MDMA_D1_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_D1_NEXT_DESC_PTR)
+#define bfin_write_MDMA_D1_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_D1_NEXT_DESC_PTR, val)
 #define bfin_read_MDMA_D1_START_ADDR() 		bfin_read32(MDMA_D1_START_ADDR)
-#define bfin_write_MDMA_D1_START_ADDR(val) 	bfin_write32(MDMA_D1_START_ADDR)
+#define bfin_write_MDMA_D1_START_ADDR(val) 	bfin_write32(MDMA_D1_START_ADDR, val)
 #define bfin_read_MDMA_D1_CONFIG()		bfin_read16(MDMA_D1_CONFIG)
 #define bfin_write_MDMA_D1_CONFIG(val)		bfin_write16(MDMA_D1_CONFIG, val)
 #define bfin_read_MDMA_D1_X_COUNT()		bfin_read16(MDMA_D1_X_COUNT)
@@ -777,9 +840,9 @@
 #define bfin_read_MDMA_D1_Y_MODIFY()		bfin_read16(MDMA_D1_Y_MODIFY)
 #define bfin_write_MDMA_D1_Y_MODIFY(val) 	bfin_write16(MDMA_D1_Y_MODIFY)
 #define bfin_read_MDMA_D1_CURR_DESC_PTR() 	bfin_read32(MDMA_D1_CURR_DESC_PTR)
-#define bfin_write_MDMA_D1_CURR_DESC_PTR(val) 	bfin_write32(MDMA_D1_CURR_DESC_PTR)
+#define bfin_write_MDMA_D1_CURR_DESC_PTR(val) 	bfin_write32(MDMA_D1_CURR_DESC_PTR, val)
 #define bfin_read_MDMA_D1_CURR_ADDR() 		bfin_read32(MDMA_D1_CURR_ADDR)
-#define bfin_write_MDMA_D1_CURR_ADDR(val) 	bfin_write32(MDMA_D1_CURR_ADDR)
+#define bfin_write_MDMA_D1_CURR_ADDR(val) 	bfin_write32(MDMA_D1_CURR_ADDR, val)
 #define bfin_read_MDMA_D1_IRQ_STATUS()		bfin_read16(MDMA_D1_IRQ_STATUS)
 #define bfin_write_MDMA_D1_IRQ_STATUS(val)	bfin_write16(MDMA_D1_IRQ_STATUS, val)
 #define bfin_read_MDMA_D1_PERIPHERAL_MAP()	bfin_read16(MDMA_D1_PERIPHERAL_MAP)
@@ -789,9 +852,9 @@
 #define bfin_read_MDMA_D1_CURR_Y_COUNT()	bfin_read16(MDMA_D1_CURR_Y_COUNT)
 #define bfin_write_MDMA_D1_CURR_Y_COUNT(val)	bfin_write16(MDMA_D1_CURR_Y_COUNT, val)
 #define bfin_read_MDMA_S1_NEXT_DESC_PTR() 	bfin_read32(MDMA_S1_NEXT_DESC_PTR)
-#define bfin_write_MDMA_S1_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_S1_NEXT_DESC_PTR)
+#define bfin_write_MDMA_S1_NEXT_DESC_PTR(val) 	bfin_write32(MDMA_S1_NEXT_DESC_PTR, val)
 #define bfin_read_MDMA_S1_START_ADDR() 		bfin_read32(MDMA_S1_START_ADDR)
-#define bfin_write_MDMA_S1_START_ADDR(val) 	bfin_write32(MDMA_S1_START_ADDR)
+#define bfin_write_MDMA_S1_START_ADDR(val) 	bfin_write32(MDMA_S1_START_ADDR, val)
 #define bfin_read_MDMA_S1_CONFIG()		bfin_read16(MDMA_S1_CONFIG)
 #define bfin_write_MDMA_S1_CONFIG(val)		bfin_write16(MDMA_S1_CONFIG, val)
 #define bfin_read_MDMA_S1_X_COUNT()		bfin_read16(MDMA_S1_X_COUNT)
@@ -803,9 +866,9 @@
 #define bfin_read_MDMA_S1_Y_MODIFY()		bfin_read16(MDMA_S1_Y_MODIFY)
 #define bfin_write_MDMA_S1_Y_MODIFY(val) 	bfin_write16(MDMA_S1_Y_MODIFY)
 #define bfin_read_MDMA_S1_CURR_DESC_PTR() 	bfin_read32(MDMA_S1_CURR_DESC_PTR)
-#define bfin_write_MDMA_S1_CURR_DESC_PTR(val) 	bfin_write32(MDMA_S1_CURR_DESC_PTR)
+#define bfin_write_MDMA_S1_CURR_DESC_PTR(val) 	bfin_write32(MDMA_S1_CURR_DESC_PTR, val)
 #define bfin_read_MDMA_S1_CURR_ADDR() 		bfin_read32(MDMA_S1_CURR_ADDR)
-#define bfin_write_MDMA_S1_CURR_ADDR(val) 	bfin_write32(MDMA_S1_CURR_ADDR)
+#define bfin_write_MDMA_S1_CURR_ADDR(val) 	bfin_write32(MDMA_S1_CURR_ADDR, val)
 #define bfin_read_MDMA_S1_IRQ_STATUS()		bfin_read16(MDMA_S1_IRQ_STATUS)
 #define bfin_write_MDMA_S1_IRQ_STATUS(val)	bfin_write16(MDMA_S1_IRQ_STATUS, val)
 #define bfin_read_MDMA_S1_PERIPHERAL_MAP()	bfin_read16(MDMA_S1_PERIPHERAL_MAP)

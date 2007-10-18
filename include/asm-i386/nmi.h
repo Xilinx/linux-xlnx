@@ -33,11 +33,12 @@ extern int nmi_watchdog_tick (struct pt_regs * regs, unsigned reason);
 
 extern atomic_t nmi_active;
 extern unsigned int nmi_watchdog;
-#define NMI_DEFAULT     -1
+#define NMI_DISABLED    -1
 #define NMI_NONE	0
 #define NMI_IO_APIC	1
 #define NMI_LOCAL_APIC	2
 #define NMI_INVALID	3
+#define NMI_DEFAULT	NMI_DISABLED
 
 struct ctl_table;
 struct file;
@@ -57,5 +58,7 @@ unsigned lapic_adjust_nmi_hz(unsigned hz);
 int lapic_watchdog_ok(void);
 void disable_lapic_nmi_watchdog(void);
 void enable_lapic_nmi_watchdog(void);
+void stop_nmi(void);
+void restart_nmi(void);
 
 #endif /* ASM_NMI_H */

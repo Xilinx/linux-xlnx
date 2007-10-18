@@ -102,6 +102,7 @@
 static struct pci_device_id radeonfb_pci_table[] = {
         /* Radeon Xpress 200m */
 	CHIP_DEF(PCI_CHIP_RS480_5955,   RS480,  CHIP_HAS_CRTC2 | CHIP_IS_IGP | CHIP_IS_MOBILITY),
+	CHIP_DEF(PCI_CHIP_RS482_5975,	RS480,	CHIP_HAS_CRTC2 | CHIP_IS_IGP | CHIP_IS_MOBILITY),
 	/* Mobility M6 */
 	CHIP_DEF(PCI_CHIP_RADEON_LY, 	RV100,	CHIP_HAS_CRTC2 | CHIP_IS_MOBILITY),
 	CHIP_DEF(PCI_CHIP_RADEON_LZ,	RV100,	CHIP_HAS_CRTC2 | CHIP_IS_MOBILITY),
@@ -1283,7 +1284,8 @@ static void radeon_write_pll_regs(struct radeonfb_info *rinfo, struct radeon_reg
 	if (rinfo->family == CHIP_FAMILY_R300 ||
 	    rinfo->family == CHIP_FAMILY_RS300 ||
 	    rinfo->family == CHIP_FAMILY_R350 ||
-	    rinfo->family == CHIP_FAMILY_RV350) {
+	    rinfo->family == CHIP_FAMILY_RV350 ||
+	    rinfo->family == CHIP_FAMILY_RV380 ) {
 		if (mode->ppll_ref_div & R300_PPLL_REF_DIV_ACC_MASK) {
 			/* When restoring console mode, use saved PPLL_REF_DIV
 			 * setting.
@@ -2102,7 +2104,9 @@ static ssize_t radeon_show_one_edid(char *buf, loff_t off, size_t count, const u
 }
 
 
-static ssize_t radeon_show_edid1(struct kobject *kobj, char *buf, loff_t off, size_t count)
+static ssize_t radeon_show_edid1(struct kobject *kobj,
+				 struct bin_attribute *bin_attr,
+				 char *buf, loff_t off, size_t count)
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct pci_dev *pdev = to_pci_dev(dev);
@@ -2113,7 +2117,9 @@ static ssize_t radeon_show_edid1(struct kobject *kobj, char *buf, loff_t off, si
 }
 
 
-static ssize_t radeon_show_edid2(struct kobject *kobj, char *buf, loff_t off, size_t count)
+static ssize_t radeon_show_edid2(struct kobject *kobj,
+				 struct bin_attribute *bin_attr,
+				 char *buf, loff_t off, size_t count)
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct pci_dev *pdev = to_pci_dev(dev);
@@ -2126,7 +2132,6 @@ static ssize_t radeon_show_edid2(struct kobject *kobj, char *buf, loff_t off, si
 static struct bin_attribute edid1_attr = {
 	.attr   = {
 		.name	= "edid1",
-		.owner	= THIS_MODULE,
 		.mode	= 0444,
 	},
 	.size	= EDID_LENGTH,
@@ -2136,7 +2141,6 @@ static struct bin_attribute edid1_attr = {
 static struct bin_attribute edid2_attr = {
 	.attr   = {
 		.name	= "edid2",
-		.owner	= THIS_MODULE,
 		.mode	= 0444,
 	},
 	.size	= EDID_LENGTH,

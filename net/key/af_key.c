@@ -1206,6 +1206,9 @@ static struct xfrm_state * pfkey_msg2xfrm_state(struct sadb_msg *hdr,
 		x->sel.prefixlen_s = addr->sadb_address_prefixlen;
 	}
 
+	if (!x->sel.family)
+		x->sel.family = x->props.family;
+
 	if (ext_hdrs[SADB_X_EXT_NAT_T_TYPE-1]) {
 		struct sadb_x_nat_t_type* n_type;
 		struct xfrm_encap_tmpl *natt;
@@ -2540,7 +2543,7 @@ static int pfkey_migrate(struct sock *sk, struct sk_buff *skb,
 	sel.proto = pfkey_proto_to_xfrm(sa->sadb_address_proto);
 	sel.sport = ((struct sockaddr_in *)(sa + 1))->sin_port;
 	if (sel.sport)
-		sel.sport_mask = ~0;
+		sel.sport_mask = htons(0xffff);
 
 	/* set destination address info of selector */
 	sa = ext_hdrs[SADB_EXT_ADDRESS_DST - 1],
@@ -2549,7 +2552,7 @@ static int pfkey_migrate(struct sock *sk, struct sk_buff *skb,
 	sel.proto = pfkey_proto_to_xfrm(sa->sadb_address_proto);
 	sel.dport = ((struct sockaddr_in *)(sa + 1))->sin_port;
 	if (sel.dport)
-		sel.dport_mask = ~0;
+		sel.dport_mask = htons(0xffff);
 
 	rq = (struct sadb_x_ipsecrequest *)(pol + 1);
 

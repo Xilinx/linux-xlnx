@@ -490,7 +490,9 @@ iop3xx_i2c_probe(struct platform_device *pdev)
 	memcpy(new_adapter->name, pdev->name, strlen(pdev->name));
 	new_adapter->id = I2C_HW_IOP3XX;
 	new_adapter->owner = THIS_MODULE;
+	new_adapter->class = I2C_CLASS_HWMON;
 	new_adapter->dev.parent = &pdev->dev;
+	new_adapter->nr = pdev->id;
 
 	/*
 	 * Default values...should these come in from board code?
@@ -508,7 +510,7 @@ iop3xx_i2c_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, new_adapter);
 	new_adapter->algo_data = adapter_data;
 
-	i2c_add_adapter(new_adapter);
+	i2c_add_numbered_adapter(new_adapter);
 
 	return 0;
 

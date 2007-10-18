@@ -30,10 +30,13 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/mod_devicetable.h>
 #include <linux/device.h>
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
+#include <linux/blkdev.h>
+#include <linux/string.h>
 #include <linux/timer.h>
 
 #include <scsi/scsi.h>
@@ -45,6 +48,18 @@
 #include "fw-transaction.h"
 #include "fw-topology.h"
 #include "fw-device.h"
+
+/*
+ * So far only bridges from Oxford Semiconductor are known to support
+ * concurrent logins. Depending on firmware, four or two concurrent logins
+ * are possible on OXFW911 and newer Oxsemi bridges.
+ *
+ * Concurrent logins are useful together with cluster filesystems.
+ */
+static int sbp2_param_exclusive_login = 1;
+module_param_named(exclusive_login, sbp2_param_exclusive_login, bool, 0644);
+MODULE_PARM_DESC(exclusive_login, "Exclusive login to sbp2 device "
+		 "(default = Y, use N for concurrent initiators)");
 
 /* I don't know why the SCSI stack doesn't define something like this... */
 typedef void (*scsi_done_fn_t)(struct scsi_cmnd *);
@@ -144,6 +159,7 @@ struct sbp2_pointer {
 
 struct sbp2_orb {
 	struct fw_transaction t;
+	struct kref kref;
 	dma_addr_t request_bus;
 	int rcode;
 	struct sbp2_pointer pointer;
@@ -154,7 +170,7 @@ struct sbp2_orb {
 #define MANAGEMENT_ORB_LUN(v)			((v))
 #define MANAGEMENT_ORB_FUNCTION(v)		((v) << 16)
 #define MANAGEMENT_ORB_RECONNECT(v)		((v) << 20)
-#define MANAGEMENT_ORB_EXCLUSIVE		((1) << 28)
+#define MANAGEMENT_ORB_EXCLUSIVE(v)		((v) ? 1 << 28 : 0)
 #define MANAGEMENT_ORB_REQUEST_FORMAT(v)	((v) << 29)
 #define MANAGEMENT_ORB_NOTIFY			((1) << 31)
 
@@ -205,9 +221,8 @@ struct sbp2_command_orb {
 	scsi_done_fn_t done;
 	struct fw_unit *unit;
 
-	struct sbp2_pointer page_table[SG_ALL];
+	struct sbp2_pointer page_table[SG_ALL] __attribute__((aligned(8)));
 	dma_addr_t page_table_bus;
-	dma_addr_t request_buffer_bus;
 };
 
 /*
@@ -266,6 +281,14 @@ static const struct {
 };
 
 static void
+free_orb(struct kref *kref)
+{
+	struct sbp2_orb *orb = container_of(kref, struct sbp2_orb, kref);
+
+	kfree(orb);
+}
+
+static void
 sbp2_status_write(struct fw_card *card, struct fw_request *request,
 		  int tcode, int destination, int source,
 		  int generation, int speed,
@@ -298,8 +321,8 @@ sbp2_status_write(struct fw_card *card, struct fw_request *request,
 	spin_lock_irqsave(&card->lock, flags);
 	list_for_each_entry(orb, &sd->orb_list, link) {
 		if (STATUS_GET_ORB_HIGH(status) == 0 &&
-		    STATUS_GET_ORB_LOW(status) == orb->request_bus &&
-		    orb->rcode == RCODE_COMPLETE) {
+		    STATUS_GET_ORB_LOW(status) == orb->request_bus) {
+			orb->rcode = RCODE_COMPLETE;
 			list_del(&orb->link);
 			break;
 		}
@@ -311,6 +334,8 @@ sbp2_status_write(struct fw_card *card, struct fw_request *request,
 	else
 		fw_error("status write for unknown orb\n");
 
+	kref_put(&orb->kref, free_orb);
+
 	fw_send_response(card, request, RCODE_COMPLETE);
 }
 
@@ -321,13 +346,27 @@ complete_transaction(struct fw_card *card, int rcode,
 	struct sbp2_orb *orb = data;
 	unsigned long flags;
 
-	orb->rcode = rcode;
-	if (rcode != RCODE_COMPLETE) {
-		spin_lock_irqsave(&card->lock, flags);
+	/*
+	 * This is a little tricky.  We can get the status write for
+	 * the orb before we get this callback.  The status write
+	 * handler above will assume the orb pointer transaction was
+	 * successful and set the rcode to RCODE_COMPLETE for the orb.
+	 * So this callback only sets the rcode if it hasn't already
+	 * been set and only does the cleanup if the transaction
+	 * failed and we didn't already get a status write.
+	 */
+	spin_lock_irqsave(&card->lock, flags);
+
+	if (orb->rcode == -1)
+		orb->rcode = rcode;
+	if (orb->rcode != RCODE_COMPLETE) {
 		list_del(&orb->link);
-		spin_unlock_irqrestore(&card->lock, flags);
 		orb->callback(orb, NULL);
 	}
+
+	spin_unlock_irqrestore(&card->lock, flags);
+
+	kref_put(&orb->kref, free_orb);
 }
 
 static void
@@ -346,9 +385,12 @@ sbp2_send_orb(struct sbp2_orb *orb, struct fw_unit *unit,
 	list_add_tail(&orb->link, &sd->orb_list);
 	spin_unlock_irqrestore(&device->card->lock, flags);
 
+	/* Take a ref for the orb list and for the transaction callback. */
+	kref_get(&orb->kref);
+	kref_get(&orb->kref);
+
 	fw_send_request(device->card, &orb->t, TCODE_WRITE_BLOCK_REQUEST,
-			node_id, generation,
-			device->node->max_speed, offset,
+			node_id, generation, device->max_speed, offset,
 			&orb->pointer, sizeof(orb->pointer),
 			complete_transaction, orb);
 }
@@ -383,7 +425,7 @@ static void
 complete_management_orb(struct sbp2_orb *base_orb, struct sbp2_status *status)
 {
 	struct sbp2_management_orb *orb =
-	    (struct sbp2_management_orb *)base_orb;
+		container_of(base_orb, struct sbp2_management_orb, base);
 
 	if (status)
 		memcpy(&orb->status, status, sizeof(*status));
@@ -403,21 +445,12 @@ sbp2_send_management_orb(struct fw_unit *unit, int node_id, int generation,
 	if (orb == NULL)
 		return -ENOMEM;
 
-	/*
-	 * The sbp2 device is going to send a block read request to
-	 * read out the request from host memory, so map it for dma.
-	 */
-	orb->base.request_bus =
-		dma_map_single(device->card->device, &orb->request,
-			       sizeof(orb->request), DMA_TO_DEVICE);
-	if (dma_mapping_error(orb->base.request_bus))
-		goto out;
-
+	kref_init(&orb->base.kref);
 	orb->response_bus =
 		dma_map_single(device->card->device, &orb->response,
 			       sizeof(orb->response), DMA_FROM_DEVICE);
 	if (dma_mapping_error(orb->response_bus))
-		goto out;
+		goto fail_mapping_response;
 
 	orb->request.response.high    = 0;
 	orb->request.response.low     = orb->response_bus;
@@ -432,14 +465,9 @@ sbp2_send_management_orb(struct fw_unit *unit, int node_id, int generation,
 	orb->request.status_fifo.high = sd->address_handler.offset >> 32;
 	orb->request.status_fifo.low  = sd->address_handler.offset;
 
-	/*
-	 * FIXME: Yeah, ok this isn't elegant, we hardwire exclusive
-	 * login and 1 second reconnect time.  The reconnect setting
-	 * is probably fine, but the exclusive login should be an option.
-	 */
 	if (function == SBP2_LOGIN_REQUEST) {
 		orb->request.misc |=
-			MANAGEMENT_ORB_EXCLUSIVE |
+			MANAGEMENT_ORB_EXCLUSIVE(sbp2_param_exclusive_login) |
 			MANAGEMENT_ORB_RECONNECT(0);
 	}
 
@@ -447,6 +475,12 @@ sbp2_send_management_orb(struct fw_unit *unit, int node_id, int generation,
 
 	init_completion(&orb->done);
 	orb->base.callback = complete_management_orb;
+
+	orb->base.request_bus =
+		dma_map_single(device->card->device, &orb->request,
+			       sizeof(orb->request), DMA_TO_DEVICE);
+	if (dma_mapping_error(orb->base.request_bus))
+		goto fail_mapping_request;
 
 	sbp2_send_orb(&orb->base, unit,
 		      node_id, generation, sd->management_agent_address);
@@ -479,13 +513,14 @@ sbp2_send_management_orb(struct fw_unit *unit, int node_id, int generation,
  out:
 	dma_unmap_single(device->card->device, orb->base.request_bus,
 			 sizeof(orb->request), DMA_TO_DEVICE);
+ fail_mapping_request:
 	dma_unmap_single(device->card->device, orb->response_bus,
 			 sizeof(orb->response), DMA_FROM_DEVICE);
-
+ fail_mapping_response:
 	if (response)
 		fw_memcpy_from_be32(response,
 				    orb->response, sizeof(orb->response));
-	kfree(orb);
+	kref_put(&orb->base.kref, free_orb);
 
 	return retval;
 }
@@ -511,7 +546,7 @@ static int sbp2_agent_reset(struct fw_unit *unit)
 		return -ENOMEM;
 
 	fw_send_request(device->card, t, TCODE_WRITE_QUADLET_REQUEST,
-			sd->node_id, sd->generation, SCODE_400,
+			sd->node_id, sd->generation, device->max_speed,
 			sd->command_block_agent_address + SBP2_AGENT_RESET,
 			&zero, sizeof(zero), complete_agent_reset_write, t);
 
@@ -521,17 +556,15 @@ static int sbp2_agent_reset(struct fw_unit *unit)
 static void sbp2_reconnect(struct work_struct *work);
 static struct scsi_host_template scsi_driver_template;
 
-static void
-release_sbp2_device(struct kref *kref)
+static void release_sbp2_device(struct kref *kref)
 {
 	struct sbp2_device *sd = container_of(kref, struct sbp2_device, kref);
 	struct Scsi_Host *host =
 		container_of((void *)sd, struct Scsi_Host, hostdata[0]);
 
+	scsi_remove_host(host);
 	sbp2_send_management_orb(sd->unit, sd->node_id, sd->generation,
 				 SBP2_LOGOUT_REQUEST, sd->login_id, NULL);
-
-	scsi_remove_host(host);
 	fw_core_remove_address_handler(&sd->address_handler);
 	fw_notify("removed sbp2 unit %s\n", sd->unit->device.bus_id);
 	put_device(&sd->unit->device);
@@ -833,10 +866,10 @@ sbp2_status_to_sense_data(u8 *sbp2_status, u8 *sense_data)
 static void
 complete_command_orb(struct sbp2_orb *base_orb, struct sbp2_status *status)
 {
-	struct sbp2_command_orb *orb = (struct sbp2_command_orb *)base_orb;
+	struct sbp2_command_orb *orb =
+		container_of(base_orb, struct sbp2_command_orb, base);
 	struct fw_unit *unit = orb->unit;
 	struct fw_device *device = fw_device(unit->device.parent);
-	struct scatterlist *sg;
 	int result;
 
 	if (status != NULL) {
@@ -872,24 +905,17 @@ complete_command_orb(struct sbp2_orb *base_orb, struct sbp2_status *status)
 	dma_unmap_single(device->card->device, orb->base.request_bus,
 			 sizeof(orb->request), DMA_TO_DEVICE);
 
-	if (orb->cmd->use_sg > 0) {
-		sg = (struct scatterlist *)orb->cmd->request_buffer;
-		dma_unmap_sg(device->card->device, sg, orb->cmd->use_sg,
+	if (scsi_sg_count(orb->cmd) > 0)
+		dma_unmap_sg(device->card->device, scsi_sglist(orb->cmd),
+			     scsi_sg_count(orb->cmd),
 			     orb->cmd->sc_data_direction);
-	}
 
 	if (orb->page_table_bus != 0)
 		dma_unmap_single(device->card->device, orb->page_table_bus,
-				 sizeof(orb->page_table_bus), DMA_TO_DEVICE);
-
-	if (orb->request_buffer_bus != 0)
-		dma_unmap_single(device->card->device, orb->request_buffer_bus,
-				 sizeof(orb->request_buffer_bus),
-				 DMA_FROM_DEVICE);
+				 sizeof(orb->page_table), DMA_TO_DEVICE);
 
 	orb->cmd->result = result;
 	orb->done(orb->cmd);
-	kfree(orb);
 }
 
 static int sbp2_command_orb_map_scatterlist(struct sbp2_command_orb *orb)
@@ -900,11 +926,10 @@ static int sbp2_command_orb_map_scatterlist(struct sbp2_command_orb *orb)
 	struct fw_device *device = fw_device(unit->device.parent);
 	struct scatterlist *sg;
 	int sg_len, l, i, j, count;
-	size_t size;
 	dma_addr_t sg_addr;
 
-	sg = (struct scatterlist *)orb->cmd->request_buffer;
-	count = dma_map_sg(device->card->device, sg, orb->cmd->use_sg,
+	sg = scsi_sglist(orb->cmd);
+	count = dma_map_sg(device->card->device, sg, scsi_sg_count(orb->cmd),
 			   orb->cmd->sc_data_direction);
 	if (count == 0)
 		goto fail;
@@ -935,6 +960,11 @@ static int sbp2_command_orb_map_scatterlist(struct sbp2_command_orb *orb)
 		sg_len = sg_dma_len(sg + i);
 		sg_addr = sg_dma_address(sg + i);
 		while (sg_len) {
+			/* FIXME: This won't get us out of the pinch. */
+			if (unlikely(j >= ARRAY_SIZE(orb->page_table))) {
+				fw_error("page table overflow\n");
+				goto fail_page_table;
+			}
 			l = min(sg_len, SBP2_MAX_SG_ELEMENT_LENGTH);
 			orb->page_table[j].low = sg_addr;
 			orb->page_table[j].high = (l << 16);
@@ -944,7 +974,13 @@ static int sbp2_command_orb_map_scatterlist(struct sbp2_command_orb *orb)
 		}
 	}
 
-	size = sizeof(orb->page_table[0]) * j;
+	fw_memcpy_to_be32(orb->page_table, orb->page_table,
+			  sizeof(orb->page_table[0]) * j);
+	orb->page_table_bus =
+		dma_map_single(device->card->device, orb->page_table,
+			       sizeof(orb->page_table), DMA_TO_DEVICE);
+	if (dma_mapping_error(orb->page_table_bus))
+		goto fail_page_table;
 
 	/*
 	 * The data_descriptor pointer is the one case where we need
@@ -953,24 +989,16 @@ static int sbp2_command_orb_map_scatterlist(struct sbp2_command_orb *orb)
 	 * initiator (i.e. us), but data_descriptor can refer to data
 	 * on other nodes so we need to put our ID in descriptor.high.
 	 */
-
-	orb->page_table_bus =
-		dma_map_single(device->card->device, orb->page_table,
-			       size, DMA_TO_DEVICE);
-	if (dma_mapping_error(orb->page_table_bus))
-		goto fail_page_table;
 	orb->request.data_descriptor.high = sd->address_high;
 	orb->request.data_descriptor.low  = orb->page_table_bus;
 	orb->request.misc |=
 		COMMAND_ORB_PAGE_TABLE_PRESENT |
 		COMMAND_ORB_DATA_SIZE(j);
 
-	fw_memcpy_to_be32(orb->page_table, orb->page_table, size);
-
 	return 0;
 
  fail_page_table:
-	dma_unmap_sg(device->card->device, sg, orb->cmd->use_sg,
+	dma_unmap_sg(device->card->device, sg, scsi_sg_count(orb->cmd),
 		     orb->cmd->sc_data_direction);
  fail:
 	return -ENOMEM;
@@ -985,13 +1013,14 @@ static int sbp2_scsi_queuecommand(struct scsi_cmnd *cmd, scsi_done_fn_t done)
 	struct fw_unit *unit = sd->unit;
 	struct fw_device *device = fw_device(unit->device.parent);
 	struct sbp2_command_orb *orb;
+	unsigned max_payload;
 
 	/*
 	 * Bidirectional commands are not yet implemented, and unknown
 	 * transfer direction not handled.
 	 */
 	if (cmd->sc_data_direction == DMA_BIDIRECTIONAL) {
-		fw_error("Cannot handle DMA_BIDIRECTIONAL - rejecting command");
+		fw_error("Can't handle DMA_BIDIRECTIONAL, rejecting command\n");
 		cmd->result = DID_ERROR << 16;
 		done(cmd);
 		return 0;
@@ -1005,11 +1034,7 @@ static int sbp2_scsi_queuecommand(struct scsi_cmnd *cmd, scsi_done_fn_t done)
 
 	/* Initialize rcode to something not RCODE_COMPLETE. */
 	orb->base.rcode = -1;
-	orb->base.request_bus =
-		dma_map_single(device->card->device, &orb->request,
-			       sizeof(orb->request), DMA_TO_DEVICE);
-	if (dma_mapping_error(orb->base.request_bus))
-		goto fail_mapping;
+	kref_init(&orb->base.kref);
 
 	orb->unit = unit;
 	orb->done = done;
@@ -1023,9 +1048,11 @@ static int sbp2_scsi_queuecommand(struct scsi_cmnd *cmd, scsi_done_fn_t done)
 	 * specifies the max payload size as 2 ^ (max_payload + 2), so
 	 * if we set this to max_speed + 7, we get the right value.
 	 */
+	max_payload = min(device->max_speed + 7,
+			  device->card->max_receive - 1);
 	orb->request.misc =
-		COMMAND_ORB_MAX_PAYLOAD(device->node->max_speed + 7) |
-		COMMAND_ORB_SPEED(device->node->max_speed) |
+		COMMAND_ORB_MAX_PAYLOAD(max_payload) |
+		COMMAND_ORB_SPEED(device->max_speed) |
 		COMMAND_ORB_NOTIFY;
 
 	if (cmd->sc_data_direction == DMA_FROM_DEVICE)
@@ -1035,8 +1062,8 @@ static int sbp2_scsi_queuecommand(struct scsi_cmnd *cmd, scsi_done_fn_t done)
 		orb->request.misc |=
 			COMMAND_ORB_DIRECTION(SBP2_DIRECTION_TO_MEDIA);
 
-	if (cmd->use_sg && sbp2_command_orb_map_scatterlist(orb) < 0)
-		goto fail_map_payload;
+	if (scsi_sg_count(cmd) && sbp2_command_orb_map_scatterlist(orb) < 0)
+		goto fail_mapping;
 
 	fw_memcpy_to_be32(&orb->request, &orb->request, sizeof(orb->request));
 
@@ -1045,17 +1072,20 @@ static int sbp2_scsi_queuecommand(struct scsi_cmnd *cmd, scsi_done_fn_t done)
 	memcpy(orb->request.command_block, cmd->cmnd, COMMAND_SIZE(*cmd->cmnd));
 
 	orb->base.callback = complete_command_orb;
+	orb->base.request_bus =
+		dma_map_single(device->card->device, &orb->request,
+			       sizeof(orb->request), DMA_TO_DEVICE);
+	if (dma_mapping_error(orb->base.request_bus))
+		goto fail_mapping;
 
 	sbp2_send_orb(&orb->base, unit, sd->node_id, sd->generation,
 		      sd->command_block_agent_address + SBP2_ORB_POINTER);
 
+	kref_put(&orb->base.kref, free_orb);
 	return 0;
 
- fail_map_payload:
-	dma_unmap_single(device->card->device, orb->base.request_bus,
-			 sizeof(orb->request), DMA_TO_DEVICE);
  fail_mapping:
-	kfree(orb);
+	kref_put(&orb->base.kref, free_orb);
  fail_alloc:
 	return SCSI_MLQUEUE_HOST_BUSY;
 }
@@ -1087,7 +1117,8 @@ static int sbp2_scsi_slave_configure(struct scsi_device *sdev)
 		fw_notify("setting fix_capacity for %s\n", unit->device.bus_id);
 		sdev->fix_capacity = 1;
 	}
-
+	if (sd->workarounds & SBP2_WORKAROUND_128K_MAX_TRANS)
+		blk_queue_max_sectors(sdev->request_queue, 128 * 1024 / 512);
 	return 0;
 }
 
@@ -1163,7 +1194,7 @@ static struct device_attribute *sbp2_scsi_sysfs_attrs[] = {
 static struct scsi_host_template scsi_driver_template = {
 	.module			= THIS_MODULE,
 	.name			= "SBP-2 IEEE-1394",
-	.proc_name		= (char *)sbp2_driver_name,
+	.proc_name		= sbp2_driver_name,
 	.queuecommand		= sbp2_scsi_queuecommand,
 	.slave_alloc		= sbp2_scsi_slave_alloc,
 	.slave_configure	= sbp2_scsi_slave_configure,

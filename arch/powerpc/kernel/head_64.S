@@ -103,8 +103,8 @@ __secondary_hold_acknowledge:
 
 	. = 0x60
 /*
- * The following code is used on pSeries to hold secondary processors
- * in a spin loop after they have been freed from OpenFirmware, but
+ * The following code is used to hold secondary processors
+ * in a spin loop after they have entered the kernel, but
  * before the bulk of the kernel has been relocated.  This code
  * is relocated to physical address 0x60 before prom_init is run.
  * All of it must fit below the first exception vector at 0x100.
@@ -809,8 +809,9 @@ system_reset_iSeries:
 	mtmsrd	r24			/* RI on */
 	lhz	r24,PACAPACAINDEX(r13)	/* Get processor # */
 	cmpwi	0,r24,0			/* Are we processor 0? */
-	beq	.__start_initialization_iSeries	/* Start up the first processor */
-	mfspr	r4,SPRN_CTRLF
+	bne	1f
+	b	.__start_initialization_iSeries	/* Start up the first processor */
+1:	mfspr	r4,SPRN_CTRLF
 	li	r5,CTRL_RUNLATCH	/* Turn off the run light */
 	andc	r4,r4,r5
 	mtspr	SPRN_CTRLT,r4
@@ -1611,7 +1612,7 @@ _GLOBAL(generic_secondary_smp_init)
 #endif
 
 #ifdef CONFIG_PPC_ISERIES
-_STATIC(__start_initialization_iSeries)
+_INIT_STATIC(__start_initialization_iSeries)
 	/* Clear out the BSS */
 	LOAD_REG_IMMEDIATE(r11,__bss_stop)
 	LOAD_REG_IMMEDIATE(r8,__bss_start)
@@ -1671,8 +1672,9 @@ _GLOBAL(__start_initialization_multiplatform)
 	 * Are we booted from a PROM Of-type client-interface ?
 	 */
 	cmpldi	cr0,r5,0
-	bne	.__boot_from_prom		/* yes -> prom */
-
+	beq	1f
+	b	.__boot_from_prom		/* yes -> prom */
+1:
 	/* Save parameters */
 	mr	r31,r3
 	mr	r30,r4
@@ -1700,7 +1702,7 @@ _GLOBAL(__start_initialization_multiplatform)
 	bl	.__mmu_off
 	b	.__after_prom_start
 
-_STATIC(__boot_from_prom)
+_INIT_STATIC(__boot_from_prom)
 	/* Save parameters */
 	mr	r31,r3
 	mr	r30,r4
@@ -1767,9 +1769,10 @@ _STATIC(__after_prom_start)
 					/*	the source addr		 */
 
 	cmpdi	r4,0			/* In some cases the loader may  */
-	beq	.start_here_multiplatform /* have already put us at zero */
+	bne	1f
+	b	.start_here_multiplatform /* have already put us at zero */
 					/* so we can skip the copy.      */
-	LOAD_REG_IMMEDIATE(r5,copy_to_here) /* # bytes of memory to copy */
+1:	LOAD_REG_IMMEDIATE(r5,copy_to_here) /* # bytes of memory to copy */
 	sub	r5,r5,r27
 
 	li	r6,0x100		/* Start offset, the first 0x100 */
@@ -1956,7 +1959,7 @@ _GLOBAL(enable_64b_mode)
 /*
  * This is where the main kernel code starts.
  */
-_STATIC(start_here_multiplatform)
+_INIT_STATIC(start_here_multiplatform)
 	/* get a new offset, now that the kernel has moved. */
 	bl	.reloc_offset
 	mr	r26,r3
@@ -2018,7 +2021,7 @@ _STATIC(start_here_multiplatform)
 	b	.	/* prevent speculative execution */
 	
 	/* This is where all platforms converge execution */
-_STATIC(start_here_common)
+_INIT_STATIC(start_here_common)
 	/* relocation is on at this point */
 
 	/* The following code sets up the SP and TOC now that we are */

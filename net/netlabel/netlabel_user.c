@@ -46,10 +46,6 @@
 #include "netlabel_cipso_v4.h"
 #include "netlabel_user.h"
 
-/* do not do any auditing if audit_enabled == 0, see kernel/audit.c for
- * details */
-extern int audit_enabled;
-
 /*
  * NetLabel NETLINK Setup Functions
  */
@@ -117,8 +113,10 @@ struct audit_buffer *netlbl_audit_start_common(int type,
 	if (audit_info->secid != 0 &&
 	    security_secid_to_secctx(audit_info->secid,
 				     &secctx,
-				     &secctx_len) == 0)
+				     &secctx_len) == 0) {
 		audit_log_format(audit_buf, " subj=%s", secctx);
+		security_release_secctx(secctx, secctx_len);
+	}
 
 	return audit_buf;
 }

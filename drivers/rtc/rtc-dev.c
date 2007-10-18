@@ -341,11 +341,15 @@ static int rtc_dev_ioctl(struct inode *inode, struct file *file,
 	case RTC_IRQP_READ:
 		if (ops->irq_set_freq)
 			err = put_user(rtc->irq_freq, (unsigned long __user *)uarg);
+		else
+			err = -ENOTTY;
 		break;
 
 	case RTC_IRQP_SET:
 		if (ops->irq_set_freq)
 			err = rtc_irq_set_freq(rtc, rtc->irq_task, arg);
+		else
+			err = -ENOTTY;
 		break;
 
 #if 0

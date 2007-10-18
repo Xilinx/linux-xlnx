@@ -20,11 +20,11 @@
 #include <linux/mm.h>
 #include <linux/errno.h>
 #include <linux/ptrace.h>
-#include <linux/audit.h>
 #include <linux/smp.h>
 #include <linux/user.h>
 #include <linux/security.h>
-#include <linux/signal.h>
+#include <linux/audit.h>
+#include <linux/seccomp.h>
 
 #include <asm/byteorder.h>
 #include <asm/cpu.h>
@@ -174,17 +174,9 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 	switch (request) {
 	/* when I and D space are separate, these will need to be fixed. */
 	case PTRACE_PEEKTEXT: /* read word at location addr. */
-	case PTRACE_PEEKDATA: {
-		unsigned long tmp;
-		int copied;
-
-		copied = access_process_vm(child, addr, &tmp, sizeof(tmp), 0);
-		ret = -EIO;
-		if (copied != sizeof(tmp))
-			break;
-		ret = put_user(tmp,(unsigned long __user *) data);
+	case PTRACE_PEEKDATA:
+		ret = generic_ptrace_peekdata(child, addr, data);
 		break;
-	}
 
 	/* Read the word at location addr in the USER area. */
 	case PTRACE_PEEKUSR: {
@@ -313,11 +305,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 	/* when I and D space are separate, this will have to be fixed. */
 	case PTRACE_POKETEXT: /* write the word at location addr. */
 	case PTRACE_POKEDATA:
-		ret = 0;
-		if (access_process_vm(child, addr, &data, sizeof(data), 1)
-		    == sizeof(data))
-			break;
-		ret = -EIO;
+		ret = generic_ptrace_pokedata(child, addr, data);
 		break;
 
 	case PTRACE_POKEUSR: {
@@ -482,12 +470,17 @@ static inline int audit_arch(void)
  */
 asmlinkage void do_syscall_trace(struct pt_regs *regs, int entryexit)
 {
+	/* do the secure computing check first */
+	if (!entryexit)
+		secure_computing(regs->regs[0]);
+
 	if (unlikely(current->audit_context) && entryexit)
 		audit_syscall_exit(AUDITSC_RESULT(regs->regs[2]),
 		                   regs->regs[2]);
 
 	if (!(current->ptrace & PT_PTRACED))
 		goto out;
+
 	if (!test_thread_flag(TIF_SYSCALL_TRACE))
 		goto out;
 
@@ -505,9 +498,10 @@ asmlinkage void do_syscall_trace(struct pt_regs *regs, int entryexit)
 		send_sig(current->exit_code, current, 1);
 		current->exit_code = 0;
 	}
- out:
+
+out:
 	if (unlikely(current->audit_context) && !entryexit)
-		audit_syscall_entry(audit_arch(), regs->regs[2],
+		audit_syscall_entry(audit_arch(), regs->regs[0],
 				    regs->regs[4], regs->regs[5],
 				    regs->regs[6], regs->regs[7]);
 }

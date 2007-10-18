@@ -138,8 +138,9 @@ static void __init pirq_peer_trick(void)
 	for(i = 1; i < 256; i++) {
 		if (!busmap[i] || pci_find_bus(0, i))
 			continue;
-		if (pci_scan_bus(i, &pci_root_ops, NULL))
-			printk(KERN_INFO "PCI: Discovered primary peer bus %02x [IRQ]\n", i);
+		if (pci_scan_bus_with_sysdata(i))
+			printk(KERN_INFO "PCI: Discovered primary peer "
+			       "bus %02x [IRQ]\n", i);
 	}
 	pcibios_last_bus = -1;
 }
@@ -549,6 +550,7 @@ static __init int intel_router_probe(struct irq_router *r, struct pci_dev *route
 		case PCI_DEVICE_ID_INTEL_ICH9_3:
 		case PCI_DEVICE_ID_INTEL_ICH9_4:
 		case PCI_DEVICE_ID_INTEL_ICH9_5:
+		case PCI_DEVICE_ID_INTEL_TOLAPAI_0:
 			r->name = "PIIX/ICH";
 			r->get = pirq_piix_get;
 			r->set = pirq_piix_set;

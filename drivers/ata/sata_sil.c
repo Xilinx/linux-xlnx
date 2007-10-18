@@ -46,7 +46,7 @@
 #include <linux/libata.h>
 
 #define DRV_NAME	"sata_sil"
-#define DRV_VERSION	"2.2"
+#define DRV_VERSION	"2.3"
 
 enum {
 	SIL_MMIO_BAR		= 5,
@@ -115,8 +115,8 @@ static int sil_init_one (struct pci_dev *pdev, const struct pci_device_id *ent);
 static int sil_pci_device_resume(struct pci_dev *pdev);
 #endif
 static void sil_dev_config(struct ata_device *dev);
-static u32 sil_scr_read (struct ata_port *ap, unsigned int sc_reg);
-static void sil_scr_write (struct ata_port *ap, unsigned int sc_reg, u32 val);
+static int sil_scr_read(struct ata_port *ap, unsigned int sc_reg, u32 *val);
+static int sil_scr_write(struct ata_port *ap, unsigned int sc_reg, u32 val);
 static int sil_set_mode (struct ata_port *ap, struct ata_device **r_failed);
 static void sil_freeze(struct ata_port *ap);
 static void sil_thaw(struct ata_port *ap);
@@ -218,7 +218,7 @@ static const struct ata_port_info sil_port_info[] = {
 		.flags		= SIL_DFL_PORT_FLAGS | SIL_FLAG_MOD15WRITE,
 		.pio_mask	= 0x1f,			/* pio0-4 */
 		.mwdma_mask	= 0x07,			/* mwdma0-2 */
-		.udma_mask	= 0x3f,			/* udma0-5 */
+		.udma_mask	= ATA_UDMA5,
 		.port_ops	= &sil_ops,
 	},
 	/* sil_3112_no_sata_irq */
@@ -227,7 +227,7 @@ static const struct ata_port_info sil_port_info[] = {
 				  SIL_FLAG_NO_SATA_IRQ,
 		.pio_mask	= 0x1f,			/* pio0-4 */
 		.mwdma_mask	= 0x07,			/* mwdma0-2 */
-		.udma_mask	= 0x3f,			/* udma0-5 */
+		.udma_mask	= ATA_UDMA5,
 		.port_ops	= &sil_ops,
 	},
 	/* sil_3512 */
@@ -235,7 +235,7 @@ static const struct ata_port_info sil_port_info[] = {
 		.flags		= SIL_DFL_PORT_FLAGS | SIL_FLAG_RERR_ON_DMA_ACT,
 		.pio_mask	= 0x1f,			/* pio0-4 */
 		.mwdma_mask	= 0x07,			/* mwdma0-2 */
-		.udma_mask	= 0x3f,			/* udma0-5 */
+		.udma_mask	= ATA_UDMA5,
 		.port_ops	= &sil_ops,
 	},
 	/* sil_3114 */
@@ -243,7 +243,7 @@ static const struct ata_port_info sil_port_info[] = {
 		.flags		= SIL_DFL_PORT_FLAGS | SIL_FLAG_RERR_ON_DMA_ACT,
 		.pio_mask	= 0x1f,			/* pio0-4 */
 		.mwdma_mask	= 0x07,			/* mwdma0-2 */
-		.udma_mask	= 0x3f,			/* udma0-5 */
+		.udma_mask	= ATA_UDMA5,
 		.port_ops	= &sil_ops,
 	},
 };
@@ -262,8 +262,9 @@ static const struct {
 	unsigned long sfis_cfg;	/* SATA FIS reception config register */
 } sil_port[] = {
 	/* port 0 ... */
-	{ 0x80, 0x8A, 0x00, 0x10, 0x40, 0x100, 0x148, 0xb4, 0x14c },
-	{ 0xC0, 0xCA, 0x08, 0x18, 0x44, 0x180, 0x1c8, 0xf4, 0x1cc },
+	/*   tf    ctl  bmdma  bmdma2  fifo    scr   sien   mode   sfis */
+	{  0x80,  0x8A,   0x0,  0x10,  0x40, 0x100, 0x148,  0xb4, 0x14c },
+	{  0xC0,  0xCA,   0x8,  0x18,  0x44, 0x180, 0x1c8,  0xf4, 0x1cc },
 	{ 0x280, 0x28A, 0x200, 0x210, 0x240, 0x300, 0x348, 0x2b4, 0x34c },
 	{ 0x2C0, 0x2CA, 0x208, 0x218, 0x244, 0x380, 0x3c8, 0x2f4, 0x3cc },
 	/* ... port 3 */
@@ -349,19 +350,26 @@ static inline void __iomem *sil_scr_addr(struct ata_port *ap, unsigned int sc_re
 	return NULL;
 }
 
-static u32 sil_scr_read (struct ata_port *ap, unsigned int sc_reg)
+static int sil_scr_read(struct ata_port *ap, unsigned int sc_reg, u32 *val)
 {
 	void __iomem *mmio = sil_scr_addr(ap, sc_reg);
-	if (mmio)
-		return readl(mmio);
-	return 0xffffffffU;
+
+	if (mmio) {
+		*val = readl(mmio);
+		return 0;
+	}
+	return -EINVAL;
 }
 
-static void sil_scr_write (struct ata_port *ap, unsigned int sc_reg, u32 val)
+static int sil_scr_write(struct ata_port *ap, unsigned int sc_reg, u32 val)
 {
 	void __iomem *mmio = sil_scr_addr(ap, sc_reg);
-	if (mmio)
+
+	if (mmio) {
 		writel(val, mmio);
+		return 0;
+	}
+	return -EINVAL;
 }
 
 static void sil_host_intr(struct ata_port *ap, u32 bmdma2)
@@ -377,7 +385,7 @@ static void sil_host_intr(struct ata_port *ap, u32 bmdma2)
 		 * controllers continue to assert IRQ as long as
 		 * SError bits are pending.  Clear SError immediately.
 		 */
-		serror = sil_scr_read(ap, SCR_ERROR);
+		sil_scr_read(ap, SCR_ERROR, &serror);
 		sil_scr_write(ap, SCR_ERROR, serror);
 
 		/* Trigger hotplug and accumulate SError only if the

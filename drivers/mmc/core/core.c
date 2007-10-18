@@ -27,13 +27,33 @@
 #include <linux/mmc/sd.h>
 
 #include "core.h"
-#include "sysfs.h"
+#include "bus.h"
+#include "host.h"
 
 #include "mmc_ops.h"
 #include "sd_ops.h"
 
 extern int mmc_attach_mmc(struct mmc_host *host, u32 ocr);
 extern int mmc_attach_sd(struct mmc_host *host, u32 ocr);
+
+static struct workqueue_struct *workqueue;
+
+/*
+ * Internal function. Schedule delayed work in the MMC work queue.
+ */
+static int mmc_schedule_delayed_work(struct delayed_work *work,
+				     unsigned long delay)
+{
+	return queue_delayed_work(workqueue, work, delay);
+}
+
+/*
+ * Internal function. Flush all scheduled work from the MMC work queue.
+ */
+static void mmc_flush_scheduled_work(void)
+{
+	flush_workqueue(workqueue);
+}
 
 /**
  *	mmc_request_done - finish processing an MMC request
@@ -48,32 +68,41 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 	struct mmc_command *cmd = mrq->cmd;
 	int err = cmd->error;
 
-	pr_debug("%s: req done (CMD%u): %d/%d/%d: %08x %08x %08x %08x\n",
-		 mmc_hostname(host), cmd->opcode, err,
-		 mrq->data ? mrq->data->error : 0,
-		 mrq->stop ? mrq->stop->error : 0,
-		 cmd->resp[0], cmd->resp[1], cmd->resp[2], cmd->resp[3]);
-
 	if (err && cmd->retries) {
+		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
+			mmc_hostname(host), cmd->opcode, err);
+
 		cmd->retries--;
 		cmd->error = 0;
 		host->ops->request(host, mrq);
-	} else if (mrq->done) {
-		mrq->done(mrq);
+	} else {
+		pr_debug("%s: req done (CMD%u): %d: %08x %08x %08x %08x\n",
+			mmc_hostname(host), cmd->opcode, err,
+			cmd->resp[0], cmd->resp[1],
+			cmd->resp[2], cmd->resp[3]);
+
+		if (mrq->data) {
+			pr_debug("%s:     %d bytes transferred: %d\n",
+				mmc_hostname(host),
+				mrq->data->bytes_xfered, mrq->data->error);
+		}
+
+		if (mrq->stop) {
+			pr_debug("%s:     (CMD%u): %d: %08x %08x %08x %08x\n",
+				mmc_hostname(host), mrq->stop->opcode,
+				mrq->stop->error,
+				mrq->stop->resp[0], mrq->stop->resp[1],
+				mrq->stop->resp[2], mrq->stop->resp[3]);
+		}
+
+		if (mrq->done)
+			mrq->done(mrq);
 	}
 }
 
 EXPORT_SYMBOL(mmc_request_done);
 
-/**
- *	mmc_start_request - start a command on a host
- *	@host: MMC host to start command on
- *	@mrq: MMC request to start
- *
- *	Queue a command on the specified host.  We expect the
- *	caller to be holding the host lock with interrupts disabled.
- */
-void
+static void
 mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 {
 #ifdef CONFIG_MMC_DEBUG
@@ -83,6 +112,21 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	pr_debug("%s: starting CMD%u arg %08x flags %08x\n",
 		 mmc_hostname(host), mrq->cmd->opcode,
 		 mrq->cmd->arg, mrq->cmd->flags);
+
+	if (mrq->data) {
+		pr_debug("%s:     blksz %d blocks %d flags %08x "
+			"tsac %d ms nsac %d\n",
+			mmc_hostname(host), mrq->data->blksz,
+			mrq->data->blocks, mrq->data->flags,
+			mrq->data->timeout_ns / 10000000,
+			mrq->data->timeout_clks);
+	}
+
+	if (mrq->stop) {
+		pr_debug("%s:     CMD%u arg %08x flags %08x\n",
+			 mmc_hostname(host), mrq->stop->opcode,
+			 mrq->stop->arg, mrq->stop->flags);
+	}
 
 	WARN_ON(!host->claimed);
 
@@ -113,14 +157,21 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	host->ops->request(host, mrq);
 }
 
-EXPORT_SYMBOL(mmc_start_request);
-
 static void mmc_wait_done(struct mmc_request *mrq)
 {
 	complete(mrq->done_data);
 }
 
-int mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+/**
+ *	mmc_wait_for_req - start a request and wait for completion
+ *	@host: MMC host to start command
+ *	@mrq: MMC request to start
+ *
+ *	Start a new MMC custom command request for a host, and wait
+ *	for the command to complete. Does not attempt to parse the
+ *	response.
+ */
+void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 {
 	DECLARE_COMPLETION_ONSTACK(complete);
 
@@ -130,8 +181,6 @@ int mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 	mmc_start_request(host, mrq);
 
 	wait_for_completion(&complete);
-
-	return 0;
 }
 
 EXPORT_SYMBOL(mmc_wait_for_req);
@@ -172,6 +221,9 @@ EXPORT_SYMBOL(mmc_wait_for_cmd);
  *	@data: data phase for command
  *	@card: the MMC card associated with the data transfer
  *	@write: flag to differentiate reads from writes
+ *
+ *	Computes the data timeout parameters according to the
+ *	correct algorithm given the card type.
  */
 void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card,
 			  int write)
@@ -220,20 +272,17 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card,
 EXPORT_SYMBOL(mmc_set_data_timeout);
 
 /**
- *	__mmc_claim_host - exclusively claim a host
+ *	mmc_claim_host - exclusively claim a host
  *	@host: mmc host to claim
- *	@card: mmc card to claim host for
  *
- *	Claim a host for a set of operations.  If a valid card
- *	is passed and this wasn't the last card selected, select
- *	the card before returning.
- *
- *	Note: you should use mmc_card_claim_host or mmc_claim_host.
+ *	Claim a host for a set of operations.
  */
 void mmc_claim_host(struct mmc_host *host)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	unsigned long flags;
+
+	might_sleep();
 
 	add_wait_queue(&host->wq, &wait);
 	spin_lock_irqsave(&host->lock, flags);
@@ -369,22 +418,6 @@ void mmc_set_timing(struct mmc_host *host, unsigned int timing)
 }
 
 /*
- * Allocate a new MMC card
- */
-struct mmc_card *mmc_alloc_card(struct mmc_host *host)
-{
-	struct mmc_card *card;
-
-	card = kmalloc(sizeof(struct mmc_card), GFP_KERNEL);
-	if (!card)
-		return ERR_PTR(-ENOMEM);
-
-	mmc_init_card(card, host);
-
-	return card;
-}
-
-/*
  * Apply power to the MMC stack.  This is a two-stage process.
  * First, we enable power to the card without the clock running.
  * We then wait a bit for the power to stabilise.  Finally,
@@ -426,6 +459,45 @@ static void mmc_power_off(struct mmc_host *host)
 	host->ios.bus_width = MMC_BUS_WIDTH_1;
 	host->ios.timing = MMC_TIMING_LEGACY;
 	mmc_set_ios(host);
+}
+
+/*
+ * Cleanup when the last reference to the bus operator is dropped.
+ */
+void __mmc_release_bus(struct mmc_host *host)
+{
+	BUG_ON(!host);
+	BUG_ON(host->bus_refs);
+	BUG_ON(!host->bus_dead);
+
+	host->bus_ops = NULL;
+}
+
+/*
+ * Increase reference count of bus operator
+ */
+static inline void mmc_bus_get(struct mmc_host *host)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+	host->bus_refs++;
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+/*
+ * Decrease reference count of bus operator and free it if
+ * it is the last reference.
+ */
+static inline void mmc_bus_put(struct mmc_host *host)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+	host->bus_refs--;
+	if ((host->bus_refs == 0) && host->bus_ops)
+		__mmc_release_bus(host);
+	spin_unlock_irqrestore(&host->lock, flags);
 }
 
 /*
@@ -477,25 +549,15 @@ void mmc_detach_bus(struct mmc_host *host)
 	mmc_bus_put(host);
 }
 
-/*
- * Cleanup when the last reference to the bus operator is dropped.
- */
-void __mmc_release_bus(struct mmc_host *host)
-{
-	BUG_ON(!host);
-	BUG_ON(host->bus_refs);
-	BUG_ON(!host->bus_dead);
-
-	host->bus_ops = NULL;
-}
-
 /**
  *	mmc_detect_change - process change of state on a MMC socket
  *	@host: host which changed state.
  *	@delay: optional delay to wait before detection (jiffies)
  *
- *	All we know is that card(s) have been inserted or removed
- *	from the socket(s).  We don't know which socket or cards.
+ *	MMC drivers should call this when they detect a card has been
+ *	inserted or removed. The MMC layer will confirm that any
+ *	present card is still functional, and initialize any newly
+ *	inserted.
  */
 void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 {
@@ -512,7 +574,7 @@ void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 EXPORT_SYMBOL(mmc_detect_change);
 
 
-static void mmc_rescan(struct work_struct *work)
+void mmc_rescan(struct work_struct *work)
 {
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
@@ -561,69 +623,13 @@ static void mmc_rescan(struct work_struct *work)
 	}
 }
 
-
-/**
- *	mmc_alloc_host - initialise the per-host structure.
- *	@extra: sizeof private data structure
- *	@dev: pointer to host device model structure
- *
- *	Initialise the per-host structure.
- */
-struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
+void mmc_start_host(struct mmc_host *host)
 {
-	struct mmc_host *host;
-
-	host = mmc_alloc_host_sysfs(extra, dev);
-	if (host) {
-		spin_lock_init(&host->lock);
-		init_waitqueue_head(&host->wq);
-		INIT_DELAYED_WORK(&host->detect, mmc_rescan);
-
-		/*
-		 * By default, hosts do not support SGIO or large requests.
-		 * They have to set these according to their abilities.
-		 */
-		host->max_hw_segs = 1;
-		host->max_phys_segs = 1;
-		host->max_seg_size = PAGE_CACHE_SIZE;
-
-		host->max_req_size = PAGE_CACHE_SIZE;
-		host->max_blk_size = 512;
-		host->max_blk_count = PAGE_CACHE_SIZE / 512;
-	}
-
-	return host;
+	mmc_power_off(host);
+	mmc_detect_change(host, 0);
 }
 
-EXPORT_SYMBOL(mmc_alloc_host);
-
-/**
- *	mmc_add_host - initialise host hardware
- *	@host: mmc host
- */
-int mmc_add_host(struct mmc_host *host)
-{
-	int ret;
-
-	ret = mmc_add_host_sysfs(host);
-	if (ret == 0) {
-		mmc_power_off(host);
-		mmc_detect_change(host, 0);
-	}
-
-	return ret;
-}
-
-EXPORT_SYMBOL(mmc_add_host);
-
-/**
- *	mmc_remove_host - remove host hardware
- *	@host: mmc host
- *
- *	Unregister and remove all cards associated with this host,
- *	and power down the MMC bus.
- */
-void mmc_remove_host(struct mmc_host *host)
+void mmc_stop_host(struct mmc_host *host)
 {
 #ifdef CONFIG_MMC_DEBUG
 	unsigned long flags;
@@ -648,23 +654,7 @@ void mmc_remove_host(struct mmc_host *host)
 	BUG_ON(host->card);
 
 	mmc_power_off(host);
-	mmc_remove_host_sysfs(host);
 }
-
-EXPORT_SYMBOL(mmc_remove_host);
-
-/**
- *	mmc_free_host - free the host structure
- *	@host: mmc host
- *
- *	Free the host once all references to it have been dropped.
- */
-void mmc_free_host(struct mmc_host *host)
-{
-	mmc_free_host_sysfs(host);
-}
-
-EXPORT_SYMBOL(mmc_free_host);
 
 #ifdef CONFIG_PM
 
@@ -725,5 +715,32 @@ int mmc_resume_host(struct mmc_host *host)
 EXPORT_SYMBOL(mmc_resume_host);
 
 #endif
+
+static int __init mmc_init(void)
+{
+	int ret;
+
+	workqueue = create_singlethread_workqueue("kmmcd");
+	if (!workqueue)
+		return -ENOMEM;
+
+	ret = mmc_register_bus();
+	if (ret == 0) {
+		ret = mmc_register_host_class();
+		if (ret)
+			mmc_unregister_bus();
+	}
+	return ret;
+}
+
+static void __exit mmc_exit(void)
+{
+	mmc_unregister_host_class();
+	mmc_unregister_bus();
+	destroy_workqueue(workqueue);
+}
+
+module_init(mmc_init);
+module_exit(mmc_exit);
 
 MODULE_LICENSE("GPL");

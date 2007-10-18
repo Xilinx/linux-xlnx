@@ -58,6 +58,21 @@ static __init int __maybe_unused r10000_llsc_war(void)
 }
 
 /*
+ * Found by experiment: At least some revisions of the 4kc throw under
+ * some circumstances a machine check exception, triggered by invalid
+ * values in the index register.  Delaying the tlbp instruction until
+ * after the next branch,  plus adding an additional nop in front of
+ * tlbwi/tlbwr avoids the invalid index register values. Nobody knows
+ * why; it's not an issue caused by the core RTL.
+ *
+ */
+static __init int __attribute__((unused)) m4kc_tlbp_war(void)
+{
+	return (current_cpu_data.processor_id & 0xffff00) ==
+	       (PRID_COMP_MIPS | PRID_IMP_4KC);
+}
+
+/*
  * A little micro-assembler, intended for TLB refill handler
  * synthesizing. It is intentionally kept simple, does only support
  * a subset of instructions, and does not try to hide pipeline effects
@@ -78,7 +93,7 @@ enum fields
 	SET = 0x200
 };
 
-#define OP_MASK		0x2f
+#define OP_MASK		0x3f
 #define OP_SH		26
 #define RS_MASK		0x1f
 #define RS_SH		21
@@ -92,7 +107,7 @@ enum fields
 #define IMM_SH		0
 #define JIMM_MASK	0x3ffffff
 #define JIMM_SH		0
-#define FUNC_MASK	0x2f
+#define FUNC_MASK	0x3f
 #define FUNC_SH		0
 #define SET_MASK	0x7
 #define SET_SH		0
@@ -893,6 +908,9 @@ static __init void build_tlb_write_entry(u32 **p, struct label **l,
 	case CPU_4KSC:
 	case CPU_20KC:
 	case CPU_25KF:
+	case CPU_LOONGSON2:
+		if (m4kc_tlbp_war())
+			i_nop(p);
 		tlbw(p);
 		break;
 
@@ -1276,7 +1294,8 @@ static void __init build_r4000_tlb_refill_handler(void)
 	 * need three, with the second nop'ed and the third being
 	 * unused.
 	 */
-#ifdef CONFIG_32BIT
+	/* Loongson2 ebase is different than r4k, we have more space */
+#if defined(CONFIG_32BIT) || defined(CONFIG_CPU_LOONGSON2)
 	if ((p - tlb_handler) > 64)
 		panic("TLB refill handler space exceeded");
 #else
@@ -1289,7 +1308,7 @@ static void __init build_r4000_tlb_refill_handler(void)
 	/*
 	 * Now fold the handler in the TLB refill handler space.
 	 */
-#ifdef CONFIG_32BIT
+#if defined(CONFIG_32BIT) || defined(CONFIG_CPU_LOONGSON2)
 	f = final_handler;
 	/* Simplest case, just copy the handler. */
 	copy_handler(relocs, labels, tlb_handler, p, f);
@@ -1336,7 +1355,7 @@ static void __init build_r4000_tlb_refill_handler(void)
 		final_len);
 
 	f = final_handler;
-#ifdef CONFIG_64BIT
+#if defined(CONFIG_64BIT) && !defined(CONFIG_CPU_LOONGSON2)
 	if (final_len > 32)
 		final_len = 64;
 	else
@@ -1703,7 +1722,8 @@ build_r4000_tlbchange_handler_head(u32 **p, struct label **l,
 	l_smp_pgtable_change(l, *p);
 # endif
 	iPTE_LW(p, l, pte, ptr); /* get even pte */
-	build_tlb_probe_entry(p);
+	if (!m4kc_tlbp_war())
+		build_tlb_probe_entry(p);
 }
 
 static void __init
@@ -1745,6 +1765,8 @@ static void __init build_r4000_tlb_load_handler(void)
 
 	build_r4000_tlbchange_handler_head(&p, &l, &r, K0, K1);
 	build_pte_present(&p, &l, &r, K0, K1, label_nopage_tlbl);
+	if (m4kc_tlbp_war())
+		build_tlb_probe_entry(&p);
 	build_make_valid(&p, &r, K0, K1);
 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);
 
@@ -1779,6 +1801,8 @@ static void __init build_r4000_tlb_store_handler(void)
 
 	build_r4000_tlbchange_handler_head(&p, &l, &r, K0, K1);
 	build_pte_writable(&p, &l, &r, K0, K1, label_nopage_tlbs);
+	if (m4kc_tlbp_war())
+		build_tlb_probe_entry(&p);
 	build_make_write(&p, &r, K0, K1);
 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);
 
@@ -1813,6 +1837,8 @@ static void __init build_r4000_tlb_modify_handler(void)
 
 	build_r4000_tlbchange_handler_head(&p, &l, &r, K0, K1);
 	build_pte_modifiable(&p, &l, &r, K0, K1, label_nopage_tlbm);
+	if (m4kc_tlbp_war())
+		build_tlb_probe_entry(&p);
 	/* Present and writable bits set, set accessed and dirty bits. */
 	build_make_write(&p, &r, K0, K1);
 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);

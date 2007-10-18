@@ -55,11 +55,7 @@ extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
 
 #define PTE_PHYS_MASK		(0x20000000 - PAGE_SIZE)
 
-/*
- * First 1MB map is used by fixed purpose.
- * Currently only 4-entry (16kB) is used (see arch/sh/mm/cache.c)
- */
-#define VMALLOC_START	(P3SEG+0x00100000)
+#define VMALLOC_START	(P3SEG)
 #define VMALLOC_END	(FIXADDR_START-2*PAGE_SIZE)
 
 /*
@@ -402,12 +398,8 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 #define pte_file(pte)		(pte_val(pte) & _PAGE_FILE)
 
 #ifdef CONFIG_X2TLB
-#define pte_read(pte)		((pte).pte_high & _PAGE_EXT_USER_READ)
-#define pte_exec(pte)		((pte).pte_high & _PAGE_EXT_USER_EXEC)
 #define pte_write(pte)		((pte).pte_high & _PAGE_EXT_USER_WRITE)
 #else
-#define pte_read(pte)		(pte_val(pte) & _PAGE_USER)
-#define pte_exec(pte)		(pte_val(pte) & _PAGE_USER)
 #define pte_write(pte)		(pte_val(pte) & _PAGE_RW)
 #endif
 
@@ -420,20 +412,12 @@ static inline pte_t pte_##fn(pte_t pte) { pte.pte_##h op; return pte; }
  * individually toggled (and user permissions are entirely decoupled from
  * kernel permissions), we attempt to couple them a bit more sanely here.
  */
-PTE_BIT_FUNC(high, rdprotect, &= ~_PAGE_EXT_USER_READ);
-PTE_BIT_FUNC(high, mkread, |= _PAGE_EXT_USER_READ | _PAGE_EXT_KERN_READ);
 PTE_BIT_FUNC(high, wrprotect, &= ~_PAGE_EXT_USER_WRITE);
 PTE_BIT_FUNC(high, mkwrite, |= _PAGE_EXT_USER_WRITE | _PAGE_EXT_KERN_WRITE);
-PTE_BIT_FUNC(high, exprotect, &= ~_PAGE_EXT_USER_EXEC);
-PTE_BIT_FUNC(high, mkexec, |= _PAGE_EXT_USER_EXEC | _PAGE_EXT_KERN_EXEC);
 PTE_BIT_FUNC(high, mkhuge, |= _PAGE_SZHUGE);
 #else
-PTE_BIT_FUNC(low, rdprotect, &= ~_PAGE_USER);
-PTE_BIT_FUNC(low, mkread, |= _PAGE_USER);
 PTE_BIT_FUNC(low, wrprotect, &= ~_PAGE_RW);
 PTE_BIT_FUNC(low, mkwrite, |= _PAGE_RW);
-PTE_BIT_FUNC(low, exprotect, &= ~_PAGE_USER);
-PTE_BIT_FUNC(low, mkexec, |= _PAGE_USER);
 PTE_BIT_FUNC(low, mkhuge, |= _PAGE_SZHUGE);
 #endif
 

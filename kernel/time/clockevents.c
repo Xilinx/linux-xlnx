@@ -113,16 +113,6 @@ int clockevents_register_notifier(struct notifier_block *nb)
 	return ret;
 }
 
-/**
- * clockevents_unregister_notifier - unregister a clock events change listener
- */
-void clockevents_unregister_notifier(struct notifier_block *nb)
-{
-	spin_lock(&clockevents_lock);
-	raw_notifier_chain_unregister(&clockevents_chain, nb);
-	spin_unlock(&clockevents_lock);
-}
-
 /*
  * Notify about a clock event change. Called with clockevents_lock
  * held.
@@ -202,47 +192,6 @@ void clockevents_exchange_device(struct clock_event_device *old,
 		clockevents_set_mode(new, CLOCK_EVT_MODE_SHUTDOWN);
 	}
 	local_irq_restore(flags);
-}
-
-/**
- * clockevents_request_device
- */
-struct clock_event_device *clockevents_request_device(unsigned int features,
-						      cpumask_t cpumask)
-{
-	struct clock_event_device *cur, *dev = NULL;
-	struct list_head *tmp;
-
-	spin_lock(&clockevents_lock);
-
-	list_for_each(tmp, &clockevent_devices) {
-		cur = list_entry(tmp, struct clock_event_device, list);
-
-		if ((cur->features & features) == features &&
-		    cpus_equal(cpumask, cur->cpumask)) {
-			if (!dev || dev->rating < cur->rating)
-				dev = cur;
-		}
-	}
-
-	clockevents_exchange_device(NULL, dev);
-
-	spin_unlock(&clockevents_lock);
-
-	return dev;
-}
-
-/**
- * clockevents_release_device
- */
-void clockevents_release_device(struct clock_event_device *dev)
-{
-	spin_lock(&clockevents_lock);
-
-	clockevents_exchange_device(dev, NULL);
-	clockevents_notify_released();
-
-	spin_unlock(&clockevents_lock);
 }
 
 /**

@@ -46,7 +46,7 @@ static int ip_clear_mutable_options(struct iphdr *iph, __be32 *daddr)
 			memcpy(daddr, optptr+optlen-4, 4);
 			/* Fall through */
 		default:
-			memset(optptr+2, 0, optlen-2);
+			memset(optptr, 0, optlen);
 		}
 		l -= optlen;
 		optptr += optlen;
@@ -339,3 +339,4 @@ static void __exit ah4_fini(void)
 module_init(ah4_init);
 module_exit(ah4_fini);
 MODULE_LICENSE("GPL");
+MODULE_ALIAS_XFRM_TYPE(AF_INET, XFRM_PROTO_AH);

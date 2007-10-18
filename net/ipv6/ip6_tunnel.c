@@ -385,7 +385,7 @@ parse_tlv_tnl_enc_lim(struct sk_buff *skb, __u8 * raw)
 
 static int
 ip6_tnl_err(struct sk_buff *skb, __u8 ipproto, struct inet6_skb_parm *opt,
-	    int *type, int *code, int *msg, __be32 *info, int offset)
+	    int *type, int *code, int *msg, __u32 *info, int offset)
 {
 	struct ipv6hdr *ipv6h = (struct ipv6hdr *) skb->data;
 	struct ip6_tnl *t;
@@ -435,7 +435,7 @@ ip6_tnl_err(struct sk_buff *skb, __u8 ipproto, struct inet6_skb_parm *opt,
 		if ((*code) == ICMPV6_HDR_FIELD)
 			teli = parse_tlv_tnl_enc_lim(skb, skb->data);
 
-		if (teli && teli == ntohl(*info) - 2) {
+		if (teli && teli == *info - 2) {
 			tel = (struct ipv6_tlv_tnl_enc_lim *) &skb->data[teli];
 			if (tel->encap_limit == 0) {
 				if (net_ratelimit())
@@ -452,7 +452,7 @@ ip6_tnl_err(struct sk_buff *skb, __u8 ipproto, struct inet6_skb_parm *opt,
 		}
 		break;
 	case ICMPV6_PKT_TOOBIG:
-		mtu = ntohl(*info) - offset;
+		mtu = *info - offset;
 		if (mtu < IPV6_MIN_MTU)
 			mtu = IPV6_MIN_MTU;
 		t->dev->mtu = mtu;
@@ -478,12 +478,12 @@ out:
 
 static int
 ip4ip6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
-	   int type, int code, int offset, __u32 info)
+	   int type, int code, int offset, __be32 info)
 {
 	int rel_msg = 0;
 	int rel_type = type;
 	int rel_code = code;
-	__u32 rel_info = info;
+	__u32 rel_info = ntohl(info);
 	int err;
 	struct sk_buff *skb2;
 	struct iphdr *eiph;
@@ -564,10 +564,9 @@ ip4ip6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 			goto out;
 
 		skb2->dst->ops->update_pmtu(skb2->dst, rel_info);
-		rel_info = htonl(rel_info);
 	}
 
-	icmp_send(skb2, rel_type, rel_code, rel_info);
+	icmp_send(skb2, rel_type, rel_code, htonl(rel_info));
 
 out:
 	kfree_skb(skb2);
@@ -576,12 +575,12 @@ out:
 
 static int
 ip6ip6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
-	   int type, int code, int offset, __u32 info)
+	   int type, int code, int offset, __be32 info)
 {
 	int rel_msg = 0;
 	int rel_type = type;
 	int rel_code = code;
-	__u32 rel_info = info;
+	__u32 rel_info = ntohl(info);
 	int err;
 
 	err = ip6_tnl_err(skb, IPPROTO_IPV6, opt, &rel_type, &rel_code,
@@ -883,8 +882,8 @@ static int ip6_tnl_xmit2(struct sk_buff *skb,
 	 */
 	max_headroom += LL_RESERVED_SPACE(tdev);
 
-	if (skb_headroom(skb) < max_headroom ||
-	    skb_cloned(skb) || skb_shared(skb)) {
+	if (skb_headroom(skb) < max_headroom || skb_shared(skb) ||
+	    (skb_cloned(skb) && !skb_clone_writable(skb, 0))) {
 		struct sk_buff *new_skb;
 
 		if (!(new_skb = skb_realloc_headroom(skb, max_headroom)))
@@ -962,8 +961,8 @@ ip4ip6_tnl_xmit(struct sk_buff *skb, struct net_device *dev)
 	dsfield = ipv4_get_dsfield(iph);
 
 	if ((t->parms.flags & IP6_TNL_F_USE_ORIG_TCLASS))
-		fl.fl6_flowlabel |= ntohl(((__u32)iph->tos << IPV6_TCLASS_SHIFT)
-					  & IPV6_TCLASS_MASK);
+		fl.fl6_flowlabel |= htonl((__u32)iph->tos << IPV6_TCLASS_SHIFT)
+					  & IPV6_TCLASS_MASK;
 
 	err = ip6_tnl_xmit2(skb, dev, dsfield, &fl, encap_limit, &mtu);
 	if (err != 0) {

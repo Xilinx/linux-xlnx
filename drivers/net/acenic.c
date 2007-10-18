@@ -159,10 +159,6 @@ static struct pci_device_id acenic_pci_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, acenic_pci_tbl);
 
-#ifndef SET_NETDEV_DEV
-#define SET_NETDEV_DEV(net, pdev)	do{} while(0)
-#endif
-
 #define ace_sync_irq(irq)	synchronize_irq(irq)
 
 #ifndef offset_in_page
@@ -3131,12 +3127,6 @@ static int __devinit read_eeprom_byte(struct net_device *dev,
 	u32 local;
 	int result = 0;
 	short i;
-
-	if (!dev) {
-		printk(KERN_ERR "No device!\n");
-		result = -ENODEV;
-		goto out;
-	}
 
 	/*
 	 * Don't take interrupts on this CPU will bit banging

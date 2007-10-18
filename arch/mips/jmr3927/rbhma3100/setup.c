@@ -290,19 +290,6 @@ static void __init tx3927_setup(void)
 	       tx3927_ccfgptr->crir,
 	       tx3927_ccfgptr->ccfg, tx3927_ccfgptr->pcfg);
 
-	/* IRC */
-	/* disable interrupt control */
-	tx3927_ircptr->cer = 0;
-	/* mask all IRC interrupts */
-	tx3927_ircptr->imr = 0;
-	for (i = 0; i < TX3927_NUM_IR / 2; i++) {
-		tx3927_ircptr->ilr[i] = 0;
-	}
-	/* setup IRC interrupt mode (Low Active) */
-	for (i = 0; i < TX3927_NUM_IR / 8; i++) {
-		tx3927_ircptr->cr[i] = 0;
-	}
-
 	/* TMR */
 	/* disable all timers */
 	for (i = 0; i < TX3927_NR_TMR; i++) {
@@ -434,7 +421,7 @@ EXPORT_SYMBOL(__swizzle_addr_b);
 
 static int __init jmr3927_rtc_init(void)
 {
-	struct resource res = {
+	static struct resource __initdata res = {
 		.start	= JMR3927_IOC_NVRAMB_ADDR - IO_BASE,
 		.end	= JMR3927_IOC_NVRAMB_ADDR - IO_BASE + 0x800 - 1,
 		.flags	= IORESOURCE_MEM,

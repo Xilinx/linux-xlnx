@@ -146,8 +146,7 @@ static void pkt_kobj_release(struct kobject *kobj)
  **********************************************************/
 
 #define DEF_ATTR(_obj,_name,_mode) \
-	static struct attribute _obj = { \
-		.name = _name, .owner = THIS_MODULE, .mode = _mode }
+	static struct attribute _obj = { .name = _name, .mode = _mode }
 
 /**********************************************************
   /sys/class/pktcdvd/pktcdvd[0-7]/
@@ -753,7 +752,7 @@ static inline struct bio *pkt_get_list_first(struct bio **list_head, struct bio 
  */
 static int pkt_generic_packet(struct pktcdvd_device *pd, struct packet_command *cgc)
 {
-	request_queue_t *q = bdev_get_queue(pd->bdev);
+	struct request_queue *q = bdev_get_queue(pd->bdev);
 	struct request *rq;
 	int ret = 0;
 
@@ -980,7 +979,7 @@ static void pkt_iosched_process_queue(struct pktcdvd_device *pd)
  * Special care is needed if the underlying block device has a small
  * max_phys_segments value.
  */
-static int pkt_set_segment_merging(struct pktcdvd_device *pd, request_queue_t *q)
+static int pkt_set_segment_merging(struct pktcdvd_device *pd, struct request_queue *q)
 {
 	if ((pd->settings.size << 9) / CD_FRAMESIZE <= q->max_phys_segments) {
 		/*
@@ -1594,6 +1593,7 @@ static int kcdrwd(void *foobar)
 	long min_sleep_time, residue;
 
 	set_user_nice(current, -20);
+	set_freezable();
 
 	for (;;) {
 		DECLARE_WAITQUEUE(wait, current);
@@ -1653,9 +1653,6 @@ static int kcdrwd(void *foobar)
 				}
 			}
 
-			if (signal_pending(current)) {
-				flush_signals(current);
-			}
 			if (kthread_should_stop())
 				break;
 		}
@@ -2317,7 +2314,7 @@ static int pkt_open_dev(struct pktcdvd_device *pd, int write)
 {
 	int ret;
 	long lba;
-	request_queue_t *q;
+	struct request_queue *q;
 
 	/*
 	 * We need to re-open the cdrom device without O_NONBLOCK to be able
@@ -2480,7 +2477,7 @@ static int pkt_end_io_read_cloned(struct bio *bio, unsigned int bytes_done, int 
 	return 0;
 }
 
-static int pkt_make_request(request_queue_t *q, struct bio *bio)
+static int pkt_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct pktcdvd_device *pd;
 	char b[BDEVNAME_SIZE];
@@ -2629,7 +2626,7 @@ end_io:
 
 
 
-static int pkt_merge_bvec(request_queue_t *q, struct bio *bio, struct bio_vec *bvec)
+static int pkt_merge_bvec(struct request_queue *q, struct bio *bio, struct bio_vec *bvec)
 {
 	struct pktcdvd_device *pd = q->queuedata;
 	sector_t zone = ZONE(bio->bi_sector, pd);
@@ -2650,7 +2647,7 @@ static int pkt_merge_bvec(request_queue_t *q, struct bio *bio, struct bio_vec *b
 
 static void pkt_init_queue(struct pktcdvd_device *pd)
 {
-	request_queue_t *q = pd->disk->queue;
+	struct request_queue *q = pd->disk->queue;
 
 	blk_queue_make_request(q, pkt_make_request);
 	blk_queue_hardsect_size(q, CD_FRAMESIZE);

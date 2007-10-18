@@ -59,11 +59,13 @@ static inline void blkcipher_unmap_dst(struct blkcipher_walk *walk)
 	scatterwalk_unmap(walk->dst.virt.addr, 1);
 }
 
+/* Get a spot of the specified length that does not straddle a page.
+ * The caller needs to ensure that there is enough space for this operation.
+ */
 static inline u8 *blkcipher_get_spot(u8 *start, unsigned int len)
 {
-	if (offset_in_page(start + len) < len)
-		return (u8 *)((unsigned long)(start + len) & PAGE_MASK);
-	return start;
+	u8 *end_page = (u8 *)(((unsigned long)(start + len - 1)) & PAGE_MASK);
+	return start > end_page ? start : end_page;
 }
 
 static inline unsigned int blkcipher_done_slow(struct crypto_blkcipher *tfm,
@@ -155,7 +157,8 @@ static inline int blkcipher_next_slow(struct blkcipher_desc *desc,
 	if (walk->buffer)
 		goto ok;
 
-	n = bsize * 2 + (alignmask & ~(crypto_tfm_ctx_alignment() - 1));
+	n = bsize * 3 - (alignmask + 1) +
+	    (alignmask & ~(crypto_tfm_ctx_alignment() - 1));
 	walk->buffer = kmalloc(n, GFP_ATOMIC);
 	if (!walk->buffer)
 		return blkcipher_walk_done(desc, walk, -ENOMEM);
@@ -336,15 +339,40 @@ static int blkcipher_walk_first(struct blkcipher_desc *desc,
 	return blkcipher_walk_next(desc, walk);
 }
 
+static int setkey_unaligned(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen)
+{
+	struct blkcipher_alg *cipher = &tfm->__crt_alg->cra_blkcipher;
+	unsigned long alignmask = crypto_tfm_alg_alignmask(tfm);
+	int ret;
+	u8 *buffer, *alignbuffer;
+	unsigned long absize;
+
+	absize = keylen + alignmask;
+	buffer = kmalloc(absize, GFP_ATOMIC);
+	if (!buffer)
+		return -ENOMEM;
+
+	alignbuffer = (u8 *)ALIGN((unsigned long)buffer, alignmask + 1);
+	memcpy(alignbuffer, key, keylen);
+	ret = cipher->setkey(tfm, alignbuffer, keylen);
+	memset(alignbuffer, 0, keylen);
+	kfree(buffer);
+	return ret;
+}
+
 static int setkey(struct crypto_tfm *tfm, const u8 *key,
 		  unsigned int keylen)
 {
 	struct blkcipher_alg *cipher = &tfm->__crt_alg->cra_blkcipher;
+	unsigned long alignmask = crypto_tfm_alg_alignmask(tfm);
 
 	if (keylen < cipher->min_keysize || keylen > cipher->max_keysize) {
 		tfm->crt_flags |= CRYPTO_TFM_RES_BAD_KEY_LEN;
 		return -EINVAL;
 	}
+
+	if ((unsigned long)key & alignmask)
+		return setkey_unaligned(tfm, key, keylen);
 
 	return cipher->setkey(tfm, key, keylen);
 }

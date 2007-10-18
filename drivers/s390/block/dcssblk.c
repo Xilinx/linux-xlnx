@@ -621,7 +621,7 @@ out:
 }
 
 static int
-dcssblk_make_request(request_queue_t *q, struct bio *bio)
+dcssblk_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct dcssblk_dev_info *dev_info;
 	struct bio_vec *bvec;
@@ -747,14 +747,9 @@ dcssblk_check_params(void)
 static void __exit
 dcssblk_exit(void)
 {
-	int rc;
-
 	PRINT_DEBUG("DCSSBLOCK EXIT...\n");
 	s390_root_dev_unregister(dcssblk_root_dev);
-	rc = unregister_blkdev(dcssblk_major, DCSSBLK_NAME);
-	if (rc) {
-		PRINT_ERR("unregister_blkdev() failed!\n");
-	}
+	unregister_blkdev(dcssblk_major, DCSSBLK_NAME);
 	PRINT_DEBUG("...finished!\n");
 }
 

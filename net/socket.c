@@ -272,8 +272,7 @@ static int init_inodecache(void)
 					      (SLAB_HWCACHE_ALIGN |
 					       SLAB_RECLAIM_ACCOUNT |
 					       SLAB_MEM_SPREAD),
-					      init_once,
-					      NULL);
+					      init_once);
 	if (sock_inode_cachep == NULL)
 		return -ENOMEM;
 	return 0;
@@ -778,9 +777,6 @@ static ssize_t sock_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (pos != 0)
 		return -ESPIPE;
 
-	if (iocb->ki_left == 0)	/* Match SYS5 behaviour */
-		return 0;
-
 	x = alloc_sock_iocb(iocb, &siocb);
 	if (!x)
 		return -ENOMEM;
@@ -1169,7 +1165,7 @@ static int __sock_create(int family, int type, int protocol,
 	module_put(pf->owner);
 	err = security_socket_post_create(sock, family, type, protocol, kern);
 	if (err)
-		goto out_release;
+		goto out_sock_release;
 	*res = sock;
 
 	return 0;
@@ -1939,9 +1935,7 @@ asmlinkage long sys_recvmsg(int fd, struct msghdr __user *msg,
 	total_len = err;
 
 	cmsg_ptr = (unsigned long)msg_sys.msg_control;
-	msg_sys.msg_flags = 0;
-	if (MSG_CMSG_COMPAT & flags)
-		msg_sys.msg_flags = MSG_CMSG_COMPAT;
+	msg_sys.msg_flags = flags & (MSG_CMSG_CLOEXEC|MSG_CMSG_COMPAT);
 
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;

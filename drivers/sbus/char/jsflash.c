@@ -185,7 +185,7 @@ static void jsfd_read(char *buf, unsigned long p, size_t togo) {
 	}
 }
 
-static void jsfd_do_request(request_queue_t *q)
+static void jsfd_do_request(struct request_queue *q)
 {
 	struct request *req;
 
@@ -619,8 +619,7 @@ static void __exit jsflash_cleanup_module(void)
 	jsf0.busy = 0;
 
 	misc_deregister(&jsf_dev);
-	if (unregister_blkdev(JSFD_MAJOR, "jsfd") != 0)
-		printk("jsfd: cleanup_module failed\n");
+	unregister_blkdev(JSFD_MAJOR, "jsfd");
 	blk_cleanup_queue(jsf_queue);
 }
 

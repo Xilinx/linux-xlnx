@@ -9,7 +9,7 @@
  *  Split from:
  *  linux/drivers/ide/pdc202xx.c	Version 0.35	Mar. 30, 2002
  *  Copyright (C) 1998-2002		Andre Hedrick <andre@linux-ide.org>
- *  Copyright (C) 2005-2006		MontaVista Software, Inc.
+ *  Copyright (C) 2005-2007		MontaVista Software, Inc.
  *  Portions Copyright (C) 1999 Promise Technology, Inc.
  *  Author: Frank Tiernan (frankt@promise.com)
  *  Released under terms of General Public License
@@ -219,13 +219,16 @@ static int pdcnew_tune_chipset(ide_drive_t *drive, u8 speed)
 
 static void pdcnew_tune_drive(ide_drive_t *drive, u8 pio)
 {
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 	(void)pdcnew_tune_chipset(drive, XFER_PIO_0 + pio);
 }
 
 static u8 pdcnew_cable_detect(ide_hwif_t *hwif)
 {
-	return get_indexed_reg(hwif, 0x0b) & 0x04;
+	if (get_indexed_reg(hwif, 0x0b) & 0x04)
+		return ATA_CBL_PATA40;
+	else
+		return ATA_CBL_PATA80;
 }
 
 static int pdcnew_config_drive_xfer_rate(ide_drive_t *drive)
@@ -338,7 +341,7 @@ static long __devinit detect_pll_input_clock(unsigned long dma_base)
 	 */
 	usec_elapsed = (end_time.tv_sec - start_time.tv_sec) * 1000000 +
 		(end_time.tv_usec - start_time.tv_usec);
-	pll_input = ((start_count - end_count) & 0x3ffffff) / 10 *
+	pll_input = ((start_count - end_count) & 0x3fffffff) / 10 *
 		(10000000 / usec_elapsed);
 
 	DBG("start[%ld] end[%ld]\n", start_count, end_count);
@@ -375,12 +378,8 @@ static unsigned int __devinit init_chipset_pdcnew(struct pci_dev *dev, const cha
 	int f, r;
 	u8 pll_ctl0, pll_ctl1;
 
-	if (dev->resource[PCI_ROM_RESOURCE].start) {
-		pci_write_config_dword(dev, PCI_ROM_ADDRESS,
-			dev->resource[PCI_ROM_RESOURCE].start | PCI_ROM_ADDRESS_ENABLE);
-		printk(KERN_INFO "%s: ROM enabled at 0x%08lx\n", name,
-			(unsigned long)dev->resource[PCI_ROM_RESOURCE].start);
-	}
+	if (dma_base == 0)
+		return -EFAULT;
 
 #ifdef CONFIG_PPC_PMAC
 	apple_kiwi_init(dev);
@@ -498,19 +497,22 @@ static void __devinit init_hwif_pdc202new(ide_hwif_t *hwif)
 	hwif->speedproc = &pdcnew_tune_chipset;
 	hwif->resetproc = &pdcnew_reset;
 
+	hwif->err_stops_fifo = 1;
+
 	hwif->drives[0].autotune = hwif->drives[1].autotune = 1;
+
+	if (hwif->dma_base == 0)
+		return;
 
 	hwif->atapi_dma  = 1;
 
 	hwif->ultra_mask = hwif->cds->udma_mask;
 	hwif->mwdma_mask = 0x07;
 
-	hwif->err_stops_fifo = 1;
-
 	hwif->ide_dma_check = &pdcnew_config_drive_xfer_rate;
 
-	if (!hwif->udma_four)
-		hwif->udma_four = pdcnew_cable_detect(hwif) ? 0 : 1;
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+		hwif->cbl = pdcnew_cable_detect(hwif);
 
 	if (!noautodma)
 		hwif->autodma = 1;
@@ -533,7 +535,7 @@ static int __devinit init_setup_pdc20270(struct pci_dev *dev,
 	    (dev->bus->self->device == PCI_DEVICE_ID_DEC_21150)) {
 		if (PCI_SLOT(dev->devfn) & 2)
 			return -ENODEV;
-		d->extra = 0;
+
 		while ((findev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, findev)) != NULL) {
 			if ((findev->vendor == dev->vendor) &&
 			    (findev->device == dev->device) &&
@@ -542,7 +544,8 @@ static int __devinit init_setup_pdc20270(struct pci_dev *dev,
 					findev->irq = dev->irq;
 				}
 				ret = ide_setup_pci_devices(dev, findev, d);
-				pci_dev_put(findev);
+				if (ret < 0)
+					pci_dev_put(findev);
 				return ret;
 			}
 		}
@@ -570,63 +573,63 @@ static ide_pci_device_t pdcnew_chipsets[] __devinitdata = {
 		.init_setup	= init_setup_pdcnew,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x3f, /* udma0-5 */
 	},{	/* 1 */
 		.name		= "PDC20269",
 		.init_setup	= init_setup_pdcnew,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x7f, /* udma0-6*/
 	},{	/* 2 */
 		.name		= "PDC20270",
 		.init_setup	= init_setup_pdc20270,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x3f, /* udma0-5 */
 	},{	/* 3 */
 		.name		= "PDC20271",
 		.init_setup	= init_setup_pdcnew,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x7f, /* udma0-6*/
 	},{	/* 4 */
 		.name		= "PDC20275",
 		.init_setup	= init_setup_pdcnew,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x7f, /* udma0-6*/
 	},{	/* 5 */
 		.name		= "PDC20276",
 		.init_setup	= init_setup_pdc20276,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x7f, /* udma0-6*/
 	},{	/* 6 */
 		.name		= "PDC20277",
 		.init_setup	= init_setup_pdcnew,
 		.init_chipset	= init_chipset_pdcnew,
 		.init_hwif	= init_hwif_pdc202new,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x7f, /* udma0-6*/
 	}
 };

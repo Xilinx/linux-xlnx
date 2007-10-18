@@ -32,8 +32,6 @@
 #define USER_PTRS_PER_PGD	(TASK_SIZE / PGDIR_SIZE)
 #define FIRST_USER_ADDRESS	0
 
-#define PTE_PHYS_MASK	0x1ffff000
-
 #ifndef __ASSEMBLY__
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern void paging_init(void);
@@ -201,17 +199,9 @@ extern struct page *empty_zero_page;
  * The following only work if pte_present() is true.
  * Undefined behaviour if not..
  */
-static inline int pte_read(pte_t pte)
-{
-	return pte_val(pte) & _PAGE_USER;
-}
 static inline int pte_write(pte_t pte)
 {
 	return pte_val(pte) & _PAGE_RW;
-}
-static inline int pte_exec(pte_t pte)
-{
-	return pte_val(pte) & _PAGE_EXECUTE;
 }
 static inline int pte_dirty(pte_t pte)
 {
@@ -231,19 +221,9 @@ static inline int pte_file(pte_t pte)
 }
 
 /* Mutator functions for PTE bits */
-static inline pte_t pte_rdprotect(pte_t pte)
-{
-	set_pte(&pte, __pte(pte_val(pte) & ~_PAGE_USER));
-	return pte;
-}
 static inline pte_t pte_wrprotect(pte_t pte)
 {
 	set_pte(&pte, __pte(pte_val(pte) & ~_PAGE_RW));
-	return pte;
-}
-static inline pte_t pte_exprotect(pte_t pte)
-{
-	set_pte(&pte, __pte(pte_val(pte) & ~_PAGE_EXECUTE));
 	return pte;
 }
 static inline pte_t pte_mkclean(pte_t pte)
@@ -256,19 +236,9 @@ static inline pte_t pte_mkold(pte_t pte)
 	set_pte(&pte, __pte(pte_val(pte) & ~_PAGE_ACCESSED));
 	return pte;
 }
-static inline pte_t pte_mkread(pte_t pte)
-{
-	set_pte(&pte, __pte(pte_val(pte) | _PAGE_USER));
-	return pte;
-}
 static inline pte_t pte_mkwrite(pte_t pte)
 {
 	set_pte(&pte, __pte(pte_val(pte) | _PAGE_RW));
-	return pte;
-}
-static inline pte_t pte_mkexec(pte_t pte)
-{
-	set_pte(&pte, __pte(pte_val(pte) | _PAGE_EXECUTE));
 	return pte;
 }
 static inline pte_t pte_mkdirty(pte_t pte)
@@ -293,7 +263,7 @@ static inline pte_t pte_mkyoung(pte_t pte)
  * trivial.
  */
 #define pages_to_mb(x)	((x) >> (20-PAGE_SHIFT))
-#define pte_page(x) 	phys_to_page(pte_val(x) & PTE_PHYS_MASK)
+#define pte_page(x)	(pfn_to_page(pte_pfn(x)))
 
 /*
  * Mark the prot value as uncacheable and unbufferable

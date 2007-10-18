@@ -103,6 +103,7 @@ void die(const char * str, struct pt_regs * regs, long err)
 			 (unsigned long)task_stack_page(current));
 
 	bust_spinlocks(0);
+	add_taint(TAINT_DIE);
 	spin_unlock_irq(&die_lock);
 
 	if (kexec_should_crash(current))
@@ -584,7 +585,7 @@ uspace_segv:
 		info.si_signo = SIGBUS;
 		info.si_errno = 0;
 		info.si_code = si_code;
-		info.si_addr = (void *) address;
+		info.si_addr = (void __user *)address;
 		force_sig_info(SIGBUS, &info, current);
 	} else {
 		if (regs->pc & 1)
@@ -617,7 +618,7 @@ uspace_segv:
  */
 int is_dsp_inst(struct pt_regs *regs)
 {
-	unsigned short inst;
+	unsigned short inst = 0;
 
 	/*
 	 * Safe guard if DSP mode is already enabled or we're lacking
@@ -645,7 +646,6 @@ asmlinkage void do_divide_error(unsigned long r4, unsigned long r5,
 				unsigned long r6, unsigned long r7,
 				struct pt_regs __regs)
 {
-	struct pt_regs *regs = RELOC_HIDE(&__regs, 0);
 	siginfo_t info;
 
 	switch (r4) {
@@ -854,8 +854,13 @@ void __init trap_init(void)
 	set_exception_table_evt(0x800, do_reserved_inst);
 	set_exception_table_evt(0x820, do_illegal_slot_inst);
 #elif defined(CONFIG_SH_FPU)
+#ifdef CONFIG_CPU_SUBTYPE_SHX3
+	set_exception_table_evt(0xd80, do_fpu_state_restore);
+	set_exception_table_evt(0xda0, do_fpu_state_restore);
+#else
 	set_exception_table_evt(0x800, do_fpu_state_restore);
 	set_exception_table_evt(0x820, do_fpu_state_restore);
+#endif
 #endif
 
 #ifdef CONFIG_CPU_SH2
@@ -874,7 +879,7 @@ void __init trap_init(void)
 void handle_BUG(struct pt_regs *regs)
 {
 	enum bug_trap_type tt;
-	tt = report_bug(regs->pc);
+	tt = report_bug(regs->pc, regs);
 	if (tt == BUG_TRAP_TYPE_WARN) {
 		regs->pc += 2;
 		return;

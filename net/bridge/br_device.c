@@ -41,11 +41,11 @@ int br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_pull(skb, ETH_HLEN);
 
 	if (dest[0] & 1)
-		br_flood_deliver(br, skb, 0);
+		br_flood_deliver(br, skb);
 	else if ((dst = __br_fdb_get(br, dest)) != NULL)
 		br_deliver(dst->dst, skb);
 	else
-		br_flood_deliver(br, skb, 0);
+		br_flood_deliver(br, skb);
 
 	return 0;
 }
@@ -179,5 +179,5 @@ void br_dev_setup(struct net_device *dev)
 	dev->priv_flags = IFF_EBRIDGE;
 
 	dev->features = NETIF_F_SG | NETIF_F_FRAGLIST | NETIF_F_HIGHDMA |
-			NETIF_F_TSO | NETIF_F_NO_CSUM | NETIF_F_GSO_ROBUST;
+			NETIF_F_GSO_MASK | NETIF_F_NO_CSUM | NETIF_F_LLTX;
 }

@@ -1601,14 +1601,14 @@ static int rx_init(struct atm_dev *dev)
   
 	skb_queue_head_init(&iadev->rx_dma_q);  
 	iadev->rx_free_desc_qhead = NULL;   
-	iadev->rx_open = kmalloc(4*iadev->num_vc,GFP_KERNEL);
-	if (!iadev->rx_open)  
-	{  
+
+	iadev->rx_open = kzalloc(4 * iadev->num_vc, GFP_KERNEL);
+	if (!iadev->rx_open) {
 		printk(KERN_ERR DEV_LABEL "itf %d couldn't get free page\n",
 		dev->number);  
 		goto err_free_dle;
 	}  
-	memset(iadev->rx_open, 0, 4*iadev->num_vc);  
+
         iadev->rxing = 1;
         iadev->rx_pkt_cnt = 0;
 	/* Mode Register */  
@@ -2290,7 +2290,6 @@ static int __devinit ia_init(struct atm_dev *dev)
 	unsigned long real_base;
 	void __iomem *base;
 	unsigned short command;  
-	unsigned char revision;  
 	int error, i; 
 	  
 	/* The device has been identified and registered. Now we read   
@@ -2305,16 +2304,14 @@ static int __devinit ia_init(struct atm_dev *dev)
 	real_base = pci_resource_start (iadev->pci, 0);
 	iadev->irq = iadev->pci->irq;
 		  
-	if ((error = pci_read_config_word(iadev->pci, PCI_COMMAND,&command))   
-		    || (error = pci_read_config_byte(iadev->pci,   
-				PCI_REVISION_ID,&revision)))   
-	{  
+	error = pci_read_config_word(iadev->pci, PCI_COMMAND, &command);
+	if (error) {
 		printk(KERN_ERR DEV_LABEL "(itf %d): init error 0x%x\n",  
 				dev->number,error);  
 		return -EINVAL;  
 	}  
 	IF_INIT(printk(DEV_LABEL "(itf %d): rev.%d,realbase=0x%lx,irq=%d\n",  
-			dev->number, revision, real_base, iadev->irq);)  
+			dev->number, iadev->pci->revision, real_base, iadev->irq);)
 	  
 	/* find mapping size of board */  
 	  
@@ -2353,7 +2350,7 @@ static int __devinit ia_init(struct atm_dev *dev)
 		return error;  
 	}  
 	IF_INIT(printk(DEV_LABEL " (itf %d): rev.%d,base=%p,irq=%d\n",  
-			dev->number, revision, base, iadev->irq);)  
+			dev->number, iadev->pci->revision, base, iadev->irq);)
 	  
 	/* filling the iphase dev structure */  
 	iadev->mem = iadev->pci_map_size /2;  
@@ -3174,12 +3171,12 @@ static int __devinit ia_init_one(struct pci_dev *pdev,
         unsigned long flags;
 	int ret;
 
-	iadev = kmalloc(sizeof(*iadev), GFP_KERNEL); 
+	iadev = kzalloc(sizeof(*iadev), GFP_KERNEL);
 	if (!iadev) {
 		ret = -ENOMEM;
 		goto err_out;
 	}
-	memset(iadev, 0, sizeof(*iadev));
+
 	iadev->pci = pdev;
 
 	IF_INIT(printk("ia detected at bus:%d dev: %d function:%d\n",

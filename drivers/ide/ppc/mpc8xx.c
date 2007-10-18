@@ -32,7 +32,6 @@
 #include <asm/mpc8xx.h>
 #include <asm/mmu.h>
 #include <asm/processor.h>
-#include <asm/residual.h>
 #include <asm/io.h>
 #include <asm/pgtable.h>
 #include <asm/ide.h>
@@ -316,6 +315,7 @@ m8xx_ide_init_hwif_ports(hw_regs_t *hw, unsigned long data_port,
 	}
 
 	/* register routine to tune PIO mode */
+	ide_hwifs[data_port].pio_mask = ATA_PIO4;
 	ide_hwifs[data_port].tuneproc = m8xx_ide_tuneproc;
 
 	hw->ack_intr = (ide_ack_intr_t *) ide_interrupt_ack;
@@ -402,6 +402,7 @@ void m8xx_ide_init_hwif_ports (hw_regs_t *hw,
 	}
 
 	/* register routine to tune PIO mode */
+	ide_hwifs[data_port].pio_mask = ATA_PIO4;
 	ide_hwifs[data_port].tuneproc = m8xx_ide_tuneproc;
 
 	hw->ack_intr = (ide_ack_intr_t *) ide_interrupt_ack;
@@ -431,13 +432,12 @@ void m8xx_ide_init_hwif_ports (hw_regs_t *hw,
 static void
 m8xx_ide_tuneproc(ide_drive_t *drive, u8 pio)
 {
-	ide_pio_data_t d;
 #if defined(CONFIG_IDE_8xx_PCCARD) || defined(CONFIG_IDE_8xx_DIRECT)
 	volatile pcmconf8xx_t	*pcmp;
 	ulong timing, mask, reg;
 #endif
 
-	pio = ide_get_best_pio_mode(drive, pio, 4, &d);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 
 #if 1
 	printk("%s[%d] %s: best PIO mode: %d\n",

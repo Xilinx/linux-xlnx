@@ -8,7 +8,8 @@
 #define DM_BIO_LIST_H
 
 #include <linux/bio.h>
-#include <linux/prefetch.h>
+
+#ifdef CONFIG_BLOCK
 
 struct bio_list {
 	struct bio *head;
@@ -31,8 +32,7 @@ static inline void bio_list_init(struct bio_list *bl)
 }
 
 #define bio_list_for_each(bio, bl) \
-	for (bio = (bl)->head; bio && ({ prefetch(bio->bi_next); 1; }); \
-	     bio = bio->bi_next)
+	for (bio = (bl)->head; bio; bio = bio->bi_next)
 
 static inline unsigned bio_list_size(const struct bio_list *bl)
 {
@@ -108,4 +108,5 @@ static inline struct bio *bio_list_get(struct bio_list *bl)
 	return bio;
 }
 
+#endif /* CONFIG_BLOCK */
 #endif

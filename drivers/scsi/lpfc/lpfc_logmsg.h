@@ -30,8 +30,15 @@
 #define LOG_SLI                       0x800	/* SLI events */
 #define LOG_FCP_ERROR                 0x1000	/* log errors, not underruns */
 #define LOG_LIBDFC                    0x2000	/* Libdfc events */
+#define LOG_VPORT                     0x4000	/* NPIV events */
 #define LOG_ALL_MSG                   0xffff	/* LOG all messages */
 
+#define lpfc_printf_vlog(vport, level, mask, fmt, arg...) \
+	{ if (((mask) &(vport)->cfg_log_verbose) || (level[1] <= '3')) \
+		dev_printk(level, &((vport)->phba->pcidev)->dev, "%d:(%d):" \
+			   fmt, (vport)->phba->brd_no, vport->vpi, ##arg); }
+
 #define lpfc_printf_log(phba, level, mask, fmt, arg...) \
-	{ if (((mask) &(phba)->cfg_log_verbose) || (level[1] <= '3')) \
-		dev_printk(level, &((phba)->pcidev)->dev, fmt, ##arg); }
+	{ if (((mask) &(phba)->pport->cfg_log_verbose) || (level[1] <= '3')) \
+		dev_printk(level, &((phba)->pcidev)->dev, "%d:" \
+			   fmt, phba->brd_no, ##arg); }

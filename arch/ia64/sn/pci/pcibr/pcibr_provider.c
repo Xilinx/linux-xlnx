@@ -80,7 +80,7 @@ static int sal_pcibr_error_interrupt(struct pcibus_info *soft)
 u16 sn_ioboard_to_pci_bus(struct pci_bus *pci_bus)
 {
 	s64 rc;
-	u16 ioboard;
+	u16 uninitialized_var(ioboard);		/* GCC be quiet */
 	nasid_t nasid = NASID_GET(SN_PCIBUS_BUSSOFT(pci_bus)->bs_base);
 
 	rc = ia64_sn_sysctl_ioboard_get(nasid, &ioboard);
@@ -145,6 +145,7 @@ pcibr_bus_fixup(struct pcibus_bussoft *prom_bussoft, struct pci_controller *cont
 		printk(KERN_WARNING
 		       "pcibr cannot allocate interrupt for error handler\n");
 	}
+	sn_set_err_irq_affinity(SGI_PCIASIC_ERROR);
 
 	/* 
 	 * Update the Bridge with the "kernel" pagesize 

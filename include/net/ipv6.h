@@ -17,6 +17,7 @@
 
 #include <linux/ipv6.h>
 #include <linux/hardirq.h>
+#include <net/if_inet6.h>
 #include <net/ndisc.h>
 #include <net/flow.h>
 #include <net/snmp.h>
@@ -511,10 +512,6 @@ extern int			ipv6_skip_exthdr(const struct sk_buff *, int start,
 extern int 			ipv6_ext_hdr(u8 nexthdr);
 
 extern int ipv6_find_tlv(struct sk_buff *skb, int offset, int type);
-
-extern struct ipv6_txoptions *	ipv6_invert_rthdr(struct sock *sk,
-						  struct ipv6_rt_hdr *hdr);
-
 
 /*
  *	socket options (ipv6_sockglue.c)

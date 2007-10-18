@@ -15,8 +15,7 @@
 #include <asm/cpu/ubc.h>
 
 /* User Break Controller */
-#if defined(CONFIG_CPU_SUBTYPE_SH7707) || defined(CONFIG_CPU_SUBTYPE_SH7709) || \
-    defined(CONFIG_CPU_SUBTYPE_SH7300)
+#if defined(CONFIG_CPU_SUBTYPE_SH7707) || defined(CONFIG_CPU_SUBTYPE_SH7709)
 #define UBC_TYPE_SH7729	(current_cpu_data.type == CPU_SH7729)
 #else
 #define UBC_TYPE_SH7729	0
@@ -51,9 +50,14 @@
 #define BRCR_UBDE		(1 << 0)
 
 #ifndef __ASSEMBLY__
-/* arch/sh/kernel/ubc.S */
-extern void ubc_wakeup(void);
+/* arch/sh/kernel/cpu/ubc.S */
 extern void ubc_sleep(void);
+
+#ifdef CONFIG_UBC_WAKEUP
+extern void ubc_wakeup(void);
+#else
+#define ubc_wakeup()	do { } while (0)
+#endif
 #endif
 
 #endif /* __KERNEL__ */

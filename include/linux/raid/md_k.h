@@ -51,7 +51,7 @@ struct mdk_rdev_s
 
 	sector_t size;			/* Device size (in blocks) */
 	mddev_t *mddev;			/* RAID array if running */
-	unsigned long last_events;	/* IO event timestamp */
+	long last_events;		/* IO event timestamp */
 
 	struct block_device *bdev;	/* block device handle */
 
@@ -227,7 +227,7 @@ struct mddev_s
 	unsigned int			safemode_delay;
 	struct timer_list		safemode_timer;
 	atomic_t			writes_pending; 
-	request_queue_t			*queue;	/* for plugging ... */
+	struct request_queue		*queue;	/* for plugging ... */
 
 	atomic_t                        write_behind; /* outstanding async IO */
 	unsigned int                    max_write_behind; /* 0 = sync */
@@ -265,7 +265,7 @@ struct mdk_personality
 	int level;
 	struct list_head list;
 	struct module *owner;
-	int (*make_request)(request_queue_t *q, struct bio *bio);
+	int (*make_request)(struct request_queue *q, struct bio *bio);
 	int (*run)(mddev_t *mddev);
 	int (*stop)(mddev_t *mddev);
 	void (*status)(struct seq_file *seq, mddev_t *mddev);

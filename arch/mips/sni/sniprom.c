@@ -19,6 +19,7 @@
 #include <asm/addrspace.h>
 #include <asm/sni.h>
 #include <asm/mipsprom.h>
+#include <asm/mipsregs.h>
 #include <asm/bootinfo.h>
 
 /* special SNI prom calls */
@@ -71,7 +72,7 @@ const char *get_system_type(void)
 #define SNI_IDPROM_SIZE	0x1000
 
 #ifdef DEBUG
-static void sni_idprom_dump(void)
+static void __init sni_idprom_dump(void)
 {
 	int	i;
 
@@ -88,7 +89,7 @@ static void sni_idprom_dump(void)
 }
 #endif
 
-static void sni_mem_init(void )
+static void __init sni_mem_init(void )
 {
 	int i, memsize;
 	struct membank {
@@ -146,7 +147,10 @@ static void __init sni_console_setup(void)
 		}
 		if (baud)
 			strcpy(options, baud);
-		add_preferred_console("ttyS", port, baud ? options : NULL);
+		if (strncmp (cdev, "tty552", 6) == 0)
+			add_preferred_console("ttyS", port, baud ? options : NULL);
+		else
+			add_preferred_console("ttySC", port, baud ? options : NULL);
 	}
 }
 

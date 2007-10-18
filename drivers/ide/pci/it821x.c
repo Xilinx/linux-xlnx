@@ -255,7 +255,7 @@ static int it821x_tunepio(ide_drive_t *drive, u8 set_pio)
 	 * on the cable.
 	 */
 	if (pair) {
-		u8 pair_pio = ide_get_best_pio_mode(pair, 255, 4, NULL);
+		u8 pair_pio = ide_get_best_pio_mode(pair, 255, 4);
 		/* trim PIO to the slowest of the master/slave */
 		if (pair_pio < set_pio)
 			set_pio = pair_pio;
@@ -276,7 +276,7 @@ static int it821x_tunepio(ide_drive_t *drive, u8 set_pio)
 
 static void it821x_tuneproc(ide_drive_t *drive, u8 pio)
 {
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 	(void)it821x_tunepio(drive, pio);
 }
 
@@ -491,10 +491,10 @@ static int it821x_config_drive_for_dma (ide_drive_t *drive)
  *	the needed logic onboard.
  */
 
-static unsigned int __devinit ata66_it821x(ide_hwif_t *hwif)
+static u8 __devinit ata66_it821x(ide_hwif_t *hwif)
 {
 	/* The reference driver also only does disk side */
-	return 1;
+	return ATA_CBL_PATA80;
 }
 
 /**
@@ -662,8 +662,9 @@ static void __devinit init_hwif_it821x(ide_hwif_t *hwif)
 	hwif->mwdma_mask = 0x07;
 
 	hwif->ide_dma_check = &it821x_config_drive_for_dma;
-	if (!(hwif->udma_four))
-		hwif->udma_four = ata66_it821x(hwif);
+
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+		hwif->cbl = ata66_it821x(hwif);
 
 	/*
 	 *	The BIOS often doesn't set up DMA on this controller
@@ -717,10 +718,10 @@ static unsigned int __devinit init_chipset_it821x(struct pci_dev *dev, const cha
 		.name		= name_str,		\
 		.init_chipset	= init_chipset_it821x,	\
 		.init_hwif	= init_hwif_it821x,	\
-		.channels	= 2,			\
 		.autodma	= AUTODMA,		\
 		.bootable	= ON_BOARD,		\
-		.fixup	 	= it821x_fixups		\
+		.fixup	 	= it821x_fixups,	\
+		.pio_mask	= ATA_PIO4,		\
 	}
 
 static ide_pci_device_t it821x_chipsets[] __devinitdata = {

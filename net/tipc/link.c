@@ -1,8 +1,8 @@
 /*
  * net/tipc/link.c: TIPC link code
  *
- * Copyright (c) 1996-2006, Ericsson AB
- * Copyright (c) 2004-2006, Wind River Systems
+ * Copyright (c) 1996-2007, Ericsson AB
+ * Copyright (c) 2004-2007, Wind River Systems
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -423,6 +423,17 @@ struct link *tipc_link_create(struct bearer *b_ptr, const u32 peer,
 		return NULL;
 	}
 
+	if (LINK_LOG_BUF_SIZE) {
+		char *pb = kmalloc(LINK_LOG_BUF_SIZE, GFP_ATOMIC);
+
+		if (!pb) {
+			kfree(l_ptr);
+			warn("Link creation failed, no memory for print buffer\n");
+			return NULL;
+		}
+		tipc_printbuf_init(&l_ptr->print_buf, pb, LINK_LOG_BUF_SIZE);
+	}
+
 	l_ptr->addr = peer;
 	if_name = strchr(b_ptr->publ.name, ':') + 1;
 	sprintf(l_ptr->name, "%u.%u.%u:%s-%u.%u.%u:",
@@ -432,8 +443,6 @@ struct link *tipc_link_create(struct bearer *b_ptr, const u32 peer,
 		tipc_zone(peer), tipc_cluster(peer), tipc_node(peer));
 		/* note: peer i/f is appended to link name by reset/activate */
 	memcpy(&l_ptr->media_addr, media_addr, sizeof(*media_addr));
-	k_init_timer(&l_ptr->timer, (Handler)link_timeout, (unsigned long)l_ptr);
-	list_add_tail(&l_ptr->link_list, &b_ptr->links);
 	l_ptr->checkpoint = 1;
 	l_ptr->b_ptr = b_ptr;
 	link_set_supervision_props(l_ptr, b_ptr->media->tolerance);
@@ -459,21 +468,14 @@ struct link *tipc_link_create(struct bearer *b_ptr, const u32 peer,
 
 	l_ptr->owner = tipc_node_attach_link(l_ptr);
 	if (!l_ptr->owner) {
+		if (LINK_LOG_BUF_SIZE)
+			kfree(l_ptr->print_buf.buf);
 		kfree(l_ptr);
 		return NULL;
 	}
 
-	if (LINK_LOG_BUF_SIZE) {
-		char *pb = kmalloc(LINK_LOG_BUF_SIZE, GFP_ATOMIC);
-
-		if (!pb) {
-			kfree(l_ptr);
-			warn("Link creation failed, no memory for print buffer\n");
-			return NULL;
-		}
-		tipc_printbuf_init(&l_ptr->print_buf, pb, LINK_LOG_BUF_SIZE);
-	}
-
+	k_init_timer(&l_ptr->timer, (Handler)link_timeout, (unsigned long)l_ptr);
+	list_add_tail(&l_ptr->link_list, &b_ptr->links);
 	tipc_k_signal((Handler)tipc_link_start, (unsigned long)l_ptr);
 
 	dbg("tipc_link_create(): tolerance = %u,cont intv = %u, abort_limit = %u\n",
@@ -1260,7 +1262,7 @@ again:
 	 * (Must not hold any locks while building message.)
 	 */
 
-	res = msg_build(hdr, msg_sect, num_sect, sender->max_pkt,
+	res = msg_build(hdr, msg_sect, num_sect, sender->publ.max_pkt,
 			!sender->user_port, &buf);
 
 	read_lock_bh(&tipc_net_lock);
@@ -1271,7 +1273,7 @@ again:
 		if (likely(l_ptr)) {
 			if (likely(buf)) {
 				res = link_send_buf_fast(l_ptr, buf,
-							 &sender->max_pkt);
+							 &sender->publ.max_pkt);
 				if (unlikely(res < 0))
 					buf_discard(buf);
 exit:
@@ -1299,12 +1301,12 @@ exit:
 			 * then re-try fast path or fragment the message
 			 */
 
-			sender->max_pkt = link_max_pkt(l_ptr);
+			sender->publ.max_pkt = link_max_pkt(l_ptr);
 			tipc_node_unlock(node);
 			read_unlock_bh(&tipc_net_lock);
 
 
-			if ((msg_hdr_sz(hdr) + res) <= sender->max_pkt)
+			if ((msg_hdr_sz(hdr) + res) <= sender->publ.max_pkt)
 				goto again;
 
 			return link_send_sections_long(sender, msg_sect,
@@ -1357,7 +1359,7 @@ static int link_send_sections_long(struct port *sender,
 
 again:
 	fragm_no = 1;
-	max_pkt = sender->max_pkt - INT_H_SIZE;
+	max_pkt = sender->publ.max_pkt - INT_H_SIZE;
 		/* leave room for tunnel header in case of link changeover */
 	fragm_sz = max_pkt - INT_H_SIZE;
 		/* leave room for fragmentation header in each fragment */
@@ -1463,7 +1465,7 @@ error:
 			goto reject;
 		}
 		if (link_max_pkt(l_ptr) < max_pkt) {
-			sender->max_pkt = link_max_pkt(l_ptr);
+			sender->publ.max_pkt = link_max_pkt(l_ptr);
 			tipc_node_unlock(node);
 			for (; buf_chain; buf_chain = buf) {
 				buf = buf_chain->next;
@@ -2381,10 +2383,10 @@ void tipc_link_changeover(struct link *l_ptr)
 		struct tipc_msg *msg = buf_msg(crs);
 
 		if ((msg_user(msg) == MSG_BUNDLER) && split_bundles) {
-			u32 msgcount = msg_msgcnt(msg);
 			struct tipc_msg *m = msg_get_wrapped(msg);
 			unchar* pos = (unchar*)m;
 
+			msgcount = msg_msgcnt(msg);
 			while (msgcount--) {
 				msg_set_seqno(m,msg_seqno(msg));
 				tipc_link_tunnel(l_ptr, &tunnel_hdr, m,

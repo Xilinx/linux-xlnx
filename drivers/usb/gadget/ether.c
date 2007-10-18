@@ -277,7 +277,7 @@ MODULE_PARM_DESC(host_addr, "Host Ethernet Address");
 #define DEV_CONFIG_CDC
 #endif
 
-#ifdef CONFIG_USB_GADGET_HUSB2DEV
+#ifdef CONFIG_USB_GADGET_ATMEL_USBA
 #define DEV_CONFIG_CDC
 #endif
 
@@ -292,13 +292,21 @@ MODULE_PARM_DESC(host_addr, "Host Ethernet Address");
 #define	DEV_CONFIG_SUBSET
 #endif
 
-#ifdef CONFIG_USB_GADGET_SH
+#ifdef CONFIG_USB_GADGET_SUPERH
 #define	DEV_CONFIG_SUBSET
 #endif
 
 #ifdef CONFIG_USB_GADGET_SA1100
 /* use non-CDC for backwards compatibility */
 #define	DEV_CONFIG_SUBSET
+#endif
+
+#ifdef CONFIG_USB_GADGET_M66592
+#define DEV_CONFIG_CDC
+#endif
+
+#ifdef CONFIG_USB_GADGET_AMD5536UDC
+#define	DEV_CONFIG_CDC
 #endif
 
 
@@ -1715,7 +1723,8 @@ rx_submit (struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 		size += sizeof (struct rndis_packet_msg_type);
 	size -= size % dev->out_ep->maxpacket;
 
-	if ((skb = alloc_skb (size + NET_IP_ALIGN, gfp_flags)) == 0) {
+	skb = alloc_skb(size + NET_IP_ALIGN, gfp_flags);
+	if (skb == NULL) {
 		DEBUG (dev, "no rx skb\n");
 		goto enomem;
 	}

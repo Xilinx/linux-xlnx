@@ -74,13 +74,13 @@
 #include <linux/usb/serial.h>
 
 
-#ifndef CONFIG_USB_SAFE_PADDED
-#define CONFIG_USB_SAFE_PADDED 0
+#ifndef CONFIG_USB_SERIAL_SAFE_PADDED
+#define CONFIG_USB_SERIAL_SAFE_PADDED 0
 #endif
 
 static int debug;
 static int safe = 1;
-static int padded = CONFIG_USB_SAFE_PADDED;
+static int padded = CONFIG_USB_SERIAL_SAFE_PADDED;
 
 #define DRIVER_VERSION "v0.0b"
 #define DRIVER_AUTHOR "sl@lineo.com, tbr@lineo.com"
@@ -211,11 +211,13 @@ static void safe_read_bulk_callback (struct urb *urb)
 	unsigned char length = urb->actual_length;
 	int i;
 	int result;
+	int status = urb->status;
 
 	dbg ("%s", __FUNCTION__);
 
-	if (urb->status) {
-		dbg ("%s - nonzero read bulk status received: %d", __FUNCTION__, urb->status);
+	if (status) {
+		dbg("%s - nonzero read bulk status received: %d",
+		    __FUNCTION__, status);
 		return;
 	}
 

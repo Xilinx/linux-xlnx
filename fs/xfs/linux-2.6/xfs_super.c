@@ -415,8 +415,10 @@ xfs_fs_write_inode(
 
 	if (vp) {
 		vn_trace_entry(vp, __FUNCTION__, (inst_t *)__return_address);
-		if (sync)
+		if (sync) {
+			filemap_fdatawait(inode->i_mapping);
 			flags |= FLUSH_SYNC;
+		}
 		error = bhv_vop_iflush(vp, flags);
 		if (error == EAGAIN)
 			error = sync? bhv_vop_iflush(vp, flags | FLUSH_LOG) : 0;
@@ -547,7 +549,8 @@ vfs_sync_worker(
 
 	if (!(vfsp->vfs_flag & VFS_RDONLY))
 		error = bhv_vfs_sync(vfsp, SYNC_FSDATA | SYNC_BDFLUSH | \
-					SYNC_ATTR | SYNC_REFCACHE, NULL);
+					SYNC_ATTR | SYNC_REFCACHE | SYNC_SUPER,
+					NULL);
 	vfsp->vfs_sync_seq++;
 	wake_up(&vfsp->vfs_wait_single_sync_task);
 }
@@ -561,6 +564,7 @@ xfssyncd(
 	bhv_vfs_sync_work_t	*work, *n;
 	LIST_HEAD		(tmp);
 
+	set_freezable();
 	timeleft = xfs_syncd_centisecs * msecs_to_jiffies(10);
 	for (;;) {
 		timeleft = schedule_timeout_interruptible(timeleft);
@@ -663,7 +667,7 @@ xfs_fs_sync_super(
 		 * occur here so don't bother flushing the buftarg (i.e
 		 * SYNC_QUIESCE) because it'll just get dirty again.
 		 */
-		flags = SYNC_FSDATA | SYNC_DELWRI | SYNC_WAIT | SYNC_IOWAIT;
+		flags = SYNC_DATA_QUIESCE;
 	} else
 		flags = SYNC_FSDATA | (wait ? SYNC_WAIT : 0);
 

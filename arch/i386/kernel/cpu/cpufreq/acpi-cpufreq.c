@@ -68,7 +68,8 @@ struct acpi_cpufreq_data {
 };
 
 static struct acpi_cpufreq_data *drv_data[NR_CPUS];
-static struct acpi_processor_performance *acpi_perf_data[NR_CPUS];
+/* acpi_perf_data is a pointer to percpu data. */
+static struct acpi_processor_performance *acpi_perf_data;
 
 static struct cpufreq_driver acpi_cpufreq_driver;
 
@@ -167,11 +168,13 @@ static void do_drv_read(struct drv_cmd *cmd)
 
 static void do_drv_write(struct drv_cmd *cmd)
 {
-	u32 h = 0;
+	u32 lo, hi;
 
 	switch (cmd->type) {
 	case SYSTEM_INTEL_MSR_CAPABLE:
-		wrmsr(cmd->addr.msr.reg, cmd->val, h);
+		rdmsr(cmd->addr.msr.reg, lo, hi);
+		lo = (lo & ~INTEL_MSR_RANGE) | (cmd->val & INTEL_MSR_RANGE);
+		wrmsr(cmd->addr.msr.reg, lo, hi);
 		break;
 	case SYSTEM_IO_CAPABLE:
 		acpi_os_write_port((acpi_io_address)cmd->addr.io.port,
@@ -372,7 +375,6 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 	struct cpufreq_freqs freqs;
 	cpumask_t online_policy_cpus;
 	struct drv_cmd cmd;
-	unsigned int msr;
 	unsigned int next_state = 0; /* Index into freq_table */
 	unsigned int next_perf_state = 0; /* Index into perf table */
 	unsigned int i;
@@ -417,11 +419,7 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 	case SYSTEM_INTEL_MSR_CAPABLE:
 		cmd.type = SYSTEM_INTEL_MSR_CAPABLE;
 		cmd.addr.msr.reg = MSR_IA32_PERF_CTL;
-		msr =
-		    (u32) perf->states[next_perf_state].
-		    control & INTEL_MSR_RANGE;
-		cmd.val = get_cur_val(online_policy_cpus);
-		cmd.val = (cmd.val & ~INTEL_MSR_RANGE) | msr;
+		cmd.val = (u32) perf->states[next_perf_state].control;
 		break;
 	case SYSTEM_IO_CAPABLE:
 		cmd.type = SYSTEM_IO_CAPABLE;
@@ -511,26 +509,14 @@ acpi_cpufreq_guess_freq(struct acpi_cpufreq_data *data, unsigned int cpu)
  * do _PDC and _PSD and find out the processor dependency for the
  * actual init that will happen later...
  */
-static int acpi_cpufreq_early_init(void)
+static int __init acpi_cpufreq_early_init(void)
 {
-	struct acpi_processor_performance *data;
-	cpumask_t covered;
-	unsigned int i, j;
-
 	dprintk("acpi_cpufreq_early_init\n");
 
-	for_each_possible_cpu(i) {
-		data = kzalloc(sizeof(struct acpi_processor_performance),
-			       GFP_KERNEL);
-		if (!data) {
-			for_each_cpu_mask(j, covered) {
-				kfree(acpi_perf_data[j]);
-				acpi_perf_data[j] = NULL;
-			}
-			return -ENOMEM;
-		}
-		acpi_perf_data[i] = data;
-		cpu_set(i, covered);
+	acpi_perf_data = alloc_percpu(struct acpi_processor_performance);
+	if (!acpi_perf_data) {
+		dprintk("Memory allocation error for acpi_perf_data.\n");
+		return -ENOMEM;
 	}
 
 	/* Do initialization in ACPI core */
@@ -579,14 +565,11 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 
 	dprintk("acpi_cpufreq_cpu_init\n");
 
-	if (!acpi_perf_data[cpu])
-		return -ENODEV;
-
 	data = kzalloc(sizeof(struct acpi_cpufreq_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
-	data->acpi_data = acpi_perf_data[cpu];
+	data->acpi_data = percpu_ptr(acpi_perf_data, cpu);
 	drv_data[cpu] = data;
 
 	if (cpu_has(c, X86_FEATURE_CONSTANT_TSC))
@@ -668,8 +651,8 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	data->max_freq = perf->states[0].core_frequency * 1000;
 	/* table init */
 	for (i=0; i<perf->state_count; i++) {
-		if (i>0 && perf->states[i].core_frequency ==
-		    perf->states[i-1].core_frequency)
+		if (i>0 && perf->states[i].core_frequency >=
+		    data->freq_table[valid_states-1].frequency / 1000)
 			continue;
 
 		data->freq_table[valid_states].index = i;
@@ -783,24 +766,25 @@ static struct cpufreq_driver acpi_cpufreq_driver = {
 
 static int __init acpi_cpufreq_init(void)
 {
+	int ret;
+
 	dprintk("acpi_cpufreq_init\n");
 
-	acpi_cpufreq_early_init();
+	ret = acpi_cpufreq_early_init();
+	if (ret)
+		return ret;
 
 	return cpufreq_register_driver(&acpi_cpufreq_driver);
 }
 
 static void __exit acpi_cpufreq_exit(void)
 {
-	unsigned int i;
 	dprintk("acpi_cpufreq_exit\n");
 
 	cpufreq_unregister_driver(&acpi_cpufreq_driver);
 
-	for_each_possible_cpu(i) {
-		kfree(acpi_perf_data[i]);
-		acpi_perf_data[i] = NULL;
-	}
+	free_percpu(acpi_perf_data);
+
 	return;
 }
 

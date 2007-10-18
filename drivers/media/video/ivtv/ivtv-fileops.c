@@ -190,7 +190,9 @@ static void ivtv_update_pgm_info(struct ivtv *itv)
 		int idx = (itv->pgm_info_write_idx + i) % itv->pgm_info_num;
 		struct v4l2_enc_idx_entry *e = itv->pgm_info + idx;
 		u32 addr = itv->pgm_info_offset + 4 + idx * 24;
-		const int mapping[] = { V4L2_ENC_IDX_FRAME_P, V4L2_ENC_IDX_FRAME_I, V4L2_ENC_IDX_FRAME_B, 0 };
+		const int mapping[8] = { -1, V4L2_ENC_IDX_FRAME_I, V4L2_ENC_IDX_FRAME_P, -1,
+			V4L2_ENC_IDX_FRAME_B, -1, -1, -1 };
+					// 1=I, 2=P, 4=B
 
 		e->offset = read_enc(addr + 4) + ((u64)read_enc(addr + 8) << 32);
 		if (e->offset > itv->mpg_data_received) {
@@ -199,7 +201,7 @@ static void ivtv_update_pgm_info(struct ivtv *itv)
 		e->offset += itv->vbi_data_inserted;
 		e->length = read_enc(addr);
 		e->pts = read_enc(addr + 16) + ((u64)(read_enc(addr + 20) & 1) << 32);
-		e->flags = mapping[read_enc(addr + 12) & 3];
+		e->flags = mapping[read_enc(addr + 12) & 7];
 		i++;
 	}
 	itv->pgm_info_write_idx = (itv->pgm_info_write_idx + i) % itv->pgm_info_num;
@@ -218,7 +220,7 @@ static struct ivtv_buffer *ivtv_get_buffer(struct ivtv_stream *s, int non_block,
 			/* Process pending program info updates and pending VBI data */
 			ivtv_update_pgm_info(itv);
 
-			if (jiffies - itv->dualwatch_jiffies > HZ) {
+			if (jiffies - itv->dualwatch_jiffies > msecs_to_jiffies(1000)) {
 				itv->dualwatch_jiffies = jiffies;
 				ivtv_dualwatch(itv);
 			}
@@ -406,7 +408,7 @@ static ssize_t ivtv_read_pos(struct ivtv_stream *s, char __user *ubuf, size_t co
 	ssize_t rc = count ? ivtv_read(s, ubuf, count, non_block) : 0;
 	struct ivtv *itv = s->itv;
 
-	IVTV_DEBUG_INFO("read %zd from %s, got %zd\n", count, s->name, rc);
+	IVTV_DEBUG_HI_INFO("read %zd from %s, got %zd\n", count, s->name, rc);
 	if (rc > 0)
 		pos += rc;
 	return rc;
@@ -497,7 +499,7 @@ ssize_t ivtv_v4l2_read(struct file * filp, char __user *buf, size_t count, loff_
 	struct ivtv_stream *s = &itv->streams[id->type];
 	int rc;
 
-	IVTV_DEBUG_IOCTL("read %zd bytes from %s\n", count, s->name);
+	IVTV_DEBUG_HI_IOCTL("read %zd bytes from %s\n", count, s->name);
 
 	rc = ivtv_start_capture(id);
 	if (rc)
@@ -535,7 +537,7 @@ ssize_t ivtv_v4l2_write(struct file *filp, const char __user *user_buf, size_t c
 	int rc;
 	DEFINE_WAIT(wait);
 
-	IVTV_DEBUG_IOCTL("write %zd bytes to %s\n", count, s->name);
+	IVTV_DEBUG_HI_IOCTL("write %zd bytes to %s\n", count, s->name);
 
 	if (s->type != IVTV_DEC_STREAM_TYPE_MPG &&
 	    s->type != IVTV_DEC_STREAM_TYPE_YUV &&
@@ -643,7 +645,7 @@ retry:
 	   to transfer the rest. */
 	if (count && !(filp->f_flags & O_NONBLOCK))
 		goto retry;
-	IVTV_DEBUG_INFO("Wrote %d bytes to %s (%d)\n", bytes_written, s->name, s->q_full.bytesused);
+	IVTV_DEBUG_HI_INFO("Wrote %d bytes to %s (%d)\n", bytes_written, s->name, s->q_full.bytesused);
 	return bytes_written;
 }
 
@@ -752,11 +754,14 @@ static void ivtv_stop_decoding(struct ivtv_open_id *id, int flags, u64 pts)
 		ivtv_yuv_close(itv);
 	}
 	if (s->type == IVTV_DEC_STREAM_TYPE_YUV && itv->output_mode == OUT_YUV)
-	    itv->output_mode = OUT_NONE;
+		itv->output_mode = OUT_NONE;
+	else if (s->type == IVTV_DEC_STREAM_TYPE_YUV && itv->output_mode == OUT_UDMA_YUV)
+		itv->output_mode = OUT_NONE;
 	else if (s->type == IVTV_DEC_STREAM_TYPE_MPG && itv->output_mode == OUT_MPG)
-	    itv->output_mode = OUT_NONE;
+		itv->output_mode = OUT_NONE;
 
 	itv->speed = 0;
+	clear_bit(IVTV_F_I_DEC_PAUSED, &itv->i_flags);
 	ivtv_release_stream(s);
 }
 
@@ -799,7 +804,16 @@ int ivtv_v4l2_close(struct inode *inode, struct file *filp)
 		ivtv_unmute(itv);
 		ivtv_release_stream(s);
 	} else if (s->type >= IVTV_DEC_STREAM_TYPE_MPG) {
+		struct ivtv_stream *s_vout = &itv->streams[IVTV_DEC_STREAM_TYPE_VOUT];
+
 		ivtv_stop_decoding(id, VIDEO_CMD_STOP_TO_BLACK | VIDEO_CMD_STOP_IMMEDIATELY, 0);
+
+		/* If all output streams are closed, and if the user doesn't have
+		   IVTV_DEC_STREAM_TYPE_VOUT open, then disable VBI on TV-out. */
+		if (itv->output_mode == OUT_NONE && !test_bit(IVTV_F_S_APPL_IO, &s_vout->s_flags)) {
+			/* disable VBI on TV-out */
+			ivtv_disable_vbi(itv);
+		}
 	} else {
 		ivtv_stop_capture(id, 0);
 	}
@@ -832,7 +846,7 @@ int ivtv_v4l2_open(struct inode *inode, struct file *filp)
 	if (itv == NULL) {
 		/* Couldn't find a device registered
 		   on that minor, shouldn't happen! */
-		printk(KERN_WARNING "ivtv: no ivtv device found on minor %d\n", minor);
+		printk(KERN_WARNING "ivtv:  No ivtv device found on minor %d\n", minor);
 		return -ENXIO;
 	}
 
@@ -924,7 +938,7 @@ void ivtv_unmute(struct ivtv *itv)
 	if (atomic_read(&itv->capturing) == 0)
 		ivtv_vapi(itv, CX2341X_ENC_INITIALIZE_INPUT, 0);
 
-	ivtv_sleep_timeout(HZ / 10, 0);
+	ivtv_msleep_timeout(100, 0);
 
 	if (atomic_read(&itv->capturing)) {
 		ivtv_vapi(itv, CX2341X_ENC_MISC, 1, 12);

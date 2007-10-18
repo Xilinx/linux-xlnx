@@ -272,7 +272,7 @@ void sb1_flush_cache_data_page(unsigned long)
 /*
  * Invalidate all caches on this CPU
  */
-static void __attribute_used__ local_sb1___flush_cache_all(void)
+static void __used local_sb1___flush_cache_all(void)
 {
 	__sb1_writeback_inv_dcache_all();
 	__sb1_flush_icache_all();
@@ -476,7 +476,7 @@ static __init void probe_cache_sizes(void)
  * memory management function pointers, as well as initialize
  * the caches and tlbs
  */
-void sb1_cache_init(void)
+void __init sb1_cache_init(void)
 {
 	extern char except_vec2_sb1;
 

@@ -17,7 +17,7 @@
 #include <linux/libata.h>
 
 #define DRV_NAME "pata_isapnp"
-#define DRV_VERSION "0.2.1"
+#define DRV_VERSION "0.2.2"
 
 static struct scsi_host_template isapnp_sht = {
 	.module			= THIS_MODULE,
@@ -138,6 +138,8 @@ static struct pnp_device_id isapnp_devices[] = {
 	{.id = "PNP0600", .driver_data = 0},
 	{.id = ""}
 };
+
+MODULE_DEVICE_TABLE(pnp, isapnp_devices);
 
 static struct pnp_driver isapnp_driver = {
 	.name		= DRV_NAME,

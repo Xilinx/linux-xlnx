@@ -5168,10 +5168,17 @@ err_out:
 #endif
 
 static struct pci_device_id skge_pci_tbl[] = {
+#ifdef SK98LIN_ALL_DEVICES
 	{ PCI_VENDOR_ID_3COM, 0x1700, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
 	{ PCI_VENDOR_ID_3COM, 0x80eb, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
+#endif
+#ifdef GENESIS
+	/* Generic SysKonnect SK-98xx Gigabit Ethernet Server Adapter */	
 	{ PCI_VENDOR_ID_SYSKONNECT, 0x4300, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
+#endif
+	/* Generic SysKonnect SK-98xx V2.0 Gigabit Ethernet Adapter */	
 	{ PCI_VENDOR_ID_SYSKONNECT, 0x4320, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
+#ifdef SK98LIN_ALL_DEVICES
 /* DLink card does not have valid VPD so this driver gags
  *	{ PCI_VENDOR_ID_DLINK, 0x4c00, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
  */
@@ -5180,6 +5187,7 @@ static struct pci_device_id skge_pci_tbl[] = {
 	{ PCI_VENDOR_ID_CNET, 0x434e, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
 	{ PCI_VENDOR_ID_LINKSYS, 0x1032, PCI_ANY_ID, 0x0015, },
 	{ PCI_VENDOR_ID_LINKSYS, 0x1064, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
+#endif
 	{ 0 }
 };
 

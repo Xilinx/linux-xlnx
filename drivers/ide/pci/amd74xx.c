@@ -1,10 +1,11 @@
 /*
- * Version 2.16
+ * Version 2.21
  *
  * AMD 755/756/766/8111 and nVidia nForce/2/2s/3/3s/CK804/MCP04
  * IDE driver for Linux.
  *
  * Copyright (c) 2000-2002 Vojtech Pavlik
+ * Copyright (c) 2007 Bartlomiej Zolnierkiewicz
  *
  * Based on the work of:
  *      Andre Hedrick
@@ -37,11 +38,6 @@
 #define AMD_ADDRESS_SETUP	(0x0c + amd_config->base)
 #define AMD_UDMA_TIMING		(0x10 + amd_config->base)
 
-#define AMD_UDMA		0x07
-#define AMD_UDMA_33		0x01
-#define AMD_UDMA_66		0x02
-#define AMD_UDMA_100		0x03
-#define AMD_UDMA_133		0x04
 #define AMD_CHECK_SWDMA		0x08
 #define AMD_BAD_SWDMA		0x10
 #define AMD_BAD_FIFO		0x20
@@ -53,32 +49,33 @@
 
 static struct amd_ide_chip {
 	unsigned short id;
-	unsigned long base;
-	unsigned char flags;
+	u8 base;
+	u8 udma_mask;
+	u8 flags;
 } amd_ide_chips[] = {
-	{ PCI_DEVICE_ID_AMD_COBRA_7401,		0x40, AMD_UDMA_33 | AMD_BAD_SWDMA },
-	{ PCI_DEVICE_ID_AMD_VIPER_7409,		0x40, AMD_UDMA_66 | AMD_CHECK_SWDMA },
-	{ PCI_DEVICE_ID_AMD_VIPER_7411,		0x40, AMD_UDMA_100 | AMD_BAD_FIFO },
-	{ PCI_DEVICE_ID_AMD_OPUS_7441,		0x40, AMD_UDMA_100 },
-	{ PCI_DEVICE_ID_AMD_8111_IDE,		0x40, AMD_UDMA_133 | AMD_CHECK_SERENADE },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_IDE,	0x50, AMD_UDMA_100 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE2_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE2S_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE2S_SATA,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE3_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_SATA,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_SATA2,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_CK804_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP04_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP51_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP55_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP61_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP65_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP67_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP73_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP77_IDE,	0x50, AMD_UDMA_133 },
-	{ PCI_DEVICE_ID_AMD_CS5536_IDE,			0x40, AMD_UDMA_100 },
+	{ PCI_DEVICE_ID_AMD_COBRA_7401,		 0x40, ATA_UDMA2, AMD_BAD_SWDMA },
+	{ PCI_DEVICE_ID_AMD_VIPER_7409,		 0x40, ATA_UDMA4, AMD_CHECK_SWDMA },
+	{ PCI_DEVICE_ID_AMD_VIPER_7411,		 0x40, ATA_UDMA5, AMD_BAD_FIFO },
+	{ PCI_DEVICE_ID_AMD_OPUS_7441,		 0x40, ATA_UDMA5, },
+	{ PCI_DEVICE_ID_AMD_8111_IDE,		 0x40, ATA_UDMA6, AMD_CHECK_SERENADE },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_IDE,	 0x50, ATA_UDMA5, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE2_IDE,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE2S_IDE,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE2S_SATA,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE3_IDE,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_IDE,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_SATA,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE3S_SATA2,	 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_CK804_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP04_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP51_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP55_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP61_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP65_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP67_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP73_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_NVIDIA_NFORCE_MCP77_IDE, 0x50, ATA_UDMA6, },
+	{ PCI_DEVICE_ID_AMD_CS5536_IDE,		 0x40, ATA_UDMA5, },
 	{ 0 }
 };
 
@@ -87,7 +84,7 @@ static ide_pci_device_t *amd_chipset;
 static unsigned int amd_80w;
 static unsigned int amd_clock;
 
-static char *amd_dma[] = { "MWDMA16", "UDMA33", "UDMA66", "UDMA100", "UDMA133" };
+static char *amd_dma[] = { "16", "25", "33", "44", "66", "100", "133" };
 static unsigned char amd_cyc2udma[] = { 6, 6, 5, 4, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 7 };
 
 /*
@@ -126,9 +123,8 @@ static int amd74xx_get_info(char *buffer, char **addr, off_t offset, int count)
 	amd_print("Driver Version:                     2.13");
 	amd_print("South Bridge:                       %s", pci_name(bmide_dev));
 
-	pci_read_config_byte(dev, PCI_REVISION_ID, &t);
-	amd_print("Revision:                           IDE %#x", t);
-	amd_print("Highest DMA rate:                   %s", amd_dma[amd_config->flags & AMD_UDMA]);
+	amd_print("Revision:                           IDE %#x", dev->revision);
+	amd_print("Highest DMA rate:                   UDMA%s", amd_dma[fls(amd_config->udma_mask) - 1]);
 
 	amd_print("BM-DMA base:                        %#lx", amd_base);
 	amd_print("PCI clock:                          %d.%dMHz", amd_clock / 1000, amd_clock / 100 % 10);
@@ -221,12 +217,12 @@ static void amd_set_speed(struct pci_dev *dev, unsigned char dn, struct ide_timi
 	pci_write_config_byte(dev, AMD_DRIVE_TIMING + (3 - dn),
 		((FIT(timing->active, 1, 16) - 1) << 4) | (FIT(timing->recover, 1, 16) - 1));
 
-	switch (amd_config->flags & AMD_UDMA) {
-		case AMD_UDMA_33:  t = timing->udma ? (0xc0 | (FIT(timing->udma, 2, 5) - 2)) : 0x03; break;
-		case AMD_UDMA_66:  t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 2, 10)]) : 0x03; break;
-		case AMD_UDMA_100: t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 1, 10)]) : 0x03; break;
-		case AMD_UDMA_133: t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 1, 15)]) : 0x03; break;
-		default: return;
+	switch (amd_config->udma_mask) {
+	case ATA_UDMA2: t = timing->udma ? (0xc0 | (FIT(timing->udma, 2, 5) - 2)) : 0x03; break;
+	case ATA_UDMA4: t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 2, 10)]) : 0x03; break;
+	case ATA_UDMA5: t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 1, 10)]) : 0x03; break;
+	case ATA_UDMA6: t = timing->udma ? (0xc0 | amd_cyc2udma[FIT(timing->udma, 1, 15)]) : 0x03; break;
+	default: return;
 	}
 
 	pci_write_config_byte(dev, AMD_UDMA_TIMING + (3 - dn), t);
@@ -248,7 +244,7 @@ static int amd_set_drive(ide_drive_t *drive, u8 speed)
 		ide_config_drive_speed(drive, speed);
 
 	T = 1000000000 / amd_clock;
-	UT = T / min_t(int, max_t(int, amd_config->flags & AMD_UDMA, 1), 2);
+	UT = (amd_config->udma_mask == ATA_UDMA2) ? T : (T / 2);
 
 	ide_timing_compute(drive, speed, &t, T, UT);
 
@@ -276,34 +272,24 @@ static int amd_set_drive(ide_drive_t *drive, u8 speed)
 
 static void amd74xx_tune_drive(ide_drive_t *drive, u8 pio)
 {
-	if (pio == 255) {
-		amd_set_drive(drive, ide_find_best_mode(drive, XFER_PIO | XFER_EPIO));
-		return;
-	}
+	if (pio == 255)
+		pio = ide_get_best_pio_mode(drive, 255, 5);
 
 	amd_set_drive(drive, XFER_PIO_0 + min_t(byte, pio, 5));
 }
 
-/*
- * amd74xx_dmaproc() is a callback from upper layers that can do
- * a lot, but we use it for DMA/PIO tuning only, delegating everything
- * else to the default ide_dmaproc().
- */
-
 static int amd74xx_ide_dma_check(ide_drive_t *drive)
 {
-	int w80 = HWIF(drive)->udma_four;
+	u8 speed = ide_max_dma_mode(drive);
 
-	u8 speed = ide_find_best_mode(drive,
-		XFER_PIO | XFER_EPIO | XFER_MWDMA | XFER_UDMA |
-		((amd_config->flags & AMD_BAD_SWDMA) ? 0 : XFER_SWDMA) |
-		(w80 && (amd_config->flags & AMD_UDMA) >= AMD_UDMA_66 ? XFER_UDMA_66 : 0) |
-		(w80 && (amd_config->flags & AMD_UDMA) >= AMD_UDMA_100 ? XFER_UDMA_100 : 0) |
-		(w80 && (amd_config->flags & AMD_UDMA) >= AMD_UDMA_133 ? XFER_UDMA_133 : 0));
+	if (speed == 0) {
+		amd74xx_tune_drive(drive, 255);
+		return -1;
+	}
 
 	amd_set_drive(drive, speed);
 
-	if (drive->autodma && (speed & XFER_MODE) != XFER_PIO)
+	if (drive->autodma)
 		return 0;
 
 	return -1;
@@ -325,8 +311,7 @@ static unsigned int __devinit init_chipset_amd74xx(struct pci_dev *dev, const ch
  */
 
 	if (amd_config->flags & AMD_CHECK_SWDMA) {
-		pci_read_config_byte(dev, PCI_REVISION_ID, &t);
-		if (t <= 7)
+		if (dev->revision <= 7)
 			amd_config->flags |= AMD_BAD_SWDMA;
 	}
 
@@ -334,10 +319,10 @@ static unsigned int __devinit init_chipset_amd74xx(struct pci_dev *dev, const ch
  * Check 80-wire cable presence.
  */
 
-	switch (amd_config->flags & AMD_UDMA) {
+	switch (amd_config->udma_mask) {
 
-		case AMD_UDMA_133:
-		case AMD_UDMA_100:
+		case ATA_UDMA6:
+		case ATA_UDMA5:
 			pci_read_config_byte(dev, AMD_CABLE_DETECT, &t);
 			pci_read_config_dword(dev, AMD_UDMA_TIMING, &u);
 			amd_80w = ((t & 0x3) ? 1 : 0) | ((t & 0xc) ? 2 : 0);
@@ -349,7 +334,7 @@ static unsigned int __devinit init_chipset_amd74xx(struct pci_dev *dev, const ch
 				}
 			break;
 
-		case AMD_UDMA_66:
+		case ATA_UDMA4:
 			/* no host side cable detection */
 			amd_80w = 0x03;
 			break;
@@ -370,7 +355,7 @@ static unsigned int __devinit init_chipset_amd74xx(struct pci_dev *dev, const ch
 	if ((amd_config->flags & AMD_CHECK_SERENADE) &&
 		dev->subsystem_vendor == PCI_VENDOR_ID_AMD &&
 		dev->subsystem_device == PCI_DEVICE_ID_AMD_SERENADE)
-			amd_config->flags = AMD_UDMA_100;
+			amd_config->udma_mask = ATA_UDMA5;
 
 /*
  * Determine the system bus clock.
@@ -395,8 +380,9 @@ static unsigned int __devinit init_chipset_amd74xx(struct pci_dev *dev, const ch
  */
 
 	pci_read_config_byte(dev, PCI_REVISION_ID, &t);
-	printk(KERN_INFO "%s: %s (rev %02x) %s controller\n",
-		amd_chipset->name, pci_name(dev), t, amd_dma[amd_config->flags & AMD_UDMA]);
+	printk(KERN_INFO "%s: %s (rev %02x) UDMA%s controller\n",
+		amd_chipset->name, pci_name(dev), dev->revision,
+		amd_dma[fls(amd_config->udma_mask) - 1]);
 
 /*
  * Register /proc/ide/amd74xx entry
@@ -437,12 +423,19 @@ static void __devinit init_hwif_amd74xx(ide_hwif_t *hwif)
 		return;
 
         hwif->atapi_dma = 1;
-        hwif->ultra_mask = 0x7f;
-        hwif->mwdma_mask = 0x07;
-        hwif->swdma_mask = 0x07;
 
-	if (!hwif->udma_four)
-		hwif->udma_four = (amd_80w >> hwif->channel) & 1;
+	hwif->ultra_mask = amd_config->udma_mask;
+	hwif->mwdma_mask = 0x07;
+	if ((amd_config->flags & AMD_BAD_SWDMA) == 0)
+		hwif->swdma_mask = 0x07;
+
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT) {
+		if ((amd_80w >> hwif->channel) & 1)
+			hwif->cbl = ATA_CBL_PATA80;
+		else
+			hwif->cbl = ATA_CBL_PATA40;
+	}
+
         hwif->ide_dma_check = &amd74xx_ide_dma_check;
         if (!noautodma)
                 hwif->autodma = 1;
@@ -455,10 +448,12 @@ static void __devinit init_hwif_amd74xx(ide_hwif_t *hwif)
 		.name		= name_str,				\
 		.init_chipset	= init_chipset_amd74xx,			\
 		.init_hwif	= init_hwif_amd74xx,			\
-		.channels	= 2,					\
 		.autodma	= AUTODMA,				\
 		.enablebits	= {{0x40,0x02,0x02}, {0x40,0x01,0x01}},	\
 		.bootable	= ON_BOARD,				\
+		.host_flags	= IDE_HFLAG_PIO_NO_BLACKLIST		\
+				| IDE_HFLAG_PIO_NO_DOWNGRADE,		\
+		.pio_mask	= ATA_PIO5,				\
 	}
 
 #define DECLARE_NV_DEV(name_str)					\
@@ -466,10 +461,12 @@ static void __devinit init_hwif_amd74xx(ide_hwif_t *hwif)
 		.name		= name_str,				\
 		.init_chipset	= init_chipset_amd74xx,			\
 		.init_hwif	= init_hwif_amd74xx,			\
-		.channels	= 2,					\
 		.autodma	= AUTODMA,				\
 		.enablebits	= {{0x50,0x02,0x02}, {0x50,0x01,0x01}},	\
 		.bootable	= ON_BOARD,				\
+		.host_flags	= IDE_HFLAG_PIO_NO_BLACKLIST		\
+				| IDE_HFLAG_PIO_NO_DOWNGRADE,		\
+		.pio_mask	= ATA_PIO5,				\
 	}
 
 static ide_pci_device_t amd74xx_chipsets[] __devinitdata = {

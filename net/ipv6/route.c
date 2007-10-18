@@ -1983,9 +1983,10 @@ static int rt6_mtu_change_route(struct rt6_info *rt, void *p_arg)
 	    !dst_metric_locked(&rt->u.dst, RTAX_MTU) &&
 	    (dst_mtu(&rt->u.dst) > arg->mtu ||
 	     (dst_mtu(&rt->u.dst) < arg->mtu &&
-	      dst_mtu(&rt->u.dst) == idev->cnf.mtu6)))
+	      dst_mtu(&rt->u.dst) == idev->cnf.mtu6))) {
 		rt->u.dst.metrics[RTAX_MTU-1] = arg->mtu;
-	rt->u.dst.metrics[RTAX_ADVMSS-1] = ipv6_advmss(arg->mtu);
+		rt->u.dst.metrics[RTAX_ADVMSS-1] = ipv6_advmss(arg->mtu);
+	}
 	return 0;
 }
 
@@ -2555,7 +2556,7 @@ void __init ip6_route_init(void)
 #endif
 	ip6_dst_ops.kmem_cachep =
 		kmem_cache_create("ip6_dst_cache", sizeof(struct rt6_info), 0,
-				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL, NULL);
+				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 	ip6_dst_blackhole_ops.kmem_cachep = ip6_dst_ops.kmem_cachep;
 
 	fib6_init();

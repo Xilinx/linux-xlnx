@@ -101,8 +101,6 @@
 static struct kmem_cache *policy_cache;
 static struct kmem_cache *sn_cache;
 
-#define PDprintk(fmt...)
-
 /* Highest zone. An specific allocation for a zone below that is not
    policied. */
 enum zone_type policy_zone = 0;
@@ -151,7 +149,7 @@ static struct zonelist *bind_zonelist(nodemask_t *nodes)
 	   lower zones etc. Avoid empty zones because the memory allocator
 	   doesn't like them. If you implement node hot removal you
 	   have to fix that. */
-	k = policy_zone;
+	k = MAX_NR_ZONES - 1;
 	while (1) {
 		for_each_node_mask(nd, *nodes) { 
 			struct zone *z = &NODE_DATA(nd)->node_zones[k];
@@ -175,7 +173,9 @@ static struct mempolicy *mpol_new(int mode, nodemask_t *nodes)
 {
 	struct mempolicy *policy;
 
-	PDprintk("setting mode %d nodes[0] %lx\n", mode, nodes_addr(*nodes)[0]);
+	pr_debug("setting mode %d nodes[0] %lx\n",
+		 mode, nodes ? nodes_addr(*nodes)[0] : -1);
+
 	if (mode == MPOL_DEFAULT)
 		return NULL;
 	policy = kmem_cache_alloc(policy_cache, GFP_KERNEL);
@@ -379,7 +379,7 @@ static int policy_vma(struct vm_area_struct *vma, struct mempolicy *new)
 	int err = 0;
 	struct mempolicy *old = vma->vm_policy;
 
-	PDprintk("vma %lx-%lx/%lx vm_ops %p vm_file %p set_policy %p\n",
+	pr_debug("vma %lx-%lx/%lx vm_ops %p vm_file %p set_policy %p\n",
 		 vma->vm_start, vma->vm_end, vma->vm_pgoff,
 		 vma->vm_ops, vma->vm_file,
 		 vma->vm_ops ? vma->vm_ops->set_policy : NULL);
@@ -594,7 +594,7 @@ static void migrate_page_add(struct page *page, struct list_head *pagelist,
 
 static struct page *new_node_page(struct page *page, unsigned long node, int **x)
 {
-	return alloc_pages_node(node, GFP_HIGHUSER, 0);
+	return alloc_pages_node(node, GFP_HIGHUSER_MOVABLE, 0);
 }
 
 /*
@@ -710,7 +710,8 @@ static struct page *new_vma_page(struct page *page, unsigned long private, int *
 {
 	struct vm_area_struct *vma = (struct vm_area_struct *)private;
 
-	return alloc_page_vma(GFP_HIGHUSER, vma, page_address_in_vma(page, vma));
+	return alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
+					page_address_in_vma(page, vma));
 }
 #else
 
@@ -776,8 +777,8 @@ long do_mbind(unsigned long start, unsigned long len,
 	if (!new)
 		flags |= MPOL_MF_DISCONTIG_OK;
 
-	PDprintk("mbind %lx-%lx mode:%ld nodes:%lx\n",start,start+len,
-			mode,nodes_addr(nodes)[0]);
+	pr_debug("mbind %lx-%lx mode:%ld nodes:%lx\n",start,start+len,
+		 mode, nmask ? nodes_addr(*nmask)[0] : -1);
 
 	down_write(&mm->mmap_sem);
 	vma = check_range(mm, start, end, nmask,
@@ -954,6 +955,11 @@ asmlinkage long sys_migrate_pages(pid_t pid, unsigned long maxnode,
 		goto out;
 	}
 
+	if (!nodes_subset(new, node_online_map)) {
+		err = -EINVAL;
+		goto out;
+	}
+
 	err = security_task_movememory(task);
 	if (err)
 		goto out;
@@ -1071,21 +1077,37 @@ asmlinkage long compat_sys_mbind(compat_ulong_t start, compat_ulong_t len,
 
 #endif
 
-/* Return effective policy for a VMA */
+/*
+ * get_vma_policy(@task, @vma, @addr)
+ * @task - task for fallback if vma policy == default
+ * @vma   - virtual memory area whose policy is sought
+ * @addr  - address in @vma for shared policy lookup
+ *
+ * Returns effective policy for a VMA at specified address.
+ * Falls back to @task or system default policy, as necessary.
+ * Returned policy has extra reference count if shared, vma,
+ * or some other task's policy [show_numa_maps() can pass
+ * @task != current].  It is the caller's responsibility to
+ * free the reference in these cases.
+ */
 static struct mempolicy * get_vma_policy(struct task_struct *task,
 		struct vm_area_struct *vma, unsigned long addr)
 {
 	struct mempolicy *pol = task->mempolicy;
+	int shared_pol = 0;
 
 	if (vma) {
-		if (vma->vm_ops && vma->vm_ops->get_policy)
+		if (vma->vm_ops && vma->vm_ops->get_policy) {
 			pol = vma->vm_ops->get_policy(vma, addr);
-		else if (vma->vm_policy &&
+			shared_pol = 1;	/* if pol non-NULL, add ref below */
+		} else if (vma->vm_policy &&
 				vma->vm_policy->policy != MPOL_DEFAULT)
 			pol = vma->vm_policy;
 	}
 	if (!pol)
 		pol = &default_policy;
+	else if (!shared_pol && pol != current->mempolicy)
+		mpol_get(pol);	/* vma or other task's policy */
 	return pol;
 }
 
@@ -1201,18 +1223,45 @@ static inline unsigned interleave_nid(struct mempolicy *pol,
 }
 
 #ifdef CONFIG_HUGETLBFS
-/* Return a zonelist suitable for a huge page allocation. */
-struct zonelist *huge_zonelist(struct vm_area_struct *vma, unsigned long addr)
+/*
+ * huge_zonelist(@vma, @addr, @gfp_flags, @mpol)
+ * @vma = virtual memory area whose policy is sought
+ * @addr = address in @vma for shared policy lookup and interleave policy
+ * @gfp_flags = for requested zone
+ * @mpol = pointer to mempolicy pointer for reference counted 'BIND policy
+ *
+ * Returns a zonelist suitable for a huge page allocation.
+ * If the effective policy is 'BIND, returns pointer to policy's zonelist.
+ * If it is also a policy for which get_vma_policy() returns an extra
+ * reference, we must hold that reference until after allocation.
+ * In that case, return policy via @mpol so hugetlb allocation can drop
+ * the reference.  For non-'BIND referenced policies, we can/do drop the
+ * reference here, so the caller doesn't need to know about the special case
+ * for default and current task policy.
+ */
+struct zonelist *huge_zonelist(struct vm_area_struct *vma, unsigned long addr,
+				gfp_t gfp_flags, struct mempolicy **mpol)
 {
 	struct mempolicy *pol = get_vma_policy(current, vma, addr);
+	struct zonelist *zl;
 
+	*mpol = NULL;		/* probably no unref needed */
 	if (pol->policy == MPOL_INTERLEAVE) {
 		unsigned nid;
 
 		nid = interleave_nid(pol, vma, addr, HPAGE_SHIFT);
-		return NODE_DATA(nid)->node_zonelists + gfp_zone(GFP_HIGHUSER);
+		__mpol_free(pol);		/* finished with pol */
+		return NODE_DATA(nid)->node_zonelists + gfp_zone(gfp_flags);
 	}
-	return zonelist_policy(GFP_HIGHUSER, pol);
+
+	zl = zonelist_policy(GFP_HIGHUSER, pol);
+	if (unlikely(pol != &default_policy && pol != current->mempolicy)) {
+		if (pol->policy != MPOL_BIND)
+			__mpol_free(pol);	/* finished with pol */
+		else
+			*mpol = pol;	/* unref needed after allocation */
+	}
+	return zl;
 }
 #endif
 
@@ -1257,6 +1306,7 @@ struct page *
 alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
 {
 	struct mempolicy *pol = get_vma_policy(current, vma, addr);
+	struct zonelist *zl;
 
 	cpuset_update_task_memory_state();
 
@@ -1266,7 +1316,19 @@ alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
 		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT);
 		return alloc_page_interleave(gfp, 0, nid);
 	}
-	return __alloc_pages(gfp, 0, zonelist_policy(gfp, pol));
+	zl = zonelist_policy(gfp, pol);
+	if (pol != &default_policy && pol != current->mempolicy) {
+		/*
+		 * slow path: ref counted policy -- shared or vma
+		 */
+		struct page *page =  __alloc_pages(gfp, 0, zl);
+		__mpol_free(pol);
+		return page;
+	}
+	/*
+	 * fast path:  default or task policy
+	 */
+	return __alloc_pages(gfp, 0, zl);
 }
 
 /**
@@ -1434,7 +1496,7 @@ static void sp_insert(struct shared_policy *sp, struct sp_node *new)
 	}
 	rb_link_node(&new->nd, parent, p);
 	rb_insert_color(&new->nd, &sp->root);
-	PDprintk("inserting %lx-%lx: %d\n", new->start, new->end,
+	pr_debug("inserting %lx-%lx: %d\n", new->start, new->end,
 		 new->policy ? new->policy->policy : 0);
 }
 
@@ -1459,7 +1521,7 @@ mpol_shared_policy_lookup(struct shared_policy *sp, unsigned long idx)
 
 static void sp_delete(struct shared_policy *sp, struct sp_node *n)
 {
-	PDprintk("deleting %lx-l%x\n", n->start, n->end);
+	pr_debug("deleting %lx-l%lx\n", n->start, n->end);
 	rb_erase(&n->nd, &sp->root);
 	mpol_free(n->policy);
 	kmem_cache_free(sn_cache, n);
@@ -1558,10 +1620,10 @@ int mpol_set_shared_policy(struct shared_policy *info,
 	struct sp_node *new = NULL;
 	unsigned long sz = vma_pages(vma);
 
-	PDprintk("set_shared_policy %lx sz %lu %d %lx\n",
+	pr_debug("set_shared_policy %lx sz %lu %d %lx\n",
 		 vma->vm_pgoff,
 		 sz, npol? npol->policy : -1,
-		npol ? nodes_addr(npol->v.nodes)[0] : -1);
+		 npol ? nodes_addr(npol->v.nodes)[0] : -1);
 
 	if (npol) {
 		new = sp_alloc(vma->vm_pgoff, vma->vm_pgoff + sz, npol);
@@ -1597,18 +1659,43 @@ void mpol_free_shared_policy(struct shared_policy *p)
 /* assumes fs == KERNEL_DS */
 void __init numa_policy_init(void)
 {
+	nodemask_t interleave_nodes;
+	unsigned long largest = 0;
+	int nid, prefer = 0;
+
 	policy_cache = kmem_cache_create("numa_policy",
 					 sizeof(struct mempolicy),
-					 0, SLAB_PANIC, NULL, NULL);
+					 0, SLAB_PANIC, NULL);
 
 	sn_cache = kmem_cache_create("shared_policy_node",
 				     sizeof(struct sp_node),
-				     0, SLAB_PANIC, NULL, NULL);
+				     0, SLAB_PANIC, NULL);
 
-	/* Set interleaving policy for system init. This way not all
-	   the data structures allocated at system boot end up in node zero. */
+	/*
+	 * Set interleaving policy for system init. Interleaving is only
+	 * enabled across suitably sized nodes (default is >= 16MB), or
+	 * fall back to the largest node if they're all smaller.
+	 */
+	nodes_clear(interleave_nodes);
+	for_each_online_node(nid) {
+		unsigned long total_pages = node_present_pages(nid);
 
-	if (do_set_mempolicy(MPOL_INTERLEAVE, &node_online_map))
+		/* Preserve the largest node */
+		if (largest < total_pages) {
+			largest = total_pages;
+			prefer = nid;
+		}
+
+		/* Interleave this node? */
+		if ((total_pages << PAGE_SHIFT) >= (16 << 20))
+			node_set(nid, interleave_nodes);
+	}
+
+	/* All too small, use the largest */
+	if (unlikely(nodes_empty(interleave_nodes)))
+		node_set(prefer, interleave_nodes);
+
+	if (do_set_mempolicy(MPOL_INTERLEAVE, &interleave_nodes))
 		printk("numa_policy_init: interleaving failed\n");
 }
 
@@ -1840,6 +1927,7 @@ int show_numa_map(struct seq_file *m, void *v)
 	struct numa_maps *md;
 	struct file *file = vma->vm_file;
 	struct mm_struct *mm = vma->vm_mm;
+	struct mempolicy *pol;
 	int n;
 	char buffer[50];
 
@@ -1850,8 +1938,13 @@ int show_numa_map(struct seq_file *m, void *v)
 	if (!md)
 		return 0;
 
-	mpol_to_str(buffer, sizeof(buffer),
-			    get_vma_policy(priv->task, vma, vma->vm_start));
+	pol = get_vma_policy(priv->task, vma, vma->vm_start);
+	mpol_to_str(buffer, sizeof(buffer), pol);
+	/*
+	 * unref shared or other task's mempolicy
+	 */
+	if (pol != &default_policy && pol != current->mempolicy)
+		__mpol_free(pol);
 
 	seq_printf(m, "%08lx %s", vma->vm_start, buffer);
 

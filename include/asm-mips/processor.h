@@ -62,8 +62,9 @@ extern unsigned int vced_count, vcei_count;
  * This decides where the kernel will search for a free chunk of vm
  * space during mmap's.
  */
-#define TASK_UNMAPPED_BASE	((current->thread.mflags & MF_32BIT_ADDR) ? \
-	PAGE_ALIGN(TASK_SIZE32 / 3) : PAGE_ALIGN(TASK_SIZE / 3))
+#define TASK_UNMAPPED_BASE						\
+	(test_thread_flag(TIF_32BIT_ADDR) ?				\
+		PAGE_ALIGN(TASK_SIZE32 / 3) : PAGE_ALIGN(TASK_SIZE / 3))
 #endif
 
 #define NUM_FPU_REGS	32
@@ -82,10 +83,6 @@ struct mips_fpu_struct {
 	unsigned int	fcr31;
 };
 
-#define INIT_FPU { \
-	{0,} \
-}
-
 #define NUM_DSP_REGS   6
 
 typedef __u32 dspreg_t;
@@ -94,8 +91,6 @@ struct mips_dsp_state {
 	dspreg_t        dspr[NUM_DSP_REGS];
 	unsigned int    dspcontrol;
 };
-
-#define INIT_DSP {{0,},}
 
 #define INIT_CPUMASK { \
 	{0,} \
@@ -138,58 +133,65 @@ struct thread_struct {
 	unsigned long cp0_baduaddr;	/* Last kernel fault accessing USEG */
 	unsigned long error_code;
 	unsigned long trap_no;
-#define MF_FIXADE	1		/* Fix address errors in software */
-#define MF_LOGADE	2		/* Log address errors to syslog */
-#define MF_32BIT_REGS	4		/* also implies 16/32 fprs */
-#define MF_32BIT_ADDR	8		/* 32-bit address space (o32/n32) */
-#define MF_FPUBOUND	0x10		/* thread bound to FPU-full CPU set */
-	unsigned long mflags;
 	unsigned long irix_trampoline;  /* Wheee... */
 	unsigned long irix_oldctx;
 	struct mips_abi *abi;
 };
 
-#define MF_ABI_MASK	(MF_32BIT_REGS | MF_32BIT_ADDR)
-#define MF_O32		(MF_32BIT_REGS | MF_32BIT_ADDR)
-#define MF_N32		MF_32BIT_ADDR
-#define MF_N64		0
-
 #ifdef CONFIG_MIPS_MT_FPAFF
-#define FPAFF_INIT 0, INIT_CPUMASK,
+#define FPAFF_INIT						\
+	.emulated_fp			= 0,			\
+	.user_cpus_allowed		= INIT_CPUMASK,
 #else
 #define FPAFF_INIT
 #endif /* CONFIG_MIPS_MT_FPAFF */
 
-#define INIT_THREAD  { \
-        /* \
-         * saved main processor registers \
-         */ \
-	0, 0, 0, 0, 0, 0, 0, 0, \
-	               0, 0, 0, \
-	/* \
-	 * saved cp0 stuff \
-	 */ \
-	0, \
-	/* \
-	 * saved fpu/fpu emulator stuff \
-	 */ \
-	INIT_FPU, \
-	/* \
-	 * fpu affinity state (null if not FPAFF) \
-	 */ \
-	FPAFF_INIT \
-	/* \
-	 * saved dsp/dsp emulator stuff \
-	 */ \
-	INIT_DSP, \
-	/* \
-	 * Other stuff associated with the process \
-	 */ \
-	0, 0, 0, 0, \
-	/* \
-	 * For now the default is to fix address errors \
-	 */ \
-	MF_FIXADE, 0, 0 \
+#define INIT_THREAD  {						\
+        /*							\
+         * Saved main processor registers			\
+         */							\
+	.reg16			= 0,				\
+	.reg17			= 0,				\
+	.reg18			= 0,				\
+	.reg19			= 0,				\
+	.reg20			= 0,				\
+	.reg21			= 0,				\
+	.reg22			= 0,				\
+	.reg23			= 0,				\
+	.reg29			= 0,				\
+	.reg30			= 0,				\
+	.reg31			= 0,				\
+	/*							\
+	 * Saved cp0 stuff					\
+	 */							\
+	.cp0_status		= 0,				\
+	/*							\
+	 * Saved FPU/FPU emulator stuff				\
+	 */							\
+	.fpu			= {				\
+		.fpr		= {0,},				\
+		.fcr31		= 0,				\
+	},							\
+	/*							\
+	 * FPU affinity state (null if not FPAFF)		\
+	 */							\
+	FPAFF_INIT						\
+	/*							\
+	 * Saved DSP stuff					\
+	 */							\
+	.dsp			= {				\
+		.dspr		= {0, },			\
+		.dspcontrol	= 0,				\
+	},							\
+	/*							\
+	 * Other stuff associated with the process		\
+	 */							\
+	.cp0_badvaddr		= 0,				\
+	.cp0_baduaddr		= 0,				\
+	.error_code		= 0,				\
+	.trap_no		= 0,				\
+	.irix_trampoline	= 0,				\
+	.irix_oldctx		= 0,				\
 }
 
 struct task_struct;
@@ -237,7 +239,7 @@ unsigned long get_wchan(struct task_struct *p);
 
 #define ARCH_HAS_PREFETCH
 
-extern inline void prefetch(const void *addr)
+static inline void prefetch(const void *addr)
 {
 	__asm__ __volatile__(
 	"	.set	mips4		\n"

@@ -1904,7 +1904,6 @@ static void ql_get_pauseparam(struct net_device *ndev,
 static const struct ethtool_ops ql3xxx_ethtool_ops = {
 	.get_settings = ql_get_settings,
 	.get_drvinfo = ql_get_drvinfo,
-	.get_perm_addr = ethtool_op_get_perm_addr,
 	.get_link = ethtool_op_get_link,
 	.get_msglevel = ql_get_msglevel,
 	.set_msglevel = ql_set_msglevel,
@@ -2249,6 +2248,13 @@ static int ql_tx_rx_clean(struct ql3_adapter *qdev,
 		qdev->rsp_consumer_index) && (work_done < work_to_do)) {
 
 		net_rsp = qdev->rsp_current;
+		rmb();
+		/*
+		 * Fix 4032 chipe undocumented "feature" where bit-8 is set if the
+		 * inbound completion is for a VLAN.
+		 */
+		if (qdev->device_id == QL3032_DEVICE_ID)
+			net_rsp->opcode &= 0x7f;
 		switch (net_rsp->opcode) {
 
 		case OPCODE_OB_MAC_IOCB_FN0:
@@ -2433,37 +2439,22 @@ static int ql_get_seg_count(struct ql3_adapter *qdev,
 	return -1;
 }
 
-static void ql_hw_csum_setup(struct sk_buff *skb,
+static void ql_hw_csum_setup(const struct sk_buff *skb,
 			     struct ob_mac_iocb_req *mac_iocb_ptr)
 {
-	struct ethhdr *eth;
-	struct iphdr *ip = NULL;
-	u8 offset = ETH_HLEN;
+	const struct iphdr *ip = ip_hdr(skb);
 
-	eth = (struct ethhdr *)(skb->data);
+	mac_iocb_ptr->ip_hdr_off = skb_network_offset(skb);
+	mac_iocb_ptr->ip_hdr_len = ip->ihl;
 
-	if (eth->h_proto == __constant_htons(ETH_P_IP)) {
-		ip = (struct iphdr *)&skb->data[ETH_HLEN];
-	} else if (eth->h_proto == htons(ETH_P_8021Q) &&
-		   ((struct vlan_ethhdr *)skb->data)->
-		   h_vlan_encapsulated_proto == __constant_htons(ETH_P_IP)) {
-		ip = (struct iphdr *)&skb->data[VLAN_ETH_HLEN];
-		offset = VLAN_ETH_HLEN;
+	if (ip->protocol == IPPROTO_TCP) {
+		mac_iocb_ptr->flags1 |= OB_3032MAC_IOCB_REQ_TC |
+			OB_3032MAC_IOCB_REQ_IC;
+	} else {
+		mac_iocb_ptr->flags1 |= OB_3032MAC_IOCB_REQ_UC |
+			OB_3032MAC_IOCB_REQ_IC;
 	}
 
-	if (ip) {
-		if (ip->protocol == IPPROTO_TCP) {
-			mac_iocb_ptr->flags1 |= OB_3032MAC_IOCB_REQ_TC | 
-			OB_3032MAC_IOCB_REQ_IC;
-			mac_iocb_ptr->ip_hdr_off = offset;
-			mac_iocb_ptr->ip_hdr_len = ip->ihl;
-		} else if (ip->protocol == IPPROTO_UDP) {
-			mac_iocb_ptr->flags1 |= OB_3032MAC_IOCB_REQ_UC | 
-			OB_3032MAC_IOCB_REQ_IC;
-			mac_iocb_ptr->ip_hdr_off = offset;
-			mac_iocb_ptr->ip_hdr_len = ip->ihl;
-		}
-	}
 }
 
 /*

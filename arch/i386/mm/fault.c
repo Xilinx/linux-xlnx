@@ -249,9 +249,10 @@ static inline pmd_t *vmalloc_sync_one(pgd_t *pgd, unsigned long address)
 	pmd_k = pmd_offset(pud_k, address);
 	if (!pmd_present(*pmd_k))
 		return NULL;
-	if (!pmd_present(*pmd))
+	if (!pmd_present(*pmd)) {
 		set_pmd(pmd, *pmd_k);
-	else
+		arch_flush_lazy_mmu_mode();
+	} else
 		BUG_ON(pmd_page(*pmd) != pmd_page(*pmd_k));
 	return pmd_k;
 }
@@ -283,6 +284,8 @@ static inline int vmalloc_fault(unsigned long address)
 	return 0;
 }
 
+int show_unhandled_signals = 1;
+
 /*
  * This routine handles page faults.  It determines the address,
  * and the problem, and then passes it off to one of the appropriate
@@ -303,6 +306,7 @@ fastcall void __kprobes do_page_fault(struct pt_regs *regs,
 	struct vm_area_struct * vma;
 	unsigned long address;
 	int write, si_code;
+	int fault;
 
 	/* get the address */
         address = read_cr2();
@@ -422,20 +426,18 @@ good_area:
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
-	switch (handle_mm_fault(mm, vma, address, write)) {
-		case VM_FAULT_MINOR:
-			tsk->min_flt++;
-			break;
-		case VM_FAULT_MAJOR:
-			tsk->maj_flt++;
-			break;
-		case VM_FAULT_SIGBUS:
-			goto do_sigbus;
-		case VM_FAULT_OOM:
+	fault = handle_mm_fault(mm, vma, address, write);
+	if (unlikely(fault & VM_FAULT_ERROR)) {
+		if (fault & VM_FAULT_OOM)
 			goto out_of_memory;
-		default:
-			BUG();
+		else if (fault & VM_FAULT_SIGBUS)
+			goto do_sigbus;
+		BUG();
 	}
+	if (fault & VM_FAULT_MAJOR)
+		tsk->maj_flt++;
+	else
+		tsk->min_flt++;
 
 	/*
 	 * Did it hit the DOS screen memory VA from vm86 mode?
@@ -470,6 +472,14 @@ bad_area_nosemaphore:
 		if (is_prefetch(regs, address, error_code))
 			return;
 
+		if (show_unhandled_signals && unhandled_signal(tsk, SIGSEGV) &&
+		    printk_ratelimit()) {
+			printk("%s%s[%d]: segfault at %08lx eip %08lx "
+			    "esp %08lx error %lx\n",
+			    tsk->pid > 1 ? KERN_INFO : KERN_EMERG,
+			    tsk->comm, tsk->pid, address, regs->eip,
+			    regs->esp, error_code);
+		}
 		tsk->thread.cr2 = address;
 		/* Kernel addresses are always protection faults */
 		tsk->thread.error_code = error_code | (address >= TASK_SIZE);

@@ -469,7 +469,7 @@ __uml_help(fakehd,
 "    Change the ubd device name to \"hd\".\n\n"
 );
 
-static void do_ubd_request(request_queue_t * q);
+static void do_ubd_request(struct request_queue * q);
 
 /* Only changed by ubd_init, which is an initcall. */
 int thread_fd = -1;
@@ -612,6 +612,8 @@ static int ubd_open_dev(struct ubd *ubd_dev)
 	ubd_dev->fd = fd;
 
 	if(ubd_dev->cow.file != NULL){
+		blk_queue_max_sectors(ubd_dev->queue, 8 * sizeof(long));
+
 		err = -ENOMEM;
 		ubd_dev->cow.bitmap = (void *) vmalloc(ubd_dev->cow.bitmap_len);
 		if(ubd_dev->cow.bitmap == NULL){
@@ -1079,11 +1081,11 @@ static void prepare_request(struct request *req, struct io_thread_req *io_req,
 }
 
 /* Called with dev->lock held */
-static void do_ubd_request(request_queue_t *q)
+static void do_ubd_request(struct request_queue *q)
 {
 	struct io_thread_req *io_req;
 	struct request *req;
-	int n;
+	int n, last_sectors;
 
 	while(1){
 		struct ubd *dev = q->queuedata;
@@ -1099,9 +1101,11 @@ static void do_ubd_request(request_queue_t *q)
 		}
 
 		req = dev->request;
+		last_sectors = 0;
 		while(dev->start_sg < dev->end_sg){
 			struct scatterlist *sg = &dev->sg[dev->start_sg];
 
+			req->sector += last_sectors;
 			io_req = kmalloc(sizeof(struct io_thread_req),
 					 GFP_ATOMIC);
 			if(io_req == NULL){
@@ -1113,6 +1117,7 @@ static void do_ubd_request(request_queue_t *q)
 					(unsigned long long) req->sector << 9,
 					sg->offset, sg->length, sg->page);
 
+			last_sectors = sg->length >> 9;
 			n = os_write_file(thread_fd, &io_req,
 					  sizeof(struct io_thread_req *));
 			if(n != sizeof(struct io_thread_req *)){
@@ -1124,7 +1129,6 @@ static void do_ubd_request(request_queue_t *q)
 				return;
 			}
 
-			req->sector += sg->length >> 9;
 			dev->start_sg++;
 		}
 		dev->end_sg = 0;

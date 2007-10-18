@@ -87,12 +87,14 @@ struct vmi_timer_ops vmi_timer_ops;
 #define IRQ_PATCH_INT_MASK 0
 #define IRQ_PATCH_DISABLE  5
 
-static inline void patch_offset(unsigned char *eip, unsigned char *dest)
+static inline void patch_offset(void *insnbuf,
+				unsigned long eip, unsigned long dest)
 {
-        *(unsigned long *)(eip+1) = dest-eip-5;
+        *(unsigned long *)(insnbuf+1) = dest-eip-5;
 }
 
-static unsigned patch_internal(int call, unsigned len, void *insns)
+static unsigned patch_internal(int call, unsigned len, void *insnbuf,
+			       unsigned long eip)
 {
 	u64 reloc;
 	struct vmi_relocation_info *const rel = (struct vmi_relocation_info *)&reloc;
@@ -100,14 +102,14 @@ static unsigned patch_internal(int call, unsigned len, void *insns)
 	switch(rel->type) {
 		case VMI_RELOCATION_CALL_REL:
 			BUG_ON(len < 5);
-			*(char *)insns = MNEM_CALL;
-			patch_offset(insns, rel->eip);
+			*(char *)insnbuf = MNEM_CALL;
+			patch_offset(insnbuf, eip, (unsigned long)rel->eip);
 			return 5;
 
 		case VMI_RELOCATION_JUMP_REL:
 			BUG_ON(len < 5);
-			*(char *)insns = MNEM_JMP;
-			patch_offset(insns, rel->eip);
+			*(char *)insnbuf = MNEM_JMP;
+			patch_offset(insnbuf, eip, (unsigned long)rel->eip);
 			return 5;
 
 		case VMI_RELOCATION_NOP:
@@ -128,21 +130,26 @@ static unsigned patch_internal(int call, unsigned len, void *insns)
  * Apply patch if appropriate, return length of new instruction
  * sequence.  The callee does nop padding for us.
  */
-static unsigned vmi_patch(u8 type, u16 clobbers, void *insns, unsigned len)
+static unsigned vmi_patch(u8 type, u16 clobbers, void *insns,
+			  unsigned long eip, unsigned len)
 {
 	switch (type) {
 		case PARAVIRT_PATCH(irq_disable):
-			return patch_internal(VMI_CALL_DisableInterrupts, len, insns);
+			return patch_internal(VMI_CALL_DisableInterrupts, len,
+					      insns, eip);
 		case PARAVIRT_PATCH(irq_enable):
-			return patch_internal(VMI_CALL_EnableInterrupts, len, insns);
+			return patch_internal(VMI_CALL_EnableInterrupts, len,
+					      insns, eip);
 		case PARAVIRT_PATCH(restore_fl):
-			return patch_internal(VMI_CALL_SetInterruptMask, len, insns);
+			return patch_internal(VMI_CALL_SetInterruptMask, len,
+					      insns, eip);
 		case PARAVIRT_PATCH(save_fl):
-			return patch_internal(VMI_CALL_GetInterruptMask, len, insns);
+			return patch_internal(VMI_CALL_GetInterruptMask, len,
+					      insns, eip);
 		case PARAVIRT_PATCH(iret):
-			return patch_internal(VMI_CALL_IRET, len, insns);
+			return patch_internal(VMI_CALL_IRET, len, insns, eip);
 		case PARAVIRT_PATCH(irq_enable_sysexit):
-			return patch_internal(VMI_CALL_SYSEXIT, len, insns);
+			return patch_internal(VMI_CALL_SYSEXIT, len, insns, eip);
 		default:
 			break;
 	}
@@ -362,7 +369,7 @@ static void *vmi_kmap_atomic_pte(struct page *page, enum km_type type)
 }
 #endif
 
-static void vmi_allocate_pt(u32 pfn)
+static void vmi_allocate_pt(struct mm_struct *mm, u32 pfn)
 {
 	vmi_set_page_type(pfn, VMI_PAGE_L1);
 	vmi_ops.allocate_page(pfn, VMI_PAGE_L1, 0, 0, 0);
@@ -891,7 +898,7 @@ static inline int __init activate_vmi(void)
 		paravirt_ops.setup_boot_clock = vmi_time_bsp_init;
 		paravirt_ops.setup_secondary_clock = vmi_time_ap_init;
 #endif
-		paravirt_ops.get_scheduled_cycles = vmi_get_sched_cycles;
+		paravirt_ops.sched_clock = vmi_sched_clock;
  		paravirt_ops.get_cpu_khz = vmi_cpu_khz;
 
 		/* We have true wallclock functions; disable CMOS clock sync */

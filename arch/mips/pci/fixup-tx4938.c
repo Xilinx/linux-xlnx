@@ -18,7 +18,7 @@
 
 extern struct pci_controller tx4938_pci_controller[];
 
-int pci_get_irq(struct pci_dev *dev, int pin)
+static int pci_get_irq(const struct pci_dev *dev, int pin)
 {
 	int irq = pin;
 	u8 slot = PCI_SLOT(dev->devfn);
@@ -69,7 +69,7 @@ int pci_get_irq(struct pci_dev *dev, int pin)
 	return irq;
 }
 
-int __init pcibios_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+int __init pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	unsigned char irq = 0;
 

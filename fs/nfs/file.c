@@ -41,7 +41,9 @@ static int nfs_file_open(struct inode *, struct file *);
 static int nfs_file_release(struct inode *, struct file *);
 static loff_t nfs_file_llseek(struct file *file, loff_t offset, int origin);
 static int  nfs_file_mmap(struct file *, struct vm_area_struct *);
-static ssize_t nfs_file_sendfile(struct file *, loff_t *, size_t, read_actor_t, void *);
+static ssize_t nfs_file_splice_read(struct file *filp, loff_t *ppos,
+					struct pipe_inode_info *pipe,
+					size_t count, unsigned int flags);
 static ssize_t nfs_file_read(struct kiocb *, const struct iovec *iov,
 				unsigned long nr_segs, loff_t pos);
 static ssize_t nfs_file_write(struct kiocb *, const struct iovec *iov,
@@ -51,6 +53,7 @@ static int  nfs_fsync(struct file *, struct dentry *dentry, int datasync);
 static int nfs_check_flags(int flags);
 static int nfs_lock(struct file *filp, int cmd, struct file_lock *fl);
 static int nfs_flock(struct file *filp, int cmd, struct file_lock *fl);
+static int nfs_setlease(struct file *file, long arg, struct file_lock **fl);
 
 const struct file_operations nfs_file_operations = {
 	.llseek		= nfs_file_llseek,
@@ -65,8 +68,9 @@ const struct file_operations nfs_file_operations = {
 	.fsync		= nfs_fsync,
 	.lock		= nfs_lock,
 	.flock		= nfs_flock,
-	.sendfile	= nfs_file_sendfile,
+	.splice_read	= nfs_file_splice_read,
 	.check_flags	= nfs_check_flags,
+	.setlease	= nfs_setlease,
 };
 
 const struct inode_operations nfs_file_inode_operations = {
@@ -224,20 +228,21 @@ nfs_file_read(struct kiocb *iocb, const struct iovec *iov,
 }
 
 static ssize_t
-nfs_file_sendfile(struct file *filp, loff_t *ppos, size_t count,
-		read_actor_t actor, void *target)
+nfs_file_splice_read(struct file *filp, loff_t *ppos,
+		     struct pipe_inode_info *pipe, size_t count,
+		     unsigned int flags)
 {
 	struct dentry *dentry = filp->f_path.dentry;
 	struct inode *inode = dentry->d_inode;
 	ssize_t res;
 
-	dfprintk(VFS, "nfs: sendfile(%s/%s, %lu@%Lu)\n",
+	dfprintk(VFS, "nfs: splice_read(%s/%s, %lu@%Lu)\n",
 		dentry->d_parent->d_name.name, dentry->d_name.name,
 		(unsigned long) count, (unsigned long long) *ppos);
 
 	res = nfs_revalidate_mapping(inode, filp->f_mapping);
 	if (!res)
-		res = generic_file_sendfile(filp, ppos, count, actor, target);
+		res = generic_file_splice_read(filp, ppos, pipe, count, flags);
 	return res;
 }
 
@@ -311,7 +316,7 @@ static void nfs_invalidate_page(struct page *page, unsigned long offset)
 	if (offset != 0)
 		return;
 	/* Cancel any unstarted writes on this page */
-	nfs_wb_page_priority(page->mapping->host, page, FLUSH_INVALIDATE);
+	nfs_wb_page_cancel(page->mapping->host, page);
 }
 
 static int nfs_release_page(struct page *page, gfp_t gfp)
@@ -397,7 +402,9 @@ static int do_getlk(struct file *filp, int cmd, struct file_lock *fl)
 
 	lock_kernel();
 	/* Try local locking first */
-	if (posix_test_lock(filp, fl)) {
+	posix_test_lock(filp, fl);
+	if (fl->fl_type != F_UNLCK) {
+		/* found a conflict */
 		goto out;
 	}
 
@@ -554,4 +561,14 @@ static int nfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	if (fl->fl_type == F_UNLCK)
 		return do_unlk(filp, cmd, fl);
 	return do_setlk(filp, cmd, fl);
+}
+
+static int nfs_setlease(struct file *file, long arg, struct file_lock **fl)
+{
+	/*
+	 * There is no protocol support for leases, so we have no way
+	 * to implement them correctly in the face of opens by other
+	 * clients.
+	 */
+	return -EINVAL;
 }

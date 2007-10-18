@@ -25,6 +25,7 @@
 #include <asm/system.h>
 #include <asm/io.h>
 #include <asm/semaphore.h>
+#include <asm/mutex.h>
 
 /******************************************************************************
  * IDE driver configuration options (play with these as desired):
@@ -554,7 +555,7 @@ typedef struct ide_drive_s {
 	char		name[4];	/* drive name, such as "hda" */
         char            driver_req[10];	/* requests specific driver */
 
-	request_queue_t		*queue;	/* request queue */
+	struct request_queue	*queue;	/* request queue */
 
 	struct request		*rq;	/* current request */
 	struct ide_drive_s 	*next;	/* circular list of hwgroup drives */
@@ -680,10 +681,16 @@ typedef struct hwif_s {
 	u8 straight8;	/* Alan's straight 8 check */
 	u8 bus_state;	/* power state of the IDE bus */
 
+	u8 host_flags;
+
+	u8 pio_mask;
+
 	u8 atapi_dma;	/* host supports atapi_dma */
 	u8 ultra_mask;
 	u8 mwdma_mask;
 	u8 swdma_mask;
+
+	u8 cbl;		/* cable type */
 
 	hwif_chipset_t chipset;	/* sub-module for tuning.. */
 
@@ -735,8 +742,8 @@ typedef struct hwif_s {
 	void (*ide_dma_clear_irq)(ide_drive_t *drive);
 	void (*dma_host_on)(ide_drive_t *drive);
 	void (*dma_host_off)(ide_drive_t *drive);
-	int (*ide_dma_lostirq)(ide_drive_t *drive);
-	int (*ide_dma_timeout)(ide_drive_t *drive);
+	void (*dma_lost_irq)(ide_drive_t *drive);
+	void (*dma_timeout)(ide_drive_t *drive);
 
 	void (*OUTB)(u8 addr, unsigned long port);
 	void (*OUTBSYNC)(ide_drive_t *drive, u8 addr, unsigned long port);
@@ -791,7 +798,6 @@ typedef struct hwif_s {
 	unsigned	sharing_irq: 1;	/* 1 = sharing irq with another hwif */
 	unsigned	reset      : 1;	/* reset after probe */
 	unsigned	autodma    : 1;	/* auto-attempt using DMA at boot */
-	unsigned	udma_four  : 1;	/* 1=ATA-66 capable, 0=default */
 	unsigned	no_lba48   : 1; /* 1 = cannot do LBA48 */
 	unsigned	no_lba48_dma : 1; /* 1 = cannot do LBA48 DMA */
 	unsigned	auto_poll  : 1; /* supports nop auto-poll */
@@ -863,7 +869,7 @@ typedef struct hwgroup_s {
 
 typedef struct ide_driver_s ide_driver_t;
 
-extern struct semaphore ide_setting_sem;
+extern struct mutex ide_setting_mtx;
 
 int set_io_32bit(ide_drive_t *, int);
 int set_pio_mode(ide_drive_t *, int);
@@ -1200,7 +1206,7 @@ extern void ide_stall_queue(ide_drive_t *drive, unsigned long timeout);
 extern int ide_spin_wait_hwgroup(ide_drive_t *);
 extern void ide_timer_expiry(unsigned long);
 extern irqreturn_t ide_intr(int irq, void *dev_id);
-extern void do_ide_request(request_queue_t *);
+extern void do_ide_request(struct request_queue *);
 
 void ide_init_disk(struct gendisk *, ide_drive_t *);
 
@@ -1242,7 +1248,13 @@ typedef struct ide_pci_enablebit_s {
 
 enum {
 	/* Uses ISA control ports not PCI ones. */
-	IDEPCI_FLAG_ISA_PORTS		= (1 << 0),
+	IDE_HFLAG_ISA_PORTS		= (1 << 0),
+	/* single port device */
+	IDE_HFLAG_SINGLE		= (1 << 1),
+	/* don't use legacy PIO blacklist */
+	IDE_HFLAG_PIO_NO_BLACKLIST	= (1 << 2),
+	/* don't use conservative PIO "downgrade" */
+	IDE_HFLAG_PIO_NO_DOWNGRADE	= (1 << 3),
 };
 
 typedef struct ide_pci_device_s {
@@ -1254,13 +1266,13 @@ typedef struct ide_pci_device_s {
 	void                    (*init_hwif)(ide_hwif_t *);
 	void			(*init_dma)(ide_hwif_t *, unsigned long);
 	void			(*fixup)(ide_hwif_t *);
-	u8			channels;
 	u8			autodma;
 	ide_pci_enablebit_t	enablebits[2];
 	u8			bootable;
 	unsigned int		extra;
 	struct ide_pci_device_s	*next;
-	u8			flags;
+	u8			host_flags;
+	u8			pio_mask;
 	u8			udma_mask;
 } ide_pci_device_t;
 
@@ -1273,13 +1285,14 @@ void ide_init_sg_cmd(ide_drive_t *, struct request *);
 #define BAD_DMA_DRIVE		0
 #define GOOD_DMA_DRIVE		1
 
-#ifdef CONFIG_BLK_DEV_IDEDMA
 struct drive_list_entry {
 	const char *id_model;
 	const char *id_firmware;
 };
 
 int ide_in_drive_list(struct hd_driveid *, const struct drive_list_entry *);
+
+#ifdef CONFIG_BLK_DEV_IDEDMA
 int __ide_dma_bad_drive(ide_drive_t *);
 int __ide_dma_good_drive(ide_drive_t *);
 u8 ide_max_dma_mode(ide_drive_t *);
@@ -1300,12 +1313,11 @@ void ide_dma_host_off(ide_drive_t *);
 void ide_dma_off_quietly(ide_drive_t *);
 void ide_dma_host_on(ide_drive_t *);
 extern int __ide_dma_on(ide_drive_t *);
-extern int __ide_dma_check(ide_drive_t *);
 extern int ide_dma_setup(ide_drive_t *);
 extern void ide_dma_start(ide_drive_t *);
 extern int __ide_dma_end(ide_drive_t *);
-extern int __ide_dma_lostirq(ide_drive_t *);
-extern int __ide_dma_timeout(ide_drive_t *);
+extern void ide_dma_lost_irq(ide_drive_t *);
+extern void ide_dma_timeout(ide_drive_t *);
 #endif /* CONFIG_BLK_DEV_IDEDMA_PCI */
 
 #else
@@ -1361,6 +1373,24 @@ extern void ide_toggle_bounce(ide_drive_t *drive, int on);
 extern int ide_set_xfer_rate(ide_drive_t *drive, u8 rate);
 int ide_use_fast_pio(ide_drive_t *);
 
+static inline int ide_dev_has_iordy(struct hd_driveid *id)
+{
+	return ((id->field_valid & 2) && (id->capability & 8)) ? 1 : 0;
+}
+
+static inline int ide_dev_is_sata(struct hd_driveid *id)
+{
+	/*
+	 * See if word 93 is 0 AND drive is at least ATA-5 compatible
+	 * verifying that word 80 by casting it to a signed type --
+	 * this trick allows us to filter out the reserved values of
+	 * 0x0000 and 0xffff along with the earlier ATA revisions...
+	 */
+	if (id->hw_config == 0 && (short)id->major_rev_num >= 0x0020)
+		return 1;
+	return 0;
+}
+
 u8 ide_dump_status(ide_drive_t *, const char *, u8);
 
 typedef struct ide_pio_timings_s {
@@ -1370,23 +1400,17 @@ typedef struct ide_pio_timings_s {
 				/* active + recovery (+ setup for some chips) */
 } ide_pio_timings_t;
 
-typedef struct ide_pio_data_s {
-	u8 pio_mode;
-	u8 use_iordy;
-	u8 overridden;
-	unsigned int cycle_time;
-} ide_pio_data_t;
-
-extern u8 ide_get_best_pio_mode (ide_drive_t *drive, u8 mode_wanted, u8 max_mode, ide_pio_data_t *d);
+unsigned int ide_pio_cycle_time(ide_drive_t *, u8);
+u8 ide_get_best_pio_mode(ide_drive_t *, u8, u8);
 extern const ide_pio_timings_t ide_pio_timings[6];
 
 
 extern spinlock_t ide_lock;
-extern struct semaphore ide_cfg_sem;
+extern struct mutex ide_cfg_mtx;
 /*
  * Structure locking:
  *
- * ide_cfg_sem and ide_lock together protect changes to
+ * ide_cfg_mtx and ide_lock together protect changes to
  * ide_hwif_t->{next,hwgroup}
  * ide_drive_t->next
  *

@@ -55,7 +55,7 @@
 #include <asm/bitops.h>
 
 static int __ide_end_request(ide_drive_t *drive, struct request *rq,
-			     int uptodate, int nr_sectors)
+			     int uptodate, unsigned int nr_bytes)
 {
 	int ret = 1;
 
@@ -64,7 +64,7 @@ static int __ide_end_request(ide_drive_t *drive, struct request *rq,
 	 * complete the whole request right now
 	 */
 	if (blk_noretry_request(rq) && end_io_error(uptodate))
-		nr_sectors = rq->hard_nr_sectors;
+		nr_bytes = rq->hard_nr_sectors << 9;
 
 	if (!blk_fs_request(rq) && end_io_error(uptodate) && !rq->errors)
 		rq->errors = -EIO;
@@ -78,7 +78,7 @@ static int __ide_end_request(ide_drive_t *drive, struct request *rq,
 		HWGROUP(drive)->hwif->ide_dma_on(drive);
 	}
 
-	if (!end_that_request_first(rq, uptodate, nr_sectors)) {
+	if (!end_that_request_chunk(rq, uptodate, nr_bytes)) {
 		add_disk_randomness(rq->rq_disk);
 		if (!list_empty(&rq->queuelist))
 			blkdev_dequeue_request(rq);
@@ -103,6 +103,7 @@ static int __ide_end_request(ide_drive_t *drive, struct request *rq,
 
 int ide_end_request (ide_drive_t *drive, int uptodate, int nr_sectors)
 {
+	unsigned int nr_bytes = nr_sectors << 9;
 	struct request *rq;
 	unsigned long flags;
 	int ret = 1;
@@ -114,10 +115,14 @@ int ide_end_request (ide_drive_t *drive, int uptodate, int nr_sectors)
 	spin_lock_irqsave(&ide_lock, flags);
 	rq = HWGROUP(drive)->rq;
 
-	if (!nr_sectors)
-		nr_sectors = rq->hard_cur_sectors;
+	if (!nr_bytes) {
+		if (blk_pc_request(rq))
+			nr_bytes = rq->data_len;
+		else
+			nr_bytes = rq->hard_cur_sectors << 9;
+	}
 
-	ret = __ide_end_request(drive, rq, uptodate, nr_sectors);
+	ret = __ide_end_request(drive, rq, uptodate, nr_bytes);
 
 	spin_unlock_irqrestore(&ide_lock, flags);
 	return ret;
@@ -219,11 +224,12 @@ static ide_startstop_t ide_start_power_step(ide_drive_t *drive, struct request *
 		 * we could be smarter and check for current xfer_speed
 		 * in struct drive etc...
 		 */
-		if ((drive->id->capability & 1) == 0)
-			break;
 		if (drive->hwif->ide_dma_check == NULL)
 			break;
 		drive->hwif->dma_off_quietly(drive);
+		/*
+		 * TODO: respect ->using_dma setting
+		 */
 		ide_set_dma(drive);
 		break;
 	}
@@ -1321,7 +1327,7 @@ static void ide_do_request (ide_hwgroup_t *hwgroup, int masked_irq)
 /*
  * Passes the stuff to ide_do_request
  */
-void do_ide_request(request_queue_t *q)
+void do_ide_request(struct request_queue *q)
 {
 	ide_drive_t *drive = q->queuedata;
 
@@ -1350,7 +1356,7 @@ static ide_startstop_t ide_dma_timeout_retry(ide_drive_t *drive, int error)
 						hwif->INB(IDE_STATUS_REG));
 	} else {
 		printk(KERN_WARNING "%s: DMA timeout retry\n", drive->name);
-		(void) hwif->ide_dma_timeout(drive);
+		hwif->dma_timeout(drive);
 	}
 
 	/*
@@ -1466,7 +1472,7 @@ void ide_timer_expiry (unsigned long data)
 				startstop = handler(drive);
 			} else if (drive_is_ready(drive)) {
 				if (drive->waiting_for_dma)
-					(void) hwgroup->hwif->ide_dma_lostirq(drive);
+					hwgroup->hwif->dma_lost_irq(drive);
 				(void)ide_ack_intr(hwif);
 				printk(KERN_WARNING "%s: lost interrupt\n", drive->name);
 				startstop = handler(drive);

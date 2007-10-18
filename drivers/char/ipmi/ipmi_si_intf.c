@@ -2050,6 +2050,7 @@ static __devinit void try_init_dmi(struct dmi_ipmi_data *ipmi_data)
 		info->si_type = SI_BT;
 		break;
 	default:
+		kfree(info);
 		return;
 	}
 
@@ -2214,7 +2215,8 @@ static int ipmi_pci_resume(struct pci_dev *pdev)
 
 static struct pci_device_id ipmi_pci_devices[] = {
 	{ PCI_DEVICE(PCI_HP_VENDOR_ID, PCI_MMC_DEVICE_ID) },
-	{ PCI_DEVICE_CLASS(PCI_ERMC_CLASSCODE, PCI_ERMC_CLASSCODE_MASK) }
+	{ PCI_DEVICE_CLASS(PCI_ERMC_CLASSCODE, PCI_ERMC_CLASSCODE_MASK) },
+	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, ipmi_pci_devices);
 
@@ -2291,7 +2293,7 @@ static int __devinit ipmi_of_probe(struct of_device *dev,
 	info->irq		= irq_of_parse_and_map(dev->node, 0);
 	info->dev		= &dev->dev;
 
-	dev_dbg(&dev->dev, "addr 0x%lx regsize %ld spacing %ld irq %x\n",
+	dev_dbg(&dev->dev, "addr 0x%lx regsize %d spacing %d irq %x\n",
 		info->io.addr_data, info->io.regsize, info->io.regspacing,
 		info->irq);
 
@@ -2857,7 +2859,7 @@ static int try_smi_init(struct smi_info *new_smi)
 
 	mutex_unlock(&smi_infos_lock);
 
-	printk(" IPMI %s interface initialized\n",si_to_str[new_smi->si_type]);
+	printk(KERN_INFO "IPMI %s interface initialized\n",si_to_str[new_smi->si_type]);
 
 	return 0;
 

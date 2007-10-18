@@ -14,6 +14,7 @@
 #include "init.h"
 #include "user.h"
 #include "mode.h"
+#include "kern_constants.h"
 
 struct aio_thread_req {
 	enum aio_type type;
@@ -65,47 +66,33 @@ static long io_getevents(aio_context_t ctx_id, long min_nr, long nr,
 static int do_aio(aio_context_t ctx, enum aio_type type, int fd, char *buf,
 		  int len, unsigned long long offset, struct aio_context *aio)
 {
-	struct iocb iocb, *iocbp = &iocb;
+	struct iocb *iocbp = & ((struct iocb) {
+				    .aio_data       = (unsigned long) aio,
+				    .aio_fildes     = fd,
+				    .aio_buf        = (unsigned long) buf,
+				    .aio_nbytes     = len,
+				    .aio_offset     = offset
+			     });
 	char c;
-	int err;
 
-	iocb = ((struct iocb) { .aio_data 	= (unsigned long) aio,
-				.aio_reqprio	= 0,
-				.aio_fildes	= fd,
-				.aio_buf	= (unsigned long) buf,
-				.aio_nbytes	= len,
-				.aio_offset	= offset,
-				.aio_reserved1	= 0,
-				.aio_reserved2	= 0,
-				.aio_reserved3	= 0 });
-
-	switch(type){
+	switch (type) {
 	case AIO_READ:
-		iocb.aio_lio_opcode = IOCB_CMD_PREAD;
-		err = io_submit(ctx, 1, &iocbp);
+		iocbp->aio_lio_opcode = IOCB_CMD_PREAD;
 		break;
 	case AIO_WRITE:
-		iocb.aio_lio_opcode = IOCB_CMD_PWRITE;
-		err = io_submit(ctx, 1, &iocbp);
+		iocbp->aio_lio_opcode = IOCB_CMD_PWRITE;
 		break;
 	case AIO_MMAP:
-		iocb.aio_lio_opcode = IOCB_CMD_PREAD;
-		iocb.aio_buf = (unsigned long) &c;
-		iocb.aio_nbytes = sizeof(c);
-		err = io_submit(ctx, 1, &iocbp);
+		iocbp->aio_lio_opcode = IOCB_CMD_PREAD;
+		iocbp->aio_buf = (unsigned long) &c;
+		iocbp->aio_nbytes = sizeof(c);
 		break;
 	default:
-		printk("Bogus op in do_aio - %d\n", type);
-		err = -EINVAL;
-		break;
+		printk(UM_KERN_ERR "Bogus op in do_aio - %d\n", type);
+		return -EINVAL;
 	}
 
-	if(err > 0)
-		err = 0;
-	else
-		err = -errno;
-
-	return err;
+	return (io_submit(ctx, 1, &iocbp) > 0) ? 0 : -errno;
 }
 
 /* Initialized in an initcall and unchanged thereafter */
@@ -177,6 +164,7 @@ static int do_not_aio(struct aio_thread_req *req)
 static int aio_req_fd_r = -1;
 static int aio_req_fd_w = -1;
 static int aio_pid = -1;
+static unsigned long aio_stack;
 
 static int not_aio_thread(void *arg)
 {
@@ -212,7 +200,6 @@ static int not_aio_thread(void *arg)
 
 static int init_aio_24(void)
 {
-	unsigned long stack;
 	int fds[2], err;
 
 	err = os_pipe(fds, 1, 1);
@@ -227,7 +214,7 @@ static int init_aio_24(void)
 		goto out_close_pipe;
 
 	err = run_helper_thread(not_aio_thread, NULL,
-				CLONE_FILES | CLONE_VM | SIGCHLD, &stack, 0);
+				CLONE_FILES | CLONE_VM | SIGCHLD, &aio_stack);
 	if(err < 0)
 		goto out_close_pipe;
 
@@ -252,7 +239,6 @@ out:
 #define DEFAULT_24_AIO 0
 static int init_aio_26(void)
 {
-	unsigned long stack;
 	int err;
 
 	if(io_setup(256, &ctx)){
@@ -263,7 +249,7 @@ static int init_aio_26(void)
 	}
 
 	err = run_helper_thread(aio_thread, NULL,
-				CLONE_FILES | CLONE_VM | SIGCHLD, &stack, 0);
+				CLONE_FILES | CLONE_VM | SIGCHLD, &aio_stack);
 	if(err < 0)
 		return err;
 
@@ -365,8 +351,10 @@ __initcall(init_aio);
 
 static void exit_aio(void)
 {
-	if(aio_pid != -1)
+	if (aio_pid != -1) {
 		os_kill_process(aio_pid, 1);
+		free_stack(aio_stack, 0);
+	}
 }
 
 __uml_exitcall(exit_aio);

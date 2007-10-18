@@ -182,15 +182,18 @@ static int __init setup_areas(struct spu *spu)
 {
 	struct table {char* name; unsigned long addr; unsigned long size;};
 
-	spu_pdata(spu)->shadow = __ioremap(
-		spu_pdata(spu)->shadow_addr, sizeof(struct spe_shadow),
-		pgprot_val(PAGE_READONLY) | _PAGE_NO_CACHE | _PAGE_GUARDED);
+	spu_pdata(spu)->shadow = ioremap_flags(spu_pdata(spu)->shadow_addr,
+					       sizeof(struct spe_shadow),
+					       pgprot_val(PAGE_READONLY) |
+					       _PAGE_NO_CACHE);
 	if (!spu_pdata(spu)->shadow) {
 		pr_debug("%s:%d: ioremap shadow failed\n", __func__, __LINE__);
 		goto fail_ioremap;
 	}
 
-	spu->local_store = ioremap(spu->local_store_phys, LS_SIZE);
+	spu->local_store = (__force void *)ioremap_flags(spu->local_store_phys,
+		LS_SIZE, _PAGE_NO_CACHE);
+
 	if (!spu->local_store) {
 		pr_debug("%s:%d: ioremap local_store failed\n",
 			__func__, __LINE__);
@@ -199,6 +202,7 @@ static int __init setup_areas(struct spu *spu)
 
 	spu->problem = ioremap(spu->problem_phys,
 		sizeof(struct spu_problem));
+
 	if (!spu->problem) {
 		pr_debug("%s:%d: ioremap problem failed\n", __func__, __LINE__);
 		goto fail_ioremap;
@@ -206,6 +210,7 @@ static int __init setup_areas(struct spu *spu)
 
 	spu->priv2 = ioremap(spu_pdata(spu)->priv2_addr,
 		sizeof(struct spu_priv2));
+
 	if (!spu->priv2) {
 		pr_debug("%s:%d: ioremap priv2 failed\n", __func__, __LINE__);
 		goto fail_ioremap;
@@ -400,17 +405,25 @@ static int __init ps3_enumerate_spus(int (*fn)(void *data))
 		}
 	}
 
-	if (result)
+	if (result) {
 		printk(KERN_WARNING "%s:%d: Error initializing spus\n",
 			__func__, __LINE__);
+		return result;
+	}
 
-	return result;
+	return num_resource_id;
+}
+
+static int ps3_init_affinity(void)
+{
+	return 0;
 }
 
 const struct spu_management_ops spu_management_ps3_ops = {
 	.enumerate_spus = ps3_enumerate_spus,
 	.create_spu = ps3_create_spu,
 	.destroy_spu = ps3_destroy_spu,
+	.init_affinity = ps3_init_affinity,
 };
 
 /* spu_priv1_ops */
@@ -491,6 +504,8 @@ static void mfc_sr1_set(struct spu *spu, u64 sr1)
 
 	static const u64 allowed = ~(MFC_STATE1_LOCAL_STORAGE_DECODE_MASK
 		| MFC_STATE1_PROBLEM_STATE_MASK);
+
+	sr1 |= MFC_STATE1_MASTER_RUN_CONTROL_MASK;
 
 	BUG_ON((sr1 & allowed) != (spu_pdata(spu)->cache.sr1 & allowed));
 

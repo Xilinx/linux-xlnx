@@ -22,24 +22,24 @@ static void __init check_bugs(void)
 	current_cpu_data.loops_per_jiffy = loops_per_jiffy;
 
 	switch (current_cpu_data.type) {
-	case CPU_SH7604 ... CPU_SH7619:
+	case CPU_SH7619:
 		*p++ = '2';
 		break;
 	case CPU_SH7206:
 		*p++ = '2';
 		*p++ = 'a';
 		break;
-	case CPU_SH7705 ... CPU_SH7300:
+	case CPU_SH7705 ... CPU_SH7729:
 		*p++ = '3';
 		break;
 	case CPU_SH7750 ... CPU_SH4_501:
 		*p++ = '4';
 		break;
-	case CPU_SH7770 ... CPU_SH7785:
+	case CPU_SH7770 ... CPU_SHX3:
 		*p++ = '4';
 		*p++ = 'a';
 		break;
-	case CPU_SH73180 ... CPU_SH7722:
+	case CPU_SH7343 ... CPU_SH7722:
 		*p++ = '4';
 		*p++ = 'a';
 		*p++ = 'l';

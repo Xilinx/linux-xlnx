@@ -140,6 +140,7 @@ struct irq_chip {
  * @wake_depth:		enable depth, for multiple set_irq_wake() callers
  * @irq_count:		stats field to detect stalled irqs
  * @irqs_unhandled:	stats field for spurious unhandled interrupts
+ * @last_unhandled:	aging timer for unhandled count
  * @lock:		locking for SMP
  * @affinity:		IRQ affinity on SMP
  * @cpu:		cpu index useful for balancing
@@ -161,6 +162,7 @@ struct irq_desc {
 	unsigned int		wake_depth;	/* nested wake enables */
 	unsigned int		irq_count;	/* For detecting broken IRQs */
 	unsigned int		irqs_unhandled;
+	unsigned long		last_unhandled;	/* Aging timer for unhandled count */
 	spinlock_t		lock;
 #ifdef CONFIG_SMP
 	cpumask_t		affinity;

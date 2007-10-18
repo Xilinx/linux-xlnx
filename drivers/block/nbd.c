@@ -100,7 +100,7 @@ static const char *nbdcmd_to_ascii(int cmd)
 static void nbd_end_request(struct request *req)
 {
 	int uptodate = (req->errors == 0) ? 1 : 0;
-	request_queue_t *q = req->q;
+	struct request_queue *q = req->q;
 	unsigned long flags;
 
 	dprintk(DBG_BLKDEV, "%s: request %p: %s\n", req->rq_disk->disk_name,
@@ -122,17 +122,12 @@ static int sock_xmit(struct socket *sock, int send, void *buf, int size,
 	int result;
 	struct msghdr msg;
 	struct kvec iov;
-	unsigned long flags;
-	sigset_t oldset;
+	sigset_t blocked, oldset;
 
 	/* Allow interception of SIGKILL only
 	 * Don't allow other signals to interrupt the transmission */
-	spin_lock_irqsave(&current->sighand->siglock, flags);
-	oldset = current->blocked;
-	sigfillset(&current->blocked);
-	sigdelsetmask(&current->blocked, sigmask(SIGKILL));
-	recalc_sigpending();
-	spin_unlock_irqrestore(&current->sighand->siglock, flags);
+	siginitsetinv(&blocked, sigmask(SIGKILL));
+	sigprocmask(SIG_SETMASK, &blocked, &oldset);
 
 	do {
 		sock->sk->sk_allocation = GFP_NOIO;
@@ -151,11 +146,9 @@ static int sock_xmit(struct socket *sock, int send, void *buf, int size,
 
 		if (signal_pending(current)) {
 			siginfo_t info;
-			spin_lock_irqsave(&current->sighand->siglock, flags);
 			printk(KERN_WARNING "nbd (pid %d: %s) got signal %d\n",
-				current->pid, current->comm, 
-				dequeue_signal(current, &current->blocked, &info));
-			spin_unlock_irqrestore(&current->sighand->siglock, flags);
+				current->pid, current->comm,
+				dequeue_signal_lock(current, &current->blocked, &info));
 			result = -EINTR;
 			break;
 		}
@@ -169,10 +162,7 @@ static int sock_xmit(struct socket *sock, int send, void *buf, int size,
 		buf += result;
 	} while (size > 0);
 
-	spin_lock_irqsave(&current->sighand->siglock, flags);
-	current->blocked = oldset;
-	recalc_sigpending();
-	spin_unlock_irqrestore(&current->sighand->siglock, flags);
+	sigprocmask(SIG_SETMASK, &oldset, NULL);
 
 	return result;
 }
@@ -416,11 +406,11 @@ static void nbd_clear_que(struct nbd_device *lo)
 /*
  * We always wait for result of write, for now. It would be nice to make it optional
  * in future
- * if ((req->cmd == WRITE) && (lo->flags & NBD_WRITE_NOCHK)) 
+ * if ((rq_data_dir(req) == WRITE) && (lo->flags & NBD_WRITE_NOCHK))
  *   { printk( "Warning: Ignoring result!\n"); nbd_end_request( req ); }
  */
 
-static void do_nbd_request(request_queue_t * q)
+static void do_nbd_request(struct request_queue * q)
 {
 	struct request *req;
 	

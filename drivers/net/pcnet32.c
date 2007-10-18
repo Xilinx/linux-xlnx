@@ -1235,9 +1235,9 @@ static void pcnet32_rx_entry(struct net_device *dev,
 					    lp->rx_dma_addr[entry],
 					    pkt_len,
 					    PCI_DMA_FROMDEVICE);
-		eth_copy_and_sum(skb,
+		skb_copy_to_linear_data(skb,
 				 (unsigned char *)(lp->rx_skbuff[entry]->data),
-				 pkt_len, 0);
+				 pkt_len);
 		pci_dma_sync_single_for_device(lp->pci_dev,
 					       lp->rx_dma_addr[entry],
 					       pkt_len,
@@ -1515,7 +1515,6 @@ static const struct ethtool_ops pcnet32_ethtool_ops = {
 	.phys_id		= pcnet32_phys_id,
 	.get_regs_len		= pcnet32_get_regs_len,
 	.get_regs		= pcnet32_get_regs,
-	.get_perm_addr		= ethtool_op_get_perm_addr,
 };
 
 /* only probes for non-PCI devices, the rest are handled by

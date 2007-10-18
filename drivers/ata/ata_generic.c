@@ -26,7 +26,7 @@
 #include <linux/libata.h>
 
 #define DRV_NAME "ata_generic"
-#define DRV_VERSION "0.2.12"
+#define DRV_VERSION "0.2.13"
 
 /*
  *	A generic parallel ATA driver using libata
@@ -143,10 +143,10 @@ static int ata_generic_init_one(struct pci_dev *dev, const struct pci_device_id 
 	u16 command;
 	static const struct ata_port_info info = {
 		.sht = &generic_sht,
-		.flags = ATA_FLAG_SLAVE_POSS | ATA_FLAG_SRST,
+		.flags = ATA_FLAG_SLAVE_POSS,
 		.pio_mask = 0x1f,
 		.mwdma_mask = 0x07,
-		.udma_mask = 0x3f,
+		.udma_mask = ATA_UDMA5,
 		.port_ops = &generic_port_ops
 	};
 	const struct ata_port_info *ppi[] = { &info, NULL };

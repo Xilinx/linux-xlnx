@@ -344,7 +344,8 @@ struct input_absinfo {
 #define KEY_BRIGHTNESSUP	225
 #define KEY_MEDIA		226
 
-#define KEY_SWITCHVIDEOMODE	227
+#define KEY_SWITCHVIDEOMODE	227	/* Cycle between available video
+					   outputs (Monitor/LCD/TV-out/etc) */
 #define KEY_KBDILLUMTOGGLE	228
 #define KEY_KBDILLUMDOWN	229
 #define KEY_KBDILLUMUP		230
@@ -361,6 +362,12 @@ struct input_absinfo {
 #define KEY_WLAN		238
 
 #define KEY_UNKNOWN		240
+
+#define KEY_VIDEO_NEXT		241	/* drive next video source */
+#define KEY_VIDEO_PREV		242	/* drive previous video source */
+#define KEY_BRIGHTNESS_CYCLE	243	/* brightness up, after max is min */
+#define KEY_BRIGHTNESS_ZERO	244	/* brightness off, use ambient */
+#define KEY_DISPLAY_OFF		245	/* display device to off state */
 
 #define BTN_MISC		0x100
 #define BTN_0			0x100
@@ -551,6 +558,8 @@ struct input_absinfo {
 #define KEY_BRL_DOT6		0x1f6
 #define KEY_BRL_DOT7		0x1f7
 #define KEY_BRL_DOT8		0x1f8
+#define KEY_BRL_DOT9		0x1f9
+#define KEY_BRL_DOT10		0x1fa
 
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE
@@ -981,15 +990,15 @@ struct input_dev {
 	struct mutex mutex;	/* serializes open and close operations */
 	unsigned int users;
 
-	struct class_device cdev;
+	struct device dev;
 	union {			/* temporarily so while we switching to struct device */
-		struct device *parent;
-	} dev;
+		struct device *dev;
+	} cdev;
 
 	struct list_head	h_list;
 	struct list_head	node;
 };
-#define to_input_dev(d) container_of(d, struct input_dev, cdev)
+#define to_input_dev(d) container_of(d, struct input_dev, dev)
 
 /*
  * Verify that we are in sync with input_device_id mod_devicetable.h #defines
@@ -1096,22 +1105,22 @@ struct input_handle {
 	struct list_head	h_node;
 };
 
-#define to_dev(n) container_of(n,struct input_dev,node)
-#define to_handler(n) container_of(n,struct input_handler,node)
-#define to_handle(n) container_of(n,struct input_handle,d_node)
-#define to_handle_h(n) container_of(n,struct input_handle,h_node)
+#define to_dev(n) container_of(n, struct input_dev, node)
+#define to_handler(n) container_of(n, struct input_handler, node)
+#define to_handle(n) container_of(n, struct input_handle, d_node)
+#define to_handle_h(n) container_of(n, struct input_handle, h_node)
 
 struct input_dev *input_allocate_device(void);
 void input_free_device(struct input_dev *dev);
 
 static inline struct input_dev *input_get_device(struct input_dev *dev)
 {
-	return to_input_dev(class_device_get(&dev->cdev));
+	return to_input_dev(get_device(&dev->dev));
 }
 
 static inline void input_put_device(struct input_dev *dev)
 {
-	class_device_put(&dev->cdev);
+	put_device(&dev->dev);
 }
 
 static inline void *input_get_drvdata(struct input_dev *dev)

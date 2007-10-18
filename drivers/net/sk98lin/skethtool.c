@@ -616,7 +616,6 @@ const struct ethtool_ops SkGeEthtoolOps = {
 	.get_pauseparam		= getPauseParams,
 	.set_pauseparam		= setPauseParams,
 	.get_link		= ethtool_op_get_link,
-	.get_perm_addr		= ethtool_op_get_perm_addr,
 	.get_sg			= ethtool_op_get_sg,
 	.set_sg			= setScatterGather,
 	.get_tx_csum		= ethtool_op_get_tx_csum,

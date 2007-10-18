@@ -13,6 +13,21 @@
 # cs = 0x1234, eip = 0x05
 # 
 
+#define BEEP \
+	inb	$97, %al; 	\
+	outb	%al, $0x80; 	\
+	movb	$3, %al; 	\
+	outb	%al, $97; 	\
+	outb	%al, $0x80; 	\
+	movb	$-74, %al; 	\
+	outb	%al, $67; 	\
+	outb	%al, $0x80; 	\
+	movb	$-119, %al; 	\
+	outb	%al, $66; 	\
+	outb	%al, $0x80; 	\
+	movb	$15, %al; 	\
+	outb	%al, $66;
+
 ALIGN
 	.align	4096
 ENTRY(wakeup_start)
@@ -31,6 +46,11 @@ wakeup_code:
 	movw	%cs, %ax
 	movw	%ax, %ds					# Make ds:0 point to wakeup_start
 	movw	%ax, %ss
+
+	testl   $4, realmode_flags - wakeup_code
+	jz      1f
+	BEEP
+1:
 	mov	$(wakeup_stack - wakeup_code), %sp		# Private stack is needed for ASUS board
 	movw	$0x0e00 + 'S', %fs:(0x12)
 
@@ -41,7 +61,7 @@ wakeup_code:
 	cmpl	$0x12345678, %eax
 	jne	bogus_real_magic
 
-	testl	$1, video_flags - wakeup_code
+	testl	$1, realmode_flags - wakeup_code
 	jz	1f
 	lcall   $0xc000,$3
 	movw	%cs, %ax
@@ -49,7 +69,7 @@ wakeup_code:
 	movw	%ax, %ss
 1:
 
-	testl	$2, video_flags - wakeup_code
+	testl	$2, realmode_flags - wakeup_code
 	jz	1f
 	mov	video_mode - wakeup_code, %ax
 	call	mode_set
@@ -88,7 +108,11 @@ wakeup_code:
 	cmpl	$0x12345678, %eax
 	jne	bogus_real_magic
 
-	ljmpl	$__KERNEL_CS,$wakeup_pmode_return
+	testl   $8, realmode_flags - wakeup_code
+	jz      1f
+	BEEP
+1:
+	ljmpl	$__KERNEL_CS, $wakeup_pmode_return
 
 real_save_gdt:	.word 0
 		.long 0
@@ -97,7 +121,8 @@ real_save_cr3:	.long 0
 real_save_cr4:	.long 0
 real_magic:	.long 0
 video_mode:	.long 0
-video_flags:	.long 0
+realmode_flags:	.long 0
+beep_flags:	.long 0
 real_efer_save_restore:	.long 0
 real_save_efer_edx: 	.long 0
 real_save_efer_eax: 	.long 0
@@ -126,50 +151,29 @@ bogus_real_magic:
 #define VIDEO_FIRST_V7 0x0900
 
 # Setting of user mode (AX=mode ID) => CF=success
+
+# For now, we only handle VESA modes (0x0200..0x03ff).  To handle other
+# modes, we should probably compile in the video code from the boot
+# directory.
 mode_set:
 	movw	%ax, %bx
-#if 0
-	cmpb	$0xff, %ah
-	jz	setalias
+	subb	$VIDEO_FIRST_VESA>>8, %bh
+	cmpb	$2, %bh
+	jb	check_vesa
 
-	testb	$VIDEO_RECALC>>8, %ah
-	jnz	_setrec
-
-	cmpb	$VIDEO_FIRST_RESOLUTION>>8, %ah
-	jnc	setres
-	
-	cmpb	$VIDEO_FIRST_SPECIAL>>8, %ah
-	jz	setspc
-
-	cmpb	$VIDEO_FIRST_V7>>8, %ah
-	jz	setv7
-#endif
-	
-	cmpb	$VIDEO_FIRST_VESA>>8, %ah
-	jnc	check_vesa
-#if 0	
-	orb	%ah, %ah
-	jz	setmenu
-#endif
-	
-	decb	%ah
-#	jz	setbios				  Add bios modes later
-
-setbad:	clc
+setbad:
+	clc
 	ret
 
 check_vesa:
-	subb	$VIDEO_FIRST_VESA>>8, %bh
 	orw	$0x4000, %bx			# Use linear frame buffer
 	movw	$0x4f02, %ax			# VESA BIOS mode set call
 	int	$0x10
 	cmpw	$0x004f, %ax			# AL=4f if implemented
-	jnz	_setbad				# AH=0 if OK
+	jnz	setbad				# AH=0 if OK
 
 	stc
 	ret
-
-_setbad: jmp setbad
 
 	.code32
 	ALIGN
@@ -260,8 +264,8 @@ ENTRY(acpi_copy_wakeup_routine)
 
 	movl	saved_videomode, %edx
 	movl	%edx, video_mode - wakeup_start (%eax)
-	movl	acpi_video_flags, %edx
-	movl	%edx, video_flags - wakeup_start (%eax)
+	movl	acpi_realmode_flags, %edx
+	movl	%edx, realmode_flags - wakeup_start (%eax)
 	movl	$0x12345678, real_magic - wakeup_start (%eax)
 	movl	$0x12345678, saved_magic
 	popl	%ebx

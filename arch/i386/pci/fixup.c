@@ -25,9 +25,9 @@ static void __devinit pci_fixup_i450nx(struct pci_dev *d)
 		pci_read_config_byte(d, reg++, &subb);
 		DBG("i450NX PXB %d: %02x/%02x/%02x\n", pxb, busno, suba, subb);
 		if (busno)
-			pci_scan_bus(busno, &pci_root_ops, NULL);	/* Bus A */
+			pci_scan_bus_with_sysdata(busno);	/* Bus A */
 		if (suba < subb)
-			pci_scan_bus(suba+1, &pci_root_ops, NULL);	/* Bus B */
+			pci_scan_bus_with_sysdata(suba+1);	/* Bus B */
 	}
 	pcibios_last_bus = -1;
 }
@@ -42,7 +42,7 @@ static void __devinit pci_fixup_i450gx(struct pci_dev *d)
 	u8 busno;
 	pci_read_config_byte(d, 0x4a, &busno);
 	printk(KERN_INFO "PCI: i440KX/GX host bridge %s: secondary bus %02x\n", pci_name(d), busno);
-	pci_scan_bus(busno, &pci_root_ops, NULL);
+	pci_scan_bus_with_sysdata(busno);
 	pcibios_last_bus = -1;
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82454GX, pci_fixup_i450gx);
@@ -118,11 +118,8 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82371AB_3, pci
 static void pci_fixup_via_northbridge_bug(struct pci_dev *d)
 {
 	u8 v;
-	u8 revision;
 	int where = 0x55;
 	int mask = 0x1f; /* clear bits 5, 6, 7 by default */
-
-	pci_read_config_byte(d, PCI_REVISION_ID, &revision);
 
 	if (d->device == PCI_DEVICE_ID_VIA_8367_0) {
 		/* fix pci bus latency issues resulted by NB bios error
@@ -133,8 +130,8 @@ static void pci_fixup_via_northbridge_bug(struct pci_dev *d)
 		where = 0x95; /* the memory write queue timer register is 
 				different for the KT266x's: 0x95 not 0x55 */
 	} else if (d->device == PCI_DEVICE_ID_VIA_8363_0 &&
-			(revision == VIA_8363_KL133_REVISION_ID || 
-			revision == VIA_8363_KM133_REVISION_ID)) {
+			(d->revision == VIA_8363_KL133_REVISION_ID ||
+			d->revision == VIA_8363_KM133_REVISION_ID)) {
 			mask = 0x3f; /* clear only bits 6 and 7; clearing bit 5
 					causes screen corruption on the KL133/KM133 */
 	}
@@ -142,7 +139,7 @@ static void pci_fixup_via_northbridge_bug(struct pci_dev *d)
 	pci_read_config_byte(d, where, &v);
 	if (v & ~mask) {
 		printk(KERN_WARNING "Disabling VIA memory write queue (PCI ID %04x, rev %02x): [%02x] %02x & %02x -> %02x\n", \
-			d->device, revision, where, v, mask, v & mask);
+			d->device, d->revision, where, v, mask, v & mask);
 		v &= mask;
 		pci_write_config_byte(d, where, v);
 	}

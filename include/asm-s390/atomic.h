@@ -24,7 +24,7 @@
  */
 
 typedef struct {
-	volatile int counter;
+	int counter;
 } __attribute__ ((aligned (4))) atomic_t;
 #define ATOMIC_INIT(i)  { (i) }
 
@@ -67,8 +67,17 @@ typedef struct {
 
 #endif /* __GNUC__ */
 
-#define atomic_read(v)          ((v)->counter)
-#define atomic_set(v,i)         (((v)->counter) = (i))
+static inline int atomic_read(const atomic_t *v)
+{
+	barrier();
+	return v->counter;
+}
+
+static inline void atomic_set(atomic_t *v, int i)
+{
+	v->counter = i;
+	barrier();
+}
 
 static __inline__ int atomic_add_return(int i, atomic_t * v)
 {
@@ -141,7 +150,7 @@ static __inline__ int atomic_add_unless(atomic_t *v, int a, int u)
 
 #ifdef __s390x__
 typedef struct {
-	volatile long long counter;
+	long long counter;
 } __attribute__ ((aligned (8))) atomic64_t;
 #define ATOMIC64_INIT(i)  { (i) }
 
@@ -182,8 +191,17 @@ typedef struct {
 
 #endif /* __GNUC__ */
 
-#define atomic64_read(v)          ((v)->counter)
-#define atomic64_set(v,i)         (((v)->counter) = (i))
+static inline long long atomic64_read(const atomic64_t *v)
+{
+	barrier();
+	return v->counter;
+}
+
+static inline void atomic64_set(atomic64_t *v, long long i)
+{
+	v->counter = i;
+	barrier();
+}
 
 static __inline__ long long atomic64_add_return(long long i, atomic64_t * v)
 {

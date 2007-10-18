@@ -15,7 +15,7 @@ obj-$(CONFIG_USB_OHCI_HCD)	+= host/
 obj-$(CONFIG_USB_UHCI_HCD)	+= host/
 obj-$(CONFIG_USB_SL811_HCD)	+= host/
 obj-$(CONFIG_USB_U132_HCD)	+= host/
-obj-$(CONFIG_USB_OHCI_AT91)	+= host/
+obj-$(CONFIG_USB_R8A66597_HCD)	+= host/
 
 obj-$(CONFIG_USB_ACM)		+= class/
 obj-$(CONFIG_USB_PRINTER)	+= class/
@@ -48,6 +48,7 @@ obj-$(CONFIG_USB_SISUSBVGA)	+= misc/
 obj-$(CONFIG_USB_TEST)		+= misc/
 obj-$(CONFIG_USB_TRANCEVIBRATOR)+= misc/
 obj-$(CONFIG_USB_USS720)	+= misc/
+obj-$(CONFIG_USB_IOWARRIOR)	+= misc/
 
 obj-$(CONFIG_USB_ATM)		+= atm/
 obj-$(CONFIG_USB_SPEEDTOUCH)	+= atm/

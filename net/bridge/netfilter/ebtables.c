@@ -1513,6 +1513,7 @@ static struct nf_sockopt_ops ebt_sockopts =
 	.get_optmin	= EBT_BASE_CTL,
 	.get_optmax	= EBT_SO_GET_MAX + 1,
 	.get		= do_ebt_get_ctl,
+	.owner		= THIS_MODULE,
 };
 
 static int __init ebtables_init(void)
@@ -1525,14 +1526,14 @@ static int __init ebtables_init(void)
 	if ((ret = nf_register_sockopt(&ebt_sockopts)) < 0)
 		return ret;
 
-	printk(KERN_NOTICE "Ebtables v2.0 registered\n");
+	printk(KERN_INFO "Ebtables v2.0 registered\n");
 	return 0;
 }
 
 static void __exit ebtables_fini(void)
 {
 	nf_unregister_sockopt(&ebt_sockopts);
-	printk(KERN_NOTICE "Ebtables v2.0 unregistered\n");
+	printk(KERN_INFO "Ebtables v2.0 unregistered\n");
 }
 
 EXPORT_SYMBOL(ebt_register_table);

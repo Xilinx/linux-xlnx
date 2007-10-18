@@ -6,4 +6,6 @@
 # unless it's something special (ie not a .c file).
 #
 
-obj-y	+= prom.o setup.o irq.o spi_eeprom.o spi_txx9.o
+obj-y	+= prom.o setup.o irq.o spi_eeprom.o
+
+EXTRA_CFLAGS += -Werror

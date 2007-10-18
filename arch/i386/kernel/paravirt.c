@@ -69,7 +69,8 @@ DEF_NATIVE(read_tsc, "rdtsc");
 
 DEF_NATIVE(ud2a, "ud2a");
 
-static unsigned native_patch(u8 type, u16 clobbers, void *insns, unsigned len)
+static unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
+			     unsigned long addr, unsigned len)
 {
 	const unsigned char *start, *end;
 	unsigned ret;
@@ -90,7 +91,7 @@ static unsigned native_patch(u8 type, u16 clobbers, void *insns, unsigned len)
 #undef SITE
 
 	patch_site:
-		ret = paravirt_patch_insns(insns, len, start, end);
+		ret = paravirt_patch_insns(ibuf, len, start, end);
 		break;
 
 	case PARAVIRT_PATCH(make_pgd):
@@ -107,7 +108,7 @@ static unsigned native_patch(u8 type, u16 clobbers, void *insns, unsigned len)
 		break;
 
 	default:
-		ret = paravirt_patch_default(type, clobbers, insns, len);
+		ret = paravirt_patch_default(type, clobbers, ibuf, addr, len);
 		break;
 	}
 
@@ -124,63 +125,72 @@ unsigned paravirt_patch_ignore(unsigned len)
 	return len;
 }
 
-unsigned paravirt_patch_call(void *target, u16 tgt_clobbers,
-			     void *site, u16 site_clobbers,
+struct branch {
+	unsigned char opcode;
+	u32 delta;
+} __attribute__((packed));
+
+unsigned paravirt_patch_call(void *insnbuf,
+			     const void *target, u16 tgt_clobbers,
+			     unsigned long addr, u16 site_clobbers,
 			     unsigned len)
 {
-	unsigned char *call = site;
-	unsigned long delta = (unsigned long)target - (unsigned long)(call+5);
+	struct branch *b = insnbuf;
+	unsigned long delta = (unsigned long)target - (addr+5);
 
 	if (tgt_clobbers & ~site_clobbers)
 		return len;	/* target would clobber too much for this site */
 	if (len < 5)
 		return len;	/* call too long for patch site */
 
-	*call++ = 0xe8;		/* call */
-	*(unsigned long *)call = delta;
+	b->opcode = 0xe8; /* call */
+	b->delta = delta;
+	BUILD_BUG_ON(sizeof(*b) != 5);
 
 	return 5;
 }
 
-unsigned paravirt_patch_jmp(void *target, void *site, unsigned len)
+unsigned paravirt_patch_jmp(const void *target, void *insnbuf,
+			    unsigned long addr, unsigned len)
 {
-	unsigned char *jmp = site;
-	unsigned long delta = (unsigned long)target - (unsigned long)(jmp+5);
+	struct branch *b = insnbuf;
+	unsigned long delta = (unsigned long)target - (addr+5);
 
 	if (len < 5)
 		return len;	/* call too long for patch site */
 
-	*jmp++ = 0xe9;		/* jmp */
-	*(unsigned long *)jmp = delta;
+	b->opcode = 0xe9;	/* jmp */
+	b->delta = delta;
 
 	return 5;
 }
 
-unsigned paravirt_patch_default(u8 type, u16 clobbers, void *site, unsigned len)
+unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
+				unsigned long addr, unsigned len)
 {
 	void *opfunc = *((void **)&paravirt_ops + type);
 	unsigned ret;
 
 	if (opfunc == NULL)
 		/* If there's no function, patch it with a ud2a (BUG) */
-		ret = paravirt_patch_insns(site, len, start_ud2a, end_ud2a);
+		ret = paravirt_patch_insns(insnbuf, len, start_ud2a, end_ud2a);
 	else if (opfunc == paravirt_nop)
 		/* If the operation is a nop, then nop the callsite */
 		ret = paravirt_patch_nop();
 	else if (type == PARAVIRT_PATCH(iret) ||
 		 type == PARAVIRT_PATCH(irq_enable_sysexit))
 		/* If operation requires a jmp, then jmp */
-		ret = paravirt_patch_jmp(opfunc, site, len);
+		ret = paravirt_patch_jmp(opfunc, insnbuf, addr, len);
 	else
 		/* Otherwise call the function; assume target could
 		   clobber any caller-save reg */
-		ret = paravirt_patch_call(opfunc, CLBR_ANY,
-					  site, clobbers, len);
+		ret = paravirt_patch_call(insnbuf, opfunc, CLBR_ANY,
+					  addr, clobbers, len);
 
 	return ret;
 }
 
-unsigned paravirt_patch_insns(void *site, unsigned len,
+unsigned paravirt_patch_insns(void *insnbuf, unsigned len,
 			      const char *start, const char *end)
 {
 	unsigned insn_len = end - start;
@@ -188,7 +198,7 @@ unsigned paravirt_patch_insns(void *site, unsigned len,
 	if (insn_len > len || start == NULL)
 		insn_len = len;
 	else
-		memcpy(site, start, insn_len);
+		memcpy(insnbuf, start, insn_len);
 
 	return insn_len;
 }
@@ -227,6 +237,41 @@ static int __init print_banner(void)
 	return 0;
 }
 core_initcall(print_banner);
+
+static struct resource reserve_ioports = {
+	.start = 0,
+	.end = IO_SPACE_LIMIT,
+	.name = "paravirt-ioport",
+	.flags = IORESOURCE_IO | IORESOURCE_BUSY,
+};
+
+static struct resource reserve_iomem = {
+	.start = 0,
+	.end = -1,
+	.name = "paravirt-iomem",
+	.flags = IORESOURCE_MEM | IORESOURCE_BUSY,
+};
+
+/*
+ * Reserve the whole legacy IO space to prevent any legacy drivers
+ * from wasting time probing for their hardware.  This is a fairly
+ * brute-force approach to disabling all non-virtual drivers.
+ *
+ * Note that this must be called very early to have any effect.
+ */
+int paravirt_disable_iospace(void)
+{
+	int ret;
+
+	ret = request_resource(&ioport_resource, &reserve_ioports);
+	if (ret == 0) {
+		ret = request_resource(&iomem_resource, &reserve_iomem);
+		if (ret)
+			release_resource(&reserve_ioports);
+	}
+
+	return ret;
+}
 
 struct paravirt_ops paravirt_ops = {
 	.name = "bare hardware",
@@ -267,7 +312,7 @@ struct paravirt_ops paravirt_ops = {
 	.write_msr = native_write_msr_safe,
 	.read_tsc = native_read_tsc,
 	.read_pmc = native_read_pmc,
-	.get_scheduled_cycles = native_read_tsc,
+	.sched_clock = native_sched_clock,
 	.get_cpu_khz = native_calculate_cpu_khz,
 	.load_tr_desc = native_load_tr_desc,
 	.set_ldt = native_set_ldt,

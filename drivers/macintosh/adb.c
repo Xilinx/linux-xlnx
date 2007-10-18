@@ -89,7 +89,7 @@ static int sleepy_trackpad;
 static int autopoll_devs;
 int __adb_probe_sync;
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static void adb_notify_sleep(struct pmu_sleep_notifier *self, int when);
 static struct pmu_sleep_notifier adb_sleep_notifier = {
 	adb_notify_sleep,
@@ -248,21 +248,15 @@ static int adb_scan_bus(void)
 static int
 adb_probe_task(void *x)
 {
-	sigset_t blocked;
-
 	strcpy(current->comm, "kadbprobe");
-
-	sigfillset(&blocked);
-	sigprocmask(SIG_BLOCK, &blocked, NULL);
-	flush_signals(current);
 
 	printk(KERN_INFO "adb: starting probe task...\n");
 	do_adb_reset_bus();
 	printk(KERN_INFO "adb: finished probe task...\n");
-	
+
 	adb_probe_task_pid = 0;
 	up(&adb_probe_mutex);
-	
+
 	return 0;
 }
 
@@ -319,7 +313,7 @@ int __init adb_init(void)
 		printk(KERN_WARNING "Warning: no ADB interface detected\n");
 		adb_controller = NULL;
 	} else {
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 		pmu_register_sleep_notifier(&adb_sleep_notifier);
 #endif /* CONFIG_PM */
 #ifdef CONFIG_PPC

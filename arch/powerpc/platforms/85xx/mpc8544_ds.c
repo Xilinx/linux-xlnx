@@ -2,6 +2,8 @@
  * MPC8544 DS Board Setup
  *
  * Author Xianghua Xiao (x.xiao@freescale.com)
+ * Roy Zang <tie-fei.zang@freescale.com>
+ * 	- Add PCI/PCI Exprees support
  * Copyright 2007 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
@@ -12,13 +14,16 @@
 
 #include <linux/stddef.h>
 #include <linux/kernel.h>
+#include <linux/pci.h>
 #include <linux/kdev_t.h>
 #include <linux/delay.h>
 #include <linux/seq_file.h>
+#include <linux/interrupt.h>
 
 #include <asm/system.h>
 #include <asm/time.h>
 #include <asm/machdep.h>
+#include <asm/pci-bridge.h>
 #include <asm/mpc85xx.h>
 #include <mm/mmu_decl.h>
 #include <asm/prom.h>
@@ -27,6 +32,7 @@
 #include <asm/i8259.h>
 
 #include <sysdev/fsl_soc.h>
+#include <sysdev/fsl_pci.h>
 #include "mpc85xx.h"
 
 #undef DEBUG
@@ -37,6 +43,17 @@
 #define DBG(fmt, args...)
 #endif
 
+#ifdef CONFIG_PPC_I8259
+static void mpc8544_8259_cascade(unsigned int irq, struct irq_desc *desc)
+{
+	unsigned int cascade_irq = i8259_irq();
+
+	if (cascade_irq != NO_IRQ) {
+		generic_handle_irq(cascade_irq);
+	}
+	desc->chip->eoi(irq);
+}
+#endif	/* CONFIG_PPC_I8259 */
 
 void __init mpc8544_ds_pic_init(void)
 {
@@ -61,23 +78,10 @@ void __init mpc8544_ds_pic_init(void)
 		return;
 	}
 
-	/* Alloc mpic structure and per isu has 16 INT entries. */
 	mpic = mpic_alloc(np, r.start,
 			  MPIC_PRIMARY | MPIC_WANTS_RESET | MPIC_BIG_ENDIAN,
-			  16, 64, " OPENPIC     ");
+			0, 256, " OpenPIC  ");
 	BUG_ON(mpic == NULL);
-
-	/*
-	 * 48 Internal Interrupts
-	 */
-	mpic_assign_isu(mpic, 0, r.start + 0x10200);
-	mpic_assign_isu(mpic, 1, r.start + 0x10400);
-	mpic_assign_isu(mpic, 2, r.start + 0x10600);
-
-	/*
-	 * 16 External interrupts
-	 */
-	mpic_assign_isu(mpic, 3, r.start + 0x10000);
 
 	mpic_init(mpic);
 
@@ -109,18 +113,55 @@ void __init mpc8544_ds_pic_init(void)
 #endif	/* CONFIG_PPC_I8259 */
 }
 
+#ifdef CONFIG_PCI
+extern int uses_fsl_uli_m1575;
+extern int uli_exclude_device(struct pci_controller *hose,
+				u_char bus, u_char devfn);
+
+static int mpc85xx_exclude_device(struct pci_controller *hose,
+				   u_char bus, u_char devfn)
+{
+	struct device_node* node;	
+	struct resource rsrc;
+
+	node = (struct device_node *)hose->arch_data;
+	of_address_to_resource(node, 0, &rsrc);
+
+	if ((rsrc.start & 0xfffff) == 0xb000) {
+		return uli_exclude_device(hose, bus, devfn);
+	}
+
+	return PCIBIOS_SUCCESSFUL;
+}
+#endif	/* CONFIG_PCI */
 
 /*
  * Setup the architecture
  */
 static void __init mpc8544_ds_setup_arch(void)
 {
+#ifdef CONFIG_PCI
+	struct device_node *np;
+#endif
+
 	if (ppc_md.progress)
 		ppc_md.progress("mpc8544_ds_setup_arch()", 0);
 
+#ifdef CONFIG_PCI
+	for (np = NULL; (np = of_find_node_by_type(np, "pci")) != NULL;) {
+		struct resource rsrc;
+		of_address_to_resource(np, 0, &rsrc);
+		if ((rsrc.start & 0xfffff) == 0xb000)
+			fsl_add_bridge(np, 1);
+		else
+			fsl_add_bridge(np, 0);
+	}
+	uses_fsl_uli_m1575 = 1;
+	ppc_md.pci_exclude_device = mpc85xx_exclude_device;
+#endif
+
 	printk("MPC8544 DS board from Freescale Semiconductor\n");
 }
-
 
 /*
  * Called very early, device-tree isn't unflattened
@@ -137,6 +178,9 @@ define_machine(mpc8544_ds) {
 	.probe			= mpc8544_ds_probe,
 	.setup_arch		= mpc8544_ds_setup_arch,
 	.init_IRQ		= mpc8544_ds_pic_init,
+#ifdef CONFIG_PCI
+	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,
+#endif
 	.get_irq		= mpic_get_irq,
 	.restart		= mpc85xx_restart,
 	.calibrate_decr		= generic_calibrate_decr,

@@ -66,17 +66,8 @@ struct scan_control {
 	int swappiness;
 
 	int all_unreclaimable;
-};
 
-/*
- * The list of shrinker callbacks used by to apply pressure to
- * ageable caches.
- */
-struct shrinker {
-	shrinker_t		shrinker;
-	struct list_head	list;
-	int			seeks;	/* seeks to recreate an obj */
-	long			nr;	/* objs pending delete */
+	int order;
 };
 
 #define lru_to_page(_head) (list_entry((_head)->prev, struct page, lru))
@@ -121,34 +112,25 @@ static DECLARE_RWSEM(shrinker_rwsem);
 /*
  * Add a shrinker callback to be called from the vm
  */
-struct shrinker *set_shrinker(int seeks, shrinker_t theshrinker)
+void register_shrinker(struct shrinker *shrinker)
 {
-        struct shrinker *shrinker;
-
-        shrinker = kmalloc(sizeof(*shrinker), GFP_KERNEL);
-        if (shrinker) {
-	        shrinker->shrinker = theshrinker;
-	        shrinker->seeks = seeks;
-	        shrinker->nr = 0;
-	        down_write(&shrinker_rwsem);
-	        list_add_tail(&shrinker->list, &shrinker_list);
-	        up_write(&shrinker_rwsem);
-	}
-	return shrinker;
+	shrinker->nr = 0;
+	down_write(&shrinker_rwsem);
+	list_add_tail(&shrinker->list, &shrinker_list);
+	up_write(&shrinker_rwsem);
 }
-EXPORT_SYMBOL(set_shrinker);
+EXPORT_SYMBOL(register_shrinker);
 
 /*
  * Remove one
  */
-void remove_shrinker(struct shrinker *shrinker)
+void unregister_shrinker(struct shrinker *shrinker)
 {
 	down_write(&shrinker_rwsem);
 	list_del(&shrinker->list);
 	up_write(&shrinker_rwsem);
-	kfree(shrinker);
 }
-EXPORT_SYMBOL(remove_shrinker);
+EXPORT_SYMBOL(unregister_shrinker);
 
 #define SHRINK_BATCH 128
 /*
@@ -185,7 +167,7 @@ unsigned long shrink_slab(unsigned long scanned, gfp_t gfp_mask,
 	list_for_each_entry(shrinker, &shrinker_list, list) {
 		unsigned long long delta;
 		unsigned long total_scan;
-		unsigned long max_pass = (*shrinker->shrinker)(0, gfp_mask);
+		unsigned long max_pass = (*shrinker->shrink)(0, gfp_mask);
 
 		delta = (4 * scanned) / shrinker->seeks;
 		delta *= max_pass;
@@ -213,8 +195,8 @@ unsigned long shrink_slab(unsigned long scanned, gfp_t gfp_mask,
 			int shrink_ret;
 			int nr_before;
 
-			nr_before = (*shrinker->shrinker)(0, gfp_mask);
-			shrink_ret = (*shrinker->shrinker)(this_scan, gfp_mask);
+			nr_before = (*shrinker->shrink)(0, gfp_mask);
+			shrink_ret = (*shrinker->shrink)(this_scan, gfp_mask);
 			if (shrink_ret == -1)
 				break;
 			if (shrink_ret < nr_before)
@@ -289,6 +271,12 @@ static void handle_write_error(struct address_space *mapping,
 	unlock_page(page);
 }
 
+/* Request for sync pageout. */
+enum pageout_io {
+	PAGEOUT_IO_ASYNC,
+	PAGEOUT_IO_SYNC,
+};
+
 /* possible outcome of pageout() */
 typedef enum {
 	/* failed to write page out, page is locked */
@@ -305,7 +293,8 @@ typedef enum {
  * pageout is called by shrink_page_list() for each dirty page.
  * Calls ->writepage().
  */
-static pageout_t pageout(struct page *page, struct address_space *mapping)
+static pageout_t pageout(struct page *page, struct address_space *mapping,
+						enum pageout_io sync_writeback)
 {
 	/*
 	 * If the page is dirty, only perform writeback if that write
@@ -364,6 +353,15 @@ static pageout_t pageout(struct page *page, struct address_space *mapping)
 			ClearPageReclaim(page);
 			return PAGE_ACTIVATE;
 		}
+
+		/*
+		 * Wait on writeback if requested to. This happens when
+		 * direct reclaiming a large contiguous area and the
+		 * first attempt to free a range of pages fails.
+		 */
+		if (PageWriteback(page) && sync_writeback == PAGEOUT_IO_SYNC)
+			wait_on_page_writeback(page);
+
 		if (!PageWriteback(page)) {
 			/* synchronous write or broken a_ops? */
 			ClearPageReclaim(page);
@@ -441,7 +439,8 @@ cannot_free:
  * shrink_page_list() returns the number of reclaimed pages
  */
 static unsigned long shrink_page_list(struct list_head *page_list,
-					struct scan_control *sc)
+					struct scan_control *sc,
+					enum pageout_io sync_writeback)
 {
 	LIST_HEAD(ret_pages);
 	struct pagevec freed_pvec;
@@ -476,12 +475,28 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (page_mapped(page) || PageSwapCache(page))
 			sc->nr_scanned++;
 
-		if (PageWriteback(page))
-			goto keep_locked;
+		may_enter_fs = (sc->gfp_mask & __GFP_FS) ||
+			(PageSwapCache(page) && (sc->gfp_mask & __GFP_IO));
+
+		if (PageWriteback(page)) {
+			/*
+			 * Synchronous reclaim is performed in two passes,
+			 * first an asynchronous pass over the list to
+			 * start parallel writeback, and a second synchronous
+			 * pass to wait for the IO to complete.  Wait here
+			 * for any page for which writeback has already
+			 * started.
+			 */
+			if (sync_writeback == PAGEOUT_IO_SYNC && may_enter_fs)
+				wait_on_page_writeback(page);
+			else
+				goto keep_locked;
+		}
 
 		referenced = page_referenced(page, 1);
 		/* In active use or really unfreeable?  Activate it. */
-		if (referenced && page_mapping_inuse(page))
+		if (sc->order <= PAGE_ALLOC_COSTLY_ORDER &&
+					referenced && page_mapping_inuse(page))
 			goto activate_locked;
 
 #ifdef CONFIG_SWAP
@@ -495,8 +510,6 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 #endif /* CONFIG_SWAP */
 
 		mapping = page_mapping(page);
-		may_enter_fs = (sc->gfp_mask & __GFP_FS) ||
-			(PageSwapCache(page) && (sc->gfp_mask & __GFP_IO));
 
 		/*
 		 * The page is mapped into the page tables of one or more
@@ -514,7 +527,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		}
 
 		if (PageDirty(page)) {
-			if (referenced)
+			if (sc->order <= PAGE_ALLOC_COSTLY_ORDER && referenced)
 				goto keep_locked;
 			if (!may_enter_fs)
 				goto keep_locked;
@@ -522,7 +535,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				goto keep_locked;
 
 			/* Page is dirty, try to write it out here */
-			switch(pageout(page, mapping)) {
+			switch (pageout(page, mapping, sync_writeback)) {
 			case PAGE_KEEP:
 				goto keep_locked;
 			case PAGE_ACTIVATE:
@@ -598,6 +611,51 @@ keep:
 	return nr_reclaimed;
 }
 
+/* LRU Isolation modes. */
+#define ISOLATE_INACTIVE 0	/* Isolate inactive pages. */
+#define ISOLATE_ACTIVE 1	/* Isolate active pages. */
+#define ISOLATE_BOTH 2		/* Isolate both active and inactive pages. */
+
+/*
+ * Attempt to remove the specified page from its LRU.  Only take this page
+ * if it is of the appropriate PageActive status.  Pages which are being
+ * freed elsewhere are also ignored.
+ *
+ * page:	page to consider
+ * mode:	one of the LRU isolation modes defined above
+ *
+ * returns 0 on success, -ve errno on failure.
+ */
+static int __isolate_lru_page(struct page *page, int mode)
+{
+	int ret = -EINVAL;
+
+	/* Only take pages on the LRU. */
+	if (!PageLRU(page))
+		return ret;
+
+	/*
+	 * When checking the active state, we need to be sure we are
+	 * dealing with comparible boolean values.  Take the logical not
+	 * of each.
+	 */
+	if (mode != ISOLATE_BOTH && (!PageActive(page) != !mode))
+		return ret;
+
+	ret = -EBUSY;
+	if (likely(get_page_unless_zero(page))) {
+		/*
+		 * Be careful not to clear PageLRU until after we're
+		 * sure the page is not being freed elsewhere -- the
+		 * page release code relies on it.
+		 */
+		ClearPageLRU(page);
+		ret = 0;
+	}
+
+	return ret;
+}
+
 /*
  * zone->lru_lock is heavily contended.  Some of the functions that
  * shrink the lists perform better by taking out a batch of pages
@@ -612,42 +670,112 @@ keep:
  * @src:	The LRU list to pull pages off.
  * @dst:	The temp list to put pages on to.
  * @scanned:	The number of pages that were scanned.
+ * @order:	The caller's attempted allocation order
+ * @mode:	One of the LRU isolation modes
  *
  * returns how many pages were moved onto *@dst.
  */
 static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		struct list_head *src, struct list_head *dst,
-		unsigned long *scanned)
+		unsigned long *scanned, int order, int mode)
 {
 	unsigned long nr_taken = 0;
-	struct page *page;
 	unsigned long scan;
 
 	for (scan = 0; scan < nr_to_scan && !list_empty(src); scan++) {
-		struct list_head *target;
+		struct page *page;
+		unsigned long pfn;
+		unsigned long end_pfn;
+		unsigned long page_pfn;
+		int zone_id;
+
 		page = lru_to_page(src);
 		prefetchw_prev_lru_page(page, src, flags);
 
 		VM_BUG_ON(!PageLRU(page));
 
-		list_del(&page->lru);
-		target = src;
-		if (likely(get_page_unless_zero(page))) {
-			/*
-			 * Be careful not to clear PageLRU until after we're
-			 * sure the page is not being freed elsewhere -- the
-			 * page release code relies on it.
-			 */
-			ClearPageLRU(page);
-			target = dst;
+		switch (__isolate_lru_page(page, mode)) {
+		case 0:
+			list_move(&page->lru, dst);
 			nr_taken++;
-		} /* else it is being freed elsewhere */
+			break;
 
-		list_add(&page->lru, target);
+		case -EBUSY:
+			/* else it is being freed elsewhere */
+			list_move(&page->lru, src);
+			continue;
+
+		default:
+			BUG();
+		}
+
+		if (!order)
+			continue;
+
+		/*
+		 * Attempt to take all pages in the order aligned region
+		 * surrounding the tag page.  Only take those pages of
+		 * the same active state as that tag page.  We may safely
+		 * round the target page pfn down to the requested order
+		 * as the mem_map is guarenteed valid out to MAX_ORDER,
+		 * where that page is in a different zone we will detect
+		 * it from its zone id and abort this block scan.
+		 */
+		zone_id = page_zone_id(page);
+		page_pfn = page_to_pfn(page);
+		pfn = page_pfn & ~((1 << order) - 1);
+		end_pfn = pfn + (1 << order);
+		for (; pfn < end_pfn; pfn++) {
+			struct page *cursor_page;
+
+			/* The target page is in the block, ignore it. */
+			if (unlikely(pfn == page_pfn))
+				continue;
+
+			/* Avoid holes within the zone. */
+			if (unlikely(!pfn_valid_within(pfn)))
+				break;
+
+			cursor_page = pfn_to_page(pfn);
+			/* Check that we have not crossed a zone boundary. */
+			if (unlikely(page_zone_id(cursor_page) != zone_id))
+				continue;
+			switch (__isolate_lru_page(cursor_page, mode)) {
+			case 0:
+				list_move(&cursor_page->lru, dst);
+				nr_taken++;
+				scan++;
+				break;
+
+			case -EBUSY:
+				/* else it is being freed elsewhere */
+				list_move(&cursor_page->lru, src);
+			default:
+				break;
+			}
+		}
 	}
 
 	*scanned = scan;
 	return nr_taken;
+}
+
+/*
+ * clear_active_flags() is a helper for shrink_active_list(), clearing
+ * any active bits from the pages in the list.
+ */
+static unsigned long clear_active_flags(struct list_head *page_list)
+{
+	int nr_active = 0;
+	struct page *page;
+
+	list_for_each_entry(page, page_list, lru)
+		if (PageActive(page)) {
+			ClearPageActive(page);
+			nr_active++;
+		}
+
+	return nr_active;
 }
 
 /*
@@ -671,16 +799,46 @@ static unsigned long shrink_inactive_list(unsigned long max_scan,
 		unsigned long nr_taken;
 		unsigned long nr_scan;
 		unsigned long nr_freed;
+		unsigned long nr_active;
 
 		nr_taken = isolate_lru_pages(sc->swap_cluster_max,
-					     &zone->inactive_list,
-					     &page_list, &nr_scan);
-		__mod_zone_page_state(zone, NR_INACTIVE, -nr_taken);
+			     &zone->inactive_list,
+			     &page_list, &nr_scan, sc->order,
+			     (sc->order > PAGE_ALLOC_COSTLY_ORDER)?
+					     ISOLATE_BOTH : ISOLATE_INACTIVE);
+		nr_active = clear_active_flags(&page_list);
+		__count_vm_events(PGDEACTIVATE, nr_active);
+
+		__mod_zone_page_state(zone, NR_ACTIVE, -nr_active);
+		__mod_zone_page_state(zone, NR_INACTIVE,
+						-(nr_taken - nr_active));
 		zone->pages_scanned += nr_scan;
 		spin_unlock_irq(&zone->lru_lock);
 
 		nr_scanned += nr_scan;
-		nr_freed = shrink_page_list(&page_list, sc);
+		nr_freed = shrink_page_list(&page_list, sc, PAGEOUT_IO_ASYNC);
+
+		/*
+		 * If we are direct reclaiming for contiguous pages and we do
+		 * not reclaim everything in the list, try again and wait
+		 * for IO to complete. This will stall high-order allocations
+		 * but that should be acceptable to the caller
+		 */
+		if (nr_freed < nr_taken && !current_is_kswapd() &&
+					sc->order > PAGE_ALLOC_COSTLY_ORDER) {
+			congestion_wait(WRITE, HZ/10);
+
+			/*
+			 * The attempt at page out may have made some
+			 * of the pages active, mark them inactive again.
+			 */
+			nr_active = clear_active_flags(&page_list);
+			count_vm_events(PGDEACTIVATE, nr_active);
+
+			nr_freed += shrink_page_list(&page_list, sc,
+							PAGEOUT_IO_SYNC);
+		}
+
 		nr_reclaimed += nr_freed;
 		local_irq_disable();
 		if (current_is_kswapd()) {
@@ -820,7 +978,7 @@ force_reclaim_mapped:
 	lru_add_drain();
 	spin_lock_irq(&zone->lru_lock);
 	pgmoved = isolate_lru_pages(nr_pages, &zone->active_list,
-				    &l_hold, &pgscanned);
+			    &l_hold, &pgscanned, sc->order, ISOLATE_ACTIVE);
 	zone->pages_scanned += pgscanned;
 	__mod_zone_page_state(zone, NR_ACTIVE, -pgmoved);
 	spin_unlock_irq(&zone->lru_lock);
@@ -1011,7 +1169,7 @@ static unsigned long shrink_zones(int priority, struct zone **zones,
  * holds filesystem locks which prevent writeout this might not work, and the
  * allocation attempt will fail.
  */
-unsigned long try_to_free_pages(struct zone **zones, gfp_t gfp_mask)
+unsigned long try_to_free_pages(struct zone **zones, int order, gfp_t gfp_mask)
 {
 	int priority;
 	int ret = 0;
@@ -1026,6 +1184,7 @@ unsigned long try_to_free_pages(struct zone **zones, gfp_t gfp_mask)
 		.swap_cluster_max = SWAP_CLUSTER_MAX,
 		.may_swap = 1,
 		.swappiness = vm_swappiness,
+		.order = order,
 	};
 
 	count_vm_event(ALLOCSTALL);
@@ -1131,6 +1290,7 @@ static unsigned long balance_pgdat(pg_data_t *pgdat, int order)
 		.may_swap = 1,
 		.swap_cluster_max = SWAP_CLUSTER_MAX,
 		.swappiness = vm_swappiness,
+		.order = order,
 	};
 	/*
 	 * temp_priority is used to remember the scanning priority at which
@@ -1314,6 +1474,7 @@ static int kswapd(void *p)
 	 * trying to free the first piece of memory in the first place).
 	 */
 	tsk->flags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
+	set_freezable();
 
 	order = 0;
 	for ( ; ; ) {

@@ -7,7 +7,7 @@ config DEFCONFIG_LIST
 	default "/boot/config-$UNAME_RELEASE"
 	default "arch/$ARCH/defconfig"
 
-menu "Code maturity level options"
+menu "General setup"
 
 config EXPERIMENTAL
 	bool "Prompt for development and/or incomplete code/drivers"
@@ -61,9 +61,6 @@ config INIT_ENV_ARG_LIMIT
 	  Maximum of each of the number of arguments and environment
 	  variables passed to init from the kernel command line.
 
-endmenu
-
-menu "General setup"
 
 config LOCALVERSION
 	string "Local version - append to kernel release"
@@ -119,15 +116,6 @@ config SYSVIPC
 	  You can find documentation about IPC with "info ipc" and also in
 	  section 6.4 of the Linux Programmer's Guide, available from
 	  <http://www.tldp.org/guides.html>.
-
-config IPC_NS
-	bool "IPC Namespaces"
-	depends on SYSVIPC
-	default n
-	help
-	  Support ipc namespaces.  This allows containers, i.e. virtual
-	  environments, to use ipc namespaces to provide different ipc
-	  objects for different servers.  If unsure, say N.
 
 config SYSVIPC_SYSCTL
 	bool
@@ -218,13 +206,14 @@ config TASK_IO_ACCOUNTING
 
 	  Say N if unsure.
 
-config UTS_NS
-	bool "UTS Namespaces"
+config USER_NS
+	bool "User Namespaces (EXPERIMENTAL)"
 	default n
+	depends on EXPERIMENTAL
 	help
-	  Support uts namespaces.  This allows containers, i.e.
-	  vservers, to use uts namespaces to provide different
-	  uts info for different servers.  If unsure, say N.
+	  Support user namespaces.  This allows containers, i.e.
+	  vservers, to use user namespaces to provide different
+	  user info for different servers.  If unsure, say N.
 
 config AUDIT
 	bool "Auditing support"
@@ -348,7 +337,7 @@ endif
 config CC_OPTIMIZE_FOR_SIZE
 	bool "Optimize for size (Look out for broken compilers!)"
 	default y
-	depends on ARM || H8300 || EXPERIMENTAL
+	depends on ARM || H8300 || SUPERH || EXPERIMENTAL
 	help
 	  Enabling this option will pass "-Os" instead of "-O2" to gcc
 	  resulting in a smaller kernel.
@@ -476,25 +465,19 @@ config FUTEX
 	  run glibc-based applications correctly.
 
 config ANON_INODES
-	bool "Enable anonymous inode source" if EMBEDDED
-	default y
-	help
-	  Anonymous inode source for pseudo-files like epoll, signalfd,
-	  timerfd and eventfd.
-
-	  If unsure, say Y.
+	bool
 
 config EPOLL
 	bool "Enable eventpoll support" if EMBEDDED
 	default y
-	depends on ANON_INODES
+	select ANON_INODES
 	help
 	  Disabling this option will cause the kernel to be built without
 	  support for epoll family of system calls.
 
 config SIGNALFD
 	bool "Enable signalfd() system call" if EMBEDDED
-	depends on ANON_INODES
+	select ANON_INODES
 	default y
 	help
 	  Enable the signalfd() system call that allows to receive signals
@@ -504,7 +487,8 @@ config SIGNALFD
 
 config TIMERFD
 	bool "Enable timerfd() system call" if EMBEDDED
-	depends on ANON_INODES
+	select ANON_INODES
+	depends on BROKEN
 	default y
 	help
 	  Enable the timerfd() system call that allows to receive timer
@@ -514,7 +498,7 @@ config TIMERFD
 
 config EVENTFD
 	bool "Enable eventfd() system call" if EMBEDDED
-	depends on ANON_INODES
+	select ANON_INODES
 	default y
 	help
 	  Enable the eventfd() system call that allows to receive both
@@ -554,7 +538,7 @@ config SLUB_DEBUG
 
 choice
 	prompt "Choose SLAB allocator"
-	default SLAB
+	default SLUB
 	help
 	   This option allows to select a slab allocator.
 
@@ -576,7 +560,7 @@ config SLUB
 	   and has enhanced diagnostics.
 
 config SLOB
-	depends on EMBEDDED && !SPARSEMEM
+	depends on EMBEDDED
 	bool "SLOB (Simple Allocator)"
 	help
 	   SLOB replaces the SLAB allocator with a drastically simpler
@@ -602,9 +586,7 @@ config BASE_SMALL
 	default 0 if BASE_FULL
 	default 1 if !BASE_FULL
 
-menu "Loadable module support"
-
-config MODULES
+menuconfig MODULES
 	bool "Enable loadable module support"
 	help
 	  Kernel modules are small pieces of compiled code which can
@@ -684,8 +666,5 @@ config STOP_MACHINE
 	depends on (SMP && MODULE_UNLOAD) || HOTPLUG_CPU
 	help
 	  Need stop_machine() primitive.
-endmenu
 
-menu "Block layer"
 source "block/Kconfig"
-endmenu

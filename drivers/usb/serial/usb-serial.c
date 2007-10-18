@@ -46,6 +46,8 @@ static struct usb_driver usb_serial_driver = {
 	.name =		"usbserial",
 	.probe =	usb_serial_probe,
 	.disconnect =	usb_serial_disconnect,
+	.suspend =	usb_serial_suspend,
+	.resume =	usb_serial_resume,
 	.no_dynamic_id = 	1,
 };
 
@@ -58,19 +60,19 @@ static struct usb_driver usb_serial_driver = {
 
 static int debug;
 static struct usb_serial *serial_table[SERIAL_TTY_MINORS];	/* initially all NULL */
-static spinlock_t table_lock;
+static DEFINE_MUTEX(table_lock);
 static LIST_HEAD(usb_serial_driver_list);
 
 struct usb_serial *usb_serial_get_by_index(unsigned index)
 {
 	struct usb_serial *serial;
 
-	spin_lock(&table_lock);
+	mutex_lock(&table_lock);
 	serial = serial_table[index];
 
 	if (serial)
 		kref_get(&serial->kref);
-	spin_unlock(&table_lock);
+	mutex_unlock(&table_lock);
 	return serial;
 }
 
@@ -82,7 +84,7 @@ static struct usb_serial *get_free_serial (struct usb_serial *serial, int num_po
 	dbg("%s %d", __FUNCTION__, num_ports);
 
 	*minor = 0;
-	spin_lock(&table_lock);
+	mutex_lock(&table_lock);
 	for (i = 0; i < SERIAL_TTY_MINORS; ++i) {
 		if (serial_table[i])
 			continue;
@@ -104,10 +106,10 @@ static struct usb_serial *get_free_serial (struct usb_serial *serial, int num_po
 			serial_table[i] = serial;
 			serial->port[j++]->number = i;
 		}
-		spin_unlock(&table_lock);
+		mutex_unlock(&table_lock);
 		return serial;
 	}
-	spin_unlock(&table_lock);
+	mutex_unlock(&table_lock);
 	return NULL;
 }
 
@@ -120,11 +122,9 @@ static void return_serial(struct usb_serial *serial)
 	if (serial == NULL)
 		return;
 
-	spin_lock(&table_lock);
 	for (i = 0; i < serial->num_ports; ++i) {
 		serial_table[serial->minor + i] = NULL;
 	}
-	spin_unlock(&table_lock);
 }
 
 static void destroy_serial(struct kref *kref)
@@ -172,7 +172,9 @@ static void destroy_serial(struct kref *kref)
 
 void usb_serial_put(struct usb_serial *serial)
 {
+	mutex_lock(&table_lock);
 	kref_put(&serial->kref, destroy_serial);
+	mutex_unlock(&table_lock);
 }
 
 /*****************************************************************************
@@ -1069,6 +1071,36 @@ void usb_serial_disconnect(struct usb_interface *interface)
 	dev_info(dev, "device disconnected\n");
 }
 
+int usb_serial_suspend(struct usb_interface *intf, pm_message_t message)
+{
+	struct usb_serial *serial = usb_get_intfdata(intf);
+	struct usb_serial_port *port;
+	int i, r = 0;
+
+	if (!serial) /* device has been disconnected */
+		return 0;
+
+	for (i = 0; i < serial->num_ports; ++i) {
+		port = serial->port[i];
+		if (port)
+			kill_traffic(port);
+	}
+
+	if (serial->type->suspend)
+		r = serial->type->suspend(serial, message);
+
+	return r;
+}
+EXPORT_SYMBOL(usb_serial_suspend);
+
+int usb_serial_resume(struct usb_interface *intf)
+{
+	struct usb_serial *serial = usb_get_intfdata(intf);
+
+	return serial->type->resume(serial);
+}
+EXPORT_SYMBOL(usb_serial_resume);
+
 static const struct tty_operations serial_ops = {
 	.open =			serial_open,
 	.close =		serial_close,
@@ -1097,7 +1129,6 @@ static int __init usb_serial_init(void)
 		return -ENOMEM;
 
 	/* Initialize our global data */
-	spin_lock_init(&table_lock);
 	for (i = 0; i < SERIAL_TTY_MINORS; ++i) {
 		serial_table[i] = NULL;
 	}

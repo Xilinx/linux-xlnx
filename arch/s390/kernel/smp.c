@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/mm.h>
+#include <linux/err.h>
 #include <linux/spinlock.h>
 #include <linux/kernel_stat.h>
 #include <linux/delay.h>
@@ -120,7 +121,7 @@ static void __smp_call_function_map(void (*func) (void *info), void *info,
 	if (wait)
 		data.finished = CPU_MASK_NONE;
 
-	spin_lock_bh(&call_lock);
+	spin_lock(&call_lock);
 	call_data = &data;
 
 	for_each_cpu_mask(cpu, map)
@@ -129,18 +130,16 @@ static void __smp_call_function_map(void (*func) (void *info), void *info,
 	/* Wait for response */
 	while (!cpus_equal(map, data.started))
 		cpu_relax();
-
 	if (wait)
 		while (!cpus_equal(map, data.finished))
 			cpu_relax();
-
-	spin_unlock_bh(&call_lock);
-
+	spin_unlock(&call_lock);
 out:
-	local_irq_disable();
-	if (local)
+	if (local) {
+		local_irq_disable();
 		func(info);
-	local_irq_enable();
+		local_irq_enable();
+	}
 }
 
 /*
@@ -170,30 +169,28 @@ int smp_call_function(void (*func) (void *info), void *info, int nonatomic,
 EXPORT_SYMBOL(smp_call_function);
 
 /*
- * smp_call_function_on:
+ * smp_call_function_single:
+ * @cpu: the CPU where func should run
  * @func: the function to run; this must be fast and non-blocking
  * @info: an arbitrary pointer to pass to the function
  * @nonatomic: unused
  * @wait: if true, wait (atomically) until function has completed on other CPUs
- * @cpu: the CPU where func should run
  *
  * Run a function on one processor.
  *
  * You must not call this function with disabled interrupts, from a
  * hardware interrupt handler or from a bottom half.
  */
-int smp_call_function_on(void (*func) (void *info), void *info, int nonatomic,
-			 int wait, int cpu)
+int smp_call_function_single(int cpu, void (*func) (void *info), void *info,
+			     int nonatomic, int wait)
 {
-	cpumask_t map = CPU_MASK_NONE;
-
 	preempt_disable();
-	cpu_set(cpu, map);
-	__smp_call_function_map(func, info, nonatomic, wait, map);
+	__smp_call_function_map(func, info, nonatomic, wait,
+				cpumask_of_cpu(cpu));
 	preempt_enable();
 	return 0;
 }
-EXPORT_SYMBOL(smp_call_function_on);
+EXPORT_SYMBOL(smp_call_function_single);
 
 static void do_send_stop(void)
 {
@@ -410,58 +407,40 @@ EXPORT_SYMBOL(smp_ctl_clear_bit);
 unsigned int zfcpdump_prefix_array[NR_CPUS + 1] \
 	__attribute__((__section__(".data")));
 
-static void __init smp_get_save_areas(void)
+static void __init smp_get_save_area(unsigned int cpu, unsigned int phy_cpu)
 {
-	unsigned int cpu, cpu_num, rc;
-	__u16 boot_cpu_addr;
-
 	if (ipl_info.type != IPL_TYPE_FCP_DUMP)
 		return;
-	boot_cpu_addr = S390_lowcore.cpu_data.cpu_addr;
-	cpu_num = 1;
-	for (cpu = 0; cpu <= 65535; cpu++) {
-		if ((u16) cpu == boot_cpu_addr)
-			continue;
-		__cpu_logical_map[1] = (__u16) cpu;
-		if (signal_processor(1, sigp_sense) == sigp_not_operational)
-			continue;
-		if (cpu_num >= NR_CPUS) {
-			printk("WARNING: Registers for cpu %i are not "
-			       "saved, since dump kernel was compiled with"
-			       "NR_CPUS=%i!\n", cpu_num, NR_CPUS);
-			continue;
-		}
-		zfcpdump_save_areas[cpu_num] =
-			alloc_bootmem(sizeof(union save_area));
-		while (1) {
-			rc = signal_processor(1, sigp_stop_and_store_status);
-			if (rc != sigp_busy)
-				break;
-			cpu_relax();
-		}
-		memcpy(zfcpdump_save_areas[cpu_num],
-		       (void *)(unsigned long) store_prefix() +
-		       SAVE_AREA_BASE, SAVE_AREA_SIZE);
-#ifdef __s390x__
-		/* copy original prefix register */
-		zfcpdump_save_areas[cpu_num]->s390x.pref_reg =
-			zfcpdump_prefix_array[cpu_num];
-#endif
-		cpu_num++;
+	if (cpu >= NR_CPUS) {
+		printk(KERN_WARNING "Registers for cpu %i not saved since dump "
+		       "kernel was compiled with NR_CPUS=%i\n", cpu, NR_CPUS);
+		return;
 	}
+	zfcpdump_save_areas[cpu] = alloc_bootmem(sizeof(union save_area));
+	__cpu_logical_map[1] = (__u16) phy_cpu;
+	while (signal_processor(1, sigp_stop_and_store_status) == sigp_busy)
+		cpu_relax();
+	memcpy(zfcpdump_save_areas[cpu],
+	       (void *)(unsigned long) store_prefix() + SAVE_AREA_BASE,
+	       SAVE_AREA_SIZE);
+#ifdef CONFIG_64BIT
+	/* copy original prefix register */
+	zfcpdump_save_areas[cpu]->s390x.pref_reg = zfcpdump_prefix_array[cpu];
+#endif
 }
 
 union save_area *zfcpdump_save_areas[NR_CPUS + 1];
 EXPORT_SYMBOL_GPL(zfcpdump_save_areas);
 
 #else
-#define smp_get_save_areas() do { } while (0)
-#endif
+
+static inline void smp_get_save_area(unsigned int cpu, unsigned int phy_cpu) { }
+
+#endif /* CONFIG_ZFCPDUMP || CONFIG_ZFCPDUMP_MODULE */
 
 /*
  * Lets check how many CPUs we have.
  */
-
 static unsigned int __init smp_count_cpus(void)
 {
 	unsigned int cpu, num_cpus;
@@ -470,7 +449,6 @@ static unsigned int __init smp_count_cpus(void)
 	/*
 	 * cpu 0 is the boot cpu. See smp_prepare_boot_cpu.
 	 */
-
 	boot_cpu_addr = S390_lowcore.cpu_data.cpu_addr;
 	current_thread_info()->cpu = 0;
 	num_cpus = 1;
@@ -480,12 +458,11 @@ static unsigned int __init smp_count_cpus(void)
 		__cpu_logical_map[1] = (__u16) cpu;
 		if (signal_processor(1, sigp_sense) == sigp_not_operational)
 			continue;
+		smp_get_save_area(num_cpus, cpu);
 		num_cpus++;
 	}
-
 	printk("Detected %d CPU's\n", (int) num_cpus);
 	printk("Boot cpu address %2X\n", boot_cpu_addr);
-
 	return num_cpus;
 }
 
@@ -606,7 +583,6 @@ void __init smp_setup_cpu_possible_map(void)
 {
 	unsigned int phy_cpus, pos_cpus, cpu;
 
-	smp_get_save_areas();
 	phy_cpus = smp_count_cpus();
 	pos_cpus = min(phy_cpus + additional_cpus, (unsigned int) NR_CPUS);
 

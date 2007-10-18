@@ -98,6 +98,18 @@ static struct vdso_patch_def vdso_patches[] = {
 		CPU_FTR_USE_TB, 0,
 		"__kernel_gettimeofday", NULL
 	},
+	{
+		CPU_FTR_USE_TB, 0,
+		"__kernel_clock_gettime", NULL
+	},
+	{
+		CPU_FTR_USE_TB, 0,
+		"__kernel_clock_getres", NULL
+	},
+	{
+		CPU_FTR_USE_TB, 0,
+		"__kernel_get_tbfreq", NULL
+	},
 };
 
 /*
@@ -670,7 +682,7 @@ static int __init vdso_init(void)
 	/*
 	 * Fill up the "systemcfg" stuff for backward compatiblity
 	 */
-	strcpy(vdso_data->eye_catcher, "SYSTEMCFG:PPC64");
+	strcpy((char *)vdso_data->eye_catcher, "SYSTEMCFG:PPC64");
 	vdso_data->version.major = SYSTEMCFG_MAJOR;
 	vdso_data->version.minor = SYSTEMCFG_MINOR;
 	vdso_data->processor = mfspr(SPRN_PVR);

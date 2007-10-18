@@ -23,7 +23,7 @@
 /* debug| print the main components of an URB
  * small: 0) header + data packets 1) just header
  */
-static void __attribute__((unused))
+static void __maybe_unused
 urb_print (struct urb * urb, char * str, int small)
 {
 	unsigned int pipe= urb->pipe;
@@ -74,7 +74,7 @@ urb_print (struct urb * urb, char * str, int small)
 
 #define ohci_dbg_sw(ohci, next, size, format, arg...) \
 	do { \
-	if (next) { \
+	if (next != NULL) { \
 		unsigned s_len; \
 		s_len = scnprintf (*next, *size, format, ## arg ); \
 		*size -= s_len; *next += s_len; \
@@ -338,7 +338,7 @@ static void ohci_dump_td (const struct ohci_hcd *ohci, const char *label,
 }
 
 /* caller MUST own hcd spinlock if verbose is set! */
-static void __attribute__((unused))
+static void __maybe_unused
 ohci_dump_ed (const struct ohci_hcd *ohci, const char *label,
 		const struct ed *ed, int verbose)
 {

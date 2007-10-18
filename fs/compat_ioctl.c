@@ -63,6 +63,7 @@
 #include <linux/wireless.h>
 #include <linux/atalk.h>
 #include <linux/blktrace_api.h>
+#include <linux/loop.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci.h>
@@ -113,6 +114,10 @@
 #include <linux/dvb/frontend.h>
 #include <linux/dvb/video.h>
 #include <linux/lp.h>
+
+#ifdef CONFIG_SPARC
+#include <asm/fbio.h>
+#endif
 
 static int do_ioctl32_pointer(unsigned int fd, unsigned int cmd,
 			      unsigned long arg, struct file *f)
@@ -2306,8 +2311,10 @@ static int do_wireless_ioctl(unsigned int fd, unsigned int cmd, unsigned long ar
 	struct iwreq __user *iwr_u;
 	struct iw_point __user *iwp;
 	struct compat_iw_point __user *iwp_u;
-	compat_caddr_t pointer;
+	compat_caddr_t pointer_u;
+	void __user *pointer;
 	__u16 length, flags;
+	int ret;
 
 	iwr_u = compat_ptr(arg);
 	iwp_u = (struct compat_iw_point __user *) &iwr_u->u.data;
@@ -2325,17 +2332,29 @@ static int do_wireless_ioctl(unsigned int fd, unsigned int cmd, unsigned long ar
 			   sizeof(iwr->ifr_ifrn.ifrn_name)))
 		return -EFAULT;
 
-	if (__get_user(pointer, &iwp_u->pointer) ||
+	if (__get_user(pointer_u, &iwp_u->pointer) ||
 	    __get_user(length, &iwp_u->length) ||
 	    __get_user(flags, &iwp_u->flags))
 		return -EFAULT;
 
-	if (__put_user(compat_ptr(pointer), &iwp->pointer) ||
+	if (__put_user(compat_ptr(pointer_u), &iwp->pointer) ||
 	    __put_user(length, &iwp->length) ||
 	    __put_user(flags, &iwp->flags))
 		return -EFAULT;
 
-	return sys_ioctl(fd, cmd, (unsigned long) iwr);
+	ret = sys_ioctl(fd, cmd, (unsigned long) iwr);
+
+	if (__get_user(pointer, &iwp->pointer) ||
+	    __get_user(length, &iwp->length) ||
+	    __get_user(flags, &iwp->flags))
+		return -EFAULT;
+
+	if (__put_user(ptr_to_compat(pointer), &iwp_u->pointer) ||
+	    __put_user(length, &iwp_u->length) ||
+	    __put_user(flags, &iwp_u->flags))
+		return -EFAULT;
+
+	return ret;
 }
 
 /* Since old style bridge ioctl's endup using SIOCDEVPRIVATE
@@ -3156,12 +3175,9 @@ COMPATIBLE_IOCTL(SIOCSIWSENS)
 COMPATIBLE_IOCTL(SIOCGIWSENS)
 COMPATIBLE_IOCTL(SIOCSIWRANGE)
 COMPATIBLE_IOCTL(SIOCSIWPRIV)
-COMPATIBLE_IOCTL(SIOCGIWPRIV)
 COMPATIBLE_IOCTL(SIOCSIWSTATS)
-COMPATIBLE_IOCTL(SIOCGIWSTATS)
 COMPATIBLE_IOCTL(SIOCSIWAP)
 COMPATIBLE_IOCTL(SIOCGIWAP)
-COMPATIBLE_IOCTL(SIOCSIWSCAN)
 COMPATIBLE_IOCTL(SIOCSIWRATE)
 COMPATIBLE_IOCTL(SIOCGIWRATE)
 COMPATIBLE_IOCTL(SIOCSIWRTS)
@@ -3174,6 +3190,8 @@ COMPATIBLE_IOCTL(SIOCSIWRETRY)
 COMPATIBLE_IOCTL(SIOCGIWRETRY)
 COMPATIBLE_IOCTL(SIOCSIWPOWER)
 COMPATIBLE_IOCTL(SIOCGIWPOWER)
+COMPATIBLE_IOCTL(SIOCSIWAUTH)
+COMPATIBLE_IOCTL(SIOCGIWAUTH)
 /* hiddev */
 COMPATIBLE_IOCTL(HIDIOCGVERSION)
 COMPATIBLE_IOCTL(HIDIOCAPPLICATION)
@@ -3489,6 +3507,25 @@ HANDLE_IOCTL(LPSETTIMEOUT, lp_timeout_trans)
 
 IGNORE_IOCTL(VFAT_IOCTL_READDIR_BOTH32)
 IGNORE_IOCTL(VFAT_IOCTL_READDIR_SHORT32)
+
+/* loop */
+IGNORE_IOCTL(LOOP_CLR_FD)
+
+#ifdef CONFIG_SPARC
+/* Sparc framebuffers, handled in sbusfb_compat_ioctl() */
+IGNORE_IOCTL(FBIOGTYPE)
+IGNORE_IOCTL(FBIOSATTR)
+IGNORE_IOCTL(FBIOGATTR)
+IGNORE_IOCTL(FBIOSVIDEO)
+IGNORE_IOCTL(FBIOGVIDEO)
+IGNORE_IOCTL(FBIOSCURPOS)
+IGNORE_IOCTL(FBIOGCURPOS)
+IGNORE_IOCTL(FBIOGCURMAX)
+IGNORE_IOCTL(FBIOPUTCMAP32)
+IGNORE_IOCTL(FBIOGETCMAP32)
+IGNORE_IOCTL(FBIOSCURSOR32)
+IGNORE_IOCTL(FBIOGCURSOR32)
+#endif
 };
 
 #define IOCTL_HASHSIZE 256

@@ -590,7 +590,7 @@ out_unlock:
  * Return 0 - If further processing is needed.
  * Return 1 - If the packet can be discarded right away.
  */
-int sctp_rcv_ootb(struct sk_buff *skb)
+static int sctp_rcv_ootb(struct sk_buff *skb)
 {
 	sctp_chunkhdr_t *ch;
 	__u8 *ch_end;
@@ -620,6 +620,14 @@ int sctp_rcv_ootb(struct sk_buff *skb)
 		 * and take no further action.
 		 */
 		if (SCTP_CID_SHUTDOWN_COMPLETE == ch->type)
+			goto discard;
+
+		/* RFC 4460, 2.11.2
+		 * This will discard packets with INIT chunk bundled as
+		 * subsequent chunks in the packet.  When INIT is first,
+		 * the normal INIT processing will discard the chunk.
+		 */
+		if (SCTP_CID_INIT == ch->type && (void *)ch != skb->data)
 			goto discard;
 
 		/* RFC 8.4, 7) If the packet contains a "Stale cookie" ERROR

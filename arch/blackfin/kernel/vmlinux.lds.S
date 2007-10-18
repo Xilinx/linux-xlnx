@@ -31,6 +31,8 @@
 
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/mem_map.h>
+#include <asm/page.h>
+#include <asm/thread_info.h>
 
 OUTPUT_FORMAT("elf32-bfin")
 ENTRY(__start)
@@ -63,8 +65,12 @@ SECTIONS
 
 	.data :
 	{
+		/* make sure the init_task is aligned to the
+		 * kernel thread size so we can locate the kernel
+		 * stack properly and quickly.
+		 */
 		__sdata = .;
-		. = ALIGN(0x2000);
+		. = ALIGN(THREAD_SIZE);
 		*(.data.init_task)
 		DATA_DATA
 		CONSTRUCTORS
@@ -72,14 +78,14 @@ SECTIONS
 		. = ALIGN(32);
 		*(.data.cacheline_aligned)
 
-		. = ALIGN(0x2000);
+		. = ALIGN(THREAD_SIZE);
 		__edata = .;
 	}
 
 	___init_begin = .;
 	.init :
 	{
-		. = ALIGN(4096);
+		. = ALIGN(PAGE_SIZE);
 		__sinittext = .;
 		*(.init.text)
 		__einittext = .;

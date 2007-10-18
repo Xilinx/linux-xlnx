@@ -414,12 +414,6 @@ cris_ide_reset(unsigned val)
 #ifdef CONFIG_ETRAX_IDE_G27_RESET
 	REG_SHADOW_SET(R_PORT_G_DATA, port_g_data_shadow, 27, val);
 #endif
-#ifdef CONFIG_ETRAX_IDE_CSE1_16_RESET
-	REG_SHADOW_SET(port_cse1_addr, port_cse1_shadow, 16, val);
-#endif
-#ifdef CONFIG_ETRAX_IDE_CSP0_8_RESET
-	REG_SHADOW_SET(port_csp0_addr, port_csp0_shadow, 8, val);
-#endif
 #ifdef CONFIG_ETRAX_IDE_PB7_RESET
 	port_pb_dir_shadow = port_pb_dir_shadow |
 		IO_STATE(R_PORT_PB_DIR, dir7, output);
@@ -690,6 +684,8 @@ static void tune_cris_ide(ide_drive_t *drive, u8 pio)
 {
 	int setup, strobe, hold;
 
+	pio = ide_get_best_pio_mode(drive, pio, 4);
+
 	switch(pio)
 	{
 		case 0:
@@ -722,6 +718,8 @@ static void tune_cris_ide(ide_drive_t *drive, u8 pio)
 	}
 
 	cris_ide_set_speed(TYPE_PIO, setup, strobe, hold);
+
+	(void)ide_config_drive_speed(drive, XFER_PIO_0 + pio);
 }
 
 static int speed_cris_ide(ide_drive_t *drive, u8 speed)
@@ -819,7 +817,8 @@ init_e100_ide (void)
 		hwif->dma_host_off = &cris_dma_off;
 		hwif->dma_host_on = &cris_dma_on;
 		hwif->dma_off_quietly = &cris_dma_off;
-		hwif->udma_four = 0;
+		hwif->cbl = ATA_CBL_PATA40;
+		hwif->pio_mask = ATA_PIO4,
 		hwif->ultra_mask = cris_ultra_mask;
 		hwif->mwdma_mask = 0x07; /* Multiword DMA 0-2 */
 		hwif->autodma = 1;

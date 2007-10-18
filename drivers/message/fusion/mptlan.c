@@ -5,7 +5,7 @@
  *      running LSI Logic Fusion MPT (Message Passing Technology) firmware.
  *
  *  Copyright (c) 2000-2007 LSI Logic Corporation
- *  (mailto:mpt_linux_developer@lsi.com)
+ *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  */
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
@@ -1524,8 +1524,7 @@ static int __init mpt_lan_init (void)
 
 	dlprintk((KERN_INFO MYNAM ": Registered for IOC reset notifications\n"));
 	
-	if (mpt_device_driver_register(&mptlan_driver, MPTLAN_DRIVER))
-		dprintk((KERN_INFO MYNAM ": failed to register dd callbacks\n"));
+	mpt_device_driver_register(&mptlan_driver, MPTLAN_DRIVER);
 	return 0;
 }
 

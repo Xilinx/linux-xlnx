@@ -18,7 +18,7 @@ gianfar_driver-objs := gianfar.o \
 		gianfar_sysfs.o
 
 obj-$(CONFIG_UCC_GETH) += ucc_geth_driver.o
-ucc_geth_driver-objs := ucc_geth.o ucc_geth_mii.o
+ucc_geth_driver-objs := ucc_geth.o ucc_geth_mii.o ucc_geth_ethtool.o
 
 #
 # link order important here
@@ -34,6 +34,7 @@ obj-$(CONFIG_SUNBMAC) += sunbmac.o
 obj-$(CONFIG_MYRI_SBUS) += myri_sbus.o
 obj-$(CONFIG_SUNGEM) += sungem.o sungem_phy.o
 obj-$(CONFIG_CASSINI) += cassini.o
+obj-$(CONFIG_SUNVNET) += sunvnet.o
 
 obj-$(CONFIG_MACE) += mace.o
 obj-$(CONFIG_BMAC) += bmac.o
@@ -60,6 +61,8 @@ obj-$(CONFIG_TIGON3) += tg3.o
 obj-$(CONFIG_BNX2) += bnx2.o
 spidernet-y += spider_net.o spider_net_ethtool.o
 obj-$(CONFIG_SPIDER_NET) += spidernet.o sungem_phy.o
+obj-$(CONFIG_GELIC_NET) += ps3_gelic.o
+ps3_gelic-objs += ps3_gelic_net.o
 obj-$(CONFIG_TC35815) += tc35815.o
 obj-$(CONFIG_SKGE) += skge.o
 obj-$(CONFIG_SKY2) += sky2.o
@@ -107,6 +110,7 @@ obj-$(CONFIG_NET_SB1250_MAC) += sb1250-mac.o
 obj-$(CONFIG_B44) += b44.o
 obj-$(CONFIG_FORCEDETH) += forcedeth.o
 obj-$(CONFIG_NE_H8300) += ne-h8300.o
+obj-$(CONFIG_AX88796) += ax88796.o
 
 obj-$(CONFIG_TSI108_ETH) += tsi108_eth.o
 obj-$(CONFIG_MV643XX_ETH) += mv643xx_eth.o
@@ -119,12 +123,16 @@ obj-$(CONFIG_PPP_DEFLATE) += ppp_deflate.o
 obj-$(CONFIG_PPP_BSDCOMP) += bsd_comp.o
 obj-$(CONFIG_PPP_MPPE) += ppp_mppe.o
 obj-$(CONFIG_PPPOE) += pppox.o pppoe.o
+obj-$(CONFIG_PPPOL2TP) += pppox.o pppol2tp.o
 
 obj-$(CONFIG_SLIP) += slip.o
 obj-$(CONFIG_SLHC) += slhc.o
 
+obj-$(CONFIG_XEN_NETDEV_FRONTEND) += xen-netfront.o
+
 obj-$(CONFIG_DUMMY) += dummy.o
 obj-$(CONFIG_IFB) += ifb.o
+obj-$(CONFIG_MACVLAN) += macvlan.o
 obj-$(CONFIG_DE600) += de600.o
 obj-$(CONFIG_DE620) += de620.o
 obj-$(CONFIG_LANCE) += lance.o
@@ -157,6 +165,7 @@ obj-$(CONFIG_ELPLUS) += 3c505.o
 obj-$(CONFIG_AC3200) += ac3200.o 8390.o
 obj-$(CONFIG_APRICOT) += 82596.o
 obj-$(CONFIG_LASI_82596) += lasi_82596.o
+obj-$(CONFIG_SNI_82596) += sni_82596.o
 obj-$(CONFIG_MVME16x_NET) += 82596.o
 obj-$(CONFIG_BVME6000_NET) += 82596.o
 obj-$(CONFIG_SC92031) += sc92031.o
@@ -169,14 +178,13 @@ obj-$(CONFIG_ZORRO8390) += zorro8390.o
 obj-$(CONFIG_HPLANCE) += hplance.o 7990.o
 obj-$(CONFIG_MVME147_NET) += mvme147.o 7990.o
 obj-$(CONFIG_EQUALIZER) += eql.o
+obj-$(CONFIG_LGUEST_NET) += lguest_net.o
 obj-$(CONFIG_MIPS_JAZZ_SONIC) += jazzsonic.o
 obj-$(CONFIG_MIPS_AU1X00_ENET) += au1000_eth.o
 obj-$(CONFIG_MIPS_SIM_NET) += mipsnet.o
 obj-$(CONFIG_SGI_IOC3_ETH) += ioc3-eth.o
 obj-$(CONFIG_DECLANCE) += declance.o
 obj-$(CONFIG_ATARILANCE) += atarilance.o
-obj-$(CONFIG_ATARI_BIONET) += atari_bionet.o
-obj-$(CONFIG_ATARI_PAMSNET) += atari_pamsnet.o
 obj-$(CONFIG_A2065) += a2065.o
 obj-$(CONFIG_HYDRA) += hydra.o
 obj-$(CONFIG_ARIADNE) += ariadne.o
@@ -194,6 +202,7 @@ obj-$(CONFIG_S2IO) += s2io.o
 obj-$(CONFIG_MYRI10GE) += myri10ge/
 obj-$(CONFIG_SMC91X) += smc91x.o
 obj-$(CONFIG_SMC911X) += smc911x.o
+obj-$(CONFIG_BFIN_MAC) += bfin_mac.o
 obj-$(CONFIG_DM9000) += dm9000.o
 obj-$(CONFIG_FEC_8XX) += fec_8xx/
 obj-$(CONFIG_PASEMI_MAC) += pasemi_mac.o

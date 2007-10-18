@@ -214,11 +214,6 @@ static inline unsigned long get_limit(unsigned long segment)
  */
  
 
-/* 
- * Actually only lfence would be needed for mb() because all stores done 
- * by the kernel should be already ordered. But keep a full barrier for now. 
- */
-
 #define mb() alternative("lock; addl $0,0(%%esp)", "mfence", X86_FEATURE_XMM2)
 #define rmb() alternative("lock; addl $0,0(%%esp)", "lfence", X86_FEATURE_XMM2)
 
@@ -309,15 +304,6 @@ void enable_hlt(void);
 
 extern int es7000_plat;
 void cpu_idle_wait(void);
-
-/*
- * On SMP systems, when the scheduler does migration-cost autodetection,
- * it needs a way to flush as much of the CPU's caches as possible:
- */
-static inline void sched_cacheflush(void)
-{
-	wbinvd();
-}
 
 extern unsigned long arch_align_stack(unsigned long sp);
 extern void free_init_pages(char *what, unsigned long begin, unsigned long end);

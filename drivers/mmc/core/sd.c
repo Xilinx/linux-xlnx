@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/mmc/sd.c
+ *  linux/drivers/mmc/core/sd.c
  *
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
@@ -19,10 +19,9 @@
 
 #include "core.h"
 #include "sysfs.h"
+#include "bus.h"
 #include "mmc_ops.h"
 #include "sd_ops.h"
-
-#include "core.h"
 
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
@@ -150,7 +149,7 @@ static int mmc_decode_csd(struct mmc_card *card)
 		csd->write_partial = 0;
 		break;
 	default:
-		printk("%s: unrecognised CSD structure version %d\n",
+		printk(KERN_ERR "%s: unrecognised CSD structure version %d\n",
 			mmc_hostname(card->host), csd_struct);
 		return -EINVAL;
 	}
@@ -174,7 +173,7 @@ static int mmc_decode_scr(struct mmc_card *card)
 
 	scr_struct = UNSTUFF_BITS(resp, 60, 4);
 	if (scr_struct != 0) {
-		printk("%s: unrecognised SCR structure version %d\n",
+		printk(KERN_ERR "%s: unrecognised SCR structure version %d\n",
 			mmc_hostname(card->host), scr_struct);
 		return -EINVAL;
 	}
@@ -207,9 +206,8 @@ static int mmc_read_switch(struct mmc_card *card)
 
 	status = kmalloc(64, GFP_KERNEL);
 	if (!status) {
-		printk("%s: could not allocate a buffer for switch "
-		       "capabilities.\n",
-			mmc_hostname(card->host));
+		printk(KERN_ERR "%s: could not allocate a buffer for "
+			"switch capabilities.\n", mmc_hostname(card->host));
 		return err;
 	}
 
@@ -255,9 +253,8 @@ static int mmc_switch_hs(struct mmc_card *card)
 
 	status = kmalloc(64, GFP_KERNEL);
 	if (!status) {
-		printk("%s: could not allocate a buffer for switch "
-		       "capabilities.\n",
-			mmc_hostname(card->host));
+		printk(KERN_ERR "%s: could not allocate a buffer for "
+			"switch capabilities.\n", mmc_hostname(card->host));
 		return err;
 	}
 
@@ -487,13 +484,61 @@ static void mmc_sd_detect(struct mmc_host *host)
 	mmc_release_host(host);
 
 	if (err != MMC_ERR_NONE) {
-		mmc_remove_card(host->card);
-		host->card = NULL;
+		mmc_sd_remove(host);
 
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
 		mmc_release_host(host);
 	}
+}
+
+MMC_ATTR_FN(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
+	card->raw_cid[2], card->raw_cid[3]);
+MMC_ATTR_FN(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
+	card->raw_csd[2], card->raw_csd[3]);
+MMC_ATTR_FN(scr, "%08x%08x\n", card->raw_scr[0], card->raw_scr[1]);
+MMC_ATTR_FN(date, "%02d/%04d\n", card->cid.month, card->cid.year);
+MMC_ATTR_FN(fwrev, "0x%x\n", card->cid.fwrev);
+MMC_ATTR_FN(hwrev, "0x%x\n", card->cid.hwrev);
+MMC_ATTR_FN(manfid, "0x%06x\n", card->cid.manfid);
+MMC_ATTR_FN(name, "%s\n", card->cid.prod_name);
+MMC_ATTR_FN(oemid, "0x%04x\n", card->cid.oemid);
+MMC_ATTR_FN(serial, "0x%08x\n", card->cid.serial);
+
+static struct device_attribute mmc_sd_dev_attrs[] = {
+	MMC_ATTR_RO(cid),
+	MMC_ATTR_RO(csd),
+	MMC_ATTR_RO(scr),
+	MMC_ATTR_RO(date),
+	MMC_ATTR_RO(fwrev),
+	MMC_ATTR_RO(hwrev),
+	MMC_ATTR_RO(manfid),
+	MMC_ATTR_RO(name),
+	MMC_ATTR_RO(oemid),
+	MMC_ATTR_RO(serial),
+	__ATTR_NULL,
+};
+
+/*
+ * Adds sysfs entries as relevant.
+ */
+static int mmc_sd_sysfs_add(struct mmc_host *host, struct mmc_card *card)
+{
+	int ret;
+
+	ret = mmc_add_attrs(card, mmc_sd_dev_attrs);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+/*
+ * Removes the sysfs entries added by mmc_sysfs_add().
+ */
+static void mmc_sd_sysfs_remove(struct mmc_host *host, struct mmc_card *card)
+{
+	mmc_remove_attrs(card, mmc_sd_dev_attrs);
 }
 
 #ifdef CONFIG_MMC_UNSAFE_RESUME
@@ -526,16 +571,17 @@ static void mmc_sd_resume(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-
 	err = mmc_sd_init_card(host, host->ocr, host->card);
-	if (err != MMC_ERR_NONE) {
-		mmc_remove_card(host->card);
-		host->card = NULL;
+	mmc_release_host(host);
 
+	if (err != MMC_ERR_NONE) {
+		mmc_sd_remove(host);
+
+		mmc_claim_host(host);
 		mmc_detach_bus(host);
+		mmc_release_host(host);
 	}
 
-	mmc_release_host(host);
 }
 
 #else
@@ -548,6 +594,8 @@ static void mmc_sd_resume(struct mmc_host *host)
 static const struct mmc_bus_ops mmc_sd_ops = {
 	.remove = mmc_sd_remove,
 	.detect = mmc_sd_detect,
+	.sysfs_add = mmc_sd_sysfs_add,
+	.sysfs_remove = mmc_sd_sysfs_remove,
 	.suspend = mmc_sd_suspend,
 	.resume = mmc_sd_resume,
 };
@@ -587,8 +635,10 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 	/*
 	 * Can we support the voltage(s) of the card(s)?
 	 */
-	if (!host->ocr)
+	if (!host->ocr) {
+		err = -EINVAL;
 		goto err;
+	}
 
 	/*
 	 * Detect and init the card.
@@ -599,19 +649,22 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 
 	mmc_release_host(host);
 
-	err = mmc_register_card(host->card);
+	err = mmc_add_card(host->card);
 	if (err)
-		goto reclaim_host;
+		goto remove_card;
 
 	return 0;
 
-reclaim_host:
-	mmc_claim_host(host);
+remove_card:
 	mmc_remove_card(host->card);
 	host->card = NULL;
+	mmc_claim_host(host);
 err:
 	mmc_detach_bus(host);
 	mmc_release_host(host);
+
+	printk(KERN_ERR "%s: error %d whilst initialising SD card\n",
+		mmc_hostname(host), err);
 
 	return 0;
 }

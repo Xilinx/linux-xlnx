@@ -75,6 +75,27 @@ static void r4k_wait_irqoff(void)
 	local_irq_enable();
 }
 
+/*
+ * The RM7000 variant has to handle erratum 38.  The workaround is to not
+ * have any pending stores when the WAIT instruction is executed.
+ */
+static void rm7k_wait_irqoff(void)
+{
+	local_irq_disable();
+	if (!need_resched())
+		__asm__(
+		"	.set	push					\n"
+		"	.set	mips3					\n"
+		"	.set	noat					\n"
+		"	mfc0	$1, $12					\n"
+		"	sync						\n"
+		"	mtc0	$1, $12		# stalls until W stage	\n"
+		"	wait						\n"
+		"	mtc0	$1, $12		# stalls until W stage	\n"
+		"	.set	pop					\n");
+	local_irq_enable();
+}
+
 /* The Au1xxx wait is available only if using 32khz counter or
  * external timer source, but specifically not CP0 Counter. */
 int allow_au1k_wait;
@@ -132,7 +153,6 @@ static inline void check_wait(void)
 	case CPU_R4700:
 	case CPU_R5000:
 	case CPU_NEVADA:
-	case CPU_RM7000:
 	case CPU_4KC:
 	case CPU_4KEC:
 	case CPU_4KSC:
@@ -140,6 +160,10 @@ static inline void check_wait(void)
 	case CPU_25KF:
 	case CPU_PR4450:
 		cpu_wait = r4k_wait;
+		break;
+
+	case CPU_RM7000:
+		cpu_wait = rm7k_wait_irqoff;
 		break;
 
 	case CPU_24K:
@@ -175,7 +199,14 @@ static inline void check_wait(void)
 		if ((c->processor_id & 0xff) <= 0x64)
 			break;
 
-		cpu_wait = r4k_wait;
+		/*
+		 * Another rev is incremeting c0_count at a reduced clock
+		 * rate while in WAIT mode.  So we basically have the choice
+		 * between using the cp0 timer as clocksource or avoiding
+		 * the WAIT instruction.  Until more details are known,
+		 * disable the use of WAIT for 20Kc entirely.
+		   cpu_wait = r4k_wait;
+		 */
 		break;
 	case CPU_RM9000:
 		if ((c->processor_id & 0x00ff) >= 0x40)
@@ -186,9 +217,29 @@ static inline void check_wait(void)
 	}
 }
 
+static inline void check_errata(void)
+{
+	struct cpuinfo_mips *c = &current_cpu_data;
+
+	switch (c->cputype) {
+	case CPU_34K:
+		/*
+		 * Erratum "RPS May Cause Incorrect Instruction Execution"
+		 * This code only handles VPE0, any SMP/SMTC/RTOS code
+		 * making use of VPE1 will be responsable for that VPE.
+		 */
+		if ((c->processor_id & PRID_REV_MASK) <= PRID_REV_34K_V1_0_2)
+			write_c0_config7(read_c0_config7() | MIPS_CONF7_RPS);
+		break;
+	default:
+		break;
+	}
+}
+
 void __init check_bugs32(void)
 {
 	check_wait();
+	check_errata();
 }
 
 /*
@@ -485,6 +536,14 @@ static inline void cpu_probe_legacy(struct cpuinfo_mips *c)
 		             MIPS_CPU_LLSC;
 		c->tlbsize = 64;
 		break;
+	case PRID_IMP_LOONGSON2:
+		c->cputype = CPU_LOONGSON2;
+		c->isa_level = MIPS_CPU_ISA_III;
+		c->options = R4K_OPTS |
+			     MIPS_CPU_FPU | MIPS_CPU_LLSC |
+			     MIPS_CPU_32FPR;
+		c->tlbsize = 64;
+		break;
 	}
 }
 
@@ -588,6 +647,8 @@ static inline unsigned int decode_config3(struct cpuinfo_mips *c)
 		c->options |= MIPS_CPU_VEIC;
 	if (config3 & MIPS_CONF3_MT)
 	        c->ases |= MIPS_ASE_MIPSMT;
+	if (config3 & MIPS_CONF3_ULRI)
+		c->options |= MIPS_CPU_ULRI;
 
 	return config3 & MIPS_CONF_M;
 }

@@ -108,13 +108,13 @@ static int dummy_settime(struct timespec *ts, struct timezone *tz)
 	return 0;
 }
 
-static int dummy_vm_enough_memory(long pages)
+static int dummy_vm_enough_memory(struct mm_struct *mm, long pages)
 {
 	int cap_sys_admin = 0;
 
 	if (dummy_capable(current, CAP_SYS_ADMIN) == 0)
 		cap_sys_admin = 1;
-	return __vm_enough_memory(pages, cap_sys_admin);
+	return __vm_enough_memory(mm, pages, cap_sys_admin);
 }
 
 static int dummy_bprm_alloc_security (struct linux_binprm *bprm)
@@ -130,7 +130,7 @@ static void dummy_bprm_free_security (struct linux_binprm *bprm)
 static void dummy_bprm_apply_creds (struct linux_binprm *bprm, int unsafe)
 {
 	if (bprm->e_uid != current->uid || bprm->e_gid != current->gid) {
-		current->mm->dumpable = suid_dumpable;
+		set_dumpable(current->mm, suid_dumpable);
 
 		if ((unsafe & ~LSM_UNSAFE_PTRACE_CAP) && !capable(CAP_SETUID)) {
 			bprm->e_uid = current->uid;
@@ -420,8 +420,12 @@ static int dummy_file_ioctl (struct file *file, unsigned int command,
 
 static int dummy_file_mmap (struct file *file, unsigned long reqprot,
 			    unsigned long prot,
-			    unsigned long flags)
+			    unsigned long flags,
+			    unsigned long addr,
+			    unsigned long addr_only)
 {
+	if (addr < mmap_min_addr)
+		return -EACCES;
 	return 0;
 }
 

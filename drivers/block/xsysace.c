@@ -902,26 +902,17 @@ static int ace_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int ace_ioctl(struct inode *inode, struct file *filp,
-		     unsigned int cmd, unsigned long arg)
+static int ace_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 {
-	struct ace_device *ace = inode->i_bdev->bd_disk->private_data;
-	struct hd_geometry __user *geo = (struct hd_geometry __user *)arg;
-	struct hd_geometry g;
-	dev_dbg(ace->dev, "ace_ioctl()\n");
+	struct ace_device *ace = bdev->bd_disk->private_data;
 
-	switch (cmd) {
-	case HDIO_GETGEO:
-		g.heads = ace->cf_id.heads;
-		g.sectors = ace->cf_id.sectors;
-		g.cylinders = ace->cf_id.cyls;
-		g.start = 0;
-		return copy_to_user(geo, &g, sizeof(g)) ? -EFAULT : 0;
+	dev_dbg(ace->dev, "ace_getgeo()\n");
 
-	default:
-		return -ENOTTY;
-	}
-	return -ENOTTY;
+	geo->heads = ace->cf_id.heads;
+	geo->sectors = ace->cf_id.sectors;
+	geo->cylinders = ace->cf_id.cyls;
+
+	return 0;
 }
 
 static struct block_device_operations ace_fops = {
@@ -930,7 +921,7 @@ static struct block_device_operations ace_fops = {
 	.release = ace_release,
 	.media_changed = ace_media_changed,
 	.revalidate_disk = ace_revalidate_disk,
-	.ioctl = ace_ioctl,
+	.getgeo = ace_getgeo,
 };
 
 /* --------------------------------------------------------------------
@@ -952,15 +943,6 @@ static int __devinit ace_setup(struct ace_device *ace)
 	ace->baseaddr = ioremap(ace->physaddr, 0x80);
 	if (!ace->baseaddr)
 		goto err_ioremap;
-
-	if (ace->irq != NO_IRQ) {
-		rc = request_irq(ace->irq, ace_interrupt, 0, "systemace", ace);
-		if (rc) {
-			/* Failure - fall back to polled mode */
-			dev_err(ace->dev, "request_irq failed\n");
-			ace->irq = NO_IRQ;
-		}
-	}
 
 	/*
 	 * Initialize the state machine tasklet and stall timer
@@ -1014,6 +996,15 @@ static int __devinit ace_setup(struct ace_device *ace)
 	/* Put sysace in a sane state by clearing most control reg bits */
 	ace_out(ace, ACE_CTRL, ACE_CTRL_FORCECFGMODE |
 		ACE_CTRL_DATABUFRDYIRQ | ACE_CTRL_ERRORIRQ);
+
+	if (ace->irq != NO_IRQ) {
+		rc = request_irq(ace->irq, ace_interrupt, 0, "systemace", ace);
+		if (rc) {
+			/* Failure - fall back to polled mode */
+			dev_err(ace->dev, "request_irq failed\n");
+			ace->irq = NO_IRQ;
+		}
+	}
 
 	/* Enable interrupts */
 	val = ace_in(ace, ACE_CTRL);

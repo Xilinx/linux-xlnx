@@ -147,20 +147,27 @@ static ssize_t show_stp_state(struct device *d,
 	return sprintf(buf, "%d\n", br->stp_enabled);
 }
 
-static void set_stp_state(struct net_bridge *br, unsigned long val)
-{
-	rtnl_lock();
-	spin_unlock_bh(&br->lock);
-	br_stp_set_enabled(br, val);
-	spin_lock_bh(&br->lock);
-	rtnl_unlock();
-}
 
 static ssize_t store_stp_state(struct device *d,
 			       struct device_attribute *attr, const char *buf,
 			       size_t len)
 {
-	return store_bridge_parm(d, buf, len, set_stp_state);
+	struct net_bridge *br = to_bridge(d);
+	char *endp;
+	unsigned long val;
+
+	if (!capable(CAP_NET_ADMIN))
+		return -EPERM;
+
+	val = simple_strtoul(buf, &endp, 0);
+	if (endp == buf)
+		return -EINVAL;
+
+	rtnl_lock();
+	br_stp_set_enabled(br, val);
+	rtnl_unlock();
+
+	return len;
 }
 static DEVICE_ATTR(stp_state, S_IRUGO | S_IWUSR, show_stp_state,
 		   store_stp_state);
@@ -360,8 +367,9 @@ static struct attribute_group bridge_group = {
  *
  * Returns the number of bytes read.
  */
-static ssize_t brforward_read(struct kobject *kobj, char *buf,
-			   loff_t off, size_t count)
+static ssize_t brforward_read(struct kobject *kobj,
+			      struct bin_attribute *bin_attr,
+			      char *buf, loff_t off, size_t count)
 {
 	struct device *dev = to_dev(kobj);
 	struct net_bridge *br = to_bridge(dev);
@@ -383,8 +391,7 @@ static ssize_t brforward_read(struct kobject *kobj, char *buf,
 
 static struct bin_attribute bridge_forward = {
 	.attr = { .name = SYSFS_BRIDGE_FDB,
-		  .mode = S_IRUGO,
-		  .owner = THIS_MODULE, },
+		  .mode = S_IRUGO, },
 	.read = brforward_read,
 };
 

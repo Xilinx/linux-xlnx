@@ -25,6 +25,16 @@
 #define BUFFER_SIZE	2048	/* buffer for the variables */
 #define NUM_ENVP	32	/* number of env pointers */
 
+/* the strings here must match the enum in include/linux/kobject.h */
+const char *kobject_actions[] = {
+	"add",
+	"remove",
+	"change",
+	"move",
+	"online",
+	"offline",
+};
+
 #if defined(CONFIG_HOTPLUG)
 u64 uevent_seqnum;
 char uevent_helper[UEVENT_HELPER_PATH_LEN] = "/sbin/hotplug";
@@ -32,26 +42,6 @@ static DEFINE_SPINLOCK(sequence_lock);
 #if defined(CONFIG_NET)
 static struct sock *uevent_sock;
 #endif
-
-static char *action_to_string(enum kobject_action action)
-{
-	switch (action) {
-	case KOBJ_ADD:
-		return "add";
-	case KOBJ_REMOVE:
-		return "remove";
-	case KOBJ_CHANGE:
-		return "change";
-	case KOBJ_OFFLINE:
-		return "offline";
-	case KOBJ_ONLINE:
-		return "online";
-	case KOBJ_MOVE:
-		return "move";
-	default:
-		return NULL;
-	}
-}
 
 /**
  * kobject_uevent_env - send an uevent with environmental data
@@ -83,7 +73,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 
 	pr_debug("%s\n", __FUNCTION__);
 
-	action_string = action_to_string(action);
+	action_string = kobject_actions[action];
 	if (!action_string) {
 		pr_debug("kobject attempted to send uevent without action_string!\n");
 		return -EINVAL;
@@ -208,7 +198,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		argv [0] = uevent_helper;
 		argv [1] = (char *)subsystem;
 		argv [2] = NULL;
-		call_usermodehelper (argv[0], argv, envp, 0);
+		call_usermodehelper (argv[0], argv, envp, UMH_WAIT_EXEC);
 	}
 
 exit:
