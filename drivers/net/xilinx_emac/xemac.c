@@ -58,6 +58,7 @@
 
 /***************************** Include Files *********************************/
 
+#include <linux/string.h>
 #include "xbasic_types.h"
 #include "xemac_i.h"
 #include "xio.h"

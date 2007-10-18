@@ -51,6 +51,7 @@
 #include <linux/skbuff.h>
 #include <linux/mii.h>
 #include <linux/pci.h>
+#include <linux/string.h>
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/atomic.h>
