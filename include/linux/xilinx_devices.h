@@ -102,18 +102,6 @@ struct xlltemac_platform_data {
 	u8 mac_addr[6];
 };
 
-
-/*- SPI -*/
-
-struct xspi_platform_data {
-	u32 device_flags;
-	u8 num_slave_bits;
-};
-
-/* Flags related to XSPI device features */
-#define XSPI_HAS_FIFOS		0x00000001
-#define XSPI_SLAVE_ONLY		0x00000002
-
 /*- GPIO -*/
 
 /* Flags related to XGPIO device features */
