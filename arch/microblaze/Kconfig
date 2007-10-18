@@ -52,6 +52,9 @@ config GENERIC_CALIBRATE_DELAY
 	bool
 	default y
 
+config OF
+	def_bool y
+
 config PCI
 	bool
 	default n
