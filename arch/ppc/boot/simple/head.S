@@ -71,9 +71,9 @@ start_:
 	mtccr0	0
 #endif
 
-#ifdef CONFIG_XILINX_VIRTEX_5_FX
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
 	mfccr0	0
-	oris	0,0,0x10000000@h
+	oris	0,0,0x30000000@h
 	mtccr0	0
 #endif
 
