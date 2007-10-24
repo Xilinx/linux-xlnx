@@ -54,7 +54,7 @@
 
 /************************** Function Prototypes ******************************/
 
-static void InitHw(XLlTemac * InstancePtr);	/* HW reset */
+static void InitHw(XLlTemac *InstancePtr);	/* HW reset */
 
 /************************** Variable Definitions *****************************/
 
@@ -97,8 +97,8 @@ xdbg_stmnt(int indent_on = 0;
  *
  *
  ******************************************************************************/
-     int XLlTemac_CfgInitialize(XLlTemac * InstancePtr,
-				XLlTemac_Config * CfgPtr, u32 EffectiveAddress)
+     int XLlTemac_CfgInitialize(XLlTemac *InstancePtr,
+				XLlTemac_Config *CfgPtr, u32 EffectiveAddress)
 {
 	/* Verify arguments */
 	XASSERT_NONVOID(InstancePtr != NULL);
@@ -140,7 +140,7 @@ xdbg_stmnt(int indent_on = 0;
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_Start(XLlTemac * InstancePtr)
+void XLlTemac_Start(XLlTemac *InstancePtr)
 {
 	u32 Reg;
 
@@ -220,7 +220,7 @@ void XLlTemac_Start(XLlTemac * InstancePtr)
  * routines in this TEMAC driverr.
  * 
  ******************************************************************************/
-void XLlTemac_Stop(XLlTemac * InstancePtr)
+void XLlTemac_Stop(XLlTemac *InstancePtr)
 {
 	u32 Reg;
 
@@ -301,7 +301,7 @@ void XLlTemac_Stop(XLlTemac * InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_Reset(XLlTemac * InstancePtr, int HardCoreAction)
+void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction)
 {
 	u32 Reg;
 	u32 TimeoutCount = 2;
@@ -382,7 +382,7 @@ void XLlTemac_Reset(XLlTemac * InstancePtr, int HardCoreAction)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-static void InitHw(XLlTemac * InstancePtr)
+static void InitHw(XLlTemac *InstancePtr)
 {
 	u32 Reg;
 
@@ -456,7 +456,7 @@ static void InitHw(XLlTemac * InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-int XLlTemac_SetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
+int XLlTemac_SetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
 {
 	u32 MacAddr;
 	u8 *Aptr = (u8 *) AddressPtr;
@@ -525,7 +525,7 @@ int XLlTemac_SetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_GetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
+void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr)
 {
 	u32 MacAddr;
 	u8 *Aptr = (u8 *) AddressPtr;
@@ -578,7 +578,7 @@ void XLlTemac_GetMacAddress(XLlTemac * InstancePtr, void *AddressPtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-int XLlTemac_SetOptions(XLlTemac * InstancePtr, u32 Options)
+int XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options)
 {
 	u32 Reg;		/* Generic register contents */
 	u32 RegRcw1;		/* Reflects original contents of RCW1 */
@@ -777,7 +777,7 @@ int XLlTemac_SetOptions(XLlTemac * InstancePtr, u32 Options)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-int XLlTemac_ClearOptions(XLlTemac * InstancePtr, u32 Options)
+int XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options)
 {
 	u32 Reg;		/* Generic */
 	u32 RegRcw1;		/* Reflects original contents of RCW1 */
@@ -953,7 +953,7 @@ int XLlTemac_ClearOptions(XLlTemac * InstancePtr, u32 Options)
  * See xlltemac.h for a description of the available options.
  *
  ******************************************************************************/
-u32 XLlTemac_GetOptions(XLlTemac * InstancePtr)
+u32 XLlTemac_GetOptions(XLlTemac *InstancePtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -979,7 +979,7 @@ u32 XLlTemac_GetOptions(XLlTemac * InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-u16 XLlTemac_GetOperatingSpeed(XLlTemac * InstancePtr)
+u16 XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr)
 {
 	XASSERT_NONVOID(InstancePtr != NULL);
 	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
@@ -1034,7 +1034,7 @@ u16 XLlTemac_GetOperatingSpeed(XLlTemac * InstancePtr)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_SetOperatingSpeed(XLlTemac * InstancePtr, u16 Speed)
+void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed)
 {
 	u32 EmmcReg;
 
@@ -1119,7 +1119,7 @@ void XLlTemac_SetOperatingSpeed(XLlTemac * InstancePtr, u16 Speed)
  * routines in this TEMAC driverr.
  *
  ******************************************************************************/
-void XLlTemac_PhySetMdioDivisor(XLlTemac * InstancePtr, u8 Divisor)
+void XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor)
 {
 	XASSERT_VOID(InstancePtr != NULL);
 	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY)
@@ -1178,7 +1178,7 @@ void XLlTemac_PhySetMdioDivisor(XLlTemac * InstancePtr, u8 Divisor)
  * suitable for recovery.
  *
  ******************************************************************************/
-void XLlTemac_PhyRead(XLlTemac * InstancePtr, u32 PhyAddress,
+void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress,
 		      u32 RegisterNum, u16 *PhyDataPtr)
 {
 	u32 MiiReg;
@@ -1309,7 +1309,7 @@ void XLlTemac_PhyRead(XLlTemac * InstancePtr, u32 PhyAddress,
  * suitable for recovery.
  *
  ******************************************************************************/
-void XLlTemac_PhyWrite(XLlTemac * InstancePtr, u32 PhyAddress,
+void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress,
 		       u32 RegisterNum, u16 PhyData)
 {
 	u32 MiiReg;
