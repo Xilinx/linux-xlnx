@@ -262,7 +262,6 @@ extern "C" {
 
 /***************************** Include Files *********************************/
 
-// -wgr- #include "xenv.h"
 #include "xbasic_types.h"
 #include "xstatus.h"
 #include "xlltemac_hw.h"
@@ -377,7 +376,7 @@ extern "C" {
 /* The next few constants help upper layers determine the size of memory
  * pools used for Ethernet buffers and descriptor lists.
  */
-#define XTE_MAC_ADDR_SIZE   6	/* MAC addresses are 6 bytes */
+#define XTE_MAC_ADDR_SIZE   6		/* MAC addresses are 6 bytes */
 #define XTE_MTU             1500	/* max MTU size of an Ethernet frame */
 #define XTE_JUMBO_MTU       8982	/* max MTU size of a jumbo Ethernet frame */
 #define XTE_HDR_SIZE        14	/* size of an Ethernet header */
@@ -730,11 +729,11 @@ typedef struct XLlTemac {
 /*
  * Initialization functions in xlltemac.c
  */
-int XLlTemac_CfgInitialize(XLlTemac * InstancePtr, XLlTemac_Config * CfgPtr,
+int XLlTemac_CfgInitialize(XLlTemac *InstancePtr, XLlTemac_Config *CfgPtr,
 			   u32 VirtualAddress);
-void XLlTemac_Start(XLlTemac * InstancePtr);
-void XLlTemac_Stop(XLlTemac * InstancePtr);
-void XLlTemac_Reset(XLlTemac * InstancePtr, int HardCoreAction);
+void XLlTemac_Start(XLlTemac *InstancePtr);
+void XLlTemac_Stop(XLlTemac *InstancePtr);
+void XLlTemac_Reset(XLlTemac *InstancePtr, int HardCoreAction);
 
 /*
  * Initialization functions in xlltemac_sinit.c
@@ -744,31 +743,31 @@ XLlTemac_Config *XLlTemac_LookupConfig(u16 DeviceId);
 /*
  * MAC configuration/control functions in xlltemac_control.c
  */
-int XLlTemac_SetOptions(XLlTemac * InstancePtr, u32 Options);
-int XLlTemac_ClearOptions(XLlTemac * InstancePtr, u32 Options);
-u32 XLlTemac_GetOptions(XLlTemac * InstancePtr);
+int XLlTemac_SetOptions(XLlTemac *InstancePtr, u32 Options);
+int XLlTemac_ClearOptions(XLlTemac *InstancePtr, u32 Options);
+u32 XLlTemac_GetOptions(XLlTemac *InstancePtr);
 
-int XLlTemac_SetMacAddress(XLlTemac * InstancePtr, void *AddressPtr);
-void XLlTemac_GetMacAddress(XLlTemac * InstancePtr, void *AddressPtr);
+int XLlTemac_SetMacAddress(XLlTemac *InstancePtr, void *AddressPtr);
+void XLlTemac_GetMacAddress(XLlTemac *InstancePtr, void *AddressPtr);
 
-int XLlTemac_SetMacPauseAddress(XLlTemac * InstancePtr, void *AddressPtr);
-void XLlTemac_GetMacPauseAddress(XLlTemac * InstancePtr, void *AddressPtr);
-int XLlTemac_SendPausePacket(XLlTemac * InstancePtr, u16 PauseValue);
+int XLlTemac_SetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr);
+void XLlTemac_GetMacPauseAddress(XLlTemac *InstancePtr, void *AddressPtr);
+int XLlTemac_SendPausePacket(XLlTemac *InstancePtr, u16 PauseValue);
 
-int XLlTemac_GetSgmiiStatus(XLlTemac * InstancePtr, u16 *SpeedPtr);
-int XLlTemac_GetRgmiiStatus(XLlTemac * InstancePtr, u16 *SpeedPtr,
+int XLlTemac_GetSgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr);
+int XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr, u16 *SpeedPtr,
 			    int *IsFullDuplexPtr, int *IsLinkUpPtr);
-u16 XLlTemac_GetOperatingSpeed(XLlTemac * InstancePtr);
-void XLlTemac_SetOperatingSpeed(XLlTemac * InstancePtr, u16 Speed);
+u16 XLlTemac_GetOperatingSpeed(XLlTemac *InstancePtr);
+void XLlTemac_SetOperatingSpeed(XLlTemac *InstancePtr, u16 Speed);
 
-void XLlTemac_PhySetMdioDivisor(XLlTemac * InstancePtr, u8 Divisor);
-void XLlTemac_PhyRead(XLlTemac * InstancePtr, u32 PhyAddress, u32 RegisterNum,
+void XLlTemac_PhySetMdioDivisor(XLlTemac *InstancePtr, u8 Divisor);
+void XLlTemac_PhyRead(XLlTemac *InstancePtr, u32 PhyAddress, u32 RegisterNum,
 		      u16 *PhyDataPtr);
-void XLlTemac_PhyWrite(XLlTemac * InstancePtr, u32 PhyAddress, u32 RegisterNum,
+void XLlTemac_PhyWrite(XLlTemac *InstancePtr, u32 PhyAddress, u32 RegisterNum,
 		       u16 PhyData);
-int XLlTemac_MulticastAdd(XLlTemac * InstancePtr, void *AddressPtr, int Entry);
-void XLlTemac_MulticastGet(XLlTemac * InstancePtr, void *AddressPtr, int Entry);
-int XLlTemac_MulticastClear(XLlTemac * InstancePtr, int Entry);
+int XLlTemac_MulticastAdd(XLlTemac *InstancePtr, void *AddressPtr, int Entry);
+void XLlTemac_MulticastGet(XLlTemac *InstancePtr, void *AddressPtr, int Entry);
+int XLlTemac_MulticastClear(XLlTemac *InstancePtr, int Entry);
 
 #ifdef __cplusplus
 }
