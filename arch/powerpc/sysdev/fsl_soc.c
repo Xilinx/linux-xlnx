@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/of_platform.h>
 #include <linux/phy.h>
 #include <linux/fsl_devices.h>
 #include <linux/fs_enet_pd.h>
@@ -197,6 +198,7 @@ static int __init gfar_of_init(void)
 		struct gianfar_platform_data gfar_data;
 		const unsigned int *id;
 		const char *model;
+		const char *ctype;
 		const void *mac_addr;
 		const phandle *ph;
 		int n_res = 2;
@@ -254,6 +256,14 @@ static int __init gfar_of_init(void)
 			    FSL_GIANFAR_DEV_HAS_VLAN |
 			    FSL_GIANFAR_DEV_HAS_EXTENDED_HASH;
 
+		ctype = of_get_property(np, "phy-connection-type", NULL);
+
+		/* We only care about rgmii-id.  The rest are autodetected */
+		if (ctype && !strcmp(ctype, "rgmii-id"))
+			gfar_data.interface = PHY_INTERFACE_MODE_RGMII_ID;
+		else
+			gfar_data.interface = PHY_INTERFACE_MODE_MII;
+
 		ph = of_get_property(np, "phy-handle", NULL);
 		phy = of_find_node_by_phandle(*ph);
 
@@ -295,6 +305,64 @@ err:
 }
 
 arch_initcall(gfar_of_init);
+
+#ifdef CONFIG_I2C_BOARDINFO
+#include <linux/i2c.h>
+struct i2c_driver_device {
+	char	*of_device;
+	char	*i2c_driver;
+	char	*i2c_type;
+};
+
+static struct i2c_driver_device i2c_devices[] __initdata = {
+	{"ricoh,rs5c372a", "rtc-rs5c372", "rs5c372a",},
+	{"ricoh,rs5c372b", "rtc-rs5c372", "rs5c372b",},
+	{"ricoh,rv5c386",  "rtc-rs5c372", "rv5c386",},
+	{"ricoh,rv5c387a", "rtc-rs5c372", "rv5c387a",},
+};
+
+static int __init of_find_i2c_driver(struct device_node *node, struct i2c_board_info *info)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(i2c_devices); i++) {
+		if (!of_device_is_compatible(node, i2c_devices[i].of_device))
+			continue;
+		strncpy(info->driver_name, i2c_devices[i].i2c_driver, KOBJ_NAME_LEN);
+		strncpy(info->type, i2c_devices[i].i2c_type, I2C_NAME_SIZE);
+		return 0;
+	}
+	return -ENODEV;
+}
+
+static void __init of_register_i2c_devices(struct device_node *adap_node, int bus_num)
+{
+	struct device_node *node = NULL;
+
+	while ((node = of_get_next_child(adap_node, node))) {
+		struct i2c_board_info info;
+		const u32 *addr;
+		int len;
+
+		addr = of_get_property(node, "reg", &len);
+		if (!addr || len < sizeof(int) || *addr > (1 << 10) - 1) {
+			printk(KERN_WARNING "fsl_ioc.c: invalid i2c device entry\n");
+			continue;
+		}
+
+		info.irq = irq_of_parse_and_map(node, 0);
+		if (info.irq == NO_IRQ)
+			info.irq = -1;
+
+		if (of_find_i2c_driver(node, &info) < 0)
+			continue;
+
+		info.platform_data = NULL;
+		info.addr = *addr;
+
+		i2c_register_board_info(bus_num, &info, 1);
+	}
+}
 
 static int __init fsl_i2c_of_init(void)
 {
@@ -340,6 +408,8 @@ static int __init fsl_i2c_of_init(void)
 						    fsl_i2c_platform_data));
 		if (ret)
 			goto unreg;
+
+		of_register_i2c_devices(np, i);
 	}
 
 	return 0;
@@ -351,6 +421,7 @@ err:
 }
 
 arch_initcall(fsl_i2c_of_init);
+#endif
 
 #ifdef CONFIG_PPC_83xx
 static int __init mpc83xx_wdt_init(void)
@@ -1028,6 +1099,19 @@ err:
 
 arch_initcall(fs_enet_of_init);
 
+static int __init fsl_pcmcia_of_init(void)
+{
+	struct device_node *np = NULL;
+	/*
+	 * Register all the devices which type is "pcmcia"
+	 */
+	while ((np = of_find_compatible_node(np,
+			"pcmcia", "fsl,pq-pcmcia")) != NULL)
+			    of_platform_device_create(np, "m8xx-pcmcia", NULL);
+	return 0;
+}
+
+arch_initcall(fsl_pcmcia_of_init);
 
 static const char *smc_regs = "regs";
 static const char *smc_pram = "pram";

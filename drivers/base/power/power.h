@@ -5,7 +5,7 @@
 extern void device_shutdown(void);
 
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 
 /*
  * main.c
@@ -14,12 +14,12 @@ extern void device_shutdown(void);
 /*
  * Used to synchronize global power management operations.
  */
-extern struct semaphore dpm_sem;
+extern struct mutex dpm_mtx;
 
 /*
  * Used to serialize changes to the dpm_* lists.
  */
-extern struct semaphore dpm_list_sem;
+extern struct mutex dpm_list_mtx;
 
 /*
  * The PM lists.
@@ -62,12 +62,7 @@ extern int resume_device(struct device *);
  */
 extern int suspend_device(struct device *, pm_message_t);
 
-
-/*
- * runtime.c
- */
-
-#else /* CONFIG_PM */
+#else /* CONFIG_PM_SLEEP */
 
 
 static inline int device_pm_add(struct device * dev)

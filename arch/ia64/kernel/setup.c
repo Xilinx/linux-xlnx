@@ -60,7 +60,7 @@
 #include <asm/smp.h>
 #include <asm/system.h>
 #include <asm/unistd.h>
-#include <asm/system.h>
+#include <asm/hpsim.h>
 
 #if defined(CONFIG_SMP) && (IA64_CPU_SIZE > PAGE_SIZE)
 # error "struct cpuinfo_ia64 too big!"
@@ -390,10 +390,8 @@ early_console_setup (char *cmdline)
 	if (!efi_setup_pcdp_console(cmdline))
 		earlycons++;
 #endif
-#ifdef CONFIG_SERIAL_8250_CONSOLE
-	if (!early_serial_console_init(cmdline))
+	if (!simcons_register())
 		earlycons++;
-#endif
 
 	return (earlycons) ? 0 : -1;
 }
@@ -495,11 +493,16 @@ setup_arch (char **cmdline_p)
 	efi_init();
 	io_port_init();
 
-	parse_early_param();
-
 #ifdef CONFIG_IA64_GENERIC
-	machvec_init(NULL);
+	/* machvec needs to be parsed from the command line
+	 * before parse_early_param() is called to ensure
+	 * that ia64_mv is initialised before any command line
+	 * settings may cause console setup to occur
+	 */
+	machvec_init_from_cmdline(*cmdline_p);
 #endif
+
+	parse_early_param();
 
 	if (early_console_setup(*cmdline_p) == 0)
 		mark_bsp_online();
@@ -805,7 +808,6 @@ static void __cpuinit
 get_max_cacheline_size (void)
 {
 	unsigned long line_size, max = 1;
-	unsigned int cache_size = 0;
 	u64 l, levels, unique_caches;
         pal_cache_config_info_t cci;
         s64 status;
@@ -835,8 +837,6 @@ get_max_cacheline_size (void)
 		line_size = 1 << cci.pcci_line_size;
 		if (line_size > max)
 			max = line_size;
-		if (cache_size < cci.pcci_cache_size)
-			cache_size = cci.pcci_cache_size;
 		if (!cci.pcci_unified) {
 			status = ia64_pal_cache_config_info(l,
 						    /* cache_type (instruction)= */ 1,
@@ -853,9 +853,6 @@ get_max_cacheline_size (void)
 			ia64_i_cache_stride_shift = cci.pcci_stride;
 	}
   out:
-#ifdef CONFIG_SMP
-	max_cache_size = max(max_cache_size, cache_size);
-#endif
 	if (max > ia64_max_cacheline_size)
 		ia64_max_cacheline_size = max;
 }
@@ -959,6 +956,11 @@ cpu_init (void)
 
 	/* clear TPR & XTP to enable all interrupt classes: */
 	ia64_setreg(_IA64_REG_CR_TPR, 0);
+
+	/* Clear any pending interrupts left by SAL/EFI */
+	while (ia64_get_ivr() != IA64_SPURIOUS_INT_VECTOR)
+		ia64_eoi();
+
 #ifdef CONFIG_SMP
 	normal_xtp();
 #endif
@@ -988,15 +990,6 @@ cpu_init (void)
 	}
 	platform_cpu_init();
 	pm_idle = default_idle;
-}
-
-/*
- * On SMP systems, when the scheduler does migration-cost autodetection,
- * it needs a way to flush as much of the CPU's caches as possible.
- */
-void sched_cacheflush(void)
-{
-	ia64_sal_cache_flush(3);
 }
 
 void __init

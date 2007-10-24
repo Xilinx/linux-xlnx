@@ -36,12 +36,32 @@ EXPORT_SYMBOL(xtime_lock);
  * at zero at system boot time, so wall_to_monotonic will be negative,
  * however, we will ALWAYS keep the tv_nsec part positive so we can use
  * the usual normalization.
+ *
+ * wall_to_monotonic is moved after resume from suspend for the monotonic
+ * time not to jump. We need to add total_sleep_time to wall_to_monotonic
+ * to get the real boot based time offset.
+ *
+ * - wall_to_monotonic is no longer the boot time, getboottime must be
+ * used instead.
  */
 struct timespec xtime __attribute__ ((aligned (16)));
 struct timespec wall_to_monotonic __attribute__ ((aligned (16)));
-
+static unsigned long total_sleep_time;		/* seconds */
 EXPORT_SYMBOL(xtime);
 
+
+#ifdef CONFIG_NO_HZ
+static struct timespec xtime_cache __attribute__ ((aligned (16)));
+static inline void update_xtime_cache(u64 nsec)
+{
+	xtime_cache = xtime;
+	timespec_add_ns(&xtime_cache, nsec);
+}
+#else
+#define xtime_cache xtime
+/* We do *not* want to evaluate the argument for this case */
+#define update_xtime_cache(n) do { } while (0)
+#endif
 
 static struct clocksource *clock; /* pointer to current clocksource */
 
@@ -197,6 +217,7 @@ static void change_clocksource(void)
 }
 #else
 static inline void change_clocksource(void) { }
+static inline s64 __get_nsec_offset(void) { return 0; }
 #endif
 
 /**
@@ -251,6 +272,7 @@ void __init timekeeping_init(void)
 	xtime.tv_nsec = 0;
 	set_normalized_timespec(&wall_to_monotonic,
 		-xtime.tv_sec, -xtime.tv_nsec);
+	total_sleep_time = 0;
 
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 }
@@ -259,6 +281,8 @@ void __init timekeeping_init(void)
 static int timekeeping_suspended;
 /* time in seconds when suspend began */
 static unsigned long timekeeping_suspend_time;
+/* xtime offset when we went into suspend */
+static s64 timekeeping_suspend_nsecs;
 
 /**
  * timekeeping_resume - Resumes the generic timekeeping subsystem.
@@ -282,7 +306,10 @@ static int timekeeping_resume(struct sys_device *dev)
 
 		xtime.tv_sec += sleep_length;
 		wall_to_monotonic.tv_sec -= sleep_length;
+		total_sleep_time += sleep_length;
 	}
+	/* Make sure that we have the correct xtime reference */
+	timespec_add_ns(&xtime, timekeeping_suspend_nsecs);
 	/* re-base the last cycle value */
 	clock->cycle_last = clocksource_read(clock);
 	clock->error = 0;
@@ -303,9 +330,12 @@ static int timekeeping_suspend(struct sys_device *dev, pm_message_t state)
 {
 	unsigned long flags;
 
-	write_seqlock_irqsave(&xtime_lock, flags);
-	timekeeping_suspended = 1;
 	timekeeping_suspend_time = read_persistent_clock();
+
+	write_seqlock_irqsave(&xtime_lock, flags);
+	/* Get the current xtime offset */
+	timekeeping_suspend_nsecs = __get_nsec_offset();
+	timekeeping_suspended = 1;
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_SUSPEND, NULL);
@@ -391,7 +421,7 @@ static __always_inline int clocksource_bigadjust(s64 error, s64 *interval,
  * this is optimized for the most common adjustments of -1,0,1,
  * for other values we can do a bit more work.
  */
-static void clocksource_adjust(struct clocksource *clock, s64 offset)
+static void clocksource_adjust(s64 offset)
 {
 	s64 error, interval = clock->cycle_interval;
 	int adj;
@@ -456,23 +486,70 @@ void update_wall_time(void)
 			second_overflow();
 		}
 
-		/* interpolator bits */
-		time_interpolator_update(clock->xtime_interval
-						>> clock->shift);
-
 		/* accumulate error between NTP and clock interval */
 		clock->error += current_tick_length();
 		clock->error -= clock->xtime_interval << (TICK_LENGTH_SHIFT - clock->shift);
 	}
 
 	/* correct the clock when NTP error is too big */
-	clocksource_adjust(clock, offset);
+	clocksource_adjust(offset);
 
 	/* store full nanoseconds into xtime */
 	xtime.tv_nsec = (s64)clock->xtime_nsec >> clock->shift;
 	clock->xtime_nsec -= (s64)xtime.tv_nsec << clock->shift;
 
+	update_xtime_cache(cyc2ns(clock, offset));
+
 	/* check to see if there is a new clocksource to use */
 	change_clocksource();
 	update_vsyscall(&xtime, clock);
 }
+
+/**
+ * getboottime - Return the real time of system boot.
+ * @ts:		pointer to the timespec to be set
+ *
+ * Returns the time of day in a timespec.
+ *
+ * This is based on the wall_to_monotonic offset and the total suspend
+ * time. Calls to settimeofday will affect the value returned (which
+ * basically means that however wrong your real time clock is at boot time,
+ * you get the right time here).
+ */
+void getboottime(struct timespec *ts)
+{
+	set_normalized_timespec(ts,
+		- (wall_to_monotonic.tv_sec + total_sleep_time),
+		- wall_to_monotonic.tv_nsec);
+}
+
+/**
+ * monotonic_to_bootbased - Convert the monotonic time to boot based.
+ * @ts:		pointer to the timespec to be converted
+ */
+void monotonic_to_bootbased(struct timespec *ts)
+{
+	ts->tv_sec += total_sleep_time;
+}
+
+unsigned long get_seconds(void)
+{
+	return xtime_cache.tv_sec;
+}
+EXPORT_SYMBOL(get_seconds);
+
+
+struct timespec current_kernel_time(void)
+{
+	struct timespec now;
+	unsigned long seq;
+
+	do {
+		seq = read_seqbegin(&xtime_lock);
+
+		now = xtime_cache;
+	} while (read_seqretry(&xtime_lock, seq));
+
+	return now;
+}
+EXPORT_SYMBOL(current_kernel_time);

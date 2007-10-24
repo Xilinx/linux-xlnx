@@ -45,7 +45,7 @@ static DEFINE_SPINLOCK(rose_neigh_list_lock);
 static struct rose_route *rose_route_list;
 static DEFINE_SPINLOCK(rose_route_list_lock);
 
-struct rose_neigh rose_loopback_neigh;
+struct rose_neigh *rose_loopback_neigh;
 
 /*
  *	Add a new route to a node, and in the process add the node and the
@@ -362,7 +362,12 @@ out:
  */
 void rose_add_loopback_neigh(void)
 {
-	struct rose_neigh *sn = &rose_loopback_neigh;
+	struct rose_neigh *sn;
+
+	rose_loopback_neigh = kmalloc(sizeof(struct rose_neigh), GFP_KERNEL);
+	if (!rose_loopback_neigh)
+		return;
+	sn = rose_loopback_neigh;
 
 	sn->callsign  = null_ax25_address;
 	sn->digipeat  = NULL;
@@ -417,13 +422,13 @@ int rose_add_loopback_node(rose_address *address)
 	rose_node->mask         = 10;
 	rose_node->count        = 1;
 	rose_node->loopback     = 1;
-	rose_node->neighbour[0] = &rose_loopback_neigh;
+	rose_node->neighbour[0] = rose_loopback_neigh;
 
 	/* Insert at the head of list. Address is always mask=10 */
 	rose_node->next = rose_node_list;
 	rose_node_list  = rose_node;
 
-	rose_loopback_neigh.count++;
+	rose_loopback_neigh->count++;
 
 out:
 	spin_unlock_bh(&rose_node_list_lock);
@@ -454,7 +459,7 @@ void rose_del_loopback_node(rose_address *address)
 
 	rose_remove_node(rose_node);
 
-	rose_loopback_neigh.count--;
+	rose_loopback_neigh->count--;
 
 out:
 	spin_unlock_bh(&rose_node_list_lock);
@@ -1118,7 +1123,7 @@ static int rose_node_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static struct seq_operations rose_node_seqops = {
+static const struct seq_operations rose_node_seqops = {
 	.start = rose_node_start,
 	.next = rose_node_next,
 	.stop = rose_node_stop,
@@ -1200,7 +1205,7 @@ static int rose_neigh_show(struct seq_file *seq, void *v)
 }
 
 
-static struct seq_operations rose_neigh_seqops = {
+static const struct seq_operations rose_neigh_seqops = {
 	.start = rose_neigh_start,
 	.next = rose_neigh_next,
 	.stop = rose_neigh_stop,
@@ -1284,7 +1289,7 @@ static int rose_route_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static struct seq_operations rose_route_seqops = {
+static const struct seq_operations rose_route_seqops = {
 	.start = rose_route_start,
 	.next = rose_route_next,
 	.stop = rose_route_stop,

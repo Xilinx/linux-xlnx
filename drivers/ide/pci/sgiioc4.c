@@ -316,19 +316,19 @@ static void sgiioc4_dma_host_off(ide_drive_t * drive)
 	sgiioc4_clearirq(drive);
 }
 
-static int
-sgiioc4_ide_dma_lostirq(ide_drive_t * drive)
-{
-	HWIF(drive)->resetproc(drive);
-
-	return __ide_dma_lostirq(drive);
-}
-
 static void
 sgiioc4_resetproc(ide_drive_t * drive)
 {
 	sgiioc4_ide_dma_end(drive);
 	sgiioc4_clearirq(drive);
+}
+
+static void
+sgiioc4_dma_lost_irq(ide_drive_t * drive)
+{
+	sgiioc4_resetproc(drive);
+
+	ide_dma_lost_irq(drive);
 }
 
 static u8
@@ -586,6 +586,7 @@ ide_init_sgiioc4(ide_hwif_t * hwif)
 	hwif->ultra_mask = 0x0;	/* Disable Ultra DMA */
 	hwif->mwdma_mask = 0x2;	/* Multimode-2 DMA  */
 	hwif->swdma_mask = 0x2;
+	hwif->pio_mask = 0x00;
 	hwif->tuneproc = NULL;	/* Sets timing for PIO mode */
 	hwif->speedproc = NULL;	/* Sets timing for DMA &/or PIO modes */
 	hwif->selectproc = NULL;/* Use the default routine to select drive */
@@ -607,8 +608,8 @@ ide_init_sgiioc4(ide_hwif_t * hwif)
 	hwif->ide_dma_test_irq = &sgiioc4_ide_dma_test_irq;
 	hwif->dma_host_on = &sgiioc4_dma_host_on;
 	hwif->dma_host_off = &sgiioc4_dma_host_off;
-	hwif->ide_dma_lostirq = &sgiioc4_ide_dma_lostirq;
-	hwif->ide_dma_timeout = &__ide_dma_timeout;
+	hwif->dma_lost_irq = &sgiioc4_dma_lost_irq;
+	hwif->dma_timeout = &ide_dma_timeout;
 
 	hwif->INB = &sgiioc4_INB;
 }
@@ -724,10 +725,10 @@ static ide_pci_device_t sgiioc4_chipset __devinitdata = {
 	 .name = "SGIIOC4",
 	 .init_hwif = ide_init_sgiioc4,
 	 .init_dma = ide_dma_sgiioc4,
-	 .channels = 1,
 	 .autodma = AUTODMA,
 	 /* SGI IOC4 doesn't have enablebits. */
 	 .bootable = ON_BOARD,
+	 .host_flags = IDE_HFLAG_SINGLE,
 };
 
 int

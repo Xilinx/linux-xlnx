@@ -1363,7 +1363,7 @@ static void redo_fd_request(void)
 #ifdef DEBUG
 		printk("fd: sector %ld + %d requested for %s\n",
 		       CURRENT->sector,cnt,
-		       (CURRENT->cmd==READ)?"read":"write");
+		       (rq_data_dir(CURRENT) == READ) ? "read" : "write");
 #endif
 		block = CURRENT->sector + cnt;
 		if ((int)block > floppy->blocks) {
@@ -1422,7 +1422,7 @@ static void redo_fd_request(void)
 	goto repeat;
 }
 
-static void do_fd_request(request_queue_t * q)
+static void do_fd_request(struct request_queue * q)
 {
 	redo_fd_request();
 }

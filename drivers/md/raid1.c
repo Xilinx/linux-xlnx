@@ -552,7 +552,7 @@ static void unplug_slaves(mddev_t *mddev)
 	for (i=0; i<mddev->raid_disks; i++) {
 		mdk_rdev_t *rdev = rcu_dereference(conf->mirrors[i].rdev);
 		if (rdev && !test_bit(Faulty, &rdev->flags) && atomic_read(&rdev->nr_pending)) {
-			request_queue_t *r_queue = bdev_get_queue(rdev->bdev);
+			struct request_queue *r_queue = bdev_get_queue(rdev->bdev);
 
 			atomic_inc(&rdev->nr_pending);
 			rcu_read_unlock();
@@ -567,7 +567,7 @@ static void unplug_slaves(mddev_t *mddev)
 	rcu_read_unlock();
 }
 
-static void raid1_unplug(request_queue_t *q)
+static void raid1_unplug(struct request_queue *q)
 {
 	mddev_t *mddev = q->queuedata;
 
@@ -575,7 +575,7 @@ static void raid1_unplug(request_queue_t *q)
 	md_wakeup_thread(mddev->thread);
 }
 
-static int raid1_issue_flush(request_queue_t *q, struct gendisk *disk,
+static int raid1_issue_flush(struct request_queue *q, struct gendisk *disk,
 			     sector_t *error_sector)
 {
 	mddev_t *mddev = q->queuedata;
@@ -587,7 +587,7 @@ static int raid1_issue_flush(request_queue_t *q, struct gendisk *disk,
 		mdk_rdev_t *rdev = rcu_dereference(conf->mirrors[i].rdev);
 		if (rdev && !test_bit(Faulty, &rdev->flags)) {
 			struct block_device *bdev = rdev->bdev;
-			request_queue_t *r_queue = bdev_get_queue(bdev);
+			struct request_queue *r_queue = bdev_get_queue(bdev);
 
 			if (!r_queue->issue_flush_fn)
 				ret = -EOPNOTSUPP;
@@ -615,7 +615,7 @@ static int raid1_congested(void *data, int bits)
 	for (i = 0; i < mddev->raid_disks; i++) {
 		mdk_rdev_t *rdev = rcu_dereference(conf->mirrors[i].rdev);
 		if (rdev && !test_bit(Faulty, &rdev->flags)) {
-			request_queue_t *q = bdev_get_queue(rdev->bdev);
+			struct request_queue *q = bdev_get_queue(rdev->bdev);
 
 			/* Note the '|| 1' - when read_balance prefers
 			 * non-congested targets, it can be removed
@@ -765,7 +765,7 @@ do_sync_io:
 	return NULL;
 }
 
-static int make_request(request_queue_t *q, struct bio * bio)
+static int make_request(struct request_queue *q, struct bio * bio)
 {
 	mddev_t *mddev = q->queuedata;
 	conf_t *conf = mddev_to_conf(mddev);
@@ -1526,8 +1526,7 @@ static void raid1d(mddev_t *mddev)
 			blk_remove_plug(mddev->queue);
 			spin_unlock_irqrestore(&conf->device_lock, flags);
 			/* flush any pending bitmap writes to disk before proceeding w/ I/O */
-			if (bitmap_unplug(mddev->bitmap) != 0)
-				printk("%s: bitmap file write failed!\n", mdname(mddev));
+			bitmap_unplug(mddev->bitmap);
 
 			while (bio) { /* submit pending writes */
 				struct bio *next = bio->bi_next;
@@ -1973,7 +1972,8 @@ static int run(mddev_t *mddev)
 		    !test_bit(In_sync, &disk->rdev->flags)) {
 			disk->head_position = 0;
 			mddev->degraded++;
-			conf->fullsync = 1;
+			if (disk->rdev)
+				conf->fullsync = 1;
 		}
 	}
 	if (mddev->degraded == conf->raid_disks) {
@@ -2154,11 +2154,25 @@ static int raid1_reshape(mddev_t *mddev)
 	oldpool = conf->r1bio_pool;
 	conf->r1bio_pool = newpool;
 
-	for (d=d2=0; d < conf->raid_disks; d++)
-		if (conf->mirrors[d].rdev) {
-			conf->mirrors[d].rdev->raid_disk = d2;
-			newmirrors[d2++].rdev = conf->mirrors[d].rdev;
+	for (d = d2 = 0; d < conf->raid_disks; d++) {
+		mdk_rdev_t *rdev = conf->mirrors[d].rdev;
+		if (rdev && rdev->raid_disk != d2) {
+			char nm[20];
+			sprintf(nm, "rd%d", rdev->raid_disk);
+			sysfs_remove_link(&mddev->kobj, nm);
+			rdev->raid_disk = d2;
+			sprintf(nm, "rd%d", rdev->raid_disk);
+			sysfs_remove_link(&mddev->kobj, nm);
+			if (sysfs_create_link(&mddev->kobj,
+					      &rdev->kobj, nm))
+				printk(KERN_WARNING
+				       "md/raid1: cannot register "
+				       "%s for %s\n",
+				       nm, mdname(mddev));
 		}
+		if (rdev)
+			newmirrors[d2++].rdev = rdev;
+	}
 	kfree(conf->mirrors);
 	conf->mirrors = newmirrors;
 	kfree(conf->poolinfo);

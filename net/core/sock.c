@@ -171,6 +171,20 @@ static const char *af_family_slock_key_strings[AF_MAX+1] = {
   "slock-AF_TIPC"  , "slock-AF_BLUETOOTH", "slock-AF_IUCV"     ,
   "slock-AF_RXRPC" , "slock-AF_MAX"
 };
+static const char *af_family_clock_key_strings[AF_MAX+1] = {
+  "clock-AF_UNSPEC", "clock-AF_UNIX"     , "clock-AF_INET"     ,
+  "clock-AF_AX25"  , "clock-AF_IPX"      , "clock-AF_APPLETALK",
+  "clock-AF_NETROM", "clock-AF_BRIDGE"   , "clock-AF_ATMPVC"   ,
+  "clock-AF_X25"   , "clock-AF_INET6"    , "clock-AF_ROSE"     ,
+  "clock-AF_DECnet", "clock-AF_NETBEUI"  , "clock-AF_SECURITY" ,
+  "clock-AF_KEY"   , "clock-AF_NETLINK"  , "clock-AF_PACKET"   ,
+  "clock-AF_ASH"   , "clock-AF_ECONET"   , "clock-AF_ATMSVC"   ,
+  "clock-21"       , "clock-AF_SNA"      , "clock-AF_IRDA"     ,
+  "clock-AF_PPPOX" , "clock-AF_WANPIPE"  , "clock-AF_LLC"      ,
+  "clock-27"       , "clock-28"          , "clock-29"          ,
+  "clock-AF_TIPC"  , "clock-AF_BLUETOOTH", "clock-AF_IUCV"     ,
+  "clock-AF_RXRPC" , "clock-AF_MAX"
+};
 #endif
 
 /*
@@ -210,13 +224,14 @@ static int sock_set_timeout(long *timeo_p, char __user *optval, int optlen)
 		return -EDOM;
 
 	if (tv.tv_sec < 0) {
-		static int warned = 0;
+		static int warned __read_mostly;
+
 		*timeo_p = 0;
 		if (warned < 10 && net_ratelimit())
 			warned++;
 			printk(KERN_INFO "sock_set_timeout: `%s' (pid %d) "
 			       "tries to set negative timeout\n",
-			        current->comm, current->pid);
+				current->comm, current->pid);
 		return 0;
 	}
 	*timeo_p = MAX_SCHEDULE_TIMEOUT;
@@ -347,6 +362,61 @@ struct dst_entry *sk_dst_check(struct sock *sk, u32 cookie)
 }
 EXPORT_SYMBOL(sk_dst_check);
 
+static int sock_bindtodevice(struct sock *sk, char __user *optval, int optlen)
+{
+	int ret = -ENOPROTOOPT;
+#ifdef CONFIG_NETDEVICES
+	char devname[IFNAMSIZ];
+	int index;
+
+	/* Sorry... */
+	ret = -EPERM;
+	if (!capable(CAP_NET_RAW))
+		goto out;
+
+	ret = -EINVAL;
+	if (optlen < 0)
+		goto out;
+
+	/* Bind this socket to a particular device like "eth0",
+	 * as specified in the passed interface name. If the
+	 * name is "" or the option length is zero the socket
+	 * is not bound.
+	 */
+	if (optlen > IFNAMSIZ - 1)
+		optlen = IFNAMSIZ - 1;
+	memset(devname, 0, sizeof(devname));
+
+	ret = -EFAULT;
+	if (copy_from_user(devname, optval, optlen))
+		goto out;
+
+	if (devname[0] == '\0') {
+		index = 0;
+	} else {
+		struct net_device *dev = dev_get_by_name(devname);
+
+		ret = -ENODEV;
+		if (!dev)
+			goto out;
+
+		index = dev->ifindex;
+		dev_put(dev);
+	}
+
+	lock_sock(sk);
+	sk->sk_bound_dev_if = index;
+	sk_dst_reset(sk);
+	release_sock(sk);
+
+	ret = 0;
+
+out:
+#endif
+
+	return ret;
+}
+
 /*
  *	This is meant for all protocols to use and covers goings on
  *	at the socket level. Everything here is generic.
@@ -374,6 +444,9 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 		return 0;
 	}
 #endif
+
+	if (optname == SO_BINDTODEVICE)
+		return sock_bindtodevice(sk, optval, optlen);
 
 	if (optlen < sizeof(int))
 		return -EINVAL;
@@ -562,54 +635,6 @@ set_rcvbuf:
 	case SO_SNDTIMEO:
 		ret = sock_set_timeout(&sk->sk_sndtimeo, optval, optlen);
 		break;
-
-#ifdef CONFIG_NETDEVICES
-	case SO_BINDTODEVICE:
-	{
-		char devname[IFNAMSIZ];
-
-		/* Sorry... */
-		if (!capable(CAP_NET_RAW)) {
-			ret = -EPERM;
-			break;
-		}
-
-		/* Bind this socket to a particular device like "eth0",
-		 * as specified in the passed interface name. If the
-		 * name is "" or the option length is zero the socket
-		 * is not bound.
-		 */
-
-		if (!valbool) {
-			sk->sk_bound_dev_if = 0;
-		} else {
-			if (optlen > IFNAMSIZ - 1)
-				optlen = IFNAMSIZ - 1;
-			memset(devname, 0, sizeof(devname));
-			if (copy_from_user(devname, optval, optlen)) {
-				ret = -EFAULT;
-				break;
-			}
-
-			/* Remove any cached route for this socket. */
-			sk_dst_reset(sk);
-
-			if (devname[0] == '\0') {
-				sk->sk_bound_dev_if = 0;
-			} else {
-				struct net_device *dev = dev_get_by_name(devname);
-				if (!dev) {
-					ret = -ENODEV;
-					break;
-				}
-				sk->sk_bound_dev_if = dev->ifindex;
-				dev_put(dev);
-			}
-		}
-		break;
-	}
-#endif
-
 
 	case SO_ATTACH_FILTER:
 		ret = -EINVAL;
@@ -940,8 +965,9 @@ struct sock *sk_clone(const struct sock *sk, const gfp_t priority)
 
 		rwlock_init(&newsk->sk_dst_lock);
 		rwlock_init(&newsk->sk_callback_lock);
-		lockdep_set_class(&newsk->sk_callback_lock,
-				   af_callback_keys + newsk->sk_family);
+		lockdep_set_class_and_name(&newsk->sk_callback_lock,
+				af_callback_keys + newsk->sk_family,
+				af_family_clock_key_strings[newsk->sk_family]);
 
 		newsk->sk_dst_cache	= NULL;
 		newsk->sk_wmem_queued	= 0;
@@ -1529,8 +1555,9 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 
 	rwlock_init(&sk->sk_dst_lock);
 	rwlock_init(&sk->sk_callback_lock);
-	lockdep_set_class(&sk->sk_callback_lock,
-			   af_callback_keys + sk->sk_family);
+	lockdep_set_class_and_name(&sk->sk_callback_lock,
+			af_callback_keys + sk->sk_family,
+			af_family_clock_key_strings[sk->sk_family]);
 
 	sk->sk_state_change	=	sock_def_wakeup;
 	sk->sk_data_ready	=	sock_def_readable;
@@ -1751,7 +1778,7 @@ int proto_register(struct proto *prot, int alloc_slab)
 
 	if (alloc_slab) {
 		prot->slab = kmem_cache_create(prot->name, prot->obj_size, 0,
-					       SLAB_HWCACHE_ALIGN, NULL, NULL);
+					       SLAB_HWCACHE_ALIGN, NULL);
 
 		if (prot->slab == NULL) {
 			printk(KERN_CRIT "%s: Can't create sock SLAB cache!\n",
@@ -1769,7 +1796,7 @@ int proto_register(struct proto *prot, int alloc_slab)
 			sprintf(request_sock_slab_name, mask, prot->name);
 			prot->rsk_prot->slab = kmem_cache_create(request_sock_slab_name,
 								 prot->rsk_prot->obj_size, 0,
-								 SLAB_HWCACHE_ALIGN, NULL, NULL);
+								 SLAB_HWCACHE_ALIGN, NULL);
 
 			if (prot->rsk_prot->slab == NULL) {
 				printk(KERN_CRIT "%s: Can't create request sock SLAB cache!\n",
@@ -1791,7 +1818,7 @@ int proto_register(struct proto *prot, int alloc_slab)
 				kmem_cache_create(timewait_sock_slab_name,
 						  prot->twsk_prot->twsk_obj_size,
 						  0, SLAB_HWCACHE_ALIGN,
-						  NULL, NULL);
+						  NULL);
 			if (prot->twsk_prot->twsk_slab == NULL)
 				goto out_free_timewait_sock_slab_name;
 		}
@@ -1851,46 +1878,15 @@ void proto_unregister(struct proto *prot)
 EXPORT_SYMBOL(proto_unregister);
 
 #ifdef CONFIG_PROC_FS
-static inline struct proto *__proto_head(void)
-{
-	return list_entry(proto_list.next, struct proto, node);
-}
-
-static inline struct proto *proto_head(void)
-{
-	return list_empty(&proto_list) ? NULL : __proto_head();
-}
-
-static inline struct proto *proto_next(struct proto *proto)
-{
-	return proto->node.next == &proto_list ? NULL :
-		list_entry(proto->node.next, struct proto, node);
-}
-
-static inline struct proto *proto_get_idx(loff_t pos)
-{
-	struct proto *proto;
-	loff_t i = 0;
-
-	list_for_each_entry(proto, &proto_list, node)
-		if (i++ == pos)
-			goto out;
-
-	proto = NULL;
-out:
-	return proto;
-}
-
 static void *proto_seq_start(struct seq_file *seq, loff_t *pos)
 {
 	read_lock(&proto_list_lock);
-	return *pos ? proto_get_idx(*pos - 1) : SEQ_START_TOKEN;
+	return seq_list_start_head(&proto_list, *pos);
 }
 
 static void *proto_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
-	++*pos;
-	return v == SEQ_START_TOKEN ? proto_head() : proto_next(v);
+	return seq_list_next(v, &proto_list, pos);
 }
 
 static void proto_seq_stop(struct seq_file *seq, void *v)
@@ -1938,7 +1934,7 @@ static void proto_seq_printf(struct seq_file *seq, struct proto *proto)
 
 static int proto_seq_show(struct seq_file *seq, void *v)
 {
-	if (v == SEQ_START_TOKEN)
+	if (v == &proto_list)
 		seq_printf(seq, "%-9s %-4s %-8s %-6s %-5s %-7s %-4s %-10s %s",
 			   "protocol",
 			   "size",
@@ -1950,7 +1946,7 @@ static int proto_seq_show(struct seq_file *seq, void *v)
 			   "module",
 			   "cl co di ac io in de sh ss gs se re sp bi br ha uh gp em\n");
 	else
-		proto_seq_printf(seq, v);
+		proto_seq_printf(seq, list_entry(v, struct proto, node));
 	return 0;
 }
 

@@ -320,7 +320,7 @@ static inline void sgiseeq_rx(struct net_device *dev, struct sgiseeq_private *sp
 				skb_put(skb, len);
 
 				/* Copy out of kseg1 to avoid silly cache flush. */
-				eth_copy_and_sum(skb, pkt_pointer + 2, len, 0);
+				skb_copy_to_linear_data(skb, pkt_pointer + 2, len);
 				skb->protocol = eth_type_trans(skb, dev);
 
 				/* We don't want to receive our own packets */
@@ -726,7 +726,7 @@ err_out:
 	return err;
 }
 
-static void __exit sgiseeq_remove(struct platform_device *pdev)
+static int __exit sgiseeq_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct sgiseeq_private *sp = netdev_priv(dev);
@@ -735,6 +735,8 @@ static void __exit sgiseeq_remove(struct platform_device *pdev)
 	free_page((unsigned long) sp->srings);
 	free_netdev(dev);
 	platform_set_drvdata(pdev, NULL);
+
+	return 0;
 }
 
 static struct platform_driver sgiseeq_driver = {

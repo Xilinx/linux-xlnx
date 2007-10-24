@@ -83,7 +83,6 @@ struct cpuinfo_x86 {
 #define X86_VENDOR_UMC 3
 #define X86_VENDOR_NEXGEN 4
 #define X86_VENDOR_CENTAUR 5
-#define X86_VENDOR_RISE 6
 #define X86_VENDOR_TRANSMETA 7
 #define X86_VENDOR_NUM 8
 #define X86_VENDOR_UNKNOWN 0xff
@@ -100,6 +99,7 @@ extern char ignore_irq13;
 
 extern void identify_cpu(struct cpuinfo_x86 *);
 extern void print_cpu_info(struct cpuinfo_x86 *);
+extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
 extern unsigned int init_intel_cacheinfo(struct cpuinfo_x86 *c);
 extern unsigned short num_cache_leaves;
 
@@ -368,12 +368,10 @@ static inline void sync_core(void)
 	asm volatile("cpuid" : "=a" (tmp) : "0" (1) : "ebx","ecx","edx","memory");
 } 
 
-#define cpu_has_fpu 1
-
 #define ARCH_HAS_PREFETCH
 static inline void prefetch(void *x) 
 { 
-	asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
+	asm volatile("prefetcht0 (%0)" :: "r" (x));
 } 
 
 #define ARCH_HAS_PREFETCHW 1
@@ -390,17 +388,6 @@ static inline void prefetchw(void *x)
 #define spin_lock_prefetch(x)  prefetchw(x)
 
 #define cpu_relax()   rep_nop()
-
-/*
- *      NSC/Cyrix CPU indexed register access macros
- */
-
-#define getCx86(reg) ({ outb((reg), 0x22); inb(0x23); })
-
-#define setCx86(reg, data) do { \
-	outb((reg), 0x22); \
-	outb((data), 0x23); \
-} while (0)
 
 static inline void serialize_cpu(void)
 {

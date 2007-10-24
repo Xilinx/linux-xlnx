@@ -481,7 +481,7 @@ void cdrom_analyze_sense_data(ide_drive_t *drive,
 		else
 			printk("  Unknown Error Type: ");
 
-		if (sense->sense_key < ARY_LEN(sense_key_texts))
+		if (sense->sense_key < ARRAY_SIZE(sense_key_texts))
 			s = sense_key_texts[sense->sense_key];
 
 		printk("%s -- (Sense key=0x%02x)\n", s, sense->sense_key);
@@ -491,7 +491,7 @@ void cdrom_analyze_sense_data(ide_drive_t *drive,
 				 sense->ascq);
 			s = buf;
 		} else {
-			int lo = 0, mid, hi = ARY_LEN(sense_data_texts);
+			int lo = 0, mid, hi = ARRAY_SIZE(sense_data_texts);
 			unsigned long key = (sense->sense_key << 16);
 			key |= (sense->asc << 8);
 			if (!(sense->ascq >= 0x80 && sense->ascq <= 0xdd))
@@ -524,7 +524,7 @@ void cdrom_analyze_sense_data(ide_drive_t *drive,
 
 		if (failed_command != NULL) {
 
-			int lo=0, mid, hi= ARY_LEN (packet_command_texts);
+			int lo=0, mid, hi= ARRAY_SIZE(packet_command_texts);
 			s = NULL;
 
 			while (hi > lo) {
@@ -3071,7 +3071,7 @@ static inline void ide_cdrom_add_settings(ide_drive_t *drive) { ; }
 /*
  * standard prep_rq_fn that builds 10 byte cmds
  */
-static int ide_cdrom_prep_fs(request_queue_t *q, struct request *rq)
+static int ide_cdrom_prep_fs(struct request_queue *q, struct request *rq)
 {
 	int hard_sect = queue_hardsect_size(q);
 	long block = (long)rq->hard_sector / (hard_sect >> 9);
@@ -3137,7 +3137,7 @@ static int ide_cdrom_prep_pc(struct request *rq)
 	return BLKPREP_OK;
 }
 
-static int ide_cdrom_prep_fn(request_queue_t *q, struct request *rq)
+static int ide_cdrom_prep_fn(struct request_queue *q, struct request *rq)
 {
 	if (blk_fs_request(rq))
 		return ide_cdrom_prep_fs(q, rq);

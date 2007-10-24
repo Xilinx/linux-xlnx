@@ -175,7 +175,7 @@ static void scsi_cd_put(struct scsi_cd *cd)
  * an inode for that to work, and we do not always have one.
  */
 
-int sr_media_change(struct cdrom_device_info *cdi, int slot)
+static int sr_media_change(struct cdrom_device_info *cdi, int slot)
 {
 	struct scsi_cd *cd = cdi->handle;
 	int retval;
@@ -624,7 +624,7 @@ static void get_sectorsize(struct scsi_cd *cd)
 	unsigned char *buffer;
 	int the_result, retries = 3;
 	int sector_size;
-	request_queue_t *queue;
+	struct request_queue *queue;
 
 	buffer = kmalloc(512, GFP_KERNEL | GFP_DMA);
 	if (!buffer)
@@ -885,7 +885,11 @@ static int __init init_sr(void)
 	rc = register_blkdev(SCSI_CDROM_MAJOR, "sr");
 	if (rc)
 		return rc;
-	return scsi_register_driver(&sr_template.gendrv);
+	rc = scsi_register_driver(&sr_template.gendrv);
+	if (rc)
+		unregister_blkdev(SCSI_CDROM_MAJOR, "sr");
+
+	return rc;
 }
 
 static void __exit exit_sr(void)

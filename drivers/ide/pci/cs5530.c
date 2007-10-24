@@ -1,5 +1,5 @@
 /*
- * linux/drivers/ide/pci/cs5530.c		Version 0.73	Mar 10 2007
+ * linux/drivers/ide/pci/cs5530.c		Version 0.74	Jul 28 2007
  *
  * Copyright (C) 2000			Andre Hedrick <andre@linux-ide.org>
  * Copyright (C) 2000			Mark Lord <mlord@pobox.com>
@@ -82,7 +82,7 @@ static void cs5530_tunepio(ide_drive_t *drive, u8 pio)
 
 static void cs5530_tuneproc (ide_drive_t *drive, u8 pio)	/* pio=255 means "autotune" */
 {
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 
 	if (cs5530_set_xfer_mode(drive, XFER_PIO_0 + pio) == 0)
 		cs5530_tunepio(drive, pio);
@@ -207,6 +207,9 @@ static unsigned int __devinit init_chipset_cs5530 (struct pci_dev *dev, const ch
 	struct pci_dev *master_0 = NULL, *cs5530_0 = NULL;
 	unsigned long flags;
 
+	if (pci_resource_start(dev, 4) == 0)
+		return -EFAULT;
+
 	dev = NULL;
 	while ((dev = pci_get_device(PCI_VENDOR_ID_CYRIX, PCI_ANY_ID, dev)) != NULL) {
 		switch (dev->device) {
@@ -236,7 +239,7 @@ static unsigned int __devinit init_chipset_cs5530 (struct pci_dev *dev, const ch
 	 */
 
 	pci_set_master(cs5530_0);
-	pci_set_mwi(cs5530_0);
+	pci_try_set_mwi(cs5530_0);
 
 	/*
 	 * Set PCI CacheLineSize to 16-bytes:
@@ -325,6 +328,9 @@ static void __devinit init_hwif_cs5530 (ide_hwif_t *hwif)
 			/* needs autotuning later */
 	}
 
+	if (hwif->dma_base == 0)
+		return;
+
 	hwif->atapi_dma = 1;
 	hwif->ultra_mask = 0x07;
 	hwif->mwdma_mask = 0x07;
@@ -341,9 +347,9 @@ static ide_pci_device_t cs5530_chipset __devinitdata = {
 	.name		= "CS5530",
 	.init_chipset	= init_chipset_cs5530,
 	.init_hwif	= init_hwif_cs5530,
-	.channels	= 2,
 	.autodma	= AUTODMA,
 	.bootable	= ON_BOARD,
+	.pio_mask	= ATA_PIO4,
 };
 
 static int __devinit cs5530_init_one(struct pci_dev *dev, const struct pci_device_id *id)

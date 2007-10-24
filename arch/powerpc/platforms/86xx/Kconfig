@@ -1,5 +1,5 @@
 choice
-	prompt "Machine Type"
+	prompt "86xx Board Type"
 	depends on PPC_86xx
 	default MPC8641_HPCN
 
@@ -7,6 +7,7 @@ config MPC8641_HPCN
 	bool "Freescale MPC8641 HPCN"
 	select PPC_I8259
 	select DEFAULT_UIMAGE
+	select FSL_ULI1575
 	help
 	  This option enables support for the MPC8641 HPCN board.
 
@@ -14,8 +15,7 @@ endchoice
 
 config MPC8641
 	bool
-	select PPC_INDIRECT_PCI
-	select PPC_INDIRECT_PCI_BE
+	select FSL_PCI if PCI
 	select PPC_UDBG_16550
 	select MPIC
 	default y if MPC8641_HPCN

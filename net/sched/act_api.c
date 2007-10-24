@@ -11,23 +11,13 @@
  *
  */
 
-#include <asm/uaccess.h>
-#include <asm/system.h>
-#include <linux/bitops.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
-#include <linux/mm.h>
-#include <linux/socket.h>
-#include <linux/sockios.h>
-#include <linux/in.h>
 #include <linux/errno.h>
-#include <linux/interrupt.h>
-#include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/init.h>
 #include <linux/kmod.h>
-#include <net/sock.h>
 #include <net/sch_generic.h>
 #include <net/act_api.h>
 #include <net/netlink.h>
@@ -42,10 +32,8 @@ void tcf_hash_destroy(struct tcf_common *p, struct tcf_hashinfo *hinfo)
 			write_lock_bh(hinfo->lock);
 			*p1p = p->tcfc_next;
 			write_unlock_bh(hinfo->lock);
-#ifdef CONFIG_NET_ESTIMATOR
 			gen_kill_estimator(&p->tcfc_bstats,
 					   &p->tcfc_rate_est);
-#endif
 			kfree(p);
 			return;
 		}
@@ -80,7 +68,7 @@ static int tcf_dump_walker(struct sk_buff *skb, struct netlink_callback *cb,
 	int err = 0, index = -1,i = 0, s_i = 0, n_i = 0;
 	struct rtattr *r ;
 
-	read_lock(hinfo->lock);
+	read_lock_bh(hinfo->lock);
 
 	s_i = cb->args[0];
 
@@ -108,7 +96,7 @@ static int tcf_dump_walker(struct sk_buff *skb, struct netlink_callback *cb,
 		}
 	}
 done:
-	read_unlock(hinfo->lock);
+	read_unlock_bh(hinfo->lock);
 	if (n_i)
 		cb->args[0] += n_i;
 	return n_i;
@@ -168,13 +156,13 @@ struct tcf_common *tcf_hash_lookup(u32 index, struct tcf_hashinfo *hinfo)
 {
 	struct tcf_common *p;
 
-	read_lock(hinfo->lock);
+	read_lock_bh(hinfo->lock);
 	for (p = hinfo->htab[tcf_hash(index, hinfo->hmask)]; p;
 	     p = p->tcfc_next) {
 		if (p->tcfc_index == index)
 			break;
 	}
-	read_unlock(hinfo->lock);
+	read_unlock_bh(hinfo->lock);
 
 	return p;
 }
@@ -232,15 +220,12 @@ struct tcf_common *tcf_hash_create(u32 index, struct rtattr *est, struct tc_acti
 		p->tcfc_bindcnt = 1;
 
 	spin_lock_init(&p->tcfc_lock);
-	p->tcfc_stats_lock = &p->tcfc_lock;
 	p->tcfc_index = index ? index : tcf_hash_new_index(idx_gen, hinfo);
 	p->tcfc_tm.install = jiffies;
 	p->tcfc_tm.lastuse = jiffies;
-#ifdef CONFIG_NET_ESTIMATOR
 	if (est)
 		gen_new_estimator(&p->tcfc_bstats, &p->tcfc_rate_est,
-				  p->tcfc_stats_lock, est);
-#endif
+				  &p->tcfc_lock, est);
 	a->priv = (void *) p;
 	return p;
 }
@@ -599,12 +584,12 @@ int tcf_action_copy_stats(struct sk_buff *skb, struct tc_action *a,
 	if (compat_mode) {
 		if (a->type == TCA_OLD_COMPAT)
 			err = gnet_stats_start_copy_compat(skb, 0,
-				TCA_STATS, TCA_XSTATS, h->tcf_stats_lock, &d);
+				TCA_STATS, TCA_XSTATS, &h->tcf_lock, &d);
 		else
 			return 0;
 	} else
 		err = gnet_stats_start_copy(skb, TCA_ACT_STATS,
-			h->tcf_stats_lock, &d);
+					    &h->tcf_lock, &d);
 
 	if (err < 0)
 		goto errout;
@@ -614,9 +599,7 @@ int tcf_action_copy_stats(struct sk_buff *skb, struct tc_action *a,
 			goto errout;
 
 	if (gnet_stats_copy_basic(&d, &h->tcf_bstats) < 0 ||
-#ifdef CONFIG_NET_ESTIMATOR
 	    gnet_stats_copy_rate_est(&d, &h->tcf_rate_est) < 0 ||
-#endif
 	    gnet_stats_copy_queue(&d, &h->tcf_qstats) < 0)
 		goto errout;
 

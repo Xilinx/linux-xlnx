@@ -228,7 +228,7 @@ static int dr_controller_setup(struct fsl_udc *udc)
 
 	/* Config PHY interface */
 	portctrl = fsl_readl(&dr_regs->portsc1);
-	portctrl &= ~(PORTSCX_PHY_TYPE_SEL & PORTSCX_PORT_WIDTH);
+	portctrl &= ~(PORTSCX_PHY_TYPE_SEL | PORTSCX_PORT_WIDTH);
 	switch (udc->phy_mode) {
 	case FSL_USB2_PHY_ULPI:
 		portctrl |= PORTSCX_PTS_ULPI;
@@ -599,39 +599,6 @@ static void fsl_free_request(struct usb_ep *_ep, struct usb_request *_req)
 
 	if (_req)
 		kfree(req);
-}
-
-/*------------------------------------------------------------------
- * Allocate an I/O buffer
-*---------------------------------------------------------------------*/
-static void *fsl_alloc_buffer(struct usb_ep *_ep, unsigned bytes,
-		dma_addr_t *dma, gfp_t gfp_flags)
-{
-	struct fsl_ep *ep;
-
-	if (!_ep)
-		return NULL;
-
-	ep = container_of(_ep, struct fsl_ep, ep);
-
-	return dma_alloc_coherent(ep->udc->gadget.dev.parent,
-			bytes, dma, gfp_flags);
-}
-
-/*------------------------------------------------------------------
- * frees an i/o buffer
-*---------------------------------------------------------------------*/
-static void fsl_free_buffer(struct usb_ep *_ep, void *buf,
-		dma_addr_t dma, unsigned bytes)
-{
-	struct fsl_ep *ep;
-
-	if (!_ep)
-		return;
-
-	ep = container_of(_ep, struct fsl_ep, ep);
-
-	dma_free_coherent(ep->udc->gadget.dev.parent, bytes, buf, dma);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1047,9 +1014,6 @@ static struct usb_ep_ops fsl_ep_ops = {
 	.alloc_request = fsl_alloc_request,
 	.free_request = fsl_free_request,
 
-	.alloc_buffer = fsl_alloc_buffer,
-	.free_buffer = fsl_free_buffer,
-
 	.queue = fsl_ep_queue,
 	.dequeue = fsl_ep_dequeue,
 
@@ -1313,31 +1277,32 @@ static void setup_received_irq(struct fsl_udc *udc,
 
 	udc_reset_ep_queue(udc, 0);
 
+	/* We process some stardard setup requests here */
 	switch (setup->bRequest) {
-		/* Request that need Data+Status phase from udc */
 	case USB_REQ_GET_STATUS:
-		if ((setup->bRequestType & (USB_DIR_IN | USB_TYPE_STANDARD))
+		/* Data+Status phase from udc */
+		if ((setup->bRequestType & (USB_DIR_IN | USB_TYPE_MASK))
 					!= (USB_DIR_IN | USB_TYPE_STANDARD))
 			break;
 		ch9getstatus(udc, setup->bRequestType, wValue, wIndex, wLength);
-		break;
+		return;
 
-		/* Requests that need Status phase from udc */
 	case USB_REQ_SET_ADDRESS:
+		/* Status phase from udc */
 		if (setup->bRequestType != (USB_DIR_OUT | USB_TYPE_STANDARD
 						| USB_RECIP_DEVICE))
 			break;
 		ch9setaddress(udc, wValue, wIndex, wLength);
-		break;
+		return;
 
-		/* Handled by udc, no data, status by udc */
 	case USB_REQ_CLEAR_FEATURE:
 	case USB_REQ_SET_FEATURE:
-	{	/* status transaction */
+		/* Status phase from udc */
+	{
 		int rc = -EOPNOTSUPP;
 
-		if ((setup->bRequestType & USB_RECIP_MASK)
-				== USB_RECIP_ENDPOINT) {
+		if ((setup->bRequestType & (USB_RECIP_MASK | USB_TYPE_MASK))
+				== (USB_RECIP_ENDPOINT | USB_TYPE_STANDARD)) {
 			int pipe = get_pipe_by_windex(wIndex);
 			struct fsl_ep *ep;
 
@@ -1351,8 +1316,9 @@ static void setup_received_irq(struct fsl_udc *udc,
 						? 1 : 0);
 			spin_lock(&udc->lock);
 
-		} else if ((setup->bRequestType & USB_RECIP_MASK)
-				== USB_RECIP_DEVICE) {
+		} else if ((setup->bRequestType & (USB_RECIP_MASK
+				| USB_TYPE_MASK)) == (USB_RECIP_DEVICE
+				| USB_TYPE_STANDARD)) {
 			/* Note: The driver has not include OTG support yet.
 			 * This will be set when OTG support is added */
 			if (!udc->gadget.is_otg)
@@ -1365,38 +1331,41 @@ static void setup_received_irq(struct fsl_udc *udc,
 					USB_DEVICE_A_ALT_HNP_SUPPORT)
 				udc->gadget.a_alt_hnp_support = 1;
 			rc = 0;
-		}
+		} else
+			break;
+
 		if (rc == 0) {
 			if (ep0_prime_status(udc, EP_DIR_IN))
 				ep0stall(udc);
 		}
+		return;
+	}
+
+	default:
 		break;
 	}
-		/* Requests handled by gadget */
-	default:
-		if (wLength) {
-			/* Data phase from gadget, status phase from udc */
-			udc->ep0_dir = (setup->bRequestType & USB_DIR_IN)
-					?  USB_DIR_IN : USB_DIR_OUT;
-			spin_unlock(&udc->lock);
-			if (udc->driver->setup(&udc->gadget,
-					&udc->local_setup_buff) < 0)
-				ep0stall(udc);
-			spin_lock(&udc->lock);
-			udc->ep0_state = (setup->bRequestType & USB_DIR_IN)
-					?  DATA_STATE_XMIT : DATA_STATE_RECV;
 
-		} else {
-			/* No data phase, IN status from gadget */
-			udc->ep0_dir = USB_DIR_IN;
-			spin_unlock(&udc->lock);
-			if (udc->driver->setup(&udc->gadget,
-					&udc->local_setup_buff) < 0)
-				ep0stall(udc);
-			spin_lock(&udc->lock);
-			udc->ep0_state = WAIT_FOR_OUT_STATUS;
-		}
-		break;
+	/* Requests handled by gadget */
+	if (wLength) {
+		/* Data phase from gadget, status phase from udc */
+		udc->ep0_dir = (setup->bRequestType & USB_DIR_IN)
+				?  USB_DIR_IN : USB_DIR_OUT;
+		spin_unlock(&udc->lock);
+		if (udc->driver->setup(&udc->gadget,
+				&udc->local_setup_buff) < 0)
+			ep0stall(udc);
+		spin_lock(&udc->lock);
+		udc->ep0_state = (setup->bRequestType & USB_DIR_IN)
+				?  DATA_STATE_XMIT : DATA_STATE_RECV;
+	} else {
+		/* No data phase, IN status from gadget */
+		udc->ep0_dir = USB_DIR_IN;
+		spin_unlock(&udc->lock);
+		if (udc->driver->setup(&udc->gadget,
+				&udc->local_setup_buff) < 0)
+			ep0stall(udc);
+		spin_lock(&udc->lock);
+		udc->ep0_state = WAIT_FOR_OUT_STATUS;
 	}
 }
 
@@ -2189,27 +2158,19 @@ static void fsl_udc_release(struct device *dev)
  * init resource for globle controller
  * Return the udc handle on success or NULL on failure
  ------------------------------------------------------------------*/
-static struct fsl_udc *__init struct_udc_setup(struct platform_device *pdev)
+static int __init struct_udc_setup(struct fsl_udc *udc,
+		struct platform_device *pdev)
 {
-	struct fsl_udc *udc;
 	struct fsl_usb2_platform_data *pdata;
 	size_t size;
 
-	udc = kzalloc(sizeof(struct fsl_udc), GFP_KERNEL);
-	if (udc == NULL) {
-		ERR("malloc udc failed\n");
-		return NULL;
-	}
-
 	pdata = pdev->dev.platform_data;
 	udc->phy_mode = pdata->phy_mode;
-	/* max_ep_nr is bidirectional ep number, max_ep doubles the number */
-	udc->max_ep = pdata->max_ep_nr * 2;
 
 	udc->eps = kzalloc(sizeof(struct fsl_ep) * udc->max_ep, GFP_KERNEL);
 	if (!udc->eps) {
 		ERR("malloc fsl_ep failed\n");
-		goto cleanup;
+		return -1;
 	}
 
 	/* initialized QHs, take care of alignment */
@@ -2225,7 +2186,7 @@ static struct fsl_udc *__init struct_udc_setup(struct platform_device *pdev)
 	if (!udc->ep_qh) {
 		ERR("malloc QHs for udc failed\n");
 		kfree(udc->eps);
-		goto cleanup;
+		return -1;
 	}
 
 	udc->ep_qh_size = size;
@@ -2244,11 +2205,7 @@ static struct fsl_udc *__init struct_udc_setup(struct platform_device *pdev)
 	udc->remote_wakeup = 0;	/* default to 0 on reset */
 	spin_lock_init(&udc->lock);
 
-	return udc;
-
-cleanup:
-	kfree(udc);
-	return NULL;
+	return 0;
 }
 
 /*----------------------------------------------------------------
@@ -2287,35 +2244,37 @@ static int __init struct_ep_setup(struct fsl_udc *udc, unsigned char index,
 }
 
 /* Driver probe function
- * all intialize operations implemented here except enabling usb_intr reg
+ * all intialization operations implemented here except enabling usb_intr reg
+ * board setup should have been done in the platform code
  */
 static int __init fsl_udc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	int ret = -ENODEV;
 	unsigned int i;
+	u32 dccparams;
 
 	if (strcmp(pdev->name, driver_name)) {
 		VDBG("Wrong device\n");
 		return -ENODEV;
 	}
 
-	/* board setup should have been done in the platform code */
-
-	/* Initialize the udc structure including QH member and other member */
-	udc_controller = struct_udc_setup(pdev);
-	if (!udc_controller) {
-		VDBG("udc_controller is NULL \n");
+	udc_controller = kzalloc(sizeof(struct fsl_udc), GFP_KERNEL);
+	if (udc_controller == NULL) {
+		ERR("malloc udc failed\n");
 		return -ENOMEM;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
+	if (!res) {
+		kfree(udc_controller);
 		return -ENXIO;
+	}
 
 	if (!request_mem_region(res->start, res->end - res->start + 1,
 				driver_name)) {
 		ERR("request mem region for %s failed \n", pdev->name);
+		kfree(udc_controller);
 		return -EBUSY;
 	}
 
@@ -2328,18 +2287,36 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
 	usb_sys_regs = (struct usb_sys_interface *)
 			((u32)dr_regs + USB_DR_SYS_OFFSET);
 
+	/* Read Device Controller Capability Parameters register */
+	dccparams = fsl_readl(&dr_regs->dccparams);
+	if (!(dccparams & DCCPARAMS_DC)) {
+		ERR("This SOC doesn't support device role\n");
+		ret = -ENODEV;
+		goto err2;
+	}
+	/* Get max device endpoints */
+	/* DEN is bidirectional ep number, max_ep doubles the number */
+	udc_controller->max_ep = (dccparams & DCCPARAMS_DEN_MASK) * 2;
+
 	udc_controller->irq = platform_get_irq(pdev, 0);
 	if (!udc_controller->irq) {
 		ret = -ENODEV;
 		goto err2;
 	}
 
-	ret = request_irq(udc_controller->irq, fsl_udc_irq, SA_SHIRQ,
+	ret = request_irq(udc_controller->irq, fsl_udc_irq, IRQF_SHARED,
 			driver_name, udc_controller);
 	if (ret != 0) {
 		ERR("cannot request irq %d err %d \n",
 				udc_controller->irq, ret);
 		goto err2;
+	}
+
+	/* Initialize the udc structure including QH member and other member */
+	if (struct_udc_setup(udc_controller, pdev)) {
+		ERR("Can't initialize udc data structure\n");
+		ret = -ENOMEM;
+		goto err3;
 	}
 
 	/* initialize usb hw reg except for regs for EP,
@@ -2403,6 +2380,7 @@ err2:
 	iounmap(dr_regs);
 err1:
 	release_mem_region(res->start, res->end - res->start + 1);
+	kfree(udc_controller);
 	return ret;
 }
 

@@ -25,7 +25,9 @@
 #include <linux/init.h>
 #include <linux/completion.h>
 #include <linux/kallsyms.h>
+#include <linux/random.h>
 
+#include <asm/asm.h>
 #include <asm/bootinfo.h>
 #include <asm/cpu.h>
 #include <asm/dsp.h>
@@ -46,7 +48,7 @@
  * power and have a low exit latency (ie sit in a loop waiting for somebody to
  * say that they'd like to reschedule)
  */
-ATTRIB_NORET void cpu_idle(void)
+void __noreturn cpu_idle(void)
 {
 	/* endless idle loop with no priority at all */
 	while (1) {
@@ -75,7 +77,7 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	status = regs->cp0_status & ~(ST0_CU0|ST0_CU1|KU_MASK);
 #ifdef CONFIG_64BIT
 	status &= ~ST0_FR;
-	status |= (current->thread.mflags & MF_32BIT_REGS) ? 0 : ST0_FR;
+	status |= test_thread_flag(TIF_32BIT_REGS) ? 0 : ST0_FR;
 #endif
 	status |= KU_USER;
 	regs->cp0_status = status;
@@ -213,7 +215,7 @@ int dump_task_fpu (struct task_struct *t, elf_fpregset_t *fpr)
 /*
  * Create a kernel thread
  */
-static ATTRIB_NORET void kernel_thread_helper(void *arg, int (*fn)(void *))
+static void __noreturn kernel_thread_helper(void *arg, int (*fn)(void *))
 {
 	do_exit(fn(arg));
 }
@@ -459,4 +461,16 @@ unsigned long get_wchan(struct task_struct *task)
 
 out:
 	return pc;
+}
+
+/*
+ * Don't forget that the stack pointer must be aligned on a 8 bytes
+ * boundary for 32-bits ABI and 16 bytes for 64-bits ABI.
+ */
+unsigned long arch_align_stack(unsigned long sp)
+{
+	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
+		sp -= get_random_int() & ~PAGE_MASK;
+
+	return sp & ALMASK;
 }

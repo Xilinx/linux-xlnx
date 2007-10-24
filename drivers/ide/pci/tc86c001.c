@@ -47,7 +47,7 @@ static int tc86c001_tune_chipset(ide_drive_t *drive, u8 speed)
 
 static void tc86c001_tune_drive(ide_drive_t *drive, u8 pio)
 {
-	pio =  ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 	(void) tc86c001_tune_chipset(drive, XFER_PIO_0 + pio);
 }
 
@@ -220,13 +220,13 @@ static void __devinit init_hwif_tc86c001(ide_hwif_t *hwif)
 	hwif->ide_dma_check	= &tc86c001_config_drive_xfer_rate;
 	hwif->dma_start 	= &tc86c001_dma_start;
 
-	if (!hwif->udma_four) {
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT) {
 		/*
 		 * System Control  1 Register bit 13 (PDIAGN):
 		 * 0=80-pin cable, 1=40-pin cable
 		 */
 		scr1 = hwif->INW(sc_base + 0x00);
-		hwif->udma_four = (scr1 & 0x2000) ? 0 : 1;
+		hwif->cbl = (scr1 & 0x2000) ? ATA_CBL_PATA40 : ATA_CBL_PATA80;
 	}
 
 	if (!noautodma)
@@ -248,9 +248,10 @@ static ide_pci_device_t tc86c001_chipset __devinitdata = {
 	.name		= "TC86C001",
 	.init_chipset	= init_chipset_tc86c001,
 	.init_hwif	= init_hwif_tc86c001,
-	.channels	= 1,
 	.autodma	= AUTODMA,
-	.bootable	= OFF_BOARD
+	.bootable	= OFF_BOARD,
+	.host_flags	= IDE_HFLAG_SINGLE,
+	.pio_mask	= ATA_PIO4,
 };
 
 static int __devinit tc86c001_init_one(struct pci_dev *dev,

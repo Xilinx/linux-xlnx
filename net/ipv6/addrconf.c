@@ -1021,7 +1021,7 @@ int ipv6_dev_get_saddr(struct net_device *daddr_dev,
 				hiscore.rule++;
 			}
 			if (ipv6_saddr_preferred(score.addr_type) ||
-			   (((ifa_result->flags &
+			   (((ifa->flags &
 			    (IFA_F_DEPRECATED|IFA_F_OPTIMISTIC)) == 0))) {
 				score.attrs |= IPV6_SADDR_SCORE_PREFERRED;
 				if (!(hiscore.attrs & IPV6_SADDR_SCORE_PREFERRED)) {
@@ -1034,7 +1034,7 @@ int ipv6_dev_get_saddr(struct net_device *daddr_dev,
 			}
 
 			/* Rule 4: Prefer home address */
-#ifdef CONFIG_IPV6_MIP6
+#if defined(CONFIG_IPV6_MIP6) || defined(CONFIG_IPV6_MIP6_MODULE)
 			if (hiscore.rule < 4) {
 				if (ifa_result->flags & IFA_F_HOMEADDRESS)
 					hiscore.attrs |= IPV6_SADDR_SCORE_HOA;
@@ -2256,18 +2256,21 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 	struct net_device *dev = (struct net_device *) data;
 	struct inet6_dev *idev = __in6_dev_get(dev);
 	int run_pending = 0;
+	int err;
 
 	switch(event) {
 	case NETDEV_REGISTER:
 		if (!idev && dev->mtu >= IPV6_MIN_MTU) {
 			idev = ipv6_add_dev(dev);
 			if (!idev)
-				printk(KERN_WARNING "IPv6: add_dev failed for %s\n",
-					dev->name);
+				return notifier_from_errno(-ENOMEM);
 		}
 		break;
 	case NETDEV_UP:
 	case NETDEV_CHANGE:
+		if (dev->flags & IFF_SLAVE)
+			break;
+
 		if (event == NETDEV_UP) {
 			if (!netif_carrier_ok(dev)) {
 				/* device is not ready yet. */
@@ -2370,7 +2373,9 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 					      NULL);
 			addrconf_sysctl_register(idev, &idev->cnf);
 #endif
-			snmp6_register_dev(idev);
+			err = snmp6_register_dev(idev);
+			if (err)
+				return notifier_from_errno(err);
 		}
 		break;
 	}
@@ -2472,6 +2477,7 @@ static int addrconf_ifdown(struct net_device *dev, int how)
 		write_unlock_bh(&idev->lock);
 
 		__ipv6_ifa_notify(RTM_DELADDR, ifa);
+		atomic_notifier_call_chain(&inet6addr_chain, NETDEV_DOWN, ifa);
 		in6_ifa_put(ifa);
 
 		write_lock_bh(&idev->lock);
@@ -2782,7 +2788,7 @@ static int if6_seq_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static struct seq_operations if6_seq_ops = {
+static const struct seq_operations if6_seq_ops = {
 	.start	= if6_seq_start,
 	.next	= if6_seq_next,
 	.show	= if6_seq_show,
@@ -2832,7 +2838,7 @@ void if6_proc_exit(void)
 }
 #endif	/* CONFIG_PROC_FS */
 
-#ifdef CONFIG_IPV6_MIP6
+#if defined(CONFIG_IPV6_MIP6) || defined(CONFIG_IPV6_MIP6_MODULE)
 /* Check if address is a home address configured on any interface. */
 int ipv6_chk_home_addr(struct in6_addr *addr)
 {
@@ -4240,7 +4246,6 @@ errout:
 void __exit addrconf_cleanup(void)
 {
 	struct net_device *dev;
-	struct inet6_dev *idev;
 	struct inet6_ifaddr *ifa;
 	int i;
 
@@ -4258,7 +4263,7 @@ void __exit addrconf_cleanup(void)
 	 */
 
 	for_each_netdev(dev) {
-		if ((idev = __in6_dev_get(dev)) == NULL)
+		if (__in6_dev_get(dev) == NULL)
 			continue;
 		addrconf_ifdown(dev, 1);
 	}

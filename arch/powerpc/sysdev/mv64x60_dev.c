@@ -12,6 +12,7 @@
 #include <linux/stddef.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/console.h>
 #include <linux/mv643xx.h>
 #include <linux/platform_device.h>
 
@@ -389,6 +390,61 @@ error:
 	return err;
 }
 
+/*
+ * Create mv64x60_wdt platform devices
+ */
+static int __init mv64x60_wdt_device_setup(struct device_node *np, int id)
+{
+	struct resource r;
+	struct platform_device *pdev;
+	struct mv64x60_wdt_pdata pdata;
+	const unsigned int *prop;
+	int err;
+
+	err = of_address_to_resource(np, 0, &r);
+	if (err)
+		return err;
+
+	memset(&pdata, 0, sizeof(pdata));
+
+	prop = of_get_property(np, "timeout", NULL);
+	if (!prop)
+		return -ENODEV;
+	pdata.timeout = *prop;
+
+	np = of_get_parent(np);
+	if (!np)
+		return -ENODEV;
+
+	prop = of_get_property(np, "clock-frequency", NULL);
+	of_node_put(np);
+	if (!prop)
+		return -ENODEV;
+	pdata.bus_clk = *prop / 1000000; /* wdt driver wants freq in MHz */
+
+	pdev = platform_device_alloc(MV64x60_WDT_NAME, id);
+	if (!pdev)
+		return -ENOMEM;
+
+	err = platform_device_add_resources(pdev, &r, 1);
+	if (err)
+		goto error;
+
+	err = platform_device_add_data(pdev, &pdata, sizeof(pdata));
+	if (err)
+		goto error;
+
+	err = platform_device_add(pdev);
+	if (err)
+		goto error;
+
+	return 0;
+
+error:
+	platform_device_put(pdev);
+	return err;
+}
+
 static int __init mv64x60_device_setup(void)
 {
 	struct device_node *np = NULL;
@@ -413,6 +469,15 @@ static int __init mv64x60_device_setup(void)
 		if ((err = mv64x60_i2c_device_setup(np, id)))
 			goto error;
 
+	/* support up to one watchdog timer */
+	np = of_find_compatible_node(np, NULL, "marvell,mv64x60-wdt");
+	if (np) {
+		if ((err = mv64x60_wdt_device_setup(np, id)))
+			goto error;
+		of_node_put(np);
+	}
+
+
 	return 0;
 
 error:
@@ -420,3 +485,30 @@ error:
 	return err;
 }
 arch_initcall(mv64x60_device_setup);
+
+static int __init mv64x60_add_mpsc_console(void)
+{
+	struct device_node *np = NULL;
+	const char *prop;
+
+	prop = of_get_property(of_chosen, "linux,stdout-path", NULL);
+	if (prop == NULL)
+		goto not_mpsc;
+
+	np = of_find_node_by_path(prop);
+	if (!np)
+		goto not_mpsc;
+
+	if (!of_device_is_compatible(np, "marvell,mpsc"))
+		goto not_mpsc;
+
+	prop = of_get_property(np, "block-index", NULL);
+	if (!prop)
+		goto not_mpsc;
+
+	add_preferred_console("ttyMM", *(int *)prop, NULL);
+
+not_mpsc:
+	return 0;
+}
+console_initcall(mv64x60_add_mpsc_console);

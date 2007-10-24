@@ -86,16 +86,6 @@
 #define  MACH_COBALT_27		0	/* Proto "27" hardware		*/
 
 /*
- * Valid machtype for group NEC DDB
- */
-#define MACH_GROUP_NEC_DDB	8	/* NEC DDB			*/
-#define  MACH_NEC_DDB5074	0	/* NEC DDB Vrc-5074 */
-#define  MACH_NEC_DDB5476	1	/* NEC DDB Vrc-5476 */
-#define  MACH_NEC_DDB5477	2	/* NEC DDB Vrc-5477 */
-#define  MACH_NEC_ROCKHOPPER	3	/* Rockhopper base board */
-#define  MACH_NEC_ROCKHOPPERII	4	/* Rockhopper II base board */
-
-/*
  * Valid machtype for group BAGET
  */
 #define MACH_GROUP_BAGET	9	/* Baget			*/
@@ -109,18 +99,12 @@
 #define  MACH_COSINE_ORION	0
 
 /*
- * Valid machtype for group GALILEO
- */
-#define MACH_GROUP_GALILEO     11	/* Galileo Eval Boards		*/
-#define  MACH_EV64120A		0	/* EV64120A */
-
-/*
  * Valid machtype for group MOMENCO
  */
 #define MACH_GROUP_MOMENCO	12	/* Momentum Boards		*/
 #define  MACH_MOMENCO_OCELOT	0
 #define  MACH_MOMENCO_OCELOT_G	1	/* no more supported (may 2007) */
-#define  MACH_MOMENCO_OCELOT_C	2
+#define  MACH_MOMENCO_OCELOT_C	2	/* no more supported (jun 2007) */
 #define  MACH_MOMENCO_JAGUAR_ATX 3	/* no more supported (may 2007) */
 #define  MACH_MOMENCO_OCELOT_3	4
 
@@ -150,9 +134,6 @@
 #define  MACH_TOSHIBA_RBTX4927	4
 #define  MACH_TOSHIBA_RBTX4937	5
 #define  MACH_TOSHIBA_RBTX4938	6
-
-#define GROUP_TOSHIBA_NAMES	{ "Pallas", "TopasCE", "JMR", "JMR TX3927", \
-				  "RBTX4927", "RBTX4937" }
 
 /*
  * Valid machtype for group Alchemy
@@ -194,13 +175,6 @@
 #define  MACH_HP_LASERJET	1
 
 /*
- * Valid machtype for group LASAT
- */
-#define MACH_GROUP_LASAT       21
-#define  MACH_LASAT_100		0	/* Masquerade II/SP100/SP50/SP25 */
-#define  MACH_LASAT_200		1	/* Masquerade PRO/SP200 */
-
-/*
  * Valid machtype for group TITAN
  */
 #define MACH_GROUP_TITAN       22	/* PMC-Sierra Titan		*/
@@ -212,6 +186,27 @@
  */
 #define MACH_GROUP_NEC_EMMA2RH 25	/* NEC EMMA2RH (was 23)		*/
 #define  MACH_NEC_MARKEINS	0	/* NEC EMMA2RH Mark-eins	*/
+
+/*
+ * Valid machtype for group LEMOTE
+ */
+#define MACH_GROUP_LEMOTE          27
+#define  MACH_LEMOTE_FULONG        0
+
+/*
+ * Valid machtype for group PMC-MSP
+ */
+#define MACH_GROUP_MSP         26	/* PMC-Sierra MSP boards/CPUs    */
+#define MACH_MSP4200_EVAL       0	/* PMC-Sierra MSP4200 Evaluation */
+#define MACH_MSP4200_GW         1	/* PMC-Sierra MSP4200 Gateway demo */
+#define MACH_MSP4200_FPGA       2	/* PMC-Sierra MSP4200 Emulation */
+#define MACH_MSP7120_EVAL       3	/* PMC-Sierra MSP7120 Evaluation */
+#define MACH_MSP7120_GW         4	/* PMC-Sierra MSP7120 Residential GW */
+#define MACH_MSP7120_FPGA       5	/* PMC-Sierra MSP7120 Emulation */
+#define MACH_MSP_OTHER        255	/* PMC-Sierra unknown board type */
+
+#define MACH_GROUP_WINDRIVER   28	/* Windriver boards */
+#define MACH_WRPPMC             1
 
 #define CL_SIZE			COMMAND_LINE_SIZE
 

@@ -875,7 +875,7 @@ found:
 
 #ifdef CONFIG_ACPI
 	if (sonypi_acpi_device)
-		acpi_bus_generate_event(sonypi_acpi_device, 1, event);
+		acpi_bus_generate_proc_event(sonypi_acpi_device, 1, event);
 #endif
 
 	kfifo_put(sonypi_device.fifo, (unsigned char *)&event, sizeof(event));
@@ -884,53 +884,6 @@ found:
 
 	return IRQ_HANDLED;
 }
-
-/* External camera command (exported to the motion eye v4l driver) */
-int sonypi_camera_command(int command, u8 value)
-{
-	if (!camera)
-		return -EIO;
-
-	mutex_lock(&sonypi_device.lock);
-
-	switch (command) {
-	case SONYPI_COMMAND_SETCAMERA:
-		if (value)
-			sonypi_camera_on();
-		else
-			sonypi_camera_off();
-		break;
-	case SONYPI_COMMAND_SETCAMERABRIGHTNESS:
-		sonypi_set(SONYPI_CAMERA_BRIGHTNESS, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERACONTRAST:
-		sonypi_set(SONYPI_CAMERA_CONTRAST, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERAHUE:
-		sonypi_set(SONYPI_CAMERA_HUE, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERACOLOR:
-		sonypi_set(SONYPI_CAMERA_COLOR, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERASHARPNESS:
-		sonypi_set(SONYPI_CAMERA_SHARPNESS, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERAPICTURE:
-		sonypi_set(SONYPI_CAMERA_PICTURE, value);
-		break;
-	case SONYPI_COMMAND_SETCAMERAAGC:
-		sonypi_set(SONYPI_CAMERA_AGC, value);
-		break;
-	default:
-		printk(KERN_ERR "sonypi: sonypi_camera_command invalid: %d\n",
-		       command);
-		break;
-	}
-	mutex_unlock(&sonypi_device.lock);
-	return 0;
-}
-
-EXPORT_SYMBOL(sonypi_camera_command);
 
 static int sonypi_misc_fasync(int fd, struct file *filp, int on)
 {
@@ -1194,10 +1147,15 @@ static int sonypi_acpi_remove(struct acpi_device *device, int type)
 	return 0;
 }
 
+const static struct acpi_device_id sonypi_device_ids[] = {
+	{"SNY6001", 0},
+	{"", 0},
+};
+
 static struct acpi_driver sonypi_acpi_driver = {
 	.name           = "sonypi",
 	.class          = "hkey",
-	.ids            = "SNY6001",
+	.ids            = sonypi_device_ids,
 	.ops            = {
 		           .add = sonypi_acpi_add,
 			   .remove = sonypi_acpi_remove,

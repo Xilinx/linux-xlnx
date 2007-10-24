@@ -268,7 +268,6 @@ static inline void sun4c_init_clean_mmu(unsigned long kernel_end)
 	unsigned char savectx, ctx;
 
 	savectx = sun4c_get_context();
-	kernel_end = SUN4C_REAL_PGDIR_ALIGN(kernel_end);
 	for (ctx = 0; ctx < num_contexts; ctx++) {
 		sun4c_set_context(ctx);
 		for (vaddr = 0; vaddr < 0x20000000; vaddr += SUN4C_REAL_PGDIR_SIZE)
@@ -1748,11 +1747,6 @@ static int sun4c_pte_present(pte_t pte)
 }
 static void sun4c_pte_clear(pte_t *ptep)	{ *ptep = __pte(0); }
 
-static int sun4c_pte_read(pte_t pte)
-{
-	return (pte_val(pte) & _SUN4C_PAGE_READ);
-}
-
 static int sun4c_pmd_bad(pmd_t pmd)
 {
 	return (((pmd_val(pmd) & ~PAGE_MASK) != PGD_TABLE) ||
@@ -2004,6 +1998,9 @@ void sun4c_update_mmu_cache(struct vm_area_struct *vma, unsigned long address, p
 	unsigned long flags;
 	int pseg;
 
+	if (vma->vm_mm->context == NO_CONTEXT)
+		return;
+
 	local_irq_save(flags);
 	address &= PAGE_MASK;
 	if ((pseg = sun4c_get_segmap(address)) == invalid_segment) {
@@ -2066,7 +2063,6 @@ void __init sun4c_paging_init(void)
 	unsigned long end_pfn, pages_avail;
 
 	kernel_end = (unsigned long) &end;
-	kernel_end += (SUN4C_REAL_PGDIR_SIZE * 4);
 	kernel_end = SUN4C_REAL_PGDIR_ALIGN(kernel_end);
 
 	pages_avail = 0;
@@ -2160,7 +2156,7 @@ void __init ld_mmu_sun4c(void)
 	BTFIXUPSET_SIMM13(user_ptrs_per_pgd, KERNBASE / SUN4C_PGDIR_SIZE);
 
 	BTFIXUPSET_INT(page_none, pgprot_val(SUN4C_PAGE_NONE));
-	BTFIXUPSET_INT(page_shared, pgprot_val(SUN4C_PAGE_SHARED));
+	PAGE_SHARED = pgprot_val(SUN4C_PAGE_SHARED);
 	BTFIXUPSET_INT(page_copy, pgprot_val(SUN4C_PAGE_COPY));
 	BTFIXUPSET_INT(page_readonly, pgprot_val(SUN4C_PAGE_READONLY));
 	BTFIXUPSET_INT(page_kernel, pgprot_val(SUN4C_PAGE_KERNEL));
@@ -2212,7 +2208,6 @@ void __init ld_mmu_sun4c(void)
 
 	BTFIXUPSET_CALL(pte_present, sun4c_pte_present, BTFIXUPCALL_NORM);
 	BTFIXUPSET_CALL(pte_clear, sun4c_pte_clear, BTFIXUPCALL_STG0O0);
-	BTFIXUPSET_CALL(pte_read, sun4c_pte_read, BTFIXUPCALL_NORM);
 
 	BTFIXUPSET_CALL(pmd_bad, sun4c_pmd_bad, BTFIXUPCALL_NORM);
 	BTFIXUPSET_CALL(pmd_present, sun4c_pmd_present, BTFIXUPCALL_NORM);

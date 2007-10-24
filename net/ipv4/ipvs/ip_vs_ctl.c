@@ -29,7 +29,6 @@
 #include <linux/proc_fs.h>
 #include <linux/workqueue.h>
 #include <linux/swap.h>
-#include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
 #include <linux/netfilter.h>
@@ -909,7 +908,7 @@ ip_vs_edit_dest(struct ip_vs_service *svc, struct ip_vs_dest_user *udest)
 	write_lock_bh(&__ip_vs_svc_lock);
 
 	/* Wait until all other svc users go away */
-	while (atomic_read(&svc->usecnt) > 1) {};
+	IP_VS_WAIT_WHILE(atomic_read(&svc->usecnt) > 1);
 
 	/* call the update_service, because server weight may be changed */
 	svc->scheduler->update_service(svc);
@@ -1783,7 +1782,7 @@ static int ip_vs_info_seq_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static struct seq_operations ip_vs_info_seq_ops = {
+static const struct seq_operations ip_vs_info_seq_ops = {
 	.start = ip_vs_info_seq_start,
 	.next  = ip_vs_info_seq_next,
 	.stop  = ip_vs_info_seq_stop,
@@ -2340,6 +2339,7 @@ static struct nf_sockopt_ops ip_vs_sockopts = {
 	.get_optmin	= IP_VS_BASE_CTL,
 	.get_optmax	= IP_VS_SO_GET_MAX+1,
 	.get		= do_ip_vs_get_ctl,
+	.owner		= THIS_MODULE,
 };
 
 

@@ -491,7 +491,6 @@ param_sysfs_setup(struct module_kobject *mk,
 			pattr->mattr.show = param_attr_show;
 			pattr->mattr.store = param_attr_store;
 			pattr->mattr.attr.name = (char *)&kp->name[name_skip];
-			pattr->mattr.attr.owner = mk->mod;
 			pattr->mattr.attr.mode = kp->perm;
 			*(gattr++) = &(pattr++)->mattr.attr;
 		}
@@ -568,7 +567,12 @@ static void __init kernel_param_sysfs_setup(const char *name,
 	kobject_set_name(&mk->kobj, name);
 	kobject_init(&mk->kobj);
 	ret = kobject_add(&mk->kobj);
-	BUG_ON(ret < 0);
+	if (ret) {
+		printk(KERN_ERR "Module '%s' failed to be added to sysfs, "
+		      "error number %d\n", name, ret);
+		printk(KERN_ERR	"The system will be unstable now.\n");
+		return;
+	}
 	param_sysfs_setup(mk, kparam, num_params, name_skip);
 	kobject_uevent(&mk->kobj, KOBJ_ADD);
 }

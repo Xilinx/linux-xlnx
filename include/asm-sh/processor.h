@@ -36,7 +36,7 @@
  */
 enum cpu_type {
 	/* SH-2 types */
-	CPU_SH7604, CPU_SH7619,
+	CPU_SH7619,
 
 	/* SH-2A types */
 	CPU_SH7206,
@@ -45,17 +45,17 @@ enum cpu_type {
 	CPU_SH7705, CPU_SH7706, CPU_SH7707,
 	CPU_SH7708, CPU_SH7708S, CPU_SH7708R,
 	CPU_SH7709, CPU_SH7709A, CPU_SH7710, CPU_SH7712,
-	CPU_SH7729, CPU_SH7300,
+	CPU_SH7729,
 
 	/* SH-4 types */
 	CPU_SH7750, CPU_SH7750S, CPU_SH7750R, CPU_SH7751, CPU_SH7751R,
 	CPU_SH7760, CPU_ST40RA, CPU_ST40GX1, CPU_SH4_202, CPU_SH4_501,
 
 	/* SH-4A types */
-	CPU_SH7770, CPU_SH7780, CPU_SH7781, CPU_SH7785,
+	CPU_SH7770, CPU_SH7780, CPU_SH7781, CPU_SH7785, CPU_SHX3,
 
 	/* SH4AL-DSP types */
-	CPU_SH73180, CPU_SH7343, CPU_SH7722,
+	CPU_SH7343, CPU_SH7722,
 
 	/* Unknown subtype */
 	CPU_SH_NONE
@@ -228,11 +228,7 @@ static __inline__ void grab_fpu(struct pt_regs *regs)
 	regs->sr &= ~SR_FD;
 }
 
-#ifdef CONFIG_CPU_SH4
 extern void save_fpu(struct task_struct *__tsk, struct pt_regs *regs);
-#else
-#define save_fpu(tsk)	do { } while (0)
-#endif
 
 #define unlazy_fpu(tsk, regs) do {			\
 	if (test_tsk_thread_flag(tsk, TIF_USEDFPU)) {	\

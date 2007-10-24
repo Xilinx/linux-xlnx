@@ -131,14 +131,14 @@ done:
 	return ret;
 }
 
-int build_tce_table(struct pci_dev *dev, void __iomem *bbar)
+int __init build_tce_table(struct pci_dev *dev, void __iomem *bbar)
 {
 	struct iommu_table *tbl;
 	int ret;
 
-	if (dev->sysdata) {
-		printk(KERN_ERR "Calgary: dev %p has sysdata %p\n",
-		       dev, dev->sysdata);
+	if (pci_iommu(dev->bus)) {
+		printk(KERN_ERR "Calgary: dev %p has sysdata->iommu %p\n",
+		       dev, pci_iommu(dev->bus));
 		BUG();
 	}
 
@@ -155,11 +155,7 @@ int build_tce_table(struct pci_dev *dev, void __iomem *bbar)
 
 	tbl->bbar = bbar;
 
-	/*
-	 * NUMA is already using the bus's sysdata pointer, so we use
-	 * the bus's pci_dev's sysdata instead.
-	 */
-	dev->sysdata = tbl;
+	set_pci_iommu(dev->bus, tbl);
 
 	return 0;
 
@@ -169,7 +165,7 @@ done:
 	return ret;
 }
 
-void* alloc_tce_table(void)
+void * __init alloc_tce_table(void)
 {
 	unsigned int size;
 
@@ -179,7 +175,7 @@ void* alloc_tce_table(void)
 	return __alloc_bootmem_low(size, size, 0);
 }
 
-void free_tce_table(void *tbl)
+void __init free_tce_table(void *tbl)
 {
 	unsigned int size;
 

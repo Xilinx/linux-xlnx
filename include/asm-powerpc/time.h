@@ -149,6 +149,11 @@ static inline u64 get_tb(void)
 }
 #endif /* !CONFIG_PPC64 */
 
+static inline u64 get_tb_or_rtc(void)
+{
+	return __USE_RTC() ? get_rtc() : get_tb();
+}
+
 static inline void set_tb(unsigned int upper, unsigned int lower)
 {
 	mtspr(SPRN_TBWL, 0);
@@ -232,13 +237,15 @@ extern void account_process_vtime(struct task_struct *tsk);
 #define account_process_vtime(tsk)		do { } while (0)
 #endif
 
-#if defined(CONFIG_VIRT_CPU_ACCOUNTING) && defined(CONFIG_PPC_SPLPAR)
+#if defined(CONFIG_VIRT_CPU_ACCOUNTING)
 extern void calculate_steal_time(void);
 extern void snapshot_timebases(void);
 #else
 #define calculate_steal_time()			do { } while (0)
 #define snapshot_timebases()			do { } while (0)
 #endif
+
+extern void iSeries_time_init_early(void);
 
 #endif /* __KERNEL__ */
 #endif /* __POWERPC_TIME_H */

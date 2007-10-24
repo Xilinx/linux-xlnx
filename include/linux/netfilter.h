@@ -88,9 +88,8 @@ struct nf_sockopt_ops
 	int (*compat_get)(struct sock *sk, int optval,
 			void __user *user, int *len);
 
-	/* Number of users inside set() or get(). */
-	unsigned int use;
-	struct task_struct *cleanup_task;
+	/* Use the module struct to lock set/get code in place */
+	struct module *owner;
 };
 
 /* Each queued (to userspace) skbuff has one of these. */
@@ -275,7 +274,8 @@ struct nf_queue_handler {
 };
 extern int nf_register_queue_handler(int pf, 
                                      struct nf_queue_handler *qh);
-extern int nf_unregister_queue_handler(int pf);
+extern int nf_unregister_queue_handler(int pf,
+				       struct nf_queue_handler *qh);
 extern void nf_unregister_queue_handlers(struct nf_queue_handler *qh);
 extern void nf_reinject(struct sk_buff *skb,
 			struct nf_info *info,

@@ -56,7 +56,6 @@
 #include <net/inet_ecn.h>
 #include <net/protocol.h>
 #include <net/xfrm.h>
-#include <net/addrconf.h>
 #include <net/snmp.h>
 #include <net/dsfield.h>
 #include <net/timewait_sock.h>
@@ -484,17 +483,6 @@ static int tcp_v6_send_synack(struct sock *sk, struct request_sock *req,
 
 	if (dst == NULL) {
 		opt = np->opt;
-		if (opt == NULL &&
-		    np->rxopt.bits.osrcrt == 2 &&
-		    treq->pktopts) {
-			struct sk_buff *pktopts = treq->pktopts;
-			struct inet6_skb_parm *rxopt = IP6CB(pktopts);
-			if (rxopt->srcrt)
-				opt = ipv6_invert_rthdr(sk,
-			  (struct ipv6_rt_hdr *)(skb_network_header(pktopts) +
-						 rxopt->srcrt));
-		}
-
 		if (opt && opt->srcrt) {
 			struct rt0_hdr *rt0 = (struct rt0_hdr *) opt->srcrt;
 			ipv6_addr_copy(&final, &fl.fl6_dst);
@@ -551,7 +539,7 @@ static struct tcp_md5sig_key *tcp_v6_md5_do_lookup(struct sock *sk,
 
 	for (i = 0; i < tp->md5sig_info->entries6; i++) {
 		if (ipv6_addr_cmp(&tp->md5sig_info->keys6[i].addr, addr) == 0)
-			return (struct tcp_md5sig_key *)&tp->md5sig_info->keys6[i];
+			return &tp->md5sig_info->keys6[i].base;
 	}
 	return NULL;
 }
@@ -579,9 +567,9 @@ static int tcp_v6_md5_do_add(struct sock *sk, struct in6_addr *peer,
 	key = (struct tcp6_md5sig_key*) tcp_v6_md5_do_lookup(sk, peer);
 	if (key) {
 		/* modify existing entry - just update that one */
-		kfree(key->key);
-		key->key = newkey;
-		key->keylen = newkeylen;
+		kfree(key->base.key);
+		key->base.key = newkey;
+		key->base.keylen = newkeylen;
 	} else {
 		/* reallocate new list if current one is full. */
 		if (!tp->md5sig_info) {
@@ -615,8 +603,8 @@ static int tcp_v6_md5_do_add(struct sock *sk, struct in6_addr *peer,
 
 		ipv6_addr_copy(&tp->md5sig_info->keys6[tp->md5sig_info->entries6].addr,
 			       peer);
-		tp->md5sig_info->keys6[tp->md5sig_info->entries6].key = newkey;
-		tp->md5sig_info->keys6[tp->md5sig_info->entries6].keylen = newkeylen;
+		tp->md5sig_info->keys6[tp->md5sig_info->entries6].base.key = newkey;
+		tp->md5sig_info->keys6[tp->md5sig_info->entries6].base.keylen = newkeylen;
 
 		tp->md5sig_info->entries6++;
 	}
@@ -638,12 +626,13 @@ static int tcp_v6_md5_do_del(struct sock *sk, struct in6_addr *peer)
 	for (i = 0; i < tp->md5sig_info->entries6; i++) {
 		if (ipv6_addr_cmp(&tp->md5sig_info->keys6[i].addr, peer) == 0) {
 			/* Free the key */
-			kfree(tp->md5sig_info->keys6[i].key);
+			kfree(tp->md5sig_info->keys6[i].base.key);
 			tp->md5sig_info->entries6--;
 
 			if (tp->md5sig_info->entries6 == 0) {
 				kfree(tp->md5sig_info->keys6);
 				tp->md5sig_info->keys6 = NULL;
+				tp->md5sig_info->alloced6 = 0;
 
 				tcp_free_md5sig_pool();
 
@@ -668,7 +657,7 @@ static void tcp_v6_clear_md5_list (struct sock *sk)
 
 	if (tp->md5sig_info->entries6) {
 		for (i = 0; i < tp->md5sig_info->entries6; i++)
-			kfree(tp->md5sig_info->keys6[i].key);
+			kfree(tp->md5sig_info->keys6[i].base.key);
 		tp->md5sig_info->entries6 = 0;
 		tcp_free_md5sig_pool();
 	}
@@ -679,7 +668,7 @@ static void tcp_v6_clear_md5_list (struct sock *sk)
 
 	if (tp->md5sig_info->entries4) {
 		for (i = 0; i < tp->md5sig_info->entries4; i++)
-			kfree(tp->md5sig_info->keys4[i].key);
+			kfree(tp->md5sig_info->keys4[i].base.key);
 		tp->md5sig_info->entries4 = 0;
 		tcp_free_md5sig_pool();
 	}
@@ -1390,15 +1379,6 @@ static struct sock * tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 
 	if (sk_acceptq_is_full(sk))
 		goto out_overflow;
-
-	if (np->rxopt.bits.osrcrt == 2 &&
-	    opt == NULL && treq->pktopts) {
-		struct inet6_skb_parm *rxopt = IP6CB(treq->pktopts);
-		if (rxopt->srcrt)
-			opt = ipv6_invert_rthdr(sk,
-		   (struct ipv6_rt_hdr *)(skb_network_header(treq->pktopts) +
-					  rxopt->srcrt));
-	}
 
 	if (dst == NULL) {
 		struct in6_addr *final_p = NULL, final;
@@ -2134,7 +2114,6 @@ struct proto tcpv6_prot = {
 	.shutdown		= tcp_shutdown,
 	.setsockopt		= tcp_setsockopt,
 	.getsockopt		= tcp_getsockopt,
-	.sendmsg		= tcp_sendmsg,
 	.recvmsg		= tcp_recvmsg,
 	.backlog_rcv		= tcp_v6_do_rcv,
 	.hash			= tcp_v6_hash,

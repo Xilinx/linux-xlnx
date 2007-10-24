@@ -47,11 +47,14 @@ struct paravirt_ops
 	 * The patch function should return the number of bytes of code
 	 * generated, as we nop pad the rest in generic code.
 	 */
-	unsigned (*patch)(u8 type, u16 clobber, void *firstinsn, unsigned len);
+	unsigned (*patch)(u8 type, u16 clobber, void *insnbuf,
+			  unsigned long addr, unsigned len);
 
 	/* Basic arch-specific setup */
 	void (*arch_setup)(void);
 	char *(*memory_setup)(void);
+	void (*post_allocator_init)(void);
+
 	void (*init_IRQ)(void);
 	void (*time_init)(void);
 
@@ -116,7 +119,7 @@ struct paravirt_ops
 
 	u64 (*read_tsc)(void);
 	u64 (*read_pmc)(void);
- 	u64 (*get_scheduled_cycles)(void);
+	unsigned long long (*sched_clock)(void);
 	unsigned long (*get_cpu_khz)(void);
 
 	/* Segment descriptor handling */
@@ -173,7 +176,7 @@ struct paravirt_ops
 				 unsigned long va);
 
 	/* Hooks for allocating/releasing pagetable pages */
-	void (*alloc_pt)(u32 pfn);
+	void (*alloc_pt)(struct mm_struct *mm, u32 pfn);
 	void (*alloc_pd)(u32 pfn);
 	void (*alloc_pd_clone)(u32 pfn, u32 clonepfn, u32 start, u32 count);
 	void (*release_pt)(u32 pfn);
@@ -251,15 +254,19 @@ extern struct paravirt_ops paravirt_ops;
 
 unsigned paravirt_patch_nop(void);
 unsigned paravirt_patch_ignore(unsigned len);
-unsigned paravirt_patch_call(void *target, u16 tgt_clobbers,
-			     void *site, u16 site_clobbers,
+unsigned paravirt_patch_call(void *insnbuf,
+			     const void *target, u16 tgt_clobbers,
+			     unsigned long addr, u16 site_clobbers,
 			     unsigned len);
-unsigned paravirt_patch_jmp(void *target, void *site, unsigned len);
-unsigned paravirt_patch_default(u8 type, u16 clobbers, void *site, unsigned len);
+unsigned paravirt_patch_jmp(const void *target, void *insnbuf,
+			    unsigned long addr, unsigned len);
+unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
+				unsigned long addr, unsigned len);
 
-unsigned paravirt_patch_insns(void *site, unsigned len,
+unsigned paravirt_patch_insns(void *insnbuf, unsigned len,
 			      const char *start, const char *end);
 
+int paravirt_disable_iospace(void);
 
 /*
  * This generates an indirect call based on the operation type number.
@@ -563,7 +570,10 @@ static inline u64 paravirt_read_tsc(void)
 
 #define rdtscll(val) (val = paravirt_read_tsc())
 
-#define get_scheduled_cycles(val) (val = paravirt_ops.get_scheduled_cycles())
+static inline unsigned long long paravirt_sched_clock(void)
+{
+	return PVOP_CALL0(unsigned long long, sched_clock);
+}
 #define calculate_cpu_khz() (paravirt_ops.get_cpu_khz())
 
 #define write_tsc(val1,val2) wrmsr(0x10, val1, val2)
@@ -669,6 +679,12 @@ static inline void setup_secondary_clock(void)
 }
 #endif
 
+static inline void paravirt_post_allocator_init(void)
+{
+	if (paravirt_ops.post_allocator_init)
+		(*paravirt_ops.post_allocator_init)();
+}
+
 static inline void paravirt_pagetable_setup_start(pgd_t *base)
 {
 	if (paravirt_ops.pagetable_setup_start)
@@ -725,9 +741,9 @@ static inline void flush_tlb_others(cpumask_t cpumask, struct mm_struct *mm,
 	PVOP_VCALL3(flush_tlb_others, &cpumask, mm, va);
 }
 
-static inline void paravirt_alloc_pt(unsigned pfn)
+static inline void paravirt_alloc_pt(struct mm_struct *mm, unsigned pfn)
 {
-	PVOP_VCALL1(alloc_pt, pfn);
+	PVOP_VCALL2(alloc_pt, mm, pfn);
 }
 static inline void paravirt_release_pt(unsigned pfn)
 {

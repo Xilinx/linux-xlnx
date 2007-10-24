@@ -90,12 +90,6 @@ int __init detect_cpu_and_cache_system(void)
 		current_cpu_data.type = CPU_SH7751;
 		current_cpu_data.flags |= CPU_HAS_FPU;
 		break;
-	case 0x2000:
-		current_cpu_data.type = CPU_SH73180;
-		current_cpu_data.icache.ways = 4;
-		current_cpu_data.dcache.ways = 4;
-		current_cpu_data.flags |= CPU_HAS_LLSC;
-		break;
 	case 0x2001:
 	case 0x2004:
 		current_cpu_data.type = CPU_SH7770;
@@ -140,6 +134,14 @@ int __init detect_cpu_and_cache_system(void)
 			current_cpu_data.dcache.ways = 4;
 			current_cpu_data.flags |= CPU_HAS_LLSC;
 		}
+		break;
+	case 0x4000:	/* 1st cut */
+	case 0x4001:	/* 2nd cut */
+		current_cpu_data.type = CPU_SHX3;
+		current_cpu_data.icache.ways = 4;
+		current_cpu_data.dcache.ways = 4;
+		current_cpu_data.flags |= CPU_HAS_FPU | CPU_HAS_PERF_COUNTER |
+					  CPU_HAS_LLSC;
 		break;
 	case 0x8000:
 		current_cpu_data.type = CPU_ST40RA;

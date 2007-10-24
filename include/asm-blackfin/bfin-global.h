@@ -61,11 +61,24 @@ extern void bfin_dcache_init(void);
 extern int read_iloc(void);
 extern int bfin_console_init(void);
 extern asmlinkage void lower_to_irq14(void);
+extern void init_exception_vectors(void);
 extern void init_dma(void);
 extern void program_IAR(void);
 extern void evt14_softirq(void);
 extern asmlinkage void asm_do_IRQ(unsigned int irq, struct pt_regs *regs);
 extern void bfin_gpio_interrupt_setup(int irq, int irq_pfx, int type);
+
+extern asmlinkage void finish_atomic_sections (struct pt_regs *regs);
+extern char fixed_code_start;
+extern char fixed_code_end;
+extern int atomic_xchg32(void);
+extern int atomic_cas32(void);
+extern int atomic_add32(void);
+extern int atomic_sub32(void);
+extern int atomic_ior32(void);
+extern int atomic_and32(void);
+extern int atomic_xor32(void);
+extern void sigreturn_stub(void);
 
 extern void *l1_data_A_sram_alloc(size_t);
 extern void *l1_data_B_sram_alloc(size_t);

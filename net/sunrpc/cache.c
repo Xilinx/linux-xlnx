@@ -371,8 +371,7 @@ int cache_unregister(struct cache_detail *cd)
 	}
 	if (list_empty(&cache_list)) {
 		/* module must be being unloaded so its safe to kill the worker */
-		cancel_delayed_work(&cache_cleaner);
-		flush_scheduled_work();
+		cancel_delayed_work_sync(&cache_cleaner);
 	}
 	return 0;
 }
@@ -1210,7 +1209,7 @@ static int c_show(struct seq_file *m, void *p)
 	return cd->cache_show(m, cd, cp);
 }
 
-static struct seq_operations cache_content_op = {
+static const struct seq_operations cache_content_op = {
 	.start	= c_start,
 	.next	= c_next,
 	.stop	= c_stop,

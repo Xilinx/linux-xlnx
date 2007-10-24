@@ -5,5 +5,4 @@ gen_init_cpio
 initramfs_data.cpio
 initramfs_data.cpio.gz
 initramfs_list
-bin2asm
-initramfs_data.S
+include

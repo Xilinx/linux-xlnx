@@ -16,6 +16,7 @@
 #include <linux/string.h>
 #include <linux/elf.h>
 #include <linux/mm.h>
+#include <linux/err.h>
 #include <linux/module.h>
 
 #include <asm/cpufeature.h>
@@ -336,7 +337,9 @@ struct vm_area_struct *get_gate_vma(struct task_struct *tsk)
 
 int in_gate_area(struct task_struct *task, unsigned long addr)
 {
-	return 0;
+	const struct vm_area_struct *vma = get_gate_vma(task);
+
+	return vma && addr >= vma->vm_start && addr < vma->vm_end;
 }
 
 int in_gate_area_no_task(unsigned long addr)

@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/mmc/mmc.c
+ *  linux/drivers/mmc/core/mmc.c
  *
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
  *  Copyright (C) 2005-2007 Pierre Ossman, All Rights Reserved.
@@ -18,6 +18,7 @@
 
 #include "core.h"
 #include "sysfs.h"
+#include "bus.h"
 #include "mmc_ops.h"
 
 static const unsigned int tran_exp[] = {
@@ -99,7 +100,7 @@ static int mmc_decode_cid(struct mmc_card *card)
 		break;
 
 	default:
-		printk("%s: card has unknown MMCA version %d\n",
+		printk(KERN_ERR "%s: card has unknown MMCA version %d\n",
 			mmc_hostname(card->host), card->csd.mmca_vsn);
 		return -EINVAL;
 	}
@@ -122,7 +123,7 @@ static int mmc_decode_csd(struct mmc_card *card)
 	 */
 	csd_struct = UNSTUFF_BITS(resp, 126, 2);
 	if (csd_struct != 1 && csd_struct != 2) {
-		printk("%s: unrecognised CSD structure version %d\n",
+		printk(KERN_ERR "%s: unrecognised CSD structure version %d\n",
 			mmc_hostname(card->host), csd_struct);
 		return -EINVAL;
 	}
@@ -236,7 +237,7 @@ out:
  * In the case of a resume, "curcard" will contain the card
  * we're trying to reinitialise.
  */
-static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
+static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	struct mmc_card *oldcard)
 {
 	struct mmc_card *card;
@@ -413,13 +414,59 @@ static void mmc_detect(struct mmc_host *host)
 	mmc_release_host(host);
 
 	if (err != MMC_ERR_NONE) {
-		mmc_remove_card(host->card);
-		host->card = NULL;
+		mmc_remove(host);
 
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
 		mmc_release_host(host);
 	}
+}
+
+MMC_ATTR_FN(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
+	card->raw_cid[2], card->raw_cid[3]);
+MMC_ATTR_FN(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
+	card->raw_csd[2], card->raw_csd[3]);
+MMC_ATTR_FN(date, "%02d/%04d\n", card->cid.month, card->cid.year);
+MMC_ATTR_FN(fwrev, "0x%x\n", card->cid.fwrev);
+MMC_ATTR_FN(hwrev, "0x%x\n", card->cid.hwrev);
+MMC_ATTR_FN(manfid, "0x%06x\n", card->cid.manfid);
+MMC_ATTR_FN(name, "%s\n", card->cid.prod_name);
+MMC_ATTR_FN(oemid, "0x%04x\n", card->cid.oemid);
+MMC_ATTR_FN(serial, "0x%08x\n", card->cid.serial);
+
+static struct device_attribute mmc_dev_attrs[] = {
+	MMC_ATTR_RO(cid),
+	MMC_ATTR_RO(csd),
+	MMC_ATTR_RO(date),
+	MMC_ATTR_RO(fwrev),
+	MMC_ATTR_RO(hwrev),
+	MMC_ATTR_RO(manfid),
+	MMC_ATTR_RO(name),
+	MMC_ATTR_RO(oemid),
+	MMC_ATTR_RO(serial),
+	__ATTR_NULL,
+};
+
+/*
+ * Adds sysfs entries as relevant.
+ */
+static int mmc_sysfs_add(struct mmc_host *host, struct mmc_card *card)
+{
+	int ret;
+
+	ret = mmc_add_attrs(card, mmc_dev_attrs);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+/*
+ * Removes the sysfs entries added by mmc_sysfs_add().
+ */
+static void mmc_sysfs_remove(struct mmc_host *host, struct mmc_card *card)
+{
+	mmc_remove_attrs(card, mmc_dev_attrs);
 }
 
 #ifdef CONFIG_MMC_UNSAFE_RESUME
@@ -452,16 +499,17 @@ static void mmc_resume(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
+	err = mmc_init_card(host, host->ocr, host->card);
+	mmc_release_host(host);
 
-	err = mmc_sd_init_card(host, host->ocr, host->card);
 	if (err != MMC_ERR_NONE) {
-		mmc_remove_card(host->card);
-		host->card = NULL;
+		mmc_remove(host);
 
+		mmc_claim_host(host);
 		mmc_detach_bus(host);
+		mmc_release_host(host);
 	}
 
-	mmc_release_host(host);
 }
 
 #else
@@ -474,6 +522,8 @@ static void mmc_resume(struct mmc_host *host)
 static const struct mmc_bus_ops mmc_ops = {
 	.remove = mmc_remove,
 	.detect = mmc_detect,
+	.sysfs_add = mmc_sysfs_add,
+	.sysfs_remove = mmc_sysfs_remove,
 	.suspend = mmc_suspend,
 	.resume = mmc_resume,
 };
@@ -506,31 +556,36 @@ int mmc_attach_mmc(struct mmc_host *host, u32 ocr)
 	/*
 	 * Can we support the voltage of the card?
 	 */
-	if (!host->ocr)
+	if (!host->ocr) {
+		err = -EINVAL;
 		goto err;
+	}
 
 	/*
 	 * Detect and init the card.
 	 */
-	err = mmc_sd_init_card(host, host->ocr, NULL);
+	err = mmc_init_card(host, host->ocr, NULL);
 	if (err != MMC_ERR_NONE)
 		goto err;
 
 	mmc_release_host(host);
 
-	err = mmc_register_card(host->card);
+	err = mmc_add_card(host->card);
 	if (err)
-		goto reclaim_host;
+		goto remove_card;
 
 	return 0;
 
-reclaim_host:
-	mmc_claim_host(host);
+remove_card:
 	mmc_remove_card(host->card);
 	host->card = NULL;
+	mmc_claim_host(host);
 err:
 	mmc_detach_bus(host);
 	mmc_release_host(host);
+
+	printk(KERN_ERR "%s: error %d whilst initialising MMC card\n",
+		mmc_hostname(host), err);
 
 	return 0;
 }

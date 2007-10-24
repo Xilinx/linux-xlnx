@@ -369,25 +369,54 @@ static void tty_buffer_free(struct tty_struct *tty, struct tty_buffer *b)
 }
 
 /**
+ *	__tty_buffer_flush		-	flush full tty buffers
+ *	@tty: tty to flush
+ *
+ *	flush all the buffers containing receive data. Caller must
+ *	hold the buffer lock and must have ensured no parallel flush to
+ *	ldisc is running.
+ *
+ *	Locking: Caller must hold tty->buf.lock
+ */
+
+static void __tty_buffer_flush(struct tty_struct *tty)
+{
+	struct tty_buffer *thead;
+
+	while((thead = tty->buf.head) != NULL) {
+		tty->buf.head = thead->next;
+		tty_buffer_free(tty, thead);
+	}
+	tty->buf.tail = NULL;
+}
+
+/**
  *	tty_buffer_flush		-	flush full tty buffers
  *	@tty: tty to flush
  *
- *	flush all the buffers containing receive data
+ *	flush all the buffers containing receive data. If the buffer is
+ *	being processed by flush_to_ldisc then we defer the processing
+ *	to that function
  *
  *	Locking: none
  */
 
 static void tty_buffer_flush(struct tty_struct *tty)
 {
-	struct tty_buffer *thead;
 	unsigned long flags;
-
 	spin_lock_irqsave(&tty->buf.lock, flags);
-	while((thead = tty->buf.head) != NULL) {
-		tty->buf.head = thead->next;
-		tty_buffer_free(tty, thead);
-	}
-	tty->buf.tail = NULL;
+
+	/* If the data is being pushed to the tty layer then we can't
+	   process it here. Instead set a flag and the flush_to_ldisc
+	   path will process the flush request before it exits */
+	if (test_bit(TTY_FLUSHING, &tty->flags)) {
+		set_bit(TTY_FLUSHPENDING, &tty->flags);
+		spin_unlock_irqrestore(&tty->buf.lock, flags);
+		wait_event(tty->read_wait,
+				test_bit(TTY_FLUSHPENDING, &tty->flags) == 0);
+		return;
+	} else
+		__tty_buffer_flush(tty);
 	spin_unlock_irqrestore(&tty->buf.lock, flags);
 }
 
@@ -1503,6 +1532,15 @@ int tty_hung_up_p(struct file * filp)
 
 EXPORT_SYMBOL(tty_hung_up_p);
 
+/**
+ * is_tty	-	checker whether file is a TTY
+ */
+int is_tty(struct file *filp)
+{
+	return filp->f_op->read == tty_read
+		|| filp->f_op->read == hung_up_tty_read;
+}
+
 static void session_clear_tty(struct pid *session)
 {
 	struct task_struct *p;
@@ -1726,6 +1764,23 @@ static ssize_t tty_read(struct file * file, char __user * buf, size_t count,
 	return i;
 }
 
+void tty_write_unlock(struct tty_struct *tty)
+{
+	mutex_unlock(&tty->atomic_write_lock);
+	wake_up_interruptible(&tty->write_wait);
+}
+
+int tty_write_lock(struct tty_struct *tty, int ndelay)
+{
+	if (!mutex_trylock(&tty->atomic_write_lock)) {
+		if (ndelay)
+			return -EAGAIN;
+		if (mutex_lock_interruptible(&tty->atomic_write_lock))
+			return -ERESTARTSYS;
+	}
+	return 0;
+}
+
 /*
  * Split writes up in sane blocksizes to avoid
  * denial-of-service type attacks
@@ -1737,13 +1792,12 @@ static inline ssize_t do_tty_write(
 	const char __user *buf,
 	size_t count)
 {
-	ssize_t ret = 0, written = 0;
+	ssize_t ret, written = 0;
 	unsigned int chunk;
 	
-	/* FIXME: O_NDELAY ... */
-	if (mutex_lock_interruptible(&tty->atomic_write_lock)) {
-		return -ERESTARTSYS;
-	}
+	ret = tty_write_lock(tty, file->f_flags & O_NDELAY);
+	if (ret < 0)
+		return ret;
 
 	/*
 	 * We chunk up writes into a temporary buffer. This
@@ -1776,8 +1830,8 @@ static inline ssize_t do_tty_write(
 
 		buf = kmalloc(chunk, GFP_KERNEL);
 		if (!buf) {
-			mutex_unlock(&tty->atomic_write_lock);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto out;
 		}
 		kfree(tty->write_buf);
 		tty->write_cnt = chunk;
@@ -1812,7 +1866,8 @@ static inline ssize_t do_tty_write(
 		inode->i_mtime = current_fs_time(inode->i_sb);
 		ret = written;
 	}
-	mutex_unlock(&tty->atomic_write_lock);
+out:
+	tty_write_unlock(tty);
 	return ret;
 }
 
@@ -2008,19 +2063,16 @@ static int init_dev(struct tty_driver *driver, int idx,
 	}
 
 	if (!*tp_loc) {
-		tp = (struct ktermios *) kmalloc(sizeof(struct ktermios),
-						GFP_KERNEL);
+		tp = kmalloc(sizeof(struct ktermios), GFP_KERNEL);
 		if (!tp)
 			goto free_mem_out;
 		*tp = driver->init_termios;
 	}
 
 	if (!*ltp_loc) {
-		ltp = (struct ktermios *) kmalloc(sizeof(struct ktermios),
-						 GFP_KERNEL);
+		ltp = kzalloc(sizeof(struct ktermios), GFP_KERNEL);
 		if (!ltp)
 			goto free_mem_out;
-		memset(ltp, 0, sizeof(struct ktermios));
 	}
 
 	if (driver->type == TTY_DRIVER_TYPE_PTY) {
@@ -2041,19 +2093,16 @@ static int init_dev(struct tty_driver *driver, int idx,
 		}
 
 		if (!*o_tp_loc) {
-			o_tp = (struct ktermios *)
-				kmalloc(sizeof(struct ktermios), GFP_KERNEL);
+			o_tp = kmalloc(sizeof(struct ktermios), GFP_KERNEL);
 			if (!o_tp)
 				goto free_mem_out;
 			*o_tp = driver->other->init_termios;
 		}
 
 		if (!*o_ltp_loc) {
-			o_ltp = (struct ktermios *)
-				kmalloc(sizeof(struct ktermios), GFP_KERNEL);
+			o_ltp = kzalloc(sizeof(struct ktermios), GFP_KERNEL);
 			if (!o_ltp)
 				goto free_mem_out;
-			memset(o_ltp, 0, sizeof(struct ktermios));
 		}
 
 		/*
@@ -2660,6 +2709,7 @@ got_driver:
 		__proc_set_tty(current, tty);
 	spin_unlock_irq(&current->sighand->siglock);
 	mutex_unlock(&tty_mutex);
+	tty_audit_opening();
 	return 0;
 }
 
@@ -2722,8 +2772,10 @@ static int ptmx_open(struct inode * inode, struct file * filp)
 
 	check_tty_count(tty, "tty_open");
 	retval = ptm_driver->open(tty, filp);
-	if (!retval)
+	if (!retval) {
+		tty_audit_opening();
 		return 0;
+	}
 out1:
 	release_dev(filp);
 	return retval;
@@ -3163,14 +3215,13 @@ static int tiocsetd(struct tty_struct *tty, int __user *p)
 
 static int send_break(struct tty_struct *tty, unsigned int duration)
 {
-	if (mutex_lock_interruptible(&tty->atomic_write_lock))
+	if (tty_write_lock(tty, 0) < 0)
 		return -EINTR;
 	tty->driver->break_ctl(tty, -1);
-	if (!signal_pending(current)) {
+	if (!signal_pending(current))
 		msleep_interruptible(duration);
-	}
 	tty->driver->break_ctl(tty, 0);
-	mutex_unlock(&tty->atomic_write_lock);
+	tty_write_unlock(tty);
 	if (signal_pending(current))
 		return -EINTR;
 	return 0;
@@ -3570,6 +3621,7 @@ static void flush_to_ldisc(struct work_struct *work)
 		return;
 
 	spin_lock_irqsave(&tty->buf.lock, flags);
+	set_bit(TTY_FLUSHING, &tty->flags);	/* So we know a flush is running */
 	head = tty->buf.head;
 	if (head != NULL) {
 		tty->buf.head = NULL;
@@ -3583,6 +3635,11 @@ static void flush_to_ldisc(struct work_struct *work)
 				tty_buffer_free(tty, tbuf);
 				continue;
 			}
+			/* Ldisc or user is trying to flush the buffers
+			   we are feeding to the ldisc, stop feeding the
+			   line discipline as we want to empty the queue */
+			if (test_bit(TTY_FLUSHPENDING, &tty->flags))
+				break;
 			if (!tty->receive_room) {
 				schedule_delayed_work(&tty->buf.work, 1);
 				break;
@@ -3596,8 +3653,17 @@ static void flush_to_ldisc(struct work_struct *work)
 			disc->receive_buf(tty, char_buf, flag_buf, count);
 			spin_lock_irqsave(&tty->buf.lock, flags);
 		}
+		/* Restore the queue head */
 		tty->buf.head = head;
 	}
+	/* We may have a deferred request to flush the input buffer,
+	   if so pull the chain under the lock and empty the queue */
+	if (test_bit(TTY_FLUSHPENDING, &tty->flags)) {
+		__tty_buffer_flush(tty);
+		clear_bit(TTY_FLUSHPENDING, &tty->flags);
+		wake_up(&tty->read_wait);
+	}
+	clear_bit(TTY_FLUSHING, &tty->flags);
 	spin_unlock_irqrestore(&tty->buf.lock, flags);
 
 	tty_ldisc_deref(disc);
@@ -3739,9 +3805,8 @@ struct tty_driver *alloc_tty_driver(int lines)
 {
 	struct tty_driver *driver;
 
-	driver = kmalloc(sizeof(struct tty_driver), GFP_KERNEL);
+	driver = kzalloc(sizeof(struct tty_driver), GFP_KERNEL);
 	if (driver) {
-		memset(driver, 0, sizeof(struct tty_driver));
 		driver->magic = TTY_DRIVER_MAGIC;
 		driver->num = lines;
 		/* later we'll move allocation of tables here */

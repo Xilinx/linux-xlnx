@@ -336,7 +336,7 @@ static void cx8802_timeout(unsigned long data)
 {
 	struct cx8802_dev *dev = (struct cx8802_dev*)data;
 
-	dprintk(0, "%s\n",__FUNCTION__);
+	dprintk(1, "%s\n",__FUNCTION__);
 
 	if (debug)
 		cx88_sram_channel_dump(dev->core, &cx88_sram_channels[SRAM_CH28]);
@@ -580,7 +580,7 @@ struct cx8802_dev * cx8802_get_device(struct inode *inode)
 
 	list_for_each(list,&cx8802_devlist) {
 		h = list_entry(list, struct cx8802_dev, devlist);
-		if (h->mpeg_dev->minor == minor)
+		if (h->mpeg_dev && h->mpeg_dev->minor == minor)
 			return h;
 	}
 

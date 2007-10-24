@@ -39,6 +39,8 @@
 #if !defined( IB_MAD_H )
 #define IB_MAD_H
 
+#include <linux/list.h>
+
 #include <rdma/ib_verbs.h>
 
 /* Management base version */
@@ -110,6 +112,9 @@
 #define IB_QP1		__constant_htonl(1)
 #define IB_QP1_QKEY	0x80010000
 #define IB_QP_SET_QKEY	0x80000000
+
+#define IB_DEFAULT_PKEY_PARTIAL 0x7FFF
+#define IB_DEFAULT_PKEY_FULL	0xFFFF
 
 enum {
 	IB_MGMT_MAD_HDR = 24,

@@ -213,7 +213,7 @@ int __init metapage_init(void)
 	 * Allocate the metapage structures
 	 */
 	metapage_cache = kmem_cache_create("jfs_mp", sizeof(struct metapage),
-					   0, 0, init_once, NULL);
+					   0, 0, init_once);
 	if (metapage_cache == NULL)
 		return -ENOMEM;
 
@@ -472,7 +472,8 @@ add_failed:
 	printk(KERN_ERR "JFS: bio_add_page failed unexpectedly\n");
 	goto skip;
 dump_bio:
-	dump_mem("bio", bio, sizeof(*bio));
+	print_hex_dump(KERN_ERR, "JFS: dump of bio: ", DUMP_PREFIX_ADDRESS, 16,
+		       4, bio, sizeof(*bio), 0);
 skip:
 	bio_put(bio);
 	unlock_page(page);

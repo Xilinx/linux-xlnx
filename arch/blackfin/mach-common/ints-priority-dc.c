@@ -183,7 +183,7 @@ static void bf561_gpio_ack_irq(unsigned int irq)
 {
 	u16 gpionr = irq - IRQ_PF0;
 
-	if(gpio_edge_triggered[gpio_bank(gpionr)] & gpio_bit(gpionr)) {
+	if (gpio_edge_triggered[gpio_bank(gpionr)] & gpio_bit(gpionr)) {
 		set_gpio_data(gpionr, 0);
 		SSYNC();
 	}
@@ -193,7 +193,7 @@ static void bf561_gpio_mask_ack_irq(unsigned int irq)
 {
 	u16 gpionr = irq - IRQ_PF0;
 
-	if(gpio_edge_triggered[gpio_bank(gpionr)] & gpio_bit(gpionr)) {
+	if (gpio_edge_triggered[gpio_bank(gpionr)] & gpio_bit(gpionr)) {
 		set_gpio_data(gpionr, 0);
 		SSYNC();
 	}
@@ -222,7 +222,7 @@ static unsigned int bf561_gpio_irq_startup(unsigned int irq)
 	if (!(gpio_enabled[gpio_bank(gpionr)] & gpio_bit(gpionr))) {
 
 		ret = gpio_request(gpionr, NULL);
-		if(ret)
+		if (ret)
 			return ret;
 
 	}
@@ -262,7 +262,7 @@ static int bf561_gpio_irq_type(unsigned int irq, unsigned int type)
 		if (!(gpio_enabled[gpio_bank(gpionr)] & gpio_bit(gpionr))) {
 
 			ret = gpio_request(gpionr, NULL);
-			if(ret)
+			if (ret)
 				return ret;
 
 		}
@@ -358,22 +358,9 @@ static void bf561_demux_gpio_irq(unsigned int inta_irq,
 
 #endif				/* CONFIG_IRQCHIP_DEMUX_GPIO */
 
-/*
- * This function should be called during kernel startup to initialize
- * the BFin IRQ handling routines.
- */
-int __init init_arch_irq(void)
+void __init init_exception_vectors(void)
 {
-	int irq;
-	unsigned long ilat = 0;
-	/*  Disable all the peripheral intrs  - page 4-29 HW Ref manual */
-	bfin_write_SICA_IMASK0(SIC_UNMASK_ALL);
-	bfin_write_SICA_IMASK1(SIC_UNMASK_ALL);
 	SSYNC();
-
-	local_irq_disable();
-
-	init_exception_buff();
 
 #ifndef CONFIG_KGDB
 	bfin_write_EVT0(evt_emulation);
@@ -392,8 +379,29 @@ int __init init_arch_irq(void)
 	bfin_write_EVT14(evt14_softirq);
 	bfin_write_EVT15(evt_system_call);
 	CSYNC();
+}
 
-	for (irq = 0; irq < SYS_IRQS; irq++) {
+/*
+ * This function should be called during kernel startup to initialize
+ * the BFin IRQ handling routines.
+ */
+int __init init_arch_irq(void)
+{
+	int irq;
+	unsigned long ilat = 0;
+	/*  Disable all the peripheral intrs  - page 4-29 HW Ref manual */
+	bfin_write_SICA_IMASK0(SIC_UNMASK_ALL);
+	bfin_write_SICA_IMASK1(SIC_UNMASK_ALL);
+	SSYNC();
+
+	bfin_write_SICA_IWR0(IWR_ENABLE_ALL);
+	bfin_write_SICA_IWR1(IWR_ENABLE_ALL);
+
+	local_irq_disable();
+
+	init_exception_buff();
+
+	for (irq = 0; irq <= SYS_IRQS; irq++) {
 		if (irq <= IRQ_CORETMR)
 			set_irq_chip(irq, &bf561_core_irqchip);
 		else

@@ -12,6 +12,7 @@
 #include <linux/errno.h>
 #include <linux/linkage.h>
 #include <linux/mm.h>
+#include <linux/fs.h>
 #include <linux/smp.h>
 #include <linux/mman.h>
 #include <linux/ptrace.h>
@@ -167,14 +168,14 @@ sys_mmap2(unsigned long addr, unsigned long len, unsigned long prot,
 }
 
 save_static_function(sys_fork);
-__attribute_used__ noinline static int
+static int __used noinline
 _sys_fork(nabi_no_regargs struct pt_regs regs)
 {
 	return do_fork(SIGCHLD, regs.regs[29], &regs, 0, NULL, NULL);
 }
 
 save_static_function(sys_clone);
-__attribute_used__ noinline static int
+static int __used noinline
 _sys_clone(nabi_no_regargs struct pt_regs regs)
 {
 	unsigned long clone_flags;
@@ -272,25 +273,32 @@ asmlinkage int sys_set_thread_area(unsigned long addr)
 	struct thread_info *ti = task_thread_info(current);
 
 	ti->tp_value = addr;
-
-	/* If some future MIPS implementation has this register in hardware,
-	 * we will need to update it here (and in context switches).  */
+	if (cpu_has_userlocal)
+		write_c0_userlocal(addr);
 
 	return 0;
 }
 
 asmlinkage int _sys_sysmips(int cmd, long arg1, int arg2, int arg3)
 {
-	int	tmp;
-
-	switch(cmd) {
+	switch (cmd) {
 	case MIPS_ATOMIC_SET:
 		printk(KERN_CRIT "How did I get here?\n");
 		return -EINVAL;
 
 	case MIPS_FIXADE:
-		tmp = current->thread.mflags & ~3;
-		current->thread.mflags = tmp | (arg1 & 3);
+		if (arg1 & ~3)
+			return -EINVAL;
+
+		if (arg1 & 1)
+			set_thread_flag(TIF_FIXADE);
+		else
+			clear_thread_flag(TIF_FIXADE);
+		if (arg1 & 2)
+			set_thread_flag(TIF_LOGADE);
+		else
+			clear_thread_flag(TIF_FIXADE);
+
 		return 0;
 
 	case FLUSH_CACHE:

@@ -102,11 +102,14 @@ int sysctl_tcp_abc __read_mostly;
 #define FLAG_DATA_LOST		0x80 /* SACK detected data lossage.		*/
 #define FLAG_SLOWPATH		0x100 /* Do not skip RFC checks for window update.*/
 #define FLAG_ONLY_ORIG_SACKED	0x200 /* SACKs only non-rexmit sent before RTO */
+#define FLAG_SND_UNA_ADVANCED	0x400 /* Snd_una was changed (!= FLAG_DATA_ACKED) */
+#define FLAG_DSACKING_ACK	0x800 /* SACK blocks contained DSACK info */
 
 #define FLAG_ACKED		(FLAG_DATA_ACKED|FLAG_SYN_ACKED)
 #define FLAG_NOT_DUP		(FLAG_DATA|FLAG_WIN_UPDATE|FLAG_ACKED)
 #define FLAG_CA_ALERT		(FLAG_DATA_SACKED|FLAG_ECE)
 #define FLAG_FORWARD_PROGRESS	(FLAG_ACKED|FLAG_DATA_SACKED)
+#define FLAG_ANY_PROGRESS	(FLAG_FORWARD_PROGRESS|FLAG_SND_UNA_ADVANCED)
 
 #define IsReno(tp) ((tp)->rx_opt.sack_ok == 0)
 #define IsFack(tp) ((tp)->rx_opt.sack_ok & 2)
@@ -552,6 +555,16 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 		tcp_grow_window(sk, skb);
 }
 
+static u32 tcp_rto_min(struct sock *sk)
+{
+	struct dst_entry *dst = __sk_dst_get(sk);
+	u32 rto_min = TCP_RTO_MIN;
+
+	if (dst && dst_metric_locked(dst, RTAX_RTO_MIN))
+		rto_min = dst->metrics[RTAX_RTO_MIN-1];
+	return rto_min;
+}
+
 /* Called to compute a smoothed rtt estimate. The data fed to this
  * routine either comes from timestamps, or from segments that were
  * known _not_ to have been retransmitted [see Karn/Partridge
@@ -613,13 +626,13 @@ static void tcp_rtt_estimator(struct sock *sk, const __u32 mrtt)
 			if (tp->mdev_max < tp->rttvar)
 				tp->rttvar -= (tp->rttvar-tp->mdev_max)>>2;
 			tp->rtt_seq = tp->snd_nxt;
-			tp->mdev_max = TCP_RTO_MIN;
+			tp->mdev_max = tcp_rto_min(sk);
 		}
 	} else {
 		/* no previous measure. */
 		tp->srtt = m<<3;	/* take the measured time to be rtt */
 		tp->mdev = m<<1;	/* make sure rto = 3*rtt */
-		tp->mdev_max = tp->rttvar = max(tp->mdev, TCP_RTO_MIN);
+		tp->mdev_max = tp->rttvar = max(tp->mdev, tcp_rto_min(sk));
 		tp->rtt_seq = tp->snd_nxt;
 	}
 }
@@ -752,7 +765,15 @@ void tcp_update_metrics(struct sock *sk)
 	}
 }
 
-/* Numbers are taken from RFC2414.  */
+/* Numbers are taken from RFC3390.
+ *
+ * John Heffner states:
+ *
+ *	The RFC specifies a window of no more than 4380 bytes
+ *	unless 2*MSS > 4380.  Reading the pseudocode in the RFC
+ *	is a bit misleading because they use a clamp at 4380 bytes
+ *	rather than use a multiplier in the relevant range.
+ */
 __u32 tcp_init_cwnd(struct tcp_sock *tp, struct dst_entry *dst)
 {
 	__u32 cwnd = (dst ? dst_metric(dst, RTAX_INITCWND) : 0);
@@ -964,12 +985,14 @@ tcp_sacktag_write_queue(struct sock *sk, struct sk_buff *ack_skb, u32 prior_snd_
 
 	/* Check for D-SACK. */
 	if (before(ntohl(sp[0].start_seq), TCP_SKB_CB(ack_skb)->ack_seq)) {
+		flag |= FLAG_DSACKING_ACK;
 		found_dup_sack = 1;
 		tp->rx_opt.sack_ok |= 4;
 		NET_INC_STATS_BH(LINUX_MIB_TCPDSACKRECV);
 	} else if (num_sacks > 1 &&
 			!after(ntohl(sp[0].end_seq), ntohl(sp[1].end_seq)) &&
 			!before(ntohl(sp[0].start_seq), ntohl(sp[1].start_seq))) {
+		flag |= FLAG_DSACKING_ACK;
 		found_dup_sack = 1;
 		tp->rx_opt.sack_ok |= 4;
 		NET_INC_STATS_BH(LINUX_MIB_TCPDSACKOFORECV);
@@ -1398,7 +1421,9 @@ static void tcp_enter_frto_loss(struct sock *sk, int allowed_segments, int flag)
 		 * waiting for the first ACK and did not get it)...
 		 */
 		if ((tp->frto_counter == 1) && !(flag&FLAG_DATA_ACKED)) {
-			tp->retrans_out += tcp_skb_pcount(skb);
+			/* For some reason this R-bit might get cleared? */
+			if (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_RETRANS)
+				tp->retrans_out += tcp_skb_pcount(skb);
 			/* ...enter this if branch just for the first segment */
 			flag |= FLAG_DATA_ACKED;
 		} else {
@@ -1849,19 +1874,22 @@ static inline u32 tcp_cwnd_min(const struct sock *sk)
 }
 
 /* Decrease cwnd each second ack. */
-static void tcp_cwnd_down(struct sock *sk)
+static void tcp_cwnd_down(struct sock *sk, int flag)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	int decr = tp->snd_cwnd_cnt + 1;
 
-	tp->snd_cwnd_cnt = decr&1;
-	decr >>= 1;
+	if ((flag&(FLAG_ANY_PROGRESS|FLAG_DSACKING_ACK)) ||
+	    (IsReno(tp) && !(flag&FLAG_NOT_DUP))) {
+		tp->snd_cwnd_cnt = decr&1;
+		decr >>= 1;
 
-	if (decr && tp->snd_cwnd > tcp_cwnd_min(sk))
-		tp->snd_cwnd -= decr;
+		if (decr && tp->snd_cwnd > tcp_cwnd_min(sk))
+			tp->snd_cwnd -= decr;
 
-	tp->snd_cwnd = min(tp->snd_cwnd, tcp_packets_in_flight(tp)+1);
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+		tp->snd_cwnd = min(tp->snd_cwnd, tcp_packets_in_flight(tp)+1);
+		tp->snd_cwnd_stamp = tcp_time_stamp;
+	}
 }
 
 /* Nothing was retransmitted or returned timestamp is less
@@ -2058,7 +2086,7 @@ static void tcp_try_to_open(struct sock *sk, int flag)
 		}
 		tcp_moderate_cwnd(tp);
 	} else {
-		tcp_cwnd_down(sk);
+		tcp_cwnd_down(sk, flag);
 	}
 }
 
@@ -2102,12 +2130,13 @@ static void tcp_mtup_probe_success(struct sock *sk, struct sk_buff *skb)
  * tcp_xmit_retransmit_queue().
  */
 static void
-tcp_fastretrans_alert(struct sock *sk, u32 prior_snd_una,
-		      int prior_packets, int flag)
+tcp_fastretrans_alert(struct sock *sk, int prior_packets, int flag)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
-	int is_dupack = (tp->snd_una == prior_snd_una && !(flag&FLAG_NOT_DUP));
+	int is_dupack = !(flag&(FLAG_SND_UNA_ADVANCED|FLAG_NOT_DUP));
+	int do_lost = is_dupack || ((flag&FLAG_DATA_SACKED) &&
+				    (tp->fackets_out > tp->reordering));
 
 	/* Some technical things:
 	 * 1. Reno does not count dupacks (sacked_out) automatically. */
@@ -2184,14 +2213,14 @@ tcp_fastretrans_alert(struct sock *sk, u32 prior_snd_una,
 	/* F. Process state. */
 	switch (icsk->icsk_ca_state) {
 	case TCP_CA_Recovery:
-		if (prior_snd_una == tp->snd_una) {
+		if (!(flag & FLAG_SND_UNA_ADVANCED)) {
 			if (IsReno(tp) && is_dupack)
 				tcp_add_reno_sack(sk);
 		} else {
 			int acked = prior_packets - tp->packets_out;
 			if (IsReno(tp))
 				tcp_remove_reno_sacks(sk, acked);
-			is_dupack = tcp_try_undo_partial(sk, acked);
+			do_lost = tcp_try_undo_partial(sk, acked);
 		}
 		break;
 	case TCP_CA_Loss:
@@ -2207,7 +2236,7 @@ tcp_fastretrans_alert(struct sock *sk, u32 prior_snd_una,
 		/* Loss is undone; fall through to processing in Open state. */
 	default:
 		if (IsReno(tp)) {
-			if (tp->snd_una != prior_snd_una)
+			if (flag & FLAG_SND_UNA_ADVANCED)
 				tcp_reset_reno_sack(tp);
 			if (is_dupack)
 				tcp_add_reno_sack(sk);
@@ -2256,9 +2285,9 @@ tcp_fastretrans_alert(struct sock *sk, u32 prior_snd_una,
 		tcp_set_ca_state(sk, TCP_CA_Recovery);
 	}
 
-	if (is_dupack || tcp_head_timedout(sk))
+	if (do_lost || tcp_head_timedout(sk))
 		tcp_update_scoreboard(sk);
-	tcp_cwnd_down(sk);
+	tcp_cwnd_down(sk, flag);
 	tcp_xmit_retransmit_queue(sk);
 }
 
@@ -2321,11 +2350,11 @@ static inline void tcp_ack_update_rtt(struct sock *sk, const int flag,
 		tcp_ack_no_tstamp(sk, seq_rtt, flag);
 }
 
-static void tcp_cong_avoid(struct sock *sk, u32 ack, u32 rtt,
+static void tcp_cong_avoid(struct sock *sk, u32 ack,
 			   u32 in_flight, int good)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
-	icsk->icsk_ca_ops->cong_avoid(sk, ack, rtt, in_flight, good);
+	icsk->icsk_ca_ops->cong_avoid(sk, ack, in_flight, good);
 	tcp_sk(sk)->snd_cwnd_stamp = tcp_time_stamp;
 }
 
@@ -2391,6 +2420,9 @@ static int tcp_tso_acked(struct sock *sk, struct sk_buff *skb,
 			__u32 dval = min(tp->fackets_out, packets_acked);
 			tp->fackets_out -= dval;
 		}
+		/* hint's skb might be NULL but we don't need to care */
+		tp->fastpath_cnt_hint -= min_t(u32, packets_acked,
+					       tp->fastpath_cnt_hint);
 		tp->packets_out -= packets_acked;
 
 		BUG_ON(tcp_skb_pcount(skb) == 0);
@@ -2488,12 +2520,23 @@ static int tcp_clean_rtx_queue(struct sock *sk, __s32 *seq_rtt_p)
 		tcp_ack_update_rtt(sk, acked, seq_rtt);
 		tcp_ack_packets_out(sk);
 
-		/* Is the ACK triggering packet unambiguous? */
-		if (acked & FLAG_RETRANS_DATA_ACKED)
-			last_ackt = net_invalid_timestamp();
+		if (ca_ops->pkts_acked) {
+			s32 rtt_us = -1;
 
-		if (ca_ops->pkts_acked)
-			ca_ops->pkts_acked(sk, pkts_acked, last_ackt);
+			/* Is the ACK triggering packet unambiguous? */
+			if (!(acked & FLAG_RETRANS_DATA_ACKED)) {
+				/* High resolution needed and available? */
+				if (ca_ops->flags & TCP_CONG_RTT_STAMP &&
+				    !ktime_equal(last_ackt,
+						 net_invalid_timestamp()))
+					rtt_us = ktime_us_delta(ktime_get_real(),
+								last_ackt);
+				else if (seq_rtt > 0)
+					rtt_us = jiffies_to_usecs(seq_rtt);
+			}
+
+			ca_ops->pkts_acked(sk, pkts_acked, rtt_us);
+		}
 	}
 
 #if FASTRETRANS_DEBUG > 0
@@ -2665,7 +2708,7 @@ static void tcp_undo_spur_to_response(struct sock *sk, int flag)
  *     to prove that the RTO is indeed spurious. It transfers the control
  *     from F-RTO to the conventional RTO recovery
  */
-static int tcp_process_frto(struct sock *sk, u32 prior_snd_una, int flag)
+static int tcp_process_frto(struct sock *sk, int flag)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -2685,8 +2728,7 @@ static int tcp_process_frto(struct sock *sk, u32 prior_snd_una, int flag)
 		 * ACK isn't duplicate nor advances window, e.g., opposite dir
 		 * data, winupdate
 		 */
-		if ((tp->snd_una == prior_snd_una) && (flag&FLAG_NOT_DUP) &&
-		    !(flag&FLAG_FORWARD_PROGRESS))
+		if (!(flag&FLAG_ANY_PROGRESS) && (flag&FLAG_NOT_DUP))
 			return 1;
 
 		if (!(flag&FLAG_DATA_ACKED)) {
@@ -2766,6 +2808,9 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)
 	if (before(ack, prior_snd_una))
 		goto old_ack;
 
+	if (after(ack, prior_snd_una))
+		flag |= FLAG_SND_UNA_ADVANCED;
+
 	if (sysctl_tcp_abc) {
 		if (icsk->icsk_ca_state < TCP_CA_CWR)
 			tp->bytes_acked += ack - prior_snd_una;
@@ -2818,17 +2863,17 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)
 	flag |= tcp_clean_rtx_queue(sk, &seq_rtt);
 
 	if (tp->frto_counter)
-		frto_cwnd = tcp_process_frto(sk, prior_snd_una, flag);
+		frto_cwnd = tcp_process_frto(sk, flag);
 
 	if (tcp_ack_is_dubious(sk, flag)) {
 		/* Advance CWND, if state allows this. */
 		if ((flag & FLAG_DATA_ACKED) && !frto_cwnd &&
 		    tcp_may_raise_cwnd(sk, flag))
-			tcp_cong_avoid(sk, ack,  seq_rtt, prior_in_flight, 0);
-		tcp_fastretrans_alert(sk, prior_snd_una, prior_packets, flag);
+			tcp_cong_avoid(sk, ack, prior_in_flight, 0);
+		tcp_fastretrans_alert(sk, prior_packets, flag);
 	} else {
 		if ((flag & FLAG_DATA_ACKED) && !frto_cwnd)
-			tcp_cong_avoid(sk, ack, seq_rtt, prior_in_flight, 1);
+			tcp_cong_avoid(sk, ack, prior_in_flight, 1);
 	}
 
 	if ((flag & FLAG_FORWARD_PROGRESS) || !(flag&FLAG_NOT_DUP))

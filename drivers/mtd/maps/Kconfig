@@ -109,7 +109,7 @@ config MTD_XILINX_OPB
 
 config MTD_SUN_UFLASH
 	tristate "Sun Microsystems userflash support"
-	depends on SPARC && MTD_CFI
+	depends on SPARC && MTD_CFI && PCI
 	help
 	  This provides a 'mapping' driver which supports the way in
 	  which user-programmable flash chips are connected on various
@@ -263,12 +263,6 @@ config MTD_TSUNAMI
 	depends on ALPHA_TSUNAMI && MTD_COMPLEX_MAPPINGS
 	help
 	  Support for the flash chip on Tsunami TIG bus.
-
-config MTD_LASAT
-	tristate "LASAT flash device"
-	depends on LASAT && MTD_CFI
-	help
-	  Support for the flash chips on the Lasat 100 and 200 boards.
 
 config MTD_NETtel
 	tristate "CFI flash device on SnapGear/SecureEdge"

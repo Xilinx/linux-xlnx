@@ -18,10 +18,10 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/scatterlist.h>
+#include <linux/io.h>
 
 #include <asm/dma.h>
 #include <asm/ecard.h>
-#include <asm/io.h>
 
 #define ICS_IDENT_OFFSET		0x2280
 
@@ -448,23 +448,21 @@ static int icside_dma_test_irq(ide_drive_t *drive)
 			ICS_ARCIN_V6_INTRSTAT_1)) & 1;
 }
 
-static int icside_dma_timeout(ide_drive_t *drive)
+static void icside_dma_timeout(ide_drive_t *drive)
 {
 	printk(KERN_ERR "%s: DMA timeout occurred: ", drive->name);
 
 	if (icside_dma_test_irq(drive))
-		return 0;
+		return;
 
-	ide_dump_status(drive, "DMA timeout",
-		HWIF(drive)->INB(IDE_STATUS_REG));
+	ide_dump_status(drive, "DMA timeout", HWIF(drive)->INB(IDE_STATUS_REG));
 
-	return icside_dma_end(drive);
+	icside_dma_end(drive);
 }
 
-static int icside_dma_lostirq(ide_drive_t *drive)
+static void icside_dma_lost_irq(ide_drive_t *drive)
 {
 	printk(KERN_ERR "%s: IRQ lost\n", drive->name);
-	return 1;
 }
 
 static void icside_dma_init(ide_hwif_t *hwif)
@@ -490,8 +488,8 @@ static void icside_dma_init(ide_hwif_t *hwif)
 	hwif->dma_start		= icside_dma_start;
 	hwif->ide_dma_end	= icside_dma_end;
 	hwif->ide_dma_test_irq	= icside_dma_test_irq;
-	hwif->ide_dma_timeout	= icside_dma_timeout;
-	hwif->ide_dma_lostirq	= icside_dma_lostirq;
+	hwif->dma_timeout	= icside_dma_timeout;
+	hwif->dma_lost_irq	= icside_dma_lost_irq;
 
 	hwif->drives[0].autodma = hwif->autodma;
 	hwif->drives[1].autodma = hwif->autodma;
@@ -695,13 +693,12 @@ icside_probe(struct expansion_card *ec, const struct ecard_id *id)
 	if (ret)
 		goto out;
 
-	state = kmalloc(sizeof(struct icside_state), GFP_KERNEL);
+	state = kzalloc(sizeof(struct icside_state), GFP_KERNEL);
 	if (!state) {
 		ret = -ENOMEM;
 		goto release;
 	}
 
-	memset(state, 0, sizeof(state));
 	state->type	= ICS_TYPE_NOTYPE;
 	state->dev	= &ec->dev;
 

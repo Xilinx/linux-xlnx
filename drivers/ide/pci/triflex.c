@@ -96,7 +96,7 @@ static int triflex_tune_chipset(ide_drive_t *drive, u8 xferspeed)
 
 static void triflex_tune_drive(ide_drive_t *drive, u8 pio)
 {
-	int use_pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	int use_pio = ide_get_best_pio_mode(drive, pio, 4);
 	(void) triflex_tune_chipset(drive, (XFER_PIO_0 + use_pio));
 }
 
@@ -115,6 +115,9 @@ static void __devinit init_hwif_triflex(ide_hwif_t *hwif)
 	hwif->tuneproc = &triflex_tune_drive;
 	hwif->speedproc = &triflex_tune_chipset;
 
+	if (hwif->dma_base == 0)
+		return;
+
 	hwif->atapi_dma  = 1;
 	hwif->mwdma_mask = 0x07;
 	hwif->swdma_mask = 0x07;
@@ -129,10 +132,10 @@ static void __devinit init_hwif_triflex(ide_hwif_t *hwif)
 static ide_pci_device_t triflex_device __devinitdata = {
 	.name		= "TRIFLEX",
 	.init_hwif	= init_hwif_triflex,
-	.channels	= 2,
 	.autodma	= AUTODMA,
 	.enablebits	= {{0x80, 0x01, 0x01}, {0x80, 0x02, 0x02}},
 	.bootable	= ON_BOARD,
+	.pio_mask	= ATA_PIO4,
 };
 
 static int __devinit triflex_init_one(struct pci_dev *dev, 

@@ -4,7 +4,7 @@
 * Version:       0.1.1
 * Description:   Irda KingSun/DonShine USB Dongle
 * Status:        Experimental
-* Author:        Alex Villac�s Lasso <a_villacis@palosanto.com>
+* Author:        Alex Villacís Lasso <a_villacis@palosanto.com>
 *
 *  	Based on stir4200 and mcs7780 drivers, with (strange?) differences
 *
@@ -509,12 +509,12 @@ static int kingsun_probe(struct usb_interface *intf,
 	spin_lock_init(&kingsun->lock);
 
 	/* Allocate input buffer */
-	kingsun->in_buf = (__u8 *)kmalloc(kingsun->max_rx, GFP_KERNEL);
+	kingsun->in_buf = kmalloc(kingsun->max_rx, GFP_KERNEL);
 	if (!kingsun->in_buf)
 		goto free_mem;
 
 	/* Allocate output buffer */
-	kingsun->out_buf = (__u8 *)kmalloc(KINGSUN_FIFO_SIZE, GFP_KERNEL);
+	kingsun->out_buf = kmalloc(KINGSUN_FIFO_SIZE, GFP_KERNEL);
 	if (!kingsun->out_buf)
 		goto free_mem;
 
@@ -652,6 +652,6 @@ static void __exit kingsun_cleanup(void)
 }
 module_exit(kingsun_cleanup);
 
-MODULE_AUTHOR("Alex Villac�s Lasso <a_villacis@palosanto.com>");
+MODULE_AUTHOR("Alex Villacís Lasso <a_villacis@palosanto.com>");
 MODULE_DESCRIPTION("IrDA-USB Dongle Driver for KingSun/DonShine");
 MODULE_LICENSE("GPL");

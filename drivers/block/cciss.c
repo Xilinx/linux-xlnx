@@ -87,6 +87,7 @@ static const struct pci_device_id cciss_pci_device_id[] = {
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3214},
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3215},
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3237},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x323D},
 	{PCI_VENDOR_ID_HP,     PCI_ANY_ID,	PCI_ANY_ID, PCI_ANY_ID,
 		PCI_CLASS_STORAGE_RAID << 8, 0xffff << 8, 0},
 	{0,}
@@ -119,6 +120,7 @@ static struct board_type products[] = {
 	{0x3214103C, "Smart Array E200i", &SA5_access, 120},
 	{0x3215103C, "Smart Array E200i", &SA5_access, 120},
 	{0x3237103C, "Smart Array E500", &SA5_access, 512},
+	{0x323D103C, "Smart Array P700m", &SA5_access, 512},
 	{0xFFFF103C, "Unknown Smart Array", &SA5_access, 120},
 };
 
@@ -137,7 +139,7 @@ static struct board_type products[] = {
 
 static ctlr_info_t *hba[MAX_CTLR];
 
-static void do_cciss_request(request_queue_t *q);
+static void do_cciss_request(struct request_queue *q);
 static irqreturn_t do_cciss_intr(int irq, void *dev_id);
 static int cciss_open(struct inode *inode, struct file *filep);
 static int cciss_release(struct inode *inode, struct file *filep);
@@ -1168,7 +1170,7 @@ static int cciss_ioctl(struct inode *inode, struct file *filep,
 	case SG_EMULATED_HOST:
 	case SG_IO:
 	case SCSI_IOCTL_SEND_COMMAND:
-		return scsi_cmd_ioctl(filep, disk, cmd, argp);
+		return scsi_cmd_ioctl(filep, disk->queue, disk, cmd, argp);
 
 	/* scsi_cmd_ioctl would normally handle these, below, but */
 	/* they aren't a good fit for cciss, as CD-ROMs are */
@@ -1582,7 +1584,7 @@ static int deregister_disk(struct gendisk *disk, drive_info_struct *drv,
 	 */
 	if (h->gendisk[0] != disk) {
 		if (disk) {
-			request_queue_t *q = disk->queue;
+			struct request_queue *q = disk->queue;
 			if (disk->flags & GENHD_FL_UP)
 				del_gendisk(disk);
 			if (q) {
@@ -1975,12 +1977,13 @@ cciss_read_capacity(int ctlr, int logvol, int withirq, sector_t *total_size,
 {
 	ReadCapdata_struct *buf;
 	int return_code;
-	buf = kmalloc(sizeof(ReadCapdata_struct), GFP_KERNEL);
-	if (buf == NULL) {
+
+	buf = kzalloc(sizeof(ReadCapdata_struct), GFP_KERNEL);
+	if (!buf) {
 		printk(KERN_WARNING "cciss: out of memory\n");
 		return;
 	}
-	memset(buf, 0, sizeof(ReadCapdata_struct));
+
 	if (withirq)
 		return_code = sendcmd_withirq(CCISS_READ_CAPACITY,
 				ctlr, buf, sizeof(ReadCapdata_struct),
@@ -2001,7 +2004,6 @@ cciss_read_capacity(int ctlr, int logvol, int withirq, sector_t *total_size,
 		printk(KERN_INFO "      blocks= %llu block_size= %d\n",
 		(unsigned long long)*total_size+1, *block_size);
 	kfree(buf);
-	return;
 }
 
 static void
@@ -2009,12 +2011,13 @@ cciss_read_capacity_16(int ctlr, int logvol, int withirq, sector_t *total_size, 
 {
 	ReadCapdata_struct_16 *buf;
 	int return_code;
-	buf = kmalloc(sizeof(ReadCapdata_struct_16), GFP_KERNEL);
-	if (buf == NULL) {
+
+	buf = kzalloc(sizeof(ReadCapdata_struct_16), GFP_KERNEL);
+	if (!buf) {
 		printk(KERN_WARNING "cciss: out of memory\n");
 		return;
 	}
-	memset(buf, 0, sizeof(ReadCapdata_struct_16));
+
 	if (withirq) {
 		return_code = sendcmd_withirq(CCISS_READ_CAPACITY_16,
 			ctlr, buf, sizeof(ReadCapdata_struct_16),
@@ -2036,7 +2039,6 @@ cciss_read_capacity_16(int ctlr, int logvol, int withirq, sector_t *total_size, 
 	printk(KERN_INFO "      blocks= %llu block_size= %d\n",
 	       (unsigned long long)*total_size+1, *block_size);
 	kfree(buf);
-	return;
 }
 
 static int cciss_revalidate(struct gendisk *disk)
@@ -2509,7 +2511,7 @@ after_error_processing:
 /*
  * Get a request and submit it to the controller.
  */
-static void do_cciss_request(request_queue_t *q)
+static void do_cciss_request(struct request_queue *q)
 {
 	ctlr_info_t *h = q->queuedata;
 	CommandList_struct *c;
@@ -3225,12 +3227,15 @@ static int alloc_cciss_hba(void)
 	for (i = 0; i < MAX_CTLR; i++) {
 		if (!hba[i]) {
 			ctlr_info_t *p;
+
 			p = kzalloc(sizeof(ctlr_info_t), GFP_KERNEL);
 			if (!p)
 				goto Enomem;
 			p->gendisk[0] = alloc_disk(1 << NWD_SHIFT);
-			if (!p->gendisk[0])
+			if (!p->gendisk[0]) {
+				kfree(p);
 				goto Enomem;
+			}
 			hba[i] = p;
 			return i;
 		}
@@ -3378,7 +3383,7 @@ static int __devinit cciss_init_one(struct pci_dev *pdev,
 	do {
 		drive_info_struct *drv = &(hba[i]->drv[j]);
 		struct gendisk *disk = hba[i]->gendisk[j];
-		request_queue_t *q;
+		struct request_queue *q;
 
 		/* Check if the disk was allocated already */
 		if (!disk){
@@ -3521,7 +3526,7 @@ static void __devexit cciss_remove_one(struct pci_dev *pdev)
 	for (j = 0; j < CISS_MAX_LUN; j++) {
 		struct gendisk *disk = hba[i]->gendisk[j];
 		if (disk) {
-			request_queue_t *q = disk->queue;
+			struct request_queue *q = disk->queue;
 
 			if (disk->flags & GENHD_FL_UP)
 				del_gendisk(disk);

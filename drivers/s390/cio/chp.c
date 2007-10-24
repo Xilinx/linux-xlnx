@@ -121,14 +121,8 @@ static int s390_vary_chpid(struct chp_id chpid, int on)
 	CIO_TRACE_EVENT( 2, dbf_text);
 
 	status = chp_get_status(chpid);
-	if (status < 0) {
-		printk(KERN_ERR "Can't vary unknown chpid %x.%02x\n",
-		       chpid.cssid, chpid.id);
-		return -EINVAL;
-	}
-
 	if (!on && !status) {
-		printk(KERN_ERR "chpid %x.%02x is already offline\n",
+		printk(KERN_ERR "cio: chpid %x.%02x is already offline\n",
 		       chpid.cssid, chpid.id);
 		return -EINVAL;
 	}
@@ -141,8 +135,9 @@ static int s390_vary_chpid(struct chp_id chpid, int on)
 /*
  * Channel measurement related functions
  */
-static ssize_t chp_measurement_chars_read(struct kobject *kobj, char *buf,
-					  loff_t off, size_t count)
+static ssize_t chp_measurement_chars_read(struct kobject *kobj,
+					  struct bin_attribute *bin_attr,
+					  char *buf, loff_t off, size_t count)
 {
 	struct channel_path *chp;
 	unsigned int size;
@@ -165,7 +160,6 @@ static struct bin_attribute chp_measurement_chars_attr = {
 	.attr = {
 		.name = "measurement_chars",
 		.mode = S_IRUSR,
-		.owner = THIS_MODULE,
 	},
 	.size = sizeof(struct cmg_chars),
 	.read = chp_measurement_chars_read,
@@ -193,8 +187,9 @@ static void chp_measurement_copy_block(struct cmg_entry *buf,
 	} while (reference_buf.values[0] != buf->values[0]);
 }
 
-static ssize_t chp_measurement_read(struct kobject *kobj, char *buf,
-				    loff_t off, size_t count)
+static ssize_t chp_measurement_read(struct kobject *kobj,
+				    struct bin_attribute *bin_attr,
+				    char *buf, loff_t off, size_t count)
 {
 	struct channel_path *chp;
 	struct channel_subsystem *css;
@@ -217,7 +212,6 @@ static struct bin_attribute chp_measurement_attr = {
 	.attr = {
 		.name = "measurement",
 		.mode = S_IRUSR,
-		.owner = THIS_MODULE,
 	},
 	.size = sizeof(struct cmg_entry),
 	.read = chp_measurement_read,
@@ -421,21 +415,14 @@ int chp_new(struct chp_id chpid)
 		if (ret)
 			goto out_free;
 	} else {
-		static int msg_done;
-
-		if (!msg_done) {
-			printk(KERN_WARNING "cio: Channel measurements not "
-			       "available, continuing.\n");
-			msg_done = 1;
-		}
 		chp->cmg = -1;
 	}
 
 	/* make it known to the system */
 	ret = device_register(&chp->dev);
 	if (ret) {
-		printk(KERN_WARNING "%s: could not register %x.%02x\n",
-		       __func__, chpid.cssid, chpid.id);
+		CIO_MSG_EVENT(0, "Could not register chp%x.%02x: %d\n",
+			      chpid.cssid, chpid.id, ret);
 		goto out_free;
 	}
 	ret = sysfs_create_group(&chp->dev.kobj, &chp_attr_group);

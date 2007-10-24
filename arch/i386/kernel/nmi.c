@@ -77,7 +77,7 @@ static int __init check_nmi_watchdog(void)
 	unsigned int *prev_nmi_count;
 	int cpu;
 
-	if ((nmi_watchdog == NMI_NONE) || (nmi_watchdog == NMI_DEFAULT))
+	if ((nmi_watchdog == NMI_NONE) || (nmi_watchdog == NMI_DISABLED))
 		return 0;
 
 	if (!atomic_read(&nmi_active))
@@ -115,12 +115,12 @@ static int __init check_nmi_watchdog(void)
 			atomic_dec(&nmi_active);
 		}
 	}
+	endflag = 1;
 	if (!atomic_read(&nmi_active)) {
 		kfree(prev_nmi_count);
 		atomic_set(&nmi_active, -1);
 		return -1;
 	}
-	endflag = 1;
 	printk("OK.\n");
 
 	/* now that we know it works we can reduce NMI frequency to
@@ -295,7 +295,7 @@ static unsigned int
 	last_irq_sums [NR_CPUS],
 	alert_counter [NR_CPUS];
 
-void touch_nmi_watchdog (void)
+void touch_nmi_watchdog(void)
 {
 	if (nmi_watchdog > 0) {
 		unsigned cpu;
@@ -304,8 +304,10 @@ void touch_nmi_watchdog (void)
 		 * Just reset the alert counters, (other CPUs might be
 		 * spinning on locks we hold):
 		 */
-		for_each_present_cpu (cpu)
-			alert_counter[cpu] = 0;
+		for_each_present_cpu(cpu) {
+			if (alert_counter[cpu])
+				alert_counter[cpu] = 0;
+		}
 	}
 
 	/*
@@ -351,7 +353,7 @@ __kprobes int nmi_watchdog_tick(struct pt_regs * regs, unsigned reason)
 	 * Take the local apic timer and PIT/HPET into account. We don't
 	 * know which one is active, when we have highres/dyntick on
 	 */
-	sum = per_cpu(irq_stat, cpu).apic_timer_irqs + kstat_irqs(0);
+	sum = per_cpu(irq_stat, cpu).apic_timer_irqs + kstat_cpu(cpu).irqs[0];
 
 	/* if the none of the timers isn't firing, this cpu isn't doing much */
 	if (!touched && last_irq_sums[cpu] == sum) {
@@ -422,7 +424,7 @@ int proc_nmi_enabled(struct ctl_table *table, int write, struct file *file,
 	if (!!old_state == !!nmi_watchdog_enabled)
 		return 0;
 
-	if (atomic_read(&nmi_active) < 0) {
+	if (atomic_read(&nmi_active) < 0 || nmi_watchdog == NMI_DISABLED) {
 		printk( KERN_WARNING "NMI watchdog is permanently disabled\n");
 		return -EIO;
 	}

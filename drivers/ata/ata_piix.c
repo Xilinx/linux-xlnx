@@ -91,9 +91,10 @@
 #include <linux/device.h>
 #include <scsi/scsi_host.h>
 #include <linux/libata.h>
+#include <linux/dmi.h>
 
 #define DRV_NAME	"ata_piix"
-#define DRV_VERSION	"2.11"
+#define DRV_VERSION	"2.12"
 
 enum {
 	PIIX_IOCFG		= 0x54, /* IDE I/O configuration register */
@@ -129,6 +130,7 @@ enum {
 	ich6m_sata_ahci		= 8,
 	ich8_sata_ahci		= 9,
 	piix_pata_mwdma		= 10,	/* PIIX3 MWDMA only */
+	tolapai_sata_ahci	= 11,
 
 	/* constants for mapping table */
 	P0			= 0,  /* port 0 */
@@ -140,6 +142,9 @@ enum {
 	RV			= -3, /* reserved */
 
 	PIIX_AHCI_DEVICE	= 6,
+
+	/* host->flags bits */
+	PIIX_HOST_BROKEN_SUSPEND = (1 << 24),
 };
 
 struct piix_map_db {
@@ -159,6 +164,10 @@ static void piix_set_piomode (struct ata_port *ap, struct ata_device *adev);
 static void piix_set_dmamode (struct ata_port *ap, struct ata_device *adev);
 static void ich_set_dmamode (struct ata_port *ap, struct ata_device *adev);
 static int ich_pata_cable_detect(struct ata_port *ap);
+#ifdef CONFIG_PM
+static int piix_pci_device_suspend(struct pci_dev *pdev, pm_message_t mesg);
+static int piix_pci_device_resume(struct pci_dev *pdev);
+#endif
 
 static unsigned int in_module_init = 1;
 
@@ -200,6 +209,8 @@ static const struct pci_device_id piix_pci_tbl[] = {
 	/* ICH7/7-R (i945, i975) UDMA 100*/
 	{ 0x8086, 0x27DF, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich_pata_133 },
 	{ 0x8086, 0x269E, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich_pata_100 },
+	/* ICH8 Mobile PATA Controller */
+	{ 0x8086, 0x2850, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich_pata_100 },
 
 	/* NOTE: The following PCI ids must be kept in sync with the
 	 * list in drivers/pci/quirks.c.
@@ -243,6 +254,8 @@ static const struct pci_device_id piix_pci_tbl[] = {
 	{ 0x8086, 0x292d, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_sata_ahci },
 	/* SATA Controller IDE (ICH9M) */
 	{ 0x8086, 0x292e, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_sata_ahci },
+	/* SATA Controller IDE (Tolapai) */
+	{ 0x8086, 0x5028, PCI_ANY_ID, PCI_ANY_ID, 0, 0, tolapai_sata_ahci },
 
 	{ }	/* terminate list */
 };
@@ -253,8 +266,8 @@ static struct pci_driver piix_pci_driver = {
 	.probe			= piix_init_one,
 	.remove			= ata_pci_remove_one,
 #ifdef CONFIG_PM
-	.suspend		= ata_pci_device_suspend,
-	.resume			= ata_pci_device_resume,
+	.suspend		= piix_pci_device_suspend,
+	.resume			= piix_pci_device_resume,
 #endif
 };
 
@@ -412,7 +425,7 @@ static const struct piix_map_db ich6m_map_db = {
 	 */
 	.map = {
 		/* PM   PS   SM   SS       MAP */
-		{  P0,  P2,  RV,  RV }, /* 00b */
+		{  P0,  P2,  NA,  NA }, /* 00b */
 		{ IDE, IDE,  P1,  P3 }, /* 01b */
 		{  P0,  P2, IDE, IDE }, /* 10b */
 		{  RV,  RV,  RV,  RV },
@@ -426,9 +439,21 @@ static const struct piix_map_db ich8_map_db = {
 		/* PM   PS   SM   SS       MAP */
 		{  P0,  P2,  P1,  P3 }, /* 00b (hardwired when in AHCI) */
 		{  RV,  RV,  RV,  RV },
-		{  IDE,  IDE,  NA,  NA }, /* 10b (IDE mode) */
+		{  P0,  P2, IDE, IDE }, /* 10b (IDE mode) */
 		{  RV,  RV,  RV,  RV },
 	},
+};
+
+static const struct piix_map_db tolapai_map_db = {
+        .mask = 0x3,
+        .port_enable = 0x3,
+        .map = {
+                /* PM   PS   SM   SS       MAP */
+                {  P0,  NA,  P1,  NA }, /* 00b */
+                {  RV,  RV,  RV,  RV }, /* 01b */
+                {  RV,  RV,  RV,  RV }, /* 10b */
+                {  RV,  RV,  RV,  RV },
+        },
 };
 
 static const struct piix_map_db *piix_map_db_table[] = {
@@ -437,6 +462,7 @@ static const struct piix_map_db *piix_map_db_table[] = {
 	[ich6_sata_ahci]	= &ich6_map_db,
 	[ich6m_sata_ahci]	= &ich6m_map_db,
 	[ich8_sata_ahci]	= &ich8_map_db,
+	[tolapai_sata_ahci]	= &tolapai_map_db,
 };
 
 static struct ata_port_info piix_port_info[] = {
@@ -495,7 +521,7 @@ static struct ata_port_info piix_port_info[] = {
 		.flags		= PIIX_SATA_FLAGS,
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x07, /* mwdma0-2 */
-		.udma_mask	= 0x7f,	/* udma0-6 */
+		.udma_mask	= ATA_UDMA6,
 		.port_ops	= &piix_sata_ops,
 	},
 
@@ -505,7 +531,7 @@ static struct ata_port_info piix_port_info[] = {
 		.flags		= PIIX_SATA_FLAGS | PIIX_FLAG_SCR,
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x07, /* mwdma0-2 */
-		.udma_mask	= 0x7f,	/* udma0-6 */
+		.udma_mask	= ATA_UDMA6,
 		.port_ops	= &piix_sata_ops,
 	},
 
@@ -516,7 +542,7 @@ static struct ata_port_info piix_port_info[] = {
 				  PIIX_FLAG_AHCI,
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x07, /* mwdma0-2 */
-		.udma_mask	= 0x7f,	/* udma0-6 */
+		.udma_mask	= ATA_UDMA6,
 		.port_ops	= &piix_sata_ops,
 	},
 
@@ -527,7 +553,7 @@ static struct ata_port_info piix_port_info[] = {
 				  PIIX_FLAG_AHCI,
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x07, /* mwdma0-2 */
-		.udma_mask	= 0x7f,	/* udma0-6 */
+		.udma_mask	= ATA_UDMA6,
 		.port_ops	= &piix_sata_ops,
 	},
 
@@ -538,7 +564,7 @@ static struct ata_port_info piix_port_info[] = {
 				  PIIX_FLAG_AHCI,
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x07, /* mwdma0-2 */
-		.udma_mask	= 0x7f,	/* udma0-6 */
+		.udma_mask	= ATA_UDMA6,
 		.port_ops	= &piix_sata_ops,
 	},
 
@@ -549,6 +575,17 @@ static struct ata_port_info piix_port_info[] = {
 		.pio_mask	= 0x1f,	/* pio0-4 */
 		.mwdma_mask	= 0x06, /* mwdma1-2 ?? CHECK 0 should be ok but slow */
 		.port_ops	= &piix_pata_ops,
+	},
+
+	/* tolapai_sata_ahci: 11: */
+	{
+		.sht		= &piix_sht,
+		.flags		= PIIX_SATA_FLAGS | PIIX_FLAG_SCR |
+				  PIIX_FLAG_AHCI,
+		.pio_mask	= 0x1f,	/* pio0-4 */
+		.mwdma_mask	= 0x07, /* mwdma0-2 */
+		.udma_mask	= ATA_UDMA6,
+		.port_ops	= &piix_sata_ops,
 	},
 };
 
@@ -685,8 +722,14 @@ static void piix_set_piomode (struct ata_port *ap, struct ata_device *adev)
 	if (adev->class == ATA_DEV_ATA)
 		control |= 4;	/* PPE enable */
 
+	/* PIO configuration clears DTE unconditionally.  It will be
+	 * programmed in set_dmamode which is guaranteed to be called
+	 * after set_piomode if any DMA mode is available.
+	 */
 	pci_read_config_word(dev, master_port, &master_data);
 	if (is_slave) {
+		/* clear TIME1|IE1|PPE1|DTE1 */
+		master_data &= 0xff0f;
 		/* Enable SITRE (seperate slave timing register) */
 		master_data |= 0x4000;
 		/* enable PPE1, IE1 and TIME1 as needed */
@@ -694,12 +737,14 @@ static void piix_set_piomode (struct ata_port *ap, struct ata_device *adev)
 		pci_read_config_byte(dev, slave_port, &slave_data);
 		slave_data &= (ap->port_no ? 0x0f : 0xf0);
 		/* Load the timing nibble for this slave */
-		slave_data |= ((timings[pio][0] << 2) | timings[pio][1]) << (ap->port_no ? 4 : 0);
+		slave_data |= ((timings[pio][0] << 2) | timings[pio][1])
+						<< (ap->port_no ? 4 : 0);
 	} else {
-		/* Master keeps the bits in a different format */
-		master_data &= 0xccf8;
+		/* clear ISP|RCT|TIME0|IE0|PPE0|DTE0 */
+		master_data &= 0xccf0;
 		/* Enable PPE, IE and TIME as appropriate */
 		master_data |= control;
+		/* load ISP and RCT */
 		master_data |=
 			(timings[pio][0] << 12) |
 			(timings[pio][1] << 8);
@@ -816,7 +861,7 @@ static void do_pata_set_dmamode (struct ata_port *ap, struct ata_device *adev, i
 			master_data &= 0xFF4F;  /* Mask out IORDY|TIME1|DMAONLY */
 			master_data |= control << 4;
 			pci_read_config_byte(dev, 0x44, &slave_data);
-			slave_data &= (0x0F + 0xE1 * ap->port_no);
+			slave_data &= (ap->port_no ? 0x0f : 0xf0);
 			/* Load the matching timing */
 			slave_data |= ((timings[pio][0] << 2) | timings[pio][1]) << (ap->port_no ? 4 : 0);
 			pci_write_config_byte(dev, 0x44, slave_data);
@@ -828,8 +873,11 @@ static void do_pata_set_dmamode (struct ata_port *ap, struct ata_device *adev, i
 				(timings[pio][0] << 12) |
 				(timings[pio][1] << 8);
 		}
-		udma_enable &= ~(1 << devid);
-		pci_write_config_word(dev, master_port, master_data);
+
+		if (ap->udma_mask) {
+			udma_enable &= ~(1 << devid);
+			pci_write_config_word(dev, master_port, master_data);
+		}
 	}
 	/* Don't scribble on 0x48 if the controller does not support UDMA */
 	if (ap->udma_mask)
@@ -867,6 +915,137 @@ static void ich_set_dmamode (struct ata_port *ap, struct ata_device *adev)
 {
 	do_pata_set_dmamode(ap, adev, 1);
 }
+
+#ifdef CONFIG_PM
+static int piix_broken_suspend(void)
+{
+	static struct dmi_system_id sysids[] = {
+		{
+			.ident = "TECRA M3",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "TECRA M3"),
+			},
+		},
+		{
+			.ident = "TECRA M5",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "TECRA M5"),
+			},
+		},
+		{
+			.ident = "TECRA M7",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "TECRA M7"),
+			},
+		},
+		{
+			.ident = "Satellite U200",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "Satellite U200"),
+			},
+		},
+		{
+			.ident = "Satellite U205",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "Satellite U205"),
+			},
+		},
+		{
+			.ident = "Portege M500",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "PORTEGE M500"),
+			},
+		},
+
+		{ }	/* terminate list */
+	};
+	static const char *oemstrs[] = {
+		"Tecra M3,",
+	};
+	int i;
+
+	if (dmi_check_system(sysids))
+		return 1;
+
+	for (i = 0; i < ARRAY_SIZE(oemstrs); i++)
+		if (dmi_find_device(DMI_DEV_TYPE_OEM_STRING, oemstrs[i], NULL))
+			return 1;
+
+	return 0;
+}
+
+static int piix_pci_device_suspend(struct pci_dev *pdev, pm_message_t mesg)
+{
+	struct ata_host *host = dev_get_drvdata(&pdev->dev);
+	unsigned long flags;
+	int rc = 0;
+
+	rc = ata_host_suspend(host, mesg);
+	if (rc)
+		return rc;
+
+	/* Some braindamaged ACPI suspend implementations expect the
+	 * controller to be awake on entry; otherwise, it burns cpu
+	 * cycles and power trying to do something to the sleeping
+	 * beauty.
+	 */
+	if (piix_broken_suspend() && mesg.event == PM_EVENT_SUSPEND) {
+		pci_save_state(pdev);
+
+		/* mark its power state as "unknown", since we don't
+		 * know if e.g. the BIOS will change its device state
+		 * when we suspend.
+		 */
+		if (pdev->current_state == PCI_D0)
+			pdev->current_state = PCI_UNKNOWN;
+
+		/* tell resume that it's waking up from broken suspend */
+		spin_lock_irqsave(&host->lock, flags);
+		host->flags |= PIIX_HOST_BROKEN_SUSPEND;
+		spin_unlock_irqrestore(&host->lock, flags);
+	} else
+		ata_pci_device_do_suspend(pdev, mesg);
+
+	return 0;
+}
+
+static int piix_pci_device_resume(struct pci_dev *pdev)
+{
+	struct ata_host *host = dev_get_drvdata(&pdev->dev);
+	unsigned long flags;
+	int rc;
+
+	if (host->flags & PIIX_HOST_BROKEN_SUSPEND) {
+		spin_lock_irqsave(&host->lock, flags);
+		host->flags &= ~PIIX_HOST_BROKEN_SUSPEND;
+		spin_unlock_irqrestore(&host->lock, flags);
+
+		pci_set_power_state(pdev, PCI_D0);
+		pci_restore_state(pdev);
+
+		/* PCI device wasn't disabled during suspend.  Use
+		 * pci_reenable_device() to avoid affecting the enable
+		 * count.
+		 */
+		rc = pci_reenable_device(pdev);
+		if (rc)
+			dev_printk(KERN_ERR, &pdev->dev, "failed to enable "
+				   "device after resume (%d)\n", rc);
+	} else
+		rc = ata_pci_device_do_resume(pdev);
+
+	if (rc == 0)
+		ata_host_resume(host);
+
+	return rc;
+}
+#endif
 
 #define AHCI_PCI_BAR 5
 #define AHCI_GLOBAL_CTL 0x04
@@ -915,20 +1094,18 @@ static int __devinit piix_check_450nx_errata(struct pci_dev *ata_dev)
 {
 	struct pci_dev *pdev = NULL;
 	u16 cfg;
-	u8 rev;
 	int no_piix_dma = 0;
 
 	while((pdev = pci_get_device(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82454NX, pdev)) != NULL)
 	{
 		/* Look for 450NX PXB. Check for problem configurations
 		   A PCI quirk checks bit 6 already */
-		pci_read_config_byte(pdev, PCI_REVISION_ID, &rev);
 		pci_read_config_word(pdev, 0x41, &cfg);
 		/* Only on the original revision: IDE DMA can hang */
-		if (rev == 0x00)
+		if (pdev->revision == 0x00)
 			no_piix_dma = 1;
 		/* On all revisions below 5 PXB bus lock must be disabled for IDE */
-		else if (cfg & (1<<14) && rev < 5)
+		else if (cfg & (1<<14) && pdev->revision < 5)
 			no_piix_dma = 2;
 	}
 	if (no_piix_dma)
@@ -1004,6 +1181,41 @@ static void __devinit piix_init_sata_map(struct pci_dev *pdev,
 	hpriv->map = map;
 }
 
+static void piix_iocfg_bit18_quirk(struct pci_dev *pdev)
+{
+	static struct dmi_system_id sysids[] = {
+		{
+			/* Clevo M570U sets IOCFG bit 18 if the cdrom
+			 * isn't used to boot the system which
+			 * disables the channel.
+			 */
+			.ident = "M570U",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "Clevo Co."),
+				DMI_MATCH(DMI_PRODUCT_NAME, "M570U"),
+			},
+		},
+
+		{ }	/* terminate list */
+	};
+	u32 iocfg;
+
+	if (!dmi_check_system(sysids))
+		return;
+
+	/* The datasheet says that bit 18 is NOOP but certain systems
+	 * seem to use it to disable a channel.  Clear the bit on the
+	 * affected systems.
+	 */
+	pci_read_config_dword(pdev, PIIX_IOCFG, &iocfg);
+	if (iocfg & (1 << 18)) {
+		dev_printk(KERN_INFO, &pdev->dev,
+			   "applying IOCFG bit18 quirk\n");
+		iocfg &= ~(1 << 18);
+		pci_write_config_dword(pdev, PIIX_IOCFG, iocfg);
+	}
+}
+
 /**
  *	piix_init_one - Register PIIX ATA PCI device with kernel services
  *	@pdev: PCI device to register
@@ -1064,6 +1276,9 @@ static int piix_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		piix_init_pcs(pdev, port_info,
 			      piix_map_db_table[ent->driver_data]);
 	}
+
+	/* apply IOCFG bit18 quirk */
+	piix_iocfg_bit18_quirk(pdev);
 
 	/* On ICH5, some BIOSen disable the interrupt using the
 	 * PCI_COMMAND_INTX_DISABLE bit added in PCI 2.3.

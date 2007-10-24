@@ -38,6 +38,18 @@
 	movq	%rax,R8(%rsp)
 	.endm
 
+	.macro LOAD_ARGS32 offset
+	movl \offset(%rsp),%r11d
+	movl \offset+8(%rsp),%r10d
+	movl \offset+16(%rsp),%r9d
+	movl \offset+24(%rsp),%r8d
+	movl \offset+40(%rsp),%ecx
+	movl \offset+48(%rsp),%edx
+	movl \offset+56(%rsp),%esi
+	movl \offset+64(%rsp),%edi
+	movl \offset+72(%rsp),%eax
+	.endm
+	
 	.macro CFI_STARTPROC32 simple
 	CFI_STARTPROC	\simple
 	CFI_UNDEFINED	r8
@@ -104,7 +116,7 @@ ENTRY(ia32_sysenter_target)
 	pushq	%rax
 	CFI_ADJUST_CFA_OFFSET 8
 	cld
-	SAVE_ARGS 0,0,0
+	SAVE_ARGS 0,0,1
  	/* no need to do an access_ok check here because rbp has been
  	   32bit zero extended */ 
 1:	movl	(%rbp),%r9d
@@ -152,7 +164,7 @@ sysenter_tracesys:
 	movq	$-ENOSYS,RAX(%rsp)	/* really needed? */
 	movq	%rsp,%rdi        /* &pt_regs -> arg1 */
 	call	syscall_trace_enter
-	LOAD_ARGS ARGOFFSET  /* reload args from stack in case ptrace changed it */
+	LOAD_ARGS32 ARGOFFSET  /* reload args from stack in case ptrace changed it */
 	RESTORE_REST
 	movl	%ebp, %ebp
 	/* no need to do an access_ok check here because rbp has been
@@ -255,7 +267,7 @@ cstar_tracesys:
 	movq $-ENOSYS,RAX(%rsp)	/* really needed? */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
-	LOAD_ARGS ARGOFFSET  /* reload args from stack in case ptrace changed it */
+	LOAD_ARGS32 ARGOFFSET  /* reload args from stack in case ptrace changed it */
 	RESTORE_REST
 	movl RSP-ARGOFFSET(%rsp), %r8d
 	/* no need to do an access_ok check here because r8 has been
@@ -294,7 +306,7 @@ ia32_badarg:
  */ 				
 
 ENTRY(ia32_syscall)
-	CFI_STARTPROC	simple
+	CFI_STARTPROC32	simple
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA	rsp,SS+8-RIP
 	/*CFI_REL_OFFSET	ss,SS-RIP*/
@@ -330,10 +342,11 @@ ia32_sysret:
 
 ia32_tracesys:			 
 	SAVE_REST
+	CLEAR_RREGS
 	movq $-ENOSYS,RAX(%rsp)	/* really needed? */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
-	LOAD_ARGS ARGOFFSET  /* reload args from stack in case ptrace changed it */
+	LOAD_ARGS32 ARGOFFSET  /* reload args from stack in case ptrace changed it */
 	RESTORE_REST
 	jmp ia32_do_syscall
 END(ia32_syscall)
@@ -526,7 +539,7 @@ ia32_sys_call_table:
 	.quad sys_init_module
 	.quad sys_delete_module
 	.quad quiet_ni_syscall		/* 130  get_kernel_syms */
-	.quad sys_quotactl
+	.quad sys32_quotactl
 	.quad sys_getpgid
 	.quad sys_fchdir
 	.quad quiet_ni_syscall	/* bdflush */
@@ -719,4 +732,5 @@ ia32_sys_call_table:
 	.quad compat_sys_signalfd
 	.quad compat_sys_timerfd
 	.quad sys_eventfd
+	.quad sys32_fallocate
 ia32_syscall_end:

@@ -1099,7 +1099,7 @@ static int pwc_video_open(struct inode *inode, struct file *file)
 		return -EBUSY;
 	}
 
-	down(&pdev->modlock);
+	mutex_lock(&pdev->modlock);
 	if (!pdev->usb_init) {
 		PWC_DEBUG_OPEN("Doing first time initialization.\n");
 		pdev->usb_init = 1;
@@ -1131,7 +1131,7 @@ static int pwc_video_open(struct inode *inode, struct file *file)
 	if (i < 0) {
 		PWC_DEBUG_OPEN("Failed to allocate buffers memory.\n");
 		pwc_free_buffers(pdev);
-		up(&pdev->modlock);
+		mutex_unlock(&pdev->modlock);
 		return i;
 	}
 
@@ -1172,7 +1172,7 @@ static int pwc_video_open(struct inode *inode, struct file *file)
 	if (i) {
 		PWC_DEBUG_OPEN("Second attempt at set_video_mode failed.\n");
 		pwc_free_buffers(pdev);
-		up(&pdev->modlock);
+		mutex_unlock(&pdev->modlock);
 		return i;
 	}
 
@@ -1181,7 +1181,7 @@ static int pwc_video_open(struct inode *inode, struct file *file)
 		PWC_DEBUG_OPEN("Failed to init ISOC stuff = %d.\n", i);
 		pwc_isoc_cleanup(pdev);
 		pwc_free_buffers(pdev);
-		up(&pdev->modlock);
+		mutex_unlock(&pdev->modlock);
 		return i;
 	}
 
@@ -1191,9 +1191,16 @@ static int pwc_video_open(struct inode *inode, struct file *file)
 
 	pdev->vopen++;
 	file->private_data = vdev;
-	up(&pdev->modlock);
+	mutex_unlock(&pdev->modlock);
 	PWC_DEBUG_OPEN("<< video_open() returns 0.\n");
 	return 0;
+}
+
+
+static void pwc_cleanup(struct pwc_device *pdev)
+{
+	pwc_remove_sysfs_files(pdev->vdev);
+	video_unregister_device(pdev->vdev);
 }
 
 /* Note that all cleanup is done in the reverse order as in _open */
@@ -1201,7 +1208,7 @@ static int pwc_video_close(struct inode *inode, struct file *file)
 {
 	struct video_device *vdev = file->private_data;
 	struct pwc_device *pdev;
-	int i;
+	int i, hint;
 
 	PWC_DEBUG_OPEN(">> video_close called(vdev = 0x%p).\n", vdev);
 
@@ -1224,8 +1231,9 @@ static int pwc_video_close(struct inode *inode, struct file *file)
 	pwc_isoc_cleanup(pdev);
 	pwc_free_buffers(pdev);
 
+	lock_kernel();
 	/* Turn off LEDS and power down camera, but only when not unplugged */
-	if (pdev->error_status != EPIPE) {
+	if (!pdev->unplugged) {
 		/* Turn LEDs off */
 		if (pwc_set_leds(pdev, 0, 0) < 0)
 			PWC_DEBUG_MODULE("Failed to set LED on/off time.\n");
@@ -1234,9 +1242,19 @@ static int pwc_video_close(struct inode *inode, struct file *file)
 			if (i < 0)
 				PWC_ERROR("Failed to power down camera (%d)\n", i);
 		}
+		pdev->vopen--;
+		PWC_DEBUG_OPEN("<< video_close() vopen=%d\n", pdev->vopen);
+	} else {
+		pwc_cleanup(pdev);
+		/* Free memory (don't set pdev to 0 just yet) */
+		kfree(pdev);
+		/* search device_hint[] table if we occupy a slot, by any chance */
+		for (hint = 0; hint < MAX_DEV_HINTS; hint++)
+			if (device_hint[hint].pdev == pdev)
+				device_hint[hint].pdev = NULL;
 	}
-	pdev->vopen--;
-	PWC_DEBUG_OPEN("<< video_close() vopen=%d\n", pdev->vopen);
+	unlock_kernel();
+
 	return 0;
 }
 
@@ -1685,7 +1703,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 		pdev->angle_range.tilt_max =  2500;
 	}
 
-	init_MUTEX(&pdev->modlock);
+	mutex_init(&pdev->modlock);
 	spin_lock_init(&pdev->ptrlock);
 
 	pdev->udev = udev;
@@ -1791,21 +1809,21 @@ static void usb_pwc_disconnect(struct usb_interface *intf)
 	/* Alert waiting processes */
 	wake_up_interruptible(&pdev->frameq);
 	/* Wait until device is closed */
-	while (pdev->vopen)
-		schedule();
-	/* Device is now closed, so we can safely unregister it */
-	PWC_DEBUG_PROBE("Unregistering video device in disconnect().\n");
-	pwc_remove_sysfs_files(pdev->vdev);
-	video_unregister_device(pdev->vdev);
-
-	/* Free memory (don't set pdev to 0 just yet) */
-	kfree(pdev);
+	if(pdev->vopen) {
+		pdev->unplugged = 1;
+	} else {
+		/* Device is closed, so we can safely unregister it */
+		PWC_DEBUG_PROBE("Unregistering video device in disconnect().\n");
+		pwc_cleanup(pdev);
+		/* Free memory (don't set pdev to 0 just yet) */
+		kfree(pdev);
 
 disconnect_out:
-	/* search device_hint[] table if we occupy a slot, by any chance */
-	for (hint = 0; hint < MAX_DEV_HINTS; hint++)
-		if (device_hint[hint].pdev == pdev)
-			device_hint[hint].pdev = NULL;
+		/* search device_hint[] table if we occupy a slot, by any chance */
+		for (hint = 0; hint < MAX_DEV_HINTS; hint++)
+			if (device_hint[hint].pdev == pdev)
+				device_hint[hint].pdev = NULL;
+	}
 
 	unlock_kernel();
 }

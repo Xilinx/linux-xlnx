@@ -41,7 +41,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/completion.h>
 #include <linux/device.h>
-#include <linux/kernel.h>
 
 #include <asm/uaccess.h>
 #include <asm/vio.h>
@@ -252,10 +251,10 @@ static int viodasd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 	struct gendisk *disk = bdev->bd_disk;
 	struct viodasd_device *d = disk->private_data;
 
-	geo->sectors = d->sectors ? d->sectors : 0;
+	geo->sectors = d->sectors ? d->sectors : 32;
 	geo->heads = d->tracks ? d->tracks  : 64;
 	geo->cylinders = d->cylinders ? d->cylinders :
-		get_capacity(disk) / (geo->cylinders * geo->heads);
+		get_capacity(disk) / (geo->sectors * geo->heads);
 
 	return 0;
 }
@@ -400,7 +399,7 @@ error_ret:
 /*
  * This is the external request processing routine
  */
-static void do_viodasd_request(request_queue_t *q)
+static void do_viodasd_request(struct request_queue *q)
 {
 	struct request *req;
 

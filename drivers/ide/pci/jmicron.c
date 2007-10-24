@@ -25,10 +25,10 @@ typedef enum {
  *	ata66_jmicron		-	Cable check
  *	@hwif: IDE port
  *
- *	Return 1 if the cable is 80pin
+ *	Returns the cable type.
  */
 
-static int __devinit ata66_jmicron(ide_hwif_t *hwif)
+static u8 __devinit ata66_jmicron(ide_hwif_t *hwif)
 {
 	struct pci_dev *pdev = hwif->pci_dev;
 
@@ -70,35 +70,23 @@ static int __devinit ata66_jmicron(ide_hwif_t *hwif)
 	{
 	case PORT_PATA0:
 		if (control & (1 << 3))	/* 40/80 pin primary */
-			return 0;
-		return 1;
+			return ATA_CBL_PATA40;
+		return ATA_CBL_PATA80;
 	case PORT_PATA1:
 		if (control5 & (1 << 19))	/* 40/80 pin secondary */
-			return 0;
-		return 1;
+			return ATA_CBL_PATA40;
+		return ATA_CBL_PATA80;
 	case PORT_SATA:
 		break;
 	}
-	return 1; /* Avoid bogus "control reaches end of non-void function" */
+	/* Avoid bogus "control reaches end of non-void function" */
+	return ATA_CBL_PATA80;
 }
 
-static void jmicron_tuneproc (ide_drive_t *drive, byte mode_wanted)
+static void jmicron_tuneproc(ide_drive_t *drive, u8 pio)
 {
-	return;
-}
-
-/**
- *	config_jmicron_chipset_for_pio	-	set drive timings
- *	@drive: drive to tune
- *	@speed we want
- *
- */
-
-static void config_jmicron_chipset_for_pio (ide_drive_t *drive, byte set_speed)
-{
-	u8 speed = XFER_PIO_0 + ide_get_best_pio_mode(drive, 255, 5, NULL);
-	if (set_speed)
-		(void) ide_config_drive_speed(drive, speed);
+	pio = ide_get_best_pio_mode(drive, pio, 5);
+	ide_config_drive_speed(drive, XFER_PIO_0 + pio);
 }
 
 /**
@@ -131,7 +119,7 @@ static int jmicron_config_drive_for_dma (ide_drive_t *drive)
 	if (ide_tune_dma(drive))
 		return 0;
 
-	config_jmicron_chipset_for_pio(drive, 1);
+	jmicron_tuneproc(drive, 255);
 
 	return -1;
 }
@@ -159,8 +147,9 @@ static void __devinit init_hwif_jmicron(ide_hwif_t *hwif)
 	hwif->mwdma_mask = 0x07;
 
 	hwif->ide_dma_check = &jmicron_config_drive_for_dma;
-	if (!(hwif->udma_four))
-		hwif->udma_four = ata66_jmicron(hwif);
+
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+		hwif->cbl = ata66_jmicron(hwif);
 
 	hwif->autodma = 1;
 	hwif->drives[0].autodma = hwif->autodma;
@@ -175,10 +164,10 @@ fallback:
 	{						\
 		.name		= name_str,		\
 		.init_hwif	= init_hwif_jmicron,	\
-		.channels	= 2,			\
 		.autodma	= AUTODMA,		\
 		.bootable	= ON_BOARD,		\
 		.enablebits	= { {0x40, 1, 1}, {0x40, 0x10, 0x10} }, \
+		.pio_mask	= ATA_PIO5,		\
 	}
 
 static ide_pci_device_t jmicron_chipsets[] __devinitdata = {

@@ -45,6 +45,8 @@ SECTIONS
   __dbe_table : { *(__dbe_table) }
   __stop___dbe_table = .;
 
+  NOTES
+
   RODATA
 
   /* writeable */
@@ -119,10 +121,7 @@ SECTIONS
   .init.ramfs : { *(.init.ramfs) }
   __initramfs_end = .;
 #endif
-  . = ALIGN(_PAGE_SIZE);
-  __per_cpu_start = .;
-  .data.percpu  : { *(.data.percpu) }
-  __per_cpu_end = .;
+  PERCPU(_PAGE_SIZE)
   . = ALIGN(_PAGE_SIZE);
   __init_end = .;
   /* freed after init ends here */
@@ -145,14 +144,15 @@ SECTIONS
         *(.exitcall.exit)
 
 	/* ABI crap starts here */
-	*(.comment)
 	*(.MIPS.options)
-	*(.note)
 	*(.options)
 	*(.pdr)
 	*(.reginfo)
-	*(.mdebug*)
   }
+
+  /* These mark the ABI of the kernel for debuggers.  */
+  .mdebug.abi32 : { KEEP(*(.mdebug.abi32)) }
+  .mdebug.abi64 : { KEEP(*(.mdebug.abi64)) }
 
   /* This is the MIPS specific mdebug section.  */
   .mdebug : { *(.mdebug) }

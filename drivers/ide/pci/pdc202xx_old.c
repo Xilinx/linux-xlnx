@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/ide/pci/pdc202xx_old.c	Version 0.50	Mar 3, 2007
+ *  linux/drivers/ide/pci/pdc202xx_old.c	Version 0.51	Jul 27, 2007
  *
  *  Copyright (C) 1998-2002		Andre Hedrick <andre@linux-ide.org>
  *  Copyright (C) 2006-2007		MontaVista Software, Inc.
@@ -145,15 +145,17 @@ static int pdc202xx_tune_chipset (ide_drive_t *drive, u8 xferspeed)
 
 static void pdc202xx_tune_drive(ide_drive_t *drive, u8 pio)
 {
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
+	pio = ide_get_best_pio_mode(drive, pio, 4);
 	pdc202xx_tune_chipset(drive, XFER_PIO_0 + pio);
 }
 
 static u8 pdc202xx_old_cable_detect (ide_hwif_t *hwif)
 {
 	u16 CIS = 0, mask = (hwif->channel) ? (1<<11) : (1<<10);
+
 	pci_read_config_word(hwif->pci_dev, 0x50, &CIS);
-	return (CIS & mask) ? 1 : 0;
+
+	return (CIS & mask) ? ATA_CBL_PATA40 : ATA_CBL_PATA80;
 }
 
 /*
@@ -267,18 +269,24 @@ somebody_else:
 	return (dma_stat & 4) == 4;	/* return 1 if INTR asserted */
 }
 
-static int pdc202xx_ide_dma_lostirq(ide_drive_t *drive)
+static void pdc202xx_dma_lost_irq(ide_drive_t *drive)
 {
-	if (HWIF(drive)->resetproc != NULL)
-		HWIF(drive)->resetproc(drive);
-	return __ide_dma_lostirq(drive);
+	ide_hwif_t *hwif = HWIF(drive);
+
+	if (hwif->resetproc != NULL)
+		hwif->resetproc(drive);
+
+	ide_dma_lost_irq(drive);
 }
 
-static int pdc202xx_ide_dma_timeout(ide_drive_t *drive)
+static void pdc202xx_dma_timeout(ide_drive_t *drive)
 {
-	if (HWIF(drive)->resetproc != NULL)
-		HWIF(drive)->resetproc(drive);
-	return __ide_dma_timeout(drive);
+	ide_hwif_t *hwif = HWIF(drive);
+
+	if (hwif->resetproc != NULL)
+		hwif->resetproc(drive);
+
+	ide_dma_timeout(drive);
 }
 
 static void pdc202xx_reset_host (ide_hwif_t *hwif)
@@ -308,14 +316,6 @@ static void pdc202xx_reset (ide_drive_t *drive)
 static unsigned int __devinit init_chipset_pdc202xx(struct pci_dev *dev,
 							const char *name)
 {
-	/* This doesn't appear needed */
-	if (dev->resource[PCI_ROM_RESOURCE].start) {
-		pci_write_config_dword(dev, PCI_ROM_ADDRESS,
-			dev->resource[PCI_ROM_RESOURCE].start | PCI_ROM_ADDRESS_ENABLE);
-		printk(KERN_INFO "%s: ROM enabled at 0x%08lx\n", name,
-			(unsigned long)dev->resource[PCI_ROM_RESOURCE].start);
-	}
-
 	return dev->irq;
 }
 
@@ -337,22 +337,26 @@ static void __devinit init_hwif_pdc202xx(ide_hwif_t *hwif)
 
 	hwif->speedproc = &pdc202xx_tune_chipset;
 
+	hwif->err_stops_fifo = 1;
+
 	hwif->drives[0].autotune = hwif->drives[1].autotune = 1;
+
+	if (hwif->dma_base == 0)
+		return;
 
 	hwif->ultra_mask = hwif->cds->udma_mask;
 	hwif->mwdma_mask = 0x07;
 	hwif->swdma_mask = 0x07;
 	hwif->atapi_dma = 1;
 
-	hwif->err_stops_fifo = 1;
-
 	hwif->ide_dma_check = &pdc202xx_config_drive_xfer_rate;
-	hwif->ide_dma_lostirq = &pdc202xx_ide_dma_lostirq;
-	hwif->ide_dma_timeout = &pdc202xx_ide_dma_timeout;
+	hwif->dma_lost_irq = &pdc202xx_dma_lost_irq;
+	hwif->dma_timeout = &pdc202xx_dma_timeout;
 
 	if (hwif->pci_dev->device != PCI_DEVICE_ID_PROMISE_20246) {
-		if (!(hwif->udma_four))
-			hwif->udma_four = (pdc202xx_old_cable_detect(hwif)) ? 0 : 1;
+		if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+			hwif->cbl = pdc202xx_old_cable_detect(hwif);
+
 		hwif->dma_start = &pdc202xx_old_ide_dma_start;
 		hwif->ide_dma_end = &pdc202xx_old_ide_dma_end;
 	} 
@@ -440,10 +444,10 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
 		.extra		= 16,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x07, /* udma0-2 */
 	},{	/* 1 */
 		.name		= "PDC20262",
@@ -451,10 +455,10 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
 		.extra		= 48,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x1f, /* udma0-4 */
 	},{	/* 2 */
 		.name		= "PDC20263",
@@ -462,10 +466,10 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
 		.extra		= 48,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x1f, /* udma0-4 */
 	},{	/* 3 */
 		.name		= "PDC20265",
@@ -473,10 +477,10 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
 		.extra		= 48,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x3f, /* udma0-5 */
 	},{	/* 4 */
 		.name		= "PDC20267",
@@ -484,10 +488,10 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.channels	= 2,
 		.autodma	= AUTODMA,
 		.bootable	= OFF_BOARD,
 		.extra		= 48,
+		.pio_mask	= ATA_PIO4,
 		.udma_mask	= 0x3f, /* udma0-5 */
 	}
 };

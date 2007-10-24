@@ -37,7 +37,7 @@
 #include <linux/device.h>
 #include <linux/moduleparam.h>
 
-#include <linux/usb_gadgetfs.h>
+#include <linux/usb/gadgetfs.h>
 #include <linux/usb_gadget.h>
 
 
@@ -923,7 +923,7 @@ static void clean_req (struct usb_ep *ep, struct usb_request *req)
 	struct dev_data		*dev = ep->driver_data;
 
 	if (req->buf != dev->rbuf) {
-		usb_ep_free_buffer (ep, req->buf, req->dma, req->length);
+		kfree(req->buf);
 		req->buf = dev->rbuf;
 		req->dma = DMA_ADDR_INVALID;
 	}
@@ -963,8 +963,8 @@ static int setup_req (struct usb_ep *ep, struct usb_request *req, u16 len)
 		return -EBUSY;
 	}
 	if (len > sizeof (dev->rbuf))
-		req->buf = usb_ep_alloc_buffer (ep, len, &req->dma, GFP_ATOMIC);
-	if (req->buf == 0) {
+		req->buf = kmalloc(len, GFP_ATOMIC);
+	if (req->buf == NULL) {
 		req->buf = dev->rbuf;
 		return -ENOMEM;
 	}
@@ -1394,7 +1394,7 @@ gadgetfs_setup (struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	dev->setup_abort = 0;
 	if (dev->state == STATE_DEV_UNCONNECTED) {
 #ifdef	CONFIG_USB_GADGET_DUALSPEED
-		if (gadget->speed == USB_SPEED_HIGH && dev->hs_config == 0) {
+		if (gadget->speed == USB_SPEED_HIGH && dev->hs_config == NULL) {
 			spin_unlock(&dev->lock);
 			ERROR (dev, "no high speed config??\n");
 			return -EINVAL;
@@ -1505,7 +1505,7 @@ gadgetfs_setup (struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		}
 		break;
 
-#ifndef	CONFIG_USB_GADGETFS_PXA2XX
+#ifndef	CONFIG_USB_GADGET_PXA2XX
 	/* PXA automagically handles this request too */
 	case USB_REQ_GET_CONFIGURATION:
 		if (ctrl->bRequestType != 0x80)

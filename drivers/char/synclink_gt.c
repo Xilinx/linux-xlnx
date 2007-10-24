@@ -1,5 +1,5 @@
 /*
- * $Id: synclink_gt.c,v 4.36 2006/08/28 20:47:14 paulkf Exp $
+ * $Id: synclink_gt.c,v 4.50 2007/07/25 19:29:25 paulkf Exp $
  *
  * Device driver for Microgate SyncLink GT serial adapters.
  *
@@ -93,7 +93,7 @@
  * module identification
  */
 static char *driver_name     = "SyncLink GT";
-static char *driver_version  = "$Revision: 4.36 $";
+static char *driver_version  = "$Revision: 4.50 $";
 static char *tty_driver_name = "synclink_gt";
 static char *tty_dev_prefix  = "ttySLG";
 MODULE_LICENSE("GPL");
@@ -144,8 +144,6 @@ MODULE_PARM_DESC(dosyncppp, "Enable synchronous net device, 0=disable 1=enable")
 /*
  * tty support and callbacks
  */
-#define RELEVANT_IFLAG(iflag) (iflag & (IGNBRK|BRKINT|IGNPAR|PARMRK|INPCK))
-
 static struct tty_driver *serial_driver;
 
 static int  open(struct tty_struct *tty, struct file * filp);
@@ -479,6 +477,7 @@ static void tx_set_idle(struct slgt_info *info);
 static unsigned int free_tbuf_count(struct slgt_info *info);
 static void reset_tbufs(struct slgt_info *info);
 static void tdma_reset(struct slgt_info *info);
+static void tdma_start(struct slgt_info *info);
 static void tx_load(struct slgt_info *info, const char *buf, unsigned int count);
 
 static void get_signals(struct slgt_info *info);
@@ -823,12 +822,6 @@ static void set_termios(struct tty_struct *tty, struct ktermios *old_termios)
 
 	DBGINFO(("%s set_termios\n", tty->driver->name));
 
-	/* just return if nothing has changed */
-	if ((tty->termios->c_cflag == old_termios->c_cflag)
-	    && (RELEVANT_IFLAG(tty->termios->c_iflag)
-		== RELEVANT_IFLAG(old_termios->c_iflag)))
-		return;
-
 	change_params(info);
 
 	/* Handle transition to B0 status */
@@ -912,6 +905,8 @@ start:
 		spin_lock_irqsave(&info->lock,flags);
 		if (!info->tx_active)
 		 	tx_start(info);
+		else
+			tdma_start(info);
 		spin_unlock_irqrestore(&info->lock,flags);
  	}
 
@@ -1570,6 +1565,9 @@ static int hdlcdev_open(struct net_device *dev)
 	int rc;
 	unsigned long flags;
 
+	if (!try_module_get(THIS_MODULE))
+		return -EBUSY;
+
 	DBGINFO(("%s hdlcdev_open\n", dev->name));
 
 	/* generic HDLC layer open processing */
@@ -1639,6 +1637,7 @@ static int hdlcdev_close(struct net_device *dev)
 	info->netcount=0;
 	spin_unlock_irqrestore(&info->netlock, flags);
 
+	module_put(THIS_MODULE);
 	return 0;
 }
 
@@ -3422,13 +3421,12 @@ static struct slgt_info *alloc_dev(int adapter_num, int port_num, struct pci_dev
 {
 	struct slgt_info *info;
 
-	info = kmalloc(sizeof(struct slgt_info), GFP_KERNEL);
+	info = kzalloc(sizeof(struct slgt_info), GFP_KERNEL);
 
 	if (!info) {
 		DBGERR(("%s device alloc failed adapter=%d port=%d\n",
 			driver_name, adapter_num, port_num));
 	} else {
-		memset(info, 0, sizeof(struct slgt_info));
 		info->magic = MGSL_MAGIC;
 		INIT_WORK(&info->task, bh_handler);
 		info->max_frame_size = 4096;
@@ -3880,41 +3878,55 @@ static void tx_start(struct slgt_info *info)
 			slgt_irq_on(info, IRQ_TXUNDER + IRQ_TXIDLE);
 			/* clear tx idle and underrun status bits */
 			wr_reg16(info, SSR, (unsigned short)(IRQ_TXIDLE + IRQ_TXUNDER));
-
-			if (!(rd_reg32(info, TDCSR) & BIT0)) {
-				/* tx DMA stopped, restart tx DMA */
-				tdma_reset(info);
-				/* set 1st descriptor address */
-				wr_reg32(info, TDDAR, info->tbufs[info->tbuf_start].pdesc);
-				switch(info->params.mode) {
-				case MGSL_MODE_RAW:
-				case MGSL_MODE_MONOSYNC:
-				case MGSL_MODE_BISYNC:
-					wr_reg32(info, TDCSR, BIT2 + BIT0); /* IRQ + DMA enable */
-					break;
-				default:
-					wr_reg32(info, TDCSR, BIT0); /* DMA enable */
-				}
-			}
-
 			if (info->params.mode == MGSL_MODE_HDLC)
 				mod_timer(&info->tx_timer, jiffies +
 						msecs_to_jiffies(5000));
 		} else {
-			tdma_reset(info);
-			/* set 1st descriptor address */
-			wr_reg32(info, TDDAR, info->tbufs[info->tbuf_start].pdesc);
-
 			slgt_irq_off(info, IRQ_TXDATA);
 			slgt_irq_on(info, IRQ_TXIDLE);
 			/* clear tx idle status bit */
 			wr_reg16(info, SSR, IRQ_TXIDLE);
-
-			/* enable tx DMA */
-			wr_reg32(info, TDCSR, BIT0);
 		}
-
+		tdma_start(info);
 		info->tx_active = 1;
+	}
+}
+
+/*
+ * start transmit DMA if inactive and there are unsent buffers
+ */
+static void tdma_start(struct slgt_info *info)
+{
+	unsigned int i;
+
+	if (rd_reg32(info, TDCSR) & BIT0)
+		return;
+
+	/* transmit DMA inactive, check for unsent buffers */
+	i = info->tbuf_start;
+	while (!desc_count(info->tbufs[i])) {
+		if (++i == info->tbuf_count)
+			i = 0;
+		if (i == info->tbuf_current)
+			return;
+	}
+	info->tbuf_start = i;
+
+	/* there are unsent buffers, start transmit DMA */
+
+	/* reset needed if previous error condition */
+	tdma_reset(info);
+
+	/* set 1st descriptor address */
+	wr_reg32(info, TDDAR, info->tbufs[info->tbuf_start].pdesc);
+	switch(info->params.mode) {
+	case MGSL_MODE_RAW:
+	case MGSL_MODE_MONOSYNC:
+	case MGSL_MODE_BISYNC:
+		wr_reg32(info, TDCSR, BIT2 + BIT0); /* IRQ + DMA enable */
+		break;
+	default:
+		wr_reg32(info, TDCSR, BIT0); /* DMA enable */
 	}
 }
 
@@ -4651,8 +4663,8 @@ static unsigned int free_tbuf_count(struct slgt_info *info)
 			i=0;
 	} while (i != info->tbuf_current);
 
-	/* last buffer with zero count may be in use, assume it is */
-	if (count)
+	/* if tx DMA active, last zero count buffer is in use */
+	if (count && (rd_reg32(info, TDCSR) & BIT0))
 		--count;
 
 	return count;

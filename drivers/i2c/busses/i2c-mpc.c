@@ -74,6 +74,25 @@ static irqreturn_t mpc_i2c_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/* Sometimes 9th clock pulse isn't generated, and slave doesn't release
+ * the bus, because it wants to send ACK.
+ * Following sequence of enabling/disabling and sending start/stop generates
+ * the pulse, so it's all OK.
+ */
+static void mpc_i2c_fixup(struct mpc_i2c *i2c)
+{
+	writeccr(i2c, 0);
+	udelay(30);
+	writeccr(i2c, CCR_MEN);
+	udelay(30);
+	writeccr(i2c, CCR_MSTA | CCR_MTX);
+	udelay(30);
+	writeccr(i2c, CCR_MSTA | CCR_MTX | CCR_MEN);
+	udelay(30);
+	writeccr(i2c, CCR_MEN);
+	udelay(30);
+}
+
 static int i2c_wait(struct mpc_i2c *i2c, unsigned timeout, int writing)
 {
 	unsigned long orig_jiffies = jiffies;
@@ -86,6 +105,7 @@ static int i2c_wait(struct mpc_i2c *i2c, unsigned timeout, int writing)
 			schedule();
 			if (time_after(jiffies, orig_jiffies + timeout)) {
 				pr_debug("I2C: timeout\n");
+				writeccr(i2c, 0);
 				result = -EIO;
 				break;
 			}
@@ -97,10 +117,12 @@ static int i2c_wait(struct mpc_i2c *i2c, unsigned timeout, int writing)
 		result = wait_event_interruptible_timeout(i2c->queue,
 			(i2c->interrupt & CSR_MIF), timeout * HZ);
 
-		if (unlikely(result < 0))
+		if (unlikely(result < 0)) {
 			pr_debug("I2C: wait interrupted\n");
-		else if (unlikely(!(i2c->interrupt & CSR_MIF))) {
+			writeccr(i2c, 0);
+		} else if (unlikely(!(i2c->interrupt & CSR_MIF))) {
 			pr_debug("I2C: wait timeout\n");
+			writeccr(i2c, 0);
 			result = -ETIMEDOUT;
 		}
 
@@ -241,10 +263,14 @@ static int mpc_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	while (readb(i2c->base + MPC_I2C_SR) & CSR_MBB) {
 		if (signal_pending(current)) {
 			pr_debug("I2C: Interrupted\n");
+			writeccr(i2c, 0);
 			return -EINTR;
 		}
 		if (time_after(jiffies, orig_jiffies + HZ)) {
 			pr_debug("I2C: timeout\n");
+			if (readb(i2c->base + MPC_I2C_SR) ==
+			    (CSR_MCF | CSR_MBB | CSR_RXAK))
+				mpc_i2c_fixup(i2c);
 			return -EIO;
 		}
 		schedule();
@@ -327,9 +353,10 @@ static int fsl_i2c_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, i2c);
 
 	i2c->adap = mpc_ops;
+	i2c->adap.nr = pdev->id;
 	i2c_set_adapdata(&i2c->adap, i2c);
 	i2c->adap.dev.parent = &pdev->dev;
-	if ((result = i2c_add_adapter(&i2c->adap)) < 0) {
+	if ((result = i2c_add_numbered_adapter(&i2c->adap)) < 0) {
 		printk(KERN_ERR "i2c-mpc - failed to add adapter\n");
 		goto fail_add;
 	}
@@ -338,7 +365,7 @@ static int fsl_i2c_probe(struct platform_device *pdev)
 
       fail_add:
 	if (i2c->irq != 0)
-		free_irq(i2c->irq, NULL);
+		free_irq(i2c->irq, i2c);
       fail_irq:
 	iounmap(i2c->base);
       fail_map:

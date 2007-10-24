@@ -263,8 +263,8 @@ static int setup_k7_watchdog(unsigned nmi_hz)
 	unsigned int evntsel;
 	struct nmi_watchdog_ctlblk *wd = &__get_cpu_var(nmi_watchdog_ctlblk);
 
-	perfctr_msr = MSR_K7_PERFCTR0;
-	evntsel_msr = MSR_K7_EVNTSEL0;
+	perfctr_msr = wd_ops->perfctr;
+	evntsel_msr = wd_ops->evntsel;
 
 	wrmsrl(perfctr_msr, 0UL);
 
@@ -325,7 +325,7 @@ static struct wd_ops k7_wd_ops = {
 	.stop = single_msr_stop_watchdog,
 	.perfctr = MSR_K7_PERFCTR0,
 	.evntsel = MSR_K7_EVNTSEL0,
-	.checkbit = 1ULL<<63,
+	.checkbit = 1ULL<<47,
 };
 
 /* Intel Model 6 (PPro+,P2,P3,P-M,Core1) */
@@ -343,10 +343,12 @@ static int setup_p6_watchdog(unsigned nmi_hz)
 	unsigned int evntsel;
 	struct nmi_watchdog_ctlblk *wd = &__get_cpu_var(nmi_watchdog_ctlblk);
 
-	perfctr_msr = MSR_P6_PERFCTR0;
-	evntsel_msr = MSR_P6_EVNTSEL0;
+	perfctr_msr = wd_ops->perfctr;
+	evntsel_msr = wd_ops->evntsel;
 
-	wrmsrl(perfctr_msr, 0UL);
+	/* KVM doesn't implement this MSR */
+	if (wrmsr_safe(perfctr_msr, 0, 0) < 0)
+		return 0;
 
 	evntsel = P6_EVNTSEL_INT
 		| P6_EVNTSEL_OS
@@ -567,8 +569,8 @@ static int setup_intel_arch_watchdog(unsigned nmi_hz)
 	    (ebx & ARCH_PERFMON_UNHALTED_CORE_CYCLES_PRESENT))
 		return 0;
 
-	perfctr_msr = MSR_ARCH_PERFMON_PERFCTR1;
-	evntsel_msr = MSR_ARCH_PERFMON_EVENTSEL1;
+	perfctr_msr = wd_ops->perfctr;
+	evntsel_msr = wd_ops->evntsel;
 
 	wrmsrl(perfctr_msr, 0UL);
 
@@ -599,6 +601,16 @@ static struct wd_ops intel_arch_wd_ops = {
 	.setup = setup_intel_arch_watchdog,
 	.rearm = p6_rearm,
 	.stop = single_msr_stop_watchdog,
+	.perfctr = MSR_ARCH_PERFMON_PERFCTR1,
+	.evntsel = MSR_ARCH_PERFMON_EVENTSEL1,
+};
+
+static struct wd_ops coreduo_wd_ops = {
+	.reserve = single_msr_reserve,
+	.unreserve = single_msr_unreserve,
+	.setup = setup_intel_arch_watchdog,
+	.rearm = p6_rearm,
+	.stop = single_msr_stop_watchdog,
 	.perfctr = MSR_ARCH_PERFMON_PERFCTR0,
 	.evntsel = MSR_ARCH_PERFMON_EVENTSEL0,
 };
@@ -613,6 +625,12 @@ static void probe_nmi_watchdog(void)
 		wd_ops = &k7_wd_ops;
 		break;
 	case X86_VENDOR_INTEL:
+		/* Work around Core Duo (Yonah) errata AE49 where perfctr1
+		   doesn't have a working enable bit. */
+		if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 14) {
+			wd_ops = &coreduo_wd_ops;
+			break;
+		}
 		if (cpu_has(&boot_cpu_data, X86_FEATURE_ARCH_PERFMON)) {
 			wd_ops = &intel_arch_wd_ops;
 			break;

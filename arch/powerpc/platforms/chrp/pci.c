@@ -99,7 +99,7 @@ int rtas_read_config(struct pci_bus *bus, unsigned int devfn, int offset,
 	struct pci_controller *hose = bus->sysdata;
 	unsigned long addr = (offset & 0xff) | ((devfn & 0xff) << 8)
 		| (((bus->number - hose->first_busno) & 0xff) << 16)
-		| (hose->index << 24);
+		| (hose->global_number << 24);
         int ret = -1;
 	int rval;
 
@@ -114,7 +114,7 @@ int rtas_write_config(struct pci_bus *bus, unsigned int devfn, int offset,
 	struct pci_controller *hose = bus->sysdata;
 	unsigned long addr = (offset & 0xff) | ((devfn & 0xff) << 8)
 		| (((bus->number - hose->first_busno) & 0xff) << 16)
-		| (hose->index << 24);
+		| (hose->global_number << 24);
 	int rval;
 
 	rval = rtas_call(rtas_token("write-pci-config"), 3, 1, NULL,
@@ -181,7 +181,7 @@ setup_python(struct pci_controller *hose, struct device_node *dev)
 	}
 	iounmap(reg);
 
-	setup_indirect_pci(hose, r.start + 0xf8000, r.start + 0xf8010);
+	setup_indirect_pci(hose, r.start + 0xf8000, r.start + 0xf8010, 0);
 }
 
 /* Marvell Discovery II based Pegasos 2 */
@@ -254,13 +254,12 @@ chrp_find_bridges(void)
 			printk(" at %llx", (unsigned long long)r.start);
 		printk("\n");
 
-		hose = pcibios_alloc_controller();
+		hose = pcibios_alloc_controller(dev);
 		if (!hose) {
 			printk("Can't allocate PCI controller structure for %s\n",
 				dev->full_name);
 			continue;
 		}
-		hose->arch_data = dev;
 		hose->first_busno = bus_range[0];
 		hose->last_busno = bus_range[1];
 
@@ -278,13 +277,14 @@ chrp_find_bridges(void)
 			hose->cfg_data = p;
 			gg2_pci_config_base = p;
 		} else if (is_pegasos == 1) {
-			setup_indirect_pci(hose, 0xfec00cf8, 0xfee00cfc);
+			setup_indirect_pci(hose, 0xfec00cf8, 0xfee00cfc, 0);
 		} else if (is_pegasos == 2) {
 			setup_peg2(hose, dev);
 		} else if (!strncmp(model, "IBM,CPC710", 10)) {
 			setup_indirect_pci(hose,
 					   r.start + 0x000f8000,
-					   r.start + 0x000f8010);
+					   r.start + 0x000f8010,
+					   0);
 			if (index == 0) {
 				dma = of_get_property(dev, "system-dma-base",
 							&len);

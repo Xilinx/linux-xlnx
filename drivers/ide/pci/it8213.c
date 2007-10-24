@@ -21,7 +21,7 @@
  *	it8213_dma_2_pio		-	return the PIO mode matching DMA
  *	@xfer_rate: transfer speed
  *
- *	Returns the nearest equivalent PIO timing for the PIO or DMA
+ *	Returns the nearest equivalent PIO timing for the DMA
  *	mode requested by the controller.
  */
 
@@ -35,34 +35,28 @@ static u8 it8213_dma_2_pio (u8 xfer_rate) {
 		case XFER_UDMA_1:
 		case XFER_UDMA_0:
 		case XFER_MW_DMA_2:
-		case XFER_PIO_4:
 			return 4;
 		case XFER_MW_DMA_1:
-		case XFER_PIO_3:
 			return 3;
 		case XFER_SW_DMA_2:
-		case XFER_PIO_2:
 			return 2;
 		case XFER_MW_DMA_0:
 		case XFER_SW_DMA_1:
 		case XFER_SW_DMA_0:
-		case XFER_PIO_1:
-		case XFER_PIO_0:
-		case XFER_PIO_SLOW:
 		default:
 			return 0;
 	}
 }
 
 /*
- *	it8213_tuneproc	-	tune a drive
+ *	it8213_tune_pio	-	tune a drive
  *	@drive: drive to tune
  *	@pio: desired PIO mode
  *
  *	Set the interface PIO mode.
  */
 
-static void it8213_tuneproc (ide_drive_t *drive, u8 pio)
+static void it8213_tune_pio(ide_drive_t *drive, const u8 pio)
 {
 	ide_hwif_t *hwif	= HWIF(drive);
 	struct pci_dev *dev	= hwif->pci_dev;
@@ -81,8 +75,6 @@ static void it8213_tuneproc (ide_drive_t *drive, u8 pio)
 					{ 1, 0 },
 					{ 2, 1 },
 					{ 2, 3 }, };
-
-	pio = ide_get_best_pio_mode(drive, pio, 4, NULL);
 
 	spin_lock_irqsave(&tune_lock, flags);
 	pci_read_config_word(dev, master_port, &master_data);
@@ -111,6 +103,13 @@ static void it8213_tuneproc (ide_drive_t *drive, u8 pio)
 	if (is_slave)
 		pci_write_config_byte(dev, slave_port, slave_data);
 	spin_unlock_irqrestore(&tune_lock, flags);
+}
+
+static void it8213_tuneproc(ide_drive_t *drive, u8 pio)
+{
+	pio = ide_get_best_pio_mode(drive, pio, 4);
+	it8213_tune_pio(drive, pio);
+	ide_config_drive_speed(drive, XFER_PIO_0 + pio);
 }
 
 /**
@@ -193,7 +192,12 @@ static int it8213_tune_chipset (ide_drive_t *drive, u8 xferspeed)
 		if (reg55 & w_flag)
 			pci_write_config_byte(dev, 0x55, (u8) reg55 & ~w_flag);
 	}
-	it8213_tuneproc(drive, it8213_dma_2_pio(speed));
+
+	if (speed > XFER_PIO_4)
+		it8213_tune_pio(drive, it8213_dma_2_pio(speed));
+	else
+		it8213_tune_pio(drive, speed - XFER_PIO_0);
+
 	return ide_config_drive_speed(drive, speed);
 }
 
@@ -209,13 +213,10 @@ static int it8213_tune_chipset (ide_drive_t *drive, u8 xferspeed)
 
 static int it8213_config_drive_for_dma (ide_drive_t *drive)
 {
-	u8 pio;
-
 	if (ide_tune_dma(drive))
 		return 0;
 
-	pio = ide_get_best_pio_mode(drive, 255, 4, NULL);
-	it8213_tune_chipset(drive, XFER_PIO_0 + pio);
+	it8213_tuneproc(drive, 255);
 
 	return -1;
 }
@@ -231,7 +232,7 @@ static int it8213_config_drive_for_dma (ide_drive_t *drive)
 
 static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 {
-	u8 reg42h = 0, ata66 = 0;
+	u8 reg42h = 0;
 
 	hwif->speedproc = &it8213_tune_chipset;
 	hwif->tuneproc	= &it8213_tuneproc;
@@ -250,11 +251,11 @@ static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 	hwif->swdma_mask = 0x04;
 
 	pci_read_config_byte(hwif->pci_dev, 0x42, &reg42h);
-	ata66 = (reg42h & 0x02) ? 0 : 1;
 
 	hwif->ide_dma_check = &it8213_config_drive_for_dma;
-	if (!(hwif->udma_four))
-		hwif->udma_four = ata66;
+
+	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
+		hwif->cbl = (reg42h & 0x02) ? ATA_CBL_PATA40 : ATA_CBL_PATA80;
 
 	/*
 	 *	The BIOS often doesn't set up DMA on this controller
@@ -272,10 +273,11 @@ static void __devinit init_hwif_it8213(ide_hwif_t *hwif)
 	{						\
 		.name		= name_str,		\
 		.init_hwif	= init_hwif_it8213,	\
-		.channels	= 1,			\
 		.autodma	= AUTODMA,		\
 		.enablebits	= {{0x41,0x80,0x80}}, \
 		.bootable	= ON_BOARD,		\
+		.host_flags	= IDE_HFLAG_SINGLE,	\
+		.pio_mask	= ATA_PIO4,		\
 	}
 
 static ide_pci_device_t it8213_chipsets[] __devinitdata = {

@@ -12,7 +12,8 @@ endif
 
 obj-y				:= semaphore.o cputable.o ptrace.o syscalls.o \
 				   irq.o align.o signal_32.o pmc.o vdso.o \
-				   init_task.o process.o systbl.o idle.o
+				   init_task.o process.o systbl.o idle.o \
+				   signal.o
 obj-y				+= vdso32/
 obj-$(CONFIG_PPC64)		+= setup_64.o binfmt_elf32.o sys_ppc32.o \
 				   signal_64.o ptrace32.o \
@@ -36,9 +37,9 @@ obj-$(CONFIG_GENERIC_TBSYNC)	+= smp-tbsync.o
 obj-$(CONFIG_CRASH_DUMP)	+= crash_dump.o
 obj-$(CONFIG_6xx)		+= idle_6xx.o l2cr_6xx.o cpu_setup_6xx.o
 obj-$(CONFIG_TAU)		+= tau_6xx.o
-obj-$(CONFIG_SOFTWARE_SUSPEND)	+= swsusp.o suspend.o
-obj32-$(CONFIG_SOFTWARE_SUSPEND) += swsusp_32.o
-obj64-$(CONFIG_SOFTWARE_SUSPEND) += swsusp_64.o swsusp_asm64.o
+obj-$(CONFIG_HIBERNATION)	+= swsusp.o suspend.o
+obj32-$(CONFIG_HIBERNATION) += swsusp_32.o
+obj64-$(CONFIG_HIBERNATION) += swsusp_64.o swsusp_asm64.o
 obj32-$(CONFIG_MODULES)		+= module_32.o
 
 ifeq ($(CONFIG_PPC_MERGE),y)
@@ -65,9 +66,9 @@ obj-$(CONFIG_PPC_UDBG_16550)	+= legacy_serial.o udbg_16550.o
 module-$(CONFIG_PPC64)		+= module_64.o
 obj-$(CONFIG_MODULES)		+= $(module-y)
 
-pci64-$(CONFIG_PPC64)		+= pci_64.o pci_dn.o
+pci64-$(CONFIG_PPC64)		+= pci_64.o pci_dn.o isa-bridge.o
 pci32-$(CONFIG_PPC32)		:= pci_32.o
-obj-$(CONFIG_PCI)		+= $(pci64-y) $(pci32-y)
+obj-$(CONFIG_PCI)		+= $(pci64-y) $(pci32-y) pci-common.o
 obj-$(CONFIG_PCI_MSI)		+= msi.o
 kexec-$(CONFIG_PPC64)		:= machine_kexec_64.o
 kexec-$(CONFIG_PPC32)		:= machine_kexec_32.o
@@ -80,6 +81,7 @@ obj-y				+= iomap.o
 endif
 
 ifeq ($(CONFIG_PPC_ISERIES),y)
+CFLAGS_lparmap.s		+= -g0
 extra-y += lparmap.s
 $(obj)/head_64.o:	$(obj)/lparmap.s
 AFLAGS_head_64.o += -I$(obj)

@@ -347,7 +347,8 @@ static void dvb_net_ule( struct net_device *dev, const u8 *buf, size_t buf_len )
 {
 	struct dvb_net_priv *priv = dev->priv;
 	unsigned long skipped = 0L;
-	u8 *ts, *ts_end, *from_where = NULL, ts_remain = 0, how_much = 0, new_ts = 1;
+	const u8 *ts, *ts_end, *from_where = NULL;
+	u8 ts_remain = 0, how_much = 0, new_ts = 1;
 	struct ethhdr *ethh = NULL;
 
 #ifdef ULE_DEBUG
@@ -364,7 +365,7 @@ static void dvb_net_ule( struct net_device *dev, const u8 *buf, size_t buf_len )
 	/* For all TS cells in current buffer.
 	 * Appearently, we are called for every single TS cell.
 	 */
-	for (ts = (char *)buf, ts_end = (char *)buf + buf_len; ts < ts_end; /* no default incr. */ ) {
+	for (ts = buf, ts_end = buf + buf_len; ts < ts_end; /* no default incr. */ ) {
 
 		if (new_ts) {
 			/* We are about to process a new TS cell. */
@@ -799,7 +800,8 @@ static int dvb_net_ts_callback(const u8 *buffer1, size_t buffer1_len,
 }
 
 
-static void dvb_net_sec(struct net_device *dev, u8 *pkt, int pkt_len)
+static void dvb_net_sec(struct net_device *dev, const u8 *pkt, int
+pkt_len)
 {
 	u8 *eth;
 	struct sk_buff *skb;
@@ -901,7 +903,7 @@ static int dvb_net_sec_callback(const u8 *buffer1, size_t buffer1_len,
 	 * we rely on the DVB API definition where exactly one complete
 	 * section is delivered in buffer1
 	 */
-	dvb_net_sec (dev, (u8*) buffer1, buffer1_len);
+	dvb_net_sec (dev, buffer1, buffer1_len);
 	return 0;
 }
 

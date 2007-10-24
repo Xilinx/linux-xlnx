@@ -301,9 +301,19 @@ _GLOBAL(_tlbie)
 	mfspr	r4,SPRN_MMUCR
 	mfspr	r5,SPRN_PID			/* Get PID */
 	rlwimi	r4,r5,0,24,31			/* Set TID */
-	mtspr	SPRN_MMUCR,r4
 
+	/* We have to run the search with interrupts disabled, even critical
+	 * and debug interrupts (in fact the only critical exceptions we have
+	 * are debug and machine check).  Otherwise  an interrupt which causes
+	 * a TLB miss can clobber the MMUCR between the mtspr and the tlbsx. */
+	mfmsr	r5
+	lis	r6,(MSR_EE|MSR_CE|MSR_ME|MSR_DE)@ha
+	addi	r6,r6,(MSR_EE|MSR_CE|MSR_ME|MSR_DE)@l
+	andc	r6,r5,r6
+	mtmsr	r6
+	mtspr	SPRN_MMUCR,r4
 	tlbsx.	r3, 0, r3
+	mtmsr	r5
 	bne	10f
 	sync
 	/* There are only 64 TLB entries, so r3 < 64,
@@ -392,7 +402,7 @@ BEGIN_FTR_SECTION
 	mtspr   SPRN_L1CSR0,r3
 	isync
 	blr
-END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
+END_FTR_SECTION_IFSET(CPU_FTR_UNIFIED_ID_CACHE)
 	mfspr	r3,SPRN_L1CSR1
 	ori	r3,r3,L1CSR1_ICFI|L1CSR1_ICLFR
 	mtspr	SPRN_L1CSR1,r3
@@ -419,7 +429,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
 _GLOBAL(__flush_icache_range)
 BEGIN_FTR_SECTION
 	blr				/* for 601, do nothing */
-END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
+END_FTR_SECTION_IFSET(CPU_FTR_COHERENT_ICACHE)
 	li	r5,L1_CACHE_BYTES-1
 	andc	r3,r3,r5
 	subf	r4,r3,r4
@@ -514,8 +524,8 @@ _GLOBAL(invalidate_dcache_range)
  */
 _GLOBAL(__flush_dcache_icache)
 BEGIN_FTR_SECTION
-	blr					/* for 601, do nothing */
-END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
+	blr
+END_FTR_SECTION_IFSET(CPU_FTR_COHERENT_ICACHE)
 	rlwinm	r3,r3,0,0,19			/* Get page base address */
 	li	r4,4096/L1_CACHE_BYTES	/* Number of lines in a page */
 	mtctr	r4
@@ -543,7 +553,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
 _GLOBAL(__flush_dcache_icache_phys)
 BEGIN_FTR_SECTION
 	blr					/* for 601, do nothing */
-END_FTR_SECTION_IFCLR(CPU_FTR_SPLIT_ID_CACHE)
+END_FTR_SECTION_IFSET(CPU_FTR_COHERENT_ICACHE)
 	mfmsr	r10
 	rlwinm	r0,r10,0,28,26			/* clear DR */
 	mtmsr	r0

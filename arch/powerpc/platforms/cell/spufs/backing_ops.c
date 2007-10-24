@@ -162,7 +162,8 @@ static int spu_backing_wbox_write(struct spu_context *ctx, u32 data)
 		BUG_ON(avail != (4 - slot));
 		ctx->csa.spu_mailbox_data[slot] = data;
 		ctx->csa.spu_chnlcnt_RW[29] = ++slot;
-		ctx->csa.prob.mb_stat_R = (((4 - slot) & 0xff) << 8);
+		ctx->csa.prob.mb_stat_R &= ~(0x00ff00);
+		ctx->csa.prob.mb_stat_R |= (((4 - slot) & 0xff) << 8);
 		gen_spu_event(ctx, MFC_SPU_MAILBOX_WRITTEN_EVENT);
 		ret = 4;
 	} else {
@@ -320,6 +321,12 @@ static int spu_backing_set_mfc_query(struct spu_context * ctx, u32 mask,
 	/* FIXME: what are the side-effects of this? */
 	prob->dma_querymask_RW = mask;
 	prob->dma_querytype_RW = mode;
+	/* In the current implementation, the SPU context is always
+	 * acquired in runnable state when new bits are added to the
+	 * mask (tagwait), so it's sufficient just to mask
+	 * dma_tagstatus_R with the 'mask' parameter here.
+	 */
+	ctx->csa.prob.dma_tagstatus_R &= mask;
 out:
 	spin_unlock(&ctx->csa.register_lock);
 

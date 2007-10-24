@@ -324,17 +324,14 @@ static void esp_reset_esp(struct esp *esp)
 static void esp_map_dma(struct esp *esp, struct scsi_cmnd *cmd)
 {
 	struct esp_cmd_priv *spriv = ESP_CMD_PRIV(cmd);
-	struct scatterlist *sg = cmd->request_buffer;
+	struct scatterlist *sg = scsi_sglist(cmd);
 	int dir = cmd->sc_data_direction;
 	int total, i;
 
 	if (dir == DMA_NONE)
 		return;
 
-	BUG_ON(cmd->use_sg == 0);
-
-	spriv->u.num_sg = esp->ops->map_sg(esp, sg,
-					   cmd->use_sg, dir);
+	spriv->u.num_sg = esp->ops->map_sg(esp, sg, scsi_sg_count(cmd), dir);
 	spriv->cur_residue = sg_dma_len(sg);
 	spriv->cur_sg = sg;
 
@@ -407,8 +404,7 @@ static void esp_unmap_dma(struct esp *esp, struct scsi_cmnd *cmd)
 	if (dir == DMA_NONE)
 		return;
 
-	esp->ops->unmap_sg(esp, cmd->request_buffer,
-			   spriv->u.num_sg, dir);
+	esp->ops->unmap_sg(esp, scsi_sglist(cmd), spriv->u.num_sg, dir);
 }
 
 static void esp_save_pointers(struct esp *esp, struct esp_cmd_entry *ent)
@@ -921,7 +917,7 @@ static void esp_event_queue_full(struct esp *esp, struct esp_cmd_entry *ent)
 static int esp_queuecommand(struct scsi_cmnd *cmd, void (*done)(struct scsi_cmnd *))
 {
 	struct scsi_device *dev = cmd->device;
-	struct esp *esp = host_to_esp(dev->host);
+	struct esp *esp = shost_priv(dev->host);
 	struct esp_cmd_priv *spriv;
 	struct esp_cmd_entry *ent;
 
@@ -2318,6 +2314,7 @@ int __devinit scsi_esp_register(struct esp *esp, struct device *dev)
 	esp->host->transportt = esp_transport_template;
 	esp->host->max_lun = ESP_MAX_LUN;
 	esp->host->cmd_per_lun = 2;
+	esp->host->unique_id = instance;
 
 	esp_set_clock_params(esp);
 
@@ -2341,7 +2338,7 @@ int __devinit scsi_esp_register(struct esp *esp, struct device *dev)
 	if (err)
 		return err;
 
-	esp->host->unique_id = instance++;
+	instance++;
 
 	scsi_scan_host(esp->host);
 
@@ -2357,7 +2354,7 @@ EXPORT_SYMBOL(scsi_esp_unregister);
 
 static int esp_slave_alloc(struct scsi_device *dev)
 {
-	struct esp *esp = host_to_esp(dev->host);
+	struct esp *esp = shost_priv(dev->host);
 	struct esp_target_data *tp = &esp->target[dev->id];
 	struct esp_lun_data *lp;
 
@@ -2381,7 +2378,7 @@ static int esp_slave_alloc(struct scsi_device *dev)
 
 static int esp_slave_configure(struct scsi_device *dev)
 {
-	struct esp *esp = host_to_esp(dev->host);
+	struct esp *esp = shost_priv(dev->host);
 	struct esp_target_data *tp = &esp->target[dev->id];
 	int goal_tags, queue_depth;
 
@@ -2423,7 +2420,7 @@ static void esp_slave_destroy(struct scsi_device *dev)
 
 static int esp_eh_abort_handler(struct scsi_cmnd *cmd)
 {
-	struct esp *esp = host_to_esp(cmd->device->host);
+	struct esp *esp = shost_priv(cmd->device->host);
 	struct esp_cmd_entry *ent, *tmp;
 	struct completion eh_done;
 	unsigned long flags;
@@ -2539,7 +2536,7 @@ out_failure:
 
 static int esp_eh_bus_reset_handler(struct scsi_cmnd *cmd)
 {
-	struct esp *esp = host_to_esp(cmd->device->host);
+	struct esp *esp = shost_priv(cmd->device->host);
 	struct completion eh_reset;
 	unsigned long flags;
 
@@ -2575,7 +2572,7 @@ static int esp_eh_bus_reset_handler(struct scsi_cmnd *cmd)
 /* All bets are off, reset the entire device.  */
 static int esp_eh_host_reset_handler(struct scsi_cmnd *cmd)
 {
-	struct esp *esp = host_to_esp(cmd->device->host);
+	struct esp *esp = shost_priv(cmd->device->host);
 	unsigned long flags;
 
 	spin_lock_irqsave(esp->host->host_lock, flags);
@@ -2615,7 +2612,7 @@ EXPORT_SYMBOL(scsi_esp_template);
 
 static void esp_get_signalling(struct Scsi_Host *host)
 {
-	struct esp *esp = host_to_esp(host);
+	struct esp *esp = shost_priv(host);
 	enum spi_signal_type type;
 
 	if (esp->flags & ESP_FLAG_DIFFERENTIAL)
@@ -2629,7 +2626,7 @@ static void esp_get_signalling(struct Scsi_Host *host)
 static void esp_set_offset(struct scsi_target *target, int offset)
 {
 	struct Scsi_Host *host = dev_to_shost(target->dev.parent);
-	struct esp *esp = host_to_esp(host);
+	struct esp *esp = shost_priv(host);
 	struct esp_target_data *tp = &esp->target[target->id];
 
 	tp->nego_goal_offset = offset;
@@ -2639,7 +2636,7 @@ static void esp_set_offset(struct scsi_target *target, int offset)
 static void esp_set_period(struct scsi_target *target, int period)
 {
 	struct Scsi_Host *host = dev_to_shost(target->dev.parent);
-	struct esp *esp = host_to_esp(host);
+	struct esp *esp = shost_priv(host);
 	struct esp_target_data *tp = &esp->target[target->id];
 
 	tp->nego_goal_period = period;
@@ -2649,7 +2646,7 @@ static void esp_set_period(struct scsi_target *target, int period)
 static void esp_set_width(struct scsi_target *target, int width)
 {
 	struct Scsi_Host *host = dev_to_shost(target->dev.parent);
-	struct esp *esp = host_to_esp(host);
+	struct esp *esp = shost_priv(host);
 	struct esp_target_data *tp = &esp->target[target->id];
 
 	tp->nego_goal_width = (width ? 1 : 0);

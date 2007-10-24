@@ -890,8 +890,7 @@ static void __devinit velocity_init_info(struct pci_dev *pdev,
 
 static int __devinit velocity_get_pci_info(struct velocity_info *vptr, struct pci_dev *pdev)
 {
-	if (pci_read_config_byte(pdev, PCI_REVISION_ID, &vptr->rev_id) < 0)
-		return -EIO;
+	vptr->rev_id = pdev->revision;
 
 	pci_set_master(pdev);
 
@@ -1614,7 +1613,7 @@ static void velocity_error(struct velocity_info *vptr, int status)
 	if (status & ISR_TXSTLI) {
 		struct mac_regs __iomem * regs = vptr->mac_regs;
 
-		printk(KERN_ERR "TD structure errror TDindex=%hx\n", readw(&regs->TDIdx[0]));
+		printk(KERN_ERR "TD structure error TDindex=%hx\n", readw(&regs->TDIdx[0]));
 		BYTE_REG_BITS_ON(TXESR_TDSTR, &regs->TXESR);
 		writew(TRDCSR_RUN, &regs->TDCSRClr);
 		netif_stop_queue(vptr->dev);

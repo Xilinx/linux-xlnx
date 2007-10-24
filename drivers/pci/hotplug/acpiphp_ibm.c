@@ -106,7 +106,8 @@ static int ibm_get_attention_status(struct hotplug_slot *slot, u8 *status);
 static void ibm_handle_events(acpi_handle handle, u32 event, void *context);
 static int ibm_get_table_from_acpi(char **bufp);
 static ssize_t ibm_read_apci_table(struct kobject *kobj,
-		char *buffer, loff_t pos, size_t size);
+				   struct bin_attribute *bin_attr,
+				   char *buffer, loff_t pos, size_t size);
 static acpi_status __init ibm_find_acpi_device(acpi_handle handle,
 		u32 lvl, void *context, void **rv);
 static int __init ibm_acpiphp_init(void);
@@ -117,7 +118,6 @@ static struct notification ibm_note;
 static struct bin_attribute ibm_apci_table_attr = {
 	    .attr = {
 		    .name = "apci_table",
-		    .owner = THIS_MODULE,
 		    .mode = S_IRUGO,
 	    },
 	    .read = ibm_read_apci_table,
@@ -267,7 +267,10 @@ static void ibm_handle_events(acpi_handle handle, u32 event, void *context)
 
 	if (subevent == 0x80) {
 		dbg("%s: generationg bus event\n", __FUNCTION__);
-		acpi_bus_generate_event(note->device, note->event, detail);
+		acpi_bus_generate_proc_event(note->device, note->event, detail);
+		acpi_bus_generate_netlink_event(note->device->pnp.device_class,
+						  note->device->dev.bus_id,
+						  note->event, detail);
 	} else
 		note->event = event;
 }
@@ -358,7 +361,8 @@ read_table_done:
  * our solution is to only allow reading the table in all at once
  **/
 static ssize_t ibm_read_apci_table(struct kobject *kobj,
-		char *buffer, loff_t pos, size_t size)
+				   struct bin_attribute *bin_attr,
+				   char *buffer, loff_t pos, size_t size)
 {
 	int bytes_read = -EINVAL;
 	char *table = NULL;
@@ -398,7 +402,7 @@ static acpi_status __init ibm_find_acpi_device(acpi_handle handle,
 
 	status = acpi_get_object_info(handle, &info_buffer);
 	if (ACPI_FAILURE(status)) {
-		err("%s:  Failed to get device information", __FUNCTION__);
+		err("%s:  Failed to get device information\n", __FUNCTION__);
 		return 0;
 	}
 	info.hardware_id.value[sizeof(info.hardware_id.value) - 1] = '\0';
