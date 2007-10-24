@@ -543,7 +543,7 @@ static int __init uartlite_of_init(void)
 	int ret;
 
 	for (np = NULL, i = 0;
-	     (np = of_find_compatible_node(np, NULL, "opb_uartlite")) != NULL;
+	     (np = of_find_compatible_node(np, NULL, "xlnx,opb-uartlite")) != NULL;
 	     i++) {
 		ret = register_uartlite(np, i);
 		if (ret) {
@@ -552,7 +552,7 @@ static int __init uartlite_of_init(void)
 	}
 
 	for (np = NULL;
-	     (np = of_find_compatible_node(np, NULL, "xps_uartlite")) != NULL;
+	     (np = of_find_compatible_node(np, NULL, "xlnx,xps-uartlite")) != NULL;
 	     i++) {
 		ret = register_uartlite(np, i);
 		if (ret) {

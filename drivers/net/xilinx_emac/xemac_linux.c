@@ -2749,9 +2749,8 @@ static int __devexit xenet_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xenet_of_match[] = {
-	{ .compatible = "opb_ethernet", },
-	{ .compatible = "plb_ethernet", },
-	{ .compatible = "emac", },
+	{ .compatible = "xlnx,opb-ethernet", },
+	{ .compatible = "xlnx,plb-ethernet", },
 	{ /* end of list */ },
 };
 

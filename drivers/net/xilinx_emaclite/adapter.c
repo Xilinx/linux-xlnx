@@ -648,9 +648,8 @@ static int __devexit xemaclite_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xemaclite_of_match[] = {
-	{ .compatible = "opb_ethernetlite", },
-	{ .compatible = "xps_ethernetlite", },
-	{ .compatible = "emaclite", },
+	{ .compatible = "xlnx,opb-ethernetlite", },
+	{ .compatible = "xlnx,xps-ethernetlite", },
 	{ /* end of list */ },
 };
 
