@@ -459,7 +459,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 
 
 
-// #define PHY_MARVELL_88E1111_RGMII
+#define PHY_MARVELL_88E1111_RGMII
 
 #ifdef PHY_MARVELL_88E1111_RGMII
 #define MARVELL_88E1111_EXTENDED_PHY_CTL_REG_OFFSET  20
@@ -476,7 +476,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 static void phy_setup(struct net_local *lp)
 {
 #ifdef PHY_MARVELL_88E1111_RGMII
-	u32 Register;
+	u16 Register;
 
 	/*
 	 * Set up MAC interface
@@ -518,7 +518,7 @@ static void phy_setup(struct net_local *lp)
 	/*
 	 * Reset the PHY
 	 */
-	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, &Register);
 	Register |= BMCR_RESET;
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
 
