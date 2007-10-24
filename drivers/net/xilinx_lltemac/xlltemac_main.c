@@ -3549,14 +3549,14 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 		return rc;
 	}
 
-	pdata_struct.tx_csum		= get_u32(ofdev, "xilinx,TXCSUM");
-	pdata_struct.rx_csum		= get_u32(ofdev, "xilinx,RXCSUM");
-	pdata_struct.phy_type           = get_u32(ofdev, "xilinx,PHY_TYPE");
-	pdata_struct.ll_dev_type	= get_u32(ofdev, "xilinx,LLINK_CONNECTED_TYPE");
-	pdata_struct.ll_dev_baseaddress	= get_u32(ofdev, "xilinx,LLINK_CONNECTED_BASEADDR");
-	pdata_struct.ll_dev_dma_rx_irq	= get_u32(ofdev, "xilinx,LLINK_CONNECTED_DMARX_INTR");
-	pdata_struct.ll_dev_dma_tx_irq	= get_u32(ofdev, "xilinx,LLINK_CONNECTED_DMATX_INTR");
-	pdata_struct.ll_dev_fifo_irq	= get_u32(ofdev, "xilinx,LLINK_CONNECTED_FIFO_INTR");
+	pdata_struct.tx_csum		= get_u32(ofdev, "xlnx,txcsum");
+	pdata_struct.rx_csum		= get_u32(ofdev, "xlnx,rxcsum");
+	pdata_struct.phy_type           = get_u32(ofdev, "xlnx,phy-type");
+	pdata_struct.ll_dev_type	= get_u32(ofdev, "xlnx,llink-connected-type");
+	pdata_struct.ll_dev_baseaddress	= get_u32(ofdev, "xlnx,llink-connected-baseaddr");
+	pdata_struct.ll_dev_dma_rx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmarx-intr");
+	pdata_struct.ll_dev_dma_tx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmatx-intr");
+	pdata_struct.ll_dev_fifo_irq	= get_u32(ofdev, "xlnx,llink-connected-fifo-intr");
 	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
 
         return xtenet_setup(&ofdev->dev, r_mem, r_irq, pdata);

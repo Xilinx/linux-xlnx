@@ -635,8 +635,8 @@ static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of
 		return rc;
 	}
 
-	pdata_struct.tx_ping_pong	= get_bool(ofdev, "C_TX_PING_PONG");
-	pdata_struct.rx_ping_pong	= get_bool(ofdev, "C_RX_PING_PONG");
+	pdata_struct.tx_ping_pong	= get_bool(ofdev, "xlnx,tx-ping-pong");
+	pdata_struct.rx_ping_pong	= get_bool(ofdev, "xlnx,rx-ping-pong");
 	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
 
         return xemaclite_setup(&ofdev->dev, r_mem, r_irq, pdata);

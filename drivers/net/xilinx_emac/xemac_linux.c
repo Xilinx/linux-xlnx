@@ -2729,15 +2729,15 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 		return rc;
 	}
 
-	pdata_struct.dma_mode           = get_u32(ofdev, "C_DMA_PRESENT");
-	pdata_struct.has_mii		= get_u32(ofdev, "C_MII_EXIST");
-	pdata_struct.has_cam		= get_u32(ofdev, "C_CAM_EXIST");
-	pdata_struct.has_err_cnt	= get_u32(ofdev, "C_ERR_COUNT_EXIST");
-	pdata_struct.has_jumbo		= get_u32(ofdev, "C_JUMBO_EXIST");
-	pdata_struct.tx_dre		= get_u32(ofdev, "C_TX_DRE_TYPE");
-	pdata_struct.rx_dre		= get_u32(ofdev, "C_RX_DRE_TYPE");
-	pdata_struct.tx_hw_csum		= get_u32(ofdev, "C_TX_INCLUDE_CSUM");
-	pdata_struct.rx_hw_csum		= get_u32(ofdev, "C_RX_INCLUDE_CSUM");
+	pdata_struct.dma_mode           = get_u32(ofdev, "xlnx,dma-present");
+	pdata_struct.has_mii		= get_u32(ofdev, "xlnx,mii-exist");
+	pdata_struct.has_cam		= get_u32(ofdev, "xlnx,cam-exist");
+	pdata_struct.has_err_cnt	= get_u32(ofdev, "xlnx,err-count-exist");
+	pdata_struct.has_jumbo		= get_u32(ofdev, "xlnx,jumbo-exist");
+	pdata_struct.tx_dre		= get_u32(ofdev, "xlnx,tx-dre-type");
+	pdata_struct.rx_dre		= get_u32(ofdev, "xlnx,rx-dre-type");
+	pdata_struct.tx_hw_csum		= get_u32(ofdev, "xlnx,tx-include-csum");
+	pdata_struct.rx_hw_csum		= get_u32(ofdev, "xlnx,rx-include-csum");
 	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
 
         return xenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
