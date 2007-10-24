@@ -209,6 +209,8 @@
 		.ll_dev_dma_rx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMARX_INTR, \
 		.ll_dev_dma_tx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMATX_INTR, \
 		.ll_dev_fifo_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_FIFO_INTR, \
+		/* locally administered default address */ \
+		.mac_addr = {2, 0, 0, 0, 0, num}, \
 	}, \
 }
 
