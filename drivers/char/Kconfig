@@ -851,13 +851,6 @@ config DTLK
 	  To compile this driver as a module, choose M here: the
 	  module will be called dtlk.
 
-config XILINX_SPI
-	tristate "Xilinx OPB SPI Support"
-	depends on XILINX_DRIVERS
-	select XILINX_EDK
-	help
-	  This option enables support for the Xilinx OPB SPI controller.
-
 config XILINX_GPIO
 	tristate "Xilinx OPB GPIO Support"
 	depends on XILINX_DRIVERS

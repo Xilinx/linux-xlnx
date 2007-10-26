@@ -14,6 +14,9 @@
  * 2002 (c) MontaVista, Software, Inc.  This file is licensed under the terms
  * of the GNU General Public License version 2.1.  This program is licensed
  * "as is" without any warranty of any kind, whether express or implied.
+ *
+ * (c) Copyright 2007 Xilinx Inc.
+ * 
  */
 
 /*
@@ -44,52 +47,27 @@
 #include <asm/pgalloc.h>
 #include <linux/ethtool.h>
 
+#include <linux/xilinx_devices.h>
+
 #include <xbasic_types.h>
-#include "asm/xparameters.h"
 #include "xemaclite.h"
 #include "xemaclite_i.h"
 #include "xipif_v1_23_b.h"
 
-#define DRIVER_NAME "Xilinx Eth MACLite driver"
+#ifdef CONFIG_OF
+// For open firmware.
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#endif
+
+#define DRIVER_NAME "xilinx_emaclite"
 #define DRIVER_VERSION "1.0"
 
 MODULE_AUTHOR("John Williams <john.williams@petalogix.com>");
-MODULE_DESCRIPTION(DRIVER_NAME);
+MODULE_DESCRIPTION("Xilinx Ethernet MAC Lite driver");
 MODULE_LICENSE("GPL");
 
-/* FIXME hardcoded MAC addresses */
-#define XPAR_ETHERNETLITE_0_MACADDR {0x00, 0x00, 0xC0, 0xA3, 0xE5, 0x44}
-#define XPAR_ETHERNETLITE_1_MACADDR {0x00, 0x00, 0xC0, 0xA3, 0xE5, 0x45}
-#define XPAR_ETHERNETLITE_2_MACADDR {0x00, 0x00, 0xC0, 0xA3, 0xE5, 0x46}
-
 #define TX_TIMEOUT   (60*HZ)	/* Transmission timeout is 60 seconds. */
-
-struct ethernet_desc {
-	unsigned baseaddr;
-	unsigned irq;
-	unsigned char macaddr[6];
-};
-
-static struct ethernet_desc ethernet_desc_table[] = {
-#ifdef XPAR_XEMACLITE_NUM_INSTANCES
-	{XPAR_ETHERNETLITE_0_BASEADDR,
-	 XPAR_ETHERNETLITE_0_IRQ,
-	 XPAR_ETHERNETLITE_0_MACADDR},
-#endif
-#ifdef CONFIG_XILINX_ETHERNETLITE_1_INSTANCE
-	{XPAR_ETHERNETLITE_1_BASEADDR,
-	 XPAR_ETHERNETLITE_1_IRQ,
-	 XPAR_ETHERNETLITE_1_MACADDR},
-#endif
-#ifdef CONFIG_XILINX_ETHERNETLITE_2_INSTANCE
-	{XPAR_ETHERNETLITE_2_BASEADDR,
-	 XPAR_ETHERNETLITE_2_IRQ,
-	 XPAR_ETHERNETLITE_2_MACADDR},
-#endif
-};
-
-static int num_ether_devices =
-	sizeof(ethernet_desc_table) / sizeof(struct ethernet_desc);
 
 #define ALIGNMENT         4
 
@@ -111,8 +89,7 @@ struct net_local {
 	struct list_head xmit;
 
 	struct net_device_stats stats;	/* Statistics for this device */
-	struct net_device *next_dev;	/* The next device in dev_list */
-	struct net_device *dev;	/* this device */
+	struct net_device *ndev;	/* this device */
 	u32 index;		/* Which interface is this */
 	XInterruptHandler Isr;	/* Pointer to the XEmac ISR routine */
 	u8 mii_addr;		/* The MII address of the PHY */
@@ -136,10 +113,6 @@ struct net_local {
 	struct sk_buff *deferred_skb;
 };
 
-/* List of devices we're handling and a lock to give us atomic access. */
-static struct net_device *dev_list = NULL;
-static spinlock_t dev_lock = SPIN_LOCK_UNLOCKED;
-
 /* for exclusion of all program flows (processes, ISRs and BHs) possible to share data with current one */
 static spinlock_t reset_lock = SPIN_LOCK_UNLOCKED;
 
@@ -155,44 +128,10 @@ extern inline int status_requires_reset(int s)
 static spinlock_t rcvSpin = SPIN_LOCK_UNLOCKED;
 static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 
-/* SAATODO: This function will be moved into the Xilinx code. */
-/*****************************************************************************/
-/**
-*
-* Lookup the device configuration based on the emac instance.  The table
-* EmacConfigTable contains the configuration info for each device in the system.
-*
-* @param Instance is the index of the emac being looked up.
-*
-* @return
-*
-* A pointer to the configuration table entry corresponding to the given
-* device ID, or NULL if no match is found.
-*
-* @note
-*
-* None.
-*
-******************************************************************************/
-XEmacLite_Config *XEmacLite_GetConfig(int Instance)
-{
-	if (Instance < 0 || Instance >= XPAR_XEMACLITE_NUM_INSTANCES) {
-		return NULL;
-	}
-
-	return &XEmacLite_ConfigTable[Instance];
-}
-
 /*
  * The following are notes regarding the critical sections in this
  * driver and how they are protected.
  *
- * dev_list
- * There is a spinlock protecting the device list.  It isn't really
- * necessary yet because the list is only manipulated at init and
- * cleanup, but it's there because it is basically free and if we start
- * doing hot add and removal of ethernet devices when the FPGA is
- * reprogrammed while the system is up, we'll need to protect the list.
  *
  * XEmacLite_EnableInterrupts, XEmacLite_DisableInterrupts and XEmacLite_SetOptions are not thread safe.
  * These functions are called from xemaclite_open(), xemaclite_close(), reset(),
@@ -245,7 +184,7 @@ static void reset(struct net_device *dev, DUPLEX duplex)
  * the EMAC interrupts.  It in turn, calls the Xilinx OS independent
  */
 static irqreturn_t
-xemaclite_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+xemaclite_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -437,32 +376,6 @@ static void RecvHandler(void *CallbackRef)
 	netif_rx(skb);		/* Send the packet upstream. */
 }
 
-/* Take kernel cmdline option macaddr=... and set MAC address */
-static int __init xilinx_emac_hw_addr_setup(char *addrs)
-{
-	unsigned int hw_addr[6];
-	int count;
-	static int interface = 0;
-
-	/* Scan the kernel param for HW MAC address */
-	count = sscanf(addrs, "%2x:%2x:%2x:%2x:%2x:%2x", hw_addr + 0,
-		       hw_addr + 1, hw_addr + 2, hw_addr + 3, hw_addr + 4,
-		       hw_addr + 5);
-	/* Did we get 6 hex digits? */
-	if (count != 6)
-		return 0;
-
-	for (count = 0; count < 6; count++) {
-		ethernet_desc_table[interface].macaddr[count] =
-			hw_addr[count] & 0xFF;
-	}
-
-	/* Increase interface number, for next time */
-	interface++;
-	return 1;
-}
-
-
 static int xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	struct net_local *lp = (struct net_local *) dev->priv;
@@ -489,142 +402,288 @@ static int xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return 0;
 }
 
-static void remove_head_dev(void)
+static void xemaclite_remove_ndev(struct net_device *ndev)
 {
-	struct net_local *lp;
-	struct net_device *dev;
-	XEmacLite_Config *cfg;
+	if (ndev) {
+		struct net_local *lp = netdev_priv(ndev);
 
-	/* Pull the head off of dev_list. */
-	spin_lock(&dev_lock);
-	dev = dev_list;
-	lp = (struct net_local *) dev->priv;
-	dev_list = lp->next_dev;
-	spin_unlock(&dev_lock);
-
-	/* Put the physical address back */
-	cfg = XEmacLite_GetConfig(lp->index);
-	iounmap((void *) cfg->BaseAddress);
-	cfg->BaseAddress = cfg->PhysAddress;
-
-	if (lp->ddrVirtPtr) {
-		kfree(lp->ddrVirtPtr);
+		iounmap((void *) (lp->EmacLite.BaseAddress));
+		free_netdev(ndev);
 	}
-
-	unregister_netdev(dev);
-	kfree(dev);
 }
 
-static int __init probe(int index)
+static int xemaclite_remove(struct device *dev)
 {
-	static const unsigned long remap_size
-		= XPAR_ETHERNETLITE_0_HIGHADDR -
-		XPAR_ETHERNETLITE_0_BASEADDR + 1;
-	struct net_device *dev;
-	struct net_local *lp;
-	XEmacLite_Config *cfg;
-	unsigned int irq;
-	int err;
-	u32 maddr;
+	struct net_device *ndev = dev_get_drvdata(dev);
 
-	if (index >= num_ether_devices)
-		return -ENODEV;
-	else
-		irq = ethernet_desc_table[index].irq;
+	unregister_netdev(ndev);
+	xemaclite_remove_ndev(ndev);
 
-	/* Find the config for our device. */
-	cfg = XEmacLite_GetConfig(index);
-	if (!cfg)
-		return -ENODEV;
+        release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start+1);
 
-	dev = alloc_etherdev(sizeof(struct net_local));
-	if (!dev) {
-		printk(KERN_ERR "Could not allocate Xilinx enet device %d.\n",
-		       index);
-		return -ENOMEM;
+	free_netdev(ndev);
+
+	dev_set_drvdata(dev, NULL);
+
+	return 0;		/* success */
+}
+
+
+/** Shared device initialization code */
+static int xemaclite_setup(
+		struct device *dev,
+		struct resource *r_mem,
+		struct resource *r_irq,
+		struct xemaclite_platform_data *pdata) {
+
+	u32 virt_baddr;		/* virtual base address of emac */
+
+	XEmacLite_Config Config;
+
+	struct net_device *ndev = NULL;
+	struct net_local *lp = NULL;
+
+	int rc = 0;
+
+	/* Create an ethernet device instance */
+	ndev = alloc_etherdev(sizeof(struct net_local));
+	if (!ndev) {
+		dev_err(dev, "XEmacLite: Could not allocate net device.\n");
+		rc = -ENOMEM;
+		goto error;
 	}
-	SET_MODULE_OWNER(dev);
+	dev_set_drvdata(dev, ndev);
 
-	ether_setup(dev);
-	dev->irq = irq;
+	ndev->irq = r_irq->start;
+        ndev->mem_start = r_mem->start;
+        ndev->mem_end = r_mem->end;
 
-	/* Initialize our private data. */
-	lp = (struct net_local *) dev->priv;
-	memset(lp, 0, sizeof(struct net_local));
-	lp->index = index;
-	lp->dev = dev;
-
-	/* Make it the head of dev_list. */
-	spin_lock(&dev_lock);
-	lp->next_dev = dev_list;
-	dev_list = dev;
-	spin_unlock(&dev_lock);
-
-	/* Change the addresses to be virtual */
-	cfg->PhysAddress = ethernet_desc_table[index].baseaddr;
-	cfg->BaseAddress = (u32) ioremap(cfg->PhysAddress, remap_size);
-
-	if (XEmacLite_Initialize(&lp->EmacLite, cfg->DeviceId) != XST_SUCCESS) {
-		printk(KERN_ERR "%s: Could not initialize device.\n",
-		       dev->name);
-		remove_head_dev();
-		return -ENODEV;
+	if (!request_mem_region(ndev->mem_start,ndev->mem_end - ndev->mem_start+1, DRIVER_NAME)) {
+		dev_err(dev, "Couldn't lock memory region at %p\n",
+			(void *)ndev->mem_start);
+		rc = -EBUSY;
+		goto error;
 	}
 
-	/* Copy MAC address in from descriptor table */
-	memcpy(dev->dev_addr, ethernet_desc_table[index].macaddr, IFHWADDRLEN);
-	XEmacLite_SetMacAddress(&lp->EmacLite,
-				ethernet_desc_table[index].macaddr);
+	/* Initialize the private netdev structure
+	 */
+	lp = netdev_priv(ndev);
+	lp->ndev = ndev;
 
-	err = register_netdev(dev);
-	if (err) {
-		remove_head_dev();
-		return err;
+	/* Setup the Config structure for the XEmacLite_CfgInitialize() call. */
+	Config.BaseAddress	= r_mem->start;	/* Physical address */
+	Config.TxPingPong	= pdata->tx_ping_pong;
+	Config.RxPingPong	= pdata->rx_ping_pong;
+
+
+	/* Get the virtual base address for the device */
+	virt_baddr = (u32) ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
+	if (0 == virt_baddr) {
+		dev_err(dev, "XEmacLite: Could not allocate iomem.\n");
+		rc = -EIO;
+		goto error;
 	}
 
 
-	printk(KERN_ERR "%s: using fifo mode.\n", dev->name);
-	XEmacLite_SetRecvHandler(&lp->EmacLite, dev, RecvHandler);
-	XEmacLite_SetSendHandler(&lp->EmacLite, dev, SendHandler);
-	dev->hard_start_xmit = xemaclite_Send;
+	if (XEmacLite_CfgInitialize(&lp->EmacLite, &Config, virt_baddr) != XST_SUCCESS) {
+		dev_err(dev, "XEmacLite: Could not initialize device.\n");
+		rc = -ENODEV;
+		goto error;
+	}
+
+	/* Set the MAC address */
+	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
+        
+        /* Note: in the xemac driver, SetMacAddress returns a success code. */
+        XEmacLite_SetMacAddress(&lp->EmacLite, ndev->dev_addr);
+
+	dev_info(dev,
+			"MAC address is now %2x:%2x:%2x:%2x:%2x:%2x\n",
+			pdata->mac_addr[0], pdata->mac_addr[1],
+			pdata->mac_addr[2], pdata->mac_addr[3],
+			pdata->mac_addr[4], pdata->mac_addr[5]);
+
+	dev_err(dev, "using fifo mode.\n");
+	XEmacLite_SetRecvHandler(&lp->EmacLite, ndev, RecvHandler);
+	XEmacLite_SetSendHandler(&lp->EmacLite, ndev, SendHandler);
+	ndev->hard_start_xmit = xemaclite_Send;
 	lp->Isr = XEmacLite_InterruptHandler;
 
 	lp->mii_addr = 0;
-	printk(KERN_WARNING
-	       "%s: No PHY detected.  Assuming a PHY at address %d.\n",
-	       dev->name, lp->mii_addr);
+	dev_warn(dev, 
+	       "No PHY detected.  Assuming a PHY at address %d.\n",
+                lp->mii_addr);
 
-	dev->open = xemaclite_open;
-	dev->stop = xemaclite_close;
-	dev->get_stats = xemaclite_get_stats;
-	dev->flags &= ~IFF_MULTICAST;
-	dev->do_ioctl = xemaclite_ioctl;
-	dev->tx_timeout = xemaclite_tx_timeout;
-	dev->watchdog_timeo = TX_TIMEOUT;
+	ndev->open = xemaclite_open;
+	ndev->stop = xemaclite_close;
+	ndev->get_stats = xemaclite_get_stats;
+	ndev->flags &= ~IFF_MULTICAST;
+	ndev->do_ioctl = xemaclite_ioctl;
+	ndev->tx_timeout = xemaclite_tx_timeout;
+	ndev->watchdog_timeo = TX_TIMEOUT;
 
-	printk(KERN_INFO
-	       "%s: Xilinx EMACLite #%d at 0x%08X mapped to 0x%08X, irq=%d\n",
-	       dev->name, index, cfg->PhysAddress,
-	       ethernet_desc_table[index].baseaddr, dev->irq);
+	/* Finally, register the device.
+	 */
+	rc = register_netdev(ndev);
+	if (rc) {
+		printk(KERN_ERR
+		       "%s: Cannot register net device, aborting.\n",
+		       ndev->name);
+		goto error;	/* rc is already set here... */
+	}
+
+	dev_info(dev,
+	       "Xilinx EMACLite at 0x%08X mapped to 0x%08X, irq=%d\n",
+	       lp->EmacLite.PhysAddress,
+	       lp->EmacLite.BaseAddress, ndev->irq);
 	return 0;
+ error:
+	if (ndev) {
+		xemaclite_remove_ndev(ndev);
+	}
+	return rc;
 }
+
+static int xemaclite_probe(struct device *dev)
+{
+	struct resource *r_irq = NULL;	/* Interrupt resources */
+	struct resource *r_mem = NULL;	/* IO mem resources */
+	struct xemaclite_platform_data *pdata;
+	struct platform_device *pdev = to_platform_device(dev);
+
+	/* param check */
+	if (!pdev) {
+		printk(KERN_ERR
+		       "XEmac: Internal error. Probe called with NULL param.\n");
+		return -ENODEV;
+	}
+
+	pdata = (struct xemaclite_platform_data *) pdev->dev.platform_data;
+	if (!pdata) {
+		printk(KERN_ERR "XEmac %d: Couldn't find platform data.\n",
+		       pdev->id);
+
+		return -ENODEV;
+	}
+
+	/* Get iospace and an irq for the device */
+	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!r_irq || !r_mem) {
+		printk(KERN_ERR "XEmac %d: IO resource(s) not found.\n",
+		       pdev->id);
+		return -ENODEV;
+	}
+
+        return xemaclite_setup(dev, r_mem, r_irq, pdata);
+}
+
+static struct device_driver xemaclite_driver = {
+	.name = DRIVER_NAME,
+	.bus = &platform_bus_type,
+
+	.probe = xemaclite_probe,
+	.remove = xemaclite_remove
+};
+
+#ifdef CONFIG_OF
+static u32 get_u32(struct of_device *ofdev, const char *s) {
+	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	if(p) {
+		return *p;
+	} else {
+		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
+		return FALSE;
+	}
+}
+
+static bool get_bool(struct of_device *ofdev, const char *s) {
+	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	if(p) {
+		return (bool)*p;
+	} else {
+		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
+		return FALSE;
+	}
+}
+
+static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of_device_id *match)
+{
+	struct xemaclite_platform_data pdata_struct;
+	struct resource r_irq_struct;
+	struct resource r_mem_struct;
+
+	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
+	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
+	struct xemaclite_platform_data *pdata = &pdata_struct;
+	int rc = 0;
+
+	dev_info(&ofdev->dev, "Device Tree Probing \'%s\'\n",
+                        ofdev->node->name);
+
+	/* Get iospace for the device */
+	rc = of_address_to_resource(ofdev->node, 0, r_mem);
+	if(rc) {
+		dev_warn(&ofdev->dev, "invalid address\n");
+		return rc;
+	}
+
+	/* Get IRQ for the device */
+	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	if(rc == NO_IRQ) {
+		dev_warn(&ofdev->dev, "no IRQ found.\n");
+		return rc;
+	}
+
+	pdata_struct.tx_ping_pong	= get_bool(ofdev, "xlnx,tx-ping-pong");
+	pdata_struct.rx_ping_pong	= get_bool(ofdev, "xlnx,rx-ping-pong");
+	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
+
+        return xemaclite_setup(&ofdev->dev, r_mem, r_irq, pdata);
+}
+
+static int __devexit xemaclite_of_remove(struct of_device *dev)
+{
+	return xemaclite_remove(&dev->dev);
+}
+
+static struct of_device_id xemaclite_of_match[] = {
+	{ .compatible = "xlnx,opb-ethernetlite", },
+	{ .compatible = "xlnx,xps-ethernetlite", },
+	{ /* end of list */ },
+};
+
+MODULE_DEVICE_TABLE(of, xemaclite_of_match);
+
+static struct of_platform_driver xemaclite_of_driver = {
+	.name		= DRIVER_NAME,
+	.match_table	= xemaclite_of_match,
+	.probe		= xemaclite_of_probe,
+	.remove		= __devexit_p(xemaclite_of_remove),
+};
+#endif
 
 static int __init xemaclite_init(void)
 {
-	int index = 0;
-
-	while (probe(index++) == 0);
-	/* If we found at least one, report success. */
-	return (index > 1) ? 0 : -ENODEV;
+	/*
+	 * No kernel boot options used,
+	 * so we just need to register the driver
+	 */
+	int status = driver_register(&xemaclite_driver);
+#ifdef CONFIG_OF
+	status |= of_register_platform_driver(&xemaclite_of_driver);
+#endif
+	return status;
 }
 
 static void __exit xemaclite_cleanup(void)
 {
-	while (dev_list)
-		remove_head_dev();
+	driver_unregister(&xemaclite_driver);
+#ifdef CONFIG_OF
+	of_unregister_platform_driver(&xemaclite_of_driver);
+#endif
 }
 
 module_init(xemaclite_init);
 module_exit(xemaclite_cleanup);
 
-__setup("macaddr=", xilinx_emac_hw_addr_setup);

@@ -54,6 +54,13 @@ struct xemac_platform_data {
 #define XEMAC_DMA_SIMPLE	2	/* simple 2 channel DMA */
 #define XEMAC_DMA_SGDMA		3	/* scatter gather DMA */
 
+/*- 10/100 Mb Ethernet Controller IP (XEMACLITE) -*/
+struct xemaclite_platform_data {
+	u32 tx_ping_pong;
+	u32 rx_ping_pong;
+	u8 mac_addr[6];
+};
+
 /*- 10/100/1000 Mb Ethernet Controller IP (XTEMAC) -*/
 
 struct xtemac_platform_data {
@@ -95,17 +102,12 @@ struct xlltemac_platform_data {
 	u8 mac_addr[6];
 };
 
-
-/*- SPI -*/
-
+/* SPI Controller IP */
 struct xspi_platform_data {
-	u32 device_flags;
-	u8 num_slave_bits;
+	s16 bus_num;
+	u16 num_chipselect;
+	u32 speed_hz;
 };
-
-/* Flags related to XSPI device features */
-#define XSPI_HAS_FIFOS		0x00000001
-#define XSPI_SLAVE_ONLY		0x00000002
 
 /*- GPIO -*/
 

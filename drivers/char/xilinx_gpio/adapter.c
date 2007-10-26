@@ -29,6 +29,7 @@
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/init.h>
+#include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/miscdevice.h>
 #include <linux/xilinx_devices.h>

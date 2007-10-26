@@ -14,6 +14,7 @@
  *  Tetsuya OHKAWA <tetsuya@atmark-techno.com>
  */
 
+#include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
@@ -28,8 +29,9 @@
 #include <linux/ipc.h>
 #include <linux/utsname.h>
 #include <linux/file.h>
+#include <linux/fs.h>
 #include <linux/module.h>
-                                                                                
+
 #include <asm/uaccess.h>
 #include <asm/ipc.h>
 #include <asm/semaphore.h>

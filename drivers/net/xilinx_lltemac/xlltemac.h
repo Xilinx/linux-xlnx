@@ -264,7 +264,6 @@ extern "C" {
 
 #include "xbasic_types.h"
 #include "xstatus.h"
-#include "xparameters.h"
 #include "xlltemac_hw.h"
 
 /************************** Constant Definitions *****************************/
@@ -275,6 +274,9 @@ extern "C" {
 #define XTE_DEVICE_NAME     "xlltemac"
 #define XTE_DEVICE_DESC     "Xilinx Tri-speed 10/100/1000 MAC"
 
+/* LocalLink TYPE Enumerations */
+#define XPAR_LL_FIFO    1
+#define XPAR_LL_DMA     2
 
 /** @name Configuration options
  *
@@ -403,7 +405,7 @@ extern "C" {
  * driver.
  */
 typedef struct {
-	u16 DeviceId;	/**< DeviceId is the unique ID  of the device */
+        /** u16 DeviceId;	< DeviceId is the unique ID  of the device */
 	u32 BaseAddress;/**< BaseAddress is the physical base address of the
                           *  channel's registers
                           */

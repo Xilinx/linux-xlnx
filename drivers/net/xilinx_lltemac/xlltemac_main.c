@@ -40,6 +40,12 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
+#ifdef CONFIG_OF
+// For open firmware.
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#endif
+
 #include "xbasic_types.h"
 #include "xlltemac.h"
 #include "xllfifo.h"
@@ -453,7 +459,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 
 
 
-// #define PHY_MARVELL_88E1111_RGMII
+#define PHY_MARVELL_88E1111_RGMII
 
 #ifdef PHY_MARVELL_88E1111_RGMII
 #define MARVELL_88E1111_EXTENDED_PHY_CTL_REG_OFFSET  20
@@ -470,7 +476,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 static void phy_setup(struct net_local *lp)
 {
 #ifdef PHY_MARVELL_88E1111_RGMII
-	u32 Register;
+	u16 Register;
 
 	/*
 	 * Set up MAC interface
@@ -512,7 +518,7 @@ static void phy_setup(struct net_local *lp)
 	/*
 	 * Reset the PHY
 	 */
-	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, &Register);
 	Register |= BMCR_RESET;
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
 
@@ -616,7 +622,7 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	return -1;
 }
 
-// #define XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+#define XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
 /*
  * This function sets up MAC's speed according to link speed of PHY
  * This function is specific to MARVELL 88E1111 PHY chip on Xilinx ML403
@@ -645,14 +651,9 @@ void set_mac_speed(struct net_local *lp)
 #define MARVELL_88E1111_LINKSPEED_10M                   0x0000
 	u16 RegValue;
 
-	/* Loop until read of PHY specific status register is successful. */
-	do {
-		ret = _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
-					MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET,
-					&RegValue);
-	} while (ret != XST_SUCCESS);
-
-
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+			MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET,
+			&RegValue);
 	/* Get current link speed */
 	phylinkspeed = (RegValue & MARVELL_88E1111_LINKSPEED_MARK)
 		>> MARVELL_88E1111_LINKSPEED_SHIFT;
@@ -3030,60 +3031,31 @@ static int detect_phy(struct net_local *lp, char *dev_name)
 }
 
 
-static int xtenet_probe(struct device *dev)
-{
+/** Shared device initialization code */
+static int xtenet_setup(
+		struct device *dev,
+		struct resource *r_mem,
+		struct resource *r_irq,
+		struct xlltemac_platform_data *pdata) {
 	int xs;
 	u32 virt_baddr;		/* virtual base address of TEMAC */
 
 	XLlTemac_Config Temac_Config;
 
-	struct resource *r_irq = NULL;	/* Interrupt resources */
-	struct resource *r_mem = NULL;	/* IO mem resources */
-
-	struct xlltemac_platform_data *pdata;
-
-	struct platform_device *pdev = to_platform_device(dev);
 	struct net_device *ndev = NULL;
 	struct net_local *lp = NULL;
 
 	int rc = 0;
 
-	/* param check */
-	if (!pdev) {
-		printk(KERN_ERR
-		       "XLlTemac: Internal error. Probe called with NULL param.\n");
-		rc = -ENODEV;
-		goto error;
-	}
-
-	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
-	if (!pdata) {
-		printk(KERN_ERR "xlltemac %d: Couldn't find platform data.\n",
-		       pdev->id);
-
-		rc = -ENODEV;
-		goto error;
-	}
-
 	/* Create an ethernet device instance */
 	ndev = alloc_etherdev(sizeof(struct net_local));
 	if (!ndev) {
-		printk(KERN_ERR "xlltemac %d: Could not allocate net device.\n",
-		       pdev->id);
+		dev_err(dev, "xlltemac: Could not allocate net device.\n");
 		rc = -ENOMEM;
 		goto error;
 	}
 	dev_set_drvdata(dev, ndev);
 
-	/* Get iospace and an irq for the device */
-	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r_irq || !r_mem) {
-		printk(KERN_ERR "xlltemac %d: IO resource(s) not found.\n",
-		       pdev->id);
-		rc = -ENODEV;
-		goto error;
-	}
 	ndev->irq = r_irq->start;
 
 	/* Initialize the private data used by XEmac_LookupConfig().
@@ -3091,13 +3063,11 @@ static int xtenet_probe(struct device *dev)
 	 */
 	lp = netdev_priv(ndev);
 	lp->ndev = ndev;
-	lp->index = pdev->id;
 	lp->dma_irq_r = pdata->ll_dev_dma_rx_irq;
 	lp->dma_irq_s = pdata->ll_dev_dma_tx_irq;
 	lp->fifo_irq = pdata->ll_dev_fifo_irq;
 
 	/* Setup the Config structure for the XLlTemac_CfgInitialize() call. */
-	Temac_Config.DeviceId = pdev->id;
 	Temac_Config.BaseAddress = r_mem->start;
 #if 0
 	Config.RxPktFifoDepth = pdata->rx_pkt_fifo_depth;
@@ -3114,36 +3084,33 @@ static int xtenet_probe(struct device *dev)
 	/* Get the virtual base address for the device */
 	virt_baddr = (u32) ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
 	if (0 == virt_baddr) {
-		printk(KERN_ERR "XLlTemac: Could not allocate iomem.\n");
+		dev_err(dev, "XLlTemac: Could not allocate iomem.\n");
 		rc = -EIO;
 		goto error;
 	}
 
-	if (XLlTemac_CfgInitialize(&lp->Emac, &Temac_Config, virt_baddr) != XST_SUCCESS) {
-		printk(KERN_ERR "XLlTemac: Could not initialize device.\n");
+	if (XLlTemac_CfgInitialize(&lp->Emac, &Temac_Config, virt_baddr) !=
+	    XST_SUCCESS) {
+		dev_err(dev, "XLlTemac: Could not initialize device.\n");
+
 		rc = -ENODEV;
 		goto error;
 	}
 
 	/* Set the MAC address */
-	/* TODO: Get the right MAC address here... */
-	ndev->dev_addr[0] = 0x01;
-	ndev->dev_addr[1] = 0x02;
-	ndev->dev_addr[2] = 0x03;
-	ndev->dev_addr[3] = 0x04;
-	ndev->dev_addr[4] = 0x05;
-	ndev->dev_addr[5] = 0x06;
-// -wgr- 	memcpy(ndev->dev_addr, ((bd_t *) & __res)->bi_enetaddr, 6);
-	if (lp->index == 1) {
-		ndev->dev_addr[5]++;
-	}
+	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
 	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
 		/* should not fail right after an initialize */
-		printk(KERN_ERR "XLlTemac: could not set MAC address.\n");
+		dev_err(dev, "XLlTemac: could not set MAC address.\n");
 		rc = -EIO;
 		goto error;
 	}
 
+	dev_info(dev,
+			"MAC address is now %2x:%2x:%2x:%2x:%2x:%2x\n",
+			pdata->mac_addr[0], pdata->mac_addr[1],
+			pdata->mac_addr[2], pdata->mac_addr[3],
+			pdata->mac_addr[4], pdata->mac_addr[5]);
 
 	lp->max_frame_size = XTE_MAX_JUMBO_FRAME_SIZE;
 	if (ndev->mtu > XTE_JUMBO_MTU)
@@ -3153,12 +3120,13 @@ static int xtenet_probe(struct device *dev)
 	if (XLlTemac_IsDma(&lp->Emac)) {
 		int result;
 
-		printk(KERN_ERR "XLlTemac: using DMA mode.\n");
+		dev_err(dev, "XLlTemac: using DMA mode.\n");
 
 #ifndef XDCRIO_H
 		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 		if (0 == virt_baddr) {
-			printk(KERN_ERR "XLlTemac: Could not allocate iomem for local link connected device.\n");
+			dev_err(dev, 
+			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
 			rc = -EIO;
 			goto error;
 		}
@@ -3182,9 +3150,8 @@ static int xtenet_probe(struct device *dev)
 		} else {
 			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.TxBdRing, DFT_TX_THRESHOLD, DFT_TX_WAITBOUND);
 		}
-		if (xs != XST_SUCCESS)
-		{
-			printk(KERN_ERR
+		if (xs != XST_SUCCESS) {
+			dev_err(dev,
 			       "XLlTemac: could not set SEND pkt threshold/waitbound, ERROR %d",
 			       xs);
 		}
@@ -3197,18 +3164,20 @@ static int xtenet_probe(struct device *dev)
 			xs = XLlDma_BdRingSetCoalesce(&lp->Dma.RxBdRing, DFT_RX_THRESHOLD, DFT_RX_WAITBOUND);
 		}
 		if (xs != XST_SUCCESS) {
-			printk(KERN_ERR
+			dev_err(dev,
 			       "XLlTemac: Could not set RECV pkt threshold/waitbound ERROR %d",
 			       xs);
 		}
 		XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing, dma_rx_int_mask);
-	} else {
-		printk(KERN_INFO
+	}
+	else {
+		dev_err(dev,
 		       "XLlTemac: using FIFO direct interrupt driven mode.\n");
 
 		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 		if (0 == virt_baddr) {
-			printk(KERN_ERR "XLlTemac: Could not allocate iomem for local link connected device.\n");
+			dev_err(dev,
+			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
 			rc = -EIO;
 			goto error;
 		}
@@ -3260,17 +3229,18 @@ static int xtenet_probe(struct device *dev)
 
 	rc = register_netdev(ndev);
 	if (rc) {
-		printk(KERN_ERR
+		dev_err(dev,
 		       "%s: Cannot register net device, aborting.\n",
 		       ndev->name);
 		goto error;	/* rc is already set here... */
 	}
 
-	printk(KERN_INFO
-	       "%s: Xilinx TEMAC #%d at 0x%08X mapped to 0x%08X, irq=%d\n",
-	       ndev->name, lp->Emac.Config.DeviceId,
-	       lp->Emac.Config.BaseAddress, lp->Emac.Config.BaseAddress,
-	       ndev->irq);
+	dev_info(dev,
+		"%s: Xilinx TEMAC at 0x%08X mapped to 0x%08X, irq=%d\n",
+		ndev->name,
+		r_mem->start,
+		lp->Emac.Config.BaseAddress,
+		ndev->irq);
 
 	return 0;
 
@@ -3281,7 +3251,36 @@ error:
 	return rc;
 }
 
+static int xtenet_probe(struct device *dev)
+{
+	struct resource *r_irq = NULL;	/* Interrupt resources */
+	struct resource *r_mem = NULL;	/* IO mem resources */
+	struct xlltemac_platform_data *pdata;
+	struct platform_device *pdev = to_platform_device(dev);
 
+	/* param check */
+	if (!pdev) {
+		dev_err(dev, "XLlTemac: Internal error. Probe called with NULL param.\n");
+		return -ENODEV;
+	}
+
+	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
+	if (!pdata) {
+		dev_err(dev, "xlltemac: Couldn't find platform data.\n");
+
+		return -ENODEV;
+	}
+
+	/* Get iospace and an irq for the device */
+	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!r_irq || !r_mem) {
+		dev_err(dev, "xlltemac: IO resource(s) not found.\n");
+		return -ENODEV;
+	}
+
+        return xtenet_setup(dev, r_mem, r_irq, pdata);
+}
 
 static struct device_driver xtenet_driver = {
 	.name = DRIVER_NAME,
@@ -3291,8 +3290,82 @@ static struct device_driver xtenet_driver = {
 	.remove = xtenet_remove
 };
 
+#ifdef CONFIG_OF
+static u32 get_u32(struct of_device *ofdev, const char *s) {
+	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	if(p) {
+		return *p;
+	} else {
+		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
+		return FALSE;
+	}
+}
+
+static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_device_id *match)
+{
+	struct resource r_irq_struct;
+	struct resource r_mem_struct;
+	struct xlltemac_platform_data pdata_struct;
+
+	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
+	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
+	struct xlltemac_platform_data *pdata = &pdata_struct;
+	int rc = 0;
+
+	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
+                        ofdev->node->name);
+
+	/* Get iospace for the device */
+	rc = of_address_to_resource(ofdev->node, 0, r_mem);
+	if(rc) {
+		dev_warn(&ofdev->dev, "invalid address\n");
+		return rc;
+	}
+
+	/* Get IRQ for the device */
+	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	if(rc == NO_IRQ) {
+		dev_warn(&ofdev->dev, "no IRQ found.\n");
+		return rc;
+	}
+
+	pdata_struct.tx_csum		= get_u32(ofdev, "xlnx,txcsum");
+	pdata_struct.rx_csum		= get_u32(ofdev, "xlnx,rxcsum");
+	pdata_struct.phy_type           = get_u32(ofdev, "xlnx,phy-type");
+	pdata_struct.ll_dev_type	= get_u32(ofdev, "xlnx,llink-connected-type");
+	pdata_struct.ll_dev_baseaddress	= get_u32(ofdev, "xlnx,llink-connected-baseaddr");
+	pdata_struct.ll_dev_dma_rx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmarx-intr");
+	pdata_struct.ll_dev_dma_tx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmatx-intr");
+	pdata_struct.ll_dev_fifo_irq	= get_u32(ofdev, "xlnx,llink-connected-fifo-intr");
+	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
+
+        return xtenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
+}
+
+static int __devexit xtenet_of_remove(struct of_device *dev)
+{
+	return xtenet_remove(&dev->dev);
+}
+
+static struct of_device_id xtenet_of_match[] = {
+	{ .compatible = "xlnx,xps-ll-temac", },
+	{ /* end of list */ },
+};
+
+MODULE_DEVICE_TABLE(of, xtenet_of_match);
+
+static struct of_platform_driver xtenet_of_driver = {
+	.name		= DRIVER_NAME,
+	.match_table	= xtenet_of_match,
+	.probe		= xtenet_of_probe,
+	.remove		= __devexit_p(xtenet_of_remove),
+};
+#endif
+
 static int __init xtenet_init(void)
 {
+	int status;
+
 	/*
 	 * Make sure the locks are initialized
 	 */
@@ -3304,12 +3377,20 @@ static int __init xtenet_init(void)
 	 * No kernel boot options used,
 	 * so we just need to register the driver
 	 */
-	return driver_register(&xtenet_driver);
+	status = driver_register(&xtenet_driver);
+#ifdef CONFIG_OF
+	status |= of_register_platform_driver(&xtenet_of_driver);
+#endif
+        return status;
+
 }
 
 static void __exit xtenet_cleanup(void)
 {
 	driver_unregister(&xtenet_driver);
+#ifdef CONFIG_OF
+	of_unregister_platform_driver(&xtenet_of_driver);
+#endif
 }
 
 module_init(xtenet_init);

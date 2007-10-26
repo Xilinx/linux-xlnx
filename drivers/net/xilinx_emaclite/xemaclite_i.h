@@ -97,8 +97,6 @@
 
 /************************** Variable Definitions ****************************/
 
-extern XEmacLite_Config XEmacLite_ConfigTable[];
-
 /************************** Function Prototypes ******************************/
 
 void XEmacLite_AlignedWrite(void *SrcPtr, u32 *DestPtr, unsigned ByteCount);

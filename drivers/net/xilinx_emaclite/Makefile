@@ -10,7 +10,7 @@ obj-$(CONFIG_XILINX_EMACLITE) := xilinx_emaclite.o
 xilinx_emaclite-objs	+= adapter.o
 
 # The Xilinx OS independent code.
-xilinx_emaclite-objs	+= xemaclite.o xemaclite_g.o xemaclite_intr.o xemaclite_l.o
+xilinx_emaclite-objs	+= xemaclite.o xemaclite_intr.o xemaclite_l.o
 
 
 

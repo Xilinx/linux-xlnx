@@ -33,25 +33,17 @@
 #include <linux/irq.h>
 
 #include <asm/prom.h>
-//#include <asm/rtas.h>
 #include <asm/lmb.h>
 #include <asm/page.h>
 #include <asm/processor.h>
 #include <asm/irq.h>
 #include <asm/io.h>
-//#include <asm/kdump.h>
-//#include <asm/smp.h>
 #include <asm/system.h>
 #include <asm/mmu.h>
 #include <asm/pgtable.h>
 #include <asm/pci.h>
-//#include <asm/iommu.h>
-//#include <asm/btext.h>
 #include <asm/sections.h>
-//#include <asm/machdep.h>
-//#include <asm/pSeries_reconfig.h>
 #include <asm/pci-bridge.h>
-//#include <asm/kexec.h>
 
 #ifdef DEBUG
 #define DBG(fmt...) printk(KERN_ERR fmt)
@@ -65,12 +57,6 @@ extern u32 boot_cpuid;
 static int __initdata dt_root_addr_cells;
 static int __initdata dt_root_size_cells;
 
-#ifdef CONFIG_PPC64
-int __initdata iommu_is_off;
-int __initdata iommu_force_on;
-unsigned long tce_alloc_start, tce_alloc_end;
-#endif
-
 typedef u32 cell_t;
 
 #if 0
@@ -79,12 +65,9 @@ static struct boot_param_header *initial_boot_params __initdata;
 struct boot_param_header *initial_boot_params;
 #endif
 
-static struct device_node *allnodes = NULL;
+extern struct device_node *allnodes;	/* temporary while merging */
 
-/* use when traversing tree through the allnext, child, sibling,
- * or parent members of struct device_node.
- */
-static DEFINE_RWLOCK(devtree_lock);
+extern rwlock_t devtree_lock; /* temporary while merging */
 
 /* export that to outside world */
 struct device_node *of_chosen;
@@ -423,43 +406,6 @@ static unsigned long __init unflatten_dt_node(unsigned long mem,
 	return mem;
 }
 
-/* static int __init early_parse_mem(char *p) */
-/* { */
-/* 	if (!p) */
-/* 		return 1; */
-
-/* 	memory_limit = PAGE_ALIGN(memparse(p, &p)); */
-/* 	DBG("memory limit = 0x%lx\n", memory_limit); */
-
-/* 	return 0; */
-/* } */
-/* early_param("mem", early_parse_mem); */
-
-/* /\* */
-/*  * The device tree may be allocated below our memory limit, or inside the */
-/*  * crash kernel region for kdump. If so, move it out now. */
-/*  *\/ */
-/* static void move_device_tree(void) */
-/* { */
-/* 	unsigned long start, size; */
-/* 	void *p; */
-
-/* 	DBG("-> move_device_tree\n"); */
-
-/* 	start = __pa(initial_boot_params); */
-/* 	size = initial_boot_params->totalsize; */
-
-/* 	if ((memory_limit && (start + size) > memory_limit) || */
-/* 			overlaps_crashkernel(start, size)) { */
-/* 		p = __va(lmb_alloc_base(size, PAGE_SIZE, lmb.rmo_size)); */
-/* 		memcpy(p, initial_boot_params, size); */
-/* 		initial_boot_params = (struct boot_param_header *)p; */
-/* 		DBG("Moved device tree to 0x%p\n", p); */
-/* 	} */
-
-/* 	DBG("<- move_device_tree\n"); */
-/* } */
-
 /**
  * unflattens the device-tree passed by the firmware, creating the
  * tree of struct device_node. It also fills the "name" and "type"
@@ -507,119 +453,6 @@ void __init unflatten_device_tree(void)
 
 	DBG(" <- unflatten_device_tree()\n");
 }
-
-/* /\* */
-/*  * ibm,pa-features is a per-cpu property that contains a string of */
-/*  * attribute descriptors, each of which has a 2 byte header plus up */
-/*  * to 254 bytes worth of processor attribute bits.  First header */
-/*  * byte specifies the number of bytes following the header. */
-/*  * Second header byte is an "attribute-specifier" type, of which */
-/*  * zero is the only currently-defined value. */
-/*  * Implementation:  Pass in the byte and bit offset for the feature */
-/*  * that we are interested in.  The function will return -1 if the */
-/*  * pa-features property is missing, or a 1/0 to indicate if the feature */
-/*  * is supported/not supported.  Note that the bit numbers are */
-/*  * big-endian to match the definition in PAPR. */
-/*  *\/ */
-/* static struct ibm_pa_feature { */
-/* 	unsigned long	cpu_features;	/\* CPU_FTR_xxx bit *\/ */
-/* 	unsigned int	cpu_user_ftrs;	/\* PPC_FEATURE_xxx bit *\/ */
-/* 	unsigned char	pabyte;		/\* byte number in ibm,pa-features *\/ */
-/* 	unsigned char	pabit;		/\* bit number (big-endian) *\/ */
-/* 	unsigned char	invert;		/\* if 1, pa bit set => clear feature *\/ */
-/* } ibm_pa_features[] __initdata = { */
-/* 	{0, PPC_FEATURE_HAS_MMU,	0, 0, 0}, */
-/* 	{0, PPC_FEATURE_HAS_FPU,	0, 1, 0}, */
-/* 	{CPU_FTR_SLB, 0,		0, 2, 0}, */
-/* 	{CPU_FTR_CTRL, 0,		0, 3, 0}, */
-/* 	{CPU_FTR_NOEXECUTE, 0,		0, 6, 0}, */
-/* 	{CPU_FTR_NODSISRALIGN, 0,	1, 1, 1}, */
-/* #if 0 */
-/* 	/\* put this back once we know how to test if firmware does 64k IO *\/ */
-/* 	{CPU_FTR_CI_LARGE_PAGE, 0,	1, 2, 0}, */
-/* #endif */
-/* 	{CPU_FTR_REAL_LE, PPC_FEATURE_TRUE_LE, 5, 0, 0}, */
-/* }; */
-
-/* static void __init scan_features(unsigned long node, unsigned char *ftrs, */
-/* 				 unsigned long tablelen, */
-/* 				 struct ibm_pa_feature *fp, */
-/* 				 unsigned long ft_size) */
-/* { */
-/* 	unsigned long i, len, bit; */
-
-/* 	/\* find descriptor with type == 0 *\/ */
-/* 	for (;;) { */
-/* 		if (tablelen < 3) */
-/* 			return; */
-/* 		len = 2 + ftrs[0]; */
-/* 		if (tablelen < len) */
-/* 			return;		/\* descriptor 0 not found *\/ */
-/* 		if (ftrs[1] == 0) */
-/* 			break; */
-/* 		tablelen -= len; */
-/* 		ftrs += len; */
-/* 	} */
-
-/* 	/\* loop over bits we know about *\/ */
-/* 	for (i = 0; i < ft_size; ++i, ++fp) { */
-/* 		if (fp->pabyte >= ftrs[0]) */
-/* 			continue; */
-/* 		bit = (ftrs[2 + fp->pabyte] >> (7 - fp->pabit)) & 1; */
-/* 		if (bit ^ fp->invert) { */
-/* 			cur_cpu_spec->cpu_features |= fp->cpu_features; */
-/* 			cur_cpu_spec->cpu_user_features |= fp->cpu_user_ftrs; */
-/* 		} else { */
-/* 			cur_cpu_spec->cpu_features &= ~fp->cpu_features; */
-/* 			cur_cpu_spec->cpu_user_features &= ~fp->cpu_user_ftrs; */
-/* 		} */
-/* 	} */
-/* } */
-
-/* static void __init check_cpu_pa_features(unsigned long node) */
-/* { */
-/* 	unsigned char *pa_ftrs; */
-/* 	unsigned long tablelen; */
-
-/* 	pa_ftrs = of_get_flat_dt_prop(node, "ibm,pa-features", &tablelen); */
-/* 	if (pa_ftrs == NULL) */
-/* 		return; */
-
-/* 	scan_features(node, pa_ftrs, tablelen, */
-/* 		      ibm_pa_features, ARRAY_SIZE(ibm_pa_features)); */
-/* } */
-
-/* static struct feature_property { */
-/* 	const char *name; */
-/* 	u32 min_value; */
-/* 	unsigned long cpu_feature; */
-/* 	unsigned long cpu_user_ftr; */
-/* } feature_properties[] __initdata = { */
-/* #ifdef CONFIG_ALTIVEC */
-/* 	{"altivec", 0, CPU_FTR_ALTIVEC, PPC_FEATURE_HAS_ALTIVEC}, */
-/* 	{"ibm,vmx", 1, CPU_FTR_ALTIVEC, PPC_FEATURE_HAS_ALTIVEC}, */
-/* #endif /\* CONFIG_ALTIVEC *\/ */
-/* #ifdef CONFIG_PPC64 */
-/* 	{"ibm,dfp", 1, 0, PPC_FEATURE_HAS_DFP}, */
-/* 	{"ibm,purr", 1, CPU_FTR_PURR, 0}, */
-/* 	{"ibm,spurr", 1, CPU_FTR_SPURR, 0}, */
-/* #endif /\* CONFIG_PPC64 *\/ */
-/* }; */
-
-/* static void __init check_cpu_feature_properties(unsigned long node) */
-/* { */
-/* 	unsigned long i; */
-/* 	struct feature_property *fp = feature_properties; */
-/* 	const u32 *prop; */
-
-/* 	for (i = 0; i < ARRAY_SIZE(feature_properties); ++i, ++fp) { */
-/* 		prop = of_get_flat_dt_prop(node, fp->name, NULL); */
-/* 		if (prop && *prop >= fp->min_value) { */
-/* 			cur_cpu_spec->cpu_features |= fp->cpu_feature; */
-/* 			cur_cpu_spec->cpu_user_features |= fp->cpu_user_ftr; */
-/* 		} */
-/* 	} */
-/* } */
 
 static int __init early_init_dt_scan_cpus(unsigned long node,
 					  const char *uname, int depth,
@@ -684,36 +517,7 @@ static int __init early_init_dt_scan_cpus(unsigned long node,
 		DBG("boot cpu: logical %d physical %d\n", logical_cpuid,
 			intserv[i]);
 		boot_cpuid = logical_cpuid;
-/* 		set_hard_smp_processor_id(boot_cpuid, intserv[i]); */
-
-/* 		/\* */
-/* 		 * PAPR defines "logical" PVR values for cpus that */
-/* 		 * meet various levels of the architecture: */
-/* 		 * 0x0f000001	Architecture version 2.04 */
-/* 		 * 0x0f000002	Architecture version 2.05 */
-/* 		 * If the cpu-version property in the cpu node contains */
-/* 		 * such a value, we call identify_cpu again with the */
-/* 		 * logical PVR value in order to use the cpu feature */
-/* 		 * bits appropriate for the architecture level. */
-/* 		 * */
-/* 		 * A POWER6 partition in "POWER6 architected" mode */
-/* 		 * uses the 0x0f000002 PVR value; in POWER5+ mode */
-/* 		 * it uses 0x0f000001. */
-/* 		 *\/ */
-/* 		prop = of_get_flat_dt_prop(node, "cpu-version", NULL); */
-/* 		if (prop && (*prop & 0xff000000) == 0x0f000000) */
-/* 			identify_cpu(0, *prop); */
 	}
-
-        //	check_cpu_feature_properties(node);
-        //	check_cpu_pa_features(node);
-
-#ifdef CONFIG_PPC_PSERIES
-	if (nthreads > 1)
-		cur_cpu_spec->cpu_features |= CPU_FTR_SMT;
-	else
-		cur_cpu_spec->cpu_features &= ~CPU_FTR_SMT;
-#endif
 
 	return 0;
 }
@@ -760,28 +564,6 @@ static int __init early_init_dt_scan_chosen(unsigned long node,
 	if (depth != 1 ||
 	    (strcmp(uname, "chosen") != 0 && strcmp(uname, "chosen@0") != 0))
 		return 0;
-
-#ifdef CONFIG_PPC64
-	/* check if iommu is forced on or off */
-	if (of_get_flat_dt_prop(node, "linux,iommu-off", NULL) != NULL)
-		iommu_is_off = 1;
-	if (of_get_flat_dt_prop(node, "linux,iommu-force-on", NULL) != NULL)
-		iommu_force_on = 1;
-#endif
-
-/* 	/\* mem=x on the command line is the preferred mechanism *\/ */
-/*  	lprop = of_get_flat_dt_prop(node, "linux,memory-limit", NULL); */
-/*  	if (lprop) */
-/*  		memory_limit = *lprop; */
-
-#ifdef CONFIG_PPC64
- 	lprop = of_get_flat_dt_prop(node, "linux,tce-alloc-start", NULL);
- 	if (lprop)
- 		tce_alloc_start = *lprop;
- 	lprop = of_get_flat_dt_prop(node, "linux,tce-alloc-end", NULL);
- 	if (lprop)
- 		tce_alloc_end = *lprop;
-#endif
 
 #ifdef CONFIG_KEXEC
        lprop = (u64*)of_get_flat_dt_prop(node, "linux,crashkernel-base", NULL);
@@ -839,56 +621,6 @@ static unsigned long __init dt_mem_next_cell(int s, cell_t **cellp)
 	return of_read_ulong(p, s);
 }
 
-#ifdef CONFIG_PPC_PSERIES
-/*
- * Interpret the ibm,dynamic-memory property in the
- * /ibm,dynamic-reconfiguration-memory node.
- * This contains a list of memory blocks along with NUMA affinity
- * information.
- */
-static int __init early_init_dt_scan_drconf_memory(unsigned long node)
-{
-	cell_t *dm, *ls;
-	unsigned long l, n;
-	unsigned long base, size, lmb_size, flags;
-
-	ls = (cell_t *)of_get_flat_dt_prop(node, "ibm,lmb-size", &l);
-	if (ls == NULL || l < dt_root_size_cells * sizeof(cell_t))
-		return 0;
-	lmb_size = dt_mem_next_cell(dt_root_size_cells, &ls);
-
-	dm = (cell_t *)of_get_flat_dt_prop(node, "ibm,dynamic-memory", &l);
-	if (dm == NULL || l < sizeof(cell_t))
-		return 0;
-
-	n = *dm++;	/* number of entries */
-	if (l < (n * (dt_root_addr_cells + 4) + 1) * sizeof(cell_t))
-		return 0;
-
-	for (; n != 0; --n) {
-		base = dt_mem_next_cell(dt_root_addr_cells, &dm);
-		flags = dm[3];
-		/* skip DRC index, pad, assoc. list index, flags */
-		dm += 4;
-		/* skip this block if the reserved bit is set in flags (0x80)
-		   or if the block is not assigned to this partition (0x8) */
-		if ((flags & 0x80) || !(flags & 0x8))
-			continue;
-		size = lmb_size;
-		if (iommu_is_off) {
-			if (base >= 0x80000000ul)
-				continue;
-			if ((base + size) > 0x80000000ul)
-				size = 0x80000000ul - base;
-		}
-		lmb_add(base, size);
-	}
-	lmb_dump_all();
-	return 0;
-}
-#else
-#define early_init_dt_scan_drconf_memory(node)	0
-#endif /* CONFIG_PPC_PSERIES */
 
 static int __init early_init_dt_scan_memory(unsigned long node,
 					    const char *uname, int depth, void *data)
@@ -896,11 +628,6 @@ static int __init early_init_dt_scan_memory(unsigned long node,
 	char *type = of_get_flat_dt_prop(node, "device_type", NULL);
 	cell_t *reg, *endp;
 	unsigned long l;
-
-	/* Look for the ibm,dynamic-reconfiguration-memory node */
-	if (depth == 1 &&
-	    strcmp(uname, "ibm,dynamic-reconfiguration-memory") == 0)
-		return early_init_dt_scan_drconf_memory(node);
 
 	/* We are scanning "memory" nodes only */
 	if (type == NULL) {
@@ -933,14 +660,7 @@ static int __init early_init_dt_scan_memory(unsigned long node,
 		if (size == 0)
 			continue;
 		DBG(" - %lx ,  %lx\n", base, size);
-#ifdef CONFIG_PPC64
-		if (iommu_is_off) {
-			if (base >= 0x80000000ul)
-				continue;
-			if ((base + size) > 0x80000000ul)
-				size = 0x80000000ul - base;
-		}
-#endif
+
 		lmb_add(base, size);
 	}
 	return 0;
@@ -967,29 +687,6 @@ static void __init early_reserve_mem(void)
 		lmb_reserve(__pa(initrd_start), initrd_end - initrd_start);
 #endif /* CONFIG_BLK_DEV_INITRD */
 
-#ifdef CONFIG_PPC32
-	/* 
-	 * Handle the case where we might be booting from an old kexec
-	 * image that setup the mem_rsvmap as pairs of 32-bit values
-	 */
-	if (*reserve_map > 0xffffffffull) {
-		u32 base_32, size_32;
-		u32 *reserve_map_32 = (u32 *)reserve_map;
-
-		while (1) {
-			base_32 = *(reserve_map_32++);
-			size_32 = *(reserve_map_32++);
-			if (size_32 == 0)
-				break;
-			/* skip if the reservation is for the blob */
-			if (base_32 == self_base && size_32 == self_size)
-				continue;
-			DBG("reserving: %x -> %x\n", base_32, size_32);
-			lmb_reserve(base_32, size_32);
-		}
-		return;
-	}
-#endif
 	while (1) {
 		base = *(reserve_map++);
 		size = *(reserve_map++);
@@ -1007,15 +704,10 @@ static void __init early_reserve_mem(void)
 
 void __init early_init_devtree(void *params)
 {
-	DBG(" -> early_init_devtree()\n");
+	DBG(" -> early_init_devtree(%p)\n", params);
 
 	/* Setup flat device-tree pointer */
 	initial_boot_params = params;
-
-#ifdef CONFIG_PPC_RTAS
-	/* Some machines might need RTAS info for debugging, grab it now. */
-	of_scan_flat_dt(early_init_dt_scan_rtas, NULL);
-#endif
 
 	/* Retrieve various informations from the /chosen node of the
 	 * device-tree, including the platform type, initrd location and
@@ -1057,63 +749,6 @@ void __init early_init_devtree(void *params)
 	DBG(" <- early_init_devtree()\n");
 }
 
-#undef printk
-
-int of_n_addr_cells(struct device_node* np)
-{
-	const int *ip;
-	do {
-		if (np->parent)
-			np = np->parent;
-		ip = of_get_property(np, "#address-cells", NULL);
-		if (ip != NULL)
-			return *ip;
-	} while (np->parent);
-	/* No #address-cells property for the root node, default to 1 */
-	return 1;
-}
-EXPORT_SYMBOL(of_n_addr_cells);
-
-int of_n_size_cells(struct device_node* np)
-{
-	const int* ip;
-	do {
-		if (np->parent)
-			np = np->parent;
-		ip = of_get_property(np, "#size-cells", NULL);
-		if (ip != NULL)
-			return *ip;
-	} while (np->parent);
-	/* No #size-cells property for the root node, default to 1 */
-	return 1;
-}
-EXPORT_SYMBOL(of_n_size_cells);
-
-/** Checks if the given "compat" string matches one of the strings in
- * the device's "compatible" property
- */
-int of_device_is_compatible(const struct device_node *device,
-		const char *compat)
-{
-	const char* cp;
-	int cplen, l;
-
-	cp = of_get_property(device, "compatible", &cplen);
-	if (cp == NULL)
-		return 0;
-	while (cplen > 0) {
-		if (strncasecmp(cp, compat, strlen(compat)) == 0)
-			return 1;
-		l = strlen(cp) + 1;
-		cp += l;
-		cplen -= l;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL(of_device_is_compatible);
-
-
 /**
  * Indicates whether the root node has a given value in its
  * compatible property.
@@ -1143,118 +778,6 @@ EXPORT_SYMBOL(machine_is_compatible);
  *
  *******/
 
-/**
- *	of_find_node_by_name - Find a node by its "name" property
- *	@from:	The node to start searching from or NULL, the node
- *		you pass will not be searched, only the next one
- *		will; typically, you pass what the previous call
- *		returned. of_node_put() will be called on it
- *	@name:	The name string to match against
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_find_node_by_name(struct device_node *from,
-	const char *name)
-{
-	struct device_node *np;
-
-	read_lock(&devtree_lock);
-	np = from ? from->allnext : allnodes;
-	for (; np != NULL; np = np->allnext)
-		if (np->name != NULL && strcasecmp(np->name, name) == 0
-		    && of_node_get(np))
-			break;
-	of_node_put(from);
-	read_unlock(&devtree_lock);
-	return np;
-}
-EXPORT_SYMBOL(of_find_node_by_name);
-
-/**
- *	of_find_node_by_type - Find a node by its "device_type" property
- *	@from:	The node to start searching from, or NULL to start searching
- *		the entire device tree. The node you pass will not be
- *		searched, only the next one will; typically, you pass
- *		what the previous call returned. of_node_put() will be
- *		called on from for you.
- *	@type:	The type string to match against
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_find_node_by_type(struct device_node *from,
-	const char *type)
-{
-	struct device_node *np;
-
-	read_lock(&devtree_lock);
-	np = from ? from->allnext : allnodes;
-	for (; np != 0; np = np->allnext)
-		if (np->type != 0 && strcasecmp(np->type, type) == 0
-		    && of_node_get(np))
-			break;
-	of_node_put(from);
-	read_unlock(&devtree_lock);
-	return np;
-}
-EXPORT_SYMBOL(of_find_node_by_type);
-
-/**
- *	of_find_compatible_node - Find a node based on type and one of the
- *                                tokens in its "compatible" property
- *	@from:		The node to start searching from or NULL, the node
- *			you pass will not be searched, only the next one
- *			will; typically, you pass what the previous call
- *			returned. of_node_put() will be called on it
- *	@type:		The type string to match "device_type" or NULL to ignore
- *	@compatible:	The string to match to one of the tokens in the device
- *			"compatible" list.
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_find_compatible_node(struct device_node *from,
-	const char *type, const char *compatible)
-{
-	struct device_node *np;
-
-	read_lock(&devtree_lock);
-	np = from ? from->allnext : allnodes;
-	for (; np != 0; np = np->allnext) {
-		if (type != NULL
-		    && !(np->type != 0 && strcasecmp(np->type, type) == 0))
-			continue;
-		if (of_device_is_compatible(np, compatible) && of_node_get(np))
-			break;
-	}
-	of_node_put(from);
-	read_unlock(&devtree_lock);
-	return np;
-}
-EXPORT_SYMBOL(of_find_compatible_node);
-
-/**
- *	of_find_node_by_path - Find a node matching a full OF path
- *	@path:	The full path to match
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_find_node_by_path(const char *path)
-{
-	struct device_node *np = allnodes;
-
-	read_lock(&devtree_lock);
-	for (; np != 0; np = np->allnext) {
-		if (np->full_name != 0 && strcasecmp(np->full_name, path) == 0
-		    && of_node_get(np))
-			break;
-	}
-	read_unlock(&devtree_lock);
-	return np;
-}
-EXPORT_SYMBOL(of_find_node_by_path);
 
 /**
  *	of_find_node_by_phandle - Find a node given a phandle
@@ -1301,51 +824,6 @@ struct device_node *of_find_all_nodes(struct device_node *prev)
 EXPORT_SYMBOL(of_find_all_nodes);
 
 /**
- *	of_get_parent - Get a node's parent if any
- *	@node:	Node to get parent
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_get_parent(const struct device_node *node)
-{
-	struct device_node *np;
-
-	if (!node)
-		return NULL;
-
-	read_lock(&devtree_lock);
-	np = of_node_get(node->parent);
-	read_unlock(&devtree_lock);
-	return np;
-}
-EXPORT_SYMBOL(of_get_parent);
-
-/**
- *	of_get_next_child - Iterate a node childs
- *	@node:	parent node
- *	@prev:	previous child of the parent node, or NULL to get first
- *
- *	Returns a node pointer with refcount incremented, use
- *	of_node_put() on it when done.
- */
-struct device_node *of_get_next_child(const struct device_node *node,
-	struct device_node *prev)
-{
-	struct device_node *next;
-
-	read_lock(&devtree_lock);
-	next = prev ? prev->sibling : node->child;
-	for (; next != 0; next = next->sibling)
-		if (of_node_get(next))
-			break;
-	of_node_put(prev);
-	read_unlock(&devtree_lock);
-	return next;
-}
-EXPORT_SYMBOL(of_get_next_child);
-
-/**
  *	of_node_get - Increment refcount of a node
  *	@node:	Node to inc refcount, NULL is supported to
  *		simplify writing of callers
@@ -1377,8 +855,17 @@ static void of_node_release(struct kref *kref)
 	struct device_node *node = kref_to_device_node(kref);
 	struct property *prop = node->properties;
 
-	if (!OF_IS_DYNAMIC(node))
+	/* We should never be releasing nodes that haven't been detached. */
+	if (!of_node_check_flag(node, OF_DETACHED)) {
+		printk("WARNING: Bad of_node_put() on %s\n", node->full_name);
+		dump_stack();
+		kref_init(&node->kref);
 		return;
+	}
+
+	if (!of_node_check_flag(node, OF_DYNAMIC))
+		return;
+
 	while (prop) {
 		struct property *next = prop->next;
 		kfree(prop->name);
@@ -1427,13 +914,15 @@ void of_attach_node(struct device_node *np)
  * a reference to the node.  The memory associated with the node
  * is not freed until its refcount goes to zero.
  */
-void of_detach_node(const struct device_node *np)
+void of_detach_node(struct device_node *np)
 {
 	struct device_node *parent;
 
 	write_lock(&devtree_lock);
 
 	parent = np->parent;
+	if (!parent)
+		goto out_unlock;
 
 	if (allnodes == np)
 		allnodes = np->allnext;
@@ -1457,111 +946,11 @@ void of_detach_node(const struct device_node *np)
 		prevsib->sibling = np->sibling;
 	}
 
+	of_node_set_flag(np, OF_DETACHED);
+
+out_unlock:
 	write_unlock(&devtree_lock);
 }
-
-#ifdef CONFIG_PPC_PSERIES
-/*
- * Fix up the uninitialized fields in a new device node:
- * name, type and pci-specific fields
- */
-
-static int of_finish_dynamic_node(struct device_node *node)
-{
-	struct device_node *parent = of_get_parent(node);
-	int err = 0;
-	const phandle *ibm_phandle;
-
-	node->name = of_get_property(node, "name", NULL);
-	node->type = of_get_property(node, "device_type", NULL);
-
-	if (!node->name)
-		node->name = "<NULL>";
-	if (!node->type)
-		node->type = "<NULL>";
-
-	if (!parent) {
-		err = -ENODEV;
-		goto out;
-	}
-
-	/* We don't support that function on PowerMac, at least
-	 * not yet
-	 */
-	if (machine_is(powermac))
-		return -ENODEV;
-
-	/* fix up new node's linux_phandle field */
-	if ((ibm_phandle = of_get_property(node, "ibm,phandle", NULL)))
-		node->linux_phandle = *ibm_phandle;
-
-out:
-	of_node_put(parent);
-	return err;
-}
-
-static int prom_reconfig_notifier(struct notifier_block *nb,
-				  unsigned long action, void *node)
-{
-	int err;
-
-	switch (action) {
-	case PSERIES_RECONFIG_ADD:
-		err = of_finish_dynamic_node(node);
-		if (err < 0) {
-			printk(KERN_ERR "finish_node returned %d\n", err);
-			err = NOTIFY_BAD;
-		}
-		break;
-	default:
-		err = NOTIFY_DONE;
-		break;
-	}
-	return err;
-}
-
-static struct notifier_block prom_reconfig_nb = {
-	.notifier_call = prom_reconfig_notifier,
-	.priority = 10, /* This one needs to run first */
-};
-
-static int __init prom_reconfig_setup(void)
-{
-	return pSeries_reconfig_notifier_register(&prom_reconfig_nb);
-}
-__initcall(prom_reconfig_setup);
-#endif
-
-struct property *of_find_property(const struct device_node *np,
-				  const char *name,
-				  int *lenp)
-{
-	struct property *pp;
-
-	read_lock(&devtree_lock);
-	for (pp = np->properties; pp != 0; pp = pp->next)
-		if (strcmp(pp->name, name) == 0) {
-			if (lenp != 0)
-				*lenp = pp->length;
-			break;
-		}
-	read_unlock(&devtree_lock);
-
-	return pp;
-}
-EXPORT_SYMBOL(of_find_property);
-
-/*
- * Find a property with a given name for a given node
- * and return the value.
- */
-const void *of_get_property(const struct device_node *np, const char *name,
-			 int *lenp)
-{
-	struct property *pp = of_find_property(np,name,lenp);
-	return pp ? pp->value : NULL;
-}
-EXPORT_SYMBOL(of_get_property);
 
 /*
  * Add a property to a node
@@ -1570,7 +959,7 @@ int prom_add_property(struct device_node* np, struct property* prop)
 {
 	struct property **next;
 
-	prop->next = NULL;	
+	prop->next = NULL;
 	write_lock(&devtree_lock);
 	next = &np->properties;
 	while (*next) {
@@ -1718,14 +1107,14 @@ struct device_node *of_get_cpu_node(int cpu, unsigned int *thread)
 }
 EXPORT_SYMBOL(of_get_cpu_node);
 
-#ifdef DEBUG
+#if defined(CONFIG_DEBUG_FS) && defined(DEBUG)
 static struct debugfs_blob_wrapper flat_dt_blob;
 
 static int __init export_flat_device_tree(void)
 {
 	struct dentry *d;
 
-	d = debugfs_create_dir("powerpc", NULL);
+	d = debugfs_create_dir("microblaze", NULL);
 	if (!d)
 		return 1;
 

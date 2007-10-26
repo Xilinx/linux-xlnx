@@ -490,6 +490,8 @@ int __init ulite_init(void)
 {
 	int ret;
 
+	memset(ports, 0, sizeof(ports));
+
 	ret = uart_register_driver(&ulite_uart_driver);
 	if (ret)
 		return ret;
@@ -512,31 +514,48 @@ module_exit(ulite_exit);
 
 #ifdef CONFIG_WANT_DEVICE_TREE
 
+static int __init register_uartlite(struct device_node *np, int i) {
+	struct platform_device *pdev;
+        struct resource r[2];
+	int ret;
+
+        memset(r, 0, sizeof(r));
+
+        ret = of_address_to_resource(np, 0, &r[0]);
+        if (ret) {
+            return ret;
+        }
+
+        of_irq_to_resource(np, 0, &r[1]);
+
+        pdev = platform_device_register_simple("uartlite", i, r, 2);
+
+        if (IS_ERR(pdev)) {
+            return PTR_ERR(pdev);
+        }
+        return 0;
+}
+
 static int __init uartlite_of_init(void)
 {
 	struct device_node *np;
 	unsigned int i;
-	struct platform_device *pdev;
 	int ret;
 
 	for (np = NULL, i = 0;
-	     (np = of_find_compatible_node(np, NULL, "opb_uartlite")) != NULL;
+	     (np = of_find_compatible_node(np, NULL, "xlnx,opb-uartlite")) != NULL;
 	     i++) {
-		struct resource r[2];
-
-		memset(r, 0, sizeof(r));
-
-		ret = of_address_to_resource(np, 0, &r[0]);
-		if (ret)
+		ret = register_uartlite(np, i);
+		if (ret) {
 			goto err;
+		}
+	}
 
-		of_irq_to_resource(np, 0, &r[1]);
-
-		pdev =
-		    platform_device_register_simple("uartlite", i, r, 2);
-
-		if (IS_ERR(pdev)) {
-			ret = PTR_ERR(pdev);
+	for (np = NULL;
+	     (np = of_find_compatible_node(np, NULL, "xlnx,xps-uartlite")) != NULL;
+	     i++) {
+		ret = register_uartlite(np, i);
+		if (ret) {
 			goto err;
 		}
 	}

@@ -17,6 +17,7 @@
 #include <asm/bug.h>
 
 extern void system_timer_init(void);
+extern unsigned long do_gettimeoffset(void);
 
 void time_init(void)
 {
@@ -67,7 +68,6 @@ void do_gettimeofday(struct timeval *tv)
 {
 	unsigned long seq;
 	unsigned long usec, sec;
-	unsigned long max_ntp_tick = tick_usec - tickadj;
 
 	do {
 		seq = read_seqbegin(&xtime_lock);
