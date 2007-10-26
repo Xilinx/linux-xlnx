@@ -75,6 +75,7 @@ extern "C" {
 /***************************** Include Files *********************************/
 
 #include "xbasic_types.h"
+#include "xenv.h"
 #include "xlldma_hw.h"
 
 /************************** Constant Definitions *****************************/

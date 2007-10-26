@@ -262,6 +262,7 @@ extern "C" {
 
 /***************************** Include Files *********************************/
 
+#include "xenv.h"
 #include "xbasic_types.h"
 #include "xstatus.h"
 #include "xlltemac_hw.h"

@@ -459,7 +459,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 
 
 
-#define PHY_MARVELL_88E1111_RGMII
+// #define PHY_MARVELL_88E1111_RGMII
 
 #ifdef PHY_MARVELL_88E1111_RGMII
 #define MARVELL_88E1111_EXTENDED_PHY_CTL_REG_OFFSET  20
@@ -622,7 +622,7 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	return -1;
 }
 
-#define XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+// #define XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
 /*
  * This function sets up MAC's speed according to link speed of PHY
  * This function is specific to MARVELL 88E1111 PHY chip on Xilinx ML403
@@ -680,7 +680,7 @@ void set_mac_speed(struct net_local *lp)
 		break;
 	default:
 		_XLlTemac_SetOperatingSpeed(&lp->Emac, 1000);
-		printk(KERN_INFO "%s: XLlTemac: speed set to 1000Mb/s\n",
+		printk(KERN_INFO "%s: XLlTemac: speed defaults to 1000Mb/s\n",
 		       dev->name);
 		lp->cur_speed = 1000;
 		break;
@@ -1061,7 +1061,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 		spin_lock(&sentQueueSpin);
 		list_for_each(cur_lp, &sentQueue) {
 			if (cur_lp == &(lp->xmit)) {
-				break;
+ 				break;
 			}
 		}
 		if (cur_lp != &(lp->xmit)) {
@@ -1171,7 +1171,7 @@ static int xenet_open(struct net_device *dev)
 	if (irqval) {
 		printk(KERN_ERR
 		       "%s: XLlTemac: could not allocate interrupt %d.\n",
-		       dev->name, lp->dma_irq_s);
+		       dev->name, dev->irq);
 		return irqval;
 	}
 	if (XLlTemac_IsDma(&lp->Emac)) {
@@ -1769,7 +1769,6 @@ static void xenet_tx_timeout(struct net_device *dev)
 /* The callback function for frames received when in FIFO mode. */
 static void FifoRecvHandler(unsigned long p)
 {
-#if 1 // wgr TODO: NEW CODE
 	struct net_local *lp;
 	struct sk_buff *skb;
 	u32 len;
@@ -1828,59 +1827,6 @@ static void FifoRecvHandler(unsigned long p)
 	XLlFifo_IntEnable(&lp->Fifo, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK |
 			XLLF_INT_RXERROR_MASK | XLLF_INT_TXERROR_MASK);
 
-#else // wgr TODO: OLD CODE
-	struct net_local *lp;
-	struct sk_buff *skb;
-	u32 len;
-
-#define XTE_RX_SINK_BUFFER_SIZE 1024
-	static u32 rx_buffer_sink[XTE_RX_SINK_BUFFER_SIZE / sizeof(u32)];
-
-	spin_lock(&XTE_rx_spinlock);
-	lp = (struct net_local *) dev->priv;
-
-
-	if (XLlFifo_RxOccupancy(&lp->Fifo) == 0) {
-		spin_unlock(&XTE_rx_spinlock);
-		return;
-	}
-
-	len = XLlFifo_RxGetLen(&lp->Fifo);
-
-	/*
-	 * TODO: Hm this is odd, if we can't allocate the skb, we throw away the next packet. Why?
-	 */
-	if (!(skb = /*dev_ */ alloc_skb(len + ALIGNMENT_RECV, GFP_ATOMIC))) {
-		/* Couldn't get memory. */
-		lp->stats.rx_dropped++;
-		printk(KERN_ERR
-		       "%s: XLlTemac: could not allocate receive buffer.\n",
-		       dev->name);
-
-		/* consume data in Xilinx TEMAC RX data fifo so it is sync with RX length fifo */
-		for (; len > XTE_RX_SINK_BUFFER_SIZE;
-		     len -= XTE_RX_SINK_BUFFER_SIZE) {
-			XLlFifo_Read(&lp->Fifo, rx_buffer_sink,
-				     XTE_RX_SINK_BUFFER_SIZE);
-		}
-		XLlFifo_Read(&lp->Fifo, rx_buffer_sink, len);
-
-		spin_unlock(&XTE_rx_spinlock);
-		return;
-	}
-
-	/* Read the packet data */
-	XLlFifo_Read(&lp->Fifo, skb->data, len);
-	lp->stats.rx_packets++;
-	lp->stats.rx_bytes += len;
-	spin_unlock(&XTE_rx_spinlock);
-
-	skb_put(skb, len);	/* Tell the skb how much data we got. */
-	skb->dev = dev;		/* Fill out required meta-data. */
-	skb->protocol = eth_type_trans(skb, dev);
-	skb->ip_summed = CHECKSUM_NONE;
-	netif_rx(skb);		/* Send the packet upstream. */
-#endif // wgr TODO: OLD CODE
 }
 
 
@@ -2199,9 +2145,11 @@ static int descriptor_init(struct net_device *dev)
 	 * xenv_linux.h need to be disabled.
 	 */
 
-	lp->desc_space = kmalloc(dftsize, GFP_KERNEL);
+        printk(KERN_INFO "XLlTemac: Allocating DMA descriptors with kmalloc");
+        lp->desc_space = kmalloc(dftsize, GFP_KERNEL);
 	lp->desc_space_handle = (dma_addr_t) page_to_phys(virt_to_page(lp->desc_space));
 #else
+        printk(KERN_INFO "XLlTemac: Allocating DMA descriptors in Block Ram");
 	lp->desc_space_handle = BRAM_BASEADDR;
 	lp->desc_space = ioremap(lp->desc_space_handle, dftsize);
 #endif
@@ -3125,13 +3073,13 @@ static int xtenet_setup(
 #ifndef XDCRIO_H
 		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 		if (0 == virt_baddr) {
-			dev_err(dev, 
+			dev_err(dev,
 			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
 			rc = -EIO;
 			goto error;
 		}
 #endif
-		printk("XLlTemac: Dma base address: 0x%0x\n", virt_baddr);
+		printk("XLlTemac: Dma base address: phy: 0x%x, virt: 0x%x\n", pdata->ll_dev_baseaddress, virt_baddr);
 		XLlDma_Initialize(&lp->Dma, virt_baddr);
 
 

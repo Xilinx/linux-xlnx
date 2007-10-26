@@ -41,6 +41,7 @@
 #include <linux/string.h>
 
 #include "xlldma.h"
+#include "xenv.h"
 
 /************************** Constant Definitions *****************************/
 
