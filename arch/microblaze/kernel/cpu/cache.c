@@ -11,12 +11,13 @@
  *
  */
 
+#include <asm/xparameters.h>
 #include <asm/cacheflush.h>
 #include <asm/cache.h>
 
 /* Exported functions.  */
 
-void __flush_icache_all (void)
+void __invalidate_icache_all (void)
 {
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	unsigned int i;
@@ -35,7 +36,7 @@ void __flush_icache_all (void)
 #endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
 }
 
-void __flush_icache_range (unsigned long start, unsigned long end)
+void __invalidate_icache_range (unsigned long start, unsigned long end)
 { 
 #if XPAR_MICROBLAZE_0_USE_ICACHE==1
 	unsigned int i;
@@ -61,23 +62,7 @@ void __flush_icache_range (unsigned long start, unsigned long end)
 #endif /* XPAR_MICROBLAZE_0_USE_ICACHE */
 }
 
-void __flush_icache_page (struct vm_area_struct *vma, struct page *page)
-{
-	__flush_icache_all();
-}
-
-void __flush_icache_user_range (struct vm_area_struct *vma, struct page *page,
-			      unsigned long adr, int len)
-{
-	__flush_icache_all();
-}
-
-void __flush_cache_sigtramp (unsigned long addr)
-{
-	__flush_icache_range(addr, addr+8);
-}
-
-void __flush_dcache_all (void)
+void __invalidate_dcache_all (void)
 {
 #if XPAR_MICROBLAZE_0_USE_DCACHE==1
 	unsigned int i;
@@ -96,7 +81,7 @@ void __flush_dcache_all (void)
 #endif /* XPAR_MICROBLAZE_0_USE_DCACHE */
 }
 
-void __flush_dcache_range (unsigned long start, unsigned long end)
+void __invalidate_dcache_range (unsigned long start, unsigned long end)
 { 
 #if XPAR_MICROBLAZE_0_USE_DCACHE==1
 	unsigned int i;
@@ -120,16 +105,5 @@ void __flush_dcache_range (unsigned long start, unsigned long end)
 	__enable_dcache();
 	local_irq_restore(flags);
 #endif /* XPAR_MICROBLAZE_0_USE_DCACHE */
-}
-
-void __flush_dcache_page (struct vm_area_struct *vma, struct page *page)
-{
-	__flush_dcache_all();
-}
-
-void __flush_dcache_user_range (struct vm_area_struct *vma, struct page *page,
-			      unsigned long adr, int len)
-{
-	__flush_dcache_all();
 }
 

@@ -69,11 +69,11 @@ void __init setup_arch(char **cmdline_p)
 	*cmdline_p = command_line;
         parse_early_param();
 
-        /* Flush caches, if necessary. */
-	__flush_icache_all();
-	__enable_icache();
-	__flush_dcache_all();
-	__enable_dcache();
+        /* Invalidate and enable all the caches, if necessary. */
+        invalidate_icache();
+        __enable_icache();
+        invalidate_dcache();
+        __enable_dcache();
 
 	panic_timeout = 120;
 
