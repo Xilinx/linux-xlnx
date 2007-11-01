@@ -76,7 +76,6 @@ obj-$(CONFIG_EFI_RTC)		+= efirtc.o
 obj-$(CONFIG_SGI_DS1286)	+= ds1286.o
 obj-$(CONFIG_SGI_IP27_RTC)	+= ip27-rtc.o
 obj-$(CONFIG_DS1302)		+= ds1302.o
-obj-$(CONFIG_XILINX_SPI)	+= xilinx_spi/
 obj-$(CONFIG_XILINX_GPIO)	+= xilinx_gpio/
 obj-$(CONFIG_XILINX_HWICAP)	+= xilinx_hwicap/
 ifeq ($(CONFIG_GENERIC_NVRAM),y)
