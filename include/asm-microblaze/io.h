@@ -129,6 +129,9 @@ static inline unsigned long virt_to_phys(volatile void * address)
 }
 
 #define virt_to_bus virt_to_phys
+#define bus_to_virt phys_to_virt
+#define page_to_bus page_to_phys
+#define bus_to_page phys_to_page
 
 /**
  *	phys_to_virt	-	map physical address to virtual
