@@ -71,9 +71,9 @@ void __init setup_arch(char **cmdline_p)
 
         /* Invalidate and enable all the caches, if necessary. */
         invalidate_icache();
-        __enable_icache();
+        enable_icache();
         invalidate_dcache();
-        __enable_dcache();
+        enable_dcache();
 
 	panic_timeout = 120;
 
