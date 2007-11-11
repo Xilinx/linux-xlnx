@@ -13,6 +13,7 @@
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/string.h>
 #include <asm/segment.h>
 
 #define VERIFY_READ	0
@@ -104,7 +105,7 @@ extern inline int bad_user_access_length (void)
 static inline __kernel_size_t
 __clear_user(void __user *addr, __kernel_size_t size)
 {
-	/* FIXME */
+	memset((void *)addr, 0, size);
 	return 0;
 }
 
@@ -127,7 +128,9 @@ struct exception_table_entry
 
 static inline unsigned long clear_user(void *addr, unsigned long size)
 {
-	return 0;
+	if (access_ok(VERIFY_WRITE, addr, size))
+		size = __clear_user(addr, size);
+	return size;
 }
 
 /* Returns 0 if exception not found and fixup otherwise.  */
