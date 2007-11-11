@@ -22,20 +22,6 @@
 #define L1_CACHE_SHIFT		4
 #endif
 
-/* Detect cache style used, to set cache line size*/
-/* FSL caches (CacheLink) uses 16 byte cache line */
-#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
-#define ICACHE_LINE_SIZE 16
-#else
-#define ICACHE_LINE_SIZE 4
-#endif
-
-#if XPAR_MICROBLAZE_0_DCACHE_USE_FSL==1
-#define DCACHE_LINE_SIZE 16
-#else
-#define DCACHE_LINE_SIZE 4
-#endif
-
 /* Define MSR enable bits for instruction and data caches */
 #define ICACHE_MSR_BIT (1 << 5)
 #define DCACHE_MSR_BIT (1 << 7)
