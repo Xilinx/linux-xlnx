@@ -11,10 +11,17 @@
  *
  */
 
-#include <asm/xparameters.h>
 #include <asm/cacheflush.h>
 #include <asm/cache.h>
 #include <asm/cpuinfo.h>
+
+/* We always align cache instructions.  Previously, this was done with
+   FSL memory interfaces, but not PLB interfaces.  Since PLB
+   interfaces are not present in current microblazes, we just assume
+   that these always have to be aligned.
+ */
+#define ALIGN_DCACHE_INSTRUCTIONS 1
+#define ALIGN_ICACHE_INSTRUCTIONS 1
 
 /* Exported functions.  */
 
@@ -46,7 +53,7 @@ void __invalidate_icache_range (unsigned long start, unsigned long end)
 	unsigned flags;
         unsigned int cache_size = cpuinfo->icache_size;
         unsigned int line_size = cpuinfo->icache_line;
-#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
+#if ALIGN_ICACHE_INSTRUCTIONS==1
 	unsigned int align = ~(line_size - 1);
 #endif
 
@@ -55,7 +62,7 @@ void __invalidate_icache_range (unsigned long start, unsigned long end)
 
 /* No need to cover entire cache range, just cover cache footprint */
 	end=min(start+cache_size, end);
-#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
+#if ALIGN_ICACHE_INSTRUCTIONS==1
 	start &= align;		/* Make sure we are aligned */
 	end  = ((end & align) + line_size);              /* Push end up to the next cache line */
 #endif
@@ -97,7 +104,7 @@ void __invalidate_dcache_range (unsigned long start, unsigned long end)
 	unsigned flags;
         unsigned int cache_size = cpuinfo->dcache_size;
         unsigned int line_size = cpuinfo->dcache_line;
-#if XPAR_MICROBLAZE_0_DCACHE_USE_FSL==1
+#if ALIGN_DCACHE_INSTRUCTIONS==1
 	unsigned int align = ~(line_size - 1);
 #endif
 
@@ -106,7 +113,7 @@ void __invalidate_dcache_range (unsigned long start, unsigned long end)
 
 /* No need to cover entire cache range, just cover cache footprint */
 	end=min(start+cache_size, end);
-#if XPAR_MICROBLAZE_0_DCACHE_USE_FSL==1
+#if ALIGN_DCACHE_INSTRUCTIONS==1
 	start &= align;		/* Make sure we are aligned */
 	end  = ((end & align) + line_size);              /* Push end up to the next cache line */
 #endif
