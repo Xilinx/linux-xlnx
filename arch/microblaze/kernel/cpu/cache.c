@@ -43,7 +43,8 @@ void __invalidate_icache_all (void)
 	for(i=0;i<cache_size;i+=line_size)
 		__invalidate_icache(i);
 
-	__enable_icache();
+        /* Note that the cache will be returned to its original state
+           when the status register is restored.*/
 	local_irq_restore(flags);
 }
 
@@ -63,8 +64,8 @@ void __invalidate_icache_range (unsigned long start, unsigned long end)
 /* No need to cover entire cache range, just cover cache footprint */
 	end=min(start+cache_size, end);
 #if ALIGN_ICACHE_INSTRUCTIONS==1
-	start &= align;		/* Make sure we are aligned */
-	end  = ((end & align) + line_size);              /* Push end up to the next cache line */
+	start &= align;		            /* Make sure we are aligned */
+	end  = ((end & align) + line_size); /* Push end up to the next cache line */
 #endif
 	local_irq_save(flags);
 	__disable_icache();
@@ -72,7 +73,8 @@ void __invalidate_icache_range (unsigned long start, unsigned long end)
 	for(i=start;i<end;i+=line_size)
 		__invalidate_icache(i);
 
-	__enable_icache();
+        /* Note that the cache will be returned to its original state
+           when the status register is restored.*/
 	local_irq_restore(flags);
 }
 
@@ -94,7 +96,8 @@ void __invalidate_dcache_all (void)
 	for(i=0;i<cache_size;i+=line_size)
 		__invalidate_dcache(i);
 
-	__enable_dcache();
+        /* Note that the cache will be returned to its original state
+           when the status register is restored.*/
 	local_irq_restore(flags);
 }
 
@@ -111,11 +114,11 @@ void __invalidate_dcache_range (unsigned long start, unsigned long end)
         if(!cpuinfo->use_dcache)
             return;
 
-/* No need to cover entire cache range, just cover cache footprint */
+        /* No need to cover entire cache range, just cover cache footprint */
 	end=min(start+cache_size, end);
 #if ALIGN_DCACHE_INSTRUCTIONS==1
-	start &= align;		/* Make sure we are aligned */
-	end  = ((end & align) + line_size);              /* Push end up to the next cache line */
+	start &= align;		            /* Make sure we are aligned */
+	end  = ((end & align) + line_size); /* Push end up to the next cache line */
 #endif
 	local_irq_save(flags);
 	__disable_dcache();
@@ -123,7 +126,8 @@ void __invalidate_dcache_range (unsigned long start, unsigned long end)
 	for(i=start;i<end;i+=line_size)
 		__invalidate_dcache(i);
 
-	__enable_dcache();
+        /* Note that the cache will be returned to its original state
+           when the status register is restored.*/
 	local_irq_restore(flags);
 }
 
