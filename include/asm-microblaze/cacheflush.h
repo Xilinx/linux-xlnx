@@ -27,56 +27,40 @@
 /*
  * Cache handling functions.
  * Microblaze has a write-through data cache, meaning that the data cache
- * never needs to be flushed.  The only flushing operations that are
- * implemented are to invalidate the instruction cache.  These are called
- * after loading a user application into memory, we must invalidate the
- * instruction cache to make sure we don't fetch old, bad code.
+ * never needs to be flushed.
  */
-void __flush_icache_all (void);
-void __flush_icache_range (unsigned long start, unsigned long end);
-void __flush_icache_page (struct vm_area_struct *vma, struct page *page);
-void __flush_icache_user_range (struct vm_area_struct *vma, struct page *page,
-			      unsigned long adr, int len);
+#define flush_cache_all()			do { } while(0)
+#define flush_cache_mm(mm)			do { } while(0)
+#define flush_cache_range(mm, start, end)	do { } while(0)
+#define flush_cache_page(vma, vmaddr)		do { } while(0)
+#define flush_page_to_ram(page)			do { } while(0)
+#define flush_dcache_page(page)			do { } while(0)
+#define flush_dcache_range(start, end)		do { } while(0)
+#define flush_icache_range(start, end)		do { } while(0)
+#define flush_icache_user_range(vma,pg,adr,len) do { } while(0)
+#define flush_icache_page(vma,pg)		do { } while(0)
+#define flush_icache()				do { } while(0)
+#define flush_cache_sigtramp(vaddr)		do { } while(0)
 
-void __flush_cache_sigtramp (unsigned long addr);
+#define flush_dcache_mmap_lock(mapping)		do { } while(0)
+#define flush_dcache_mmap_unlock(mapping)	do { } while(0)
 
-void __flush_dcache_all (void);
-void __flush_dcache_range (unsigned long start, unsigned long end);
-void __flush_dcache_page (struct vm_area_struct *vma, struct page *page);
-void __flush_dcache_user_range (struct vm_area_struct *vma, struct page *page,
-			      unsigned long adr, int len);
+void __invalidate_icache_all (void);
+void __invalidate_icache_range (unsigned long start, unsigned long end);
+void __invalidate_dcache_all (void);
+void __invalidate_dcache_range (unsigned long start, unsigned long end);
 
+#define invalidate_cache_all()			__invalidate_icache_all(); __invalidate_dcache_all()
+#define invalidate_dcache()			__invalidate_dcache_all()
+#define invalidate_icache()			__invalidate_icache_all()
 
 #if XPAR_MICROBLAZE_0_DCACHE_USE_FSL == 1
-#define flush_cache_all()			__flush_icache_all()
-#define flush_cache_mm(mm)			do { } while(0)
-#define flush_cache_range(mm, start, end)	do { } while(0)
-#define flush_cache_page(vma, vmaddr)		do { } while(0)
-#define flush_page_to_ram(page)			do { } while(0)
-#define flush_dcache_page(page)			do { } while(0)
-#define flush_dcache_range(start, end)		__flush_dcache_all()
-#define flush_icache_range(start, end)		__flush_icache_all()
-#define flush_icache_user_range(vma,pg,adr,len) __flush_icache_all()
-#define flush_icache_page(vma,pg)		__flush_icache_all()
-#define flush_icache()				__flush_icache_all()
-#define flush_cache_sigtramp(vaddr)		__flush_icache_all()
+#define invalidate_dcache_range(start, end)	__invalidate_dcache_all()
+#define invalidate_icache_range(start, end)	__invalidate_icache_all()
 #else
-#define flush_cache_all()			__flush_icache_all()
-#define flush_cache_mm(mm)			do { } while(0)
-#define flush_cache_range(mm, start, end)	do { } while(0)
-#define flush_cache_page(vma, vmaddr)		do { } while(0)
-#define flush_page_to_ram(page)			do { } while(0)
-#define flush_dcache_page(page)			do { } while(0)
-#define flush_dcache_range(start, end)		__flush_dcache_range(start,end)
-#define flush_icache_range(start, end)		__flush_icache_range(start,end)
-#define flush_icache_user_range(vma,pg,adr,len) __flush_icache_all()
-#define flush_icache_page(vma,pg)		__flush_icache_all()
-#define flush_icache()				__flush_icache_all()
-#define flush_cache_sigtramp(vaddr)		__flush_icache_range(vaddr,vaddr+8)
+#define invalidate_dcache_range(start, end)	__invalidate_dcache_range(start,end)
+#define invalidate_icache_range(start, end)	__invalidate_icache_range(start,end)
 #endif
-
-#define flush_dcache_mmap_lock(mapping)		do {} while(0)
-#define flush_dcache_mmap_unlock(mapping)	do {} while(0)
 
 #define copy_to_user_page(vma, page, vaddr, dst, src, len)	\
 	memcpy((dst), (src), (len))

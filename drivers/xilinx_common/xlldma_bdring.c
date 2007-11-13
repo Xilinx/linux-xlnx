@@ -258,6 +258,7 @@ int XLlDma_BdRingCreate(XLlDma_BdRing * RingPtr, u32 PhysAddr,
 
 	/* At the end of the ring, link the last BD back to the top */
 	XLlDma_mBdWrite(BdVirtAddr, XLLDMA_BD_NDESC_OFFSET, PhysAddr);
+	XLLDMA_CACHE_FLUSH(BdVirtAddr);
 
 	/* Setup and initialize pointers and counters */
 	RingPtr->RunState = XST_DMA_SG_IS_STOPPED;

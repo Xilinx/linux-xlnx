@@ -25,7 +25,11 @@ static struct cpuinfo cpuinfo_static={
 	use_icache	: CPUINFO(USE_ICACHE),
 	icache_tagbits	: CPUINFO(ADDR_TAG_BITS),
 	icache_write	: CPUINFO(ALLOW_ICACHE_WR),
-	icache_line	: -1,
+#if XPAR_MICROBLAZE_0_ICACHE_USE_FSL==1
+	icache_line	: 16,
+#else
+	icache_line	: 4,
+#endif
 	icache_size	: CPUINFO(CACHE_BYTE_SIZE),
 	icache_base	: CPUINFO(ICACHE_BASEADDR),
 	icache_high	: CPUINFO(ICACHE_HIGHADDR),
@@ -33,7 +37,11 @@ static struct cpuinfo cpuinfo_static={
 	use_dcache	: CPUINFO(USE_DCACHE),
 	dcache_tagbits	: CPUINFO(DCACHE_ADDR_TAG),
 	dcache_write	: CPUINFO(ALLOW_DCACHE_WR),
-	dcache_line	: -1,
+#if XPAR_MICROBLAZE_0_DCACHE_USE_FSL==1
+	dcache_line	: 16,
+#else
+	dcache_line	: 4,
+#endif
 	dcache_size	: CPUINFO(DCACHE_BYTE_SIZE),
 	dcache_base	: CPUINFO(DCACHE_BASEADDR),
 	dcache_high	: CPUINFO(DCACHE_HIGHADDR),
