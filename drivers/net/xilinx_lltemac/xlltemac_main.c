@@ -213,9 +213,9 @@ u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 
 /* for exclusion of all program flows (processes, ISRs and BHs) */
-spinlock_t XTE_spinlock;
-spinlock_t XTE_tx_spinlock;
-spinlock_t XTE_rx_spinlock;
+spinlock_t XTE_spinlock = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_tx_spinlock = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_rx_spinlock = SPIN_LOCK_UNLOCKED;
 
 /*
  * ethtool has a status reporting feature where we can report any sort of
@@ -596,8 +596,9 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 					  &phy_reg1);
 			_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR,
 					  &phy_reg1);
+
 			if ((phy_reg1 & BMSR_LSTATUS) &&
-			    (phy_reg1 & BMSR_ANEGCAPABLE))
+			    (phy_reg1 & BMSR_ANEGCOMPLETE))
 				break;
 
 		}
@@ -949,6 +950,8 @@ static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 	struct net_local *lp = (struct net_local *) dev->priv;
 	u32 irq_status;
 
+	unsigned long flags;
+
 	/*
 	 * Need to:
 	 * 1) Read the FIFO IS register
@@ -962,7 +965,7 @@ static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 		if (irq_status & XLLF_INT_RC_MASK) {
 			/* handle the receive completion */
 			struct list_head *cur_lp;
-			spin_lock(&receivedQueueSpin);
+			spin_lock_irqsave(&receivedQueueSpin, flags);
 			list_for_each(cur_lp, &receivedQueue) {
 				if (cur_lp == &(lp->rcv)) {
 					break;
@@ -973,7 +976,7 @@ static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 				XLlFifo_IntDisable(&lp->Fifo, XLLF_INT_ALL_MASK);
 				tasklet_schedule(&FifoRecvBH);
 			}
-			spin_unlock(&receivedQueueSpin);
+			spin_unlock_irqrestore(&receivedQueueSpin, flags);
 			irq_status &= ~XLLF_INT_RC_MASK;
 		} else if (irq_status & XLLF_INT_TC_MASK) {
 			/* handle the transmit completion */
@@ -1012,6 +1015,8 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 	struct net_local *lp = (struct net_local *) dev->priv;
 	struct list_head *cur_lp;
 
+        unsigned int flags;
+
 	/* Read pending interrupts */
 	irq_status = XLlDma_mBdRingGetIrq(&lp->Dma.RxBdRing);
 
@@ -1023,7 +1028,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 	}
 
 	if ((irq_status & (XLLDMA_IRQ_DELAY_MASK | XLLDMA_IRQ_COALESCE_MASK))) {
-		spin_lock(&receivedQueueSpin);
+		spin_lock_irqsave(&receivedQueueSpin, flags);
 		list_for_each(cur_lp, &receivedQueue) {
 			if (cur_lp == &(lp->rcv)) {
 				break;
@@ -1035,7 +1040,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 						 XLLDMA_CR_IRQ_ALL_EN_MASK);
 			tasklet_schedule(&DmaRecvBH);
 		}
-		spin_unlock(&receivedQueueSpin);
+		spin_unlock_irqrestore(&receivedQueueSpin, flags);
 	}
 	return IRQ_HANDLED;
 }
@@ -1046,6 +1051,8 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 	struct net_device *dev = dev_id;
 	struct net_local *lp = (struct net_local *) dev->priv;
 	struct list_head *cur_lp;
+
+	unsigned int flags;
 
 	/* Read pending interrupts */
 	irq_status = XLlDma_mBdRingGetIrq(&(lp->Dma.TxBdRing));
@@ -1058,7 +1065,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 	}
 
 	if ((irq_status & (XLLDMA_IRQ_DELAY_MASK | XLLDMA_IRQ_COALESCE_MASK))) {
-		spin_lock(&sentQueueSpin);
+		spin_lock_irqsave(&sentQueueSpin, flags);
 		list_for_each(cur_lp, &sentQueue) {
 			if (cur_lp == &(lp->xmit)) {
  				break;
@@ -1070,7 +1077,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 						 XLLDMA_CR_IRQ_ALL_EN_MASK);
 			tasklet_schedule(&DmaSendBH);
 		}
-		spin_unlock(&sentQueueSpin);
+		spin_unlock_irqrestore(&sentQueueSpin, flags);
 	}
 	return IRQ_HANDLED;
 }
@@ -1137,6 +1144,9 @@ static int xenet_open(struct net_device *dev)
 	netif_stop_queue(dev);
 	lp = (struct net_local *) dev->priv;
 	_XLlTemac_Stop(&lp->Emac);
+
+	INIT_LIST_HEAD(&(lp->rcv));
+	INIT_LIST_HEAD(&(lp->xmit));
 
 	/* Set the MAC address each time opened. */
 	if (_XLlTemac_SetMacAddress(&lp->Emac, dev->dev_addr) != XST_SUCCESS) {
@@ -1220,9 +1230,6 @@ static int xenet_open(struct net_device *dev)
 	phy_setup(lp);
 	set_mac_speed(lp);
 
-	INIT_LIST_HEAD(&(lp->rcv));
-	INIT_LIST_HEAD(&(lp->xmit));
-
 	/* Enable interrupts  - no polled mode */
 	if (XLlTemac_IsFifo(&lp->Emac)) { /* fifo direct interrupt driver mode */
 		XLlFifo_IntEnable(&lp->Fifo, XLLF_INT_TC_MASK |
@@ -1270,12 +1277,6 @@ static int xenet_open(struct net_device *dev)
 	lp->phy_timer.function = &poll_gmii;
 	init_timer(&lp->phy_timer);
 	add_timer(&lp->phy_timer);
-
-	INIT_LIST_HEAD(&sentQueue);
-	INIT_LIST_HEAD(&receivedQueue);
-
-	spin_lock_init(&sentQueueSpin);
-	spin_lock_init(&receivedQueueSpin);
 	return 0;
 }
 
@@ -1400,8 +1401,9 @@ static void FifoSendHandler(struct net_device *dev)
 {
 	struct net_local *lp;
 	struct sk_buff *skb;
+	unsigned int flags;
 
-	spin_lock(&XTE_tx_spinlock);
+	spin_lock_irqsave(&XTE_tx_spinlock, flags);
 	lp = (struct net_local *) dev->priv;
 	lp->stats.tx_packets++;
 
@@ -1426,7 +1428,7 @@ static void FifoSendHandler(struct net_device *dev)
 		fifo_free_bytes = XLlFifo_TxVacancy(&lp->Fifo) * 4;
 		if (fifo_free_bytes < total_len) {
 			/* If still no room for the deferred packet, return */
-			spin_unlock(&XTE_tx_spinlock);
+			spin_unlock_irqrestore(&XTE_tx_spinlock, flags);
 			return;
 		}
 
@@ -1450,7 +1452,7 @@ static void FifoSendHandler(struct net_device *dev)
 		dev->trans_start = jiffies;
 		netif_wake_queue(dev);	/* wake up send queue */
 	}
-	spin_unlock(&XTE_tx_spinlock);
+	spin_unlock_irqrestore(&XTE_tx_spinlock, flags);
 }
 
 #if 0
@@ -1683,7 +1685,7 @@ static void DmaSendHandlerBH(unsigned long p)
 		list_del_init(&(lp->xmit));
 		spin_unlock_irqrestore(&sentQueueSpin, flags);
 
-		spin_lock(&XTE_tx_spinlock);
+		spin_lock_irqsave(&XTE_tx_spinlock, flags);
 		dev = lp->ndev;
 		bd_processed_save = 0;
 		while ((bd_processed =
@@ -1723,7 +1725,7 @@ static void DmaSendHandlerBH(unsigned long p)
 				       "%s: XLlDma: BdRingFree() error %d.\n",
 				       dev->name, result);
 				reset(dev, __LINE__);
-				spin_unlock(&XTE_tx_spinlock);
+				spin_unlock_irqrestore(&XTE_tx_spinlock, flags);
 				return;
 			}
 		}
@@ -1740,7 +1742,7 @@ static void DmaSendHandlerBH(unsigned long p)
 		if (result == XST_SUCCESS) {
 			netif_wake_queue(dev);	/* wake up send queue */
 		}
-		spin_unlock(&XTE_tx_spinlock);
+		spin_unlock_irqrestore(&XTE_tx_spinlock, flags);
 	}
 }
 
@@ -1957,7 +1959,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 		spin_unlock_irqrestore(&receivedQueueSpin, flags);
 		dev = lp->ndev;
 
-		spin_lock(&XTE_rx_spinlock);
+		spin_lock_irqsave(&XTE_rx_spinlock, flags);
 		if ((bd_processed =
 		     XLlDma_BdRingFromHw(&lp->Dma.RxBdRing, XTE_RECV_BD_CNT, &BdPtr)) > 0) {
 
@@ -2092,14 +2094,14 @@ static void DmaRecvHandlerBH(unsigned long p)
 				       "%s: XLlDma: BdRingFree unsuccessful (%d)\n",
 				       dev->name, result);
 				reset(dev, __LINE__);
-				spin_unlock(&XTE_rx_spinlock);
+				spin_unlock_irqrestore(&XTE_rx_spinlock, flags);
 				return;
 			}
 
 			_xenet_DmaSetupRecvBuffers(dev);
 		}
 		XLlDma_mBdRingIntEnable(&lp->Dma.RxBdRing, dma_rx_int_mask);
-		spin_unlock(&XTE_rx_spinlock);
+		spin_unlock_irqrestore(&XTE_rx_spinlock, flags);
 	}
 }
 
@@ -3320,6 +3322,12 @@ static int __init xtenet_init(void)
 	spin_lock_init(&XTE_spinlock);
 	spin_lock_init(&XTE_tx_spinlock);
 	spin_lock_init(&XTE_tx_spinlock);
+
+	INIT_LIST_HEAD(&sentQueue);
+	INIT_LIST_HEAD(&receivedQueue);
+
+	spin_lock_init(&sentQueueSpin);
+	spin_lock_init(&receivedQueueSpin);
 
 	/*
 	 * No kernel boot options used,
