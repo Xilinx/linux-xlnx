@@ -11,7 +11,9 @@
 #ifndef _ASM_DELAY_H
 #define _ASM_DELAY_H
 
-extern inline void __delay(unsigned long loops)
+#include <asm/param.h>
+
+static inline void __delay(unsigned long loops)
 {
 	asm volatile ("# __delay		\n\t"		\
 		      "1: addi	%0, %0, -1	\t\n"		\
@@ -23,6 +25,9 @@ extern inline void __delay(unsigned long loops)
 
 static inline void udelay(unsigned long usec)
 {
+	unsigned long long tmp = usec;
+	unsigned long loops = (tmp * 4295 * HZ * loops_per_jiffy) >> 32;
+	__delay(loops);
 }
 
 #endif /* _ASM_DELAY_H */

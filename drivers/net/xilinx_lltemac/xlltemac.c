@@ -39,7 +39,7 @@
 /***************************** Include Files *********************************/
 
 #include <linux/string.h>
-#include <asm/delay.h>
+#include <linux/delay.h>
 
 #include "xlltemac.h"
 
