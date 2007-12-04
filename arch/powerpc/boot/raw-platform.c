@@ -24,6 +24,28 @@ void platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
                    unsigned long r6, unsigned long r7)
 {
 	u64 memsize64 = memsize[0];
+	static const unsigned long line_size = 32;
+	static const unsigned long congruence_classes = 256;
+	unsigned long addr;
+	unsigned long dccr;
+
+	/*
+	 * Invalidate the data cache if the data cache is turned off.
+	 * - The 405 core does not invalidate the data cache on power-up
+	 *   or reset but does turn off the data cache. We cannot assume
+	 *   that the cache contents are valid.
+	 * - If the data cache is turned on this must have been done by
+	 *   a bootloader and we assume that the cache contents are
+	 *   valid.
+	 */
+	__asm__("mfdccr %0": "=r" (dccr));
+	if (dccr == 0) {
+		for (addr = 0;
+		     addr < (congruence_classes * line_size);
+		     addr += line_size) {
+			__asm__("dccci 0,%0": :"b"(addr));
+		}
+	}
 
 	if (mem_size_cells == 2) {
 		memsize64 <<= 32;
