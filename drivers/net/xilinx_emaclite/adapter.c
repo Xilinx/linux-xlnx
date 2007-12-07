@@ -607,6 +607,7 @@ static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of
 	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
 	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
 	struct xemaclite_platform_data *pdata = &pdata_struct;
+        void *mac_address;
 	int rc = 0;
 
 	dev_info(&ofdev->dev, "Device Tree Probing \'%s\'\n",
@@ -628,7 +629,12 @@ static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of
 
 	pdata_struct.tx_ping_pong	= get_bool(ofdev, "xlnx,tx-ping-pong");
 	pdata_struct.rx_ping_pong	= get_bool(ofdev, "xlnx,rx-ping-pong");
-	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
+        mac_address = of_get_mac_address(ofdev->node);
+        if(mac_address) {
+            memcpy(pdata_struct.mac_addr, mac_address, 6);
+        } else {
+            dev_warn(&ofdev->dev, "No MAC address found.\n");
+        }
 
         return xemaclite_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }

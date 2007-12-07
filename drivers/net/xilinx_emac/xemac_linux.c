@@ -2710,6 +2710,7 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
 	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
 	struct xemac_platform_data *pdata = &pdata_struct;
+        void *mac_address;
 	int rc = 0;
 
 	printk(KERN_ERR "Device Tree Probing \'%s\'\n",
@@ -2743,6 +2744,11 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 	pdata_struct.tx_hw_csum		= get_bool(ofdev, "xlnx,tx-include-csum");
 	pdata_struct.rx_hw_csum		= get_bool(ofdev, "xlnx,rx-include-csum");
         mac_address = of_get_mac_address(ofdev->node);
+        if(mac_address) {
+            memcpy(pdata_struct.mac_addr, mac_address, 6);
+        } else {
+            dev_warn(&ofdev->dev, "No MAC address found.\n");
+        }
 
         return xenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }

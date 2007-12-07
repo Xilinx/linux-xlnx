@@ -3000,7 +3000,7 @@ static int xtenet_setup(
 	/* Create an ethernet device instance */
 	ndev = alloc_etherdev(sizeof(struct net_local));
 	if (!ndev) {
-		dev_err(dev, "xlltemac: Could not allocate net device.\n");
+		dev_err(dev, "Could not allocate net device.\n");
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -3210,13 +3210,13 @@ static int xtenet_probe(struct device *dev)
 
 	/* param check */
 	if (!pdev) {
-		dev_err(dev, "XLlTemac: Internal error. Probe called with NULL param.\n");
+		dev_err(dev, "Probe called with NULL param.\n");
 		return -ENODEV;
 	}
 
 	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
 	if (!pdata) {
-		dev_err(dev, "xlltemac: Couldn't find platform data.\n");
+		dev_err(dev, "Couldn't find platform data.\n");
 
 		return -ENODEV;
 	}
@@ -3225,7 +3225,7 @@ static int xtenet_probe(struct device *dev)
 	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r_irq || !r_mem) {
-		dev_err(dev, "xlltemac: IO resource(s) not found.\n");
+		dev_err(dev, "IO resource(s) not found.\n");
 		return -ENODEV;
 	}
 
@@ -3260,6 +3260,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
 	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
 	struct xlltemac_platform_data *pdata = &pdata_struct;
+        void *mac_address;
 	int rc = 0;
 
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
@@ -3287,7 +3288,12 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	pdata_struct.ll_dev_dma_rx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmarx-intr");
 	pdata_struct.ll_dev_dma_tx_irq	= get_u32(ofdev, "xlnx,llink-connected-dmatx-intr");
 	pdata_struct.ll_dev_fifo_irq	= get_u32(ofdev, "xlnx,llink-connected-fifo-intr");
-	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
+        mac_address = of_get_mac_address(ofdev->node);
+        if(mac_address) {
+            memcpy(pdata_struct.mac_addr, mac_address, 6);
+        } else {
+            dev_warn(&ofdev->dev, "No MAC address found.\n");
+        }
 
         return xtenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }
