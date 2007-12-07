@@ -108,8 +108,12 @@ config 405EP
 config 405GPR
 	bool
 
+config XILINX_DRIVERS
+	bool
+
 config XILINX_VIRTEX
 	bool
+	select XILINX_DRIVERS
 
 config XILINX_VIRTEX_II_PRO
 	bool
