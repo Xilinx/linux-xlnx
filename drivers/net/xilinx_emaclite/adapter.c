@@ -587,15 +587,6 @@ static struct device_driver xemaclite_driver = {
 };
 
 #ifdef CONFIG_OF
-static u32 get_u32(struct of_device *ofdev, const char *s) {
-	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
-	if(p) {
-		return *p;
-	} else {
-		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
-		return FALSE;
-	}
-}
 
 static bool get_bool(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
@@ -648,8 +639,9 @@ static int __devexit xemaclite_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xemaclite_of_match[] = {
-	{ .compatible = "xlnx,opb-ethernetlite", },
-	{ .compatible = "xlnx,xps-ethernetlite", },
+	{ .compatible = "xlnx,opb-ethernetlite-1.01.a", },
+	{ .compatible = "xlnx,opb-ethernetlite-1.01.b", },
+	{ .compatible = "xlnx,xps-ethernetlite-1.00.a", },
 	{ /* end of list */ },
 };
 

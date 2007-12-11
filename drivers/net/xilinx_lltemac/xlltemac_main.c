@@ -3298,7 +3298,7 @@ static int __devexit xtenet_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xtenet_of_match[] = {
-	{ .compatible = "xlnx,xps-ll-temac", },
+	{ .compatible = "xlnx,xps-ll-temac-1.00.a", },
 	{ /* end of list */ },
 };
 

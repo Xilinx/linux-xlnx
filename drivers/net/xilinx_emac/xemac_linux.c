@@ -2729,16 +2729,20 @@ static int __devinit xenet_of_probe(struct of_device *ofdev, const struct of_dev
 		return rc;
 	}
 
+        /* Many of these features do not exist in all versions of the
+           ethernet core.  We accept if these attributes are not
+           present and do not attempt to exercise the corresponding
+           feature. */
 	pdata_struct.dma_mode           = get_u32(ofdev, "xlnx,dma-present");
-	pdata_struct.has_mii		= get_u32(ofdev, "xlnx,mii-exist");
-	pdata_struct.has_cam		= get_u32(ofdev, "xlnx,cam-exist");
-	pdata_struct.has_err_cnt	= get_u32(ofdev, "xlnx,err-count-exist");
-	pdata_struct.has_jumbo		= get_u32(ofdev, "xlnx,jumbo-exist");
+	pdata_struct.has_mii		= get_bool(ofdev, "xlnx,mii-exist");
+	pdata_struct.has_cam		= get_bool(ofdev, "xlnx,cam-exist");
+	pdata_struct.has_err_cnt	= get_bool(ofdev, "xlnx,err-count-exist");
+	pdata_struct.has_jumbo		= get_bool(ofdev, "xlnx,jumbo-exist");
 	pdata_struct.tx_dre		= get_u32(ofdev, "xlnx,tx-dre-type");
 	pdata_struct.rx_dre		= get_u32(ofdev, "xlnx,rx-dre-type");
-	pdata_struct.tx_hw_csum		= get_u32(ofdev, "xlnx,tx-include-csum");
-	pdata_struct.rx_hw_csum		= get_u32(ofdev, "xlnx,rx-include-csum");
-	memcpy(pdata_struct.mac_addr, of_get_mac_address(ofdev->node), 6);
+	pdata_struct.tx_hw_csum		= get_bool(ofdev, "xlnx,tx-include-csum");
+	pdata_struct.rx_hw_csum		= get_bool(ofdev, "xlnx,rx-include-csum");
+        mac_address = of_get_mac_address(ofdev->node);
 
         return xenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }
@@ -2749,8 +2753,11 @@ static int __devexit xenet_of_remove(struct of_device *dev)
 }
 
 static struct of_device_id xenet_of_match[] = {
-	{ .compatible = "xlnx,opb-ethernet", },
-	{ .compatible = "xlnx,plb-ethernet", },
+	{ .compatible = "xlnx,opb-ethernet-1.01.a", },
+	{ .compatible = "xlnx,opb-ethernet-1.02.a", },
+	{ .compatible = "xlnx,opb-ethernet-1.04.a", },
+	{ .compatible = "xlnx,plb-ethernet-1.00.a", },
+	{ .compatible = "xlnx,plb-ethernet-1.01.a", },
 	{ /* end of list */ },
 };
 
