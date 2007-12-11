@@ -21,8 +21,18 @@
 #include <linux/interrupt.h>
 #include <asm/io.h>
 #if defined(CONFIG_OF)
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+
+/* Match table for of_platform binding */
+static struct of_device_id __devinit ulite_of_match[] = {
+	{ .type = "serial", .compatible = "xlnx,opb-uartlite-1.00.b", },
+	{ .type = "serial", .compatible = "xlnx,xps-uartlite-1.00.a", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, ulite_of_match);
+
 #endif
 
 #define ULITE_NAME		"ttyUL"
@@ -427,18 +437,25 @@ static inline u32 __init ulite_console_of_find_device(int id)
 	struct resource res;
 	const unsigned int *of_id;
 	int rc;
+        const struct of_device_id *matches = ulite_of_match;
 
-	for_each_compatible_node(np, NULL, "xilinx,uartlite") {
-		of_id = of_get_property(np, "port-number", NULL);
-		if ((!of_id) || (*of_id != id))
-			continue;
+	while (matches->compatible[0]) {
+		for_each_compatible_node(np, NULL, matches->compatible) {
+			if (!of_match_node(matches, np))
+				continue;
 
-		rc = of_address_to_resource(np, 0, &res);
-		if (rc)
-			continue;
+			of_id = of_get_property(np, "port-number", NULL);
+			if ((!of_id) || (*of_id != id))
+				continue;
 
-		of_node_put(np);
-		return res.start+3;
+			rc = of_address_to_resource(np, 0, &res);
+			if (rc)
+				continue;
+
+                        of_node_put(np);
+                        return res.start+3;
+		}
+		matches++;
 	}
 
 	return 0;
@@ -653,13 +670,6 @@ static int __devexit ulite_of_remove(struct of_device *op)
 {
 	return ulite_release(&op->dev);
 }
-
-/* Match table for of_platform binding */
-static struct of_device_id __devinit ulite_of_match[] = {
-	{ .type = "serial", .compatible = "xilinx,uartlite", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, ulite_of_match);
 
 static struct of_platform_driver ulite_of_driver = {
 	.owner = THIS_MODULE,
