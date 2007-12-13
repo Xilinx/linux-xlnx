@@ -1209,7 +1209,9 @@ static int __devexit ace_of_remove(struct of_device *op)
 
 /* Match table for of_platform binding */
 static struct of_device_id __devinit ace_of_match[] = {
-	{ .compatible = "xilinx,xsysace", },
+	{ .compatible = "xlnx,opb-sysace-1.00.b", },
+	{ .compatible = "xlnx,opb-sysace-1.00.c", },
+	{ .compatible = "xlnx,xps-sysace-1.00.a", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, ace_of_match);

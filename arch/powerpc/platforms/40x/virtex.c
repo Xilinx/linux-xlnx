@@ -15,12 +15,22 @@
 #include <asm/time.h>
 #include <asm/xilinx_intc.h>
 
+static struct of_device_id xilinx_of_bus_ids[] = {
+	{ .compatible = "xlnx,plb-v46-1.00.a", },
+	{ .compatible = "xlnx,plb-v34-1.01.a", },
+	{ .compatible = "xlnx,plb-v34-1.02.a", },
+	{ .compatible = "xlnx,opb-v20-1.10.c", },
+	{ .compatible = "xlnx,dcr-v29-1.00.a", },
+	{ .compatible = "xlnx,compound", },
+	{},
+};
+
 static int __init virtex_device_probe(void)
 {
 	if (!machine_is(virtex))
 		return 0;
 
-	of_platform_bus_probe(NULL, NULL, NULL);
+	of_platform_bus_probe(NULL, xilinx_of_bus_ids, NULL);
 
 	return 0;
 }
@@ -30,7 +40,7 @@ static int __init virtex_probe(void)
 {
 	unsigned long root = of_get_flat_dt_root();
 
-	if (!of_flat_dt_is_compatible(root, "xilinx,virtex"))
+	if (!of_flat_dt_is_compatible(root, "xlnx,virtex"))
 		return 0;
 
 	return 1;

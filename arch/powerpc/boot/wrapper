@@ -116,10 +116,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -n "$dts" ]; then
-    if [ -z "$dtb" ]; then
-	dtb="$platform.dtb"
-    fi
-    dtc -O dtb -o "$dtb" -b 0 -V 16 "$dts"
+    dtasm="$object/$platform.dtb.S"
+    dto="$object/$platform.dtb.o"
+    echo '.section .kernel:dtb,"a"' > "$dtasm"
+    dtc -O asm -b 0 -V 16 "$dts" >> "$dtasm"
+    ${CROSS}gcc "$dtasm" -c -o "$dto"
 fi
 
 if [ -z "$kernel" ]; then
@@ -165,6 +166,10 @@ ps3)
     ;;
 ep88xc)
     platformo="$object/fixed-head.o $object/$platform.o"
+    binary=y
+    ;;
+raw)
+    platformo="$object/fixed-head.o $object/raw-platform.o"
     binary=y
     ;;
 esac
@@ -230,7 +235,7 @@ fi
 
 if [ "$platform" != "miboot" ]; then
     ${CROSS}ld -m elf32ppc -T $lds -o "$ofile" \
-	$platformo $tmp $object/wrapper.a
+	$platformo $tmp $dto $object/wrapper.a
     rm $tmp
 fi
 
