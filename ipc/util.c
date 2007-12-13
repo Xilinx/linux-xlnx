@@ -32,6 +32,7 @@
 #include <linux/proc_fs.h>
 #include <linux/audit.h>
 #include <linux/nsproxy.h>
+#include <linux/rwsem.h>
 
 #include <asm/unistd.h>
 
@@ -129,23 +130,16 @@ __initcall(ipc_init);
 /**
  *	ipc_init_ids		-	initialise IPC identifiers
  *	@ids: Identifier set
- *	@size: Number of identifiers
  *
- *	Given a size for the ipc identifier range (limited below IPCMNI)
- *	set up the sequence range to use then allocate and initialise the
- *	array itself. 
+ *	Set up the sequence range to use for the ipc identifier range (limited
+ *	below IPCMNI) then initialise the ids idr.
  */
  
-void ipc_init_ids(struct ipc_ids* ids, int size)
+void ipc_init_ids(struct ipc_ids *ids)
 {
-	int i;
+	init_rwsem(&ids->rw_mutex);
 
-	mutex_init(&ids->mutex);
-
-	if(size > IPCMNI)
-		size = IPCMNI;
 	ids->in_use = 0;
-	ids->max_id = -1;
 	ids->seq = 0;
 	{
 		int seq_limit = INT_MAX/SEQ_MULTIPLIER;
@@ -155,17 +149,7 @@ void ipc_init_ids(struct ipc_ids* ids, int size)
 		 	ids->seq_max = seq_limit;
 	}
 
-	ids->entries = ipc_rcu_alloc(sizeof(struct kern_ipc_perm *)*size +
-				     sizeof(struct ipc_id_ary));
-
-	if(ids->entries == NULL) {
-		printk(KERN_ERR "ipc_init_ids() failed, ipc service disabled.\n");
-		size = 0;
-		ids->entries = &ids->nullentry;
-	}
-	ids->entries->size = size;
-	for(i=0;i<size;i++)
-		ids->entries->p[i] = NULL;
+	idr_init(&ids->ipcs_idr);
 }
 
 #ifdef CONFIG_PROC_FS
@@ -208,99 +192,96 @@ void __init ipc_init_proc_interface(const char *path, const char *header,
  *	@ids: Identifier set
  *	@key: The key to find
  *	
- *	Requires ipc_ids.mutex locked.
- *	Returns the identifier if found or -1 if not.
+ *	Requires ipc_ids.rw_mutex locked.
+ *	Returns the LOCKED pointer to the ipc structure if found or NULL
+ *	if not.
+ *	If key is found ipc points to the owning ipc structure
  */
  
-int ipc_findkey(struct ipc_ids* ids, key_t key)
+static struct kern_ipc_perm *ipc_findkey(struct ipc_ids *ids, key_t key)
 {
-	int id;
-	struct kern_ipc_perm* p;
-	int max_id = ids->max_id;
+	struct kern_ipc_perm *ipc;
+	int next_id;
+	int total;
 
-	/*
-	 * rcu_dereference() is not needed here
-	 * since ipc_ids.mutex is held
-	 */
-	for (id = 0; id <= max_id; id++) {
-		p = ids->entries->p[id];
-		if(p==NULL)
+	for (total = 0, next_id = 0; total < ids->in_use; next_id++) {
+		ipc = idr_find(&ids->ipcs_idr, next_id);
+
+		if (ipc == NULL)
 			continue;
-		if (key == p->key)
-			return id;
+
+		if (ipc->key != key) {
+			total++;
+			continue;
+		}
+
+		ipc_lock_by_ptr(ipc);
+		return ipc;
 	}
-	return -1;
+
+	return NULL;
 }
 
-/*
- * Requires ipc_ids.mutex locked
+/**
+ *	ipc_get_maxid 	-	get the last assigned id
+ *	@ids: IPC identifier set
+ *
+ *	Called with ipc_ids.rw_mutex held.
  */
-static int grow_ary(struct ipc_ids* ids, int newsize)
+
+int ipc_get_maxid(struct ipc_ids *ids)
 {
-	struct ipc_id_ary* new;
-	struct ipc_id_ary* old;
-	int i;
-	int size = ids->entries->size;
+	struct kern_ipc_perm *ipc;
+	int max_id = -1;
+	int total, id;
 
-	if(newsize > IPCMNI)
-		newsize = IPCMNI;
-	if(newsize <= size)
-		return newsize;
+	if (ids->in_use == 0)
+		return -1;
 
-	new = ipc_rcu_alloc(sizeof(struct kern_ipc_perm *)*newsize +
-			    sizeof(struct ipc_id_ary));
-	if(new == NULL)
-		return size;
-	new->size = newsize;
-	memcpy(new->p, ids->entries->p, sizeof(struct kern_ipc_perm *)*size);
-	for(i=size;i<newsize;i++) {
-		new->p[i] = NULL;
+	if (ids->in_use == IPCMNI)
+		return IPCMNI - 1;
+
+	/* Look for the last assigned id */
+	total = 0;
+	for (id = 0; id < IPCMNI && total < ids->in_use; id++) {
+		ipc = idr_find(&ids->ipcs_idr, id);
+		if (ipc != NULL) {
+			max_id = id;
+			total++;
+		}
 	}
-	old = ids->entries;
-
-	/*
-	 * Use rcu_assign_pointer() to make sure the memcpyed contents
-	 * of the new array are visible before the new array becomes visible.
-	 */
-	rcu_assign_pointer(ids->entries, new);
-
-	__ipc_fini_ids(ids, old);
-	return newsize;
+	return max_id;
 }
 
 /**
  *	ipc_addid 	-	add an IPC identifier
  *	@ids: IPC identifier set
  *	@new: new IPC permission set
- *	@size: new size limit for the id array
+ *	@size: limit for the number of used ids
  *
- *	Add an entry 'new' to the IPC arrays. The permissions object is
+ *	Add an entry 'new' to the IPC ids idr. The permissions object is
  *	initialised and the first free entry is set up and the id assigned
- *	is returned. The list is returned in a locked state on success.
- *	On failure the list is not locked and -1 is returned.
+ *	is returned. The 'new' entry is returned in a locked state on success.
+ *	On failure the entry is not locked and a negative err-code is returned.
  *
- *	Called with ipc_ids.mutex held.
+ *	Called with ipc_ids.rw_mutex held as a writer.
  */
  
 int ipc_addid(struct ipc_ids* ids, struct kern_ipc_perm* new, int size)
 {
-	int id;
+	int id, err;
 
-	size = grow_ary(ids,size);
+	if (size > IPCMNI)
+		size = IPCMNI;
 
-	/*
-	 * rcu_dereference()() is not needed here since
-	 * ipc_ids.mutex is held
-	 */
-	for (id = 0; id < size; id++) {
-		if(ids->entries->p[id] == NULL)
-			goto found;
-	}
-	return -1;
-found:
+	if (ids->in_use >= size)
+		return -ENOSPC;
+
+	err = idr_get_new(&ids->ipcs_idr, new, &id);
+	if (err)
+		return err;
+
 	ids->in_use++;
-	if (id > ids->max_id)
-		ids->max_id = id;
 
 	new->cuid = new->uid = current->euid;
 	new->gid = new->cgid = current->egid;
@@ -313,48 +294,153 @@ found:
 	new->deleted = 0;
 	rcu_read_lock();
 	spin_lock(&new->lock);
-	ids->entries->p[id] = new;
 	return id;
 }
 
 /**
- *	ipc_rmid	-	remove an IPC identifier
- *	@ids: identifier set
- *	@id: Identifier to remove
+ *	ipcget_new	-	create a new ipc object
+ *	@ns: namespace
+ *	@ids: IPC identifer set
+ *	@ops: the actual creation routine to call
+ *	@params: its parameters
  *
- *	The identifier must be valid, and in use. The kernel will panic if
- *	fed an invalid identifier. The entry is removed and internal
- *	variables recomputed. The object associated with the identifier
- *	is returned.
- *	ipc_ids.mutex and the spinlock for this ID is hold before this function
- *	is called, and remain locked on the exit.
+ *	This routine is called by sys_msgget, sys_semget() and sys_shmget()
+ *	when the key is IPC_PRIVATE.
+ */
+int ipcget_new(struct ipc_namespace *ns, struct ipc_ids *ids,
+		struct ipc_ops *ops, struct ipc_params *params)
+{
+	int err;
+retry:
+	err = idr_pre_get(&ids->ipcs_idr, GFP_KERNEL);
+
+	if (!err)
+		return -ENOMEM;
+
+	down_write(&ids->rw_mutex);
+	err = ops->getnew(ns, params);
+	up_write(&ids->rw_mutex);
+
+	if (err == -EAGAIN)
+		goto retry;
+
+	return err;
+}
+
+/**
+ *	ipc_check_perms	-	check security and permissions for an IPC
+ *	@ipcp: ipc permission set
+ *	@ops: the actual security routine to call
+ *	@params: its parameters
+ *
+ *	This routine is called by sys_msgget(), sys_semget() and sys_shmget()
+ *      when the key is not IPC_PRIVATE and that key already exists in the
+ *      ids IDR.
+ *
+ *	On success, the IPC id is returned.
+ *
+ *	It is called with ipc_ids.rw_mutex and ipcp->lock held.
+ */
+static int ipc_check_perms(struct kern_ipc_perm *ipcp, struct ipc_ops *ops,
+			struct ipc_params *params)
+{
+	int err;
+
+	if (ipcperms(ipcp, params->flg))
+		err = -EACCES;
+	else {
+		err = ops->associate(ipcp, params->flg);
+		if (!err)
+			err = ipcp->id;
+	}
+
+	return err;
+}
+
+/**
+ *	ipcget_public	-	get an ipc object or create a new one
+ *	@ns: namespace
+ *	@ids: IPC identifer set
+ *	@ops: the actual creation routine to call
+ *	@params: its parameters
+ *
+ *	This routine is called by sys_msgget, sys_semget() and sys_shmget()
+ *	when the key is not IPC_PRIVATE.
+ *	It adds a new entry if the key is not found and does some permission
+ *      / security checkings if the key is found.
+ *
+ *	On success, the ipc id is returned.
+ */
+int ipcget_public(struct ipc_namespace *ns, struct ipc_ids *ids,
+		struct ipc_ops *ops, struct ipc_params *params)
+{
+	struct kern_ipc_perm *ipcp;
+	int flg = params->flg;
+	int err;
+retry:
+	err = idr_pre_get(&ids->ipcs_idr, GFP_KERNEL);
+
+	/*
+	 * Take the lock as a writer since we are potentially going to add
+	 * a new entry + read locks are not "upgradable"
+	 */
+	down_write(&ids->rw_mutex);
+	ipcp = ipc_findkey(ids, params->key);
+	if (ipcp == NULL) {
+		/* key not used */
+		if (!(flg & IPC_CREAT))
+			err = -ENOENT;
+		else if (!err)
+			err = -ENOMEM;
+		else
+			err = ops->getnew(ns, params);
+	} else {
+		/* ipc object has been locked by ipc_findkey() */
+
+		if (flg & IPC_CREAT && flg & IPC_EXCL)
+			err = -EEXIST;
+		else {
+			err = 0;
+			if (ops->more_checks)
+				err = ops->more_checks(ipcp, params);
+			if (!err)
+				/*
+				 * ipc_check_perms returns the IPC id on
+				 * success
+				 */
+				err = ipc_check_perms(ipcp, ops, params);
+		}
+		ipc_unlock(ipcp);
+	}
+	up_write(&ids->rw_mutex);
+
+	if (err == -EAGAIN)
+		goto retry;
+
+	return err;
+}
+
+
+/**
+ *	ipc_rmid	-	remove an IPC identifier
+ *	@ids: IPC identifier set
+ *	@ipcp: ipc perm structure containing the identifier to remove
+ *
+ *	ipc_ids.rw_mutex (as a writer) and the spinlock for this ID are held
+ *	before this function is called, and remain locked on the exit.
  */
  
-struct kern_ipc_perm* ipc_rmid(struct ipc_ids* ids, int id)
+void ipc_rmid(struct ipc_ids *ids, struct kern_ipc_perm *ipcp)
 {
-	struct kern_ipc_perm* p;
-	int lid = id % SEQ_MULTIPLIER;
-	BUG_ON(lid >= ids->entries->size);
+	int lid = ipcid_to_idx(ipcp->id);
 
-	/* 
-	 * do not need a rcu_dereference()() here to force ordering
-	 * on Alpha, since the ipc_ids.mutex is held.
-	 */	
-	p = ids->entries->p[lid];
-	ids->entries->p[lid] = NULL;
-	BUG_ON(p==NULL);
+	idr_remove(&ids->ipcs_idr, lid);
+
 	ids->in_use--;
 
-	if (lid == ids->max_id) {
-		do {
-			lid--;
-			if(lid == -1)
-				break;
-		} while (ids->entries->p[lid] == NULL);
-		ids->max_id = lid;
-	}
-	p->deleted = 1;
-	return p;
+	ipcp->deleted = 1;
+
+	return;
 }
 
 /**
@@ -491,10 +577,12 @@ static void ipc_do_vfree(struct work_struct *work)
  */
 static void ipc_schedule_free(struct rcu_head *head)
 {
-	struct ipc_rcu_grace *grace =
-		container_of(head, struct ipc_rcu_grace, rcu);
-	struct ipc_rcu_sched *sched =
-			container_of(&(grace->data[0]), struct ipc_rcu_sched, data[0]);
+	struct ipc_rcu_grace *grace;
+	struct ipc_rcu_sched *sched;
+
+	grace = container_of(head, struct ipc_rcu_grace, rcu);
+	sched = container_of(&(grace->data[0]), struct ipc_rcu_sched,
+				data[0]);
 
 	INIT_WORK(&sched->work, ipc_do_vfree);
 	schedule_work(&sched->work);
@@ -583,7 +671,7 @@ void kernel_to_ipc64_perm (struct kern_ipc_perm *in, struct ipc64_perm *out)
 }
 
 /**
- *	ipc64_perm_to_ipc_perm	-	convert old ipc permissions to new
+ *	ipc64_perm_to_ipc_perm	-	convert new ipc permissions to old
  *	@in: new style IPC permissions
  *	@out: old style IPC permissions
  *
@@ -602,44 +690,37 @@ void ipc64_perm_to_ipc_perm (struct ipc64_perm *in, struct ipc_perm *out)
 	out->seq	= in->seq;
 }
 
-/*
- * So far only shm_get_stat() calls ipc_get() via shm_get(), so ipc_get()
- * is called with shm_ids.mutex locked.  Since grow_ary() is also called with
- * shm_ids.mutex down(for Shared Memory), there is no need to add read
- * barriers here to gurantee the writes in grow_ary() are seen in order 
- * here (for Alpha).
+/**
+ * ipc_lock - Lock an ipc structure without rw_mutex held
+ * @ids: IPC identifier set
+ * @id: ipc id to look for
  *
- * However ipc_get() itself does not necessary require ipc_ids.mutex down. So
- * if in the future ipc_get() is used by other places without ipc_ids.mutex
- * down, then ipc_get() needs read memery barriers as ipc_lock() does.
+ * Look for an id in the ipc ids idr and lock the associated ipc object.
+ *
+ * The ipc object is locked on exit.
+ *
+ * This is the routine that should be called when the rw_mutex is not already
+ * held, i.e. idr tree not protected: it protects the idr tree in read mode
+ * during the idr_find().
  */
-struct kern_ipc_perm* ipc_get(struct ipc_ids* ids, int id)
-{
-	struct kern_ipc_perm* out;
-	int lid = id % SEQ_MULTIPLIER;
-	if(lid >= ids->entries->size)
-		return NULL;
-	out = ids->entries->p[lid];
-	return out;
-}
 
-struct kern_ipc_perm* ipc_lock(struct ipc_ids* ids, int id)
+struct kern_ipc_perm *ipc_lock(struct ipc_ids *ids, int id)
 {
-	struct kern_ipc_perm* out;
-	int lid = id % SEQ_MULTIPLIER;
-	struct ipc_id_ary* entries;
+	struct kern_ipc_perm *out;
+	int lid = ipcid_to_idx(id);
+
+	down_read(&ids->rw_mutex);
 
 	rcu_read_lock();
-	entries = rcu_dereference(ids->entries);
-	if(lid >= entries->size) {
+	out = idr_find(&ids->ipcs_idr, lid);
+	if (out == NULL) {
 		rcu_read_unlock();
-		return NULL;
+		up_read(&ids->rw_mutex);
+		return ERR_PTR(-EINVAL);
 	}
-	out = entries->p[lid];
-	if(out == NULL) {
-		rcu_read_unlock();
-		return NULL;
-	}
+
+	up_read(&ids->rw_mutex);
+
 	spin_lock(&out->lock);
 	
 	/* ipc_rmid() may have already freed the ID while ipc_lock
@@ -648,33 +729,44 @@ struct kern_ipc_perm* ipc_lock(struct ipc_ids* ids, int id)
 	if (out->deleted) {
 		spin_unlock(&out->lock);
 		rcu_read_unlock();
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
+
 	return out;
 }
 
-void ipc_lock_by_ptr(struct kern_ipc_perm *perm)
+/**
+ * ipc_lock_down - Lock an ipc structure with rw_sem held
+ * @ids: IPC identifier set
+ * @id: ipc id to look for
+ *
+ * Look for an id in the ipc ids idr and lock the associated ipc object.
+ *
+ * The ipc object is locked on exit.
+ *
+ * This is the routine that should be called when the rw_mutex is already
+ * held, i.e. idr tree protected.
+ */
+
+struct kern_ipc_perm *ipc_lock_down(struct ipc_ids *ids, int id)
 {
+	struct kern_ipc_perm *out;
+	int lid = ipcid_to_idx(id);
+
 	rcu_read_lock();
-	spin_lock(&perm->lock);
-}
+	out = idr_find(&ids->ipcs_idr, lid);
+	if (out == NULL) {
+		rcu_read_unlock();
+		return ERR_PTR(-EINVAL);
+	}
 
-void ipc_unlock(struct kern_ipc_perm* perm)
-{
-	spin_unlock(&perm->lock);
-	rcu_read_unlock();
-}
+	spin_lock(&out->lock);
 
-int ipc_buildid(struct ipc_ids* ids, int id, int seq)
-{
-	return SEQ_MULTIPLIER*seq + id;
-}
-
-int ipc_checkid(struct ipc_ids* ids, struct kern_ipc_perm* ipcp, int uid)
-{
-	if(uid/SEQ_MULTIPLIER != ipcp->seq)
-		return 1;
-	return 0;
+	/*
+	 * No need to verify that the structure is still valid since the
+	 * rw_mutex is held.
+	 */
+	return out;
 }
 
 #ifdef __ARCH_WANT_IPC_PARSE_VERSION
@@ -707,27 +799,30 @@ struct ipc_proc_iter {
 	struct ipc_proc_iface *iface;
 };
 
-static void *sysvipc_proc_next(struct seq_file *s, void *it, loff_t *pos)
+/*
+ * This routine locks the ipc structure found at least at position pos.
+ */
+struct kern_ipc_perm *sysvipc_find_ipc(struct ipc_ids *ids, loff_t pos,
+					loff_t *new_pos)
 {
-	struct ipc_proc_iter *iter = s->private;
-	struct ipc_proc_iface *iface = iter->iface;
-	struct kern_ipc_perm *ipc = it;
-	loff_t p;
-	struct ipc_ids *ids;
+	struct kern_ipc_perm *ipc;
+	int total, id;
 
-	ids = iter->ns->ids[iface->ids];
+	total = 0;
+	for (id = 0; id < pos && total < ids->in_use; id++) {
+		ipc = idr_find(&ids->ipcs_idr, id);
+		if (ipc != NULL)
+			total++;
+	}
 
-	/* If we had an ipc id locked before, unlock it */
-	if (ipc && ipc != SEQ_START_TOKEN)
-		ipc_unlock(ipc);
+	if (total >= ids->in_use)
+		return NULL;
 
-	/*
-	 * p = *pos - 1 (because id 0 starts at position 1)
-	 *          + 1 (because we increment the position by one)
-	 */
-	for (p = *pos; p <= ids->max_id; p++) {
-		if ((ipc = ipc_lock(ids, p)) != NULL) {
-			*pos = p + 1;
+	for ( ; pos < IPCMNI; pos++) {
+		ipc = idr_find(&ids->ipcs_idr, pos);
+		if (ipc != NULL) {
+			*new_pos = pos + 1;
+			ipc_lock_by_ptr(ipc);
 			return ipc;
 		}
 	}
@@ -736,16 +831,27 @@ static void *sysvipc_proc_next(struct seq_file *s, void *it, loff_t *pos)
 	return NULL;
 }
 
+static void *sysvipc_proc_next(struct seq_file *s, void *it, loff_t *pos)
+{
+	struct ipc_proc_iter *iter = s->private;
+	struct ipc_proc_iface *iface = iter->iface;
+	struct kern_ipc_perm *ipc = it;
+
+	/* If we had an ipc id locked before, unlock it */
+	if (ipc && ipc != SEQ_START_TOKEN)
+		ipc_unlock(ipc);
+
+	return sysvipc_find_ipc(iter->ns->ids[iface->ids], *pos, pos);
+}
+
 /*
- * File positions: pos 0 -> header, pos n -> ipc id + 1.
- * SeqFile iterator: iterator value locked shp or SEQ_TOKEN_START.
+ * File positions: pos 0 -> header, pos n -> ipc id = n - 1.
+ * SeqFile iterator: iterator value locked ipc pointer or SEQ_TOKEN_START.
  */
 static void *sysvipc_proc_start(struct seq_file *s, loff_t *pos)
 {
 	struct ipc_proc_iter *iter = s->private;
 	struct ipc_proc_iface *iface = iter->iface;
-	struct kern_ipc_perm *ipc;
-	loff_t p;
 	struct ipc_ids *ids;
 
 	ids = iter->ns->ids[iface->ids];
@@ -754,7 +860,7 @@ static void *sysvipc_proc_start(struct seq_file *s, loff_t *pos)
 	 * Take the lock - this will be released by the corresponding
 	 * call to stop().
 	 */
-	mutex_lock(&ids->mutex);
+	down_read(&ids->rw_mutex);
 
 	/* pos < 0 is invalid */
 	if (*pos < 0)
@@ -765,13 +871,7 @@ static void *sysvipc_proc_start(struct seq_file *s, loff_t *pos)
 		return SEQ_START_TOKEN;
 
 	/* Find the (pos-1)th ipc */
-	for (p = *pos - 1; p <= ids->max_id; p++) {
-		if ((ipc = ipc_lock(ids, p)) != NULL) {
-			*pos = p + 1;
-			return ipc;
-		}
-	}
-	return NULL;
+	return sysvipc_find_ipc(ids, *pos - 1, pos);
 }
 
 static void sysvipc_proc_stop(struct seq_file *s, void *it)
@@ -781,13 +881,13 @@ static void sysvipc_proc_stop(struct seq_file *s, void *it)
 	struct ipc_proc_iface *iface = iter->iface;
 	struct ipc_ids *ids;
 
-	/* If we had a locked segment, release it */
+	/* If we had a locked structure, release it */
 	if (ipc && ipc != SEQ_START_TOKEN)
 		ipc_unlock(ipc);
 
 	ids = iter->ns->ids[iface->ids];
 	/* Release the lock we took in start() */
-	mutex_unlock(&ids->mutex);
+	up_read(&ids->rw_mutex);
 }
 
 static int sysvipc_proc_show(struct seq_file *s, void *it)

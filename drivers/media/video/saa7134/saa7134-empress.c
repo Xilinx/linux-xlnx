@@ -20,7 +20,6 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -77,17 +76,14 @@ static int ts_init_encoder(struct saa7134_dev* dev)
 static int ts_open(struct inode *inode, struct file *file)
 {
 	int minor = iminor(inode);
-	struct saa7134_dev *h,*dev = NULL;
-	struct list_head *list;
+	struct saa7134_dev *dev;
 	int err;
 
-	list_for_each(list,&saa7134_devlist) {
-		h = list_entry(list, struct saa7134_dev, devlist);
-		if (h->empress_dev && h->empress_dev->minor == minor)
-			dev = h;
-	}
-	if (NULL == dev)
-		return -ENODEV;
+	list_for_each_entry(dev, &saa7134_devlist, devlist)
+		if (dev->empress_dev && dev->empress_dev->minor == minor)
+			goto found;
+	return -ENODEV;
+ found:
 
 	dprintk("open minor=%d\n",minor);
 	err = -EBUSY;
@@ -288,17 +284,6 @@ static int ts_do_ioctl(struct inode *inode, struct file *file,
 	case VIDIOC_S_CTRL:
 		return saa7134_common_ioctl(dev, cmd, arg);
 
-	case VIDIOC_S_MPEGCOMP:
-		printk(KERN_WARNING "VIDIOC_S_MPEGCOMP is obsolete. "
-				    "Replace with VIDIOC_S_EXT_CTRLS!");
-		saa7134_i2c_call_clients(dev, VIDIOC_S_MPEGCOMP, arg);
-		ts_init_encoder(dev);
-		return 0;
-	case VIDIOC_G_MPEGCOMP:
-		printk(KERN_WARNING "VIDIOC_G_MPEGCOMP is obsolete. "
-				    "Replace with VIDIOC_G_EXT_CTRLS!");
-		saa7134_i2c_call_clients(dev, VIDIOC_G_MPEGCOMP, arg);
-		return 0;
 	case VIDIOC_S_EXT_CTRLS:
 		/* count == 0 is abused in saa6752hs.c, so that special
 		   case is handled here explicitly. */
@@ -346,7 +331,6 @@ static struct video_device saa7134_empress_template =
 	.name          = "saa7134-empress",
 	.type          = 0 /* FIXME */,
 	.type2         = 0 /* FIXME */,
-	.hardware      = 0,
 	.fops          = &ts_fops,
 	.minor	       = -1,
 };
@@ -401,7 +385,7 @@ static int empress_init(struct saa7134_dev *dev)
 	printk(KERN_INFO "%s: registered device video%d [mpeg]\n",
 	       dev->name,dev->empress_dev->minor & 0x1f);
 
-	videobuf_queue_init(&dev->empress_tsq, &saa7134_ts_qops,
+	videobuf_queue_pci_init(&dev->empress_tsq, &saa7134_ts_qops,
 			    dev->pci, &dev->slock,
 			    V4L2_BUF_TYPE_VIDEO_CAPTURE,
 			    V4L2_FIELD_ALTERNATE,

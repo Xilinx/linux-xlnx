@@ -21,8 +21,6 @@
 #ifndef _SPI_CHANNEL_H_
 #define _SPI_CHANNEL_H_
 
-#define SPI0_REGBASE       0xffc00500
-
 #define SPI_READ              0
 #define SPI_WRITE             1
 
@@ -154,6 +152,7 @@
 struct bfin5xx_spi_master {
 	u16 num_chipselect;
 	u8 enable_dma;
+	u16 pin_req[4];
 };
 
 /* spi_board_info.controller_data for SPI slave devices,
@@ -164,7 +163,7 @@ struct bfin5xx_spi_chip {
 	u8 enable_dma;
 	u8 bits_per_word;
 	u8 cs_change_per_word;
-	u8 cs_chg_udelay;
+	u16 cs_chg_udelay; /* Some devices require 16-bit delays */
 };
 
 #endif /* _SPI_CHANNEL_H_ */

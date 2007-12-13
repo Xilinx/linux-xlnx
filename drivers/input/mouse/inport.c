@@ -144,7 +144,7 @@ static int __init inport_init(void)
 	b = inb(INPORT_SIGNATURE_PORT);
 	c = inb(INPORT_SIGNATURE_PORT);
 	if (a == b || a != c) {
-		printk(KERN_ERR "inport.c: Didn't find InPort mouse at %#x\n", INPORT_BASE);
+		printk(KERN_INFO "inport.c: Didn't find InPort mouse at %#x\n", INPORT_BASE);
 		err = -ENODEV;
 		goto err_release_region;
 	}
@@ -163,9 +163,10 @@ static int __init inport_init(void)
 	inport_dev->id.product = 0x0001;
 	inport_dev->id.version = 0x0100;
 
-	inport_dev->evbit[0] = BIT(EV_KEY) | BIT(EV_REL);
-	inport_dev->keybit[LONG(BTN_LEFT)] = BIT(BTN_LEFT) | BIT(BTN_MIDDLE) | BIT(BTN_RIGHT);
-	inport_dev->relbit[0] = BIT(REL_X) | BIT(REL_Y);
+	inport_dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL);
+	inport_dev->keybit[BIT_WORD(BTN_LEFT)] = BIT_MASK(BTN_LEFT) |
+		BIT_MASK(BTN_MIDDLE) | BIT_MASK(BTN_RIGHT);
+	inport_dev->relbit[0] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
 
 	inport_dev->open  = inport_open;
 	inport_dev->close = inport_close;

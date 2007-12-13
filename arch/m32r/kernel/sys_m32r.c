@@ -20,11 +20,11 @@
 #include <linux/mman.h>
 #include <linux/file.h>
 #include <linux/utsname.h>
+#include <linux/ipc.h>
 
 #include <asm/uaccess.h>
 #include <asm/cachectl.h>
 #include <asm/cacheflush.h>
-#include <asm/ipc.h>
 #include <asm/syscall.h>
 #include <asm/unistd.h>
 
@@ -214,7 +214,7 @@ asmlinkage int sys_uname(struct old_utsname __user * name)
 
 asmlinkage int sys_cacheflush(void *addr, int bytes, int cache)
 {
-	/* This should flush more selectivly ...  */
+	/* This should flush more selectively ...  */
 	_flush_cache_all();
 	return 0;
 }

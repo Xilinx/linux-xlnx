@@ -13,7 +13,7 @@
  *  Fixed warning.
  *
  *  Revision 1.18  2005/01/12 08:10:14  starvik
- *  Readded the change of frametype when handling kernel page fault fixup
+ *  Re-added the change of frametype when handling kernel page fault fixup
  *  for v10. This is necessary to avoid that the CPU remakes the faulting
  *  access.
  *
@@ -49,7 +49,7 @@
  *
  *  Revision 1.8  2003/07/04 13:02:48  tobiasa
  *  Moved code snippet from arch/cris/mm/fault.c that searches for fixup code
- *  to seperate function in arch-specific files.
+ *  to separate function in arch-specific files.
  *
  *  Revision 1.7  2003/01/22 06:48:38  starvik
  *  Fixed warnings issued by GCC 3.2.1
@@ -360,7 +360,7 @@ do_page_fault(unsigned long address, struct pt_regs *regs,
 	up_read(&mm->mmap_sem);
 	printk("VM: killing process %s\n", tsk->comm);
 	if (user_mode(regs))
-		do_exit(SIGKILL);
+		do_group_exit(SIGKILL);
 	goto no_context;
 
  do_sigbus:

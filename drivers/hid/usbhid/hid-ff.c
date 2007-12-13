@@ -1,6 +1,4 @@
 /*
- * $Id: hid-ff.c,v 1.2 2002/04/18 22:02:47 jdeneux Exp $
- *
  *  Force feedback support for hid devices.
  *  Not all hid devices use the same protocol. For example, some use PID,
  *  other use their own proprietary procotol.
@@ -62,11 +60,14 @@ static struct hid_ff_initializer inits[] = {
 	{ 0x46d, 0xca03, hid_lgff_init }, /* Logitech MOMO force wheel */
 #endif
 #ifdef CONFIG_PANTHERLORD_FF
-	{ 0x810, 0x0001, hid_plff_init },
+	{ 0x810, 0x0001, hid_plff_init }, /* "Twin USB Joystick" */
+	{ 0xe8f, 0x0003, hid_plff_init }, /* "GreenAsia Inc.    USB Joystick     " */
 #endif
 #ifdef CONFIG_THRUSTMASTER_FF
 	{ 0x44f, 0xb300, hid_tmff_init },
 	{ 0x44f, 0xb304, hid_tmff_init },
+	{ 0x44f, 0xb651, hid_tmff_init }, /* FGT Rumble Force Wheel */
+	{ 0x44f, 0xb654, hid_tmff_init }, /* FGT Force Feedback Wheel */
 #endif
 #ifdef CONFIG_ZEROPLUS_FF
 	{ 0xc12, 0x0005, hid_zpff_init },

@@ -451,6 +451,12 @@ config MOD5272
 	help
 	  Support for the Netburner MOD-5272 board.
 
+config SAVANTrosie1
+	bool "Savant Rosie1 board support"
+	depends on M523x
+	help
+	  Support for the Savant Rosie1 board.
+
 config ROMFS_FROM_ROM
 	bool "ROMFS image not RAM resident"
 	depends on (NETtel || SNAPGEAR)
@@ -492,7 +498,12 @@ config SNEHA
         bool
 	default y
 	depends on CPU16B
-	
+
+config SAVANT
+	bool
+	default y
+	depends on SAVANTrosie1
+
 config AVNET
 	bool
 	default y
@@ -695,6 +706,8 @@ source "net/Kconfig"
 source "drivers/Kconfig"
 
 source "fs/Kconfig"
+
+source "kernel/Kconfig.instrumentation"
 
 source "arch/m68knommu/Kconfig.debug"
 

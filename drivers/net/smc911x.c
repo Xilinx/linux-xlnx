@@ -115,13 +115,6 @@ struct smc911x_local {
 	 */
 	struct sk_buff *pending_tx_skb;
 
-	/*
-	 * these are things that the kernel wants me to keep, so users
-	 * can find out semi-useless statistics of how well the card is
-	 * performing
-	 */
-	struct net_device_stats stats;
-
 	/* version/revision of the SMC911x chip */
 	u16 version;
 	u16 revision;
@@ -315,8 +308,8 @@ static void smc911x_reset(struct net_device *dev)
 	if (lp->pending_tx_skb != NULL) {
 		dev_kfree_skb (lp->pending_tx_skb);
 		lp->pending_tx_skb = NULL;
-		lp->stats.tx_errors++;
-		lp->stats.tx_aborted_errors++;
+		dev->stats.tx_errors++;
+		dev->stats.tx_aborted_errors++;
 	}
 }
 
@@ -435,7 +428,6 @@ static inline void smc911x_drop_pkt(struct net_device *dev)
  */
 static inline void	 smc911x_rcv(struct net_device *dev)
 {
-	struct smc911x_local *lp = netdev_priv(dev);
 	unsigned long ioaddr = dev->base_addr;
 	unsigned int pkt_len, status;
 	struct sk_buff *skb;
@@ -449,14 +441,14 @@ static inline void	 smc911x_rcv(struct net_device *dev)
 	pkt_len = (status & RX_STS_PKT_LEN_) >> 16;
 	if (status & RX_STS_ES_) {
 		/* Deal with a bad packet */
-		lp->stats.rx_errors++;
+		dev->stats.rx_errors++;
 		if (status & RX_STS_CRC_ERR_)
-			lp->stats.rx_crc_errors++;
+			dev->stats.rx_crc_errors++;
 		else {
 			if (status & RX_STS_LEN_ERR_)
-				lp->stats.rx_length_errors++;
+				dev->stats.rx_length_errors++;
 			if (status & RX_STS_MCAST_)
-				lp->stats.multicast++;
+				dev->stats.multicast++;
 		}
 		/* Remove the bad packet data from the RX FIFO */
 		smc911x_drop_pkt(dev);
@@ -467,7 +459,7 @@ static inline void	 smc911x_rcv(struct net_device *dev)
 		if (unlikely(skb == NULL)) {
 			PRINTK( "%s: Low memory, rcvd packet dropped.\n",
 				dev->name);
-			lp->stats.rx_dropped++;
+			dev->stats.rx_dropped++;
 			smc911x_drop_pkt(dev);
 			return;
 		}
@@ -480,6 +472,7 @@ static inline void	 smc911x_rcv(struct net_device *dev)
 		skb_put(skb,pkt_len-4);
 #ifdef SMC_USE_DMA
 		{
+		struct smc911x_local *lp = netdev_priv(dev);
 		unsigned int fifo;
 		/* Lower the FIFO threshold if possible */
 		fifo = SMC_GET_FIFO_INT();
@@ -503,8 +496,8 @@ static inline void	 smc911x_rcv(struct net_device *dev)
 		dev->last_rx = jiffies;
 		skb->protocol = eth_type_trans(skb, dev);
 		netif_rx(skb);
-		lp->stats.rx_packets++;
-		lp->stats.rx_bytes += pkt_len-4;
+		dev->stats.rx_packets++;
+		dev->stats.rx_bytes += pkt_len-4;
 #endif
 	}
 }
@@ -616,8 +609,8 @@ static int smc911x_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		printk("%s: No Tx free space %d < %d\n",
 			dev->name, free, skb->len);
 		lp->pending_tx_skb = NULL;
-		lp->stats.tx_errors++;
-		lp->stats.tx_dropped++;
+		dev->stats.tx_errors++;
+		dev->stats.tx_dropped++;
 		dev_kfree_skb(skb);
 		return 0;
 	}
@@ -667,8 +660,8 @@ static void smc911x_tx(struct net_device *dev)
 			dev->name,
 			(SMC_GET_TX_FIFO_INF() & TX_FIFO_INF_TSUSED_) >> 16);
 		tx_status = SMC_GET_TX_STS_FIFO();
-		lp->stats.tx_packets++;
-		lp->stats.tx_bytes+=tx_status>>16;
+		dev->stats.tx_packets++;
+		dev->stats.tx_bytes+=tx_status>>16;
 		DBG(SMC_DEBUG_TX, "%s: Tx FIFO tag 0x%04x status 0x%04x\n",
 			dev->name, (tx_status & 0xffff0000) >> 16,
 			tx_status & 0x0000ffff);
@@ -676,22 +669,22 @@ static void smc911x_tx(struct net_device *dev)
 		 * full-duplex mode */
 		if ((tx_status & TX_STS_ES_) && !(lp->ctl_rfduplx &&
 		    !(tx_status & 0x00000306))) {
-			lp->stats.tx_errors++;
+			dev->stats.tx_errors++;
 		}
 		if (tx_status & TX_STS_MANY_COLL_) {
-			lp->stats.collisions+=16;
-			lp->stats.tx_aborted_errors++;
+			dev->stats.collisions+=16;
+			dev->stats.tx_aborted_errors++;
 		} else {
-			lp->stats.collisions+=(tx_status & TX_STS_COLL_CNT_) >> 3;
+			dev->stats.collisions+=(tx_status & TX_STS_COLL_CNT_) >> 3;
 		}
 		/* carrier error only has meaning for half-duplex communication */
 		if ((tx_status & (TX_STS_LOC_ | TX_STS_NO_CARR_)) &&
 		    !lp->ctl_rfduplx) {
-			lp->stats.tx_carrier_errors++;
+			dev->stats.tx_carrier_errors++;
 		}
 		if (tx_status & TX_STS_LATE_COLL_) {
-			lp->stats.collisions++;
-			lp->stats.tx_aborted_errors++;
+			dev->stats.collisions++;
+			dev->stats.tx_aborted_errors++;
 		}
 	}
 }
@@ -1121,11 +1114,11 @@ static irqreturn_t smc911x_interrupt(int irq, void *dev_id)
 		/* Handle various error conditions */
 		if (status & INT_STS_RXE_) {
 			SMC_ACK_INT(INT_STS_RXE_);
-			lp->stats.rx_errors++;
+			dev->stats.rx_errors++;
 		}
 		if (status & INT_STS_RXDFH_INT_) {
 			SMC_ACK_INT(INT_STS_RXDFH_INT_);
-			lp->stats.rx_dropped+=SMC_GET_RX_DROP();
+			dev->stats.rx_dropped+=SMC_GET_RX_DROP();
 		 }
 		/* Undocumented interrupt-what is the right thing to do here? */
 		if (status & INT_STS_RXDF_INT_) {
@@ -1140,8 +1133,8 @@ static irqreturn_t smc911x_interrupt(int irq, void *dev_id)
 				cr &= ~MAC_CR_RXEN_;
 				SMC_SET_MAC_CR(cr);
 				DBG(SMC_DEBUG_RX, "%s: RX overrun\n", dev->name);
-				lp->stats.rx_errors++;
-				lp->stats.rx_fifo_errors++;
+				dev->stats.rx_errors++;
+				dev->stats.rx_fifo_errors++;
 			}
 			SMC_ACK_INT(INT_STS_RDFL_);
 		}
@@ -1152,8 +1145,8 @@ static irqreturn_t smc911x_interrupt(int irq, void *dev_id)
 				SMC_SET_MAC_CR(cr);
 				rx_overrun=1;
 				DBG(SMC_DEBUG_RX, "%s: RX overrun\n", dev->name);
-				lp->stats.rx_errors++;
-				lp->stats.rx_fifo_errors++;
+				dev->stats.rx_errors++;
+				dev->stats.rx_fifo_errors++;
 			}
 			SMC_ACK_INT(INT_STS_RDFO_);
 		}
@@ -1230,7 +1223,7 @@ static irqreturn_t smc911x_interrupt(int irq, void *dev_id)
 		}
 #endif
 
-		/* Handle PHY interupt condition */
+		/* Handle PHY interrupt condition */
 		if (status & INT_STS_PHY_INT_) {
 			DBG(SMC_DEBUG_MISC, "%s: PHY irq\n", dev->name);
 			smc911x_phy_interrupt(dev);
@@ -1306,9 +1299,9 @@ smc911x_rx_dma_irq(int dma, void *data)
 	PRINT_PKT(skb->data, skb->len);
 	dev->last_rx = jiffies;
 	skb->protocol = eth_type_trans(skb, dev);
+	dev->stats.rx_packets++;
+	dev->stats.rx_bytes += skb->len;
 	netif_rx(skb);
-	lp->stats.rx_packets++;
-	lp->stats.rx_bytes += skb->len;
 
 	spin_lock_irqsave(&lp->lock, flags);
 	pkts = (SMC_GET_RX_FIFO_INF() & RX_FIFO_INF_RXSUSED_) >> 16;
@@ -1386,13 +1379,6 @@ static void smc911x_set_multicast_list(struct net_device *dev)
 	unsigned int multicast_table[2];
 	unsigned int mcr, update_multicast = 0;
 	unsigned long flags;
-	/* table for flipping the order of 5 bits */
-	static const unsigned char invert5[] =
-		{0x00, 0x10, 0x08, 0x18, 0x04, 0x14, 0x0C, 0x1C,
-		 0x02, 0x12, 0x0A, 0x1A, 0x06, 0x16, 0x0E, 0x1E,
-		 0x01, 0x11, 0x09, 0x19, 0x05, 0x15, 0x0D, 0x1D,
-		 0x03, 0x13, 0x0B, 0x1B, 0x07, 0x17, 0x0F, 0x1F};
-
 
 	DBG(SMC_DEBUG_FUNC, "%s: --> %s\n", dev->name, __FUNCTION__);
 
@@ -1439,7 +1425,7 @@ static void smc911x_set_multicast_list(struct net_device *dev)
 
 		cur_addr = dev->mc_list;
 		for (i = 0; i < dev->mc_count; i++, cur_addr = cur_addr->next) {
-			int position;
+			u32 position;
 
 			/* do we have a pointer here? */
 			if (!cur_addr)
@@ -1449,12 +1435,10 @@ static void smc911x_set_multicast_list(struct net_device *dev)
 			if (!(*cur_addr->dmi_addr & 1))
 				 continue;
 
-			/* only use the low order bits */
-			position = crc32_le(~0, cur_addr->dmi_addr, 6) & 0x3f;
+			/* upper 6 bits are used as hash index */
+			position = ether_crc(ETH_ALEN, cur_addr->dmi_addr)>>26;
 
-			/* do some messy swapping to put the bit in the right spot */
-			multicast_table[invert5[position&0x1F]&0x1] |=
-				(1<<invert5[(position>>1)&0x1F]);
+			multicast_table[position>>5] |= 1 << (position&0x1f);
 		}
 
 		/* be sure I get rid of flags I might have set */
@@ -1565,19 +1549,6 @@ static int smc911x_close(struct net_device *dev)
 	}
 
 	return 0;
-}
-
-/*
- * Get the current statistics.
- * This may be called with the card open or closed.
- */
-static struct net_device_stats *smc911x_query_statistics(struct net_device *dev)
-{
-	struct smc911x_local *lp = netdev_priv(dev);
-	DBG(SMC_DEBUG_FUNC, "%s: --> %s\n", dev->name, __FUNCTION__);
-
-
-	return &lp->stats;
 }
 
 /*
@@ -2056,7 +2027,6 @@ static int __init smc911x_probe(struct net_device *dev, unsigned long ioaddr)
 	dev->hard_start_xmit = smc911x_hard_start_xmit;
 	dev->tx_timeout = smc911x_timeout;
 	dev->watchdog_timeo = msecs_to_jiffies(watchdog);
-	dev->get_stats = smc911x_query_statistics;
 	dev->set_multicast_list = smc911x_set_multicast_list;
 	dev->ethtool_ops = &smc911x_ethtool_ops;
 #ifdef CONFIG_NET_POLL_CONTROLLER
@@ -2084,7 +2054,7 @@ static int __init smc911x_probe(struct net_device *dev, unsigned long ioaddr)
 
 	/* Grab the IRQ */
 	retval = request_irq(dev->irq, &smc911x_interrupt,
-			IRQF_SHARED | IRQF_TRIGGER_FALLING, dev->name, dev);
+			IRQF_SHARED | SMC_IRQ_SENSE, dev->name, dev);
 	if (retval)
 		goto err_out;
 
@@ -2181,7 +2151,6 @@ static int smc911x_drv_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto release_1;
 	}
-	SET_MODULE_OWNER(ndev);
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 
 	ndev->dma = (unsigned char)-1;

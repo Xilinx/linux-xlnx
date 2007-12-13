@@ -2,18 +2,19 @@
  * GPL (C) 2002 Martin Devera (devik@cdi.cz).
  */
 #include <linux/module.h>
+#include <linux/bitops.h>
 #include <linux/skbuff.h>
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_connbytes.h>
 #include <net/netfilter/nf_conntrack.h>
 
 #include <asm/div64.h>
-#include <asm/bitops.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Harald Welte <laforge@netfilter.org>");
 MODULE_DESCRIPTION("iptables match for matching number of pkts/bytes per connection");
 MODULE_ALIAS("ipt_connbytes");
+MODULE_ALIAS("ip6t_connbytes");
 
 static bool
 match(const struct sk_buff *skb,

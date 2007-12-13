@@ -23,10 +23,21 @@
 #define MAX_NR_OF_USER_KEYMAPS 256 	/* should be at least 7 */
 
 #ifdef __KERNEL__
+struct notifier_block;
 extern const int NR_TYPES;
 extern const int max_vals[];
 extern unsigned short *key_maps[MAX_NR_KEYMAPS];
 extern unsigned short plain_map[NR_KEYS];
+
+struct keyboard_notifier_param {
+	struct vc_data *vc;	/* VC on which the keyboard press was done */
+	int down;		/* Pressure of the key? */
+	int shift;		/* Current shift mask */
+	unsigned int value;	/* keycode, unicode value or keysym */
+};
+
+extern int register_keyboard_notifier(struct notifier_block *nb);
+extern int unregister_keyboard_notifier(struct notifier_block *nb);
 #endif
 
 #define MAX_NR_FUNC	256	/* max nr of strings assigned to keys */
@@ -416,6 +427,7 @@ extern unsigned short plain_map[NR_KEYS];
 #define K_SHIFTRLOCK	K(KT_LOCK,KG_SHIFTR)
 #define K_CTRLLLOCK	K(KT_LOCK,KG_CTRLL)
 #define K_CTRLRLOCK	K(KT_LOCK,KG_CTRLR)
+#define K_CAPSSHIFTLOCK	K(KT_LOCK,KG_CAPSSHIFT)
 
 #define K_SHIFT_SLOCK	K(KT_SLOCK,KG_SHIFT)
 #define K_CTRL_SLOCK	K(KT_SLOCK,KG_CTRL)
@@ -425,8 +437,9 @@ extern unsigned short plain_map[NR_KEYS];
 #define K_SHIFTR_SLOCK	K(KT_SLOCK,KG_SHIFTR)
 #define K_CTRLL_SLOCK	K(KT_SLOCK,KG_CTRLL)
 #define K_CTRLR_SLOCK	K(KT_SLOCK,KG_CTRLR)
+#define K_CAPSSHIFT_SLOCK	K(KT_SLOCK,KG_CAPSSHIFT)
 
-#define NR_LOCK		8
+#define NR_LOCK		9
 
 #define K_BRL_BLANK     K(KT_BRL, 0)
 #define K_BRL_DOT1      K(KT_BRL, 1)

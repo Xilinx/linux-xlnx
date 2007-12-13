@@ -21,7 +21,18 @@
 #include	<asm/mmu.h>
 
 register struct paca_struct *local_paca asm("r13");
+
+#if defined(CONFIG_DEBUG_PREEMPT) && defined(CONFIG_SMP)
+extern unsigned int debug_smp_processor_id(void); /* from linux/smp.h */
+/*
+ * Add standard checks that preemption cannot occur when using get_paca():
+ * otherwise the paca_struct it points to may be the wrong one just after.
+ */
+#define get_paca()	((void) debug_smp_processor_id(), local_paca)
+#else
 #define get_paca()	local_paca
+#endif
+
 #define get_lppaca()	(get_paca()->lppaca_ptr)
 #define get_slb_shadow()	(get_paca()->slb_shadow_ptr)
 
@@ -103,11 +114,12 @@ struct paca_struct {
 	u64 user_time;			/* accumulated usermode TB ticks */
 	u64 system_time;		/* accumulated system TB ticks */
 	u64 startpurr;			/* PURR/TB value snapshot */
+	u64 startspurr;			/* SPURR value snapshot */
+	u64 purrdelta;			/* FIXME: document */
+	u64 spurrdelta;			/* FIXME: document */
 };
 
 extern struct paca_struct paca[];
-
-void setup_boot_paca(void);
 
 #endif /* __KERNEL__ */
 #endif /* _ASM_POWERPC_PACA_H */

@@ -387,17 +387,14 @@ acpi_status acpi_os_read_port(acpi_io_address port, u32 * value, u32 width)
 	if (!value)
 		value = &dummy;
 
-	switch (width) {
-	case 8:
+	*value = 0;
+	if (width <= 8) {
 		*(u8 *) value = inb(port);
-		break;
-	case 16:
+	} else if (width <= 16) {
 		*(u16 *) value = inw(port);
-		break;
-	case 32:
+	} else if (width <= 32) {
 		*(u32 *) value = inl(port);
-		break;
-	default:
+	} else {
 		BUG();
 	}
 
@@ -408,17 +405,13 @@ EXPORT_SYMBOL(acpi_os_read_port);
 
 acpi_status acpi_os_write_port(acpi_io_address port, u32 value, u32 width)
 {
-	switch (width) {
-	case 8:
+	if (width <= 8) {
 		outb(value, port);
-		break;
-	case 16:
+	} else if (width <= 16) {
 		outw(value, port);
-		break;
-	case 32:
+	} else if (width <= 32) {
 		outl(value, port);
-		break;
-	default:
+	} else {
 		BUG();
 	}
 
@@ -1043,14 +1036,6 @@ static int __init acpi_wake_gpes_always_on_setup(char *str)
 __setup("acpi_wake_gpes_always_on", acpi_wake_gpes_always_on_setup);
 
 /*
- * max_cstate is defined in the base kernel so modules can
- * change it w/o depending on the state of the processor module.
- */
-unsigned int max_cstate = ACPI_PROCESSOR_MAX_POWER;
-
-EXPORT_SYMBOL(max_cstate);
-
-/*
  * Acquire a spinlock.
  *
  * handle is a pointer to the spinlock_t.
@@ -1214,7 +1199,7 @@ acpi_os_validate_address (
 }
 
 #ifdef CONFIG_DMI
-static int dmi_osi_linux(struct dmi_system_id *d)
+static int dmi_osi_linux(const struct dmi_system_id *d)
 {
 	printk(KERN_NOTICE "%s detected: enabling _OSI(Linux)\n", d->ident);
 	enable_osi_linux(1);

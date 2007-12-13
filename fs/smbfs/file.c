@@ -234,7 +234,7 @@ smb_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 
 	VERBOSE("before read, size=%ld, flags=%x, atime=%ld\n",
 		(long)dentry->d_inode->i_size,
-		dentry->d_inode->i_flags, dentry->d_inode->i_atime);
+		dentry->d_inode->i_flags, dentry->d_inode->i_atime.tv_sec);
 
 	status = generic_file_aio_read(iocb, iov, nr_segs, pos);
 out:
@@ -269,7 +269,7 @@ smb_file_splice_read(struct file *file, loff_t *ppos,
 	struct dentry *dentry = file->f_path.dentry;
 	ssize_t status;
 
-	VERBOSE("file %s/%s, pos=%Ld, count=%d\n",
+	VERBOSE("file %s/%s, pos=%Ld, count=%lu\n",
 		DENTRY_PATH(dentry), *ppos, count);
 
 	status = smb_revalidate_inode(dentry);
@@ -292,29 +292,45 @@ out:
  * If the writer ends up delaying the write, the writer needs to
  * increment the page use counts until he is done with the page.
  */
-static int smb_prepare_write(struct file *file, struct page *page, 
-			     unsigned offset, unsigned to)
+static int smb_write_begin(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned flags,
+			struct page **pagep, void **fsdata)
 {
+	pgoff_t index = pos >> PAGE_CACHE_SHIFT;
+	*pagep = __grab_cache_page(mapping, index);
+	if (!*pagep)
+		return -ENOMEM;
 	return 0;
 }
 
-static int smb_commit_write(struct file *file, struct page *page,
-			    unsigned offset, unsigned to)
+static int smb_write_end(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned copied,
+			struct page *page, void *fsdata)
 {
 	int status;
+	unsigned offset = pos & (PAGE_CACHE_SIZE - 1);
 
-	status = -EFAULT;
 	lock_kernel();
-	status = smb_updatepage(file, page, offset, to-offset);
+	status = smb_updatepage(file, page, offset, copied);
 	unlock_kernel();
+
+	if (!status) {
+		if (!PageUptodate(page) && copied == PAGE_CACHE_SIZE)
+			SetPageUptodate(page);
+		status = copied;
+	}
+
+	unlock_page(page);
+	page_cache_release(page);
+
 	return status;
 }
 
 const struct address_space_operations smb_file_aops = {
 	.readpage = smb_readpage,
 	.writepage = smb_writepage,
-	.prepare_write = smb_prepare_write,
-	.commit_write = smb_commit_write
+	.write_begin = smb_write_begin,
+	.write_end = smb_write_end,
 };
 
 /* 
@@ -347,7 +363,8 @@ smb_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		result = generic_file_aio_write(iocb, iov, nr_segs, pos);
 		VERBOSE("pos=%ld, size=%ld, mtime=%ld, atime=%ld\n",
 			(long) file->f_pos, (long) dentry->d_inode->i_size,
-			dentry->d_inode->i_mtime, dentry->d_inode->i_atime);
+			dentry->d_inode->i_mtime.tv_sec,
+			dentry->d_inode->i_atime.tv_sec);
 	}
 out:
 	return result;

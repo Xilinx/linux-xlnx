@@ -145,7 +145,7 @@ static int finish_unfinished(struct super_block *s)
 {
 	INITIALIZE_PATH(path);
 	struct cpu_key max_cpu_key, obj_key;
-	struct reiserfs_key save_link_key;
+	struct reiserfs_key save_link_key, last_inode_key;
 	int retval = 0;
 	struct item_head *ih;
 	struct buffer_head *bh;
@@ -165,6 +165,8 @@ static int finish_unfinished(struct super_block *s)
 	max_cpu_key.on_disk_key.k_objectid = ~0U;
 	set_cpu_key_k_offset(&max_cpu_key, ~0U);
 	max_cpu_key.key_length = 3;
+
+	memset(&last_inode_key, 0, sizeof(last_inode_key));
 
 #ifdef CONFIG_QUOTA
 	/* Needed for iput() to work correctly and not trash data */
@@ -278,8 +280,18 @@ static int finish_unfinished(struct super_block *s)
 			REISERFS_I(inode)->i_flags |= i_link_saved_unlink_mask;
 			/* not completed unlink (rmdir) found */
 			reiserfs_info(s, "Removing %k..", INODE_PKEY(inode));
-			/* removal gets completed in iput */
-			retval = 0;
+			if (memcmp(&last_inode_key, INODE_PKEY(inode),
+					sizeof(last_inode_key))){
+				last_inode_key = *INODE_PKEY(inode);
+				/* removal gets completed in iput */
+				retval = 0;
+			} else {
+				reiserfs_warning(s, "Dead loop in "
+						"finish_unfinished detected, "
+						"just remove save link\n");
+				retval = remove_save_link_only(s,
+							&save_link_key, 0);
+			}
 		}
 
 		iput(inode);
@@ -307,7 +319,7 @@ static int finish_unfinished(struct super_block *s)
 
 /* to protect file being unlinked from getting lost we "safe" link files
    being unlinked. This link will be deleted in the same transaction with last
-   item of file. mounting the filesytem we scan all these links and remove
+   item of file. mounting the filesystem we scan all these links and remove
    files which almost got lost */
 void add_save_link(struct reiserfs_transaction_handle *th,
 		   struct inode *inode, int truncate)
@@ -508,7 +520,7 @@ static void reiserfs_destroy_inode(struct inode *inode)
 	kmem_cache_free(reiserfs_inode_cachep, REISERFS_I(inode));
 }
 
-static void init_once(void *foo, struct kmem_cache * cachep, unsigned long flags)
+static void init_once(struct kmem_cache * cachep, void *foo)
 {
 	struct reiserfs_inode_info *ei = (struct reiserfs_inode_info *)foo;
 
@@ -649,11 +661,11 @@ static struct quotactl_ops reiserfs_qctl_operations = {
 };
 #endif
 
-static struct export_operations reiserfs_export_ops = {
+static const struct export_operations reiserfs_export_ops = {
 	.encode_fh = reiserfs_encode_fh,
-	.decode_fh = reiserfs_decode_fh,
+	.fh_to_dentry = reiserfs_fh_to_dentry,
+	.fh_to_parent = reiserfs_fh_to_parent,
 	.get_parent = reiserfs_get_parent,
-	.get_dentry = reiserfs_get_dentry,
 };
 
 /* this struct is used in reiserfs_getopt () for containing the value for those
@@ -1712,6 +1724,21 @@ static int reiserfs_fill_super(struct super_block *s, void *data, int silent)
 
 		set_sb_umount_state(rs, REISERFS_ERROR_FS);
 		set_sb_fs_state(rs, 0);
+
+		/* Clear out s_bmap_nr if it would wrap. We can handle this
+		 * case, but older revisions can't. This will cause the
+		 * file system to fail mount on those older implementations,
+		 * avoiding corruption. -jeffm */
+		if (bmap_would_wrap(reiserfs_bmap_count(s)) &&
+		    sb_bmap_nr(rs) != 0) {
+			reiserfs_warning(s, "super-2030: This file system "
+					"claims to use %u bitmap blocks in "
+					"its super block, but requires %u. "
+					"Clearing to zero.", sb_bmap_nr(rs),
+					reiserfs_bmap_count(s));
+
+			set_sb_bmap_nr(rs, 0);
+		}
 
 		if (old_format_only(s)) {
 			/* filesystem of format 3.5 either with standard or non-standard

@@ -538,7 +538,15 @@ static u8 flash_csum(struct ipath_flash *ifp, int adjust)
 	u8 *ip = (u8 *) ifp;
 	u8 csum = 0, len;
 
-	for (len = 0; len < ifp->if_length; len++)
+	/*
+	 * Limit length checksummed to max length of actual data.
+	 * Checksum of erased eeprom will still be bad, but we avoid
+	 * reading past the end of the buffer we were passed.
+	 */
+	len = ifp->if_length;
+	if (len > sizeof(struct ipath_flash))
+		len = sizeof(struct ipath_flash);
+	while (len--)
 		csum += *ip++;
 	csum -= ifp->if_csum;
 	csum = ~csum;
@@ -596,7 +604,11 @@ void ipath_get_eeprom_info(struct ipath_devdata *dd)
 		goto bail;
 	}
 
-	len = offsetof(struct ipath_flash, if_future);
+	/*
+	 * read full flash, not just currently used part, since it may have
+	 * been written with a newer definition
+	 * */
+	len = sizeof(struct ipath_flash);
 	buf = vmalloc(len);
 	if (!buf) {
 		ipath_dev_err(dd, "Couldn't allocate memory to read %u "
@@ -737,8 +749,10 @@ int ipath_update_eeprom_log(struct ipath_devdata *dd)
 	/*
 	 * The quick-check above determined that there is something worthy
 	 * of logging, so get current contents and do a more detailed idea.
+	 * read full flash, not just currently used part, since it may have
+	 * been written with a newer definition
 	 */
-	len = offsetof(struct ipath_flash, if_future);
+	len = sizeof(struct ipath_flash);
 	buf = vmalloc(len);
 	ret = 1;
 	if (!buf) {

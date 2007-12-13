@@ -37,6 +37,7 @@
 #include <linux/smp_lock.h>
 #include <linux/pci.h>
 #include <linux/pci_hotplug.h>
+#include <linux/kthread.h>
 #include "cpqphp.h"
 
 static u32 configure_new_device(struct controller* ctrl, struct pci_func *func,
@@ -45,34 +46,20 @@ static int configure_new_function(struct controller* ctrl, struct pci_func *func
 			u8 behind_bridge, struct resource_lists *resources);
 static void interrupt_event_handler(struct controller *ctrl);
 
-static struct semaphore event_semaphore;	/* mutex for process loop (up if something to process) */
-static struct semaphore event_exit;		/* guard ensure thread has exited before calling it quits */
-static int event_finished;
-static unsigned long pushbutton_pending;	/* = 0 */
 
-/* things needed for the long_delay function */
-static struct semaphore		delay_sem;
-static wait_queue_head_t	delay_wait;
+static struct task_struct *cpqhp_event_thread;
+static unsigned long pushbutton_pending;	/* = 0 */
 
 /* delay is in jiffies to wait for */
 static void long_delay(int delay)
 {
-	DECLARE_WAITQUEUE(wait, current);
-	
-	/* only allow 1 customer into the delay queue at once
-	 * yes this makes some people wait even longer, but who really cares?
-	 * this is for _huge_ delays to make the hardware happy as the 
-	 * signals bounce around
+	/*
+	 * XXX(hch): if someone is bored please convert all callers
+	 * to call msleep_interruptible directly.  They really want
+	 * to specify timeouts in natural units and spend a lot of
+	 * effort converting them to jiffies..
 	 */
-	down (&delay_sem);
-
-	init_waitqueue_head(&delay_wait);
-
-	add_wait_queue(&delay_wait, &wait);
 	msleep_interruptible(jiffies_to_msecs(delay));
-	remove_wait_queue(&delay_wait, &wait);
-	
-	up(&delay_sem);
 }
 
 
@@ -136,7 +123,7 @@ static u8 handle_switch_change(u8 change, struct controller * ctrl)
 }
 
 /**
- * cpqhp_find_slot: find the struct slot of given device
+ * cpqhp_find_slot - find the struct slot of given device
  * @ctrl: scan lots of this controller
  * @device: the device id to find
  */
@@ -318,9 +305,8 @@ static u8 handle_power_fault(u8 change, struct controller * ctrl)
 
 
 /**
- * sort_by_size: sort nodes on the list by their length, smallest first.
+ * sort_by_size - sort nodes on the list by their length, smallest first.
  * @head: list to sort
- *
  */
 static int sort_by_size(struct pci_resource **head)
 {
@@ -367,9 +353,8 @@ static int sort_by_size(struct pci_resource **head)
 
 
 /**
- * sort_by_max_size: sort nodes on the list by their length, largest first.
+ * sort_by_max_size - sort nodes on the list by their length, largest first.
  * @head: list to sort
- *
  */
 static int sort_by_max_size(struct pci_resource **head)
 {
@@ -416,8 +401,10 @@ static int sort_by_max_size(struct pci_resource **head)
 
 
 /**
- * do_pre_bridge_resource_split: find node of resources that are unused
- *
+ * do_pre_bridge_resource_split - find node of resources that are unused
+ * @head: new list head
+ * @orig_head: original list head
+ * @alignment: max node size (?)
  */
 static struct pci_resource *do_pre_bridge_resource_split(struct pci_resource **head,
 				struct pci_resource **orig_head, u32 alignment)
@@ -490,8 +477,9 @@ static struct pci_resource *do_pre_bridge_resource_split(struct pci_resource **h
 
 
 /**
- * do_bridge_resource_split: find one node of resources that aren't in use
- *
+ * do_bridge_resource_split - find one node of resources that aren't in use
+ * @head: list head
+ * @alignment: max node size (?)
  */
 static struct pci_resource *do_bridge_resource_split(struct pci_resource **head, u32 alignment)
 {
@@ -538,14 +526,13 @@ error:
 
 
 /**
- * get_io_resource: find first node of given size not in ISA aliasing window.
+ * get_io_resource - find first node of given size not in ISA aliasing window.
  * @head: list to search
  * @size: size of node to find, must be a power of two.
  *
- * Description: this function sorts the resource list by size and then returns
+ * Description: This function sorts the resource list by size and then returns
  * returns the first node of "size" length that is not in the ISA aliasing
  * window.  If it finds a node larger than "size" it will split it up.
- *
  */
 static struct pci_resource *get_io_resource(struct pci_resource **head, u32 size)
 {
@@ -633,7 +620,7 @@ static struct pci_resource *get_io_resource(struct pci_resource **head, u32 size
 
 
 /**
- * get_max_resource: get largest node which has at least the given size.
+ * get_max_resource - get largest node which has at least the given size.
  * @head: the list to search the node in
  * @size: the minimum size of the node to find
  *
@@ -725,7 +712,7 @@ static struct pci_resource *get_max_resource(struct pci_resource **head, u32 siz
 
 
 /**
- * get_resource: find resource of given size and split up larger ones.
+ * get_resource - find resource of given size and split up larger ones.
  * @head: the list to search for resources
  * @size: the size limit to use
  *
@@ -817,14 +804,14 @@ static struct pci_resource *get_resource(struct pci_resource **head, u32 size)
 
 
 /**
- * cpqhp_resource_sort_and_combine: sort nodes by base addresses and clean up.
+ * cpqhp_resource_sort_and_combine - sort nodes by base addresses and clean up
  * @head: the list to sort and clean up
  *
  * Description: Sorts all of the nodes in the list in ascending order by
  * their base addresses.  Also does garbage collection by
  * combining adjacent nodes.
  *
- * returns 0 if success
+ * Returns %0 if success.
  */
 int cpqhp_resource_sort_and_combine(struct pci_resource **head)
 {
@@ -955,8 +942,8 @@ irqreturn_t cpqhp_ctrl_intr(int IRQ, void *data)
 	}
 
 	if (schedule_flag) {
-		up(&event_semaphore);
-		dbg("Signal event_semaphore\n");
+		wake_up_process(cpqhp_event_thread);
+		dbg("Waking even thread");
 	}
 	return IRQ_HANDLED;
 }
@@ -964,24 +951,21 @@ irqreturn_t cpqhp_ctrl_intr(int IRQ, void *data)
 
 /**
  * cpqhp_slot_create - Creates a node and adds it to the proper bus.
- * @busnumber - bus where new node is to be located
+ * @busnumber: bus where new node is to be located
  *
- * Returns pointer to the new node or NULL if unsuccessful
+ * Returns pointer to the new node or %NULL if unsuccessful.
  */
 struct pci_func *cpqhp_slot_create(u8 busnumber)
 {
 	struct pci_func *new_slot;
 	struct pci_func *next;
 
-	new_slot = kmalloc(sizeof(*new_slot), GFP_KERNEL);
-
+	new_slot = kzalloc(sizeof(*new_slot), GFP_KERNEL);
 	if (new_slot == NULL) {
 		/* I'm not dead yet!
 		 * You will be. */
 		return new_slot;
 	}
-
-	memset(new_slot, 0, sizeof(struct pci_func));
 
 	new_slot->next = NULL;
 	new_slot->configured = 1;
@@ -1002,7 +986,7 @@ struct pci_func *cpqhp_slot_create(u8 busnumber)
  * slot_remove - Removes a node from the linked list of slots.
  * @old_slot: slot to remove
  *
- * Returns 0 if successful, !0 otherwise.
+ * Returns %0 if successful, !0 otherwise.
  */
 static int slot_remove(struct pci_func * old_slot)
 {
@@ -1042,7 +1026,7 @@ static int slot_remove(struct pci_func * old_slot)
  * bridge_slot_remove - Removes a node from the linked list of slots.
  * @bridge: bridge to remove
  *
- * Returns 0 if successful, !0 otherwise.
+ * Returns %0 if successful, !0 otherwise.
  */
 static int bridge_slot_remove(struct pci_func *bridge)
 {
@@ -1087,7 +1071,7 @@ out:
  * cpqhp_slot_find - Looks for a node by bus, and device, multiple functions accessed
  * @bus: bus to find
  * @device: device to find
- * @index: is 0 for first function found, 1 for the second...
+ * @index: is %0 for first function found, %1 for the second...
  *
  * Returns pointer to the node if successful, %NULL otherwise.
  */
@@ -1131,16 +1115,13 @@ static int is_bridge(struct pci_func * func)
 
 
 /**
- * set_controller_speed - set the frequency and/or mode of a specific
- * controller segment.
- *
+ * set_controller_speed - set the frequency and/or mode of a specific controller segment.
  * @ctrl: controller to change frequency/mode for.
  * @adapter_speed: the speed of the adapter we want to match.
  * @hp_slot: the slot number where the adapter is installed.
  *
- * Returns 0 if we successfully change frequency and/or mode to match the
+ * Returns %0 if we successfully change frequency and/or mode to match the
  * adapter speed.
- * 
  */
 static u8 set_controller_speed(struct controller *ctrl, u8 adapter_speed, u8 hp_slot)
 {
@@ -1269,13 +1250,14 @@ static u8 set_controller_speed(struct controller *ctrl, u8 adapter_speed, u8 hp_
 
 /**
  * board_replaced - Called after a board has been replaced in the system.
+ * @func: PCI device/function information
+ * @ctrl: hotplug controller
  *
- * This is only used if we don't have resources for hot add
- * Turns power on for the board
- * Checks to see if board is the same
- * If board is same, reconfigures it
+ * This is only used if we don't have resources for hot add.
+ * Turns power on for the board.
+ * Checks to see if board is the same.
+ * If board is same, reconfigures it.
  * If board isn't same, turns it back off.
- *
  */
 static u32 board_replaced(struct pci_func *func, struct controller *ctrl)
 {
@@ -1419,10 +1401,11 @@ static u32 board_replaced(struct pci_func *func, struct controller *ctrl)
 
 /**
  * board_added - Called after a board has been added to the system.
+ * @func: PCI device/function info
+ * @ctrl: hotplug controller
  *
- * Turns power on for the board
- * Configures board
- *
+ * Turns power on for the board.
+ * Configures board.
  */
 static u32 board_added(struct pci_func *func, struct controller *ctrl)
 {
@@ -1623,8 +1606,10 @@ static u32 board_added(struct pci_func *func, struct controller *ctrl)
 
 
 /**
- * remove_board - Turns off slot and LED's
- *
+ * remove_board - Turns off slot and LEDs
+ * @func: PCI device/function info
+ * @replace_flag: whether replacing or adding a new device
+ * @ctrl: target controller
  */
 static u32 remove_board(struct pci_func * func, u32 replace_flag, struct controller * ctrl)
 {
@@ -1738,7 +1723,7 @@ static u32 remove_board(struct pci_func * func, u32 replace_flag, struct control
 static void pushbutton_helper_thread(unsigned long data)
 {
 	pushbutton_pending = data;
-	up(&event_semaphore);
+	wake_up_process(cpqhp_event_thread);
 }
 
 
@@ -1747,13 +1732,13 @@ static int event_thread(void* data)
 {
 	struct controller *ctrl;
 
-	daemonize("phpd_event");
-
 	while (1) {
 		dbg("!!!!event_thread sleeping\n");
-		down_interruptible (&event_semaphore);
-		dbg("event_thread woken finished = %d\n", event_finished);
-		if (event_finished) break;
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+
+		if (kthread_should_stop())
+			break;
 		/* Do stuff here */
 		if (pushbutton_pending)
 			cpqhp_pushbutton_thread(pushbutton_pending);
@@ -1762,38 +1747,24 @@ static int event_thread(void* data)
 				interrupt_event_handler(ctrl);
 	}
 	dbg("event_thread signals exit\n");
-	up(&event_exit);
 	return 0;
 }
 
-
 int cpqhp_event_start_thread(void)
 {
-	int pid;
-
-	/* initialize our semaphores */
-	init_MUTEX(&delay_sem);
-	init_MUTEX_LOCKED(&event_semaphore);
-	init_MUTEX_LOCKED(&event_exit);
-	event_finished=0;
-
-	pid = kernel_thread(event_thread, NULL, 0);
-	if (pid < 0) {
+	cpqhp_event_thread = kthread_run(event_thread, NULL, "phpd_event");
+	if (IS_ERR(cpqhp_event_thread)) {
 		err ("Can't start up our event thread\n");
-		return -1;
+		return PTR_ERR(cpqhp_event_thread);
 	}
-	dbg("Our event thread pid = %d\n", pid);
+
 	return 0;
 }
 
 
 void cpqhp_event_stop_thread(void)
 {
-	event_finished = 1;
-	dbg("event_thread finish command given\n");
-	up(&event_semaphore);
-	dbg("wait for event_thread to exit\n");
-	down(&event_exit);
+	kthread_stop(cpqhp_event_thread);
 }
 
 
@@ -1932,11 +1903,11 @@ static void interrupt_event_handler(struct controller *ctrl)
 
 
 /**
- * cpqhp_pushbutton_thread
+ * cpqhp_pushbutton_thread - handle pushbutton events
+ * @slot: target slot (struct)
  *
- * Scheduled procedure to handle blocking stuff for the pushbuttons
+ * Scheduled procedure to handle blocking stuff for the pushbuttons.
  * Handles all pending events and exits.
- *
  */
 void cpqhp_pushbutton_thread(unsigned long slot)
 {
@@ -1961,16 +1932,14 @@ void cpqhp_pushbutton_thread(unsigned long slot)
 			return ;
 		}
 
-		if (func != NULL && ctrl != NULL) {
-			if (cpqhp_process_SS(ctrl, func) != 0) {
-				amber_LED_on (ctrl, hp_slot);
-				green_LED_on (ctrl, hp_slot);
-				
-				set_SOGO(ctrl);
+		if (cpqhp_process_SS(ctrl, func) != 0) {
+			amber_LED_on(ctrl, hp_slot);
+			green_LED_on(ctrl, hp_slot);
 
-				/* Wait for SOBS to be unset */
-				wait_for_ctrl_irq (ctrl);
-			}
+			set_SOGO(ctrl);
+
+			/* Wait for SOBS to be unset */
+			wait_for_ctrl_irq(ctrl);
 		}
 
 		p_slot->state = STATIC_STATE;
@@ -2169,9 +2138,10 @@ int cpqhp_process_SS(struct controller *ctrl, struct pci_func *func)
 }
 
 /**
- * switch_leds: switch the leds, go from one site to the other.
+ * switch_leds - switch the leds, go from one site to the other.
  * @ctrl: controller to use
  * @num_of_slots: number of slots to use
+ * @work_LED: LED control value
  * @direction: 1 to start from the left side, 0 to start right.
  */
 static void switch_leds(struct controller *ctrl, const int num_of_slots,
@@ -2197,11 +2167,11 @@ static void switch_leds(struct controller *ctrl, const int num_of_slots,
 }
 
 /**
- * hardware_test - runs hardware tests
+ * cpqhp_hardware_test - runs hardware tests
+ * @ctrl: target controller
+ * @test_num: the number written to the "test" file in sysfs.
  *
  * For hot plug ctrl folks to play with.
- * test_num is the number written to the "test" file in sysfs
- *
  */
 int cpqhp_hardware_test(struct controller *ctrl, int test_num)
 {
@@ -2281,14 +2251,12 @@ int cpqhp_hardware_test(struct controller *ctrl, int test_num)
 
 /**
  * configure_new_device - Configures the PCI header information of one board.
- *
  * @ctrl: pointer to controller structure
  * @func: pointer to function structure
  * @behind_bridge: 1 if this is a recursive call, 0 if not
  * @resources: pointer to set of resource lists
  *
- * Returns 0 if success
- *
+ * Returns 0 if success.
  */
 static u32 configure_new_device(struct controller * ctrl, struct pci_func * func,
 				 u8 behind_bridge, struct resource_lists * resources)
@@ -2378,15 +2346,13 @@ static u32 configure_new_device(struct controller * ctrl, struct pci_func * func
 
 /**
  * configure_new_function - Configures the PCI header information of one device
- *
  * @ctrl: pointer to controller structure
  * @func: pointer to function structure
  * @behind_bridge: 1 if this is a recursive call, 0 if not
  * @resources: pointer to set of resource lists
  *
  * Calls itself recursively for bridged devices.
- * Returns 0 if success
- *
+ * Returns 0 if success.
  */
 static int configure_new_function(struct controller *ctrl, struct pci_func *func,
 				   u8 behind_bridge,

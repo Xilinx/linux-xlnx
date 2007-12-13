@@ -3,7 +3,7 @@
 		for hardware monitoring
 
     Copyright (C) 1998 - 2001 Frodo Looijaard <frodol@dds.nl>,
-			Kyösti Mälkki <kmalkki@cc.hut.fi>, and
+			KyÃ¶sti MÃ¤lkki <kmalkki@cc.hut.fi>, and
 			Mark D. Studebaker <mdsxyz123@yahoo.com>
     Ported to Linux 2.6 by Aurelien Jarno <aurelien@aurel32.net> with
     the help of Jean Delvare <khali@linux-fr.org>
@@ -163,7 +163,7 @@ static inline u8 DIV_TO_REG(int val)
 struct sis5595_data {
 	unsigned short addr;
 	const char *name;
-	struct class_device *class_dev;
+	struct device *hwmon_dev;
 	struct mutex lock;
 
 	struct mutex update_lock;
@@ -435,6 +435,22 @@ static ssize_t show_alarms(struct device *dev, struct device_attribute *attr, ch
 }
 static DEVICE_ATTR(alarms, S_IRUGO, show_alarms, NULL);
 
+static ssize_t show_alarm(struct device *dev, struct device_attribute *da,
+			  char *buf)
+{
+	struct sis5595_data *data = sis5595_update_device(dev);
+	int nr = to_sensor_dev_attr(da)->index;
+	return sprintf(buf, "%u\n", (data->alarms >> nr) & 1);
+}
+static SENSOR_DEVICE_ATTR(in0_alarm, S_IRUGO, show_alarm, NULL, 0);
+static SENSOR_DEVICE_ATTR(in1_alarm, S_IRUGO, show_alarm, NULL, 1);
+static SENSOR_DEVICE_ATTR(in2_alarm, S_IRUGO, show_alarm, NULL, 2);
+static SENSOR_DEVICE_ATTR(in3_alarm, S_IRUGO, show_alarm, NULL, 3);
+static SENSOR_DEVICE_ATTR(in4_alarm, S_IRUGO, show_alarm, NULL, 15);
+static SENSOR_DEVICE_ATTR(fan1_alarm, S_IRUGO, show_alarm, NULL, 6);
+static SENSOR_DEVICE_ATTR(fan2_alarm, S_IRUGO, show_alarm, NULL, 7);
+static SENSOR_DEVICE_ATTR(temp1_alarm, S_IRUGO, show_alarm, NULL, 15);
+
 static ssize_t show_name(struct device *dev, struct device_attribute *attr,
 			 char *buf)
 {
@@ -447,22 +463,28 @@ static struct attribute *sis5595_attributes[] = {
 	&sensor_dev_attr_in0_input.dev_attr.attr,
 	&sensor_dev_attr_in0_min.dev_attr.attr,
 	&sensor_dev_attr_in0_max.dev_attr.attr,
+	&sensor_dev_attr_in0_alarm.dev_attr.attr,
 	&sensor_dev_attr_in1_input.dev_attr.attr,
 	&sensor_dev_attr_in1_min.dev_attr.attr,
 	&sensor_dev_attr_in1_max.dev_attr.attr,
+	&sensor_dev_attr_in1_alarm.dev_attr.attr,
 	&sensor_dev_attr_in2_input.dev_attr.attr,
 	&sensor_dev_attr_in2_min.dev_attr.attr,
 	&sensor_dev_attr_in2_max.dev_attr.attr,
+	&sensor_dev_attr_in2_alarm.dev_attr.attr,
 	&sensor_dev_attr_in3_input.dev_attr.attr,
 	&sensor_dev_attr_in3_min.dev_attr.attr,
 	&sensor_dev_attr_in3_max.dev_attr.attr,
+	&sensor_dev_attr_in3_alarm.dev_attr.attr,
 
 	&sensor_dev_attr_fan1_input.dev_attr.attr,
 	&sensor_dev_attr_fan1_min.dev_attr.attr,
 	&sensor_dev_attr_fan1_div.dev_attr.attr,
+	&sensor_dev_attr_fan1_alarm.dev_attr.attr,
 	&sensor_dev_attr_fan2_input.dev_attr.attr,
 	&sensor_dev_attr_fan2_min.dev_attr.attr,
 	&sensor_dev_attr_fan2_div.dev_attr.attr,
+	&sensor_dev_attr_fan2_alarm.dev_attr.attr,
 
 	&dev_attr_alarms.attr,
 	&dev_attr_name.attr,
@@ -473,19 +495,28 @@ static const struct attribute_group sis5595_group = {
 	.attrs = sis5595_attributes,
 };
 
-static struct attribute *sis5595_attributes_opt[] = {
+static struct attribute *sis5595_attributes_in4[] = {
 	&sensor_dev_attr_in4_input.dev_attr.attr,
 	&sensor_dev_attr_in4_min.dev_attr.attr,
 	&sensor_dev_attr_in4_max.dev_attr.attr,
-
-	&dev_attr_temp1_input.attr,
-	&dev_attr_temp1_max.attr,
-	&dev_attr_temp1_max_hyst.attr,
+	&sensor_dev_attr_in4_alarm.dev_attr.attr,
 	NULL
 };
 
-static const struct attribute_group sis5595_group_opt = {
-	.attrs = sis5595_attributes_opt,
+static const struct attribute_group sis5595_group_in4 = {
+	.attrs = sis5595_attributes_in4,
+};
+
+static struct attribute *sis5595_attributes_temp1[] = {
+	&dev_attr_temp1_input.attr,
+	&dev_attr_temp1_max.attr,
+	&dev_attr_temp1_max_hyst.attr,
+	&sensor_dev_attr_temp1_alarm.dev_attr.attr,
+	NULL
+};
+
+static const struct attribute_group sis5595_group_temp1 = {
+	.attrs = sis5595_attributes_temp1,
 };
  
 /* This is called when the module is loaded */
@@ -517,7 +548,7 @@ static int __devinit sis5595_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 
 	/* Check revision and pin registers to determine whether 4 or 5 voltages */
-	pci_read_config_byte(s_bridge, PCI_REVISION_ID, &data->revision);
+	data->revision = s_bridge->revision;
 	/* 4 voltages, 1 temp */
 	data->maxins = 3;
 	if (data->revision >= REV2MIN) {
@@ -540,26 +571,18 @@ static int __devinit sis5595_probe(struct platform_device *pdev)
 	if ((err = sysfs_create_group(&pdev->dev.kobj, &sis5595_group)))
 		goto exit_free;
 	if (data->maxins == 4) {
-		if ((err = device_create_file(&pdev->dev,
-					&sensor_dev_attr_in4_input.dev_attr))
-		 || (err = device_create_file(&pdev->dev,
-					&sensor_dev_attr_in4_min.dev_attr))
-		 || (err = device_create_file(&pdev->dev,
-					&sensor_dev_attr_in4_max.dev_attr)))
+		if ((err = sysfs_create_group(&pdev->dev.kobj,
+					      &sis5595_group_in4)))
 			goto exit_remove_files;
 	} else {
-		if ((err = device_create_file(&pdev->dev,
-					      &dev_attr_temp1_input))
-		 || (err = device_create_file(&pdev->dev,
-					      &dev_attr_temp1_max))
-		 || (err = device_create_file(&pdev->dev,
-					      &dev_attr_temp1_max_hyst)))
+		if ((err = sysfs_create_group(&pdev->dev.kobj,
+					      &sis5595_group_temp1)))
 			goto exit_remove_files;
 	}
 
-	data->class_dev = hwmon_device_register(&pdev->dev);
-	if (IS_ERR(data->class_dev)) {
-		err = PTR_ERR(data->class_dev);
+	data->hwmon_dev = hwmon_device_register(&pdev->dev);
+	if (IS_ERR(data->hwmon_dev)) {
+		err = PTR_ERR(data->hwmon_dev);
 		goto exit_remove_files;
 	}
 
@@ -567,7 +590,8 @@ static int __devinit sis5595_probe(struct platform_device *pdev)
 
 exit_remove_files:
 	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group);
-	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_opt);
+	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_in4);
+	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_temp1);
 exit_free:
 	kfree(data);
 exit_release:
@@ -580,9 +604,10 @@ static int __devexit sis5595_remove(struct platform_device *pdev)
 {
 	struct sis5595_data *data = platform_get_drvdata(pdev);
 
-	hwmon_device_unregister(data->class_dev);
+	hwmon_device_unregister(data->hwmon_dev);
 	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group);
-	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_opt);
+	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_in4);
+	sysfs_remove_group(&pdev->dev.kobj, &sis5595_group_temp1);
 
 	release_region(data->addr, SIS5595_EXTENT);
 	platform_set_drvdata(pdev, NULL);
@@ -739,11 +764,10 @@ static int __devinit sis5595_pci_probe(struct pci_dev *dev,
 	int *i;
 
 	for (i = blacklist; *i != 0; i++) {
-		struct pci_dev *dev;
-		dev = pci_get_device(PCI_VENDOR_ID_SI, *i, NULL);
-		if (dev) {
-			dev_err(&dev->dev, "Looked for SIS5595 but found unsupported device %.4x\n", *i);
-			pci_dev_put(dev);
+		struct pci_dev *d;
+		if ((d = pci_get_device(PCI_VENDOR_ID_SI, *i, NULL))) {
+			dev_err(&d->dev, "Looked for SIS5595 but found unsupported device %.4x\n", *i);
+			pci_dev_put(d);
 			return -ENODEV;
 		}
 	}

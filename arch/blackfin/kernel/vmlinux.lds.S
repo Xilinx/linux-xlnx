@@ -49,7 +49,8 @@ SECTIONS
 		TEXT_TEXT
 		SCHED_TEXT
 		LOCK_TEXT
-		*(.text.lock)
+		KPROBES_TEXT
+		*(.text.*)
 		*(.fixup)
 
 		. = ALIGN(16);
@@ -61,7 +62,7 @@ SECTIONS
 		__etext = .;
 	}
 
-	RODATA
+	RO_DATA(PAGE_SIZE)
 
 	.data :
 	{
@@ -72,50 +73,63 @@ SECTIONS
 		__sdata = .;
 		. = ALIGN(THREAD_SIZE);
 		*(.data.init_task)
-		DATA_DATA
-		CONSTRUCTORS
 
 		. = ALIGN(32);
 		*(.data.cacheline_aligned)
+
+		DATA_DATA
+		*(.data.*)
+		CONSTRUCTORS
 
 		. = ALIGN(THREAD_SIZE);
 		__edata = .;
 	}
 
 	___init_begin = .;
-	.init :
+
+	.init.text :
 	{
 		. = ALIGN(PAGE_SIZE);
 		__sinittext = .;
 		*(.init.text)
 		__einittext = .;
+	}
+	.init.data :
+	{
+		. = ALIGN(16);
 		*(.init.data)
+	}
+	.init.setup :
+	{
 		. = ALIGN(16);
 		___setup_start = .;
 		*(.init.setup)
 		___setup_end = .;
-		___start___param = .;
-		*(__param)
-		___stop___param = .;
+	}
+	.initcall.init :
+	{
 		___initcall_start = .;
 		INITCALLS
 		___initcall_end = .;
+	}
+	.con_initcall.init :
+	{
 		___con_initcall_start = .;
 		*(.con_initcall.init)
 		___con_initcall_end = .;
-		___security_initcall_start = .;
-		*(.security_initcall.init)
-		___security_initcall_end = .;
+	}
+	SECURITY_INIT
+	.init.ramfs :
+	{
 		. = ALIGN(4);
 		___initramfs_start = .;
 		*(.init.ramfs)
 		___initramfs_end = .;
-		. = ALIGN(4);
 	}
 
 	__l1_lma_start = .;
 
-	.text_l1 L1_CODE_START : AT(LOADADDR(.init) + SIZEOF(.init))
+	.text_l1 L1_CODE_START : AT(LOADADDR(.init.ramfs) + SIZEOF(.init.ramfs))
 	{
 		. = ALIGN(4);
 		__stext_l1 = .;
@@ -158,18 +172,29 @@ SECTIONS
 		__ebss_b_l1 = .;
 	}
 
-	___init_end = LOADADDR(.data_b_l1) + SIZEOF(.data_b_l1);
+	/* Force trailing alignment of our init section so that when we
+	 * free our init memory, we don't leave behind a partial page.
+	 */
+	. = LOADADDR(.data_b_l1) + SIZEOF(.data_b_l1);
+	. = ALIGN(PAGE_SIZE);
+	___init_end = .;
 
-	.bss LOADADDR(.data_b_l1) + SIZEOF(.data_b_l1) :
+	.bss :
 	{
 		. = ALIGN(4);
 		___bss_start = .;
-		*(.bss)
+		*(.bss .bss.*)
 		*(COMMON)
 		. = ALIGN(4);
 		___bss_stop = .;
 		__end = .;
 	}
+
+	STABS_DEBUG
+
+	DWARF_DEBUG
+
+	NOTES
 
 	/DISCARD/ :
 	{

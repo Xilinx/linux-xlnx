@@ -26,7 +26,7 @@ LDFLAGS			+= -EB  -mshelf32_linux
 endif
 
 # No requirements for endianess support from AFLAGS, 'as' always run through gcc
-CFLAGS		+= $(cpu-y)
+KBUILD_CFLAGS		+= $(cpu-y)
 
 LDFLAGS_vmlinux	+= --defsym phys_stext=_stext-$(CONFIG_CACHED_MEMORY_OFFSET) \
 		  --defsym phys_stext_shmedia=phys_stext+1 \
@@ -40,6 +40,8 @@ OBJCOPYFLAGS	:= -O binary -R .note -R .comment -R .stab -R .stabstr -S
 #
 KBUILD_DEFCONFIG	:= cayman_defconfig
 
+KBUILD_IMAGE		:= arch/$(ARCH)/boot/zImage
+
 ifdef LOADADDR
 LINKFLAGS     += -Ttext $(word 1,$(LOADADDR))
 endif
@@ -47,7 +49,6 @@ endif
 machine-$(CONFIG_SH_CAYMAN)	:= cayman
 machine-$(CONFIG_SH_SIMULATOR)	:= sim
 machine-$(CONFIG_SH_HARP)	:= harp
-machine-$(CONFIG_SH_ROMRAM)	:= romram
 
 head-y := arch/$(ARCH)/kernel/head.o arch/$(ARCH)/kernel/init_task.o
 
@@ -57,7 +58,7 @@ ifneq ($(machine-y),)
 core-y	+= arch/sh64/mach-$(machine-y)/
 endif
 
-LIBGCC := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
+LIBGCC := $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
 libs-y	+= arch/$(ARCH)/lib/ $(LIBGCC)
 
 drivers-$(CONFIG_OPROFILE)	+= arch/sh64/oprofile/
@@ -106,6 +107,5 @@ arch/$(ARCH)/lib/syscalltab.h: arch/sh64/kernel/syscalls.S
 CLEAN_FILES += arch/$(ARCH)/lib/syscalltab.h
 
 define archhelp
-	@echo '  zImage 	           - Compressed kernel image (arch/sh64/boot/zImage)'
+	@echo '* zImage 	           - Compressed kernel image'
 endef
-

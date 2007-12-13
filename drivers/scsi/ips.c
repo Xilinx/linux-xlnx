@@ -204,8 +204,8 @@ module_param(ips, charp, 0);
 /*
  * DRIVER_VER
  */
-#define IPS_VERSION_HIGH        "7.12"
-#define IPS_VERSION_LOW         ".05 "
+#define IPS_VERSION_HIGH        IPS_VER_MAJOR_STRING "." IPS_VER_MINOR_STRING
+#define IPS_VERSION_LOW         "." IPS_VER_BUILD_STRING " "
 
 #if !defined(__i386__) && !defined(__ia64__) && !defined(__x86_64__)
 #warning "This driver has only been tested on the x86/ia64/x86_64 platforms"
@@ -656,6 +656,8 @@ ips_release(struct Scsi_Host *sh)
 
 	METHOD_TRACE("ips_release", 1);
 
+	scsi_remove_host(sh);
+
 	for (i = 0; i < IPS_MAX_ADAPTERS && ips_sh[i] != sh; i++) ;
 
 	if (i == IPS_MAX_ADAPTERS) {
@@ -707,7 +709,6 @@ ips_release(struct Scsi_Host *sh)
 	/* free IRQ */
 	free_irq(ha->irq, ha);
 
-	scsi_remove_host(sh);
 	scsi_host_put(sh);
 
 	ips_released_controllers++;
@@ -1514,7 +1515,7 @@ static int ips_is_passthru(struct scsi_cmnd *SC)
                 /* kmap_atomic() ensures addressability of the user buffer.*/
                 /* local_irq_save() protects the KM_IRQ0 address slot.     */
                 local_irq_save(flags);
-                buffer = kmap_atomic(sg->page, KM_IRQ0) + sg->offset;
+                buffer = kmap_atomic(sg_page(sg), KM_IRQ0) + sg->offset;
                 if (buffer && buffer[0] == 'C' && buffer[1] == 'O' &&
                     buffer[2] == 'P' && buffer[3] == 'P') {
                         kunmap_atomic(buffer - sg->offset, KM_IRQ0);
@@ -3251,7 +3252,7 @@ ips_done(ips_ha_t * ha, ips_scb_t * scb)
 		 */
 		if ((scb->breakup) || (scb->sg_break)) {
                         struct scatterlist *sg;
-                        int sg_dma_index, ips_sg_index = 0;
+                        int i, sg_dma_index, ips_sg_index = 0;
 
 			/* we had a data breakup */
 			scb->data_len = 0;
@@ -3260,20 +3261,22 @@ ips_done(ips_ha_t * ha, ips_scb_t * scb)
 
                         /* Spin forward to last dma chunk */
                         sg_dma_index = scb->breakup;
+                        for (i = 0; i < scb->breakup; i++)
+                                sg = sg_next(sg);
 
 			/* Take care of possible partial on last chunk */
                         ips_fill_scb_sg_single(ha,
-                                               sg_dma_address(&sg[sg_dma_index]),
+                                               sg_dma_address(sg),
                                                scb, ips_sg_index++,
-                                               sg_dma_len(&sg[sg_dma_index]));
+                                               sg_dma_len(sg));
 
                         for (; sg_dma_index < scsi_sg_count(scb->scsi_cmd);
-                             sg_dma_index++) {
+                             sg_dma_index++, sg = sg_next(sg)) {
                                 if (ips_fill_scb_sg_single
                                     (ha,
-                                     sg_dma_address(&sg[sg_dma_index]),
+                                     sg_dma_address(sg),
                                      scb, ips_sg_index++,
-                                     sg_dma_len(&sg[sg_dma_index])) < 0)
+                                     sg_dma_len(sg)) < 0)
                                         break;
                         }
 
@@ -3520,7 +3523,7 @@ ips_scmd_buf_write(struct scsi_cmnd *scmd, void *data, unsigned int count)
                 /* kmap_atomic() ensures addressability of the data buffer.*/
                 /* local_irq_save() protects the KM_IRQ0 address slot.     */
                 local_irq_save(flags);
-                buffer = kmap_atomic(sg[i].page, KM_IRQ0) + sg[i].offset;
+                buffer = kmap_atomic(sg_page(&sg[i]), KM_IRQ0) + sg[i].offset;
                 memcpy(buffer, &cdata[xfer_cnt], min_cnt);
                 kunmap_atomic(buffer - sg[i].offset, KM_IRQ0);
                 local_irq_restore(flags);
@@ -3553,7 +3556,7 @@ ips_scmd_buf_read(struct scsi_cmnd *scmd, void *data, unsigned int count)
                 /* kmap_atomic() ensures addressability of the data buffer.*/
                 /* local_irq_save() protects the KM_IRQ0 address slot.     */
                 local_irq_save(flags);
-                buffer = kmap_atomic(sg[i].page, KM_IRQ0) + sg[i].offset;
+                buffer = kmap_atomic(sg_page(&sg[i]), KM_IRQ0) + sg[i].offset;
                 memcpy(&cdata[xfer_cnt], buffer, min_cnt);
                 kunmap_atomic(buffer - sg[i].offset, KM_IRQ0);
                 local_irq_restore(flags);
@@ -6946,7 +6949,7 @@ module_exit(ips_module_exit);
 static int __devinit
 ips_insert_device(struct pci_dev *pci_dev, const struct pci_device_id *ent)
 {
-	int index;
+	int uninitialized_var(index);
 	int rc;
 
 	METHOD_TRACE("ips_insert_device", 1);

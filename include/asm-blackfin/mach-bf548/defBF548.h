@@ -120,6 +120,7 @@
 
 /* Two Wire Interface Registers (TWI1) */
 
+#define                     TWI1_REGBASE  0xffc02200
 #define                      TWI1_CLKDIV  0xffc02200   /* Clock Divider Register */
 #define                     TWI1_CONTROL  0xffc02204   /* TWI Control Register */
 #define                  TWI1_SLAVE_CTRL  0xffc02208   /* TWI Slave Mode Control Register */
@@ -139,6 +140,7 @@
 
 /* SPI2  Registers */
 
+#define                     SPI2_REGBASE  0xffc02400
 #define                         SPI2_CTL  0xffc02400   /* SPI2 Control Register */
 #define                         SPI2_FLG  0xffc02404   /* SPI2 Flag Register */
 #define                        SPI2_STAT  0xffc02408   /* SPI2 Status Register */
@@ -1005,7 +1007,7 @@
 
 /* Bit masks for HOST_STATUS */
 
-#define                     READY  0x1        /* DMA Ready */
+#define                 DMA_READY  0x1        /* DMA Ready */
 #define                  FIFOFULL  0x2        /* FIFO Full */
 #define                 FIFOEMPTY  0x4        /* FIFO Empty */
 #define                  COMPLETE  0x8        /* DMA Complete */

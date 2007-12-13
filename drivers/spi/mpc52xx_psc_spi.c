@@ -181,7 +181,7 @@ static int mpc52xx_psc_spi_transfer_rxtx(struct spi_device *spi,
 		}
 
 
-		/* enable interupts and wait for wake up
+		/* enable interrupts and wait for wake up
 		 * if just one byte is expected the Rx FIFO genererates no
 		 * FFULL interrupt, so activate the RxRDY interrupt
 		 */
@@ -503,7 +503,7 @@ static int __init mpc52xx_psc_spi_do_probe(struct device *dev, u32 regaddr,
 	INIT_LIST_HEAD(&mps->queue);
 
 	mps->workqueue = create_singlethread_workqueue(
-		master->cdev.dev->bus_id);
+		master->dev.parent->bus_id);
 	if (mps->workqueue == NULL) {
 		ret = -EBUSY;
 		goto free_irq;

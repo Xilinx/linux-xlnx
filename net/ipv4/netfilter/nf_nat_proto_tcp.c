@@ -88,12 +88,12 @@ tcp_unique_tuple(struct nf_conntrack_tuple *tuple,
 }
 
 static int
-tcp_manip_pkt(struct sk_buff **pskb,
+tcp_manip_pkt(struct sk_buff *skb,
 	      unsigned int iphdroff,
 	      const struct nf_conntrack_tuple *tuple,
 	      enum nf_nat_manip_type maniptype)
 {
-	struct iphdr *iph = (struct iphdr *)((*pskb)->data + iphdroff);
+	struct iphdr *iph = (struct iphdr *)(skb->data + iphdroff);
 	struct tcphdr *hdr;
 	unsigned int hdroff = iphdroff + iph->ihl*4;
 	__be32 oldip, newip;
@@ -103,14 +103,14 @@ tcp_manip_pkt(struct sk_buff **pskb,
 	/* this could be a inner header returned in icmp packet; in such
 	   cases we cannot update the checksum field since it is outside of
 	   the 8 bytes of transport layer headers we are guaranteed */
-	if ((*pskb)->len >= hdroff + sizeof(struct tcphdr))
+	if (skb->len >= hdroff + sizeof(struct tcphdr))
 		hdrsize = sizeof(struct tcphdr);
 
-	if (!skb_make_writable(pskb, hdroff + hdrsize))
+	if (!skb_make_writable(skb, hdroff + hdrsize))
 		return 0;
 
-	iph = (struct iphdr *)((*pskb)->data + iphdroff);
-	hdr = (struct tcphdr *)((*pskb)->data + hdroff);
+	iph = (struct iphdr *)(skb->data + iphdroff);
+	hdr = (struct tcphdr *)(skb->data + hdroff);
 
 	if (maniptype == IP_NAT_MANIP_SRC) {
 		/* Get rid of src ip and src pt */
@@ -132,8 +132,8 @@ tcp_manip_pkt(struct sk_buff **pskb,
 	if (hdrsize < sizeof(*hdr))
 		return 1;
 
-	nf_proto_csum_replace4(&hdr->check, *pskb, oldip, newip, 1);
-	nf_proto_csum_replace2(&hdr->check, *pskb, oldport, newport, 0);
+	nf_proto_csum_replace4(&hdr->check, skb, oldip, newip, 1);
+	nf_proto_csum_replace2(&hdr->check, skb, oldport, newport, 0);
 	return 1;
 }
 
@@ -145,7 +145,7 @@ struct nf_nat_protocol nf_nat_protocol_tcp = {
 	.in_range		= tcp_in_range,
 	.unique_tuple		= tcp_unique_tuple,
 #if defined(CONFIG_NF_CT_NETLINK) || defined(CONFIG_NF_CT_NETLINK_MODULE)
-	.range_to_nfattr	= nf_nat_port_range_to_nfattr,
-	.nfattr_to_range	= nf_nat_port_nfattr_to_range,
+	.range_to_nlattr	= nf_nat_port_range_to_nlattr,
+	.nlattr_to_range	= nf_nat_port_nlattr_to_range,
 #endif
 };

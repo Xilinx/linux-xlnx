@@ -55,7 +55,7 @@
 #define SMC_insw(a, r, p, l)	readsw((a) + (r), p, l)
 #define SMC_outsw(a, r, p, l)	writesw((a) + (r), p, l)
 
-#elif defined(CONFIG_BFIN)
+#elif defined(CONFIG_BLACKFIN)
 
 #define SMC_IRQ_FLAGS		IRQF_TRIGGER_HIGH
 #define RPC_LSA_DEFAULT		RPC_LED_100_10
@@ -224,6 +224,21 @@ SMC_outw(u16 val, void __iomem *ioaddr, int reg)
 	}
 }
 
+#elif defined(CONFIG_MACH_ZYLONITE)
+
+#define SMC_CAN_USE_8BIT        1
+#define SMC_CAN_USE_16BIT       1
+#define SMC_CAN_USE_32BIT       0
+#define SMC_IO_SHIFT            0
+#define SMC_NOWAIT              1
+#define SMC_USE_PXA_DMA		1
+#define SMC_inb(a, r)           readb((a) + (r))
+#define SMC_inw(a, r)           readw((a) + (r))
+#define SMC_insw(a, r, p, l)    insw((a) + (r), p, l)
+#define SMC_outsw(a, r, p, l)   outsw((a) + (r), p, l)
+#define SMC_outb(v, a, r)       writeb(v, (a) + (r))
+#define SMC_outw(v, a, r)       writew(v, (a) + (r))
+
 #elif	defined(CONFIG_ARCH_OMAP)
 
 /* We can only do 16-bit reads and writes in the static memory space. */
@@ -284,6 +299,7 @@ SMC_outw(u16 val, void __iomem *ioaddr, int reg)
 #elif   defined(CONFIG_SUPERH)
 
 #ifdef CONFIG_SOLUTION_ENGINE
+#define SMC_IRQ_FLAGS		(0)
 #define SMC_CAN_USE_8BIT       0
 #define SMC_CAN_USE_16BIT      1
 #define SMC_CAN_USE_32BIT      0
@@ -461,6 +477,52 @@ static inline void LPD7_SMC_outsw (unsigned char* a, int r,
 
 #endif
 
+
+/* store this information for the driver.. */
+struct smc_local {
+	/*
+	 * If I have to wait until memory is available to send a
+	 * packet, I will store the skbuff here, until I get the
+	 * desired memory.  Then, I'll send it out and free it.
+	 */
+	struct sk_buff *pending_tx_skb;
+	struct tasklet_struct tx_task;
+
+	/* version/revision of the SMC91x chip */
+	int	version;
+
+	/* Contains the current active transmission mode */
+	int	tcr_cur_mode;
+
+	/* Contains the current active receive mode */
+	int	rcr_cur_mode;
+
+	/* Contains the current active receive/phy mode */
+	int	rpc_cur_mode;
+	int	ctl_rfduplx;
+	int	ctl_rspeed;
+
+	u32	msg_enable;
+	u32	phy_type;
+	struct mii_if_info mii;
+
+	/* work queue */
+	struct work_struct phy_configure;
+	struct net_device *dev;
+	int	work_pending;
+
+	spinlock_t lock;
+
+#ifdef SMC_USE_PXA_DMA
+	/* DMA needs the physical address of the chip */
+	u_long physaddr;
+	struct device *device;
+#endif
+	void __iomem *base;
+	void __iomem *datacs;
+};
+
+
 #ifdef SMC_USE_PXA_DMA
 /*
  * Let's use the DMA engine on the XScale PXA2xx for RX packets. This is
@@ -475,11 +537,12 @@ static inline void LPD7_SMC_outsw (unsigned char* a, int r,
 #ifdef SMC_insl
 #undef SMC_insl
 #define SMC_insl(a, r, p, l) \
-	smc_pxa_dma_insl(a, lp->physaddr, r, dev->dma, p, l)
+	smc_pxa_dma_insl(a, lp, r, dev->dma, p, l)
 static inline void
-smc_pxa_dma_insl(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
+smc_pxa_dma_insl(void __iomem *ioaddr, struct smc_local *lp, int reg, int dma,
 		 u_char *buf, int len)
 {
+	u_long physaddr = lp->physaddr;
 	dma_addr_t dmabuf;
 
 	/* fallback if no DMA available */
@@ -496,7 +559,7 @@ smc_pxa_dma_insl(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
 	}
 
 	len *= 4;
-	dmabuf = dma_map_single(NULL, buf, len, DMA_FROM_DEVICE);
+	dmabuf = dma_map_single(lp->device, buf, len, DMA_FROM_DEVICE);
 	DCSR(dma) = DCSR_NODESC;
 	DTADR(dma) = dmabuf;
 	DSADR(dma) = physaddr + reg;
@@ -506,18 +569,19 @@ smc_pxa_dma_insl(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
 	while (!(DCSR(dma) & DCSR_STOPSTATE))
 		cpu_relax();
 	DCSR(dma) = 0;
-	dma_unmap_single(NULL, dmabuf, len, DMA_FROM_DEVICE);
+	dma_unmap_single(lp->device, dmabuf, len, DMA_FROM_DEVICE);
 }
 #endif
 
 #ifdef SMC_insw
 #undef SMC_insw
 #define SMC_insw(a, r, p, l) \
-	smc_pxa_dma_insw(a, lp->physaddr, r, dev->dma, p, l)
+	smc_pxa_dma_insw(a, lp, r, dev->dma, p, l)
 static inline void
-smc_pxa_dma_insw(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
+smc_pxa_dma_insw(void __iomem *ioaddr, struct smc_local *lp, int reg, int dma,
 		 u_char *buf, int len)
 {
+	u_long physaddr = lp->physaddr;
 	dma_addr_t dmabuf;
 
 	/* fallback if no DMA available */
@@ -534,7 +598,7 @@ smc_pxa_dma_insw(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
 	}
 
 	len *= 2;
-	dmabuf = dma_map_single(NULL, buf, len, DMA_FROM_DEVICE);
+	dmabuf = dma_map_single(lp->device, buf, len, DMA_FROM_DEVICE);
 	DCSR(dma) = DCSR_NODESC;
 	DTADR(dma) = dmabuf;
 	DSADR(dma) = physaddr + reg;
@@ -544,7 +608,7 @@ smc_pxa_dma_insw(void __iomem *ioaddr, u_long physaddr, int reg, int dma,
 	while (!(DCSR(dma) & DCSR_STOPSTATE))
 		cpu_relax();
 	DCSR(dma) = 0;
-	dma_unmap_single(NULL, dmabuf, len, DMA_FROM_DEVICE);
+	dma_unmap_single(lp->device, dmabuf, len, DMA_FROM_DEVICE);
 }
 #endif
 

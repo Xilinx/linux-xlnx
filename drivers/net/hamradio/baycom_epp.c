@@ -325,12 +325,6 @@ static int eppconfig(struct baycom_state *bc)
 
 /* ---------------------------------------------------------------------- */
 
-static void epp_interrupt(int irq, void *dev_id)
-{
-}
-
-/* ---------------------------------------------------------------------- */
-
 static inline void do_kiss_params(struct baycom_state *bc,
 				  unsigned char *data, unsigned long len)
 {
@@ -871,7 +865,7 @@ static int epp_open(struct net_device *dev)
 	}
 	memset(&bc->modem, 0, sizeof(bc->modem));
         bc->pdev = parport_register_device(pp, dev->name, NULL, epp_wakeup, 
-					epp_interrupt, PARPORT_DEV_EXCL, dev);
+					   NULL, PARPORT_DEV_EXCL, dev);
 	parport_put_port(pp);
         if (!bc->pdev) {
                 printk(KERN_ERR "%s: cannot register parport at 0x%lx\n", bc_drvname, pp->base);
@@ -1159,8 +1153,7 @@ static void baycom_probe(struct net_device *dev)
 	/* Fill in the fields of the device structure */
 	bc->skb = NULL;
 	
-	dev->hard_header = ax25_hard_header;
-	dev->rebuild_header = ax25_rebuild_header;
+	dev->header_ops = &ax25_header_ops;
 	dev->set_mac_address = baycom_set_mac_address;
 	
 	dev->type = ARPHRD_AX25;           /* AF_AX25 device */

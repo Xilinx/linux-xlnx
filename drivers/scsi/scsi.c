@@ -59,6 +59,7 @@
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/scsi_device.h>
+#include <scsi/scsi_driver.h>
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_tcq.h>
@@ -367,9 +368,8 @@ void scsi_log_send(struct scsi_cmnd *cmd)
 			scsi_print_command(cmd);
 			if (level > 3) {
 				printk(KERN_INFO "buffer = 0x%p, bufflen = %d,"
-				       " done = 0x%p, queuecommand 0x%p\n",
+				       " queuecommand 0x%p\n",
 					scsi_sglist(cmd), scsi_bufflen(cmd),
-					cmd->done,
 					cmd->device->host->hostt->queuecommand);
 
 			}
@@ -442,7 +442,7 @@ void scsi_log_completion(struct scsi_cmnd *cmd, int disposition)
 #endif
 
 /* 
- * Assign a serial number and pid to the request for error recovery
+ * Assign a serial number to the request for error recovery
  * and debugging purposes.  Protected by the Host_Lock of host.
  */
 static inline void scsi_cmd_get_serial(struct Scsi_Host *host, struct scsi_cmnd *cmd)
@@ -450,10 +450,6 @@ static inline void scsi_cmd_get_serial(struct Scsi_Host *host, struct scsi_cmnd 
 	cmd->serial_number = host->cmd_serial_number++;
 	if (cmd->serial_number == 0) 
 		cmd->serial_number = host->cmd_serial_number++;
-	
-	cmd->pid = host->cmd_pid++;
-	if (cmd->pid == 0)
-		cmd->pid = host->cmd_pid++;
 }
 
 /*
@@ -658,6 +654,12 @@ void __scsi_done(struct scsi_cmnd *cmd)
 	blk_complete_request(rq);
 }
 
+/* Move this to a header if it becomes more generally useful */
+static struct scsi_driver *scsi_cmd_to_driver(struct scsi_cmnd *cmd)
+{
+	return *(struct scsi_driver **)cmd->request->rq_disk->private_data;
+}
+
 /*
  * Function:    scsi_finish_command
  *
@@ -669,6 +671,8 @@ void scsi_finish_command(struct scsi_cmnd *cmd)
 {
 	struct scsi_device *sdev = cmd->device;
 	struct Scsi_Host *shost = sdev->host;
+	struct scsi_driver *drv;
+	unsigned int good_bytes;
 
 	scsi_device_unbusy(sdev);
 
@@ -694,7 +698,13 @@ void scsi_finish_command(struct scsi_cmnd *cmd)
 				"Notifying upper driver of completion "
 				"(result %x)\n", cmd->result));
 
-	cmd->done(cmd);
+	good_bytes = cmd->request_bufflen;
+        if (cmd->request->cmd_type != REQ_TYPE_BLOCK_PC) {
+		drv = scsi_cmd_to_driver(cmd);
+		if (drv->done)
+			good_bytes = drv->done(cmd);
+	}
+	scsi_io_completion(cmd, good_bytes);
 }
 EXPORT_SYMBOL(scsi_finish_command);
 
@@ -886,11 +896,11 @@ EXPORT_SYMBOL(__scsi_iterate_devices);
  * starget_for_each_device  -  helper to walk all devices of a target
  * @starget:	target whose devices we want to iterate over.
  *
- * This traverses over each devices of @shost.  The devices have
+ * This traverses over each device of @starget.  The devices have
  * a reference that must be released by scsi_host_put when breaking
  * out of the loop.
  */
-void starget_for_each_device(struct scsi_target *starget, void * data,
+void starget_for_each_device(struct scsi_target *starget, void *data,
 		     void (*fn)(struct scsi_device *, void *))
 {
 	struct Scsi_Host *shost = dev_to_shost(starget->dev.parent);
@@ -903,6 +913,33 @@ void starget_for_each_device(struct scsi_target *starget, void * data,
 	}
 }
 EXPORT_SYMBOL(starget_for_each_device);
+
+/**
+ * __starget_for_each_device  -  helper to walk all devices of a target
+ *				 (UNLOCKED)
+ * @starget:	target whose devices we want to iterate over.
+ *
+ * This traverses over each device of @starget.  It does _not_
+ * take a reference on the scsi_device, so the whole loop must be
+ * protected by shost->host_lock.
+ *
+ * Note:  The only reason why drivers would want to use this is because
+ * they need to access the device list in irq context.  Otherwise you
+ * really want to use starget_for_each_device instead.
+ **/
+void __starget_for_each_device(struct scsi_target *starget, void *data,
+			       void (*fn)(struct scsi_device *, void *))
+{
+	struct Scsi_Host *shost = dev_to_shost(starget->dev.parent);
+	struct scsi_device *sdev;
+
+	__shost_for_each_device(sdev, shost) {
+		if ((sdev->channel == starget->channel) &&
+		    (sdev->id == starget->id))
+			fn(sdev, data);
+	}
+}
+EXPORT_SYMBOL(__starget_for_each_device);
 
 /**
  * __scsi_device_lookup_by_target - find a device given the target (UNLOCKED)

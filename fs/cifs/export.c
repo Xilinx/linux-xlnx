@@ -43,6 +43,7 @@
 #include <linux/exportfs.h>
 #include "cifsglob.h"
 #include "cifs_debug.h"
+#include "cifsfs.h"
 
 #ifdef CONFIG_CIFS_EXPERIMENTAL
 static struct dentry *cifs_get_parent(struct dentry *dentry)
@@ -52,7 +53,7 @@ static struct dentry *cifs_get_parent(struct dentry *dentry)
 	return ERR_PTR(-EACCES);
 }
 
-struct export_operations cifs_export_ops = {
+const struct export_operations cifs_export_ops = {
 	.get_parent = cifs_get_parent,
 /*	Following five export operations are unneeded so far and can default:
 	.get_dentry =

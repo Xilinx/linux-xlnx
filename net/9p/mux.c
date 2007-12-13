@@ -31,6 +31,7 @@
 #include <linux/idr.h>
 #include <linux/mutex.h>
 #include <net/9p/9p.h>
+#include <linux/parser.h>
 #include <net/9p/transport.h>
 #include <net/9p/conn.h>
 
@@ -71,7 +72,7 @@ struct p9_conn {
 	struct p9_mux_poll_task *poll_task;
 	int msize;
 	unsigned char *extended;
-	struct p9_transport *trans;
+	struct p9_trans *trans;
 	struct p9_idpool *tagpool;
 	int err;
 	wait_queue_head_t equeue;
@@ -221,8 +222,10 @@ static int p9_mux_poll_start(struct p9_conn *m)
 	}
 
 	if (i >= ARRAY_SIZE(p9_mux_poll_tasks)) {
-		if (vptlast == NULL)
+		if (vptlast == NULL) {
+			mutex_unlock(&p9_mux_task_lock);
 			return -ENOMEM;
+		}
 
 		P9_DPRINTK(P9_DEBUG_MUX, "put in proc %d\n", i);
 		list_add(&m->mux_list, &vptlast->mux_list);
@@ -271,7 +274,7 @@ static void p9_mux_poll_stop(struct p9_conn *m)
  * @msize - maximum message size
  * @extended - pointer to the extended flag
  */
-struct p9_conn *p9_conn_create(struct p9_transport *trans, int msize,
+struct p9_conn *p9_conn_create(struct p9_trans *trans, int msize,
 				    unsigned char *extended)
 {
 	int i, n;

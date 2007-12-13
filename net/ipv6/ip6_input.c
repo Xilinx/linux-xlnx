@@ -61,6 +61,11 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 	u32 		pkt_len;
 	struct inet6_dev *idev;
 
+	if (dev->nd_net != &init_net) {
+		kfree_skb(skb);
+		return 0;
+	}
+
 	if (skb->pkt_type == PACKET_OTHERHOST) {
 		kfree_skb(skb);
 		return 0;
@@ -86,7 +91,7 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 	 *
 	 * BTW, when we send a packet for our own local address on a
 	 * non-loopback interface (e.g. ethX), it is being delivered
-	 * via the loopback interface (lo) here; skb->dev = &loopback_dev.
+	 * via the loopback interface (lo) here; skb->dev = loopback_dev.
 	 * It, however, should be considered as if it is being
 	 * arrived via the sending interface (ethX), because of the
 	 * nature of scoping architecture. --yoshfuji
@@ -120,7 +125,7 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 	}
 
 	if (hdr->nexthdr == NEXTHDR_HOP) {
-		if (ipv6_parse_hopopts(&skb) < 0) {
+		if (ipv6_parse_hopopts(skb) < 0) {
 			IP6_INC_STATS_BH(idev, IPSTATS_MIB_INHDRERRORS);
 			rcu_read_unlock();
 			return 0;
@@ -144,7 +149,7 @@ out:
  */
 
 
-static inline int ip6_input_finish(struct sk_buff *skb)
+static int ip6_input_finish(struct sk_buff *skb)
 {
 	struct inet6_protocol *ipprot;
 	struct sock *raw_sk;
@@ -194,7 +199,7 @@ resubmit:
 		    !xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
 			goto discard;
 
-		ret = ipprot->handler(&skb);
+		ret = ipprot->handler(skb);
 		if (ret > 0)
 			goto resubmit;
 		else if (ret == 0)

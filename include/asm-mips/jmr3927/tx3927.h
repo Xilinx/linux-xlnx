@@ -53,23 +53,23 @@ struct tx3927_dma_reg {
 #include <asm/byteorder.h>
 
 #ifdef __BIG_ENDIAN
-#define endian_def_s2(e1,e2)	\
-	volatile unsigned short e1,e2
-#define endian_def_sb2(e1,e2,e3)	\
-	volatile unsigned short e1;volatile unsigned char e2,e3
-#define endian_def_b2s(e1,e2,e3)	\
-	volatile unsigned char e1,e2;volatile unsigned short e3
-#define endian_def_b4(e1,e2,e3,e4)	\
-	volatile unsigned char e1,e2,e3,e4
+#define endian_def_s2(e1, e2)	\
+	volatile unsigned short e1, e2
+#define endian_def_sb2(e1, e2, e3)	\
+	volatile unsigned short e1;volatile unsigned char e2, e3
+#define endian_def_b2s(e1, e2, e3)	\
+	volatile unsigned char e1, e2;volatile unsigned short e3
+#define endian_def_b4(e1, e2, e3, e4)	\
+	volatile unsigned char e1, e2, e3, e4
 #else
-#define endian_def_s2(e1,e2)	\
-	volatile unsigned short e2,e1
-#define endian_def_sb2(e1,e2,e3)	\
-	volatile unsigned char e3,e2;volatile unsigned short e1
-#define endian_def_b2s(e1,e2,e3)	\
-	volatile unsigned short e3;volatile unsigned char e2,e1
-#define endian_def_b4(e1,e2,e3,e4)	\
-	volatile unsigned char e4,e3,e2,e1
+#define endian_def_s2(e1, e2)	\
+	volatile unsigned short e2, e1
+#define endian_def_sb2(e1, e2, e3)	\
+	volatile unsigned char e3, e2;volatile unsigned short e1
+#define endian_def_b2s(e1, e2, e3)	\
+	volatile unsigned short e3;volatile unsigned char e2, e1
+#define endian_def_b4(e1, e2, e3, e4)	\
+	volatile unsigned char e4, e3, e2, e1
 #endif
 
 struct tx3927_pcic_reg {
@@ -222,9 +222,7 @@ struct tx3927_ccfg_reg {
 #define TX3927_IR_DMA	8
 #define TX3927_IR_PIO	9
 #define TX3927_IR_PCI	10
-#define TX3927_IR_TMR0	13
-#define TX3927_IR_TMR1	14
-#define TX3927_IR_TMR2	15
+#define TX3927_IR_TMR(ch)	(13 + (ch))
 #define TX3927_NUM_IR	16
 
 /*

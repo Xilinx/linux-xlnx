@@ -98,6 +98,7 @@ struct input_absinfo {
 #define EV_PWR			0x16
 #define EV_FF_STATUS		0x17
 #define EV_MAX			0x1f
+#define EV_CNT			(EV_MAX+1)
 
 /*
  * Synchronization events.
@@ -360,6 +361,7 @@ struct input_absinfo {
 
 #define KEY_BLUETOOTH		237
 #define KEY_WLAN		238
+#define KEY_UWB			239
 
 #define KEY_UNKNOWN		240
 
@@ -522,6 +524,16 @@ struct input_absinfo {
 #define KEY_ADDRESSBOOK		0x1ad	/* AL Contacts/Address Book */
 #define KEY_MESSENGER		0x1ae	/* AL Instant Messaging */
 #define KEY_DISPLAYTOGGLE	0x1af	/* Turn display (LCD) on and off */
+#define KEY_SPELLCHECK		0x1b0   /* AL Spell Check */
+#define KEY_LOGOFF		0x1b1   /* AL Logoff */
+
+#define KEY_DOLLAR		0x1b2
+#define KEY_EURO		0x1b3
+
+#define KEY_FRAMEBACK		0x1b4	/* Consumer - transport controls */
+#define KEY_FRAMEFORWARD	0x1b5
+
+#define KEY_CONTEXT_MENU	0x1b6	/* GenDesc - system context menu */
 
 #define KEY_DEL_EOL		0x1c0
 #define KEY_DEL_EOS		0x1c1
@@ -564,6 +576,7 @@ struct input_absinfo {
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE
 #define KEY_MAX			0x1ff
+#define KEY_CNT			(KEY_MAX+1)
 
 /*
  * Relative axes
@@ -580,6 +593,7 @@ struct input_absinfo {
 #define REL_WHEEL		0x08
 #define REL_MISC		0x09
 #define REL_MAX			0x0f
+#define REL_CNT			(REL_MAX+1)
 
 /*
  * Absolute axes
@@ -612,6 +626,7 @@ struct input_absinfo {
 #define ABS_VOLUME		0x20
 #define ABS_MISC		0x28
 #define ABS_MAX			0x3f
+#define ABS_CNT			(ABS_MAX+1)
 
 /*
  * Switch events
@@ -622,6 +637,7 @@ struct input_absinfo {
 #define SW_HEADPHONE_INSERT	0x02  /* set = inserted */
 #define SW_RADIO		0x03  /* set = radio enabled */
 #define SW_MAX			0x0f
+#define SW_CNT			(SW_MAX+1)
 
 /*
  * Misc events
@@ -633,6 +649,7 @@ struct input_absinfo {
 #define MSC_RAW			0x03
 #define MSC_SCAN		0x04
 #define MSC_MAX			0x07
+#define MSC_CNT			(MSC_MAX+1)
 
 /*
  * LEDs
@@ -650,6 +667,7 @@ struct input_absinfo {
 #define LED_MAIL		0x09
 #define LED_CHARGING		0x0a
 #define LED_MAX			0x0f
+#define LED_CNT			(LED_MAX+1)
 
 /*
  * Autorepeat values
@@ -667,6 +685,7 @@ struct input_absinfo {
 #define SND_BELL		0x01
 #define SND_TONE		0x02
 #define SND_MAX			0x07
+#define SND_CNT			(SND_MAX+1)
 
 /*
  * IDs.
@@ -853,7 +872,7 @@ struct ff_rumble_effect {
  *	defining effect parameters
  *
  * This structure is sent through ioctl from the application to the driver.
- * To create a new effect aplication should set its @id to -1; the kernel
+ * To create a new effect application should set its @id to -1; the kernel
  * will return assigned @id which can later be used to update or delete
  * this effect.
  *
@@ -917,6 +936,7 @@ struct ff_effect {
 #define FF_AUTOCENTER	0x61
 
 #define FF_MAX		0x7f
+#define FF_CNT		(FF_MAX+1)
 
 #ifdef __KERNEL__
 
@@ -929,28 +949,99 @@ struct ff_effect {
 #include <linux/timer.h>
 #include <linux/mod_devicetable.h>
 
-#define NBITS(x) (((x)/BITS_PER_LONG)+1)
-#define BIT(x)	(1UL<<((x)%BITS_PER_LONG))
-#define LONG(x) ((x)/BITS_PER_LONG)
-
+/**
+ * struct input_dev - represents an input device
+ * @name: name of the device
+ * @phys: physical path to the device in the system hierarchy
+ * @uniq: unique identification code for the device (if device has it)
+ * @id: id of the device (struct input_id)
+ * @evbit: bitmap of types of events supported by the device (EV_KEY,
+ *	EV_REL, etc.)
+ * @keybit: bitmap of keys/buttons this device has
+ * @relbit: bitmap of relative axes for the device
+ * @absbit: bitmap of absolute axes for the device
+ * @mscbit: bitmap of miscellaneous events supported by the device
+ * @ledbit: bitmap of leds present on the device
+ * @sndbit: bitmap of sound effects supported by the device
+ * @ffbit: bitmap of force feedback effects supported by the device
+ * @swbit: bitmap of switches present on the device
+ * @keycodemax: size of keycode table
+ * @keycodesize: size of elements in keycode table
+ * @keycode: map of scancodes to keycodes for this device
+ * @setkeycode: optional method to alter current keymap, used to implement
+ *	sparse keymaps. If not supplied default mechanism will be used
+ * @getkeycode: optional method to retrieve current keymap. If not supplied
+ *	default mechanism will be used
+ * @ff: force feedback structure associated with the device if device
+ *	supports force feedback effects
+ * @repeat_key: stores key code of the last key pressed; used to implement
+ *	software autorepeat
+ * @timer: timer for software autorepeat
+ * @sync: set to 1 when there were no new events since last EV_SYNC
+ * @abs: current values for reports from absolute axes
+ * @rep: current values for autorepeat parameters (delay, rate)
+ * @key: reflects current state of device's keys/buttons
+ * @led: reflects current state of device's LEDs
+ * @snd: reflects current state of sound effects
+ * @sw: reflects current state of device's switches
+ * @absmax: maximum values for events coming from absolute axes
+ * @absmin: minimum values for events coming from absolute axes
+ * @absfuzz: describes noisiness for axes
+ * @absflat: size of the center flat position (used by joydev)
+ * @open: this method is called when the very first user calls
+ *	input_open_device(). The driver must prepare the device
+ *	to start generating events (start polling thread,
+ *	request an IRQ, submit URB, etc.)
+ * @close: this method is called when the very last user calls
+ *	input_close_device().
+ * @flush: purges the device. Most commonly used to get rid of force
+ *	feedback effects loaded into the device when disconnecting
+ *	from it
+ * @event: event handler for events sent _to_ the device, like EV_LED
+ *	or EV_SND. The device is expected to carry out the requested
+ *	action (turn on a LED, play sound, etc.) The call is protected
+ *	by @event_lock and must not sleep
+ * @grab: input handle that currently has the device grabbed (via
+ *	EVIOCGRAB ioctl). When a handle grabs a device it becomes sole
+ *	recipient for all input events coming from the device
+ * @event_lock: this spinlock is is taken when input core receives
+ *	and processes a new event for the device (in input_event()).
+ *	Code that accesses and/or modifies parameters of a device
+ *	(such as keymap or absmin, absmax, absfuzz, etc.) after device
+ *	has been registered with input core must take this lock.
+ * @mutex: serializes calls to open(), close() and flush() methods
+ * @users: stores number of users (input handlers) that opened this
+ *	device. It is used by input_open_device() and input_close_device()
+ *	to make sure that dev->open() is only called when the first
+ *	user opens device and dev->close() is called when the very
+ *	last user closes the device
+ * @going_away: marks devices that are in a middle of unregistering and
+ *	causes input_open_device*() fail with -ENODEV.
+ * @dev: driver model's view of this device
+ * @cdev: union for struct device pointer
+ * @h_list: list of input handles associated with the device. When
+ *	accessing the list dev->mutex must be held
+ * @node: used to place the device onto input_dev_list
+ */
 struct input_dev {
-
-	void *private;
+	/* private: */
+	void *private;	/* do not use */
+	/* public: */
 
 	const char *name;
 	const char *phys;
 	const char *uniq;
 	struct input_id id;
 
-	unsigned long evbit[NBITS(EV_MAX)];
-	unsigned long keybit[NBITS(KEY_MAX)];
-	unsigned long relbit[NBITS(REL_MAX)];
-	unsigned long absbit[NBITS(ABS_MAX)];
-	unsigned long mscbit[NBITS(MSC_MAX)];
-	unsigned long ledbit[NBITS(LED_MAX)];
-	unsigned long sndbit[NBITS(SND_MAX)];
-	unsigned long ffbit[NBITS(FF_MAX)];
-	unsigned long swbit[NBITS(SW_MAX)];
+	unsigned long evbit[BITS_TO_LONGS(EV_CNT)];
+	unsigned long keybit[BITS_TO_LONGS(KEY_CNT)];
+	unsigned long relbit[BITS_TO_LONGS(REL_CNT)];
+	unsigned long absbit[BITS_TO_LONGS(ABS_CNT)];
+	unsigned long mscbit[BITS_TO_LONGS(MSC_CNT)];
+	unsigned long ledbit[BITS_TO_LONGS(LED_CNT)];
+	unsigned long sndbit[BITS_TO_LONGS(SND_CNT)];
+	unsigned long ffbit[BITS_TO_LONGS(FF_CNT)];
+	unsigned long swbit[BITS_TO_LONGS(SW_CNT)];
 
 	unsigned int keycodemax;
 	unsigned int keycodesize;
@@ -963,17 +1054,15 @@ struct input_dev {
 	unsigned int repeat_key;
 	struct timer_list timer;
 
-	int state;
-
 	int sync;
 
 	int abs[ABS_MAX + 1];
 	int rep[REP_MAX + 1];
 
-	unsigned long key[NBITS(KEY_MAX)];
-	unsigned long led[NBITS(LED_MAX)];
-	unsigned long snd[NBITS(SND_MAX)];
-	unsigned long sw[NBITS(SW_MAX)];
+	unsigned long key[BITS_TO_LONGS(KEY_CNT)];
+	unsigned long led[BITS_TO_LONGS(LED_CNT)];
+	unsigned long snd[BITS_TO_LONGS(SND_CNT)];
+	unsigned long sw[BITS_TO_LONGS(SW_CNT)];
 
 	int absmax[ABS_MAX + 1];
 	int absmin[ABS_MAX + 1];
@@ -987,8 +1076,11 @@ struct input_dev {
 
 	struct input_handle *grab;
 
-	struct mutex mutex;	/* serializes open and close operations */
+	spinlock_t event_lock;
+	struct mutex mutex;
+
 	unsigned int users;
+	int going_away;
 
 	struct device dev;
 	union {			/* temporarily so while we switching to struct device */
@@ -1054,7 +1146,9 @@ struct input_handle;
 /**
  * struct input_handler - implements one of interfaces for input devices
  * @private: driver-specific data
- * @event: event handler
+ * @event: event handler. This method is being called by input core with
+ *	interrupts disabled and dev->event_lock spinlock held and so
+ *	it may not sleep
  * @connect: called when attaching a handler to an input device
  * @disconnect: disconnects a handler from input device
  * @start: starts handler for given handle. This function is called by
@@ -1066,10 +1160,18 @@ struct input_handle;
  * @name: name of the handler, to be shown in /proc/bus/input/handlers
  * @id_table: pointer to a table of input_device_ids this driver can
  *	handle
- * @blacklist: prointer to a table of input_device_ids this driver should
+ * @blacklist: pointer to a table of input_device_ids this driver should
  *	ignore even if they match @id_table
  * @h_list: list of input handles associated with the handler
  * @node: for placing the driver onto input_handler_list
+ *
+ * Input handlers attach to input devices and create input handles. There
+ * are likely several handlers attached to any given input device at the
+ * same time. All of them will get their copy of input event generated by
+ * the device.
+ *
+ * Note that input core serializes calls to connect() and disconnect()
+ * methods.
  */
 struct input_handler {
 
@@ -1091,6 +1193,18 @@ struct input_handler {
 	struct list_head	node;
 };
 
+/**
+ * struct input_handle - links input device with an input handler
+ * @private: handler-specific data
+ * @open: counter showing whether the handle is 'open', i.e. should deliver
+ *	events from its device
+ * @name: name given to the handle by handler that created it
+ * @dev: input device the handle is attached to
+ * @handler: handler that works with the device through this handle
+ * @d_node: used to put the handle on device's list of attached handles
+ * @h_node: used to put the handle on handler's list of handles from which
+ *	it gets events
+ */
 struct input_handle {
 
 	void *private;
@@ -1133,10 +1247,10 @@ static inline void input_set_drvdata(struct input_dev *dev, void *data)
 	dev->private = data;
 }
 
-int input_register_device(struct input_dev *);
+int __must_check input_register_device(struct input_dev *);
 void input_unregister_device(struct input_dev *);
 
-int input_register_handler(struct input_handler *);
+int __must_check input_register_handler(struct input_handler *);
 void input_unregister_handler(struct input_handler *);
 
 int input_register_handle(struct input_handle *);
@@ -1192,7 +1306,7 @@ static inline void input_set_abs_params(struct input_dev *dev, int axis, int min
 	dev->absfuzz[axis] = fuzz;
 	dev->absflat[axis] = flat;
 
-	dev->absbit[LONG(axis)] |= BIT(axis);
+	dev->absbit[BIT_WORD(axis)] |= BIT_MASK(axis);
 }
 
 extern struct class input_class;
@@ -1213,7 +1327,7 @@ extern struct class input_class;
  * @max_effects: maximum number of effects supported by device
  * @effects: pointer to an array of effects currently loaded into device
  * @effect_owners: array of effect owners; when file handle owning
- *	an effect gets closed the effcet is automatically erased
+ *	an effect gets closed the effect is automatically erased
  *
  * Every force-feedback device must implement upload() and playback()
  * methods; erase() is optional. set_gain() and set_autocenter() need
@@ -1233,7 +1347,7 @@ struct ff_device {
 
 	void *private;
 
-	unsigned long ffbit[NBITS(FF_MAX)];
+	unsigned long ffbit[BITS_TO_LONGS(FF_CNT)];
 
 	struct mutex mutex;
 

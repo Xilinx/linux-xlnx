@@ -16,7 +16,7 @@
  *
  *	If you have strange problems with nVidia chipset systems please
  *	see the SI support documentation and update your system BIOS
- *	if neccessary
+ *	if necessary
  *
  * TODO
  *	If we know all our devices are LBA28 (or LBA28 sized)  we could use
@@ -33,7 +33,7 @@
 #include <linux/libata.h>
 
 #define DRV_NAME "pata_sil680"
-#define DRV_VERSION "0.4.7"
+#define DRV_VERSION "0.4.8"
 
 #define SIL680_MMIO_BAR		5
 
@@ -91,33 +91,6 @@ static int sil680_cable_detect(struct ata_port *ap) {
 		return ATA_CBL_PATA80;
 	else
 		return ATA_CBL_PATA40;
-}
-
-/**
- *	sil680_bus_reset	-	reset the SIL680 bus
- *	@ap: ATA port to reset
- *	@deadline: deadline jiffies for the operation
- *
- *	Perform the SIL680 housekeeping when doing an ATA bus reset
- */
-
-static int sil680_bus_reset(struct ata_port *ap,unsigned int *classes,
-			    unsigned long deadline)
-{
-	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
-	unsigned long addr = sil680_selreg(ap, 0);
-	u8 reset;
-
-	pci_read_config_byte(pdev, addr, &reset);
-	pci_write_config_byte(pdev, addr, reset | 0x03);
-	udelay(25);
-	pci_write_config_byte(pdev, addr, reset);
-	return ata_std_softreset(ap, classes, deadline);
-}
-
-static void sil680_error_handler(struct ata_port *ap)
-{
-	ata_bmdma_drive_eh(ap, ata_std_prereset, sil680_bus_reset, NULL, ata_std_postreset);
 }
 
 /**
@@ -237,7 +210,6 @@ static struct scsi_host_template sil680_sht = {
 };
 
 static struct ata_port_operations sil680_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= sil680_set_piomode,
 	.set_dmamode	= sil680_set_dmamode,
 	.mode_filter	= ata_pci_default_filter,
@@ -249,7 +221,7 @@ static struct ata_port_operations sil680_port_ops = {
 
 	.freeze		= ata_bmdma_freeze,
 	.thaw		= ata_bmdma_thaw,
-	.error_handler	= sil680_error_handler,
+	.error_handler	= ata_bmdma_error_handler,
 	.post_internal_cmd = ata_bmdma_post_internal_cmd,
 	.cable_detect	= sil680_cable_detect,
 
@@ -266,9 +238,8 @@ static struct ata_port_operations sil680_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /**
@@ -280,7 +251,7 @@ static struct ata_port_operations sil680_port_ops = {
  *	Returns the final clock settings.
  */
 
-static u8 sil680_init_chip(struct pci_dev *pdev)
+static u8 sil680_init_chip(struct pci_dev *pdev, int *try_mmio)
 {
 	u32 class_rev	= 0;
 	u8 tmpbyte	= 0;
@@ -297,6 +268,8 @@ static u8 sil680_init_chip(struct pci_dev *pdev)
 
 	dev_dbg(&pdev->dev, "sil680: BA5_EN = %d clock = %02X\n",
 		tmpbyte & 1, tmpbyte & 0x30);
+
+	*try_mmio = (tmpbyte & 1) || pci_resource_start(pdev, 5);
 
 	switch(tmpbyte & 0x30) {
 		case 0x00:
@@ -362,25 +335,76 @@ static int __devinit sil680_init_one(struct pci_dev *pdev,
 	};
 	const struct ata_port_info *ppi[] = { &info, NULL };
 	static int printed_version;
+	struct ata_host *host;
+	void __iomem *mmio_base;
+	int rc, try_mmio;
 
 	if (!printed_version++)
 		dev_printk(KERN_DEBUG, &pdev->dev, "version " DRV_VERSION "\n");
 
-	switch(sil680_init_chip(pdev))
-	{
+	switch (sil680_init_chip(pdev, &try_mmio)) {
 		case 0:
 			ppi[0] = &info_slow;
 			break;
 		case 0x30:
 			return -ENODEV;
 	}
+
+	if (!try_mmio)
+		goto use_ioports;
+
+	/* Try to acquire MMIO resources and fallback to PIO if
+	 * that fails
+	 */
+	rc = pcim_enable_device(pdev);
+	if (rc)
+		return rc;
+	rc = pcim_iomap_regions(pdev, 1 << SIL680_MMIO_BAR, DRV_NAME);
+	if (rc)
+		goto use_ioports;
+
+	/* Allocate host and set it up */
+	host = ata_host_alloc_pinfo(&pdev->dev, ppi, 2);
+	if (!host)
+		return -ENOMEM;
+	host->iomap = pcim_iomap_table(pdev);
+
+	/* Setup DMA masks */
+	rc = pci_set_dma_mask(pdev, ATA_DMA_MASK);
+	if (rc)
+		return rc;
+	rc = pci_set_consistent_dma_mask(pdev, ATA_DMA_MASK);
+	if (rc)
+		return rc;
+	pci_set_master(pdev);
+
+	/* Get MMIO base and initialize port addresses */
+	mmio_base = host->iomap[SIL680_MMIO_BAR];
+	host->ports[0]->ioaddr.bmdma_addr = mmio_base + 0x00;
+	host->ports[0]->ioaddr.cmd_addr = mmio_base + 0x80;
+	host->ports[0]->ioaddr.ctl_addr = mmio_base + 0x8a;
+	host->ports[0]->ioaddr.altstatus_addr = mmio_base + 0x8a;
+	ata_std_ports(&host->ports[0]->ioaddr);
+	host->ports[1]->ioaddr.bmdma_addr = mmio_base + 0x08;
+	host->ports[1]->ioaddr.cmd_addr = mmio_base + 0xc0;
+	host->ports[1]->ioaddr.ctl_addr = mmio_base + 0xca;
+	host->ports[1]->ioaddr.altstatus_addr = mmio_base + 0xca;
+	ata_std_ports(&host->ports[1]->ioaddr);
+
+	/* Register & activate */
+	return ata_host_activate(host, pdev->irq, ata_interrupt, IRQF_SHARED,
+				 &sil680_sht);
+
+use_ioports:
 	return ata_pci_init_one(pdev, ppi);
 }
 
 #ifdef CONFIG_PM
 static int sil680_reinit_one(struct pci_dev *pdev)
 {
-	sil680_init_chip(pdev);
+	int try_mmio;
+
+	sil680_init_chip(pdev, &try_mmio);
 	return ata_pci_device_resume(pdev);
 }
 #endif

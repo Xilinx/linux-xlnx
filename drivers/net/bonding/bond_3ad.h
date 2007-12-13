@@ -92,7 +92,7 @@ typedef enum {
 typedef enum {
 	AD_MARKER_INFORMATION_SUBTYPE = 1, // marker imformation subtype
 	AD_MARKER_RESPONSE_SUBTYPE     // marker response subtype
-} marker_subtype_t;
+} bond_marker_subtype_t;
 
 // timers types(43.4.9 in the 802.3ad standard)
 typedef enum {
@@ -108,7 +108,7 @@ typedef enum {
 typedef struct ad_header {
 	struct mac_addr destination_address;
 	struct mac_addr source_address;
-	u16 length_type;
+	__be16 length_type;
 } ad_header_t;
 
 // Link Aggregation Control Protocol(LACP) data unit structure(43.4.2.2 in the 802.3ad standard)
@@ -117,25 +117,25 @@ typedef struct lacpdu {
 	u8 version_number;
 	u8 tlv_type_actor_info;	      // = actor information(type/length/value)
 	u8 actor_information_length; // = 20
-	u16 actor_system_priority;
+	__be16 actor_system_priority;
 	struct mac_addr actor_system;
-	u16 actor_key;
-	u16 actor_port_priority;
-	u16 actor_port;
+	__be16 actor_key;
+	__be16 actor_port_priority;
+	__be16 actor_port;
 	u8 actor_state;
 	u8 reserved_3_1[3];	     // = 0
 	u8 tlv_type_partner_info;     // = partner information
 	u8 partner_information_length;	 // = 20
-	u16 partner_system_priority;
+	__be16 partner_system_priority;
 	struct mac_addr partner_system;
-	u16 partner_key;
-	u16 partner_port_priority;
-	u16 partner_port;
+	__be16 partner_key;
+	__be16 partner_port_priority;
+	__be16 partner_port;
 	u8 partner_state;
 	u8 reserved_3_2[3];	     // = 0
 	u8 tlv_type_collector_info;	  // = collector information
 	u8 collector_information_length; // = 16
-	u16 collector_max_delay;
+	__be16 collector_max_delay;
 	u8 reserved_12[12];
 	u8 tlv_type_terminator;	     // = terminator
 	u8 terminator_length;	     // = 0
@@ -148,7 +148,7 @@ typedef struct lacpdu_header {
 } lacpdu_header_t;
 
 // Marker Protocol Data Unit(PDU) structure(43.5.3.2 in the 802.3ad standard)
-typedef struct marker {
+typedef struct bond_marker {
 	u8 subtype;		 //  = 0x02  (marker PDU)
 	u8 version_number;	 //  = 0x01
 	u8 tlv_type;		 //  = 0x01  (marker information)
@@ -161,12 +161,12 @@ typedef struct marker {
 	u8 tlv_type_terminator;	     //  = 0x00
 	u8 terminator_length;	     //  = 0x00
 	u8 reserved_90[90];	     //  = 0
-} marker_t;
+} bond_marker_t;
 
-typedef struct marker_header {
+typedef struct bond_marker_header {
 	struct ad_header ad_header;
-	struct marker marker;
-} marker_header_t;
+	struct bond_marker marker;
+} bond_marker_header_t;
 
 #pragma pack()
 
@@ -276,7 +276,7 @@ struct ad_slave_info {
 void bond_3ad_initialize(struct bonding *bond, u16 tick_resolution, int lacp_fast);
 int  bond_3ad_bind_slave(struct slave *slave);
 void bond_3ad_unbind_slave(struct slave *slave);
-void bond_3ad_state_machine_handler(struct bonding *bond);
+void bond_3ad_state_machine_handler(struct work_struct *);
 void bond_3ad_adapter_speed_changed(struct slave *slave);
 void bond_3ad_adapter_duplex_changed(struct slave *slave);
 void bond_3ad_handle_link_change(struct slave *slave, char link);

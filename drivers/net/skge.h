@@ -1,5 +1,5 @@
 /*
- * Definitions for the new Marvell Yukon / SysKonenct driver.
+ * Definitions for the new Marvell Yukon / SysKonnect driver.
  */
 #ifndef _SKGE_H
 #define _SKGE_H
@@ -8,8 +8,10 @@
 #define PCI_DEV_REG1	0x40
 #define  PCI_PHY_COMA	0x8000000
 #define  PCI_VIO	0x2000000
+
 #define PCI_DEV_REG2	0x44
-#define  PCI_REV_DESC	 0x4
+#define  PCI_VPD_ROM_SZ	7L<<14	/* VPD ROM size 0=256, 1=512, ... */
+#define  PCI_REV_DESC	1<<2	/* Reverse Descriptor bytes */
 
 #define PCI_STATUS_ERROR_BITS (PCI_STATUS_DETECTED_PARITY | \
 			       PCI_STATUS_SIG_SYSTEM_ERROR | \
@@ -1351,8 +1353,6 @@ enum {
 	PHY_M_PC_EN_DET_PLUS	= 3<<8, /* Energy Detect Plus (Mode 2) */
 };
 
-#define PHY_M_PC_MDI_XMODE(x)	((((u16)(x)<<5) & PHY_M_PC_MDIX_MSK)
-
 enum {
 	PHY_M_PC_MAN_MDI	= 0, /* 00 = Manual MDI configuration */
 	PHY_M_PC_MAN_MDIX	= 1, /* 01 = Manual MDIX configuration */
@@ -2193,11 +2193,9 @@ enum {
 	XM_IS_TXF_UR	= 1<<2,	/* Bit  2:	Transmit FIFO Underrun */
 	XM_IS_TX_COMP	= 1<<1,	/* Bit  1:	Frame Tx Complete */
 	XM_IS_RX_COMP	= 1<<0,	/* Bit  0:	Frame Rx Complete */
+
+	XM_IMSK_DISABLE	= 0xffff,
 };
-
-#define XM_DEF_MSK	(~(XM_IS_INP_ASS | XM_IS_LIPA_RC | \
-			   XM_IS_RXF_OV | XM_IS_TXF_UR))
-
 
 /*	XM_HW_CFG	16 bit r/w	Hardware Config Register */
 enum {
@@ -2448,6 +2446,7 @@ enum pause_status {
 struct skge_port {
 	struct skge_hw	     *hw;
 	struct net_device    *netdev;
+	struct napi_struct   napi;
 	int		     port;
 	u32		     msg_enable;
 
@@ -2470,8 +2469,9 @@ struct skge_port {
 	void		     *mem;	/* PCI memory for rings */
 	dma_addr_t	     dma;
 	unsigned long	     mem_size;
-
-	struct net_device_stats net_stats;
+#ifdef CONFIG_SKGE_DEBUG
+	struct dentry	     *debugfs;
+#endif
 };
 
 

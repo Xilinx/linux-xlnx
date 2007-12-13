@@ -204,12 +204,13 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,
 	const __portpair ports = INET_COMBINED_PORTS(inet->dport, lport);
 	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);
 	struct inet_ehash_bucket *head = inet_ehash_bucket(hinfo, hash);
+	rwlock_t *lock = inet_ehash_lockp(hinfo, hash);
 	struct sock *sk2;
 	const struct hlist_node *node;
 	struct inet_timewait_sock *tw;
 
 	prefetch(head->chain.first);
-	write_lock(&head->lock);
+	write_lock(lock);
 
 	/* Check TIME-WAIT sockets first. */
 	sk_for_each(sk2, node, &head->twchain) {
@@ -239,7 +240,7 @@ unique:
 	BUG_TRAP(sk_unhashed(sk));
 	__sk_add_node(sk, &head->chain);
 	sock_prot_inc_use(sk->sk_prot);
-	write_unlock(&head->lock);
+	write_unlock(lock);
 
 	if (twp) {
 		*twp = tw;
@@ -255,7 +256,7 @@ unique:
 	return 0;
 
 not_unique:
-	write_unlock(&head->lock);
+	write_unlock(lock);
 	return -EADDRNOTAVAIL;
 }
 
@@ -279,19 +280,18 @@ int inet_hash_connect(struct inet_timewait_death_row *death_row,
 	int ret;
 
 	if (!snum) {
-		int low = sysctl_local_port_range[0];
-		int high = sysctl_local_port_range[1];
-		int range = high - low;
-		int i;
-		int port;
+		int i, remaining, low, high, port;
 		static u32 hint;
 		u32 offset = hint + inet_sk_port_offset(sk);
 		struct hlist_node *node;
 		struct inet_timewait_sock *tw = NULL;
 
+		inet_get_local_port_range(&low, &high);
+		remaining = (high - low) + 1;
+
 		local_bh_disable();
-		for (i = 1; i <= range; i++) {
-			port = low + (i + offset) % range;
+		for (i = 1; i <= remaining; i++) {
+			port = low + (i + offset) % remaining;
 			head = &hinfo->bhash[inet_bhashfn(port, hinfo->bhash_size)];
 			spin_lock(&head->lock);
 

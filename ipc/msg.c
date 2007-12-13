@@ -34,7 +34,7 @@
 #include <linux/syscalls.h>
 #include <linux/audit.h>
 #include <linux/seq_file.h>
-#include <linux/mutex.h>
+#include <linux/rwsem.h>
 #include <linux/nsproxy.h>
 
 #include <asm/current.h>
@@ -66,23 +66,15 @@ struct msg_sender {
 #define SEARCH_NOTEQUAL		3
 #define SEARCH_LESSEQUAL	4
 
-static atomic_t msg_bytes =	ATOMIC_INIT(0);
-static atomic_t msg_hdrs =	ATOMIC_INIT(0);
-
 static struct ipc_ids init_msg_ids;
 
 #define msg_ids(ns)	(*((ns)->ids[IPC_MSG_IDS]))
 
-#define msg_lock(ns, id)	((struct msg_queue*)ipc_lock(&msg_ids(ns), id))
 #define msg_unlock(msq)		ipc_unlock(&(msq)->q_perm)
-#define msg_rmid(ns, id)	((struct msg_queue*)ipc_rmid(&msg_ids(ns), id))
-#define msg_checkid(ns, msq, msgid)	\
-	ipc_checkid(&msg_ids(ns), &msq->q_perm, msgid)
-#define msg_buildid(ns, id, seq) \
-	ipc_buildid(&msg_ids(ns), id, seq)
+#define msg_buildid(id, seq)	ipc_buildid(id, seq)
 
-static void freeque (struct ipc_namespace *ns, struct msg_queue *msq, int id);
-static int newque (struct ipc_namespace *ns, key_t key, int msgflg);
+static void freeque(struct ipc_namespace *, struct msg_queue *);
+static int newque(struct ipc_namespace *, struct ipc_params *);
 #ifdef CONFIG_PROC_FS
 static int sysvipc_msg_proc_show(struct seq_file *s, void *it);
 #endif
@@ -93,7 +85,9 @@ static void __msg_init_ns(struct ipc_namespace *ns, struct ipc_ids *ids)
 	ns->msg_ctlmax = MSGMAX;
 	ns->msg_ctlmnb = MSGMNB;
 	ns->msg_ctlmni = MSGMNI;
-	ipc_init_ids(ids, ns->msg_ctlmni);
+	atomic_set(&ns->msg_bytes, 0);
+	atomic_set(&ns->msg_hdrs, 0);
+	ipc_init_ids(ids);
 }
 
 int msg_init_ns(struct ipc_namespace *ns)
@@ -110,20 +104,25 @@ int msg_init_ns(struct ipc_namespace *ns)
 
 void msg_exit_ns(struct ipc_namespace *ns)
 {
-	int i;
 	struct msg_queue *msq;
+	int next_id;
+	int total, in_use;
 
-	mutex_lock(&msg_ids(ns).mutex);
-	for (i = 0; i <= msg_ids(ns).max_id; i++) {
-		msq = msg_lock(ns, i);
+	down_write(&msg_ids(ns).rw_mutex);
+
+	in_use = msg_ids(ns).in_use;
+
+	for (total = 0, next_id = 0; total < in_use; next_id++) {
+		msq = idr_find(&msg_ids(ns).ipcs_idr, next_id);
 		if (msq == NULL)
 			continue;
-
-		freeque(ns, msq, i);
+		ipc_lock_by_ptr(&msq->q_perm);
+		freeque(ns, msq);
+		total++;
 	}
-	mutex_unlock(&msg_ids(ns).mutex);
 
-	ipc_fini_ids(ns->ids[IPC_MSG_IDS]);
+	up_write(&msg_ids(ns).rw_mutex);
+
 	kfree(ns->ids[IPC_MSG_IDS]);
 	ns->ids[IPC_MSG_IDS] = NULL;
 }
@@ -136,10 +135,55 @@ void __init msg_init(void)
 				IPC_MSG_IDS, sysvipc_msg_proc_show);
 }
 
-static int newque (struct ipc_namespace *ns, key_t key, int msgflg)
+/*
+ * This routine is called in the paths where the rw_mutex is held to protect
+ * access to the idr tree.
+ */
+static inline struct msg_queue *msg_lock_check_down(struct ipc_namespace *ns,
+						int id)
+{
+	struct kern_ipc_perm *ipcp = ipc_lock_check_down(&msg_ids(ns), id);
+
+	return container_of(ipcp, struct msg_queue, q_perm);
+}
+
+/*
+ * msg_lock_(check_) routines are called in the paths where the rw_mutex
+ * is not held.
+ */
+static inline struct msg_queue *msg_lock(struct ipc_namespace *ns, int id)
+{
+	struct kern_ipc_perm *ipcp = ipc_lock(&msg_ids(ns), id);
+
+	return container_of(ipcp, struct msg_queue, q_perm);
+}
+
+static inline struct msg_queue *msg_lock_check(struct ipc_namespace *ns,
+						int id)
+{
+	struct kern_ipc_perm *ipcp = ipc_lock_check(&msg_ids(ns), id);
+
+	return container_of(ipcp, struct msg_queue, q_perm);
+}
+
+static inline void msg_rmid(struct ipc_namespace *ns, struct msg_queue *s)
+{
+	ipc_rmid(&msg_ids(ns), &s->q_perm);
+}
+
+/**
+ * newque - Create a new msg queue
+ * @ns: namespace
+ * @params: ptr to the structure that contains the key and msgflg
+ *
+ * Called with msg_ids.rw_mutex held (writer)
+ */
+static int newque(struct ipc_namespace *ns, struct ipc_params *params)
 {
 	struct msg_queue *msq;
 	int id, retval;
+	key_t key = params->key;
+	int msgflg = params->flg;
 
 	msq = ipc_rcu_alloc(sizeof(*msq));
 	if (!msq)
@@ -155,14 +199,17 @@ static int newque (struct ipc_namespace *ns, key_t key, int msgflg)
 		return retval;
 	}
 
+	/*
+	 * ipc_addid() locks msq
+	 */
 	id = ipc_addid(&msg_ids(ns), &msq->q_perm, ns->msg_ctlmni);
-	if (id == -1) {
+	if (id < 0) {
 		security_msg_queue_free(msq);
 		ipc_rcu_putref(msq);
-		return -ENOSPC;
+		return id;
 	}
 
-	msq->q_id = msg_buildid(ns, id, msq->q_perm.seq);
+	msq->q_perm.id = msg_buildid(id, msq->q_perm.seq);
 	msq->q_stime = msq->q_rtime = 0;
 	msq->q_ctime = get_seconds();
 	msq->q_cbytes = msq->q_qnum = 0;
@@ -171,9 +218,10 @@ static int newque (struct ipc_namespace *ns, key_t key, int msgflg)
 	INIT_LIST_HEAD(&msq->q_messages);
 	INIT_LIST_HEAD(&msq->q_receivers);
 	INIT_LIST_HEAD(&msq->q_senders);
+
 	msg_unlock(msq);
 
-	return msq->q_id;
+	return msq->q_perm.id;
 }
 
 static inline void ss_add(struct msg_queue *msq, struct msg_sender *mss)
@@ -224,19 +272,19 @@ static void expunge_all(struct msg_queue *msq, int res)
 
 /*
  * freeque() wakes up waiters on the sender and receiver waiting queue,
- * removes the message queue from message queue ID
- * array, and cleans up all the messages associated with this queue.
+ * removes the message queue from message queue ID IDR, and cleans up all the
+ * messages associated with this queue.
  *
- * msg_ids.mutex and the spinlock for this message queue is hold
- * before freeque() is called. msg_ids.mutex remains locked on exit.
+ * msg_ids.rw_mutex (writer) and the spinlock for this message queue are held
+ * before freeque() is called. msg_ids.rw_mutex remains locked on exit.
  */
-static void freeque(struct ipc_namespace *ns, struct msg_queue *msq, int id)
+static void freeque(struct ipc_namespace *ns, struct msg_queue *msq)
 {
 	struct list_head *tmp;
 
 	expunge_all(msq, -EIDRM);
 	ss_wakeup(&msq->q_senders, 1);
-	msq = msg_rmid(ns, id);
+	msg_rmid(ns, msq);
 	msg_unlock(msq);
 
 	tmp = msq->q_messages.next;
@@ -244,49 +292,40 @@ static void freeque(struct ipc_namespace *ns, struct msg_queue *msq, int id)
 		struct msg_msg *msg = list_entry(tmp, struct msg_msg, m_list);
 
 		tmp = tmp->next;
-		atomic_dec(&msg_hdrs);
+		atomic_dec(&ns->msg_hdrs);
 		free_msg(msg);
 	}
-	atomic_sub(msq->q_cbytes, &msg_bytes);
+	atomic_sub(msq->q_cbytes, &ns->msg_bytes);
 	security_msg_queue_free(msq);
 	ipc_rcu_putref(msq);
 }
 
+/*
+ * Called with msg_ids.rw_mutex and ipcp locked.
+ */
+static inline int msg_security(struct kern_ipc_perm *ipcp, int msgflg)
+{
+	struct msg_queue *msq = container_of(ipcp, struct msg_queue, q_perm);
+
+	return security_msg_queue_associate(msq, msgflg);
+}
+
 asmlinkage long sys_msgget(key_t key, int msgflg)
 {
-	struct msg_queue *msq;
-	int id, ret = -EPERM;
 	struct ipc_namespace *ns;
+	struct ipc_ops msg_ops;
+	struct ipc_params msg_params;
 
 	ns = current->nsproxy->ipc_ns;
-	
-	mutex_lock(&msg_ids(ns).mutex);
-	if (key == IPC_PRIVATE) 
-		ret = newque(ns, key, msgflg);
-	else if ((id = ipc_findkey(&msg_ids(ns), key)) == -1) { /* key not used */
-		if (!(msgflg & IPC_CREAT))
-			ret = -ENOENT;
-		else
-			ret = newque(ns, key, msgflg);
-	} else if (msgflg & IPC_CREAT && msgflg & IPC_EXCL) {
-		ret = -EEXIST;
-	} else {
-		msq = msg_lock(ns, id);
-		BUG_ON(msq == NULL);
-		if (ipcperms(&msq->q_perm, msgflg))
-			ret = -EACCES;
-		else {
-			int qid = msg_buildid(ns, id, msq->q_perm.seq);
 
-			ret = security_msg_queue_associate(msq, msgflg);
-			if (!ret)
-				ret = qid;
-		}
-		msg_unlock(msq);
-	}
-	mutex_unlock(&msg_ids(ns).mutex);
+	msg_ops.getnew = newque;
+	msg_ops.associate = msg_security;
+	msg_ops.more_checks = NULL;
 
-	return ret;
+	msg_params.key = key;
+	msg_params.flg = msgflg;
+
+	return ipcget(ns, &msg_ids(ns), &msg_ops, &msg_params);
 }
 
 static inline unsigned long
@@ -420,23 +459,23 @@ asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 		msginfo.msgmnb = ns->msg_ctlmnb;
 		msginfo.msgssz = MSGSSZ;
 		msginfo.msgseg = MSGSEG;
-		mutex_lock(&msg_ids(ns).mutex);
+		down_read(&msg_ids(ns).rw_mutex);
 		if (cmd == MSG_INFO) {
 			msginfo.msgpool = msg_ids(ns).in_use;
-			msginfo.msgmap = atomic_read(&msg_hdrs);
-			msginfo.msgtql = atomic_read(&msg_bytes);
+			msginfo.msgmap = atomic_read(&ns->msg_hdrs);
+			msginfo.msgtql = atomic_read(&ns->msg_bytes);
 		} else {
 			msginfo.msgmap = MSGMAP;
 			msginfo.msgpool = MSGPOOL;
 			msginfo.msgtql = MSGTQL;
 		}
-		max_id = msg_ids(ns).max_id;
-		mutex_unlock(&msg_ids(ns).mutex);
+		max_id = ipc_get_maxid(&msg_ids(ns));
+		up_read(&msg_ids(ns).rw_mutex);
 		if (copy_to_user(buf, &msginfo, sizeof(struct msginfo)))
 			return -EFAULT;
 		return (max_id < 0) ? 0 : max_id;
 	}
-	case MSG_STAT:
+	case MSG_STAT:	/* msqid is an index rather than a msg queue id */
 	case IPC_STAT:
 	{
 		struct msqid64_ds tbuf;
@@ -444,21 +483,16 @@ asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 
 		if (!buf)
 			return -EFAULT;
-		if (cmd == MSG_STAT && msqid >= msg_ids(ns).entries->size)
-			return -EINVAL;
-
-		memset(&tbuf, 0, sizeof(tbuf));
-
-		msq = msg_lock(ns, msqid);
-		if (msq == NULL)
-			return -EINVAL;
 
 		if (cmd == MSG_STAT) {
-			success_return = msg_buildid(ns, msqid, msq->q_perm.seq);
+			msq = msg_lock(ns, msqid);
+			if (IS_ERR(msq))
+				return PTR_ERR(msq);
+			success_return = msq->q_perm.id;
 		} else {
-			err = -EIDRM;
-			if (msg_checkid(ns, msq, msqid))
-				goto out_unlock;
+			msq = msg_lock_check(ns, msqid);
+			if (IS_ERR(msq))
+				return PTR_ERR(msq);
 			success_return = 0;
 		}
 		err = -EACCES;
@@ -468,6 +502,8 @@ asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 		err = security_msg_queue_msgctl(msq, cmd);
 		if (err)
 			goto out_unlock;
+
+		memset(&tbuf, 0, sizeof(tbuf));
 
 		kernel_to_ipc64_perm(&msq->q_perm, &tbuf.msg_perm);
 		tbuf.msg_stime  = msq->q_stime;
@@ -495,15 +531,13 @@ asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 		return  -EINVAL;
 	}
 
-	mutex_lock(&msg_ids(ns).mutex);
-	msq = msg_lock(ns, msqid);
-	err = -EINVAL;
-	if (msq == NULL)
+	down_write(&msg_ids(ns).rw_mutex);
+	msq = msg_lock_check_down(ns, msqid);
+	if (IS_ERR(msq)) {
+		err = PTR_ERR(msq);
 		goto out_up;
+	}
 
-	err = -EIDRM;
-	if (msg_checkid(ns, msq, msqid))
-		goto out_unlock_up;
 	ipcp = &msq->q_perm;
 
 	err = audit_ipc_obj(ipcp);
@@ -552,12 +586,12 @@ asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 		break;
 	}
 	case IPC_RMID:
-		freeque(ns, msq, msqid);
+		freeque(ns, msq);
 		break;
 	}
 	err = 0;
 out_up:
-	mutex_unlock(&msg_ids(ns).mutex);
+	up_write(&msg_ids(ns).rw_mutex);
 	return err;
 out_unlock_up:
 	msg_unlock(msq);
@@ -611,7 +645,7 @@ static inline int pipelined_send(struct msg_queue *msq, struct msg_msg *msg)
 				msr->r_msg = ERR_PTR(-E2BIG);
 			} else {
 				msr->r_msg = NULL;
-				msq->q_lrpid = msr->r_tsk->pid;
+				msq->q_lrpid = task_pid_vnr(msr->r_tsk);
 				msq->q_rtime = get_seconds();
 				wake_up_process(msr->r_tsk);
 				smp_mb();
@@ -646,14 +680,11 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 	msg->m_type = mtype;
 	msg->m_ts = msgsz;
 
-	msq = msg_lock(ns, msqid);
-	err = -EINVAL;
-	if (msq == NULL)
+	msq = msg_lock_check(ns, msqid);
+	if (IS_ERR(msq)) {
+		err = PTR_ERR(msq);
 		goto out_free;
-
-	err= -EIDRM;
-	if (msg_checkid(ns, msq, msqid))
-		goto out_unlock_free;
+	}
 
 	for (;;) {
 		struct msg_sender s;
@@ -695,7 +726,7 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 		}
 	}
 
-	msq->q_lspid = current->tgid;
+	msq->q_lspid = task_tgid_vnr(current);
 	msq->q_stime = get_seconds();
 
 	if (!pipelined_send(msq, msg)) {
@@ -703,8 +734,8 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 		list_add_tail(&msg->m_list, &msq->q_messages);
 		msq->q_cbytes += msgsz;
 		msq->q_qnum++;
-		atomic_add(msgsz, &msg_bytes);
-		atomic_inc(&msg_hdrs);
+		atomic_add(msgsz, &ns->msg_bytes);
+		atomic_inc(&ns->msg_hdrs);
 	}
 
 	err = 0;
@@ -760,13 +791,9 @@ long do_msgrcv(int msqid, long *pmtype, void __user *mtext,
 	mode = convert_mode(&msgtyp, msgflg);
 	ns = current->nsproxy->ipc_ns;
 
-	msq = msg_lock(ns, msqid);
-	if (msq == NULL)
-		return -EINVAL;
-
-	msg = ERR_PTR(-EIDRM);
-	if (msg_checkid(ns, msq, msqid))
-		goto out_unlock;
+	msq = msg_lock_check(ns, msqid);
+	if (IS_ERR(msq))
+		return PTR_ERR(msq);
 
 	for (;;) {
 		struct msg_receiver msr_d;
@@ -810,10 +837,10 @@ long do_msgrcv(int msqid, long *pmtype, void __user *mtext,
 			list_del(&msg->m_list);
 			msq->q_qnum--;
 			msq->q_rtime = get_seconds();
-			msq->q_lrpid = current->tgid;
+			msq->q_lrpid = task_tgid_vnr(current);
 			msq->q_cbytes -= msg->m_ts;
-			atomic_sub(msg->m_ts, &msg_bytes);
-			atomic_dec(&msg_hdrs);
+			atomic_sub(msg->m_ts, &ns->msg_bytes);
+			atomic_dec(&ns->msg_hdrs);
 			ss_wakeup(&msq->q_senders, 0);
 			msg_unlock(msq);
 			break;
@@ -926,7 +953,7 @@ static int sysvipc_msg_proc_show(struct seq_file *s, void *it)
 	return seq_printf(s,
 			"%10d %10d  %4o  %10lu %10lu %5u %5u %5u %5u %5u %5u %10lu %10lu %10lu\n",
 			msq->q_perm.key,
-			msq->q_id,
+			msq->q_perm.id,
 			msq->q_perm.mode,
 			msq->q_cbytes,
 			msq->q_qnum,

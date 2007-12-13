@@ -24,6 +24,7 @@
  * xps2_.  Any other functions are static helper functions.
  */
 
+#include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/serio.h>
 #include <linux/interrupt.h>
@@ -31,8 +32,13 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/xilinx_devices.h>
-
 #include <asm/io.h>
+
+#ifdef CONFIG_OF
+// For open firmware.
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#endif
 
 #include "xps2.h"
 
@@ -201,12 +207,14 @@ static void sxps2_close(struct serio *pserio)
  * The platform device driver *
  ******************************/
 
-static int xps2_probe(struct device *dev)
-{
+/** Shared device initialization code */
+static int xps2_setup(
+		struct device *dev,
+		int id,
+		struct resource *r_mem,
+		struct resource *r_irq) {
 	XPs2_Config xps2_cfg;
-	struct platform_device *pdev = to_platform_device(dev);
 	struct xps2data *drvdata;
-	struct resource *irq_res, *regs_res;
 	unsigned long remap_size;
 	int retval;
 
@@ -215,43 +223,35 @@ static int xps2_probe(struct device *dev)
 
 	drvdata = kzalloc(sizeof(struct xps2data), GFP_KERNEL);
 	if (!drvdata) {
-		printk(KERN_ERR
-		       "%s #%d: Couldn't allocate device private record\n",
-		       DRIVER_NAME, pdev->id);
+		dev_err(dev, "Couldn't allocate device private record\n");
 		return -ENOMEM;
 	}
 	spin_lock_init(&drvdata->lock);
 	dev_set_drvdata(dev, (void *)drvdata);
 
-	/* Find irq number, map the control registers in */
-	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!regs_res || !irq_res) {
-		printk(KERN_ERR "%s #%d: IO resource(s) not found\n",
-		       DRIVER_NAME, pdev->id);
+	if (!r_mem || !r_irq) {
+		dev_err(dev, "IO resource(s) not found\n");
 		retval = -EFAULT;
 		goto failed1;
 	}
-	drvdata->irq = irq_res->start;
+	drvdata->irq = r_irq->start;
 
-	remap_size = regs_res->end - regs_res->start + 1;
-	if (!request_mem_region(regs_res->start, remap_size, DRIVER_NAME)) {
-		printk(KERN_ERR
-		       "%s #%d: Couldn't lock memory region at 0x%08x\n",
-		       DRIVER_NAME, pdev->id, regs_res->start);
+	remap_size = r_mem->end - r_mem->start + 1;
+	if (!request_mem_region(r_mem->start, remap_size, DRIVER_NAME)) {
+		dev_err(dev, "Couldn't lock memory region at 0x%08x\n",
+				r_mem->start);
 		retval = -EBUSY;
 		goto failed1;
 	}
 
 	/* Fill in cfg data and add them to the list */
-	drvdata->phys_addr = regs_res->start;
+	drvdata->phys_addr = r_mem->start;
 	drvdata->remap_size = remap_size;
-	xps2_cfg.DeviceId = pdev->id;
-	xps2_cfg.BaseAddress = (u32) ioremap(regs_res->start, remap_size);
+	xps2_cfg.DeviceId = id;
+	xps2_cfg.BaseAddress = (u32) ioremap(r_mem->start, remap_size);
 	if (xps2_cfg.BaseAddress == 0) {
-		printk(KERN_ERR
-		       "%s #%d: Couldn't ioremap memory at 0x%08x\n",
-		       DRIVER_NAME, pdev->id, regs_res->start);
+		dev_err(dev, "Couldn't ioremap memory at 0x%08x\n",
+				r_mem->start);
 		retval = -EFAULT;
 		goto failed2;
 	}
@@ -261,9 +261,7 @@ static int xps2_probe(struct device *dev)
 	if (XPs2_CfgInitialize(&drvdata->ps2, &xps2_cfg, xps2_cfg.BaseAddress)
 	    != XST_SUCCESS) {
 		up(&cfg_sem);
-		printk(KERN_ERR
-		       "%s #%d: Could not initialize device.\n",
-		       DRIVER_NAME, pdev->id);
+		dev_err(dev, "Could not initialize device.\n");
 		retval = -ENODEV;
 		goto failed3;
 	}
@@ -272,9 +270,10 @@ static int xps2_probe(struct device *dev)
 	/* Set up the interrupt handler. */
 	XPs2_SetHandler(&drvdata->ps2, sxps2_handler, drvdata);
 
-	printk(KERN_INFO "%s #%d at 0x%08X mapped to 0x%08X\n",
-	       DRIVER_NAME, pdev->id,
-	       drvdata->phys_addr, drvdata->ps2.BaseAddress);
+	dev_info(dev, "Xilinx PS2 at 0x%08X mapped to 0x%08X, irq=%d\n",
+			drvdata->phys_addr,
+			drvdata->ps2.BaseAddress,
+			drvdata->irq);
 
 	drvdata->serio.id.type = SERIO_8042;
 	drvdata->serio.write = sxps2_write;
@@ -283,9 +282,9 @@ static int xps2_probe(struct device *dev)
 	drvdata->serio.port_data = drvdata;
 	drvdata->serio.dev.parent = dev;
 	snprintf(drvdata->serio.name, sizeof(drvdata->serio.name),
-		 XPS2_NAME_DESC, pdev->id);
+		 XPS2_NAME_DESC, id);
 	snprintf(drvdata->serio.phys, sizeof(drvdata->serio.phys),
-		 XPS2_PHYS_DESC, pdev->id);
+		 XPS2_PHYS_DESC, id);
 	serio_register_port(&drvdata->serio);
 
 	return 0;		/* success */
@@ -294,13 +293,36 @@ static int xps2_probe(struct device *dev)
 	iounmap((void *)(xps2_cfg.BaseAddress));
 
       failed2:
-	release_mem_region(regs_res->start, remap_size);
+	release_mem_region(r_mem->start, remap_size);
 
       failed1:
 	kfree(drvdata);
 	dev_set_drvdata(dev, NULL);
 
 	return retval;
+}
+
+static int xps2_probe(struct device *dev)
+{
+	struct resource *r_irq = NULL;	/* Interrupt resources */
+	struct resource *r_mem = NULL;	/* IO mem resources */
+	struct platform_device *pdev = to_platform_device(dev);
+
+	/* param check */
+	if (!pdev) {
+		dev_err(dev, "Probe called with NULL param.\n");
+		return -ENODEV;
+	}
+
+	/* Find irq number, map the control registers in */
+	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!r_irq || !r_mem) {
+		dev_err(dev, "IO resource(s) not found.\n");
+		return -ENODEV;
+	}
+
+        return xps2_setup(dev, pdev->id, r_mem, r_irq);
 }
 
 static int xps2_remove(struct device *dev)
@@ -331,14 +353,72 @@ static struct device_driver xps2_driver = {
 	.remove = xps2_remove
 };
 
+#ifdef CONFIG_OF
+static int __devinit xps2_of_probe(struct of_device *ofdev, const struct of_device_id *match)
+{
+	struct resource r_irq_struct;
+	struct resource r_mem_struct;
+	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
+	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
+	int rc = 0;
+	const unsigned int *id;
+
+	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
+                        ofdev->node->name);
+
+	/* Get iospace for the device */
+	rc = of_address_to_resource(ofdev->node, 0, r_mem);
+	if(rc) {
+		dev_warn(&ofdev->dev, "invalid address\n");
+		return rc;
+	}
+
+	/* Get IRQ for the device */
+	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	if(rc == NO_IRQ) {
+		dev_warn(&ofdev->dev, "no IRQ found.\n");
+		return rc;
+	}
+
+	id = of_get_property(ofdev->node, "port-number", NULL);
+        return xps2_setup(&ofdev->dev, id ? *id : -1, r_mem, r_irq);
+}
+
+static int __devexit xps2_of_remove(struct of_device *dev)
+{
+	return xps2_remove(&dev->dev);
+}
+
+static struct of_device_id xps2_of_match[] = {
+	{ .compatible = "xlnx,opb-ps2-dual-ref-1.00.a", },
+	{ /* end of list */ },
+};
+
+MODULE_DEVICE_TABLE(of, xps2_of_match);
+
+static struct of_platform_driver xps2_of_driver = {
+	.name		= DRIVER_NAME,
+	.match_table	= xps2_of_match,
+	.probe		= xps2_of_probe,
+	.remove		= __devexit_p(xps2_of_remove),
+};
+#endif
+
 static int __init xps2_init(void)
 {
-	return driver_register(&xps2_driver);
+	int status = driver_register(&xps2_driver);
+#ifdef CONFIG_OF
+	status |= of_register_platform_driver(&xps2_of_driver);
+#endif
+        return status;
 }
 
 static void __exit xps2_cleanup(void)
 {
 	driver_unregister(&xps2_driver);
+#ifdef CONFIG_OF
+	of_unregister_platform_driver(&xps2_of_driver);
+#endif
 }
 
 module_init(xps2_init);

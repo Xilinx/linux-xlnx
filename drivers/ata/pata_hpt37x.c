@@ -295,7 +295,7 @@ static unsigned long hpt370_filter(struct ata_device *adev, unsigned long mask)
 
 static unsigned long hpt370a_filter(struct ata_device *adev, unsigned long mask)
 {
-	if (adev->class != ATA_DEV_ATA) {
+	if (adev->class == ATA_DEV_ATA) {
 		if (hpt_dma_blacklisted(adev, "UDMA100", bad_ata100_5))
 			mask &= ~ (0x1F << ATA_SHIFT_UDMA);
 	}
@@ -304,15 +304,16 @@ static unsigned long hpt370a_filter(struct ata_device *adev, unsigned long mask)
 
 /**
  *	hpt37x_pre_reset	-	reset the hpt37x bus
- *	@ap: ATA port to reset
+ *	@link: ATA link to reset
  *	@deadline: deadline jiffies for the operation
  *
  *	Perform the initial reset handling for the 370/372 and 374 func 0
  */
 
-static int hpt37x_pre_reset(struct ata_port *ap, unsigned long deadline)
+static int hpt37x_pre_reset(struct ata_link *link, unsigned long deadline)
 {
 	u8 scr2, ata66;
+	struct ata_port *ap = link->ap;
 	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
 	static const struct pci_bits hpt37x_enable_bits[] = {
 		{ 0x50, 1, 0x04, 0x04 },
@@ -328,7 +329,7 @@ static int hpt37x_pre_reset(struct ata_port *ap, unsigned long deadline)
 	/* Restore state */
 	pci_write_config_byte(pdev, 0x5B, scr2);
 
-	if (ata66 & (1 << ap->port_no))
+	if (ata66 & (2 >> ap->port_no))
 		ap->cbl = ATA_CBL_PATA40;
 	else
 		ap->cbl = ATA_CBL_PATA80;
@@ -337,7 +338,7 @@ static int hpt37x_pre_reset(struct ata_port *ap, unsigned long deadline)
 	pci_write_config_byte(pdev, 0x50 + 4 * ap->port_no, 0x37);
 	udelay(100);
 
-	return ata_std_prereset(ap, deadline);
+	return ata_std_prereset(link, deadline);
 }
 
 /**
@@ -352,33 +353,31 @@ static void hpt37x_error_handler(struct ata_port *ap)
 	ata_bmdma_drive_eh(ap, hpt37x_pre_reset, ata_std_softreset, NULL, ata_std_postreset);
 }
 
-static int hpt374_pre_reset(struct ata_port *ap, unsigned long deadline)
+static int hpt374_pre_reset(struct ata_link *link, unsigned long deadline)
 {
 	static const struct pci_bits hpt37x_enable_bits[] = {
 		{ 0x50, 1, 0x04, 0x04 },
 		{ 0x54, 1, 0x04, 0x04 }
 	};
-	u16 mcr3, mcr6;
+	u16 mcr3;
 	u8 ata66;
+	struct ata_port *ap = link->ap;
 	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
+	unsigned int mcrbase = 0x50 + 4 * ap->port_no;
 
 	if (!pci_test_config_bits(pdev, &hpt37x_enable_bits[ap->port_no]))
 		return -ENOENT;
 
 	/* Do the extra channel work */
-	pci_read_config_word(pdev, 0x52, &mcr3);
-	pci_read_config_word(pdev, 0x56, &mcr6);
+	pci_read_config_word(pdev, mcrbase + 2, &mcr3);
 	/* Set bit 15 of 0x52 to enable TCBLID as input
-	   Set bit 15 of 0x56 to enable FCBLID as input
 	 */
-	pci_write_config_word(pdev, 0x52, mcr3 | 0x8000);
-	pci_write_config_word(pdev, 0x56, mcr6 | 0x8000);
+	pci_write_config_word(pdev, mcrbase + 2, mcr3 | 0x8000);
 	pci_read_config_byte(pdev, 0x5A, &ata66);
 	/* Reset TCBLID/FCBLID to output */
 	pci_write_config_word(pdev, 0x52, mcr3);
-	pci_write_config_word(pdev, 0x56, mcr6);
 
-	if (ata66 & (1 << ap->port_no))
+	if (ata66 & (2 >> ap->port_no))
 		ap->cbl = ATA_CBL_PATA40;
 	else
 		ap->cbl = ATA_CBL_PATA80;
@@ -387,7 +386,7 @@ static int hpt374_pre_reset(struct ata_port *ap, unsigned long deadline)
 	pci_write_config_byte(pdev, 0x50 + 4 * ap->port_no, 0x37);
 	udelay(100);
 
-	return ata_std_prereset(ap, deadline);
+	return ata_std_prereset(link, deadline);
 }
 
 /**
@@ -642,7 +641,6 @@ static struct scsi_host_template hpt37x_sht = {
  */
 
 static struct ata_port_operations hpt370_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= hpt370_set_piomode,
 	.set_dmamode	= hpt370_set_dmamode,
 	.mode_filter	= hpt370_filter,
@@ -671,9 +669,8 @@ static struct ata_port_operations hpt370_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
@@ -681,7 +678,6 @@ static struct ata_port_operations hpt370_port_ops = {
  */
 
 static struct ata_port_operations hpt370a_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= hpt370_set_piomode,
 	.set_dmamode	= hpt370_set_dmamode,
 	.mode_filter	= hpt370a_filter,
@@ -710,9 +706,8 @@ static struct ata_port_operations hpt370a_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
@@ -721,7 +716,6 @@ static struct ata_port_operations hpt370a_port_ops = {
  */
 
 static struct ata_port_operations hpt372_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= hpt372_set_piomode,
 	.set_dmamode	= hpt372_set_dmamode,
 	.mode_filter	= ata_pci_default_filter,
@@ -750,9 +744,8 @@ static struct ata_port_operations hpt372_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
@@ -761,7 +754,6 @@ static struct ata_port_operations hpt372_port_ops = {
  */
 
 static struct ata_port_operations hpt374_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= hpt372_set_piomode,
 	.set_dmamode	= hpt372_set_dmamode,
 	.mode_filter	= ata_pci_default_filter,
@@ -790,9 +782,8 @@ static struct ata_port_operations hpt374_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /**
@@ -850,6 +841,25 @@ static int hpt37x_calibrate_dpll(struct pci_dev *dev)
 	/* Never went stable */
 	return 0;
 }
+
+static u32 hpt374_read_freq(struct pci_dev *pdev)
+{
+	u32 freq;
+	unsigned long io_base = pci_resource_start(pdev, 4);
+	if (PCI_FUNC(pdev->devfn) & 1) {
+		struct pci_dev *pdev_0 = pci_get_slot(pdev->bus, pdev->devfn - 1);
+		/* Someone hot plugged the controller on us ? */
+		if (pdev_0 == NULL)
+			return 0;
+		io_base = pci_resource_start(pdev_0, 4);
+		freq = inl(io_base + 0x90);
+		pci_dev_put(pdev_0);
+	}
+	else
+		freq = inl(io_base + 0x90);
+	return freq;
+}
+
 /**
  *	hpt37x_init_one		-	Initialise an HPT37X/302
  *	@dev: PCI device
@@ -908,7 +918,7 @@ static int hpt37x_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 		.flags = ATA_FLAG_SLAVE_POSS,
 		.pio_mask = 0x1f,
 		.mwdma_mask = 0x07,
-		.udma_mask = 0x0f,
+		.udma_mask = ATA_UDMA5,
 		.port_ops = &hpt370_port_ops
 	};
 	/* HPT370A - UDMA100 */
@@ -917,7 +927,7 @@ static int hpt37x_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 		.flags = ATA_FLAG_SLAVE_POSS,
 		.pio_mask = 0x1f,
 		.mwdma_mask = 0x07,
-		.udma_mask = 0x0f,
+		.udma_mask = ATA_UDMA5,
 		.port_ops = &hpt370a_port_ops
 	};
 	/* HPT371, 372 and friends - UDMA133 */
@@ -1053,9 +1063,16 @@ static int hpt37x_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 		outb(0x0e, iobase + 0x9c);
 
 	/* Some devices do not let this value be accessed via PCI space
-	   according to the old driver */
+	   according to the old driver. In addition we must use the value
+	   from FN 0 on the HPT374 */
 
-	freq = inl(iobase + 0x90);
+	if (chip_table == &hpt374) {
+		freq = hpt374_read_freq(dev);
+		if (freq == 0)
+			return -ENODEV;
+	} else
+		freq = inl(iobase + 0x90);
+
 	if ((freq >> 12) != 0xABCDE) {
 		int i;
 		u8 sr;

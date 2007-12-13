@@ -1,5 +1,6 @@
 #ifndef _ASM_POWERPC_TLBFLUSH_H
 #define _ASM_POWERPC_TLBFLUSH_H
+
 /*
  * TLB flushing:
  *
@@ -8,7 +9,6 @@
  *  - flush_tlb_page_nohash(vma, vmaddr) flushes one page if SW loaded TLB
  *  - flush_tlb_range(vma, start, end) flushes a range of pages
  *  - flush_tlb_kernel_range(start, end) flushes a range of kernel pages
- *  - flush_tlb_pgtables(mm, start, end) flushes a range of page tables
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -16,9 +16,6 @@
  *  2 of the License, or (at your option) any later version.
  */
 #ifdef __KERNEL__
-
-struct mm_struct;
-struct vm_area_struct;
 
 #if defined(CONFIG_4xx) || defined(CONFIG_8xx) || defined(CONFIG_FSL_BOOKE)
 /*
@@ -29,7 +26,9 @@ struct vm_area_struct;
  * specific tlbie's
  */
 
-extern void _tlbie(unsigned long address);
+#include <linux/mm.h>
+
+extern void _tlbie(unsigned long address, unsigned int pid);
 
 #if defined(CONFIG_40x) || defined(CONFIG_8xx)
 #define _tlbia()	asm volatile ("tlbia; sync" : : : "memory")
@@ -45,13 +44,13 @@ static inline void flush_tlb_mm(struct mm_struct *mm)
 static inline void flush_tlb_page(struct vm_area_struct *vma,
 				  unsigned long vmaddr)
 {
-	_tlbie(vmaddr);
+	_tlbie(vmaddr, vma ? vma->vm_mm->context.id : 0);
 }
 
 static inline void flush_tlb_page_nohash(struct vm_area_struct *vma,
 					 unsigned long vmaddr)
 {
-	_tlbie(vmaddr);
+	_tlbie(vmaddr, vma ? vma->vm_mm->context.id : 0);
 }
 
 static inline void flush_tlb_range(struct vm_area_struct *vma,
@@ -97,6 +96,7 @@ struct ppc64_tlb_batch {
 	real_pte_t		pte[PPC64_TLB_BATCH_NR];
 	unsigned long		vaddr[PPC64_TLB_BATCH_NR];
 	unsigned int		psize;
+	int			ssize;
 };
 DECLARE_PER_CPU(struct ppc64_tlb_batch, ppc64_tlb_batch);
 
@@ -127,7 +127,7 @@ static inline void arch_leave_lazy_mmu_mode(void)
 
 
 extern void flush_hash_page(unsigned long va, real_pte_t pte, int psize,
-			    int local);
+			    int ssize, int local);
 extern void flush_hash_range(unsigned long number, int local);
 
 
@@ -172,16 +172,6 @@ extern void __flush_hash_table_range(struct mm_struct *mm, unsigned long start,
  * waiting for the inevitable extra hash-table miss exception.
  */
 extern void update_mmu_cache(struct vm_area_struct *, unsigned long, pte_t);
-
-/*
- * This is called in munmap when we have freed up some page-table
- * pages.  We don't need to do anything here, there's nothing special
- * about our page-table pages.  -- paulus
- */
-static inline void flush_tlb_pgtables(struct mm_struct *mm,
-				      unsigned long start, unsigned long end)
-{
-}
 
 #endif /*__KERNEL__ */
 #endif /* _ASM_POWERPC_TLBFLUSH_H */

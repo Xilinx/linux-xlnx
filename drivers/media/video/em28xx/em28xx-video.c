@@ -32,6 +32,7 @@
 #include <linux/usb.h>
 #include <linux/i2c.h>
 #include <linux/version.h>
+#include <linux/mm.h>
 #include <linux/video_decoder.h>
 #include <linux/mutex.h>
 
@@ -252,10 +253,8 @@ static int em28xx_v4l2_open(struct inode *inode, struct file *filp)
 	int minor = iminor(inode);
 	int errCode = 0;
 	struct em28xx *h,*dev = NULL;
-	struct list_head *list;
 
-	list_for_each(list,&em28xx_devlist) {
-		h = list_entry(list, struct em28xx, devlist);
+	list_for_each_entry(h, &em28xx_devlist, devlist) {
 		if (h->vdev->minor == minor) {
 			dev  = h;
 			dev->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -267,8 +266,6 @@ static int em28xx_v4l2_open(struct inode *inode, struct file *filp)
 	}
 	if (NULL == dev)
 		return -ENODEV;
-
-	filp->private_data=dev;
 
 	em28xx_videodbg("open minor=%d type=%s users=%d\n",
 				minor,v4l2_type_names[dev->type],dev->users);
@@ -911,7 +908,7 @@ static int em28xx_set_fmt(struct em28xx *dev, unsigned int cmd, struct v4l2_form
 
 	/* stop io in case it is already in progress */
 	if (dev->stream == STREAM_ON) {
-		em28xx_videodbg("VIDIOC_SET_FMT: interupting stream\n");
+		em28xx_videodbg("VIDIOC_SET_FMT: interrupting stream\n");
 		if ((ret = em28xx_stream_interrupt(dev)))
 			return ret;
 	}
@@ -1621,7 +1618,6 @@ static int em28xx_init_dev(struct em28xx **devhandle, struct usb_device *udev,
 
 	/* Fills VBI device info */
 	dev->vbi_dev->type = VFL_TYPE_VBI;
-	dev->vbi_dev->hardware = 0;
 	dev->vbi_dev->fops = &em28xx_v4l_fops;
 	dev->vbi_dev->minor = -1;
 	dev->vbi_dev->dev = &dev->udev->dev;
@@ -1633,7 +1629,6 @@ static int em28xx_init_dev(struct em28xx **devhandle, struct usb_device *udev,
 	dev->vdev->type = VID_TYPE_CAPTURE;
 	if (dev->has_tuner)
 		dev->vdev->type |= VID_TYPE_TUNER;
-	dev->vdev->hardware = 0;
 	dev->vdev->fops = &em28xx_v4l_fops;
 	dev->vdev->minor = -1;
 	dev->vdev->dev = &dev->udev->dev;

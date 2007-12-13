@@ -2,7 +2,6 @@
 #include <linux/device.h>
 #include <linux/mm.h>
 #include <asm/io.h>		/* Needed for i386 to build */
-#include <asm/scatterlist.h>	/* Needed for i386 to build */
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
 #include <linux/slab.h>
@@ -302,7 +301,7 @@ restart:
 		if (mem_flags & __GFP_WAIT) {
 			DECLARE_WAITQUEUE (wait, current);
 
-			current->state = TASK_INTERRUPTIBLE;
+			__set_current_state(TASK_INTERRUPTIBLE);
 			add_wait_queue (&pool->waitq, &wait);
 			spin_unlock_irqrestore (&pool->lock, flags);
 
@@ -366,7 +365,7 @@ dma_pool_free (struct dma_pool *pool, void *vaddr, dma_addr_t dma)
 	unsigned long		flags;
 	int			map, block;
 
-	if ((page = pool_find_page (pool, dma)) == 0) {
+	if ((page = pool_find_page(pool, dma)) == NULL) {
 		if (pool->dev)
 			dev_err(pool->dev, "dma_pool_free %s, %p/%lx (bad dma)\n",
 				pool->name, vaddr, (unsigned long) dma);

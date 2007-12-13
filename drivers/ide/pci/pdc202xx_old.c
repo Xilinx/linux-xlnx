@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/ide/pci/pdc202xx_old.c	Version 0.51	Jul 27, 2007
+ *  linux/drivers/ide/pci/pdc202xx_old.c	Version 0.52	Aug 27, 2007
  *
  *  Copyright (C) 1998-2002		Andre Hedrick <andre@linux-ide.org>
  *  Copyright (C) 2006-2007		MontaVista Software, Inc.
@@ -63,12 +63,11 @@ static const char *pdc_quirk_drives[] = {
 
 static void pdc_old_disable_66MHz_clock(ide_hwif_t *);
 
-static int pdc202xx_tune_chipset (ide_drive_t *drive, u8 xferspeed)
+static void pdc202xx_set_mode(ide_drive_t *drive, const u8 speed)
 {
 	ide_hwif_t *hwif	= HWIF(drive);
 	struct pci_dev *dev	= hwif->pci_dev;
 	u8 drive_pci		= 0x60 + (drive->dn << 2);
-	u8 speed		= ide_rate_filter(drive, xferspeed);
 
 	u8			AP = 0, BP = 0, CP = 0;
 	u8			TA = 0, TB = 0, TC = 0;
@@ -98,9 +97,6 @@ static int pdc202xx_tune_chipset (ide_drive_t *drive, u8 xferspeed)
 		case XFER_MW_DMA_2:	TB = 0x60; TC = 0x03; break;
 		case XFER_MW_DMA_1:	TB = 0x60; TC = 0x04; break;
 		case XFER_MW_DMA_0:	TB = 0xE0; TC = 0x0F; break;
-		case XFER_SW_DMA_2:	TB = 0x60; TC = 0x05; break;
-		case XFER_SW_DMA_1:	TB = 0x80; TC = 0x06; break;
-		case XFER_SW_DMA_0:	TB = 0xC0; TC = 0x0B; break;
 		case XFER_PIO_4:	TA = 0x01; TB = 0x04; break;
 		case XFER_PIO_3:	TA = 0x02; TB = 0x06; break;
 		case XFER_PIO_2:	TA = 0x03; TB = 0x08; break;
@@ -139,14 +135,11 @@ static int pdc202xx_tune_chipset (ide_drive_t *drive, u8 xferspeed)
 	pci_read_config_dword(dev, drive_pci, &drive_conf);
 	printk("0x%08x\n", drive_conf);
 #endif
-
-	return ide_config_drive_speed(drive, speed);
 }
 
-static void pdc202xx_tune_drive(ide_drive_t *drive, u8 pio)
+static void pdc202xx_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
-	pio = ide_get_best_pio_mode(drive, pio, 4);
-	pdc202xx_tune_chipset(drive, XFER_PIO_0 + pio);
+	pdc202xx_set_mode(drive, XFER_PIO_0 + pio);
 }
 
 static u8 pdc202xx_old_cable_detect (ide_hwif_t *hwif)
@@ -181,19 +174,6 @@ static void pdc_old_disable_66MHz_clock(ide_hwif_t *hwif)
 	u8 clock = inb(clock_reg);
 
 	outb(clock & ~(hwif->channel ? 0x08 : 0x02), clock_reg);
-}
-
-static int pdc202xx_config_drive_xfer_rate (ide_drive_t *drive)
-{
-	drive->init_speed = 0;
-
-	if (ide_tune_dma(drive))
-		return 0;
-
-	if (ide_use_fast_pio(drive))
-		pdc202xx_tune_drive(drive, 255);
-
-	return -1;
 }
 
 static int pdc202xx_quirkproc (ide_drive_t *drive)
@@ -307,10 +287,11 @@ static void pdc202xx_reset (ide_drive_t *drive)
 {
 	ide_hwif_t *hwif	= HWIF(drive);
 	ide_hwif_t *mate	= hwif->mate;
-	
+
 	pdc202xx_reset_host(hwif);
 	pdc202xx_reset_host(mate);
-	pdc202xx_tune_drive(drive, 255);
+
+	ide_set_max_pio(drive);
 }
 
 static unsigned int __devinit init_chipset_pdc202xx(struct pci_dev *dev,
@@ -321,35 +302,17 @@ static unsigned int __devinit init_chipset_pdc202xx(struct pci_dev *dev,
 
 static void __devinit init_hwif_pdc202xx(ide_hwif_t *hwif)
 {
-	struct pci_dev *dev = hwif->pci_dev;
+	hwif->set_pio_mode = &pdc202xx_set_pio_mode;
+	hwif->set_dma_mode = &pdc202xx_set_mode;
 
-	/* PDC20265 has problems with large LBA48 requests */
-	if ((dev->device == PCI_DEVICE_ID_PROMISE_20267) ||
-	    (dev->device == PCI_DEVICE_ID_PROMISE_20265))
-		hwif->rqsize = 256;
-
-	hwif->autodma = 0;
-	hwif->tuneproc  = &pdc202xx_tune_drive;
 	hwif->quirkproc = &pdc202xx_quirkproc;
 
 	if (hwif->pci_dev->device != PCI_DEVICE_ID_PROMISE_20246)
 		hwif->resetproc = &pdc202xx_reset;
 
-	hwif->speedproc = &pdc202xx_tune_chipset;
-
-	hwif->err_stops_fifo = 1;
-
-	hwif->drives[0].autotune = hwif->drives[1].autotune = 1;
-
 	if (hwif->dma_base == 0)
 		return;
 
-	hwif->ultra_mask = hwif->cds->udma_mask;
-	hwif->mwdma_mask = 0x07;
-	hwif->swdma_mask = 0x07;
-	hwif->atapi_dma = 1;
-
-	hwif->ide_dma_check = &pdc202xx_config_drive_xfer_rate;
 	hwif->dma_lost_irq = &pdc202xx_dma_lost_irq;
 	hwif->dma_timeout = &pdc202xx_dma_timeout;
 
@@ -361,10 +324,6 @@ static void __devinit init_hwif_pdc202xx(ide_hwif_t *hwif)
 		hwif->ide_dma_end = &pdc202xx_old_ide_dma_end;
 	} 
 	hwif->ide_dma_test_irq = &pdc202xx_old_ide_dma_test_irq;
-
-	if (!noautodma)
-		hwif->autodma = 1;
-	hwif->drives[0].autodma = hwif->drives[1].autodma = hwif->autodma;
 }
 
 static void __devinit init_dma_pdc202xx(ide_hwif_t *hwif, unsigned long dmabase)
@@ -399,8 +358,8 @@ static void __devinit init_dma_pdc202xx(ide_hwif_t *hwif, unsigned long dmabase)
 	ide_setup_dma(hwif, dmabase, 8);
 }
 
-static int __devinit init_setup_pdc202ata4(struct pci_dev *dev,
-					   ide_pci_device_t *d)
+static void __devinit pdc202ata4_fixup_irq(struct pci_dev *dev,
+					   const char *name)
 {
 	if ((dev->class >> 8) != PCI_CLASS_STORAGE_IDE) {
 		u8 irq = 0, irq2 = 0;
@@ -410,90 +369,45 @@ static int __devinit init_setup_pdc202ata4(struct pci_dev *dev,
 		if (irq != irq2) {
 			pci_write_config_byte(dev,
 				(PCI_INTERRUPT_LINE)|0x80, irq);     /* 0xbc */
-			printk(KERN_INFO "%s: pci-config space interrupt "
-				"mirror fixed.\n", d->name);
+			printk(KERN_INFO "%s: PCI config space interrupt "
+					 "mirror fixed\n", name);
 		}
 	}
-	return ide_setup_pci_device(dev, d);
 }
 
-static int __devinit init_setup_pdc20265(struct pci_dev *dev,
-					 ide_pci_device_t *d)
-{
-	if ((dev->bus->self) &&
-	    (dev->bus->self->vendor == PCI_VENDOR_ID_INTEL) &&
-	    ((dev->bus->self->device == PCI_DEVICE_ID_INTEL_I960) ||
-	     (dev->bus->self->device == PCI_DEVICE_ID_INTEL_I960RM))) {
-		printk(KERN_INFO "ide: Skipping Promise PDC20265 "
-			"attached to I2O RAID controller.\n");
-		return -ENODEV;
+#define DECLARE_PDC2026X_DEV(name_str, udma, extra_flags) \
+	{ \
+		.name		= name_str, \
+		.init_chipset	= init_chipset_pdc202xx, \
+		.init_hwif	= init_hwif_pdc202xx, \
+		.init_dma	= init_dma_pdc202xx, \
+		.extra		= 48, \
+		.host_flags	= IDE_HFLAG_ERROR_STOPS_FIFO | \
+				  extra_flags | \
+				  IDE_HFLAG_OFF_BOARD, \
+		.pio_mask	= ATA_PIO4, \
+		.mwdma_mask	= ATA_MWDMA2, \
+		.udma_mask	= udma, \
 	}
-	return ide_setup_pci_device(dev, d);
-}
 
-static int __devinit init_setup_pdc202xx(struct pci_dev *dev,
-					 ide_pci_device_t *d)
-{
-	return ide_setup_pci_device(dev, d);
-}
-
-static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
+static const struct ide_port_info pdc202xx_chipsets[] __devinitdata = {
 	{	/* 0 */
 		.name		= "PDC20246",
-		.init_setup	= init_setup_pdc202ata4,
 		.init_chipset	= init_chipset_pdc202xx,
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
-		.autodma	= AUTODMA,
-		.bootable	= OFF_BOARD,
 		.extra		= 16,
+		.host_flags	= IDE_HFLAG_ERROR_STOPS_FIFO |
+				  IDE_HFLAG_OFF_BOARD,
 		.pio_mask	= ATA_PIO4,
-		.udma_mask	= 0x07, /* udma0-2 */
-	},{	/* 1 */
-		.name		= "PDC20262",
-		.init_setup	= init_setup_pdc202ata4,
-		.init_chipset	= init_chipset_pdc202xx,
-		.init_hwif	= init_hwif_pdc202xx,
-		.init_dma	= init_dma_pdc202xx,
-		.autodma	= AUTODMA,
-		.bootable	= OFF_BOARD,
-		.extra		= 48,
-		.pio_mask	= ATA_PIO4,
-		.udma_mask	= 0x1f, /* udma0-4 */
-	},{	/* 2 */
-		.name		= "PDC20263",
-		.init_setup	= init_setup_pdc202ata4,
-		.init_chipset	= init_chipset_pdc202xx,
-		.init_hwif	= init_hwif_pdc202xx,
-		.init_dma	= init_dma_pdc202xx,
-		.autodma	= AUTODMA,
-		.bootable	= OFF_BOARD,
-		.extra		= 48,
-		.pio_mask	= ATA_PIO4,
-		.udma_mask	= 0x1f, /* udma0-4 */
-	},{	/* 3 */
-		.name		= "PDC20265",
-		.init_setup	= init_setup_pdc20265,
-		.init_chipset	= init_chipset_pdc202xx,
-		.init_hwif	= init_hwif_pdc202xx,
-		.init_dma	= init_dma_pdc202xx,
-		.autodma	= AUTODMA,
-		.bootable	= OFF_BOARD,
-		.extra		= 48,
-		.pio_mask	= ATA_PIO4,
-		.udma_mask	= 0x3f, /* udma0-5 */
-	},{	/* 4 */
-		.name		= "PDC20267",
-		.init_setup	= init_setup_pdc202xx,
-		.init_chipset	= init_chipset_pdc202xx,
-		.init_hwif	= init_hwif_pdc202xx,
-		.init_dma	= init_dma_pdc202xx,
-		.autodma	= AUTODMA,
-		.bootable	= OFF_BOARD,
-		.extra		= 48,
-		.pio_mask	= ATA_PIO4,
-		.udma_mask	= 0x3f, /* udma0-5 */
-	}
+		.mwdma_mask	= ATA_MWDMA2,
+		.udma_mask	= ATA_UDMA2,
+	},
+
+	/* 1 */ DECLARE_PDC2026X_DEV("PDC20262", ATA_UDMA4, 0),
+	/* 2 */ DECLARE_PDC2026X_DEV("PDC20263", ATA_UDMA4, 0),
+	/* 3 */ DECLARE_PDC2026X_DEV("PDC20265", ATA_UDMA5, IDE_HFLAG_RQSIZE_256),
+	/* 4 */ DECLARE_PDC2026X_DEV("PDC20267", ATA_UDMA5, IDE_HFLAG_RQSIZE_256),
 };
 
 /**
@@ -507,17 +421,36 @@ static ide_pci_device_t pdc202xx_chipsets[] __devinitdata = {
  
 static int __devinit pdc202xx_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 {
-	ide_pci_device_t *d = &pdc202xx_chipsets[id->driver_data];
+	const struct ide_port_info *d;
+	u8 idx = id->driver_data;
 
-	return d->init_setup(dev, d);
+	d = &pdc202xx_chipsets[idx];
+
+	if (idx < 3)
+		pdc202ata4_fixup_irq(dev, d->name);
+
+	if (idx == 3) {
+		struct pci_dev *bridge = dev->bus->self;
+
+		if (bridge &&
+		    bridge->vendor == PCI_VENDOR_ID_INTEL &&
+		    (bridge->device == PCI_DEVICE_ID_INTEL_I960 ||
+		     bridge->device == PCI_DEVICE_ID_INTEL_I960RM)) {
+			printk(KERN_INFO "ide: Skipping Promise PDC20265 "
+				"attached to I2O RAID controller\n");
+			return -ENODEV;
+		}
+	}
+
+	return ide_setup_pci_device(dev, d);
 }
 
-static struct pci_device_id pdc202xx_pci_tbl[] = {
-	{ PCI_VENDOR_ID_PROMISE, PCI_DEVICE_ID_PROMISE_20246, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ PCI_VENDOR_ID_PROMISE, PCI_DEVICE_ID_PROMISE_20262, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 1},
-	{ PCI_VENDOR_ID_PROMISE, PCI_DEVICE_ID_PROMISE_20263, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 2},
-	{ PCI_VENDOR_ID_PROMISE, PCI_DEVICE_ID_PROMISE_20265, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 3},
-	{ PCI_VENDOR_ID_PROMISE, PCI_DEVICE_ID_PROMISE_20267, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 4},
+static const struct pci_device_id pdc202xx_pci_tbl[] = {
+	{ PCI_VDEVICE(PROMISE, PCI_DEVICE_ID_PROMISE_20246), 0 },
+	{ PCI_VDEVICE(PROMISE, PCI_DEVICE_ID_PROMISE_20262), 1 },
+	{ PCI_VDEVICE(PROMISE, PCI_DEVICE_ID_PROMISE_20263), 2 },
+	{ PCI_VDEVICE(PROMISE, PCI_DEVICE_ID_PROMISE_20265), 3 },
+	{ PCI_VDEVICE(PROMISE, PCI_DEVICE_ID_PROMISE_20267), 4 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, pdc202xx_pci_tbl);

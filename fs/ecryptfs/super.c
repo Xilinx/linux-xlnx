@@ -27,6 +27,7 @@
 #include <linux/mount.h>
 #include <linux/key.h>
 #include <linux/seq_file.h>
+#include <linux/file.h>
 #include <linux/crypto.h>
 #include "ecryptfs_kernel.h"
 
@@ -46,15 +47,16 @@ struct kmem_cache *ecryptfs_inode_info_cache;
  */
 static struct inode *ecryptfs_alloc_inode(struct super_block *sb)
 {
-	struct ecryptfs_inode_info *ecryptfs_inode;
+	struct ecryptfs_inode_info *inode_info;
 	struct inode *inode = NULL;
 
-	ecryptfs_inode = kmem_cache_alloc(ecryptfs_inode_info_cache,
-					  GFP_KERNEL);
-	if (unlikely(!ecryptfs_inode))
+	inode_info = kmem_cache_alloc(ecryptfs_inode_info_cache, GFP_KERNEL);
+	if (unlikely(!inode_info))
 		goto out;
-	ecryptfs_init_crypt_stat(&ecryptfs_inode->crypt_stat);
-	inode = &ecryptfs_inode->vfs_inode;
+	ecryptfs_init_crypt_stat(&inode_info->crypt_stat);
+	mutex_init(&inode_info->lower_file_mutex);
+	inode_info->lower_file = NULL;
+	inode = &inode_info->vfs_inode;
 out:
 	return inode;
 }
@@ -63,9 +65,10 @@ out:
  * ecryptfs_destroy_inode
  * @inode: The ecryptfs inode
  *
- * This is used during the final destruction of the inode.
- * All allocation of memory related to the inode, including allocated
- * memory in the crypt_stat struct, will be released here.
+ * This is used during the final destruction of the inode.  All
+ * allocation of memory related to the inode, including allocated
+ * memory in the crypt_stat struct, will be released here. This
+ * function also fput()'s the persistent file for the lower inode.
  * There should be no chance that this deallocation will be missed.
  */
 static void ecryptfs_destroy_inode(struct inode *inode)
@@ -73,7 +76,21 @@ static void ecryptfs_destroy_inode(struct inode *inode)
 	struct ecryptfs_inode_info *inode_info;
 
 	inode_info = ecryptfs_inode_to_private(inode);
-	ecryptfs_destruct_crypt_stat(&inode_info->crypt_stat);
+	mutex_lock(&inode_info->lower_file_mutex);
+	if (inode_info->lower_file) {
+		struct dentry *lower_dentry =
+			inode_info->lower_file->f_dentry;
+
+		BUG_ON(!lower_dentry);
+		if (lower_dentry->d_inode) {
+			fput(inode_info->lower_file);
+			inode_info->lower_file = NULL;
+			d_drop(lower_dentry);
+			d_delete(lower_dentry);
+		}
+	}
+	mutex_unlock(&inode_info->lower_file_mutex);
+	ecryptfs_destroy_crypt_stat(&inode_info->crypt_stat);
 	kmem_cache_free(ecryptfs_inode_info_cache, inode_info);
 }
 
@@ -104,7 +121,7 @@ static void ecryptfs_put_super(struct super_block *sb)
 {
 	struct ecryptfs_sb_info *sb_info = ecryptfs_superblock_to_private(sb);
 
-	ecryptfs_destruct_mount_crypt_stat(&sb_info->mount_crypt_stat);
+	ecryptfs_destroy_mount_crypt_stat(&sb_info->mount_crypt_stat);
 	kmem_cache_free(ecryptfs_sb_info_cache, sb_info);
 	ecryptfs_set_superblock_private(sb, NULL);
 }

@@ -242,17 +242,13 @@ EXPORT_SYMBOL(xfrm6_tunnel_free_spi);
 
 static int xfrm6_tunnel_output(struct xfrm_state *x, struct sk_buff *skb)
 {
-	struct ipv6hdr *top_iph;
-
-	top_iph = (struct ipv6hdr *)skb->data;
-	top_iph->payload_len = htons(skb->len - sizeof(struct ipv6hdr));
-
+	skb_push(skb, -skb_network_offset(skb));
 	return 0;
 }
 
 static int xfrm6_tunnel_input(struct xfrm_state *x, struct sk_buff *skb)
 {
-	return 0;
+	return skb_network_header(skb)[IP6CB(skb)->nhoff];
 }
 
 static int xfrm6_tunnel_rcv(struct sk_buff *skb)
@@ -261,7 +257,7 @@ static int xfrm6_tunnel_rcv(struct sk_buff *skb)
 	__be32 spi;
 
 	spi = xfrm6_tunnel_spi_lookup((xfrm_address_t *)&iph->saddr);
-	return xfrm6_rcv_spi(skb, spi) > 0 ? : 0;
+	return xfrm6_rcv_spi(skb, IPPROTO_IPV6, spi) > 0 ? : 0;
 }
 
 static int xfrm6_tunnel_err(struct sk_buff *skb, struct inet6_skb_parm *opt,

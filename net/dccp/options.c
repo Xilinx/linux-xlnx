@@ -14,6 +14,7 @@
 #include <linux/dccp.h>
 #include <linux/module.h>
 #include <linux/types.h>
+#include <asm/unaligned.h>
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 
@@ -28,16 +29,6 @@ int sysctl_dccp_feat_tx_ccid	      = DCCPF_INITIAL_CCID;
 int sysctl_dccp_feat_ack_ratio	      = DCCPF_INITIAL_ACK_RATIO;
 int sysctl_dccp_feat_send_ack_vector = DCCPF_INITIAL_SEND_ACK_VECTOR;
 int sysctl_dccp_feat_send_ndp_count  = DCCPF_INITIAL_SEND_NDP_COUNT;
-
-void dccp_minisock_init(struct dccp_minisock *dmsk)
-{
-	dmsk->dccpms_sequence_window = sysctl_dccp_feat_sequence_window;
-	dmsk->dccpms_rx_ccid	     = sysctl_dccp_feat_rx_ccid;
-	dmsk->dccpms_tx_ccid	     = sysctl_dccp_feat_tx_ccid;
-	dmsk->dccpms_ack_ratio	     = sysctl_dccp_feat_ack_ratio;
-	dmsk->dccpms_send_ack_vector = sysctl_dccp_feat_send_ack_vector;
-	dmsk->dccpms_send_ndp_count  = sysctl_dccp_feat_send_ndp_count;
-}
 
 static u32 dccp_decode_value_var(const unsigned char *bf, const u8 len)
 {
@@ -69,6 +60,7 @@ int dccp_parse_options(struct sock *sk, struct sk_buff *skb)
 	unsigned char opt, len;
 	unsigned char *value;
 	u32 elapsed_time;
+	__be32 opt_val;
 	int rc;
 	int mandatory = 0;
 
@@ -155,10 +147,11 @@ int dccp_parse_options(struct sock *sk, struct sk_buff *skb)
 			if (len != 4)
 				goto out_invalid_option;
 
-			opt_recv->dccpor_timestamp = ntohl(*(__be32 *)value);
+			opt_val = get_unaligned((__be32 *)value);
+			opt_recv->dccpor_timestamp = ntohl(opt_val);
 
 			dp->dccps_timestamp_echo = opt_recv->dccpor_timestamp;
-			dccp_timestamp(sk, &dp->dccps_timestamp_time);
+			dp->dccps_timestamp_time = ktime_get_real();
 
 			dccp_pr_debug("%s rx opt: TIMESTAMP=%u, ackno=%llu\n",
 				      dccp_role(sk), opt_recv->dccpor_timestamp,
@@ -169,7 +162,8 @@ int dccp_parse_options(struct sock *sk, struct sk_buff *skb)
 			if (len != 4 && len != 6 && len != 8)
 				goto out_invalid_option;
 
-			opt_recv->dccpor_timestamp_echo = ntohl(*(__be32 *)value);
+			opt_val = get_unaligned((__be32 *)value);
+			opt_recv->dccpor_timestamp_echo = ntohl(opt_val);
 
 			dccp_pr_debug("%s rx opt: TIMESTAMP_ECHO=%u, len=%d, "
 				      "ackno=%llu", dccp_role(sk),
@@ -178,18 +172,22 @@ int dccp_parse_options(struct sock *sk, struct sk_buff *skb)
 				      (unsigned long long)
 				      DCCP_SKB_CB(skb)->dccpd_ack_seq);
 
+			value += 4;
 
-			if (len == 4) {
+			if (len == 4) {		/* no elapsed time included */
 				dccp_pr_debug_cat("\n");
 				break;
 			}
 
-			if (len == 6)
-				elapsed_time = ntohs(*(__be16 *)(value + 4));
-			else
-				elapsed_time = ntohl(*(__be32 *)(value + 4));
+			if (len == 6) {		/* 2-byte elapsed time */
+				__be16 opt_val2 = get_unaligned((__be16 *)value);
+				elapsed_time = ntohs(opt_val2);
+			} else {		/* 4-byte elapsed time */
+				opt_val = get_unaligned((__be32 *)value);
+				elapsed_time = ntohl(opt_val);
+			}
 
-			dccp_pr_debug_cat(", ELAPSED_TIME=%d\n", elapsed_time);
+			dccp_pr_debug_cat(", ELAPSED_TIME=%u\n", elapsed_time);
 
 			/* Give precedence to the biggest ELAPSED_TIME */
 			if (elapsed_time > opt_recv->dccpor_elapsed_time)
@@ -202,10 +200,13 @@ int dccp_parse_options(struct sock *sk, struct sk_buff *skb)
 			if (pkt_type == DCCP_PKT_DATA)
 				continue;
 
-			if (len == 2)
-				elapsed_time = ntohs(*(__be16 *)value);
-			else
-				elapsed_time = ntohl(*(__be32 *)value);
+			if (len == 2) {
+				__be16 opt_val2 = get_unaligned((__be16 *)value);
+				elapsed_time = ntohs(opt_val2);
+			} else {
+				opt_val = get_unaligned((__be32 *)value);
+				elapsed_time = ntohl(opt_val);
+			}
 
 			if (elapsed_time > opt_recv->dccpor_elapsed_time)
 				opt_recv->dccpor_elapsed_time = elapsed_time;
@@ -370,29 +371,9 @@ int dccp_insert_option_elapsed_time(struct sock *sk, struct sk_buff *skb,
 
 EXPORT_SYMBOL_GPL(dccp_insert_option_elapsed_time);
 
-void dccp_timestamp(const struct sock *sk, struct timeval *tv)
-{
-	const struct dccp_sock *dp = dccp_sk(sk);
-
-	do_gettimeofday(tv);
-	tv->tv_sec  -= dp->dccps_epoch.tv_sec;
-	tv->tv_usec -= dp->dccps_epoch.tv_usec;
-
-	while (tv->tv_usec < 0) {
-		tv->tv_sec--;
-		tv->tv_usec += USEC_PER_SEC;
-	}
-}
-
-EXPORT_SYMBOL_GPL(dccp_timestamp);
-
 int dccp_insert_option_timestamp(struct sock *sk, struct sk_buff *skb)
 {
-	struct timeval tv;
-	__be32 now;
-
-	dccp_timestamp(sk, &tv);
-	now = htonl(timeval_usecs(&tv) / 10);
+	__be32 now = htonl(dccp_timestamp());
 	/* yes this will overflow but that is the point as we want a
 	 * 10 usec 32 bit timer which mean it wraps every 11.9 hours */
 
@@ -405,14 +386,12 @@ static int dccp_insert_option_timestamp_echo(struct sock *sk,
 					     struct sk_buff *skb)
 {
 	struct dccp_sock *dp = dccp_sk(sk);
-	struct timeval now;
 	__be32 tstamp_echo;
-	u32 elapsed_time;
 	int len, elapsed_time_len;
 	unsigned char *to;
-
-	dccp_timestamp(sk, &now);
-	elapsed_time = timeval_delta(&now, &dp->dccps_timestamp_time) / 10;
+	const suseconds_t delta = ktime_us_delta(ktime_get_real(),
+						 dp->dccps_timestamp_time);
+	u32 elapsed_time = delta / 10;
 	elapsed_time_len = dccp_elapsed_time_len(elapsed_time);
 	len = 6 + elapsed_time_len;
 
@@ -438,8 +417,7 @@ static int dccp_insert_option_timestamp_echo(struct sock *sk,
 	}
 
 	dp->dccps_timestamp_echo = 0;
-	dp->dccps_timestamp_time.tv_sec = 0;
-	dp->dccps_timestamp_time.tv_usec = 0;
+	dp->dccps_timestamp_time = ktime_set(0, 0);
 	return 0;
 }
 

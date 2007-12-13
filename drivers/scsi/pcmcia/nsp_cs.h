@@ -10,8 +10,6 @@
 
 =========================================================*/
 
-/* $Id: nsp_cs.h,v 1.19 2003/08/18 11:09:19 elca Exp $ */
-
 #ifndef  __nsp_cs__
 #define  __nsp_cs__
 
@@ -26,7 +24,6 @@
 /************************************
  * Some useful macros...
  */
-#define BIT(x)      (1L << (x))
 
 /* SCSI initiator must be ID 7 */
 #define NSP_INITIATOR_ID  7
@@ -227,13 +224,7 @@
 typedef struct scsi_info_t {
 	struct pcmcia_device	*p_dev;
 	struct Scsi_Host      *host;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,74))
 	dev_node_t             node;
-#else
-	int	               ndev;
-	dev_node_t             node[8];
-	struct bus_operations *bus;
-#endif
 	int                    stop;
 } scsi_info_t;
 
@@ -402,7 +393,7 @@ enum _burst_mode {
 #define MSG_EXT_SDTR         0x01
 
 /* scatter-gather table */
-#  define BUFFER_ADDR ((char *)((unsigned int)(SCpnt->SCp.buffer->page) + SCpnt->SCp.buffer->offset))
+#  define BUFFER_ADDR ((char *)((sg_virt(SCpnt->SCp.buffer))))
 
 #endif  /*__nsp_cs__*/
 /* end */

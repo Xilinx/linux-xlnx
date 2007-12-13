@@ -29,6 +29,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
 #include <linux/list.h>
+#include <linux/scatterlist.h>
 
 #include <asm/cacheflush.h>
 
@@ -263,7 +264,7 @@ map_single(struct device *dev, void *ptr, size_t size,
 		 * We don't need to sync the DMA buffer since
 		 * it was allocated via the coherent allocators.
 		 */
-		consistent_sync(ptr, size, dir);
+		dma_cache_maint(ptr, size, dir);
 	}
 
 	return dma_addr;
@@ -383,7 +384,7 @@ sync_single(struct device *dev, dma_addr_t dma_addr, size_t size,
 		 * via the coherent allocators.
 		 */
 	} else {
-		consistent_sync(dma_to_virt(dev, dma_addr), size, dir);
+		dma_cache_maint(dma_to_virt(dev, dma_addr), size, dir);
 	}
 }
 
@@ -442,7 +443,7 @@ dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 	BUG_ON(dir == DMA_NONE);
 
 	for (i = 0; i < nents; i++, sg++) {
-		struct page *page = sg->page;
+		struct page *page = sg_page(sg);
 		unsigned int offset = sg->offset;
 		unsigned int length = sg->length;
 		void *ptr = page_address(page) + offset;

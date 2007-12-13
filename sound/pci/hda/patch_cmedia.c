@@ -50,7 +50,7 @@ struct cmi_spec {
 
 	/* playback */
 	struct hda_multi_out multiout;
-	hda_nid_t dac_nids[4];		/* NID for each DAC */
+	hda_nid_t dac_nids[AUTO_CFG_MAX_OUTS];	/* NID for each DAC */
 	int num_dacs;
 
 	/* capture */
@@ -73,7 +73,6 @@ struct cmi_spec {
 	unsigned int pin_def_confs;
 
 	/* multichannel pins */
-	hda_nid_t multich_pin[4];	/* max 8-channel */
 	struct hda_verb multi_init[9];	/* 2 verbs for each pin + terminator */
 };
 
@@ -427,27 +426,6 @@ static int cmi9880_init(struct hda_codec *codec)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-/*
- * resume
- */
-static int cmi9880_resume(struct hda_codec *codec)
-{
-	struct cmi_spec *spec = codec->spec;
-
-	cmi9880_init(codec);
-	snd_hda_resume_ctls(codec, cmi9880_basic_mixer);
-	if (spec->channel_modes)
-		snd_hda_resume_ctls(codec, cmi9880_ch_mode_mixer);
-	if (spec->multiout.dig_out_nid)
-		snd_hda_resume_spdif_out(codec);
-	if (spec->dig_in_nid)
-		snd_hda_resume_spdif_in(codec);
-
-	return 0;
-}
-#endif
-
 /*
  * Analog playback callbacks
  */
@@ -635,9 +613,6 @@ static struct hda_codec_ops cmi9880_patch_ops = {
 	.build_pcms = cmi9880_build_pcms,
 	.init = cmi9880_init,
 	.free = cmi9880_free,
-#ifdef CONFIG_PM
-	.resume = cmi9880_resume,
-#endif
 };
 
 static int patch_cmi9880(struct hda_codec *codec)

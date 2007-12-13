@@ -12,7 +12,7 @@
 #include <linux/cache.h>
 /* need struct page definitions */
 #include <linux/mm.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 #include <asm/io.h>
 
 #define DMA_ERROR_CODE		(~(dma_addr_t)0x0)
@@ -249,8 +249,12 @@ dma_map_single(struct device *dev, void *ptr, size_t size,
 	return virt_to_bus(ptr);
 }
 
-/* We do nothing. */
-#define dma_unmap_single(dev, addr, size, dir)	((void)0)
+static inline void dma_unmap_single(struct device *dev, dma_addr_t dma_addr,
+				    size_t size,
+				    enum dma_data_direction direction)
+{
+	/* We do nothing. */
+}
 
 static inline dma_addr_t
 dma_map_page(struct device *dev, struct page *page,
@@ -264,28 +268,37 @@ dma_map_page(struct device *dev, struct page *page,
 	return page_to_bus(page) + offset;
 }
 
-/* We do nothing. */
-#define dma_unmap_page(dev, handle, size, dir)	((void)0)
+static inline void dma_unmap_page(struct device *dev, dma_addr_t dma_address,
+				  size_t size,
+				  enum dma_data_direction direction)
+{
+	/* We do nothing. */
+}
 
 static inline int
-dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
+dma_map_sg(struct device *dev, struct scatterlist *sgl, int nents,
 	   enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
 
 	BUG_ON(direction == DMA_NONE);
 
-	for (i = 0; i < nents; i++, sg++) {
-		BUG_ON(!sg->page);
-		__dma_sync_page(sg->page, sg->offset, sg->length, direction);
-		sg->dma_address = page_to_bus(sg->page) + sg->offset;
+	for_each_sg(sgl, sg, nents, i) {
+		BUG_ON(!sg_page(sg));
+		__dma_sync_page(sg_page(sg), sg->offset, sg->length, direction);
+		sg->dma_address = page_to_bus(sg_page(sg)) + sg->offset;
 	}
 
 	return nents;
 }
 
-/* We don't do anything here. */
-#define dma_unmap_sg(dev, sg, nents, dir)	((void)0)
+static inline void dma_unmap_sg(struct device *dev, struct scatterlist *sg,
+				int nhwentries,
+				enum dma_data_direction direction)
+{
+	/* We don't do anything here. */
+}
 
 #endif /* CONFIG_PPC64 */
 
@@ -306,27 +319,29 @@ static inline void dma_sync_single_for_device(struct device *dev,
 }
 
 static inline void dma_sync_sg_for_cpu(struct device *dev,
-		struct scatterlist *sg, int nents,
+		struct scatterlist *sgl, int nents,
 		enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
 
 	BUG_ON(direction == DMA_NONE);
 
-	for (i = 0; i < nents; i++, sg++)
-		__dma_sync_page(sg->page, sg->offset, sg->length, direction);
+	for_each_sg(sgl, sg, nents, i)
+		__dma_sync_page(sg_page(sg), sg->offset, sg->length, direction);
 }
 
 static inline void dma_sync_sg_for_device(struct device *dev,
-		struct scatterlist *sg, int nents,
+		struct scatterlist *sgl, int nents,
 		enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
 
 	BUG_ON(direction == DMA_NONE);
 
-	for (i = 0; i < nents; i++, sg++)
-		__dma_sync_page(sg->page, sg->offset, sg->length, direction);
+	for_each_sg(sgl, sg, nents, i)
+		__dma_sync_page(sg_page(sg), sg->offset, sg->length, direction);
 }
 
 static inline int dma_mapping_error(dma_addr_t dma_addr)

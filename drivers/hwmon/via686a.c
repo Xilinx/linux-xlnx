@@ -3,7 +3,7 @@
 		for hardware monitoring
 
     Copyright (c) 1998 - 2002  Frodo Looijaard <frodol@dds.nl>,
-			Kyösti Mälkki <kmalkki@cc.hut.fi>,
+			KyÃ¶sti MÃ¤lkki <kmalkki@cc.hut.fi>,
 			Mark Studebaker <mdsxyz123@yahoo.com>,
 			and Bob Dougherty <bobd@stanford.edu>
     (Some conversion-factor data were contributed by Jonathan Teh Soon Yew
@@ -294,7 +294,7 @@ static inline long TEMP_FROM_REG10(u16 val)
 struct via686a_data {
 	unsigned short addr;
 	const char *name;
-	struct class_device *class_dev;
+	struct device *hwmon_dev;
 	struct mutex update_lock;
 	char valid;		/* !=0 if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
@@ -627,9 +627,9 @@ static int __devinit via686a_probe(struct platform_device *pdev)
 	if ((err = sysfs_create_group(&pdev->dev.kobj, &via686a_group)))
 		goto exit_free;
 
-	data->class_dev = hwmon_device_register(&pdev->dev);
-	if (IS_ERR(data->class_dev)) {
-		err = PTR_ERR(data->class_dev);
+	data->hwmon_dev = hwmon_device_register(&pdev->dev);
+	if (IS_ERR(data->hwmon_dev)) {
+		err = PTR_ERR(data->hwmon_dev);
 		goto exit_remove_files;
 	}
 
@@ -648,7 +648,7 @@ static int __devexit via686a_remove(struct platform_device *pdev)
 {
 	struct via686a_data *data = platform_get_drvdata(pdev);
 
-	hwmon_device_unregister(data->class_dev);
+	hwmon_device_unregister(data->hwmon_dev);
 	sysfs_remove_group(&pdev->dev.kobj, &via686a_group);
 
 	release_region(data->addr, VIA686A_EXTENT);
@@ -866,7 +866,7 @@ static void __exit sm_via686a_exit(void)
 	}
 }
 
-MODULE_AUTHOR("Kyösti Mälkki <kmalkki@cc.hut.fi>, "
+MODULE_AUTHOR("KyÃ¶sti MÃ¤lkki <kmalkki@cc.hut.fi>, "
 	      "Mark Studebaker <mdsxyz123@yahoo.com> "
 	      "and Bob Dougherty <bobd@stanford.edu>");
 MODULE_DESCRIPTION("VIA 686A Sensor device");

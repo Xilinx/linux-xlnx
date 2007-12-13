@@ -94,7 +94,7 @@ static void dm_write_async_callback(struct urb *urb)
 	struct usb_ctrlrequest *req = (struct usb_ctrlrequest *)urb->context;
 
 	if (urb->status < 0)
-		printk(KERN_DEBUG "dm_write_async_callback() failed with %d",
+		printk(KERN_DEBUG "dm_write_async_callback() failed with %d\n",
 		       urb->status);
 
 	kfree(req);
@@ -584,6 +584,10 @@ static const struct usb_device_id products[] = {
 	 },
 	{
 	 USB_DEVICE(0x0a46, 0x0268),	/* ShanTou ST268 USB NIC */
+	 .driver_info = (unsigned long)&dm9601_info,
+	 },
+	{
+	 USB_DEVICE(0x0a46, 0x8515),	/* ADMtek ADM8515 USB NIC */
 	 .driver_info = (unsigned long)&dm9601_info,
 	 },
 	{},			// END

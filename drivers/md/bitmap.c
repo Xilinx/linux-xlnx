@@ -274,7 +274,7 @@ static int write_sb_page(struct bitmap *bitmap, struct page *page, int wait)
 			if (bitmap->offset < 0) {
 				/* DATA  BITMAP METADATA  */
 				if (bitmap->offset
-				    + page->index * (PAGE_SIZE/512)
+				    + (long)(page->index * (PAGE_SIZE/512))
 				    + size/512 > 0)
 					/* bitmap runs in to metadata */
 					return -EINVAL;
@@ -1207,8 +1207,7 @@ int bitmap_startwrite(struct bitmap *bitmap, sector_t offset, unsigned long sect
 			prepare_to_wait(&bitmap->overflow_wait, &__wait,
 					TASK_UNINTERRUPTIBLE);
 			spin_unlock_irq(&bitmap->lock);
-			bitmap->mddev->queue
-				->unplug_fn(bitmap->mddev->queue);
+			blk_unplug(bitmap->mddev->queue);
 			schedule();
 			finish_wait(&bitmap->overflow_wait, &__wait);
 			continue;

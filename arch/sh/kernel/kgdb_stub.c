@@ -102,6 +102,7 @@
 #include <linux/init.h>
 #include <linux/console.h>
 #include <linux/sysrq.h>
+#include <linux/module.h>
 #include <asm/system.h>
 #include <asm/cacheflush.h>
 #include <asm/current.h>
@@ -116,7 +117,9 @@ kgdb_debug_hook_t *kgdb_debug_hook;
 kgdb_bus_error_hook_t *kgdb_bus_err_hook;
 
 int (*kgdb_getchar)(void);
+EXPORT_SYMBOL_GPL(kgdb_getchar);
 void (*kgdb_putchar)(int);
+EXPORT_SYMBOL_GPL(kgdb_putchar);
 
 static void put_debug_char(int c)
 {
@@ -136,7 +139,7 @@ static int get_debug_char(void)
 #define NUMREGBYTES (MAXREG*4)
 #define OUTBUFMAX (NUMREGBYTES*2+512)
 
-enum regs {
+enum {
 	R0 = 0, R1,  R2,  R3,   R4,   R5,  R6, R7,
 	R8, R9, R10, R11, R12,  R13,  R14, R15,
 	PC, PR, GBR, VBR, MACH, MACL, SR,
@@ -150,13 +153,6 @@ struct kgdb_regs trap_registers;
 char kgdb_in_gdb_mode;
 char in_nmi;			/* Set during NMI to prevent reentry */
 int kgdb_nofault;		/* Boolean to ignore bus errs (i.e. in GDB) */
-int kgdb_enabled = 1;		/* Default to enabled, cmdline can disable */
-
-/* Exposed for user access */
-struct task_struct *kgdb_current;
-unsigned int kgdb_g_imask;
-int kgdb_trapa_val;
-int kgdb_excode;
 
 /* Default values for SCI (can override via kernel args in setup.c) */
 #ifndef CONFIG_KGDB_DEFPORT
@@ -183,9 +179,13 @@ int kgdb_excode;
 
 /* SCI/UART settings, used in kgdb_console_setup() */
 int  kgdb_portnum = CONFIG_KGDB_DEFPORT;
+EXPORT_SYMBOL_GPL(kgdb_portnum);
 int  kgdb_baud = CONFIG_KGDB_DEFBAUD;
+EXPORT_SYMBOL_GPL(kgdb_baud);
 char kgdb_parity = CONFIG_KGDB_DEFPARITY;
+EXPORT_SYMBOL_GPL(kgdb_parity);
 char kgdb_bits = CONFIG_KGDB_DEFBITS;
+EXPORT_SYMBOL_GPL(kgdb_bits);
 
 /* Jump buffer for setjmp/longjmp */
 static jmp_buf rem_com_env;
@@ -616,7 +616,7 @@ static short *get_step_address(void)
 	else
 		addr = trap_registers.pc + 2;
 
-	kgdb_flush_icache_range(addr, addr + 2);
+	flush_icache_range(addr, addr + 2);
 	return (short *) addr;
 }
 
@@ -639,8 +639,7 @@ static void do_single_step(void)
 	*addr = STEP_OPCODE;
 
 	/* Flush and return */
-	kgdb_flush_icache_range((long) addr, (long) addr + 2);
-	return;
+	flush_icache_range((long) addr, (long) addr + 2);
 }
 
 /* Undo a single step */
@@ -650,7 +649,7 @@ static void undo_single_step(void)
 	/* Use stepped_address in case we stopped elsewhere */
 	if (stepped_opcode != 0) {
 		*(short*)stepped_address = stepped_opcode;
-		kgdb_flush_icache_range(stepped_address, stepped_address + 2);
+		flush_icache_range(stepped_address, stepped_address + 2);
 	}
 	stepped_opcode = 0;
 }
@@ -736,7 +735,7 @@ static void write_mem_msg(int binary)
 					ebin_to_mem(ptr, (char*)addr, length);
 				else
 					hex_to_mem(ptr, (char*)addr, length);
-				kgdb_flush_icache_range(addr, addr + length);
+				flush_icache_range(addr, addr + length);
 				ptr = 0;
 				send_ok_msg();
 			}
@@ -815,14 +814,10 @@ static void set_regs_msg(void)
 /*
  * Bring up the ports..
  */
-static int kgdb_serial_setup(void)
+static int __init kgdb_serial_setup(void)
 {
-	extern int kgdb_console_setup(struct console *co, char *options);
 	struct console dummy;
-
-	kgdb_console_setup(&dummy, 0);
-
-	return 0;
+	return kgdb_console_setup(&dummy, 0);
 }
 #else
 #define kgdb_serial_setup()	0
@@ -832,22 +827,6 @@ static int kgdb_serial_setup(void)
 static void kgdb_command_loop(const int excep_code, const int trapa_value)
 {
 	int sigval;
-
-	if (excep_code == NMI_VEC) {
-#ifndef CONFIG_KGDB_NMI
-		printk(KERN_NOTICE "KGDB: Ignoring unexpected NMI?\n");
-		return;
-#else /* CONFIG_KGDB_NMI */
-		if (!kgdb_enabled) {
-			kgdb_enabled = 1;
-			kgdb_init();
-		}
-#endif /* CONFIG_KGDB_NMI */
-	}
-
-	/* Ignore if we're disabled */
-	if (!kgdb_enabled)
-		return;
 
 	/* Enter GDB mode (e.g. after detach) */
 	if (!kgdb_in_gdb_mode) {
@@ -959,17 +938,9 @@ static void handle_exception(struct pt_regs *regs)
 
 	/* Get excode for command loop call, user access */
 	asm("stc r2_bank, %0":"=r"(excep_code));
-	kgdb_excode = excep_code;
-
-	/* Other interesting environment items for reference */
-	asm("stc r6_bank, %0":"=r"(kgdb_g_imask));
-	kgdb_current = current;
-	kgdb_trapa_val = trapa_value;
 
 	/* Act on the exception */
 	kgdb_command_loop(excep_code, trapa_value);
-
-	kgdb_current = NULL;
 
 	/* Copy back the (maybe modified) registers */
 	for (count = 0; count < 16; count++)
@@ -994,11 +965,8 @@ asmlinkage void kgdb_handle_exception(unsigned long r4, unsigned long r5,
 }
 
 /* Initialise the KGDB data structures and serial configuration */
-int kgdb_init(void)
+int __init kgdb_init(void)
 {
-	if (!kgdb_enabled)
-		return 1;
-
 	in_nmi = 0;
 	kgdb_nofault = 0;
 	stepped_opcode = 0;

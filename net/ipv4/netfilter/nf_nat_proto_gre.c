@@ -98,21 +98,21 @@ gre_unique_tuple(struct nf_conntrack_tuple *tuple,
 
 /* manipulate a GRE packet according to maniptype */
 static int
-gre_manip_pkt(struct sk_buff **pskb, unsigned int iphdroff,
+gre_manip_pkt(struct sk_buff *skb, unsigned int iphdroff,
 	      const struct nf_conntrack_tuple *tuple,
 	      enum nf_nat_manip_type maniptype)
 {
 	struct gre_hdr *greh;
 	struct gre_hdr_pptp *pgreh;
-	struct iphdr *iph = (struct iphdr *)((*pskb)->data + iphdroff);
+	struct iphdr *iph = (struct iphdr *)(skb->data + iphdroff);
 	unsigned int hdroff = iphdroff + iph->ihl * 4;
 
 	/* pgreh includes two optional 32bit fields which are not required
 	 * to be there.  That's where the magic '8' comes from */
-	if (!skb_make_writable(pskb, hdroff + sizeof(*pgreh) - 8))
+	if (!skb_make_writable(skb, hdroff + sizeof(*pgreh) - 8))
 		return 0;
 
-	greh = (void *)(*pskb)->data + hdroff;
+	greh = (void *)skb->data + hdroff;
 	pgreh = (struct gre_hdr_pptp *)greh;
 
 	/* we only have destination manip of a packet, since 'source key'
@@ -142,8 +142,8 @@ static struct nf_nat_protocol gre __read_mostly = {
 	.in_range		= gre_in_range,
 	.unique_tuple		= gre_unique_tuple,
 #if defined(CONFIG_NF_CT_NETLINK) || defined(CONFIG_NF_CT_NETLINK_MODULE)
-	.range_to_nfattr	= nf_nat_port_range_to_nfattr,
-	.nfattr_to_range	= nf_nat_port_nfattr_to_range,
+	.range_to_nlattr	= nf_nat_port_range_to_nlattr,
+	.nlattr_to_range	= nf_nat_port_nlattr_to_range,
 #endif
 };
 

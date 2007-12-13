@@ -35,24 +35,24 @@
 #include <asm/smp.h>
 #include <asm/war.h>
 
-static __init int __maybe_unused r45k_bvahwbug(void)
+static inline int r45k_bvahwbug(void)
 {
 	/* XXX: We should probe for the presence of this bug, but we don't. */
 	return 0;
 }
 
-static __init int __maybe_unused r4k_250MHZhwbug(void)
+static inline int r4k_250MHZhwbug(void)
 {
 	/* XXX: We should probe for the presence of this bug, but we don't. */
 	return 0;
 }
 
-static __init int __maybe_unused bcm1250_m3_war(void)
+static inline int __maybe_unused bcm1250_m3_war(void)
 {
 	return BCM1250_M3_WAR;
 }
 
-static __init int __maybe_unused r10000_llsc_war(void)
+static inline int __maybe_unused r10000_llsc_war(void)
 {
 	return R10000_LLSC_WAR;
 }
@@ -141,53 +141,53 @@ struct insn {
 	 | (f) << FUNC_SH)
 
 static __initdata struct insn insn_table[] = {
-	{ insn_addiu, M(addiu_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_addu, M(spec_op,0,0,0,0,addu_op), RS | RT | RD },
-	{ insn_and, M(spec_op,0,0,0,0,and_op), RS | RT | RD },
-	{ insn_andi, M(andi_op,0,0,0,0,0), RS | RT | UIMM },
-	{ insn_beq, M(beq_op,0,0,0,0,0), RS | RT | BIMM },
-	{ insn_beql, M(beql_op,0,0,0,0,0), RS | RT | BIMM },
-	{ insn_bgez, M(bcond_op,0,bgez_op,0,0,0), RS | BIMM },
-	{ insn_bgezl, M(bcond_op,0,bgezl_op,0,0,0), RS | BIMM },
-	{ insn_bltz, M(bcond_op,0,bltz_op,0,0,0), RS | BIMM },
-	{ insn_bltzl, M(bcond_op,0,bltzl_op,0,0,0), RS | BIMM },
-	{ insn_bne, M(bne_op,0,0,0,0,0), RS | RT | BIMM },
-	{ insn_daddiu, M(daddiu_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_daddu, M(spec_op,0,0,0,0,daddu_op), RS | RT | RD },
-	{ insn_dmfc0, M(cop0_op,dmfc_op,0,0,0,0), RT | RD | SET},
-	{ insn_dmtc0, M(cop0_op,dmtc_op,0,0,0,0), RT | RD | SET},
-	{ insn_dsll, M(spec_op,0,0,0,0,dsll_op), RT | RD | RE },
-	{ insn_dsll32, M(spec_op,0,0,0,0,dsll32_op), RT | RD | RE },
-	{ insn_dsra, M(spec_op,0,0,0,0,dsra_op), RT | RD | RE },
-	{ insn_dsrl, M(spec_op,0,0,0,0,dsrl_op), RT | RD | RE },
-	{ insn_dsrl32, M(spec_op,0,0,0,0,dsrl32_op), RT | RD | RE },
-	{ insn_dsubu, M(spec_op,0,0,0,0,dsubu_op), RS | RT | RD },
-	{ insn_eret, M(cop0_op,cop_op,0,0,0,eret_op), 0 },
-	{ insn_j, M(j_op,0,0,0,0,0), JIMM },
-	{ insn_jal, M(jal_op,0,0,0,0,0), JIMM },
-	{ insn_jr, M(spec_op,0,0,0,0,jr_op), RS },
-	{ insn_ld, M(ld_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_ll, M(ll_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_lld, M(lld_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_lui, M(lui_op,0,0,0,0,0), RT | SIMM },
-	{ insn_lw, M(lw_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_mfc0, M(cop0_op,mfc_op,0,0,0,0), RT | RD | SET},
-	{ insn_mtc0, M(cop0_op,mtc_op,0,0,0,0), RT | RD | SET},
-	{ insn_ori, M(ori_op,0,0,0,0,0), RS | RT | UIMM },
-	{ insn_rfe, M(cop0_op,cop_op,0,0,0,rfe_op), 0 },
-	{ insn_sc, M(sc_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_scd, M(scd_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_sd, M(sd_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_sll, M(spec_op,0,0,0,0,sll_op), RT | RD | RE },
-	{ insn_sra, M(spec_op,0,0,0,0,sra_op), RT | RD | RE },
-	{ insn_srl, M(spec_op,0,0,0,0,srl_op), RT | RD | RE },
-	{ insn_subu, M(spec_op,0,0,0,0,subu_op), RS | RT | RD },
-	{ insn_sw, M(sw_op,0,0,0,0,0), RS | RT | SIMM },
-	{ insn_tlbp, M(cop0_op,cop_op,0,0,0,tlbp_op), 0 },
-	{ insn_tlbwi, M(cop0_op,cop_op,0,0,0,tlbwi_op), 0 },
-	{ insn_tlbwr, M(cop0_op,cop_op,0,0,0,tlbwr_op), 0 },
-	{ insn_xor, M(spec_op,0,0,0,0,xor_op), RS | RT | RD },
-	{ insn_xori, M(xori_op,0,0,0,0,0), RS | RT | UIMM },
+	{ insn_addiu, M(addiu_op, 0, 0, 0, 0, 0), RS | RT | SIMM },
+	{ insn_addu, M(spec_op, 0, 0, 0, 0, addu_op), RS | RT | RD },
+	{ insn_and, M(spec_op, 0, 0, 0, 0, and_op), RS | RT | RD },
+	{ insn_andi, M(andi_op, 0, 0, 0, 0, 0), RS | RT | UIMM },
+	{ insn_beq, M(beq_op, 0, 0, 0, 0, 0), RS | RT | BIMM },
+	{ insn_beql, M(beql_op, 0, 0, 0, 0, 0), RS | RT | BIMM },
+	{ insn_bgez, M(bcond_op, 0, bgez_op, 0, 0, 0), RS | BIMM },
+	{ insn_bgezl, M(bcond_op, 0, bgezl_op, 0, 0, 0), RS | BIMM },
+	{ insn_bltz, M(bcond_op, 0, bltz_op, 0, 0, 0), RS | BIMM },
+	{ insn_bltzl, M(bcond_op, 0, bltzl_op, 0, 0, 0), RS | BIMM },
+	{ insn_bne, M(bne_op, 0, 0, 0, 0, 0), RS | RT | BIMM },
+	{ insn_daddiu, M(daddiu_op, 0, 0, 0, 0, 0), RS | RT | SIMM },
+	{ insn_daddu, M(spec_op, 0, 0, 0, 0, daddu_op), RS | RT | RD },
+	{ insn_dmfc0, M(cop0_op, dmfc_op, 0, 0, 0, 0), RT | RD | SET},
+	{ insn_dmtc0, M(cop0_op, dmtc_op, 0, 0, 0, 0), RT | RD | SET},
+	{ insn_dsll, M(spec_op, 0, 0, 0, 0, dsll_op), RT | RD | RE },
+	{ insn_dsll32, M(spec_op, 0, 0, 0, 0, dsll32_op), RT | RD | RE },
+	{ insn_dsra, M(spec_op, 0, 0, 0, 0, dsra_op), RT | RD | RE },
+	{ insn_dsrl, M(spec_op, 0, 0, 0, 0, dsrl_op), RT | RD | RE },
+	{ insn_dsrl32, M(spec_op, 0, 0, 0, 0, dsrl32_op), RT | RD | RE },
+	{ insn_dsubu, M(spec_op, 0, 0, 0, 0, dsubu_op), RS | RT | RD },
+	{ insn_eret,  M(cop0_op, cop_op, 0, 0, 0, eret_op),  0 },
+	{ insn_j,  M(j_op, 0, 0, 0, 0, 0),  JIMM },
+	{ insn_jal,  M(jal_op, 0, 0, 0, 0, 0),  JIMM },
+	{ insn_jr,  M(spec_op, 0, 0, 0, 0, jr_op),  RS },
+	{ insn_ld,  M(ld_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_ll,  M(ll_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_lld,  M(lld_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_lui,  M(lui_op, 0, 0, 0, 0, 0),  RT | SIMM },
+	{ insn_lw,  M(lw_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_mfc0,  M(cop0_op, mfc_op, 0, 0, 0, 0),  RT | RD | SET},
+	{ insn_mtc0,  M(cop0_op, mtc_op, 0, 0, 0, 0),  RT | RD | SET},
+	{ insn_ori,  M(ori_op, 0, 0, 0, 0, 0),  RS | RT | UIMM },
+	{ insn_rfe,  M(cop0_op, cop_op, 0, 0, 0, rfe_op),  0 },
+	{ insn_sc,  M(sc_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_scd,  M(scd_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_sd,  M(sd_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_sll,  M(spec_op, 0, 0, 0, 0, sll_op),  RT | RD | RE },
+	{ insn_sra,  M(spec_op, 0, 0, 0, 0, sra_op),  RT | RD | RE },
+	{ insn_srl,  M(spec_op, 0, 0, 0, 0, srl_op),  RT | RD | RE },
+	{ insn_subu,  M(spec_op, 0, 0, 0, 0, subu_op),  RS | RT | RD },
+	{ insn_sw,  M(sw_op, 0, 0, 0, 0, 0),  RS | RT | SIMM },
+	{ insn_tlbp,  M(cop0_op, cop_op, 0, 0, 0, tlbp_op),  0 },
+	{ insn_tlbwi,  M(cop0_op, cop_op, 0, 0, 0, tlbwi_op),  0 },
+	{ insn_tlbwr,  M(cop0_op, cop_op, 0, 0, 0, tlbwr_op),  0 },
+	{ insn_xor,  M(spec_op, 0, 0, 0, 0, xor_op),  RS | RT | RD },
+	{ insn_xori,  M(xori_op, 0, 0, 0, 0, 0),  RS | RT | UIMM },
 	{ insn_invalid, 0, 0 }
 };
 
@@ -827,7 +827,7 @@ static __initdata u32 final_handler[64];
  */
 static __init void __maybe_unused build_tlb_probe_entry(u32 **p)
 {
-	switch (current_cpu_data.cputype) {
+	switch (current_cpu_type()) {
 	/* Found by experiment: R4600 v2.0 needs this, too.  */
 	case CPU_R4600:
 	case CPU_R5000:
@@ -860,7 +860,7 @@ static __init void build_tlb_write_entry(u32 **p, struct label **l,
 	case tlb_indexed: tlbw = i_tlbwi; break;
 	}
 
-	switch (current_cpu_data.cputype) {
+	switch (current_cpu_type()) {
 	case CPU_R4000PC:
 	case CPU_R4000SC:
 	case CPU_R4000MC:
@@ -908,6 +908,8 @@ static __init void build_tlb_write_entry(u32 **p, struct label **l,
 	case CPU_4KSC:
 	case CPU_20KC:
 	case CPU_25KF:
+	case CPU_BCM3302:
+	case CPU_BCM4710:
 	case CPU_LOONGSON2:
 		if (m4kc_tlbp_war())
 			i_nop(p);
@@ -1156,7 +1158,7 @@ static __init void build_adjust_context(u32 **p, unsigned int ctx)
 	unsigned int shift = 4 - (PTE_T_LOG2 + 1) + PAGE_SHIFT - 12;
 	unsigned int mask = (PTRS_PER_PTE / 2 - 1) << (PTE_T_LOG2 + 1);
 
-	switch (current_cpu_data.cputype) {
+	switch (current_cpu_type()) {
 	case CPU_VR41XX:
 	case CPU_VR4111:
 	case CPU_VR4121:
@@ -1186,7 +1188,7 @@ static __init void build_get_ptep(u32 **p, unsigned int tmp, unsigned int ptr)
 	 * in a different cacheline or a load instruction, probably any
 	 * memory reference, is between them.
 	 */
-	switch (current_cpu_data.cputype) {
+	switch (current_cpu_type()) {
 	case CPU_NEVADA:
 		i_LW(p, ptr, 0, ptr);
 		GET_CONTEXT(p, tmp); /* get context reg */
@@ -1870,7 +1872,7 @@ void __init build_tlb_refill_handler(void)
 	 */
 	static int run_once = 0;
 
-	switch (current_cpu_data.cputype) {
+	switch (current_cpu_type()) {
 	case CPU_R2000:
 	case CPU_R3000:
 	case CPU_R3000A:

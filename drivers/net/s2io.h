@@ -14,7 +14,7 @@
 #define _S2IO_H
 
 #define TBD 0
-#define BIT(loc)		(0x8000000000000000ULL >> (loc))
+#define s2BIT(loc)		(0x8000000000000000ULL >> (loc))
 #define vBIT(val, loc, sz)	(((u64)val) << (64-loc-sz))
 #define INV(d)  ((d&0xff)<<24) | (((d>>8)&0xff)<<16) | (((d>>16)&0xff)<<8)| ((d>>24)&0xff)
 
@@ -91,7 +91,7 @@ struct swStat {
 	unsigned long long serious_err_cnt;
 	unsigned long long soft_reset_cnt;
 	unsigned long long fifo_full_cnt;
-	unsigned long long ring_full_cnt;
+	unsigned long long ring_full_cnt[8];
 	/* LRO statistics */
 	unsigned long long clubbed_frms_cnt;
 	unsigned long long sending_both;
@@ -126,6 +126,26 @@ struct swStat {
 	unsigned long long rx_buf_size_err_cnt;
 	unsigned long long rx_rxd_corrupt_cnt;
 	unsigned long long rx_unkn_err_cnt;
+
+	/* Error/alarm statistics*/
+	unsigned long long tda_err_cnt;
+	unsigned long long pfc_err_cnt;
+	unsigned long long pcc_err_cnt;
+	unsigned long long tti_err_cnt;
+	unsigned long long lso_err_cnt;
+	unsigned long long tpa_err_cnt;
+	unsigned long long sm_err_cnt;
+	unsigned long long mac_tmac_err_cnt;
+	unsigned long long mac_rmac_err_cnt;
+	unsigned long long xgxs_txgxs_err_cnt;
+	unsigned long long xgxs_rxgxs_err_cnt;
+	unsigned long long rc_err_cnt;
+	unsigned long long prc_pcix_err_cnt;
+	unsigned long long rpa_err_cnt;
+	unsigned long long rda_err_cnt;
+	unsigned long long rti_err_cnt;
+	unsigned long long mc_err_cnt;
+
 };
 
 /* Xpak releated alarm and warnings */
@@ -412,6 +432,11 @@ struct config_param {
 	struct tx_fifo_config tx_cfg[MAX_TX_FIFOS];	/*Per-Tx FIFO config */
 	u32 max_txds;		/*Max no. of Tx buffer descriptor per TxDL */
 	u64 tx_intr_type;
+#define INTA	0
+#define MSI_X	2
+	u8 intr_type;
+	u8 napi;
+
 	/* Specifies if Tx Intr is UTILZ or PER_LIST type. */
 
 /* Rx Side */
@@ -419,7 +444,6 @@ struct config_param {
 #define MAX_RX_BLOCKS_PER_RING  150
 
 	struct rx_ring_config rx_cfg[MAX_RX_RINGS];	/*Per-Rx Ring config */
-	u8 bimodal;		/*Flag for setting bimodal interrupts*/
 
 #define HEADER_ETHERNET_II_802_3_SIZE 14
 #define HEADER_802_2_SIZE              3
@@ -449,42 +473,42 @@ struct TxFIFO_element {
 
 	u64 List_Control;
 #define TX_FIFO_LAST_TXD_NUM( val)     vBIT(val,0,8)
-#define TX_FIFO_FIRST_LIST             BIT(14)
-#define TX_FIFO_LAST_LIST              BIT(15)
+#define TX_FIFO_FIRST_LIST             s2BIT(14)
+#define TX_FIFO_LAST_LIST              s2BIT(15)
 #define TX_FIFO_FIRSTNLAST_LIST        vBIT(3,14,2)
-#define TX_FIFO_SPECIAL_FUNC           BIT(23)
-#define TX_FIFO_DS_NO_SNOOP            BIT(31)
-#define TX_FIFO_BUFF_NO_SNOOP          BIT(30)
+#define TX_FIFO_SPECIAL_FUNC           s2BIT(23)
+#define TX_FIFO_DS_NO_SNOOP            s2BIT(31)
+#define TX_FIFO_BUFF_NO_SNOOP          s2BIT(30)
 };
 
 /* Tx descriptor structure */
 struct TxD {
 	u64 Control_1;
 /* bit mask */
-#define TXD_LIST_OWN_XENA       BIT(7)
-#define TXD_T_CODE              (BIT(12)|BIT(13)|BIT(14)|BIT(15))
+#define TXD_LIST_OWN_XENA       s2BIT(7)
+#define TXD_T_CODE              (s2BIT(12)|s2BIT(13)|s2BIT(14)|s2BIT(15))
 #define TXD_T_CODE_OK(val)      (|(val & TXD_T_CODE))
 #define GET_TXD_T_CODE(val)     ((val & TXD_T_CODE)<<12)
-#define TXD_GATHER_CODE         (BIT(22) | BIT(23))
-#define TXD_GATHER_CODE_FIRST   BIT(22)
-#define TXD_GATHER_CODE_LAST    BIT(23)
-#define TXD_TCP_LSO_EN          BIT(30)
-#define TXD_UDP_COF_EN          BIT(31)
-#define TXD_UFO_EN		BIT(31) | BIT(30)
+#define TXD_GATHER_CODE         (s2BIT(22) | s2BIT(23))
+#define TXD_GATHER_CODE_FIRST   s2BIT(22)
+#define TXD_GATHER_CODE_LAST    s2BIT(23)
+#define TXD_TCP_LSO_EN          s2BIT(30)
+#define TXD_UDP_COF_EN          s2BIT(31)
+#define TXD_UFO_EN		s2BIT(31) | s2BIT(30)
 #define TXD_TCP_LSO_MSS(val)    vBIT(val,34,14)
 #define TXD_UFO_MSS(val)	vBIT(val,34,14)
 #define TXD_BUFFER0_SIZE(val)   vBIT(val,48,16)
 
 	u64 Control_2;
-#define TXD_TX_CKO_CONTROL      (BIT(5)|BIT(6)|BIT(7))
-#define TXD_TX_CKO_IPV4_EN      BIT(5)
-#define TXD_TX_CKO_TCP_EN       BIT(6)
-#define TXD_TX_CKO_UDP_EN       BIT(7)
-#define TXD_VLAN_ENABLE         BIT(15)
+#define TXD_TX_CKO_CONTROL      (s2BIT(5)|s2BIT(6)|s2BIT(7))
+#define TXD_TX_CKO_IPV4_EN      s2BIT(5)
+#define TXD_TX_CKO_TCP_EN       s2BIT(6)
+#define TXD_TX_CKO_UDP_EN       s2BIT(7)
+#define TXD_VLAN_ENABLE         s2BIT(15)
 #define TXD_VLAN_TAG(val)       vBIT(val,16,16)
 #define TXD_INT_NUMBER(val)     vBIT(val,34,6)
-#define TXD_INT_TYPE_PER_LIST   BIT(47)
-#define TXD_INT_TYPE_UTILZ      BIT(46)
+#define TXD_INT_TYPE_PER_LIST   s2BIT(47)
+#define TXD_INT_TYPE_UTILZ      s2BIT(46)
 #define TXD_SET_MARKER         vBIT(0x6,0,4)
 
 	u64 Buffer_Pointer;
@@ -501,14 +525,14 @@ struct list_info_hold {
 struct RxD_t {
 	u64 Host_Control;	/* reserved for host */
 	u64 Control_1;
-#define RXD_OWN_XENA            BIT(7)
-#define RXD_T_CODE              (BIT(12)|BIT(13)|BIT(14)|BIT(15))
+#define RXD_OWN_XENA            s2BIT(7)
+#define RXD_T_CODE              (s2BIT(12)|s2BIT(13)|s2BIT(14)|s2BIT(15))
 #define RXD_FRAME_PROTO         vBIT(0xFFFF,24,8)
-#define RXD_FRAME_PROTO_IPV4    BIT(27)
-#define RXD_FRAME_PROTO_IPV6    BIT(28)
-#define RXD_FRAME_IP_FRAG	BIT(29)
-#define RXD_FRAME_PROTO_TCP     BIT(30)
-#define RXD_FRAME_PROTO_UDP     BIT(31)
+#define RXD_FRAME_PROTO_IPV4    s2BIT(27)
+#define RXD_FRAME_PROTO_IPV6    s2BIT(28)
+#define RXD_FRAME_IP_FRAG	s2BIT(29)
+#define RXD_FRAME_PROTO_TCP     s2BIT(30)
+#define RXD_FRAME_PROTO_UDP     s2BIT(31)
 #define TCP_OR_UDP_FRAME        (RXD_FRAME_PROTO_TCP | RXD_FRAME_PROTO_UDP)
 #define RXD_GET_L3_CKSUM(val)   ((u16)(val>> 16) & 0xFFFF)
 #define RXD_GET_L4_CKSUM(val)   ((u16)(val) & 0xFFFF)
@@ -777,6 +801,13 @@ struct lro {
 	u8		saw_ts;
 };
 
+/* These flags represent the devices temporary state */
+enum s2io_device_state_t
+{
+	__S2IO_STATE_LINK_TASK=0,
+	__S2IO_STATE_CARD_UP
+};
+
 /* Structure representing one instance of the NIC */
 struct s2io_nic {
 	int rxd_mode;
@@ -786,6 +817,7 @@ struct s2io_nic {
 	 */
 	int pkts_to_process;
 	struct net_device *dev;
+	struct napi_struct napi;
 	struct mac_info mac_control;
 	struct config_param config;
 	struct pci_dev *pdev;
@@ -854,13 +886,11 @@ struct s2io_nic {
 
 	int task_flag;
 	unsigned long long start_time;
-#define CARD_DOWN 1
-#define CARD_UP 2
-	atomic_t card_state;
-	volatile unsigned long link_state;
 	struct vlan_group *vlgrp;
 #define MSIX_FLG                0xA5
 	struct msix_entry *entries;
+	int msi_detected;
+	wait_queue_head_t msi_wait;
 	struct s2io_msix_entry *s2io_entries;
 	char desc[MAX_REQUESTED_MSI_X][25];
 
@@ -878,13 +908,9 @@ struct s2io_nic {
 	unsigned long	sending_both;
 	u8		lro;
 	u16		lro_max_aggr_per_sess;
-
-#define INTA	0
-#define MSI_X	2
-	u8 intr_type;
-
+	volatile unsigned long state;
 	spinlock_t	rx_lock;
-	atomic_t	isr_cnt;
+	u64		general_int_mask;
 	u64 *ufo_in_band_v;
 #define VPD_STRING_LEN 80
 	u8  product_name[VPD_STRING_LEN];
@@ -972,26 +998,26 @@ static inline void SPECIAL_REG_WRITE(u64 val, void __iomem *addr, int order)
 /*  Interrupt masks for the general interrupt mask register */
 #define DISABLE_ALL_INTRS   0xFFFFFFFFFFFFFFFFULL
 
-#define TXPIC_INT_M         BIT(0)
-#define TXDMA_INT_M         BIT(1)
-#define TXMAC_INT_M         BIT(2)
-#define TXXGXS_INT_M        BIT(3)
-#define TXTRAFFIC_INT_M     BIT(8)
-#define PIC_RX_INT_M        BIT(32)
-#define RXDMA_INT_M         BIT(33)
-#define RXMAC_INT_M         BIT(34)
-#define MC_INT_M            BIT(35)
-#define RXXGXS_INT_M        BIT(36)
-#define RXTRAFFIC_INT_M     BIT(40)
+#define TXPIC_INT_M         s2BIT(0)
+#define TXDMA_INT_M         s2BIT(1)
+#define TXMAC_INT_M         s2BIT(2)
+#define TXXGXS_INT_M        s2BIT(3)
+#define TXTRAFFIC_INT_M     s2BIT(8)
+#define PIC_RX_INT_M        s2BIT(32)
+#define RXDMA_INT_M         s2BIT(33)
+#define RXMAC_INT_M         s2BIT(34)
+#define MC_INT_M            s2BIT(35)
+#define RXXGXS_INT_M        s2BIT(36)
+#define RXTRAFFIC_INT_M     s2BIT(40)
 
 /*  PIC level Interrupts TODO*/
 
 /*  DMA level Inressupts */
-#define TXDMA_PFC_INT_M     BIT(0)
-#define TXDMA_PCC_INT_M     BIT(2)
+#define TXDMA_PFC_INT_M     s2BIT(0)
+#define TXDMA_PCC_INT_M     s2BIT(2)
 
 /*  PFC block interrupts */
-#define PFC_MISC_ERR_1      BIT(0)	/* Interrupt to indicate FIFO full */
+#define PFC_MISC_ERR_1      s2BIT(0)	/* Interrupt to indicate FIFO full */
 
 /* PCC block interrupts. */
 #define	PCC_FB_ECC_ERR	   vBIT(0xff, 16, 8)	/* Interrupt to indicate
@@ -1009,7 +1035,7 @@ static void free_shared_mem(struct s2io_nic *sp);
 static int init_nic(struct s2io_nic *nic);
 static void rx_intr_handler(struct ring_info *ring_data);
 static void tx_intr_handler(struct fifo_info *fifo_data);
-static void alarm_intr_handler(struct s2io_nic *sp);
+static void s2io_handle_errors(void * dev_id);
 
 static int s2io_starter(void);
 static void s2io_closer(void);
@@ -1019,9 +1045,9 @@ static void s2io_set_multicast(struct net_device *dev);
 static int rx_osm_handler(struct ring_info *ring_data, struct RxD_t * rxdp);
 static void s2io_link(struct s2io_nic * sp, int link);
 static void s2io_reset(struct s2io_nic * sp);
-static int s2io_poll(struct net_device *dev, int *budget);
+static int s2io_poll(struct napi_struct *napi, int budget);
 static void s2io_init_pci(struct s2io_nic * sp);
-static int s2io_set_mac_addr(struct net_device *dev, u8 * addr);
+static int do_s2io_prog_unicast(struct net_device *dev, u8 *addr);
 static void s2io_alarm_handle(unsigned long data);
 static irqreturn_t
 s2io_msix_ring_handle(int irq, void *dev_id);

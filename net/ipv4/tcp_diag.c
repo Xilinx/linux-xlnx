@@ -25,11 +25,13 @@ static void tcp_diag_get_info(struct sock *sk, struct inet_diag_msg *r,
 	const struct tcp_sock *tp = tcp_sk(sk);
 	struct tcp_info *info = _info;
 
-	if (sk->sk_state == TCP_LISTEN)
+	if (sk->sk_state == TCP_LISTEN) {
 		r->idiag_rqueue = sk->sk_ack_backlog;
-	else
+		r->idiag_wqueue = sk->sk_max_ack_backlog;
+	} else {
 		r->idiag_rqueue = tp->rcv_nxt - tp->copied_seq;
-	r->idiag_wqueue = tp->write_seq - tp->snd_una;
+		r->idiag_wqueue = tp->write_seq - tp->snd_una;
+	}
 	if (info != NULL)
 		tcp_get_info(sk, info);
 }
@@ -54,3 +56,4 @@ static void __exit tcp_diag_exit(void)
 module_init(tcp_diag_init);
 module_exit(tcp_diag_exit);
 MODULE_LICENSE("GPL");
+MODULE_ALIAS_NET_PF_PROTO_TYPE(PF_NETLINK, NETLINK_INET_DIAG, TCPDIAG_GETSOCK);

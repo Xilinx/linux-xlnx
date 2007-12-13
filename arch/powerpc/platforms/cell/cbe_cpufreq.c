@@ -24,7 +24,7 @@
 #include <asm/machdep.h>
 #include <asm/of_platform.h>
 #include <asm/prom.h>
-#include "cbe_regs.h"
+#include <asm/cell-regs.h>
 #include "cbe_cpufreq.h"
 
 static DEFINE_MUTEX(cbe_switch_mutex);
@@ -107,8 +107,6 @@ static int cbe_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		pr_debug("%d: %d\n", i, cbe_freqs[i].frequency);
 	}
 
-	policy->governor = CPUFREQ_DEFAULT_GOVERNOR;
-
 	/* if DEBUG is enabled set_pmode() measures the latency
 	 * of a transition */
 	policy->cpuinfo.transition_latency = 25000;
@@ -119,7 +117,7 @@ static int cbe_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	policy->cur = cbe_freqs[cur_pmode].frequency;
 
 #ifdef CONFIG_SMP
-	policy->cpus = cpu_sibling_map[policy->cpu];
+	policy->cpus = per_cpu(cpu_sibling_map, policy->cpu);
 #endif
 
 	cpufreq_frequency_table_get_attr(cbe_freqs, policy->cpu);

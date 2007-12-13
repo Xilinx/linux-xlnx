@@ -8,6 +8,7 @@
 
 #include <linux/linkage.h>
 #include <linux/compat.h>
+#include <linux/nsproxy.h>
 #include <linux/futex.h>
 
 #include <asm/uaccess.h>
@@ -27,6 +28,15 @@ fetch_robust_entry(compat_uptr_t *uentry, struct robust_list __user **entry,
 	*pi = (unsigned int)(*uentry) & 1;
 
 	return 0;
+}
+
+static void __user *futex_uaddr(struct robust_list *entry,
+				compat_long_t futex_offset)
+{
+	compat_uptr_t base = ptr_to_compat(entry);
+	void __user *uaddr = compat_ptr(base + futex_offset);
+
+	return uaddr;
 }
 
 /*
@@ -75,11 +85,12 @@ void compat_exit_robust_list(struct task_struct *curr)
 		 * A pending lock might already be on the list, so
 		 * dont process it twice:
 		 */
-		if (entry != pending)
-			if (handle_futex_death((void __user *)entry + futex_offset,
-						curr, pi))
-				return;
+		if (entry != pending) {
+			void __user *uaddr = futex_uaddr(entry, futex_offset);
 
+			if (handle_futex_death(uaddr, curr, pi))
+				return;
+		}
 		if (rc)
 			return;
 		uentry = next_uentry;
@@ -93,9 +104,11 @@ void compat_exit_robust_list(struct task_struct *curr)
 
 		cond_resched();
 	}
-	if (pending)
-		handle_futex_death((void __user *)pending + futex_offset,
-				   curr, pip);
+	if (pending) {
+		void __user *uaddr = futex_uaddr(pending, futex_offset);
+
+		handle_futex_death(uaddr, curr, pip);
+	}
 }
 
 asmlinkage long
@@ -124,7 +137,7 @@ compat_sys_get_robust_list(int pid, compat_uptr_t __user *head_ptr,
 
 		ret = -ESRCH;
 		read_lock(&tasklist_lock);
-		p = find_task_by_pid(pid);
+		p = find_task_by_vpid(pid);
 		if (!p)
 			goto err_unlock;
 		ret = -EPERM;

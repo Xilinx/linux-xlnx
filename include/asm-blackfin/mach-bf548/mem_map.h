@@ -47,14 +47,20 @@
 /* Boot ROM Memory */
 
 #define BOOT_ROM_START		0xEF000000
+#define BOOT_ROM_LENGTH		0x1000
+
+/* L1 Instruction ROM */
+
+#define L1_ROM_START		0xFFA14000
+#define L1_ROM_LENGTH		0x10000
 
 /* Level 1 Memory */
 
 /* Memory Map for ADSP-BF548 processors */
-#ifdef CONFIG_BLKFIN_ICACHE
-#define BLKFIN_ICACHESIZE	(16*1024)
+#ifdef CONFIG_BFIN_ICACHE
+#define BFIN_ICACHESIZE	(16*1024)
 #else
-#define BLKFIN_ICACHESIZE	(0*1024)
+#define BFIN_ICACHESIZE	(0*1024)
 #endif
 
 #define L1_CODE_START       0xFFA00000
@@ -63,35 +69,43 @@
 
 #define L1_CODE_LENGTH      0xC000
 
-#ifdef CONFIG_BLKFIN_DCACHE
+#ifdef CONFIG_BFIN_DCACHE
 
-#ifdef CONFIG_BLKFIN_DCACHE_BANKA
+#ifdef CONFIG_BFIN_DCACHE_BANKA
 #define DMEM_CNTR (ACACHE_BSRAM | ENDCPLB | PORT_PREF0)
 #define L1_DATA_A_LENGTH      (0x8000 - 0x4000)
 #define L1_DATA_B_LENGTH      0x8000
-#define BLKFIN_DCACHESIZE	(16*1024)
-#define BLKFIN_DSUPBANKS	1
+#define BFIN_DCACHESIZE	(16*1024)
+#define BFIN_DSUPBANKS	1
 #else
 #define DMEM_CNTR (ACACHE_BCACHE | ENDCPLB | PORT_PREF0)
 #define L1_DATA_A_LENGTH      (0x8000 - 0x4000)
 #define L1_DATA_B_LENGTH      (0x8000 - 0x4000)
-#define BLKFIN_DCACHESIZE	(32*1024)
-#define BLKFIN_DSUPBANKS	2
+#define BFIN_DCACHESIZE	(32*1024)
+#define BFIN_DSUPBANKS	2
 #endif
 
 #else
 #define DMEM_CNTR (ASRAM_BSRAM | ENDCPLB | PORT_PREF0)
 #define L1_DATA_A_LENGTH      0x8000
 #define L1_DATA_B_LENGTH      0x8000
-#define BLKFIN_DCACHESIZE	(0*1024)
-#define BLKFIN_DSUPBANKS	0
-#endif /*CONFIG_BLKFIN_DCACHE*/
+#define BFIN_DCACHESIZE	(0*1024)
+#define BFIN_DSUPBANKS	0
+#endif /*CONFIG_BFIN_DCACHE*/
+
+/* Level 2 Memory */
+#if !defined(CONFIG_BF542)
+# define L2_START          0xFEB00000
+# if defined(CONFIG_BF544)
+#  define L2_LENGTH        0x10000
+# else
+#  define L2_LENGTH        0x20000
+# endif
+#endif
 
 /* Scratch Pad Memory */
 
-#if defined(CONFIG_BF54x)
 #define L1_SCRATCH_START	0xFFB00000
 #define L1_SCRATCH_LENGTH	0x1000
-#endif
 
 #endif/* _MEM_MAP_548_H_ */

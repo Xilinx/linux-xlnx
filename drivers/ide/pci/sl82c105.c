@@ -75,15 +75,11 @@ static unsigned int get_pio_timings(ide_drive_t *drive, u8 pio)
 /*
  * Configure the chipset for PIO mode.
  */
-static u8 sl82c105_tune_pio(ide_drive_t *drive, u8 pio)
+static void sl82c105_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	struct pci_dev *dev	= HWIF(drive)->pci_dev;
 	int reg			= 0x44 + drive->dn * 4;
 	u16 drv_ctrl;
-
-	DBG(("sl82c105_tune_pio(drive:%s, pio:%u)\n", drive->name, pio));
-
-	pio = ide_get_best_pio_mode(drive, pio, 5);
 
 	drv_ctrl = get_pio_timings(drive, pio);
 
@@ -106,22 +102,18 @@ static u8 sl82c105_tune_pio(ide_drive_t *drive, u8 pio)
 	printk(KERN_DEBUG "%s: selected %s (%dns) (%04X)\n", drive->name,
 			  ide_xfer_verbose(pio + XFER_PIO_0),
 			  ide_pio_cycle_time(drive, pio), drv_ctrl);
-
-	return pio;
 }
 
 /*
- * Configure the drive and chipset for a new transfer speed.
+ * Configure the chipset for DMA mode.
  */
-static int sl82c105_tune_chipset(ide_drive_t *drive, u8 speed)
+static void sl82c105_set_dma_mode(ide_drive_t *drive, const u8 speed)
 {
 	static u16 mwdma_timings[] = {0x0707, 0x0201, 0x0200};
 	u16 drv_ctrl;
 
  	DBG(("sl82c105_tune_chipset(drive:%s, speed:%s)\n",
 	     drive->name, ide_xfer_verbose(speed)));
-
-	speed = ide_rate_filter(drive, speed);
 
 	switch (speed) {
 	case XFER_MW_DMA_2:
@@ -147,32 +139,9 @@ static int sl82c105_tune_chipset(ide_drive_t *drive, u8 speed)
 			pci_write_config_word(dev, reg, drv_ctrl);
 		}
 		break;
-	case XFER_PIO_5:
-	case XFER_PIO_4:
-	case XFER_PIO_3:
-	case XFER_PIO_2:
-	case XFER_PIO_1:
-	case XFER_PIO_0:
-		(void) sl82c105_tune_pio(drive, speed - XFER_PIO_0);
-		break;
 	default:
-		return -1;
+		return;
 	}
-
-	return ide_config_drive_speed(drive, speed);
-}
-
-/*
- * Check to see if the drive and chipset are capable of DMA mode.
- */
-static int sl82c105_ide_dma_check(ide_drive_t *drive)
-{
-	DBG(("sl82c105_ide_dma_check(drive:%s)\n", drive->name));
-
-	if (ide_tune_dma(drive))
-		return 0;
-
-	return -1;
 }
 
 /*
@@ -322,18 +291,6 @@ static void sl82c105_resetproc(ide_drive_t *drive)
 	pci_read_config_dword(dev, 0x40, &val);
 	pci_set_drvdata(dev, (void *)val);
 }
-	
-/*
- * We only deal with PIO mode here - DMA mode 'using_dma' is not
- * initialised at the point that this function is called.
- */
-static void sl82c105_tune_drive(ide_drive_t *drive, u8 pio)
-{
-	DBG(("sl82c105_tune_drive(drive:%s, pio:%u)\n", drive->name, pio));
-
-	pio = sl82c105_tune_pio(drive, pio);
-	(void) ide_config_drive_speed(drive, XFER_PIO_0 + pio);
-}
 
 /*
  * Return the revision of the Winbond bridge
@@ -399,23 +356,10 @@ static void __devinit init_hwif_sl82c105(ide_hwif_t *hwif)
 
 	DBG(("init_hwif_sl82c105(hwif: ide%d)\n", hwif->index));
 
-	hwif->tuneproc		= &sl82c105_tune_drive;
-	hwif->speedproc 	= &sl82c105_tune_chipset;
+	hwif->set_pio_mode	= &sl82c105_set_pio_mode;
+	hwif->set_dma_mode	= &sl82c105_set_dma_mode;
 	hwif->selectproc	= &sl82c105_selectproc;
 	hwif->resetproc 	= &sl82c105_resetproc;
-
-	/*
-	 * We support 32-bit I/O on this interface, and
-	 * it doesn't have problems with interrupts.
-	 */
-	hwif->drives[0].io_32bit = hwif->drives[1].io_32bit = 1;
-	hwif->drives[0].unmask   = hwif->drives[1].unmask   = 1;
-
-	/*
-	 * We always autotune PIO,  this is done before DMA is checked,
-	 * so there's no risk of accidentally disabling DMA
-	 */
-	hwif->drives[0].autotune = hwif->drives[1].autotune = 1;
 
 	if (!hwif->dma_base)
 		return;
@@ -431,31 +375,27 @@ static void __devinit init_hwif_sl82c105(ide_hwif_t *hwif)
 		return;
 	}
 
-	hwif->atapi_dma  = 1;
-	hwif->mwdma_mask = 0x07;
+	hwif->mwdma_mask = ATA_MWDMA2;
 
-	hwif->ide_dma_check		= &sl82c105_ide_dma_check;
 	hwif->ide_dma_on		= &sl82c105_ide_dma_on;
 	hwif->dma_off_quietly		= &sl82c105_dma_off_quietly;
 	hwif->dma_lost_irq		= &sl82c105_dma_lost_irq;
 	hwif->dma_start			= &sl82c105_dma_start;
 	hwif->dma_timeout		= &sl82c105_dma_timeout;
 
-	if (!noautodma)
-		hwif->autodma = 1;
-	hwif->drives[0].autodma = hwif->drives[1].autodma = hwif->autodma;
-
 	if (hwif->mate)
 		hwif->serialized = hwif->mate->serialized = 1;
 }
 
-static ide_pci_device_t sl82c105_chipset __devinitdata = {
+static const struct ide_port_info sl82c105_chipset __devinitdata = {
 	.name		= "W82C105",
 	.init_chipset	= init_chipset_sl82c105,
 	.init_hwif	= init_hwif_sl82c105,
-	.autodma	= NOAUTODMA,
 	.enablebits	= {{0x40,0x01,0x01}, {0x40,0x10,0x10}},
-	.bootable	= ON_BOARD,
+	.host_flags	= IDE_HFLAG_IO_32BIT |
+			  IDE_HFLAG_UNMASK_IRQS |
+			  IDE_HFLAG_NO_AUTODMA |
+			  IDE_HFLAG_BOOTABLE,
 	.pio_mask	= ATA_PIO5,
 };
 
@@ -464,8 +404,8 @@ static int __devinit sl82c105_init_one(struct pci_dev *dev, const struct pci_dev
 	return ide_setup_pci_device(dev, &sl82c105_chipset);
 }
 
-static struct pci_device_id sl82c105_pci_tbl[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_WINBOND, PCI_DEVICE_ID_WINBOND_82C105), 0},
+static const struct pci_device_id sl82c105_pci_tbl[] = {
+	{ PCI_VDEVICE(WINBOND, PCI_DEVICE_ID_WINBOND_82C105), 0 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, sl82c105_pci_tbl);

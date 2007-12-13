@@ -7,7 +7,7 @@
  * Update the current task's runtime statistics. Skip current tasks that
  * are not in our scheduling class.
  */
-static inline void update_curr_rt(struct rq *rq)
+static void update_curr_rt(struct rq *rq)
 {
 	struct task_struct *curr = rq->curr;
 	u64 delta_exec;
@@ -23,6 +23,7 @@ static inline void update_curr_rt(struct rq *rq)
 
 	curr->se.sum_exec_runtime += delta_exec;
 	curr->se.exec_start = rq->clock;
+	cpuacct_charge(curr, delta_exec);
 }
 
 static void enqueue_task_rt(struct rq *rq, struct task_struct *p, int wakeup)
@@ -59,9 +60,9 @@ static void requeue_task_rt(struct rq *rq, struct task_struct *p)
 }
 
 static void
-yield_task_rt(struct rq *rq, struct task_struct *p)
+yield_task_rt(struct rq *rq)
 {
-	requeue_task_rt(rq, p);
+	requeue_task_rt(rq, rq->curr);
 }
 
 /*
@@ -98,6 +99,7 @@ static void put_prev_task_rt(struct rq *rq, struct task_struct *p)
 	p->se.exec_start = 0;
 }
 
+#ifdef CONFIG_SMP
 /*
  * Load-balancing iterator. Note: while the runqueue stays locked
  * during the whole iteration, the current task might be
@@ -172,13 +174,11 @@ static struct task_struct *load_balance_next_rt(void *arg)
 
 static unsigned long
 load_balance_rt(struct rq *this_rq, int this_cpu, struct rq *busiest,
-			unsigned long max_nr_move, unsigned long max_load_move,
-			struct sched_domain *sd, enum cpu_idle_type idle,
-			int *all_pinned, int *this_best_prio)
+		unsigned long max_load_move,
+		struct sched_domain *sd, enum cpu_idle_type idle,
+		int *all_pinned, int *this_best_prio)
 {
-	int nr_moved;
 	struct rq_iterator rt_rq_iterator;
-	unsigned long load_moved;
 
 	rt_rq_iterator.start = load_balance_start_rt;
 	rt_rq_iterator.next = load_balance_next_rt;
@@ -187,12 +187,24 @@ load_balance_rt(struct rq *this_rq, int this_cpu, struct rq *busiest,
 	 */
 	rt_rq_iterator.arg = busiest;
 
-	nr_moved = balance_tasks(this_rq, this_cpu, busiest, max_nr_move,
-			max_load_move, sd, idle, all_pinned, &load_moved,
-			this_best_prio, &rt_rq_iterator);
-
-	return load_moved;
+	return balance_tasks(this_rq, this_cpu, busiest, max_load_move, sd,
+			     idle, all_pinned, this_best_prio, &rt_rq_iterator);
 }
+
+static int
+move_one_task_rt(struct rq *this_rq, int this_cpu, struct rq *busiest,
+		 struct sched_domain *sd, enum cpu_idle_type idle)
+{
+	struct rq_iterator rt_rq_iterator;
+
+	rt_rq_iterator.start = load_balance_start_rt;
+	rt_rq_iterator.next = load_balance_next_rt;
+	rt_rq_iterator.arg = busiest;
+
+	return iter_move_one_task(this_rq, this_cpu, busiest, sd, idle,
+				  &rt_rq_iterator);
+}
+#endif
 
 static void task_tick_rt(struct rq *rq, struct task_struct *p)
 {
@@ -206,7 +218,7 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p)
 	if (--p->time_slice)
 		return;
 
-	p->time_slice = static_prio_timeslice(p->static_prio);
+	p->time_slice = DEF_TIMESLICE;
 
 	/*
 	 * Requeue to the end of queue if we are not the only element
@@ -218,7 +230,15 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p)
 	}
 }
 
-static struct sched_class rt_sched_class __read_mostly = {
+static void set_curr_task_rt(struct rq *rq)
+{
+	struct task_struct *p = rq->curr;
+
+	p->se.exec_start = rq->clock;
+}
+
+const struct sched_class rt_sched_class = {
+	.next			= &fair_sched_class,
 	.enqueue_task		= enqueue_task_rt,
 	.dequeue_task		= dequeue_task_rt,
 	.yield_task		= yield_task_rt,
@@ -228,7 +248,11 @@ static struct sched_class rt_sched_class __read_mostly = {
 	.pick_next_task		= pick_next_task_rt,
 	.put_prev_task		= put_prev_task_rt,
 
+#ifdef CONFIG_SMP
 	.load_balance		= load_balance_rt,
+	.move_one_task		= move_one_task_rt,
+#endif
 
+	.set_curr_task          = set_curr_task_rt,
 	.task_tick		= task_tick_rt,
 };

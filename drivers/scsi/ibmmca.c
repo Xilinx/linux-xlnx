@@ -460,13 +460,6 @@ module_param(boot_options, charp, 0);
 module_param_array(io_port, int, NULL, 0);
 module_param_array(scsi_id, int, NULL, 0);
 
-#if 0 /* FIXME: No longer exist? --RR */
-MODULE_PARM(display, "1i");
-MODULE_PARM(adisplay, "1i");
-MODULE_PARM(normal, "1i");
-MODULE_PARM(ansi, "1i");
-#endif
-
 MODULE_LICENSE("GPL");
 #endif
 /*counter of concurrent disk read/writes, to turn on/off disk led */
@@ -1508,6 +1501,7 @@ static struct scsi_host_template ibmmca_driver_template = {
           .sg_tablesize   = 16,
           .cmd_per_lun    = 1,
           .use_clustering = ENABLE_CLUSTERING,
+          .use_sg_chaining = ENABLE_SG_CHAINING,
 };
 
 static int ibmmca_probe(struct device *dev)
@@ -1693,6 +1687,7 @@ static int __devexit ibmmca_remove(struct device *dev)
 	scsi_remove_host(shpnt);
 	release_region(shpnt->io_port, shpnt->n_io_port);
 	free_irq(shpnt->irq, dev);
+	scsi_host_put(shpnt);
 	return 0;
 }
 
@@ -1833,7 +1828,7 @@ static int ibmmca_queuecommand(Scsi_Cmnd * cmd, void (*done) (Scsi_Cmnd *))
 		BUG_ON(scsi_sg_count(cmd) > 16);
 
 		scsi_for_each_sg(cmd, sg, scsi_sg_count(cmd), i) {
-			ld(shpnt)[ldn].sge[i].address = (void *) (isa_page_to_bus(sg->page) + sg->offset);
+			ld(shpnt)[ldn].sge[i].address = (void *) (isa_page_to_bus(sg_page(sg)) + sg->offset);
 			ld(shpnt)[ldn].sge[i].byte_length = sg->length;
 		}
 		scb->enable |= IM_POINTER_TO_LIST;

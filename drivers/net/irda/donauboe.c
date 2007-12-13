@@ -595,7 +595,7 @@ toshoboe_startchip (struct toshoboe_cb *self)
   OUTB ((physaddr >> 18) & 0xff, OBOE_RING_BASE1);
   OUTB ((physaddr >> 26) & 0x3f, OBOE_RING_BASE2);
 
-  /*Enable DMA controler in byte mode and RX */
+  /*Enable DMA controller in byte mode and RX */
   OUTB (CONFIG0H_DMA_ON, OBOE_CONFIG0H);
 
   /* Start up the clocks */
@@ -840,7 +840,7 @@ toshoboe_probe (struct toshoboe_cb *self)
 
   /* test 1: SIR filter and back to back */
 
-  for (j = 0; j < (sizeof (bauds) / sizeof (int)); ++j)
+  for (j = 0; j < ARRAY_SIZE(bauds); ++j)
     {
       int fir = (j > 1);
       toshoboe_stopchip (self);
@@ -1660,7 +1660,6 @@ toshoboe_open (struct pci_dev *pci_dev, const struct pci_device_id *pdid)
       }
 #endif
 
-  SET_MODULE_OWNER(dev);
   SET_NETDEV_DEV(dev, &pci_dev->dev);
   dev->hard_start_xmit = toshoboe_hard_xmit;
   dev->open = toshoboe_net_open;

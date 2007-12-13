@@ -101,6 +101,7 @@ typedef elf_greg_t64 elf_gregset_t64[ELF_NGREG];
 
 typedef unsigned int elf_greg_t32;
 typedef elf_greg_t32 elf_gregset_t32[ELF_NGREG];
+typedef elf_gregset_t32 compat_elf_gregset_t;
 
 /*
  * ELF_ARCH, CLASS, and DATA are used to set parameters in the core dumps.
@@ -175,26 +176,27 @@ typedef elf_vrreg_t elf_vrregset_t32[ELF_NVRREG32];
 
 #define ELF_ET_DYN_BASE         (0x20000000)
 
-/* Common routine for both 32-bit and 64-bit processes */
+/*
+ * Our registers are always unsigned longs, whether we're a 32 bit
+ * process or 64 bit, on either a 64 bit or 32 bit kernel.
+ *
+ * This macro relies on elf_regs[i] having the right type to truncate to,
+ * either u32 or u64.  It defines the body of the elf_core_copy_regs
+ * function, either the native one with elf_gregset_t elf_regs or
+ * the 32-bit one with elf_gregset_t32 elf_regs.
+ */
+#define PPC_ELF_CORE_COPY_REGS(elf_regs, regs) \
+	int i, nregs = min(sizeof(*regs) / sizeof(unsigned long), \
+			   (size_t)ELF_NGREG);			  \
+	for (i = 0; i < nregs; i++) \
+		elf_regs[i] = ((unsigned long *) regs)[i]; \
+	memset(&elf_regs[i], 0, (ELF_NGREG - i) * sizeof(elf_regs[0]))
+
+/* Common routine for both 32-bit and 64-bit native processes */
 static inline void ppc_elf_core_copy_regs(elf_gregset_t elf_regs,
-					    struct pt_regs *regs)
+					  struct pt_regs *regs)
 {
-	int i, nregs;
-
-	memset((void *)elf_regs, 0, sizeof(elf_gregset_t));
-
-	/* Our registers are always unsigned longs, whether we're a 32 bit
-	 * process or 64 bit, on either a 64 bit or 32 bit kernel.
-	 * Don't use ELF_GREG_TYPE here. */
-	nregs = sizeof(struct pt_regs) / sizeof(unsigned long);
-	if (nregs > ELF_NGREG)
-		nregs = ELF_NGREG;
-
-	for (i = 0; i < nregs; i++) {
-		/* This will correctly truncate 64 bit registers to 32 bits
-		 * for a 32 bit process on a 64 bit kernel. */
-		elf_regs[i] = (elf_greg_t)((ELF_GREG_TYPE *)regs)[i];
-	}
+	PPC_ELF_CORE_COPY_REGS(elf_regs, regs);
 }
 #define ELF_CORE_COPY_REGS(gregs, regs) ppc_elf_core_copy_regs(gregs, regs);
 
@@ -211,6 +213,14 @@ static inline int dump_task_regs(struct task_struct *tsk,
 
 extern int dump_task_fpu(struct task_struct *, elf_fpregset_t *); 
 #define ELF_CORE_COPY_FPREGS(tsk, elf_fpregs) dump_task_fpu(tsk, elf_fpregs)
+
+typedef elf_vrregset_t elf_fpxregset_t;
+
+#ifdef CONFIG_ALTIVEC
+extern int dump_task_altivec(struct task_struct *, elf_vrregset_t *vrregs);
+#define ELF_CORE_COPY_XFPREGS(tsk, regs) dump_task_altivec(tsk, regs)
+#define ELF_CORE_XFPREG_TYPE NT_PPC_VMX
+#endif
 
 #endif /* __KERNEL__ */
 
@@ -281,6 +291,7 @@ extern int arch_setup_additional_pages(struct linux_binprm *bprm,
  *   AT_IGNOREPPC is used for that.
  * - for compatibility with glibc ARCH_DLINFO must always be defined on PPC,
  *   even if DLINFO_ARCH_ITEMS goes to zero or is undefined.
+ * update AT_VECTOR_SIZE_ARCH if the number of NEW_AUX_ENT entries changes
  */
 #define ARCH_DLINFO							\
 do {									\
@@ -413,13 +424,8 @@ do {									\
 /* Notes used in ET_CORE. Note name is "SPU/<fd>/<filename>". */
 #define NT_SPU		1
 
-extern int arch_notes_size(void);
-extern void arch_write_notes(struct file *file);
-
-#define ELF_CORE_EXTRA_NOTES_SIZE arch_notes_size()
-#define ELF_CORE_WRITE_EXTRA_NOTES arch_write_notes(file)
-
 #define ARCH_HAVE_EXTRA_ELF_NOTES
-#endif /* CONFIG_PPC_CELL */
+
+#endif /* CONFIG_SPU_BASE */
 
 #endif /* _ASM_POWERPC_ELF_H */

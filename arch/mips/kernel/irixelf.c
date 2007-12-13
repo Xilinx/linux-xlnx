@@ -44,11 +44,14 @@
 static int load_irix_binary(struct linux_binprm * bprm, struct pt_regs * regs);
 static int load_irix_library(struct file *);
 static int irix_core_dump(long signr, struct pt_regs * regs,
-                          struct file *file);
+                          struct file *file, unsigned long limit);
 
 static struct linux_binfmt irix_format = {
-	NULL, THIS_MODULE, load_irix_binary, load_irix_library,
-	irix_core_dump, PAGE_SIZE
+	.module		= THIS_MODULE,
+	.load_binary	= load_irix_binary,
+	.load_shlib	= load_irix_library,
+	.core_dump	= irix_core_dump,
+	.min_coredump	= PAGE_SIZE,
 };
 
 /* Debugging routines. */
@@ -203,8 +206,8 @@ static unsigned long * create_irix_tables(char * p, int argc, int envc,
 	 * Put the ELF interpreter info on the stack
 	 */
 #define NEW_AUX_ENT(nr, id, val) \
-	  __put_user ((id), sp+(nr*2)); \
-	  __put_user ((val), sp+(nr*2+1)); \
+	  __put_user((id), sp+(nr*2)); \
+	  __put_user((val), sp+(nr*2+1)); \
 
 	sp -= 2;
 	NEW_AUX_ENT(0, AT_NULL, 0);
@@ -212,17 +215,17 @@ static unsigned long * create_irix_tables(char * p, int argc, int envc,
 	if (exec) {
 		sp -= 11*2;
 
-		NEW_AUX_ENT (0, AT_PHDR, load_addr + exec->e_phoff);
-		NEW_AUX_ENT (1, AT_PHENT, sizeof (struct elf_phdr));
-		NEW_AUX_ENT (2, AT_PHNUM, exec->e_phnum);
-		NEW_AUX_ENT (3, AT_PAGESZ, ELF_EXEC_PAGESIZE);
-		NEW_AUX_ENT (4, AT_BASE, interp_load_addr);
-		NEW_AUX_ENT (5, AT_FLAGS, 0);
-		NEW_AUX_ENT (6, AT_ENTRY, (elf_addr_t) exec->e_entry);
-		NEW_AUX_ENT (7, AT_UID, (elf_addr_t) current->uid);
-		NEW_AUX_ENT (8, AT_EUID, (elf_addr_t) current->euid);
-		NEW_AUX_ENT (9, AT_GID, (elf_addr_t) current->gid);
-		NEW_AUX_ENT (10, AT_EGID, (elf_addr_t) current->egid);
+		NEW_AUX_ENT(0, AT_PHDR, load_addr + exec->e_phoff);
+		NEW_AUX_ENT(1, AT_PHENT, sizeof(struct elf_phdr));
+		NEW_AUX_ENT(2, AT_PHNUM, exec->e_phnum);
+		NEW_AUX_ENT(3, AT_PAGESZ, ELF_EXEC_PAGESIZE);
+		NEW_AUX_ENT(4, AT_BASE, interp_load_addr);
+		NEW_AUX_ENT(5, AT_FLAGS, 0);
+		NEW_AUX_ENT(6, AT_ENTRY, (elf_addr_t) exec->e_entry);
+		NEW_AUX_ENT(7, AT_UID, (elf_addr_t) current->uid);
+		NEW_AUX_ENT(8, AT_EUID, (elf_addr_t) current->euid);
+		NEW_AUX_ENT(9, AT_GID, (elf_addr_t) current->gid);
+		NEW_AUX_ENT(10, AT_EGID, (elf_addr_t) current->egid);
 	}
 #undef NEW_AUX_ENT
 
@@ -231,16 +234,16 @@ static unsigned long * create_irix_tables(char * p, int argc, int envc,
 	sp -= argc+1;
 	argv = sp;
 
-	__put_user((elf_addr_t)argc,--sp);
+	__put_user((elf_addr_t)argc, --sp);
 	current->mm->arg_start = (unsigned long) p;
 	while (argc-->0) {
-		__put_user((unsigned long)p,argv++);
+		__put_user((unsigned long)p, argv++);
 		p += strlen_user(p);
 	}
 	__put_user((unsigned long) NULL, argv);
 	current->mm->arg_end = current->mm->env_start = (unsigned long) p;
 	while (envc-->0) {
-		__put_user((unsigned long)p,envp++);
+		__put_user((unsigned long)p, envp++);
 		p += strlen_user(p);
 	}
 	__put_user((unsigned long) NULL, envp);
@@ -581,7 +584,7 @@ static void irix_map_prda_page(void)
 	struct prda *pp;
 
 	down_write(&current->mm->mmap_sem);
-	v =  do_brk (PRDA_ADDRESS, PAGE_SIZE);
+	v =  do_brk(PRDA_ADDRESS, PAGE_SIZE);
 	up_write(&current->mm->mmap_sem);
 
 	if (v < 0)
@@ -815,7 +818,7 @@ out_free_interp:
 	kfree(elf_interpreter);
 out_free_file:
 out_free_ph:
-	kfree (elf_phdata);
+	kfree(elf_phdata);
 	goto out;
 }
 
@@ -831,7 +834,7 @@ static int load_irix_library(struct file *file)
 	int retval;
 	unsigned int bss;
 	int error;
-	int i,j, k;
+	int i, j, k;
 
 	error = kernel_read(file, 0, (char *) &elf_ex, sizeof(elf_ex));
 	if (error != sizeof(elf_ex))
@@ -1088,7 +1091,7 @@ end_coredump:
  * and then they are actually written out.  If we run out of core limit
  * we just truncate.
  */
-static int irix_core_dump(long signr, struct pt_regs * regs, struct file *file)
+static int irix_core_dump(long signr, struct pt_regs *regs, struct file *file, unsigned long limit)
 {
 	int has_dumped = 0;
 	mm_segment_t fs;
@@ -1098,7 +1101,6 @@ static int irix_core_dump(long signr, struct pt_regs * regs, struct file *file)
 	struct vm_area_struct *vma;
 	struct elfhdr elf;
 	off_t offset = 0, dataoff;
-	int limit = current->signal->rlim[RLIMIT_CORE].rlim_cur;
 	int numnote = 3;
 	struct memelfnote notes[3];
 	struct elf_prstatus prstatus;	/* NT_PRSTATUS */
@@ -1170,8 +1172,8 @@ static int irix_core_dump(long signr, struct pt_regs * regs, struct file *file)
 	prstatus.pr_sighold = current->blocked.sig[0];
 	psinfo.pr_pid = prstatus.pr_pid = current->pid;
 	psinfo.pr_ppid = prstatus.pr_ppid = current->parent->pid;
-	psinfo.pr_pgrp = prstatus.pr_pgrp = process_group(current);
-	psinfo.pr_sid = prstatus.pr_sid = process_session(current);
+	psinfo.pr_pgrp = prstatus.pr_pgrp = task_pgrp_nr(current);
+	psinfo.pr_sid = prstatus.pr_sid = task_session_nr(current);
 	if (current->pid == current->tgid) {
 		/*
 		 * This is the record for the group leader.  Add in the
@@ -1232,7 +1234,7 @@ static int irix_core_dump(long signr, struct pt_regs * regs, struct file *file)
 	strlcpy(psinfo.pr_fname, current->comm, sizeof(psinfo.pr_fname));
 
 	/* Try to dump the FPU. */
-	prstatus.pr_fpvalid = dump_fpu (regs, &fpu);
+	prstatus.pr_fpvalid = dump_fpu(regs, &fpu);
 	if (!prstatus.pr_fpvalid) {
 		numnote--;
 	} else {

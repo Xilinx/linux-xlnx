@@ -437,10 +437,8 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 
 	/* If optlen==0, it is equivalent to val == 0 */
 
-#ifdef CONFIG_IP_MROUTE
-	if (optname >= MRT_BASE && optname <= (MRT_BASE + 10))
+	if (ip_mroute_opt(optname))
 		return ip_mroute_setsockopt(sk,optname,optval,optlen);
-#endif
 
 	err = 0;
 	lock_sock(sk);
@@ -602,7 +600,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 				dev_put(dev);
 			}
 		} else
-			dev = __dev_get_by_index(mreq.imr_ifindex);
+			dev = __dev_get_by_index(&init_net, mreq.imr_ifindex);
 
 
 		err = -EADDRNOTAVAIL;
@@ -659,7 +657,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 			break;
 		}
 		msf = kmalloc(optlen, GFP_KERNEL);
-		if (msf == 0) {
+		if (!msf) {
 			err = -ENOBUFS;
 			break;
 		}
@@ -816,7 +814,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 			break;
 		}
 		gsf = kmalloc(optlen,GFP_KERNEL);
-		if (gsf == 0) {
+		if (!gsf) {
 			err = -ENOBUFS;
 			break;
 		}
@@ -836,7 +834,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 		}
 		msize = IP_MSFILTER_SIZE(gsf->gf_numsrc);
 		msf = kmalloc(msize,GFP_KERNEL);
-		if (msf == 0) {
+		if (!msf) {
 			err = -ENOBUFS;
 			goto mc_msf_out;
 		}
@@ -909,11 +907,9 @@ int ip_setsockopt(struct sock *sk, int level,
 #ifdef CONFIG_NETFILTER
 	/* we need to exclude all possible ENOPROTOOPTs except default case */
 	if (err == -ENOPROTOOPT && optname != IP_HDRINCL &&
-		optname != IP_IPSEC_POLICY && optname != IP_XFRM_POLICY
-#ifdef CONFIG_IP_MROUTE
-		&& (optname < MRT_BASE || optname > (MRT_BASE + 10))
-#endif
-	   ) {
+			optname != IP_IPSEC_POLICY &&
+			optname != IP_XFRM_POLICY &&
+			!ip_mroute_opt(optname)) {
 		lock_sock(sk);
 		err = nf_setsockopt(sk, PF_INET, optname, optval, optlen);
 		release_sock(sk);
@@ -935,11 +931,9 @@ int compat_ip_setsockopt(struct sock *sk, int level, int optname,
 #ifdef CONFIG_NETFILTER
 	/* we need to exclude all possible ENOPROTOOPTs except default case */
 	if (err == -ENOPROTOOPT && optname != IP_HDRINCL &&
-	    optname != IP_IPSEC_POLICY && optname != IP_XFRM_POLICY
-#ifdef CONFIG_IP_MROUTE
-	    && (optname < MRT_BASE || optname > (MRT_BASE + 10))
-#endif
-	   ) {
+			optname != IP_IPSEC_POLICY &&
+			optname != IP_XFRM_POLICY &&
+			!ip_mroute_opt(optname)) {
 		lock_sock(sk);
 		err = compat_nf_setsockopt(sk, PF_INET, optname,
 					   optval, optlen);
@@ -967,11 +961,8 @@ static int do_ip_getsockopt(struct sock *sk, int level, int optname,
 	if (level != SOL_IP)
 		return -EOPNOTSUPP;
 
-#ifdef CONFIG_IP_MROUTE
-	if (optname >= MRT_BASE && optname <= MRT_BASE+10) {
+	if (ip_mroute_opt(optname))
 		return ip_mroute_getsockopt(sk,optname,optval,optlen);
-	}
-#endif
 
 	if (get_user(len,optlen))
 		return -EFAULT;
@@ -1171,11 +1162,8 @@ int ip_getsockopt(struct sock *sk, int level,
 	err = do_ip_getsockopt(sk, level, optname, optval, optlen);
 #ifdef CONFIG_NETFILTER
 	/* we need to exclude all possible ENOPROTOOPTs except default case */
-	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS
-#ifdef CONFIG_IP_MROUTE
-		&& (optname < MRT_BASE || optname > MRT_BASE+10)
-#endif
-	   ) {
+	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS &&
+			!ip_mroute_opt(optname)) {
 		int len;
 
 		if (get_user(len,optlen))
@@ -1200,11 +1188,8 @@ int compat_ip_getsockopt(struct sock *sk, int level, int optname,
 	int err = do_ip_getsockopt(sk, level, optname, optval, optlen);
 #ifdef CONFIG_NETFILTER
 	/* we need to exclude all possible ENOPROTOOPTs except default case */
-	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS
-#ifdef CONFIG_IP_MROUTE
-	    && (optname < MRT_BASE || optname > MRT_BASE+10)
-#endif
-	   ) {
+	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS &&
+			!ip_mroute_opt(optname)) {
 		int len;
 
 		if (get_user(len, optlen))

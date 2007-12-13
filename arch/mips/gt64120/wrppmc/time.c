@@ -11,26 +11,13 @@
  * Copyright (C) 2006, Wind River System Inc.
  */
 #include <linux/init.h>
-#include <linux/string.h>
-#include <linux/kernel.h>
-#include <linux/param.h>	/* for HZ */
-#include <linux/irq.h>
-#include <linux/timex.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 
-#include <asm/reboot.h>
-#include <asm/time.h>
-#include <asm/io.h>
-#include <asm/bootinfo.h>
 #include <asm/gt64120.h>
+#include <asm/time.h>
 
 #define WRPPMC_CPU_CLK_FREQ 40000000 /* 40MHZ */
-
-void __init plat_timer_setup(struct irqaction *irq)
-{
-	/* Install ISR for timer interrupt */
-	setup_irq(WRPPMC_MIPS_TIMER_IRQ, irq);
-}
 
 /*
  * Estimate CPU frequency.  Sets mips_hpt_frequency as a side-effect
@@ -38,7 +25,7 @@ void __init plat_timer_setup(struct irqaction *irq)
  * NOTE: We disable all GT64120 timers, and use MIPS processor internal
  * timer as the source of kernel clock tick.
  */
-void __init wrppmc_time_init(void)
+void __init plat_time_init(void)
 {
 	/* Disable GT64120 timers */
 	GT_WRITE(GT_TC_CONTROL_OFS, 0x00);

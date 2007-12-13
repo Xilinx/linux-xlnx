@@ -34,13 +34,11 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/bootmem.h>
+
 #include <asm/addrspace.h>
 #include <asm/bootinfo.h>
 
-int prom_argc;
-char **prom_argv, **prom_envp;
-extern void  __init prom_init_cmdline(void);
-extern char *prom_getenv(char *envname);
+#include <prom.h>
 
 const char *get_system_type(void)
 {
@@ -56,7 +54,6 @@ void __init prom_init(void)
 	prom_argv = (char **) fw_arg1;
 	prom_envp = (char **) fw_arg2;
 
-	mips_machgroup = MACH_GROUP_ALCHEMY;
 	mips_machtype = MACH_MTX1;	/* set the platform # */
 
 	prom_init_cmdline();

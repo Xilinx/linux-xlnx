@@ -611,7 +611,7 @@ static int __devinit snd_portman_rawmidi_create(struct snd_card *card)
 /*********************************************************************
  * parport stuff
  *********************************************************************/
-static void snd_portman_interrupt(int irq, void *userdata)
+static void snd_portman_interrupt(void *userdata)
 {
 	unsigned char midivalue = 0;
 	struct portman *pm = ((struct snd_card*)userdata)->private_data;
@@ -668,7 +668,7 @@ static int __devinit snd_portman_probe_port(struct parport *p)
 	parport_release(pardev);
 	parport_unregister_device(pardev);
 
-	return res;
+	return res ? -EIO : 0;
 }
 
 static void __devinit snd_portman_attach(struct parport *p)

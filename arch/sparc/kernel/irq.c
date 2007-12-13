@@ -18,7 +18,6 @@
 #include <linux/linkage.h>
 #include <linux/kernel_stat.h>
 #include <linux/signal.h>
-#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/random.h>
@@ -56,7 +55,7 @@
 #define SMP_NOP2
 #define SMP_NOP3
 #endif /* SMP */
-unsigned long __local_irq_save(void)
+unsigned long __raw_local_irq_save(void)
 {
 	unsigned long retval;
 	unsigned long tmp;
@@ -74,7 +73,7 @@ unsigned long __local_irq_save(void)
 	return retval;
 }
 
-void local_irq_enable(void)
+void raw_local_irq_enable(void)
 {
 	unsigned long tmp;
 
@@ -89,7 +88,7 @@ void local_irq_enable(void)
 		: "memory");
 }
 
-void local_irq_restore(unsigned long old_psr)
+void raw_local_irq_restore(unsigned long old_psr)
 {
 	unsigned long tmp;
 
@@ -105,9 +104,9 @@ void local_irq_restore(unsigned long old_psr)
 		: "memory");
 }
 
-EXPORT_SYMBOL(__local_irq_save);
-EXPORT_SYMBOL(local_irq_enable);
-EXPORT_SYMBOL(local_irq_restore);
+EXPORT_SYMBOL(__raw_local_irq_save);
+EXPORT_SYMBOL(raw_local_irq_enable);
+EXPORT_SYMBOL(raw_local_irq_restore);
 
 /*
  * Dave Redman (djhr@tadpole.co.uk)
@@ -479,7 +478,7 @@ EXPORT_SYMBOL(pdma_areasize);
 
 extern void floppy_hardint(void);
 
-static irqreturn_t (*floppy_irq_handler)(int irq, void *dev_id);
+static irq_handler_t floppy_irq_handler;
 
 void sparc_floppy_irq(int irq, void *dev_id, struct pt_regs *regs)
 {
@@ -500,7 +499,7 @@ void sparc_floppy_irq(int irq, void *dev_id, struct pt_regs *regs)
 }
 
 int sparc_floppy_request_irq(int irq, unsigned long flags,
-			     irqreturn_t (*irq_handler)(int irq, void *))
+			     irq_handler_t irq_handler)
 {
 	floppy_irq_handler = irq_handler;
 	return request_fast_irq(irq, floppy_hardint, flags, "floppy");

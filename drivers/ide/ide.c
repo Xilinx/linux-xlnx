@@ -100,8 +100,6 @@ static int ide_scan_direction; /* THIS was formerly 2.2.x pci=reverse */
 
 int noautodma = 0;
 
-EXPORT_SYMBOL(noautodma);
-
 #ifdef CONFIG_BLK_DEV_IDEACPI
 int ide_noacpi = 0;
 int ide_noacpitfs = 1;
@@ -135,8 +133,6 @@ static void init_hwif_data(ide_hwif_t *hwif, unsigned int index)
 	hwif->name[3]	= '0' + index;
 
 	hwif->bus_state	= BUSSTATE_ON;
-
-	hwif->atapi_dma = 0;		/* disable all atapi dma */ 
 
 	init_completion(&hwif->gendev_rel_comp);
 
@@ -172,7 +168,6 @@ static void init_hwif_default(ide_hwif_t *hwif, unsigned int index)
 
 	ide_init_hwif_ports(&hw, ide_default_io_base(index), 0, &hwif->irq);
 
-	memcpy(&hwif->hw, &hw, sizeof(hw));
 	memcpy(hwif->io_ports, hw.io_ports, sizeof(hw.io_ports));
 
 	hwif->noprobe = !hwif->io_ports[IDE_DATA_OFFSET];
@@ -218,7 +213,7 @@ static void __init init_ide_data (void)
 		init_hwif_data(hwif, index);
 		init_hwif_default(hwif, index);
 #if !defined(CONFIG_PPC32) || !defined(CONFIG_PCI)
-		hwif->irq = hwif->hw.irq =
+		hwif->irq =
 			ide_init_default_irq(hwif->io_ports[IDE_DATA_OFFSET]);
 #endif
 	}
@@ -268,6 +263,30 @@ static int ide_system_bus_speed(void)
 	}
 	return system_bus_speed;
 }
+
+ide_hwif_t * ide_find_port(unsigned long base)
+{
+	ide_hwif_t *hwif;
+	int i;
+
+	for (i = 0; i < MAX_HWIFS; i++) {
+		hwif = &ide_hwifs[i];
+		if (hwif->io_ports[IDE_DATA_OFFSET] == base)
+			goto found;
+	}
+
+	for (i = 0; i < MAX_HWIFS; i++) {
+		hwif = &ide_hwifs[i];
+		if (hwif->io_ports[IDE_DATA_OFFSET] == 0)
+			goto found;
+	}
+
+	hwif = NULL;
+found:
+	return hwif;
+}
+
+EXPORT_SYMBOL_GPL(ide_find_port);
 
 static struct resource* hwif_request_region(ide_hwif_t *hwif,
 					    unsigned long addr, int num)
@@ -381,7 +400,6 @@ static void ide_hwif_restore(ide_hwif_t *hwif, ide_hwif_t *tmp_hwif)
 
 	hwif->pio_mask			= tmp_hwif->pio_mask;
 
-	hwif->atapi_dma			= tmp_hwif->atapi_dma;
 	hwif->ultra_mask		= tmp_hwif->ultra_mask;
 	hwif->mwdma_mask		= tmp_hwif->mwdma_mask;
 	hwif->swdma_mask		= tmp_hwif->swdma_mask;
@@ -396,8 +414,11 @@ static void ide_hwif_restore(ide_hwif_t *hwif, ide_hwif_t *tmp_hwif)
 	hwif->cds			= tmp_hwif->cds;
 #endif
 
-	hwif->tuneproc			= tmp_hwif->tuneproc;
-	hwif->speedproc			= tmp_hwif->speedproc;
+	hwif->fixup			= tmp_hwif->fixup;
+
+	hwif->set_pio_mode		= tmp_hwif->set_pio_mode;
+	hwif->set_dma_mode		= tmp_hwif->set_dma_mode;
+	hwif->mdma_filter		= tmp_hwif->mdma_filter;
 	hwif->udma_filter		= tmp_hwif->udma_filter;
 	hwif->selectproc		= tmp_hwif->selectproc;
 	hwif->reset_poll		= tmp_hwif->reset_poll;
@@ -417,7 +438,6 @@ static void ide_hwif_restore(ide_hwif_t *hwif, ide_hwif_t *tmp_hwif)
 	hwif->dma_exec_cmd		= tmp_hwif->dma_exec_cmd;
 	hwif->dma_start			= tmp_hwif->dma_start;
 	hwif->ide_dma_end		= tmp_hwif->ide_dma_end;
-	hwif->ide_dma_check		= tmp_hwif->ide_dma_check;
 	hwif->ide_dma_on		= tmp_hwif->ide_dma_on;
 	hwif->dma_off_quietly		= tmp_hwif->dma_off_quietly;
 	hwif->ide_dma_test_irq		= tmp_hwif->ide_dma_test_irq;
@@ -442,7 +462,6 @@ static void ide_hwif_restore(ide_hwif_t *hwif, ide_hwif_t *tmp_hwif)
 
 	hwif->mmio			= tmp_hwif->mmio;
 	hwif->rqsize			= tmp_hwif->rqsize;
-	hwif->no_lba48			= tmp_hwif->no_lba48;
 
 #ifndef CONFIG_BLK_DEV_IDECS
 	hwif->irq			= tmp_hwif->irq;
@@ -460,7 +479,6 @@ static void ide_hwif_restore(ide_hwif_t *hwif, ide_hwif_t *tmp_hwif)
 	hwif->select_data		= tmp_hwif->select_data;
 	hwif->extra_base		= tmp_hwif->extra_base;
 	hwif->extra_ports		= tmp_hwif->extra_ports;
-	hwif->autodma			= tmp_hwif->autodma;
 
 	hwif->hwif_data			= tmp_hwif->hwif_data;
 }
@@ -659,7 +677,6 @@ void ide_setup_ports (	hw_regs_t *hw,
 		}
 	}
 	hw->irq = irq;
-	hw->dma = NO_DMA;
 	hw->ack_intr = ack_intr;
 /*
  *	hw->iops = iops;
@@ -667,11 +684,11 @@ void ide_setup_ports (	hw_regs_t *hw,
 }
 
 /**
- *	ide_register_hw_with_fixup	-	register IDE interface
+ *	ide_register_hw		-	register IDE interface
  *	@hw: hardware registers
+ *	@fixup: fixup function
  *	@initializing: set while initializing built-in drivers
  *	@hwifp: pointer to returned hwif
- *	@fixup: fixup function
  *
  *	Register an IDE interface, specifying exactly the registers etc.
  *	Set init=1 iff calling before probes have taken place.
@@ -679,9 +696,8 @@ void ide_setup_ports (	hw_regs_t *hw,
  *	Returns -1 on error.
  */
 
-int ide_register_hw_with_fixup(hw_regs_t *hw, int initializing,
-			       ide_hwif_t **hwifp,
-			       void(*fixup)(ide_hwif_t *hwif))
+int ide_register_hw(hw_regs_t *hw, void (*fixup)(ide_hwif_t *),
+		    int initializing, ide_hwif_t **hwifp)
 {
 	int index, retry = 1;
 	ide_hwif_t *hwif;
@@ -689,7 +705,7 @@ int ide_register_hw_with_fixup(hw_regs_t *hw, int initializing,
 	do {
 		for (index = 0; index < MAX_HWIFS; ++index) {
 			hwif = &ide_hwifs[index];
-			if (hwif->hw.io_ports[IDE_DATA_OFFSET] == hw->io_ports[IDE_DATA_OFFSET])
+			if (hwif->io_ports[IDE_DATA_OFFSET] == hw->io_ports[IDE_DATA_OFFSET])
 				goto found;
 		}
 		for (index = 0; index < MAX_HWIFS; ++index) {
@@ -697,7 +713,7 @@ int ide_register_hw_with_fixup(hw_regs_t *hw, int initializing,
 			if (hwif->hold)
 				continue;
 			if ((!hwif->present && !hwif->mate && !initializing) ||
-			    (!hwif->hw.io_ports[IDE_DATA_OFFSET] && initializing))
+			    (!hwif->io_ports[IDE_DATA_OFFSET] && initializing))
 				goto found;
 		}
 		for (index = 0; index < MAX_HWIFS; index++)
@@ -713,29 +729,24 @@ found:
 	}
 	if (hwif->present)
 		return -1;
-	memcpy(&hwif->hw, hw, sizeof(*hw));
-	memcpy(hwif->io_ports, hwif->hw.io_ports, sizeof(hwif->hw.io_ports));
+	memcpy(hwif->io_ports, hw->io_ports, sizeof(hwif->io_ports));
 	hwif->irq = hw->irq;
 	hwif->noprobe = 0;
+	hwif->fixup = fixup;
 	hwif->chipset = hw->chipset;
 	hwif->gendev.parent = hw->dev;
+	hwif->ack_intr = hw->ack_intr;
 
-	if (!initializing) {
-		probe_hwif_init_with_fixup(hwif, fixup);
-		ide_proc_register_port(hwif);
+	if (initializing == 0) {
+		u8 idx[4] = { index, 0xff, 0xff, 0xff };
+
+		ide_device_add(idx);
 	}
 
 	if (hwifp)
 		*hwifp = hwif;
 
 	return (initializing || hwif->present) ? index : -1;
-}
-
-EXPORT_SYMBOL(ide_register_hw_with_fixup);
-
-int ide_register_hw(hw_regs_t *hw, int initializing, ide_hwif_t **hwifp)
-{
-	return ide_register_hw_with_fixup(hw, initializing, hwifp, NULL);
 }
 
 EXPORT_SYMBOL(ide_register_hw);
@@ -822,7 +833,7 @@ int set_using_dma(ide_drive_t *drive, int arg)
 	if (!drive->id || !(drive->id->capability & 1))
 		goto out;
 
-	if (hwif->ide_dma_check == NULL)
+	if (hwif->ide_dma_on == NULL)
 		goto out;
 
 	err = -EBUSY;
@@ -866,8 +877,9 @@ int set_pio_mode(ide_drive_t *drive, int arg)
 	if (arg < 0 || arg > 255)
 		return -EINVAL;
 
-	if (!HWIF(drive)->tuneproc)
+	if (drive->hwif->set_pio_mode == NULL)
 		return -ENOSYS;
+
 	if (drive->special.b.set_tune)
 		return -EBUSY;
 	ide_init_drive_cmd(&rq);
@@ -914,6 +926,7 @@ static int generic_ide_suspend(struct device *dev, pm_message_t mesg)
 	struct request rq;
 	struct request_pm_state rqpm;
 	ide_task_t args;
+	int ret;
 
 	/* Call ACPI _GTM only once */
 	if (!(drive->dn % 2))
@@ -930,7 +943,14 @@ static int generic_ide_suspend(struct device *dev, pm_message_t mesg)
 		mesg.event = PM_EVENT_FREEZE;
 	rqpm.pm_state = mesg.event;
 
-	return ide_do_drive_cmd(drive, &rq, ide_wait);
+	ret = ide_do_drive_cmd(drive, &rq, ide_wait);
+	/* only call ACPI _PS3 after both drivers are suspended */
+	if (!ret && (((drive->dn % 2) && hwif->drives[0].present
+		 && hwif->drives[1].present)
+		 || !hwif->drives[0].present
+		 || !hwif->drives[1].present))
+		ide_acpi_set_state(hwif, 0);
+	return ret;
 }
 
 static int generic_ide_resume(struct device *dev)
@@ -943,8 +963,10 @@ static int generic_ide_resume(struct device *dev)
 	int err;
 
 	/* Call ACPI _STM only once */
-	if (!(drive->dn % 2))
+	if (!(drive->dn % 2)) {
+		ide_acpi_set_state(hwif, 1);
 		ide_acpi_push_timing(hwif);
+	}
 
 	ide_acpi_exec_tfs(drive);
 
@@ -1042,7 +1064,7 @@ int generic_ide_ioctl(ide_drive_t *drive, struct file *file, struct block_device
 			ide_init_hwif_ports(&hw, (unsigned long) args[0],
 					    (unsigned long) args[1], NULL);
 			hw.irq = args[2];
-			if (ide_register_hw(&hw, 0, NULL) == -1)
+			if (ide_register_hw(&hw, NULL, 0, NULL) == -1)
 				return -EIO;
 			return 0;
 		}
@@ -1264,7 +1286,7 @@ static int __init ide_setup(char *s)
 	if (!strcmp(s, "ide=nodma")) {
 		printk(" : Prevented DMA\n");
 		noautodma = 1;
-		return 1;
+		goto obsolete_option;
 	}
 
 #ifdef CONFIG_IDEPCI_PCIBUS_ORDER
@@ -1298,7 +1320,7 @@ static int __init ide_setup(char *s)
 	 */
 	if (s[0] == 'h' && s[1] == 'd' && s[2] >= 'a' && s[2] <= max_drive) {
 		const char *hd_words[] = {
-			"none", "noprobe", "nowerr", "cdrom", "minus5",
+			"none", "noprobe", "nowerr", "cdrom", "nodma",
 			"autotune", "noautotune", "minus8", "swapdata", "bswap",
 			"noflush", "remap", "remap63", "scsi", NULL };
 		unit = s[2] - 'a';
@@ -1325,6 +1347,9 @@ static int __init ide_setup(char *s)
 				/* an ATAPI device ignores DRDY */
 				drive->ready_stat = 0;
 				hwif->noprobe = 0;
+				goto done;
+			case -5: /* nodma */
+				drive->nodma = 1;
 				goto done;
 			case -6: /* "autotune" */
 				drive->autotune = IDE_TUNE_AUTO;
@@ -1387,9 +1412,12 @@ static int __init ide_setup(char *s)
 		 */
 		static const char *ide_words[] = {
 			"noprobe", "serialize", "minus3", "minus4",
-			"reset", "dma", "ata66", "minus8", "minus9",
+			"reset", "minus6", "ata66", "minus8", "minus9",
 			"minus10", "four", "qd65xx", "ht6560b", "cmd640_vlb",
 			"dtc2278", "umc8672", "ali14xx", NULL };
+
+		hw_regs_t hwregs;
+
 		hw = s[3] - '0';
 		hwif = &ide_hwifs[hw];
 		i = match_parm(&s[4], ide_words, vals, 3);
@@ -1466,6 +1494,7 @@ static int __init ide_setup(char *s)
 			case -10: /* minus10 */
 			case -9: /* minus9 */
 			case -8: /* minus8 */
+			case -6:
 			case -4:
 			case -3:
 				goto bad_option;
@@ -1480,9 +1509,6 @@ static int __init ide_setup(char *s)
 #else
 				goto bad_hwif;
 #endif
-			case -6: /* dma */
-				hwif->autodma = 1;
-				goto obsolete_option;
 			case -5: /* "reset" */
 				hwif->reset = 1;
 				goto obsolete_option;
@@ -1501,9 +1527,9 @@ static int __init ide_setup(char *s)
 			case 2: /* base,ctl */
 				vals[2] = 0;	/* default irq = probe for it */
 			case 3: /* base,ctl,irq */
-				hwif->hw.irq = vals[2];
-				ide_init_hwif_ports(&hwif->hw, (unsigned long) vals[0], (unsigned long) vals[1], &hwif->irq);
-				memcpy(hwif->io_ports, hwif->hw.io_ports, sizeof(hwif->io_ports));
+				memset(&hwregs, 0, sizeof(hwregs));
+				ide_init_hwif_ports(&hwregs, vals[0], vals[1], &hwif->irq);
+				memcpy(hwif->io_ports, hwregs.io_ports, sizeof(hwif->io_ports));
 				hwif->irq      = vals[2];
 				hwif->noprobe  = 0;
 				hwif->chipset  = ide_forced;
@@ -1651,20 +1677,13 @@ static struct device_attribute ide_dev_attrs[] = {
 	__ATTR_NULL
 };
 
-static int ide_uevent(struct device *dev, char **envp, int num_envp,
-		      char *buffer, int buffer_size)
+static int ide_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	ide_drive_t *drive = to_ide_device(dev);
-	int i = 0;
-	int length = 0;
 
-	add_uevent_var(envp, num_envp, &i, buffer, buffer_size, &length,
-		       "MEDIA=%s", media_string(drive));
-	add_uevent_var(envp, num_envp, &i, buffer, buffer_size, &length,
-		       "DRIVENAME=%s", drive->name);
-	add_uevent_var(envp, num_envp, &i, buffer, buffer_size, &length,
-		       "MODALIAS=ide:m-%s", media_string(drive));
-	envp[i] = NULL;
+	add_uevent_var(env, "MEDIA=%s", media_string(drive));
+	add_uevent_var(env, "DRIVENAME=%s", drive->name);
+	add_uevent_var(env, "MODALIAS=ide:m-%s", media_string(drive));
 	return 0;
 }
 

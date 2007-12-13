@@ -39,10 +39,13 @@
 #include <linux/cramfs_fs.h>
 #include <linux/romfs_fs.h>
 
+#include <asm/cplb.h>
 #include <asm/cacheflush.h>
 #include <asm/blackfin.h>
 #include <asm/cplbinit.h>
+#include <asm/div64.h>
 #include <asm/fixed_code.h>
+#include <asm/early_printk.h>
 
 u16 _bfin_swrst;
 
@@ -66,21 +69,21 @@ char __initdata command_line[COMMAND_LINE_SIZE];
 
 void __init bf53x_cache_init(void)
 {
-#if defined(CONFIG_BLKFIN_DCACHE) || defined(CONFIG_BLKFIN_CACHE)
+#if defined(CONFIG_BFIN_DCACHE) || defined(CONFIG_BFIN_ICACHE)
 	generate_cpl_tables();
 #endif
 
-#ifdef CONFIG_BLKFIN_CACHE
+#ifdef CONFIG_BFIN_ICACHE
 	bfin_icache_init();
 	printk(KERN_INFO "Instruction Cache Enabled\n");
 #endif
 
-#ifdef CONFIG_BLKFIN_DCACHE
+#ifdef CONFIG_BFIN_DCACHE
 	bfin_dcache_init();
 	printk(KERN_INFO "Data Cache Enabled"
-# if defined CONFIG_BLKFIN_WB
+# if defined CONFIG_BFIN_WB
 		" (write-back)"
-# elif defined CONFIG_BLKFIN_WT
+# elif defined CONFIG_BFIN_WT
 		" (write-through)"
 # endif
 		"\n");
@@ -156,8 +159,10 @@ static __init void parse_cmdline_early(char *cmdline_p)
 							    1;
 					}
 				}
+			} else if (!memcmp(to, "earlyprintk=", 12)) {
+				to += 12;
+				setup_early_printk(to);
 			}
-
 		}
 		c = *(to++);
 		if (!c)
@@ -176,22 +181,36 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_DUMMY_CONSOLE
 	conswitchp = &dummy_con;
 #endif
+
+#if defined(CONFIG_CMDLINE_BOOL)
+	strncpy(&command_line[0], CONFIG_CMDLINE, sizeof(command_line));
+	command_line[sizeof(command_line) - 1] = 0;
+#endif
+
+	/* Keep a copy of command line */
+	*cmdline_p = &command_line[0];
+	memcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
+	boot_command_line[COMMAND_LINE_SIZE - 1] = '\0';
+
+	/* setup memory defaults from the user config */
+	physical_mem_end = 0;
+	_ramend = CONFIG_MEM_SIZE * 1024 * 1024;
+
+	parse_cmdline_early(&command_line[0]);
+
 	cclk = get_cclk();
 	sclk = get_sclk();
 
-#if !defined(CONFIG_BFIN_KERNEL_CLOCK) && defined(ANOMALY_05000273)
-	if (cclk == sclk)
+#if !defined(CONFIG_BFIN_KERNEL_CLOCK)
+	if (ANOMALY_05000273 && cclk == sclk)
 		panic("ANOMALY 05000273, SCLK can not be same as CCLK");
 #endif
 
-#if defined(ANOMALY_05000266)
-	bfin_read_IMDMA_D0_IRQ_STATUS();
-	bfin_read_IMDMA_D1_IRQ_STATUS();
-#endif
-
-#ifdef DEBUG_SERIAL_EARLY_INIT
-	bfin_console_init();	/* early console registration */
-	/* this give a chance to get printk() working before crash. */
+#ifdef BF561_FAMILY
+	if (ANOMALY_05000266) {
+		bfin_read_IMDMA_D0_IRQ_STATUS();
+		bfin_read_IMDMA_D1_IRQ_STATUS();
+	}
 #endif
 
 	printk(KERN_INFO "Hardware Trace ");
@@ -211,22 +230,6 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	flash_probe();
 #endif
-
-#if defined(CONFIG_CMDLINE_BOOL)
-	strncpy(&command_line[0], CONFIG_CMDLINE, sizeof(command_line));
-	command_line[sizeof(command_line) - 1] = 0;
-#endif
-
-	/* Keep a copy of command line */
-	*cmdline_p = &command_line[0];
-	memcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
-	boot_command_line[COMMAND_LINE_SIZE - 1] = '\0';
-
-	/* setup memory defaults from the user config */
-	physical_mem_end = 0;
-	_ramend = CONFIG_MEM_SIZE * 1024 * 1024;
-
-	parse_cmdline_early(&command_line[0]);
 
 	if (physical_mem_end == 0)
 		physical_mem_end = _ramend;
@@ -260,7 +263,7 @@ void __init setup_arch(char **cmdline_p)
 	    && ((unsigned long *)mtd_phys)[1] == ROMSB_WORD1)
 		mtd_size =
 		    PAGE_ALIGN(be32_to_cpu(((unsigned long *)mtd_phys)[2]));
-#  if (defined(CONFIG_BLKFIN_CACHE) && defined(ANOMALY_05000263))
+#  if (defined(CONFIG_BFIN_ICACHE) && ANOMALY_05000263)
 	/* Due to a Hardware Anomaly we need to limit the size of usable
 	 * instruction memory to max 60MB, 56 if HUNT_FOR_ZERO is on
 	 * 05000263 - Hardware loop corrupted when taking an ICPLB exception
@@ -289,7 +292,7 @@ void __init setup_arch(char **cmdline_p)
 	_ebss = memory_mtd_start;	/* define _ebss for compatible */
 #endif				/* CONFIG_MTD_UCLINUX */
 
-#if (defined(CONFIG_BLKFIN_CACHE) && defined(ANOMALY_05000263))
+#if (defined(CONFIG_BFIN_ICACHE) && ANOMALY_05000263)
 	/* Due to a Hardware Anomaly we need to limit the size of usable
 	 * instruction memory to max 60MB, 56 if HUNT_FOR_ZERO is on
 	 * 05000263 - Hardware loop corrupted when taking an ICPLB exception
@@ -314,6 +317,15 @@ void __init setup_arch(char **cmdline_p)
 
 	init_leds();
 
+	_bfin_swrst = bfin_read_SWRST();
+
+	if (_bfin_swrst & RESET_DOUBLE)
+		printk(KERN_INFO "Recovering from Double Fault event\n");
+	else if (_bfin_swrst & RESET_WDOG)
+		printk(KERN_INFO "Recovering from Watchdog event\n");
+	else if (_bfin_swrst & RESET_SOFTWARE)
+		printk(KERN_NOTICE "Reset caused by Software reset\n");
+
 	printk(KERN_INFO "Blackfin support (C) 2004-2007 Analog Devices, Inc.\n");
 	if (bfin_compiled_revid() == 0xffff)
 		printk(KERN_INFO "Compiled for ADSP-%s Rev any\n", CPU);
@@ -334,13 +346,11 @@ void __init setup_arch(char **cmdline_p)
 		       CPU, bfin_revid());
 	printk(KERN_INFO "Blackfin Linux support by http://blackfin.uclinux.org/\n");
 
-	printk(KERN_INFO "Processor Speed: %lu MHz core clock and %lu Mhz System Clock\n",
+	printk(KERN_INFO "Processor Speed: %lu MHz core clock and %lu MHz System Clock\n",
 	       cclk / 1000000,  sclk / 1000000);
 
-#if defined(ANOMALY_05000273)
-	if ((cclk >> 1) <= sclk)
+	if (ANOMALY_05000273 && (cclk >> 1) <= sclk)
 		printk("\n\n\nANOMALY_05000273: CCLK must be >= 2*SCLK !!!\n\n\n");
-#endif
 
 	printk(KERN_INFO "Board Memory: %ldMB\n", physical_mem_end >> 20);
 	printk(KERN_INFO "Kernel Managed Memory: %ldMB\n", _ramend >> 20);
@@ -402,8 +412,6 @@ void __init setup_arch(char **cmdline_p)
 	if (l1_length > L1_DATA_A_LENGTH)
 		panic("L1 data memory overflow\n");
 
-	_bfin_swrst = bfin_read_SWRST();
-
 	/* Copy atomic sequences to their fixed location, and sanity check that
 	   these locations are the ones that we advertise to userspace.  */
 	memcpy((void *)FIXED_CODE_START, &fixed_code_start,
@@ -424,6 +432,8 @@ void __init setup_arch(char **cmdline_p)
 	       != ATOMIC_AND32 - FIXED_CODE_START);
 	BUG_ON((char *)&atomic_xor32 - (char *)&fixed_code_start
 	       != ATOMIC_XOR32 - FIXED_CODE_START);
+	BUG_ON((char *)&safe_user_instruction - (char *)&fixed_code_start
+		!= SAFE_USER_INSTRUCTION - FIXED_CODE_START);
 
 	init_exception_vectors();
 	bf53x_cache_init();
@@ -459,7 +469,7 @@ static u_long get_vco(void)
 	return vco;
 }
 
-/*Get the Core clock*/
+/* Get the Core clock */
 u_long get_cclk(void)
 {
 	u_long csel, ssel;
@@ -493,12 +503,28 @@ u_long get_sclk(void)
 }
 EXPORT_SYMBOL(get_sclk);
 
+unsigned long sclk_to_usecs(unsigned long sclk)
+{
+	u64 tmp = USEC_PER_SEC * (u64)sclk;
+	do_div(tmp, get_sclk());
+	return tmp;
+}
+EXPORT_SYMBOL(sclk_to_usecs);
+
+unsigned long usecs_to_sclk(unsigned long usecs)
+{
+	u64 tmp = get_sclk() * (u64)usecs;
+	do_div(tmp, USEC_PER_SEC);
+	return tmp;
+}
+EXPORT_SYMBOL(usecs_to_sclk);
+
 /*
  *	Get CPU information for use by the procfs.
  */
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
-	char *cpu, *mmu, *fpu, *name;
+	char *cpu, *mmu, *fpu, *vendor, *cache;
 	uint32_t revid;
 
 	u_long cclk = 0, sclk = 0;
@@ -508,73 +534,86 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 	mmu = "none";
 	fpu = "none";
 	revid = bfin_revid();
-	name = bfin_board_name;
 
 	cclk = get_cclk();
 	sclk = get_sclk();
 
-	seq_printf(m, "CPU:\t\tADSP-%s Rev. 0.%d\n"
-		   "MMU:\t\t%s\n"
-		   "FPU:\t\t%s\n"
-		   "Core Clock:\t%9lu Hz\n"
-		   "System Clock:\t%9lu Hz\n"
-		   "BogoMips:\t%lu.%02lu\n"
-		   "Calibration:\t%lu loops\n",
-		   cpu, revid, mmu, fpu,
-		   cclk,
-		   sclk,
-		   (loops_per_jiffy * HZ) / 500000,
-		   ((loops_per_jiffy * HZ) / 5000) % 100,
-		   (loops_per_jiffy * HZ));
-	seq_printf(m, "Board Name:\t%s\n", name);
-	seq_printf(m, "Board Memory:\t%ld MB\n", physical_mem_end >> 20);
-	seq_printf(m, "Kernel Memory:\t%ld MB\n", (unsigned long)_ramend >> 20);
-	if (bfin_read_IMEM_CONTROL() & (ENICPLB | IMC))
-		seq_printf(m, "I-CACHE:\tON\n");
-	else
-		seq_printf(m, "I-CACHE:\tOFF\n");
-	if ((bfin_read_DMEM_CONTROL()) & (ENDCPLB | DMC_ENABLE))
-		seq_printf(m, "D-CACHE:\tON"
-#if defined CONFIG_BLKFIN_WB
-			   " (write-back)"
-#elif defined CONFIG_BLKFIN_WT
-			   " (write-through)"
-#endif
-			   "\n");
-	else
-		seq_printf(m, "D-CACHE:\tOFF\n");
+	switch (bfin_read_CHIPID() & CHIPID_MANUFACTURE) {
+	case 0xca:
+		vendor = "Analog Devices";
+		break;
+	default:
+		vendor = "unknown";
+		break;
+	}
 
+	seq_printf(m, "processor\t: %d\n"
+		"vendor_id\t: %s\n"
+		"cpu family\t: 0x%x\n"
+		"model name\t: ADSP-%s %lu(MHz CCLK) %lu(MHz SCLK)\n"
+		"stepping\t: %d\n",
+		0,
+		vendor,
+		(bfin_read_CHIPID() & CHIPID_FAMILY),
+		cpu, cclk/1000000, sclk/1000000,
+		revid);
 
+	seq_printf(m, "cpu MHz\t\t: %lu.%03lu/%lu.%03lu\n",
+		cclk/1000000, cclk%1000000,
+		sclk/1000000, sclk%1000000);
+	seq_printf(m, "bogomips\t: %lu.%02lu\n"
+		"Calibration\t: %lu loops\n",
+		(loops_per_jiffy * HZ) / 500000,
+		((loops_per_jiffy * HZ) / 5000) % 100,
+		(loops_per_jiffy * HZ));
+
+	/* Check Cache configutation */
 	switch (bfin_read_DMEM_CONTROL() & (1 << DMC0_P | 1 << DMC1_P)) {
 	case ACACHE_BSRAM:
-		seq_printf(m, "DBANK-A:\tCACHE\n" "DBANK-B:\tSRAM\n");
+		cache = "dbank-A/B\t: cache/sram";
 		dcache_size = 16;
 		dsup_banks = 1;
 		break;
 	case ACACHE_BCACHE:
-		seq_printf(m, "DBANK-A:\tCACHE\n" "DBANK-B:\tCACHE\n");
+		cache = "dbank-A/B\t: cache/cache";
 		dcache_size = 32;
 		dsup_banks = 2;
 		break;
 	case ASRAM_BSRAM:
-		seq_printf(m, "DBANK-A:\tSRAM\n" "DBANK-B:\tSRAM\n");
+		cache = "dbank-A/B\t: sram/sram";
 		dcache_size = 0;
 		dsup_banks = 0;
 		break;
 	default:
+		cache = "unknown";
+		dcache_size = 0;
+		dsup_banks = 0;
 		break;
 	}
 
+	/* Is it turned on? */
+	if (!((bfin_read_DMEM_CONTROL()) & (ENDCPLB | DMC_ENABLE)))
+		dcache_size = 0;
 
-	seq_printf(m, "I-CACHE Size:\t%dKB\n", BLKFIN_ICACHESIZE / 1024);
-	seq_printf(m, "D-CACHE Size:\t%dKB\n", dcache_size);
-	seq_printf(m, "I-CACHE Setup:\t%d Sub-banks/%d Ways, %d Lines/Way\n",
-		   BLKFIN_ISUBBANKS, BLKFIN_IWAYS, BLKFIN_ILINES);
+	seq_printf(m, "cache size\t: %d KB(L1 icache) "
+		"%d KB(L1 dcache-%s) %d KB(L2 cache)\n",
+		BFIN_ICACHESIZE / 1024, dcache_size,
+#if defined CONFIG_BFIN_WB
+		"wb"
+#elif defined CONFIG_BFIN_WT
+		"wt"
+#endif
+		"", 0);
+
+	seq_printf(m, "%s\n", cache);
+
+	seq_printf(m, "icache setup\t: %d Sub-banks/%d Ways, %d Lines/Way\n",
+		   BFIN_ISUBBANKS, BFIN_IWAYS, BFIN_ILINES);
 	seq_printf(m,
-		   "D-CACHE Setup:\t%d Super-banks/%d Sub-banks/%d Ways, %d Lines/Way\n",
-		   dsup_banks, BLKFIN_DSUBBANKS, BLKFIN_DWAYS,
-		   BLKFIN_DLINES);
-#ifdef CONFIG_BLKFIN_CACHE_LOCK
+		   "dcache setup\t: %d Super-banks/%d Sub-banks/%d Ways, %d Lines/Way\n",
+		   dsup_banks, BFIN_DSUBBANKS, BFIN_DWAYS,
+		   BFIN_DLINES);
+#ifdef CONFIG_BFIN_ICACHE_LOCK
 	switch (read_iloc()) {
 	case WAY0_L:
 		seq_printf(m, "Way0 Locked-Down\n");
@@ -625,6 +664,15 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 		seq_printf(m, "No Ways are locked\n");
 	}
 #endif
+
+	seq_printf(m, "board name\t: %s\n", bfin_board_name);
+	seq_printf(m, "board memory\t: %ld kB (0x%p -> 0x%p)\n",
+		 physical_mem_end >> 10, (void *)0, (void *)physical_mem_end);
+	seq_printf(m, "kernel memory\t: %d kB (0x%p -> 0x%p)\n",
+		((int)memory_end - (int)_stext) >> 10,
+		_stext,
+		(void *)memory_end);
+
 	return 0;
 }
 

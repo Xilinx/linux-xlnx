@@ -13,7 +13,7 @@
 
 #define PXA_IRQ(x)	(x)
 
-#ifdef CONFIG_PXA27x
+#if defined(CONFIG_PXA27x) || defined(CONFIG_PXA3xx)
 #define IRQ_SSP3	PXA_IRQ(0)	/* SSP3 service request */
 #define IRQ_MSL		PXA_IRQ(1)	/* MSL Interface interrupt */
 #define IRQ_USBH2	PXA_IRQ(2)	/* USB Host interrupt 1 (OHCI) */
@@ -52,9 +52,25 @@
 #define	IRQ_RTC1Hz	PXA_IRQ(30)	/* RTC HZ Clock Tick */
 #define	IRQ_RTCAlrm	PXA_IRQ(31)	/* RTC Alarm */
 
-#ifdef CONFIG_PXA27x
+#if defined(CONFIG_PXA27x) || defined(CONFIG_PXA3xx)
 #define IRQ_TPM		PXA_IRQ(32)	/* TPM interrupt */
 #define IRQ_CAMERA	PXA_IRQ(33)	/* Camera Interface */
+#endif
+
+#ifdef CONFIG_PXA3xx
+#define IRQ_SSP4	PXA_IRQ(13)	/* SSP4 service request */
+#define IRQ_CIR		PXA_IRQ(34)	/* Consumer IR */
+#define IRQ_TSI		PXA_IRQ(36)	/* Touch Screen Interface (PXA320) */
+#define IRQ_USIM2	PXA_IRQ(38)	/* USIM2 Controller */
+#define IRQ_GRPHICS	PXA_IRQ(39)	/* Graphics Controller */
+#define IRQ_MMC2	PXA_IRQ(41)	/* MMC2 Controller */
+#define IRQ_1WIRE	PXA_IRQ(44)	/* 1-Wire Controller */
+#define IRQ_NAND	PXA_IRQ(45)	/* NAND Controller */
+#define IRQ_USB2	PXA_IRQ(46)	/* USB 2.0 Device Controller */
+#define IRQ_WAKEUP0	PXA_IRQ(49)	/* EXT_WAKEUP0 */
+#define IRQ_WAKEUP1	PXA_IRQ(50)	/* EXT_WAKEUP1 */
+#define IRQ_DMEMC	PXA_IRQ(51)	/* Dynamic Memory Controller */
+#define IRQ_MMC3	PXA_IRQ(55)	/* MMC3 Controller (PXA310) */
 #endif
 
 #define PXA_GPIO_IRQ_BASE	(64)
@@ -65,12 +81,6 @@
 
 #define IRQ_TO_GPIO_2_x(i)	((i) - PXA_GPIO_IRQ_BASE)
 #define IRQ_TO_GPIO(i)	(((i) < IRQ_GPIO(2)) ? ((i) - IRQ_GPIO0) : IRQ_TO_GPIO_2_x(i))
-
-#if defined(CONFIG_PXA25x)
-#define PXA_LAST_GPIO	84
-#elif defined(CONFIG_PXA27x)
-#define PXA_LAST_GPIO	127
-#endif
 
 /*
  * The next 16 interrupts are for board specific purposes.  Since
@@ -216,3 +226,24 @@
 #define IRQ_LOCOMO_GPIO_BASE	(IRQ_BOARD_START + 1)
 #define IRQ_LOCOMO_LT_BASE	(IRQ_BOARD_START + 2)
 #define IRQ_LOCOMO_SPI_BASE	(IRQ_BOARD_START + 3)
+
+/* ITE8152 irqs */
+/* add IT8152 IRQs beyond BOARD_END */
+#ifdef CONFIG_PCI_HOST_ITE8152
+#define IT8152_IRQ(x)   (IRQ_GPIO(IRQ_BOARD_END) + 1 + (x))
+
+/* IRQ-sources in 3 groups - local devices, LPC (serial), and external PCI */
+#define IT8152_LD_IRQ_COUNT     9
+#define IT8152_LP_IRQ_COUNT     16
+#define IT8152_PD_IRQ_COUNT     15
+
+/* Priorities: */
+#define IT8152_PD_IRQ(i)        IT8152_IRQ(i)
+#define IT8152_LP_IRQ(i)        (IT8152_IRQ(i) + IT8152_PD_IRQ_COUNT)
+#define IT8152_LD_IRQ(i)        (IT8152_IRQ(i) + IT8152_PD_IRQ_COUNT + IT8152_LP_IRQ_COUNT)
+
+#define IT8152_LAST_IRQ         IT8152_LD_IRQ(IT8152_LD_IRQ_COUNT - 1)
+
+#undef NR_IRQS
+#define NR_IRQS (IT8152_LAST_IRQ+1)
+#endif

@@ -20,6 +20,7 @@
 #include <linux/resume-trace.h>
 #include <linux/freezer.h>
 #include <linux/vmstat.h>
+#include <linux/syscalls.h>
 
 #include "power.h"
 
@@ -32,37 +33,30 @@ DEFINE_MUTEX(pm_mutex);
 /* This is just an arbitrary number */
 #define FREE_PAGE_NUMBER (100)
 
-struct pm_ops *pm_ops;
+static struct platform_suspend_ops *suspend_ops;
 
 /**
- *	pm_set_ops - Set the global power method table. 
+ *	suspend_set_ops - Set the global suspend method table.
  *	@ops:	Pointer to ops structure.
  */
 
-void pm_set_ops(struct pm_ops * ops)
+void suspend_set_ops(struct platform_suspend_ops *ops)
 {
 	mutex_lock(&pm_mutex);
-	pm_ops = ops;
+	suspend_ops = ops;
 	mutex_unlock(&pm_mutex);
 }
 
 /**
- * pm_valid_only_mem - generic memory-only valid callback
+ * suspend_valid_only_mem - generic memory-only valid callback
  *
- * pm_ops drivers that implement mem suspend only and only need
+ * Platform drivers that implement mem suspend only and only need
  * to check for that in their .valid callback can use this instead
  * of rolling their own .valid callback.
  */
-int pm_valid_only_mem(suspend_state_t state)
+int suspend_valid_only_mem(suspend_state_t state)
 {
 	return state == PM_SUSPEND_MEM;
-}
-
-
-static inline void pm_finish(suspend_state_t state)
-{
-	if (pm_ops->finish)
-		pm_ops->finish(state);
 }
 
 /**
@@ -76,7 +70,7 @@ static int suspend_prepare(void)
 	int error;
 	unsigned int free_pages;
 
-	if (!pm_ops || !pm_ops->enter)
+	if (!suspend_ops || !suspend_ops->enter)
 		return -EPERM;
 
 	error = pm_notifier_call_chain(PM_SUSPEND_PREPARE);
@@ -128,7 +122,7 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
  *
  *	This function should be called after devices have been suspended.
  */
-int suspend_enter(suspend_state_t state)
+static int suspend_enter(suspend_state_t state)
 {
 	int error = 0;
 
@@ -139,7 +133,7 @@ int suspend_enter(suspend_state_t state)
 		printk(KERN_ERR "Some devices failed to power down\n");
 		goto Done;
 	}
-	error = pm_ops->enter(state);
+	error = suspend_ops->enter(state);
 	device_power_up();
  Done:
 	arch_suspend_enable_irqs();
@@ -156,11 +150,11 @@ int suspend_devices_and_enter(suspend_state_t state)
 {
 	int error;
 
-	if (!pm_ops)
+	if (!suspend_ops)
 		return -ENOSYS;
 
-	if (pm_ops->set_target) {
-		error = pm_ops->set_target(state);
+	if (suspend_ops->set_target) {
+		error = suspend_ops->set_target(state);
 		if (error)
 			return error;
 	}
@@ -170,8 +164,8 @@ int suspend_devices_and_enter(suspend_state_t state)
 		printk(KERN_ERR "Some devices failed to suspend\n");
 		goto Resume_console;
 	}
-	if (pm_ops->prepare) {
-		error = pm_ops->prepare(state);
+	if (suspend_ops->prepare) {
+		error = suspend_ops->prepare();
 		if (error)
 			goto Resume_devices;
 	}
@@ -180,7 +174,8 @@ int suspend_devices_and_enter(suspend_state_t state)
 		suspend_enter(state);
 
 	enable_nonboot_cpus();
-	pm_finish(state);
+	if (suspend_ops->finish)
+		suspend_ops->finish();
  Resume_devices:
 	device_resume();
  Resume_console:
@@ -214,7 +209,7 @@ static inline int valid_state(suspend_state_t state)
 	/* All states need lowlevel support and need to be valid
 	 * to the lowlevel implementation, no valid callback
 	 * implies that none are valid. */
-	if (!pm_ops || !pm_ops->valid || !pm_ops->valid(state))
+	if (!suspend_ops || !suspend_ops->valid || !suspend_ops->valid(state))
 		return 0;
 	return 1;
 }
@@ -236,8 +231,13 @@ static int enter_state(suspend_state_t state)
 
 	if (!valid_state(state))
 		return -ENODEV;
+
 	if (!mutex_trylock(&pm_mutex))
 		return -EBUSY;
+
+	printk("Syncing filesystems ... ");
+	sys_sync();
+	printk("done.\n");
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
 	if ((error = suspend_prepare()))

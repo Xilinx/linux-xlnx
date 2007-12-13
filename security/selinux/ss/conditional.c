@@ -362,7 +362,8 @@ static int cond_read_av_list(struct policydb *p, void *fp, struct cond_av_list *
 	data.head = NULL;
 	data.tail = NULL;
 	for (i = 0; i < len; i++) {
-		rc = avtab_read_item(fp, p->policyvers, &p->te_cond_avtab, cond_insertf, &data);
+		rc = avtab_read_item(&p->te_cond_avtab, fp, p, cond_insertf,
+				     &data);
 		if (rc)
 			return rc;
 
@@ -455,6 +456,10 @@ int cond_read_list(struct policydb *p, void *fp)
 		return -1;
 
 	len = le32_to_cpu(buf[0]);
+
+	rc = avtab_alloc(&(p->te_cond_avtab), p->te_avtab.nel);
+	if (rc)
+		goto err;
 
 	for (i = 0; i < len; i++) {
 		node = kzalloc(sizeof(struct cond_node), GFP_KERNEL);

@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/ide/pci/opti621.c		Version 0.7	Sept 10, 2002
+ *  linux/drivers/ide/pci/opti621.c		Version 0.9	Sep 24, 2007
  *
  *  Copyright (C) 1996-1998  Linus Torvalds & authors (see below)
  */
@@ -47,7 +47,7 @@
  * The main problem with OPTi is that some timings for master
  * and slave must be the same. For example, if you have master
  * PIO 3 and slave PIO 0, driver have to set some timings of
- * master for PIO 0. Second problem is that opti621_tune_drive
+ * master for PIO 0. Second problem is that opti621_set_pio_mode
  * got only one drive to set, but have to set both drives.
  * This is solved in compute_pios. If you don't set
  * the second drive, compute_pios use ide_get_best_pio_mode
@@ -57,9 +57,6 @@
  * There is a 25/33MHz switch in configuration
  * register, but driver is written for use at any frequency which get
  * (use idebus=xx to select PCI bus speed).
- * Use hda=autotune and hdb=autotune for automatical tune of the PIO modes.
- * If you get strange results, do not use this and set PIO manually
- * by hdparm.
  *
  * Version 0.1, Nov 8, 1996
  * by Jaromir Koutek, for 2.1.8. 
@@ -103,7 +100,7 @@
 
 #include <asm/io.h>
 
-#define OPTI621_MAX_PIO 3
+//#define OPTI621_MAX_PIO 3
 /* In fact, I do not have any PIO 4 drive
  * (address: 25 ns, data: 70 ns, recovery: 35 ns),
  * but OPTi 82C621 is programmable and it can do (minimal values):
@@ -136,8 +133,10 @@ static int reg_base;
 #define PIO_NOT_EXIST 254
 #define PIO_DONT_KNOW 255
 
-/* there are stored pio numbers from other calls of opti621_tune_drive */
-static void compute_pios(ide_drive_t *drive, u8 pio)
+static DEFINE_SPINLOCK(opti621_lock);
+
+/* there are stored pio numbers from other calls of opti621_set_pio_mode */
+static void compute_pios(ide_drive_t *drive, const u8 pio)
 /* Store values into drive->drive_data
  *	second_contr - 0 for primary controller, 1 for secondary
  *	slave_drive - 0 -> pio is for master, 1 -> pio is for slave
@@ -147,12 +146,13 @@ static void compute_pios(ide_drive_t *drive, u8 pio)
 	int d;
 	ide_hwif_t *hwif = HWIF(drive);
 
-	drive->drive_data = ide_get_best_pio_mode(drive, pio, OPTI621_MAX_PIO);
+	drive->drive_data = pio;
+
 	for (d = 0; d < 2; ++d) {
 		drive = &hwif->drives[d];
 		if (drive->present) {
 			if (drive->drive_data == PIO_DONT_KNOW)
-				drive->drive_data = ide_get_best_pio_mode(drive, 255, OPTI621_MAX_PIO);
+				drive->drive_data = ide_get_best_pio_mode(drive, 255, 3);
 #ifdef OPTI621_DEBUG
 			printk("%s: Selected PIO mode %d\n",
 				drive->name, drive->drive_data);
@@ -240,8 +240,7 @@ static void compute_clocks(int pio, pio_clocks_t *clks)
  
 }
 
-/* Main tune procedure, called from tuneproc. */
-static void opti621_tune_drive (ide_drive_t *drive, u8 pio)
+static void opti621_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	/* primary and secondary drives share some registers,
 	 * so we have to program both drives
@@ -281,7 +280,7 @@ static void opti621_tune_drive (ide_drive_t *drive, u8 pio)
 		second.recovery_time, drdy);
 #endif
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&opti621_lock, flags);
 
      	reg_base = hwif->io_ports[IDE_DATA_OFFSET];
 
@@ -320,7 +319,7 @@ static void opti621_tune_drive (ide_drive_t *drive, u8 pio)
 	/*  and read prefetch for both drives */
 	write_reg(misc, MISC_REG);
 
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&opti621_lock, flags);
 }
 
 /*
@@ -328,39 +327,31 @@ static void opti621_tune_drive (ide_drive_t *drive, u8 pio)
  */
 static void __devinit init_hwif_opti621 (ide_hwif_t *hwif)
 {
-	hwif->autodma = 0;
 	hwif->drives[0].drive_data = PIO_DONT_KNOW;
 	hwif->drives[1].drive_data = PIO_DONT_KNOW;
-	hwif->tuneproc = &opti621_tune_drive;
 
-	if (!(hwif->dma_base))
-		return;
-
-	hwif->atapi_dma = 1;
-	hwif->mwdma_mask = 0x07;
-	hwif->swdma_mask = 0x07;
-
-	if (!noautodma)
-		hwif->autodma = 1;
-	hwif->drives[0].autodma = hwif->autodma;
-	hwif->drives[1].autodma = hwif->autodma;
+	hwif->set_pio_mode = &opti621_set_pio_mode;
 }
 
-static ide_pci_device_t opti621_chipsets[] __devinitdata = {
+static const struct ide_port_info opti621_chipsets[] __devinitdata = {
 	{	/* 0 */
 		.name		= "OPTI621",
 		.init_hwif	= init_hwif_opti621,
-		.autodma	= AUTODMA,
 		.enablebits	= {{0x45,0x80,0x00}, {0x40,0x08,0x00}},
-		.bootable	= ON_BOARD,
+		.host_flags	= IDE_HFLAG_TRUST_BIOS_FOR_DMA |
+				  IDE_HFLAG_BOOTABLE,
 		.pio_mask	= ATA_PIO3,
+		.swdma_mask	= ATA_SWDMA2,
+		.mwdma_mask	= ATA_MWDMA2,
 	},{	/* 1 */
 		.name		= "OPTI621X",
 		.init_hwif	= init_hwif_opti621,
-		.autodma	= AUTODMA,
 		.enablebits	= {{0x45,0x80,0x00}, {0x40,0x08,0x00}},
-		.bootable	= ON_BOARD,
+		.host_flags	= IDE_HFLAG_TRUST_BIOS_FOR_DMA |
+				  IDE_HFLAG_BOOTABLE,
 		.pio_mask	= ATA_PIO3,
+		.swdma_mask	= ATA_SWDMA2,
+		.mwdma_mask	= ATA_MWDMA2,
 	}
 };
 
@@ -369,9 +360,9 @@ static int __devinit opti621_init_one(struct pci_dev *dev, const struct pci_devi
 	return ide_setup_pci_device(dev, &opti621_chipsets[id->driver_data]);
 }
 
-static struct pci_device_id opti621_pci_tbl[] = {
-	{ PCI_VENDOR_ID_OPTI, PCI_DEVICE_ID_OPTI_82C621, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ PCI_VENDOR_ID_OPTI, PCI_DEVICE_ID_OPTI_82C825, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 1},
+static const struct pci_device_id opti621_pci_tbl[] = {
+	{ PCI_VDEVICE(OPTI, PCI_DEVICE_ID_OPTI_82C621), 0 },
+	{ PCI_VDEVICE(OPTI, PCI_DEVICE_ID_OPTI_82C825), 1 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, opti621_pci_tbl);

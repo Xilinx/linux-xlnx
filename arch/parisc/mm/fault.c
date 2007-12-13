@@ -211,7 +211,7 @@ bad_area:
 #ifdef PRINT_USER_FAULTS
 		printk(KERN_DEBUG "\n");
 		printk(KERN_DEBUG "do_page_fault() pid=%d command='%s' type=%lu address=0x%08lx\n",
-		    tsk->pid, tsk->comm, code, address);
+		    task_pid_nr(tsk), tsk->comm, code, address);
 		if (vma) {
 			printk(KERN_DEBUG "vm_start = 0x%08lx, vm_end = 0x%08lx\n",
 					vma->vm_start, vma->vm_end);
@@ -263,6 +263,6 @@ no_context:
 	up_read(&mm->mmap_sem);
 	printk(KERN_CRIT "VM: killing process %s\n", current->comm);
 	if (user_mode(regs))
-		do_exit(SIGKILL);
+		do_group_exit(SIGKILL);
 	goto no_context;
 }

@@ -658,7 +658,7 @@ mega_build_cmd(adapter_t *adapter, Scsi_Cmnd *cmd, int *busy)
 			struct scatterlist *sg;
 
 			sg = scsi_sglist(cmd);
-			buf = kmap_atomic(sg->page, KM_IRQ0) + sg->offset;
+			buf = kmap_atomic(sg_page(sg), KM_IRQ0) + sg->offset;
 
 			memset(buf, 0, cmd->cmnd[4]);
 			kunmap_atomic(buf - sg->offset, KM_IRQ0);
@@ -1542,10 +1542,8 @@ mega_cmd_done(adapter_t *adapter, u8 completed[], int nstatus, int status)
 		if( cmd->cmnd[0] == INQUIRY && !islogical ) {
 
 			sgl = scsi_sglist(cmd);
-			if( sgl->page ) {
-				c = *(unsigned char *)
-					page_address((&sgl[0])->page) +
-					(&sgl[0])->offset; 
+			if( sg_page(sgl) ) {
+				c = *(unsigned char *) sg_virt(&sgl[0]);
 			} else {
 				printk(KERN_WARNING
 				       "megaraid: invalid sg.\n");
@@ -4416,8 +4414,7 @@ mega_internal_command(adapter_t *adapter, megacmd_t *mc, mega_passthru *pthru)
 	scmd = &adapter->int_scmd;
 	memset(scmd, 0, sizeof(Scsi_Cmnd));
 
-	sdev = kmalloc(sizeof(struct scsi_device), GFP_KERNEL);
-	memset(sdev, 0, sizeof(struct scsi_device));
+	sdev = kzalloc(sizeof(struct scsi_device), GFP_KERNEL);
 	scmd->device = sdev;
 
 	scmd->device->host = adapter->host;
@@ -4493,6 +4490,7 @@ static struct scsi_host_template megaraid_template = {
 	.sg_tablesize			= MAX_SGLIST,
 	.cmd_per_lun			= DEF_CMD_PER_LUN,
 	.use_clustering			= ENABLE_CLUSTERING,
+	.use_sg_chaining		= ENABLE_SG_CHAINING,
 	.eh_abort_handler		= megaraid_abort,
 	.eh_device_reset_handler	= megaraid_reset,
 	.eh_bus_reset_handler		= megaraid_reset,

@@ -394,6 +394,14 @@ config INET_XFRM_MODE_BEET
 
 	  If unsure, say Y.
 
+config INET_LRO
+	tristate "Large Receive Offload (ipv4/tcp)"
+
+	---help---
+	  Support for Large Receive Offload (ipv4/tcp).
+
+	  If unsure, say Y.
+
 config INET_DIAG
 	tristate "INET: socket monitoring interface"
 	default y
@@ -552,7 +560,7 @@ config TCP_CONG_ILLINOIS
 	depends on EXPERIMENTAL
 	default n
 	---help---
-	TCP-Illinois is a sender-side modificatio of TCP Reno for
+	TCP-Illinois is a sender-side modification of TCP Reno for
 	high speed long delay links. It uses round-trip-time to
 	adjust the alpha and beta parameters to achieve a higher average
 	throughput and maintain fairness.

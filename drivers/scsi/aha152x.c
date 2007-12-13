@@ -1,6 +1,6 @@
 /* aha152x.c -- Adaptec AHA-152x driver
- * Author: Jürgen E. Fischer, fischer@norbit.de
- * Copyright 1993-2004 Jürgen E. Fischer
+ * Author: JÃ¼rgen E. Fischer, fischer@norbit.de
+ * Copyright 1993-2004 JÃ¼rgen E. Fischer
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -357,7 +357,7 @@ enum {
 	check_condition = 0x0800,	/* requesting sense after CHECK CONDITION */
 };
 
-MODULE_AUTHOR("Jürgen Fischer");
+MODULE_AUTHOR("JÃ¼rgen Fischer");
 MODULE_DESCRIPTION(AHA152X_REVID);
 MODULE_LICENSE("GPL");
 
@@ -613,7 +613,7 @@ struct aha152x_scdata {
 #define SCNEXT(SCpnt)		SCDATA(SCpnt)->next
 #define SCSEM(SCpnt)		SCDATA(SCpnt)->done
 
-#define SG_ADDRESS(buffer)	((char *) (page_address((buffer)->page)+(buffer)->offset))
+#define SG_ADDRESS(buffer)	((char *) sg_virt((buffer)))
 
 /* state handling */
 static void seldi_run(struct Scsi_Host *shpnt);
@@ -907,9 +907,10 @@ out_host_put:
 
 void aha152x_release(struct Scsi_Host *shpnt)
 {
-	if(!shpnt)
+	if (!shpnt)
 		return;
 
+	scsi_remove_host(shpnt);
 	if (shpnt->irq)
 		free_irq(shpnt->irq, shpnt);
 
@@ -923,7 +924,6 @@ void aha152x_release(struct Scsi_Host *shpnt)
 		pnp_device_detach(HOSTDATA(shpnt)->pnpdev);
 #endif
 
-	scsi_remove_host(shpnt);
 	list_del(&HOSTDATA(shpnt)->host_list);
 	scsi_host_put(shpnt);
 }

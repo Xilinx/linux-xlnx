@@ -111,6 +111,21 @@ config ASUS_LAPTOP
 
 	  If you have an ACPI-compatible ASUS laptop, say Y or M here.
 
+config FUJITSU_LAPTOP
+        tristate "Fujitsu Laptop Extras"
+        depends on X86
+        depends on ACPI
+        depends on BACKLIGHT_CLASS_DEVICE
+        ---help---
+	  This is a driver for laptops built by Fujitsu:
+
+	    * P2xxx/P5xxx/S6xxx/S7xxx series Lifebooks
+	    * Possibly other Fujitsu laptop models
+
+	  It adds support for LCD brightness control.
+
+	  If you have a Fujitsu laptop, say Y or M here.
+
 config MSI_LAPTOP
         tristate "MSI Laptop Extras"
         depends on X86
@@ -134,6 +149,7 @@ config SONY_LAPTOP
 	tristate "Sony Laptop Extras"
 	depends on X86 && ACPI
 	select BACKLIGHT_CLASS_DEVICE
+	depends on INPUT
 	  ---help---
 	  This mini-driver drives the SNC and SPIC devices present in the ACPI
 	  BIOS of the Sony Vaio laptops.
@@ -156,6 +172,7 @@ config THINKPAD_ACPI
 	select BACKLIGHT_CLASS_DEVICE
 	select HWMON
 	select NVRAM
+	depends on INPUT
 	---help---
 	  This is a driver for the IBM and Lenovo ThinkPad laptops. It adds
 	  support for Fn-Fx key combinations, Bluetooth control, video
@@ -163,7 +180,7 @@ config THINKPAD_ACPI
 	  For more information about this driver see 
 	  <file:Documentation/thinkpad-acpi.txt> and <http://ibm-acpi.sf.net/> .
 
-	  This driver was formely known as ibm-acpi.
+	  This driver was formerly known as ibm-acpi.
 
 	  If you have an IBM or Lenovo ThinkPad laptop, say Y or M here.
 
@@ -197,11 +214,23 @@ config THINKPAD_ACPI_BAY
 	default y
 	---help---
 	  Allows the thinkpad_acpi driver to handle removable bays.  It will
-	  eletrically disable the device in the bay, and also generate
+	  electrically disable the device in the bay, and also generate
 	  notifications when the bay lever is ejected or inserted.
 
 	  If you are not sure, say Y here.
 
+
+config ATMEL_SSC
+	tristate "Device driver for Atmel SSC peripheral"
+	depends on AVR32 || ARCH_AT91
+	---help---
+	  This option enables device driver support for Atmel Syncronized
+	  Serial Communication peripheral (SSC).
+
+	  The SSC peripheral supports a wide variety of serial frame based
+	  communications, i.e. I2S, SPI, etc.
+
+	  If unsure, say N.
 
 endif # MISC_DEVICES
 

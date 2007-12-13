@@ -110,8 +110,7 @@ geode_aes_crypt(struct geode_aes_op *op)
 	 * we don't need to worry
 	 */
 
-	if (op->src == op->dst)
-		flags |= (AES_CTRL_DCA | AES_CTRL_SCA);
+	flags |= (AES_CTRL_DCA | AES_CTRL_SCA);
 
 	if (op->dir == AES_DIR_ENCRYPT)
 		flags |= AES_CTRL_ENCRYPT;
@@ -473,6 +472,7 @@ geode_aes_exit(void)
 MODULE_AUTHOR("Advanced Micro Devices, Inc.");
 MODULE_DESCRIPTION("Geode LX Hardware AES driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("aes");
 
 module_init(geode_aes_init);
 module_exit(geode_aes_exit);

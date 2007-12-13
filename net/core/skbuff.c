@@ -275,12 +275,11 @@ static void skb_release_data(struct sk_buff *skb)
 /*
  *	Free an skbuff by memory without cleaning the state.
  */
-void kfree_skbmem(struct sk_buff *skb)
+static void kfree_skbmem(struct sk_buff *skb)
 {
 	struct sk_buff *other;
 	atomic_t *fclone_ref;
 
-	skb_release_data(skb);
 	switch (skb->fclone) {
 	case SKB_FCLONE_UNAVAILABLE:
 		kmem_cache_free(skbuff_head_cache, skb);
@@ -307,16 +306,8 @@ void kfree_skbmem(struct sk_buff *skb)
 	}
 }
 
-/**
- *	__kfree_skb - private function
- *	@skb: buffer
- *
- *	Free an sk_buff. Release anything attached to the buffer.
- *	Clean the state. This is an internal helper function. Users should
- *	always call kfree_skb
- */
-
-void __kfree_skb(struct sk_buff *skb)
+/* Free everything but the sk_buff shell. */
+static void skb_release_all(struct sk_buff *skb)
 {
 	dst_release(skb->dst);
 #ifdef CONFIG_XFRM
@@ -340,7 +331,21 @@ void __kfree_skb(struct sk_buff *skb)
 	skb->tc_verd = 0;
 #endif
 #endif
+	skb_release_data(skb);
+}
 
+/**
+ *	__kfree_skb - private function
+ *	@skb: buffer
+ *
+ *	Free an sk_buff. Release anything attached to the buffer.
+ *	Clean the state. This is an internal helper function. Users should
+ *	always call kfree_skb
+ */
+
+void __kfree_skb(struct sk_buff *skb)
+{
+	skb_release_all(skb);
 	kfree_skbmem(skb);
 }
 
@@ -361,6 +366,90 @@ void kfree_skb(struct sk_buff *skb)
 		return;
 	__kfree_skb(skb);
 }
+
+static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
+{
+	new->tstamp		= old->tstamp;
+	new->dev		= old->dev;
+	new->transport_header	= old->transport_header;
+	new->network_header	= old->network_header;
+	new->mac_header		= old->mac_header;
+	new->dst		= dst_clone(old->dst);
+#ifdef CONFIG_INET
+	new->sp			= secpath_get(old->sp);
+#endif
+	memcpy(new->cb, old->cb, sizeof(old->cb));
+	new->csum_start		= old->csum_start;
+	new->csum_offset	= old->csum_offset;
+	new->local_df		= old->local_df;
+	new->pkt_type		= old->pkt_type;
+	new->ip_summed		= old->ip_summed;
+	skb_copy_queue_mapping(new, old);
+	new->priority		= old->priority;
+#if defined(CONFIG_IP_VS) || defined(CONFIG_IP_VS_MODULE)
+	new->ipvs_property	= old->ipvs_property;
+#endif
+	new->protocol		= old->protocol;
+	new->mark		= old->mark;
+	__nf_copy(new, old);
+#if defined(CONFIG_NETFILTER_XT_TARGET_TRACE) || \
+    defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
+	new->nf_trace		= old->nf_trace;
+#endif
+#ifdef CONFIG_NET_SCHED
+	new->tc_index		= old->tc_index;
+#ifdef CONFIG_NET_CLS_ACT
+	new->tc_verd		= old->tc_verd;
+#endif
+#endif
+	skb_copy_secmark(new, old);
+}
+
+static struct sk_buff *__skb_clone(struct sk_buff *n, struct sk_buff *skb)
+{
+#define C(x) n->x = skb->x
+
+	n->next = n->prev = NULL;
+	n->sk = NULL;
+	__copy_skb_header(n, skb);
+
+	C(len);
+	C(data_len);
+	C(mac_len);
+	n->cloned = 1;
+	n->hdr_len = skb->nohdr ? skb_headroom(skb) : skb->hdr_len;
+	n->nohdr = 0;
+	n->destructor = NULL;
+	C(truesize);
+	atomic_set(&n->users, 1);
+	C(head);
+	C(data);
+	C(tail);
+	C(end);
+
+	atomic_inc(&(skb_shinfo(skb)->dataref));
+	skb->cloned = 1;
+
+	return n;
+#undef C
+}
+
+/**
+ *	skb_morph	-	morph one skb into another
+ *	@dst: the skb to receive the contents
+ *	@src: the skb to supply the contents
+ *
+ *	This is identical to skb_clone except that the target skb is
+ *	supplied by the user.
+ *
+ *	The target skb is returned upon exit.
+ */
+struct sk_buff *skb_morph(struct sk_buff *dst, struct sk_buff *src)
+{
+	skb_release_all(dst);
+	return __skb_clone(dst, src);
+}
+EXPORT_SYMBOL_GPL(skb_morph);
 
 /**
  *	skb_clone	-	duplicate an sk_buff
@@ -393,66 +482,7 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 		n->fclone = SKB_FCLONE_UNAVAILABLE;
 	}
 
-#define C(x) n->x = skb->x
-
-	n->next = n->prev = NULL;
-	n->sk = NULL;
-	C(tstamp);
-	C(dev);
-	C(transport_header);
-	C(network_header);
-	C(mac_header);
-	C(dst);
-	dst_clone(skb->dst);
-	C(sp);
-#ifdef CONFIG_INET
-	secpath_get(skb->sp);
-#endif
-	memcpy(n->cb, skb->cb, sizeof(skb->cb));
-	C(len);
-	C(data_len);
-	C(mac_len);
-	C(csum);
-	C(local_df);
-	n->cloned = 1;
-	n->hdr_len = skb->nohdr ? skb_headroom(skb) : skb->hdr_len;
-	n->nohdr = 0;
-	C(pkt_type);
-	C(ip_summed);
-	skb_copy_queue_mapping(n, skb);
-	C(priority);
-#if defined(CONFIG_IP_VS) || defined(CONFIG_IP_VS_MODULE)
-	C(ipvs_property);
-#endif
-	C(protocol);
-	n->destructor = NULL;
-	C(mark);
-	__nf_copy(n, skb);
-#if defined(CONFIG_NETFILTER_XT_TARGET_TRACE) || \
-    defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
-	C(nf_trace);
-#endif
-#ifdef CONFIG_NET_SCHED
-	C(tc_index);
-#ifdef CONFIG_NET_CLS_ACT
-	n->tc_verd = SET_TC_VERD(skb->tc_verd,0);
-	n->tc_verd = CLR_TC_OK2MUNGE(n->tc_verd);
-	n->tc_verd = CLR_TC_MUNGED(n->tc_verd);
-	C(iif);
-#endif
-#endif
-	skb_copy_secmark(n, skb);
-	C(truesize);
-	atomic_set(&n->users, 1);
-	C(head);
-	C(data);
-	C(tail);
-	C(end);
-
-	atomic_inc(&(skb_shinfo(skb)->dataref));
-	skb->cloned = 1;
-
-	return n;
+	return __skb_clone(n, skb);
 }
 
 static void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
@@ -463,47 +493,15 @@ static void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 	 */
 	unsigned long offset = new->data - old->data;
 #endif
-	new->sk		= NULL;
-	new->dev	= old->dev;
-	skb_copy_queue_mapping(new, old);
-	new->priority	= old->priority;
-	new->protocol	= old->protocol;
-	new->dst	= dst_clone(old->dst);
-#ifdef CONFIG_INET
-	new->sp		= secpath_get(old->sp);
-#endif
-	new->transport_header = old->transport_header;
-	new->network_header   = old->network_header;
-	new->mac_header	      = old->mac_header;
+
+	__copy_skb_header(new, old);
+
 #ifndef NET_SKBUFF_DATA_USES_OFFSET
 	/* {transport,network,mac}_header are relative to skb->head */
 	new->transport_header += offset;
 	new->network_header   += offset;
 	new->mac_header	      += offset;
 #endif
-	memcpy(new->cb, old->cb, sizeof(old->cb));
-	new->local_df	= old->local_df;
-	new->fclone	= SKB_FCLONE_UNAVAILABLE;
-	new->pkt_type	= old->pkt_type;
-	new->tstamp	= old->tstamp;
-	new->destructor = NULL;
-	new->mark	= old->mark;
-	__nf_copy(new, old);
-#if defined(CONFIG_NETFILTER_XT_TARGET_TRACE) || \
-    defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
-	new->nf_trace	= old->nf_trace;
-#endif
-#if defined(CONFIG_IP_VS) || defined(CONFIG_IP_VS_MODULE)
-	new->ipvs_property = old->ipvs_property;
-#endif
-#ifdef CONFIG_NET_SCHED
-#ifdef CONFIG_NET_CLS_ACT
-	new->tc_verd = old->tc_verd;
-#endif
-	new->tc_index	= old->tc_index;
-#endif
-	skb_copy_secmark(new, old);
-	atomic_set(&new->users, 1);
 	skb_shinfo(new)->gso_size = skb_shinfo(old)->gso_size;
 	skb_shinfo(new)->gso_segs = skb_shinfo(old)->gso_segs;
 	skb_shinfo(new)->gso_type = skb_shinfo(old)->gso_type;
@@ -545,8 +543,6 @@ struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp_mask)
 	skb_reserve(n, headerlen);
 	/* Set the tail pointer and length */
 	skb_put(n, skb->len);
-	n->csum	     = skb->csum;
-	n->ip_summed = skb->ip_summed;
 
 	if (skb_copy_bits(skb, -headerlen, n->head, headerlen + skb->len))
 		BUG();
@@ -589,8 +585,6 @@ struct sk_buff *pskb_copy(struct sk_buff *skb, gfp_t gfp_mask)
 	skb_put(n, skb_headlen(skb));
 	/* Copy the bytes */
 	skb_copy_from_linear_data(skb, n->data, n->len);
-	n->csum	     = skb->csum;
-	n->ip_summed = skb->ip_summed;
 
 	n->truesize += skb->data_len;
 	n->data_len  = skb->data_len;
@@ -686,6 +680,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	skb->transport_header += off;
 	skb->network_header   += off;
 	skb->mac_header	      += off;
+	skb->csum_start       += nhead;
 	skb->cloned   = 0;
 	skb->hdr_len  = 0;
 	skb->nohdr    = 0;
@@ -734,9 +729,6 @@ struct sk_buff *skb_realloc_headroom(struct sk_buff *skb, unsigned int headroom)
  *
  *	You must pass %GFP_ATOMIC as the allocation priority if this function
  *	is called from an interrupt.
- *
- *	BUG ALERT: ip_summed is not copied. Why does this work? Is it used
- *	only by netfilter in the cases when checksum is recalculated? --ANK
  */
 struct sk_buff *skb_copy_expand(const struct sk_buff *skb,
 				int newheadroom, int newtailroom,
@@ -749,7 +741,7 @@ struct sk_buff *skb_copy_expand(const struct sk_buff *skb,
 				      gfp_mask);
 	int oldheadroom = skb_headroom(skb);
 	int head_copy_len, head_copy_off;
-	int off = 0;
+	int off;
 
 	if (!n)
 		return NULL;
@@ -773,12 +765,13 @@ struct sk_buff *skb_copy_expand(const struct sk_buff *skb,
 
 	copy_skb_header(n, skb);
 
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
 	off                  = newheadroom - oldheadroom;
-#endif
+	n->csum_start       += off;
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
 	n->transport_header += off;
 	n->network_header   += off;
 	n->mac_header	    += off;
+#endif
 
 	return n;
 }
@@ -2040,8 +2033,8 @@ void __init skb_init(void)
  *	Fill the specified scatter-gather list with mappings/pointers into a
  *	region of the buffer space attached to a socket buffer.
  */
-int
-skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
+static int
+__skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
 {
 	int start = skb_headlen(skb);
 	int i, copy = start - offset;
@@ -2050,9 +2043,7 @@ skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
 	if (copy > 0) {
 		if (copy > len)
 			copy = len;
-		sg[elt].page = virt_to_page(skb->data + offset);
-		sg[elt].offset = (unsigned long)(skb->data + offset) % PAGE_SIZE;
-		sg[elt].length = copy;
+		sg_set_buf(sg, skb->data + offset, copy);
 		elt++;
 		if ((len -= copy) == 0)
 			return elt;
@@ -2070,9 +2061,8 @@ skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
 
 			if (copy > len)
 				copy = len;
-			sg[elt].page = frag->page;
-			sg[elt].offset = frag->page_offset+offset-start;
-			sg[elt].length = copy;
+			sg_set_page(&sg[elt], frag->page, copy,
+					frag->page_offset+offset-start);
 			elt++;
 			if (!(len -= copy))
 				return elt;
@@ -2093,7 +2083,8 @@ skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
 			if ((copy = end - offset) > 0) {
 				if (copy > len)
 					copy = len;
-				elt += skb_to_sgvec(list, sg+elt, offset - start, copy);
+				elt += __skb_to_sgvec(list, sg+elt, offset - start,
+						      copy);
 				if ((len -= copy) == 0)
 					return elt;
 				offset += copy;
@@ -2103,6 +2094,15 @@ skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
 	}
 	BUG_ON(len);
 	return elt;
+}
+
+int skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len)
+{
+	int nsg = __skb_to_sgvec(skb, sg, offset, len);
+
+	sg_mark_end(&sg[nsg - 1]);
+
+	return nsg;
 }
 
 /**

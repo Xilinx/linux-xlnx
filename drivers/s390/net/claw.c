@@ -59,13 +59,13 @@
  *    1.15  Changed for 2.6 Kernel  No longer compiles on 2.4 or lower
  *    1.25  Added Packing support
  */
-#include <asm/bitops.h>
 #include <asm/ccwdev.h>
 #include <asm/ccwgroup.h>
 #include <asm/debug.h>
 #include <asm/idals.h>
 #include <asm/io.h>
 
+#include <linux/bitops.h>
 #include <linux/ctype.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
@@ -3891,7 +3891,6 @@ claw_init_netdevice(struct net_device * dev)
 	dev->type = ARPHRD_SLIP;
 	dev->tx_queue_len = 1300;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP;
-	SET_MODULE_OWNER(dev);
 #ifdef FUNCTRACE
         printk(KERN_INFO "%s:%s Exit\n",dev->name,__FUNCTION__);
 #endif

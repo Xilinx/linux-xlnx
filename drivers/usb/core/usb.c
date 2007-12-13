@@ -36,7 +36,7 @@
 #include <linux/workqueue.h>
 
 #include <asm/io.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
 
@@ -192,9 +192,34 @@ static void usb_release_dev(struct device *dev)
 	kfree(udev);
 }
 
+#ifdef	CONFIG_HOTPLUG
+static int usb_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct usb_device *usb_dev;
+
+	usb_dev = to_usb_device(dev);
+
+	if (add_uevent_var(env, "BUSNUM=%03d", usb_dev->bus->busnum))
+		return -ENOMEM;
+
+	if (add_uevent_var(env, "DEVNUM=%03d", usb_dev->devnum))
+		return -ENOMEM;
+
+	return 0;
+}
+
+#else
+
+static int usb_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	return -ENODEV;
+}
+#endif	/* CONFIG_HOTPLUG */
+
 struct device_type usb_device_type = {
 	.name =		"usb_device",
 	.release =	usb_release_dev,
+	.uevent =	usb_dev_uevent,
 };
 
 #ifdef	CONFIG_PM
@@ -223,6 +248,15 @@ static void ksuspend_usb_cleanup(void)
 
 #endif	/* CONFIG_PM */
 
+
+/* Returns 1 if @usb_bus is WUSB, 0 otherwise */
+static unsigned usb_bus_is_wusb(struct usb_bus *bus)
+{
+	struct usb_hcd *hcd = container_of(bus, struct usb_hcd, self);
+	return hcd->wireless;
+}
+
+
 /**
  * usb_alloc_dev - usb device constructor (usbcore-internal)
  * @parent: hub to which device is connected; null to allocate a root hub
@@ -239,6 +273,8 @@ struct usb_device *
 usb_alloc_dev(struct usb_device *parent, struct usb_bus *bus, unsigned port1)
 {
 	struct usb_device *dev;
+	struct usb_hcd *usb_hcd = container_of(bus, struct usb_hcd, self);
+	unsigned root_hub = 0;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -255,12 +291,14 @@ usb_alloc_dev(struct usb_device *parent, struct usb_bus *bus, unsigned port1)
 	dev->dev.dma_mask = bus->controller->dma_mask;
 	set_dev_node(&dev->dev, dev_to_node(bus->controller));
 	dev->state = USB_STATE_ATTACHED;
+	atomic_set(&dev->urbnum, 0);
 
 	INIT_LIST_HEAD(&dev->ep0.urb_list);
 	dev->ep0.desc.bLength = USB_DT_ENDPOINT_SIZE;
 	dev->ep0.desc.bDescriptorType = USB_DT_ENDPOINT;
 	/* ep0 maxpacket comes later, from device descriptor */
-	dev->ep_in[0] = dev->ep_out[0] = &dev->ep0;
+	usb_enable_endpoint(dev, &dev->ep0);
+	dev->can_submit = 1;
 
 	/* Save readable and stable topology id, distinguishing devices
 	 * by location for diagnostics, tools, driver model, etc.  The
@@ -275,6 +313,7 @@ usb_alloc_dev(struct usb_device *parent, struct usb_bus *bus, unsigned port1)
 
 		dev->dev.parent = bus->controller;
 		sprintf(&dev->dev.bus_id[0], "usb%d", bus->busnum);
+		root_hub = 1;
 	} else {
 		/* match any labeling on the hubs; it's one-based */
 		if (parent->devpath[0] == '0')
@@ -301,6 +340,12 @@ usb_alloc_dev(struct usb_device *parent, struct usb_bus *bus, unsigned port1)
 	INIT_DELAYED_WORK(&dev->autosuspend, usb_autosuspend_work);
 	dev->autosuspend_delay = usb_autosuspend_delay * HZ;
 #endif
+	if (root_hub)	/* Root hub always ok [and always wired] */
+		dev->authorized = 1;
+	else {
+		dev->authorized = usb_hcd->authorized_default;
+		dev->wusb = usb_bus_is_wusb(bus)? 1 : 0;
+	}
 	return dev;
 }
 
@@ -748,7 +793,7 @@ void usb_buffer_unmap(struct urb *urb)
 /**
  * usb_buffer_map_sg - create scatterlist DMA mapping(s) for an endpoint
  * @dev: device to which the scatterlist will be mapped
- * @pipe: endpoint defining the mapping direction
+ * @is_in: mapping transfer direction
  * @sg: the scatterlist to map
  * @nents: the number of entries in the scatterlist
  *
@@ -771,14 +816,13 @@ void usb_buffer_unmap(struct urb *urb)
  *
  * Reverse the effect of this call with usb_buffer_unmap_sg().
  */
-int usb_buffer_map_sg(const struct usb_device *dev, unsigned pipe,
+int usb_buffer_map_sg(const struct usb_device *dev, int is_in,
 		      struct scatterlist *sg, int nents)
 {
 	struct usb_bus		*bus;
 	struct device		*controller;
 
 	if (!dev
-			|| usb_pipecontrol(pipe)
 			|| !(bus = dev->bus)
 			|| !(controller = bus->controller)
 			|| !controller->dma_mask)
@@ -786,7 +830,7 @@ int usb_buffer_map_sg(const struct usb_device *dev, unsigned pipe,
 
 	// FIXME generic api broken like pci, can't report errors
 	return dma_map_sg(controller, sg, nents,
-			usb_pipein(pipe) ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
+			is_in ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
 }
 
 /* XXX DISABLED, no users currently.  If you wish to re-enable this
@@ -799,14 +843,14 @@ int usb_buffer_map_sg(const struct usb_device *dev, unsigned pipe,
 /**
  * usb_buffer_dmasync_sg - synchronize DMA and CPU view of scatterlist buffer(s)
  * @dev: device to which the scatterlist will be mapped
- * @pipe: endpoint defining the mapping direction
+ * @is_in: mapping transfer direction
  * @sg: the scatterlist to synchronize
  * @n_hw_ents: the positive return value from usb_buffer_map_sg
  *
  * Use this when you are re-using a scatterlist's data buffers for
  * another USB request.
  */
-void usb_buffer_dmasync_sg(const struct usb_device *dev, unsigned pipe,
+void usb_buffer_dmasync_sg(const struct usb_device *dev, int is_in,
 			   struct scatterlist *sg, int n_hw_ents)
 {
 	struct usb_bus		*bus;
@@ -819,20 +863,20 @@ void usb_buffer_dmasync_sg(const struct usb_device *dev, unsigned pipe,
 		return;
 
 	dma_sync_sg(controller, sg, n_hw_ents,
-			usb_pipein(pipe) ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
+			is_in ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
 }
 #endif
 
 /**
  * usb_buffer_unmap_sg - free DMA mapping(s) for a scatterlist
  * @dev: device to which the scatterlist will be mapped
- * @pipe: endpoint defining the mapping direction
+ * @is_in: mapping transfer direction
  * @sg: the scatterlist to unmap
  * @n_hw_ents: the positive return value from usb_buffer_map_sg
  *
  * Reverses the effect of usb_buffer_map_sg().
  */
-void usb_buffer_unmap_sg(const struct usb_device *dev, unsigned pipe,
+void usb_buffer_unmap_sg(const struct usb_device *dev, int is_in,
 			 struct scatterlist *sg, int n_hw_ents)
 {
 	struct usb_bus		*bus;
@@ -845,7 +889,7 @@ void usb_buffer_unmap_sg(const struct usb_device *dev, unsigned pipe,
 		return;
 
 	dma_unmap_sg(controller, sg, n_hw_ents,
-			usb_pipein(pipe) ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
+			is_in ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
 }
 
 /* format to disable USB on kernel command line is: nousb */
@@ -963,7 +1007,6 @@ EXPORT_SYMBOL(usb_altnum_to_altsetting);
 
 EXPORT_SYMBOL(__usb_get_extra_descriptor);
 
-EXPORT_SYMBOL(usb_find_device);
 EXPORT_SYMBOL(usb_get_current_frame_number);
 
 EXPORT_SYMBOL(usb_buffer_alloc);

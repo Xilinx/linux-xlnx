@@ -50,8 +50,9 @@ Table of Contents
       g) Freescale SOC SEC Security Engines
       h) Board Control and Status (BCSR)
       i) Freescale QUICC Engine module (QE)
-      j) Flash chip nodes
+      j) CFI or JEDEC memory-mapped NOR flash
       k) Global Utilities Block
+      l) Xilinx IP cores
 
   VII - Specifying interrupt information for devices
     1) interrupts property
@@ -851,11 +852,17 @@ address which can extend beyond that limit.
         /cpus/PowerPC,970FX@0
         /cpus/PowerPC,970FX@1
       (unit addresses do not require leading zeroes)
-    - d-cache-line-size : one cell, L1 data cache line size in bytes
-    - i-cache-line-size : one cell, L1 instruction cache line size in
+    - d-cache-block-size : one cell, L1 data cache block size in bytes (*)
+    - i-cache-block-size : one cell, L1 instruction cache block size in
       bytes
     - d-cache-size : one cell, size of L1 data cache in bytes
     - i-cache-size : one cell, size of L1 instruction cache in bytes
+
+(*) The cache "block" size is the size on which the cache management
+instructions operate. Historically, this document used the cache
+"line" size here which is incorrect. The kernel will prefer the cache
+block size and will fallback to cache line size for backward
+compatibility.
 
   Recommended properties:
 
@@ -870,6 +877,10 @@ address which can extend beyond that limit.
       for the above, the common code doesn't use that property, but
       you are welcome to re-use the pSeries or Maple one. A future
       kernel version might provide a common function for this.
+    - d-cache-line-size : one cell, L1 data cache line size in bytes
+      if different from the block size
+    - i-cache-line-size : one cell, L1 instruction cache line size in
+      bytes if different from the block size
 
   You are welcome to add any property you find relevant to your board,
   like some information about the mechanism used to soft-reset the
@@ -1510,7 +1521,10 @@ platforms are moved over to use the flattened-device-tree model.
 
    i) Freescale QUICC Engine module (QE)
    This represents qe module that is installed on PowerQUICC II Pro.
-   Hopefully it will merge backward compatibility with CPM/CPM2.
+
+   NOTE:  This is an interim binding; it should be updated to fit
+   in with the CPM binding later in this document.
+
    Basically, it is a bus of devices, that could act more or less
    as a complete entity (UCC, USB etc ). All of them should be siblings on
    the "root" qe node, using the common properties from there.
@@ -1548,7 +1562,7 @@ platforms are moved over to use the flattened-device-tree model.
    Required properties:
    - device_type : should be "spi".
    - compatible : should be "fsl_spi".
-   - mode : the SPI operation mode, it can be "cpu" or "qe".
+   - mode : the SPI operation mode, it can be "cpu" or "cpu-qe".
    - reg : Offset and length of the register set for the device
    - interrupts : <a b> where a is the interrupt number and b is a
      field that represents an encoding of the sense and level
@@ -1631,8 +1645,9 @@ platforms are moved over to use the flattened-device-tree model.
      MAC addresses passed by the firmware when no information other
      than indices is available to associate an address with a device.
    - phy-connection-type : a string naming the controller/PHY interface type,
-     i.e., "mii" (default), "rmii", "gmii", "rgmii", "rgmii-id", "tbi",
-     or "rtbi".
+     i.e., "mii" (default), "rmii", "gmii", "rgmii", "rgmii-id" (Internal
+     Delay), "rgmii-txid" (delay on TX only), "rgmii-rxid" (delay on RX only),
+     "tbi", or "rtbi".
 
    Example:
 	ucc@2000 {
@@ -1757,45 +1772,69 @@ platforms are moved over to use the flattened-device-tree model.
 		};
 	};
 
-    j) Flash chip nodes
+   j) CFI or JEDEC memory-mapped NOR flash
 
     Flash chips (Memory Technology Devices) are often used for solid state
     file systems on embedded devices.
 
-    Required properties:
+     - compatible : should contain the specific model of flash chip(s)
+       used, if known, followed by either "cfi-flash" or "jedec-flash"
+     - reg : Address range of the flash chip
+     - bank-width : Width (in bytes) of the flash bank.  Equal to the
+       device width times the number of interleaved chips.
+     - device-width : (optional) Width of a single flash chip.  If
+       omitted, assumed to be equal to 'bank-width'.
+     - #address-cells, #size-cells : Must be present if the flash has
+       sub-nodes representing partitions (see below).  In this case
+       both #address-cells and #size-cells must be equal to 1.
 
-     - device_type : has to be "rom"
-     - compatible : Should specify what this flash device is compatible with.
-       Currently, this is most likely to be "direct-mapped" (which
-       corresponds to the MTD physmap mapping driver).
-     - reg : Offset and length of the register set (or memory mapping) for
-       the device.
-     - bank-width : Width of the flash data bus in bytes. Required
-       for the NOR flashes (compatible == "direct-mapped" and others) ONLY.
+    For JEDEC compatible devices, the following additional properties
+    are defined:
 
-    Recommended properties :
+     - vendor-id : Contains the flash chip's vendor id (1 byte).
+     - device-id : Contains the flash chip's device id (1 byte).
 
-     - partitions : Several pairs of 32-bit values where the first value is
-       partition's offset from the start of the device and the second one is
-       partition size in bytes with LSB used to signify a read only
-       partition (so, the partition size should always be an even number).
-     - partition-names : The list of concatenated zero terminated strings
-       representing the partition names.
-     - probe-type : The type of probe which should be done for the chip
-       (JEDEC vs CFI actually). Valid ONLY for NOR flashes.
+    In addition to the information on the flash bank itself, the
+    device tree may optionally contain additional information
+    describing partitions of the flash address space.  This can be
+    used on platforms which have strong conventions about which
+    portions of the flash are used for what purposes, but which don't
+    use an on-flash partition table such as RedBoot.
 
-   Example:
+    Each partition is represented as a sub-node of the flash device.
+    Each node's name represents the name of the corresponding
+    partition of the flash device.
 
- 	flash@ff000000 {
- 		device_type = "rom";
- 		compatible = "direct-mapped";
- 		probe-type = "CFI";
- 		reg = <ff000000 01000000>;
- 		bank-width = <4>;
- 		partitions = <00000000 00f80000
- 			      00f80000 00080001>;
- 		partition-names = "fs\0firmware";
- 	};
+    Flash partitions
+     - reg : The partition's offset and size within the flash bank.
+     - label : (optional) The label / name for this flash partition.
+       If omitted, the label is taken from the node name (excluding
+       the unit address).
+     - read-only : (optional) This parameter, if present, is a hint to
+       Linux that this flash partition should only be mounted
+       read-only.  This is usually used for flash partitions
+       containing early-boot firmware images or data which should not
+       be clobbered.
+
+    Example:
+
+	flash@ff000000 {
+		compatible = "amd,am29lv128ml", "cfi-flash";
+		reg = <ff000000 01000000>;
+		bank-width = <4>;
+		device-width = <1>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		fs@0 {
+			label = "fs";
+			reg = <0 f80000>;
+		};
+		firmware@f80000 {
+			label ="firmware";
+			reg = <f80000 80000>;
+			read-only;
+		};
+	};
 
    k) Global Utilities Block
 
@@ -1823,6 +1862,668 @@ platforms are moved over to use the flattened-device-tree model.
 		reg = <e0000 1000>;
 		fsl,has-rstcr;
 	};
+
+   l) Freescale Communications Processor Module
+
+   NOTE: This is an interim binding, and will likely change slightly,
+   as more devices are supported.  The QE bindings especially are
+   incomplete.
+
+   i) Root CPM node
+
+   Properties:
+   - compatible : "fsl,cpm1", "fsl,cpm2", or "fsl,qe".
+   - reg : A 48-byte region beginning with CPCR.
+
+   Example:
+	cpm@119c0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		#interrupt-cells = <2>;
+		compatible = "fsl,mpc8272-cpm", "fsl,cpm2";
+		reg = <119c0 30>;
+	}
+
+   ii) Properties common to mulitple CPM/QE devices
+
+   - fsl,cpm-command : This value is ORed with the opcode and command flag
+                       to specify the device on which a CPM command operates.
+
+   - fsl,cpm-brg : Indicates which baud rate generator the device
+                   is associated with.  If absent, an unused BRG
+                   should be dynamically allocated.  If zero, the
+                   device uses an external clock rather than a BRG.
+
+   - reg : Unless otherwise specified, the first resource represents the
+           scc/fcc/ucc registers, and the second represents the device's
+           parameter RAM region (if it has one).
+
+   iii) Serial
+
+   Currently defined compatibles:
+   - fsl,cpm1-smc-uart
+   - fsl,cpm2-smc-uart
+   - fsl,cpm1-scc-uart
+   - fsl,cpm2-scc-uart
+   - fsl,qe-uart
+
+   Example:
+
+	serial@11a00 {
+		device_type = "serial";
+		compatible = "fsl,mpc8272-scc-uart",
+		             "fsl,cpm2-scc-uart";
+		reg = <11a00 20 8000 100>;
+		interrupts = <28 8>;
+		interrupt-parent = <&PIC>;
+		fsl,cpm-brg = <1>;
+		fsl,cpm-command = <00800000>;
+	};
+
+   iii) Network
+
+   Currently defined compatibles:
+   - fsl,cpm1-scc-enet
+   - fsl,cpm2-scc-enet
+   - fsl,cpm1-fec-enet
+   - fsl,cpm2-fcc-enet (third resource is GFEMR)
+   - fsl,qe-enet
+
+   Example:
+
+	ethernet@11300 {
+		device_type = "network";
+		compatible = "fsl,mpc8272-fcc-enet",
+		             "fsl,cpm2-fcc-enet";
+		reg = <11300 20 8400 100 11390 1>;
+		local-mac-address = [ 00 00 00 00 00 00 ];
+		interrupts = <20 8>;
+		interrupt-parent = <&PIC>;
+		phy-handle = <&PHY0>;
+		linux,network-index = <0>;
+		fsl,cpm-command = <12000300>;
+	};
+
+   iv) MDIO
+
+   Currently defined compatibles:
+   fsl,pq1-fec-mdio (reg is same as first resource of FEC device)
+   fsl,cpm2-mdio-bitbang (reg is port C registers)
+
+   Properties for fsl,cpm2-mdio-bitbang:
+   fsl,mdio-pin : pin of port C controlling mdio data
+   fsl,mdc-pin : pin of port C controlling mdio clock
+
+   Example:
+
+	mdio@10d40 {
+		device_type = "mdio";
+		compatible = "fsl,mpc8272ads-mdio-bitbang",
+		             "fsl,mpc8272-mdio-bitbang",
+		             "fsl,cpm2-mdio-bitbang";
+		reg = <10d40 14>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		fsl,mdio-pin = <12>;
+		fsl,mdc-pin = <13>;
+	};
+
+   v) Baud Rate Generators
+
+   Currently defined compatibles:
+   fsl,cpm-brg
+   fsl,cpm1-brg
+   fsl,cpm2-brg
+
+   Properties:
+   - reg : There may be an arbitrary number of reg resources; BRG
+     numbers are assigned to these in order.
+   - clock-frequency : Specifies the base frequency driving
+     the BRG.
+
+   Example:
+
+	brg@119f0 {
+		compatible = "fsl,mpc8272-brg",
+		             "fsl,cpm2-brg",
+		             "fsl,cpm-brg";
+		reg = <119f0 10 115f0 10>;
+		clock-frequency = <d#25000000>;
+	};
+
+   vi) Interrupt Controllers
+
+   Currently defined compatibles:
+   - fsl,cpm1-pic
+     - only one interrupt cell
+   - fsl,pq1-pic
+   - fsl,cpm2-pic
+     - second interrupt cell is level/sense:
+       - 2 is falling edge
+       - 8 is active low
+
+   Example:
+
+	interrupt-controller@10c00 {
+		#interrupt-cells = <2>;
+		interrupt-controller;
+		reg = <10c00 80>;
+		compatible = "mpc8272-pic", "fsl,cpm2-pic";
+	};
+
+   vii) USB (Universal Serial Bus Controller)
+
+   Properties:
+   - compatible : "fsl,cpm1-usb", "fsl,cpm2-usb", "fsl,qe-usb"
+
+   Example:
+	usb@11bc0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "fsl,cpm2-usb";
+		reg = <11b60 18 8b00 100>;
+		interrupts = <b 8>;
+		interrupt-parent = <&PIC>;
+		fsl,cpm-command = <2e600000>;
+	};
+
+   viii) Multi-User RAM (MURAM)
+
+   The multi-user/dual-ported RAM is expressed as a bus under the CPM node.
+
+   Ranges must be set up subject to the following restrictions:
+
+   - Children's reg nodes must be offsets from the start of all muram, even
+     if the user-data area does not begin at zero.
+   - If multiple range entries are used, the difference between the parent
+     address and the child address must be the same in all, so that a single
+     mapping can cover them all while maintaining the ability to determine
+     CPM-side offsets with pointer subtraction.  It is recommended that
+     multiple range entries not be used.
+   - A child address of zero must be translatable, even if no reg resources
+     contain it.
+
+   A child "data" node must exist, compatible with "fsl,cpm-muram-data", to
+   indicate the portion of muram that is usable by the OS for arbitrary
+   purposes.  The data node may have an arbitrary number of reg resources,
+   all of which contribute to the allocatable muram pool.
+
+   Example, based on mpc8272:
+
+	muram@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0 10000>;
+
+		data@0 {
+			compatible = "fsl,cpm-muram-data";
+			reg = <0 2000 9800 800>;
+		};
+	};
+
+   m) Chipselect/Local Bus
+
+   Properties:
+   - name : Should be localbus
+   - #address-cells : Should be either two or three.  The first cell is the
+                      chipselect number, and the remaining cells are the
+                      offset into the chipselect.
+   - #size-cells : Either one or two, depending on how large each chipselect
+                   can be.
+   - ranges : Each range corresponds to a single chipselect, and cover
+              the entire access window as configured.
+
+   Example:
+	localbus@f0010100 {
+		compatible = "fsl,mpc8272ads-localbus",
+		             "fsl,mpc8272-localbus",
+		             "fsl,pq2-localbus";
+		#address-cells = <2>;
+		#size-cells = <1>;
+		reg = <f0010100 40>;
+
+		ranges = <0 0 fe000000 02000000
+		          1 0 f4500000 00008000>;
+
+		flash@0,0 {
+			compatible = "jedec-flash";
+			reg = <0 0 2000000>;
+			bank-width = <4>;
+			device-width = <1>;
+		};
+
+		board-control@1,0 {
+			reg = <1 0 20>;
+			compatible = "fsl,mpc8272ads-bcsr";
+		};
+	};
+
+
+    n) 4xx/Axon EMAC ethernet nodes
+
+    The EMAC ethernet controller in IBM and AMCC 4xx chips, and also
+    the Axon bridge.  To operate this needs to interact with a ths
+    special McMAL DMA controller, and sometimes an RGMII or ZMII
+    interface.  In addition to the nodes and properties described
+    below, the node for the OPB bus on which the EMAC sits must have a
+    correct clock-frequency property.
+
+      i) The EMAC node itself
+
+    Required properties:
+    - device_type       : "network"
+
+    - compatible        : compatible list, contains 2 entries, first is
+			  "ibm,emac-CHIP" where CHIP is the host ASIC (440gx,
+			  405gp, Axon) and second is either "ibm,emac" or
+			  "ibm,emac4".  For Axon, thus, we have: "ibm,emac-axon",
+			  "ibm,emac4"
+    - interrupts        : <interrupt mapping for EMAC IRQ and WOL IRQ>
+    - interrupt-parent  : optional, if needed for interrupt mapping
+    - reg               : <registers mapping>
+    - local-mac-address : 6 bytes, MAC address
+    - mal-device        : phandle of the associated McMAL node
+    - mal-tx-channel    : 1 cell, index of the tx channel on McMAL associated
+			  with this EMAC
+    - mal-rx-channel    : 1 cell, index of the rx channel on McMAL associated
+			  with this EMAC
+    - cell-index        : 1 cell, hardware index of the EMAC cell on a given
+			  ASIC (typically 0x0 and 0x1 for EMAC0 and EMAC1 on
+			  each Axon chip)
+    - max-frame-size    : 1 cell, maximum frame size supported in bytes
+    - rx-fifo-size      : 1 cell, Rx fifo size in bytes for 10 and 100 Mb/sec
+			  operations.
+			  For Axon, 2048
+    - tx-fifo-size      : 1 cell, Tx fifo size in bytes for 10 and 100 Mb/sec
+			  operations.
+			  For Axon, 2048.
+    - fifo-entry-size   : 1 cell, size of a fifo entry (used to calculate
+			  thresholds).
+			  For Axon, 0x00000010
+    - mal-burst-size    : 1 cell, MAL burst size (used to calculate thresholds)
+			  in bytes.
+			  For Axon, 0x00000100 (I think ...)
+    - phy-mode          : string, mode of operations of the PHY interface.
+			  Supported values are: "mii", "rmii", "smii", "rgmii",
+			  "tbi", "gmii", rtbi", "sgmii".
+			  For Axon on CAB, it is "rgmii"
+    - mdio-device       : 1 cell, required iff using shared MDIO registers
+			  (440EP).  phandle of the EMAC to use to drive the
+			  MDIO lines for the PHY used by this EMAC.
+    - zmii-device       : 1 cell, required iff connected to a ZMII.  phandle of
+			  the ZMII device node
+    - zmii-channel      : 1 cell, required iff connected to a ZMII.  Which ZMII
+			  channel or 0xffffffff if ZMII is only used for MDIO.
+    - rgmii-device      : 1 cell, required iff connected to an RGMII. phandle
+			  of the RGMII device node.
+			  For Axon: phandle of plb5/plb4/opb/rgmii
+    - rgmii-channel     : 1 cell, required iff connected to an RGMII.  Which
+			  RGMII channel is used by this EMAC.
+			  Fox Axon: present, whatever value is appropriate for each
+			  EMAC, that is the content of the current (bogus) "phy-port"
+			  property.
+
+    Recommended properties:
+    - linux,network-index : This is the intended "index" of this
+      network device.  This is used by the bootwrapper to interpret
+      MAC addresses passed by the firmware when no information other
+      than indices is available to associate an address with a device.
+
+    Optional properties:
+    - phy-address       : 1 cell, optional, MDIO address of the PHY. If absent,
+			  a search is performed.
+    - phy-map           : 1 cell, optional, bitmap of addresses to probe the PHY
+			  for, used if phy-address is absent. bit 0x00000001 is
+			  MDIO address 0.
+			  For Axon it can be absent, thouugh my current driver
+			  doesn't handle phy-address yet so for now, keep
+			  0x00ffffff in it.
+    - rx-fifo-size-gige : 1 cell, Rx fifo size in bytes for 1000 Mb/sec
+			  operations (if absent the value is the same as
+			  rx-fifo-size).  For Axon, either absent or 2048.
+    - tx-fifo-size-gige : 1 cell, Tx fifo size in bytes for 1000 Mb/sec
+			  operations (if absent the value is the same as
+			  tx-fifo-size). For Axon, either absent or 2048.
+    - tah-device        : 1 cell, optional. If connected to a TAH engine for
+			  offload, phandle of the TAH device node.
+    - tah-channel       : 1 cell, optional. If appropriate, channel used on the
+			  TAH engine.
+
+    Example:
+
+	EMAC0: ethernet@40000800 {
+		linux,network-index = <0>;
+		device_type = "network";
+		compatible = "ibm,emac-440gp", "ibm,emac";
+		interrupt-parent = <&UIC1>;
+		interrupts = <1c 4 1d 4>;
+		reg = <40000800 70>;
+		local-mac-address = [00 04 AC E3 1B 1E];
+		mal-device = <&MAL0>;
+		mal-tx-channel = <0 1>;
+		mal-rx-channel = <0>;
+		cell-index = <0>;
+		max-frame-size = <5dc>;
+		rx-fifo-size = <1000>;
+		tx-fifo-size = <800>;
+		phy-mode = "rmii";
+		phy-map = <00000001>;
+		zmii-device = <&ZMII0>;
+		zmii-channel = <0>;
+	};
+
+      ii) McMAL node
+
+    Required properties:
+    - device_type        : "dma-controller"
+    - compatible         : compatible list, containing 2 entries, first is
+			   "ibm,mcmal-CHIP" where CHIP is the host ASIC (like
+			   emac) and the second is either "ibm,mcmal" or
+			   "ibm,mcmal2".
+			   For Axon, "ibm,mcmal-axon","ibm,mcmal2"
+    - interrupts         : <interrupt mapping for the MAL interrupts sources:
+                           5 sources: tx_eob, rx_eob, serr, txde, rxde>.
+                           For Axon: This is _different_ from the current
+			   firmware.  We use the "delayed" interrupts for txeob
+			   and rxeob. Thus we end up with mapping those 5 MPIC
+			   interrupts, all level positive sensitive: 10, 11, 32,
+			   33, 34 (in decimal)
+    - dcr-reg            : < DCR registers range >
+    - dcr-parent         : if needed for dcr-reg
+    - num-tx-chans       : 1 cell, number of Tx channels
+    - num-rx-chans       : 1 cell, number of Rx channels
+
+      iii) ZMII node
+
+    Required properties:
+    - compatible         : compatible list, containing 2 entries, first is
+			   "ibm,zmii-CHIP" where CHIP is the host ASIC (like
+			   EMAC) and the second is "ibm,zmii".
+			   For Axon, there is no ZMII node.
+    - reg                : <registers mapping>
+
+      iv) RGMII node
+
+    Required properties:
+    - compatible         : compatible list, containing 2 entries, first is
+			   "ibm,rgmii-CHIP" where CHIP is the host ASIC (like
+			   EMAC) and the second is "ibm,rgmii".
+                           For Axon, "ibm,rgmii-axon","ibm,rgmii"
+    - reg                : <registers mapping>
+    - revision           : as provided by the RGMII new version register if
+			   available.
+			   For Axon: 0x0000012a
+
+   l) Xilinx IP cores
+
+   The Xilinx EDK toolchain ships with a set of IP cores (devices) for use
+   in Xilinx Spartan and Virtex FPGAs.  The devices cover the whole range
+   of standard device types (network, serial, etc.) and miscellanious
+   devices (gpio, LCD, spi, etc).  Also, since these devices are
+   implemented within the fpga fabric every instance of the device can be
+   synthesised with different options that change the behaviour.
+
+   Each IP-core has a set of parameters which the FPGA designer can use to
+   control how the core is synthesized.  Historically, the EDK tool would
+   extract the device parameters relevant to device drivers and copy them
+   into an 'xparameters.h' in the form of #define symbols.  This tells the
+   device drivers how the IP cores are configured, but it requres the kernel
+   to be recompiled every time the FPGA bitstream is resynthesized.
+
+   The new approach is to export the parameters into the device tree and
+   generate a new device tree each time the FPGA bitstream changes.  The
+   parameters which used to be exported as #defines will now become
+   properties of the device node.  In general, device nodes for IP-cores
+   will take the following form:
+
+	(name): (ip-core-name)@(base-address) {
+		compatible = "xlnx,(ip-core-name)-(HW_VER)"
+			     [, (list of compatible devices), ...];
+		reg = <(baseaddr) (size)>;
+		interrupt-parent = <&interrupt-controller-phandle>;
+		interrupts = < ... >;
+		xlnx,(parameter1) = "(string-value)";
+		xlnx,(parameter2) = <(int-value)>;
+	};
+
+	(ip-core-name):	the name of the ip block (given after the BEGIN
+			directive in system.mhs).  Should be in lowercase
+			and all underscores '_' converted to dashes '-'.
+	(name):		is derived from the "PARAMETER INSTANCE" value.
+	(parameter#):	C_* parameters from system.mhs.  The C_ prefix is
+			dropped from the parameter name, the name is converted
+			to lowercase and all underscore '_' characters are
+			converted to dashes '-'.
+	(baseaddr):	the baseaddr parameter value (often named C_BASEADDR).
+	(HW_VER):	from the HW_VER parameter.
+	(size):		the address range size (often C_HIGHADDR - C_BASEADDR + 1).
+
+   Typically, the compatible list will include the exact IP core version
+   followed by an older IP core version which implements the same
+   interface or any other device with the same interface.
+
+   'reg', 'interrupt-parent' and 'interrupts' are all optional properties.
+
+   For example, the following block from system.mhs:
+
+	BEGIN opb_uartlite
+		PARAMETER INSTANCE = opb_uartlite_0
+		PARAMETER HW_VER = 1.00.b
+		PARAMETER C_BAUDRATE = 115200
+		PARAMETER C_DATA_BITS = 8
+		PARAMETER C_ODD_PARITY = 0
+		PARAMETER C_USE_PARITY = 0
+		PARAMETER C_CLK_FREQ = 50000000
+		PARAMETER C_BASEADDR = 0xEC100000
+		PARAMETER C_HIGHADDR = 0xEC10FFFF
+		BUS_INTERFACE SOPB = opb_7
+		PORT OPB_Clk = CLK_50MHz
+		PORT Interrupt = opb_uartlite_0_Interrupt
+		PORT RX = opb_uartlite_0_RX
+		PORT TX = opb_uartlite_0_TX
+		PORT OPB_Rst = sys_bus_reset_0
+	END
+
+   becomes the following device tree node:
+
+	opb_uartlite_0: serial@ec100000 {
+		device_type = "serial";
+		compatible = "xlnx,opb-uartlite-1.00.b";
+		reg = <ec100000 10000>;
+		interrupt-parent = <&opb_intc_0>;
+		interrupts = <1 0>; // got this from the opb_intc parameters
+		port-number = <0>;
+		current-speed = <d#115200>;	// standard serial device prop
+		clock-frequency = <d#50000000>;	// standard serial device prop
+		xlnx,data-bits = <8>;
+		xlnx,odd-parity = <0>;
+		xlnx,use-parity = <0>;
+	};
+
+   Some IP cores actually implement 2 or more logical devices.  In
+   this case, the device should still describe the whole IP core with
+   a single node and add a child node for each logical device.  The
+   ranges property can be used to translate from parent IP-core to the
+   registers of each device.  In addition, the parent node should be
+   compatible with the bus type 'xlnx,compound', and should contain
+   #address-cells and #size-cells, as with any other bus.  (Note: this
+   makes the assumption that both logical devices have the same bus
+   binding.  If this is not true, then separate nodes should be used
+   for each logical device).  The 'cell-index' property can be used to
+   enumerate logical devices within an IP core.  For example, the
+   following is the system.mhs entry for the dual ps2 controller found
+   on the ml403 reference design.
+
+	BEGIN opb_ps2_dual_ref
+		PARAMETER INSTANCE = opb_ps2_dual_ref_0
+		PARAMETER HW_VER = 1.00.a
+		PARAMETER C_BASEADDR = 0xA9000000
+		PARAMETER C_HIGHADDR = 0xA9001FFF
+		BUS_INTERFACE SOPB = opb_v20_0
+		PORT Sys_Intr1 = ps2_1_intr
+		PORT Sys_Intr2 = ps2_2_intr
+		PORT Clkin1 = ps2_clk_rx_1
+		PORT Clkin2 = ps2_clk_rx_2
+		PORT Clkpd1 = ps2_clk_tx_1
+		PORT Clkpd2 = ps2_clk_tx_2
+		PORT Rx1 = ps2_d_rx_1
+		PORT Rx2 = ps2_d_rx_2
+		PORT Txpd1 = ps2_d_tx_1
+		PORT Txpd2 = ps2_d_tx_2
+	END
+
+   It would result in the following device tree nodes:
+
+	opb_ps2_dual_ref_0: opb-ps2-dual-ref@a9000000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "xlnx,compound";
+		ranges = <0 a9000000 2000>;
+		// If this device had extra parameters, then they would
+		// go here.
+		opb-ps2-dual-ref@0 {
+			compatible = "xlnx,opb-ps2-dual-ref-1.00.a";
+			reg = <0 40>;
+			interrupt-parent = <&opb_intc_0>;
+			interrupts = <3 0>;
+			cell-index = <0>;
+		};
+		opb-ps2-dual-ref@1000 {
+			compatible = "xlnx,opb-ps2-dual-ref-1.00.a";
+			reg = <1000 40>;
+			interrupt-parent = <&opb_intc_0>;
+			interrupts = <3 0>;
+			cell-index = <0>;
+		};
+	};
+
+   Also, the system.mhs file defines bus attachments from the processor
+   to the devices.  The device tree structure should reflect the bus
+   attachments.  Again an example; this system.mhs fragment:
+
+	BEGIN ppc405_virtex4
+		PARAMETER INSTANCE = ppc405_0
+		PARAMETER HW_VER = 1.01.a
+		BUS_INTERFACE DPLB = plb_v34_0
+		BUS_INTERFACE IPLB = plb_v34_0
+	END
+
+	BEGIN opb_intc
+		PARAMETER INSTANCE = opb_intc_0
+		PARAMETER HW_VER = 1.00.c
+		PARAMETER C_BASEADDR = 0xD1000FC0
+		PARAMETER C_HIGHADDR = 0xD1000FDF
+		BUS_INTERFACE SOPB = opb_v20_0
+	END
+
+	BEGIN opb_uart16550
+		PARAMETER INSTANCE = opb_uart16550_0
+		PARAMETER HW_VER = 1.00.d
+		PARAMETER C_BASEADDR = 0xa0000000
+		PARAMETER C_HIGHADDR = 0xa0001FFF
+		BUS_INTERFACE SOPB = opb_v20_0
+	END
+
+	BEGIN plb_v34
+		PARAMETER INSTANCE = plb_v34_0
+		PARAMETER HW_VER = 1.02.a
+	END
+
+	BEGIN plb_bram_if_cntlr
+		PARAMETER INSTANCE = plb_bram_if_cntlr_0
+		PARAMETER HW_VER = 1.00.b
+		PARAMETER C_BASEADDR = 0xFFFF0000
+		PARAMETER C_HIGHADDR = 0xFFFFFFFF
+		BUS_INTERFACE SPLB = plb_v34_0
+	END
+
+	BEGIN plb2opb_bridge
+		PARAMETER INSTANCE = plb2opb_bridge_0
+		PARAMETER HW_VER = 1.01.a
+		PARAMETER C_RNG0_BASEADDR = 0x20000000
+		PARAMETER C_RNG0_HIGHADDR = 0x3FFFFFFF
+		PARAMETER C_RNG1_BASEADDR = 0x60000000
+		PARAMETER C_RNG1_HIGHADDR = 0x7FFFFFFF
+		PARAMETER C_RNG2_BASEADDR = 0x80000000
+		PARAMETER C_RNG2_HIGHADDR = 0xBFFFFFFF
+		PARAMETER C_RNG3_BASEADDR = 0xC0000000
+		PARAMETER C_RNG3_HIGHADDR = 0xDFFFFFFF
+		BUS_INTERFACE SPLB = plb_v34_0
+		BUS_INTERFACE MOPB = opb_v20_0
+	END
+
+   Gives this device tree (some properties removed for clarity):
+
+	plb_v34 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "xlnx,plb-v34-1.02.a";
+		device_type = "ibm,plb";
+		ranges; // 1:1 translation
+
+		plb_bram_if_cntrl_0: plb-bram-if-cntrl@ffff0000 {
+			reg = <ffff0000 10000>;
+		}
+
+		opb_v20 {
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <20000000 20000000 20000000
+				  60000000 60000000 20000000
+				  80000000 80000000 40000000
+				  c0000000 c0000000 20000000>;
+
+			opb_uart16550_0: opb-uart16550@a0000000 {
+				reg = <a00000000 2000>;
+			};
+
+			opb_intc_0: opb-intc@d1000fc0 {
+				reg = <d1000fc0 20>;
+			};
+		};
+	};
+
+   That covers the general approach to binding xilinx IP cores into the
+   device tree.  The following are bindings for specific devices:
+
+      i) Xilinx ML300 Framebuffer
+
+      Simple framebuffer device from the ML300 reference design (also on the
+      ML403 reference design as well as others).
+
+      Optional properties:
+       - resolution = <xres yres> : pixel resolution of framebuffer.  Some
+                                    implementations use a different resolution.
+                                    Default is <d#640 d#480>
+       - virt-resolution = <xvirt yvirt> : Size of framebuffer in memory.
+                                           Default is <d#1024 d#480>.
+       - rotate-display (empty) : rotate display 180 degrees.
+
+      ii) Xilinx SystemACE
+
+      The Xilinx SystemACE device is used to program FPGAs from an FPGA
+      bitstream stored on a CF card.  It can also be used as a generic CF
+      interface device.
+
+      Optional properties:
+       - 8-bit (empty) : Set this property for SystemACE in 8 bit mode
+
+      iii) Xilinx EMAC and Xilinx TEMAC
+
+      Xilinx Ethernet devices.  In addition to general xilinx properties
+      listed above, nodes for these devices should include a phy-handle
+      property, and may include other common network device properties
+      like local-mac-address.
+      
+      iv) Xilinx Uartlite
+
+      Xilinx uartlite devices are simple fixed speed serial ports.
+
+      Requred properties:
+       - current-speed : Baud rate of uartlite
+		Optional properties:
+       - port-number : unique ordinal index of the device. This
+         property is required for a console on uartlite.
 
    More devices will be defined as this spec matures.
 

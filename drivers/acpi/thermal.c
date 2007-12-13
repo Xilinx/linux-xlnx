@@ -195,6 +195,7 @@ struct acpi_thermal {
 	struct acpi_thermal_trips trips;
 	struct acpi_handle_list devices;
 	struct timer_list timer;
+	struct mutex lock;
 };
 
 static const struct file_operations acpi_thermal_state_fops = {
@@ -711,6 +712,7 @@ static void acpi_thermal_check(void *data)
 	int result = 0;
 	struct acpi_thermal *tz = data;
 	unsigned long sleep_time = 0;
+	unsigned long timeout_jiffies = 0;
 	int i = 0;
 	struct acpi_thermal_state state;
 
@@ -720,11 +722,15 @@ static void acpi_thermal_check(void *data)
 		return;
 	}
 
+	/* Check if someone else is already running */
+	if (!mutex_trylock(&tz->lock))
+		return;
+
 	state = tz->state;
 
 	result = acpi_thermal_get_temperature(tz);
 	if (result)
-		return;
+		goto unlock;
 
 	memset(&tz->state, 0, sizeof(tz->state));
 
@@ -787,10 +793,13 @@ static void acpi_thermal_check(void *data)
 	 * a thermal event occurs).  Note that _TSP and _TZD values are
 	 * given in 1/10th seconds (we must covert to milliseconds).
 	 */
-	if (tz->state.passive)
+	if (tz->state.passive) {
 		sleep_time = tz->trips.passive.tsp * 100;
-	else if (tz->polling_frequency > 0)
+		timeout_jiffies =  jiffies + (HZ * sleep_time) / 1000;
+	} else if (tz->polling_frequency > 0) {
 		sleep_time = tz->polling_frequency * 100;
+		timeout_jiffies =  round_jiffies(jiffies + (HZ * sleep_time) / 1000);
+	}
 
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "%s: temperature[%lu] sleep[%lu]\n",
 			  tz->name, tz->temperature, sleep_time));
@@ -804,17 +813,16 @@ static void acpi_thermal_check(void *data)
 			del_timer(&(tz->timer));
 	} else {
 		if (timer_pending(&(tz->timer)))
-			mod_timer(&(tz->timer),
-					jiffies + (HZ * sleep_time) / 1000);
+			mod_timer(&(tz->timer), timeout_jiffies);
 		else {
 			tz->timer.data = (unsigned long)tz;
 			tz->timer.function = acpi_thermal_run;
-			tz->timer.expires = jiffies + (HZ * sleep_time) / 1000;
+			tz->timer.expires = timeout_jiffies;
 			add_timer(&(tz->timer));
 		}
 	}
-
-	return;
+      unlock:
+	mutex_unlock(&tz->lock);
 }
 
 /* --------------------------------------------------------------------------
@@ -1251,7 +1259,7 @@ static int acpi_thermal_add(struct acpi_device *device)
 	strcpy(acpi_device_name(device), ACPI_THERMAL_DEVICE_NAME);
 	strcpy(acpi_device_class(device), ACPI_THERMAL_CLASS);
 	acpi_driver_data(device) = tz;
-
+	mutex_init(&tz->lock);
 	result = acpi_thermal_get_info(tz);
 	if (result)
 		goto end;
@@ -1321,7 +1329,7 @@ static int acpi_thermal_remove(struct acpi_device *device, int type)
 	}
 
 	acpi_thermal_remove_fs(device);
-
+	mutex_destroy(&tz->lock);
 	kfree(tz);
 	return 0;
 }
@@ -1360,7 +1368,7 @@ static int acpi_thermal_resume(struct acpi_device *device)
 }
 
 #ifdef CONFIG_DMI
-static int thermal_act(struct dmi_system_id *d) {
+static int thermal_act(const struct dmi_system_id *d) {
 
 	if (act == 0) {
 		printk(KERN_NOTICE "ACPI: %s detected: "
@@ -1369,14 +1377,14 @@ static int thermal_act(struct dmi_system_id *d) {
 	}
 	return 0;
 }
-static int thermal_nocrt(struct dmi_system_id *d) {
+static int thermal_nocrt(const struct dmi_system_id *d) {
 
 	printk(KERN_NOTICE "ACPI: %s detected: "
 		"disabling all critical thermal trip point actions.\n", d->ident);
 	nocrt = 1;
 	return 0;
 }
-static int thermal_tzp(struct dmi_system_id *d) {
+static int thermal_tzp(const struct dmi_system_id *d) {
 
 	if (tzp == 0) {
 		printk(KERN_NOTICE "ACPI: %s detected: "
@@ -1385,7 +1393,7 @@ static int thermal_tzp(struct dmi_system_id *d) {
 	}
 	return 0;
 }
-static int thermal_psv(struct dmi_system_id *d) {
+static int thermal_psv(const struct dmi_system_id *d) {
 
 	if (psv == 0) {
 		printk(KERN_NOTICE "ACPI: %s detected: "

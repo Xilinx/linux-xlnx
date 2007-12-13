@@ -27,6 +27,7 @@
 #include <linux/hdreg.h>
 #include <linux/dma-mapping.h>
 #include <linux/completion.h>
+#include <linux/scatterlist.h>
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
@@ -522,6 +523,7 @@ static struct carm_request *carm_get_request(struct carm_host *host)
 			host->n_msgs++;
 
 			assert(host->n_msgs <= CARM_MAX_REQ);
+			sg_init_table(crq->sg, CARM_MAX_REQ_SG);
 			return crq;
 		}
 

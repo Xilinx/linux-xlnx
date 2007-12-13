@@ -58,13 +58,14 @@
 
 #define IBM_NAME "thinkpad"
 #define IBM_DESC "ThinkPad ACPI Extras"
-#define IBM_FILE "thinkpad_acpi"
+#define IBM_FILE IBM_NAME "_acpi"
 #define IBM_URL "http://ibm-acpi.sf.net/"
 #define IBM_MAIL "ibm-acpi-devel@lists.sourceforge.net"
 
 #define IBM_PROC_DIR "ibm"
 #define IBM_ACPI_EVENT_PREFIX "ibm"
 #define IBM_DRVR_NAME IBM_FILE
+#define IBM_HWMON_DRVR_NAME IBM_NAME "_hwmon"
 
 #define IBM_LOG IBM_FILE ": "
 #define IBM_ERR	   KERN_ERR    IBM_LOG
@@ -83,7 +84,7 @@
 
 /* ThinkPad CMOS NVRAM constants */
 #define TP_NVRAM_ADDR_BRIGHTNESS       0x5e
-#define TP_NVRAM_MASK_LEVEL_BRIGHTNESS 0x07
+#define TP_NVRAM_MASK_LEVEL_BRIGHTNESS 0x0f
 #define TP_NVRAM_POS_LEVEL_BRIGHTNESS 0
 
 #define onoff(status,bit) ((status) & (1 << (bit)) ? "on" : "off")
@@ -171,7 +172,8 @@ static int parse_strtoul(const char *buf, unsigned long max,
 
 /* Device model */
 static struct platform_device *tpacpi_pdev;
-static struct class_device *tpacpi_hwmon;
+static struct platform_device *tpacpi_sensors_pdev;
+static struct device *tpacpi_hwmon;
 static struct platform_driver tpacpi_pdriver;
 static struct input_dev *tpacpi_inputdev;
 static int tpacpi_create_driver_attributes(struct device_driver *drv);
@@ -233,22 +235,26 @@ struct ibm_init_struct {
 
 static struct {
 #ifdef CONFIG_THINKPAD_ACPI_BAY
-	u16 bay_status:1;
-	u16 bay_eject:1;
-	u16 bay_status2:1;
-	u16 bay_eject2:1;
+	u32 bay_status:1;
+	u32 bay_eject:1;
+	u32 bay_status2:1;
+	u32 bay_eject2:1;
 #endif
-	u16 bluetooth:1;
-	u16 hotkey:1;
-	u16 hotkey_mask:1;
-	u16 hotkey_wlsw:1;
-	u16 light:1;
-	u16 light_status:1;
-	u16 wan:1;
-	u16 fan_ctrl_status_undef:1;
-	u16 input_device_registered:1;
-	u16 platform_drv_registered:1;
-	u16 platform_drv_attrs_registered:1;
+	u32 bluetooth:1;
+	u32 hotkey:1;
+	u32 hotkey_mask:1;
+	u32 hotkey_wlsw:1;
+	u32 light:1;
+	u32 light_status:1;
+	u32 bright_16levels:1;
+	u32 wan:1;
+	u32 fan_ctrl_status_undef:1;
+	u32 input_device_registered:1;
+	u32 platform_drv_registered:1;
+	u32 platform_drv_attrs_registered:1;
+	u32 sensors_pdrv_registered:1;
+	u32 sensors_pdrv_attrs_registered:1;
+	u32 sensors_pdev_attrs_registered:1;
 } tp_features;
 
 struct thinkpad_id_data {
@@ -333,6 +339,7 @@ static int bluetooth_write(char *buf);
 static struct backlight_device *ibm_backlight_device;
 static int brightness_offset = 0x31;
 static int brightness_mode;
+static unsigned int brightness_enable;	/* 0 = no, 1 = yes, 2 = auto */
 
 static int brightness_init(struct ibm_init_struct *iibm);
 static void brightness_exit(void);

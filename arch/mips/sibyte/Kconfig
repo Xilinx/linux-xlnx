@@ -1,6 +1,9 @@
 config SIBYTE_SB1250
 	bool
+	select CEVT_SB1250
+	select CSRC_SB1250
 	select HW_HAS_PCI
+	select IRQ_CPU
 	select SIBYTE_ENABLE_LDT_IF_PCI
 	select SIBYTE_HAS_ZBUS_PROFILING
 	select SIBYTE_SB1xxx_SOC
@@ -8,20 +11,29 @@ config SIBYTE_SB1250
 
 config SIBYTE_BCM1120
 	bool
+	select CEVT_SB1250
+	select CSRC_SB1250
+	select IRQ_CPU
 	select SIBYTE_BCM112X
 	select SIBYTE_HAS_ZBUS_PROFILING
 	select SIBYTE_SB1xxx_SOC
 
 config SIBYTE_BCM1125
 	bool
+	select CEVT_SB1250
+	select CSRC_SB1250
 	select HW_HAS_PCI
+	select IRQ_CPU
 	select SIBYTE_BCM112X
 	select SIBYTE_HAS_ZBUS_PROFILING
 	select SIBYTE_SB1xxx_SOC
 
 config SIBYTE_BCM1125H
 	bool
+	select CEVT_SB1250
+	select CSRC_SB1250
 	select HW_HAS_PCI
+	select IRQ_CPU
 	select SIBYTE_BCM112X
 	select SIBYTE_ENABLE_LDT_IF_PCI
 	select SIBYTE_HAS_ZBUS_PROFILING
@@ -29,19 +41,28 @@ config SIBYTE_BCM1125H
 
 config SIBYTE_BCM112X
 	bool
+	select CEVT_SB1250
+	select CSRC_SB1250
+	select IRQ_CPU
 	select SIBYTE_SB1xxx_SOC
 	select SIBYTE_HAS_ZBUS_PROFILING
 
 config SIBYTE_BCM1x80
 	bool
+	select CEVT_BCM1480
+	select CSRC_BCM1480
 	select HW_HAS_PCI
+	select IRQ_CPU
 	select SIBYTE_HAS_ZBUS_PROFILING
 	select SIBYTE_SB1xxx_SOC
 	select SYS_SUPPORTS_SMP
 
 config SIBYTE_BCM1x55
 	bool
+	select CEVT_BCM1480
+	select CSRC_BCM1480
 	select HW_HAS_PCI
+	select IRQ_CPU
 	select SIBYTE_SB1xxx_SOC
 	select SIBYTE_HAS_ZBUS_PROFILING
 	select SYS_SUPPORTS_SMP
@@ -49,6 +70,7 @@ config SIBYTE_BCM1x55
 config SIBYTE_SB1xxx_SOC
 	bool
 	select DMA_COHERENT
+	select IRQ_CPU
 	select SIBYTE_CFE
 	select SWAP_IO_SPACE
 	select SYS_SUPPORTS_32BIT_KERNEL
@@ -124,6 +146,7 @@ config SB1_CERR_STALL
 config SIBYTE_CFE
 	bool "Booting from CFE"
 	depends on SIBYTE_SB1xxx_SOC
+	select CFE
 	select SYS_HAS_EARLY_PRINTK
 	help
 	  Make use of the CFE API for enumerating available memory,
@@ -164,10 +187,6 @@ config SIBYTE_BW_TRACE
 	  is turned on, and also will interfere with JTAG-based trace
 	  buffer activity.  Raw buffer data is dumped to console, and
 	  must be processed off-line.
-
-config SIBYTE_SB1250_PROF
-	bool "Support for SB1/SOC profiling - SB1/SCD perf counters"
-	depends on SIBYTE_SB1xxx_SOC
 
 config SIBYTE_TBPROF
 	tristate "Support for ZBbus profiling"

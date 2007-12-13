@@ -32,7 +32,7 @@
  * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <linux/pm.h>
+#include <linux/suspend.h>
 #include <linux/sched.h>
 #include <linux/proc_fs.h>
 #include <linux/io.h>
@@ -89,28 +89,15 @@ void bfin_pm_suspend_standby_enter(void)
 #endif				/* CONFIG_PM_WAKEUP_GPIO_BY_SIC_IWR */
 }
 
-
 /*
- *	bfin_pm_prepare - Do preliminary suspend work.
- *	@state:		suspend state we're entering.
+ *	bfin_pm_valid - Tell the PM core that we only support the standby sleep
+ *			state
+ *	@state:		suspend state we're checking.
  *
  */
-static int bfin_pm_prepare(suspend_state_t state)
+static int bfin_pm_valid(suspend_state_t state)
 {
-	int error = 0;
-
-	switch (state) {
-	case PM_SUSPEND_STANDBY:
-		break;
-
-	case PM_SUSPEND_MEM:
-		return -ENOTSUPP;
-
-	default:
-		return -EINVAL;
-	}
-
-	return error;
+	return (state == PM_SUSPEND_STANDBY);
 }
 
 /*
@@ -135,44 +122,14 @@ static int bfin_pm_enter(suspend_state_t state)
 	return 0;
 }
 
-/*
- *	bfin_pm_finish - Finish up suspend sequence.
- *	@state:		State we're coming out of.
- *
- *	This is called after we wake back up (or if entering the sleep state
- *	failed).
- */
-static int bfin_pm_finish(suspend_state_t state)
-{
-	switch (state) {
-	case PM_SUSPEND_STANDBY:
-		break;
-
-	case PM_SUSPEND_MEM:
-		return -ENOTSUPP;
-
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int bfin_pm_valid(suspend_state_t state)
-{
-	return (state == PM_SUSPEND_STANDBY);
-}
-
-struct pm_ops bfin_pm_ops = {
-	.prepare = bfin_pm_prepare,
+struct platform_suspend_ops bfin_pm_ops = {
 	.enter = bfin_pm_enter,
-	.finish = bfin_pm_finish,
 	.valid	= bfin_pm_valid,
 };
 
 static int __init bfin_pm_init(void)
 {
-	pm_set_ops(&bfin_pm_ops);
+	suspend_set_ops(&bfin_pm_ops);
 	return 0;
 }
 

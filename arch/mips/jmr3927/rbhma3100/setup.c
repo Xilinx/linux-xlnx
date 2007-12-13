@@ -1,15 +1,4 @@
-/***********************************************************************
- *
- * Copyright 2001 MontaVista Software Inc.
- * Author: MontaVista Software, Inc.
- *              ahennessy@mvista.com
- *
- * Based on arch/mips/ddb5xxx/ddb5477/setup.c
- *
- *     Setup file for JMR3927.
- *
- * Copyright (C) 2000-2001 Toshiba Corporation
- *
+/*
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
  *  Free Software Foundation;  either version 2 of the  License, or (at your
@@ -30,19 +19,21 @@
  *  with this program; if not, write  to the Free Software Foundation, Inc.,
  *  675 Mass Ave, Cambridge, MA 02139, USA.
  *
- ***********************************************************************
+ * Copyright 2001 MontaVista Software Inc.
+ * Author: MontaVista Software, Inc.
+ *              ahennessy@mvista.com
+ *
+ * Copyright (C) 2000-2001 Toshiba Corporation
+ * Copyright (C) 2007 Ralf Baechle (ralf@linux-mips.org)
  */
 
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kdev_t.h>
 #include <linux/types.h>
-#include <linux/sched.h>
 #include <linux/pci.h>
 #include <linux/ide.h>
-#include <linux/irq.h>
 #include <linux/ioport.h>
-#include <linux/param.h>	/* for HZ */
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/platform_device.h>
@@ -53,16 +44,12 @@
 #endif
 
 #include <asm/addrspace.h>
-#include <asm/time.h>
+#include <asm/txx9tmr.h>
 #include <asm/reboot.h>
 #include <asm/jmr3927/jmr3927.h>
 #include <asm/mipsregs.h>
 
 extern void puts(const char *cp);
-
-/* Tick Timer divider */
-#define JMR3927_TIMER_CCD	0	/* 1/2 */
-#define JMR3927_TIMER_CLK	(JMR3927_IMCLK / (2 << JMR3927_TIMER_CCD))
 
 /* don't enable - see errata */
 static int jmr3927_ccfg_toeon;
@@ -98,33 +85,12 @@ static void jmr3927_machine_power_off(void)
 	while (1);
 }
 
-static cycle_t jmr3927_hpt_read(void)
+void __init plat_time_init(void)
 {
-	/* We assume this function is called xtime_lock held. */
-	return jiffies * (JMR3927_TIMER_CLK / HZ) + jmr3927_tmrptr->trr;
-}
-
-static void jmr3927_timer_ack(void)
-{
-	jmr3927_tmrptr->tisr = 0;       /* ack interrupt */
-}
-
-static void __init jmr3927_time_init(void)
-{
-	clocksource_mips.read = jmr3927_hpt_read;
-	mips_timer_ack = jmr3927_timer_ack;
-	mips_hpt_frequency = JMR3927_TIMER_CLK;
-}
-
-void __init plat_timer_setup(struct irqaction *irq)
-{
-	jmr3927_tmrptr->cpra = JMR3927_TIMER_CLK / HZ;
-	jmr3927_tmrptr->itmr = TXx927_TMTITMR_TIIE | TXx927_TMTITMR_TZCE;
-	jmr3927_tmrptr->ccdr = JMR3927_TIMER_CCD;
-	jmr3927_tmrptr->tcr =
-		TXx927_TMTCR_TCE | TXx927_TMTCR_CCDE | TXx927_TMTCR_TMODE_ITVL;
-
-	setup_irq(JMR3927_IRQ_TICK, irq);
+	txx9_clockevent_init(TX3927_TMR_REG(0),
+			     TXX9_IRQ_BASE + JMR3927_IRQ_IRC_TMR(0),
+			     JMR3927_IMCLK);
+	txx9_clocksource_init(TX3927_TMR_REG(1), JMR3927_IMCLK);
 }
 
 #define DO_WRITE_THROUGH
@@ -140,8 +106,6 @@ void __init plat_mem_setup(void)
 	char *argptr;
 
 	set_io_port_base(JMR3927_PORT_BASE + JMR3927_PCIIO);
-
-	board_time_init = jmr3927_time_init;
 
 	_machine_restart = jmr3927_machine_restart;
 	_machine_halt = jmr3927_machine_halt;
@@ -291,15 +255,8 @@ static void __init tx3927_setup(void)
 	       tx3927_ccfgptr->ccfg, tx3927_ccfgptr->pcfg);
 
 	/* TMR */
-	/* disable all timers */
-	for (i = 0; i < TX3927_NR_TMR; i++) {
-		tx3927_tmrptr(i)->tcr = TXx927_TMTCR_CRE;
-		tx3927_tmrptr(i)->tisr = 0;
-		tx3927_tmrptr(i)->cpra = 0xffffffff;
-		tx3927_tmrptr(i)->itmr = 0;
-		tx3927_tmrptr(i)->ccdr = 0;
-		tx3927_tmrptr(i)->pgmr = 0;
-	}
+	for (i = 0; i < TX3927_NR_TMR; i++)
+		txx9_tmr_init(TX3927_TMR_REG(i));
 
 	/* DMA */
 	tx3927_dmaptr->mcr = 0;
@@ -427,7 +384,7 @@ static int __init jmr3927_rtc_init(void)
 		.flags	= IORESOURCE_MEM,
 	};
 	struct platform_device *dev;
-	dev = platform_device_register_simple("ds1742", -1, &res, 1);
+	dev = platform_device_register_simple("rtc-ds1742", -1, &res, 1);
 	return IS_ERR(dev) ? PTR_ERR(dev) : 0;
 }
 device_initcall(jmr3927_rtc_init);

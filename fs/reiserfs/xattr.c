@@ -426,6 +426,12 @@ static inline __u32 xattr_hash(const char *msg, int len)
 	return csum_partial(msg, len, 0);
 }
 
+int reiserfs_commit_write(struct file *f, struct page *page,
+			  unsigned from, unsigned to);
+int reiserfs_prepare_write(struct file *f, struct page *page,
+			   unsigned from, unsigned to);
+
+
 /* Generic extended attribute operations that can be used by xa plugins */
 
 /*
@@ -478,7 +484,7 @@ reiserfs_xattr_set(struct inode *inode, const char *name, const void *buffer,
 	/* Resize it so we're ok to write there */
 	newattrs.ia_size = buffer_size;
 	newattrs.ia_valid = ATTR_SIZE | ATTR_CTIME;
-	mutex_lock(&xinode->i_mutex);
+	mutex_lock_nested(&xinode->i_mutex, I_MUTEX_XATTR);
 	err = notify_change(fp->f_path.dentry, &newattrs);
 	if (err)
 		goto out_filp;
@@ -512,15 +518,15 @@ reiserfs_xattr_set(struct inode *inode, const char *name, const void *buffer,
 			rxh->h_hash = cpu_to_le32(xahash);
 		}
 
-		err = mapping->a_ops->prepare_write(fp, page, page_offset,
-						    page_offset + chunk + skip);
+		err = reiserfs_prepare_write(fp, page, page_offset,
+					    page_offset + chunk + skip);
 		if (!err) {
 			if (buffer)
 				memcpy(data + skip, buffer + buffer_pos, chunk);
 			err =
-			    mapping->a_ops->commit_write(fp, page, page_offset,
-							 page_offset + chunk +
-							 skip);
+			    reiserfs_commit_write(fp, page, page_offset,
+						  page_offset + chunk +
+						  skip);
 		}
 		unlock_page(page);
 		reiserfs_put_page(page);
@@ -1217,7 +1223,8 @@ int reiserfs_xattr_init(struct super_block *s, int mount_flags)
 		if (!IS_ERR(dentry)) {
 			if (!(mount_flags & MS_RDONLY) && !dentry->d_inode) {
 				struct inode *inode = dentry->d_parent->d_inode;
-				mutex_lock(&inode->i_mutex);
+				mutex_lock_nested(&inode->i_mutex,
+						  I_MUTEX_XATTR);
 				err = inode->i_op->mkdir(inode, dentry, 0700);
 				mutex_unlock(&inode->i_mutex);
 				if (err) {

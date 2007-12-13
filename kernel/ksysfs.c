@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kexec.h>
+#include <linux/sched.h>
 
 #define KERNEL_ATTR_RO(_name) \
 static struct subsys_attribute _name##_attr = __ATTR_RO(_name)
@@ -60,6 +61,15 @@ static ssize_t kexec_crash_loaded_show(struct kset *kset, char *page)
 	return sprintf(page, "%d\n", !!kexec_crash_image);
 }
 KERNEL_ATTR_RO(kexec_crash_loaded);
+
+static ssize_t vmcoreinfo_show(struct kset *kset, char *page)
+{
+	return sprintf(page, "%lx %x\n",
+		       paddr_vmcoreinfo_note(),
+		       (unsigned int)vmcoreinfo_max_size);
+}
+KERNEL_ATTR_RO(vmcoreinfo);
+
 #endif /* CONFIG_KEXEC */
 
 /*
@@ -95,6 +105,7 @@ static struct attribute * kernel_attrs[] = {
 #ifdef CONFIG_KEXEC
 	&kexec_loaded_attr.attr,
 	&kexec_crash_loaded_attr.attr,
+	&vmcoreinfo_attr.attr,
 #endif
 	NULL
 };
@@ -115,6 +126,13 @@ static int __init ksysfs_init(void)
 		error = sysfs_create_bin_file(&kernel_subsys.kobj,
 					      &notes_attr);
 	}
+
+	/*
+	 * Create "/sys/kernel/uids" directory and corresponding root user's
+	 * directory under it.
+	 */
+	if (!error)
+		error = uids_kobject_init();
 
 	return error;
 }

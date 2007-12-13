@@ -648,9 +648,10 @@ static int psmouse_extensions(struct psmouse *psmouse,
 
 /*
  * Reset to defaults in case the device got confused by extended
- * protocol probes. Note that we do full reset becuase some mice
- * put themselves to sleep when see PSMOUSE_RESET_DIS.
+ * protocol probes. Note that we follow up with full reset because
+ * some mice put themselves to sleep when they see PSMOUSE_RESET_DIS.
  */
+	ps2_command(&psmouse->ps2dev, NULL, PSMOUSE_CMD_RESET_DIS);
 	psmouse_reset(psmouse);
 
 	if (max_proto >= PSMOUSE_IMEX && im_explorer_detect(psmouse, set_properties) == 0)
@@ -905,7 +906,7 @@ static void psmouse_activate(struct psmouse *psmouse)
 
 /*
  * psmouse_deactivate() puts the mouse into poll mode so that we don't get motion
- * reports from it unless we explicitely request it.
+ * reports from it unless we explicitly request it.
  */
 
 static void psmouse_deactivate(struct psmouse *psmouse)
@@ -1114,9 +1115,10 @@ static int psmouse_switch_protocol(struct psmouse *psmouse, const struct psmouse
 
 	input_dev->dev.parent = &psmouse->ps2dev.serio->dev;
 
-	input_dev->evbit[0] = BIT(EV_KEY) | BIT(EV_REL);
-	input_dev->keybit[LONG(BTN_MOUSE)] = BIT(BTN_LEFT) | BIT(BTN_MIDDLE) | BIT(BTN_RIGHT);
-	input_dev->relbit[0] = BIT(REL_X) | BIT(REL_Y);
+	input_dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL);
+	input_dev->keybit[BIT_WORD(BTN_MOUSE)] = BIT_MASK(BTN_LEFT) |
+		BIT_MASK(BTN_MIDDLE) | BIT_MASK(BTN_RIGHT);
+	input_dev->relbit[0] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
 
 	psmouse->set_rate = psmouse_set_rate;
 	psmouse->set_resolution = psmouse_set_resolution;

@@ -63,6 +63,8 @@
 #define AUDIT_ADD_RULE		1011	/* Add syscall filtering rule */
 #define AUDIT_DEL_RULE		1012	/* Delete syscall filtering rule */
 #define AUDIT_LIST_RULES	1013	/* List syscall filtering rules */
+#define AUDIT_TRIM		1014	/* Trim junk from watched tree */
+#define AUDIT_MAKE_EQUIV	1015	/* Append to watched tree */
 #define AUDIT_TTY_GET		1016	/* Get TTY auditing status */
 #define AUDIT_TTY_SET		1017	/* Set TTY auditing status */
 
@@ -108,10 +110,11 @@
 #define AUDIT_MAC_CIPSOV4_DEL	1408	/* NetLabel: del CIPSOv4 DOI entry */
 #define AUDIT_MAC_MAP_ADD	1409	/* NetLabel: add LSM domain mapping */
 #define AUDIT_MAC_MAP_DEL	1410	/* NetLabel: del LSM domain mapping */
-#define AUDIT_MAC_IPSEC_ADDSA	1411	/* Add a XFRM state */
-#define AUDIT_MAC_IPSEC_DELSA	1412	/* Delete a XFRM state */
-#define AUDIT_MAC_IPSEC_ADDSPD	1413	/* Add a XFRM policy */
-#define AUDIT_MAC_IPSEC_DELSPD	1414	/* Delete a XFRM policy */
+#define AUDIT_MAC_IPSEC_ADDSA	1411	/* Not used */
+#define AUDIT_MAC_IPSEC_DELSA	1412	/* Not used  */
+#define AUDIT_MAC_IPSEC_ADDSPD	1413	/* Not used */
+#define AUDIT_MAC_IPSEC_DELSPD	1414	/* Not used */
+#define AUDIT_MAC_IPSEC_EVENT	1415	/* Audit an IPSec event */
 
 #define AUDIT_FIRST_KERN_ANOM_MSG   1700
 #define AUDIT_LAST_KERN_ANOM_MSG    1799
@@ -202,6 +205,7 @@
 #define AUDIT_SUCCESS   104	/* exit >= 0; value ignored */
 #define AUDIT_WATCH	105
 #define AUDIT_PERM	106
+#define AUDIT_DIR	107
 
 #define AUDIT_ARG0      200
 #define AUDIT_ARG1      (AUDIT_ARG0+1)
@@ -365,8 +369,8 @@ extern void audit_syscall_entry(int arch,
 extern void audit_syscall_exit(int failed, long return_code);
 extern void __audit_getname(const char *name);
 extern void audit_putname(const char *name);
-extern void __audit_inode(const char *name, const struct inode *inode);
-extern void __audit_inode_child(const char *dname, const struct inode *inode,
+extern void __audit_inode(const char *name, const struct dentry *dentry);
+extern void __audit_inode_child(const char *dname, const struct dentry *dentry,
 				const struct inode *parent);
 extern void __audit_ptrace(struct task_struct *t);
 
@@ -380,15 +384,15 @@ static inline void audit_getname(const char *name)
 	if (unlikely(!audit_dummy_context()))
 		__audit_getname(name);
 }
-static inline void audit_inode(const char *name, const struct inode *inode) {
+static inline void audit_inode(const char *name, const struct dentry *dentry) {
 	if (unlikely(!audit_dummy_context()))
-		__audit_inode(name, inode);
+		__audit_inode(name, dentry);
 }
 static inline void audit_inode_child(const char *dname, 
-				     const struct inode *inode,
+				     const struct dentry *dentry,
 				     const struct inode *parent) {
 	if (unlikely(!audit_dummy_context()))
-		__audit_inode_child(dname, inode, parent);
+		__audit_inode_child(dname, dentry, parent);
 }
 void audit_core_dumps(long signr);
 
@@ -476,9 +480,9 @@ extern int audit_signals;
 #define audit_dummy_context() 1
 #define audit_getname(n) do { ; } while (0)
 #define audit_putname(n) do { ; } while (0)
-#define __audit_inode(n,i) do { ; } while (0)
+#define __audit_inode(n,d) do { ; } while (0)
 #define __audit_inode_child(d,i,p) do { ; } while (0)
-#define audit_inode(n,i) do { ; } while (0)
+#define audit_inode(n,d) do { ; } while (0)
 #define audit_inode_child(d,i,p) do { ; } while (0)
 #define audit_core_dumps(i) do { ; } while (0)
 #define auditsc_get_stamp(c,t,s) do { BUG(); } while (0)

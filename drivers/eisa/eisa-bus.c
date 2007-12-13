@@ -35,9 +35,9 @@ static struct eisa_device_info __initdata eisa_table[] = {
 #define EISA_MAX_FORCED_DEV 16
 
 static int enable_dev[EISA_MAX_FORCED_DEV];
-static int enable_dev_count;
+static unsigned int enable_dev_count;
 static int disable_dev[EISA_MAX_FORCED_DEV];
-static int disable_dev_count;
+static unsigned int disable_dev_count;
 
 static int is_forced_dev (int *forced_tab,
 			  int forced_count,
@@ -128,16 +128,11 @@ static int eisa_bus_match (struct device *dev, struct device_driver *drv)
 	return 0;
 }
 
-static int eisa_bus_uevent(struct device *dev, char **envp, int num_envp,
-			   char *buffer, int buffer_size)
+static int eisa_bus_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct eisa_device *edev = to_eisa_device(dev);
-	int i = 0;
-	int length = 0;
 
-	add_uevent_var(envp, num_envp, &i, buffer, buffer_size, &length,
-		       "MODALIAS=" EISA_DEVICE_MODALIAS_FMT, edev->id.sig);
-	envp[i] = NULL;
+	add_uevent_var(env, "MODALIAS=" EISA_DEVICE_MODALIAS_FMT, edev->id.sig);
 	return 0;
 }
 

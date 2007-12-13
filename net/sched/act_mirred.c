@@ -20,6 +20,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/module.h>
 #include <linux/init.h>
+#include <net/net_namespace.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <linux/tc_act/tc_mirred.h>
@@ -73,7 +74,7 @@ static int tcf_mirred_init(struct rtattr *rta, struct rtattr *est,
 	parm = RTA_DATA(tb[TCA_MIRRED_PARMS-1]);
 
 	if (parm->ifindex) {
-		dev = __dev_get_by_index(parm->ifindex);
+		dev = __dev_get_by_index(&init_net, parm->ifindex);
 		if (dev == NULL)
 			return -ENODEV;
 		switch (dev->type) {
@@ -165,7 +166,7 @@ bad_mirred:
 		return TC_ACT_SHOT;
 	}
 
-	skb2 = skb_clone(skb, GFP_ATOMIC);
+	skb2 = skb_act_clone(skb, GFP_ATOMIC);
 	if (skb2 == NULL)
 		goto bad_mirred;
 	if (m->tcfm_eaction != TCA_EGRESS_MIRROR &&

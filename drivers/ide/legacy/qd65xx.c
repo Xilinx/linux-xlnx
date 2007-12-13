@@ -89,26 +89,6 @@
 
 static int timings[4]={-1,-1,-1,-1}; /* stores current timing for each timer */
 
-static void qd_write_reg (u8 content, unsigned long reg)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&ide_lock, flags);
-	outb(content,reg);
-	spin_unlock_irqrestore(&ide_lock, flags);
-}
-
-static u8 __init qd_read_reg (unsigned long reg)
-{
-	unsigned long flags;
-	u8 read;
-
-	spin_lock_irqsave(&ide_lock, flags);
-	read = inb(reg);
-	spin_unlock_irqrestore(&ide_lock, flags);
-	return read;
-}
-
 /*
  * qd_select:
  *
@@ -121,7 +101,7 @@ static void qd_select (ide_drive_t *drive)
 			(QD_TIMREG(drive) & 0x02);
 
 	if (timings[index] != QD_TIMING(drive))
-		qd_write_reg(timings[index] = QD_TIMING(drive), QD_TIMREG(drive));
+		outb(timings[index] = QD_TIMING(drive), QD_TIMREG(drive));
 }
 
 /*
@@ -224,15 +204,14 @@ static void qd_set_timing (ide_drive_t *drive, u8 timing)
 	printk(KERN_DEBUG "%s: %#x\n", drive->name, timing);
 }
 
-/*
- * qd6500_tune_drive
- */
-
-static void qd6500_tune_drive (ide_drive_t *drive, u8 pio)
+static void qd6500_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	int active_time   = 175;
 	int recovery_time = 415; /* worst case values from the dos driver */
 
+	/*
+	 * FIXME: use "pio" value
+	 */
 	if (drive->id && !qd_find_disk_type(drive, &active_time, &recovery_time)
 		&& drive->id->tPIO && (drive->id->field_valid & 0x02)
 		&& drive->id->eide_pio >= 240) {
@@ -246,11 +225,7 @@ static void qd6500_tune_drive (ide_drive_t *drive, u8 pio)
 	qd_set_timing(drive, qd6500_compute_timing(HWIF(drive), active_time, recovery_time));
 }
 
-/*
- * qd6580_tune_drive
- */
-
-static void qd6580_tune_drive (ide_drive_t *drive, u8 pio)
+static void qd6580_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	int base = HWIF(drive)->select_data;
 	unsigned int cycle_time;
@@ -258,7 +233,6 @@ static void qd6580_tune_drive (ide_drive_t *drive, u8 pio)
 	int recovery_time = 415; /* worst case values from the dos driver */
 
 	if (drive->id && !qd_find_disk_type(drive, &active_time, &recovery_time)) {
-		pio = ide_get_best_pio_mode(drive, pio, 4);
 		cycle_time = ide_pio_cycle_time(drive, pio);
 
 		switch (pio) {
@@ -290,7 +264,7 @@ static void qd6580_tune_drive (ide_drive_t *drive, u8 pio)
 	}
 
 	if (!HWIF(drive)->channel && drive->media != ide_disk) {
-		qd_write_reg(0x5f, QD_CONTROL_PORT);
+		outb(0x5f, QD_CONTROL_PORT);
 		printk(KERN_WARNING "%s: ATAPI: disabled read-ahead FIFO "
 			"and post-write buffer on %s.\n",
 			drive->name, HWIF(drive)->name);
@@ -307,16 +281,15 @@ static void qd6580_tune_drive (ide_drive_t *drive, u8 pio)
 
 static int __init qd_testreg(int port)
 {
-	u8 savereg;
-	u8 readreg;
 	unsigned long flags;
+	u8 savereg, readreg;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	local_irq_save(flags);
 	savereg = inb_p(port);
 	outb_p(QD_TESTVAL, port);	/* safe value */
 	readreg = inb_p(port);
 	outb(savereg, port);
-	spin_unlock_irqrestore(&ide_lock, flags);
+	local_irq_restore(flags);
 
 	if (savereg == QD_TESTVAL) {
 		printk(KERN_ERR "Outch ! the probe for qd65xx isn't reliable !\n");
@@ -335,8 +308,7 @@ static int __init qd_testreg(int port)
  */
 
 static void __init qd_setup(ide_hwif_t *hwif, int base, int config,
-			    unsigned int data0, unsigned int data1,
-			    void (*tuneproc) (ide_drive_t *, u8 pio))
+			    unsigned int data0, unsigned int data1)
 {
 	hwif->chipset = ide_qd65xx;
 	hwif->channel = hwif->index;
@@ -347,8 +319,6 @@ static void __init qd_setup(ide_hwif_t *hwif, int base, int config,
 	hwif->drives[0].io_32bit =
 	hwif->drives[1].io_32bit = 1;
 	hwif->pio_mask = ATA_PIO4;
-	hwif->tuneproc = tuneproc;
-	probe_hwif_init(hwif);
 }
 
 /*
@@ -361,7 +331,7 @@ static void __exit qd_unsetup(ide_hwif_t *hwif)
 {
 	u8 config = hwif->config_data;
 	int base = hwif->select_data;
-	void *tuneproc = (void *) hwif->tuneproc;
+	void *set_pio_mode = (void *)hwif->set_pio_mode;
 
 	if (hwif->chipset != ide_qd65xx)
 		return;
@@ -369,17 +339,17 @@ static void __exit qd_unsetup(ide_hwif_t *hwif)
 	printk(KERN_NOTICE "%s: back to defaults\n", hwif->name);
 
 	hwif->selectproc = NULL;
-	hwif->tuneproc = NULL;
+	hwif->set_pio_mode = NULL;
 
-	if (tuneproc == (void *) qd6500_tune_drive) {
+	if (set_pio_mode == (void *)qd6500_set_pio_mode) {
 		// will do it for both
-		qd_write_reg(QD6500_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
-	} else if (tuneproc == (void *) qd6580_tune_drive) {
+		outb(QD6500_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
+	} else if (set_pio_mode == (void *)qd6580_set_pio_mode) {
 		if (QD_CONTROL(hwif) & QD_CONTR_SEC_DISABLED) {
-			qd_write_reg(QD6580_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
-			qd_write_reg(QD6580_DEF_DATA2, QD_TIMREG(&hwif->drives[1]));
+			outb(QD6580_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
+			outb(QD6580_DEF_DATA2, QD_TIMREG(&hwif->drives[1]));
 		} else {
-			qd_write_reg(hwif->channel ? QD6580_DEF_DATA2 : QD6580_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
+			outb(hwif->channel ? QD6580_DEF_DATA2 : QD6580_DEF_DATA, QD_TIMREG(&hwif->drives[0]));
 		}
 	} else {
 		printk(KERN_WARNING "Unknown qd65xx tuning fonction !\n");
@@ -398,10 +368,11 @@ static void __exit qd_unsetup(ide_hwif_t *hwif)
 static int __init qd_probe(int base)
 {
 	ide_hwif_t *hwif;
+	u8 idx[4] = { 0xff, 0xff, 0xff, 0xff };
 	u8 config;
 	u8 unit;
 
-	config = qd_read_reg(QD_CONFIG_PORT);
+	config = inb(QD_CONFIG_PORT);
 
 	if (! ((config & QD_CONFIG_BASEPORT) >> 1 == (base == 0xb0)) )
 		return 1;
@@ -424,10 +395,13 @@ static int __init qd_probe(int base)
 			return 1;
 		}
 
-		qd_setup(hwif, base, config, QD6500_DEF_DATA, QD6500_DEF_DATA,
-			 &qd6500_tune_drive);
+		qd_setup(hwif, base, config, QD6500_DEF_DATA, QD6500_DEF_DATA);
 
-		ide_proc_register_port(hwif);
+		hwif->set_pio_mode = &qd6500_set_pio_mode;
+
+		idx[0] = unit;
+
+		ide_device_add(idx);
 
 		return 1;
 	}
@@ -442,7 +416,7 @@ static int __init qd_probe(int base)
 
 		/* qd6580 found */
 
-		control = qd_read_reg(QD_CONTROL_PORT);
+		control = inb(QD_CONTROL_PORT);
 
 		printk(KERN_NOTICE "qd6580 at %#x\n", base);
 		printk(KERN_DEBUG "qd6580: config=%#x, control=%#x, ID3=%u\n",
@@ -455,11 +429,15 @@ static int __init qd_probe(int base)
 			printk(KERN_INFO "%s: qd6580: single IDE board\n",
 					 hwif->name);
 			qd_setup(hwif, base, config | (control << 8),
-				 QD6580_DEF_DATA, QD6580_DEF_DATA2,
-				 &qd6580_tune_drive);
-			qd_write_reg(QD_DEF_CONTR,QD_CONTROL_PORT);
+				 QD6580_DEF_DATA, QD6580_DEF_DATA2);
 
-			ide_proc_register_port(hwif);
+			hwif->set_pio_mode = &qd6580_set_pio_mode;
+
+			idx[0] = unit;
+
+			ide_device_add(idx);
+
+			outb(QD_DEF_CONTR, QD_CONTROL_PORT);
 
 			return 1;
 		} else {
@@ -472,15 +450,21 @@ static int __init qd_probe(int base)
 					hwif->name, mate->name);
 
 			qd_setup(hwif, base, config | (control << 8),
-				 QD6580_DEF_DATA, QD6580_DEF_DATA,
-				 &qd6580_tune_drive);
-			qd_setup(mate, base, config | (control << 8),
-				 QD6580_DEF_DATA2, QD6580_DEF_DATA2,
-				 &qd6580_tune_drive);
-			qd_write_reg(QD_DEF_CONTR,QD_CONTROL_PORT);
+				 QD6580_DEF_DATA, QD6580_DEF_DATA);
 
-			ide_proc_register_port(hwif);
-			ide_proc_register_port(mate);
+			hwif->set_pio_mode = &qd6580_set_pio_mode;
+
+			qd_setup(mate, base, config | (control << 8),
+				 QD6580_DEF_DATA2, QD6580_DEF_DATA2);
+
+			mate->set_pio_mode = &qd6580_set_pio_mode;
+
+			idx[0] = 0;
+			idx[1] = 1;
+
+			ide_device_add(idx);
+
+			outb(QD_DEF_CONTR, QD_CONTROL_PORT);
 
 			return 0; /* no other qd65xx possible */
 		}

@@ -11,7 +11,7 @@ menu "Serial drivers"
 # The new 8250/16550 serial drivers
 config SERIAL_8250
 	tristate "8250/16550 and compatible serial support"
- 	depends on (BROKEN || !(SPARC64 || SPARC32)) || HAVE_XILINX_UARTNS550
+	depends on (BROKEN || !SPARC)
 	select SERIAL_CORE
 	---help---
 	  This selects whether you want to include the driver for the standard
@@ -62,11 +62,11 @@ config SERIAL_8250_CONSOLE
 	  kernel will automatically use the first serial line, /dev/ttyS0, as
 	  system console.
 
-	  you can set that using a kernel command line option such as
+	  You can set that using a kernel command line option such as
 	  "console=uart8250,io,0x3f8,9600n8"
 	  "console=uart8250,mmio,0xff5e0000,115200n8".
-	  and it will switch to normal serial console when correponding port is
-	  ready.
+	  and it will switch to normal serial console when the corresponding 
+	  port is ready.
 	  "earlycon=uart8250,io,0x3f8,9600n8"
 	  "earlycon=uart8250,mmio,0xff5e0000,115200n8".
 	  it will not only setup early console.
@@ -600,7 +600,7 @@ config SERIAL_SA1100_CONSOLE
 
 config SERIAL_BFIN
 	tristate "Blackfin serial port support"
-	depends on BFIN
+	depends on BLACKFIN
 	select SERIAL_CORE
 	select SERIAL_BFIN_UART0 if (BF531 || BF532 || BF533 || BF561)
 	help
@@ -624,7 +624,7 @@ choice
 
 config SERIAL_BFIN_DMA
 	bool "DMA mode"
-	depends on DMA_UNCACHED_1M && !KGDB_UART
+	depends on !DMA_UNCACHED_NONE && !KGDB_UART
 	help
 	  This driver works under DMA mode. If this option is selected, the
 	  blackfin simple dma driver is also enabled.
@@ -754,6 +754,25 @@ config SERIAL_IMX_CONSOLE
 	  "console=ttySA0". (Try "man bootparam" or see the documentation of
 	  your boot loader (lilo or loadlin) about how to pass options to the
 	  kernel at boot time.)
+
+config SERIAL_UARTLITE
+	tristate "Xilinx uartlite serial port support"
+	depends on PPC32 || XILINX_DRIVERS
+	select SERIAL_CORE
+	help
+	  Say Y here if you want to use the Xilinx uartlite serial controller.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called uartlite.ko.
+
+config SERIAL_UARTLITE_CONSOLE
+	bool "Support for console on Xilinx uartlite serial port"
+	depends on SERIAL_UARTLITE=y
+	select SERIAL_CORE_CONSOLE
+	help
+	  Say Y here if you wish to use a Xilinx uartlite as the system
+	  console (the system console is the device which receives all kernel
+	  messages and warnings and which allows logins in single user mode).
 
 config SERIAL_SUNCORE
 	bool
@@ -966,6 +985,31 @@ config SERIAL_PMACZILOG
 	  This driver supports the Zilog z85C30 serial ports found on
 	  PowerMac machines.
 	  Say Y or M if you want to be able to these serial ports.
+
+config SERIAL_PMACZILOG_TTYS
+	bool "Use ttySn device nodes for Zilog z85c30"
+	depends on SERIAL_PMACZILOG
+	help
+	  The pmac_zilog driver for the z85C30 chip on many powermacs
+	  historically used the device numbers for /dev/ttySn.  The
+	  8250 serial port driver also uses these numbers, which means
+	  the two drivers being unable to coexist; you could not use
+	  both z85C30 and 8250 type ports at the same time.
+
+	  If this option is not selected, the pmac_zilog driver will
+	  use the device numbers allocated for /dev/ttyPZn.  This allows
+	  the pmac_zilog and 8250 drivers to co-exist, but may cause
+	  existing userspace setups to break.  Programs that need to
+	  access the built-in serial ports on powermacs will need to
+	  be reconfigured to use /dev/ttyPZn instead of /dev/ttySn.
+
+	  If you enable this option, any z85c30 ports in the system will
+	  be registered as ttyS0 onwards as in the past, and you will be
+	  unable to use the 8250 module for PCMCIA or other 16C550-style
+	  UARTs.
+
+	  Say N unless you need the z85c30 ports on your powermac
+	  to appear as /dev/ttySn.
 
 config SERIAL_PMACZILOG_CONSOLE
 	bool "Console on PowerMac z85c30 serial port"
@@ -1239,19 +1283,5 @@ config SERIAL_OF_PLATFORM
 	  on a platform specific bus, you should enable this option.
 	  Currently, only 8250 compatible ports are supported, but
 	  others can easily be added.
-
-config SERIAL_XILINX_UARTLITE
-	bool "Xilinx UART Lite driver"
-	depends on XILINX_DRIVERS
-	select SERIAL_CORE
-	help
-	  Say Y here if you want to support Xilinx UART Lite
-
-config SERIAL_XILINX_UARTLITE_CONSOLE
-	bool "Xilinx UART Lite Console support"
-	depends on SERIAL_XILINX_UARTLITE=y
-	select SERIAL_CORE_CONSOLE
-	help
-	  Say Y here if you want to support a serial console on Xilinx UART Lite.
 
 endmenu

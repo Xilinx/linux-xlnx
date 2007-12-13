@@ -36,12 +36,12 @@
 #include <linux/pci.h>
 #include <linux/input.h>
 #include <linux/mutex.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 #include <asm/io.h>
 #include <media/v4l2-common.h>
 
 #include <linux/device.h>
-#include <media/video-buf.h>
+#include <media/videobuf-dma-sg.h>
 #include <media/tuner.h>
 #include <media/tveeprom.h>
 #include <media/ir-common.h>

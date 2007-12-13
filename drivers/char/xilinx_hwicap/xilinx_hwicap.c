@@ -534,7 +534,7 @@ static int __init xilinx_hwicap_of_init(void)
 	int ret;
 
 	for (np = NULL, i = 0;
-	     (np = of_find_compatible_node(np, NULL, "xlnx,opb-hwicap")) != NULL;
+	     (np = of_find_compatible_node(np, NULL, "xlnx,opb-hwicap-1.00.b")) != NULL;
 	     i++) {
 		struct resource r;
 

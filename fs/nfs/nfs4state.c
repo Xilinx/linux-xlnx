@@ -425,7 +425,7 @@ void nfs4_put_open_state(struct nfs4_state *state)
 /*
  * Close the current file.
  */
-void nfs4_close_state(struct path *path, struct nfs4_state *state, mode_t mode)
+static void __nfs4_close(struct path *path, struct nfs4_state *state, mode_t mode, int wait)
 {
 	struct nfs4_state_owner *owner = state->owner;
 	int call_close = 0;
@@ -466,7 +466,17 @@ void nfs4_close_state(struct path *path, struct nfs4_state *state, mode_t mode)
 		nfs4_put_open_state(state);
 		nfs4_put_state_owner(owner);
 	} else
-		nfs4_do_close(path, state);
+		nfs4_do_close(path, state, wait);
+}
+
+void nfs4_close_state(struct path *path, struct nfs4_state *state, mode_t mode)
+{
+	__nfs4_close(path, state, mode, 0);
+}
+
+void nfs4_close_sync(struct path *path, struct nfs4_state *state, mode_t mode)
+{
+	__nfs4_close(path, state, mode, 1);
 }
 
 /*
@@ -774,7 +784,7 @@ static int nfs4_reclaim_locks(struct nfs4_state_recovery_ops *ops, struct nfs4_s
 	for (fl = inode->i_flock; fl != 0; fl = fl->fl_next) {
 		if (!(fl->fl_flags & (FL_POSIX|FL_FLOCK)))
 			continue;
-		if (((struct nfs_open_context *)fl->fl_file->private_data)->state != state)
+		if (nfs_file_open_context(fl->fl_file)->state != state)
 			continue;
 		status = ops->recover_lock(state, fl);
 		if (status >= 0)

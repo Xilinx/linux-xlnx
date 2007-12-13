@@ -196,7 +196,7 @@ static unsigned int sym53c416_base_3[2] = {0,0};
 
 #define MAXHOSTS 4
 
-#define SG_ADDRESS(buffer)     ((char *) (page_address((buffer)->page)+(buffer)->offset))
+#define SG_ADDRESS(buffer)     ((char *) sg_virt((buffer)))
 
 enum phases
 {
@@ -854,5 +854,6 @@ static struct scsi_host_template driver_template = {
 	.cmd_per_lun =		1,
 	.unchecked_isa_dma =	1,
 	.use_clustering =	ENABLE_CLUSTERING,
+	.use_sg_chaining =	ENABLE_SG_CHAINING,
 };
 #include "scsi_module.c"

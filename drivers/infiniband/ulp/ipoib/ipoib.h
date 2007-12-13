@@ -84,8 +84,8 @@ enum {
 	IPOIB_MCAST_RUN 	  = 6,
 	IPOIB_STOP_REAPER         = 7,
 	IPOIB_MCAST_STARTED       = 8,
-	IPOIB_FLAG_NETIF_STOPPED  = 9,
-	IPOIB_FLAG_ADMIN_CM 	  = 10,
+	IPOIB_FLAG_ADMIN_CM 	  = 9,
+	IPOIB_FLAG_UMCAST	  = 10,
 
 	IPOIB_MAX_BACKOFF_SECONDS = 16,
 
@@ -97,9 +97,9 @@ enum {
 
 #define	IPOIB_OP_RECV   (1ul << 31)
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
-#define	IPOIB_CM_OP_SRQ (1ul << 30)
+#define	IPOIB_OP_CM     (1ul << 30)
 #else
-#define	IPOIB_CM_OP_SRQ (0)
+#define	IPOIB_OP_CM     (0)
 #endif
 
 /* structs */
@@ -113,7 +113,27 @@ struct ipoib_pseudoheader {
 	u8  hwaddr[INFINIBAND_ALEN];
 };
 
-struct ipoib_mcast;
+/* Used for all multicast joins (broadcast, IPv4 mcast and IPv6 mcast) */
+struct ipoib_mcast {
+	struct ib_sa_mcmember_rec mcmember;
+	struct ib_sa_multicast	 *mc;
+	struct ipoib_ah          *ah;
+
+	struct rb_node    rb_node;
+	struct list_head  list;
+
+	unsigned long created;
+	unsigned long backoff;
+
+	unsigned long flags;
+	unsigned char logcount;
+
+	struct list_head  neigh_list;
+
+	struct sk_buff_head pkt_queue;
+
+	struct net_device *dev;
+};
 
 struct ipoib_rx_buf {
 	struct sk_buff *skb;
@@ -176,7 +196,6 @@ struct ipoib_cm_rx {
 
 struct ipoib_cm_tx {
 	struct ib_cm_id     *id;
-	struct ib_cq        *cq;
 	struct ib_qp        *qp;
 	struct list_head     list;
 	struct net_device   *dev;
@@ -228,6 +247,8 @@ struct ipoib_dev_priv {
 
 	struct net_device *dev;
 
+	struct napi_struct napi;
+
 	unsigned long flags;
 
 	struct mutex mcast_mutex;
@@ -271,14 +292,13 @@ struct ipoib_dev_priv {
 	unsigned             tx_tail;
 	struct ib_sge        tx_sge;
 	struct ib_send_wr    tx_wr;
+	unsigned             tx_outstanding;
 
 	struct ib_wc ibwc[IPOIB_NUM_WC];
 
 	struct list_head dead_ahs;
 
 	struct ib_event_handler event_handler;
-
-	struct net_device_stats stats;
 
 	struct net_device *parent;
 	struct list_head child_intfs;
@@ -328,6 +348,7 @@ struct ipoib_neigh {
 	struct sk_buff_head queue;
 
 	struct neighbour   *neighbour;
+	struct net_device *dev;
 
 	struct list_head    list;
 };
@@ -344,14 +365,15 @@ static inline struct ipoib_neigh **to_ipoib_neigh(struct neighbour *neigh)
 				     INFINIBAND_ALEN, sizeof(void *));
 }
 
-struct ipoib_neigh *ipoib_neigh_alloc(struct neighbour *neigh);
+struct ipoib_neigh *ipoib_neigh_alloc(struct neighbour *neigh,
+				      struct net_device *dev);
 void ipoib_neigh_free(struct net_device *dev, struct ipoib_neigh *neigh);
 
 extern struct workqueue_struct *ipoib_workqueue;
 
 /* functions */
 
-int ipoib_poll(struct net_device *dev, int *budget);
+int ipoib_poll(struct napi_struct *napi, int budget);
 void ipoib_ib_completion(struct ib_cq *cq, void *dev_ptr);
 
 struct ipoib_ah *ipoib_create_ah(struct net_device *dev,
@@ -364,6 +386,7 @@ static inline void ipoib_put_ah(struct ipoib_ah *ah)
 
 int ipoib_open(struct net_device *dev);
 int ipoib_add_pkey_attr(struct net_device *dev);
+int ipoib_add_umcast_attr(struct net_device *dev);
 
 void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		struct ipoib_ah *address, u32 qpn);
@@ -480,6 +503,7 @@ void ipoib_cm_destroy_tx(struct ipoib_cm_tx *tx);
 void ipoib_cm_skb_too_long(struct net_device* dev, struct sk_buff *skb,
 			   unsigned int mtu);
 void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc);
+void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc);
 #else
 
 struct ipoib_cm_tx;
@@ -568,6 +592,9 @@ static inline void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *w
 {
 }
 
+static inline void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
+{
+}
 #endif
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG

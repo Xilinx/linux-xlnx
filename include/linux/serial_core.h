@@ -146,6 +146,9 @@
 /* Broadcom SB1250, etc. SOC */
 #define PORT_SB1250_DUART	77
 
+/* Freescale ColdFire */
+#define PORT_MCF	78
+
 
 #ifdef __KERNEL__
 
@@ -291,7 +294,8 @@ struct uart_port {
 	resource_size_t		mapbase;		/* for ioremap */
 	struct device		*dev;			/* parent device */
 	unsigned char		hub6;			/* this should be in the 8250 driver */
-	unsigned char		unused[3];
+	unsigned char		suspended;
+	unsigned char		unused[2];
 	void			*private_data;		/* generic platform data pointer */
 };
 
@@ -433,7 +437,7 @@ uart_handle_sysrq_char(struct uart_port *port, unsigned int ch)
 #ifdef SUPPORT_SYSRQ
 	if (port->sysrq) {
 		if (ch && time_before(jiffies, port->sysrq)) {
-			handle_sysrq(ch, port->info->tty);
+			handle_sysrq(ch, port->info ? port->info->tty : NULL);
 			port->sysrq = 0;
 			return 1;
 		}

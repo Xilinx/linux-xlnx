@@ -61,12 +61,11 @@ static void secmark_restore(struct sk_buff *skb)
 	}
 }
 
-static unsigned int target(struct sk_buff **pskb, const struct net_device *in,
+static unsigned int target(struct sk_buff *skb, const struct net_device *in,
 			   const struct net_device *out, unsigned int hooknum,
 			   const struct xt_target *target,
 			   const void *targinfo)
 {
-	struct sk_buff *skb = *pskb;
 	const struct xt_connsecmark_target_info *info = targinfo;
 
 	switch (info->mode) {
@@ -91,11 +90,6 @@ static bool checkentry(const char *tablename, const void *entry,
 {
 	const struct xt_connsecmark_target_info *info = targinfo;
 
-	if (nf_ct_l3proto_try_module_get(target->family) < 0) {
-		printk(KERN_WARNING "can't load conntrack support for "
-				    "proto=%d\n", target->family);
-		return false;
-	}
 	switch (info->mode) {
 	case CONNSECMARK_SAVE:
 	case CONNSECMARK_RESTORE:
@@ -106,6 +100,11 @@ static bool checkentry(const char *tablename, const void *entry,
 		return false;
 	}
 
+	if (nf_ct_l3proto_try_module_get(target->family) < 0) {
+		printk(KERN_WARNING "can't load conntrack support for "
+				    "proto=%d\n", target->family);
+		return false;
+	}
 	return true;
 }
 

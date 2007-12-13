@@ -18,6 +18,13 @@
 #include <asm/prom.h>
 #endif /* __ASSEMBLY__ */
 
+#include <linux/suspend.h>
+
+/* Variants of the 5200(B) */
+#define MPC5200_SVR		0x80110010
+#define MPC5200_SVR_MASK	0xfffffff0
+#define MPC5200B_SVR		0x80110020
+#define MPC5200B_SVR_MASK	0xfffffff0
 
 /* ======================================================================== */
 /* Structures mapping of some unit register set                             */
@@ -242,14 +249,18 @@ struct mpc52xx_cdm {
 #ifndef __ASSEMBLY__
 
 extern void __iomem * mpc52xx_find_and_map(const char *);
+extern void __iomem * mpc52xx_find_and_map_path(const char *path);
 extern unsigned int mpc52xx_find_ipb_freq(struct device_node *node);
-extern void mpc52xx_setup_cpu(void);
+extern void mpc5200_setup_xlb_arbiter(void);
 extern void mpc52xx_declare_of_platform_devices(void);
 
 extern void mpc52xx_init_irq(void);
 extern unsigned int mpc52xx_get_irq(void);
 
 extern int __init mpc52xx_add_bridge(struct device_node *node);
+
+extern void __init mpc52xx_map_wdt(void);
+extern void mpc52xx_restart(char *cmd);
 
 #endif /* __ASSEMBLY__ */
 
@@ -262,6 +273,16 @@ struct mpc52xx_suspend {
 extern struct mpc52xx_suspend mpc52xx_suspend;
 extern int __init mpc52xx_pm_init(void);
 extern int mpc52xx_set_wakeup_gpio(u8 pin, u8 level);
+
+#ifdef CONFIG_PPC_LITE5200
+extern int __init lite5200_pm_init(void);
+
+/* lite5200 calls mpc5200 suspend functions, so here they are */
+extern int mpc52xx_pm_prepare(void);
+extern int mpc52xx_pm_enter(suspend_state_t);
+extern void mpc52xx_pm_finish(void);
+extern char saved_sram[0x4000]; /* reuse buffer from mpc52xx suspend */
+#endif
 #endif /* CONFIG_PM */
 
 #endif /* __ASM_POWERPC_MPC52xx_H__ */

@@ -52,13 +52,13 @@
 #define SYSCR				0xFFC00104	/* System Configuration Register			*/
 #define SIC_RVECT			0xFFC00108	/* Interrupt Reset Vector Address Register	*/
 
-#define SIC_IMASK			0xFFC0010C	/* Interrupt Mask Register					*/
+#define SIC_IMASK0			0xFFC0010C	/* Interrupt Mask Register					*/
 #define SIC_IAR0			0xFFC00110	/* Interrupt Assignment Register 0			*/
 #define SIC_IAR1			0xFFC00114	/* Interrupt Assignment Register 1			*/
 #define SIC_IAR2			0xFFC00118	/* Interrupt Assignment Register 2			*/
 #define SIC_IAR3			0xFFC0011C	/* Interrupt Assignment Register 3			*/
-#define SIC_ISR				0xFFC00120	/* Interrupt Status Register				*/
-#define SIC_IWR				0xFFC00124	/* Interrupt Wakeup Register				*/
+#define SIC_ISR0				0xFFC00120	/* Interrupt Status Register				*/
+#define SIC_IWR0				0xFFC00124	/* Interrupt Wakeup Register				*/
 
 /* SIC Additions to ADSP-BF52x (0xFFC0014C - 0xFFC00162) */
 #define SIC_IMASK1                      0xFFC0014C     /* Interrupt Mask register of SIC2 */
@@ -102,6 +102,7 @@
 
 
 /* SPI Controller			(0xFFC00500 - 0xFFC005FF)								*/
+#define SPI0_REGBASE			0xFFC00500
 #define SPI_CTL				0xFFC00500	/* SPI Control Register						*/
 #define SPI_FLG				0xFFC00504	/* SPI Flag register						*/
 #define SPI_STAT			0xFFC00508	/* SPI Status register						*/
@@ -480,6 +481,7 @@
 
 
 /* Two-Wire Interface		(0xFFC01400 - 0xFFC014FF)								*/
+#define TWI0_REGBASE			0xFFC01400
 #define TWI_CLKDIV			0xFFC01400	/* Serial Clock Divider Register			*/
 #define TWI_CONTROL			0xFFC01404	/* TWI Control Register						*/
 #define TWI_SLAVE_CTL		0xFFC01408	/* Slave Mode Control Register				*/
@@ -689,6 +691,8 @@
 
 /* *************  SYSTEM INTERRUPT CONTROLLER MASKS *************************************/
 /* Peripheral Masks For SIC_ISR, SIC_IWR, SIC_IMASK										*/
+
+#if 0
 #define IRQ_PLL_WAKEUP	0x00000001	/* PLL Wakeup Interrupt			 					*/
 
 #define IRQ_ERROR1      0x00000002  /* Error Interrupt (DMA, DMARx Block, DMARx Overflow) */
@@ -730,6 +734,7 @@
 #define IRQ_DMA15		0x40000000	/* DMA Channels 15 (MDMA0 Destination) TX Interrupt */
 #define IRQ_WDOG		0x80000000	/* Software Watchdog Timer Interrupt 				*/
 #define IRQ_PFB_PORTG	0x10000000	/* PF Port G (PF31:16) Interrupt B 					*/
+#endif
 
 /* SIC_IAR0 Macros															*/
 #define P0_IVG(x)		(((x)&0xF)-7)			/* Peripheral #0 assigned IVG #x 	*/
@@ -1713,55 +1718,55 @@
 
 /* Bit masks for HOST_CONTROL */
 
-#define                   HOST_EN  0x1        /* Host Enable */
-#define                  nHOST_EN  0x0       
-#define                  HOST_END  0x2        /* Host Endianess */
-#define                 nHOST_END  0x0       
-#define                 DATA_SIZE  0x4        /* Data Size */
-#define                nDATA_SIZE  0x0       
-#define                  HOST_RST  0x8        /* Host Reset */
-#define                 nHOST_RST  0x0       
-#define                  HRDY_OVR  0x20       /* Host Ready Override */
-#define                 nHRDY_OVR  0x0       
-#define                  INT_MODE  0x40       /* Interrupt Mode */
-#define                 nINT_MODE  0x0       
-#define                     BT_EN  0x80       /* Bus Timeout Enable */
-#define                    nBT_EN  0x0       
-#define                       EHW  0x100      /* Enable Host Write */
-#define                      nEHW  0x0       
-#define                       EHR  0x200      /* Enable Host Read */
-#define                      nEHR  0x0       
-#define                       BDR  0x400      /* Burst DMA Requests */
-#define                      nBDR  0x0       
+#define                   HOST_CNTR_HOST_EN  0x1        /* Host Enable */
+#define                  HOST_CNTR_nHOST_EN  0x0
+#define                  HOST_CNTR_HOST_END  0x2        /* Host Endianess */
+#define                 HOST_CNTR_nHOST_END  0x0
+#define                 HOST_CNTR_DATA_SIZE  0x4        /* Data Size */
+#define                HOST_CNTR_nDATA_SIZE  0x0
+#define                  HOST_CNTR_HOST_RST  0x8        /* Host Reset */
+#define                 HOST_CNTR_nHOST_RST  0x0
+#define                  HOST_CNTR_HRDY_OVR  0x20       /* Host Ready Override */
+#define                 HOST_CNTR_nHRDY_OVR  0x0
+#define                  HOST_CNTR_INT_MODE  0x40       /* Interrupt Mode */
+#define                 HOST_CNTR_nINT_MODE  0x0
+#define                     HOST_CNTR_BT_EN  0x80       /* Bus Timeout Enable */
+#define                   HOST_CNTR_ nBT_EN  0x0
+#define                       HOST_CNTR_EHW  0x100      /* Enable Host Write */
+#define                      HOST_CNTR_nEHW  0x0
+#define                       HOST_CNTR_EHR  0x200      /* Enable Host Read */
+#define                      HOST_CNTR_nEHR  0x0
+#define                       HOST_CNTR_BDR  0x400      /* Burst DMA Requests */
+#define                      HOST_CNTR_nBDR  0x0
 
 /* Bit masks for HOST_STATUS */
 
-#define                     READY  0x1        /* DMA Ready */
-#define                    nREADY  0x0       
-#define                  FIFOFULL  0x2        /* FIFO Full */
-#define                 nFIFOFULL  0x0       
-#define                 FIFOEMPTY  0x4        /* FIFO Empty */
-#define                nFIFOEMPTY  0x0       
-#define                  COMPLETE  0x8        /* DMA Complete */
-#define                 nCOMPLETE  0x0       
-#define                      HSHK  0x10       /* Host Handshake */
-#define                     nHSHK  0x0       
-#define                   TIMEOUT  0x20       /* Host Timeout */
-#define                  nTIMEOUT  0x0       
-#define                      HIRQ  0x40       /* Host Interrupt Request */
-#define                     nHIRQ  0x0       
-#define                ALLOW_CNFG  0x80       /* Allow New Configuration */
-#define               nALLOW_CNFG  0x0       
-#define                   DMA_DIR  0x100      /* DMA Direction */
-#define                  nDMA_DIR  0x0       
-#define                       BTE  0x200      /* Bus Timeout Enabled */
-#define                      nBTE  0x0       
-#define               HOSTRD_DONE  0x8000     /* Host Read Completion Interrupt */
-#define              nHOSTRD_DONE  0x0
+#define                     HOST_STAT_READY  0x1        /* DMA Ready */
+#define                    HOST_STAT_nREADY  0x0
+#define                  HOST_STAT_FIFOFULL  0x2        /* FIFO Full */
+#define                 HOST_STAT_nFIFOFULL  0x0
+#define                 HOST_STAT_FIFOEMPTY  0x4        /* FIFO Empty */
+#define                HOST_STAT_nFIFOEMPTY  0x0
+#define                  HOST_STAT_COMPLETE  0x8        /* DMA Complete */
+#define                 HOST_STAT_nCOMPLETE  0x0
+#define                      HOST_STAT_HSHK  0x10       /* Host Handshake */
+#define                     HOST_STAT_nHSHK  0x0
+#define                   HOST_STAT_TIMEOUT  0x20       /* Host Timeout */
+#define                  HOST_STAT_nTIMEOUT  0x0
+#define                      HOST_STAT_HIRQ  0x40       /* Host Interrupt Request */
+#define                     HOST_STAT_nHIRQ  0x0
+#define                HOST_STAT_ALLOW_CNFG  0x80       /* Allow New Configuration */
+#define               HOST_STAT_nALLOW_CNFG  0x0
+#define                   HOST_STAT_DMA_DIR  0x100      /* DMA Direction */
+#define                  HOST_STAT_nDMA_DIR  0x0
+#define                       HOST_STAT_BTE  0x200      /* Bus Timeout Enabled */
+#define                      HOST_STAT_nBTE  0x0
+#define               HOST_STAT_HOSTRD_DONE  0x8000     /* Host Read Completion Interrupt */
+#define              HOST_STAT_nHOSTRD_DONE  0x0
 
 /* Bit masks for HOST_TIMEOUT */
 
-#define             COUNT_TIMEOUT  0x7ff      /* Host Timeout count */
+#define             HOST_COUNT_TIMEOUT  0x7ff      /* Host Timeout count */
 
 /* Bit masks for CNT_CONFIG */
 

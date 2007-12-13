@@ -78,14 +78,6 @@ static char version[] __devinitdata = "rrunner.c: v0.50 11/11/2002  Jes Sorensen
  * stack will need to know about I/O vectors or something similar.
  */
 
-/*
- * These are checked at init time to see if they are at least 256KB
- * and increased to 256KB if they are not. This is done to avoid ending
- * up with socket buffers smaller than the MTU size,
- */
-extern __u32 sysctl_wmem_max;
-extern __u32 sysctl_rmem_max;
-
 static int __devinit rr_init_one(struct pci_dev *pdev,
 	const struct pci_device_id *ent)
 {
@@ -109,7 +101,6 @@ static int __devinit rr_init_one(struct pci_dev *pdev,
 
 	rrpriv = netdev_priv(dev);
 
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
 	if (pci_request_regions(pdev, "rrunner")) {
@@ -127,7 +118,6 @@ static int __devinit rr_init_one(struct pci_dev *pdev,
 	dev->open = &rr_open;
 	dev->hard_start_xmit = &rr_start_xmit;
 	dev->stop = &rr_close;
-	dev->get_stats = &rr_get_stats;
 	dev->do_ioctl = &rr_ioctl;
 
 	dev->base_addr = pci_resource_start(pdev, 0);
@@ -522,7 +512,7 @@ static int __devinit rr_init(struct net_device *dev)
 	struct rr_regs __iomem *regs;
 	struct eeprom *hw = NULL;
 	u32 sram_size, rev;
-	int i;
+	DECLARE_MAC_BUF(mac);
 
 	rrpriv = netdev_priv(dev);
 	regs = rrpriv->regs;
@@ -560,26 +550,10 @@ static int __devinit rr_init(struct net_device *dev)
 	*(u32 *)(dev->dev_addr+2) =
 	  htonl(rr_read_eeprom_word(rrpriv, &hw->manf.BoardULA[4]));
 
-	printk("  MAC: ");
-
-	for (i = 0; i < 5; i++)
-		printk("%2.2x:", dev->dev_addr[i]);
-	printk("%2.2x\n", dev->dev_addr[i]);
+	printk("  MAC: %s\n", print_mac(mac, dev->dev_addr));
 
 	sram_size = rr_read_eeprom_word(rrpriv, (void *)8);
 	printk("  SRAM size 0x%06x\n", sram_size);
-
-	if (sysctl_rmem_max < 262144){
-		printk("  Receive socket buffer limit too low (%i), "
-		       "setting to 262144\n", sysctl_rmem_max);
-		sysctl_rmem_max = 262144;
-	}
-
-	if (sysctl_wmem_max < 262144){
-		printk("  Transmit socket buffer limit too low (%i), "
-		       "setting to 262144\n", sysctl_wmem_max);
-		sysctl_wmem_max = 262144;
-	}
 
 	return 0;
 }
@@ -809,7 +783,7 @@ static u32 rr_handle_event(struct net_device *dev, u32 prodidx, u32 eidx)
 		case E_CON_REJ:
 			printk(KERN_WARNING "%s: Connection rejected\n",
 			       dev->name);
-			rrpriv->stats.tx_aborted_errors++;
+			dev->stats.tx_aborted_errors++;
 			break;
 		case E_CON_TMOUT:
 			printk(KERN_WARNING "%s: Connection timeout\n",
@@ -818,7 +792,7 @@ static u32 rr_handle_event(struct net_device *dev, u32 prodidx, u32 eidx)
 		case E_DISC_ERR:
 			printk(KERN_WARNING "%s: HIPPI disconnect error\n",
 			       dev->name);
-			rrpriv->stats.tx_aborted_errors++;
+			dev->stats.tx_aborted_errors++;
 			break;
 		case E_INT_PRTY:
 			printk(KERN_ERR "%s: HIPPI Internal Parity error\n",
@@ -834,7 +808,7 @@ static u32 rr_handle_event(struct net_device *dev, u32 prodidx, u32 eidx)
 		case E_TX_LINK_DROP:
 			printk(KERN_WARNING "%s: Link lost during transmit\n",
 			       dev->name);
-			rrpriv->stats.tx_aborted_errors++;
+			dev->stats.tx_aborted_errors++;
 			writel(readl(&regs->HostCtrl)|HALT_NIC|RR_CLEAR_INT,
 			       &regs->HostCtrl);
 			wmb();
@@ -974,7 +948,7 @@ static void rx_int(struct net_device *dev, u32 rxlimit, u32 index)
 		printk("len %x, mode %x\n", pkt_len, desc->mode);
 #endif
 		if ( (rrpriv->rx_ring[index].mode & PACKET_BAD) == PACKET_BAD){
-			rrpriv->stats.rx_dropped++;
+			dev->stats.rx_dropped++;
 			goto defer;
 		}
 
@@ -987,7 +961,7 @@ static void rx_int(struct net_device *dev, u32 rxlimit, u32 index)
 				skb = alloc_skb(pkt_len, GFP_ATOMIC);
 				if (skb == NULL){
 					printk(KERN_WARNING "%s: Unable to allocate skb (%i bytes), deferring packet\n", dev->name, pkt_len);
-					rrpriv->stats.rx_dropped++;
+					dev->stats.rx_dropped++;
 					goto defer;
 				} else {
 					pci_dma_sync_single_for_cpu(rrpriv->pci_dev,
@@ -1025,7 +999,7 @@ static void rx_int(struct net_device *dev, u32 rxlimit, u32 index)
 				} else {
 					printk("%s: Out of memory, deferring "
 					       "packet\n", dev->name);
-					rrpriv->stats.rx_dropped++;
+					dev->stats.rx_dropped++;
 					goto defer;
 				}
 			}
@@ -1034,8 +1008,8 @@ static void rx_int(struct net_device *dev, u32 rxlimit, u32 index)
 			netif_rx(skb);		/* send it up */
 
 			dev->last_rx = jiffies;
-			rrpriv->stats.rx_packets++;
-			rrpriv->stats.rx_bytes += pkt_len;
+			dev->stats.rx_packets++;
+			dev->stats.rx_bytes += pkt_len;
 		}
 	defer:
 		desc->mode = 0;
@@ -1103,8 +1077,8 @@ static irqreturn_t rr_interrupt(int irq, void *dev_id)
 				desc = &(rrpriv->tx_ring[txcon]);
 				skb = rrpriv->tx_skbuff[txcon];
 
-				rrpriv->stats.tx_packets++;
-				rrpriv->stats.tx_bytes += skb->len;
+				dev->stats.tx_packets++;
+				dev->stats.tx_bytes += skb->len;
 
 				pci_unmap_single(rrpriv->pci_dev,
 						 desc->addr.addrlo, skb->len,
@@ -1489,16 +1463,6 @@ static int rr_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	dev->trans_start = jiffies;
 	return 0;
-}
-
-
-static struct net_device_stats *rr_get_stats(struct net_device *dev)
-{
-	struct rr_private *rrpriv;
-
-	rrpriv = netdev_priv(dev);
-
-	return(&rrpriv->stats);
 }
 
 

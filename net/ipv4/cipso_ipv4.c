@@ -504,22 +504,16 @@ int cipso_v4_doi_add(struct cipso_v4_doi *doi_def)
 	INIT_RCU_HEAD(&doi_def->rcu);
 	INIT_LIST_HEAD(&doi_def->dom_list);
 
-	rcu_read_lock();
-	if (cipso_v4_doi_search(doi_def->doi) != NULL)
-		goto doi_add_failure_rlock;
 	spin_lock(&cipso_v4_doi_list_lock);
 	if (cipso_v4_doi_search(doi_def->doi) != NULL)
-		goto doi_add_failure_slock;
+		goto doi_add_failure;
 	list_add_tail_rcu(&doi_def->list, &cipso_v4_doi_list);
 	spin_unlock(&cipso_v4_doi_list_lock);
-	rcu_read_unlock();
 
 	return 0;
 
-doi_add_failure_slock:
+doi_add_failure:
 	spin_unlock(&cipso_v4_doi_list_lock);
-doi_add_failure_rlock:
-	rcu_read_unlock();
 	return -EEXIST;
 }
 
@@ -543,29 +537,23 @@ int cipso_v4_doi_remove(u32 doi,
 	struct cipso_v4_doi *doi_def;
 	struct cipso_v4_domhsh_entry *dom_iter;
 
-	rcu_read_lock();
-	if (cipso_v4_doi_search(doi) != NULL) {
-		spin_lock(&cipso_v4_doi_list_lock);
-		doi_def = cipso_v4_doi_search(doi);
-		if (doi_def == NULL) {
-			spin_unlock(&cipso_v4_doi_list_lock);
-			rcu_read_unlock();
-			return -ENOENT;
-		}
+	spin_lock(&cipso_v4_doi_list_lock);
+	doi_def = cipso_v4_doi_search(doi);
+	if (doi_def != NULL) {
 		doi_def->valid = 0;
 		list_del_rcu(&doi_def->list);
 		spin_unlock(&cipso_v4_doi_list_lock);
+		rcu_read_lock();
 		list_for_each_entry_rcu(dom_iter, &doi_def->dom_list, list)
 			if (dom_iter->valid)
 				netlbl_domhsh_remove(dom_iter->domain,
 						     audit_info);
-		cipso_v4_cache_invalidate();
 		rcu_read_unlock();
-
+		cipso_v4_cache_invalidate();
 		call_rcu(&doi_def->rcu, callback);
 		return 0;
 	}
-	rcu_read_unlock();
+	spin_unlock(&cipso_v4_doi_list_lock);
 
 	return -ENOENT;
 }
@@ -653,22 +641,19 @@ int cipso_v4_doi_domhsh_add(struct cipso_v4_doi *doi_def, const char *domain)
 	new_dom->valid = 1;
 	INIT_RCU_HEAD(&new_dom->rcu);
 
-	rcu_read_lock();
 	spin_lock(&cipso_v4_doi_list_lock);
-	list_for_each_entry_rcu(iter, &doi_def->dom_list, list)
+	list_for_each_entry(iter, &doi_def->dom_list, list)
 		if (iter->valid &&
 		    ((domain != NULL && iter->domain != NULL &&
 		      strcmp(iter->domain, domain) == 0) ||
 		     (domain == NULL && iter->domain == NULL))) {
 			spin_unlock(&cipso_v4_doi_list_lock);
-			rcu_read_unlock();
 			kfree(new_dom->domain);
 			kfree(new_dom);
 			return -EEXIST;
 		}
 	list_add_tail_rcu(&new_dom->list, &doi_def->dom_list);
 	spin_unlock(&cipso_v4_doi_list_lock);
-	rcu_read_unlock();
 
 	return 0;
 }
@@ -689,9 +674,8 @@ int cipso_v4_doi_domhsh_remove(struct cipso_v4_doi *doi_def,
 {
 	struct cipso_v4_domhsh_entry *iter;
 
-	rcu_read_lock();
 	spin_lock(&cipso_v4_doi_list_lock);
-	list_for_each_entry_rcu(iter, &doi_def->dom_list, list)
+	list_for_each_entry(iter, &doi_def->dom_list, list)
 		if (iter->valid &&
 		    ((domain != NULL && iter->domain != NULL &&
 		      strcmp(iter->domain, domain) == 0) ||
@@ -699,13 +683,10 @@ int cipso_v4_doi_domhsh_remove(struct cipso_v4_doi *doi_def,
 			iter->valid = 0;
 			list_del_rcu(&iter->list);
 			spin_unlock(&cipso_v4_doi_list_lock);
-			rcu_read_unlock();
 			call_rcu(&iter->rcu, cipso_v4_doi_domhsh_free);
-
 			return 0;
 		}
 	spin_unlock(&cipso_v4_doi_list_lock);
-	rcu_read_unlock();
 
 	return -ENOENT;
 }
@@ -1831,6 +1812,51 @@ socket_setattr_failure:
 }
 
 /**
+ * cipso_v4_getattr - Helper function for the cipso_v4_*_getattr functions
+ * @cipso: the CIPSO v4 option
+ * @secattr: the security attributes
+ *
+ * Description:
+ * Inspect @cipso and return the security attributes in @secattr.  Returns zero
+ * on success and negative values on failure.
+ *
+ */
+static int cipso_v4_getattr(const unsigned char *cipso,
+			    struct netlbl_lsm_secattr *secattr)
+{
+	int ret_val = -ENOMSG;
+	u32 doi;
+	struct cipso_v4_doi *doi_def;
+
+	if (cipso_v4_cache_check(cipso, cipso[1], secattr) == 0)
+		return 0;
+
+	doi = ntohl(get_unaligned((__be32 *)&cipso[2]));
+	rcu_read_lock();
+	doi_def = cipso_v4_doi_search(doi);
+	if (doi_def == NULL)
+		goto getattr_return;
+	/* XXX - This code assumes only one tag per CIPSO option which isn't
+	 * really a good assumption to make but since we only support the MAC
+	 * tags right now it is a safe assumption. */
+	switch (cipso[6]) {
+	case CIPSO_V4_TAG_RBITMAP:
+		ret_val = cipso_v4_parsetag_rbm(doi_def, &cipso[6], secattr);
+		break;
+	case CIPSO_V4_TAG_ENUM:
+		ret_val = cipso_v4_parsetag_enum(doi_def, &cipso[6], secattr);
+		break;
+	case CIPSO_V4_TAG_RANGE:
+		ret_val = cipso_v4_parsetag_rng(doi_def, &cipso[6], secattr);
+		break;
+	}
+
+getattr_return:
+	rcu_read_unlock();
+	return ret_val;
+}
+
+/**
  * cipso_v4_sock_getattr - Get the security attributes from a sock
  * @sk: the sock
  * @secattr: the security attributes
@@ -1844,52 +1870,14 @@ socket_setattr_failure:
  */
 int cipso_v4_sock_getattr(struct sock *sk, struct netlbl_lsm_secattr *secattr)
 {
-	int ret_val = -ENOMSG;
-	struct inet_sock *sk_inet;
-	unsigned char *cipso_ptr;
-	u32 doi;
-	struct cipso_v4_doi *doi_def;
+	struct ip_options *opt;
 
-	sk_inet = inet_sk(sk);
-	if (sk_inet->opt == NULL || sk_inet->opt->cipso == 0)
+	opt = inet_sk(sk)->opt;
+	if (opt == NULL || opt->cipso == 0)
 		return -ENOMSG;
-	cipso_ptr = sk_inet->opt->__data + sk_inet->opt->cipso -
-		sizeof(struct iphdr);
-	ret_val = cipso_v4_cache_check(cipso_ptr, cipso_ptr[1], secattr);
-	if (ret_val == 0)
-		return ret_val;
 
-	doi = ntohl(get_unaligned((__be32 *)&cipso_ptr[2]));
-	rcu_read_lock();
-	doi_def = cipso_v4_doi_search(doi);
-	if (doi_def == NULL) {
-		rcu_read_unlock();
-		return -ENOMSG;
-	}
-
-	/* XXX - This code assumes only one tag per CIPSO option which isn't
-	 * really a good assumption to make but since we only support the MAC
-	 * tags right now it is a safe assumption. */
-	switch (cipso_ptr[6]) {
-	case CIPSO_V4_TAG_RBITMAP:
-		ret_val = cipso_v4_parsetag_rbm(doi_def,
-						&cipso_ptr[6],
-						secattr);
-		break;
-	case CIPSO_V4_TAG_ENUM:
-		ret_val = cipso_v4_parsetag_enum(doi_def,
-						 &cipso_ptr[6],
-						 secattr);
-		break;
-	case CIPSO_V4_TAG_RANGE:
-		ret_val = cipso_v4_parsetag_rng(doi_def,
-						&cipso_ptr[6],
-						secattr);
-		break;
-	}
-	rcu_read_unlock();
-
-	return ret_val;
+	return cipso_v4_getattr(opt->__data + opt->cipso - sizeof(struct iphdr),
+				secattr);
 }
 
 /**
@@ -1905,45 +1893,7 @@ int cipso_v4_sock_getattr(struct sock *sk, struct netlbl_lsm_secattr *secattr)
 int cipso_v4_skbuff_getattr(const struct sk_buff *skb,
 			    struct netlbl_lsm_secattr *secattr)
 {
-	int ret_val = -ENOMSG;
-	unsigned char *cipso_ptr;
-	u32 doi;
-	struct cipso_v4_doi *doi_def;
-
-	cipso_ptr = CIPSO_V4_OPTPTR(skb);
-	if (cipso_v4_cache_check(cipso_ptr, cipso_ptr[1], secattr) == 0)
-		return 0;
-
-	doi = ntohl(get_unaligned((__be32 *)&cipso_ptr[2]));
-	rcu_read_lock();
-	doi_def = cipso_v4_doi_search(doi);
-	if (doi_def == NULL)
-		goto skbuff_getattr_return;
-
-	/* XXX - This code assumes only one tag per CIPSO option which isn't
-	 * really a good assumption to make but since we only support the MAC
-	 * tags right now it is a safe assumption. */
-	switch (cipso_ptr[6]) {
-	case CIPSO_V4_TAG_RBITMAP:
-		ret_val = cipso_v4_parsetag_rbm(doi_def,
-						&cipso_ptr[6],
-						secattr);
-		break;
-	case CIPSO_V4_TAG_ENUM:
-		ret_val = cipso_v4_parsetag_enum(doi_def,
-						 &cipso_ptr[6],
-						 secattr);
-		break;
-	case CIPSO_V4_TAG_RANGE:
-		ret_val = cipso_v4_parsetag_rng(doi_def,
-						&cipso_ptr[6],
-						secattr);
-		break;
-	}
-
-skbuff_getattr_return:
-	rcu_read_unlock();
-	return ret_val;
+	return cipso_v4_getattr(CIPSO_V4_OPTPTR(skb), secattr);
 }
 
 /*

@@ -17,17 +17,18 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/platform_device.h>
-#include <asm/8253pit.h>
 #include <asm/io.h>
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@ucw.cz>");
 MODULE_DESCRIPTION("PC Speaker beeper driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:pcspkr");
 
-#ifdef CONFIG_X86
+#if defined(CONFIG_MIPS) || defined(CONFIG_X86)
 /* Use the global PIT lock ! */
 #include <asm/i8253.h>
 #else
+#include <asm/8253pit.h>
 static DEFINE_SPINLOCK(i8253_lock);
 #endif
 
@@ -85,8 +86,8 @@ static int __devinit pcspkr_probe(struct platform_device *dev)
 	pcspkr_dev->id.version = 0x0100;
 	pcspkr_dev->dev.parent = &dev->dev;
 
-	pcspkr_dev->evbit[0] = BIT(EV_SND);
-	pcspkr_dev->sndbit[0] = BIT(SND_BELL) | BIT(SND_TONE);
+	pcspkr_dev->evbit[0] = BIT_MASK(EV_SND);
+	pcspkr_dev->sndbit[0] = BIT_MASK(SND_BELL) | BIT_MASK(SND_TONE);
 	pcspkr_dev->event = pcspkr_event;
 
 	err = input_register_device(pcspkr_dev);

@@ -308,7 +308,7 @@ qla2x00_start_scsi(srb_t *sp)
 		handle++;
 		if (handle == MAX_OUTSTANDING_COMMANDS)
 			handle = 1;
-		if (ha->outstanding_cmds[handle] == 0)
+		if (!ha->outstanding_cmds[handle])
 			break;
 	}
 	if (index == MAX_OUTSTANDING_COMMANDS)
@@ -525,7 +525,7 @@ qla2x00_req_pkt(scsi_qla_host_t *ha)
 
 		/* Check for pending interrupts. */
 		/* During init we issue marker directly */
-		if (!ha->marker_needed)
+		if (!ha->marker_needed && !ha->flags.init_done)
 			qla2x00_poll(ha);
 
 		spin_lock_irq(&ha->hardware_lock);
@@ -711,7 +711,7 @@ qla24xx_start_scsi(srb_t *sp)
 		handle++;
 		if (handle == MAX_OUTSTANDING_COMMANDS)
 			handle = 1;
-		if (ha->outstanding_cmds[handle] == 0)
+		if (!ha->outstanding_cmds[handle])
 			break;
 	}
 	if (index == MAX_OUTSTANDING_COMMANDS)

@@ -115,11 +115,17 @@ int __delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
 	tmp += timespec_to_ns(&ts);
 	d->cpu_run_real_total = (tmp < (s64)d->cpu_run_real_total) ? 0 : tmp;
 
+	tmp = (s64)d->cpu_scaled_run_real_total;
+	cputime_to_timespec(tsk->utimescaled + tsk->stimescaled, &ts);
+	tmp += timespec_to_ns(&ts);
+	d->cpu_scaled_run_real_total =
+		(tmp < (s64)d->cpu_scaled_run_real_total) ? 0 : tmp;
+
 	/*
 	 * No locking available for sched_info (and too expensive to add one)
 	 * Mitigate by taking snapshot of values
 	 */
-	t1 = tsk->sched_info.pcnt;
+	t1 = tsk->sched_info.pcount;
 	t2 = tsk->sched_info.run_delay;
 	t3 = tsk->sched_info.cpu_time;
 

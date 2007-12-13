@@ -13,6 +13,7 @@
 #include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <linux/mm.h>
+#include <linux/fs.h>
 #include <linux/smp.h>
 #include <linux/smp_lock.h>
 #include <linux/sem.h>
@@ -21,9 +22,9 @@
 #include <linux/stat.h>
 #include <linux/mman.h>
 #include <linux/file.h>
+#include <linux/ipc.h>
 
 #include <asm/uaccess.h>
-#include <asm/ipc.h>
 #include <asm/segment.h>
 
 /*

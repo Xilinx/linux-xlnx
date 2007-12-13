@@ -65,7 +65,7 @@ struct fib_rules_ops
 
 	int			nlgroup;
 	const struct nla_policy	*policy;
-	struct list_head	*rules_list;
+	struct list_head	rules_list;
 	struct module		*owner;
 };
 
@@ -107,4 +107,7 @@ extern int			fib_rules_unregister(struct fib_rules_ops *);
 extern int			fib_rules_lookup(struct fib_rules_ops *,
 						 struct flowi *, int flags,
 						 struct fib_lookup_arg *);
+extern int			fib_default_rule_add(struct fib_rules_ops *,
+						     u32 pref, u32 table,
+						     u32 flags);
 #endif

@@ -209,15 +209,12 @@ static int macrisc_write_config(struct pci_bus *bus, unsigned int devfn,
 	switch (len) {
 	case 1:
 		out_8(addr, val);
-		(void) in_8(addr);
 		break;
 	case 2:
 		out_le16(addr, val);
-		(void) in_le16(addr);
 		break;
 	default:
 		out_le32(addr, val);
-		(void) in_le32(addr);
 		break;
 	}
 	return PCIBIOS_SUCCESSFUL;
@@ -225,8 +222,8 @@ static int macrisc_write_config(struct pci_bus *bus, unsigned int devfn,
 
 static struct pci_ops macrisc_pci_ops =
 {
-	macrisc_read_config,
-	macrisc_write_config
+	.read = macrisc_read_config,
+	.write = macrisc_write_config,
 };
 
 #ifdef CONFIG_PPC32
@@ -280,8 +277,8 @@ chaos_write_config(struct pci_bus *bus, unsigned int devfn, int offset,
 
 static struct pci_ops chaos_pci_ops =
 {
-	chaos_read_config,
-	chaos_write_config
+	.read = chaos_read_config,
+	.write = chaos_write_config,
 };
 
 static void __init setup_chaos(struct pci_controller *hose,
@@ -440,15 +437,12 @@ static int u3_ht_write_config(struct pci_bus *bus, unsigned int devfn,
 	switch (len) {
 	case 1:
 		out_8(addr, val);
-		(void) in_8(addr);
 		break;
 	case 2:
 		out_le16(addr, val);
-		(void) in_le16(addr);
 		break;
 	default:
 		out_le32((u32 __iomem *)addr, val);
-		(void) in_le32(addr);
 		break;
 	}
 	return PCIBIOS_SUCCESSFUL;
@@ -456,8 +450,8 @@ static int u3_ht_write_config(struct pci_bus *bus, unsigned int devfn,
 
 static struct pci_ops u3_ht_pci_ops =
 {
-	u3_ht_read_config,
-	u3_ht_write_config
+	.read = u3_ht_read_config,
+	.write = u3_ht_write_config,
 };
 
 #define U4_PCIE_CFA0(devfn, off)	\
@@ -545,15 +539,12 @@ static int u4_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 	switch (len) {
 	case 1:
 		out_8(addr, val);
-		(void) in_8(addr);
 		break;
 	case 2:
 		out_le16(addr, val);
-		(void) in_le16(addr);
 		break;
 	default:
 		out_le32(addr, val);
-		(void) in_le32(addr);
 		break;
 	}
 	return PCIBIOS_SUCCESSFUL;
@@ -561,8 +552,8 @@ static int u4_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 
 static struct pci_ops u4_pcie_pci_ops =
 {
-	u4_pcie_read_config,
-	u4_pcie_write_config
+	.read = u4_pcie_read_config,
+	.write = u4_pcie_write_config,
 };
 
 #endif /* CONFIG_PPC64 */
@@ -1252,15 +1243,22 @@ void pmac_pci_fixup_pciata(struct pci_dev* dev)
  good:
 	pci_read_config_byte(dev, PCI_CLASS_PROG, &progif);
 	if ((progif & 5) != 5) {
-		printk(KERN_INFO "Forcing PCI IDE into native mode: %s\n",
+		printk(KERN_INFO "PCI: %s Forcing PCI IDE into native mode\n",
 		       pci_name(dev));
 		(void) pci_write_config_byte(dev, PCI_CLASS_PROG, progif|5);
 		if (pci_read_config_byte(dev, PCI_CLASS_PROG, &progif) ||
 		    (progif & 5) != 5)
 			printk(KERN_ERR "Rewrite of PROGIF failed !\n");
+		else {
+			/* Clear IO BARs, they will be reassigned */
+			pci_write_config_dword(dev, PCI_BASE_ADDRESS_0, 0);
+			pci_write_config_dword(dev, PCI_BASE_ADDRESS_1, 0);
+			pci_write_config_dword(dev, PCI_BASE_ADDRESS_2, 0);
+			pci_write_config_dword(dev, PCI_BASE_ADDRESS_3, 0);
+		}
 	}
 }
-DECLARE_PCI_FIXUP_FINAL(PCI_ANY_ID, PCI_ANY_ID, pmac_pci_fixup_pciata);
+DECLARE_PCI_FIXUP_EARLY(PCI_ANY_ID, PCI_ANY_ID, pmac_pci_fixup_pciata);
 #endif
 
 /*

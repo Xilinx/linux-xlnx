@@ -23,8 +23,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * Authors:
- *   Thomas Hellström <thomas-at-tungstengraphics-dot-com>
- *   Michel Dänzer <michel-at-tungstengraphics-dot-com>
+ *   Thomas HellstrÃ¶m <thomas-at-tungstengraphics-dot-com>
+ *   Michel DÃ¤nzer <michel-at-tungstengraphics-dot-com>
  *   Alan Hourihane <alanh-at-tungstengraphics-dot-com>
  */
 
@@ -39,7 +39,6 @@
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 #include <linux/mmzone.h>
-#include <asm/uaccess.h>
 
 /* #define VERMILION_DEBUG */
 

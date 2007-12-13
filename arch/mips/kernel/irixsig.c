@@ -24,8 +24,12 @@
 
 #define _BLOCKABLE (~(_S(SIGKILL) | _S(SIGSTOP)))
 
+#define _IRIX_NSIG		128
+#define _IRIX_NSIG_BPW		BITS_PER_LONG
+#define _IRIX_NSIG_WORDS	(_IRIX_NSIG / _IRIX_NSIG_BPW)
+
 typedef struct {
-	unsigned long sig[4];
+	unsigned long sig[_IRIX_NSIG_WORDS];
 } irix_sigset_t;
 
 struct sigctx_irix5 {
@@ -163,9 +167,9 @@ static inline int handle_signal(unsigned long sig, siginfo_t *info,
 		ret = setup_irix_frame(ka, regs, sig, oldset);
 
 	spin_lock_irq(&current->sighand->siglock);
-	sigorsets(&current->blocked,&current->blocked,&ka->sa.sa_mask);
+	sigorsets(&current->blocked, &current->blocked, &ka->sa.sa_mask);
 	if (!(ka->sa.sa_flags & SA_NODEFER))
-		sigaddset(&current->blocked,sig);
+		sigaddset(&current->blocked, sig);
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 
@@ -426,6 +430,7 @@ asmlinkage int irix_sigprocmask(int how, irix_sigset_t __user *new,
 			break;
 
 		default:
+			spin_unlock_irq(&current->sighand->siglock);
 			return -EINVAL;
 		}
 		recalc_sigpending();
@@ -527,7 +532,7 @@ asmlinkage int irix_sigpoll_sys(unsigned long __user *set,
 
 		expire = schedule_timeout_interruptible(expire);
 
-		for (i=0; i<=4; i++)
+		for (i=0; i < _IRIX_NSIG_WORDS; i++)
 			tmp |= (current->pending.signal.sig[i] & kset.sig[i]);
 
 		if (tmp)
@@ -605,11 +610,11 @@ repeat:
 	current->state = TASK_INTERRUPTIBLE;
 	read_lock(&tasklist_lock);
 	tsk = current;
-	list_for_each(_p,&tsk->children) {
-		p = list_entry(_p,struct task_struct,sibling);
+	list_for_each(_p, &tsk->children) {
+		p = list_entry(_p, struct task_struct, sibling);
 		if ((type == IRIX_P_PID) && p->pid != pid)
 			continue;
-		if ((type == IRIX_P_PGID) && process_group(p) != pid)
+		if ((type == IRIX_P_PGID) && task_pgrp_nr(p) != pid)
 			continue;
 		if ((p->exit_signal != SIGCHLD))
 			continue;

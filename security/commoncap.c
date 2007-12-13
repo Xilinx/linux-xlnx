@@ -22,14 +22,33 @@
 #include <linux/ptrace.h>
 #include <linux/xattr.h>
 #include <linux/hugetlb.h>
+#include <linux/mount.h>
+#include <linux/sched.h>
+
+#ifdef CONFIG_SECURITY_FILE_CAPABILITIES
+/*
+ * Because of the reduced scope of CAP_SETPCAP when filesystem
+ * capabilities are in effect, it is safe to allow this capability to
+ * be available in the default configuration.
+ */
+# define CAP_INIT_BSET  CAP_FULL_SET
+#else /* ie. ndef CONFIG_SECURITY_FILE_CAPABILITIES */
+# define CAP_INIT_BSET  CAP_INIT_EFF_SET
+#endif /* def CONFIG_SECURITY_FILE_CAPABILITIES */
+
+kernel_cap_t cap_bset = CAP_INIT_BSET;    /* systemwide capability bound */
+EXPORT_SYMBOL(cap_bset);
+
+/* Global security state */
+
+unsigned securebits = SECUREBITS_DEFAULT; /* systemwide security settings */
+EXPORT_SYMBOL(securebits);
 
 int cap_netlink_send(struct sock *sk, struct sk_buff *skb)
 {
 	NETLINK_CB(skb).eff_cap = current->cap_effective;
 	return 0;
 }
-
-EXPORT_SYMBOL(cap_netlink_send);
 
 int cap_netlink_recv(struct sk_buff *skb, int cap)
 {
@@ -74,14 +93,44 @@ int cap_capget (struct task_struct *target, kernel_cap_t *effective,
 	return 0;
 }
 
+#ifdef CONFIG_SECURITY_FILE_CAPABILITIES
+
+static inline int cap_block_setpcap(struct task_struct *target)
+{
+	/*
+	 * No support for remote process capability manipulation with
+	 * filesystem capability support.
+	 */
+	return (target != current);
+}
+
+static inline int cap_inh_is_capped(void)
+{
+	/*
+	 * return 1 if changes to the inheritable set are limited
+	 * to the old permitted set.
+	 */
+	return !cap_capable(current, CAP_SETPCAP);
+}
+
+#else /* ie., ndef CONFIG_SECURITY_FILE_CAPABILITIES */
+
+static inline int cap_block_setpcap(struct task_struct *t) { return 0; }
+static inline int cap_inh_is_capped(void) { return 1; }
+
+#endif /* def CONFIG_SECURITY_FILE_CAPABILITIES */
+
 int cap_capset_check (struct task_struct *target, kernel_cap_t *effective,
 		      kernel_cap_t *inheritable, kernel_cap_t *permitted)
 {
-	/* Derived from kernel/capability.c:sys_capset. */
-	/* verify restrictions on target's new Inheritable set */
-	if (!cap_issubset (*inheritable,
-			   cap_combine (target->cap_inheritable,
-					current->cap_permitted))) {
+	if (cap_block_setpcap(target)) {
+		return -EPERM;
+	}
+	if (cap_inh_is_capped()
+	    && !cap_issubset(*inheritable,
+			     cap_combine(target->cap_inheritable,
+					 current->cap_permitted))) {
+		/* incapable of using this inheritable set */
 		return -EPERM;
 	}
 
@@ -108,14 +157,137 @@ void cap_capset_set (struct task_struct *target, kernel_cap_t *effective,
 	target->cap_permitted = *permitted;
 }
 
+static inline void bprm_clear_caps(struct linux_binprm *bprm)
+{
+	cap_clear(bprm->cap_inheritable);
+	cap_clear(bprm->cap_permitted);
+	bprm->cap_effective = false;
+}
+
+#ifdef CONFIG_SECURITY_FILE_CAPABILITIES
+
+int cap_inode_need_killpriv(struct dentry *dentry)
+{
+	struct inode *inode = dentry->d_inode;
+	int error;
+
+	if (!inode->i_op || !inode->i_op->getxattr)
+	       return 0;
+
+	error = inode->i_op->getxattr(dentry, XATTR_NAME_CAPS, NULL, 0);
+	if (error <= 0)
+		return 0;
+	return 1;
+}
+
+int cap_inode_killpriv(struct dentry *dentry)
+{
+	struct inode *inode = dentry->d_inode;
+
+	if (!inode->i_op || !inode->i_op->removexattr)
+	       return 0;
+
+	return inode->i_op->removexattr(dentry, XATTR_NAME_CAPS);
+}
+
+static inline int cap_from_disk(struct vfs_cap_data *caps,
+				struct linux_binprm *bprm,
+				int size)
+{
+	__u32 magic_etc;
+
+	if (size != XATTR_CAPS_SZ)
+		return -EINVAL;
+
+	magic_etc = le32_to_cpu(caps->magic_etc);
+
+	switch ((magic_etc & VFS_CAP_REVISION_MASK)) {
+	case VFS_CAP_REVISION:
+		if (magic_etc & VFS_CAP_FLAGS_EFFECTIVE)
+			bprm->cap_effective = true;
+		else
+			bprm->cap_effective = false;
+		bprm->cap_permitted = to_cap_t(le32_to_cpu(caps->permitted));
+		bprm->cap_inheritable = to_cap_t(le32_to_cpu(caps->inheritable));
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+/* Locate any VFS capabilities: */
+static int get_file_caps(struct linux_binprm *bprm)
+{
+	struct dentry *dentry;
+	int rc = 0;
+	struct vfs_cap_data incaps;
+	struct inode *inode;
+
+	if (bprm->file->f_vfsmnt->mnt_flags & MNT_NOSUID) {
+		bprm_clear_caps(bprm);
+		return 0;
+	}
+
+	dentry = dget(bprm->file->f_dentry);
+	inode = dentry->d_inode;
+	if (!inode->i_op || !inode->i_op->getxattr)
+		goto out;
+
+	rc = inode->i_op->getxattr(dentry, XATTR_NAME_CAPS, NULL, 0);
+	if (rc > 0) {
+		if (rc == XATTR_CAPS_SZ)
+			rc = inode->i_op->getxattr(dentry, XATTR_NAME_CAPS,
+						&incaps, XATTR_CAPS_SZ);
+		else
+			rc = -EINVAL;
+	}
+	if (rc == -ENODATA || rc == -EOPNOTSUPP) {
+		/* no data, that's ok */
+		rc = 0;
+		goto out;
+	}
+	if (rc < 0)
+		goto out;
+
+	rc = cap_from_disk(&incaps, bprm, rc);
+	if (rc)
+		printk(KERN_NOTICE "%s: cap_from_disk returned %d for %s\n",
+			__FUNCTION__, rc, bprm->filename);
+
+out:
+	dput(dentry);
+	if (rc)
+		bprm_clear_caps(bprm);
+
+	return rc;
+}
+
+#else
+int cap_inode_need_killpriv(struct dentry *dentry)
+{
+	return 0;
+}
+
+int cap_inode_killpriv(struct dentry *dentry)
+{
+	return 0;
+}
+
+static inline int get_file_caps(struct linux_binprm *bprm)
+{
+	bprm_clear_caps(bprm);
+	return 0;
+}
+#endif
+
 int cap_bprm_set_security (struct linux_binprm *bprm)
 {
-	/* Copied from fs/exec.c:prepare_binprm. */
+	int ret;
 
-	/* We don't have VFS support for capabilities yet */
-	cap_clear (bprm->cap_inheritable);
-	cap_clear (bprm->cap_permitted);
-	cap_clear (bprm->cap_effective);
+	ret = get_file_caps(bprm);
+	if (ret)
+		printk(KERN_NOTICE "%s: get_file_caps returned %d for %s\n",
+			__FUNCTION__, ret, bprm->filename);
 
 	/*  To support inheritance of root-permissions and suid-root
 	 *  executables under compatibility mode, we raise all three
@@ -131,9 +303,10 @@ int cap_bprm_set_security (struct linux_binprm *bprm)
 			cap_set_full (bprm->cap_permitted);
 		}
 		if (bprm->e_uid == 0)
-			cap_set_full (bprm->cap_effective);
+			bprm->cap_effective = true;
 	}
-	return 0;
+
+	return ret;
 }
 
 void cap_bprm_apply_creds (struct linux_binprm *bprm, int unsafe)
@@ -149,6 +322,7 @@ void cap_bprm_apply_creds (struct linux_binprm *bprm, int unsafe)
 	if (bprm->e_uid != current->uid || bprm->e_gid != current->gid ||
 	    !cap_issubset (new_permitted, current->cap_permitted)) {
 		set_dumpable(current->mm, suid_dumpable);
+		current->pdeath_signal = 0;
 
 		if (unsafe & ~LSM_UNSAFE_PTRACE_CAP) {
 			if (!capable(CAP_SETUID)) {
@@ -168,10 +342,10 @@ void cap_bprm_apply_creds (struct linux_binprm *bprm, int unsafe)
 	/* For init, we want to retain the capabilities set
 	 * in the init_task struct. Thus we skip the usual
 	 * capability rules */
-	if (!is_init(current)) {
+	if (!is_global_init(current)) {
 		current->cap_permitted = new_permitted;
-		current->cap_effective =
-		    cap_intersect (new_permitted, bprm->cap_effective);
+		current->cap_effective = bprm->cap_effective ?
+				new_permitted : 0;
 	}
 
 	/* AUD: Audit candidate if current->cap_effective is set */
@@ -181,11 +355,15 @@ void cap_bprm_apply_creds (struct linux_binprm *bprm, int unsafe)
 
 int cap_bprm_secureexec (struct linux_binprm *bprm)
 {
-	/* If/when this module is enhanced to incorporate capability
-	   bits on files, the test below should be extended to also perform a 
-	   test between the old and new capability sets.  For now,
-	   it simply preserves the legacy decision algorithm used by
-	   the old userland. */
+	if (current->uid != 0) {
+		if (bprm->cap_effective)
+			return 1;
+		if (!cap_isclear(bprm->cap_permitted))
+			return 1;
+		if (!cap_isclear(bprm->cap_inheritable))
+			return 1;
+	}
+
 	return (current->euid != current->uid ||
 		current->egid != current->gid);
 }
@@ -193,7 +371,11 @@ int cap_bprm_secureexec (struct linux_binprm *bprm)
 int cap_inode_setxattr(struct dentry *dentry, char *name, void *value,
 		       size_t size, int flags)
 {
-	if (!strncmp(name, XATTR_SECURITY_PREFIX,
+	if (!strcmp(name, XATTR_NAME_CAPS)) {
+		if (!capable(CAP_SETFCAP))
+			return -EPERM;
+		return 0;
+	} else if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof(XATTR_SECURITY_PREFIX) - 1)  &&
 	    !capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -202,7 +384,11 @@ int cap_inode_setxattr(struct dentry *dentry, char *name, void *value,
 
 int cap_inode_removexattr(struct dentry *dentry, char *name)
 {
-	if (!strncmp(name, XATTR_SECURITY_PREFIX,
+	if (!strcmp(name, XATTR_NAME_CAPS)) {
+		if (!capable(CAP_SETFCAP))
+			return -EPERM;
+		return 0;
+	} else if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof(XATTR_SECURITY_PREFIX) - 1)  &&
 	    !capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -299,6 +485,96 @@ int cap_task_post_setuid (uid_t old_ruid, uid_t old_euid, uid_t old_suid,
 	return 0;
 }
 
+#ifdef CONFIG_SECURITY_FILE_CAPABILITIES
+/*
+ * Rationale: code calling task_setscheduler, task_setioprio, and
+ * task_setnice, assumes that
+ *   . if capable(cap_sys_nice), then those actions should be allowed
+ *   . if not capable(cap_sys_nice), but acting on your own processes,
+ *   	then those actions should be allowed
+ * This is insufficient now since you can call code without suid, but
+ * yet with increased caps.
+ * So we check for increased caps on the target process.
+ */
+static inline int cap_safe_nice(struct task_struct *p)
+{
+	if (!cap_issubset(p->cap_permitted, current->cap_permitted) &&
+	    !__capable(current, CAP_SYS_NICE))
+		return -EPERM;
+	return 0;
+}
+
+int cap_task_setscheduler (struct task_struct *p, int policy,
+			   struct sched_param *lp)
+{
+	return cap_safe_nice(p);
+}
+
+int cap_task_setioprio (struct task_struct *p, int ioprio)
+{
+	return cap_safe_nice(p);
+}
+
+int cap_task_setnice (struct task_struct *p, int nice)
+{
+	return cap_safe_nice(p);
+}
+
+int cap_task_kill(struct task_struct *p, struct siginfo *info,
+				int sig, u32 secid)
+{
+	if (info != SEND_SIG_NOINFO && (is_si_special(info) || SI_FROMKERNEL(info)))
+		return 0;
+
+	/*
+	 * Running a setuid root program raises your capabilities.
+	 * Killing your own setuid root processes was previously
+	 * allowed.
+	 * We must preserve legacy signal behavior in this case.
+	 */
+	if (p->euid == 0 && p->uid == current->uid)
+		return 0;
+
+	/* sigcont is permitted within same session */
+	if (sig == SIGCONT && (task_session_nr(current) == task_session_nr(p)))
+		return 0;
+
+	if (secid)
+		/*
+		 * Signal sent as a particular user.
+		 * Capabilities are ignored.  May be wrong, but it's the
+		 * only thing we can do at the moment.
+		 * Used only by usb drivers?
+		 */
+		return 0;
+	if (cap_issubset(p->cap_permitted, current->cap_permitted))
+		return 0;
+	if (capable(CAP_KILL))
+		return 0;
+
+	return -EPERM;
+}
+#else
+int cap_task_setscheduler (struct task_struct *p, int policy,
+			   struct sched_param *lp)
+{
+	return 0;
+}
+int cap_task_setioprio (struct task_struct *p, int ioprio)
+{
+	return 0;
+}
+int cap_task_setnice (struct task_struct *p, int nice)
+{
+	return 0;
+}
+int cap_task_kill(struct task_struct *p, struct siginfo *info,
+				int sig, u32 secid)
+{
+	return 0;
+}
+#endif
+
 void cap_task_reparent_to_init (struct task_struct *p)
 {
 	p->cap_effective = CAP_INIT_EFF_SET;
@@ -324,21 +600,3 @@ int cap_vm_enough_memory(struct mm_struct *mm, long pages)
 	return __vm_enough_memory(mm, pages, cap_sys_admin);
 }
 
-EXPORT_SYMBOL(cap_capable);
-EXPORT_SYMBOL(cap_settime);
-EXPORT_SYMBOL(cap_ptrace);
-EXPORT_SYMBOL(cap_capget);
-EXPORT_SYMBOL(cap_capset_check);
-EXPORT_SYMBOL(cap_capset_set);
-EXPORT_SYMBOL(cap_bprm_set_security);
-EXPORT_SYMBOL(cap_bprm_apply_creds);
-EXPORT_SYMBOL(cap_bprm_secureexec);
-EXPORT_SYMBOL(cap_inode_setxattr);
-EXPORT_SYMBOL(cap_inode_removexattr);
-EXPORT_SYMBOL(cap_task_post_setuid);
-EXPORT_SYMBOL(cap_task_reparent_to_init);
-EXPORT_SYMBOL(cap_syslog);
-EXPORT_SYMBOL(cap_vm_enough_memory);
-
-MODULE_DESCRIPTION("Standard Linux Common Capabilities Security Module");
-MODULE_LICENSE("GPL");

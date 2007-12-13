@@ -55,16 +55,34 @@ do {                                                            \
  * Check that sizeof(device_id type) are consistent with size of section
  * in .o file. If in-consistent then userspace and kernel does not agree
  * on actual size which is a bug.
+ * Also verify that the final entry in the table is all zeros.
  **/
-static void device_id_size_check(const char *modname, const char *device_id,
-				 unsigned long size, unsigned long id_size)
+static void device_id_check(const char *modname, const char *device_id,
+			    unsigned long size, unsigned long id_size,
+			    void *symval)
 {
+	int i;
+
 	if (size % id_size || size < id_size) {
 		fatal("%s: sizeof(struct %s_device_id)=%lu is not a modulo "
 		      "of the size of section __mod_%s_device_table=%lu.\n"
 		      "Fix definition of struct %s_device_id "
 		      "in mod_devicetable.h\n",
 		      modname, device_id, id_size, device_id, size, device_id);
+	}
+	/* Verify last one is a terminator */
+	for (i = 0; i < id_size; i++ ) {
+		if (*(uint8_t*)(symval+size-id_size+i)) {
+			fprintf(stderr,"%s: struct %s_device_id is %lu bytes.  "
+				"The last of %lu is:\n",
+				modname, device_id, id_size, size / id_size);
+			for (i = 0; i < id_size; i++ )
+				fprintf(stderr,"0x%02x ",
+					*(uint8_t*)(symval+size-id_size+i) );
+			fprintf(stderr,"\n");
+			fatal("%s: struct %s_device_id is not terminated "
+				"with a NULL entry!\n", modname, device_id);
+		}
 	}
 }
 
@@ -168,7 +186,7 @@ static void do_usb_table(void *symval, unsigned long size,
 	unsigned int i;
 	const unsigned long id_size = sizeof(struct usb_device_id);
 
-	device_id_size_check(mod->name, "usb", size, id_size);
+	device_id_check(mod->name, "usb", size, id_size, symval);
 
 	/* Leave last one: it's the terminator. */
 	size -= id_size;
@@ -396,13 +414,6 @@ static int do_vio_entry(const char *filename, struct vio_device_id *vio,
 	return 1;
 }
 
-static int do_i2c_entry(const char *filename, struct i2c_device_id *i2c, char *alias)
-{
-	strcpy(alias, "i2c:");
-	ADD(alias, "id", 1, i2c->id);
-	return 1;
-}
-
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 static void do_input(char *alias,
@@ -484,6 +495,50 @@ static int do_parisc_entry(const char *filename, struct parisc_device_id *id,
 	return 1;
 }
 
+/* Looks like: sdio:cNvNdN. */
+static int do_sdio_entry(const char *filename,
+			struct sdio_device_id *id, char *alias)
+{
+	id->class = TO_NATIVE(id->class);
+	id->vendor = TO_NATIVE(id->vendor);
+	id->device = TO_NATIVE(id->device);
+
+	strcpy(alias, "sdio:");
+	ADD(alias, "c", id->class != (__u8)SDIO_ANY_ID, id->class);
+	ADD(alias, "v", id->vendor != (__u16)SDIO_ANY_ID, id->vendor);
+	ADD(alias, "d", id->device != (__u16)SDIO_ANY_ID, id->device);
+	return 1;
+}
+
+/* Looks like: ssb:vNidNrevN. */
+static int do_ssb_entry(const char *filename,
+			struct ssb_device_id *id, char *alias)
+{
+	id->vendor = TO_NATIVE(id->vendor);
+	id->coreid = TO_NATIVE(id->coreid);
+	id->revision = TO_NATIVE(id->revision);
+
+	strcpy(alias, "ssb:");
+	ADD(alias, "v", id->vendor != SSB_ANY_VENDOR, id->vendor);
+	ADD(alias, "id", id->coreid != SSB_ANY_ID, id->coreid);
+	ADD(alias, "rev", id->revision != SSB_ANY_REV, id->revision);
+	return 1;
+}
+
+/* Looks like: virtio:dNvN */
+static int do_virtio_entry(const char *filename, struct virtio_device_id *id,
+			   char *alias)
+{
+	id->device = TO_NATIVE(id->device);
+	id->vendor = TO_NATIVE(id->vendor);
+
+	strcpy(alias, "virtio:");
+	ADD(alias, "d", 1, id->device);
+	ADD(alias, "v", id->vendor != VIRTIO_DEV_ANY_ID, id->vendor);
+
+	return 1;
+}
+
 /* Ignore any prefix, eg. v850 prepends _ */
 static inline int sym_is(const char *symbol, const char *name)
 {
@@ -505,7 +560,7 @@ static void do_table(void *symval, unsigned long size,
 	char alias[500];
 	int (*do_entry)(const char *, void *entry, char *alias) = function;
 
-	device_id_size_check(mod->name, device_id, size, id_size);
+	device_id_check(mod->name, device_id, size, id_size, symval);
 	/* Leave last one: it's the terminator. */
 	size -= id_size;
 
@@ -527,14 +582,21 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
 			Elf_Sym *sym, const char *symname)
 {
 	void *symval;
+	char *zeros = NULL;
 
 	/* We're looking for a section relative symbol */
 	if (!sym->st_shndx || sym->st_shndx >= info->hdr->e_shnum)
 		return;
 
-	symval = (void *)info->hdr
-		+ info->sechdrs[sym->st_shndx].sh_offset
-		+ sym->st_value;
+	/* Handle all-NULL symbols allocated into .bss */
+	if (info->sechdrs[sym->st_shndx].sh_type & SHT_NOBITS) {
+		zeros = calloc(1, sym->st_size);
+		symval = zeros;
+	} else {
+		symval = (void *)info->hdr
+			+ info->sechdrs[sym->st_shndx].sh_offset
+			+ sym->st_value;
+	}
 
 	if (sym_is(symname, "__mod_pci_device_table"))
 		do_table(symval, sym->st_size,
@@ -583,10 +645,6 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
 		do_table(symval, sym->st_size,
 			 sizeof(struct vio_device_id), "vio",
 			 do_vio_entry, mod);
-	else if (sym_is(symname, "__mod_i2c_device_table"))
-		do_table(symval, sym->st_size,
-			 sizeof(struct i2c_device_id), "i2c",
-			 do_i2c_entry, mod);
 	else if (sym_is(symname, "__mod_input_device_table"))
 		do_table(symval, sym->st_size,
 			 sizeof(struct input_device_id), "input",
@@ -599,6 +657,19 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
 		do_table(symval, sym->st_size,
 			 sizeof(struct parisc_device_id), "parisc",
 			 do_parisc_entry, mod);
+	else if (sym_is(symname, "__mod_sdio_device_table"))
+		do_table(symval, sym->st_size,
+			 sizeof(struct sdio_device_id), "sdio",
+			 do_sdio_entry, mod);
+	else if (sym_is(symname, "__mod_ssb_device_table"))
+		do_table(symval, sym->st_size,
+			 sizeof(struct ssb_device_id), "ssb",
+			 do_ssb_entry, mod);
+	else if (sym_is(symname, "__mod_virtio_device_table"))
+		do_table(symval, sym->st_size,
+			 sizeof(struct virtio_device_id), "virtio",
+			 do_virtio_entry, mod);
+	free(zeros);
 }
 
 /* Now add out buffered information to the generated C source */

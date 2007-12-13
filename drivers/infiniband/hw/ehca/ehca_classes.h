@@ -53,6 +53,7 @@ struct ehca_pd;
 struct ehca_av;
 
 #include <linux/wait.h>
+#include <linux/mutex.h>
 
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_user_verbs.h>
@@ -94,19 +95,18 @@ struct ehca_sma_attr {
 struct ehca_sport {
 	struct ib_cq *ibcq_aqp1;
 	struct ib_qp *ibqp_aqp1;
-	enum ib_rate  rate;
 	enum ib_port_state port_state;
 	struct ehca_sma_attr saved_attr;
 };
 
-#define HCA_CAP_MR_PGSIZE_4K  1
-#define HCA_CAP_MR_PGSIZE_64K 2
-#define HCA_CAP_MR_PGSIZE_1M  4
-#define HCA_CAP_MR_PGSIZE_16M 8
+#define HCA_CAP_MR_PGSIZE_4K  0x80000000
+#define HCA_CAP_MR_PGSIZE_64K 0x40000000
+#define HCA_CAP_MR_PGSIZE_1M  0x20000000
+#define HCA_CAP_MR_PGSIZE_16M 0x10000000
 
 struct ehca_shca {
 	struct ib_device ib_device;
-	struct ibmebus_dev *ibmebus_dev;
+	struct of_device *ofdev;
 	u8 num_ports;
 	int hw_level;
 	struct list_head shca_list;
@@ -322,7 +322,6 @@ extern int ehca_static_rate;
 extern int ehca_port_act_time;
 extern int ehca_use_hp_mr;
 extern int ehca_scaling_code;
-extern int ehca_mr_largepage;
 
 struct ipzu_queue_resp {
 	u32 qe_size;      /* queue entry size */
@@ -337,6 +336,8 @@ struct ehca_create_cq_resp {
 	u32 cq_number;
 	u32 token;
 	struct ipzu_queue_resp ipz_queue;
+	u32 fw_handle_ofs;
+	u32 dummy;
 };
 
 struct ehca_create_qp_resp {
@@ -347,7 +348,8 @@ struct ehca_create_qp_resp {
 	u32 qkey;
 	/* qp_num assigned by ehca: sqp0/1 may have got different numbers */
 	u32 real_qp_num;
-	u32 dummy; /* padding for 8 byte alignment */
+	u32 fw_handle_ofs;
+	u32 dummy;
 	struct ipzu_queue_resp ipz_squeue;
 	struct ipzu_queue_resp ipz_rqueue;
 };

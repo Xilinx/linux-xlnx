@@ -4,9 +4,48 @@
 #include <linux/types.h>
 
 struct dentry;
+struct inode;
 struct super_block;
 struct vfsmount;
 
+/*
+ * The fileid_type identifies how the file within the filesystem is encoded.
+ * In theory this is freely set and parsed by the filesystem, but we try to
+ * stick to conventions so we can share some generic code and don't confuse
+ * sniffers like ethereal/wireshark.
+ *
+ * The filesystem must not use the value '0' or '0xff'.
+ */
+enum fid_type {
+	/*
+	 * The root, or export point, of the filesystem.
+	 * (Never actually passed down to the filesystem.
+	 */
+	FILEID_ROOT = 0,
+
+	/*
+	 * 32bit inode number, 32 bit generation number.
+	 */
+	FILEID_INO32_GEN = 1,
+
+	/*
+	 * 32bit inode number, 32 bit generation number,
+	 * 32 bit parent directory inode number.
+	 */
+	FILEID_INO32_GEN_PARENT = 2,
+};
+
+struct fid {
+	union {
+		struct {
+			u32 ino;
+			u32 gen;
+			u32 parent_ino;
+			u32 parent_gen;
+		} i32;
+		__u32 raw[6];
+	};
+};
 
 /**
  * struct export_operations - for nfsd to communicate with file systems
@@ -15,43 +54,9 @@ struct vfsmount;
  * @get_name:       find the name for a given inode in a given directory
  * @get_parent:     find the parent of a given directory
  * @get_dentry:     find a dentry for the inode given a file handle sub-fragment
- * @find_exported_dentry:
- *	set by the exporting module to a standard helper function.
  *
- * Description:
- *    The export_operations structure provides a means for nfsd to communicate
- *    with a particular exported file system  - particularly enabling nfsd and
- *    the filesystem to co-operate when dealing with file handles.
- *
- *    export_operations contains two basic operation for dealing with file
- *    handles, decode_fh() and encode_fh(), and allows for some other
- *    operations to be defined which standard helper routines use to get
- *    specific information from the filesystem.
- *
- *    nfsd encodes information use to determine which filesystem a filehandle
- *    applies to in the initial part of the file handle.  The remainder, termed
- *    a file handle fragment, is controlled completely by the filesystem.  The
- *    standard helper routines assume that this fragment will contain one or
- *    two sub-fragments, one which identifies the file, and one which may be
- *    used to identify the (a) directory containing the file.
- *
- *    In some situations, nfsd needs to get a dentry which is connected into a
- *    specific part of the file tree.  To allow for this, it passes the
- *    function acceptable() together with a @context which can be used to see
- *    if the dentry is acceptable.  As there can be multiple dentrys for a
- *    given file, the filesystem should check each one for acceptability before
- *    looking for the next.  As soon as an acceptable one is found, it should
- *    be returned.
- *
- * decode_fh:
- *    @decode_fh is given a &struct super_block (@sb), a file handle fragment
- *    (@fh, @fh_len) and an acceptability testing function (@acceptable,
- *    @context).  It should return a &struct dentry which refers to the same
- *    file that the file handle fragment refers to,  and which passes the
- *    acceptability test.  If it cannot, it should return a %NULL pointer if
- *    the file was found but no acceptable &dentries were available, or a
- *    %ERR_PTR error code indicating why it couldn't be found (e.g. %ENOENT or
- *    %ENOMEM).
+ * See Documentation/filesystems/Exporting for details on how to use
+ * this interface correctly.
  *
  * encode_fh:
  *    @encode_fh should store in the file handle fragment @fh (using at most
@@ -62,6 +67,21 @@ struct vfsmount;
  *    filesystem.   This typically means storing a reference to de->d_parent in
  *    the filehandle fragment.  encode_fh() should return the number of bytes
  *    stored or a negative error code such as %-ENOSPC
+ *
+ * fh_to_dentry:
+ *    @fh_to_dentry is given a &struct super_block (@sb) and a file handle
+ *    fragment (@fh, @fh_len). It should return a &struct dentry which refers
+ *    to the same file that the file handle fragment refers to.  If it cannot,
+ *    it should return a %NULL pointer if the file was found but no acceptable
+ *    &dentries were available, or an %ERR_PTR error code indicating why it
+ *    couldn't be found (e.g. %ENOENT or %ENOMEM).  Any suitable dentry can be
+ *    returned including, if necessary, a new dentry created with d_alloc_root.
+ *    The caller can then find any other extant dentries by following the
+ *    d_alias links.
+ *
+ * fh_to_parent:
+ *    Same as @fh_to_dentry, except that it returns a pointer to the parent
+ *    dentry if it was encoded into the filehandle fragment by @encode_fh.
  *
  * get_name:
  *    @get_name should find a name for the given @child in the given @parent
@@ -75,52 +95,37 @@ struct vfsmount;
  *    is also a directory.  In the event that it cannot be found, or storage
  *    space cannot be allocated, a %ERR_PTR should be returned.
  *
- * get_dentry:
- *    Given a &super_block (@sb) and a pointer to a file-system specific inode
- *    identifier, possibly an inode number, (@inump) get_dentry() should find
- *    the identified inode and return a dentry for that inode.  Any suitable
- *    dentry can be returned including, if necessary, a new dentry created with
- *    d_alloc_root.  The caller can then find any other extant dentrys by
- *    following the d_alias links.  If a new dentry was created using
- *    d_alloc_root, DCACHE_NFSD_DISCONNECTED should be set, and the dentry
- *    should be d_rehash()ed.
- *
- *    If the inode cannot be found, either a %NULL pointer or an %ERR_PTR code
- *    can be returned.  The @inump will be whatever was passed to
- *    nfsd_find_fh_dentry() in either the @obj or @parent parameters.
- *
  * Locking rules:
  *    get_parent is called with child->d_inode->i_mutex down
  *    get_name is not (which is possibly inconsistent)
  */
 
 struct export_operations {
-	struct dentry *(*decode_fh)(struct super_block *sb, __u32 *fh,
-			int fh_len, int fh_type,
-			int (*acceptable)(void *context, struct dentry *de),
-			void *context);
 	int (*encode_fh)(struct dentry *de, __u32 *fh, int *max_len,
 			int connectable);
+	struct dentry * (*fh_to_dentry)(struct super_block *sb, struct fid *fid,
+			int fh_len, int fh_type);
+	struct dentry * (*fh_to_parent)(struct super_block *sb, struct fid *fid,
+			int fh_len, int fh_type);
 	int (*get_name)(struct dentry *parent, char *name,
 			struct dentry *child);
 	struct dentry * (*get_parent)(struct dentry *child);
-	struct dentry * (*get_dentry)(struct super_block *sb, void *inump);
-
-	/* This is set by the exporting module to a standard helper */
-	struct dentry * (*find_exported_dentry)(
-			struct super_block *sb, void *obj, void *parent,
-			int (*acceptable)(void *context, struct dentry *de),
-			void *context);
 };
 
-extern struct dentry *find_exported_dentry(struct super_block *sb, void *obj,
-	void *parent, int (*acceptable)(void *context, struct dentry *de),
-	void *context);
-
-extern int exportfs_encode_fh(struct dentry *dentry, __u32 *fh, int *max_len,
-	int connectable);
-extern struct dentry *exportfs_decode_fh(struct vfsmount *mnt, __u32 *fh,
+extern int exportfs_encode_fh(struct dentry *dentry, struct fid *fid,
+	int *max_len, int connectable);
+extern struct dentry *exportfs_decode_fh(struct vfsmount *mnt, struct fid *fid,
 	int fh_len, int fileid_type, int (*acceptable)(void *, struct dentry *),
 	void *context);
+
+/*
+ * Generic helpers for filesystems.
+ */
+extern struct dentry *generic_fh_to_dentry(struct super_block *sb,
+	struct fid *fid, int fh_len, int fh_type,
+	struct inode *(*get_inode) (struct super_block *sb, u64 ino, u32 gen));
+extern struct dentry *generic_fh_to_parent(struct super_block *sb,
+	struct fid *fid, int fh_len, int fh_type,
+	struct inode *(*get_inode) (struct super_block *sb, u64 ino, u32 gen));
 
 #endif /* LINUX_EXPORTFS_H */

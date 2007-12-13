@@ -201,7 +201,7 @@ inline void flush_dcache_page_impl(struct page *page)
 #define dcache_dirty_cpu(page) \
 	(((page)->flags >> PG_dcache_cpu_shift) & PG_dcache_cpu_mask)
 
-static __inline__ void set_dcache_dirty(struct page *page, int this_cpu)
+static inline void set_dcache_dirty(struct page *page, int this_cpu)
 {
 	unsigned long mask = this_cpu;
 	unsigned long non_cpu_bits;
@@ -223,7 +223,7 @@ static __inline__ void set_dcache_dirty(struct page *page, int this_cpu)
 			     : "g1", "g7");
 }
 
-static __inline__ void clear_dcache_dirty_cpu(struct page *page, unsigned long cpu)
+static inline void clear_dcache_dirty_cpu(struct page *page, unsigned long cpu)
 {
 	unsigned long mask = (1UL << PG_dcache_dirty);
 
@@ -631,7 +631,6 @@ void prom_world(int enter)
 	__asm__ __volatile__("flushw");
 }
 
-#ifdef DCACHE_ALIASING_POSSIBLE
 void __flush_dcache_range(unsigned long start, unsigned long end)
 {
 	unsigned long va;
@@ -655,7 +654,6 @@ void __flush_dcache_range(unsigned long start, unsigned long end)
 					       "i" (ASI_DCACHE_INVALIDATE));
 	}
 }
-#endif /* DCACHE_ALIASING_POSSIBLE */
 
 /* get_new_mmu_context() uses "cache + 1".  */
 DEFINE_SPINLOCK(ctx_alloc_lock);
@@ -1647,6 +1645,58 @@ EXPORT_SYMBOL(_PAGE_E);
 unsigned long _PAGE_CACHE __read_mostly;
 EXPORT_SYMBOL(_PAGE_CACHE);
 
+#ifdef CONFIG_SPARSEMEM_VMEMMAP
+
+#define VMEMMAP_CHUNK_SHIFT	22
+#define VMEMMAP_CHUNK		(1UL << VMEMMAP_CHUNK_SHIFT)
+#define VMEMMAP_CHUNK_MASK	~(VMEMMAP_CHUNK - 1UL)
+#define VMEMMAP_ALIGN(x)	(((x)+VMEMMAP_CHUNK-1UL)&VMEMMAP_CHUNK_MASK)
+
+#define VMEMMAP_SIZE	((((1UL << MAX_PHYSADDR_BITS) >> PAGE_SHIFT) * \
+			  sizeof(struct page *)) >> VMEMMAP_CHUNK_SHIFT)
+unsigned long vmemmap_table[VMEMMAP_SIZE];
+
+int __meminit vmemmap_populate(struct page *start, unsigned long nr, int node)
+{
+	unsigned long vstart = (unsigned long) start;
+	unsigned long vend = (unsigned long) (start + nr);
+	unsigned long phys_start = (vstart - VMEMMAP_BASE);
+	unsigned long phys_end = (vend - VMEMMAP_BASE);
+	unsigned long addr = phys_start & VMEMMAP_CHUNK_MASK;
+	unsigned long end = VMEMMAP_ALIGN(phys_end);
+	unsigned long pte_base;
+
+	pte_base = (_PAGE_VALID | _PAGE_SZ4MB_4U |
+		    _PAGE_CP_4U | _PAGE_CV_4U |
+		    _PAGE_P_4U | _PAGE_W_4U);
+	if (tlb_type == hypervisor)
+		pte_base = (_PAGE_VALID | _PAGE_SZ4MB_4V |
+			    _PAGE_CP_4V | _PAGE_CV_4V |
+			    _PAGE_P_4V | _PAGE_W_4V);
+
+	for (; addr < end; addr += VMEMMAP_CHUNK) {
+		unsigned long *vmem_pp =
+			vmemmap_table + (addr >> VMEMMAP_CHUNK_SHIFT);
+		void *block;
+
+		if (!(*vmem_pp & _PAGE_VALID)) {
+			block = vmemmap_alloc_block(1UL << 22, node);
+			if (!block)
+				return -ENOMEM;
+
+			*vmem_pp = pte_base | __pa(block);
+
+			printk(KERN_INFO "[%p-%p] page_structs=%lu "
+			       "node=%d entry=%lu/%lu\n", start, block, nr,
+			       node,
+			       addr >> VMEMMAP_CHUNK_SHIFT,
+			       VMEMMAP_SIZE >> VMEMMAP_CHUNK_SHIFT);
+		}
+	}
+	return 0;
+}
+#endif /* CONFIG_SPARSEMEM_VMEMMAP */
+
 static void prot_init_common(unsigned long page_none,
 			     unsigned long page_shared,
 			     unsigned long page_copy,
@@ -1909,11 +1959,6 @@ void online_page(struct page *page)
 	__free_page(page);
 	totalram_pages++;
 	num_physpages++;
-}
-
-int remove_memory(u64 start, u64 size)
-{
-	return -EINVAL;
 }
 
 #endif /* CONFIG_MEMORY_HOTPLUG */

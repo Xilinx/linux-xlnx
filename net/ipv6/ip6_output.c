@@ -70,7 +70,7 @@ static __inline__ void ipv6_select_ident(struct sk_buff *skb, struct frag_hdr *f
 	spin_unlock_bh(&ip6_id_lock);
 }
 
-static inline int ip6_output_finish(struct sk_buff *skb)
+static int ip6_output_finish(struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb->dst;
 
@@ -171,7 +171,7 @@ int ip6_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl,
 	u32 mtu;
 
 	if (opt) {
-		int head_room;
+		unsigned int head_room;
 
 		/* First: exthdrs may take lots of space (~8K for now)
 		   MAX_HEADER is not enough.
@@ -441,8 +441,10 @@ int ip6_forward(struct sk_buff *skb)
 
 	/* IPv6 specs say nothing about it, but it is clear that we cannot
 	   send redirects to source routed frames.
+	   We don't send redirects to frames decapsulated from IPsec.
 	 */
-	if (skb->dev == dst->dev && dst->neighbour && opt->srcrt == 0) {
+	if (skb->dev == dst->dev && dst->neighbour && opt->srcrt == 0 &&
+	    !skb->sp) {
 		struct in6_addr *target = NULL;
 		struct rt6_info *rt;
 		struct neighbour *n = dst->neighbour;
@@ -931,6 +933,8 @@ static int ip6_dst_lookup_tail(struct sock *sk,
 	return 0;
 
 out_err_release:
+	if (err == -ENETUNREACH)
+		IP6_INC_STATS_BH(NULL, IPSTATS_MIB_OUTNOROUTES);
 	dst_release(*dst);
 	*dst = NULL;
 	return err;
@@ -1337,6 +1341,19 @@ error:
 	return err;
 }
 
+static void ip6_cork_release(struct inet_sock *inet, struct ipv6_pinfo *np)
+{
+	inet->cork.flags &= ~IPCORK_OPT;
+	kfree(np->cork.opt);
+	np->cork.opt = NULL;
+	if (np->cork.rt) {
+		dst_release(&np->cork.rt->u.dst);
+		np->cork.rt = NULL;
+		inet->cork.flags &= ~IPCORK_ALLFRAG;
+	}
+	memset(&inet->cork.fl, 0, sizeof(inet->cork.fl));
+}
+
 int ip6_push_pending_frames(struct sock *sk)
 {
 	struct sk_buff *skb, *tmp_skb;
@@ -1397,6 +1414,13 @@ int ip6_push_pending_frames(struct sock *sk)
 
 	skb->dst = dst_clone(&rt->u.dst);
 	IP6_INC_STATS(rt->rt6i_idev, IPSTATS_MIB_OUTREQUESTS);
+	if (proto == IPPROTO_ICMPV6) {
+		struct inet6_dev *idev = ip6_dst_idev(skb->dst);
+
+		ICMP6MSGOUT_INC_STATS_BH(idev, icmp6_hdr(skb)->icmp6_type);
+		ICMP6_INC_STATS_BH(idev, ICMP6_MIB_OUTMSGS);
+	}
+
 	err = NF_HOOK(PF_INET6, NF_IP6_LOCAL_OUT, skb, NULL, skb->dst->dev, dst_output);
 	if (err) {
 		if (err > 0)
@@ -1406,15 +1430,7 @@ int ip6_push_pending_frames(struct sock *sk)
 	}
 
 out:
-	inet->cork.flags &= ~IPCORK_OPT;
-	kfree(np->cork.opt);
-	np->cork.opt = NULL;
-	if (np->cork.rt) {
-		dst_release(&np->cork.rt->u.dst);
-		np->cork.rt = NULL;
-		inet->cork.flags &= ~IPCORK_ALLFRAG;
-	}
-	memset(&inet->cork.fl, 0, sizeof(inet->cork.fl));
+	ip6_cork_release(inet, np);
 	return err;
 error:
 	goto out;
@@ -1422,8 +1438,6 @@ error:
 
 void ip6_flush_pending_frames(struct sock *sk)
 {
-	struct inet_sock *inet = inet_sk(sk);
-	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct sk_buff *skb;
 
 	while ((skb = __skb_dequeue_tail(&sk->sk_write_queue)) != NULL) {
@@ -1433,14 +1447,5 @@ void ip6_flush_pending_frames(struct sock *sk)
 		kfree_skb(skb);
 	}
 
-	inet->cork.flags &= ~IPCORK_OPT;
-
-	kfree(np->cork.opt);
-	np->cork.opt = NULL;
-	if (np->cork.rt) {
-		dst_release(&np->cork.rt->u.dst);
-		np->cork.rt = NULL;
-		inet->cork.flags &= ~IPCORK_ALLFRAG;
-	}
-	memset(&inet->cork.fl, 0, sizeof(inet->cork.fl));
+	ip6_cork_release(inet_sk(sk), inet6_sk(sk));
 }

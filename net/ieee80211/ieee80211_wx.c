@@ -257,6 +257,7 @@ int ieee80211_wx_get_scan(struct ieee80211_device *ieee,
 	char *ev = extra;
 	char *stop = ev + wrqu->data.length;
 	int i = 0;
+	DECLARE_MAC_BUF(mac);
 
 	IEEE80211_DEBUG_WX("Getting scan\n");
 
@@ -274,10 +275,10 @@ int ieee80211_wx_get_scan(struct ieee80211_device *ieee,
 			ev = ieee80211_translate_scan(ieee, ev, stop, network);
 		else
 			IEEE80211_DEBUG_SCAN("Not showing network '%s ("
-					     MAC_FMT ")' due to age (%dms).\n",
+					     "%s)' due to age (%dms).\n",
 					     escape_essid(network->ssid,
 							  network->ssid_len),
-					     MAC_ARG(network->bssid),
+					     print_mac(mac, network->bssid),
 					     jiffies_to_msecs(jiffies -
 							      network->
 							      last_scanned));
@@ -408,7 +409,7 @@ int ieee80211_wx_set_encode(struct ieee80211_device *ieee,
 					       (*crypt)->priv);
 		sec.flags |= (1 << key);
 		/* This ensures a key will be activated if no key is
-		 * explicitely set */
+		 * explicitly set */
 		if (key == sec.active_key)
 			sec.flags |= SEC_ACTIVE_KEY;
 

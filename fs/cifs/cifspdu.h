@@ -215,6 +215,29 @@
 					 /* file_execute, file_read_attributes*/
 					 /* write_dac, and delete.           */
 
+#define FILE_READ_RIGHTS (FILE_READ_DATA | FILE_READ_EA | FILE_READ_ATTRIBUTES)
+#define FILE_WRITE_RIGHTS (FILE_WRITE_DATA | FILE_APPEND_DATA \
+				| FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES)
+#define FILE_EXEC_RIGHTS (FILE_EXECUTE)
+
+#define SET_FILE_READ_RIGHTS (FILE_READ_DATA | FILE_READ_EA | FILE_WRITE_EA \
+				| FILE_READ_ATTRIBUTES \
+				| FILE_WRITE_ATTRIBUTES \
+				| DELETE | READ_CONTROL | WRITE_DAC \
+				| WRITE_OWNER | SYNCHRONIZE)
+#define SET_FILE_WRITE_RIGHTS (FILE_WRITE_DATA | FILE_APPEND_DATA \
+				| FILE_READ_EA | FILE_WRITE_EA \
+				| FILE_DELETE_CHILD | FILE_READ_ATTRIBUTES \
+				| FILE_WRITE_ATTRIBUTES \
+				| DELETE | READ_CONTROL | WRITE_DAC \
+				| WRITE_OWNER | SYNCHRONIZE)
+#define SET_FILE_EXEC_RIGHTS (FILE_READ_EA | FILE_WRITE_EA | FILE_EXECUTE \
+				| FILE_READ_ATTRIBUTES \
+				| FILE_WRITE_ATTRIBUTES \
+				| DELETE | READ_CONTROL | WRITE_DAC \
+				| WRITE_OWNER | SYNCHRONIZE)
+
+
 /*
  * Invalid readdir handle
  */
@@ -360,10 +383,10 @@ struct smb_hdr {
 	__u8 WordCount;
 } __attribute__((packed));
 /* given a pointer to an smb_hdr retrieve the value of byte count */
-#define BCC(smb_var) ( *(__u16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2* smb_var->WordCount) ) )
-#define BCC_LE(smb_var) ( *(__le16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2* smb_var->WordCount) ) )
+#define BCC(smb_var) ( *(__u16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount)))
+#define BCC_LE(smb_var) ( *(__le16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount)))
 /* given a pointer to an smb_hdr retrieve the pointer to the byte area */
-#define pByteArea(smb_var) ((unsigned char *)smb_var + sizeof(struct smb_hdr) + (2* smb_var->WordCount) + 2 )
+#define pByteArea(smb_var) ((unsigned char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount) + 2)
 
 /*
  * Computer Name Length (since Netbios name was length 16 with last byte 0x20)
@@ -715,6 +738,14 @@ typedef struct smb_com_findclose_req {
 #define REQ_BATCHOPLOCK    0x00000004
 #define REQ_OPENDIRONLY    0x00000008
 #define REQ_EXTENDED_INFO  0x00000010
+
+/* File type */
+#define DISK_TYPE		0x0000
+#define BYTE_PIPE_TYPE		0x0001
+#define MESSAGE_PIPE_TYPE	0x0002
+#define PRINTER_TYPE		0x0003
+#define COMM_DEV_TYPE		0x0004
+#define UNKNOWN_TYPE		0xFFFF
 
 typedef struct smb_com_open_req {	/* also handles create */
 	struct smb_hdr hdr;	/* wct = 24 */
@@ -1196,6 +1227,29 @@ typedef struct smb_com_transaction_qsec_req {
 	__u16 Reserved2;
 	__le32 AclFlags;
 } __attribute__((packed)) QUERY_SEC_DESC_REQ;
+
+
+typedef struct smb_com_transaction_ssec_req {
+	struct smb_hdr hdr;     /* wct = 19 */
+	__u8 MaxSetupCount;
+	__u16 Reserved;
+	__le32 TotalParameterCount;
+	__le32 TotalDataCount;
+	__le32 MaxParameterCount;
+	__le32 MaxDataCount;
+	__le32 ParameterCount;
+	__le32 ParameterOffset;
+	__le32 DataCount;
+	__le32 DataOffset;
+	__u8 SetupCount; /* no setup words follow subcommand */
+	/* SNIA spec incorrectly included spurious pad here */
+	__le16 SubCommand; /* 3 = SET_SECURITY_DESC */
+	__le16 ByteCount; /* bcc = 3 + 8 */
+	__u8 Pad[3];
+	__u16 Fid;
+	__u16 Reserved2;
+	__le32 AclFlags;
+} __attribute__((packed)) SET_SEC_DESC_REQ;
 
 typedef struct smb_com_transaction_change_notify_req {
 	struct smb_hdr hdr;     /* wct = 23 */

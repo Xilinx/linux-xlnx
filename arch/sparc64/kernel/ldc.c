@@ -2057,7 +2057,7 @@ static void fill_cookies(struct cookie_state *sp, unsigned long pa,
 
 static int sg_count_one(struct scatterlist *sg)
 {
-	unsigned long base = page_to_pfn(sg->page) << PAGE_SHIFT;
+	unsigned long base = page_to_pfn(sg_page(sg)) << PAGE_SHIFT;
 	long len = sg->length;
 
 	if ((sg->offset | len) & (8UL - 1))
@@ -2121,7 +2121,7 @@ int ldc_map_sg(struct ldc_channel *lp,
 	state.nc = 0;
 
 	for (i = 0; i < num_sg; i++)
-		fill_cookies(&state, page_to_pfn(sg[i].page) << PAGE_SHIFT,
+		fill_cookies(&state, page_to_pfn(sg_page(&sg[i])) << PAGE_SHIFT,
 			     sg[i].offset, sg[i].length);
 
 	return state.nc;
@@ -2338,6 +2338,7 @@ static int __init ldc_init(void)
 	unsigned long major, minor;
 	struct mdesc_handle *hp;
 	const u64 *v;
+	int err;
 	u64 mp;
 
 	hp = mdesc_grab();
@@ -2345,29 +2346,33 @@ static int __init ldc_init(void)
 		return -ENODEV;
 
 	mp = mdesc_node_by_name(hp, MDESC_NODE_NULL, "platform");
+	err = -ENODEV;
 	if (mp == MDESC_NODE_NULL)
-		return -ENODEV;
+		goto out;
 
 	v = mdesc_get_property(hp, mp, "domaining-enabled", NULL);
 	if (!v)
-		return -ENODEV;
+		goto out;
 
 	major = 1;
 	minor = 0;
 	if (sun4v_hvapi_register(HV_GRP_LDOM, major, &minor)) {
 		printk(KERN_INFO PFX "Could not register LDOM hvapi.\n");
-		return -ENODEV;
+		goto out;
 	}
 
 	printk(KERN_INFO "%s", version);
 
 	if (!*v) {
 		printk(KERN_INFO PFX "Domaining disabled.\n");
-		return -ENODEV;
+		goto out;
 	}
 	ldom_domaining_enabled = 1;
+	err = 0;
 
-	return 0;
+out:
+	mdesc_release(hp);
+	return err;
 }
 
 core_initcall(ldc_init);

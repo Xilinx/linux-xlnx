@@ -213,7 +213,7 @@ static int hard_dma_setup(char *addr, unsigned long size, int mode, int io)
 	}
 #endif
 
-	dma_cache_wback_inv(addr, size);
+	__flush_purge_region(addr, size);
 
 	/* actual, physical DMA */
 	doing_pdma = 0;
@@ -262,10 +262,6 @@ static int FDC2 = -1;
 
 #define N_FDC 2
 #define N_DRIVE 8
-
-#define FLOPPY_MOTOR_MASK 0xf0
-
-#define AUTO_DMA
 
 #define EXTRA_FLOPPY_PARAMS
 

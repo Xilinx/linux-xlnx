@@ -17,6 +17,18 @@ ToDo/Notes:
 	  happen is unclear however so it is worth waiting until someone hits
 	  the problem.
 
+2.1.29 - Fix a deadlock at mount time.
+
+	- During mount the VFS holds s_umount lock on the superblock.  So when
+	  we try to empty the journal $LogFile contents by calling
+	  ntfs_attr_set() when the machine does not have much memory and the
+	  journal is large ntfs_attr_set() results in the VM trying to balance
+	  dirty pages which in turn tries to that the s_umount lock and thus we
+	  get a deadlock.  The solution is to not use ntfs_attr_set() and
+	  instead do the zeroing by hand at the block level rather than page
+	  cache level.
+	- Fix sparse warnings.
+
 2.1.28 - Fix a deadlock.
 
 	- Fix deadlock in fs/ntfs/inode.c::ntfs_put_inode().  Thanks to Sergey
@@ -370,7 +382,7 @@ ToDo/Notes:
 	  own locking so it does not matter if the vfs inode is locked.
 	- Fix bug in mft record writing where we forgot to set the device in
 	  the buffers when mapping them after the VM had discarded them.
-	  Thanks to Martin MOKREJŠ for the bug report.
+	  Thanks to Martin MOKREJÅ for the bug report.
 
 2.1.22 - Many bug and race fixes and error handling improvements.
 
@@ -1573,7 +1585,7 @@ tng-0.0.4 - Big changes, getting in line with Al Viro's comments.
 	  for reading $MFT (ntfs_mft_readpage). In the process create dedicated
 	  address space operations (ntfs_mft_aops) for $MFT inode mapping. Also
 	  removed the now superfluous exports from the kernel core patch.
-	- Fix a bug where kfree() was used insted of ntfs_free().
+	- Fix a bug where kfree() was used instead of ntfs_free().
 	- Change map_mft_record() to take ntfs_inode as argument instead of
 	  vfs inode. Dito for unmap_mft_record(). Adapt all callers.
 	- Add pointer to ntfs_volume to ntfs_inode.

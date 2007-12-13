@@ -4,18 +4,18 @@
  * Version:       0.4.1
  * Description:   Netwave AirSurfer Wireless LAN PC Card driver
  * Status:        Experimental.
- * Authors:       John Markus Bjørndalen <johnm@cs.uit.no>
+ * Authors:       John Markus BjÃ¸rndalen <johnm@cs.uit.no>
  *                Dag Brattli <dagb@cs.uit.no>
  *                David Hinds <dahinds@users.sourceforge.net>
  * Created at:    A long time ago!
  * Modified at:   Mon Nov 10 11:54:37 1997
  * Modified by:   Dag Brattli <dagb@cs.uit.no>
  * 
- *     Copyright (c) 1997 University of Tromsø, Norway
+ *     Copyright (c) 1997 University of TromsÃ¸, Norway
  *
  * Revision History:
  *
- *   08-Nov-97 15:14:47   John Markus Bjørndalen <johnm@cs.uit.no>
+ *   08-Nov-97 15:14:47   John Markus BjÃ¸rndalen <johnm@cs.uit.no>
  *    - Fixed some bugs in netwave_rx and cleaned it up a bit. 
  *      (One of the bugs would have destroyed packets when receiving
  *      multiple packets per interrupt). 
@@ -158,7 +158,7 @@ static int pc_debug = PCMCIA_DEBUG;
 module_param(pc_debug, int, 0);
 #define DEBUG(n, args...) if (pc_debug>(n)) printk(KERN_DEBUG args)
 static char *version =
-"netwave_cs.c 0.3.0 Thu Jul 17 14:36:02 1997 (John Markus Bjørndalen)\n";
+"netwave_cs.c 0.3.0 Thu Jul 17 14:36:02 1997 (John Markus BjÃ¸rndalen)\n";
 #else
 #define DEBUG(n, args...)
 #endif
@@ -412,7 +412,6 @@ static int netwave_probe(struct pcmcia_device *link)
     spin_lock_init(&priv->spinlock);
 
     /* Netwave specific entries in the device structure */
-    SET_MODULE_OWNER(dev);
     dev->hard_start_xmit = &netwave_start_xmit;
     dev->get_stats  = &netwave_get_stats;
     dev->set_multicast_list = &set_multicast_list;
@@ -710,9 +709,9 @@ static const iw_handler		netwave_private_handler[] =
 
 static const struct iw_handler_def	netwave_handler_def =
 {
-	.num_standard	= sizeof(netwave_handler)/sizeof(iw_handler),
-	.num_private	= sizeof(netwave_private_handler)/sizeof(iw_handler),
-	.num_private_args = sizeof(netwave_private_args)/sizeof(struct iw_priv_args),
+	.num_standard	= ARRAY_SIZE(netwave_handler),
+	.num_private	= ARRAY_SIZE(netwave_private_handler),
+	.num_private_args = ARRAY_SIZE(netwave_private_args),
 	.standard	= (iw_handler *) netwave_handler,
 	.private	= (iw_handler *) netwave_private_handler,
 	.private_args	= (struct iw_priv_args *) netwave_private_args,
@@ -738,6 +737,7 @@ static int netwave_pcmcia_config(struct pcmcia_device *link) {
     win_req_t req;
     memreq_t mem;
     u_char __iomem *ramBase = NULL;
+    DECLARE_MAC_BUF(mac);
 
     DEBUG(0, "netwave_pcmcia_config(0x%p)\n", link);
 
@@ -806,12 +806,13 @@ static int netwave_pcmcia_config(struct pcmcia_device *link) {
     for (i = 0; i < 6; i++) 
 	dev->dev_addr[i] = readb(ramBase + NETWAVE_EREG_PA + i);
 
-    printk(KERN_INFO "%s: Netwave: port %#3lx, irq %d, mem %lx id "
-	   "%c%c, hw_addr ", dev->name, dev->base_addr, dev->irq,
-	   (u_long) ramBase, (int) readb(ramBase+NETWAVE_EREG_NI),
-	   (int) readb(ramBase+NETWAVE_EREG_NI+1));
-    for (i = 0; i < 6; i++)
-	printk("%02X%s", dev->dev_addr[i], ((i<5) ? ":" : "\n"));
+    printk(KERN_INFO "%s: Netwave: port %#3lx, irq %d, mem %lx, "
+	   "id %c%c, hw_addr %s\n",
+	   dev->name, dev->base_addr, dev->irq,
+	   (u_long) ramBase,
+	   (int) readb(ramBase+NETWAVE_EREG_NI),
+	   (int) readb(ramBase+NETWAVE_EREG_NI+1),
+	   print_mac(mac, dev->dev_addr));
 
     /* get revision words */
     printk(KERN_DEBUG "Netwave_reset: revision %04x %04x\n", 

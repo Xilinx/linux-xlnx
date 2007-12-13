@@ -163,7 +163,7 @@ static int dio_refill_pages(struct dio *dio)
 	up_read(&current->mm->mmap_sem);
 
 	if (ret < 0 && dio->blocks_available && (dio->rw & WRITE)) {
-		struct page *page = ZERO_PAGE(dio->curr_user_address);
+		struct page *page = ZERO_PAGE(0);
 		/*
 		 * A memory fault, but the filesystem has some outstanding
 		 * mapped blocks.  We need to use those blocks up to avoid
@@ -264,14 +264,11 @@ static int dio_bio_complete(struct dio *dio, struct bio *bio);
 /*
  * Asynchronous IO callback. 
  */
-static int dio_bio_end_aio(struct bio *bio, unsigned int bytes_done, int error)
+static void dio_bio_end_aio(struct bio *bio, int error)
 {
 	struct dio *dio = bio->bi_private;
 	unsigned long remaining;
 	unsigned long flags;
-
-	if (bio->bi_size)
-		return 1;
 
 	/* cleanup the bio */
 	dio_bio_complete(dio, bio);
@@ -287,8 +284,6 @@ static int dio_bio_end_aio(struct bio *bio, unsigned int bytes_done, int error)
 		aio_complete(dio->iocb, ret, 0);
 		kfree(dio);
 	}
-
-	return 0;
 }
 
 /*
@@ -298,13 +293,10 @@ static int dio_bio_end_aio(struct bio *bio, unsigned int bytes_done, int error)
  * During I/O bi_private points at the dio.  After I/O, bi_private is used to
  * implement a singly-linked list of completed BIOs, at dio->bio_list.
  */
-static int dio_bio_end_io(struct bio *bio, unsigned int bytes_done, int error)
+static void dio_bio_end_io(struct bio *bio, int error)
 {
 	struct dio *dio = bio->bi_private;
 	unsigned long flags;
-
-	if (bio->bi_size)
-		return 1;
 
 	spin_lock_irqsave(&dio->bio_lock, flags);
 	bio->bi_private = dio->bio_list;
@@ -312,7 +304,6 @@ static int dio_bio_end_io(struct bio *bio, unsigned int bytes_done, int error)
 	if (--dio->refcount == 1 && dio->waiter)
 		wake_up_process(dio->waiter);
 	spin_unlock_irqrestore(&dio->bio_lock, flags);
-	return 0;
 }
 
 static int
@@ -772,7 +763,7 @@ static void dio_zero_block(struct dio *dio, int end)
 
 	this_chunk_bytes = this_chunk_blocks << dio->blkbits;
 
-	page = ZERO_PAGE(dio->curr_user_address);
+	page = ZERO_PAGE(0);
 	if (submit_page_section(dio, page, 0, this_chunk_bytes, 
 				dio->next_block_for_io))
 		return;

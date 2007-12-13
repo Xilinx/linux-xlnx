@@ -16,7 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/irq.h>
 
-char *bfin_board_name = "Tepla-BF561";
+const char bfin_board_name[] = "Tepla-BF561";
 
 /*
  *  Driver needs to know address, irq and flag pin.
@@ -31,10 +31,6 @@ static struct resource smc91x_resources[] = {
 		.end	= IRQ_PROG_INTB,
 		.flags	= IORESOURCE_IRQ|IORESOURCE_IRQ_HIGHLEVEL,
 	}, {
-		/*
-		 *  denotes the flag pin and is used directly if
-		 *  CONFIG_IRQCHIP_DEMUX_GPIO is defined.
-		 */
 		.start	= IRQ_PF7,
 		.end	= IRQ_PF7,
 		.flags	= IORESOURCE_IRQ|IORESOURCE_IRQ_HIGHLEVEL,

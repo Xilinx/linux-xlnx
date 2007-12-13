@@ -54,14 +54,13 @@
  *	sysfs stuff
  */
 
-static ssize_t show_name(struct class_device *cd, char *buf)
+static ssize_t show_name(struct device *cd,
+			 struct device_attribute *attr, char *buf)
 {
 	struct video_device *vfd = container_of(cd, struct video_device,
-								class_dev);
-	return sprintf(buf,"%.*s\n",(int)sizeof(vfd->name),vfd->name);
+						class_dev);
+	return sprintf(buf, "%.*s\n", (int)sizeof(vfd->name), vfd->name);
 }
-
-static CLASS_DEVICE_ATTR(name, S_IRUGO, show_name, NULL);
 
 struct video_device *video_device_alloc(void)
 {
@@ -76,7 +75,7 @@ void video_device_release(struct video_device *vfd)
 	kfree(vfd);
 }
 
-static void video_release(struct class_device *cd)
+static void video_release(struct device *cd)
 {
 	struct video_device *vfd = container_of(cd, struct video_device,
 								class_dev);
@@ -89,9 +88,15 @@ static void video_release(struct class_device *cd)
 	vfd->release(vfd);
 }
 
+static struct device_attribute video_device_attrs[] = {
+	__ATTR(name, S_IRUGO, show_name, NULL),
+	__ATTR_NULL
+};
+
 static struct class video_class = {
 	.name    = VIDEO_NAME,
-	.release = video_release,
+	.dev_attrs = video_device_attrs,
+	.dev_release = video_release,
 };
 
 /*
@@ -448,7 +453,7 @@ static int __video_do_ioctl(struct inode *inode, struct file *file,
 	if (cmd == VIDIOCGMBUF) {
 		struct video_mbuf *p=arg;
 
-		memset(p,0,sizeof(p));
+		memset(p, 0, sizeof(*p));
 
 		if (!vfd->vidiocgmbuf)
 			return ret;
@@ -1308,48 +1313,6 @@ static int __video_do_ioctl(struct inode *inode, struct file *file,
 		ret=vfd->vidioc_cropcap(file, fh, p);
 		break;
 	}
-	case VIDIOC_G_MPEGCOMP:
-	{
-		struct v4l2_mpeg_compression *p=arg;
-
-		/*FIXME: Several fields not shown */
-		if (!vfd->vidioc_g_mpegcomp)
-			break;
-		ret=vfd->vidioc_g_mpegcomp(file, fh, p);
-		if (!ret)
-			dbgarg (cmd, "ts_pid_pmt=%d, ts_pid_audio=%d,"
-					" ts_pid_video=%d, ts_pid_pcr=%d, "
-					"ps_size=%d, au_sample_rate=%d, "
-					"au_pesid=%c, vi_frame_rate=%d, "
-					"vi_frames_per_gop=%d, "
-					"vi_bframes_count=%d, vi_pesid=%c\n",
-					p->ts_pid_pmt,p->ts_pid_audio,
-					p->ts_pid_video,p->ts_pid_pcr,
-					p->ps_size, p->au_sample_rate,
-					p->au_pesid, p->vi_frame_rate,
-					p->vi_frames_per_gop,
-					p->vi_bframes_count, p->vi_pesid);
-		break;
-	}
-	case VIDIOC_S_MPEGCOMP:
-	{
-		struct v4l2_mpeg_compression *p=arg;
-		/*FIXME: Several fields not shown */
-		if (!vfd->vidioc_s_mpegcomp)
-			break;
-		dbgarg (cmd, "ts_pid_pmt=%d, ts_pid_audio=%d, "
-				"ts_pid_video=%d, ts_pid_pcr=%d, ps_size=%d, "
-				"au_sample_rate=%d, au_pesid=%c, "
-				"vi_frame_rate=%d, vi_frames_per_gop=%d, "
-				"vi_bframes_count=%d, vi_pesid=%c\n",
-				p->ts_pid_pmt,p->ts_pid_audio, p->ts_pid_video,
-				p->ts_pid_pcr, p->ps_size, p->au_sample_rate,
-				p->au_pesid, p->vi_frame_rate,
-				p->vi_frames_per_gop, p->vi_bframes_count,
-				p->vi_pesid);
-		ret=vfd->vidioc_s_mpegcomp(file, fh, p);
-		break;
-	}
 	case VIDIOC_G_JPEGCOMP:
 	{
 		struct v4l2_jpegcompression *p=arg;
@@ -1753,21 +1716,15 @@ int video_register_device(struct video_device *vfd, int type, int nr)
 	/* sysfs class */
 	memset(&vfd->class_dev, 0x00, sizeof(vfd->class_dev));
 	if (vfd->dev)
-		vfd->class_dev.dev = vfd->dev;
+		vfd->class_dev.parent = vfd->dev;
 	vfd->class_dev.class       = &video_class;
 	vfd->class_dev.devt        = MKDEV(VIDEO_MAJOR, vfd->minor);
-	sprintf(vfd->class_dev.class_id, "%s%d", name_base, i - base);
-	ret = class_device_register(&vfd->class_dev);
+	sprintf(vfd->class_dev.bus_id, "%s%d", name_base, i - base);
+	ret = device_register(&vfd->class_dev);
 	if (ret < 0) {
-		printk(KERN_ERR "%s: class_device_register failed\n",
+		printk(KERN_ERR "%s: device_register failed\n",
 		       __FUNCTION__);
 		goto fail_minor;
-	}
-	ret = class_device_create_file(&vfd->class_dev, &class_device_attr_name);
-	if (ret < 0) {
-		printk(KERN_ERR "%s: class_device_create_file 'name' failed\n",
-		       __FUNCTION__);
-		goto fail_classdev;
 	}
 
 #if 1
@@ -1779,8 +1736,6 @@ int video_register_device(struct video_device *vfd, int type, int nr)
 #endif
 	return 0;
 
-fail_classdev:
-	class_device_unregister(&vfd->class_dev);
 fail_minor:
 	mutex_lock(&videodev_lock);
 	video_device[vfd->minor] = NULL;
@@ -1804,7 +1759,7 @@ void video_unregister_device(struct video_device *vfd)
 		panic("videodev: bad unregister");
 
 	video_device[vfd->minor]=NULL;
-	class_device_unregister(&vfd->class_dev);
+	device_unregister(&vfd->class_dev);
 	mutex_unlock(&videodev_lock);
 }
 

@@ -908,7 +908,7 @@ static long bsg_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 
-static struct file_operations bsg_fops = {
+static const struct file_operations bsg_fops = {
 	.read		=	bsg_read,
 	.write		=	bsg_write,
 	.poll		=	bsg_poll,
@@ -1010,10 +1010,7 @@ unlock:
 }
 EXPORT_SYMBOL_GPL(bsg_register_queue);
 
-static struct cdev bsg_cdev = {
-	.kobj   = {.name = "bsg", },
-	.owner  = THIS_MODULE,
-};
+static struct cdev bsg_cdev;
 
 static int __init bsg_init(void)
 {

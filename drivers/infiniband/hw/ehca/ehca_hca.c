@@ -77,22 +77,23 @@ int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 	}
 
 	memset(props, 0, sizeof(struct ib_device_attr));
+	props->page_size_cap   = shca->hca_cap_mr_pgsize;
 	props->fw_ver          = rblock->hw_ver;
 	props->max_mr_size     = rblock->max_mr_size;
 	props->vendor_id       = rblock->vendor_id >> 8;
 	props->vendor_part_id  = rblock->vendor_part_id >> 16;
 	props->hw_ver          = rblock->hw_ver;
-	props->max_qp          = min_t(int, rblock->max_qp, INT_MAX);
-	props->max_qp_wr       = min_t(int, rblock->max_wqes_wq, INT_MAX);
-	props->max_sge         = min_t(int, rblock->max_sge, INT_MAX);
-	props->max_sge_rd      = min_t(int, rblock->max_sge_rd, INT_MAX);
-	props->max_cq          = min_t(int, rblock->max_cq, INT_MAX);
-	props->max_cqe         = min_t(int, rblock->max_cqe, INT_MAX);
-	props->max_mr          = min_t(int, rblock->max_mr, INT_MAX);
-	props->max_mw          = min_t(int, rblock->max_mw, INT_MAX);
-	props->max_pd          = min_t(int, rblock->max_pd, INT_MAX);
-	props->max_ah          = min_t(int, rblock->max_ah, INT_MAX);
-	props->max_fmr         = min_t(int, rblock->max_mr, INT_MAX);
+	props->max_qp          = min_t(unsigned, rblock->max_qp, INT_MAX);
+	props->max_qp_wr       = min_t(unsigned, rblock->max_wqes_wq, INT_MAX);
+	props->max_sge         = min_t(unsigned, rblock->max_sge, INT_MAX);
+	props->max_sge_rd      = min_t(unsigned, rblock->max_sge_rd, INT_MAX);
+	props->max_cq          = min_t(unsigned, rblock->max_cq, INT_MAX);
+	props->max_cqe         = min_t(unsigned, rblock->max_cqe, INT_MAX);
+	props->max_mr          = min_t(unsigned, rblock->max_mr, INT_MAX);
+	props->max_mw          = min_t(unsigned, rblock->max_mw, INT_MAX);
+	props->max_pd          = min_t(unsigned, rblock->max_pd, INT_MAX);
+	props->max_ah          = min_t(unsigned, rblock->max_ah, INT_MAX);
+	props->max_fmr         = min_t(unsigned, rblock->max_mr, INT_MAX);
 
 	if (EHCA_BMASK_GET(HCA_CAP_SRQ, shca->hca_cap)) {
 		props->max_srq         = props->max_qp;
@@ -104,15 +105,15 @@ int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 	props->local_ca_ack_delay
 		= rblock->local_ca_ack_delay;
 	props->max_raw_ipv6_qp
-		= min_t(int, rblock->max_raw_ipv6_qp, INT_MAX);
+		= min_t(unsigned, rblock->max_raw_ipv6_qp, INT_MAX);
 	props->max_raw_ethy_qp
-		= min_t(int, rblock->max_raw_ethy_qp, INT_MAX);
+		= min_t(unsigned, rblock->max_raw_ethy_qp, INT_MAX);
 	props->max_mcast_grp
-		= min_t(int, rblock->max_mcast_grp, INT_MAX);
+		= min_t(unsigned, rblock->max_mcast_grp, INT_MAX);
 	props->max_mcast_qp_attach
-		= min_t(int, rblock->max_mcast_qp_attach, INT_MAX);
+		= min_t(unsigned, rblock->max_mcast_qp_attach, INT_MAX);
 	props->max_total_mcast_qp_attach
-		= min_t(int, rblock->max_total_mcast_qp_attach, INT_MAX);
+		= min_t(unsigned, rblock->max_total_mcast_qp_attach, INT_MAX);
 
 	/* translate device capabilities */
 	props->device_cap_flags = IB_DEVICE_SYS_IMAGE_GUID |
@@ -150,7 +151,6 @@ int ehca_query_port(struct ib_device *ibdev,
 	}
 
 	memset(props, 0, sizeof(struct ib_port_attr));
-	props->state = rblock->state;
 
 	switch (rblock->max_mtu) {
 	case 0x1:
@@ -187,11 +187,20 @@ int ehca_query_port(struct ib_device *ibdev,
 	props->subnet_timeout  = rblock->subnet_timeout;
 	props->init_type_reply = rblock->init_type_reply;
 
-	props->active_width    = IB_WIDTH_12X;
-	props->active_speed    = 0x1;
-
-	/* at the moment (logical) link state is always LINK_UP */
-	props->phys_state      = 0x5;
+	if (rblock->state && rblock->phys_width) {
+		props->phys_state      = rblock->phys_pstate;
+		props->state           = rblock->phys_state;
+		props->active_width    = rblock->phys_width;
+		props->active_speed    = rblock->phys_speed;
+	} else {
+		/* old firmware releases don't report physical
+		 * port info, so use default values
+		 */
+		props->phys_state      = 5;
+		props->state           = rblock->state;
+		props->active_width    = IB_WIDTH_12X;
+		props->active_speed    = 0x1;
+	}
 
 query_port1:
 	ehca_free_fw_ctrlblock(rblock);
@@ -352,7 +361,7 @@ int ehca_modify_port(struct ib_device *ibdev,
 	hret = hipz_h_modify_port(shca->ipz_hca_handle, port,
 				  cap, props->init_type, port_modify_mask);
 	if (hret != H_SUCCESS) {
-		ehca_err(&shca->ib_device, "Modify port failed  hret=%lx",
+		ehca_err(&shca->ib_device, "Modify port failed  h_ret=%li",
 			 hret);
 		ret = -EINVAL;
 	}

@@ -78,7 +78,7 @@ static char *check[] = {
 	"twofish", "serpent", "sha384", "sha512", "md4", "aes", "cast6",
 	"arc4", "michael_mic", "deflate", "crc32c", "tea", "xtea",
 	"khazad", "wp512", "wp384", "wp256", "tnepres", "xeta",  "fcrypt",
-	"camellia", NULL
+	"camellia", "seed", NULL
 };
 
 static void hexdump(unsigned char *buf, unsigned int len)
@@ -139,7 +139,7 @@ static void test_hash(char *algo, struct hash_testvec *template,
 		printk("test %u:\n", i + 1);
 		memset(result, 0, 64);
 
-		sg_set_buf(&sg[0], hash_tv[i].plaintext, hash_tv[i].psize);
+		sg_init_one(&sg[0], hash_tv[i].plaintext, hash_tv[i].psize);
 
 		if (hash_tv[i].ksize) {
 			ret = crypto_hash_setkey(tfm, hash_tv[i].key,
@@ -176,6 +176,7 @@ static void test_hash(char *algo, struct hash_testvec *template,
 			memset(result, 0, 64);
 
 			temp = 0;
+			sg_init_table(sg, hash_tv[i].np);
 			for (k = 0; k < hash_tv[i].np; k++) {
 				memcpy(&xbuf[IDX[k]],
 				       hash_tv[i].plaintext + temp,
@@ -289,8 +290,8 @@ static void test_cipher(char *algo, int enc,
 					goto out;
 			}
 
-			sg_set_buf(&sg[0], cipher_tv[i].input,
-				   cipher_tv[i].ilen);
+			sg_init_one(&sg[0], cipher_tv[i].input,
+				    cipher_tv[i].ilen);
 
 			ablkcipher_request_set_crypt(req, sg, sg,
 						     cipher_tv[i].ilen,
@@ -317,7 +318,7 @@ static void test_cipher(char *algo, int enc,
 				goto out;
 			}
 
-			q = kmap(sg[0].page) + sg[0].offset;
+			q = kmap(sg_page(&sg[0])) + sg[0].offset;
 			hexdump(q, cipher_tv[i].rlen);
 
 			printk("%s\n",
@@ -353,6 +354,7 @@ static void test_cipher(char *algo, int enc,
 			}
 
 			temp = 0;
+			sg_init_table(sg, cipher_tv[i].np);
 			for (k = 0; k < cipher_tv[i].np; k++) {
 				memcpy(&xbuf[IDX[k]],
 				       cipher_tv[i].input + temp,
@@ -390,7 +392,7 @@ static void test_cipher(char *algo, int enc,
 			temp = 0;
 			for (k = 0; k < cipher_tv[i].np; k++) {
 				printk("page %u\n", k);
-				q = kmap(sg[k].page) + sg[k].offset;
+				q = kmap(sg_page(&sg[k])) + sg[k].offset;
 				hexdump(q, cipher_tv[i].tap[k]);
 				printk("%s\n",
 					memcmp(q, cipher_tv[i].result + temp,
@@ -414,7 +416,7 @@ static int test_cipher_jiffies(struct blkcipher_desc *desc, int enc, char *p,
 	int bcount;
 	int ret;
 
-	sg_set_buf(sg, p, blen);
+	sg_init_one(sg, p, blen);
 
 	for (start = jiffies, end = start + sec * HZ, bcount = 0;
 	     time_before(jiffies, end); bcount++) {
@@ -440,7 +442,7 @@ static int test_cipher_cycles(struct blkcipher_desc *desc, int enc, char *p,
 	int ret = 0;
 	int i;
 
-	sg_set_buf(sg, p, blen);
+	sg_init_one(sg, p, blen);
 
 	local_bh_disable();
 	local_irq_disable();
@@ -570,6 +572,8 @@ static int test_hash_jiffies_digest(struct hash_desc *desc, char *p, int blen,
 	int bcount;
 	int ret;
 
+	sg_init_table(sg, 1);
+
 	for (start = jiffies, end = start + sec * HZ, bcount = 0;
 	     time_before(jiffies, end); bcount++) {
 		sg_set_buf(sg, p, blen);
@@ -594,6 +598,8 @@ static int test_hash_jiffies(struct hash_desc *desc, char *p, int blen,
 
 	if (plen == blen)
 		return test_hash_jiffies_digest(desc, p, blen, out, sec);
+
+	sg_init_table(sg, 1);
 
 	for (start = jiffies, end = start + sec * HZ, bcount = 0;
 	     time_before(jiffies, end); bcount++) {
@@ -625,6 +631,8 @@ static int test_hash_cycles_digest(struct hash_desc *desc, char *p, int blen,
 	unsigned long cycles = 0;
 	int i;
 	int ret;
+
+	sg_init_table(sg, 1);
 
 	local_bh_disable();
 	local_irq_disable();
@@ -676,6 +684,8 @@ static int test_hash_cycles(struct hash_desc *desc, char *p, int blen,
 
 	if (plen == blen)
 		return test_hash_cycles_digest(desc, p, blen, out);
+
+	sg_init_table(sg, 1);
 
 	local_bh_disable();
 	local_irq_disable();
@@ -955,6 +965,10 @@ static void do_test(void)
 			    AES_LRW_ENC_TEST_VECTORS);
 		test_cipher("lrw(aes)", DECRYPT, aes_lrw_dec_tv_template,
 			    AES_LRW_DEC_TEST_VECTORS);
+		test_cipher("xts(aes)", ENCRYPT, aes_xts_enc_tv_template,
+			    AES_XTS_ENC_TEST_VECTORS);
+		test_cipher("xts(aes)", DECRYPT, aes_xts_dec_tv_template,
+			    AES_XTS_DEC_TEST_VECTORS);
 
 		//CAST5
 		test_cipher("ecb(cast5)", ENCRYPT, cast5_enc_tv_template,
@@ -1028,6 +1042,12 @@ static void do_test(void)
 		test_cipher("cbc(camellia)", DECRYPT,
 			    camellia_cbc_dec_tv_template,
 			    CAMELLIA_CBC_DEC_TEST_VECTORS);
+
+		//SEED
+		test_cipher("ecb(seed)", ENCRYPT, seed_enc_tv_template,
+			    SEED_ENC_TEST_VECTORS);
+		test_cipher("ecb(seed)", DECRYPT, seed_dec_tv_template,
+			    SEED_DEC_TEST_VECTORS);
 
 		test_hash("sha384", sha384_tv_template, SHA384_TEST_VECTORS);
 		test_hash("sha512", sha512_tv_template, SHA512_TEST_VECTORS);
@@ -1132,6 +1152,10 @@ static void do_test(void)
 			    AES_LRW_ENC_TEST_VECTORS);
 		test_cipher("lrw(aes)", DECRYPT, aes_lrw_dec_tv_template,
 			    AES_LRW_DEC_TEST_VECTORS);
+		test_cipher("xts(aes)", ENCRYPT, aes_xts_enc_tv_template,
+			    AES_XTS_ENC_TEST_VECTORS);
+		test_cipher("xts(aes)", DECRYPT, aes_xts_dec_tv_template,
+			    AES_XTS_DEC_TEST_VECTORS);
 		break;
 
 	case 11:
@@ -1307,6 +1331,10 @@ static void do_test(void)
 				  aes_lrw_speed_template);
 		test_cipher_speed("lrw(aes)", DECRYPT, sec, NULL, 0,
 				  aes_lrw_speed_template);
+		test_cipher_speed("xts(aes)", ENCRYPT, sec, NULL, 0,
+				  aes_xts_speed_template);
+		test_cipher_speed("xts(aes)", DECRYPT, sec, NULL, 0,
+				  aes_xts_speed_template);
 		break;
 
 	case 201:

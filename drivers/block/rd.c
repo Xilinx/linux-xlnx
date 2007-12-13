@@ -189,6 +189,18 @@ static int ramdisk_set_page_dirty(struct page *page)
 	return 0;
 }
 
+/*
+ * releasepage is called by pagevec_strip/try_to_release_page if
+ * buffers_heads_over_limit is true. Without a releasepage function
+ * try_to_free_buffers is called instead. That can unset the dirty
+ * bit of our ram disk pages, which will be eventually freed, even
+ * if the page is still in use.
+ */
+static int ramdisk_releasepage(struct page *page, gfp_t dummy)
+{
+	return 0;
+}
+
 static const struct address_space_operations ramdisk_aops = {
 	.readpage	= ramdisk_readpage,
 	.prepare_write	= ramdisk_prepare_write,
@@ -196,6 +208,7 @@ static const struct address_space_operations ramdisk_aops = {
 	.writepage	= ramdisk_writepage,
 	.set_page_dirty	= ramdisk_set_page_dirty,
 	.writepages	= ramdisk_writepages,
+	.releasepage	= ramdisk_releasepage,
 };
 
 static int rd_blkdev_pagecache_IO(int rw, struct bio_vec *vec, sector_t sector,
@@ -287,10 +300,10 @@ static int rd_make_request(struct request_queue *q, struct bio *bio)
 	if (ret)
 		goto fail;
 
-	bio_endio(bio, bio->bi_size, 0);
+	bio_endio(bio, 0);
 	return 0;
 fail:
-	bio_io_error(bio, bio->bi_size);
+	bio_io_error(bio);
 	return 0;
 } 
 
@@ -365,7 +378,7 @@ static int rd_open(struct inode *inode, struct file *filp)
 		/*
 		 * Deep badness.  rd_blkdev_pagecache_IO() needs to allocate
 		 * pagecache pages within a request_fn.  We cannot recur back
-		 * into the filesytem which is mounted atop the ramdisk, because
+		 * into the filesystem which is mounted atop the ramdisk, because
 		 * that would deadlock on fs locks.  And we really don't want
 		 * to reenter rd_blkdev_pagecache_IO when we're already within
 		 * that function.
@@ -411,6 +424,9 @@ static void __exit rd_cleanup(void)
 		blk_cleanup_queue(rd_queue[i]);
 	}
 	unregister_blkdev(RAMDISK_MAJOR, "ramdisk");
+
+	bdi_destroy(&rd_file_backing_dev_info);
+	bdi_destroy(&rd_backing_dev_info);
 }
 
 /*
@@ -419,7 +435,19 @@ static void __exit rd_cleanup(void)
 static int __init rd_init(void)
 {
 	int i;
-	int err = -ENOMEM;
+	int err;
+
+	err = bdi_init(&rd_backing_dev_info);
+	if (err)
+		goto out2;
+
+	err = bdi_init(&rd_file_backing_dev_info);
+	if (err) {
+		bdi_destroy(&rd_backing_dev_info);
+		goto out2;
+	}
+
+	err = -ENOMEM;
 
 	if (rd_blocksize > PAGE_SIZE || rd_blocksize < 512 ||
 			(rd_blocksize & (rd_blocksize-1))) {
@@ -473,6 +501,9 @@ out:
 		put_disk(rd_disks[i]);
 		blk_cleanup_queue(rd_queue[i]);
 	}
+	bdi_destroy(&rd_backing_dev_info);
+	bdi_destroy(&rd_file_backing_dev_info);
+out2:
 	return err;
 }
 
@@ -486,17 +517,12 @@ static int __init ramdisk_size(char *str)
 	rd_size = simple_strtol(str,NULL,0);
 	return 1;
 }
-static int __init ramdisk_size2(char *str)	/* kludge */
-{
-	return ramdisk_size(str);
-}
 static int __init ramdisk_blocksize(char *str)
 {
 	rd_blocksize = simple_strtol(str,NULL,0);
 	return 1;
 }
-__setup("ramdisk=", ramdisk_size);
-__setup("ramdisk_size=", ramdisk_size2);
+__setup("ramdisk_size=", ramdisk_size);
 __setup("ramdisk_blocksize=", ramdisk_blocksize);
 #endif
 

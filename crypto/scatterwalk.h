@@ -20,15 +20,15 @@
 
 #include "internal.h"
 
-static inline struct scatterlist *sg_next(struct scatterlist *sg)
+static inline struct scatterlist *scatterwalk_sg_next(struct scatterlist *sg)
 {
-	return (++sg)->length ? sg : (void *)sg->page;
+	return (++sg)->length ? sg : (void *) sg_page(sg);
 }
 
 static inline unsigned long scatterwalk_samebuf(struct scatter_walk *walk_in,
 						struct scatter_walk *walk_out)
 {
-	return !(((walk_in->sg->page - walk_out->sg->page) << PAGE_SHIFT) +
+	return !(((sg_page(walk_in->sg) - sg_page(walk_out->sg)) << PAGE_SHIFT) +
 		 (int)(walk_in->offset - walk_out->offset));
 }
 
@@ -60,7 +60,7 @@ static inline unsigned int scatterwalk_aligned(struct scatter_walk *walk,
 
 static inline struct page *scatterwalk_page(struct scatter_walk *walk)
 {
-	return walk->sg->page + (walk->offset >> PAGE_SHIFT);
+	return sg_page(walk->sg) + (walk->offset >> PAGE_SHIFT);
 }
 
 static inline void scatterwalk_unmap(void *vaddr, int out)
@@ -73,5 +73,8 @@ void scatterwalk_copychunks(void *buf, struct scatter_walk *walk,
 			    size_t nbytes, int out);
 void *scatterwalk_map(struct scatter_walk *walk, int out);
 void scatterwalk_done(struct scatter_walk *walk, int out, int more);
+
+void scatterwalk_map_and_copy(void *buf, struct scatterlist *sg,
+			      unsigned int start, unsigned int nbytes, int out);
 
 #endif  /* _CRYPTO_SCATTERWALK_H */

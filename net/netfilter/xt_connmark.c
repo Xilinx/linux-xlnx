@@ -25,10 +25,11 @@
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_connmark.h>
 
-MODULE_AUTHOR("Henrik Nordstrom <hno@marasytems.com>");
+MODULE_AUTHOR("Henrik Nordstrom <hno@marasystems.com>");
 MODULE_DESCRIPTION("IP tables connmark match module");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_connmark");
+MODULE_ALIAS("ip6t_connmark");
 
 static bool
 match(const struct sk_buff *skb,

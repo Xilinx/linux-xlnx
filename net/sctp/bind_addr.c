@@ -105,6 +105,32 @@ out:
 	return error;
 }
 
+/* Exactly duplicate the address lists.  This is necessary when doing
+ * peer-offs and accepts.  We don't want to put all the current system
+ * addresses into the endpoint.  That's useless.  But we do want duplicat
+ * the list of bound addresses that the older endpoint used.
+ */
+int sctp_bind_addr_dup(struct sctp_bind_addr *dest,
+			const struct sctp_bind_addr *src,
+			gfp_t gfp)
+{
+	struct sctp_sockaddr_entry *addr;
+	struct list_head *pos;
+	int error = 0;
+
+	/* All addresses share the same port.  */
+	dest->port = src->port;
+
+	list_for_each(pos, &src->address_list) {
+		addr = list_entry(pos, struct sctp_sockaddr_entry, list);
+		error = sctp_add_bind_addr(dest, &addr->a, 1, gfp);
+		if (error < 0)
+			break;
+	}
+
+	return error;
+}
+
 /* Initialize the SCTP_bind_addr structure for either an endpoint or
  * an association.
  */
@@ -180,9 +206,7 @@ int sctp_add_bind_addr(struct sctp_bind_addr *bp, union sctp_addr *new,
 /* Delete an address from the bind address list in the SCTP_bind_addr
  * structure.
  */
-int sctp_del_bind_addr(struct sctp_bind_addr *bp, union sctp_addr *del_addr,
-			void fastcall (*rcu_call)(struct rcu_head *head,
-					 void (*func)(struct rcu_head *head)))
+int sctp_del_bind_addr(struct sctp_bind_addr *bp, union sctp_addr *del_addr)
 {
 	struct sctp_sockaddr_entry *addr, *temp;
 
@@ -198,15 +222,10 @@ int sctp_del_bind_addr(struct sctp_bind_addr *bp, union sctp_addr *del_addr,
 		}
 	}
 
-	/* Call the rcu callback provided in the args.  This function is
-	 * called by both BH packet processing and user side socket option
-	 * processing, but it works on different lists in those 2 contexts.
-	 * Each context provides it's own callback, whether call_rcu_bh()
-	 * or call_rcu(), to make sure that we wait for an appropriate time.
-	 */
 	if (addr && !addr->valid) {
-		rcu_call(&addr->rcu, sctp_local_addr_free);
+		call_rcu(&addr->rcu, sctp_local_addr_free);
 		SCTP_DBG_OBJCNT_DEC(addr);
+		return 0;
 	}
 
 	return -EINVAL;

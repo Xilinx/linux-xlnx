@@ -30,7 +30,6 @@
 #include <asm/io.h>
 #include <asm/machdep.h>
 #include <asm/ipic.h>
-#include <asm/bootinfo.h>
 #include <asm/irq.h>
 #include <asm/prom.h>
 #include <asm/udbg.h>
@@ -84,10 +83,8 @@ static void __init mpc834x_mds_setup_arch(void)
 		ppc_md.progress("mpc834x_mds_setup_arch()", 0);
 
 #ifdef CONFIG_PCI
-	for (np = NULL; (np = of_find_node_by_type(np, "pci")) != NULL;)
+	for_each_compatible_node(np, "pci", "fsl,mpc8349-pci")
 		mpc83xx_add_bridge(np);
-
-	ppc_md.pci_exclude_device = mpc83xx_exclude_device;
 #endif
 
 	mpc834xemds_usb_cfg();
@@ -108,30 +105,6 @@ static void __init mpc834x_mds_init_IRQ(void)
 	 */
 	ipic_set_default_priority();
 }
-
-#if defined(CONFIG_I2C_MPC) && defined(CONFIG_SENSORS_DS1374)
-extern ulong ds1374_get_rtc_time(void);
-extern int ds1374_set_rtc_time(ulong);
-
-static int __init mpc834x_rtc_hookup(void)
-{
-	struct timespec tv;
-
-	if (!machine_is(mpc834x_mds))
-		return 0;
-
-	ppc_md.get_rtc_time = ds1374_get_rtc_time;
-	ppc_md.set_rtc_time = ds1374_set_rtc_time;
-
-	tv.tv_nsec = 0;
-	tv.tv_sec = (ppc_md.get_rtc_time) ();
-	do_settimeofday(&tv);
-
-	return 0;
-}
-
-late_initcall(mpc834x_rtc_hookup);
-#endif
 
 /*
  * Called very early, MMU is off, device-tree isn't unflattened

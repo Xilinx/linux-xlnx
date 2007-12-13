@@ -18,7 +18,7 @@ struct seq_file {
 	size_t from;
 	size_t count;
 	loff_t index;
-	loff_t version;
+	u64 version;
 	struct mutex lock;
 	const struct seq_operations *op;
 	void *private;
@@ -46,6 +46,8 @@ int seq_path(struct seq_file *, struct vfsmount *, struct dentry *, char *);
 
 int single_open(struct file *, int (*)(struct seq_file *, void *), void *);
 int single_release(struct inode *, struct file *);
+void *__seq_open_private(struct file *, const struct seq_operations *, int);
+int seq_open_private(struct file *, const struct seq_operations *, int);
 int seq_release_private(struct inode *, struct file *);
 
 #define SEQ_START_TOKEN ((void *)1)

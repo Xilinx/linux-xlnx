@@ -22,8 +22,10 @@
 #include <linux/spinlock.h>
 #include <linux/sysctl.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/security.h>
 #include <linux/mutex.h>
+#include <net/net_namespace.h>
 #include <net/sock.h>
 #include <net/route.h>
 
@@ -249,10 +251,8 @@ ipq_build_packet_message(struct ipq_queue_entry *entry, int *errp)
 
 	if (entry->info->indev && entry->skb->dev) {
 		pmsg->hw_type = entry->skb->dev->type;
-		if (entry->skb->dev->hard_header_parse)
-			pmsg->hw_addrlen =
-				entry->skb->dev->hard_header_parse(entry->skb,
-								   pmsg->hw_addr);
+		pmsg->hw_addrlen = dev_parse_header(entry->skb,
+						    pmsg->hw_addr);
 	}
 
 	if (data_len)
@@ -336,6 +336,7 @@ static int
 ipq_mangle_ipv4(ipq_verdict_msg_t *v, struct ipq_queue_entry *e)
 {
 	int diff;
+	int err;
 	struct iphdr *user_iph = (struct iphdr *)v->payload;
 
 	if (v->data_len < sizeof(*user_iph))
@@ -348,25 +349,18 @@ ipq_mangle_ipv4(ipq_verdict_msg_t *v, struct ipq_queue_entry *e)
 		if (v->data_len > 0xFFFF)
 			return -EINVAL;
 		if (diff > skb_tailroom(e->skb)) {
-			struct sk_buff *newskb;
-
-			newskb = skb_copy_expand(e->skb,
-						 skb_headroom(e->skb),
-						 diff,
-						 GFP_ATOMIC);
-			if (newskb == NULL) {
-				printk(KERN_WARNING "ip_queue: OOM "
-				      "in mangle, dropping packet\n");
-				return -ENOMEM;
+			err = pskb_expand_head(e->skb, 0,
+					       diff - skb_tailroom(e->skb),
+					       GFP_ATOMIC);
+			if (err) {
+				printk(KERN_WARNING "ip_queue: error "
+				      "in mangle, dropping packet: %d\n", -err);
+				return err;
 			}
-			if (e->skb->sk)
-				skb_set_owner_w(newskb, e->skb->sk);
-			kfree_skb(e->skb);
-			e->skb = newskb;
 		}
 		skb_put(e->skb, diff);
 	}
-	if (!skb_make_writable(&e->skb, v->data_len))
+	if (!skb_make_writable(e->skb, v->data_len))
 		return -ENOMEM;
 	skb_copy_to_linear_data(e->skb, v->payload, v->data_len);
 	e->skb->ip_summed = CHECKSUM_NONE;
@@ -476,7 +470,7 @@ ipq_dev_drop(int ifindex)
 #define RCV_SKB_FAIL(err) do { netlink_ack(skb, nlh, (err)); return; } while (0)
 
 static inline void
-ipq_rcv_skb(struct sk_buff *skb)
+__ipq_rcv_skb(struct sk_buff *skb)
 {
 	int status, type, pid, flags, nlmsglen, skblen;
 	struct nlmsghdr *nlh;
@@ -534,19 +528,10 @@ ipq_rcv_skb(struct sk_buff *skb)
 }
 
 static void
-ipq_rcv_sk(struct sock *sk, int len)
+ipq_rcv_skb(struct sk_buff *skb)
 {
-	struct sk_buff *skb;
-	unsigned int qlen;
-
 	mutex_lock(&ipqnl_mutex);
-
-	for (qlen = skb_queue_len(&sk->sk_receive_queue); qlen; qlen--) {
-		skb = skb_dequeue(&sk->sk_receive_queue);
-		ipq_rcv_skb(skb);
-		kfree_skb(skb);
-	}
-
+	__ipq_rcv_skb(skb);
 	mutex_unlock(&ipqnl_mutex);
 }
 
@@ -555,6 +540,9 @@ ipq_rcv_dev_event(struct notifier_block *this,
 		  unsigned long event, void *ptr)
 {
 	struct net_device *dev = ptr;
+
+	if (dev->nd_net != &init_net)
+		return NOTIFY_DONE;
 
 	/* Drop any packets associated with the downed device */
 	if (event == NETDEV_DOWN)
@@ -575,7 +563,7 @@ ipq_rcv_nl_event(struct notifier_block *this,
 	if (event == NETLINK_URELEASE &&
 	    n->protocol == NETLINK_FIREWALL && n->pid) {
 		write_lock_bh(&queue_lock);
-		if (n->pid == peer_pid)
+		if ((n->net == &init_net) && (n->pid == peer_pid))
 			__ipq_reset();
 		write_unlock_bh(&queue_lock);
 	}
@@ -620,15 +608,11 @@ static ctl_table ipq_root_table[] = {
 	{ .ctl_name = 0 }
 };
 
-#ifdef CONFIG_PROC_FS
-static int
-ipq_get_info(char *buffer, char **start, off_t offset, int length)
+static int ip_queue_show(struct seq_file *m, void *v)
 {
-	int len;
-
 	read_lock_bh(&queue_lock);
 
-	len = sprintf(buffer,
+	seq_printf(m,
 		      "Peer PID          : %d\n"
 		      "Copy mode         : %hu\n"
 		      "Copy range        : %u\n"
@@ -645,16 +629,21 @@ ipq_get_info(char *buffer, char **start, off_t offset, int length)
 		      queue_user_dropped);
 
 	read_unlock_bh(&queue_lock);
-
-	*start = buffer + offset;
-	len -= offset;
-	if (len > length)
-		len = length;
-	else if (len < 0)
-		len = 0;
-	return len;
+	return 0;
 }
-#endif /* CONFIG_PROC_FS */
+
+static int ip_queue_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ip_queue_show, NULL);
+}
+
+static const struct file_operations ip_queue_proc_fops = {
+	.open		= ip_queue_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+	.owner		= THIS_MODULE,
+};
 
 static struct nf_queue_handler nfqh = {
 	.name	= "ip_queue",
@@ -667,17 +656,18 @@ static int __init ip_queue_init(void)
 	struct proc_dir_entry *proc;
 
 	netlink_register_notifier(&ipq_nl_notifier);
-	ipqnl = netlink_kernel_create(NETLINK_FIREWALL, 0, ipq_rcv_sk,
-				      NULL, THIS_MODULE);
+	ipqnl = netlink_kernel_create(&init_net, NETLINK_FIREWALL, 0,
+				      ipq_rcv_skb, NULL, THIS_MODULE);
 	if (ipqnl == NULL) {
 		printk(KERN_ERR "ip_queue: failed to create netlink socket\n");
 		goto cleanup_netlink_notifier;
 	}
 
-	proc = proc_net_create(IPQ_PROC_FS_NAME, 0, ipq_get_info);
-	if (proc)
+	proc = create_proc_entry(IPQ_PROC_FS_NAME, 0, init_net.proc_net);
+	if (proc) {
 		proc->owner = THIS_MODULE;
-	else {
+		proc->proc_fops = &ip_queue_proc_fops;
+	} else {
 		printk(KERN_ERR "ip_queue: failed to create proc entry\n");
 		goto cleanup_ipqnl;
 	}
@@ -695,8 +685,7 @@ static int __init ip_queue_init(void)
 cleanup_sysctl:
 	unregister_sysctl_table(ipq_sysctl_header);
 	unregister_netdevice_notifier(&ipq_dev_notifier);
-	proc_net_remove(IPQ_PROC_FS_NAME);
-
+	proc_net_remove(&init_net, IPQ_PROC_FS_NAME);
 cleanup_ipqnl:
 	sock_release(ipqnl->sk_socket);
 	mutex_lock(&ipqnl_mutex);
@@ -715,7 +704,7 @@ static void __exit ip_queue_fini(void)
 
 	unregister_sysctl_table(ipq_sysctl_header);
 	unregister_netdevice_notifier(&ipq_dev_notifier);
-	proc_net_remove(IPQ_PROC_FS_NAME);
+	proc_net_remove(&init_net, IPQ_PROC_FS_NAME);
 
 	sock_release(ipqnl->sk_socket);
 	mutex_lock(&ipqnl_mutex);

@@ -85,7 +85,7 @@ struct conexant_spec {
 	unsigned int num_kctl_alloc, num_kctl_used;
 	struct snd_kcontrol_new *kctl_alloc;
 	struct hda_input_mux private_imux;
-	hda_nid_t private_dac_nids[4];
+	hda_nid_t private_dac_nids[AUTO_CFG_MAX_OUTS];
 
 };
 
@@ -311,23 +311,6 @@ static void conexant_free(struct hda_codec *codec)
 	kfree(codec->spec);
 }
 
-#ifdef CONFIG_PM
-static int conexant_resume(struct hda_codec *codec)
-{
-	struct conexant_spec *spec = codec->spec;
-	int i;
-
-	codec->patch_ops.init(codec);
-	for (i = 0; i < spec->num_mixers; i++)
-		snd_hda_resume_ctls(codec, spec->mixers[i]);
-	if (spec->multiout.dig_out_nid)
-		snd_hda_resume_spdif_out(codec);
-	if (spec->dig_in_nid)
-		snd_hda_resume_spdif_in(codec);
-	return 0;
-}
-#endif
-
 static int conexant_build_controls(struct hda_codec *codec)
 {
 	struct conexant_spec *spec = codec->spec;
@@ -358,9 +341,6 @@ static struct hda_codec_ops conexant_patch_ops = {
 	.build_pcms = conexant_build_pcms,
 	.init = conexant_init,
 	.free = conexant_free,
-#ifdef CONFIG_PM
-	.resume = conexant_resume,
-#endif
 };
 
 /*
@@ -368,15 +348,7 @@ static struct hda_codec_ops conexant_patch_ops = {
  * the private value = nid | (invert << 8)
  */
 
-static int cxt_eapd_info(struct snd_kcontrol *kcontrol,
-			      struct snd_ctl_elem_info *uinfo)
-{
-	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
-	uinfo->count = 1;
-	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = 1;
-	return 0;
-}
+#define cxt_eapd_info		snd_ctl_boolean_mono_info
 
 static int cxt_eapd_get(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_value *ucontrol)
@@ -404,13 +376,13 @@ static int cxt_eapd_put(struct snd_kcontrol *kcontrol,
 	eapd = ucontrol->value.integer.value[0];
 	if (invert)
 		eapd = !eapd;
-	if (eapd == spec->cur_eapd && !codec->in_resume)
+	if (eapd == spec->cur_eapd)
 		return 0;
 	
 	spec->cur_eapd = eapd;
-	snd_hda_codec_write(codec, nid,
-			    0, AC_VERB_SET_EAPD_BTLENABLE,
-			    eapd ? 0x02 : 0x00);
+	snd_hda_codec_write_cache(codec, nid,
+				  0, AC_VERB_SET_EAPD_BTLENABLE,
+				  eapd ? 0x02 : 0x00);
 	return 1;
 }
 
@@ -500,34 +472,25 @@ static int cxt5045_hp_master_sw_put(struct snd_kcontrol *kcontrol,
 	/* toggle internal speakers mute depending of presence of
 	 * the headphone jack
 	 */
-	bits = (!spec->hp_present && spec->cur_eapd) ? 0 : 0x80;
-	snd_hda_codec_amp_update(codec, 0x10, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x10, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = (!spec->hp_present && spec->cur_eapd) ? 0 : HDA_AMP_MUTE;
+	snd_hda_codec_amp_stereo(codec, 0x10, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 
-	bits = spec->cur_eapd ? 0 : 0x80;
-	snd_hda_codec_amp_update(codec, 0x11, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x11, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = spec->cur_eapd ? 0 : HDA_AMP_MUTE;
+	snd_hda_codec_amp_stereo(codec, 0x11, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 	return 1;
 }
 
 /* bind volumes of both NID 0x10 and 0x11 */
-static int cxt5045_hp_master_vol_put(struct snd_kcontrol *kcontrol,
-				     struct snd_ctl_elem_value *ucontrol)
-{
-	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
-	long *valp = ucontrol->value.integer.value;
-	int change;
-
-	change = snd_hda_codec_amp_update(codec, 0x10, 0, HDA_OUTPUT, 0,
-					  0x7f, valp[0] & 0x7f);
-	change |= snd_hda_codec_amp_update(codec, 0x10, 1, HDA_OUTPUT, 0,
-					   0x7f, valp[1] & 0x7f);
-	snd_hda_codec_amp_update(codec, 0x11, 0, HDA_OUTPUT, 0,
-				 0x7f, valp[0] & 0x7f);
-	snd_hda_codec_amp_update(codec, 0x11, 1, HDA_OUTPUT, 0,
-				 0x7f, valp[1] & 0x7f);
-	return change;
-}
+static struct hda_bind_ctls cxt5045_hp_bind_master_vol = {
+	.ops = &snd_hda_bind_vol,
+	.values = {
+		HDA_COMPOSE_AMP_VAL(0x10, 3, 0, HDA_OUTPUT),
+		HDA_COMPOSE_AMP_VAL(0x11, 3, 0, HDA_OUTPUT),
+		0
+	},
+};
 
 /* toggle input of built-in and mic jack appropriately */
 static void cxt5045_hp_automic(struct hda_codec *codec)
@@ -562,9 +525,9 @@ static void cxt5045_hp_automute(struct hda_codec *codec)
 	spec->hp_present = snd_hda_codec_read(codec, 0x11, 0,
 				     AC_VERB_GET_PIN_SENSE, 0) & 0x80000000;
 
-	bits = (spec->hp_present || !spec->cur_eapd) ? 0x80 : 0; 
-	snd_hda_codec_amp_update(codec, 0x10, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x10, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = (spec->hp_present || !spec->cur_eapd) ? HDA_AMP_MUTE : 0; 
+	snd_hda_codec_amp_stereo(codec, 0x10, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 }
 
 /* unsolicited event for HP jack sensing */
@@ -591,18 +554,17 @@ static struct snd_kcontrol_new cxt5045_mixers[] = {
 		.get = conexant_mux_enum_get,
 		.put = conexant_mux_enum_put
 	},
-	HDA_CODEC_VOLUME("Int Mic Volume", 0x1a, 0x01, HDA_INPUT),
-	HDA_CODEC_MUTE("Int Mic Switch", 0x1a, 0x01, HDA_INPUT),
-	HDA_CODEC_VOLUME("Ext Mic Volume", 0x1a, 0x02, HDA_INPUT),
-	HDA_CODEC_MUTE("Ext Mic Switch", 0x1a, 0x02, HDA_INPUT),
-	{
-		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
-		.name = "Master Playback Volume",
-		.info = snd_hda_mixer_amp_volume_info,
-		.get = snd_hda_mixer_amp_volume_get,
-		.put = cxt5045_hp_master_vol_put,
-		.private_value = HDA_COMPOSE_AMP_VAL(0x10, 3, 0, HDA_OUTPUT),
-	},
+	HDA_CODEC_VOLUME("Int Mic Capture Volume", 0x1a, 0x01, HDA_INPUT),
+	HDA_CODEC_MUTE("Int Mic Capture Switch", 0x1a, 0x01, HDA_INPUT),
+	HDA_CODEC_VOLUME("Ext Mic Capture Volume", 0x1a, 0x02, HDA_INPUT),
+	HDA_CODEC_MUTE("Ext Mic Capture Switch", 0x1a, 0x02, HDA_INPUT),
+	HDA_CODEC_VOLUME("PCM Playback Volume", 0x17, 0x0, HDA_INPUT),
+	HDA_CODEC_MUTE("PCM Playback Switch", 0x17, 0x0, HDA_INPUT),
+	HDA_CODEC_VOLUME("Int Mic Playback Volume", 0x17, 0x1, HDA_INPUT),
+	HDA_CODEC_MUTE("Int Mic Playback Switch", 0x17, 0x1, HDA_INPUT),
+	HDA_CODEC_VOLUME("Ext Mic Playback Volume", 0x17, 0x2, HDA_INPUT),
+	HDA_CODEC_MUTE("Ext Mic Playback Switch", 0x17, 0x2, HDA_INPUT),
+	HDA_BIND_VOL("Master Playback Volume", &cxt5045_hp_bind_master_vol),
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Switch",
@@ -620,16 +582,15 @@ static struct hda_verb cxt5045_init_verbs[] = {
 	{0x12, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_IN },
 	{0x14, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_IN|AC_PINCTL_VREF_80 },
 	/* HP, Amp  */
-	{0x11, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_HP },
-	{0x17, AC_VERB_SET_CONNECT_SEL,0x01},
-	{0x17, AC_VERB_SET_AMP_GAIN_MUTE,
-	 AC_AMP_SET_OUTPUT|AC_AMP_SET_RIGHT|AC_AMP_SET_LEFT|0x01},
-	{0x17, AC_VERB_SET_AMP_GAIN_MUTE,
-	 AC_AMP_SET_OUTPUT|AC_AMP_SET_RIGHT|AC_AMP_SET_LEFT|0x02},
-	{0x17, AC_VERB_SET_AMP_GAIN_MUTE,
-	 AC_AMP_SET_OUTPUT|AC_AMP_SET_RIGHT|AC_AMP_SET_LEFT|0x03},
-	{0x17, AC_VERB_SET_AMP_GAIN_MUTE,
-	 AC_AMP_SET_OUTPUT|AC_AMP_SET_RIGHT|AC_AMP_SET_LEFT|0x04},
+	{0x10, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_OUT},
+	{0x10, AC_VERB_SET_CONNECT_SEL, 0x1},
+	{0x11, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_HP},
+	{0x11, AC_VERB_SET_CONNECT_SEL, 0x1},
+	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_MUTE(0)},
+	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_MUTE(1)},
+	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_MUTE(2)},
+	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_MUTE(3)},
+	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_MUTE(4)},
 	/* Record selector: Int mic */
 	{0x1a, AC_VERB_SET_CONNECT_SEL,0x1},
 	{0x1a, AC_VERB_SET_AMP_GAIN_MUTE,
@@ -915,33 +876,24 @@ static int cxt5047_hp_master_sw_put(struct snd_kcontrol *kcontrol,
 	/* toggle internal speakers mute depending of presence of
 	 * the headphone jack
 	 */
-	bits = (!spec->hp_present && spec->cur_eapd) ? 0 : 0x80;
-	snd_hda_codec_amp_update(codec, 0x1d, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x1d, 1, HDA_OUTPUT, 0, 0x80, bits);
-	bits = spec->cur_eapd ? 0 : 0x80;
-	snd_hda_codec_amp_update(codec, 0x13, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x13, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = (!spec->hp_present && spec->cur_eapd) ? 0 : HDA_AMP_MUTE;
+	snd_hda_codec_amp_stereo(codec, 0x1d, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
+	bits = spec->cur_eapd ? 0 : HDA_AMP_MUTE;
+	snd_hda_codec_amp_stereo(codec, 0x13, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 	return 1;
 }
 
 /* bind volumes of both NID 0x13 (Headphones) and 0x1d (Speakers) */
-static int cxt5047_hp_master_vol_put(struct snd_kcontrol *kcontrol,
-				     struct snd_ctl_elem_value *ucontrol)
-{
-	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
-	long *valp = ucontrol->value.integer.value;
-	int change;
-
-	change = snd_hda_codec_amp_update(codec, 0x1d, 0, HDA_OUTPUT, 0,
-					  0x7f, valp[0] & 0x7f);
-	change |= snd_hda_codec_amp_update(codec, 0x1d, 1, HDA_OUTPUT, 0,
-					   0x7f, valp[1] & 0x7f);
-	snd_hda_codec_amp_update(codec, 0x13, 0, HDA_OUTPUT, 0,
-				 0x7f, valp[0] & 0x7f);
-	snd_hda_codec_amp_update(codec, 0x13, 1, HDA_OUTPUT, 0,
-				 0x7f, valp[1] & 0x7f);
-	return change;
-}
+static struct hda_bind_ctls cxt5047_bind_master_vol = {
+	.ops = &snd_hda_bind_vol,
+	.values = {
+		HDA_COMPOSE_AMP_VAL(0x13, 3, 0, HDA_OUTPUT),
+		HDA_COMPOSE_AMP_VAL(0x1d, 3, 0, HDA_OUTPUT),
+		0
+	},
+};
 
 /* mute internal speaker if HP is plugged */
 static void cxt5047_hp_automute(struct hda_codec *codec)
@@ -952,12 +904,12 @@ static void cxt5047_hp_automute(struct hda_codec *codec)
 	spec->hp_present = snd_hda_codec_read(codec, 0x13, 0,
 				     AC_VERB_GET_PIN_SENSE, 0) & 0x80000000;
 
-	bits = (spec->hp_present || !spec->cur_eapd) ? 0x80 : 0;
-	snd_hda_codec_amp_update(codec, 0x1d, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x1d, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = (spec->hp_present || !spec->cur_eapd) ? HDA_AMP_MUTE : 0;
+	snd_hda_codec_amp_stereo(codec, 0x1d, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 	/* Mute/Unmute PCM 2 for good measure - some systems need this */
-	snd_hda_codec_amp_update(codec, 0x1c, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x1c, 1, HDA_OUTPUT, 0, 0x80, bits);
+	snd_hda_codec_amp_stereo(codec, 0x1c, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 }
 
 /* mute internal speaker if HP is plugged */
@@ -969,12 +921,12 @@ static void cxt5047_hp2_automute(struct hda_codec *codec)
 	spec->hp_present = snd_hda_codec_read(codec, 0x13, 0,
 				     AC_VERB_GET_PIN_SENSE, 0) & 0x80000000;
 
-	bits = spec->hp_present ? 0x80 : 0;
-	snd_hda_codec_amp_update(codec, 0x1d, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x1d, 1, HDA_OUTPUT, 0, 0x80, bits);
+	bits = spec->hp_present ? HDA_AMP_MUTE : 0;
+	snd_hda_codec_amp_stereo(codec, 0x1d, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 	/* Mute/Unmute PCM 2 for good measure - some systems need this */
-	snd_hda_codec_amp_update(codec, 0x1c, 0, HDA_OUTPUT, 0, 0x80, bits);
-	snd_hda_codec_amp_update(codec, 0x1c, 1, HDA_OUTPUT, 0, 0x80, bits);
+	snd_hda_codec_amp_stereo(codec, 0x1c, HDA_OUTPUT, 0,
+				 HDA_AMP_MUTE, bits);
 }
 
 /* toggle input of built-in and mic jack appropriately */
@@ -1063,14 +1015,7 @@ static struct snd_kcontrol_new cxt5047_toshiba_mixers[] = {
 	HDA_CODEC_MUTE("Capture Switch", 0x12, 0x03, HDA_INPUT),
 	HDA_CODEC_VOLUME("PCM Volume", 0x10, 0x00, HDA_OUTPUT),
 	HDA_CODEC_MUTE("PCM Switch", 0x10, 0x00, HDA_OUTPUT),
-	{
-		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
-		.name = "Master Playback Volume",
-		.info = snd_hda_mixer_amp_volume_info,
-		.get = snd_hda_mixer_amp_volume_get,
-		.put = cxt5047_hp_master_vol_put,
-		.private_value = HDA_COMPOSE_AMP_VAL(0x13, 3, 0, HDA_OUTPUT),
-	},
+	HDA_BIND_VOL("Master Playback Volume", &cxt5047_bind_master_vol),
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Switch",

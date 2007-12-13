@@ -1,7 +1,12 @@
 #ifndef _ALPHA_BITOPS_H
 #define _ALPHA_BITOPS_H
 
+#ifndef _LINUX_BITOPS_H
+#error only <linux/bitops.h> can be included directly
+#endif
+
 #include <asm/compiler.h>
+#include <asm/barrier.h>
 
 /*
  * Copyright 1994, Linus Torvalds.
@@ -69,6 +74,13 @@ clear_bit(unsigned long nr, volatile void * addr)
 	:"Ir" (1UL << (nr & 31)), "m" (*m));
 }
 
+static inline void
+clear_bit_unlock(unsigned long nr, volatile void * addr)
+{
+	smp_mb();
+	clear_bit(nr, addr);
+}
+
 /*
  * WARNING: non atomic version.
  */
@@ -78,6 +90,13 @@ __clear_bit(unsigned long nr, volatile void * addr)
 	int *m = ((int *) addr) + (nr >> 5);
 
 	*m &= ~(1 << (nr & 31));
+}
+
+static inline void
+__clear_bit_unlock(unsigned long nr, volatile void * addr)
+{
+	smp_mb();
+	__clear_bit(nr, addr);
 }
 
 static inline void
@@ -111,6 +130,36 @@ __change_bit(unsigned long nr, volatile void * addr)
 
 static inline int
 test_and_set_bit(unsigned long nr, volatile void *addr)
+{
+	unsigned long oldbit;
+	unsigned long temp;
+	int *m = ((int *) addr) + (nr >> 5);
+
+	__asm__ __volatile__(
+#ifdef CONFIG_SMP
+	"	mb\n"
+#endif
+	"1:	ldl_l %0,%4\n"
+	"	and %0,%3,%2\n"
+	"	bne %2,2f\n"
+	"	xor %0,%3,%0\n"
+	"	stl_c %0,%1\n"
+	"	beq %0,3f\n"
+	"2:\n"
+#ifdef CONFIG_SMP
+	"	mb\n"
+#endif
+	".subsection 2\n"
+	"3:	br 1b\n"
+	".previous"
+	:"=&r" (temp), "=m" (*m), "=&r" (oldbit)
+	:"Ir" (1UL << (nr & 31)), "m" (*m) : "memory");
+
+	return oldbit != 0;
+}
+
+static inline int
+test_and_set_bit_lock(unsigned long nr, volatile void *addr)
 {
 	unsigned long oldbit;
 	unsigned long temp;
@@ -158,6 +207,9 @@ test_and_clear_bit(unsigned long nr, volatile void * addr)
 	int *m = ((int *) addr) + (nr >> 5);
 
 	__asm__ __volatile__(
+#ifdef CONFIG_SMP
+	"	mb\n"
+#endif
 	"1:	ldl_l %0,%4\n"
 	"	and %0,%3,%2\n"
 	"	beq %2,2f\n"
@@ -199,6 +251,9 @@ test_and_change_bit(unsigned long nr, volatile void * addr)
 	int *m = ((int *) addr) + (nr >> 5);
 
 	__asm__ __volatile__(
+#ifdef CONFIG_SMP
+	"	mb\n"
+#endif
 	"1:	ldl_l %0,%4\n"
 	"	and %0,%3,%2\n"
 	"	xor %0,%3,%0\n"

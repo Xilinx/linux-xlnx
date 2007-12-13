@@ -47,6 +47,7 @@
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/srp.h>
+#include <scsi/scsi_transport_srp.h>
 
 #include <rdma/ib_cache.h>
 
@@ -85,6 +86,8 @@ static void srp_add_one(struct ib_device *device);
 static void srp_remove_one(struct ib_device *device);
 static void srp_completion(struct ib_cq *cq, void *target_ptr);
 static int srp_cm_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event);
+
+static struct scsi_transport_template *ib_srp_transport_template;
 
 static struct ib_client srp_client = {
 	.name   = "srp",
@@ -285,6 +288,7 @@ static int srp_lookup_path(struct srp_target_port *target)
 						   target->srp_host->dev->dev,
 						   target->srp_host->port,
 						   &target->path,
+						   IB_SA_PATH_REC_SERVICE_ID	|
 						   IB_SA_PATH_REC_DGID		|
 						   IB_SA_PATH_REC_SGID		|
 						   IB_SA_PATH_REC_NUMB_PATH	|
@@ -419,6 +423,7 @@ static void srp_remove_work(struct work_struct *work)
 	list_del(&target->list);
 	spin_unlock(&target->srp_host->target_lock);
 
+	srp_remove_host(target->scsi_host);
 	scsi_remove_host(target->scsi_host);
 	ib_destroy_cm_id(target->cm_id);
 	srp_free_target_ib(target);
@@ -1543,11 +1548,23 @@ static struct scsi_host_template srp_template = {
 
 static int srp_add_target(struct srp_host *host, struct srp_target_port *target)
 {
+	struct srp_rport_identifiers ids;
+	struct srp_rport *rport;
+
 	sprintf(target->target_name, "SRP.T10:%016llX",
 		 (unsigned long long) be64_to_cpu(target->id_ext));
 
 	if (scsi_add_host(target->scsi_host, host->dev->dev->dma_device))
 		return -ENODEV;
+
+	memcpy(ids.port_id, &target->id_ext, 8);
+	memcpy(ids.port_id + 8, &target->ioc_guid, 8);
+	ids.roles = SRP_RPORT_ROLE_TARGET;
+	rport = srp_rport_add(target->scsi_host, &ids);
+	if (IS_ERR(rport)) {
+		scsi_remove_host(target->scsi_host);
+		return PTR_ERR(rport);
+	}
 
 	spin_lock(&host->target_lock);
 	list_add_tail(&target->list, &host->target_list);
@@ -1692,6 +1709,7 @@ static int srp_parse_options(const char *buf, struct srp_target_port *target)
 				goto out;
 			}
 			target->service_id = cpu_to_be64(simple_strtoull(p, NULL, 16));
+			target->path.service_id = target->service_id;
 			kfree(p);
 			break;
 
@@ -1773,6 +1791,7 @@ static ssize_t srp_create_target(struct class_device *class_dev,
 	if (!target_host)
 		return -ENOMEM;
 
+	target_host->transportt = ib_srp_transport_template;
 	target_host->max_lun     = SRP_MAX_LUN;
 	target_host->max_cmd_len = sizeof ((struct srp_cmd *) (void *) 0L)->cdb;
 
@@ -2052,9 +2071,17 @@ static void srp_remove_one(struct ib_device *device)
 	kfree(srp_dev);
 }
 
+static struct srp_function_template ib_srp_transport_functions = {
+};
+
 static int __init srp_init_module(void)
 {
 	int ret;
+
+	ib_srp_transport_template =
+		srp_attach_transport(&ib_srp_transport_functions);
+	if (!ib_srp_transport_template)
+		return -ENOMEM;
 
 	srp_template.sg_tablesize = srp_sg_tablesize;
 	srp_max_iu_len = (sizeof (struct srp_cmd) +
@@ -2064,6 +2091,7 @@ static int __init srp_init_module(void)
 	ret = class_register(&srp_class);
 	if (ret) {
 		printk(KERN_ERR PFX "couldn't register class infiniband_srp\n");
+		srp_release_transport(ib_srp_transport_template);
 		return ret;
 	}
 
@@ -2072,6 +2100,7 @@ static int __init srp_init_module(void)
 	ret = ib_register_client(&srp_client);
 	if (ret) {
 		printk(KERN_ERR PFX "couldn't register IB client\n");
+		srp_release_transport(ib_srp_transport_template);
 		ib_sa_unregister_client(&srp_sa_client);
 		class_unregister(&srp_class);
 		return ret;
@@ -2085,6 +2114,7 @@ static void __exit srp_cleanup_module(void)
 	ib_unregister_client(&srp_client);
 	ib_sa_unregister_client(&srp_sa_client);
 	class_unregister(&srp_class);
+	srp_release_transport(ib_srp_transport_template);
 }
 
 module_init(srp_init_module);

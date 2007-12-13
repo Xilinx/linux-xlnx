@@ -681,7 +681,7 @@ static inline void build_sg_list(struct mscp *mscp, struct scsi_cmnd *SCpnt)
 
 	max = scsi_sg_count(SCpnt);
 	scsi_for_each_sg(SCpnt, sg, max, i) {
-		mscp->sglist[i].address = isa_page_to_bus(sg->page) + sg->offset;
+		mscp->sglist[i].address = isa_page_to_bus(sg_page(sg)) + sg->offset;
 		mscp->sglist[i].num_bytes = sg->length;
 		transfer_length += sg->length;
 	}
@@ -1197,5 +1197,6 @@ static struct scsi_host_template driver_template = {
 	.cmd_per_lun       = ULTRASTOR_MAX_CMDS_PER_LUN,
 	.unchecked_isa_dma = 1,
 	.use_clustering    = ENABLE_CLUSTERING,
+	.use_sg_chaining   = ENABLE_SG_CHAINING,
 };
 #include "scsi_module.c"

@@ -55,7 +55,7 @@
 #include <linux/mm.h>
 #include <linux/ppp_defs.h>
 #include <linux/ppp-comp.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 
 #include "ppp_mppe.h"
 
@@ -68,9 +68,7 @@ MODULE_VERSION("1.0.2");
 static unsigned int
 setup_sg(struct scatterlist *sg, const void *address, unsigned int length)
 {
-	sg[0].page = virt_to_page(address);
-	sg[0].offset = offset_in_page(address);
-	sg[0].length = length;
+	sg_set_buf(sg, address, length);
 	return length;
 }
 
@@ -142,6 +140,8 @@ static void get_new_key_from_sha(struct ppp_mppe_state * state)
 	struct scatterlist sg[4];
 	unsigned int nbytes;
 
+	sg_init_table(sg, 4);
+
 	nbytes = setup_sg(&sg[0], state->master_key, state->keylen);
 	nbytes += setup_sg(&sg[1], sha_pad->sha_pad1,
 			   sizeof(sha_pad->sha_pad1));
@@ -168,6 +168,8 @@ static void mppe_rekey(struct ppp_mppe_state * state, int initial_key)
 	if (!initial_key) {
 		crypto_blkcipher_setkey(state->arc4, state->sha1_digest,
 					state->keylen);
+		sg_init_table(sg_in, 1);
+		sg_init_table(sg_out, 1);
 		setup_sg(sg_in, state->sha1_digest, state->keylen);
 		setup_sg(sg_out, state->session_key, state->keylen);
 		if (crypto_blkcipher_encrypt(&desc, sg_out, sg_in,
@@ -423,6 +425,8 @@ mppe_compress(void *arg, unsigned char *ibuf, unsigned char *obuf,
 	isize -= 2;
 
 	/* Encrypt packet */
+	sg_init_table(sg_in, 1);
+	sg_init_table(sg_out, 1);
 	setup_sg(sg_in, ibuf, isize);
 	setup_sg(sg_out, obuf, osize);
 	if (crypto_blkcipher_encrypt(&desc, sg_out, sg_in, isize) != 0) {
@@ -610,6 +614,8 @@ mppe_decompress(void *arg, unsigned char *ibuf, int isize, unsigned char *obuf,
 	 * Decrypt the first byte in order to check if it is
 	 * a compressed or uncompressed protocol field.
 	 */
+	sg_init_table(sg_in, 1);
+	sg_init_table(sg_out, 1);
 	setup_sg(sg_in, ibuf, 1);
 	setup_sg(sg_out, obuf, 1);
 	if (crypto_blkcipher_decrypt(&desc, sg_out, sg_in, 1) != 0) {

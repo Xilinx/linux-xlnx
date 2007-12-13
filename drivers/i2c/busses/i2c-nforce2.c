@@ -62,6 +62,7 @@ struct nforce2_smbus {
 	int base;
 	int size;
 	int blockops;
+	int can_abort;
 };
 
 
@@ -83,7 +84,14 @@ struct nforce2_smbus {
 #define NVIDIA_SMB_DATA		(smbus->base + 0x04)	/* 32 data registers */
 #define NVIDIA_SMB_BCNT		(smbus->base + 0x24)	/* number of data
 							   bytes */
+#define NVIDIA_SMB_STATUS_ABRT	(smbus->base + 0x3c)	/* register used to
+							   check the status of
+							   the abort command */
+#define NVIDIA_SMB_CTRL		(smbus->base + 0x3e)	/* control register */
 
+#define NVIDIA_SMB_STATUS_ABRT_STS	0x01		/* Bit to notify that
+							   abort succeeded */
+#define NVIDIA_SMB_CTRL_ABORT	0x20
 #define NVIDIA_SMB_STS_DONE	0x80
 #define NVIDIA_SMB_STS_ALRM	0x40
 #define NVIDIA_SMB_STS_RES	0x20
@@ -98,7 +106,53 @@ struct nforce2_smbus {
 #define NVIDIA_SMB_PRTCL_BLOCK_DATA		0x0a
 #define NVIDIA_SMB_PRTCL_PEC			0x80
 
+/* Misc definitions */
+#define MAX_TIMEOUT	100
+
 static struct pci_driver nforce2_driver;
+
+static void nforce2_abort(struct i2c_adapter *adap)
+{
+	struct nforce2_smbus *smbus = adap->algo_data;
+	int timeout = 0;
+	unsigned char temp;
+
+	dev_dbg(&adap->dev, "Aborting current transaction\n");
+
+	outb_p(NVIDIA_SMB_CTRL_ABORT, NVIDIA_SMB_CTRL);
+	do {
+		msleep(1);
+		temp = inb_p(NVIDIA_SMB_STATUS_ABRT);
+	} while (!(temp & NVIDIA_SMB_STATUS_ABRT_STS) &&
+			(timeout++ < MAX_TIMEOUT));
+	if (!(temp & NVIDIA_SMB_STATUS_ABRT_STS))
+		dev_err(&adap->dev, "Can't reset the smbus\n");
+	outb_p(NVIDIA_SMB_STATUS_ABRT_STS, NVIDIA_SMB_STATUS_ABRT);
+}
+
+static int nforce2_check_status(struct i2c_adapter *adap)
+{
+	struct nforce2_smbus *smbus = adap->algo_data;
+	int timeout = 0;
+	unsigned char temp;
+
+	do {
+		msleep(1);
+		temp = inb_p(NVIDIA_SMB_STS);
+	} while ((!temp) && (timeout++ < MAX_TIMEOUT));
+
+	if (timeout >= MAX_TIMEOUT) {
+		dev_dbg(&adap->dev, "SMBus Timeout!\n");
+		if (smbus->can_abort)
+			nforce2_abort(adap);
+		return -1;
+	}
+	if (!(temp & NVIDIA_SMB_STS_DONE) || (temp & NVIDIA_SMB_STS_STATUS)) {
+		dev_dbg(&adap->dev, "Transaction failed (0x%02x)!\n", temp);
+		return -1;
+	}
+	return 0;
+}
 
 /* Return -1 on error */
 static s32 nforce2_access(struct i2c_adapter * adap, u16 addr,
@@ -106,7 +160,7 @@ static s32 nforce2_access(struct i2c_adapter * adap, u16 addr,
 		u8 command, int size, union i2c_smbus_data * data)
 {
 	struct nforce2_smbus *smbus = adap->algo_data;
-	unsigned char protocol, pec, temp;
+	unsigned char protocol, pec;
 	u8 len;
 	int i;
 
@@ -170,21 +224,8 @@ static s32 nforce2_access(struct i2c_adapter * adap, u16 addr,
 	outb_p((addr & 0x7f) << 1, NVIDIA_SMB_ADDR);
 	outb_p(protocol, NVIDIA_SMB_PRTCL);
 
-	temp = inb_p(NVIDIA_SMB_STS);
-
-	if (~temp & NVIDIA_SMB_STS_DONE) {
-		udelay(500);
-		temp = inb_p(NVIDIA_SMB_STS);
-	}
-	if (~temp & NVIDIA_SMB_STS_DONE) {
-		msleep(10);
-		temp = inb_p(NVIDIA_SMB_STS);
-	}
-
-	if ((~temp & NVIDIA_SMB_STS_DONE) || (temp & NVIDIA_SMB_STS_STATUS)) {
-		dev_dbg(&adap->dev, "SMBus Timeout! (0x%02x)\n", temp);
+	if (nforce2_check_status(adap))
 		return -1;
-	}
 
 	if (read_write == I2C_SMBUS_WRITE)
 		return 0;
@@ -202,7 +243,12 @@ static s32 nforce2_access(struct i2c_adapter * adap, u16 addr,
 
 		case I2C_SMBUS_BLOCK_DATA:
 			len = inb_p(NVIDIA_SMB_BCNT);
-			len = min_t(u8, len, I2C_SMBUS_BLOCK_MAX);
+			if ((len <= 0) || (len > I2C_SMBUS_BLOCK_MAX)) {
+				dev_err(&adap->dev, "Transaction failed "
+					"(received block size: 0x%02x)\n",
+					len);
+				return -1;
+			}
 			for (i = 0; i < len; i++)
 				data->block[i+1] = inb_p(NVIDIA_SMB_DATA + i);
 			data->block[0] = len;
@@ -218,6 +264,7 @@ static u32 nforce2_func(struct i2c_adapter *adapter)
 	/* other functionality might be possible, but is not tested */
 	return I2C_FUNC_SMBUS_QUICK | I2C_FUNC_SMBUS_BYTE |
 	       I2C_FUNC_SMBUS_BYTE_DATA | I2C_FUNC_SMBUS_WORD_DATA |
+	       I2C_FUNC_SMBUS_PEC |
 	       (((struct nforce2_smbus*)adapter->algo_data)->blockops ?
 		I2C_FUNC_SMBUS_BLOCK_DATA : 0);
 }
@@ -308,6 +355,8 @@ static int __devinit nforce2_probe(struct pci_dev *dev, const struct pci_device_
 	case PCI_DEVICE_ID_NVIDIA_NFORCE_MCP55_SMBUS:
 		smbuses[0].blockops = 1;
 		smbuses[1].blockops = 1;
+		smbuses[0].can_abort = 1;
+		smbuses[1].can_abort = 1;
 	}
 
 	/* SMBus adapter 1 */

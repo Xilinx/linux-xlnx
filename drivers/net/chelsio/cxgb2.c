@@ -255,8 +255,11 @@ static int cxgb_open(struct net_device *dev)
 	struct adapter *adapter = dev->priv;
 	int other_ports = adapter->open_device_map & PORT_MASK;
 
-	if (!adapter->open_device_map && (err = cxgb_up(adapter)) < 0)
+	napi_enable(&adapter->napi);
+	if (!adapter->open_device_map && (err = cxgb_up(adapter)) < 0) {
+		napi_disable(&adapter->napi);
 		return err;
+	}
 
 	__set_bit(dev->if_port, &adapter->open_device_map);
 	link_start(&adapter->port[dev->if_port]);
@@ -274,6 +277,7 @@ static int cxgb_close(struct net_device *dev)
 	struct cmac *mac = p->mac;
 
 	netif_stop_queue(dev);
+	napi_disable(&adapter->napi);
 	mac->ops->disable(mac, MAC_DIRECTION_TX | MAC_DIRECTION_RX);
 	netif_carrier_off(dev);
 
@@ -370,7 +374,9 @@ static char stats_strings[][ETH_GSTRING_LEN] = {
 	"TxInternalMACXmitError",
 	"TxFramesWithExcessiveDeferral",
 	"TxFCSErrors",
-
+	"TxJumboFramesOk",
+	"TxJumboOctetsOk",
+	
 	"RxOctetsOK",
 	"RxOctetsBad",
 	"RxUnicastFramesOK",
@@ -388,16 +394,17 @@ static char stats_strings[][ETH_GSTRING_LEN] = {
 	"RxInRangeLengthErrors",
 	"RxOutOfRangeLengthField",
 	"RxFrameTooLongErrors",
+	"RxJumboFramesOk",
+	"RxJumboOctetsOk",
 
 	/* Port stats */
-	"RxPackets",
 	"RxCsumGood",
-	"TxPackets",
 	"TxCsumOffload",
 	"TxTso",
 	"RxVlan",
 	"TxVlan",
-
+	"TxNeedHeadroom", 
+	
 	/* Interrupt stats */
 	"rx drops",
 	"pure_rsps",
@@ -435,9 +442,14 @@ static void get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 	strcpy(info->bus_info, pci_name(adapter->pdev));
 }
 
-static int get_stats_count(struct net_device *dev)
+static int get_sset_count(struct net_device *dev, int sset)
 {
-	return ARRAY_SIZE(stats_strings);
+	switch (sset) {
+	case ETH_SS_STATS:
+		return ARRAY_SIZE(stats_strings);
+	default:
+		return -EOPNOTSUPP;
+	}
 }
 
 static void get_strings(struct net_device *dev, u32 stringset, u8 *data)
@@ -454,23 +466,56 @@ static void get_stats(struct net_device *dev, struct ethtool_stats *stats,
 	const struct cmac_statistics *s;
 	const struct sge_intr_counts *t;
 	struct sge_port_stats ss;
-	unsigned int len;
 
 	s = mac->ops->statistics_update(mac, MAC_STATS_UPDATE_FULL);
-
-	len = sizeof(u64)*(&s->TxFCSErrors + 1 - &s->TxOctetsOK);
-	memcpy(data, &s->TxOctetsOK, len);
-	data += len;
-
-	len = sizeof(u64)*(&s->RxFrameTooLongErrors + 1 - &s->RxOctetsOK);
-	memcpy(data, &s->RxOctetsOK, len);
-	data += len;
-
-	t1_sge_get_port_stats(adapter->sge, dev->if_port, &ss);
-	memcpy(data, &ss, sizeof(ss));
-	data += sizeof(ss);
-
 	t = t1_sge_get_intr_counts(adapter->sge);
+	t1_sge_get_port_stats(adapter->sge, dev->if_port, &ss);
+
+	*data++ = s->TxOctetsOK;
+	*data++ = s->TxOctetsBad;
+	*data++ = s->TxUnicastFramesOK;
+	*data++ = s->TxMulticastFramesOK;
+	*data++ = s->TxBroadcastFramesOK;
+	*data++ = s->TxPauseFrames;
+	*data++ = s->TxFramesWithDeferredXmissions;
+	*data++ = s->TxLateCollisions;
+	*data++ = s->TxTotalCollisions;
+	*data++ = s->TxFramesAbortedDueToXSCollisions;
+	*data++ = s->TxUnderrun;
+	*data++ = s->TxLengthErrors;
+	*data++ = s->TxInternalMACXmitError;
+	*data++ = s->TxFramesWithExcessiveDeferral;
+	*data++ = s->TxFCSErrors;
+	*data++ = s->TxJumboFramesOK;
+	*data++ = s->TxJumboOctetsOK;
+
+	*data++ = s->RxOctetsOK;
+	*data++ = s->RxOctetsBad;
+	*data++ = s->RxUnicastFramesOK;
+	*data++ = s->RxMulticastFramesOK;
+	*data++ = s->RxBroadcastFramesOK;
+	*data++ = s->RxPauseFrames;
+	*data++ = s->RxFCSErrors;
+	*data++ = s->RxAlignErrors;
+	*data++ = s->RxSymbolErrors;
+	*data++ = s->RxDataErrors;
+	*data++ = s->RxSequenceErrors;
+	*data++ = s->RxRuntErrors;
+	*data++ = s->RxJabberErrors;
+	*data++ = s->RxInternalMACRcvError;
+	*data++ = s->RxInRangeLengthErrors;
+	*data++ = s->RxOutOfRangeLengthField;
+	*data++ = s->RxFrameTooLongErrors;
+	*data++ = s->RxJumboFramesOK;
+	*data++ = s->RxJumboOctetsOK;
+
+	*data++ = ss.rx_cso_good;
+	*data++ = ss.tx_cso;
+	*data++ = ss.tx_tso;
+	*data++ = ss.vlan_xtract;
+	*data++ = ss.vlan_insert;
+	*data++ = ss.tx_need_hdrroom;
+	
 	*data++ = t->rx_drops;
 	*data++ = t->pure_rsps;
 	*data++ = t->unhandled_irqs;
@@ -790,17 +835,14 @@ static const struct ethtool_ops t1_ethtool_ops = {
 	.set_pauseparam    = set_pauseparam,
 	.get_rx_csum       = get_rx_csum,
 	.set_rx_csum       = set_rx_csum,
-	.get_tx_csum       = ethtool_op_get_tx_csum,
 	.set_tx_csum       = ethtool_op_set_tx_csum,
-	.get_sg            = ethtool_op_get_sg,
 	.set_sg            = ethtool_op_set_sg,
 	.get_link          = ethtool_op_get_link,
 	.get_strings       = get_strings,
-	.get_stats_count   = get_stats_count,
+	.get_sset_count	   = get_sset_count,
 	.get_ethtool_stats = get_stats,
 	.get_regs_len      = get_regs_len,
 	.get_regs          = get_regs,
-	.get_tso           = ethtool_op_get_tso,
 	.set_tso           = set_tso,
 };
 
@@ -1032,7 +1074,6 @@ static int __devinit init_one(struct pci_dev *pdev,
 			goto out_free_dev;
 		}
 
-		SET_MODULE_OWNER(netdev);
 		SET_NETDEV_DEV(netdev, &pdev->dev);
 
 		if (!adapter) {
@@ -1113,8 +1154,7 @@ static int __devinit init_one(struct pci_dev *pdev,
 		netdev->poll_controller = t1_netpoll;
 #endif
 #ifdef CONFIG_CHELSIO_T1_NAPI
-		netdev->weight = 64;
-		netdev->poll = t1_poll;
+		netif_napi_add(netdev, &adapter->napi, t1_poll, 64);
 #endif
 
 		SET_ETHTOOL_OPS(netdev, &t1_ethtool_ops);

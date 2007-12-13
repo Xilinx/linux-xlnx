@@ -30,7 +30,6 @@
 #include <linux/interrupt.h>
 #include <linux/sysctl.h>
 #include <linux/module.h>
-
 #include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
@@ -241,9 +240,6 @@ void do_reserved_inst(unsigned long error_code, struct pt_regs *regs)
 DO_ERROR(12, SIGILL,  "reserved instruction", reserved_inst, current)
 
 #endif /* CONFIG_SH64_ID2815_WORKAROUND */
-
-
-#include <asm/system.h>
 
 /* Called with interrupts disabled */
 asmlinkage void do_exception_error(unsigned long ex, struct pt_regs *regs)
@@ -764,7 +760,7 @@ static int misaligned_fixup(struct pt_regs *regs)
 		--user_mode_unaligned_fixup_count;
 		/* Only do 'count' worth of these reports, to remove a potential DoS against syslog */
 		printk("Fixing up unaligned userspace access in \"%s\" pid=%d pc=0x%08x ins=0x%08lx\n",
-		       current->comm, current->pid, (__u32)regs->pc, opcode);
+		       current->comm, task_pid_nr(current), (__u32)regs->pc, opcode);
 	} else
 #endif
 	if (!user_mode(regs) && (kernel_mode_unaligned_fixup_count > 0)) {
@@ -774,7 +770,7 @@ static int misaligned_fixup(struct pt_regs *regs)
 			       (__u32)regs->pc, opcode);
 		} else {
 			printk("Fixing up unaligned kernelspace access in \"%s\" pid=%d pc=0x%08x ins=0x%08lx\n",
-			       current->comm, current->pid, (__u32)regs->pc, opcode);
+			       current->comm, task_pid_nr(current), (__u32)regs->pc, opcode);
 		}
 	}
 
@@ -984,4 +980,3 @@ asmlinkage void do_debug_interrupt(unsigned long code, struct pt_regs *regs)
 	/* Clear all DEBUGINT causes */
 	poke_real_address_q(DM_EXP_CAUSE_PHY, 0x0);
 }
-

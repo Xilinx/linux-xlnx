@@ -25,6 +25,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/scatterlist.h>
 
 #include <asm/cacheflush.h>
 #include <asm/dma.h>    /* for DMA_CHUNK_SIZE */
@@ -569,11 +570,10 @@ static void *fail_alloc_consistent(struct device *dev, size_t size,
 static void *pa11_dma_alloc_noncoherent(struct device *dev, size_t size,
 					  dma_addr_t *dma_handle, gfp_t flag)
 {
-	void *addr = NULL;
+	void *addr;
 
-	/* rely on kmalloc to be cacheline aligned */
-	addr = kmalloc(size, flag);
-	if(addr)
+	addr = (void *)__get_free_pages(flag, get_order(size));
+	if (addr)
 		*dma_handle = (dma_addr_t)virt_to_phys(addr);
 
 	return addr;
@@ -582,7 +582,7 @@ static void *pa11_dma_alloc_noncoherent(struct device *dev, size_t size,
 static void pa11_dma_free_noncoherent(struct device *dev, size_t size,
 					void *vaddr, dma_addr_t iova)
 {
-	kfree(vaddr);
+	free_pages((unsigned long)vaddr, get_order(size));
 	return;
 }
 

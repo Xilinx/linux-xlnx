@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/pfkeyv2.h>
 #include <linux/crypto.h>
+#include <linux/scatterlist.h>
 #include <net/xfrm.h>
 #if defined(CONFIG_INET_AH) || defined(CONFIG_INET_AH_MODULE) || defined(CONFIG_INET6_AH) || defined(CONFIG_INET6_AH_MODULE)
 #include <net/ah.h>
@@ -20,7 +21,6 @@
 #if defined(CONFIG_INET_ESP) || defined(CONFIG_INET_ESP_MODULE) || defined(CONFIG_INET6_ESP) || defined(CONFIG_INET6_ESP_MODULE)
 #include <net/esp.h>
 #endif
-#include <asm/scatterlist.h>
 
 /*
  * Algorithms supported by IPsec.  These entries contain properties which
@@ -552,9 +552,7 @@ int skb_icv_walk(const struct sk_buff *skb, struct hash_desc *desc,
 		if (copy > len)
 			copy = len;
 
-		sg.page = virt_to_page(skb->data + offset);
-		sg.offset = (unsigned long)(skb->data + offset) % PAGE_SIZE;
-		sg.length = copy;
+		sg_init_one(&sg, skb->data + offset, copy);
 
 		err = icv_update(desc, &sg, copy);
 		if (unlikely(err))
@@ -577,9 +575,9 @@ int skb_icv_walk(const struct sk_buff *skb, struct hash_desc *desc,
 			if (copy > len)
 				copy = len;
 
-			sg.page = frag->page;
-			sg.offset = frag->page_offset + offset-start;
-			sg.length = copy;
+			sg_init_table(&sg, 1);
+			sg_set_page(&sg, frag->page, copy,
+				    frag->page_offset + offset-start);
 
 			err = icv_update(desc, &sg, copy);
 			if (unlikely(err))

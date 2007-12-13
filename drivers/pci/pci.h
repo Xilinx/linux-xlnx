@@ -1,7 +1,6 @@
 /* Functions internal to the PCI core code */
 
-extern int pci_uevent(struct device *dev, char **envp, int num_envp,
-		      char *buffer, int buffer_size);
+extern int pci_uevent(struct device *dev, struct kobj_uevent_env *env);
 extern int pci_create_sysfs_dev_files(struct pci_dev *pdev);
 extern void pci_remove_sysfs_dev_files(struct pci_dev *pdev);
 extern void pci_cleanup_rom(struct pci_dev *dev);
@@ -52,6 +51,12 @@ void pci_restore_msi_state(struct pci_dev *dev);
 static inline void pci_restore_msi_state(struct pci_dev *dev) {}
 #endif
 
+#ifdef CONFIG_PCIEAER
+void pci_no_aer(void);
+#else
+static inline void pci_no_aer(void) { }
+#endif
+
 static inline int pci_no_d1d2(struct pci_dev *dev)
 {
 	unsigned int parent_dstates = 0;
@@ -85,3 +90,4 @@ pci_match_one_device(const struct pci_device_id *id, const struct pci_dev *dev)
 	return NULL;
 }
 
+struct pci_dev *pci_find_upstream_pcie_bridge(struct pci_dev *pdev);

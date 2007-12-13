@@ -334,18 +334,8 @@ static void close_connection(struct connection *con, bool and_other)
 		con->rx_page = NULL;
 	}
 
-	/* If we are an 'othercon' then NULL the pointer to us
-	   from the parent and tidy ourself up */
-	if (test_bit(CF_IS_OTHERCON, &con->flags)) {
-		struct connection *parent = __nodeid2con(con->nodeid, 0);
-		parent->othercon = NULL;
-		kmem_cache_free(con_cache, con);
-	}
-	else {
-		/* Parent connections get reused */
-		con->retries = 0;
-		mutex_unlock(&con->sock_mutex);
-	}
+	con->retries = 0;
+	mutex_unlock(&con->sock_mutex);
 }
 
 /* We only send shutdown messages to nodes that are not part of the cluster */
@@ -731,6 +721,8 @@ static int tcp_accept_from_sock(struct connection *con)
 			INIT_WORK(&othercon->swork, process_send_sockets);
 			INIT_WORK(&othercon->rwork, process_recv_sockets);
 			set_bit(CF_IS_OTHERCON, &othercon->flags);
+		}
+		if (!othercon->sock) {
 			newcon->othercon = othercon;
 			othercon->sock = newsock;
 			newsock->sk->sk_user_data = othercon;
@@ -1070,7 +1062,7 @@ static int sctp_listen_for_all(void)
 	subscribe.sctp_shutdown_event = 1;
 	subscribe.sctp_partial_delivery_event = 1;
 
-	result = kernel_setsockopt(sock, SOL_SOCKET, SO_RCVBUF,
+	result = kernel_setsockopt(sock, SOL_SOCKET, SO_RCVBUFFORCE,
 				 (char *)&bufsize, sizeof(bufsize));
 	if (result)
 		log_print("Error increasing buffer space on socket %d", result);
@@ -1272,14 +1264,15 @@ static void send_to_sock(struct connection *con)
 		if (len) {
 			ret = sendpage(con->sock, e->page, offset, len,
 				       msg_flags);
-			if (ret == -EAGAIN || ret == 0)
+			if (ret == -EAGAIN || ret == 0) {
+				cond_resched();
 				goto out;
+			}
 			if (ret <= 0)
 				goto send_error;
-		} else {
+		}
 			/* Don't starve people filling buffers */
 			cond_resched();
-		}
 
 		spin_lock(&con->writequeue_lock);
 		e->offset += ret;
@@ -1460,10 +1453,6 @@ int dlm_lowcomms_start(void)
 				      NULL);
 	if (!con_cache)
 		goto out;
-
-	/* Set some sysctl minima */
-	if (sysctl_rmem_max < NEEDED_RMEM)
-		sysctl_rmem_max = NEEDED_RMEM;
 
 	/* Start listening */
 	if (dlm_config.ci_protocol == 0)
