@@ -47,7 +47,9 @@
     test_bit(_ALLOC_ ## optname , &SB_ALLOC_OPTS(s))
 
 static inline void get_bit_address(struct super_block *s,
-				   b_blocknr_t block, int *bmap_nr, int *offset)
+				   b_blocknr_t block,
+				   unsigned int *bmap_nr,
+				   unsigned int *offset)
 {
 	/* It is in the bitmap block number equal to the block
 	 * number divided by the number of bits in a block. */
@@ -56,10 +58,10 @@ static inline void get_bit_address(struct super_block *s,
 	*offset = block & ((s->s_blocksize << 3) - 1);
 }
 
-#ifdef CONFIG_REISERFS_CHECK
 int is_reusable(struct super_block *s, b_blocknr_t block, int bit_value)
 {
-	int bmap, offset;
+	unsigned int bmap, offset;
+	unsigned int bmap_count = reiserfs_bmap_count(s);
 
 	if (block == 0 || block >= SB_BLOCK_COUNT(s)) {
 		reiserfs_warning(s,
@@ -75,25 +77,26 @@ int is_reusable(struct super_block *s, b_blocknr_t block, int bit_value)
 	if (unlikely(test_bit(REISERFS_OLD_FORMAT,
 			      &(REISERFS_SB(s)->s_properties)))) {
 		b_blocknr_t bmap1 = REISERFS_SB(s)->s_sbh->b_blocknr + 1;
-		if (block >= bmap1 && block <= bmap1 + SB_BMAP_NR(s)) {
+		if (block >= bmap1 &&
+		    block <= bmap1 + bmap_count) {
 			reiserfs_warning(s, "vs: 4019: is_reusable: "
 					 "bitmap block %lu(%u) can't be freed or reused",
-					 block, SB_BMAP_NR(s));
+					 block, bmap_count);
 			return 0;
 		}
 	} else {
 		if (offset == 0) {
 			reiserfs_warning(s, "vs: 4020: is_reusable: "
 					 "bitmap block %lu(%u) can't be freed or reused",
-					 block, SB_BMAP_NR(s));
+					 block, bmap_count);
 			return 0;
 		}
 	}
 
-	if (bmap >= SB_BMAP_NR(s)) {
+	if (bmap >= bmap_count) {
 		reiserfs_warning(s,
 				 "vs-4030: is_reusable: there is no so many bitmap blocks: "
-				 "block=%lu, bitmap_nr=%d", block, bmap);
+				 "block=%lu, bitmap_nr=%u", block, bmap);
 		return 0;
 	}
 
@@ -106,12 +109,11 @@ int is_reusable(struct super_block *s, b_blocknr_t block, int bit_value)
 
 	return 1;
 }
-#endif				/* CONFIG_REISERFS_CHECK */
 
 /* searches in journal structures for a given block number (bmap, off). If block
    is found in reiserfs journal it suggests next free block candidate to test. */
-static inline int is_block_in_journal(struct super_block *s, int bmap, int
-				      off, int *next)
+static inline int is_block_in_journal(struct super_block *s, unsigned int bmap,
+				      int off, int *next)
 {
 	b_blocknr_t tmp;
 
@@ -132,8 +134,8 @@ static inline int is_block_in_journal(struct super_block *s, int bmap, int
 /* it searches for a window of zero bits with given minimum and maximum lengths in one bitmap
  * block; */
 static int scan_bitmap_block(struct reiserfs_transaction_handle *th,
-			     int bmap_n, int *beg, int boundary, int min,
-			     int max, int unfm)
+			     unsigned int bmap_n, int *beg, int boundary,
+			     int min, int max, int unfm)
 {
 	struct super_block *s = th->t_super;
 	struct reiserfs_bitmap_info *bi = &SB_AP_BITMAP(s)[bmap_n];
@@ -143,8 +145,8 @@ static int scan_bitmap_block(struct reiserfs_transaction_handle *th,
 
 	BUG_ON(!th->t_trans_id);
 
-	RFALSE(bmap_n >= SB_BMAP_NR(s), "Bitmap %d is out of range (0..%d)",
-	       bmap_n, SB_BMAP_NR(s) - 1);
+	RFALSE(bmap_n >= reiserfs_bmap_count(s), "Bitmap %u is out of "
+	       "range (0..%u)", bmap_n, reiserfs_bmap_count(s) - 1);
 	PROC_INFO_INC(s, scan_bitmap.bmap);
 /* this is unclear and lacks comments, explain how journal bitmaps
    work here for the reader.  Convey a sense of the design here. What
@@ -249,12 +251,12 @@ static int bmap_hash_id(struct super_block *s, u32 id)
 	} else {
 		hash_in = (char *)(&id);
 		hash = keyed_hash(hash_in, 4);
-		bm = hash % SB_BMAP_NR(s);
+		bm = hash % reiserfs_bmap_count(s);
 		if (!bm)
 			bm = 1;
 	}
 	/* this can only be true when SB_BMAP_NR = 1 */
-	if (bm >= SB_BMAP_NR(s))
+	if (bm >= reiserfs_bmap_count(s))
 		bm = 0;
 	return bm;
 }
@@ -273,7 +275,7 @@ static inline int block_group_used(struct super_block *s, u32 id)
 	 * to make a better decision. This favors long-term performace gain
 	 * with a better on-disk layout vs. a short term gain of skipping the
 	 * read and potentially having a bad placement. */
-	if (info->first_zero_hint == 0) {
+	if (info->free_count == UINT_MAX) {
 		struct buffer_head *bh = reiserfs_read_bitmap_block(s, bm);
 		brelse(bh);
 	}
@@ -309,16 +311,16 @@ __le32 reiserfs_choose_packing(struct inode * dir)
  * bitmap and place new blocks there. Returns number of allocated blocks. */
 static int scan_bitmap(struct reiserfs_transaction_handle *th,
 		       b_blocknr_t * start, b_blocknr_t finish,
-		       int min, int max, int unfm, unsigned long file_block)
+		       int min, int max, int unfm, sector_t file_block)
 {
 	int nr_allocated = 0;
 	struct super_block *s = th->t_super;
 	/* find every bm and bmap and bmap_nr in this file, and change them all to bitmap_blocknr
 	 * - Hans, it is not a block number - Zam. */
 
-	int bm, off;
-	int end_bm, end_off;
-	int off_max = s->s_blocksize << 3;
+	unsigned int bm, off;
+	unsigned int end_bm, end_off;
+	unsigned int off_max = s->s_blocksize << 3;
 
 	BUG_ON(!th->t_trans_id);
 
@@ -328,10 +330,10 @@ static int scan_bitmap(struct reiserfs_transaction_handle *th,
 
 	get_bit_address(s, *start, &bm, &off);
 	get_bit_address(s, finish, &end_bm, &end_off);
-	if (bm > SB_BMAP_NR(s))
+	if (bm > reiserfs_bmap_count(s))
 		return 0;
-	if (end_bm > SB_BMAP_NR(s))
-		end_bm = SB_BMAP_NR(s);
+	if (end_bm > reiserfs_bmap_count(s))
+		end_bm = reiserfs_bmap_count(s);
 
 	/* When the bitmap is more than 10% free, anyone can allocate.
 	 * When it's less than 10% free, only files that already use the
@@ -385,7 +387,7 @@ static void _reiserfs_free_block(struct reiserfs_transaction_handle *th,
 	struct reiserfs_super_block *rs;
 	struct buffer_head *sbh, *bmbh;
 	struct reiserfs_bitmap_info *apbi;
-	int nr, offset;
+	unsigned int nr, offset;
 
 	BUG_ON(!th->t_trans_id);
 
@@ -397,10 +399,12 @@ static void _reiserfs_free_block(struct reiserfs_transaction_handle *th,
 
 	get_bit_address(s, block, &nr, &offset);
 
-	if (nr >= sb_bmap_nr(rs)) {
+	if (nr >= reiserfs_bmap_count(s)) {
 		reiserfs_warning(s, "vs-4075: reiserfs_free_block: "
-				 "block %lu is out of range on %s",
-				 block, reiserfs_bdevname(s));
+				 "block %lu is out of range on %s "
+				 "(nr=%u,max=%u)", block,
+				 reiserfs_bdevname(s), nr,
+				 reiserfs_bmap_count(s));
 		return;
 	}
 
@@ -434,12 +438,19 @@ void reiserfs_free_block(struct reiserfs_transaction_handle *th,
 			 int for_unformatted)
 {
 	struct super_block *s = th->t_super;
-
 	BUG_ON(!th->t_trans_id);
 
 	RFALSE(!s, "vs-4061: trying to free block on nonexistent device");
-	RFALSE(is_reusable(s, block, 1) == 0,
-	       "vs-4071: can not free such block");
+	if (!is_reusable(s, block, 1))
+		return;
+
+	if (block > sb_block_count(REISERFS_SB(s)->s_rs)) {
+		reiserfs_panic(th->t_super, "bitmap-4072",
+			       "Trying to free block outside file system "
+			       "boundaries (%lu > %lu)",
+			       block, sb_block_count(REISERFS_SB(s)->s_rs));
+		return;
+	}
 	/* mark it before we clear it, just in case */
 	journal_mark_freed(th, s, block);
 	_reiserfs_free_block(th, inode, block, for_unformatted);
@@ -449,11 +460,11 @@ void reiserfs_free_block(struct reiserfs_transaction_handle *th,
 static void reiserfs_free_prealloc_block(struct reiserfs_transaction_handle *th,
 					 struct inode *inode, b_blocknr_t block)
 {
+	BUG_ON(!th->t_trans_id);
 	RFALSE(!th->t_super,
 	       "vs-4060: trying to free block on nonexistent device");
-	RFALSE(is_reusable(th->t_super, block, 1) == 0,
-	       "vs-4070: can not free such block");
-	BUG_ON(!th->t_trans_id);
+	if (!is_reusable(th->t_super, block, 1))
+		return;
 	_reiserfs_free_block(th, inode, block, 1);
 }
 
@@ -1201,90 +1212,28 @@ int reiserfs_allocate_blocknrs(reiserfs_blocknr_hint_t * hint, b_blocknr_t * new
 	return ret;
 }
 
-/* These 2 functions are here to provide blocks reservation to the rest of kernel */
-/* Reserve @blocks amount of blocks in fs pointed by @sb. Caller must make sure
-   there are actually this much blocks on the FS available */
-void reiserfs_claim_blocks_to_be_allocated(struct super_block *sb,	/* super block of
-									   filesystem where
-									   blocks should be
-									   reserved */
-					   int blocks	/* How much to reserve */
-    )
-{
-
-	/* Fast case, if reservation is zero - exit immediately. */
-	if (!blocks)
-		return;
-
-	spin_lock(&REISERFS_SB(sb)->bitmap_lock);
-	REISERFS_SB(sb)->reserved_blocks += blocks;
-	spin_unlock(&REISERFS_SB(sb)->bitmap_lock);
-}
-
-/* Unreserve @blocks amount of blocks in fs pointed by @sb */
-void reiserfs_release_claimed_blocks(struct super_block *sb,	/* super block of
-								   filesystem where
-								   blocks should be
-								   reserved */
-				     int blocks	/* How much to unreserve */
-    )
-{
-
-	/* Fast case, if unreservation is zero - exit immediately. */
-	if (!blocks)
-		return;
-
-	spin_lock(&REISERFS_SB(sb)->bitmap_lock);
-	REISERFS_SB(sb)->reserved_blocks -= blocks;
-	spin_unlock(&REISERFS_SB(sb)->bitmap_lock);
-	RFALSE(REISERFS_SB(sb)->reserved_blocks < 0,
-	       "amount of blocks reserved became zero?");
-}
-
-/* This function estimates how much pages we will be able to write to FS
-   used for reiserfs_file_write() purposes for now. */
-int reiserfs_can_fit_pages(struct super_block *sb	/* superblock of filesystem
-							   to estimate space */ )
-{
-	int space;
-
-	spin_lock(&REISERFS_SB(sb)->bitmap_lock);
-	space =
-	    (SB_FREE_BLOCKS(sb) -
-	     REISERFS_SB(sb)->reserved_blocks) >> (PAGE_CACHE_SHIFT -
-						   sb->s_blocksize_bits);
-	spin_unlock(&REISERFS_SB(sb)->bitmap_lock);
-
-	return space > 0 ? space : 0;
-}
-
 void reiserfs_cache_bitmap_metadata(struct super_block *sb,
                                     struct buffer_head *bh,
                                     struct reiserfs_bitmap_info *info)
 {
 	unsigned long *cur = (unsigned long *)(bh->b_data + bh->b_size);
 
-	info->first_zero_hint = 1 << (sb->s_blocksize_bits + 3);
+	/* The first bit must ALWAYS be 1 */
+	BUG_ON(!reiserfs_test_le_bit(0, (unsigned long *)bh->b_data));
+
+	info->free_count = 0;
 
 	while (--cur >= (unsigned long *)bh->b_data) {
-		int base = ((char *)cur - bh->b_data) << 3;
+		int i;
 
 		/* 0 and ~0 are special, we can optimize for them */
-		if (*cur == 0) {
-			info->first_zero_hint = base;
+		if (*cur == 0)
 			info->free_count += BITS_PER_LONG;
-		} else if (*cur != ~0L) {       /* A mix, investigate */
-			int b;
-			for (b = BITS_PER_LONG - 1; b >= 0; b--) {
-				if (!reiserfs_test_le_bit(b, cur)) {
-					info->first_zero_hint = base + b;
+		else if (*cur != ~0L)	/* A mix, investigate */
+			for (i = BITS_PER_LONG - 1; i >= 0; i--)
+				if (!reiserfs_test_le_bit(i, cur))
 					info->free_count++;
-				}
-			}
-		}
 	}
-	/* The first bit must ALWAYS be 1 */
-	BUG_ON(info->first_zero_hint == 0);
 }
 
 struct buffer_head *reiserfs_read_bitmap_block(struct super_block *sb,
@@ -1314,7 +1263,7 @@ struct buffer_head *reiserfs_read_bitmap_block(struct super_block *sb,
 		BUG_ON(!buffer_uptodate(bh));
 		BUG_ON(atomic_read(&bh->b_count) == 0);
 
-		if (info->first_zero_hint == 0)
+		if (info->free_count == UINT_MAX)
 			reiserfs_cache_bitmap_metadata(sb, bh, info);
 	}
 
@@ -1324,12 +1273,13 @@ struct buffer_head *reiserfs_read_bitmap_block(struct super_block *sb,
 int reiserfs_init_bitmap_cache(struct super_block *sb)
 {
 	struct reiserfs_bitmap_info *bitmap;
+	unsigned int bmap_nr = reiserfs_bmap_count(sb);
 
-	bitmap = vmalloc(sizeof (*bitmap) * SB_BMAP_NR(sb));
+	bitmap = vmalloc(sizeof(*bitmap) * bmap_nr);
 	if (bitmap == NULL)
 		return -ENOMEM;
 
-	memset(bitmap, 0, sizeof (*bitmap) * SB_BMAP_NR(sb));
+	memset(bitmap, 0xff, sizeof(*bitmap) * bmap_nr);
 
 	SB_AP_BITMAP(sb) = bitmap;
 

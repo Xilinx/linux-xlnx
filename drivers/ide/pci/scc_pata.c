@@ -190,15 +190,15 @@ scc_ide_outsl(unsigned long port, void *addr, u32 count)
 }
 
 /**
- *	scc_tune_pio	-	tune a drive PIO mode
- *	@drive: drive to tune
- *	@mode_wanted: the target operating mode
+ *	scc_set_pio_mode	-	set host controller for PIO mode
+ *	@drive: drive
+ *	@pio: PIO mode number
  *
  *	Load the timing settings for this device mode into the
  *	controller.
  */
 
-static void scc_tune_pio(ide_drive_t *drive, const u8 pio)
+static void scc_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	ide_hwif_t *hwif = HWIF(drive);
 	struct scc_ports *ports = ide_get_hwifdata(hwif);
@@ -221,26 +221,18 @@ static void scc_tune_pio(ide_drive_t *drive, const u8 pio)
 	out_be32((void __iomem *)pioct_port, reg);
 }
 
-static void scc_tuneproc(ide_drive_t *drive, u8 pio)
-{
-	pio = ide_get_best_pio_mode(drive, pio, 4);
-	scc_tune_pio(drive, pio);
-	ide_config_drive_speed(drive, XFER_PIO_0 + pio);
-}
-
 /**
- *	scc_tune_chipset	-	tune a drive DMA mode
- *	@drive: Drive to set up
- *	@xferspeed: speed we want to achieve
+ *	scc_set_dma_mode	-	set host controller for DMA mode
+ *	@drive: drive
+ *	@speed: DMA mode
  *
  *	Load the timing settings for this device mode into the
  *	controller.
  */
 
-static int scc_tune_chipset(ide_drive_t *drive, byte xferspeed)
+static void scc_set_dma_mode(ide_drive_t *drive, const u8 speed)
 {
 	ide_hwif_t *hwif = HWIF(drive);
-	u8 speed = ide_rate_filter(drive, xferspeed);
 	struct scc_ports *ports = ide_get_hwifdata(hwif);
 	unsigned long ctl_base = ports->ctl;
 	unsigned long cckctrl_port = ctl_base + 0xff0;
@@ -272,15 +264,8 @@ static int scc_tune_chipset(ide_drive_t *drive, byte xferspeed)
 	case XFER_UDMA_0:
 		idx = speed - XFER_UDMA_0;
 		break;
-	case XFER_PIO_4:
-	case XFER_PIO_3:
-	case XFER_PIO_2:
-	case XFER_PIO_1:
-	case XFER_PIO_0:
-		scc_tune_pio(drive, speed - XFER_PIO_0);
-		return ide_config_drive_speed(drive, speed);
 	default:
-		return 1;
+		return;
 	}
 
 	jcactsel = JCACTSELtbl[offset][idx];
@@ -296,30 +281,6 @@ static int scc_tune_chipset(ide_drive_t *drive, byte xferspeed)
 	}
 	reg = JCTSStbl[offset][idx] << 16 | JCENVTtbl[offset][idx];
 	out_be32((void __iomem *)udenvt_port, reg);
-
-	return ide_config_drive_speed(drive, speed);
-}
-
-/**
- *	scc_configure_drive_for_dma	-	set up for DMA transfers
- *	@drive: drive we are going to set up
- *
- *	Set up the drive for DMA, tune the controller and drive as
- *	required.
- *      If the drive isn't suitable for DMA or we hit other problems
- *      then we will drop down to PIO and set up PIO appropriately.
- *      (return -1)
- */
-
-static int scc_config_drive_for_dma(ide_drive_t *drive)
-{
-	if (ide_tune_dma(drive))
-		return 0;
-
-	if (ide_use_fast_pio(drive))
-		scc_tuneproc(drive, 255);
-
-	return -1;
 }
 
 /**
@@ -511,7 +472,7 @@ static u8 scc_udma_filter(ide_drive_t *drive)
 	if ((drive->media != ide_disk) && (mask & 0xE0)) {
 		printk(KERN_INFO "%s: limit %s to UDMA4\n",
 		       SCC_PATA_NAME, drive->name);
-		mask = 0x1F;
+		mask = ATA_UDMA4;
 	}
 
 	return mask;
@@ -577,12 +538,13 @@ static int setup_mmio_scc (struct pci_dev *dev, const char *name)
 /**
  *	init_setup_scc	-	set up an SCC PATA Controller
  *	@dev: PCI device
- *	@d: IDE PCI device
+ *	@d: IDE port info
  *
  *	Perform the initial set up for this device.
  */
 
-static int __devinit init_setup_scc(struct pci_dev *dev, ide_pci_device_t *d)
+static int __devinit init_setup_scc(struct pci_dev *dev,
+				    const struct ide_port_info *d)
 {
 	unsigned long ctl_base;
 	unsigned long dma_base;
@@ -717,47 +679,31 @@ static void __devinit init_hwif_scc(ide_hwif_t *hwif)
 
 	hwif->dma_setup = scc_dma_setup;
 	hwif->ide_dma_end = scc_ide_dma_end;
-	hwif->speedproc = scc_tune_chipset;
-	hwif->tuneproc = scc_tuneproc;
-	hwif->ide_dma_check = scc_config_drive_for_dma;
+	hwif->set_pio_mode = scc_set_pio_mode;
+	hwif->set_dma_mode = scc_set_dma_mode;
 	hwif->ide_dma_test_irq = scc_dma_test_irq;
 	hwif->udma_filter = scc_udma_filter;
 
-	hwif->drives[0].autotune = IDE_TUNE_AUTO;
-	hwif->drives[1].autotune = IDE_TUNE_AUTO;
-
-	if (in_be32((void __iomem *)(hwif->config_data + 0xff0)) & CCKCTRL_ATACLKOEN) {
-		hwif->ultra_mask = 0x7f; /* 133MHz */
-	} else {
-		hwif->ultra_mask = 0x3f; /* 100MHz */
-	}
-	hwif->mwdma_mask = 0x00;
-	hwif->swdma_mask = 0x00;
-	hwif->atapi_dma = 1;
+	if (in_be32((void __iomem *)(hwif->config_data + 0xff0)) & CCKCTRL_ATACLKOEN)
+		hwif->ultra_mask = ATA_UDMA6; /* 133MHz */
+	else
+		hwif->ultra_mask = ATA_UDMA5; /* 100MHz */
 
 	/* we support 80c cable only. */
 	hwif->cbl = ATA_CBL_PATA80;
-
-	hwif->autodma = 0;
-	if (!noautodma)
-		hwif->autodma = 1;
-	hwif->drives[0].autodma = hwif->autodma;
-	hwif->drives[1].autodma = hwif->autodma;
 }
 
 #define DECLARE_SCC_DEV(name_str)			\
   {							\
       .name		= name_str,			\
-      .init_setup	= init_setup_scc,		\
       .init_iops	= init_iops_scc,		\
       .init_hwif	= init_hwif_scc,		\
-      .autodma	= AUTODMA,				\
-      .bootable	= ON_BOARD,				\
-      .host_flags	= IDE_HFLAG_SINGLE,		\
+      .host_flags	= IDE_HFLAG_SINGLE |		\
+			  IDE_HFLAG_BOOTABLE,		\
       .pio_mask		= ATA_PIO4,			\
   }
 
-static ide_pci_device_t scc_chipsets[] __devinitdata = {
+static const struct ide_port_info scc_chipsets[] __devinitdata = {
 	/* 0 */ DECLARE_SCC_DEV("sccIDE"),
 };
 
@@ -772,8 +718,7 @@ static ide_pci_device_t scc_chipsets[] __devinitdata = {
 
 static int __devinit scc_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 {
-	ide_pci_device_t *d = &scc_chipsets[id->driver_data];
-	return d->init_setup(dev, d);
+	return init_setup_scc(dev, &scc_chipsets[id->driver_data]);
 }
 
 /**
@@ -810,8 +755,8 @@ static void __devexit scc_remove(struct pci_dev *dev)
 	memset(ports, 0, sizeof(*ports));
 }
 
-static struct pci_device_id scc_pci_tbl[] = {
-	{ PCI_VENDOR_ID_TOSHIBA_2, PCI_DEVICE_ID_TOSHIBA_SCC_ATA,  PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
+static const struct pci_device_id scc_pci_tbl[] = {
+	{ PCI_VDEVICE(TOSHIBA_2, PCI_DEVICE_ID_TOSHIBA_SCC_ATA), 0 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, scc_pci_tbl);

@@ -32,7 +32,6 @@
 #include <linux/crypto.h>
 #include <linux/netlink.h>
 #include <linux/mount.h>
-#include <linux/dcache.h>
 #include <linux/pagemap.h>
 #include <linux/key.h>
 #include <linux/parser.h>
@@ -99,6 +98,64 @@ void __ecryptfs_printk(const char *fmt, ...)
 }
 
 /**
+ * ecryptfs_init_persistent_file
+ * @ecryptfs_dentry: Fully initialized eCryptfs dentry object, with
+ *                   the lower dentry and the lower mount set
+ *
+ * eCryptfs only ever keeps a single open file for every lower
+ * inode. All I/O operations to the lower inode occur through that
+ * file. When the first eCryptfs dentry that interposes with the first
+ * lower dentry for that inode is created, this function creates the
+ * persistent file struct and associates it with the eCryptfs
+ * inode. When the eCryptfs inode is destroyed, the file is closed.
+ *
+ * The persistent file will be opened with read/write permissions, if
+ * possible. Otherwise, it is opened read-only.
+ *
+ * This function does nothing if a lower persistent file is already
+ * associated with the eCryptfs inode.
+ *
+ * Returns zero on success; non-zero otherwise
+ */
+int ecryptfs_init_persistent_file(struct dentry *ecryptfs_dentry)
+{
+	struct ecryptfs_inode_info *inode_info =
+		ecryptfs_inode_to_private(ecryptfs_dentry->d_inode);
+	int rc = 0;
+
+	mutex_lock(&inode_info->lower_file_mutex);
+	if (!inode_info->lower_file) {
+		struct dentry *lower_dentry;
+		struct vfsmount *lower_mnt =
+			ecryptfs_dentry_to_lower_mnt(ecryptfs_dentry);
+
+		lower_dentry = ecryptfs_dentry_to_lower(ecryptfs_dentry);
+		/* Corresponding dput() and mntput() are done when the
+		 * persistent file is fput() when the eCryptfs inode
+		 * is destroyed. */
+		dget(lower_dentry);
+		mntget(lower_mnt);
+		inode_info->lower_file = dentry_open(lower_dentry,
+						     lower_mnt,
+						     (O_RDWR | O_LARGEFILE));
+		if (IS_ERR(inode_info->lower_file))
+			inode_info->lower_file = dentry_open(lower_dentry,
+							     lower_mnt,
+							     (O_RDONLY
+							      | O_LARGEFILE));
+		if (IS_ERR(inode_info->lower_file)) {
+			printk(KERN_ERR "Error opening lower persistent file "
+			       "for lower_dentry [0x%p] and lower_mnt [0x%p]\n",
+			       lower_dentry, lower_mnt);
+			rc = PTR_ERR(inode_info->lower_file);
+			inode_info->lower_file = NULL;
+		}
+	}
+	mutex_unlock(&inode_info->lower_file_mutex);
+	return rc;
+}
+
+/**
  * ecryptfs_interpose
  * @lower_dentry: Existing dentry in the lower filesystem
  * @dentry: ecryptfs' dentry
@@ -155,6 +212,13 @@ int ecryptfs_interpose(struct dentry *lower_dentry, struct dentry *dentry,
 	/* This size will be overwritten for real files w/ headers and
 	 * other metadata */
 	fsstack_copy_inode_size(inode, lower_inode);
+	rc = ecryptfs_init_persistent_file(dentry);
+	if (rc) {
+		printk(KERN_ERR "%s: Error attempting to initialize the "
+		       "persistent file for the dentry with name [%s]; "
+		       "rc = [%d]\n", __FUNCTION__, dentry->d_name.name, rc);
+		goto out;
+	}
 out:
 	return rc;
 }
@@ -179,36 +243,39 @@ static match_table_t tokens = {
 	{ecryptfs_opt_err, NULL}
 };
 
-/**
- * ecryptfs_verify_version
- * @version: The version number to confirm
- *
- * Returns zero on good version; non-zero otherwise
- */
-static int ecryptfs_verify_version(u16 version)
+static int ecryptfs_init_global_auth_toks(
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat)
 {
+	struct ecryptfs_global_auth_tok *global_auth_tok;
 	int rc = 0;
-	unsigned char major;
-	unsigned char minor;
 
-	major = ((version >> 8) & 0xFF);
-	minor = (version & 0xFF);
-	if (major != ECRYPTFS_VERSION_MAJOR) {
-		ecryptfs_printk(KERN_ERR, "Major version number mismatch. "
-				"Expected [%d]; got [%d]\n",
-				ECRYPTFS_VERSION_MAJOR, major);
-		rc = -EINVAL;
-		goto out;
+	list_for_each_entry(global_auth_tok,
+			    &mount_crypt_stat->global_auth_tok_list,
+			    mount_crypt_stat_list) {
+		rc = ecryptfs_keyring_auth_tok_for_sig(
+			&global_auth_tok->global_auth_tok_key,
+			&global_auth_tok->global_auth_tok,
+			global_auth_tok->sig);
+		if (rc) {
+			printk(KERN_ERR "Could not find valid key in user "
+			       "session keyring for sig specified in mount "
+			       "option: [%s]\n", global_auth_tok->sig);
+			global_auth_tok->flags |= ECRYPTFS_AUTH_TOK_INVALID;
+			rc = 0;
+		} else
+			global_auth_tok->flags &= ~ECRYPTFS_AUTH_TOK_INVALID;
 	}
-	if (minor != ECRYPTFS_VERSION_MINOR) {
-		ecryptfs_printk(KERN_ERR, "Minor version number mismatch. "
-				"Expected [%d]; got [%d]\n",
-				ECRYPTFS_VERSION_MINOR, minor);
-		rc = -EINVAL;
-		goto out;
-	}
-out:
 	return rc;
+}
+
+static void ecryptfs_init_mount_crypt_stat(
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat)
+{
+	memset((void *)mount_crypt_stat, 0,
+	       sizeof(struct ecryptfs_mount_crypt_stat));
+	INIT_LIST_HEAD(&mount_crypt_stat->global_auth_tok_list);
+	mutex_init(&mount_crypt_stat->global_auth_tok_list_mutex);
+	mount_crypt_stat->flags |= ECRYPTFS_MOUNT_CRYPT_STAT_INITIALIZED;
 }
 
 /**
@@ -238,14 +305,11 @@ static int ecryptfs_parse_options(struct super_block *sb, char *options)
 	int cipher_name_set = 0;
 	int cipher_key_bytes;
 	int cipher_key_bytes_set = 0;
-	struct key *auth_tok_key = NULL;
-	struct ecryptfs_auth_tok *auth_tok = NULL;
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
 		&ecryptfs_superblock_to_private(sb)->mount_crypt_stat;
 	substring_t args[MAX_OPT_ARGS];
 	int token;
 	char *sig_src;
-	char *sig_dst;
 	char *debug_src;
 	char *cipher_name_dst;
 	char *cipher_name_src;
@@ -256,6 +320,7 @@ static int ecryptfs_parse_options(struct super_block *sb, char *options)
 		rc = -EINVAL;
 		goto out;
 	}
+	ecryptfs_init_mount_crypt_stat(mount_crypt_stat);
 	while ((p = strsep(&options, ",")) != NULL) {
 		if (!*p)
 			continue;
@@ -264,14 +329,13 @@ static int ecryptfs_parse_options(struct super_block *sb, char *options)
 		case ecryptfs_opt_sig:
 		case ecryptfs_opt_ecryptfs_sig:
 			sig_src = args[0].from;
-			sig_dst =
-				mount_crypt_stat->global_auth_tok_sig;
-			memcpy(sig_dst, sig_src, ECRYPTFS_SIG_SIZE_HEX);
-			sig_dst[ECRYPTFS_SIG_SIZE_HEX] = '\0';
-			ecryptfs_printk(KERN_DEBUG,
-					"The mount_crypt_stat "
-					"global_auth_tok_sig set to: "
-					"[%s]\n", sig_dst);
+			rc = ecryptfs_add_global_auth_tok(mount_crypt_stat,
+							  sig_src);
+			if (rc) {
+				printk(KERN_ERR "Error attempting to register "
+				       "global sig; rc = [%d]\n", rc);
+				goto out;
+			}
 			sig_set = 1;
 			break;
 		case ecryptfs_opt_debug:
@@ -333,12 +397,10 @@ static int ecryptfs_parse_options(struct super_block *sb, char *options)
 					p);
 		}
 	}
-	/* Do not support lack of mount-wide signature in 0.1
-	 * release */
 	if (!sig_set) {
 		rc = -EINVAL;
-		ecryptfs_printk(KERN_ERR, "You must supply a valid "
-				"passphrase auth tok signature as a mount "
+		ecryptfs_printk(KERN_ERR, "You must supply at least one valid "
+				"auth tok signature as a mount "
 				"parameter; see the eCryptfs README\n");
 		goto out;
 	}
@@ -358,55 +420,23 @@ static int ecryptfs_parse_options(struct super_block *sb, char *options)
 	if (!cipher_key_bytes_set) {
 		mount_crypt_stat->global_default_cipher_key_size = 0;
 	}
-	rc = ecryptfs_process_cipher(
-		&mount_crypt_stat->global_key_tfm,
-		mount_crypt_stat->global_default_cipher_name,
-		&mount_crypt_stat->global_default_cipher_key_size);
+	rc = ecryptfs_add_new_key_tfm(
+		NULL, mount_crypt_stat->global_default_cipher_name,
+		mount_crypt_stat->global_default_cipher_key_size);
 	if (rc) {
-		printk(KERN_ERR "Error attempting to initialize cipher [%s] "
-		       "with key size [%Zd] bytes; rc = [%d]\n",
+		printk(KERN_ERR "Error attempting to initialize cipher with "
+		       "name = [%s] and key size = [%td]; rc = [%d]\n",
 		       mount_crypt_stat->global_default_cipher_name,
 		       mount_crypt_stat->global_default_cipher_key_size, rc);
-		mount_crypt_stat->global_key_tfm = NULL;
-		mount_crypt_stat->global_auth_tok_key = NULL;
 		rc = -EINVAL;
 		goto out;
 	}
-	mutex_init(&mount_crypt_stat->global_key_tfm_mutex);
-	ecryptfs_printk(KERN_DEBUG, "Requesting the key with description: "
-			"[%s]\n", mount_crypt_stat->global_auth_tok_sig);
-	/* The reference to this key is held until umount is done The
-	 * call to key_put is done in ecryptfs_put_super() */
-	auth_tok_key = request_key(&key_type_user,
-				   mount_crypt_stat->global_auth_tok_sig,
-				   NULL);
-	if (!auth_tok_key || IS_ERR(auth_tok_key)) {
-		ecryptfs_printk(KERN_ERR, "Could not find key with "
-				"description: [%s]\n",
-				mount_crypt_stat->global_auth_tok_sig);
-		process_request_key_err(PTR_ERR(auth_tok_key));
-		rc = -EINVAL;
-		goto out;
+	rc = ecryptfs_init_global_auth_toks(mount_crypt_stat);
+	if (rc) {
+		printk(KERN_WARNING "One or more global auth toks could not "
+		       "properly register; rc = [%d]\n", rc);
 	}
-	auth_tok = ecryptfs_get_key_payload_data(auth_tok_key);
-	if (ecryptfs_verify_version(auth_tok->version)) {
-		ecryptfs_printk(KERN_ERR, "Data structure version mismatch. "
-				"Userspace tools must match eCryptfs kernel "
-				"module with major version [%d] and minor "
-				"version [%d]\n", ECRYPTFS_VERSION_MAJOR,
-				ECRYPTFS_VERSION_MINOR);
-		rc = -EINVAL;
-		goto out;
-	}
-	if (auth_tok->token_type != ECRYPTFS_PASSWORD
-	    && auth_tok->token_type != ECRYPTFS_PRIVATE_KEY) {
-		ecryptfs_printk(KERN_ERR, "Invalid auth_tok structure "
-				"returned from key query\n");
-		rc = -EINVAL;
-		goto out;
-	}
-	mount_crypt_stat->global_auth_tok_key = auth_tok_key;
-	mount_crypt_stat->global_auth_tok = auth_tok;
+	rc = 0;
 out:
 	return rc;
 }
@@ -495,7 +525,8 @@ static int ecryptfs_read_super(struct super_block *sb, const char *dev_name)
 	sb->s_maxbytes = lower_root->d_sb->s_maxbytes;
 	ecryptfs_set_dentry_lower(sb->s_root, lower_root);
 	ecryptfs_set_dentry_lower_mnt(sb->s_root, lower_mnt);
-	if ((rc = ecryptfs_interpose(lower_root, sb->s_root, sb, 0)))
+	rc = ecryptfs_interpose(lower_root, sb->s_root, sb, 0);
+	if (rc)
 		goto out_free;
 	rc = 0;
 	goto out;
@@ -579,7 +610,7 @@ static struct file_system_type ecryptfs_fs_type = {
  * Initializes the ecryptfs_inode_info_cache when it is created
  */
 static void
-inode_info_init_once(void *vptr, struct kmem_cache *cachep, unsigned long flags)
+inode_info_init_once(struct kmem_cache *cachep, void *vptr)
 {
 	struct ecryptfs_inode_info *ei = (struct ecryptfs_inode_info *)vptr;
 
@@ -590,7 +621,7 @@ static struct ecryptfs_cache_info {
 	struct kmem_cache **cache;
 	const char *name;
 	size_t size;
-	void (*ctor)(void*, struct kmem_cache *, unsigned long);
+	void (*ctor)(struct kmem_cache *cache, void *obj);
 } ecryptfs_cache_infos[] = {
 	{
 		.cache = &ecryptfs_auth_tok_list_item_cache,
@@ -639,14 +670,24 @@ static struct ecryptfs_cache_info {
 		.size = PAGE_CACHE_SIZE,
 	},
 	{
-		.cache = &ecryptfs_lower_page_cache,
-		.name = "ecryptfs_lower_page_cache",
-		.size = PAGE_CACHE_SIZE,
-	},
-	{
 		.cache = &ecryptfs_key_record_cache,
 		.name = "ecryptfs_key_record_cache",
 		.size = sizeof(struct ecryptfs_key_record),
+	},
+	{
+		.cache = &ecryptfs_key_sig_cache,
+		.name = "ecryptfs_key_sig_cache",
+		.size = sizeof(struct ecryptfs_key_sig),
+	},
+	{
+		.cache = &ecryptfs_global_auth_tok_cache,
+		.name = "ecryptfs_global_auth_tok_cache",
+		.size = sizeof(struct ecryptfs_global_auth_tok),
+	},
+	{
+		.cache = &ecryptfs_key_tfm_cache,
+		.name = "ecryptfs_key_tfm_cache",
+		.size = sizeof(struct ecryptfs_key_tfm),
 	},
 };
 
@@ -750,7 +791,8 @@ static struct ecryptfs_version_str_map_elem {
 	{ECRYPTFS_VERSIONING_PUBKEY, "pubkey"},
 	{ECRYPTFS_VERSIONING_PLAINTEXT_PASSTHROUGH, "plaintext passthrough"},
 	{ECRYPTFS_VERSIONING_POLICY, "policy"},
-	{ECRYPTFS_VERSIONING_XATTR, "metadata in extended attribute"}
+	{ECRYPTFS_VERSIONING_XATTR, "metadata in extended attribute"},
+	{ECRYPTFS_VERSIONING_MULTKEY, "multiple keys per file"}
 };
 
 static ssize_t version_str_show(struct ecryptfs_obj *obj, char *buff)
@@ -786,7 +828,8 @@ static int do_sysfs_registration(void)
 {
 	int rc;
 
-	if ((rc = subsystem_register(&ecryptfs_subsys))) {
+	rc = subsystem_register(&ecryptfs_subsys);
+	if (rc) {
 		printk(KERN_ERR
 		       "Unable to register ecryptfs sysfs subsystem\n");
 		goto out;
@@ -845,33 +888,49 @@ static int __init ecryptfs_init(void)
 	rc = register_filesystem(&ecryptfs_fs_type);
 	if (rc) {
 		printk(KERN_ERR "Failed to register filesystem\n");
-		ecryptfs_free_kmem_caches();
-		goto out;
+		goto out_free_kmem_caches;
 	}
 	kobj_set_kset_s(&ecryptfs_subsys, fs_subsys);
 	rc = do_sysfs_registration();
 	if (rc) {
 		printk(KERN_ERR "sysfs registration failed\n");
-		unregister_filesystem(&ecryptfs_fs_type);
-		ecryptfs_free_kmem_caches();
-		goto out;
+		goto out_unregister_filesystem;
 	}
 	rc = ecryptfs_init_messaging(ecryptfs_transport);
 	if (rc) {
 		ecryptfs_printk(KERN_ERR, "Failure occured while attempting to "
 				"initialize the eCryptfs netlink socket\n");
-		do_sysfs_unregistration();
-		unregister_filesystem(&ecryptfs_fs_type);
-		ecryptfs_free_kmem_caches();
+		goto out_do_sysfs_unregistration;
 	}
+	rc = ecryptfs_init_crypto();
+	if (rc) {
+		printk(KERN_ERR "Failure whilst attempting to init crypto; "
+		       "rc = [%d]\n", rc);
+		goto out_release_messaging;
+	}
+	goto out;
+out_release_messaging:
+	ecryptfs_release_messaging(ecryptfs_transport);
+out_do_sysfs_unregistration:
+	do_sysfs_unregistration();
+out_unregister_filesystem:
+	unregister_filesystem(&ecryptfs_fs_type);
+out_free_kmem_caches:
+	ecryptfs_free_kmem_caches();
 out:
 	return rc;
 }
 
 static void __exit ecryptfs_exit(void)
 {
-	do_sysfs_unregistration();
+	int rc;
+
+	rc = ecryptfs_destroy_crypto();
+	if (rc)
+		printk(KERN_ERR "Failure whilst attempting to destroy crypto; "
+		       "rc = [%d]\n", rc);
 	ecryptfs_release_messaging(ecryptfs_transport);
+	do_sysfs_unregistration();
 	unregister_filesystem(&ecryptfs_fs_type);
 	ecryptfs_free_kmem_caches();
 }

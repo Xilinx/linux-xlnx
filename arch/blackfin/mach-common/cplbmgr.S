@@ -73,17 +73,17 @@ ENTRY(_cplb_mgr)
 	/* ICPLB Miss Exception. We need to choose one of the
 	* currently-installed CPLBs, and replace it with one
 	* from the configuration table.
- 	*/
+	*/
 
-	P4.L = (ICPLB_FAULT_ADDR & 0xFFFF);
-	P4.H = (ICPLB_FAULT_ADDR >> 16);
+	P4.L = LO(ICPLB_FAULT_ADDR);
+	P4.H = HI(ICPLB_FAULT_ADDR);
 
 	P1 = 16;
 	P5.L = _page_size_table;
 	P5.H = _page_size_table;
 
-	P0.L = (ICPLB_DATA0 & 0xFFFF);
-	P0.H = (ICPLB_DATA0 >> 16);
+	P0.L = LO(ICPLB_DATA0);
+	P0.H = HI(ICPLB_DATA0);
 	R4 = [P4];		/* Get faulting address*/
 	R6 = 64;		/* Advance past the fault address, which*/
 	R6 = R6 + R4;		/* we'll use if we find a match*/
@@ -117,13 +117,13 @@ ENTRY(_cplb_mgr)
 	I0 = R4;		/* Fault address we'll search for*/
 
 	/* set up pointers */
-	P0.L = (ICPLB_DATA0 & 0xFFFF);
-	P0.H = (ICPLB_DATA0 >> 16);
+	P0.L = LO(ICPLB_DATA0);
+	P0.H = HI(ICPLB_DATA0);
 
 	/* The replacement procedure for ICPLBs */
 
-	P4.L = (IMEM_CONTROL & 0xFFFF);
-	P4.H = (IMEM_CONTROL >> 16);
+	P4.L = LO(IMEM_CONTROL);
+	P4.H = HI(IMEM_CONTROL);
 
 	/* disable cplbs */
 	R5 = [P4];		/* Control Register*/
@@ -222,7 +222,7 @@ ENTRY(_cplb_mgr)
 
 	/* See if failed address > start address */
 	CC = R4 <= R0(IU);
- 	IF !CC JUMP .Linext;
+	IF !CC JUMP .Linext;
 
 	/* extract page size (17:16)*/
 	R3 = EXTRACT(R2, R1.L) (Z);
@@ -243,8 +243,8 @@ ENTRY(_cplb_mgr)
 	 * last entry of the table.
 	 */
 
-	P1.L = (ICPLB_DATA15 & 0xFFFF);		/* ICPLB_DATA15 */
-	P1.H = (ICPLB_DATA15 >> 16);
+	P1.L = LO(ICPLB_DATA15);		/* ICPLB_DATA15 */
+	P1.H = HI(ICPLB_DATA15);
 	[P1] = R2;
 	[P1-0x100] = R4;
 #ifdef	CONFIG_CPLB_INFO
@@ -271,16 +271,27 @@ ENTRY(_cplb_mgr)
 
 /* FAILED CASES*/
 .Lno_page_in_table:
-	( R7:4,P5:3 ) = [SP++];
 	R0 = CPLB_NO_ADDR_MATCH;
-	RTS;
+	JUMP .Lfail_ret;
+
 .Lall_locked:
-	( R7:4,P5:3 ) = [SP++];
 	R0 = CPLB_NO_UNLOCKED;
-	RTS;
+	JUMP .Lfail_ret;
+
 .Lprot_violation:
-	( R7:4,P5:3 ) = [SP++];
 	R0 = CPLB_PROT_VIOL;
+
+.Lfail_ret:
+	/* Make sure we turn protection/cache back on, even in the failing case */
+	BITSET(R5,ENICPLB_P);
+	CLI R2;
+	SSYNC;          /* SSYNC required before writing to IMEM_CONTROL. */
+	.align 8;
+	[P4] = R5;
+	SSYNC;
+	STI R2;
+
+	( R7:4,P5:3 ) = [SP++];
 	RTS;
 
 .Ldcplb_write:
@@ -292,10 +303,10 @@ ENTRY(_cplb_mgr)
 	 * pending writes associated with the CPLB.
 	 */
 
-	P4.L = (DCPLB_STATUS & 0xFFFF);
-	P4.H = (DCPLB_STATUS >> 16);
-	P3.L = (DCPLB_DATA0 & 0xFFFF);
-	P3.H = (DCPLB_DATA0 >> 16);
+	P4.L = LO(DCPLB_STATUS);
+	P4.H = HI(DCPLB_STATUS);
+	P3.L = LO(DCPLB_DATA0);
+	P3.H = HI(DCPLB_DATA0);
 	R5 = [P4];
 
 	/* A protection violation can be caused by more than just writes
@@ -355,11 +366,11 @@ ENTRY(_cplb_mgr)
 	 * config table, that covers the faulting address.
 	 */
 
-	P1.L = (DCPLB_DATA15 & 0xFFFF);
-	P1.H = (DCPLB_DATA15 >> 16);
+	P1.L = LO(DCPLB_DATA15);
+	P1.H = HI(DCPLB_DATA15);
 
-	P4.L = (DCPLB_FAULT_ADDR & 0xFFFF);
-	P4.H = (DCPLB_FAULT_ADDR >> 16);
+	P4.L = LO(DCPLB_FAULT_ADDR);
+	P4.H = HI(DCPLB_FAULT_ADDR);
 	R4 = [P4];
 	I0 = R4;
 
@@ -368,8 +379,8 @@ ENTRY(_cplb_mgr)
 	R6 = R1;	/* Save for later*/
 
 	/* Turn off CPLBs while we work.*/
-	P4.L = (DMEM_CONTROL & 0xFFFF);
-	P4.H = (DMEM_CONTROL >> 16);
+	P4.L = LO(DMEM_CONTROL);
+	P4.H = HI(DMEM_CONTROL);
 	R5 = [P4];
 	BITCLR(R5,ENDCPLB_P);
 	CLI R0;
@@ -384,8 +395,8 @@ ENTRY(_cplb_mgr)
 	 * are no good.
 	 */
 
-	I1.L = (DCPLB_DATA0 & 0xFFFF);
-	I1.H = (DCPLB_DATA0 >> 16);
+	I1.L = LO(DCPLB_DATA0);
+	I1.H = HI(DCPLB_DATA0);
 	P1 = 2;
 	P2 = 16;
 	I2.L = _dcplb_preference;
@@ -405,7 +416,7 @@ ENTRY(_cplb_mgr)
 	P3.L = _page_size_table; /* retrieve end address */
 	P3.H = _page_size_table; /* retrieve end address */
 	R3 = 0x1002;		/* 16th - position, 2 bits -length */
-#ifdef ANOMALY_05000209
+#if ANOMALY_05000209
 	nop;			/* Anomaly 05000209 */
 #endif
 	R7 = EXTRACT(R1,R3.l);
@@ -475,8 +486,8 @@ ENTRY(_cplb_mgr)
 	 * one space closer to the start.
 	 */
 
-	R1.L = (DCPLB_DATA16 & 0xFFFF);		/* DCPLB_DATA15 + 4 */
-	R1.H = (DCPLB_DATA16 >> 16);
+	R1.L = LO(DCPLB_DATA16);		/* DCPLB_DATA15 + 4 */
+	R1.H = HI(DCPLB_DATA16);
 	R0 = P0;
 
 	/* If the victim happens to be in DCPLB15,
@@ -549,8 +560,8 @@ ENTRY(_cplb_mgr)
 	 * if necessary.
 	 */
 
-	P1.L = (DCPLB_DATA15 & 0xFFFF);
-	P1.H = (DCPLB_DATA15 >> 16);
+	P1.L = LO(DCPLB_DATA15);
+	P1.H = HI(DCPLB_DATA15);
 
 	/* If the DCPLB has cache bits set, but caching hasn't
 	 * been enabled, then we want to mask off the cache-in-L1
@@ -565,7 +576,7 @@ ENTRY(_cplb_mgr)
 	 * cost of first-write exceptions to mark the page as dirty.
 	 */
 
-#ifdef CONFIG_BLKFIN_WT
+#ifdef CONFIG_BFIN_WT
 	BITSET(R6, 14);		/* Set WT*/
 #endif
 

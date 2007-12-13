@@ -274,28 +274,27 @@ static void serverworks_set_dmamode(struct ata_port *ap, struct ata_device *adev
 {
 	static const u8 dma_mode[] = { 0x77, 0x21, 0x20 };
 	int offset = 1 + 2 * ap->port_no - adev->devno;
-	int devbits = (2 * ap->port_no + adev->devno);
+	int devbits = 2 * ap->port_no + adev->devno;
 	u8 ultra;
 	u8 ultra_cfg;
 	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
 
 	pci_read_config_byte(pdev, 0x54, &ultra_cfg);
+	pci_read_config_byte(pdev, 0x56 + ap->port_no, &ultra);
+	ultra &= ~(0x0F << (adev->devno * 4));
 
 	if (adev->dma_mode >= XFER_UDMA_0) {
 		pci_write_config_byte(pdev, 0x44 + offset,  0x20);
 
-		pci_read_config_byte(pdev, 0x56 + ap->port_no, &ultra);
-		ultra &= ~(0x0F << (ap->port_no * 4));
 		ultra |= (adev->dma_mode - XFER_UDMA_0)
-					<< (ap->port_no * 4);
-		pci_write_config_byte(pdev, 0x56 + ap->port_no, ultra);
-
+					<< (adev->devno * 4);
 		ultra_cfg |=  (1 << devbits);
 	} else {
 		pci_write_config_byte(pdev, 0x44 + offset,
 			dma_mode[adev->dma_mode - XFER_MW_DMA_0]);
 		ultra_cfg &= ~(1 << devbits);
 	}
+	pci_write_config_byte(pdev, 0x56 + ap->port_no, ultra);
 	pci_write_config_byte(pdev, 0x54, ultra_cfg);
 }
 
@@ -318,7 +317,6 @@ static struct scsi_host_template serverworks_sht = {
 };
 
 static struct ata_port_operations serverworks_osb4_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= serverworks_set_piomode,
 	.set_dmamode	= serverworks_set_dmamode,
 	.mode_filter	= serverworks_osb4_filter,
@@ -348,13 +346,11 @@ static struct ata_port_operations serverworks_osb4_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 static struct ata_port_operations serverworks_csb_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= serverworks_set_piomode,
 	.set_dmamode	= serverworks_set_dmamode,
 	.mode_filter	= serverworks_csb_filter,
@@ -384,9 +380,8 @@ static struct ata_port_operations serverworks_csb_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 static int serverworks_fixup_osb4(struct pci_dev *pdev)

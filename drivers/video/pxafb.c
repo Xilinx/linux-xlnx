@@ -37,11 +37,12 @@
 #include <linux/cpufreq.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
+#include <linux/clk.h>
+#include <linux/err.h>
 
 #include <asm/hardware.h>
 #include <asm/io.h>
 #include <asm/irq.h>
-#include <asm/uaccess.h>
 #include <asm/div64.h>
 #include <asm/arch/pxa-regs.h>
 #include <asm/arch/bitfield.h>
@@ -106,20 +107,38 @@ pxafb_setpalettereg(u_int regno, u_int red, u_int green, u_int blue,
 		       u_int trans, struct fb_info *info)
 {
 	struct pxafb_info *fbi = (struct pxafb_info *)info;
-	u_int val, ret = 1;
+	u_int val;
 
-	if (regno < fbi->palette_size) {
-		if (fbi->fb.var.grayscale) {
-			val = ((blue >> 8) & 0x00ff);
-		} else {
-			val  = ((red   >>  0) & 0xf800);
-			val |= ((green >>  5) & 0x07e0);
-			val |= ((blue  >> 11) & 0x001f);
-		}
-		fbi->palette_cpu[regno] = val;
-		ret = 0;
+	if (regno >= fbi->palette_size)
+		return 1;
+
+	if (fbi->fb.var.grayscale) {
+		fbi->palette_cpu[regno] = ((blue >> 8) & 0x00ff);
+		return 0;
 	}
-	return ret;
+
+	switch (fbi->lccr4 & LCCR4_PAL_FOR_MASK) {
+	case LCCR4_PAL_FOR_0:
+		val  = ((red   >>  0) & 0xf800);
+		val |= ((green >>  5) & 0x07e0);
+		val |= ((blue  >> 11) & 0x001f);
+		fbi->palette_cpu[regno] = val;
+		break;
+	case LCCR4_PAL_FOR_1:
+		val  = ((red   << 8) & 0x00f80000);
+		val |= ((green >> 0) & 0x0000fc00);
+		val |= ((blue  >> 8) & 0x000000f8);
+		((u32*)(fbi->palette_cpu))[regno] = val;
+		break;
+	case LCCR4_PAL_FOR_2:
+		val  = ((red   << 8) & 0x00fc0000);
+		val |= ((green >> 0) & 0x0000fc00);
+		val |= ((blue  >> 8) & 0x000000fc);
+		((u32*)(fbi->palette_cpu))[regno] = val;
+		break;
+	}
+
+	return 0;
 }
 
 static int
@@ -361,7 +380,10 @@ static int pxafb_set_par(struct fb_info *info)
 	else
 		fbi->palette_size = var->bits_per_pixel == 1 ? 4 : 1 << var->bits_per_pixel;
 
-	palette_mem_size = fbi->palette_size * sizeof(u16);
+	if ((fbi->lccr4 & LCCR4_PAL_FOR_MASK) == LCCR4_PAL_FOR_0)
+		palette_mem_size = fbi->palette_size * sizeof(u16);
+	else
+		palette_mem_size = fbi->palette_size * sizeof(u32);
 
 	pr_debug("pxafb: palette_mem_size = 0x%08lx\n", palette_mem_size);
 
@@ -506,15 +528,15 @@ static struct fb_ops pxafb_ops = {
  *
  * Factoring the 10^4 and 10^-12 out gives 10^-8 == 1 / 100000000 as used below.
  */
-static inline unsigned int get_pcd(unsigned int pixclock)
+static inline unsigned int get_pcd(struct pxafb_info *fbi, unsigned int pixclock)
 {
 	unsigned long long pcd;
 
 	/* FIXME: Need to take into account Double Pixel Clock mode
-         * (DPC) bit? or perhaps set it based on the various clock
-         * speeds */
-
-	pcd = (unsigned long long)get_lcdclk_frequency_10khz() * pixclock;
+	 * (DPC) bit? or perhaps set it based on the various clock
+	 * speeds */
+	pcd = (unsigned long long)(clk_get_rate(fbi->clk) / 10000);
+	pcd *= pixclock;
 	do_div(pcd, 100000000 * 2);
 	/* no need for this, since we should subtract 1 anyway. they cancel */
 	/* pcd += 1; */ /* make up for integer math truncations */
@@ -523,19 +545,21 @@ static inline unsigned int get_pcd(unsigned int pixclock)
 
 /*
  * Some touchscreens need hsync information from the video driver to
- * function correctly. We export it here.
+ * function correctly. We export it here.  Note that 'hsync_time' and
+ * the value returned from pxafb_get_hsync_time() is the *reciprocal*
+ * of the hsync period in seconds.
  */
 static inline void set_hsync_time(struct pxafb_info *fbi, unsigned int pcd)
 {
-	unsigned long long htime;
+	unsigned long htime;
 
 	if ((pcd == 0) || (fbi->fb.var.hsync_len == 0)) {
 		fbi->hsync_time=0;
 		return;
 	}
 
-	htime = (unsigned long long)get_lcdclk_frequency_10khz() * 10000;
-	do_div(htime, pcd * fbi->fb.var.hsync_len);
+	htime = clk_get_rate(fbi->clk) / (pcd * fbi->fb.var.hsync_len);
+
 	fbi->hsync_time = htime;
 }
 
@@ -560,7 +584,7 @@ static int pxafb_activate_var(struct fb_var_screeninfo *var, struct pxafb_info *
 {
 	struct pxafb_lcd_reg new_regs;
 	u_long flags;
-	u_int lines_per_panel, pcd = get_pcd(var->pixclock);
+	u_int lines_per_panel, pcd = get_pcd(fbi, var->pixclock);
 
 	pr_debug("pxafb: Configuring PXA LCD\n");
 
@@ -676,7 +700,13 @@ static int pxafb_activate_var(struct fb_var_screeninfo *var, struct pxafb_info *
 
 	fbi->dmadesc_palette_cpu->fsadr = fbi->palette_dma;
 	fbi->dmadesc_palette_cpu->fidr  = 0;
-	fbi->dmadesc_palette_cpu->ldcmd = (fbi->palette_size * 2) | LDCMD_PAL;
+	if ((fbi->lccr4 & LCCR4_PAL_FOR_MASK) == LCCR4_PAL_FOR_0)
+		fbi->dmadesc_palette_cpu->ldcmd = fbi->palette_size *
+							sizeof(u16);
+	else
+		fbi->dmadesc_palette_cpu->ldcmd = fbi->palette_size *
+							sizeof(u32);
+	fbi->dmadesc_palette_cpu->ldcmd |= LDCMD_PAL;
 
 	if (var->bits_per_pixel == 16) {
 		/* palette shouldn't be loaded in true-color mode */
@@ -715,6 +745,8 @@ static int pxafb_activate_var(struct fb_var_screeninfo *var, struct pxafb_info *
 	fbi->reg_lccr1 = new_regs.lccr1;
 	fbi->reg_lccr2 = new_regs.lccr2;
 	fbi->reg_lccr3 = new_regs.lccr3;
+	fbi->reg_lccr4 = LCCR4 & (~LCCR4_PAL_FOR_MASK);
+	fbi->reg_lccr4 |= (fbi->lccr4 & LCCR4_PAL_FOR_MASK);
 	set_hsync_time(fbi, pcd);
 	local_irq_restore(flags);
 
@@ -803,7 +835,7 @@ static void pxafb_enable_controller(struct pxafb_info *fbi)
 	pr_debug("reg_lccr3 0x%08x\n", (unsigned int) fbi->reg_lccr3);
 
 	/* enable LCD controller clock */
-	pxa_set_cken(CKEN_LCD, 1);
+	clk_enable(fbi->clk);
 
 	/* Sequence from 11.7.10 */
 	LCCR3 = fbi->reg_lccr3;
@@ -821,6 +853,7 @@ static void pxafb_enable_controller(struct pxafb_info *fbi)
 	pr_debug("LCCR1 0x%08x\n", (unsigned int) LCCR1);
 	pr_debug("LCCR2 0x%08x\n", (unsigned int) LCCR2);
 	pr_debug("LCCR3 0x%08x\n", (unsigned int) LCCR3);
+	pr_debug("LCCR4 0x%08x\n", (unsigned int) LCCR4);
 }
 
 static void pxafb_disable_controller(struct pxafb_info *fbi)
@@ -840,7 +873,7 @@ static void pxafb_disable_controller(struct pxafb_info *fbi)
 	remove_wait_queue(&fbi->ctrlr_wait, &wait);
 
 	/* disable LCD controller clock */
-	pxa_set_cken(CKEN_LCD, 0);
+	clk_disable(fbi->clk);
 }
 
 /*
@@ -994,7 +1027,7 @@ pxafb_freq_transition(struct notifier_block *nb, unsigned long val, void *data)
 		break;
 
 	case CPUFREQ_POSTCHANGE:
-		pcd = get_pcd(fbi->fb.var.pixclock);
+		pcd = get_pcd(fbi, fbi->fb.var.pixclock);
 		set_hsync_time(fbi, pcd);
 		fbi->reg_lccr3 = (fbi->reg_lccr3 & ~0xff) | LCCR3_PixClkDiv(pcd);
 		set_ctrlr_state(fbi, C_ENABLE_CLKCHANGE);
@@ -1090,10 +1123,13 @@ static int __init pxafb_map_video_memory(struct pxafb_info *fbi)
 		 * dma_writecombine_mmap)
 		 */
 		fbi->fb.fix.smem_start = fbi->screen_dma;
-
 		fbi->palette_size = fbi->fb.var.bits_per_pixel == 8 ? 256 : 16;
 
-		palette_mem_size = fbi->palette_size * sizeof(u16);
+		if ((fbi->lccr4 & LCCR4_PAL_FOR_MASK) == LCCR4_PAL_FOR_0)
+			palette_mem_size = fbi->palette_size * sizeof(u16);
+		else
+			palette_mem_size = fbi->palette_size * sizeof(u32);
+
 		pr_debug("pxafb: palette_mem_size = 0x%08lx\n", palette_mem_size);
 
 		fbi->palette_cpu = (u16 *)(fbi->map_cpu + PAGE_SIZE - palette_mem_size);
@@ -1118,6 +1154,12 @@ static struct pxafb_info * __init pxafb_init_fbinfo(struct device *dev)
 
 	memset(fbi, 0, sizeof(struct pxafb_info));
 	fbi->dev = dev;
+
+	fbi->clk = clk_get(dev, "LCDCLK");
+	if (IS_ERR(fbi->clk)) {
+		kfree(fbi);
+		return NULL;
+	}
 
 	strcpy(fbi->fb.fix.id, PXA_NAME);
 
@@ -1150,6 +1192,7 @@ static struct pxafb_info * __init pxafb_init_fbinfo(struct device *dev)
 
 	fbi->lccr0			= inf->lccr0;
 	fbi->lccr3			= inf->lccr3;
+	fbi->lccr4			= inf->lccr4;
 	fbi->state			= C_STARTUP;
 	fbi->task_state			= (u_char)-1;
 

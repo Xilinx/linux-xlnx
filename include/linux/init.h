@@ -57,6 +57,7 @@
  * The markers follow same syntax rules as __init / __initdata. */
 #define __init_refok     noinline __attribute__ ((__section__ (".text.init.refok")))
 #define __initdata_refok          __attribute__ ((__section__ (".data.init.refok")))
+#define __exit_refok     noinline __attribute__ ((__section__ (".exit.text.refok")))
 
 #ifdef MODULE
 #define __exit		__attribute__ ((__section__(".exit.text"))) __cold
@@ -66,8 +67,10 @@
 
 /* For assembly routines */
 #define __INIT		.section	".init.text","ax"
+#define __INIT_REFOK	.section	".text.init.refok","ax"
 #define __FINIT		.previous
 #define __INITDATA	.section	".init.data","aw"
+#define __INITDATA_REFOK .section	".data.init.refok","aw"
 
 #ifndef __ASSEMBLY__
 /*
@@ -158,7 +161,7 @@ struct obs_kernel_param {
  * obs_kernel_param "array" too far apart in .init.setup.
  */
 #define __setup_param(str, unique_id, fn, early)			\
-	static char __setup_str_##unique_id[] __initdata = str;	\
+	static char __setup_str_##unique_id[] __initdata __aligned(1) = str; \
 	static struct obs_kernel_param __setup_##unique_id	\
 		__attribute_used__				\
 		__attribute__((__section__(".init.setup")))	\

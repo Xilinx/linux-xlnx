@@ -9,9 +9,9 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#include <linux/if_ether.h>
 #include <linux/compiler.h>
 #include <linux/skbuff.h>
-#include <linux/spinlock.h>
 #include <linux/icmpv6.h>
 #include <linux/netfilter_ipv6.h>
 #include <net/ipv6.h>
@@ -43,62 +43,31 @@ static int xfrm6_tunnel_check_size(struct sk_buff *skb)
 	return ret;
 }
 
-static int xfrm6_output_one(struct sk_buff *skb)
+static inline int xfrm6_output_one(struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb->dst;
 	struct xfrm_state *x = dst->xfrm;
+	struct ipv6hdr *iph;
 	int err;
 
-	if (skb->ip_summed == CHECKSUM_PARTIAL) {
-		err = skb_checksum_help(skb);
-		if (err)
-			goto error_nolock;
-	}
-
-	if (x->props.mode == XFRM_MODE_TUNNEL) {
+	if (x->outer_mode->flags & XFRM_MODE_FLAG_TUNNEL) {
 		err = xfrm6_tunnel_check_size(skb);
 		if (err)
 			goto error_nolock;
 	}
 
-	do {
-		spin_lock_bh(&x->lock);
-		err = xfrm_state_check(x, skb);
-		if (err)
-			goto error;
+	err = xfrm_output(skb);
+	if (err)
+		goto error_nolock;
 
-		err = x->mode->output(x, skb);
-		if (err)
-			goto error;
-
-		err = x->type->output(x, skb);
-		if (err)
-			goto error;
-
-		x->curlft.bytes += skb->len;
-		x->curlft.packets++;
-		if (x->props.mode == XFRM_MODE_ROUTEOPTIMIZATION)
-			x->lastused = get_seconds();
-
-		spin_unlock_bh(&x->lock);
-
-		skb_reset_network_header(skb);
-
-		if (!(skb->dst = dst_pop(dst))) {
-			err = -EHOSTUNREACH;
-			goto error_nolock;
-		}
-		dst = skb->dst;
-		x = dst->xfrm;
-	} while (x && (x->props.mode != XFRM_MODE_TUNNEL));
+	iph = ipv6_hdr(skb);
+	iph->payload_len = htons(skb->len - sizeof(*iph));
 
 	IP6CB(skb)->flags |= IP6SKB_XFRM_TRANSFORMED;
 	err = 0;
 
 out_exit:
 	return err;
-error:
-	spin_unlock_bh(&x->lock);
 error_nolock:
 	kfree_skb(skb);
 	goto out_exit;
@@ -111,7 +80,7 @@ static int xfrm6_output_finish2(struct sk_buff *skb)
 	while (likely((err = xfrm6_output_one(skb)) == 0)) {
 		nf_reset(skb);
 
-		err = nf_hook(PF_INET6, NF_IP6_LOCAL_OUT, &skb, NULL,
+		err = nf_hook(PF_INET6, NF_IP6_LOCAL_OUT, skb, NULL,
 			      skb->dst->dev, dst_output);
 		if (unlikely(err != 1))
 			break;
@@ -119,7 +88,7 @@ static int xfrm6_output_finish2(struct sk_buff *skb)
 		if (!skb->dst->xfrm)
 			return dst_output(skb);
 
-		err = nf_hook(PF_INET6, NF_IP6_POST_ROUTING, &skb, NULL,
+		err = nf_hook(PF_INET6, NF_IP6_POST_ROUTING, skb, NULL,
 			      skb->dst->dev, xfrm6_output_finish2);
 		if (unlikely(err != 1))
 			break;

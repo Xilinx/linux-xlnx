@@ -244,9 +244,9 @@ static void pcimt_hwint1(void)
 	if (pend & IT_EISA) {
 		int irq;
 		/*
-		 * Note: ASIC PCI's builtin interrupt achknowledge feature is
+		 * Note: ASIC PCI's builtin interrupt acknowledge feature is
 		 * broken.  Using it may result in loss of some or all i8259
-		 * interupts, so don't use PCIMT_INT_ACKNOWLEDGE ...
+		 * interrupts, so don't use PCIMT_INT_ACKNOWLEDGE ...
 		 */
 		irq = i8259_irq();
 		if (unlikely(irq < 0))
@@ -284,9 +284,9 @@ static void sni_pcimt_hwint(void)
 	u32 pending = read_c0_cause() & read_c0_status();
 
 	if (pending & C_IRQ5)
-		do_IRQ (MIPS_CPU_IRQ_BASE + 7);
+		do_IRQ(MIPS_CPU_IRQ_BASE + 7);
 	else if (pending & C_IRQ4)
-		do_IRQ (MIPS_CPU_IRQ_BASE + 6);
+		do_IRQ(MIPS_CPU_IRQ_BASE + 6);
 	else if (pending & C_IRQ3)
 		pcimt_hwint3();
 	else if (pending & C_IRQ1)
@@ -313,7 +313,6 @@ void __init sni_pcimt_init(void)
 {
 	sni_pcimt_detect();
 	sni_pcimt_sc_init();
-	board_time_init = sni_cpu_time_init;
 	ioport_resource.end = sni_io_resource.end;
 #ifdef CONFIG_PCI
 	PCIBIOS_MIN_IO = 0x9000;

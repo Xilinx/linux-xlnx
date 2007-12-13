@@ -12,6 +12,7 @@
 #include <asm/io.h>		/* for accessing devices */
 #include <linux/stringify.h>
 #include <linux/mutex.h>
+#include <linux/scatterlist.h>
 
 #include <linux/vmalloc.h>	/* for vmalloc() */
 #include <linux/mm.h>		/* for vmalloc_to_page() */
@@ -146,7 +147,6 @@ struct saa7146_dev
 
 /* from saa7146_i2c.c */
 int saa7146_i2c_adapter_prepare(struct saa7146_dev *dev, struct i2c_adapter *i2c_adapter, u32 bitrate);
-int saa7146_i2c_transfer(struct saa7146_dev *saa, const struct i2c_msg *msgs, int num, int retries);
 
 /* from saa7146_core.c */
 extern struct list_head saa7146_devices;

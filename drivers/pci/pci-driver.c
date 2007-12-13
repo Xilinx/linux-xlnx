@@ -54,7 +54,6 @@ store_new_id(struct device_driver *driver, const char *buf, size_t count)
 	if (!dynid)
 		return -ENOMEM;
 
-	INIT_LIST_HEAD(&dynid->node);
 	dynid->id.vendor = vendor;
 	dynid->id.device = device;
 	dynid->id.subvendor = subvendor;
@@ -65,7 +64,7 @@ store_new_id(struct device_driver *driver, const char *buf, size_t count)
 		driver_data : 0UL;
 
 	spin_lock(&pdrv->dynids.lock);
-	list_add_tail(&pdrv->dynids.list, &dynid->node);
+	list_add_tail(&dynid->node, &pdrv->dynids.list);
 	spin_unlock(&pdrv->dynids.lock);
 
 	if (get_driver(&pdrv->driver)) {
@@ -144,8 +143,8 @@ const struct pci_device_id *pci_match_id(const struct pci_device_id *ids,
  * system is in its list of supported devices.  Returns the matching
  * pci_device_id structure or %NULL if there is no match.
  */
-const struct pci_device_id *pci_match_device(struct pci_driver *drv,
-					     struct pci_dev *dev)
+static const struct pci_device_id *pci_match_device(struct pci_driver *drv,
+						    struct pci_dev *dev)
 {
 	struct pci_dynid *dynid;
 
@@ -532,8 +531,7 @@ void pci_dev_put(struct pci_dev *dev)
 }
 
 #ifndef CONFIG_HOTPLUG
-int pci_uevent(struct device *dev, char **envp, int num_envp,
-	       char *buffer, int buffer_size)
+int pci_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	return -ENODEV;
 }
@@ -561,7 +559,6 @@ static int __init pci_driver_init(void)
 postcore_initcall(pci_driver_init);
 
 EXPORT_SYMBOL(pci_match_id);
-EXPORT_SYMBOL(pci_match_device);
 EXPORT_SYMBOL(__pci_register_driver);
 EXPORT_SYMBOL(pci_unregister_driver);
 EXPORT_SYMBOL(pci_dev_driver);

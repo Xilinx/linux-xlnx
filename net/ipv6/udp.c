@@ -205,12 +205,11 @@ out:
 	return err;
 
 csum_copy_err:
+	UDP6_INC_STATS_USER(UDP_MIB_INERRORS, is_udplite);
 	skb_kill_datagram(sk, skb, flags);
 
-	if (flags & MSG_DONTWAIT) {
-		UDP6_INC_STATS_USER(UDP_MIB_INERRORS, is_udplite);
+	if (flags & MSG_DONTWAIT)
 		return -EAGAIN;
-	}
 	goto try_again;
 }
 
@@ -405,10 +404,9 @@ static inline int udp6_csum_init(struct sk_buff *skb, struct udphdr *uh,
 	return 0;
 }
 
-int __udp6_lib_rcv(struct sk_buff **pskb, struct hlist_head udptable[],
+int __udp6_lib_rcv(struct sk_buff *skb, struct hlist_head udptable[],
 		   int proto)
 {
-	struct sk_buff *skb = *pskb;
 	struct sock *sk;
 	struct udphdr *uh;
 	struct net_device *dev = skb->dev;
@@ -494,9 +492,9 @@ discard:
 	return 0;
 }
 
-static __inline__ int udpv6_rcv(struct sk_buff **pskb)
+static __inline__ int udpv6_rcv(struct sk_buff *skb)
 {
-	return __udp6_lib_rcv(pskb, udp_hash, IPPROTO_UDP);
+	return __udp6_lib_rcv(skb, udp_hash, IPPROTO_UDP);
 }
 
 /*
@@ -612,7 +610,7 @@ int udpv6_sendmsg(struct kiocb *iocb, struct sock *sk,
 		daddr = NULL;
 
 	if (daddr) {
-		if (ipv6_addr_type(daddr) == IPV6_ADDR_MAPPED) {
+		if (ipv6_addr_v4mapped(daddr)) {
 			struct sockaddr_in sin;
 			sin.sin_family = AF_INET;
 			sin.sin_port = sin6 ? sin6->sin6_port : inet->dport;
@@ -972,6 +970,8 @@ void udp6_proc_exit(void) {
 
 /* ------------------------------------------------------------------------ */
 
+DEFINE_PROTO_INUSE(udpv6)
+
 struct proto udpv6_prot = {
 	.name		   = "UDPv6",
 	.owner		   = THIS_MODULE,
@@ -993,6 +993,7 @@ struct proto udpv6_prot = {
 	.compat_setsockopt = compat_udpv6_setsockopt,
 	.compat_getsockopt = compat_udpv6_getsockopt,
 #endif
+	REF_PROTO_INUSE(udpv6)
 };
 
 static struct inet_protosw udpv6_protosw = {

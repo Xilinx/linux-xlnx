@@ -25,7 +25,6 @@
 #include <asm/pgtable.h>
 #include <asm/bootinfo.h>
 #include <asm/setup.h>
-#include <asm/amigappc.h>
 #include <asm/smp.h>
 #include <asm/elf.h>
 #include <asm/cputable.h>
@@ -313,7 +312,14 @@ early_init(int r3, int r4, int r5)
 	 * Identify the CPU type and fix up code sections
 	 * that depend on which cpu we have.
 	 */
+#if defined(CONFIG_440EP) && defined(CONFIG_PPC_FPU)
+	/* We pass the virtual PVR here for 440EP as 440EP and 440GR have
+	 * identical PVRs and there is no reliable way to check for the FPU
+	 */
+	spec = identify_cpu(offset, (mfspr(SPRN_PVR) | 0x8));
+#else
 	spec = identify_cpu(offset, mfspr(SPRN_PVR));
+#endif
 	do_feature_fixups(spec->cpu_features,
 			  PTRRELOC(&__start___ftr_fixup),
 			  PTRRELOC(&__stop___ftr_fixup));

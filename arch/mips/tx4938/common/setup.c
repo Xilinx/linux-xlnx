@@ -24,7 +24,7 @@
 #include <linux/slab.h>
 #include <linux/random.h>
 #include <linux/irq.h>
-#include <asm/bitops.h>
+#include <linux/bitops.h>
 #include <asm/bootinfo.h>
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -34,26 +34,12 @@
 #include <asm/tx4938/rbtx4938.h>
 
 extern void toshiba_rbtx4938_setup(void);
-extern void rbtx4938_time_init(void);
 
 void __init tx4938_setup(void);
-void __init tx4938_time_init(void);
 void dump_cp0(char *key);
 
 void __init
 plat_mem_setup(void)
 {
-	board_time_init = tx4938_time_init;
 	toshiba_rbtx4938_setup();
-}
-
-void __init
-tx4938_time_init(void)
-{
-	rbtx4938_time_init();
-}
-
-void __init plat_timer_setup(struct irqaction *irq)
-{
-	setup_irq(TX4938_IRQ_CPU_TIMER, irq);
 }

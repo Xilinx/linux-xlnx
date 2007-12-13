@@ -927,7 +927,7 @@ static void esp_get_dmabufs(struct NCR_ESP *esp, Scsi_Cmnd *sp)
 			esp->dma_mmu_get_scsi_sgl(esp, sp);
 		else
 			sp->SCp.ptr =
-				(char *) virt_to_phys((page_address(sp->SCp.buffer->page) + sp->SCp.buffer->offset));
+				(char *) virt_to_phys(sg_virt(sp->SCp.buffer));
 	}
 }
 
@@ -1385,7 +1385,7 @@ int esp_abort(Scsi_Cmnd *SCptr)
 				this->host_scribble = NULL;
 				esp_release_dmabufs(esp, this);
 				this->result = DID_ABORT << 16;
-				this->done(this);
+				this->scsi_done(this);
 				if(don)
 					esp->dma_ints_on(esp);
 				return SUCCESS;
@@ -1748,7 +1748,7 @@ static inline void advance_sg(struct NCR_ESP *esp, Scsi_Cmnd *sp)
 	if (esp->dma_advance_sg)
 		esp->dma_advance_sg (sp);
 	else
-		sp->SCp.ptr = (char *) virt_to_phys((page_address(sp->SCp.buffer->page) + sp->SCp.buffer->offset));
+		sp->SCp.ptr = (char *) virt_to_phys(sg_virt(sp->SCp.buffer));
 
 }
 

@@ -21,6 +21,7 @@
 
 
 #include <linux/module.h>
+#include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/if_arp.h>
@@ -35,7 +36,6 @@
 #include <linux/sockios.h>
 #include <linux/workqueue.h>
 #include <asm/atomic.h>
-#include <asm/bitops.h>
 #include <asm/dma.h>
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -581,8 +581,7 @@ static int __init setup_adapter(int card_base, int type, int n)
 		dev->do_ioctl = scc_ioctl;
 		dev->hard_start_xmit = scc_send_packet;
 		dev->get_stats = scc_get_stats;
-		dev->hard_header = ax25_hard_header;
-		dev->rebuild_header = ax25_rebuild_header;
+		dev->header_ops = &ax25_header_ops;
 		dev->set_mac_address = scc_set_mac_address;
 	}
 	if (register_netdev(info->dev[0])) {

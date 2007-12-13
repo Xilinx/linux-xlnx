@@ -70,7 +70,6 @@ enum
 	CTL_ABI=9,		/* Binary emulation */
 	CTL_CPU=10,		/* CPU stuff (speed scaling, etc) */
 	CTL_ARLAN=254,		/* arlan wireless driver */
-	CTL_APPLDATA=2120,	/* s390 appldata */
 	CTL_S390DBF=5677,	/* s390 debug */
 	CTL_SUNRPC=7249,	/* sunrpc debug */
 	CTL_PM=9899,		/* frv power management */
@@ -207,11 +206,6 @@ enum
 	VM_PANIC_ON_OOM=33,	/* panic at out-of-memory */
 	VM_VDSO_ENABLED=34,	/* map VDSO into new processes? */
 	VM_MIN_SLAB=35,		 /* Percent pages ignored by zone reclaim */
-
-	/* s390 vm cmm sysctls */
-	VM_CMM_PAGES=1111,
-	VM_CMM_TIMED_PAGES=1112,
-	VM_CMM_TIMEOUT=1113,
 };
 
 
@@ -238,6 +232,7 @@ enum
 	NET_LLC=18,
 	NET_NETFILTER=19,
 	NET_DCCP=20,
+	NET_IRDA=412,
 };
 
 /* /proc/sys/kernel/random */
@@ -795,6 +790,25 @@ enum {
 	NET_BRIDGE_NF_FILTER_PPPOE_TAGGED = 5,
 };
 
+/* proc/sys/net/irda */
+enum {
+	NET_IRDA_DISCOVERY=1,
+	NET_IRDA_DEVNAME=2,
+	NET_IRDA_DEBUG=3,
+	NET_IRDA_FAST_POLL=4,
+	NET_IRDA_DISCOVERY_SLOTS=5,
+	NET_IRDA_DISCOVERY_TIMEOUT=6,
+	NET_IRDA_SLOT_TIMEOUT=7,
+	NET_IRDA_MAX_BAUD_RATE=8,
+	NET_IRDA_MIN_TX_TURN_TIME=9,
+	NET_IRDA_MAX_TX_DATA_SIZE=10,
+	NET_IRDA_MAX_TX_WINDOW=11,
+	NET_IRDA_MAX_NOREPLY_TIME=12,
+	NET_IRDA_WARN_NOREPLY_TIME=13,
+	NET_IRDA_LAP_KEEPALIVE_TIME=14,
+};
+
+
 /* CTL_FS names: */
 enum
 {
@@ -937,41 +951,42 @@ extern int sysctl_perm(struct ctl_table *table, int op);
 
 typedef struct ctl_table ctl_table;
 
-typedef int ctl_handler (ctl_table *table, int __user *name, int nlen,
+typedef int ctl_handler (struct ctl_table *table, int __user *name, int nlen,
 			 void __user *oldval, size_t __user *oldlenp,
 			 void __user *newval, size_t newlen);
 
-typedef int proc_handler (ctl_table *ctl, int write, struct file * filp,
+typedef int proc_handler (struct ctl_table *ctl, int write, struct file * filp,
 			  void __user *buffer, size_t *lenp, loff_t *ppos);
 
-extern int proc_dostring(ctl_table *, int, struct file *,
+extern int proc_dostring(struct ctl_table *, int, struct file *,
 			 void __user *, size_t *, loff_t *);
-extern int proc_dointvec(ctl_table *, int, struct file *,
+extern int proc_dointvec(struct ctl_table *, int, struct file *,
 			 void __user *, size_t *, loff_t *);
-extern int proc_dointvec_bset(ctl_table *, int, struct file *,
+extern int proc_dointvec_bset(struct ctl_table *, int, struct file *,
 			      void __user *, size_t *, loff_t *);
-extern int proc_dointvec_minmax(ctl_table *, int, struct file *,
+extern int proc_dointvec_minmax(struct ctl_table *, int, struct file *,
 				void __user *, size_t *, loff_t *);
-extern int proc_dointvec_jiffies(ctl_table *, int, struct file *,
+extern int proc_dointvec_jiffies(struct ctl_table *, int, struct file *,
 				 void __user *, size_t *, loff_t *);
-extern int proc_dointvec_userhz_jiffies(ctl_table *, int, struct file *,
+extern int proc_dointvec_userhz_jiffies(struct ctl_table *, int, struct file *,
 					void __user *, size_t *, loff_t *);
-extern int proc_dointvec_ms_jiffies(ctl_table *, int, struct file *,
+extern int proc_dointvec_ms_jiffies(struct ctl_table *, int, struct file *,
 				    void __user *, size_t *, loff_t *);
-extern int proc_doulongvec_minmax(ctl_table *, int, struct file *,
+extern int proc_doulongvec_minmax(struct ctl_table *, int, struct file *,
 				  void __user *, size_t *, loff_t *);
-extern int proc_doulongvec_ms_jiffies_minmax(ctl_table *table, int,
+extern int proc_doulongvec_ms_jiffies_minmax(struct ctl_table *table, int,
 				      struct file *, void __user *, size_t *, loff_t *);
 
 extern int do_sysctl (int __user *name, int nlen,
 		      void __user *oldval, size_t __user *oldlenp,
 		      void __user *newval, size_t newlen);
 
-extern int do_sysctl_strategy (ctl_table *table, 
+extern int do_sysctl_strategy (struct ctl_table *table,
 			       int __user *name, int nlen,
 			       void __user *oldval, size_t __user *oldlenp,
 			       void __user *newval, size_t newlen);
 
+extern ctl_handler sysctl_data;
 extern ctl_handler sysctl_string;
 extern ctl_handler sysctl_intvec;
 extern ctl_handler sysctl_jiffies;
@@ -980,7 +995,7 @@ extern ctl_handler sysctl_ms_jiffies;
 
 /*
  * Register a set of sysctl names by calling register_sysctl_table
- * with an initialised array of ctl_table's.  An entry with zero
+ * with an initialised array of struct ctl_table's.  An entry with zero
  * ctl_name and NULL procname terminates the table.  table->de will be
  * set up by the registration and need not be initialised in advance.
  *
@@ -1026,8 +1041,8 @@ struct ctl_table
 	void *data;
 	int maxlen;
 	mode_t mode;
-	ctl_table *child;
-	ctl_table *parent;		/* Automatically set */
+	struct ctl_table *child;
+	struct ctl_table *parent;	/* Automatically set */
 	proc_handler *proc_handler;	/* Callback for text formatting */
 	ctl_handler *strategy;		/* Callback function for all r/w */
 	void *extra1;
@@ -1035,18 +1050,19 @@ struct ctl_table
 };
 
 /* struct ctl_table_header is used to maintain dynamic lists of
-   ctl_table trees. */
+   struct ctl_table trees. */
 struct ctl_table_header
 {
-	ctl_table *ctl_table;
+	struct ctl_table *ctl_table;
 	struct list_head ctl_entry;
 	int used;
 	struct completion *unregistering;
 };
 
-struct ctl_table_header * register_sysctl_table(ctl_table * table);
+struct ctl_table_header *register_sysctl_table(struct ctl_table * table);
 
 void unregister_sysctl_table(struct ctl_table_header * table);
+int sysctl_check_table(struct ctl_table *table);
 
 #else /* __KERNEL__ */
 

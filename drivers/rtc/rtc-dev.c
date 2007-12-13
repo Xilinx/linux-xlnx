@@ -26,10 +26,7 @@ static int rtc_dev_open(struct inode *inode, struct file *file)
 					struct rtc_device, char_dev);
 	const struct rtc_class_ops *ops = rtc->ops;
 
-	/* We keep the lock as long as the device is in use
-	 * and return immediately if busy
-	 */
-	if (!(mutex_trylock(&rtc->char_lock)))
+	if (test_and_set_bit_lock(RTC_DEV_BUSY, &rtc->flags))
 		return -EBUSY;
 
 	file->private_data = rtc;
@@ -43,8 +40,8 @@ static int rtc_dev_open(struct inode *inode, struct file *file)
 		return 0;
 	}
 
-	/* something has gone wrong, release the lock */
-	mutex_unlock(&rtc->char_lock);
+	/* something has gone wrong */
+	clear_bit_unlock(RTC_DEV_BUSY, &rtc->flags);
 	return err;
 }
 
@@ -142,7 +139,7 @@ static int set_uie(struct rtc_device *rtc)
 static ssize_t
 rtc_dev_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
-	struct rtc_device *rtc = to_rtc_device(file->private_data);
+	struct rtc_device *rtc = file->private_data;
 
 	DECLARE_WAITQUEUE(wait, current);
 	unsigned long data;
@@ -196,7 +193,7 @@ rtc_dev_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 static unsigned int rtc_dev_poll(struct file *file, poll_table *wait)
 {
-	struct rtc_device *rtc = to_rtc_device(file->private_data);
+	struct rtc_device *rtc = file->private_data;
 	unsigned long data;
 
 	poll_wait(file, &rtc->irq_queue, wait);
@@ -233,20 +230,10 @@ static int rtc_dev_ioctl(struct inode *inode, struct file *file,
 		break;
 
 	case RTC_PIE_ON:
-		if (!capable(CAP_SYS_RESOURCE))
+		if (rtc->irq_freq > rtc->max_user_freq &&
+				!capable(CAP_SYS_RESOURCE))
 			return -EACCES;
 		break;
-	}
-
-	/* avoid conflicting IRQ users */
-	if (cmd == RTC_PIE_ON || cmd == RTC_PIE_OFF || cmd == RTC_IRQP_SET) {
-		spin_lock_irq(&rtc->irq_task_lock);
-		if (rtc->irq_task)
-			err = -EBUSY;
-		spin_unlock_irq(&rtc->irq_task_lock);
-
-		if (err < 0)
-			return err;
 	}
 
 	/* try the driver's ioctl interface */
@@ -338,18 +325,20 @@ static int rtc_dev_ioctl(struct inode *inode, struct file *file,
 		err = rtc_set_time(rtc, &tm);
 		break;
 
-	case RTC_IRQP_READ:
-		if (ops->irq_set_freq)
-			err = put_user(rtc->irq_freq, (unsigned long __user *)uarg);
-		else
-			err = -ENOTTY;
+	case RTC_PIE_ON:
+		err = rtc_irq_set_state(rtc, NULL, 1);
+		break;
+
+	case RTC_PIE_OFF:
+		err = rtc_irq_set_state(rtc, NULL, 0);
 		break;
 
 	case RTC_IRQP_SET:
-		if (ops->irq_set_freq)
-			err = rtc_irq_set_freq(rtc, rtc->irq_task, arg);
-		else
-			err = -ENOTTY;
+		err = rtc_irq_set_freq(rtc, NULL, arg);
+		break;
+
+	case RTC_IRQP_READ:
+		err = put_user(rtc->irq_freq, (unsigned long __user *)uarg);
 		break;
 
 #if 0
@@ -405,7 +394,7 @@ static int rtc_dev_ioctl(struct inode *inode, struct file *file,
 
 static int rtc_dev_release(struct inode *inode, struct file *file)
 {
-	struct rtc_device *rtc = to_rtc_device(file->private_data);
+	struct rtc_device *rtc = file->private_data;
 
 #ifdef CONFIG_RTC_INTF_DEV_UIE_EMUL
 	clear_uie(rtc);
@@ -413,13 +402,13 @@ static int rtc_dev_release(struct inode *inode, struct file *file)
 	if (rtc->ops->release)
 		rtc->ops->release(rtc->dev.parent);
 
-	mutex_unlock(&rtc->char_lock);
+	clear_bit_unlock(RTC_DEV_BUSY, &rtc->flags);
 	return 0;
 }
 
 static int rtc_dev_fasync(int fd, struct file *file, int on)
 {
-	struct rtc_device *rtc = to_rtc_device(file->private_data);
+	struct rtc_device *rtc = file->private_data;
 	return fasync_helper(fd, file, on, &rtc->async_queue);
 }
 
@@ -448,9 +437,6 @@ void rtc_dev_prepare(struct rtc_device *rtc)
 
 	rtc->dev.devt = MKDEV(MAJOR(rtc_devt), rtc->id);
 
-	mutex_init(&rtc->char_lock);
-	spin_lock_init(&rtc->irq_lock);
-	init_waitqueue_head(&rtc->irq_queue);
 #ifdef CONFIG_RTC_INTF_DEV_UIE_EMUL
 	INIT_WORK(&rtc->uie_task, rtc_uie_task);
 	setup_timer(&rtc->uie_timer, rtc_uie_timer, (unsigned long)rtc);

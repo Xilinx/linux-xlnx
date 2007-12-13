@@ -39,13 +39,10 @@
  * status of that page is hard.  See end_buffer_async_read() for the details.
  * There is no point in duplicating all that complexity.
  */
-static int mpage_end_io_read(struct bio *bio, unsigned int bytes_done, int err)
+static void mpage_end_io_read(struct bio *bio, int err)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;
-
-	if (bio->bi_size)
-		return 1;
 
 	do {
 		struct page *page = bvec->bv_page;
@@ -62,16 +59,12 @@ static int mpage_end_io_read(struct bio *bio, unsigned int bytes_done, int err)
 		unlock_page(page);
 	} while (bvec >= bio->bi_io_vec);
 	bio_put(bio);
-	return 0;
 }
 
-static int mpage_end_io_write(struct bio *bio, unsigned int bytes_done, int err)
+static void mpage_end_io_write(struct bio *bio, int err)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;
-
-	if (bio->bi_size)
-		return 1;
 
 	do {
 		struct page *page = bvec->bv_page;
@@ -87,7 +80,6 @@ static int mpage_end_io_write(struct bio *bio, unsigned int bytes_done, int err)
 		end_page_writeback(page);
 	} while (bvec >= bio->bi_io_vec);
 	bio_put(bio);
-	return 0;
 }
 
 static struct bio *mpage_bio_submit(int rw, struct bio *bio)
@@ -387,31 +379,25 @@ mpage_readpages(struct address_space *mapping, struct list_head *pages,
 	struct bio *bio = NULL;
 	unsigned page_idx;
 	sector_t last_block_in_bio = 0;
-	struct pagevec lru_pvec;
 	struct buffer_head map_bh;
 	unsigned long first_logical_block = 0;
 
 	clear_buffer_mapped(&map_bh);
-	pagevec_init(&lru_pvec, 0);
 	for (page_idx = 0; page_idx < nr_pages; page_idx++) {
 		struct page *page = list_entry(pages->prev, struct page, lru);
 
 		prefetchw(&page->flags);
 		list_del(&page->lru);
-		if (!add_to_page_cache(page, mapping,
+		if (!add_to_page_cache_lru(page, mapping,
 					page->index, GFP_KERNEL)) {
 			bio = do_mpage_readpage(bio, page,
 					nr_pages - page_idx,
 					&last_block_in_bio, &map_bh,
 					&first_logical_block,
 					get_block);
-			if (!pagevec_add(&lru_pvec, page))
-				__pagevec_lru_add(&lru_pvec);
-		} else {
-			page_cache_release(page);
 		}
+		page_cache_release(page);
 	}
-	pagevec_lru_add(&lru_pvec);
 	BUG_ON(!list_empty(pages));
 	if (bio)
 		mpage_bio_submit(READ, bio);

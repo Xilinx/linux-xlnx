@@ -36,10 +36,6 @@
 /*max window size: 1024(direct blocks) + 3([t,d]indirect blocks) */
 #define EXT4_MAX_RESERVE_BLOCKS		1027
 #define EXT4_RESERVE_WINDOW_NOT_ALLOCATED 0
-/*
- * Always enable hashed directories
- */
-#define CONFIG_EXT4_INDEX
 
 /*
  * Debug code
@@ -105,36 +101,28 @@
 #define EXT4_BLOCK_ALIGN(size, blkbits)		ALIGN((size), (1 << (blkbits)))
 
 /*
- * Macro-instructions used to manage fragments
- */
-#define EXT4_MIN_FRAG_SIZE		1024
-#define	EXT4_MAX_FRAG_SIZE		4096
-#define EXT4_MIN_FRAG_LOG_SIZE		  10
-#ifdef __KERNEL__
-# define EXT4_FRAG_SIZE(s)		(EXT4_SB(s)->s_frag_size)
-# define EXT4_FRAGS_PER_BLOCK(s)	(EXT4_SB(s)->s_frags_per_block)
-#else
-# define EXT4_FRAG_SIZE(s)		(EXT4_MIN_FRAG_SIZE << (s)->s_log_frag_size)
-# define EXT4_FRAGS_PER_BLOCK(s)	(EXT4_BLOCK_SIZE(s) / EXT4_FRAG_SIZE(s))
-#endif
-
-/*
  * Structure of a blocks group descriptor
  */
 struct ext4_group_desc
 {
-	__le32	bg_block_bitmap;		/* Blocks bitmap block */
-	__le32	bg_inode_bitmap;		/* Inodes bitmap block */
-	__le32	bg_inode_table;		/* Inodes table block */
+	__le32	bg_block_bitmap_lo;	/* Blocks bitmap block */
+	__le32	bg_inode_bitmap_lo;	/* Inodes bitmap block */
+	__le32	bg_inode_table_lo;	/* Inodes table block */
 	__le16	bg_free_blocks_count;	/* Free blocks count */
 	__le16	bg_free_inodes_count;	/* Free inodes count */
 	__le16	bg_used_dirs_count;	/* Directories count */
-	__u16	bg_flags;
-	__u32	bg_reserved[3];
+	__le16	bg_flags;		/* EXT4_BG_flags (INODE_UNINIT, etc) */
+	__u32	bg_reserved[2];		/* Likely block/inode bitmap checksum */
+	__le16  bg_itable_unused;	/* Unused inodes count */
+	__le16  bg_checksum;		/* crc16(sb_uuid+group+desc) */
 	__le32	bg_block_bitmap_hi;	/* Blocks bitmap block MSB */
 	__le32	bg_inode_bitmap_hi;	/* Inodes bitmap block MSB */
 	__le32	bg_inode_table_hi;	/* Inodes table block MSB */
 };
+
+#define EXT4_BG_INODE_UNINIT	0x0001 /* Inode table/bitmap not in use */
+#define EXT4_BG_BLOCK_UNINIT	0x0002 /* Block bitmap not in use */
+#define EXT4_BG_INODE_ZEROED	0x0004 /* On-disk itable initialized to zero */
 
 #ifdef __KERNEL__
 #include <linux/ext4_fs_i.h>
@@ -311,27 +299,24 @@ struct ext4_inode {
 	__le32	i_generation;	/* File version (for NFS) */
 	__le32	i_file_acl;	/* File ACL */
 	__le32	i_dir_acl;	/* Directory ACL */
-	__le32	i_faddr;	/* Fragment address */
+	__le32	i_obso_faddr;	/* Obsoleted fragment address */
 	union {
 		struct {
-			__u8	l_i_frag;	/* Fragment number */
-			__u8	l_i_fsize;	/* Fragment size */
+			__le16	l_i_reserved1;	/* Obsoleted fragment number/size which are removed in ext4 */
 			__le16	l_i_file_acl_high;
 			__le16	l_i_uid_high;	/* these 2 fields */
 			__le16	l_i_gid_high;	/* were reserved2[0] */
 			__u32	l_i_reserved2;
 		} linux2;
 		struct {
-			__u8	h_i_frag;	/* Fragment number */
-			__u8	h_i_fsize;	/* Fragment size */
+			__le16	h_i_reserved1;	/* Obsoleted fragment number/size which are removed in ext4 */
 			__u16	h_i_mode_high;
 			__u16	h_i_uid_high;
 			__u16	h_i_gid_high;
 			__u32	h_i_author;
 		} hurd2;
 		struct {
-			__u8	m_i_frag;	/* Fragment number */
-			__u8	m_i_fsize;	/* Fragment size */
+			__le16	h_i_reserved1;	/* Obsoleted fragment number/size which are removed in ext4 */
 			__le16	m_i_file_acl_high;
 			__u32	m_i_reserved2[2];
 		} masix2;
@@ -419,8 +404,6 @@ do {									       \
 
 #if defined(__KERNEL__) || defined(__linux__)
 #define i_reserved1	osd1.linux1.l_i_reserved1
-#define i_frag		osd2.linux2.l_i_frag
-#define i_fsize		osd2.linux2.l_i_fsize
 #define i_file_acl_high	osd2.linux2.l_i_file_acl_high
 #define i_uid_low	i_uid
 #define i_gid_low	i_gid
@@ -431,8 +414,6 @@ do {									       \
 #elif defined(__GNU__)
 
 #define i_translator	osd1.hurd1.h_i_translator
-#define i_frag		osd2.hurd2.h_i_frag;
-#define i_fsize		osd2.hurd2.h_i_fsize;
 #define i_uid_high	osd2.hurd2.h_i_uid_high
 #define i_gid_high	osd2.hurd2.h_i_gid_high
 #define i_author	osd2.hurd2.h_i_author
@@ -440,8 +421,6 @@ do {									       \
 #elif defined(__masix__)
 
 #define i_reserved1	osd1.masix1.m_i_reserved1
-#define i_frag		osd2.masix2.m_i_frag
-#define i_fsize		osd2.masix2.m_i_fsize
 #define i_file_acl_high	osd2.masix2.m_i_file_acl_high
 #define i_reserved2	osd2.masix2.m_i_reserved2
 
@@ -522,15 +501,15 @@ do {									       \
  */
 struct ext4_super_block {
 /*00*/	__le32	s_inodes_count;		/* Inodes count */
-	__le32	s_blocks_count;		/* Blocks count */
-	__le32	s_r_blocks_count;	/* Reserved blocks count */
-	__le32	s_free_blocks_count;	/* Free blocks count */
+	__le32	s_blocks_count_lo;	/* Blocks count */
+	__le32	s_r_blocks_count_lo;	/* Reserved blocks count */
+	__le32	s_free_blocks_count_lo;	/* Free blocks count */
 /*10*/	__le32	s_free_inodes_count;	/* Free inodes count */
 	__le32	s_first_data_block;	/* First Data Block */
 	__le32	s_log_block_size;	/* Block size */
-	__le32	s_log_frag_size;	/* Fragment size */
+	__le32	s_obso_log_frag_size;	/* Obsoleted fragment size */
 /*20*/	__le32	s_blocks_per_group;	/* # Blocks per group */
-	__le32	s_frags_per_group;	/* # Fragments per group */
+	__le32	s_obso_frags_per_group;	/* Obsoleted fragments per group */
 	__le32	s_inodes_per_group;	/* # Inodes per group */
 	__le32	s_mtime;		/* Mount time */
 /*30*/	__le32	s_wtime;		/* Write time */
@@ -595,13 +574,13 @@ struct ext4_super_block {
 /*150*/	__le32	s_blocks_count_hi;	/* Blocks count */
 	__le32	s_r_blocks_count_hi;	/* Reserved blocks count */
 	__le32	s_free_blocks_count_hi;	/* Free blocks count */
-	__u16	s_min_extra_isize;	/* All inodes have at least # bytes */
-	__u16	s_want_extra_isize; 	/* New inodes should reserve # bytes */
-	__u32	s_flags;		/* Miscellaneous flags */
-	__u16   s_raid_stride;		/* RAID stride */
-	__u16   s_mmp_interval;         /* # seconds to wait in MMP checking */
-	__u64   s_mmp_block;            /* Block for multi-mount protection */
-	__u32   s_raid_stripe_width;    /* blocks on all data disks (N*stride)*/
+	__le16	s_min_extra_isize;	/* All inodes have at least # bytes */
+	__le16	s_want_extra_isize; 	/* New inodes should reserve # bytes */
+	__le32	s_flags;		/* Miscellaneous flags */
+	__le16  s_raid_stride;		/* RAID stride */
+	__le16  s_mmp_interval;         /* # seconds to wait in MMP checking */
+	__le64  s_mmp_block;            /* Block for multi-mount protection */
+	__le32  s_raid_stripe_width;    /* blocks on all data disks (N*stride)*/
 	__u32   s_reserved[163];        /* Padding to the end of the block */
 };
 
@@ -692,6 +671,7 @@ static inline int ext4_valid_inum(struct super_block *sb, unsigned long ino)
 #define EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER	0x0001
 #define EXT4_FEATURE_RO_COMPAT_LARGE_FILE	0x0002
 #define EXT4_FEATURE_RO_COMPAT_BTREE_DIR	0x0004
+#define EXT4_FEATURE_RO_COMPAT_GDT_CSUM		0x0010
 #define EXT4_FEATURE_RO_COMPAT_DIR_NLINK	0x0020
 #define EXT4_FEATURE_RO_COMPAT_EXTRA_ISIZE	0x0040
 
@@ -702,15 +682,18 @@ static inline int ext4_valid_inum(struct super_block *sb, unsigned long ino)
 #define EXT4_FEATURE_INCOMPAT_META_BG		0x0010
 #define EXT4_FEATURE_INCOMPAT_EXTENTS		0x0040 /* extents support */
 #define EXT4_FEATURE_INCOMPAT_64BIT		0x0080
+#define EXT4_FEATURE_INCOMPAT_FLEX_BG		0x0200
 
 #define EXT4_FEATURE_COMPAT_SUPP	EXT2_FEATURE_COMPAT_EXT_ATTR
 #define EXT4_FEATURE_INCOMPAT_SUPP	(EXT4_FEATURE_INCOMPAT_FILETYPE| \
 					 EXT4_FEATURE_INCOMPAT_RECOVER| \
 					 EXT4_FEATURE_INCOMPAT_META_BG| \
 					 EXT4_FEATURE_INCOMPAT_EXTENTS| \
-					 EXT4_FEATURE_INCOMPAT_64BIT)
+					 EXT4_FEATURE_INCOMPAT_64BIT| \
+					 EXT4_FEATURE_INCOMPAT_FLEX_BG)
 #define EXT4_FEATURE_RO_COMPAT_SUPP	(EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER| \
 					 EXT4_FEATURE_RO_COMPAT_LARGE_FILE| \
+					 EXT4_FEATURE_RO_COMPAT_GDT_CSUM| \
 					 EXT4_FEATURE_RO_COMPAT_DIR_NLINK | \
 					 EXT4_FEATURE_RO_COMPAT_EXTRA_ISIZE | \
 					 EXT4_FEATURE_RO_COMPAT_BTREE_DIR)
@@ -789,17 +772,11 @@ struct ext4_dir_entry_2 {
  * (c) Daniel Phillips, 2001
  */
 
-#ifdef CONFIG_EXT4_INDEX
-  #define is_dx(dir) (EXT4_HAS_COMPAT_FEATURE(dir->i_sb, \
-					      EXT4_FEATURE_COMPAT_DIR_INDEX) && \
+#define is_dx(dir) (EXT4_HAS_COMPAT_FEATURE(dir->i_sb, \
+				      EXT4_FEATURE_COMPAT_DIR_INDEX) && \
 		      (EXT4_I(dir)->i_flags & EXT4_INDEX_FL))
 #define EXT4_DIR_LINK_MAX(dir) (!is_dx(dir) && (dir)->i_nlink >= EXT4_LINK_MAX)
 #define EXT4_DIR_LINK_EMPTY(dir) ((dir)->i_nlink == 2 || (dir)->i_nlink == 1)
-#else
-  #define is_dx(dir) 0
-#define EXT4_DIR_LINK_MAX(dir) ((dir)->i_nlink >= EXT4_LINK_MAX)
-#define EXT4_DIR_LINK_EMPTY(dir) ((dir)->i_nlink == 2)
-#endif
 
 /* Legal values for the dx_root hash_version field: */
 
@@ -1004,39 +981,39 @@ extern void ext4_inode_table_set(struct super_block *sb,
 static inline ext4_fsblk_t ext4_blocks_count(struct ext4_super_block *es)
 {
 	return ((ext4_fsblk_t)le32_to_cpu(es->s_blocks_count_hi) << 32) |
-		le32_to_cpu(es->s_blocks_count);
+		le32_to_cpu(es->s_blocks_count_lo);
 }
 
 static inline ext4_fsblk_t ext4_r_blocks_count(struct ext4_super_block *es)
 {
 	return ((ext4_fsblk_t)le32_to_cpu(es->s_r_blocks_count_hi) << 32) |
-		le32_to_cpu(es->s_r_blocks_count);
+		le32_to_cpu(es->s_r_blocks_count_lo);
 }
 
 static inline ext4_fsblk_t ext4_free_blocks_count(struct ext4_super_block *es)
 {
 	return ((ext4_fsblk_t)le32_to_cpu(es->s_free_blocks_count_hi) << 32) |
-		le32_to_cpu(es->s_free_blocks_count);
+		le32_to_cpu(es->s_free_blocks_count_lo);
 }
 
 static inline void ext4_blocks_count_set(struct ext4_super_block *es,
 					 ext4_fsblk_t blk)
 {
-	es->s_blocks_count = cpu_to_le32((u32)blk);
+	es->s_blocks_count_lo = cpu_to_le32((u32)blk);
 	es->s_blocks_count_hi = cpu_to_le32(blk >> 32);
 }
 
 static inline void ext4_free_blocks_count_set(struct ext4_super_block *es,
 					      ext4_fsblk_t blk)
 {
-	es->s_free_blocks_count = cpu_to_le32((u32)blk);
+	es->s_free_blocks_count_lo = cpu_to_le32((u32)blk);
 	es->s_free_blocks_count_hi = cpu_to_le32(blk >> 32);
 }
 
 static inline void ext4_r_blocks_count_set(struct ext4_super_block *es,
 					   ext4_fsblk_t blk)
 {
-	es->s_r_blocks_count = cpu_to_le32((u32)blk);
+	es->s_r_blocks_count_lo = cpu_to_le32((u32)blk);
 	es->s_r_blocks_count_hi = cpu_to_le32(blk >> 32);
 }
 

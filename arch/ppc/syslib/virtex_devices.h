@@ -12,6 +12,7 @@
 #define __ASM_VIRTEX_DEVICES_H__
 
 #include <linux/platform_device.h>
+#include <linux/xilinxfb.h>
 
 void __init virtex_early_serial_map(void);
 

@@ -52,7 +52,7 @@ masquerade_check(const char *tablename,
 }
 
 static unsigned int
-masquerade_target(struct sk_buff **pskb,
+masquerade_target(struct sk_buff *skb,
 		  const struct net_device *in,
 		  const struct net_device *out,
 		  unsigned int hooknum,
@@ -69,7 +69,7 @@ masquerade_target(struct sk_buff **pskb,
 
 	NF_CT_ASSERT(hooknum == NF_IP_POST_ROUTING);
 
-	ct = nf_ct_get(*pskb, &ctinfo);
+	ct = nf_ct_get(skb, &ctinfo);
 	nat = nfct_nat(ct);
 
 	NF_CT_ASSERT(ct && (ctinfo == IP_CT_NEW || ctinfo == IP_CT_RELATED
@@ -82,7 +82,7 @@ masquerade_target(struct sk_buff **pskb,
 		return NF_ACCEPT;
 
 	mr = targinfo;
-	rt = (struct rtable *)(*pskb)->dst;
+	rt = (struct rtable *)skb->dst;
 	newsrc = inet_select_addr(out, rt->rt_gateway, RT_SCOPE_UNIVERSE);
 	if (!newsrc) {
 		printk("MASQUERADE: %s ate my IP address\n", out->name);
@@ -124,6 +124,9 @@ static int masq_device_event(struct notifier_block *this,
 			     void *ptr)
 {
 	const struct net_device *dev = ptr;
+
+	if (dev->nd_net != &init_net)
+		return NOTIFY_DONE;
 
 	if (event == NETDEV_DOWN) {
 		/* Device was downed.  Search entire table for

@@ -271,6 +271,7 @@ struct v4l2_pix_format
 
 /*      Pixel format         FOURCC                        depth  Description  */
 #define V4L2_PIX_FMT_RGB332  v4l2_fourcc('R','G','B','1') /*  8  RGB-3-3-2     */
+#define V4L2_PIX_FMT_RGB444  v4l2_fourcc('R','4','4','4') /* 16  xxxxrrrr ggggbbbb */
 #define V4L2_PIX_FMT_RGB555  v4l2_fourcc('R','G','B','O') /* 16  RGB-5-5-5     */
 #define V4L2_PIX_FMT_RGB565  v4l2_fourcc('R','G','B','P') /* 16  RGB-5-6-5     */
 #define V4L2_PIX_FMT_RGB555X v4l2_fourcc('R','G','B','Q') /* 16  RGB-5-5-5 BE  */
@@ -280,6 +281,7 @@ struct v4l2_pix_format
 #define V4L2_PIX_FMT_BGR32   v4l2_fourcc('B','G','R','4') /* 32  BGR-8-8-8-8   */
 #define V4L2_PIX_FMT_RGB32   v4l2_fourcc('R','G','B','4') /* 32  RGB-8-8-8-8   */
 #define V4L2_PIX_FMT_GREY    v4l2_fourcc('G','R','E','Y') /*  8  Greyscale     */
+#define V4L2_PIX_FMT_PAL8    v4l2_fourcc('P','A','L','8') /*  8  8-bit palette */
 #define V4L2_PIX_FMT_YVU410  v4l2_fourcc('Y','V','U','9') /*  9  YVU 4:1:0     */
 #define V4L2_PIX_FMT_YVU420  v4l2_fourcc('Y','V','1','2') /* 12  YVU 4:2:0     */
 #define V4L2_PIX_FMT_YUYV    v4l2_fourcc('Y','U','Y','V') /* 16  YUV 4:2:2     */
@@ -287,6 +289,10 @@ struct v4l2_pix_format
 #define V4L2_PIX_FMT_YUV422P v4l2_fourcc('4','2','2','P') /* 16  YVU422 planar */
 #define V4L2_PIX_FMT_YUV411P v4l2_fourcc('4','1','1','P') /* 16  YVU411 planar */
 #define V4L2_PIX_FMT_Y41P    v4l2_fourcc('Y','4','1','P') /* 12  YUV 4:1:1     */
+#define V4L2_PIX_FMT_YUV444  v4l2_fourcc('Y','4','4','4') /* 16  xxxxyyyy uuuuvvvv */
+#define V4L2_PIX_FMT_YUV555  v4l2_fourcc('Y','U','V','O') /* 16  YUV-5-5-5     */
+#define V4L2_PIX_FMT_YUV565  v4l2_fourcc('Y','U','V','P') /* 16  YUV-5-6-5     */
+#define V4L2_PIX_FMT_YUV32   v4l2_fourcc('Y','U','V','4') /* 32  YUV-8-8-8-8   */
 
 /* two planes -- one Y, one Cr + Cb interleaved  */
 #define V4L2_PIX_FMT_NV12    v4l2_fourcc('N','V','1','2') /* 12  Y/CbCr 4:2:0  */
@@ -298,7 +304,6 @@ struct v4l2_pix_format
 #define V4L2_PIX_FMT_YYUV    v4l2_fourcc('Y','Y','U','V') /* 16  YUV 4:2:2     */
 #define V4L2_PIX_FMT_HI240   v4l2_fourcc('H','I','2','4') /*  8  8-bit color   */
 #define V4L2_PIX_FMT_HM12    v4l2_fourcc('H','M','1','2') /*  8  YUV 4:2:0 16x16 macroblocks */
-#define V4L2_PIX_FMT_RGB444  v4l2_fourcc('R','4','4','4') /* 16  xxxxrrrr ggggbbbb */
 
 /* see http://www.siliconimaging.com/RGB%20Bayer.htm */
 #define V4L2_PIX_FMT_SBGGR8  v4l2_fourcc('B','A','8','1') /*  8  BGBG.. GRGR.. */
@@ -435,94 +440,6 @@ struct v4l2_timecode
 #define V4L2_TC_USERBITS_USERDEFINED	0x0000
 #define V4L2_TC_USERBITS_8BITCHARS	0x0008
 /* The above is based on SMPTE timecodes */
-
-#ifdef __KERNEL__
-/*
- *	M P E G   C O M P R E S S I O N   P A R A M E T E R S
- *
- *  ### WARNING: This experimental MPEG compression API is obsolete.
- *  ###          It is replaced by the MPEG controls API.
- *  ###          This old API will disappear in the near future!
- *
- */
-enum v4l2_bitrate_mode {
-	V4L2_BITRATE_NONE = 0,	/* not specified */
-	V4L2_BITRATE_CBR,	/* constant bitrate */
-	V4L2_BITRATE_VBR,	/* variable bitrate */
-};
-struct v4l2_bitrate {
-	/* rates are specified in kbit/sec */
-	enum v4l2_bitrate_mode	mode;
-	__u32			min;
-	__u32			target;  /* use this one for CBR */
-	__u32			max;
-};
-
-enum v4l2_mpeg_streamtype {
-	V4L2_MPEG_SS_1,		/* MPEG-1 system stream */
-	V4L2_MPEG_PS_2,		/* MPEG-2 program stream */
-	V4L2_MPEG_TS_2,		/* MPEG-2 transport stream */
-	V4L2_MPEG_PS_DVD,      	/* MPEG-2 program stream with DVD header fixups */
-};
-enum v4l2_mpeg_audiotype {
-	V4L2_MPEG_AU_2_I,	/* MPEG-2 layer 1 */
-	V4L2_MPEG_AU_2_II,	/* MPEG-2 layer 2 */
-	V4L2_MPEG_AU_2_III,	/* MPEG-2 layer 3 */
-	V4L2_MPEG_AC3,		/* AC3 */
-	V4L2_MPEG_LPCM,		/* LPCM */
-};
-enum v4l2_mpeg_videotype {
-	V4L2_MPEG_VI_1,		/* MPEG-1 */
-	V4L2_MPEG_VI_2,		/* MPEG-2 */
-};
-enum v4l2_mpeg_aspectratio {
-	V4L2_MPEG_ASPECT_SQUARE = 1,   /* square pixel */
-	V4L2_MPEG_ASPECT_4_3    = 2,   /*  4 : 3       */
-	V4L2_MPEG_ASPECT_16_9   = 3,   /* 16 : 9       */
-	V4L2_MPEG_ASPECT_1_221  = 4,   /*  1 : 2,21    */
-};
-
-struct v4l2_mpeg_compression {
-	/* general */
-	enum v4l2_mpeg_streamtype	st_type;
-	struct v4l2_bitrate		st_bitrate;
-
-	/* transport streams */
-	__u16				ts_pid_pmt;
-	__u16				ts_pid_audio;
-	__u16				ts_pid_video;
-	__u16				ts_pid_pcr;
-
-	/* program stream */
-	__u16				ps_size;
-	__u16				reserved_1;    /* align */
-
-	/* audio */
-	enum v4l2_mpeg_audiotype	au_type;
-	struct v4l2_bitrate		au_bitrate;
-	__u32				au_sample_rate;
-	__u8                            au_pesid;
-	__u8                            reserved_2[3]; /* align */
-
-	/* video */
-	enum v4l2_mpeg_videotype	vi_type;
-	enum v4l2_mpeg_aspectratio	vi_aspect_ratio;
-	struct v4l2_bitrate		vi_bitrate;
-	__u32				vi_frame_rate;
-	__u16				vi_frames_per_gop;
-	__u16				vi_bframes_count;
-	__u8                            vi_pesid;
-	__u8                            reserved_3[3]; /* align */
-
-	/* misc flags */
-	__u32                           closed_gops:1;
-	__u32                           pulldown:1;
-	__u32                           reserved_4:30; /* align */
-
-	/* I don't expect the above being perfect yet ;) */
-	__u32				reserved_5[8];
-};
-#endif
 
 struct v4l2_jpegcompression
 {
@@ -1415,10 +1332,6 @@ struct v4l2_chip_ident {
 #define VIDIOC_ENUM_FMT         _IOWR ('V',  2, struct v4l2_fmtdesc)
 #define VIDIOC_G_FMT		_IOWR ('V',  4, struct v4l2_format)
 #define VIDIOC_S_FMT		_IOWR ('V',  5, struct v4l2_format)
-#ifdef __KERNEL__
-#define VIDIOC_G_MPEGCOMP       _IOR  ('V',  6, struct v4l2_mpeg_compression)
-#define VIDIOC_S_MPEGCOMP     	_IOW  ('V',  7, struct v4l2_mpeg_compression)
-#endif
 #define VIDIOC_REQBUFS		_IOWR ('V',  8, struct v4l2_requestbuffers)
 #define VIDIOC_QUERYBUF		_IOWR ('V',  9, struct v4l2_buffer)
 #define VIDIOC_G_FBUF		_IOR  ('V', 10, struct v4l2_framebuffer)

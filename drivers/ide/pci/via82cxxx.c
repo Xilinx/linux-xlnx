@@ -1,6 +1,6 @@
 /*
  *
- * Version 3.47
+ * Version 3.50
  *
  * VIA IDE driver for Linux. Supported southbridges:
  *
@@ -153,20 +153,16 @@ static void via_set_speed(ide_hwif_t *hwif, u8 dn, struct ide_timing *timing)
  *	@drive: Drive to set up
  *	@speed: desired speed
  *
- *	via_set_drive() computes timing values configures the drive and
- *	the chipset to a desired transfer mode. It also can be called
- *	by upper layers.
+ *	via_set_drive() computes timing values configures the chipset to
+ *	a desired transfer mode.  It also can be called by upper layers.
  */
 
-static int via_set_drive(ide_drive_t *drive, u8 speed)
+static void via_set_drive(ide_drive_t *drive, const u8 speed)
 {
 	ide_drive_t *peer = HWIF(drive)->drives + (~drive->dn & 1);
 	struct via82cxxx_dev *vdev = pci_get_drvdata(drive->hwif->pci_dev);
 	struct ide_timing t, p;
 	unsigned int T, UT;
-
-	if (speed != XFER_PIO_SLOW)
-		ide_config_drive_speed(drive, speed);
 
 	T = 1000000000 / via_clock;
 
@@ -186,53 +182,19 @@ static int via_set_drive(ide_drive_t *drive, u8 speed)
 	}
 
 	via_set_speed(HWIF(drive), drive->dn, &t);
-
-	if (!drive->init_speed)
-		drive->init_speed = speed;
-	drive->current_speed = speed;
-
-	return 0;
 }
 
 /**
- *	via82cxxx_tune_drive	-	PIO setup
- *	@drive: drive to set up
- *	@pio: mode to use (255 for 'best possible')
+ *	via_set_pio_mode	-	set host controller for PIO mode
+ *	@drive: drive
+ *	@pio: PIO mode number
  *
  *	A callback from the upper layers for PIO-only tuning.
  */
 
-static void via82cxxx_tune_drive(ide_drive_t *drive, u8 pio)
+static void via_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
-	if (pio == 255)
-		pio = ide_get_best_pio_mode(drive, 255, 5);
-
-	via_set_drive(drive, XFER_PIO_0 + min_t(u8, pio, 5));
-}
-
-/**
- *	via82cxxx_ide_dma_check		-	set up for DMA if possible
- *	@drive: IDE drive to set up
- *
- *	Set up the drive for the highest supported speed considering the
- *	driver, controller and cable
- */
- 
-static int via82cxxx_ide_dma_check (ide_drive_t *drive)
-{
-	u8 speed = ide_max_dma_mode(drive);
-
-	if (speed == 0) {
-		via82cxxx_tune_drive(drive, 255);
-		return -1;
-	}
-
-	via_set_drive(drive, speed);
-
-	if (drive->autodma)
-		return 0;
-
-	return -1;
+	via_set_drive(drive, XFER_PIO_0 + pio);
 }
 
 static struct via_isa_bridge *via_config_find(struct pci_dev **isa)
@@ -419,7 +381,7 @@ static unsigned int __devinit init_chipset_via82cxxx(struct pci_dev *dev, const 
  *	Cable special cases
  */
 
-static struct dmi_system_id cable_dmi_table[] = {
+static const struct dmi_system_id cable_dmi_table[] = {
 	{
 		.ident = "Acer Ferrari 3400",
 		.matches = {
@@ -460,75 +422,40 @@ static u8 __devinit via82cxxx_cable_detect(ide_hwif_t *hwif)
 
 static void __devinit init_hwif_via82cxxx(ide_hwif_t *hwif)
 {
-	struct via82cxxx_dev *vdev = pci_get_drvdata(hwif->pci_dev);
-	int i;
-
-	hwif->autodma = 0;
-
-	hwif->tuneproc = &via82cxxx_tune_drive;
-	hwif->speedproc = &via_set_drive;
-
-
-#ifdef CONFIG_PPC_CHRP
-	if(machine_is(chrp) && _chrp_type == _CHRP_Pegasos) {
-		hwif->irq = hwif->channel ? 15 : 14;
-	}
-#endif
-
-	for (i = 0; i < 2; i++) {
-		hwif->drives[i].io_32bit = 1;
-		hwif->drives[i].unmask = (vdev->via_config->flags & VIA_NO_UNMASK) ? 0 : 1;
-		hwif->drives[i].autotune = 1;
-		hwif->drives[i].dn = hwif->channel * 2 + i;
-	}
+	hwif->set_pio_mode = &via_set_pio_mode;
+	hwif->set_dma_mode = &via_set_drive;
 
 	if (!hwif->dma_base)
 		return;
 
-	hwif->atapi_dma = 1;
-
-	hwif->ultra_mask = vdev->via_config->udma_mask;
-	hwif->mwdma_mask = 0x07;
-	hwif->swdma_mask = 0x07;
-
 	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
 		hwif->cbl = via82cxxx_cable_detect(hwif);
-
-	hwif->ide_dma_check = &via82cxxx_ide_dma_check;
-	if (!noautodma)
-		hwif->autodma = 1;
-	hwif->drives[0].autodma = hwif->autodma;
-	hwif->drives[1].autodma = hwif->autodma;
 }
 
-static ide_pci_device_t via82cxxx_chipsets[] __devinitdata = {
-	{	/* 0 */
-		.name		= "VP_IDE",
-		.init_chipset	= init_chipset_via82cxxx,
-		.init_hwif	= init_hwif_via82cxxx,
-		.autodma	= NOAUTODMA,
-		.enablebits	= {{0x40,0x02,0x02}, {0x40,0x01,0x01}},
-		.bootable	= ON_BOARD,
-		.host_flags	= IDE_HFLAG_PIO_NO_BLACKLIST
-				| IDE_HFLAG_PIO_NO_DOWNGRADE,
-		.pio_mask	= ATA_PIO5,
-	},{	/* 1 */
-		.name		= "VP_IDE",
-		.init_chipset	= init_chipset_via82cxxx,
-		.init_hwif	= init_hwif_via82cxxx,
-		.autodma	= AUTODMA,
-		.enablebits	= {{0x00,0x00,0x00}, {0x00,0x00,0x00}},
-		.bootable	= ON_BOARD,
-		.host_flags	= IDE_HFLAG_PIO_NO_BLACKLIST
-				| IDE_HFLAG_PIO_NO_DOWNGRADE,
-		.pio_mask	= ATA_PIO5,
-	}
+static const struct ide_port_info via82cxxx_chipset __devinitdata = {
+	.name		= "VP_IDE",
+	.init_chipset	= init_chipset_via82cxxx,
+	.init_hwif	= init_hwif_via82cxxx,
+	.enablebits	= { { 0x40, 0x02, 0x02 }, { 0x40, 0x01, 0x01 } },
+	.host_flags	= IDE_HFLAG_PIO_NO_BLACKLIST |
+			  IDE_HFLAG_PIO_NO_DOWNGRADE |
+			  IDE_HFLAG_POST_SET_MODE |
+			  IDE_HFLAG_IO_32BIT |
+			  IDE_HFLAG_BOOTABLE,
+	.pio_mask	= ATA_PIO5,
+	.swdma_mask	= ATA_SWDMA2,
+	.mwdma_mask	= ATA_MWDMA2,
 };
 
 static int __devinit via_init_one(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	struct pci_dev *isa = NULL;
 	struct via_isa_bridge *via_config;
+	u8 idx = id->driver_data;
+	struct ide_port_info d;
+
+	d = via82cxxx_chipset;
+
 	/*
 	 * Find the ISA bridge and check we know what it is.
 	 */
@@ -538,14 +465,30 @@ static int __devinit via_init_one(struct pci_dev *dev, const struct pci_device_i
 		printk(KERN_WARNING "VP_IDE: Unknown VIA SouthBridge, disabling DMA.\n");
 		return -ENODEV;
 	}
-	return ide_setup_pci_device(dev, &via82cxxx_chipsets[id->driver_data]);
+
+	if (idx == 0)
+		d.host_flags |= IDE_HFLAG_NO_AUTODMA;
+	else
+		d.enablebits[1].reg = d.enablebits[0].reg = 0;
+
+	if ((via_config->flags & VIA_NO_UNMASK) == 0)
+		d.host_flags |= IDE_HFLAG_UNMASK_IRQS;
+
+#ifdef CONFIG_PPC_CHRP
+	if (machine_is(chrp) && _chrp_type == _CHRP_Pegasos)
+		d.host_flags |= IDE_HFLAG_FORCE_LEGACY_IRQS;
+#endif
+
+	d.udma_mask = via_config->udma_mask;
+
+	return ide_setup_pci_device(dev, &d);
 }
 
-static struct pci_device_id via_pci_tbl[] = {
-	{ PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_82C576_1, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_82C586_1, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_6410,     PCI_ANY_ID, PCI_ANY_ID, 0, 0, 1},
-	{ PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_SATA_EIDE,     PCI_ANY_ID, PCI_ANY_ID, 0, 0, 1},
+static const struct pci_device_id via_pci_tbl[] = {
+	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_82C576_1),  0 },
+	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_82C586_1),  0 },
+	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_6410),      1 },
+	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_SATA_EIDE), 1 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, via_pci_tbl);

@@ -129,7 +129,7 @@ static struct fuse_req *get_reserved_req(struct fuse_conn *fc,
 	struct fuse_file *ff = file->private_data;
 
 	do {
-		wait_event(fc->blocked_waitq, ff->reserved_req);
+		wait_event(fc->reserved_req_waitq, ff->reserved_req);
 		spin_lock(&fc->lock);
 		if (ff->reserved_req) {
 			req = ff->reserved_req;
@@ -155,7 +155,7 @@ static void put_reserved_req(struct fuse_conn *fc, struct fuse_req *req)
 	fuse_request_init(req);
 	BUG_ON(ff->reserved_req);
 	ff->reserved_req = req;
-	wake_up(&fc->blocked_waitq);
+	wake_up_all(&fc->reserved_req_waitq);
 	spin_unlock(&fc->lock);
 	fput(file);
 }
@@ -224,13 +224,13 @@ static void request_end(struct fuse_conn *fc, struct fuse_req *req)
 			fc->blocked = 0;
 			wake_up_all(&fc->blocked_waitq);
 		}
+		if (fc->num_background == FUSE_CONGESTION_THRESHOLD) {
+			clear_bdi_congested(&fc->bdi, READ);
+			clear_bdi_congested(&fc->bdi, WRITE);
+		}
 		fc->num_background--;
 	}
 	spin_unlock(&fc->lock);
-	dput(req->dentry);
-	mntput(req->vfsmount);
-	if (req->file)
-		fput(req->file);
 	wake_up(&req->waitq);
 	if (end)
 		end(fc, req);
@@ -273,28 +273,41 @@ static void request_wait_answer(struct fuse_conn *fc, struct fuse_req *req)
 			queue_interrupt(fc, req);
 	}
 
-	if (req->force) {
-		spin_unlock(&fc->lock);
-		wait_event(req->waitq, req->state == FUSE_REQ_FINISHED);
-		spin_lock(&fc->lock);
-	} else {
+	if (!req->force) {
 		sigset_t oldset;
 
 		/* Only fatal signals may interrupt this */
 		block_sigs(&oldset);
 		wait_answer_interruptible(fc, req);
 		restore_sigs(&oldset);
+
+		if (req->aborted)
+			goto aborted;
+		if (req->state == FUSE_REQ_FINISHED)
+			return;
+
+		/* Request is not yet in userspace, bail out */
+		if (req->state == FUSE_REQ_PENDING) {
+			list_del(&req->list);
+			__fuse_put_request(req);
+			req->out.h.error = -EINTR;
+			return;
+		}
 	}
 
-	if (req->aborted)
-		goto aborted;
-	if (req->state == FUSE_REQ_FINISHED)
- 		return;
+	/*
+	 * Either request is already in userspace, or it was forced.
+	 * Wait it out.
+	 */
+	spin_unlock(&fc->lock);
+	wait_event(req->waitq, req->state == FUSE_REQ_FINISHED);
+	spin_lock(&fc->lock);
 
-	req->out.h.error = -EINTR;
-	req->aborted = 1;
+	if (!req->aborted)
+		return;
 
  aborted:
+	BUG_ON(req->state != FUSE_REQ_FINISHED);
 	if (req->locked) {
 		/* This is uninterruptible sleep, because data is
 		   being copied to/from the buffers of req.  During
@@ -303,14 +316,6 @@ static void request_wait_answer(struct fuse_conn *fc, struct fuse_req *req)
 		   to deadlock */
 		spin_unlock(&fc->lock);
 		wait_event(req->waitq, !req->locked);
-		spin_lock(&fc->lock);
-	}
-	if (req->state == FUSE_REQ_PENDING) {
-		list_del(&req->list);
-		__fuse_put_request(req);
-	} else if (req->state == FUSE_REQ_SENT) {
-		spin_unlock(&fc->lock);
-		wait_event(req->waitq, req->state == FUSE_REQ_FINISHED);
 		spin_lock(&fc->lock);
 	}
 }
@@ -378,6 +383,10 @@ static void request_send_nowait(struct fuse_conn *fc, struct fuse_req *req)
 		fc->num_background++;
 		if (fc->num_background == FUSE_MAX_BACKGROUND)
 			fc->blocked = 1;
+		if (fc->num_background == FUSE_CONGESTION_THRESHOLD) {
+			set_bdi_congested(&fc->bdi, READ);
+			set_bdi_congested(&fc->bdi, WRITE);
+		}
 
 		queue_request(fc, req);
 		spin_unlock(&fc->lock);
@@ -738,11 +747,12 @@ static ssize_t fuse_dev_read(struct kiocb *iocb, const struct iovec *iov,
 	fuse_copy_finish(&cs);
 	spin_lock(&fc->lock);
 	req->locked = 0;
-	if (!err && req->aborted)
-		err = -ENOENT;
+	if (req->aborted) {
+		request_end(fc, req);
+		return -ENODEV;
+	}
 	if (err) {
-		if (!req->aborted)
-			req->out.h.error = -EIO;
+		req->out.h.error = -EIO;
 		request_end(fc, req);
 		return err;
 	}

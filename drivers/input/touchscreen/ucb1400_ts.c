@@ -130,8 +130,7 @@ static unsigned int ucb1400_adc_read(struct ucb1400 *ucb, u16 adc_channel)
 		if (val & UCB_ADC_DAT_VALID)
 			break;
 		/* yield to other processes */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(1);
+		schedule_timeout_uninterruptible(1);
 	}
 
 	return UCB_ADC_DAT_VALUE(val);
@@ -334,10 +333,9 @@ static int ucb1400_ts_thread(void *_ucb)
 			timeout = msecs_to_jiffies(10);
 		}
 
-		wait_event_interruptible_timeout(ucb->ts_wait,
+		wait_event_freezable_timeout(ucb->ts_wait,
 			ucb->irq_pending || ucb->ts_restart || kthread_should_stop(),
 			timeout);
-		try_to_freeze();
 	}
 
 	/* Send the "pen off" if we are stopping with the pen still active */
@@ -519,7 +517,7 @@ static int ucb1400_ts_probe(struct device *dev)
 	idev->id.product	= id;
 	idev->open		= ucb1400_ts_open;
 	idev->close		= ucb1400_ts_close;
-	idev->evbit[0]		= BIT(EV_ABS);
+	idev->evbit[0]		= BIT_MASK(EV_ABS);
 
 	ucb1400_adc_enable(ucb);
 	x_res = ucb1400_ts_read_xres(ucb);

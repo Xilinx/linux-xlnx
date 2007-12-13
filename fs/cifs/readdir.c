@@ -121,7 +121,7 @@ static void AdjustForTZ(struct cifsTconInfo *tcon, struct inode *inode)
 
 
 static void fill_in_inode(struct inode *tmp_inode, int new_buf_type,
-			  char *buf, int *pobject_type, int isNewInode)
+			  char *buf, unsigned int *pobject_type, int isNewInode)
 {
 	loff_t local_size;
 	struct timespec local_mtime;
@@ -171,7 +171,13 @@ static void fill_in_inode(struct inode *tmp_inode, int new_buf_type,
 	/* Linux can not store file creation time unfortunately so ignore it */
 
 	cifsInfo->cifsAttrs = attr;
-	cifsInfo->time = jiffies;
+#ifdef CONFIG_CIFS_EXPERIMENTAL
+	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_CIFS_ACL) {
+		/* get more accurate mode via ACL - so force inode refresh */
+		cifsInfo->time = 0;
+	} else
+#endif /* CONFIG_CIFS_EXPERIMENTAL */
+		cifsInfo->time = jiffies;
 
 	/* treat dos attribute of read-only as read-only mode bit e.g. 555? */
 	/* 2767 perms - indicate mandatory locking */
@@ -294,7 +300,7 @@ static void fill_in_inode(struct inode *tmp_inode, int new_buf_type,
 }
 
 static void unix_fill_in_inode(struct inode *tmp_inode,
-	FILE_UNIX_INFO *pfindData, int *pobject_type, int isNewInode)
+	FILE_UNIX_INFO *pfindData, unsigned int *pobject_type, int isNewInode)
 {
 	loff_t local_size;
 	struct timespec local_mtime;
@@ -495,7 +501,7 @@ ffirst_retry:
 static int cifs_unicode_bytelen(char *str)
 {
 	int len;
-	__le16 * ustr = (__le16 *)str;
+	__le16 *ustr = (__le16 *)str;
 
 	for (len = 0; len <= PATH_MAX; len++) {
 		if (ustr[len] == 0)
@@ -826,7 +832,7 @@ static int cifs_filldir(char *pfindEntry, struct file *file,
 	int rc = 0;
 	struct qstr qstring;
 	struct cifsFileInfo *pCifsF;
-	unsigned obj_type;
+	unsigned int obj_type;
 	ino_t  inum;
 	struct cifs_sb_info *cifs_sb;
 	struct inode *tmp_inode;
@@ -1067,7 +1073,7 @@ int cifs_readdir(struct file *file, void *direntry, filldir_t filldir)
 		for (i = 0; (i < num_to_fill) && (rc == 0); i++) {
 			if (current_entry == NULL) {
 				/* evaluate whether this case is an error */
-				cERROR(1,("past end of SMB num to fill %d i %d",
+				cERROR(1, ("past SMB end,  num to fill %d i %d",
 					  num_to_fill, i));
 				break;
 			}

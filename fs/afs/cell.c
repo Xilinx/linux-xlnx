@@ -33,6 +33,7 @@ static struct afs_cell *afs_cell_root;
 static struct afs_cell *afs_cell_alloc(const char *name, char *vllist)
 {
 	struct afs_cell *cell;
+	struct key *key;
 	size_t namelen;
 	char keyname[4 + AFS_MAXCELLNAME + 1], *cp, *dp, *next;
 	int ret;
@@ -89,20 +90,14 @@ static struct afs_cell *afs_cell_alloc(const char *name, char *vllist)
 	do {
 		*dp++ = toupper(*cp);
 	} while (*cp++);
-	cell->anonymous_key = key_alloc(&key_type_rxrpc, keyname, 0, 0, current,
-					KEY_POS_SEARCH, KEY_ALLOC_NOT_IN_QUOTA);
-	if (IS_ERR(cell->anonymous_key)) {
-		_debug("no key");
-		ret = PTR_ERR(cell->anonymous_key);
-		goto error;
-	}
 
-	ret = key_instantiate_and_link(cell->anonymous_key, NULL, 0,
-				       NULL, NULL);
-	if (ret < 0) {
-		_debug("instantiate failed");
+	key = rxrpc_get_null_key(keyname);
+	if (IS_ERR(key)) {
+		_debug("no key");
+		ret = PTR_ERR(key);
 		goto error;
 	}
+	cell->anonymous_key = key;
 
 	_debug("anon key %p{%x}",
 	       cell->anonymous_key, key_serial(cell->anonymous_key));
@@ -265,6 +260,7 @@ struct afs_cell *afs_cell_lookup(const char *name, unsigned namesz)
 	return cell;
 }
 
+#if 0
 /*
  * try and get a cell record
  */
@@ -280,6 +276,7 @@ struct afs_cell *afs_get_cell_maybe(struct afs_cell *cell)
 	write_unlock(&afs_cells_lock);
 	return cell;
 }
+#endif  /*  0  */
 
 /*
  * destroy a cell record

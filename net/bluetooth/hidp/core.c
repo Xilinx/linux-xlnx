@@ -247,7 +247,7 @@ static inline int hidp_queue_report(struct hidp_session *session, unsigned char 
 {
 	struct sk_buff *skb;
 
-	BT_DBG("session %p hid %p data %p size %d", session, device, data, size);
+	BT_DBG("session %p hid %p data %p size %d", session, session->hid, data, size);
 
 	if (!(skb = alloc_skb(size + 1, GFP_ATOMIC))) {
 		BT_ERR("Can't allocate memory for new frame");
@@ -625,7 +625,7 @@ static struct device *hidp_get_device(struct hidp_session *session)
 	return conn ? &conn->dev : NULL;
 }
 
-static inline void hidp_setup_input(struct hidp_session *session, struct hidp_connadd_req *req)
+static inline int hidp_setup_input(struct hidp_session *session, struct hidp_connadd_req *req)
 {
 	struct input_dev *input = session->input;
 	int i;
@@ -656,18 +656,20 @@ static inline void hidp_setup_input(struct hidp_session *session, struct hidp_co
 	}
 
 	if (req->subclass & 0x80) {
-		input->evbit[0] = BIT(EV_KEY) | BIT(EV_REL);
-		input->keybit[LONG(BTN_MOUSE)] = BIT(BTN_LEFT) | BIT(BTN_RIGHT) | BIT(BTN_MIDDLE);
-		input->relbit[0] = BIT(REL_X) | BIT(REL_Y);
-		input->keybit[LONG(BTN_MOUSE)] |= BIT(BTN_SIDE) | BIT(BTN_EXTRA);
-		input->relbit[0] |= BIT(REL_WHEEL);
+		input->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL);
+		input->keybit[BIT_WORD(BTN_MOUSE)] = BIT_MASK(BTN_LEFT) |
+			BIT_MASK(BTN_RIGHT) | BIT_MASK(BTN_MIDDLE);
+		input->relbit[0] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
+		input->keybit[BIT_WORD(BTN_MOUSE)] |= BIT_MASK(BTN_SIDE) |
+			BIT_MASK(BTN_EXTRA);
+		input->relbit[0] |= BIT_MASK(REL_WHEEL);
 	}
 
 	input->dev.parent = hidp_get_device(session);
 
 	input->event = hidp_input_event;
 
-	input_register_device(input);
+	return input_register_device(input);
 }
 
 static int hidp_open(struct hid_device *hid)
@@ -820,8 +822,11 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 	session->flags   = req->flags & (1 << HIDP_BLUETOOTH_VENDOR_ID);
 	session->idle_to = req->idle_to;
 
-	if (session->input)
-		hidp_setup_input(session, req);
+	if (session->input) {
+		err = hidp_setup_input(session, req);
+		if (err < 0)
+			goto failed;
+	}
 
 	if (session->hid)
 		hidp_setup_hid(session, req);

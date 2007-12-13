@@ -23,6 +23,7 @@ struct cpu_usage_stat {
 	cputime64_t idle;
 	cputime64_t iowait;
 	cputime64_t steal;
+	cputime64_t guest;
 };
 
 struct kernel_stat {
@@ -52,7 +53,9 @@ static inline int kstat_irqs(int irq)
 }
 
 extern void account_user_time(struct task_struct *, cputime_t);
+extern void account_user_time_scaled(struct task_struct *, cputime_t);
 extern void account_system_time(struct task_struct *, int, cputime_t);
+extern void account_system_time_scaled(struct task_struct *, cputime_t);
 extern void account_steal_time(struct task_struct *, cputime_t);
 
 #endif /* _LINUX_KERNEL_STAT_H */

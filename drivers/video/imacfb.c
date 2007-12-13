@@ -58,7 +58,7 @@ static int model		= M_UNKNOWN;
 static int manual_height;
 static int manual_width;
 
-static int set_system(struct dmi_system_id *id)
+static int set_system(const struct dmi_system_id *id)
 {
 	printk(KERN_INFO "imacfb: %s detected - set system to %ld\n",
 		id->ident, (long)id->driver_data);
@@ -233,10 +233,6 @@ static int __init imacfb_probe(struct platform_device *dev)
 	if (size_remap > size_total)
 		size_remap = size_total;
 	imacfb_fix.smem_len = size_remap;
-
-#ifndef __i386__
-	screen_info.imacpm_seg = 0;
-#endif
 
 	if (!request_mem_region(imacfb_fix.smem_start, size_total, "imacfb")) {
 		printk(KERN_WARNING

@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/random.h>
+#include <linux/scatterlist.h>
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
 #include <linux/mm.h>
@@ -24,7 +25,6 @@
 #include <net/ieee80211.h>
 
 #include <linux/crypto.h>
-#include <asm/scatterlist.h>
 #include <linux/crc32.h>
 
 MODULE_AUTHOR("Jouni Malinen");
@@ -359,14 +359,15 @@ static int ieee80211_tkip_encrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	u8 rc4key[16], *pos, *icv;
 	u32 crc;
 	struct scatterlist sg;
+	DECLARE_MAC_BUF(mac);
 
 	if (tkey->flags & IEEE80211_CRYPTO_TKIP_COUNTERMEASURES) {
 		if (net_ratelimit()) {
 			struct ieee80211_hdr_4addr *hdr =
 			    (struct ieee80211_hdr_4addr *)skb->data;
 			printk(KERN_DEBUG ": TKIP countermeasures: dropped "
-			       "TX packet to " MAC_FMT "\n",
-			       MAC_ARG(hdr->addr1));
+			       "TX packet to %s\n",
+			       print_mac(mac, hdr->addr1));
 		}
 		return -1;
 	}
@@ -389,9 +390,7 @@ static int ieee80211_tkip_encrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	icv[3] = crc >> 24;
 
 	crypto_blkcipher_setkey(tkey->tx_tfm_arc4, rc4key, 16);
-	sg.page = virt_to_page(pos);
-	sg.offset = offset_in_page(pos);
-	sg.length = len + 4;
+	sg_init_one(&sg, pos, len + 4);
 	return crypto_blkcipher_encrypt(&desc, &sg, &sg, len + 4);
 }
 
@@ -421,14 +420,15 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	u32 crc;
 	struct scatterlist sg;
 	int plen;
+	DECLARE_MAC_BUF(mac);
 
 	hdr = (struct ieee80211_hdr_4addr *)skb->data;
 
 	if (tkey->flags & IEEE80211_CRYPTO_TKIP_COUNTERMEASURES) {
 		if (net_ratelimit()) {
 			printk(KERN_DEBUG ": TKIP countermeasures: dropped "
-			       "received packet from " MAC_FMT "\n",
-			       MAC_ARG(hdr->addr2));
+			       "received packet from %s\n",
+			       print_mac(mac, hdr->addr2));
 		}
 		return -1;
 	}
@@ -441,7 +441,7 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	if (!(keyidx & (1 << 5))) {
 		if (net_ratelimit()) {
 			printk(KERN_DEBUG "TKIP: received packet without ExtIV"
-			       " flag from " MAC_FMT "\n", MAC_ARG(hdr->addr2));
+			       " flag from %s\n", print_mac(mac, hdr->addr2));
 		}
 		return -2;
 	}
@@ -453,9 +453,9 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	}
 	if (!tkey->key_set) {
 		if (net_ratelimit()) {
-			printk(KERN_DEBUG "TKIP: received packet from " MAC_FMT
+			printk(KERN_DEBUG "TKIP: received packet from %s"
 			       " with keyid=%d that does not have a configured"
-			       " key\n", MAC_ARG(hdr->addr2), keyidx);
+			       " key\n", print_mac(mac, hdr->addr2), keyidx);
 		}
 		return -3;
 	}
@@ -464,10 +464,10 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	pos += 8;
 
 	if (tkip_replay_check(iv32, iv16, tkey->rx_iv32, tkey->rx_iv16)) {
-		if (net_ratelimit()) {
-			IEEE80211_DEBUG_DROP("TKIP: replay detected: STA=" MAC_FMT
+		if (ieee80211_ratelimit_debug(IEEE80211_DL_DROP)) {
+			IEEE80211_DEBUG_DROP("TKIP: replay detected: STA=%s"
 			       " previous TSC %08x%04x received TSC "
-			       "%08x%04x\n", MAC_ARG(hdr->addr2),
+			       "%08x%04x\n", print_mac(mac, hdr->addr2),
 			       tkey->rx_iv32, tkey->rx_iv16, iv32, iv16);
 		}
 		tkey->dot11RSNAStatsTKIPReplays++;
@@ -483,14 +483,12 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 	plen = skb->len - hdr_len - 12;
 
 	crypto_blkcipher_setkey(tkey->rx_tfm_arc4, rc4key, 16);
-	sg.page = virt_to_page(pos);
-	sg.offset = offset_in_page(pos);
-	sg.length = plen + 4;
+	sg_init_one(&sg, pos, plen + 4);
 	if (crypto_blkcipher_decrypt(&desc, &sg, &sg, plen + 4)) {
 		if (net_ratelimit()) {
 			printk(KERN_DEBUG ": TKIP: failed to decrypt "
-			       "received packet from " MAC_FMT "\n",
-			       MAC_ARG(hdr->addr2));
+			       "received packet from %s\n",
+			       print_mac(mac, hdr->addr2));
 		}
 		return -7;
 	}
@@ -506,9 +504,9 @@ static int ieee80211_tkip_decrypt(struct sk_buff *skb, int hdr_len, void *priv)
 			 * it needs to be recalculated for the next packet. */
 			tkey->rx_phase1_done = 0;
 		}
-		if (net_ratelimit()) {
+		if (ieee80211_ratelimit_debug(IEEE80211_DL_DROP)) {
 			IEEE80211_DEBUG_DROP("TKIP: ICV error detected: STA="
-			       MAC_FMT "\n", MAC_ARG(hdr->addr2));
+			       "%s\n", print_mac(mac, hdr->addr2));
 		}
 		tkey->dot11RSNAStatsTKIPICVErrors++;
 		return -5;
@@ -537,13 +535,9 @@ static int michael_mic(struct crypto_hash *tfm_michael, u8 * key, u8 * hdr,
 		printk(KERN_WARNING "michael_mic: tfm_michael == NULL\n");
 		return -1;
 	}
-	sg[0].page = virt_to_page(hdr);
-	sg[0].offset = offset_in_page(hdr);
-	sg[0].length = 16;
-
-	sg[1].page = virt_to_page(data);
-	sg[1].offset = offset_in_page(data);
-	sg[1].length = data_len;
+	sg_init_table(sg, 2);
+	sg_set_buf(&sg[0], hdr, 16);
+	sg_set_buf(&sg[1], data, data_len);
 
 	if (crypto_hash_setkey(tfm_michael, key, 8))
 		return -1;
@@ -584,7 +578,7 @@ static void michael_mic_hdr(struct sk_buff *skb, u8 * hdr)
 	if (stype & IEEE80211_STYPE_QOS_DATA) {
 		const struct ieee80211_hdr_3addrqos *qoshdr =
 			(struct ieee80211_hdr_3addrqos *)skb->data;
-		hdr[12] = qoshdr->qos_ctl & cpu_to_le16(IEEE80211_QCTL_TID);
+		hdr[12] = le16_to_cpu(qoshdr->qos_ctl) & IEEE80211_QCTL_TID;
 	} else
 		hdr[12] = 0;		/* priority */
 
@@ -639,6 +633,7 @@ static int ieee80211_michael_mic_verify(struct sk_buff *skb, int keyidx,
 {
 	struct ieee80211_tkip_data *tkey = priv;
 	u8 mic[8];
+	DECLARE_MAC_BUF(mac);
 
 	if (!tkey->key_set)
 		return -1;
@@ -651,8 +646,8 @@ static int ieee80211_michael_mic_verify(struct sk_buff *skb, int keyidx,
 		struct ieee80211_hdr_4addr *hdr;
 		hdr = (struct ieee80211_hdr_4addr *)skb->data;
 		printk(KERN_DEBUG "%s: Michael MIC verification failed for "
-		       "MSDU from " MAC_FMT " keyidx=%d\n",
-		       skb->dev ? skb->dev->name : "N/A", MAC_ARG(hdr->addr2),
+		       "MSDU from %s keyidx=%d\n",
+		       skb->dev ? skb->dev->name : "N/A", print_mac(mac, hdr->addr2),
 		       keyidx);
 		if (skb->dev)
 			ieee80211_michael_mic_failure(skb->dev, hdr, keyidx);

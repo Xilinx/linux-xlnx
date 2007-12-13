@@ -16,7 +16,7 @@
  *
  * 2004-09-07: Arnaud Patard <arnaud.patard@rtp-net.org>
  * 	- Renamed from h1940fb.h to s3c2410fb.h
- * 	- Chenged h1940 to s3c2410
+ * 	- Changed h1940 to s3c2410
  *
  * 2004-07-15: Arnaud Patard <arnaud.patard@rtp-net.org>
  *	- First version
@@ -26,25 +26,14 @@
 #define __S3C2410FB_H
 
 struct s3c2410fb_info {
-	struct fb_info		*fb;
 	struct device		*dev;
 	struct clk		*clk;
 
 	struct resource		*mem;
 	void __iomem		*io;
 
-	struct s3c2410fb_mach_info *mach_info;
-
-	/* raw memory addresses */
-	dma_addr_t		map_dma;	/* physical */
-	u_char *		map_cpu;	/* virtual */
-	u_int			map_size;
-
 	struct s3c2410fb_hw	regs;
 
-	/* addresses of pieces placed in raw buffer */
-	u_char *		screen_cpu;	/* virtual address of buffer */
-	dma_addr_t		screen_dma;	/* physical address of buffer */
 	unsigned int		palette_ready;
 
 	/* keep these registers in case we need to re-write palette */

@@ -247,6 +247,7 @@
  *	TCP_CLOSE		socket is finished
  */
 
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/fcntl.h>
@@ -1333,7 +1334,7 @@ do_prequeue:
 		if ((flags & MSG_PEEK) && peek_seq != tp->copied_seq) {
 			if (net_ratelimit())
 				printk(KERN_DEBUG "TCP(%s:%d): Application bug, race in MSG_PEEK.\n",
-				       current->comm, current->pid);
+				       current->comm, task_pid_nr(current));
 			peek_seq = tp->copied_seq;
 		}
 		continue;
@@ -2014,7 +2015,7 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 
 	if (tp->rx_opt.tstamp_ok)
 		info->tcpi_options |= TCPI_OPT_TIMESTAMPS;
-	if (tp->rx_opt.sack_ok)
+	if (tcp_is_sack(tp))
 		info->tcpi_options |= TCPI_OPT_SACK;
 	if (tp->rx_opt.wscale_ok) {
 		info->tcpi_options |= TCPI_OPT_WSCALE;
@@ -2030,8 +2031,13 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 	info->tcpi_snd_mss = tp->mss_cache;
 	info->tcpi_rcv_mss = icsk->icsk_ack.rcv_mss;
 
-	info->tcpi_unacked = tp->packets_out;
-	info->tcpi_sacked = tp->sacked_out;
+	if (sk->sk_state == TCP_LISTEN) {
+		info->tcpi_unacked = sk->sk_ack_backlog;
+		info->tcpi_sacked = sk->sk_max_ack_backlog;
+	} else {
+		info->tcpi_unacked = tp->packets_out;
+		info->tcpi_sacked = tp->sacked_out;
+	}
 	info->tcpi_lost = tp->lost_out;
 	info->tcpi_retrans = tp->retrans_out;
 	info->tcpi_fackets = tp->fackets_out;
@@ -2210,7 +2216,7 @@ struct sk_buff *tcp_tso_segment(struct sk_buff *skb, int features)
 			goto out;
 
 		mss = skb_shinfo(skb)->gso_size;
-		skb_shinfo(skb)->gso_segs = (skb->len + mss - 1) / mss;
+		skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(skb->len, mss);
 
 		segs = NULL;
 		goto out;
@@ -2447,14 +2453,14 @@ void __init tcp_init(void)
 					0,
 					&tcp_hashinfo.ehash_size,
 					NULL,
-					0);
+					thash_entries ? 0 : 512 * 1024);
 	tcp_hashinfo.ehash_size = 1 << tcp_hashinfo.ehash_size;
 	for (i = 0; i < tcp_hashinfo.ehash_size; i++) {
-		rwlock_init(&tcp_hashinfo.ehash[i].lock);
 		INIT_HLIST_HEAD(&tcp_hashinfo.ehash[i].chain);
 		INIT_HLIST_HEAD(&tcp_hashinfo.ehash[i].twchain);
 	}
-
+	if (inet_ehash_locks_alloc(&tcp_hashinfo))
+		panic("TCP: failed to alloc ehash_locks");
 	tcp_hashinfo.bhash =
 		alloc_large_system_hash("TCP bind",
 					sizeof(struct inet_bind_hashbucket),

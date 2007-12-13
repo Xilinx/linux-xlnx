@@ -94,6 +94,7 @@ static struct scsi_host_template qla4xxx_driver_template = {
 	.this_id		= -1,
 	.cmd_per_lun		= 3,
 	.use_clustering		= ENABLE_CLUSTERING,
+	.use_sg_chaining	= ENABLE_SG_CHAINING,
 	.sg_tablesize		= SG_ALL,
 
 	.max_sectors		= 0xFFFF,
@@ -1285,7 +1286,7 @@ static int __devinit qla4xxx_probe_adapter(struct pci_dev *pdev,
 
         ret = scsi_init_shared_tag_map(host, MAX_SRBS);
         if (ret) {
-                dev_warn(&ha->pdev->dev, "scsi_init_shared_tag_map failed");
+                dev_warn(&ha->pdev->dev, "scsi_init_shared_tag_map failed\n");
                 goto probe_failed;
         }
 

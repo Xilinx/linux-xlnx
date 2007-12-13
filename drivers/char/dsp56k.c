@@ -136,7 +136,7 @@ static int sizeof_bootstrap = 375;
 
 
 static struct dsp56k_device {
-	long in_use;
+	unsigned long in_use;
 	long maxio, timeout;
 	int tx_wsize, rx_wsize;
 } dsp56k;
@@ -513,7 +513,7 @@ static int __init dsp56k_init_driver(void)
 		err = PTR_ERR(dsp56k_class);
 		goto out_chrdev;
 	}
-	class_device_create(dsp56k_class, NULL, MKDEV(DSP56K_MAJOR, 0), NULL, "dsp56k");
+	device_create(dsp56k_class, NULL, MKDEV(DSP56K_MAJOR, 0), "dsp56k");
 
 	printk(banner);
 	goto out;
@@ -527,7 +527,7 @@ module_init(dsp56k_init_driver);
 
 static void __exit dsp56k_cleanup_driver(void)
 {
-	class_device_destroy(dsp56k_class, MKDEV(DSP56K_MAJOR, 0));
+	device_destroy(dsp56k_class, MKDEV(DSP56K_MAJOR, 0));
 	class_destroy(dsp56k_class);
 	unregister_chrdev(DSP56K_MAJOR, "dsp56k");
 }

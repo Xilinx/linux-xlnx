@@ -17,12 +17,13 @@
  */
 
 #include <linux/init.h>
+#include <linux/of_platform.h>
+
 #include <asm/machdep.h>
 #include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/time.h>
 #include <asm/uic.h>
-#include <asm/of_platform.h>
 
 #include "44x.h"
 
@@ -57,14 +58,9 @@ static int __init ebony_probe(void)
 	return 1;
 }
 
-static void __init ebony_setup_arch(void)
-{
-}
-
 define_machine(ebony) {
 	.name			= "Ebony",
 	.probe			= ebony_probe,
-	.setup_arch		= ebony_setup_arch,
 	.progress		= udbg_progress,
 	.init_IRQ		= uic_init_tree,
 	.get_irq		= uic_get_irq,

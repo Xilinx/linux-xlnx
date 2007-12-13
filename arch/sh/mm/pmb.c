@@ -145,7 +145,7 @@ repeat:
 
 	ctrl_outl(vpn | PMB_V, mk_pmb_addr(pos));
 
-#ifdef CONFIG_SH_WRITETHROUGH
+#ifdef CONFIG_CACHE_WRITETHROUGH
 	/*
 	 * When we are in 32-bit address extended mode, CCR.CB becomes
 	 * invalid, so care must be taken to manually adjust cacheable
@@ -292,8 +292,7 @@ void pmb_unmap(unsigned long addr)
 	} while (pmbe);
 }
 
-static void pmb_cache_ctor(void *pmb, struct kmem_cache *cachep,
-			   unsigned long flags)
+static void pmb_cache_ctor(struct kmem_cache *cachep, void *pmb)
 {
 	struct pmb_entry *pmbe = pmb;
 

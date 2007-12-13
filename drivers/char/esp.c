@@ -19,7 +19,7 @@
  *
  *  rs_set_termios fixed to look also for changes of the input
  *      flags INPCK, BRKINT, PARMRK, IGNPAR and IGNBRK.
- *                                            Bernd Anh�pl 05/17/96.
+ *                                            Bernd Anhäupl 05/17/96.
  *
  * --- End of notices from serial.c ---
  *
@@ -58,10 +58,10 @@
 #include <linux/mm.h>
 #include <linux/init.h>
 #include <linux/delay.h>
+#include <linux/bitops.h>
 
 #include <asm/system.h>
 #include <asm/io.h>
-#include <asm/bitops.h>
 
 #include <asm/dma.h>
 #include <linux/slab.h>

@@ -262,7 +262,7 @@ static struct ip_tunnel * ipgre_tunnel_locate(struct ip_tunnel_parm *parms, int 
 		int i;
 		for (i=1; i<100; i++) {
 			sprintf(name, "gre%d", i);
-			if (__dev_get_by_name(name) == NULL)
+			if (__dev_get_by_name(&init_net, name) == NULL)
 				break;
 		}
 		if (i==100)
@@ -674,7 +674,7 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct rtable *rt;     			/* Route to the other host */
 	struct net_device *tdev;			/* Device to other host */
 	struct iphdr  *iph;			/* Our new IP header */
-	int    max_headroom;			/* The extra header space needed */
+	unsigned int max_headroom;		/* The extra header space needed */
 	int    gre_hlen;
 	__be32 dst;
 	int    mtu;
@@ -684,7 +684,7 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_error;
 	}
 
-	if (dev->hard_header) {
+	if (dev->header_ops) {
 		gre_hlen = 0;
 		tiph = (struct iphdr*)skb->data;
 	} else {
@@ -1033,7 +1033,6 @@ static int ipgre_tunnel_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
-#ifdef CONFIG_NET_IPGRE_BROADCAST
 /* Nice toy. Unfortunately, useless in real life :-)
    It allows to construct virtual multiprotocol broadcast "LAN"
    over the Internet, provided multicast routing is tuned.
@@ -1063,8 +1062,9 @@ static int ipgre_tunnel_change_mtu(struct net_device *dev, int new_mtu)
 
  */
 
-static int ipgre_header(struct sk_buff *skb, struct net_device *dev, unsigned short type,
-			void *daddr, void *saddr, unsigned len)
+static int ipgre_header(struct sk_buff *skb, struct net_device *dev,
+			unsigned short type,
+			const void *daddr, const void *saddr, unsigned len)
 {
 	struct ip_tunnel *t = netdev_priv(dev);
 	struct iphdr *iph = (struct iphdr *)skb_push(skb, t->hlen);
@@ -1091,6 +1091,19 @@ static int ipgre_header(struct sk_buff *skb, struct net_device *dev, unsigned sh
 	return -t->hlen;
 }
 
+static int ipgre_header_parse(const struct sk_buff *skb, unsigned char *haddr)
+{
+	struct iphdr *iph = (struct iphdr*) skb_mac_header(skb);
+	memcpy(haddr, &iph->saddr, 4);
+	return 4;
+}
+
+static const struct header_ops ipgre_header_ops = {
+	.create	= ipgre_header,
+	.parse	= ipgre_header_parse,
+};
+
+#ifdef CONFIG_NET_IPGRE_BROADCAST
 static int ipgre_open(struct net_device *dev)
 {
 	struct ip_tunnel *t = netdev_priv(dev);
@@ -1132,7 +1145,6 @@ static int ipgre_close(struct net_device *dev)
 
 static void ipgre_tunnel_setup(struct net_device *dev)
 {
-	SET_MODULE_OWNER(dev);
 	dev->uninit		= ipgre_tunnel_uninit;
 	dev->destructor 	= free_netdev;
 	dev->hard_start_xmit	= ipgre_tunnel_xmit;
@@ -1188,15 +1200,17 @@ static int ipgre_tunnel_init(struct net_device *dev)
 			if (!iph->saddr)
 				return -EINVAL;
 			dev->flags = IFF_BROADCAST;
-			dev->hard_header = ipgre_header;
+			dev->header_ops = &ipgre_header_ops;
 			dev->open = ipgre_open;
 			dev->stop = ipgre_close;
 		}
 #endif
+	} else {
+		dev->header_ops = &ipgre_header_ops;
 	}
 
 	if (!tdev && tunnel->parms.link)
-		tdev = __dev_get_by_index(tunnel->parms.link);
+		tdev = __dev_get_by_index(&init_net, tunnel->parms.link);
 
 	if (tdev) {
 		hlen = tdev->hard_header_len;

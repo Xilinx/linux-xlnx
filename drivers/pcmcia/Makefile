@@ -37,6 +37,7 @@ obj-$(CONFIG_PCMCIA_VRC4171)			+= vrc4171_card.o
 obj-$(CONFIG_PCMCIA_VRC4173)			+= vrc4173_cardu.o
 obj-$(CONFIG_OMAP_CF)				+= omap_cf.o
 obj-$(CONFIG_AT91_CF)				+= at91_cf.o
+obj-$(CONFIG_ELECTRA_CF)			+= electra_cf.o
 
 sa11xx_core-y					+= soc_common.o sa11xx_base.o
 pxa2xx_core-y					+= soc_common.o pxa2xx_base.o
@@ -69,4 +70,5 @@ sa1100_cs-$(CONFIG_SA1100_SIMPAD)		+= sa1100_simpad.o
 pxa2xx_cs-$(CONFIG_ARCH_LUBBOCK)		+= pxa2xx_lubbock.o sa1111_generic.o
 pxa2xx_cs-$(CONFIG_MACH_MAINSTONE)		+= pxa2xx_mainstone.o
 pxa2xx_cs-$(CONFIG_PXA_SHARPSL)			+= pxa2xx_sharpsl.o
+pxa2xx_cs-$(CONFIG_MACH_ARMCORE)		+= pxa2xx_cm_x270.o
 

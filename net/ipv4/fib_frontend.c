@@ -49,6 +49,8 @@
 
 #define FFprint(a...) printk(KERN_DEBUG a)
 
+static struct sock *fibnl;
+
 #ifndef CONFIG_IP_MULTIPLE_TABLES
 
 struct fib_table *ip_fib_local_table;
@@ -57,6 +59,13 @@ struct fib_table *ip_fib_main_table;
 #define FIB_TABLE_HASHSZ 1
 static struct hlist_head fib_table_hash[FIB_TABLE_HASHSZ];
 
+static void __init fib4_rules_init(void)
+{
+	ip_fib_local_table = fib_hash_init(RT_TABLE_LOCAL);
+	hlist_add_head_rcu(&ip_fib_local_table->tb_hlist, &fib_table_hash[0]);
+	ip_fib_main_table  = fib_hash_init(RT_TABLE_MAIN);
+	hlist_add_head_rcu(&ip_fib_main_table->tb_hlist, &fib_table_hash[0]);
+}
 #else
 
 #define FIB_TABLE_HASHSZ 256
@@ -126,13 +135,14 @@ struct net_device * ip_dev_find(__be32 addr)
 	struct flowi fl = { .nl_u = { .ip4_u = { .daddr = addr } } };
 	struct fib_result res;
 	struct net_device *dev = NULL;
+	struct fib_table *local_table;
 
 #ifdef CONFIG_IP_MULTIPLE_TABLES
 	res.r = NULL;
 #endif
 
-	if (!ip_fib_local_table ||
-	    ip_fib_local_table->tb_lookup(ip_fib_local_table, &fl, &res))
+	local_table = fib_get_table(RT_TABLE_LOCAL);
+	if (!local_table || local_table->tb_lookup(local_table, &fl, &res))
 		return NULL;
 	if (res.type != RTN_LOCAL)
 		goto out;
@@ -150,6 +160,7 @@ unsigned inet_addr_type(__be32 addr)
 	struct flowi		fl = { .nl_u = { .ip4_u = { .daddr = addr } } };
 	struct fib_result	res;
 	unsigned ret = RTN_BROADCAST;
+	struct fib_table *local_table;
 
 	if (ZERONET(addr) || BADCLASS(addr))
 		return RTN_BROADCAST;
@@ -160,10 +171,10 @@ unsigned inet_addr_type(__be32 addr)
 	res.r = NULL;
 #endif
 
-	if (ip_fib_local_table) {
+	local_table = fib_get_table(RT_TABLE_LOCAL);
+	if (local_table) {
 		ret = RTN_UNICAST;
-		if (!ip_fib_local_table->tb_lookup(ip_fib_local_table,
-						   &fl, &res)) {
+		if (!local_table->tb_lookup(local_table, &fl, &res)) {
 			ret = res.type;
 			fib_res_put(&res);
 		}
@@ -334,7 +345,7 @@ static int rtentry_to_fib_config(int cmd, struct rtentry *rt,
 		colon = strchr(devname, ':');
 		if (colon)
 			*colon = 0;
-		dev = __dev_get_by_name(devname);
+		dev = __dev_get_by_name(&init_net, devname);
 		if (!dev)
 			return -ENODEV;
 		cfg->fc_oif = dev->ifindex;
@@ -487,7 +498,7 @@ static int rtm_to_fib_config(struct sk_buff *skb, struct nlmsghdr *nlh,
 	}
 
 	nlmsg_for_each_attr(attr, nlh, sizeof(struct rtmsg), remaining) {
-		switch (attr->nla_type) {
+		switch (nla_type(attr)) {
 		case RTA_DST:
 			cfg->fc_dst = nla_get_be32(attr);
 			break;
@@ -784,17 +795,12 @@ static void nl_fib_lookup(struct fib_result_nl *frn, struct fib_table *tb )
 	}
 }
 
-static void nl_fib_input(struct sock *sk, int len)
+static void nl_fib_input(struct sk_buff *skb)
 {
-	struct sk_buff *skb = NULL;
-	struct nlmsghdr *nlh = NULL;
 	struct fib_result_nl *frn;
-	u32 pid;
+	struct nlmsghdr *nlh;
 	struct fib_table *tb;
-
-	skb = skb_dequeue(&sk->sk_receive_queue);
-	if (skb == NULL)
-		return;
+	u32 pid;
 
 	nlh = nlmsg_hdr(skb);
 	if (skb->len < NLMSG_SPACE(0) || skb->len < nlh->nlmsg_len ||
@@ -811,13 +817,13 @@ static void nl_fib_input(struct sock *sk, int len)
 	pid = NETLINK_CB(skb).pid;       /* pid of sending process */
 	NETLINK_CB(skb).pid = 0;         /* from kernel */
 	NETLINK_CB(skb).dst_group = 0;  /* unicast */
-	netlink_unicast(sk, skb, pid, MSG_DONTWAIT);
+	netlink_unicast(fibnl, skb, pid, MSG_DONTWAIT);
 }
 
 static void nl_fib_lookup_init(void)
 {
-      netlink_kernel_create(NETLINK_FIB_LOOKUP, 0, nl_fib_input, NULL,
-			    THIS_MODULE);
+	fibnl = netlink_kernel_create(&init_net, NETLINK_FIB_LOOKUP, 0,
+				      nl_fib_input, NULL, THIS_MODULE);
 }
 
 static void fib_disable_ip(struct net_device *dev, int force)
@@ -859,6 +865,9 @@ static int fib_netdev_event(struct notifier_block *this, unsigned long event, vo
 {
 	struct net_device *dev = ptr;
 	struct in_device *in_dev = __in_dev_get_rtnl(dev);
+
+	if (dev->nd_net != &init_net)
+		return NOTIFY_DONE;
 
 	if (event == NETDEV_UNREGISTER) {
 		fib_disable_ip(dev, 2);
@@ -903,14 +912,8 @@ void __init ip_fib_init(void)
 
 	for (i = 0; i < FIB_TABLE_HASHSZ; i++)
 		INIT_HLIST_HEAD(&fib_table_hash[i]);
-#ifndef CONFIG_IP_MULTIPLE_TABLES
-	ip_fib_local_table = fib_hash_init(RT_TABLE_LOCAL);
-	hlist_add_head_rcu(&ip_fib_local_table->tb_hlist, &fib_table_hash[0]);
-	ip_fib_main_table  = fib_hash_init(RT_TABLE_MAIN);
-	hlist_add_head_rcu(&ip_fib_main_table->tb_hlist, &fib_table_hash[0]);
-#else
+
 	fib4_rules_init();
-#endif
 
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);

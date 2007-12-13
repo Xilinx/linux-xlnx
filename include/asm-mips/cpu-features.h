@@ -9,10 +9,13 @@
 #ifndef __ASM_CPU_FEATURES_H
 #define __ASM_CPU_FEATURES_H
 
-
 #include <asm/cpu.h>
 #include <asm/cpu-info.h>
 #include <cpu-feature-overrides.h>
+
+#ifndef current_cpu_type
+#define current_cpu_type()      current_cpu_data.cputype
+#endif
 
 /*
  * SMP assumption: Options of CPU 0 are a superset of all processors.
@@ -34,9 +37,6 @@
 #endif
 #ifndef cpu_has_tx39_cache
 #define cpu_has_tx39_cache	(cpu_data[0].options & MIPS_CPU_TX39_CACHE)
-#endif
-#ifndef cpu_has_sb1_cache
-#define cpu_has_sb1_cache	(cpu_data[0].options & MIPS_CPU_SB1_CACHE)
 #endif
 #ifndef cpu_has_fpu
 #define cpu_has_fpu		(current_cpu_data.options & MIPS_CPU_FPU)
@@ -207,13 +207,13 @@
 #endif
 
 #ifndef cpu_dcache_line_size
-#define cpu_dcache_line_size()	current_cpu_data.dcache.linesz
+#define cpu_dcache_line_size()	cpu_data[0].dcache.linesz
 #endif
 #ifndef cpu_icache_line_size
-#define cpu_icache_line_size()	current_cpu_data.icache.linesz
+#define cpu_icache_line_size()	cpu_data[0].icache.linesz
 #endif
 #ifndef cpu_scache_line_size
-#define cpu_scache_line_size()	current_cpu_data.scache.linesz
+#define cpu_scache_line_size()	cpu_data[0].scache.linesz
 #endif
 
 #endif /* __ASM_CPU_FEATURES_H */

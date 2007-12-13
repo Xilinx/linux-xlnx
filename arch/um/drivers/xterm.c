@@ -1,20 +1,21 @@
-/* 
+/*
  * Copyright (C) 2001 - 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
  * Licensed under the GPL
  */
 
-#include <stdlib.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 #include <errno.h>
+#include <string.h>
 #include <termios.h>
 #include "chan_user.h"
+#include "kern_constants.h"
 #include "os.h"
-#include "init.h"
+#include "um_malloc.h"
 #include "user.h"
 #include "xterm.h"
-#include "kern_constants.h"
 
 struct xterm_chan {
 	int pid;
@@ -29,7 +30,7 @@ static void *xterm_init(char *str, int device, const struct chan_opts *opts)
 {
 	struct xterm_chan *data;
 
-	data = malloc(sizeof(*data));
+	data = kmalloc(sizeof(*data), UM_GFP_KERNEL);
 	if (data == NULL)
 		return NULL;
 	*data = ((struct xterm_chan) { .pid 		= -1,
@@ -95,8 +96,10 @@ static int xterm_open(int input, int output, int primary, void *d,
 	if (access(argv[4], X_OK) < 0)
 		argv[4] = "port-helper";
 
-	/* Check that DISPLAY is set, this doesn't guarantee the xterm
-	 * will work but w/o it we can be pretty sure it won't. */
+	/*
+	 * Check that DISPLAY is set, this doesn't guarantee the xterm
+	 * will work but w/o it we can be pretty sure it won't.
+	 */
 	if (getenv("DISPLAY") == NULL) {
 		printk(UM_KERN_ERR "xterm_open: $DISPLAY not set.\n");
 		return -ENODEV;
@@ -195,7 +198,7 @@ static int xterm_open(int input, int output, int primary, void *d,
 static void xterm_close(int fd, void *d)
 {
 	struct xterm_chan *data = d;
-	
+
 	if (data->pid != -1)
 		os_kill_process(data->pid, 1);
 	data->pid = -1;
@@ -207,11 +210,6 @@ static void xterm_close(int fd, void *d)
 	os_close_file(fd);
 }
 
-static void xterm_free(void *d)
-{
-	free(d);
-}
-
 const struct chan_ops xterm_ops = {
 	.type		= "xterm",
 	.init		= xterm_init,
@@ -221,6 +219,6 @@ const struct chan_ops xterm_ops = {
 	.write		= generic_write,
 	.console_write	= generic_console_write,
 	.window_size	= generic_window_size,
-	.free		= xterm_free,
+	.free		= generic_free,
 	.winch		= 1,
 };

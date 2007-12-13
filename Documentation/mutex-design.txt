@@ -90,7 +90,8 @@ of advantages of mutexes:
    * - task may not exit with mutex held
    * - memory areas where held locks reside must not be freed
    * - held mutexes must not be reinitialized
-   * - mutexes may not be used in irq contexts
+   * - mutexes may not be used in hardware or software interrupt
+   *   contexts such as tasklets and timers
 
    furthermore, there are also convenience features in the debugging
    code:
@@ -132,4 +133,6 @@ the APIs of 'struct mutex' have been streamlined:
  int  mutex_trylock(struct mutex *lock);
  void mutex_unlock(struct mutex *lock);
  int  mutex_is_locked(struct mutex *lock);
-
+ void mutex_lock_nested(struct mutex *lock, unsigned int subclass);
+ int  mutex_lock_interruptible_nested(struct mutex *lock,
+                                      unsigned int subclass);

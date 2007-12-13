@@ -14,14 +14,17 @@
 #include <asm/machvec.h>
 #include <asm/se7780.h>
 #include <asm/io.h>
+#include <asm/heartbeat.h>
 
 /* Heartbeat */
-static unsigned char heartbeat_bit_pos[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+static struct heartbeat_data heartbeat_data = {
+	.regsize = 16,
+};
 
 static struct resource heartbeat_resources[] = {
 	[0] = {
 		.start  = PA_LED,
-		.end    = PA_LED + ARRAY_SIZE(heartbeat_bit_pos) - 1,
+		.end    = PA_LED,
 		.flags  = IORESOURCE_MEM,
 	},
 };
@@ -29,8 +32,8 @@ static struct resource heartbeat_resources[] = {
 static struct platform_device heartbeat_device = {
 	.name           = "heartbeat",
 	.id             = -1,
-	.dev    = {
-		.platform_data  = heartbeat_bit_pos,
+	.dev = {
+		.platform_data = &heartbeat_data,
 	},
 	.num_resources  = ARRAY_SIZE(heartbeat_resources),
 	.resource       = heartbeat_resources,

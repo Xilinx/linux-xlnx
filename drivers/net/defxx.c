@@ -539,7 +539,6 @@ static int __devinit dfx_register(struct device *bdev)
 		goto err_out;
 	}
 
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, bdev);
 
 	bp = netdev_priv(dev);
@@ -806,7 +805,7 @@ static void __devinit dfx_bus_init(struct net_device *dev)
  *   Interrupts are disabled at the adapter bus-specific logic.
  */
 
-static void __devinit dfx_bus_uninit(struct net_device *dev)
+static void __devexit dfx_bus_uninit(struct net_device *dev)
 {
 	DFX_board_t *bp = netdev_priv(dev);
 	struct device *bdev = bp->bus_dev;

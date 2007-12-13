@@ -45,7 +45,7 @@ static LIST_HEAD(smb_servers);
 static DEFINE_SPINLOCK(servers_lock);
 
 #define SMBIOD_DATA_READY	(1<<0)
-static long smbiod_flags;
+static unsigned long smbiod_flags;
 
 static int smbiod(void *);
 static int smbiod_start(void);
@@ -227,7 +227,7 @@ int smbiod_retry(struct smb_sb_info *server)
 		printk(KERN_ERR "smb_retry: signal failed [%d]\n", result);
 		goto out;
 	}
-	VERBOSE("signalled pid %d\n", pid);
+	VERBOSE("signalled pid %d\n", pid_nr(pid));
 
 	/* FIXME: The retried requests should perhaps get a "time boost". */
 

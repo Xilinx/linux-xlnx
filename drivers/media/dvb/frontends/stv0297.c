@@ -358,11 +358,23 @@ static int stv0297_read_ber(struct dvb_frontend *fe, u32 * ber)
 static int stv0297_read_signal_strength(struct dvb_frontend *fe, u16 * strength)
 {
 	struct stv0297_state *state = fe->demodulator_priv;
-	u8 STRENGTH[2];
+	u8 STRENGTH[3];
+	u16 tmp;
 
-	stv0297_readregs(state, 0x41, STRENGTH, 2);
-	*strength = (STRENGTH[1] & 0x03) << 8 | STRENGTH[0];
-
+	stv0297_readregs(state, 0x41, STRENGTH, 3);
+	tmp = (STRENGTH[1] & 0x03) << 8 | STRENGTH[0];
+	if (STRENGTH[2] & 0x20) {
+		if (tmp < 0x200)
+			tmp = 0;
+		else
+			tmp = tmp - 0x200;
+	} else {
+		if (tmp > 0x1ff)
+			tmp = 0;
+		else
+			tmp = 0x1ff - tmp;
+	}
+	*strength = (tmp << 7) | (tmp >> 2);
 	return 0;
 }
 
@@ -680,8 +692,8 @@ static struct dvb_frontend_ops stv0297_ops = {
 	.info = {
 		 .name = "ST STV0297 DVB-C",
 		 .type = FE_QAM,
-		 .frequency_min = 64000000,
-		 .frequency_max = 1300000000,
+		 .frequency_min = 47000000,
+		 .frequency_max = 862000000,
 		 .frequency_stepsize = 62500,
 		 .symbol_rate_min = 870000,
 		 .symbol_rate_max = 11700000,

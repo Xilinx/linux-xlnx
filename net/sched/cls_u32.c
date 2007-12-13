@@ -91,7 +91,7 @@ static struct tc_u_common *u32_list;
 
 static __inline__ unsigned u32_hash_fold(u32 key, struct tc_u32_sel *sel, u8 fshift)
 {
-	unsigned h = (key & sel->hmask)>>fshift;
+	unsigned h = ntohl(key & sel->hmask)>>fshift;
 
 	return h;
 }
@@ -592,7 +592,7 @@ static int u32_change(struct tcf_proto *tp, unsigned long base, u32 handle,
 	} else
 		handle = gen_new_kid(ht, htid);
 
-	if (tb[TCA_U32_SEL-1] == 0 ||
+	if (tb[TCA_U32_SEL-1] == NULL ||
 	    RTA_PAYLOAD(tb[TCA_U32_SEL-1]) < sizeof(struct tc_u32_sel))
 		return -EINVAL;
 
@@ -613,17 +613,7 @@ static int u32_change(struct tcf_proto *tp, unsigned long base, u32 handle,
 	memcpy(&n->sel, s, sizeof(*s) + s->nkeys*sizeof(struct tc_u32_key));
 	n->ht_up = ht;
 	n->handle = handle;
-{
-	u8 i = 0;
-	u32 mask = s->hmask;
-	if (mask) {
-		while (!(mask & 1)) {
-			i++;
-			mask>>=1;
-		}
-	}
-	n->fshift = i;
-}
+	n->fshift = s->hmask ? ffs(ntohl(s->hmask)) - 1 : 0;
 
 #ifdef CONFIG_CLS_U32_MARK
 	if (tb[TCA_U32_MARK-1]) {

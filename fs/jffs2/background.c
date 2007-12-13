@@ -23,8 +23,8 @@ static int jffs2_garbage_collect_thread(void *);
 void jffs2_garbage_collect_trigger(struct jffs2_sb_info *c)
 {
 	spin_lock(&c->erase_completion_lock);
-        if (c->gc_task && jffs2_thread_should_wake(c))
-                send_sig(SIGHUP, c->gc_task, 1);
+	if (c->gc_task && jffs2_thread_should_wake(c))
+		send_sig(SIGHUP, c->gc_task, 1);
 	spin_unlock(&c->erase_completion_lock);
 }
 
@@ -105,7 +105,7 @@ static int jffs2_garbage_collect_thread(void *_c)
 
 		/* Put_super will send a SIGKILL and then wait on the sem.
 		 */
-		while (signal_pending(current)) {
+		while (signal_pending(current) || freezing(current)) {
 			siginfo_t info;
 			unsigned long signr;
 

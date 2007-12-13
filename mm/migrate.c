@@ -19,6 +19,7 @@
 #include <linux/pagemap.h>
 #include <linux/buffer_head.h>
 #include <linux/mm_inline.h>
+#include <linux/nsproxy.h>
 #include <linux/pagevec.h>
 #include <linux/rmap.h>
 #include <linux/topology.h>
@@ -171,6 +172,7 @@ static void remove_migration_pte(struct vm_area_struct *vma,
 	pte = pte_mkold(mk_pte(new, vma->vm_page_prot));
 	if (is_write_migration_entry(entry))
 		pte = pte_mkwrite(pte);
+	flush_cache_page(vma, addr, pte_pfn(pte));
 	set_pte_at(mm, addr, ptep, pte);
 
 	if (PageAnon(new))
@@ -180,7 +182,6 @@ static void remove_migration_pte(struct vm_area_struct *vma,
 
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, addr, pte);
-	lazy_mmu_prot_update(pte);
 
 out:
 	pte_unmap_unlock(ptep, ptl);
@@ -705,7 +706,7 @@ move_newpage:
  * The function returns after 10 attempts or if no pages
  * are movable anymore because to has become empty
  * or no retryable pages exist anymore. All pages will be
- * retruned to the LRU or freed.
+ * returned to the LRU or freed.
  *
  * Return: Number of pages not migrated or error code.
  */
@@ -924,7 +925,7 @@ asmlinkage long sys_move_pages(pid_t pid, unsigned long nr_pages,
 
 	/* Find the mm_struct */
 	read_lock(&tasklist_lock);
-	task = pid ? find_task_by_pid(pid) : current;
+	task = pid ? find_task_by_vpid(pid) : current;
 	if (!task) {
 		read_unlock(&tasklist_lock);
 		return -ESRCH;
@@ -972,7 +973,7 @@ asmlinkage long sys_move_pages(pid_t pid, unsigned long nr_pages,
 	 * array. Return various errors if the user did something wrong.
 	 */
 	for (i = 0; i < nr_pages; i++) {
-		const void *p;
+		const void __user *p;
 
 		err = -EFAULT;
 		if (get_user(p, pages + i))
@@ -986,7 +987,7 @@ asmlinkage long sys_move_pages(pid_t pid, unsigned long nr_pages,
 				goto out;
 
 			err = -ENODEV;
-			if (!node_online(node))
+			if (!node_state(node, N_HIGH_MEMORY))
 				goto out;
 
 			err = -EACCES;

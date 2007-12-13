@@ -33,7 +33,7 @@
 #include <linux/fs.h>
 #include <linux/time.h>
 #include <linux/ext4_jbd2.h>
-#include <linux/jbd.h>
+#include <linux/jbd2.h>
 #include <linux/highuid.h>
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
@@ -52,7 +52,7 @@ static ext4_fsblk_t ext_pblock(struct ext4_extent *ex)
 {
 	ext4_fsblk_t block;
 
-	block = le32_to_cpu(ex->ee_start);
+	block = le32_to_cpu(ex->ee_start_lo);
 	block |= ((ext4_fsblk_t) le16_to_cpu(ex->ee_start_hi) << 31) << 1;
 	return block;
 }
@@ -65,7 +65,7 @@ static ext4_fsblk_t idx_pblock(struct ext4_extent_idx *ix)
 {
 	ext4_fsblk_t block;
 
-	block = le32_to_cpu(ix->ei_leaf);
+	block = le32_to_cpu(ix->ei_leaf_lo);
 	block |= ((ext4_fsblk_t) le16_to_cpu(ix->ei_leaf_hi) << 31) << 1;
 	return block;
 }
@@ -77,7 +77,7 @@ static ext4_fsblk_t idx_pblock(struct ext4_extent_idx *ix)
  */
 static void ext4_ext_store_pblock(struct ext4_extent *ex, ext4_fsblk_t pb)
 {
-	ex->ee_start = cpu_to_le32((unsigned long) (pb & 0xffffffff));
+	ex->ee_start_lo = cpu_to_le32((unsigned long) (pb & 0xffffffff));
 	ex->ee_start_hi = cpu_to_le16((unsigned long) ((pb >> 31) >> 1) & 0xffff);
 }
 
@@ -88,7 +88,7 @@ static void ext4_ext_store_pblock(struct ext4_extent *ex, ext4_fsblk_t pb)
  */
 static void ext4_idx_store_pblock(struct ext4_extent_idx *ix, ext4_fsblk_t pb)
 {
-	ix->ei_leaf = cpu_to_le32((unsigned long) (pb & 0xffffffff));
+	ix->ei_leaf_lo = cpu_to_le32((unsigned long) (pb & 0xffffffff));
 	ix->ei_leaf_hi = cpu_to_le16((unsigned long) ((pb >> 31) >> 1) & 0xffff);
 }
 
@@ -1409,8 +1409,7 @@ has_space:
 	eh->eh_entries = cpu_to_le16(le16_to_cpu(eh->eh_entries)+1);
 	nearex = path[depth].p_ext;
 	nearex->ee_block = newext->ee_block;
-	nearex->ee_start = newext->ee_start;
-	nearex->ee_start_hi = newext->ee_start_hi;
+	ext4_ext_store_pblock(nearex, ext_pblock(newext));
 	nearex->ee_len = newext->ee_len;
 
 merge:
@@ -2177,7 +2176,6 @@ int ext4_ext_convert_to_initialized(handle_t *handle, struct inode *inode,
 	}
 	/* ex2: iblock to iblock + maxblocks-1 : initialised */
 	ex2->ee_block = cpu_to_le32(iblock);
-	ex2->ee_start = cpu_to_le32(newblock);
 	ext4_ext_store_pblock(ex2, newblock);
 	ex2->ee_len = cpu_to_le16(allocated);
 	if (ex2 != ex)

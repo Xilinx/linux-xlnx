@@ -15,6 +15,10 @@
 
 #ifdef __KERNEL__
 
+#ifndef _LINUX_BITOPS_H
+#error only <linux/bitops.h> can be included directly
+#endif
+
 #include <asm/processor.h>
 #include <asm/byteorder.h>
 #include <asm/system.h>
@@ -108,6 +112,7 @@ static inline int fls (unsigned int x)
 #endif
 
 #include <asm-generic/bitops/hweight.h>
+#include <asm-generic/bitops/lock.h>
 #include <asm-generic/bitops/sched.h>
 #include <asm-generic/bitops/minix.h>
 

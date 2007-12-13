@@ -41,9 +41,9 @@
 #include <asm/prom.h>
 #include <asm/ptrace.h>
 #include <asm/machdep.h>
+#include <asm/cell-regs.h>
 
 #include "interrupt.h"
-#include "cbe_regs.h"
 
 struct iic {
 	struct cbe_iic_thread_regs __iomem *regs;
@@ -158,6 +158,18 @@ static unsigned int iic_get_irq(void)
 	return virq;
 }
 
+void iic_setup_cpu(void)
+{
+	out_be64(&__get_cpu_var(iic).regs->prio, 0xff);
+}
+
+u8 iic_get_target_id(int cpu)
+{
+	return per_cpu(iic, cpu).target_id;
+}
+
+EXPORT_SYMBOL_GPL(iic_get_target_id);
+
 #ifdef CONFIG_SMP
 
 /* Use the highest interrupt priorities for IPI */
@@ -166,28 +178,16 @@ static inline int iic_ipi_to_irq(int ipi)
 	return IIC_IRQ_TYPE_IPI + 0xf - ipi;
 }
 
-void iic_setup_cpu(void)
-{
-	out_be64(&__get_cpu_var(iic).regs->prio, 0xff);
-}
-
 void iic_cause_IPI(int cpu, int mesg)
 {
 	out_be64(&per_cpu(iic, cpu).regs->generate, (0xf - mesg) << 4);
 }
-
-u8 iic_get_target_id(int cpu)
-{
-	return per_cpu(iic, cpu).target_id;
-}
-EXPORT_SYMBOL_GPL(iic_get_target_id);
 
 struct irq_host *iic_get_irq_host(int node)
 {
 	return iic_host;
 }
 EXPORT_SYMBOL_GPL(iic_get_irq_host);
-
 
 static irqreturn_t iic_ipi_action(int irq, void *dev_id)
 {
@@ -381,7 +381,7 @@ static int __init setup_iic(void)
 void __init iic_init_IRQ(void)
 {
 	/* Setup an irq host data structure */
-	iic_host = irq_alloc_host(IRQ_HOST_MAP_LINEAR, IIC_SOURCE_COUNT,
+	iic_host = irq_alloc_host(NULL, IRQ_HOST_MAP_LINEAR, IIC_SOURCE_COUNT,
 				  &iic_host_ops, IIC_IRQ_INVALID);
 	BUG_ON(iic_host == NULL);
 	irq_set_default_host(iic_host);

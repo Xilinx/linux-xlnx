@@ -141,6 +141,7 @@ int main(void)
 	DEFINE(PACALPPACAPTR, offsetof(struct paca_struct, lppaca_ptr));
 	DEFINE(PACAHWCPUID, offsetof(struct paca_struct, hw_cpu_id));
 	DEFINE(PACA_STARTPURR, offsetof(struct paca_struct, startpurr));
+	DEFINE(PACA_STARTSPURR, offsetof(struct paca_struct, startspurr));
 	DEFINE(PACA_USER_TIME, offsetof(struct paca_struct, user_time));
 	DEFINE(PACA_SYSTEM_TIME, offsetof(struct paca_struct, system_time));
 	DEFINE(PACA_SLBSHADOWPTR, offsetof(struct paca_struct, slb_shadow_ptr));
@@ -283,6 +284,10 @@ int main(void)
 	DEFINE(CFG_SYSCALL_MAP32, offsetof(struct vdso_data, syscall_map_32));
 	DEFINE(WTOM_CLOCK_SEC, offsetof(struct vdso_data, wtom_clock_sec));
 	DEFINE(WTOM_CLOCK_NSEC, offsetof(struct vdso_data, wtom_clock_nsec));
+	DEFINE(CFG_ICACHE_BLOCKSZ, offsetof(struct vdso_data, icache_block_size));
+	DEFINE(CFG_DCACHE_BLOCKSZ, offsetof(struct vdso_data, dcache_block_size));
+	DEFINE(CFG_ICACHE_LOGBLOCKSZ, offsetof(struct vdso_data, icache_log_block_size));
+	DEFINE(CFG_DCACHE_LOGBLOCKSZ, offsetof(struct vdso_data, dcache_log_block_size));
 #ifdef CONFIG_PPC64
 	DEFINE(CFG_SYSCALL_MAP64, offsetof(struct vdso_data, syscall_map_64));
 	DEFINE(TVAL64_TV_SEC, offsetof(struct timeval, tv_sec));
@@ -312,5 +317,16 @@ int main(void)
 #ifdef CONFIG_BUG
 	DEFINE(BUG_ENTRY_SIZE, sizeof(struct bug_entry));
 #endif
+
+#ifdef CONFIG_PPC_ISERIES
+	/* the assembler miscalculates the VSID values */
+	DEFINE(PAGE_OFFSET_ESID, GET_ESID(PAGE_OFFSET));
+	DEFINE(PAGE_OFFSET_VSID, KERNEL_VSID(PAGE_OFFSET));
+	DEFINE(VMALLOC_START_ESID, GET_ESID(VMALLOC_START));
+	DEFINE(VMALLOC_START_VSID, KERNEL_VSID(VMALLOC_START));
+#endif
+
+	DEFINE(PGD_TABLE_SIZE, PGD_TABLE_SIZE);
+
 	return 0;
 }

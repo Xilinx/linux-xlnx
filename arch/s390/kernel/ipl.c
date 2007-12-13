@@ -648,6 +648,8 @@ static int dump_set_type(enum dump_type type)
 	case DUMP_TYPE_CCW:
 		if (MACHINE_IS_VM)
 			dump_method = DUMP_METHOD_CCW_VM;
+		else if (diag308_set_works)
+			dump_method = DUMP_METHOD_CCW_DIAG;
 		else
 			dump_method = DUMP_METHOD_CCW_CIO;
 		break;
@@ -735,10 +737,10 @@ void do_reipl(void)
 	case REIPL_METHOD_CCW_VM:
 		reipl_get_ascii_loadparm(loadparm);
 		if (strlen(loadparm) == 0)
-			sprintf(buf, "IPL %X",
+			sprintf(buf, "IPL %X CLEAR",
 				reipl_block_ccw->ipl_info.ccw.devno);
 		else
-			sprintf(buf, "IPL %X LOADPARM '%s'",
+			sprintf(buf, "IPL %X CLEAR LOADPARM '%s'",
 				reipl_block_ccw->ipl_info.ccw.devno, loadparm);
 		__cpcmd(buf, NULL, 0, NULL);
 		break;

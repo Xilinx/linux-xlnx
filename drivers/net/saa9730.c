@@ -97,13 +97,16 @@ static void evm_saa9730_unblock_lan_int(struct lan_saa9730_private *lp)
 	       &lp->evm_saa9730_regs->InterruptBlock1);
 }
 
-static void __attribute_used__ show_saa9730_regs(struct lan_saa9730_private *lp)
+static void __used show_saa9730_regs(struct net_device *dev)
 {
+	struct lan_saa9730_private *lp = netdev_priv(dev);
 	int i, j;
+
 	printk("TxmBufferA = %p\n", lp->TxmBuffer[0][0]);
 	printk("TxmBufferB = %p\n", lp->TxmBuffer[1][0]);
 	printk("RcvBufferA = %p\n", lp->RcvBuffer[0][0]);
 	printk("RcvBufferB = %p\n", lp->RcvBuffer[1][0]);
+
 	for (i = 0; i < LAN_SAA9730_BUFFERS; i++) {
 		for (j = 0; j < LAN_SAA9730_TXM_Q_SIZE; j++) {
 			printk("TxmBuffer[%d][%d] = %x\n", i, j,
@@ -146,35 +149,37 @@ static void __attribute_used__ show_saa9730_regs(struct lan_saa9730_private *lp)
 	       readl(&lp->lan_saa9730_regs->RxCtl));
 	printk("lp->lan_saa9730_regs->RxStatus = %x\n",
 	       readl(&lp->lan_saa9730_regs->RxStatus));
+
 	for (i = 0; i < LAN_SAA9730_CAM_DWORDS; i++) {
 		writel(i, &lp->lan_saa9730_regs->CamAddress);
 		printk("lp->lan_saa9730_regs->CamData = %x\n",
 		       readl(&lp->lan_saa9730_regs->CamData));
 	}
-	printk("lp->stats.tx_packets = %lx\n", lp->stats.tx_packets);
-	printk("lp->stats.tx_errors = %lx\n", lp->stats.tx_errors);
-	printk("lp->stats.tx_aborted_errors = %lx\n",
-	       lp->stats.tx_aborted_errors);
-	printk("lp->stats.tx_window_errors = %lx\n",
-	       lp->stats.tx_window_errors);
-	printk("lp->stats.tx_carrier_errors = %lx\n",
-	       lp->stats.tx_carrier_errors);
-	printk("lp->stats.tx_fifo_errors = %lx\n",
-	       lp->stats.tx_fifo_errors);
-	printk("lp->stats.tx_heartbeat_errors = %lx\n",
-	       lp->stats.tx_heartbeat_errors);
-	printk("lp->stats.collisions = %lx\n", lp->stats.collisions);
 
-	printk("lp->stats.rx_packets = %lx\n", lp->stats.rx_packets);
-	printk("lp->stats.rx_errors = %lx\n", lp->stats.rx_errors);
-	printk("lp->stats.rx_dropped = %lx\n", lp->stats.rx_dropped);
-	printk("lp->stats.rx_crc_errors = %lx\n", lp->stats.rx_crc_errors);
-	printk("lp->stats.rx_frame_errors = %lx\n",
-	       lp->stats.rx_frame_errors);
-	printk("lp->stats.rx_fifo_errors = %lx\n",
-	       lp->stats.rx_fifo_errors);
-	printk("lp->stats.rx_length_errors = %lx\n",
-	       lp->stats.rx_length_errors);
+	printk("dev->stats.tx_packets = %lx\n", dev->stats.tx_packets);
+	printk("dev->stats.tx_errors = %lx\n", dev->stats.tx_errors);
+	printk("dev->stats.tx_aborted_errors = %lx\n",
+	       dev->stats.tx_aborted_errors);
+	printk("dev->stats.tx_window_errors = %lx\n",
+	       dev->stats.tx_window_errors);
+	printk("dev->stats.tx_carrier_errors = %lx\n",
+	       dev->stats.tx_carrier_errors);
+	printk("dev->stats.tx_fifo_errors = %lx\n",
+	       dev->stats.tx_fifo_errors);
+	printk("dev->stats.tx_heartbeat_errors = %lx\n",
+	       dev->stats.tx_heartbeat_errors);
+	printk("dev->stats.collisions = %lx\n", dev->stats.collisions);
+
+	printk("dev->stats.rx_packets = %lx\n", dev->stats.rx_packets);
+	printk("dev->stats.rx_errors = %lx\n", dev->stats.rx_errors);
+	printk("dev->stats.rx_dropped = %lx\n", dev->stats.rx_dropped);
+	printk("dev->stats.rx_crc_errors = %lx\n", dev->stats.rx_crc_errors);
+	printk("dev->stats.rx_frame_errors = %lx\n",
+	       dev->stats.rx_frame_errors);
+	printk("dev->stats.rx_fifo_errors = %lx\n",
+	       dev->stats.rx_fifo_errors);
+	printk("dev->stats.rx_length_errors = %lx\n",
+	       dev->stats.rx_length_errors);
 
 	printk("lp->lan_saa9730_regs->DebugPCIMasterAddr = %x\n",
 	       readl(&lp->lan_saa9730_regs->DebugPCIMasterAddr));
@@ -605,24 +610,24 @@ static int lan_saa9730_tx(struct net_device *dev)
 				printk("lan_saa9730_tx: tx error = %x\n",
 				       tx_status);
 
-			lp->stats.tx_errors++;
+			dev->stats.tx_errors++;
 			if (tx_status &
 			    (TX_STATUS_EX_COLL << TX_STAT_CTL_STATUS_SHF))
-				lp->stats.tx_aborted_errors++;
+				dev->stats.tx_aborted_errors++;
 			if (tx_status &
 			    (TX_STATUS_LATE_COLL << TX_STAT_CTL_STATUS_SHF))
-				lp->stats.tx_window_errors++;
+				dev->stats.tx_window_errors++;
 			if (tx_status &
 			    (TX_STATUS_L_CARR << TX_STAT_CTL_STATUS_SHF))
-				lp->stats.tx_carrier_errors++;
+				dev->stats.tx_carrier_errors++;
 			if (tx_status &
 			    (TX_STATUS_UNDER << TX_STAT_CTL_STATUS_SHF))
-				lp->stats.tx_fifo_errors++;
+				dev->stats.tx_fifo_errors++;
 			if (tx_status &
 			    (TX_STATUS_SQ_ERR << TX_STAT_CTL_STATUS_SHF))
-				lp->stats.tx_heartbeat_errors++;
+				dev->stats.tx_heartbeat_errors++;
 
-			lp->stats.collisions +=
+			dev->stats.collisions +=
 				tx_status & TX_STATUS_TX_COLL_MSK;
 		}
 
@@ -684,10 +689,10 @@ static int lan_saa9730_rx(struct net_device *dev)
 				printk
 				    ("%s: Memory squeeze, deferring packet.\n",
 				     dev->name);
-				lp->stats.rx_dropped++;
+				dev->stats.rx_dropped++;
 			} else {
-				lp->stats.rx_bytes += len;
-				lp->stats.rx_packets++;
+				dev->stats.rx_bytes += len;
+				dev->stats.rx_packets++;
 				skb_reserve(skb, 2);	/* 16 byte align */
 				skb_put(skb, len);	/* make room */
 				skb_copy_to_linear_data(skb,
@@ -704,19 +709,19 @@ static int lan_saa9730_rx(struct net_device *dev)
 				    ("lan_saa9730_rx: We got an error packet = %x\n",
 				     rx_status);
 
-			lp->stats.rx_errors++;
+			dev->stats.rx_errors++;
 			if (rx_status &
 			    (RX_STATUS_CRC_ERR << RX_STAT_CTL_STATUS_SHF))
-				lp->stats.rx_crc_errors++;
+				dev->stats.rx_crc_errors++;
 			if (rx_status &
 			    (RX_STATUS_ALIGN_ERR << RX_STAT_CTL_STATUS_SHF))
-				lp->stats.rx_frame_errors++;
+				dev->stats.rx_frame_errors++;
 			if (rx_status &
 			    (RX_STATUS_OVERFLOW << RX_STAT_CTL_STATUS_SHF))
-				lp->stats.rx_fifo_errors++;
+				dev->stats.rx_fifo_errors++;
 			if (rx_status &
 			    (RX_STATUS_LONG_ERR << RX_STAT_CTL_STATUS_SHF))
-				lp->stats.rx_length_errors++;
+				dev->stats.rx_length_errors++;
 		}
 
 		/* Indicate we have processed the buffer. */
@@ -853,9 +858,9 @@ static void lan_saa9730_tx_timeout(struct net_device *dev)
 	struct lan_saa9730_private *lp = netdev_priv(dev);
 
 	/* Transmitter timeout, serious problems */
-	lp->stats.tx_errors++;
+	dev->stats.tx_errors++;
 	printk("%s: transmit timed out, reset\n", dev->name);
-	/*show_saa9730_regs(lp); */
+	/*show_saa9730_regs(dev); */
 	lan_saa9730_restart(lp);
 
 	dev->trans_start = jiffies;
@@ -886,8 +891,8 @@ static int lan_saa9730_start_xmit(struct sk_buff *skb,
 		return -1;
 	}
 
-	lp->stats.tx_bytes += len;
-	lp->stats.tx_packets++;
+	dev->stats.tx_bytes += len;
+	dev->stats.tx_packets++;
 
 	dev->trans_start = jiffies;
 	netif_wake_queue(dev);
@@ -917,14 +922,6 @@ static int lan_saa9730_close(struct net_device *dev)
 	free_irq(dev->irq, (void *) dev);
 
 	return 0;
-}
-
-static struct net_device_stats *lan_saa9730_get_stats(struct net_device
-						      *dev)
-{
-	struct lan_saa9730_private *lp = netdev_priv(dev);
-
-	return &lp->stats;
 }
 
 static void lan_saa9730_set_multicast(struct net_device *dev)
@@ -1040,7 +1037,6 @@ static int lan_saa9730_init(struct net_device *dev, struct pci_dev *pdev,
 	dev->open = lan_saa9730_open;
 	dev->hard_start_xmit = lan_saa9730_start_xmit;
 	dev->stop = lan_saa9730_close;
-	dev->get_stats = lan_saa9730_get_stats;
 	dev->set_multicast_list = lan_saa9730_set_multicast;
 	dev->tx_timeout = lan_saa9730_tx_timeout;
 	dev->watchdog_timeo = (HZ >> 1);

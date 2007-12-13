@@ -55,7 +55,7 @@ static int sig_ignored(struct task_struct *t, int sig)
 	 * signal handler may change by the time it is
 	 * unblocked.
 	 */
-	if (sigismember(&t->blocked, sig))
+	if (sigismember(&t->blocked, sig) || sigismember(&t->real_blocked, sig))
 		return 0;
 
 	/* Is it explicitly or implicitly ignored? */
@@ -99,7 +99,6 @@ static inline int has_pending_signals(sigset_t *signal, sigset_t *blocked)
 static int recalc_sigpending_tsk(struct task_struct *t)
 {
 	if (t->signal->group_stop_count > 0 ||
-	    (freezing(t)) ||
 	    PENDING(&t->pending, &t->blocked) ||
 	    PENDING(&t->signal->shared_pending, &t->blocked)) {
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
@@ -125,7 +124,7 @@ void recalc_sigpending_and_wake(struct task_struct *t)
 
 void recalc_sigpending(void)
 {
-	if (!recalc_sigpending_tsk(current))
+	if (!recalc_sigpending_tsk(current) && !freezing(current))
 		clear_thread_flag(TIF_SIGPENDING);
 
 }
@@ -257,7 +256,7 @@ flush_signal_handlers(struct task_struct *t, int force_default)
 
 int unhandled_signal(struct task_struct *tsk, int sig)
 {
-	if (is_init(tsk))
+	if (is_global_init(tsk))
 		return 1;
 	if (tsk->ptrace & PT_PTRACED)
 		return 0;
@@ -537,7 +536,7 @@ static int check_kill_permission(int sig, struct siginfo *info,
 			return error;
 		error = -EPERM;
 		if (((sig != SIGCONT) ||
-			(process_session(current) != process_session(t)))
+			(task_session_nr(current) != task_session_nr(t)))
 		    && (current->euid ^ t->suid) && (current->euid ^ t->uid)
 		    && (current->uid ^ t->suid) && (current->uid ^ t->uid)
 		    && !capable(CAP_KILL))
@@ -695,7 +694,7 @@ static int send_signal(int sig, struct siginfo *info, struct task_struct *t,
 			q->info.si_signo = sig;
 			q->info.si_errno = 0;
 			q->info.si_code = SI_USER;
-			q->info.si_pid = current->pid;
+			q->info.si_pid = task_pid_vnr(current);
 			q->info.si_uid = current->uid;
 			break;
 		case (unsigned long) SEND_SIG_PRIV:
@@ -731,9 +730,9 @@ int print_fatal_signals;
 static void print_fatal_signal(struct pt_regs *regs, int signr)
 {
 	printk("%s/%d: potentially unexpected fatal signal %d.\n",
-		current->comm, current->pid, signr);
+		current->comm, task_pid_nr(current), signr);
 
-#ifdef __i386__
+#if defined(__i386__) && !defined(__arch_um__)
 	printk("code at %08lx: ", regs->eip);
 	{
 		int i;
@@ -909,8 +908,7 @@ __group_complete_signal(int sig, struct task_struct *p)
 			do {
 				sigaddset(&t->pending.signal, SIGKILL);
 				signal_wake_up(t, 1);
-				t = next_thread(t);
-			} while (t != p);
+			} while_each_thread(p, t);
 			return;
 		}
 
@@ -928,13 +926,11 @@ __group_complete_signal(int sig, struct task_struct *p)
 		rm_from_queue(SIG_KERNEL_STOP_MASK, &p->signal->shared_pending);
 		p->signal->group_stop_count = 0;
 		p->signal->group_exit_task = t;
-		t = p;
+		p = t;
 		do {
 			p->signal->group_stop_count++;
-			signal_wake_up(t, 0);
-			t = next_thread(t);
-		} while (t != p);
-		wake_up_process(p->signal->group_exit_task);
+			signal_wake_up(t, t == p);
+		} while_each_thread(p, t);
 		return;
 	}
 
@@ -984,9 +980,6 @@ void zap_other_threads(struct task_struct *p)
 
 	p->signal->flags = SIGNAL_GROUP_EXIT;
 	p->signal->group_stop_count = 0;
-
-	if (thread_group_empty(p))
-		return;
 
 	for (t = next_thread(p); t != p; t = next_thread(t)) {
 		/*
@@ -1096,7 +1089,7 @@ kill_proc_info(int sig, struct siginfo *info, pid_t pid)
 {
 	int error;
 	rcu_read_lock();
-	error = kill_pid_info(sig, info, find_pid(pid));
+	error = kill_pid_info(sig, info, find_vpid(pid));
 	rcu_read_unlock();
 	return error;
 }
@@ -1157,7 +1150,7 @@ static int kill_something_info(int sig, struct siginfo *info, int pid)
 
 		read_lock(&tasklist_lock);
 		for_each_process(p) {
-			if (p->pid > 1 && p->tgid != current->tgid) {
+			if (p->pid > 1 && !same_thread_group(p, current)) {
 				int err = group_send_sig_info(sig, info, p);
 				++count;
 				if (err != -EPERM)
@@ -1167,9 +1160,9 @@ static int kill_something_info(int sig, struct siginfo *info, int pid)
 		read_unlock(&tasklist_lock);
 		ret = count ? retval : -ESRCH;
 	} else if (pid < 0) {
-		ret = kill_pgrp_info(sig, info, find_pid(-pid));
+		ret = kill_pgrp_info(sig, info, find_vpid(-pid));
 	} else {
-		ret = kill_pid_info(sig, info, find_pid(pid));
+		ret = kill_pid_info(sig, info, find_vpid(pid));
 	}
 	rcu_read_unlock();
 	return ret;
@@ -1273,7 +1266,12 @@ EXPORT_SYMBOL(kill_pid);
 int
 kill_proc(pid_t pid, int sig, int priv)
 {
-	return kill_proc_info(sig, __si_special(priv), pid);
+	int ret;
+
+	rcu_read_lock();
+	ret = kill_pid_info(sig, __si_special(priv), find_pid(pid));
+	rcu_read_unlock();
+	return ret;
 }
 
 /*
@@ -1450,7 +1448,22 @@ void do_notify_parent(struct task_struct *tsk, int sig)
 
 	info.si_signo = sig;
 	info.si_errno = 0;
-	info.si_pid = tsk->pid;
+	/*
+	 * we are under tasklist_lock here so our parent is tied to
+	 * us and cannot exit and release its namespace.
+	 *
+	 * the only it can is to switch its nsproxy with sys_unshare,
+	 * bu uncharing pid namespaces is not allowed, so we'll always
+	 * see relevant namespace
+	 *
+	 * write_lock() currently calls preempt_disable() which is the
+	 * same as rcu_read_lock(), but according to Oleg, this is not
+	 * correct to rely on this
+	 */
+	rcu_read_lock();
+	info.si_pid = task_pid_nr_ns(tsk, tsk->parent->nsproxy->pid_ns);
+	rcu_read_unlock();
+
 	info.si_uid = tsk->uid;
 
 	/* FIXME: find out whether or not this is supposed to be c*time. */
@@ -1515,7 +1528,13 @@ static void do_notify_parent_cldstop(struct task_struct *tsk, int why)
 
 	info.si_signo = SIGCHLD;
 	info.si_errno = 0;
-	info.si_pid = tsk->pid;
+	/*
+	 * see comment in do_notify_parent() abot the following 3 lines
+	 */
+	rcu_read_lock();
+	info.si_pid = task_pid_nr_ns(tsk, tsk->parent->nsproxy->pid_ns);
+	rcu_read_unlock();
+
 	info.si_uid = tsk->uid;
 
 	/* FIXME: find out whether or not this is supposed to be c*time. */
@@ -1641,7 +1660,7 @@ void ptrace_notify(int exit_code)
 	memset(&info, 0, sizeof info);
 	info.si_signo = SIGTRAP;
 	info.si_code = exit_code;
-	info.si_pid = current->pid;
+	info.si_pid = task_pid_vnr(current);
 	info.si_uid = current->uid;
 
 	/* Let the debugger run.  */
@@ -1811,7 +1830,7 @@ relock:
 				info->si_signo = signr;
 				info->si_errno = 0;
 				info->si_code = SI_USER;
-				info->si_pid = current->parent->pid;
+				info->si_pid = task_pid_vnr(current->parent);
 				info->si_uid = current->parent->uid;
 			}
 
@@ -1842,11 +1861,9 @@ relock:
 			continue;
 
 		/*
-		 * Init of a pid space gets no signals it doesn't want from
-		 * within that pid space. It can of course get signals from
-		 * its parent pid space.
+		 * Global init gets no signals it doesn't want.
 		 */
-		if (current == child_reaper(current))
+		if (is_global_init(current))
 			continue;
 
 		if (sig_kernel_stop(signr)) {
@@ -2200,7 +2217,7 @@ sys_kill(int pid, int sig)
 	info.si_signo = sig;
 	info.si_errno = 0;
 	info.si_code = SI_USER;
-	info.si_pid = current->tgid;
+	info.si_pid = task_tgid_vnr(current);
 	info.si_uid = current->uid;
 
 	return kill_something_info(sig, &info, pid);
@@ -2216,12 +2233,12 @@ static int do_tkill(int tgid, int pid, int sig)
 	info.si_signo = sig;
 	info.si_errno = 0;
 	info.si_code = SI_TKILL;
-	info.si_pid = current->tgid;
+	info.si_pid = task_tgid_vnr(current);
 	info.si_uid = current->uid;
 
 	read_lock(&tasklist_lock);
-	p = find_task_by_pid(pid);
-	if (p && (tgid <= 0 || p->tgid == tgid)) {
+	p = find_task_by_vpid(pid);
+	if (p && (tgid <= 0 || task_tgid_vnr(p) == tgid)) {
 		error = check_kill_permission(sig, &info, p);
 		/*
 		 * The null signal is a permissions and process existence
@@ -2300,15 +2317,6 @@ int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 	k = &current->sighand->action[sig-1];
 
 	spin_lock_irq(&current->sighand->siglock);
-	if (signal_pending(current)) {
-		/*
-		 * If there might be a fatal signal pending on multiple
-		 * threads, make sure we take it before changing the action.
-		 */
-		spin_unlock_irq(&current->sighand->siglock);
-		return -ERESTARTNOINTR;
-	}
-
 	if (oact)
 		*oact = *k;
 
@@ -2335,7 +2343,6 @@ int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 			rm_from_queue_full(&mask, &t->signal->shared_pending);
 			do {
 				rm_from_queue_full(&mask, &t->pending);
-				recalc_sigpending_and_wake(t);
 				t = next_thread(t);
 			} while (t != current);
 		}

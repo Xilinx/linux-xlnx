@@ -5,6 +5,7 @@
 #include <linux/list.h>
 #include <linux/types.h>
 #include <linux/timer.h>
+#include <linux/scatterlist.h>
 
 struct request;
 struct scatterlist;
@@ -33,20 +34,17 @@ struct scsi_cmnd {
 	struct list_head list;  /* scsi_cmnd participates in queue lists */
 	struct list_head eh_entry; /* entry for the host eh_cmd_q */
 	int eh_eflags;		/* Used by error handlr */
-	void (*done) (struct scsi_cmnd *);	/* Mid-level done function */
 
 	/*
 	 * A SCSI Command is assigned a nonzero serial_number before passed
 	 * to the driver's queue command function.  The serial_number is
 	 * cleared when scsi_done is entered indicating that the command
-	 * has been completed.  It currently doesn't have much use other
-	 * than printk's.  Some lldd's use this number for other purposes.
-	 * It's almost certain that such usages are either incorrect or
-	 * meaningless.  Please kill all usages other than printk's.  Also,
-	 * as this number is always identical to ->pid, please convert
-	 * printk's to use ->pid, so that we can kill this field.
+	 * has been completed.  It is a bug for LLDDs to use this number
+	 * for purposes other than printk (and even that is only useful
+	 * for debugging).
 	 */
 	unsigned long serial_number;
+
 	/*
 	 * This is set to jiffies as it was when the command was first
 	 * allocated.  It is used to time how long the command has
@@ -71,7 +69,7 @@ struct scsi_cmnd {
 
 	/* These elements define the operation we ultimately want to perform */
 	unsigned short use_sg;	/* Number of pieces of scatter-gather */
-	unsigned short sglist_len;	/* size of malloc'd scatter-gather list */
+	unsigned short __use_sg;
 
 	unsigned underflow;	/* Return error if less than
 				   this amount is transferred */
@@ -116,7 +114,6 @@ struct scsi_cmnd {
 	int result;		/* Status code from lower level driver */
 
 	unsigned char tag;	/* SCSI-II queued command tag */
-	unsigned long pid;	/* Process ID, starts at 0. Unique per host. */
 };
 
 extern struct scsi_cmnd *scsi_get_command(struct scsi_device *, gfp_t);
@@ -124,7 +121,6 @@ extern struct scsi_cmnd *__scsi_get_command(struct Scsi_Host *, gfp_t);
 extern void scsi_put_command(struct scsi_cmnd *);
 extern void __scsi_put_command(struct Scsi_Host *, struct scsi_cmnd *,
 			       struct device *);
-extern void scsi_io_completion(struct scsi_cmnd *, unsigned int);
 extern void scsi_finish_command(struct scsi_cmnd *cmd);
 extern void scsi_req_abort_cmd(struct scsi_cmnd *cmd);
 
@@ -133,7 +129,7 @@ extern void *scsi_kmap_atomic_sg(struct scatterlist *sg, int sg_count,
 extern void scsi_kunmap_atomic_sg(void *virt);
 
 extern struct scatterlist *scsi_alloc_sgtable(struct scsi_cmnd *, gfp_t);
-extern void scsi_free_sgtable(struct scatterlist *, int);
+extern void scsi_free_sgtable(struct scsi_cmnd *);
 
 extern int scsi_dma_map(struct scsi_cmnd *cmd);
 extern void scsi_dma_unmap(struct scsi_cmnd *cmd);
@@ -153,6 +149,6 @@ static inline int scsi_get_resid(struct scsi_cmnd *cmd)
 }
 
 #define scsi_for_each_sg(cmd, sg, nseg, __i)			\
-	for (__i = 0, sg = scsi_sglist(cmd); __i < (nseg); __i++, (sg)++)
+	for_each_sg(scsi_sglist(cmd), sg, nseg, __i)
 
 #endif /* _SCSI_SCSI_CMND_H */

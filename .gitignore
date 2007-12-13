@@ -12,6 +12,7 @@
 *.s
 *.ko
 *.so
+*.so.dbg
 *.mod.c
 *.i
 *.lst
@@ -26,6 +27,7 @@ vmlinux*
 !vmlinux.lds.S
 System.map
 Module.symvers
+!.gitignore
 
 #
 # Generated include files

@@ -153,8 +153,7 @@ struct host_info {
 };
 
 static int nodemgr_bus_match(struct device * dev, struct device_driver * drv);
-static int nodemgr_uevent(struct device *dev, char **envp, int num_envp,
-			  char *buffer, int buffer_size);
+static int nodemgr_uevent(struct device *dev, struct kobj_uevent_env *env);
 static void nodemgr_resume_ne(struct node_entry *ne);
 static void nodemgr_remove_ne(struct node_entry *ne);
 static struct node_entry *find_entry_by_guid(u64 guid);
@@ -1015,13 +1014,13 @@ static struct unit_directory *nodemgr_process_unit_directory
 			    CSR1212_TEXTUAL_DESCRIPTOR_LEAF_LANGUAGE(kv) == 0) {
 				switch (last_key_id) {
 				case CSR1212_KV_ID_VENDOR:
-					ud->vendor_name_kv = kv;
 					csr1212_keep_keyval(kv);
+					ud->vendor_name_kv = kv;
 					break;
 
 				case CSR1212_KV_ID_MODEL:
-					ud->model_name_kv = kv;
 					csr1212_keep_keyval(kv);
+					ud->model_name_kv = kv;
 					break;
 
 				}
@@ -1113,7 +1112,7 @@ static void nodemgr_process_root_directory(struct host_info *hi, struct node_ent
 {
 	unsigned int ud_id = 0;
 	struct csr1212_dentry *dentry;
-	struct csr1212_keyval *kv;
+	struct csr1212_keyval *kv, *vendor_name_kv = NULL;
 	u8 last_key_id = 0;
 
 	ne->needs_probe = 0;
@@ -1140,8 +1139,8 @@ static void nodemgr_process_root_directory(struct host_info *hi, struct node_ent
 				    CSR1212_TEXTUAL_DESCRIPTOR_LEAF_WIDTH(kv) == 0 &&
 				    CSR1212_TEXTUAL_DESCRIPTOR_LEAF_CHAR_SET(kv) == 0 &&
 				    CSR1212_TEXTUAL_DESCRIPTOR_LEAF_LANGUAGE(kv) == 0) {
-					ne->vendor_name_kv = kv;
 					csr1212_keep_keyval(kv);
+					vendor_name_kv = kv;
 				}
 			}
 			break;
@@ -1150,22 +1149,22 @@ static void nodemgr_process_root_directory(struct host_info *hi, struct node_ent
 	}
 
 	if (ne->vendor_name_kv) {
-		int error = device_create_file(&ne->device,
-					       &dev_attr_ne_vendor_name_kv);
-
-		if (error && error != -EEXIST)
+		kv = ne->vendor_name_kv;
+		ne->vendor_name_kv = vendor_name_kv;
+		csr1212_release_keyval(kv);
+	} else if (vendor_name_kv) {
+		ne->vendor_name_kv = vendor_name_kv;
+		if (device_create_file(&ne->device,
+				       &dev_attr_ne_vendor_name_kv) != 0)
 			HPSB_ERR("Failed to add sysfs attribute");
 	}
 }
 
 #ifdef CONFIG_HOTPLUG
 
-static int nodemgr_uevent(struct device *dev, char **envp, int num_envp,
-			  char *buffer, int buffer_size)
+static int nodemgr_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct unit_directory *ud;
-	int i = 0;
-	int length = 0;
 	int retval = 0;
 	/* ieee1394:venNmoNspNverN */
 	char buf[8 + 1 + 3 + 8 + 2 + 8 + 2 + 8 + 3 + 8 + 1];
@@ -1180,9 +1179,7 @@ static int nodemgr_uevent(struct device *dev, char **envp, int num_envp,
 
 #define PUT_ENVP(fmt,val) 					\
 do {								\
-	retval = add_uevent_var(envp, num_envp, &i,		\
-				buffer, buffer_size, &length,	\
-				fmt, val);			\
+	retval = add_uevent_var(env, fmt, val);		\
 	if (retval)						\
 		return retval;					\
 } while (0)
@@ -1201,15 +1198,12 @@ do {								\
 
 #undef PUT_ENVP
 
-	envp[i] = NULL;
-
 	return 0;
 }
 
 #else
 
-static int nodemgr_uevent(struct device *dev, char **envp, int num_envp,
-			  char *buffer, int buffer_size)
+static int nodemgr_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	return -ENODEV;
 }
@@ -1721,7 +1715,8 @@ static int nodemgr_host_thread(void *__hi)
 		 * to make sure things settle down. */
 		g = get_hpsb_generation(host);
 		for (i = 0; i < 4 ; i++) {
-			if (msleep_interruptible(63) || kthread_should_stop())
+			msleep_interruptible(63);
+			if (kthread_should_stop())
 				goto exit;
 
 			/* Now get the generation in which the node ID's we collect

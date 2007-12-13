@@ -21,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/errno.h>
 #include <linux/workqueue.h>
+#include <linux/i2c.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
@@ -29,12 +30,14 @@
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/hardware.h>
+#include <asm/gpio.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/flash.h>
 #include <asm/mach/map.h>
 
-#include <asm/arch/gpio.h>
+#include <asm/arch/tps65010.h>
 #include <asm/arch/gpioexpander.h>
 #include <asm/arch/irqs.h>
 #include <asm/arch/mux.h>
@@ -44,6 +47,8 @@
 #include <asm/arch/keypad.h>
 #include <asm/arch/dma.h>
 #include <asm/arch/common.h>
+#include <asm/arch/mcbsp.h>
+#include <asm/arch/omap-alsa.h>
 
 extern int omap_gpio_init(void);
 
@@ -351,11 +356,14 @@ static struct resource h3_irda_resources[] = {
 	},
 };
 
+static u64 irda_dmamask = 0xffffffff;
+
 static struct platform_device h3_irda_device = {
 	.name		= "omapirda",
 	.id		= 0,
 	.dev		= {
 		.platform_data	= &h3_irda_data,
+		.dma_mask	= &irda_dmamask,
 	},
 	.num_resources	= ARRAY_SIZE(h3_irda_resources),
 	.resource	= h3_irda_resources,
@@ -366,6 +374,41 @@ static struct platform_device h3_lcd_device = {
 	.id		= -1,
 };
 
+static struct omap_mcbsp_reg_cfg mcbsp_regs = {
+	.spcr2 = FREE | FRST | GRST | XRST | XINTM(3),
+	.spcr1 = RINTM(3) | RRST,
+	.rcr2  = RPHASE | RFRLEN2(OMAP_MCBSP_WORD_8) |
+                RWDLEN2(OMAP_MCBSP_WORD_16) | RDATDLY(1),
+	.rcr1  = RFRLEN1(OMAP_MCBSP_WORD_8) | RWDLEN1(OMAP_MCBSP_WORD_16),
+	.xcr2  = XPHASE | XFRLEN2(OMAP_MCBSP_WORD_8) |
+                XWDLEN2(OMAP_MCBSP_WORD_16) | XDATDLY(1) | XFIG,
+	.xcr1  = XFRLEN1(OMAP_MCBSP_WORD_8) | XWDLEN1(OMAP_MCBSP_WORD_16),
+	.srgr1 = FWID(15),
+	.srgr2 = GSYNC | CLKSP | FSGM | FPER(31),
+
+	.pcr0  = CLKRM | SCLKME | FSXP | FSRP | CLKXP | CLKRP,
+	//.pcr0 = CLKXP | CLKRP,        /* mcbsp: slave */
+};
+
+static struct omap_alsa_codec_config alsa_config = {
+	.name                   = "H3 TSC2101",
+	.mcbsp_regs_alsa        = &mcbsp_regs,
+	.codec_configure_dev    = NULL, // tsc2101_configure,
+	.codec_set_samplerate   = NULL, // tsc2101_set_samplerate,
+	.codec_clock_setup      = NULL, // tsc2101_clock_setup,
+	.codec_clock_on         = NULL, // tsc2101_clock_on,
+	.codec_clock_off        = NULL, // tsc2101_clock_off,
+	.get_default_samplerate = NULL, // tsc2101_get_default_samplerate,
+};
+
+static struct platform_device h3_mcbsp1_device = {
+	.name	= "omap_alsa_mcbsp",
+	.id	= 1,
+	.dev = {
+		.platform_data	= &alsa_config,
+	},
+};
+
 static struct platform_device *devices[] __initdata = {
 	&nor_device,
 	&nand_device,
@@ -374,6 +417,7 @@ static struct platform_device *devices[] __initdata = {
 	&h3_irda_device,
 	&h3_kp_device,
 	&h3_lcd_device,
+	&h3_mcbsp1_device,
 };
 
 static struct omap_usb_config h3_usb_config __initdata = {
@@ -413,6 +457,19 @@ static struct omap_board_config_kernel h3_config[] = {
 	{ OMAP_TAG_LCD,		&h3_lcd_config },
 };
 
+static struct i2c_board_info __initdata h3_i2c_board_info[] = {
+	{
+		I2C_BOARD_INFO("tps65010", 0x48),
+		.type		= "tps65013",
+		/* .irq		= OMAP_GPIO_IRQ(??), */
+	},
+	/* TODO when driver support is ready:
+	 *  - isp1301 OTG transceiver
+	 *  - optional ov9640 camera sensor at 0x30
+	 *  - ...
+	 */
+};
+
 #define H3_NAND_RB_GPIO_PIN	10
 
 static int nand_dev_ready(struct nand_platform_data *data)
@@ -446,6 +503,10 @@ static void __init h3_init(void)
 	omap_board_config = h3_config;
 	omap_board_config_size = ARRAY_SIZE(h3_config);
 	omap_serial_init();
+
+	/* FIXME setup irq for tps65013 chip */
+	i2c_register_board_info(1, h3_i2c_board_info,
+			ARRAY_SIZE(h3_i2c_board_info));
 }
 
 static void __init h3_init_smc91x(void)
@@ -469,6 +530,23 @@ static void __init h3_map_io(void)
 {
 	omap1_map_common_io();
 }
+
+#ifdef CONFIG_TPS65010
+static int __init h3_tps_init(void)
+{
+	if (!machine_is_omap_h3())
+		return 0;
+
+	/* gpio4 for SD, gpio3 for VDD_DSP */
+	/* FIXME send power to DSP iff it's configured */
+
+	/* Enable LOW_PWR */
+	tps65013_set_low_pwr(ON);
+
+	return 0;
+}
+fs_initcall(h3_tps_init);
+#endif
 
 MACHINE_START(OMAP_H3, "TI OMAP1710 H3 board")
 	/* Maintainer: Texas Instruments, Inc. */

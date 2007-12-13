@@ -246,7 +246,7 @@ static struct vfsmount *clone_mnt(struct vfsmount *old, struct dentry *root,
 			list_add(&mnt->mnt_slave, &old->mnt_slave_list);
 			mnt->mnt_master = old;
 			CLEAR_MNT_SHARED(mnt);
-		} else {
+		} else if (!(flag & CL_PRIVATE)) {
 			if ((flag & CL_PROPAGATION) || IS_MNT_SHARED(old))
 				list_add(&mnt->mnt_share, &old->mnt_share);
 			if (IS_MNT_SLAVE(old))
@@ -744,6 +744,26 @@ Enomem:
 		release_mounts(&umount_list);
 	}
 	return NULL;
+}
+
+struct vfsmount *collect_mounts(struct vfsmount *mnt, struct dentry *dentry)
+{
+	struct vfsmount *tree;
+	down_read(&namespace_sem);
+	tree = copy_tree(mnt, dentry, CL_COPY_ALL | CL_PRIVATE);
+	up_read(&namespace_sem);
+	return tree;
+}
+
+void drop_collected_mounts(struct vfsmount *mnt)
+{
+	LIST_HEAD(umount_list);
+	down_read(&namespace_sem);
+	spin_lock(&vfsmount_lock);
+	umount_tree(mnt, 0, &umount_list);
+	spin_unlock(&vfsmount_lock);
+	up_read(&namespace_sem);
+	release_mounts(&umount_list);
 }
 
 /*
@@ -1411,7 +1431,7 @@ long do_mount(char *dev_name, char *dir_name, char *type_page,
 		mnt_flags |= MNT_RELATIME;
 
 	flags &= ~(MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_ACTIVE |
-		   MS_NOATIME | MS_NODIRATIME | MS_RELATIME);
+		   MS_NOATIME | MS_NODIRATIME | MS_RELATIME| MS_KERNMOUNT);
 
 	/* ... and get the mountpoint */
 	retval = path_lookup(dir_name, LOOKUP_FOLLOW, &nd);
@@ -1791,7 +1811,7 @@ static void __init init_mount_tree(void)
 	set_fs_root(current->fs, ns->root, ns->root->mnt_root);
 }
 
-void __init mnt_init(unsigned long mempages)
+void __init mnt_init(void)
 {
 	struct list_head *d;
 	unsigned int nr_hash;

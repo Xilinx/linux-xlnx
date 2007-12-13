@@ -15,6 +15,7 @@
 struct task_struct *__switch_to(struct task_struct *prev,
 				struct task_struct *next);
 
+#define AT_VECTOR_SIZE_ARCH 1 /* entries in ARCH_DLINFO */
 /*
  *	switch_to() should switch tasks to task nr n, first
  */
@@ -266,6 +267,7 @@ void disable_hlt(void);
 void enable_hlt(void);
 
 void default_idle(void);
+void per_cpu_trap_init(void);
 
 asmlinkage void break_point_trap(void);
 asmlinkage void debug_trap_handler(unsigned long r4, unsigned long r5,

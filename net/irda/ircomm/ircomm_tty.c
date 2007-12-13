@@ -77,7 +77,7 @@ static int ircomm_tty_read_proc(char *buf, char **start, off_t offset, int len,
 #endif /* CONFIG_PROC_FS */
 static struct tty_driver *driver;
 
-hashbin_t *ircomm_tty = NULL;
+static hashbin_t *ircomm_tty = NULL;
 
 static const struct tty_operations ops = {
 	.open            = ircomm_tty_open,
@@ -1245,6 +1245,7 @@ static void ircomm_tty_flow_indication(void *instance, void *sap,
 	self->flow = cmd;
 }
 
+#ifdef CONFIG_PROC_FS
 static int ircomm_tty_line_info(struct ircomm_tty_cb *self, char *buf)
 {
 	int  ret=0;
@@ -1354,7 +1355,6 @@ static int ircomm_tty_line_info(struct ircomm_tty_cb *self, char *buf)
  *
  *
  */
-#ifdef CONFIG_PROC_FS
 static int ircomm_tty_read_proc(char *buf, char **start, off_t offset, int len,
 				int *eof, void *unused)
 {

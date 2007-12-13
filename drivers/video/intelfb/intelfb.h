@@ -231,8 +231,8 @@ struct intelfb_hwstate {
 struct intelfb_heap_data {
 	u32 physical;
 	u8 __iomem *virtual;
-	u32 offset;  // in GATT pages
-	u32 size;    // in bytes
+	u32 offset;		/* in GATT pages */
+	u32 size;		/* in bytes */
 };
 
 #ifdef CONFIG_FB_INTEL_I2C
@@ -270,9 +270,9 @@ struct intelfb_info {
 	struct intelfb_hwstate save_state;
 
 	/* agpgart structs */
-	struct agp_memory *gtt_fb_mem;     // use all stolen memory or vram
-	struct agp_memory *gtt_ring_mem;   // ring buffer
-	struct agp_memory *gtt_cursor_mem; // hw cursor
+	struct agp_memory *gtt_fb_mem;     /* use all stolen memory or vram */
+	struct agp_memory *gtt_ring_mem;   /* ring buffer */
+	struct agp_memory *gtt_cursor_mem; /* hw cursor */
 
 	/* use a gart reserved fb mem */
 	u8 fbmem_gart;
@@ -346,7 +346,7 @@ struct intelfb_info {
 
 	/* driver registered */
 	int registered;
-	
+
 	/* index into plls */
 	int pll_index;
 
@@ -355,7 +355,10 @@ struct intelfb_info {
 	struct intelfb_output_rec output[MAX_OUTPUTS];
 };
 
-#define IS_I9XX(dinfo) (((dinfo)->chipset == INTEL_915G)||(dinfo->chipset == INTEL_915GM)||((dinfo)->chipset == INTEL_945G)||(dinfo->chipset==INTEL_945GM))
+#define IS_I9XX(dinfo) (((dinfo)->chipset == INTEL_915G) ||	\
+			((dinfo)->chipset == INTEL_915GM) ||	\
+			((dinfo)->chipset == INTEL_945G) ||	\
+			((dinfo)->chipset==INTEL_945GM))
 
 #ifndef FBIO_WAITFORVSYNC
 #define FBIO_WAITFORVSYNC	_IOW('F', 0x20, __u32)

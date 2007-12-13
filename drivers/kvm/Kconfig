@@ -17,6 +17,7 @@ if VIRTUALIZATION
 config KVM
 	tristate "Kernel-based Virtual Machine (KVM) support"
 	depends on X86 && EXPERIMENTAL
+	select PREEMPT_NOTIFIERS
 	select ANON_INODES
 	---help---
 	  Support hosting fully virtualized guest machines using hardware
@@ -45,5 +46,9 @@ config KVM_AMD
 	---help---
 	  Provides support for KVM on AMD processors equipped with the AMD-V
 	  (SVM) extensions.
+
+# OK, it's a little counter-intuitive to do this, but it puts it neatly under
+# the virtualization menu.
+source drivers/lguest/Kconfig
 
 endif # VIRTUALIZATION

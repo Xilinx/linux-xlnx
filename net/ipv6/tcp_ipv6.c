@@ -59,6 +59,7 @@
 #include <net/snmp.h>
 #include <net/dsfield.h>
 #include <net/timewait_sock.h>
+#include <net/netdma.h>
 
 #include <asm/uaccess.h>
 
@@ -560,16 +561,16 @@ static int tcp_v6_md5_do_add(struct sock *sk, struct in6_addr *peer,
 			     char *newkey, u8 newkeylen)
 {
 	/* Add key to the list */
-	struct tcp6_md5sig_key *key;
+	struct tcp_md5sig_key *key;
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct tcp6_md5sig_key *keys;
 
-	key = (struct tcp6_md5sig_key*) tcp_v6_md5_do_lookup(sk, peer);
+	key = tcp_v6_md5_do_lookup(sk, peer);
 	if (key) {
 		/* modify existing entry - just update that one */
-		kfree(key->base.key);
-		key->base.key = newkey;
-		key->base.keylen = newkeylen;
+		kfree(key->key);
+		key->key = newkey;
+		key->keylen = newkeylen;
 	} else {
 		/* reallocate new list if current one is full. */
 		if (!tp->md5sig_info) {
@@ -580,7 +581,10 @@ static int tcp_v6_md5_do_add(struct sock *sk, struct in6_addr *peer,
 			}
 			sk->sk_route_caps &= ~NETIF_F_GSO_MASK;
 		}
-		tcp_alloc_md5sig_pool();
+		if (tcp_alloc_md5sig_pool() == NULL) {
+			kfree(newkey);
+			return -ENOMEM;
+		}
 		if (tp->md5sig_info->alloced6 == tp->md5sig_info->entries6) {
 			keys = kmalloc((sizeof (tp->md5sig_info->keys6[0]) *
 				       (tp->md5sig_info->entries6 + 1)), GFP_ATOMIC);
@@ -633,10 +637,6 @@ static int tcp_v6_md5_do_del(struct sock *sk, struct in6_addr *peer)
 				kfree(tp->md5sig_info->keys6);
 				tp->md5sig_info->keys6 = NULL;
 				tp->md5sig_info->alloced6 = 0;
-
-				tcp_free_md5sig_pool();
-
-				return 0;
 			} else {
 				/* shrink the database */
 				if (tp->md5sig_info->entries6 != i)
@@ -645,6 +645,8 @@ static int tcp_v6_md5_do_del(struct sock *sk, struct in6_addr *peer)
 						(tp->md5sig_info->entries6 - i)
 						* sizeof (tp->md5sig_info->keys6[0]));
 			}
+			tcp_free_md5sig_pool();
+			return 0;
 		}
 	}
 	return -ENOENT;
@@ -697,7 +699,7 @@ static int tcp_v6_parse_md5_keys (struct sock *sk, char __user *optval,
 	if (!cmd.tcpm_keylen) {
 		if (!tcp_sk(sk)->md5sig_info)
 			return -ENOENT;
-		if (ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_MAPPED)
+		if (ipv6_addr_v4mapped(&sin6->sin6_addr))
 			return tcp_v4_md5_do_del(sk, sin6->sin6_addr.s6_addr32[3]);
 		return tcp_v6_md5_do_del(sk, &sin6->sin6_addr);
 	}
@@ -720,7 +722,7 @@ static int tcp_v6_parse_md5_keys (struct sock *sk, char __user *optval,
 	newkey = kmemdup(cmd.tcpm_key, cmd.tcpm_keylen, GFP_KERNEL);
 	if (!newkey)
 		return -ENOMEM;
-	if (ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_MAPPED) {
+	if (ipv6_addr_v4mapped(&sin6->sin6_addr)) {
 		return tcp_v4_md5_do_add(sk, sin6->sin6_addr.s6_addr32[3],
 					 newkey, cmd.tcpm_keylen);
 	}
@@ -757,6 +759,8 @@ static int tcp_v6_do_calc_md5_hash(char *md5_hash, struct tcp_md5sig_key *key,
 	bp->len = htonl(tcplen);
 	bp->protocol = htonl(protocol);
 
+	sg_init_table(sg, 4);
+
 	sg_set_buf(&sg[block++], bp, sizeof(*bp));
 	nbytes += sizeof(*bp);
 
@@ -777,6 +781,8 @@ static int tcp_v6_do_calc_md5_hash(char *md5_hash, struct tcp_md5sig_key *key,
 	/* 4. shared key */
 	sg_set_buf(&sg[block++], key->key, key->keylen);
 	nbytes += key->keylen;
+
+	sg_mark_end(&sg[block - 1]);
 
 	/* Now store the hash into the packet */
 	err = crypto_hash_init(desc);
@@ -1668,9 +1674,8 @@ ipv6_pktoptions:
 	return 0;
 }
 
-static int tcp_v6_rcv(struct sk_buff **pskb)
+static int tcp_v6_rcv(struct sk_buff *skb)
 {
-	struct sk_buff *skb = *pskb;
 	struct tcphdr *th;
 	struct sock *sk;
 	int ret;
@@ -1729,6 +1734,8 @@ process:
 	if (!sock_owned_by_user(sk)) {
 #ifdef CONFIG_NET_DMA
 		struct tcp_sock *tp = tcp_sk(sk);
+		if (!tp->ucopy.dma_chan && tp->ucopy.pinned_list)
+			tp->ucopy.dma_chan = get_softnet_dma();
 		if (tp->ucopy.dma_chan)
 			ret = tcp_v6_do_rcv(sk, skb);
 		else
@@ -2101,6 +2108,8 @@ void tcp6_proc_exit(void)
 }
 #endif
 
+DEFINE_PROTO_INUSE(tcpv6)
+
 struct proto tcpv6_prot = {
 	.name			= "TCPv6",
 	.owner			= THIS_MODULE,
@@ -2135,6 +2144,7 @@ struct proto tcpv6_prot = {
 	.compat_setsockopt	= compat_tcp_setsockopt,
 	.compat_getsockopt	= compat_tcp_getsockopt,
 #endif
+	REF_PROTO_INUSE(tcpv6)
 };
 
 static struct inet6_protocol tcpv6_protocol = {

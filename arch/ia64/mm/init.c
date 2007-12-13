@@ -54,14 +54,11 @@ struct page *zero_page_memmap_ptr;	/* map entry for zero page */
 EXPORT_SYMBOL(zero_page_memmap_ptr);
 
 void
-lazy_mmu_prot_update (pte_t pte)
+__ia64_sync_icache_dcache (pte_t pte)
 {
 	unsigned long addr;
 	struct page *page;
 	unsigned long order;
-
-	if (!pte_exec(pte))
-		return;				/* not an executable page... */
 
 	page = pte_page(pte);
 	addr = (unsigned long) page_address(page);
@@ -130,8 +127,8 @@ ia64_init_addr_space (void)
 		vma->vm_mm = current->mm;
 		vma->vm_start = current->thread.rbs_bot & PAGE_MASK;
 		vma->vm_end = vma->vm_start + PAGE_SIZE;
-		vma->vm_page_prot = protection_map[VM_DATA_DEFAULT_FLAGS & 0x7];
 		vma->vm_flags = VM_DATA_DEFAULT_FLAGS|VM_GROWSUP|VM_ACCOUNT;
+		vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 		down_write(&current->mm->mmap_sem);
 		if (insert_vm_struct(current->mm, vma)) {
 			up_write(&current->mm->mmap_sem);
@@ -475,7 +472,7 @@ struct memmap_init_callback_data {
 	unsigned long zone;
 };
 
-static int
+static int __meminit
 virtual_memmap_init (u64 start, u64 end, void *arg)
 {
 	struct memmap_init_callback_data *args;
@@ -506,7 +503,7 @@ virtual_memmap_init (u64 start, u64 end, void *arg)
 	return 0;
 }
 
-void
+void __meminit
 memmap_init (unsigned long size, int nid, unsigned long zone,
 	     unsigned long start_pfn)
 {
@@ -721,10 +718,21 @@ int arch_add_memory(int nid, u64 start, u64 size)
 
 	return ret;
 }
-
+#ifdef CONFIG_MEMORY_HOTREMOVE
 int remove_memory(u64 start, u64 size)
 {
-	return -EINVAL;
+	unsigned long start_pfn, end_pfn;
+	unsigned long timeout = 120 * HZ;
+	int ret;
+	start_pfn = start >> PAGE_SHIFT;
+	end_pfn = start_pfn + (size >> PAGE_SHIFT);
+	ret = offline_pages(start_pfn, end_pfn, timeout);
+	if (ret)
+		goto out;
+	/* we can free mem_map at this point */
+out:
+	return ret;
 }
 EXPORT_SYMBOL_GPL(remove_memory);
+#endif /* CONFIG_MEMORY_HOTREMOVE */
 #endif

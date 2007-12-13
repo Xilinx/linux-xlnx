@@ -9,7 +9,7 @@
 #include <sys/mman.h>
 #include <asm/ptrace.h>
 #include <asm/unistd.h>
-#include <asm/page.h>
+#include "as-layout.h"
 #include "stub-data.h"
 #include "kern_constants.h"
 #include "uml-config.h"
@@ -19,7 +19,7 @@ extern void stub_clone_handler(void);
 
 #define STUB_SYSCALL_RET EAX
 #define STUB_MMAP_NR __NR_mmap2
-#define MMAP_OFFSET(o) ((o) >> PAGE_SHIFT)
+#define MMAP_OFFSET(o) ((o) >> UM_KERN_PAGE_SHIFT)
 
 static inline long stub_syscall0(long syscall)
 {
@@ -90,12 +90,12 @@ static inline void remap_stack(int fd, unsigned long offset)
 {
 	__asm__ volatile ("movl %%eax,%%ebp ; movl %0,%%eax ; int $0x80 ;"
 			  "movl %7, %%ebx ; movl %%eax, (%%ebx)"
-			  : : "g" (STUB_MMAP_NR), "b" (UML_CONFIG_STUB_DATA), 
-			    "c" (UM_KERN_PAGE_SIZE), 
+			  : : "g" (STUB_MMAP_NR), "b" (STUB_DATA),
+			    "c" (UM_KERN_PAGE_SIZE),
 			    "d" (PROT_READ | PROT_WRITE),
-			    "S" (MAP_FIXED | MAP_SHARED), "D" (fd), 
-			    "a" (offset), 
-			    "i" (&((struct stub_data *) UML_CONFIG_STUB_DATA)->err) 
+			    "S" (MAP_FIXED | MAP_SHARED), "D" (fd),
+			    "a" (offset),
+			    "i" (&((struct stub_data *) STUB_DATA)->err)
 			  : "memory");
 }
 

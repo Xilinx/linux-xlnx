@@ -28,11 +28,8 @@
  * third extended-fs super-block data in memory
  */
 struct ext4_sb_info {
-	unsigned long s_frag_size;	/* Size of a fragment in bytes */
 	unsigned long s_desc_size;	/* Size of a group descriptor in bytes */
-	unsigned long s_frags_per_block;/* Number of fragments per block */
 	unsigned long s_inodes_per_block;/* Number of inodes per block */
-	unsigned long s_frags_per_group;/* Number of fragments in a group */
 	unsigned long s_blocks_per_group;/* Number of blocks in a group */
 	unsigned long s_inodes_per_group;/* Number of inodes in a group */
 	unsigned long s_itb_per_group;	/* Number of inode table blocks per group */
@@ -45,6 +42,7 @@ struct ext4_sb_info {
 	struct ext4_super_block * s_es;	/* Pointer to the super block in the buffer */
 	struct buffer_head ** s_group_desc;
 	unsigned long  s_mount_opt;
+	ext4_fsblk_t s_sb_block;
 	uid_t s_resuid;
 	gid_t s_resgid;
 	unsigned short s_mount_state;

@@ -35,8 +35,6 @@
 #include <linux/sched.h>	/* for completion */
 #include <linux/mutex.h>
 
-extern struct bus_type i2c_bus_type;
-
 /* --- General options ------------------------------------------------	*/
 
 struct i2c_msg;
@@ -292,9 +290,6 @@ struct i2c_algorithm {
 	                   unsigned short flags, char read_write,
 	                   u8 command, int size, union i2c_smbus_data * data);
 
-	/* --- ioctl like call to set div. parameters. */
-	int (*algo_control)(struct i2c_adapter *, unsigned int, unsigned long);
-
 	/* To determine what the adapter supports */
 	u32 (*functionality) (struct i2c_adapter *);
 };
@@ -342,9 +337,10 @@ static inline void i2c_set_adapdata (struct i2c_adapter *dev, void *data)
 }
 
 /*flags for the client struct: */
-#define I2C_CLIENT_PEC  0x04			/* Use Packet Error Checking */
-#define I2C_CLIENT_TEN	0x10			/* we have a ten bit chip address	*/
-						/* Must equal I2C_M_TEN below */
+#define I2C_CLIENT_PEC	0x04		/* Use Packet Error Checking */
+#define I2C_CLIENT_TEN	0x10		/* we have a ten bit chip address */
+					/* Must equal I2C_M_TEN below */
+#define I2C_CLIENT_WAKE	0x80		/* for board_info; true iff can wake */
 
 /* i2c adapter classes (bitmask) */
 #define I2C_CLASS_HWMON		(1<<0)	/* lm_sensors, ... */
@@ -404,11 +400,6 @@ extern int i2c_release_client(struct i2c_client *);
 extern void i2c_clients_command(struct i2c_adapter *adap,
 				unsigned int cmd, void *arg);
 
-/* returns -EBUSY if address has been taken, 0 if not. Note that the only
-   other place at which this is called is within i2c_attach_client; so
-   you can cheat by simply not registering. Not recommended, of course! */
-extern int i2c_check_addr (struct i2c_adapter *adapter, int addr);
-
 /* Detect function. It iterates over all possible addresses itself.
  * It will only call found_proc if some client is connected at the
  * specific address (unless a 'force' matched);
@@ -416,10 +407,6 @@ extern int i2c_check_addr (struct i2c_adapter *adapter, int addr);
 extern int i2c_probe(struct i2c_adapter *adapter,
 		struct i2c_client_address_data *address_data,
 		int (*found_proc) (struct i2c_adapter *, int, int));
-
-/* An ioctl like call to set div. parameters of the adapter.
- */
-extern int i2c_control(struct i2c_client *,unsigned int, unsigned long);
 
 extern struct i2c_adapter* i2c_get_adapter(int id);
 extern void i2c_put_adapter(struct i2c_adapter *adap);
@@ -444,19 +431,52 @@ static inline int i2c_adapter_id(struct i2c_adapter *adap)
 }
 #endif /* __KERNEL__ */
 
-/*
- * I2C Message - used for pure i2c transaction, also from /dev interface
+/**
+ * struct i2c_msg - an I2C transaction segment beginning with START
+ * @addr: Slave address, either seven or ten bits.  When this is a ten
+ *	bit address, I2C_M_TEN must be set in @flags and the adapter
+ *	must support I2C_FUNC_10BIT_ADDR.
+ * @flags: I2C_M_RD is handled by all adapters.  No other flags may be
+ *	provided unless the adapter exported the relevant I2C_FUNC_*
+ *	flags through i2c_check_functionality().
+ * @len: Number of data bytes in @buf being read from or written to the
+ *	I2C slave address.  For read transactions where I2C_M_RECV_LEN
+ *	is set, the caller guarantees that this buffer can hold up to
+ *	32 bytes in addition to the initial length byte sent by the
+ *	slave (plus, if used, the SMBus PEC); and this value will be
+ *	incremented by the number of block data bytes received.
+ * @buf: The buffer into which data is read, or from which it's written.
+ *
+ * An i2c_msg is the low level representation of one segment of an I2C
+ * transaction.  It is visible to drivers in the @i2c_transfer() procedure,
+ * to userspace from i2c-dev, and to I2C adapter drivers through the
+ * @i2c_adapter.@master_xfer() method.
+ *
+ * Except when I2C "protocol mangling" is used, all I2C adapters implement
+ * the standard rules for I2C transactions.  Each transaction begins with a
+ * START.  That is followed by the slave address, and a bit encoding read
+ * versus write.  Then follow all the data bytes, possibly including a byte
+ * with SMBus PEC.  The transfer terminates with a NAK, or when all those
+ * bytes have been transferred and ACKed.  If this is the last message in a
+ * group, it is followed by a STOP.  Otherwise it is followed by the next
+ * @i2c_msg transaction segment, beginning with a (repeated) START.
+ *
+ * Alternatively, when the adapter supports I2C_FUNC_PROTOCOL_MANGLING then
+ * passing certain @flags may have changed those standard protocol behaviors.
+ * Those flags are only for use with broken/nonconforming slaves, and with
+ * adapters which are known to support the specific mangling options they
+ * need (one or more of IGNORE_NAK, NO_RD_ACK, NOSTART, and REV_DIR_ADDR).
  */
 struct i2c_msg {
 	__u16 addr;	/* slave address			*/
 	__u16 flags;
-#define I2C_M_TEN	0x10	/* we have a ten bit chip address	*/
-#define I2C_M_RD	0x01
-#define I2C_M_NOSTART	0x4000
-#define I2C_M_REV_DIR_ADDR	0x2000
-#define I2C_M_IGNORE_NAK	0x1000
-#define I2C_M_NO_RD_ACK		0x0800
-#define I2C_M_RECV_LEN		0x0400 /* length will be first received byte */
+#define I2C_M_TEN		0x0010	/* this is a ten bit chip address */
+#define I2C_M_RD		0x0001	/* read data, from slave to master */
+#define I2C_M_NOSTART		0x4000	/* if I2C_FUNC_PROTOCOL_MANGLING */
+#define I2C_M_REV_DIR_ADDR	0x2000	/* if I2C_FUNC_PROTOCOL_MANGLING */
+#define I2C_M_IGNORE_NAK	0x1000	/* if I2C_FUNC_PROTOCOL_MANGLING */
+#define I2C_M_NO_RD_ACK		0x0800	/* if I2C_FUNC_PROTOCOL_MANGLING */
+#define I2C_M_RECV_LEN		0x0400	/* length will be first received byte */
 	__u16 len;		/* msg length				*/
 	__u8 *buf;		/* pointer to msg data			*/
 };
@@ -466,7 +486,7 @@ struct i2c_msg {
 #define I2C_FUNC_I2C			0x00000001
 #define I2C_FUNC_10BIT_ADDR		0x00000002
 #define I2C_FUNC_PROTOCOL_MANGLING	0x00000004 /* I2C_M_{REV_DIR_ADDR,NOSTART,..} */
-#define I2C_FUNC_SMBUS_HWPEC_CALC	0x00000008 /* SMBus 2.0 */
+#define I2C_FUNC_SMBUS_PEC		0x00000008
 #define I2C_FUNC_SMBUS_BLOCK_PROC_CALL	0x00008000 /* SMBus 2.0 */
 #define I2C_FUNC_SMBUS_QUICK		0x00010000
 #define I2C_FUNC_SMBUS_READ_BYTE	0x00020000
@@ -502,7 +522,8 @@ struct i2c_msg {
                              I2C_FUNC_SMBUS_WORD_DATA | \
                              I2C_FUNC_SMBUS_PROC_CALL | \
                              I2C_FUNC_SMBUS_WRITE_BLOCK_DATA | \
-                             I2C_FUNC_SMBUS_I2C_BLOCK)
+			     I2C_FUNC_SMBUS_I2C_BLOCK | \
+			     I2C_FUNC_SMBUS_PEC)
 
 /*
  * Data for SMBus Messages
@@ -532,37 +553,7 @@ union i2c_smbus_data {
 #define I2C_SMBUS_I2C_BLOCK_DATA    8
 
 
-/* ----- commands for the ioctl like i2c_command call:
- * note that additional calls are defined in the algorithm and hw
- *	dependent layers - these can be listed here, or see the
- *	corresponding header files.
- */
-				/* -> bit-adapter specific ioctls	*/
-#define I2C_RETRIES	0x0701	/* number of times a device address      */
-				/* should be polled when not            */
-                                /* acknowledging			*/
-#define I2C_TIMEOUT	0x0702	/* set timeout - call with int		*/
-
-
-/* this is for i2c-dev.c	*/
-#define I2C_SLAVE	0x0703	/* Change slave address			*/
-				/* Attn.: Slave address is 7 or 10 bits */
-#define I2C_SLAVE_FORCE	0x0706	/* Change slave address			*/
-				/* Attn.: Slave address is 7 or 10 bits */
-				/* This changes the address, even if it */
-				/* is already taken!			*/
-#define I2C_TENBIT	0x0704	/* 0 for 7 bit addrs, != 0 for 10 bit	*/
-
-#define I2C_FUNCS	0x0705	/* Get the adapter functionality */
-#define I2C_RDWR	0x0707	/* Combined R/W transfer (one stop only)*/
-#define I2C_PEC		0x0708	/* != 0 for SMBus PEC                   */
-
-#define I2C_SMBUS	0x0720	/* SMBus-level access */
-
-/* ----- I2C-DEV: char device interface stuff ------------------------- */
 #ifdef __KERNEL__
-
-#define I2C_MAJOR	89		/* Device major number		*/
 
 /* These defines are used for probing i2c client addresses */
 /* The length of the option lists */

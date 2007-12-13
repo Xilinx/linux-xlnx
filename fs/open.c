@@ -569,7 +569,7 @@ asmlinkage long sys_fchmod(unsigned int fd, mode_t mode)
 	dentry = file->f_path.dentry;
 	inode = dentry->d_inode;
 
-	audit_inode(NULL, inode);
+	audit_inode(NULL, dentry);
 
 	err = -EROFS;
 	if (IS_RDONLY(inode))
@@ -658,7 +658,8 @@ static int chown_common(struct dentry * dentry, uid_t user, gid_t group)
 		newattrs.ia_gid = group;
 	}
 	if (!S_ISDIR(inode->i_mode))
-		newattrs.ia_valid |= ATTR_KILL_SUID|ATTR_KILL_SGID;
+		newattrs.ia_valid |=
+			ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV;
 	mutex_lock(&inode->i_mutex);
 	error = notify_change(dentry, &newattrs);
 	mutex_unlock(&inode->i_mutex);
@@ -726,7 +727,7 @@ asmlinkage long sys_fchown(unsigned int fd, uid_t user, gid_t group)
 		goto out;
 
 	dentry = file->f_path.dentry;
-	audit_inode(NULL, dentry->d_inode);
+	audit_inode(NULL, dentry);
 	error = chown_common(dentry, user, group);
 	fput(file);
 out:
@@ -756,6 +757,10 @@ static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
 	f->f_pos = 0;
 	f->f_op = fops_get(inode->i_fop);
 	file_move(f, &inode->i_sb->s_files);
+
+	error = security_dentry_open(f);
+	if (error)
+		goto cleanup_all;
 
 	if (!open && f->f_op)
 		open = f->f_op->open;
@@ -1056,7 +1061,7 @@ asmlinkage long sys_open(const char __user *filename, int flags, int mode)
 	prevent_tail_call(ret);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(sys_open);
+EXPORT_UNUSED_SYMBOL_GPL(sys_open); /* To be deleted for 2.6.25 */
 
 asmlinkage long sys_openat(int dfd, const char __user *filename, int flags,
 			   int mode)
@@ -1173,7 +1178,7 @@ asmlinkage long sys_vhangup(void)
 int generic_file_open(struct inode * inode, struct file * filp)
 {
 	if (!(filp->f_flags & O_LARGEFILE) && i_size_read(inode) > MAX_NON_LFS)
-		return -EFBIG;
+		return -EOVERFLOW;
 	return 0;
 }
 

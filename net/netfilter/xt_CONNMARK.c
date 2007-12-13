@@ -23,17 +23,18 @@
 #include <linux/ip.h>
 #include <net/checksum.h>
 
-MODULE_AUTHOR("Henrik Nordstrom <hno@marasytems.com>");
+MODULE_AUTHOR("Henrik Nordstrom <hno@marasystems.com>");
 MODULE_DESCRIPTION("IP tables CONNMARK matching module");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_CONNMARK");
+MODULE_ALIAS("ip6t_CONNMARK");
 
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_CONNMARK.h>
 #include <net/netfilter/nf_conntrack_ecache.h>
 
 static unsigned int
-target(struct sk_buff **pskb,
+target(struct sk_buff *skb,
        const struct net_device *in,
        const struct net_device *out,
        unsigned int hooknum,
@@ -47,28 +48,28 @@ target(struct sk_buff **pskb,
 	u_int32_t mark;
 	u_int32_t newmark;
 
-	ct = nf_ct_get(*pskb, &ctinfo);
+	ct = nf_ct_get(skb, &ctinfo);
 	if (ct) {
 		switch(markinfo->mode) {
 		case XT_CONNMARK_SET:
 			newmark = (ct->mark & ~markinfo->mask) | markinfo->mark;
 			if (newmark != ct->mark) {
 				ct->mark = newmark;
-				nf_conntrack_event_cache(IPCT_MARK, *pskb);
+				nf_conntrack_event_cache(IPCT_MARK, skb);
 			}
 			break;
 		case XT_CONNMARK_SAVE:
 			newmark = (ct->mark & ~markinfo->mask) |
-				  ((*pskb)->mark & markinfo->mask);
+				  (skb->mark & markinfo->mask);
 			if (ct->mark != newmark) {
 				ct->mark = newmark;
-				nf_conntrack_event_cache(IPCT_MARK, *pskb);
+				nf_conntrack_event_cache(IPCT_MARK, skb);
 			}
 			break;
 		case XT_CONNMARK_RESTORE:
-			mark = (*pskb)->mark;
+			mark = skb->mark;
 			diff = (ct->mark ^ mark) & markinfo->mask;
-			(*pskb)->mark = mark ^ diff;
+			skb->mark = mark ^ diff;
 			break;
 		}
 	}
@@ -85,11 +86,6 @@ checkentry(const char *tablename,
 {
 	const struct xt_connmark_target_info *matchinfo = targinfo;
 
-	if (nf_ct_l3proto_try_module_get(target->family) < 0) {
-		printk(KERN_WARNING "can't load conntrack support for "
-				    "proto=%d\n", target->family);
-		return false;
-	}
 	if (matchinfo->mode == XT_CONNMARK_RESTORE) {
 		if (strcmp(tablename, "mangle") != 0) {
 			printk(KERN_WARNING "CONNMARK: restore can only be "
@@ -100,6 +96,11 @@ checkentry(const char *tablename,
 	}
 	if (matchinfo->mark > 0xffffffff || matchinfo->mask > 0xffffffff) {
 		printk(KERN_WARNING "CONNMARK: Only supports 32bit mark\n");
+		return false;
+	}
+	if (nf_ct_l3proto_try_module_get(target->family) < 0) {
+		printk(KERN_WARNING "can't load conntrack support for "
+				    "proto=%d\n", target->family);
 		return false;
 	}
 	return true;

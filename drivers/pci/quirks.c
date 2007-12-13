@@ -472,11 +472,9 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_ICH8_3, quirk_
  */
 static void __devinit quirk_vt82c586_acpi(struct pci_dev *dev)
 {
-	u8 rev;
 	u32 region;
 
-	pci_read_config_byte(dev, PCI_CLASS_REVISION, &rev);
-	if (rev & 0x10) {
+	if (dev->revision & 0x10) {
 		pci_read_config_dword(dev, 0x48, &region);
 		region &= PCI_BASE_ADDRESS_IO_MASK;
 		quirk_io_region(dev, region, 256, PCI_BRIDGE_RESOURCES, "vt82c586 ACPI");
@@ -629,12 +627,9 @@ DECLARE_PCI_FIXUP_RESUME(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_8131_BRIDGE, quirk
  */
 static void __init quirk_amd_8131_mmrbc(struct pci_dev *dev)
 {
-	unsigned char revid;
-
-	pci_read_config_byte(dev, PCI_REVISION_ID, &revid);
-	if (dev->subordinate && revid <= 0x12) {
+	if (dev->subordinate && dev->revision <= 0x12) {
 		printk(KERN_INFO "AMD8131 rev %x detected, disabling PCI-X "
-				"MMRBC\n", revid);
+				"MMRBC\n", dev->revision);
 		dev->subordinate->bus_flags |= PCI_BUS_FLAGS_NO_MMRBC;
 	}
 }
@@ -930,38 +925,6 @@ static void __init quirk_eisa_bridge(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_82375,	quirk_eisa_bridge );
 
-/*
- * On the MSI-K8T-Neo2Fir Board, the internal Soundcard is disabled
- * when a PCI-Soundcard is added. The BIOS only gives Options
- * "Disabled" and "AUTO". This Quirk Sets the corresponding
- * Register-Value to enable the Soundcard.
- *
- * FIXME: Presently this quirk will run on anything that has an 8237
- * which isn't correct, we need to check DMI tables or something in
- * order to make sure it only runs on the MSI-K8T-Neo2Fir.  Because it
- * runs everywhere at present we suppress the printk output in most
- * irrelevant cases.
- */
-static void k8t_sound_hostbridge(struct pci_dev *dev)
-{
-	unsigned char val;
-
-	pci_read_config_byte(dev, 0x50, &val);
-	if (val == 0xc8) {
-		/* Assume it's probably a MSI-K8T-Neo2Fir */
-		printk(KERN_INFO "PCI: MSI-K8T-Neo2Fir, attempting to turn soundcard ON\n");
-		pci_write_config_byte(dev, 0x50, val & (~0x40));
-
-		/* Verify the Change for Status output */
-		pci_read_config_byte(dev, 0x50, &val);
-		if (val & 0x40)
-			printk(KERN_INFO "PCI: MSI-K8T-Neo2Fir, soundcard still off\n");
-		else
-			printk(KERN_INFO "PCI: MSI-K8T-Neo2Fir, soundcard on\n");
-	}
-}
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_8237, k8t_sound_hostbridge);
-DECLARE_PCI_FIXUP_RESUME(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_8237, k8t_sound_hostbridge);
 
 /*
  * On ASUS P4B boards, the SMBus PCI Device within the ICH2/4 southbridge
@@ -1267,7 +1230,7 @@ static void quirk_jmicron_ata(struct pci_dev *pdev)
 	case PCI_DEVICE_ID_JMICRON_JMB363:
 		/* Enable dual function mode, AHCI on fn 0, IDE fn1 */
 		/* Set the class codes correctly and then direct IDE 0 */
-		conf1 |= 0x00C2A102; /* Set 1, 8, 13, 15, 17, 22, 23 */
+		conf1 |= 0x00C2A1B3; /* Set 0, 1, 4, 5, 7, 8, 13, 15, 17, 22, 23 */
 		break;
 
 	case PCI_DEVICE_ID_JMICRON_JMB368:
@@ -1658,12 +1621,8 @@ static void __init quirk_disable_all_msi(struct pci_dev *dev)
 	printk(KERN_WARNING "PCI: MSI quirk detected. MSI deactivated.\n");
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SERVERWORKS, PCI_DEVICE_ID_SERVERWORKS_GCNB_LE, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SERVERWORKS, PCI_DEVICE_ID_SERVERWORKS_HT1000_PCIX, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RS400_200, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RS480, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RD580, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RX790, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RS690, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_VT3351, quirk_disable_all_msi);
 
 /* Disable MSI on chipsets that are known to not support it */
@@ -1715,6 +1674,9 @@ static void __devinit quirk_msi_ht_cap(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SERVERWORKS, PCI_DEVICE_ID_SERVERWORKS_HT2000_PCIE,
 			quirk_msi_ht_cap);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SERVERWORKS,
+			PCI_DEVICE_ID_SERVERWORKS_HT1000_PXB,
+			quirk_msi_ht_cap);
 
 /* The nVidia CK804 chipset may have 2 HT MSI mappings.
  * MSI are supported if the MSI capability set in any of these mappings.
@@ -1742,4 +1704,48 @@ static void __devinit quirk_nvidia_ck804_msi_ht_cap(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_NVIDIA, PCI_DEVICE_ID_NVIDIA_CK804_PCIE,
 			quirk_nvidia_ck804_msi_ht_cap);
+
+static void __devinit quirk_msi_intx_disable_bug(struct pci_dev *dev)
+{
+	dev->dev_flags |= PCI_DEV_FLAGS_MSI_INTX_DISABLE_BUG;
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5780,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5780S,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5714,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5714S,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5715,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_BROADCOM,
+			PCI_DEVICE_ID_TIGON3_5715S,
+			quirk_msi_intx_disable_bug);
+
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4390,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4391,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4392,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4393,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4394,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4395,
+			quirk_msi_intx_disable_bug);
+
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4373,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4374,
+			quirk_msi_intx_disable_bug);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, 0x4375,
+			quirk_msi_intx_disable_bug);
+
 #endif /* CONFIG_PCI_MSI */

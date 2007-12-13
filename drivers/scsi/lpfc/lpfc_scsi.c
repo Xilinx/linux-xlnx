@@ -202,10 +202,9 @@ lpfc_new_scsi_buf(struct lpfc_vport *vport)
 	dma_addr_t pdma_phys;
 	uint16_t iotag;
 
-	psb = kmalloc(sizeof(struct lpfc_scsi_buf), GFP_KERNEL);
+	psb = kzalloc(sizeof(struct lpfc_scsi_buf), GFP_KERNEL);
 	if (!psb)
 		return NULL;
-	memset(psb, 0, sizeof (struct lpfc_scsi_buf));
 
 	/*
 	 * Get memory from the pci pool to map the virt space to pci bus space
@@ -683,6 +682,7 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	IOCB_t *iocb_cmd = &lpfc_cmd->cur_iocbq.iocb;
 	struct lpfc_iocbq *piocbq = &(lpfc_cmd->cur_iocbq);
 	int datadir = scsi_cmnd->sc_data_direction;
+	char tag[2];
 
 	lpfc_cmd->fcp_rsp->rspSnsLen = 0;
 	/* clear task management bits */
@@ -693,8 +693,8 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 
 	memcpy(&fcp_cmnd->fcpCdb[0], scsi_cmnd->cmnd, 16);
 
-	if (scsi_cmnd->device->tagged_supported) {
-		switch (scsi_cmnd->tag) {
+	if (scsi_populate_tag_msg(scsi_cmnd, tag)) {
+		switch (tag[0]) {
 		case HEAD_OF_QUEUE_TAG:
 			fcp_cmnd->fcpCntl1 = HEAD_OF_Q;
 			break;
@@ -1439,6 +1439,7 @@ struct scsi_host_template lpfc_template = {
 	.scan_finished		= lpfc_scan_finished,
 	.this_id		= -1,
 	.sg_tablesize		= LPFC_SG_SEG_CNT,
+	.use_sg_chaining	= ENABLE_SG_CHAINING,
 	.cmd_per_lun		= LPFC_CMD_PER_LUN,
 	.use_clustering		= ENABLE_CLUSTERING,
 	.shost_attrs		= lpfc_hba_attrs,
@@ -1461,6 +1462,7 @@ struct scsi_host_template lpfc_vport_template = {
 	.sg_tablesize		= LPFC_SG_SEG_CNT,
 	.cmd_per_lun		= LPFC_CMD_PER_LUN,
 	.use_clustering		= ENABLE_CLUSTERING,
+	.use_sg_chaining	= ENABLE_SG_CHAINING,
 	.shost_attrs		= lpfc_vport_attrs,
 	.max_sectors		= 0xFFFF,
 };

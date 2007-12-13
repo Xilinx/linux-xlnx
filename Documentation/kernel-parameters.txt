@@ -35,6 +35,7 @@ parameter is applicable:
 	APIC	APIC support is enabled.
 	APM	Advanced Power Management support is enabled.
 	AX25	Appropriate AX.25 support is enabled.
+	BLACKFIN Blackfin architecture is enabled.
 	DRM	Direct Rendering Management support is enabled.
 	EDD	BIOS Enhanced Disk Drive Services (EDD) is enabled
 	EFI	EFI Partitioning (GPT) is enabled
@@ -67,16 +68,19 @@ parameter is applicable:
 	PARIDE	The ParIDE (parallel port IDE) subsystem is enabled.
 	PARISC	The PA-RISC architecture is enabled.
 	PCI	PCI bus support is enabled.
+	PCIE	PCI Express support is enabled.
 	PCMCIA	The PCMCIA subsystem is enabled.
 	PNP	Plug & Play support is enabled.
 	PPC	PowerPC architecture is enabled.
 	PPT	Parallel port support is enabled.
 	PS2	Appropriate PS/2 support is enabled.
 	RAM	RAM disk support is enabled.
+	ROOTPLUG The example Root Plug LSM is enabled.
 	S390	S390 architecture is enabled.
 	SCSI	Appropriate SCSI support is enabled.
 			A lot of drivers has their options described inside of
 			Documentation/scsi/.
+	SECURITY Different security models are enabled.
 	SELINUX SELinux support is enabled.
 	SERIAL	Serial support is enabled.
 	SH	SuperH architecture is enabled.
@@ -218,9 +222,6 @@ and is between 256 and 4096 characters. It is defined in the file
 			Warning: Many of these options can produce a lot of
 			output and make your system unusable. Be very careful.
 
-
-	acpi_fake_ecdt	[HW,ACPI] Workaround failure due to BIOS lacking ECDT
-
 	acpi_pm_good	[X86-32,X86-64]
 			Override the pmtimer bug detection: force the kernel
 			to assume that this machine's pmtimer latches its value
@@ -293,9 +294,6 @@ and is between 256 and 4096 characters. It is defined in the file
 	apm=		[APM] Advanced Power Management
 			See header of arch/i386/kernel/apm.c.
 
-	applicom=	[HW]
-			Format: <mem>,<irq>
-
 	arcrimi=	[HW,NET] ARCnet - "RIM I" (entirely mem-mapped) cards
 			Format: <io>,<irq>,<nodeID>
 
@@ -341,11 +339,10 @@ and is between 256 and 4096 characters. It is defined in the file
 			Format: <io>,<irq>,<mode>
 			See header of drivers/net/hamradio/baycom_ser_hdx.c.
 
-	blkmtd_device=	[HW,MTD]
-	blkmtd_erasesz=
-	blkmtd_ro=
-	blkmtd_bs=
-	blkmtd_count=
+	boot_delay=	Milliseconds to delay each printk during boot.
+			Values larger than 10 seconds (10000) are changed to
+			no delay (0).
+			Format: integer
 
 	bttv.card=	[HW,V4L] bttv (bt848 + bt878 based grabber cards)
 	bttv.radio=	Most important insmod options are available as
@@ -365,6 +362,12 @@ and is between 256 and 4096 characters. It is defined in the file
 			to fix known problems, but for some CPUs it is not
 			possible to determine what the correct size should be.
 			This option provides an override for these situations.
+
+	capability.disable=
+			[SECURITY] Disable capabilities.  This would normally
+			be used only if an alternative security model is to be
+			configured.  Potentially dangerous and should only be
+			used if you are entirely sure of the consequences.
 
 	chandev=	[HW,NET] Generic channel device initialisation
 
@@ -416,8 +419,11 @@ and is between 256 and 4096 characters. It is defined in the file
 			over the 8254 in addition to over the IO-APIC. The
 			kernel tries to set a sensible default.
 
-	hpet=		[X86-32,HPET] option to disable HPET and use PIT.
-			Format: disable
+	hpet=		[X86-32,HPET] option to control HPET usage
+			Format: { enable (default) | disable | force }
+			disable: disable HPET and use PIT instead
+			force: allow force enabled of undocumented chips (ICH4,
+			VIA, nVidia)
 
 	com20020=	[HW,NET] ARCnet - COM20020 chipset
 			Format:
@@ -464,6 +470,16 @@ and is between 256 and 4096 characters. It is defined in the file
 			UART at the specified I/O port or MMIO address.
 			The options are the same as for ttyS, above.
 
+	no_console_suspend
+			[HW] Never suspend the console
+			Disable suspending of consoles during suspend and
+			hibernate operations.  Once disabled, debugging
+			messages can reach various consoles while the rest
+			of the system is being put to sleep (ie, while
+			debugging driver suspend/resume hooks).  This may
+			not work reliably with all consoles, but is known
+			to work with serial and VGA consoles.
+
 	cpcihp_generic=	[HW,PCI] Generic port I/O CompactPCI driver
 			Format:
 			<first_slot>,<last_slot>,<port>,<enum_bit>[,<debug>]
@@ -471,6 +487,13 @@ and is between 256 and 4096 characters. It is defined in the file
 	crashkernel=nn[KMG]@ss[KMG]
 			[KNL] Reserve a chunk of physical memory to
 			hold a kernel to switch to with kexec on panic.
+
+	crashkernel=range1:size1[,range2:size2,...][@offset]
+			[KNL] Same as above, but depends on the memory
+			in the running system. The syntax of range is
+			start-[end] where start and end are both
+			a memory unit (amount[KMG]). See also
+			Documentation/kdump/kdump.txt for a example.
 
 	cs4232=		[HW,OSS]
 			Format: <io>,<irq>,<dma>,<dma2>,<mpuio>,<mpuirq>
@@ -480,8 +503,6 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	cs89x0_media=	[HW,NET]
 			Format: { rj45 | aui | bnc }
-
-	cyclades=	[HW,SERIAL] Cyclades multi-serial port adapter.
 
 	dasd=		[HW,NET]
 			See header of drivers/s390/block/dasd_devmap.c.
@@ -540,17 +561,13 @@ and is between 256 and 4096 characters. It is defined in the file
 			See drivers/char/README.epca and
 			Documentation/digiepca.txt.
 
-	dmascc=		[HW,AX25,SERIAL] AX.25 Z80SCC driver with DMA
-			support available.
-			Format: <io_dev0>[,<io_dev1>[,..<io_dev32>]]
-
 	dmasound=	[HW,OSS] Sound subsystem buffers
 
 	dscc4.setup=	[NET]
 
 	dtc3181e=	[HW,SCSI]
 
-	earlyprintk=	[X86-32,X86-64,SH]
+	earlyprintk=	[X86-32,X86-64,SH,BLACKFIN]
 			earlyprintk=vga
 			earlyprintk=serial[,ttySn[,baudrate]]
 
@@ -569,21 +586,9 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	eata=		[HW,SCSI]
 
-	ec_intr=	[HW,ACPI] ACPI Embedded Controller interrupt mode
-			Format: <int>
-			0: polling mode
-			non-0: interrupt mode (default)
-
-	eda=		[HW,PS2]
-
-	edb=		[HW,PS2]
-
 	edd=		[EDD]
 			Format: {"of[f]" | "sk[ipmbr]"}
 			See comment in arch/i386/boot/edd.S
-
-	eicon=		[HW,ISDN]
-			Format: <id>,<membase>,<irq>
 
 	eisa_irq_edge=	[PARISC,HW]
 			See header of drivers/parisc/eisa.c.
@@ -763,6 +768,23 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	inttest=	[IA64]
 
+	intel_iommu=	[DMAR] Intel IOMMU driver (DMAR) option
+		off
+			Disable intel iommu driver.
+		igfx_off [Default Off]
+			By default, gfx is mapped as normal device. If a gfx
+			device has a dedicated DMAR unit, the DMAR unit is
+			bypassed by not enabling DMAR with this option. In
+			this case, gfx device will use physical address for
+			DMA.
+		forcedac [x86_64]
+			With this option iommu will not optimize to look
+			for io virtual address below 32 bit forcing dual
+			address cycle on pci bus for cards supporting greater
+			than 32 bit addressing. The default is to look
+			for translation below 32 bit and if not available
+			then look in the higher range.
+
 	io7=		[HW] IO7 for Marvel based alpha systems
 			See comment before marvel_specify_io7 in
 			arch/alpha/kernel/core_marvel.c.
@@ -860,8 +882,9 @@ and is between 256 and 4096 characters. It is defined in the file
 	lapic_timer_c2_ok	[X86-32,x86-64,APIC] trust the local apic timer in
 			C2 power state.
 
-	lasi=		[HW,SCSI] PARISC LASI driver for the 53c700 chip
-			Format: addr:<io>,irq:<irq>
+	libata.noacpi	[LIBATA] Disables use of ACPI in libata suspend/resume
+			when set.
+			Format: <int>
 
 	load_ramdisk=	[RAM] List of ramdisks to load from floppy
 			See Documentation/ramdisk.txt.
@@ -899,6 +922,11 @@ and is between 256 and 4096 characters. It is defined in the file
 			Format: { n | nk | nM }
 			n must be a power of two.  The default size
 			is set in the kernel config file.
+
+	logo.nologo	[FB] Disables display of the built-in Linux logo.
+			This may be used to provide more screen space for
+			kernel log messages and is useful when debugging
+			kernel boot problems.
 
 	lp=0		[LP]	Specify parallel ports to use, e.g,
 	lp=port[,port...]	lp=none,parport0 (lp0 not configured, lp1 uses
@@ -970,6 +998,8 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	mce		[X86-32] Machine Check Exception
 
+	mce=option	[X86-64] See Documentation/x86_64/boot-options.txt
+
 	md=		[HW] RAID subsystems devices and level
 			See Documentation/md.txt.
 
@@ -1007,6 +1037,10 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	meye.*=		[HW] Set MotionEye Camera parameters
 			See Documentation/video4linux/meye.txt.
+
+	mfgpt_irq=	[IA-32] Specify the IRQ to use for the
+			Multi-Function General Purpose Timers on AMD Geode
+			platforms.
 
 	mga=		[HW,DRM]
 
@@ -1073,15 +1107,18 @@ and is between 256 and 4096 characters. It is defined in the file
 			[NFS] set the maximum lifetime for idmapper cache
 			entries.
 
+	nfs.enable_ino64=
+			[NFS] enable 64-bit inode numbers.
+			If zero, the NFS client will fake up a 32-bit inode
+			number for the readdir() and stat() syscalls instead
+			of returning the full 64-bit number.
+			The default is to return 64-bit inode numbers.
+
 	nmi_watchdog=	[KNL,BUGS=X86-32] Debugging features for SMP kernels
 
 	no387		[BUGS=X86-32] Tells the kernel to use the 387 maths
 			emulation library even if a 387 maths coprocessor
 			is present.
-
-	noacpi		[LIBATA] Disables use of ACPI in libata suspend/resume
-			when set.
-			Format: <int>
 
 	noaliencache	[MM, NUMA, SLAB] Disables the allocation of alien
 			caches in the slab allocator.  Saves per-node memory,
@@ -1091,9 +1128,6 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	noapic		[SMP,APIC] Tells the kernel to not make use of any
 			IOAPICs that may be present in the system.
-
-	noasync		[HW,M68K] Disables async and sync negotiation for
-			all devices.
 
 	nobats		[PPC] Do not use BATs for mapping kernel lowmem
 			on "Classic" PPC cores.
@@ -1158,6 +1192,9 @@ and is between 256 and 4096 characters. It is defined in the file
 	nomca		[IA-64] Disable machine check abort handling
 
 	nomce		[X86-32] Machine Check Exception
+
+	nomfgpt		[X86-32] Disable Multi-Function General Purpose
+			Timer usage (for AMD Geode machines).
 
 	noreplace-paravirt	[X86-32,PV_OPS] Don't patch paravirt_ops
 
@@ -1269,6 +1306,11 @@ and is between 256 and 4096 characters. It is defined in the file
 				Mechanism 1.
 		conf2		[X86-32] Force use of PCI Configuration
 				Mechanism 2.
+		noaer		[PCIE] If the PCIEAER kernel config parameter is
+				enabled, this kernel boot option can be used to
+				disable the use of PCIE advanced error reporting.
+		nodomains	[PCI] Disable support for multiple PCI
+				root domains (aka PCI segments, in ACPI-speak).
 		nommconf	[X86-32,X86_64] Disable use of MMCONFIG for PCI
 				Configuration
 		nomsi		[MSI] If the PCI_MSI kernel config parameter is
@@ -1313,6 +1355,8 @@ and is between 256 and 4096 characters. It is defined in the file
 				IRQ routing is enabled.
 		noacpi		[X86-32] Do not use ACPI for IRQ routing
 				or for PCI scanning.
+		use_crs		[X86-32] Use _CRS for PCI resource
+				allocation.
 		routeirq	Do IRQ routing for all PCI devices.
 				This is normally done in pci_enable_device(),
 				so this option is a temporary workaround
@@ -1395,7 +1439,9 @@ and is between 256 and 4096 characters. It is defined in the file
 			Param: "schedule" - profile schedule points.
 			Param: <number> - step/bucket size as a power of 2 for
 				statistical time based profiling.
-			Param: "sleep" - profile D-state sleeping (millisecs)
+			Param: "sleep" - profile D-state sleeping (millisecs).
+				Requires CONFIG_SCHEDSTATS
+			Param: "kvm" - profile VM exits.
 
 	processor.max_cstate=	[HW,ACPI]
 			Limit processor to maximum C-state
@@ -1429,6 +1475,10 @@ and is between 256 and 4096 characters. It is defined in the file
 	pt.		[PARIDE]
 			See Documentation/paride.txt.
 
+	pty.legacy_count=
+			[KNL] Number of legacy pty's. Overwrites compiled-in
+			default number.
+
 	quiet		[KNL] Disable most log messages
 
 	r128=		[HW,DRM]
@@ -1436,14 +1486,10 @@ and is between 256 and 4096 characters. It is defined in the file
 	raid=		[HW,RAID]
 			See Documentation/md.txt.
 
-	ramdisk=	[RAM] Sizes of RAM disks in kilobytes [deprecated]
-			See Documentation/ramdisk.txt.
-
 	ramdisk_blocksize=	[RAM]
 			See Documentation/ramdisk.txt.
 
 	ramdisk_size=	[RAM] Sizes of RAM disks in kilobytes
-			New name for the ramdisk parameter.
 			See Documentation/ramdisk.txt.
 
 	rcu.blimit=	[KNL,BOOT] Set maximum number of finished
@@ -1506,15 +1552,21 @@ and is between 256 and 4096 characters. It is defined in the file
 			Useful for devices that are detected asynchronously
 			(e.g. USB and MMC devices).
 
+	root_plug.vendor_id=
+			[ROOTPLUG] Override the default vendor ID
+
+	root_plug.product_id=
+			[ROOTPLUG] Override the default product ID
+
+	root_plug.debug=
+			[ROOTPLUG] Enable debugging output
+
 	rw		[KNL] Mount root device read-write on boot
 
 	S		[KNL] Run init in single mode
 
 	sa1100ir	[NET]
 			See drivers/net/irda/sa1100_ir.c.
-
-	sb=		[HW,OSS]
-			Format: <io>,<irq>,<dma>,<dma2>
 
 	sbni=		[NET] Granch SBNI12 leased line adapter
 
@@ -1558,8 +1610,6 @@ and is between 256 and 4096 characters. It is defined in the file
                         /selinux/compat_net.
 
 	serialnumber	[BUGS=X86-32]
-
-	sg_def_reserved_size=	[SCSI]
 
 	shapers=	[NET]
 			Maximal number of shapers.
@@ -1863,9 +1913,6 @@ and is between 256 and 4096 characters. It is defined in the file
 			Format:
 			<io>,<irq>,<dma>,<dma2>,<sb_io>,<sb_irq>,<sb_dma>,<mpu_io>,<mpu_irq>
 
-	tsdev.xres=	[TS] Horizontal screen resolution.
-	tsdev.yres=	[TS] Vertical screen resolution.
-
 	turbografx.map[2|3]=	[HW,JOY]
 			TurboGraFX parallel port interface
 			Format:
@@ -1953,10 +2000,6 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	norandmaps	Don't use address space randomization
 			Equivalent to echo 0 > /proc/sys/kernel/randomize_va_space
-
- 	unwind_debug=N 	N > 0 will enable dwarf2 unwinder debugging
-			This is useful to get more information why
-			you got a "dwarf2 unwinder stuck"
 
 ______________________________________________________________________
 

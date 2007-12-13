@@ -93,7 +93,7 @@ static int __init init_reg_offset(struct net_device *dev,unsigned long base_addr
 	bus_width = *(volatile unsigned char *)ABWCR;
 	bus_width &= 1 << ((base_addr >> 21) & 7);
 
-	for (i = 0; i < sizeof(reg_offset) / sizeof(u32); i++)
+	for (i = 0; i < ARRAY_SIZE(reg_offset); i++)
 		if (bus_width == 0)
 			reg_offset[i] = i * 2 + 1;
 		else
@@ -115,7 +115,7 @@ static int h8300_ne_irq[] = {EXT_IRQ5};
 
 static inline int init_dev(struct net_device *dev)
 {
-	if (h8300_ne_count < (sizeof(h8300_ne_base) / sizeof(unsigned long))) {
+	if (h8300_ne_count < ARRAY_SIZE(h8300_ne_base)) {
 		dev->base_addr = h8300_ne_base[h8300_ne_count];
 		dev->irq       = h8300_ne_irq[h8300_ne_count];
 		h8300_ne_count++;
@@ -148,8 +148,6 @@ static inline int init_dev(struct net_device *dev)
 static int __init do_ne_probe(struct net_device *dev)
 {
 	unsigned int base_addr = dev->base_addr;
-
-	SET_MODULE_OWNER(dev);
 
 	/* First check any supplied i/o locations. User knows best. <cough> */
 	if (base_addr > 0x1ff)	/* Check a single specified location. */
@@ -206,6 +204,7 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 	static unsigned version_printed;
 	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
 	unsigned char bus_width;
+	DECLARE_MAC_BUF(mac);
 
 	if (!request_region(ioaddr, NE_IO_EXTENT, DRV_NAME))
 		return -EBUSY;
@@ -259,7 +258,7 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 			{E8390_RREAD+E8390_START, E8390_CMD},
 		};
 
-		for (i = 0; i < sizeof(program_seq)/sizeof(program_seq[0]); i++)
+		for (i = 0; i < ARRAY_SIZE(program_seq); i++)
 			outb_p(program_seq[i].value, ioaddr + program_seq[i].offset);
 
 	}
@@ -298,12 +297,11 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 
 	dev->base_addr = ioaddr;
 
-	for(i = 0; i < ETHER_ADDR_LEN; i++) {
-		printk(" %2.2x", SA_prom[i]);
+	for(i = 0; i < ETHER_ADDR_LEN; i++)
 		dev->dev_addr[i] = SA_prom[i];
-	}
+	printk(" %s\n", print_mac(mac, dev->dev_addr));
 
-	printk("\n%s: %s found at %#x, using IRQ %d.\n",
+	printk("%s: %s found at %#x, using IRQ %d.\n",
 		dev->name, name, ioaddr, dev->irq);
 
 	ei_status.name = name;

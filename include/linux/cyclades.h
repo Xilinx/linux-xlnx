@@ -512,11 +512,11 @@ struct cyclades_card {
     void __iomem *base_addr;
     void __iomem *ctl_addr;
     int irq;
-    int num_chips;	/* 0 if card absent, -1 if Z/PCI, else Y */
-    int first_line;	/* minor number of first channel on card */
-    int nports;		/* Number of ports in the card */
-    int bus_index;	/* address shift - 0 for ISA, 1 for PCI */
-    int	intr_enabled;	/* FW Interrupt flag - 0 disabled, 1 enabled */
+    unsigned int num_chips;	/* 0 if card absent, -1 if Z/PCI, else Y */
+    unsigned int first_line;	/* minor number of first channel on card */
+    unsigned int nports;	/* Number of ports in the card */
+    int bus_index;		/* address shift - 0 for ISA, 1 for PCI */
+    int intr_enabled;		/* FW Interrupt flag - 0 disabled, 1 enabled */
     spinlock_t card_lock;
     struct cyclades_port *ports;
 };
@@ -566,10 +566,9 @@ struct cyclades_port {
 	int			rtsdtr_inv;
 	int			chip_rev;
 	int			custom_divisor;
-	int                     x_char; /* to be pushed out ASAP */
+	u8			x_char; /* to be pushed out ASAP */
 	int			close_delay;
 	unsigned short		closing_wait;
-	unsigned long		event;
 	int			count;	/* # of fd on device */
 	int                     breakon;
 	int                     breakoff;
@@ -584,26 +583,12 @@ struct cyclades_port {
 	struct cyclades_monitor	mon;
 	struct cyclades_idle_stats	idle_stats;
 	struct cyclades_icount	icount;
-	struct work_struct	tqueue;
 	wait_queue_head_t       open_wait;
 	wait_queue_head_t       close_wait;
 	struct completion       shutdown_wait;
 	wait_queue_head_t       delta_msr_wait;
 	int throttle;
 };
-
-/*
- * Events are used to schedule things to happen at timer-interrupt
- * time, instead of at cy interrupt time.
- */
-#define Cy_EVENT_READ_PROCESS		0
-#define Cy_EVENT_WRITE_WAKEUP		1
-#define Cy_EVENT_HANGUP			2
-#define Cy_EVENT_BREAK			3
-#define Cy_EVENT_OPEN_WAKEUP		4
-#define Cy_EVENT_SHUTDOWN_WAKEUP	5
-#define	Cy_EVENT_DELTA_WAKEUP		6
-#define	Cy_EVENT_Z_RX_FULL		7
 
 #define	CLOSING_WAIT_DELAY	30*HZ
 #define CY_CLOSING_WAIT_NONE	65535

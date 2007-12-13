@@ -149,10 +149,32 @@ void flush_altivec_to_thread(struct task_struct *tsk)
 	}
 }
 
-int dump_task_altivec(struct pt_regs *regs, elf_vrregset_t *vrregs)
+int dump_task_altivec(struct task_struct *tsk, elf_vrregset_t *vrregs)
 {
-	flush_altivec_to_thread(current);
-	memcpy(vrregs, &current->thread.vr[0], sizeof(*vrregs));
+	/* ELF_NVRREG includes the VSCR and VRSAVE which we need to save
+	 * separately, see below */
+	const int nregs = ELF_NVRREG - 2;
+	elf_vrreg_t *reg;
+	u32 *dest;
+
+	if (tsk == current)
+		flush_altivec_to_thread(tsk);
+
+	reg = (elf_vrreg_t *)vrregs;
+
+	/* copy the 32 vr registers */
+	memcpy(reg, &tsk->thread.vr[0], nregs * sizeof(*reg));
+	reg += nregs;
+
+	/* copy the vscr */
+	memcpy(reg, &tsk->thread.vscr, sizeof(*reg));
+	reg++;
+
+	/* vrsave is stored in the high 32bit slot of the final 128bits */
+	memset(reg, 0, sizeof(*reg));
+	dest = (u32 *)reg;
+	*dest = tsk->thread.vrsave;
+
 	return 1;
 }
 #endif /* CONFIG_ALTIVEC */
@@ -354,6 +376,14 @@ static void show_instructions(struct pt_regs *regs)
 		if (!(i % 8))
 			printk("\n");
 
+#if !defined(CONFIG_BOOKE)
+		/* If executing with the IMMU off, adjust pc rather
+		 * than print XXXXXXXX.
+		 */
+		if (!(regs->msr & MSR_IR))
+			pc = (unsigned long)phys_to_virt(pc);
+#endif
+
 		/* We use __get_user here *only* to avoid an OOPS on a
 		 * bad address because the pc *should* only be a
 		 * kernel address.
@@ -429,7 +459,7 @@ void show_regs(struct pt_regs * regs)
 		printk("DAR: "REG", DSISR: "REG"\n", regs->dar, regs->dsisr);
 #endif
 	printk("TASK = %p[%d] '%s' THREAD: %p",
-	       current, current->pid, current->comm, task_thread_info(current));
+	       current, task_pid_nr(current), current->comm, task_thread_info(current));
 
 #ifdef CONFIG_SMP
 	printk(" CPU: %d", smp_processor_id());
@@ -556,10 +586,15 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long usp,
 
 #ifdef CONFIG_PPC64
 	if (cpu_has_feature(CPU_FTR_SLB)) {
-		unsigned long sp_vsid = get_kernel_vsid(sp);
+		unsigned long sp_vsid;
 		unsigned long llp = mmu_psize_defs[mmu_linear_psize].sllp;
 
-		sp_vsid <<= SLB_VSID_SHIFT;
+		if (cpu_has_feature(CPU_FTR_1T_SEGMENT))
+			sp_vsid = get_kernel_vsid(sp, MMU_SEGSIZE_1T)
+				<< SLB_VSID_SHIFT_1T;
+		else
+			sp_vsid = get_kernel_vsid(sp, MMU_SEGSIZE_256M)
+				<< SLB_VSID_SHIFT;
 		sp_vsid |= SLB_VSID_KERNEL | llp;
 		p->thread.ksp_vsid = sp_vsid;
 	}
@@ -676,9 +711,13 @@ int set_fpexc_mode(struct task_struct *tsk, unsigned int val)
 	 * mode (asyn, precise, disabled) for 'Classic' FP. */
 	if (val & PR_FP_EXC_SW_ENABLE) {
 #ifdef CONFIG_SPE
-		tsk->thread.fpexc_mode = val &
-			(PR_FP_EXC_SW_ENABLE | PR_FP_ALL_EXCEPT);
-		return 0;
+		if (cpu_has_feature(CPU_FTR_SPE)) {
+			tsk->thread.fpexc_mode = val &
+				(PR_FP_EXC_SW_ENABLE | PR_FP_ALL_EXCEPT);
+			return 0;
+		} else {
+			return -EINVAL;
+		}
 #else
 		return -EINVAL;
 #endif
@@ -704,7 +743,10 @@ int get_fpexc_mode(struct task_struct *tsk, unsigned long adr)
 
 	if (tsk->thread.fpexc_mode & PR_FP_EXC_SW_ENABLE)
 #ifdef CONFIG_SPE
-		val = tsk->thread.fpexc_mode;
+		if (cpu_has_feature(CPU_FTR_SPE))
+			val = tsk->thread.fpexc_mode;
+		else
+			return -EINVAL;
 #else
 		return -EINVAL;
 #endif

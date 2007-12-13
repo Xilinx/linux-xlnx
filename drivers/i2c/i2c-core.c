@@ -17,7 +17,7 @@
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.		     */
 /* ------------------------------------------------------------------------- */
 
-/* With some changes from Kyösti Mälkki <kmalkki@cc.hut.fi>.
+/* With some changes from KyÃ¶sti MÃ¤lkki <kmalkki@cc.hut.fi>.
    All SMBus-related things are written by Frodo Looijaard <frodol@dds.nl>
    SMBus 2.0 support by Mark Studebaker <mdsxyz123@yahoo.com> and
    Jean Delvare <khali@linux-fr.org> */
@@ -67,20 +67,16 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 #ifdef	CONFIG_HOTPLUG
 
 /* uevent helps with hotplug: modprobe -q $(MODALIAS) */
-static int i2c_device_uevent(struct device *dev, char **envp, int num_envp,
-		      char *buffer, int buffer_size)
+static int i2c_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct i2c_client	*client = to_i2c_client(dev);
-	int			i = 0, length = 0;
 
 	/* by definition, legacy drivers can't hotplug */
 	if (dev->driver || !client->driver_name)
 		return 0;
 
-	if (add_uevent_var(envp, num_envp, &i, buffer, buffer_size, &length,
-			"MODALIAS=%s", client->driver_name))
+	if (add_uevent_var(env, "MODALIAS=%s", client->driver_name))
 		return -ENOMEM;
-	envp[i] = NULL;
 	dev_dbg(dev, "uevent\n");
 	return 0;
 }
@@ -190,7 +186,7 @@ static struct device_attribute i2c_dev_attrs[] = {
 	{ },
 };
 
-struct bus_type i2c_bus_type = {
+static struct bus_type i2c_bus_type = {
 	.name		= "i2c",
 	.dev_attrs	= i2c_dev_attrs,
 	.match		= i2c_device_match,
@@ -201,7 +197,6 @@ struct bus_type i2c_bus_type = {
 	.suspend	= i2c_device_suspend,
 	.resume		= i2c_device_resume,
 };
-EXPORT_SYMBOL_GPL(i2c_bus_type);
 
 /**
  * i2c_new_device - instantiate an i2c device for use with a new style driver
@@ -230,7 +225,9 @@ i2c_new_device(struct i2c_adapter *adap, struct i2c_board_info const *info)
 	client->adapter = adap;
 
 	client->dev.platform_data = info->platform_data;
-	client->flags = info->flags;
+	device_init_wakeup(&client->dev, info->flags & I2C_CLIENT_WAKE);
+
+	client->flags = info->flags & ~I2C_CLIENT_WAKE;
 	client->addr = info->addr;
 	client->irq = info->irq;
 
@@ -283,7 +280,7 @@ EXPORT_SYMBOL_GPL(i2c_unregister_device);
 
 /* I2C bus adapters -- one roots each I2C or SMBUS segment */
 
-void i2c_adapter_dev_release(struct device *dev)
+static void i2c_adapter_dev_release(struct device *dev)
 {
 	struct i2c_adapter *adap = to_i2c_adapter(dev);
 	complete(&adap->dev_released);
@@ -301,7 +298,7 @@ static struct device_attribute i2c_adapter_attrs[] = {
 	{ },
 };
 
-struct class i2c_adapter_class = {
+static struct class i2c_adapter_class = {
 	.owner			= THIS_MODULE,
 	.name			= "i2c-adapter",
 	.dev_attrs		= i2c_adapter_attrs,
@@ -676,7 +673,7 @@ static int __i2c_check_addr(struct i2c_adapter *adapter, unsigned int addr)
 	return 0;
 }
 
-int i2c_check_addr(struct i2c_adapter *adapter, int addr)
+static int i2c_check_addr(struct i2c_adapter *adapter, int addr)
 {
 	int rval;
 
@@ -686,7 +683,6 @@ int i2c_check_addr(struct i2c_adapter *adapter, int addr)
 
 	return rval;
 }
-EXPORT_SYMBOL(i2c_check_addr);
 
 int i2c_attach_client(struct i2c_client *client)
 {
@@ -933,28 +929,6 @@ int i2c_master_recv(struct i2c_client *client, char *buf ,int count)
 	return (ret == 1) ? count : ret;
 }
 EXPORT_SYMBOL(i2c_master_recv);
-
-int i2c_control(struct i2c_client *client,
-	unsigned int cmd, unsigned long arg)
-{
-	int ret = 0;
-	struct i2c_adapter *adap = client->adapter;
-
-	dev_dbg(&client->adapter->dev, "i2c ioctl, cmd: 0x%x, arg: %#lx\n", cmd, arg);
-	switch (cmd) {
-		case I2C_RETRIES:
-			adap->retries = arg;
-			break;
-		case I2C_TIMEOUT:
-			adap->timeout = arg;
-			break;
-		default:
-			if (adap->algo->algo_control!=NULL)
-				ret = adap->algo->algo_control(adap,cmd,arg);
-	}
-	return ret;
-}
-EXPORT_SYMBOL(i2c_control);
 
 /* ----------------------------------------------------
  * the i2c address scanning function
@@ -1310,7 +1284,22 @@ s32 i2c_smbus_write_word_data(struct i2c_client *client, u8 command, u16 value)
 }
 EXPORT_SYMBOL(i2c_smbus_write_word_data);
 
-/* Returns the number of read bytes */
+/**
+ * i2c_smbus_read_block_data - SMBus block read request
+ * @client: Handle to slave device
+ * @command: Command byte issued to let the slave know what data should
+ *	be returned
+ * @values: Byte array into which data will be read; big enough to hold
+ *	the data returned by the slave.  SMBus allows at most 32 bytes.
+ *
+ * Returns the number of bytes read in the slave's response, else a
+ * negative number to indicate some kind of error.
+ *
+ * Note that using this function requires that the client's adapter support
+ * the I2C_FUNC_SMBUS_READ_BLOCK_DATA functionality.  Not all adapter drivers
+ * support this; its emulation through I2C messaging relies on a specific
+ * mechanism (I2C_M_RECV_LEN) which may not be implemented.
+ */
 s32 i2c_smbus_read_block_data(struct i2c_client *client, u8 command,
 			      u8 *values)
 {

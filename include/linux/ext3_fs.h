@@ -35,10 +35,6 @@
 /*max window size: 1024(direct blocks) + 3([t,d]indirect blocks) */
 #define EXT3_MAX_RESERVE_BLOCKS         1027
 #define EXT3_RESERVE_WINDOW_NOT_ALLOCATED 0
-/*
- * Always enable hashed directories
- */
-#define CONFIG_EXT3_INDEX
 
 /*
  * Debug code
@@ -76,8 +72,8 @@
  * Macro-instructions used to manage several block sizes
  */
 #define EXT3_MIN_BLOCK_SIZE		1024
-#define	EXT3_MAX_BLOCK_SIZE		4096
-#define EXT3_MIN_BLOCK_LOG_SIZE		  10
+#define	EXT3_MAX_BLOCK_SIZE		65536
+#define EXT3_MIN_BLOCK_LOG_SIZE		10
 #ifdef __KERNEL__
 # define EXT3_BLOCK_SIZE(s)		((s)->s_blocksize)
 #else
@@ -660,22 +656,36 @@ struct ext3_dir_entry_2 {
 #define EXT3_DIR_ROUND			(EXT3_DIR_PAD - 1)
 #define EXT3_DIR_REC_LEN(name_len)	(((name_len) + 8 + EXT3_DIR_ROUND) & \
 					 ~EXT3_DIR_ROUND)
+#define EXT3_MAX_REC_LEN		((1<<16)-1)
+
+static inline unsigned ext3_rec_len_from_disk(__le16 dlen)
+{
+	unsigned len = le16_to_cpu(dlen);
+
+	if (len == EXT3_MAX_REC_LEN)
+		return 1 << 16;
+	return len;
+}
+
+static inline __le16 ext3_rec_len_to_disk(unsigned len)
+{
+	if (len == (1 << 16))
+		return cpu_to_le16(EXT3_MAX_REC_LEN);
+	else if (len > (1 << 16))
+		BUG();
+	return cpu_to_le16(len);
+}
+
 /*
  * Hash Tree Directory indexing
  * (c) Daniel Phillips, 2001
  */
 
-#ifdef CONFIG_EXT3_INDEX
-  #define is_dx(dir) (EXT3_HAS_COMPAT_FEATURE(dir->i_sb, \
-					      EXT3_FEATURE_COMPAT_DIR_INDEX) && \
+#define is_dx(dir) (EXT3_HAS_COMPAT_FEATURE(dir->i_sb, \
+				      EXT3_FEATURE_COMPAT_DIR_INDEX) && \
 		      (EXT3_I(dir)->i_flags & EXT3_INDEX_FL))
 #define EXT3_DIR_LINK_MAX(dir) (!is_dx(dir) && (dir)->i_nlink >= EXT3_LINK_MAX)
 #define EXT3_DIR_LINK_EMPTY(dir) ((dir)->i_nlink == 2 || (dir)->i_nlink == 1)
-#else
-  #define is_dx(dir) 0
-#define EXT3_DIR_LINK_MAX(dir) ((dir)->i_nlink >= EXT3_LINK_MAX)
-#define EXT3_DIR_LINK_EMPTY(dir) ((dir)->i_nlink == 2)
-#endif
 
 /* Legal values for the dx_root hash_version field: */
 

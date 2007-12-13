@@ -17,7 +17,7 @@
 #include "as-layout.h"
 #include "kern.h"
 #include "mem_user.h"
-#include "uml_uaccess.h"
+#include "um_uaccess.h"
 #include "os.h"
 #include "linux/types.h"
 #include "linux/string.h"
@@ -165,7 +165,7 @@ static void __init kmap_init(void)
 	kmap_prot = PAGE_KERNEL;
 }
 
-static void init_highmem(void)
+static void __init init_highmem(void)
 {
 	pgd_t *pgd;
 	pud_t *pud;

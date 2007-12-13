@@ -33,7 +33,6 @@
 #include <linux/crc32c.h>
 #include <linux/compiler.h>
 #include <linux/module.h>
-#include <asm/byteorder.h>
 
 MODULE_AUTHOR("Clay Haapala <chaapala@cisco.com>");
 MODULE_DESCRIPTION("CRC32c (Castagnoli) calculations");
@@ -66,7 +65,7 @@ EXPORT_SYMBOL(crc32c_le);
  * loop below with crc32 and vary the POLY if we don't find value in terms
  * of space and maintainability in keeping the two modules separate.
  */
-u32 __attribute_pure__
+u32 __pure
 crc32c_le(u32 crc, unsigned char const *p, size_t len)
 {
 	int i;
@@ -160,16 +159,14 @@ static const u32 crc32c_table[256] = {
  * crc using table.
  */
 
-u32 __attribute_pure__
-crc32c_le(u32 seed, unsigned char const *data, size_t length)
+u32 __pure
+crc32c_le(u32 crc, unsigned char const *data, size_t length)
 {
-	u32 crc = __cpu_to_le32(seed);
-	
 	while (length--)
 		crc =
 		    crc32c_table[(crc ^ *data++) & 0xFFL] ^ (crc >> 8);
 
-	return __le32_to_cpu(crc);
+	return crc;
 }
 
 #endif	/* CRC_LE_BITS == 8 */
@@ -177,7 +174,7 @@ crc32c_le(u32 seed, unsigned char const *data, size_t length)
 EXPORT_SYMBOL(crc32c_be);
 
 #if CRC_BE_BITS == 1
-u32 __attribute_pure__
+u32 __pure
 crc32c_be(u32 crc, unsigned char const *p, size_t len)
 {
 	int i;

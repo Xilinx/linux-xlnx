@@ -39,7 +39,7 @@ void NORET_TYPE die(const char *str, struct pt_regs *regs, long err)
 	printk("FRAME_POINTER ");
 #endif
 	if (current_cpu_data.features & AVR32_FEATURE_OCD) {
-		unsigned long did = __mfdr(DBGREG_DID);
+		unsigned long did = ocd_read(DID);
 		printk("chip: 0x%03lx:0x%04lx rev %lu\n",
 		       (did >> 1) & 0x7ff,
 		       (did >> 12) & 0x7fff,
@@ -89,7 +89,7 @@ void _exception(long signr, struct pt_regs *regs, int code,
 	 * generate the same exception over and over again and we get
 	 * nowhere.  Better to kill it and let the kernel panic.
 	 */
-	if (is_init(current)) {
+	if (is_global_init(current)) {
 		__sighandler_t handler;
 
 		spin_lock_irq(&current->sighand->siglock);

@@ -90,6 +90,10 @@ void sctp_inq_free(struct sctp_inq *queue)
 void sctp_inq_push(struct sctp_inq *q, struct sctp_chunk *chunk)
 {
 	/* Directly call the packet handling routine. */
+	if (chunk->rcvr->dead) {
+		sctp_chunk_free(chunk);
+		return;
+	}
 
 	/* We are now calling this either from the soft interrupt
 	 * or from the backlog processing.
@@ -99,6 +103,25 @@ void sctp_inq_push(struct sctp_inq *q, struct sctp_chunk *chunk)
 	list_add_tail(&chunk->list, &q->in_chunk_list);
 	q->immediate.func(&q->immediate);
 }
+
+/* Peek at the next chunk on the inqeue. */
+struct sctp_chunkhdr *sctp_inq_peek(struct sctp_inq *queue)
+{
+	struct sctp_chunk *chunk;
+	sctp_chunkhdr_t *ch = NULL;
+
+	chunk = queue->in_progress;
+	/* If there is no more chunks in this packet, say so */
+	if (chunk->singleton ||
+	    chunk->end_of_packet ||
+	    chunk->pdiscard)
+		    return NULL;
+
+	ch = (sctp_chunkhdr_t *)chunk->chunk_end;
+
+	return ch;
+}
+
 
 /* Extract a chunk from an SCTP inqueue.
  *

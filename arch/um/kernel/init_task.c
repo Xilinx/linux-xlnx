@@ -3,16 +3,12 @@
  * Licensed under the GPL
  */
 
-#include "linux/mm.h"
-#include "linux/fs.h"
-#include "linux/module.h"
 #include "linux/sched.h"
 #include "linux/init_task.h"
+#include "linux/fs.h"
+#include "linux/module.h"
 #include "linux/mqueue.h"
 #include "asm/uaccess.h"
-#include "asm/pgtable.h"
-#include "mem_user.h"
-#include "os.h"
 
 static struct fs_struct init_fs = INIT_FS;
 struct mm_struct init_mm = INIT_MM(init_mm);
@@ -46,8 +42,3 @@ union thread_union init_thread_union
 union thread_union cpu0_irqstack
 	__attribute__((__section__(".data.init_irqstack"))) =
 		{ INIT_THREAD_INFO(init_task) };
-
-void unprotect_stack(unsigned long stack)
-{
-	os_protect_memory((void *) stack, THREAD_SIZE, 1, 1, 0);
-}

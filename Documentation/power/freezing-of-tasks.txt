@@ -19,12 +19,13 @@ we only consider hibernation, but the description also applies to suspend).
 Namely, as the first step of the hibernation procedure the function
 freeze_processes() (defined in kernel/power/process.c) is called.  It executes
 try_to_freeze_tasks() that sets TIF_FREEZE for all of the freezable tasks and
-sends a fake signal to each of them.  A task that receives such a signal and has
-TIF_FREEZE set, should react to it by calling the refrigerator() function
-(defined in kernel/power/process.c), which sets the task's PF_FROZEN flag,
-changes its state to TASK_UNINTERRUPTIBLE and makes it loop until PF_FROZEN is
-cleared for it.  Then, we say that the task is 'frozen' and therefore the set of
-functions handling this mechanism is called 'the freezer' (these functions are
+either wakes them up, if they are kernel threads, or sends fake signals to them,
+if they are user space processes.  A task that has TIF_FREEZE set, should react
+to it by calling the function called refrigerator() (defined in
+kernel/power/process.c), which sets the task's PF_FROZEN flag, changes its state
+to TASK_UNINTERRUPTIBLE and makes it loop until PF_FROZEN is cleared for it.
+Then, we say that the task is 'frozen' and therefore the set of functions
+handling this mechanism is referred to as 'the freezer' (these functions are
 defined in kernel/power/process.c and include/linux/freezer.h).  User space
 processes are generally frozen before kernel threads.
 
@@ -35,21 +36,27 @@ task enter refrigerator() if the flag is set.
 
 For user space processes try_to_freeze() is called automatically from the
 signal-handling code, but the freezable kernel threads need to call it
-explicitly in suitable places.  The code to do this may look like the following:
+explicitly in suitable places or use the wait_event_freezable() or
+wait_event_freezable_timeout() macros (defined in include/linux/freezer.h)
+that combine interruptible sleep with checking if TIF_FREEZE is set and calling
+try_to_freeze().  The main loop of a freezable kernel thread may look like the
+following one:
 
+	set_freezable();
 	do {
 		hub_events();
-		wait_event_interruptible(khubd_wait,
-					!list_empty(&hub_event_list));
-		try_to_freeze();
-	} while (!signal_pending(current));
+		wait_event_freezable(khubd_wait,
+				!list_empty(&hub_event_list) ||
+				kthread_should_stop());
+	} while (!kthread_should_stop() || !list_empty(&hub_event_list));
 
 (from drivers/usb/core/hub.c::hub_thread()).
 
 If a freezable kernel thread fails to call try_to_freeze() after the freezer has
 set TIF_FREEZE for it, the freezing of tasks will fail and the entire
 hibernation operation will be cancelled.  For this reason, freezable kernel
-threads must call try_to_freeze() somewhere.
+threads must call try_to_freeze() somewhere or use one of the
+wait_event_freezable() and wait_event_freezable_timeout() macros.
 
 After the system memory state has been restored from a hibernation image and
 devices have been reinitialized, the function thaw_processes() is called in
@@ -81,7 +88,16 @@ hibernation image has been created and before the system is finally powered off.
 The majority of these are user space processes, but if any of the kernel threads
 may cause something like this to happen, they have to be freezable.
 
-2. The second reason is to prevent user space processes and some kernel threads
+2. Next, to create the hibernation image we need to free a sufficient amount of
+memory (approximately 50% of available RAM) and we need to do that before
+devices are deactivated, because we generally need them for swapping out.  Then,
+after the memory for the image has been freed, we don't want tasks to allocate
+additional memory and we prevent them from doing that by freezing them earlier.
+[Of course, this also means that device drivers should not allocate substantial
+amounts of memory from their .suspend() callbacks before hibernation, but this
+is e separate issue.]
+
+3. The third reason is to prevent user space processes and some kernel threads
 from interfering with the suspending and resuming of devices.  A user space
 process running on a second CPU while we are suspending devices may, for
 example, be troublesome and without the freezing of tasks we would need some
@@ -111,7 +127,7 @@ frozen before the driver's .suspend() callback is executed and it will be
 thawed after the driver's .resume() callback has run, so it won't be accessing
 the device while it's suspended.
 
-3. Another reason for freezing tasks is to prevent user space processes from
+4. Another reason for freezing tasks is to prevent user space processes from
 realizing that hibernation (or suspend) operation takes place.  Ideally, user
 space processes should not notice that such a system-wide operation has occurred
 and should continue running without any problems after the restore (or resume

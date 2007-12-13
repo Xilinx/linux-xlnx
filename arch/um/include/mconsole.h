@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2001 Lennert Buytenhek (buytenh@gnu.org)
- * Copyright (C) 2001, 2002 Jeff Dike (jdike@karaya.com)
+ * Copyright (C) 2001 - 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
  * Licensed under the GPL
  */
 
@@ -63,7 +63,7 @@ struct mc_request
 
 	struct mconsole_request request;
 	struct mconsole_command *cmd;
-	union uml_pt_regs regs;
+	struct uml_pt_regs regs;
 };
 
 extern char mconsole_socket_name[];
@@ -96,14 +96,3 @@ extern void lock_notify(void);
 extern void unlock_notify(void);
 
 #endif
-
-/*
- * Overrides for Emacs so that we follow Linus's tabbing style.
- * Emacs will notice this stuff at the end of the file and automatically
- * adjust the settings for this buffer only.  This must remain at the end
- * of the file.
- * ---------------------------------------------------------------------------
- * Local variables:
- * c-file-style: "linux"
- * End:
- */

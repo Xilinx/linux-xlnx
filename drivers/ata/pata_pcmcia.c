@@ -56,7 +56,7 @@ struct ata_pcmcia_info {
 
 /**
  *	pcmcia_set_mode	-	PCMCIA specific mode setup
- *	@ap: Port
+ *	@link: link
  *	@r_failed_dev: Return pointer for failed device
  *
  *	Perform the tuning and setup of the devices and timings, which
@@ -65,17 +65,16 @@ struct ata_pcmcia_info {
  *	decode, which alas is embarrassingly common in the PC world
  */
 
-static int pcmcia_set_mode(struct ata_port *ap, struct ata_device **r_failed_dev)
+static int pcmcia_set_mode(struct ata_link *link, struct ata_device **r_failed_dev)
 {
-	struct ata_device *master = &ap->device[0];
-	struct ata_device *slave = &ap->device[1];
+	struct ata_device *master = &link->device[0];
+	struct ata_device *slave = &link->device[1];
 
 	if (!ata_dev_enabled(master) || !ata_dev_enabled(slave))
-		return ata_do_set_mode(ap, r_failed_dev);
+		return ata_do_set_mode(link, r_failed_dev);
 
 	if (memcmp(master->id + ATA_ID_FW_REV,  slave->id + ATA_ID_FW_REV,
-			   ATA_ID_FW_REV_LEN + ATA_ID_PROD_LEN) == 0)
-	{
+			   ATA_ID_FW_REV_LEN + ATA_ID_PROD_LEN) == 0) {
 		/* Suspicious match, but could be two cards from
 		   the same vendor - check serial */
 		if (memcmp(master->id + ATA_ID_SERNO, slave->id + ATA_ID_SERNO,
@@ -84,7 +83,7 @@ static int pcmcia_set_mode(struct ata_port *ap, struct ata_device **r_failed_dev
 			ata_dev_disable(slave);
 		}
 	}
-	return ata_do_set_mode(ap, r_failed_dev);
+	return ata_do_set_mode(link, r_failed_dev);
 }
 
 static struct scsi_host_template pcmcia_sht = {
@@ -107,7 +106,6 @@ static struct scsi_host_template pcmcia_sht = {
 
 static struct ata_port_operations pcmcia_port_ops = {
 	.set_mode	= pcmcia_set_mode,
-	.port_disable	= ata_port_disable,
 	.tf_load	= ata_tf_load,
 	.tf_read	= ata_tf_read,
 	.check_status 	= ata_check_status,
@@ -127,7 +125,6 @@ static struct ata_port_operations pcmcia_port_ops = {
 
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
 	.port_start	= ata_sff_port_start,
 };
@@ -250,7 +247,8 @@ static int pcmcia_init_one(struct pcmcia_device *pdev)
 					goto next_entry;
 				io_base = pdev->io.BasePort1;
 				ctl_base = pdev->io.BasePort1 + 0x0e;
-			} else goto next_entry;
+			} else
+				goto next_entry;
 			/* If we've got this far, we're done */
 			break;
 		}
@@ -287,8 +285,8 @@ next_entry:
 		printk(KERN_WARNING DRV_NAME ": second channel not yet supported.\n");
 
 	/*
- 	 *	Having done the PCMCIA plumbing the ATA side is relatively
- 	 *	sane.
+	 *	Having done the PCMCIA plumbing the ATA side is relatively
+	 *	sane.
 	 */
 	ret = -ENOMEM;
 	host = ata_host_alloc(&pdev->dev, 1);
@@ -303,6 +301,8 @@ next_entry:
 	ap->ioaddr.altstatus_addr = ctl_addr;
 	ap->ioaddr.ctl_addr = ctl_addr;
 	ata_std_ports(&ap->ioaddr);
+
+	ata_port_desc(ap, "cmd 0x%lx ctl 0x%lx", io_base, ctl_base);
 
 	/* activate */
 	ret = ata_host_activate(host, pdev->irq.AssignedIRQ, ata_interrupt,
@@ -353,6 +353,7 @@ static void pcmcia_remove_one(struct pcmcia_device *pdev)
 
 static struct pcmcia_device_id pcmcia_devices[] = {
 	PCMCIA_DEVICE_FUNC_ID(4),
+	PCMCIA_DEVICE_MANF_CARD(0x0000, 0x0000),	/* Corsair */
 	PCMCIA_DEVICE_MANF_CARD(0x0007, 0x0000),	/* Hitachi */
 	PCMCIA_DEVICE_MANF_CARD(0x000a, 0x0000),	/* I-O Data CFA */
 	PCMCIA_DEVICE_MANF_CARD(0x001c, 0x0001),	/* Mitsubishi CFA */
@@ -362,7 +363,7 @@ static struct pcmcia_device_id pcmcia_devices[] = {
 	PCMCIA_DEVICE_MANF_CARD(0x0098, 0x0000),	/* Toshiba */
 	PCMCIA_DEVICE_MANF_CARD(0x00a4, 0x002d),
 	PCMCIA_DEVICE_MANF_CARD(0x00ce, 0x0000),	/* Samsung */
- 	PCMCIA_DEVICE_MANF_CARD(0x0319, 0x0000),	/* Hitachi */
+	PCMCIA_DEVICE_MANF_CARD(0x0319, 0x0000),	/* Hitachi */
 	PCMCIA_DEVICE_MANF_CARD(0x2080, 0x0001),
 	PCMCIA_DEVICE_MANF_CARD(0x4e01, 0x0100),	/* Viking CFA */
 	PCMCIA_DEVICE_MANF_CARD(0x4e01, 0x0200),	/* Lexar, Viking CFA */
@@ -378,6 +379,7 @@ static struct pcmcia_device_id pcmcia_devices[] = {
 	PCMCIA_DEVICE_PROD_ID12("EXP   ", "CD-ROM", 0x0a5c52fd, 0x66536591),
 	PCMCIA_DEVICE_PROD_ID12("EXP   ", "PnPIDE", 0x0a5c52fd, 0x0c694728),
 	PCMCIA_DEVICE_PROD_ID12("FREECOM", "PCCARD-IDE", 0x5714cbf7, 0x48e0ab8e),
+	PCMCIA_DEVICE_PROD_ID12("Hyperstone", "Model1", 0x3d5b9ef5, 0xca6ab420),
 	PCMCIA_DEVICE_PROD_ID12("HITACHI", "FLASH", 0xf4f43949, 0x9eb86aae),
 	PCMCIA_DEVICE_PROD_ID12("HITACHI", "microdrive", 0xf4f43949, 0xa6d76178),
 	PCMCIA_DEVICE_PROD_ID12("IBM", "microdrive", 0xb569a6e5, 0xa6d76178),

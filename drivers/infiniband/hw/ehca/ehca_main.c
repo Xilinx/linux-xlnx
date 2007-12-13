@@ -49,10 +49,12 @@
 #include "ehca_tools.h"
 #include "hcp_if.h"
 
+#define HCAD_VERSION "0024"
+
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Christoph Raisch <raisch@de.ibm.com>");
 MODULE_DESCRIPTION("IBM eServer HCA InfiniBand Device Driver");
-MODULE_VERSION("SVNEHCA_0023");
+MODULE_VERSION(HCAD_VERSION);
 
 int ehca_open_aqp1     = 0;
 int ehca_debug_level   = 0;
@@ -63,18 +65,18 @@ int ehca_port_act_time = 30;
 int ehca_poll_all_eqs  = 1;
 int ehca_static_rate   = -1;
 int ehca_scaling_code  = 0;
-int ehca_mr_largepage  = 0;
+int ehca_mr_largepage  = 1;
 
-module_param_named(open_aqp1,     ehca_open_aqp1,     int, 0);
-module_param_named(debug_level,   ehca_debug_level,   int, 0);
-module_param_named(hw_level,      ehca_hw_level,      int, 0);
-module_param_named(nr_ports,      ehca_nr_ports,      int, 0);
-module_param_named(use_hp_mr,     ehca_use_hp_mr,     int, 0);
-module_param_named(port_act_time, ehca_port_act_time, int, 0);
-module_param_named(poll_all_eqs,  ehca_poll_all_eqs,  int, 0);
-module_param_named(static_rate,   ehca_static_rate,   int, 0);
-module_param_named(scaling_code,  ehca_scaling_code,  int, 0);
-module_param_named(mr_largepage,  ehca_mr_largepage,  int, 0);
+module_param_named(open_aqp1,     ehca_open_aqp1,     int, S_IRUGO);
+module_param_named(debug_level,   ehca_debug_level,   int, S_IRUGO);
+module_param_named(hw_level,      ehca_hw_level,      int, S_IRUGO);
+module_param_named(nr_ports,      ehca_nr_ports,      int, S_IRUGO);
+module_param_named(use_hp_mr,     ehca_use_hp_mr,     int, S_IRUGO);
+module_param_named(port_act_time, ehca_port_act_time, int, S_IRUGO);
+module_param_named(poll_all_eqs,  ehca_poll_all_eqs,  int, S_IRUGO);
+module_param_named(static_rate,   ehca_static_rate,   int, S_IRUGO);
+module_param_named(scaling_code,  ehca_scaling_code,  int, S_IRUGO);
+module_param_named(mr_largepage,  ehca_mr_largepage,  int, S_IRUGO);
 
 MODULE_PARM_DESC(open_aqp1,
 		 "AQP1 on startup (0: no (default), 1: yes)");
@@ -258,12 +260,19 @@ static struct cap_descr {
 	{ HCA_CAP_MINI_QP, "HCA_CAP_MINI_QP" },
 };
 
-int ehca_sense_attributes(struct ehca_shca *shca)
+static int ehca_sense_attributes(struct ehca_shca *shca)
 {
 	int i, ret = 0;
 	u64 h_ret;
 	struct hipz_query_hca *rblock;
 	struct hipz_query_port *port;
+
+	static const u32 pgsize_map[] = {
+		HCA_CAP_MR_PGSIZE_4K,  0x1000,
+		HCA_CAP_MR_PGSIZE_64K, 0x10000,
+		HCA_CAP_MR_PGSIZE_1M,  0x100000,
+		HCA_CAP_MR_PGSIZE_16M, 0x1000000,
+	};
 
 	rblock = ehca_alloc_fw_ctrlblock(GFP_KERNEL);
 	if (!rblock) {
@@ -273,7 +282,7 @@ int ehca_sense_attributes(struct ehca_shca *shca)
 
 	h_ret = hipz_h_query_hca(shca->ipz_hca_handle, rblock);
 	if (h_ret != H_SUCCESS) {
-		ehca_gen_err("Cannot query device properties. h_ret=%lx",
+		ehca_gen_err("Cannot query device properties. h_ret=%li",
 			     h_ret);
 		ret = -EPERM;
 		goto sense_attributes1;
@@ -318,21 +327,25 @@ int ehca_sense_attributes(struct ehca_shca *shca)
 		shca->hw_level = ehca_hw_level;
 	ehca_gen_dbg(" ... hardware level=%x", shca->hw_level);
 
-	shca->sport[0].rate = IB_RATE_30_GBPS;
-	shca->sport[1].rate = IB_RATE_30_GBPS;
-
 	shca->hca_cap = rblock->hca_cap_indicators;
 	ehca_gen_dbg(" ... HCA capabilities:");
 	for (i = 0; i < ARRAY_SIZE(hca_cap_descr); i++)
 		if (EHCA_BMASK_GET(hca_cap_descr[i].mask, shca->hca_cap))
 			ehca_gen_dbg("   %s", hca_cap_descr[i].descr);
 
-	shca->hca_cap_mr_pgsize = rblock->memory_page_size_supported;
+	/* translate supported MR page sizes; always support 4K */
+	shca->hca_cap_mr_pgsize = EHCA_PAGESIZE;
+	if (ehca_mr_largepage) { /* support extra sizes only if enabled */
+		for (i = 0; i < ARRAY_SIZE(pgsize_map); i += 2)
+			if (rblock->memory_page_size_supported & pgsize_map[i])
+				shca->hca_cap_mr_pgsize |= pgsize_map[i + 1];
+	}
 
+	/* query max MTU from first port -- it's the same for all ports */
 	port = (struct hipz_query_port *)rblock;
 	h_ret = hipz_h_query_port(shca->ipz_hca_handle, 1, port);
 	if (h_ret != H_SUCCESS) {
-		ehca_gen_err("Cannot query port properties. h_ret=%lx",
+		ehca_gen_err("Cannot query port properties. h_ret=%li",
 			     h_ret);
 		ret = -EPERM;
 		goto sense_attributes1;
@@ -380,7 +393,7 @@ int ehca_init_device(struct ehca_shca *shca)
 	strlcpy(shca->ib_device.name, "ehca%d", IB_DEVICE_NAME_MAX);
 	shca->ib_device.owner               = THIS_MODULE;
 
-	shca->ib_device.uverbs_abi_ver	    = 7;
+	shca->ib_device.uverbs_abi_ver	    = 8;
 	shca->ib_device.uverbs_cmd_mask	    =
 		(1ull << IB_USER_VERBS_CMD_GET_CONTEXT)		|
 		(1ull << IB_USER_VERBS_CMD_QUERY_DEVICE)	|
@@ -402,7 +415,7 @@ int ehca_init_device(struct ehca_shca *shca)
 	shca->ib_device.node_type           = RDMA_NODE_IB_CA;
 	shca->ib_device.phys_port_cnt       = shca->num_ports;
 	shca->ib_device.num_comp_vectors    = 1;
-	shca->ib_device.dma_device          = &shca->ibmebus_dev->ofdev.dev;
+	shca->ib_device.dma_device          = &shca->ofdev->dev;
 	shca->ib_device.query_device        = ehca_query_device;
 	shca->ib_device.query_port          = ehca_query_port;
 	shca->ib_device.query_gid           = ehca_query_gid;
@@ -526,13 +539,13 @@ static int ehca_destroy_aqp1(struct ehca_sport *sport)
 
 	ret = ib_destroy_qp(sport->ibqp_aqp1);
 	if (ret) {
-		ehca_gen_err("Cannot destroy AQP1 QP. ret=%x", ret);
+		ehca_gen_err("Cannot destroy AQP1 QP. ret=%i", ret);
 		return ret;
 	}
 
 	ret = ib_destroy_cq(sport->ibcq_aqp1);
 	if (ret)
-		ehca_gen_err("Cannot destroy AQP1 CQ. ret=%x", ret);
+		ehca_gen_err("Cannot destroy AQP1 CQ. ret=%i", ret);
 
 	return ret;
 }
@@ -577,12 +590,12 @@ static ssize_t  ehca_show_##name(struct device *dev,                       \
 									   \
 	rblock = ehca_alloc_fw_ctrlblock(GFP_KERNEL);			   \
 	if (!rblock) {						           \
-		dev_err(dev, "Can't allocate rblock memory.");		   \
+		dev_err(dev, "Can't allocate rblock memory.\n");           \
 		return 0;						   \
 	}								   \
 									   \
 	if (hipz_h_query_hca(shca->ipz_hca_handle, rblock) != H_SUCCESS) { \
-		dev_err(dev, "Can't query device properties");	   	   \
+		dev_err(dev, "Can't query device properties\n");           \
 		ehca_free_fw_ctrlblock(rblock);			   	   \
 		return 0;					   	   \
 	}								   \
@@ -656,7 +669,7 @@ static struct attribute_group ehca_dev_attr_grp = {
 	.attrs = ehca_dev_attrs
 };
 
-static int __devinit ehca_probe(struct ibmebus_dev *dev,
+static int __devinit ehca_probe(struct of_device *dev,
 				const struct of_device_id *id)
 {
 	struct ehca_shca *shca;
@@ -664,16 +677,16 @@ static int __devinit ehca_probe(struct ibmebus_dev *dev,
 	struct ib_pd *ibpd;
 	int ret;
 
-	handle = of_get_property(dev->ofdev.node, "ibm,hca-handle", NULL);
+	handle = of_get_property(dev->node, "ibm,hca-handle", NULL);
 	if (!handle) {
 		ehca_gen_err("Cannot get eHCA handle for adapter: %s.",
-			     dev->ofdev.node->full_name);
+			     dev->node->full_name);
 		return -ENODEV;
 	}
 
 	if (!(*handle)) {
 		ehca_gen_err("Wrong eHCA handle for adapter: %s.",
-			     dev->ofdev.node->full_name);
+			     dev->node->full_name);
 		return -ENODEV;
 	}
 
@@ -684,9 +697,9 @@ static int __devinit ehca_probe(struct ibmebus_dev *dev,
 	}
 	mutex_init(&shca->modify_mutex);
 
-	shca->ibmebus_dev = dev;
+	shca->ofdev = dev;
 	shca->ipz_hca_handle.handle = *handle;
-	dev->ofdev.dev.driver_data = shca;
+	dev->dev.driver_data = shca;
 
 	ret = ehca_sense_attributes(shca);
 	if (ret < 0) {
@@ -728,7 +741,7 @@ static int __devinit ehca_probe(struct ibmebus_dev *dev,
 	ret = ehca_reg_internal_maxmr(shca, shca->pd, &shca->maxmr);
 
 	if (ret) {
-		ehca_err(&shca->ib_device, "Cannot create internal MR ret=%x",
+		ehca_err(&shca->ib_device, "Cannot create internal MR ret=%i",
 			 ret);
 		goto probe5;
 	}
@@ -736,7 +749,7 @@ static int __devinit ehca_probe(struct ibmebus_dev *dev,
 	ret = ib_register_device(&shca->ib_device);
 	if (ret) {
 		ehca_err(&shca->ib_device,
-			 "ib_register_device() failed ret=%x", ret);
+			 "ib_register_device() failed ret=%i", ret);
 		goto probe6;
 	}
 
@@ -762,7 +775,7 @@ static int __devinit ehca_probe(struct ibmebus_dev *dev,
 		}
 	}
 
-	ret = sysfs_create_group(&dev->ofdev.dev.kobj, &ehca_dev_attr_grp);
+	ret = sysfs_create_group(&dev->dev.kobj, &ehca_dev_attr_grp);
 	if (ret) /* only complain; we can live without attributes */
 		ehca_err(&shca->ib_device,
 			 "Cannot create device attributes  ret=%d", ret);
@@ -777,7 +790,7 @@ probe8:
 	ret = ehca_destroy_aqp1(&shca->sport[0]);
 	if (ret)
 		ehca_err(&shca->ib_device,
-			 "Cannot destroy AQP1 for port 1. ret=%x", ret);
+			 "Cannot destroy AQP1 for port 1. ret=%i", ret);
 
 probe7:
 	ib_unregister_device(&shca->ib_device);
@@ -812,12 +825,12 @@ probe1:
 	return -EINVAL;
 }
 
-static int __devexit ehca_remove(struct ibmebus_dev *dev)
+static int __devexit ehca_remove(struct of_device *dev)
 {
-	struct ehca_shca *shca = dev->ofdev.dev.driver_data;
+	struct ehca_shca *shca = dev->dev.driver_data;
 	int ret;
 
-	sysfs_remove_group(&dev->ofdev.dev.kobj, &ehca_dev_attr_grp);
+	sysfs_remove_group(&dev->dev.kobj, &ehca_dev_attr_grp);
 
 	if (ehca_open_aqp1 == 1) {
 		int i;
@@ -826,7 +839,7 @@ static int __devexit ehca_remove(struct ibmebus_dev *dev)
 			if (ret)
 				ehca_err(&shca->ib_device,
 					 "Cannot destroy AQP1 for port %x "
-					 "ret=%x", ret, i);
+					 "ret=%i", ret, i);
 		}
 	}
 
@@ -835,20 +848,20 @@ static int __devexit ehca_remove(struct ibmebus_dev *dev)
 	ret = ehca_dereg_internal_maxmr(shca);
 	if (ret)
 		ehca_err(&shca->ib_device,
-			 "Cannot destroy internal MR. ret=%x", ret);
+			 "Cannot destroy internal MR. ret=%i", ret);
 
 	ret = ehca_dealloc_pd(&shca->pd->ib_pd);
 	if (ret)
 		ehca_err(&shca->ib_device,
-			 "Cannot destroy internal PD. ret=%x", ret);
+			 "Cannot destroy internal PD. ret=%i", ret);
 
 	ret = ehca_destroy_eq(shca, &shca->eq);
 	if (ret)
-		ehca_err(&shca->ib_device, "Cannot destroy EQ. ret=%x", ret);
+		ehca_err(&shca->ib_device, "Cannot destroy EQ. ret=%i", ret);
 
 	ret = ehca_destroy_eq(shca, &shca->neq);
 	if (ret)
-		ehca_err(&shca->ib_device, "Canot destroy NEQ. ret=%x", ret);
+		ehca_err(&shca->ib_device, "Canot destroy NEQ. ret=%i", ret);
 
 	ib_dealloc_device(&shca->ib_device);
 
@@ -868,11 +881,11 @@ static struct of_device_id ehca_device_table[] =
 	{},
 };
 
-static struct ibmebus_driver ehca_driver = {
-	.name     = "ehca",
-	.id_table = ehca_device_table,
-	.probe    = ehca_probe,
-	.remove   = ehca_remove,
+static struct of_platform_driver ehca_driver = {
+	.name        = "ehca",
+	.match_table = ehca_device_table,
+	.probe       = ehca_probe,
+	.remove      = ehca_remove,
 };
 
 void ehca_poll_eqs(unsigned long data)
@@ -909,7 +922,7 @@ int __init ehca_module_init(void)
 	int ret;
 
 	printk(KERN_INFO "eHCA Infiniband Device Driver "
-	       "(Rel.: SVNEHCA_0023)\n");
+	       "(Version " HCAD_VERSION ")\n");
 
 	ret = ehca_create_comp_pool();
 	if (ret) {

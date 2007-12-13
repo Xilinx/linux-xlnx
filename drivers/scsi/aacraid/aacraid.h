@@ -1526,7 +1526,7 @@ struct aac_mntent {
 	__le32			capacityhigh;
 };
 
-#define FSCS_NOTCLEAN	0x0001  /* fsck is neccessary before mounting */
+#define FSCS_NOTCLEAN	0x0001  /* fsck is necessary before mounting */
 #define FSCS_READONLY	0x0002	/* possible result of broken mirror */
 #define FSCS_HIDDEN	0x0004	/* should be ignored - set during a clear */
 
@@ -1871,4 +1871,4 @@ extern int aac_reset_devices;
 extern int aac_commit;
 extern int update_interval;
 extern int check_interval;
-extern int check_reset;
+extern int aac_check_reset;

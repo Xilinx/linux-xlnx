@@ -52,20 +52,20 @@ icmp_unique_tuple(struct nf_conntrack_tuple *tuple,
 }
 
 static int
-icmp_manip_pkt(struct sk_buff **pskb,
+icmp_manip_pkt(struct sk_buff *skb,
 	       unsigned int iphdroff,
 	       const struct nf_conntrack_tuple *tuple,
 	       enum nf_nat_manip_type maniptype)
 {
-	struct iphdr *iph = (struct iphdr *)((*pskb)->data + iphdroff);
+	struct iphdr *iph = (struct iphdr *)(skb->data + iphdroff);
 	struct icmphdr *hdr;
 	unsigned int hdroff = iphdroff + iph->ihl*4;
 
-	if (!skb_make_writable(pskb, hdroff + sizeof(*hdr)))
+	if (!skb_make_writable(skb, hdroff + sizeof(*hdr)))
 		return 0;
 
-	hdr = (struct icmphdr *)((*pskb)->data + hdroff);
-	nf_proto_csum_replace2(&hdr->checksum, *pskb,
+	hdr = (struct icmphdr *)(skb->data + hdroff);
+	nf_proto_csum_replace2(&hdr->checksum, skb,
 			       hdr->un.echo.id, tuple->src.u.icmp.id, 0);
 	hdr->un.echo.id = tuple->src.u.icmp.id;
 	return 1;
@@ -79,7 +79,7 @@ struct nf_nat_protocol nf_nat_protocol_icmp = {
 	.in_range		= icmp_in_range,
 	.unique_tuple		= icmp_unique_tuple,
 #if defined(CONFIG_NF_CT_NETLINK) || defined(CONFIG_NF_CT_NETLINK_MODULE)
-	.range_to_nfattr	= nf_nat_port_range_to_nfattr,
-	.nfattr_to_range	= nf_nat_port_nfattr_to_range,
+	.range_to_nlattr	= nf_nat_port_range_to_nlattr,
+	.nlattr_to_range	= nf_nat_port_nlattr_to_range,
 #endif
 };

@@ -88,7 +88,7 @@ static unsigned int __init detect_bus_frequency(unsigned long rtc_base)
 	return clock[reg];
 }
 
-static void __init emma2rh_time_init(void)
+void __init plat_time_init(void)
 {
 	u32 reg;
 	if (bus_frequency == 0)
@@ -104,12 +104,6 @@ static void __init emma2rh_time_init(void)
 	mips_hpt_frequency = (bus_frequency * (4 + reg)) / 4 / 2;
 }
 
-void __init plat_timer_setup(struct irqaction *irq)
-{
-	/* we are using the cpu counter for timer interrupts */
-	setup_irq(CPU_IRQ_BASE + 7, irq);
-}
-
 static void markeins_board_init(void);
 extern void markeins_irq_setup(void);
 
@@ -123,8 +117,6 @@ void __init plat_mem_setup(void)
 	markeins_board_init();
 
 	set_io_port_base(KSEG1ADDR(EMMA2RH_PCI_IO_BASE));
-
-	board_time_init = emma2rh_time_init;
 
 	_machine_restart = markeins_machine_restart;
 	_machine_halt = markeins_machine_halt;

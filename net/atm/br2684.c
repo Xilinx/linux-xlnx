@@ -24,22 +24,6 @@ Author: Marcell GAL, 2000, XDSL Ltd, Hungary
 
 #include "common.h"
 
-/*
- * Define this to use a version of the code which interacts with the higher
- * layers in a more intellegent way, by always reserving enough space for
- * our header at the begining of the packet.  However, there may still be
- * some problems with programs like tcpdump.  In 2.5 we'll sort out what
- * we need to do to get this perfect.  For now we just will copy the packet
- * if we need space for the header
- */
-/* #define FASTER_VERSION */
-
-#ifdef DEBUG
-#define DPRINTK(format, args...) printk(KERN_DEBUG "br2684: " format, ##args)
-#else
-#define DPRINTK(format, args...)
-#endif
-
 #ifdef SKB_DEBUG
 static void skb_debug(const struct sk_buff *skb)
 {
@@ -75,9 +59,7 @@ struct br2684_vcc {
 #ifdef CONFIG_ATM_BR2684_IPFILTER
 	struct br2684_filter filter;
 #endif /* CONFIG_ATM_BR2684_IPFILTER */
-#ifndef FASTER_VERSION
 	unsigned copies_needed, copies_failed;
-#endif /* FASTER_VERSION */
 };
 
 struct br2684_dev {
@@ -153,13 +135,6 @@ static int br2684_xmit_vcc(struct sk_buff *skb, struct br2684_dev *brdev,
 	struct br2684_vcc *brvcc)
 {
 	struct atm_vcc *atmvcc;
-#ifdef FASTER_VERSION
-	if (brvcc->encaps == e_llc)
-		memcpy(skb_push(skb, 8), llc_oui_pid_pad, 8);
-	/* last 2 bytes of llc_oui_pid_pad are managed by header routines;
-	   yes, you got it: 8 + 2 = sizeof(llc_oui_pid_pad)
-	 */
-#else
 	int minheadroom = (brvcc->encaps == e_llc) ? 10 : 2;
 	if (skb_headroom(skb) < minheadroom) {
 		struct sk_buff *skb2 = skb_realloc_headroom(skb, minheadroom);
@@ -176,11 +151,10 @@ static int br2684_xmit_vcc(struct sk_buff *skb, struct br2684_dev *brdev,
 		skb_copy_to_linear_data(skb, llc_oui_pid_pad, 10);
 	else
 		memset(skb->data, 0, 2);
-#endif /* FASTER_VERSION */
 	skb_debug(skb);
 
 	ATM_SKB(skb)->vcc = atmvcc = brvcc->atmvcc;
-	DPRINTK("atm_skb(%p)->vcc(%p)->dev(%p)\n", skb, atmvcc, atmvcc->dev);
+	pr_debug("atm_skb(%p)->vcc(%p)->dev(%p)\n", skb, atmvcc, atmvcc->dev);
 	if (!atm_may_send(atmvcc, skb->truesize)) {
 		/* we free this here for now, because we cannot know in a higher
 			layer whether the skb point it supplied wasn't freed yet.
@@ -209,11 +183,11 @@ static int br2684_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct br2684_dev *brdev = BRPRIV(dev);
 	struct br2684_vcc *brvcc;
 
-	DPRINTK("br2684_start_xmit, skb->dst=%p\n", skb->dst);
+	pr_debug("br2684_start_xmit, skb->dst=%p\n", skb->dst);
 	read_lock(&devs_lock);
 	brvcc = pick_outgoing_vcc(skb, brdev);
 	if (brvcc == NULL) {
-		DPRINTK("no vcc attached to dev %s\n", dev->name);
+		pr_debug("no vcc attached to dev %s\n", dev->name);
 		brdev->stats.tx_errors++;
 		brdev->stats.tx_carrier_errors++;
 		/* netif_stop_queue(dev); */
@@ -239,91 +213,10 @@ static int br2684_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 static struct net_device_stats *br2684_get_stats(struct net_device *dev)
 {
-	DPRINTK("br2684_get_stats\n");
+	pr_debug("br2684_get_stats\n");
 	return &BRPRIV(dev)->stats;
 }
 
-#ifdef FASTER_VERSION
-/*
- * These mirror eth_header and eth_header_cache.  They are not usually
- * exported for use in modules, so we grab them from net_device
- * after ether_setup() is done with it.  Bit of a hack.
- */
-static int (*my_eth_header)(struct sk_buff *, struct net_device *,
-	unsigned short, void *, void *, unsigned);
-static int (*my_eth_header_cache)(struct neighbour *, struct hh_cache *);
-
-static int
-br2684_header(struct sk_buff *skb, struct net_device *dev,
-	      unsigned short type, void *daddr, void *saddr, unsigned len)
-{
-	u16 *pad_before_eth;
-	int t = my_eth_header(skb, dev, type, daddr, saddr, len);
-	if (t > 0) {
-		pad_before_eth = (u16 *) skb_push(skb, 2);
-		*pad_before_eth = 0;
-		return dev->hard_header_len;	/* or return 16; ? */
-	} else
-		return t;
-}
-
-static int
-br2684_header_cache(struct neighbour *neigh, struct hh_cache *hh)
-{
-/* hh_data is 16 bytes long. if encaps is ether-llc we need 24, so
-xmit will add the additional header part in that case */
-	u16 *pad_before_eth = (u16 *)(hh->hh_data);
-	int t = my_eth_header_cache(neigh, hh);
-	DPRINTK("br2684_header_cache, neigh=%p, hh_cache=%p\n", neigh, hh);
-	if (t < 0)
-		return t;
-	else {
-		*pad_before_eth = 0;
-		hh->hh_len = PADLEN + ETH_HLEN;
-	}
-	return 0;
-}
-
-/*
- * This is similar to eth_type_trans, which cannot be used because of
- * our dev->hard_header_len
- */
-static inline __be16 br_type_trans(struct sk_buff *skb, struct net_device *dev)
-{
-	struct ethhdr *eth;
-	unsigned char *rawp;
-	eth = eth_hdr(skb);
-
-	if (is_multicast_ether_addr(eth->h_dest)) {
-		if (!compare_ether_addr(eth->h_dest, dev->broadcast))
-			skb->pkt_type = PACKET_BROADCAST;
-		else
-			skb->pkt_type = PACKET_MULTICAST;
-	}
-
-	else if (compare_ether_addr(eth->h_dest, dev->dev_addr))
-		skb->pkt_type = PACKET_OTHERHOST;
-
-	if (ntohs(eth->h_proto) >= 1536)
-		return eth->h_proto;
-
-	rawp = skb->data;
-
-	/*
-	 * This is a magic hack to spot IPX packets. Older Novell breaks
-	 * the protocol design and runs IPX over 802.3 without an 802.2 LLC
-	 * layer. We look for FFFF which isn't a used 802.2 SSAP/DSAP. This
-	 * won't work for fault tolerant netware but does for the rest.
-	 */
-	if (*(unsigned short *) rawp == 0xFFFF)
-		return htons(ETH_P_802_3);
-
-	/*
-	 * Real 802.2 LLC
-	 */
-	return htons(ETH_P_802_2);
-}
-#endif /* FASTER_VERSION */
 
 /*
  * We remember when the MAC gets set, so we don't override it later with
@@ -390,7 +283,7 @@ packet_fails_filter(__be16 type, struct br2684_vcc *brvcc, struct sk_buff *skb)
 
 static void br2684_close_vcc(struct br2684_vcc *brvcc)
 {
-	DPRINTK("removing VCC %p from dev %p\n", brvcc, brvcc->device);
+	pr_debug("removing VCC %p from dev %p\n", brvcc, brvcc->device);
 	write_lock_irq(&devs_lock);
 	list_del(&brvcc->brvccs);
 	write_unlock_irq(&devs_lock);
@@ -408,7 +301,7 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 	struct br2684_dev *brdev = BRPRIV(net_dev);
 	int plen = sizeof(llc_oui_pid_pad) + ETH_HLEN;
 
-	DPRINTK("br2684_push\n");
+	pr_debug("br2684_push\n");
 
 	if (unlikely(skb == NULL)) {
 		/* skb==NULL means VCC is being destroyed */
@@ -425,7 +318,7 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 
 	skb_debug(skb);
 	atm_return(atmvcc, skb->truesize);
-	DPRINTK("skb from brdev %p\n", brdev);
+	pr_debug("skb from brdev %p\n", brdev);
 	if (brvcc->encaps == e_llc) {
 		/* let us waste some time for checking the encapsulation.
 		   Note, that only 7 char is checked so frames with a valid FCS
@@ -454,17 +347,8 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 		return;
 	}
 
-#ifdef FASTER_VERSION
-	/* FIXME: tcpdump shows that pointer to mac header is 2 bytes earlier,
-	   than should be. What else should I set? */
-	skb_pull(skb, plen);
-	skb_set_mac_header(skb, -ETH_HLEN);
-	skb->pkt_type = PACKET_HOST;
-	skb->protocol = br_type_trans(skb, net_dev);
-#else
 	skb_pull(skb, plen - ETH_HLEN);
 	skb->protocol = eth_type_trans(skb, net_dev);
-#endif /* FASTER_VERSION */
 #ifdef CONFIG_ATM_BR2684_IPFILTER
 	if (unlikely(packet_fails_filter(skb->protocol, brvcc, skb))) {
 		brdev->stats.rx_dropped++;
@@ -474,7 +358,7 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 #endif /* CONFIG_ATM_BR2684_IPFILTER */
 	skb->dev = net_dev;
 	ATM_SKB(skb)->vcc = atmvcc;	/* needed ? */
-	DPRINTK("received packet's protocol: %x\n", ntohs(skb->protocol));
+	pr_debug("received packet's protocol: %x\n", ntohs(skb->protocol));
 	skb_debug(skb);
 	if (unlikely(!(net_dev->flags & IFF_UP))) {
 		/* sigh, interface is down */
@@ -532,7 +416,7 @@ Note: we do not have explicit unassign, but look at _push()
 		err = -EINVAL;
 		goto error;
 	}
-	DPRINTK("br2684_regvcc vcc=%p, encaps=%d, brvcc=%p\n", atmvcc, be.encaps,
+	pr_debug("br2684_regvcc vcc=%p, encaps=%d, brvcc=%p\n", atmvcc, be.encaps,
 		brvcc);
 	if (list_empty(&brdev->brvccs) && !brdev->mac_was_set) {
 		unsigned char *esi = atmvcc->dev->esi;
@@ -590,13 +474,6 @@ static void br2684_setup(struct net_device *netdev)
 	ether_setup(netdev);
 	brdev->net_dev = netdev;
 
-#ifdef FASTER_VERSION
-	my_eth_header = netdev->hard_header;
-	netdev->hard_header = br2684_header;
-	my_eth_header_cache = netdev->hard_header_cache;
-	netdev->hard_header_cache = br2684_header_cache;
-	netdev->hard_header_len = sizeof(llc_oui_pid_pad) + ETH_HLEN;	/* 10 + 14 */
-#endif
 	my_eth_mac_addr = netdev->set_mac_address;
 	netdev->set_mac_address = br2684_mac_addr;
 	netdev->hard_start_xmit = br2684_start_xmit;
@@ -612,7 +489,7 @@ static int br2684_create(void __user *arg)
 	struct br2684_dev *brdev;
 	struct atm_newif_br2684 ni;
 
-	DPRINTK("br2684_create\n");
+	pr_debug("br2684_create\n");
 
 	if (copy_from_user(&ni, arg, sizeof ni)) {
 		return -EFAULT;
@@ -629,7 +506,7 @@ static int br2684_create(void __user *arg)
 
 	brdev = BRPRIV(netdev);
 
-	DPRINTK("registered netdev %s\n", netdev->name);
+	pr_debug("registered netdev %s\n", netdev->name);
 	/* open, stop, do_ioctl ? */
 	err = register_netdev(netdev);
 	if (err < 0) {
@@ -715,30 +592,22 @@ static int br2684_seq_show(struct seq_file *seq, void *v)
 			br2684_devs);
 	const struct net_device *net_dev = brdev->net_dev;
 	const struct br2684_vcc *brvcc;
+	DECLARE_MAC_BUF(mac);
 
-	seq_printf(seq, "dev %.16s: num=%d, mac=%02X:%02X:"
-		       "%02X:%02X:%02X:%02X (%s)\n", net_dev->name,
-		       brdev->number,
-		       net_dev->dev_addr[0],
-		       net_dev->dev_addr[1],
-		       net_dev->dev_addr[2],
-		       net_dev->dev_addr[3],
-		       net_dev->dev_addr[4],
-		       net_dev->dev_addr[5],
-		       brdev->mac_was_set ? "set" : "auto");
+	seq_printf(seq, "dev %.16s: num=%d, mac=%s (%s)\n",
+		   net_dev->name,
+		   brdev->number,
+		   print_mac(mac, net_dev->dev_addr),
+		   brdev->mac_was_set ? "set" : "auto");
 
 	list_for_each_entry(brvcc, &brdev->brvccs, brvccs) {
 		seq_printf(seq, "  vcc %d.%d.%d: encaps=%s"
-#ifndef FASTER_VERSION
 				    ", failed copies %u/%u"
-#endif /* FASTER_VERSION */
 				    "\n", brvcc->atmvcc->dev->number,
 				    brvcc->atmvcc->vpi, brvcc->atmvcc->vci,
 				    (brvcc->encaps == e_llc) ? "LLC" : "VC"
-#ifndef FASTER_VERSION
 				    , brvcc->copies_failed
 				    , brvcc->copies_needed
-#endif /* FASTER_VERSION */
 				    );
 #ifdef CONFIG_ATM_BR2684_IPFILTER
 #define b1(var, byte)	((u8 *) &brvcc->filter.var)[byte]

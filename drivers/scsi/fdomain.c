@@ -387,7 +387,9 @@ static void __iomem *    bios_mem;
 static int               bios_major;
 static int               bios_minor;
 static int               PCI_bus;
+#ifdef CONFIG_PCI
 static struct pci_dev	*PCI_dev;
+#endif
 static int               Quantum;	/* Quantum board variant */
 static int               interrupt_level;
 static volatile int      in_command;
@@ -1319,7 +1321,7 @@ static irqreturn_t do_fdomain_16x0_intr(int irq, void *dev_id)
 	    if (current_SC->SCp.buffers_residual) {
 	       --current_SC->SCp.buffers_residual;
 	       ++current_SC->SCp.buffer;
-	       current_SC->SCp.ptr = page_address(current_SC->SCp.buffer->page) + current_SC->SCp.buffer->offset;
+	       current_SC->SCp.ptr = sg_virt(current_SC->SCp.buffer);
 	       current_SC->SCp.this_residual = current_SC->SCp.buffer->length;
 	    } else
 		  break;
@@ -1352,7 +1354,7 @@ static irqreturn_t do_fdomain_16x0_intr(int irq, void *dev_id)
 	     && current_SC->SCp.buffers_residual) {
 	    --current_SC->SCp.buffers_residual;
 	    ++current_SC->SCp.buffer;
-	    current_SC->SCp.ptr = page_address(current_SC->SCp.buffer->page) + current_SC->SCp.buffer->offset;
+	    current_SC->SCp.ptr = sg_virt(current_SC->SCp.buffer);
 	    current_SC->SCp.this_residual = current_SC->SCp.buffer->length;
 	 }
       }
@@ -1437,8 +1439,7 @@ static int fdomain_16x0_queue(struct scsi_cmnd *SCpnt,
 
    if (scsi_sg_count(current_SC)) {
 	   current_SC->SCp.buffer = scsi_sglist(current_SC);
-	   current_SC->SCp.ptr = page_address(current_SC->SCp.buffer->page)
-		   + current_SC->SCp.buffer->offset;
+	   current_SC->SCp.ptr = sg_virt(current_SC->SCp.buffer);
 	   current_SC->SCp.this_residual    = current_SC->SCp.buffer->length;
 	   current_SC->SCp.buffers_residual = scsi_sg_count(current_SC) - 1;
    } else {
@@ -1764,6 +1765,7 @@ struct scsi_host_template fdomain_driver_template = {
 };
 
 #ifndef PCMCIA
+#ifdef CONFIG_PCI
 
 static struct pci_device_id fdomain_pci_tbl[] __devinitdata = {
 	{ PCI_VENDOR_ID_FD, PCI_DEVICE_ID_FD_36C70,
@@ -1771,7 +1773,7 @@ static struct pci_device_id fdomain_pci_tbl[] __devinitdata = {
 	{ }
 };
 MODULE_DEVICE_TABLE(pci, fdomain_pci_tbl);
-
+#endif
 #define driver_template fdomain_driver_template
 #include "scsi_module.c"
 

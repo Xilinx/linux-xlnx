@@ -26,6 +26,7 @@
 #include <asm/reboot.h>
 #include <asm/irq.h>
 #include <asm/time.h>
+#include <asm/txx9tmr.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/bootinfo.h>
@@ -39,7 +40,6 @@
 #include <asm/tx4938/spi.h>
 #include <asm/gpio.h>
 
-extern void rbtx4938_time_init(void) __init;
 extern char * __init prom_getcmdline(void);
 static inline void tx4938_report_pcic_status1(struct tx4938_pcic_reg *pcicptr);
 
@@ -458,9 +458,9 @@ extern struct pci_controller tx4938_pci_controller[];
 static int __init tx4938_pcibios_init(void)
 {
 	unsigned long mem_base[2];
-	unsigned long mem_size[2] = {TX4938_PCIMEM_SIZE_0,TX4938_PCIMEM_SIZE_1}; /* MAX 128M,64K */
+	unsigned long mem_size[2] = {TX4938_PCIMEM_SIZE_0, TX4938_PCIMEM_SIZE_1}; /* MAX 128M,64K */
 	unsigned long io_base[2];
-	unsigned long io_size[2] = {TX4938_PCIIO_SIZE_0,TX4938_PCIIO_SIZE_1}; /* MAX 16M,64K */
+	unsigned long io_size[2] = {TX4938_PCIIO_SIZE_0, TX4938_PCIIO_SIZE_1}; /* MAX 16M,64K */
 	/* TX4938 PCIC1: 64K MEM/IO is enough for ETH0,ETH1 */
 	int extarb = !(tx4938_ccfgptr->ccfg & TX4938_CCFG_PCIXARB);
 
@@ -774,15 +774,8 @@ void __init tx4938_board_setup(void)
 	}
 
 	/* TMR */
-	/* disable all timers */
-	for (i = 0; i < TX4938_NR_TMR; i++) {
-		tx4938_tmrptr(i)->tcr  = 0x00000020;
-		tx4938_tmrptr(i)->tisr = 0;
-		tx4938_tmrptr(i)->cpra = 0xffffffff;
-		tx4938_tmrptr(i)->itmr = 0;
-		tx4938_tmrptr(i)->ccdr = 0;
-		tx4938_tmrptr(i)->pgmr = 0;
-	}
+	for (i = 0; i < TX4938_NR_TMR; i++)
+		txx9_tmr_init(TX4938_TMR_REG(i) & 0xfffffffffULL);
 
 	/* enable DMA */
 	TX4938_WR64(0xff1fb150, TX4938_DMA_MCR_MSTEN);
@@ -853,12 +846,13 @@ void tx4938_report_pcic_status(void)
 
 #endif /* CONFIG_PCI */
 
-/* We use onchip r4k counter or TMR timer as our system wide timer
- * interrupt running at 100HZ. */
-
-void __init rbtx4938_time_init(void)
+void __init plat_time_init(void)
 {
 	mips_hpt_frequency = txx9_cpu_clock / 2;
+	if (tx4938_ccfgptr->ccfg & TX4938_CCFG_TINTDIS)
+		txx9_clockevent_init(TX4938_TMR_REG(0) & 0xfffffffffULL,
+				     TXX9_IRQ_BASE + TX4938_IR_TMR(0),
+				     txx9_gbus_clock / 2);
 }
 
 void __init toshiba_rbtx4938_setup(void)

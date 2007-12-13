@@ -40,62 +40,27 @@ int put_compat_timespec(const struct timespec *ts, struct compat_timespec __user
 			__put_user(ts->tv_nsec, &cts->tv_nsec)) ? -EFAULT : 0;
 }
 
-static long compat_nanosleep_restart(struct restart_block *restart)
-{
-	unsigned long expire = restart->arg0, now = jiffies;
-	struct compat_timespec __user *rmtp;
-
-	/* Did it expire while we handled signals? */
-	if (!time_after(expire, now))
-		return 0;
-
-	expire = schedule_timeout_interruptible(expire - now);
-	if (expire == 0)
-		return 0;
-
-	rmtp = (struct compat_timespec __user *)restart->arg1;
-	if (rmtp) {
-		struct compat_timespec ct;
-		struct timespec t;
-
-		jiffies_to_timespec(expire, &t);
-		ct.tv_sec = t.tv_sec;
-		ct.tv_nsec = t.tv_nsec;
-		if (copy_to_user(rmtp, &ct, sizeof(ct)))
-			return -EFAULT;
-	}
-	/* The 'restart' block is already filled in */
-	return -ERESTART_RESTARTBLOCK;
-}
-
 asmlinkage long compat_sys_nanosleep(struct compat_timespec __user *rqtp,
-		struct compat_timespec __user *rmtp)
+				     struct compat_timespec __user *rmtp)
 {
-	struct timespec t;
-	struct restart_block *restart;
-	unsigned long expire;
+	struct timespec tu, rmt;
+	long ret;
 
-	if (get_compat_timespec(&t, rqtp))
+	if (get_compat_timespec(&tu, rqtp))
 		return -EFAULT;
 
-	if ((t.tv_nsec >= 1000000000L) || (t.tv_nsec < 0) || (t.tv_sec < 0))
+	if (!timespec_valid(&tu))
 		return -EINVAL;
 
-	expire = timespec_to_jiffies(&t) + (t.tv_sec || t.tv_nsec);
-	expire = schedule_timeout_interruptible(expire);
-	if (expire == 0)
-		return 0;
+	ret = hrtimer_nanosleep(&tu, rmtp ? &rmt : NULL, HRTIMER_MODE_REL,
+				CLOCK_MONOTONIC);
 
-	if (rmtp) {
-		jiffies_to_timespec(expire, &t);
-		if (put_compat_timespec(&t, rmtp))
+	if (ret && rmtp) {
+		if (put_compat_timespec(&rmt, rmtp))
 			return -EFAULT;
 	}
-	restart = &current_thread_info()->restart_block;
-	restart->fn = compat_nanosleep_restart;
-	restart->arg0 = jiffies + expire;
-	restart->arg1 = (unsigned long) rmtp;
-	return -ERESTART_RESTARTBLOCK;
+
+	return ret;
 }
 
 static inline long get_compat_itimerval(struct itimerval *o,
@@ -247,8 +212,8 @@ asmlinkage long compat_sys_setrlimit(unsigned int resource,
 	int ret;
 	mm_segment_t old_fs = get_fs ();
 
-	if (resource >= RLIM_NLIMITS) 
-		return -EINVAL;	
+	if (resource >= RLIM_NLIMITS)
+		return -EINVAL;
 
 	if (!access_ok(VERIFY_READ, rlim, sizeof(*rlim)) ||
 	    __get_user(r.rlim_cur, &rlim->rlim_cur) ||
@@ -477,21 +442,21 @@ asmlinkage long compat_sys_sched_getaffinity(compat_pid_t pid, unsigned int len,
 
 int get_compat_itimerspec(struct itimerspec *dst,
 			  const struct compat_itimerspec __user *src)
-{ 
+{
 	if (get_compat_timespec(&dst->it_interval, &src->it_interval) ||
 	    get_compat_timespec(&dst->it_value, &src->it_value))
 		return -EFAULT;
 	return 0;
-} 
+}
 
 int put_compat_itimerspec(struct compat_itimerspec __user *dst,
 			  const struct itimerspec *src)
-{ 
+{
 	if (put_compat_timespec(&src->it_interval, &dst->it_interval) ||
 	    put_compat_timespec(&src->it_value, &dst->it_value))
 		return -EFAULT;
 	return 0;
-} 
+}
 
 long compat_sys_timer_create(clockid_t which_clock,
 			struct compat_sigevent __user *timer_event_spec,
@@ -512,9 +477,9 @@ long compat_sys_timer_create(clockid_t which_clock,
 }
 
 long compat_sys_timer_settime(timer_t timer_id, int flags,
-			  struct compat_itimerspec __user *new, 
+			  struct compat_itimerspec __user *new,
 			  struct compat_itimerspec __user *old)
-{ 
+{
 	long err;
 	mm_segment_t oldfs;
 	struct itimerspec newts, oldts;
@@ -522,58 +487,58 @@ long compat_sys_timer_settime(timer_t timer_id, int flags,
 	if (!new)
 		return -EINVAL;
 	if (get_compat_itimerspec(&newts, new))
-		return -EFAULT;	
+		return -EFAULT;
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
 	err = sys_timer_settime(timer_id, flags,
 				(struct itimerspec __user *) &newts,
 				(struct itimerspec __user *) &oldts);
-	set_fs(oldfs); 
+	set_fs(oldfs);
 	if (!err && old && put_compat_itimerspec(old, &oldts))
 		return -EFAULT;
 	return err;
-} 
+}
 
 long compat_sys_timer_gettime(timer_t timer_id,
 		struct compat_itimerspec __user *setting)
-{ 
+{
 	long err;
 	mm_segment_t oldfs;
-	struct itimerspec ts; 
+	struct itimerspec ts;
 
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
 	err = sys_timer_gettime(timer_id,
-				(struct itimerspec __user *) &ts); 
-	set_fs(oldfs); 
+				(struct itimerspec __user *) &ts);
+	set_fs(oldfs);
 	if (!err && put_compat_itimerspec(setting, &ts))
 		return -EFAULT;
 	return err;
-} 
+}
 
 long compat_sys_clock_settime(clockid_t which_clock,
 		struct compat_timespec __user *tp)
 {
 	long err;
 	mm_segment_t oldfs;
-	struct timespec ts; 
+	struct timespec ts;
 
 	if (get_compat_timespec(&ts, tp))
-		return -EFAULT; 
+		return -EFAULT;
 	oldfs = get_fs();
-	set_fs(KERNEL_DS);	
+	set_fs(KERNEL_DS);
 	err = sys_clock_settime(which_clock,
 				(struct timespec __user *) &ts);
 	set_fs(oldfs);
 	return err;
-} 
+}
 
 long compat_sys_clock_gettime(clockid_t which_clock,
 		struct compat_timespec __user *tp)
 {
 	long err;
 	mm_segment_t oldfs;
-	struct timespec ts; 
+	struct timespec ts;
 
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
@@ -581,16 +546,16 @@ long compat_sys_clock_gettime(clockid_t which_clock,
 				(struct timespec __user *) &ts);
 	set_fs(oldfs);
 	if (!err && put_compat_timespec(&ts, tp))
-		return -EFAULT; 
+		return -EFAULT;
 	return err;
-} 
+}
 
 long compat_sys_clock_getres(clockid_t which_clock,
 		struct compat_timespec __user *tp)
 {
 	long err;
 	mm_segment_t oldfs;
-	struct timespec ts; 
+	struct timespec ts;
 
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
@@ -598,9 +563,9 @@ long compat_sys_clock_getres(clockid_t which_clock,
 			       (struct timespec __user *) &ts);
 	set_fs(oldfs);
 	if (!err && tp && put_compat_timespec(&ts, tp))
-		return -EFAULT; 
+		return -EFAULT;
 	return err;
-} 
+}
 
 static long compat_clock_nanosleep_restart(struct restart_block *restart)
 {
@@ -632,10 +597,10 @@ long compat_sys_clock_nanosleep(clockid_t which_clock, int flags,
 {
 	long err;
 	mm_segment_t oldfs;
-	struct timespec in, out; 
+	struct timespec in, out;
 	struct restart_block *restart;
 
-	if (get_compat_timespec(&in, rqtp)) 
+	if (get_compat_timespec(&in, rqtp))
 		return -EFAULT;
 
 	oldfs = get_fs();
@@ -654,8 +619,8 @@ long compat_sys_clock_nanosleep(clockid_t which_clock, int flags,
 		restart->fn = compat_clock_nanosleep_restart;
 		restart->arg1 = (unsigned long) rmtp;
 	}
-	return err;	
-} 
+	return err;
+}
 
 /*
  * We currently only need the following fields from the sigevent

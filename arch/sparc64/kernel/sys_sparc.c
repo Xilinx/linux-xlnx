@@ -26,7 +26,6 @@
 #include <linux/random.h>
 
 #include <asm/uaccess.h>
-#include <asm/ipc.h>
 #include <asm/utrap.h>
 #include <asm/perfctr.h>
 #include <asm/a.out.h>
@@ -319,7 +318,7 @@ unsigned long get_fb_unmapped_area(struct file *filp, unsigned long orig_addr, u
 
 	if (flags & MAP_FIXED) {
 		/* Ok, don't mess with it. */
-		return get_unmapped_area(NULL, addr, len, pgoff, flags);
+		return get_unmapped_area(NULL, orig_addr, len, pgoff, flags);
 	}
 	flags &= ~MAP_SHARED;
 
@@ -436,7 +435,7 @@ out:
 asmlinkage long sys_ipc(unsigned int call, int first, unsigned long second,
 			unsigned long third, void __user *ptr, long fifth)
 {
-	int err;
+	long err;
 
 	/* No need for backward compatibility. We can start fresh... */
 	if (call <= SEMCTL) {
@@ -453,16 +452,9 @@ asmlinkage long sys_ipc(unsigned int call, int first, unsigned long second,
 			err = sys_semget(first, (int)second, (int)third);
 			goto out;
 		case SEMCTL: {
-			union semun fourth;
-			err = -EINVAL;
-			if (!ptr)
-				goto out;
-			err = -EFAULT;
-			if (get_user(fourth.__pad,
-				     (void __user * __user *) ptr))
-				goto out;
-			err = sys_semctl(first, (int)second | IPC_64,
-					 (int)third, fourth);
+			err = sys_semctl(first, third,
+					 (int)second | IPC_64,
+					 (union semun) ptr);
 			goto out;
 		}
 		default:

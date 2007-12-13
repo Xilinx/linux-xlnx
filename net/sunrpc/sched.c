@@ -777,6 +777,7 @@ void *rpc_malloc(struct rpc_task *task, size_t size)
 			task->tk_pid, size, buf);
 	return &buf->data;
 }
+EXPORT_SYMBOL_GPL(rpc_malloc);
 
 /**
  * rpc_free - free buffer allocated via rpc_malloc
@@ -802,6 +803,7 @@ void rpc_free(void *buffer)
 	else
 		kfree(buf);
 }
+EXPORT_SYMBOL_GPL(rpc_free);
 
 /*
  * Creation and deletion of RPC task structures
@@ -845,7 +847,7 @@ void rpc_init_task(struct rpc_task *task, struct rpc_clnt *clnt, int flags, cons
 	task->tk_start = jiffies;
 
 	dprintk("RPC:       new task initialized, procpid %u\n",
-				current->pid);
+				task_pid_nr(current));
 }
 
 static struct rpc_task *

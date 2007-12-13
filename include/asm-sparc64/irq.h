@@ -1,7 +1,6 @@
-/* $Id: irq.h,v 1.21 2002/01/23 11:27:36 davem Exp $
- * irq.h: IRQ registers on the 64-bit Sparc.
+/* irq.h: IRQ registers on the 64-bit Sparc.
  *
- * Copyright (C) 1996 David S. Miller (davem@caip.rutgers.edu)
+ * Copyright (C) 1996 David S. Miller (davem@davemloft.net)
  * Copyright (C) 1998 Jakub Jelinek (jj@ultra.linux.cz)
  */
 
@@ -51,28 +50,37 @@ extern unsigned int sun4v_build_msi(u32 devhandle, unsigned int *virt_irq_p,
 				    unsigned int msi_devino_start,
 				    unsigned int msi_devino_end);
 extern void sun4v_destroy_msi(unsigned int virt_irq);
+extern unsigned int sun4u_build_msi(u32 portid, unsigned int *virt_irq_p,
+				    unsigned int msi_devino_start,
+				    unsigned int msi_devino_end,
+				    unsigned long imap_base,
+				    unsigned long iclr_base);
+extern void sun4u_destroy_msi(unsigned int virt_irq);
 extern unsigned int sbus_build_irq(void *sbus, unsigned int ino);
 
-extern void sparc64_set_msi(unsigned int virt_irq, u32 msi);
-extern u32 sparc64_get_msi(unsigned int virt_irq);
+extern unsigned char virt_irq_alloc(unsigned int dev_handle,
+				    unsigned int dev_ino);
+#ifdef CONFIG_PCI_MSI
+extern void virt_irq_free(unsigned int virt_irq);
+#endif
 
 extern void fixup_irqs(void);
 
-static __inline__ void set_softint(unsigned long bits)
+static inline void set_softint(unsigned long bits)
 {
 	__asm__ __volatile__("wr	%0, 0x0, %%set_softint"
 			     : /* No outputs */
 			     : "r" (bits));
 }
 
-static __inline__ void clear_softint(unsigned long bits)
+static inline void clear_softint(unsigned long bits)
 {
 	__asm__ __volatile__("wr	%0, 0x0, %%clear_softint"
 			     : /* No outputs */
 			     : "r" (bits));
 }
 
-static __inline__ unsigned long get_softint(void)
+static inline unsigned long get_softint(void)
 {
 	unsigned long retval;
 

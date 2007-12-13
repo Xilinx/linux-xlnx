@@ -57,7 +57,6 @@
 #include <linux/personality.h>
 
 /* For SOCKET_I */
-#include <linux/socket.h>
 #include <net/sock.h>
 #include <net/compat.h>
 
@@ -831,7 +830,7 @@ asmlinkage int sunos_killpg(int pgrp, int sig)
 	rcu_read_lock();
 	ret = -EINVAL;
 	if (pgrp > 0)
-		ret = kill_pgrp(find_pid(pgrp), sig, 0);
+		ret = kill_pgrp(find_vpid(pgrp), sig, 0);
 	rcu_read_unlock();
 
 	return ret;

@@ -264,7 +264,7 @@ out:
 }
 
 /*
- * Power down the audio subsytem pmdown_time msecs after close is called.
+ * Power down the audio subsystem pmdown_time msecs after close is called.
  * This is to ensure there are no pops or clicks in between any music tracks
  * due to DAPM power cycling.
  */
@@ -1360,26 +1360,6 @@ int snd_soc_info_volsw_ext(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw_ext);
-
-/**
- * snd_soc_info_bool_ext - external single boolean mixer info callback
- * @kcontrol: mixer control
- * @uinfo: control element information
- *
- * Callback to provide information about a single boolean external mixer control.
- *
- * Returns 0 for success.
- */
-int snd_soc_info_bool_ext(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_info *uinfo)
-{
-	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
-	uinfo->count = 1;
-	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = 1;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(snd_soc_info_bool_ext);
 
 /**
  * snd_soc_info_volsw - single mixer info callback

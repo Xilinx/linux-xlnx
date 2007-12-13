@@ -40,7 +40,7 @@
  *	Cable special cases
  */
 
-static struct dmi_system_id cable_dmi_table[] = {
+static const struct dmi_system_id cable_dmi_table[] = {
 	{
 		.ident = "HP Pavilion N5430",
 		.matches = {
@@ -63,6 +63,9 @@ static int ali_cable_override(struct pci_dev *pdev)
 	/* Fujitsu P2000 */
 	if (pdev->subsystem_vendor == 0x10CF && pdev->subsystem_device == 0x10AF)
 	   	return 1;
+	/* Mitac 8317 (Winbook-A) and relatives */
+	if (pdev->subsystem_vendor == 0x1071  && pdev->subsystem_device == 0x8317)
+		return 1;
 	/* Systems by DMI */
 	if (dmi_check_system(cable_dmi_table))
 		return 1;
@@ -282,6 +285,21 @@ static void ali_lock_sectors(struct ata_device *adev)
 	adev->max_sectors = 255;
 }
 
+/**
+ *	ali_check_atapi_dma	-	DMA check for most ALi controllers
+ *	@adev: Device
+ *
+ *	Called to decide whether commands should be sent by DMA or PIO
+ */
+
+static int ali_check_atapi_dma(struct ata_queued_cmd *qc)
+{
+	/* If its not a media command, its not worth it */
+	if (qc->nbytes < 2048)
+		return -EOPNOTSUPP;
+	return 0;
+}
+
 static struct scsi_host_template ali_sht = {
 	.module			= THIS_MODULE,
 	.name			= DRV_NAME,
@@ -305,7 +323,6 @@ static struct scsi_host_template ali_sht = {
  */
 
 static struct ata_port_operations ali_early_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= ali_set_piomode,
 	.tf_load	= ata_tf_load,
 	.tf_read	= ata_tf_read,
@@ -327,9 +344,8 @@ static struct ata_port_operations ali_early_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
@@ -337,8 +353,6 @@ static struct ata_port_operations ali_early_port_ops = {
  *	detect
  */
 static struct ata_port_operations ali_20_port_ops = {
-	.port_disable	= ata_port_disable,
-
 	.set_piomode	= ali_set_piomode,
 	.set_dmamode	= ali_set_dmamode,
 	.mode_filter	= ali_20_filter,
@@ -369,21 +383,20 @@ static struct ata_port_operations ali_20_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
  *	Port operations for DMA capable ALi with cable detect
  */
 static struct ata_port_operations ali_c2_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= ali_set_piomode,
 	.set_dmamode	= ali_set_dmamode,
 	.mode_filter	= ata_pci_default_filter,
 	.tf_load	= ata_tf_load,
 	.tf_read	= ata_tf_read,
+	.check_atapi_dma = ali_check_atapi_dma,
 	.check_status 	= ata_check_status,
 	.exec_command	= ata_exec_command,
 	.dev_select 	= ata_std_dev_select,
@@ -408,21 +421,20 @@ static struct ata_port_operations ali_c2_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 /*
  *	Port operations for DMA capable ALi with cable detect and LBA48
  */
 static struct ata_port_operations ali_c5_port_ops = {
-	.port_disable	= ata_port_disable,
 	.set_piomode	= ali_set_piomode,
 	.set_dmamode	= ali_set_dmamode,
 	.mode_filter	= ata_pci_default_filter,
 	.tf_load	= ata_tf_load,
 	.tf_read	= ata_tf_read,
+	.check_atapi_dma = ali_check_atapi_dma,
 	.check_status 	= ata_check_status,
 	.exec_command	= ata_exec_command,
 	.dev_select 	= ata_std_dev_select,
@@ -446,9 +458,8 @@ static struct ata_port_operations ali_c5_port_ops = {
 	.irq_handler	= ata_interrupt,
 	.irq_clear	= ata_bmdma_irq_clear,
 	.irq_on		= ata_irq_on,
-	.irq_ack	= ata_irq_ack,
 
-	.port_start	= ata_port_start,
+	.port_start	= ata_sff_port_start,
 };
 
 

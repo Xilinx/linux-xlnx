@@ -491,7 +491,6 @@ int mthca_tavor_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 {
 	struct mthca_dev *dev = to_mdev(ibsrq->device);
 	struct mthca_srq *srq = to_msrq(ibsrq);
-	__be32 doorbell[2];
 	unsigned long flags;
 	int err = 0;
 	int first_ind;
@@ -509,7 +508,7 @@ int mthca_tavor_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 	for (nreq = 0; wr; wr = wr->next) {
 		ind = srq->first_free;
 
-		if (ind < 0) {
+		if (unlikely(ind < 0)) {
 			mthca_err(dev, "SRQ %06x full\n", srq->srqn);
 			err = -ENOMEM;
 			*bad_wr = wr;
@@ -519,7 +518,7 @@ int mthca_tavor_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 		wqe       = get_wqe(srq, ind);
 		next_ind  = *wqe_to_link(wqe);
 
-		if (next_ind < 0) {
+		if (unlikely(next_ind < 0)) {
 			mthca_err(dev, "SRQ %06x full\n", srq->srqn);
 			err = -ENOMEM;
 			*bad_wr = wr;
@@ -563,16 +562,13 @@ int mthca_tavor_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 		if (unlikely(nreq == MTHCA_TAVOR_MAX_WQES_PER_RECV_DB)) {
 			nreq = 0;
 
-			doorbell[0] = cpu_to_be32(first_ind << srq->wqe_shift);
-			doorbell[1] = cpu_to_be32(srq->srqn << 8);
-
 			/*
 			 * Make sure that descriptors are written
 			 * before doorbell is rung.
 			 */
 			wmb();
 
-			mthca_write64(doorbell,
+			mthca_write64(first_ind << srq->wqe_shift, srq->srqn << 8,
 				      dev->kar + MTHCA_RECEIVE_DOORBELL,
 				      MTHCA_GET_DOORBELL_LOCK(&dev->doorbell_lock));
 
@@ -581,16 +577,13 @@ int mthca_tavor_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 	}
 
 	if (likely(nreq)) {
-		doorbell[0] = cpu_to_be32(first_ind << srq->wqe_shift);
-		doorbell[1] = cpu_to_be32((srq->srqn << 8) | nreq);
-
 		/*
 		 * Make sure that descriptors are written before
 		 * doorbell is rung.
 		 */
 		wmb();
 
-		mthca_write64(doorbell,
+		mthca_write64(first_ind << srq->wqe_shift, (srq->srqn << 8) | nreq,
 			      dev->kar + MTHCA_RECEIVE_DOORBELL,
 			      MTHCA_GET_DOORBELL_LOCK(&dev->doorbell_lock));
 	}
@@ -623,7 +616,7 @@ int mthca_arbel_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 	for (nreq = 0; wr; ++nreq, wr = wr->next) {
 		ind = srq->first_free;
 
-		if (ind < 0) {
+		if (unlikely(ind < 0)) {
 			mthca_err(dev, "SRQ %06x full\n", srq->srqn);
 			err = -ENOMEM;
 			*bad_wr = wr;
@@ -633,7 +626,7 @@ int mthca_arbel_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
 		wqe       = get_wqe(srq, ind);
 		next_ind  = *wqe_to_link(wqe);
 
-		if (next_ind < 0) {
+		if (unlikely(next_ind < 0)) {
 			mthca_err(dev, "SRQ %06x full\n", srq->srqn);
 			err = -ENOMEM;
 			*bad_wr = wr;

@@ -55,7 +55,7 @@
  * 	ppp0..9.
  *
  * 	NOTE: Certain meta values depend on other subsystems and are
- * 	      only available if that subsytem is enabled in the kernel.
+ * 	      only available if that subsystem is enabled in the kernel.
  */
 
 #include <linux/module.h>
@@ -291,7 +291,7 @@ META_COLLECTOR(var_sk_bound_if)
 	 } else  {
 		struct net_device *dev;
 
-		dev = dev_get_by_index(skb->sk->sk_bound_dev_if);
+		dev = dev_get_by_index(&init_net, skb->sk->sk_bound_dev_if);
 		*err = var_dev(dev, dst);
 		if (dev)
 			dev_put(dev);

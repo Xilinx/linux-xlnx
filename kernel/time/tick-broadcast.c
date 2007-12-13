@@ -64,8 +64,9 @@ static void tick_broadcast_start_periodic(struct clock_event_device *bc)
  */
 int tick_check_broadcast_device(struct clock_event_device *dev)
 {
-	if (tick_broadcast_device.evtdev ||
-	    (dev->features & CLOCK_EVT_FEAT_C3STOP))
+	if ((tick_broadcast_device.evtdev &&
+	     tick_broadcast_device.evtdev->rating >= dev->rating) ||
+	     (dev->features & CLOCK_EVT_FEAT_C3STOP))
 		return 0;
 
 	clockevents_exchange_device(NULL, dev);
@@ -176,8 +177,6 @@ static void tick_do_periodic_broadcast(void)
  */
 static void tick_handle_periodic_broadcast(struct clock_event_device *dev)
 {
-	dev->next_event.tv64 = KTIME_MAX;
-
 	tick_do_periodic_broadcast();
 
 	/*
@@ -218,26 +217,33 @@ static void tick_do_broadcast_on_off(void *why)
 	bc = tick_broadcast_device.evtdev;
 
 	/*
-	 * Is the device in broadcast mode forever or is it not
-	 * affected by the powerstate ?
+	 * Is the device not affected by the powerstate ?
 	 */
-	if (!dev || !tick_device_is_functional(dev) ||
-	    !(dev->features & CLOCK_EVT_FEAT_C3STOP))
+	if (!dev || !(dev->features & CLOCK_EVT_FEAT_C3STOP))
 		goto out;
 
-	if (*reason == CLOCK_EVT_NOTIFY_BROADCAST_ON) {
+	if (!tick_device_is_functional(dev))
+		goto out;
+
+	switch (*reason) {
+	case CLOCK_EVT_NOTIFY_BROADCAST_ON:
+	case CLOCK_EVT_NOTIFY_BROADCAST_FORCE:
 		if (!cpu_isset(cpu, tick_broadcast_mask)) {
 			cpu_set(cpu, tick_broadcast_mask);
 			if (td->mode == TICKDEV_MODE_PERIODIC)
 				clockevents_set_mode(dev,
 						     CLOCK_EVT_MODE_SHUTDOWN);
 		}
-	} else {
+		if (*reason == CLOCK_EVT_NOTIFY_BROADCAST_FORCE)
+			dev->features |= CLOCK_EVT_FEAT_DUMMY;
+		break;
+	case CLOCK_EVT_NOTIFY_BROADCAST_OFF:
 		if (cpu_isset(cpu, tick_broadcast_mask)) {
 			cpu_clear(cpu, tick_broadcast_mask);
 			if (td->mode == TICKDEV_MODE_PERIODIC)
 				tick_setup_periodic(dev, 0);
 		}
+		break;
 	}
 
 	if (cpus_empty(tick_broadcast_mask))
@@ -258,21 +264,12 @@ out:
  */
 void tick_broadcast_on_off(unsigned long reason, int *oncpu)
 {
-	int cpu = get_cpu();
-
-	if (!cpu_isset(*oncpu, cpu_online_map)) {
+	if (!cpu_isset(*oncpu, cpu_online_map))
 		printk(KERN_ERR "tick-braodcast: ignoring broadcast for "
 		       "offline CPU #%d\n", *oncpu);
-	} else {
-
-		if (cpu == *oncpu)
-			tick_do_broadcast_on_off(&reason);
-		else
-			smp_call_function_single(*oncpu,
-						 tick_do_broadcast_on_off,
-						 &reason, 1, 1);
-	}
-	put_cpu();
+	else
+		smp_call_function_single(*oncpu, tick_do_broadcast_on_off,
+					 &reason, 1, 1);
 }
 
 /*
@@ -511,15 +508,13 @@ static void tick_broadcast_clear_oneshot(int cpu)
 }
 
 /**
- * tick_broadcast_setup_highres - setup the broadcast device for highres
+ * tick_broadcast_setup_oneshot - setup the broadcast device
  */
 void tick_broadcast_setup_oneshot(struct clock_event_device *bc)
 {
-	if (bc->mode != CLOCK_EVT_MODE_ONESHOT) {
-		bc->event_handler = tick_handle_oneshot_broadcast;
-		clockevents_set_mode(bc, CLOCK_EVT_MODE_ONESHOT);
-		bc->next_event.tv64 = KTIME_MAX;
-	}
+	bc->event_handler = tick_handle_oneshot_broadcast;
+	clockevents_set_mode(bc, CLOCK_EVT_MODE_ONESHOT);
+	bc->next_event.tv64 = KTIME_MAX;
 }
 
 /*

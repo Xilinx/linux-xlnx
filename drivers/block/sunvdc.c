@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/list.h>
+#include <linux/scatterlist.h>
 
 #include <asm/vio.h>
 #include <asm/ldc.h>
@@ -388,6 +389,7 @@ static int __send_request(struct request *req)
 		op = VD_OP_BWRITE;
 	}
 
+	sg_init_table(sg, port->ring_cookies);
 	nsg = blk_rq_map_sg(req->q, req, sg);
 
 	len = 0;

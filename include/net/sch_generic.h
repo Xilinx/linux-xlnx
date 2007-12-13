@@ -302,4 +302,33 @@ drop:
 	return NET_XMIT_DROP;
 }
 
+/* Length to Time (L2T) lookup in a qdisc_rate_table, to determine how
+   long it will take to send a packet given its size.
+ */
+static inline u32 qdisc_l2t(struct qdisc_rate_table* rtab, unsigned int pktlen)
+{
+	int slot = pktlen + rtab->rate.cell_align + rtab->rate.overhead;
+	if (slot < 0)
+		slot = 0;
+	slot >>= rtab->rate.cell_log;
+	if (slot > 255)
+		return (rtab->data[255]*(slot >> 8) + rtab->data[slot & 0xFF]);
+	return rtab->data[slot];
+}
+
+#ifdef CONFIG_NET_CLS_ACT
+static inline struct sk_buff *skb_act_clone(struct sk_buff *skb, gfp_t gfp_mask)
+{
+	struct sk_buff *n = skb_clone(skb, gfp_mask);
+
+	if (n) {
+		n->tc_verd = SET_TC_VERD(n->tc_verd, 0);
+		n->tc_verd = CLR_TC_OK2MUNGE(n->tc_verd);
+		n->tc_verd = CLR_TC_MUNGED(n->tc_verd);
+		n->iif = skb->iif;
+	}
+	return n;
+}
+#endif
+
 #endif

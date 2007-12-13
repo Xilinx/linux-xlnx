@@ -99,7 +99,6 @@ obj-$(CONFIG_FB_PXA)		  += pxafb.o
 obj-$(CONFIG_FB_W100)		  += w100fb.o
 obj-$(CONFIG_FB_AU1100)		  += au1100fb.o
 obj-$(CONFIG_FB_AU1200)		  += au1200fb.o
-obj-$(CONFIG_FB_XILINX)		  += xilinxfb.o
 obj-$(CONFIG_FB_PMAG_AA)	  += pmag-aa-fb.o
 obj-$(CONFIG_FB_PMAG_BA)	  += pmag-ba-fb.o
 obj-$(CONFIG_FB_PMAGB_B)	  += pmagb-b-fb.o
@@ -116,10 +115,13 @@ obj-$(CONFIG_FB_XILINX)           += xilinxfb.o
 obj-$(CONFIG_FB_OMAP)             += omap/
 
 # Platform or fallback drivers go here
+obj-$(CONFIG_FB_UVESA)            += uvesafb.o
 obj-$(CONFIG_FB_VESA)             += vesafb.o
 obj-$(CONFIG_FB_IMAC)             += imacfb.o
+obj-$(CONFIG_FB_EFI)              += efifb.o
 obj-$(CONFIG_FB_VGA16)            += vga16fb.o
 obj-$(CONFIG_FB_OF)               += offb.o
+obj-$(CONFIG_FB_BF54X_LQ043)	  += bf54x-lq043fb.o
 
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o

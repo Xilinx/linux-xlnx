@@ -206,7 +206,7 @@ static void pci_proc_init(void)
 }
 #endif /* CONFIG_PROC_FS && PCI_COUNTERS */
 
-spinlock_t bpci_lock = SPIN_LOCK_UNLOCKED;
+DEFINE_SPINLOCK(bpci_lock);
 
 /*****************************************************************************
  *
@@ -404,7 +404,7 @@ int msp_pcibios_config_access(unsigned char access_type,
 	if (pciirqflag == 0) {
 		request_irq(MSP_INT_PCI,/* Hardcoded internal MSP7120 wiring */
 				bpci_interrupt,
-				SA_SHIRQ | SA_INTERRUPT,
+				IRQF_SHARED | IRQF_DISABLED,
 				"PMC MSP PCI Host",
 				preg);
 		pciirqflag = ~0;

@@ -7,7 +7,87 @@
 #include <linux/slab.h>
 
 #include <asm/errno.h>
+#include <asm/dcr.h>
 #include <asm/of_device.h>
+
+static void of_device_make_bus_id(struct of_device *dev)
+{
+	static atomic_t bus_no_reg_magic;
+	struct device_node *node = dev->node;
+	char *name = dev->dev.bus_id;
+	const u32 *reg;
+	u64 addr;
+	int magic;
+
+	/*
+	 * If it's a DCR based device, use 'd' for native DCRs
+	 * and 'D' for MMIO DCRs.
+	 */
+#ifdef CONFIG_PPC_DCR
+	reg = of_get_property(node, "dcr-reg", NULL);
+	if (reg) {
+#ifdef CONFIG_PPC_DCR_NATIVE
+		snprintf(name, BUS_ID_SIZE, "d%x.%s",
+			 *reg, node->name);
+#else /* CONFIG_PPC_DCR_NATIVE */
+		addr = of_translate_dcr_address(node, *reg, NULL);
+		if (addr != OF_BAD_ADDR) {
+			snprintf(name, BUS_ID_SIZE,
+				 "D%llx.%s", (unsigned long long)addr,
+				 node->name);
+			return;
+		}
+#endif /* !CONFIG_PPC_DCR_NATIVE */
+	}
+#endif /* CONFIG_PPC_DCR */
+
+	/*
+	 * For MMIO, get the physical address
+	 */
+	reg = of_get_property(node, "reg", NULL);
+	if (reg) {
+		addr = of_translate_address(node, reg);
+		if (addr != OF_BAD_ADDR) {
+			snprintf(name, BUS_ID_SIZE,
+				 "%llx.%s", (unsigned long long)addr,
+				 node->name);
+			return;
+		}
+	}
+
+	/*
+	 * No BusID, use the node name and add a globally incremented
+	 * counter (and pray...)
+	 */
+	magic = atomic_add_return(1, &bus_no_reg_magic);
+	snprintf(name, BUS_ID_SIZE, "%s.%d", node->name, magic - 1);
+}
+
+struct of_device *of_device_alloc(struct device_node *np,
+				  const char *bus_id,
+				  struct device *parent)
+{
+	struct of_device *dev;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return NULL;
+
+	dev->node = of_node_get(np);
+	dev->dev.dma_mask = &dev->dma_mask;
+	dev->dev.parent = parent;
+	dev->dev.release = of_release_dev;
+	dev->dev.archdata.of_node = np;
+	dev->dev.archdata.numa_node = of_node_to_nid(np);
+
+	if (bus_id)
+		strlcpy(dev->dev.bus_id, bus_id, BUS_ID_SIZE);
+	else
+		of_device_make_bus_id(dev);
+
+	return dev;
+}
+EXPORT_SYMBOL(of_device_alloc);
 
 ssize_t of_device_get_modalias(struct of_device *ofdev,
 				char *str, ssize_t len)
@@ -57,26 +137,21 @@ ssize_t of_device_get_modalias(struct of_device *ofdev,
 	return tsize;
 }
 
-int of_device_uevent(struct device *dev,
-		char **envp, int num_envp, char *buffer, int buffer_size)
+int of_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct of_device *ofdev;
 	const char *compat;
-	int i = 0, length = 0, seen = 0, cplen, sl;
+	int seen = 0, cplen, sl;
 
 	if (!dev)
 		return -ENODEV;
 
 	ofdev = to_of_device(dev);
 
-	if (add_uevent_var(envp, num_envp, &i,
-			   buffer, buffer_size, &length,
-			   "OF_NAME=%s", ofdev->node->name))
+	if (add_uevent_var(env, "OF_NAME=%s", ofdev->node->name))
 		return -ENOMEM;
 
-	if (add_uevent_var(envp, num_envp, &i,
-			   buffer, buffer_size, &length,
-			   "OF_TYPE=%s", ofdev->node->type))
+	if (add_uevent_var(env, "OF_TYPE=%s", ofdev->node->type))
 		return -ENOMEM;
 
         /* Since the compatible field can contain pretty much anything
@@ -85,9 +160,7 @@ int of_device_uevent(struct device *dev,
 
 	compat = of_get_property(ofdev->node, "compatible", &cplen);
 	while (compat && *compat && cplen > 0) {
-		if (add_uevent_var(envp, num_envp, &i,
-				   buffer, buffer_size, &length,
-				   "OF_COMPATIBLE_%d=%s", seen, compat))
+		if (add_uevent_var(env, "OF_COMPATIBLE_%d=%s", seen, compat))
 			return -ENOMEM;
 
 		sl = strlen (compat) + 1;
@@ -96,25 +169,17 @@ int of_device_uevent(struct device *dev,
 		seen++;
 	}
 
-	if (add_uevent_var(envp, num_envp, &i,
-			   buffer, buffer_size, &length,
-			   "OF_COMPATIBLE_N=%d", seen))
+	if (add_uevent_var(env, "OF_COMPATIBLE_N=%d", seen))
 		return -ENOMEM;
 
 	/* modalias is trickier, we add it in 2 steps */
-	if (add_uevent_var(envp, num_envp, &i,
-			   buffer, buffer_size, &length,
-			   "MODALIAS="))
+	if (add_uevent_var(env, "MODALIAS="))
 		return -ENOMEM;
-
-	sl = of_device_get_modalias(ofdev, &buffer[length-1],
-					buffer_size-length);
-	if (sl >= (buffer_size-length))
+	sl = of_device_get_modalias(ofdev, &env->buf[env->buflen-1],
+				    sizeof(env->buf) - env->buflen);
+	if (sl >= (sizeof(env->buf) - env->buflen))
 		return -ENOMEM;
-
-	length += sl;
-
-	envp[i] = NULL;
+	env->buflen += sl;
 
 	return 0;
 }

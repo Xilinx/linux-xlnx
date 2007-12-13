@@ -1,35 +1,44 @@
 /*
- * Copyright (C) 2000, 2001 Jeff Dike (jdike@karaya.com)
+ * Copyright (C) 2000 - 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
  * Licensed under the GPL
  */
 
-#include "linux/slab.h"
+#include "linux/stddef.h"
+#include "linux/fs.h"
 #include "linux/smp_lock.h"
 #include "linux/ptrace.h"
-#include "linux/fs.h"
-#include "asm/ptrace.h"
-#include "asm/pgtable.h"
-#include "asm/tlbflush.h"
+#include "linux/sched.h"
+#include "asm/current.h"
+#include "asm/processor.h"
 #include "asm/uaccess.h"
-#include "kern_util.h"
 #include "as-layout.h"
 #include "mem_user.h"
-#include "kern.h"
-#include "irq_user.h"
-#include "tlb.h"
+#include "skas.h"
 #include "os.h"
-#include "choose-mode.h"
-#include "mode_kern.h"
 
 void flush_thread(void)
 {
+	void *data = NULL;
+	unsigned long end = proc_mm ? task_size : STUB_START;
+	int ret;
+
 	arch_flush_thread(&current->thread.arch);
-	CHOOSE_MODE(flush_thread_tt(), flush_thread_skas());
+
+	ret = unmap(&current->mm->context.id, 0, end, 1, &data);
+	if (ret) {
+		printk(KERN_ERR "flush_thread - clearing address space failed, "
+		       "err = %d\n", ret);
+		force_sig(SIGKILL, current);
+	}
+
+	__switch_mm(&current->mm->context.id);
 }
 
 void start_thread(struct pt_regs *regs, unsigned long eip, unsigned long esp)
 {
-	CHOOSE_MODE_PROC(start_thread_tt, start_thread_skas, regs, eip, esp);
+	set_fs(USER_DS);
+	PT_REGS_IP(regs) = eip;
+	PT_REGS_SP(regs) = esp;
 }
 
 #ifdef CONFIG_TTY_LOG
@@ -39,7 +48,7 @@ extern void log_exec(char **argv, void *tty);
 static long execve1(char *file, char __user * __user *argv,
 		    char __user *__user *env)
 {
-        long error;
+	long error;
 #ifdef CONFIG_TTY_LOG
 	struct tty_struct *tty;
 
@@ -49,17 +58,16 @@ static long execve1(char *file, char __user * __user *argv,
 		log_exec(argv, tty);
 	mutex_unlock(&tty_mutex);
 #endif
-        error = do_execve(file, argv, env, &current->thread.regs);
-        if (error == 0){
+	error = do_execve(file, argv, env, &current->thread.regs);
+	if (error == 0) {
 		task_lock(current);
-                current->ptrace &= ~PT_DTRACE;
+		current->ptrace &= ~PT_DTRACE;
 #ifdef SUBARCH_EXECVE1
 		SUBARCH_EXECVE1(&current->thread.regs.regs);
 #endif
 		task_unlock(current);
-                set_cmdline(current_cmd());
-        }
-        return(error);
+	}
+	return error;
 }
 
 long um_execve(char *file, char __user *__user *argv, char __user *__user *env)
@@ -67,9 +75,9 @@ long um_execve(char *file, char __user *__user *argv, char __user *__user *env)
 	long err;
 
 	err = execve1(file, argv, env);
-	if(!err)
-		do_longjmp(current->thread.exec_buf, 1);
-	return(err);
+	if (!err)
+		UML_LONGJMP(current->thread.exec_buf, 1);
+	return err;
 }
 
 long sys_execve(char __user *file, char __user *__user *argv,
@@ -86,5 +94,5 @@ long sys_execve(char __user *file, char __user *__user *argv,
 	putname(filename);
  out:
 	unlock_kernel();
-	return(error);
+	return error;
 }

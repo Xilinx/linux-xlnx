@@ -198,7 +198,7 @@ UNUSUAL_DEV(  0x0421, 0x044e, 0x0100, 0x0100,
 		US_FL_IGNORE_RESIDUE | US_FL_FIX_CAPACITY ),
 
 /* Reported by Bardur Arantsson <bardur@scientician.net> */
-UNUSUAL_DEV(  0x0421, 0x047c, 0x0370, 0x0370,
+UNUSUAL_DEV(  0x0421, 0x047c, 0x0370, 0x0610,
 		"Nokia",
 		"6131",
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
@@ -341,6 +341,13 @@ UNUSUAL_DEV(  0x04b0, 0x040d, 0x0100, 0x0100,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_FIX_CAPACITY),
 
+/* Reported by Graber and Mike Pagano <mpagano-kernel@mpagano.com> */
+UNUSUAL_DEV(  0x04b0, 0x040f, 0x0100, 0x0200,
+		"NIKON",
+		"NIKON DSC D200",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_FIX_CAPACITY),
+
 /* Reported by Emil Larsson <emil@swip.net> */
 UNUSUAL_DEV(  0x04b0, 0x0411, 0x0100, 0x0101,
 		"NIKON",
@@ -352,6 +359,20 @@ UNUSUAL_DEV(  0x04b0, 0x0411, 0x0100, 0x0101,
 UNUSUAL_DEV(  0x04b0, 0x0413, 0x0110, 0x0110,
 		"NIKON",
 		"NIKON DSC D40",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_FIX_CAPACITY),
+
+/* Reported by Paul Check <paul@openstreet.com> */
+UNUSUAL_DEV(  0x04b0, 0x0415, 0x0100, 0x0100,
+		"NIKON",
+		"NIKON DSC D2Xs",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_FIX_CAPACITY),
+
+/* Reported by Shan Destromp (shansan@gmail.com) */
+UNUSUAL_DEV(  0x04b0, 0x0417, 0x0100, 0x0100,
+		"NIKON",
+		"NIKON DSC D40X",
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_FIX_CAPACITY),
 
@@ -386,7 +407,7 @@ UNUSUAL_DEV(  0x04cb, 0x0100, 0x0000, 0x2210,
 		"FinePix 1400Zoom",
 		US_SC_UFI, US_PR_DEVICE, NULL, US_FL_FIX_INQUIRY | US_FL_SINGLE_LUN),
 
-/* Reported by Peter Wächtler <pwaechtler@loewe-komp.de>
+/* Reported by Peter WÃ¤chtler <pwaechtler@loewe-komp.de>
  * The device needs the flags only.
  */
 UNUSUAL_DEV(  0x04ce, 0x0002, 0x0074, 0x0074,
@@ -709,6 +730,13 @@ UNUSUAL_DEV(  0x0584, 0x0008, 0x0102, 0x0102,
 		"DPC-R1 (Alauda)",
  		US_SC_SCSI, US_PR_ALAUDA, init_alauda, 0 ),
 #endif
+
+/* Reported by RTE <raszilki@yandex.ru> */
+UNUSUAL_DEV(  0x058f, 0x6387, 0x0141, 0x0141,
+		"JetFlash",
+		"TS1GJF2A/120",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_MAX_SECTORS_64 ),
 
 /* Fabrizio Fellini <fello@libero.it> */
 UNUSUAL_DEV(  0x0595, 0x4343, 0x0000, 0x2210,
@@ -1463,6 +1491,17 @@ UNUSUAL_DEV(  0x1210, 0x0003, 0x0100, 0x0100,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE ),
 
+/* Reported by fangxiaozhi <fangxiaozhi60675@huawei.com>
+ * and by linlei <linlei83@huawei.com>
+ * Patch reworked by Johann Wilhelm <johann.wilhelm@student.tugraz.at>
+ * This brings the HUAWEI E220 devices into multi-port mode
+ */
+UNUSUAL_DEV( 0x12d1, 0x1003, 0x0000, 0x0000,
+		"HUAWEI MOBILE",
+		"Mass Storage",
+		US_SC_DEVICE, US_PR_DEVICE, usb_stor_huawei_e220_init,
+		0),
+
 /* Reported by Vilius Bilinkevicius <vilisas AT xxx DOT lt) */
 UNUSUAL_DEV(  0x132b, 0x000b, 0x0001, 0x0001,
 		"Minolta",
@@ -1519,7 +1558,7 @@ UNUSUAL_DEV(  0x2735, 0x100b, 0x0000, 0x9999,
 		US_FL_GO_SLOW ),
 
 /*
- * David Härdeman <david@2gen.com>
+ * David HÃ¤rdeman <david@2gen.com>
  * The key makes the SCSI stack print confusing (but harmless) messages
  */
 UNUSUAL_DEV(  0x4146, 0xba01, 0x0100, 0x0100,

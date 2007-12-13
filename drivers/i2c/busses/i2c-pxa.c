@@ -31,6 +31,8 @@
 #include <linux/interrupt.h>
 #include <linux/i2c-pxa.h>
 #include <linux/platform_device.h>
+#include <linux/err.h>
+#include <linux/clk.h>
 
 #include <asm/hardware.h>
 #include <asm/irq.h>
@@ -48,6 +50,7 @@ struct pxa_i2c {
 	unsigned int		slave_addr;
 
 	struct i2c_adapter	adap;
+	struct clk		*clk;
 #ifdef CONFIG_I2C_PXA_SLAVE
 	struct i2c_slave_client *slave;
 #endif
@@ -82,7 +85,7 @@ struct bits {
 	const char *set;
 	const char *unset;
 };
-#define BIT(m, s, u)	{ .mask = m, .set = s, .unset = u }
+#define PXA_BIT(m, s, u)	{ .mask = m, .set = s, .unset = u }
 
 static inline void
 decode_bits(const char *prefix, const struct bits *bits, int num, u32 val)
@@ -97,17 +100,17 @@ decode_bits(const char *prefix, const struct bits *bits, int num, u32 val)
 }
 
 static const struct bits isr_bits[] = {
-	BIT(ISR_RWM,	"RX",		"TX"),
-	BIT(ISR_ACKNAK,	"NAK",		"ACK"),
-	BIT(ISR_UB,	"Bsy",		"Rdy"),
-	BIT(ISR_IBB,	"BusBsy",	"BusRdy"),
-	BIT(ISR_SSD,	"SlaveStop",	NULL),
-	BIT(ISR_ALD,	"ALD",		NULL),
-	BIT(ISR_ITE,	"TxEmpty",	NULL),
-	BIT(ISR_IRF,	"RxFull",	NULL),
-	BIT(ISR_GCAD,	"GenCall",	NULL),
-	BIT(ISR_SAD,	"SlaveAddr",	NULL),
-	BIT(ISR_BED,	"BusErr",	NULL),
+	PXA_BIT(ISR_RWM,	"RX",		"TX"),
+	PXA_BIT(ISR_ACKNAK,	"NAK",		"ACK"),
+	PXA_BIT(ISR_UB,		"Bsy",		"Rdy"),
+	PXA_BIT(ISR_IBB,	"BusBsy",	"BusRdy"),
+	PXA_BIT(ISR_SSD,	"SlaveStop",	NULL),
+	PXA_BIT(ISR_ALD,	"ALD",		NULL),
+	PXA_BIT(ISR_ITE,	"TxEmpty",	NULL),
+	PXA_BIT(ISR_IRF,	"RxFull",	NULL),
+	PXA_BIT(ISR_GCAD,	"GenCall",	NULL),
+	PXA_BIT(ISR_SAD,	"SlaveAddr",	NULL),
+	PXA_BIT(ISR_BED,	"BusErr",	NULL),
 };
 
 static void decode_ISR(unsigned int val)
@@ -117,21 +120,21 @@ static void decode_ISR(unsigned int val)
 }
 
 static const struct bits icr_bits[] = {
-	BIT(ICR_START,  "START",	NULL),
-	BIT(ICR_STOP,   "STOP",		NULL),
-	BIT(ICR_ACKNAK, "ACKNAK",	NULL),
-	BIT(ICR_TB,     "TB",		NULL),
-	BIT(ICR_MA,     "MA",		NULL),
-	BIT(ICR_SCLE,   "SCLE",		"scle"),
-	BIT(ICR_IUE,    "IUE",		"iue"),
-	BIT(ICR_GCD,    "GCD",		NULL),
-	BIT(ICR_ITEIE,  "ITEIE",	NULL),
-	BIT(ICR_IRFIE,  "IRFIE",	NULL),
-	BIT(ICR_BEIE,   "BEIE",		NULL),
-	BIT(ICR_SSDIE,  "SSDIE",	NULL),
-	BIT(ICR_ALDIE,  "ALDIE",	NULL),
-	BIT(ICR_SADIE,  "SADIE",	NULL),
-	BIT(ICR_UR,     "UR",		"ur"),
+	PXA_BIT(ICR_START,  "START",	NULL),
+	PXA_BIT(ICR_STOP,   "STOP",	NULL),
+	PXA_BIT(ICR_ACKNAK, "ACKNAK",	NULL),
+	PXA_BIT(ICR_TB,     "TB",	NULL),
+	PXA_BIT(ICR_MA,     "MA",	NULL),
+	PXA_BIT(ICR_SCLE,   "SCLE",	"scle"),
+	PXA_BIT(ICR_IUE,    "IUE",	"iue"),
+	PXA_BIT(ICR_GCD,    "GCD",	NULL),
+	PXA_BIT(ICR_ITEIE,  "ITEIE",	NULL),
+	PXA_BIT(ICR_IRFIE,  "IRFIE",	NULL),
+	PXA_BIT(ICR_BEIE,   "BEIE",	NULL),
+	PXA_BIT(ICR_SSDIE,  "SSDIE",	NULL),
+	PXA_BIT(ICR_ALDIE,  "ALDIE",	NULL),
+	PXA_BIT(ICR_SADIE,  "SADIE",	NULL),
+	PXA_BIT(ICR_UR,     "UR",		"ur"),
 };
 
 static void decode_ICR(unsigned int val)
@@ -869,6 +872,12 @@ static int i2c_pxa_probe(struct platform_device *dev)
 
 	sprintf(i2c->adap.name, "pxa_i2c-i2c.%u", dev->id);
 
+	i2c->clk = clk_get(&dev->dev, "I2CCLK");
+	if (IS_ERR(i2c->clk)) {
+		ret = PTR_ERR(i2c->clk);
+		goto eclk;
+	}
+
 	i2c->reg_base = ioremap(res->start, res_len(res));
 	if (!i2c->reg_base) {
 		ret = -EIO;
@@ -889,22 +898,19 @@ static int i2c_pxa_probe(struct platform_device *dev)
 	}
 #endif
 
+	clk_enable(i2c->clk);
+#ifdef CONFIG_PXA27x
 	switch (dev->id) {
 	case 0:
-#ifdef CONFIG_PXA27x
 		pxa_gpio_mode(GPIO117_I2CSCL_MD);
 		pxa_gpio_mode(GPIO118_I2CSDA_MD);
-#endif
-		pxa_set_cken(CKEN_I2C, 1);
 		break;
-#ifdef CONFIG_PXA27x
 	case 1:
 		local_irq_disable();
 		PCFR |= PCFR_PI2CEN;
 		local_irq_enable();
-		pxa_set_cken(CKEN_PWRI2C, 1);
-#endif
 	}
+#endif
 
 	ret = request_irq(irq, i2c_pxa_handler, IRQF_DISABLED,
 			  i2c->adap.name, i2c);
@@ -948,19 +954,18 @@ static int i2c_pxa_probe(struct platform_device *dev)
 eadapt:
 	free_irq(irq, i2c);
 ereqirq:
-	switch (dev->id) {
-	case 0:
-		pxa_set_cken(CKEN_I2C, 0);
-		break;
+	clk_disable(i2c->clk);
+
 #ifdef CONFIG_PXA27x
-	case 1:
-		pxa_set_cken(CKEN_PWRI2C, 0);
+	if (dev->id == 1) {
 		local_irq_disable();
 		PCFR &= ~PCFR_PI2CEN;
 		local_irq_enable();
-#endif
 	}
+#endif
 eremap:
+	clk_put(i2c->clk);
+eclk:
 	kfree(i2c);
 emalloc:
 	release_mem_region(res->start, res_len(res));
@@ -975,18 +980,18 @@ static int i2c_pxa_remove(struct platform_device *dev)
 
 	i2c_del_adapter(&i2c->adap);
 	free_irq(i2c->irq, i2c);
-	switch (dev->id) {
-	case 0:
-		pxa_set_cken(CKEN_I2C, 0);
-		break;
+
+	clk_disable(i2c->clk);
+	clk_put(i2c->clk);
+
 #ifdef CONFIG_PXA27x
-	case 1:
-		pxa_set_cken(CKEN_PWRI2C, 0);
+	if (dev->id == 1) {
 		local_irq_disable();
 		PCFR &= ~PCFR_PI2CEN;
 		local_irq_enable();
-#endif
 	}
+#endif
+
 	release_mem_region(i2c->iobase, i2c->iosize);
 	kfree(i2c);
 

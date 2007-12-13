@@ -19,11 +19,10 @@
 #include <linux/mod_devicetable.h>
 #include <linux/slab.h>
 #include <linux/pci.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 
 #include <asm/errno.h>
-#include <asm/dcr.h>
-#include <asm/of_device.h>
-#include <asm/of_platform.h>
 #include <asm/topology.h>
 #include <asm/pci-bridge.h>
 #include <asm/ppc-pci.h>
@@ -53,8 +52,6 @@ static struct of_device_id of_default_bus_ids[] = {
 	{},
 };
 
-static atomic_t bus_no_reg_magic;
-
 struct bus_type of_platform_bus_type = {
        .uevent	= of_device_uevent,
 };
@@ -70,7 +67,10 @@ postcore_initcall(of_bus_driver_init);
 int of_register_platform_driver(struct of_platform_driver *drv)
 {
 	/* initialize common driver fields */
-	drv->driver.name = drv->name;
+	if (!drv->driver.name)
+		drv->driver.name = drv->name;
+	if (!drv->driver.owner)
+		drv->driver.owner = drv->owner;
 	drv->driver.bus = &of_platform_bus_type;
 
 	/* register with core */
@@ -84,89 +84,26 @@ void of_unregister_platform_driver(struct of_platform_driver *drv)
 }
 EXPORT_SYMBOL(of_unregister_platform_driver);
 
-static void of_platform_make_bus_id(struct of_device *dev)
-{
-	struct device_node *node = dev->node;
-	char *name = dev->dev.bus_id;
-	const u32 *reg;
-	u64 addr;
-	int magic;
-
-	/*
-	 * If it's a DCR based device, use 'd' for native DCRs
-	 * and 'D' for MMIO DCRs.
-	 */
-#ifdef CONFIG_PPC_DCR
-	reg = of_get_property(node, "dcr-reg", NULL);
-	if (reg) {
-#ifdef CONFIG_PPC_DCR_NATIVE
-		snprintf(name, BUS_ID_SIZE, "d%x.%s",
-			 *reg, node->name);
-#else /* CONFIG_PPC_DCR_NATIVE */
-		addr = of_translate_dcr_address(node, *reg, NULL);
-		if (addr != OF_BAD_ADDR) {
-			snprintf(name, BUS_ID_SIZE,
-				 "D%llx.%s", (unsigned long long)addr,
-				 node->name);
-			return;
-		}
-#endif /* !CONFIG_PPC_DCR_NATIVE */
-	}
-#endif /* CONFIG_PPC_DCR */
-
-	/*
-	 * For MMIO, get the physical address
-	 */
-	reg = of_get_property(node, "reg", NULL);
-	if (reg) {
-		addr = of_translate_address(node, reg);
-		if (addr != OF_BAD_ADDR) {
-			snprintf(name, BUS_ID_SIZE,
-				 "%llx.%s", (unsigned long long)addr,
-				 node->name);
-			return;
-		}
-	}
-
-	/*
-	 * No BusID, use the node name and add a globally incremented
-	 * counter (and pray...)
-	 */
-	magic = atomic_add_return(1, &bus_no_reg_magic);
-	snprintf(name, BUS_ID_SIZE, "%s.%d", node->name, magic - 1);
-}
-
 struct of_device* of_platform_device_create(struct device_node *np,
 					    const char *bus_id,
 					    struct device *parent)
 {
 	struct of_device *dev;
 
-	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	dev = of_device_alloc(np, bus_id, parent);
 	if (!dev)
 		return NULL;
 
-	dev->node = of_node_get(np);
 	dev->dma_mask = 0xffffffffUL;
-	dev->dev.dma_mask = &dev->dma_mask;
-	dev->dev.parent = parent;
 	dev->dev.bus = &of_platform_bus_type;
-	dev->dev.release = of_release_dev;
-	dev->dev.archdata.of_node = np;
-	dev->dev.archdata.numa_node = of_node_to_nid(np);
 
 	/* We do not fill the DMA ops for platform devices by default.
 	 * This is currently the responsibility of the platform code
 	 * to do such, possibly using a device notifier
 	 */
 
-	if (bus_id)
-		strlcpy(dev->dev.bus_id, bus_id, BUS_ID_SIZE);
-	else
-		of_platform_make_bus_id(dev);
-
 	if (of_device_register(dev) != 0) {
-		kfree(dev);
+		of_device_free(dev);
 		return NULL;
 	}
 
@@ -385,9 +322,11 @@ static struct of_device_id of_pci_phb_ids[] = {
 };
 
 static struct of_platform_driver of_pci_phb_driver = {
-       .name = "of-pci",
-       .match_table = of_pci_phb_ids,
-       .probe = of_pci_phb_probe,
+	.match_table = of_pci_phb_ids,
+	.probe = of_pci_phb_probe,
+	.driver = {
+		.name = "of-pci",
+	},
 };
 
 static __init int of_pci_phb_init(void)

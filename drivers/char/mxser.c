@@ -56,11 +56,11 @@
 #include <linux/mm.h>
 #include <linux/delay.h>
 #include <linux/pci.h>
+#include <linux/bitops.h>
 
 #include <asm/system.h>
 #include <asm/io.h>
 #include <asm/irq.h>
-#include <asm/bitops.h>
 #include <asm/uaccess.h>
 
 #include "mxser.h"
@@ -383,7 +383,6 @@ static int mxser_init(void);
 
 /* static void   mxser_poll(unsigned long); */
 static int mxser_get_ISA_conf(int, struct mxser_hwconf *);
-static int mxser_get_PCI_conf(int, int, int, struct mxser_hwconf *);
 static void mxser_do_softint(struct work_struct *);
 static int mxser_open(struct tty_struct *, struct file *);
 static void mxser_close(struct tty_struct *, struct file *);
@@ -422,7 +421,7 @@ static void mxser_wait_until_sent(struct tty_struct *tty, int timeout);
 static void mxser_startrx(struct tty_struct *tty);
 static void mxser_stoprx(struct tty_struct *tty);
 
-
+#ifdef CONFIG_PCI
 static int CheckIsMoxaMust(int io)
 {
 	u8 oldmcr, hwid;
@@ -445,6 +444,7 @@ static int CheckIsMoxaMust(int io)
 	}
 	return MOXA_OTHER_UART;
 }
+#endif
 
 /* above is modified by Victor Yu. 08-15-2002 */
 
@@ -1938,14 +1938,6 @@ static irqreturn_t mxser_interrupt(int irq, void *dev_id)
 				inb(info->base + UART_MSR);
 				continue;
 			}
-			/* above add by Victor Yu. 09-13-2002 */
-			/*
-			   if (info->tty->flip.count < TTY_FLIPBUF_SIZE / 4) {
-			   info->IER |= MOXA_MUST_RECV_ISR;
-			   outb(info->IER, info->base + UART_IER);
-			   }
-			 */
-
 
 			/* mask by Victor Yu. 09-13-2002
 			   if ( !info->tty ||
@@ -2599,19 +2591,8 @@ static int mxser_change_speed(struct mxser_struct *info, struct ktermios *old_te
 		info->IER |= UART_IER_MSI;
 		if ((info->type == PORT_16550A) || (info->IsMoxaMustChipFlag)) {
 			info->MCR |= UART_MCR_AFE;
-			/* status = mxser_get_msr(info->base, 0, info->port); */
-/*
-	save_flags(flags);
-	cli();
-	status = inb(baseaddr + UART_MSR);
-	restore_flags(flags);
-*/
-			/* mxser_check_modem_status(info, status); */
 		} else {
-			/* status = mxser_get_msr(info->base, 0, info->port); */
-			/* MX_LOCK(&info->slock); */
 			status = inb(info->base + UART_MSR);
-			/* MX_UNLOCK(&info->slock); */
 			if (info->tty->hw_stopped) {
 				if (status & UART_MSR_CTS) {
 					info->tty->hw_stopped = 0;

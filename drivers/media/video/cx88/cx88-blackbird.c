@@ -27,7 +27,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/delay.h>
@@ -528,44 +527,6 @@ static void blackbird_codec_settings(struct cx8802_dev *dev)
 	cx2341x_update(dev, blackbird_mbox_func, NULL, &dev->params);
 }
 
-static struct v4l2_mpeg_compression default_mpeg_params = {
-	.st_type          = V4L2_MPEG_PS_2,
-	.st_bitrate       = {
-		.mode     = V4L2_BITRATE_CBR,
-		.min      = 0,
-		.target   = 0,
-		.max      = 0
-	},
-	.ts_pid_pmt       = 16,
-	.ts_pid_audio     = 260,
-	.ts_pid_video     = 256,
-	.ts_pid_pcr       = 259,
-	.ps_size          = 0,
-	.au_type          = V4L2_MPEG_AU_2_II,
-	.au_bitrate       = {
-		.mode     = V4L2_BITRATE_CBR,
-		.min      = 224,
-		.target   = 224,
-		.max      = 224
-	},
-	.au_sample_rate    = 48000,
-	.au_pesid          = 0,
-	.vi_type           = V4L2_MPEG_VI_2,
-	.vi_aspect_ratio   = V4L2_MPEG_ASPECT_4_3,
-	.vi_bitrate        = {
-		.mode      = V4L2_BITRATE_CBR,
-		.min       = 4000,
-		.target    = 4500,
-		.max       = 6000
-	},
-	.vi_frame_rate     = 25,
-	.vi_frames_per_gop = 12,
-	.vi_bframes_count  = 2,
-	.vi_pesid          = 0,
-	.closed_gops       = 1,
-	.pulldown          = 0
-};
-
 static int blackbird_initialize_codec(struct cx8802_dev *dev)
 {
 	struct cx88_core *core = dev->core;
@@ -734,14 +695,14 @@ static int vidioc_querycap (struct file *file, void  *priv,
 	struct cx88_core  *core = dev->core;
 
 	strcpy(cap->driver, "cx88_blackbird");
-	strlcpy(cap->card, cx88_boards[core->board].name,sizeof(cap->card));
+	strlcpy(cap->card, core->board.name, sizeof(cap->card));
 	sprintf(cap->bus_info,"PCI:%s",pci_name(dev->pci));
 	cap->version = CX88_VERSION_CODE;
 	cap->capabilities =
 		V4L2_CAP_VIDEO_CAPTURE |
 		V4L2_CAP_READWRITE     |
 		V4L2_CAP_STREAMING;
-	if (UNSET != core->tuner_type)
+	if (UNSET != core->board.tuner_type)
 		cap->capabilities |= V4L2_CAP_TUNER;
 	return 0;
 }
@@ -853,23 +814,6 @@ static int vidioc_streamoff(struct file *file, void *priv, enum v4l2_buf_type i)
 	return videobuf_streamoff(&fh->mpegq);
 }
 
-static int vidioc_g_mpegcomp (struct file *file, void *fh,
-			      struct v4l2_mpeg_compression *f)
-{
-	printk(KERN_WARNING "VIDIOC_G_MPEGCOMP is obsolete. "
-				"Replace with VIDIOC_G_EXT_CTRLS!");
-	memcpy(f,&default_mpeg_params,sizeof(*f));
-	return 0;
-}
-
-static int vidioc_s_mpegcomp (struct file *file, void *fh,
-			      struct v4l2_mpeg_compression *f)
-{
-	printk(KERN_WARNING "VIDIOC_S_MPEGCOMP is obsolete. "
-				"Replace with VIDIOC_S_EXT_CTRLS!");
-	return 0;
-}
-
 static int vidioc_g_ext_ctrls (struct file *file, void *priv,
 			       struct v4l2_ext_controls *f)
 {
@@ -877,7 +821,7 @@ static int vidioc_g_ext_ctrls (struct file *file, void *priv,
 
 	if (f->ctrl_class != V4L2_CTRL_CLASS_MPEG)
 		return -EINVAL;
-	return cx2341x_ext_ctrls(&dev->params, f, VIDIOC_G_EXT_CTRLS);
+	return cx2341x_ext_ctrls(&dev->params, 0, f, VIDIOC_G_EXT_CTRLS);
 }
 
 static int vidioc_s_ext_ctrls (struct file *file, void *priv,
@@ -890,7 +834,7 @@ static int vidioc_s_ext_ctrls (struct file *file, void *priv,
 	if (f->ctrl_class != V4L2_CTRL_CLASS_MPEG)
 		return -EINVAL;
 	p = dev->params;
-	err = cx2341x_ext_ctrls(&p, f, VIDIOC_S_EXT_CTRLS);
+	err = cx2341x_ext_ctrls(&p, 0, f, VIDIOC_S_EXT_CTRLS);
 	if (!err) {
 		err = cx2341x_update(dev, blackbird_mbox_func, &dev->params, &p);
 		dev->params = p;
@@ -908,7 +852,7 @@ static int vidioc_try_ext_ctrls (struct file *file, void *priv,
 	if (f->ctrl_class != V4L2_CTRL_CLASS_MPEG)
 		return -EINVAL;
 	p = dev->params;
-	err = cx2341x_ext_ctrls(&p, f, VIDIOC_TRY_EXT_CTRLS);
+	err = cx2341x_ext_ctrls(&p, 0, f, VIDIOC_TRY_EXT_CTRLS);
 
 	return err;
 }
@@ -990,7 +934,7 @@ static int vidioc_g_frequency (struct file *file, void *priv,
 	struct cx8802_fh  *fh   = priv;
 	struct cx88_core  *core = fh->dev->core;
 
-	if (unlikely(UNSET == core->tuner_type))
+	if (unlikely(UNSET == core->board.tuner_type))
 		return -EINVAL;
 
 	f->type = V4L2_TUNER_ANALOG_TV;
@@ -1028,7 +972,7 @@ static int vidioc_g_tuner (struct file *file, void *priv,
 	struct cx88_core  *core = ((struct cx8802_fh *)priv)->dev->core;
 	u32 reg;
 
-	if (unlikely(UNSET == core->tuner_type))
+	if (unlikely(UNSET == core->board.tuner_type))
 		return -EINVAL;
 	if (0 != t->index)
 		return -EINVAL;
@@ -1049,7 +993,7 @@ static int vidioc_s_tuner (struct file *file, void *priv,
 {
 	struct cx88_core  *core = ((struct cx8802_fh *)priv)->dev->core;
 
-	if (UNSET == core->tuner_type)
+	if (UNSET == core->board.tuner_type)
 		return -EINVAL;
 	if (0 != t->index)
 		return -EINVAL;
@@ -1078,7 +1022,7 @@ static int mpeg_open(struct inode *inode, struct file *file)
 	struct cx8802_driver *drv = NULL;
 	int err;
 
-       dev = cx8802_get_device(inode);
+	dev = cx8802_get_device(inode);
 
 	dprintk( 1, "%s\n", __FUNCTION__);
 
@@ -1112,7 +1056,7 @@ static int mpeg_open(struct inode *inode, struct file *file)
 	file->private_data = fh;
 	fh->dev      = dev;
 
-	videobuf_queue_init(&fh->mpegq, &blackbird_qops,
+	videobuf_queue_pci_init(&fh->mpegq, &blackbird_qops,
 			    dev->pci, &dev->slock,
 			    V4L2_BUF_TYPE_VIDEO_CAPTURE,
 			    V4L2_FIELD_INTERLACED,
@@ -1217,8 +1161,6 @@ static struct video_device cx8802_mpeg_template =
 	.vidioc_dqbuf         = vidioc_dqbuf,
 	.vidioc_streamon      = vidioc_streamon,
 	.vidioc_streamoff     = vidioc_streamoff,
-	.vidioc_g_mpegcomp    = vidioc_g_mpegcomp,
-	.vidioc_s_mpegcomp    = vidioc_s_mpegcomp,
 	.vidioc_g_ext_ctrls   = vidioc_g_ext_ctrls,
 	.vidioc_s_ext_ctrls   = vidioc_s_ext_ctrls,
 	.vidioc_try_ext_ctrls = vidioc_try_ext_ctrls,
@@ -1235,7 +1177,7 @@ static struct video_device cx8802_mpeg_template =
 	.vidioc_s_tuner       = vidioc_s_tuner,
 	.vidioc_s_std         = vidioc_s_std,
 	.tvnorms              = CX88_NORMS,
-       .current_norm         = V4L2_STD_NTSC_M,
+	.current_norm         = V4L2_STD_NTSC_M,
 };
 
 /* ------------------------------------------------------------------ */
@@ -1246,7 +1188,7 @@ static int cx8802_blackbird_advise_acquire(struct cx8802_driver *drv)
 	struct cx88_core *core = drv->core;
 	int err = 0;
 
-	switch (core->board) {
+	switch (core->boardnr) {
 	case CX88_BOARD_HAUPPAUGE_HVR1300:
 		/* By default, core setup will leave the cx22702 out of reset, on the bus.
 		 * We left the hardware on power up with the cx22702 active.
@@ -1268,7 +1210,7 @@ static int cx8802_blackbird_advise_release(struct cx8802_driver *drv)
 	struct cx88_core *core = drv->core;
 	int err = 0;
 
-	switch (core->board) {
+	switch (core->boardnr) {
 	case CX88_BOARD_HAUPPAUGE_HVR1300:
 		/* Exit leaving the cx23416 on the bus */
 		break;
@@ -1316,13 +1258,13 @@ static int cx8802_blackbird_probe(struct cx8802_driver *drv)
 
 	dprintk( 1, "%s\n", __FUNCTION__);
 	dprintk( 1, " ->being probed by Card=%d Name=%s, PCI %02x:%02x\n",
-		core->board,
+		core->boardnr,
 		core->name,
 		core->pci_bus,
 		core->pci_slot);
 
 	err = -ENODEV;
-	if (!(cx88_boards[core->board].mpeg & CX88_MPEG_BLACKBIRD))
+	if (!(core->board.mpeg & CX88_MPEG_BLACKBIRD))
 		goto fail_core;
 
 	dev->width = 720;

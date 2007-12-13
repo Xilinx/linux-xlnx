@@ -188,16 +188,16 @@ do_page_fault(unsigned long address, unsigned long mmcsr,
 	/* We ran out of memory, or some other thing happened to us that
 	   made us unable to handle the page fault gracefully.  */
  out_of_memory:
-	if (is_init(current)) {
+	if (is_global_init(current)) {
 		yield();
 		down_read(&mm->mmap_sem);
 		goto survive;
 	}
 	printk(KERN_ALERT "VM: killing process %s(%d)\n",
-	       current->comm, current->pid);
+	       current->comm, task_pid_nr(current));
 	if (!user_mode(regs))
 		goto no_context;
-	do_exit(SIGKILL);
+	do_group_exit(SIGKILL);
 
  do_sigbus:
 	/* Send a sigbus, regardless of whether we were in kernel

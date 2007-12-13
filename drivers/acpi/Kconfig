@@ -3,7 +3,7 @@
 #
 
 menuconfig ACPI
-	bool "ACPI Support (Advanced Configuration and Power Interface) Support"
+	bool "ACPI (Advanced Configuration and Power Interface) Support"
 	depends on !X86_NUMAQ
 	depends on !X86_VISWS
 	depends on !IA64_HP_SIM
@@ -52,7 +52,7 @@ config ACPI_PROCFS
 	depends on PROC_FS
 	---help---
 	  For backwards compatibility, this option allows
-	  depricated /proc/acpi/ files to exist, even when
+	  deprecated /proc/acpi/ files to exist, even when
 	  they have been replaced by functions in /sys.
 	  The deprecated files (and their replacements) include:
 
@@ -67,7 +67,21 @@ config ACPI_PROCFS
 	  and functions which do not yet exist in /sys.
 
 	  Say N to delete /proc/acpi/ files that have moved to /sys/
+config ACPI_PROCFS_POWER
+	bool "Deprecated power /proc/acpi folders"
+	depends on PROC_FS
+	default y
+	---help---
+	  For backwards compatibility, this option allows
+          deprecated power /proc/acpi/ folders to exist, even when
+          they have been replaced by functions in /sys.
+          The deprecated folders (and their replacements) include:
+	  /proc/acpi/battery/* (/sys/class/power_supply/*)
+	  /proc/acpi/ac_adapter/* (sys/class/power_supply/*)
+	  This option has no effect on /proc/acpi/ folders
+	  and functions, which do not yet exist in /sys
 
+	  Say N to delete power /proc/acpi/ folders that have moved to /sys/
 config ACPI_PROC_EVENT
 	bool "Deprecated /proc/acpi/event support"
 	depends on PROC_FS
@@ -89,6 +103,7 @@ config ACPI_PROC_EVENT
 config ACPI_AC
 	tristate "AC Adapter"
 	depends on X86
+	select POWER_SUPPLY
 	default y
 	help
 	  This driver adds support for the AC Adapter object, which indicates
@@ -98,6 +113,7 @@ config ACPI_AC
 config ACPI_BATTERY
 	tristate "Battery"
 	depends on X86
+	select POWER_SUPPLY
 	default y
 	help
 	  This driver adds support for battery information through
@@ -117,6 +133,7 @@ config ACPI_BUTTON
 config ACPI_VIDEO
 	tristate "Video"
 	depends on X86 && BACKLIGHT_CLASS_DEVICE && VIDEO_OUTPUT_CONTROL
+	depends on INPUT
 	help
 	  This driver implement the ACPI Extensions For Display Adapters
 	  for integrated graphics devices on motherboard, as specified in
@@ -349,12 +366,11 @@ config ACPI_HOTPLUG_MEMORY
 		$>modprobe acpi_memhotplug 
 
 config ACPI_SBS
-	tristate "Smart Battery System (EXPERIMENTAL)"
+	tristate "Smart Battery System"
 	depends on X86
-	depends on EXPERIMENTAL
+	select POWER_SUPPLY
 	help
-	  This driver adds support for the Smart Battery System.
-	  A "Smart Battery" is quite old and quite rare compared
-	  to today's ACPI "Control Method" battery.
+	  This driver adds support for the Smart Battery System, another
+	  type of access to battery information, found on some laptops.
 
 endif	# ACPI

@@ -98,7 +98,8 @@ extern int early_find_capability(struct pci_controller *hose, int bus,
 				 int dev_fn, int cap);
 
 extern void setup_indirect_pci(struct pci_controller* hose,
-			       u32 cfg_addr, u32 cfg_data, u32 flags);
+			       resource_size_t cfg_addr,
+			       resource_size_t cfg_data, u32 flags);
 extern void setup_grackle(struct pci_controller *hose);
 extern void __init update_bridge_resource(struct pci_dev *dev,
 					  struct resource *res);
@@ -245,7 +246,6 @@ static inline struct pci_controller *pci_bus_to_host(struct pci_bus *bus)
 	return PCI_DN(busdn)->phb;
 }
 
-extern void pcibios_free_controller(struct pci_controller *phb);
 
 extern void isa_bridge_find_early(struct pci_controller *hose);
 
@@ -281,9 +281,11 @@ extern void
 pci_process_bridge_OF_ranges(struct pci_controller *hose,
 			   struct device_node *dev, int primary);
 
-/* Allocate a new PCI host bridge structure */
+/* Allocate & free a PCI host bridge structure */
 extern struct pci_controller *
 pcibios_alloc_controller(struct device_node *dev);
+extern void pcibios_free_controller(struct pci_controller *phb);
+
 #ifdef CONFIG_PCI
 extern unsigned long pci_address_to_pio(phys_addr_t address);
 extern int pcibios_vaddr_is_ioport(void __iomem *address);

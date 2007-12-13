@@ -35,6 +35,7 @@
 #include <linux/kthread.h>
 #include <linux/poison.h>
 #include <linux/proc_fs.h>
+#include <linux/debugfs.h>
 
 #include <asm/uaccess.h>
 #include <asm/page.h>
@@ -83,7 +84,6 @@ EXPORT_SYMBOL(journal_force_commit);
 
 static int journal_convert_superblock_v1(journal_t *, journal_superblock_t *);
 static void __journal_abort_soft (journal_t *journal, int errno);
-static int journal_create_jbd_slab(size_t slab_size);
 
 /*
  * Helper function used to manage commit timeouts
@@ -218,7 +218,7 @@ static int journal_start_thread(journal_t *journal)
 	if (IS_ERR(t))
 		return PTR_ERR(t);
 
-	wait_event(journal->j_wait_done_commit, journal->j_task != 0);
+	wait_event(journal->j_wait_done_commit, journal->j_task != NULL);
 	return 0;
 }
 
@@ -230,7 +230,8 @@ static void journal_kill_thread(journal_t *journal)
 	while (journal->j_task) {
 		wake_up(&journal->j_wait_commit);
 		spin_unlock(&journal->j_state_lock);
-		wait_event(journal->j_wait_done_commit, journal->j_task == 0);
+		wait_event(journal->j_wait_done_commit,
+				journal->j_task == NULL);
 		spin_lock(&journal->j_state_lock);
 	}
 	spin_unlock(&journal->j_state_lock);
@@ -334,10 +335,10 @@ repeat:
 		char *tmp;
 
 		jbd_unlock_bh_state(bh_in);
-		tmp = jbd_slab_alloc(bh_in->b_size, GFP_NOFS);
+		tmp = jbd_alloc(bh_in->b_size, GFP_NOFS);
 		jbd_lock_bh_state(bh_in);
 		if (jh_in->b_frozen_data) {
-			jbd_slab_free(tmp, bh_in->b_size);
+			jbd_free(tmp, bh_in->b_size);
 			goto repeat;
 		}
 
@@ -654,10 +655,9 @@ static journal_t * journal_init_common (void)
 	journal_t *journal;
 	int err;
 
-	journal = jbd_kmalloc(sizeof(*journal), GFP_KERNEL);
+	journal = kzalloc(sizeof(*journal), GFP_KERNEL);
 	if (!journal)
 		goto fail;
-	memset(journal, 0, sizeof(*journal));
 
 	init_waitqueue_head(&journal->j_wait_transaction_locked);
 	init_waitqueue_head(&journal->j_wait_logspace);
@@ -1094,13 +1094,6 @@ int journal_load(journal_t *journal)
 			return -EINVAL;
 		}
 	}
-
-	/*
-	 * Create a slab for this blocksize
-	 */
-	err = journal_create_jbd_slab(be32_to_cpu(sb->s_blocksize));
-	if (err)
-		return err;
 
 	/* Let the recovery code check whether it needs to recover any
 	 * data from the journal. */
@@ -1615,86 +1608,6 @@ int journal_blocks_per_page(struct inode *inode)
 }
 
 /*
- * Simple support for retrying memory allocations.  Introduced to help to
- * debug different VM deadlock avoidance strategies.
- */
-void * __jbd_kmalloc (const char *where, size_t size, gfp_t flags, int retry)
-{
-	return kmalloc(size, flags | (retry ? __GFP_NOFAIL : 0));
-}
-
-/*
- * jbd slab management: create 1k, 2k, 4k, 8k slabs as needed
- * and allocate frozen and commit buffers from these slabs.
- *
- * Reason for doing this is to avoid, SLAB_DEBUG - since it could
- * cause bh to cross page boundary.
- */
-
-#define JBD_MAX_SLABS 5
-#define JBD_SLAB_INDEX(size)  (size >> 11)
-
-static struct kmem_cache *jbd_slab[JBD_MAX_SLABS];
-static const char *jbd_slab_names[JBD_MAX_SLABS] = {
-	"jbd_1k", "jbd_2k", "jbd_4k", NULL, "jbd_8k"
-};
-
-static void journal_destroy_jbd_slabs(void)
-{
-	int i;
-
-	for (i = 0; i < JBD_MAX_SLABS; i++) {
-		if (jbd_slab[i])
-			kmem_cache_destroy(jbd_slab[i]);
-		jbd_slab[i] = NULL;
-	}
-}
-
-static int journal_create_jbd_slab(size_t slab_size)
-{
-	int i = JBD_SLAB_INDEX(slab_size);
-
-	BUG_ON(i >= JBD_MAX_SLABS);
-
-	/*
-	 * Check if we already have a slab created for this size
-	 */
-	if (jbd_slab[i])
-		return 0;
-
-	/*
-	 * Create a slab and force alignment to be same as slabsize -
-	 * this will make sure that allocations won't cross the page
-	 * boundary.
-	 */
-	jbd_slab[i] = kmem_cache_create(jbd_slab_names[i],
-				slab_size, slab_size, 0, NULL);
-	if (!jbd_slab[i]) {
-		printk(KERN_EMERG "JBD: no memory for jbd_slab cache\n");
-		return -ENOMEM;
-	}
-	return 0;
-}
-
-void * jbd_slab_alloc(size_t size, gfp_t flags)
-{
-	int idx;
-
-	idx = JBD_SLAB_INDEX(size);
-	BUG_ON(jbd_slab[idx] == NULL);
-	return kmem_cache_alloc(jbd_slab[idx], flags | __GFP_NOFAIL);
-}
-
-void jbd_slab_free(void *ptr,  size_t size)
-{
-	int idx;
-
-	idx = JBD_SLAB_INDEX(size);
-	BUG_ON(jbd_slab[idx] == NULL);
-	kmem_cache_free(jbd_slab[idx], ptr);
-}
-
-/*
  * Journal_head storage management
  */
 static struct kmem_cache *journal_head_cache;
@@ -1710,7 +1623,7 @@ static int journal_init_journal_head_cache(void)
 	journal_head_cache = kmem_cache_create("journal_head",
 				sizeof(struct journal_head),
 				0,		/* offset */
-				0,		/* flags */
+				SLAB_TEMPORARY,	/* flags */
 				NULL);		/* ctor */
 	retval = 0;
 	if (journal_head_cache == 0) {
@@ -1739,14 +1652,14 @@ static struct journal_head *journal_alloc_journal_head(void)
 	atomic_inc(&nr_journal_heads);
 #endif
 	ret = kmem_cache_alloc(journal_head_cache, GFP_NOFS);
-	if (ret == 0) {
+	if (ret == NULL) {
 		jbd_debug(1, "out of memory for journal_head\n");
 		if (time_after(jiffies, last_warning + 5*HZ)) {
 			printk(KERN_NOTICE "ENOMEM in %s, retrying.\n",
 			       __FUNCTION__);
 			last_warning = jiffies;
 		}
-		while (ret == 0) {
+		while (ret == NULL) {
 			yield();
 			ret = kmem_cache_alloc(journal_head_cache, GFP_NOFS);
 		}
@@ -1881,13 +1794,13 @@ static void __journal_remove_journal_head(struct buffer_head *bh)
 				printk(KERN_WARNING "%s: freeing "
 						"b_frozen_data\n",
 						__FUNCTION__);
-				jbd_slab_free(jh->b_frozen_data, bh->b_size);
+				jbd_free(jh->b_frozen_data, bh->b_size);
 			}
 			if (jh->b_committed_data) {
 				printk(KERN_WARNING "%s: freeing "
 						"b_committed_data\n",
 						__FUNCTION__);
-				jbd_slab_free(jh->b_committed_data, bh->b_size);
+				jbd_free(jh->b_committed_data, bh->b_size);
 			}
 			bh->b_private = NULL;
 			jh->b_bh = NULL;	/* debug, really */
@@ -1939,63 +1852,40 @@ void journal_put_journal_head(struct journal_head *jh)
 }
 
 /*
- * /proc tunables
+ * debugfs tunables
  */
-#if defined(CONFIG_JBD_DEBUG)
-int journal_enable_debug;
+#ifdef CONFIG_JBD_DEBUG
+
+u8 journal_enable_debug __read_mostly;
 EXPORT_SYMBOL(journal_enable_debug);
-#endif
 
-#if defined(CONFIG_JBD_DEBUG) && defined(CONFIG_PROC_FS)
+static struct dentry *jbd_debugfs_dir;
+static struct dentry *jbd_debug;
 
-static struct proc_dir_entry *proc_jbd_debug;
-
-static int read_jbd_debug(char *page, char **start, off_t off,
-			  int count, int *eof, void *data)
+static void __init jbd_create_debugfs_entry(void)
 {
-	int ret;
-
-	ret = sprintf(page + off, "%d\n", journal_enable_debug);
-	*eof = 1;
-	return ret;
+	jbd_debugfs_dir = debugfs_create_dir("jbd", NULL);
+	if (jbd_debugfs_dir)
+		jbd_debug = debugfs_create_u8("jbd-debug", S_IRUGO,
+					       jbd_debugfs_dir,
+					       &journal_enable_debug);
 }
 
-static int write_jbd_debug(struct file *file, const char __user *buffer,
-			   unsigned long count, void *data)
+static void __exit jbd_remove_debugfs_entry(void)
 {
-	char buf[32];
-
-	if (count > ARRAY_SIZE(buf) - 1)
-		count = ARRAY_SIZE(buf) - 1;
-	if (copy_from_user(buf, buffer, count))
-		return -EFAULT;
-	buf[ARRAY_SIZE(buf) - 1] = '\0';
-	journal_enable_debug = simple_strtoul(buf, NULL, 10);
-	return count;
-}
-
-#define JBD_PROC_NAME "sys/fs/jbd-debug"
-
-static void __init create_jbd_proc_entry(void)
-{
-	proc_jbd_debug = create_proc_entry(JBD_PROC_NAME, 0644, NULL);
-	if (proc_jbd_debug) {
-		/* Why is this so hard? */
-		proc_jbd_debug->read_proc = read_jbd_debug;
-		proc_jbd_debug->write_proc = write_jbd_debug;
-	}
-}
-
-static void __exit remove_jbd_proc_entry(void)
-{
-	if (proc_jbd_debug)
-		remove_proc_entry(JBD_PROC_NAME, NULL);
+	debugfs_remove(jbd_debug);
+	debugfs_remove(jbd_debugfs_dir);
 }
 
 #else
 
-#define create_jbd_proc_entry() do {} while (0)
-#define remove_jbd_proc_entry() do {} while (0)
+static inline void jbd_create_debugfs_entry(void)
+{
+}
+
+static inline void jbd_remove_debugfs_entry(void)
+{
+}
 
 #endif
 
@@ -2006,7 +1896,7 @@ static int __init journal_init_handle_cache(void)
 	jbd_handle_cache = kmem_cache_create("journal_handle",
 				sizeof(handle_t),
 				0,		/* offset */
-				0,		/* flags */
+				SLAB_TEMPORARY,	/* flags */
 				NULL);		/* ctor */
 	if (jbd_handle_cache == NULL) {
 		printk(KERN_EMERG "JBD: failed to create handle cache\n");
@@ -2042,7 +1932,6 @@ static void journal_destroy_caches(void)
 	journal_destroy_revoke_caches();
 	journal_destroy_journal_head_cache();
 	journal_destroy_handle_cache();
-	journal_destroy_jbd_slabs();
 }
 
 static int __init journal_init(void)
@@ -2054,7 +1943,7 @@ static int __init journal_init(void)
 	ret = journal_init_caches();
 	if (ret != 0)
 		journal_destroy_caches();
-	create_jbd_proc_entry();
+	jbd_create_debugfs_entry();
 	return ret;
 }
 
@@ -2065,7 +1954,7 @@ static void __exit journal_exit(void)
 	if (n)
 		printk(KERN_EMERG "JBD: leaked %d journal_heads!\n", n);
 #endif
-	remove_jbd_proc_entry();
+	jbd_remove_debugfs_entry();
 	journal_destroy_caches();
 }
 

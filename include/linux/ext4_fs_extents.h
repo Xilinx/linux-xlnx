@@ -74,7 +74,7 @@ struct ext4_extent {
 	__le32	ee_block;	/* first logical block extent covers */
 	__le16	ee_len;		/* number of blocks covered by extent */
 	__le16	ee_start_hi;	/* high 16 bits of physical block */
-	__le32	ee_start;	/* low 32 bits of physical block */
+	__le32	ee_start_lo;	/* low 32 bits of physical block */
 };
 
 /*
@@ -83,7 +83,7 @@ struct ext4_extent {
  */
 struct ext4_extent_idx {
 	__le32	ei_block;	/* index covers logical blocks from 'block' */
-	__le32	ei_leaf;	/* pointer to the physical block of the next *
+	__le32	ei_leaf_lo;	/* pointer to the physical block of the next *
 				 * level. leaf or next index could be there */
 	__le16	ei_leaf_hi;	/* high 16 bits of physical block */
 	__u16	ei_unused;

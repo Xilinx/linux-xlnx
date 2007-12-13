@@ -140,6 +140,7 @@ config EXT4DEV_FS
 	tristate "Ext4dev/ext4 extended fs support development (EXPERIMENTAL)"
 	depends on EXPERIMENTAL
 	select JBD2
+	select CRC16
 	help
 	  Ext4dev is a predecessor filesystem of the next generation
 	  extended fs ext4, based on ext3 filesystem code. It will be
@@ -219,7 +220,7 @@ config JBD
 
 config JBD_DEBUG
 	bool "JBD (ext3) debugging support"
-	depends on JBD
+	depends on JBD && DEBUG_FS
 	help
 	  If you are using the ext3 journaled file system (or potentially any
 	  other file system/device using JBD), this option allows you to
@@ -228,10 +229,10 @@ config JBD_DEBUG
 	  debugging output will be turned off.
 
 	  If you select Y here, then you will be able to turn on debugging
-	  with "echo N > /proc/sys/fs/jbd-debug", where N is a number between
-	  1 and 5, the higher the number, the more debugging output is
-	  generated.  To turn debugging off again, do
-	  "echo 0 > /proc/sys/fs/jbd-debug".
+	  with "echo N > /sys/kernel/debug/jbd/jbd-debug", where N is a
+	  number between 1 and 5, the higher the number, the more debugging
+	  output is generated.  To turn debugging off again, do
+	  "echo 0 > /sys/kernel/debug/jbd/jbd-debug".
 
 config JBD2
 	tristate
@@ -458,6 +459,15 @@ config OCFS2_DEBUG_MASKLOG
 	  This option will enlarge your kernel, but it allows debugging of
 	  ocfs2 filesystem issues.
 
+config OCFS2_DEBUG_FS
+	bool "OCFS2 expensive checks"
+	depends on OCFS2_FS
+	default n
+	help
+	  This option will enable expensive consistency checks. Enable
+	  this option for debugging only as it is likely to decrease
+	  performance of the filesystem.
+
 config MINIX_FS
 	tristate "Minix fs support"
 	help
@@ -503,7 +513,7 @@ config INOTIFY
 	  including multiple file events, one-shot support, and unmount
 	  notification.
 
-	  For more information, see Documentation/filesystems/inotify.txt
+	  For more information, see <file:Documentation/filesystems/inotify.txt>
 
 	  If unsure, say Y.
 
@@ -517,7 +527,7 @@ config INOTIFY_USER
 	  directories via a single open fd.  Events are read from the file
 	  descriptor, which is also select()- and poll()-able.
 
-	  For more information, see Documentation/filesystems/inotify.txt
+	  For more information, see <file:Documentation/filesystems/inotify.txt>
 
 	  If unsure, say Y.
 
@@ -533,6 +543,24 @@ config QUOTA
 	  <http://www.tldp.org/docs.html#howto>, or the documentation provided
 	  with the quota tools. Probably the quota support is only useful for
 	  multi user systems. If unsure, say N.
+
+config QUOTA_NETLINK_INTERFACE
+	bool "Report quota messages through netlink interface"
+	depends on QUOTA && NET
+	help
+	  If you say Y here, quota warnings (about exceeding softlimit, reaching
+	  hardlimit, etc.) will be reported through netlink interface. If unsure,
+	  say Y.
+
+config PRINT_QUOTA_WARNING
+	bool "Print quota warnings to console (OBSOLETE)"
+	depends on QUOTA
+	default y
+	help
+	  If you say Y here, quota warnings (about exceeding softlimit, reaching
+	  hardlimit, etc.) will be printed to the process' controlling terminal.
+	  Note that this behavior is currently deprecated and may go away in
+	  future. Please use notification via netlink socket instead.
 
 config QFMT_V1
 	tristate "Old quota format support"
@@ -555,7 +583,7 @@ config QUOTACTL
 	default y
 
 config DNOTIFY
-	bool "Dnotify support" if EMBEDDED
+	bool "Dnotify support"
 	default y
 	help
 	  Dnotify is a directory-based per-fd file change notification system
@@ -563,7 +591,7 @@ config DNOTIFY
 	  superior alternatives, but some applications may still rely on
 	  dnotify.
 
-	  Because of this, if unsure, say Y.
+	  If unsure, say Y.
 
 config AUTOFS_FS
 	tristate "Kernel automounter support"
@@ -999,20 +1027,6 @@ config HUGETLBFS
 config HUGETLB_PAGE
 	def_bool HUGETLBFS
 
-config RAMFS
-	bool
-	default y
-	---help---
-	  Ramfs is a file system which keeps all files in RAM. It allows
-	  read and write access.
-
-	  It is more of an programming example than a useable file system.  If
-	  you need a file system which lives in RAM with limit checking use
-	  tmpfs.
-
-	  To compile this as a module, choose M here: the module will be called
-	  ramfs.
-
 config CONFIGFS_FS
 	tristate "Userspace-driven configuration filesystem (EXPERIMENTAL)"
 	depends on SYSFS && EXPERIMENTAL
@@ -1084,7 +1098,7 @@ config ECRYPT_FS
 	depends on EXPERIMENTAL && KEYS && CRYPTO && NET
 	help
 	  Encrypted filesystem that operates on the VFS layer.  See
-	  <file:Documentation/ecryptfs.txt> to learn more about
+	  <file:Documentation/filesystems/ecryptfs.txt> to learn more about
 	  eCryptfs.  Userspace components are required and can be
 	  obtained from <http://ecryptfs.sf.net>.
 
@@ -1225,6 +1239,14 @@ config JFFS2_FS_WRITEBUFFER
 	    - NOR flash with transparent ECC
 	    - DataFlash
 
+config JFFS2_FS_WBUF_VERIFY
+	bool "Verify JFFS2 write-buffer reads"
+	depends on JFFS2_FS_WRITEBUFFER
+	default n
+	help
+	  This causes JFFS2 to read back every page written through the
+	  write-buffer, and check for errors.
+
 config JFFS2_SUMMARY
 	bool "JFFS2 summary support (EXPERIMENTAL)"
 	depends on JFFS2_FS && EXPERIMENTAL
@@ -1295,52 +1317,71 @@ config JFFS2_ZLIB
 	select ZLIB_DEFLATE
 	depends on JFFS2_FS
 	default y
-        help
-          Zlib is designed to be a free, general-purpose, legally unencumbered,
-          lossless data-compression library for use on virtually any computer
-          hardware and operating system. See <http://www.gzip.org/zlib/> for
-          further information.
+	help
+	  Zlib is designed to be a free, general-purpose, legally unencumbered,
+	  lossless data-compression library for use on virtually any computer
+	  hardware and operating system. See <http://www.gzip.org/zlib/> for
+	  further information.
 
-          Say 'Y' if unsure.
+	  Say 'Y' if unsure.
+
+config JFFS2_LZO
+	bool "JFFS2 LZO compression support" if JFFS2_COMPRESSION_OPTIONS
+	select LZO_COMPRESS
+	select LZO_DECOMPRESS
+	depends on JFFS2_FS
+	default n
+	help
+	  minilzo-based compression. Generally works better than Zlib.
+
+	  This feature was added in July, 2007. Say 'N' if you need
+	  compatibility with older bootloaders or kernels.
 
 config JFFS2_RTIME
 	bool "JFFS2 RTIME compression support" if JFFS2_COMPRESSION_OPTIONS
 	depends on JFFS2_FS
 	default y
-        help
-          Rtime does manage to recompress already-compressed data. Say 'Y' if unsure.
+	help
+	  Rtime does manage to recompress already-compressed data. Say 'Y' if unsure.
 
 config JFFS2_RUBIN
 	bool "JFFS2 RUBIN compression support" if JFFS2_COMPRESSION_OPTIONS
 	depends on JFFS2_FS
 	default n
-        help
-          RUBINMIPS and DYNRUBIN compressors. Say 'N' if unsure.
+	help
+	  RUBINMIPS and DYNRUBIN compressors. Say 'N' if unsure.
 
 choice
-        prompt "JFFS2 default compression mode" if JFFS2_COMPRESSION_OPTIONS
-        default JFFS2_CMODE_PRIORITY
-        depends on JFFS2_FS
-        help
-          You can set here the default compression mode of JFFS2 from
-          the available compression modes. Don't touch if unsure.
+	prompt "JFFS2 default compression mode" if JFFS2_COMPRESSION_OPTIONS
+	default JFFS2_CMODE_PRIORITY
+	depends on JFFS2_FS
+	help
+	  You can set here the default compression mode of JFFS2 from
+	  the available compression modes. Don't touch if unsure.
 
 config JFFS2_CMODE_NONE
-        bool "no compression"
-        help
-          Uses no compression.
+	bool "no compression"
+	help
+	  Uses no compression.
 
 config JFFS2_CMODE_PRIORITY
-        bool "priority"
-        help
-          Tries the compressors in a predefined order and chooses the first
-          successful one.
+	bool "priority"
+	help
+	  Tries the compressors in a predefined order and chooses the first
+	  successful one.
 
 config JFFS2_CMODE_SIZE
-        bool "size (EXPERIMENTAL)"
-        help
-          Tries all compressors and chooses the one which has the smallest
-          result.
+	bool "size (EXPERIMENTAL)"
+	help
+	  Tries all compressors and chooses the one which has the smallest
+	  result.
+
+config JFFS2_CMODE_FAVOURLZO
+	bool "Favour LZO"
+	help
+	  Tries all compressors and chooses the one which has the smallest
+	  result but gives some preference to LZO (which has faster
+	  decompression) at the expense of size.
 
 endchoice
 
@@ -1516,8 +1557,20 @@ config UFS_DEBUG
 
 endmenu
 
-menu "Network File Systems"
+menuconfig NETWORK_FILESYSTEMS
+	bool "Network File Systems"
+	default y
 	depends on NET
+	---help---
+	  Say Y here to get to see options for network filesystems and
+	  filesystem-related networking code, such as NFS daemon and
+	  RPCSEC security modules.
+	  This option alone does not add any kernel code.
+
+	  If you say N, all options in this submenu will be skipped and
+	  disabled; if unsure, say Y here.
+
+if NETWORK_FILESYSTEMS
 
 config NFS_FS
 	tristate "NFS file system support"
@@ -1727,6 +1780,14 @@ config SUNRPC
 
 config SUNRPC_GSS
 	tristate
+
+config SUNRPC_XPRT_RDMA
+	tristate "RDMA transport for sunrpc (EXPERIMENTAL)"
+	depends on SUNRPC && INFINIBAND && EXPERIMENTAL
+	default m
+	help
+	  Adds a client RPC transport for supporting kernel NFS over RDMA
+	  mounts, including Infiniband and iWARP. Experimental.
 
 config SUNRPC_BIND34
 	bool "Support for rpcbind versions 3 & 4 (EXPERIMENTAL)"
@@ -1955,7 +2016,7 @@ config CIFS_EXPERIMENTAL
 config CIFS_UPCALL
 	  bool "Kerberos/SPNEGO advanced session setup (EXPERIMENTAL)"
 	  depends on CIFS_EXPERIMENTAL
-	  depends on CONNECTOR
+	  depends on KEYS
 	  help
 	    Enables an upcall mechanism for CIFS which will be used to contact
 	    userspace helper utilities to provide SPNEGO packaged Kerberos
@@ -2055,7 +2116,7 @@ config 9P_FS
 
 	  If unsure, say N.
 
-endmenu
+endif # NETWORK_FILESYSTEMS
 
 if BLOCK
 menu "Partition Types"

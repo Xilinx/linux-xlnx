@@ -25,6 +25,8 @@
 #define SPI_EN			(1 << 0)
 
 #define MMC_CMDAT	0x0010
+#define CMDAT_SDIO_INT_EN	(1 << 11)
+#define CMDAT_SD_4DAT		(1 << 8)
 #define CMDAT_DMAEN		(1 << 7)
 #define CMDAT_INIT		(1 << 6)
 #define CMDAT_BUSY		(1 << 5)
@@ -86,17 +88,3 @@
 #define MMC_RXFIFO	0x0040	/* 8 bit */
 
 #define MMC_TXFIFO	0x0044	/* 8 bit */
-
-/*
- * The base MMC clock rate
- */
-#ifdef CONFIG_PXA27x
-#define CLOCKRATE_MIN	304688
-#define CLOCKRATE_MAX	19500000
-#else
-#define CLOCKRATE_MIN	312500
-#define CLOCKRATE_MAX	20000000
-#endif
-
-#define CLOCKRATE	CLOCKRATE_MAX
-

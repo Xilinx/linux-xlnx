@@ -14,18 +14,6 @@ Who:	Jiri Slaby <jirislaby@gmail.com>
 
 ---------------------------
 
-What:	V4L2 VIDIOC_G_MPEGCOMP and VIDIOC_S_MPEGCOMP
-When:	October 2007
-Why:	Broken attempt to set MPEG compression parameters. These ioctls are
-	not able to implement the wide variety of parameters that can be set
-	by hardware MPEG encoders. A new MPEG control mechanism was created
-	in kernel 2.6.18 that replaces these ioctls. See the V4L2 specification
-	(section 1.9: Extended controls) for more information on this topic.
-Who:	Hans Verkuil <hverkuil@xs4all.nl> and
-	Mauro Carvalho Chehab <mchehab@infradead.org>
-
----------------------------
-
 What:	dev->power.power_state
 When:	July 2007
 Why:	Broken design for runtime control over driver power states, confusing
@@ -49,10 +37,10 @@ Who:	David Miller <davem@davemloft.net>
 ---------------------------
 
 What:	Video4Linux API 1 ioctls and video_decoder.h from Video devices.
-When:	December 2006
-Files:	include/linux/video_decoder.h
-Check:	include/linux/video_decoder.h
-Why:	V4L1 AP1 was replaced by V4L2 API. during migration from 2.4 to 2.6
+When:	December 2008
+Files:	include/linux/video_decoder.h include/linux/videodev.h
+Check:	include/linux/video_decoder.h include/linux/videodev.h
+Why:	V4L1 AP1 was replaced by V4L2 API during migration from 2.4 to 2.6
 	series. The old API have lots of drawbacks and don't provide enough
 	means to work with all video and audio standards. The newer API is
 	already available on the main drivers and should be used instead.
@@ -61,7 +49,9 @@ Why:	V4L1 AP1 was replaced by V4L2 API. during migration from 2.4 to 2.6
 	Decoder iocts are using internally to allow video drivers to
 	communicate with video decoders. This should also be improved to allow
 	V4L2 calls being translated into compatible internal ioctls.
-Who:	Mauro Carvalho Chehab <mchehab@brturbo.com.br>
+	Compatibility ioctls will be provided, for a while, via 
+	v4l1-compat module. 
+Who:	Mauro Carvalho Chehab <mchehab@infradead.org>
 
 ---------------------------
 
@@ -79,6 +69,52 @@ Why:	With the 16-bit PCMCIA subsystem now behaving (almost) like a
 	pcmciautils package available at
 	http://kernel.org/pub/linux/utils/kernel/pcmcia/
 Who:	Dominik Brodowski <linux@brodo.de>
+
+---------------------------
+
+What:	sys_sysctl
+When:	September 2010
+Option: CONFIG_SYSCTL_SYSCALL
+Why:	The same information is available in a more convenient from
+	/proc/sys, and none of the sysctl variables appear to be
+	important performance wise.
+
+	Binary sysctls are a long standing source of subtle kernel
+	bugs and security issues.
+
+	When I looked several months ago all I could find after
+	searching several distributions were 5 user space programs and
+	glibc (which falls back to /proc/sys) using this syscall.
+
+	The man page for sysctl(2) documents it as unusable for user
+	space programs.
+
+	sysctl(2) is not generally ABI compatible to a 32bit user
+	space application on a 64bit and a 32bit kernel.
+
+	For the last several months the policy has been no new binary
+	sysctls and no one has put forward an argument to use them.
+
+	Binary sysctls issues seem to keep happening appearing so
+	properly deprecating them (with a warning to user space) and a
+	2 year grace warning period will mean eventually we can kill
+	them and end the pain.
+
+	In the mean time individual binary sysctls can be dealt with
+	in a piecewise fashion.
+
+Who:	Eric Biederman <ebiederm@xmission.com>
+
+---------------------------
+
+What:  a.out interpreter support for ELF executables
+When:  2.6.25
+Files: fs/binfmt_elf.c
+Why:   Using a.out interpreters for ELF executables was a feature for
+       transition from a.out to ELF. But now it is unlikely to be still
+       needed anymore and removing it would simplify the hairy ELF
+       loader code.
+Who:   Andi Kleen <ak@suse.de>
 
 ---------------------------
 
@@ -145,15 +181,6 @@ Who:	Nick Piggin <npiggin@suse.de>
 
 ---------------------------
 
-What:	Interrupt only SA_* flags
-When:	September 2007
-Why:	The interrupt related SA_* flags are replaced by IRQF_* to move them
-	out of the signal namespace.
-
-Who:	Thomas Gleixner <tglx@linutronix.de>
-
----------------------------
-
 What:	PHYSDEVPATH, PHYSDEVBUS, PHYSDEVDRIVER in the uevent environment
 When:	October 2008
 Why:	The stacking of class devices makes these values misleading and
@@ -170,13 +197,6 @@ Why:	Superfluous, this list duplicates the one maintained by the driver
 	core.
 Who:	Jean Delvare <khali@linux-fr.org>,
 	David Brownell <dbrownell@users.sourceforge.net>
-
----------------------------
-
-What:  drivers depending on OBSOLETE_OSS
-When:  options in 2.6.22, code in 2.6.24
-Why:   OSS drivers with ALSA replacements
-Who:   Adrian Bunk <bunk@stusta.de>
 
 ---------------------------
 
@@ -202,20 +222,6 @@ When:	February 2008
 Why:	/proc/acpi/event has been replaced by events via the input layer
 	and netlink since 2.6.23.
 Who:	Len Brown <len.brown@intel.com>
-
----------------------------
-
-What:	Compaq touchscreen device emulation
-When:	Oct 2007
-Files:	drivers/input/tsdev.c
-Why:	The code says it was obsolete when it was written in 2001.
-	tslib is a userspace library which does anything tsdev can do and
-	much more besides in userspace where this code belongs. There is no
-	longer any need for tsdev and applications should have converted to
-	use tslib by now.
-	The name "tsdev" is also extremely confusing and lots of people have
-	it loaded when they don't need/use it.
-Who:	Richard Purdie <rpurdie@rpsys.net>
 
 ---------------------------
 
@@ -304,5 +310,26 @@ When:   Feburary 2008
 Why:    In kernel tree version of driver is unmaintained. Sk98lin driver
 	replaced by the skge driver. 
 Who:    Stephen Hemminger <shemminger@linux-foundation.org>
+
+---------------------------
+
+What:	i386/x86_64 bzImage symlinks
+When:	April 2008
+
+Why:	The i386/x86_64 merge provides a symlink to the old bzImage
+	location so not yet updated user space tools, e.g. package
+	scripts, do not break.
+Who:	Thomas Gleixner <tglx@linutronix.de>
+
+---------------------------
+
+What:	shaper network driver
+When:	January 2008
+Files:	drivers/net/shaper.c, include/linux/if_shaper.h
+Why:	This driver has been marked obsolete for many years.
+	It was only designed to work on lower speed links and has design
+	flaws that lead to machine crashes. The qdisc infrastructure in
+	2.4 or later kernels, provides richer features and is more robust.
+Who:	Stephen Hemminger <shemminger@linux-foundation.org>
 
 ---------------------------

@@ -221,10 +221,8 @@ struct ipmi_smi
 	void                     *send_info;
 
 #ifdef CONFIG_PROC_FS
-	/* A list of proc entries for this interface.  This does not
-	   need a lock, only one thread creates it and only one thread
-	   destroys it. */
-	spinlock_t             proc_entry_lock;
+	/* A list of proc entries for this interface. */
+	struct mutex           proc_entry_lock;
 	struct ipmi_proc_entry *proc_entries;
 #endif
 
@@ -1891,11 +1889,11 @@ int ipmi_smi_add_proc_entry(ipmi_smi_t smi, char *name,
 		file->write_proc = write_proc;
 		file->owner = owner;
 
-		spin_lock(&smi->proc_entry_lock);
+		mutex_lock(&smi->proc_entry_lock);
 		/* Stick it on the list. */
 		entry->next = smi->proc_entries;
 		smi->proc_entries = entry;
-		spin_unlock(&smi->proc_entry_lock);
+		mutex_unlock(&smi->proc_entry_lock);
 	}
 #endif /* CONFIG_PROC_FS */
 
@@ -1939,7 +1937,7 @@ static void remove_proc_entries(ipmi_smi_t smi)
 #ifdef CONFIG_PROC_FS
 	struct ipmi_proc_entry *entry;
 
-	spin_lock(&smi->proc_entry_lock);
+	mutex_lock(&smi->proc_entry_lock);
 	while (smi->proc_entries) {
 		entry = smi->proc_entries;
 		smi->proc_entries = entry->next;
@@ -1948,7 +1946,7 @@ static void remove_proc_entries(ipmi_smi_t smi)
 		kfree(entry->name);
 		kfree(entry);
 	}
-	spin_unlock(&smi->proc_entry_lock);
+	mutex_unlock(&smi->proc_entry_lock);
 	remove_proc_entry(smi->proc_dir_name, proc_ipmi_root);
 #endif /* CONFIG_PROC_FS */
 }
@@ -2614,6 +2612,14 @@ channel_handler(ipmi_smi_t intf, struct ipmi_recv_msg *msg)
 	return;
 }
 
+void ipmi_poll_interface(ipmi_user_t user)
+{
+	ipmi_smi_t intf = user->intf;
+
+	if (intf->handlers->poll)
+		intf->handlers->poll(intf->send_info);
+}
+
 int ipmi_register_smi(struct ipmi_smi_handlers *handlers,
 		      void		       *send_info,
 		      struct ipmi_device_id    *device_id,
@@ -2671,7 +2677,7 @@ int ipmi_register_smi(struct ipmi_smi_handlers *handlers,
 	}
 	intf->curr_seq = 0;
 #ifdef CONFIG_PROC_FS
-	spin_lock_init(&intf->proc_entry_lock);
+	mutex_init(&intf->proc_entry_lock);
 #endif
 	spin_lock_init(&intf->waiting_msgs_lock);
 	INIT_LIST_HEAD(&intf->waiting_msgs);
@@ -4136,7 +4142,7 @@ static __exit void cleanup_ipmi(void)
 	del_timer_sync(&ipmi_timer);
 
 #ifdef CONFIG_PROC_FS
-	remove_proc_entry(proc_ipmi_root->name, &proc_root);
+	remove_proc_entry(proc_ipmi_root->name, NULL);
 #endif /* CONFIG_PROC_FS */
 
 	driver_unregister(&ipmidriver);
@@ -4166,6 +4172,7 @@ EXPORT_SYMBOL(ipmi_destroy_user);
 EXPORT_SYMBOL(ipmi_get_version);
 EXPORT_SYMBOL(ipmi_request_settime);
 EXPORT_SYMBOL(ipmi_request_supply_msgs);
+EXPORT_SYMBOL(ipmi_poll_interface);
 EXPORT_SYMBOL(ipmi_register_smi);
 EXPORT_SYMBOL(ipmi_unregister_smi);
 EXPORT_SYMBOL(ipmi_register_for_cmd);

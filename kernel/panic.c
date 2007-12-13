@@ -56,14 +56,14 @@ EXPORT_SYMBOL(panic_blink);
  *
  *	This function never returns.
  */
- 
+
 NORET_TYPE void panic(const char * fmt, ...)
 {
 	long i;
 	static char buf[1024];
 	va_list args;
 #if defined(CONFIG_S390)
-        unsigned long caller = (unsigned long) __builtin_return_address(0);
+	unsigned long caller = (unsigned long) __builtin_return_address(0);
 #endif
 
 	/*
@@ -128,7 +128,7 @@ NORET_TYPE void panic(const char * fmt, ...)
 	}
 #endif
 #if defined(CONFIG_S390)
-        disabled_wait(caller);
+	disabled_wait(caller);
 #endif
 	local_irq_enable();
 	for (i = 0;;) {
@@ -148,13 +148,13 @@ EXPORT_SYMBOL(panic);
  *  'F' - Module has been forcibly loaded.
  *  'S' - SMP with CPUs not designed for SMP.
  *  'R' - User forced a module unload.
- *  'M' - Machine had a machine check experience.
+ *  'M' - System experienced a machine check exception.
  *  'B' - System has hit bad_page.
  *  'U' - Userspace-defined naughtiness.
  *
  *	The string is overwritten by the next call to print_taint().
  */
- 
+
 const char *print_tainted(void)
 {
 	static char buf[20];
@@ -164,7 +164,7 @@ const char *print_tainted(void)
 			tainted & TAINT_FORCED_MODULE ? 'F' : ' ',
 			tainted & TAINT_UNSAFE_SMP ? 'S' : ' ',
 			tainted & TAINT_FORCED_RMMOD ? 'R' : ' ',
- 			tainted & TAINT_MACHINE_CHECK ? 'M' : ' ',
+			tainted & TAINT_MACHINE_CHECK ? 'M' : ' ',
 			tainted & TAINT_BAD_PAGE ? 'B' : ' ',
 			tainted & TAINT_USER ? 'U' : ' ',
 			tainted & TAINT_DIE ? 'D' : ' ');

@@ -36,6 +36,7 @@
  *                 mapping->tree_lock (widely used, in set_page_dirty,
  *                           in arch-dependent flush_dcache_mmap_lock,
  *                           within inode_lock in __sync_single_inode)
+ *                   zone->lock (within radix tree node alloc)
  */
 
 #include <linux/mm.h>
@@ -137,8 +138,7 @@ void anon_vma_unlink(struct vm_area_struct *vma)
 		anon_vma_free(anon_vma);
 }
 
-static void anon_vma_ctor(void *data, struct kmem_cache *cachep,
-			  unsigned long flags)
+static void anon_vma_ctor(struct kmem_cache *cachep, void *data)
 {
 	struct anon_vma *anon_vma = data;
 
@@ -183,7 +183,9 @@ static void page_unlock_anon_vma(struct anon_vma *anon_vma)
 }
 
 /*
- * At what user virtual address is page expected in vma?
+ * At what user virtual address is page expected in @vma?
+ * Returns virtual address or -EFAULT if page's index/offset is not
+ * within the range mapped the @vma.
  */
 static inline unsigned long
 vma_address(struct page *page, struct vm_area_struct *vma)
@@ -193,8 +195,7 @@ vma_address(struct page *page, struct vm_area_struct *vma)
 
 	address = vma->vm_start + ((pgoff - vma->vm_pgoff) << PAGE_SHIFT);
 	if (unlikely(address < vma->vm_start || address >= vma->vm_end)) {
-		/* page should be within any vma from prio_tree_next */
-		BUG_ON(!PageAnon(page));
+		/* page should be within @vma mapping range */
 		return -EFAULT;
 	}
 	return address;
@@ -436,7 +437,6 @@ static int page_mkclean_one(struct page *page, struct vm_area_struct *vma)
 		entry = pte_wrprotect(entry);
 		entry = pte_mkclean(entry);
 		set_pte_at(mm, address, pte, entry);
-		lazy_mmu_prot_update(entry);
 		ret = 1;
 	}
 
@@ -471,11 +471,12 @@ int page_mkclean(struct page *page)
 
 	if (page_mapped(page)) {
 		struct address_space *mapping = page_mapping(page);
-		if (mapping)
+		if (mapping) {
 			ret = page_mkclean_file(mapping, page);
-		if (page_test_dirty(page)) {
-			page_clear_dirty(page);
-			ret = 1;
+			if (page_test_dirty(page)) {
+				page_clear_dirty(page);
+				ret = 1;
+			}
 		}
 	}
 

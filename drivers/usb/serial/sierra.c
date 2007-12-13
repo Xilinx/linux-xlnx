@@ -48,7 +48,7 @@ enum devicetype {
 static int sierra_set_power_state(struct usb_device *udev, __u16 swiState)
 {
 	int result;
-	dev_dbg(&udev->dev, "%s", "SET POWER STATE");
+	dev_dbg(&udev->dev, "%s", "SET POWER STATE\n");
 	result = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			0x00,			/* __u8 request      */
 			0x40,			/* __u8 request type */
@@ -63,7 +63,7 @@ static int sierra_set_power_state(struct usb_device *udev, __u16 swiState)
 static int sierra_set_ms_mode(struct usb_device *udev, __u16 eSocMode)
 {
 	int result;
-	dev_dbg(&udev->dev, "%s", "DEVICE MODE SWITCH");
+	dev_dbg(&udev->dev, "%s", "DEVICE MODE SWITCH\n");
 	result = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 			SWIMS_USB_REQUEST_SetMode,	/* __u8 request      */
 			SWIMS_USB_REQUEST_TYPE_SetMode,	/* __u8 request type */
@@ -136,6 +136,8 @@ static struct usb_device_id id_table_3port [] = {
 	{ USB_DEVICE(0x0f30, 0x1b1d) },	/* Sierra Wireless MC5720 */
 	{ USB_DEVICE(0x1199, 0x0218) },	/* Sierra Wireless MC5720 */
 	{ USB_DEVICE(0x1199, 0x0020) },	/* Sierra Wireless MC5725 */
+	{ USB_DEVICE(0x1199, 0x0220) },	/* Sierra Wireless MC5725 */
+	{ USB_DEVICE(0x1199, 0x0220) },	/* Sierra Wireless MC5725 */
 	{ USB_DEVICE(0x1199, 0x0019) },	/* Sierra Wireless AirCard 595 */
 	{ USB_DEVICE(0x1199, 0x0021) },	/* Sierra Wireless AirCard 597E */
 	{ USB_DEVICE(0x1199, 0x0120) },	/* Sierra Wireless USB Dongle 595U*/
@@ -224,7 +226,7 @@ static void sierra_set_termios(struct usb_serial_port *port,
 			struct ktermios *old_termios)
 {
 	dbg("%s", __FUNCTION__);
-
+	tty_termios_copy_hw(port->tty->termios, old_termios);
 	sierra_send_setup(port);
 }
 
@@ -397,7 +399,7 @@ static void sierra_indat_callback(struct urb *urb)
 			err = usb_submit_urb(urb, GFP_ATOMIC);
 			if (err)
 				dev_err(&port->dev, "resubmit read urb failed."
-					"(%d)", err);
+					"(%d)\n", err);
 		}
 	}
 	return;
@@ -525,7 +527,7 @@ static int sierra_open(struct usb_serial_port *port, struct file *filp)
 
 		result = usb_submit_urb(urb, GFP_KERNEL);
 		if (result) {
-			dev_err(&port->dev, "submit urb %d failed (%d) %d",
+			dev_err(&port->dev, "submit urb %d failed (%d) %d\n",
 				i, result, urb->transfer_buffer_length);
 		}
 	}
@@ -538,7 +540,7 @@ static int sierra_open(struct usb_serial_port *port, struct file *filp)
 	if (port->interrupt_in_urb) {
 		result = usb_submit_urb(port->interrupt_in_urb, GFP_KERNEL);
 		if (result)
-			dev_err(&port->dev, "submit irq_in urb failed %d",
+			dev_err(&port->dev, "submit irq_in urb failed %d\n",
 				result);
 	}
 	return 0;

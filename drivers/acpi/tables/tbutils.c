@@ -400,7 +400,7 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address, u8 flags)
 	u32 table_count;
 	struct acpi_table_header *table;
 	acpi_physical_address address;
-	acpi_physical_address rsdt_address;
+	acpi_physical_address uninitialized_var(rsdt_address);
 	u32 length;
 	u8 *table_entry;
 	acpi_status status;
@@ -449,7 +449,7 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address, u8 flags)
 			/* XSDT has NULL entry, RSDT is used */
 			address = rsdt_address;
 			table_entry_size = sizeof(u32);
-			ACPI_WARNING((AE_INFO, "BIOS XSDT has NULL entry,"
+			ACPI_WARNING((AE_INFO, "BIOS XSDT has NULL entry, "
 					"using RSDT"));
 		}
 	}

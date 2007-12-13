@@ -300,6 +300,7 @@ struct e1000_adapter {
 				int cleaned_count);
 	struct e1000_rx_ring *rx_ring;      /* One per active queue */
 #ifdef CONFIG_E1000_NAPI
+	struct napi_struct napi;
 	struct net_device *polling_netdev;  /* One per active queue */
 #endif
 	int num_tx_queues;
@@ -349,5 +350,13 @@ enum e1000_state_t {
 	__E1000_RESETTING,
 	__E1000_DOWN
 };
+
+extern char e1000_driver_name[];
+extern const char e1000_driver_version[];
+
+extern void e1000_power_up_phy(struct e1000_adapter *);
+extern void e1000_set_ethtool_ops(struct net_device *netdev);
+extern void e1000_check_options(struct e1000_adapter *adapter);
+
 
 #endif /* _E1000_H_ */

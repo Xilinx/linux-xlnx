@@ -72,6 +72,10 @@ config ARCH_NO_VIRT_TO_BUS
 config OF
 	def_bool y
 
+config GENERIC_HARDIRQS_NO__DO_IRQ
+	bool
+	def_bool y
+
 choice
 	prompt "Kernel page size"
 	default SPARC64_PAGE_SIZE_8KB
@@ -240,10 +244,10 @@ config ARCH_SELECT_MEMORY_MODEL
 
 config ARCH_SPARSEMEM_ENABLE
 	def_bool y
+	select SPARSEMEM_VMEMMAP_ENABLE
 
 config ARCH_SPARSEMEM_DEFAULT
 	def_bool y
-	select SPARSEMEM_STATIC
 
 source "mm/Kconfig"
 
@@ -404,7 +408,7 @@ config SUNOS_EMUL
 
 config SOLARIS_EMUL
 	tristate "Solaris binary emulation (EXPERIMENTAL)"
-	depends on SPARC32_COMPAT && EXPERIMENTAL
+	depends on SPARC32_COMPAT && NET && EXPERIMENTAL
 	help
 	  This is experimental code which will enable you to run (many)
 	  Solaris binaries on your SPARC Linux machine.
@@ -456,25 +460,9 @@ source "drivers/Kconfig"
 
 source "drivers/sbus/char/Kconfig"
 
-source "drivers/fc4/Kconfig"
-
 source "fs/Kconfig"
 
-menu "Instrumentation Support"
-        depends on EXPERIMENTAL
-
-source "arch/sparc64/oprofile/Kconfig"
-
-config KPROBES
-	bool "Kprobes (EXPERIMENTAL)"
-	depends on KALLSYMS && EXPERIMENTAL && MODULES
-	help
-	  Kprobes allows you to trap at almost any kernel address and
-	  execute a callback function.  register_kprobe() establishes
-	  a probepoint and specifies the callback.  Kprobes is useful
-	  for kernel debugging, non-intrusive instrumentation and testing.
-	  If in doubt, say "N".
-endmenu
+source "kernel/Kconfig.instrumentation"
 
 source "arch/sparc64/Kconfig.debug"
 

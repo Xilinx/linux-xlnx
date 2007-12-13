@@ -36,7 +36,7 @@
 #include <msp_int.h>
 #include <msp_regs.h>
 
-void __init msp_timer_init(void)
+void __init plat_time_init(void)
 {
 	char    *endp, *s;
 	unsigned long cpu_rate = 0;
@@ -81,14 +81,10 @@ void __init msp_timer_init(void)
 	mips_hpt_frequency = cpu_rate/2;
 }
 
-
 void __init plat_timer_setup(struct irqaction *irq)
 {
 #ifdef CONFIG_IRQ_MSP_CIC
 	/* we are using the vpe0 counter for timer interrupts */
 	setup_irq(MSP_INT_VPE0_TIMER, irq);
-#else
-	/* we are using the mips counter for timer interrupts */
-	setup_irq(MSP_INT_TIMER, irq);
 #endif
 }

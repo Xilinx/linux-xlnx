@@ -26,6 +26,7 @@
 #ifdef CONFIG_PPC64
 #include <asm/paca.h>
 #endif
+#include <asm/percpu.h>
 
 extern int boot_cpuid;
 
@@ -45,7 +46,7 @@ void generic_mach_cpu_die(void);
 #endif
 
 #ifdef CONFIG_PPC64
-#define raw_smp_processor_id()	(get_paca()->paca_index)
+#define raw_smp_processor_id()	(local_paca->paca_index)
 #define hard_smp_processor_id() (get_paca()->hw_cpu_id)
 #else
 /* 32-bit */
@@ -58,7 +59,7 @@ extern int smp_hw_index[];
 					(smp_hw_index[(cpu)] = (phys))
 #endif
 
-extern cpumask_t cpu_sibling_map[NR_CPUS];
+DECLARE_PER_CPU(cpumask_t, cpu_sibling_map);
 
 /* Since OpenPIC has only 4 IPIs, we use slightly different message numbers.
  *
@@ -77,6 +78,7 @@ void smp_init_pSeries(void);
 void smp_init_cell(void);
 void smp_init_celleb(void);
 void smp_setup_cpu_maps(void);
+void smp_setup_cpu_sibling_map(void);
 
 extern int __cpu_disable(void);
 extern void __cpu_die(unsigned int cpu);

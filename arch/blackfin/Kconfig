@@ -3,7 +3,7 @@
 # see Documentation/kbuild/kconfig-language.txt.
 #
 
-mainmenu "uClinux/Blackfin (w/o MMU) Kernel Configuration"
+mainmenu "Blackfin Kernel Configuration"
 
 config MMU
 	bool
@@ -29,10 +29,6 @@ config ZONE_DMA
 	bool
 	default y
 
-config BFIN
-	bool
-	default y
-
 config SEMAPHORE_SLEEPERS
 	bool
 	default y
@@ -50,14 +46,14 @@ config GENERIC_HARDIRQS
 	default y
 
 config GENERIC_IRQ_PROBE
-        bool
+	bool
 	default y
 
 config GENERIC_TIME
 	bool
 	default n
 
-config GENERIC_CALIBRATE_DELAY
+config GENERIC_GPIO
 	bool
 	default y
 
@@ -67,11 +63,6 @@ config FORCE_MAX_ZONEORDER
 
 config GENERIC_CALIBRATE_DELAY
 	bool
-	default y
-
-config IRQCHIP_DEMUX_GPIO
-	bool
-	depends on (BF53x || BF561 || BF54x)
 	default y
 
 source "init/Kconfig"
@@ -84,6 +75,21 @@ comment "Processor and Board Settings"
 choice
 	prompt "CPU"
 	default BF533
+
+config BF522
+	bool "BF522"
+	help
+	  BF522 Processor Support.
+
+config BF525
+	bool "BF525"
+	help
+	  BF525 Processor Support.
+
+config BF527
+	bool "BF527"
+	help
+	  BF527 Processor Support.
 
 config BF531
 	bool "BF531"
@@ -125,6 +131,11 @@ config BF544
 	help
 	  BF544 Processor Support.
 
+config BF547
+	bool "BF547"
+	help
+	  BF547 Processor Support.
+
 config BF548
 	bool "BF548"
 	help
@@ -144,13 +155,18 @@ endchoice
 
 choice
 	prompt "Silicon Rev"
+	default BF_REV_0_1 if BF527
 	default BF_REV_0_2 if BF537
 	default BF_REV_0_3 if BF533
 	default BF_REV_0_0 if BF549
 
 config BF_REV_0_0
 	bool "0.0"
-	depends on (BF549)
+	depends on (BF52x || BF54x)
+
+config BF_REV_0_1
+	bool "0.1"
+	depends on (BF52x || BF54x)
 
 config BF_REV_0_2
 	bool "0.2"
@@ -176,6 +192,11 @@ config BF_REV_NONE
 
 endchoice
 
+config BF52x
+	bool
+	depends on (BF522 || BF525 || BF527)
+	default y
+
 config BF53x
 	bool
 	depends on (BF531 || BF532 || BF533 || BF534 || BF536 || BF537)
@@ -183,7 +204,7 @@ config BF53x
 
 config BF54x
 	bool
-	depends on (BF542 || BF544 || BF548 || BF549)
+	depends on (BF542 || BF544 || BF547 || BF548 || BF549)
 	default y
 
 config BFIN_DUAL_CORE
@@ -195,83 +216,6 @@ config BFIN_SINGLE_CORE
 	bool
 	depends on !BFIN_DUAL_CORE
 	default y
-
-choice
-	prompt "System type"
-	default BFIN533_STAMP
-	help
-	  Do NOT change the board here.  Please use the top level
-	  configuration to ensure that all the other settings are
-	  correct.
-
-config BFIN533_EZKIT
-	bool "BF533-EZKIT"
-	depends on (BF533 || BF532 || BF531)
-	help
-	  BF533-EZKIT-LITE board Support.
-
-config  BFIN533_STAMP
-	bool "BF533-STAMP"
-	depends on (BF533 || BF532 || BF531)
-	help
-	  BF533-STAMP board Support.
-
-config BFIN537_STAMP
-	bool "BF537-STAMP"
-	depends on (BF537 || BF536 || BF534)
-	help
-	  BF537-STAMP board Support.
-
-config BFIN533_BLUETECHNIX_CM
-	bool "Bluetechnix CM-BF533"
-	depends on (BF533)
-	help
-	  CM-BF533 support for EVAL- and DEV-Board.
-
-config BFIN537_BLUETECHNIX_CM
-	bool "Bluetechnix CM-BF537"
-	depends on (BF537)
-	help
-	  CM-BF537 support for EVAL- and DEV-Board.
-
-config BFIN548_EZKIT
-	bool "BF548-EZKIT"
-	depends on (BF548 || BF549)
-	  help
-	  BFIN548-EZKIT board Support.
-
-config BFIN561_BLUETECHNIX_CM
-	bool "Bluetechnix CM-BF561"
-	depends on (BF561)
-	help
-	  CM-BF561 support for EVAL- and DEV-Board.
-
-config BFIN561_EZKIT
-	bool "BF561-EZKIT"
-	depends on (BF561)
-	help
-	  BF561-EZKIT-LITE board Support.
-
-config BFIN561_TEPLA
-	bool "BF561-TEPLA"
-	depends on (BF561)
-	help
-	 BF561-TEPLA board Support.
-
-config PNAV10
-	bool "PNAV 1.0 board"
-	depends on (BF537)
-	help
-	  PNAV 1.0 board Support.
-
-config GENERIC_BOARD
-	bool "Custom"
-	depends on (BF537 || BF536 \
-		|| BF534 || BF561 || BF535 || BF533 || BF532 || BF531)
-	help
-	  GENERIC or Custom board Support.
-
-endchoice
 
 config MEM_GENERIC_BOARD
 	bool
@@ -286,7 +230,8 @@ config MEM_MT48LC64M4A2FB_7E
 config MEM_MT48LC16M16A2TG_75
 	bool
 	depends on (BFIN533_EZKIT || BFIN561_EZKIT \
-		|| BFIN533_BLUETECHNIX_CM || BFIN537_BLUETECHNIX_CM)
+		|| BFIN533_BLUETECHNIX_CM || BFIN537_BLUETECHNIX_CM \
+		|| H8606_HVSISTEMAS)
 	default y
 
 config MEM_MT48LC32M8A2_75
@@ -299,11 +244,17 @@ config MEM_MT48LC8M32B2B5_7
 	depends on (BFIN561_BLUETECHNIX_CM)
 	default y
 
+config MEM_MT48LC32M16A2TG_75
+	bool
+	depends on (BFIN527_EZKIT)
+	default y
+
 config BFIN_SHARED_FLASH_ENET
 	bool
 	depends on (BFIN533_STAMP)
 	default y
 
+source "arch/blackfin/mach-bf527/Kconfig"
 source "arch/blackfin/mach-bf533/Kconfig"
 source "arch/blackfin/mach-bf561/Kconfig"
 source "arch/blackfin/mach-bf537/Kconfig"
@@ -323,30 +274,148 @@ config CMDLINE
 	  to the kernel, you may specify one here. As a minimum, you should specify
 	  the memory size and the root device (e.g., mem=8M, root=/dev/nfs).
 
-comment "Board Setup"
+comment "Clock/PLL Setup"
 
 config CLKIN_HZ
 	int "Crystal Frequency in Hz"
 	default "11059200" if BFIN533_STAMP
 	default "27000000" if BFIN533_EZKIT
-	default "25000000" if BFIN537_STAMP
+	default "25000000" if (BFIN537_STAMP || BFIN527_EZKIT || H8606_HVSISTEMAS)
 	default "30000000" if BFIN561_EZKIT
 	default "24576000" if PNAV10
 	help
 	  The frequency of CLKIN crystal oscillator on the board in Hz.
 
+config BFIN_KERNEL_CLOCK
+	bool "Re-program Clocks while Kernel boots?"
+	default n
+	help
+	  This option decides if kernel clocks are re-programed from the
+	  bootloader settings. If the clocks are not set, the SDRAM settings
+	  are also not changed, and the Bootloader does 100% of the hardware
+	  configuration.
+
+config PLL_BYPASS
+	bool "Bypass PLL"
+	depends on BFIN_KERNEL_CLOCK
+	default n
+
+config CLKIN_HALF
+	bool "Half Clock In"
+	depends on BFIN_KERNEL_CLOCK && (! PLL_BYPASS)
+	default n
+	help
+	  If this is set the clock will be divided by 2, before it goes to the PLL.
+
+config VCO_MULT
+	int "VCO Multiplier"
+	depends on BFIN_KERNEL_CLOCK && (! PLL_BYPASS)
+	range 1 64
+	default "22" if BFIN533_EZKIT
+	default "45" if BFIN533_STAMP
+	default "20" if (BFIN537_STAMP || BFIN527_EZKIT)
+	default "22" if BFIN533_BLUETECHNIX_CM
+	default "20" if BFIN537_BLUETECHNIX_CM
+	default "20" if BFIN561_BLUETECHNIX_CM
+	default "20" if BFIN561_EZKIT
+	default "16" if H8606_HVSISTEMAS
+	help
+	  This controls the frequency of the on-chip PLL. This can be between 1 and 64.
+	  PLL Frequency = (Crystal Frequency) * (this setting)
+
+choice
+	prompt "Core Clock Divider"
+	depends on BFIN_KERNEL_CLOCK
+	default CCLK_DIV_1
+	help
+	  This sets the frequency of the core. It can be 1, 2, 4 or 8
+	  Core Frequency = (PLL frequency) / (this setting)
+
+config CCLK_DIV_1
+	bool "1"
+
+config CCLK_DIV_2
+	bool "2"
+
+config CCLK_DIV_4
+	bool "4"
+
+config CCLK_DIV_8
+	bool "8"
+endchoice
+
+config SCLK_DIV
+	int "System Clock Divider"
+	depends on BFIN_KERNEL_CLOCK
+	range 1 15
+	default 5 if BFIN533_EZKIT
+	default 5 if BFIN533_STAMP
+	default 4 if (BFIN537_STAMP || BFIN527_EZKIT)
+	default 5 if BFIN533_BLUETECHNIX_CM
+	default 4 if BFIN537_BLUETECHNIX_CM
+	default 4 if BFIN561_BLUETECHNIX_CM
+	default 5 if BFIN561_EZKIT
+	default 3 if H8606_HVSISTEMAS
+	help
+	  This sets the frequency of the system clock (including SDRAM or DDR).
+	  This can be between 1 and 15
+	  System Clock = (PLL frequency) / (this setting)
+
+#
+# Max & Min Speeds for various Chips
+#
+config MAX_VCO_HZ
+	int
+	default 600000000 if BF522
+	default 600000000 if BF525
+	default 600000000 if BF527
+	default 400000000 if BF531
+	default 400000000 if BF532
+	default 750000000 if BF533
+	default 500000000 if BF534
+	default 400000000 if BF536
+	default 600000000 if BF537
+	default 533333333 if BF538
+	default 533333333 if BF539
+	default 600000000 if BF542
+	default 533333333 if BF544
+	default 533333333 if BF549
+	default 600000000 if BF561
+
+config MIN_VCO_HZ
+	int
+	default 50000000
+
+config MAX_SCLK_HZ
+	int
+	default 133333333
+
+config MIN_SCLK_HZ
+	int
+	default 27000000
+
+comment "Kernel Timer/Scheduler"
+
+source kernel/Kconfig.hz
+
+comment "Memory Setup"
+
 config MEM_SIZE
 	int "SDRAM Memory Size in MBytes"
 	default  32 if BFIN533_EZKIT
+	default  64 if BFIN527_EZKIT
 	default  64 if BFIN537_STAMP
 	default  64 if BFIN561_EZKIT
 	default 128 if BFIN533_STAMP
 	default  64 if PNAV10
+	default  32 if H8606_HVSISTEMAS
 
 config MEM_ADD_WIDTH
 	int "SDRAM Memory Address Width"
 	default  9 if BFIN533_EZKIT
 	default  9 if BFIN561_EZKIT
+	default  9 if H8606_HVSISTEMAS
+	default 10 if BFIN527_EZKIT
 	default 10 if BFIN537_STAMP
 	default 11 if BFIN533_STAMP
 	default 10 if PNAV10
@@ -364,15 +433,16 @@ config ENET_FLASH_PIN
 config BOOT_LOAD
 	hex "Kernel load address for booting"
 	default "0x1000"
+	range 0x1000 0x20000000
 	help
 	  This option allows you to set the load address of the kernel.
 	  This can be useful if you are on a board which has a small amount
 	  of memory or you wish to reserve some memory at the beginning of
 	  the address space.
 
-	  Note that you generally want to keep this value at or above 4k
-	  (0x1000) as this will allow the kernel to capture NULL pointer
-	  references.
+	  Note that you need to keep this value above 4k (0x1000) as this
+	  memory region is used to capture NULL pointer references as well
+	  as some core kernel functions.
 
 comment "LED Status Indicators"
 	depends on (BFIN533_STAMP || BFIN533_BLUETECHNIX_CM)
@@ -407,6 +477,52 @@ config BFIN_IDLE_LED_NUM
 	default "2" if BFIN533_STAMP
 	help
 	  Select the LED (marked on the board) for you to blink.
+
+choice
+	prompt "Blackfin Exception Scratch Register"
+	default BFIN_SCRATCH_REG_RETN
+	help
+	  Select the resource to reserve for the Exception handler:
+	    - RETN: Non-Maskable Interrupt (NMI)
+	    - RETE: Exception Return (JTAG/ICE)
+	    - CYCLES: Performance counter
+
+	  If you are unsure, please select "RETN".
+
+config BFIN_SCRATCH_REG_RETN
+	bool "RETN"
+	help
+	  Use the RETN register in the Blackfin exception handler
+	  as a stack scratch register.  This means you cannot
+	  safely use NMI on the Blackfin while running Linux, but
+	  you can debug the system with a JTAG ICE and use the
+	  CYCLES performance registers.
+
+	  If you are unsure, please select "RETN".
+
+config BFIN_SCRATCH_REG_RETE
+	bool "RETE"
+	help
+	  Use the RETE register in the Blackfin exception handler
+	  as a stack scratch register.  This means you cannot
+	  safely use a JTAG ICE while debugging a Blackfin board,
+	  but you can safely use the CYCLES performance registers
+	  and the NMI.
+
+	  If you are unsure, please select "RETN".
+
+config BFIN_SCRATCH_REG_CYCLES
+	bool "CYCLES"
+	help
+	  Use the CYCLES register in the Blackfin exception handler
+	  as a stack scratch register.  This means you cannot
+	  safely use the CYCLES performance registers on a Blackfin
+	  board at anytime, but you can debug the system with a JTAG
+	  ICE and use the NMI.
+
+	  If you are unsure, please select "RETN".
+
+endchoice
 
 #
 # Sorry - but you need to put the hex address here -
@@ -448,95 +564,92 @@ endmenu
 
 menu "Blackfin Kernel Optimizations"
 
-comment "Timer Tick"
-
-source kernel/Kconfig.hz
-
 comment "Memory Optimizations"
 
 config I_ENTRY_L1
 	bool "Locate interrupt entry code in L1 Memory"
 	default y
 	help
-	  If enabled interrupt entry code (STORE/RESTORE CONTEXT) is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, interrupt entry code (STORE/RESTORE CONTEXT) is linked
+	  into L1 instruction memory. (less latency)
 
 config EXCPT_IRQ_SYSC_L1
-	bool "Locate entire ASM lowlevel excepetion / interrupt - Syscall and CPLB handler code in L1 Memory"
+	bool "Locate entire ASM lowlevel exception / interrupt - Syscall and CPLB handler code in L1 Memory"
 	default y
 	help
-	  If enabled entire ASM lowlevel exception and interrupt entry code (STORE/RESTORE CONTEXT) is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the entire ASM lowlevel exception and interrupt entry code
+	  (STORE/RESTORE CONTEXT) is linked into L1 instruction memory. 
+	  (less latency)
 
 config DO_IRQ_L1
 	bool "Locate frequently called do_irq dispatcher function in L1 Memory"
 	default y
 	help
-	  If enabled frequently called do_irq dispatcher function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the frequently called do_irq dispatcher function is linked
+	  into L1 instruction memory. (less latency)
 
 config CORE_TIMER_IRQ_L1
 	bool "Locate frequently called timer_interrupt() function in L1 Memory"
 	default y
 	help
-	  If enabled frequently called timer_interrupt() function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the frequently called timer_interrupt() function is linked
+	  into L1 instruction memory. (less latency)
 
 config IDLE_L1
 	bool "Locate frequently idle function in L1 Memory"
 	default y
 	help
-	  If enabled frequently called idle function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the frequently called idle function is linked
+	  into L1 instruction memory. (less latency)
 
 config SCHEDULE_L1
 	bool "Locate kernel schedule function in L1 Memory"
 	default y
 	help
-	  If enabled frequently called kernel schedule is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the frequently called kernel schedule is linked
+	  into L1 instruction memory. (less latency)
 
 config ARITHMETIC_OPS_L1
 	bool "Locate kernel owned arithmetic functions in L1 Memory"
 	default y
 	help
-	  If enabled arithmetic functions are linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, arithmetic functions are linked
+	  into L1 instruction memory. (less latency)
 
 config ACCESS_OK_L1
 	bool "Locate access_ok function in L1 Memory"
 	default y
 	help
-	  If enabled access_ok function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the access_ok function is linked
+	  into L1 instruction memory. (less latency)
 
 config MEMSET_L1
 	bool "Locate memset function in L1 Memory"
 	default y
 	help
-	  If enabled memset function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the memset function is linked
+	  into L1 instruction memory. (less latency)
 
 config MEMCPY_L1
 	bool "Locate memcpy function in L1 Memory"
 	default y
 	help
-	  If enabled memcpy function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the memcpy function is linked
+	  into L1 instruction memory. (less latency)
 
 config SYS_BFIN_SPINLOCK_L1
 	bool "Locate sys_bfin_spinlock function in L1 Memory"
 	default y
 	help
-	  If enabled sys_bfin_spinlock function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, sys_bfin_spinlock function is linked
+	  into L1 instruction memory. (less latency)
 
 config IP_CHECKSUM_L1
 	bool "Locate IP Checksum function in L1 Memory"
 	default n
 	help
-	  If enabled IP Checksum function is linked
-	  into L1 instruction memory.(less latency)
+	  If enabled, the IP Checksum function is linked
+	  into L1 instruction memory. (less latency)
 
 config CACHELINE_ALIGNED_L1
 	bool "Locate cacheline_aligned data to L1 Data Memory"
@@ -544,24 +657,24 @@ config CACHELINE_ALIGNED_L1
 	default n if BF54x
 	depends on !BF531
 	help
-	  If enabled cacheline_anligned data is linked
-	  into L1 data memory.(less latency)
+	  If enabled, cacheline_anligned data is linked
+	  into L1 data memory. (less latency)
 
 config SYSCALL_TAB_L1
 	bool "Locate Syscall Table L1 Data Memory"
 	default n
 	depends on !BF531
 	help
-	  If enabled the Syscall LUT is linked
-	  into L1 data memory.(less latency)
+	  If enabled, the Syscall LUT is linked
+	  into L1 data memory. (less latency)
 
 config CPLB_SWITCH_TAB_L1
 	bool "Locate CPLB Switch Tables L1 Data Memory"
 	default n
 	depends on !BF531
 	help
-	  If enabled the CPLB Switch Tables are linked
-	  into L1 data memory.(less latency)
+	  If enabled, the CPLB Switch Tables are linked
+	  into L1 data memory. (less latency)
 
 endmenu
 
@@ -593,9 +706,19 @@ config LARGE_ALLOCS
 	  a lot of RAM, and you need to able to allocate very large
 	  contiguous chunks. If unsure, say N.
 
+config BFIN_GPTIMERS
+	tristate "Enable Blackfin General Purpose Timers API"
+	default n
+	help
+	  Enable support for the General Purpose Timers API.  If you
+	  are unsure, say N.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called gptimers.ko.
+
 config BFIN_DMA_5XX
 	bool "Enable DMA Support"
-	depends on (BF533 || BF532 || BF531 || BF537 || BF536 || BF534 || BF561 || BF54x)
+	depends on (BF52x || BF53x || BF561 || BF54x)
 	default y
 	help
 	  DMA driver for BF5xx.
@@ -603,7 +726,7 @@ config BFIN_DMA_5XX
 choice
 	prompt "Uncached SDRAM region"
 	default DMA_UNCACHED_1M
-	depends BFIN_DMA_5XX
+	depends on BFIN_DMA_5XX
 config DMA_UNCACHED_2M
 	bool "Enable 2M DMA region"
 config DMA_UNCACHED_1M
@@ -614,22 +737,22 @@ endchoice
 
 
 comment "Cache Support"
-config BLKFIN_CACHE
+config BFIN_ICACHE
 	bool "Enable ICACHE"
-config BLKFIN_DCACHE
+config BFIN_DCACHE
 	bool "Enable DCACHE"
-config BLKFIN_DCACHE_BANKA
+config BFIN_DCACHE_BANKA
 	bool "Enable only 16k BankA DCACHE - BankB is SRAM"
-	depends on BLKFIN_DCACHE && !BF531
+	depends on BFIN_DCACHE && !BF531
 	default n
-config BLKFIN_CACHE_LOCK
-	bool "Enable Cache Locking"
+config BFIN_ICACHE_LOCK
+	bool "Enable Instruction Cache Locking"
 
 choice
 	prompt "Policy"
-	depends on BLKFIN_DCACHE
-	default BLKFIN_WB
-config BLKFIN_WB
+	depends on BFIN_DCACHE
+	default BFIN_WB
+config BFIN_WB
 	bool "Write back"
 	help
 	  Write Back Policy:
@@ -646,7 +769,7 @@ config BLKFIN_WB
 	  If you are unsure of the options and you want to be safe,
 	  then go with Write Through.
 
-config BLKFIN_WT
+config BFIN_WT
 	bool "Write through"
 	help
 	  Write Back Policy:
@@ -672,66 +795,9 @@ config L1_MAX_PIECE
 	  Set the max memory pieces for the L1 SRAM allocation algorithm.
 	  Min value is 16. Max value is 1024.
 
-menu "Clock Settings"
-
-
-config BFIN_KERNEL_CLOCK
-	bool "Re-program Clocks while Kernel boots?"
-	default n
-	help
-	  This option decides if kernel clocks are re-programed from the
-	  bootloader settings. If the clocks are not set, the SDRAM settings
-	  are also not changed, and the Bootloader does 100% of the hardware
-	  configuration.
-
-config VCO_MULT
-	int "VCO Multiplier"
-	depends on BFIN_KERNEL_CLOCK
-	default "22" if BFIN533_EZKIT
-	default "45" if BFIN533_STAMP
-	default "20" if BFIN537_STAMP
-	default "22" if BFIN533_BLUETECHNIX_CM
-	default "20" if BFIN537_BLUETECHNIX_CM
-	default "20" if BFIN561_BLUETECHNIX_CM
-	default "20" if BFIN561_EZKIT
-
-config CCLK_DIV
-	int "Core Clock Divider"
-	depends on BFIN_KERNEL_CLOCK
-	default 1 if BFIN533_EZKIT
-	default 1 if BFIN533_STAMP
-	default 1 if BFIN537_STAMP
-	default 1 if BFIN533_BLUETECHNIX_CM
-	default 1 if BFIN537_BLUETECHNIX_CM
-	default 1 if BFIN561_BLUETECHNIX_CM
-	default 1 if BFIN561_EZKIT
-
-config SCLK_DIV
-	int "System Clock Divider"
-	depends on BFIN_KERNEL_CLOCK
-	default 5 if BFIN533_EZKIT
-	default 5 if BFIN533_STAMP
-	default 4 if BFIN537_STAMP
-	default 5 if BFIN533_BLUETECHNIX_CM
-	default 4 if BFIN537_BLUETECHNIX_CM
-	default 4 if BFIN561_BLUETECHNIX_CM
-	default 5 if BFIN561_EZKIT
-
-config CLKIN_HALF
-	bool "Half ClockIn"
-	depends on BFIN_KERNEL_CLOCK
-	default n
-
-config PLL_BYPASS
-	bool "Bypass PLL"
-	depends on BFIN_KERNEL_CLOCK
-	default n
-
-endmenu
-
 comment "Asynchonous Memory Configuration"
 
-menu "EBIU_AMBCTL Global Control"
+menu "EBIU_AMGCTL Global Control"
 config C_AMCKEN
 	bool "Enable CLKOUT"
 	default y
@@ -800,6 +866,20 @@ config BANK_3
 	default 0x99B3
 endmenu
 
+config EBIU_MBSCTLVAL
+	hex "EBIU Bank Select Control Register"
+	depends on BF54x
+	default 0
+
+config EBIU_MODEVAL
+	hex "Flash Memory Mode Control Register"
+	depends on BF54x
+	default 1
+
+config EBIU_FCTLVAL
+	hex "Flash Memory Bank Control Register"
+	depends on BF54x
+	default 6
 endmenu
 
 #############################################################################
@@ -914,99 +994,9 @@ source "drivers/Kconfig"
 
 source "fs/Kconfig"
 
-source "arch/blackfin/oprofile/Kconfig"
+source "kernel/Kconfig.instrumentation"
 
-menu "Kernel hacking"
-
-source "lib/Kconfig.debug"
-
-config DEBUG_HWERR
-	bool "Hardware error interrupt debugging"
-	depends on DEBUG_KERNEL
-	help
-	  When enabled, the hardware error interrupt is never disabled, and
-	  will happen immediately when an error condition occurs.  This comes
-	  at a slight cost in code size, but is necessary if you are getting
-	  hardware error interrupts and need to know where they are coming
-	  from.
-
-config DEBUG_ICACHE_CHECK
-	bool "Check Instruction cache coherancy"
-	depends on DEBUG_KERNEL
-	depends on DEBUG_HWERR
-	help
-	  Say Y here if you are getting wierd unexplained errors. This will
-	  ensure that icache is what SDRAM says it should be, by doing a
-	  byte wise comparision between SDRAM and instruction cache. This
-	  also relocates the irq_panic() function to L1 memory, (which is
-	  un-cached).
-
-config DEBUG_KERNEL_START
-	bool "Debug Kernel Startup"
-	depends on DEBUG_KERNEL
-	help
-	  Say Y here to put in an mini-execption handler before the kernel
-	  replaces the bootloader exception handler. This will stop kernels
-	  from dieing at startup with no visible error messages.
-
-config DEBUG_SERIAL_EARLY_INIT
-	bool "Initialize serial driver early"
-	default n
-	depends on SERIAL_BFIN
-	help
-	  Say Y here if you want to get kernel output early when kernel
-	  crashes before the normal console initialization. If this option
-	  is enable, console output will always go to the ttyBF0, no matter
-	  what kernel boot paramters you set.
-
-config DEBUG_HUNT_FOR_ZERO
-	bool "Catch NULL pointer reads/writes"
-	default y
-	help
-	  Say Y here to catch reads/writes to anywhere in the memory range
-	  from 0x0000 - 0x0FFF (the first 4k) of memory.  This is useful in
-	  catching common programming errors such as NULL pointer dereferences.
-
-	  Misbehaving applications will be killed (generate a SEGV) while the
-	  kernel will trigger a panic.
-
-	  Enabling this option will take up an extra entry in CPLB table.
-	  Otherwise, there is no extra overhead.
-
-config DEBUG_BFIN_NO_KERN_HWTRACE
-	bool "Trace user apps (turn off hwtrace in kernel)"
-	default n
-	help
-	  Some pieces of the kernel contain a lot of flow changes which can
-	  quickly fill up the hardware trace buffer.  When debugging crashes,
-	  the hardware trace may indicate that the problem lies in kernel
-	  space when in reality an application is buggy.
-
-	  Say Y here to disable hardware tracing in some known "jumpy" pieces
-	  of code so that the trace buffer will extend further back.
-
-config DUAL_CORE_TEST_MODULE
-	tristate "Dual Core Test Module"
-	depends on (BF561)
-	default n
-	help
-	  Say Y here to build-in dual core test module for dual core test.
-
-config CPLB_INFO
-	bool "Display the CPLB information"
-	help
-	  Display the CPLB information.
-
-config ACCESS_CHECK
-	bool "Check the user pointer address"
-	default y
-	help
-	  Usually the pointer transfer from user space is checked to see if its
-	  address is in the kernel space.
-
-	  Say N here to disable that check to improve the performance.
-
-endmenu
+source "arch/blackfin/Kconfig.debug"
 
 source "security/Kconfig"
 

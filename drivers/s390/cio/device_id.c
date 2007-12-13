@@ -118,14 +118,6 @@ __ccw_device_sense_id_start(struct ccw_device *cdev)
 	sch = to_subchannel(cdev->dev.parent);
 	/* Setup sense channel program. */
 	ccw = cdev->private->iccws;
-	if (sch->schib.pmcw.pim != 0x80) {
-		/* more than one path installed. */
-		ccw->cmd_code = CCW_CMD_SUSPEND_RECONN;
-		ccw->cda = 0;
-		ccw->count = 0;
-		ccw->flags = CCW_FLAG_SLI | CCW_FLAG_CC;
-		ccw++;
-	}
 	ccw->cmd_code = CCW_CMD_SENSE_ID;
 	ccw->cda = (__u32) __pa (&cdev->private->senseid);
 	ccw->count = sizeof (struct senseid);

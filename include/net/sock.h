@@ -40,6 +40,7 @@
 #ifndef _SOCK_H
 #define _SOCK_H
 
+#include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/cache.h>
@@ -55,6 +56,7 @@
 #include <asm/atomic.h>
 #include <net/dst.h>
 #include <net/checksum.h>
+#include <net/net_namespace.h>
 
 /*
  * This structure really needs to be cleaned up.
@@ -75,10 +77,9 @@
  * between user contexts and software interrupt processing, whereas the
  * mini-semaphore synchronizes multiple users amongst themselves.
  */
-struct sock_iocb;
 typedef struct {
 	spinlock_t		slock;
-	struct sock_iocb	*owner;
+	int			owned;
 	wait_queue_head_t	wq;
 	/*
 	 * We express the mutex-alike socket_lock semantics
@@ -105,6 +106,7 @@ struct proto;
  *	@skc_refcnt: reference count
  *	@skc_hash: hash value used with various protocol lookup tables
  *	@skc_prot: protocol handlers inside a network family
+ *	@skc_net: reference to the network namespace of this socket
  *
  *	This is the minimal network layer representation of sockets, the header
  *	for struct sock and struct inet_timewait_sock.
@@ -119,6 +121,7 @@ struct sock_common {
 	atomic_t		skc_refcnt;
 	unsigned int		skc_hash;
 	struct proto		*skc_prot;
+	struct net	 	*skc_net;
 };
 
 /**
@@ -195,6 +198,7 @@ struct sock {
 #define sk_refcnt		__sk_common.skc_refcnt
 #define sk_hash			__sk_common.skc_hash
 #define sk_prot			__sk_common.skc_prot
+#define sk_net			__sk_common.skc_net
 	unsigned char		sk_shutdown : 2,
 				sk_no_check : 2,
 				sk_userlocks : 4;
@@ -481,17 +485,17 @@ static inline void sk_add_backlog(struct sock *sk, struct sk_buff *skb)
 	skb->next = NULL;
 }
 
-#define sk_wait_event(__sk, __timeo, __condition)		\
-({	int rc;							\
-	release_sock(__sk);					\
-	rc = __condition;					\
-	if (!rc) {						\
-		*(__timeo) = schedule_timeout(*(__timeo));	\
-	}							\
-	lock_sock(__sk);					\
-	rc = __condition;					\
-	rc;							\
-})
+#define sk_wait_event(__sk, __timeo, __condition)			\
+	({	int __rc;						\
+		release_sock(__sk);					\
+		__rc = __condition;					\
+		if (!__rc) {						\
+			*(__timeo) = schedule_timeout(*(__timeo));	\
+		}							\
+		lock_sock(__sk);					\
+		__rc = __condition;					\
+		__rc;							\
+	})
 
 extern int sk_stream_wait_connect(struct sock *sk, long *timeo_p);
 extern int sk_stream_wait_memory(struct sock *sk, long *timeo_p);
@@ -556,6 +560,14 @@ struct proto {
 	void			(*unhash)(struct sock *sk);
 	int			(*get_port)(struct sock *sk, unsigned short snum);
 
+#ifdef CONFIG_SMP
+	/* Keeping track of sockets in use */
+	void			(*inuse_add)(struct proto *prot, int inc);
+	int			(*inuse_getval)(const struct proto *prot);
+	int			*inuse_ptr;
+#else
+	int			inuse;
+#endif
 	/* Memory pressure */
 	void			(*enter_memory_pressure)(void);
 	atomic_t		*memory_allocated;	/* Current allocated memory. */
@@ -588,11 +600,37 @@ struct proto {
 #ifdef SOCK_REFCNT_DEBUG
 	atomic_t		socks;
 #endif
-	struct {
-		int inuse;
-		u8  __pad[SMP_CACHE_BYTES - sizeof(int)];
-	} stats[NR_CPUS];
 };
+
+/*
+ * Special macros to let protos use a fast version of inuse{get|add}
+ * using a static percpu variable per proto instead of an allocated one,
+ * saving one dereference.
+ * This might be changed if/when dynamic percpu vars become fast.
+ */
+#ifdef CONFIG_SMP
+# define DEFINE_PROTO_INUSE(NAME)			\
+static DEFINE_PER_CPU(int, NAME##_inuse);		\
+static void NAME##_inuse_add(struct proto *prot, int inc)	\
+{							\
+	__get_cpu_var(NAME##_inuse) += inc;		\
+}							\
+							\
+static int NAME##_inuse_getval(const struct proto *prot)\
+{							\
+	int res = 0, cpu;				\
+							\
+	for_each_possible_cpu(cpu)			\
+		res += per_cpu(NAME##_inuse, cpu);	\
+	return res;					\
+}
+# define REF_PROTO_INUSE(NAME)				\
+	.inuse_add = NAME##_inuse_add,			\
+	.inuse_getval = NAME##_inuse_getval,
+#else
+# define DEFINE_PROTO_INUSE(NAME)
+# define REF_PROTO_INUSE(NAME)
+#endif
 
 extern int proto_register(struct proto *prot, int alloc_slab);
 extern void proto_unregister(struct proto *prot);
@@ -625,12 +663,29 @@ static inline void sk_refcnt_debug_release(const struct sock *sk)
 /* Called with local bh disabled */
 static __inline__ void sock_prot_inc_use(struct proto *prot)
 {
-	prot->stats[smp_processor_id()].inuse++;
+#ifdef CONFIG_SMP
+	prot->inuse_add(prot, 1);
+#else
+	prot->inuse++;
+#endif
 }
 
 static __inline__ void sock_prot_dec_use(struct proto *prot)
 {
-	prot->stats[smp_processor_id()].inuse--;
+#ifdef CONFIG_SMP
+	prot->inuse_add(prot, -1);
+#else
+	prot->inuse--;
+#endif
+}
+
+static __inline__ int sock_prot_inuse(struct proto *proto)
+{
+#ifdef CONFIG_SMP
+	return proto->inuse_getval(proto);
+#else
+	return proto->inuse;
+#endif
 }
 
 /* With per-bucket locks this operation is not-atomic, so that
@@ -702,7 +757,7 @@ extern int sk_stream_mem_schedule(struct sock *sk, int size, int kind);
 
 static inline int sk_stream_pages(int amt)
 {
-	return (amt + SK_STREAM_MEM_QUANTUM - 1) / SK_STREAM_MEM_QUANTUM;
+	return DIV_ROUND_UP(amt, SK_STREAM_MEM_QUANTUM);
 }
 
 static inline void sk_stream_mem_reclaim(struct sock *sk)
@@ -736,7 +791,7 @@ static inline int sk_stream_wmem_schedule(struct sock *sk, int size)
  * Since ~2.3.5 it is also exclusive sleep lock serializing
  * accesses from user process context.
  */
-#define sock_owned_by_user(sk)	((sk)->sk_lock.owner)
+#define sock_owned_by_user(sk)	((sk)->sk_lock.owned)
 
 /*
  * Macro so as to not evaluate some arguments when
@@ -747,7 +802,7 @@ static inline int sk_stream_wmem_schedule(struct sock *sk, int size)
  */
 #define sock_lock_init_class_and_name(sk, sname, skey, name, key) 	\
 do {									\
-	sk->sk_lock.owner = NULL;					\
+	sk->sk_lock.owned = 0;					\
 	init_waitqueue_head(&sk->sk_lock.wq);				\
 	spin_lock_init(&(sk)->sk_lock.slock);				\
 	debug_check_no_locks_freed((void *)&(sk)->sk_lock,		\
@@ -773,9 +828,9 @@ extern void FASTCALL(release_sock(struct sock *sk));
 				SINGLE_DEPTH_NESTING)
 #define bh_unlock_sock(__sk)	spin_unlock(&((__sk)->sk_lock.slock))
 
-extern struct sock		*sk_alloc(int family,
+extern struct sock		*sk_alloc(struct net *net, int family,
 					  gfp_t priority,
-					  struct proto *prot, int zero_it);
+					  struct proto *prot);
 extern void			sk_free(struct sock *sk);
 extern struct sock		*sk_clone(const struct sock *sk,
 					  const gfp_t priority);
@@ -901,16 +956,6 @@ static inline int sk_filter(struct sock *sk, struct sk_buff *skb)
 }
 
 /**
- * 	sk_filter_rcu_free: Free a socket filter
- *	@rcu: rcu_head that contains the sk_filter to free
- */
-static inline void sk_filter_rcu_free(struct rcu_head *rcu)
-{
-	struct sk_filter *fp = container_of(rcu, struct sk_filter, rcu);
-	kfree(fp);
-}
-
-/**
  *	sk_filter_release: Release a socket filter
  *	@sk: socket
  *	@fp: filter to remove
@@ -918,14 +963,18 @@ static inline void sk_filter_rcu_free(struct rcu_head *rcu)
  *	Remove a filter from a socket and release its resources.
  */
 
-static inline void sk_filter_release(struct sock *sk, struct sk_filter *fp)
+static inline void sk_filter_release(struct sk_filter *fp)
+{
+	if (atomic_dec_and_test(&fp->refcnt))
+		kfree(fp);
+}
+
+static inline void sk_filter_uncharge(struct sock *sk, struct sk_filter *fp)
 {
 	unsigned int size = sk_filter_len(fp);
 
 	atomic_sub(size, &sk->sk_omem_alloc);
-
-	if (atomic_dec_and_test(&fp->refcnt))
-		call_rcu_bh(&fp->rcu, sk_filter_rcu_free);
+	sk_filter_release(fp);
 }
 
 static inline void sk_filter_charge(struct sock *sk, struct sk_filter *fp)
@@ -993,19 +1042,6 @@ static inline void sock_graft(struct sock *sk, struct socket *parent)
 	sk->sk_socket = parent;
 	security_sock_graft(sk, parent);
 	write_unlock_bh(&sk->sk_callback_lock);
-}
-
-static inline void sock_copy(struct sock *nsk, const struct sock *osk)
-{
-#ifdef CONFIG_SECURITY_NETWORK
-	void *sptr = nsk->sk_security;
-#endif
-
-	memcpy(nsk, osk, osk->sk_prot->obj_size);
-#ifdef CONFIG_SECURITY_NETWORK
-	nsk->sk_security = sptr;
-	security_sk_clone(osk, nsk);
-#endif
 }
 
 extern int sock_i_uid(struct sock *sk);
@@ -1199,14 +1235,19 @@ static inline struct sk_buff *sk_stream_alloc_pskb(struct sock *sk,
 						   gfp_t gfp)
 {
 	struct sk_buff *skb;
-	int hdr_len;
 
-	hdr_len = SKB_DATA_ALIGN(sk->sk_prot->max_header);
-	skb = alloc_skb_fclone(size + hdr_len, gfp);
+	/* The TCP header must be at least 32-bit aligned.  */
+	size = ALIGN(size, 4);
+
+	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
 	if (skb) {
 		skb->truesize += mem;
 		if (sk_stream_wmem_schedule(sk, skb->truesize)) {
-			skb_reserve(skb, hdr_len);
+			/*
+			 * Make sure that we have exactly size bytes
+			 * available to the caller, no more, no less.
+			 */
+			skb_reserve(skb, skb_tailroom(skb) - size);
 			return skb;
 		}
 		__kfree_skb(skb);

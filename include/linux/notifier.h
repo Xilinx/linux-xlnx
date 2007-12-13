@@ -231,5 +231,22 @@ static inline int notifier_to_errno(int ret)
 #define PM_SUSPEND_PREPARE	0x0003 /* Going to suspend the system */
 #define PM_POST_SUSPEND		0x0004 /* Suspend finished */
 
+/* Console keyboard events.
+ * Note: KBD_KEYCODE is always sent before KBD_UNBOUND_KEYCODE, KBD_UNICODE and
+ * KBD_KEYSYM. */
+#define KBD_KEYCODE		0x0001 /* Keyboard keycode, called before any other */
+#define KBD_UNBOUND_KEYCODE	0x0002 /* Keyboard keycode which is not bound to any other */
+#define KBD_UNICODE		0x0003 /* Keyboard unicode */
+#define KBD_KEYSYM		0x0004 /* Keyboard keysym */
+#define KBD_POST_KEYSYM		0x0005 /* Called after keyboard keysym interpretation */
+
+extern struct blocking_notifier_head reboot_notifier_list;
+
+/* Virtual Terminal events. */
+#define VT_ALLOCATE		0x0001 /* Console got allocated */
+#define VT_DEALLOCATE		0x0002 /* Console will be deallocated */
+#define VT_WRITE		0x0003 /* A char got output */
+#define VT_UPDATE		0x0004 /* A bigger update occurred */
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_NOTIFIER_H */

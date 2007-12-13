@@ -227,7 +227,7 @@ static void raid_end_bio_io(r10bio_t *r10_bio)
 {
 	struct bio *bio = r10_bio->master_bio;
 
-	bio_endio(bio, bio->bi_size,
+	bio_endio(bio,
 		test_bit(R10BIO_Uptodate, &r10_bio->state) ? 0 : -EIO);
 	free_r10bio(r10_bio);
 }
@@ -243,15 +243,13 @@ static inline void update_head_pos(int slot, r10bio_t *r10_bio)
 		r10_bio->devs[slot].addr + (r10_bio->sectors);
 }
 
-static int raid10_end_read_request(struct bio *bio, unsigned int bytes_done, int error)
+static void raid10_end_read_request(struct bio *bio, int error)
 {
 	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	r10bio_t * r10_bio = (r10bio_t *)(bio->bi_private);
 	int slot, dev;
 	conf_t *conf = mddev_to_conf(r10_bio->mddev);
 
-	if (bio->bi_size)
-		return 1;
 
 	slot = r10_bio->read_slot;
 	dev = r10_bio->devs[slot].devnum;
@@ -284,18 +282,14 @@ static int raid10_end_read_request(struct bio *bio, unsigned int bytes_done, int
 	}
 
 	rdev_dec_pending(conf->mirrors[dev].rdev, conf->mddev);
-	return 0;
 }
 
-static int raid10_end_write_request(struct bio *bio, unsigned int bytes_done, int error)
+static void raid10_end_write_request(struct bio *bio, int error)
 {
 	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	r10bio_t * r10_bio = (r10bio_t *)(bio->bi_private);
 	int slot, dev;
 	conf_t *conf = mddev_to_conf(r10_bio->mddev);
-
-	if (bio->bi_size)
-		return 1;
 
 	for (slot = 0; slot < conf->copies; slot++)
 		if (r10_bio->devs[slot].bio == bio)
@@ -339,7 +333,6 @@ static int raid10_end_write_request(struct bio *bio, unsigned int bytes_done, in
 	}
 
 	rdev_dec_pending(conf->mirrors[dev].rdev, conf->mddev);
-	return 0;
 }
 
 
@@ -600,8 +593,7 @@ static void unplug_slaves(mddev_t *mddev)
 			atomic_inc(&rdev->nr_pending);
 			rcu_read_unlock();
 
-			if (r_queue->unplug_fn)
-				r_queue->unplug_fn(r_queue);
+			blk_unplug(r_queue);
 
 			rdev_dec_pending(rdev, mddev);
 			rcu_read_lock();
@@ -616,36 +608,6 @@ static void raid10_unplug(struct request_queue *q)
 
 	unplug_slaves(q->queuedata);
 	md_wakeup_thread(mddev->thread);
-}
-
-static int raid10_issue_flush(struct request_queue *q, struct gendisk *disk,
-			     sector_t *error_sector)
-{
-	mddev_t *mddev = q->queuedata;
-	conf_t *conf = mddev_to_conf(mddev);
-	int i, ret = 0;
-
-	rcu_read_lock();
-	for (i=0; i<mddev->raid_disks && ret == 0; i++) {
-		mdk_rdev_t *rdev = rcu_dereference(conf->mirrors[i].rdev);
-		if (rdev && !test_bit(Faulty, &rdev->flags)) {
-			struct block_device *bdev = rdev->bdev;
-			struct request_queue *r_queue = bdev_get_queue(bdev);
-
-			if (!r_queue->issue_flush_fn)
-				ret = -EOPNOTSUPP;
-			else {
-				atomic_inc(&rdev->nr_pending);
-				rcu_read_unlock();
-				ret = r_queue->issue_flush_fn(r_queue, bdev->bd_disk,
-							      error_sector);
-				rdev_dec_pending(rdev, mddev);
-				rcu_read_lock();
-			}
-		}
-	}
-	rcu_read_unlock();
-	return ret;
 }
 
 static int raid10_congested(void *data, int bits)
@@ -787,7 +749,7 @@ static int make_request(struct request_queue *q, struct bio * bio)
 	unsigned long flags;
 
 	if (unlikely(bio_barrier(bio))) {
-		bio_endio(bio, bio->bi_size, -EOPNOTSUPP);
+		bio_endio(bio, -EOPNOTSUPP);
 		return 0;
 	}
 
@@ -819,7 +781,7 @@ static int make_request(struct request_queue *q, struct bio * bio)
 		       " or bigger than %dk %llu %d\n", chunk_sects/2,
 		       (unsigned long long)bio->bi_sector, bio->bi_size >> 10);
 
-		bio_io_error(bio, bio->bi_size);
+		bio_io_error(bio);
 		return 0;
 	}
 
@@ -1155,14 +1117,11 @@ abort:
 }
 
 
-static int end_sync_read(struct bio *bio, unsigned int bytes_done, int error)
+static void end_sync_read(struct bio *bio, int error)
 {
 	r10bio_t * r10_bio = (r10bio_t *)(bio->bi_private);
 	conf_t *conf = mddev_to_conf(r10_bio->mddev);
 	int i,d;
-
-	if (bio->bi_size)
-		return 1;
 
 	for (i=0; i<conf->copies; i++)
 		if (r10_bio->devs[i].bio == bio)
@@ -1192,19 +1151,15 @@ static int end_sync_read(struct bio *bio, unsigned int bytes_done, int error)
 		reschedule_retry(r10_bio);
 	}
 	rdev_dec_pending(conf->mirrors[d].rdev, conf->mddev);
-	return 0;
 }
 
-static int end_sync_write(struct bio *bio, unsigned int bytes_done, int error)
+static void end_sync_write(struct bio *bio, int error)
 {
 	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	r10bio_t * r10_bio = (r10bio_t *)(bio->bi_private);
 	mddev_t *mddev = r10_bio->mddev;
 	conf_t *conf = mddev_to_conf(mddev);
 	int i,d;
-
-	if (bio->bi_size)
-		return 1;
 
 	for (i = 0; i < conf->copies; i++)
 		if (r10_bio->devs[i].bio == bio)
@@ -1228,7 +1183,6 @@ static int end_sync_write(struct bio *bio, unsigned int bytes_done, int error)
 		}
 	}
 	rdev_dec_pending(conf->mirrors[d].rdev, mddev);
-	return 0;
 }
 
 /*
@@ -1374,7 +1328,7 @@ static void recovery_request_write(mddev_t *mddev, r10bio_t *r10_bio)
 	if (test_bit(R10BIO_Uptodate, &r10_bio->state))
 		generic_make_request(wbio);
 	else
-		bio_endio(wbio, wbio->bi_size, -EIO);
+		bio_endio(wbio, -EIO);
 }
 
 
@@ -2133,7 +2087,6 @@ static int run(mddev_t *mddev)
 	mddev->resync_max_sectors = size << conf->chunk_shift;
 
 	mddev->queue->unplug_fn = raid10_unplug;
-	mddev->queue->issue_flush_fn = raid10_issue_flush;
 	mddev->queue->backing_dev_info.congested_fn = raid10_congested;
 	mddev->queue->backing_dev_info.congested_data = mddev;
 

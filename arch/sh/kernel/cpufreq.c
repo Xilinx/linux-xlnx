@@ -77,8 +77,6 @@ static int sh_cpufreq_target(struct cpufreq_policy *policy,
 
 static int sh_cpufreq_cpu_init(struct cpufreq_policy *policy)
 {
-	printk(KERN_INFO "cpufreq: SuperH CPU frequency driver.\n");
-
 	if (!cpu_online(policy->cpu))
 		return -ENODEV;
 
@@ -93,7 +91,6 @@ static int sh_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.max_freq = (clk_round_rate(cpuclk, ~0UL) + 500) / 1000;
 	policy->cpuinfo.transition_latency = CPUFREQ_ETERNAL;
 
-	policy->governor	= CPUFREQ_DEFAULT_GOVERNOR;
 	policy->cur		= sh_cpufreq_get(policy->cpu);
 	policy->min		= policy->cpuinfo.min_freq;
 	policy->max		= policy->cpuinfo.max_freq;
@@ -144,6 +141,7 @@ static struct cpufreq_driver sh_cpufreq_driver = {
 
 static int __init sh_cpufreq_module_init(void)
 {
+	printk(KERN_INFO "cpufreq: SuperH CPU frequency driver.\n");
 	return cpufreq_register_driver(&sh_cpufreq_driver);
 }
 

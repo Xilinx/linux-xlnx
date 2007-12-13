@@ -68,22 +68,21 @@ DEFINE_SPINLOCK(titan_lock);
 int titan_irqflags;
 
 
-static void excite_timer_init(void)
+/*
+ * The eXcite platform uses the alternate timer interrupt
+ *
+ * Fixme: At the time of this writing cevt-r4k.c doesn't yet know about how
+ * to handle the alternate timer interrupt of the RM9000.
+ */
+void __init plat_time_init(void)
 {
 	const u32 modebit5 = ocd_readl(0x00e4);
-	unsigned int
-		mult = ((modebit5 >> 11) & 0x1f) + 2,
-		div = ((modebit5 >> 16) & 0x1f) + 2;
+	unsigned int mult = ((modebit5 >> 11) & 0x1f) + 2;
+	unsigned int div = ((modebit5 >> 16) & 0x1f) + 2;
 
-	if (div == 33) div = 1;
+	if (div == 33)
+		div = 1;
 	mips_hpt_frequency = EXCITE_CPU_EXT_CLOCK * mult / div / 2;
-}
-
-void __init plat_timer_setup(struct irqaction *irq)
-{
-	/* The eXcite platform uses the alternate timer interrupt */
-	set_c0_intcontrol(0x80);
-	setup_irq(TIMER_IRQ, irq);
 }
 
 static int __init excite_init_console(void)
@@ -216,7 +215,7 @@ static int __init excite_platform_init(void)
 	titan_writel(0x80021dff, GXCFG);	/* XDMA reset */
 	titan_writel(0x00000000, CPXCISRA);
 	titan_writel(0x00000000, CPXCISRB);	/* clear pending interrupts */
-#if defined (CONFIG_HIGHMEM)
+#if defined(CONFIG_HIGHMEM)
 #	error change for HIGHMEM support!
 #else
 	titan_writel(0x00000000, GXDMADRPFX);	/* buffer address prefix */
@@ -261,16 +260,13 @@ void __init plat_mem_setup(void)
 	/* Announce RAM to system */
 	add_memory_region(0x00000000, memsize, BOOT_MEM_RAM);
 
-	/* Set up timer initialization hooks */
-	board_time_init = excite_timer_init;
-
 	/* Set up the peripheral address map */
-	*(boot_ocd_base + (LKB9 / sizeof (u32))) = 0;
-	*(boot_ocd_base + (LKB10 / sizeof (u32))) = 0;
-	*(boot_ocd_base + (LKB11 / sizeof (u32))) = 0;
-	*(boot_ocd_base + (LKB12 / sizeof (u32))) = 0;
+	*(boot_ocd_base + (LKB9 / sizeof(u32))) = 0;
+	*(boot_ocd_base + (LKB10 / sizeof(u32))) = 0;
+	*(boot_ocd_base + (LKB11 / sizeof(u32))) = 0;
+	*(boot_ocd_base + (LKB12 / sizeof(u32))) = 0;
 	wmb();
-	*(boot_ocd_base + (LKB0 / sizeof (u32))) = EXCITE_PHYS_OCD >> 4;
+	*(boot_ocd_base + (LKB0 / sizeof(u32))) = EXCITE_PHYS_OCD >> 4;
 	wmb();
 
 	ocd_writel((EXCITE_PHYS_TITAN >> 4) | 0x1UL, LKB5);

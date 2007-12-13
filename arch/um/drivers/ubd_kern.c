@@ -35,6 +35,7 @@
 #include "linux/genhd.h"
 #include "linux/spinlock.h"
 #include "linux/platform_device.h"
+#include "linux/scatterlist.h"
 #include "asm/segment.h"
 #include "asm/uaccess.h"
 #include "asm/irq.h"
@@ -615,7 +616,7 @@ static int ubd_open_dev(struct ubd *ubd_dev)
 		blk_queue_max_sectors(ubd_dev->queue, 8 * sizeof(long));
 
 		err = -ENOMEM;
-		ubd_dev->cow.bitmap = (void *) vmalloc(ubd_dev->cow.bitmap_len);
+		ubd_dev->cow.bitmap = vmalloc(ubd_dev->cow.bitmap_len);
 		if(ubd_dev->cow.bitmap == NULL){
 			printk(KERN_ERR "Failed to vmalloc COW bitmap\n");
 			goto error;
@@ -704,6 +705,7 @@ static int ubd_add(int n, char **error_out)
 	ubd_dev->size = ROUND_BLOCK(ubd_dev->size);
 
 	INIT_LIST_HEAD(&ubd_dev->restart);
+	sg_init_table(ubd_dev->sg, MAX_SG);
 
 	err = -ENOMEM;
 	ubd_dev->queue = blk_init_queue(do_ubd_request, &ubd_dev->lock);
@@ -1115,7 +1117,7 @@ static void do_ubd_request(struct request_queue *q)
 			}
 			prepare_request(req, io_req,
 					(unsigned long long) req->sector << 9,
-					sg->offset, sg->length, sg->page);
+					sg->offset, sg->length, sg_page(sg));
 
 			last_sectors = sg->length >> 9;
 			n = os_write_file(thread_fd, &io_req,
@@ -1126,6 +1128,7 @@ static void do_ubd_request(struct request_queue *q)
 					       "errno = %d\n", -n);
 				else if(list_empty(&dev->restart))
 					list_add(&dev->restart, &restart);
+				kfree(io_req);
 				return;
 			}
 

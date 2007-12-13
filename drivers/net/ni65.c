@@ -183,7 +183,7 @@ static struct card {
 	short addr_offset;
 	unsigned char *vendor_id;
 	char *cardname;
-	long config;
+	unsigned long config;
 } cards[] = {
 	{
 		.id0	     = NI65_ID0,
@@ -550,7 +550,6 @@ static int __init ni65_probe1(struct net_device *dev,int ioaddr)
 	}
 
 	dev->base_addr = ioaddr;
-	SET_MODULE_OWNER(dev);
 	dev->open		= ni65_open;
 	dev->stop		= ni65_close;
 	dev->hard_start_xmit	= ni65_send_packet;

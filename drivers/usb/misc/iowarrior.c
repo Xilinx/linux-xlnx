@@ -66,6 +66,7 @@ module_param(debug, bool, 0644);
 MODULE_PARM_DESC(debug, "debug=1 enables debugging messages");
 
 static struct usb_driver iowarrior_driver;
+static DEFINE_MUTEX(iowarrior_open_disc_lock);
 
 /*--------------*/
 /*     data     */
@@ -216,7 +217,7 @@ static void iowarrior_callback(struct urb *urb)
 exit:
 	retval = usb_submit_urb(urb, GFP_ATOMIC);
 	if (retval)
-		dev_err(&dev->interface->dev, "%s - usb_submit_urb failed with result %d",
+		dev_err(&dev->interface->dev, "%s - usb_submit_urb failed with result %d\n",
 			__FUNCTION__, retval);
 
 }
@@ -351,7 +352,7 @@ static ssize_t iowarrior_write(struct file *file,
 
 	mutex_lock(&dev->mutex);
 	/* verify that the device wasn't unplugged */
-	if (dev == NULL || !dev->present) {
+	if (!dev->present) {
 		retval = -ENODEV;
 		goto exit;
 	}
@@ -451,7 +452,7 @@ static ssize_t iowarrior_write(struct file *file,
 		break;
 	default:
 		/* what do we have here ? An unsupported Product-ID ? */
-		dev_err(&dev->interface->dev, "%s - not supported for product=0x%x",
+		dev_err(&dev->interface->dev, "%s - not supported for product=0x%x\n",
 			__FUNCTION__, dev->product_id);
 		retval = -EFAULT;
 		goto exit;
@@ -526,7 +527,7 @@ static int iowarrior_ioctl(struct inode *inode, struct file *file,
 		} else {
 			retval = -EINVAL;
 			dev_err(&dev->interface->dev,
-				"ioctl 'IOW_WRITE' is not supported for product=0x%x.",
+				"ioctl 'IOW_WRITE' is not supported for product=0x%x.\n",
 				dev->product_id);
 		}
 		break;
@@ -608,11 +609,15 @@ static int iowarrior_open(struct inode *inode, struct file *file)
 		return -ENODEV;
 	}
 
+	mutex_lock(&iowarrior_open_disc_lock);
 	dev = usb_get_intfdata(interface);
-	if (!dev)
+	if (!dev) {
+		mutex_unlock(&iowarrior_open_disc_lock);
 		return -ENODEV;
+	}
 
 	mutex_lock(&dev->mutex);
+	mutex_unlock(&iowarrior_open_disc_lock);
 
 	/* Only one process can open each device, no sharing. */
 	if (dev->opened) {
@@ -752,7 +757,7 @@ static int iowarrior_probe(struct usb_interface *interface,
 	/* allocate memory for our device state and intialize it */
 	dev = kzalloc(sizeof(struct iowarrior), GFP_KERNEL);
 	if (dev == NULL) {
-		dev_err(&interface->dev, "Out of memory");
+		dev_err(&interface->dev, "Out of memory\n");
 		return retval;
 	}
 
@@ -866,6 +871,7 @@ static void iowarrior_disconnect(struct usb_interface *interface)
 	int minor;
 
 	dev = usb_get_intfdata(interface);
+	mutex_lock(&iowarrior_open_disc_lock);
 	usb_set_intfdata(interface, NULL);
 
 	minor = dev->minor;
@@ -879,6 +885,7 @@ static void iowarrior_disconnect(struct usb_interface *interface)
 	dev->present = 0;
 
 	mutex_unlock(&dev->mutex);
+	mutex_unlock(&iowarrior_open_disc_lock);
 
 	if (dev->opened) {
 		/* There is a process that holds a filedescriptor to the device ,

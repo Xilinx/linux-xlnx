@@ -138,7 +138,7 @@ extern void __iomem * __ioremap(unsigned long offset, unsigned long size, unsign
 /* Most machines react poorly to I/O-space being cacheable... Instead let's
  * define ioremap() in terms of ioremap_nocache().
  */
-extern inline void __iomem * ioremap(unsigned long offset, unsigned long size)
+static inline void __iomem * ioremap(unsigned long offset, unsigned long size)
 {
 	return __ioremap(offset, size, _PAGE_NO_CACHE);
 }
@@ -269,11 +269,6 @@ extern void outsl (unsigned long port, const void *src, unsigned long count);
 
 /* IO Port space is :      BBiiii   where BB is HBA number. */
 #define IO_SPACE_LIMIT 0x00ffffff
-
-
-#define dma_cache_inv(_start,_size)		do { flush_kernel_dcache_range(_start,_size); } while (0)
-#define dma_cache_wback(_start,_size)		do { flush_kernel_dcache_range(_start,_size); } while (0)
-#define dma_cache_wback_inv(_start,_size)	do { flush_kernel_dcache_range(_start,_size); } while (0)
 
 /* PA machines have an MM I/O space from 0xf0000000-0xffffffff in 32
  * bit mode and from 0xfffffffff0000000-0xfffffffffffffff in 64 bit

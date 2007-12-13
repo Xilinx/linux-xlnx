@@ -114,7 +114,6 @@ struct ip_vs_lblc_table {
 
 static ctl_table vs_vars_table[] = {
 	{
-		.ctl_name	= NET_IPV4_VS_LBLC_EXPIRE,
 		.procname	= "lblc_expiration",
 		.data		= &sysctl_ip_vs_lblc_expiration,
 		.maxlen		= sizeof(int),
@@ -126,7 +125,6 @@ static ctl_table vs_vars_table[] = {
 
 static ctl_table vs_table[] = {
 	{
-		.ctl_name	= NET_IPV4_VS,
 		.procname	= "vs",
 		.mode		= 0555,
 		.child		= vs_vars_table
@@ -582,9 +580,14 @@ static struct ip_vs_scheduler ip_vs_lblc_scheduler =
 
 static int __init ip_vs_lblc_init(void)
 {
+	int ret;
+
 	INIT_LIST_HEAD(&ip_vs_lblc_scheduler.n_list);
 	sysctl_header = register_sysctl_table(lblc_root_table);
-	return register_ip_vs_scheduler(&ip_vs_lblc_scheduler);
+	ret = register_ip_vs_scheduler(&ip_vs_lblc_scheduler);
+	if (ret)
+		unregister_sysctl_table(sysctl_header);
+	return ret;
 }
 
 

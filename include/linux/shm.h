@@ -16,7 +16,9 @@
 #define SHMALL (SHMMAX/PAGE_SIZE*(SHMMNI/16)) /* max shm system wide (pages) */
 #define SHMSEG SHMMNI			 /* max shared segs per process */
 
+#ifdef __KERNEL__
 #include <asm/shmparam.h>
+#endif
 
 /* Obsolete, used only for backwards compatibility and libc5 compiles */
 struct shmid_ds {
@@ -77,7 +79,6 @@ struct shmid_kernel /* private to the kernel */
 {	
 	struct kern_ipc_perm	shm_perm;
 	struct file *		shm_file;
-	int			id;
 	unsigned long		shm_nattch;
 	unsigned long		shm_segsz;
 	time_t			shm_atim;

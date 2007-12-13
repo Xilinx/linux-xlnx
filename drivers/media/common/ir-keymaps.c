@@ -20,7 +20,6 @@
 
  */
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 
 #include <linux/input.h>
 #include <media/ir-common.h>
@@ -1075,41 +1074,41 @@ EXPORT_SYMBOL_GPL(ir_codes_manli);
 /* Mike Baikov <mike@baikov.com> */
 IR_KEYTAB_TYPE ir_codes_gotview7135[IR_KEYTAB_SIZE] = {
 
-	[ 0x21 ] = KEY_POWER,
-	[ 0x69 ] = KEY_TV,
-	[ 0x33 ] = KEY_0,
-	[ 0x51 ] = KEY_1,
-	[ 0x31 ] = KEY_2,
-	[ 0x71 ] = KEY_3,
-	[ 0x3b ] = KEY_4,
-	[ 0x58 ] = KEY_5,
-	[ 0x41 ] = KEY_6,
-	[ 0x48 ] = KEY_7,
-	[ 0x30 ] = KEY_8,
-	[ 0x53 ] = KEY_9,
-	[ 0x73 ] = KEY_AGAIN, /* LOOP */
-	[ 0x0a ] = KEY_AUDIO,
-	[ 0x61 ] = KEY_PRINT, /* PREVIEW */
-	[ 0x7a ] = KEY_VIDEO,
-	[ 0x20 ] = KEY_CHANNELUP,
-	[ 0x40 ] = KEY_CHANNELDOWN,
-	[ 0x18 ] = KEY_VOLUMEDOWN,
-	[ 0x50 ] = KEY_VOLUMEUP,
-	[ 0x10 ] = KEY_MUTE,
-	[ 0x4a ] = KEY_SEARCH,
-	[ 0x7b ] = KEY_SHUFFLE, /* SNAPSHOT */
-	[ 0x22 ] = KEY_RECORD,
-	[ 0x62 ] = KEY_STOP,
-	[ 0x78 ] = KEY_PLAY,
-	[ 0x39 ] = KEY_REWIND,
-	[ 0x59 ] = KEY_PAUSE,
-	[ 0x19 ] = KEY_FORWARD,
-	[ 0x09 ] = KEY_ZOOM,
+	[ 0x11 ] = KEY_POWER,
+	[ 0x35 ] = KEY_TV,
+	[ 0x1b ] = KEY_0,
+	[ 0x29 ] = KEY_1,
+	[ 0x19 ] = KEY_2,
+	[ 0x39 ] = KEY_3,
+	[ 0x1f ] = KEY_4,
+	[ 0x2c ] = KEY_5,
+	[ 0x21 ] = KEY_6,
+	[ 0x24 ] = KEY_7,
+	[ 0x18 ] = KEY_8,
+	[ 0x2b ] = KEY_9,
+	[ 0x3b ] = KEY_AGAIN, /* LOOP */
+	[ 0x06 ] = KEY_AUDIO,
+	[ 0x31 ] = KEY_PRINT, /* PREVIEW */
+	[ 0x3e ] = KEY_VIDEO,
+	[ 0x10 ] = KEY_CHANNELUP,
+	[ 0x20 ] = KEY_CHANNELDOWN,
+	[ 0x0c ] = KEY_VOLUMEDOWN,
+	[ 0x28 ] = KEY_VOLUMEUP,
+	[ 0x08 ] = KEY_MUTE,
+	[ 0x26 ] = KEY_SEARCH, /*SCAN*/
+	[ 0x3f ] = KEY_SHUFFLE, /* SNAPSHOT */
+	[ 0x12 ] = KEY_RECORD,
+	[ 0x32 ] = KEY_STOP,
+	[ 0x3c ] = KEY_PLAY,
+	[ 0x1d ] = KEY_REWIND,
+	[ 0x2d ] = KEY_PAUSE,
+	[ 0x0d ] = KEY_FORWARD,
+	[ 0x05 ] = KEY_ZOOM,  /*FULL*/
 
-	[ 0x52 ] = KEY_F21, /* LIVE TIMESHIFT */
-	[ 0x1a ] = KEY_F22, /* MIN TIMESHIFT */
-	[ 0x3a ] = KEY_F23, /* TIMESHIFT */
-	[ 0x70 ] = KEY_F24, /* NORMAL TIMESHIFT */
+	[ 0x2a ] = KEY_F21, /* LIVE TIMESHIFT */
+	[ 0x0e ] = KEY_F22, /* MIN TIMESHIFT */
+	[ 0x1e ] = KEY_F23, /* TIMESHIFT */
+	[ 0x38 ] = KEY_F24, /* NORMAL TIMESHIFT */
 };
 
 EXPORT_SYMBOL_GPL(ir_codes_gotview7135);
@@ -1783,3 +1782,64 @@ IR_KEYTAB_TYPE ir_codes_tt_1500[IR_KEYTAB_SIZE] = {
 };
 
 EXPORT_SYMBOL_GPL(ir_codes_tt_1500);
+
+/* DViCO FUSION HDTV MCE remote */
+IR_KEYTAB_TYPE ir_codes_fusionhdtv_mce[IR_KEYTAB_SIZE] = {
+
+	[ 0x0b ] = KEY_1,
+	[ 0x17 ] = KEY_2,
+	[ 0x1b ] = KEY_3,
+	[ 0x07 ] = KEY_4,
+	[ 0x50 ] = KEY_5,
+	[ 0x54 ] = KEY_6,
+	[ 0x48 ] = KEY_7,
+	[ 0x4c ] = KEY_8,
+	[ 0x58 ] = KEY_9,
+	[ 0x03 ] = KEY_0,
+
+	[ 0x5e ] = KEY_OK,
+	[ 0x51 ] = KEY_UP,
+	[ 0x53 ] = KEY_DOWN,
+	[ 0x5b ] = KEY_LEFT,
+	[ 0x5f ] = KEY_RIGHT,
+
+	[ 0x02 ] = KEY_TV,		/* Labeled DTV on remote */
+	[ 0x0e ] = KEY_MP3,
+	[ 0x1a ] = KEY_DVD,
+	[ 0x1e ] = KEY_FAVORITES,	/* Labeled CPF on remote */
+	[ 0x16 ] = KEY_SETUP,
+	[ 0x46 ] = KEY_POWER2,		/* TV On/Off button on remote */
+	[ 0x0a ] = KEY_EPG,		/* Labeled Guide on remote */
+
+	[ 0x49 ] = KEY_BACK,
+	[ 0x59 ] = KEY_INFO,		/* Labeled MORE on remote */
+	[ 0x4d ] = KEY_MENU,		/* Labeled DVDMENU on remote */
+	[ 0x55 ] = KEY_CYCLEWINDOWS,	/* Labeled ALT-TAB on remote */
+
+	[ 0x0f ] = KEY_PREVIOUSSONG,	/* Labeled |<< REPLAY on remote */
+	[ 0x12 ] = KEY_NEXTSONG,	/* Labeled >>| SKIP on remote */
+	[ 0x42 ] = KEY_ENTER, 		/* Labeled START with a green
+					 * MS windows logo on remote */
+
+	[ 0x15 ] = KEY_VOLUMEUP,
+	[ 0x05 ] = KEY_VOLUMEDOWN,
+	[ 0x11 ] = KEY_CHANNELUP,
+	[ 0x09 ] = KEY_CHANNELDOWN,
+
+	[ 0x52 ] = KEY_CAMERA,
+	[ 0x5a ] = KEY_TUNER,
+	[ 0x19 ] = KEY_OPEN,
+
+	[ 0x13 ] = KEY_MODE,		/* 4:3 16:9 select */
+	[ 0x1f ] = KEY_ZOOM,
+
+	[ 0x43 ] = KEY_REWIND,
+	[ 0x47 ] = KEY_PLAYPAUSE,
+	[ 0x4f ] = KEY_FASTFORWARD,
+	[ 0x57 ] = KEY_MUTE,
+	[ 0x0d ] = KEY_STOP,
+	[ 0x01 ] = KEY_RECORD,
+	[ 0x4e ] = KEY_POWER,
+};
+
+EXPORT_SYMBOL_GPL(ir_codes_fusionhdtv_mce);

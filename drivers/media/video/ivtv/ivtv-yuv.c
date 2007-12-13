@@ -19,10 +19,15 @@
  */
 
 #include "ivtv-driver.h"
-#include "ivtv-queue.h"
 #include "ivtv-udma.h"
-#include "ivtv-irq.h"
 #include "ivtv-yuv.h"
+
+const u32 yuv_offset[4] = {
+	IVTV_YUV_BUFFER_OFFSET,
+	IVTV_YUV_BUFFER_OFFSET_1,
+	IVTV_YUV_BUFFER_OFFSET_2,
+	IVTV_YUV_BUFFER_OFFSET_3
+};
 
 static int ivtv_yuv_prep_user_dma(struct ivtv *itv, struct ivtv_user_dma *dma,
 				 struct ivtv_dma_frame *args)
@@ -37,7 +42,7 @@ static int ivtv_yuv_prep_user_dma(struct ivtv *itv, struct ivtv_user_dma *dma,
 	int y_decode_height, uv_decode_height, y_size;
 	int frame = atomic_read(&itv->yuv_info.next_fill_frame);
 
-	y_buffer_offset = IVTV_DEC_MEM_START + yuv_offset[frame];
+	y_buffer_offset = IVTV_DECODER_OFFSET + yuv_offset[frame];
 	uv_buffer_offset = y_buffer_offset + IVTV_YUV_BUFFER_UV_OFFSET;
 
 	y_decode_height = uv_decode_height = args->src.height + args->src.top;
@@ -83,7 +88,14 @@ static int ivtv_yuv_prep_user_dma(struct ivtv *itv, struct ivtv_user_dma *dma,
 	}
 
 	/* Fill & map SG List */
-	ivtv_udma_fill_sg_list (dma, &uv_dma, ivtv_udma_fill_sg_list (dma, &y_dma, 0));
+	if (ivtv_udma_fill_sg_list (dma, &uv_dma, ivtv_udma_fill_sg_list (dma, &y_dma, 0)) < 0) {
+		IVTV_DEBUG_WARN("could not allocate bounce buffers for highmem userspace buffers\n");
+		for (i = 0; i < dma->page_count; i++) {
+			put_page(dma->map[i]);
+		}
+		dma->page_count = 0;
+		return -ENOMEM;
+	}
 	dma->SG_length = pci_map_sg(itv->dev, dma->SGlist, dma->page_count, PCI_DMA_TODEVICE);
 
 	/* Fill SG Array with new values */
@@ -94,7 +106,7 @@ static int ivtv_yuv_prep_user_dma(struct ivtv *itv, struct ivtv_user_dma *dma,
 		if (itv->yuv_info.blanking_dmaptr) {
 			dma->SGarray[dma->SG_length].size = cpu_to_le32(720*16);
 			dma->SGarray[dma->SG_length].src = cpu_to_le32(itv->yuv_info.blanking_dmaptr);
-			dma->SGarray[dma->SG_length].dst = cpu_to_le32(IVTV_DEC_MEM_START + yuv_offset[frame]);
+			dma->SGarray[dma->SG_length].dst = cpu_to_le32(IVTV_DECODER_OFFSET + yuv_offset[frame]);
 			dma->SG_length++;
 		}
 	}
@@ -612,7 +624,6 @@ static void ivtv_yuv_handle_vertical(struct ivtv *itv, struct yuv_frame_info *wi
 		itv->yuv_info.v_filter_2 = v_filter_2;
 	}
 
-	itv->yuv_info.frame_interlaced_last = itv->yuv_info.frame_interlaced;
 }
 
 /* Modify the supplied coordinate information to fit the visible osd area */
@@ -699,7 +710,7 @@ static u32 ivtv_yuv_window_setup (struct ivtv *itv, struct yuv_frame_info *windo
 
 	/* If there's nothing to safe to display, we may as well stop now */
 	if ((int)window->dst_w <= 2 || (int)window->dst_h <= 2 || (int)window->src_w <= 2 || (int)window->src_h <= 2) {
-		return 0;
+		return IVTV_YUV_UPDATE_INVALID;
 	}
 
 	/* Ensure video remains inside OSD area */
@@ -780,7 +791,7 @@ static u32 ivtv_yuv_window_setup (struct ivtv *itv, struct yuv_frame_info *windo
 
 	/* Check again. If there's nothing to safe to display, stop now */
 	if ((int)window->dst_w <= 2 || (int)window->dst_h <= 2 || (int)window->src_w <= 2 || (int)window->src_h <= 2) {
-		return 0;
+		return IVTV_YUV_UPDATE_INVALID;
 	}
 
 	/* Both x offset & width are linked, so they have to be done together */
@@ -799,6 +810,7 @@ static u32 ivtv_yuv_window_setup (struct ivtv *itv, struct yuv_frame_info *windo
 	    (itv->yuv_info.old_frame_info.src_y != window->src_y) ||
 	    (itv->yuv_info.old_frame_info.pan_y != window->pan_y) ||
 	    (itv->yuv_info.old_frame_info.vis_h != window->vis_h) ||
+	    (itv->yuv_info.old_frame_info.lace_mode != window->lace_mode) ||
 	    (itv->yuv_info.old_frame_info.interlaced_y != window->interlaced_y) ||
 	    (itv->yuv_info.old_frame_info.interlaced_uv != window->interlaced_uv)) {
 		yuv_update |= IVTV_YUV_UPDATE_VERTICAL;
@@ -828,97 +840,118 @@ void ivtv_yuv_work_handler (struct ivtv *itv)
 	if (!(yuv_update = ivtv_yuv_window_setup (itv, &window)))
 		return;
 
-	/* Update horizontal settings */
-	if (yuv_update & IVTV_YUV_UPDATE_HORIZONTAL)
-		ivtv_yuv_handle_horizontal(itv, &window);
+	if (yuv_update & IVTV_YUV_UPDATE_INVALID) {
+		write_reg(0x01008080, 0x2898);
+	} else if (yuv_update) {
+		write_reg(0x00108080, 0x2898);
 
-	if (yuv_update & IVTV_YUV_UPDATE_VERTICAL)
-		ivtv_yuv_handle_vertical(itv, &window);
+		if (yuv_update & IVTV_YUV_UPDATE_HORIZONTAL)
+			ivtv_yuv_handle_horizontal(itv, &window);
+
+		if (yuv_update & IVTV_YUV_UPDATE_VERTICAL)
+			ivtv_yuv_handle_vertical(itv, &window);
+	}
 
 	memcpy(&itv->yuv_info.old_frame_info, &window, sizeof (itv->yuv_info.old_frame_info));
 }
 
 static void ivtv_yuv_init (struct ivtv *itv)
 {
+	struct yuv_playback_info *yi = &itv->yuv_info;
+
 	IVTV_DEBUG_YUV("ivtv_yuv_init\n");
 
 	/* Take a snapshot of the current register settings */
-	itv->yuv_info.reg_2834 = read_reg(0x02834);
-	itv->yuv_info.reg_2838 = read_reg(0x02838);
-	itv->yuv_info.reg_283c = read_reg(0x0283c);
-	itv->yuv_info.reg_2840 = read_reg(0x02840);
-	itv->yuv_info.reg_2844 = read_reg(0x02844);
-	itv->yuv_info.reg_2848 = read_reg(0x02848);
-	itv->yuv_info.reg_2854 = read_reg(0x02854);
-	itv->yuv_info.reg_285c = read_reg(0x0285c);
-	itv->yuv_info.reg_2864 = read_reg(0x02864);
-	itv->yuv_info.reg_2870 = read_reg(0x02870);
-	itv->yuv_info.reg_2874 = read_reg(0x02874);
-	itv->yuv_info.reg_2898 = read_reg(0x02898);
-	itv->yuv_info.reg_2890 = read_reg(0x02890);
+	yi->reg_2834 = read_reg(0x02834);
+	yi->reg_2838 = read_reg(0x02838);
+	yi->reg_283c = read_reg(0x0283c);
+	yi->reg_2840 = read_reg(0x02840);
+	yi->reg_2844 = read_reg(0x02844);
+	yi->reg_2848 = read_reg(0x02848);
+	yi->reg_2854 = read_reg(0x02854);
+	yi->reg_285c = read_reg(0x0285c);
+	yi->reg_2864 = read_reg(0x02864);
+	yi->reg_2870 = read_reg(0x02870);
+	yi->reg_2874 = read_reg(0x02874);
+	yi->reg_2898 = read_reg(0x02898);
+	yi->reg_2890 = read_reg(0x02890);
 
-	itv->yuv_info.reg_289c = read_reg(0x0289c);
-	itv->yuv_info.reg_2918 = read_reg(0x02918);
-	itv->yuv_info.reg_291c = read_reg(0x0291c);
-	itv->yuv_info.reg_2920 = read_reg(0x02920);
-	itv->yuv_info.reg_2924 = read_reg(0x02924);
-	itv->yuv_info.reg_2928 = read_reg(0x02928);
-	itv->yuv_info.reg_292c = read_reg(0x0292c);
-	itv->yuv_info.reg_2930 = read_reg(0x02930);
-	itv->yuv_info.reg_2934 = read_reg(0x02934);
-	itv->yuv_info.reg_2938 = read_reg(0x02938);
-	itv->yuv_info.reg_293c = read_reg(0x0293c);
-	itv->yuv_info.reg_2940 = read_reg(0x02940);
-	itv->yuv_info.reg_2944 = read_reg(0x02944);
-	itv->yuv_info.reg_2948 = read_reg(0x02948);
-	itv->yuv_info.reg_294c = read_reg(0x0294c);
-	itv->yuv_info.reg_2950 = read_reg(0x02950);
-	itv->yuv_info.reg_2954 = read_reg(0x02954);
-	itv->yuv_info.reg_2958 = read_reg(0x02958);
-	itv->yuv_info.reg_295c = read_reg(0x0295c);
-	itv->yuv_info.reg_2960 = read_reg(0x02960);
-	itv->yuv_info.reg_2964 = read_reg(0x02964);
-	itv->yuv_info.reg_2968 = read_reg(0x02968);
-	itv->yuv_info.reg_296c = read_reg(0x0296c);
-	itv->yuv_info.reg_2970 = read_reg(0x02970);
+	yi->reg_289c = read_reg(0x0289c);
+	yi->reg_2918 = read_reg(0x02918);
+	yi->reg_291c = read_reg(0x0291c);
+	yi->reg_2920 = read_reg(0x02920);
+	yi->reg_2924 = read_reg(0x02924);
+	yi->reg_2928 = read_reg(0x02928);
+	yi->reg_292c = read_reg(0x0292c);
+	yi->reg_2930 = read_reg(0x02930);
+	yi->reg_2934 = read_reg(0x02934);
+	yi->reg_2938 = read_reg(0x02938);
+	yi->reg_293c = read_reg(0x0293c);
+	yi->reg_2940 = read_reg(0x02940);
+	yi->reg_2944 = read_reg(0x02944);
+	yi->reg_2948 = read_reg(0x02948);
+	yi->reg_294c = read_reg(0x0294c);
+	yi->reg_2950 = read_reg(0x02950);
+	yi->reg_2954 = read_reg(0x02954);
+	yi->reg_2958 = read_reg(0x02958);
+	yi->reg_295c = read_reg(0x0295c);
+	yi->reg_2960 = read_reg(0x02960);
+	yi->reg_2964 = read_reg(0x02964);
+	yi->reg_2968 = read_reg(0x02968);
+	yi->reg_296c = read_reg(0x0296c);
+	yi->reg_2970 = read_reg(0x02970);
 
-	itv->yuv_info.v_filter_1 = -1;
-	itv->yuv_info.v_filter_2 = -1;
-	itv->yuv_info.h_filter = -1;
+	yi->v_filter_1 = -1;
+	yi->v_filter_2 = -1;
+	yi->h_filter = -1;
 
 	/* Set some valid size info */
-	itv->yuv_info.osd_x_offset = read_reg(0x02a04) & 0x00000FFF;
-	itv->yuv_info.osd_y_offset = (read_reg(0x02a04) >> 16) & 0x00000FFF;
+	yi->osd_x_offset = read_reg(0x02a04) & 0x00000FFF;
+	yi->osd_y_offset = (read_reg(0x02a04) >> 16) & 0x00000FFF;
 
 	/* Bit 2 of reg 2878 indicates current decoder output format
 	   0 : NTSC    1 : PAL */
 	if (read_reg(0x2878) & 4)
-		itv->yuv_info.decode_height = 576;
+		yi->decode_height = 576;
 	else
-		itv->yuv_info.decode_height = 480;
+		yi->decode_height = 480;
 
-	/* If no visible size set, assume full size */
-	if (!itv->yuv_info.osd_vis_w) itv->yuv_info.osd_vis_w = 720 - itv->yuv_info.osd_x_offset;
-	if (!itv->yuv_info.osd_vis_h) itv->yuv_info.osd_vis_h = itv->yuv_info.decode_height - itv->yuv_info.osd_y_offset;
+	if (!itv->osd_info) {
+		yi->osd_vis_w = 720 - yi->osd_x_offset;
+		yi->osd_vis_h = yi->decode_height - yi->osd_y_offset;
+	} else {
+		/* If no visible size set, assume full size */
+		if (!yi->osd_vis_w)
+			yi->osd_vis_w = 720 - yi->osd_x_offset;
+
+		if (!yi->osd_vis_h)
+			yi->osd_vis_h = yi->decode_height - yi->osd_y_offset;
+		else {
+			/* If output video standard has changed, requested height may
+			not be legal */
+			if (yi->osd_vis_h + yi->osd_y_offset > yi->decode_height) {
+				IVTV_DEBUG_WARN("Clipping yuv output - fb size (%d) exceeds video standard limit (%d)\n",
+						yi->osd_vis_h + yi->osd_y_offset,
+						yi->decode_height);
+				yi->osd_vis_h = yi->decode_height - yi->osd_y_offset;
+			}
+		}
+	}
 
 	/* We need a buffer for blanking when Y plane is offset - non-fatal if we can't get one */
-	itv->yuv_info.blanking_ptr = kzalloc(720*16,GFP_KERNEL);
-	if (itv->yuv_info.blanking_ptr) {
-		itv->yuv_info.blanking_dmaptr = pci_map_single(itv->dev, itv->yuv_info.blanking_ptr, 720*16, PCI_DMA_TODEVICE);
-	}
+	yi->blanking_ptr = kzalloc(720*16, GFP_KERNEL);
+	if (yi->blanking_ptr)
+		yi->blanking_dmaptr = pci_map_single(itv->dev, yi->blanking_ptr, 720*16, PCI_DMA_TODEVICE);
 	else {
-		itv->yuv_info.blanking_dmaptr = 0;
-		IVTV_DEBUG_WARN ("Failed to allocate yuv blanking buffer\n");
+		yi->blanking_dmaptr = 0;
+		IVTV_DEBUG_WARN("Failed to allocate yuv blanking buffer\n");
 	}
-
-	IVTV_DEBUG_WARN("Enable video output\n");
-	write_reg_sync(0x00108080, 0x2898);
 
 	/* Enable YUV decoder output */
 	write_reg_sync(0x01, IVTV_REG_VDM);
 
 	set_bit(IVTV_F_I_DECODING_YUV, &itv->i_flags);
-	atomic_set(&itv->yuv_info.next_dma_frame,0);
+	atomic_set(&yi->next_dma_frame, 0);
 }
 
 int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
@@ -927,6 +960,7 @@ int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 	int rc = 0;
 	int got_sig = 0;
 	int frame, next_fill_frame, last_fill_frame;
+	int register_update = 0;
 
 	IVTV_DEBUG_INFO("yuv_prep_frame\n");
 
@@ -940,6 +974,7 @@ int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 		/* Buffers are full - Overwrite the last frame */
 		next_fill_frame = frame;
 		frame = (frame - 1) & 3;
+		register_update = itv->yuv_info.new_frame_info[frame].update;
 	}
 
 	/* Take a snapshot of the yuv coordinate information */
@@ -954,6 +989,9 @@ int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 	itv->yuv_info.new_frame_info[frame].tru_x = args->dst.left;
 	itv->yuv_info.new_frame_info[frame].tru_w = args->src_width;
 	itv->yuv_info.new_frame_info[frame].tru_h = args->src_height;
+
+	/* Snapshot field order */
+	itv->yuv_info.sync_field[frame] = itv->yuv_info.lace_sync_field;
 
 	/* Are we going to offset the Y plane */
 	if (args->src.height + args->src.top < 512-16)
@@ -970,6 +1008,7 @@ int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 	itv->yuv_info.new_frame_info[frame].update = 0;
 	itv->yuv_info.new_frame_info[frame].interlaced_y = 0;
 	itv->yuv_info.new_frame_info[frame].interlaced_uv = 0;
+	itv->yuv_info.new_frame_info[frame].lace_mode = itv->yuv_info.lace_mode;
 
 	if (memcmp (&itv->yuv_info.old_frame_info_args, &itv->yuv_info.new_frame_info[frame],
 	    sizeof (itv->yuv_info.new_frame_info[frame]))) {
@@ -977,6 +1016,14 @@ int ivtv_yuv_prep_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 		itv->yuv_info.new_frame_info[frame].update = 1;
 /*		IVTV_DEBUG_YUV ("Requesting register update for frame %d\n",frame); */
 	}
+
+	itv->yuv_info.new_frame_info[frame].update |= register_update;
+
+	/* Should this frame be delayed ? */
+	if (itv->yuv_info.sync_field[frame] != itv->yuv_info.sync_field[(frame - 1) & 3])
+		itv->yuv_info.field_delay[frame] = 1;
+	else
+		itv->yuv_info.field_delay[frame] = 0;
 
 	/* DMA the frame */
 	mutex_lock(&itv->udma.lock);

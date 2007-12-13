@@ -110,7 +110,10 @@
 #define DALGN		__REG(0x400000a0)  /* DMA Alignment Register */
 #define DINT		__REG(0x400000f0)  /* DMA Interrupt Register */
 
-#define DRCMR(n)	__REG2(0x40000100, (n)<<2)
+#define DRCMR(n)	(*(((n) < 64) ? \
+			&__REG2(0x40000100, ((n) & 0x3f) << 2) : \
+			&__REG2(0x40001100, ((n) & 0x3f) << 2)))
+
 #define DRCMR0		__REG(0x40000100)  /* Request to Channel Map Register for DREQ 0 */
 #define DRCMR1		__REG(0x40000104)  /* Request to Channel Map Register for DREQ 1 */
 #define DRCMR2		__REG(0x40000108)  /* Request to Channel Map Register for I2S receive Request */
@@ -1177,7 +1180,7 @@
 
 #define GPIO_bit(x)	(1 << ((x) & 0x1f))
 
-#ifdef CONFIG_PXA27x
+#if defined(CONFIG_PXA27x) || defined(CONFIG_PXA3xx)
 
 /* Interrupt Controller */
 
@@ -1823,6 +1826,7 @@
 #define LCCR1		__REG(0x44000004)  /* LCD Controller Control Register 1 */
 #define LCCR2		__REG(0x44000008)  /* LCD Controller Control Register 2 */
 #define LCCR3		__REG(0x4400000C)  /* LCD Controller Control Register 3 */
+#define LCCR4		__REG(0x44000010)  /* LCD Controller Control Register 3 */
 #define DFBR0		__REG(0x44000020)  /* DMA Channel 0 Frame Branch Register */
 #define DFBR1		__REG(0x44000024)  /* DMA Channel 1 Frame Branch Register */
 #define LCSR		__REG(0x44000038)  /* LCD Controller Status Register */
@@ -1835,6 +1839,16 @@
 #define LCCR3_4BPP (2 << 24)
 #define LCCR3_8BPP (3 << 24)
 #define LCCR3_16BPP (4 << 24)
+
+#define LCCR3_PDFOR_0 (0 << 30)
+#define LCCR3_PDFOR_1 (1 << 30)
+#define LCCR3_PDFOR_2 (2 << 30)
+#define LCCR3_PDFOR_3 (3 << 30)
+
+#define LCCR4_PAL_FOR_0 (0 << 15)
+#define LCCR4_PAL_FOR_1 (1 << 15)
+#define LCCR4_PAL_FOR_2 (2 << 15)
+#define LCCR4_PAL_FOR_MASK (3 << 15)
 
 #define FDADR0		__REG(0x44000200)  /* DMA Channel 0 Frame Descriptor Address Register */
 #define FSADR0		__REG(0x44000204)  /* DMA Channel 0 Frame Source Address Register */

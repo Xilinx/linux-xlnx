@@ -202,6 +202,7 @@ static void blk_remove_tree(struct dentry *dir)
 static struct dentry *blk_create_tree(const char *blk_name)
 {
 	struct dentry *dir = NULL;
+	int created = 0;
 
 	mutex_lock(&blk_tree_mutex);
 
@@ -209,13 +210,17 @@ static struct dentry *blk_create_tree(const char *blk_name)
 		blk_tree_root = debugfs_create_dir("block", NULL);
 		if (!blk_tree_root)
 			goto err;
+		created = 1;
 	}
 
 	dir = debugfs_create_dir(blk_name, blk_tree_root);
 	if (dir)
 		root_users++;
-	else
-		blk_remove_root();
+	else {
+		/* Delete root only if we created it */
+		if (created)
+			blk_remove_root();
+	}
 
 err:
 	mutex_unlock(&blk_tree_mutex);
@@ -312,33 +317,26 @@ static struct rchan_callbacks blk_relay_callbacks = {
 /*
  * Setup everything required to start tracing
  */
-static int blk_trace_setup(struct request_queue *q, struct block_device *bdev,
-			   char __user *arg)
+int do_blk_trace_setup(struct request_queue *q, struct block_device *bdev,
+			struct blk_user_trace_setup *buts)
 {
-	struct blk_user_trace_setup buts;
 	struct blk_trace *old_bt, *bt = NULL;
 	struct dentry *dir = NULL;
 	char b[BDEVNAME_SIZE];
 	int ret, i;
 
-	if (copy_from_user(&buts, arg, sizeof(buts)))
-		return -EFAULT;
-
-	if (!buts.buf_size || !buts.buf_nr)
+	if (!buts->buf_size || !buts->buf_nr)
 		return -EINVAL;
 
-	strcpy(buts.name, bdevname(bdev, b));
+	strcpy(buts->name, bdevname(bdev, b));
 
 	/*
 	 * some device names have larger paths - convert the slashes
 	 * to underscores for this to work as expected
 	 */
-	for (i = 0; i < strlen(buts.name); i++)
-		if (buts.name[i] == '/')
-			buts.name[i] = '_';
-
-	if (copy_to_user(arg, &buts, sizeof(buts)))
-		return -EFAULT;
+	for (i = 0; i < strlen(buts->name); i++)
+		if (buts->name[i] == '/')
+			buts->name[i] = '_';
 
 	ret = -ENOMEM;
 	bt = kzalloc(sizeof(*bt), GFP_KERNEL);
@@ -350,7 +348,7 @@ static int blk_trace_setup(struct request_queue *q, struct block_device *bdev,
 		goto err;
 
 	ret = -ENOENT;
-	dir = blk_create_tree(buts.name);
+	dir = blk_create_tree(buts->name);
 	if (!dir)
 		goto err;
 
@@ -363,20 +361,21 @@ static int blk_trace_setup(struct request_queue *q, struct block_device *bdev,
 	if (!bt->dropped_file)
 		goto err;
 
-	bt->rchan = relay_open("trace", dir, buts.buf_size, buts.buf_nr, &blk_relay_callbacks, bt);
+	bt->rchan = relay_open("trace", dir, buts->buf_size,
+				buts->buf_nr, &blk_relay_callbacks, bt);
 	if (!bt->rchan)
 		goto err;
 
-	bt->act_mask = buts.act_mask;
+	bt->act_mask = buts->act_mask;
 	if (!bt->act_mask)
 		bt->act_mask = (u16) -1;
 
-	bt->start_lba = buts.start_lba;
-	bt->end_lba = buts.end_lba;
+	bt->start_lba = buts->start_lba;
+	bt->end_lba = buts->end_lba;
 	if (!bt->end_lba)
 		bt->end_lba = -1ULL;
 
-	bt->pid = buts.pid;
+	bt->pid = buts->pid;
 	bt->trace_state = Blktrace_setup;
 
 	ret = -EBUSY;
@@ -399,6 +398,26 @@ err:
 		kfree(bt);
 	}
 	return ret;
+}
+
+static int blk_trace_setup(struct request_queue *q, struct block_device *bdev,
+			   char __user *arg)
+{
+	struct blk_user_trace_setup buts;
+	int ret;
+
+	ret = copy_from_user(&buts, arg, sizeof(buts));
+	if (ret)
+		return -EFAULT;
+
+	ret = do_blk_trace_setup(q, bdev, &buts);
+	if (ret)
+		return ret;
+
+	if (copy_to_user(arg, &buts, sizeof(buts)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static int blk_trace_startstop(struct request_queue *q, int start)
@@ -536,7 +555,7 @@ static void blk_trace_set_ht_offsets(void)
 	for_each_online_cpu(cpu) {
 		unsigned long long *cpu_off, *sibling_off;
 
-		for_each_cpu_mask(i, cpu_sibling_map[cpu]) {
+		for_each_cpu_mask(i, per_cpu(cpu_sibling_map, cpu)) {
 			if (i == cpu)
 				continue;
 

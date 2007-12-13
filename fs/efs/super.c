@@ -69,7 +69,7 @@ static void efs_destroy_inode(struct inode *inode)
 	kmem_cache_free(efs_inode_cachep, INODE_INFO(inode));
 }
 
-static void init_once(void * foo, struct kmem_cache * cachep, unsigned long flags)
+static void init_once(struct kmem_cache *cachep, void *foo)
 {
 	struct efs_inode_info *ei = (struct efs_inode_info *) foo;
 
@@ -113,8 +113,9 @@ static const struct super_operations efs_superblock_operations = {
 	.remount_fs	= efs_remount,
 };
 
-static struct export_operations efs_export_ops = {
-	.get_dentry	= efs_get_dentry,
+static const struct export_operations efs_export_ops = {
+	.fh_to_dentry	= efs_fh_to_dentry,
+	.fh_to_parent	= efs_fh_to_parent,
 	.get_parent	= efs_get_parent,
 };
 

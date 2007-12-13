@@ -1,5 +1,5 @@
-/* 
- * Copyright (C) 2000, 2001, 2002 Jeff Dike (jdike@karaya.com)
+/*
+ * Copyright (C) 2000 - 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
  * Licensed under the GPL
  */
 
@@ -9,17 +9,11 @@
 #include "uml-config.h"
 #include "user_constants.h"
 #include "sysdep/faultinfo.h"
-#include "choose-mode.h"
 
 #define MAX_REG_NR (UM_FRAME_SIZE / sizeof(unsigned long))
 #define MAX_REG_OFFSET (UM_FRAME_SIZE)
 
-#ifdef UML_CONFIG_PT_PROXY
-extern void update_debugregs(int seq);
-#else
 static inline void update_debugregs(int seq) {}
-#endif
-
 
 /* syscall emulation path in ptrace */
 
@@ -30,12 +24,6 @@ static inline void update_debugregs(int seq) {}
 void set_using_sysemu(int value);
 int get_using_sysemu(void);
 extern int sysemu_supported;
-
-#ifdef UML_CONFIG_MODE_TT
-#include "sysdep/sc.h"
-#endif
-
-#ifdef UML_CONFIG_MODE_SKAS
 
 #include "skas_ptregs.h"
 
@@ -60,70 +48,36 @@ extern int sysemu_supported;
 
 #define REGS_RESTART_SYSCALL(r) IP_RESTART_SYSCALL(REGS_IP(r))
 
-#endif
 #ifndef PTRACE_SYSEMU_SINGLESTEP
 #define PTRACE_SYSEMU_SINGLESTEP 32
 #endif
 
-union uml_pt_regs {
-#ifdef UML_CONFIG_MODE_TT
-	struct tt_regs {
-		long syscall;
-		void *sc;
-                struct faultinfo faultinfo;
-	} tt;
-#endif
-#ifdef UML_CONFIG_MODE_SKAS
-	struct skas_regs {
-		unsigned long regs[MAX_REG_NR];
-		unsigned long fp[HOST_FP_SIZE];
-		unsigned long xfp[HOST_XFP_SIZE];
-                struct faultinfo faultinfo;
-		long syscall;
-		int is_user;
-	} skas;
-#endif
+struct uml_pt_regs {
+	unsigned long gp[MAX_REG_NR];
+	struct faultinfo faultinfo;
+	long syscall;
+	int is_user;
 };
 
 #define EMPTY_UML_PT_REGS { }
 
-extern int mode_tt;
-
-#define UPT_SC(r) ((r)->tt.sc)
-#define UPT_IP(r) \
-	__CHOOSE_MODE(SC_IP(UPT_SC(r)), REGS_IP((r)->skas.regs))
-#define UPT_SP(r) \
-	__CHOOSE_MODE(SC_SP(UPT_SC(r)), REGS_SP((r)->skas.regs))
-#define UPT_EFLAGS(r) \
-	__CHOOSE_MODE(SC_EFLAGS(UPT_SC(r)), REGS_EFLAGS((r)->skas.regs))
-#define UPT_EAX(r) \
-	__CHOOSE_MODE(SC_EAX(UPT_SC(r)), REGS_EAX((r)->skas.regs))
-#define UPT_EBX(r) \
-	__CHOOSE_MODE(SC_EBX(UPT_SC(r)), REGS_EBX((r)->skas.regs))
-#define UPT_ECX(r) \
-	__CHOOSE_MODE(SC_ECX(UPT_SC(r)), REGS_ECX((r)->skas.regs))
-#define UPT_EDX(r) \
-	__CHOOSE_MODE(SC_EDX(UPT_SC(r)), REGS_EDX((r)->skas.regs))
-#define UPT_ESI(r) \
-	__CHOOSE_MODE(SC_ESI(UPT_SC(r)), REGS_ESI((r)->skas.regs))
-#define UPT_EDI(r) \
-	__CHOOSE_MODE(SC_EDI(UPT_SC(r)), REGS_EDI((r)->skas.regs))
-#define UPT_EBP(r) \
-	__CHOOSE_MODE(SC_EBP(UPT_SC(r)), REGS_EBP((r)->skas.regs))
-#define UPT_ORIG_EAX(r) \
-	__CHOOSE_MODE((r)->tt.syscall, (r)->skas.syscall)
-#define UPT_CS(r) \
-	__CHOOSE_MODE(SC_CS(UPT_SC(r)), REGS_CS((r)->skas.regs))
-#define UPT_SS(r) \
-	__CHOOSE_MODE(SC_SS(UPT_SC(r)), REGS_SS((r)->skas.regs))
-#define UPT_DS(r) \
-	__CHOOSE_MODE(SC_DS(UPT_SC(r)), REGS_DS((r)->skas.regs))
-#define UPT_ES(r) \
-	__CHOOSE_MODE(SC_ES(UPT_SC(r)), REGS_ES((r)->skas.regs))
-#define UPT_FS(r) \
-	__CHOOSE_MODE(SC_FS(UPT_SC(r)), REGS_FS((r)->skas.regs))
-#define UPT_GS(r) \
-	__CHOOSE_MODE(SC_GS(UPT_SC(r)), REGS_GS((r)->skas.regs))
+#define UPT_IP(r) REGS_IP((r)->gp)
+#define UPT_SP(r) REGS_SP((r)->gp)
+#define UPT_EFLAGS(r) REGS_EFLAGS((r)->gp)
+#define UPT_EAX(r) REGS_EAX((r)->gp)
+#define UPT_EBX(r) REGS_EBX((r)->gp)
+#define UPT_ECX(r) REGS_ECX((r)->gp)
+#define UPT_EDX(r) REGS_EDX((r)->gp)
+#define UPT_ESI(r) REGS_ESI((r)->gp)
+#define UPT_EDI(r) REGS_EDI((r)->gp)
+#define UPT_EBP(r) REGS_EBP((r)->gp)
+#define UPT_ORIG_EAX(r) ((r)->syscall)
+#define UPT_CS(r) REGS_CS((r)->gp)
+#define UPT_SS(r) REGS_SS((r)->gp)
+#define UPT_DS(r) REGS_DS((r)->gp)
+#define UPT_ES(r) REGS_ES((r)->gp)
+#define UPT_FS(r) REGS_FS((r)->gp)
+#define UPT_GS(r) REGS_GS((r)->gp)
 
 #define UPT_SYSCALL_ARG1(r) UPT_EBX(r)
 #define UPT_SYSCALL_ARG2(r) UPT_ECX(r)
@@ -134,20 +88,19 @@ extern int mode_tt;
 
 extern int user_context(unsigned long sp);
 
-#define UPT_IS_USER(r) \
-	CHOOSE_MODE(user_context(UPT_SP(r)), (r)->skas.is_user)
+#define UPT_IS_USER(r) ((r)->is_user)
 
 struct syscall_args {
 	unsigned long args[6];
 };
 
 #define SYSCALL_ARGS(r) ((struct syscall_args) \
-                        { .args = { UPT_SYSCALL_ARG1(r), \
-                                    UPT_SYSCALL_ARG2(r), \
- 			            UPT_SYSCALL_ARG3(r), \
-                                    UPT_SYSCALL_ARG4(r), \
-		                    UPT_SYSCALL_ARG5(r), \
-                                    UPT_SYSCALL_ARG6(r) } } )
+			 { .args = { UPT_SYSCALL_ARG1(r),	\
+				     UPT_SYSCALL_ARG2(r),	\
+				     UPT_SYSCALL_ARG3(r),	\
+				     UPT_SYSCALL_ARG4(r),	\
+				     UPT_SYSCALL_ARG5(r),	\
+				     UPT_SYSCALL_ARG6(r) } } )
 
 #define UPT_REG(regs, reg) \
 	({	unsigned long val; \
@@ -175,7 +128,6 @@ struct syscall_args {
 		} \
 	        val; \
 	})
-	
 
 #define UPT_SET(regs, reg, val) \
 	do { \
@@ -204,29 +156,16 @@ struct syscall_args {
 	} while (0)
 
 #define UPT_SET_SYSCALL_RETURN(r, res) \
-	CHOOSE_MODE(SC_SET_SYSCALL_RETURN(UPT_SC(r), (res)), \
-                    REGS_SET_SYSCALL_RETURN((r)->skas.regs, (res)))
+	REGS_SET_SYSCALL_RETURN((r)->regs, (res))
 
-#define UPT_RESTART_SYSCALL(r) \
-	CHOOSE_MODE(SC_RESTART_SYSCALL(UPT_SC(r)), \
-		    REGS_RESTART_SYSCALL((r)->skas.regs))
+#define UPT_RESTART_SYSCALL(r) REGS_RESTART_SYSCALL((r)->gp)
 
 #define UPT_ORIG_SYSCALL(r) UPT_EAX(r)
 #define UPT_SYSCALL_NR(r) UPT_ORIG_EAX(r)
 #define UPT_SYSCALL_RET(r) UPT_EAX(r)
 
-#define UPT_FAULTINFO(r) \
-        CHOOSE_MODE((&(r)->tt.faultinfo), (&(r)->skas.faultinfo))
+#define UPT_FAULTINFO(r) (&(r)->faultinfo)
+
+extern void arch_init_registers(int pid);
 
 #endif
-
-/*
- * Overrides for Emacs so that we follow Linus's tabbing style.
- * Emacs will notice this stuff at the end of the file and automatically
- * adjust the settings for this buffer only.  This must remain at the end
- * of the file.
- * ---------------------------------------------------------------------------
- * Local variables:
- * c-file-style: "linux"
- * End:
- */

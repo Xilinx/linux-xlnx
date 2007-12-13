@@ -66,7 +66,7 @@ cflags-y	+= $(isaflags-y) -ffreestanding
 cflags-$(CONFIG_MORE_COMPILE_OPTIONS)	+= \
 	$(shell echo $(CONFIG_COMPILE_OPTIONS) | sed -e 's/"//g')
 
-OBJCOPYFLAGS	:= -O binary -R .note -R .comment -R .stab -R .stabstr -S
+OBJCOPYFLAGS	:= -O binary -R .note -R .note.gnu.build-id -R .comment -R .stab -R .stabstr -S
 
 #
 # arch/sh/defconfig doesn't reflect any real hardware, and as such should
@@ -91,12 +91,12 @@ LDFLAGS_vmlinux		+= --defsym 'jiffies=jiffies_64+4'
 LDFLAGS			+= -EB
 endif
 
-CFLAGS		+= -pipe $(cflags-y)
-AFLAGS		+= $(cflags-y)
+KBUILD_CFLAGS		+= -pipe $(cflags-y)
+KBUILD_AFLAGS		+= $(cflags-y)
 
 head-y := arch/sh/kernel/head.o arch/sh/kernel/init_task.o
 
-LIBGCC := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
+LIBGCC := $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
 
 core-y				+= arch/sh/kernel/ arch/sh/mm/
 core-$(CONFIG_SH_FPU_EMU)	+= arch/sh/math-emu/
@@ -118,6 +118,7 @@ machdir-$(CONFIG_SH_7751_SYSTEMH)		+= renesas/systemh
 machdir-$(CONFIG_SH_EDOSK7705)			+= renesas/edosk7705
 machdir-$(CONFIG_SH_HIGHLANDER)			+= renesas/r7780rp
 machdir-$(CONFIG_SH_7710VOIPGW)			+= renesas/sh7710voipgw
+machdir-$(CONFIG_SH_X3PROTO)			+= renesas/x3proto
 machdir-$(CONFIG_SH_SH4202_MICRODEV)		+= superh/microdev
 machdir-$(CONFIG_SH_LANDISK)			+= landisk
 machdir-$(CONFIG_SH_TITAN)			+= titan
@@ -125,6 +126,7 @@ machdir-$(CONFIG_SH_SHMIN)			+= shmin
 machdir-$(CONFIG_SH_7206_SOLUTION_ENGINE)	+= se/7206
 machdir-$(CONFIG_SH_7619_SOLUTION_ENGINE)	+= se/7619
 machdir-$(CONFIG_SH_LBOX_RE2)			+= lboxre2
+machdir-$(CONFIG_SH_MAGIC_PANEL_R2)		+= magicpanelr2
 
 incdir-y	:= $(notdir $(machdir-y))
 
@@ -135,7 +137,7 @@ endif
 
 # Companion chips
 core-$(CONFIG_HD6446X_SERIES)	+= arch/sh/cchips/hd6446x/
-core-$(CONFIG_VOYAGERGX)	+= arch/sh/cchips/voyagergx/
+core-$(CONFIG_MFD_SM501)	+= arch/sh/cchips/voyagergx/
 
 cpuincdir-$(CONFIG_CPU_SH2)	:= cpu-sh2
 cpuincdir-$(CONFIG_CPU_SH2A)	:= cpu-sh2a

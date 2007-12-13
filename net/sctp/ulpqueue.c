@@ -862,7 +862,7 @@ static inline void sctp_ulpq_reap_ordered(struct sctp_ulpq *ulpq, __u16 sid)
 			continue;
 
 		/* see if this ssn has been marked by skipping */
-		if (!SSN_lt(cssn, sctp_ssn_peek(in, csid)))
+		if (!SSN_lte(cssn, sctp_ssn_peek(in, csid)))
 			break;
 
 		__skb_unlink(pos, &ulpq->lobby);
@@ -908,8 +908,8 @@ void sctp_ulpq_skip(struct sctp_ulpq *ulpq, __u16 sid, __u16 ssn)
 	return;
 }
 
-/* Renege 'needed' bytes from the ordering queue. */
-static __u16 sctp_ulpq_renege_order(struct sctp_ulpq *ulpq, __u16 needed)
+static __u16 sctp_ulpq_renege_list(struct sctp_ulpq *ulpq,
+		struct sk_buff_head *list, __u16 needed)
 {
 	__u16 freed = 0;
 	__u32 tsn;
@@ -919,7 +919,7 @@ static __u16 sctp_ulpq_renege_order(struct sctp_ulpq *ulpq, __u16 needed)
 
 	tsnmap = &ulpq->asoc->peer.tsn_map;
 
-	while ((skb = __skb_dequeue_tail(&ulpq->lobby)) != NULL) {
+	while ((skb = __skb_dequeue_tail(list)) != NULL) {
 		freed += skb_headlen(skb);
 		event = sctp_skb2event(skb);
 		tsn = event->tsn;
@@ -933,30 +933,16 @@ static __u16 sctp_ulpq_renege_order(struct sctp_ulpq *ulpq, __u16 needed)
 	return freed;
 }
 
+/* Renege 'needed' bytes from the ordering queue. */
+static __u16 sctp_ulpq_renege_order(struct sctp_ulpq *ulpq, __u16 needed)
+{
+	return sctp_ulpq_renege_list(ulpq, &ulpq->lobby, needed);
+}
+
 /* Renege 'needed' bytes from the reassembly queue. */
 static __u16 sctp_ulpq_renege_frags(struct sctp_ulpq *ulpq, __u16 needed)
 {
-	__u16 freed = 0;
-	__u32 tsn;
-	struct sk_buff *skb;
-	struct sctp_ulpevent *event;
-	struct sctp_tsnmap *tsnmap;
-
-	tsnmap = &ulpq->asoc->peer.tsn_map;
-
-	/* Walk backwards through the list, reneges the newest tsns. */
-	while ((skb = __skb_dequeue_tail(&ulpq->reasm)) != NULL) {
-		freed += skb_headlen(skb);
-		event = sctp_skb2event(skb);
-		tsn = event->tsn;
-
-		sctp_ulpevent_free(event);
-		sctp_tsnmap_renege(tsnmap, tsn);
-		if (freed >= needed)
-			return freed;
-	}
-
-	return freed;
+	return sctp_ulpq_renege_list(ulpq, &ulpq->reasm, needed);
 }
 
 /* Partial deliver the first message as there is pressure on rwnd. */
@@ -1027,6 +1013,7 @@ void sctp_ulpq_renege(struct sctp_ulpq *ulpq, struct sctp_chunk *chunk,
 		sctp_ulpq_partial_delivery(ulpq, chunk, gfp);
 	}
 
+	sk_stream_mem_reclaim(asoc->base.sk);
 	return;
 }
 

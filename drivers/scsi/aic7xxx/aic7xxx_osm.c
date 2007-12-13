@@ -335,8 +335,8 @@ static uint32_t aic7xxx_periodic_otag;
  */
 static char *aic7xxx = NULL;
 
-MODULE_AUTHOR("Maintainer: Justin T. Gibbs <gibbs@scsiguy.com>");
-MODULE_DESCRIPTION("Adaptec Aic77XX/78XX SCSI Host Bus Adapter driver");
+MODULE_AUTHOR("Maintainer: Hannes Reinecke <hare@suse.de>");
+MODULE_DESCRIPTION("Adaptec AIC77XX/78XX SCSI Host Bus Adapter driver");
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_VERSION(AIC7XXX_DRIVER_VERSION);
 module_param(aic7xxx, charp, 0444);
@@ -747,6 +747,7 @@ struct scsi_host_template aic7xxx_driver_template = {
 	.max_sectors		= 8192,
 	.cmd_per_lun		= 2,
 	.use_clustering		= ENABLE_CLUSTERING,
+	.use_sg_chaining	= ENABLE_SG_CHAINING,
 	.slave_alloc		= ahc_linux_slave_alloc,
 	.slave_configure	= ahc_linux_slave_configure,
 	.target_alloc		= ahc_linux_target_alloc,

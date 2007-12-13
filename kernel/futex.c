@@ -52,6 +52,10 @@
 #include <linux/syscalls.h>
 #include <linux/signal.h>
 #include <linux/module.h>
+#include <linux/magic.h>
+#include <linux/pid.h>
+#include <linux/nsproxy.h>
+
 #include <asm/futex.h>
 
 #include "rtmutex_common.h"
@@ -177,8 +181,8 @@ static inline int match_futex(union futex_key *key1, union futex_key *key2)
  * For other futexes, it points to &current->mm->mmap_sem and
  * caller must have taken the reader lock. but NOT any spinlocks.
  */
-int get_futex_key(u32 __user *uaddr, struct rw_semaphore *fshared,
-		  union futex_key *key)
+static int get_futex_key(u32 __user *uaddr, struct rw_semaphore *fshared,
+			 union futex_key *key)
 {
 	unsigned long address = (unsigned long)uaddr;
 	struct mm_struct *mm = current->mm;
@@ -264,14 +268,13 @@ int get_futex_key(u32 __user *uaddr, struct rw_semaphore *fshared,
 	}
 	return err;
 }
-EXPORT_SYMBOL_GPL(get_futex_key);
 
 /*
  * Take a reference to the resource addressed by a key.
  * Can be called while holding spinlocks.
  *
  */
-inline void get_futex_key_refs(union futex_key *key)
+static void get_futex_key_refs(union futex_key *key)
 {
 	if (key->both.ptr == 0)
 		return;
@@ -284,15 +287,14 @@ inline void get_futex_key_refs(union futex_key *key)
 			break;
 	}
 }
-EXPORT_SYMBOL_GPL(get_futex_key_refs);
 
 /*
  * Drop a reference to the resource addressed by a key.
  * The hash bucket spinlock must not be held.
  */
-void drop_futex_key_refs(union futex_key *key)
+static void drop_futex_key_refs(union futex_key *key)
 {
-	if (key->both.ptr == 0)
+	if (!key->both.ptr)
 		return;
 	switch (key->both.offset & (FUT_OFF_INODE|FUT_OFF_MMSHARED)) {
 		case FUT_OFF_INODE:
@@ -303,7 +305,6 @@ void drop_futex_key_refs(union futex_key *key)
 			break;
 	}
 }
-EXPORT_SYMBOL_GPL(drop_futex_key_refs);
 
 static u32 cmpxchg_futex_value_locked(u32 __user *uaddr, u32 uval, u32 newval)
 {
@@ -442,8 +443,7 @@ static struct task_struct * futex_find_get_task(pid_t pid)
 	struct task_struct *p;
 
 	rcu_read_lock();
-	p = find_task_by_pid(pid);
-
+	p = find_task_by_vpid(pid);
 	if (!p || ((current->euid != p->euid) && (current->euid != p->uid)))
 		p = ERR_PTR(-ESRCH);
 	else
@@ -652,13 +652,13 @@ static int wake_futex_pi(u32 __user *uaddr, u32 uval, struct futex_q *this)
 	if (!(uval & FUTEX_OWNER_DIED)) {
 		int ret = 0;
 
-		newval = FUTEX_WAITERS | new_owner->pid;
+		newval = FUTEX_WAITERS | task_pid_vnr(new_owner);
 
 		curval = cmpxchg_futex_value_locked(uaddr, uval, newval);
 
 		if (curval == -EFAULT)
 			ret = -EFAULT;
-		if (curval != uval)
+		else if (curval != uval)
 			ret = -EINVAL;
 		if (ret) {
 			spin_unlock(&pi_state->pi_mutex.wait_lock);
@@ -1045,7 +1045,7 @@ static int unqueue_me(struct futex_q *q)
  retry:
 	lock_ptr = q->lock_ptr;
 	barrier();
-	if (lock_ptr != 0) {
+	if (lock_ptr != NULL) {
 		spin_lock(lock_ptr);
 		/*
 		 * q->lock_ptr can change between reading it and
@@ -1105,7 +1105,7 @@ static void unqueue_me_pi(struct futex_q *q)
 static int fixup_pi_state_owner(u32 __user *uaddr, struct futex_q *q,
 				struct task_struct *curr)
 {
-	u32 newtid = curr->pid | FUTEX_WAITERS;
+	u32 newtid = task_pid_vnr(curr) | FUTEX_WAITERS;
 	struct futex_pi_state *pi_state = q->pi_state;
 	u32 uval, curval, newval;
 	int ret;
@@ -1149,9 +1149,9 @@ static int fixup_pi_state_owner(u32 __user *uaddr, struct futex_q *q,
 
 /*
  * In case we must use restart_block to restart a futex_wait,
- * we encode in the 'arg3' shared capability
+ * we encode in the 'flags' shared capability
  */
-#define ARG3_SHARED  1
+#define FLAGS_SHARED  1
 
 static long futex_wait_restart(struct restart_block *restart);
 
@@ -1290,12 +1290,13 @@ static int futex_wait(u32 __user *uaddr, struct rw_semaphore *fshared,
 		struct restart_block *restart;
 		restart = &current_thread_info()->restart_block;
 		restart->fn = futex_wait_restart;
-		restart->arg0 = (unsigned long)uaddr;
-		restart->arg1 = (unsigned long)val;
-		restart->arg2 = (unsigned long)abs_time;
-		restart->arg3 = 0;
+		restart->futex.uaddr = (u32 *)uaddr;
+		restart->futex.val = val;
+		restart->futex.time = abs_time->tv64;
+		restart->futex.flags = 0;
+
 		if (fshared)
-			restart->arg3 |= ARG3_SHARED;
+			restart->futex.flags |= FLAGS_SHARED;
 		return -ERESTART_RESTARTBLOCK;
 	}
 
@@ -1310,15 +1311,15 @@ static int futex_wait(u32 __user *uaddr, struct rw_semaphore *fshared,
 
 static long futex_wait_restart(struct restart_block *restart)
 {
-	u32 __user *uaddr = (u32 __user *)restart->arg0;
-	u32 val = (u32)restart->arg1;
-	ktime_t *abs_time = (ktime_t *)restart->arg2;
+	u32 __user *uaddr = (u32 __user *)restart->futex.uaddr;
 	struct rw_semaphore *fshared = NULL;
+	ktime_t t;
 
+	t.tv64 = restart->futex.time;
 	restart->fn = do_no_restart_syscall;
-	if (restart->arg3 & ARG3_SHARED)
+	if (restart->futex.flags & FLAGS_SHARED)
 		fshared = &current->mm->mmap_sem;
-	return (long)futex_wait(uaddr, fshared, val, abs_time);
+	return (long)futex_wait(uaddr, fshared, restart->futex.val, &t);
 }
 
 
@@ -1367,7 +1368,7 @@ static int futex_lock_pi(u32 __user *uaddr, struct rw_semaphore *fshared,
 	 * (by doing a 0 -> TID atomic cmpxchg), while holding all
 	 * the locks. It will most likely not succeed.
 	 */
-	newval = current->pid;
+	newval = task_pid_vnr(current);
 
 	curval = cmpxchg_futex_value_locked(uaddr, 0, newval);
 
@@ -1378,7 +1379,7 @@ static int futex_lock_pi(u32 __user *uaddr, struct rw_semaphore *fshared,
 	 * Detect deadlocks. In case of REQUEUE_PI this is a valid
 	 * situation and we return success to user space.
 	 */
-	if (unlikely((curval & FUTEX_TID_MASK) == current->pid)) {
+	if (unlikely((curval & FUTEX_TID_MASK) == task_pid_vnr(current))) {
 		ret = -EDEADLK;
 		goto out_unlock_release_sem;
 	}
@@ -1407,7 +1408,7 @@ static int futex_lock_pi(u32 __user *uaddr, struct rw_semaphore *fshared,
 	 */
 	if (unlikely(ownerdied || !(curval & FUTEX_TID_MASK))) {
 		/* Keep the OWNER_DIED bit */
-		newval = (curval & ~FUTEX_TID_MASK) | current->pid;
+		newval = (curval & ~FUTEX_TID_MASK) | task_pid_vnr(current);
 		ownerdied = 0;
 		lock_taken = 1;
 	}
@@ -1586,7 +1587,7 @@ retry:
 	/*
 	 * We release only a lock we actually own:
 	 */
-	if ((uval & FUTEX_TID_MASK) != current->pid)
+	if ((uval & FUTEX_TID_MASK) != task_pid_vnr(current))
 		return -EPERM;
 	/*
 	 * First take all the futex related locks:
@@ -1607,7 +1608,7 @@ retry_unlocked:
 	 * anyone else up:
 	 */
 	if (!(uval & FUTEX_OWNER_DIED))
-		uval = cmpxchg_futex_value_locked(uaddr, current->pid, 0);
+		uval = cmpxchg_futex_value_locked(uaddr, task_pid_vnr(current), 0);
 
 
 	if (unlikely(uval == -EFAULT))
@@ -1616,7 +1617,7 @@ retry_unlocked:
 	 * Rare case: we managed to release the lock atomically,
 	 * no need to wake anyone else up:
 	 */
-	if (unlikely(uval == current->pid))
+	if (unlikely(uval == task_pid_vnr(current)))
 		goto out_unlock;
 
 	/*
@@ -1853,7 +1854,7 @@ sys_get_robust_list(int pid, struct robust_list_head __user * __user *head_ptr,
 
 		ret = -ESRCH;
 		rcu_read_lock();
-		p = find_task_by_pid(pid);
+		p = find_task_by_vpid(pid);
 		if (!p)
 			goto err_unlock;
 		ret = -EPERM;
@@ -1886,7 +1887,7 @@ retry:
 	if (get_user(uval, uaddr))
 		return -1;
 
-	if ((uval & FUTEX_TID_MASK) == curr->pid) {
+	if ((uval & FUTEX_TID_MASK) == task_pid_vnr(curr)) {
 		/*
 		 * Ok, this dying thread is truly holding a futex
 		 * of interest. Set the OWNER_DIED bit atomically
@@ -2080,7 +2081,7 @@ static int futexfs_get_sb(struct file_system_type *fs_type,
 			  int flags, const char *dev_name, void *data,
 			  struct vfsmount *mnt)
 {
-	return get_sb_pseudo(fs_type, "futex", NULL, 0xBAD1DEA, mnt);
+	return get_sb_pseudo(fs_type, "futex", NULL, FUTEXFS_SUPER_MAGIC, mnt);
 }
 
 static struct file_system_type futex_fs_type = {

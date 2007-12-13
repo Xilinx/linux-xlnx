@@ -115,7 +115,7 @@ int cifs_get_inode_info_unix(struct inode **pinode,
 		inode->i_mode = le64_to_cpu(findData.Permissions);
 		/* since we set the inode type below we need to mask off
 		   to avoid strange results if bits set above */
-			inode->i_mode &= ~S_IFMT;
+		inode->i_mode &= ~S_IFMT;
 		if (type == UNIX_FILE) {
 			inode->i_mode |= S_IFREG;
 		} else if (type == UNIX_SYMLINK) {
@@ -289,7 +289,7 @@ static int decode_sfu_inode(struct inode *inode, __u64 size,
 
 #define SFBITS_MASK (S_ISVTX | S_ISGID | S_ISUID)  /* SETFILEBITS valid bits */
 
-static int get_sfu_uid_mode(struct inode *inode,
+static int get_sfu_mode(struct inode *inode,
 			const unsigned char *path,
 			struct cifs_sb_info *cifs_sb, int xid)
 {
@@ -527,11 +527,16 @@ int cifs_get_inode_info(struct inode **pinode,
 
 		/* BB fill in uid and gid here? with help from winbind?
 		   or retrieve from NTFS stream extended attribute */
+#ifdef CONFIG_CIFS_EXPERIMENTAL
+		/* fill in 0777 bits from ACL */
+		if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_CIFS_ACL) {
+			cFYI(1, ("Getting mode bits from ACL"));
+			acl_to_uid_mode(inode, search_path);
+		}
+#endif
 		if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_UNX_EMUL) {
-			/* fill in uid, gid, mode from server ACL */
-			/* BB FIXME this should also take into account the
-			 * default uid specified on mount if present */
-			get_sfu_uid_mode(inode, search_path, cifs_sb, xid);
+			/* fill in remaining high mode bits e.g. SUID, VTX */
+			get_sfu_mode(inode, search_path, cifs_sb, xid);
 		} else if (atomic_read(&cifsInfo->inUse) == 0) {
 			inode->i_uid = cifs_sb->mnt_uid;
 			inode->i_gid = cifs_sb->mnt_gid;
@@ -575,19 +580,33 @@ int cifs_get_inode_info(struct inode **pinode,
 	return rc;
 }
 
+static const struct inode_operations cifs_ipc_inode_ops = {
+	.lookup = cifs_lookup,
+};
+
 /* gets root inode */
 void cifs_read_inode(struct inode *inode)
 {
-	int xid;
+	int xid, rc;
 	struct cifs_sb_info *cifs_sb;
 
 	cifs_sb = CIFS_SB(inode->i_sb);
 	xid = GetXid();
 
 	if (cifs_sb->tcon->unix_ext)
-		cifs_get_inode_info_unix(&inode, "", inode->i_sb, xid);
+		rc = cifs_get_inode_info_unix(&inode, "", inode->i_sb, xid);
 	else
-		cifs_get_inode_info(&inode, "", NULL, inode->i_sb, xid);
+		rc = cifs_get_inode_info(&inode, "", NULL, inode->i_sb, xid);
+	if (rc && cifs_sb->tcon->ipc) {
+		cFYI(1, ("ipc connection - fake read inode"));
+		inode->i_mode |= S_IFDIR;
+		inode->i_nlink = 2;
+		inode->i_op = &cifs_ipc_inode_ops;
+		inode->i_fop = &simple_dir_operations;
+		inode->i_uid = cifs_sb->mnt_uid;
+		inode->i_gid = cifs_sb->mnt_gid;
+	}
+
 	/* can not call macro FreeXid here since in a void func */
 	_FreeXid(xid);
 }
@@ -919,18 +938,25 @@ int cifs_mkdir(struct inode *inode, struct dentry *direntry, int mode)
 			goto mkdir_out;
 		}
 
+		mode &= ~current->fs->umask;
 		rc = CIFSPOSIXCreate(xid, pTcon, SMB_O_DIRECTORY | SMB_O_CREAT,
 				mode, NULL /* netfid */, pInfo, &oplock,
 				full_path, cifs_sb->local_nls,
 				cifs_sb->mnt_cifs_flags &
 					CIFS_MOUNT_MAP_SPECIAL_CHR);
-		if (rc) {
+		if (rc == -EOPNOTSUPP) {
+			kfree(pInfo);
+			goto mkdir_retry_old;
+		} else if (rc) {
 			cFYI(1, ("posix mkdir returned 0x%x", rc));
 			d_drop(direntry);
 		} else {
 			int obj_type;
-			if (pInfo->Type == -1) /* no return info - go query */
+			if (pInfo->Type == cpu_to_le32(-1)) {
+				/* no return info, go query for it */
+				kfree(pInfo);
 				goto mkdir_get_info;
+			}
 /*BB check (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_SET_UID ) to see if need
 	to set uid/gid */
 			inc_nlink(inode);
@@ -940,8 +966,10 @@ int cifs_mkdir(struct inode *inode, struct dentry *direntry, int mode)
 				direntry->d_op = &cifs_dentry_ops;
 
 			newinode = new_inode(inode->i_sb);
-			if (newinode == NULL)
+			if (newinode == NULL) {
+				kfree(pInfo);
 				goto mkdir_get_info;
+			}
 			/* Is an i_ino of zero legal? */
 			/* Are there sanity checks we can use to ensure that
 			   the server is really filling in that field? */
@@ -972,7 +1000,7 @@ int cifs_mkdir(struct inode *inode, struct dentry *direntry, int mode)
 		kfree(pInfo);
 		goto mkdir_out;
 	}
-
+mkdir_retry_old:
 	/* BB add setting the equivalent of mode via CreateX w/ACLs */
 	rc = CIFSSMBMkDir(xid, pTcon, full_path, cifs_sb->local_nls,
 			  cifs_sb->mnt_cifs_flags & CIFS_MOUNT_MAP_SPECIAL_CHR);
@@ -1205,7 +1233,7 @@ cifs_rename_exit:
 int cifs_revalidate(struct dentry *direntry)
 {
 	int xid;
-	int rc = 0;
+	int rc = 0, wbrc = 0;
 	char *full_path;
 	struct cifs_sb_info *cifs_sb;
 	struct cifsInodeInfo *cifsInode;
@@ -1305,7 +1333,9 @@ int cifs_revalidate(struct dentry *direntry)
 	if (direntry->d_inode->i_mapping) {
 		/* do we need to lock inode until after invalidate completes
 		   below? */
-		filemap_fdatawrite(direntry->d_inode->i_mapping);
+		wbrc = filemap_fdatawrite(direntry->d_inode->i_mapping);
+		if (wbrc)
+			CIFS_I(direntry->d_inode)->write_behind_rc = wbrc;
 	}
 	if (invalidate_inode) {
 	/* shrink_dcache not necessary now that cifs dentry ops
@@ -1314,7 +1344,9 @@ int cifs_revalidate(struct dentry *direntry)
 			shrink_dcache_parent(direntry); */
 		if (S_ISREG(direntry->d_inode->i_mode)) {
 			if (direntry->d_inode->i_mapping)
-				filemap_fdatawait(direntry->d_inode->i_mapping);
+				wbrc = filemap_fdatawait(direntry->d_inode->i_mapping);
+				if (wbrc)
+					CIFS_I(direntry->d_inode)->write_behind_rc = wbrc;
 			/* may eventually have to do this for open files too */
 			if (list_empty(&(cifsInode->openFileList))) {
 				/* changed on server - flush read ahead pages */
@@ -1377,8 +1409,17 @@ static int cifs_vmtruncate(struct inode *inode, loff_t offset)
 	}
 	i_size_write(inode, offset);
 	spin_unlock(&inode->i_lock);
+	/*
+	 * unmap_mapping_range is called twice, first simply for efficiency
+	 * so that truncate_inode_pages does fewer single-page unmaps. However
+	 * after this first call, and before truncate_inode_pages finishes,
+	 * it is possible for private pages to be COWed, which remain after
+	 * truncate_inode_pages finishes, hence the second unmap_mapping_range
+	 * call must be made for correctness.
+	 */
 	unmap_mapping_range(mapping, offset + PAGE_SIZE - 1, 0, 1);
 	truncate_inode_pages(mapping, offset);
+	unmap_mapping_range(mapping, offset + PAGE_SIZE - 1, 0, 1);
 	goto out_truncate;
 
 do_expand:
@@ -1448,10 +1489,20 @@ int cifs_setattr(struct dentry *direntry, struct iattr *attrs)
 
 	/* BB check if we need to refresh inode from server now ? BB */
 
-	/* need to flush data before changing file size on server */
-	filemap_write_and_wait(direntry->d_inode->i_mapping);
-
 	if (attrs->ia_valid & ATTR_SIZE) {
+		/*
+		   Flush data before changing file size on server. If the
+		   flush returns error, store it to report later and continue.
+		   BB: This should be smarter. Why bother flushing pages that
+		   will be truncated anyway? Also, should we error out here if
+		   the flush returns error?
+		 */
+		rc = filemap_write_and_wait(direntry->d_inode->i_mapping);
+		if (rc != 0) {
+			CIFS_I(direntry->d_inode)->write_behind_rc = rc;
+			rc = 0;
+		}
+
 		/* To avoid spurious oplock breaks from server, in the case of
 		   inodes that we already have open, avoid doing path based
 		   setting of file size if we can do it by handle.
@@ -1469,7 +1520,7 @@ int cifs_setattr(struct dentry *direntry, struct iattr *attrs)
 			atomic_dec(&open_file->wrtPending);
 			cFYI(1, ("SetFSize for attrs rc = %d", rc));
 			if ((rc == -EINVAL) || (rc == -EOPNOTSUPP)) {
-				int bytes_written;
+				unsigned int bytes_written;
 				rc = CIFSSMBWrite(xid, pTcon,
 						  nfid, 0, attrs->ia_size,
 						  &bytes_written, NULL, NULL,
@@ -1502,7 +1553,7 @@ int cifs_setattr(struct dentry *direntry, struct iattr *attrs)
 					cifs_sb->mnt_cifs_flags &
 						CIFS_MOUNT_MAP_SPECIAL_CHR);
 				if (rc == 0) {
-					int bytes_written;
+					unsigned int bytes_written;
 					rc = CIFSSMBWrite(xid, pTcon,
 							netfid, 0,
 							attrs->ia_size,
@@ -1538,6 +1589,11 @@ int cifs_setattr(struct dentry *direntry, struct iattr *attrs)
 	}
 
 	time_buf.Attributes = 0;
+
+	/* skip mode change if it's just for clearing setuid/setgid */
+	if (attrs->ia_valid & (ATTR_KILL_SUID|ATTR_KILL_SGID))
+		attrs->ia_valid &= ~ATTR_MODE;
+
 	if (attrs->ia_valid & ATTR_MODE) {
 		cFYI(1, ("Mode changed to 0x%x", attrs->ia_mode));
 		mode = attrs->ia_mode;

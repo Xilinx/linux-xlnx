@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) by Jaroslav Kysela <perex@suse.cz>
+ *  Copyright (c) by Jaroslav Kysela <perex@perex.cz>
  *  Routines for control of MPU-401 in UART mode
  *
  *  MPU-401 supports UART mode which is not capable generate transmit
@@ -39,7 +39,7 @@
 #include <sound/core.h>
 #include <sound/mpu401.h>
 
-MODULE_AUTHOR("Jaroslav Kysela <perex@suse.cz>");
+MODULE_AUTHOR("Jaroslav Kysela <perex@perex.cz>");
 MODULE_DESCRIPTION("Routines for control of MPU-401 in UART mode");
 MODULE_LICENSE("GPL");
 
@@ -97,23 +97,27 @@ static void snd_mpu401_uart_clear_rx(struct snd_mpu401 *mpu)
 
 static void uart_interrupt_tx(struct snd_mpu401 *mpu)
 {
+	unsigned long flags;
+
 	if (test_bit(MPU401_MODE_BIT_OUTPUT, &mpu->mode) &&
 	    test_bit(MPU401_MODE_BIT_OUTPUT_TRIGGER, &mpu->mode)) {
-		spin_lock(&mpu->output_lock);
+		spin_lock_irqsave(&mpu->output_lock, flags);
 		snd_mpu401_uart_output_write(mpu);
-		spin_unlock(&mpu->output_lock);
+		spin_unlock_irqrestore(&mpu->output_lock, flags);
 	}
 }
 
 static void _snd_mpu401_uart_interrupt(struct snd_mpu401 *mpu)
 {
+	unsigned long flags;
+
 	if (mpu->info_flags & MPU401_INFO_INPUT) {
-		spin_lock(&mpu->input_lock);
+		spin_lock_irqsave(&mpu->input_lock, flags);
 		if (test_bit(MPU401_MODE_BIT_INPUT, &mpu->mode))
 			snd_mpu401_uart_input_read(mpu);
 		else
 			snd_mpu401_uart_clear_rx(mpu);
-		spin_unlock(&mpu->input_lock);
+		spin_unlock_irqrestore(&mpu->input_lock, flags);
 	}
 	if (! (mpu->info_flags & MPU401_INFO_TX_IRQ))
 		/* ok. for better Tx performance try do some output
@@ -270,8 +274,7 @@ static int snd_mpu401_do_reset(struct snd_mpu401 *mpu)
 {
 	if (snd_mpu401_uart_cmd(mpu, MPU401_RESET, 1))
 		return -EIO;
-	if (!(mpu->info_flags & MPU401_INFO_UART_ONLY) &&
-	    snd_mpu401_uart_cmd(mpu, MPU401_ENTER_UART, 1))
+	if (snd_mpu401_uart_cmd(mpu, MPU401_ENTER_UART, 0))
 		return -EIO;
 	return 0;
 }

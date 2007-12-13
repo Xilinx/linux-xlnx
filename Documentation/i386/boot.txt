@@ -168,6 +168,8 @@ Offset	Proto	Name		Meaning
 0234/1	2.05+	relocatable_kernel Whether kernel is relocatable or not
 0235/3	N/A	pad2		Unused
 0238/4	2.06+	cmdline_size	Maximum size of the kernel command line
+023C/4	2.07+	hardware_subarch Hardware subarchitecture
+0240/8	2.07+	hardware_subarch_data Subarchitecture-specific data
 
 (1) For backwards compatibility, if the setup_sects field contains 0, the
     real value is 4.
@@ -204,7 +206,7 @@ boot loaders can ignore those fields.
 
 The byte order of all fields is littleendian (this is x86, after all.)
 
-Field name:	setup_secs
+Field name:	setup_sects
 Type:		read
 Offset/size:	0x1f1/1
 Protocol:	ALL
@@ -356,6 +358,13 @@ Protocol:	2.00+
 	- If 0, the protected-mode code is loaded at 0x10000.
 	- If 1, the protected-mode code is loaded at 0x100000.
 
+  Bit 6 (write): KEEP_SEGMENTS
+	Protocol: 2.07+
+	- if 0, reload the segment registers in the 32bit entry point.
+	- if 1, do not reload the segment registers in the 32bit entry point.
+		Assume that %cs %ds %ss %es are all set to flat segments with
+		a base of 0 (or the equivalent for their environment).
+
   Bit 7 (write): CAN_USE_HEAP
 	Set this bit to 1 to indicate that the value entered in the
 	heap_end_ptr is valid.  If this field is clear, some setup code
@@ -479,6 +488,29 @@ Protocol:	2.06+
   zero. This means that the command line can contain at most
   cmdline_size characters. With protocol version 2.05 and earlier, the
   maximum size was 255.
+
+Field name:	hardware_subarch
+Type:		write
+Offset/size:	0x23c/4
+Protocol:	2.07+
+
+  In a paravirtualized environment the hardware low level architectural
+  pieces such as interrupt handling, page table handling, and
+  accessing process control registers needs to be done differently.
+
+  This field allows the bootloader to inform the kernel we are in one
+  one of those environments.
+
+  0x00000000	The default x86/PC environment
+  0x00000001	lguest
+  0x00000002	Xen
+
+Field name:	hardware_subarch_data
+Type:		write
+Offset/size:	0x240/8
+Protocol:	2.07+
+
+  A pointer to data that is specific to hardware subarch
 
 
 **** THE KERNEL COMMAND LINE
@@ -753,3 +785,41 @@ IMPORTANT: All the hooks are required to preserve %esp, %ebp, %esi and
 	After completing your hook, you should jump to the address
 	that was in this field before your boot loader overwrote it
 	(relocated, if appropriate.)
+
+
+**** 32-bit BOOT PROTOCOL
+
+For machine with some new BIOS other than legacy BIOS, such as EFI,
+LinuxBIOS, etc, and kexec, the 16-bit real mode setup code in kernel
+based on legacy BIOS can not be used, so a 32-bit boot protocol needs
+to be defined.
+
+In 32-bit boot protocol, the first step in loading a Linux kernel
+should be to setup the boot parameters (struct boot_params,
+traditionally known as "zero page"). The memory for struct boot_params
+should be allocated and initialized to all zero. Then the setup header
+from offset 0x01f1 of kernel image on should be loaded into struct
+boot_params and examined. The end of setup header can be calculated as
+follow:
+
+	0x0202 + byte value at offset 0x0201
+
+In addition to read/modify/write the setup header of the struct
+boot_params as that of 16-bit boot protocol, the boot loader should
+also fill the additional fields of the struct boot_params as that
+described in zero-page.txt.
+
+After setupping the struct boot_params, the boot loader can load the
+32/64-bit kernel in the same way as that of 16-bit boot protocol.
+
+In 32-bit boot protocol, the kernel is started by jumping to the
+32-bit kernel entry point, which is the start address of loaded
+32/64-bit kernel.
+
+At entry, the CPU must be in 32-bit protected mode with paging
+disabled; a GDT must be loaded with the descriptors for selectors
+__BOOT_CS(0x10) and __BOOT_DS(0x18); both descriptors must be 4G flat
+segment; __BOOS_CS must have execute/read permission, and __BOOT_DS
+must have read/write permission; CS must be __BOOT_CS and DS, ES, SS
+must be __BOOT_DS; interrupt must be disabled; %esi must hold the base
+address of the struct boot_params; %ebp, %edi and %ebx must be zero.

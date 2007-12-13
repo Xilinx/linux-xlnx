@@ -1,6 +1,6 @@
 config FB_OMAP
 	tristate "OMAP frame buffer support (EXPERIMENTAL)"
-	depends on FB
+	depends on FB && ARCH_OMAP
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT
@@ -8,7 +8,7 @@ config FB_OMAP
           Frame buffer driver for OMAP based boards.
 
 config FB_OMAP_BOOTLOADER_INIT
-	bool "Check bootloader initializaion"
+	bool "Check bootloader initialization"
 	depends on FB_OMAP
 	help
 	  Say Y here if you want to enable checking if the bootloader has

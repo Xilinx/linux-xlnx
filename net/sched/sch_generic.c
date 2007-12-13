@@ -134,34 +134,20 @@ static inline int qdisc_restart(struct net_device *dev)
 {
 	struct Qdisc *q = dev->qdisc;
 	struct sk_buff *skb;
-	unsigned lockless;
-	int ret;
+	int ret = NETDEV_TX_BUSY;
 
 	/* Dequeue packet */
 	if (unlikely((skb = dev_dequeue_skb(dev, q)) == NULL))
 		return 0;
 
-	/*
-	 * When the driver has LLTX set, it does its own locking in
-	 * start_xmit. These checks are worth it because even uncongested
-	 * locks can be quite expensive. The driver can do a trylock, as
-	 * is being done here; in case of lock contention it should return
-	 * NETDEV_TX_LOCKED and the packet will be requeued.
-	 */
-	lockless = (dev->features & NETIF_F_LLTX);
-
-	if (!lockless && !netif_tx_trylock(dev)) {
-		/* Another CPU grabbed the driver tx lock */
-		return handle_dev_cpu_collision(skb, dev, q);
-	}
 
 	/* And release queue */
 	spin_unlock(&dev->queue_lock);
 
-	ret = dev_hard_start_xmit(skb, dev);
-
-	if (!lockless)
-		netif_tx_unlock(dev);
+	HARD_TX_LOCK(dev, smp_processor_id());
+	if (!netif_subqueue_stopped(dev, skb))
+		ret = dev_hard_start_xmit(skb, dev);
+	HARD_TX_UNLOCK(dev);
 
 	spin_lock(&dev->queue_lock);
 	q = dev->qdisc;
@@ -256,14 +242,27 @@ static void dev_watchdog_down(struct net_device *dev)
 	netif_tx_unlock_bh(dev);
 }
 
+/**
+ *	netif_carrier_on - set carrier
+ *	@dev: network device
+ *
+ * Device has detected that carrier.
+ */
 void netif_carrier_on(struct net_device *dev)
 {
-	if (test_and_clear_bit(__LINK_STATE_NOCARRIER, &dev->state))
+	if (test_and_clear_bit(__LINK_STATE_NOCARRIER, &dev->state)) {
 		linkwatch_fire_event(dev);
-	if (netif_running(dev))
-		__netdev_watchdog_up(dev);
+		if (netif_running(dev))
+			__netdev_watchdog_up(dev);
+	}
 }
 
+/**
+ *	netif_carrier_off - clear carrier
+ *	@dev: network device
+ *
+ * Device has detected loss of carrier.
+ */
 void netif_carrier_off(struct net_device *dev)
 {
 	if (!test_and_set_bit(__LINK_STATE_NOCARRIER, &dev->state))
@@ -558,6 +557,7 @@ void dev_deactivate(struct net_device *dev)
 {
 	struct Qdisc *qdisc;
 	struct sk_buff *skb;
+	int running;
 
 	spin_lock_bh(&dev->queue_lock);
 	qdisc = dev->qdisc;
@@ -573,12 +573,31 @@ void dev_deactivate(struct net_device *dev)
 
 	dev_watchdog_down(dev);
 
-	/* Wait for outstanding dev_queue_xmit calls. */
+	/* Wait for outstanding qdisc-less dev_queue_xmit calls. */
 	synchronize_rcu();
 
 	/* Wait for outstanding qdisc_run calls. */
-	while (test_bit(__LINK_STATE_QDISC_RUNNING, &dev->state))
-		yield();
+	do {
+		while (test_bit(__LINK_STATE_QDISC_RUNNING, &dev->state))
+			yield();
+
+		/*
+		 * Double-check inside queue lock to ensure that all effects
+		 * of the queue run are visible when we return.
+		 */
+		spin_lock_bh(&dev->queue_lock);
+		running = test_bit(__LINK_STATE_QDISC_RUNNING, &dev->state);
+		spin_unlock_bh(&dev->queue_lock);
+
+		/*
+		 * The running flag should never be set at this point because
+		 * we've already set dev->qdisc to noop_qdisc *inside* the same
+		 * pair of spin locks.  That is, if any qdisc_run starts after
+		 * our initial test it should see the noop_qdisc and then
+		 * clear the RUNNING bit before dropping the queue lock.  So
+		 * if it is set here then we've found a bug.
+		 */
+	} while (WARN_ON_ONCE(running));
 }
 
 void dev_init_scheduler(struct net_device *dev)

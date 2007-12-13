@@ -9,11 +9,12 @@
 #ifndef _S390_PAGE_H
 #define _S390_PAGE_H
 
+#include <linux/const.h>
 #include <asm/types.h>
 
 /* PAGE_SHIFT determines the page size */
 #define PAGE_SHIFT      12
-#define PAGE_SIZE       (1UL << PAGE_SHIFT)
+#define PAGE_SIZE	(_AC(1,UL) << PAGE_SHIFT)
 #define PAGE_MASK       (~(PAGE_SIZE-1))
 #define PAGE_DEFAULT_ACC	0
 #define PAGE_DEFAULT_KEY	(PAGE_DEFAULT_ACC << 4)
@@ -81,6 +82,7 @@ typedef struct { unsigned long pte; } pte_t;
 #ifndef __s390x__
 
 typedef struct { unsigned long pmd; } pmd_t;
+typedef struct { unsigned long pud; } pud_t;
 typedef struct {
         unsigned long pgd0;
         unsigned long pgd1;
@@ -89,6 +91,7 @@ typedef struct {
         } pgd_t;
 
 #define pmd_val(x)      ((x).pmd)
+#define pud_val(x)	((x).pud)
 #define pgd_val(x)      ((x).pgd0)
 
 #else /* __s390x__ */
@@ -97,10 +100,12 @@ typedef struct {
         unsigned long pmd0;
         unsigned long pmd1; 
         } pmd_t;
+typedef struct { unsigned long pud; } pud_t;
 typedef struct { unsigned long pgd; } pgd_t;
 
 #define pmd_val(x)      ((x).pmd0)
 #define pmd_val1(x)     ((x).pmd1)
+#define pud_val(x)	((x).pud)
 #define pgd_val(x)      ((x).pgd)
 
 #endif /* __s390x__ */

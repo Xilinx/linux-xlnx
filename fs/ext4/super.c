@@ -37,12 +37,14 @@
 #include <linux/quotaops.h>
 #include <linux/seq_file.h>
 #include <linux/log2.h>
+#include <linux/crc16.h>
 
 #include <asm/uaccess.h>
 
 #include "xattr.h"
 #include "acl.h"
 #include "namei.h"
+#include "group.h"
 
 static int ext4_load_journal(struct super_block *, struct ext4_super_block *,
 			     unsigned long journal_devnum);
@@ -68,31 +70,31 @@ static void ext4_write_super_lockfs(struct super_block *sb);
 ext4_fsblk_t ext4_block_bitmap(struct super_block *sb,
 			       struct ext4_group_desc *bg)
 {
-	return le32_to_cpu(bg->bg_block_bitmap) |
+	return le32_to_cpu(bg->bg_block_bitmap_lo) |
 		(EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT ?
-		 (ext4_fsblk_t)le32_to_cpu(bg->bg_block_bitmap_hi) << 32 : 0);
+		(ext4_fsblk_t)le32_to_cpu(bg->bg_block_bitmap_hi) << 32 : 0);
 }
 
 ext4_fsblk_t ext4_inode_bitmap(struct super_block *sb,
 			       struct ext4_group_desc *bg)
 {
-	return le32_to_cpu(bg->bg_inode_bitmap) |
+	return le32_to_cpu(bg->bg_inode_bitmap_lo) |
 		(EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT ?
-		 (ext4_fsblk_t)le32_to_cpu(bg->bg_inode_bitmap_hi) << 32 : 0);
+		(ext4_fsblk_t)le32_to_cpu(bg->bg_inode_bitmap_hi) << 32 : 0);
 }
 
 ext4_fsblk_t ext4_inode_table(struct super_block *sb,
 			      struct ext4_group_desc *bg)
 {
-	return le32_to_cpu(bg->bg_inode_table) |
+	return le32_to_cpu(bg->bg_inode_table_lo) |
 		(EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT ?
-		 (ext4_fsblk_t)le32_to_cpu(bg->bg_inode_table_hi) << 32 : 0);
+		(ext4_fsblk_t)le32_to_cpu(bg->bg_inode_table_hi) << 32 : 0);
 }
 
 void ext4_block_bitmap_set(struct super_block *sb,
 			   struct ext4_group_desc *bg, ext4_fsblk_t blk)
 {
-	bg->bg_block_bitmap = cpu_to_le32((u32)blk);
+	bg->bg_block_bitmap_lo = cpu_to_le32((u32)blk);
 	if (EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT)
 		bg->bg_block_bitmap_hi = cpu_to_le32(blk >> 32);
 }
@@ -100,7 +102,7 @@ void ext4_block_bitmap_set(struct super_block *sb,
 void ext4_inode_bitmap_set(struct super_block *sb,
 			   struct ext4_group_desc *bg, ext4_fsblk_t blk)
 {
-	bg->bg_inode_bitmap  = cpu_to_le32((u32)blk);
+	bg->bg_inode_bitmap_lo  = cpu_to_le32((u32)blk);
 	if (EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT)
 		bg->bg_inode_bitmap_hi = cpu_to_le32(blk >> 32);
 }
@@ -108,7 +110,7 @@ void ext4_inode_bitmap_set(struct super_block *sb,
 void ext4_inode_table_set(struct super_block *sb,
 			  struct ext4_group_desc *bg, ext4_fsblk_t blk)
 {
-	bg->bg_inode_table = cpu_to_le32((u32)blk);
+	bg->bg_inode_table_lo = cpu_to_le32((u32)blk);
 	if (EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT)
 		bg->bg_inode_table_hi = cpu_to_le32(blk >> 32);
 }
@@ -523,7 +525,7 @@ static void ext4_destroy_inode(struct inode *inode)
 	kmem_cache_free(ext4_inode_cachep, EXT4_I(inode));
 }
 
-static void init_once(void * foo, struct kmem_cache * cachep, unsigned long flags)
+static void init_once(struct kmem_cache *cachep, void *foo)
 {
 	struct ext4_inode_info *ei = (struct ext4_inode_info *) foo;
 
@@ -596,9 +598,80 @@ static inline void ext4_show_quota_options(struct seq_file *seq, struct super_bl
 #endif
 }
 
+/*
+ * Show an option if
+ *  - it's set to a non-default value OR
+ *  - if the per-sb default is different from the global default
+ */
 static int ext4_show_options(struct seq_file *seq, struct vfsmount *vfs)
 {
 	struct super_block *sb = vfs->mnt_sb;
+	struct ext4_sb_info *sbi = EXT4_SB(sb);
+	struct ext4_super_block *es = sbi->s_es;
+	unsigned long def_mount_opts;
+
+	def_mount_opts = le32_to_cpu(es->s_default_mount_opts);
+
+	if (sbi->s_sb_block != 1)
+		seq_printf(seq, ",sb=%llu", sbi->s_sb_block);
+	if (test_opt(sb, MINIX_DF))
+		seq_puts(seq, ",minixdf");
+	if (test_opt(sb, GRPID))
+		seq_puts(seq, ",grpid");
+	if (!test_opt(sb, GRPID) && (def_mount_opts & EXT4_DEFM_BSDGROUPS))
+		seq_puts(seq, ",nogrpid");
+	if (sbi->s_resuid != EXT4_DEF_RESUID ||
+	    le16_to_cpu(es->s_def_resuid) != EXT4_DEF_RESUID) {
+		seq_printf(seq, ",resuid=%u", sbi->s_resuid);
+	}
+	if (sbi->s_resgid != EXT4_DEF_RESGID ||
+	    le16_to_cpu(es->s_def_resgid) != EXT4_DEF_RESGID) {
+		seq_printf(seq, ",resgid=%u", sbi->s_resgid);
+	}
+	if (test_opt(sb, ERRORS_CONT)) {
+		int def_errors = le16_to_cpu(es->s_errors);
+
+		if (def_errors == EXT4_ERRORS_PANIC ||
+		    def_errors == EXT4_ERRORS_RO) {
+			seq_puts(seq, ",errors=continue");
+		}
+	}
+	if (test_opt(sb, ERRORS_RO))
+		seq_puts(seq, ",errors=remount-ro");
+	if (test_opt(sb, ERRORS_PANIC))
+		seq_puts(seq, ",errors=panic");
+	if (test_opt(sb, NO_UID32))
+		seq_puts(seq, ",nouid32");
+	if (test_opt(sb, DEBUG))
+		seq_puts(seq, ",debug");
+	if (test_opt(sb, OLDALLOC))
+		seq_puts(seq, ",oldalloc");
+#ifdef CONFIG_EXT4_FS_XATTR
+	if (test_opt(sb, XATTR_USER))
+		seq_puts(seq, ",user_xattr");
+	if (!test_opt(sb, XATTR_USER) &&
+	    (def_mount_opts & EXT4_DEFM_XATTR_USER)) {
+		seq_puts(seq, ",nouser_xattr");
+	}
+#endif
+#ifdef CONFIG_EXT4_FS_POSIX_ACL
+	if (test_opt(sb, POSIX_ACL))
+		seq_puts(seq, ",acl");
+	if (!test_opt(sb, POSIX_ACL) && (def_mount_opts & EXT4_DEFM_ACL))
+		seq_puts(seq, ",noacl");
+#endif
+	if (!test_opt(sb, RESERVATION))
+		seq_puts(seq, ",noreservation");
+	if (sbi->s_commit_interval) {
+		seq_printf(seq, ",commit=%u",
+			   (unsigned) (sbi->s_commit_interval / HZ));
+	}
+	if (test_opt(sb, BARRIER))
+		seq_puts(seq, ",barrier=1");
+	if (test_opt(sb, NOBH))
+		seq_puts(seq, ",nobh");
+	if (!test_opt(sb, EXTENTS))
+		seq_puts(seq, ",noextents");
 
 	if (test_opt(sb, DATA_FLAGS) == EXT4_MOUNT_JOURNAL_DATA)
 		seq_puts(seq, ",data=journal");
@@ -613,13 +686,10 @@ static int ext4_show_options(struct seq_file *seq, struct vfsmount *vfs)
 }
 
 
-static struct dentry *ext4_get_dentry(struct super_block *sb, void *vobjp)
+static struct inode *ext4_nfs_get_inode(struct super_block *sb,
+		u64 ino, u32 generation)
 {
-	__u32 *objp = vobjp;
-	unsigned long ino = objp[0];
-	__u32 generation = objp[1];
 	struct inode *inode;
-	struct dentry *result;
 
 	if (ino < EXT4_FIRST_INO(sb) && ino != EXT4_ROOT_INO)
 		return ERR_PTR(-ESTALE);
@@ -642,15 +712,22 @@ static struct dentry *ext4_get_dentry(struct super_block *sb, void *vobjp)
 		iput(inode);
 		return ERR_PTR(-ESTALE);
 	}
-	/* now to find a dentry.
-	 * If possible, get a well-connected one
-	 */
-	result = d_alloc_anon(inode);
-	if (!result) {
-		iput(inode);
-		return ERR_PTR(-ENOMEM);
-	}
-	return result;
+
+	return inode;
+}
+
+static struct dentry *ext4_fh_to_dentry(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+{
+	return generic_fh_to_dentry(sb, fid, fh_len, fh_type,
+				    ext4_nfs_get_inode);
+}
+
+static struct dentry *ext4_fh_to_parent(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+{
+	return generic_fh_to_parent(sb, fid, fh_len, fh_type,
+				    ext4_nfs_get_inode);
 }
 
 #ifdef CONFIG_QUOTA
@@ -719,9 +796,10 @@ static const struct super_operations ext4_sops = {
 #endif
 };
 
-static struct export_operations ext4_export_ops = {
+static const struct export_operations ext4_export_ops = {
+	.fh_to_dentry = ext4_fh_to_dentry,
+	.fh_to_parent = ext4_fh_to_parent,
 	.get_parent = ext4_get_parent,
-	.get_dentry = ext4_get_dentry,
 };
 
 enum {
@@ -966,7 +1044,7 @@ static int parse_options (char *options, struct super_block *sb,
 			if (option < 0)
 				return 0;
 			if (option == 0)
-				option = JBD_DEFAULT_MAX_COMMIT_AGE;
+				option = JBD2_DEFAULT_MAX_COMMIT_AGE;
 			sbi->s_commit_interval = HZ * option;
 			break;
 		case Opt_data_journal:
@@ -1237,6 +1315,43 @@ static int ext4_setup_super(struct super_block *sb, struct ext4_super_block *es,
 	return res;
 }
 
+__le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
+			    struct ext4_group_desc *gdp)
+{
+	__u16 crc = 0;
+
+	if (sbi->s_es->s_feature_ro_compat &
+	    cpu_to_le32(EXT4_FEATURE_RO_COMPAT_GDT_CSUM)) {
+		int offset = offsetof(struct ext4_group_desc, bg_checksum);
+		__le32 le_group = cpu_to_le32(block_group);
+
+		crc = crc16(~0, sbi->s_es->s_uuid, sizeof(sbi->s_es->s_uuid));
+		crc = crc16(crc, (__u8 *)&le_group, sizeof(le_group));
+		crc = crc16(crc, (__u8 *)gdp, offset);
+		offset += sizeof(gdp->bg_checksum); /* skip checksum */
+		/* for checksum of struct ext4_group_desc do the rest...*/
+		if ((sbi->s_es->s_feature_incompat &
+		     cpu_to_le32(EXT4_FEATURE_INCOMPAT_64BIT)) &&
+		    offset < le16_to_cpu(sbi->s_es->s_desc_size))
+			crc = crc16(crc, (__u8 *)gdp + offset,
+				    le16_to_cpu(sbi->s_es->s_desc_size) -
+					offset);
+	}
+
+	return cpu_to_le16(crc);
+}
+
+int ext4_group_desc_csum_verify(struct ext4_sb_info *sbi, __u32 block_group,
+				struct ext4_group_desc *gdp)
+{
+	if ((sbi->s_es->s_feature_ro_compat &
+	     cpu_to_le32(EXT4_FEATURE_RO_COMPAT_GDT_CSUM)) &&
+	    (gdp->bg_checksum != ext4_group_desc_csum(sbi, block_group, gdp)))
+		return 0;
+
+	return 1;
+}
+
 /* Called at mount-time, super-block is locked */
 static int ext4_check_descriptors (struct super_block * sb)
 {
@@ -1248,13 +1363,17 @@ static int ext4_check_descriptors (struct super_block * sb)
 	ext4_fsblk_t inode_table;
 	struct ext4_group_desc * gdp = NULL;
 	int desc_block = 0;
+	int flexbg_flag = 0;
 	int i;
+
+	if (EXT4_HAS_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_FLEX_BG))
+		flexbg_flag = 1;
 
 	ext4_debug ("Checking group descriptors");
 
 	for (i = 0; i < sbi->s_groups_count; i++)
 	{
-		if (i == sbi->s_groups_count - 1)
+		if (i == sbi->s_groups_count - 1 || flexbg_flag)
 			last_block = ext4_blocks_count(sbi->s_es) - 1;
 		else
 			last_block = first_block +
@@ -1291,7 +1410,16 @@ static int ext4_check_descriptors (struct super_block * sb)
 				    i, inode_table);
 			return 0;
 		}
-		first_block += EXT4_BLOCKS_PER_GROUP(sb);
+		if (!ext4_group_desc_csum_verify(sbi, i, gdp)) {
+			ext4_error(sb, __FUNCTION__,
+				   "Checksum for group %d failed (%u!=%u)\n", i,
+				   le16_to_cpu(ext4_group_desc_csum(sbi, i,
+								    gdp)),
+				   le16_to_cpu(gdp->bg_checksum));
+			return 0;
+		}
+		if (!flexbg_flag)
+			first_block += EXT4_BLOCKS_PER_GROUP(sb);
 		gdp = (struct ext4_group_desc *)
 			((__u8 *)gdp + EXT4_DESC_SIZE(sb));
 	}
@@ -1415,8 +1543,6 @@ static void ext4_orphan_cleanup (struct super_block * sb,
 	sb->s_flags = s_flags; /* Restore MS_RDONLY status */
 }
 
-#define log2(n) ffz(~(n))
-
 /*
  * Maximal file size.  There is a direct, and {,double-,triple-}indirect
  * block limit, and also a limit of (2^32 - 1) 512-byte sectors in i_blocks.
@@ -1479,6 +1605,7 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 	int needs_recovery;
 	__le32 features;
 	__u64 blocks_count;
+	int err;
 
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
 	if (!sbi)
@@ -1487,6 +1614,7 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 	sbi->s_mount_opt = 0;
 	sbi->s_resuid = EXT4_DEF_RESUID;
 	sbi->s_resgid = EXT4_DEF_RESGID;
+	sbi->s_sb_block = sb_block;
 
 	unlock_kernel();
 
@@ -1655,19 +1783,11 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 		if (sbi->s_inode_size > EXT4_GOOD_OLD_INODE_SIZE)
 			sb->s_time_gran = 1 << (EXT4_EPOCH_BITS - 2);
 	}
-	sbi->s_frag_size = EXT4_MIN_FRAG_SIZE <<
-				   le32_to_cpu(es->s_log_frag_size);
-	if (blocksize != sbi->s_frag_size) {
-		printk(KERN_ERR
-		       "EXT4-fs: fragsize %lu != blocksize %u (unsupported)\n",
-		       sbi->s_frag_size, blocksize);
-		goto failed_mount;
-	}
 	sbi->s_desc_size = le16_to_cpu(es->s_desc_size);
 	if (EXT4_HAS_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_64BIT)) {
 		if (sbi->s_desc_size < EXT4_MIN_DESC_SIZE_64BIT ||
 		    sbi->s_desc_size > EXT4_MAX_DESC_SIZE ||
-		    sbi->s_desc_size & (sbi->s_desc_size - 1)) {
+		    !is_power_of_2(sbi->s_desc_size)) {
 			printk(KERN_ERR
 			       "EXT4-fs: unsupported descriptor size %lu\n",
 			       sbi->s_desc_size);
@@ -1676,7 +1796,6 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 	} else
 		sbi->s_desc_size = EXT4_MIN_DESC_SIZE;
 	sbi->s_blocks_per_group = le32_to_cpu(es->s_blocks_per_group);
-	sbi->s_frags_per_group = le32_to_cpu(es->s_frags_per_group);
 	sbi->s_inodes_per_group = le32_to_cpu(es->s_inodes_per_group);
 	if (EXT4_INODE_SIZE(sb) == 0)
 		goto cantfind_ext4;
@@ -1688,8 +1807,8 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 	sbi->s_desc_per_block = blocksize / EXT4_DESC_SIZE(sb);
 	sbi->s_sbh = bh;
 	sbi->s_mount_state = le16_to_cpu(es->s_state);
-	sbi->s_addr_per_block_bits = log2(EXT4_ADDR_PER_BLOCK(sb));
-	sbi->s_desc_per_block_bits = log2(EXT4_DESC_PER_BLOCK(sb));
+	sbi->s_addr_per_block_bits = ilog2(EXT4_ADDR_PER_BLOCK(sb));
+	sbi->s_desc_per_block_bits = ilog2(EXT4_DESC_PER_BLOCK(sb));
 	for (i=0; i < 4; i++)
 		sbi->s_hash_seed[i] = le32_to_cpu(es->s_hash_seed[i]);
 	sbi->s_def_hash_version = es->s_def_hash_version;
@@ -1698,12 +1817,6 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 		printk (KERN_ERR
 			"EXT4-fs: #blocks per group too big: %lu\n",
 			sbi->s_blocks_per_group);
-		goto failed_mount;
-	}
-	if (sbi->s_frags_per_group > blocksize * 8) {
-		printk (KERN_ERR
-			"EXT4-fs: #fragments per group too big: %lu\n",
-			sbi->s_frags_per_group);
 		goto failed_mount;
 	}
 	if (sbi->s_inodes_per_group > blocksize * 8) {
@@ -1759,12 +1872,20 @@ static int ext4_fill_super (struct super_block *sb, void *data, int silent)
 	get_random_bytes(&sbi->s_next_generation, sizeof(u32));
 	spin_lock_init(&sbi->s_next_gen_lock);
 
-	percpu_counter_init(&sbi->s_freeblocks_counter,
-		ext4_count_free_blocks(sb));
-	percpu_counter_init(&sbi->s_freeinodes_counter,
-		ext4_count_free_inodes(sb));
-	percpu_counter_init(&sbi->s_dirs_counter,
-		ext4_count_dirs(sb));
+	err = percpu_counter_init(&sbi->s_freeblocks_counter,
+			ext4_count_free_blocks(sb));
+	if (!err) {
+		err = percpu_counter_init(&sbi->s_freeinodes_counter,
+				ext4_count_free_inodes(sb));
+	}
+	if (!err) {
+		err = percpu_counter_init(&sbi->s_dirs_counter,
+				ext4_count_dirs(sb));
+	}
+	if (err) {
+		printk(KERN_ERR "EXT4-fs: insufficient memory\n");
+		goto failed_mount3;
+	}
 
 	/* per fileystem reservation list head & lock */
 	spin_lock_init(&sbi->s_rsv_window_lock);
@@ -2551,7 +2672,7 @@ static int ext4_statfs (struct dentry * dentry, struct kstatfs * buf)
 
 	if (test_opt(sb, MINIX_DF)) {
 		sbi->s_overhead_last = 0;
-	} else if (sbi->s_blocks_last != le32_to_cpu(es->s_blocks_count)) {
+	} else if (sbi->s_blocks_last != ext4_blocks_count(es)) {
 		unsigned long ngroups = sbi->s_groups_count, i;
 		ext4_fsblk_t overhead = 0;
 		smp_rmb();
@@ -2586,19 +2707,19 @@ static int ext4_statfs (struct dentry * dentry, struct kstatfs * buf)
 		overhead += ngroups * (2 + sbi->s_itb_per_group);
 		sbi->s_overhead_last = overhead;
 		smp_wmb();
-		sbi->s_blocks_last = le32_to_cpu(es->s_blocks_count);
+		sbi->s_blocks_last = ext4_blocks_count(es);
 	}
 
 	buf->f_type = EXT4_SUPER_MAGIC;
 	buf->f_bsize = sb->s_blocksize;
 	buf->f_blocks = ext4_blocks_count(es) - sbi->s_overhead_last;
-	buf->f_bfree = percpu_counter_sum(&sbi->s_freeblocks_counter);
-	es->s_free_blocks_count = cpu_to_le32(buf->f_bfree);
+	buf->f_bfree = percpu_counter_sum_positive(&sbi->s_freeblocks_counter);
+	ext4_free_blocks_count_set(es, buf->f_bfree);
 	buf->f_bavail = buf->f_bfree - ext4_r_blocks_count(es);
 	if (buf->f_bfree < ext4_r_blocks_count(es))
 		buf->f_bavail = 0;
 	buf->f_files = le32_to_cpu(es->s_inodes_count);
-	buf->f_ffree = percpu_counter_sum(&sbi->s_freeinodes_counter);
+	buf->f_ffree = percpu_counter_sum_positive(&sbi->s_freeinodes_counter);
 	es->s_free_inodes_count = cpu_to_le32(buf->f_ffree);
 	buf->f_namelen = EXT4_NAME_LEN;
 	fsid = le64_to_cpup((void *)es->s_uuid) ^

@@ -1,7 +1,7 @@
 		     ThinkPad ACPI Extras Driver
 
-                            Version 0.16
-                          August 2nd, 2007
+                            Version 0.17
+                         October 04th, 2007
 
                Borislav Deianov <borislav@users.sf.net>
              Henrique de Moraes Holschuh <hmh@hmh.eng.br>
@@ -105,10 +105,15 @@ The version of thinkpad-acpi's sysfs interface is exported by the driver
 as a driver attribute (see below).
 
 Sysfs driver attributes are on the driver's sysfs attribute space,
-for 2.6.20 this is /sys/bus/platform/drivers/thinkpad_acpi/.
+for 2.6.23 this is /sys/bus/platform/drivers/thinkpad_acpi/ and
+/sys/bus/platform/drivers/thinkpad_hwmon/
 
-Sysfs device attributes are on the driver's sysfs attribute space,
-for 2.6.20 this is /sys/devices/platform/thinkpad_acpi/.
+Sysfs device attributes are on the thinkpad_acpi device sysfs attribute
+space, for 2.6.23 this is /sys/devices/platform/thinkpad_acpi/.
+
+Sysfs device attributes for the sensors and fan are on the
+thinkpad_hwmon device's sysfs attribute space, but you should locate it
+looking for a hwmon device with the name attribute of "thinkpad".
 
 Driver version
 --------------
@@ -766,7 +771,7 @@ Temperature sensors
 -------------------
 
 procfs: /proc/acpi/ibm/thermal
-sysfs device attributes: (hwmon) temp*_input
+sysfs device attributes: (hwmon "thinkpad") temp*_input
 
 Most ThinkPads include six or more separate temperature sensors but only
 expose the CPU temperature through the standard ACPI methods.  This
@@ -918,19 +923,34 @@ sysfs backlight device "thinkpad_screen"
 This feature allows software control of the LCD brightness on ThinkPad
 models which don't have a hardware brightness slider.
 
-It has some limitations: the LCD backlight cannot be actually turned on or off
-by this interface, and in many ThinkPad models, the "dim while on battery"
-functionality will be enabled by the BIOS when this interface is used, and
-cannot be controlled.
+It has some limitations: the LCD backlight cannot be actually turned on or
+off by this interface, and in many ThinkPad models, the "dim while on
+battery" functionality will be enabled by the BIOS when this interface is
+used, and cannot be controlled.
 
-The backlight control has eight levels, ranging from 0 to 7.  Some of the
-levels may not be distinct.
+On IBM (and some of the earlier Lenovo) ThinkPads, the backlight control
+has eight brightness levels, ranging from 0 to 7.  Some of the levels
+may not be distinct.  Later Lenovo models that implement the ACPI
+display backlight brightness control methods have 16 levels, ranging
+from 0 to 15.
 
-There are two interfaces to the firmware for brightness control, EC and CMOS.
-To select which one should be used, use the brightness_mode module parameter:
-brightness_mode=1 selects EC mode, brightness_mode=2 selects CMOS mode,
-brightness_mode=3 selects both EC and CMOS.  The driver tries to autodetect
-which interface to use.
+There are two interfaces to the firmware for direct brightness control,
+EC and CMOS.  To select which one should be used, use the
+brightness_mode module parameter: brightness_mode=1 selects EC mode,
+brightness_mode=2 selects CMOS mode, brightness_mode=3 selects both EC
+and CMOS.  The driver tries to autodetect which interface to use.
+
+When display backlight brightness controls are available through the
+standard ACPI interface, it is best to use it instead of this direct
+ThinkPad-specific interface.  The driver will disable its native
+backlight brightness control interface if it detects that the standard
+ACPI interface is available in the ThinkPad.
+
+The brightness_enable module parameter can be used to control whether
+the LCD brightness control feature will be enabled when available.
+brightness_enable=0 forces it to be disabled.  brightness_enable=1
+forces it to be enabled when available, even if the standard ACPI
+interface is also available.
 
 Procfs notes:
 
@@ -942,11 +962,11 @@ Procfs notes:
 
 Sysfs notes:
 
-The interface is implemented through the backlight sysfs class, which is poorly
-documented at this time.
+The interface is implemented through the backlight sysfs class, which is
+poorly documented at this time.
 
-Locate the thinkpad_screen device under /sys/class/backlight, and inside it
-there will be the following attributes:
+Locate the thinkpad_screen device under /sys/class/backlight, and inside
+it there will be the following attributes:
 
 	max_brightness:
 		Reads the maximum brightness the hardware can be set to.
@@ -956,17 +976,19 @@ there will be the following attributes:
 		Reads what brightness the screen is set to at this instant.
 
 	brightness:
-		Writes request the driver to change brightness to the given
-		value.  Reads will tell you what brightness the driver is trying
-		to set the display to when "power" is set to zero and the display
-		has not been dimmed by a kernel power management event.
+		Writes request the driver to change brightness to the
+		given value.  Reads will tell you what brightness the
+		driver is trying to set the display to when "power" is set
+		to zero and the display has not been dimmed by a kernel
+		power management event.
 
 	power:
-		power management mode, where 0 is "display on", and 1 to 3 will
-		dim the display backlight to brightness level 0 because
-		thinkpad-acpi cannot really turn the backlight off.  Kernel
-		power management events can temporarily increase the current
-		power management level, i.e. they can dim the display.
+		power management mode, where 0 is "display on", and 1 to 3
+		will dim the display backlight to brightness level 0
+		because thinkpad-acpi cannot really turn the backlight
+		off.  Kernel power management events can temporarily
+		increase the current power management level, i.e. they can
+		dim the display.
 
 
 Volume control -- /proc/acpi/ibm/volume
@@ -989,7 +1011,9 @@ Fan control and monitoring: fan speed, fan enable/disable
 ---------------------------------------------------------
 
 procfs: /proc/acpi/ibm/fan
-sysfs device attributes: (hwmon) fan_input, pwm1, pwm1_enable
+sysfs device attributes: (hwmon "thinkpad") fan1_input, pwm1,
+			  pwm1_enable
+sysfs hwmon driver attributes: fan_watchdog
 
 NOTE NOTE NOTE: fan control operations are disabled by default for
 safety reasons.  To enable them, the module parameter "fan_control=1"
@@ -1028,7 +1052,7 @@ enable it if necessary to avoid overheating.
 
 An enabled fan in level "auto" may stop spinning if the EC decides the
 ThinkPad is cool enough and doesn't need the extra airflow.  This is
-normal, and the EC will spin the fan up if the varios thermal readings
+normal, and the EC will spin the fan up if the various thermal readings
 rise too much.
 
 On the X40, this seems to depend on the CPU and HDD temperatures.
@@ -1131,7 +1155,7 @@ hwmon device attribute fan1_input:
 	which can take up to two minutes.  May return rubbish on older
 	ThinkPads.
 
-driver attribute fan_watchdog:
+hwmon driver attribute fan_watchdog:
 	Fan safety watchdog timer interval, in seconds.  Minimum is
 	1 second, maximum is 120 seconds.  0 disables the watchdog.
 
@@ -1196,7 +1220,7 @@ for example:
 Enabling debugging output
 -------------------------
 
-The module takes a debug paramater which can be used to selectively
+The module takes a debug parameter which can be used to selectively
 enable various classes of debugging output, for example:
 
 	 modprobe ibm_acpi debug=0xffff
@@ -1233,3 +1257,9 @@ Sysfs interface changelog:
 		layer, the radio switch generates input event EV_RADIO,
 		and the driver enables hot key handling by default in
 		the firmware.
+
+0x020000:	ABI fix: added a separate hwmon platform device and
+		driver, which must be located by name (thinkpad)
+		and the hwmon class for libsensors4 (lm-sensors 3)
+		compatibility.  Moved all hwmon attributes to this
+		new platform device.

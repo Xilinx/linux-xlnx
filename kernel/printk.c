@@ -22,6 +22,8 @@
 #include <linux/tty_driver.h>
 #include <linux/console.h>
 #include <linux/init.h>
+#include <linux/jiffies.h>
+#include <linux/nmi.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/interrupt.h>			/* For in_interrupt() */
@@ -161,6 +163,113 @@ out:
 }
 
 __setup("log_buf_len=", log_buf_len_setup);
+
+#ifdef CONFIG_BOOT_PRINTK_DELAY
+
+static unsigned int boot_delay; /* msecs delay after each printk during bootup */
+static unsigned long long printk_delay_msec; /* per msec, based on boot_delay */
+
+static int __init boot_delay_setup(char *str)
+{
+	unsigned long lpj;
+	unsigned long long loops_per_msec;
+
+	lpj = preset_lpj ? preset_lpj : 1000000;	/* some guess */
+	loops_per_msec = (unsigned long long)lpj / 1000 * HZ;
+
+	get_option(&str, &boot_delay);
+	if (boot_delay > 10 * 1000)
+		boot_delay = 0;
+
+	printk_delay_msec = loops_per_msec;
+	printk(KERN_DEBUG "boot_delay: %u, preset_lpj: %ld, lpj: %lu, "
+		"HZ: %d, printk_delay_msec: %llu\n",
+		boot_delay, preset_lpj, lpj, HZ, printk_delay_msec);
+	return 1;
+}
+__setup("boot_delay=", boot_delay_setup);
+
+static void boot_delay_msec(void)
+{
+	unsigned long long k;
+	unsigned long timeout;
+
+	if (boot_delay == 0 || system_state != SYSTEM_BOOTING)
+		return;
+
+	k = (unsigned long long)printk_delay_msec * boot_delay;
+
+	timeout = jiffies + msecs_to_jiffies(boot_delay);
+	while (k) {
+		k--;
+		cpu_relax();
+		/*
+		 * use (volatile) jiffies to prevent
+		 * compiler reduction; loop termination via jiffies
+		 * is secondary and may or may not happen.
+		 */
+		if (time_after(jiffies, timeout))
+			break;
+		touch_nmi_watchdog();
+	}
+}
+#else
+static inline void boot_delay_msec(void)
+{
+}
+#endif
+
+/*
+ * Return the number of unread characters in the log buffer.
+ */
+int log_buf_get_len(void)
+{
+	return logged_chars;
+}
+
+/*
+ * Copy a range of characters from the log buffer.
+ */
+int log_buf_copy(char *dest, int idx, int len)
+{
+	int ret, max;
+	bool took_lock = false;
+
+	if (!oops_in_progress) {
+		spin_lock_irq(&logbuf_lock);
+		took_lock = true;
+	}
+
+	max = log_buf_get_len();
+	if (idx < 0 || idx >= max) {
+		ret = -1;
+	} else {
+		if (len > max)
+			len = max;
+		ret = len;
+		idx += (log_end - max);
+		while (len-- > 0)
+			dest[len] = LOG_BUF(idx + len);
+	}
+
+	if (took_lock)
+		spin_unlock_irq(&logbuf_lock);
+
+	return ret;
+}
+
+/*
+ * Extract a single character from the log buffer.
+ */
+int log_buf_read(int idx)
+{
+	char ret;
+
+	if (log_buf_copy(&ret, idx, 1) == 1)
+		return ret;
+	else
+		return -1;
+}
 
 /*
  * Commands to do_syslog:
@@ -527,6 +636,8 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	static char printk_buf[1024];
 	static int log_level_unknown = 1;
 
+	boot_delay_msec();
+
 	preempt_disable();
 	if (unlikely(oops_in_progress) && printk_cpu == smp_processor_id())
 		/* If a crash is occurring during printk() on this CPU,
@@ -751,7 +862,16 @@ int update_console_cmdline(char *name, int idx, char *name_new, int idx_new, cha
 	return -1;
 }
 
-#ifndef CONFIG_DISABLE_CONSOLE_SUSPEND
+int console_suspend_enabled = 1;
+EXPORT_SYMBOL(console_suspend_enabled);
+
+static int __init console_suspend_disable(char *str)
+{
+	console_suspend_enabled = 0;
+	return 1;
+}
+__setup("no_console_suspend", console_suspend_disable);
+
 /**
  * suspend_console - suspend the console subsystem
  *
@@ -759,6 +879,8 @@ int update_console_cmdline(char *name, int idx, char *name_new, int idx_new, cha
  */
 void suspend_console(void)
 {
+	if (!console_suspend_enabled)
+		return;
 	printk("Suspending console(s)\n");
 	acquire_console_sem();
 	console_suspended = 1;
@@ -766,10 +888,11 @@ void suspend_console(void)
 
 void resume_console(void)
 {
+	if (!console_suspend_enabled)
+		return;
 	console_suspended = 0;
 	release_console_sem();
 }
-#endif /* CONFIG_DISABLE_CONSOLE_SUSPEND */
 
 /**
  * acquire_console_sem - lock the console system for exclusive use.

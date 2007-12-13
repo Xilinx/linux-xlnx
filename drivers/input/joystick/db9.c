@@ -4,7 +4,7 @@
  *  Copyright (c) 1999-2001 Vojtech Pavlik
  *
  *  Based on the work of:
- *	Andree Borrmann		Mats Sjövall
+ *	Andree Borrmann		Mats SjÃ¶vall
  */
 
 /*
@@ -631,7 +631,7 @@ static struct db9 __init *db9_probe(int parport, int mode)
 		input_dev->open = db9_open;
 		input_dev->close = db9_close;
 
-		input_dev->evbit[0] = BIT(EV_KEY) | BIT(EV_ABS);
+		input_dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
 		for (j = 0; j < db9_mode->n_buttons; j++)
 			set_bit(db9_mode->buttons[j], input_dev->keybit);
 		for (j = 0; j < db9_mode->n_axis; j++) {

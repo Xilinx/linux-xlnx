@@ -467,35 +467,70 @@ static struct platform_device bast_device_axpp = {
 
 /* LCD/VGA controller */
 
-static struct s3c2410fb_mach_info __initdata bast_lcd_info = {
-	.width		= 640,
-	.height		= 480,
+static struct s3c2410fb_display __initdata bast_lcd_info[] = {
+	{
+		.type		= S3C2410_LCDCON1_TFT,
+		.width		= 640,
+		.height		= 480,
 
-	.xres		= {
-		.min		= 320,
-		.max		= 1024,
-		.defval		= 640,
-	},
+		.pixclock	= 33333,
+		.xres		= 640,
+		.yres		= 480,
+		.bpp		= 4,
+		.left_margin	= 40,
+		.right_margin	= 20,
+		.hsync_len	= 88,
+		.upper_margin	= 30,
+		.lower_margin	= 32,
+		.vsync_len	= 3,
 
-	.yres		= {
-		.min		= 240,
-		.max	        = 600,
-		.defval		= 480,
-	},
-
-	.bpp		= {
-		.min		= 4,
-		.max		= 16,
-		.defval		= 8,
-	},
-
-	.regs		= {
-		.lcdcon1	= 0x00000176,
-		.lcdcon2	= 0x1d77c7c2,
-		.lcdcon3	= 0x013a7f13,
-		.lcdcon4	= 0x00000057,
 		.lcdcon5	= 0x00014b02,
-	}
+	},
+	{
+		.type		= S3C2410_LCDCON1_TFT,
+		.width		= 640,
+		.height		= 480,
+
+		.pixclock	= 33333,
+		.xres		= 640,
+		.yres		= 480,
+		.bpp		= 8,
+		.left_margin	= 40,
+		.right_margin	= 20,
+		.hsync_len	= 88,
+		.upper_margin	= 30,
+		.lower_margin	= 32,
+		.vsync_len	= 3,
+
+		.lcdcon5	= 0x00014b02,
+	},
+	{
+		.type		= S3C2410_LCDCON1_TFT,
+		.width		= 640,
+		.height		= 480,
+
+		.pixclock	= 33333,
+		.xres		= 640,
+		.yres		= 480,
+		.bpp		= 16,
+		.left_margin	= 40,
+		.right_margin	= 20,
+		.hsync_len	= 88,
+		.upper_margin	= 30,
+		.lower_margin	= 32,
+		.vsync_len	= 3,
+
+		.lcdcon5	= 0x00014b02,
+	},
+};
+
+/* LCD/VGA controller */
+
+static struct s3c2410fb_mach_info __initdata bast_fb_info = {
+
+	.displays = bast_lcd_info,
+	.num_displays = ARRAY_SIZE(bast_lcd_info),
+	.default_display = 4,
 };
 
 /* Standard BAST devices */
@@ -552,7 +587,7 @@ static void __init bast_map_io(void)
 
 static void __init bast_init(void)
 {
-	s3c24xx_fb_set_platdata(&bast_lcd_info);
+	s3c24xx_fb_set_platdata(&bast_fb_info);
 	platform_add_devices(bast_devices, ARRAY_SIZE(bast_devices));
 }
 

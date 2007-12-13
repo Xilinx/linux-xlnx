@@ -4,7 +4,8 @@
 
 #include <linux/kernel.h>
 #include <linux/ctype.h>
-#include <linux/bug.h>
+#include <linux/slab.h>
+#include <linux/module.h>
 
 static const char *skip_sep(const char *cp)
 {
@@ -75,7 +76,9 @@ char **argv_split(gfp_t gfp, const char *str, int *argcp)
 	if (argv == NULL)
 		goto out;
 
-	*argcp = argc;
+	if (argcp)
+		*argcp = argc;
+
 	argvp = argv;
 
 	while (*str) {

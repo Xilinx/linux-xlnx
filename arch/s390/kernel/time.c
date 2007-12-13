@@ -145,12 +145,8 @@ void account_ticks(u64 time)
 	do_timer(ticks);
 #endif
 
-#ifdef CONFIG_VIRT_CPU_ACCOUNTING
-	account_tick_vtime(current);
-#else
 	while (ticks--)
 		update_process_times(user_mode(get_irq_regs()));
-#endif
 
 	s390_do_profile();
 }
@@ -307,7 +303,7 @@ static cycle_t read_tod_clock(void)
 
 static struct clocksource clocksource_tod = {
 	.name		= "tod",
-	.rating		= 100,
+	.rating		= 400,
 	.read		= read_tod_clock,
 	.mask		= -1ULL,
 	.mult		= 1000,

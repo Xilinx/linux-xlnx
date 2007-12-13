@@ -18,7 +18,7 @@
  *     published by the Free Software Foundation; either version 2 of
  *     the License, or (at your option) any later version.
  *
- *     Neither Dag Brattli nor University of Tromsø admit liability nor
+ *     Neither Dag Brattli nor University of TromsÃ¸ admit liability nor
  *     provide warranty for any of this software. This material is
  *     provided "AS-IS" and at no charge.
  *
@@ -1884,25 +1884,8 @@ static const struct seq_operations irttp_seq_ops = {
 
 static int irttp_seq_open(struct inode *inode, struct file *file)
 {
-	struct seq_file *seq;
-	int rc = -ENOMEM;
-	struct irttp_iter_state *s;
-
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
-	if (!s)
-		goto out;
-
-	rc = seq_open(file, &irttp_seq_ops);
-	if (rc)
-		goto out_kfree;
-
-	seq	     = file->private_data;
-	seq->private = s;
-out:
-	return rc;
-out_kfree:
-	kfree(s);
-	goto out;
+	return seq_open_private(file, &irttp_seq_ops,
+			sizeof(struct irttp_iter_state));
 }
 
 const struct file_operations irttp_seq_fops = {

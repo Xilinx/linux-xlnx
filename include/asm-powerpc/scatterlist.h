@@ -14,7 +14,10 @@
 #include <asm/dma.h>
 
 struct scatterlist {
-	struct page *page;
+#ifdef CONFIG_DEBUG_SG
+	unsigned long sg_magic;
+#endif
+	unsigned long page_link;
 	unsigned int offset;
 	unsigned int length;
 
@@ -40,6 +43,8 @@ struct scatterlist {
 #ifdef __powerpc64__
 #define ISA_DMA_THRESHOLD	(~0UL)
 #endif
+
+#define ARCH_HAS_SG_CHAIN
 
 #endif /* __KERNEL__ */
 #endif /* _ASM_POWERPC_SCATTERLIST_H */

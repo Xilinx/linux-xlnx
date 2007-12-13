@@ -26,7 +26,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/spi/spi.h>
 #include <linux/workqueue.h>
-#include <linux/errno.h>
 #include <linux/delay.h>
 
 #include <asm/io.h>
@@ -40,7 +39,7 @@
 #include <asm/arch/pxa2xx_spi.h>
 
 MODULE_AUTHOR("Stephen Street");
-MODULE_DESCRIPTION("PXA2xx SSP SPI Contoller");
+MODULE_DESCRIPTION("PXA2xx SSP SPI Controller");
 MODULE_LICENSE("GPL");
 
 #define MAX_BUSES 3
@@ -1230,7 +1229,7 @@ static void cleanup(struct spi_device *spi)
 	kfree(chip);
 }
 
-static int init_queue(struct driver_data *drv_data)
+static int __init init_queue(struct driver_data *drv_data)
 {
 	INIT_LIST_HEAD(&drv_data->queue);
 	spin_lock_init(&drv_data->lock);
@@ -1243,7 +1242,7 @@ static int init_queue(struct driver_data *drv_data)
 
 	INIT_WORK(&drv_data->pump_messages, pump_messages);
 	drv_data->workqueue = create_singlethread_workqueue(
-					drv_data->master->cdev.dev->bus_id);
+					drv_data->master->dev.parent->bus_id);
 	if (drv_data->workqueue == NULL)
 		return -EBUSY;
 
@@ -1318,7 +1317,7 @@ static int destroy_queue(struct driver_data *drv_data)
 	return 0;
 }
 
-static int pxa2xx_spi_probe(struct platform_device *pdev)
+static int __init pxa2xx_spi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct pxa2xx_spi_master *platform_info;
@@ -1622,8 +1621,7 @@ static struct platform_driver driver = {
 		.bus = &platform_bus_type,
 		.owner = THIS_MODULE,
 	},
-	.probe = pxa2xx_spi_probe,
-	.remove = __devexit_p(pxa2xx_spi_remove),
+	.remove = pxa2xx_spi_remove,
 	.shutdown = pxa2xx_spi_shutdown,
 	.suspend = pxa2xx_spi_suspend,
 	.resume = pxa2xx_spi_resume,
@@ -1631,9 +1629,7 @@ static struct platform_driver driver = {
 
 static int __init pxa2xx_spi_init(void)
 {
-	platform_driver_register(&driver);
-
-	return 0;
+	return platform_driver_probe(&driver, pxa2xx_spi_probe);
 }
 module_init(pxa2xx_spi_init);
 

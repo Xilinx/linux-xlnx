@@ -63,6 +63,10 @@ struct mlx4_ib_sqp {
 	u8			header_buf[MLX4_IB_UD_HEADER_SIZE];
 };
 
+enum {
+	MLX4_IB_MIN_SQ_STRIDE = 6
+};
+
 static const __be32 mlx4_ib_opcode[] = {
 	[IB_WR_SEND]			= __constant_cpu_to_be32(MLX4_OPCODE_SEND),
 	[IB_WR_SEND_WITH_IMM]		= __constant_cpu_to_be32(MLX4_OPCODE_SEND_IMM),
@@ -285,9 +289,17 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 	return 0;
 }
 
-static int set_user_sq_size(struct mlx4_ib_qp *qp,
+static int set_user_sq_size(struct mlx4_ib_dev *dev,
+			    struct mlx4_ib_qp *qp,
 			    struct mlx4_ib_create_qp *ucmd)
 {
+	/* Sanity check SQ size before proceeding */
+	if ((1 << ucmd->log_sq_bb_count) > dev->dev->caps.max_wqes	 ||
+	    ucmd->log_sq_stride >
+		ilog2(roundup_pow_of_two(dev->dev->caps.max_sq_desc_sz)) ||
+	    ucmd->log_sq_stride < MLX4_IB_MIN_SQ_STRIDE)
+		return -EINVAL;
+
 	qp->sq.wqe_cnt   = 1 << ucmd->log_sq_bb_count;
 	qp->sq.wqe_shift = ucmd->log_sq_stride;
 
@@ -330,7 +342,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 
 		qp->sq_no_prefetch = ucmd.sq_no_prefetch;
 
-		err = set_user_sq_size(qp, &ucmd);
+		err = set_user_sq_size(dev, qp, &ucmd);
 		if (err)
 			goto err;
 
@@ -1249,6 +1261,13 @@ static void set_data_seg(struct mlx4_wqe_data_seg *dseg, struct ib_sge *sg)
 	dseg->byte_count = cpu_to_be32(sg->length);
 }
 
+static void __set_data_seg(struct mlx4_wqe_data_seg *dseg, struct ib_sge *sg)
+{
+	dseg->byte_count = cpu_to_be32(sg->length);
+	dseg->lkey       = cpu_to_be32(sg->lkey);
+	dseg->addr       = cpu_to_be64(sg->addr);
+}
+
 int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		      struct ib_send_wr **bad_wr)
 {
@@ -1263,7 +1282,7 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	int size;
 	int i;
 
-	spin_lock_irqsave(&qp->rq.lock, flags);
+	spin_lock_irqsave(&qp->sq.lock, flags);
 
 	ind = qp->sq.head;
 
@@ -1429,7 +1448,7 @@ out:
 			       (qp->sq.wqe_cnt - 1));
 	}
 
-	spin_unlock_irqrestore(&qp->rq.lock, flags);
+	spin_unlock_irqrestore(&qp->sq.lock, flags);
 
 	return err;
 }
@@ -1464,11 +1483,8 @@ int mlx4_ib_post_recv(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 
 		scat = get_recv_wqe(qp, ind);
 
-		for (i = 0; i < wr->num_sge; ++i) {
-			scat[i].byte_count = cpu_to_be32(wr->sg_list[i].length);
-			scat[i].lkey       = cpu_to_be32(wr->sg_list[i].lkey);
-			scat[i].addr       = cpu_to_be64(wr->sg_list[i].addr);
-		}
+		for (i = 0; i < wr->num_sge; ++i)
+			__set_data_seg(scat + i, wr->sg_list + i);
 
 		if (i < qp->rq.max_gs) {
 			scat[i].byte_count = 0;

@@ -182,7 +182,7 @@ static void k2_sata_tf_read(struct ata_port *ap, struct ata_taskfile *tf)
 		tf->hob_lbal = lbal >> 8;
 		tf->hob_lbam = lbam >> 8;
 		tf->hob_lbah = lbah >> 8;
-        }
+	}
 }
 
 /**
@@ -193,7 +193,7 @@ static void k2_sata_tf_read(struct ata_port *ap, struct ata_taskfile *tf)
  *	spin_lock_irqsave(host lock)
  */
 
-static void k2_bmdma_setup_mmio (struct ata_queued_cmd *qc)
+static void k2_bmdma_setup_mmio(struct ata_queued_cmd *qc)
 {
 	struct ata_port *ap = qc->ap;
 	unsigned int rw = (qc->tf.flags & ATA_TFLAG_WRITE);
@@ -224,7 +224,7 @@ static void k2_bmdma_setup_mmio (struct ata_queued_cmd *qc)
  *	spin_lock_irqsave(host lock)
  */
 
-static void k2_bmdma_start_mmio (struct ata_queued_cmd *qc)
+static void k2_bmdma_start_mmio(struct ata_queued_cmd *qc)
 {
 	struct ata_port *ap = qc->ap;
 	void __iomem *mmio = ap->ioaddr.bmdma_addr;
@@ -255,7 +255,7 @@ static void k2_bmdma_start_mmio (struct ata_queued_cmd *qc)
 
 static u8 k2_stat_check_status(struct ata_port *ap)
 {
-       	return readl(ap->ioaddr.status_addr);
+	return readl(ap->ioaddr.status_addr);
 }
 
 #ifdef CONFIG_PPC_OF
@@ -329,7 +329,6 @@ static struct scsi_host_template k2_sata_sht = {
 
 
 static const struct ata_port_operations k2_sata_ops = {
-	.port_disable		= ata_port_disable,
 	.tf_load		= k2_sata_tf_load,
 	.tf_read		= k2_sata_tf_read,
 	.check_status		= k2_stat_check_status,
@@ -349,7 +348,6 @@ static const struct ata_port_operations k2_sata_ops = {
 	.post_internal_cmd	= ata_bmdma_post_internal_cmd,
 	.irq_clear		= ata_bmdma_irq_clear,
 	.irq_on			= ata_irq_on,
-	.irq_ack		= ata_irq_ack,
 	.scr_read		= k2_sata_scr_read,
 	.scr_write		= k2_sata_scr_write,
 	.port_start		= ata_port_start,
@@ -397,7 +395,7 @@ static void k2_sata_setup_port(struct ata_ioports *port, void __iomem *base)
 }
 
 
-static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
+static int k2_sata_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	static int printed_version;
 	const struct ata_port_info *ppi[] =
@@ -445,9 +443,15 @@ static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *e
 	/* different controllers have different number of ports - currently 4 or 8 */
 	/* All ports are on the same function. Multi-function device is no
 	 * longer available. This should not be seen in any system. */
-	for (i = 0; i < host->n_ports; i++)
-		k2_sata_setup_port(&host->ports[i]->ioaddr,
-				   mmio_base + i * K2_SATA_PORT_OFFSET);
+	for (i = 0; i < host->n_ports; i++) {
+		struct ata_port *ap = host->ports[i];
+		unsigned int offset = i * K2_SATA_PORT_OFFSET;
+
+		k2_sata_setup_port(&ap->ioaddr, mmio_base + offset);
+
+		ata_port_pbar_desc(ap, 5, -1, "mmio");
+		ata_port_pbar_desc(ap, 5, offset, "port");
+	}
 
 	rc = pci_set_dma_mask(pdev, ATA_DMA_MASK);
 	if (rc)

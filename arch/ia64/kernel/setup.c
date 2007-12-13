@@ -90,7 +90,11 @@ static struct resource code_resource = {
 	.name	= "Kernel code",
 	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
 };
-extern char _text[], _end[], _etext[];
+
+static struct resource bss_resource = {
+	.name	= "Kernel bss",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
 
 unsigned long ia64_max_cacheline_size;
 
@@ -200,13 +204,58 @@ static int __init register_memory(void)
 	code_resource.start = ia64_tpa(_text);
 	code_resource.end   = ia64_tpa(_etext) - 1;
 	data_resource.start = ia64_tpa(_etext);
-	data_resource.end   = ia64_tpa(_end) - 1;
-	efi_initialize_iomem_resources(&code_resource, &data_resource);
+	data_resource.end   = ia64_tpa(_edata) - 1;
+	bss_resource.start  = ia64_tpa(__bss_start);
+	bss_resource.end    = ia64_tpa(_end) - 1;
+	efi_initialize_iomem_resources(&code_resource, &data_resource,
+			&bss_resource);
 
 	return 0;
 }
 
 __initcall(register_memory);
+
+
+#ifdef CONFIG_KEXEC
+static void __init setup_crashkernel(unsigned long total, int *n)
+{
+	unsigned long long base = 0, size = 0;
+	int ret;
+
+	ret = parse_crashkernel(boot_command_line, total,
+			&size, &base);
+	if (ret == 0 && size > 0) {
+		if (!base) {
+			sort_regions(rsvd_region, *n);
+			base = kdump_find_rsvd_region(size,
+					rsvd_region, *n);
+		}
+		if (base != ~0UL) {
+			printk(KERN_INFO "Reserving %ldMB of memory at %ldMB "
+					"for crashkernel (System RAM: %ldMB)\n",
+					(unsigned long)(size >> 20),
+					(unsigned long)(base >> 20),
+					(unsigned long)(total >> 20));
+			rsvd_region[*n].start =
+				(unsigned long)__va(base);
+			rsvd_region[*n].end =
+				(unsigned long)__va(base + size);
+			(*n)++;
+			crashk_res.start = base;
+			crashk_res.end = base + size - 1;
+		}
+	}
+	efi_memmap_res.start = ia64_boot_param->efi_memmap;
+	efi_memmap_res.end = efi_memmap_res.start +
+		ia64_boot_param->efi_memmap_size;
+	boot_param_res.start = __pa(ia64_boot_param);
+	boot_param_res.end = boot_param_res.start +
+		sizeof(*ia64_boot_param);
+}
+#else
+static inline void __init setup_crashkernel(unsigned long total, int *n)
+{}
+#endif
 
 /**
  * reserve_memory - setup reserved memory areas
@@ -219,6 +268,7 @@ void __init
 reserve_memory (void)
 {
 	int n = 0;
+	unsigned long total_memory;
 
 	/*
 	 * none of the entries in this table overlap
@@ -254,50 +304,11 @@ reserve_memory (void)
 		n++;
 #endif
 
-	efi_memmap_init(&rsvd_region[n].start, &rsvd_region[n].end);
+	total_memory = efi_memmap_init(&rsvd_region[n].start, &rsvd_region[n].end);
 	n++;
 
-#ifdef CONFIG_KEXEC
-	/* crashkernel=size@offset specifies the size to reserve for a crash
-	 * kernel. If offset is 0, then it is determined automatically.
-	 * By reserving this memory we guarantee that linux never set's it
-	 * up as a DMA target.Useful for holding code to do something
-	 * appropriate after a kernel panic.
-	 */
-	{
-		char *from = strstr(boot_command_line, "crashkernel=");
-		unsigned long base, size;
-		if (from) {
-			size = memparse(from + 12, &from);
-			if (*from == '@')
-				base = memparse(from+1, &from);
-			else
-				base = 0;
-			if (size) {
-				if (!base) {
-					sort_regions(rsvd_region, n);
-					base = kdump_find_rsvd_region(size,
-							      	rsvd_region, n);
-					}
-				if (base != ~0UL) {
-					rsvd_region[n].start =
-						(unsigned long)__va(base);
-					rsvd_region[n].end =
-						(unsigned long)__va(base + size);
-					n++;
-					crashk_res.start = base;
-					crashk_res.end = base + size - 1;
-				}
-			}
-		}
-		efi_memmap_res.start = ia64_boot_param->efi_memmap;
-                efi_memmap_res.end = efi_memmap_res.start +
-                        ia64_boot_param->efi_memmap_size;
-                boot_param_res.start = __pa(ia64_boot_param);
-                boot_param_res.end = boot_param_res.start +
-                        sizeof(*ia64_boot_param);
-	}
-#endif
+	setup_crashkernel(total_memory, &n);
+
 	/* end of memory marker */
 	rsvd_region[n].start = ~0UL;
 	rsvd_region[n].end   = ~0UL;
@@ -405,34 +416,6 @@ mark_bsp_online (void)
 #endif
 }
 
-#ifdef CONFIG_SMP
-static void __init
-check_for_logical_procs (void)
-{
-	pal_logical_to_physical_t info;
-	s64 status;
-
-	status = ia64_pal_logical_to_phys(0, &info);
-	if (status == -1) {
-		printk(KERN_INFO "No logical to physical processor mapping "
-		       "available\n");
-		return;
-	}
-	if (status) {
-		printk(KERN_ERR "ia64_pal_logical_to_phys failed with %ld\n",
-		       status);
-		return;
-	}
-	/*
-	 * Total number of siblings that BSP has.  Though not all of them 
-	 * may have booted successfully. The correct number of siblings 
-	 * booted is in info.overview_num_log.
-	 */
-	smp_num_siblings = info.overview_tpc;
-	smp_num_cpucores = info.overview_cpp;
-}
-#endif
-
 static __initdata int nomca;
 static __init int setup_nomca(char *s)
 {
@@ -528,19 +511,6 @@ setup_arch (char **cmdline_p)
 
 #ifdef CONFIG_SMP
 	cpu_physical_id(0) = hard_smp_processor_id();
-
-	cpu_set(0, cpu_sibling_map[0]);
-	cpu_set(0, cpu_core_map[0]);
-
-	check_for_logical_procs();
-	if (smp_num_cpucores > 1)
-		printk(KERN_INFO
-		       "cpu package is Multi-Core capable: number of cores=%d\n",
-		       smp_num_cpucores);
-	if (smp_num_siblings > 1)
-		printk(KERN_INFO
-		       "cpu package is Multi-Threading capable: number of siblings=%d\n",
-		       smp_num_siblings);
 #endif
 
 	cpu_init();	/* initialize the bootstrap CPU */
@@ -653,12 +623,13 @@ show_cpuinfo (struct seq_file *m, void *v)
 		   lpj*HZ/500000, (lpj*HZ/5000) % 100);
 #ifdef CONFIG_SMP
 	seq_printf(m, "siblings   : %u\n", cpus_weight(cpu_core_map[cpunum]));
+	if (c->socket_id != -1)
+		seq_printf(m, "physical id: %u\n", c->socket_id);
 	if (c->threads_per_core > 1 || c->cores_per_socket > 1)
 		seq_printf(m,
-		   	   "physical id: %u\n"
-		   	   "core id    : %u\n"
-		   	   "thread id  : %u\n",
-		   	   c->socket_id, c->core_id, c->thread_id);
+			   "core id    : %u\n"
+			   "thread id  : %u\n",
+			   c->core_id, c->thread_id);
 #endif
 	seq_printf(m,"\n");
 
@@ -770,6 +741,9 @@ identify_cpu (struct cpuinfo_ia64 *c)
 	c->socket_id = -1;
 
 	identify_siblings(c);
+
+	if (c->threads_per_core > smp_num_siblings)
+		smp_num_siblings = c->threads_per_core;
 #endif
 	c->ppn = cpuid.field.ppn;
 	c->number = cpuid.field.number;
@@ -873,6 +847,16 @@ cpu_init (void)
 	void *cpu_data;
 
 	cpu_data = per_cpu_init();
+#ifdef CONFIG_SMP
+	/*
+	 * insert boot cpu into sibling and core mapes
+	 * (must be done after per_cpu area is setup)
+	 */
+	if (smp_processor_id() == 0) {
+		cpu_set(0, per_cpu(cpu_sibling_map, 0));
+		cpu_set(0, cpu_core_map[0]);
+	}
+#endif
 
 	/*
 	 * We set ar.k3 so that assembly code in MCA handler can compute

@@ -41,8 +41,8 @@ extern struct super_block * configfs_sb;
 
 static const struct address_space_operations configfs_aops = {
 	.readpage	= simple_readpage,
-	.prepare_write	= simple_prepare_write,
-	.commit_write	= simple_commit_write
+	.write_begin	= simple_write_begin,
+	.write_end	= simple_write_end,
 };
 
 static struct backing_dev_info configfs_backing_dev_info = {
@@ -256,4 +256,12 @@ void configfs_hash_and_remove(struct dentry * dir, const char * name)
 	mutex_unlock(&dir->d_inode->i_mutex);
 }
 
+int __init configfs_inode_init(void)
+{
+	return bdi_init(&configfs_backing_dev_info);
+}
 
+void __exit configfs_inode_exit(void)
+{
+	bdi_destroy(&configfs_backing_dev_info);
+}

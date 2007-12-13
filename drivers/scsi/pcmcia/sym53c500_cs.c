@@ -443,8 +443,7 @@ SYM53C500_intr(int irq, void *dev_id)
 
 			scsi_for_each_sg(curSC, sg, scsi_sg_count(curSC), i) {
 				SYM53C500_pio_write(fast_pio, port_base,
-						    page_address(sg->page) + sg->offset,
-						    sg->length);
+				    sg_virt(sg), sg->length);
 			}
 			REG0(port_base);
 		}
@@ -463,8 +462,7 @@ SYM53C500_intr(int irq, void *dev_id)
 
 			scsi_for_each_sg(curSC, sg, scsi_sg_count(curSC), i) {
 				SYM53C500_pio_read(fast_pio, port_base,
-						   page_address(sg->page) + sg->offset,
-						   sg->length);
+					sg_virt(sg), sg->length);
 			}
 			REG0(port_base);
 		}
@@ -694,6 +692,7 @@ static struct scsi_host_template sym53c500_driver_template = {
      .sg_tablesize		= 32,
      .cmd_per_lun		= 1,
      .use_clustering		= ENABLE_CLUSTERING,
+     .use_sg_chaining		= ENABLE_SG_CHAINING,
      .shost_attrs		= SYM53C500_shost_attrs
 };
 

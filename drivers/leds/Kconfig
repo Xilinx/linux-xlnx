@@ -83,15 +83,22 @@ config LEDS_WRAP
 
 config LEDS_H1940
 	tristate "LED Support for iPAQ H1940 device"
-	depends LEDS_CLASS && ARCH_H1940
+	depends on LEDS_CLASS && ARCH_H1940
 	help
 	  This option enables support for the LEDs on the h1940.
 
-config LEDS_COBALT
-	tristate "LED Support for Cobalt Server front LED"
+config LEDS_COBALT_QUBE
+	tristate "LED Support for the Cobalt Qube series front LED"
 	depends on LEDS_CLASS && MIPS_COBALT
 	help
-	  This option enables support for the front LED on Cobalt Server
+	  This option enables support for the front LED on Cobalt Qube series
+
+config LEDS_COBALT_RAQ
+	bool "LED Support for the Cobalt Raq series"
+	depends on LEDS_CLASS && MIPS_COBALT
+	select LEDS_TRIGGERS
+	help
+	  This option enables support for the Cobalt Raq series LEDs.
 
 config LEDS_GPIO
 	tristate "LED Support for GPIO connected LEDs"
@@ -100,6 +107,12 @@ config LEDS_GPIO
 	  This option enables support for the LEDs connected to GPIO
 	  outputs. To be useful the particular board must have LEDs
 	  and they must be connected to the GPIO lines.
+
+config LEDS_CM_X270
+	tristate "LED Support for the CM-X270 LEDs"
+	depends on LEDS_CLASS && MACH_ARMCORE
+	help
+	  This option enables support for the CM-X270 LEDs.
 
 comment "LED Triggers"
 

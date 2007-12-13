@@ -1,7 +1,7 @@
 /*
  * interface.c - contains everything related to the user interface
  *
- * Some code, especially possible resource dumping is based on isapnp_proc.c (c) Jaroslav Kysela <perex@suse.cz>
+ * Some code, especially possible resource dumping is based on isapnp_proc.c (c) Jaroslav Kysela <perex@perex.cz>
  * Copyright 2002 Adam Belay <ambx1@neo.rr.com>
  */
 
@@ -327,8 +327,7 @@ pnp_set_current_resources(struct device *dmdev, struct device_attribute *attr,
 
 	if (dev->status & PNP_ATTACHED) {
 		retval = -EBUSY;
-		pnp_info("Device %s cannot be configured because it is in use.",
-			 dev->dev.bus_id);
+		dev_info(&dev->dev, "in use; can't configure\n");
 		goto done;
 	}
 

@@ -19,8 +19,6 @@
  *
  */
 
-#undef DEBUG
-
 #include <linux/signal.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
@@ -66,12 +64,6 @@
 
 #include "mmu_decl.h"
 
-#ifdef DEBUG
-#define DBG(fmt...) printk(fmt)
-#else
-#define DBG(fmt...)
-#endif
-
 #if PGTABLE_RANGE > USER_VSID_RANGE
 #warning Limited user VSID range means pagetable space is wasted
 #endif
@@ -113,6 +105,7 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 }
 #endif
 
+#ifdef CONFIG_PROC_KCORE
 static struct kcore_list kcore_vmem;
 
 static int __init setup_kcore(void)
@@ -139,8 +132,9 @@ static int __init setup_kcore(void)
 	return 0;
 }
 module_init(setup_kcore);
+#endif
 
-static void zero_ctor(void *addr, struct kmem_cache *cache, unsigned long flags)
+static void zero_ctor(struct kmem_cache *cache, void *addr)
 {
 	memset(addr, 0, kmem_cache_size(cache));
 }
@@ -173,11 +167,79 @@ void pgtable_cache_init(void)
 		int size = pgtable_cache_size[i];
 		const char *name = pgtable_cache_name[i];
 
-		DBG("Allocating page table cache %s (#%d) "
-		    "for size: %08x...\n", name, i, size);
+		pr_debug("Allocating page table cache %s (#%d) "
+			"for size: %08x...\n", name, i, size);
 		pgtable_cache[i] = kmem_cache_create(name,
 						     size, size,
 						     SLAB_PANIC,
 						     zero_ctor);
 	}
 }
+
+#ifdef CONFIG_SPARSEMEM_VMEMMAP
+/*
+ * Given an address within the vmemmap, determine the pfn of the page that
+ * represents the start of the section it is within.  Note that we have to
+ * do this by hand as the proffered address may not be correctly aligned.
+ * Subtraction of non-aligned pointers produces undefined results.
+ */
+unsigned long __meminit vmemmap_section_start(unsigned long page)
+{
+	unsigned long offset = page - ((unsigned long)(vmemmap));
+
+	/* Return the pfn of the start of the section. */
+	return (offset / sizeof(struct page)) & PAGE_SECTION_MASK;
+}
+
+/*
+ * Check if this vmemmap page is already initialised.  If any section
+ * which overlaps this vmemmap page is initialised then this page is
+ * initialised already.
+ */
+int __meminit vmemmap_populated(unsigned long start, int page_size)
+{
+	unsigned long end = start + page_size;
+
+	for (; start < end; start += (PAGES_PER_SECTION * sizeof(struct page)))
+		if (pfn_valid(vmemmap_section_start(start)))
+			return 1;
+
+	return 0;
+}
+
+int __meminit vmemmap_populate(struct page *start_page,
+					unsigned long nr_pages, int node)
+{
+	unsigned long mode_rw;
+	unsigned long start = (unsigned long)start_page;
+	unsigned long end = (unsigned long)(start_page + nr_pages);
+	unsigned long page_size = 1 << mmu_psize_defs[mmu_linear_psize].shift;
+
+	mode_rw = _PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_COHERENT | PP_RWXX;
+
+	/* Align to the page size of the linear mapping. */
+	start = _ALIGN_DOWN(start, page_size);
+
+	for (; start < end; start += page_size) {
+		int mapped;
+		void *p;
+
+		if (vmemmap_populated(start, page_size))
+			continue;
+
+		p = vmemmap_alloc_block(page_size, node);
+		if (!p)
+			return -ENOMEM;
+
+		pr_debug("vmemmap %08lx allocated at %p, physical %08lx.\n",
+			start, p, __pa(p));
+
+		mapped = htab_bolt_mapping(start, start + page_size,
+					__pa(p), mode_rw, mmu_linear_psize,
+					mmu_kernel_ssize);
+		BUG_ON(mapped < 0);
+	}
+
+	return 0;
+}
+#endif

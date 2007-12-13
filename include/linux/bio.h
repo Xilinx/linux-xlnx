@@ -64,7 +64,7 @@ struct bio_vec {
 
 struct bio_set;
 struct bio;
-typedef int (bio_end_io_t) (struct bio *, unsigned int, int);
+typedef void (bio_end_io_t) (struct bio *, int);
 typedef void (bio_destructor_t) (struct bio *);
 
 /*
@@ -176,13 +176,28 @@ struct bio {
 #define bio_offset(bio)		bio_iovec((bio))->bv_offset
 #define bio_segments(bio)	((bio)->bi_vcnt - (bio)->bi_idx)
 #define bio_sectors(bio)	((bio)->bi_size >> 9)
-#define bio_cur_sectors(bio)	(bio_iovec(bio)->bv_len >> 9)
-#define bio_data(bio)		(page_address(bio_page((bio))) + bio_offset((bio)))
 #define bio_barrier(bio)	((bio)->bi_rw & (1 << BIO_RW_BARRIER))
 #define bio_sync(bio)		((bio)->bi_rw & (1 << BIO_RW_SYNC))
 #define bio_failfast(bio)	((bio)->bi_rw & (1 << BIO_RW_FAILFAST))
 #define bio_rw_ahead(bio)	((bio)->bi_rw & (1 << BIO_RW_AHEAD))
 #define bio_rw_meta(bio)	((bio)->bi_rw & (1 << BIO_RW_META))
+#define bio_empty_barrier(bio)	(bio_barrier(bio) && !(bio)->bi_size)
+
+static inline unsigned int bio_cur_sectors(struct bio *bio)
+{
+	if (bio->bi_vcnt)
+		return bio_iovec(bio)->bv_len >> 9;
+
+	return 0;
+}
+
+static inline void *bio_data(struct bio *bio)
+{
+	if (bio->bi_vcnt)
+		return page_address(bio_page(bio)) + bio_offset(bio);
+
+	return NULL;
+}
 
 /*
  * will die
@@ -226,7 +241,7 @@ struct bio {
 #define BIO_SEG_BOUNDARY(q, b1, b2) \
 	BIOVEC_SEG_BOUNDARY((q), __BVEC_END((b1)), __BVEC_START((b2)))
 
-#define bio_io_error(bio, bytes) bio_endio((bio), (bytes), -EIO)
+#define bio_io_error(bio) bio_endio((bio), -EIO)
 
 /*
  * drivers should not use the __ version unless they _really_ want to
@@ -286,7 +301,7 @@ extern struct bio *bio_alloc_bioset(gfp_t, int, struct bio_set *);
 extern void bio_put(struct bio *);
 extern void bio_free(struct bio *, struct bio_set *);
 
-extern void bio_endio(struct bio *, unsigned int, int);
+extern void bio_endio(struct bio *, int);
 struct request_queue;
 extern int bio_phys_segments(struct request_queue *, struct bio *);
 extern int bio_hw_segments(struct request_queue *, struct bio *);

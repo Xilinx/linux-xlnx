@@ -47,9 +47,7 @@ const struct file_operations ext3_dir_operations = {
 	.compat_ioctl	= ext3_compat_ioctl,
 #endif
 	.fsync		= ext3_sync_file,	/* BKL held */
-#ifdef CONFIG_EXT3_INDEX
 	.release	= ext3_release_dir,
-#endif
 };
 
 
@@ -69,7 +67,7 @@ int ext3_check_dir_entry (const char * function, struct inode * dir,
 			  unsigned long offset)
 {
 	const char * error_msg = NULL;
-	const int rlen = le16_to_cpu(de->rec_len);
+	const int rlen = ext3_rec_len_from_disk(de->rec_len);
 
 	if (rlen < EXT3_DIR_REC_LEN(1))
 		error_msg = "rec_len is smaller than minimal";
@@ -107,7 +105,6 @@ static int ext3_readdir(struct file * filp,
 
 	sb = inode->i_sb;
 
-#ifdef CONFIG_EXT3_INDEX
 	if (EXT3_HAS_COMPAT_FEATURE(inode->i_sb,
 				    EXT3_FEATURE_COMPAT_DIR_INDEX) &&
 	    ((EXT3_I(inode)->i_flags & EXT3_INDEX_FL) ||
@@ -123,7 +120,6 @@ static int ext3_readdir(struct file * filp,
 		 */
 		EXT3_I(filp->f_path.dentry->d_inode)->i_flags &= ~EXT3_INDEX_FL;
 	}
-#endif
 	stored = 0;
 	offset = filp->f_pos & (sb->s_blocksize - 1);
 
@@ -143,7 +139,7 @@ static int ext3_readdir(struct file * filp,
 					sb->s_bdev->bd_inode->i_mapping,
 					&filp->f_ra, filp,
 					index, 1);
-			filp->f_ra.prev_index = index;
+			filp->f_ra.prev_pos = (loff_t)index << PAGE_CACHE_SHIFT;
 			bh = ext3_bread(NULL, inode, blk, 0, &err);
 		}
 
@@ -177,10 +173,10 @@ revalidate:
 				 * least that it is non-zero.  A
 				 * failure will be detected in the
 				 * dirent test below. */
-				if (le16_to_cpu(de->rec_len) <
+				if (ext3_rec_len_from_disk(de->rec_len) <
 						EXT3_DIR_REC_LEN(1))
 					break;
-				i += le16_to_cpu(de->rec_len);
+				i += ext3_rec_len_from_disk(de->rec_len);
 			}
 			offset = i;
 			filp->f_pos = (filp->f_pos & ~(sb->s_blocksize - 1))
@@ -201,7 +197,7 @@ revalidate:
 				ret = stored;
 				goto out;
 			}
-			offset += le16_to_cpu(de->rec_len);
+			offset += ext3_rec_len_from_disk(de->rec_len);
 			if (le32_to_cpu(de->inode)) {
 				/* We might block in the next section
 				 * if the data destination is
@@ -210,7 +206,7 @@ revalidate:
 				 * not the directory has been modified
 				 * during the copy operation.
 				 */
-				unsigned long version = filp->f_version;
+				u64 version = filp->f_version;
 
 				error = filldir(dirent, de->name,
 						de->name_len,
@@ -223,7 +219,7 @@ revalidate:
 					goto revalidate;
 				stored ++;
 			}
-			filp->f_pos += le16_to_cpu(de->rec_len);
+			filp->f_pos += ext3_rec_len_from_disk(de->rec_len);
 		}
 		offset = 0;
 		brelse (bh);
@@ -232,7 +228,6 @@ out:
 	return ret;
 }
 
-#ifdef CONFIG_EXT3_INDEX
 /*
  * These functions convert from the major/minor hash to an f_pos
  * value.
@@ -518,5 +513,3 @@ static int ext3_release_dir (struct inode * inode, struct file * filp)
 
 	return 0;
 }
-
-#endif

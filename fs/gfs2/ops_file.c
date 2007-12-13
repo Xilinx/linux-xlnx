@@ -406,7 +406,7 @@ static int gfs2_open(struct inode *inode, struct file *file)
 
 		if (!(file->f_flags & O_LARGEFILE) &&
 		    ip->i_di.di_size > MAX_NON_LFS) {
-			error = -EFBIG;
+			error = -EOVERFLOW;
 			goto fail_gunlock;
 		}
 
@@ -535,7 +535,7 @@ static int gfs2_lock(struct file *file, int cmd, struct file_lock *fl)
 
 	if (!(fl->fl_flags & FL_POSIX))
 		return -ENOLCK;
-	if ((ip->i_inode.i_mode & (S_ISGID | S_IXGRP)) == S_ISGID)
+	if (__mandatory_lock(&ip->i_inode))
 		return -ENOLCK;
 
 	if (sdp->sd_args.ar_localflocks) {
@@ -571,7 +571,8 @@ static int do_flock(struct file *file, int cmd, struct file_lock *fl)
 	int error = 0;
 
 	state = (fl->fl_type == F_WRLCK) ? LM_ST_EXCLUSIVE : LM_ST_SHARED;
-	flags = (IS_SETLKW(cmd) ? 0 : LM_FLAG_TRY) | GL_EXACT | GL_NOCACHE;
+	flags = (IS_SETLKW(cmd) ? 0 : LM_FLAG_TRY) | GL_EXACT | GL_NOCACHE 
+		| GL_FLOCK;
 
 	mutex_lock(&fp->f_fl_mutex);
 
@@ -579,21 +580,19 @@ static int do_flock(struct file *file, int cmd, struct file_lock *fl)
 	if (gl) {
 		if (fl_gh->gh_state == state)
 			goto out;
-		gfs2_glock_hold(gl);
 		flock_lock_file_wait(file,
 				     &(struct file_lock){.fl_type = F_UNLCK});
-		gfs2_glock_dq_uninit(fl_gh);
+		gfs2_glock_dq_wait(fl_gh);
+		gfs2_holder_reinit(state, flags, fl_gh);
 	} else {
 		error = gfs2_glock_get(GFS2_SB(&ip->i_inode),
 				      ip->i_no_addr, &gfs2_flock_glops,
 				      CREATE, &gl);
 		if (error)
 			goto out;
+		gfs2_holder_init(gl, state, flags, fl_gh);
+		gfs2_glock_put(gl);
 	}
-
-	gfs2_holder_init(gl, state, flags, fl_gh);
-	gfs2_glock_put(gl);
-
 	error = gfs2_glock_nq(fl_gh);
 	if (error) {
 		gfs2_holder_uninit(fl_gh);
@@ -637,7 +636,7 @@ static int gfs2_flock(struct file *file, int cmd, struct file_lock *fl)
 
 	if (!(fl->fl_flags & FL_FLOCK))
 		return -ENOLCK;
-	if ((ip->i_inode.i_mode & (S_ISGID | S_IXGRP)) == S_ISGID)
+	if (__mandatory_lock(&ip->i_inode))
 		return -ENOLCK;
 
 	if (sdp->sd_args.ar_localflocks)

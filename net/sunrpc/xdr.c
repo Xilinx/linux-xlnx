@@ -1030,6 +1030,8 @@ xdr_process_buf(struct xdr_buf *buf, unsigned int offset, unsigned int len,
 	unsigned page_len, thislen, page_offset;
 	struct scatterlist      sg[1];
 
+	sg_init_table(sg, 1);
+
 	if (offset >= buf->head[0].iov_len) {
 		offset -= buf->head[0].iov_len;
 	} else {
@@ -1059,9 +1061,7 @@ xdr_process_buf(struct xdr_buf *buf, unsigned int offset, unsigned int len,
 		do {
 			if (thislen > page_len)
 				thislen = page_len;
-			sg->page = buf->pages[i];
-			sg->offset = page_offset;
-			sg->length = thislen;
+			sg_set_page(sg, buf->pages[i], thislen, page_offset);
 			ret = actor(sg, data);
 			if (ret)
 				goto out;

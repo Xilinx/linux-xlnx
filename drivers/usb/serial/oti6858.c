@@ -256,7 +256,7 @@ static void setup_line(struct work_struct *work)
 				100);
 
 	if (result != OTI6858_CTRL_PKT_SIZE) {
-		dev_err(&port->dev, "%s(): error reading status", __FUNCTION__);
+		dev_err(&port->dev, "%s(): error reading status\n", __FUNCTION__);
 		kfree(new_setup);
 		/* we will try again */
 		schedule_delayed_work(&priv->delayed_setup_work, msecs_to_jiffies(2));
@@ -1144,7 +1144,7 @@ static struct pl2303_buf *pl2303_buf_alloc(unsigned int size)
 	if (size == 0)
 		return NULL;
 
-	pb = (struct pl2303_buf *)kmalloc(sizeof(struct pl2303_buf), GFP_KERNEL);
+	pb = kmalloc(sizeof(struct pl2303_buf), GFP_KERNEL);
 	if (pb == NULL)
 		return NULL;
 

@@ -15,9 +15,10 @@
 /*
  *	Changes:
  *
+ *	Pierre Ynard			:	export userland ND options
+ *						through netlink (RDNSS support)
  *	Lars Fenneberg			:	fixed MTU setting on receipt
  *						of an RA.
- *
  *	Janos Farkas			:	kmalloc failure checks
  *	Alexey Kuznetsov		:	state machine reworked
  *						and moved to net/core.
@@ -77,6 +78,9 @@
 #include <net/ip6_route.h>
 #include <net/addrconf.h>
 #include <net/icmp.h>
+
+#include <net/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include <net/flow.h>
 #include <net/ip6_checksum.h>
@@ -161,6 +165,8 @@ struct ndisc_options {
 	struct nd_opt_hdr *nd_opts_ri;
 	struct nd_opt_hdr *nd_opts_ri_end;
 #endif
+	struct nd_opt_hdr *nd_useropts;
+	struct nd_opt_hdr *nd_useropts_end;
 };
 
 #define nd_opts_src_lladdr	nd_opt_array[ND_OPT_SOURCE_LL_ADDR]
@@ -225,6 +231,22 @@ static struct nd_opt_hdr *ndisc_next_option(struct nd_opt_hdr *cur,
 	return (cur <= end && cur->nd_opt_type == type ? cur : NULL);
 }
 
+static inline int ndisc_is_useropt(struct nd_opt_hdr *opt)
+{
+	return (opt->nd_opt_type == ND_OPT_RDNSS);
+}
+
+static struct nd_opt_hdr *ndisc_next_useropt(struct nd_opt_hdr *cur,
+					     struct nd_opt_hdr *end)
+{
+	if (!cur || !end || cur >= end)
+		return NULL;
+	do {
+		cur = ((void *)cur) + (cur->nd_opt_len << 3);
+	} while(cur < end && !ndisc_is_useropt(cur));
+	return (cur <= end && ndisc_is_useropt(cur) ? cur : NULL);
+}
+
 static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
 						 struct ndisc_options *ndopts)
 {
@@ -256,7 +278,7 @@ static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
 			break;
 		case ND_OPT_PREFIX_INFO:
 			ndopts->nd_opts_pi_end = nd_opt;
-			if (ndopts->nd_opt_array[nd_opt->nd_opt_type] == 0)
+			if (!ndopts->nd_opt_array[nd_opt->nd_opt_type])
 				ndopts->nd_opt_array[nd_opt->nd_opt_type] = nd_opt;
 			break;
 #ifdef CONFIG_IPV6_ROUTE_INFO
@@ -267,14 +289,21 @@ static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
 			break;
 #endif
 		default:
-			/*
-			 * Unknown options must be silently ignored,
-			 * to accommodate future extension to the protocol.
-			 */
-			ND_PRINTK2(KERN_NOTICE
-				   "%s(): ignored unsupported option; type=%d, len=%d\n",
-				   __FUNCTION__,
-				   nd_opt->nd_opt_type, nd_opt->nd_opt_len);
+			if (ndisc_is_useropt(nd_opt)) {
+				ndopts->nd_useropts_end = nd_opt;
+				if (!ndopts->nd_useropts)
+					ndopts->nd_useropts = nd_opt;
+			} else {
+				/*
+				 * Unknown options must be silently ignored,
+				 * to accommodate future extension to the
+				 * protocol.
+				 */
+				ND_PRINTK2(KERN_NOTICE
+					   "%s(): ignored unsupported option; type=%d, len=%d\n",
+					   __FUNCTION__,
+					   nd_opt->nd_opt_type, nd_opt->nd_opt_len);
+			}
 		}
 		opt_len -= l;
 		nd_opt = ((void *)nd_opt) + l;
@@ -354,7 +383,7 @@ static int ndisc_constructor(struct neighbour *neigh)
 	rcu_read_unlock();
 
 	neigh->type = is_multicast ? RTN_MULTICAST : RTN_UNICAST;
-	if (dev->hard_header == NULL) {
+	if (!dev->header_ops) {
 		neigh->nud_state = NUD_NOARP;
 		neigh->ops = &ndisc_direct_ops;
 		neigh->output = neigh->ops->queue_xmit;
@@ -371,7 +400,7 @@ static int ndisc_constructor(struct neighbour *neigh)
 			neigh->nud_state = NUD_NOARP;
 			memcpy(neigh->ha, dev->broadcast, dev->addr_len);
 		}
-		if (dev->hard_header_cache)
+		if (dev->header_ops->cache)
 			neigh->ops = &ndisc_hh_ops;
 		else
 			neigh->ops = &ndisc_generic_ops;
@@ -431,7 +460,7 @@ static void __ndisc_send(struct net_device *dev,
 			 struct neighbour *neigh,
 			 struct in6_addr *daddr, struct in6_addr *saddr,
 			 struct icmp6hdr *icmp6h, struct in6_addr *target,
-			 int llinfo, int icmp6_mib_outnd)
+			 int llinfo)
 {
 	struct flowi fl;
 	struct dst_entry *dst;
@@ -441,9 +470,11 @@ static void __ndisc_send(struct net_device *dev,
 	struct inet6_dev *idev;
 	int len;
 	int err;
-	u8 *opt;
+	u8 *opt, type;
 
-	ndisc_flow_init(&fl, icmp6h->icmp6_type, saddr, daddr,
+	type = icmp6h->icmp6_type;
+
+	ndisc_flow_init(&fl, type, saddr, daddr,
 			dev->ifindex);
 
 	dst = ndisc_dst_alloc(dev, neigh, daddr, ip6_output);
@@ -504,7 +535,7 @@ static void __ndisc_send(struct net_device *dev,
 
 	err = NF_HOOK(PF_INET6, NF_IP6_LOCAL_OUT, skb, NULL, dst->dev, dst_output);
 	if (!err) {
-		ICMP6_INC_STATS(idev, icmp6_mib_outnd);
+		ICMP6MSGOUT_INC_STATS(idev, type);
 		ICMP6_INC_STATS(idev, ICMP6_MIB_OUTMSGS);
 	}
 
@@ -542,8 +573,7 @@ static void ndisc_send_na(struct net_device *dev, struct neighbour *neigh,
 
 	__ndisc_send(dev, neigh, daddr, src_addr,
 		     &icmp6h, solicited_addr,
-		     inc_opt ? ND_OPT_TARGET_LL_ADDR : 0,
-		     ICMP6_MIB_OUTNEIGHBORADVERTISEMENTS);
+		     inc_opt ? ND_OPT_TARGET_LL_ADDR : 0);
 }
 
 void ndisc_send_ns(struct net_device *dev, struct neighbour *neigh,
@@ -564,8 +594,7 @@ void ndisc_send_ns(struct net_device *dev, struct neighbour *neigh,
 
 	__ndisc_send(dev, neigh, daddr, saddr,
 		     &icmp6h, solicit,
-		     !ipv6_addr_any(saddr) ? ND_OPT_SOURCE_LL_ADDR : 0,
-		     ICMP6_MIB_OUTNEIGHBORSOLICITS);
+		     !ipv6_addr_any(saddr) ? ND_OPT_SOURCE_LL_ADDR : 0);
 }
 
 void ndisc_send_rs(struct net_device *dev, struct in6_addr *saddr,
@@ -599,8 +628,7 @@ void ndisc_send_rs(struct net_device *dev, struct in6_addr *saddr,
 #endif
 	__ndisc_send(dev, NULL, daddr, saddr,
 		     &icmp6h, NULL,
-		     send_sllao ? ND_OPT_SOURCE_LL_ADDR : 0,
-		     ICMP6_MIB_OUTROUTERSOLICITS);
+		     send_sllao ? ND_OPT_SOURCE_LL_ADDR : 0);
 }
 
 
@@ -808,7 +836,7 @@ static void ndisc_recv_ns(struct sk_buff *skb)
 		neigh_update(neigh, lladdr, NUD_STALE,
 			     NEIGH_UPDATE_F_WEAK_OVERRIDE|
 			     NEIGH_UPDATE_F_OVERRIDE);
-	if (neigh || !dev->hard_header) {
+	if (neigh || !dev->header_ops) {
 		ndisc_send_na(dev, neigh, saddr, &msg->target,
 			      is_router,
 			      1, (ifp != NULL && inc), inc);
@@ -983,6 +1011,54 @@ static void ndisc_recv_rs(struct sk_buff *skb)
 	}
 out:
 	in6_dev_put(idev);
+}
+
+static void ndisc_ra_useropt(struct sk_buff *ra, struct nd_opt_hdr *opt)
+{
+	struct icmp6hdr *icmp6h = (struct icmp6hdr *)skb_transport_header(ra);
+	struct sk_buff *skb;
+	struct nlmsghdr *nlh;
+	struct nduseroptmsg *ndmsg;
+	int err;
+	int base_size = NLMSG_ALIGN(sizeof(struct nduseroptmsg)
+				    + (opt->nd_opt_len << 3));
+	size_t msg_size = base_size + nla_total_size(sizeof(struct in6_addr));
+
+	skb = nlmsg_new(msg_size, GFP_ATOMIC);
+	if (skb == NULL) {
+		err = -ENOBUFS;
+		goto errout;
+	}
+
+	nlh = nlmsg_put(skb, 0, 0, RTM_NEWNDUSEROPT, base_size, 0);
+	if (nlh == NULL) {
+		goto nla_put_failure;
+	}
+
+	ndmsg = nlmsg_data(nlh);
+	ndmsg->nduseropt_family = AF_INET6;
+	ndmsg->nduseropt_ifindex = ra->dev->ifindex;
+	ndmsg->nduseropt_icmp_type = icmp6h->icmp6_type;
+	ndmsg->nduseropt_icmp_code = icmp6h->icmp6_code;
+	ndmsg->nduseropt_opts_len = opt->nd_opt_len << 3;
+
+	memcpy(ndmsg + 1, opt, opt->nd_opt_len << 3);
+
+	NLA_PUT(skb, NDUSEROPT_SRCADDR, sizeof(struct in6_addr),
+		&ipv6_hdr(ra)->saddr);
+	nlmsg_end(skb, nlh);
+
+	err = rtnl_notify(skb, 0, RTNLGRP_ND_USEROPT, NULL, GFP_ATOMIC);
+	if (err < 0)
+		goto errout;
+
+	return;
+
+nla_put_failure:
+	nlmsg_free(skb);
+	err = -EMSGSIZE;
+errout:
+	rtnl_set_sk_err(RTNLGRP_ND_USEROPT, err);
 }
 
 static void ndisc_router_discovery(struct sk_buff *skb)
@@ -1214,6 +1290,15 @@ skip_defrtr:
 				rt->u.dst.metrics[RTAX_MTU-1] = mtu;
 
 			rt6_mtu_change(skb->dev, mtu);
+		}
+	}
+
+	if (ndopts.nd_useropts) {
+		struct nd_opt_hdr *opt;
+		for (opt = ndopts.nd_useropts;
+		     opt;
+		     opt = ndisc_next_useropt(opt, ndopts.nd_useropts_end)) {
+				ndisc_ra_useropt(skb, opt);
 		}
 	}
 
@@ -1455,7 +1540,7 @@ void ndisc_send_redirect(struct sk_buff *skb, struct neighbour *neigh,
 	IP6_INC_STATS(idev, IPSTATS_MIB_OUTREQUESTS);
 	err = NF_HOOK(PF_INET6, NF_IP6_LOCAL_OUT, buff, NULL, dst->dev, dst_output);
 	if (!err) {
-		ICMP6_INC_STATS(idev, ICMP6_MIB_OUTREDIRECTS);
+		ICMP6MSGOUT_INC_STATS(idev, NDISC_REDIRECT);
 		ICMP6_INC_STATS(idev, ICMP6_MIB_OUTMSGS);
 	}
 
@@ -1525,6 +1610,9 @@ static int ndisc_netdev_event(struct notifier_block *this, unsigned long event, 
 {
 	struct net_device *dev = ptr;
 
+	if (dev->nd_net != &init_net)
+		return NOTIFY_DONE;
+
 	switch (event) {
 	case NETDEV_CHANGEADDR:
 		neigh_changeaddr(&nd_tbl, dev);
@@ -1571,30 +1659,26 @@ int ndisc_ifinfo_sysctl_change(struct ctl_table *ctl, int write, struct file * f
 	struct inet6_dev *idev;
 	int ret;
 
-	if (ctl->ctl_name == NET_NEIGH_RETRANS_TIME ||
-	    ctl->ctl_name == NET_NEIGH_REACHABLE_TIME)
+	if ((strcmp(ctl->procname, "retrans_time") == 0) ||
+	    (strcmp(ctl->procname, "base_reachable_time") == 0))
 		ndisc_warn_deprecated_sysctl(ctl, "syscall", dev ? dev->name : "default");
 
-	switch (ctl->ctl_name) {
-	case NET_NEIGH_RETRANS_TIME:
+	if (strcmp(ctl->procname, "retrans_time") == 0)
 		ret = proc_dointvec(ctl, write, filp, buffer, lenp, ppos);
-		break;
-	case NET_NEIGH_REACHABLE_TIME:
+
+	else if (strcmp(ctl->procname, "base_reachable_time") == 0)
 		ret = proc_dointvec_jiffies(ctl, write,
 					    filp, buffer, lenp, ppos);
-		break;
-	case NET_NEIGH_RETRANS_TIME_MS:
-	case NET_NEIGH_REACHABLE_TIME_MS:
+
+	else if ((strcmp(ctl->procname, "retrans_time_ms") == 0) ||
+		 (strcmp(ctl->procname, "base_reachable_time_ms") == 0))
 		ret = proc_dointvec_ms_jiffies(ctl, write,
 					       filp, buffer, lenp, ppos);
-		break;
-	default:
+	else
 		ret = -1;
-	}
 
 	if (write && ret == 0 && dev && (idev = in6_dev_get(dev)) != NULL) {
-		if (ctl->ctl_name == NET_NEIGH_REACHABLE_TIME ||
-		    ctl->ctl_name == NET_NEIGH_REACHABLE_TIME_MS)
+		if (ctl->data == &idev->nd_parms->base_reachable_time)
 			idev->nd_parms->reachable_time = neigh_rand_reach_time(idev->nd_parms->base_reachable_time);
 		idev->tstamp = jiffies;
 		inet6_ifinfo_notify(RTM_NEWLINK, idev);

@@ -184,6 +184,7 @@ struct ixgb_adapter {
 	boolean_t rx_csum;
 
 	/* OS defined structs */
+	struct napi_struct napi;
 	struct net_device *netdev;
 	struct pci_dev *pdev;
 	struct net_device_stats net_stats;
@@ -195,4 +196,11 @@ struct ixgb_adapter {
 	uint32_t alloc_rx_buff_failed;
 	boolean_t have_msi;
 };
+
+/* Exported from other modules */
+extern void ixgb_check_options(struct ixgb_adapter *adapter);
+extern void ixgb_set_ethtool_ops(struct net_device *netdev);
+extern char ixgb_driver_name[];
+extern const char ixgb_driver_version[];
+
 #endif /* _IXGB_H_ */

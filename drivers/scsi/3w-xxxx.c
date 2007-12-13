@@ -1469,7 +1469,7 @@ static void tw_transfer_internal(TW_Device_Extension *tw_dev, int request_id,
 	struct scatterlist *sg = scsi_sglist(cmd);
 
 	local_irq_save(flags);
-	buf = kmap_atomic(sg->page, KM_IRQ0) + sg->offset;
+	buf = kmap_atomic(sg_page(sg), KM_IRQ0) + sg->offset;
 	transfer_len = min(sg->length, len);
 
 	memcpy(buf, data, transfer_len);
@@ -2261,6 +2261,7 @@ static struct scsi_host_template driver_template = {
 	.max_sectors		= TW_MAX_SECTORS,
 	.cmd_per_lun		= TW_MAX_CMDS_PER_LUN,	
 	.use_clustering		= ENABLE_CLUSTERING,
+	.use_sg_chaining	= ENABLE_SG_CHAINING,
 	.shost_attrs		= tw_host_attrs,
 	.emulated		= 1
 };

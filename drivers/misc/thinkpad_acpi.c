@@ -21,8 +21,8 @@
  *  02110-1301, USA.
  */
 
-#define IBM_VERSION "0.16"
-#define TPACPI_SYSFS_VERSION 0x010000
+#define IBM_VERSION "0.17"
+#define TPACPI_SYSFS_VERSION 0x020000
 
 /*
  *  Changelog:
@@ -116,6 +116,12 @@ IBM_BIOS_MODULE_ALIAS("1[0,3,6,8,A-G,I,K,M-P,S,T]");
 IBM_BIOS_MODULE_ALIAS("K[U,X-Z]");
 
 #define __unused __attribute__ ((unused))
+
+static enum {
+	TPACPI_LIFE_INIT = 0,
+	TPACPI_LIFE_RUNNING,
+	TPACPI_LIFE_EXITING,
+} tpacpi_lifecycle;
 
 /****************************************************************************
  ****************************************************************************
@@ -342,6 +348,9 @@ static void dispatch_acpi_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct ibm_struct *ibm = data;
 
+	if (tpacpi_lifecycle != TPACPI_LIFE_RUNNING)
+		return;
+
 	if (!ibm || !ibm->acpi || !ibm->acpi->notify)
 		return;
 
@@ -517,8 +526,10 @@ static char *next_cmd(char **cmds)
  ****************************************************************************/
 
 static struct platform_device *tpacpi_pdev;
-static struct class_device *tpacpi_hwmon;
+static struct platform_device *tpacpi_sensors_pdev;
+static struct device *tpacpi_hwmon;
 static struct input_dev *tpacpi_inputdev;
+static struct mutex tpacpi_inputdev_send_mutex;
 
 
 static int tpacpi_resume_handler(struct platform_device *pdev)
@@ -543,6 +554,12 @@ static struct platform_driver tpacpi_pdriver = {
 	.resume = tpacpi_resume_handler,
 };
 
+static struct platform_driver tpacpi_hwmon_pdriver = {
+	.driver = {
+		.name = IBM_HWMON_DRVR_NAME,
+		.owner = THIS_MODULE,
+	},
+};
 
 /*************************************************************************
  * thinkpad-acpi driver attributes
@@ -692,6 +709,8 @@ static int parse_strtoul(const char *buf,
 {
 	char *endp;
 
+	while (*buf && isspace(*buf))
+		buf++;
 	*value = simple_strtoul(buf, &endp, 0);
 	while (*endp && isspace(*endp))
 		endp++;
@@ -989,6 +1008,7 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 
 	int res, i;
 	int status;
+	int hkeyv;
 
 	vdbg_printk(TPACPI_DBG_INIT, "initializing hotkey subdriver\n");
 
@@ -1014,18 +1034,35 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 			return res;
 
 		/* mask not supported on 570, 600e/x, 770e, 770x, A21e, A2xm/p,
-		   A30, R30, R31, T20-22, X20-21, X22-24 */
-		tp_features.hotkey_mask =
-			acpi_evalf(hkey_handle, NULL, "DHKN", "qv");
+		   A30, R30, R31, T20-22, X20-21, X22-24.  Detected by checking
+		   for HKEY interface version 0x100 */
+		if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
+			if ((hkeyv >> 8) != 1) {
+				printk(IBM_ERR "unknown version of the "
+				       "HKEY interface: 0x%x\n", hkeyv);
+				printk(IBM_ERR "please report this to %s\n",
+				       IBM_MAIL);
+			} else {
+				/*
+				 * MHKV 0x100 in A31, R40, R40e,
+				 * T4x, X31, and later
+				 * */
+				tp_features.hotkey_mask = 1;
+			}
+		}
 
 		vdbg_printk(TPACPI_DBG_INIT, "hotkey masks are %s\n",
 			str_supported(tp_features.hotkey_mask));
 
 		if (tp_features.hotkey_mask) {
-			/* MHKA available in A31, R40, R40e, T4x, X31, and later */
 			if (!acpi_evalf(hkey_handle, &hotkey_all_mask,
-					"MHKA", "qd"))
+					"MHKA", "qd")) {
+				printk(IBM_ERR
+				       "missing MHKA handler, "
+				       "please report this to %s\n",
+				       IBM_MAIL);
 				hotkey_all_mask = 0x080cU; /* FN+F12, FN+F4, FN+F3 */
+			}
 		}
 
 		res = hotkey_get(&hotkey_orig_status, &hotkey_orig_mask);
@@ -1131,6 +1168,8 @@ static void tpacpi_input_send_key(unsigned int scancode,
 				  unsigned int keycode)
 {
 	if (keycode != KEY_RESERVED) {
+		mutex_lock(&tpacpi_inputdev_send_mutex);
+
 		input_report_key(tpacpi_inputdev, keycode, 1);
 		if (keycode == KEY_UNKNOWN)
 			input_event(tpacpi_inputdev, EV_MSC, MSC_SCAN,
@@ -1142,6 +1181,8 @@ static void tpacpi_input_send_key(unsigned int scancode,
 			input_event(tpacpi_inputdev, EV_MSC, MSC_SCAN,
 				    scancode);
 		input_sync(tpacpi_inputdev);
+
+		mutex_unlock(&tpacpi_inputdev_send_mutex);
 	}
 }
 
@@ -1149,18 +1190,47 @@ static void tpacpi_input_send_radiosw(void)
 {
 	int wlsw;
 
-	if (tp_features.hotkey_wlsw && !hotkey_get_wlsw(&wlsw))
+	mutex_lock(&tpacpi_inputdev_send_mutex);
+
+	if (tp_features.hotkey_wlsw && !hotkey_get_wlsw(&wlsw)) {
 		input_report_switch(tpacpi_inputdev,
 				    SW_RADIO, !!wlsw);
+		input_sync(tpacpi_inputdev);
+	}
+
+	mutex_unlock(&tpacpi_inputdev_send_mutex);
 }
 
 static void hotkey_notify(struct ibm_struct *ibm, u32 event)
 {
 	u32 hkey;
 	unsigned int keycode, scancode;
-	int send_acpi_ev = 0;
+	int send_acpi_ev;
+	int ignore_acpi_ev;
 
-	if (event == 0x80 && acpi_evalf(hkey_handle, &hkey, "MHKP", "d")) {
+	if (event != 0x80) {
+		printk(IBM_ERR "unknown HKEY notification event %d\n", event);
+		/* forward it to userspace, maybe it knows how to handle it */
+		acpi_bus_generate_netlink_event(ibm->acpi->device->pnp.device_class,
+						ibm->acpi->device->dev.bus_id,
+						event, 0);
+		return;
+	}
+
+	while (1) {
+		if (!acpi_evalf(hkey_handle, &hkey, "MHKP", "d")) {
+			printk(IBM_ERR "failed to retrieve HKEY event\n");
+			return;
+		}
+
+		if (hkey == 0) {
+			/* queue empty */
+			return;
+		}
+
+		send_acpi_ev = 0;
+		ignore_acpi_ev = 0;
+
 		switch (hkey >> 12) {
 		case 1:
 			/* 0x1000-0x1FFF: key presses */
@@ -1182,9 +1252,11 @@ static void hotkey_notify(struct ibm_struct *ibm, u32 event)
 			 * eat up known LID events */
 			if (hkey != 0x5001 && hkey != 0x5002) {
 				printk(IBM_ERR
-					"unknown LID-related hotkey event: 0x%04x\n",
-					hkey);
+				       "unknown LID-related HKEY event: 0x%04x\n",
+				       hkey);
 				send_acpi_ev = 1;
+			} else {
+				ignore_acpi_ev = 1;
 			}
 			break;
 		case 7:
@@ -1202,21 +1274,18 @@ static void hotkey_notify(struct ibm_struct *ibm, u32 event)
 			printk(IBM_NOTICE "unhandled HKEY event 0x%04x\n", hkey);
 			send_acpi_ev = 1;
 		}
-	} else {
-		printk(IBM_ERR "unknown hotkey notification event %d\n", event);
-		hkey = 0;
-		send_acpi_ev = 1;
-	}
 
-	/* Legacy events */
-	if (send_acpi_ev || hotkey_report_mode < 2)
-		acpi_bus_generate_proc_event(ibm->acpi->device, event, hkey);
+		/* Legacy events */
+		if (!ignore_acpi_ev && (send_acpi_ev || hotkey_report_mode < 2)) {
+			acpi_bus_generate_proc_event(ibm->acpi->device, event, hkey);
+		}
 
-	/* netlink events */
-	if (send_acpi_ev) {
-		acpi_bus_generate_netlink_event(ibm->acpi->device->pnp.device_class,
-						ibm->acpi->device->dev.bus_id,
-						event, hkey);
+		/* netlink events */
+		if (!ignore_acpi_ev && send_acpi_ev) {
+			acpi_bus_generate_netlink_event(ibm->acpi->device->pnp.device_class,
+							ibm->acpi->device->dev.bus_id,
+							event, hkey);
+		}
 	}
 }
 
@@ -1273,9 +1342,8 @@ static int hotkey_read(char *p)
 		return len;
 	}
 
-	res = mutex_lock_interruptible(&hotkey_mutex);
-	if (res < 0)
-		return res;
+	if (mutex_lock_interruptible(&hotkey_mutex))
+		return -ERESTARTSYS;
 	res = hotkey_get(&status, &mask);
 	mutex_unlock(&hotkey_mutex);
 	if (res)
@@ -1304,9 +1372,8 @@ static int hotkey_write(char *buf)
 	if (!tp_features.hotkey)
 		return -ENODEV;
 
-	res = mutex_lock_interruptible(&hotkey_mutex);
-	if (res < 0)
-		return res;
+	if (mutex_lock_interruptible(&hotkey_mutex))
+		return -ERESTARTSYS;
 
 	res = hotkey_get(&status, &mask);
 	if (res)
@@ -2812,7 +2879,7 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 
 	switch(thermal_read_mode) {
 	case TPACPI_THERMAL_TPEC_16:
-		res = sysfs_create_group(&tpacpi_pdev->dev.kobj,
+		res = sysfs_create_group(&tpacpi_sensors_pdev->dev.kobj,
 				&thermal_temp_input16_group);
 		if (res)
 			return res;
@@ -2820,7 +2887,7 @@ static int __init thermal_init(struct ibm_init_struct *iibm)
 	case TPACPI_THERMAL_TPEC_8:
 	case TPACPI_THERMAL_ACPI_TMP07:
 	case TPACPI_THERMAL_ACPI_UPDT:
-		res = sysfs_create_group(&tpacpi_pdev->dev.kobj,
+		res = sysfs_create_group(&tpacpi_sensors_pdev->dev.kobj,
 				&thermal_temp_input8_group);
 		if (res)
 			return res;
@@ -2837,13 +2904,13 @@ static void thermal_exit(void)
 {
 	switch(thermal_read_mode) {
 	case TPACPI_THERMAL_TPEC_16:
-		sysfs_remove_group(&tpacpi_pdev->dev.kobj,
+		sysfs_remove_group(&tpacpi_sensors_pdev->dev.kobj,
 				   &thermal_temp_input16_group);
 		break;
 	case TPACPI_THERMAL_TPEC_8:
 	case TPACPI_THERMAL_ACPI_TMP07:
 	case TPACPI_THERMAL_ACPI_UPDT:
-		sysfs_remove_group(&tpacpi_pdev->dev.kobj,
+		sysfs_remove_group(&tpacpi_sensors_pdev->dev.kobj,
 				   &thermal_temp_input16_group);
 		break;
 	case TPACPI_THERMAL_NONE:
@@ -3045,6 +3112,99 @@ static struct backlight_ops ibm_backlight_data = {
 
 static struct mutex brightness_mutex;
 
+static int __init tpacpi_query_bcll_levels(acpi_handle handle)
+{
+	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+	union acpi_object *obj;
+	int rc;
+
+	if (ACPI_SUCCESS(acpi_evaluate_object(handle, NULL, NULL, &buffer))) {
+		obj = (union acpi_object *)buffer.pointer;
+		if (!obj || (obj->type != ACPI_TYPE_PACKAGE)) {
+			printk(IBM_ERR "Unknown BCLL data, "
+			       "please report this to %s\n", IBM_MAIL);
+			rc = 0;
+		} else {
+			rc = obj->package.count;
+		}
+	} else {
+		return 0;
+	}
+
+	kfree(buffer.pointer);
+	return rc;
+}
+
+static acpi_status __init brightness_find_bcll(acpi_handle handle, u32 lvl,
+					void *context, void **rv)
+{
+	char name[ACPI_PATH_SEGMENT_LENGTH];
+	struct acpi_buffer buffer = { sizeof(name), &name };
+
+	if (ACPI_SUCCESS(acpi_get_name(handle, ACPI_SINGLE_NAME, &buffer)) &&
+	    !strncmp("BCLL", name, sizeof(name) - 1)) {
+		if (tpacpi_query_bcll_levels(handle) == 16) {
+			*rv = handle;
+			return AE_CTRL_TERMINATE;
+		} else {
+			return AE_OK;
+		}
+	} else {
+		return AE_OK;
+	}
+}
+
+static int __init brightness_check_levels(void)
+{
+	int status;
+	void *found_node = NULL;
+
+	if (!vid_handle) {
+		IBM_ACPIHANDLE_INIT(vid);
+	}
+	if (!vid_handle)
+		return 0;
+
+	/* Search for a BCLL package with 16 levels */
+	status = acpi_walk_namespace(ACPI_TYPE_PACKAGE, vid_handle, 3,
+					brightness_find_bcll, NULL, &found_node);
+
+	return (ACPI_SUCCESS(status) && found_node != NULL);
+}
+
+static acpi_status __init brightness_find_bcl(acpi_handle handle, u32 lvl,
+					void *context, void **rv)
+{
+	char name[ACPI_PATH_SEGMENT_LENGTH];
+	struct acpi_buffer buffer = { sizeof(name), &name };
+
+	if (ACPI_SUCCESS(acpi_get_name(handle, ACPI_SINGLE_NAME, &buffer)) &&
+	    !strncmp("_BCL", name, sizeof(name) - 1)) {
+		*rv = handle;
+		return AE_CTRL_TERMINATE;
+	} else {
+		return AE_OK;
+	}
+}
+
+static int __init brightness_check_std_acpi_support(void)
+{
+	int status;
+	void *found_node = NULL;
+
+	if (!vid_handle) {
+		IBM_ACPIHANDLE_INIT(vid);
+	}
+	if (!vid_handle)
+		return 0;
+
+	/* Search for a _BCL method, but don't execute it */
+	status = acpi_walk_namespace(ACPI_TYPE_METHOD, vid_handle, 3,
+	                             brightness_find_bcl, NULL, &found_node);
+
+	return (ACPI_SUCCESS(status) && found_node != NULL);
+}
+
 static int __init brightness_init(struct ibm_init_struct *iibm)
 {
 	int b;
@@ -3052,6 +3212,18 @@ static int __init brightness_init(struct ibm_init_struct *iibm)
 	vdbg_printk(TPACPI_DBG_INIT, "initializing brightness subdriver\n");
 
 	mutex_init(&brightness_mutex);
+
+	if (!brightness_enable) {
+		dbg_printk(TPACPI_DBG_INIT,
+		           "brightness support disabled by module parameter\n");
+		return 1;
+	} else if (brightness_enable > 1) {
+		if (brightness_check_std_acpi_support()) {
+			printk(IBM_NOTICE
+			       "standard ACPI backlight interface available, not loading native one...\n");
+			return 1;
+		}
+	}
 
 	if (!brightness_mode) {
 		if (thinkpad_id.vendor == PCI_VENDOR_ID_LENOVO)
@@ -3066,9 +3238,16 @@ static int __init brightness_init(struct ibm_init_struct *iibm)
 	if (brightness_mode > 3)
 		return -EINVAL;
 
+	tp_features.bright_16levels =
+			thinkpad_id.vendor == PCI_VENDOR_ID_LENOVO &&
+			brightness_check_levels();
+
 	b = brightness_get(NULL);
 	if (b < 0)
 		return 1;
+
+	if (tp_features.bright_16levels)
+		printk(IBM_INFO "detected a 16-level brightness capable ThinkPad\n");
 
 	ibm_backlight_device = backlight_device_register(
 					TPACPI_BACKLIGHT_DEV_NAME, NULL, NULL,
@@ -3079,7 +3258,8 @@ static int __init brightness_init(struct ibm_init_struct *iibm)
 	}
 	vdbg_printk(TPACPI_DBG_INIT, "brightness is supported\n");
 
-	ibm_backlight_device->props.max_brightness = 7;
+	ibm_backlight_device->props.max_brightness =
+				(tp_features.bright_16levels)? 15 : 7;
 	ibm_backlight_device->props.brightness = b;
 	backlight_update_status(ibm_backlight_device);
 
@@ -3098,6 +3278,8 @@ static void brightness_exit(void)
 
 static int brightness_update_status(struct backlight_device *bd)
 {
+	/* it is the backlight class's job (caller) to handle
+	 * EINTR and other errors properly */
 	return brightness_set(
 		(bd->props.fb_blank == FB_BLANK_UNBLANK &&
 		 bd->props.power == FB_BLANK_UNBLANK) ?
@@ -3115,13 +3297,14 @@ static int brightness_get(struct backlight_device *bd)
 	if (brightness_mode & 1) {
 		if (!acpi_ec_read(brightness_offset, &lec))
 			return -EIO;
-		lec &= 7;
+		lec &= (tp_features.bright_16levels)? 0x0f : 0x07;
 		level = lec;
 	};
 	if (brightness_mode & 2) {
 		lcmos = (nvram_read_byte(TP_NVRAM_ADDR_BRIGHTNESS)
 			 & TP_NVRAM_MASK_LEVEL_BRIGHTNESS)
 			>> TP_NVRAM_POS_LEVEL_BRIGHTNESS;
+		lcmos &= (tp_features.bright_16levels)? 0x0f : 0x07;
 		level = lcmos;
 	}
 
@@ -3137,12 +3320,13 @@ static int brightness_get(struct backlight_device *bd)
 	return level;
 }
 
+/* May return EINTR which can always be mapped to ERESTARTSYS */
 static int brightness_set(int value)
 {
 	int cmos_cmd, inc, i, res;
 	int current_value;
 
-	if (value > 7)
+	if (value > ((tp_features.bright_16levels)? 15 : 7))
 		return -EINVAL;
 
 	res = mutex_lock_interruptible(&brightness_mutex);
@@ -3158,7 +3342,7 @@ static int brightness_set(int value)
 	cmos_cmd = value > current_value ?
 			TP_CMOS_BRIGHTNESS_UP :
 			TP_CMOS_BRIGHTNESS_DOWN;
-	inc = value > current_value ? 1 : -1;
+	inc = (value > current_value)? 1 : -1;
 
 	res = 0;
 	for (i = current_value; i != value; i += inc) {
@@ -3187,10 +3371,11 @@ static int brightness_read(char *p)
 	if ((level = brightness_get(NULL)) < 0) {
 		len += sprintf(p + len, "level:\t\tunreadable\n");
 	} else {
-		len += sprintf(p + len, "level:\t\t%d\n", level & 0x7);
+		len += sprintf(p + len, "level:\t\t%d\n", level);
 		len += sprintf(p + len, "commands:\tup, down\n");
 		len += sprintf(p + len, "commands:\tlevel <level>"
-			       " (<level> is 0-7)\n");
+			       " (<level> is 0-%d)\n",
+			       (tp_features.bright_16levels) ? 15 : 7);
 	}
 
 	return len;
@@ -3199,28 +3384,34 @@ static int brightness_read(char *p)
 static int brightness_write(char *buf)
 {
 	int level;
-	int new_level;
+	int rc;
 	char *cmd;
+	int max_level = (tp_features.bright_16levels) ? 15 : 7;
+
+	level = brightness_get(NULL);
+	if (level < 0)
+		return level;
 
 	while ((cmd = next_cmd(&buf))) {
-		if ((level = brightness_get(NULL)) < 0)
-			return level;
-		level &= 7;
-
 		if (strlencmp(cmd, "up") == 0) {
-			new_level = level == 7 ? 7 : level + 1;
+			if (level < max_level)
+				level++;
 		} else if (strlencmp(cmd, "down") == 0) {
-			new_level = level == 0 ? 0 : level - 1;
-		} else if (sscanf(cmd, "level %d", &new_level) == 1 &&
-			   new_level >= 0 && new_level <= 7) {
-			/* new_level set */
+			if (level > 0)
+				level--;
+		} else if (sscanf(cmd, "level %d", &level) == 1 &&
+			   level >= 0 && level <= max_level) {
+			/* new level set */
 		} else
 			return -EINVAL;
-
-		brightness_set(new_level);
 	}
 
-	return 0;
+	/*
+	 * Now we know what the final level should be, so we try to set it.
+	 * Doing it this way makes the syscall restartable in case of EINTR
+	 */
+	rc = brightness_set(level);
+	return (rc == -EINTR)? ERESTARTSYS : rc;
 }
 
 static struct ibm_struct brightness_driver_data = {
@@ -3583,9 +3774,8 @@ static ssize_t fan_pwm1_store(struct device *dev,
 	/* scale down from 0-255 to 0-7 */
 	newlevel = (s >> 5) & 0x07;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 
 	rc = fan_get_status(&status);
 	if (!rc && (status &
@@ -3626,7 +3816,7 @@ static struct device_attribute dev_attr_fan_fan1_input =
 	__ATTR(fan1_input, S_IRUGO,
 		fan_fan1_input_show, NULL);
 
-/* sysfs fan fan_watchdog (driver) ------------------------------------- */
+/* sysfs fan fan_watchdog (hwmon driver) ------------------------------- */
 static ssize_t fan_fan_watchdog_show(struct device_driver *drv,
 				     char *buf)
 {
@@ -3768,10 +3958,10 @@ static int __init fan_init(struct ibm_init_struct *iibm)
 
 	if (fan_status_access_mode != TPACPI_FAN_NONE ||
 	    fan_control_access_mode != TPACPI_FAN_WR_NONE) {
-		rc = sysfs_create_group(&tpacpi_pdev->dev.kobj,
+		rc = sysfs_create_group(&tpacpi_sensors_pdev->dev.kobj,
 					 &fan_attr_group);
 		if (!(rc < 0))
-			rc = driver_create_file(&tpacpi_pdriver.driver,
+			rc = driver_create_file(&tpacpi_hwmon_pdriver.driver,
 					&driver_attr_fan_watchdog);
 		if (rc < 0)
 			return rc;
@@ -3835,9 +4025,8 @@ static int fan_get_status_safe(u8 *status)
 	int rc;
 	u8 s;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 	rc = fan_get_status(&s);
 	if (!rc)
 		fan_update_desired_level(s);
@@ -3854,8 +4043,8 @@ static void fan_exit(void)
 	vdbg_printk(TPACPI_DBG_EXIT, "cancelling any pending fan watchdog tasks\n");
 
 	/* FIXME: can we really do this unconditionally? */
-	sysfs_remove_group(&tpacpi_pdev->dev.kobj, &fan_attr_group);
-	driver_remove_file(&tpacpi_pdriver.driver, &driver_attr_fan_watchdog);
+	sysfs_remove_group(&tpacpi_sensors_pdev->dev.kobj, &fan_attr_group);
+	driver_remove_file(&tpacpi_hwmon_pdriver.driver, &driver_attr_fan_watchdog);
 
 	cancel_delayed_work(&fan_watchdog_task);
 	flush_scheduled_work();
@@ -3888,6 +4077,9 @@ static void fan_watchdog_fire(struct work_struct *ignored)
 {
 	int rc;
 
+	if (tpacpi_lifecycle != TPACPI_LIFE_RUNNING)
+		return;
+
 	printk(IBM_NOTICE "fan watchdog: enabling fan\n");
 	rc = fan_set_enable();
 	if (rc < 0) {
@@ -3908,7 +4100,8 @@ static void fan_watchdog_reset(void)
 	if (fan_watchdog_active)
 		cancel_delayed_work(&fan_watchdog_task);
 
-	if (fan_watchdog_maxinterval > 0) {
+	if (fan_watchdog_maxinterval > 0 &&
+	    tpacpi_lifecycle != TPACPI_LIFE_EXITING) {
 		fan_watchdog_active = 1;
 		if (!schedule_delayed_work(&fan_watchdog_task,
 				msecs_to_jiffies(fan_watchdog_maxinterval
@@ -3967,9 +4160,8 @@ static int fan_set_level_safe(int level)
 	if (!fan_control_allowed)
 		return -EPERM;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 
 	if (level == TPACPI_FAN_LAST_LEVEL)
 		level = fan_control_desired_level;
@@ -3990,9 +4182,8 @@ static int fan_set_enable(void)
 	if (!fan_control_allowed)
 		return -EPERM;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 
 	switch (fan_control_access_mode) {
 	case TPACPI_FAN_WR_ACPI_FANS:
@@ -4046,9 +4237,8 @@ static int fan_set_disable(void)
 	if (!fan_control_allowed)
 		return -EPERM;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 
 	rc = 0;
 	switch (fan_control_access_mode) {
@@ -4085,9 +4275,8 @@ static int fan_set_speed(int speed)
 	if (!fan_control_allowed)
 		return -EPERM;
 
-	rc = mutex_lock_interruptible(&fan_mutex);
-	if (rc < 0)
-		return rc;
+	if (mutex_lock_interruptible(&fan_mutex))
+		return -ERESTARTSYS;
 
 	rc = 0;
 	switch (fan_control_access_mode) {
@@ -4302,6 +4491,19 @@ static struct ibm_struct fan_driver_data = {
  ****************************************************************************
  ****************************************************************************/
 
+/* sysfs name ---------------------------------------------------------- */
+static ssize_t thinkpad_acpi_pdev_name_show(struct device *dev,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", IBM_NAME);
+}
+
+static struct device_attribute dev_attr_thinkpad_acpi_pdev_name =
+	__ATTR(name, S_IRUGO, thinkpad_acpi_pdev_name_show, NULL);
+
+/* --------------------------------------------------------------------- */
+
 /* /proc support */
 static struct proc_dir_entry *proc_dir;
 
@@ -4448,7 +4650,7 @@ static void ibm_exit(struct ibm_struct *ibm)
 
 static void __init get_thinkpad_model_data(struct thinkpad_id_data *tp)
 {
-	struct dmi_device *dev = NULL;
+	const struct dmi_device *dev = NULL;
 	char ec_fw_string[18];
 
 	if (!tp)
@@ -4615,9 +4817,15 @@ static int __init set_ibm_param(const char *val, struct kernel_param *kp)
 	unsigned int i;
 	struct ibm_struct *ibm;
 
+	if (!kp || !kp->name || !val)
+		return -EINVAL;
+
 	for (i = 0; i < ARRAY_SIZE(ibms_init); i++) {
 		ibm = ibms_init[i].data;
-		BUG_ON(ibm == NULL);
+		WARN_ON(ibm == NULL);
+
+		if (!ibm || !ibm->name)
+			continue;
 
 		if (strcmp(ibm->name, kp->name) == 0 && ibm->write) {
 			if (strlen(val) > sizeof(ibms_init[i].param) - 2)
@@ -4645,6 +4853,9 @@ module_param_named(fan_control, fan_control_allowed, bool, 0);
 
 static int brightness_mode;
 module_param_named(brightness_mode, brightness_mode, int, 0);
+
+static unsigned int brightness_enable = 2; /* 2 = auto, 0 = no, 1 = yes */
+module_param(brightness_enable, uint, 0);
 
 static unsigned int hotkey_report_mode;
 module_param(hotkey_report_mode, uint, 0);
@@ -4674,6 +4885,8 @@ static int __init thinkpad_acpi_module_init(void)
 {
 	int ret, i;
 
+	tpacpi_lifecycle = TPACPI_LIFE_INIT;
+
 	/* Parameter checking */
 	if (hotkey_report_mode > 2)
 		return -EINVAL;
@@ -4702,19 +4915,31 @@ static int __init thinkpad_acpi_module_init(void)
 
 	ret = platform_driver_register(&tpacpi_pdriver);
 	if (ret) {
-		printk(IBM_ERR "unable to register platform driver\n");
+		printk(IBM_ERR "unable to register main platform driver\n");
 		thinkpad_acpi_module_exit();
 		return ret;
 	}
 	tp_features.platform_drv_registered = 1;
 
+	ret = platform_driver_register(&tpacpi_hwmon_pdriver);
+	if (ret) {
+		printk(IBM_ERR "unable to register hwmon platform driver\n");
+		thinkpad_acpi_module_exit();
+		return ret;
+	}
+	tp_features.sensors_pdrv_registered = 1;
+
 	ret = tpacpi_create_driver_attributes(&tpacpi_pdriver.driver);
+	if (!ret) {
+		tp_features.platform_drv_attrs_registered = 1;
+		ret = tpacpi_create_driver_attributes(&tpacpi_hwmon_pdriver.driver);
+	}
 	if (ret) {
 		printk(IBM_ERR "unable to create sysfs driver attributes\n");
 		thinkpad_acpi_module_exit();
 		return ret;
 	}
-	tp_features.platform_drv_attrs_registered = 1;
+	tp_features.sensors_pdrv_attrs_registered = 1;
 
 
 	/* Device initialization */
@@ -4727,7 +4952,26 @@ static int __init thinkpad_acpi_module_init(void)
 		thinkpad_acpi_module_exit();
 		return ret;
 	}
-	tpacpi_hwmon = hwmon_device_register(&tpacpi_pdev->dev);
+	tpacpi_sensors_pdev = platform_device_register_simple(
+							IBM_HWMON_DRVR_NAME,
+							-1, NULL, 0);
+	if (IS_ERR(tpacpi_sensors_pdev)) {
+		ret = PTR_ERR(tpacpi_sensors_pdev);
+		tpacpi_sensors_pdev = NULL;
+		printk(IBM_ERR "unable to register hwmon platform device\n");
+		thinkpad_acpi_module_exit();
+		return ret;
+	}
+	ret = device_create_file(&tpacpi_sensors_pdev->dev,
+				 &dev_attr_thinkpad_acpi_pdev_name);
+	if (ret) {
+		printk(IBM_ERR
+			"unable to create sysfs hwmon device attributes\n");
+		thinkpad_acpi_module_exit();
+		return ret;
+	}
+	tp_features.sensors_pdev_attrs_registered = 1;
+	tpacpi_hwmon = hwmon_device_register(&tpacpi_sensors_pdev->dev);
 	if (IS_ERR(tpacpi_hwmon)) {
 		ret = PTR_ERR(tpacpi_hwmon);
 		tpacpi_hwmon = NULL;
@@ -4735,6 +4979,7 @@ static int __init thinkpad_acpi_module_init(void)
 		thinkpad_acpi_module_exit();
 		return ret;
 	}
+	mutex_init(&tpacpi_inputdev_send_mutex);
 	tpacpi_inputdev = input_allocate_device();
 	if (!tpacpi_inputdev) {
 		printk(IBM_ERR "unable to allocate input device\n");
@@ -4769,12 +5014,15 @@ static int __init thinkpad_acpi_module_init(void)
 		tp_features.input_device_registered = 1;
 	}
 
+	tpacpi_lifecycle = TPACPI_LIFE_RUNNING;
 	return 0;
 }
 
 static void thinkpad_acpi_module_exit(void)
 {
 	struct ibm_struct *ibm, *itmp;
+
+	tpacpi_lifecycle = TPACPI_LIFE_EXITING;
 
 	list_for_each_entry_safe_reverse(ibm, itmp,
 					 &tpacpi_all_drivers,
@@ -4794,11 +5042,21 @@ static void thinkpad_acpi_module_exit(void)
 	if (tpacpi_hwmon)
 		hwmon_device_unregister(tpacpi_hwmon);
 
+	if (tp_features.sensors_pdev_attrs_registered)
+		device_remove_file(&tpacpi_sensors_pdev->dev,
+				   &dev_attr_thinkpad_acpi_pdev_name);
+	if (tpacpi_sensors_pdev)
+		platform_device_unregister(tpacpi_sensors_pdev);
 	if (tpacpi_pdev)
 		platform_device_unregister(tpacpi_pdev);
 
+	if (tp_features.sensors_pdrv_attrs_registered)
+		tpacpi_remove_driver_attributes(&tpacpi_hwmon_pdriver.driver);
 	if (tp_features.platform_drv_attrs_registered)
 		tpacpi_remove_driver_attributes(&tpacpi_pdriver.driver);
+
+	if (tp_features.sensors_pdrv_registered)
+		platform_driver_unregister(&tpacpi_hwmon_pdriver);
 
 	if (tp_features.platform_drv_registered)
 		platform_driver_unregister(&tpacpi_pdriver);

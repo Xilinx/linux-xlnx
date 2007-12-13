@@ -789,6 +789,20 @@ static inline void cfq_slice_expired(struct cfq_data *cfqd, int timed_out)
 		__cfq_slice_expired(cfqd, cfqq, timed_out);
 }
 
+static int start_idle_class_timer(struct cfq_data *cfqd)
+{
+	unsigned long end = cfqd->last_end_request + CFQ_IDLE_GRACE;
+	unsigned long now = jiffies;
+
+	if (time_before(now, end) &&
+	    time_after_eq(now, cfqd->last_end_request)) {
+		mod_timer(&cfqd->idle_class_timer, end);
+		return 1;
+	}
+
+	return 0;
+}
+
 /*
  * Get next queue for service. Unless we have a queue preemption,
  * we'll simply select the first cfqq in the service tree.
@@ -805,19 +819,14 @@ static struct cfq_queue *cfq_get_next_queue(struct cfq_data *cfqd)
 	cfqq = rb_entry(n, struct cfq_queue, rb_node);
 
 	if (cfq_class_idle(cfqq)) {
-		unsigned long end;
-
 		/*
 		 * if we have idle queues and no rt or be queues had
 		 * pending requests, either allow immediate service if
 		 * the grace period has passed or arm the idle grace
 		 * timer
 		 */
-		end = cfqd->last_end_request + CFQ_IDLE_GRACE;
-		if (time_before(jiffies, end)) {
-			mod_timer(&cfqd->idle_class_timer, end);
+		if (start_idle_class_timer(cfqd))
 			cfqq = NULL;
-		}
 	}
 
 	return cfqq;
@@ -1443,8 +1452,11 @@ cfq_get_queue(struct cfq_data *cfqd, int is_sync, struct task_struct *tsk,
 		cfqq = *async_cfqq;
 	}
 
-	if (!cfqq)
+	if (!cfqq) {
 		cfqq = cfq_find_alloc_queue(cfqd, is_sync, tsk, gfp_mask);
+		if (!cfqq)
+			return NULL;
+	}
 
 	/*
 	 * pin the queue now that it's allocated, scheduler exit will prune it
@@ -2033,17 +2045,14 @@ out_cont:
 static void cfq_idle_class_timer(unsigned long data)
 {
 	struct cfq_data *cfqd = (struct cfq_data *) data;
-	unsigned long flags, end;
+	unsigned long flags;
 
 	spin_lock_irqsave(cfqd->queue->queue_lock, flags);
 
 	/*
 	 * race with a non-idle queue, reset timer
 	 */
-	end = cfqd->last_end_request + CFQ_IDLE_GRACE;
-	if (!time_after_eq(jiffies, end))
-		mod_timer(&cfqd->idle_class_timer, end);
-	else
+	if (!start_idle_class_timer(cfqd))
 		cfq_schedule_dispatch(cfqd);
 
 	spin_unlock_irqrestore(cfqd->queue->queue_lock, flags);
@@ -2053,7 +2062,7 @@ static void cfq_shutdown_timer_wq(struct cfq_data *cfqd)
 {
 	del_timer_sync(&cfqd->idle_slice_timer);
 	del_timer_sync(&cfqd->idle_class_timer);
-	blk_sync_queue(cfqd->queue);
+	kblockd_flush_work(&cfqd->unplug_work);
 }
 
 static void cfq_put_async_queues(struct cfq_data *cfqd)
@@ -2065,9 +2074,10 @@ static void cfq_put_async_queues(struct cfq_data *cfqd)
 			cfq_put_queue(cfqd->async_cfqq[0][i]);
 		if (cfqd->async_cfqq[1][i])
 			cfq_put_queue(cfqd->async_cfqq[1][i]);
-		if (cfqd->async_idle_cfqq)
-			cfq_put_queue(cfqd->async_idle_cfqq);
 	}
+
+	if (cfqd->async_idle_cfqq)
+		cfq_put_queue(cfqd->async_idle_cfqq);
 }
 
 static void cfq_exit_queue(elevator_t *e)
@@ -2122,6 +2132,7 @@ static void *cfq_init_queue(struct request_queue *q)
 
 	INIT_WORK(&cfqd->unplug_work, cfq_kick_queue);
 
+	cfqd->last_end_request = jiffies;
 	cfqd->cfq_quantum = cfq_quantum;
 	cfqd->cfq_fifo_expire[0] = cfq_fifo_expire[0];
 	cfqd->cfq_fifo_expire[1] = cfq_fifo_expire[1];

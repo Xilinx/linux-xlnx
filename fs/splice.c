@@ -447,7 +447,7 @@ fill_it:
 	 */
 	while (page_nr < nr_pages)
 		page_cache_release(pages[page_nr++]);
-	in->f_ra.prev_index = index;
+	in->f_ra.prev_pos = (loff_t)index << PAGE_CACHE_SHIFT;
 
 	if (spd.nr_pages)
 		return splice_to_pipe(pipe, &spd);
@@ -563,7 +563,7 @@ static int pipe_to_file(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
 	struct address_space *mapping = file->f_mapping;
 	unsigned int offset, this_len;
 	struct page *page;
-	pgoff_t index;
+	void *fsdata;
 	int ret;
 
 	/*
@@ -573,49 +573,16 @@ static int pipe_to_file(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
 	if (unlikely(ret))
 		return ret;
 
-	index = sd->pos >> PAGE_CACHE_SHIFT;
 	offset = sd->pos & ~PAGE_CACHE_MASK;
 
 	this_len = sd->len;
 	if (this_len + offset > PAGE_CACHE_SIZE)
 		this_len = PAGE_CACHE_SIZE - offset;
 
-find_page:
-	page = find_lock_page(mapping, index);
-	if (!page) {
-		ret = -ENOMEM;
-		page = page_cache_alloc_cold(mapping);
-		if (unlikely(!page))
-			goto out_ret;
-
-		/*
-		 * This will also lock the page
-		 */
-		ret = add_to_page_cache_lru(page, mapping, index,
-					    GFP_KERNEL);
-		if (unlikely(ret))
-			goto out_release;
-	}
-
-	ret = mapping->a_ops->prepare_write(file, page, offset, offset+this_len);
-	if (unlikely(ret)) {
-		loff_t isize = i_size_read(mapping->host);
-
-		if (ret != AOP_TRUNCATED_PAGE)
-			unlock_page(page);
-		page_cache_release(page);
-		if (ret == AOP_TRUNCATED_PAGE)
-			goto find_page;
-
-		/*
-		 * prepare_write() may have instantiated a few blocks
-		 * outside i_size.  Trim these off again.
-		 */
-		if (sd->pos + this_len > isize)
-			vmtruncate(mapping->host, isize);
-
-		goto out_ret;
-	}
+	ret = pagecache_write_begin(file, mapping, sd->pos, this_len,
+				AOP_FLAG_UNINTERRUPTIBLE, &page, &fsdata);
+	if (unlikely(ret))
+		goto out;
 
 	if (buf->page != page) {
 		/*
@@ -629,31 +596,9 @@ find_page:
 		kunmap_atomic(dst, KM_USER1);
 		buf->ops->unmap(pipe, buf, src);
 	}
-
-	ret = mapping->a_ops->commit_write(file, page, offset, offset+this_len);
-	if (ret) {
-		if (ret == AOP_TRUNCATED_PAGE) {
-			page_cache_release(page);
-			goto find_page;
-		}
-		if (ret < 0)
-			goto out;
-		/*
-		 * Partial write has happened, so 'ret' already initialized by
-		 * number of bytes written, Where is nothing we have to do here.
-		 */
-	} else
-		ret = this_len;
-	/*
-	 * Return the number of bytes written and mark page as
-	 * accessed, we are now done!
-	 */
-	mark_page_accessed(page);
+	ret = pagecache_write_end(file, mapping, sd->pos, this_len, this_len,
+				page, fsdata);
 out:
-	unlock_page(page);
-out_release:
-	page_cache_release(page);
-out_ret:
 	return ret;
 }
 
@@ -879,13 +824,18 @@ generic_file_splice_write(struct pipe_inode_info *pipe, struct file *out,
 {
 	struct address_space *mapping = out->f_mapping;
 	struct inode *inode = mapping->host;
+	int killsuid, killpriv;
 	ssize_t ret;
-	int err;
+	int err = 0;
 
-	err = should_remove_suid(out->f_path.dentry);
-	if (unlikely(err)) {
+	killpriv = security_inode_need_killpriv(out->f_path.dentry);
+	killsuid = should_remove_suid(out->f_path.dentry);
+	if (unlikely(killsuid || killpriv)) {
 		mutex_lock(&inode->i_mutex);
-		err = __remove_suid(out->f_path.dentry, err);
+		if (killpriv)
+			err = security_inode_killpriv(out->f_path.dentry);
+		if (!err && killsuid)
+			err = __remove_suid(out->f_path.dentry, killsuid);
 		mutex_unlock(&inode->i_mutex);
 		if (err)
 			return err;
@@ -1390,10 +1340,10 @@ static int pipe_to_user(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
 	if (copy_to_user(sd->u.userptr, src + buf->offset, sd->len))
 		ret = -EFAULT;
 
+	buf->ops->unmap(pipe, buf, src);
 out:
 	if (ret > 0)
 		sd->u.userptr += ret;
-	buf->ops->unmap(pipe, buf, src);
 	return ret;
 }
 

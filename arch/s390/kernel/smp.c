@@ -42,6 +42,7 @@
 #include <asm/tlbflush.h>
 #include <asm/timer.h>
 #include <asm/lowcore.h>
+#include <asm/cpu.h>
 
 /*
  * An array with a pointer the lowcore of every CPU.
@@ -192,9 +193,15 @@ int smp_call_function_single(int cpu, void (*func) (void *info), void *info,
 }
 EXPORT_SYMBOL(smp_call_function_single);
 
-static void do_send_stop(void)
+void smp_send_stop(void)
 {
 	int cpu, rc;
+
+	/* Disable all interrupts/machine checks */
+	__load_psw_mask(psw_kernel_bits & ~PSW_MASK_MCHECK);
+
+	/* write magic number to zero page (absolute 0) */
+	lowcore_ptr[smp_processor_id()]->panic_magic = __PANIC_MAGIC;
 
 	/* stop all processors */
 	for_each_online_cpu(cpu) {
@@ -203,58 +210,10 @@ static void do_send_stop(void)
 		do {
 			rc = signal_processor(cpu, sigp_stop);
 		} while (rc == sigp_busy);
-	}
-}
 
-static void do_store_status(void)
-{
-	int cpu, rc;
-
-	/* store status of all processors in their lowcores (real 0) */
-	for_each_online_cpu(cpu) {
-		if (cpu == smp_processor_id())
-			continue;
-		do {
-			rc = signal_processor_p(
-				(__u32)(unsigned long) lowcore_ptr[cpu], cpu,
-				sigp_store_status_at_address);
-		} while (rc == sigp_busy);
-	}
-}
-
-static void do_wait_for_stop(void)
-{
-	int cpu;
-
-	/* Wait for all other cpus to enter stopped state */
-	for_each_online_cpu(cpu) {
-		if (cpu == smp_processor_id())
-			continue;
 		while (!smp_cpu_not_running(cpu))
 			cpu_relax();
 	}
-}
-
-/*
- * this function sends a 'stop' sigp to all other CPUs in the system.
- * it goes straight through.
- */
-void smp_send_stop(void)
-{
-	/* Disable all interrupts/machine checks */
-	__load_psw_mask(psw_kernel_bits & ~PSW_MASK_MCHECK);
-
-	/* write magic number to zero page (absolute 0) */
-	lowcore_ptr[smp_processor_id()]->panic_magic = __PANIC_MAGIC;
-
-	/* stop other processors. */
-	do_send_stop();
-
-	/* wait until other processors are stopped */
-	do_wait_for_stop();
-
-	/* store status of other processors. */
-	do_store_status();
 }
 
 /*
@@ -325,7 +284,7 @@ static void smp_ext_bitcall(int cpu, ec_bit_sig sig)
  */
 void smp_ptlb_callback(void *info)
 {
-	local_flush_tlb();
+	__tlb_flush_local();
 }
 
 void smp_ptlb_all(void)
@@ -494,6 +453,8 @@ int __cpuinit start_secondary(void *cpuvoid)
 	return 0;
 }
 
+DEFINE_PER_CPU(struct s390_idle_data, s390_idle);
+
 static void __init smp_create_idle(unsigned int cpu)
 {
 	struct task_struct *p;
@@ -506,6 +467,7 @@ static void __init smp_create_idle(unsigned int cpu)
 	if (IS_ERR(p))
 		panic("failed fork for CPU %u: %li", cpu, PTR_ERR(p));
 	current_set[cpu] = p;
+	spin_lock_init(&(&per_cpu(s390_idle, cpu))->lock);
 }
 
 static int cpu_stopped(int cpu)
@@ -724,6 +686,7 @@ void __init smp_prepare_boot_cpu(void)
 	cpu_set(0, cpu_online_map);
 	S390_lowcore.percpu_offset = __per_cpu_offset[0];
 	current_set[0] = current;
+	spin_lock_init(&(&__get_cpu_var(s390_idle))->lock);
 }
 
 void __init smp_cpus_done(unsigned int max_cpus)
@@ -756,22 +719,71 @@ static ssize_t show_capability(struct sys_device *dev, char *buf)
 }
 static SYSDEV_ATTR(capability, 0444, show_capability, NULL);
 
+static ssize_t show_idle_count(struct sys_device *dev, char *buf)
+{
+	struct s390_idle_data *idle;
+	unsigned long long idle_count;
+
+	idle = &per_cpu(s390_idle, dev->id);
+	spin_lock_irq(&idle->lock);
+	idle_count = idle->idle_count;
+	spin_unlock_irq(&idle->lock);
+	return sprintf(buf, "%llu\n", idle_count);
+}
+static SYSDEV_ATTR(idle_count, 0444, show_idle_count, NULL);
+
+static ssize_t show_idle_time(struct sys_device *dev, char *buf)
+{
+	struct s390_idle_data *idle;
+	unsigned long long new_time;
+
+	idle = &per_cpu(s390_idle, dev->id);
+	spin_lock_irq(&idle->lock);
+	if (idle->in_idle) {
+		new_time = get_clock();
+		idle->idle_time += new_time - idle->idle_enter;
+		idle->idle_enter = new_time;
+	}
+	new_time = idle->idle_time;
+	spin_unlock_irq(&idle->lock);
+	return sprintf(buf, "%llu\n", new_time >> 12);
+}
+static SYSDEV_ATTR(idle_time_us, 0444, show_idle_time, NULL);
+
+static struct attribute *cpu_attrs[] = {
+	&attr_capability.attr,
+	&attr_idle_count.attr,
+	&attr_idle_time_us.attr,
+	NULL,
+};
+
+static struct attribute_group cpu_attr_group = {
+	.attrs = cpu_attrs,
+};
+
 static int __cpuinit smp_cpu_notify(struct notifier_block *self,
 				    unsigned long action, void *hcpu)
 {
 	unsigned int cpu = (unsigned int)(long)hcpu;
 	struct cpu *c = &per_cpu(cpu_devices, cpu);
 	struct sys_device *s = &c->sysdev;
+	struct s390_idle_data *idle;
 
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
-		if (sysdev_create_file(s, &attr_capability))
+		idle = &per_cpu(s390_idle, cpu);
+		spin_lock_irq(&idle->lock);
+		idle->idle_enter = 0;
+		idle->idle_time = 0;
+		idle->idle_count = 0;
+		spin_unlock_irq(&idle->lock);
+		if (sysfs_create_group(&s->kobj, &cpu_attr_group))
 			return NOTIFY_BAD;
 		break;
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
-		sysdev_remove_file(s, &attr_capability);
+		sysfs_remove_group(&s->kobj, &cpu_attr_group);
 		break;
 	}
 	return NOTIFY_OK;
@@ -784,6 +796,7 @@ static struct notifier_block __cpuinitdata smp_cpu_nb = {
 static int __init topology_init(void)
 {
 	int cpu;
+	int rc;
 
 	register_cpu_notifier(&smp_cpu_nb);
 
@@ -796,7 +809,9 @@ static int __init topology_init(void)
 		if (!cpu_online(cpu))
 			continue;
 		s = &c->sysdev;
-		sysdev_create_file(s, &attr_capability);
+		rc = sysfs_create_group(&s->kobj, &cpu_attr_group);
+		if (rc)
+			return rc;
 	}
 	return 0;
 }

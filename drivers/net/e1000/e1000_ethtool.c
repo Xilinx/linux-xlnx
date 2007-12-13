@@ -32,9 +32,6 @@
 
 #include <asm/uaccess.h>
 
-extern char e1000_driver_name[];
-extern char e1000_driver_version[];
-
 extern int e1000_up(struct e1000_adapter *adapter);
 extern void e1000_down(struct e1000_adapter *adapter);
 extern void e1000_reinit_locked(struct e1000_adapter *adapter);
@@ -106,8 +103,7 @@ static const struct e1000_stats e1000_gstrings_stats[] = {
 };
 
 #define E1000_QUEUE_STATS_LEN 0
-#define E1000_GLOBAL_STATS_LEN	\
-	sizeof(e1000_gstrings_stats) / sizeof(struct e1000_stats)
+#define E1000_GLOBAL_STATS_LEN ARRAY_SIZE(e1000_gstrings_stats)
 #define E1000_STATS_LEN (E1000_GLOBAL_STATS_LEN + E1000_QUEUE_STATS_LEN)
 static const char e1000_gstrings_test[][ETH_GSTRING_LEN] = {
 	"Register test  (offline)", "Eeprom test    (offline)",
@@ -619,8 +615,6 @@ e1000_get_drvinfo(struct net_device *netdev,
 
 	strncpy(drvinfo->fw_version, firmware_version, 32);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
-	drvinfo->n_stats = E1000_STATS_LEN;
-	drvinfo->testinfo_len = E1000_TEST_LEN;
 	drvinfo->regdump_len = e1000_get_regs_len(netdev);
 	drvinfo->eedump_len = e1000_get_eeprom_len(netdev);
 }
@@ -736,16 +730,16 @@ err_setup:
 
 #define REG_PATTERN_TEST(R, M, W)                                              \
 {                                                                              \
-	uint32_t pat, value;                                                   \
-	uint32_t test[] =                                                      \
+	uint32_t pat, val;                                                     \
+	const uint32_t test[] = 					       \
 		{0x5A5A5A5A, 0xA5A5A5A5, 0x00000000, 0xFFFFFFFF};              \
-	for (pat = 0; pat < ARRAY_SIZE(test); pat++) {              \
+	for (pat = 0; pat < ARRAY_SIZE(test); pat++) {           	       \
 		E1000_WRITE_REG(&adapter->hw, R, (test[pat] & W));             \
-		value = E1000_READ_REG(&adapter->hw, R);                       \
-		if (value != (test[pat] & W & M)) {                             \
+		val = E1000_READ_REG(&adapter->hw, R);                         \
+		if (val != (test[pat] & W & M)) {                              \
 			DPRINTK(DRV, ERR, "pattern test reg %04X failed: got " \
 			        "0x%08X expected 0x%08X\n",                    \
-			        E1000_##R, value, (test[pat] & W & M));        \
+			        E1000_##R, val, (test[pat] & W & M));          \
 			*data = (adapter->hw.mac_type < e1000_82543) ?         \
 				E1000_82542_##R : E1000_##R;                   \
 			return 1;                                              \
@@ -755,12 +749,12 @@ err_setup:
 
 #define REG_SET_AND_CHECK(R, M, W)                                             \
 {                                                                              \
-	uint32_t value;                                                        \
+	uint32_t val;                                                          \
 	E1000_WRITE_REG(&adapter->hw, R, W & M);                               \
-	value = E1000_READ_REG(&adapter->hw, R);                               \
-	if ((W & M) != (value & M)) {                                          \
+	val = E1000_READ_REG(&adapter->hw, R);                                 \
+	if ((W & M) != (val & M)) {                                            \
 		DPRINTK(DRV, ERR, "set/check reg %04X test failed: got 0x%08X "\
-		        "expected 0x%08X\n", E1000_##R, (value & M), (W & M)); \
+		        "expected 0x%08X\n", E1000_##R, (val & M), (W & M));   \
 		*data = (adapter->hw.mac_type < e1000_82543) ?                 \
 			E1000_82542_##R : E1000_##R;                           \
 		return 1;                                                      \
@@ -1612,12 +1606,17 @@ e1000_link_test(struct e1000_adapter *adapter, uint64_t *data)
 }
 
 static int
-e1000_diag_test_count(struct net_device *netdev)
+e1000_get_sset_count(struct net_device *netdev, int sset)
 {
-	return E1000_TEST_LEN;
+	switch (sset) {
+	case ETH_SS_TEST:
+		return E1000_TEST_LEN;
+	case ETH_SS_STATS:
+		return E1000_STATS_LEN;
+	default:
+		return -EOPNOTSUPP;
+	}
 }
-
-extern void e1000_power_up_phy(struct e1000_adapter *);
 
 static void
 e1000_diag_test(struct net_device *netdev,
@@ -1855,8 +1854,8 @@ e1000_phys_id(struct net_device *netdev, uint32_t data)
 {
 	struct e1000_adapter *adapter = netdev_priv(netdev);
 
-	if (!data || data > (uint32_t)(MAX_SCHEDULE_TIMEOUT / HZ))
-		data = (uint32_t)(MAX_SCHEDULE_TIMEOUT / HZ);
+	if (!data)
+		data = INT_MAX;
 
 	if (adapter->hw.mac_type < e1000_82571) {
 		if (!adapter->blink_timer.function) {
@@ -1899,12 +1898,6 @@ e1000_nway_reset(struct net_device *netdev)
 	return 0;
 }
 
-static int
-e1000_get_stats_count(struct net_device *netdev)
-{
-	return E1000_STATS_LEN;
-}
-
 static void
 e1000_get_ethtool_stats(struct net_device *netdev,
 		struct ethtool_stats *stats, uint64_t *data)
@@ -1930,7 +1923,7 @@ e1000_get_strings(struct net_device *netdev, uint32_t stringset, uint8_t *data)
 	switch (stringset) {
 	case ETH_SS_TEST:
 		memcpy(data, *e1000_gstrings_test,
-			E1000_TEST_LEN*ETH_GSTRING_LEN);
+			sizeof(e1000_gstrings_test));
 		break;
 	case ETH_SS_STATS:
 		for (i = 0; i < E1000_GLOBAL_STATS_LEN; i++) {
@@ -1966,16 +1959,13 @@ static const struct ethtool_ops e1000_ethtool_ops = {
 	.set_rx_csum            = e1000_set_rx_csum,
 	.get_tx_csum            = e1000_get_tx_csum,
 	.set_tx_csum            = e1000_set_tx_csum,
-	.get_sg                 = ethtool_op_get_sg,
 	.set_sg                 = ethtool_op_set_sg,
-	.get_tso                = ethtool_op_get_tso,
 	.set_tso                = e1000_set_tso,
-	.self_test_count        = e1000_diag_test_count,
 	.self_test              = e1000_diag_test,
 	.get_strings            = e1000_get_strings,
 	.phys_id                = e1000_phys_id,
-	.get_stats_count        = e1000_get_stats_count,
 	.get_ethtool_stats      = e1000_get_ethtool_stats,
+	.get_sset_count		= e1000_get_sset_count,
 };
 
 void e1000_set_ethtool_ops(struct net_device *netdev)

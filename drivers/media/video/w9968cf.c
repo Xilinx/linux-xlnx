@@ -42,7 +42,6 @@
 #include <asm/page.h>
 #include <asm/uaccess.h>
 #include <linux/page-flags.h>
-#include <linux/moduleparam.h>
 
 #include "w9968cf.h"
 #include "w9968cf_decoder.h"
@@ -445,8 +444,6 @@ static int w9968cf_i2c_smbus_xfer(struct i2c_adapter*, u16 addr,
 static u32 w9968cf_i2c_func(struct i2c_adapter*);
 static int w9968cf_i2c_attach_inform(struct i2c_client*);
 static int w9968cf_i2c_detach_inform(struct i2c_client*);
-static int w9968cf_i2c_control(struct i2c_adapter*, unsigned int cmd,
-			       unsigned long arg);
 
 /* Memory management */
 static void* rvmalloc(unsigned long size);
@@ -1544,21 +1541,12 @@ static int w9968cf_i2c_detach_inform(struct i2c_client* client)
 }
 
 
-static int
-w9968cf_i2c_control(struct i2c_adapter* adapter, unsigned int cmd,
-		    unsigned long arg)
-{
-	return 0;
-}
-
-
 static int w9968cf_i2c_init(struct w9968cf_device* cam)
 {
 	int err = 0;
 
 	static struct i2c_algorithm algo = {
 		.smbus_xfer =    w9968cf_i2c_smbus_xfer,
-		.algo_control =  w9968cf_i2c_control,
 		.functionality = w9968cf_i2c_func,
 	};
 
@@ -2680,7 +2668,7 @@ static int w9968cf_open(struct inode* inode, struct file* filp)
 
 	/* This the only safe way to prevent race conditions with disconnect */
 	if (!down_read_trylock(&w9968cf_disconnect))
-		return -ERESTARTSYS;
+		return -EAGAIN;
 
 	cam = (struct w9968cf_device*)video_get_drvdata(video_devdata(filp));
 
@@ -3561,7 +3549,6 @@ w9968cf_usb_probe(struct usb_interface* intf, const struct usb_device_id* id)
 	strcpy(cam->v4ldev->name, symbolic(camlist, mod_id));
 	cam->v4ldev->owner = THIS_MODULE;
 	cam->v4ldev->type = VID_TYPE_CAPTURE | VID_TYPE_SCALES;
-	cam->v4ldev->hardware = VID_HARDWARE_W9968CF;
 	cam->v4ldev->fops = &w9968cf_fops;
 	cam->v4ldev->minor = video_nr[dev_nr];
 	cam->v4ldev->release = video_device_release;

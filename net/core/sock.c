@@ -119,6 +119,7 @@
 #include <linux/netdevice.h>
 #include <net/protocol.h>
 #include <linux/skbuff.h>
+#include <net/net_namespace.h>
 #include <net/request_sock.h>
 #include <net/sock.h>
 #include <net/xfrm.h>
@@ -231,7 +232,7 @@ static int sock_set_timeout(long *timeo_p, char __user *optval, int optlen)
 			warned++;
 			printk(KERN_INFO "sock_set_timeout: `%s' (pid %d) "
 			       "tries to set negative timeout\n",
-				current->comm, current->pid);
+				current->comm, task_pid_nr(current));
 		return 0;
 	}
 	*timeo_p = MAX_SCHEDULE_TIMEOUT;
@@ -366,6 +367,7 @@ static int sock_bindtodevice(struct sock *sk, char __user *optval, int optlen)
 {
 	int ret = -ENOPROTOOPT;
 #ifdef CONFIG_NETDEVICES
+	struct net *net = sk->sk_net;
 	char devname[IFNAMSIZ];
 	int index;
 
@@ -394,7 +396,7 @@ static int sock_bindtodevice(struct sock *sk, char __user *optval, int optlen)
 	if (devname[0] == '\0') {
 		index = 0;
 	} else {
-		struct net_device *dev = dev_get_by_name(devname);
+		struct net_device *dev = dev_get_by_name(net, devname);
 
 		ret = -ENODEV;
 		if (!dev)
@@ -426,7 +428,6 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 		    char __user *optval, int optlen)
 {
 	struct sock *sk=sock->sk;
-	struct sk_filter *filter;
 	int val;
 	int valbool;
 	struct linger ling;
@@ -650,16 +651,7 @@ set_rcvbuf:
 		break;
 
 	case SO_DETACH_FILTER:
-		rcu_read_lock_bh();
-		filter = rcu_dereference(sk->sk_filter);
-		if (filter) {
-			rcu_assign_pointer(sk->sk_filter, NULL);
-			sk_filter_release(sk, filter);
-			rcu_read_unlock_bh();
-			break;
-		}
-		rcu_read_unlock_bh();
-		ret = -ENONET;
+		ret = sk_detach_filter(sk);
 		break;
 
 	case SO_PASSSEC:
@@ -865,44 +857,43 @@ static inline void sock_lock_init(struct sock *sk)
 			af_family_keys + sk->sk_family);
 }
 
-/**
- *	sk_alloc - All socket objects are allocated here
- *	@family: protocol family
- *	@priority: for allocation (%GFP_KERNEL, %GFP_ATOMIC, etc)
- *	@prot: struct proto associated with this new sock instance
- *	@zero_it: if we should zero the newly allocated sock
- */
-struct sock *sk_alloc(int family, gfp_t priority,
-		      struct proto *prot, int zero_it)
+static void sock_copy(struct sock *nsk, const struct sock *osk)
 {
-	struct sock *sk = NULL;
-	struct kmem_cache *slab = prot->slab;
+#ifdef CONFIG_SECURITY_NETWORK
+	void *sptr = nsk->sk_security;
+#endif
 
+	memcpy(nsk, osk, osk->sk_prot->obj_size);
+#ifdef CONFIG_SECURITY_NETWORK
+	nsk->sk_security = sptr;
+	security_sk_clone(osk, nsk);
+#endif
+}
+
+static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
+		int family)
+{
+	struct sock *sk;
+	struct kmem_cache *slab;
+
+	slab = prot->slab;
 	if (slab != NULL)
 		sk = kmem_cache_alloc(slab, priority);
 	else
 		sk = kmalloc(prot->obj_size, priority);
 
-	if (sk) {
-		if (zero_it) {
-			memset(sk, 0, prot->obj_size);
-			sk->sk_family = family;
-			/*
-			 * See comment in struct sock definition to understand
-			 * why we need sk_prot_creator -acme
-			 */
-			sk->sk_prot = sk->sk_prot_creator = prot;
-			sock_lock_init(sk);
-		}
-
+	if (sk != NULL) {
 		if (security_sk_alloc(sk, family, priority))
 			goto out_free;
 
 		if (!try_module_get(prot->owner))
-			goto out_free;
+			goto out_free_sec;
 	}
+
 	return sk;
 
+out_free_sec:
+	security_sk_free(sk);
 out_free:
 	if (slab != NULL)
 		kmem_cache_free(slab, sk);
@@ -911,17 +902,60 @@ out_free:
 	return NULL;
 }
 
+static void sk_prot_free(struct proto *prot, struct sock *sk)
+{
+	struct kmem_cache *slab;
+	struct module *owner;
+
+	owner = prot->owner;
+	slab = prot->slab;
+
+	security_sk_free(sk);
+	if (slab != NULL)
+		kmem_cache_free(slab, sk);
+	else
+		kfree(sk);
+	module_put(owner);
+}
+
+/**
+ *	sk_alloc - All socket objects are allocated here
+ *	@net: the applicable net namespace
+ *	@family: protocol family
+ *	@priority: for allocation (%GFP_KERNEL, %GFP_ATOMIC, etc)
+ *	@prot: struct proto associated with this new sock instance
+ *	@zero_it: if we should zero the newly allocated sock
+ */
+struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
+		      struct proto *prot)
+{
+	struct sock *sk;
+
+	sk = sk_prot_alloc(prot, priority | __GFP_ZERO, family);
+	if (sk) {
+		sk->sk_family = family;
+		/*
+		 * See comment in struct sock definition to understand
+		 * why we need sk_prot_creator -acme
+		 */
+		sk->sk_prot = sk->sk_prot_creator = prot;
+		sock_lock_init(sk);
+		sk->sk_net = get_net(net);
+	}
+
+	return sk;
+}
+
 void sk_free(struct sock *sk)
 {
 	struct sk_filter *filter;
-	struct module *owner = sk->sk_prot_creator->owner;
 
 	if (sk->sk_destruct)
 		sk->sk_destruct(sk);
 
 	filter = rcu_dereference(sk->sk_filter);
 	if (filter) {
-		sk_filter_release(sk, filter);
+		sk_filter_uncharge(sk, filter);
 		rcu_assign_pointer(sk->sk_filter, NULL);
 	}
 
@@ -931,24 +965,22 @@ void sk_free(struct sock *sk)
 		printk(KERN_DEBUG "%s: optmem leakage (%d bytes) detected.\n",
 		       __FUNCTION__, atomic_read(&sk->sk_omem_alloc));
 
-	security_sk_free(sk);
-	if (sk->sk_prot_creator->slab != NULL)
-		kmem_cache_free(sk->sk_prot_creator->slab, sk);
-	else
-		kfree(sk);
-	module_put(owner);
+	put_net(sk->sk_net);
+	sk_prot_free(sk->sk_prot_creator, sk);
 }
 
 struct sock *sk_clone(const struct sock *sk, const gfp_t priority)
 {
-	struct sock *newsk = sk_alloc(sk->sk_family, priority, sk->sk_prot, 0);
+	struct sock *newsk;
 
+	newsk = sk_prot_alloc(sk->sk_prot, priority, sk->sk_family);
 	if (newsk != NULL) {
 		struct sk_filter *filter;
 
 		sock_copy(newsk, sk);
 
 		/* SANITY */
+		get_net(newsk->sk_net);
 		sk_node_init(&newsk->sk_node);
 		sock_lock_init(newsk);
 		bh_lock_sock(newsk);
@@ -1585,9 +1617,9 @@ void fastcall lock_sock_nested(struct sock *sk, int subclass)
 {
 	might_sleep();
 	spin_lock_bh(&sk->sk_lock.slock);
-	if (sk->sk_lock.owner)
+	if (sk->sk_lock.owned)
 		__lock_sock(sk);
-	sk->sk_lock.owner = (void *)1;
+	sk->sk_lock.owned = 1;
 	spin_unlock(&sk->sk_lock.slock);
 	/*
 	 * The sk_lock has mutex_lock() semantics here:
@@ -1608,7 +1640,7 @@ void fastcall release_sock(struct sock *sk)
 	spin_lock_bh(&sk->sk_lock.slock);
 	if (sk->sk_backlog.tail)
 		__release_sock(sk);
-	sk->sk_lock.owner = NULL;
+	sk->sk_lock.owned = 0;
 	if (waitqueue_active(&sk->sk_lock.wq))
 		wake_up(&sk->sk_lock.wq);
 	spin_unlock_bh(&sk->sk_lock.slock);
@@ -1654,7 +1686,6 @@ void sock_enable_timestamp(struct sock *sk)
 		net_enable_timestamp();
 	}
 }
-EXPORT_SYMBOL(sock_enable_timestamp);
 
 /*
  *	Get a socket option on an socket.
@@ -1770,11 +1801,65 @@ EXPORT_SYMBOL(sk_common_release);
 static DEFINE_RWLOCK(proto_list_lock);
 static LIST_HEAD(proto_list);
 
+#ifdef CONFIG_SMP
+/*
+ * Define default functions to keep track of inuse sockets per protocol
+ * Note that often used protocols use dedicated functions to get a speed increase.
+ * (see DEFINE_PROTO_INUSE/REF_PROTO_INUSE)
+ */
+static void inuse_add(struct proto *prot, int inc)
+{
+	per_cpu_ptr(prot->inuse_ptr, smp_processor_id())[0] += inc;
+}
+
+static int inuse_get(const struct proto *prot)
+{
+	int res = 0, cpu;
+	for_each_possible_cpu(cpu)
+		res += per_cpu_ptr(prot->inuse_ptr, cpu)[0];
+	return res;
+}
+
+static int inuse_init(struct proto *prot)
+{
+	if (!prot->inuse_getval || !prot->inuse_add) {
+		prot->inuse_ptr = alloc_percpu(int);
+		if (prot->inuse_ptr == NULL)
+			return -ENOBUFS;
+
+		prot->inuse_getval = inuse_get;
+		prot->inuse_add = inuse_add;
+	}
+	return 0;
+}
+
+static void inuse_fini(struct proto *prot)
+{
+	if (prot->inuse_ptr != NULL) {
+		free_percpu(prot->inuse_ptr);
+		prot->inuse_ptr = NULL;
+		prot->inuse_getval = NULL;
+		prot->inuse_add = NULL;
+	}
+}
+#else
+static inline int inuse_init(struct proto *prot)
+{
+	return 0;
+}
+
+static inline void inuse_fini(struct proto *prot)
+{
+}
+#endif
+
 int proto_register(struct proto *prot, int alloc_slab)
 {
 	char *request_sock_slab_name = NULL;
 	char *timewait_sock_slab_name;
-	int rc = -ENOBUFS;
+
+	if (inuse_init(prot))
+		goto out;
 
 	if (alloc_slab) {
 		prot->slab = kmem_cache_create(prot->name, prot->obj_size, 0,
@@ -1783,7 +1868,7 @@ int proto_register(struct proto *prot, int alloc_slab)
 		if (prot->slab == NULL) {
 			printk(KERN_CRIT "%s: Can't create sock SLAB cache!\n",
 			       prot->name);
-			goto out;
+			goto out_free_inuse;
 		}
 
 		if (prot->rsk_prot != NULL) {
@@ -1827,9 +1912,8 @@ int proto_register(struct proto *prot, int alloc_slab)
 	write_lock(&proto_list_lock);
 	list_add(&prot->node, &proto_list);
 	write_unlock(&proto_list_lock);
-	rc = 0;
-out:
-	return rc;
+	return 0;
+
 out_free_timewait_sock_slab_name:
 	kfree(timewait_sock_slab_name);
 out_free_request_sock_slab:
@@ -1842,7 +1926,10 @@ out_free_request_sock_slab_name:
 out_free_sock_slab:
 	kmem_cache_destroy(prot->slab);
 	prot->slab = NULL;
-	goto out;
+out_free_inuse:
+	inuse_fini(prot);
+out:
+	return -ENOBUFS;
 }
 
 EXPORT_SYMBOL(proto_register);
@@ -1853,6 +1940,7 @@ void proto_unregister(struct proto *prot)
 	list_del(&prot->node);
 	write_unlock(&proto_list_lock);
 
+	inuse_fini(prot);
 	if (prot->slab != NULL) {
 		kmem_cache_destroy(prot->slab);
 		prot->slab = NULL;
@@ -1973,7 +2061,7 @@ static const struct file_operations proto_seq_fops = {
 static int __init proto_init(void)
 {
 	/* register /proc/net/protocols */
-	return proc_net_fops_create("protocols", S_IRUGO, &proto_seq_fops) == NULL ? -ENOBUFS : 0;
+	return proc_net_fops_create(&init_net, "protocols", S_IRUGO, &proto_seq_fops) == NULL ? -ENOBUFS : 0;
 }
 
 subsys_initcall(proto_init);
@@ -2009,7 +2097,3 @@ EXPORT_SYMBOL(sock_wmalloc);
 EXPORT_SYMBOL(sock_i_uid);
 EXPORT_SYMBOL(sock_i_ino);
 EXPORT_SYMBOL(sysctl_optmem_max);
-#ifdef CONFIG_SYSCTL
-EXPORT_SYMBOL(sysctl_rmem_max);
-EXPORT_SYMBOL(sysctl_wmem_max);
-#endif

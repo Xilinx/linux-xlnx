@@ -14,6 +14,40 @@
 #include "pci.h"
 
 DECLARE_RWSEM(pci_bus_sem);
+/*
+ * find the upstream PCIE-to-PCI bridge of a PCI device
+ * if the device is PCIE, return NULL
+ * if the device isn't connected to a PCIE bridge (that is its parent is a
+ * legacy PCI bridge and the bridge is directly connected to bus 0), return its
+ * parent
+ */
+struct pci_dev *
+pci_find_upstream_pcie_bridge(struct pci_dev *pdev)
+{
+	struct pci_dev *tmp = NULL;
+
+	if (pdev->is_pcie)
+		return NULL;
+	while (1) {
+		if (!pdev->bus->self)
+			break;
+		pdev = pdev->bus->self;
+		/* a p2p bridge */
+		if (!pdev->is_pcie) {
+			tmp = pdev;
+			continue;
+		}
+		/* PCI device should connect to a PCIE bridge */
+		if (pdev->pcie_type != PCI_EXP_TYPE_PCI_BRIDGE) {
+			/* Busted hardware? */
+			WARN_ON_ONCE(1);
+			return NULL;
+		}
+		return pdev;
+	}
+
+	return tmp;
+}
 
 static struct pci_bus *pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 {
@@ -79,6 +113,8 @@ pci_find_next_bus(const struct pci_bus *from)
 	return b;
 }
 
+#ifdef CONFIG_PCI_LEGACY
+
 /**
  * pci_find_slot - locate PCI device from a given PCI slot
  * @bus: number of PCI bus on which desired PCI device resides
@@ -102,6 +138,8 @@ pci_find_slot(unsigned int bus, unsigned int devfn)
 	}
 	return NULL;
 }
+
+#endif /* CONFIG_PCI_LEGACY */
 
 /**
  * pci_get_slot - locate PCI device for a given PCI slot
@@ -166,6 +204,7 @@ struct pci_dev * pci_get_bus_and_slot(unsigned int bus, unsigned int devfn)
 	return NULL;
 }
 
+#ifdef CONFIG_PCI_LEGACY
 /**
  * pci_find_subsys - begin or continue searching for a PCI device by vendor/subvendor/device/subdevice id
  * @vendor: PCI vendor id to match, or %PCI_ANY_ID to match all vendor ids
@@ -244,6 +283,7 @@ pci_find_device(unsigned int vendor, unsigned int device, const struct pci_dev *
 {
 	return pci_find_subsys(vendor, device, PCI_ANY_ID, PCI_ANY_ID, from);
 }
+#endif /* CONFIG_PCI_LEGACY */
 
 /**
  * pci_get_subsys - begin or continue searching for a PCI device by vendor/subvendor/device/subdevice id
@@ -434,8 +474,11 @@ int pci_dev_present(const struct pci_device_id *ids)
 EXPORT_SYMBOL(pci_dev_present);
 EXPORT_SYMBOL(pci_find_present);
 
+#ifdef CONFIG_PCI_LEGACY
 EXPORT_SYMBOL(pci_find_device);
 EXPORT_SYMBOL(pci_find_slot);
+#endif /* CONFIG_PCI_LEGACY */
+
 /* For boot time work */
 EXPORT_SYMBOL(pci_find_bus);
 EXPORT_SYMBOL(pci_find_next_bus);

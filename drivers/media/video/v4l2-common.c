@@ -37,7 +37,7 @@
  * Video4linux 1/2 integration by Justin Schoeman
  * <justin@suntiger.ee.up.ac.za>
  * 2.4 PROCFS support ported from 2.4 kernels by
- *  Iñaki García Etxebarria <garetxe@euskalnet.net>
+ *  IÃ±aki GarcÃ­a Etxebarria <garetxe@euskalnet.net>
  * Makefile fix by "W. Michael Petullo" <mike@flyn.org>
  * 2.4 devfs support ported from 2.4 kernels by
  *  Dan Merillat <dan@merillat.org>
@@ -64,11 +64,6 @@
 #ifdef CONFIG_KMOD
 #include <linux/kmod.h>
 #endif
-
-#if defined(CONFIG_UST) || defined(CONFIG_UST_MODULE)
-#include <linux/ust.h>
-#endif
-
 
 #include <linux/videodev.h>
 
@@ -322,8 +317,6 @@ static const char *v4l2_ioctls[] = {
 	[_IOC_NR(VIDIOC_ENUM_FMT)]         = "VIDIOC_ENUM_FMT",
 	[_IOC_NR(VIDIOC_G_FMT)]            = "VIDIOC_G_FMT",
 	[_IOC_NR(VIDIOC_S_FMT)]            = "VIDIOC_S_FMT",
-	[_IOC_NR(VIDIOC_G_MPEGCOMP)]       = "VIDIOC_G_MPEGCOMP",
-	[_IOC_NR(VIDIOC_S_MPEGCOMP)]       = "VIDIOC_S_MPEGCOMP",
 	[_IOC_NR(VIDIOC_REQBUFS)]          = "VIDIOC_REQBUFS",
 	[_IOC_NR(VIDIOC_QUERYBUF)]         = "VIDIOC_QUERYBUF",
 	[_IOC_NR(VIDIOC_G_FBUF)]           = "VIDIOC_G_FBUF",
@@ -716,6 +709,7 @@ int v4l2_ctrl_query_fill(struct v4l2_queryctrl *qctrl, s32 min, s32 max, s32 ste
 	case V4L2_CID_AUDIO_MUTE:
 	case V4L2_CID_AUDIO_LOUDNESS:
 	case V4L2_CID_MPEG_AUDIO_MUTE:
+	case V4L2_CID_MPEG_VIDEO_MUTE:
 	case V4L2_CID_MPEG_VIDEO_GOP_CLOSURE:
 	case V4L2_CID_MPEG_VIDEO_PULLDOWN:
 		qctrl->type = V4L2_CTRL_TYPE_BOOLEAN;

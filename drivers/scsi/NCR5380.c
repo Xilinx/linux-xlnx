@@ -298,8 +298,7 @@ static __inline__ void initialize_SCp(Scsi_Cmnd * cmd)
 	if (cmd->use_sg) {
 		cmd->SCp.buffer = (struct scatterlist *) cmd->request_buffer;
 		cmd->SCp.buffers_residual = cmd->use_sg - 1;
-		cmd->SCp.ptr = page_address(cmd->SCp.buffer->page)+
-			       cmd->SCp.buffer->offset;
+		cmd->SCp.ptr = sg_virt(cmd->SCp.buffer);
 		cmd->SCp.this_residual = cmd->SCp.buffer->length;
 	} else {
 		cmd->SCp.buffer = NULL;
@@ -1542,9 +1541,7 @@ part2:
 	hostdata->connected = cmd;
 	hostdata->busy[cmd->device->id] |= (1 << cmd->device->lun);
 
-	if (cmd->SCp.ptr != (char *)cmd->sense_buffer) {
-		initialize_SCp(cmd);
-	}
+	initialize_SCp(cmd);
 
 	return 0;
 
@@ -2133,7 +2130,7 @@ static void NCR5380_information_transfer(struct Scsi_Host *instance) {
 				sink = 1;
 				do_abort(instance);
 				cmd->result = DID_ERROR << 16;
-				cmd->done(cmd);
+				cmd->scsi_done(cmd);
 				return;
 #endif
 				/* 
@@ -2145,8 +2142,7 @@ static void NCR5380_information_transfer(struct Scsi_Host *instance) {
 					++cmd->SCp.buffer;
 					--cmd->SCp.buffers_residual;
 					cmd->SCp.this_residual = cmd->SCp.buffer->length;
-					cmd->SCp.ptr = page_address(cmd->SCp.buffer->page)+
-						       cmd->SCp.buffer->offset;
+					cmd->SCp.ptr = sg_virt(cmd->SCp.buffer);
 					dprintk(NDEBUG_INFORMATION, ("scsi%d : %d bytes and %d buffers left\n", instance->host_no, cmd->SCp.this_residual, cmd->SCp.buffers_residual));
 				}
 				/*
@@ -2196,7 +2192,7 @@ static void NCR5380_information_transfer(struct Scsi_Host *instance) {
 						sink = 1;
 						do_abort(instance);
 						cmd->result = DID_ERROR << 16;
-						cmd->done(cmd);
+						cmd->scsi_done(cmd);
 						/* XXX - need to source or sink data here, as appropriate */
 					} else
 						cmd->SCp.this_residual -= transfersize - len;
@@ -2280,19 +2276,16 @@ static void NCR5380_information_transfer(struct Scsi_Host *instance) {
 						cmd->result = (cmd->result & 0x00ffff) | (DID_ERROR << 16);
 
 #ifdef AUTOSENSE
-					if ((cmd->cmnd[0] != REQUEST_SENSE) && (status_byte(cmd->SCp.Status) == CHECK_CONDITION)) {
-						dprintk(NDEBUG_AUTOSENSE, ("scsi%d : performing request sense\n", instance->host_no));
-						cmd->cmnd[0] = REQUEST_SENSE;
-						cmd->cmnd[1] &= 0xe0;
-						cmd->cmnd[2] = 0;
-						cmd->cmnd[3] = 0;
-						cmd->cmnd[4] = sizeof(cmd->sense_buffer);
-						cmd->cmnd[5] = 0;
+					if ((cmd->cmnd[0] == REQUEST_SENSE) &&
+						hostdata->ses.cmd_len) {
+						scsi_eh_restore_cmnd(cmd, &hostdata->ses);
+						hostdata->ses.cmd_len = 0 ;
+					}
 
-						cmd->SCp.buffer = NULL;
-						cmd->SCp.buffers_residual = 0;
-						cmd->SCp.ptr = (char *) cmd->sense_buffer;
-						cmd->SCp.this_residual = sizeof(cmd->sense_buffer);
+					if ((cmd->cmnd[0] != REQUEST_SENSE) && (status_byte(cmd->SCp.Status) == CHECK_CONDITION)) {
+						scsi_eh_prep_cmnd(cmd, &hostdata->ses, NULL, 0, ~0);
+
+						dprintk(NDEBUG_AUTOSENSE, ("scsi%d : performing request sense\n", instance->host_no));
 
 						LIST(cmd, hostdata->issue_queue);
 						cmd->host_scribble = (unsigned char *)
@@ -2740,7 +2733,7 @@ static int NCR5380_abort(Scsi_Cmnd * cmd) {
 			tmp->host_scribble = NULL;
 			tmp->result = DID_ABORT << 16;
 			dprintk(NDEBUG_ABORT, ("scsi%d : abort removed command from issue queue.\n", instance->host_no));
-			tmp->done(tmp);
+			tmp->scsi_done(tmp);
 			return SUCCESS;
 		}
 #if (NDEBUG  & NDEBUG_ABORT)
@@ -2805,7 +2798,7 @@ static int NCR5380_abort(Scsi_Cmnd * cmd) {
 					*prev = (Scsi_Cmnd *) tmp->host_scribble;
 					tmp->host_scribble = NULL;
 					tmp->result = DID_ABORT << 16;
-					tmp->done(tmp);
+					tmp->scsi_done(tmp);
 					return SUCCESS;
 				}
 		}

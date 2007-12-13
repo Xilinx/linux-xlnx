@@ -67,22 +67,24 @@ static void sub22 (char b, char c)
 	}
 }
 
-static void tune_dtc2278 (ide_drive_t *drive, u8 pio)
+static DEFINE_SPINLOCK(dtc2278_lock);
+
+static void dtc2278_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	unsigned long flags;
 
-	pio = ide_get_best_pio_mode(drive, pio, 4);
-
 	if (pio >= 3) {
-		spin_lock_irqsave(&ide_lock, flags);
+		spin_lock_irqsave(&dtc2278_lock, flags);
 		/*
 		 * This enables PIO mode4 (3?) on the first interface
 		 */
 		sub22(1,0xc3);
 		sub22(0,0xa0);
-		spin_unlock_irqrestore(&ide_lock, flags);
+		spin_unlock_irqrestore(&dtc2278_lock, flags);
 	} else {
 		/* we don't know how to set it back again.. */
+		/* Actually we do - there is a data sheet available for the
+		   Winbond but does anyone actually care */
 	}
 
 	/*
@@ -96,6 +98,7 @@ static int __init dtc2278_probe(void)
 {
 	unsigned long flags;
 	ide_hwif_t *hwif, *mate;
+	static u8 idx[4] = { 0, 1, 0xff, 0xff };
 
 	hwif = &ide_hwifs[0];
 	mate = &ide_hwifs[1];
@@ -124,23 +127,20 @@ static int __init dtc2278_probe(void)
 	hwif->serialized = 1;
 	hwif->chipset = ide_dtc2278;
 	hwif->pio_mask = ATA_PIO4;
-	hwif->tuneproc = &tune_dtc2278;
+	hwif->set_pio_mode = &dtc2278_set_pio_mode;
 	hwif->drives[0].no_unmask = 1;
 	hwif->drives[1].no_unmask = 1;
 	hwif->mate = mate;
 
 	mate->serialized = 1;
 	mate->chipset = ide_dtc2278;
+	mate->pio_mask = ATA_PIO4;
 	mate->drives[0].no_unmask = 1;
 	mate->drives[1].no_unmask = 1;
 	mate->mate = hwif;
 	mate->channel = 1;
 
-	probe_hwif_init(hwif);
-	probe_hwif_init(mate);
-
-	ide_proc_register_port(hwif);
-	ide_proc_register_port(mate);
+	ide_device_add(idx);
 
 	return 0;
 }

@@ -35,29 +35,8 @@ static void raid0_unplug(struct request_queue *q)
 	for (i=0; i<mddev->raid_disks; i++) {
 		struct request_queue *r_queue = bdev_get_queue(devlist[i]->bdev);
 
-		if (r_queue->unplug_fn)
-			r_queue->unplug_fn(r_queue);
+		blk_unplug(r_queue);
 	}
-}
-
-static int raid0_issue_flush(struct request_queue *q, struct gendisk *disk,
-			     sector_t *error_sector)
-{
-	mddev_t *mddev = q->queuedata;
-	raid0_conf_t *conf = mddev_to_conf(mddev);
-	mdk_rdev_t **devlist = conf->strip_zone[0].dev;
-	int i, ret = 0;
-
-	for (i=0; i<mddev->raid_disks && ret == 0; i++) {
-		struct block_device *bdev = devlist[i]->bdev;
-		struct request_queue *r_queue = bdev_get_queue(bdev);
-
-		if (!r_queue->issue_flush_fn)
-			ret = -EOPNOTSUPP;
-		else
-			ret = r_queue->issue_flush_fn(r_queue, bdev->bd_disk, error_sector);
-	}
-	return ret;
 }
 
 static int raid0_congested(void *data, int bits)
@@ -250,7 +229,6 @@ static int create_strip_zones (mddev_t *mddev)
 
 	mddev->queue->unplug_fn = raid0_unplug;
 
-	mddev->queue->issue_flush_fn = raid0_issue_flush;
 	mddev->queue->backing_dev_info.congested_fn = raid0_congested;
 	mddev->queue->backing_dev_info.congested_data = mddev;
 
@@ -420,7 +398,7 @@ static int raid0_make_request (struct request_queue *q, struct bio *bio)
 	const int rw = bio_data_dir(bio);
 
 	if (unlikely(bio_barrier(bio))) {
-		bio_endio(bio, bio->bi_size, -EOPNOTSUPP);
+		bio_endio(bio, -EOPNOTSUPP);
 		return 0;
 	}
 
@@ -490,10 +468,10 @@ bad_map:
 		" or bigger than %dk %llu %d\n", chunk_size, 
 		(unsigned long long)bio->bi_sector, bio->bi_size >> 10);
 
-	bio_io_error(bio, bio->bi_size);
+	bio_io_error(bio);
 	return 0;
 }
-			   
+
 static void raid0_status (struct seq_file *seq, mddev_t *mddev)
 {
 #undef MD_DEBUG
@@ -501,18 +479,18 @@ static void raid0_status (struct seq_file *seq, mddev_t *mddev)
 	int j, k, h;
 	char b[BDEVNAME_SIZE];
 	raid0_conf_t *conf = mddev_to_conf(mddev);
-  
+
 	h = 0;
 	for (j = 0; j < conf->nr_strip_zones; j++) {
 		seq_printf(seq, "      z%d", j);
 		if (conf->hash_table[h] == conf->strip_zone+j)
-			seq_printf("(h%d)", h++);
+			seq_printf(seq, "(h%d)", h++);
 		seq_printf(seq, "=[");
 		for (k = 0; k < conf->strip_zone[j].nb_dev; k++)
-			seq_printf (seq, "%s/", bdevname(
+			seq_printf(seq, "%s/", bdevname(
 				conf->strip_zone[j].dev[k]->bdev,b));
 
-		seq_printf (seq, "] zo=%d do=%d s=%d\n",
+		seq_printf(seq, "] zo=%d do=%d s=%d\n",
 				conf->strip_zone[j].zone_offset,
 				conf->strip_zone[j].dev_offset,
 				conf->strip_zone[j].size);

@@ -185,6 +185,8 @@ static u8 recovery_counts[4] = {16, 16, 16, 16}; /* Recovery count (encoded) */
 
 #endif /* CONFIG_BLK_DEV_CMD640_ENHANCED */
 
+static DEFINE_SPINLOCK(cmd640_lock);
+
 /*
  * These are initialized to point at the devices we control
  */
@@ -258,12 +260,12 @@ static u8 get_cmd640_reg_vlb (u16 reg)
 
 static u8 get_cmd640_reg(u16 reg)
 {
-	u8 b;
 	unsigned long flags;
+	u8 b;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	b = __get_cmd640_reg(reg);
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 	return b;
 }
 
@@ -271,9 +273,9 @@ static void put_cmd640_reg(u16 reg, u8 val)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	__put_cmd640_reg(reg,val);
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 }
 
 static int __init match_pci_cmd640_device (void)
@@ -351,7 +353,7 @@ static int __init secondary_port_responding (void)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 
 	outb_p(0x0a, 0x170 + IDE_SELECT_OFFSET);	/* select drive0 */
 	udelay(100);
@@ -359,11 +361,11 @@ static int __init secondary_port_responding (void)
 		outb_p(0x1a, 0x170 + IDE_SELECT_OFFSET); /* select drive1 */
 		udelay(100);
 		if ((inb_p(0x170 + IDE_SELECT_OFFSET) & 0x1f) != 0x1a) {
-			spin_unlock_irqrestore(&ide_lock, flags);
+			spin_unlock_irqrestore(&cmd640_lock, flags);
 			return 0; /* nothing responded */
 		}
 	}
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 	return 1; /* success */
 }
 
@@ -440,11 +442,11 @@ static void __init setup_device_ptrs (void)
 static void set_prefetch_mode (unsigned int index, int mode)
 {
 	ide_drive_t *drive = cmd_drives[index];
+	unsigned long flags;
 	int reg = prefetch_regs[index];
 	u8 b;
-	unsigned long flags;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	b = __get_cmd640_reg(reg);
 	if (mode) {	/* want prefetch on? */
 #if CMD640_PREFETCH_MASKS
@@ -460,7 +462,7 @@ static void set_prefetch_mode (unsigned int index, int mode)
 		b |= prefetch_masks[index];	/* disable prefetch */
 	}
 	__put_cmd640_reg(reg, b);
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 }
 
 /*
@@ -561,7 +563,7 @@ static void program_drive_counts (unsigned int index)
 	/*
 	 * Now that everything is ready, program the new timings
 	 */
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	/*
 	 * Program the address_setup clocks into ARTTIM reg,
 	 * and then the active/recovery counts into the DRWTIM reg
@@ -570,7 +572,7 @@ static void program_drive_counts (unsigned int index)
 	setup_count |= __get_cmd640_reg(arttim_regs[index]) & 0x3f;
 	__put_cmd640_reg(arttim_regs[index], setup_count);
 	__put_cmd640_reg(drwtim_regs[index], pack_nibbles(active_count, recovery_count));
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 }
 
 /*
@@ -628,45 +630,40 @@ static void cmd640_set_mode (unsigned int index, u8 pio_mode, unsigned int cycle
 	program_drive_counts (index);
 }
 
-/*
- * Drive PIO mode selection:
- */
-static void cmd640_tune_drive (ide_drive_t *drive, u8 mode_wanted)
+static void cmd640_set_pio_mode(ide_drive_t *drive, const u8 pio)
 {
 	unsigned int index = 0, cycle_time;
 	u8 b;
 
 	while (drive != cmd_drives[index]) {
 		if (++index > 3) {
-			printk("%s: bad news in cmd640_tune_drive\n", drive->name);
+			printk(KERN_ERR "%s: bad news in %s\n",
+					drive->name, __FUNCTION__);
 			return;
 		}
 	}
-	switch (mode_wanted) {
+	switch (pio) {
 		case 6: /* set fast-devsel off */
 		case 7: /* set fast-devsel on */
-			mode_wanted &= 1;
 			b = get_cmd640_reg(CNTRL) & ~0x27;
-			if (mode_wanted)
+			if (pio & 1)
 				b |= 0x27;
 			put_cmd640_reg(CNTRL, b);
-			printk("%s: %sabled cmd640 fast host timing (devsel)\n", drive->name, mode_wanted ? "en" : "dis");
+			printk("%s: %sabled cmd640 fast host timing (devsel)\n", drive->name, (pio & 1) ? "en" : "dis");
 			return;
 
 		case 8: /* set prefetch off */
 		case 9: /* set prefetch on */
-			mode_wanted &= 1;
-			set_prefetch_mode(index, mode_wanted);
-			printk("%s: %sabled cmd640 prefetch\n", drive->name, mode_wanted ? "en" : "dis");
+			set_prefetch_mode(index, pio & 1);
+			printk("%s: %sabled cmd640 prefetch\n", drive->name, (pio & 1) ? "en" : "dis");
 			return;
 	}
 
-	mode_wanted = ide_get_best_pio_mode(drive, mode_wanted, 5);
-	cycle_time = ide_pio_cycle_time(drive, mode_wanted);
-	cmd640_set_mode(index, mode_wanted, cycle_time);
+	cycle_time = ide_pio_cycle_time(drive, pio);
+	cmd640_set_mode(index, pio, cycle_time);
 
 	printk("%s: selected cmd640 PIO mode%d (%dns)",
-		drive->name, mode_wanted, cycle_time);
+		drive->name, pio, cycle_time);
 
 	display_clocks(index);
 }
@@ -675,20 +672,20 @@ static void cmd640_tune_drive (ide_drive_t *drive, u8 mode_wanted)
 
 static int pci_conf1(void)
 {
-	u32 tmp;
 	unsigned long flags;
+	u32 tmp;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	outb(0x01, 0xCFB);
 	tmp = inl(0xCF8);
 	outl(0x80000000, 0xCF8);
 	if (inl(0xCF8) == 0x80000000) {
 		outl(tmp, 0xCF8);
-		spin_unlock_irqrestore(&ide_lock, flags);
+		spin_unlock_irqrestore(&cmd640_lock, flags);
 		return 1;
 	}
 	outl(tmp, 0xCF8);
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 	return 0;
 }
 
@@ -696,15 +693,15 @@ static int pci_conf2(void)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&ide_lock, flags);
+	spin_lock_irqsave(&cmd640_lock, flags);
 	outb(0x00, 0xCFB);
 	outb(0x00, 0xCF8);
 	outb(0x00, 0xCFA);
 	if (inb(0xCF8) == 0x00 && inb(0xCF8) == 0x00) {
-		spin_unlock_irqrestore(&ide_lock, flags);
+		spin_unlock_irqrestore(&cmd640_lock, flags);
 		return 1;
 	}
-	spin_unlock_irqrestore(&ide_lock, flags);
+	spin_unlock_irqrestore(&cmd640_lock, flags);
 	return 0;
 }
 
@@ -766,8 +763,10 @@ int __init ide_probe_for_cmd640x (void)
 	       cmd_hwif0->name, 'a' + cmd640_chip_version - 1, bus_type, cfr);
 	cmd_hwif0->chipset = ide_cmd640;
 #ifdef CONFIG_BLK_DEV_CMD640_ENHANCED
+	cmd_hwif0->host_flags = IDE_HFLAG_ABUSE_PREFETCH |
+				IDE_HFLAG_ABUSE_FAST_DEVSEL;
 	cmd_hwif0->pio_mask = ATA_PIO5;
-	cmd_hwif0->tuneproc = &cmd640_tune_drive;
+	cmd_hwif0->set_pio_mode = &cmd640_set_pio_mode;
 #endif /* CONFIG_BLK_DEV_CMD640_ENHANCED */
 
 	/*
@@ -822,8 +821,10 @@ int __init ide_probe_for_cmd640x (void)
 		cmd_hwif1->mate = cmd_hwif0;
 		cmd_hwif1->channel = 1;
 #ifdef CONFIG_BLK_DEV_CMD640_ENHANCED
+		cmd_hwif1->host_flags = IDE_HFLAG_ABUSE_PREFETCH |
+					IDE_HFLAG_ABUSE_FAST_DEVSEL;
 		cmd_hwif1->pio_mask = ATA_PIO5;
-		cmd_hwif1->tuneproc = &cmd640_tune_drive;
+		cmd_hwif1->set_pio_mode = &cmd640_set_pio_mode;
 #endif /* CONFIG_BLK_DEV_CMD640_ENHANCED */
 	}
 	printk(KERN_INFO "%s: %sserialized, secondary interface %s\n", cmd_hwif1->name,

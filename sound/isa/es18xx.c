@@ -623,7 +623,7 @@ static int snd_es18xx_capture_prepare(struct snd_pcm_substream *substream)
                          (snd_pcm_format_width(runtime->format) == 16 ? 0x04 : 0x00) |
                          (snd_pcm_format_unsigned(runtime->format) ? 0x00 : 0x20));
 
-        /* Set DMA controler */
+        /* Set DMA controller */
         snd_dma_program(chip->dma1, runtime->dma_addr, size, DMA_MODE_READ | DMA_AUTOINIT);
 
 	return 0;
@@ -689,7 +689,7 @@ static int snd_es18xx_playback2_prepare(struct snd_es18xx *chip,
                          (snd_pcm_format_width(runtime->format) == 16 ? 0x04 : 0x00) |
                          (snd_pcm_format_unsigned(runtime->format) ? 0x00 : 0x20));
 
-        /* Set DMA controler */
+        /* Set DMA controller */
         snd_dma_program(chip->dma1, runtime->dma_addr, size, DMA_MODE_WRITE | DMA_AUTOINIT);
 
 	return 0;
@@ -1071,14 +1071,7 @@ static int snd_es18xx_put_mux(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 	return (snd_es18xx_mixer_bits(chip, 0x1c, 0x07, val) != val) || retVal;
 }
 
-static int snd_es18xx_info_spatializer_enable(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
-{
-	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
-	uinfo->count = 1;
-	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = 1;
-	return 0;
-}
+#define snd_es18xx_info_spatializer_enable	snd_ctl_boolean_mono_info
 
 static int snd_es18xx_get_spatializer_enable(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
@@ -1120,14 +1113,7 @@ static int snd_es18xx_get_hw_volume(struct snd_kcontrol *kcontrol, struct snd_ct
 	return 0;
 }
 
-static int snd_es18xx_info_hw_switch(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
-{
-	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
-	uinfo->count = 2;
-	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = 1;
-	return 0;
-}
+#define snd_es18xx_info_hw_switch	snd_ctl_boolean_stereo_info
 
 static int snd_es18xx_get_hw_switch(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
@@ -2042,6 +2028,7 @@ static int pnpc_registered;
 
 static struct pnp_device_id snd_audiodrive_pnpbiosids[] = {
 	{ .id = "ESS1869" },
+	{ .id = "ESS1879" },
 	{ .id = "" }		/* end */
 };
 

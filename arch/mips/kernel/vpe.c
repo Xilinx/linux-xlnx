@@ -470,7 +470,7 @@ static int apply_r_mips_lo16(struct module *me, uint32_t *location,
 			 */
  			if (v != l->value) {
 				printk(KERN_DEBUG "VPE loader: "
-				       "apply_r_mips_lo16/hi16: 	"
+				       "apply_r_mips_lo16/hi16: \t"
 				       "inconsistent value information\n");
 				return -ENOEXEC;
 			}
@@ -629,7 +629,7 @@ static void simplify_symbols(Elf_Shdr * sechdrs,
 			break;
 
 		case SHN_MIPS_SCOMMON:
-			printk(KERN_DEBUG "simplify_symbols: ignoring SHN_MIPS_SCOMMON"
+			printk(KERN_DEBUG "simplify_symbols: ignoring SHN_MIPS_SCOMMON "
 			       "symbol <%s> st_shndx %d\n", strtab + sym[i].st_name,
 			       sym[i].st_shndx);
 			// .sbss section
@@ -936,8 +936,18 @@ static int vpe_elfload(struct vpe * v)
 
   		}
   	} else {
-  		for (i = 0; i < hdr->e_shnum; i++) {
+		struct elf_phdr *phdr = (struct elf_phdr *) ((char *)hdr + hdr->e_phoff);
 
+		for (i = 0; i < hdr->e_phnum; i++) {
+			if (phdr->p_type != PT_LOAD)
+				continue;
+
+			memcpy((void *)phdr->p_paddr, (char *)hdr + phdr->p_offset, phdr->p_filesz);
+			memset((void *)phdr->p_paddr + phdr->p_filesz, 0, phdr->p_memsz - phdr->p_filesz);
+			phdr++;
+		}
+
+		for (i = 0; i < hdr->e_shnum; i++) {
  			/* Internal symbols and strings. */
  			if (sechdrs[i].sh_type == SHT_SYMTAB) {
  				symindex = i;
@@ -948,39 +958,6 @@ static int vpe_elfload(struct vpe * v)
  				   magic symbols */
  				sechdrs[i].sh_addr = (size_t) hdr + sechdrs[i].sh_offset;
  			}
-
- 			/* filter sections we dont want in the final image */
- 			if (!(sechdrs[i].sh_flags & SHF_ALLOC) ||
- 			    (sechdrs[i].sh_type == SHT_MIPS_REGINFO)) {
- 				printk( KERN_DEBUG " ignoring section, "
- 					"name %s type %x address 0x%x \n",
- 					secstrings + sechdrs[i].sh_name,
- 					sechdrs[i].sh_type, sechdrs[i].sh_addr);
- 				continue;
- 			}
-
-  			if (sechdrs[i].sh_addr < (unsigned int)v->load_addr) {
- 				printk( KERN_WARNING "VPE loader: "
- 					"fully linked image has invalid section, "
- 					"name %s type %x address 0x%x, before load "
- 					"address of 0x%x\n",
- 					secstrings + sechdrs[i].sh_name,
- 					sechdrs[i].sh_type, sechdrs[i].sh_addr,
- 					(unsigned int)v->load_addr);
-  				return -ENOEXEC;
-  			}
-
- 			printk(KERN_DEBUG " copying section sh_name %s, sh_addr 0x%x "
-			       "size 0x%x0 from x%p\n",
-			       secstrings + sechdrs[i].sh_name, sechdrs[i].sh_addr,
-			       sechdrs[i].sh_size, hdr + sechdrs[i].sh_offset);
-
-  			if (sechdrs[i].sh_type != SHT_NOBITS)
-				memcpy((void *)sechdrs[i].sh_addr,
-				       (char *)hdr + sechdrs[i].sh_offset,
- 				       sechdrs[i].sh_size);
-			else
-				memset((void *)sechdrs[i].sh_addr, 0, sechdrs[i].sh_size);
 		}
 	}
 
@@ -1026,6 +1003,7 @@ static void cleanup_tc(struct tc *tc)
 	write_tc_c0_tcstatus(tmp);
 
 	write_tc_c0_tchalt(TCHALT_H);
+	mips_ihb();
 
 	/* bind it to anything other than VPE1 */
 //	write_tc_c0_tcbind(read_tc_c0_tcbind() & ~TCBIND_CURVPE); // | TCBIND_CURVPE
@@ -1044,7 +1022,7 @@ static int getcwd(char *buff, int size)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	ret = sys_getcwd(buff,size);
+	ret = sys_getcwd(buff, size);
 
 	set_fs(old_fs);
 
@@ -1258,9 +1236,12 @@ int vpe_free(vpe_handle vpe)
 	settc(t->index);
 	write_vpe_c0_vpeconf0(read_vpe_c0_vpeconf0() & ~VPECONF0_VPA);
 
-	/* mark the TC unallocated and halt'ed */
-	write_tc_c0_tcstatus(read_tc_c0_tcstatus() & ~TCSTATUS_A);
+	/* halt the TC */
 	write_tc_c0_tchalt(TCHALT_H);
+	mips_ihb();
+
+	/* mark the TC unallocated */
+	write_tc_c0_tcstatus(read_tc_c0_tcstatus() & ~TCSTATUS_A);
 
 	v->state = VPE_STATE_UNUSED;
 
@@ -1340,7 +1321,8 @@ static void kspd_sp_exit( int sp_id)
 }
 #endif
 
-static ssize_t store_kill(struct class_device *dev, const char *buf, size_t len)
+static ssize_t store_kill(struct device *dev, struct device_attribute *attr,
+			  const char *buf, size_t len)
 {
 	struct vpe *vpe = get_vpe(tclimit);
 	struct vpe_notifications *not;
@@ -1357,14 +1339,16 @@ static ssize_t store_kill(struct class_device *dev, const char *buf, size_t len)
 	return len;
 }
 
-static ssize_t show_ntcs(struct class_device *cd, char *buf)
+static ssize_t show_ntcs(struct device *cd, struct device_attribute *attr,
+			 char *buf)
 {
 	struct vpe *vpe = get_vpe(tclimit);
 
 	return sprintf(buf, "%d\n", vpe->ntcs);
 }
 
-static ssize_t store_ntcs(struct class_device *dev, const char *buf, size_t len)
+static ssize_t store_ntcs(struct device *dev, struct device_attribute *attr,
+			  const char *buf, size_t len)
 {
 	struct vpe *vpe = get_vpe(tclimit);
 	unsigned long new;
@@ -1385,13 +1369,13 @@ out_einval:
 	return -EINVAL;;
 }
 
-static struct class_device_attribute vpe_class_attributes[] = {
+static struct device_attribute vpe_class_attributes[] = {
 	__ATTR(kill, S_IWUSR, NULL, store_kill),
 	__ATTR(ntcs, S_IRUGO | S_IWUSR, show_ntcs, store_ntcs),
 	{}
 };
 
-static void vpe_class_device_release(struct class_device *cd)
+static void vpe_device_release(struct device *cd)
 {
 	kfree(cd);
 }
@@ -1399,11 +1383,11 @@ static void vpe_class_device_release(struct class_device *cd)
 struct class vpe_class = {
 	.name = "vpe",
 	.owner = THIS_MODULE,
-	.release = vpe_class_device_release,
-	.class_dev_attrs = vpe_class_attributes,
+	.dev_release = vpe_device_release,
+	.dev_attrs = vpe_class_attributes,
 };
 
-struct class_device vpe_device;
+struct device vpe_device;
 
 static int __init vpe_module_init(void)
 {
@@ -1446,12 +1430,12 @@ static int __init vpe_module_init(void)
 		goto out_chrdev;
 	}
 
-	class_device_initialize(&vpe_device);
+	device_initialize(&vpe_device);
 	vpe_device.class	= &vpe_class,
 	vpe_device.parent	= NULL,
-	strlcpy(vpe_device.class_id, "vpe1", BUS_ID_SIZE);
+	strlcpy(vpe_device.bus_id, "vpe1", BUS_ID_SIZE);
 	vpe_device.devt = MKDEV(major, minor);
-	err = class_device_add(&vpe_device);
+	err = device_add(&vpe_device);
 	if (err) {
 		printk(KERN_ERR "Adding vpe_device failed\n");
 		goto out_class;
@@ -1553,14 +1537,16 @@ static int __init vpe_module_init(void)
 				t->pvpe = get_vpe(0);	/* set the parent vpe */
 			}
 
+			/* halt the TC */
+			write_tc_c0_tchalt(TCHALT_H);
+			mips_ihb();
+
 			tmp = read_tc_c0_tcstatus();
 
 			/* mark not activated and not dynamically allocatable */
 			tmp &= ~(TCSTATUS_A | TCSTATUS_DA);
 			tmp |= TCSTATUS_IXMT;	/* interrupt exempt */
 			write_tc_c0_tcstatus(tmp);
-
-			write_tc_c0_tchalt(TCHALT_H);
 		}
 	}
 
@@ -1596,7 +1582,7 @@ static void __exit vpe_module_exit(void)
 		}
 	}
 
-	class_device_del(&vpe_device);
+	device_del(&vpe_device);
 	unregister_chrdev(major, module_name);
 }
 

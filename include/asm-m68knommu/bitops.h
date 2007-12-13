@@ -10,6 +10,10 @@
 
 #ifdef __KERNEL__
 
+#ifndef _LINUX_BITOPS_H
+#error only <linux/bitops.h> can be included directly
+#endif
+
 #include <asm-generic/bitops/ffs.h>
 #include <asm-generic/bitops/__ffs.h>
 #include <asm-generic/bitops/sched.h>
@@ -160,6 +164,7 @@ static __inline__ int __test_bit(int nr, const volatile unsigned long * addr)
 
 #include <asm-generic/bitops/find.h>
 #include <asm-generic/bitops/hweight.h>
+#include <asm-generic/bitops/lock.h>
 
 static __inline__ int ext2_set_bit(int nr, volatile void * addr)
 {

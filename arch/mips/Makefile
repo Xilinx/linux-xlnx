@@ -18,15 +18,15 @@ cflags-y :=
 # Select the object file format to substitute into the linker script.
 #
 ifdef CONFIG_CPU_LITTLE_ENDIAN
-32bit-tool-prefix	= mipsel-linux-
-64bit-tool-prefix	= mips64el-linux-
+32bit-tool-archpref	= mipsel
+64bit-tool-archpref	= mips64el
 32bit-bfd		= elf32-tradlittlemips
 64bit-bfd		= elf64-tradlittlemips
 32bit-emul		= elf32ltsmip
 64bit-emul		= elf64ltsmip
 else
-32bit-tool-prefix	= mips-linux-
-64bit-tool-prefix	= mips64-linux-
+32bit-tool-archpref	= mips
+64bit-tool-archpref	= mips64
 32bit-bfd		= elf32-tradbigmips
 64bit-bfd		= elf64-tradbigmips
 32bit-emul		= elf32btsmip
@@ -34,16 +34,18 @@ else
 endif
 
 ifdef CONFIG_32BIT
-tool-prefix		= $(32bit-tool-prefix)
+tool-archpref		= $(32bit-tool-archpref)
 UTS_MACHINE		:= mips
 endif
 ifdef CONFIG_64BIT
-tool-prefix		= $(64bit-tool-prefix)
+tool-archpref		= $(64bit-tool-archpref)
 UTS_MACHINE		:= mips64
 endif
 
-ifdef CONFIG_CROSSCOMPILE
-CROSS_COMPILE		:= $(tool-prefix)
+ifneq ($(SUBARCH),$(ARCH))
+  ifeq ($(CROSS_COMPILE),)
+    CROSS_COMPILE := $(call cc-cross-prefix, $(tool-archpref)-linux-  $(tool-archpref)-linux-gnu-  $(tool-archpref)-unknown-linux-gnu-)
+  endif
 endif
 
 ifdef CONFIG_32BIT
@@ -60,11 +62,6 @@ vmlinux-32		= vmlinux.32
 vmlinux-64		= vmlinux
 
 cflags-y		+= -mabi=64
-ifdef CONFIG_BUILD_ELF64
-cflags-y		+= $(call cc-option,-mno-explicit-relocs)
-else
-cflags-y		+= $(call cc-option,-msym32)
-endif
 endif
 
 all-$(CONFIG_BOOT_ELF32)	:= $(vmlinux-32)
@@ -153,7 +150,8 @@ endif
 #
 # Firmware support
 #
-libs-$(CONFIG_ARC)		+= arch/mips/arc/
+libs-$(CONFIG_ARC)		+= arch/mips/fw/arc/
+libs-$(CONFIG_CFE)		+= arch/mips/fw/cfe/
 libs-$(CONFIG_SIBYTE_CFE)	+= arch/mips/sibyte/cfe/
 
 #
@@ -283,7 +281,6 @@ core-$(CONFIG_MACH_DECSTATION)	+= arch/mips/dec/
 cflags-$(CONFIG_MACH_DECSTATION)+= -Iinclude/asm-mips/mach-dec
 libs-$(CONFIG_MACH_DECSTATION)	+= arch/mips/dec/prom/
 load-$(CONFIG_MACH_DECSTATION)	+= 0xffffffff80040000
-CLEAN_FILES			+= drivers/tc/lk201-map.c
 
 #
 # Wind River PPMC Board (4KC + GT64120)
@@ -365,6 +362,13 @@ all-$(CONFIG_QEMU)		:= vmlinux.bin
 core-$(CONFIG_BASLER_EXCITE)	+= arch/mips/basler/excite/
 cflags-$(CONFIG_BASLER_EXCITE)	+= -Iinclude/asm-mips/mach-excite
 load-$(CONFIG_BASLER_EXCITE)	+= 0x80100000
+
+#
+# LASAT platforms
+#
+core-$(CONFIG_LASAT)		+= arch/mips/lasat/
+cflags-$(CONFIG_LASAT)		+= -Iinclude/asm-mips/mach-lasat
+load-$(CONFIG_LASAT)		+= 0xffffffff80000000
 
 #
 # Common VR41xx
@@ -533,6 +537,13 @@ libs-$(CONFIG_SIBYTE_BIGSUR)	+= arch/mips/sibyte/swarm/
 load-$(CONFIG_SIBYTE_BIGSUR)	:= 0xffffffff80100000
 
 #
+# Broadcom BCM47XX boards
+#
+core-$(CONFIG_BCM47XX)		+= arch/mips/bcm47xx/
+cflags-$(CONFIG_BCM47XX)	+= -Iinclude/asm-mips/mach-bcm47xx
+load-$(CONFIG_BCM47XX)		:= 0xffffffff80001000
+
+#
 # SNI RM
 #
 core-$(CONFIG_SNI_RM)		+= arch/mips/sni/
@@ -578,14 +589,34 @@ else
 JIFFIES			= jiffies_64
 endif
 
-AFLAGS		+= $(cflags-y)
-CFLAGS		+= $(cflags-y) \
+#
+# Automatically detect the build format. By default we choose
+# the elf format according to the load address.
+# We can always force a build with a 64-bits symbol format by
+# passing 'KBUILD_SYM32=no' option to the make's command line.
+#
+ifdef CONFIG_64BIT
+  ifndef KBUILD_SYM32
+    ifeq ($(shell expr $(load-y) \< 0xffffffff80000000), 0)
+      KBUILD_SYM32 = y
+    endif
+  endif
+
+  ifeq ($(KBUILD_SYM32), y)
+    ifeq ($(call cc-option-yn,-msym32), y)
+      cflags-y += -msym32 -DKBUILD_64BIT_SYM32
+    endif
+  endif
+endif
+
+KBUILD_AFLAGS	+= $(cflags-y)
+KBUILD_CFLAGS	+= $(cflags-y) \
 			-D"VMLINUX_LOAD_ADDRESS=$(load-y)"
 
 LDFLAGS			+= -m $(ld-emul)
 
 ifdef CONFIG_MIPS
-CHECKFLAGS += $(shell $(CC) $(CFLAGS) -dM -E -xc /dev/null | \
+CHECKFLAGS += $(shell $(CC) $(KBUILD_CFLAGS) -dM -E -xc /dev/null | \
 	egrep -vw '__GNUC_(|MINOR_|PATCHLEVEL_)_' | \
 	sed -e 's/^\#define /-D/' -e "s/ /='/" -e "s/$$/'/")
 ifdef CONFIG_64BIT
@@ -602,7 +633,7 @@ OBJCOPYFLAGS		+= --remove-section=.reginfo
 #
 
 CPPFLAGS_vmlinux.lds := \
-	$(CFLAGS) \
+	$(KBUILD_CFLAGS) \
 	-D"LOADADDR=$(load-y)" \
 	-D"JIFFIES=$(JIFFIES)" \
 	-D"DATAOFFSET=$(if $(dataoffset-y),$(dataoffset-y),0)"
@@ -614,6 +645,11 @@ libs-y			+= arch/mips/lib/
 core-y			+= arch/mips/kernel/ arch/mips/mm/ arch/mips/math-emu/
 
 drivers-$(CONFIG_OPROFILE)	+= arch/mips/oprofile/
+
+ifdef CONFIG_LASAT
+rom.bin rom.sw: vmlinux
+	$(Q)$(MAKE) $(build)=arch/mips/lasat/image $@
+endif
 
 #
 # Some machines like the Indy need 32-bit ELF binaries for booting purposes.
@@ -658,6 +694,7 @@ endif
 
 archclean:
 	@$(MAKE) $(clean)=arch/mips/boot
+	@$(MAKE) $(clean)=arch/mips/lasat
 
 define archhelp
 	echo '  vmlinux.ecoff        - ECOFF boot image'

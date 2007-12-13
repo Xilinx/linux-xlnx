@@ -105,7 +105,7 @@ static int v9fs_file_lock(struct file *filp, int cmd, struct file_lock *fl)
 	P9_DPRINTK(P9_DEBUG_VFS, "filp: %p lock: %p\n", filp, fl);
 
 	/* No mandatory locks */
-	if ((inode->i_mode & (S_ISGID | S_IXGRP)) == S_ISGID)
+	if (__mandatory_lock(inode))
 		return -ENOLCK;
 
 	if ((IS_SETLK(cmd) || IS_SETLKW(cmd)) && fl->fl_type != F_UNLCK) {
@@ -162,15 +162,17 @@ v9fs_file_write(struct file *filp, const char __user * data,
 
 	fid = filp->private_data;
 	ret = p9_client_uwrite(fid, data, *offset, count);
-	if (ret > 0)
+	if (ret > 0) {
+		invalidate_inode_pages2_range(inode->i_mapping, *offset,
+								*offset+ret);
 		*offset += ret;
+	}
 
 	if (*offset > inode->i_size) {
 		inode->i_size = *offset;
 		inode->i_blocks = (inode->i_size + 512 - 1) >> 9;
 	}
 
-	invalidate_inode_pages2(inode->i_mapping);
 	return ret;
 }
 

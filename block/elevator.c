@@ -186,7 +186,7 @@ static elevator_t *elevator_alloc(struct request_queue *q,
 	eq->ops = &e->ops;
 	eq->elevator_type = e;
 	kobject_init(&eq->kobj);
-	snprintf(eq->kobj.name, KOBJ_NAME_LEN, "%s", "iosched");
+	kobject_set_name(&eq->kobj, "%s", "iosched");
 	eq->kobj.ktype = &elv_ktype;
 	mutex_init(&eq->sysfs_lock);
 
@@ -390,7 +390,7 @@ EXPORT_SYMBOL(elv_rb_find);
 
 /*
  * Insert rq into dispatch queue of q.  Queue lock must be held on
- * entry.  rq is sort insted into the dispatch queue. To be used by
+ * entry.  rq is sort instead into the dispatch queue. To be used by
  * specific elevators.
  */
 void elv_dispatch_sort(struct request_queue *q, struct request *rq)
@@ -712,6 +712,14 @@ struct request *elv_next_request(struct request_queue *q)
 	int ret;
 
 	while ((rq = __elv_next_request(q)) != NULL) {
+		/*
+		 * Kill the empty barrier place holder, the driver must
+		 * not ever see it.
+		 */
+		if (blk_empty_barrier(rq)) {
+			end_queued_request(rq, 1);
+			continue;
+		}
 		if (!(rq->cmd_flags & REQ_STARTED)) {
 			/*
 			 * This is the first time the device driver
@@ -751,15 +759,8 @@ struct request *elv_next_request(struct request_queue *q)
 			rq = NULL;
 			break;
 		} else if (ret == BLKPREP_KILL) {
-			int nr_bytes = rq->hard_nr_sectors << 9;
-
-			if (!nr_bytes)
-				nr_bytes = rq->data_len;
-
-			blkdev_dequeue_request(rq);
 			rq->cmd_flags |= REQ_QUIET;
-			end_that_request_chunk(rq, 0, nr_bytes);
-			end_that_request_last(rq, 0);
+			end_queued_request(rq, 0);
 		} else {
 			printk(KERN_ERR "%s: bad return=%d\n", __FUNCTION__,
 								ret);

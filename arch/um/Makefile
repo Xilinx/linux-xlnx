@@ -2,7 +2,7 @@
 # This file is included by the global makefile so that you can add your own
 # architecture-specific flags and dependencies.
 #
-# Copyright (C) 2002 Jeff Dike (jdike@karaya.com)
+# Copyright (C) 2002 - 2007 Jeff Dike (jdike@{addtoit,linux.intel}.com)
 # Licensed under the GPL
 #
 
@@ -31,18 +31,9 @@ SYMLINK_HEADERS := $(foreach header,$(SYMLINK_HEADERS),include/asm-um/$(header))
 ARCH_SYMLINKS = include/asm-um/arch $(ARCH_DIR)/include/sysdep $(ARCH_DIR)/os \
 	$(SYMLINK_HEADERS) $(ARCH_DIR)/include/uml-config.h
 
-um-modes-$(CONFIG_MODE_TT) += tt
-um-modes-$(CONFIG_MODE_SKAS) += skas
+MODE_INCLUDE	+= -I$(srctree)/$(ARCH_DIR)/include/skas
 
-MODE_INCLUDE	+= $(foreach mode,$(um-modes-y),\
-		   -I$(srctree)/$(ARCH_DIR)/include/$(mode))
-
-MAKEFILES-INCL	+= $(foreach mode,$(um-modes-y),\
-		   $(srctree)/$(ARCH_DIR)/Makefile-$(mode))
-
-ifneq ($(MAKEFILES-INCL),)
-  include $(MAKEFILES-INCL)
-endif
+include $(srctree)/$(ARCH_DIR)/Makefile-skas
 
 ARCH_INCLUDE	:= -I$(ARCH_DIR)/include
 ifneq ($(KBUILD_SRC),)
@@ -58,14 +49,15 @@ SYS_DIR		:= $(ARCH_DIR)/include/sysdep-$(SUBARCH)
 #
 # These apply to USER_CFLAGS to.
 
-CFLAGS += $(CFLAGS-y) -D__arch_um__ -DSUBARCH=\"$(SUBARCH)\"	\
+KBUILD_CFLAGS += $(CFLAGS-y) -D__arch_um__ -DSUBARCH=\"$(SUBARCH)\"	\
 	$(ARCH_INCLUDE) $(MODE_INCLUDE) -Dvmap=kernel_vmap	\
-	-Din6addr_loopback=kernel_in6addr_loopback
+	-Din6addr_loopback=kernel_in6addr_loopback \
+	-Din6addr_any=kernel_in6addr_any
 
-AFLAGS += $(ARCH_INCLUDE)
+KBUILD_AFLAGS += $(ARCH_INCLUDE)
 
 USER_CFLAGS = $(patsubst $(KERNEL_DEFINES),,$(patsubst -D__KERNEL__,,\
-	$(patsubst -I%,,$(CFLAGS)))) $(ARCH_INCLUDE) $(MODE_INCLUDE) \
+	$(patsubst -I%,,$(KBUILD_CFLAGS)))) $(ARCH_INCLUDE) $(MODE_INCLUDE) \
 	-D_FILE_OFFSET_BITS=64
 
 include $(srctree)/$(ARCH_DIR)/Makefile-$(SUBARCH)
@@ -75,22 +67,24 @@ include $(srctree)/$(ARCH_DIR)/Makefile-os-$(OS)
 
 # -Derrno=kernel_errno - This turns all kernel references to errno into
 # kernel_errno to separate them from the libc errno.  This allows -fno-common
-# in CFLAGS.  Otherwise, it would cause ld to complain about the two different
+# in KBUILD_CFLAGS.  Otherwise, it would cause ld to complain about the two different
 # errnos.
 # These apply to kernelspace only.
+#
+# strip leading and trailing whitespace to make the USER_CFLAGS removal of these
+# defines more robust
 
-KERNEL_DEFINES = -Derrno=kernel_errno -Dsigprocmask=kernel_sigprocmask \
-	-Dmktime=kernel_mktime $(ARCH_KERNEL_DEFINES)
-CFLAGS += $(KERNEL_DEFINES)
-CFLAGS += $(call cc-option,-fno-unit-at-a-time,)
+KERNEL_DEFINES = $(strip -Derrno=kernel_errno -Dsigprocmask=kernel_sigprocmask \
+			 -Dmktime=kernel_mktime $(ARCH_KERNEL_DEFINES))
+KBUILD_CFLAGS += $(KERNEL_DEFINES)
+KBUILD_CFLAGS += $(call cc-option,-fno-unit-at-a-time,)
 
 # These are needed for clean and mrproper, since in that case .config is not
 # included; the values here are meaningless
 
 CONFIG_NEST_LEVEL ?= 0
-CONFIG_KERNEL_HALF_GIGS ?= 0
 
-SIZE = (($(CONFIG_NEST_LEVEL) + $(CONFIG_KERNEL_HALF_GIGS)) * 0x20000000)
+SIZE = ($(CONFIG_NEST_LEVEL) * 0x20000000)
 
 PHONY += linux
 
@@ -123,7 +117,6 @@ CFLAGS_NO_HARDENING := $(call cc-option, -fno-PIC,) $(call cc-option, -fno-pic,)
 	$(call cc-option, -fno-stack-protector,) \
 	$(call cc-option, -fno-stack-protector-all,)
 
-CPP_MODE-$(CONFIG_MODE_TT) := -DMODE_TT
 CONFIG_KERNEL_STACK_ORDER ?= 2
 STACK_SIZE := $(shell echo $$[ 4096 * (1 << $(CONFIG_KERNEL_STACK_ORDER)) ] )
 
@@ -131,13 +124,10 @@ ifndef START
   START = $(shell echo $$[ $(TOP_ADDR) - $(SIZE) ] )
 endif
 
-CPPFLAGS_vmlinux.lds = -U$(SUBARCH) \
-	-DSTART=$(START) -DELF_ARCH=$(ELF_ARCH) \
-	-DELF_FORMAT="$(ELF_FORMAT)" $(CPP_MODE-y) \
-	-DKERNEL_STACK_SIZE=$(STACK_SIZE) \
-	-DUNMAP_PATH=arch/um/sys-$(SUBARCH)/unmap.o
+CPPFLAGS_vmlinux.lds = -U$(SUBARCH) -DSTART=$(START) -DELF_ARCH=$(ELF_ARCH) \
+	-DELF_FORMAT="$(ELF_FORMAT)" -DKERNEL_STACK_SIZE=$(STACK_SIZE)
 
-#The wrappers will select whether using "malloc" or the kernel allocator.
+# The wrappers will select whether using "malloc" or the kernel allocator.
 LINK_WRAPS = -Wl,--wrap,malloc -Wl,--wrap,free -Wl,--wrap,calloc
 
 CFLAGS_vmlinux := $(LINK-y) $(LINK_WRAPS)
@@ -150,8 +140,8 @@ define cmd_vmlinux__
 	FORCE ,$^) ; rm -f linux
 endef
 
-#When cleaning we don't include .config, so we don't include
-#TT or skas makefiles and don't clean skas_ptregs.h.
+# When cleaning we don't include .config, so we don't include
+# TT or skas makefiles and don't clean skas_ptregs.h.
 CLEAN_FILES += linux x.i gmon.out $(ARCH_DIR)/include/uml-config.h \
 	$(ARCH_DIR)/include/user_constants.h \
 	$(ARCH_DIR)/include/kern_constants.h $(ARCH_DIR)/Kconfig.arch
@@ -176,9 +166,9 @@ include/asm-um/arch:
 	@echo '  SYMLINK $@'
 ifneq ($(KBUILD_SRC),)
 	$(Q)mkdir -p $(objtree)/include/asm-um
-	$(Q)ln -fsn $(srctree)/include/asm-$(SUBARCH) include/asm-um/arch
+	$(Q)ln -fsn $(srctree)/include/asm-$(HEADER_ARCH) include/asm-um/arch
 else
-	$(Q)cd $(TOPDIR)/include/asm-um && ln -sf ../asm-$(SUBARCH) arch
+	$(Q)cd $(TOPDIR)/include/asm-um && ln -fsn ../asm-$(HEADER_ARCH) arch
 endif
 
 $(objtree)/$(ARCH_DIR)/include:
@@ -190,7 +180,7 @@ $(ARCH_DIR)/include/sysdep: $(objtree)/$(ARCH_DIR)/include
 ifneq ($(KBUILD_SRC),)
 	$(Q)ln -fsn $(srctree)/$(ARCH_DIR)/include/sysdep-$(SUBARCH) $(ARCH_DIR)/include/sysdep
 else
-	$(Q)cd $(ARCH_DIR)/include && ln -sf sysdep-$(SUBARCH) sysdep
+	$(Q)cd $(ARCH_DIR)/include && ln -fsn sysdep-$(SUBARCH) sysdep
 endif
 
 $(ARCH_DIR)/os:
@@ -198,7 +188,7 @@ $(ARCH_DIR)/os:
 ifneq ($(KBUILD_SRC),)
 	$(Q)ln -fsn $(srctree)/$(ARCH_DIR)/os-$(OS) $(ARCH_DIR)/os
 else
-	$(Q)cd $(ARCH_DIR) && ln -sf os-$(OS) os
+	$(Q)cd $(ARCH_DIR) && ln -fsn os-$(OS) os
 endif
 
 # Generated files
@@ -232,4 +222,4 @@ $(ARCH_DIR)/include/kern_constants.h: $(objtree)/$(ARCH_DIR)/include
 	@echo '  SYMLINK $@'
 	$(Q)ln -sf ../../../include/asm-um/asm-offsets.h $@
 
-export SUBARCH USER_CFLAGS CFLAGS_NO_HARDENING OS
+export SUBARCH USER_CFLAGS CFLAGS_NO_HARDENING OS HEADER_ARCH

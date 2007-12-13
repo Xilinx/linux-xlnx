@@ -172,11 +172,21 @@ int die(const char *str, struct pt_regs *regs, long err)
 void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
 {
 	siginfo_t info;
+	const char fmt32[] = KERN_INFO "%s[%d]: unhandled signal %d " \
+			"at %08lx nip %08lx lr %08lx code %x\n";
+	const char fmt64[] = KERN_INFO "%s[%d]: unhandled signal %d " \
+			"at %016lx nip %016lx lr %016lx code %x\n";
 
 	if (!user_mode(regs)) {
 		if (die("Exception in kernel mode", regs, signr))
 			return;
-	}
+	} else if (show_unhandled_signals &&
+		    unhandled_signal(current, signr) &&
+		    printk_ratelimit()) {
+			printk(regs->msr & MSR_SF ? fmt64 : fmt32,
+				current->comm, current->pid, signr,
+				addr, regs->nip, regs->link, code);
+		}
 
 	memset(&info, 0, sizeof(info));
 	info.si_signo = signr;
@@ -191,7 +201,7 @@ void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
 	 * generate the same exception over and over again and we get
 	 * nowhere.  Better to kill it and let the kernel panic.
 	 */
-	if (is_init(current)) {
+	if (is_global_init(current)) {
 		__sighandler_t handler;
 
 		spin_lock_irq(&current->sighand->siglock);
@@ -324,46 +334,9 @@ static inline int check_io_access(struct pt_regs *regs)
 #define clear_single_step(regs)	((regs)->msr &= ~MSR_SE)
 #endif
 
-/*
- * This is "fall-back" implementation for configurations
- * which don't provide platform-specific machine check info
- */
-void __attribute__ ((weak))
-platform_machine_check(struct pt_regs *regs)
+static int generic_machine_check_exception(struct pt_regs *regs)
 {
-}
-
-void machine_check_exception(struct pt_regs *regs)
-{
-	int recover = 0;
 	unsigned long reason = get_mc_reason(regs);
-
-	/* See if any machine dependent calls */
-	if (ppc_md.machine_check_exception)
-		recover = ppc_md.machine_check_exception(regs);
-
-	if (recover)
-		return;
-
-	if (user_mode(regs)) {
-		regs->msr |= MSR_RI;
-		_exception(SIGBUS, regs, BUS_ADRERR, regs->nip);
-		return;
-	}
-
-#if defined(CONFIG_8xx) && defined(CONFIG_PCI)
-	/* the qspan pci read routines can cause machine checks -- Cort */
-	bad_page_fault(regs, regs->dar, SIGBUS);
-	return;
-#endif
-
-	if (debugger_fault_handler(regs)) {
-		regs->msr |= MSR_RI;
-		return;
-	}
-
-	if (check_io_access(regs))
-		return;
 
 #if defined(CONFIG_4xx) && !defined(CONFIG_440A)
 	if (reason & ESR_IMCP) {
@@ -480,11 +453,41 @@ void machine_check_exception(struct pt_regs *regs)
 	}
 #endif /* CONFIG_4xx */
 
-	/*
-	 * Optional platform-provided routine to print out
-	 * additional info, e.g. bus error registers.
-	 */
-	platform_machine_check(regs);
+	return 0;
+}
+
+void machine_check_exception(struct pt_regs *regs)
+{
+	int recover = 0;
+
+	/* See if any machine dependent calls */
+	if (ppc_md.machine_check_exception)
+		recover = ppc_md.machine_check_exception(regs);
+	else
+		recover = generic_machine_check_exception(regs);
+
+	if (recover)
+		return;
+
+	if (user_mode(regs)) {
+		regs->msr |= MSR_RI;
+		_exception(SIGBUS, regs, BUS_ADRERR, regs->nip);
+		return;
+	}
+
+#if defined(CONFIG_8xx) && defined(CONFIG_PCI)
+	/* the qspan pci read routines can cause machine checks -- Cort */
+	bad_page_fault(regs, regs->dar, SIGBUS);
+	return;
+#endif
+
+	if (debugger_fault_handler(regs)) {
+		regs->msr |= MSR_RI;
+		return;
+	}
+
+	if (check_io_access(regs))
+		return;
 
 	if (debugger_fault_handler(regs))
 		return;
@@ -878,7 +881,7 @@ void nonrecoverable_exception(struct pt_regs *regs)
 void trace_syscall(struct pt_regs *regs)
 {
 	printk("Task: %p(%d), PC: %08lX/%08lX, Syscall: %3ld, Result: %s%ld    %s\n",
-	       current, current->pid, regs->nip, regs->link, regs->gpr[0],
+	       current, task_pid_nr(current), regs->nip, regs->link, regs->gpr[0],
 	       regs->ccr&0x10000000?"Error=":"", regs->gpr[3], print_tainted());
 }
 
@@ -913,7 +916,9 @@ void SoftwareEmulation(struct pt_regs *regs)
 {
 	extern int do_mathemu(struct pt_regs *);
 	extern int Soft_emulate_8xx(struct pt_regs *);
+#if defined(CONFIG_MATH_EMULATION) || defined(CONFIG_8XX_MINIMAL_FPEMU)
 	int errcode;
+#endif
 
 	CHECK_FULL_REGS(regs);
 
@@ -943,7 +948,7 @@ void SoftwareEmulation(struct pt_regs *regs)
 		return;
 	}
 
-#else
+#elif defined(CONFIG_8XX_MINIMAL_FPEMU)
 	errcode = Soft_emulate_8xx(regs);
 	switch (errcode) {
 	case 0:
@@ -956,6 +961,8 @@ void SoftwareEmulation(struct pt_regs *regs)
 		_exception(SIGSEGV, regs, SEGV_MAPERR, regs->nip);
 		return;
 	}
+#else
+	_exception(SIGILL, regs, ILL_ILLOPC, regs->nip);
 #endif
 }
 #endif /* CONFIG_8xx */

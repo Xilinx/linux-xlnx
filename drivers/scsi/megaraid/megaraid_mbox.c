@@ -361,6 +361,7 @@ static struct scsi_host_template megaraid_template_g = {
 	.eh_host_reset_handler		= megaraid_reset_handler,
 	.change_queue_depth		= megaraid_change_queue_depth,
 	.use_clustering			= ENABLE_CLUSTERING,
+	.use_sg_chaining		= ENABLE_SG_CHAINING,
 	.sdev_attrs			= megaraid_sdev_attrs,
 	.shost_attrs			= megaraid_shost_attrs,
 };
@@ -426,7 +427,7 @@ megaraid_exit(void)
  * @id		: pci device id of the class of controllers
  *
  * This routine should be called whenever a new adapter is detected by the
- * PCI hotplug susbsytem.
+ * PCI hotplug susbsystem.
  */
 static int __devinit
 megaraid_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -1583,10 +1584,8 @@ megaraid_mbox_build_cmd(adapter_t *adapter, struct scsi_cmnd *scp, int *busy)
 			caddr_t			vaddr;
 
 			sgl = scsi_sglist(scp);
-			if (sgl->page) {
-				vaddr = (caddr_t)
-					(page_address((&sgl[0])->page)
-					 + (&sgl[0])->offset);
+			if (sg_page(sgl)) {
+				vaddr = (caddr_t) sg_virt(&sgl[0]);
 
 				memset(vaddr, 0, scp->cmnd[4]);
 			}
@@ -2327,10 +2326,8 @@ megaraid_mbox_dpc(unsigned long devp)
 				&& IS_RAID_CH(raid_dev, scb->dev_channel)) {
 
 			sgl = scsi_sglist(scp);
-			if (sgl->page) {
-				c = *(unsigned char *)
-					(page_address((&sgl[0])->page) +
-					 (&sgl[0])->offset);
+			if (sg_page(sgl)) {
+				c = *(unsigned char *) sg_virt(&sgl[0]);
 			} else {
 				con_log(CL_ANN, (KERN_WARNING
 						 "megaraid mailbox: invalid sg:%d\n",

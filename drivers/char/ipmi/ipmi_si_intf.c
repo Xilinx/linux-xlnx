@@ -675,7 +675,8 @@ static void handle_transaction_done(struct smi_info *smi_info)
 }
 
 /* Called on timeouts and events.  Timeouts should pass the elapsed
-   time, interrupts should pass in zero. */
+   time, interrupts should pass in zero.  Must be called with
+   si_lock held and interrupts disabled. */
 static enum si_sm_result smi_event_handler(struct smi_info *smi_info,
 					   int time)
 {
@@ -892,13 +893,16 @@ static int ipmi_thread(void *data)
 static void poll(void *send_info)
 {
 	struct smi_info *smi_info = send_info;
+	unsigned long flags;
 
 	/*
 	 * Make sure there is some delay in the poll loop so we can
 	 * drive time forward and timeout things.
 	 */
 	udelay(10);
+	spin_lock_irqsave(&smi_info->si_lock, flags);
 	smi_event_handler(smi_info, 10);
+	spin_unlock_irqrestore(&smi_info->si_lock, flags);
 }
 
 static void request_events(void *send_info)
@@ -1006,6 +1010,10 @@ static int smi_start_processing(void       *send_info,
 
 	new_smi->intf = intf;
 
+	/* Try to claim any interrupts. */
+	if (new_smi->irq_setup)
+		new_smi->irq_setup(new_smi);
+
 	/* Set up the timer that drives the interface. */
 	setup_timer(&new_smi->si_timer, smi_timeout, (long)new_smi);
 	new_smi->last_timeout_jiffies = jiffies;
@@ -1072,19 +1080,19 @@ static char          *si_type[SI_MAX_PARMS];
 #define MAX_SI_TYPE_STR 30
 static char          si_type_str[MAX_SI_TYPE_STR];
 static unsigned long addrs[SI_MAX_PARMS];
-static int num_addrs;
+static unsigned int num_addrs;
 static unsigned int  ports[SI_MAX_PARMS];
-static int num_ports;
+static unsigned int num_ports;
 static int           irqs[SI_MAX_PARMS];
-static int num_irqs;
+static unsigned int num_irqs;
 static int           regspacings[SI_MAX_PARMS];
-static int num_regspacings;
+static unsigned int num_regspacings;
 static int           regsizes[SI_MAX_PARMS];
-static int num_regsizes;
+static unsigned int num_regsizes;
 static int           regshifts[SI_MAX_PARMS];
-static int num_regshifts;
+static unsigned int num_regshifts;
 static int slave_addrs[SI_MAX_PARMS];
-static int num_slave_addrs;
+static unsigned int num_slave_addrs;
 
 #define IPMI_IO_ADDR_SPACE  0
 #define IPMI_MEM_ADDR_SPACE 1
@@ -1106,12 +1114,12 @@ MODULE_PARM_DESC(type, "Defines the type of each interface, each"
 		 " interface separated by commas.  The types are 'kcs',"
 		 " 'smic', and 'bt'.  For example si_type=kcs,bt will set"
 		 " the first interface to kcs and the second to bt");
-module_param_array(addrs, long, &num_addrs, 0);
+module_param_array(addrs, ulong, &num_addrs, 0);
 MODULE_PARM_DESC(addrs, "Sets the memory address of each interface, the"
 		 " addresses separated by commas.  Only use if an interface"
 		 " is in memory.  Otherwise, set it to zero or leave"
 		 " it blank.");
-module_param_array(ports, int, &num_ports, 0);
+module_param_array(ports, uint, &num_ports, 0);
 MODULE_PARM_DESC(ports, "Sets the port address of each interface, the"
 		 " addresses separated by commas.  Only use if an interface"
 		 " is a port.  Otherwise, set it to zero or leave"
@@ -1965,10 +1973,10 @@ struct dmi_ipmi_data
 	u8              slave_addr;
 };
 
-static int __devinit decode_dmi(struct dmi_header *dm,
+static int __devinit decode_dmi(const struct dmi_header *dm,
 				struct dmi_ipmi_data *dmi)
 {
-	u8              *data = (u8 *)dm;
+	const u8	*data = (const u8 *)dm;
 	unsigned long  	base_addr;
 	u8		reg_spacing;
 	u8              len = dm->length;
@@ -2091,13 +2099,14 @@ static __devinit void try_init_dmi(struct dmi_ipmi_data *ipmi_data)
 
 static void __devinit dmi_find_bmc(void)
 {
-	struct dmi_device    *dev = NULL;
+	const struct dmi_device *dev = NULL;
 	struct dmi_ipmi_data data;
 	int                  rv;
 
 	while ((dev = dmi_find_device(DMI_DEV_TYPE_IPMI, NULL, dev))) {
 		memset(&data, 0, sizeof(data));
-		rv = decode_dmi((struct dmi_header *) dev->device_data, &data);
+		rv = decode_dmi((const struct dmi_header *) dev->device_data,
+				&data);
 		if (!rv)
 			try_init_dmi(&data);
 	}
@@ -2252,19 +2261,19 @@ static int __devinit ipmi_of_probe(struct of_device *dev,
 		return ret;
 	}
 
-	regsize = get_property(np, "reg-size", &proplen);
+	regsize = of_get_property(np, "reg-size", &proplen);
 	if (regsize && proplen != 4) {
 		dev_warn(&dev->dev, PFX "invalid regsize from OF\n");
 		return -EINVAL;
 	}
 
-	regspacing = get_property(np, "reg-spacing", &proplen);
+	regspacing = of_get_property(np, "reg-spacing", &proplen);
 	if (regspacing && proplen != 4) {
 		dev_warn(&dev->dev, PFX "invalid regspacing from OF\n");
 		return -EINVAL;
 	}
 
-	regshift = get_property(np, "reg-shift", &proplen);
+	regshift = of_get_property(np, "reg-shift", &proplen);
 	if (regshift && proplen != 4) {
 		dev_warn(&dev->dev, PFX "invalid regshift from OF\n");
 		return -EINVAL;
@@ -2371,20 +2380,9 @@ static int try_get_dev_id(struct smi_info *smi_info)
 	/* Otherwise, we got some data. */
 	resp_len = smi_info->handlers->get_result(smi_info->si_sm,
 						  resp, IPMI_MAX_MSG_LENGTH);
-	if (resp_len < 14) {
-		/* That's odd, it should be longer. */
-		rv = -EINVAL;
-		goto out;
-	}
 
-	if ((resp[1] != IPMI_GET_DEVICE_ID_CMD) || (resp[2] != 0)) {
-		/* That's odd, it shouldn't be able to fail. */
-		rv = -EINVAL;
-		goto out;
-	}
-
-	/* Record info from the get device id, in case we need it. */
-	ipmi_demangle_device_id(resp+3, resp_len-3, &smi_info->device_id);
+	/* Check and record info from the get device id, in case we need it. */
+	rv = ipmi_demangle_device_id(resp, resp_len, &smi_info->device_id);
 
  out:
 	kfree(resp);
@@ -2763,10 +2761,6 @@ static int try_smi_init(struct smi_info *new_smi)
 
 	setup_oem_data_handler(new_smi);
 	setup_xaction_handlers(new_smi);
-
-	/* Try to claim any interrupts. */
-	if (new_smi->irq_setup)
-		new_smi->irq_setup(new_smi);
 
 	INIT_LIST_HEAD(&(new_smi->xmit_msgs));
 	INIT_LIST_HEAD(&(new_smi->hp_xmit_msgs));

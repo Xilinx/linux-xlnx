@@ -37,6 +37,7 @@
 #include <linux/spinlock.h>
 #include <linux/blkdev.h>
 #include <linux/genhd.h>
+#include <linux/scatterlist.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
@@ -918,6 +919,7 @@ queue_next:
 DBGPX(
 	printk("sector=%d, nr_sectors=%d\n", creq->sector, creq->nr_sectors);
 );
+	sg_init_table(tmp_sg, SG_MAX);
 	seg = blk_rq_map_sg(q, creq, tmp_sg);
 
 	/* Now do all the DMA Mappings */
@@ -929,7 +931,7 @@ DBGPX(
 	{
 		c->req.sg[i].size = tmp_sg[i].length;
 		c->req.sg[i].addr = (__u32) pci_map_page(h->pci_dev,
-						 tmp_sg[i].page,
+						 sg_page(&tmp_sg[i]),
 						 tmp_sg[i].offset,
 						 tmp_sg[i].length, dir);
 	}
@@ -981,13 +983,12 @@ static void start_io(ctlr_info_t *h)
 static inline void complete_buffers(struct bio *bio, int ok)
 {
 	struct bio *xbh;
-	while(bio) {
-		int nr_sectors = bio_sectors(bio);
 
+	while (bio) {
 		xbh = bio->bi_next;
 		bio->bi_next = NULL;
 		
-		bio_endio(bio, nr_sectors << 9, ok ? 0 : -EIO);
+		bio_endio(bio, ok ? 0 : -EIO);
 
 		bio = xbh;
 	}

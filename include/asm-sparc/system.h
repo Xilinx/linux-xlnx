@@ -1,5 +1,3 @@
-/* $Id: system.h,v 1.86 2001/10/30 04:57:10 davem Exp $ */
-
 #ifndef __SPARC_SYSTEM_H
 #define __SPARC_SYSTEM_H
 
@@ -14,6 +12,8 @@
 #include <asm/smp.h>
 
 #ifndef __ASSEMBLY__
+
+#include <linux/irqflags.h>
 
 /*
  * Sparc (general) CPU types
@@ -54,7 +54,7 @@ extern void sun_do_break(void);
 extern int serial_console;
 extern int stop_a_enabled;
 
-static __inline__ int con_is_present(void)
+static inline int con_is_present(void)
 {
 	return serial_console ? 0 : 1;
 }
@@ -164,26 +164,6 @@ extern void fpsave(unsigned long *fpregs, unsigned long *fsr,
 	  "o0", "o1", "o2", "o3",                   "o7");	\
 	} while(0)
 
-/*
- * Changing the IRQ level on the Sparc.
- */
-extern void local_irq_restore(unsigned long);
-extern unsigned long __local_irq_save(void);
-extern void local_irq_enable(void);
-
-static inline unsigned long getipl(void)
-{
-	unsigned long retval;
-
-	__asm__ __volatile__("rd	%%psr, %0" : "=r" (retval));
-	return retval;
-}
-
-#define local_save_flags(flags)	((flags) = getipl())
-#define local_irq_save(flags)	((flags) = __local_irq_save())
-#define local_irq_disable()	((void) __local_irq_save())
-#define irqs_disabled()		((getipl() & PSR_PIL) != 0)
-
 /* XXX Change this if we ever use a PSO mode kernel. */
 #define mb()	__asm__ __volatile__ ("" : : : "memory")
 #define rmb()	mb()
@@ -235,7 +215,7 @@ static inline unsigned long xchg_u32(__volatile__ unsigned long *m, unsigned lon
 
 extern void __xchg_called_with_bad_pointer(void);
 
-static __inline__ unsigned long __xchg(unsigned long x, __volatile__ void * ptr, int size)
+static inline unsigned long __xchg(unsigned long x, __volatile__ void * ptr, int size)
 {
 	switch (size) {
 	case 4:

@@ -11,7 +11,6 @@
 #include <asm/sections.h>
 #include <asm/prom.h>
 #include <asm/btext.h>
-#include <asm/prom.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
 #include <asm/pgtable.h>
@@ -187,7 +186,9 @@ int btext_initialize(struct device_node *np)
 		pitch = *prop;
 	if (pitch == 1)
 		pitch = 0x1000;
-	prop = of_get_property(np, "address", NULL);
+	prop = of_get_property(np, "linux,bootx-addr", NULL);
+	if (prop == NULL)
+		prop = of_get_property(np, "address", NULL);
 	if (prop)
 		address = *prop;
 

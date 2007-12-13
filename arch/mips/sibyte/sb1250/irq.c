@@ -28,6 +28,7 @@
 #include <asm/errno.h>
 #include <asm/signal.h>
 #include <asm/system.h>
+#include <asm/time.h>
 #include <asm/io.h>
 
 #include <asm/sibyte/sb1250_regs.h>
@@ -235,41 +236,6 @@ void __init init_sb1250_irqs(void)
 }
 
 
-static irqreturn_t  sb1250_dummy_handler(int irq, void *dev_id)
-{
-	return IRQ_NONE;
-}
-
-static struct irqaction sb1250_dummy_action = {
-	.handler = sb1250_dummy_handler,
-	.flags   = 0,
-	.mask    = CPU_MASK_NONE,
-	.name    = "sb1250-private",
-	.next    = NULL,
-	.dev_id  = 0
-};
-
-int sb1250_steal_irq(int irq)
-{
-	struct irq_desc *desc = irq_desc + irq;
-	unsigned long flags;
-	int retval = 0;
-
-	if (irq >= SB1250_NR_IRQS)
-		return -EINVAL;
-
-	spin_lock_irqsave(&desc->lock,flags);
-	/* Don't allow sharing at all for these */
-	if (desc->action != NULL)
-		retval = -EBUSY;
-	else {
-		desc->action = &sb1250_dummy_action;
-		desc->depth = 0;
-	}
-	spin_unlock_irqrestore(&desc->lock,flags);
-	return 0;
-}
-
 /*
  *  arch_init_irq is called early in the boot sequence from init/main.c via
  *  init_IRQ.  It is responsible for setting up the interrupt mapper and
@@ -341,8 +307,6 @@ void __init arch_init_irq(void)
 	__raw_writeq(tmp, IOADDR(A_IMR_REGISTER(0, R_IMR_INTERRUPT_MASK)));
 	__raw_writeq(tmp, IOADDR(A_IMR_REGISTER(1, R_IMR_INTERRUPT_MASK)));
 
-	sb1250_steal_irq(K_INT_MBOX_0);
-
 	/*
 	 * Note that the timer interrupts are also mapped, but this is
 	 * done in sb1250_time_init().  Also, the profiling driver
@@ -366,7 +330,6 @@ void __init arch_init_irq(void)
 		__raw_writeq(M_DUART_IMR_BRK,
 			     IOADDR(A_DUART_IMRREG(kgdb_port)));
 
-		sb1250_steal_irq(kgdb_irq);
 		__raw_writeq(IMR_IP6_VAL,
 			     IOADDR(A_IMR_REGISTER(0,
 						   R_IMR_INTERRUPT_MAP_BASE) +
@@ -380,8 +343,8 @@ void __init arch_init_irq(void)
 
 #include <linux/delay.h>
 
-#define duart_out(reg, val)     csr_out32(val, IOADDR(A_DUART_CHANREG(kgdb_port,reg)))
-#define duart_in(reg)           csr_in32(IOADDR(A_DUART_CHANREG(kgdb_port,reg)))
+#define duart_out(reg, val)     csr_out32(val, IOADDR(A_DUART_CHANREG(kgdb_port, reg)))
+#define duart_in(reg)           csr_in32(IOADDR(A_DUART_CHANREG(kgdb_port, reg)))
 
 static void sb1250_kgdb_interrupt(void)
 {
@@ -399,17 +362,28 @@ static void sb1250_kgdb_interrupt(void)
 
 #endif 	/* CONFIG_KGDB */
 
-extern void sb1250_timer_interrupt(void);
 extern void sb1250_mailbox_interrupt(void);
+
+static inline void dispatch_ip2(void)
+{
+	unsigned int cpu = smp_processor_id();
+	unsigned long long mask;
+
+	/*
+	 * Default...we've hit an IP[2] interrupt, which means we've got to
+	 * check the 1250 interrupt registers to figure out what to do.  Need
+	 * to detect which CPU we're on, now that smp_affinity is supported.
+	 */
+	mask = __raw_readq(IOADDR(A_IMR_REGISTER(cpu,
+				  R_IMR_INTERRUPT_STATUS_BASE)));
+	if (mask)
+		do_IRQ(fls64(mask) - 1);
+}
 
 asmlinkage void plat_irq_dispatch(void)
 {
+	unsigned int cpu = smp_processor_id();
 	unsigned int pending;
-
-#ifdef CONFIG_SIBYTE_SB1250_PROF
-	/* Set compare to count to silence count/compare timer interrupts */
-	write_c0_compare(read_c0_count());
-#endif
 
 	/*
 	 * What a pain. We have to be really careful saving the upper 32 bits
@@ -423,14 +397,10 @@ asmlinkage void plat_irq_dispatch(void)
 
 	pending = read_c0_cause() & read_c0_status() & ST0_IM;
 
-#ifdef CONFIG_SIBYTE_SB1250_PROF
-	if (pending & CAUSEF_IP7) /* Cpu performance counter interrupt */
-		sbprof_cpu_intr();
-	else
-#endif
-
-	if (pending & CAUSEF_IP4)
-		sb1250_timer_interrupt();
+	if (pending & CAUSEF_IP7) /* CPU performance counter interrupt */
+		do_IRQ(MIPS_CPU_IRQ_BASE + 7);
+	else if (pending & CAUSEF_IP4)
+		do_IRQ(K_INT_TIMER_0 + cpu); 	/* sb1250_timer_interrupt() */
 
 #ifdef CONFIG_SMP
 	else if (pending & CAUSEF_IP3)
@@ -442,21 +412,8 @@ asmlinkage void plat_irq_dispatch(void)
 		sb1250_kgdb_interrupt();
 #endif
 
-	else if (pending & CAUSEF_IP2) {
-		unsigned long long mask;
-
-		/*
-		 * Default...we've hit an IP[2] interrupt, which means we've
-		 * got to check the 1250 interrupt registers to figure out what
-		 * to do.  Need to detect which CPU we're on, now that
-		 * smp_affinity is supported.
-		 */
-		mask = __raw_readq(IOADDR(A_IMR_REGISTER(smp_processor_id(),
-		                              R_IMR_INTERRUPT_STATUS_BASE)));
-		if (mask)
-			do_IRQ(fls64(mask) - 1);
-		else
-			spurious_interrupt();
-	} else
+	else if (pending & CAUSEF_IP2)
+		dispatch_ip2();
+	else
 		spurious_interrupt();
 }

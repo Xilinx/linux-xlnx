@@ -23,7 +23,6 @@
 */
 
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/init.h>
 
 #include <asm/io.h>
@@ -42,7 +41,7 @@ static void vp3054_bit_setscl(void *data, int state)
 {
 	struct cx8802_dev *dev = data;
 	struct cx88_core *core = dev->core;
-	struct vp3054_i2c_state *vp3054_i2c = dev->card_priv;
+	struct vp3054_i2c_state *vp3054_i2c = dev->vp3054;
 
 	if (state) {
 		vp3054_i2c->state |=  0x0001;	/* SCL high */
@@ -59,7 +58,7 @@ static void vp3054_bit_setsda(void *data, int state)
 {
 	struct cx8802_dev *dev = data;
 	struct cx88_core *core = dev->core;
-	struct vp3054_i2c_state *vp3054_i2c = dev->card_priv;
+	struct vp3054_i2c_state *vp3054_i2c = dev->vp3054;
 
 	if (state) {
 		vp3054_i2c->state |=  0x0002;	/* SDA high */
@@ -111,13 +110,13 @@ int vp3054_i2c_probe(struct cx8802_dev *dev)
 	struct vp3054_i2c_state *vp3054_i2c;
 	int rc;
 
-	if (core->board != CX88_BOARD_DNTV_LIVE_DVB_T_PRO)
+	if (core->boardnr != CX88_BOARD_DNTV_LIVE_DVB_T_PRO)
 		return 0;
 
-	dev->card_priv = kzalloc(sizeof(*vp3054_i2c), GFP_KERNEL);
-	if (dev->card_priv == NULL)
+	vp3054_i2c = kzalloc(sizeof(*vp3054_i2c), GFP_KERNEL);
+	if (vp3054_i2c == NULL)
 		return -ENOMEM;
-	vp3054_i2c = dev->card_priv;
+	dev->vp3054 = vp3054_i2c;
 
 	memcpy(&vp3054_i2c->algo, &vp3054_i2c_algo_template,
 	       sizeof(vp3054_i2c->algo));
@@ -140,8 +139,8 @@ int vp3054_i2c_probe(struct cx8802_dev *dev)
 	if (0 != rc) {
 		printk("%s: vp3054_i2c register FAILED\n", core->name);
 
-		kfree(dev->card_priv);
-		dev->card_priv = NULL;
+		kfree(dev->vp3054);
+		dev->vp3054 = NULL;
 	}
 
 	return rc;
@@ -149,10 +148,10 @@ int vp3054_i2c_probe(struct cx8802_dev *dev)
 
 void vp3054_i2c_remove(struct cx8802_dev *dev)
 {
-	struct vp3054_i2c_state *vp3054_i2c = dev->card_priv;
+	struct vp3054_i2c_state *vp3054_i2c = dev->vp3054;
 
 	if (vp3054_i2c == NULL ||
-	    dev->core->board != CX88_BOARD_DNTV_LIVE_DVB_T_PRO)
+	    dev->core->boardnr != CX88_BOARD_DNTV_LIVE_DVB_T_PRO)
 		return;
 
 	i2c_del_adapter(&vp3054_i2c->adap);

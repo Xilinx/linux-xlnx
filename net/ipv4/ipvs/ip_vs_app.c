@@ -25,6 +25,8 @@
 #include <linux/skbuff.h>
 #include <linux/in.h>
 #include <linux/ip.h>
+#include <linux/netfilter.h>
+#include <net/net_namespace.h>
 #include <net/protocol.h>
 #include <net/tcp.h>
 #include <asm/system.h>
@@ -327,18 +329,18 @@ static inline void vs_seq_update(struct ip_vs_conn *cp, struct ip_vs_seq *vseq,
 	spin_unlock(&cp->lock);
 }
 
-static inline int app_tcp_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb,
+static inline int app_tcp_pkt_out(struct ip_vs_conn *cp, struct sk_buff *skb,
 				  struct ip_vs_app *app)
 {
 	int diff;
-	const unsigned int tcp_offset = ip_hdrlen(*pskb);
+	const unsigned int tcp_offset = ip_hdrlen(skb);
 	struct tcphdr *th;
 	__u32 seq;
 
-	if (!ip_vs_make_skb_writable(pskb, tcp_offset + sizeof(*th)))
+	if (!skb_make_writable(skb, tcp_offset + sizeof(*th)))
 		return 0;
 
-	th = (struct tcphdr *)(skb_network_header(*pskb) + tcp_offset);
+	th = (struct tcphdr *)(skb_network_header(skb) + tcp_offset);
 
 	/*
 	 *	Remember seq number in case this pkt gets resized
@@ -359,7 +361,7 @@ static inline int app_tcp_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb,
 	if (app->pkt_out == NULL)
 		return 1;
 
-	if (!app->pkt_out(app, cp, pskb, &diff))
+	if (!app->pkt_out(app, cp, skb, &diff))
 		return 0;
 
 	/*
@@ -377,7 +379,7 @@ static inline int app_tcp_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb,
  *	called by ipvs packet handler, assumes previously checked cp!=NULL
  *	returns false if it can't handle packet (oom)
  */
-int ip_vs_app_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb)
+int ip_vs_app_pkt_out(struct ip_vs_conn *cp, struct sk_buff *skb)
 {
 	struct ip_vs_app *app;
 
@@ -390,7 +392,7 @@ int ip_vs_app_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb)
 
 	/* TCP is complicated */
 	if (cp->protocol == IPPROTO_TCP)
-		return app_tcp_pkt_out(cp, pskb, app);
+		return app_tcp_pkt_out(cp, skb, app);
 
 	/*
 	 *	Call private output hook function
@@ -398,22 +400,22 @@ int ip_vs_app_pkt_out(struct ip_vs_conn *cp, struct sk_buff **pskb)
 	if (app->pkt_out == NULL)
 		return 1;
 
-	return app->pkt_out(app, cp, pskb, NULL);
+	return app->pkt_out(app, cp, skb, NULL);
 }
 
 
-static inline int app_tcp_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb,
+static inline int app_tcp_pkt_in(struct ip_vs_conn *cp, struct sk_buff *skb,
 				 struct ip_vs_app *app)
 {
 	int diff;
-	const unsigned int tcp_offset = ip_hdrlen(*pskb);
+	const unsigned int tcp_offset = ip_hdrlen(skb);
 	struct tcphdr *th;
 	__u32 seq;
 
-	if (!ip_vs_make_skb_writable(pskb, tcp_offset + sizeof(*th)))
+	if (!skb_make_writable(skb, tcp_offset + sizeof(*th)))
 		return 0;
 
-	th = (struct tcphdr *)(skb_network_header(*pskb) + tcp_offset);
+	th = (struct tcphdr *)(skb_network_header(skb) + tcp_offset);
 
 	/*
 	 *	Remember seq number in case this pkt gets resized
@@ -434,7 +436,7 @@ static inline int app_tcp_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb,
 	if (app->pkt_in == NULL)
 		return 1;
 
-	if (!app->pkt_in(app, cp, pskb, &diff))
+	if (!app->pkt_in(app, cp, skb, &diff))
 		return 0;
 
 	/*
@@ -452,7 +454,7 @@ static inline int app_tcp_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb,
  *	called by ipvs packet handler, assumes previously checked cp!=NULL.
  *	returns false if can't handle packet (oom).
  */
-int ip_vs_app_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb)
+int ip_vs_app_pkt_in(struct ip_vs_conn *cp, struct sk_buff *skb)
 {
 	struct ip_vs_app *app;
 
@@ -465,7 +467,7 @@ int ip_vs_app_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb)
 
 	/* TCP is complicated */
 	if (cp->protocol == IPPROTO_TCP)
-		return app_tcp_pkt_in(cp, pskb, app);
+		return app_tcp_pkt_in(cp, skb, app);
 
 	/*
 	 *	Call private input hook function
@@ -473,7 +475,7 @@ int ip_vs_app_pkt_in(struct ip_vs_conn *cp, struct sk_buff **pskb)
 	if (app->pkt_in == NULL)
 		return 1;
 
-	return app->pkt_in(app, cp, pskb, NULL);
+	return app->pkt_in(app, cp, skb, NULL);
 }
 
 
@@ -616,12 +618,12 @@ int ip_vs_skb_replace(struct sk_buff *skb, gfp_t pri,
 int ip_vs_app_init(void)
 {
 	/* we will replace it with proc_net_ipvs_create() soon */
-	proc_net_fops_create("ip_vs_app", 0, &ip_vs_app_fops);
+	proc_net_fops_create(&init_net, "ip_vs_app", 0, &ip_vs_app_fops);
 	return 0;
 }
 
 
 void ip_vs_app_cleanup(void)
 {
-	proc_net_remove("ip_vs_app");
+	proc_net_remove(&init_net, "ip_vs_app");
 }

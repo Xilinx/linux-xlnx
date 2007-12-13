@@ -104,8 +104,7 @@ asmlinkage void resume(void);
 #define mb()   asm volatile (""   : : :"memory")
 #define rmb()  asm volatile (""   : : :"memory")
 #define wmb()  asm volatile (""   : : :"memory")
-#define set_rmb(var, value)    do { xchg(&var, value); } while (0)
-#define set_mb(var, value)     set_rmb(var, value)
+#define set_mb(var, value) do { xchg(&var, value); } while (0)
 
 #ifdef CONFIG_SMP
 #define smp_mb()	mb()
@@ -253,8 +252,7 @@ cmpxchg(volatile int *p, int old, int new)
         ");				\
 })
 #elif defined(CONFIG_NETtel) || defined(CONFIG_eLIA) || \
-      defined(CONFIG_DISKtel) || defined(CONFIG_SECUREEDGEMP3) || \
-      defined(CONFIG_CLEOPATRA)
+      defined(CONFIG_SECUREEDGEMP3) || defined(CONFIG_CLEOPATRA)
 #define HARD_RESET_NOW() ({		\
         asm("				\
 	movew #0x2700, %sr;		\

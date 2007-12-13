@@ -466,6 +466,8 @@ struct spider_net_card {
 	struct pci_dev *pdev;
 	struct mii_phy phy;
 
+	struct napi_struct napi;
+
 	int medium;
 
 	void __iomem *regs;
@@ -485,15 +487,11 @@ struct spider_net_card {
 
 	/* for ethtool */
 	int msg_enable;
-	struct net_device_stats netdev_stats;
 	struct spider_net_extra_stats spider_stats;
 	struct spider_net_options options;
 
 	/* Must be last item in struct */
 	struct spider_net_descr darray[0];
 };
-
-#define pr_err(fmt,arg...) \
-	printk(KERN_ERR fmt ,##arg)
 
 #endif

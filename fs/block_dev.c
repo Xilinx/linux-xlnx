@@ -172,7 +172,7 @@ blkdev_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 }
 
 #if 0
-static int blk_end_aio(struct bio *bio, unsigned int bytes_done, int error)
+static void blk_end_aio(struct bio *bio, int error)
 {
 	struct kiocb *iocb = bio->bi_private;
 	atomic_t *bio_count = &iocb->ki_bio_count;
@@ -378,14 +378,26 @@ static int blkdev_readpage(struct file * file, struct page * page)
 	return block_read_full_page(page, blkdev_get_block);
 }
 
-static int blkdev_prepare_write(struct file *file, struct page *page, unsigned from, unsigned to)
+static int blkdev_write_begin(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned flags,
+			struct page **pagep, void **fsdata)
 {
-	return block_prepare_write(page, from, to, blkdev_get_block);
+	*pagep = NULL;
+	return block_write_begin(file, mapping, pos, len, flags, pagep, fsdata,
+				blkdev_get_block);
 }
 
-static int blkdev_commit_write(struct file *file, struct page *page, unsigned from, unsigned to)
+static int blkdev_write_end(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned copied,
+			struct page *page, void *fsdata)
 {
-	return block_commit_write(page, from, to);
+	int ret;
+	ret = block_write_end(file, mapping, pos, len, copied, page, fsdata);
+
+	unlock_page(page);
+	page_cache_release(page);
+
+	return ret;
 }
 
 /*
@@ -453,7 +465,7 @@ static void bdev_destroy_inode(struct inode *inode)
 	kmem_cache_free(bdev_cachep, bdi);
 }
 
-static void init_once(void * foo, struct kmem_cache * cachep, unsigned long flags)
+static void init_once(struct kmem_cache * cachep, void *foo)
 {
 	struct bdev_inode *ei = (struct bdev_inode *) foo;
 	struct block_device *bdev = &ei->bdev;
@@ -1327,8 +1339,8 @@ const struct address_space_operations def_blk_aops = {
 	.readpage	= blkdev_readpage,
 	.writepage	= blkdev_writepage,
 	.sync_page	= block_sync_page,
-	.prepare_write	= blkdev_prepare_write,
-	.commit_write	= blkdev_commit_write,
+	.write_begin	= blkdev_write_begin,
+	.write_end	= blkdev_write_end,
 	.writepages	= generic_writepages,
 	.direct_IO	= blkdev_direct_IO,
 };

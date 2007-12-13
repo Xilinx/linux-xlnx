@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Ivo van Doorn
+ * Copyright (C) 2006 - 2007 Ivo van Doorn
  * Copyright (C) 2007 Dmitry Torokhov
  *
  * This program is free software; you can redistribute it and/or modify
@@ -27,6 +27,10 @@
 #include <linux/mutex.h>
 #include <linux/rfkill.h>
 
+/* Get declaration of rfkill_switch_all() to shut up sparse. */
+#include "rfkill-input.h"
+
+
 MODULE_AUTHOR("Ivo van Doorn <IvDoorn@gmail.com>");
 MODULE_VERSION("1.0");
 MODULE_DESCRIPTION("RF switch support");
@@ -37,22 +41,35 @@ static DEFINE_MUTEX(rfkill_mutex);
 
 static enum rfkill_state rfkill_states[RFKILL_TYPE_MAX];
 
+
+static void rfkill_led_trigger(struct rfkill *rfkill,
+			       enum rfkill_state state)
+{
+#ifdef CONFIG_RFKILL_LEDS
+	struct led_trigger *led = &rfkill->led_trigger;
+
+	if (!led->name)
+		return;
+	if (state == RFKILL_STATE_OFF)
+		led_trigger_event(led, LED_OFF);
+	else
+		led_trigger_event(led, LED_FULL);
+#endif /* CONFIG_RFKILL_LEDS */
+}
+
 static int rfkill_toggle_radio(struct rfkill *rfkill,
 				enum rfkill_state state)
 {
-	int retval;
-
-	retval = mutex_lock_interruptible(&rfkill->mutex);
-	if (retval)
-		return retval;
+	int retval = 0;
 
 	if (state != rfkill->state) {
 		retval = rfkill->toggle_radio(rfkill->data, state);
-		if (!retval)
+		if (!retval) {
 			rfkill->state = state;
+			rfkill_led_trigger(rfkill, state);
+		}
 	}
 
-	mutex_unlock(&rfkill->mutex);
 	return retval;
 }
 
@@ -106,8 +123,8 @@ static ssize_t rfkill_type_show(struct device *dev,
 	case RFKILL_TYPE_BLUETOOTH:
 		type = "bluetooth";
 		break;
-	case RFKILL_TYPE_IRDA:
-		type = "irda";
+	case RFKILL_TYPE_UWB:
+		type = "ultrawideband";
 		break;
 	default:
 		BUG();
@@ -136,12 +153,13 @@ static ssize_t rfkill_state_store(struct device *dev,
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
+	if (mutex_lock_interruptible(&rfkill->mutex))
+		return -ERESTARTSYS;
 	error = rfkill_toggle_radio(rfkill,
 			state ? RFKILL_STATE_ON : RFKILL_STATE_OFF);
-	if (error)
-		return error;
+	mutex_unlock(&rfkill->mutex);
 
-	return count;
+	return error ? error : count;
 }
 
 static ssize_t rfkill_claim_show(struct device *dev,
@@ -172,6 +190,10 @@ static ssize_t rfkill_claim_store(struct device *dev,
 	if (error)
 		return error;
 
+	if (rfkill->user_claim_unsupported) {
+		error = -EOPNOTSUPP;
+		goto out_unlock;
+	}
 	if (rfkill->user_claim != claim) {
 		if (!claim)
 			rfkill_toggle_radio(rfkill,
@@ -179,9 +201,10 @@ static ssize_t rfkill_claim_store(struct device *dev,
 		rfkill->user_claim = claim;
 	}
 
+out_unlock:
 	mutex_unlock(&rfkill_mutex);
 
-	return count;
+	return error ? error : count;
 }
 
 static struct device_attribute rfkill_dev_attrs[] = {
@@ -253,21 +276,17 @@ static struct class rfkill_class = {
 
 static int rfkill_add_switch(struct rfkill *rfkill)
 {
-	int retval;
+	int error;
 
-	retval = mutex_lock_interruptible(&rfkill_mutex);
-	if (retval)
-		return retval;
+	mutex_lock(&rfkill_mutex);
 
-	retval = rfkill_toggle_radio(rfkill, rfkill_states[rfkill->type]);
-	if (retval)
-		goto out;
+	error = rfkill_toggle_radio(rfkill, rfkill_states[rfkill->type]);
+	if (!error)
+		list_add_tail(&rfkill->node, &rfkill_list);
 
-	list_add_tail(&rfkill->node, &rfkill_list);
-
- out:
 	mutex_unlock(&rfkill_mutex);
-	return retval;
+
+	return error;
 }
 
 static void rfkill_remove_switch(struct rfkill *rfkill)
@@ -281,7 +300,7 @@ static void rfkill_remove_switch(struct rfkill *rfkill)
 /**
  * rfkill_allocate - allocate memory for rfkill structure.
  * @parent: device that has rf switch on it
- * @type: type of the switch (wlan, bluetooth, irda)
+ * @type: type of the switch (RFKILL_TYPE_*)
  *
  * This function should be called by the network driver when it needs
  * rfkill structure. Once the structure is allocated the driver shoud
@@ -328,6 +347,26 @@ void rfkill_free(struct rfkill *rfkill)
 }
 EXPORT_SYMBOL(rfkill_free);
 
+static void rfkill_led_trigger_register(struct rfkill *rfkill)
+{
+#ifdef CONFIG_RFKILL_LEDS
+	int error;
+
+	rfkill->led_trigger.name = rfkill->dev.bus_id;
+	error = led_trigger_register(&rfkill->led_trigger);
+	if (error)
+		rfkill->led_trigger.name = NULL;
+#endif /* CONFIG_RFKILL_LEDS */
+}
+
+static void rfkill_led_trigger_unregister(struct rfkill *rfkill)
+{
+#ifdef CONFIG_RFKILL_LEDS
+	if (rfkill->led_trigger.name)
+		led_trigger_unregister(&rfkill->led_trigger);
+#endif
+}
+
 /**
  * rfkill_register - Register a rfkill structure.
  * @rfkill: rfkill structure to be registered
@@ -344,13 +383,17 @@ int rfkill_register(struct rfkill *rfkill)
 
 	if (!rfkill->toggle_radio)
 		return -EINVAL;
+	if (rfkill->type >= RFKILL_TYPE_MAX)
+		return -EINVAL;
+
+	snprintf(dev->bus_id, sizeof(dev->bus_id),
+		 "rfkill%ld", (long)atomic_inc_return(&rfkill_no) - 1);
+
+	rfkill_led_trigger_register(rfkill);
 
 	error = rfkill_add_switch(rfkill);
 	if (error)
 		return error;
-
-	snprintf(dev->bus_id, sizeof(dev->bus_id),
-		 "rfkill%ld", (long)atomic_inc_return(&rfkill_no) - 1);
 
 	error = device_add(dev);
 	if (error) {
@@ -374,6 +417,7 @@ void rfkill_unregister(struct rfkill *rfkill)
 {
 	device_del(&rfkill->dev);
 	rfkill_remove_switch(rfkill);
+	rfkill_led_trigger_unregister(rfkill);
 	put_device(&rfkill->dev);
 }
 EXPORT_SYMBOL(rfkill_unregister);
@@ -403,5 +447,5 @@ static void __exit rfkill_exit(void)
 	class_unregister(&rfkill_class);
 }
 
-module_init(rfkill_init);
+subsys_initcall(rfkill_init);
 module_exit(rfkill_exit);

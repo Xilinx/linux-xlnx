@@ -200,7 +200,7 @@ static int tick_check_new_device(struct clock_event_device *newdev)
 
 	cpu = smp_processor_id();
 	if (!cpu_isset(cpu, newdev->cpumask))
-		goto out;
+		goto out_bc;
 
 	td = &per_cpu(tick_cpu_device, cpu);
 	curdev = td->evtdev;
@@ -265,7 +265,7 @@ out_bc:
 	 */
 	if (tick_check_broadcast_device(newdev))
 		ret = NOTIFY_STOP;
-out:
+
 	spin_unlock_irqrestore(&tick_device_lock, flags);
 
 	return ret;
@@ -345,6 +345,7 @@ static int tick_notify(struct notifier_block *nb, unsigned long reason,
 
 	case CLOCK_EVT_NOTIFY_BROADCAST_ON:
 	case CLOCK_EVT_NOTIFY_BROADCAST_OFF:
+	case CLOCK_EVT_NOTIFY_BROADCAST_FORCE:
 		tick_broadcast_on_off(reason, dev);
 		break;
 

@@ -11,6 +11,14 @@
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
 
+struct kmem_cache_cpu {
+	void **freelist;
+	struct page *page;
+	int node;
+	unsigned int offset;
+	unsigned int objsize;
+};
+
 struct kmem_cache_node {
 	spinlock_t list_lock;	/* Protect partial list and nr_partial */
 	unsigned long nr_partial;
@@ -41,7 +49,7 @@ struct kmem_cache {
 	/* Allocation and freeing of slabs */
 	int objects;		/* Number of objects in slab */
 	int refcount;		/* Refcount for slab cache destroy */
-	void (*ctor)(void *, struct kmem_cache *, unsigned long);
+	void (*ctor)(struct kmem_cache *, void *);
 	int inuse;		/* Offset to metadata */
 	int align;		/* Alignment */
 	const char *name;	/* Name (only for display!) */
@@ -54,7 +62,11 @@ struct kmem_cache {
 	int defrag_ratio;
 	struct kmem_cache_node *node[MAX_NUMNODES];
 #endif
-	struct page *cpu_slab[NR_CPUS];
+#ifdef CONFIG_SMP
+	struct kmem_cache_cpu *cpu_slab[NR_CPUS];
+#else
+	struct kmem_cache_cpu cpu_slab;
+#endif
 };
 
 /*
@@ -72,7 +84,7 @@ struct kmem_cache {
  * We keep the general caches in an array of slab caches that are used for
  * 2^x bytes of allocations.
  */
-extern struct kmem_cache kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
+extern struct kmem_cache kmalloc_caches[PAGE_SHIFT];
 
 /*
  * Sorry that the following has to be that ugly but some versions of GCC
@@ -82,9 +94,6 @@ static __always_inline int kmalloc_index(size_t size)
 {
 	if (!size)
 		return 0;
-
-	if (size > KMALLOC_MAX_SIZE)
-		return -1;
 
 	if (size <= KMALLOC_MIN_SIZE)
 		return KMALLOC_SHIFT_LOW;
@@ -102,6 +111,10 @@ static __always_inline int kmalloc_index(size_t size)
 	if (size <=        512) return 9;
 	if (size <=       1024) return 10;
 	if (size <=   2 * 1024) return 11;
+/*
+ * The following is only needed to support architectures with a larger page
+ * size than 4k.
+ */
 	if (size <=   4 * 1024) return 12;
 	if (size <=   8 * 1024) return 13;
 	if (size <=  16 * 1024) return 14;
@@ -109,13 +122,9 @@ static __always_inline int kmalloc_index(size_t size)
 	if (size <=  64 * 1024) return 16;
 	if (size <= 128 * 1024) return 17;
 	if (size <= 256 * 1024) return 18;
-	if (size <=  512 * 1024) return 19;
+	if (size <= 512 * 1024) return 19;
 	if (size <= 1024 * 1024) return 20;
 	if (size <=  2 * 1024 * 1024) return 21;
-	if (size <=  4 * 1024 * 1024) return 22;
-	if (size <=  8 * 1024 * 1024) return 23;
-	if (size <= 16 * 1024 * 1024) return 24;
-	if (size <= 32 * 1024 * 1024) return 25;
 	return -1;
 
 /*
@@ -140,19 +149,6 @@ static __always_inline struct kmem_cache *kmalloc_slab(size_t size)
 	if (index == 0)
 		return NULL;
 
-	/*
-	 * This function only gets expanded if __builtin_constant_p(size), so
-	 * testing it here shouldn't be needed.  But some versions of gcc need
-	 * help.
-	 */
-	if (__builtin_constant_p(size) && index < 0) {
-		/*
-		 * Generate a link failure. Would be great if we could
-		 * do something to stop the compile here.
-		 */
-		extern void __kmalloc_size_too_large(void);
-		__kmalloc_size_too_large();
-	}
 	return &kmalloc_caches[index];
 }
 
@@ -168,15 +164,21 @@ void *__kmalloc(size_t size, gfp_t flags);
 
 static __always_inline void *kmalloc(size_t size, gfp_t flags)
 {
-	if (__builtin_constant_p(size) && !(flags & SLUB_DMA)) {
-		struct kmem_cache *s = kmalloc_slab(size);
+	if (__builtin_constant_p(size)) {
+		if (size > PAGE_SIZE / 2)
+			return (void *)__get_free_pages(flags | __GFP_COMP,
+							get_order(size));
 
-		if (!s)
-			return ZERO_SIZE_PTR;
+		if (!(flags & SLUB_DMA)) {
+			struct kmem_cache *s = kmalloc_slab(size);
 
-		return kmem_cache_alloc(s, flags);
-	} else
-		return __kmalloc(size, flags);
+			if (!s)
+				return ZERO_SIZE_PTR;
+
+			return kmem_cache_alloc(s, flags);
+		}
+	}
+	return __kmalloc(size, flags);
 }
 
 #ifdef CONFIG_NUMA
@@ -185,15 +187,16 @@ void *kmem_cache_alloc_node(struct kmem_cache *, gfp_t flags, int node);
 
 static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
 {
-	if (__builtin_constant_p(size) && !(flags & SLUB_DMA)) {
-		struct kmem_cache *s = kmalloc_slab(size);
+	if (__builtin_constant_p(size) &&
+		size <= PAGE_SIZE / 2 && !(flags & SLUB_DMA)) {
+			struct kmem_cache *s = kmalloc_slab(size);
 
 		if (!s)
 			return ZERO_SIZE_PTR;
 
 		return kmem_cache_alloc_node(s, flags, node);
-	} else
-		return __kmalloc_node(size, flags, node);
+	}
+	return __kmalloc_node(size, flags, node);
 }
 #endif
 

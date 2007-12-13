@@ -27,7 +27,7 @@ struct lifebook_data {
 
 static const char *desired_serio_phys;
 
-static int lifebook_set_serio_phys(struct dmi_system_id *d)
+static int lifebook_set_serio_phys(const struct dmi_system_id *d)
 {
 	desired_serio_phys = d->driver_data;
 	return 0;
@@ -35,13 +35,13 @@ static int lifebook_set_serio_phys(struct dmi_system_id *d)
 
 static unsigned char lifebook_use_6byte_proto;
 
-static int lifebook_set_6byte_proto(struct dmi_system_id *d)
+static int lifebook_set_6byte_proto(const struct dmi_system_id *d)
 {
 	lifebook_use_6byte_proto = 1;
 	return 0;
 }
 
-static struct dmi_system_id lifebook_dmi_table[] = {
+static const struct dmi_system_id lifebook_dmi_table[] = {
 	{
 		.ident = "FLORA-ie 55mi",
 		.matches = {
@@ -95,6 +95,14 @@ static struct dmi_system_id lifebook_dmi_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "CF-29"),
 		},
 		.callback = lifebook_set_6byte_proto,
+	},
+	{
+		.ident = "CF-72",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "CF-72"),
+		},
+		.callback = lifebook_set_serio_phys,
+		.driver_data = "isa0060/serio3",
 	},
 	{
 		.ident = "Lifebook B142",
@@ -262,9 +270,10 @@ static int lifebook_create_relative_device(struct psmouse *psmouse)
 	dev2->id.version = 0x0000;
 	dev2->dev.parent = &psmouse->ps2dev.serio->dev;
 
-	dev2->evbit[0] = BIT(EV_KEY) | BIT(EV_REL);
-	dev2->relbit[LONG(REL_X)] = BIT(REL_X) | BIT(REL_Y);
-	dev2->keybit[LONG(BTN_LEFT)] = BIT(BTN_LEFT) | BIT(BTN_RIGHT);
+	dev2->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL);
+	dev2->relbit[BIT_WORD(REL_X)] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
+	dev2->keybit[BIT_WORD(BTN_LEFT)] = BIT_MASK(BTN_LEFT) |
+		BIT_MASK(BTN_RIGHT);
 
 	error = input_register_device(priv->dev2);
 	if (error)
@@ -282,14 +291,14 @@ static int lifebook_create_relative_device(struct psmouse *psmouse)
 int lifebook_init(struct psmouse *psmouse)
 {
 	struct input_dev *dev1 = psmouse->dev;
-	int max_coord = lifebook_use_6byte_proto ? 1024 : 4096;
+	int max_coord = lifebook_use_6byte_proto ? 4096 : 1024;
 
 	if (lifebook_absolute_mode(psmouse))
 		return -1;
 
-	dev1->evbit[0] = BIT(EV_ABS) | BIT(EV_KEY);
+	dev1->evbit[0] = BIT_MASK(EV_ABS) | BIT_MASK(EV_KEY);
 	dev1->relbit[0] = 0;
-	dev1->keybit[LONG(BTN_TOUCH)] = BIT(BTN_TOUCH);
+	dev1->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
 	input_set_abs_params(dev1, ABS_X, 0, max_coord, 0, 0);
 	input_set_abs_params(dev1, ABS_Y, 0, max_coord, 0, 0);
 

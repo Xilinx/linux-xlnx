@@ -590,6 +590,7 @@ static int usbnet_stop (struct net_device *net)
 	dev->flags = 0;
 	del_timer_sync (&dev->delay);
 	tasklet_kill (&dev->bh);
+	usb_autopm_put_interface(dev->intf);
 
 	return 0;
 }
@@ -603,8 +604,18 @@ static int usbnet_stop (struct net_device *net)
 static int usbnet_open (struct net_device *net)
 {
 	struct usbnet		*dev = netdev_priv(net);
-	int			retval = 0;
+	int			retval;
 	struct driver_info	*info = dev->driver_info;
+
+	if ((retval = usb_autopm_get_interface(dev->intf)) < 0) {
+		if (netif_msg_ifup (dev))
+			devinfo (dev,
+				"resumption fail (%d) usbnet usb-%s-%s, %s",
+				retval,
+				dev->udev->bus->bus_name, dev->udev->devpath,
+			info->description);
+		goto done_nopm;
+	}
 
 	// put into "known safe" state
 	if (info->reset && (retval = info->reset (dev)) < 0) {
@@ -659,7 +670,10 @@ static int usbnet_open (struct net_device *net)
 
 	// delay posting reads until we're fully open
 	tasklet_schedule (&dev->bh);
+	return retval;
 done:
+	usb_autopm_put_interface(dev->intf);
+done_nopm:
 	return retval;
 }
 
@@ -668,9 +682,6 @@ done:
 /* ethtool methods; minidrivers may need to add some more, but
  * they'll probably want to use this base set.
  */
-
-#if defined(CONFIG_MII) || defined(CONFIG_MII_MODULE)
-#define HAVE_MII
 
 int usbnet_get_settings (struct net_device *net, struct ethtool_cmd *cmd)
 {
@@ -730,8 +741,6 @@ int usbnet_nway_reset(struct net_device *net)
 }
 EXPORT_SYMBOL_GPL(usbnet_nway_reset);
 
-#endif	/* HAVE_MII */
-
 void usbnet_get_drvinfo (struct net_device *net, struct ethtool_drvinfo *info)
 {
 	struct usbnet *dev = netdev_priv(net);
@@ -762,12 +771,10 @@ EXPORT_SYMBOL_GPL(usbnet_set_msglevel);
 
 /* drivers may override default ethtool_ops in their bind() routine */
 static struct ethtool_ops usbnet_ethtool_ops = {
-#ifdef	HAVE_MII
 	.get_settings		= usbnet_get_settings,
 	.set_settings		= usbnet_set_settings,
 	.get_link		= usbnet_get_link,
 	.nway_reset		= usbnet_nway_reset,
-#endif
 	.get_drvinfo		= usbnet_get_drvinfo,
 	.get_msglevel		= usbnet_get_msglevel,
 	.set_msglevel		= usbnet_set_msglevel,
@@ -1120,6 +1127,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	struct usb_device		*xdev;
 	int				status;
 	const char			*name;
+	DECLARE_MAC_BUF(mac);
 
 	name = udev->dev.driver->name;
 	info = (struct driver_info *) prod->driver_info;
@@ -1143,6 +1151,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 
 	dev = netdev_priv(net);
 	dev->udev = xdev;
+	dev->intf = udev;
 	dev->driver_info = info;
 	dev->driver_name = name;
 	dev->msg_enable = netif_msg_init (msg_level, NETIF_MSG_DRV
@@ -1158,7 +1167,6 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	init_timer (&dev->delay);
 	mutex_init (&dev->phy_mutex);
 
-	SET_MODULE_OWNER (net);
 	dev->net = net;
 	strcpy (net->name, "usb%d");
 	memcpy (net->dev_addr, node_id, sizeof node_id);
@@ -1227,14 +1235,11 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	if (status)
 		goto out3;
 	if (netif_msg_probe (dev))
-		devinfo (dev, "register '%s' at usb-%s-%s, %s, "
-				"%02x:%02x:%02x:%02x:%02x:%02x",
+		devinfo (dev, "register '%s' at usb-%s-%s, %s, %s",
 			udev->dev.driver->name,
 			xdev->bus->bus_name, xdev->devpath,
 			dev->driver_info->description,
-			net->dev_addr [0], net->dev_addr [1],
-			net->dev_addr [2], net->dev_addr [3],
-			net->dev_addr [4], net->dev_addr [5]);
+			print_mac(mac, net->dev_addr));
 
 	// ok, it's ready to go.
 	usb_set_intfdata (udev, dev);
@@ -1267,12 +1272,18 @@ int usbnet_suspend (struct usb_interface *intf, pm_message_t message)
 	struct usbnet		*dev = usb_get_intfdata(intf);
 
 	if (!dev->suspend_count++) {
-		/* accelerate emptying of the rx and queues, to avoid
+		/*
+		 * accelerate emptying of the rx and queues, to avoid
 		 * having everything error out.
 		 */
 		netif_device_detach (dev->net);
 		(void) unlink_urbs (dev, &dev->rxq);
 		(void) unlink_urbs (dev, &dev->txq);
+		/*
+		 * reattach so runtime management can use and
+		 * wake the device
+		 */
+		netif_device_attach (dev->net);
 	}
 	return 0;
 }
@@ -1282,10 +1293,9 @@ int usbnet_resume (struct usb_interface *intf)
 {
 	struct usbnet		*dev = usb_get_intfdata(intf);
 
-	if (!--dev->suspend_count) {
-		netif_device_attach (dev->net);
+	if (!--dev->suspend_count)
 		tasklet_schedule (&dev->bh);
-	}
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(usbnet_resume);

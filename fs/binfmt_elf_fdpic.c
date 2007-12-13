@@ -75,7 +75,7 @@ static int elf_fdpic_map_file_by_direct_mmap(struct elf_fdpic_params *,
 					     struct file *, struct mm_struct *);
 
 #if defined(USE_ELF_CORE_DUMP) && defined(CONFIG_ELF_CORE)
-static int elf_fdpic_core_dump(long, struct pt_regs *, struct file *);
+static int elf_fdpic_core_dump(long, struct pt_regs *, struct file *, unsigned long limit);
 #endif
 
 static struct linux_binfmt elf_fdpic_format = {
@@ -1342,10 +1342,10 @@ static void fill_prstatus(struct elf_prstatus *prstatus,
 	prstatus->pr_info.si_signo = prstatus->pr_cursig = signr;
 	prstatus->pr_sigpend = p->pending.signal.sig[0];
 	prstatus->pr_sighold = p->blocked.sig[0];
-	prstatus->pr_pid = p->pid;
-	prstatus->pr_ppid = p->parent->pid;
-	prstatus->pr_pgrp = process_group(p);
-	prstatus->pr_sid = process_session(p);
+	prstatus->pr_pid = task_pid_vnr(p);
+	prstatus->pr_ppid = task_pid_vnr(p->parent);
+	prstatus->pr_pgrp = task_pgrp_vnr(p);
+	prstatus->pr_sid = task_session_vnr(p);
 	if (thread_group_leader(p)) {
 		/*
 		 * This is the record for the group leader.  Add in the
@@ -1391,10 +1391,10 @@ static int fill_psinfo(struct elf_prpsinfo *psinfo, struct task_struct *p,
 			psinfo->pr_psargs[i] = ' ';
 	psinfo->pr_psargs[len] = 0;
 
-	psinfo->pr_pid = p->pid;
-	psinfo->pr_ppid = p->parent->pid;
-	psinfo->pr_pgrp = process_group(p);
-	psinfo->pr_sid = process_session(p);
+	psinfo->pr_pid = task_pid_vnr(p);
+	psinfo->pr_ppid = task_pid_vnr(p->parent);
+	psinfo->pr_pgrp = task_pgrp_vnr(p);
+	psinfo->pr_sid = task_session_vnr(p);
 
 	i = p->state ? ffz(~p->state) + 1 : 0;
 	psinfo->pr_state = i;
@@ -1417,7 +1417,7 @@ struct elf_thread_status
 	elf_fpregset_t fpu;		/* NT_PRFPREG */
 	struct task_struct *thread;
 #ifdef ELF_CORE_COPY_XFPREGS
-	elf_fpxregset_t xfpu;		/* NT_PRXFPREG */
+	elf_fpxregset_t xfpu;		/* ELF_CORE_XFPREG_TYPE */
 #endif
 	struct memelfnote notes[3];
 	int num_notes;
@@ -1453,8 +1453,8 @@ static int elf_dump_thread_status(long signr, struct elf_thread_status *t)
 
 #ifdef ELF_CORE_COPY_XFPREGS
 	if (elf_core_copy_task_xfpregs(p, &t->xfpu)) {
-		fill_note(&t->notes[2], "LINUX", NT_PRXFPREG, sizeof(t->xfpu),
-			  &t->xfpu);
+		fill_note(&t->notes[2], "LINUX", ELF_CORE_XFPREG_TYPE,
+			  sizeof(t->xfpu), &t->xfpu);
 		t->num_notes++;
 		sz += notesize(&t->notes[2]);
 	}
@@ -1488,7 +1488,7 @@ static int elf_fdpic_dump_segments(struct file *file, size_t *size,
 					   &page, &vma) <= 0) {
 				DUMP_SEEK(file->f_pos + PAGE_SIZE);
 			}
-			else if (page == ZERO_PAGE(addr)) {
+			else if (page == ZERO_PAGE(0)) {
 				page_cache_release(page);
 				DUMP_SEEK(file->f_pos + PAGE_SIZE);
 			}
@@ -1552,7 +1552,7 @@ static int elf_fdpic_dump_segments(struct file *file, size_t *size,
  * we just truncate.
  */
 static int elf_fdpic_core_dump(long signr, struct pt_regs *regs,
-			       struct file *file)
+			       struct file *file, unsigned long limit)
 {
 #define	NUM_NOTES	6
 	int has_dumped = 0;
@@ -1563,7 +1563,6 @@ static int elf_fdpic_core_dump(long signr, struct pt_regs *regs,
 	struct vm_area_struct *vma;
 	struct elfhdr *elf = NULL;
 	loff_t offset = 0, dataoff;
-	unsigned long limit = current->signal->rlim[RLIMIT_CORE].rlim_cur;
 	int numnote;
 	struct memelfnote *notes = NULL;
 	struct elf_prstatus *prstatus = NULL;	/* NT_PRSTATUS */
@@ -1690,7 +1689,7 @@ static int elf_fdpic_core_dump(long signr, struct pt_regs *regs,
 #ifdef ELF_CORE_COPY_XFPREGS
 	if (elf_core_copy_task_xfpregs(current, xfpu))
 		fill_note(notes + numnote++,
-			  "LINUX", NT_PRXFPREG, sizeof(*xfpu), xfpu);
+			  "LINUX", ELF_CORE_XFPREG_TYPE, sizeof(*xfpu), xfpu);
 #endif
 
 	fs = get_fs();

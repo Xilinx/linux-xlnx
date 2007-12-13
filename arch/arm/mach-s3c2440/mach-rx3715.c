@@ -110,28 +110,32 @@ static struct s3c2410_uartcfg rx3715_uartcfgs[] = {
 
 /* framebuffer lcd controller information */
 
-static struct s3c2410fb_mach_info rx3715_lcdcfg __initdata = {
-	.regs	= {
-		.lcdcon1 =	S3C2410_LCDCON1_TFT16BPP | \
-				S3C2410_LCDCON1_TFT | \
-				S3C2410_LCDCON1_CLKVAL(0x0C),
+static struct s3c2410fb_display rx3715_lcdcfg __initdata = {
+	.lcdcon5 =	S3C2410_LCDCON5_INVVLINE |
+			S3C2410_LCDCON5_FRM565 |
+			S3C2410_LCDCON5_HWSWP,
 
-		.lcdcon2 =	S3C2410_LCDCON2_VBPD(5) | \
-				S3C2410_LCDCON2_LINEVAL(319) | \
-				S3C2410_LCDCON2_VFPD(6) | \
-				S3C2410_LCDCON2_VSPW(2),
+	.type		= S3C2410_LCDCON1_TFT,
+	.width		= 240,
+	.height		= 320,
 
-		.lcdcon3 =	S3C2410_LCDCON3_HBPD(35) | \
-				S3C2410_LCDCON3_HOZVAL(239) | \
-				S3C2410_LCDCON3_HFPD(35),
+	.pixclock	= 260000,
+	.xres		= 240,
+	.yres		= 320,
+	.bpp		= 16,
+	.left_margin	= 36,
+	.right_margin	= 36,
+	.hsync_len	= 8,
+	.upper_margin	= 6,
+	.lower_margin	= 7,
+	.vsync_len	= 3,
+};
 
-		.lcdcon4 =	S3C2410_LCDCON4_MVAL(0) | \
-				S3C2410_LCDCON4_HSPW(7),
+static struct s3c2410fb_mach_info rx3715_fb_info __initdata = {
 
-		.lcdcon5 =	S3C2410_LCDCON5_INVVLINE |
-				S3C2410_LCDCON5_FRM565 |
-				S3C2410_LCDCON5_HWSWP,
-	},
+	.displays =	&rx3715_lcdcfg,
+	.num_displays =	1,
+	.default_display = 0,
 
 	.lpcsel =	0xf82,
 
@@ -144,28 +148,6 @@ static struct s3c2410fb_mach_info rx3715_lcdcfg __initdata = {
 	.gpdcon_mask =	0xffc0fff0,
 	.gpdup =	0x0000faff,
 	.gpdup_mask =	0xffffffff,
-
-	.fixed_syncs =	1,
-	.width  =	240,
-	.height =	320,
-
-	.xres	= {
-		.min =		240,
-		.max =		240,
-		.defval =	240,
-	},
-
-	.yres	= {
-		.max =		320,
-		.min =		320,
-		.defval	=	320,
-	},
-
-	.bpp	= {
-		.min =		16,
-		.max =		16,
-		.defval =	16,
-	},
 };
 
 static struct mtd_partition rx3715_nand_part[] = {
@@ -224,7 +206,7 @@ static void __init rx3715_init_machine(void)
 #endif
 	s3c2410_pm_init();
 
-	s3c24xx_fb_set_platdata(&rx3715_lcdcfg);
+	s3c24xx_fb_set_platdata(&rx3715_fb_info);
 	platform_add_devices(rx3715_devices, ARRAY_SIZE(rx3715_devices));
 }
 

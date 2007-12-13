@@ -101,6 +101,12 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 #undef __must_check
 #define __must_check
 #endif
+#ifndef CONFIG_ENABLE_WARN_DEPRECATED
+#undef __deprecated
+#undef __deprecated_for_modules
+#define __deprecated
+#define __deprecated_for_modules
+#endif
 
 /*
  * Allow us to avoid 'defined but not used' warnings on functions and data,
@@ -130,20 +136,6 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 
 #ifndef __maybe_unused
 # define __maybe_unused		/* unimplemented */
-#endif
-
-/*
- * From the GCC manual:
- *
- * Many functions have no effects except the return value and their
- * return value depends only on the parameters and/or global
- * variables.  Such a function can be subject to common subexpression
- * elimination and loop optimization just as an arithmetic operator
- * would be.
- * [...]
- */
-#ifndef __attribute_pure__
-# define __attribute_pure__	/* unimplemented */
 #endif
 
 #ifndef noinline

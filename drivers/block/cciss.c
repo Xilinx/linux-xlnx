@@ -1,20 +1,20 @@
 /*
- *    Disk Array driver for HP SA 5xxx and 6xxx Controllers
- *    Copyright 2000, 2006 Hewlett-Packard Development Company, L.P.
+ *    Disk Array driver for HP Smart Array controllers.
+ *    (C) Copyright 2000, 2007 Hewlett-Packard Development Company, L.P.
  *
  *    This program is free software; you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
- *    the Free Software Foundation; either version 2 of the License, or
- *    (at your option) any later version.
+ *    the Free Software Foundation; version 2 of the License.
  *
  *    This program is distributed in the hope that it will be useful,
  *    but WITHOUT ANY WARRANTY; without even the implied warranty of
- *    MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- *    NON INFRINGEMENT.  See the GNU General Public License for more details.
+ *    MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ *    General Public License for more details.
  *
  *    You should have received a copy of the GNU General Public License
  *    along with this program; if not, write to the Free Software
- *    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+ *    02111-1307, USA.
  *
  *    Questions/Comments/Bugfixes to iss_storagedev@hp.com
  *
@@ -1191,10 +1191,9 @@ static inline void complete_buffers(struct bio *bio, int status)
 {
 	while (bio) {
 		struct bio *xbh = bio->bi_next;
-		int nr_sectors = bio_sectors(bio);
 
 		bio->bi_next = NULL;
-		bio_endio(bio, nr_sectors << 9, status ? 0 : -EIO);
+		bio_endio(bio, status ? 0 : -EIO);
 		bio = xbh;
 	}
 }
@@ -1583,38 +1582,36 @@ static int deregister_disk(struct gendisk *disk, drive_info_struct *drv,
 	 * allows us to delete disk zero but keep the controller registered.
 	 */
 	if (h->gendisk[0] != disk) {
-		if (disk) {
-			struct request_queue *q = disk->queue;
-			if (disk->flags & GENHD_FL_UP)
-				del_gendisk(disk);
-			if (q) {
-				blk_cleanup_queue(q);
-				/* Set drv->queue to NULL so that we do not try
-				 * to call blk_start_queue on this queue in the
-				 * interrupt handler
-				 */
-				drv->queue = NULL;
-			}
-			/* If clear_all is set then we are deleting the logical
-			 * drive, not just refreshing its info.  For drives
-			 * other than disk 0 we will call put_disk.  We do not
-			 * do this for disk 0 as we need it to be able to
-			 * configure the controller.
+		struct request_queue *q = disk->queue;
+		if (disk->flags & GENHD_FL_UP)
+			del_gendisk(disk);
+		if (q) {
+			blk_cleanup_queue(q);
+			/* Set drv->queue to NULL so that we do not try
+			 * to call blk_start_queue on this queue in the
+			 * interrupt handler
+			 */
+			drv->queue = NULL;
+		}
+		/* If clear_all is set then we are deleting the logical
+		 * drive, not just refreshing its info.  For drives
+		 * other than disk 0 we will call put_disk.  We do not
+		 * do this for disk 0 as we need it to be able to
+		 * configure the controller.
+		*/
+		if (clear_all){
+			/* This isn't pretty, but we need to find the
+			 * disk in our array and NULL our the pointer.
+			 * This is so that we will call alloc_disk if
+			 * this index is used again later.
 			*/
-			if (clear_all){
-				/* This isn't pretty, but we need to find the
-				 * disk in our array and NULL our the pointer.
-				 * This is so that we will call alloc_disk if
-				 * this index is used again later.
-				*/
-				for (i=0; i < CISS_MAX_LUN; i++){
-					if(h->gendisk[i] == disk){
-						h->gendisk[i] = NULL;
-						break;
-					}
+			for (i=0; i < CISS_MAX_LUN; i++){
+				if(h->gendisk[i] == disk){
+					h->gendisk[i] = NULL;
+					break;
 				}
-				put_disk(disk);
 			}
+			put_disk(disk);
 		}
 	} else {
 		set_capacity(disk, 0);
@@ -2366,30 +2363,55 @@ static inline void resend_cciss_cmd(ctlr_info_t *h, CommandList_struct *c)
 	start_io(h);
 }
 
+static inline unsigned int make_status_bytes(unsigned int scsi_status_byte,
+	unsigned int msg_byte, unsigned int host_byte,
+	unsigned int driver_byte)
+{
+	/* inverse of macros in scsi.h */
+	return (scsi_status_byte & 0xff) |
+		((msg_byte & 0xff) << 8) |
+		((host_byte & 0xff) << 16) |
+		((driver_byte & 0xff) << 24);
+}
+
 static inline int evaluate_target_status(CommandList_struct *cmd)
 {
 	unsigned char sense_key;
-	int error_count = 1;
+	unsigned char status_byte, msg_byte, host_byte, driver_byte;
+	int error_value;
 
-	if (cmd->err_info->ScsiStatus != 0x02) { /* not check condition? */
+	/* If we get in here, it means we got "target status", that is, scsi status */
+	status_byte = cmd->err_info->ScsiStatus;
+	driver_byte = DRIVER_OK;
+	msg_byte = cmd->err_info->CommandStatus; /* correct?  seems too device specific */
+
+	if (blk_pc_request(cmd->rq))
+		host_byte = DID_PASSTHROUGH;
+	else
+		host_byte = DID_OK;
+
+	error_value = make_status_bytes(status_byte, msg_byte,
+		host_byte, driver_byte);
+
+	if (cmd->err_info->ScsiStatus != SAM_STAT_CHECK_CONDITION) {
 		if (!blk_pc_request(cmd->rq))
 			printk(KERN_WARNING "cciss: cmd %p "
 			       "has SCSI Status 0x%x\n",
 			       cmd, cmd->err_info->ScsiStatus);
-		return error_count;
+		return error_value;
 	}
 
 	/* check the sense key */
 	sense_key = 0xf & cmd->err_info->SenseInfo[2];
 	/* no status or recovered error */
-	if ((sense_key == 0x0) || (sense_key == 0x1))
-		error_count = 0;
+	if (((sense_key == 0x0) || (sense_key == 0x1)) && !blk_pc_request(cmd->rq))
+		error_value = 0;
 
 	if (!blk_pc_request(cmd->rq)) { /* Not SG_IO or similar? */
-		if (error_count != 0)
+		if (error_value != 0)
 			printk(KERN_WARNING "cciss: cmd %p has CHECK CONDITION"
 			       " sense key = 0x%x\n", cmd, sense_key);
-		return error_count;
+		return error_value;
 	}
 
 	/* SG_IO or similar, copy sense data back */
@@ -2401,7 +2423,7 @@ static inline int evaluate_target_status(CommandList_struct *cmd)
 	} else
 		cmd->rq->sense_len = 0;
 
-	return error_count;
+	return error_value;
 }
 
 /* checks the status of the job and calls complete buffers to mark all
@@ -2417,7 +2439,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 	rq->errors = 0;
 
 	if (timeout)
-		rq->errors = 1;
+		rq->errors = make_status_bytes(0, 0, 0, DRIVER_TIMEOUT);
 
 	if (cmd->err_info->CommandStatus == 0)	/* no error has occurred */
 		goto after_error_processing;
@@ -2443,32 +2465,44 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 	case CMD_INVALID:
 		printk(KERN_WARNING "cciss: cmd %p is "
 		       "reported invalid\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_PROTOCOL_ERR:
 		printk(KERN_WARNING "cciss: cmd %p has "
 		       "protocol error \n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_HARDWARE_ERR:
 		printk(KERN_WARNING "cciss: cmd %p had "
 		       " hardware error\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_CONNECTION_LOST:
 		printk(KERN_WARNING "cciss: cmd %p had "
 		       "connection lost\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_ABORTED:
 		printk(KERN_WARNING "cciss: cmd %p was "
 		       "aborted\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ABORT);
 		break;
 	case CMD_ABORT_FAILED:
 		printk(KERN_WARNING "cciss: cmd %p reports "
 		       "abort failed\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_UNSOLICITED_ABORT:
 		printk(KERN_WARNING "cciss%d: unsolicited "
@@ -2482,17 +2516,23 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 			printk(KERN_WARNING
 			       "cciss%d: %p retried too "
 			       "many times\n", h->ctlr, cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ABORT);
 		break;
 	case CMD_TIMEOUT:
 		printk(KERN_WARNING "cciss: cmd %p timedout\n", cmd);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 		break;
 	default:
 		printk(KERN_WARNING "cciss: cmd %p returned "
 		       "unknown status %x\n", cmd,
 		       cmd->err_info->CommandStatus);
-		rq->errors = 1;
+		rq->errors = make_status_bytes(SAM_STAT_GOOD,
+			cmd->err_info->CommandStatus, DRIVER_OK,
+			blk_pc_request(cmd->rq) ? DID_PASSTHROUGH : DID_ERROR);
 	}
 
 after_error_processing:
@@ -2570,6 +2610,7 @@ static void do_cciss_request(struct request_queue *q)
 	       (int)creq->nr_sectors);
 #endif				/* CCISS_DEBUG */
 
+	sg_init_table(tmp_sg, MAXSGENTRIES);
 	seg = blk_rq_map_sg(q, creq, tmp_sg);
 
 	/* get the DMA records for the setup */
@@ -2580,7 +2621,7 @@ static void do_cciss_request(struct request_queue *q)
 
 	for (i = 0; i < seg; i++) {
 		c->SG[i].Len = tmp_sg[i].length;
-		temp64.val = (__u64) pci_map_page(h->pdev, tmp_sg[i].page,
+		temp64.val = (__u64) pci_map_page(h->pdev, sg_page(&tmp_sg[i]),
 						  tmp_sg[i].offset,
 						  tmp_sg[i].length, dir);
 		c->SG[i].Addr.lower = temp64.val32.lower;
@@ -3035,15 +3076,20 @@ static int cciss_pci_init(ctlr_info_t *c, struct pci_dev *pdev)
 	}
 #endif
 
-	/* Disabling DMA prefetch for the P600
-	 * An ASIC bug may result in a prefetch beyond
-	 * physical memory.
+	/* Disabling DMA prefetch and refetch for the P600.
+	 * An ASIC bug may result in accesses to invalid memory addresses.
+	 * We've disabled prefetch for some time now. Testing with XEN
+	 * kernels revealed a bug in the refetch if dom0 resides on a P600.
 	 */
 	if(board_id == 0x3225103C) {
 		__u32 dma_prefetch;
+		__u32 dma_refetch;
 		dma_prefetch = readl(c->vaddr + I2O_DMA1_CFG);
 		dma_prefetch |= 0x8000;
 		writel(dma_prefetch, c->vaddr + I2O_DMA1_CFG);
+		pci_read_config_dword(pdev, PCI_COMMAND_PARITY, &dma_refetch);
+		dma_refetch |= 0x1;
+		pci_write_config_dword(pdev, PCI_COMMAND_PARITY, dma_refetch);
 	}
 
 #ifdef CCISS_DEBUG
@@ -3101,7 +3147,7 @@ static void cciss_getgeometry(int cntl_num)
 	int i;
 	int listlength = 0;
 	__u32 lunid = 0;
-	int block_size;
+	unsigned block_size;
 	sector_t total_size;
 
 	ld_buff = kzalloc(sizeof(ReportLunData_struct), GFP_KERNEL);

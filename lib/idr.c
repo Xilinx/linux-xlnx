@@ -120,7 +120,7 @@ static int sub_alloc(struct idr *idp, int *starting_id, struct idr_layer **pa)
 	int n, m, sh;
 	struct idr_layer *p, *new;
 	int l, id, oid;
-	long bm;
+	unsigned long bm;
 
 	id = *starting_id;
  restart:
@@ -580,8 +580,7 @@ void *idr_replace(struct idr *idp, void *ptr, int id)
 }
 EXPORT_SYMBOL(idr_replace);
 
-static void idr_cache_ctor(void * idr_layer, struct kmem_cache *idr_layer_cache,
-		unsigned long flags)
+static void idr_cache_ctor(struct kmem_cache *idr_layer_cache, void *idr_layer)
 {
 	memset(idr_layer, 0, sizeof(struct idr_layer));
 }

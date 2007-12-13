@@ -26,7 +26,7 @@
  * initialized objects.
  *
  * This means, that your constructor is used only for newly allocated
- * slabs and you must pass objects with the same intializations to
+ * slabs and you must pass objects with the same initializations to
  * kmem_cache_free.
  *
  * Each cache can only support one memory type (GFP_DMA, GFP_HIGHMEM,
@@ -267,11 +267,10 @@ struct array_cache {
 	unsigned int batchcount;
 	unsigned int touched;
 	spinlock_t lock;
-	void *entry[0];	/*
+	void *entry[];	/*
 			 * Must have this definition in here for the proper
 			 * alignment of array_cache. Also simplifies accessing
 			 * the entries.
-			 * [0] is for gcc 2.95. It should really be [].
 			 */
 };
 
@@ -408,7 +407,7 @@ struct kmem_cache {
 	unsigned int dflags;		/* dynamic flags */
 
 	/* constructor func */
-	void (*ctor) (void *, struct kmem_cache *, unsigned long);
+	void (*ctor)(struct kmem_cache *, void *);
 
 /* 5) cache creation/removal */
 	const char *name;
@@ -1044,7 +1043,7 @@ static struct array_cache **alloc_alien_cache(int node, int limit)
 			}
 			ac_ptr[i] = alloc_arraycache(node, limit, 0xbaadf00d);
 			if (!ac_ptr[i]) {
-				for (i--; i <= 0; i--)
+				for (i--; i >= 0; i--)
 					kfree(ac_ptr[i]);
 				kfree(ac_ptr);
 				return NULL;
@@ -1157,14 +1156,179 @@ static inline int cache_free_alien(struct kmem_cache *cachep, void *objp)
 }
 #endif
 
-static int __cpuinit cpuup_callback(struct notifier_block *nfb,
-				    unsigned long action, void *hcpu)
+static void __cpuinit cpuup_canceled(long cpu)
 {
-	long cpu = (long)hcpu;
+	struct kmem_cache *cachep;
+	struct kmem_list3 *l3 = NULL;
+	int node = cpu_to_node(cpu);
+
+	list_for_each_entry(cachep, &cache_chain, next) {
+		struct array_cache *nc;
+		struct array_cache *shared;
+		struct array_cache **alien;
+		cpumask_t mask;
+
+		mask = node_to_cpumask(node);
+		/* cpu is dead; no one can alloc from it. */
+		nc = cachep->array[cpu];
+		cachep->array[cpu] = NULL;
+		l3 = cachep->nodelists[node];
+
+		if (!l3)
+			goto free_array_cache;
+
+		spin_lock_irq(&l3->list_lock);
+
+		/* Free limit for this kmem_list3 */
+		l3->free_limit -= cachep->batchcount;
+		if (nc)
+			free_block(cachep, nc->entry, nc->avail, node);
+
+		if (!cpus_empty(mask)) {
+			spin_unlock_irq(&l3->list_lock);
+			goto free_array_cache;
+		}
+
+		shared = l3->shared;
+		if (shared) {
+			free_block(cachep, shared->entry,
+				   shared->avail, node);
+			l3->shared = NULL;
+		}
+
+		alien = l3->alien;
+		l3->alien = NULL;
+
+		spin_unlock_irq(&l3->list_lock);
+
+		kfree(shared);
+		if (alien) {
+			drain_alien_cache(cachep, alien);
+			free_alien_cache(alien);
+		}
+free_array_cache:
+		kfree(nc);
+	}
+	/*
+	 * In the previous loop, all the objects were freed to
+	 * the respective cache's slabs,  now we can go ahead and
+	 * shrink each nodelist to its limit.
+	 */
+	list_for_each_entry(cachep, &cache_chain, next) {
+		l3 = cachep->nodelists[node];
+		if (!l3)
+			continue;
+		drain_freelist(cachep, l3, l3->free_objects);
+	}
+}
+
+static int __cpuinit cpuup_prepare(long cpu)
+{
 	struct kmem_cache *cachep;
 	struct kmem_list3 *l3 = NULL;
 	int node = cpu_to_node(cpu);
 	const int memsize = sizeof(struct kmem_list3);
+
+	/*
+	 * We need to do this right in the beginning since
+	 * alloc_arraycache's are going to use this list.
+	 * kmalloc_node allows us to add the slab to the right
+	 * kmem_list3 and not this cpu's kmem_list3
+	 */
+
+	list_for_each_entry(cachep, &cache_chain, next) {
+		/*
+		 * Set up the size64 kmemlist for cpu before we can
+		 * begin anything. Make sure some other cpu on this
+		 * node has not already allocated this
+		 */
+		if (!cachep->nodelists[node]) {
+			l3 = kmalloc_node(memsize, GFP_KERNEL, node);
+			if (!l3)
+				goto bad;
+			kmem_list3_init(l3);
+			l3->next_reap = jiffies + REAPTIMEOUT_LIST3 +
+			    ((unsigned long)cachep) % REAPTIMEOUT_LIST3;
+
+			/*
+			 * The l3s don't come and go as CPUs come and
+			 * go.  cache_chain_mutex is sufficient
+			 * protection here.
+			 */
+			cachep->nodelists[node] = l3;
+		}
+
+		spin_lock_irq(&cachep->nodelists[node]->list_lock);
+		cachep->nodelists[node]->free_limit =
+			(1 + nr_cpus_node(node)) *
+			cachep->batchcount + cachep->num;
+		spin_unlock_irq(&cachep->nodelists[node]->list_lock);
+	}
+
+	/*
+	 * Now we can go ahead with allocating the shared arrays and
+	 * array caches
+	 */
+	list_for_each_entry(cachep, &cache_chain, next) {
+		struct array_cache *nc;
+		struct array_cache *shared = NULL;
+		struct array_cache **alien = NULL;
+
+		nc = alloc_arraycache(node, cachep->limit,
+					cachep->batchcount);
+		if (!nc)
+			goto bad;
+		if (cachep->shared) {
+			shared = alloc_arraycache(node,
+				cachep->shared * cachep->batchcount,
+				0xbaadf00d);
+			if (!shared) {
+				kfree(nc);
+				goto bad;
+			}
+		}
+		if (use_alien_caches) {
+			alien = alloc_alien_cache(node, cachep->limit);
+			if (!alien) {
+				kfree(shared);
+				kfree(nc);
+				goto bad;
+			}
+		}
+		cachep->array[cpu] = nc;
+		l3 = cachep->nodelists[node];
+		BUG_ON(!l3);
+
+		spin_lock_irq(&l3->list_lock);
+		if (!l3->shared) {
+			/*
+			 * We are serialised from CPU_DEAD or
+			 * CPU_UP_CANCELLED by the cpucontrol lock
+			 */
+			l3->shared = shared;
+			shared = NULL;
+		}
+#ifdef CONFIG_NUMA
+		if (!l3->alien) {
+			l3->alien = alien;
+			alien = NULL;
+		}
+#endif
+		spin_unlock_irq(&l3->list_lock);
+		kfree(shared);
+		free_alien_cache(alien);
+	}
+	return 0;
+bad:
+	cpuup_canceled(cpu);
+	return -ENOMEM;
+}
+
+static int __cpuinit cpuup_callback(struct notifier_block *nfb,
+				    unsigned long action, void *hcpu)
+{
+	long cpu = (long)hcpu;
+	int err = 0;
 
 	switch (action) {
 	case CPU_LOCK_ACQUIRE:
@@ -1172,90 +1336,7 @@ static int __cpuinit cpuup_callback(struct notifier_block *nfb,
 		break;
 	case CPU_UP_PREPARE:
 	case CPU_UP_PREPARE_FROZEN:
-		/*
-		 * We need to do this right in the beginning since
-		 * alloc_arraycache's are going to use this list.
-		 * kmalloc_node allows us to add the slab to the right
-		 * kmem_list3 and not this cpu's kmem_list3
-		 */
-
-		list_for_each_entry(cachep, &cache_chain, next) {
-			/*
-			 * Set up the size64 kmemlist for cpu before we can
-			 * begin anything. Make sure some other cpu on this
-			 * node has not already allocated this
-			 */
-			if (!cachep->nodelists[node]) {
-				l3 = kmalloc_node(memsize, GFP_KERNEL, node);
-				if (!l3)
-					goto bad;
-				kmem_list3_init(l3);
-				l3->next_reap = jiffies + REAPTIMEOUT_LIST3 +
-				    ((unsigned long)cachep) % REAPTIMEOUT_LIST3;
-
-				/*
-				 * The l3s don't come and go as CPUs come and
-				 * go.  cache_chain_mutex is sufficient
-				 * protection here.
-				 */
-				cachep->nodelists[node] = l3;
-			}
-
-			spin_lock_irq(&cachep->nodelists[node]->list_lock);
-			cachep->nodelists[node]->free_limit =
-				(1 + nr_cpus_node(node)) *
-				cachep->batchcount + cachep->num;
-			spin_unlock_irq(&cachep->nodelists[node]->list_lock);
-		}
-
-		/*
-		 * Now we can go ahead with allocating the shared arrays and
-		 * array caches
-		 */
-		list_for_each_entry(cachep, &cache_chain, next) {
-			struct array_cache *nc;
-			struct array_cache *shared = NULL;
-			struct array_cache **alien = NULL;
-
-			nc = alloc_arraycache(node, cachep->limit,
-						cachep->batchcount);
-			if (!nc)
-				goto bad;
-			if (cachep->shared) {
-				shared = alloc_arraycache(node,
-					cachep->shared * cachep->batchcount,
-					0xbaadf00d);
-				if (!shared)
-					goto bad;
-			}
-			if (use_alien_caches) {
-                                alien = alloc_alien_cache(node, cachep->limit);
-                                if (!alien)
-                                        goto bad;
-                        }
-			cachep->array[cpu] = nc;
-			l3 = cachep->nodelists[node];
-			BUG_ON(!l3);
-
-			spin_lock_irq(&l3->list_lock);
-			if (!l3->shared) {
-				/*
-				 * We are serialised from CPU_DEAD or
-				 * CPU_UP_CANCELLED by the cpucontrol lock
-				 */
-				l3->shared = shared;
-				shared = NULL;
-			}
-#ifdef CONFIG_NUMA
-			if (!l3->alien) {
-				l3->alien = alien;
-				alien = NULL;
-			}
-#endif
-			spin_unlock_irq(&l3->list_lock);
-			kfree(shared);
-			free_alien_cache(alien);
-		}
+		err = cpuup_prepare(cpu);
 		break;
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
@@ -1288,76 +1369,17 @@ static int __cpuinit cpuup_callback(struct notifier_block *nfb,
 		 * structure is usually allocated from kmem_cache_create() and
 		 * gets destroyed at kmem_cache_destroy().
 		 */
-		/* fall thru */
+		/* fall through */
 #endif
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
-		list_for_each_entry(cachep, &cache_chain, next) {
-			struct array_cache *nc;
-			struct array_cache *shared;
-			struct array_cache **alien;
-			cpumask_t mask;
-
-			mask = node_to_cpumask(node);
-			/* cpu is dead; no one can alloc from it. */
-			nc = cachep->array[cpu];
-			cachep->array[cpu] = NULL;
-			l3 = cachep->nodelists[node];
-
-			if (!l3)
-				goto free_array_cache;
-
-			spin_lock_irq(&l3->list_lock);
-
-			/* Free limit for this kmem_list3 */
-			l3->free_limit -= cachep->batchcount;
-			if (nc)
-				free_block(cachep, nc->entry, nc->avail, node);
-
-			if (!cpus_empty(mask)) {
-				spin_unlock_irq(&l3->list_lock);
-				goto free_array_cache;
-			}
-
-			shared = l3->shared;
-			if (shared) {
-				free_block(cachep, shared->entry,
-					   shared->avail, node);
-				l3->shared = NULL;
-			}
-
-			alien = l3->alien;
-			l3->alien = NULL;
-
-			spin_unlock_irq(&l3->list_lock);
-
-			kfree(shared);
-			if (alien) {
-				drain_alien_cache(cachep, alien);
-				free_alien_cache(alien);
-			}
-free_array_cache:
-			kfree(nc);
-		}
-		/*
-		 * In the previous loop, all the objects were freed to
-		 * the respective cache's slabs,  now we can go ahead and
-		 * shrink each nodelist to its limit.
-		 */
-		list_for_each_entry(cachep, &cache_chain, next) {
-			l3 = cachep->nodelists[node];
-			if (!l3)
-				continue;
-			drain_freelist(cachep, l3, l3->free_objects);
-		}
+		cpuup_canceled(cpu);
 		break;
 	case CPU_LOCK_RELEASE:
 		mutex_unlock(&cache_chain_mutex);
 		break;
 	}
-	return NOTIFY_OK;
-bad:
-	return NOTIFY_BAD;
+	return err ? NOTIFY_BAD : NOTIFY_OK;
 }
 
 static struct notifier_block __cpuinitdata cpucache_notifier = {
@@ -1568,7 +1590,7 @@ void __init kmem_cache_init(void)
 		/* Replace the static kmem_list3 structures for the boot cpu */
 		init_list(&cache_cache, &initkmem_list3[CACHE_CACHE], node);
 
-		for_each_online_node(nid) {
+		for_each_node_state(nid, N_NORMAL_MEMORY) {
 			init_list(malloc_sizes[INDEX_AC].cs_cachep,
 				  &initkmem_list3[SIZE_AC + nid], nid);
 
@@ -1643,6 +1665,8 @@ static void *kmem_getpages(struct kmem_cache *cachep, gfp_t flags, int nodeid)
 #endif
 
 	flags |= cachep->gfpflags;
+	if (cachep->flags & SLAB_RECLAIM_ACCOUNT)
+		flags |= __GFP_RECLAIMABLE;
 
 	page = alloc_pages_node(nodeid, flags, cachep->gfporder);
 	if (!page)
@@ -1944,7 +1968,7 @@ static void __init set_up_list3s(struct kmem_cache *cachep, int index)
 {
 	int node;
 
-	for_each_online_node(node) {
+	for_each_node_state(node, N_NORMAL_MEMORY) {
 		cachep->nodelists[node] = &initkmem_list3[index + node];
 		cachep->nodelists[node]->next_reap = jiffies +
 		    REAPTIMEOUT_LIST3 +
@@ -2075,7 +2099,7 @@ static int __init_refok setup_cpu_cache(struct kmem_cache *cachep)
 			g_cpucache_up = PARTIAL_L3;
 		} else {
 			int node;
-			for_each_online_node(node) {
+			for_each_node_state(node, N_NORMAL_MEMORY) {
 				cachep->nodelists[node] =
 				    kmalloc_node(sizeof(struct kmem_list3),
 						GFP_KERNEL, node);
@@ -2127,7 +2151,7 @@ static int __init_refok setup_cpu_cache(struct kmem_cache *cachep)
 struct kmem_cache *
 kmem_cache_create (const char *name, size_t size, size_t align,
 	unsigned long flags,
-	void (*ctor)(void*, struct kmem_cache *, unsigned long))
+	void (*ctor)(struct kmem_cache *, void *))
 {
 	size_t left_over, slab_size, ralign;
 	struct kmem_cache *cachep = NULL, *pc;
@@ -2634,8 +2658,7 @@ static void cache_init_objs(struct kmem_cache *cachep,
 		 * They must also be threaded.
 		 */
 		if (cachep->ctor && !(cachep->flags & SLAB_POISON))
-			cachep->ctor(objp + obj_offset(cachep), cachep,
-				     0);
+			cachep->ctor(cachep, objp + obj_offset(cachep));
 
 		if (cachep->flags & SLAB_RED_ZONE) {
 			if (*dbg_redzone2(cachep, objp) != RED_INACTIVE)
@@ -2651,7 +2674,7 @@ static void cache_init_objs(struct kmem_cache *cachep,
 					 cachep->buffer_size / PAGE_SIZE, 0);
 #else
 		if (cachep->ctor)
-			cachep->ctor(objp, cachep, 0);
+			cachep->ctor(cachep, objp);
 #endif
 		slab_bufctl(slabp)[i] = i + 1;
 	}
@@ -2746,9 +2769,9 @@ static int cache_grow(struct kmem_cache *cachep,
 	 * Be lazy and only check for valid flags here,  keeping it out of the
 	 * critical path in kmem_cache_alloc().
 	 */
-	BUG_ON(flags & ~(GFP_DMA | __GFP_ZERO | GFP_LEVEL_MASK));
+	BUG_ON(flags & GFP_SLAB_BUG_MASK);
+	local_flags = flags & (GFP_CONSTRAINT_MASK|GFP_RECLAIM_MASK);
 
-	local_flags = (flags & GFP_LEVEL_MASK);
 	/* Take the l3 list lock to change the colour_next on this node */
 	check_irq_off();
 	l3 = cachep->nodelists[nodeid];
@@ -2785,7 +2808,7 @@ static int cache_grow(struct kmem_cache *cachep,
 
 	/* Get slab management. */
 	slabp = alloc_slabmgmt(cachep, objp, offset,
-			local_flags & ~GFP_THISNODE, nodeid);
+			local_flags & ~GFP_CONSTRAINT_MASK, nodeid);
 	if (!slabp)
 		goto opps1;
 
@@ -2857,6 +2880,8 @@ static void *cache_free_debugcheck(struct kmem_cache *cachep, void *objp,
 	struct page *page;
 	unsigned int objnr;
 	struct slab *slabp;
+
+	BUG_ON(virt_to_cache(objp) != cachep);
 
 	objp -= obj_offset(cachep);
 	kfree_debugcheck(objp);
@@ -3076,7 +3101,7 @@ static void *cache_alloc_debugcheck_after(struct kmem_cache *cachep,
 #endif
 	objp += obj_offset(cachep);
 	if (cachep->ctor && cachep->flags & SLAB_POISON)
-		cachep->ctor(objp, cachep, 0);
+		cachep->ctor(cachep, objp);
 #if ARCH_SLAB_MINALIGN
 	if ((u32)objp & (ARCH_SLAB_MINALIGN-1)) {
 		printk(KERN_ERR "0x%p: not aligned to ARCH_SLAB_MINALIGN=%d\n",
@@ -3225,7 +3250,7 @@ static void *fallback_alloc(struct kmem_cache *cache, gfp_t flags)
 
 	zonelist = &NODE_DATA(slab_node(current->mempolicy))
 			->node_zonelists[gfp_zone(flags)];
-	local_flags = (flags & GFP_LEVEL_MASK);
+	local_flags = flags & (GFP_CONSTRAINT_MASK|GFP_RECLAIM_MASK);
 
 retry:
 	/*
@@ -3736,8 +3761,6 @@ void kmem_cache_free(struct kmem_cache *cachep, void *objp)
 {
 	unsigned long flags;
 
-	BUG_ON(virt_to_cache(objp) != cachep);
-
 	local_irq_save(flags);
 	debug_check_no_locks_freed(objp, obj_size(cachep));
 	__cache_free(cachep, objp);
@@ -3783,7 +3806,7 @@ const char *kmem_cache_name(struct kmem_cache *cachep)
 EXPORT_SYMBOL_GPL(kmem_cache_name);
 
 /*
- * This initializes kmem_list3 or resizes varioius caches for all nodes.
+ * This initializes kmem_list3 or resizes various caches for all nodes.
  */
 static int alloc_kmemlist(struct kmem_cache *cachep)
 {
@@ -3792,7 +3815,7 @@ static int alloc_kmemlist(struct kmem_cache *cachep)
 	struct array_cache *new_shared;
 	struct array_cache **new_alien = NULL;
 
-	for_each_online_node(node) {
+	for_each_node_state(node, N_NORMAL_MEMORY) {
 
                 if (use_alien_caches) {
                         new_alien = alloc_alien_cache(node, cachep->limit);
@@ -4446,8 +4469,10 @@ const struct seq_operations slabstats_op = {
  */
 size_t ksize(const void *objp)
 {
-	if (unlikely(ZERO_OR_NULL_PTR(objp)))
+	BUG_ON(!objp);
+	if (unlikely(objp == ZERO_SIZE_PTR))
 		return 0;
 
 	return obj_size(virt_to_cache(objp));
 }
+EXPORT_SYMBOL(ksize);

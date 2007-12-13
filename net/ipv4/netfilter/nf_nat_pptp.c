@@ -110,7 +110,7 @@ static void pptp_nat_expected(struct nf_conn *ct,
 
 /* outbound packets == from PNS to PAC */
 static int
-pptp_outbound_pkt(struct sk_buff **pskb,
+pptp_outbound_pkt(struct sk_buff *skb,
 		  struct nf_conn *ct,
 		  enum ip_conntrack_info ctinfo,
 		  struct PptpControlHeader *ctlh,
@@ -175,7 +175,7 @@ pptp_outbound_pkt(struct sk_buff **pskb,
 		 ntohs(REQ_CID(pptpReq, cid_off)), ntohs(new_callid));
 
 	/* mangle packet */
-	if (nf_nat_mangle_tcp_packet(pskb, ct, ctinfo,
+	if (nf_nat_mangle_tcp_packet(skb, ct, ctinfo,
 				     cid_off + sizeof(struct pptp_pkt_hdr) +
 				     sizeof(struct PptpControlHeader),
 				     sizeof(new_callid), (char *)&new_callid,
@@ -213,7 +213,7 @@ pptp_exp_gre(struct nf_conntrack_expect *expect_orig,
 
 /* inbound packets == from PAC to PNS */
 static int
-pptp_inbound_pkt(struct sk_buff **pskb,
+pptp_inbound_pkt(struct sk_buff *skb,
 		 struct nf_conn *ct,
 		 enum ip_conntrack_info ctinfo,
 		 struct PptpControlHeader *ctlh,
@@ -268,7 +268,7 @@ pptp_inbound_pkt(struct sk_buff **pskb,
 	pr_debug("altering peer call id from 0x%04x to 0x%04x\n",
 		 ntohs(REQ_CID(pptpReq, pcid_off)), ntohs(new_pcid));
 
-	if (nf_nat_mangle_tcp_packet(pskb, ct, ctinfo,
+	if (nf_nat_mangle_tcp_packet(skb, ct, ctinfo,
 				     pcid_off + sizeof(struct pptp_pkt_hdr) +
 				     sizeof(struct PptpControlHeader),
 				     sizeof(new_pcid), (char *)&new_pcid,
@@ -281,16 +281,16 @@ static int __init nf_nat_helper_pptp_init(void)
 {
 	nf_nat_need_gre();
 
-	BUG_ON(rcu_dereference(nf_nat_pptp_hook_outbound));
+	BUG_ON(nf_nat_pptp_hook_outbound != NULL);
 	rcu_assign_pointer(nf_nat_pptp_hook_outbound, pptp_outbound_pkt);
 
-	BUG_ON(rcu_dereference(nf_nat_pptp_hook_inbound));
+	BUG_ON(nf_nat_pptp_hook_inbound != NULL);
 	rcu_assign_pointer(nf_nat_pptp_hook_inbound, pptp_inbound_pkt);
 
-	BUG_ON(rcu_dereference(nf_nat_pptp_hook_exp_gre));
+	BUG_ON(nf_nat_pptp_hook_exp_gre != NULL);
 	rcu_assign_pointer(nf_nat_pptp_hook_exp_gre, pptp_exp_gre);
 
-	BUG_ON(rcu_dereference(nf_nat_pptp_hook_expectfn));
+	BUG_ON(nf_nat_pptp_hook_expectfn != NULL);
 	rcu_assign_pointer(nf_nat_pptp_hook_expectfn, pptp_nat_expected);
 	return 0;
 }

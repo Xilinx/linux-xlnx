@@ -35,13 +35,13 @@ static void __devinit init_hwif_rz1000 (ide_hwif_t *hwif)
 	u16 reg;
 	struct pci_dev *dev = hwif->pci_dev;
 
-	hwif->chipset = ide_rz1000;
 	if (!pci_read_config_word (dev, 0x40, &reg) &&
 	    !pci_write_config_word(dev, 0x40, reg & 0xdfff)) {
 		printk(KERN_INFO "%s: disabled chipset read-ahead "
 			"(buggy RZ1000/RZ1001)\n", hwif->name);
 	} else {
-		hwif->serialized = 1;
+		if (hwif->mate)
+			hwif->mate->serialized = hwif->serialized = 1;
 		hwif->drives[0].no_unmask = 1;
 		hwif->drives[1].no_unmask = 1;
 		printk(KERN_INFO "%s: serialized, disabled unmasking "
@@ -49,11 +49,11 @@ static void __devinit init_hwif_rz1000 (ide_hwif_t *hwif)
 	}
 }
 
-static ide_pci_device_t rz1000_chipset __devinitdata = {
+static const struct ide_port_info rz1000_chipset __devinitdata = {
 	.name		= "RZ100x",
 	.init_hwif	= init_hwif_rz1000,
-	.autodma	= NODMA,
-	.bootable	= ON_BOARD,
+	.chipset	= ide_rz1000,
+	.host_flags	= IDE_HFLAG_NO_DMA | IDE_HFLAG_BOOTABLE,
 };
 
 static int __devinit rz1000_init_one(struct pci_dev *dev, const struct pci_device_id *id)
@@ -61,9 +61,9 @@ static int __devinit rz1000_init_one(struct pci_dev *dev, const struct pci_devic
 	return ide_setup_pci_device(dev, &rz1000_chipset);
 }
 
-static struct pci_device_id rz1000_pci_tbl[] = {
-	{ PCI_VENDOR_ID_PCTECH, PCI_DEVICE_ID_PCTECH_RZ1000, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ PCI_VENDOR_ID_PCTECH, PCI_DEVICE_ID_PCTECH_RZ1001, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
+static const struct pci_device_id rz1000_pci_tbl[] = {
+	{ PCI_VDEVICE(PCTECH, PCI_DEVICE_ID_PCTECH_RZ1000), 0 },
+	{ PCI_VDEVICE(PCTECH, PCI_DEVICE_ID_PCTECH_RZ1001), 0 },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, rz1000_pci_tbl);
