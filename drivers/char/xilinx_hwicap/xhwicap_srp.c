@@ -1,30 +1,31 @@
-/*****************************************************************************
+ /*****************************************************************************
  *
  *     Author: Xilinx, Inc.
- *
  *
  *     This program is free software; you can redistribute it and/or modify it
  *     under the terms of the GNU General Public License as published by the
  *     Free Software Foundation; either version 2 of the License, or (at your
  *     option) any later version.
  *
- *       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
- *       AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
- *       SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
- *       OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
- *       APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
- *       THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
- *       AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
- *       FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
- *       WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
- *       IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
- *       REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
- *       INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *       FOR A PARTICULAR PURPOSE.
+ *     XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
+ *     AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
+ *     SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
+ *     OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
+ *     APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
+ *     THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
+ *     AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
+ *     FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
+ *     WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
+ *     IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
+ *     REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
+ *     INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ *     FOR A PARTICULAR PURPOSE.
  *
- *       (c) Copyright 2003 Xilinx Inc.
- *       (c) Copyright 2007 Xilinx Inc.
- *       All rights reserved.
+ *     Xilinx products are not intended for use in life support appliances,
+ *     devices, or systems. Use in such applications is expressly prohibited.
+ *
+ *     (c) Copyright 2003-2007 Xilinx Inc.
+ *     All rights reserved.
  *
  *     You should have received a copy of the GNU General Public License along
  *     with this program; if not, write to the Free Software Foundation, Inc.,
@@ -41,22 +42,22 @@
  *
  * Stores data in the storage buffer at the specified address.
  *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
+ * @parameter    drvdata - a pointer to the drvdata.
  *
- * @param    Address - bram word address
+ * @parameter    address - bram word address
  *
- * @param    Data - data to be stored at address
+ * @parameter    Data - data to be stored at address
  *
  * @return   None.
  *
  * @note     None.
  *
 *****************************************************************************/
-void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr,
-				u32 Address, u32 Data)
+void XHwIcap_StorageBufferWrite(struct hwicap_drvdata *drvdata,
+				u32 address, u32 Data)
 {
 	/* Write data to storage buffer. */
-	XHwIcap_mSetBram(InstancePtr->baseAddress, Address, Data);
+	XHwIcap_mSetBram(drvdata->baseAddress, address, Data);
 }
 
 /****************************************************************************/
@@ -64,61 +65,50 @@ void XHwIcap_StorageBufferWrite(struct xhwicap_drvdata *InstancePtr,
  *
  * Read data from the specified address in the storage buffer..
  *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
+ * @parameter    drvdata - a pointer to the drvdata.
  *
- * @param    Address - bram word address
+ * @parameter    address - bram word address
  *
  * @return   Data.
  *
  * @note     None.
  *
 *****************************************************************************/
-u32 XHwIcap_StorageBufferRead(struct xhwicap_drvdata *InstancePtr, u32 Address)
+u32 XHwIcap_StorageBufferRead(struct hwicap_drvdata *drvdata, u32 address)
 {
 	u32 Data;
 
 	/* Read data from address. Multiply Address by 4 since 4 bytes per
 	 * word.*/
-	Data = XHwIcap_mGetBram(InstancePtr->baseAddress, Address);
+	Data = XHwIcap_mGetBram(drvdata->baseAddress, address);
 	return Data;
 
 }
 
-/****************************************************************************/
 /**
- *
- * Reads bytes from the device (ICAP) and puts it in the storage buffer.
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- * @param    Offset - The storage buffer start address.
- *
- * @param    NumInts - The number of words (32 bit) to read from the
+ * XHwIcap_DeviceRead: Transfer bytes from ICAP to the storage buffer.
+ * @parameter drvdata: a pointer to the drvdata.
+ * @parameter offset: The storage buffer start address.
+ * @parameter count: The number of words (32 bit) to read from the
  *           device (ICAP).
- *
- *@return    int - 0 or -EBUSY or -EINVAL
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset,
-		       u32 NumInts)
+ **/
+int XHwIcap_DeviceRead(struct hwicap_drvdata *drvdata, u32 offset, u32 count)
 {
 
 	s32 Retries = 0;
+        void __iomem *base_address = drvdata->baseAddress;
 
-	if (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) == XHI_NOT_FINISHED) {
+	if (hwicap_busy(base_address)) {
 		return -EBUSY;
 	}
 
-	if ((Offset + NumInts) <= XHI_MAX_BUFFER_INTS) {
-		/* setSize NumInts*4 to get bytes. */
-		XHwIcap_mSetSizeReg((InstancePtr->baseAddress), (NumInts << 2));
-		XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
-		XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_READBACK);
+	if ((offset + count) <= XHI_MAX_BUFFER_INTS) {
+		/* setSize count*4 to get bytes. */
+		XHwIcap_mSetSizeReg(base_address, (count << 2));
+		XHwIcap_mSetOffsetReg(base_address, offset);
+		XHwIcap_mSetRncReg(base_address, XHI_READBACK);
 
-		while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) ==
-		       XHI_NOT_FINISHED) {
+		while (hwicap_busy(base_address)) {
 			Retries++;
 			if (Retries > XHI_MAX_RETRIES) {
 				return -EBUSY;
@@ -131,41 +121,31 @@ int XHwIcap_DeviceRead(struct xhwicap_drvdata *InstancePtr, u32 Offset,
 
 };
 
-/****************************************************************************/
 /**
- *
- * Writes bytes from the storage buffer and puts it in the device (ICAP).
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- * @param    Offset - The storage buffer start address.
- *
- * @param    NumInts - The number of words (32 bit) to read from the
+ * XHwIcap_DeviceWrite: Transfer bytes from ICAP to the storage buffer.
+ * @parameter drvdata: a pointer to the drvdata.
+ * @parameter offset: The storage buffer start address.
+ * @parameter count: The number of words (32 bit) to read from the
  *           device (ICAP).
- *
- *@return    int - 0 or -EBUSY or -EINVAL
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset,
-			u32 NumInts)
+ **/
+int XHwIcap_DeviceWrite(struct hwicap_drvdata *drvdata, u32 offset,
+			u32 count)
 {
 
 	s32 Retries = 0;
+        void __iomem *base_address = drvdata->baseAddress;
 
-	if (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) == XHI_NOT_FINISHED) {
+	if (hwicap_busy(base_address)) {
 		return -EBUSY;
 	}
 
-	if ((Offset + NumInts) <= XHI_MAX_BUFFER_INTS) {
-		/* setSize NumInts*4 to get bytes.  */
-		XHwIcap_mSetSizeReg((InstancePtr->baseAddress), NumInts << 2);
-		XHwIcap_mSetOffsetReg((InstancePtr->baseAddress), Offset);
-		XHwIcap_mSetRncReg((InstancePtr->baseAddress), XHI_CONFIGURE);
+	if ((offset + count) <= XHI_MAX_BUFFER_INTS) {
+		/* setSize count*4 to get bytes.  */
+		XHwIcap_mSetSizeReg(base_address, count << 2);
+		XHwIcap_mSetOffsetReg(base_address, offset);
+		XHwIcap_mSetRncReg(base_address, XHI_CONFIGURE);
 
-		while (XHwIcap_mGetDoneReg(InstancePtr->baseAddress) ==
-		       XHI_NOT_FINISHED) {
+		while (hwicap_busy(base_address)) {
 			Retries++;
 			if (Retries > XHI_MAX_RETRIES) {
 				return -EBUSY;
@@ -178,29 +158,23 @@ int XHwIcap_DeviceWrite(struct xhwicap_drvdata *InstancePtr, u32 Offset,
 
 };
 
-/****************************************************************************/
 /**
- *
- * Sends a DESYNC command to the ICAP port.
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- *@return    int - 0 or -EBUSY or -EINVAL
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr)
+ * XHwIcap_CommandDesync: Send a DESYNC command to the ICAP port.
+ * @parameter    drvdata - a pointer to the drvdata.
+ **/
+int XHwIcap_CommandDesync(struct hwicap_drvdata *drvdata)
 {
 	int status;
+        void __iomem *base_address = drvdata->baseAddress;
 
-	XHwIcap_StorageBufferWrite(InstancePtr, 0,
+	XHwIcap_mSetBram(base_address, 0,
 				   (XHwIcap_Type1Write(XHI_CMD) | 1));
-	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_CMD_DESYNCH);
-	XHwIcap_StorageBufferWrite(InstancePtr, 2, XHI_NOOP_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
+	XHwIcap_mSetBram(base_address, 1, XHI_CMD_DESYNCH);
+	XHwIcap_mSetBram(base_address, 2, XHI_NOOP_PACKET);
+	XHwIcap_mSetBram(base_address, 3, XHI_NOOP_PACKET);
 
-	status = XHwIcap_DeviceWrite(InstancePtr, 0, 4);	/* send four words */
+	/* send four words */
+	status = XHwIcap_DeviceWrite(drvdata, 0, 4);
 	if (status) {
 		return status;
 	}
@@ -208,35 +182,30 @@ int XHwIcap_CommandDesync(struct xhwicap_drvdata *InstancePtr)
 	return 0;
 }
 
-/****************************************************************************/
 /**
+ * XHwIcap_CommandCapture: Send a CAPTURE command to the ICAP port.
+ * @parameter    drvdata - a pointer to the drvdata.
  *
- * Sends a CAPTURE command to the ICAP port.  This command caputres all
- * of the flip flop states so they will be available during readback.
- * One can use this command instead of enabling the CAPTURE block in the
- * design.
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- * @return    int - 0 or -EBUSY or -EINVAL
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_CommandCapture(struct xhwicap_drvdata *InstancePtr)
+ * This command caputres all of the flip flop states so they will be
+ * available during readback.  One can use this command instead of
+ * enabling the CAPTURE block in the design.
+ **/
+int XHwIcap_CommandCapture(struct hwicap_drvdata *drvdata)
 {
 	int status;
+        void __iomem *base_address = drvdata->baseAddress;
 
 	/* DUMMY and SYNC */
-	XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 2,
+	XHwIcap_mSetBram(base_address, 0, XHI_DUMMY_PACKET);
+	XHwIcap_mSetBram(base_address, 1, XHI_SYNC_PACKET);
+	XHwIcap_mSetBram(base_address, 2,
 				   (XHwIcap_Type1Write(XHI_CMD) | 1));
-	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_CMD_GCAPTURE);
-	XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_DUMMY_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 5, XHI_DUMMY_PACKET);
+	XHwIcap_mSetBram(base_address, 3, XHI_CMD_GCAPTURE);
+	XHwIcap_mSetBram(base_address, 4, XHI_DUMMY_PACKET);
+	XHwIcap_mSetBram(base_address, 5, XHI_DUMMY_PACKET);
 
-	status = XHwIcap_DeviceWrite(InstancePtr, 0, 6);	/* send six words */
+	/* send six words */
+	status = XHwIcap_DeviceWrite(drvdata, 0, 6);
 	if (status) {		/* send six words */
 		return status;
 	}
@@ -244,108 +213,92 @@ int XHwIcap_CommandCapture(struct xhwicap_drvdata *InstancePtr)
 	return 0;
 }
 
-/****************************************************************************/
 /**
- * 
- * This function returns the value of the specified configuration
- * register.
+ * XHwIcap_GetConfigReg: Return the value of a configuration register.
  *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked
- * on.
- *
- * @param    ConfigReg  - A constant which represents the configuration
- * register value to be returned. Constants specified in xhwicap_i.h.  Examples:
- * XHI_IDCODE, XHI_FLR.
- *
- * @return   The value of the specified configuration register.
- *
- *
-*****************************************************************************/
-
-u32 XHwIcap_GetConfigReg(struct xhwicap_drvdata * InstancePtr, u32 ConfigReg)
+ * @parameter drvdata: a pointer to the drvdata.
+ * @parameter ConfigReg: A constant which represents the configuration
+ * register value to be returned. Examples: XHI_IDCODE, XHI_FLR.
+ **/
+u32 XHwIcap_GetConfigReg(struct hwicap_drvdata *drvdata, u32 ConfigReg)
 {
 	u32 Packet;
 	int status;
+        void __iomem *base_address = drvdata->baseAddress;
 
 	/* Write bitstream to bram */
 	Packet = XHwIcap_Type1Read(ConfigReg) | 1;
-	XHwIcap_StorageBufferWrite(InstancePtr, 0, XHI_DUMMY_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 1, XHI_SYNC_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 2, Packet);
-	XHwIcap_StorageBufferWrite(InstancePtr, 3, XHI_NOOP_PACKET);
-	XHwIcap_StorageBufferWrite(InstancePtr, 4, XHI_NOOP_PACKET);
+	XHwIcap_mSetBram(base_address, 0, XHI_DUMMY_PACKET);
+	XHwIcap_mSetBram(base_address, 1, XHI_SYNC_PACKET);
+	XHwIcap_mSetBram(base_address, 2, Packet);
+	XHwIcap_mSetBram(base_address, 3, XHI_NOOP_PACKET);
+	XHwIcap_mSetBram(base_address, 4, XHI_NOOP_PACKET);
 
 	/* Transfer Bitstream from Bram to ICAP */
-	if ((status = XHwIcap_DeviceWrite(InstancePtr, 0, 5))) {
+	status = XHwIcap_DeviceWrite(drvdata, 0, 5);
+	if (status) {
 		return status;
 	}
 
 	/* Now readback one word into bram position
 	 * XHI_EX_BITSTREAM_LENGTH*/
-	if ((status = XHwIcap_DeviceRead(InstancePtr, 5, 1))) {
+	status = XHwIcap_DeviceRead(drvdata, 5, 1);
+	if (status) {
 		return status;
 	}
 
 	/* Return the Register value */
-	return XHwIcap_StorageBufferRead(InstancePtr, 5);
+	return XHwIcap_mGetBram(base_address, 5);
 }
 
-/****************************************************************************
- *
- * Loads a partial bitstream from system memory.
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- * @param    Data - Address of the data representing the partial bitstream
- *
- * @param    Size - the size of the partial bitstream in 32 bit words.
- *
- * @return   0, -EFBIG or -EINVAL.
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
-			     u32 Size)
+/**
+ * XHwIcap_SetConfiguration: Load a partial bitstream from system memory.
+ * @parameter drvdata: a pointer to the drvdata.
+ * @parameter data: Kernel address of the partial bitstream.
+ * @parameter size: the size of the partial bitstream in 32 bit words.
+ **/
+int XHwIcap_SetConfiguration(struct hwicap_drvdata *drvdata, u32 *data,
+			     u32 size)
 {
 	int status;
-	s32 BufferCount = 0;
+	s32 buffer_count = 0;
 	s32 NumWrites = 0;
 	bool Dirty = 0;
-	u32 I;
+	u32 i;
+        void __iomem *base_address = drvdata->baseAddress;
 
 	/* Loop through all the data */
-	for (I = 0, BufferCount = 0; I < Size; I++) {
+	for (i = 0, buffer_count = 0; i < size; i++) {
 
 		/* Copy data to bram */
-		XHwIcap_StorageBufferWrite(InstancePtr, BufferCount, Data[I]);
+		XHwIcap_mSetBram(base_address, buffer_count, data[i]);
 		Dirty = 1;
 
-		if (BufferCount == XHI_MAX_BUFFER_INTS - 1) {
+		if (buffer_count == XHI_MAX_BUFFER_INTS - 1) {
 			/* Write data to ICAP */
-			status =
-			    XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
+			status = XHwIcap_DeviceWrite(drvdata, XHI_BUFFER_START,
 						XHI_MAX_BUFFER_INTS);
 			if (status != 0) {
-				XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
-				return status;
+				/* abort. */
+				XHwIcap_mReset(base_address);					return status;
 			}
 
-			BufferCount = 0;
+			buffer_count = 0;
 			NumWrites++;
 			Dirty = 0;
 		} else {
-			BufferCount++;
+			buffer_count++;
 		}
 	}
 
 	/* Write unwritten data to ICAP */
 	if (Dirty) {
 		/* Write data to ICAP */
-		status = XHwIcap_DeviceWrite(InstancePtr, XHI_BUFFER_START,
-					     BufferCount);
+		status = XHwIcap_DeviceWrite(drvdata, XHI_BUFFER_START,
+					     buffer_count);
 		if (status != 0) {
-			XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
+			/* abort. */
+			XHwIcap_mReset(base_address);
 		}
 		return status;
 	}
@@ -353,55 +306,47 @@ int XHwIcap_SetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
 	return 0;
 };
 
-/****************************************************************************
- *
- * Reads Configuration Data from the device.
- *
- * @param    InstancePtr - a pointer to the XHwIcap instance to be worked on.
- *
- * @param    Data - Address of the data representing the partial bitstream
- *
- * @param    Size - the size of the partial bitstream in 32 bit words.
- *
- * @return   0, -EFBIG or -EINVAL.
- *
- * @note     None.
- *
-*****************************************************************************/
-int XHwIcap_GetConfiguration(struct xhwicap_drvdata *InstancePtr, u32 * Data,
-			     u32 Size)
+/**
+ * XHwIcap_GetConfiguration: Reads Configuration data from the device.
+ * @parameter drvdata: a pointer to the drvdata.
+ * @parameter data: Address of the data representing the partial bitstream
+ * @parameter size: the size of the partial bitstream in 32 bit words.
+ **/
+int XHwIcap_GetConfiguration(struct hwicap_drvdata *drvdata, u32 *data,
+			     u32 size)
 {
 	int status;
-	s32 BufferCount = 0;
-	s32 NumReads = 0;
-	u32 I;
+	s32 buffer_count = 0;
+	s32 read_count = 0;
+	u32 i;
+        void __iomem *base_address = drvdata->baseAddress;
 
 	/* Loop through all the data */
-	for (I = 0, BufferCount = XHI_MAX_BUFFER_INTS; I < Size; I++) {
-		if (BufferCount == XHI_MAX_BUFFER_INTS) {
-			u32 intsRemaining = Size - I;
+	for (i = 0, buffer_count = XHI_MAX_BUFFER_INTS; i < size; i++) {
+		if (buffer_count == XHI_MAX_BUFFER_INTS) {
+			u32 intsRemaining = size - i;
 			u32 intsToRead =
 			    intsRemaining <
 			    XHI_MAX_BUFFER_INTS ? intsRemaining :
 			    XHI_MAX_BUFFER_INTS;
 
 			/* Read data from ICAP */
-
 			status =
-			    XHwIcap_DeviceRead(InstancePtr, XHI_BUFFER_START,
+			    XHwIcap_DeviceRead(drvdata, XHI_BUFFER_START,
 					       intsToRead);
 			if (status != 0) {
-				XHwIcap_mReset(InstancePtr->baseAddress);	// abort.
+				/* abort. */
+				XHwIcap_mReset(base_address);
 				return status;
 			}
 
-			BufferCount = 0;
-			NumReads++;
+			buffer_count = 0;
+			read_count++;
 		}
 
 		/* Copy data from bram */
-		Data[I] = XHwIcap_StorageBufferRead(InstancePtr, BufferCount);
-		BufferCount++;
+		data[i] = XHwIcap_mGetBram(base_address, buffer_count);
+		buffer_count++;
 	}
 
 	return 0;
