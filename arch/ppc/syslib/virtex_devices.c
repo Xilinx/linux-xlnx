@@ -73,6 +73,22 @@
 }
 
 /*
+ * ML300/ML403 Video Device: shortcut macro for single instance
+ */
+#define XPAR_TFT(num) { \
+	.name = "xilinxfb", \
+	.id = num, \
+	.num_resources = 1, \
+	.resource = (struct resource[]) { \
+		{ \
+			.start = XPAR_TFT_##num##_BASEADDR, \
+			.end = XPAR_TFT_##num##_BASEADDR+7, \
+			.flags = IORESOURCE_IO, \
+		}, \
+	}, \
+}
+
+/*
  * EMAC: shortcut macro for single instance
  */
 #define XPAR_EMAC(num) { \
@@ -245,40 +261,6 @@
 	}, \
 }
 
-#define XPAR_AC97(num) { \
-	.name = "xilinx_ac97", \
-	.id = num, \
-	.num_resources = 1, \
-	.resource = (struct resource[]) { \
-		{ \
-			.start = XPAR_AC97_##num##_BASEADDR,	\
-			.end   = XPAR_AC97_##num##_HIGHADDR,    \
-			.flags = IORESOURCE_MEM, \
-		}, \
-	}, \
-}
-
-/*
- * ML300/ML403 Video Device: shortcut macro for single instance
- */
-#define XPAR_TFT(num) {						\
-		.name = "xilinxfb",				\
-			.id = num,				\
-			.num_resources = 1,			\
-			.resource = (struct resource[]) {	\
-			{					\
-				.start = XPAR_TFT_##num##_BASEADDR,	\
-				.end = XPAR_TFT_##num##_BASEADDR+7,	\
-				.flags = IORESOURCE_IO,			\
-			},						\
-		},							\
-			.dev.platform_data = &(struct xilinxfb_platform_data) {	\
-			 .rotate_screen = 0,				\
-			 .screen_height_mm = 99,			\
-			 .screen_width_mm = 132,			\
-		 },							\
-				 }
-
 #define XPAR_AC97_CONTROLLER_REFERENCE(num) { \
 	.name = "ml403_ac97cr", \
 	.id = num, \
@@ -297,29 +279,6 @@
 		{ \
 			.start = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
 			.end = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
-			.flags = IORESOURCE_IRQ, \
-		}, \
-	}, \
-}
-
-#define XPAR_AC97_CONTROLLER_REFERENCE(num) { \
-	.name = "ml403_ac97cr", \
-	.id = num, \
-	.num_resources = 3, \
-	.resource = (struct resource[]) { \
-		{ \
-			.start = XPAR_OPB_AC97_CONTROLLER_REF_##num##_BASEADDR, \
-			.end = XPAR_OPB_AC97_CONTROLLER_REF_##num##_HIGHADDR, \
-			.flags = IORESOURCE_MEM, \
-		}, \
-		{ \
-			.start = XPAR_INTC_0_AC97_CONTROLLER_REF_##num##_PLAYBACK_VEC_ID, \
-			.end = XPAR_INTC_0_AC97_CONTROLLER_REF_##num##_PLAYBACK_VEC_ID, \
-			.flags = IORESOURCE_IRQ, \
-		}, \
-		{ \
-			.start = XPAR_INTC_0_AC97_CONTROLLER_REF_##num##_RECORD_VEC_ID, \
-			.end = XPAR_INTC_0_AC97_CONTROLLER_REF_##num##_RECORD_VEC_ID, \
 			.flags = IORESOURCE_IRQ, \
 		}, \
 	}, \
@@ -351,8 +310,9 @@ struct plat_serial8250_port virtex_serial_platform_data[] = {
 #if defined(XPAR_UARTNS550_7_BASEADDR)
 	XPAR_UART(7),
 #endif
-	{},			/* terminated by empty record */
+	{ }, /* terminated by empty record */
 };
+
 
 struct platform_device virtex_platform_devices[] = {
 	/* UARTLITE instances */
@@ -384,10 +344,10 @@ struct platform_device virtex_platform_devices[] = {
 	/* Full UART instances */
 #if defined(XPAR_UARTNS550_0_BASEADDR)
 	{
-	 .name = "serial8250",
-	 .id = 0,
-	 .dev.platform_data = virtex_serial_platform_data,
-	 },
+		.name = "serial8250",
+		.id = 0,
+		.dev.platform_data = virtex_serial_platform_data,
+	},
 #endif
 
 	/* SystemACE instances */
@@ -490,10 +450,6 @@ struct platform_device virtex_platform_devices[] = {
 	XPAR_HWICAP(0),
 #endif
 
-#if defined(XPAR_AC97_0_BASEADDR)
-	XPAR_AC97(0),
-#endif
-
 	/* ML300/403 reference design framebuffer */
 #if defined(XPAR_TFT_0_BASEADDR)
 	XPAR_TFT(0),
@@ -517,12 +473,6 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 };
 
-
-	/* AC97 Controller Reference instances */
-#if defined(XPAR_OPB_AC97_CONTROLLER_REF_0_BASEADDR)
-	XPAR_AC97_CONTROLLER_REFERENCE(0),
-#endif
-
 /* Early serial support functions */
 static void __init
 virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
@@ -543,20 +493,21 @@ virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
 #endif
 }
 
-void __init virtex_early_serial_map(void)
+void __init
+virtex_early_serial_map(void)
 {
 #ifdef CONFIG_SERIAL_8250
 	struct plat_serial8250_port *pdata;
 	int i = 0;
 
 	pdata = virtex_serial_platform_data;
-	while (pdata && pdata->flags) {
+	while(pdata && pdata->flags) {
 		pdata->membase = ioremap(pdata->mapbase, 0x100);
 		virtex_early_serial_init(i, pdata);
 		pdata++;
 		i++;
 	}
-#endif				/* CONFIG_SERIAL_8250 */
+#endif /* CONFIG_SERIAL_8250 */
 }
 
 /*
@@ -566,7 +517,7 @@ void __init virtex_early_serial_map(void)
  * override the default behaviour
  */
 int __attribute__ ((weak))
-    virtex_device_fixup(struct platform_device *dev)
+virtex_device_fixup(struct platform_device *dev)
 {
 	return 0;
 }
