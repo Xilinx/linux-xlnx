@@ -65,8 +65,8 @@
 const char *virtex_machine_name = "Xilinx ML300";
 #elif defined(CONFIG_XILINX_XUPV2P)
 const char *virtex_machine_name = "Xilinx XUPV2P";
-#elif defined(CONFIG_XILINX_ML40x)
-const char *virtex_machine_name = "Xilinx ML40x";
+#elif defined(CONFIG_XILINX_ML403)
+const char *virtex_machine_name = "Xilinx ML403";
 #elif defined(CONFIG_XILINX_ML41x)
 const char *virtex_machine_name = "Xilinx ML41x";
 #else
