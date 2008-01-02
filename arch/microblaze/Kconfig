@@ -53,7 +53,7 @@ config GENERIC_CALIBRATE_DELAY
 	default y
 
 config OF
-	def_bool y
+	def_bool n
 
 config PCI
 	bool
@@ -113,6 +113,7 @@ config CMDLINE
 
 config WANT_DEVICE_TREE
 	bool "Static device tree configuration"
+	select OF
 	help
 		Enable configuration using a static device tree.  If a static
 		device tree is not used, then configuration will default to
