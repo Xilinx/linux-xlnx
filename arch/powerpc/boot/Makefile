@@ -56,7 +56,7 @@ src-plat := of.c cuboot-52xx.c cuboot-83xx.c cuboot-85xx.c holly.c \
 		cuboot-ebony.c treeboot-ebony.c prpmc2800.c \
 		ps3-head.S ps3-hvcall.S ps3.c treeboot-bamboo.c cuboot-8xx.c \
 		cuboot-pq2.c cuboot-sequoia.c treeboot-walnut.c cuboot-bamboo.c \
-		fixed-head.S ep88xc.c cuboot-hpc2.c raw-platform.c
+		fixed-head.S ep88xc.c cuboot-hpc2.c virtex.c raw-platform.c
 src-boot := $(src-wlib) $(src-plat) empty.c
 
 src-boot := $(addprefix $(obj)/, $(src-boot))
@@ -160,6 +160,7 @@ image-$(CONFIG_BAMBOO)			+= treeImage.bamboo cuImage.bamboo
 image-$(CONFIG_SEQUOIA)			+= cuImage.sequoia
 image-$(CONFIG_WALNUT)			+= treeImage.walnut
 image-$(CONFIG_BUILD_RAW_IMAGE)		+= zImage.raw
+image-$(CONFIG_XILINX_VIRTEX)		+= zImage.virtex
 endif
 
 # For 32-bit powermacs, build the COFF and miboot images
