@@ -92,7 +92,7 @@ struct net_local {
 	struct net_device *ndev;	/* this device */
 	u32 index;		/* Which interface is this */
 	XInterruptHandler Isr;	/* Pointer to the XEmac ISR routine */
-	u8 mii_addr;		/* The MII address of the PHY */
+
 	/*
 	 * The underlying OS independent code needs space as well.  A
 	 * pointer to the following XEmacLite structure will be passed to
@@ -509,11 +509,6 @@ static int xemaclite_setup(
 	ndev->hard_start_xmit = xemaclite_Send;
 	lp->Isr = XEmacLite_InterruptHandler;
 
-	lp->mii_addr = 0;
-	dev_warn(dev, 
-	       "No PHY detected.  Assuming a PHY at address %d.\n",
-                lp->mii_addr);
-
 	ndev->open = xemaclite_open;
 	ndev->stop = xemaclite_close;
 	ndev->get_stats = xemaclite_get_stats;
@@ -621,8 +616,8 @@ static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of
 	}
 
 	/* Get IRQ for the device */
-	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
-	if(rc == NO_IRQ) {
+        rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+       if(rc == NO_IRQ) {
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
 		return rc;
 	}
