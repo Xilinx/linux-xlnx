@@ -518,11 +518,6 @@ struct platform_device virtex_platform_devices[] = {
 };
 
 
-	/* AC97 Controller Reference instances */
-#if defined(XPAR_OPB_AC97_CONTROLLER_REF_0_BASEADDR)
-	XPAR_AC97_CONTROLLER_REFERENCE(0),
-#endif
-
 /* Early serial support functions */
 static void __init
 virtex_early_serial_init(int num, struct plat_serial8250_port *pdata)
