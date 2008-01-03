@@ -77,6 +77,14 @@ config XILINX_ML403
 	help
 	  This option enables support for the Xilinx ML403 evaluation board.
 
+config XILINX_ML405
+        bool "Xilinx-ML405"
+        select XILINX_VIRTEX_4_FX
+        select EMBEDDEDBOOT
+        select XILINX_EMBED_CONFIG
+        help
+          This option enables support for the Xilinx ML405 evaluation board.
+
 config XILINX_ML41x
 	bool "Xilinx-ML41x"
 	select XILINX_VIRTEX_4_FX
