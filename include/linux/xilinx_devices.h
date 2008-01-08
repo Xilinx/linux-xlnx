@@ -20,13 +20,6 @@
 #include <linux/version.h>
 #include <linux/platform_device.h>
 
-/* ML300/403 reference design framebuffer driver platform data struct */
-struct xilinxfb_platform_data {
-       u32 rotate_screen;
-       u32 screen_height_mm;
-       u32 screen_width_mm;
-};
-
 /*- 10/100 Mb Ethernet Controller IP (XEMAC) -*/
 
 struct xemac_platform_data {
