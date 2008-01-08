@@ -73,7 +73,7 @@ static struct irq_chip obp_intc = {
 	.end	  = opb_intc_end,
 };
 
-int get_irq(struct pt_regs *regs)
+unsigned int get_irq(struct pt_regs *regs)
 {
 	int irq;
 

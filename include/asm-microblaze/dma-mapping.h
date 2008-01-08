@@ -11,7 +11,7 @@
 
 #include <linux/mm.h>
 #include <linux/device.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
 #include <asm/io.h>
@@ -188,17 +188,21 @@ dma_unmap_page(struct device *dev, dma_addr_t dma_address, size_t size,
  * the same here.
  */
 static inline int
-dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
+dma_map_sg(struct device *dev, struct scatterlist *sgl, int nents,
 	   enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
+        char *virt;
 
-	for (i = 0; i < nents; i++) {
-		char *virt;
+	BUG_ON(direction == DMA_NONE);
 
-		sg[i].dma_address = page_to_bus(sg[i].page) + sg[i].offset;
-		virt = page_address(sg[i].page) + sg[i].offset;
-		dma_cache_sync(dev, virt, sg[i].length, direction);
+	for_each_sg(sgl, sg, nents, i) {
+		BUG_ON(!sg_page(sg));
+
+		sg[i].dma_address = page_to_bus(sg_page(sg)) + sg->offset;
+		virt = page_address(sg_page(sg)) + sg->offset;
+		dma_cache_sync(dev, virt, sg->length, direction);
 	}
 
 	return nents;
@@ -285,27 +289,31 @@ dma_sync_single_range_for_device(struct device *dev, dma_addr_t dma_handle,
  * same rules and usage.
  */
 static inline void
-dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
+dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sgl,
 		    int nents, enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
 
-	for (i = 0; i < nents; i++) {
-		dma_cache_sync(dev, page_address(sg[i].page) + sg[i].offset,
-			       sg[i].length, direction);
-	}
+	BUG_ON(direction == DMA_NONE);
+
+	for_each_sg(sgl, sg, nents, i)
+		dma_cache_sync(dev, page_address(sg_page(sg)) + sg->offset,
+			       sg->length, direction);
 }
 
 static inline void
-dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
+dma_sync_sg_for_device(struct device *dev, struct scatterlist *sgl,
 		       int nents, enum dma_data_direction direction)
 {
+	struct scatterlist *sg;
 	int i;
 
-	for (i = 0; i < nents; i++) {
-		dma_cache_sync(dev, page_address(sg[i].page) + sg[i].offset,
-			       sg[i].length, direction);
-	}
+	BUG_ON(direction == DMA_NONE);
+
+	for_each_sg(sgl, sg, nents, i)
+		dma_cache_sync(dev, page_address(sg_page(sg)) + sg->offset,
+			       sg->length, direction);
 }
 
 /* Now for the API extensions over the pci_ one */

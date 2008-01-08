@@ -182,6 +182,8 @@ config CMDLINE_FORCE
 
 endmenu
 
+config APM_EMULATION
+	bool
 
 source "mm/Kconfig"
 
