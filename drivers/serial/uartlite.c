@@ -19,6 +19,7 @@
 #include <linux/tty.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/init.h>
 #include <asm/io.h>
 #if defined(CONFIG_OF)
 #include <linux/of.h>
@@ -26,7 +27,7 @@
 #include <linux/of_platform.h>
 
 /* Match table for of_platform binding */
-static struct of_device_id __devinit ulite_of_match[] = {
+static struct of_device_id __devinitdata ulite_of_match[] = {
 	{ .type = "serial", .compatible = "xlnx,opb-uartlite-1.00.b", },
 	{ .type = "serial", .compatible = "xlnx,xps-uartlite-1.00.a", },
 	{},
@@ -593,7 +594,7 @@ static int __devinit ulite_assign(struct device *dev, int id, u32 base, int irq)
  *
  * @dev: pointer to device structure
  */
-static int __devinit ulite_release(struct device *dev)
+static int __devexit ulite_release(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
 	int rc = 0;
@@ -626,7 +627,7 @@ static int __devinit ulite_probe(struct platform_device *pdev)
 	return ulite_assign(&pdev->dev, pdev->id, res->start, res2->start);
 }
 
-static int ulite_remove(struct platform_device *pdev)
+static int __devexit ulite_remove(struct platform_device *pdev)
 {
 	return ulite_release(&pdev->dev);
 }

@@ -16,6 +16,21 @@
 #include <linux/seq_file.h>
 #include <linux/kernel_stat.h>
 
+#include <asm/prom.h>
+
+unsigned int irq_of_parse_and_map(struct device_node *dev, int index)
+{
+	struct of_irq oirq;
+
+	if (of_irq_map_one(dev, index, &oirq))
+		return NO_IRQ;
+
+	return oirq.specifier[0];
+        //irq_create_of_mapping(oirq.controller, oirq.specifier,
+        //		     oirq.size);
+}
+EXPORT_SYMBOL_GPL(irq_of_parse_and_map);
+
 /*
  * 'what should we do if we get a hw irq event on an illegal vector'.
  * each architecture has to answer this themselves.

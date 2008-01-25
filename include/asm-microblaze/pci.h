@@ -6,7 +6,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/mm.h>
-#include <asm/scatterlist.h>
+#include <linux/scatterlist.h>
 #include <asm/io.h>
 #include <asm/pci-bridge.h>
 #include <asm-generic/pci-dma-compat.h>

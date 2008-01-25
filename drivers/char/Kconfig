@@ -573,7 +573,6 @@ config HVC_DRIVER
 	  It will automatically be selected if one of the back-end console drivers
 	  is selected.
 
-
 config HVC_CONSOLE
 	bool "pSeries Hypervisor Virtual Console support"
 	depends on PPC_PSERIES
@@ -858,13 +857,14 @@ config XILINX_GPIO
 	depends on XILINX_DRIVERS
 	select XILINX_EDK
 	help
-	This option enables support for Xilinx GPIO.
+		This option enables support for Xilinx GPIO.
 
 config XILINX_HWICAP
 	tristate "Xilinx OPB HWICAP Support"
 	depends on XILINX_DRIVERS
 	help
-	This option enables support for Xilinx Internal Configuration Access Port (ICAP) driver.
+		This option enables support for Xilinx Internal Configuration
+		Access Port (ICAP) driver.
 
 config R3964
 	tristate "Siemens R3964 line discipline"

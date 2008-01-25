@@ -331,10 +331,13 @@ void __init uart_16550_early_init(void)
 }
 
 #ifdef CONFIG_DEVICE_TREE
-static struct of_device_id microblaze_of_bus[] = {
-	{ .compatible = "ibm,plb4", },
-	{ .compatible = "ibm,plb", },
-	{ .compatible = "ibm,opb", },
+static struct of_device_id xilinx_of_bus_ids[] = {
+	{ .compatible = "xlnx,plb-v46-1.00.a", },
+	{ .compatible = "xlnx,plb-v34-1.01.a", },
+	{ .compatible = "xlnx,plb-v34-1.02.a", },
+	{ .compatible = "xlnx,opb-v20-1.10.c", },
+	{ .compatible = "xlnx,dcr-v29-1.00.a", },
+	{ .compatible = "xlnx,compound", },
 	{},
 };
 #endif
@@ -342,7 +345,7 @@ static struct of_device_id microblaze_of_bus[] = {
 static int __init xilinx_platform_init(void)
 {
 #ifdef CONFIG_DEVICE_TREE
-    of_platform_bus_probe(NULL, microblaze_of_bus, NULL);
+    of_platform_bus_probe(NULL, xilinx_of_bus_ids, NULL);
 #else
 
 #ifdef XPAR_SPI_0_BASEADDR

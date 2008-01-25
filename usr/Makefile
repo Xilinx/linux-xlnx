@@ -50,6 +50,6 @@ $(obj)/initramfs_data.cpio.gz: $(obj)/gen_init_cpio $(deps_initramfs) klibcdirs
 	$(Q)$(initramfs) -l $(ramfs-input) > $(obj)/.initramfs_data.cpio.gz.d
 	$(call if_changed,initfs)
 
-$(obj)/initramfs_data.S: $(obj)/initramfs_data.S.in $(obj)/bin2asm $(obj)/initramfs_data.cpio.gz
-	@cat $(obj)/initramfs_data.S.in >$(obj)/initramfs_data.S
+$(obj)/initramfs_data.S: $(srctree)/usr/initramfs_data.S.in $(obj)/bin2asm $(obj)/initramfs_data.cpio.gz
+	@cat $(srctree)/usr/initramfs_data.S.in >$(obj)/initramfs_data.S
 	@$(obj)/bin2asm $(obj)/initramfs_data.cpio.gz >>$(obj)/initramfs_data.S

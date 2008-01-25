@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.23xlnx
-# Tue Dec 18 10:58:15 2007
+# Mon Dec 17 15:41:58 2007
 #
 CONFIG_MMU=y
 CONFIG_GENERIC_HARDIRQS=y
@@ -121,7 +121,8 @@ CONFIG_4xx=y
 # CONFIG_WALNUT is not set
 # CONFIG_XILINX_ML300 is not set
 # CONFIG_XILINX_XUPV2P is not set
-CONFIG_XILINX_ML403=y
+# CONFIG_XILINX_ML403 is not set
+CONFIG_XILINX_ML405=y
 # CONFIG_XILINX_ML41x is not set
 CONFIG_IBM405_ERR77=y
 CONFIG_IBM405_ERR51=y
