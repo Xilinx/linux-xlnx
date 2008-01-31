@@ -18,6 +18,7 @@ struct device_node;
 
 #define NO_IRQ NR_IRQS
 
+#ifdef CONFIG_OF
 /* irq_of_parse_and_map - Parse and Map an interrupt into linux virq space
  * @device: Device node of the device whose interrupt is to be mapped
  * @index: Index of the interrupt to map
@@ -26,6 +27,7 @@ struct device_node;
  * irq_create_of_mapping() to make things easier to callers
  */
 extern unsigned int irq_of_parse_and_map(struct device_node *dev, int index);
+#endif
 
 static inline int irq_canonicalize(int irq)
 {

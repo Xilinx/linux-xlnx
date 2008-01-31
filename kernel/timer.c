@@ -978,7 +978,7 @@ asmlinkage long sys_getppid(void)
 	int pid;
 
 	rcu_read_lock();
-	pid = task_ppid_nr_ns(current, current->nsproxy->pid_ns);
+	pid = task_tgid_nr_ns(current->real_parent, current->nsproxy->pid_ns);
 	rcu_read_unlock();
 
 	return pid;
@@ -1219,11 +1219,11 @@ asmlinkage long sys_sysinfo(struct sysinfo __user *info)
  */
 static struct lock_class_key base_lock_keys[NR_CPUS];
 
-static int __devinit init_timers_cpu(int cpu)
+static int __cpuinit init_timers_cpu(int cpu)
 {
 	int j;
 	tvec_base_t *base;
-	static char __devinitdata tvec_base_done[NR_CPUS];
+	static char __cpuinitdata tvec_base_done[NR_CPUS];
 
 	if (!tvec_base_done[cpu]) {
 		static char boot_done;

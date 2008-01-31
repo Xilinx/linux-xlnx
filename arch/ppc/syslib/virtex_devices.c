@@ -248,6 +248,19 @@
 	}, \
 }
 
+#ifdef CONFIG_XILINX_VIRTEX_II_PRO
+#define XPAR_HWICAP_FAMILY "virtex2p"
+#endif
+#ifdef CONFIG_XILINX_VIRTEX_4_FX
+#define XPAR_HWICAP_FAMILY "virtex4"
+#endif
+#ifdef CONFIG_XILINX_VIRTEX_5
+#define XPAR_HWICAP_FAMILY "virtex5"
+#endif
+#ifndef XPAR_HWICAP_FAMILY
+#define XPAR_HWICAP_FAMILY NULL
+#endif
+
 #define XPAR_HWICAP(num) { \
 	.name = "xilinx_icap", \
 	.id = num, \
@@ -259,6 +272,7 @@
 			.flags = IORESOURCE_MEM, \
 		}, \
 	}, \
+	.dev.platform_data = XPAR_HWICAP_FAMILY,	\
 }
 
 #define XPAR_AC97_CONTROLLER_REFERENCE(num) { \

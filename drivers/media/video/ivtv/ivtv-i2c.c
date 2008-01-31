@@ -541,7 +541,7 @@ static const struct i2c_algo_bit_data ivtv_i2c_algo_template = {
 	.setscl		= ivtv_setscl_old,
 	.getsda		= ivtv_getsda_old,
 	.getscl		= ivtv_getscl_old,
-	.udelay		= 5,
+	.udelay		= 10,
 	.timeout	= 200,
 };
 
@@ -706,7 +706,7 @@ void ivtv_call_i2c_clients(struct ivtv *itv, unsigned int cmd, void *arg)
 }
 
 /* init + register i2c algo-bit adapter */
-int __devinit init_ivtv_i2c(struct ivtv *itv)
+int init_ivtv_i2c(struct ivtv *itv)
 {
 	IVTV_DEBUG_I2C("i2c init\n");
 

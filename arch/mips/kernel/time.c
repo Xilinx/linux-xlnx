@@ -109,10 +109,6 @@ void __cpuinit clockevent_set_clock(struct clock_event_device *cd,
 	cd->mult = (u32) temp;
 }
 
-void __init __weak plat_time_init(void)
-{
-}
-
 /*
  * This function exists in order to cause an error due to a duplicate
  * definition if platform code should have its own implementation.  The hook
@@ -151,9 +147,9 @@ static __init int cpu_has_mfc0_count_bug(void)
 			return 1;
 
 		/*
-		 * I don't have erratas for newer R4400 so be paranoid.
+		 * we assume newer revisions are ok
 		 */
-		return 1;
+		return 0;
 	}
 
 	return 0;
