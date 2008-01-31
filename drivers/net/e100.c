@@ -1991,13 +1991,12 @@ static int e100_poll(struct napi_struct *napi, int budget)
 	struct nic *nic = container_of(napi, struct nic, napi);
 	struct net_device *netdev = nic->netdev;
 	unsigned int work_done = 0;
-	int tx_cleaned;
 
 	e100_rx_clean(nic, &work_done, budget);
-	tx_cleaned = e100_tx_clean(nic);
+	e100_tx_clean(nic);
 
-	/* If no Rx and Tx cleanup work was done, exit polling mode. */
-	if((!tx_cleaned && (work_done == 0)) || !netif_running(netdev)) {
+	/* If budget not fully consumed, exit the polling mode */
+	if (work_done < budget) {
 		netif_rx_complete(netdev, napi);
 		e100_enable_irq(nic);
 	}
@@ -2737,8 +2736,9 @@ static int e100_suspend(struct pci_dev *pdev, pm_message_t state)
 		pci_enable_wake(pdev, PCI_D3cold, 0);
 	}
 
-	pci_disable_device(pdev);
 	free_irq(pdev->irq, netdev);
+
+	pci_disable_device(pdev);
 	pci_set_power_state(pdev, PCI_D3hot);
 
 	return 0;
@@ -2779,6 +2779,8 @@ static void e100_shutdown(struct pci_dev *pdev)
 		pci_enable_wake(pdev, PCI_D3hot, 0);
 		pci_enable_wake(pdev, PCI_D3cold, 0);
 	}
+
+	free_irq(pdev->irq, netdev);
 
 	pci_disable_device(pdev);
 	pci_set_power_state(pdev, PCI_D3hot);

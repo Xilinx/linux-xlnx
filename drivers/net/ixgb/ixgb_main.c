@@ -320,10 +320,22 @@ ixgb_down(struct ixgb_adapter *adapter, boolean_t kill_watchdog)
 void
 ixgb_reset(struct ixgb_adapter *adapter)
 {
+	struct ixgb_hw *hw = &adapter->hw;
 
-	ixgb_adapter_stop(&adapter->hw);
-	if(!ixgb_init_hw(&adapter->hw))
+	ixgb_adapter_stop(hw);
+	if (!ixgb_init_hw(hw))
 		DPRINTK(PROBE, ERR, "ixgb_init_hw failed.\n");
+
+	/* restore frame size information */
+	IXGB_WRITE_REG(hw, MFS, hw->max_frame_size << IXGB_MFS_SHIFT);
+	if (hw->max_frame_size >
+	    IXGB_MAX_ENET_FRAME_SIZE_WITHOUT_FCS + ENET_FCS_LENGTH) {
+		u32 ctrl0 = IXGB_READ_REG(hw, CTRL0);
+		if (!(ctrl0 & IXGB_CTRL0_JFE)) {
+			ctrl0 |= IXGB_CTRL0_JFE;
+			IXGB_WRITE_REG(hw, CTRL0, ctrl0);
+		}
+	}
 }
 
 /**
@@ -1775,14 +1787,13 @@ ixgb_clean(struct napi_struct *napi, int budget)
 {
 	struct ixgb_adapter *adapter = container_of(napi, struct ixgb_adapter, napi);
 	struct net_device *netdev = adapter->netdev;
-	int tx_cleaned;
 	int work_done = 0;
 
-	tx_cleaned = ixgb_clean_tx_irq(adapter);
+	ixgb_clean_tx_irq(adapter);
 	ixgb_clean_rx_irq(adapter, &work_done, budget);
 
-	/* if no Tx and not enough Rx work done, exit the polling mode */
-	if((!tx_cleaned && (work_done == 0)) || !netif_running(netdev)) {
+	/* If budget not fully consumed, exit the polling mode */
+	if (work_done < budget) {
 		netif_rx_complete(netdev, napi);
 		ixgb_irq_enable(adapter);
 	}

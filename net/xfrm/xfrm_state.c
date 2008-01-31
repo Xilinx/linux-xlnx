@@ -1749,6 +1749,7 @@ void km_policy_expired(struct xfrm_policy *pol, int dir, int hard, u32 pid)
 }
 EXPORT_SYMBOL(km_policy_expired);
 
+#ifdef CONFIG_XFRM_MIGRATE
 int km_migrate(struct xfrm_selector *sel, u8 dir, u8 type,
 	       struct xfrm_migrate *m, int num_migrate)
 {
@@ -1768,6 +1769,7 @@ int km_migrate(struct xfrm_selector *sel, u8 dir, u8 type,
 	return err;
 }
 EXPORT_SYMBOL(km_migrate);
+#endif
 
 int km_report(u8 proto, struct xfrm_selector *sel, xfrm_address_t *addr)
 {
@@ -2028,17 +2030,18 @@ void
 xfrm_audit_state_add(struct xfrm_state *x, int result, u32 auid, u32 sid)
 {
 	struct audit_buffer *audit_buf;
+	u32 spi;
 	extern int audit_enabled;
 
 	if (audit_enabled == 0)
 		return;
-	audit_buf = xfrm_audit_start(sid, auid);
+	audit_buf = xfrm_audit_start(auid, sid);
 	if (audit_buf == NULL)
 		return;
 	audit_log_format(audit_buf, " op=SAD-add res=%u",result);
 	xfrm_audit_common_stateinfo(x, audit_buf);
-	audit_log_format(audit_buf, " spi=%lu(0x%lx)",
-			 (unsigned long)x->id.spi, (unsigned long)x->id.spi);
+	spi = ntohl(x->id.spi);
+	audit_log_format(audit_buf, " spi=%u(0x%x)", spi, spi);
 	audit_log_end(audit_buf);
 }
 EXPORT_SYMBOL_GPL(xfrm_audit_state_add);
@@ -2047,17 +2050,18 @@ void
 xfrm_audit_state_delete(struct xfrm_state *x, int result, u32 auid, u32 sid)
 {
 	struct audit_buffer *audit_buf;
+	u32 spi;
 	extern int audit_enabled;
 
 	if (audit_enabled == 0)
 		return;
-	audit_buf = xfrm_audit_start(sid, auid);
+	audit_buf = xfrm_audit_start(auid, sid);
 	if (audit_buf == NULL)
 		return;
 	audit_log_format(audit_buf, " op=SAD-delete res=%u",result);
 	xfrm_audit_common_stateinfo(x, audit_buf);
-	audit_log_format(audit_buf, " spi=%lu(0x%lx)",
-			 (unsigned long)x->id.spi, (unsigned long)x->id.spi);
+	spi = ntohl(x->id.spi);
+	audit_log_format(audit_buf, " spi=%u(0x%x)", spi, spi);
 	audit_log_end(audit_buf);
 }
 EXPORT_SYMBOL_GPL(xfrm_audit_state_delete);

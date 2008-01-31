@@ -138,11 +138,14 @@ int ecryptfs_init_persistent_file(struct dentry *ecryptfs_dentry)
 		inode_info->lower_file = dentry_open(lower_dentry,
 						     lower_mnt,
 						     (O_RDWR | O_LARGEFILE));
-		if (IS_ERR(inode_info->lower_file))
+		if (IS_ERR(inode_info->lower_file)) {
+			dget(lower_dentry);
+			mntget(lower_mnt);
 			inode_info->lower_file = dentry_open(lower_dentry,
 							     lower_mnt,
 							     (O_RDONLY
 							      | O_LARGEFILE));
+		}
 		if (IS_ERR(inode_info->lower_file)) {
 			printk(KERN_ERR "Error opening lower persistent file "
 			       "for lower_dentry [0x%p] and lower_mnt [0x%p]\n",
@@ -523,6 +526,7 @@ static int ecryptfs_read_super(struct super_block *sb, const char *dev_name)
 	lower_mnt = nd.mnt;
 	ecryptfs_set_superblock_lower(sb, lower_root->d_sb);
 	sb->s_maxbytes = lower_root->d_sb->s_maxbytes;
+	sb->s_blocksize = lower_root->d_sb->s_blocksize;
 	ecryptfs_set_dentry_lower(sb->s_root, lower_root);
 	ecryptfs_set_dentry_lower_mnt(sb->s_root, lower_mnt);
 	rc = ecryptfs_interpose(lower_root, sb->s_root, sb, 0);
