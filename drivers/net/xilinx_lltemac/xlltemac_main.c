@@ -3072,17 +3072,20 @@ static int xtenet_setup(
 
 		dev_err(dev, "XLlTemac: using DMA mode.\n");
 
-#ifndef XDCRIO_H
-		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
-		if (0 == virt_baddr) {
-			dev_err(dev,
-			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
-			rc = -EIO;
-			goto error;
+		if (1 /* PR FIXME: pdata->dcr_host */) {
+			printk("XLlTemac: DCR address: 0x%0x\n", pdata->ll_dev_baseaddress);
+			XLlDma_Initialize(&lp->Dma, pdata->ll_dev_baseaddress);
+		} else {
+		        virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
+			if (0 == virt_baddr) {
+			        dev_err(dev,
+					"XLlTemac: Could not allocate iomem for local link connected device.\n");
+				rc = -EIO;
+				goto error;
+			}
+			printk("XLlTemac: Dma base address: phy: 0x%x, virt: 0x%x\n", pdata->ll_dev_baseaddress, virt_baddr);
+			XLlDma_Initialize(&lp->Dma, virt_baddr);
 		}
-#endif
-		printk("XLlTemac: Dma base address: phy: 0x%x, virt: 0x%x\n", pdata->ll_dev_baseaddress, virt_baddr);
-		XLlDma_Initialize(&lp->Dma, virt_baddr);
 
 
 		ndev->hard_start_xmit = xenet_DmaSend;

@@ -195,7 +195,6 @@
 	}, \
 }
 
-// wgr TODO: Check with John about the address space size!!!
 #define XPAR_LLTEMAC_RESOURCES(num) \
 	.name = "xilinx_lltemac", \
 	.id = XPAR_LLTEMAC_##num##_DEVICE_ID, \
