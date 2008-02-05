@@ -68,6 +68,10 @@ void (*debugger_fault_handler)(struct pt_regs *regs);
 #endif
 #endif
 
+#ifdef CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+u8 excep_state = 0;
+#endif
+
 /*
  * Trap & Exception support
  */
@@ -103,6 +107,13 @@ int die(const char * str, struct pt_regs * fp, long err)
 void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
 {
 	siginfo_t info;
+
+	printk(KERN_DEBUG
+	       "XXX: Exception\n"
+	       "  Signal: %x\n"
+	       "  Code:   %x\n"
+	       "  Addr:   %x\n",
+	       signr, code, addr);
 
 	if (!user_mode(regs)) {
 		debugger(regs);
@@ -584,6 +595,34 @@ void program_check_exception(struct pt_regs *regs)
 		return;
 	}
 #endif /* CONFIG_MATH_EMULATION */
+
+#ifdef CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+#if 1
+{
+        u32 insn;
+	int i;
+
+	printk(KERN_DEBUG
+	       "Xilinx spurious APU exception workaround.\n"
+	       "  Reason: %x\n"
+	       "  NIP:    %x\n",
+	       reason, regs->nip);
+	
+	for(i=-8; i <= 8; i+=4) {
+	  (void) get_user(insn, (u32 *)(regs->nip+i));
+	  printk(KERN_DEBUG
+		 "  Instr.: %2d %x\n",
+		 i, insn);
+	}
+}
+#endif
+	if (excep_state == 0) {
+	        excep_state = 1;
+		return;
+	}
+	printk(KERN_DEBUG
+	       "Xilinx spurious APU exception workaround fell through.\n");
+#endif /* CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND */
 
 	if (reason & REASON_FP) {
 		/* IEEE FP exception */

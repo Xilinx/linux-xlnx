@@ -32,6 +32,11 @@
  * enable the FPU for the current task and return to the task.
  */
 _GLOBAL(load_up_fpu)
+#ifdef CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+	li	r0,0
+	lis	r5,excep_state@h
+	stw	r0,excep_state@l(r5)
+#endif /* CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND */
 	mfmsr	r5
 	ori	r5,r5,MSR_FP
 	SYNC

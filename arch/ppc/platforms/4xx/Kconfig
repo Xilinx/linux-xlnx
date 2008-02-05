@@ -168,6 +168,15 @@ config PPC_FPU
 	  This option enables the Xilinx Soft FPU attached to the APU
 	  interface of the PPC440 (requires DP_FULL FPU pcore).
 
+config XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+	depends on XILINX_VIRTEX_5_FX
+	bool "Enable Spurious Program Exceptions Workaround"
+	help
+	  This option enables a workaround for a bug in the APU controller of
+	  the PPC440 processor block in Virtex-5 FXT. See the answer records
+	  at http://www.xilinx.com for more details and if you need to enable
+	  this workaround for your silicon revision.
+
 config XILINX_INTC_IVR_WORKAROUND
 	bool "Enable Xilinx INTC IVR workaround"
 	depends on XILINX_ML507
