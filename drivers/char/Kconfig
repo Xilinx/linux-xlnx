@@ -838,11 +838,11 @@ config XILINX_GPIO
 		This option enables support for Xilinx GPIO.
 
 config XILINX_HWICAP
-	tristate "Xilinx OPB HWICAP Support"
+	tristate "Xilinx HWICAP Support"
 	depends on XILINX_DRIVERS
 	help
-		This option enables support for Xilinx Internal Configuration
-		Access Port (ICAP) driver.
+	  This option enables support for Xilinx Internal Configuration
+	  Access Port (ICAP) driver.
 
 config R3964
 	tristate "Siemens R3964 line discipline"
