@@ -248,6 +248,23 @@
 	}, \
 }
 
+#define XPAR_IIC(num) { \
+    .name = "xilinx_iic", \
+    .id = num, \
+    .num_resources = 2, \
+    .resource = (struct resource[]) { \
+        { \
+            .start = XPAR_IIC_##num##_BASEADDR, \
+            .end = XPAR_IIC_##num##_HIGHADDR, \
+            .flags = IORESOURCE_MEM, \
+        }, \
+        { \
+            .start = XPAR_INTC_0_IIC_##num##_VEC_ID, \
+            .flags = IORESOURCE_IRQ, \
+        }, \
+    }, \
+}
+
 #ifdef CONFIG_XILINX_VIRTEX_II_PRO
 #define XPAR_HWICAP_FAMILY "virtex2p"
 #endif
@@ -458,6 +475,10 @@ struct platform_device virtex_platform_devices[] = {
 #endif
 #if defined(XPAR_PS2_3_BASEADDR)
 	XPAR_PS2(3),
+#endif
+
+#if defined(XPAR_IIC_0_BASEADDR)
+    XPAR_IIC(0),
 #endif
 
 #if defined(XPAR_HWICAP_0_BASEADDR)
