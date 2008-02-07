@@ -41,8 +41,8 @@
  *
  * The following operations are possible:
  *
- * open		open the port and initialize for access.
- * release	release port
+ * open         open the port and initialize for access.
+ * release      release port
  * write        Write a bitstream to the configuration processor.
  * read         Read a data stream from the configuration processor.
  *
@@ -84,7 +84,7 @@
 #include <linux/init.h>
 #include <linux/poll.h>
 #include <linux/proc_fs.h>
-#include <linux/spinlock.h>
+#include <asm/semaphore.h>
 #include <linux/sysctl.h>
 #include <linux/version.h>
 #include <linux/fs.h>
@@ -110,8 +110,8 @@
 #define HWICAP_REGS   (0x10000)
 
 /* dynamically allocate device number */
-static int xhwicap_major = 0;
-static int xhwicap_minor = 0;
+static int xhwicap_major;
+static int xhwicap_minor;
 #define HWICAP_DEVICES 1
 
 module_param(xhwicap_major, int, S_IRUGO);
@@ -353,10 +353,8 @@ hwicap_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 	u32 bytes_remaining;
 	int status;
 
-	if (drvdata->is_accessing)
-		return -EBUSY;
-
-	drvdata->is_accessing = 1;
+	if (down_interruptible(&drvdata->sem))
+		return -ERESTARTSYS;
 
 	if (drvdata->read_buffer_in_use) {
 		/* If there are leftover bytes in the buffer, just */
@@ -393,9 +391,8 @@ hwicap_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 		words = ((count + 3) >> 2);
 		bytes_to_read = words << 2;
 
-		if (bytes_to_read > PAGE_SIZE) {
+		if (bytes_to_read > PAGE_SIZE)
 			bytes_to_read = PAGE_SIZE;
-		}
 
 		/* Ensure we only read a complete number of words. */
 		bytes_remaining = bytes_to_read & 3;
@@ -423,7 +420,7 @@ hwicap_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 	}
 	status = bytes_to_read;
  error:
-	drvdata->is_accessing = 0;
+	up(&drvdata->sem);
 	return status;
 }
 
@@ -438,10 +435,8 @@ hwicap_write(struct file *file, const char *buf,
 	ssize_t len;
 	ssize_t status;
 
-	if (drvdata->is_accessing)
-		return -EBUSY;
-
-	drvdata->is_accessing = 1;
+	if (down_interruptible(&drvdata->sem))
+		return -ERESTARTSYS;
 
 	left += drvdata->write_buffer_in_use;
 
@@ -513,7 +508,7 @@ hwicap_write(struct file *file, const char *buf,
 	free_page((unsigned long)kbuf);
 	status = written;
  error:
-	drvdata->is_accessing = 0;
+	up(&drvdata->sem);
 	return status;
 }
 
@@ -523,23 +518,29 @@ static int hwicap_open(struct inode *inode, struct file *file)
 	int status;
 
 	drvdata = container_of(inode->i_cdev, struct hwicap_drvdata, cdev);
-	if (drvdata->is_open)
-		return -EBUSY;
 
-	drvdata->is_open = 1;
-	drvdata->is_accessing = 0;
+	if (down_interruptible(&drvdata->sem))
+		return -ERESTARTSYS;
+
+	if (drvdata->is_open) {
+		status = -EBUSY;
+		goto error;
+	}
 
 	status = hwicap_initialize_hwicap(drvdata);
 	if (status) {
 		dev_err(drvdata->dev, "Failed to open file");
-		return status;
+		goto error;
 	}
 
 	file->private_data = drvdata;
 	drvdata->write_buffer_in_use = 0;
 	drvdata->read_buffer_in_use = 0;
+	drvdata->is_open = 1;
 
-	return 0;
+ error:
+	up(&drvdata->sem);
+	return status;
 }
 
 static int hwicap_release(struct inode *inode, struct file *file)
@@ -548,11 +549,14 @@ static int hwicap_release(struct inode *inode, struct file *file)
 	int i;
 	int status = 0;
 
+	if (down_interruptible(&drvdata->sem))
+		return -ERESTARTSYS;
+
 	if (drvdata->write_buffer_in_use) {
 		/* Flush write buffer. */
-		for (i = drvdata->write_buffer_in_use; i < 4; i++) {
+		for (i = drvdata->write_buffer_in_use; i < 4; i++)
 			drvdata->write_buffer[i] = 0;
-		}
+
 		status = drvdata->config->set_configuration(drvdata,
 				(u32 *) drvdata->write_buffer, 1);
 		if (status)
@@ -565,6 +569,7 @@ static int hwicap_release(struct inode *inode, struct file *file)
 
  error:
 	drvdata->is_open = 0;
+	up(&drvdata->sem);
 	return status;
 }
 
@@ -642,6 +647,8 @@ static int __devinit hwicap_setup(struct device *dev, int id,
 
 	drvdata->config = config;
 	drvdata->config_regs = config_regs;
+
+	init_MUTEX(&drvdata->sem);
 	drvdata->is_open = 0;
 
 	dev_info(dev, "ioremap %lx to %p with size %x\n",
@@ -689,15 +696,16 @@ static int __devexit hwicap_remove(struct device *dev)
 
 	drvdata = (struct hwicap_drvdata *)dev_get_drvdata(dev);
 
-	if (drvdata) {
-		class_device_destroy(icap_class, drvdata->devt);
-		cdev_del(&drvdata->cdev);
-		iounmap(drvdata->base_address);
-		release_mem_region(drvdata->mem_start, drvdata->mem_size);
-		kfree(drvdata);
-		dev_set_drvdata(dev, NULL);
-		probed_devices[MINOR(dev->devt)-xhwicap_minor] = 0;
-	}
+	if (!drvdata)
+		return 0;
+
+	class_device_destroy(icap_class, drvdata->devt);
+	cdev_del(&drvdata->cdev);
+	iounmap(drvdata->base_address);
+	release_mem_region(drvdata->mem_start, drvdata->mem_size);
+	kfree(drvdata);
+	dev_set_drvdata(dev, NULL);
+	probed_devices[MINOR(dev->devt)-xhwicap_minor] = 0;
 
 	return 0;		/* success */
 }

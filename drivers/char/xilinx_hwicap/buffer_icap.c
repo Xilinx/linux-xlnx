@@ -209,19 +209,18 @@ static int buffer_icap_device_read(struct hwicap_drvdata *drvdata,
 	if (buffer_icap_busy(base_address))
 		return -EBUSY;
 
-	if ((offset + count) <= XHI_MAX_BUFFER_INTS) {
-		/* setSize count*4 to get bytes. */
-		buffer_icap_set_size(base_address, (count << 2));
-		buffer_icap_set_offset(base_address, offset);
-		buffer_icap_set_rnc(base_address, XHI_READBACK);
-
-		while (buffer_icap_busy(base_address)) {
-			retries++;
-			if (retries > XHI_MAX_RETRIES)
-				return -EBUSY;
-		}
-	} else {
+	if ((offset + count) > XHI_MAX_BUFFER_INTS)
 		return -EINVAL;
+
+	/* setSize count*4 to get bytes. */
+	buffer_icap_set_size(base_address, (count << 2));
+	buffer_icap_set_offset(base_address, offset);
+	buffer_icap_set_rnc(base_address, XHI_READBACK);
+
+	while (buffer_icap_busy(base_address)) {
+		retries++;
+		if (retries > XHI_MAX_RETRIES)
+			return -EBUSY;
 	}
 	return 0;
 
@@ -244,19 +243,18 @@ static int buffer_icap_device_write(struct hwicap_drvdata *drvdata,
 	if (buffer_icap_busy(base_address))
 		return -EBUSY;
 
-	if ((offset + count) <= XHI_MAX_BUFFER_INTS) {
-		/* setSize count*4 to get bytes. */
-		buffer_icap_set_size(base_address, count << 2);
-		buffer_icap_set_offset(base_address, offset);
-		buffer_icap_set_rnc(base_address, XHI_CONFIGURE);
-
-		while (buffer_icap_busy(base_address)) {
-			retries++;
-			if (retries > XHI_MAX_RETRIES)
-				return -EBUSY;
-		}
-	} else {
+	if ((offset + count) > XHI_MAX_BUFFER_INTS)
 		return -EINVAL;
+
+	/* setSize count*4 to get bytes. */
+	buffer_icap_set_size(base_address, count << 2);
+	buffer_icap_set_offset(base_address, offset);
+	buffer_icap_set_rnc(base_address, XHI_CONFIGURE);
+
+	while (buffer_icap_busy(base_address)) {
+		retries++;
+		if (retries > XHI_MAX_RETRIES)
+			return -EBUSY;
 	}
 	return 0;
 
@@ -298,24 +296,25 @@ int buffer_icap_set_configuration(struct hwicap_drvdata *drvdata, u32 *data,
 		buffer_icap_set_bram(base_address, buffer_count, data[i]);
 		dirty = 1;
 
-		if (buffer_count == XHI_MAX_BUFFER_INTS - 1) {
-			/* Write data to ICAP */
-			status = buffer_icap_device_write(
-					drvdata,
-					XHI_BUFFER_START,
-					XHI_MAX_BUFFER_INTS);
-			if (status != 0) {
-				/* abort. */
-				buffer_icap_reset(drvdata);
-				return status;
-			}
-
-			buffer_count = 0;
-			num_writes++;
-			dirty = 0;
-		} else {
+		if (buffer_count < XHI_MAX_BUFFER_INTS - 1) {
 			buffer_count++;
+			continue;
 		}
+
+		/* Write data to ICAP */
+		status = buffer_icap_device_write(
+				drvdata,
+				XHI_BUFFER_START,
+				XHI_MAX_BUFFER_INTS);
+		if (status != 0) {
+			/* abort. */
+			buffer_icap_reset(drvdata);
+			return status;
+		}
+
+		buffer_count = 0;
+		num_writes++;
+		dirty = 0;
 	}
 
 	/* Write unwritten data to ICAP */

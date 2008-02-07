@@ -61,7 +61,7 @@ struct hwicap_drvdata {
 	const struct config_registers *config_regs;
 	void *private_data;
 	bool is_open;
-	bool is_accessing;
+	struct semaphore sem;
 };
 
 struct hwicap_driver_config {

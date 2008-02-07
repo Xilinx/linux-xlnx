@@ -2524,6 +2524,20 @@ platforms are moved over to use the flattened-device-tree model.
 		Optional properties:
        - port-number : unique ordinal index of the device. This
          property is required for a console on uartlite.
+		 
+      v) Xilinx hwicap
+
+		Xilinx hwicap devices provide access to the configuration logic
+		of the FPGA through the Internal Configuration Access Port
+		(ICAP).  The ICAP enables partial reconfiguration of the FPGA,
+		readback of the configuration information, and some control over
+		'warm boots' of the FPGA fabric.
+
+		Required properties:
+		- xlnx,family : The family of the FPGA, necessary since the
+                      capabilities of the underlying ICAP hardware
+                      differ between different families.  May be
+                      'virtex2p', 'virtex4', or 'virtex5'.
 
    More devices will be defined as this spec matures.
 
