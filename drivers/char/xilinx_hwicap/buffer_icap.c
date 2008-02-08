@@ -148,7 +148,7 @@ static inline void buffer_icap_set_size(void __iomem *base_address,
 }
 
 /**
- * buffer_icap_mSetoffsetReg - Set the bram offset register.
+ * buffer_icap_set_offset - Set the bram offset register.
  * @base_address: contains the base address of the device.
  * @data: is the value to be written to the data register.
  *
