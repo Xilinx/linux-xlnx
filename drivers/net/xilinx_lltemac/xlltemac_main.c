@@ -3408,7 +3408,7 @@ static int __init xtenet_init(void)
 	 */
 	spin_lock_init(&XTE_spinlock);
 	spin_lock_init(&XTE_tx_spinlock);
-	spin_lock_init(&XTE_tx_spinlock);
+	spin_lock_init(&XTE_rx_spinlock);
 
 	INIT_LIST_HEAD(&sentQueue);
 	INIT_LIST_HEAD(&receivedQueue);
