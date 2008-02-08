@@ -48,9 +48,9 @@ struct hwicap_drvdata {
 	u8 write_buffer[4];
 	u32 read_buffer_in_use;	  /* Always in [0,3] */
 	u8 read_buffer[4];
-	u32 mem_start;		  /* phys. address of the control registers */
-	u32 mem_end;		  /* phys. address of the control registers */
-	u32 mem_size;
+	resource_size_t mem_start;/* phys. address of the control registers */
+	resource_size_t mem_end;  /* phys. address of the control registers */
+	resource_size_t mem_size;
 	void __iomem *base_address;/* virt. address of the control registers */
 
 	struct device *dev;
@@ -61,7 +61,7 @@ struct hwicap_drvdata {
 	const struct config_registers *config_regs;
 	void *private_data;
 	bool is_open;
-	struct semaphore sem;
+	struct mutex sem;
 };
 
 struct hwicap_driver_config {
