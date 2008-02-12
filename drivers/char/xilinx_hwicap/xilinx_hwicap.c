@@ -200,8 +200,8 @@ static const struct config_registers v5_config_registers = {
 };
 
 /**
- * hwicap_command_desync: Send a DESYNC command to the ICAP port.
- * @parameter drvdata: a pointer to the drvdata.
+ * hwicap_command_desync - Send a DESYNC command to the ICAP port.
+ * @drvdata: a pointer to the drvdata.
  *
  * This command desynchronizes the ICAP After this command, a
  * bitstream containing a NULL packet, followed by a SYNCH packet is
@@ -229,8 +229,8 @@ static int hwicap_command_desync(struct hwicap_drvdata *drvdata)
 }
 
 /**
- * hwicap_command_capture: Send a CAPTURE command to the ICAP port.
- * @parameter drvdata: a pointer to the drvdata.
+ * hwicap_command_capture - Send a CAPTURE command to the ICAP port.
+ * @drvdata: a pointer to the drvdata.
  *
  * This command captures all of the flip flop states so they will be
  * available during readback.  One can use this command instead of
@@ -262,18 +262,18 @@ static int hwicap_command_capture(struct hwicap_drvdata *drvdata)
 }
 
 /**
- * hwicap_get_configuration_register: Query a configuration register.
- * @parameter drvdata: a pointer to the drvdata.
- * @parameter reg: a constant which represents the configuration
+ * hwicap_get_configuration_register - Query a configuration register.
+ * @drvdata: a pointer to the drvdata.
+ * @reg: a constant which represents the configuration
  *		register value to be returned.
  * 		Examples:  XHI_IDCODE, XHI_FLR.
- * @parameter RegData: returns the value of the register.
+ * @reg_data: returns the value of the register.
  *
  * Sends a query packet to the ICAP and then receives the response.
  * The icap is left in Synched state.
  */
 static int hwicap_get_configuration_register(struct hwicap_drvdata *drvdata,
-		u32 reg, u32 *RegData)
+		u32 reg, u32 *reg_data)
 {
 	int status;
 	u32 buffer[6];
@@ -301,7 +301,7 @@ static int hwicap_get_configuration_register(struct hwicap_drvdata *drvdata,
 	/*
 	 * Read the configuration register
 	 */
-	status = drvdata->config->get_configuration(drvdata, RegData, 1);
+	status = drvdata->config->get_configuration(drvdata, reg_data, 1);
 	if (status)
 		return status;
 
