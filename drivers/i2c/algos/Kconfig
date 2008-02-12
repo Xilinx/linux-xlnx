@@ -41,5 +41,11 @@ config I2C_ALGO_SGI
 	  Supports the SGI interfaces like the ones found on SGI Indy VINO
 	  or SGI O2 MACE.
 
+config XILINX_IIC
+	tristate "Xilinx IIC interface"
+	depends on I2C && XILINX_DRIVERS
+	help
+	  Supports the Xilinx IIC interface.
+
 endmenu
 
