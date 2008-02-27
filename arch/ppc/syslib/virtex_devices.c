@@ -219,7 +219,7 @@
 		.tx_csum = XPAR_LLTEMAC_##num##_TXCSUM, \
 		.rx_csum = XPAR_LLTEMAC_##num##_RXCSUM, \
 		.phy_type = XPAR_LLTEMAC_##num##_PHY_TYPE, \
-		.dcr_host = 0xff, \
+		.dcr_host = 0x00, \
 		.ll_dev_type = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_TYPE, \
 		.ll_dev_baseaddress = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_BASEADDR, \
 		.ll_dev_dma_rx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMARX_INTR, \
