@@ -20,9 +20,11 @@
 #if defined (CONFIG_40x) || defined (CONFIG_44x)
 #include <asm/io.h>
 #endif
+
 #ifdef CONFIG_XILINX_VIRTEX
 #include <platforms/4xx/xparameters/xparameters.h>
 #endif
+
 extern unsigned long timebase_period_ns;
 
 /* For those boards that don't provide one.
@@ -744,19 +746,134 @@ embed_config(bd_t **bdp)
 }
 #endif /* WILLOW */
 
-#if defined(CONFIG_XILINX_EMBED_CONFIG)
+#if defined(CONFIG_XILINX_ML403) || defined(CONFIG_XILINX_ML405) || defined(CONFIG_XILINX_ML507)
+
+#if (!defined(XPAR_IIC_0_BASEADDR) || !defined(XPAR_PERSISTENT_0_IIC_0_BASEADDR))
+int get_cfg_data(unsigned char **cfg_data)
+{
+	/*
+	 * The ML300, ML40x and ML50x uses an I2C SEEPROM to store the Ethernet
+	 * MAC address, but either an I2C interface or the SEEPROM aren't
+	 * configured in.  If you are in this situation, you'll need to define
+	 * an alternative way of storing the Ethernet MAC address.  For now, a
+	 * hard-coded MAC will be used. If this is sufficient, you may simply
+	 * comment out the followign #warning.
+	 */
+#warning I2C needed for obtaining the Ethernet MAC address. Using hard-coded MAC address
+	return 0;	/* no cfg data found */
+}
+#else
+#include <xiic_l.h>
+
+#define CFG_DATA_SIZE \
+ (XPAR_PERSISTENT_0_IIC_0_HIGHADDR - XPAR_PERSISTENT_0_IIC_0_BASEADDR + 1)
+
+int get_cfg_data(unsigned char **cfg_data)
+{
+	static unsigned char sdata[CFG_DATA_SIZE]; /* 'static': get sdata off the stack */
+	int i;
+
+	/*
+	 * Fill our SEEPROM data array (sdata) from address
+	 * XPAR_PERSISTENT_0_IIC_0_BASEADDR of the SEEPROM at slave
+	 * address XPAR_PERSISTENT_0_IIC_0_EEPROMADDR.  We'll then parse
+	 * that data looking for a MAC address. */
+	sdata[0] = XPAR_PERSISTENT_0_IIC_0_BASEADDR >> 8;
+#if defined(XPAR_IIC_0_TEN_BIT_ADR) && (XPAR_IIC_0_TEN_BIT_ADR == 1)
+	sdata[1] = XPAR_PERSISTENT_0_IIC_0_BASEADDR & 0xFF;
+	i = XIic_Send(XPAR_IIC_0_BASEADDR,
+		      XPAR_PERSISTENT_0_IIC_0_EEPROMADDR>>1, sdata, 2, XIIC_STOP);
+	if (i != 2)
+		return 0;	/* Couldn't send the address.  Return error. */
+#else
+	i = XIic_Send(XPAR_IIC_0_BASEADDR,
+		      XPAR_PERSISTENT_0_IIC_0_EEPROMADDR>>1, sdata, 1, XIIC_STOP);
+	if (i != 1) {
+		return 0;	/* Couldn't send the address.  Return error. */
+	}
+#endif
+	i = XIic_Recv(XPAR_IIC_0_BASEADDR,
+		      XPAR_PERSISTENT_0_IIC_0_EEPROMADDR>>1,
+		      sdata, sizeof(sdata), XIIC_STOP);
+	if (i != sizeof(sdata)) {
+		return 0;	/* Didn't read all the data.  Return error. */
+	}
+	*cfg_data = sdata;
+	return CFG_DATA_SIZE;
+}
+#endif /* (!defined(XPAR_IIC_0_BASEADDR) || !defined(XPAR_PERSISTENT_0_IIC_0_BASEADDR)) */
+
+static int
+hexdigit(char c)
+{
+	if ('0' <= c && c <= '9')
+		return c - '0';
+	else if ('a' <= c && c <= 'f')
+		return c - 'a' + 10;
+	else if ('A' <= c && c <= 'F')
+		return c - 'A' + 10;
+	else
+		return -1;
+}
+
+typedef struct iic_eeprom_struct {
+	/* Generally used parameters */
+	char which_board[17];          /* 0x000 to 0x010 Plain text ID of which board */
+	char board_rev[5];             /* 0x011 to 0x015 Plain text Board Rev (A, B, C, etc) */
+	char minor_board_rev[5];       /* 0x016 to 0x01A Plain text minor board rev (001, 002, etc) */
+	char which_FPGA[19];           /* 0x01B to 0x02E Plain text which FPGA is on the board (main FPGA if multiple) */
+	char board_sn[9];              /* 0x02F to 0x037 Plain text Serial Number of board */
+	char board_mac_id[13];         /* 0x038 to 0x044 Plain text MAC Address for this board */
+	char last_test_date[12];       /* 0x045 to 0x050 Plain text last date that tests were run (DD-MMM-YYYY) */
+	char manufacture_date[12];     /* 0x051 to 0x05C Plain text Manufacture Date (DD-MMM-YYYY) */
+	char manufacture_id[17];       /* 0x05D to 0x06D Plain text Manufacture ID (Name) */
+	char tested_before[19];        /* 0x06E to 0x080 Plain text set to 'Xilinx Virtex-X Based MLxxx' (?19?) */
+} iic_eeprom_struct;
+
+static int get_mac_addr(unsigned char *mac)
+{
+	iic_eeprom_struct *eeprom;
+	int cfg_size;
+
+	cfg_size = get_cfg_data((unsigned char **)&eeprom);
+
+	if (cfg_size == 0)
+		return 1;	/* Failed to read configuration data */
+
+	/* check the manufacture date to make sure we've got the right struct
+	 * info */
+	if ((eeprom->board_mac_id[0] == '0') &&
+	    (eeprom->board_mac_id[1] == '0') &&
+            (eeprom->board_mac_id[2] == '0') &&		
+            (eeprom->board_mac_id[3] == 'A') &&
+	    (eeprom->board_mac_id[4] == '3') &&
+	    (eeprom->board_mac_id[5] == '5')) {
+		mac[0] = (hexdigit(eeprom->board_mac_id[0]) << 4) | (hexdigit(eeprom->board_mac_id[1]));
+		mac[1] = (hexdigit(eeprom->board_mac_id[2]) << 4) | (hexdigit(eeprom->board_mac_id[3]));
+		mac[2] = (hexdigit(eeprom->board_mac_id[4]) << 4) | (hexdigit(eeprom->board_mac_id[5]));
+		mac[3] = (hexdigit(eeprom->board_mac_id[6]) << 4) | (hexdigit(eeprom->board_mac_id[7]));
+		mac[4] = (hexdigit(eeprom->board_mac_id[8]) << 4) | (hexdigit(eeprom->board_mac_id[9]));
+		mac[5] = (hexdigit(eeprom->board_mac_id[10]) << 4) | (hexdigit(eeprom->board_mac_id[11]));
+
+		/* Success */
+		return 0;
+
+	} 
+
+	/* Data not recognized */
+	return 1;
+}
+
 void
 embed_config(bd_t ** bdp)
 {
-	bd_t *bd;
-	uint8_t* cp;
-	int i;
-
-#ifdef CONFIG_405
+#ifdef CONFIG_40x
 	static const unsigned long line_size = 32;
 	static const unsigned long congruence_classes = 256;
 	unsigned long addr;
 	unsigned long dccr;
+#endif
+	bd_t *bd;
 
 	/*
 	 * Invalidate the data cache if the data cache is turned off.
@@ -767,6 +884,7 @@ embed_config(bd_t ** bdp)
 	 *   a bootloader and we assume that the cache contents are
 	 *   valid.
 	 */
+#ifdef CONFIG_40x
 	__asm__("mfdccr %0": "=r" (dccr));
 	if (dccr == 0) {
 		for (addr = 0;
@@ -782,17 +900,30 @@ embed_config(bd_t ** bdp)
 	bd->bi_memsize = XPAR_DDR_0_SIZE;
 	bd->bi_intfreq = XPAR_CORE_CLOCK_FREQ_HZ;
 	bd->bi_busfreq = XPAR_PLB_CLOCK_FREQ_HZ;
+#ifdef XPAR_PCI_0_CLOCK_FREQ_HZ
 	bd->bi_pci_busfreq = XPAR_PCI_0_CLOCK_FREQ_HZ;
+#endif
 
-	/* Copy the default ethernet address */
-	cp = (u_char *)def_enet_addr;
-	for (i=0; i<6; i++)
-		bd->bi_enetaddr[i] = *cp++;
+	if (get_mac_addr(bd->bi_enetaddr)) {
+		/* The SEEPROM is corrupted. set the address to
+		 * Xilinx's preferred default. However, first to
+		 * eliminate a compiler warning because we don't really
+		 * use def_enet_addr, we'll reference it. The compiler
+		 * optimizes it away so no harm done. */
+		bd->bi_enetaddr[0] = def_enet_addr[0];
+		bd->bi_enetaddr[0] = 0x00;
+		bd->bi_enetaddr[1] = 0x0A;
+		bd->bi_enetaddr[2] = 0x35;
+		bd->bi_enetaddr[3] = 0x01;
+		bd->bi_enetaddr[4] = 0x02;
+		bd->bi_enetaddr[5] = 0x03;
+	}
 
 	timebase_period_ns = 1000000000 / bd->bi_tbfreq;
-	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_ml300.h */
+	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_mlxxx.h */
 }
-#endif /* CONFIG_XILINX_EMBED_CONFIG */
+#endif /* defined(CONFIG_XILINX_ML403) || defined(CONFIG_XILINX_ML405) || 
+          defined(CONFIG_XILINX_ML507) */
 
 #ifdef CONFIG_IBM_OPENBIOS
 /* This could possibly work for all treeboot roms.

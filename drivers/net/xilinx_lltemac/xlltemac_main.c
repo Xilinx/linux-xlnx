@@ -623,27 +623,27 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	return -1;
 }
 
-// #define XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+#define MARVELL_88E1111_PHY
 /*
  * This function sets up MAC's speed according to link speed of PHY
- * This function is specific to MARVELL 88E1111 PHY chip on Xilinx ML403
- * board and assumes GMII interface is being used by the TEMAC
+ * This function is specific to MARVELL 88E1111 PHY chip on many Xilinx 
+ * boards and assumes GMII interface is being used by the TEMAC
  */
 void set_mac_speed(struct net_local *lp)
 {
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
-	int ret;
 
-#ifndef XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+#ifndef MARVELL_88E1111_PHY
+	int ret;
 	int retry_count = 1;
 #endif
 
 	/*
-	 * See comments at top for an explanation of
-	 * XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+	 * See comments at top for an explanation of 
+	 * #undef MARVELL_88E1111_PHY
 	 */
-#ifdef XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT
+#ifdef MARVELL_88E1111_PHY
 #define MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET  17
 #define MARVELL_88E1111_LINKSPEED_MARK                  0xC000
 #define MARVELL_88E1111_LINKSPEED_SHIFT                 14
@@ -687,7 +687,8 @@ void set_mac_speed(struct net_local *lp)
 		break;
 	}
 
-#else
+#else	/* generic PHY, there have been issues with 10Mbit with this code */
+
 	if (XLlTemac_GetPhysicalInterface(&lp->Emac) == XTE_PHY_TYPE_MII) {
 		phylinkspeed = 100;
 	}
@@ -881,6 +882,7 @@ static void poll_gmii(unsigned long data)
 	netif_carrier = netif_carrier_ok(dev) != 0;
 	if (phy_carrier != netif_carrier) {
 		if (phy_carrier) {
+			set_mac_speed(lp);
 			printk(KERN_INFO
 			       "%s: XLlTemac: PHY Link carrier restored.\n",
 			       dev->name);
@@ -1015,7 +1017,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 	struct net_local *lp = (struct net_local *) dev->priv;
 	struct list_head *cur_lp;
 
-        unsigned int flags;
+        unsigned long flags;
 
 	/* Read pending interrupts */
 	irq_status = XLlDma_mBdRingGetIrq(&lp->Dma.RxBdRing);
@@ -1026,7 +1028,6 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 		XLlDma_Reset(&lp->Dma);
 		return IRQ_HANDLED;
 	}
-
 	if ((irq_status & (XLLDMA_IRQ_DELAY_MASK | XLLDMA_IRQ_COALESCE_MASK))) {
 		spin_lock_irqsave(&receivedQueueSpin, flags);
 		list_for_each(cur_lp, &receivedQueue) {
@@ -1052,7 +1053,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 	struct net_local *lp = (struct net_local *) dev->priv;
 	struct list_head *cur_lp;
 
-	unsigned int flags;
+	unsigned long flags;
 
 	/* Read pending interrupts */
 	irq_status = XLlDma_mBdRingGetIrq(&(lp->Dma.TxBdRing));
@@ -1401,7 +1402,7 @@ static void FifoSendHandler(struct net_device *dev)
 {
 	struct net_local *lp;
 	struct sk_buff *skb;
-	unsigned int flags;
+	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_tx_spinlock, flags);
 	lp = (struct net_local *) dev->priv;
@@ -2979,7 +2980,7 @@ static int detect_phy(struct net_local *lp, char *dev_name)
 	printk(KERN_WARNING "XTemac: No PHY detected.  Assuming a PHY at address 0\n");
 	return 0;		/* default to zero */
 }
-
+extern bd_t __res;
 
 /** Shared device initialization code */
 static int xtenet_setup(
@@ -3047,8 +3048,10 @@ static int xtenet_setup(
 		goto error;
 	}
 
-	/* Set the MAC address */
-	memcpy(ndev->dev_addr, pdata->mac_addr, 6);
+	/* Set the MAC address from the iic eeprom info in the board data */
+        memcpy(ndev->dev_addr, ((bd_t *) &__res)->bi_enetaddr, 6);
+        memcpy(pdata->mac_addr, ((bd_t *) &__res)->bi_enetaddr, 6);
+
 	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
 		/* should not fail right after an initialize */
 		dev_err(dev, "XLlTemac: could not set MAC address.\n");
@@ -3072,7 +3075,7 @@ static int xtenet_setup(
 
 		dev_err(dev, "XLlTemac: using DMA mode.\n");
 
-		if (1 /* PR FIXME: pdata->dcr_host */) {
+		if (pdata->dcr_host) {
 			printk("XLlTemac: DCR address: 0x%0x\n", pdata->ll_dev_baseaddress);
 			XLlDma_Initialize(&lp->Dma, pdata->ll_dev_baseaddress);
 		} else {
