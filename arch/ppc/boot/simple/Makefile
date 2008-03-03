@@ -21,6 +21,11 @@
 # XXX_memory.o file for this to work, as well as editing the
 # misc-$(CONFIG_MACHINE) variable.
 
+ifeq ($(CONFIG_XILINX_EMBED_CONFIG),y)
+EXTRA_CFLAGS		+= -Idrivers/i2c/algos/xilinx_iic
+EXTRA_CFLAGS		+= -Idrivers/xilinx_common
+endif
+
 boot				:= arch/ppc/boot
 common				:= $(boot)/common
 utils				:= $(boot)/utils
@@ -128,6 +133,9 @@ zimageinitrd-$(CONFIG_WALNUT)		:= zImage.initrd-TREE
          end-$(CONFIG_EV64360)          := ev64360
    cacheflag-$(CONFIG_EV64360)          := -include $(clear_L2_L3)
 
+     extra.o-$(CONFIG_XILINX_EMBED_CONFIG)  := ../../../../drivers/xilinx_common/xio.o \
+					       ../../../../drivers/i2c/algos/xilinx_iic/xiic_l.o	
+
 # kconfig 'feature', only one of these will ever be 'y' at a time.
 # The rest will be unset.
 motorola := $(CONFIG_MVME5100)$(CONFIG_PRPMC750) \
@@ -187,7 +195,7 @@ boot-$(CONFIG_REDWOOD_6)	+= embed_config.o
 boot-$(CONFIG_8xx)		+= embed_config.o
 boot-$(CONFIG_8260)		+= embed_config.o
 boot-$(CONFIG_EP405)		+= embed_config.o
-boot-$(CONFIG_XILINX_EMBED_CONFIG)	+= embed_config.o
+boot-$(CONFIG_XILINX_EMBED_CONFIG)	+= embed_config.o 
 boot-$(CONFIG_BSEIP)		+= iic.o
 boot-$(CONFIG_MBX)		+= iic.o pci.o qspan_pci.o
 boot-$(CONFIG_MV64X60)		+= misc-mv64x60.o

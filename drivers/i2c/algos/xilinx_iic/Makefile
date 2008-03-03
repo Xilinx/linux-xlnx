@@ -11,4 +11,4 @@ xilinx_iic-objs	:= i2c-algo-xilinx.o
 
 # The Xilinx OS independent code.
 xilinx_iic-objs	+= xiic.o xiic_options.o xiic_master.o \
-		   xiic_intr.o
+		   xiic_intr.o xiic_l.o
