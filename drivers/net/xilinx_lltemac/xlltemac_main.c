@@ -3340,6 +3340,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 			return rc;
 		}
 		pdata_struct.ll_dev_fifo_irq	= r_connected_irq_struct.start;
+		pdata_struct.dcr_host = 0x0;
         } else if(of_match_node(xtenet_sdma_of_match, llink_connected_node)) {
 		/** Connected to a dma port. */
 		pdata_struct.ll_dev_type = XPAR_LL_DMA;
@@ -3365,6 +3366,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 		pdata_struct.ll_dev_dma_tx_irq	= r_connected_irq_struct.start;
 
 		pdata_struct.ll_dev_fifo_irq	= NO_IRQ;
+		pdata_struct.dcr_host = 0x0;
         } else {
 		dev_warn(&ofdev->dev, "Locallink connection not matched.\n");
 		return rc;
