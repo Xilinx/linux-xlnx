@@ -2980,7 +2980,6 @@ static int detect_phy(struct net_local *lp, char *dev_name)
 	printk(KERN_WARNING "XTemac: No PHY detected.  Assuming a PHY at address 0\n");
 	return 0;		/* default to zero */
 }
-extern bd_t __res;
 
 /** Shared device initialization code */
 static int xtenet_setup(
@@ -3048,9 +3047,8 @@ static int xtenet_setup(
 		goto error;
 	}
 
-	/* Set the MAC address from the iic eeprom info in the board data */
-        memcpy(ndev->dev_addr, ((bd_t *) &__res)->bi_enetaddr, 6);
-        memcpy(pdata->mac_addr, ((bd_t *) &__res)->bi_enetaddr, 6);
+	/* Set the MAC address from platform data */
+        memcpy(ndev->dev_addr, pdata->mac_addr, 6);
 
 	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) {
 		/* should not fail right after an initialize */
