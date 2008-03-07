@@ -63,6 +63,7 @@ config XILINX_ML300
 	select XILINX_VIRTEX_II_PRO
 	select EMBEDDEDBOOT
 	select XILINX_EMBED_CONFIG
+	select XILINX_MLxxx
 	help
 	  This option enables support for the Xilinx ML300 evaluation board.
 
@@ -79,6 +80,7 @@ config XILINX_ML403
 	select XILINX_VIRTEX_4_FX
 	select EMBEDDEDBOOT
 	select XILINX_EMBED_CONFIG
+	select XILINX_MLxxx
 	help
 	  This option enables support for the Xilinx ML403 evaluation board.
 
@@ -87,6 +89,7 @@ config XILINX_ML405
         select XILINX_VIRTEX_4_FX
         select EMBEDDEDBOOT
         select XILINX_EMBED_CONFIG
+	select XILINX_MLxxx
         help
           This option enables support for the Xilinx ML405 evaluation board.
 
@@ -95,6 +98,7 @@ config XILINX_ML41x
 	select XILINX_VIRTEX_4_FX
 	select EMBEDDEDBOOT
 	select XILINX_EMBED_CONFIG
+	select XILINX_MLxxx
 	help
 	  This option enables support for the Xilinx ML410/411 evaluation boards.
 
@@ -146,6 +150,7 @@ config XILINX_ML507
 	select XILINX_ML5XX
 	select EMBEDDEDBOOT
 	select XILINX_EMBED_CONFIG
+	select XILINX_MLxxx
 	help
 	  This option enables support for the Xilinx ML507 board.
 
@@ -293,6 +298,12 @@ config 405GPR
 	bool
 	depends on SYCAMORE
 	default y
+
+config XILINX_MLxxx
+	bool
+	help
+	  Include platform support for many Xilinx development boards 
+	  with configuration data stored in IIC eeprom.
 
 config XILINX_VIRTEX_II_PRO
 	bool
