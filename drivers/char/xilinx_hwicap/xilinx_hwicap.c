@@ -229,39 +229,6 @@ static int hwicap_command_desync(struct hwicap_drvdata *drvdata)
 }
 
 /**
- * hwicap_command_capture - Send a CAPTURE command to the ICAP port.
- * @drvdata: a pointer to the drvdata.
- *
- * This command captures all of the flip flop states so they will be
- * available during readback.  One can use this command instead of
- * enabling the CAPTURE block in the design.
- */
-static int hwicap_command_capture(struct hwicap_drvdata *drvdata)
-{
-	u32 buffer[7];
-	u32 index = 0;
-
-	/*
-	 * Create the data to be written to the ICAP.
-	 */
-	buffer[index++] = XHI_DUMMY_PACKET;
-	buffer[index++] = XHI_SYNC_PACKET;
-	buffer[index++] = XHI_NOOP_PACKET;
-	buffer[index++] = hwicap_type_1_write(drvdata->config_regs->CMD) | 1;
-	buffer[index++] = XHI_CMD_GCAPTURE;
-	buffer[index++] = XHI_DUMMY_PACKET;
-	buffer[index++] = XHI_DUMMY_PACKET;
-
-	/*
-	 * Write the data to the FIFO and initiate the transfer of data
-	 * present in the FIFO to the ICAP device.
-	 */
-	return drvdata->config->set_configuration(drvdata,
-			&buffer[0], index);
-
-}
-
-/**
  * hwicap_get_configuration_register - Query a configuration register.
  * @drvdata: a pointer to the drvdata.
  * @reg: a constant which represents the configuration
@@ -345,7 +312,7 @@ static int hwicap_initialize_hwicap(struct hwicap_drvdata *drvdata)
 }
 
 static ssize_t
-hwicap_read(struct file *file, __user char *buf, size_t count, loff_t *ppos)
+hwicap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	struct hwicap_drvdata *drvdata = file->private_data;
 	ssize_t bytes_to_read = 0;
@@ -430,7 +397,7 @@ hwicap_read(struct file *file, __user char *buf, size_t count, loff_t *ppos)
 }
 
 static ssize_t
-hwicap_write(struct file *file, const __user char *buf,
+hwicap_write(struct file *file, const char __user *buf,
 		size_t count, loff_t *ppos)
 {
 	struct hwicap_drvdata *drvdata = file->private_data;

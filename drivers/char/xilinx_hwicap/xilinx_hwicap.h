@@ -165,28 +165,28 @@ struct config_registers {
 
 /**
  * hwicap_type_1_read - Generates a Type 1 read packet header.
- * @register: is the address of the register to be read back.
+ * @reg: is the address of the register to be read back.
  *
  * Generates a Type 1 read packet header, which is used to indirectly
  * read registers in the configuration logic.  This packet must then
  * be sent through the icap device, and a return packet received with
  * the information.
  **/
-static inline u32 hwicap_type_1_read(u32 register)
+static inline u32 hwicap_type_1_read(u32 reg)
 {
 	return (XHI_TYPE_1 << XHI_TYPE_SHIFT) |
-		(register << XHI_REGISTER_SHIFT) |
+		(reg << XHI_REGISTER_SHIFT) |
 		(XHI_OP_READ << XHI_OP_SHIFT);
 }
 
 /**
  * hwicap_type_1_write - Generates a Type 1 write packet header
- * @register: is the address of the register to be read back.
+ * @reg: is the address of the register to be read back.
  **/
-static inline u32 hwicap_type_1_write(u32 register)
+static inline u32 hwicap_type_1_write(u32 reg)
 {
 	return (XHI_TYPE_1 << XHI_TYPE_SHIFT) |
-		(register << XHI_REGISTER_SHIFT) |
+		(reg << XHI_REGISTER_SHIFT) |
 		(XHI_OP_WRITE << XHI_OP_SHIFT);
 }
 
