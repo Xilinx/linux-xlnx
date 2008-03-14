@@ -746,9 +746,9 @@ embed_config(bd_t **bdp)
 }
 #endif /* WILLOW */
 
-#if defined(CONFIG_XILINX_ML403) || defined(CONFIG_XILINX_ML405) || defined(CONFIG_XILINX_ML507)
+#if defined(CONFIG_XILINX_EMBED_CONFIG)
 
-#if (!defined(XPAR_IIC_0_BASEADDR) || !defined(XPAR_PERSISTENT_0_IIC_0_BASEADDR))
+#if (!defined(CONFIG_XILINX_MLxxx) || !defined(XPAR_IIC_0_BASEADDR) || !defined(XPAR_PERSISTENT_0_IIC_0_BASEADDR))
 int get_cfg_data(unsigned char **cfg_data)
 {
 	/*
@@ -844,7 +844,7 @@ static int get_mac_addr(unsigned char *mac)
 	 * info */
 	if ((eeprom->board_mac_id[0] == '0') &&
 	    (eeprom->board_mac_id[1] == '0') &&
-            (eeprom->board_mac_id[2] == '0') &&		
+            (eeprom->board_mac_id[2] == '0') &&
             (eeprom->board_mac_id[3] == 'A') &&
 	    (eeprom->board_mac_id[4] == '3') &&
 	    (eeprom->board_mac_id[5] == '5')) {
@@ -858,7 +858,7 @@ static int get_mac_addr(unsigned char *mac)
 		/* Success */
 		return 0;
 
-	} 
+	}
 
 	/* Data not recognized */
 	return 1;
@@ -922,8 +922,7 @@ embed_config(bd_t ** bdp)
 	timebase_period_ns = 1000000000 / bd->bi_tbfreq;
 	/* see bi_tbfreq definition in arch/ppc/platforms/4xx/xilinx_mlxxx.h */
 }
-#endif /* defined(CONFIG_XILINX_ML403) || defined(CONFIG_XILINX_ML405) || 
-          defined(CONFIG_XILINX_ML507) */
+#endif /* defined(CONFIG_XILINX_EMBED_CONFIG) */
 
 #ifdef CONFIG_IBM_OPENBIOS
 /* This could possibly work for all treeboot roms.
