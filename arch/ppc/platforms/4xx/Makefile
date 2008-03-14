@@ -21,7 +21,6 @@ obj-$(CONFIG_XILINX_ML405)	+= xilinx_generic_ppc.o
 obj-$(CONFIG_XILINX_ML41x)	+= xilinx_generic_ppc.o
 obj-$(CONFIG_XILINX_MLxxx) 	+= xilinx_generic_mlxxx.o
 obj-$(CONFIG_XILINX_ML507) 	+= xilinx_ml507.o xilinx_generic_mlxxx.o
-
 obj-$(CONFIG_405GP)		+= ibm405gp.o
 obj-$(CONFIG_REDWOOD_5)		+= ibmstb4.o
 obj-$(CONFIG_NP405H)		+= ibmnp405h.o
