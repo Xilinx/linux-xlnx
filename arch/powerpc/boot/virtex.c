@@ -95,6 +95,7 @@ void platform_init(void)
 
 	// timebase_period_ns = 1000000000 / timebase;
 	serial_console_init();
+	console_ops.open();
         printf("booting virtex\n\r");
         printf("memstart=0x%Lx\n\r", start);
         printf("memsize=0x%Lx\n\r", size);
