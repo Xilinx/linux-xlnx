@@ -17,6 +17,7 @@
 
 static struct of_device_id xilinx_of_bus_ids[] = {
 	{ .compatible = "xlnx,plb-v46-1.00.a", },
+	{ .compatible = "xlnx,plb-v46-1.02.a", },
 	{ .compatible = "xlnx,plb-v34-1.01.a", },
 	{ .compatible = "xlnx,plb-v34-1.02.a", },
 	{ .compatible = "xlnx,opb-v20-1.10.c", },
