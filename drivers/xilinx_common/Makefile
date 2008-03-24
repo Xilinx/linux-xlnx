@@ -10,10 +10,8 @@ obj-$(CONFIG_NEED_XILINX_DMAV3) += \
 
 obj-$(CONFIG_NEED_XILINX_LLDMA) += \
 			    xlldma_bdring.o xlldma.o				\
-			    xllfifo.o xstreamer.o
+			    xllfifo.o xstreamer.o xio_dcr.o
 
 obj-$(CONFIG_NEED_XILINX_IPIF) += \
 			    xipif_v1_23_b.o
-
-obj-$(CONFIG_NEED_XILINX_PPC_DCR) += \
-				 xio_dcr.o
+				 

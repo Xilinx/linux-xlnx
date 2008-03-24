@@ -13,8 +13,6 @@
 #ifndef __ASM_VIRTEX_H__
 #define __ASM_VIRTEX_H__
 
-#include <platforms/4xx/xparameters/xparameters.h>
-
 /* We have to distinguish between the PPC405 based Virtex chips and the PPC440
  * based chipts (Virtex 5). At this point we are still using virtex.[ch],
  * however in the future we may be transitioning to the flat device tree and

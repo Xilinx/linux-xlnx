@@ -212,13 +212,19 @@
 		} \
 	}
 
+#ifdef XPAR_XLLDMA_USE_DCR
+#define DCRHOST 0xFF
+#else 
+#define DCRHOST 0x00
+#endif
+
 #define XPAR_LLTEMAC(num) { \
 	XPAR_LLTEMAC_RESOURCES(num), \
 	.dev.platform_data = &(struct xlltemac_platform_data) { \
 		.tx_csum = XPAR_LLTEMAC_##num##_TXCSUM, \
 		.rx_csum = XPAR_LLTEMAC_##num##_RXCSUM, \
 		.phy_type = XPAR_LLTEMAC_##num##_PHY_TYPE, \
-		.dcr_host = 0xFF, \
+		.dcr_host = DCRHOST, \
 		.ll_dev_type = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_TYPE, \
 		.ll_dev_baseaddress = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_BASEADDR, \
 		.ll_dev_dma_rx_irq = XPAR_LLTEMAC_##num##_LLINK_CONNECTED_DMARX_INTR, \
