@@ -55,6 +55,11 @@ extern "C" {
 
 #include "xbasic_types.h"
 
+/* Temporary fix for DCR until run-time initialization is used, without this
+   the XPAR_XLLDMA_USE_DCR below is not known 
+*/
+#include <platforms/4xx/xparameters/xparameters.h>
+
 /** @name Device Bus Type definition
  * The constant XPAR_XLLDMA_USE_DCR is used to inform this driver the type of
  * the BUS the DMA device is on. If the DMA core is on DCR BUS,
