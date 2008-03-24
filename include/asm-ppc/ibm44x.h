@@ -4,7 +4,7 @@
  * PPC44x definitions
  *
  * Matt Porter <mporter@kernel.crashing.org>
- *
+ *..
  * Copyright 2002-2005 MontaVista Software Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
@@ -56,7 +56,7 @@
 #define UART0_PHYS_IO_BASE	0xf0000200
 #elif defined(CONFIG_440EP)
 #define UART0_PHYS_IO_BASE	0xe0000000
-#elif defined(CONFIG_XILINX_ML5XX)
+#elif defined(CONFIG_XILINX_ML5XX) && defined(CONFIG_SERIAL_TEXT_DEBUG)
 #include <platforms/4xx/xparameters/xparameters.h>
 #define UART0_PHYS_IO_BASE	XPAR_UARTNS550_0_BASEADDR
 #else

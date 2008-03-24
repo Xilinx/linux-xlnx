@@ -7,7 +7,7 @@
 #define __ASM_SERIAL_H__
 
 // FIXME HACK TODO wgr
-#ifdef CONFIG_XILINX_ML5XX
+#if defined(CONFIG_XILINX_ML5XX) && defined(CONFIG_SERIAL_TEXT_DEBUG)
 #include <platforms/4xx/xparameters/xparameters.h>
 #endif
 
