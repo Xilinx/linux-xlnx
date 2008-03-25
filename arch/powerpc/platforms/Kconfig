@@ -322,6 +322,8 @@ config CPM
 
 config XILINX_VIRTEX
 	bool
+	select PPC_DCR_MMIO
+	select PPC_DCR_NATIVE
 	help
 	  Support for Xilinx Virtex platforms.
 
