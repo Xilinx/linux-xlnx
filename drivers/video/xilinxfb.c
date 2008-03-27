@@ -37,6 +37,7 @@
 #endif
 #include <asm/io.h>
 #include <linux/xilinxfb.h>
+#include <asm/dcr.h>
 
 #define DRIVER_NAME		"xilinxfb"
 #define DRIVER_DESCRIPTION	"Xilinx TFT LCD frame buffer driver"
@@ -111,8 +112,9 @@ struct xilinxfb_drvdata {
 
 	struct fb_info	info;		/* FB driver info record */
 
-	u32		regs_phys;	/* phys. address of the control registers */
-	u32 __iomem	*regs;		/* virt. address of the control registers */
+	dcr_host_t      dcr_host;
+	unsigned int    dcr_start;
+	unsigned int    dcr_len;
 
 	void		*fb_virt;	/* virt. address of the frame buffer */
 	dma_addr_t	fb_phys;	/* phys. address of the frame buffer */
@@ -135,7 +137,7 @@ struct xilinxfb_drvdata {
  * when it's needed.
  */
 #define xilinx_fb_out_be32(driverdata, offset, val) \
-	out_be32(driverdata->regs + offset, val)
+	dcr_write(driverdata->dcr_host, offset, val)
 
 static int
 xilinx_fb_setcolreg(unsigned regno, unsigned red, unsigned green, unsigned blue,
@@ -203,7 +205,8 @@ static struct fb_ops xilinxfb_ops =
  * Bus independent setup/teardown
  */
 
-static int xilinxfb_assign(struct device *dev, unsigned long physaddr,
+static int xilinxfb_assign(struct device *dev, dcr_host_t dcr_host,
+			   unsigned int dcr_start, unsigned int dcr_len,
 			   struct xilinxfb_platform_data *pdata)
 {
 	struct xilinxfb_drvdata *drvdata;
@@ -218,21 +221,9 @@ static int xilinxfb_assign(struct device *dev, unsigned long physaddr,
 	}
 	dev_set_drvdata(dev, drvdata);
 
-	/* Map the control registers in */
-	if (!request_mem_region(physaddr, 8, DRIVER_NAME)) {
-		dev_err(dev, "Couldn't lock memory region at 0x%08lX\n",
-			physaddr);
-		rc = -ENODEV;
-		goto err_region;
-	}
-	drvdata->regs_phys = physaddr;
-	drvdata->regs = ioremap(physaddr, 8);
-	if (!drvdata->regs) {
-		dev_err(dev, "Couldn't lock memory region at 0x%08lX\n",
-			physaddr);
-		rc = -ENODEV;
-		goto err_map;
-	}
+	drvdata->dcr_start = dcr_start;
+	drvdata->dcr_len = dcr_len;
+	drvdata->dcr_host = dcr_host;
 
 	/* Allocate the framebuffer memory */
 	if (pdata->fb_phys) {
@@ -247,7 +238,7 @@ static int xilinxfb_assign(struct device *dev, unsigned long physaddr,
 	if (!drvdata->fb_virt) {
 		dev_err(dev, "Could not allocate frame buffer memory\n");
 		rc = -ENOMEM;
-		goto err_fbmem;
+		goto err_region;
 	}
 
 	/* Clear (turn to black) the framebuffer */
@@ -297,7 +288,6 @@ static int xilinxfb_assign(struct device *dev, unsigned long physaddr,
 	}
 
 	/* Put a banner in the log (for DEBUG) */
-	dev_dbg(dev, "regs: phys=%lx, virt=%p\n", physaddr, drvdata->regs);
 	dev_dbg(dev, "fb: phys=%p, virt=%p, size=%x\n",
 		(void*)drvdata->fb_phys, drvdata->fb_virt, fbsize);
 
@@ -312,12 +302,6 @@ err_cmap:
 			drvdata->fb_phys);
 	/* Turn off the display */
 	xilinx_fb_out_be32(drvdata, REG_CTRL, 0);
-
-err_fbmem:
-	iounmap(drvdata->regs);
-
-err_map:
-	release_mem_region(physaddr, 8);
 
 err_region:
 	kfree(drvdata);
@@ -344,9 +328,8 @@ static int xilinxfb_release(struct device *dev)
 
 	/* Turn off the display */
 	xilinx_fb_out_be32(drvdata, REG_CTRL, 0);
-	iounmap(drvdata->regs);
 
-	release_mem_region(drvdata->regs_phys, 8);
+	dcr_unmap(drvdata->dcr_host, drvdata->dcr_len);
 
 	kfree(drvdata);
 	dev_set_drvdata(dev, NULL);
@@ -362,20 +345,23 @@ static int xilinxfb_release(struct device *dev)
 static int __devinit
 xilinxfb_of_probe(struct of_device *op, const struct of_device_id *match)
 {
-	struct resource res;
 	const u32 *prop;
 	struct xilinxfb_platform_data pdata;
 	int size, rc;
+	int start, len;
+	dcr_host_t dcr_host;
 
 	/* Copy with the default pdata (not a ptr reference!) */
 	pdata = xilinx_fb_default_pdata;
 
 	dev_dbg(&op->dev, "xilinxfb_of_probe(%p, %p)\n", op, match);
 
-	rc = of_address_to_resource(op->node, 0, &res);
-	if (rc) {
+	start = dcr_resource_start(op->node, 0);
+	len = dcr_resource_len(op->node, 0);
+	dcr_host = dcr_map(op->node, start, len);
+	if (!DCR_MAP_OK(dcr_host)) {
 		dev_err(&op->dev, "invalid address\n");
-		return rc;
+		return -ENODEV;
 	}
 
 	prop = of_get_property(op->node, "phys-size", &size);
@@ -399,7 +385,7 @@ xilinxfb_of_probe(struct of_device *op, const struct of_device_id *match)
 	if (of_find_property(op->node, "rotate-display", NULL))
 		pdata.rotate_screen = 1;
 
-	return xilinxfb_assign(&op->dev, res.start, &pdata);
+	return xilinxfb_assign(&op->dev, dcr_host, start, len, &pdata);
 }
 
 static int __devexit xilinxfb_of_remove(struct of_device *op)
