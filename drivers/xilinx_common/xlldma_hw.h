@@ -55,20 +55,15 @@ extern "C" {
 
 #include "xbasic_types.h"
 
-/* Temporary fix for DCR until run-time initialization is used, without this
-   the XPAR_XLLDMA_USE_DCR below is not known 
-*/
-#include <platforms/4xx/xparameters/xparameters.h>
-
-/** @name Device Bus Type definition
- * The constant XPAR_XLLDMA_USE_DCR is used to inform this driver the type of
- * the BUS the DMA device is on. If the DMA core is on DCR BUS,
- * XPAR_XLLDMA_USE_DCR must be defined as a compiler option used in the
- * Makefile BEFORE this driver is compiled; Otherwise, the constant must not be
- * defined.
- *  @{
+/** @name Device Bus Type definition The constant
+ * CONFIG_XILINX_LLDMA_USE_DCR is used to inform this driver the type
+ * of the BUS the DMA device is on. If the DMA core is on DCR BUS
+ * using indirect addressing, which currently only happens on V5FX,
+ * then this option must be set.  On other architectures where dma
+ * ports are accessed through memory mapped io, this must not be set.
+ *@{
  */
-#ifdef XPAR_XLLDMA_USE_DCR
+#ifdef CONFIG_XILINX_LLDMA_USE_DCR
 #include "xio_dcr.h"
 #else
 #include "xio.h"
@@ -91,7 +86,7 @@ extern "C" {
  * 32 bit.
  */
 
-#ifdef XPAR_XLLDMA_USE_DCR
+#ifdef CONFIG_XILINX_LLDMA_USE_DCR
 
 /* DMA core is on DCR BUS */
 
@@ -148,7 +143,7 @@ extern "C" {
 
 /*@}*/
 
-#endif /* #ifdef XPAR_XLLDMA_USE_DCR */
+#endif /* #ifdef CONFIG_XILINX_LLDMA_USE_DCR */
 
 /** @name Buffer Descriptor register offsets
  *  USR fields are defined by higher level IP. For example, checksum offload
@@ -316,7 +311,7 @@ extern "C" {
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
-#ifdef XPAR_XLLDMA_USE_DCR
+#ifdef CONFIG_XILINX_LLDMA_USE_DCR
 
 /* DCR interface is used */
 

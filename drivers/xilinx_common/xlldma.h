@@ -409,11 +409,11 @@
 *
 * <b>BUS Interface</b>
 *
-* The constant XPAR_XLLDMA_USE_DCR (see xlldma_hw.h) is used to inform the
-* driver the type of the BUS the DMA device is on. If the DMA device is on DCR
-* BUS, XPAR_XLLDMA_USE_DCR must be defined as a compiler option used in the
-* Makefile BEFORE this driver is compiled; Otherwise, the constant must NOT be
-* defined.
+* The constant CONFIG_XILINX_LLDMA_USE_DCR (see xlldma_hw.h) is used
+* to inform the driver the type of the BUS the DMA device is on. If
+* the DMA device is on DCR BUS, CONFIG_XILINX_LLDMA_USE_DCR must be
+* defined as a compiler option used in the Makefile BEFORE this driver
+* is compiled; Otherwise, the constant must NOT be defined.
 *
 * <b>User-IP Specific Definition</b>
 *
