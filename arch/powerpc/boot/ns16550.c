@@ -56,6 +56,7 @@ int ns16550_console_init(void *devp, struct serial_console_data *scdp)
 {
 	int n;
 	unsigned long reg_phys;
+	u32 reg_offset;
 
 	n = getprop(devp, "virtual-reg", &reg_base, sizeof(reg_base));
 	if (n != sizeof(reg_base)) {
@@ -64,6 +65,10 @@ int ns16550_console_init(void *devp, struct serial_console_data *scdp)
 
 		reg_base = (void *)reg_phys;
 	}
+
+	n = getprop(devp, "reg-offset", &reg_offset, sizeof(reg_offset));
+	if (n == sizeof(reg_offset))
+		reg_base += reg_offset;
 
 	n = getprop(devp, "reg-shift", &reg_shift, sizeof(reg_shift));
 	if (n != sizeof(reg_shift))
