@@ -21,6 +21,13 @@
 
 BSS_STACK(4096);
 
+#include "types.h"
+#include "flatdevtree.h"
+#include "gunzip_util.h"
+#include "../../../include/linux/autoconf.h"
+
+static struct gunzip_state gzstate;
+
 void platform_init(void)
 {
 	u32 memreg[4];
@@ -32,6 +39,13 @@ void platform_init(void)
 	static const unsigned long congruence_classes = 256;
 	unsigned long addr;
 	unsigned long dccr;
+
+	void *dtbz_start;
+	u32 dtbz_size;
+	void *dtb_addr;
+	u32 dtb_size;
+	struct boot_param_header dtb_header;
+	int len;
 
         if((mfpvr() & 0xfffff000) == 0x20011000) {
             /* PPC errata 213: only for Virtex-4 FX */
@@ -61,10 +75,35 @@ void platform_init(void)
 
 	disable_irq();
 
+#ifdef CONFIG_COMPRESSED_DEVICE_TREE
+
+        /** FIXME: flatdevicetrees need the initializer allocated,
+            libfdt will fix this. */
+	dtbz_start = (void *)CONFIG_COMPRESSED_DTB_START;
+	dtbz_size = CONFIG_COMPRESSED_DTB_SIZE;
+	/** get the device tree */
+	gunzip_start(&gzstate, dtbz_start, dtbz_size);
+	gunzip_exactly(&gzstate, &dtb_header, sizeof(dtb_header));
+
+	dtb_size = dtb_header.totalsize;
+	// printf("Allocating 0x%lx bytes for dtb ...\n\r", dtb_size);
+
+	dtb_addr = _end; // Should be allocated?
+
+	gunzip_start(&gzstate, dtbz_start, dtbz_size);
+	len = gunzip_finish(&gzstate, dtb_addr, dtb_size);
+	if (len != dtb_size)
+		fatal("ran out of data!  only got 0x%x of 0x%lx bytes.\n\r",
+				len, dtb_size);
+	printf("done 0x%x bytes\n\r", len);
+	simple_alloc_init(0x800000, size - (unsigned long)0x800000, 32, 64);
+	ft_init(dtb_addr, dtb_size, 32);
+#else
         /** FIXME: flatdevicetrees need the initializer allocated,
             libfdt will fix this. */
 	simple_alloc_init(_end, size - (unsigned long)_end, 32, 64);
 	ft_init(_dtb_start, _dtb_end - _dtb_start, 32);
+#endif
 
 	root = finddevice("/");
 	if (getprop(root, "#address-cells", &naddr, sizeof(naddr)) < 0)
@@ -97,7 +136,12 @@ void platform_init(void)
 	serial_console_init();
 	if (console_ops.open) 
 		console_ops.open();
+
+#ifdef CONFIG_COMPRESSED_DEVICE_TREE
+	printf("Using compressed device tree at 0x%x\n\r", CONFIG_COMPRESSED_DTB_START);
+#else
+#endif
         printf("booting virtex\n\r");
-        printf("memstart=0x%Lx\n\r", start);
-        printf("memsize=0x%Lx\n\r", size);
+        printf("memstart=0x%x\n\r", start);
+        printf("memsize=0x%x\n\r", size);
 }

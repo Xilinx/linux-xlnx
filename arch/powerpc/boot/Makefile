@@ -146,6 +146,7 @@ image-$(CONFIG_PPC_HOLLY)		+= zImage.holly
 image-$(CONFIG_PPC_PRPMC2800)		+= zImage.prpmc2800
 image-$(CONFIG_PPC_ISERIES)		+= zImage.iseries
 image-$(CONFIG_DEFAULT_UIMAGE)		+= uImage
+image-$(CONFIG_XILINX_VIRTEX)		+= zImage.virtex
 
 ifneq ($(CONFIG_DEVICE_TREE),"")
 image-$(CONFIG_PPC_8xx)			+= cuImage.8xx
@@ -160,7 +161,6 @@ image-$(CONFIG_BAMBOO)			+= treeImage.bamboo cuImage.bamboo
 image-$(CONFIG_SEQUOIA)			+= cuImage.sequoia
 image-$(CONFIG_WALNUT)			+= treeImage.walnut
 image-$(CONFIG_BUILD_RAW_IMAGE)		+= zImage.raw
-image-$(CONFIG_XILINX_VIRTEX)		+= zImage.virtex
 endif
 
 # For 32-bit powermacs, build the COFF and miboot images

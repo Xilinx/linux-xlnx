@@ -425,6 +425,45 @@ config DEVICE_TREE
 	  cuImage target and specify a device tree here.  Otherwise, use
 	  the uImage target and leave this field blank.
 
+config COMPRESSED_DEVICE_TREE
+	bool "Use compressed device tree"
+	depends on XILINX_VIRTEX
+	depends on WANT_DEVICE_TREE
+	help
+	  In Xilinx FPGAs, the hardware can change quite dramatically while
+	  still running the same kernel.  In this case and other similar
+	  ones, it is preferable to associate the device tree with a
+	  particular build of the hardware design.  This configuration
+	  option assumes that the device tree blob has been compressed and
+	  stored in Block RAM in the FPGA design.  Typically, such a block
+	  ram is available in order to provide a bootloop or other code
+	  close to the reset vector at the top of the address space.  By
+	  default, the parameter options associated with this configuration
+	  assumes that exactly one block ram (2KB) of storage is available,
+	  which should be sufficient for most designs.  If necessary in a
+	  particular design, due to boot code requirement or a large number
+	  of devices, this address (and the corresponding parameters in the
+	  EDK design) must be modified.
+
+	  Note that in some highly area constrained designs, no block rams
+	  may be available in the design, and some other mechanism may be
+	  used to hold the processor in reset while external memory is
+	  initialized with processor code.  In such cases, that mechanism
+	  should also be used to load the device tree at an appropriate
+	  location, and the parameters associated with this configuration
+	  option should be modified to point to that location in external
+	  memory.
+
+config COMPRESSED_DTB_START
+	hex "Start of compressed device tree"
+	depends on COMPRESSED_DEVICE_TREE
+	default 0xfffff800
+
+config COMPRESSED_DTB_SIZE
+	hex "Size of compressed device tree"
+	depends on COMPRESSED_DEVICE_TREE
+	default 0x800
+
 endmenu
 
 config ISA_DMA_API
