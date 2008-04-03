@@ -17,15 +17,6 @@
  *
  */
 
-/*
- * With the way the hardened Temac works, the driver needs to communicate
- * with the PHY controller. Since each board will have a different
- * type of PHY, the code that communicates with the MII type controller
- * is inside #ifdef XILINX_PLB_TEMAC_3_00A_ML403_PHY_SUPPORT conditional
- * compilation. For your specific board, you will want to replace this code with
- * code of your own for your specific board.
- */
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -458,10 +449,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 }
 
 
-
-// #define PHY_MARVELL_88E1111_RGMII
-
-#ifdef PHY_MARVELL_88E1111_RGMII
+#ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 #define MARVELL_88E1111_EXTENDED_PHY_CTL_REG_OFFSET  20
 #define MARVELL_88E1111_EXTENDED_PHY_STATUS_REG_OFFSET  27
 #endif
@@ -475,7 +463,7 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
  */
 static void phy_setup(struct net_local *lp)
 {
-#ifdef PHY_MARVELL_88E1111_RGMII
+#ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 	u16 Register;
 
 	/*
@@ -522,7 +510,7 @@ static void phy_setup(struct net_local *lp)
 	Register |= BMCR_RESET;
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
 
-#endif /* PHY_MARVELL_88E1111_RGMII */
+#endif /* CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII */
 }
 
 
@@ -623,27 +611,21 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	return -1;
 }
 
-#define MARVELL_88E1111_PHY
 /*
  * This function sets up MAC's speed according to link speed of PHY
- * This function is specific to MARVELL 88E1111 PHY chip on many Xilinx 
- * boards and assumes GMII interface is being used by the TEMAC
  */
 void set_mac_speed(struct net_local *lp)
 {
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
 
-#ifndef MARVELL_88E1111_PHY
-	int ret;
-	int retry_count = 1;
-#endif
-
+#ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
 	/*
-	 * See comments at top for an explanation of 
-	 * #undef MARVELL_88E1111_PHY
+	 * This function is specific to MARVELL 88E1111 PHY chip on
+	 * many Xilinx boards and assumes GMII interface is being used
+	 * by the TEMAC.
 	 */
-#ifdef MARVELL_88E1111_PHY
+
 #define MARVELL_88E1111_PHY_SPECIFIC_STATUS_REG_OFFSET  17
 #define MARVELL_88E1111_LINKSPEED_MARK                  0xC000
 #define MARVELL_88E1111_LINKSPEED_SHIFT                 14
@@ -688,6 +670,8 @@ void set_mac_speed(struct net_local *lp)
 	}
 
 #else	/* generic PHY, there have been issues with 10Mbit with this code */
+	int ret;
+	int retry_count = 1;
 
 	if (XLlTemac_GetPhysicalInterface(&lp->Emac) == XTE_PHY_TYPE_MII) {
 		phylinkspeed = 100;
