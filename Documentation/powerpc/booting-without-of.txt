@@ -2539,6 +2539,16 @@ platforms are moved over to use the flattened-device-tree model.
                       differ between different families.  May be
                       'virtex2p', 'virtex4', or 'virtex5'.
 
+      iv) Xilinx Uart 16550
+
+      Xilinx UART 16550 devices are very similar to the NS16550 but with
+      different register spacing and an offset from the base address.
+
+      Requred properties:
+       - clock-frequency : Frequency of the clock input
+       - reg-offset : A value of 3 is required
+       - reg-shift : A value of 2 is required
+
    More devices will be defined as this spec matures.
 
 VII - Specifying interrupt information for devices
