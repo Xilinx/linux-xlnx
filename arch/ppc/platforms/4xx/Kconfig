@@ -320,7 +320,6 @@ config XILINX_VIRTEX_4_FX
 
 config XILINX_VIRTEX
 	bool
-	select XILINX_DRIVERS
 
 config XILINX_EMBED_CONFIG
 	bool

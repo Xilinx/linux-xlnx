@@ -240,7 +240,14 @@ endif # MISC_DEVICES
 #
 
 config XILINX_DRIVERS
-  bool
+	bool
+	depends on PPC32 || MICROBLAZE
+   default y
+	---help---
+	  This option is used to enable all of the Xilinx drivers on
+	  supported architectures.  This is often useful if you have a
+	  Xilinx FPGA in a system, either using embedded processors
+	  internal to the FPGA or external processors.
 
 config NEED_XILINX_DMAV3
   bool

@@ -5,7 +5,6 @@ mainmenu "Linux/Microblaze Kernel Configuration"
 
 config MICROBLAZE
 	bool
-	select XILINX_DRIVERS
 	default y
 
 config MMU
