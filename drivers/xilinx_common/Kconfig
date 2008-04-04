@@ -6,4 +6,4 @@ config XILINX_EDK
 config XILINX_LLDMA_USE_DCR
 	bool
 	depends on NEED_XILINX_LLDMA
-	default CONFIG_XILINX_VIRTEX_5_FX
+	default XILINX_VIRTEX_5_FX
