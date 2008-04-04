@@ -124,7 +124,7 @@
 		(XLlDma_mBdRead((BdPtr), XLLDMA_BD_STSCTRL_USR0_OFFSET)) & 0xFFFFFFFE )
 
 #define BdCsumSetup(BdPtr, Start, Insert) \
-    XLlDma_mBdWrite((BdPtr), XLLDMA_BD_USR1_OFFSET, (Start) << 16 | (Insert))
+    XLlDma_mBdWrite((BdPtr), XLLDMA_BD_USR1_OFFSET, ((Start) << 16) | (Insert))
 
 /* Used for debugging */
 #define BdCsumInsert(BdPtr) \
@@ -1524,7 +1524,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	/*
 	 * if tx checksum offloading is enabled, when the ethernet stack
 	 * wants us to perform the checksum in hardware,
-	 * skb->ip_summed is CHECKSUM_COMPLETE. Otherwise skb->ip_summed is
+	 * skb->ip_summed is CHECKSUM_PARTIAL. Otherwise skb->ip_summed is
 	 * CHECKSUM_NONE, meaning the checksum is already done, or
 	 * CHECKSUM_UNNECESSARY, meaning checksumming is turned off (e.g.
 	 * loopback interface)
@@ -1549,9 +1549,11 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	 * skb_transport_header(skb) points to the beginning of the ip header
 	 *
 	 */
-	if (skb->ip_summed == CHECKSUM_COMPLETE) {
+	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 
-		unsigned char *raw = skb_transport_header(skb);
+		unsigned int csum_start_off = skb_transport_offset(skb);
+		unsigned int csum_index_off = csum_start_off + skb->csum_offset;
+
 #if 0
 		{
 			unsigned int csum = _xenet_tx_csum(skb);
@@ -1562,8 +1564,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 		}
 #else
 		BdCsumEnable(bd_ptr);
-		BdCsumSetup(bd_ptr, raw - skb->data,
-			    (raw - skb->data) + skb->csum);
+		BdCsumSetup(bd_ptr, csum_start_off, csum_index_off);
 
 #endif
 		lp->tx_hw_csums++;
@@ -3261,7 +3262,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	struct resource *r_irq = &r_irq_struct;	/* Interrupt resources */
 	struct resource *r_mem = &r_mem_struct;	/* IO mem resources */
 	struct xlltemac_platform_data *pdata = &pdata_struct;
-        void *mac_address;
+        const void *mac_address;
 	int rc = 0;
 	const phandle *llink_connected_handle;
 	struct device_node *llink_connected_node;
