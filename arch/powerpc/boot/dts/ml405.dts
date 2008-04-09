@@ -8,6 +8,7 @@
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
  *
+
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
@@ -32,20 +33,23 @@
 		reg = < 0 8000000 >;
 	} ;
 	chosen {
-		bootargs = "root=/dev/xsysace/disc0/part2";
+		bootargs = "console=ttyS0 ip=on root=/dev/ram";
 		linux,stdout-path = "/plb@0/serial@83e00000";
 	} ;
 	cpus {
 		#address-cells = <1>;
 		#cpus = <1>;
+
 		#size-cells = <0>;
 		ppc405_0: cpu@0 {
 			clock-frequency = <11e1a300>;
 			compatible = "PowerPC,405", "ibm,ppc405";
+
 			d-cache-line-size = <20>;
 			d-cache-size = <4000>;
 			device_type = "cpu";
 			i-cache-line-size = <20>;
+
 			i-cache-size = <4000>;
 			model = "PowerPC,405";
 			reg = <0>;
@@ -105,11 +109,14 @@
 			xlnx,tri-default-2 = <ffffffff>;
 		} ;
 		RS232_Uart: serial@83e00000 {
-			compatible = "xlnx,xps-uart16550-2.00.a";
+			compatible = "ns16550";
 			device_type = "serial";
 			interrupt-parent = <&xps_intc_0>;
 			interrupts = < 6 2 >;
 			reg = < 83e00000 10000 >;
+			reg-offset = <3>;
+			reg-shift = <2>; 
+			clock-frequency = <05f5e100>;
 			xlnx,family = "virtex4";
 			xlnx,has-external-rclk = <0>;
 			xlnx,has-external-xin = <0>;
