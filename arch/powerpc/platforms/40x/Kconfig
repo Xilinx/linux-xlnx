@@ -108,9 +108,6 @@ config 405EP
 config 405GPR
 	bool
 
-config XILINX_VIRTEX
-	bool
-
 config XILINX_VIRTEX_II_PRO
 	bool
 	select XILINX_VIRTEX

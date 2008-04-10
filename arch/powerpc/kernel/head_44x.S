@@ -136,6 +136,34 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	mtspr	SPRN_MMUCR,r5
 	sync
 
+	/* Initialize the DVLIM and IVLIM */
+	lis     r5,0x0001F800@h
+	ori     r5,r5,0x0001F800@l
+
+	mtspr   0x398,r5
+	mtspr   0x399,r5
+
+	li      r5,0
+	/* Initialize the DNV0-3 and DTV0-3 */
+	mtspr   0x390,r5
+	mtspr   0x391,r5
+	mtspr   0x392,r5
+	mtspr   0x393,r5
+	mtspr   0x394,r5
+	mtspr   0x395,r5
+	mtspr   0x396,r5
+	mtspr   0x397,r5
+
+	/* Initialize the INV0-3 and ITV0-3 */
+	mtspr   0x370,r5
+	mtspr   0x371,r5
+	mtspr   0x372,r5
+	mtspr   0x373,r5
+	mtspr   0x374,r5
+	mtspr   0x375,r5
+	mtspr   0x376,r5
+	mtspr   0x377,r5
+
  	/* pageid fields */
 	clrrwi	r3,r3,10		/* Mask off the effective page number */
 	ori	r3,r3,PPC44x_TLB_VALID | PPC44x_TLB_256M
@@ -147,7 +175,11 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	/* attrib fields */
 	/* Added guarded bit to protect against speculative loads/stores */
 	li	r5,0
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+	ori	r5,r5,(PPC44x_TLB_SW | PPC44x_TLB_SR | PPC44x_TLB_SX | PPC44x_TLB_G | PPC44x_TLB_I)
+#else
 	ori	r5,r5,(PPC44x_TLB_SW | PPC44x_TLB_SR | PPC44x_TLB_SX | PPC44x_TLB_G)
+#endif
 
         li      r0,63                    /* TLB slot 63 */
 
@@ -156,7 +188,16 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	tlbwe	r5,r0,PPC44x_TLB_ATTRIB	/* Load the attrib/access fields */
 
 	/* Force context change */
+#ifdef CONFIG_XILINX_ML5XX
+	/* We can not use the content of the MSR register when we are using XMD
+	 * to connect to a ml5xx board as XMD changes the contents of the MSR
+	 * register. We load the default value instead.
+	 */
+        lis     r0,MSR_KERNEL@h
+        ori     r0,r0,MSR_KERNEL@l
+#else
 	mfmsr	r0
+#endif
 	mtspr	SPRN_SRR1, r0
 	lis	r0,3f@h
 	ori	r0,r0,3f@l
@@ -185,7 +226,7 @@ skpinv:	addi	r4,r4,1				/* Increment */
 
 	/* attrib fields */
 	li	r5,(PPC44x_TLB_SW|PPC44x_TLB_SR|PPC44x_TLB_I|PPC44x_TLB_G)
-        li      r0,62                    /* TLB slot 0 */
+        li      r0,62                    /* TLB slot 62 */
 
 	tlbwe	r3,r0,PPC44x_TLB_PAGEID
 	tlbwe	r4,r0,PPC44x_TLB_XLAT
@@ -376,6 +417,9 @@ interrupt_base:
 	/* find the TLB index that caused the fault.  It has to be here. */
 	tlbsx	r10, 0, r10
 
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+	ori	r11, r11, PPC44x_TLB_I
+#endif
 	tlbwe	r11, r10, PPC44x_TLB_ATTRIB	/* Write ATTRIB */
 
 	/* Done...restore registers and get out of here.
@@ -657,6 +701,9 @@ finish_tlb_load:
 
 	rlwimi	r12, r10, 0, 26, 31		/* Insert static perms */
 	rlwinm	r12, r12, 0, 20, 15		/* Clear U0-U3 */
+#ifdef CONFIG_XILINX_DISABLE_44x_CACHE
+	ori	r12, r12, PPC44x_TLB_I
+#endif
 	tlbwe	r12, r13, PPC44x_TLB_ATTRIB	/* Write ATTRIB */
 
 	/* Done...restore registers and get out of here.

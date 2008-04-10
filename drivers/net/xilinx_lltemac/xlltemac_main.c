@@ -3177,7 +3177,7 @@ static int xtenet_setup(
 	dev_info(dev,
 		"%s: Xilinx TEMAC at 0x%08X mapped to 0x%08X, irq=%d\n",
 		ndev->name,
-		r_mem->start,
+		(unsigned int)r_mem->start,
 		lp->Emac.Config.BaseAddress,
 		ndev->irq);
 
@@ -3266,6 +3266,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	int rc = 0;
 	const phandle *llink_connected_handle;
 	struct device_node *llink_connected_node;
+	u32 *dcrreg_property;
 
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
                         ofdev->node->name);
@@ -3296,21 +3297,22 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 
 	llink_connected_node =
 		of_find_node_by_phandle(*llink_connected_handle);
-
 	rc = of_address_to_resource(
 			llink_connected_node,
 			0,
 			&r_connected_mem_struct);
-	if(rc) {
-		dev_warn(&ofdev->dev, "invalid address\n");
-		return rc;
-	}
 
-        pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
         /** Get the right information from whatever the locallink is
 	    connected to. */
 	if(of_match_node(xtenet_fifo_of_match, llink_connected_node)) {
 		/** Connected to a fifo. */
+
+		if(rc) {
+			dev_warn(&ofdev->dev, "invalid address\n");
+			return rc;
+		}
+
+	        pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
 		pdata_struct.ll_dev_type = XPAR_LL_FIFO;
 		pdata_struct.ll_dev_dma_rx_irq	= NO_IRQ;
 		pdata_struct.ll_dev_dma_tx_irq	= NO_IRQ;
@@ -3326,7 +3328,23 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 		pdata_struct.ll_dev_fifo_irq	= r_connected_irq_struct.start;
 		pdata_struct.dcr_host = 0x0;
         } else if(of_match_node(xtenet_sdma_of_match, llink_connected_node)) {
-		/** Connected to a dma port. */
+		/** Connected to a dma port, default to 405 type dma */
+
+		pdata->dcr_host = 0;
+		if(rc) {
+			/* no address was found, might be 440, check for dcr reg */
+
+			dcrreg_property = (u32 *)of_get_property(llink_connected_node, "dcr-reg", 									NULL);
+			if(dcrreg_property) {
+			        r_connected_mem_struct.start = *dcrreg_property;
+				pdata->dcr_host = 0xFF;
+			} else {
+				dev_warn(&ofdev->dev, "invalid address\n");
+				return rc;
+			}			
+		}
+
+        	pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
 		pdata_struct.ll_dev_type = XPAR_LL_DMA;
 
 		rc = of_irq_to_resource(
@@ -3350,7 +3368,6 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 		pdata_struct.ll_dev_dma_tx_irq	= r_connected_irq_struct.start;
 
 		pdata_struct.ll_dev_fifo_irq	= NO_IRQ;
-		pdata_struct.dcr_host = 0x0;
         } else {
 		dev_warn(&ofdev->dev, "Locallink connection not matched.\n");
 		return rc;

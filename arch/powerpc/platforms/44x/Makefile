@@ -2,3 +2,4 @@ obj-$(CONFIG_44x)	:= misc_44x.o
 obj-$(CONFIG_EBONY)	+= ebony.o
 obj-$(CONFIG_BAMBOO) += bamboo.o
 obj-$(CONFIG_SEQUOIA)	+= sequoia.o
+obj-$(CONFIG_XILINX_ML507)	+= virtex.o

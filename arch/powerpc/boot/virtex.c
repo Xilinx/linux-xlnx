@@ -26,7 +26,93 @@ BSS_STACK(4096);
 #include "gunzip_util.h"
 #include "../../../include/linux/autoconf.h"
 
-static struct gunzip_state gzstate;
+#define UART_DLL		0	/* Out: Divisor Latch Low */
+#define UART_DLM		1	/* Out: Divisor Latch High */
+#define UART_FCR		2	/* Out: FIFO Control Register */
+#define UART_FCR_CLEAR_RCVR 	0x02 	/* Clear the RCVR FIFO */
+#define UART_FCR_CLEAR_XMIT	0x04 	/* Clear the XMIT FIFO */
+#define UART_LCR		3	/* Out: Line Control Register */
+#define UART_MCR		4	/* Out: Modem Control Register */
+#define UART_MCR_RTS		0x02 	/* RTS complement */
+#define UART_MCR_DTR		0x01 	/* DTR complement */
+#define UART_LCR_DLAB		0x80 	/* Divisor latch access bit */
+#define UART_LCR_WLEN8		0x03 	/* Wordlength: 8 bits */
+
+/* This function is only needed when there is no boot loader to 
+   initialize the UART
+*/
+static int virtex_ns16550_console_init(void *devp)
+{
+	int n;
+	unsigned long reg_phys;
+	unsigned char *regbase;
+	u32 regshift, clk, spd;
+	u16 divisor;
+
+	n = getprop(devp, "virtual-reg", &regbase, sizeof(regbase));
+	if (n != sizeof(regbase)) {
+		if (!dt_xlate_reg(devp, 0, &reg_phys, NULL))
+			return -1;
+
+		regbase = (void *)reg_phys + 3;
+	}
+	regshift = 2;
+	
+	n = getprop(devp, "current-speed", (void *)&spd, sizeof(spd));
+	if (n != sizeof(spd))
+		spd = 9600;
+
+	/* should there be a default clock rate?*/
+	n = getprop(devp, "clock-frequency", (void *)&clk, sizeof(clk));
+	if (n != sizeof(clk))
+		return -1;
+
+	divisor = clk / (16 * spd);
+
+	/* Access baud rate */
+	out_8(regbase + (UART_LCR << regshift), UART_LCR_DLAB);
+
+	/* Baud rate based on input clock */
+	out_8(regbase + (UART_DLL << regshift), divisor & 0xFF);
+	out_8(regbase + (UART_DLM << regshift), divisor >> 8);
+
+	/* 8 data, 1 stop, no parity */
+	out_8(regbase + (UART_LCR << regshift), UART_LCR_WLEN8);
+
+	/* RTS/DTR */
+	out_8(regbase + (UART_MCR << regshift), UART_MCR_RTS | UART_MCR_DTR);
+
+	/* Clear transmitter and receiver */
+	out_8(regbase + (UART_FCR << regshift), 
+				UART_FCR_CLEAR_XMIT | UART_FCR_CLEAR_RCVR);
+	return 0;
+}
+
+/* For virtex, the kernel may be loaded without using a bootloader and if so
+   some UARTs need more setup than is provided in the normal console init
+*/
+static int virtex_serial_console_init(void)
+{
+	void *devp;
+	char devtype[MAX_PROP_LEN];
+	char path[MAX_PATH_LEN];
+
+	devp = finddevice("/chosen");
+	if (devp == NULL)
+		return -1;
+
+	if (getprop(devp, "linux,stdout-path", path, MAX_PATH_LEN) > 0) {
+		devp = finddevice(path);
+		if (devp == NULL)
+			return -1;
+
+		if ((getprop(devp, "device_type", devtype, sizeof(devtype)) > 0)
+				&& !strcmp(devtype, "serial") 
+				&& (dt_is_compatible(devp, "ns16550")))	
+				virtex_ns16550_console_init(devp);
+	}
+	return 0;
+}
 
 void platform_init(void)
 {
@@ -40,12 +126,14 @@ void platform_init(void)
 	unsigned long addr;
 	unsigned long dccr;
 
+#ifdef CONFIG_COMPRESSED_DEVICE_TREE
 	void *dtbz_start;
 	u32 dtbz_size;
 	void *dtb_addr;
 	u32 dtb_size;
 	struct boot_param_header dtb_header;
 	int len;
+#endif
 
         if((mfpvr() & 0xfffff000) == 0x20011000) {
             /* PPC errata 213: only for Virtex-4 FX */
@@ -133,6 +221,7 @@ void platform_init(void)
 		size = (size << 32) | memreg[i++];
 
 	// timebase_period_ns = 1000000000 / timebase;
+	virtex_serial_console_init();
 	serial_console_init();
 	if (console_ops.open) 
 		console_ops.open();
@@ -142,6 +231,6 @@ void platform_init(void)
 #else
 #endif
         printf("booting virtex\n\r");
-        printf("memstart=0x%x\n\r", start);
-        printf("memsize=0x%x\n\r", size);
+        printf("memstart=0x%Lx\n\r", start);
+        printf("memsize=0x%Lx\n\r", size);
 }
