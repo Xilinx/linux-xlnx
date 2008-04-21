@@ -72,6 +72,10 @@ EXPORT_SYMBOL(__debugger_dabr_match);
 EXPORT_SYMBOL(__debugger_fault_handler);
 #endif
 
+#ifdef CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+u8 excep_state = 0;
+#endif
+
 /*
  * Trap & Exception support
  */
@@ -874,6 +878,17 @@ void __kprobes program_check_exception(struct pt_regs *regs)
 	}
 	/* fall through on any other errors */
 #endif /* CONFIG_MATH_EMULATION */
+
+#ifdef CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
+	if (reason & REASON_ILLEGAL) {
+		if (excep_state < 1) {
+			excep_state++;
+			return;
+		}
+		/* should never get here */
+		BUG();
+	}
+#endif /* CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND */
 
 	/* Try to emulate it if we should. */
 	if (reason & (REASON_ILLEGAL | REASON_PRIVILEGED)) {
