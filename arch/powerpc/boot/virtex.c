@@ -166,6 +166,11 @@ void platform_init(void)
 		}
 	}
 
+#if defined(CONFIG_XILINX_VIRTEX_5_FXT) && defined(CONFIG_MATH_EMULATION)
+	/* Make sure the APU is disabled when using soft FPU emulation */
+	mtdcr(5, 0);
+#endif
+
 	disable_irq();
 
 #ifdef CONFIG_COMPRESSED_DEVICE_TREE

@@ -150,7 +150,7 @@ config XILINX_ML5XX
 	bool
 	select XILINX_VIRTEX
 
-config XILINX_VIRTEX_5_FX
+config XILINX_VIRTEX_5_FXT
 	bool
 	depends on XILINX_ML507
 	default y

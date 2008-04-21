@@ -167,14 +167,14 @@ config XILINX_DISABLE_44x_CACHE
 	  problems running the ML5, try using this option.
 
 config PPC_FPU
-	depends on XILINX_VIRTEX_5_FX
+	depends on XILINX_VIRTEX_5_FXT
 	bool "Enable Xilinx Soft FPU"
 	help
 	  This option enables the Xilinx Soft FPU attached to the APU
 	  interface of the PPC440 (requires DP_FULL FPU pcore).
 
 config XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
-	depends on XILINX_VIRTEX_5_FX
+	depends on XILINX_VIRTEX_5_FXT
 	bool "Enable Spurious Program Exceptions Workaround"
 	help
 	  This option enables a workaround for a bug in the APU controller of
@@ -309,7 +309,7 @@ config XILINX_VIRTEX_II_PRO
 	bool
 	select XILINX_VIRTEX
 
-config XILINX_VIRTEX_5_FX
+config XILINX_VIRTEX_5_FXT
 	bool
 	depends on XILINX_ML507
 	default y

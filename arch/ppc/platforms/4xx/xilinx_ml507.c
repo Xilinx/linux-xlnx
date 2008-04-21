@@ -34,7 +34,7 @@
 #include <syslib/virtex_devices.h>
 #include <platforms/4xx/xparameters/xparameters.h>
 
-#if defined(CONFIG_XILINX_VIRTEX_5_FX)
+#if defined(CONFIG_XILINX_VIRTEX_5_FXT)
 #define XILINX_ARCH "Virtex-5 FXT"
 #else
 #error "No Xilinx Architecture recognized."
