@@ -31,7 +31,6 @@
 #include <linux/fb.h>
 #include <linux/init.h>
 #include <linux/dma-mapping.h>
-#include <linux/platform_device.h>
 #if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
@@ -356,56 +355,6 @@ static int xilinxfb_release(struct device *dev)
 }
 
 /* ---------------------------------------------------------------------
- * Platform bus binding
- */
-
-static int
-xilinxfb_platform_probe(struct platform_device *pdev)
-{
-	struct xilinxfb_platform_data *pdata;
-	struct resource *res;
-
-	/* Find the registers address */
-	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "Couldn't get registers resource\n");
-		return -ENODEV;
-	}
-
-	/* If a pdata structure is provided, then extract the parameters */
-	pdata = &xilinx_fb_default_pdata;
-	if (pdev->dev.platform_data) {
-		pdata = pdev->dev.platform_data;
-		if (!pdata->xres)
-			pdata->xres = xilinx_fb_default_pdata.xres;
-		if (!pdata->yres)
-			pdata->yres = xilinx_fb_default_pdata.yres;
-		if (!pdata->xvirt)
-			pdata->xvirt = xilinx_fb_default_pdata.xvirt;
-		if (!pdata->yvirt)
-			pdata->yvirt = xilinx_fb_default_pdata.yvirt;
-	}
-
-	return xilinxfb_assign(&pdev->dev, res->start, pdata);
-}
-
-static int
-xilinxfb_platform_remove(struct platform_device *pdev)
-{
-	return xilinxfb_release(&pdev->dev);
-}
-
-
-static struct platform_driver xilinxfb_platform_driver = {
-	.probe		= xilinxfb_platform_probe,
-	.remove		= xilinxfb_platform_remove,
-	.driver = {
-		.owner = THIS_MODULE,
-		.name = DRIVER_NAME,
-	},
-};
-
-/* ---------------------------------------------------------------------
  * OF bus binding
  */
 
@@ -500,22 +449,12 @@ static inline void __exit xilinxfb_of_unregister(void) { }
 static int __init
 xilinxfb_init(void)
 {
-	int rc;
-	rc = xilinxfb_of_register();
-	if (rc)
-		return rc;
-
-	rc = platform_driver_register(&xilinxfb_platform_driver);
-	if (rc)
-		xilinxfb_of_unregister();
-
-	return rc;
+	return xilinxfb_of_register();
 }
 
 static void __exit
 xilinxfb_cleanup(void)
 {
-	platform_driver_unregister(&xilinxfb_platform_driver);
 	xilinxfb_of_unregister();
 }
 
