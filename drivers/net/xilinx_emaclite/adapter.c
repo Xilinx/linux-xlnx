@@ -643,6 +643,7 @@ static struct of_device_id xemaclite_of_match[] = {
 	{ .compatible = "xlnx,opb-ethernetlite-1.01.a", },
 	{ .compatible = "xlnx,opb-ethernetlite-1.01.b", },
 	{ .compatible = "xlnx,xps-ethernetlite-1.00.a", },
+	{ .compatible = "xlnx,xps-ethernetlite-2.00.a", },
 	{ /* end of list */ },
 };
 

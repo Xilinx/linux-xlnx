@@ -3393,6 +3393,7 @@ static struct of_device_id xtenet_of_match[] = {
 	{ .compatible = "xlnx,xps-ll-temac-1.00.a", },
 	{ .compatible = "xlnx,xps-ll-temac-1.00.b", },
 	{ .compatible = "xlnx,xps-ll-temac-1.01.a", },
+	{ .compatible = "xlnx,xps-ll-temac-1.01.b", },
 	{ /* end of list */ },
 };
 

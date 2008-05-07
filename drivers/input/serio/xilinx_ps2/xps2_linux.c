@@ -391,6 +391,7 @@ static int __devexit xps2_of_remove(struct of_device *dev)
 
 static struct of_device_id xps2_of_match[] = {
 	{ .compatible = "xlnx,opb-ps2-dual-ref-1.00.a", },
+	{ .compatible = "xlnx,xps-ps2-1.00.a", },
 	{ /* end of list */ },
 };
 
