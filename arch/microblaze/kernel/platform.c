@@ -332,6 +332,7 @@ void __init uart_16550_early_init(void)
 
 #ifdef CONFIG_DEVICE_TREE
 static struct of_device_id xilinx_of_bus_ids[] = {
+	{ .compatible = "simple-bus", },
 	{ .compatible = "xlnx,plb-v46-1.00.a", },
 	{ .compatible = "xlnx,plb-v34-1.01.a", },
 	{ .compatible = "xlnx,plb-v34-1.02.a", },
