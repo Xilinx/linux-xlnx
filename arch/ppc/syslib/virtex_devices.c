@@ -284,7 +284,7 @@
 #endif
 
 #define XPAR_HWICAP(num) { \
-	.name = "xilinx_icap", \
+	.name = "icap", \
 	.id = num, \
 	.num_resources = 1, \
 	.resource = (struct resource[]) { \
