@@ -46,21 +46,26 @@ extern int nommu_vma_show(struct seq_file *, struct vm_area_struct *);
 
 extern int maps_protect;
 
-extern void create_seq_entry(char *name, mode_t mode, const struct file_operations *f);
-extern int proc_exe_link(struct inode *, struct dentry **, struct vfsmount **);
-extern int proc_tid_stat(struct task_struct *,  char *);
-extern int proc_tgid_stat(struct task_struct *, char *);
-extern int proc_pid_status(struct task_struct *, char *);
-extern int proc_pid_statm(struct task_struct *, char *);
+extern void create_seq_entry(char *name, mode_t mode,
+				const struct file_operations *f);
+extern int proc_exe_link(struct inode *, struct path *);
+extern int proc_tid_stat(struct seq_file *m, struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task);
+extern int proc_tgid_stat(struct seq_file *m, struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task);
+extern int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task);
+extern int proc_pid_statm(struct seq_file *m, struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task);
+extern loff_t mem_lseek(struct file *file, loff_t offset, int orig);
 
 extern const struct file_operations proc_maps_operations;
 extern const struct file_operations proc_numa_maps_operations;
 extern const struct file_operations proc_smaps_operations;
-
-extern const struct file_operations proc_maps_operations;
-extern const struct file_operations proc_numa_maps_operations;
-extern const struct file_operations proc_smaps_operations;
-
+extern const struct file_operations proc_clear_refs_operations;
+extern const struct file_operations proc_pagemap_operations;
+extern const struct file_operations proc_net_operations;
+extern const struct inode_operations proc_net_inode_operations;
 
 void free_proc_entry(struct proc_dir_entry *de);
 
@@ -80,3 +85,8 @@ static inline int proc_fd(struct inode *inode)
 {
 	return PROC_I(inode)->fd;
 }
+
+struct dentry *proc_lookup_de(struct proc_dir_entry *de, struct inode *ino,
+		struct dentry *dentry);
+int proc_readdir_de(struct proc_dir_entry *de, struct file *filp, void *dirent,
+		filldir_t filldir);

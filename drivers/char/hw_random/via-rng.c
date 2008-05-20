@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/hw_random.h>
+#include <linux/delay.h>
 #include <asm/io.h>
 #include <asm/msr.h>
 #include <asm/cpufeature.h>
@@ -41,6 +42,8 @@ enum {
 	VIA_STRFILT_ENABLE	= (1 << 14),
 	VIA_RAWBITS_ENABLE	= (1 << 13),
 	VIA_RNG_ENABLE		= (1 << 6),
+	VIA_NOISESRC1		= (1 << 8),
+	VIA_NOISESRC2		= (1 << 9),
 	VIA_XSTORE_CNT_MASK	= 0x0F,
 
 	VIA_RNG_CHUNK_8		= 0x00,	/* 64 rand bits, 64 stored bits */
@@ -77,10 +80,11 @@ static inline u32 xstore(u32 *addr, u32 edx_in)
 	return eax_out;
 }
 
-static int via_rng_data_present(struct hwrng *rng)
+static int via_rng_data_present(struct hwrng *rng, int wait)
 {
 	u32 bytes_out;
 	u32 *via_rng_datum = (u32 *)(&rng->priv);
+	int i;
 
 	/* We choose the recommended 1-byte-per-instruction RNG rate,
 	 * for greater randomness at the expense of speed.  Larger
@@ -95,12 +99,15 @@ static int via_rng_data_present(struct hwrng *rng)
 	 * completes.
 	 */
 
-	*via_rng_datum = 0; /* paranoia, not really necessary */
-	bytes_out = xstore(via_rng_datum, VIA_RNG_CHUNK_1);
-	bytes_out &= VIA_XSTORE_CNT_MASK;
-	if (bytes_out == 0)
-		return 0;
-	return 1;
+	for (i = 0; i < 20; i++) {
+		*via_rng_datum = 0; /* paranoia, not really necessary */
+		bytes_out = xstore(via_rng_datum, VIA_RNG_CHUNK_1);
+		bytes_out &= VIA_XSTORE_CNT_MASK;
+		if (bytes_out || !wait)
+			break;
+		udelay(10);
+	}
+	return bytes_out ? 1 : 0;
 }
 
 static int via_rng_data_read(struct hwrng *rng, u32 *data)
@@ -114,6 +121,7 @@ static int via_rng_data_read(struct hwrng *rng, u32 *data)
 
 static int via_rng_init(struct hwrng *rng)
 {
+	struct cpuinfo_x86 *c = &cpu_data(0);
 	u32 lo, hi, old_lo;
 
 	/* Control the RNG via MSR.  Tread lightly and pay very close
@@ -129,6 +137,17 @@ static int via_rng_init(struct hwrng *rng)
 	lo &= ~VIA_XSTORE_CNT_MASK;
 	lo &= ~(VIA_STRFILT_ENABLE | VIA_STRFILT_FAIL | VIA_RAWBITS_ENABLE);
 	lo |= VIA_RNG_ENABLE;
+	lo |= VIA_NOISESRC1;
+
+	/* Enable secondary noise source on CPUs where it is present. */
+
+	/* Nehemiah stepping 8 and higher */
+	if ((c->x86_model == 9) && (c->x86_mask > 7))
+		lo |= VIA_NOISESRC2;
+
+	/* Esther */
+	if (c->x86_model >= 10)
+		lo |= VIA_NOISESRC2;
 
 	if (lo != old_lo)
 		wrmsr(MSR_VIA_RNG, lo, hi);

@@ -111,11 +111,16 @@ static int wait_transaction_complete(struct acpi_smb_hc *hc, int timeout)
 		return -ETIME;
 }
 
-int acpi_smbus_transaction(struct acpi_smb_hc *hc, u8 protocol, u8 address,
-		    u8 command, u8 *data, u8 length)
+static int acpi_smbus_transaction(struct acpi_smb_hc *hc, u8 protocol,
+				  u8 address, u8 command, u8 *data, u8 length)
 {
 	int ret = -EFAULT, i;
 	u8 temp, sz = 0;
+
+	if (!hc) {
+		printk(KERN_ERR PREFIX "host controller is not configured\n");
+		return ret;
+	}
 
 	mutex_lock(&hc->lock);
 	if (smb_hc_read(hc, ACPI_SMB_PROTOCOL, &temp))
@@ -124,7 +129,6 @@ int acpi_smbus_transaction(struct acpi_smb_hc *hc, u8 protocol, u8 address,
 		ret = -EBUSY;
 		goto end;
 	}
-	smb_hc_write(hc, ACPI_SMB_COMMAND, command);
 	smb_hc_write(hc, ACPI_SMB_COMMAND, command);
 	if (!(protocol & 0x01)) {
 		smb_hc_write(hc, ACPI_SMB_BLOCK_COUNT, length);
@@ -292,6 +296,7 @@ static int acpi_smbus_hc_remove(struct acpi_device *device, int type)
 	hc = acpi_driver_data(device);
 	acpi_ec_remove_query_handler(hc->ec, hc->query_bit);
 	kfree(hc);
+	acpi_driver_data(device) = NULL;
 	return 0;
 }
 

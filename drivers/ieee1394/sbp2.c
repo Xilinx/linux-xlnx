@@ -51,6 +51,7 @@
  * Grep for inline FIXME comments below.
  */
 
+#include <linux/blkdev.h>
 #include <linux/compiler.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -127,17 +128,21 @@ MODULE_PARM_DESC(serialize_io, "Serialize requests coming from SCSI drivers "
 		 "(default = Y, faster but buggy = N)");
 
 /*
- * Bump up max_sectors if you'd like to support very large sized
- * transfers. Please note that some older sbp2 bridge chips are broken for
- * transfers greater or equal to 128KB.  Default is a value of 255
- * sectors, or just under 128KB (at 512 byte sector size). I can note that
- * the Oxsemi sbp2 chipsets have no problems supporting very large
- * transfer sizes.
+ * Adjust max_sectors if you'd like to influence how many sectors each SCSI
+ * command can transfer at most. Please note that some older SBP-2 bridge
+ * chips are broken for transfers greater or equal to 128KB, therefore
+ * max_sectors used to be a safe 255 sectors for many years. We now have a
+ * default of 0 here which means that we let the SCSI stack choose a limit.
+ *
+ * The SBP2_WORKAROUND_128K_MAX_TRANS flag, if set either in the workarounds
+ * module parameter or in the sbp2_workarounds_table[], will override the
+ * value of max_sectors. We should use sbp2_workarounds_table[] to cover any
+ * bridge chip which becomes known to need the 255 sectors limit.
  */
-static int sbp2_max_sectors = SBP2_MAX_SECTORS;
+static int sbp2_max_sectors;
 module_param_named(max_sectors, sbp2_max_sectors, int, 0444);
 MODULE_PARM_DESC(max_sectors, "Change max sectors per I/O supported "
-		 "(default = " __stringify(SBP2_MAX_SECTORS) ")");
+		 "(default = 0 = use SCSI stack's default)");
 
 /*
  * Exclusive login to sbp2 device? In most cases, the sbp2 driver should
@@ -178,6 +183,9 @@ MODULE_PARM_DESC(exclusive_login, "Exclusive login to sbp2 device "
  *   Avoids access beyond actual disk limits on devices with an off-by-one bug.
  *   Don't use this with devices which don't have this bug.
  *
+ * - delay inquiry
+ *   Wait extra SBP2_INQUIRY_DELAY seconds after login before SCSI inquiry.
+ *
  * - override internal blacklist
  *   Instead of adding to the built-in blacklist, use only the workarounds
  *   specified in the module load parameter.
@@ -190,6 +198,7 @@ MODULE_PARM_DESC(workarounds, "Work around device bugs (default = 0"
 	", 36 byte inquiry = "    __stringify(SBP2_WORKAROUND_INQUIRY_36)
 	", skip mode page 8 = "   __stringify(SBP2_WORKAROUND_MODE_SENSE_8)
 	", fix capacity = "       __stringify(SBP2_WORKAROUND_FIX_CAPACITY)
+	", delay inquiry = "      __stringify(SBP2_WORKAROUND_DELAY_INQUIRY)
 	", override internal blacklist = " __stringify(SBP2_WORKAROUND_OVERRIDE)
 	", or a combination)");
 
@@ -352,6 +361,11 @@ static const struct {
 		.workarounds		= SBP2_WORKAROUND_INQUIRY_36 |
 					  SBP2_WORKAROUND_MODE_SENSE_8,
 	},
+	/* DViCO Momobay FX-3A with TSB42AA9A bridge */ {
+		.firmware_revision	= 0x002800,
+		.model_id		= 0x000000,
+		.workarounds		= SBP2_WORKAROUND_DELAY_INQUIRY,
+	},
 	/* Initio bridges, actually only needed for some older ones */ {
 		.firmware_revision	= 0x000200,
 		.model_id		= SBP2_ROM_VALUE_WILDCARD,
@@ -359,6 +373,11 @@ static const struct {
 	},
 	/* Symbios bridge */ {
 		.firmware_revision	= 0xa0b800,
+		.model_id		= SBP2_ROM_VALUE_WILDCARD,
+		.workarounds		= SBP2_WORKAROUND_128K_MAX_TRANS,
+	},
+	/* Datafab MD2-FW2 with Symbios/LSILogic SYM13FW500 bridge */ {
+		.firmware_revision	= 0x002600,
 		.model_id		= SBP2_ROM_VALUE_WILDCARD,
 		.workarounds		= SBP2_WORKAROUND_128K_MAX_TRANS,
 	},
@@ -909,6 +928,9 @@ static int sbp2_start_device(struct sbp2_lu *lu)
 	sbp2_agent_reset(lu, 1);
 	sbp2_max_speed_and_size(lu);
 
+	if (lu->workarounds & SBP2_WORKAROUND_DELAY_INQUIRY)
+		ssleep(SBP2_INQUIRY_DELAY);
+
 	error = scsi_add_device(lu->shost, 0, lu->ud->id, 0);
 	if (error) {
 		SBP2_ERR("scsi_add_device failed");
@@ -1451,7 +1473,7 @@ static void sbp2_prep_command_orb_sg(struct sbp2_command_orb *orb,
 				     struct sbp2_fwhost_info *hi,
 				     struct sbp2_command_info *cmd,
 				     unsigned int scsi_use_sg,
-				     struct scatterlist *sgpnt,
+				     struct scatterlist *sg,
 				     u32 orb_direction,
 				     enum dma_data_direction dma_dir)
 {
@@ -1460,13 +1482,12 @@ static void sbp2_prep_command_orb_sg(struct sbp2_command_orb *orb,
 	orb->misc |= ORB_SET_DIRECTION(orb_direction);
 
 	/* special case if only one element (and less than 64KB in size) */
-	if ((scsi_use_sg == 1) &&
-	    (sgpnt[0].length <= SBP2_MAX_SG_ELEMENT_LENGTH)) {
+	if (scsi_use_sg == 1 && sg->length <= SBP2_MAX_SG_ELEMENT_LENGTH) {
 
-		cmd->dma_size = sgpnt[0].length;
+		cmd->dma_size = sg->length;
 		cmd->dma_type = CMD_DMA_PAGE;
 		cmd->cmd_dma = dma_map_page(hi->host->device.parent,
-					    sg_page(&sgpnt[0]), sgpnt[0].offset,
+					    sg_page(sg), sg->offset,
 					    cmd->dma_size, cmd->dma_dir);
 
 		orb->data_descriptor_lo = cmd->cmd_dma;
@@ -1477,11 +1498,11 @@ static void sbp2_prep_command_orb_sg(struct sbp2_command_orb *orb,
 						&cmd->scatter_gather_element[0];
 		u32 sg_count, sg_len;
 		dma_addr_t sg_addr;
-		int i, count = dma_map_sg(hi->host->device.parent, sgpnt,
+		int i, count = dma_map_sg(hi->host->device.parent, sg,
 					  scsi_use_sg, dma_dir);
 
 		cmd->dma_size = scsi_use_sg;
-		cmd->sge_buffer = sgpnt;
+		cmd->sge_buffer = sg;
 
 		/* use page tables (s/g) */
 		orb->misc |= ORB_SET_PAGE_TABLE_PRESENT(0x1);
@@ -1489,9 +1510,9 @@ static void sbp2_prep_command_orb_sg(struct sbp2_command_orb *orb,
 
 		/* loop through and fill out our SBP-2 page tables
 		 * (and split up anything too large) */
-		for (i = 0, sg_count = 0 ; i < count; i++, sgpnt++) {
-			sg_len = sg_dma_len(sgpnt);
-			sg_addr = sg_dma_address(sgpnt);
+		for (i = 0, sg_count = 0; i < count; i++, sg = sg_next(sg)) {
+			sg_len = sg_dma_len(sg);
+			sg_addr = sg_dma_address(sg);
 			while (sg_len) {
 				sg_element[sg_count].segment_base_lo = sg_addr;
 				if (sg_len > SBP2_MAX_SG_ELEMENT_LENGTH) {
@@ -1521,11 +1542,10 @@ static void sbp2_create_command_orb(struct sbp2_lu *lu,
 				    unchar *scsi_cmd,
 				    unsigned int scsi_use_sg,
 				    unsigned int scsi_request_bufflen,
-				    void *scsi_request_buffer,
+				    struct scatterlist *sg,
 				    enum dma_data_direction dma_dir)
 {
 	struct sbp2_fwhost_info *hi = lu->hi;
-	struct scatterlist *sgpnt = (struct scatterlist *)scsi_request_buffer;
 	struct sbp2_command_orb *orb = &cmd->command_orb;
 	u32 orb_direction;
 
@@ -1560,7 +1580,7 @@ static void sbp2_create_command_orb(struct sbp2_lu *lu,
 		orb->data_descriptor_lo = 0x0;
 		orb->misc |= ORB_SET_DIRECTION(1);
 	} else
-		sbp2_prep_command_orb_sg(orb, hi, cmd, scsi_use_sg, sgpnt,
+		sbp2_prep_command_orb_sg(orb, hi, cmd, scsi_use_sg, sg,
 					 orb_direction, dma_dir);
 
 	sbp2util_cpu_to_be32_buffer(orb, sizeof(*orb));
@@ -1650,7 +1670,6 @@ static int sbp2_send_command(struct sbp2_lu *lu, struct scsi_cmnd *SCpnt,
 			     void (*done)(struct scsi_cmnd *))
 {
 	unchar *scsi_cmd = (unchar *)SCpnt->cmnd;
-	unsigned int request_bufflen = scsi_bufflen(SCpnt);
 	struct sbp2_command_info *cmd;
 
 	cmd = sbp2util_allocate_command_orb(lu, SCpnt, done);
@@ -1658,7 +1677,7 @@ static int sbp2_send_command(struct sbp2_lu *lu, struct scsi_cmnd *SCpnt,
 		return -EIO;
 
 	sbp2_create_command_orb(lu, cmd, scsi_cmd, scsi_sg_count(SCpnt),
-				request_bufflen, scsi_sglist(SCpnt),
+				scsi_bufflen(SCpnt), scsi_sglist(SCpnt),
 				SCpnt->sc_data_direction);
 	sbp2_link_orb_command(lu, cmd);
 
@@ -1960,8 +1979,17 @@ static int sbp2scsi_slave_alloc(struct scsi_device *sdev)
 {
 	struct sbp2_lu *lu = (struct sbp2_lu *)sdev->host->hostdata[0];
 
+	if (sdev->lun != 0 || sdev->id != lu->ud->id || sdev->channel != 0)
+		return -ENODEV;
+
 	lu->sdev = sdev;
 	sdev->allow_restart = 1;
+
+	/*
+	 * Update the dma alignment (minimum alignment requirements for
+	 * start and end of DMA transfers) to be a sector
+	 */
+	blk_queue_update_dma_alignment(sdev->request_queue, 511);
 
 	if (lu->workarounds & SBP2_WORKAROUND_INQUIRY_36)
 		sdev->inquiry_len = 36;
@@ -1981,6 +2009,8 @@ static int sbp2scsi_slave_configure(struct scsi_device *sdev)
 		sdev->skip_ms_page_8 = 1;
 	if (lu->workarounds & SBP2_WORKAROUND_FIX_CAPACITY)
 		sdev->fix_capacity = 1;
+	if (lu->workarounds & SBP2_WORKAROUND_128K_MAX_TRANS)
+		blk_queue_max_sectors(sdev->request_queue, 128 * 1024 / 512);
 	return 0;
 }
 
@@ -2087,9 +2117,6 @@ static int sbp2_module_init(void)
 		sbp2_shost_template.cmd_per_lun = 1;
 	}
 
-	if (sbp2_default_workarounds & SBP2_WORKAROUND_128K_MAX_TRANS &&
-	    (sbp2_max_sectors * 512) > (128 * 1024))
-		sbp2_max_sectors = 128 * 1024 / 512;
 	sbp2_shost_template.max_sectors = sbp2_max_sectors;
 
 	hpsb_register_highlevel(&sbp2_highlevel);

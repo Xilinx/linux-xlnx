@@ -34,9 +34,6 @@
 #include <asm/arch/tc.h>
 #include <asm/arch/usb.h>
 
-extern void omap_init_time(void);
-extern int omap_gpio_init(void);
-
 static struct plat_serial8250_port voiceblue_ports[] = {
 	{
 		.mapbase	= (unsigned long)(OMAP_CS1_PHYS + 0x40000),
@@ -117,7 +114,7 @@ static struct resource voiceblue_smc91x_resources[] = {
 	[1] = {
 		.start	= OMAP_GPIO_IRQ(8),
 		.end	= OMAP_GPIO_IRQ(8),
-		.flags	= IORESOURCE_IRQ,
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
 	},
 };
 
@@ -198,6 +195,7 @@ static void __init voiceblue_init(void)
 	omap_board_config = voiceblue_config;
 	omap_board_config_size = ARRAY_SIZE(voiceblue_config);
 	omap_serial_init();
+	omap_register_i2c_bus(1, 100, NULL, 0);
 
 	/* There is a good chance board is going up, so enable power LED
 	 * (it is connected through invertor) */

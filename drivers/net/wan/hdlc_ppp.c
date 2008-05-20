@@ -42,7 +42,7 @@ static inline struct ppp_state* state(hdlc_device *hdlc)
 static int ppp_open(struct net_device *dev)
 {
 	hdlc_device *hdlc = dev_to_hdlc(dev);
-	void *old_ioctl;
+	int (*old_ioctl)(struct net_device *, struct ifreq *, int);
 	int result;
 
 	dev->priv = &state(hdlc)->syncppp_ptr;
@@ -122,7 +122,7 @@ static int ppp_ioctl(struct net_device *dev, struct ifreq *ifr)
 		if (result)
 			return result;
 
-		result = attach_hdlc_protocol(dev, &proto, NULL,
+		result = attach_hdlc_protocol(dev, &proto,
 					      sizeof(struct ppp_state));
 		if (result)
 			return result;

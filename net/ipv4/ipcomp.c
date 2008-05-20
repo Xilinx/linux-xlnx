@@ -74,6 +74,7 @@ out:
 
 static int ipcomp_input(struct xfrm_state *x, struct sk_buff *skb)
 {
+	int nexthdr;
 	int err = -ENOMEM;
 	struct ip_comp_hdr *ipch;
 
@@ -84,13 +85,15 @@ static int ipcomp_input(struct xfrm_state *x, struct sk_buff *skb)
 
 	/* Remove ipcomp header and decompress original payload */
 	ipch = (void *)skb->data;
+	nexthdr = ipch->nexthdr;
+
 	skb->transport_header = skb->network_header + sizeof(*ipch);
 	__skb_pull(skb, sizeof(*ipch));
 	err = ipcomp_decompress(x, skb);
 	if (err)
 		goto out;
 
-	err = ipch->nexthdr;
+	err = nexthdr;
 
 out:
 	return err;
@@ -105,8 +108,11 @@ static int ipcomp_compress(struct xfrm_state *x, struct sk_buff *skb)
 	const int cpu = get_cpu();
 	u8 *scratch = *per_cpu_ptr(ipcomp_scratches, cpu);
 	struct crypto_comp *tfm = *per_cpu_ptr(ipcd->tfms, cpu);
-	int err = crypto_comp_compress(tfm, start, plen, scratch, &dlen);
+	int err;
 
+	local_bh_disable();
+	err = crypto_comp_compress(tfm, start, plen, scratch, &dlen);
+	local_bh_enable();
 	if (err)
 		goto out;
 
@@ -182,7 +188,6 @@ static void ipcomp4_err(struct sk_buff *skb, u32 info)
 static struct xfrm_state *ipcomp_tunnel_create(struct xfrm_state *x)
 {
 	struct xfrm_state *t;
-	u8 mode = XFRM_MODE_TUNNEL;
 
 	t = xfrm_state_alloc();
 	if (t == NULL)
@@ -193,9 +198,7 @@ static struct xfrm_state *ipcomp_tunnel_create(struct xfrm_state *x)
 	t->id.daddr.a4 = x->id.daddr.a4;
 	memcpy(&t->sel, &x->sel, sizeof(t->sel));
 	t->props.family = AF_INET;
-	if (x->props.mode == XFRM_MODE_BEET)
-		mode = x->props.mode;
-	t->props.mode = mode;
+	t->props.mode = x->props.mode;
 	t->props.saddr.a4 = x->props.saddr.a4;
 	t->props.flags = x->props.flags;
 
@@ -389,14 +392,21 @@ static int ipcomp_init_state(struct xfrm_state *x)
 	if (x->encap)
 		goto out;
 
+	x->props.header_len = 0;
+	switch (x->props.mode) {
+	case XFRM_MODE_TRANSPORT:
+		break;
+	case XFRM_MODE_TUNNEL:
+		x->props.header_len += sizeof(struct iphdr);
+		break;
+	default:
+		goto out;
+	}
+
 	err = -ENOMEM;
 	ipcd = kzalloc(sizeof(*ipcd), GFP_KERNEL);
 	if (!ipcd)
 		goto out;
-
-	x->props.header_len = 0;
-	if (x->props.mode == XFRM_MODE_TUNNEL)
-		x->props.header_len += sizeof(struct iphdr);
 
 	mutex_lock(&ipcomp_resource_mutex);
 	if (!ipcomp_alloc_scratches())
@@ -430,7 +440,7 @@ error:
 	goto out;
 }
 
-static struct xfrm_type ipcomp_type = {
+static const struct xfrm_type ipcomp_type = {
 	.description	= "IPCOMP4",
 	.owner		= THIS_MODULE,
 	.proto	     	= IPPROTO_COMP,

@@ -16,7 +16,7 @@
 #include <linux/irq.h>
 #include <linux/platform_device.h>
 #include <linux/serial.h>
-#include <asm/sci.h>
+#include <linux/serial_sci.h>
 
 enum {
 	UNUSED = 0,
@@ -81,13 +81,6 @@ static struct intc_group groups[] __initdata = {
 	INTC_GROUP(SCIF2, SCIF2_ERI, SCIF2_RXI, SCIF2_BRI, SCIF2_TXI),
 };
 
-static struct intc_prio priorities[] __initdata = {
-	INTC_PRIO(DMAC, 7),
-	INTC_PRIO(SCI, 3),
-	INTC_PRIO(SCIF2, 3),
-	INTC_PRIO(SCIF0, 3),
-};
-
 static struct intc_prio_reg prio_registers[] __initdata = {
 	{ 0xfffffee2, 0, 16, 4, /* IPRA */ { TMU0, TMU1, TMU2, RTC } },
 	{ 0xfffffee4, 0, 16, 4, /* IPRB */ { WDT, REF, SCI, 0 } },
@@ -109,7 +102,7 @@ static struct intc_prio_reg prio_registers[] __initdata = {
 };
 
 static DECLARE_INTC_DESC(intc_desc, "sh770x", vectors, groups,
-			 priorities, NULL, prio_registers, NULL);
+			 NULL, prio_registers, NULL);
 
 #if defined(CONFIG_CPU_SUBTYPE_SH7706) || \
     defined(CONFIG_CPU_SUBTYPE_SH7707) || \
@@ -120,7 +113,7 @@ static struct intc_vect vectors_irq[] __initdata = {
 };
 
 static DECLARE_INTC_DESC(intc_desc_irq, "sh770x-irq", vectors_irq, NULL,
-			 priorities, NULL, prio_registers, NULL);
+			 NULL, prio_registers, NULL);
 #endif
 
 static struct resource rtc_resources[] = {
@@ -130,15 +123,15 @@ static struct resource rtc_resources[] = {
 		.flags  = IORESOURCE_IO,
 	},
 	[1] =	{
-		.start  = 20,
+		.start  = 21,
 		.flags	= IORESOURCE_IRQ,
 	},
 	[2] =	{
-		.start	= 21,
+		.start	= 22,
 		.flags	= IORESOURCE_IRQ,
 	},
 	[3] =	{
-		.start	= 22,
+		.start	= 20,
 		.flags  = IORESOURCE_IRQ,
 	},
 };

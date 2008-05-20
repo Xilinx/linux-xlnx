@@ -57,8 +57,7 @@ static struct chan_ref_percpu *channel_table[DMA_TX_TYPE_END];
  */
 static spinlock_t async_tx_lock;
 
-static struct list_head
-async_tx_master_list = LIST_HEAD_INIT(async_tx_master_list);
+static LIST_HEAD(async_tx_master_list);
 
 /* async_tx_issue_pending_all - start all transactions on all channels */
 void async_tx_issue_pending_all(void)
@@ -362,13 +361,13 @@ static void __exit async_tx_exit(void)
 }
 
 /**
- * async_tx_find_channel - find a channel to carry out the operation or let
+ * __async_tx_find_channel - find a channel to carry out the operation or let
  *	the transaction execute synchronously
  * @depend_tx: transaction dependency
  * @tx_type: transaction type
  */
 struct dma_chan *
-async_tx_find_channel(struct dma_async_tx_descriptor *depend_tx,
+__async_tx_find_channel(struct dma_async_tx_descriptor *depend_tx,
 	enum dma_transaction_type tx_type)
 {
 	/* see if we can keep the chain on one channel */
@@ -384,7 +383,7 @@ async_tx_find_channel(struct dma_async_tx_descriptor *depend_tx,
 	} else
 		return NULL;
 }
-EXPORT_SYMBOL_GPL(async_tx_find_channel);
+EXPORT_SYMBOL_GPL(__async_tx_find_channel);
 #else
 static int __init async_tx_init(void)
 {
@@ -473,11 +472,11 @@ async_trigger_callback(enum async_tx_flags flags,
 		tx = NULL;
 
 	if (tx) {
-		pr_debug("%s: (async)\n", __FUNCTION__);
+		pr_debug("%s: (async)\n", __func__);
 
 		async_tx_submit(chan, tx, flags, depend_tx, cb_fn, cb_param);
 	} else {
-		pr_debug("%s: (sync)\n", __FUNCTION__);
+		pr_debug("%s: (sync)\n", __func__);
 
 		/* wait for any prerequisite operations */
 		if (depend_tx) {
@@ -487,7 +486,7 @@ async_trigger_callback(enum async_tx_flags flags,
 			BUG_ON(depend_tx->ack);
 			if (dma_wait_for_async_tx(depend_tx) == DMA_ERROR)
 				panic("%s: DMA_ERROR waiting for depend_tx\n",
-					__FUNCTION__);
+					__func__);
 		}
 
 		async_tx_sync_epilog(flags, depend_tx, cb_fn, cb_param);

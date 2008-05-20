@@ -142,6 +142,12 @@ struct dlm_ctxt
 	spinlock_t work_lock;
 	struct list_head dlm_domain_handlers;
 	struct list_head	dlm_eviction_callbacks;
+
+	/* The filesystem specifies this at domain registration.  We
+	 * cache it here to know what to tell other nodes. */
+	struct dlm_protocol_version fs_locking_proto;
+	/* This is the inter-dlm communication version */
+	struct dlm_protocol_version dlm_locking_proto;
 };
 
 static inline struct hlist_head *dlm_lockres_hash(struct dlm_ctxt *dlm, unsigned i)
@@ -170,6 +176,7 @@ struct dlm_mig_lockres_priv
 {
 	struct dlm_lock_resource *lockres;
 	u8 real_master;
+	u8 extra_ref;
 };
 
 struct dlm_assert_master_priv
@@ -589,10 +596,26 @@ struct dlm_proxy_ast
 #define DLM_PROXY_AST_MAX_LEN  (sizeof(struct dlm_proxy_ast)+DLM_LVB_LEN)
 
 #define DLM_MOD_KEY (0x666c6172)
-enum dlm_query_join_response {
+enum dlm_query_join_response_code {
 	JOIN_DISALLOW = 0,
 	JOIN_OK,
 	JOIN_OK_NO_MAP,
+	JOIN_PROTOCOL_MISMATCH,
+};
+
+struct dlm_query_join_packet {
+	u8 code;	/* Response code.  dlm_minor and fs_minor
+			   are only valid if this is JOIN_OK */
+	u8 dlm_minor;	/* The minor version of the protocol the
+			   dlm is speaking. */
+	u8 fs_minor;	/* The minor version of the protocol the
+			   filesystem is speaking. */
+	u8 reserved;
+};
+
+union dlm_query_join_response {
+	u32 intval;
+	struct dlm_query_join_packet packet;
 };
 
 struct dlm_lock_request
@@ -633,6 +656,8 @@ struct dlm_query_join_request
 	u8 node_idx;
 	u8 pad1[2];
 	u8 name_len;
+	struct dlm_protocol_version dlm_proto;
+	struct dlm_protocol_version fs_proto;
 	u8 domain[O2NM_MAX_NAME_LEN];
 	u8 node_map[BITS_TO_BYTES(O2NM_MAX_NODES)];
 };

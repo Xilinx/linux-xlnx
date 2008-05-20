@@ -44,7 +44,7 @@
 #include "xfs_quota.h"
 #include "xfs_fsops.h"
 
-STATIC void	xfs_mount_log_sbunit(xfs_mount_t *, __int64_t);
+STATIC void	xfs_mount_log_sb(xfs_mount_t *, __int64_t);
 STATIC int	xfs_uuid_mount(xfs_mount_t *);
 STATIC void	xfs_uuid_unmount(xfs_mount_t *mp);
 STATIC void	xfs_unmountfs_wait(xfs_mount_t *);
@@ -119,6 +119,7 @@ static const struct {
     { offsetof(xfs_sb_t, sb_logsectsize),0 },
     { offsetof(xfs_sb_t, sb_logsunit),	 0 },
     { offsetof(xfs_sb_t, sb_features2),	 0 },
+    { offsetof(xfs_sb_t, sb_bad_features2), 0 },
     { sizeof(xfs_sb_t),			 0 }
 };
 
@@ -136,15 +137,9 @@ xfs_mount_init(void)
 		mp->m_flags |= XFS_MOUNT_NO_PERCPU_SB;
 	}
 
-	AIL_LOCKINIT(&mp->m_ail_lock, "xfs_ail");
-	spinlock_init(&mp->m_sb_lock, "xfs_sb");
+	spin_lock_init(&mp->m_sb_lock);
 	mutex_init(&mp->m_ilock);
 	mutex_init(&mp->m_growlock);
-	/*
-	 * Initialize the AIL.
-	 */
-	xfs_trans_ail_init(mp);
-
 	atomic_set(&mp->m_active_trans, 0);
 
 	return mp;
@@ -171,7 +166,7 @@ xfs_mount_free(
 			  sizeof(xfs_perag_t) * mp->m_sb.sb_agcount);
 	}
 
-	AIL_LOCK_DESTROY(&mp->m_ail_lock);
+	spinlock_destroy(&mp->m_ail_lock);
 	spinlock_destroy(&mp->m_sb_lock);
 	mutex_destroy(&mp->m_ilock);
 	mutex_destroy(&mp->m_growlock);
@@ -231,7 +226,7 @@ xfs_mount_validate_sb(
 		return XFS_ERROR(EWRONGFS);
 	}
 
-	if (!XFS_SB_GOOD_VERSION(sbp)) {
+	if (!xfs_sb_good_version(sbp)) {
 		xfs_fs_mount_cmn_err(flags, "bad version");
 		return XFS_ERROR(EWRONGFS);
 	}
@@ -306,7 +301,7 @@ xfs_mount_validate_sb(
 	/*
 	 * Version 1 directory format has never worked on Linux.
 	 */
-	if (unlikely(!XFS_SB_VERSION_HASDIRV2(sbp))) {
+	if (unlikely(!xfs_sb_version_hasdirv2(sbp))) {
 		xfs_fs_mount_cmn_err(flags,
 			"file system using version 1 directory format");
 		return XFS_ERROR(ENOSYS);
@@ -455,6 +450,7 @@ xfs_sb_from_disk(
 	to->sb_logsectsize = be16_to_cpu(from->sb_logsectsize);
 	to->sb_logsunit = be32_to_cpu(from->sb_logsunit);
 	to->sb_features2 = be32_to_cpu(from->sb_features2);
+	to->sb_bad_features2 = be32_to_cpu(from->sb_bad_features2);
 }
 
 /*
@@ -616,7 +612,7 @@ xfs_mount_common(xfs_mount_t *mp, xfs_sb_t *sbp)
 	int	i;
 
 	mp->m_agfrotor = mp->m_agirotor = 0;
-	spinlock_init(&mp->m_agirotor_lock, "m_agirotor_lock");
+	spin_lock_init(&mp->m_agirotor_lock);
 	mp->m_maxagi = mp->m_sb.sb_agcount;
 	mp->m_blkbit_log = sbp->sb_blocklog + XFS_NBBYLOG;
 	mp->m_blkbb_log = sbp->sb_blocklog - BBSHIFT;
@@ -696,7 +692,6 @@ xfs_initialize_perag_data(xfs_mount_t *mp, xfs_agnumber_t agcount)
 	uint64_t	bfreelst = 0;
 	uint64_t	btree = 0;
 	int		error;
-	int		s;
 
 	for (index = 0; index < agcount; index++) {
 		/*
@@ -721,11 +716,11 @@ xfs_initialize_perag_data(xfs_mount_t *mp, xfs_agnumber_t agcount)
 	/*
 	 * Overwrite incore superblock counters with just-read data
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	sbp->sb_ifree = ifree;
 	sbp->sb_icount = ialloc;
 	sbp->sb_fdblocks = bfree + bfreelst + btree;
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 
 	/* Fixup the per-cpu counters as well. */
 	xfs_icsb_reinit_counters(mp);
@@ -734,49 +729,13 @@ xfs_initialize_perag_data(xfs_mount_t *mp, xfs_agnumber_t agcount)
 }
 
 /*
- * xfs_mountfs
- *
- * This function does the following on an initial mount of a file system:
- *	- reads the superblock from disk and init the mount struct
- *	- if we're a 32-bit kernel, do a size check on the superblock
- *		so we don't mount terabyte filesystems
- *	- init mount struct realtime fields
- *	- allocate inode hash table for fs
- *	- init directory manager
- *	- perform recovery and init the log manager
+ * Update alignment values based on mount options and sb values
  */
-int
-xfs_mountfs(
-	xfs_mount_t	*mp,
-	int		mfsi_flags)
+STATIC int
+xfs_update_alignment(xfs_mount_t *mp, int mfsi_flags, __uint64_t *update_flags)
 {
-	xfs_buf_t	*bp;
 	xfs_sb_t	*sbp = &(mp->m_sb);
-	xfs_inode_t	*rip;
-	bhv_vnode_t	*rvp = NULL;
-	int		readio_log, writeio_log;
-	xfs_daddr_t	d;
-	__uint64_t	resblks;
-	__int64_t	update_flags;
-	uint		quotamount, quotaflags;
-	int		agno;
-	int		uuid_mounted = 0;
-	int		error = 0;
 
-	if (mp->m_sb_bp == NULL) {
-		if ((error = xfs_readsb(mp, mfsi_flags))) {
-			return error;
-		}
-	}
-	xfs_mount_common(mp, sbp);
-
-	/*
-	 * Check if sb_agblocks is aligned at stripe boundary
-	 * If sb_agblocks is NOT aligned turn off m_dalign since
-	 * allocator alignment is within an ag, therefore ag has
-	 * to be aligned at stripe boundary.
-	 */
-	update_flags = 0LL;
 	if (mp->m_dalign && !(mfsi_flags & XFS_MFSI_SECOND)) {
 		/*
 		 * If stripe unit and stripe width are not multiples
@@ -787,8 +746,7 @@ xfs_mountfs(
 			if (mp->m_flags & XFS_MOUNT_RETERR) {
 				cmn_err(CE_WARN,
 					"XFS: alignment check 1 failed");
-				error = XFS_ERROR(EINVAL);
-				goto error1;
+				return XFS_ERROR(EINVAL);
 			}
 			mp->m_dalign = mp->m_swidth = 0;
 		} else {
@@ -798,8 +756,7 @@ xfs_mountfs(
 			mp->m_dalign = XFS_BB_TO_FSBT(mp, mp->m_dalign);
 			if (mp->m_dalign && (sbp->sb_agblocks % mp->m_dalign)) {
 				if (mp->m_flags & XFS_MOUNT_RETERR) {
-					error = XFS_ERROR(EINVAL);
-					goto error1;
+					return XFS_ERROR(EINVAL);
 				}
 				xfs_fs_cmn_err(CE_WARN, mp,
 "stripe alignment turned off: sunit(%d)/swidth(%d) incompatible with agsize(%d)",
@@ -816,8 +773,7 @@ xfs_mountfs(
 "stripe alignment turned off: sunit(%d) less than bsize(%d)",
                                         	mp->m_dalign,
 						mp->m_blockmask +1);
-					error = XFS_ERROR(EINVAL);
-					goto error1;
+					return XFS_ERROR(EINVAL);
 				}
 				mp->m_swidth = 0;
 			}
@@ -827,65 +783,61 @@ xfs_mountfs(
 		 * Update superblock with new values
 		 * and log changes
 		 */
-		if (XFS_SB_VERSION_HASDALIGN(sbp)) {
+		if (xfs_sb_version_hasdalign(sbp)) {
 			if (sbp->sb_unit != mp->m_dalign) {
 				sbp->sb_unit = mp->m_dalign;
-				update_flags |= XFS_SB_UNIT;
+				*update_flags |= XFS_SB_UNIT;
 			}
 			if (sbp->sb_width != mp->m_swidth) {
 				sbp->sb_width = mp->m_swidth;
-				update_flags |= XFS_SB_WIDTH;
+				*update_flags |= XFS_SB_WIDTH;
 			}
 		}
 	} else if ((mp->m_flags & XFS_MOUNT_NOALIGN) != XFS_MOUNT_NOALIGN &&
-		    XFS_SB_VERSION_HASDALIGN(&mp->m_sb)) {
+		    xfs_sb_version_hasdalign(&mp->m_sb)) {
 			mp->m_dalign = sbp->sb_unit;
 			mp->m_swidth = sbp->sb_width;
 	}
 
-	xfs_alloc_compute_maxlevels(mp);
-	xfs_bmap_compute_maxlevels(mp, XFS_DATA_FORK);
-	xfs_bmap_compute_maxlevels(mp, XFS_ATTR_FORK);
-	xfs_ialloc_compute_maxlevels(mp);
+	return 0;
+}
+
+/*
+ * Set the maximum inode count for this filesystem
+ */
+STATIC void
+xfs_set_maxicount(xfs_mount_t *mp)
+{
+	xfs_sb_t	*sbp = &(mp->m_sb);
+	__uint64_t	icount;
 
 	if (sbp->sb_imax_pct) {
-		__uint64_t	icount;
-
-		/* Make sure the maximum inode count is a multiple of the
-		 * units we allocate inodes in.
+		/*
+		 * Make sure the maximum inode count is a multiple
+		 * of the units we allocate inodes in.
 		 */
-
 		icount = sbp->sb_dblocks * sbp->sb_imax_pct;
 		do_div(icount, 100);
 		do_div(icount, mp->m_ialloc_blks);
 		mp->m_maxicount = (icount * mp->m_ialloc_blks)  <<
 				   sbp->sb_inopblog;
-	} else
+	} else {
 		mp->m_maxicount = 0;
-
-	mp->m_maxioffset = xfs_max_file_offset(sbp->sb_blocklog);
-
-	/*
-	 * XFS uses the uuid from the superblock as the unique
-	 * identifier for fsid.  We can not use the uuid from the volume
-	 * since a single partition filesystem is identical to a single
-	 * partition volume/filesystem.
-	 */
-	if ((mfsi_flags & XFS_MFSI_SECOND) == 0 &&
-	    (mp->m_flags & XFS_MOUNT_NOUUID) == 0) {
-		if (xfs_uuid_mount(mp)) {
-			error = XFS_ERROR(EINVAL);
-			goto error1;
-		}
-		uuid_mounted=1;
 	}
+}
 
-	/*
-	 * Set the default minimum read and write sizes unless
-	 * already specified in a mount option.
-	 * We use smaller I/O sizes when the file system
-	 * is being used for NFS service (wsync mount option).
-	 */
+/*
+ * Set the default minimum read and write sizes unless
+ * already specified in a mount option.
+ * We use smaller I/O sizes when the file system
+ * is being used for NFS service (wsync mount option).
+ */
+STATIC void
+xfs_set_rw_sizes(xfs_mount_t *mp)
+{
+	xfs_sb_t	*sbp = &(mp->m_sb);
+	int		readio_log, writeio_log;
+
 	if (!(mp->m_flags & XFS_MOUNT_DFLT_IOSIZE)) {
 		if (mp->m_flags & XFS_MOUNT_WSYNC) {
 			readio_log = XFS_WSYNC_READIO_LOG;
@@ -911,18 +863,15 @@ xfs_mountfs(
 		mp->m_writeio_log = writeio_log;
 	}
 	mp->m_writeio_blocks = 1 << (mp->m_writeio_log - sbp->sb_blocklog);
+}
 
-	/*
-	 * Set the inode cluster size.
-	 * This may still be overridden by the file system
-	 * block size if it is larger than the chosen cluster size.
-	 */
-	mp->m_inode_cluster_size = XFS_INODE_BIG_CLUSTER_SIZE;
-
-	/*
-	 * Set whether we're using inode alignment.
-	 */
-	if (XFS_SB_VERSION_HASALIGN(&mp->m_sb) &&
+/*
+ * Set whether we're using inode alignment.
+ */
+STATIC void
+xfs_set_inoalignment(xfs_mount_t *mp)
+{
+	if (xfs_sb_version_hasalign(&mp->m_sb) &&
 	    mp->m_sb.sb_inoalignmt >=
 	    XFS_B_TO_FSBT(mp, mp->m_inode_cluster_size))
 		mp->m_inoalign_mask = mp->m_sb.sb_inoalignmt - 1;
@@ -937,14 +886,22 @@ xfs_mountfs(
 		mp->m_sinoalign = mp->m_dalign;
 	else
 		mp->m_sinoalign = 0;
-	/*
-	 * Check that the data (and log if separate) are an ok size.
-	 */
+}
+
+/*
+ * Check that the data (and log if separate) are an ok size.
+ */
+STATIC int
+xfs_check_sizes(xfs_mount_t *mp, int mfsi_flags)
+{
+	xfs_buf_t	*bp;
+	xfs_daddr_t	d;
+	int		error;
+
 	d = (xfs_daddr_t)XFS_FSB_TO_BB(mp, mp->m_sb.sb_dblocks);
 	if (XFS_BB_TO_FSB(mp, d) != mp->m_sb.sb_dblocks) {
 		cmn_err(CE_WARN, "XFS: size check 1 failed");
-		error = XFS_ERROR(E2BIG);
-		goto error1;
+		return XFS_ERROR(E2BIG);
 	}
 	error = xfs_read_buf(mp, mp->m_ddev_targp,
 			     d - XFS_FSS_TO_BB(mp, 1),
@@ -953,10 +910,9 @@ xfs_mountfs(
 		xfs_buf_relse(bp);
 	} else {
 		cmn_err(CE_WARN, "XFS: size check 2 failed");
-		if (error == ENOSPC) {
+		if (error == ENOSPC)
 			error = XFS_ERROR(E2BIG);
-		}
-		goto error1;
+		return error;
 	}
 
 	if (((mfsi_flags & XFS_MFSI_CLIENT) == 0) &&
@@ -964,8 +920,7 @@ xfs_mountfs(
 		d = (xfs_daddr_t)XFS_FSB_TO_BB(mp, mp->m_sb.sb_logblocks);
 		if (XFS_BB_TO_FSB(mp, d) != mp->m_sb.sb_logblocks) {
 			cmn_err(CE_WARN, "XFS: size check 3 failed");
-			error = XFS_ERROR(E2BIG);
-			goto error1;
+			return XFS_ERROR(E2BIG);
 		}
 		error = xfs_read_buf(mp, mp->m_logdev_targp,
 				     d - XFS_FSB_TO_BB(mp, 1),
@@ -974,17 +929,143 @@ xfs_mountfs(
 			xfs_buf_relse(bp);
 		} else {
 			cmn_err(CE_WARN, "XFS: size check 3 failed");
-			if (error == ENOSPC) {
+			if (error == ENOSPC)
 				error = XFS_ERROR(E2BIG);
-			}
-			goto error1;
+			return error;
 		}
 	}
+	return 0;
+}
+
+/*
+ * xfs_mountfs
+ *
+ * This function does the following on an initial mount of a file system:
+ *	- reads the superblock from disk and init the mount struct
+ *	- if we're a 32-bit kernel, do a size check on the superblock
+ *		so we don't mount terabyte filesystems
+ *	- init mount struct realtime fields
+ *	- allocate inode hash table for fs
+ *	- init directory manager
+ *	- perform recovery and init the log manager
+ */
+int
+xfs_mountfs(
+	xfs_mount_t	*mp,
+	int		mfsi_flags)
+{
+	xfs_sb_t	*sbp = &(mp->m_sb);
+	xfs_inode_t	*rip;
+	bhv_vnode_t	*rvp = NULL;
+	__uint64_t	resblks;
+	__int64_t	update_flags = 0LL;
+	uint		quotamount, quotaflags;
+	int		agno;
+	int		uuid_mounted = 0;
+	int		error = 0;
+
+	if (mp->m_sb_bp == NULL) {
+		error = xfs_readsb(mp, mfsi_flags);
+		if (error)
+			return error;
+	}
+	xfs_mount_common(mp, sbp);
+
+	/*
+	 * Check for a mismatched features2 values.  Older kernels
+	 * read & wrote into the wrong sb offset for sb_features2
+	 * on some platforms due to xfs_sb_t not being 64bit size aligned
+	 * when sb_features2 was added, which made older superblock
+	 * reading/writing routines swap it as a 64-bit value.
+	 *
+	 * For backwards compatibility, we make both slots equal.
+	 *
+	 * If we detect a mismatched field, we OR the set bits into the
+	 * existing features2 field in case it has already been modified; we
+	 * don't want to lose any features.  We then update the bad location
+	 * with the ORed value so that older kernels will see any features2
+	 * flags, and mark the two fields as needing updates once the
+	 * transaction subsystem is online.
+	 */
+	if (xfs_sb_has_mismatched_features2(sbp)) {
+		cmn_err(CE_WARN,
+			"XFS: correcting sb_features alignment problem");
+		sbp->sb_features2 |= sbp->sb_bad_features2;
+		sbp->sb_bad_features2 = sbp->sb_features2;
+		update_flags |= XFS_SB_FEATURES2 | XFS_SB_BAD_FEATURES2;
+
+		/*
+		 * Re-check for ATTR2 in case it was found in bad_features2
+		 * slot.
+		 */
+		if (xfs_sb_version_hasattr2(&mp->m_sb))
+			mp->m_flags |= XFS_MOUNT_ATTR2;
+
+	}
+
+	/*
+	 * Check if sb_agblocks is aligned at stripe boundary
+	 * If sb_agblocks is NOT aligned turn off m_dalign since
+	 * allocator alignment is within an ag, therefore ag has
+	 * to be aligned at stripe boundary.
+	 */
+	error = xfs_update_alignment(mp, mfsi_flags, &update_flags);
+	if (error)
+		goto error1;
+
+	xfs_alloc_compute_maxlevels(mp);
+	xfs_bmap_compute_maxlevels(mp, XFS_DATA_FORK);
+	xfs_bmap_compute_maxlevels(mp, XFS_ATTR_FORK);
+	xfs_ialloc_compute_maxlevels(mp);
+
+	xfs_set_maxicount(mp);
+
+	mp->m_maxioffset = xfs_max_file_offset(sbp->sb_blocklog);
+
+	/*
+	 * XFS uses the uuid from the superblock as the unique
+	 * identifier for fsid.  We can not use the uuid from the volume
+	 * since a single partition filesystem is identical to a single
+	 * partition volume/filesystem.
+	 */
+	if ((mfsi_flags & XFS_MFSI_SECOND) == 0 &&
+	    (mp->m_flags & XFS_MOUNT_NOUUID) == 0) {
+		if (xfs_uuid_mount(mp)) {
+			error = XFS_ERROR(EINVAL);
+			goto error1;
+		}
+		uuid_mounted=1;
+	}
+
+	/*
+	 * Set the minimum read and write sizes
+	 */
+	xfs_set_rw_sizes(mp);
+
+	/*
+	 * Set the inode cluster size.
+	 * This may still be overridden by the file system
+	 * block size if it is larger than the chosen cluster size.
+	 */
+	mp->m_inode_cluster_size = XFS_INODE_BIG_CLUSTER_SIZE;
+
+	/*
+	 * Set inode alignment fields
+	 */
+	xfs_set_inoalignment(mp);
+
+	/*
+	 * Check that the data (and log if separate) are an ok size.
+	 */
+	error = xfs_check_sizes(mp, mfsi_flags);
+	if (error)
+		goto error1;
 
 	/*
 	 * Initialize realtime fields in the mount structure
 	 */
-	if ((error = xfs_rtmount_init(mp))) {
+	error = xfs_rtmount_init(mp);
+	if (error) {
 		cmn_err(CE_WARN, "XFS: RT mount failed");
 		goto error1;
 	}
@@ -1102,7 +1183,8 @@ xfs_mountfs(
 	/*
 	 * Initialize realtime inode pointers in the mount structure
 	 */
-	if ((error = xfs_rtmount_inodes(mp))) {
+	error = xfs_rtmount_inodes(mp);
+	if (error) {
 		/*
 		 * Free up the root inode.
 		 */
@@ -1111,16 +1193,16 @@ xfs_mountfs(
 	}
 
 	/*
-	 * If fs is not mounted readonly, then update the superblock
-	 * unit and width changes.
+	 * If fs is not mounted readonly, then update the superblock changes.
 	 */
 	if (update_flags && !(mp->m_flags & XFS_MOUNT_RDONLY))
-		xfs_mount_log_sbunit(mp, update_flags);
+		xfs_mount_log_sb(mp, update_flags);
 
 	/*
 	 * Initialise the XFS quota management subsystem for this mount
 	 */
-	if ((error = XFS_QM_INIT(mp, &quotamount, &quotaflags)))
+	error = XFS_QM_INIT(mp, &quotamount, &quotaflags);
+	if (error)
 		goto error4;
 
 	/*
@@ -1137,7 +1219,8 @@ xfs_mountfs(
 	/*
 	 * Complete the quota initialisation, post-log-replay component.
 	 */
-	if ((error = XFS_QM_MOUNT(mp, quotamount, quotaflags, mfsi_flags)))
+	error = XFS_QM_MOUNT(mp, quotamount, quotaflags, mfsi_flags);
+	if (error)
 		goto error4;
 
 	/*
@@ -1255,7 +1338,6 @@ xfs_unmountfs(xfs_mount_t *mp, struct cred *cr)
 #if defined(DEBUG) || defined(INDUCE_IO_ERROR)
 	xfs_errortag_clearall(mp, 0);
 #endif
-	XFS_IODONE(mp);
 	xfs_mount_free(mp);
 	return 0;
 }
@@ -1441,7 +1523,7 @@ xfs_mod_sb(xfs_trans_t *tp, __int64_t fields)
  * Fields are not allowed to dip below zero, so if the delta would
  * do this do not apply it and return EINVAL.
  *
- * The SB_LOCK must be held when this routine is called.
+ * The m_sb_lock must be held when this routine is called.
  */
 int
 xfs_mod_incore_sb_unlocked(
@@ -1606,7 +1688,7 @@ xfs_mod_incore_sb_unlocked(
 /*
  * xfs_mod_incore_sb() is used to change a field in the in-core
  * superblock structure by the specified delta.  This modification
- * is protected by the SB_LOCK.  Just use the xfs_mod_incore_sb_unlocked()
+ * is protected by the m_sb_lock.  Just use the xfs_mod_incore_sb_unlocked()
  * routine to do the work.
  */
 int
@@ -1616,7 +1698,6 @@ xfs_mod_incore_sb(
 	int64_t		delta,
 	int		rsvd)
 {
-	unsigned long	s;
 	int	status;
 
 	/* check for per-cpu counters */
@@ -1633,9 +1714,9 @@ xfs_mod_incore_sb(
 		/* FALLTHROUGH */
 #endif
 	default:
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 		status = xfs_mod_incore_sb_unlocked(mp, field, delta, rsvd);
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 		break;
 	}
 
@@ -1656,7 +1737,6 @@ xfs_mod_incore_sb(
 int
 xfs_mod_incore_sb_batch(xfs_mount_t *mp, xfs_mod_sb_t *msb, uint nmsb, int rsvd)
 {
-	unsigned long	s;
 	int		status=0;
 	xfs_mod_sb_t	*msbp;
 
@@ -1664,10 +1744,10 @@ xfs_mod_incore_sb_batch(xfs_mount_t *mp, xfs_mod_sb_t *msb, uint nmsb, int rsvd)
 	 * Loop through the array of mod structures and apply each
 	 * individually.  If any fail, then back out all those
 	 * which have already been applied.  Do all of this within
-	 * the scope of the SB_LOCK so that all of the changes will
+	 * the scope of the m_sb_lock so that all of the changes will
 	 * be atomic.
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	msbp = &msb[0];
 	for (msbp = &msbp[0]; msbp < (msb + nmsb); msbp++) {
 		/*
@@ -1681,11 +1761,11 @@ xfs_mod_incore_sb_batch(xfs_mount_t *mp, xfs_mod_sb_t *msb, uint nmsb, int rsvd)
 		case XFS_SBS_IFREE:
 		case XFS_SBS_FDBLOCKS:
 			if (!(mp->m_flags & XFS_MOUNT_NO_PERCPU_SB)) {
-				XFS_SB_UNLOCK(mp, s);
+				spin_unlock(&mp->m_sb_lock);
 				status = xfs_icsb_modify_counters(mp,
 							msbp->msb_field,
 							msbp->msb_delta, rsvd);
-				s = XFS_SB_LOCK(mp);
+				spin_lock(&mp->m_sb_lock);
 				break;
 			}
 			/* FALLTHROUGH */
@@ -1719,12 +1799,12 @@ xfs_mod_incore_sb_batch(xfs_mount_t *mp, xfs_mod_sb_t *msb, uint nmsb, int rsvd)
 			case XFS_SBS_IFREE:
 			case XFS_SBS_FDBLOCKS:
 				if (!(mp->m_flags & XFS_MOUNT_NO_PERCPU_SB)) {
-					XFS_SB_UNLOCK(mp, s);
+					spin_unlock(&mp->m_sb_lock);
 					status = xfs_icsb_modify_counters(mp,
 							msbp->msb_field,
 							-(msbp->msb_delta),
 							rsvd);
-					s = XFS_SB_LOCK(mp);
+					spin_lock(&mp->m_sb_lock);
 					break;
 				}
 				/* FALLTHROUGH */
@@ -1740,7 +1820,7 @@ xfs_mod_incore_sb_batch(xfs_mount_t *mp, xfs_mod_sb_t *msb, uint nmsb, int rsvd)
 			msbp--;
 		}
 	}
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 	return status;
 }
 
@@ -1828,16 +1908,18 @@ xfs_uuid_unmount(
 
 /*
  * Used to log changes to the superblock unit and width fields which could
- * be altered by the mount options. Only the first superblock is updated.
+ * be altered by the mount options, as well as any potential sb_features2
+ * fixup. Only the first superblock is updated.
  */
 STATIC void
-xfs_mount_log_sbunit(
+xfs_mount_log_sb(
 	xfs_mount_t	*mp,
 	__int64_t	fields)
 {
 	xfs_trans_t	*tp;
 
-	ASSERT(fields & (XFS_SB_UNIT|XFS_SB_WIDTH|XFS_SB_UUID));
+	ASSERT(fields & (XFS_SB_UNIT | XFS_SB_WIDTH | XFS_SB_UUID |
+			 XFS_SB_FEATURES2 | XFS_SB_BAD_FEATURES2));
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_SB_UNIT);
 	if (xfs_trans_reserve(tp, 0, mp->m_sb.sb_sectsize + 128, 0, 0,
@@ -1888,12 +1970,12 @@ xfs_mount_log_sbunit(
  *
  * Locking rules:
  *
- * 	1. XFS_SB_LOCK() before picking up per-cpu locks
+ * 	1. m_sb_lock before picking up per-cpu locks
  * 	2. per-cpu locks always picked up via for_each_online_cpu() order
- * 	3. accurate counter sync requires XFS_SB_LOCK + per cpu locks
+ * 	3. accurate counter sync requires m_sb_lock + per cpu locks
  * 	4. modifying per-cpu counters requires holding per-cpu lock
- * 	5. modifying global counters requires holding XFS_SB_LOCK
- *	6. enabling or disabling a counter requires holding the XFS_SB_LOCK
+ * 	5. modifying global counters requires holding m_sb_lock
+ *	6. enabling or disabling a counter requires holding the m_sb_lock 
  *	   and _none_ of the per-cpu locks.
  *
  * Disabled counters are only ever re-enabled by a balance operation
@@ -1920,7 +2002,6 @@ xfs_icsb_cpu_notify(
 {
 	xfs_icsb_cnts_t *cntp;
 	xfs_mount_t	*mp;
-	int		s;
 
 	mp = (xfs_mount_t *)container_of(nfb, xfs_mount_t, m_icsb_notifier);
 	cntp = (xfs_icsb_cnts_t *)
@@ -1946,7 +2027,7 @@ xfs_icsb_cpu_notify(
 		 * count into the total on the global superblock and
 		 * re-enable the counters. */
 		xfs_icsb_lock(mp);
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 		xfs_icsb_disable_counter(mp, XFS_SBS_ICOUNT);
 		xfs_icsb_disable_counter(mp, XFS_SBS_IFREE);
 		xfs_icsb_disable_counter(mp, XFS_SBS_FDBLOCKS);
@@ -1963,7 +2044,7 @@ xfs_icsb_cpu_notify(
 					 XFS_ICSB_SB_LOCKED, 0);
 		xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS,
 					 XFS_ICSB_SB_LOCKED, 0);
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 		xfs_icsb_unlock(mp);
 		break;
 	}
@@ -2194,11 +2275,10 @@ xfs_icsb_sync_counters_flags(
 	int		flags)
 {
 	xfs_icsb_cnts_t	cnt;
-	int		s;
 
 	/* Pass 1: lock all counters */
 	if ((flags & XFS_ICSB_SB_LOCKED) == 0)
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 
 	xfs_icsb_count(mp, &cnt, flags);
 
@@ -2211,7 +2291,7 @@ xfs_icsb_sync_counters_flags(
 		mp->m_sb.sb_fdblocks = cnt.icsb_fdblocks;
 
 	if ((flags & XFS_ICSB_SB_LOCKED) == 0)
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 }
 
 /*
@@ -2252,11 +2332,10 @@ xfs_icsb_balance_counter(
 {
 	uint64_t	count, resid;
 	int		weight = num_online_cpus();
-	int		s;
 	uint64_t	min = (uint64_t)min_per_cpu;
 
 	if (!(flags & XFS_ICSB_SB_LOCKED))
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 
 	/* disable counter and sync counter */
 	xfs_icsb_disable_counter(mp, field);
@@ -2290,10 +2369,10 @@ xfs_icsb_balance_counter(
 	xfs_icsb_enable_counter(mp, field, count, resid);
 out:
 	if (!(flags & XFS_ICSB_SB_LOCKED))
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 }
 
-int
+STATIC int
 xfs_icsb_modify_counters(
 	xfs_mount_t	*mp,
 	xfs_sb_field_t	field,
@@ -2302,7 +2381,7 @@ xfs_icsb_modify_counters(
 {
 	xfs_icsb_cnts_t	*icsbp;
 	long long	lcounter;	/* long counter for 64 bit fields */
-	int		cpu, ret = 0, s;
+	int		cpu, ret = 0;
 
 	might_sleep();
 again:
@@ -2380,15 +2459,15 @@ slow_path:
 	 * running atomically here, we know a rebalance cannot
 	 * be in progress. Hence we can go straight to operating
 	 * on the global superblock. We do not call xfs_mod_incore_sb()
-	 * here even though we need to get the SB_LOCK. Doing so
+	 * here even though we need to get the m_sb_lock. Doing so
 	 * will cause us to re-enter this function and deadlock.
-	 * Hence we get the SB_LOCK ourselves and then call
+	 * Hence we get the m_sb_lock ourselves and then call
 	 * xfs_mod_incore_sb_unlocked() as the unlocked path operates
 	 * directly on the global counters.
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	ret = xfs_mod_incore_sb_unlocked(mp, field, delta, rsvd);
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 
 	/*
 	 * Now that we've modified the global superblock, we

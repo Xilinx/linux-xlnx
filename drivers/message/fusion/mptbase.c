@@ -632,8 +632,7 @@ mpt_deregister(u8 cb_idx)
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
- *	mpt_event_register - Register protocol-specific event callback
- *	handler.
+ *	mpt_event_register - Register protocol-specific event callback handler.
  *	@cb_idx: previously registered (via mpt_register) callback handle
  *	@ev_cbfunc: callback function
  *
@@ -654,8 +653,7 @@ mpt_event_register(u8 cb_idx, MPT_EVHANDLER ev_cbfunc)
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
- *	mpt_event_deregister - Deregister protocol-specific event callback
- *	handler.
+ *	mpt_event_deregister - Deregister protocol-specific event callback handler
  *	@cb_idx: previously registered callback handle
  *
  *	Each protocol-specific driver should call this routine
@@ -765,10 +763,12 @@ mpt_device_driver_deregister(u8 cb_idx)
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
- *	mpt_get_msg_frame - Obtain a MPT request frame from the pool (of 1024)
- *	allocated per MPT adapter.
+ *	mpt_get_msg_frame - Obtain an MPT request frame from the pool
  *	@cb_idx: Handle of registered MPT protocol driver
  *	@ioc: Pointer to MPT adapter structure
+ *
+ *	Obtain an MPT request frame from the pool (of 1024) that are
+ *	allocated per MPT adapter.
  *
  *	Returns pointer to a MPT request frame or %NULL if none are available
  *	or IOC is not active.
@@ -834,13 +834,12 @@ mpt_get_msg_frame(u8 cb_idx, MPT_ADAPTER *ioc)
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
- *	mpt_put_msg_frame - Send a protocol specific MPT request frame
- *	to a IOC.
+ *	mpt_put_msg_frame - Send a protocol-specific MPT request frame to an IOC
  *	@cb_idx: Handle of registered MPT protocol driver
  *	@ioc: Pointer to MPT adapter structure
  *	@mf: Pointer to MPT request frame
  *
- *	This routine posts a MPT request frame to the request post FIFO of a
+ *	This routine posts an MPT request frame to the request post FIFO of a
  *	specific MPT adapter.
  */
 void
@@ -868,13 +867,15 @@ mpt_put_msg_frame(u8 cb_idx, MPT_ADAPTER *ioc, MPT_FRAME_HDR *mf)
 }
 
 /**
- *	mpt_put_msg_frame_hi_pri - Send a protocol specific MPT request frame
- *	to a IOC using hi priority request queue.
+ *	mpt_put_msg_frame_hi_pri - Send a hi-pri protocol-specific MPT request frame
  *	@cb_idx: Handle of registered MPT protocol driver
  *	@ioc: Pointer to MPT adapter structure
  *	@mf: Pointer to MPT request frame
  *
- *	This routine posts a MPT request frame to the request post FIFO of a
+ *	Send a protocol-specific MPT request frame to an IOC using
+ *	hi-priority request queue.
+ *
+ *	This routine posts an MPT request frame to the request post FIFO of a
  *	specific MPT adapter.
  **/
 void
@@ -1429,6 +1430,98 @@ mpt_get_product_name(u16 vendor, u16 device, u8 revision, char *prod_name)
 		sprintf(prod_name, "%s", product_str);
 }
 
+/**
+ *	mpt_mapresources - map in memory mapped io
+ *	@ioc: Pointer to pointer to IOC adapter
+ *
+ **/
+static int
+mpt_mapresources(MPT_ADAPTER *ioc)
+{
+	u8		__iomem *mem;
+	int		 ii;
+	unsigned long	 mem_phys;
+	unsigned long	 port;
+	u32		 msize;
+	u32		 psize;
+	u8		 revision;
+	int		 r = -ENODEV;
+	struct pci_dev *pdev;
+
+	pdev = ioc->pcidev;
+	ioc->bars = pci_select_bars(pdev, IORESOURCE_MEM);
+	if (pci_enable_device_mem(pdev)) {
+		printk(MYIOC_s_ERR_FMT "pci_enable_device_mem() "
+		    "failed\n", ioc->name);
+		return r;
+	}
+	if (pci_request_selected_regions(pdev, ioc->bars, "mpt")) {
+		printk(MYIOC_s_ERR_FMT "pci_request_selected_regions() with "
+		    "MEM failed\n", ioc->name);
+		return r;
+	}
+
+	pci_read_config_byte(pdev, PCI_CLASS_REVISION, &revision);
+
+	if (!pci_set_dma_mask(pdev, DMA_64BIT_MASK)
+	    && !pci_set_consistent_dma_mask(pdev, DMA_64BIT_MASK)) {
+		dinitprintk(ioc, printk(MYIOC_s_INFO_FMT
+		    ": 64 BIT PCI BUS DMA ADDRESSING SUPPORTED\n",
+		    ioc->name));
+	} else if (!pci_set_dma_mask(pdev, DMA_32BIT_MASK)
+	    && !pci_set_consistent_dma_mask(pdev, DMA_32BIT_MASK)) {
+		dinitprintk(ioc, printk(MYIOC_s_INFO_FMT
+		    ": 32 BIT PCI BUS DMA ADDRESSING SUPPORTED\n",
+		    ioc->name));
+	} else {
+		printk(MYIOC_s_WARN_FMT "no suitable DMA mask for %s\n",
+		    ioc->name, pci_name(pdev));
+		pci_release_selected_regions(pdev, ioc->bars);
+		return r;
+	}
+
+	mem_phys = msize = 0;
+	port = psize = 0;
+	for (ii = 0; ii < DEVICE_COUNT_RESOURCE; ii++) {
+		if (pci_resource_flags(pdev, ii) & PCI_BASE_ADDRESS_SPACE_IO) {
+			if (psize)
+				continue;
+			/* Get I/O space! */
+			port = pci_resource_start(pdev, ii);
+			psize = pci_resource_len(pdev, ii);
+		} else {
+			if (msize)
+				continue;
+			/* Get memmap */
+			mem_phys = pci_resource_start(pdev, ii);
+			msize = pci_resource_len(pdev, ii);
+		}
+	}
+	ioc->mem_size = msize;
+
+	mem = NULL;
+	/* Get logical ptr for PciMem0 space */
+	/*mem = ioremap(mem_phys, msize);*/
+	mem = ioremap(mem_phys, msize);
+	if (mem == NULL) {
+		printk(MYIOC_s_ERR_FMT ": ERROR - Unable to map adapter"
+			" memory!\n", ioc->name);
+		return -EINVAL;
+	}
+	ioc->memmap = mem;
+	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT "mem = %p, mem_phys = %lx\n",
+	    ioc->name, mem, mem_phys));
+
+	ioc->mem_phys = mem_phys;
+	ioc->chip = (SYSIF_REGS __iomem *)mem;
+
+	/* Save Port IO values in case we need to do downloadboot */
+	ioc->pio_mem_phys = port;
+	ioc->pio_chip = (SYSIF_REGS __iomem *)port;
+
+	return 0;
+}
+
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
  *	mpt_attach - Install a PCI intelligent MPT adapter.
@@ -1451,13 +1544,6 @@ int
 mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	MPT_ADAPTER	*ioc;
-	u8		__iomem *mem;
-	u8		__iomem *pmem;
-	unsigned long	 mem_phys;
-	unsigned long	 port;
-	u32		 msize;
-	u32		 psize;
-	int		 ii;
 	u8		 cb_idx;
 	int		 r = -ENODEV;
 	u8		 revision;
@@ -1467,39 +1553,30 @@ mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct proc_dir_entry *dent, *ent;
 #endif
 
-	if (mpt_debug_level)
-		printk(KERN_INFO MYNAM ": mpt_debug_level=%xh\n", mpt_debug_level);
-
-	if (pci_enable_device(pdev))
-		return r;
-
 	ioc = kzalloc(sizeof(MPT_ADAPTER), GFP_ATOMIC);
 	if (ioc == NULL) {
 		printk(KERN_ERR MYNAM ": ERROR - Insufficient memory to add adapter!\n");
 		return -ENOMEM;
 	}
-	ioc->debug_level = mpt_debug_level;
+
 	ioc->id = mpt_ids++;
 	sprintf(ioc->name, "ioc%d", ioc->id);
 
+	/*
+	 * set initial debug level
+	 * (refer to mptdebug.h)
+	 *
+	 */
+	ioc->debug_level = mpt_debug_level;
+	if (mpt_debug_level)
+		printk(KERN_INFO "mpt_debug_level=%xh\n", mpt_debug_level);
+
 	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT ": mpt_adapter_install\n", ioc->name));
 
-	if (!pci_set_dma_mask(pdev, DMA_64BIT_MASK)) {
-		dprintk(ioc, printk(MYIOC_s_INFO_FMT
-			": 64 BIT PCI BUS DMA ADDRESSING SUPPORTED\n", ioc->name));
-	} else if (pci_set_dma_mask(pdev, DMA_32BIT_MASK)) {
-		printk(MYIOC_s_WARN_FMT ": 32 BIT PCI BUS DMA ADDRESSING NOT SUPPORTED\n",
-		    ioc->name);
+	ioc->pcidev = pdev;
+	if (mpt_mapresources(ioc)) {
 		kfree(ioc);
 		return r;
-	}
-
-	if (!pci_set_consistent_dma_mask(pdev, DMA_64BIT_MASK)) {
-		dprintk(ioc, printk(MYIOC_s_INFO_FMT
-			": Using 64 bit consistent mask\n", ioc->name));
-	} else {
-		dprintk(ioc, printk(MYIOC_s_INFO_FMT
-			": Not using 64 bit consistent mask\n", ioc->name));
 	}
 
 	ioc->alloc_total = sizeof(MPT_ADAPTER);
@@ -1539,47 +1616,8 @@ mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Find lookup slot. */
 	INIT_LIST_HEAD(&ioc->list);
 
-	mem_phys = msize = 0;
-	port = psize = 0;
-	for (ii=0; ii < DEVICE_COUNT_RESOURCE; ii++) {
-		if (pci_resource_flags(pdev, ii) & PCI_BASE_ADDRESS_SPACE_IO) {
-			if (psize)
-				continue;
-			/* Get I/O space! */
-			port = pci_resource_start(pdev, ii);
-			psize = pci_resource_len(pdev,ii);
-		} else {
-			if (msize)
-				continue;
-			/* Get memmap */
-			mem_phys = pci_resource_start(pdev, ii);
-			msize = pci_resource_len(pdev,ii);
-		}
-	}
-	ioc->mem_size = msize;
-
-	mem = NULL;
-	/* Get logical ptr for PciMem0 space */
-	/*mem = ioremap(mem_phys, msize);*/
-	mem = ioremap(mem_phys, msize);
-	if (mem == NULL) {
-		printk(MYIOC_s_ERR_FMT "Unable to map adapter memory!\n", ioc->name);
-		kfree(ioc);
-		return -EINVAL;
-	}
-	ioc->memmap = mem;
-	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT "mem = %p, mem_phys = %lx\n", ioc->name, mem, mem_phys));
-
 	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT "facts @ %p, pfacts[0] @ %p\n",
 	    ioc->name, &ioc->facts, &ioc->pfacts[0]));
-
-	ioc->mem_phys = mem_phys;
-	ioc->chip = (SYSIF_REGS __iomem *)mem;
-
-	/* Save Port IO values in case we need to do downloadboot */
-	ioc->pio_mem_phys = port;
-	pmem = (u8 __iomem *)port;
-	ioc->pio_chip = (SYSIF_REGS __iomem *)pmem;
 
 	pci_read_config_byte(pdev, PCI_CLASS_REVISION, &revision);
 	mpt_get_product_name(pdev->vendor, pdev->device, revision, ioc->prod_name);
@@ -1658,6 +1696,9 @@ mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 	ioc->active = 0;
 	CHIPREG_WRITE32(&ioc->chip->IntStatus, 0);
 
+	/* Set IOC ptr in the pcidev's driver data. */
+	pci_set_drvdata(ioc->pcidev, ioc);
+
 	/* Set lookup ptr. */
 	list_add_tail(&ioc->list, &ioc_list);
 
@@ -1673,7 +1714,9 @@ mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 		list_del(&ioc->list);
 		if (ioc->alt_ioc)
 			ioc->alt_ioc->alt_ioc = NULL;
-		iounmap(mem);
+		iounmap(ioc->memmap);
+		if (r != -5)
+			pci_release_selected_regions(pdev, ioc->bars);
 		kfree(ioc);
 		pci_set_drvdata(pdev, NULL);
 		return r;
@@ -1769,13 +1812,10 @@ mpt_suspend(struct pci_dev *pdev, pm_message_t state)
 	u32 device_state;
 	MPT_ADAPTER *ioc = pci_get_drvdata(pdev);
 
-	device_state=pci_choose_state(pdev, state);
-
-	printk(MYIOC_s_INFO_FMT
-	"pci-suspend: pdev=0x%p, slot=%s, Entering operating state [D%d]\n",
-		ioc->name, pdev, pci_name(pdev), device_state);
-
-	pci_save_state(pdev);
+	device_state = pci_choose_state(pdev, state);
+	printk(MYIOC_s_INFO_FMT "pci-suspend: pdev=0x%p, slot=%s, Entering "
+	    "operating state [D%d]\n", ioc->name, pdev, pci_name(pdev),
+	    device_state);
 
 	/* put ioc into READY_STATE */
 	if(SendIocReset(ioc, MPI_FUNCTION_IOC_MESSAGE_UNIT_RESET, CAN_SLEEP)) {
@@ -1790,9 +1830,14 @@ mpt_suspend(struct pci_dev *pdev, pm_message_t state)
 	/* Clear any lingering interrupt */
 	CHIPREG_WRITE32(&ioc->chip->IntStatus, 0);
 
+	free_irq(ioc->pci_irq, ioc);
+	if (mpt_msi_enable)
+		pci_disable_msi(ioc->pcidev);
+	ioc->pci_irq = -1;
+	pci_save_state(pdev);
 	pci_disable_device(pdev);
+	pci_release_selected_regions(pdev, ioc->bars);
 	pci_set_power_state(pdev, device_state);
-
 	return 0;
 }
 
@@ -1809,38 +1854,52 @@ mpt_resume(struct pci_dev *pdev)
 	int recovery_state;
 	int err;
 
-	printk(MYIOC_s_INFO_FMT
-	"pci-resume: pdev=0x%p, slot=%s, Previous operating state [D%d]\n",
-		ioc->name, pdev, pci_name(pdev), device_state);
+	printk(MYIOC_s_INFO_FMT "pci-resume: pdev=0x%p, slot=%s, Previous "
+	    "operating state [D%d]\n", ioc->name, pdev, pci_name(pdev),
+	    device_state);
 
-	pci_set_power_state(pdev, 0);
+	pci_set_power_state(pdev, PCI_D0);
+	pci_enable_wake(pdev, PCI_D0, 0);
 	pci_restore_state(pdev);
-	err = pci_enable_device(pdev);
+	ioc->pcidev = pdev;
+	err = mpt_mapresources(ioc);
 	if (err)
 		return err;
 
-	/* enable interrupts */
-	CHIPREG_WRITE32(&ioc->chip->IntMask, MPI_HIM_DIM);
-	ioc->active = 1;
+	printk(MYIOC_s_INFO_FMT "pci-resume: ioc-state=0x%x,doorbell=0x%x\n",
+	    ioc->name, (mpt_GetIocState(ioc, 1) >> MPI_IOC_STATE_SHIFT),
+	    CHIPREG_READ32(&ioc->chip->Doorbell));
 
-	printk(MYIOC_s_INFO_FMT
-		"pci-resume: ioc-state=0x%x,doorbell=0x%x\n",
-		ioc->name,
-		(mpt_GetIocState(ioc, 1) >> MPI_IOC_STATE_SHIFT),
-		CHIPREG_READ32(&ioc->chip->Doorbell));
-
-	/* bring ioc to operational state */
-	if ((recovery_state = mpt_do_ioc_recovery(ioc,
-	    MPT_HOSTEVENT_IOC_RECOVER, CAN_SLEEP)) != 0) {
-		printk(MYIOC_s_INFO_FMT
-			"pci-resume: Cannot recover, error:[%x]\n",
-			ioc->name, recovery_state);
-	} else {
-		printk(MYIOC_s_INFO_FMT
-			"pci-resume: success\n", ioc->name);
+	/*
+	 * Errata workaround for SAS pci express:
+	 * Upon returning to the D0 state, the contents of the doorbell will be
+	 * stale data, and this will incorrectly signal to the host driver that
+	 * the firmware is ready to process mpt commands.   The workaround is
+	 * to issue a diagnostic reset.
+	 */
+	if (ioc->bus_type == SAS && (pdev->device ==
+	    MPI_MANUFACTPAGE_DEVID_SAS1068E || pdev->device ==
+	    MPI_MANUFACTPAGE_DEVID_SAS1064E)) {
+		if (KickStart(ioc, 1, CAN_SLEEP) < 0) {
+			printk(MYIOC_s_WARN_FMT "pci-resume: Cannot recover\n",
+			    ioc->name);
+			goto out;
+		}
 	}
 
+	/* bring ioc to operational state */
+	printk(MYIOC_s_INFO_FMT "Sending mpt_do_ioc_recovery\n", ioc->name);
+	recovery_state = mpt_do_ioc_recovery(ioc, MPT_HOSTEVENT_IOC_BRINGUP,
+						 CAN_SLEEP);
+	if (recovery_state != 0)
+		printk(MYIOC_s_WARN_FMT "pci-resume: Cannot recover, "
+		    "error:[%x]\n", ioc->name, recovery_state);
+	else
+		printk(MYIOC_s_INFO_FMT
+		    "pci-resume: success\n", ioc->name);
+ out:
 	return 0;
+
 }
 #endif
 
@@ -1878,6 +1937,8 @@ mpt_signal_reset(u8 index, MPT_ADAPTER *ioc, int reset_phase)
  *		-2 if READY but IOCFacts Failed
  *		-3 if READY but PrimeIOCFifos Failed
  *		-4 if READY but IOCInit Failed
+ *		-5 if failed to enable_device and/or request_selected_regions
+ *		-6 if failed to upload firmware
  */
 static int
 mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag)
@@ -1976,6 +2037,18 @@ mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag)
 		}
 	}
 
+	if ((ret == 0) && (reason == MPT_HOSTEVENT_IOC_BRINGUP) &&
+	    (ioc->facts.Flags & MPI_IOCFACTS_FLAGS_FW_DOWNLOAD_BOOT)) {
+		pci_release_selected_regions(ioc->pcidev, ioc->bars);
+		ioc->bars = pci_select_bars(ioc->pcidev, IORESOURCE_MEM |
+		    IORESOURCE_IO);
+		if (pci_enable_device(ioc->pcidev))
+			return -5;
+		if (pci_request_selected_regions(ioc->pcidev, ioc->bars,
+			"mpt"))
+			return -5;
+	}
+
 	/*
 	 * Device is reset now. It must have de-asserted the interrupt line
 	 * (if it was asserted) and it should be safe to register for the
@@ -1999,7 +2072,6 @@ mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag)
 			irq_allocated = 1;
 			ioc->pci_irq = ioc->pcidev->irq;
 			pci_set_master(ioc->pcidev);		/* ?? */
-			pci_set_drvdata(ioc->pcidev, ioc);
 			dprintk(ioc, printk(MYIOC_s_INFO_FMT "installed at interrupt "
 			    "%d\n", ioc->name, ioc->pcidev->irq));
 		}
@@ -2056,12 +2128,12 @@ mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag)
 						ddlprintk(ioc, printk(MYIOC_s_DEBUG_FMT
 						    "mpt_upload:  alt_%s has cached_fw=%p \n",
 						    ioc->name, ioc->alt_ioc->name, ioc->alt_ioc->cached_fw));
-						ioc->alt_ioc->cached_fw = NULL;
+						ioc->cached_fw = NULL;
 					}
 				} else {
 					printk(MYIOC_s_WARN_FMT
 					    "firmware upload failure!\n", ioc->name);
-					ret = -5;
+					ret = -6;
 				}
 			}
 		}
@@ -2262,10 +2334,12 @@ mpt_adapter_disable(MPT_ADAPTER *ioc)
 	int ret;
 
 	if (ioc->cached_fw != NULL) {
-		ddlprintk(ioc, printk(MYIOC_s_INFO_FMT
-		    "mpt_adapter_disable: Pushing FW onto adapter\n", ioc->name));
-		if ((ret = mpt_downloadboot(ioc, (MpiFwHeader_t *)ioc->cached_fw, NO_SLEEP)) < 0) {
-			printk(MYIOC_s_WARN_FMT "firmware downloadboot failure (%d)!\n",
+		ddlprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: Pushing FW onto "
+		    "adapter\n", __FUNCTION__, ioc->name));
+		if ((ret = mpt_downloadboot(ioc, (MpiFwHeader_t *)
+		    ioc->cached_fw, CAN_SLEEP)) < 0) {
+			printk(MYIOC_s_WARN_FMT
+			    ": firmware downloadboot failure (%d)!\n",
 			    ioc->name, ret);
 		}
 	}
@@ -2303,13 +2377,7 @@ mpt_adapter_disable(MPT_ADAPTER *ioc)
 		ioc->alloc_total -= sz;
 	}
 
-	if (ioc->cached_fw != NULL) {
-		sz = ioc->facts.FWImageSize;
-		pci_free_consistent(ioc->pcidev, sz,
-			ioc->cached_fw, ioc->cached_fw_dma);
-		ioc->cached_fw = NULL;
-		ioc->alloc_total -= sz;
-	}
+	mpt_free_fw_memory(ioc);
 
 	kfree(ioc->spi_data.nvram);
 	mpt_inactive_raid_list_free(ioc);
@@ -2384,6 +2452,9 @@ mpt_adapter_dispose(MPT_ADAPTER *ioc)
 		iounmap(ioc->memmap);
 		ioc->memmap = NULL;
 	}
+
+	pci_disable_device(ioc->pcidev);
+	pci_release_selected_regions(ioc->pcidev, ioc->bars);
 
 #if defined(CONFIG_MTRR) && 0
 	if (ioc->mtrr_reg > 0) {
@@ -3047,43 +3118,61 @@ SendPortEnable(MPT_ADAPTER *ioc, int portnum, int sleepFlag)
  *
  *	If memory has already been allocated, the same (cached) value
  *	is returned.
- */
-void
+ *
+ *	Return 0 if successfull, or non-zero for failure
+ **/
+int
 mpt_alloc_fw_memory(MPT_ADAPTER *ioc, int size)
 {
-	if (ioc->cached_fw)
-		return;  /* use already allocated memory */
-	if (ioc->alt_ioc && ioc->alt_ioc->cached_fw) {
+	int rc;
+
+	if (ioc->cached_fw) {
+		rc = 0;  /* use already allocated memory */
+		goto out;
+	}
+	else if (ioc->alt_ioc && ioc->alt_ioc->cached_fw) {
 		ioc->cached_fw = ioc->alt_ioc->cached_fw;  /* use alt_ioc's memory */
 		ioc->cached_fw_dma = ioc->alt_ioc->cached_fw_dma;
-		ioc->alloc_total += size;
-		ioc->alt_ioc->alloc_total -= size;
-	} else {
-		if ( (ioc->cached_fw = pci_alloc_consistent(ioc->pcidev, size, &ioc->cached_fw_dma) ) )
-			ioc->alloc_total += size;
+		rc = 0;
+		goto out;
 	}
+	ioc->cached_fw = pci_alloc_consistent(ioc->pcidev, size, &ioc->cached_fw_dma);
+	if (!ioc->cached_fw) {
+		printk(MYIOC_s_ERR_FMT "Unable to allocate memory for the cached firmware image!\n",
+		    ioc->name);
+		rc = -1;
+	} else {
+		dinitprintk(ioc, printk(MYIOC_s_DEBUG_FMT "FW Image  @ %p[%p], sz=%d[%x] bytes\n",
+		    ioc->name, ioc->cached_fw, (void *)(ulong)ioc->cached_fw_dma, size, size));
+		ioc->alloc_total += size;
+		rc = 0;
+	}
+ out:
+	return rc;
 }
+
 /**
  *	mpt_free_fw_memory - free firmware memory
  *	@ioc: Pointer to MPT_ADAPTER structure
  *
  *	If alt_img is NULL, delete from ioc structure.
  *	Else, delete a secondary image in same format.
- */
+ **/
 void
 mpt_free_fw_memory(MPT_ADAPTER *ioc)
 {
 	int sz;
 
+	if (!ioc->cached_fw)
+		return;
+
 	sz = ioc->facts.FWImageSize;
-	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT "free_fw_memory: FW Image  @ %p[%p], sz=%d[%x] bytes\n",
-	    ioc->name, ioc->cached_fw, (void *)(ulong)ioc->cached_fw_dma, sz, sz));
+	dinitprintk(ioc, printk(MYIOC_s_DEBUG_FMT "free_fw_memory: FW Image  @ %p[%p], sz=%d[%x] bytes\n",
+		 ioc->name, ioc->cached_fw, (void *)(ulong)ioc->cached_fw_dma, sz, sz));
 	pci_free_consistent(ioc->pcidev, sz, ioc->cached_fw, ioc->cached_fw_dma);
+	ioc->alloc_total -= sz;
 	ioc->cached_fw = NULL;
-
-	return;
 }
-
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
@@ -3116,16 +3205,11 @@ mpt_do_upload(MPT_ADAPTER *ioc, int sleepFlag)
 	if ((sz = ioc->facts.FWImageSize) == 0)
 		return 0;
 
-	mpt_alloc_fw_memory(ioc, sz);
+	if (mpt_alloc_fw_memory(ioc, ioc->facts.FWImageSize) != 0)
+		return -ENOMEM;
 
 	dinitprintk(ioc, printk(MYIOC_s_INFO_FMT ": FW Image  @ %p[%p], sz=%d[%x] bytes\n",
 	    ioc->name, ioc->cached_fw, (void *)(ulong)ioc->cached_fw_dma, sz, sz));
-
-	if (ioc->cached_fw == NULL) {
-		/* Major Failure.
-		 */
-		return -ENOMEM;
-	}
 
 	prequest = (sleepFlag == NO_SLEEP) ? kzalloc(ioc->req_sz, GFP_ATOMIC) :
 	    kzalloc(ioc->req_sz, GFP_KERNEL);
@@ -3498,12 +3582,12 @@ KickStart(MPT_ADAPTER *ioc, int force, int sleepFlag)
 static int
 mpt_diag_reset(MPT_ADAPTER *ioc, int ignore, int sleepFlag)
 {
-	MPT_ADAPTER	*iocp=NULL;
 	u32 diag0val;
 	u32 doorbell;
 	int hard_reset_done = 0;
 	int count = 0;
 	u32 diag1val = 0;
+	MpiFwHeader_t *cached_fw;	/* Pointer to FW */
 
 	/* Clear any existing interrupts */
 	CHIPREG_WRITE32(&ioc->chip->IntStatus, 0);
@@ -3635,22 +3719,24 @@ mpt_diag_reset(MPT_ADAPTER *ioc, int ignore, int sleepFlag)
 		}
 
 		if (ioc->cached_fw)
-			iocp = ioc;
+			cached_fw = (MpiFwHeader_t *)ioc->cached_fw;
 		else if (ioc->alt_ioc && ioc->alt_ioc->cached_fw)
-			iocp = ioc->alt_ioc;
-		if (iocp) {
+			cached_fw = (MpiFwHeader_t *)ioc->alt_ioc->cached_fw;
+		else
+			cached_fw = NULL;
+		if (cached_fw) {
 			/* If the DownloadBoot operation fails, the
 			 * IOC will be left unusable. This is a fatal error
 			 * case.  _diag_reset will return < 0
 			 */
 			for (count = 0; count < 30; count ++) {
-				diag0val = CHIPREG_READ32(&iocp->chip->Diagnostic);
+				diag0val = CHIPREG_READ32(&ioc->chip->Diagnostic);
 				if (!(diag0val & MPI_DIAG_RESET_ADAPTER)) {
 					break;
 				}
 
 				dprintk(ioc, printk(MYIOC_s_DEBUG_FMT "cached_fw: diag0val=%x count=%d\n",
-					iocp->name, diag0val, count));
+					ioc->name, diag0val, count));
 				/* wait 1 sec */
 				if (sleepFlag == CAN_SLEEP) {
 					msleep (1000);
@@ -3658,8 +3744,7 @@ mpt_diag_reset(MPT_ADAPTER *ioc, int ignore, int sleepFlag)
 					mdelay (1000);
 				}
 			}
-			if ((count = mpt_downloadboot(ioc,
-				(MpiFwHeader_t *)iocp->cached_fw, sleepFlag)) < 0) {
+			if ((count = mpt_downloadboot(ioc, cached_fw, sleepFlag)) < 0) {
 				printk(MYIOC_s_WARN_FMT
 					"firmware downloadboot failure (%d)!\n", ioc->name, count);
 			}

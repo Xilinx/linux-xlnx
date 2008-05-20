@@ -90,6 +90,11 @@ config MACVLAN
 	  This allows one to create virtual interfaces that map packets to
 	  or from specific MAC addresses to a particular interface.
 
+	  Macvlan devices can be added using the "ip" command from the
+	  iproute2 package starting with the iproute2-2.6.23 release:
+
+	  "ip link add link <real dev> [ address MAC ] [ NAME ] type macvlan"
+
 	  To compile this driver as a module, choose M here: the module
 	  will be called macvlan.
 
@@ -212,7 +217,7 @@ config MII
 
 config MACB
 	tristate "Atmel MACB support"
-	depends on AVR32 || ARCH_AT91SAM9260 || ARCH_AT91SAM9263
+	depends on AVR32 || ARCH_AT91SAM9260 || ARCH_AT91SAM9263 || ARCH_AT91CAP9
 	select PHYLIB
 	help
 	  The Atmel MACB ethernet interface is found on many AT32 and AT91
@@ -814,8 +819,8 @@ config ULTRA32
 	  will be called smc-ultra32.
 
 config BFIN_MAC
-	tristate "Blackfin 536/537 on-chip mac support"
-	depends on NET_ETHERNET && (BF537 || BF536) && (!BF537_PORT_H)
+	tristate "Blackfin 527/536/537 on-chip mac support"
+	depends on NET_ETHERNET && (BF527 || BF537 || BF536) && (!BF537_PORT_H)
 	select CRC32
 	select MII
 	select PHYLIB
@@ -828,7 +833,7 @@ config BFIN_MAC
 
 config BFIN_MAC_USE_L1
 	bool "Use L1 memory for rx/tx packets"
-	depends on BFIN_MAC && BF537
+	depends on BFIN_MAC && (BF527 || BF537)
 	default y
 	help
 	  To get maximum network performance, you should use L1 memory as rx/tx buffers.
@@ -855,7 +860,8 @@ config BFIN_RX_DESC_NUM
 config BFIN_MAC_RMII
 	bool "RMII PHY Interface (EXPERIMENTAL)"
 	depends on BFIN_MAC && EXPERIMENTAL
-	default n
+	default y if BFIN527_EZKIT
+	default n if BFIN537_STAMP
 	help
 	  Use Reduced PHY MII Interface
 
@@ -878,7 +884,8 @@ config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
 	select CRC32
 	select MII
-	depends on ARM || REDWOOD_5 || REDWOOD_6 || M32R || SUPERH || SOC_AU1X00 || BLACKFIN
+	depends on ARM || REDWOOD_5 || REDWOOD_6 || M32R || SUPERH || \
+		SOC_AU1X00 || BLACKFIN || MN10300
 	help
 	  This is a driver for SMC's 91x series of Ethernet chipsets,
 	  including the SMC91C94 and the SMC91C111. Say Y if you want it
@@ -911,6 +918,31 @@ config DM9000
 
 	  To compile this driver as a module, choose M here.  The module
 	  will be called dm9000.
+
+config ENC28J60
+	tristate "ENC28J60 support"
+	depends on EXPERIMENTAL && SPI && NET_ETHERNET
+	select CRC32
+	---help---
+	  Support for the Microchip EN28J60 ethernet chip.
+
+	  To compile this driver as a module, choose M here. The module will be
+	  called enc28j60.
+
+config ENC28J60_WRITEVERIFY
+	bool "Enable write verify"
+	depends on ENC28J60
+	---help---
+	  Enable the verify after the buffer write useful for debugging purpose.
+	  If unsure, say N.
+
+config DM9000_DEBUGLEVEL
+	int "DM9000 maximum debug level"
+	depends on DM9000
+	default 4
+	help
+	  The maximum level of debugging code compiled into the DM9000
+	  driver.
 
 config SMC911X
 	tristate "SMSC LAN911[5678] support"
@@ -1181,7 +1213,7 @@ config NE2_MCA
 
 config IBMLANA
 	tristate "IBM LAN Adapter/A support"
-	depends on MCA && MCA_LEGACY
+	depends on MCA
 	---help---
 	  This is a Micro Channel Ethernet adapter.  You need to set
 	  CONFIG_MCA to use this driver.  It is both available as an in-kernel
@@ -1584,6 +1616,18 @@ config 8139_OLD_RX_RESET
 	  experience problems, you can enable this option to restore the
 	  old RX-reset behavior.  If unsure, say N.
 
+config R6040
+	tristate "RDC R6040 Fast Ethernet Adapter support (EXPERIMENTAL)"
+	depends on NET_PCI && PCI
+	select CRC32
+	select MII
+	help
+	  This is a driver for the R6040 Fast Ethernet MACs found in the
+	  the RDC R-321x System-on-chips.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called r6040. This is recommended.
+
 config SIS900
 	tristate "SiS 900/7016 PCI Fast Ethernet Adapter support"
 	depends on NET_PCI && PCI
@@ -1707,10 +1751,8 @@ config SC92031
 
 config CPMAC
 	tristate "TI AR7 CPMAC Ethernet support (EXPERIMENTAL)"
-	depends on NET_ETHERNET && EXPERIMENTAL && AR7
+	depends on NET_ETHERNET && EXPERIMENTAL && AR7 && BROKEN
 	select PHYLIB
-	select FIXED_PHY
-	select FIXED_MII_100_FDX
 	help
 	  TI AR7 CPMAC Ethernet support
 
@@ -1785,7 +1827,7 @@ config DE620
 
 config SGISEEQ
 	tristate "SGI Seeq ethernet controller support"
-	depends on SGI_IP22
+	depends on SGI_HAS_SEEQ
 	help
 	  Say Y here if you have an Seeq based Ethernet network card. This is
 	  used in many Silicon Graphics machines.
@@ -1993,11 +2035,11 @@ config E1000E
 
 	  <http://support.intel.com>
 
-	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/e1000e.txt>.
-
 	  To compile this driver as a module, choose M here. The module
 	  will be called e1000e.
+
+config E1000E_ENABLED
+	def_bool E1000E != n
 
 config IP1000
 	tristate "IP1000 Gigabit Ethernet support"
@@ -2008,6 +2050,27 @@ config IP1000
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called ipg.  This is recommended.
+
+config IGB
+       tristate "Intel(R) 82575 PCI-Express Gigabit Ethernet support"
+       depends on PCI
+       ---help---
+         This driver supports Intel(R) 82575 gigabit ethernet family of
+         adapters.  For more information on how to identify your adapter, go
+         to the Adapter & Driver ID Guide at:
+
+         <http://support.intel.com/support/network/adapter/pro100/21397.htm>
+
+         For general information and support, go to the Intel support
+         website at:
+
+         <http://support.intel.com>
+
+         More specific information on configuring the driver is in
+         <file:Documentation/networking/e1000.txt>.
+
+         To compile this driver as a module, choose M here. The module
+         will be called igb.
 
 source "drivers/net/ixp2000/Kconfig"
 
@@ -2319,9 +2382,20 @@ config GELIC_NET
 	  To compile this driver as a module, choose M here: the
 	  module will be called ps3_gelic.
 
+config GELIC_WIRELESS
+	bool "PS3 Wireless support"
+	depends on GELIC_NET
+	select WIRELESS_EXT
+	help
+	  This option adds the support for the wireless feature of PS3.
+	  If you have the wireless-less model of PS3 or have no plan to
+	  use wireless feature, disabling this option saves memory.  As
+	  the driver automatically distinguishes the models, you can
+	  safely enable this option even if you have a wireless-less model.
+
 config GIANFAR
 	tristate "Gianfar Ethernet"
-	depends on 85xx || 83xx || PPC_86xx
+	depends on FSL_SOC
 	select PHYLIB
 	select CRC32
 	help
@@ -2507,7 +2581,7 @@ config CHELSIO_T3
 
 config EHEA
 	tristate "eHEA Ethernet support"
-	depends on IBMEBUS && INET
+	depends on IBMEBUS && INET && SPARSEMEM
 	select INET_LRO
 	---help---
 	  This driver supports the IBM pSeries eHEA ethernet adapter.
@@ -2529,9 +2603,6 @@ config IXGBE
 	  website at:
 
 	  <http://support.intel.com>
-
-	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/ixgbe.txt>.
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called ixgbe.
@@ -2626,8 +2697,9 @@ config NIU
 
 config PASEMI_MAC
 	tristate "PA Semi 1/10Gbit MAC"
-	depends on PPC64 && PCI
+	depends on PPC_PASEMI && PCI
 	select PHYLIB
+	select INET_LRO
 	help
 	  This driver supports the on-chip 1/10Gbit Ethernet controller on
 	  PA Semi's PWRficient line of chips.
@@ -2652,6 +2724,16 @@ config TEHUTI
 	depends on PCI
 	help
 	  Tehuti Networks 10G Ethernet NIC
+
+config BNX2X
+	tristate "Broadcom NetXtremeII 10Gb support"
+	depends on PCI
+	select ZLIB_INFLATE
+	help
+	  This driver supports Broadcom NetXtremeII 10 gigabit Ethernet cards.
+	  To compile this driver as a module, choose M here: the module
+	  will be called bnx2x.  This is recommended.
+
 
 endif # NETDEV_10000
 
@@ -3083,23 +3165,6 @@ config NET_FC
 	  adaptor below. You also should have said Y to "SCSI support" and
 	  "SCSI generic support".
 
-config SHAPER
-	tristate "Traffic Shaper (OBSOLETE)"
-	depends on EXPERIMENTAL
-	---help---
-	  The traffic shaper is a virtual network device that allows you to
-	  limit the rate of outgoing data flow over some other network device.
-	  The traffic that you want to slow down can then be routed through
-	  these virtual devices. See
-	  <file:Documentation/networking/shaper.txt> for more information.
-
-	  An alternative to this traffic shaper are traffic schedulers which
-	  you'll get if you say Y to "QoS and/or fair queuing" in
-	  "Networking options".
-
-	  To compile this driver as a module, choose M here: the module
-	  will be called shaper.  If unsure, say N.
-
 config NETCONSOLE
 	tristate "Network console logging support (EXPERIMENTAL)"
 	depends on EXPERIMENTAL
@@ -3132,6 +3197,7 @@ config VIRTIO_NET
 	tristate "Virtio network driver (EXPERIMENTAL)"
 	depends on EXPERIMENTAL && VIRTIO
 	---help---
-	  This is the virtual network driver for lguest.  Say Y or M.
+	  This is the virtual network driver for virtio.  It can be used with
+          lguest or QEMU based VMMs (like KVM or Xen).  Say Y or M.
 
 endif # NETDEVICES

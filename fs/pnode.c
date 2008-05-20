@@ -83,6 +83,8 @@ void change_mnt_propagation(struct vfsmount *mnt, int type)
 		mnt->mnt_master = NULL;
 		if (type == MS_UNBINDABLE)
 			mnt->mnt_flags |= MNT_UNBINDABLE;
+		else
+			mnt->mnt_flags &= ~MNT_UNBINDABLE;
 	}
 }
 
@@ -223,7 +225,7 @@ out:
  */
 static inline int do_refcount_check(struct vfsmount *mnt, int count)
 {
-	int mycount = atomic_read(&mnt->mnt_count);
+	int mycount = atomic_read(&mnt->mnt_count) - mnt->mnt_ghosts;
 	return (mycount > count);
 }
 

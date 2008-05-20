@@ -29,12 +29,12 @@ static void sclp_cpu_capability_notify(struct work_struct *work)
 	struct sys_device *sysdev;
 
 	printk(KERN_WARNING TAG "cpu capability changed.\n");
-	lock_cpu_hotplug();
+	get_online_cpus();
 	for_each_online_cpu(cpu) {
 		sysdev = get_cpu_sysdev(cpu);
 		kobject_uevent(&sysdev->kobj, KOBJ_CHANGE);
 	}
-	unlock_cpu_hotplug();
+	put_online_cpus();
 }
 
 static void sclp_conf_receiver_fn(struct evbuf_header *evbuf)
@@ -64,7 +64,7 @@ static int __init sclp_conf_init(void)
 		return rc;
 	}
 
-	if (!(sclp_conf_register.sclp_receive_mask & EVTYP_CONFMGMDATA_MASK)) {
+	if (!(sclp_conf_register.sclp_send_mask & EVTYP_CONFMGMDATA_MASK)) {
 		printk(KERN_WARNING TAG "no configuration management.\n");
 		sclp_unregister(&sclp_conf_register);
 		rc = -ENOSYS;

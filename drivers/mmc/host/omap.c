@@ -25,6 +25,7 @@
 #include <linux/mmc/card.h>
 #include <linux/clk.h>
 #include <linux/scatterlist.h>
+#include <linux/i2c/tps65010.h>
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -35,7 +36,6 @@
 #include <asm/arch/dma.h>
 #include <asm/arch/mux.h>
 #include <asm/arch/fpga.h>
-#include <asm/arch/tps65010.h>
 
 #define	OMAP_MMC_REG_CMD	0x00
 #define	OMAP_MMC_REG_ARGL	0x04
@@ -1255,6 +1255,7 @@ static struct platform_driver mmc_omap_driver = {
 	.resume		= mmc_omap_resume,
 	.driver		= {
 		.name	= DRIVER_NAME,
+		.owner	= THIS_MODULE,
 	},
 };
 
@@ -1273,5 +1274,5 @@ module_exit(mmc_omap_exit);
 
 MODULE_DESCRIPTION("OMAP Multimedia Card driver");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS(DRIVER_NAME);
+MODULE_ALIAS("platform:" DRIVER_NAME);
 MODULE_AUTHOR("Juha Yrjölä");

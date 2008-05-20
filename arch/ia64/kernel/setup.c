@@ -71,8 +71,6 @@ unsigned long __per_cpu_offset[NR_CPUS];
 EXPORT_SYMBOL(__per_cpu_offset);
 #endif
 
-extern void ia64_setup_printk_clock(void);
-
 DEFINE_PER_CPU(struct cpuinfo_ia64, cpu_info);
 DEFINE_PER_CPU(unsigned long, local_per_cpu_offset);
 unsigned long ia64_cycles_per_usec;
@@ -507,8 +505,6 @@ setup_arch (char **cmdline_p)
 	/* process SAL system table: */
 	ia64_sal_init(__va(efi.sal_systab));
 
-	ia64_setup_printk_clock();
-
 #ifdef CONFIG_SMP
 	cpu_physical_id(0) = hard_smp_processor_id();
 #endif
@@ -658,7 +654,7 @@ c_stop (struct seq_file *m, void *v)
 {
 }
 
-struct seq_operations cpuinfo_op = {
+const struct seq_operations cpuinfo_op = {
 	.start =	c_start,
 	.next =		c_next,
 	.stop =		c_stop,
@@ -694,7 +690,7 @@ get_model_name(__u8 family, __u8 model)
 	if (overflow++ == 0)
 		printk(KERN_ERR
 		       "%s: Table overflow. Some processor model information will be missing\n",
-		       __FUNCTION__);
+		       __func__);
 	return "Unknown";
 }
 
@@ -789,7 +785,7 @@ get_max_cacheline_size (void)
         status = ia64_pal_cache_summary(&levels, &unique_caches);
         if (status != 0) {
                 printk(KERN_ERR "%s: ia64_pal_cache_summary() failed (status=%ld)\n",
-                       __FUNCTION__, status);
+                       __func__, status);
                 max = SMP_CACHE_BYTES;
 		/* Safest setup for "flush_icache_range()" */
 		ia64_i_cache_stride_shift = I_CACHE_STRIDE_SHIFT;
@@ -802,7 +798,7 @@ get_max_cacheline_size (void)
 		if (status != 0) {
 			printk(KERN_ERR
 			       "%s: ia64_pal_cache_config_info(l=%lu, 2) failed (status=%ld)\n",
-			       __FUNCTION__, l, status);
+			       __func__, l, status);
 			max = SMP_CACHE_BYTES;
 			/* The safest setup for "flush_icache_range()" */
 			cci.pcci_stride = I_CACHE_STRIDE_SHIFT;
@@ -818,7 +814,7 @@ get_max_cacheline_size (void)
 			if (status != 0) {
 				printk(KERN_ERR
 				"%s: ia64_pal_cache_config_info(l=%lu, 1) failed (status=%ld)\n",
-					__FUNCTION__, l, status);
+					__func__, l, status);
 				/* The safest setup for "flush_icache_range()" */
 				cci.pcci_stride = I_CACHE_STRIDE_SHIFT;
 			}

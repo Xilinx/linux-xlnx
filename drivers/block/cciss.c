@@ -33,6 +33,7 @@
 #include <linux/blkpg.h>
 #include <linux/timer.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/init.h>
 #include <linux/hdreg.h>
 #include <linux/spinlock.h>
@@ -49,6 +50,7 @@
 #include <scsi/sg.h>
 #include <scsi/scsi_ioctl.h>
 #include <linux/cdrom.h>
+#include <linux/scatterlist.h>
 
 #define CCISS_DRIVER_VERSION(maj,min,submin) ((maj<<16)|(min<<8)|(submin))
 #define DRIVER_NAME "HP CISS Driver (v 3.6.14)"
@@ -131,7 +133,6 @@ static struct board_type products[] = {
 /*define how many times we will try a command because of bus resets */
 #define MAX_CMD_RETRIES 3
 
-#define READ_AHEAD 	 1024
 #define MAX_CTLR	32
 
 /* Originally cciss driver only supports 8 major numbers */
@@ -174,8 +175,6 @@ static int sendcmd_withirq(__u8 cmd, int ctlr, void *buff, size_t size,
 static void fail_all_cmds(unsigned long ctlr);
 
 #ifdef CONFIG_PROC_FS
-static int cciss_proc_get_info(char *buffer, char **start, off_t offset,
-			       int length, int *eof, void *data);
 static void cciss_procinit(int i);
 #else
 static void cciss_procinit(int i)
@@ -240,24 +239,46 @@ static inline CommandList_struct *removeQ(CommandList_struct **Qptr,
  */
 #define ENG_GIG 1000000000
 #define ENG_GIG_FACTOR (ENG_GIG/512)
+#define ENGAGE_SCSI	"engage scsi"
 static const char *raid_label[] = { "0", "4", "1(1+0)", "5", "5+1", "ADG",
 	"UNKNOWN"
 };
 
 static struct proc_dir_entry *proc_cciss;
 
-static int cciss_proc_get_info(char *buffer, char **start, off_t offset,
-			       int length, int *eof, void *data)
+static void cciss_seq_show_header(struct seq_file *seq)
 {
-	off_t pos = 0;
-	off_t len = 0;
-	int size, i, ctlr;
-	ctlr_info_t *h = (ctlr_info_t *) data;
-	drive_info_struct *drv;
-	unsigned long flags;
-	sector_t vol_sz, vol_sz_frac;
+	ctlr_info_t *h = seq->private;
 
-	ctlr = h->ctlr;
+	seq_printf(seq, "%s: HP %s Controller\n"
+		"Board ID: 0x%08lx\n"
+		"Firmware Version: %c%c%c%c\n"
+		"IRQ: %d\n"
+		"Logical drives: %d\n"
+		"Current Q depth: %d\n"
+		"Current # commands on controller: %d\n"
+		"Max Q depth since init: %d\n"
+		"Max # commands on controller since init: %d\n"
+		"Max SG entries since init: %d\n",
+		h->devname,
+		h->product_name,
+		(unsigned long)h->board_id,
+		h->firm_ver[0], h->firm_ver[1], h->firm_ver[2],
+		h->firm_ver[3], (unsigned int)h->intr[SIMPLE_MODE_INT],
+		h->num_luns,
+		h->Qdepth, h->commands_outstanding,
+		h->maxQsinceinit, h->max_outstanding, h->maxSG);
+
+#ifdef CONFIG_CISS_SCSI_TAPE
+	cciss_seq_tape_report(seq, h->ctlr);
+#endif /* CONFIG_CISS_SCSI_TAPE */
+}
+
+static void *cciss_seq_start(struct seq_file *seq, loff_t *pos)
+{
+	ctlr_info_t *h = seq->private;
+	unsigned ctlr = h->ctlr;
+	unsigned long flags;
 
 	/* prevent displaying bogus info during configuration
 	 * or deconfiguration of a logical volume
@@ -265,115 +286,155 @@ static int cciss_proc_get_info(char *buffer, char **start, off_t offset,
 	spin_lock_irqsave(CCISS_LOCK(ctlr), flags);
 	if (h->busy_configuring) {
 		spin_unlock_irqrestore(CCISS_LOCK(ctlr), flags);
-		return -EBUSY;
+		return ERR_PTR(-EBUSY);
 	}
 	h->busy_configuring = 1;
 	spin_unlock_irqrestore(CCISS_LOCK(ctlr), flags);
 
-	size = sprintf(buffer, "%s: HP %s Controller\n"
-		       "Board ID: 0x%08lx\n"
-		       "Firmware Version: %c%c%c%c\n"
-		       "IRQ: %d\n"
-		       "Logical drives: %d\n"
-		       "Max sectors: %d\n"
-		       "Current Q depth: %d\n"
-		       "Current # commands on controller: %d\n"
-		       "Max Q depth since init: %d\n"
-		       "Max # commands on controller since init: %d\n"
-		       "Max SG entries since init: %d\n\n",
-		       h->devname,
-		       h->product_name,
-		       (unsigned long)h->board_id,
-		       h->firm_ver[0], h->firm_ver[1], h->firm_ver[2],
-		       h->firm_ver[3], (unsigned int)h->intr[SIMPLE_MODE_INT],
-		       h->num_luns,
-		       h->cciss_max_sectors,
-		       h->Qdepth, h->commands_outstanding,
-		       h->maxQsinceinit, h->max_outstanding, h->maxSG);
+	if (*pos == 0)
+		cciss_seq_show_header(seq);
 
-	pos += size;
-	len += size;
-	cciss_proc_tape_report(ctlr, buffer, &pos, &len);
-	for (i = 0; i <= h->highest_lun; i++) {
-
-		drv = &h->drv[i];
-		if (drv->heads == 0)
-			continue;
-
-		vol_sz = drv->nr_blocks;
-		vol_sz_frac = sector_div(vol_sz, ENG_GIG_FACTOR);
-		vol_sz_frac *= 100;
-		sector_div(vol_sz_frac, ENG_GIG_FACTOR);
-
-		if (drv->raid_level > 5)
-			drv->raid_level = RAID_UNKNOWN;
-		size = sprintf(buffer + len, "cciss/c%dd%d:"
-			       "\t%4u.%02uGB\tRAID %s\n",
-			       ctlr, i, (int)vol_sz, (int)vol_sz_frac,
-			       raid_label[drv->raid_level]);
-		pos += size;
-		len += size;
-	}
-
-	*eof = 1;
-	*start = buffer + offset;
-	len -= offset;
-	if (len > length)
-		len = length;
-	h->busy_configuring = 0;
-	return len;
+	return pos;
 }
 
-static int
-cciss_proc_write(struct file *file, const char __user *buffer,
-		 unsigned long count, void *data)
+static int cciss_seq_show(struct seq_file *seq, void *v)
 {
-	unsigned char cmd[80];
-	int len;
-#ifdef CONFIG_CISS_SCSI_TAPE
-	ctlr_info_t *h = (ctlr_info_t *) data;
-	int rc;
+	sector_t vol_sz, vol_sz_frac;
+	ctlr_info_t *h = seq->private;
+	unsigned ctlr = h->ctlr;
+	loff_t *pos = v;
+	drive_info_struct *drv = &h->drv[*pos];
+
+	if (*pos > h->highest_lun)
+		return 0;
+
+	if (drv->heads == 0)
+		return 0;
+
+	vol_sz = drv->nr_blocks;
+	vol_sz_frac = sector_div(vol_sz, ENG_GIG_FACTOR);
+	vol_sz_frac *= 100;
+	sector_div(vol_sz_frac, ENG_GIG_FACTOR);
+
+	if (drv->raid_level > 5)
+		drv->raid_level = RAID_UNKNOWN;
+	seq_printf(seq, "cciss/c%dd%d:"
+			"\t%4u.%02uGB\tRAID %s\n",
+			ctlr, (int) *pos, (int)vol_sz, (int)vol_sz_frac,
+			raid_label[drv->raid_level]);
+	return 0;
+}
+
+static void *cciss_seq_next(struct seq_file *seq, void *v, loff_t *pos)
+{
+	ctlr_info_t *h = seq->private;
+
+	if (*pos > h->highest_lun)
+		return NULL;
+	*pos += 1;
+
+	return pos;
+}
+
+static void cciss_seq_stop(struct seq_file *seq, void *v)
+{
+	ctlr_info_t *h = seq->private;
+
+	/* Only reset h->busy_configuring if we succeeded in setting
+	 * it during cciss_seq_start. */
+	if (v == ERR_PTR(-EBUSY))
+		return;
+
+	h->busy_configuring = 0;
+}
+
+static struct seq_operations cciss_seq_ops = {
+	.start = cciss_seq_start,
+	.show  = cciss_seq_show,
+	.next  = cciss_seq_next,
+	.stop  = cciss_seq_stop,
+};
+
+static int cciss_seq_open(struct inode *inode, struct file *file)
+{
+	int ret = seq_open(file, &cciss_seq_ops);
+	struct seq_file *seq = file->private_data;
+
+	if (!ret)
+		seq->private = PDE(inode)->data;
+
+	return ret;
+}
+
+static ssize_t
+cciss_proc_write(struct file *file, const char __user *buf,
+		 size_t length, loff_t *ppos)
+{
+	int err;
+	char *buffer;
+
+#ifndef CONFIG_CISS_SCSI_TAPE
+	return -EINVAL;
 #endif
 
-	if (count > sizeof(cmd) - 1)
+	if (!buf || length > PAGE_SIZE - 1)
 		return -EINVAL;
-	if (copy_from_user(cmd, buffer, count))
-		return -EFAULT;
-	cmd[count] = '\0';
-	len = strlen(cmd);	// above 3 lines ensure safety
-	if (len && cmd[len - 1] == '\n')
-		cmd[--len] = '\0';
-#	ifdef CONFIG_CISS_SCSI_TAPE
-	if (strcmp("engage scsi", cmd) == 0) {
+
+	buffer = (char *)__get_free_page(GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	err = -EFAULT;
+	if (copy_from_user(buffer, buf, length))
+		goto out;
+	buffer[length] = '\0';
+
+#ifdef CONFIG_CISS_SCSI_TAPE
+	if (strncmp(ENGAGE_SCSI, buffer, sizeof ENGAGE_SCSI - 1) == 0) {
+		struct seq_file *seq = file->private_data;
+		ctlr_info_t *h = seq->private;
+		int rc;
+
 		rc = cciss_engage_scsi(h->ctlr);
 		if (rc != 0)
-			return -rc;
-		return count;
-	}
+			err = -rc;
+		else
+			err = length;
+	} else
+#endif /* CONFIG_CISS_SCSI_TAPE */
+		err = -EINVAL;
 	/* might be nice to have "disengage" too, but it's not
 	   safely possible. (only 1 module use count, lock issues.) */
-#	endif
-	return -EINVAL;
+
+out:
+	free_page((unsigned long)buffer);
+	return err;
 }
 
-/*
- * Get us a file in /proc/cciss that says something about each controller.
- * Create /proc/cciss if it doesn't exist yet.
- */
+static struct file_operations cciss_proc_fops = {
+	.owner	 = THIS_MODULE,
+	.open    = cciss_seq_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = seq_release,
+	.write	 = cciss_proc_write,
+};
+
 static void __devinit cciss_procinit(int i)
 {
 	struct proc_dir_entry *pde;
 
-	if (proc_cciss == NULL) {
+	if (proc_cciss == NULL)
 		proc_cciss = proc_mkdir("cciss", proc_root_driver);
-		if (!proc_cciss)
-			return;
-	}
+	if (!proc_cciss)
+		return;
+	pde = proc_create(hba[i]->devname, S_IWUSR | S_IRUSR | S_IRGRP |
+					S_IROTH, proc_cciss,
+					&cciss_proc_fops);
+	if (!pde)
+		return;
 
-	pde = create_proc_read_entry(hba[i]->devname,
-				     S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH,
-				     proc_cciss, cciss_proc_get_info, hba[i]);
-	pde->write_proc = cciss_proc_write;
+	pde->data = hba[i];
 }
 #endif				/* CONFIG_PROC_FS */
 
@@ -1187,17 +1248,6 @@ static int cciss_ioctl(struct inode *inode, struct file *filep,
 	}
 }
 
-static inline void complete_buffers(struct bio *bio, int status)
-{
-	while (bio) {
-		struct bio *xbh = bio->bi_next;
-
-		bio->bi_next = NULL;
-		bio_endio(bio, status ? 0 : -EIO);
-		bio = xbh;
-	}
-}
-
 static void cciss_check_queues(ctlr_info_t *h)
 {
 	int start_queue = h->next_to_run;
@@ -1263,21 +1313,14 @@ static void cciss_softirq_done(struct request *rq)
 		pci_unmap_page(h->pdev, temp64.val, cmd->SG[i].Len, ddir);
 	}
 
-	complete_buffers(rq->bio, (rq->errors == 0));
-
-	if (blk_fs_request(rq)) {
-		const int rw = rq_data_dir(rq);
-
-		disk_stat_add(rq->rq_disk, sectors[rw], rq->nr_sectors);
-	}
-
 #ifdef CCISS_DEBUG
 	printk("Done with %p\n", rq);
 #endif				/* CCISS_DEBUG */
 
-	add_disk_randomness(rq->rq_disk);
+	if (blk_end_request(rq, (rq->errors == 0) ? 0 : -EIO, blk_rq_bytes(rq)))
+		BUG();
+
 	spin_lock_irqsave(&h->lock, flags);
-	end_that_request_last(rq, (rq->errors == 0));
 	cmd_free(h, cmd, 1);
 	cciss_check_queues(h);
 	spin_unlock_irqrestore(&h->lock, flags);
@@ -1359,7 +1402,6 @@ geo_inq:
 		disk->private_data = &h->drv[drv_index];
 
 		/* Set up queue information */
-		disk->queue->backing_dev_info.ra_pages = READ_AHEAD;
 		blk_queue_bounce_limit(disk->queue, hba[ctlr]->pdev->dma_mask);
 
 		/* This is a hardware imposed limit. */
@@ -2542,9 +2584,7 @@ after_error_processing:
 		resend_cciss_cmd(h, cmd);
 		return;
 	}
-	cmd->rq->data_len = 0;
 	cmd->rq->completion_data = cmd;
-	blk_add_trace_rq(cmd->rq->q, cmd->rq, BLK_TA_COMPLETE);
 	blk_complete_request(cmd->rq);
 }
 
@@ -2650,12 +2690,14 @@ static void do_cciss_request(struct request_queue *q)
 			c->Request.CDB[8] = creq->nr_sectors & 0xff;
 			c->Request.CDB[9] = c->Request.CDB[11] = c->Request.CDB[12] = 0;
 		} else {
+			u32 upper32 = upper_32_bits(start_blk);
+
 			c->Request.CDBLen = 16;
 			c->Request.CDB[1]= 0;
-			c->Request.CDB[2]= (start_blk >> 56) & 0xff;	//MSB
-			c->Request.CDB[3]= (start_blk >> 48) & 0xff;
-			c->Request.CDB[4]= (start_blk >> 40) & 0xff;
-			c->Request.CDB[5]= (start_blk >> 32) & 0xff;
+			c->Request.CDB[2]= (upper32 >> 24) & 0xff;	//MSB
+			c->Request.CDB[3]= (upper32 >> 16) & 0xff;
+			c->Request.CDB[4]= (upper32 >>  8) & 0xff;
+			c->Request.CDB[5]= upper32 & 0xff;
 			c->Request.CDB[6]= (start_blk >> 24) & 0xff;
 			c->Request.CDB[7]= (start_blk >> 16) & 0xff;
 			c->Request.CDB[8]= (start_blk >>  8) & 0xff;
@@ -3452,7 +3494,6 @@ static int __devinit cciss_init_one(struct pci_dev *pdev,
 		}
 		drv->queue = q;
 
-		q->backing_dev_info.ra_pages = READ_AHEAD;
 		blk_queue_bounce_limit(q, hba[i]->pdev->dma_mask);
 
 		/* This is a hardware imposed limit. */

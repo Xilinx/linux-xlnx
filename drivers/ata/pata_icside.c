@@ -224,6 +224,7 @@ static void pata_icside_bmdma_setup(struct ata_queued_cmd *qc)
 	struct pata_icside_state *state = ap->host->private_data;
 	struct scatterlist *sg, *rsg = state->sg;
 	unsigned int write = qc->tf.flags & ATA_TFLAG_WRITE;
+	unsigned int si;
 
 	/*
 	 * We are simplex; BUG if we try to fiddle with DMA
@@ -234,7 +235,7 @@ static void pata_icside_bmdma_setup(struct ata_queued_cmd *qc)
 	/*
 	 * Copy ATAs scattered sg list into a contiguous array of sg
 	 */
-	ata_for_each_sg(sg, qc) {
+	for_each_sg(qc->sg, sg, qc->n_elem, si) {
 		memcpy(rsg, sg, sizeof(*sg));
 		rsg++;
 	}
@@ -302,12 +303,6 @@ static int icside_dma_init(struct pata_icside_info *info)
 	return 0;
 }
 
-
-static int pata_icside_port_start(struct ata_port *ap)
-{
-	/* No PRD to alloc */
-	return ata_pad_alloc(ap, ap->dev);
-}
 
 static struct scsi_host_template pata_icside_sht = {
 	.module			= THIS_MODULE,
@@ -387,8 +382,6 @@ static struct ata_port_operations pata_icside_port_ops = {
 
 	.irq_clear		= ata_dummy_noret,
 	.irq_on			= ata_irq_on,
-
-	.port_start		= pata_icside_port_start,
 
 	.bmdma_stop		= pata_icside_bmdma_stop,
 	.bmdma_status		= pata_icside_bmdma_status,

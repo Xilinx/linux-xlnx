@@ -149,7 +149,17 @@ static inline int sparse_early_nid(struct mem_section *section)
 /* Record a memory area against a node. */
 void __init memory_present(int nid, unsigned long start, unsigned long end)
 {
+	unsigned long max_arch_pfn = 1UL << (MAX_PHYSMEM_BITS-PAGE_SHIFT);
 	unsigned long pfn;
+
+	/*
+	 * Sanity checks - do not allow an architecture to pass
+	 * in larger pfns than the maximum scope of sparsemem:
+	 */
+	if (start >= max_arch_pfn)
+		return;
+	if (end >= max_arch_pfn)
+		end = max_arch_pfn;
 
 	start &= PAGE_SECTION_MASK;
 	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
@@ -237,7 +247,7 @@ static unsigned long *__kmalloc_section_usemap(void)
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */
 
-static unsigned long *sparse_early_usemap_alloc(unsigned long pnum)
+static unsigned long *__init sparse_early_usemap_alloc(unsigned long pnum)
 {
 	unsigned long *usemap;
 	struct mem_section *ms = __nr_to_section(pnum);
@@ -353,17 +363,9 @@ static inline struct page *kmalloc_section_memmap(unsigned long pnum, int nid,
 	return __kmalloc_section_memmap(nr_pages);
 }
 
-static int vaddr_in_vmalloc_area(void *addr)
-{
-	if (addr >= (void *)VMALLOC_START &&
-	    addr < (void *)VMALLOC_END)
-		return 1;
-	return 0;
-}
-
 static void __kfree_section_memmap(struct page *memmap, unsigned long nr_pages)
 {
-	if (vaddr_in_vmalloc_area(memmap))
+	if (is_vmalloc_addr(memmap))
 		vfree(memmap);
 	else
 		free_pages((unsigned long)memmap,

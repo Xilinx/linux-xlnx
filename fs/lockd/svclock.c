@@ -501,25 +501,29 @@ nlmsvc_testlock(struct svc_rqst *rqstp, struct nlm_file *file,
 			block, block->b_flags, block->b_fl);
 		if (block->b_flags & B_TIMED_OUT) {
 			nlmsvc_unlink_block(block);
-			return nlm_lck_denied;
+			ret = nlm_lck_denied;
+			goto out;
 		}
 		if (block->b_flags & B_GOT_CALLBACK) {
+			nlmsvc_unlink_block(block);
 			if (block->b_fl != NULL
 					&& block->b_fl->fl_type != F_UNLCK) {
 				lock->fl = *block->b_fl;
 				goto conf_lock;
-			}
-			else {
-				nlmsvc_unlink_block(block);
-				return nlm_granted;
+			} else {
+				ret = nlm_granted;
+				goto out;
 			}
 		}
-		return nlm_drop_reply;
+		ret = nlm_drop_reply;
+		goto out;
 	}
 
 	error = vfs_test_lock(file->f_file, &lock->fl);
-	if (error == -EINPROGRESS)
-		return nlmsvc_defer_lock_rqst(rqstp, block);
+	if (error == -EINPROGRESS) {
+		ret = nlmsvc_defer_lock_rqst(rqstp, block);
+		goto out;
+	}
 	if (error) {
 		ret = nlm_lck_denied_nolocks;
 		goto out;
@@ -759,11 +763,20 @@ callback:
 	dprintk("lockd: GRANTing blocked lock.\n");
 	block->b_granted = 1;
 
-	/* Schedule next grant callback in 30 seconds */
-	nlmsvc_insert_block(block, 30 * HZ);
+	/* keep block on the list, but don't reattempt until the RPC
+	 * completes or the submission fails
+	 */
+	nlmsvc_insert_block(block, NLM_NEVER);
 
-	/* Call the client */
-	nlm_async_call(block->b_call, NLMPROC_GRANTED_MSG, &nlmsvc_grant_ops);
+	/* Call the client -- use a soft RPC task since nlmsvc_retry_blocked
+	 * will queue up a new one if this one times out
+	 */
+	error = nlm_async_call(block->b_call, NLMPROC_GRANTED_MSG,
+				&nlmsvc_grant_ops);
+
+	/* RPC submission failed, wait a bit and retry */
+	if (error < 0)
+		nlmsvc_insert_block(block, 10 * HZ);
 }
 
 /*
@@ -781,6 +794,17 @@ static void nlmsvc_grant_callback(struct rpc_task *task, void *data)
 	unsigned long		timeout;
 
 	dprintk("lockd: GRANT_MSG RPC callback\n");
+
+	/* if the block is not on a list at this point then it has
+	 * been invalidated. Don't try to requeue it.
+	 *
+	 * FIXME: it's possible that the block is removed from the list
+	 * after this check but before the nlmsvc_insert_block. In that
+	 * case it will be added back. Perhaps we need better locking
+	 * for nlm_blocked?
+	 */
+	if (list_empty(&block->b_list))
+		return;
 
 	/* Technically, we should down the file semaphore here. Since we
 	 * move the block towards the head of the queue only, no harm

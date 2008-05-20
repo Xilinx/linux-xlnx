@@ -137,7 +137,7 @@ config CYCLADES
 	  your Linux box, for instance in order to become a dial-in server.
 
 	  For information about the Cyclades-Z card, read
-	  <file:drivers/char/README.cycladesZ>.
+	  <file:Documentation/README.cycladesZ>.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cyclades.
@@ -194,17 +194,6 @@ config MOXA_INTELLIO
 	  module will be called moxa.
 
 config MOXA_SMARTIO
-	tristate "Moxa SmartIO support (OBSOLETE)"
-	depends on SERIAL_NONSTANDARD
-	help
-	  Say Y here if you have a Moxa SmartIO multiport serial card.
-
-	  This driver can also be built as a module ( = code which can be
-	  inserted in and removed from the running kernel whenever you want).
-	  The module will be called mxser. If you want to do that, say M
-	  here.
-
-config MOXA_SMARTIO_NEW
 	tristate "Moxa SmartIO support v. 2.0"
 	depends on SERIAL_NONSTANDARD && (PCI || EISA || ISA)
 	help
@@ -215,7 +204,7 @@ config MOXA_SMARTIO_NEW
 	  changes finally resulting in PCI probing.
 
 	  This driver can also be built as a module. The module will be called
-	  mxser_new. If you want to do that, say M here.
+	  mxser. If you want to do that, say M here.
 
 config ISI
 	tristate "Multi-Tech multiport card support (EXPERIMENTAL)"
@@ -276,7 +265,7 @@ config N_HDLC
 
 config RISCOM8
 	tristate "SDL RISCom/8 card support"
-	depends on SERIAL_NONSTANDARD && BROKEN_ON_SMP
+	depends on SERIAL_NONSTANDARD
 	help
 	  This is a driver for the SDL Communications RISCom/8 multiport card,
 	  which gives you many serial ports. You would need something like
@@ -372,6 +361,16 @@ config ISTALLION
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called istallion.
+
+config NOZOMI
+	tristate "HSDPA Broadband Wireless Data Card - Globe Trotter"
+	depends on PCI && EXPERIMENTAL
+	help
+	  If you have a HSDPA driver Broadband Wireless Data Card -
+	  Globe Trotter PCMCIA card, say Y here.
+
+	  To compile this driver as a module, choose M here, the module
+	  will be called nozomi.
 
 config A2232
 	tristate "Commodore A2232 serial support (EXPERIMENTAL)"
@@ -550,6 +549,7 @@ config HVC_DRIVER
 	  hypervisors (pSeries, iSeries, Xen, lguest).
 	  It will automatically be selected if one of the back-end console drivers
 	  is selected.
+
 
 config HVC_CONSOLE
 	bool "pSeries Hypervisor Virtual Console support"
@@ -754,7 +754,7 @@ config JS_RTC
 
 config SGI_DS1286
 	tristate "SGI DS1286 RTC support"
-	depends on SGI_IP22
+	depends on SGI_HAS_DS1286
 	help
 	  If you say Y here and create a character special file /dev/rtc with
 	  major number 10 and minor number 135 using mknod ("man mknod"), you
@@ -842,7 +842,10 @@ config XILINX_HWICAP
 	depends on XILINX_DRIVERS
 	help
 	  This option enables support for Xilinx Internal Configuration
-	  Access Port (ICAP) driver.
+	  Access Port (ICAP) driver.  The ICAP is used on Xilinx Virtex
+	  FPGA platforms to partially reconfigure the FPGA at runtime.
+
+	  If unsure, say N.
 
 config R3964
 	tristate "Siemens R3964 line discipline"
@@ -879,7 +882,7 @@ config SONYPI
 	  Device which can be found in many (all ?) Sony Vaio laptops.
 
 	  If you have one of those laptops, read
-	  <file:Documentation/sonypi.txt>, and say Y or M here.
+	  <file:Documentation/laptops/sonypi.txt>, and say Y or M here.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called sonypi.

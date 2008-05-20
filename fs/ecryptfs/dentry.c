@@ -51,13 +51,13 @@ static int ecryptfs_d_revalidate(struct dentry *dentry, struct nameidata *nd)
 
 	if (!lower_dentry->d_op || !lower_dentry->d_op->d_revalidate)
 		goto out;
-	dentry_save = nd->dentry;
-	vfsmount_save = nd->mnt;
-	nd->dentry = lower_dentry;
-	nd->mnt = lower_mnt;
+	dentry_save = nd->path.dentry;
+	vfsmount_save = nd->path.mnt;
+	nd->path.dentry = lower_dentry;
+	nd->path.mnt = lower_mnt;
 	rc = lower_dentry->d_op->d_revalidate(lower_dentry, nd);
-	nd->dentry = dentry_save;
-	nd->mnt = vfsmount_save;
+	nd->path.dentry = dentry_save;
+	nd->path.mnt = vfsmount_save;
 	if (dentry->d_inode) {
 		struct inode *lower_inode =
 			ecryptfs_inode_to_lower(dentry->d_inode);
@@ -80,8 +80,8 @@ static void ecryptfs_d_release(struct dentry *dentry)
 {
 	if (ecryptfs_dentry_to_private(dentry)) {
 		if (ecryptfs_dentry_to_lower(dentry)) {
-			mntput(ecryptfs_dentry_to_lower_mnt(dentry));
 			dput(ecryptfs_dentry_to_lower(dentry));
+			mntput(ecryptfs_dentry_to_lower_mnt(dentry));
 		}
 		kmem_cache_free(ecryptfs_dentry_info_cache,
 				ecryptfs_dentry_to_private(dentry));

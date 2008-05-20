@@ -25,6 +25,7 @@
  */
 
 
+#include <linux/dmi.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -51,9 +52,7 @@ static struct acpi_prt_entry *acpi_pci_irq_find_prt_entry(int segment,
 							  int bus,
 							  int device, int pin)
 {
-	struct list_head *node = NULL;
 	struct acpi_prt_entry *entry = NULL;
-
 
 	if (!acpi_prt.count)
 		return NULL;
@@ -64,8 +63,7 @@ static struct acpi_prt_entry *acpi_pci_irq_find_prt_entry(int segment,
 	 *
 	 */
 	spin_lock(&acpi_prt_lock);
-	list_for_each(node, &acpi_prt.entries) {
-		entry = list_entry(node, struct acpi_prt_entry, node);
+	list_for_each_entry(entry, &acpi_prt.entries, node) {
 		if ((segment == entry->id.segment)
 		    && (bus == entry->id.bus)
 		    && (device == entry->id.device)
@@ -77,6 +75,101 @@ static struct acpi_prt_entry *acpi_pci_irq_find_prt_entry(int segment,
 
 	spin_unlock(&acpi_prt_lock);
 	return NULL;
+}
+
+/* http://bugzilla.kernel.org/show_bug.cgi?id=4773 */
+static struct dmi_system_id medion_md9580[] = {
+	{
+		.ident = "Medion MD9580-F laptop",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "MEDIONNB"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "A555"),
+		},
+	},
+	{ }
+};
+
+/* http://bugzilla.kernel.org/show_bug.cgi?id=5044 */
+static struct dmi_system_id dell_optiplex[] = {
+	{
+		.ident = "Dell Optiplex GX1",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Dell Computer Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "OptiPlex GX1 600S+"),
+		},
+	},
+	{ }
+};
+
+/* http://bugzilla.kernel.org/show_bug.cgi?id=10138 */
+static struct dmi_system_id hp_t5710[] = {
+	{
+		.ident = "HP t5710",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "hp t5000 series"),
+			DMI_MATCH(DMI_BOARD_NAME, "098Ch"),
+		},
+	},
+	{ }
+};
+
+struct prt_quirk {
+	struct dmi_system_id	*system;
+	unsigned int		segment;
+	unsigned int		bus;
+	unsigned int		device;
+	unsigned char		pin;
+	char			*source;	/* according to BIOS */
+	char			*actual_source;
+};
+
+/*
+ * These systems have incorrect _PRT entries.  The BIOS claims the PCI
+ * interrupt at the listed segment/bus/device/pin is connected to the first
+ * link device, but it is actually connected to the second.
+ */
+static struct prt_quirk prt_quirks[] = {
+	{ medion_md9580, 0, 0, 9, 'A',
+		"\\_SB_.PCI0.ISA_.LNKA",
+		"\\_SB_.PCI0.ISA_.LNKB"},
+	{ dell_optiplex, 0, 0, 0xd, 'A',
+		"\\_SB_.LNKB",
+		"\\_SB_.LNKA"},
+	{ hp_t5710, 0, 0, 1, 'A',
+		"\\_SB_.PCI0.LNK1",
+		"\\_SB_.PCI0.LNK3"},
+};
+
+static void
+do_prt_fixups(struct acpi_prt_entry *entry, struct acpi_pci_routing_table *prt)
+{
+	int i;
+	struct prt_quirk *quirk;
+
+	for (i = 0; i < ARRAY_SIZE(prt_quirks); i++) {
+		quirk = &prt_quirks[i];
+
+		/* All current quirks involve link devices, not GSIs */
+		if (!prt->source)
+			continue;
+
+		if (dmi_check_system(quirk->system) &&
+		    entry->id.segment == quirk->segment &&
+		    entry->id.bus == quirk->bus &&
+		    entry->id.device == quirk->device &&
+		    entry->pin + 'A' == quirk->pin &&
+		    !strcmp(prt->source, quirk->source) &&
+		    strlen(prt->source) >= strlen(quirk->actual_source)) {
+			printk(KERN_WARNING PREFIX "firmware reports "
+				"%04x:%02x:%02x[%c] connected to %s; "
+				"changing to %s\n",
+				entry->id.segment, entry->id.bus,
+				entry->id.device, 'A' + entry->pin,
+				prt->source, quirk->actual_source);
+			strcpy(prt->source, quirk->actual_source);
+		}
+	}
 }
 
 static int
@@ -98,6 +191,8 @@ acpi_pci_irq_add_entry(acpi_handle handle,
 	entry->id.device = (prt->address >> 16) & 0xFFFF;
 	entry->id.function = prt->address & 0xFFFF;
 	entry->pin = prt->pin;
+
+	do_prt_fixups(entry, prt);
 
 	/*
 	 * Type 1: Dynamic
@@ -477,8 +572,6 @@ int acpi_pci_irq_enable(struct pci_dev *dev)
 
 	return 0;
 }
-
-EXPORT_SYMBOL(acpi_pci_irq_enable);
 
 /* FIXME: implement x86/x86_64 version */
 void __attribute__ ((weak)) acpi_unregister_gsi(u32 i)

@@ -202,7 +202,7 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_RSVD_EQ_OFFSET);
 	dev_cap->reserved_eqs = 1 << (field & 0xf);
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_MAX_EQ_OFFSET);
-	dev_cap->max_eqs = 1 << (field & 0x7);
+	dev_cap->max_eqs = 1 << (field & 0xf);
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_RSVD_MTT_OFFSET);
 	dev_cap->reserved_mtts = 1 << (field >> 4);
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_MAX_MRW_SZ_OFFSET);
@@ -617,9 +617,6 @@ int mlx4_QUERY_ADAPTER(struct mlx4_dev *dev, struct mlx4_adapter *adapter)
 	int err;
 
 #define QUERY_ADAPTER_OUT_SIZE             0x100
-#define QUERY_ADAPTER_VENDOR_ID_OFFSET     0x00
-#define QUERY_ADAPTER_DEVICE_ID_OFFSET     0x04
-#define QUERY_ADAPTER_REVISION_ID_OFFSET   0x08
 #define QUERY_ADAPTER_INTA_PIN_OFFSET      0x10
 #define QUERY_ADAPTER_VSD_OFFSET           0x20
 
@@ -633,9 +630,6 @@ int mlx4_QUERY_ADAPTER(struct mlx4_dev *dev, struct mlx4_adapter *adapter)
 	if (err)
 		goto out;
 
-	MLX4_GET(adapter->vendor_id, outbox,   QUERY_ADAPTER_VENDOR_ID_OFFSET);
-	MLX4_GET(adapter->device_id, outbox,   QUERY_ADAPTER_DEVICE_ID_OFFSET);
-	MLX4_GET(adapter->revision_id, outbox, QUERY_ADAPTER_REVISION_ID_OFFSET);
 	MLX4_GET(adapter->inta_pin, outbox,    QUERY_ADAPTER_INTA_PIN_OFFSET);
 
 	get_board_id(outbox + QUERY_ADAPTER_VSD_OFFSET / 4,

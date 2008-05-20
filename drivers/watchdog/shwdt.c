@@ -52,7 +52,7 @@
  * overflow periods respectively.
  *
  * Also, since we can't really expect userspace to be responsive enough
- * before the overflow happens, we maintain two seperate timers .. One in
+ * before the overflow happens, we maintain two separate timers .. One in
  * the kernel for clearing out WOVF every 2ms or so (again, this depends on
  * HZ == 1000), and another for monitoring userspace writes to the WDT device.
  *
@@ -298,7 +298,7 @@ static int sh_wdt_mmap(struct file *file, struct vm_area_struct *vma)
 	if (io_remap_pfn_range(vma, vma->vm_start, addr >> PAGE_SHIFT,
 			       PAGE_SIZE, vma->vm_page_prot)) {
 		printk(KERN_ERR PFX "%s: io_remap_pfn_range failed\n",
-		       __FUNCTION__);
+		       __func__);
 		return -EAGAIN;
 	}
 

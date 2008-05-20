@@ -336,7 +336,7 @@
 		CALL(sys_mknodat)
 /* 325 */	CALL(sys_fchownat)
 		CALL(sys_futimesat)
-		CALL(sys_fstatat64)
+		CALL(ABI(sys_fstatat64,  sys_oabi_fstatat64))
 		CALL(sys_unlinkat)
 		CALL(sys_renameat)
 /* 330 */	CALL(sys_linkat)
@@ -359,7 +359,7 @@
 		CALL(sys_kexec_load)
 		CALL(sys_utimensat)
 		CALL(sys_signalfd)
-/* 350 */	CALL(sys_timerfd)
+/* 350 */	CALL(sys_ni_syscall)
 		CALL(sys_eventfd)
 		CALL(sys_fallocate)
 #ifndef syscalls_counted

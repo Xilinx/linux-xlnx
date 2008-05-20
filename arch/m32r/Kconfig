@@ -8,6 +8,8 @@ mainmenu "Linux/M32R Kernel Configuration"
 config M32R
 	bool
 	default y
+	select HAVE_IDE
+	select HAVE_OPROFILE
 
 config SBUS
 	bool
@@ -33,6 +35,13 @@ config NO_IOPORT
 
 config NO_DMA
 	def_bool y
+
+config ARCH_SUPPORTS_AOUT
+	def_bool y
+
+config HZ
+	int
+	default 100
 
 source "init/Kconfig"
 
@@ -235,6 +244,11 @@ config IRAM_SIZE
 # Define implied options from the CPU selection here
 #
 
+config GENERIC_LOCKBREAK
+	bool
+	default y
+	depends on SMP && PREEMPT
+
 config RWSEM_GENERIC_SPINLOCK
 	bool
 	depends on M32R
@@ -297,8 +311,7 @@ config SMP
 	  Y to "Enhanced Real Time Clock Support", below. The "Advanced Power
 	  Management" code will be disabled if you say Y here.
 
-	  See also the <file:Documentation/smp.txt>,
-	  and the SMP-HOWTO available at
+	  See also the SMP-HOWTO available at
 	  <http://www.linuxdoc.org/docs.html#howto>.
 
 	  If you don't know what to do here, say N.
@@ -353,11 +366,6 @@ config PCI
 	  bus system, i.e. the way the CPU talks to the other stuff inside
 	  your box. Other bus systems are ISA, EISA, MicroChannel (MCA) or
 	  VESA. If you have PCI, say Y, otherwise N.
-
-	  The PCI-HOWTO, available from
-	  <http://www.linuxdoc.org/docs.html#howto>, contains valuable
-	  information about which PCI hardware does work under Linux and which
-	  doesn't.
 
 choice
 	prompt "PCI access mode"
@@ -425,8 +433,6 @@ source "net/Kconfig"
 source "drivers/Kconfig"
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/m32r/Kconfig.debug"
 

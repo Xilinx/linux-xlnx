@@ -32,12 +32,13 @@
 #include <linux/platform_device.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
+#include <linux/mtd/physmap.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/flash.h>
 #if defined(CONFIG_USB_ISP1362_HCD) || defined(CONFIG_USB_ISP1362_HCD_MODULE)
 #include <linux/usb/isp1362.h>
 #endif
-#include <linux/pata_platform.h>
+#include <linux/ata_platform.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/usb/sl811.h>
@@ -102,6 +103,43 @@ void __exit bfin_isp1761_exit(void)
 
 arch_initcall(bfin_isp1761_init);
 #endif
+
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+#include <linux/input.h>
+#include <linux/gpio_keys.h>
+
+static struct gpio_keys_button bfin_gpio_keys_table[] = {
+	{BTN_0, GPIO_PF2, 1, "gpio-keys: BTN0"},
+	{BTN_1, GPIO_PF3, 1, "gpio-keys: BTN1"},
+	{BTN_2, GPIO_PF4, 1, "gpio-keys: BTN2"},
+	{BTN_3, GPIO_PF5, 1, "gpio-keys: BTN3"},
+};
+
+static struct gpio_keys_platform_data bfin_gpio_keys_data = {
+	.buttons        = bfin_gpio_keys_table,
+	.nbuttons       = ARRAY_SIZE(bfin_gpio_keys_table),
+};
+
+static struct platform_device bfin_device_gpiokeys = {
+	.name      = "gpio-keys",
+	.dev = {
+		.platform_data = &bfin_gpio_keys_data,
+	},
+};
+#endif
+
+static struct resource bfin_gpios_resources = {
+	.start = 0,
+	.end   = MAX_BLACKFIN_GPIOS - 1,
+	.flags = IORESOURCE_IRQ,
+};
+
+static struct platform_device bfin_gpios_device = {
+	.name = "simple-gpio",
+	.id = -1,
+	.num_resources = 1,
+	.resource = &bfin_gpios_resources,
+};
 
 #if defined(CONFIG_BFIN_CFPCMCIA) || defined(CONFIG_BFIN_CFPCMCIA_MODULE)
 static struct resource bfin_pcmcia_cf_resources[] = {
@@ -226,12 +264,7 @@ static struct resource sl811_hcd_resources[] = {
 void sl811_port_power(struct device *dev, int is_on)
 {
 	gpio_request(CONFIG_USB_SL811_BFIN_GPIO_VBUS, "usb:SL811_VBUS");
-	gpio_direction_output(CONFIG_USB_SL811_BFIN_GPIO_VBUS);
-
-	if (is_on)
-		gpio_set_value(CONFIG_USB_SL811_BFIN_GPIO_VBUS, 1);
-	else
-		gpio_set_value(CONFIG_USB_SL811_BFIN_GPIO_VBUS, 0);
+	gpio_direction_output(CONFIG_USB_SL811_BFIN_GPIO_VBUS, is_on);
 }
 #endif
 
@@ -320,6 +353,49 @@ static struct platform_device net2272_bfin_device = {
 };
 #endif
 
+static struct mtd_partition stamp_partitions[] = {
+	{
+		.name       = "Bootloader",
+		.size       = 0x40000,
+		.offset     = 0,
+	}, {
+		.name       = "Kernel",
+		.size       = 0xE0000,
+		.offset     = MTDPART_OFS_APPEND,
+	}, {
+		.name       = "RootFS",
+		.size       = 0x400000 - 0x40000 - 0xE0000 - 0x10000,
+		.offset     = MTDPART_OFS_APPEND,
+	}, {
+		.name       = "MAC Address",
+		.size       = MTDPART_SIZ_FULL,
+		.offset     = 0x3F0000,
+		.mask_flags = MTD_WRITEABLE,
+	}
+};
+
+static struct physmap_flash_data stamp_flash_data = {
+	.width      = 2,
+	.parts      = stamp_partitions,
+	.nr_parts   = ARRAY_SIZE(stamp_partitions),
+};
+
+static struct resource stamp_flash_resource = {
+	.start = 0x20000000,
+	.end   = 0x203fffff,
+	.flags = IORESOURCE_MEM,
+};
+
+static struct platform_device stamp_flash_device = {
+	.name          = "physmap-flash",
+	.id            = 0,
+	.dev = {
+		.platform_data = &stamp_flash_data,
+	},
+	.num_resources = 1,
+	.resource      = &stamp_flash_resource,
+};
+
 #if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
 /* all SPI peripherals info goes here */
 
@@ -328,17 +404,17 @@ static struct platform_device net2272_bfin_device = {
 static struct mtd_partition bfin_spi_flash_partitions[] = {
 	{
 		.name = "bootloader",
-		.size = 0x00020000,
+		.size = 0x00040000,
 		.offset = 0,
 		.mask_flags = MTD_CAP_ROM
 	}, {
 		.name = "kernel",
 		.size = 0xe0000,
-		.offset = 0x20000
+		.offset = MTDPART_OFS_APPEND,
 	}, {
 		.name = "file system",
-		.size = 0x700000,
-		.offset = 0x00100000,
+		.size = MTDPART_SIZ_FULL,
+		.offset = MTDPART_OFS_APPEND,
 	}
 };
 
@@ -396,13 +472,6 @@ static struct bfin5xx_spi_chip spi_si3xxx_chip_info = {
 };
 #endif
 
-#if defined(CONFIG_AD5304) || defined(CONFIG_AD5304_MODULE)
-static struct bfin5xx_spi_chip ad5304_chip_info = {
-	.enable_dma = 0,
-	.bits_per_word = 16,
-};
-#endif
-
 #if defined(CONFIG_TOUCHSCREEN_AD7877) || defined(CONFIG_TOUCHSCREEN_AD7877_MODULE)
 static struct bfin5xx_spi_chip spi_ad7877_chip_info = {
 	.enable_dma = 0,
@@ -421,6 +490,13 @@ static const struct ad7877_platform_data bfin_ad7877_ts_info = {
 	.acquisition_time 	= 1,
 	.averaging 		= 1,
 	.pen_down_acc_interval 	= 1,
+};
+#endif
+
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+static struct bfin5xx_spi_chip spidev_chip_info = {
+	.enable_dma = 0,
+	.bits_per_word = 8,
 };
 #endif
 
@@ -508,17 +584,6 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 		.mode = SPI_MODE_3,
 	},
 #endif
-#if defined(CONFIG_AD5304) || defined(CONFIG_AD5304_MODULE)
-	{
-		.modalias = "ad5304_spi",
-		.max_speed_hz = 1250000,     /* max spi clock (SCK) speed in HZ */
-		.bus_num = 0,
-		.chip_select = 2,
-		.platform_data = NULL,
-		.controller_data = &ad5304_chip_info,
-		.mode = SPI_MODE_2,
-	},
-#endif
 #if defined(CONFIG_TOUCHSCREEN_AD7877) || defined(CONFIG_TOUCHSCREEN_AD7877_MODULE)
 	{
 		.modalias		= "ad7877",
@@ -528,6 +593,15 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 		.bus_num	= 0,
 		.chip_select  = 1,
 		.controller_data = &spi_ad7877_chip_info,
+	},
+#endif
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+	{
+		.modalias = "spidev",
+		.max_speed_hz = 3125000,     /* max spi clock (SCK) speed in HZ */
+		.bus_num = 0,
+		.chip_select = 1,
+		.controller_data = &spidev_chip_info,
 	},
 #endif
 };
@@ -738,6 +812,13 @@ static struct platform_device *stamp_devices[] __initdata = {
 #if defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
 	&bfin_pata_device,
 #endif
+
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+	&bfin_device_gpiokeys,
+#endif
+
+	&bfin_gpios_device,
+	&stamp_flash_device,
 };
 
 static int __init stamp_init(void)

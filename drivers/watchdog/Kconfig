@@ -223,7 +223,7 @@ config DAVINCI_WATCHDOG
 
 config AT32AP700X_WDT
 	tristate "AT32AP700x watchdog"
-	depends on CPU_AT32AP7000
+	depends on CPU_AT32AP700X
 	help
 	  Watchdog timer embedded into AT32AP700x devices. This will reboot
 	  your system when the timeout is reached.
@@ -401,6 +401,18 @@ config IT8712F_WDT
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called it8712f_wdt.
+
+config HP_WATCHDOG
+	tristate "HP Proliant iLO 2 Hardware Watchdog Timer"
+	depends on X86
+	help
+	  A software monitoring watchdog and NMI sourcing driver. This driver
+	  will detect lockups and provide stack trace. Also, when an NMI
+	  occurs this driver will make the necessary BIOS calls to log
+	  the cause of the NMI. This is a driver that will only load on a
+	  HP ProLiant system with a minimum of iLO2 support.
+	  To compile this driver as a module, choose M here: the
+	  module will be called hpwdt.
 
 config SC1200_WDT
 	tristate "National Semiconductor PC87307/PC97307 (ala SC1200) Watchdog"
@@ -609,7 +621,7 @@ config SBC_EPX_C3_WATCHDOG
 
 config INDYDOG
 	tristate "Indy/I2 Hardware Watchdog"
-	depends on SGI_IP22
+	depends on SGI_HAS_INDYDOG
 	help
 	  Hardware driver for the Indy's/I2's watchdog. This is a
 	  watchdog timer that will reboot the machine after a 60 second
@@ -633,11 +645,30 @@ config WDT_RM9K_GPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called rm9k_wdt.
 
+config SIBYTE_WDOG
+	tristate "Sibyte SoC hardware watchdog"
+	depends on CPU_SB1
+	help
+	  Watchdog driver for the built in watchdog hardware in Sibyte
+	  SoC processors.  There are apparently two watchdog timers
+	  on such processors; this driver supports only the first one,
+	  because currently Linux only supports exporting one watchdog
+	  to userspace.
+
+	  To compile this driver as a loadable module, choose M here.
+	  The module will be called sb_wdog.
+
 config AR7_WDT
 	tristate "TI AR7 Watchdog Timer"
 	depends on AR7
 	help
 	  Hardware driver for the TI AR7 Watchdog Timer.
+
+config TXX9_WDT
+	tristate "Toshiba TXx9 Watchdog Timer"
+	depends on CPU_TX39XX || CPU_TX49XX
+	help
+	  Hardware driver for the built-in watchdog timer on TXx9 MIPS SoCs.
 
 # PARISC Architecture
 

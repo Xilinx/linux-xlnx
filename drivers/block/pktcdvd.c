@@ -110,17 +110,18 @@ static struct pktcdvd_kobj* pkt_kobj_create(struct pktcdvd_device *pd,
 					struct kobj_type* ktype)
 {
 	struct pktcdvd_kobj *p;
+	int error;
+
 	p = kzalloc(sizeof(*p), GFP_KERNEL);
 	if (!p)
 		return NULL;
-	kobject_set_name(&p->kobj, "%s", name);
-	p->kobj.parent = parent;
-	p->kobj.ktype = ktype;
 	p->pd = pd;
-	if (kobject_register(&p->kobj) != 0) {
+	error = kobject_init_and_add(&p->kobj, ktype, parent, "%s", name);
+	if (error) {
 		kobject_put(&p->kobj);
 		return NULL;
 	}
+	kobject_uevent(&p->kobj, KOBJ_ADD);
 	return p;
 }
 /*
@@ -129,7 +130,7 @@ static struct pktcdvd_kobj* pkt_kobj_create(struct pktcdvd_device *pd,
 static void pkt_kobj_remove(struct pktcdvd_kobj *p)
 {
 	if (p)
-		kobject_unregister(&p->kobj);
+		kobject_put(&p->kobj);
 }
 /*
  * default release function for pktcdvd kernel objects.
@@ -301,18 +302,16 @@ static struct kobj_type kobj_pkt_type_wqueue = {
 static void pkt_sysfs_dev_new(struct pktcdvd_device *pd)
 {
 	if (class_pktcdvd) {
-		pd->clsdev = class_device_create(class_pktcdvd,
-					NULL, pd->pkt_dev,
-					NULL, "%s", pd->name);
-		if (IS_ERR(pd->clsdev))
-			pd->clsdev = NULL;
+		pd->dev = device_create(class_pktcdvd, NULL, pd->pkt_dev, "%s", pd->name);
+		if (IS_ERR(pd->dev))
+			pd->dev = NULL;
 	}
-	if (pd->clsdev) {
+	if (pd->dev) {
 		pd->kobj_stat = pkt_kobj_create(pd, "stat",
-					&pd->clsdev->kobj,
+					&pd->dev->kobj,
 					&kobj_pkt_type_stat);
 		pd->kobj_wqueue = pkt_kobj_create(pd, "write_queue",
-					&pd->clsdev->kobj,
+					&pd->dev->kobj,
 					&kobj_pkt_type_wqueue);
 	}
 }
@@ -322,7 +321,7 @@ static void pkt_sysfs_dev_remove(struct pktcdvd_device *pd)
 	pkt_kobj_remove(pd->kobj_stat);
 	pkt_kobj_remove(pd->kobj_wqueue);
 	if (class_pktcdvd)
-		class_device_destroy(class_pktcdvd, pd->pkt_dev);
+		device_destroy(class_pktcdvd, pd->pkt_dev);
 }
 
 
@@ -850,7 +849,8 @@ static int pkt_flush_cache(struct pktcdvd_device *pd)
 /*
  * speed is given as the normal factor, e.g. 4 for 4x
  */
-static int pkt_set_speed(struct pktcdvd_device *pd, unsigned write_speed, unsigned read_speed)
+static noinline_for_stack int pkt_set_speed(struct pktcdvd_device *pd,
+				unsigned write_speed, unsigned read_speed)
 {
 	struct packet_command cgc;
 	struct request_sense sense;
@@ -1777,7 +1777,8 @@ static int pkt_get_track_info(struct pktcdvd_device *pd, __u16 track, __u8 type,
 	return pkt_generic_packet(pd, &cgc);
 }
 
-static int pkt_get_last_written(struct pktcdvd_device *pd, long *last_written)
+static noinline_for_stack int pkt_get_last_written(struct pktcdvd_device *pd,
+						long *last_written)
 {
 	disc_information di;
 	track_information ti;
@@ -1814,7 +1815,7 @@ static int pkt_get_last_written(struct pktcdvd_device *pd, long *last_written)
 /*
  * write mode select package based on pd->settings
  */
-static int pkt_set_write_settings(struct pktcdvd_device *pd)
+static noinline_for_stack int pkt_set_write_settings(struct pktcdvd_device *pd)
 {
 	struct packet_command cgc;
 	struct request_sense sense;
@@ -1973,7 +1974,7 @@ static int pkt_writable_disc(struct pktcdvd_device *pd, disc_information *di)
 	return 1;
 }
 
-static int pkt_probe_settings(struct pktcdvd_device *pd)
+static noinline_for_stack int pkt_probe_settings(struct pktcdvd_device *pd)
 {
 	struct packet_command cgc;
 	unsigned char buf[12];
@@ -2072,7 +2073,8 @@ static int pkt_probe_settings(struct pktcdvd_device *pd)
 /*
  * enable/disable write caching on drive
  */
-static int pkt_write_caching(struct pktcdvd_device *pd, int set)
+static noinline_for_stack int pkt_write_caching(struct pktcdvd_device *pd,
+						int set)
 {
 	struct packet_command cgc;
 	struct request_sense sense;
@@ -2117,7 +2119,8 @@ static int pkt_lock_door(struct pktcdvd_device *pd, int lockflag)
 /*
  * Returns drive maximum write speed
  */
-static int pkt_get_max_speed(struct pktcdvd_device *pd, unsigned *write_speed)
+static noinline_for_stack int pkt_get_max_speed(struct pktcdvd_device *pd,
+						unsigned *write_speed)
 {
 	struct packet_command cgc;
 	struct request_sense sense;
@@ -2178,7 +2181,8 @@ static char us_clv_to_speed[16] = {
 /*
  * reads the maximum media speed from ATIP
  */
-static int pkt_media_speed(struct pktcdvd_device *pd, unsigned *speed)
+static noinline_for_stack int pkt_media_speed(struct pktcdvd_device *pd,
+						unsigned *speed)
 {
 	struct packet_command cgc;
 	struct request_sense sense;
@@ -2213,11 +2217,11 @@ static int pkt_media_speed(struct pktcdvd_device *pd, unsigned *speed)
 		return ret;
 	}
 
-	if (!buf[6] & 0x40) {
+	if (!(buf[6] & 0x40)) {
 		printk(DRIVER_NAME": Disc type is not CD-RW\n");
 		return 1;
 	}
-	if (!buf[6] & 0x4) {
+	if (!(buf[6] & 0x4)) {
 		printk(DRIVER_NAME": A1 values on media are not valid, maybe not CDRW?\n");
 		return 1;
 	}
@@ -2250,7 +2254,7 @@ static int pkt_media_speed(struct pktcdvd_device *pd, unsigned *speed)
 	}
 }
 
-static int pkt_perform_opc(struct pktcdvd_device *pd)
+static noinline_for_stack int pkt_perform_opc(struct pktcdvd_device *pd)
 {
 	struct packet_command cgc;
 	struct request_sense sense;

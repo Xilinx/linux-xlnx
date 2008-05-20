@@ -1,7 +1,7 @@
 /*
  * Broadcom 43xx PCI-SSB bridge module
  *
- * This technically is a seperate PCI driver module, but
+ * This technically is a separate PCI driver module, but
  * because of its small size we include it in the SSB core
  * instead of creating a standalone module.
  *
@@ -27,6 +27,8 @@ static const struct pci_device_id b43_pci_bridge_tbl[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x4321) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x4324) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x4325) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x4328) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x4329) },
 	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, b43_pci_bridge_tbl);

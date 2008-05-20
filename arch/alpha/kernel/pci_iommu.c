@@ -9,6 +9,8 @@
 #include <linux/bootmem.h>
 #include <linux/scatterlist.h>
 #include <linux/log2.h>
+#include <linux/dma-mapping.h>
+#include <linux/iommu-helper.h>
 
 #include <asm/io.h>
 #include <asm/hwrpb.h>
@@ -30,7 +32,6 @@
 #endif
 
 #define DEBUG_NODIRECT 0
-#define DEBUG_FORCEDAC 0
 
 #define ISA_DMA_MASK		0x00ffffff
 
@@ -127,37 +128,55 @@ iommu_arena_new(struct pci_controller *hose, dma_addr_t base,
 
 /* Must be called with the arena lock held */
 static long
-iommu_arena_find_pages(struct pci_iommu_arena *arena, long n, long mask)
+iommu_arena_find_pages(struct device *dev, struct pci_iommu_arena *arena,
+		       long n, long mask)
 {
 	unsigned long *ptes;
 	long i, p, nent;
+	int pass = 0;
+	unsigned long base;
+	unsigned long boundary_size;
+
+	base = arena->dma_base >> PAGE_SHIFT;
+	if (dev) {
+		boundary_size = dma_get_seg_boundary(dev) + 1;
+		boundary_size >>= PAGE_SHIFT;
+	} else {
+		boundary_size = 1UL << (32 - PAGE_SHIFT);
+	}
 
 	/* Search forward for the first mask-aligned sequence of N free ptes */
 	ptes = arena->ptes;
 	nent = arena->size >> PAGE_SHIFT;
-	p = (arena->next_entry + mask) & ~mask;
+	p = ALIGN(arena->next_entry, mask + 1);
 	i = 0;
+
+again:
 	while (i < n && p+i < nent) {
+		if (!i && iommu_is_span_boundary(p, n, base, boundary_size)) {
+			p = ALIGN(p + 1, mask + 1);
+			goto again;
+		}
+
 		if (ptes[p+i])
-			p = (p + i + 1 + mask) & ~mask, i = 0;
+			p = ALIGN(p + i + 1, mask + 1), i = 0;
 		else
 			i = i + 1;
 	}
 
 	if (i < n) {
-                /* Reached the end.  Flush the TLB and restart the
-                   search from the beginning.  */
-		alpha_mv.mv_pci_tbi(arena->hose, 0, -1);
+		if (pass < 1) {
+			/*
+			 * Reached the end.  Flush the TLB and restart
+			 * the search from the beginning.
+			*/
+			alpha_mv.mv_pci_tbi(arena->hose, 0, -1);
 
-		p = 0, i = 0;
-		while (i < n && p+i < nent) {
-			if (ptes[p+i])
-				p = (p + i + 1 + mask) & ~mask, i = 0;
-			else
-				i = i + 1;
-		}
-
-		if (i < n)
+			pass++;
+			p = 0;
+			i = 0;
+			goto again;
+		} else
 			return -1;
 	}
 
@@ -167,7 +186,8 @@ iommu_arena_find_pages(struct pci_iommu_arena *arena, long n, long mask)
 }
 
 static long
-iommu_arena_alloc(struct pci_iommu_arena *arena, long n, unsigned int align)
+iommu_arena_alloc(struct device *dev, struct pci_iommu_arena *arena, long n,
+		  unsigned int align)
 {
 	unsigned long flags;
 	unsigned long *ptes;
@@ -178,7 +198,7 @@ iommu_arena_alloc(struct pci_iommu_arena *arena, long n, unsigned int align)
 	/* Search for N empty ptes */
 	ptes = arena->ptes;
 	mask = max(align, arena->align_entry) - 1;
-	p = iommu_arena_find_pages(arena, n, mask);
+	p = iommu_arena_find_pages(dev, arena, n, mask);
 	if (p < 0) {
 		spin_unlock_irqrestore(&arena->lock, flags);
 		return -1;
@@ -228,6 +248,7 @@ pci_map_single_1(struct pci_dev *pdev, void *cpu_addr, size_t size,
 	unsigned long paddr;
 	dma_addr_t ret;
 	unsigned int align = 0;
+	struct device *dev = pdev ? &pdev->dev : NULL;
 
 	paddr = __pa(cpu_addr);
 
@@ -275,7 +296,7 @@ pci_map_single_1(struct pci_dev *pdev, void *cpu_addr, size_t size,
 	/* Force allocation to 64KB boundary for ISA bridges. */
 	if (pdev && pdev == isa_bridge)
 		align = 8;
-	dma_ofs = iommu_arena_alloc(arena, npages, align);
+	dma_ofs = iommu_arena_alloc(dev, arena, npages, align);
 	if (dma_ofs < 0) {
 		printk(KERN_WARNING "pci_map_single failed: "
 		       "could not allocate dma page tables\n");
@@ -403,11 +424,13 @@ EXPORT_SYMBOL(pci_unmap_page);
    else DMA_ADDRP is undefined.  */
 
 void *
-pci_alloc_consistent(struct pci_dev *pdev, size_t size, dma_addr_t *dma_addrp)
+__pci_alloc_consistent(struct pci_dev *pdev, size_t size,
+		       dma_addr_t *dma_addrp, gfp_t gfp)
 {
 	void *cpu_addr;
 	long order = get_order(size);
-	gfp_t gfp = GFP_ATOMIC;
+
+	gfp &= ~GFP_DMA;
 
 try_again:
 	cpu_addr = (void *)__get_free_pages(gfp, order);
@@ -437,7 +460,7 @@ try_again:
 
 	return cpu_addr;
 }
-EXPORT_SYMBOL(pci_alloc_consistent);
+EXPORT_SYMBOL(__pci_alloc_consistent);
 
 /* Free and unmap a consistent DMA buffer.  CPU_ADDR and DMA_ADDR must
    be values that were returned from pci_alloc_consistent.  SIZE must
@@ -470,21 +493,28 @@ EXPORT_SYMBOL(pci_free_consistent);
 #define SG_ENT_PHYS_ADDRESS(SG) __pa(SG_ENT_VIRT_ADDRESS(SG))
 
 static void
-sg_classify(struct scatterlist *sg, struct scatterlist *end, int virt_ok)
+sg_classify(struct device *dev, struct scatterlist *sg, struct scatterlist *end,
+	    int virt_ok)
 {
 	unsigned long next_paddr;
 	struct scatterlist *leader;
 	long leader_flag, leader_length;
+	unsigned int max_seg_size;
 
 	leader = sg;
 	leader_flag = 0;
 	leader_length = leader->length;
 	next_paddr = SG_ENT_PHYS_ADDRESS(leader) + leader_length;
 
+	/* we will not marge sg without device. */
+	max_seg_size = dev ? dma_get_max_seg_size(dev) : 0;
 	for (++sg; sg < end; ++sg) {
 		unsigned long addr, len;
 		addr = SG_ENT_PHYS_ADDRESS(sg);
 		len = sg->length;
+
+		if (leader_length + len > max_seg_size)
+			goto new_segment;
 
 		if (next_paddr == addr) {
 			sg->dma_address = -1;
@@ -494,6 +524,7 @@ sg_classify(struct scatterlist *sg, struct scatterlist *end, int virt_ok)
 			leader_flag = 1;
 			leader_length += len;
 		} else {
+new_segment:
 			leader->dma_address = leader_flag;
 			leader->dma_length = leader_length;
 			leader = sg;
@@ -512,7 +543,7 @@ sg_classify(struct scatterlist *sg, struct scatterlist *end, int virt_ok)
    in the blanks.  */
 
 static int
-sg_fill(struct scatterlist *leader, struct scatterlist *end,
+sg_fill(struct device *dev, struct scatterlist *leader, struct scatterlist *end,
 	struct scatterlist *out, struct pci_iommu_arena *arena,
 	dma_addr_t max_dma, int dac_allowed)
 {
@@ -554,7 +585,7 @@ sg_fill(struct scatterlist *leader, struct scatterlist *end,
 
 	paddr &= ~PAGE_MASK;
 	npages = calc_npages(paddr + size);
-	dma_ofs = iommu_arena_alloc(arena, npages, 0);
+	dma_ofs = iommu_arena_alloc(dev, arena, npages, 0);
 	if (dma_ofs < 0) {
 		/* If we attempted a direct map above but failed, die.  */
 		if (leader->dma_address == 0)
@@ -562,8 +593,8 @@ sg_fill(struct scatterlist *leader, struct scatterlist *end,
 
 		/* Otherwise, break up the remaining virtually contiguous
 		   hunks into individual direct maps and retry.  */
-		sg_classify(leader, end, 0);
-		return sg_fill(leader, end, out, arena, max_dma, dac_allowed);
+		sg_classify(dev, leader, end, 0);
+		return sg_fill(dev, leader, end, out, arena, max_dma, dac_allowed);
 	}
 
 	out->dma_address = arena->dma_base + dma_ofs*PAGE_SIZE + paddr;
@@ -619,11 +650,14 @@ pci_map_sg(struct pci_dev *pdev, struct scatterlist *sg, int nents,
 	struct pci_iommu_arena *arena;
 	dma_addr_t max_dma;
 	int dac_allowed;
+	struct device *dev;
 
 	if (direction == PCI_DMA_NONE)
 		BUG();
 
 	dac_allowed = pdev ? pci_dac_dma_supported(pdev, pdev->dma_mask) : 0;
+
+	dev = pdev ? &pdev->dev : NULL;
 
 	/* Fast path single entry scatterlists.  */
 	if (nents == 1) {
@@ -638,7 +672,7 @@ pci_map_sg(struct pci_dev *pdev, struct scatterlist *sg, int nents,
 	end = sg + nents;
 
 	/* First, prepare information about the entries.  */
-	sg_classify(sg, end, alpha_mv.mv_pci_tbi != 0);
+	sg_classify(dev, sg, end, alpha_mv.mv_pci_tbi != 0);
 
 	/* Second, figure out where we're going to map things.  */
 	if (alpha_mv.mv_pci_tbi) {
@@ -658,7 +692,7 @@ pci_map_sg(struct pci_dev *pdev, struct scatterlist *sg, int nents,
 	for (out = sg; sg < end; ++sg) {
 		if ((int) sg->dma_address < 0)
 			continue;
-		if (sg_fill(sg, end, out, arena, max_dma, dac_allowed) < 0)
+		if (sg_fill(dev, sg, end, out, arena, max_dma, dac_allowed) < 0)
 			goto error;
 		out++;
 	}
@@ -818,7 +852,7 @@ iommu_reserve(struct pci_iommu_arena *arena, long pg_count, long align_mask)
 
 	/* Search for N empty ptes.  */
 	ptes = arena->ptes;
-	p = iommu_arena_find_pages(arena, pg_count, align_mask);
+	p = iommu_arena_find_pages(NULL, arena, pg_count, align_mask);
 	if (p < 0) {
 		spin_unlock_irqrestore(&arena->lock, flags);
 		return -1;

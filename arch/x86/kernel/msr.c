@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
- *   
- *   Copyright 2000 H. Peter Anvin - All Rights Reserved
+ *
+ *   Copyright 2000-2008 H. Peter Anvin - All Rights Reserved
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -45,9 +45,10 @@ static struct class *msr_class;
 
 static loff_t msr_seek(struct file *file, loff_t offset, int orig)
 {
-	loff_t ret = -EINVAL;
+	loff_t ret;
+	struct inode *inode = file->f_mapping->host;
 
-	lock_kernel();
+	mutex_lock(&inode->i_mutex);
 	switch (orig) {
 	case 0:
 		file->f_pos = offset;
@@ -56,8 +57,11 @@ static loff_t msr_seek(struct file *file, loff_t offset, int orig)
 	case 1:
 		file->f_pos += offset;
 		ret = file->f_pos;
+		break;
+	default:
+		ret = -EINVAL;
 	}
-	unlock_kernel();
+	mutex_unlock(&inode->i_mutex);
 	return ret;
 }
 
@@ -155,20 +159,20 @@ static int __cpuinit msr_class_cpu_callback(struct notifier_block *nfb,
 
 	switch (action) {
 	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
 		err = msr_device_create(cpu);
 		break;
 	case CPU_UP_CANCELED:
-	case CPU_UP_CANCELED_FROZEN:
 	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
 		msr_device_destroy(cpu);
+		break;
+	case CPU_UP_CANCELED_FROZEN:
+		destroy_suspended_device(msr_class, MKDEV(MSR_MAJOR, cpu));
 		break;
 	}
 	return err ? NOTIFY_BAD : NOTIFY_OK;
 }
 
-static struct notifier_block __cpuinitdata msr_class_cpu_notifier = {
+static struct notifier_block __refdata msr_class_cpu_notifier = {
 	.notifier_call = msr_class_cpu_callback,
 };
 

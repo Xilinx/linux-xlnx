@@ -53,7 +53,6 @@
 #include <asm/ebus.h>
 #include <asm/isa.h>
 #endif
-#include <asm/a.out.h>
 #include <asm/ns87303.h>
 #include <asm/timer.h>
 #include <asm/cpudata.h>
@@ -86,7 +85,6 @@ extern int (*handle_mathemu)(struct pt_regs *, struct fpustate *);
 extern long sparc32_open(const char __user * filename, int flags, int mode);
 extern int io_remap_pfn_range(struct vm_area_struct *vma, unsigned long from,
 	unsigned long pfn, unsigned long size, pgprot_t prot);
-extern void (*prom_palette)(int);
 
 extern int __ashrdi3(int, int);
 
@@ -277,6 +275,7 @@ EXPORT_SYMBOL(sys_getpid);
 EXPORT_SYMBOL(sys_geteuid);
 EXPORT_SYMBOL(sys_getuid);
 EXPORT_SYMBOL(sys_getegid);
+EXPORT_SYMBOL(sysctl_nr_open);
 EXPORT_SYMBOL(sys_getgid);
 EXPORT_SYMBOL(svr4_getcontext);
 EXPORT_SYMBOL(svr4_setcontext);
@@ -355,5 +354,3 @@ EXPORT_SYMBOL(xor_niagara_2);
 EXPORT_SYMBOL(xor_niagara_3);
 EXPORT_SYMBOL(xor_niagara_4);
 EXPORT_SYMBOL(xor_niagara_5);
-
-EXPORT_SYMBOL(prom_palette);

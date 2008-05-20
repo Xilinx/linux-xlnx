@@ -27,6 +27,7 @@
 #include <linux/list.h>
 #include <linux/anon_inodes.h>
 #include <linux/signalfd.h>
+#include <linux/syscalls.h>
 
 struct signalfd_ctx {
 	sigset_t sigmask;
@@ -66,7 +67,7 @@ static int signalfd_copyinfo(struct signalfd_siginfo __user *uinfo,
 	BUILD_BUG_ON(sizeof(struct signalfd_siginfo) != 128);
 
 	/*
-	 * Unused memebers should be zero ...
+	 * Unused members should be zero ...
 	 */
 	err = __clear_user(uinfo, sizeof(*uinfo));
 
@@ -110,9 +111,14 @@ static int signalfd_copyinfo(struct signalfd_siginfo __user *uinfo,
 		err |= __put_user(kinfo->si_uid, &uinfo->ssi_uid);
 		err |= __put_user((long) kinfo->si_ptr, &uinfo->ssi_ptr);
 		break;
-	default: /* this is just in case for now ... */
+	default:
+		/*
+		 * This case catches also the signals queued by sigqueue().
+		 */
 		err |= __put_user(kinfo->si_pid, &uinfo->ssi_pid);
 		err |= __put_user(kinfo->si_uid, &uinfo->ssi_uid);
+		err |= __put_user((long) kinfo->si_ptr, &uinfo->ssi_ptr);
+		err |= __put_user(kinfo->si_int, &uinfo->ssi_int);
 		break;
 	}
 

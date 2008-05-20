@@ -161,25 +161,25 @@ static dbdev_tab_t dbdev_tab[] = {
 	{ DSCR_CMD0_ALWAYS, DEV_FLAGS_ANYUSE, 0, 0, 0x00000000, 0, 0 },
 
 	/* Provide 16 user definable device types */
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
+	{ ~0, 0, 0, 0, 0, 0, 0 },
 };
 
-#define DBDEV_TAB_SIZE (sizeof(dbdev_tab) / sizeof(dbdev_tab_t))
+#define DBDEV_TAB_SIZE	ARRAY_SIZE(dbdev_tab)
 
 static chan_tab_t *chan_tab_ptr[NUM_DBDMA_CHANS];
 
@@ -209,7 +209,7 @@ au1xxx_ddma_add_device(dbdev_tab_t *dev)
 	dbdev_tab_t *p=NULL;
 	static u16 new_id=0x1000;
 
-	p = find_dbdev_id(0);
+	p = find_dbdev_id(~0);
 	if ( NULL != p )
 	{
 		memcpy(p, dev, sizeof(dbdev_tab_t));

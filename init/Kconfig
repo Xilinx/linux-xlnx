@@ -1,3 +1,11 @@
+config ARCH
+	string
+	option env="ARCH"
+
+config KERNELVERSION
+	string
+	option env="KERNELVERSION"
+
 config DEFCONFIG_LIST
 	string
 	depends on !UML
@@ -206,27 +214,6 @@ config TASK_IO_ACCOUNTING
 
 	  Say N if unsure.
 
-config USER_NS
-	bool "User Namespaces (EXPERIMENTAL)"
-	default n
-	depends on EXPERIMENTAL
-	help
-	  Support user namespaces.  This allows containers, i.e.
-	  vservers, to use user namespaces to provide different
-	  user info for different servers.  If unsure, say N.
-
-config PID_NS
-	bool "PID Namespaces (EXPERIMENTAL)"
-	default n
-	depends on EXPERIMENTAL
-	help
-	  Suport process id namespaces.  This allows having multiple
-	  process with the same pid as long as they are in different
-	  pid namespaces.  This is a building block of containers.
-
-	  Unless you want to work with an experimental feature
-	  say N here.
-
 config AUDIT
 	bool "Auditing support"
 	depends on NET
@@ -238,7 +225,7 @@ config AUDIT
 
 config AUDITSYSCALL
 	bool "Enable system-call auditing support"
-	depends on AUDIT && (X86 || PPC || PPC64 || S390 || IA64 || UML || SPARC64)
+	depends on AUDIT && (X86 || PPC || PPC64 || S390 || IA64 || UML || SPARC64|| SUPERH)
 	default y if SECURITY_SELINUX
 	help
 	  Enable low-overhead system-call auditing infrastructure that
@@ -324,25 +311,36 @@ config CPUSETS
 
 	  Say N if unsure.
 
-config FAIR_GROUP_SCHED
-	bool "Fair group CPU scheduler"
+config GROUP_SCHED
+	bool "Group CPU scheduler"
 	default y
 	help
 	  This feature lets CPU scheduler recognize task groups and control CPU
 	  bandwidth allocation to such task groups.
 
-choice
-	depends on FAIR_GROUP_SCHED
-	prompt "Basis for grouping tasks"
-	default FAIR_USER_SCHED
+config FAIR_GROUP_SCHED
+	bool "Group scheduling for SCHED_OTHER"
+	depends on GROUP_SCHED
+	default y
 
-config FAIR_USER_SCHED
+config RT_GROUP_SCHED
+	bool "Group scheduling for SCHED_RR/FIFO"
+	depends on EXPERIMENTAL
+	depends on GROUP_SCHED
+	default n
+
+choice
+	depends on GROUP_SCHED
+	prompt "Basis for grouping tasks"
+	default USER_SCHED
+
+config USER_SCHED
 	bool "user id"
 	help
 	  This option will choose userid as the basis for grouping
 	  tasks, thus providing equal CPU bandwidth to each user.
 
-config FAIR_CGROUP_SCHED
+config CGROUP_SCHED
 	bool "Control groups"
  	depends on CGROUPS
  	help
@@ -361,9 +359,36 @@ config CGROUP_CPUACCT
 	  Provides a simple Resource Controller for monitoring the
 	  total CPU consumed by the tasks in a cgroup
 
+config RESOURCE_COUNTERS
+	bool "Resource counters"
+	help
+	  This option enables controller independent resource accounting
+          infrastructure that works with cgroups
+	depends on CGROUPS
+
+config CGROUP_MEM_RES_CTLR
+	bool "Memory Resource Controller for Control Groups"
+	depends on CGROUPS && RESOURCE_COUNTERS
+	help
+	  Provides a memory resource controller that manages both page cache and
+	  RSS memory.
+
+	  Note that setting this option increases fixed memory overhead
+	  associated with each page of memory in the system by 4/8 bytes
+	  and also increases cache misses because struct page on many 64bit
+	  systems will not fit into a single cache line anymore.
+
+	  Only enable when you're ok with these trade offs and really
+	  sure you need the memory resource controller.
+
 config SYSFS_DEPRECATED
+	bool
+
+config SYSFS_DEPRECATED_V2
 	bool "Create deprecated sysfs files"
+	depends on SYSFS
 	default y
+	select SYSFS_DEPRECATED
 	help
 	  This option creates deprecated symlinks such as the
 	  "device"-link, the <subsystem>:<name>-link, and the
@@ -376,10 +401,11 @@ config SYSFS_DEPRECATED
 
 	  If enabled, this option will also move any device structures
 	  that belong to a class, back into the /sys/class hierarchy, in
-	  order to support older versions of udev.
+	  order to support older versions of udev and some userspace
+	  programs.
 
-	  If you are using a distro that was released in 2006 or later,
-	  it should be safe to say N here.
+	  If you are using a distro with the most recent userspace
+	  packages, it should be safe to say N here.
 
 config PROC_PID_CPUSET
 	bool "Include legacy /proc/<pid>/cpuset file"
@@ -396,6 +422,49 @@ config RELAY
 	  user space.
 
 	  If unsure, say N.
+
+config NAMESPACES
+	bool "Namespaces support" if EMBEDDED
+	default !EMBEDDED
+	help
+	  Provides the way to make tasks work with different objects using
+	  the same id. For example same IPC id may refer to different objects
+	  or same user id or pid may refer to different tasks when used in
+	  different namespaces.
+
+config UTS_NS
+	bool "UTS namespace"
+	depends on NAMESPACES
+	help
+	  In this namespace tasks see different info provided with the
+	  uname() system call
+
+config IPC_NS
+	bool "IPC namespace"
+	depends on NAMESPACES && SYSVIPC
+	help
+	  In this namespace tasks work with IPC ids which correspond to
+	  different IPC objects in different namespaces
+
+config USER_NS
+	bool "User namespace (EXPERIMENTAL)"
+	depends on NAMESPACES && EXPERIMENTAL
+	help
+	  This allows containers, i.e. vservers, to use user namespaces
+	  to provide different user info for different servers.
+	  If unsure, say N.
+
+config PID_NS
+	bool "PID Namespaces (EXPERIMENTAL)"
+	default n
+	depends on NAMESPACES && EXPERIMENTAL
+	help
+	  Suport process id namespaces.  This allows having multiple
+	  process with the same pid as long as they are in different
+	  pid namespaces.  This is a building block of containers.
+
+	  Unless you want to work with an experimental feature
+	  say N here.
 
 config BLK_DEV_INITRD
 	bool "Initial RAM filesystem and RAM disk (initramfs/initrd) support"
@@ -532,6 +601,18 @@ config ELF_CORE
 	help
 	  Enable support for generating core dumps. Disabling saves about 4k.
 
+config COMPAT_BRK
+	bool "Disable heap randomization"
+	default y
+	help
+	  Randomizing heap placement makes heap exploits harder, but it
+	  also breaks ancient binaries (including anything libc5 based).
+	  This option changes the bootup default to heap randomization
+	  disabled, and can be overriden runtime by setting
+	  /proc/sys/kernel/randomize_va_space to 2.
+
+	  On non-ancient distros (post-2000 ones) N is usually a safe choice.
+
 config BASE_FULL
 	default y
 	bool "Enable full-sized data structures for core" if EMBEDDED
@@ -573,7 +654,6 @@ config SIGNALFD
 config TIMERFD
 	bool "Enable timerfd() system call" if EMBEDDED
 	select ANON_INODES
-	depends on BROKEN
 	default y
 	help
 	  Enable the timerfd() system call that allows to receive timer
@@ -648,13 +728,35 @@ config SLOB
 	depends on EMBEDDED
 	bool "SLOB (Simple Allocator)"
 	help
-	   SLOB replaces the SLAB allocator with a drastically simpler
-	   allocator.  SLOB is more space efficient than SLAB but does not
-	   scale well (single lock for all operations) and is also highly
-	   susceptible to fragmentation. SLUB can accomplish a higher object
-	   density. It is usually better to use SLUB instead of SLOB.
+	   SLOB replaces the stock allocator with a drastically simpler
+	   allocator. SLOB is generally more space efficient but
+	   does not perform as well on large systems.
 
 endchoice
+
+config PROFILING
+	bool "Profiling support (EXPERIMENTAL)"
+	help
+	  Say Y here to enable the extended profiling support mechanisms used
+	  by profilers such as OProfile.
+
+config MARKERS
+	bool "Activate markers"
+	help
+	  Place an empty function call at each marker site. Can be
+	  dynamically changed for a probe function.
+
+source "arch/Kconfig"
+
+config PROC_PAGE_MONITOR
+ 	default y
+	depends on PROC_FS && MMU
+	bool "Enable /proc page monitoring" if EMBEDDED
+ 	help
+	  Various /proc files exist to monitor process memory utilization:
+	  /proc/pid/smaps, /proc/pid/clear_refs, /proc/pid/pagemap,
+	  /proc/kpagecount, and /proc/kpageflags. Disabling these
+          interfaces will reduce the size of the kernel by approximately 4kb.
 
 endmenu		# General setup
 
@@ -762,3 +864,11 @@ source "block/Kconfig"
 
 config PREEMPT_NOTIFIERS
 	bool
+
+config CLASSIC_RCU
+	def_bool !PREEMPT_RCU
+	help
+	  This option selects the classic RCU implementation that is
+	  designed for best read-side performance on non-realtime
+	  systems.  Classic RCU is the default.  Note that the
+	  PREEMPT_RCU symbol is used to select/deselect this option.

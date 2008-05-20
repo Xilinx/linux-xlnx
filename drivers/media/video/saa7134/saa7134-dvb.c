@@ -779,6 +779,21 @@ static struct tda1004x_config avermedia_super_007_config = {
 	.request_firmware = philips_tda1004x_request_firmware
 };
 
+static struct tda1004x_config twinhan_dtv_dvb_3056_config = {
+	.demod_address = 0x08,
+	.invert        = 1,
+	.invert_oclk   = 0,
+	.xtal_freq     = TDA10046_XTAL_16M,
+	.agc_config    = TDA10046_AGC_TDA827X,
+	.gpio_config   = TDA10046_GP01_I,
+	.if_freq       = TDA10046_FREQ_045,
+	.i2c_gate      = 0x42,
+	.tuner_address = 0x61,
+	.tuner_config  = 2,
+	.antenna_switch = 1,
+	.request_firmware = philips_tda1004x_request_firmware
+};
+
 /* ------------------------------------------------------------------
  * special case: this card uses saa713x GPIO22 for the mode switch
  */
@@ -826,6 +841,7 @@ static struct tda1004x_config ads_tech_duo_config = {
 static struct tda10086_config flydvbs = {
 	.demod_address = 0x0e,
 	.invert = 0,
+	.diseqc_tone = 0,
 };
 
 /* ==================================================================
@@ -940,9 +956,9 @@ static int dvb_init(struct saa7134_dev *dev)
 		configure_tda827x_fe(dev, &tda827x_lifeview_config);
 		break;
 	case SAA7134_BOARD_FLYDVB_TRIO:
-		if(! use_frontend) {	//terrestrial
+		if(! use_frontend) {	/* terrestrial */
 			configure_tda827x_fe(dev, &lifeview_trio_config);
-		} else {  	      //satellite
+		} else {  	        /* satellite */
 			dev->dvb.frontend = dvb_attach(tda10086_attach, &flydvbs, &dev->i2c_adap);
 			if (dev->dvb.frontend) {
 				if (dvb_attach(tda826x_attach, dev->dvb.frontend, 0x63,
@@ -1007,8 +1023,9 @@ static int dvb_init(struct saa7134_dev *dev)
 		}
 		break;
 	case SAA7134_BOARD_ASUS_EUROPA2_HYBRID:
-		dev->dvb.frontend = tda10046_attach(&medion_cardbus,
-						    &dev->i2c_adap);
+		dev->dvb.frontend = dvb_attach(tda10046_attach,
+					       &medion_cardbus,
+					       &dev->i2c_adap);
 		if (dev->dvb.frontend) {
 			dev->original_demod_sleep = dev->dvb.frontend->ops.sleep;
 			dev->dvb.frontend->ops.sleep = philips_europa_demod_sleep;
@@ -1044,6 +1061,9 @@ static int dvb_init(struct saa7134_dev *dev)
 	case SAA7134_BOARD_AVERMEDIA_SUPER_007:
 		configure_tda827x_fe(dev, &avermedia_super_007_config);
 		break;
+	case SAA7134_BOARD_TWINHAN_DTV_DVB_3056:
+		configure_tda827x_fe(dev, &twinhan_dtv_dvb_3056_config);
+		break;
 	default:
 		wprintk("Huh? unknown DVB card?\n");
 		break;
@@ -1073,14 +1093,21 @@ static int dvb_init(struct saa7134_dev *dev)
 
 static int dvb_fini(struct saa7134_dev *dev)
 {
-	static int on  = TDA9887_PRESENT | TDA9887_PORT2_INACTIVE;
+	/* FIXME: I suspect that this code is bogus, since the entry for
+	   Pinnacle 300I DVB-T PAL already defines the proper init to allow
+	   the detection of mt2032 (TDA9887_PORT2_INACTIVE)
+	 */
+	if (dev->board == SAA7134_BOARD_PINNACLE_300I_DVBT_PAL) {
+		struct v4l2_priv_tun_config tda9887_cfg;
+		static int on  = TDA9887_PRESENT | TDA9887_PORT2_INACTIVE;
 
-	switch (dev->board) {
-	case SAA7134_BOARD_PINNACLE_300I_DVBT_PAL:
+		tda9887_cfg.tuner = TUNER_TDA9887;
+		tda9887_cfg.priv  = &on;
+
 		/* otherwise we don't detect the tuner on next insmod */
-		saa7134_i2c_call_clients(dev,TDA9887_SET_CONFIG,&on);
-		break;
-	};
+		saa7134_i2c_call_clients(dev, TUNER_SET_CONFIG, &tda9887_cfg);
+	}
+
 	videobuf_dvb_unregister(&dev->dvb);
 	return 0;
 }

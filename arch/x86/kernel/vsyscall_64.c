@@ -43,12 +43,7 @@
 #include <asm/vgtod.h>
 
 #define __vsyscall(nr) __attribute__ ((unused,__section__(".vsyscall_" #nr)))
-#define __syscall_clobber "r11","rcx","memory"
-#define __pa_vsymbol(x)			\
-	({unsigned long v;  		\
-	extern char __vsyscall_0; 	\
-	  asm("" : "=r" (v) : "0" (x)); \
-	  ((v - VSYSCALL_START) + __pa_symbol(&__vsyscall_0)); })
+#define __syscall_clobber "r11","cx","memory"
 
 /*
  * vsyscall_gtod_data contains data that is :
@@ -102,7 +97,7 @@ static __always_inline void do_get_tz(struct timezone * tz)
 static __always_inline int gettimeofday(struct timeval *tv, struct timezone *tz)
 {
 	int ret;
-	asm volatile("vsysc2: syscall"
+	asm volatile("syscall"
 		: "=a" (ret)
 		: "0" (__NR_gettimeofday),"D" (tv),"S" (tz)
 		: __syscall_clobber );
@@ -112,7 +107,7 @@ static __always_inline int gettimeofday(struct timeval *tv, struct timezone *tz)
 static __always_inline long time_syscall(long *t)
 {
 	long secs;
-	asm volatile("vsysc1: syscall"
+	asm volatile("syscall"
 		: "=a" (secs)
 		: "0" (__NR_time),"D" (t) : __syscall_clobber);
 	return secs;
@@ -190,7 +185,7 @@ time_t __vsyscall(1) vtime(time_t *t)
 long __vsyscall(2)
 vgetcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache)
 {
-	unsigned int dummy, p;
+	unsigned int p;
 	unsigned long j = 0;
 
 	/* Fast cache - only recompute value once per jiffies and avoid
@@ -205,7 +200,7 @@ vgetcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache)
 		p = tcache->blob[1];
 	} else if (__vgetcpu_mode == VGETCPU_RDTSCP) {
 		/* Load per CPU data from RDTSCP */
-		rdtscp(dummy, dummy, p);
+		native_read_tscp(&p);
 	} else {
 		/* Load per CPU data from GDT */
 		asm("lsl %1,%0" : "=r" (p) : "r" (__PER_CPU_SEG));
@@ -228,42 +223,11 @@ long __vsyscall(3) venosys_1(void)
 
 #ifdef CONFIG_SYSCTL
 
-#define SYSCALL 0x050f
-#define NOP2    0x9090
-
-/*
- * NOP out syscall in vsyscall page when not needed.
- */
-static int vsyscall_sysctl_change(ctl_table *ctl, int write, struct file * filp,
-                        void __user *buffer, size_t *lenp, loff_t *ppos)
+static int
+vsyscall_sysctl_change(ctl_table *ctl, int write, struct file * filp,
+		       void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	extern u16 vsysc1, vsysc2;
-	u16 __iomem *map1;
-	u16 __iomem *map2;
-	int ret = proc_dointvec(ctl, write, filp, buffer, lenp, ppos);
-	if (!write)
-		return ret;
-	/* gcc has some trouble with __va(__pa()), so just do it this
-	   way. */
-	map1 = ioremap(__pa_vsymbol(&vsysc1), 2);
-	if (!map1)
-		return -ENOMEM;
-	map2 = ioremap(__pa_vsymbol(&vsysc2), 2);
-	if (!map2) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	if (!vsyscall_gtod_data.sysctl_enabled) {
-		writew(SYSCALL, map1);
-		writew(SYSCALL, map2);
-	} else {
-		writew(NOP2, map1);
-		writew(NOP2, map2);
-	}
-	iounmap(map2);
-out:
-	iounmap(map1);
-	return ret;
+	return proc_dointvec(ctl, write, filp, buffer, lenp, ppos);
 }
 
 static ctl_table kernel_table2[] = {
@@ -279,7 +243,6 @@ static ctl_table kernel_root_table2[] = {
 	  .child = kernel_table2 },
 	{}
 };
-
 #endif
 
 /* Assume __initcall executes before all user space. Hopefully kmod
@@ -297,7 +260,7 @@ static void __cpuinit vsyscall_set_cpu(int cpu)
 	/* Store cpu number in limit so that it can be loaded quickly
 	   in user space in vgetcpu.
 	   12 bits for the CPU and 8 bits for the node. */
-	d = (unsigned long *)(cpu_gdt(cpu) + GDT_ENTRY_PER_CPU);
+	d = (unsigned long *)(get_cpu_gdt_table(cpu) + GDT_ENTRY_PER_CPU);
 	*d = 0x0f40000000000ULL;
 	*d |= cpu;
 	*d |= (node & 0xf) << 12;
@@ -319,7 +282,7 @@ cpu_vsyscall_notifier(struct notifier_block *n, unsigned long action, void *arg)
 	return NOTIFY_DONE;
 }
 
-static void __init map_vsyscall(void)
+void __init map_vsyscall(void)
 {
 	extern char __vsyscall_0;
 	unsigned long physaddr_page0 = __pa_symbol(&__vsyscall_0);
@@ -335,7 +298,6 @@ static int __init vsyscall_init(void)
 	BUG_ON((unsigned long) &vtime != VSYSCALL_ADDR(__NR_vtime));
 	BUG_ON((VSYSCALL_ADDR(0) != __fix_to_virt(VSYSCALL_FIRST_PAGE)));
 	BUG_ON((unsigned long) &vgetcpu != VSYSCALL_ADDR(__NR_vgetcpu));
-	map_vsyscall();
 #ifdef CONFIG_SYSCTL
 	register_sysctl_table(kernel_root_table2);
 #endif

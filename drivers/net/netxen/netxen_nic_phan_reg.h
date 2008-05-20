@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2003 - 2006 NetXen, Inc.
  * All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -16,10 +16,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston,
  * MA  02111-1307, USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution
  * in the file called LICENSE.
- * 
+ *
  * Contact Information:
  *    info@netxen.com
  * NetXen,
@@ -30,7 +30,7 @@
 #ifndef __NIC_PHAN_REG_H_
 #define __NIC_PHAN_REG_H_
 
-/* 
+/*
  * CRB Registers or queue message done only at initialization time.
  */
 #define NIC_CRB_BASE               NETXEN_CAM_RAM(0x200)
@@ -126,8 +126,11 @@
  */
 #define CRB_NIC_CAPABILITIES_HOST	NETXEN_NIC_REG(0x1a8)
 #define CRB_NIC_CAPABILITIES_FW	  	NETXEN_NIC_REG(0x1dc)
+#define CRB_NIC_MSI_MODE_HOST		NETXEN_NIC_REG(0x270)
+#define CRB_NIC_MSI_MODE_FW	  		NETXEN_NIC_REG(0x274)
 
 #define INTR_SCHEME_PERPORT	      	0x1
+#define MSI_MODE_MULTIFUNC	      	0x1
 
 /* used for ethtool tests */
 #define CRB_SCRATCHPAD_TEST	    NETXEN_NIC_REG(0x280)
@@ -165,14 +168,7 @@ struct netxen_recv_crb {
 	u32 crb_status_ring_size;
 };
 
-#if defined(DEFINE_GLOBAL_RECV_CRB)
-#else
 extern struct netxen_recv_crb recv_crb_registers[];
-extern u64 ctx_addr_sig_regs[][3];
-#endif				/* DEFINE_GLOBAL_RECEIVE_CRB */
-#define CRB_CTX_ADDR_REG_LO(FUNC_ID)		(ctx_addr_sig_regs[FUNC_ID][0])
-#define CRB_CTX_ADDR_REG_HI(FUNC_ID)		(ctx_addr_sig_regs[FUNC_ID][2])
-#define CRB_CTX_SIGNATURE_REG(FUNC_ID)		(ctx_addr_sig_regs[FUNC_ID][1])
 
 /*
  * Temperature control.

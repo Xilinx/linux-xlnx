@@ -1,14 +1,18 @@
-/* $Id: iommu_common.h,v 1.5 2001/12/11 09:41:01 davem Exp $
- * iommu_common.h: UltraSparc SBUS/PCI common iommu declarations.
+/* iommu_common.h: UltraSparc SBUS/PCI common iommu declarations.
  *
- * Copyright (C) 1999 David S. Miller (davem@redhat.com)
+ * Copyright (C) 1999, 2008 David S. Miller (davem@davemloft.net)
  */
+
+#ifndef _IOMMU_COMMON_H
+#define _IOMMU_COMMON_H
 
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
+#include <linux/device.h>
+#include <linux/iommu-helper.h>
 
 #include <asm/iommu.h>
 #include <asm/scatterlist.h>
@@ -29,21 +33,37 @@
  */
 #define IOMMU_PAGE_SHIFT		13
 
-/* You are _strongly_ advised to enable the following debugging code
- * any time you make changes to the sg code below, run it for a while
- * with filesystems mounted read-only before buying the farm... -DaveM
- */
-#undef VERIFY_SG
+#define SG_ENT_PHYS_ADDRESS(SG)	(__pa(sg_virt((SG))))
 
-#ifdef VERIFY_SG
-extern void verify_sglist(struct scatterlist *sg, int nents, iopte_t *iopte, int npages);
-#endif
+static inline unsigned long iommu_num_pages(unsigned long vaddr,
+					    unsigned long slen)
+{
+	unsigned long npages;
 
-/* Two addresses are "virtually contiguous" if and only if:
- * 1) They are equal, or...
- * 2) They are both on a page boundary
- */
-#define VCONTIG(__X, __Y)	(((__X) == (__Y)) || \
-				 (((__X) | (__Y)) << (64UL - PAGE_SHIFT)) == 0UL)
+	npages = IO_PAGE_ALIGN(vaddr + slen) - (vaddr & IO_PAGE_MASK);
+	npages >>= IO_PAGE_SHIFT;
 
-extern unsigned long prepare_sg(struct scatterlist *sg, int nents);
+	return npages;
+}
+
+static inline int is_span_boundary(unsigned long entry,
+				   unsigned long shift,
+				   unsigned long boundary_size,
+				   struct scatterlist *outs,
+				   struct scatterlist *sg)
+{
+	unsigned long paddr = SG_ENT_PHYS_ADDRESS(outs);
+	int nr = iommu_num_pages(paddr, outs->dma_length + sg->length);
+
+	return iommu_is_span_boundary(entry, nr, shift, boundary_size);
+}
+
+extern unsigned long iommu_range_alloc(struct device *dev,
+				       struct iommu *iommu,
+				       unsigned long npages,
+				       unsigned long *handle);
+extern void iommu_range_free(struct iommu *iommu,
+			     dma_addr_t dma_addr,
+			     unsigned long npages);
+
+#endif /* _IOMMU_COMMON_H */

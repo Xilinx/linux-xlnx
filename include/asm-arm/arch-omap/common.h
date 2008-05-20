@@ -27,10 +27,24 @@
 #ifndef __ARCH_ARM_MACH_OMAP_COMMON_H
 #define __ARCH_ARM_MACH_OMAP_COMMON_H
 
+#include <linux/i2c.h>
+
 struct sys_timer;
 
 extern void omap_map_common_io(void);
 extern struct sys_timer omap_timer;
 extern void omap_serial_init(void);
+#ifdef CONFIG_I2C_OMAP
+extern int omap_register_i2c_bus(int bus_id, u32 clkrate,
+				 struct i2c_board_info const *info,
+				 unsigned len);
+#else
+static inline int omap_register_i2c_bus(int bus_id, u32 clkrate,
+				 struct i2c_board_info const *info,
+				 unsigned len)
+{
+	return 0;
+}
+#endif
 
 #endif /* __ARCH_ARM_MACH_OMAP_COMMON_H */

@@ -9,7 +9,6 @@
  */
 
 #include <linux/fs.h>
-#include <linux/ufs_fs.h>
 #include <linux/stat.h>
 #include <linux/time.h>
 #include <linux/string.h>
@@ -19,6 +18,7 @@
 #include <linux/bitops.h>
 #include <asm/byteorder.h>
 
+#include "ufs_fs.h"
 #include "ufs.h"
 #include "swab.h"
 #include "util.h"
@@ -315,8 +315,8 @@ static void ufs_change_blocknr(struct inode *inode, sector_t beg,
 			}
 
 			UFSD(" change from %llu to %llu, pos %u\n",
-			     (unsigned long long)pos + oldb,
-			     (unsigned long long)pos + newb, pos);
+			     (unsigned long long)(pos + oldb),
+			     (unsigned long long)(pos + newb), pos);
 
 			bh->b_blocknr = newb + pos;
 			unmap_underlying_metadata(bh->b_bdev,

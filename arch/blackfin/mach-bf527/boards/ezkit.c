@@ -8,7 +8,7 @@
  *
  * Modified:
  *               Copyright 2005 National ICT Australia (NICTA)
- *               Copyright 2004-2007 Analog Devices Inc.
+ *               Copyright 2004-2008 Analog Devices Inc.
  *
  * Bugs:         Enter bugs at http://blackfin.uclinux.org/
  *
@@ -37,10 +37,13 @@
 #if defined(CONFIG_USB_ISP1362_HCD) || defined(CONFIG_USB_ISP1362_HCD_MODULE)
 #include <linux/usb/isp1362.h>
 #endif
-#include <linux/pata_platform.h>
+#include <linux/ata_platform.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/usb/sl811.h>
+#if defined(CONFIG_USB_MUSB_HDRC) || defined(CONFIG_USB_MUSB_HDRC_MODULE)
+#include <linux/usb/musb.h>
+#endif
 #include <asm/cplb.h>
 #include <asm/dma.h>
 #include <asm/bfin5xx_spi.h>
@@ -105,6 +108,69 @@ void __exit bfin_isp1761_exit(void)
 arch_initcall(bfin_isp1761_init);
 #endif
 
+#if defined(CONFIG_USB_MUSB_HDRC) || defined(CONFIG_USB_MUSB_HDRC_MODULE)
+static struct resource musb_resources[] = {
+	[0] = {
+		.start	= 0xffc03800,
+		.end	= 0xffc03cff,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {	/* general IRQ */
+		.start	= IRQ_USB_INT0,
+		.end	= IRQ_USB_INT0,
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+	},
+	[2] = {	/* DMA IRQ */
+		.start	= IRQ_USB_DMA,
+		.end	= IRQ_USB_DMA,
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+	},
+};
+
+static struct musb_hdrc_platform_data musb_plat = {
+#if defined(CONFIG_USB_MUSB_OTG)
+	.mode		= MUSB_OTG,
+#elif defined(CONFIG_USB_MUSB_HDRC_HCD)
+	.mode		= MUSB_HOST,
+#elif defined(CONFIG_USB_GADGET_MUSB_HDRC)
+	.mode		= MUSB_PERIPHERAL,
+#endif
+	.multipoint	= 0,
+};
+
+static u64 musb_dmamask = ~(u32)0;
+
+static struct platform_device musb_device = {
+	.name		= "musb_hdrc",
+	.id		= 0,
+	.dev = {
+		.dma_mask		= &musb_dmamask,
+		.coherent_dma_mask	= 0xffffffff,
+		.platform_data		= &musb_plat,
+	},
+	.num_resources	= ARRAY_SIZE(musb_resources),
+	.resource	= musb_resources,
+};
+#endif
+
+#if defined(CONFIG_FB_BFIN_T350MCQB) || defined(CONFIG_FB_BFIN_T350MCQB_MODULE)
+
+static struct resource bf52x_t350mcqb_resources[] = {
+	{
+		.start = IRQ_PPI_ERROR,
+		.end = IRQ_PPI_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device bf52x_t350mcqb_device = {
+	.name		= "bfin-t350mcqb",
+	.id		= -1,
+	.num_resources 	= ARRAY_SIZE(bf52x_t350mcqb_resources),
+	.resource 	= bf52x_t350mcqb_resources,
+};
+#endif
+
 #if defined(CONFIG_MTD_NAND_BF5XX) || defined(CONFIG_MTD_NAND_BF5XX_MODULE)
 static struct mtd_partition partition_info[] = {
 	{
@@ -114,8 +180,8 @@ static struct mtd_partition partition_info[] = {
 	},
 	{
 		.name = "File System",
-		.offset = 4 * SIZE_1M,
-		.size = (256 - 4) * SIZE_1M,
+		.offset = MTDPART_OFS_APPEND,
+		.size = MTDPART_SIZ_FULL,
 	},
 };
 
@@ -253,12 +319,7 @@ static struct resource sl811_hcd_resources[] = {
 void sl811_port_power(struct device *dev, int is_on)
 {
 	gpio_request(CONFIG_USB_SL811_BFIN_GPIO_VBUS, "usb:SL811_VBUS");
-	gpio_direction_output(CONFIG_USB_SL811_BFIN_GPIO_VBUS);
-
-	if (is_on)
-		gpio_set_value(CONFIG_USB_SL811_BFIN_GPIO_VBUS, 1);
-	else
-		gpio_set_value(CONFIG_USB_SL811_BFIN_GPIO_VBUS, 0);
+	gpio_direction_output(CONFIG_USB_SL811_BFIN_GPIO_VBUS, is_on);
 }
 #endif
 
@@ -361,11 +422,11 @@ static struct mtd_partition bfin_spi_flash_partitions[] = {
 	}, {
 		.name = "kernel",
 		.size = 0xe0000,
-		.offset = 0x20000
+		.offset = MTDPART_OFS_APPEND,
 	}, {
 		.name = "file system",
-		.size = 0x700000,
-		.offset = 0x00100000,
+		.size = MTDPART_SIZ_FULL,
+		.offset = MTDPART_OFS_APPEND,
 	}
 };
 
@@ -423,13 +484,6 @@ static struct bfin5xx_spi_chip spi_si3xxx_chip_info = {
 };
 #endif
 
-#if defined(CONFIG_AD5304) || defined(CONFIG_AD5304_MODULE)
-static struct bfin5xx_spi_chip ad5304_chip_info = {
-	.enable_dma = 0,
-	.bits_per_word = 16,
-};
-#endif
-
 #if defined(CONFIG_TOUCHSCREEN_AD7877) || defined(CONFIG_TOUCHSCREEN_AD7877_MODULE)
 static struct bfin5xx_spi_chip spi_ad7877_chip_info = {
 	.enable_dma = 0,
@@ -458,6 +512,14 @@ static struct bfin5xx_spi_chip spi_wm8731_chip_info = {
 	.bits_per_word = 16,
 };
 #endif
+
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+static struct bfin5xx_spi_chip spidev_chip_info = {
+	.enable_dma = 0,
+	.bits_per_word = 8,
+};
+#endif
+
 static struct spi_board_info bfin_spi_board_info[] __initdata = {
 #if defined(CONFIG_MTD_M25P80) \
 	|| defined(CONFIG_MTD_M25P80_MODULE)
@@ -542,17 +604,6 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 		.mode = SPI_MODE_3,
 	},
 #endif
-#if defined(CONFIG_AD5304) || defined(CONFIG_AD5304_MODULE)
-	{
-		.modalias = "ad5304_spi",
-		.max_speed_hz = 1250000,     /* max spi clock (SCK) speed in HZ */
-		.bus_num = 0,
-		.chip_select = 2,
-		.platform_data = NULL,
-		.controller_data = &ad5304_chip_info,
-		.mode = SPI_MODE_2,
-	},
-#endif
 #if defined(CONFIG_TOUCHSCREEN_AD7877) || defined(CONFIG_TOUCHSCREEN_AD7877_MODULE)
 	{
 		.modalias		= "ad7877",
@@ -573,6 +624,15 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 		.chip_select    = 5,
 		.controller_data = &spi_wm8731_chip_info,
 		.mode = SPI_MODE_0,
+	},
+#endif
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+	{
+		.modalias = "spidev",
+		.max_speed_hz = 3125000,     /* max spi clock (SCK) speed in HZ */
+		.bus_num = 0,
+		.chip_select = 1,
+		.controller_data = &spidev_chip_info,
 	},
 #endif
 };
@@ -718,6 +778,41 @@ static struct platform_device bfin_pata_device = {
 };
 #endif
 
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+#include <linux/input.h>
+#include <linux/gpio_keys.h>
+
+static struct gpio_keys_button bfin_gpio_keys_table[] = {
+	{BTN_0, GPIO_PG0, 1, "gpio-keys: BTN0"},
+	{BTN_1, GPIO_PG13, 1, "gpio-keys: BTN1"},
+};
+
+static struct gpio_keys_platform_data bfin_gpio_keys_data = {
+	.buttons        = bfin_gpio_keys_table,
+	.nbuttons       = ARRAY_SIZE(bfin_gpio_keys_table),
+};
+
+static struct platform_device bfin_device_gpiokeys = {
+	.name      = "gpio-keys",
+	.dev = {
+		.platform_data = &bfin_gpio_keys_data,
+	},
+};
+#endif
+
+static struct resource bfin_gpios_resources = {
+	.start = 0,
+	.end   = MAX_BLACKFIN_GPIOS - 1,
+	.flags = IORESOURCE_IRQ,
+};
+
+static struct platform_device bfin_gpios_device = {
+	.name = "simple-gpio",
+	.id = -1,
+	.num_resources = 1,
+	.resource = &bfin_gpios_resources,
+};
+
 static struct platform_device *stamp_devices[] __initdata = {
 #if defined(CONFIG_MTD_NAND_BF5XX) || defined(CONFIG_MTD_NAND_BF5XX_MODULE)
 	&bf5xx_nand_device,
@@ -737,6 +832,10 @@ static struct platform_device *stamp_devices[] __initdata = {
 
 #if defined(CONFIG_USB_ISP1362_HCD) || defined(CONFIG_USB_ISP1362_HCD_MODULE)
 	&isp1362_hcd_device,
+#endif
+
+#if defined(CONFIG_USB_MUSB_HDRC) || defined(CONFIG_USB_MUSB_HDRC_MODULE)
+	&musb_device,
 #endif
 
 #if defined(CONFIG_SMC91X) || defined(CONFIG_SMC91X_MODULE)
@@ -763,6 +862,10 @@ static struct platform_device *stamp_devices[] __initdata = {
 	&bfin_fb_device,
 #endif
 
+#if defined(CONFIG_FB_BFIN_T350MCQB) || defined(CONFIG_FB_BFIN_T350MCQB_MODULE)
+	&bf52x_t350mcqb_device,
+#endif
+
 #if defined(CONFIG_FB_BFIN_7393) || defined(CONFIG_FB_BFIN_7393_MODULE)
 	&bfin_fb_adv7393_device,
 #endif
@@ -783,6 +886,12 @@ static struct platform_device *stamp_devices[] __initdata = {
 #if defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
 	&bfin_pata_device,
 #endif
+
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+	&bfin_device_gpiokeys,
+#endif
+
+	&bfin_gpios_device,
 };
 
 static int __init stamp_init(void)
@@ -809,13 +918,18 @@ void native_machine_restart(char *cmd)
 		bfin_gpio_reset_spi0_ssel1();
 }
 
-/*
- * Currently the MAC address is saved in Flash by U-Boot
- */
-#define FLASH_MAC	0x203f0000
 void bfin_get_ether_addr(char *addr)
 {
-	*(u32 *)(&(addr[0])) = bfin_read32(FLASH_MAC);
-	*(u16 *)(&(addr[4])) = bfin_read16(FLASH_MAC + 4);
+	/* the MAC is stored in OTP memory page 0xDF */
+	u32 ret;
+	u64 otp_mac;
+	u32 (*otp_read)(u32 page, u32 flags, u64 *page_content) = (void *)0xEF00001A;
+
+	ret = otp_read(0xDF, 0x00, &otp_mac);
+	if (!(ret & 0x1)) {
+		char *otp_mac_p = (char *)&otp_mac;
+		for (ret = 0; ret < 6; ++ret)
+			addr[ret] = otp_mac_p[5 - ret];
+	}
 }
 EXPORT_SYMBOL(bfin_get_ether_addr);

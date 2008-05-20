@@ -47,7 +47,7 @@
 #endif
 
 #ifdef CONFIG_TPS65010
-#include <asm/arch/tps65010.h>
+#include <linux/i2c/tps65010.h>
 #else
 
 #define LOW	0
@@ -544,3 +544,4 @@ static struct platform_driver ohci_hcd_omap_driver = {
 	},
 };
 
+MODULE_ALIAS("platform:ohci");

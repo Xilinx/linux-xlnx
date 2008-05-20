@@ -12,7 +12,6 @@
 #define	mcfuart_h
 /****************************************************************************/
 
-
 /*
  *	Define the base address of the UARTS within the MBAR address
  *	space.
@@ -20,7 +19,7 @@
 #if defined(CONFIG_M5272)
 #define	MCFUART_BASE1		0x100		/* Base address of UART1 */
 #define	MCFUART_BASE2		0x140		/* Base address of UART2 */
-#elif defined(CONFIG_M5204) || defined(CONFIG_M5206) || defined(CONFIG_M5206e)
+#elif defined(CONFIG_M5206) || defined(CONFIG_M5206e)
 #if defined(CONFIG_NETtel)
 #define	MCFUART_BASE1		0x180		/* Base address of UART1 */
 #define	MCFUART_BASE2		0x140		/* Base address of UART2 */
@@ -33,7 +32,7 @@
 #define MCFUART_BASE2		0x240           /* Base address of UART2 */
 #define MCFUART_BASE3		0x280           /* Base address of UART3 */
 #elif defined(CONFIG_M5249) || defined(CONFIG_M5307) || defined(CONFIG_M5407)
-#if defined(CONFIG_NETtel) || defined(CONFIG_DISKtel) || defined(CONFIG_SECUREEDGEMP3)
+#if defined(CONFIG_NETtel) || defined(CONFIG_SECUREEDGEMP3)
 #define MCFUART_BASE1		0x200           /* Base address of UART1 */
 #define MCFUART_BASE2		0x1c0           /* Base address of UART2 */
 #else
@@ -72,7 +71,7 @@ struct mcf_platform_uart {
 #define	MCFUART_UTB		0x0c		/* Transmit Buffer (w) */
 #define	MCFUART_UIPCR		0x10		/* Input Port Change (r) */
 #define	MCFUART_UACR		0x10		/* Auxiliary Control (w) */
-#define	MCFUART_UISR		0x14		/* Interrup Status (r) */
+#define	MCFUART_UISR		0x14		/* Interrupt Status (r) */
 #define	MCFUART_UIMR		0x14		/* Interrupt Mask (w) */
 #define	MCFUART_UBG1		0x18		/* Baud Rate MSB (r/w) */
 #define	MCFUART_UBG2		0x1c		/* Baud Rate LSB (r/w) */

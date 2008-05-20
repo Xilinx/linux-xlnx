@@ -216,7 +216,7 @@ void sq_unmap(unsigned long vaddr)
 
 	if (unlikely(!map)) {
 		printk("%s: bad store queue address 0x%08lx\n",
-		       __FUNCTION__, vaddr);
+		       __func__, vaddr);
 		return;
 	}
 
@@ -233,7 +233,7 @@ void sq_unmap(unsigned long vaddr)
 		vma = remove_vm_area((void *)(map->sq_addr & PAGE_MASK));
 		if (!vma) {
 			printk(KERN_ERR "%s: bad address 0x%08lx\n",
-			       __FUNCTION__, map->sq_addr);
+			       __func__, map->sq_addr);
 			return;
 		}
 	}
@@ -263,7 +263,7 @@ struct sq_sysfs_attr {
 	ssize_t (*store)(const char *buf, size_t count);
 };
 
-#define to_sq_sysfs_attr(attr)	container_of(attr, struct sq_sysfs_attr, attr)
+#define to_sq_sysfs_attr(a)	container_of(a, struct sq_sysfs_attr, attr)
 
 static ssize_t sq_sysfs_show(struct kobject *kobj, struct attribute *attr,
 			     char *buf)
@@ -341,17 +341,18 @@ static int __devinit sq_sysdev_add(struct sys_device *sysdev)
 {
 	unsigned int cpu = sysdev->id;
 	struct kobject *kobj;
+	int error;
 
 	sq_kobject[cpu] = kzalloc(sizeof(struct kobject), GFP_KERNEL);
 	if (unlikely(!sq_kobject[cpu]))
 		return -ENOMEM;
 
 	kobj = sq_kobject[cpu];
-	kobj->parent = &sysdev->kobj;
-	kobject_set_name(kobj, "%s", "sq");
-	kobj->ktype = &ktype_percpu_entry;
-
-	return kobject_register(kobj);
+	error = kobject_init_and_add(kobj, &ktype_percpu_entry, &sysdev->kobj,
+				     "%s", "sq");
+	if (!error)
+		kobject_uevent(kobj, KOBJ_ADD);
+	return error;
 }
 
 static int __devexit sq_sysdev_remove(struct sys_device *sysdev)
@@ -359,7 +360,7 @@ static int __devexit sq_sysdev_remove(struct sys_device *sysdev)
 	unsigned int cpu = sysdev->id;
 	struct kobject *kobj = sq_kobject[cpu];
 
-	kobject_unregister(kobj);
+	kobject_put(kobj);
 	return 0;
 }
 

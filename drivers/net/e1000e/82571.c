@@ -194,6 +194,8 @@ static s32 e1000_init_mac_params_82571(struct e1000_adapter *adapter)
 		break;
 	case E1000_DEV_ID_82571EB_SERDES:
 	case E1000_DEV_ID_82572EI_SERDES:
+	case E1000_DEV_ID_82571EB_SERDES_DUAL:
+	case E1000_DEV_ID_82571EB_SERDES_QUAD:
 		hw->media_type = e1000_media_type_internal_serdes;
 		break;
 	default:
@@ -260,6 +262,7 @@ static s32 e1000_get_invariants_82571(struct e1000_adapter *adapter)
 	case E1000_DEV_ID_82571EB_QUAD_COPPER:
 	case E1000_DEV_ID_82571EB_QUAD_FIBER:
 	case E1000_DEV_ID_82571EB_QUAD_COPPER_LP:
+	case E1000_DEV_ID_82571PT_QUAD_COPPER:
 		adapter->flags |= FLAG_IS_QUAD_PORT;
 		/* mark the first port */
 		if (global_quad_port_a == 0)
@@ -284,6 +287,9 @@ static s32 e1000_get_invariants_82571(struct e1000_adapter *adapter)
 		/* quad ports only support WoL on port A */
 		if (adapter->flags & FLAG_IS_QUAD_PORT &&
 		    (!(adapter->flags & FLAG_IS_QUAD_PORT_A)))
+			adapter->flags &= ~FLAG_HAS_WOL;
+		/* Does not support WoL on any port */
+		if (pdev->device == E1000_DEV_ID_82571EB_SERDES_QUAD)
 			adapter->flags &= ~FLAG_HAS_WOL;
 		break;
 
@@ -432,7 +438,7 @@ static void e1000_release_nvm_82571(struct e1000_hw *hw)
  *  For non-82573 silicon, write data to EEPROM at offset using SPI interface.
  *
  *  If e1000e_update_nvm_checksum is not called after this function, the
- *  EEPROM will most likley contain an invalid checksum.
+ *  EEPROM will most likely contain an invalid checksum.
  **/
 static s32 e1000_write_nvm_82571(struct e1000_hw *hw, u16 offset, u16 words,
 				 u16 *data)
@@ -541,7 +547,7 @@ static s32 e1000_validate_nvm_checksum_82571(struct e1000_hw *hw)
  *  poll for completion.
  *
  *  If e1000e_update_nvm_checksum is not called after this function, the
- *  EEPROM will most likley contain an invalid checksum.
+ *  EEPROM will most likely contain an invalid checksum.
  **/
 static s32 e1000_write_nvm_eewr_82571(struct e1000_hw *hw, u16 offset,
 				      u16 words, u16 *data)
@@ -751,6 +757,10 @@ static s32 e1000_reset_hw_82571(struct e1000_hw *hw)
 	/* Clear any pending interrupt events. */
 	ew32(IMC, 0xffffffff);
 	icr = er32(ICR);
+
+	if (hw->mac.type == e1000_82571 &&
+		hw->dev_spec.e82571.alt_mac_addr_is_present)
+			e1000e_set_laa_state_82571(hw, true);
 
 	return 0;
 }
@@ -1043,7 +1053,7 @@ static s32 e1000_setup_fiber_serdes_link_82571(struct e1000_hw *hw)
 		/* If SerDes loopback mode is entered, there is no form
 		 * of reset to take the adapter out of that mode.  So we
 		 * have to explicitly take the adapter out of loopback
-		 * mode.  This prevents drivers from twidling their thumbs
+		 * mode.  This prevents drivers from twiddling their thumbs
 		 * if another tool failed to take it out of loopback mode.
 		 */
 		ew32(SCTL,
@@ -1088,7 +1098,7 @@ static s32 e1000_valid_led_default_82571(struct e1000_hw *hw, u16 *data)
  *  e1000e_get_laa_state_82571 - Get locally administered address state
  *  @hw: pointer to the HW structure
  *
- *  Retrieve and return the current locally administed address state.
+ *  Retrieve and return the current locally administered address state.
  **/
 bool e1000e_get_laa_state_82571(struct e1000_hw *hw)
 {
@@ -1103,7 +1113,7 @@ bool e1000e_get_laa_state_82571(struct e1000_hw *hw)
  *  @hw: pointer to the HW structure
  *  @state: enable/disable locally administered address
  *
- *  Enable/Disable the current locally administed address state.
+ *  Enable/Disable the current locally administers address state.
  **/
 void e1000e_set_laa_state_82571(struct e1000_hw *hw, bool state)
 {
@@ -1271,16 +1281,6 @@ static struct e1000_phy_operations e82_phy_ops_m88 = {
 
 static struct e1000_nvm_operations e82571_nvm_ops = {
 	.acquire_nvm		= e1000_acquire_nvm_82571,
-	.read_nvm		= e1000e_read_nvm_spi,
-	.release_nvm		= e1000_release_nvm_82571,
-	.update_nvm		= e1000_update_nvm_checksum_82571,
-	.valid_led_default	= e1000_valid_led_default_82571,
-	.validate_nvm		= e1000_validate_nvm_checksum_82571,
-	.write_nvm		= e1000_write_nvm_82571,
-};
-
-static struct e1000_nvm_operations e82573_nvm_ops = {
-	.acquire_nvm		= e1000_acquire_nvm_82571,
 	.read_nvm		= e1000e_read_nvm_eerd,
 	.release_nvm		= e1000_release_nvm_82571,
 	.update_nvm		= e1000_update_nvm_checksum_82571,
@@ -1339,13 +1339,12 @@ struct e1000_info e1000_82573_info = {
 				  | FLAG_HAS_STATS_ICR_ICT
 				  | FLAG_HAS_SMART_POWER_DOWN
 				  | FLAG_HAS_AMT
-				  | FLAG_HAS_ASPM
 				  | FLAG_HAS_ERT
 				  | FLAG_HAS_SWSM_ON_LOAD,
 	.pba			= 20,
 	.get_invariants		= e1000_get_invariants_82571,
 	.mac_ops		= &e82571_mac_ops,
 	.phy_ops		= &e82_phy_ops_m88,
-	.nvm_ops		= &e82573_nvm_ops,
+	.nvm_ops		= &e82571_nvm_ops,
 };
 

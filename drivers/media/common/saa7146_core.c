@@ -306,25 +306,22 @@ static irqreturn_t interrupt_hw(int irq, void *dev_id)
 		return IRQ_NONE;
 	}
 
-	if( 0 != (dev->ext)) {
-		if( 0 != (dev->ext->irq_mask & isr )) {
-			if( 0 != dev->ext->irq_func ) {
+	if (dev->ext) {
+		if (dev->ext->irq_mask & isr) {
+			if (dev->ext->irq_func)
 				dev->ext->irq_func(dev, &isr);
-			}
 			isr &= ~dev->ext->irq_mask;
 		}
 	}
 	if (0 != (isr & (MASK_27))) {
 		DEB_INT(("irq: RPS0 (0x%08x).\n",isr));
-		if( 0 != dev->vv_data && 0 != dev->vv_callback) {
+		if (dev->vv_data && dev->vv_callback)
 			dev->vv_callback(dev,isr);
-		}
 		isr &= ~MASK_27;
 	}
 	if (0 != (isr & (MASK_28))) {
-		if( 0 != dev->vv_data && 0 != dev->vv_callback) {
+		if (dev->vv_data && dev->vv_callback)
 			dev->vv_callback(dev,isr);
-		}
 		isr &= ~MASK_28;
 	}
 	if (0 != (isr & (MASK_16|MASK_17))) {
@@ -388,7 +385,7 @@ static int saa7146_init_one(struct pci_dev *pci, const struct pci_device_id *ent
 	}
 	dev->revision &= 0xf;
 
-	/* remap the memory from virtual to physical adress */
+	/* remap the memory from virtual to physical address */
 
 	err = pci_request_region(pci, 0, "saa7146");
 	if (err < 0)

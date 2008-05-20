@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2006 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2008 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -125,15 +125,26 @@ lpfc_vport_sparm(struct lpfc_hba *phba, struct lpfc_vport *vport)
 	pmb->vport = vport;
 	rc = lpfc_sli_issue_mbox_wait(phba, pmb, phba->fc_ratov * 2);
 	if (rc != MBX_SUCCESS) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT | LOG_VPORT,
-				 "1818 VPort failed init, mbxCmd x%x "
-				 "READ_SPARM mbxStatus x%x, rc = x%x\n",
-				 mb->mbxCommand, mb->mbxStatus, rc);
-		lpfc_mbuf_free(phba, mp->virt, mp->phys);
-		kfree(mp);
-		if (rc != MBX_TIMEOUT)
-			mempool_free(pmb, phba->mbox_mem_pool);
-		return -EIO;
+		if (signal_pending(current)) {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT | LOG_VPORT,
+					 "1830 Signal aborted mbxCmd x%x\n",
+					 mb->mbxCommand);
+			lpfc_mbuf_free(phba, mp->virt, mp->phys);
+			kfree(mp);
+			if (rc != MBX_TIMEOUT)
+				mempool_free(pmb, phba->mbox_mem_pool);
+			return -EINTR;
+		} else {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT | LOG_VPORT,
+					 "1818 VPort failed init, mbxCmd x%x "
+					 "READ_SPARM mbxStatus x%x, rc = x%x\n",
+					 mb->mbxCommand, mb->mbxStatus, rc);
+			lpfc_mbuf_free(phba, mp->virt, mp->phys);
+			kfree(mp);
+			if (rc != MBX_TIMEOUT)
+				mempool_free(pmb, phba->mbox_mem_pool);
+			return -EIO;
+		}
 	}
 
 	memcpy(&vport->fc_sparam, mp->virt, sizeof (struct serv_parm));
@@ -204,6 +215,7 @@ lpfc_vport_create(struct fc_vport *fc_vport, bool disable)
 	int instance;
 	int vpi;
 	int rc = VPORT_ERROR;
+	int status;
 
 	if ((phba->sli_rev < 3) ||
 		!(phba->sli3_options & LPFC_SLI3_NPIV_ENABLED)) {
@@ -248,13 +260,19 @@ lpfc_vport_create(struct fc_vport *fc_vport, bool disable)
 	vport->vpi = vpi;
 	lpfc_debugfs_initialize(vport);
 
-	if (lpfc_vport_sparm(phba, vport)) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_VPORT,
-				 "1813 Create VPORT failed. "
-				 "Cannot get sparam\n");
+	if ((status = lpfc_vport_sparm(phba, vport))) {
+		if (status == -EINTR) {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_VPORT,
+					 "1831 Create VPORT Interrupted.\n");
+			rc = VPORT_ERROR;
+		} else {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_VPORT,
+					 "1813 Create VPORT failed. "
+					 "Cannot get sparam\n");
+			rc = VPORT_NORESOURCES;
+		}
 		lpfc_free_vpi(phba, vpi);
 		destroy_port(vport);
-		rc = VPORT_NORESOURCES;
 		goto error_out;
 	}
 
@@ -309,7 +327,8 @@ lpfc_vport_create(struct fc_vport *fc_vport, bool disable)
 	 * up and ready to FDISC.
 	 */
 	ndlp = lpfc_findnode_did(phba->pport, Fabric_DID);
-	if (ndlp && ndlp->nlp_state == NLP_STE_UNMAPPED_NODE) {
+	if (ndlp && NLP_CHK_NODE_ACT(ndlp) &&
+	    ndlp->nlp_state == NLP_STE_UNMAPPED_NODE) {
 		if (phba->link_flag & LS_NPIV_FAB_SUPPORTED) {
 			lpfc_set_disctmo(vport);
 			lpfc_initial_fdisc(vport);
@@ -340,7 +359,8 @@ disable_vport(struct fc_vport *fc_vport)
 	long timeout;
 
 	ndlp = lpfc_findnode_did(vport, Fabric_DID);
-	if (ndlp && phba->link_state >= LPFC_LINK_UP) {
+	if (ndlp && NLP_CHK_NODE_ACT(ndlp)
+	    && phba->link_state >= LPFC_LINK_UP) {
 		vport->unreg_vpi_cmpl = VPORT_INVAL;
 		timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
 		if (!lpfc_issue_els_npiv_logo(vport, ndlp))
@@ -354,6 +374,8 @@ disable_vport(struct fc_vport *fc_vport)
 	 * calling lpfc_cleanup_rpis(vport, 1)
 	 */
 	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
+		if (!NLP_CHK_NODE_ACT(ndlp))
+			continue;
 		if (ndlp->nlp_state == NLP_STE_UNUSED_NODE)
 			continue;
 		lpfc_disc_state_machine(vport, ndlp, NULL,
@@ -396,7 +418,8 @@ enable_vport(struct fc_vport *fc_vport)
 	 * up and ready to FDISC.
 	 */
 	ndlp = lpfc_findnode_did(phba->pport, Fabric_DID);
-	if (ndlp && ndlp->nlp_state == NLP_STE_UNMAPPED_NODE) {
+	if (ndlp && NLP_CHK_NODE_ACT(ndlp)
+	    && ndlp->nlp_state == NLP_STE_UNMAPPED_NODE) {
 		if (phba->link_flag & LS_NPIV_FAB_SUPPORTED) {
 			lpfc_set_disctmo(vport);
 			lpfc_initial_fdisc(vport);
@@ -427,7 +450,6 @@ int
 lpfc_vport_delete(struct fc_vport *fc_vport)
 {
 	struct lpfc_nodelist *ndlp = NULL;
-	struct lpfc_nodelist *next_ndlp;
 	struct Scsi_Host *shost = (struct Scsi_Host *) fc_vport->shost;
 	struct lpfc_vport *vport = *(struct lpfc_vport **)fc_vport->dd_data;
 	struct lpfc_hba   *phba = vport->phba;
@@ -481,9 +503,53 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 	scsi_remove_host(lpfc_shost_from_vport(vport));
 
 	ndlp = lpfc_findnode_did(phba->pport, Fabric_DID);
-	if (ndlp && ndlp->nlp_state == NLP_STE_UNMAPPED_NODE &&
-		phba->link_state >= LPFC_LINK_UP) {
 
+	/* In case of driver unload, we shall not perform fabric logo as the
+	 * worker thread already stopped at this stage and, in this case, we
+	 * can safely skip the fabric logo.
+	 */
+	if (phba->pport->load_flag & FC_UNLOADING) {
+		if (ndlp && NLP_CHK_NODE_ACT(ndlp) &&
+		    ndlp->nlp_state == NLP_STE_UNMAPPED_NODE &&
+		    phba->link_state >= LPFC_LINK_UP) {
+			/* First look for the Fabric ndlp */
+			ndlp = lpfc_findnode_did(vport, Fabric_DID);
+			if (!ndlp)
+				goto skip_logo;
+			else if (!NLP_CHK_NODE_ACT(ndlp)) {
+				ndlp = lpfc_enable_node(vport, ndlp,
+							NLP_STE_UNUSED_NODE);
+				if (!ndlp)
+					goto skip_logo;
+			}
+			/* Remove ndlp from vport npld list */
+			lpfc_dequeue_node(vport, ndlp);
+
+			/* Indicate free memory when release */
+			spin_lock_irq(&phba->ndlp_lock);
+			NLP_SET_FREE_REQ(ndlp);
+			spin_unlock_irq(&phba->ndlp_lock);
+			/* Kick off release ndlp when it can be safely done */
+			lpfc_nlp_put(ndlp);
+		}
+		goto skip_logo;
+	}
+
+	/* Otherwise, we will perform fabric logo as needed */
+	if (ndlp && NLP_CHK_NODE_ACT(ndlp) &&
+	    ndlp->nlp_state == NLP_STE_UNMAPPED_NODE &&
+	    phba->link_state >= LPFC_LINK_UP) {
+		if (vport->cfg_enable_da_id) {
+			timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
+			if (!lpfc_ns_cmd(vport, SLI_CTNS_DA_ID, 0, 0))
+				while (vport->ct_flags && timeout)
+					timeout = schedule_timeout(timeout);
+			else
+				lpfc_printf_log(vport->phba, KERN_WARNING,
+						LOG_VPORT,
+						"1829 CT command failed to "
+						"delete objects on fabric. \n");
+		}
 		/* First look for the Fabric ndlp */
 		ndlp = lpfc_findnode_did(vport, Fabric_DID);
 		if (!ndlp) {
@@ -492,8 +558,27 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 			if (!ndlp)
 				goto skip_logo;
 			lpfc_nlp_init(vport, ndlp, Fabric_DID);
+			/* Indicate free memory when release */
+			NLP_SET_FREE_REQ(ndlp);
 		} else {
+			if (!NLP_CHK_NODE_ACT(ndlp))
+				ndlp = lpfc_enable_node(vport, ndlp,
+						NLP_STE_UNUSED_NODE);
+				if (!ndlp)
+					goto skip_logo;
+
+			/* Remove ndlp from vport npld list */
 			lpfc_dequeue_node(vport, ndlp);
+			spin_lock_irq(&phba->ndlp_lock);
+			if (!NLP_CHK_FREE_REQ(ndlp))
+				/* Indicate free memory when release */
+				NLP_SET_FREE_REQ(ndlp);
+			else {
+				/* Skip this if ndlp is already in free mode */
+				spin_unlock_irq(&phba->ndlp_lock);
+				goto skip_logo;
+			}
+			spin_unlock_irq(&phba->ndlp_lock);
 		}
 		vport->unreg_vpi_cmpl = VPORT_INVAL;
 		timeout = msecs_to_jiffies(phba->fc_ratov * 2000);
@@ -503,23 +588,20 @@ lpfc_vport_delete(struct fc_vport *fc_vport)
 	}
 
 skip_logo:
+	lpfc_cleanup(vport);
 	lpfc_sli_host_down(vport);
 
-	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-		lpfc_disc_state_machine(vport, ndlp, NULL,
-					     NLP_EVT_DEVICE_RECOVERY);
-		lpfc_disc_state_machine(vport, ndlp, NULL,
-					     NLP_EVT_DEVICE_RM);
-	}
-
 	lpfc_stop_vport_timers(vport);
-	lpfc_unreg_all_rpis(vport);
-	lpfc_unreg_default_rpis(vport);
-	/*
-	 * Completion of unreg_vpi (lpfc_mbx_cmpl_unreg_vpi) does the
-	 * scsi_host_put() to release the vport.
-	 */
-	lpfc_mbx_unreg_vpi(vport);
+
+	if (!(phba->pport->load_flag & FC_UNLOADING)) {
+		lpfc_unreg_all_rpis(vport);
+		lpfc_unreg_default_rpis(vport);
+		/*
+		 * Completion of unreg_vpi (lpfc_mbx_cmpl_unreg_vpi)
+		 * does the scsi_host_put() to release the vport.
+		 */
+		lpfc_mbx_unreg_vpi(vport);
+	}
 
 	lpfc_free_vpi(phba, vport->vpi);
 	vport->work_port_events = 0;
@@ -532,16 +614,13 @@ skip_logo:
 	return VPORT_OK;
 }
 
-EXPORT_SYMBOL(lpfc_vport_create);
-EXPORT_SYMBOL(lpfc_vport_delete);
-
 struct lpfc_vport **
 lpfc_create_vport_work_array(struct lpfc_hba *phba)
 {
 	struct lpfc_vport *port_iterator;
 	struct lpfc_vport **vports;
 	int index = 0;
-	vports = kzalloc(LPFC_MAX_VPORTS * sizeof(struct lpfc_vport *),
+	vports = kzalloc((phba->max_vpi + 1) * sizeof(struct lpfc_vport *),
 			 GFP_KERNEL);
 	if (vports == NULL)
 		return NULL;
@@ -560,12 +639,12 @@ lpfc_create_vport_work_array(struct lpfc_hba *phba)
 }
 
 void
-lpfc_destroy_vport_work_array(struct lpfc_vport **vports)
+lpfc_destroy_vport_work_array(struct lpfc_hba *phba, struct lpfc_vport **vports)
 {
 	int i;
 	if (vports == NULL)
 		return;
-	for (i=0; vports[i] != NULL && i < LPFC_MAX_VPORTS; i++)
+	for (i=0; vports[i] != NULL && i <= phba->max_vpi; i++)
 		scsi_host_put(lpfc_shost_from_vport(vports[i]));
 	kfree(vports);
 }

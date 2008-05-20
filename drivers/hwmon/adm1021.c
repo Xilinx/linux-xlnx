@@ -31,10 +31,8 @@
 
 
 /* Addresses to scan */
-static unsigned short normal_i2c[] = { 0x18, 0x19, 0x1a,
-					0x29, 0x2a, 0x2b,
-					0x4c, 0x4d, 0x4e,
-					I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = {
+	0x18, 0x19, 0x1a, 0x29, 0x2a, 0x2b, 0x4c, 0x4d, 0x4e, I2C_CLIENT_END };
 
 /* Insmod parameters */
 I2C_CLIENT_INSMOD_8(adm1021, adm1023, max1617, max1617a, thmc10, lm84, gl523sm,
@@ -115,7 +113,6 @@ static struct i2c_driver adm1021_driver = {
 	.driver = {
 		.name	= "adm1021",
 	},
-	.id		= I2C_DRIVERID_ADM1021,
 	.attach_adapter	= adm1021_attach_adapter,
 	.detach_client	= adm1021_detach_client,
 };

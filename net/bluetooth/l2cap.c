@@ -62,7 +62,7 @@ static u32 l2cap_feat_mask = 0x0000;
 static const struct proto_ops l2cap_sock_ops;
 
 static struct bt_sock_list l2cap_sk_list = {
-	.lock = RW_LOCK_UNLOCKED
+	.lock = __RW_LOCK_UNLOCKED(l2cap_sk_list.lock)
 };
 
 static void __l2cap_sock_close(struct sock *sk, int reason);
@@ -97,13 +97,6 @@ static void l2cap_sock_clear_timer(struct sock *sk)
 {
 	BT_DBG("sock %p state %d", sk, sk->sk_state);
 	sk_stop_timer(sk, &sk->sk_timer);
-}
-
-static void l2cap_sock_init_timer(struct sock *sk)
-{
-	init_timer(&sk->sk_timer);
-	sk->sk_timer.function = l2cap_sock_timeout;
-	sk->sk_timer.data = (unsigned long)sk;
 }
 
 /* ---- L2CAP channels ---- */
@@ -395,9 +388,7 @@ static struct l2cap_conn *l2cap_conn_add(struct hci_conn *hcon, u8 status)
 
 	conn->feat_mask = 0;
 
-	init_timer(&conn->info_timer);
-	conn->info_timer.function = l2cap_info_timeout;
-	conn->info_timer.data = (unsigned long) conn;
+	setup_timer(&conn->info_timer, l2cap_info_timeout, (unsigned long)conn);
 
 	spin_lock_init(&conn->lock);
 	rwlock_init(&conn->chan_list.lock);
@@ -425,6 +416,9 @@ static void l2cap_conn_del(struct hci_conn *hcon, int err)
 		bh_unlock_sock(sk);
 		l2cap_sock_kill(sk);
 	}
+
+	if (conn->info_state & L2CAP_INFO_FEAT_MASK_REQ_SENT)
+		del_timer_sync(&conn->info_timer);
 
 	hcon->l2cap_data = NULL;
 	kfree(conn);
@@ -622,7 +616,7 @@ static struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int p
 	sk->sk_protocol = proto;
 	sk->sk_state    = BT_OPEN;
 
-	l2cap_sock_init_timer(sk);
+	setup_timer(&sk->sk_timer, l2cap_sock_timeout, (unsigned long)sk);
 
 	bt_sock_link(&l2cap_sk_list, sk);
 	return sk;

@@ -2,6 +2,14 @@
     it87.c - Part of lm_sensors, Linux kernel modules for hardware
              monitoring.
 
+    The IT8705F is an LPC-based Super I/O part that contains UARTs, a
+    parallel port, an IR port, a MIDI port, a floppy controller, etc., in
+    addition to an Environment Controller (Enhanced Hardware Monitor and
+    Fan Controller)
+
+    This driver supports only the Environment Controller in the IT8705F and
+    similar parts.  The other devices are supported by different drivers.
+
     Supports: IT8705F  Super I/O chip w/LPC interface
               IT8712F  Super I/O chip w/LPC interface
               IT8716F  Super I/O chip w/LPC interface
@@ -9,8 +17,8 @@
               IT8726F  Super I/O chip w/LPC interface
               Sis950   A clone of the IT8705F
 
-    Copyright (C) 2001 Chris Gauthron <chrisg@0-in.com> 
-    Copyright (C) 2005-2006 Jean Delvare <khali@linux-fr.org>
+    Copyright (C) 2001 Chris Gauthron
+    Copyright (C) 2005-2007 Jean Delvare <khali@linux-fr.org>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -43,6 +51,10 @@
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718 };
+
+static unsigned short force_id;
+module_param(force_id, ushort, 0);
+MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
 static struct platform_device *pdev;
 
@@ -118,9 +130,15 @@ static int fix_pwm_polarity;
 /* Length of ISA address segment */
 #define IT87_EXTENT 8
 
-/* Where are the ISA address/data registers relative to the base address */
-#define IT87_ADDR_REG_OFFSET 5
-#define IT87_DATA_REG_OFFSET 6
+/* Length of ISA address segment for Environmental Controller */
+#define IT87_EC_EXTENT 2
+
+/* Offset of EC registers from ISA base address */
+#define IT87_EC_OFFSET 5
+
+/* Where are the ISA address/data registers relative to the EC base address */
+#define IT87_ADDR_REG_OFFSET 0
+#define IT87_DATA_REG_OFFSET 1
 
 /*----- The IT87 registers -----*/
 
@@ -762,6 +780,30 @@ static ssize_t show_alarms(struct device *dev, struct device_attribute *attr, ch
 }
 static DEVICE_ATTR(alarms, S_IRUGO, show_alarms, NULL);
 
+static ssize_t show_alarm(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	int bitnr = to_sensor_dev_attr(attr)->index;
+	struct it87_data *data = it87_update_device(dev);
+	return sprintf(buf, "%u\n", (data->alarms >> bitnr) & 1);
+}
+static SENSOR_DEVICE_ATTR(in0_alarm, S_IRUGO, show_alarm, NULL, 8);
+static SENSOR_DEVICE_ATTR(in1_alarm, S_IRUGO, show_alarm, NULL, 9);
+static SENSOR_DEVICE_ATTR(in2_alarm, S_IRUGO, show_alarm, NULL, 10);
+static SENSOR_DEVICE_ATTR(in3_alarm, S_IRUGO, show_alarm, NULL, 11);
+static SENSOR_DEVICE_ATTR(in4_alarm, S_IRUGO, show_alarm, NULL, 12);
+static SENSOR_DEVICE_ATTR(in5_alarm, S_IRUGO, show_alarm, NULL, 13);
+static SENSOR_DEVICE_ATTR(in6_alarm, S_IRUGO, show_alarm, NULL, 14);
+static SENSOR_DEVICE_ATTR(in7_alarm, S_IRUGO, show_alarm, NULL, 15);
+static SENSOR_DEVICE_ATTR(fan1_alarm, S_IRUGO, show_alarm, NULL, 0);
+static SENSOR_DEVICE_ATTR(fan2_alarm, S_IRUGO, show_alarm, NULL, 1);
+static SENSOR_DEVICE_ATTR(fan3_alarm, S_IRUGO, show_alarm, NULL, 2);
+static SENSOR_DEVICE_ATTR(fan4_alarm, S_IRUGO, show_alarm, NULL, 3);
+static SENSOR_DEVICE_ATTR(fan5_alarm, S_IRUGO, show_alarm, NULL, 6);
+static SENSOR_DEVICE_ATTR(temp1_alarm, S_IRUGO, show_alarm, NULL, 16);
+static SENSOR_DEVICE_ATTR(temp2_alarm, S_IRUGO, show_alarm, NULL, 17);
+static SENSOR_DEVICE_ATTR(temp3_alarm, S_IRUGO, show_alarm, NULL, 18);
+
 static ssize_t
 show_vrm_reg(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -823,6 +865,14 @@ static struct attribute *it87_attributes[] = {
 	&sensor_dev_attr_in5_max.dev_attr.attr,
 	&sensor_dev_attr_in6_max.dev_attr.attr,
 	&sensor_dev_attr_in7_max.dev_attr.attr,
+	&sensor_dev_attr_in0_alarm.dev_attr.attr,
+	&sensor_dev_attr_in1_alarm.dev_attr.attr,
+	&sensor_dev_attr_in2_alarm.dev_attr.attr,
+	&sensor_dev_attr_in3_alarm.dev_attr.attr,
+	&sensor_dev_attr_in4_alarm.dev_attr.attr,
+	&sensor_dev_attr_in5_alarm.dev_attr.attr,
+	&sensor_dev_attr_in6_alarm.dev_attr.attr,
+	&sensor_dev_attr_in7_alarm.dev_attr.attr,
 
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
 	&sensor_dev_attr_temp2_input.dev_attr.attr,
@@ -836,6 +886,9 @@ static struct attribute *it87_attributes[] = {
 	&sensor_dev_attr_temp1_type.dev_attr.attr,
 	&sensor_dev_attr_temp2_type.dev_attr.attr,
 	&sensor_dev_attr_temp3_type.dev_attr.attr,
+	&sensor_dev_attr_temp1_alarm.dev_attr.attr,
+	&sensor_dev_attr_temp2_alarm.dev_attr.attr,
+	&sensor_dev_attr_temp3_alarm.dev_attr.attr,
 
 	&dev_attr_alarms.attr,
 	&dev_attr_name.attr,
@@ -868,12 +921,21 @@ static struct attribute *it87_attributes_opt[] = {
 	&sensor_dev_attr_fan3_min.dev_attr.attr,
 	&sensor_dev_attr_fan3_div.dev_attr.attr,
 
+	&sensor_dev_attr_fan1_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan2_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan3_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan4_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan5_alarm.dev_attr.attr,
+
 	&sensor_dev_attr_pwm1_enable.dev_attr.attr,
 	&sensor_dev_attr_pwm2_enable.dev_attr.attr,
 	&sensor_dev_attr_pwm3_enable.dev_attr.attr,
 	&sensor_dev_attr_pwm1.dev_attr.attr,
 	&sensor_dev_attr_pwm2.dev_attr.attr,
 	&sensor_dev_attr_pwm3.dev_attr.attr,
+	&dev_attr_pwm1_freq.attr,
+	&dev_attr_pwm2_freq.attr,
+	&dev_attr_pwm3_freq.attr,
 
 	&dev_attr_vrm.attr,
 	&dev_attr_cpu0_vid.attr,
@@ -892,7 +954,7 @@ static int __init it87_find(unsigned short *address,
 	u16 chip_type;
 
 	superio_enter();
-	chip_type = superio_inw(DEVID);
+	chip_type = force_id ? force_id : superio_inw(DEVID);
 
 	switch (chip_type) {
 	case IT8705F_DEVID:
@@ -968,10 +1030,10 @@ static int __devinit it87_probe(struct platform_device *pdev)
 	};
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-	if (!request_region(res->start, IT87_EXTENT, DRVNAME)) {
+	if (!request_region(res->start, IT87_EC_EXTENT, DRVNAME)) {
 		dev_err(dev, "Failed to request region 0x%lx-0x%lx\n",
 			(unsigned long)res->start,
-			(unsigned long)(res->start + IT87_EXTENT - 1));
+			(unsigned long)(res->start + IT87_EC_EXTENT - 1));
 		err = -EBUSY;
 		goto ERROR0;
 	}
@@ -1013,35 +1075,45 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			if ((err = device_create_file(dev,
 			     &sensor_dev_attr_fan1_input16.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan1_min16.dev_attr)))
+			     &sensor_dev_attr_fan1_min16.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan1_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 1)) {
 			if ((err = device_create_file(dev,
 			     &sensor_dev_attr_fan2_input16.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan2_min16.dev_attr)))
+			     &sensor_dev_attr_fan2_min16.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan2_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 2)) {
 			if ((err = device_create_file(dev,
 			     &sensor_dev_attr_fan3_input16.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan3_min16.dev_attr)))
+			     &sensor_dev_attr_fan3_min16.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan3_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 3)) {
 			if ((err = device_create_file(dev,
 			     &sensor_dev_attr_fan4_input16.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan4_min16.dev_attr)))
+			     &sensor_dev_attr_fan4_min16.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan4_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 4)) {
 			if ((err = device_create_file(dev,
 			     &sensor_dev_attr_fan5_input16.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan5_min16.dev_attr)))
+			     &sensor_dev_attr_fan5_min16.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan5_alarm.dev_attr)))
 				goto ERROR4;
 		}
 	} else {
@@ -1052,7 +1124,9 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			 || (err = device_create_file(dev,
 			     &sensor_dev_attr_fan1_min.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan1_div.dev_attr)))
+			     &sensor_dev_attr_fan1_div.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan1_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 1)) {
@@ -1061,7 +1135,9 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			 || (err = device_create_file(dev,
 			     &sensor_dev_attr_fan2_min.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan2_div.dev_attr)))
+			     &sensor_dev_attr_fan2_div.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan2_alarm.dev_attr)))
 				goto ERROR4;
 		}
 		if (data->has_fan & (1 << 2)) {
@@ -1070,7 +1146,9 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			 || (err = device_create_file(dev,
 			     &sensor_dev_attr_fan3_min.dev_attr))
 			 || (err = device_create_file(dev,
-			     &sensor_dev_attr_fan3_div.dev_attr)))
+			     &sensor_dev_attr_fan3_div.dev_attr))
+			 || (err = device_create_file(dev,
+			     &sensor_dev_attr_fan3_alarm.dev_attr)))
 				goto ERROR4;
 		}
 	}
@@ -1124,7 +1202,7 @@ ERROR2:
 	platform_set_drvdata(pdev, NULL);
 	kfree(data);
 ERROR1:
-	release_region(res->start, IT87_EXTENT);
+	release_region(res->start, IT87_EC_EXTENT);
 ERROR0:
 	return err;
 }
@@ -1137,7 +1215,7 @@ static int __devexit it87_remove(struct platform_device *pdev)
 	sysfs_remove_group(&pdev->dev.kobj, &it87_group);
 	sysfs_remove_group(&pdev->dev.kobj, &it87_group_opt);
 
-	release_region(data->addr, IT87_EXTENT);
+	release_region(data->addr, IT87_EC_EXTENT);
 	platform_set_drvdata(pdev, NULL);
 	kfree(data);
 
@@ -1402,8 +1480,8 @@ static int __init it87_device_add(unsigned short address,
 				  const struct it87_sio_data *sio_data)
 {
 	struct resource res = {
-		.start	= address ,
-		.end	= address + IT87_EXTENT - 1,
+		.start	= address + IT87_EC_OFFSET,
+		.end	= address + IT87_EC_OFFSET + IT87_EC_EXTENT - 1,
 		.name	= DRVNAME,
 		.flags	= IORESOURCE_IO,
 	};
@@ -1474,7 +1552,7 @@ static void __exit sm_it87_exit(void)
 }
 
 
-MODULE_AUTHOR("Chris Gauthron <chrisg@0-in.com>, "
+MODULE_AUTHOR("Chris Gauthron, "
 	      "Jean Delvare <khali@linux-fr.org>");
 MODULE_DESCRIPTION("IT8705F/8712F/8716F/8718F/8726F, SiS950 driver");
 module_param(update_vbat, bool, 0);

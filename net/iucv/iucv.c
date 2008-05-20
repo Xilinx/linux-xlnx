@@ -621,7 +621,6 @@ static int iucv_sever_pathid(u16 pathid, u8 userdata[16])
 	return iucv_call_b2f0(IUCV_SEVER, parm);
 }
 
-#ifdef CONFIG_SMP
 /**
  * __iucv_cleanup_queue
  * @dummy: unused dummy argument
@@ -632,7 +631,6 @@ static int iucv_sever_pathid(u16 pathid, u8 userdata[16])
 static void __iucv_cleanup_queue(void *dummy)
 {
 }
-#endif
 
 /**
  * iucv_cleanup_queue
@@ -693,9 +691,9 @@ int iucv_register(struct iucv_handler *handler, int smp)
 		iucv_setmask_up();
 	INIT_LIST_HEAD(&handler->paths);
 
-	spin_lock_irq(&iucv_table_lock);
+	spin_lock_bh(&iucv_table_lock);
 	list_add_tail(&handler->list, &iucv_handler_list);
-	spin_unlock_irq(&iucv_table_lock);
+	spin_unlock_bh(&iucv_table_lock);
 	rc = 0;
 out_mutex:
 	mutex_unlock(&iucv_register_mutex);
@@ -1492,7 +1490,7 @@ static void iucv_tasklet_fn(unsigned long ignored)
 		[0x08] = iucv_message_pending,
 		[0x09] = iucv_message_pending,
 	};
-	struct list_head task_queue = LIST_HEAD_INIT(task_queue);
+	LIST_HEAD(task_queue);
 	struct iucv_irq_list *p, *n;
 
 	/* Serialize tasklet, iucv_path_sever and iucv_path_connect. */
@@ -1526,7 +1524,7 @@ static void iucv_tasklet_fn(unsigned long ignored)
 static void iucv_work_fn(struct work_struct *work)
 {
 	typedef void iucv_irq_fn(struct iucv_irq_data *);
-	struct list_head work_queue = LIST_HEAD_INIT(work_queue);
+	LIST_HEAD(work_queue);
 	struct iucv_irq_list *p, *n;
 
 	/* Serialize tasklet, iucv_path_sever and iucv_path_connect. */

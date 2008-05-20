@@ -15,10 +15,6 @@
  *
  */
 
-#ifndef __ASM_ARCH_HARDWARE_H__
-#error "Do not include this directly, instead #include <asm/hardware.h>"
-#endif
-
 #ifndef _ASM_ARM_IXP4XX_H_
 #define _ASM_ARM_IXP4XX_H_
 
@@ -587,24 +583,56 @@
 #define UICR1_IM14	(1 << 6)	/* Interrupt mask ep 14 */
 #define UICR1_IM15	(1 << 7)	/* Interrupt mask ep 15 */
 
-#define USIR0_IR0	(1 << 0)	/* Interrup request ep 0 */
-#define USIR0_IR1	(1 << 1)	/* Interrup request ep 1 */
-#define USIR0_IR2	(1 << 2)	/* Interrup request ep 2 */
-#define USIR0_IR3	(1 << 3)	/* Interrup request ep 3 */
-#define USIR0_IR4	(1 << 4)	/* Interrup request ep 4 */
-#define USIR0_IR5	(1 << 5)	/* Interrup request ep 5 */
-#define USIR0_IR6	(1 << 6)	/* Interrup request ep 6 */
-#define USIR0_IR7	(1 << 7)	/* Interrup request ep 7 */
+#define USIR0_IR0	(1 << 0)	/* Interrupt request ep 0 */
+#define USIR0_IR1	(1 << 1)	/* Interrupt request ep 1 */
+#define USIR0_IR2	(1 << 2)	/* Interrupt request ep 2 */
+#define USIR0_IR3	(1 << 3)	/* Interrupt request ep 3 */
+#define USIR0_IR4	(1 << 4)	/* Interrupt request ep 4 */
+#define USIR0_IR5	(1 << 5)	/* Interrupt request ep 5 */
+#define USIR0_IR6	(1 << 6)	/* Interrupt request ep 6 */
+#define USIR0_IR7	(1 << 7)	/* Interrupt request ep 7 */
 
-#define USIR1_IR8	(1 << 0)	/* Interrup request ep 8 */
-#define USIR1_IR9	(1 << 1)	/* Interrup request ep 9 */
-#define USIR1_IR10	(1 << 2)	/* Interrup request ep 10 */
-#define USIR1_IR11	(1 << 3)	/* Interrup request ep 11 */
-#define USIR1_IR12	(1 << 4)	/* Interrup request ep 12 */
-#define USIR1_IR13	(1 << 5)	/* Interrup request ep 13 */
-#define USIR1_IR14	(1 << 6)	/* Interrup request ep 14 */
-#define USIR1_IR15	(1 << 7)	/* Interrup request ep 15 */
+#define USIR1_IR8	(1 << 0)	/* Interrupt request ep 8 */
+#define USIR1_IR9	(1 << 1)	/* Interrupt request ep 9 */
+#define USIR1_IR10	(1 << 2)	/* Interrupt request ep 10 */
+#define USIR1_IR11	(1 << 3)	/* Interrupt request ep 11 */
+#define USIR1_IR12	(1 << 4)	/* Interrupt request ep 12 */
+#define USIR1_IR13	(1 << 5)	/* Interrupt request ep 13 */
+#define USIR1_IR14	(1 << 6)	/* Interrupt request ep 14 */
+#define USIR1_IR15	(1 << 7)	/* Interrupt request ep 15 */
 
 #define DCMD_LENGTH	0x01fff		/* length mask (max = 8K - 1) */
+
+/* "fuse" bits of IXP_EXP_CFG2 */
+#define IXP4XX_FEATURE_RCOMP		(1 << 0)
+#define IXP4XX_FEATURE_USB_DEVICE	(1 << 1)
+#define IXP4XX_FEATURE_HASH		(1 << 2)
+#define IXP4XX_FEATURE_AES		(1 << 3)
+#define IXP4XX_FEATURE_DES		(1 << 4)
+#define IXP4XX_FEATURE_HDLC		(1 << 5)
+#define IXP4XX_FEATURE_AAL		(1 << 6)
+#define IXP4XX_FEATURE_HSS		(1 << 7)
+#define IXP4XX_FEATURE_UTOPIA		(1 << 8)
+#define IXP4XX_FEATURE_NPEB_ETH0	(1 << 9)
+#define IXP4XX_FEATURE_NPEC_ETH		(1 << 10)
+#define IXP4XX_FEATURE_RESET_NPEA	(1 << 11)
+#define IXP4XX_FEATURE_RESET_NPEB	(1 << 12)
+#define IXP4XX_FEATURE_RESET_NPEC	(1 << 13)
+#define IXP4XX_FEATURE_PCI		(1 << 14)
+#define IXP4XX_FEATURE_ECC_TIMESYNC	(1 << 15)
+#define IXP4XX_FEATURE_UTOPIA_PHY_LIMIT	(3 << 16)
+#define IXP4XX_FEATURE_USB_HOST		(1 << 18)
+#define IXP4XX_FEATURE_NPEA_ETH		(1 << 19)
+#define IXP4XX_FEATURE_NPEB_ETH_1_TO_3	(1 << 20)
+#define IXP4XX_FEATURE_RSA		(1 << 21)
+#define IXP4XX_FEATURE_XSCALE_MAX_FREQ	(3 << 22)
+#define IXP4XX_FEATURE_RESERVED		(0xFF << 24)
+
+#define IXP4XX_FEATURE_IXP46X_ONLY (IXP4XX_FEATURE_ECC_TIMESYNC |	\
+				    IXP4XX_FEATURE_USB_HOST |		\
+				    IXP4XX_FEATURE_NPEA_ETH |		\
+				    IXP4XX_FEATURE_NPEB_ETH_1_TO_3 |	\
+				    IXP4XX_FEATURE_RSA |		\
+				    IXP4XX_FEATURE_XSCALE_MAX_FREQ)
 
 #endif

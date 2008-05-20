@@ -436,15 +436,18 @@ static int ssb_devices_register(struct ssb_bus *bus)
 #ifdef CONFIG_SSB_PCIHOST
 			sdev->irq = bus->host_pci->irq;
 			dev->parent = &bus->host_pci->dev;
+			sdev->dma_dev = &bus->host_pci->dev;
 #endif
 			break;
 		case SSB_BUSTYPE_PCMCIA:
 #ifdef CONFIG_SSB_PCMCIAHOST
 			sdev->irq = bus->host_pcmcia->irq.AssignedIRQ;
 			dev->parent = &bus->host_pcmcia->dev;
+			sdev->dma_dev = &bus->host_pcmcia->dev;
 #endif
 			break;
 		case SSB_BUSTYPE_SSB:
+			sdev->dma_dev = dev;
 			break;
 		}
 
@@ -557,6 +560,7 @@ static int ssb_fetch_invariants(struct ssb_bus *bus,
 		goto out;
 	memcpy(&bus->boardinfo, &iv.boardinfo, sizeof(iv.boardinfo));
 	memcpy(&bus->sprom, &iv.sprom, sizeof(iv.sprom));
+	bus->has_cardbus_slot = iv.has_cardbus_slot;
 out:
 	return err;
 }
@@ -569,6 +573,9 @@ static int ssb_bus_register(struct ssb_bus *bus,
 
 	spin_lock_init(&bus->bar_lock);
 	INIT_LIST_HEAD(&bus->list);
+#ifdef CONFIG_SSB_EMBEDDED
+	spin_lock_init(&bus->gpio_lock);
+#endif
 
 	/* Powerup the bus */
 	err = ssb_pci_xtal(bus, SSB_GPIO_XTAL | SSB_GPIO_PLL, 1);
@@ -872,14 +879,22 @@ EXPORT_SYMBOL(ssb_clockspeed);
 
 static u32 ssb_tmslow_reject_bitmask(struct ssb_device *dev)
 {
+	u32 rev = ssb_read32(dev, SSB_IDLOW) & SSB_IDLOW_SSBREV;
+
 	/* The REJECT bit changed position in TMSLOW between
 	 * Backplane revisions. */
-	switch (ssb_read32(dev, SSB_IDLOW) & SSB_IDLOW_SSBREV) {
+	switch (rev) {
 	case SSB_IDLOW_SSBREV_22:
 		return SSB_TMSLOW_REJECT_22;
 	case SSB_IDLOW_SSBREV_23:
 		return SSB_TMSLOW_REJECT_23;
+	case SSB_IDLOW_SSBREV_24:     /* TODO - find the proper REJECT bits */
+	case SSB_IDLOW_SSBREV_25:     /* same here */
+	case SSB_IDLOW_SSBREV_26:     /* same here */
+	case SSB_IDLOW_SSBREV_27:     /* same here */
+		return SSB_TMSLOW_REJECT_23;	/* this is a guess */
 	default:
+		printk(KERN_INFO "ssb: Backplane Revision 0x%.8X\n", rev);
 		WARN_ON(1);
 	}
 	return (SSB_TMSLOW_REJECT_22 | SSB_TMSLOW_REJECT_23);
@@ -1006,15 +1021,14 @@ EXPORT_SYMBOL(ssb_dma_translation);
 
 int ssb_dma_set_mask(struct ssb_device *ssb_dev, u64 mask)
 {
-	struct device *dev = ssb_dev->dev;
+	struct device *dma_dev = ssb_dev->dma_dev;
 
 #ifdef CONFIG_SSB_PCIHOST
-	if (ssb_dev->bus->bustype == SSB_BUSTYPE_PCI &&
-	    !dma_supported(dev, mask))
-		return -EIO;
+	if (ssb_dev->bus->bustype == SSB_BUSTYPE_PCI)
+		return dma_set_mask(dma_dev, mask);
 #endif
-	dev->coherent_dma_mask = mask;
-	dev->dma_mask = &dev->coherent_dma_mask;
+	dma_dev->coherent_dma_mask = mask;
+	dma_dev->dma_mask = &dma_dev->coherent_dma_mask;
 
 	return 0;
 }
@@ -1032,6 +1046,12 @@ int ssb_bus_may_powerdown(struct ssb_bus *bus)
 		goto out;
 
 	cc = &bus->chipco;
+
+	if (!cc->dev)
+		goto out;
+	if (cc->dev->id.revision < 5)
+		goto out;
+
 	ssb_chipco_set_clockmode(cc, SSB_CLKMODE_SLOW);
 	err = ssb_pci_xtal(bus, SSB_GPIO_XTAL | SSB_GPIO_PLL, 0);
 	if (err)

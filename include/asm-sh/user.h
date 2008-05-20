@@ -27,12 +27,19 @@
  *	to write an integer number of pages.
  */
 
+#if defined(__SH5__) || defined(CONFIG_CPU_SH5)
+struct user_fpu_struct {
+	unsigned long fp_regs[32];
+	unsigned int fpscr;
+};
+#else
 struct user_fpu_struct {
 	unsigned long fp_regs[16];
 	unsigned long xfp_regs[16];
 	unsigned long fpscr;
 	unsigned long fpul;
 };
+#endif
 
 struct user {
 	struct pt_regs	regs;			/* entire machine state */
@@ -45,7 +52,7 @@ struct user {
 	unsigned long	start_data;		/* data starting address */
 	unsigned long	start_stack;		/* stack starting address */
 	long int	signal;			/* signal causing core dump */
-	struct regs *	u_ar0;			/* help gdb find registers */
+	unsigned long	u_ar0;			/* help gdb find registers */
 	struct user_fpu_struct* u_fpstate;	/* Math Co-processor pointer */
 	unsigned long	magic;			/* identifies a core file */
 	char		u_comm[32];		/* user command name */

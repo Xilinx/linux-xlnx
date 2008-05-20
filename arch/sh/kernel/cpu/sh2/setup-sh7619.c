@@ -10,7 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/init.h>
 #include <linux/serial.h>
-#include <asm/sci.h>
+#include <linux/serial_sci.h>
 
 enum {
 	UNUSED = 0,
@@ -65,7 +65,7 @@ static struct intc_prio_reg prio_registers[] __initdata = {
 };
 
 static DECLARE_INTC_DESC(intc_desc, "sh7619", vectors, groups,
-			 NULL, NULL, prio_registers, NULL);
+			 NULL, prio_registers, NULL);
 
 static struct plat_sci_port sci_platform_data[] = {
 	{

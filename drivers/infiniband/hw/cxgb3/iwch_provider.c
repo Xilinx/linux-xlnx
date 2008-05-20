@@ -39,6 +39,7 @@
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/ethtool.h>
+#include <linux/rtnetlink.h>
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -188,7 +189,7 @@ static struct ib_cq *iwch_create_cq(struct ib_device *ibdev, int entries, int ve
 		return ERR_PTR(-ENOMEM);
 	}
 	chp->rhp = rhp;
-	chp->ibcq.cqe = (1 << chp->cq.size_log2) - 1;
+	chp->ibcq.cqe = 1 << chp->cq.size_log2;
 	spin_lock_init(&chp->lock);
 	atomic_set(&chp->refcnt, 1);
 	init_waitqueue_head(&chp->wait);
@@ -645,7 +646,7 @@ static struct ib_mr *iwch_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	if (err)
 		goto err;
 
-	if (udata && t3b_device(rhp)) {
+	if (udata && !t3a_device(rhp)) {
 		uresp.pbl_addr = (mhp->attr.pbl_addr -
 	                         rhp->rdev.rnic_info.pbl_base) >> 3;
 		PDBG("%s user resp pbl_addr 0x%x\n", __FUNCTION__,
@@ -818,8 +819,11 @@ static struct ib_qp *iwch_create_qp(struct ib_pd *pd,
 		kfree(qhp);
 		return ERR_PTR(-ENOMEM);
 	}
+
 	attrs->cap.max_recv_wr = rqsize - 1;
 	attrs->cap.max_send_wr = sqsize;
+	attrs->cap.max_inline_data = T3_MAX_INLINE;
+
 	qhp->rhp = rhp;
 	qhp->attr.pd = php->pdid;
 	qhp->attr.scq = ((struct iwch_cq *) attrs->send_cq)->cq.cqid;
@@ -1053,7 +1057,9 @@ static ssize_t show_fw_ver(struct class_device *cdev, char *buf)
 	struct net_device *lldev = dev->rdev.t3cdev_p->lldev;
 
 	PDBG("%s class dev 0x%p\n", __FUNCTION__, cdev);
+	rtnl_lock();
 	lldev->ethtool_ops->get_drvinfo(lldev, &info);
+	rtnl_unlock();
 	return sprintf(buf, "%s\n", info.fw_version);
 }
 
@@ -1065,7 +1071,9 @@ static ssize_t show_hca(struct class_device *cdev, char *buf)
 	struct net_device *lldev = dev->rdev.t3cdev_p->lldev;
 
 	PDBG("%s class dev 0x%p\n", __FUNCTION__, cdev);
+	rtnl_lock();
 	lldev->ethtool_ops->get_drvinfo(lldev, &info);
+	rtnl_unlock();
 	return sprintf(buf, "%s\n", info.driver);
 }
 

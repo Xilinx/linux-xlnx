@@ -139,12 +139,12 @@ void __init xilinx_intc_init_tree(void)
 		if (!of_get_property(np, "interrupts", NULL))
 			break;
 	}
-        if(!np) {
+	if (!np) {
 		for_each_compatible_node(np, NULL, "xlnx,xps-intc-1.00.a") {
 			if (!of_get_property(np, "interrupts", NULL))
 				break;
 		}
-        }
+	}
 
 	/* xilinx interrupt controller needs to be top level */
 	BUG_ON(!np);

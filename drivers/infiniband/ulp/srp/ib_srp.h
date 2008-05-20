@@ -54,6 +54,7 @@ enum {
 
 	SRP_PORT_REDIRECT	= 1,
 	SRP_DLID_REDIRECT	= 2,
+	SRP_STALE_CONN		= 3,
 
 	SRP_MAX_LUN		= 512,
 	SRP_DEF_SG_TABLESIZE	= 12,
@@ -77,6 +78,11 @@ enum srp_target_state {
 	SRP_TARGET_CONNECTING,
 	SRP_TARGET_DEAD,
 	SRP_TARGET_REMOVED
+};
+
+enum srp_request_type {
+	SRP_REQ_NORMAL,
+	SRP_REQ_TASK_MGMT,
 };
 
 struct srp_device {

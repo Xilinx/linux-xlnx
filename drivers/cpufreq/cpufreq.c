@@ -287,7 +287,7 @@ static void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 	if (!l_p_j_ref_freq) {
 		l_p_j_ref = loops_per_jiffy;
 		l_p_j_ref_freq = ci->old;
-		dprintk("saving %lu as reference value for loops_per_jiffy;"
+		dprintk("saving %lu as reference value for loops_per_jiffy; "
 			"freq is %u kHz\n", l_p_j_ref, l_p_j_ref_freq);
 	}
 	if ((val == CPUFREQ_PRECHANGE  && ci->old < ci->new) ||
@@ -295,7 +295,7 @@ static void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 	    (val == CPUFREQ_RESUMECHANGE || val == CPUFREQ_SUSPENDCHANGE)) {
 		loops_per_jiffy = cpufreq_scale(l_p_j_ref, l_p_j_ref_freq,
 								ci->new);
-		dprintk("scaling loops_per_jiffy to %lu"
+		dprintk("scaling loops_per_jiffy to %lu "
 			"for frequency %u kHz\n", loops_per_jiffy, ci->new);
 	}
 }
@@ -601,6 +601,31 @@ static ssize_t show_affected_cpus (struct cpufreq_policy * policy, char *buf)
 	return i;
 }
 
+static ssize_t store_scaling_setspeed(struct cpufreq_policy *policy,
+		const char *buf, size_t count)
+{
+	unsigned int freq = 0;
+	unsigned int ret;
+
+	if (!policy->governor->store_setspeed)
+		return -EINVAL;
+
+	ret = sscanf(buf, "%u", &freq);
+	if (ret != 1)
+		return -EINVAL;
+
+	policy->governor->store_setspeed(policy, freq);
+
+	return count;
+}
+
+static ssize_t show_scaling_setspeed(struct cpufreq_policy *policy, char *buf)
+{
+	if (!policy->governor->show_setspeed)
+		return sprintf(buf, "<unsupported>\n");
+
+	return policy->governor->show_setspeed(policy, buf);
+}
 
 #define define_one_ro(_name) \
 static struct freq_attr _name = \
@@ -624,6 +649,7 @@ define_one_ro(affected_cpus);
 define_one_rw(scaling_min_freq);
 define_one_rw(scaling_max_freq);
 define_one_rw(scaling_governor);
+define_one_rw(scaling_setspeed);
 
 static struct attribute * default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -634,6 +660,7 @@ static struct attribute * default_attrs[] = {
 	&scaling_governor.attr,
 	&scaling_driver.attr,
 	&scaling_available_governors.attr,
+	&scaling_setspeed.attr,
 	NULL
 };
 
@@ -644,13 +671,13 @@ static ssize_t show(struct kobject * kobj, struct attribute * attr ,char * buf)
 {
 	struct cpufreq_policy * policy = to_policy(kobj);
 	struct freq_attr * fattr = to_attr(attr);
-	ssize_t ret;
+	ssize_t ret = -EINVAL;
 	policy = cpufreq_cpu_get(policy->cpu);
 	if (!policy)
-		return -EINVAL;
+		goto no_policy;
 
 	if (lock_policy_rwsem_read(policy->cpu) < 0)
-		return -EINVAL;
+		goto fail;
 
 	if (fattr->show)
 		ret = fattr->show(policy, buf);
@@ -658,8 +685,9 @@ static ssize_t show(struct kobject * kobj, struct attribute * attr ,char * buf)
 		ret = -EIO;
 
 	unlock_policy_rwsem_read(policy->cpu);
-
+fail:
 	cpufreq_cpu_put(policy);
+no_policy:
 	return ret;
 }
 
@@ -668,13 +696,13 @@ static ssize_t store(struct kobject * kobj, struct attribute * attr,
 {
 	struct cpufreq_policy * policy = to_policy(kobj);
 	struct freq_attr * fattr = to_attr(attr);
-	ssize_t ret;
+	ssize_t ret = -EINVAL;
 	policy = cpufreq_cpu_get(policy->cpu);
 	if (!policy)
-		return -EINVAL;
+		goto no_policy;
 
 	if (lock_policy_rwsem_write(policy->cpu) < 0)
-		return -EINVAL;
+		goto fail;
 
 	if (fattr->store)
 		ret = fattr->store(policy, buf, count);
@@ -682,8 +710,9 @@ static ssize_t store(struct kobject * kobj, struct attribute * attr,
 		ret = -EIO;
 
 	unlock_policy_rwsem_write(policy->cpu);
-
+fail:
 	cpufreq_cpu_put(policy);
+no_policy:
 	return ret;
 }
 
@@ -828,11 +857,8 @@ static int cpufreq_add_dev (struct sys_device * sys_dev)
 	memcpy(&new_policy, policy, sizeof(struct cpufreq_policy));
 
 	/* prepare interface data */
-	policy->kobj.parent = &sys_dev->kobj;
-	policy->kobj.ktype = &ktype_cpufreq;
-	kobject_set_name(&policy->kobj, "cpufreq");
-
-	ret = kobject_register(&policy->kobj);
+	ret = kobject_init_and_add(&policy->kobj, &ktype_cpufreq, &sys_dev->kobj,
+				   "cpufreq");
 	if (ret) {
 		unlock_policy_rwsem_write(cpu);
 		goto err_out_driver_exit;
@@ -902,6 +928,7 @@ static int cpufreq_add_dev (struct sys_device * sys_dev)
 		goto err_out_unregister;
 	}
 
+	kobject_uevent(&policy->kobj, KOBJ_ADD);
 	module_put(cpufreq_driver->owner);
 	dprintk("initialization complete\n");
 	cpufreq_debug_enable_ratelimit();
@@ -915,7 +942,7 @@ err_out_unregister:
 		cpufreq_cpu_data[j] = NULL;
 	spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
-	kobject_unregister(&policy->kobj);
+	kobject_put(&policy->kobj);
 	wait_for_completion(&policy->kobj_unregister);
 
 err_out_driver_exit:
@@ -981,14 +1008,6 @@ static int __cpufreq_remove_dev (struct sys_device * sys_dev)
 	}
 #endif
 
-
-	if (!kobject_get(&data->kobj)) {
-		spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
-		cpufreq_debug_enable_ratelimit();
-		unlock_policy_rwsem_write(cpu);
-		return -EFAULT;
-	}
-
 #ifdef CONFIG_SMP
 
 #ifdef CONFIG_HOTPLUG_CPU
@@ -1031,8 +1050,6 @@ static int __cpufreq_remove_dev (struct sys_device * sys_dev)
 		__cpufreq_governor(data, CPUFREQ_GOV_STOP);
 
 	unlock_policy_rwsem_write(cpu);
-
-	kobject_unregister(&data->kobj);
 
 	kobject_put(&data->kobj);
 
@@ -1317,7 +1334,7 @@ static int cpufreq_resume(struct sys_device * sysdev)
 			struct cpufreq_freqs freqs;
 
 			if (!(cpufreq_driver->flags & CPUFREQ_PM_NO_WARN))
-				dprintk("Warning: CPU frequency"
+				dprintk("Warning: CPU frequency "
 				       "is %u, cpufreq assumed %u kHz.\n",
 				       cur_freq, cpu_policy->cur);
 
@@ -1608,7 +1625,7 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 	memcpy(&policy->cpuinfo, &data->cpuinfo,
 				sizeof(struct cpufreq_cpuinfo));
 
-	if (policy->min > data->min && policy->min > policy->max) {
+	if (policy->min > data->max || policy->max < data->min) {
 		ret = -EINVAL;
 		goto error_out;
 	}
@@ -1760,7 +1777,7 @@ static int __cpuinit cpufreq_cpu_callback(struct notifier_block *nfb,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block __cpuinitdata cpufreq_cpu_notifier =
+static struct notifier_block __refdata cpufreq_cpu_notifier =
 {
     .notifier_call = cpufreq_cpu_callback,
 };

@@ -1,21 +1,21 @@
-/* SCTP kernel reference Implementation
+/* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2001, 2004
  * Copyright (c) 1999-2000 Cisco, Inc.
  * Copyright (c) 1999-2001 Motorola, Inc.
  * Copyright (c) 2001-2003 Intel Corp.
  *
- * This file is part of the SCTP kernel reference Implementation
+ * This file is part of the SCTP kernel implementation
  *
  * These functions implement the sctp_outq class.   The outqueue handles
  * bundling and queueing of outgoing SCTP chunks.
  *
- * The SCTP reference implementation is free software;
+ * This SCTP implementation is free software;
  * you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
- * The SCTP reference implementation is distributed in the hope that it
+ * This SCTP implementation is distributed in the hope that it
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  *                 ************************
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -716,7 +716,29 @@ int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 		new_transport = chunk->transport;
 
 		if (!new_transport) {
-			new_transport = asoc->peer.active_path;
+			/*
+			 * If we have a prior transport pointer, see if
+			 * the destination address of the chunk
+			 * matches the destination address of the
+			 * current transport.  If not a match, then
+			 * try to look up the transport with a given
+			 * destination address.  We do this because
+			 * after processing ASCONFs, we may have new
+			 * transports created.
+			 */
+			if (transport &&
+			    sctp_cmp_addr_exact(&chunk->dest,
+						&transport->ipaddr))
+					new_transport = transport;
+			else
+				new_transport = sctp_assoc_lookup_paddr(asoc,
+								&chunk->dest);
+
+			/* if we still don't have a new transport, then
+			 * use the current active path.
+			 */
+			if (!new_transport)
+				new_transport = asoc->peer.active_path;
 		} else if ((new_transport->state == SCTP_INACTIVE) ||
 			   (new_transport->state == SCTP_UNCONFIRMED)) {
 			/* If the chunk is Heartbeat or Heartbeat Ack,
@@ -729,9 +751,12 @@ int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			 * address of the IP datagram containing the
 			 * HEARTBEAT chunk to which this ack is responding.
 			 * ...
+			 *
+			 * ASCONF_ACKs also must be sent to the source.
 			 */
 			if (chunk->chunk_hdr->type != SCTP_CID_HEARTBEAT &&
-			    chunk->chunk_hdr->type != SCTP_CID_HEARTBEAT_ACK)
+			    chunk->chunk_hdr->type != SCTP_CID_HEARTBEAT_ACK &&
+			    chunk->chunk_hdr->type != SCTP_CID_ASCONF_ACK)
 				new_transport = asoc->peer.active_path;
 		}
 
@@ -768,6 +793,9 @@ int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			break;
 
 		case SCTP_CID_ABORT:
+			if (sctp_test_T_bit(chunk)) {
+				packet->vtag = asoc->c.my_vtag;
+			}
 		case SCTP_CID_SACK:
 		case SCTP_CID_HEARTBEAT:
 		case SCTP_CID_HEARTBEAT_ACK:
@@ -1154,8 +1182,10 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_sackhdr *sack)
 		tchunk = list_entry(lchunk, struct sctp_chunk,
 				    transmitted_list);
 		tsn = ntohl(tchunk->subh.data_hdr->tsn);
-		if (TSN_lte(tsn, ctsn))
+		if (TSN_lte(tsn, ctsn)) {
+			list_del_init(&tchunk->transmitted_list);
 			sctp_chunk_free(tchunk);
+		}
 	}
 
 	/* ii) Set rwnd equal to the newly received a_rwnd minus the

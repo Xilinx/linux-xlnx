@@ -222,7 +222,7 @@ simeth_probe1(void)
 	}
 
 	if ((rc = assign_irq_vector(AUTO_ASSIGN)) < 0)
-		panic("%s: out of interrupt vectors!\n", __FUNCTION__);
+		panic("%s: out of interrupt vectors!\n", __func__);
 	dev->irq = rc;
 
 	/*
@@ -496,11 +496,6 @@ static irqreturn_t
 simeth_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
-
-	if ( dev == NULL ) {
-		printk(KERN_WARNING "simeth: irq %d for unknown device\n", irq);
-		return IRQ_NONE;
-	}
 
 	/*
 	 * very simple loop because we get interrupts only when receiving

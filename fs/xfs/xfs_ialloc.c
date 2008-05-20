@@ -191,7 +191,7 @@ xfs_ialloc_ag_alloc(
 			ASSERT(!(args.mp->m_flags & XFS_MOUNT_NOALIGN));
 			args.alignment = args.mp->m_dalign;
 			isaligned = 1;
-		} else if (XFS_SB_VERSION_HASALIGN(&args.mp->m_sb) &&
+		} else if (xfs_sb_version_hasalign(&args.mp->m_sb) &&
 			   args.mp->m_sb.sb_inoalignmt >=
 			   XFS_B_TO_FSBT(args.mp,
 			  	XFS_INODE_CLUSTER_SIZE(args.mp)))
@@ -230,7 +230,7 @@ xfs_ialloc_ag_alloc(
 		args.agbno = be32_to_cpu(agi->agi_root);
 		args.fsbno = XFS_AGB_TO_FSB(args.mp,
 				be32_to_cpu(agi->agi_seqno), args.agbno);
-		if (XFS_SB_VERSION_HASALIGN(&args.mp->m_sb) &&
+		if (xfs_sb_version_hasalign(&args.mp->m_sb) &&
 			args.mp->m_sb.sb_inoalignmt >=
 			XFS_B_TO_FSBT(args.mp, XFS_INODE_CLUSTER_SIZE(args.mp)))
 				args.alignment = args.mp->m_sb.sb_inoalignmt;
@@ -271,7 +271,7 @@ xfs_ialloc_ag_alloc(
 	 * use the old version so that old kernels will continue to be
 	 * able to use the file system.
 	 */
-	if (XFS_SB_VERSION_HASNLINK(&args.mp->m_sb))
+	if (xfs_sb_version_hasnlink(&args.mp->m_sb))
 		version = XFS_DINODE_VERSION_2;
 	else
 		version = XFS_DINODE_VERSION_1;
@@ -301,8 +301,8 @@ xfs_ialloc_ag_alloc(
 		}
 		xfs_trans_inode_alloc_buf(tp, fbuf);
 	}
-	be32_add(&agi->agi_count, newlen);
-	be32_add(&agi->agi_freecount, newlen);
+	be32_add_cpu(&agi->agi_count, newlen);
+	be32_add_cpu(&agi->agi_freecount, newlen);
 	agno = be32_to_cpu(agi->agi_seqno);
 	down_read(&args.mp->m_peraglock);
 	args.mp->m_perag[agno].pagi_freecount += newlen;
@@ -885,7 +885,7 @@ nextag:
 	if ((error = xfs_inobt_update(cur, rec.ir_startino, rec.ir_freecount,
 			rec.ir_free)))
 		goto error0;
-	be32_add(&agi->agi_freecount, -1);
+	be32_add_cpu(&agi->agi_freecount, -1);
 	xfs_ialloc_log_agi(tp, agbp, XFS_AGI_FREECOUNT);
 	down_read(&mp->m_peraglock);
 	mp->m_perag[tagno].pagi_freecount--;
@@ -1053,7 +1053,7 @@ xfs_difree(
 	/*
 	 * When an inode cluster is free, it becomes eligible for removal
 	 */
-	if ((mp->m_flags & XFS_MOUNT_IDELETE) &&
+	if (!(mp->m_flags & XFS_MOUNT_IKEEP) &&
 	    (rec.ir_freecount == XFS_IALLOC_INODES(mp))) {
 
 		*delete = 1;
@@ -1065,8 +1065,8 @@ xfs_difree(
 		 * to be freed when the transaction is committed.
 		 */
 		ilen = XFS_IALLOC_INODES(mp);
-		be32_add(&agi->agi_count, -ilen);
-		be32_add(&agi->agi_freecount, -(ilen - 1));
+		be32_add_cpu(&agi->agi_count, -ilen);
+		be32_add_cpu(&agi->agi_freecount, -(ilen - 1));
 		xfs_ialloc_log_agi(tp, agbp, XFS_AGI_COUNT | XFS_AGI_FREECOUNT);
 		down_read(&mp->m_peraglock);
 		mp->m_perag[agno].pagi_freecount -= ilen - 1;
@@ -1095,7 +1095,7 @@ xfs_difree(
 		/* 
 		 * Change the inode free counts and log the ag/sb changes.
 		 */
-		be32_add(&agi->agi_freecount, 1);
+		be32_add_cpu(&agi->agi_freecount, 1);
 		xfs_ialloc_log_agi(tp, agbp, XFS_AGI_FREECOUNT);
 		down_read(&mp->m_peraglock);
 		mp->m_perag[agno].pagi_freecount++;

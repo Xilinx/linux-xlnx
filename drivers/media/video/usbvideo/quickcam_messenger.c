@@ -105,8 +105,6 @@ static void qcm_register_input(struct qcm *cam, struct usb_device *dev)
 	input_dev->evbit[0] = BIT_MASK(EV_KEY);
 	input_dev->keybit[BIT_WORD(BTN_0)] = BIT_MASK(BTN_0);
 
-	input_dev->private = cam;
-
 	error = input_register_device(cam->input);
 	if (error) {
 		warn("Failed to register camera's input device, err: %d\n",
@@ -258,7 +256,7 @@ static void qcm_hsv2rgb(u16 hue, u16 sat, u16 val, u16 *r, u16 *g, u16 *b)
 	unsigned int p;
 
 	/*
-	the registers controling gain are 8 bit of which
+	the registers controlling gain are 8 bit of which
 	we affect only the last 4 bits with our gain.
 	we know that if saturation is 0, (unsaturated) then
 	we're grayscale (center axis of the colour cone) so

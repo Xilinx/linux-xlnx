@@ -1,12 +1,13 @@
 /*
  * Binary Increase Congestion control for TCP
- *
+ * Home page:
+ *      http://netsrv.csc.ncsu.edu/twiki/bin/view/Main/BIC
  * This is from the implementation of BICTCP in
  * Lison-Xu, Kahaled Harfoush, and Injong Rhee.
  *  "Binary Increase Congestion Control for Fast, Long Distance
  *  Networks" in InfoComm 2004
  * Available from:
- *  http://www.csc.ncsu.edu/faculty/rhee/export/bitcp.pdf
+ *  http://netsrv.csc.ncsu.edu/export/bitcp.pdf
  *
  * Unless BIC is enabled and congestion window is large
  * this behaves the same as the original Reno.
@@ -136,8 +137,7 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
 		ca->cnt = 1;
 }
 
-static void bictcp_cong_avoid(struct sock *sk, u32 ack,
-			      u32 in_flight, int data_acked)
+static void bictcp_cong_avoid(struct sock *sk, u32 ack, u32 in_flight)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct bictcp *ca = inet_csk_ca(sk);

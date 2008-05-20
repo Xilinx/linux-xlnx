@@ -37,6 +37,7 @@
 #include <linux/mii.h>
 #include <linux/bitops.h>
 #include <linux/workqueue.h>
+#include <linux/of.h>
 
 #include <asm/processor.h>
 #include <asm/io.h>
@@ -141,6 +142,10 @@ static inline void emac_report_timeout_error(struct emac_instance *dev,
 #define STOP_TIMEOUT_100	124
 #define STOP_TIMEOUT_1000	13
 #define STOP_TIMEOUT_1000_JUMBO	73
+
+static unsigned char default_mcast_addr[] = {
+	0x01, 0x80, 0xC2, 0x00, 0x00, 0x01
+};
 
 /* Please, keep in sync with struct ibm_emac_stats/ibm_emac_error_stats */
 static const char emac_stats_keys[EMAC_ETHTOOL_STATS_COUNT][ETH_GSTRING_LEN] = {
@@ -616,6 +621,9 @@ static int emac_configure(struct emac_instance *dev)
 	/* We need to take GPCS PHY out of isolate mode after EMAC reset */
 	if (emac_phy_gpcs(dev->phy.mode))
 		emac_mii_reset_phy(&dev->phy);
+
+	/* Required for Pause packet support in EMAC */
+	dev_mc_add(ndev, default_mcast_addr, sizeof(default_mcast_addr), 1);
 
 	return 0;
 }
@@ -1234,8 +1242,8 @@ static int emac_close(struct net_device *ndev)
 static inline u16 emac_tx_csum(struct emac_instance *dev,
 			       struct sk_buff *skb)
 {
-	if (emac_has_feature(dev, EMAC_FTR_HAS_TAH &&
-			     skb->ip_summed == CHECKSUM_PARTIAL)) {
+	if (emac_has_feature(dev, EMAC_FTR_HAS_TAH) &&
+		(skb->ip_summed == CHECKSUM_PARTIAL)) {
 		++dev->stats.tx_packets_csum;
 		return EMAC_TX_CTRL_TAH_CSUM;
 	}
@@ -1297,7 +1305,6 @@ static int emac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	return emac_xmit_finish(dev, len);
 }
 
-#ifdef CONFIG_IBM_NEW_EMAC_TAH
 static inline int emac_xmit_split(struct emac_instance *dev, int slot,
 				  u32 pd, int len, int last, u16 base_ctrl)
 {
@@ -1410,9 +1417,6 @@ static int emac_start_xmit_sg(struct sk_buff *skb, struct net_device *ndev)
 	DBG2(dev, "stopped TX queue" NL);
 	return 1;
 }
-#else
-# define emac_start_xmit_sg	emac_start_xmit
-#endif	/* !defined(CONFIG_IBM_NEW_EMAC_TAH) */
 
 /* Tx lock BHs */
 static void emac_parse_tx_error(struct emac_instance *dev, u16 ctrl)
@@ -2683,13 +2687,8 @@ static int __devinit emac_probe(struct of_device *ofdev,
 
 	/* Fill in the driver function table */
 	ndev->open = &emac_open;
-#ifdef CONFIG_IBM_NEW_EMAC_TAH
-	if (dev->tah_dev) {
-		ndev->hard_start_xmit = &emac_start_xmit_sg;
+	if (dev->tah_dev)
 		ndev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
-	} else
-#endif
-		ndev->hard_start_xmit = &emac_start_xmit;
 	ndev->tx_timeout = &emac_tx_timeout;
 	ndev->watchdog_timeo = 5 * HZ;
 	ndev->stop = &emac_close;
@@ -2697,8 +2696,11 @@ static int __devinit emac_probe(struct of_device *ofdev,
 	ndev->set_multicast_list = &emac_set_multicast_list;
 	ndev->do_ioctl = &emac_ioctl;
 	if (emac_phy_supports_gige(dev->phy_mode)) {
+		ndev->hard_start_xmit = &emac_start_xmit_sg;
 		ndev->change_mtu = &emac_change_mtu;
 		dev->commac.ops = &emac_commac_sg_ops;
+	} else {
+		ndev->hard_start_xmit = &emac_start_xmit;
 	}
 	SET_ETHTOOL_OPS(ndev, &emac_ethtool_ops);
 

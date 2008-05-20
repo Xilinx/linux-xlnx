@@ -34,12 +34,12 @@ struct uio_device {
 	wait_queue_head_t	wait;
 	int			vma_count;
 	struct uio_info		*info;
-	struct kset 		map_attr_kset;
+	struct kobject		*map_dir;
 };
 
 static int uio_major;
 static DEFINE_IDR(uio_idr);
-static struct file_operations uio_fops;
+static const struct file_operations uio_fops;
 
 /* UIO class infrastructure */
 static struct uio_class {
@@ -51,47 +51,68 @@ static struct uio_class {
  * attributes
  */
 
-static struct attribute attr_addr = {
-	.name  = "addr",
-	.mode  = S_IRUGO,
+struct uio_map {
+	struct kobject kobj;
+	struct uio_mem *mem;
+};
+#define to_map(map) container_of(map, struct uio_map, kobj)
+
+static ssize_t map_addr_show(struct uio_mem *mem, char *buf)
+{
+	return sprintf(buf, "0x%lx\n", mem->addr);
+}
+
+static ssize_t map_size_show(struct uio_mem *mem, char *buf)
+{
+	return sprintf(buf, "0x%lx\n", mem->size);
+}
+
+struct uio_sysfs_entry {
+	struct attribute attr;
+	ssize_t (*show)(struct uio_mem *, char *);
+	ssize_t (*store)(struct uio_mem *, const char *, size_t);
 };
 
-static struct attribute attr_size = {
-	.name  = "size",
-	.mode  = S_IRUGO,
+static struct uio_sysfs_entry addr_attribute =
+	__ATTR(addr, S_IRUGO, map_addr_show, NULL);
+static struct uio_sysfs_entry size_attribute =
+	__ATTR(size, S_IRUGO, map_size_show, NULL);
+
+static struct attribute *attrs[] = {
+	&addr_attribute.attr,
+	&size_attribute.attr,
+	NULL,	/* need to NULL terminate the list of attributes */
 };
 
-static struct attribute* map_attrs[] = {
-	&attr_addr, &attr_size, NULL
-};
+static void map_release(struct kobject *kobj)
+{
+	struct uio_map *map = to_map(kobj);
+	kfree(map);
+}
 
-static ssize_t map_attr_show(struct kobject *kobj, struct attribute *attr,
+static ssize_t map_type_show(struct kobject *kobj, struct attribute *attr,
 			     char *buf)
 {
-	struct uio_mem *mem = container_of(kobj, struct uio_mem, kobj);
+	struct uio_map *map = to_map(kobj);
+	struct uio_mem *mem = map->mem;
+	struct uio_sysfs_entry *entry;
 
-	if (strncmp(attr->name,"addr",4) == 0)
-		return sprintf(buf, "0x%lx\n", mem->addr);
+	entry = container_of(attr, struct uio_sysfs_entry, attr);
 
-	if (strncmp(attr->name,"size",4) == 0)
-		return sprintf(buf, "0x%lx\n", mem->size);
+	if (!entry->show)
+		return -EIO;
 
-	return -ENODEV;
+	return entry->show(mem, buf);
 }
 
-static void map_attr_release(struct kobject *kobj)
-{
-	/* TODO ??? */
-}
-
-static struct sysfs_ops map_attr_ops = {
-	.show  = map_attr_show,
+static struct sysfs_ops uio_sysfs_ops = {
+	.show = map_type_show,
 };
 
 static struct kobj_type map_attr_type = {
-	.release	= map_attr_release,
-	.sysfs_ops	= &map_attr_ops,
-	.default_attrs	= map_attrs,
+	.release	= map_release,
+	.sysfs_ops	= &uio_sysfs_ops,
+	.default_attrs	= attrs,
 };
 
 static ssize_t show_name(struct device *dev,
@@ -148,6 +169,7 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 	int mi;
 	int map_found = 0;
 	struct uio_mem *mem;
+	struct uio_map *map;
 
 	ret = sysfs_create_group(&idev->dev->kobj, &uio_attr_grp);
 	if (ret)
@@ -159,31 +181,34 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 			break;
 		if (!map_found) {
 			map_found = 1;
-			kobject_set_name(&idev->map_attr_kset.kobj,"maps");
-			idev->map_attr_kset.ktype = &map_attr_type;
-			idev->map_attr_kset.kobj.parent = &idev->dev->kobj;
-			ret = kset_register(&idev->map_attr_kset);
-			if (ret)
-				goto err_remove_group;
+			idev->map_dir = kobject_create_and_add("maps",
+							&idev->dev->kobj);
+			if (!idev->map_dir)
+				goto err;
 		}
-		kobject_init(&mem->kobj);
-		kobject_set_name(&mem->kobj,"map%d",mi);
-		mem->kobj.parent = &idev->map_attr_kset.kobj;
-		mem->kobj.kset = &idev->map_attr_kset;
-		ret = kobject_add(&mem->kobj);
+		map = kzalloc(sizeof(*map), GFP_KERNEL);
+		if (!map)
+			goto err;
+		kobject_init(&map->kobj, &map_attr_type);
+		map->mem = mem;
+		mem->map = map;
+		ret = kobject_add(&map->kobj, idev->map_dir, "map%d", mi);
 		if (ret)
-			goto err_remove_maps;
+			goto err;
+		ret = kobject_uevent(&map->kobj, KOBJ_ADD);
+		if (ret)
+			goto err;
 	}
 
 	return 0;
 
-err_remove_maps:
+err:
 	for (mi--; mi>=0; mi--) {
 		mem = &idev->info->mem[mi];
-		kobject_unregister(&mem->kobj);
+		map = mem->map;
+		kobject_put(&map->kobj);
 	}
-	kset_unregister(&idev->map_attr_kset); /* Needed ? */
-err_remove_group:
+	kobject_put(idev->map_dir);
 	sysfs_remove_group(&idev->dev->kobj, &uio_attr_grp);
 err_group:
 	dev_err(idev->dev, "error creating sysfs files (%d)\n", ret);
@@ -198,9 +223,9 @@ static void uio_dev_del_attributes(struct uio_device *idev)
 		mem = &idev->info->mem[mi];
 		if (mem->size == 0)
 			break;
-		kobject_unregister(&mem->kobj);
+		kobject_put(&mem->map->kobj);
 	}
-	kset_unregister(&idev->map_attr_kset);
+	kobject_put(idev->map_dir);
 	sysfs_remove_group(&idev->dev->kobj, &uio_attr_grp);
 }
 
@@ -412,30 +437,28 @@ static void uio_vma_close(struct vm_area_struct *vma)
 	idev->vma_count--;
 }
 
-static struct page *uio_vma_nopage(struct vm_area_struct *vma,
-				   unsigned long address, int *type)
+static int uio_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct uio_device *idev = vma->vm_private_data;
-	struct page* page = NOPAGE_SIGBUS;
+	struct page *page;
 
 	int mi = uio_find_mem_index(vma);
 	if (mi < 0)
-		return page;
+		return VM_FAULT_SIGBUS;
 
 	if (idev->info->mem[mi].memtype == UIO_MEM_LOGICAL)
 		page = virt_to_page(idev->info->mem[mi].addr);
 	else
 		page = vmalloc_to_page((void*)idev->info->mem[mi].addr);
 	get_page(page);
-	if (type)
-		*type = VM_FAULT_MINOR;
-	return page;
+	vmf->page = page;
+	return 0;
 }
 
 static struct vm_operations_struct uio_vm_ops = {
 	.open = uio_vma_open,
 	.close = uio_vma_close,
-	.nopage = uio_vma_nopage,
+	.fault = uio_vma_fault,
 };
 
 static int uio_mmap_physical(struct vm_area_struct *vma)
@@ -446,6 +469,8 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
 		return -EINVAL;
 
 	vma->vm_flags |= VM_IO | VM_RESERVED;
+
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	return remap_pfn_range(vma,
 			       vma->vm_start,
@@ -503,7 +528,7 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
 	}
 }
 
-static struct file_operations uio_fops = {
+static const struct file_operations uio_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uio_open,
 	.release	= uio_release,

@@ -352,8 +352,8 @@ unsigned int __cpuinit init_intel_cacheinfo(struct cpuinfo_x86 *c)
 	 */
 	if ((num_cache_leaves == 0 || c->x86 == 15) && c->cpuid_level > 1) {
 		/* supports eax=2  call */
-		int i, j, n;
-		int regs[4];
+		int j, n;
+		unsigned int regs[4];
 		unsigned char *dp = (unsigned char *)regs;
 		int only_trace = 0;
 
@@ -368,7 +368,7 @@ unsigned int __cpuinit init_intel_cacheinfo(struct cpuinfo_x86 *c)
 
 			/* If bit 31 is set, this is an unknown format */
 			for ( j = 0 ; j < 3 ; j++ ) {
-				if ( regs[j] < 0 ) regs[j] = 0;
+				if (regs[j] & (1 << 31)) regs[j] = 0;
 			}
 
 			/* Byte 0 is level count, not a descriptor */
@@ -733,10 +733,8 @@ static int __cpuinit cache_add_dev(struct sys_device * sys_dev)
 	if (unlikely(retval < 0))
 		return retval;
 
-	cache_kobject[cpu]->parent = &sys_dev->kobj;
-	kobject_set_name(cache_kobject[cpu], "%s", "cache");
-	cache_kobject[cpu]->ktype = &ktype_percpu_entry;
-	retval = kobject_register(cache_kobject[cpu]);
+	retval = kobject_init_and_add(cache_kobject[cpu], &ktype_percpu_entry,
+				      &sys_dev->kobj, "%s", "cache");
 	if (retval < 0) {
 		cpuid4_cache_sysfs_exit(cpu);
 		return retval;
@@ -746,23 +744,23 @@ static int __cpuinit cache_add_dev(struct sys_device * sys_dev)
 		this_object = INDEX_KOBJECT_PTR(cpu,i);
 		this_object->cpu = cpu;
 		this_object->index = i;
-		this_object->kobj.parent = cache_kobject[cpu];
-		kobject_set_name(&(this_object->kobj), "index%1lu", i);
-		this_object->kobj.ktype = &ktype_cache;
-		retval = kobject_register(&(this_object->kobj));
+		retval = kobject_init_and_add(&(this_object->kobj),
+					      &ktype_cache, cache_kobject[cpu],
+					      "index%1lu", i);
 		if (unlikely(retval)) {
 			for (j = 0; j < i; j++) {
-				kobject_unregister(
-					&(INDEX_KOBJECT_PTR(cpu,j)->kobj));
+				kobject_put(&(INDEX_KOBJECT_PTR(cpu,j)->kobj));
 			}
-			kobject_unregister(cache_kobject[cpu]);
+			kobject_put(cache_kobject[cpu]);
 			cpuid4_cache_sysfs_exit(cpu);
 			break;
 		}
+		kobject_uevent(&(this_object->kobj), KOBJ_ADD);
 	}
 	if (!retval)
 		cpu_set(cpu, cache_dev_map);
 
+	kobject_uevent(cache_kobject[cpu], KOBJ_ADD);
 	return retval;
 }
 
@@ -778,8 +776,8 @@ static void __cpuinit cache_remove_dev(struct sys_device * sys_dev)
 	cpu_clear(cpu, cache_dev_map);
 
 	for (i = 0; i < num_cache_leaves; i++)
-		kobject_unregister(&(INDEX_KOBJECT_PTR(cpu,i)->kobj));
-	kobject_unregister(cache_kobject[cpu]);
+		kobject_put(&(INDEX_KOBJECT_PTR(cpu,i)->kobj));
+	kobject_put(cache_kobject[cpu]);
 	cpuid4_cache_sysfs_exit(cpu);
 }
 

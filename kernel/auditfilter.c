@@ -95,6 +95,8 @@ extern struct inotify_handle *audit_ih;
 /* Inotify events we care about. */
 #define AUDIT_IN_WATCH IN_MOVE|IN_CREATE|IN_DELETE|IN_DELETE_SELF|IN_MOVE_SELF
 
+extern int audit_enabled;
+
 void audit_free_parent(struct inotify_watch *i_watch)
 {
 	struct audit_parent *parent;
@@ -167,8 +169,8 @@ static struct audit_parent *audit_init_parent(struct nameidata *ndp)
 	inotify_init_watch(&parent->wdata);
 	/* grab a ref so inotify watch hangs around until we take audit_filter_mutex */
 	get_inotify_watch(&parent->wdata);
-	wd = inotify_add_watch(audit_ih, &parent->wdata, ndp->dentry->d_inode,
-			       AUDIT_IN_WATCH);
+	wd = inotify_add_watch(audit_ih, &parent->wdata,
+			       ndp->path.dentry->d_inode, AUDIT_IN_WATCH);
 	if (wd < 0) {
 		audit_free_parent(&parent->wdata);
 		return ERR_PTR(wd);
@@ -974,7 +976,6 @@ static void audit_update_watch(struct audit_parent *parent,
 	struct audit_watch *owatch, *nwatch, *nextw;
 	struct audit_krule *r, *nextr;
 	struct audit_entry *oentry, *nentry;
-	struct audit_buffer *ab;
 
 	mutex_lock(&audit_filter_mutex);
 	list_for_each_entry_safe(owatch, nextw, &parent->watches, wlist) {
@@ -1014,13 +1015,18 @@ static void audit_update_watch(struct audit_parent *parent,
 			call_rcu(&oentry->rcu, audit_free_rule_rcu);
 		}
 
-		ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE);
-		audit_log_format(ab, "op=updated rules specifying path=");
-		audit_log_untrustedstring(ab, owatch->path);
-		audit_log_format(ab, " with dev=%u ino=%lu\n", dev, ino);
-		audit_log_format(ab, " list=%d res=1", r->listnr);
-		audit_log_end(ab);
-
+		if (audit_enabled) {
+			struct audit_buffer *ab;
+			ab = audit_log_start(NULL, GFP_KERNEL,
+				AUDIT_CONFIG_CHANGE);
+			audit_log_format(ab,
+				"op=updated rules specifying path=");
+			audit_log_untrustedstring(ab, owatch->path);
+			audit_log_format(ab, " with dev=%u ino=%lu\n",
+				 dev, ino);
+			audit_log_format(ab, " list=%d res=1", r->listnr);
+			audit_log_end(ab);
+		}
 		audit_remove_watch(owatch);
 		goto add_watch_to_parent; /* event applies to a single watch */
 	}
@@ -1039,25 +1045,28 @@ static void audit_remove_parent_watches(struct audit_parent *parent)
 	struct audit_watch *w, *nextw;
 	struct audit_krule *r, *nextr;
 	struct audit_entry *e;
-	struct audit_buffer *ab;
 
 	mutex_lock(&audit_filter_mutex);
 	parent->flags |= AUDIT_PARENT_INVALID;
 	list_for_each_entry_safe(w, nextw, &parent->watches, wlist) {
 		list_for_each_entry_safe(r, nextr, &w->rules, rlist) {
 			e = container_of(r, struct audit_entry, rule);
-
-			ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE);
-			audit_log_format(ab, "op=remove rule path=");
-			audit_log_untrustedstring(ab, w->path);
-			if (r->filterkey) {
-				audit_log_format(ab, " key=");
-				audit_log_untrustedstring(ab, r->filterkey);
-			} else
-				audit_log_format(ab, " key=(null)");
-			audit_log_format(ab, " list=%d res=1", r->listnr);
-			audit_log_end(ab);
-
+			if (audit_enabled) {
+				struct audit_buffer *ab;
+				ab = audit_log_start(NULL, GFP_KERNEL,
+					AUDIT_CONFIG_CHANGE);
+				audit_log_format(ab, "op=remove rule path=");
+				audit_log_untrustedstring(ab, w->path);
+				if (r->filterkey) {
+					audit_log_format(ab, " key=");
+					audit_log_untrustedstring(ab,
+							r->filterkey);
+				} else
+					audit_log_format(ab, " key=(null)");
+				audit_log_format(ab, " list=%d res=1",
+					r->listnr);
+				audit_log_end(ab);
+			}
 			list_del(&r->rlist);
 			list_del_rcu(&e->list);
 			call_rcu(&e->rcu, audit_free_rule_rcu);
@@ -1152,11 +1161,11 @@ static int audit_get_nd(char *path, struct nameidata **ndp,
 static void audit_put_nd(struct nameidata *ndp, struct nameidata *ndw)
 {
 	if (ndp) {
-		path_release(ndp);
+		path_put(&ndp->path);
 		kfree(ndp);
 	}
 	if (ndw) {
-		path_release(ndw);
+		path_put(&ndw->path);
 		kfree(ndw);
 	}
 }
@@ -1205,8 +1214,8 @@ static int audit_add_watch(struct audit_krule *krule, struct nameidata *ndp,
 
 	/* update watch filter fields */
 	if (ndw) {
-		watch->dev = ndw->dentry->d_inode->i_sb->s_dev;
-		watch->ino = ndw->dentry->d_inode->i_ino;
+		watch->dev = ndw->path.dentry->d_inode->i_sb->s_dev;
+		watch->ino = ndw->path.dentry->d_inode->i_ino;
 	}
 
 	/* The audit_filter_mutex must not be held during inotify calls because
@@ -1216,7 +1225,8 @@ static int audit_add_watch(struct audit_krule *krule, struct nameidata *ndp,
 	 */
 	mutex_unlock(&audit_filter_mutex);
 
-	if (inotify_find_watch(audit_ih, ndp->dentry->d_inode, &i_watch) < 0) {
+	if (inotify_find_watch(audit_ih, ndp->path.dentry->d_inode,
+			       &i_watch) < 0) {
 		parent = audit_init_parent(ndp);
 		if (IS_ERR(parent)) {
 			/* caller expects mutex locked */
@@ -1494,6 +1504,9 @@ static void audit_log_rule_change(uid_t loginuid, u32 sid, char *action,
 				  struct audit_krule *rule, int res)
 {
 	struct audit_buffer *ab;
+
+	if (!audit_enabled)
+		return;
 
 	ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE);
 	if (!ab)

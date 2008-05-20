@@ -154,8 +154,8 @@ static struct ucc_geth_info ugeth_primary_info = {
 	.rxQoSMode = UCC_GETH_QOS_MODE_DEFAULT,
 	.aufc = UPSMR_AUTOMATIC_FLOW_CONTROL_MODE_NONE,
 	.padAndCrc = MACCFG2_PAD_AND_CRC_MODE_PAD_AND_CRC,
-	.numThreadsTx = UCC_GETH_NUM_OF_THREADS_4,
-	.numThreadsRx = UCC_GETH_NUM_OF_THREADS_4,
+	.numThreadsTx = UCC_GETH_NUM_OF_THREADS_1,
+	.numThreadsRx = UCC_GETH_NUM_OF_THREADS_1,
 	.riscTx = QE_RISC_ALLOCATION_RISC1_AND_RISC2,
 	.riscRx = QE_RISC_ALLOCATION_RISC1_AND_RISC2,
 };
@@ -2084,8 +2084,10 @@ static void ucc_geth_memclean(struct ucc_geth_private *ugeth)
 	if (!ugeth)
 		return;
 
-	if (ugeth->uccf)
+	if (ugeth->uccf) {
 		ucc_fast_free(ugeth->uccf);
+		ugeth->uccf = NULL;
+	}
 
 	if (ugeth->p_thread_data_tx) {
 		qe_muram_free(ugeth->thread_dat_tx_offset);
@@ -2304,10 +2306,6 @@ static int ucc_struct_init(struct ucc_geth_private *ugeth)
 
 	ug_info = ugeth->ug_info;
 	uf_info = &ug_info->uf_info;
-
-	/* Create CQs for hash tables */
-	INIT_LIST_HEAD(&ugeth->group_hash_q);
-	INIT_LIST_HEAD(&ugeth->ind_hash_q);
 
 	if (!((uf_info->bd_mem_part == MEM_PART_SYSTEM) ||
 	      (uf_info->bd_mem_part == MEM_PART_MURAM))) {
@@ -3614,9 +3612,6 @@ static irqreturn_t ucc_geth_irq_handler(int irq, void *info)
 
 	ugeth_vdbg("%s: IN", __FUNCTION__);
 
-	if (!ugeth)
-		return IRQ_NONE;
-
 	uccf = ugeth->uccf;
 	ug_info = ugeth->ug_info;
 
@@ -3670,6 +3665,23 @@ static irqreturn_t ucc_geth_irq_handler(int irq, void *info)
 
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_NET_POLL_CONTROLLER
+/*
+ * Polling 'interrupt' - used by things like netconsole to send skbs
+ * without having to re-enable interrupts. It's not called while
+ * the interrupt routine is executing.
+ */
+static void ucc_netpoll(struct net_device *dev)
+{
+	struct ucc_geth_private *ugeth = netdev_priv(dev);
+	int irq = ugeth->ug_info->uf_info.irq;
+
+	disable_irq(irq);
+	ucc_geth_irq_handler(irq, dev);
+	enable_irq(irq);
+}
+#endif /* CONFIG_NET_POLL_CONTROLLER */
 
 /* Called when something needs to use the ethernet device */
 /* Returns 0 for success. */
@@ -3821,7 +3833,9 @@ static int ucc_geth_probe(struct of_device* ofdev, const struct of_device_id *ma
 	struct device_node *phy;
 	int err, ucc_num, max_speed = 0;
 	const phandle *ph;
+	const u32 *fixed_link;
 	const unsigned int *prop;
+	const char *sprop;
 	const void *mac_addr;
 	phy_interface_t phy_interface;
 	static const int enet_to_speed[] = {
@@ -3854,28 +3868,94 @@ static int ucc_geth_probe(struct of_device* ofdev, const struct of_device_id *ma
 
 	ug_info->uf_info.ucc_num = ucc_num;
 
-	prop = of_get_property(np, "rx-clock", NULL);
-	ug_info->uf_info.rx_clock = *prop;
-	prop = of_get_property(np, "tx-clock", NULL);
-	ug_info->uf_info.tx_clock = *prop;
+	sprop = of_get_property(np, "rx-clock-name", NULL);
+	if (sprop) {
+		ug_info->uf_info.rx_clock = qe_clock_source(sprop);
+		if ((ug_info->uf_info.rx_clock < QE_CLK_NONE) ||
+		    (ug_info->uf_info.rx_clock > QE_CLK24)) {
+			printk(KERN_ERR
+				"ucc_geth: invalid rx-clock-name property\n");
+			return -EINVAL;
+		}
+	} else {
+		prop = of_get_property(np, "rx-clock", NULL);
+		if (!prop) {
+			/* If both rx-clock-name and rx-clock are missing,
+			   we want to tell people to use rx-clock-name. */
+			printk(KERN_ERR
+				"ucc_geth: missing rx-clock-name property\n");
+			return -EINVAL;
+		}
+		if ((*prop < QE_CLK_NONE) || (*prop > QE_CLK24)) {
+			printk(KERN_ERR
+				"ucc_geth: invalid rx-clock propperty\n");
+			return -EINVAL;
+		}
+		ug_info->uf_info.rx_clock = *prop;
+	}
+
+	sprop = of_get_property(np, "tx-clock-name", NULL);
+	if (sprop) {
+		ug_info->uf_info.tx_clock = qe_clock_source(sprop);
+		if ((ug_info->uf_info.tx_clock < QE_CLK_NONE) ||
+		    (ug_info->uf_info.tx_clock > QE_CLK24)) {
+			printk(KERN_ERR
+				"ucc_geth: invalid tx-clock-name property\n");
+			return -EINVAL;
+		}
+	} else {
+		prop = of_get_property(np, "rx-clock", NULL);
+		if (!prop) {
+			printk(KERN_ERR
+				"ucc_geth: mising tx-clock-name property\n");
+			return -EINVAL;
+		}
+		if ((*prop < QE_CLK_NONE) || (*prop > QE_CLK24)) {
+			printk(KERN_ERR
+				"ucc_geth: invalid tx-clock property\n");
+			return -EINVAL;
+		}
+		ug_info->uf_info.tx_clock = *prop;
+	}
+
 	err = of_address_to_resource(np, 0, &res);
 	if (err)
 		return -EINVAL;
 
 	ug_info->uf_info.regs = res.start;
 	ug_info->uf_info.irq = irq_of_parse_and_map(np, 0);
+	fixed_link = of_get_property(np, "fixed-link", NULL);
+	if (fixed_link) {
+		ug_info->mdio_bus = 0;
+		ug_info->phy_address = fixed_link[0];
+		phy = NULL;
+	} else {
+		ph = of_get_property(np, "phy-handle", NULL);
+		phy = of_find_node_by_phandle(*ph);
 
-	ph = of_get_property(np, "phy-handle", NULL);
-	phy = of_find_node_by_phandle(*ph);
+		if (phy == NULL)
+			return -ENODEV;
 
-	if (phy == NULL)
-		return -ENODEV;
+		/* set the PHY address */
+		prop = of_get_property(phy, "reg", NULL);
+		if (prop == NULL)
+			return -1;
+		ug_info->phy_address = *prop;
 
-	/* set the PHY address */
-	prop = of_get_property(phy, "reg", NULL);
-	if (prop == NULL)
-		return -1;
-	ug_info->phy_address = *prop;
+		/* Set the bus id */
+		mdio = of_get_parent(phy);
+
+		if (mdio == NULL)
+			return -1;
+
+		err = of_address_to_resource(mdio, 0, &res);
+		of_node_put(mdio);
+
+		if (err)
+			return -1;
+
+		ug_info->mdio_bus = res.start;
+	}
 
 	/* get the phy interface type, or default to MII */
 	prop = of_get_property(np, "phy-connection-type", NULL);
@@ -3916,21 +3996,9 @@ static int ucc_geth_probe(struct of_device* ofdev, const struct of_device_id *ma
 		ug_info->uf_info.utfs = UCC_GETH_UTFS_GIGA_INIT;
 		ug_info->uf_info.utfet = UCC_GETH_UTFET_GIGA_INIT;
 		ug_info->uf_info.utftt = UCC_GETH_UTFTT_GIGA_INIT;
+		ug_info->numThreadsTx = UCC_GETH_NUM_OF_THREADS_4;
+		ug_info->numThreadsRx = UCC_GETH_NUM_OF_THREADS_4;
 	}
-
-	/* Set the bus id */
-	mdio = of_get_parent(phy);
-
-	if (mdio == NULL)
-		return -1;
-
-	err = of_address_to_resource(mdio, 0, &res);
-	of_node_put(mdio);
-
-	if (err)
-		return -1;
-
-	ug_info->mdio_bus = res.start;
 
 	if (netif_msg_probe(&debug))
 		printk(KERN_INFO "ucc_geth: UCC%1d at 0x%8x (irq = %d) \n",
@@ -3945,6 +4013,10 @@ static int ucc_geth_probe(struct of_device* ofdev, const struct of_device_id *ma
 
 	ugeth = netdev_priv(dev);
 	spin_lock_init(&ugeth->lock);
+
+	/* Create CQs for hash tables */
+	INIT_LIST_HEAD(&ugeth->group_hash_q);
+	INIT_LIST_HEAD(&ugeth->ind_hash_q);
 
 	dev_set_drvdata(device, dev);
 
@@ -3962,6 +4034,9 @@ static int ucc_geth_probe(struct of_device* ofdev, const struct of_device_id *ma
 #ifdef CONFIG_UGETH_NAPI
 	netif_napi_add(dev, &ugeth->napi, ucc_geth_poll, UCC_GETH_DEV_WEIGHT);
 #endif				/* CONFIG_UGETH_NAPI */
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	dev->poll_controller = ucc_netpoll;
+#endif
 	dev->stop = ucc_geth_close;
 //    dev->change_mtu = ucc_geth_change_mtu;
 	dev->mtu = 1500;
@@ -3996,9 +4071,10 @@ static int ucc_geth_remove(struct of_device* ofdev)
 	struct net_device *dev = dev_get_drvdata(device);
 	struct ucc_geth_private *ugeth = netdev_priv(dev);
 
-	dev_set_drvdata(device, NULL);
-	ucc_geth_memclean(ugeth);
+	unregister_netdev(dev);
 	free_netdev(dev);
+	ucc_geth_memclean(ugeth);
+	dev_set_drvdata(device, NULL);
 
 	return 0;
 }

@@ -3338,7 +3338,7 @@ static int ocfs2_insert_path(struct inode *inode,
 	if (insert->ins_split != SPLIT_NONE) {
 		/*
 		 * We could call ocfs2_insert_at_leaf() for some types
-		 * of splits, but it's easier to just let one seperate
+		 * of splits, but it's easier to just let one separate
 		 * function sort it all out.
 		 */
 		ocfs2_split_record(inode, left_path, right_path,
@@ -4731,7 +4731,7 @@ int __ocfs2_flush_truncate_log(struct ocfs2_super *osb)
 
 	mutex_lock(&data_alloc_inode->i_mutex);
 
-	status = ocfs2_meta_lock(data_alloc_inode, &data_alloc_bh, 1);
+	status = ocfs2_inode_lock(data_alloc_inode, &data_alloc_bh, 1);
 	if (status < 0) {
 		mlog_errno(status);
 		goto out_mutex;
@@ -4753,7 +4753,7 @@ int __ocfs2_flush_truncate_log(struct ocfs2_super *osb)
 
 out_unlock:
 	brelse(data_alloc_bh);
-	ocfs2_meta_unlock(data_alloc_inode, 1);
+	ocfs2_inode_unlock(data_alloc_inode, 1);
 
 out_mutex:
 	mutex_unlock(&data_alloc_inode->i_mutex);
@@ -5077,7 +5077,7 @@ static int ocfs2_free_cached_items(struct ocfs2_super *osb,
 
 	mutex_lock(&inode->i_mutex);
 
-	ret = ocfs2_meta_lock(inode, &di_bh, 1);
+	ret = ocfs2_inode_lock(inode, &di_bh, 1);
 	if (ret) {
 		mlog_errno(ret);
 		goto out_mutex;
@@ -5118,7 +5118,7 @@ out_journal:
 	ocfs2_commit_trans(osb, handle);
 
 out_unlock:
-	ocfs2_meta_unlock(inode, 1);
+	ocfs2_inode_unlock(inode, 1);
 	brelse(di_bh);
 out_mutex:
 	mutex_unlock(&inode->i_mutex);
@@ -5670,7 +5670,7 @@ static void ocfs2_map_and_dirty_page(struct inode *inode, handle_t *handle,
 		mlog_errno(ret);
 
 	if (zero)
-		zero_user_page(page, from, to - from, KM_USER0);
+		zero_user_segment(page, from, to);
 
 	/*
 	 * Need to set the buffers we zero'd into uptodate

@@ -382,9 +382,8 @@ static irqreturn_t i2c_davinci_isr(int this_irq, void *dev_id)
 			break;
 
 		case DAVINCI_I2C_IVR_ARDY:
-			w = davinci_i2c_read_reg(dev, DAVINCI_I2C_STR_REG);
-			MOD_REG_BIT(w, DAVINCI_I2C_STR_ARDY, 1);
-			davinci_i2c_write_reg(dev, DAVINCI_I2C_STR_REG, w);
+			davinci_i2c_write_reg(dev,
+				DAVINCI_I2C_STR_REG, DAVINCI_I2C_STR_ARDY);
 			complete(&dev->cmd_complete);
 			break;
 
@@ -397,12 +396,9 @@ static irqreturn_t i2c_davinci_isr(int this_irq, void *dev_id)
 				if (dev->buf_len)
 					continue;
 
-				w = davinci_i2c_read_reg(dev,
-							 DAVINCI_I2C_STR_REG);
-				MOD_REG_BIT(w, DAVINCI_I2C_IMR_RRDY, 0);
 				davinci_i2c_write_reg(dev,
-						      DAVINCI_I2C_STR_REG,
-						      w);
+					DAVINCI_I2C_STR_REG,
+					DAVINCI_I2C_IMR_RRDY);
 			} else
 				dev_err(dev->dev, "RDR IRQ while no "
 					"data requested\n");
@@ -428,9 +424,8 @@ static irqreturn_t i2c_davinci_isr(int this_irq, void *dev_id)
 			break;
 
 		case DAVINCI_I2C_IVR_SCD:
-			w = davinci_i2c_read_reg(dev, DAVINCI_I2C_STR_REG);
-			MOD_REG_BIT(w, DAVINCI_I2C_STR_SCD, 1);
-			davinci_i2c_write_reg(dev, DAVINCI_I2C_STR_REG, w);
+			davinci_i2c_write_reg(dev,
+				DAVINCI_I2C_STR_REG, DAVINCI_I2C_STR_SCD);
 			complete(&dev->cmd_complete);
 			break;
 
@@ -510,7 +505,6 @@ static int davinci_i2c_probe(struct platform_device *pdev)
 
 	/* FIXME */
 	adap->timeout = 1;
-	adap->retries = 1;
 
 	adap->nr = pdev->id;
 	r = i2c_add_numbered_adapter(adap);

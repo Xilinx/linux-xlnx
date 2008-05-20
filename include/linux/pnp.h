@@ -14,7 +14,7 @@
 #include <linux/mod_devicetable.h>
 
 #define PNP_MAX_PORT		40
-#define PNP_MAX_MEM		12
+#define PNP_MAX_MEM		24
 #define PNP_MAX_IRQ		2
 #define PNP_MAX_DMA		2
 #define PNP_NAME_LEN		50
@@ -126,7 +126,7 @@ struct pnp_resource_table {
 };
 
 /*
- * Device Managemnt
+ * Device Management
  */
 
 struct pnp_card {
@@ -175,7 +175,7 @@ static inline void pnp_set_card_drvdata(struct pnp_card_link *pcard, void *data)
 struct pnp_dev {
 	struct device dev;		/* Driver Model device interface */
 	u64 dma_mask;
-	unsigned char number;		/* used as an index, must be unique */
+	unsigned int number;		/* used as an index, must be unique */
 	int status;
 
 	struct list_head global_list;	/* node in global list of devices */
@@ -258,6 +258,7 @@ extern struct pnp_protocol isapnp_protocol;
 #else
 #define pnp_device_is_isapnp(dev) 0
 #endif
+extern struct mutex pnp_res_mutex;
 
 #ifdef CONFIG_PNPBIOS
 extern struct pnp_protocol pnpbios_protocol;

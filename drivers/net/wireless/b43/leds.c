@@ -4,7 +4,7 @@
   LED control
 
   Copyright (c) 2005 Martin Langer <martin-langer@gmx.de>,
-  Copyright (c) 2005 Stefano Brivio <st3@riseup.net>
+  Copyright (c) 2005 Stefano Brivio <stefano.brivio@polimi.it>
   Copyright (c) 2005-2007 Michael Buesch <mb@bu3sch.de>
   Copyright (c) 2005 Danny van Dyk <kugelfang@gentoo.org>
   Copyright (c) 2005 Andreas Jaggi <andreas.jaggi@waterwave.ch>
@@ -116,7 +116,10 @@ static void b43_unregister_led(struct b43_led *led)
 {
 	if (!led->dev)
 		return;
-	led_classdev_unregister(&led->led_dev);
+	if (led->dev->suspend_in_progress)
+		led_classdev_unregister_suspended(&led->led_dev);
+	else
+		led_classdev_unregister(&led->led_dev);
 	b43_led_turn_off(led->dev, led->index, led->activelow);
 	led->dev = NULL;
 }
@@ -144,12 +147,12 @@ static void b43_map_led(struct b43_wldev *dev,
 	case B43_LED_TRANSFER:
 	case B43_LED_APTRANSFER:
 		snprintf(name, sizeof(name),
-			 "b43-%s:tx", wiphy_name(hw->wiphy));
+			 "b43-%s::tx", wiphy_name(hw->wiphy));
 		b43_register_led(dev, &dev->led_tx, name,
 				 ieee80211_get_tx_led_name(hw),
 				 led_index, activelow);
 		snprintf(name, sizeof(name),
-			 "b43-%s:rx", wiphy_name(hw->wiphy));
+			 "b43-%s::rx", wiphy_name(hw->wiphy));
 		b43_register_led(dev, &dev->led_rx, name,
 				 ieee80211_get_rx_led_name(hw),
 				 led_index, activelow);
@@ -159,7 +162,7 @@ static void b43_map_led(struct b43_wldev *dev,
 	case B43_LED_RADIO_B:
 	case B43_LED_MODE_BG:
 		snprintf(name, sizeof(name),
-			 "b43-%s:radio", wiphy_name(hw->wiphy));
+			 "b43-%s::radio", wiphy_name(hw->wiphy));
 		b43_register_led(dev, &dev->led_radio, name,
 				 b43_rfkill_led_name(dev),
 				 led_index, activelow);
@@ -170,7 +173,7 @@ static void b43_map_led(struct b43_wldev *dev,
 	case B43_LED_WEIRD:
 	case B43_LED_ASSOC:
 		snprintf(name, sizeof(name),
-			 "b43-%s:assoc", wiphy_name(hw->wiphy));
+			 "b43-%s::assoc", wiphy_name(hw->wiphy));
 		b43_register_led(dev, &dev->led_assoc, name,
 				 ieee80211_get_assoc_led_name(hw),
 				 led_index, activelow);
@@ -190,10 +193,10 @@ void b43_leds_init(struct b43_wldev *dev)
 	enum b43_led_behaviour behaviour;
 	bool activelow;
 
-	sprom[0] = bus->sprom.r1.gpio0;
-	sprom[1] = bus->sprom.r1.gpio1;
-	sprom[2] = bus->sprom.r1.gpio2;
-	sprom[3] = bus->sprom.r1.gpio3;
+	sprom[0] = bus->sprom.gpio0;
+	sprom[1] = bus->sprom.gpio1;
+	sprom[2] = bus->sprom.gpio2;
+	sprom[3] = bus->sprom.gpio3;
 
 	for (i = 0; i < 4; i++) {
 		if (sprom[i] == 0xFF) {

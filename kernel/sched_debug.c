@@ -179,6 +179,7 @@ static void print_cpu(struct seq_file *m, int cpu)
 	PN(prev_clock_raw);
 	P(clock_warps);
 	P(clock_overflows);
+	P(clock_underflows);
 	P(clock_deep_idle_events);
 	PN(clock_max_delta);
 	P(cpu_load[0]);
@@ -287,6 +288,7 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 	PN(se.exec_start);
 	PN(se.vruntime);
 	PN(se.sum_exec_runtime);
+	PN(se.avg_overlap);
 
 	nr_switches = p->nvcsw + p->nivcsw;
 
@@ -299,6 +301,8 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 	PN(se.exec_max);
 	PN(se.slice_max);
 	PN(se.wait_max);
+	PN(se.wait_sum);
+	P(se.wait_count);
 	P(sched_info.bkl_count);
 	P(se.nr_migrations);
 	P(se.nr_migrations_cold);
@@ -366,6 +370,8 @@ void proc_sched_set_task(struct task_struct *p)
 {
 #ifdef CONFIG_SCHEDSTATS
 	p->se.wait_max				= 0;
+	p->se.wait_sum				= 0;
+	p->se.wait_count			= 0;
 	p->se.sleep_max				= 0;
 	p->se.sum_sleep_runtime			= 0;
 	p->se.block_max				= 0;

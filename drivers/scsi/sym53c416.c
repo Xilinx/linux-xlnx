@@ -187,10 +187,10 @@
 #define sym53c416_base_2 sym53c416_2
 #define sym53c416_base_3 sym53c416_3
 
-static unsigned int sym53c416_base[2] = {0,0};
-static unsigned int sym53c416_base_1[2] = {0,0};
-static unsigned int sym53c416_base_2[2] = {0,0};
-static unsigned int sym53c416_base_3[2] = {0,0};
+static unsigned int sym53c416_base[2];
+static unsigned int sym53c416_base_1[2];
+static unsigned int sym53c416_base_2[2];
+static unsigned int sym53c416_base_3[2];
 
 #endif
 
@@ -328,26 +328,12 @@ static __inline__ unsigned int sym53c416_write(int base, unsigned char *buffer, 
 static irqreturn_t sym53c416_intr_handle(int irq, void *dev_id)
 {
 	struct Scsi_Host *dev = dev_id;
-	int base = 0;
+	int base = dev->io_port;
 	int i;
 	unsigned long flags = 0;
 	unsigned char status_reg, pio_int_reg, int_reg;
 	struct scatterlist *sg;
 	unsigned int tot_trans = 0;
-
-	/* We search the base address of the host adapter which caused the interrupt */
-	/* FIXME: should pass dev_id sensibly as hosts[i] */
-	for(i = 0; i < host_index && !base; i++)
-		if(irq == hosts[i].irq)
-			base = hosts[i].base;
-	/* If no adapter found, we cannot handle the interrupt. Leave a message */
-	/* and continue. This should never happen...                            */
-	if(!base)
-	{
-		printk(KERN_ERR "sym53c416: No host adapter defined for interrupt %d\n", irq);
-		return IRQ_NONE;
-	}
-	/* Now we have the base address and we can start handling the interrupt */
 
 	spin_lock_irqsave(dev->host_lock,flags);
 	status_reg = inb(base + STATUS_REG);
@@ -635,25 +621,25 @@ int __init sym53c416_detect(struct scsi_host_template *tpnt)
 	int ints[3];
 
 	ints[0] = 2;
-	if(sym53c416_base)
+	if(sym53c416_base[0])
 	{
 		ints[1] = sym53c416_base[0];
 		ints[2] = sym53c416_base[1];
 		sym53c416_setup(NULL, ints);
 	}
-	if(sym53c416_base_1)
+	if(sym53c416_base_1[0])
 	{
 		ints[1] = sym53c416_base_1[0];
 		ints[2] = sym53c416_base_1[1];
 		sym53c416_setup(NULL, ints);
 	}
-	if(sym53c416_base_2)
+	if(sym53c416_base_2[0])
 	{
 		ints[1] = sym53c416_base_2[0];
 		ints[2] = sym53c416_base_2[1];
 		sym53c416_setup(NULL, ints);
 	}
-	if(sym53c416_base_3)
+	if(sym53c416_base_3[0])
 	{
 		ints[1] = sym53c416_base_3[0];
 		ints[2] = sym53c416_base_3[1];
@@ -854,6 +840,5 @@ static struct scsi_host_template driver_template = {
 	.cmd_per_lun =		1,
 	.unchecked_isa_dma =	1,
 	.use_clustering =	ENABLE_CLUSTERING,
-	.use_sg_chaining =	ENABLE_SG_CHAINING,
 };
 #include "scsi_module.c"

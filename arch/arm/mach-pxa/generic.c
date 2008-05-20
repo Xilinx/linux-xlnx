@@ -20,10 +20,10 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/delay.h>
-#include <linux/platform_device.h>
 #include <linux/ioport.h>
 #include <linux/pm.h>
 #include <linux/string.h>
+#include <linux/sysdev.h>
 
 #include <asm/hardware.h>
 #include <asm/irq.h>
@@ -32,14 +32,7 @@
 #include <asm/mach/map.h>
 
 #include <asm/arch/pxa-regs.h>
-#include <asm/arch/gpio.h>
-#include <asm/arch/udc.h>
-#include <asm/arch/pxafb.h>
-#include <asm/arch/mmc.h>
-#include <asm/arch/irda.h>
-#include <asm/arch/i2c.h>
 
-#include "devices.h"
 #include "generic.h"
 
 /*
@@ -73,97 +66,6 @@ unsigned int get_memclk_frequency_10khz(void)
 EXPORT_SYMBOL(get_memclk_frequency_10khz);
 
 /*
- * Handy function to set GPIO alternate functions
- */
-int pxa_last_gpio;
-
-int pxa_gpio_mode(int gpio_mode)
-{
-	unsigned long flags;
-	int gpio = gpio_mode & GPIO_MD_MASK_NR;
-	int fn = (gpio_mode & GPIO_MD_MASK_FN) >> 8;
-	int gafr;
-
-	if (gpio > pxa_last_gpio)
-		return -EINVAL;
-
-	local_irq_save(flags);
-	if (gpio_mode & GPIO_DFLT_LOW)
-		GPCR(gpio) = GPIO_bit(gpio);
-	else if (gpio_mode & GPIO_DFLT_HIGH)
-		GPSR(gpio) = GPIO_bit(gpio);
-	if (gpio_mode & GPIO_MD_MASK_DIR)
-		GPDR(gpio) |= GPIO_bit(gpio);
-	else
-		GPDR(gpio) &= ~GPIO_bit(gpio);
-	gafr = GAFR(gpio) & ~(0x3 << (((gpio) & 0xf)*2));
-	GAFR(gpio) = gafr |  (fn  << (((gpio) & 0xf)*2));
-	local_irq_restore(flags);
-
-	return 0;
-}
-
-EXPORT_SYMBOL(pxa_gpio_mode);
-
-int gpio_direction_input(unsigned gpio)
-{
-	unsigned long flags;
-	u32 mask;
-
-	if (gpio > pxa_last_gpio)
-		return -EINVAL;
-
-	mask = GPIO_bit(gpio);
-	local_irq_save(flags);
-	GPDR(gpio) &= ~mask;
-	local_irq_restore(flags);
-
-	return 0;
-}
-EXPORT_SYMBOL(gpio_direction_input);
-
-int gpio_direction_output(unsigned gpio, int value)
-{
-	unsigned long flags;
-	u32 mask;
-
-	if (gpio > pxa_last_gpio)
-		return -EINVAL;
-
-	mask = GPIO_bit(gpio);
-	local_irq_save(flags);
-	if (value)
-		GPSR(gpio) = mask;
-	else
-		GPCR(gpio) = mask;
-	GPDR(gpio) |= mask;
-	local_irq_restore(flags);
-
-	return 0;
-}
-EXPORT_SYMBOL(gpio_direction_output);
-
-/*
- * Return GPIO level
- */
-int pxa_gpio_get_value(unsigned gpio)
-{
-	return __gpio_get_value(gpio);
-}
-
-EXPORT_SYMBOL(pxa_gpio_get_value);
-
-/*
- * Set output GPIO level
- */
-void pxa_gpio_set_value(unsigned gpio, int value)
-{
-	__gpio_set_value(gpio, value);
-}
-
-EXPORT_SYMBOL(pxa_gpio_set_value);
-
-/*
  * Routine to safely enable or disable a clock in the CKEN
  */
 void __pxa_set_cken(int clock, int enable)
@@ -178,7 +80,6 @@ void __pxa_set_cken(int clock, int enable)
 
 	local_irq_restore(flags);
 }
-
 EXPORT_SYMBOL(__pxa_set_cken);
 
 /*
@@ -203,7 +104,7 @@ static struct map_desc standard_io_desc[] __initdata = {
 	}, {	/* Mem Ctl */
 		.virtual	=  0xf6000000,
 		.pfn		= __phys_to_pfn(0x48000000),
-		.length		= 0x00100000,
+		.length		= 0x00200000,
 		.type		= MT_DEVICE
 	}, {	/* USB host */
 		.virtual	=  0xf8000000,
@@ -234,244 +135,58 @@ void __init pxa_map_io(void)
 	get_clk_frequency_khz(1);
 }
 
+#ifdef CONFIG_PM
 
-static struct resource pxamci_resources[] = {
-	[0] = {
-		.start	= 0x41100000,
-		.end	= 0x41100fff,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= IRQ_MMC,
-		.end	= IRQ_MMC,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
+static unsigned long saved_gplr[4];
+static unsigned long saved_gpdr[4];
+static unsigned long saved_grer[4];
+static unsigned long saved_gfer[4];
 
-static u64 pxamci_dmamask = 0xffffffffUL;
-
-struct platform_device pxa_device_mci = {
-	.name		= "pxa2xx-mci",
-	.id		= -1,
-	.dev		= {
-		.dma_mask = &pxamci_dmamask,
-		.coherent_dma_mask = 0xffffffff,
-	},
-	.num_resources	= ARRAY_SIZE(pxamci_resources),
-	.resource	= pxamci_resources,
-};
-
-void __init pxa_set_mci_info(struct pxamci_platform_data *info)
+static int pxa_gpio_suspend(struct sys_device *dev, pm_message_t state)
 {
-	pxa_device_mci.dev.platform_data = info;
-}
+	int i, gpio;
 
+	for (gpio = 0, i = 0; gpio < pxa_last_gpio; gpio += 32, i++) {
+		saved_gplr[i] = GPLR(gpio);
+		saved_gpdr[i] = GPDR(gpio);
+		saved_grer[i] = GRER(gpio);
+		saved_gfer[i] = GFER(gpio);
 
-static struct pxa2xx_udc_mach_info pxa_udc_info;
-
-void __init pxa_set_udc_info(struct pxa2xx_udc_mach_info *info)
-{
-	memcpy(&pxa_udc_info, info, sizeof *info);
-}
-
-static struct resource pxa2xx_udc_resources[] = {
-	[0] = {
-		.start	= 0x40600000,
-		.end	= 0x4060ffff,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= IRQ_USB,
-		.end	= IRQ_USB,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-static u64 udc_dma_mask = ~(u32)0;
-
-struct platform_device pxa_device_udc = {
-	.name		= "pxa2xx-udc",
-	.id		= -1,
-	.resource	= pxa2xx_udc_resources,
-	.num_resources	= ARRAY_SIZE(pxa2xx_udc_resources),
-	.dev		=  {
-		.platform_data	= &pxa_udc_info,
-		.dma_mask	= &udc_dma_mask,
+		/* Clear GPIO transition detect bits */
+		GEDR(gpio) = GEDR(gpio);
 	}
-};
-
-static struct resource pxafb_resources[] = {
-	[0] = {
-		.start	= 0x44000000,
-		.end	= 0x4400ffff,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= IRQ_LCD,
-		.end	= IRQ_LCD,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-static u64 fb_dma_mask = ~(u64)0;
-
-struct platform_device pxa_device_fb = {
-	.name		= "pxa2xx-fb",
-	.id		= -1,
-	.dev		= {
-		.dma_mask	= &fb_dma_mask,
-		.coherent_dma_mask = 0xffffffff,
-	},
-	.num_resources	= ARRAY_SIZE(pxafb_resources),
-	.resource	= pxafb_resources,
-};
-
-void __init set_pxa_fb_info(struct pxafb_mach_info *info)
-{
-	pxa_device_fb.dev.platform_data = info;
+	return 0;
 }
 
-void __init set_pxa_fb_parent(struct device *parent_dev)
+static int pxa_gpio_resume(struct sys_device *dev)
 {
-	pxa_device_fb.dev.parent = parent_dev;
+	int i, gpio;
+
+	for (gpio = 0, i = 0; gpio < pxa_last_gpio; gpio += 32, i++) {
+		/* restore level with set/clear */
+		GPSR(gpio) = saved_gplr[i];
+		GPCR(gpio) = ~saved_gplr[i];
+
+		GRER(gpio) = saved_grer[i];
+		GFER(gpio) = saved_gfer[i];
+		GPDR(gpio) = saved_gpdr[i];
+	}
+	return 0;
+}
+#else
+#define pxa_gpio_suspend	NULL
+#define pxa_gpio_resume		NULL
+#endif
+
+struct sysdev_class pxa_gpio_sysclass = {
+	.name		= "gpio",
+	.suspend	= pxa_gpio_suspend,
+	.resume		= pxa_gpio_resume,
+};
+
+static int __init pxa_gpio_init(void)
+{
+	return sysdev_class_register(&pxa_gpio_sysclass);
 }
 
-static struct resource pxa_resource_ffuart[] = {
-	{
-		.start	= __PREG(FFUART),
-		.end	= __PREG(FFUART) + 35,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_FFUART,
-		.end	= IRQ_FFUART,
-		.flags	= IORESOURCE_IRQ,
-	}
-};
-
-struct platform_device pxa_device_ffuart= {
-	.name		= "pxa2xx-uart",
-	.id		= 0,
-	.resource	= pxa_resource_ffuart,
-	.num_resources	= ARRAY_SIZE(pxa_resource_ffuart),
-};
-
-static struct resource pxa_resource_btuart[] = {
-	{
-		.start	= __PREG(BTUART),
-		.end	= __PREG(BTUART) + 35,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_BTUART,
-		.end	= IRQ_BTUART,
-		.flags	= IORESOURCE_IRQ,
-	}
-};
-
-struct platform_device pxa_device_btuart = {
-	.name		= "pxa2xx-uart",
-	.id		= 1,
-	.resource	= pxa_resource_btuart,
-	.num_resources	= ARRAY_SIZE(pxa_resource_btuart),
-};
-
-static struct resource pxa_resource_stuart[] = {
-	{
-		.start	= __PREG(STUART),
-		.end	= __PREG(STUART) + 35,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_STUART,
-		.end	= IRQ_STUART,
-		.flags	= IORESOURCE_IRQ,
-	}
-};
-
-struct platform_device pxa_device_stuart = {
-	.name		= "pxa2xx-uart",
-	.id		= 2,
-	.resource	= pxa_resource_stuart,
-	.num_resources	= ARRAY_SIZE(pxa_resource_stuart),
-};
-
-static struct resource pxa_resource_hwuart[] = {
-	{
-		.start	= __PREG(HWUART),
-		.end	= __PREG(HWUART) + 47,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_HWUART,
-		.end	= IRQ_HWUART,
-		.flags	= IORESOURCE_IRQ,
-	}
-};
-
-struct platform_device pxa_device_hwuart = {
-	.name		= "pxa2xx-uart",
-	.id		= 3,
-	.resource	= pxa_resource_hwuart,
-	.num_resources	= ARRAY_SIZE(pxa_resource_hwuart),
-};
-
-static struct resource pxai2c_resources[] = {
-	{
-		.start	= 0x40301680,
-		.end	= 0x403016a3,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_I2C,
-		.end	= IRQ_I2C,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-struct platform_device pxa_device_i2c = {
-	.name		= "pxa2xx-i2c",
-	.id		= 0,
-	.resource	= pxai2c_resources,
-	.num_resources	= ARRAY_SIZE(pxai2c_resources),
-};
-
-void __init pxa_set_i2c_info(struct i2c_pxa_platform_data *info)
-{
-	pxa_device_i2c.dev.platform_data = info;
-}
-
-static struct resource pxai2s_resources[] = {
-	{
-		.start	= 0x40400000,
-		.end	= 0x40400083,
-		.flags	= IORESOURCE_MEM,
-	}, {
-		.start	= IRQ_I2S,
-		.end	= IRQ_I2S,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-struct platform_device pxa_device_i2s = {
-	.name		= "pxa2xx-i2s",
-	.id		= -1,
-	.resource	= pxai2s_resources,
-	.num_resources	= ARRAY_SIZE(pxai2s_resources),
-};
-
-static u64 pxaficp_dmamask = ~(u32)0;
-
-struct platform_device pxa_device_ficp = {
-	.name		= "pxa2xx-ir",
-	.id		= -1,
-	.dev		= {
-		.dma_mask = &pxaficp_dmamask,
-		.coherent_dma_mask = 0xffffffff,
-	},
-};
-
-void __init pxa_set_ficp_info(struct pxaficp_platform_data *info)
-{
-	pxa_device_ficp.dev.platform_data = info;
-}
-
-struct platform_device pxa_device_rtc = {
-	.name		= "sa1100-rtc",
-	.id		= -1,
-};
+core_initcall(pxa_gpio_init);

@@ -27,6 +27,13 @@ config ARCH_NO_VIRT_TO_BUS
 config OF
 	def_bool y
 
+config ARCH_SUPPORTS_AOUT
+	def_bool y
+
+config HZ
+	int
+	default 100
+
 source "init/Kconfig"
 
 menu "General machine setup"
@@ -48,9 +55,8 @@ config SMP
 	  Y to "Enhanced Real Time Clock Support", below. The "Advanced Power
 	  Management" code will be disabled if you say Y here.
 
-	  See also the <file:Documentation/smp.txt>,
-	  <file:Documentation/nmi_watchdog.txt> and the SMP-HOWTO available at
-	  <http://www.tldp.org/docs.html#howto>.
+	  See also <file:Documentation/nmi_watchdog.txt> and the SMP-HOWTO
+	  available at <http://www.tldp.org/docs.html#howto>.
 
 	  If you don't know what to do here, say N.
 
@@ -63,6 +69,8 @@ config NR_CPUS
 config SPARC
 	bool
 	default y
+	select HAVE_IDE
+	select HAVE_OPROFILE
 
 # Identify this as a Sparc32 build
 config SPARC32
@@ -319,8 +327,6 @@ config UNIX98_PTY_COUNT
 endmenu
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/sparc/Kconfig.debug"
 

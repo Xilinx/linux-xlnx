@@ -7,7 +7,7 @@
  * Description:
  *
  * Modified:
- *               Copyright 2004-2006 Analog Devices Inc.
+ *               Copyright 2004-2008 Analog Devices Inc.
  *
  * Bugs:         Enter bugs at http://blackfin.uclinux.org/
  *
@@ -304,39 +304,39 @@
 **************************************************************/
 
 #ifndef BF548_FAMILY
-void set_gpio_dir(unsigned short, unsigned short);
-void set_gpio_inen(unsigned short, unsigned short);
-void set_gpio_polar(unsigned short, unsigned short);
-void set_gpio_edge(unsigned short, unsigned short);
-void set_gpio_both(unsigned short, unsigned short);
-void set_gpio_data(unsigned short, unsigned short);
-void set_gpio_maska(unsigned short, unsigned short);
-void set_gpio_maskb(unsigned short, unsigned short);
-void set_gpio_toggle(unsigned short);
-void set_gpiop_dir(unsigned short, unsigned short);
-void set_gpiop_inen(unsigned short, unsigned short);
-void set_gpiop_polar(unsigned short, unsigned short);
-void set_gpiop_edge(unsigned short, unsigned short);
-void set_gpiop_both(unsigned short, unsigned short);
-void set_gpiop_data(unsigned short, unsigned short);
-void set_gpiop_maska(unsigned short, unsigned short);
-void set_gpiop_maskb(unsigned short, unsigned short);
-unsigned short get_gpio_dir(unsigned short);
-unsigned short get_gpio_inen(unsigned short);
-unsigned short get_gpio_polar(unsigned short);
-unsigned short get_gpio_edge(unsigned short);
-unsigned short get_gpio_both(unsigned short);
-unsigned short get_gpio_maska(unsigned short);
-unsigned short get_gpio_maskb(unsigned short);
-unsigned short get_gpio_data(unsigned short);
-unsigned short get_gpiop_dir(unsigned short);
-unsigned short get_gpiop_inen(unsigned short);
-unsigned short get_gpiop_polar(unsigned short);
-unsigned short get_gpiop_edge(unsigned short);
-unsigned short get_gpiop_both(unsigned short);
-unsigned short get_gpiop_maska(unsigned short);
-unsigned short get_gpiop_maskb(unsigned short);
-unsigned short get_gpiop_data(unsigned short);
+void set_gpio_dir(unsigned, unsigned short);
+void set_gpio_inen(unsigned, unsigned short);
+void set_gpio_polar(unsigned, unsigned short);
+void set_gpio_edge(unsigned, unsigned short);
+void set_gpio_both(unsigned, unsigned short);
+void set_gpio_data(unsigned, unsigned short);
+void set_gpio_maska(unsigned, unsigned short);
+void set_gpio_maskb(unsigned, unsigned short);
+void set_gpio_toggle(unsigned);
+void set_gpiop_dir(unsigned, unsigned short);
+void set_gpiop_inen(unsigned, unsigned short);
+void set_gpiop_polar(unsigned, unsigned short);
+void set_gpiop_edge(unsigned, unsigned short);
+void set_gpiop_both(unsigned, unsigned short);
+void set_gpiop_data(unsigned, unsigned short);
+void set_gpiop_maska(unsigned, unsigned short);
+void set_gpiop_maskb(unsigned, unsigned short);
+unsigned short get_gpio_dir(unsigned);
+unsigned short get_gpio_inen(unsigned);
+unsigned short get_gpio_polar(unsigned);
+unsigned short get_gpio_edge(unsigned);
+unsigned short get_gpio_both(unsigned);
+unsigned short get_gpio_maska(unsigned);
+unsigned short get_gpio_maskb(unsigned);
+unsigned short get_gpio_data(unsigned);
+unsigned short get_gpiop_dir(unsigned);
+unsigned short get_gpiop_inen(unsigned);
+unsigned short get_gpiop_polar(unsigned);
+unsigned short get_gpiop_edge(unsigned);
+unsigned short get_gpiop_both(unsigned);
+unsigned short get_gpiop_maska(unsigned);
+unsigned short get_gpiop_maskb(unsigned);
+unsigned short get_gpiop_data(unsigned);
 
 struct gpio_port_t {
 	unsigned short data;
@@ -376,16 +376,19 @@ struct gpio_port_t {
 #endif
 
 #ifdef CONFIG_PM
+unsigned int bfin_pm_setup(void);
+void bfin_pm_restore(void);
+
+#ifndef CONFIG_BF54x
 #define PM_WAKE_RISING	0x1
 #define PM_WAKE_FALLING	0x2
 #define PM_WAKE_HIGH	0x4
 #define PM_WAKE_LOW	0x8
 #define PM_WAKE_BOTH_EDGES	(PM_WAKE_RISING | PM_WAKE_FALLING)
+#define PM_WAKE_IGNORE	0xF0
 
-int gpio_pm_wakeup_request(unsigned short gpio, unsigned char type);
-void gpio_pm_wakeup_free(unsigned short gpio);
-unsigned int gpio_pm_setup(void);
-void gpio_pm_restore(void);
+int gpio_pm_wakeup_request(unsigned gpio, unsigned char type);
+void gpio_pm_wakeup_free(unsigned gpio);
 
 struct gpio_port_s {
 	unsigned short data;
@@ -409,6 +412,7 @@ struct gpio_port_s {
 	unsigned short fer;
 	unsigned short reserved;
 };
+#endif /*CONFIG_BF54x*/
 #endif /*CONFIG_PM*/
 
 /***********************************************************
@@ -426,19 +430,19 @@ struct gpio_port_s {
 * MODIFICATION HISTORY :
 **************************************************************/
 
-int gpio_request(unsigned short, const char *);
-void gpio_free(unsigned short);
+int gpio_request(unsigned, const char *);
+void gpio_free(unsigned);
 
-void gpio_set_value(unsigned short gpio, unsigned short arg);
-unsigned short gpio_get_value(unsigned short gpio);
+void gpio_set_value(unsigned gpio, int arg);
+int gpio_get_value(unsigned gpio);
 
 #ifndef BF548_FAMILY
 #define gpio_get_value(gpio) 		get_gpio_data(gpio)
 #define gpio_set_value(gpio, value)	set_gpio_data(gpio, value)
 #endif
 
-void gpio_direction_input(unsigned short gpio);
-void gpio_direction_output(unsigned short gpio);
+int gpio_direction_input(unsigned gpio);
+int gpio_direction_output(unsigned gpio, int value);
 
 #include <asm-generic/gpio.h>		/* cansleep wrappers */
 #include <asm/irq.h>

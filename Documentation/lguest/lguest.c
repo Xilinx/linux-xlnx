@@ -1,7 +1,7 @@
 /*P:100 This is the Launcher code, a simple program which lays out the
- * "physical" memory for the new Guest by mapping the kernel image and the
- * virtual devices, then reads repeatedly from /dev/lguest to run the Guest.
-:*/
+ * "physical" memory for the new Guest by mapping the kernel image and
+ * the virtual devices, then opens /dev/lguest to tell the kernel
+ * about the Guest and control it. :*/
 #define _LARGEFILE64_SOURCE
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -34,6 +34,8 @@
 #include <zlib.h>
 #include <assert.h>
 #include <sched.h>
+#include <limits.h>
+#include <stddef.h>
 #include "linux/lguest_launcher.h"
 #include "linux/virtio_config.h"
 #include "linux/virtio_net.h"
@@ -41,7 +43,7 @@
 #include "linux/virtio_console.h"
 #include "linux/virtio_ring.h"
 #include "asm-x86/bootparam.h"
-/*L:110 We can ignore the 38 include files we need for this program, but I do
+/*L:110 We can ignore the 39 include files we need for this program, but I do
  * want to draw attention to the use of kernel-style types.
  *
  * As Linus said, "C is a Spartan language, and so should your naming be."  I
@@ -79,6 +81,9 @@ static void *guest_base;
 /* The maximum guest physical address allowed, and maximum possible. */
 static unsigned long guest_limit, guest_max;
 
+/* a per-cpu variable indicating whose vcpu is currently running */
+static unsigned int __thread cpu_id;
+
 /* This is our list of devices. */
 struct device_list
 {
@@ -96,13 +101,11 @@ struct device_list
 	/* The descriptor page for the devices. */
 	u8 *descpage;
 
-	/* The tail of the last descriptor. */
-	unsigned int desc_used;
-
 	/* A single linked list of devices. */
 	struct device *dev;
-	/* ... And an end pointer so we can easily append new devices */
-	struct device **lastdev;
+	/* And a pointer to the last device for easy append and also for
+	 * configuration appending. */
+	struct device *lastdev;
 };
 
 /* The list of Guest devices, based on command line arguments. */
@@ -153,6 +156,9 @@ struct virtqueue
 	void (*handle_output)(int fd, struct virtqueue *me);
 };
 
+/* Remember the arguments to the program so we can "reboot" */
+static char **main_args;
+
 /* Since guest is UP and we don't run at the same time, we don't need barriers.
  * But I include them in the code in case others copy it. */
 #define wmb()
@@ -185,7 +191,14 @@ static void *_convert(struct iovec *iov, size_t size, size_t align,
 #define cpu_to_le64(v64) (v64)
 #define le16_to_cpu(v16) (v16)
 #define le32_to_cpu(v32) (v32)
-#define le64_to_cpu(v32) (v64)
+#define le64_to_cpu(v64) (v64)
+
+/* The device virtqueue descriptors are followed by feature bitmasks. */
+static u8 *get_feature_bits(struct device *dev)
+{
+	return (u8 *)(dev->desc + 1)
+		+ dev->desc->num_vq * sizeof(struct lguest_vqconfig);
+}
 
 /*L:100 The Launcher code itself takes us out into userspace, that scary place
  * where pointers run wild and free!  Unfortunately, like most userspace
@@ -307,7 +320,7 @@ static unsigned long map_elf(int elf_fd, const Elf32_Ehdr *ehdr)
 		err(1, "Reading program headers");
 
 	/* Try all the headers: there are usually only three.  A read-only one,
-	 * a read-write one, and a "note" section which isn't loadable. */
+	 * a read-write one, and a "note" section which we don't load. */
 	for (i = 0; i < ehdr->e_phnum; i++) {
 		/* If this isn't a loadable segment, we ignore it */
 		if (phdr[i].p_type != PT_LOAD)
@@ -374,7 +387,7 @@ static unsigned long load_kernel(int fd)
 	if (memcmp(hdr.e_ident, ELFMAG, SELFMAG) == 0)
 		return map_elf(fd, &hdr);
 
-	/* Otherwise we assume it's a bzImage, and try to unpack it */
+	/* Otherwise we assume it's a bzImage, and try to load it. */
 	return load_bzimage(fd);
 }
 
@@ -420,12 +433,12 @@ static unsigned long load_initrd(const char *name, unsigned long mem)
 	return len;
 }
 
-/* Once we know how much memory we have, we can construct simple linear page
+/* Once we know how much memory we have we can construct simple linear page
  * tables which set virtual == physical which will get the Guest far enough
  * into the boot to create its own.
  *
  * We lay them out of the way, just below the initrd (which is why we need to
- * know its size). */
+ * know its size here). */
 static unsigned long setup_pagetables(unsigned long mem,
 				      unsigned long initrd_size)
 {
@@ -473,9 +486,12 @@ static void concat(char *dst, char *args[])
 	unsigned int i, len = 0;
 
 	for (i = 0; args[i]; i++) {
+		if (i) {
+			strcat(dst+len, " ");
+			len++;
+		}
 		strcpy(dst+len, args[i]);
-		strcat(dst+len, " ");
-		len += strlen(args[i]) + 1;
+		len += strlen(args[i]);
 	}
 	/* In case it's empty. */
 	dst[len] = '\0';
@@ -554,7 +570,7 @@ static void wake_parent(int pipefd, int lguest_fd)
 			else
 				FD_CLR(-fd - 1, &devices.infds);
 		} else /* Send LHREQ_BREAK command. */
-			write(lguest_fd, args, sizeof(args));
+			pwrite(lguest_fd, args, sizeof(args), cpu_id);
 	}
 }
 
@@ -834,7 +850,8 @@ static void handle_console_output(int fd, struct virtqueue *vq)
  *
  * Handling output for network is also simple: we get all the output buffers
  * and write them (ignoring the first element) to this device's file descriptor
- * (stdout). */
+ * (/dev/net/tun).
+ */
 static void handle_net_output(int fd, struct virtqueue *vq)
 {
 	unsigned int head, out, in;
@@ -908,21 +925,58 @@ static void enable_fd(int fd, struct virtqueue *vq)
 	write(waker_fd, &vq->dev->fd, sizeof(vq->dev->fd));
 }
 
+/* When the Guest asks us to reset a device, it's is fairly easy. */
+static void reset_device(struct device *dev)
+{
+	struct virtqueue *vq;
+
+	verbose("Resetting device %s\n", dev->name);
+	/* Clear the status. */
+	dev->desc->status = 0;
+
+	/* Clear any features they've acked. */
+	memset(get_feature_bits(dev) + dev->desc->feature_len, 0,
+	       dev->desc->feature_len);
+
+	/* Zero out the virtqueues. */
+	for (vq = dev->vq; vq; vq = vq->next) {
+		memset(vq->vring.desc, 0,
+		       vring_size(vq->config.num, getpagesize()));
+		vq->last_avail_idx = 0;
+	}
+}
+
 /* This is the generic routine we call when the Guest uses LHCALL_NOTIFY. */
 static void handle_output(int fd, unsigned long addr)
 {
 	struct device *i;
 	struct virtqueue *vq;
 
-	/* Check each virtqueue. */
+	/* Check each device and virtqueue. */
 	for (i = devices.dev; i; i = i->next) {
+		/* Notifications to device descriptors reset the device. */
+		if (from_guest_phys(addr) == i->desc) {
+			reset_device(i);
+			return;
+		}
+
+		/* Notifications to virtqueues mean output has occurred. */
 		for (vq = i->vq; vq; vq = vq->next) {
-			if (vq->config.pfn == addr/getpagesize()
-			    && vq->handle_output) {
-				verbose("Output to %s\n", vq->dev->name);
-				vq->handle_output(fd, vq);
+			if (vq->config.pfn != addr/getpagesize())
+				continue;
+
+			/* Guest should acknowledge (and set features!)  before
+			 * using the device. */
+			if (i->desc->status == 0) {
+				warnx("%s gave early output", i->name);
 				return;
 			}
+
+			if (strcmp(vq->dev->name, "console") != 0)
+				verbose("Output to %s\n", vq->dev->name);
+			if (vq->handle_output)
+				vq->handle_output(fd, vq);
+			return;
 		}
 	}
 
@@ -950,8 +1004,8 @@ static void handle_input(int fd)
 		if (select(devices.max_infd+1, &fds, NULL, NULL, &poll) == 0)
 			break;
 
-		/* Otherwise, call the device(s) which have readable
-		 * file descriptors and a method of handling them.  */
+		/* Otherwise, call the device(s) which have readable file
+		 * descriptors and a method of handling them.  */
 		for (i = devices.dev; i; i = i->next) {
 			if (i->handle_input && FD_ISSET(i->fd, &fds)) {
 				int dev_fd;
@@ -962,8 +1016,7 @@ static void handle_input(int fd)
 				 * should no longer service it.  Networking and
 				 * console do this when there's no input
 				 * buffers to deliver into.  Console also uses
-				 * it when it discovers that stdin is
-				 * closed. */
+				 * it when it discovers that stdin is closed. */
 				FD_CLR(i->fd, &devices.infds);
 				/* Tell waker to ignore it too, by sending a
 				 * negative fd number (-1, since 0 is a valid
@@ -980,54 +1033,45 @@ static void handle_input(int fd)
  *
  * All devices need a descriptor so the Guest knows it exists, and a "struct
  * device" so the Launcher can keep track of it.  We have common helper
- * routines to allocate them.
- *
- * This routine allocates a new "struct lguest_device_desc" from descriptor
- * table just above the Guest's normal memory.  It returns a pointer to that
- * descriptor. */
+ * routines to allocate and manage them.
+ */
+
+/* The layout of the device page is a "struct lguest_device_desc" followed by a
+ * number of virtqueue descriptors, then two sets of feature bits, then an
+ * array of configuration bytes.  This routine returns the configuration
+ * pointer. */
+static u8 *device_config(const struct device *dev)
+{
+	return (void *)(dev->desc + 1)
+		+ dev->desc->num_vq * sizeof(struct lguest_vqconfig)
+		+ dev->desc->feature_len * 2;
+}
+
+/* This routine allocates a new "struct lguest_device_desc" from descriptor
+ * table page just above the Guest's normal memory.  It returns a pointer to
+ * that descriptor. */
 static struct lguest_device_desc *new_dev_desc(u16 type)
 {
-	struct lguest_device_desc *d;
+	struct lguest_device_desc d = { .type = type };
+	void *p;
+
+	/* Figure out where the next device config is, based on the last one. */
+	if (devices.lastdev)
+		p = device_config(devices.lastdev)
+			+ devices.lastdev->desc->config_len;
+	else
+		p = devices.descpage;
 
 	/* We only have one page for all the descriptors. */
-	if (devices.desc_used + sizeof(*d) > getpagesize())
+	if (p + sizeof(d) > (void *)devices.descpage + getpagesize())
 		errx(1, "Too many devices");
 
-	/* We don't need to set config_len or status: page is 0 already. */
-	d = (void *)devices.descpage + devices.desc_used;
-	d->type = type;
-	devices.desc_used += sizeof(*d);
-
-	return d;
+	/* p might not be aligned, so we memcpy in. */
+	return memcpy(p, &d, sizeof(d));
 }
 
-/* Each device descriptor is followed by some configuration information.
- * Each configuration field looks like: u8 type, u8 len, [... len bytes...].
- *
- * This routine adds a new field to an existing device's descriptor.  It only
- * works for the last device, but that's OK because that's how we use it. */
-static void add_desc_field(struct device *dev, u8 type, u8 len, const void *c)
-{
-	/* This is the last descriptor, right? */
-	assert(devices.descpage + devices.desc_used
-	       == (u8 *)(dev->desc + 1) + dev->desc->config_len);
-
-	/* We only have one page of device descriptions. */
-	if (devices.desc_used + 2 + len > getpagesize())
-		errx(1, "Too many devices");
-
-	/* Copy in the new config header: type then length. */
-	devices.descpage[devices.desc_used++] = type;
-	devices.descpage[devices.desc_used++] = len;
-	memcpy(devices.descpage + devices.desc_used, c, len);
-	devices.desc_used += len;
-
-	/* Update the device descriptor length: two byte head then data. */
-	dev->desc->config_len += 2 + len;
-}
-
-/* This routine adds a virtqueue to a device.  We specify how many descriptors
- * the virtqueue is to have. */
+/* Each device descriptor is followed by the description of its virtqueues.  We
+ * specify how many descriptors the virtqueue is to have. */
 static void add_virtqueue(struct device *dev, unsigned int num_descs,
 			  void (*handle_output)(int fd, struct virtqueue *me))
 {
@@ -1035,7 +1079,7 @@ static void add_virtqueue(struct device *dev, unsigned int num_descs,
 	struct virtqueue **i, *vq = malloc(sizeof(*vq));
 	void *p;
 
-	/* First we need some pages for this virtqueue. */
+	/* First we need some memory for this virtqueue. */
 	pages = (vring_size(num_descs, getpagesize()) + getpagesize() - 1)
 		/ getpagesize();
 	p = get_pages(pages);
@@ -1053,9 +1097,15 @@ static void add_virtqueue(struct device *dev, unsigned int num_descs,
 	/* Initialize the vring. */
 	vring_init(&vq->vring, num_descs, p, getpagesize());
 
-	/* Add the configuration information to this device's descriptor. */
-	add_desc_field(dev, VIRTIO_CONFIG_F_VIRTQUEUE,
-		       sizeof(vq->config), &vq->config);
+	/* Append virtqueue to this device's descriptor.  We use
+	 * device_config() to get the end of the device's current virtqueues;
+	 * we check that we haven't added any config or feature information
+	 * yet, otherwise we'd be overwriting them. */
+	assert(dev->desc->config_len == 0 && dev->desc->feature_len == 0);
+	memcpy(device_config(dev), &vq->config, sizeof(vq->config));
+	dev->desc->num_vq++;
+
+	verbose("Virtqueue page %#lx\n", to_guest_phys(p));
 
 	/* Add to tail of list, so dev->vq is first vq, dev->vq->next is
 	 * second.  */
@@ -1066,25 +1116,49 @@ static void add_virtqueue(struct device *dev, unsigned int num_descs,
 	 * virtqueue. */
 	vq->handle_output = handle_output;
 
-	/* Set the "Don't Notify Me" flag if we don't have a handler */
+	/* As an optimization, set the advisory "Don't Notify Me" flag if we
+	 * don't have a handler */
 	if (!handle_output)
 		vq->vring.used->flags = VRING_USED_F_NO_NOTIFY;
 }
 
+/* The first half of the feature bitmask is for us to advertise features.  The
+ * second half is for the Guest to accept features. */
+static void add_feature(struct device *dev, unsigned bit)
+{
+	u8 *features = get_feature_bits(dev);
+
+	/* We can't extend the feature bits once we've added config bytes */
+	if (dev->desc->feature_len <= bit / CHAR_BIT) {
+		assert(dev->desc->config_len == 0);
+		dev->desc->feature_len = (bit / CHAR_BIT) + 1;
+	}
+
+	features[bit / CHAR_BIT] |= (1 << (bit % CHAR_BIT));
+}
+
+/* This routine sets the configuration fields for an existing device's
+ * descriptor.  It only works for the last device, but that's OK because that's
+ * how we use it. */
+static void set_config(struct device *dev, unsigned len, const void *conf)
+{
+	/* Check we haven't overflowed our single page. */
+	if (device_config(dev) + len > devices.descpage + getpagesize())
+		errx(1, "Too many devices");
+
+	/* Copy in the config information, and store the length. */
+	memcpy(device_config(dev), conf, len);
+	dev->desc->config_len = len;
+}
+
 /* This routine does all the creation and setup of a new device, including
- * calling new_dev_desc() to allocate the descriptor and device memory. */
+ * calling new_dev_desc() to allocate the descriptor and device memory.
+ *
+ * See what I mean about userspace being boring? */
 static struct device *new_device(const char *name, u16 type, int fd,
 				 bool (*handle_input)(int, struct device *))
 {
 	struct device *dev = malloc(sizeof(*dev));
-
-	/* Append to device list.  Prepending to a single-linked list is
-	 * easier, but the user expects the devices to be arranged on the bus
-	 * in command-line order.  The first network device on the command line
-	 * is eth0, the first block device /dev/vda, etc. */
-	*devices.lastdev = dev;
-	dev->next = NULL;
-	devices.lastdev = &dev->next;
 
 	/* Now we populate the fields one at a time. */
 	dev->fd = fd;
@@ -1096,6 +1170,17 @@ static struct device *new_device(const char *name, u16 type, int fd,
 	dev->handle_input = handle_input;
 	dev->name = name;
 	dev->vq = NULL;
+
+	/* Append to device list.  Prepending to a single-linked list is
+	 * easier, but the user expects the devices to be arranged on the bus
+	 * in command-line order.  The first network device on the command line
+	 * is eth0, the first block device /dev/vda, etc. */
+	if (devices.lastdev)
+		devices.lastdev->next = dev;
+	else
+		devices.dev = dev;
+	devices.lastdev = dev;
+
 	return dev;
 }
 
@@ -1220,7 +1305,7 @@ static void setup_tun_net(const char *arg)
 	int netfd, ipfd;
 	u32 ip;
 	const char *br_name = NULL;
-	u8 hwaddr[6];
+	struct virtio_net_config conf;
 
 	/* We open the /dev/net/tun device and tell it we want a tap device.  A
 	 * tap device is like a tun device, only somehow different.  To tell
@@ -1259,12 +1344,13 @@ static void setup_tun_net(const char *arg)
 		ip = str2ip(arg);
 
 	/* Set up the tun device, and get the mac address for the interface. */
-	configure_device(ipfd, ifr.ifr_name, ip, hwaddr);
+	configure_device(ipfd, ifr.ifr_name, ip, conf.mac);
 
 	/* Tell Guest what MAC address to use. */
-	add_desc_field(dev, VIRTIO_CONFIG_NET_MAC_F, sizeof(hwaddr), hwaddr);
+	add_feature(dev, VIRTIO_NET_F_MAC);
+	set_config(dev, sizeof(conf), &conf);
 
-	/* We don't seed the socket any more; setup is done. */
+	/* We don't need the socket any more; setup is done. */
 	close(ipfd);
 
 	verbose("device %u: tun net %u.%u.%u.%u\n",
@@ -1300,7 +1386,6 @@ struct vblk_info
 	 * Launcher triggers interrupt to Guest. */
 	int done_fd;
 };
-/*:*/
 
 /*L:210
  * The Disk
@@ -1410,7 +1495,10 @@ static int io_thread(void *_dev)
 	while (read(vblk->workpipe[0], &c, 1) == 1) {
 		/* We acknowledge each request immediately to reduce latency,
 		 * rather than waiting until we've done them all.  I haven't
-		 * measured to see if it makes any difference. */
+		 * measured to see if it makes any difference.
+		 *
+		 * That would be an interesting test, wouldn't it?  You could
+		 * also try having more than one I/O thread. */
 		while (service_io(dev))
 			write(vblk->done_fd, &c, 1);
 	}
@@ -1418,7 +1506,7 @@ static int io_thread(void *_dev)
 }
 
 /* Now we've seen the I/O thread, we return to the Launcher to see what happens
- * when the thread tells us it's completed some I/O. */
+ * when that thread tells us it's completed some I/O. */
 static bool handle_io_finish(int fd, struct device *dev)
 {
 	char c;
@@ -1452,8 +1540,7 @@ static void setup_block_file(const char *filename)
 	struct device *dev;
 	struct vblk_info *vblk;
 	void *stack;
-	u64 cap;
-	unsigned int val;
+	struct virtio_blk_config conf;
 
 	/* This is the pipe the I/O thread will use to tell us I/O is done. */
 	pipe(p);
@@ -1471,14 +1558,18 @@ static void setup_block_file(const char *filename)
 	vblk->fd = open_or_die(filename, O_RDWR|O_LARGEFILE);
 	vblk->len = lseek64(vblk->fd, 0, SEEK_END);
 
+	/* We support barriers. */
+	add_feature(dev, VIRTIO_BLK_F_BARRIER);
+
 	/* Tell Guest how many sectors this device has. */
-	cap = cpu_to_le64(vblk->len / 512);
-	add_desc_field(dev, VIRTIO_CONFIG_BLK_F_CAPACITY, sizeof(cap), &cap);
+	conf.capacity = cpu_to_le64(vblk->len / 512);
 
 	/* Tell Guest not to put in too many descriptors at once: two are used
 	 * for the in and out elements. */
-	val = cpu_to_le32(VIRTQUEUE_NUM - 2);
-	add_desc_field(dev, VIRTIO_CONFIG_BLK_F_SEG_MAX, sizeof(val), &val);
+	add_feature(dev, VIRTIO_BLK_F_SEG_MAX);
+	conf.seg_max = cpu_to_le32(VIRTQUEUE_NUM - 2);
+
+	set_config(dev, sizeof(conf), &conf);
 
 	/* The I/O thread writes to this end of the pipe when done. */
 	vblk->done_fd = p[1];
@@ -1487,9 +1578,12 @@ static void setup_block_file(const char *filename)
 	 * more work. */
 	pipe(vblk->workpipe);
 
-	/* Create stack for thread and run it */
+	/* Create stack for thread and run it.  Since stack grows upwards, we
+	 * point the stack pointer to the end of this region. */
 	stack = malloc(32768);
-	if (clone(io_thread, stack + 32768, CLONE_VM, dev) == -1)
+	/* SIGCHLD - We dont "wait" for our cloned thread, so prevent it from
+	 * becoming a zombie. */
+	if (clone(io_thread, stack + 32768, CLONE_VM | SIGCHLD, dev) == -1)
 		err(1, "Creating clone");
 
 	/* We don't need to keep the I/O thread's end of the pipes open. */
@@ -1497,11 +1591,25 @@ static void setup_block_file(const char *filename)
 	close(vblk->workpipe[0]);
 
 	verbose("device %u: virtblock %llu sectors\n",
-		devices.device_num, cap);
+		devices.device_num, le64_to_cpu(conf.capacity));
 }
 /* That's the end of device setup. */
 
-/*L:220 Finally we reach the core of the Launcher, which runs the Guest, serves
+/*L:230 Reboot is pretty easy: clean up and exec() the Launcher afresh. */
+static void __attribute__((noreturn)) restart_guest(void)
+{
+	unsigned int i;
+
+	/* Closing pipes causes the Waker thread and io_threads to die, and
+	 * closing /dev/lguest cleans up the Guest.  Since we don't track all
+	 * open fds, we simply close everything beyond stderr. */
+	for (i = 3; i < FD_SETSIZE; i++)
+		close(i);
+	execv(main_args[0], main_args);
+	err(1, "Could not exec %s", main_args[0]);
+}
+
+/*L:220 Finally we reach the core of the Launcher which runs the Guest, serves
  * its input and output, and finally, lays it to rest. */
 static void __attribute__((noreturn)) run_guest(int lguest_fd)
 {
@@ -1511,7 +1619,8 @@ static void __attribute__((noreturn)) run_guest(int lguest_fd)
 		int readval;
 
 		/* We read from the /dev/lguest device to run the Guest. */
-		readval = read(lguest_fd, &notify_addr, sizeof(notify_addr));
+		readval = pread(lguest_fd, &notify_addr,
+				sizeof(notify_addr), cpu_id);
 
 		/* One unsigned long means the Guest did HCALL_NOTIFY */
 		if (readval == sizeof(notify_addr)) {
@@ -1521,20 +1630,27 @@ static void __attribute__((noreturn)) run_guest(int lguest_fd)
 		/* ENOENT means the Guest died.  Reading tells us why. */
 		} else if (errno == ENOENT) {
 			char reason[1024] = { 0 };
-			read(lguest_fd, reason, sizeof(reason)-1);
+			pread(lguest_fd, reason, sizeof(reason)-1, cpu_id);
 			errx(1, "%s", reason);
+		/* ERESTART means that we need to reboot the guest */
+		} else if (errno == ERESTART) {
+			restart_guest();
 		/* EAGAIN means the Waker wanted us to look at some input.
 		 * Anything else means a bug or incompatible change. */
 		} else if (errno != EAGAIN)
 			err(1, "Running guest failed");
 
+		/* Only service input on thread for CPU 0. */
+		if (cpu_id != 0)
+			continue;
+
 		/* Service input, then unset the BREAK to release the Waker. */
 		handle_input(lguest_fd);
-		if (write(lguest_fd, args, sizeof(args)) < 0)
+		if (pwrite(lguest_fd, args, sizeof(args), cpu_id) < 0)
 			err(1, "Resetting break");
 	}
 }
-/*
+/*L:240
  * This is the end of the Launcher.  The good news: we are over halfway
  * through!  The bad news: the most fiendish part of the code still lies ahead
  * of us.
@@ -1571,17 +1687,24 @@ int main(int argc, char *argv[])
 	/* If they specify an initrd file to load. */
 	const char *initrd_name = NULL;
 
+	/* Save the args: we "reboot" by execing ourselves again. */
+	main_args = argv;
+	/* We don't "wait" for the children, so prevent them from becoming
+	 * zombies. */
+	signal(SIGCHLD, SIG_IGN);
+
 	/* First we initialize the device list.  Since console and network
 	 * device receive input from a file descriptor, we keep an fdset
 	 * (infds) and the maximum fd number (max_infd) with the head of the
-	 * list.  We also keep a pointer to the last device, for easy appending
-	 * to the list.  Finally, we keep the next interrupt number to hand out
-	 * (1: remember that 0 is used by the timer). */
+	 * list.  We also keep a pointer to the last device.  Finally, we keep
+	 * the next interrupt number to use for devices (1: remember that 0 is
+	 * used by the timer). */
 	FD_ZERO(&devices.infds);
 	devices.max_infd = -1;
-	devices.lastdev = &devices.dev;
+	devices.lastdev = NULL;
 	devices.next_irq = 1;
 
+	cpu_id = 0;
 	/* We need to know how much memory so we can set up the device
 	 * descriptor and memory pages for the devices as we parse the command
 	 * line.  So we quickly look through the arguments to find the amount
@@ -1676,8 +1799,8 @@ int main(int argc, char *argv[])
 	lguest_fd = tell_kernel(pgdir, start);
 
 	/* We fork off a child process, which wakes the Launcher whenever one
-	 * of the input file descriptors needs attention.  Otherwise we would
-	 * run the Guest until it tries to output something. */
+	 * of the input file descriptors needs attention.  We call this the
+	 * Waker, and we'll cover it in a moment. */
 	waker_fd = setup_waker(lguest_fd);
 
 	/* Finally, run the Guest.  This doesn't return. */

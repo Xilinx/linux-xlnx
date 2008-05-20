@@ -217,7 +217,6 @@ static int use_virtual_dma;
  */
 
 static DEFINE_SPINLOCK(floppy_lock);
-static struct completion device_release;
 
 static unsigned short virtual_dma_port = 0x3f0;
 irqreturn_t floppy_interrupt(int irq, void *dev_id);
@@ -2287,21 +2286,19 @@ static int do_format(int drive, struct format_descr *tmp_format_req)
  * =============================
  */
 
-static void floppy_end_request(struct request *req, int uptodate)
+static void floppy_end_request(struct request *req, int error)
 {
 	unsigned int nr_sectors = current_count_sectors;
+	unsigned int drive = (unsigned long)req->rq_disk->private_data;
 
 	/* current_count_sectors can be zero if transfer failed */
-	if (!uptodate)
+	if (error)
 		nr_sectors = req->current_nr_sectors;
-	if (end_that_request_first(req, uptodate, nr_sectors))
+	if (__blk_end_request(req, error, nr_sectors << 9))
 		return;
-	add_disk_randomness(req->rq_disk);
-	floppy_off((long)req->rq_disk->private_data);
-	blkdev_dequeue_request(req);
-	end_that_request_last(req, uptodate);
 
 	/* We're done with the request */
+	floppy_off(drive);
 	current_req = NULL;
 }
 
@@ -2332,7 +2329,7 @@ static void request_done(int uptodate)
 
 		/* unlock chained buffers */
 		spin_lock_irqsave(q->queue_lock, flags);
-		floppy_end_request(req, 1);
+		floppy_end_request(req, 0);
 		spin_unlock_irqrestore(q->queue_lock, flags);
 	} else {
 		if (rq_data_dir(req) == WRITE) {
@@ -2346,7 +2343,7 @@ static void request_done(int uptodate)
 			DRWE->last_error_generation = DRS->generation;
 		}
 		spin_lock_irqsave(q->queue_lock, flags);
-		floppy_end_request(req, 0);
+		floppy_end_request(req, -EIO);
 		spin_unlock_irqrestore(q->queue_lock, flags);
 	}
 }
@@ -4146,7 +4143,6 @@ DEVICE_ATTR(cmos,S_IRUGO,floppy_cmos_show,NULL);
 
 static void floppy_device_release(struct device *dev)
 {
-	complete(&device_release);
 }
 
 static struct platform_device floppy_device[N_DRIVE];
@@ -4541,7 +4537,6 @@ void cleanup_module(void)
 {
 	int drive;
 
-	init_completion(&device_release);
 	blk_unregister_region(MKDEV(FLOPPY_MAJOR, 0), 256);
 	unregister_blkdev(FLOPPY_MAJOR, "fd");
 
@@ -4566,8 +4561,6 @@ void cleanup_module(void)
 
 	/* eject disk, if any */
 	fd_eject(0);
-
-	wait_for_completion(&device_release);
 }
 
 module_param(floppy, charp, 0);

@@ -57,7 +57,7 @@ static int tea6420_switch(struct i2c_client *client, int i, int o, int g)
 
 	dprintk("adr:0x%02x, i:%d, o:%d, g:%d\n", client->addr, i, o, g);
 
-	/* check if the paramters are valid */
+	/* check if the parameters are valid */
 	if (i < 1 || i > 6 || o < 1 || o > 4 || g < 0 || g > 6 || g % 2 != 0)
 		return -1;
 
@@ -101,7 +101,7 @@ static int tea6420_detect(struct i2c_adapter *adapter, int address, int kind)
 
 	/* allocate memory for client structure */
 	client = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
-	if (0 == client) {
+	if (!client) {
 		return -ENOMEM;
 	}
 

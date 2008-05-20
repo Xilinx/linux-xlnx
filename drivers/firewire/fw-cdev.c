@@ -109,15 +109,17 @@ static int fw_device_op_open(struct inode *inode, struct file *file)
 	struct client *client;
 	unsigned long flags;
 
-	device = fw_device_from_devt(inode->i_rdev);
+	device = fw_device_get_by_devt(inode->i_rdev);
 	if (device == NULL)
 		return -ENODEV;
 
 	client = kzalloc(sizeof(*client), GFP_KERNEL);
-	if (client == NULL)
+	if (client == NULL) {
+		fw_device_put(device);
 		return -ENOMEM;
+	}
 
-	client->device = fw_device_get(device);
+	client->device = device;
 	INIT_LIST_HEAD(&client->event_list);
 	INIT_LIST_HEAD(&client->resource_list);
 	spin_lock_init(&client->lock);
@@ -206,12 +208,13 @@ fill_bus_reset_event(struct fw_cdev_event_bus_reset *event,
 
 	event->closure	     = client->bus_reset_closure;
 	event->type          = FW_CDEV_EVENT_BUS_RESET;
+	event->generation    = client->device->generation;
+	smp_rmb();           /* node_id must not be older than generation */
 	event->node_id       = client->device->node_id;
 	event->local_node_id = card->local_node->node_id;
 	event->bm_node_id    = 0; /* FIXME: We don't track the BM. */
 	event->irm_node_id   = card->irm_node->node_id;
 	event->root_node_id  = card->root_node->node_id;
-	event->generation    = card->generation;
 }
 
 static void
@@ -643,6 +646,10 @@ static int ioctl_create_iso_context(struct client *client, void *buffer)
 	struct fw_cdev_create_iso_context *request = buffer;
 	struct fw_iso_context *context;
 
+	/* We only support one context at this time. */
+	if (client->iso_context != NULL)
+		return -EBUSY;
+
 	if (request->channel > 63)
 		return -EINVAL;
 
@@ -789,8 +796,9 @@ static int ioctl_start_iso(struct client *client, void *buffer)
 {
 	struct fw_cdev_start_iso *request = buffer;
 
-	if (request->handle != 0)
+	if (client->iso_context == NULL || request->handle != 0)
 		return -EINVAL;
+
 	if (client->iso_context->type == FW_ISO_CONTEXT_RECEIVE) {
 		if (request->tags == 0 || request->tags > 15)
 			return -EINVAL;
@@ -807,7 +815,7 @@ static int ioctl_stop_iso(struct client *client, void *buffer)
 {
 	struct fw_cdev_stop_iso *request = buffer;
 
-	if (request->handle != 0)
+	if (client->iso_context == NULL || request->handle != 0)
 		return -EINVAL;
 
 	return fw_iso_context_stop(client->iso_context);

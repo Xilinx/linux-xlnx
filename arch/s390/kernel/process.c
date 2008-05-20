@@ -29,14 +29,13 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/user.h>
-#include <linux/a.out.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/reboot.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
-
+#include <linux/utsname.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
@@ -115,24 +114,27 @@ extern void s390_handle_mcck(void);
 static void default_idle(void)
 {
 	int cpu, rc;
+	int nr_calls = 0;
+	void *hcpu;
 #ifdef CONFIG_SMP
 	struct s390_idle_data *idle;
 #endif
 
 	/* CPU is going idle. */
 	cpu = smp_processor_id();
-
+	hcpu = (void *)(long)cpu;
 	local_irq_disable();
 	if (need_resched()) {
 		local_irq_enable();
 		return;
 	}
 
-	rc = atomic_notifier_call_chain(&idle_chain,
-					S390_CPU_IDLE, (void *)(long) cpu);
-	if (rc != NOTIFY_OK && rc != NOTIFY_DONE)
-		BUG();
-	if (rc != NOTIFY_OK) {
+	rc = __atomic_notifier_call_chain(&idle_chain, S390_CPU_IDLE, hcpu, -1,
+					  &nr_calls);
+	if (rc == NOTIFY_BAD) {
+		nr_calls--;
+		__atomic_notifier_call_chain(&idle_chain, S390_CPU_NOT_IDLE,
+					     hcpu, nr_calls, NULL);
 		local_irq_enable();
 		return;
 	}
@@ -150,6 +152,10 @@ static void default_idle(void)
 	local_mcck_disable();
 	if (test_thread_flag(TIF_MCCK_PENDING)) {
 		local_mcck_enable();
+		/* disable monitor call class 0 */
+		__ctl_clear_bit(8, 15);
+		atomic_notifier_call_chain(&idle_chain, S390_CPU_NOT_IDLE,
+					   hcpu);
 		local_irq_enable();
 		s390_handle_mcck();
 		return;
@@ -182,13 +188,15 @@ void cpu_idle(void)
 
 void show_regs(struct pt_regs *regs)
 {
-	struct task_struct *tsk = current;
-
-        printk("CPU:    %d    %s\n", task_thread_info(tsk)->cpu, print_tainted());
-        printk("Process %s (pid: %d, task: %p, ksp: %p)\n",
-	       current->comm, task_pid_nr(current), (void *) tsk,
-	       (void *) tsk->thread.ksp);
-
+	print_modules();
+	printk("CPU: %d %s %s %.*s\n",
+	       task_thread_info(current)->cpu, print_tainted(),
+	       init_utsname()->release,
+	       (int)strcspn(init_utsname()->version, " "),
+	       init_utsname()->version);
+	printk("Process %s (pid: %d, task: %p, ksp: %p)\n",
+	       current->comm, current->pid, current,
+	       (void *) current->thread.ksp);
 	show_registers(regs);
 	/* Show stack backtrace if pt_regs is from kernel mode */
 	if (!(regs->psw.mask & PSW_MASK_PSTATE))

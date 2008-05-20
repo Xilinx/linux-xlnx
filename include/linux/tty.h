@@ -23,7 +23,7 @@
  */
 #define NR_UNIX98_PTY_DEFAULT	4096      /* Default maximum for Unix98 ptys */
 #define NR_UNIX98_PTY_MAX	(1 << MINORBITS) /* Absolute limit */
-#define NR_LDISCS		17
+#define NR_LDISCS		18
 
 /* line disciplines */
 #define N_TTY		0
@@ -44,6 +44,7 @@
 #define N_SYNC_PPP	14	/* synchronous PPP */
 #define N_HCI		15	/* Bluetooth HCI UART */
 #define N_GIGASET_M101	16	/* Siemens Gigaset M101 serial DECT adapter */
+#define N_SLCAN		17	/* Serial / USB serial CAN Adaptors */
 
 /*
  * This character is the same as _POSIX_VDISABLE: it cannot be used as
@@ -51,13 +52,6 @@
  * isn't in use (eg VINTR has no character etc)
  */
 #define __DISABLED_CHAR '\0'
-
-/*
- * This is the flip buffer used for the tty driver.  The buffer is
- * located in the tty structure, and is used as a high speed interface
- * between the tty driver and the tty line discipline.
- */
-#define TTY_FLIPBUF_SIZE 512
 
 struct tty_buffer {
 	struct tty_buffer *next;
@@ -73,7 +67,6 @@ struct tty_buffer {
 
 struct tty_bufhead {
 	struct delayed_work work;
-	struct semaphore pty_sem;
 	spinlock_t lock;
 	struct tty_buffer *head;	/* Queue head */
 	struct tty_buffer *tail;	/* Active buffer */

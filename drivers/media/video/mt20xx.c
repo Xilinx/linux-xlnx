@@ -14,7 +14,7 @@ static int debug = 0;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "enable verbose debug messages");
 
-#define PREFIX "mt20xx "
+#define PREFIX "mt20xx"
 
 /* ---------------------------------------------------------------------- */
 
@@ -369,7 +369,7 @@ static struct dvb_tuner_ops mt2032_tuner_ops = {
 	.get_frequency     = microtune_get_frequency,
 };
 
-// Initalization as described in "MT203x Programming Procedures", Rev 1.2, Feb.2001
+// Initialization as described in "MT203x Programming Procedures", Rev 1.2, Feb.2001
 static int mt2032_init(struct dvb_frontend *fe)
 {
 	struct microtune_priv *priv = fe->tuner_priv;
@@ -647,7 +647,7 @@ struct dvb_frontend *microtune_attach(struct dvb_frontend *fe,
 	default:
 		tuner_info("microtune %s found, not (yet?) supported, sorry :-/\n",
 			   name);
-		return 0;
+		return NULL;
 	}
 
 	strlcpy(fe->ops.tuner_ops.info.name, name,

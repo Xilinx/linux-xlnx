@@ -851,7 +851,7 @@ static int m8xx_set_socket(struct pcmcia_socket *sock, socket_state_t * state)
 	   I tried to control the CxOE signal with SS_OUTPUT_ENA,
 	   but the reset signal seems connected via the 541.
 	   If the CxOE is left high are some signals tristated and
-	   no pullups are present -> the cards act wierd.
+	   no pullups are present -> the cards act weird.
 	   So right now the buffers are enabled if the power is on. */
 
 	if (state->Vcc || state->Vpp)
@@ -1174,8 +1174,10 @@ static int __init m8xx_probe(struct of_device *ofdev,
 
 	pcmcia_schlvl = irq_of_parse_and_map(np, 0);
 	hwirq = irq_map[pcmcia_schlvl].hwirq;
-	if (pcmcia_schlvl < 0)
+	if (pcmcia_schlvl < 0) {
+		iounmap(pcmcia);
 		return -EINVAL;
+	}
 
 	m8xx_pgcrx[0] = &pcmcia->pcmc_pgcra;
 	m8xx_pgcrx[1] = &pcmcia->pcmc_pgcrb;
@@ -1189,6 +1191,7 @@ static int __init m8xx_probe(struct of_device *ofdev,
 			driver_name, socket)) {
 		pcmcia_error("Cannot allocate IRQ %u for SCHLVL!\n",
 			     pcmcia_schlvl);
+		iounmap(pcmcia);
 		return -1;
 	}
 
@@ -1284,6 +1287,7 @@ static int m8xx_remove(struct of_device *ofdev)
 	}
 	for (i = 0; i < PCMCIA_SOCKETS_NO; i++)
 		pcmcia_unregister_socket(&socket[i].socket);
+	iounmap(pcmcia);
 
 	free_irq(pcmcia_schlvl, NULL);
 

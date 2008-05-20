@@ -84,9 +84,6 @@ extern wait_queue_head_t keypress_wait;
 
 struct tty_driver *serial_driver;
 
-/* serial subtype definitions */
-#define SERIAL_TYPE_NORMAL	1
- 
 /* number of characters left in xmit buffer before we ask for more */
 #define WAKEUP_CHARS 256
 
@@ -1410,7 +1407,7 @@ rs68328_init(void)
 
 	    if (request_irq(uart_irqs[i],
 			    rs_interrupt,
-			    IRQ_FLG_STD,
+			    IRQF_DISABLED,
 			    "M68328_UART", NULL))
                 panic("Unable to attach 68328 serial interrupt\n");
 	}

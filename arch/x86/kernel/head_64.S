@@ -19,6 +19,13 @@
 #include <asm/msr.h>
 #include <asm/cache.h>
 
+#ifdef CONFIG_PARAVIRT
+#include <asm/asm-offsets.h>
+#include <asm/paravirt.h>
+#else
+#define GET_CR2_INTO_RCX movq %cr2, %rcx
+#endif
+
 /* we are not able to switch in one step to the final KERNEL ADRESS SPACE
  * because we need identity-mapped pages.
  *
@@ -56,7 +63,7 @@ startup_64:
 
 	/* Is the address not 2M aligned? */
 	movq	%rbp, %rax
-	andl	$~LARGE_PAGE_MASK, %eax
+	andl	$~PMD_PAGE_MASK, %eax
 	testl	%eax, %eax
 	jnz	bad_address
 
@@ -81,7 +88,7 @@ startup_64:
 
 	/* Add an Identity mapping if I am above 1G */
 	leaq	_text(%rip), %rdi
-	andq	$LARGE_PAGE_MASK, %rdi
+	andq	$PMD_PAGE_MASK, %rdi
 
 	movq	%rdi, %rax
 	shrq	$PUD_SHIFT, %rax
@@ -100,8 +107,13 @@ startup_64:
 	movq	%rdx, 0(%rbx, %rax, 8)
 ident_complete:
 
-	/* Fixup the kernel text+data virtual addresses
+	/*
+	 * Fixup the kernel text+data virtual addresses. Note that
+	 * we might write invalid pmds, when the kernel is relocated
+	 * cleanup_highmap() fixes this up along with the mappings
+	 * beyond _end.
 	 */
+
 	leaq	level2_kernel_pgt(%rip), %rdi
 	leaq	4096(%rdi), %r8
 	/* See if it is a valid page table entry */
@@ -243,31 +255,55 @@ ENTRY(secondary_startup_64)
 	lretq
 
 	/* SMP bootup changes these two */
-#ifndef CONFIG_HOTPLUG_CPU
-	.pushsection .init.data
-#endif
+	__REFDATA
 	.align	8
-	.globl	initial_code
-initial_code:
+	ENTRY(initial_code)
 	.quad	x86_64_start_kernel
-#ifndef CONFIG_HOTPLUG_CPU
-	.popsection
-#endif
-	.globl init_rsp
-init_rsp:
+	__FINITDATA
+
+	ENTRY(init_rsp)
 	.quad  init_thread_union+THREAD_SIZE-8
 
 bad_address:
 	jmp bad_address
 
+#ifdef CONFIG_EARLY_PRINTK
+.macro early_idt_tramp first, last
+	.ifgt \last-\first
+	early_idt_tramp \first, \last-1
+	.endif
+	movl $\last,%esi
+	jmp early_idt_handler
+.endm
+
+	.globl early_idt_handlers
+early_idt_handlers:
+	early_idt_tramp 0, 63
+	early_idt_tramp 64, 127
+	early_idt_tramp 128, 191
+	early_idt_tramp 192, 255
+#endif
+
 ENTRY(early_idt_handler)
+#ifdef CONFIG_EARLY_PRINTK
 	cmpl $2,early_recursion_flag(%rip)
 	jz  1f
 	incl early_recursion_flag(%rip)
+	GET_CR2_INTO_RCX
+	movq %rcx,%r9
+	xorl %r8d,%r8d		# zero for error code
+	movl %esi,%ecx		# get vector number
+	# Test %ecx against mask of vectors that push error code.
+	cmpl $31,%ecx
+	ja 0f
+	movl $1,%eax
+	salq %cl,%rax
+	testl $0x27d00,%eax
+	je 0f
+	popq %r8		# get error code
+0:	movq 0(%rsp),%rcx	# get ip
+	movq 8(%rsp),%rdx	# get cs
 	xorl %eax,%eax
-	movq 8(%rsp),%rsi	# get rip
-	movq (%rsp),%rdx
-	movq %cr2,%rcx
 	leaq early_idt_msg(%rip),%rdi
 	call early_printk
 	cmpl $2,early_recursion_flag(%rip)
@@ -278,15 +314,19 @@ ENTRY(early_idt_handler)
 	movq 8(%rsp),%rsi	# get rip again
 	call __print_symbol
 #endif
+#endif /* EARLY_PRINTK */
 1:	hlt
 	jmp 1b
+
+#ifdef CONFIG_EARLY_PRINTK
 early_recursion_flag:
 	.long 0
 
 early_idt_msg:
-	.asciz "PANIC: early exception rip %lx error %lx cr2 %lx\n"
+	.asciz "PANIC: early exception %02lx rip %lx:%lx error %lx cr2 %lx\n"
 early_idt_ripmsg:
 	.asciz "RIP %s\n"
+#endif /* CONFIG_EARLY_PRINTK */
 
 .balign PAGE_SIZE
 
@@ -339,18 +379,24 @@ NEXT_PAGE(level2_ident_pgt)
 	/* Since I easily can, map the first 1G.
 	 * Don't set NX because code runs from these pages.
 	 */
-	PMDS(0x0000000000000000, __PAGE_KERNEL_LARGE_EXEC, PTRS_PER_PMD)
+	PMDS(0, __PAGE_KERNEL_LARGE_EXEC, PTRS_PER_PMD)
 
 NEXT_PAGE(level2_kernel_pgt)
-	/* 40MB kernel mapping. The kernel code cannot be bigger than that.
-	   When you change this change KERNEL_TEXT_SIZE in page.h too. */
-	/* (2^48-(2*1024*1024*1024)-((2^39)*511)-((2^30)*510)) = 0 */
-	PMDS(0x0000000000000000, __PAGE_KERNEL_LARGE_EXEC|_PAGE_GLOBAL, KERNEL_TEXT_SIZE/PMD_SIZE)
-	/* Module mapping starts here */
-	.fill	(PTRS_PER_PMD - (KERNEL_TEXT_SIZE/PMD_SIZE)),8,0
+	/*
+	 * 128 MB kernel mapping. We spend a full page on this pagetable
+	 * anyway.
+	 *
+	 * The kernel code+data+bss must not be bigger than that.
+	 *
+	 * (NOTE: at +128MB starts the module area, see MODULES_VADDR.
+	 *  If you want to increase this then increase MODULES_VADDR
+	 *  too.)
+	 */
+	PMDS(0, __PAGE_KERNEL_LARGE_EXEC|_PAGE_GLOBAL,
+		KERNEL_IMAGE_SIZE/PMD_SIZE)
 
 NEXT_PAGE(level2_spare_pgt)
-	.fill   512,8,0
+	.fill   512, 8, 0
 
 #undef PMDS
 #undef NEXT_PAGE

@@ -6,10 +6,12 @@
  * This file contains spurious interrupt handling.
  */
 
+#include <linux/jiffies.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/kallsyms.h>
 #include <linux/interrupt.h>
+#include <linux/moduleparam.h>
 
 static int irqfixup __read_mostly;
 
@@ -178,7 +180,7 @@ void note_interrupt(unsigned int irq, struct irq_desc *desc,
 		 * otherwise the couter becomes a doomsday timer for otherwise
 		 * working systems
 		 */
-		if (jiffies - desc->last_unhandled > HZ/10)
+		if (time_after(jiffies, desc->last_unhandled + HZ/10))
 			desc->irqs_unhandled = 1;
 		else
 			desc->irqs_unhandled++;
@@ -225,6 +227,8 @@ int noirqdebug_setup(char *str)
 }
 
 __setup("noirqdebug", noirqdebug_setup);
+module_param(noirqdebug, bool, 0644);
+MODULE_PARM_DESC(noirqdebug, "Disable irq lockup detection when true");
 
 static int __init irqfixup_setup(char *str)
 {
@@ -236,6 +240,8 @@ static int __init irqfixup_setup(char *str)
 }
 
 __setup("irqfixup", irqfixup_setup);
+module_param(irqfixup, int, 0644);
+MODULE_PARM_DESC("irqfixup", "0: No fixup, 1: irqfixup mode 2: irqpoll mode");
 
 static int __init irqpoll_setup(char *str)
 {

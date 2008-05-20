@@ -2830,11 +2830,11 @@ xfs_bmap_btalloc(
 		args.prod = align;
 		if ((args.mod = (xfs_extlen_t)do_mod(ap->off, args.prod)))
 			args.mod = (xfs_extlen_t)(args.prod - args.mod);
-	} else if (mp->m_sb.sb_blocksize >= NBPP) {
+	} else if (mp->m_sb.sb_blocksize >= PAGE_CACHE_SIZE) {
 		args.prod = 1;
 		args.mod = 0;
 	} else {
-		args.prod = NBPP >> mp->m_sb.sb_blocklog;
+		args.prod = PAGE_CACHE_SIZE >> mp->m_sb.sb_blocklog;
 		if ((args.mod = (xfs_extlen_t)(do_mod(ap->off, args.prod))))
 			args.mod = (xfs_extlen_t)(args.prod - args.mod);
 	}
@@ -2969,7 +2969,7 @@ STATIC int
 xfs_bmap_alloc(
 	xfs_bmalloca_t	*ap)		/* bmap alloc argument struct */
 {
-	if ((ap->ip->i_d.di_flags & XFS_DIFLAG_REALTIME) && ap->userdata)
+	if (XFS_IS_REALTIME_INODE(ap->ip) && ap->userdata)
 		return xfs_bmap_rtalloc(ap);
 	return xfs_bmap_btalloc(ap);
 }
@@ -3096,8 +3096,7 @@ xfs_bmap_del_extent(
 		/*
 		 * Realtime allocation.  Free it and record di_nblocks update.
 		 */
-		if (whichfork == XFS_DATA_FORK &&
-		    (ip->i_d.di_flags & XFS_DIFLAG_REALTIME)) {
+		if (whichfork == XFS_DATA_FORK && XFS_IS_REALTIME_INODE(ip)) {
 			xfs_fsblock_t	bno;
 			xfs_filblks_t	len;
 
@@ -3956,7 +3955,6 @@ xfs_bmap_add_attrfork(
 	xfs_bmap_free_t		flist;		/* freed extent records */
 	xfs_mount_t		*mp;		/* mount structure */
 	xfs_trans_t		*tp;		/* transaction pointer */
-	unsigned long		s;		/* spinlock spl value */
 	int			blks;		/* space reservation */
 	int			version = 1;	/* superblock attr version */
 	int			committed;	/* xaction was committed */
@@ -4049,24 +4047,24 @@ xfs_bmap_add_attrfork(
 		xfs_trans_log_inode(tp, ip, logflags);
 	if (error)
 		goto error2;
-	if (!XFS_SB_VERSION_HASATTR(&mp->m_sb) ||
-	   (!XFS_SB_VERSION_HASATTR2(&mp->m_sb) && version == 2)) {
+	if (!xfs_sb_version_hasattr(&mp->m_sb) ||
+	   (!xfs_sb_version_hasattr2(&mp->m_sb) && version == 2)) {
 		__int64_t sbfields = 0;
 
-		s = XFS_SB_LOCK(mp);
-		if (!XFS_SB_VERSION_HASATTR(&mp->m_sb)) {
-			XFS_SB_VERSION_ADDATTR(&mp->m_sb);
+		spin_lock(&mp->m_sb_lock);
+		if (!xfs_sb_version_hasattr(&mp->m_sb)) {
+			xfs_sb_version_addattr(&mp->m_sb);
 			sbfields |= XFS_SB_VERSIONNUM;
 		}
-		if (!XFS_SB_VERSION_HASATTR2(&mp->m_sb) && version == 2) {
-			XFS_SB_VERSION_ADDATTR2(&mp->m_sb);
+		if (!xfs_sb_version_hasattr2(&mp->m_sb) && version == 2) {
+			xfs_sb_version_addattr2(&mp->m_sb);
 			sbfields |= (XFS_SB_VERSIONNUM | XFS_SB_FEATURES2);
 		}
 		if (sbfields) {
-			XFS_SB_UNLOCK(mp, s);
+			spin_unlock(&mp->m_sb_lock);
 			xfs_mod_sb(tp, sbfields);
 		} else
-			XFS_SB_UNLOCK(mp, s);
+			spin_unlock(&mp->m_sb_lock);
 	}
 	if ((error = xfs_bmap_finish(&tp, &flist, &committed)))
 		goto error2;
@@ -5045,7 +5043,7 @@ xfs_bmapi(
 			 * A wasdelay extent has been initialized, so
 			 * shouldn't be flagged as unwritten.
 			 */
-			if (wr && XFS_SB_VERSION_HASEXTFLGBIT(&mp->m_sb)) {
+			if (wr && xfs_sb_version_hasextflgbit(&mp->m_sb)) {
 				if (!wasdelay && (flags & XFS_BMAPI_PREALLOC))
 					got.br_state = XFS_EXT_UNWRITTEN;
 			}
@@ -5485,7 +5483,7 @@ xfs_bunmapi(
 			 * get rid of part of a realtime extent.
 			 */
 			if (del.br_state == XFS_EXT_UNWRITTEN ||
-			    !XFS_SB_VERSION_HASEXTFLGBIT(&mp->m_sb)) {
+			    !xfs_sb_version_hasextflgbit(&mp->m_sb)) {
 				/*
 				 * This piece is unwritten, or we're not
 				 * using unwritten extents.  Skip over it.
@@ -5537,7 +5535,7 @@ xfs_bunmapi(
 			} else if ((del.br_startoff == start &&
 				    (del.br_state == XFS_EXT_UNWRITTEN ||
 				     xfs_trans_get_block_res(tp) == 0)) ||
-				   !XFS_SB_VERSION_HASEXTFLGBIT(&mp->m_sb)) {
+				   !xfs_sb_version_hasextflgbit(&mp->m_sb)) {
 				/*
 				 * Can't make it unwritten.  There isn't
 				 * a full extent here so just skip it.
@@ -6394,7 +6392,7 @@ xfs_bmap_count_blocks(
  * Recursively walks each level of a btree
  * to count total fsblocks is use.
  */
-int                                     /* error */
+STATIC int                                     /* error */
 xfs_bmap_count_tree(
 	xfs_mount_t     *mp,            /* file system mount point */
 	xfs_trans_t     *tp,            /* transaction pointer */
@@ -6470,7 +6468,7 @@ xfs_bmap_count_tree(
 /*
  * Count leaf blocks given a range of extent records.
  */
-int
+STATIC int
 xfs_bmap_count_leaves(
 	xfs_ifork_t		*ifp,
 	xfs_extnum_t		idx,
@@ -6490,7 +6488,7 @@ xfs_bmap_count_leaves(
  * Count leaf blocks given a range of extent records originally
  * in btree format.
  */
-int
+STATIC int
 xfs_bmap_disk_count_leaves(
 	xfs_extnum_t		idx,
 	xfs_bmbt_block_t	*block,

@@ -13,7 +13,7 @@ ENTRY(_start)
 
 jiffies = jiffies_64 + 4;
 
-__page_offset = 0xc0000000;		/* start of area covered by struct pages */
+__page_offset = CONFIG_PAGE_OFFSET;	/* start of area covered by struct pages */
 __kernel_image_start = __page_offset;	/* address at which kernel image resides */
 
 SECTIONS
@@ -28,14 +28,14 @@ SECTIONS
   .init.text : {
 	*(.text.head)
 #ifndef CONFIG_DEBUG_INFO
-	*(.init.text)
-	*(.exit.text)
-	*(.exit.data)
+	INIT_TEXT
+	EXIT_TEXT
+	EXIT_DATA
 	*(.exitcall.exit)
 #endif
   }
   _einittext = .;
-  .init.data : { *(.init.data) }
+  .init.data : { INIT_DATA }
 
   . = ALIGN(8);
   __setup_start = .;
@@ -76,9 +76,6 @@ SECTIONS
 	  *(.data.init_task)
   }
 
-  . = ALIGN(4096);
-  .data.page_aligned : { *(.data.idt) }
-
   . = ALIGN(L1_CACHE_BYTES);
   .data.cacheline_aligned : { *(.data.cacheline_aligned) }
 
@@ -105,11 +102,9 @@ SECTIONS
 	SCHED_TEXT
 	LOCK_TEXT
 #ifdef CONFIG_DEBUG_INFO
-	*(
-	.init.text
-	.exit.text
-	.exitcall.exit
-	)
+	INIT_TEXT
+	EXIT_TEXT
+	*(.exitcall.exit)
 #endif
 	*(.fixup)
 	*(.gnu.warning)
@@ -138,7 +133,7 @@ SECTIONS
   .data : {			/* Data */
 	DATA_DATA
 	*(.data.*)
-	*(.exit.data)
+	EXIT_DATA
 	CONSTRUCTORS
 	}
 

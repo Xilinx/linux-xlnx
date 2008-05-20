@@ -67,7 +67,6 @@
 #define PT_TRACE_EXEC	0x00000080
 #define PT_TRACE_VFORK_DONE	0x00000100
 #define PT_TRACE_EXIT	0x00000200
-#define PT_ATTACHED	0x00000400	/* parent != real_parent */
 
 #define PT_TRACE_MASK	0x000003f4
 
@@ -127,6 +126,116 @@ int generic_ptrace_pokedata(struct task_struct *tsk, long addr, long data);
  * syscall handler, or something along those lines).
  */
 #define force_successful_syscall_return() do { } while (0)
+#endif
+
+/*
+ * <asm/ptrace.h> should define the following things inside #ifdef __KERNEL__.
+ *
+ * These do-nothing inlines are used when the arch does not
+ * implement single-step.  The kerneldoc comments are here
+ * to document the interface for all arch definitions.
+ */
+
+#ifndef arch_has_single_step
+/**
+ * arch_has_single_step - does this CPU support user-mode single-step?
+ *
+ * If this is defined, then there must be function declarations or
+ * inlines for user_enable_single_step() and user_disable_single_step().
+ * arch_has_single_step() should evaluate to nonzero iff the machine
+ * supports instruction single-step for user mode.
+ * It can be a constant or it can test a CPU feature bit.
+ */
+#define arch_has_single_step()		(0)
+
+/**
+ * user_enable_single_step - single-step in user-mode task
+ * @task: either current or a task stopped in %TASK_TRACED
+ *
+ * This can only be called when arch_has_single_step() has returned nonzero.
+ * Set @task so that when it returns to user mode, it will trap after the
+ * next single instruction executes.  If arch_has_block_step() is defined,
+ * this must clear the effects of user_enable_block_step() too.
+ */
+static inline void user_enable_single_step(struct task_struct *task)
+{
+	BUG();			/* This can never be called.  */
+}
+
+/**
+ * user_disable_single_step - cancel user-mode single-step
+ * @task: either current or a task stopped in %TASK_TRACED
+ *
+ * Clear @task of the effects of user_enable_single_step() and
+ * user_enable_block_step().  This can be called whether or not either
+ * of those was ever called on @task, and even if arch_has_single_step()
+ * returned zero.
+ */
+static inline void user_disable_single_step(struct task_struct *task)
+{
+}
+#endif	/* arch_has_single_step */
+
+#ifndef arch_has_block_step
+/**
+ * arch_has_block_step - does this CPU support user-mode block-step?
+ *
+ * If this is defined, then there must be a function declaration or inline
+ * for user_enable_block_step(), and arch_has_single_step() must be defined
+ * too.  arch_has_block_step() should evaluate to nonzero iff the machine
+ * supports step-until-branch for user mode.  It can be a constant or it
+ * can test a CPU feature bit.
+ */
+#define arch_has_block_step()		(0)
+
+/**
+ * user_enable_block_step - step until branch in user-mode task
+ * @task: either current or a task stopped in %TASK_TRACED
+ *
+ * This can only be called when arch_has_block_step() has returned nonzero,
+ * and will never be called when single-instruction stepping is being used.
+ * Set @task so that when it returns to user mode, it will trap after the
+ * next branch or trap taken.
+ */
+static inline void user_enable_block_step(struct task_struct *task)
+{
+	BUG();			/* This can never be called.  */
+}
+#endif	/* arch_has_block_step */
+
+#ifndef arch_ptrace_stop_needed
+/**
+ * arch_ptrace_stop_needed - Decide whether arch_ptrace_stop() should be called
+ * @code:	current->exit_code value ptrace will stop with
+ * @info:	siginfo_t pointer (or %NULL) for signal ptrace will stop with
+ *
+ * This is called with the siglock held, to decide whether or not it's
+ * necessary to release the siglock and call arch_ptrace_stop() with the
+ * same @code and @info arguments.  It can be defined to a constant if
+ * arch_ptrace_stop() is never required, or always is.  On machines where
+ * this makes sense, it should be defined to a quick test to optimize out
+ * calling arch_ptrace_stop() when it would be superfluous.  For example,
+ * if the thread has not been back to user mode since the last stop, the
+ * thread state might indicate that nothing needs to be done.
+ */
+#define arch_ptrace_stop_needed(code, info)	(0)
+#endif
+
+#ifndef arch_ptrace_stop
+/**
+ * arch_ptrace_stop - Do machine-specific work before stopping for ptrace
+ * @code:	current->exit_code value ptrace will stop with
+ * @info:	siginfo_t pointer (or %NULL) for signal ptrace will stop with
+ *
+ * This is called with no locks held when arch_ptrace_stop_needed() has
+ * just returned nonzero.  It is allowed to block, e.g. for user memory
+ * access.  The arch can have machine-specific work to be done before
+ * ptrace stops.  On ia64, register backing store gets written back to user
+ * memory here.  Since this can be costly (requires dropping the siglock),
+ * we only do it when the arch requires it for this particular stop, as
+ * indicated by arch_ptrace_stop_needed().
+ */
+#define arch_ptrace_stop(code, info)		do { } while (0)
 #endif
 
 #endif

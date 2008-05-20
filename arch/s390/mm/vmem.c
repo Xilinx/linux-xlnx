@@ -15,10 +15,6 @@
 #include <asm/setup.h>
 #include <asm/tlbflush.h>
 
-unsigned long vmalloc_end;
-EXPORT_SYMBOL(vmalloc_end);
-
-static struct page *vmem_map;
 static DEFINE_MUTEX(vmem_mutex);
 
 struct memory_segment {
@@ -66,14 +62,26 @@ void __meminit memmap_init(unsigned long size, int nid, unsigned long zone,
 	}
 }
 
-static void __init_refok *vmem_alloc_pages(unsigned int order)
+static void __ref *vmem_alloc_pages(unsigned int order)
 {
 	if (slab_is_available())
 		return (void *)__get_free_pages(GFP_KERNEL, order);
 	return alloc_bootmem_pages((1 << order) * PAGE_SIZE);
 }
 
-#define vmem_pud_alloc()	({ BUG(); ((pud_t *) NULL); })
+static inline pud_t *vmem_pud_alloc(void)
+{
+	pud_t *pud = NULL;
+
+#ifdef CONFIG_64BIT
+	pud = vmem_alloc_pages(2);
+	if (!pud)
+		return NULL;
+	pud_val(*pud) = _REGION3_ENTRY_EMPTY;
+	memcpy(pud + 1, pud, (PTRS_PER_PUD - 1)*sizeof(pud_t));
+#endif
+	return pud;
+}
 
 static inline pmd_t *vmem_pmd_alloc(void)
 {
@@ -88,13 +96,18 @@ static inline pmd_t *vmem_pmd_alloc(void)
 	return pmd;
 }
 
-static inline pte_t *vmem_pte_alloc(void)
+static pte_t __init_refok *vmem_pte_alloc(void)
 {
-	pte_t *pte = vmem_alloc_pages(0);
+	pte_t *pte;
 
+	if (slab_is_available())
+		pte = (pte_t *) page_table_alloc(&init_mm);
+	else
+		pte = alloc_bootmem(PTRS_PER_PTE * sizeof(pte_t));
 	if (!pte)
 		return NULL;
-	clear_table((unsigned long *) pte, _PAGE_TYPE_EMPTY, PAGE_SIZE);
+	clear_table((unsigned long *) pte, _PAGE_TYPE_EMPTY,
+		    PTRS_PER_PTE * sizeof(pte_t));
 	return pte;
 }
 
@@ -188,8 +201,8 @@ static int vmem_add_mem_map(unsigned long start, unsigned long size)
 	pte_t  pte;
 	int ret = -ENOMEM;
 
-	map_start = vmem_map + PFN_DOWN(start);
-	map_end	= vmem_map + PFN_DOWN(start + size);
+	map_start = VMEM_MAP + PFN_DOWN(start);
+	map_end	= VMEM_MAP + PFN_DOWN(start + size);
 
 	start_addr = (unsigned long) map_start & PAGE_MASK;
 	end_addr = PFN_ALIGN((unsigned long) map_end);
@@ -240,10 +253,10 @@ static int vmem_add_mem(unsigned long start, unsigned long size)
 {
 	int ret;
 
-	ret = vmem_add_range(start, size);
+	ret = vmem_add_mem_map(start, size);
 	if (ret)
 		return ret;
-	return vmem_add_mem_map(start, size);
+	return vmem_add_range(start, size);
 }
 
 /*
@@ -254,7 +267,7 @@ static int insert_memory_segment(struct memory_segment *seg)
 {
 	struct memory_segment *tmp;
 
-	if (PFN_DOWN(seg->start + seg->size) > max_pfn ||
+	if (seg->start + seg->size >= VMEM_MAX_PHYS ||
 	    seg->start + seg->size < seg->start)
 		return -ERANGE;
 
@@ -357,17 +370,17 @@ out:
 
 /*
  * map whole physical memory to virtual memory (identity mapping)
+ * we reserve enough space in the vmalloc area for vmemmap to hotplug
+ * additional memory segments.
  */
 void __init vmem_map_init(void)
 {
-	unsigned long map_size;
 	int i;
 
-	map_size = ALIGN(max_low_pfn, MAX_ORDER_NR_PAGES) * sizeof(struct page);
-	vmalloc_end = PFN_ALIGN(VMALLOC_END_INIT) - PFN_ALIGN(map_size);
-	vmem_map = (struct page *) vmalloc_end;
-	NODE_DATA(0)->node_mem_map = vmem_map;
-
+	INIT_LIST_HEAD(&init_mm.context.crst_list);
+	INIT_LIST_HEAD(&init_mm.context.pgtable_list);
+	init_mm.context.noexec = 0;
+	NODE_DATA(0)->node_mem_map = VMEM_MAP;
 	for (i = 0; i < MEMORY_CHUNKS && memory_chunk[i].size > 0; i++)
 		vmem_add_mem(memory_chunk[i].addr, memory_chunk[i].size);
 }
@@ -382,7 +395,7 @@ static int __init vmem_convert_memory_chunk(void)
 	int i;
 
 	mutex_lock(&vmem_mutex);
-	for (i = 0; i < MEMORY_CHUNKS && memory_chunk[i].size > 0; i++) {
+	for (i = 0; i < MEMORY_CHUNKS; i++) {
 		if (!memory_chunk[i].size)
 			continue;
 		seg = kzalloc(sizeof(*seg), GFP_KERNEL);

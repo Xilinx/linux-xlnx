@@ -156,13 +156,14 @@ run_osc_out:
 }
 
 /**
- * pci_osc_support_set - register OS support to Firmware
+ * __pci_osc_support_set - register OS support to Firmware
  * @flags: OS support bits
+ * @hid: hardware ID
  *
  * Update OS support fields and doing a _OSC Query to obtain an update
  * from Firmware on supported control bits.
  **/
-acpi_status pci_osc_support_set(u32 flags)
+acpi_status __pci_osc_support_set(u32 flags, const char *hid)
 {
 	u32 temp;
 	acpi_status retval;
@@ -176,7 +177,7 @@ acpi_status pci_osc_support_set(u32 flags)
 	temp = ctrlset_buf[OSC_CONTROL_TYPE];
 	ctrlset_buf[OSC_QUERY_TYPE] = OSC_QUERY_ENABLE;
 	ctrlset_buf[OSC_CONTROL_TYPE] = OSC_CONTROL_MASKS;
-	acpi_get_devices ( PCI_ROOT_HID_STRING,
+	acpi_get_devices(hid,
 			acpi_query_osc,
 			ctrlset_buf,
 			(void **) &retval );
@@ -188,7 +189,6 @@ acpi_status pci_osc_support_set(u32 flags)
 	}
 	return AE_OK;
 }
-EXPORT_SYMBOL(pci_osc_support_set);
 
 /**
  * pci_osc_control_set - commit requested control to Firmware
@@ -242,8 +242,6 @@ EXPORT_SYMBOL(pci_osc_control_set);
  *	choose from highest power _SxD to lowest power _SxW
  * else // no _PRW at S-state x
  * 	choose highest power _SxD or any lower power
- *
- * currently we simply return _SxD, if present.
  */
 
 static pci_power_t acpi_pci_choose_state(struct pci_dev *pdev,
@@ -274,21 +272,29 @@ static int acpi_pci_set_power_state(struct pci_dev *dev, pci_power_t state)
 {
 	acpi_handle handle = DEVICE_ACPI_HANDLE(&dev->dev);
 	acpi_handle tmp;
-	static int state_conv[] = {
-		[0] = 0,
-		[1] = 1,
-		[2] = 2,
-		[3] = 3,
-		[4] = 3
+	static const u8 state_conv[] = {
+		[PCI_D0] = ACPI_STATE_D0,
+		[PCI_D1] = ACPI_STATE_D1,
+		[PCI_D2] = ACPI_STATE_D2,
+		[PCI_D3hot] = ACPI_STATE_D3,
+		[PCI_D3cold] = ACPI_STATE_D3
 	};
-	int acpi_state = state_conv[(int __force) state];
 
 	if (!handle)
 		return -ENODEV;
 	/* If the ACPI device has _EJ0, ignore the device */
 	if (ACPI_SUCCESS(acpi_get_handle(handle, "_EJ0", &tmp)))
 		return 0;
-	return acpi_bus_set_power(handle, acpi_state);
+
+	switch (state) {
+	case PCI_D0:
+	case PCI_D1:
+	case PCI_D2:
+	case PCI_D3hot:
+	case PCI_D3cold:
+		return acpi_bus_set_power(handle, state_conv[state]);
+	}
+	return -EINVAL;
 }
 
 

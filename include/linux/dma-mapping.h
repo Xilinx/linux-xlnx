@@ -1,5 +1,5 @@
-#ifndef _ASM_LINUX_DMA_MAPPING_H
-#define _ASM_LINUX_DMA_MAPPING_H
+#ifndef _LINUX_DMA_MAPPING_H
+#define _LINUX_DMA_MAPPING_H
 
 #include <linux/device.h>
 #include <linux/err.h>
@@ -59,6 +59,36 @@ static inline int is_device_dma_capable(struct device *dev)
 #define dma_sync_sg		dma_sync_sg_for_cpu
 
 extern u64 dma_get_required_mask(struct device *dev);
+
+static inline unsigned int dma_get_max_seg_size(struct device *dev)
+{
+	return dev->dma_parms ? dev->dma_parms->max_segment_size : 65536;
+}
+
+static inline unsigned int dma_set_max_seg_size(struct device *dev,
+						unsigned int size)
+{
+	if (dev->dma_parms) {
+		dev->dma_parms->max_segment_size = size;
+		return 0;
+	} else
+		return -EIO;
+}
+
+static inline unsigned long dma_get_seg_boundary(struct device *dev)
+{
+	return dev->dma_parms ?
+		dev->dma_parms->segment_boundary_mask : 0xffffffff;
+}
+
+static inline int dma_set_seg_boundary(struct device *dev, unsigned long mask)
+{
+	if (dev->dma_parms) {
+		dev->dma_parms->segment_boundary_mask = mask;
+		return 0;
+	} else
+		return -EIO;
+}
 
 /* flags for the coherent memory api */
 #define	DMA_MEMORY_MAP			0x01

@@ -681,7 +681,7 @@ static void dvb_net_ule( struct net_device *dev, const u8 *buf, size_t buf_len )
 							drop = 1;
 						/* else: destination address matches the MAC address of our receiver device */
 					}
-					/* else: promiscious mode; pass everything up the stack */
+					/* else: promiscuous mode; pass everything up the stack */
 
 					if (drop) {
 #ifdef ULE_DEBUG
@@ -784,8 +784,8 @@ static int dvb_net_ts_callback(const u8 *buffer1, size_t buffer1_len,
 {
 	struct net_device *dev = feed->priv;
 
-	if (buffer2 != 0)
-		printk(KERN_WARNING "buffer2 not 0: %p.\n", buffer2);
+	if (buffer2)
+		printk(KERN_WARNING "buffer2 not NULL: %p.\n", buffer2);
 	if (buffer1_len > 32768)
 		printk(KERN_WARNING "length > 32k: %zu.\n", buffer1_len);
 	/* printk("TS callback: %u bytes, %u TS cells @ %p.\n",

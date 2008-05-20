@@ -27,7 +27,6 @@
 #include <asm/sn/hub.h>
 #include <asm/sn/intr.h>
 #include <asm/current.h>
-#include <asm/smp.h>
 #include <asm/processor.h>
 #include <asm/mmu_context.h>
 #include <asm/thread_info.h>
@@ -54,7 +53,7 @@ extern void pcibr_setup(cnodeid_t);
 
 extern void xtalk_probe_node(cnodeid_t nid);
 
-static void __init per_hub_init(cnodeid_t cnode)
+static void __cpuinit per_hub_init(cnodeid_t cnode)
 {
 	struct hub_data *hub = hub_data(cnode);
 	nasid_t nasid = COMPACT_TO_NASID_NODEID(cnode);

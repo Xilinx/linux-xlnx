@@ -88,7 +88,7 @@ static struct mem_block *alloc_block(struct mem_block *heap, int size,
 
 	list_for_each(p, heap) {
 		int start = (p->start + mask) & ~mask;
-		if (p->file_priv == 0 && start + size <= p->start + p->size)
+		if (p->file_priv == NULL && start + size <= p->start + p->size)
 			return split_block(p, start, size, file_priv);
 	}
 
@@ -113,7 +113,7 @@ static void free_block(struct mem_block *p)
 	/* Assumes a single contiguous range.  Needs a special file_priv in
 	 * 'heap' to stop it being subsumed.
 	 */
-	if (p->next->file_priv == 0) {
+	if (p->next->file_priv == NULL) {
 		struct mem_block *q = p->next;
 		p->size += q->size;
 		p->next = q->next;
@@ -121,7 +121,7 @@ static void free_block(struct mem_block *p)
 		drm_free(q, sizeof(*q), DRM_MEM_BUFS);
 	}
 
-	if (p->prev->file_priv == 0) {
+	if (p->prev->file_priv == NULL) {
 		struct mem_block *q = p->prev;
 		q->size += p->size;
 		q->next = p->next;
@@ -174,7 +174,7 @@ void radeon_mem_release(struct drm_file *file_priv, struct mem_block *heap)
 	 * 'heap' to stop it being subsumed.
 	 */
 	list_for_each(p, heap) {
-		while (p->file_priv == 0 && p->next->file_priv == 0) {
+		while (p->file_priv == NULL && p->next->file_priv == NULL) {
 			struct mem_block *q = p->next;
 			p->size += q->size;
 			p->next = q->next;
@@ -224,7 +224,7 @@ int radeon_mem_alloc(struct drm_device *dev, void *data, struct drm_file *file_p
 	struct mem_block *block, **heap;
 
 	if (!dev_priv) {
-		DRM_ERROR("%s called with no initialization\n", __FUNCTION__);
+		DRM_ERROR("called with no initialization\n");
 		return -EINVAL;
 	}
 
@@ -259,7 +259,7 @@ int radeon_mem_free(struct drm_device *dev, void *data, struct drm_file *file_pr
 	struct mem_block *block, **heap;
 
 	if (!dev_priv) {
-		DRM_ERROR("%s called with no initialization\n", __FUNCTION__);
+		DRM_ERROR("called with no initialization\n");
 		return -EINVAL;
 	}
 
@@ -285,7 +285,7 @@ int radeon_mem_init_heap(struct drm_device *dev, void *data, struct drm_file *fi
 	struct mem_block **heap;
 
 	if (!dev_priv) {
-		DRM_ERROR("%s called with no initialization\n", __FUNCTION__);
+		DRM_ERROR("called with no initialization\n");
 		return -EINVAL;
 	}
 

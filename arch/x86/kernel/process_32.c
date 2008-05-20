@@ -23,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/user.h>
-#include <linux/a.out.h>
 #include <linux/interrupt.h>
 #include <linux/utsname.h>
 #include <linux/delay.h>
@@ -55,6 +54,7 @@
 
 #include <asm/tlbflush.h>
 #include <asm/cpu.h>
+#include <asm/kdebug.h>
 
 asmlinkage void ret_from_fork(void) __asm__("ret_from_fork");
 
@@ -74,7 +74,7 @@ EXPORT_PER_CPU_SYMBOL(cpu_number);
  */
 unsigned long thread_saved_pc(struct task_struct *tsk)
 {
-	return ((unsigned long *)tsk->thread.esp)[3];
+	return ((unsigned long *)tsk->thread.sp)[3];
 }
 
 /*
@@ -82,7 +82,6 @@ unsigned long thread_saved_pc(struct task_struct *tsk)
  */
 void (*pm_idle)(void);
 EXPORT_SYMBOL(pm_idle);
-static DEFINE_PER_CPU(unsigned int, cpu_idle_state);
 
 void disable_hlt(void)
 {
@@ -113,10 +112,19 @@ void default_idle(void)
 		smp_mb();
 
 		local_irq_disable();
-		if (!need_resched())
+		if (!need_resched()) {
+			ktime_t t0, t1;
+			u64 t0n, t1n;
+
+			t0 = ktime_get();
+			t0n = ktime_to_ns(t0);
 			safe_halt();	/* enables interrupts racelessly */
-		else
-			local_irq_enable();
+			local_irq_disable();
+			t1 = ktime_get();
+			t1n = ktime_to_ns(t1);
+			sched_clock_idle_wakeup_event(t1n - t0n);
+		}
+		local_irq_enable();
 		current_thread_info()->status |= TS_POLLING;
 	} else {
 		/* loop is done by the caller */
@@ -132,7 +140,7 @@ EXPORT_SYMBOL(default_idle);
  * to poll the ->work.need_resched flag instead of waiting for the
  * cross-CPU IPI to arrive. Use this option with caution.
  */
-static void poll_idle (void)
+static void poll_idle(void)
 {
 	cpu_relax();
 }
@@ -181,12 +189,12 @@ void cpu_idle(void)
 		while (!need_resched()) {
 			void (*idle)(void);
 
-			if (__get_cpu_var(cpu_idle_state))
-				__get_cpu_var(cpu_idle_state) = 0;
-
 			check_pgt_cache();
 			rmb();
 			idle = pm_idle;
+
+			if (rcu_pending(cpu))
+				rcu_check_callbacks(cpu, 0);
 
 			if (!idle)
 				idle = default_idle;
@@ -208,40 +216,19 @@ static void do_nothing(void *unused)
 {
 }
 
+/*
+ * cpu_idle_wait - Used to ensure that all the CPUs discard old value of
+ * pm_idle and update to new pm_idle value. Required while changing pm_idle
+ * handler on SMP systems.
+ *
+ * Caller must have changed pm_idle to the new value before the call. Old
+ * pm_idle value will not be used by any CPU after the return of this function.
+ */
 void cpu_idle_wait(void)
 {
-	unsigned int cpu, this_cpu = get_cpu();
-	cpumask_t map, tmp = current->cpus_allowed;
-
-	set_cpus_allowed(current, cpumask_of_cpu(this_cpu));
-	put_cpu();
-
-	cpus_clear(map);
-	for_each_online_cpu(cpu) {
-		per_cpu(cpu_idle_state, cpu) = 1;
-		cpu_set(cpu, map);
-	}
-
-	__get_cpu_var(cpu_idle_state) = 0;
-
-	wmb();
-	do {
-		ssleep(1);
-		for_each_online_cpu(cpu) {
-			if (cpu_isset(cpu, map) && !per_cpu(cpu_idle_state, cpu))
-				cpu_clear(cpu, map);
-		}
-		cpus_and(map, map, cpu_online_map);
-		/*
-		 * We waited 1 sec, if a CPU still did not call idle
-		 * it may be because it is in idle and not waking up
-		 * because it has nothing to do.
-		 * Give all the remaining CPUS a kick.
-		 */
-		smp_call_function_mask(map, do_nothing, 0, 0);
-	} while (!cpus_empty(map));
-
-	set_cpus_allowed(current, tmp);
+	smp_mb();
+	/* kick all the CPUs so that they exit out of pm_idle */
+	smp_call_function(do_nothing, NULL, 0, 1);
 }
 EXPORT_SYMBOL_GPL(cpu_idle_wait);
 
@@ -255,13 +242,13 @@ EXPORT_SYMBOL_GPL(cpu_idle_wait);
  * New with Core Duo processors, MWAIT can take some hints based on CPU
  * capability.
  */
-void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
+void mwait_idle_with_hints(unsigned long ax, unsigned long cx)
 {
 	if (!need_resched()) {
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
-			__mwait(eax, ecx);
+			__mwait(ax, cx);
 	}
 }
 
@@ -272,19 +259,37 @@ static void mwait_idle(void)
 	mwait_idle_with_hints(0, 0);
 }
 
+static int __cpuinit mwait_usable(const struct cpuinfo_x86 *c)
+{
+	if (force_mwait)
+		return 1;
+	/* Any C1 states supported? */
+	return c->cpuid_level >= 5 && ((cpuid_edx(5) >> 4) & 0xf) > 0;
+}
+
 void __cpuinit select_idle_routine(const struct cpuinfo_x86 *c)
 {
-	if (cpu_has(c, X86_FEATURE_MWAIT)) {
-		printk("monitor/mwait feature present.\n");
+	static int selected;
+
+	if (selected)
+		return;
+#ifdef CONFIG_X86_SMP
+	if (pm_idle == poll_idle && smp_num_siblings > 1) {
+		printk(KERN_WARNING "WARNING: polling idle and HT enabled,"
+			" performance may degrade.\n");
+	}
+#endif
+	if (cpu_has(c, X86_FEATURE_MWAIT) && mwait_usable(c)) {
 		/*
 		 * Skip, if setup has overridden idle.
 		 * One CPU supports mwait => All CPUs supports mwait
 		 */
 		if (!pm_idle) {
-			printk("using mwait in idle threads.\n");
+			printk(KERN_INFO "using mwait in idle threads.\n");
 			pm_idle = mwait_idle;
 		}
 	}
+	selected = 1;
 }
 
 static int __init idle_setup(char *str)
@@ -292,10 +297,6 @@ static int __init idle_setup(char *str)
 	if (!strcmp(str, "poll")) {
 		printk("using polling idle threads.\n");
 		pm_idle = poll_idle;
-#ifdef CONFIG_X86_SMP
-		if (smp_num_siblings > 1)
-			printk("WARNING: polling idle and HT enabled, performance may degrade.\n");
-#endif
 	} else if (!strcmp(str, "mwait"))
 		force_mwait = 1;
 	else
@@ -310,15 +311,15 @@ void __show_registers(struct pt_regs *regs, int all)
 {
 	unsigned long cr0 = 0L, cr2 = 0L, cr3 = 0L, cr4 = 0L;
 	unsigned long d0, d1, d2, d3, d6, d7;
-	unsigned long esp;
+	unsigned long sp;
 	unsigned short ss, gs;
 
 	if (user_mode_vm(regs)) {
-		esp = regs->esp;
-		ss = regs->xss & 0xffff;
+		sp = regs->sp;
+		ss = regs->ss & 0xffff;
 		savesegment(gs, gs);
 	} else {
-		esp = (unsigned long) (&regs->esp);
+		sp = (unsigned long) (&regs->sp);
 		savesegment(ss, ss);
 		savesegment(gs, gs);
 	}
@@ -331,17 +332,17 @@ void __show_registers(struct pt_regs *regs, int all)
 			init_utsname()->version);
 
 	printk("EIP: %04x:[<%08lx>] EFLAGS: %08lx CPU: %d\n",
-			0xffff & regs->xcs, regs->eip, regs->eflags,
+			0xffff & regs->cs, regs->ip, regs->flags,
 			smp_processor_id());
-	print_symbol("EIP is at %s\n", regs->eip);
+	print_symbol("EIP is at %s\n", regs->ip);
 
 	printk("EAX: %08lx EBX: %08lx ECX: %08lx EDX: %08lx\n",
-		regs->eax, regs->ebx, regs->ecx, regs->edx);
+		regs->ax, regs->bx, regs->cx, regs->dx);
 	printk("ESI: %08lx EDI: %08lx EBP: %08lx ESP: %08lx\n",
-		regs->esi, regs->edi, regs->ebp, esp);
+		regs->si, regs->di, regs->bp, sp);
 	printk(" DS: %04x ES: %04x FS: %04x GS: %04x SS: %04x\n",
-	       regs->xds & 0xffff, regs->xes & 0xffff,
-	       regs->xfs & 0xffff, gs, ss);
+	       regs->ds & 0xffff, regs->es & 0xffff,
+	       regs->fs & 0xffff, gs, ss);
 
 	if (!all)
 		return;
@@ -369,12 +370,12 @@ void __show_registers(struct pt_regs *regs, int all)
 void show_regs(struct pt_regs *regs)
 {
 	__show_registers(regs, 1);
-	show_trace(NULL, regs, &regs->esp);
+	show_trace(NULL, regs, &regs->sp, regs->bp);
 }
 
 /*
- * This gets run with %ebx containing the
- * function to call, and %edx containing
+ * This gets run with %bx containing the
+ * function to call, and %dx containing
  * the "args".
  */
 extern void kernel_thread_helper(void);
@@ -388,16 +389,16 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 
 	memset(&regs, 0, sizeof(regs));
 
-	regs.ebx = (unsigned long) fn;
-	regs.edx = (unsigned long) arg;
+	regs.bx = (unsigned long) fn;
+	regs.dx = (unsigned long) arg;
 
-	regs.xds = __USER_DS;
-	regs.xes = __USER_DS;
-	regs.xfs = __KERNEL_PERCPU;
-	regs.orig_eax = -1;
-	regs.eip = (unsigned long) kernel_thread_helper;
-	regs.xcs = __KERNEL_CS | get_kernel_rpl();
-	regs.eflags = X86_EFLAGS_IF | X86_EFLAGS_SF | X86_EFLAGS_PF | 0x2;
+	regs.ds = __USER_DS;
+	regs.es = __USER_DS;
+	regs.fs = __KERNEL_PERCPU;
+	regs.orig_ax = -1;
+	regs.ip = (unsigned long) kernel_thread_helper;
+	regs.cs = __KERNEL_CS | get_kernel_rpl();
+	regs.flags = X86_EFLAGS_IF | X86_EFLAGS_SF | X86_EFLAGS_PF | 0x2;
 
 	/* Ok, create the new process.. */
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
@@ -435,7 +436,12 @@ void flush_thread(void)
 {
 	struct task_struct *tsk = current;
 
-	memset(tsk->thread.debugreg, 0, sizeof(unsigned long)*8);
+	tsk->thread.debugreg0 = 0;
+	tsk->thread.debugreg1 = 0;
+	tsk->thread.debugreg2 = 0;
+	tsk->thread.debugreg3 = 0;
+	tsk->thread.debugreg6 = 0;
+	tsk->thread.debugreg7 = 0;
 	memset(tsk->thread.tls_array, 0, sizeof(tsk->thread.tls_array));	
 	clear_tsk_thread_flag(tsk, TIF_DEBUG);
 	/*
@@ -460,7 +466,7 @@ void prepare_to_copy(struct task_struct *tsk)
 	unlazy_fpu(tsk);
 }
 
-int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
+int copy_thread(int nr, unsigned long clone_flags, unsigned long sp,
 	unsigned long unused,
 	struct task_struct * p, struct pt_regs * regs)
 {
@@ -470,15 +476,15 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 
 	childregs = task_pt_regs(p);
 	*childregs = *regs;
-	childregs->eax = 0;
-	childregs->esp = esp;
+	childregs->ax = 0;
+	childregs->sp = sp;
 
-	p->thread.esp = (unsigned long) childregs;
-	p->thread.esp0 = (unsigned long) (childregs+1);
+	p->thread.sp = (unsigned long) childregs;
+	p->thread.sp0 = (unsigned long) (childregs+1);
 
-	p->thread.eip = (unsigned long) ret_from_fork;
+	p->thread.ip = (unsigned long) ret_from_fork;
 
-	savesegment(gs,p->thread.gs);
+	savesegment(gs, p->thread.gs);
 
 	tsk = current;
 	if (unlikely(test_tsk_thread_flag(tsk, TIF_IO_BITMAP))) {
@@ -491,32 +497,15 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 		set_tsk_thread_flag(p, TIF_IO_BITMAP);
 	}
 
+	err = 0;
+
 	/*
 	 * Set a new TLS for the child thread?
 	 */
-	if (clone_flags & CLONE_SETTLS) {
-		struct desc_struct *desc;
-		struct user_desc info;
-		int idx;
+	if (clone_flags & CLONE_SETTLS)
+		err = do_set_thread_area(p, -1,
+			(struct user_desc __user *)childregs->si, 0);
 
-		err = -EFAULT;
-		if (copy_from_user(&info, (void __user *)childregs->esi, sizeof(info)))
-			goto out;
-		err = -EINVAL;
-		if (LDT_empty(&info))
-			goto out;
-
-		idx = info.entry_number;
-		if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-			goto out;
-
-		desc = p->thread.tls_array + idx - GDT_ENTRY_TLS_MIN;
-		desc->a = LDT_entry_a(&info);
-		desc->b = LDT_entry_b(&info);
-	}
-
-	err = 0;
- out:
 	if (err && p->thread.io_bitmap_ptr) {
 		kfree(p->thread.io_bitmap_ptr);
 		p->thread.io_bitmap_max = 0;
@@ -524,67 +513,8 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 	return err;
 }
 
-/*
- * fill in the user structure for a core dump..
- */
-void dump_thread(struct pt_regs * regs, struct user * dump)
-{
-	int i;
-
-/* changed the size calculations - should hopefully work better. lbt */
-	dump->magic = CMAGIC;
-	dump->start_code = 0;
-	dump->start_stack = regs->esp & ~(PAGE_SIZE - 1);
-	dump->u_tsize = ((unsigned long) current->mm->end_code) >> PAGE_SHIFT;
-	dump->u_dsize = ((unsigned long) (current->mm->brk + (PAGE_SIZE-1))) >> PAGE_SHIFT;
-	dump->u_dsize -= dump->u_tsize;
-	dump->u_ssize = 0;
-	for (i = 0; i < 8; i++)
-		dump->u_debugreg[i] = current->thread.debugreg[i];  
-
-	if (dump->start_stack < TASK_SIZE)
-		dump->u_ssize = ((unsigned long) (TASK_SIZE - dump->start_stack)) >> PAGE_SHIFT;
-
-	dump->regs.ebx = regs->ebx;
-	dump->regs.ecx = regs->ecx;
-	dump->regs.edx = regs->edx;
-	dump->regs.esi = regs->esi;
-	dump->regs.edi = regs->edi;
-	dump->regs.ebp = regs->ebp;
-	dump->regs.eax = regs->eax;
-	dump->regs.ds = regs->xds;
-	dump->regs.es = regs->xes;
-	dump->regs.fs = regs->xfs;
-	savesegment(gs,dump->regs.gs);
-	dump->regs.orig_eax = regs->orig_eax;
-	dump->regs.eip = regs->eip;
-	dump->regs.cs = regs->xcs;
-	dump->regs.eflags = regs->eflags;
-	dump->regs.esp = regs->esp;
-	dump->regs.ss = regs->xss;
-
-	dump->u_fpvalid = dump_fpu (regs, &dump->i387);
-}
-EXPORT_SYMBOL(dump_thread);
-
-/* 
- * Capture the user space registers if the task is not running (in user space)
- */
-int dump_task_regs(struct task_struct *tsk, elf_gregset_t *regs)
-{
-	struct pt_regs ptregs = *task_pt_regs(tsk);
-	ptregs.xcs &= 0xffff;
-	ptregs.xds &= 0xffff;
-	ptregs.xes &= 0xffff;
-	ptregs.xss &= 0xffff;
-
-	elf_core_copy_regs(regs, &ptregs);
-
-	return 1;
-}
-
 #ifdef CONFIG_SECCOMP
-void hard_disable_TSC(void)
+static void hard_disable_TSC(void)
 {
 	write_cr4(read_cr4() | X86_CR4_TSD);
 }
@@ -599,7 +529,7 @@ void disable_TSC(void)
 		hard_disable_TSC();
 	preempt_enable();
 }
-void hard_enable_TSC(void)
+static void hard_enable_TSC(void)
 {
 	write_cr4(read_cr4() & ~X86_CR4_TSD);
 }
@@ -609,18 +539,32 @@ static noinline void
 __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
 		 struct tss_struct *tss)
 {
-	struct thread_struct *next;
+	struct thread_struct *prev, *next;
+	unsigned long debugctl;
 
+	prev = &prev_p->thread;
 	next = &next_p->thread;
 
+	debugctl = prev->debugctlmsr;
+	if (next->ds_area_msr != prev->ds_area_msr) {
+		/* we clear debugctl to make sure DS
+		 * is not in use when we change it */
+		debugctl = 0;
+		wrmsrl(MSR_IA32_DEBUGCTLMSR, 0);
+		wrmsr(MSR_IA32_DS_AREA, next->ds_area_msr, 0);
+	}
+
+	if (next->debugctlmsr != debugctl)
+		wrmsr(MSR_IA32_DEBUGCTLMSR, next->debugctlmsr, 0);
+
 	if (test_tsk_thread_flag(next_p, TIF_DEBUG)) {
-		set_debugreg(next->debugreg[0], 0);
-		set_debugreg(next->debugreg[1], 1);
-		set_debugreg(next->debugreg[2], 2);
-		set_debugreg(next->debugreg[3], 3);
+		set_debugreg(next->debugreg0, 0);
+		set_debugreg(next->debugreg1, 1);
+		set_debugreg(next->debugreg2, 2);
+		set_debugreg(next->debugreg3, 3);
 		/* no 4 and 5 */
-		set_debugreg(next->debugreg[6], 6);
-		set_debugreg(next->debugreg[7], 7);
+		set_debugreg(next->debugreg6, 6);
+		set_debugreg(next->debugreg7, 7);
 	}
 
 #ifdef CONFIG_SECCOMP
@@ -633,6 +577,15 @@ __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
 			hard_enable_TSC();
 	}
 #endif
+
+#ifdef X86_BTS
+	if (test_tsk_thread_flag(prev_p, TIF_BTS_TRACE_TS))
+		ptrace_bts_take_timestamp(prev_p, BTS_TASK_DEPARTS);
+
+	if (test_tsk_thread_flag(next_p, TIF_BTS_TRACE_TS))
+		ptrace_bts_take_timestamp(next_p, BTS_TASK_ARRIVES);
+#endif
+
 
 	if (!test_tsk_thread_flag(next_p, TIF_IO_BITMAP)) {
 		/*
@@ -687,11 +640,11 @@ __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
  * More important, however, is the fact that this allows us much
  * more flexibility.
  *
- * The return value (in %eax) will be the "prev" task after
+ * The return value (in %ax) will be the "prev" task after
  * the task-switch, and shows up in ret_from_fork in entry.S,
  * for example.
  */
-struct task_struct fastcall * __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
+struct task_struct * __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 {
 	struct thread_struct *prev = &prev_p->thread,
 				 *next = &next_p->thread;
@@ -710,7 +663,7 @@ struct task_struct fastcall * __switch_to(struct task_struct *prev_p, struct tas
 	/*
 	 * Reload esp0.
 	 */
-	load_esp0(tss, next);
+	load_sp0(tss, next);
 
 	/*
 	 * Save away %gs. No need to save %fs, as it was saved on the
@@ -774,7 +727,7 @@ struct task_struct fastcall * __switch_to(struct task_struct *prev_p, struct tas
 
 asmlinkage int sys_fork(struct pt_regs regs)
 {
-	return do_fork(SIGCHLD, regs.esp, &regs, 0, NULL, NULL);
+	return do_fork(SIGCHLD, regs.sp, &regs, 0, NULL, NULL);
 }
 
 asmlinkage int sys_clone(struct pt_regs regs)
@@ -783,12 +736,12 @@ asmlinkage int sys_clone(struct pt_regs regs)
 	unsigned long newsp;
 	int __user *parent_tidptr, *child_tidptr;
 
-	clone_flags = regs.ebx;
-	newsp = regs.ecx;
-	parent_tidptr = (int __user *)regs.edx;
-	child_tidptr = (int __user *)regs.edi;
+	clone_flags = regs.bx;
+	newsp = regs.cx;
+	parent_tidptr = (int __user *)regs.dx;
+	child_tidptr = (int __user *)regs.di;
 	if (!newsp)
-		newsp = regs.esp;
+		newsp = regs.sp;
 	return do_fork(clone_flags, newsp, &regs, 0, parent_tidptr, child_tidptr);
 }
 
@@ -804,7 +757,7 @@ asmlinkage int sys_clone(struct pt_regs regs)
  */
 asmlinkage int sys_vfork(struct pt_regs regs)
 {
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs.esp, &regs, 0, NULL, NULL);
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs.sp, &regs, 0, NULL, NULL);
 }
 
 /*
@@ -815,18 +768,15 @@ asmlinkage int sys_execve(struct pt_regs regs)
 	int error;
 	char * filename;
 
-	filename = getname((char __user *) regs.ebx);
+	filename = getname((char __user *) regs.bx);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
 		goto out;
 	error = do_execve(filename,
-			(char __user * __user *) regs.ecx,
-			(char __user * __user *) regs.edx,
+			(char __user * __user *) regs.cx,
+			(char __user * __user *) regs.dx,
 			&regs);
 	if (error == 0) {
-		task_lock(current);
-		current->ptrace &= ~PT_DTRACE;
-		task_unlock(current);
 		/* Make sure we don't return using sysenter.. */
 		set_thread_flag(TIF_IRET);
 	}
@@ -840,139 +790,25 @@ out:
 
 unsigned long get_wchan(struct task_struct *p)
 {
-	unsigned long ebp, esp, eip;
+	unsigned long bp, sp, ip;
 	unsigned long stack_page;
 	int count = 0;
 	if (!p || p == current || p->state == TASK_RUNNING)
 		return 0;
 	stack_page = (unsigned long)task_stack_page(p);
-	esp = p->thread.esp;
-	if (!stack_page || esp < stack_page || esp > top_esp+stack_page)
+	sp = p->thread.sp;
+	if (!stack_page || sp < stack_page || sp > top_esp+stack_page)
 		return 0;
-	/* include/asm-i386/system.h:switch_to() pushes ebp last. */
-	ebp = *(unsigned long *) esp;
+	/* include/asm-i386/system.h:switch_to() pushes bp last. */
+	bp = *(unsigned long *) sp;
 	do {
-		if (ebp < stack_page || ebp > top_ebp+stack_page)
+		if (bp < stack_page || bp > top_ebp+stack_page)
 			return 0;
-		eip = *(unsigned long *) (ebp+4);
-		if (!in_sched_functions(eip))
-			return eip;
-		ebp = *(unsigned long *) ebp;
+		ip = *(unsigned long *) (bp+4);
+		if (!in_sched_functions(ip))
+			return ip;
+		bp = *(unsigned long *) bp;
 	} while (count++ < 16);
-	return 0;
-}
-
-/*
- * sys_alloc_thread_area: get a yet unused TLS descriptor index.
- */
-static int get_free_idx(void)
-{
-	struct thread_struct *t = &current->thread;
-	int idx;
-
-	for (idx = 0; idx < GDT_ENTRY_TLS_ENTRIES; idx++)
-		if (desc_empty(t->tls_array + idx))
-			return idx + GDT_ENTRY_TLS_MIN;
-	return -ESRCH;
-}
-
-/*
- * Set a given TLS descriptor:
- */
-asmlinkage int sys_set_thread_area(struct user_desc __user *u_info)
-{
-	struct thread_struct *t = &current->thread;
-	struct user_desc info;
-	struct desc_struct *desc;
-	int cpu, idx;
-
-	if (copy_from_user(&info, u_info, sizeof(info)))
-		return -EFAULT;
-	idx = info.entry_number;
-
-	/*
-	 * index -1 means the kernel should try to find and
-	 * allocate an empty descriptor:
-	 */
-	if (idx == -1) {
-		idx = get_free_idx();
-		if (idx < 0)
-			return idx;
-		if (put_user(idx, &u_info->entry_number))
-			return -EFAULT;
-	}
-
-	if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-		return -EINVAL;
-
-	desc = t->tls_array + idx - GDT_ENTRY_TLS_MIN;
-
-	/*
-	 * We must not get preempted while modifying the TLS.
-	 */
-	cpu = get_cpu();
-
-	if (LDT_empty(&info)) {
-		desc->a = 0;
-		desc->b = 0;
-	} else {
-		desc->a = LDT_entry_a(&info);
-		desc->b = LDT_entry_b(&info);
-	}
-	load_TLS(t, cpu);
-
-	put_cpu();
-
-	return 0;
-}
-
-/*
- * Get the current Thread-Local Storage area:
- */
-
-#define GET_BASE(desc) ( \
-	(((desc)->a >> 16) & 0x0000ffff) | \
-	(((desc)->b << 16) & 0x00ff0000) | \
-	( (desc)->b        & 0xff000000)   )
-
-#define GET_LIMIT(desc) ( \
-	((desc)->a & 0x0ffff) | \
-	 ((desc)->b & 0xf0000) )
-	
-#define GET_32BIT(desc)		(((desc)->b >> 22) & 1)
-#define GET_CONTENTS(desc)	(((desc)->b >> 10) & 3)
-#define GET_WRITABLE(desc)	(((desc)->b >>  9) & 1)
-#define GET_LIMIT_PAGES(desc)	(((desc)->b >> 23) & 1)
-#define GET_PRESENT(desc)	(((desc)->b >> 15) & 1)
-#define GET_USEABLE(desc)	(((desc)->b >> 20) & 1)
-
-asmlinkage int sys_get_thread_area(struct user_desc __user *u_info)
-{
-	struct user_desc info;
-	struct desc_struct *desc;
-	int idx;
-
-	if (get_user(idx, &u_info->entry_number))
-		return -EFAULT;
-	if (idx < GDT_ENTRY_TLS_MIN || idx > GDT_ENTRY_TLS_MAX)
-		return -EINVAL;
-
-	memset(&info, 0, sizeof(info));
-
-	desc = current->thread.tls_array + idx - GDT_ENTRY_TLS_MIN;
-
-	info.entry_number = idx;
-	info.base_addr = GET_BASE(desc);
-	info.limit = GET_LIMIT(desc);
-	info.seg_32bit = GET_32BIT(desc);
-	info.contents = GET_CONTENTS(desc);
-	info.read_exec_only = !GET_WRITABLE(desc);
-	info.limit_in_pages = GET_LIMIT_PAGES(desc);
-	info.seg_not_present = !GET_PRESENT(desc);
-	info.useable = GET_USEABLE(desc);
-
-	if (copy_to_user(u_info, &info, sizeof(info)))
-		return -EFAULT;
 	return 0;
 }
 
@@ -981,4 +817,10 @@ unsigned long arch_align_stack(unsigned long sp)
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
 		sp -= get_random_int() % 8192;
 	return sp & ~0xf;
+}
+
+unsigned long arch_randomize_brk(struct mm_struct *mm)
+{
+	unsigned long range_end = mm->brk + 0x02000000;
+	return randomize_range(mm->brk, range_end, 0) ? : mm->brk;
 }

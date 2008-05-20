@@ -50,7 +50,6 @@
 #include <linux/dmi.h>
 #include <linux/backlight.h>
 #include <linux/platform_device.h>
-#include <linux/autoconf.h>
 
 #define FUJITSU_DRIVER_VERSION "0.3"
 
@@ -232,7 +231,7 @@ static int acpi_fujitsu_remove(struct acpi_device *device, int type)
 
 	if (!device || !acpi_driver_data(device))
 		return -EINVAL;
-	fujitsu->acpi_handle = 0;
+	fujitsu->acpi_handle = NULL;
 
 	return 0;
 }

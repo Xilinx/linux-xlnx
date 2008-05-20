@@ -17,6 +17,7 @@
  */
 
 #include <crypto/algapi.h>
+#include <crypto/scatterwalk.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -160,7 +161,7 @@ static int hmac_digest(struct hash_desc *pdesc, struct scatterlist *sg,
 
 	sg_init_table(sg1, 2);
 	sg_set_buf(sg1, ipad, bs);
-	sg_set_page(&sg1[1], (void *) sg, 0, 0);
+	scatterwalk_sg_chain(sg1, 2, sg);
 
 	sg_init_table(sg2, 1);
 	sg_set_buf(sg2, opad, bs + ds);
@@ -212,7 +213,7 @@ static struct crypto_instance *hmac_alloc(struct rtattr **tb)
 	alg = crypto_get_attr_alg(tb, CRYPTO_ALG_TYPE_HASH,
 				  CRYPTO_ALG_TYPE_HASH_MASK);
 	if (IS_ERR(alg))
-		return ERR_PTR(PTR_ERR(alg));
+		return ERR_CAST(alg);
 
 	inst = crypto_alloc_instance("hmac", alg);
 	if (IS_ERR(inst))

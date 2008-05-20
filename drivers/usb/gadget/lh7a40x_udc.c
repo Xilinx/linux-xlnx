@@ -474,6 +474,7 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	driver->unbind(&dev->gadget);
+	dev->gadget.dev.driver = NULL;
 	device_del(&dev->gadget.dev);
 
 	udc_disable(dev);
@@ -2145,3 +2146,4 @@ module_exit(udc_exit);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR("Mikko Lahteenmaki, Bo Henriksen");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:lh7a40x_udc");

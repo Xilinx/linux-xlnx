@@ -98,6 +98,8 @@ int __init detect_cpu_and_cache_system(void)
 	case 0x200A:
 		if (prr == 0x61)
 			boot_cpu_data.type = CPU_SH7781;
+		else if (prr == 0xa1)
+			boot_cpu_data.type = CPU_SH7763;
 		else
 			boot_cpu_data.type = CPU_SH7780;
 
@@ -124,8 +126,14 @@ int __init detect_cpu_and_cache_system(void)
 					  CPU_HAS_LLSC;
 		break;
 	case 0x3008:
-		if (prr == 0xa0) {
+		if (prr == 0xa0 || prr == 0xa1) {
 			boot_cpu_data.type = CPU_SH7722;
+			boot_cpu_data.icache.ways = 4;
+			boot_cpu_data.dcache.ways = 4;
+			boot_cpu_data.flags |= CPU_HAS_LLSC;
+		}
+		else if (prr == 0x70) {
+			boot_cpu_data.type = CPU_SH7366;
 			boot_cpu_data.icache.ways = 4;
 			boot_cpu_data.dcache.ways = 4;
 			boot_cpu_data.flags |= CPU_HAS_LLSC;

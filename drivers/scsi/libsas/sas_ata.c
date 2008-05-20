@@ -158,8 +158,8 @@ static unsigned int sas_ata_qc_issue(struct ata_queued_cmd *qc)
 	struct Scsi_Host *host = sas_ha->core.shost;
 	struct sas_internal *i = to_sas_internal(host->transportt);
 	struct scatterlist *sg;
-	unsigned int num = 0;
 	unsigned int xfer = 0;
+	unsigned int si;
 
 	task = sas_alloc_task(GFP_ATOMIC);
 	if (!task)
@@ -176,22 +176,20 @@ static unsigned int sas_ata_qc_issue(struct ata_queued_cmd *qc)
 
 	ata_tf_to_fis(&qc->tf, 1, 0, (u8*)&task->ata_task.fis);
 	task->uldd_task = qc;
-	if (is_atapi_taskfile(&qc->tf)) {
+	if (ata_is_atapi(qc->tf.protocol)) {
 		memcpy(task->ata_task.atapi_packet, qc->cdb, qc->dev->cdb_len);
-		task->total_xfer_len = qc->nbytes + qc->pad_len;
-		task->num_scatter = qc->pad_len ? qc->n_elem + 1 : qc->n_elem;
+		task->total_xfer_len = qc->nbytes;
+		task->num_scatter = qc->n_elem;
 	} else {
-		ata_for_each_sg(sg, qc) {
-			num++;
+		for_each_sg(qc->sg, sg, qc->n_elem, si)
 			xfer += sg->length;
-		}
 
 		task->total_xfer_len = xfer;
-		task->num_scatter = num;
+		task->num_scatter = si;
 	}
 
 	task->data_dir = qc->dma_dir;
-	task->scatter = qc->__sg;
+	task->scatter = qc->sg;
 	task->ata_task.retry_count = 1;
 	task->task_state_flags = SAS_TASK_STATE_PENDING;
 	qc->lldd_task = task;
@@ -200,7 +198,7 @@ static unsigned int sas_ata_qc_issue(struct ata_queued_cmd *qc)
 	case ATA_PROT_NCQ:
 		task->ata_task.use_ncq = 1;
 		/* fall through */
-	case ATA_PROT_ATAPI_DMA:
+	case ATAPI_PROT_DMA:
 	case ATA_PROT_DMA:
 		task->ata_task.dma_xfer = 1;
 		break;
@@ -238,12 +236,12 @@ static void sas_ata_phy_reset(struct ata_port *ap)
 	struct domain_device *dev = ap->private_data;
 	struct sas_internal *i =
 		to_sas_internal(dev->port->ha->core.shost->transportt);
-	int res = 0;
+	int res = TMF_RESP_FUNC_FAILED;
 
 	if (i->dft->lldd_I_T_nexus_reset)
 		res = i->dft->lldd_I_T_nexus_reset(dev);
 
-	if (res)
+	if (res != TMF_RESP_FUNC_COMPLETE)
 		SAS_DPRINTK("%s: Unable to reset I T nexus?\n", __FUNCTION__);
 
 	switch (dev->sata_dev.command_set) {
@@ -500,7 +498,7 @@ static int sas_execute_task(struct sas_task *task, void *buffer, int size,
 			goto ex_err;
 		}
 		wait_for_completion(&task->completion);
-		res = -ETASK;
+		res = -ECOMM;
 		if (task->task_state_flags & SAS_TASK_STATE_ABORTED) {
 			int res2;
 			SAS_DPRINTK("task aborted, flags:0x%x\n",
@@ -658,21 +656,6 @@ out:
 	return res;
 }
 
-static void sas_sata_propagate_sas_addr(struct domain_device *dev)
-{
-	unsigned long flags;
-	struct asd_sas_port *port = dev->port;
-	struct asd_sas_phy  *phy;
-
-	BUG_ON(dev->parent);
-
-	memcpy(port->attached_sas_addr, dev->sas_addr, SAS_ADDR_SIZE);
-	spin_lock_irqsave(&port->phy_list_lock, flags);
-	list_for_each_entry(phy, &port->phy_list, port_phy_el)
-		memcpy(phy->attached_sas_addr, dev->sas_addr, SAS_ADDR_SIZE);
-	spin_unlock_irqrestore(&port->phy_list_lock, flags);
-}
-
 #define ATA_IDENTIFY_DEV         0xEC
 #define ATA_IDENTIFY_PACKET_DEV  0xA1
 #define ATA_SET_FEATURES         0xEF
@@ -730,26 +713,6 @@ static int sas_discover_sata_dev(struct domain_device *dev)
 			goto out_err;
 	}
 cont1:
-	/* Get WWN */
-	if (dev->port->oob_mode != SATA_OOB_MODE) {
-		memcpy(dev->sas_addr, dev->sata_dev.rps_resp.rps.stp_sas_addr,
-		       SAS_ADDR_SIZE);
-	} else if (dev->sata_dev.command_set == ATA_COMMAND_SET &&
-		   (le16_to_cpu(dev->sata_dev.identify_device[108]) & 0xF000)
-		   == 0x5000) {
-		int i;
-
-		for (i = 0; i < 4; i++) {
-			dev->sas_addr[2*i] =
-	     (le16_to_cpu(dev->sata_dev.identify_device[108+i]) & 0xFF00) >> 8;
-			dev->sas_addr[2*i+1] =
-	      le16_to_cpu(dev->sata_dev.identify_device[108+i]) & 0x00FF;
-		}
-	}
-	sas_hash_addr(dev->hashed_sas_addr, dev->sas_addr);
-	if (!dev->parent)
-		sas_sata_propagate_sas_addr(dev);
-
 	/* XXX Hint: register this SATA device with SATL.
 	   When this returns, dev->sata_dev->lu is alive and
 	   present.

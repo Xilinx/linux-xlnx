@@ -381,9 +381,10 @@ static void __kprobes save_previous_kprobe(struct kprobe_ctlblk *kcb)
 static void __kprobes restore_previous_kprobe(struct kprobe_ctlblk *kcb)
 {
 	unsigned int i;
-	i = atomic_sub_return(1, &kcb->prev_kprobe_index);
-	__get_cpu_var(current_kprobe) = kcb->prev_kprobe[i].kp;
-	kcb->kprobe_status = kcb->prev_kprobe[i].status;
+	i = atomic_read(&kcb->prev_kprobe_index);
+	__get_cpu_var(current_kprobe) = kcb->prev_kprobe[i-1].kp;
+	kcb->kprobe_status = kcb->prev_kprobe[i-1].status;
+	atomic_sub(1, &kcb->prev_kprobe_index);
 }
 
 static void __kprobes set_current_kprobe(struct kprobe *p,
@@ -837,7 +838,7 @@ out:
 	return 1;
 }
 
-int __kprobes kprobes_fault_handler(struct pt_regs *regs, int trapnr)
+int __kprobes kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 {
 	struct kprobe *cur = kprobe_running();
 	struct kprobe_ctlblk *kcb = get_kprobe_ctlblk();
@@ -998,6 +999,11 @@ int __kprobes setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	regs->b0 = ((struct fnptr *)(jprobe_inst_return))->ip;
 
 	return 1;
+}
+
+/* ia64 does not need this */
+void __kprobes jprobe_return(void)
+{
 }
 
 int __kprobes longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)

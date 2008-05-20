@@ -66,11 +66,11 @@ static inline void hwrng_cleanup(struct hwrng *rng)
 		rng->cleanup(rng);
 }
 
-static inline int hwrng_data_present(struct hwrng *rng)
+static inline int hwrng_data_present(struct hwrng *rng, int wait)
 {
 	if (!rng->data_present)
 		return 1;
-	return rng->data_present(rng);
+	return rng->data_present(rng, wait);
 }
 
 static inline int hwrng_data_read(struct hwrng *rng, u32 *data)
@@ -94,8 +94,7 @@ static ssize_t rng_dev_read(struct file *filp, char __user *buf,
 {
 	u32 data;
 	ssize_t ret = 0;
-	int i, err = 0;
-	int data_present;
+	int err = 0;
 	int bytes_read;
 
 	while (size) {
@@ -107,21 +106,10 @@ static ssize_t rng_dev_read(struct file *filp, char __user *buf,
 			err = -ENODEV;
 			goto out;
 		}
-		if (filp->f_flags & O_NONBLOCK) {
-			data_present = hwrng_data_present(current_rng);
-		} else {
-			/* Some RNG require some time between data_reads to gather
-			 * new entropy. Poll it.
-			 */
-			for (i = 0; i < 20; i++) {
-				data_present = hwrng_data_present(current_rng);
-				if (data_present)
-					break;
-				udelay(10);
-			}
-		}
+
 		bytes_read = 0;
-		if (data_present)
+		if (hwrng_data_present(current_rng,
+				       !(filp->f_flags & O_NONBLOCK)))
 			bytes_read = hwrng_data_read(current_rng, &data);
 		mutex_unlock(&rng_mutex);
 
@@ -246,11 +234,11 @@ static DEVICE_ATTR(rng_available, S_IRUGO,
 		   NULL);
 
 
-static void unregister_miscdev(void)
+static void unregister_miscdev(bool suspended)
 {
 	device_remove_file(rng_miscdev.this_device, &dev_attr_rng_available);
 	device_remove_file(rng_miscdev.this_device, &dev_attr_rng_current);
-	misc_deregister(&rng_miscdev);
+	__misc_deregister(&rng_miscdev, suspended);
 }
 
 static int register_miscdev(void)
@@ -325,7 +313,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(hwrng_register);
 
-void hwrng_unregister(struct hwrng *rng)
+void __hwrng_unregister(struct hwrng *rng, bool suspended)
 {
 	int err;
 
@@ -344,11 +332,11 @@ void hwrng_unregister(struct hwrng *rng)
 		}
 	}
 	if (list_empty(&rng_list))
-		unregister_miscdev();
+		unregister_miscdev(suspended);
 
 	mutex_unlock(&rng_mutex);
 }
-EXPORT_SYMBOL_GPL(hwrng_unregister);
+EXPORT_SYMBOL_GPL(__hwrng_unregister);
 
 
 MODULE_DESCRIPTION("H/W Random Number Generator (RNG) driver");

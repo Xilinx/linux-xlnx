@@ -73,7 +73,7 @@ EXPORT_SYMBOL_GPL(edac_pci_alloc_ctl_info);
  *
  *	Last action on the pci control structure.
  *
- *	call the remove sysfs informaton, which will unregister
+ *	call the remove sysfs information, which will unregister
  *	this control struct's kobj. When that kobj's ref count
  *	goes to zero, its release function will be call and then
  *	kfree() the memory.
@@ -246,7 +246,7 @@ static void edac_pci_workq_function(struct work_struct *work_req)
 		/* if we are on a one second period, then use round */
 		msec = edac_pci_get_poll_msec();
 		if (msec == 1000)
-			delay = round_jiffies(msecs_to_jiffies(msec));
+			delay = round_jiffies_relative(msecs_to_jiffies(msec));
 		else
 			delay = msecs_to_jiffies(msec);
 

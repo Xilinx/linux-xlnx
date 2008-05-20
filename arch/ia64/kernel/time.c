@@ -49,13 +49,13 @@ EXPORT_SYMBOL(last_cli_ip);
 #endif
 
 static struct clocksource clocksource_itc = {
-        .name           = "itc",
-        .rating         = 350,
-        .read           = itc_get_cycles,
-        .mask           = CLOCKSOURCE_MASK(64),
-        .mult           = 0, /*to be caluclated*/
-        .shift          = 16,
-        .flags          = CLOCK_SOURCE_IS_CONTINUOUS,
+	.name           = "itc",
+	.rating         = 350,
+	.read           = itc_get_cycles,
+	.mask           = CLOCKSOURCE_MASK(64),
+	.mult           = 0, /*to be calculated*/
+	.shift          = 16,
+	.flags          = CLOCK_SOURCE_IS_CONTINUOUS,
 };
 static struct clocksource *itc_clocksource;
 
@@ -343,33 +343,6 @@ udelay (unsigned long usecs)
 	(*ia64_udelay)(usecs);
 }
 EXPORT_SYMBOL(udelay);
-
-static unsigned long long ia64_itc_printk_clock(void)
-{
-	if (ia64_get_kr(IA64_KR_PER_CPU_DATA))
-		return sched_clock();
-	return 0;
-}
-
-static unsigned long long ia64_default_printk_clock(void)
-{
-	return (unsigned long long)(jiffies_64 - INITIAL_JIFFIES) *
-		(1000000000/HZ);
-}
-
-unsigned long long (*ia64_printk_clock)(void) = &ia64_default_printk_clock;
-
-unsigned long long printk_clock(void)
-{
-	return ia64_printk_clock();
-}
-
-void __init
-ia64_setup_printk_clock(void)
-{
-	if (!(sal_platform_features & IA64_SAL_PLATFORM_FEATURE_ITC_DRIFT))
-		ia64_printk_clock = ia64_itc_printk_clock;
-}
 
 /* IA64 doesn't cache the timezone */
 void update_vsyscall_tz(void)

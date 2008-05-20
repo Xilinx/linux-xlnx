@@ -25,6 +25,7 @@ config B43LEGACY_PCI_AUTOSELECT
 	bool
 	depends on B43LEGACY && SSB_PCIHOST_POSSIBLE
 	select SSB_PCIHOST
+	select SSB_B43_PCI_BRIDGE
 	default y
 
 # Auto-select SSB PCICORE driver, if possible
@@ -32,6 +33,22 @@ config B43LEGACY_PCICORE_AUTOSELECT
 	bool
 	depends on B43LEGACY && SSB_DRIVER_PCICORE_POSSIBLE
 	select SSB_DRIVER_PCICORE
+	default y
+
+# LED support
+# This config option automatically enables b43legacy LEDS support,
+# if it's possible.
+config B43LEGACY_LEDS
+	bool
+	depends on B43LEGACY && MAC80211_LEDS && (LEDS_CLASS = y || LEDS_CLASS = B43LEGACY)
+	default y
+
+# RFKILL support
+# This config option automatically enables b43legacy RFKILL support,
+# if it's possible.
+config B43LEGACY_RFKILL
+	bool
+	depends on B43LEGACY && (RFKILL = y || RFKILL = B43LEGACY) && RFKILL_INPUT && (INPUT_POLLDEV = y || INPUT_POLLDEV = B43LEGACY)
 	default y
 
 config B43LEGACY_DEBUG

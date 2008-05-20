@@ -98,6 +98,17 @@
 #define FTDI_MTXORB_5_PID      0xFA05  /* Matrix Orbital Product Id */
 #define FTDI_MTXORB_6_PID      0xFA06  /* Matrix Orbital Product Id */
 
+/* OOCDlink by Joern Kaipf <joernk@web.de>
+ * (http://www.joernonline.de/dw/doku.php?id=start&idx=projects:oocdlink) */
+#define FTDI_OOCDLINK_PID	0xbaf8	/* Amontec JTAGkey */
+
+/*
+ * The following are the values for the Matrix Orbital VK204-25-USB
+ * display, which use the FT232RL.
+ */
+#define MTXORB_VK_VID		0x1b3d
+#define MTXORB_VK_PID		0x0158
+
 /* Interbiometrics USB I/O Board */
 /* Developed for Interbiometrics by Rudolf Gugler */
 #define INTERBIOMETRICS_VID              0x1209
@@ -245,6 +256,7 @@
 #define FTDI_ELV_WS300PC_PID	0xE0F6	/* PC-Wetterstation (WS 300 PC) */
 #define FTDI_ELV_FHZ1300PC_PID	0xE0E8	/* FHZ 1300 PC */
 #define FTDI_ELV_WS500_PID	0xE0E9	/* PC-Wetterstation (WS 500) */
+#define FTDI_ELV_EM1010PC_PID	0xE0EF	/* Engery monitor EM 1010 PC */
 
 /*
  * Definitions for ID TECH (www.idt-net.com) devices
@@ -278,6 +290,7 @@
 #define FTDI_ATIK_ATK16C_PID	0xDF32	/* ATIK ATK-16C Colour Camera */
 #define FTDI_ATIK_ATK16HR_PID	0xDF31	/* ATIK ATK-16HR Grayscale Camera */
 #define FTDI_ATIK_ATK16HRC_PID	0xDF33	/* ATIK ATK-16HRC Colour Camera */
+#define FTDI_ATIK_ATK16IC_PID   0xDF35  /* ATIK ATK-16IC Grayscale Camera */
 
 /*
  * Protego product ids
@@ -534,6 +547,8 @@
 #define OLIMEX_VID			0x15BA
 #define OLIMEX_ARM_USB_OCD_PID		0x0003
 
+/* www.elsterelectricity.com Elster Unicom III Optical Probe */
+#define FTDI_ELSTER_UNICOM_PID		0xE700 /* Product Id */
 
 /*
  * The Mobility Lab (TML)
@@ -541,6 +556,9 @@
  */
 #define TML_VID			0x1B91	/* Vendor ID */
 #define TML_USB_SERIAL_PID	0x0064	/* USB - Serial Converter */
+
+/* Propox devices */
+#define FTDI_PROPOX_JTAGCABLEII_PID	0xD738
 
 /* Commands */
 #define FTDI_SIO_RESET 		0 /* Reset the port */
@@ -554,6 +572,13 @@
 #define FTDI_SIO_SET_LATENCY_TIMER	9 /* Set the latency timer */
 #define FTDI_SIO_GET_LATENCY_TIMER	10 /* Get the latency timer */
 
+
+/*
+ * FIC / OpenMoko, Inc. http://wiki.openmoko.org/wiki/Neo1973_Debug_Board_v3
+ * Submitted by Harald Welte <laforge@openmoko.org>
+ */
+#define	FIC_VID			0x1457
+#define	FIC_NEO1973_DEBUG_PID	0x5118
 
 /*
  *   BmRequestType:  1100 0000b

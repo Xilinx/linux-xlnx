@@ -8,7 +8,7 @@
  * Copyright (C) 1994, 95, 96, 97, 98, 99, 2000, 01, 02, 03  Ralf Baechle
  * Copyright (C) 1996 Stoned Elipot
  * Copyright (C) 1999 Silicon Graphics, Inc.
- * Copyright (C) 2000 2001, 2002  Maciej W. Rozycki
+ * Copyright (C) 2000, 2001, 2002, 2007  Maciej W. Rozycki
  */
 #include <linux/init.h>
 #include <linux/ioport.h>
@@ -24,10 +24,12 @@
 
 #include <asm/addrspace.h>
 #include <asm/bootinfo.h>
+#include <asm/bugs.h>
 #include <asm/cache.h>
 #include <asm/cpu.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
+#include <asm/smp-ops.h>
 #include <asm/system.h>
 
 struct cpuinfo_mips cpu_data[NR_CPUS] __read_mostly;
@@ -230,7 +232,7 @@ static void __init finalize_initrd(void)
 		goto disable;
 	}
 
-	reserve_bootmem(__pa(initrd_start), size);
+	reserve_bootmem(__pa(initrd_start), size, BOOTMEM_DEFAULT);
 	initrd_below_start_ok = 1;
 
 	printk(KERN_INFO "Initial ramdisk at: 0x%lx (%lu bytes)\n",
@@ -411,7 +413,7 @@ static void __init bootmem_init(void)
 	/*
 	 * Reserve the bootmap memory.
 	 */
-	reserve_bootmem(PFN_PHYS(mapstart), bootmap_size);
+	reserve_bootmem(PFN_PHYS(mapstart), bootmap_size, BOOTMEM_DEFAULT);
 
 	/*
 	 * Reserve initrd memory if needed.
@@ -422,13 +424,13 @@ static void __init bootmem_init(void)
 #endif	/* CONFIG_SGI_IP27 */
 
 /*
- * arch_mem_init - initialize memory managment subsystem
+ * arch_mem_init - initialize memory management subsystem
  *
  *  o plat_mem_setup() detects the memory configuration and will record detected
  *    memory areas using add_memory_region.
  *
  * At this stage the memory configuration of the system is known to the
- * kernel but generic memory managment system is still entirely uninitialized.
+ * kernel but generic memory management system is still entirely uninitialized.
  *
  *  o bootmem_init()
  *  o sparse_init()
@@ -561,6 +563,7 @@ void __init setup_arch(char **cmdline_p)
 	}
 #endif
 	cpu_report();
+	check_bugs_early();
 
 #if defined(CONFIG_VT)
 #if defined(CONFIG_VGA_CONSOLE)
@@ -573,9 +576,7 @@ void __init setup_arch(char **cmdline_p)
 	arch_mem_init(cmdline_p);
 
 	resource_init();
-#ifdef CONFIG_SMP
 	plat_smp_setup();
-#endif
 }
 
 static int __init fpu_disable(char *s)

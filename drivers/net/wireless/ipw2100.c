@@ -162,7 +162,7 @@ that only one external action is invoked at a time.
 #include <linux/firmware.h>
 #include <linux/acpi.h>
 #include <linux/ctype.h>
-#include <linux/latency.h>
+#include <linux/pm_qos_params.h>
 
 #include "ipw2100.h"
 
@@ -1701,7 +1701,7 @@ static int ipw2100_up(struct ipw2100_priv *priv, int deferred)
 	/* the ipw2100 hardware really doesn't want power management delays
 	 * longer than 175usec
 	 */
-	modify_acceptable_latency("ipw2100", 175);
+	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "ipw2100", 175);
 
 	/* If the interrupt is enabled, turn it off... */
 	spin_lock_irqsave(&priv->low_lock, flags);
@@ -1856,7 +1856,8 @@ static void ipw2100_down(struct ipw2100_priv *priv)
 	ipw2100_disable_interrupts(priv);
 	spin_unlock_irqrestore(&priv->low_lock, flags);
 
-	modify_acceptable_latency("ipw2100", INFINITE_LATENCY);
+	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "ipw2100",
+			PM_QOS_DEFAULT_VALUE);
 
 	/* We have to signal any supplicant if we are disassociating */
 	if (associated)
@@ -2509,9 +2510,9 @@ static void isr_rx_monitor(struct ipw2100_priv *priv, int i,
 
 	ipw_rt->rt_hdr.it_version = PKTHDR_RADIOTAP_VERSION;
 	ipw_rt->rt_hdr.it_pad = 0; /* always good to zero */
-	ipw_rt->rt_hdr.it_len = sizeof(struct ipw_rt_hdr); /* total hdr+data */
+	ipw_rt->rt_hdr.it_len = cpu_to_le16(sizeof(struct ipw_rt_hdr)); /* total hdr+data */
 
-	ipw_rt->rt_hdr.it_present = 1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL;
+	ipw_rt->rt_hdr.it_present = cpu_to_le32(1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
 
 	ipw_rt->rt_dbmsignal = status->rssi + IPW2100_RSSI_TO_DBM;
 
@@ -2558,7 +2559,7 @@ static int ipw2100_corruption_check(struct ipw2100_priv *priv, int i)
 #ifdef CONFIG_IPW2100_MONITOR
 		return 0;
 #else
-		switch (WLAN_FC_GET_TYPE(u->rx_data.header.frame_ctl)) {
+		switch (WLAN_FC_GET_TYPE(le16_to_cpu(u->rx_data.header.frame_ctl))) {
 		case IEEE80211_FTYPE_MGMT:
 		case IEEE80211_FTYPE_CTL:
 			return 0;
@@ -2677,7 +2678,7 @@ static void __ipw2100_rx_process(struct ipw2100_priv *priv)
 #endif
 			if (stats.len < sizeof(struct ieee80211_hdr_3addr))
 				break;
-			switch (WLAN_FC_GET_TYPE(u->rx_data.header.frame_ctl)) {
+			switch (WLAN_FC_GET_TYPE(le16_to_cpu(u->rx_data.header.frame_ctl))) {
 			case IEEE80211_FTYPE_MGMT:
 				ieee80211_rx_mgt(priv->ieee,
 						 &u->rx_data.header, &stats);
@@ -6554,7 +6555,8 @@ static int __init ipw2100_init(void)
 	if (ret)
 		goto out;
 
-	set_acceptable_latency("ipw2100", INFINITE_LATENCY);
+	pm_qos_add_requirement(PM_QOS_CPU_DMA_LATENCY, "ipw2100",
+			PM_QOS_DEFAULT_VALUE);
 #ifdef CONFIG_IPW2100_DEBUG
 	ipw2100_debug_level = debug;
 	ret = driver_create_file(&ipw2100_pci_driver.driver,
@@ -6576,7 +6578,7 @@ static void __exit ipw2100_exit(void)
 			   &driver_attr_debug_level);
 #endif
 	pci_unregister_driver(&ipw2100_pci_driver);
-	remove_acceptable_latency("ipw2100");
+	pm_qos_remove_requirement(PM_QOS_CPU_DMA_LATENCY, "ipw2100");
 }
 
 module_init(ipw2100_init);
@@ -6591,8 +6593,7 @@ static const long ipw2100_frequencies[] = {
 	2472, 2484
 };
 
-#define FREQ_COUNT (sizeof(ipw2100_frequencies) / \
-                    sizeof(ipw2100_frequencies[0]))
+#define FREQ_COUNT	ARRAY_SIZE(ipw2100_frequencies)
 
 static const long ipw2100_rates_11b[] = {
 	1000000,
@@ -7796,7 +7797,7 @@ static int ipw2100_wx_set_mlme(struct net_device *dev,
 {
 	struct ipw2100_priv *priv = ieee80211_priv(dev);
 	struct iw_mlme *mlme = (struct iw_mlme *)extra;
-	u16 reason;
+	__le16 reason;
 
 	reason = cpu_to_le16(mlme->reason_code);
 

@@ -298,23 +298,23 @@
 }
 
 #define XPAR_AC97_CONTROLLER_REFERENCE(num) { \
-	.name = "ml403_ac97cr", \
+	.name = "ml403-ac97cr", \
 	.id = num, \
 	.num_resources = 3, \
 	.resource = (struct resource[]) { \
 		{ \
-			.start = XPAR_OPB_AC97_CONTROLLER_REF_##num##_BASEADDR, \
-			.end = XPAR_OPB_AC97_CONTROLLER_REF_##num##_HIGHADDR, \
+			.start = XPAR_AC97_CONTROLLER_REF_##num##_BASEADDR, \
+			.end = XPAR_AC97_CONTROLLER_REF_##num##_HIGHADDR, \
 			.flags = IORESOURCE_MEM, \
 		}, \
 		{ \
-			.start = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_PLAYBACK_INTERRUPT_INTR, \
-			.end = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_PLAYBACK_INTERRUPT_INTR, \
+			.start = XPAR_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_PLAYBACK_INTERRUPT_INTR, \
+			.end = XPAR_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_PLAYBACK_INTERRUPT_INTR, \
 			.flags = IORESOURCE_IRQ, \
 		}, \
 		{ \
-			.start = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
-			.end = XPAR_OPB_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
+			.start = XPAR_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
+			.end = XPAR_INTC_0_OPB_AC97_CONTROLLER_REF_##num##_RECORD_INTERRUPT_INTR, \
 			.flags = IORESOURCE_IRQ, \
 		}, \
 	}, \

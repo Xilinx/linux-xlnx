@@ -3,25 +3,26 @@
  *
  * This file is released under the GPLv2.
  *
- * Copyright (C) 2006 Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
+ * Copyright (C) 2006-2008 Intel Corporation
+ * Author: Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
  */
 
 #include "iova.h"
 
 void
-init_iova_domain(struct iova_domain *iovad)
+init_iova_domain(struct iova_domain *iovad, unsigned long pfn_32bit)
 {
 	spin_lock_init(&iovad->iova_alloc_lock);
 	spin_lock_init(&iovad->iova_rbtree_lock);
 	iovad->rbroot = RB_ROOT;
 	iovad->cached32_node = NULL;
-
+	iovad->dma_32bit_pfn = pfn_32bit;
 }
 
 static struct rb_node *
 __get_cached_rbnode(struct iova_domain *iovad, unsigned long *limit_pfn)
 {
-	if ((*limit_pfn != DMA_32BIT_PFN) ||
+	if ((*limit_pfn != iovad->dma_32bit_pfn) ||
 		(iovad->cached32_node == NULL))
 		return rb_last(&iovad->rbroot);
 	else {
@@ -37,7 +38,7 @@ static void
 __cached_rbnode_insert_update(struct iova_domain *iovad,
 	unsigned long limit_pfn, struct iova *new)
 {
-	if (limit_pfn != DMA_32BIT_PFN)
+	if (limit_pfn != iovad->dma_32bit_pfn)
 		return;
 	iovad->cached32_node = &new->node;
 }

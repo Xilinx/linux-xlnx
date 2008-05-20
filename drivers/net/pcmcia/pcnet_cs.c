@@ -38,6 +38,7 @@
 #include <linux/delay.h>
 #include <linux/ethtool.h>
 #include <linux/netdevice.h>
+#include <linux/log2.h>
 #include "../8390.h"
 
 #include <pcmcia/cs_types.h>
@@ -348,7 +349,7 @@ static hw_info_t *get_hwinfo(struct pcmcia_device *link)
 static hw_info_t *get_prom(struct pcmcia_device *link)
 {
     struct net_device *dev = link->priv;
-    kio_addr_t ioaddr = dev->base_addr;
+    unsigned int ioaddr = dev->base_addr;
     u_char prom[32];
     int i, j;
 
@@ -424,7 +425,7 @@ static hw_info_t *get_dl10019(struct pcmcia_device *link)
 static hw_info_t *get_ax88190(struct pcmcia_device *link)
 {
     struct net_device *dev = link->priv;
-    kio_addr_t ioaddr = dev->base_addr;
+    unsigned int ioaddr = dev->base_addr;
     int i, j;
 
     /* Not much of a test, but the alternatives are messy */
@@ -520,7 +521,7 @@ static int pcnet_config(struct pcmcia_device *link)
     int i, last_ret, last_fn, start_pg, stop_pg, cm_offset;
     int has_shmem = 0;
     u_short buf[64];
-    hw_info_t *hw_info;
+    hw_info_t *local_hw_info;
     DECLARE_MAC_BUF(mac);
 
     DEBUG(0, "pcnet_config(0x%p)\n", link);
@@ -589,23 +590,30 @@ static int pcnet_config(struct pcmcia_device *link)
 	dev->if_port = 0;
     }
 
-    hw_info = get_hwinfo(link);
-    if (hw_info == NULL)
-	hw_info = get_prom(link);
-    if (hw_info == NULL)
-	hw_info = get_dl10019(link);
-    if (hw_info == NULL)
-	hw_info = get_ax88190(link);
-    if (hw_info == NULL)
-	hw_info = get_hwired(link);
+    if ((link->conf.ConfigBase == 0x03c0)
+	&& (link->manf_id == 0x149) && (link->card_id = 0xc1ab)) {
+	printk(KERN_INFO "pcnet_cs: this is an AX88190 card!\n");
+	printk(KERN_INFO "pcnet_cs: use axnet_cs instead.\n");
+	goto failed;
+    }
 
-    if (hw_info == NULL) {
+    local_hw_info = get_hwinfo(link);
+    if (local_hw_info == NULL)
+	local_hw_info = get_prom(link);
+    if (local_hw_info == NULL)
+	local_hw_info = get_dl10019(link);
+    if (local_hw_info == NULL)
+	local_hw_info = get_ax88190(link);
+    if (local_hw_info == NULL)
+	local_hw_info = get_hwired(link);
+
+    if (local_hw_info == NULL) {
 	printk(KERN_NOTICE "pcnet_cs: unable to read hardware net"
 	       " address for io base %#3lx\n", dev->base_addr);
 	goto failed;
     }
 
-    info->flags = hw_info->flags;
+    info->flags = local_hw_info->flags;
     /* Check for user overrides */
     info->flags |= (delay_output) ? DELAY_OUTPUT : 0;
     if ((link->manf_id == MANFID_SOCKET) &&
@@ -755,7 +763,7 @@ static int pcnet_resume(struct pcmcia_device *link)
 #define MDIO_DATA_READ		0x10
 #define MDIO_MASK		0x0f
 
-static void mdio_sync(kio_addr_t addr)
+static void mdio_sync(unsigned int addr)
 {
     int bits, mask = inb(addr) & MDIO_MASK;
     for (bits = 0; bits < 32; bits++) {
@@ -764,7 +772,7 @@ static void mdio_sync(kio_addr_t addr)
     }
 }
 
-static int mdio_read(kio_addr_t addr, int phy_id, int loc)
+static int mdio_read(unsigned int addr, int phy_id, int loc)
 {
     u_int cmd = (0x06<<10)|(phy_id<<5)|loc;
     int i, retval = 0, mask = inb(addr) & MDIO_MASK;
@@ -783,7 +791,7 @@ static int mdio_read(kio_addr_t addr, int phy_id, int loc)
     return (retval>>1) & 0xffff;
 }
 
-static void mdio_write(kio_addr_t addr, int phy_id, int loc, int value)
+static void mdio_write(unsigned int addr, int phy_id, int loc, int value)
 {
     u_int cmd = (0x05<<28)|(phy_id<<23)|(loc<<18)|(1<<17)|value;
     int i, mask = inb(addr) & MDIO_MASK;
@@ -817,10 +825,10 @@ static void mdio_write(kio_addr_t addr, int phy_id, int loc, int value)
 
 #define DL19FDUPLX	0x0400	/* DL10019 Full duplex mode */
 
-static int read_eeprom(kio_addr_t ioaddr, int location)
+static int read_eeprom(unsigned int ioaddr, int location)
 {
     int i, retval = 0;
-    kio_addr_t ee_addr = ioaddr + DLINK_EEPROM;
+    unsigned int ee_addr = ioaddr + DLINK_EEPROM;
     int read_cmd = location | (EE_READ_CMD << 8);
 
     outb(0, ee_addr);
@@ -851,10 +859,10 @@ static int read_eeprom(kio_addr_t ioaddr, int location)
     In ASIC mode, EE_ADOT is used to output the data to the ASIC.
 */
 
-static void write_asic(kio_addr_t ioaddr, int location, short asic_data)
+static void write_asic(unsigned int ioaddr, int location, short asic_data)
 {
 	int i;
-	kio_addr_t ee_addr = ioaddr + DLINK_EEPROM;
+	unsigned int ee_addr = ioaddr + DLINK_EEPROM;
 	short dataval;
 	int read_cmd = location | (EE_READ_CMD << 8);
 
@@ -896,7 +904,7 @@ static void write_asic(kio_addr_t ioaddr, int location, short asic_data)
 
 static void set_misc_reg(struct net_device *dev)
 {
-    kio_addr_t nic_base = dev->base_addr;
+    unsigned int nic_base = dev->base_addr;
     pcnet_dev_t *info = PRIV(dev);
     u_char tmp;
 
@@ -935,7 +943,7 @@ static void set_misc_reg(struct net_device *dev)
 static void mii_phy_probe(struct net_device *dev)
 {
     pcnet_dev_t *info = PRIV(dev);
-    kio_addr_t mii_addr = dev->base_addr + DLINK_GPIO;
+    unsigned int mii_addr = dev->base_addr + DLINK_GPIO;
     int i;
     u_int tmp, phyid;
 
@@ -1013,7 +1021,7 @@ static int pcnet_close(struct net_device *dev)
 
 static void pcnet_reset_8390(struct net_device *dev)
 {
-    kio_addr_t nic_base = dev->base_addr;
+    unsigned int nic_base = dev->base_addr;
     int i;
 
     ei_status.txing = ei_status.dmaing = 0;
@@ -1073,8 +1081,8 @@ static void ei_watchdog(u_long arg)
 {
     struct net_device *dev = (struct net_device *)arg;
     pcnet_dev_t *info = PRIV(dev);
-    kio_addr_t nic_base = dev->base_addr;
-    kio_addr_t mii_addr = nic_base + DLINK_GPIO;
+    unsigned int nic_base = dev->base_addr;
+    unsigned int mii_addr = nic_base + DLINK_GPIO;
     u_short link;
 
     if (!netif_device_present(dev)) goto reschedule;
@@ -1176,7 +1184,7 @@ static int ei_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
     pcnet_dev_t *info = PRIV(dev);
     u16 *data = (u16 *)&rq->ifr_ifru;
-    kio_addr_t mii_addr = dev->base_addr + DLINK_GPIO;
+    unsigned int mii_addr = dev->base_addr + DLINK_GPIO;
     switch (cmd) {
     case SIOCGMIIPHY:
 	data[0] = info->phy_id;
@@ -1198,7 +1206,7 @@ static void dma_get_8390_hdr(struct net_device *dev,
 			     struct e8390_pkt_hdr *hdr,
 			     int ring_page)
 {
-    kio_addr_t nic_base = dev->base_addr;
+    unsigned int nic_base = dev->base_addr;
 
     if (ei_status.dmaing) {
 	printk(KERN_NOTICE "%s: DMAing conflict in dma_block_input."
@@ -1229,7 +1237,7 @@ static void dma_get_8390_hdr(struct net_device *dev,
 static void dma_block_input(struct net_device *dev, int count,
 			    struct sk_buff *skb, int ring_offset)
 {
-    kio_addr_t nic_base = dev->base_addr;
+    unsigned int nic_base = dev->base_addr;
     int xfer_count = count;
     char *buf = skb->data;
 
@@ -1284,7 +1292,7 @@ static void dma_block_input(struct net_device *dev, int count,
 static void dma_block_output(struct net_device *dev, int count,
 			     const u_char *buf, const int start_page)
 {
-    kio_addr_t nic_base = dev->base_addr;
+    unsigned int nic_base = dev->base_addr;
     pcnet_dev_t *info = PRIV(dev);
 #ifdef PCMCIA_DEBUG
     int retries = 0;
@@ -1484,8 +1492,7 @@ static int setup_shmem_window(struct pcmcia_device *link, int start_pg,
 	window_size = 32 * 1024;
 
     /* Make sure it's a power of two.  */
-    while ((window_size & (window_size - 1)) != 0)
-	window_size += window_size & ~(window_size - 1);
+    window_size = roundup_pow_of_two(window_size);
 
     /* Allocate a memory window */
     req.Attributes = WIN_DATA_WIDTH_16|WIN_MEMORY_TYPE_CM|WIN_ENABLE;
@@ -1567,12 +1574,11 @@ static struct pcmcia_device_id pcnet_ids[] = {
 	PCMCIA_DEVICE_MANF_CARD(0x0104, 0x0145),
 	PCMCIA_DEVICE_MANF_CARD(0x0149, 0x0230),
 	PCMCIA_DEVICE_MANF_CARD(0x0149, 0x4530),
-/*	PCMCIA_DEVICE_MANF_CARD(0x0149, 0xc1ab), conflict with axnet_cs */
+	PCMCIA_DEVICE_MANF_CARD(0x0149, 0xc1ab),
 	PCMCIA_DEVICE_MANF_CARD(0x0186, 0x0110),
 	PCMCIA_DEVICE_MANF_CARD(0x01bf, 0x2328),
 	PCMCIA_DEVICE_MANF_CARD(0x01bf, 0x8041),
 	PCMCIA_DEVICE_MANF_CARD(0x0213, 0x2452),
-/*	PCMCIA_DEVICE_MANF_CARD(0x021b, 0x0202), conflict with axnet_cs */
 	PCMCIA_DEVICE_MANF_CARD(0x026f, 0x0300),
 	PCMCIA_DEVICE_MANF_CARD(0x026f, 0x0307),
 	PCMCIA_DEVICE_MANF_CARD(0x026f, 0x030a),

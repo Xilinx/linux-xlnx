@@ -337,6 +337,8 @@ static int sa1100_rtc_probe(struct platform_device *pdev)
 	if (IS_ERR(rtc))
 		return PTR_ERR(rtc);
 
+	device_init_wakeup(&pdev->dev, 1);
+
 	platform_set_drvdata(pdev, rtc);
 
 	return 0;
@@ -352,9 +354,30 @@ static int sa1100_rtc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int sa1100_rtc_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	if (device_may_wakeup(&pdev->dev))
+		enable_irq_wake(IRQ_RTCAlrm);
+	return 0;
+}
+
+static int sa1100_rtc_resume(struct platform_device *pdev)
+{
+	if (device_may_wakeup(&pdev->dev))
+		disable_irq_wake(IRQ_RTCAlrm);
+	return 0;
+}
+#else
+#define sa1100_rtc_suspend	NULL
+#define sa1100_rtc_resume	NULL
+#endif
+
 static struct platform_driver sa1100_rtc_driver = {
 	.probe		= sa1100_rtc_probe,
 	.remove		= sa1100_rtc_remove,
+	.suspend	= sa1100_rtc_suspend,
+	.resume		= sa1100_rtc_resume,
 	.driver		= {
 		.name		= "sa1100-rtc",
 	},
@@ -376,3 +399,4 @@ module_exit(sa1100_rtc_exit);
 MODULE_AUTHOR("Richard Purdie <rpurdie@rpsys.net>");
 MODULE_DESCRIPTION("SA11x0/PXA2xx Realtime Clock Driver (RTC)");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:sa1100-rtc");

@@ -67,8 +67,6 @@ MODULE_ALIAS_SCSI_DEVICE(TYPE_WORM);
 
 #define SR_DISKS	256
 
-#define MAX_RETRIES	3
-#define SR_TIMEOUT	(30 * HZ)
 #define SR_CAPABILITIES \
 	(CDC_CLOSE_TRAY|CDC_OPEN_TRAY|CDC_LOCK|CDC_SELECT_SPEED| \
 	 CDC_SELECT_DISC|CDC_MULTI_SESSION|CDC_MCN|CDC_MEDIA_CHANGED| \
@@ -165,6 +163,29 @@ static void scsi_cd_put(struct scsi_cd *cd)
 	mutex_unlock(&sr_ref_mutex);
 }
 
+/* identical to scsi_test_unit_ready except that it doesn't
+ * eat the NOT_READY returns for removable media */
+int sr_test_unit_ready(struct scsi_device *sdev, struct scsi_sense_hdr *sshdr)
+{
+	int retries = MAX_RETRIES;
+	int the_result;
+	u8 cmd[] = {TEST_UNIT_READY, 0, 0, 0, 0, 0 };
+
+	/* issue TEST_UNIT_READY until the initial startup UNIT_ATTENTION
+	 * conditions are gone, or a timeout happens
+	 */
+	do {
+		the_result = scsi_execute_req(sdev, cmd, DMA_NONE, NULL,
+					      0, sshdr, SR_TIMEOUT,
+					      retries--);
+
+	} while (retries > 0 &&
+		 (!scsi_status_is_good(the_result) ||
+		  (scsi_sense_valid(sshdr) &&
+		   sshdr->sense_key == UNIT_ATTENTION)));
+	return the_result;
+}
+
 /*
  * This function checks to see if the media has been changed in the
  * CDROM drive.  It is possible that we have already sensed a change,
@@ -179,21 +200,27 @@ static int sr_media_change(struct cdrom_device_info *cdi, int slot)
 {
 	struct scsi_cd *cd = cdi->handle;
 	int retval;
+	struct scsi_sense_hdr *sshdr;
 
 	if (CDSL_CURRENT != slot) {
 		/* no changer support */
 		return -EINVAL;
 	}
 
-	retval = scsi_test_unit_ready(cd->device, SR_TIMEOUT, MAX_RETRIES);
-	if (retval) {
-		/* Unable to test, unit probably not ready.  This usually
-		 * means there is no disc in the drive.  Mark as changed,
-		 * and we will figure it out later once the drive is
-		 * available again.  */
+	sshdr =  kzalloc(sizeof(*sshdr), GFP_KERNEL);
+	retval = sr_test_unit_ready(cd->device, sshdr);
+	if (retval || (scsi_sense_valid(sshdr) &&
+		       /* 0x3a is medium not present */
+		       sshdr->asc == 0x3a)) {
+		/* Media not present or unable to test, unit probably not
+		 * ready. This usually means there is no disc in the drive.
+		 * Mark as changed, and we will figure it out later once
+		 * the drive is available again.
+		 */
 		cd->device->changed = 1;
-		return 1;	/* This will force a flush, if called from
-				 * check_disk_change */
+		/* This will force a flush, if called from check_disk_change */
+		retval = 1;
+		goto out;
 	};
 
 	retval = cd->device->changed;
@@ -203,9 +230,17 @@ static int sr_media_change(struct cdrom_device_info *cdi, int slot)
 	if (retval) {
 		/* check multisession offset etc */
 		sr_cd_check(cdi);
-
 		get_sectorsize(cd);
 	}
+
+out:
+	/* Notify userspace, that media has changed. */
+	if (retval != cd->previous_state)
+		sdev_evt_send_simple(cd->device, SDEV_EVT_MEDIA_CHANGE,
+				     GFP_KERNEL);
+	cd->previous_state = retval;
+	kfree(sshdr);
+
 	return retval;
 }
  
@@ -218,7 +253,7 @@ static int sr_media_change(struct cdrom_device_info *cdi, int slot)
 static int sr_done(struct scsi_cmnd *SCpnt)
 {
 	int result = SCpnt->result;
-	int this_count = SCpnt->request_bufflen;
+	int this_count = scsi_bufflen(SCpnt);
 	int good_bytes = (result == 0 ? this_count : 0);
 	int block_sectors = 0;
 	long error_sector;
@@ -366,17 +401,18 @@ static int sr_prep_fn(struct request_queue *q, struct request *rq)
 	}
 
 	{
-		struct scatterlist *sg = SCpnt->request_buffer;
-		int i, size = 0;
-		for (i = 0; i < SCpnt->use_sg; i++)
-			size += sg[i].length;
+		struct scatterlist *sg;
+		int i, size = 0, sg_count = scsi_sg_count(SCpnt);
 
-		if (size != SCpnt->request_bufflen && SCpnt->use_sg) {
+		scsi_for_each_sg(SCpnt, sg, sg_count, i)
+			size += sg->length;
+
+		if (size != scsi_bufflen(SCpnt)) {
 			scmd_printk(KERN_ERR, SCpnt,
 				"mismatch count %d, bytes %d\n",
-				size, SCpnt->request_bufflen);
-			if (SCpnt->request_bufflen > size)
-				SCpnt->request_bufflen = size;
+				size, scsi_bufflen(SCpnt));
+			if (scsi_bufflen(SCpnt) > size)
+				SCpnt->sdb.length = size;
 		}
 	}
 
@@ -384,12 +420,12 @@ static int sr_prep_fn(struct request_queue *q, struct request *rq)
 	 * request doesn't start on hw block boundary, add scatter pads
 	 */
 	if (((unsigned int)rq->sector % (s_size >> 9)) ||
-	    (SCpnt->request_bufflen % s_size)) {
+	    (scsi_bufflen(SCpnt) % s_size)) {
 		scmd_printk(KERN_NOTICE, SCpnt, "unaligned transfer\n");
 		goto out;
 	}
 
-	this_count = (SCpnt->request_bufflen >> 9) / (s_size >> 9);
+	this_count = (scsi_bufflen(SCpnt) >> 9) / (s_size >> 9);
 
 
 	SCSI_LOG_HLQUEUE(2, printk("%s : %s %d/%ld 512 byte blocks.\n",
@@ -403,7 +439,7 @@ static int sr_prep_fn(struct request_queue *q, struct request *rq)
 
 	if (this_count > 0xffff) {
 		this_count = 0xffff;
-		SCpnt->request_bufflen = this_count * s_size;
+		SCpnt->sdb.length = this_count * s_size;
 	}
 
 	SCpnt->cmnd[2] = (unsigned char) (block >> 24) & 0xff;
@@ -587,6 +623,7 @@ static int sr_probe(struct device *dev)
 	cd->disk = disk;
 	cd->capacity = 0x1fffff;
 	cd->device->changed = 1;	/* force recheck CD type */
+	cd->previous_state = 1;
 	cd->use = 1;
 	cd->readcd_known = 0;
 	cd->readcd_cdda = 0;
@@ -719,10 +756,8 @@ static void get_capabilities(struct scsi_cd *cd)
 {
 	unsigned char *buffer;
 	struct scsi_mode_data data;
-	unsigned char cmd[MAX_COMMAND_SIZE];
 	struct scsi_sense_hdr sshdr;
-	unsigned int the_result;
-	int retries, rc, n;
+	int rc, n;
 
 	static const char *loadmech[] =
 	{
@@ -744,23 +779,8 @@ static void get_capabilities(struct scsi_cd *cd)
 		return;
 	}
 
-	/* issue TEST_UNIT_READY until the initial startup UNIT_ATTENTION
-	 * conditions are gone, or a timeout happens
-	 */
-	retries = 0;
-	do {
-		memset((void *)cmd, 0, MAX_COMMAND_SIZE);
-		cmd[0] = TEST_UNIT_READY;
-
-		the_result = scsi_execute_req (cd->device, cmd, DMA_NONE, NULL,
-					       0, &sshdr, SR_TIMEOUT,
-					       MAX_RETRIES);
-
-		retries++;
-	} while (retries < 5 && 
-		 (!scsi_status_is_good(the_result) ||
-		  (scsi_sense_valid(&sshdr) &&
-		   sshdr.sense_key == UNIT_ATTENTION)));
+	/* eat unit attentions */
+	sr_test_unit_ready(cd->device, &sshdr);
 
 	/* ask for mode page 0x2a */
 	rc = scsi_mode_sense(cd->device, 0, 0x2a, buffer, 128,

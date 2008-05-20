@@ -22,7 +22,7 @@ static void qla2x00_nv_write(scsi_qla_host_t *, uint16_t);
  * qla2x00_lock_nvram_access() -
  * @ha: HA context
  */
-void
+static void
 qla2x00_lock_nvram_access(scsi_qla_host_t *ha)
 {
 	uint16_t data;
@@ -55,7 +55,7 @@ qla2x00_lock_nvram_access(scsi_qla_host_t *ha)
  * qla2x00_unlock_nvram_access() -
  * @ha: HA context
  */
-void
+static void
 qla2x00_unlock_nvram_access(scsi_qla_host_t *ha)
 {
 	struct device_reg_2xxx __iomem *reg = &ha->iobase->isp;
@@ -74,7 +74,7 @@ qla2x00_unlock_nvram_access(scsi_qla_host_t *ha)
  *
  * Returns the word read from nvram @addr.
  */
-uint16_t
+static uint16_t
 qla2x00_get_nvram_word(scsi_qla_host_t *ha, uint32_t addr)
 {
 	uint16_t	data;
@@ -93,7 +93,7 @@ qla2x00_get_nvram_word(scsi_qla_host_t *ha, uint32_t addr)
  * @addr: Address in NVRAM to write
  * @data: word to program
  */
-void
+static void
 qla2x00_write_nvram_word(scsi_qla_host_t *ha, uint32_t addr, uint16_t data)
 {
 	int count;
@@ -550,7 +550,7 @@ qla24xx_write_flash_data(scsi_qla_host_t *ha, uint32_t *dwptr, uint32_t faddr,
 	int ret;
 	uint32_t liter, miter;
 	uint32_t sec_mask, rest_addr, conf_addr;
-	uint32_t fdata, findex ;
+	uint32_t fdata, findex, cnt;
 	uint8_t	man_id, flash_id;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	dma_addr_t optrom_dma;
@@ -690,8 +690,14 @@ qla24xx_write_flash_data(scsi_qla_host_t *ha, uint32_t *dwptr, uint32_t faddr,
 			    0xff0000) | ((fdata >> 16) & 0xff));
 	}
 
-	/* Enable flash write-protection. */
+	/* Enable flash write-protection and wait for completion. */
 	qla24xx_write_flash_dword(ha, flash_conf_to_access_addr(0x101), 0x9c);
+	for (cnt = 300; cnt &&
+	    qla24xx_read_flash_dword(ha,
+		    flash_conf_to_access_addr(0x005)) & BIT_0;
+	    cnt--) {
+		udelay(10);
+	}
 
 	/* Disable flash write. */
 	WRT_REG_DWORD(&reg->ctrl_status,
@@ -887,6 +893,8 @@ qla2x00_flip_colors(scsi_qla_host_t *ha, uint16_t *pflags)
 	}
 }
 
+#define PIO_REG(h, r) ((h)->pio_address + offsetof(struct device_reg_2xxx, r))
+
 void
 qla2x00_beacon_blink(struct scsi_qla_host *ha)
 {
@@ -896,15 +904,12 @@ qla2x00_beacon_blink(struct scsi_qla_host *ha)
 	unsigned long flags;
 	struct device_reg_2xxx __iomem *reg = &ha->iobase->isp;
 
-	if (ha->pio_address)
-		reg = (struct device_reg_2xxx __iomem *)ha->pio_address;
-
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	/* Save the Original GPIOE. */
 	if (ha->pio_address) {
-		gpio_enable = RD_REG_WORD_PIO(&reg->gpioe);
-		gpio_data = RD_REG_WORD_PIO(&reg->gpiod);
+		gpio_enable = RD_REG_WORD_PIO(PIO_REG(ha, gpioe));
+		gpio_data = RD_REG_WORD_PIO(PIO_REG(ha, gpiod));
 	} else {
 		gpio_enable = RD_REG_WORD(&reg->gpioe);
 		gpio_data = RD_REG_WORD(&reg->gpiod);
@@ -914,7 +919,7 @@ qla2x00_beacon_blink(struct scsi_qla_host *ha)
 	gpio_enable |= GPIO_LED_MASK;
 
 	if (ha->pio_address) {
-		WRT_REG_WORD_PIO(&reg->gpioe, gpio_enable);
+		WRT_REG_WORD_PIO(PIO_REG(ha, gpioe), gpio_enable);
 	} else {
 		WRT_REG_WORD(&reg->gpioe, gpio_enable);
 		RD_REG_WORD(&reg->gpioe);
@@ -930,7 +935,7 @@ qla2x00_beacon_blink(struct scsi_qla_host *ha)
 
 	/* Set the modified gpio_data values */
 	if (ha->pio_address) {
-		WRT_REG_WORD_PIO(&reg->gpiod, gpio_data);
+		WRT_REG_WORD_PIO(PIO_REG(ha, gpiod), gpio_data);
 	} else {
 		WRT_REG_WORD(&reg->gpiod, gpio_data);
 		RD_REG_WORD(&reg->gpiod);
@@ -956,14 +961,11 @@ qla2x00_beacon_on(struct scsi_qla_host *ha)
 		return QLA_FUNCTION_FAILED;
 	}
 
-	if (ha->pio_address)
-		reg = (struct device_reg_2xxx __iomem *)ha->pio_address;
-
 	/* Turn off LEDs. */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	if (ha->pio_address) {
-		gpio_enable = RD_REG_WORD_PIO(&reg->gpioe);
-		gpio_data = RD_REG_WORD_PIO(&reg->gpiod);
+		gpio_enable = RD_REG_WORD_PIO(PIO_REG(ha, gpioe));
+		gpio_data = RD_REG_WORD_PIO(PIO_REG(ha, gpiod));
 	} else {
 		gpio_enable = RD_REG_WORD(&reg->gpioe);
 		gpio_data = RD_REG_WORD(&reg->gpiod);
@@ -972,7 +974,7 @@ qla2x00_beacon_on(struct scsi_qla_host *ha)
 
 	/* Set the modified gpio_enable values. */
 	if (ha->pio_address) {
-		WRT_REG_WORD_PIO(&reg->gpioe, gpio_enable);
+		WRT_REG_WORD_PIO(PIO_REG(ha, gpioe), gpio_enable);
 	} else {
 		WRT_REG_WORD(&reg->gpioe, gpio_enable);
 		RD_REG_WORD(&reg->gpioe);
@@ -981,7 +983,7 @@ qla2x00_beacon_on(struct scsi_qla_host *ha)
 	/* Clear out previously set LED colour. */
 	gpio_data &= ~GPIO_LED_MASK;
 	if (ha->pio_address) {
-		WRT_REG_WORD_PIO(&reg->gpiod, gpio_data);
+		WRT_REG_WORD_PIO(PIO_REG(ha, gpiod), gpio_data);
 	} else {
 		WRT_REG_WORD(&reg->gpiod, gpio_data);
 		RD_REG_WORD(&reg->gpiod);
@@ -1238,13 +1240,12 @@ qla2x00_read_flash_byte(scsi_qla_host_t *ha, uint32_t addr)
 	if (ha->pio_address) {
 		uint16_t data2;
 
-		reg = (struct device_reg_2xxx __iomem *)ha->pio_address;
-		WRT_REG_WORD_PIO(&reg->flash_address, (uint16_t)addr);
+		WRT_REG_WORD_PIO(PIO_REG(ha, flash_address), (uint16_t)addr);
 		do {
-			data = RD_REG_WORD_PIO(&reg->flash_data);
+			data = RD_REG_WORD_PIO(PIO_REG(ha, flash_data));
 			barrier();
 			cpu_relax();
-			data2 = RD_REG_WORD_PIO(&reg->flash_data);
+			data2 = RD_REG_WORD_PIO(PIO_REG(ha, flash_data));
 		} while (data != data2);
 	} else {
 		WRT_REG_WORD(&reg->flash_address, (uint16_t)addr);
@@ -1298,9 +1299,8 @@ qla2x00_write_flash_byte(scsi_qla_host_t *ha, uint32_t addr, uint8_t data)
 
 	/* Always perform IO mapped accesses to the FLASH registers. */
 	if (ha->pio_address) {
-		reg = (struct device_reg_2xxx __iomem *)ha->pio_address;
-		WRT_REG_WORD_PIO(&reg->flash_address, (uint16_t)addr);
-		WRT_REG_WORD_PIO(&reg->flash_data, (uint16_t)data);
+		WRT_REG_WORD_PIO(PIO_REG(ha, flash_address), (uint16_t)addr);
+		WRT_REG_WORD_PIO(PIO_REG(ha, flash_data), (uint16_t)data);
 	} else {
 		WRT_REG_WORD(&reg->flash_address, (uint16_t)addr);
 		RD_REG_WORD(&reg->ctrl_status);		/* PCI Posting. */

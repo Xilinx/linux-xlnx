@@ -37,7 +37,8 @@
 #include <linux/mutex.h>
 
 /* Addresses to scan */
-static unsigned short normal_i2c[] = { 0x2c, 0x2d, 0x2e, 0x2f, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { 0x2c, 0x2d, 0x2e, 0x2f,
+						I2C_CLIENT_END };
 
 /* Insmod parameters */
 I2C_CLIENT_INSMOD_1(w83793);
@@ -131,6 +132,7 @@ static u8 scale_in_add[] = { 0, 0, 0, 0, 0, 0, 0, 150, 150, 0 };
 #define PWM_DUTY			0
 #define PWM_START			1
 #define PWM_NONSTOP			2
+#define PWM_STOP_TIME			3
 #define W83793_REG_PWM(index, nr)	(((nr) == 0 ? 0xb3 : \
 					 (nr) == 1 ? 0x220 : 0x218) + (index))
 
@@ -242,9 +244,7 @@ static struct i2c_driver w83793_driver = {
 static ssize_t
 show_vrm(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct w83793_data *data = i2c_get_clientdata(client);
-
+	struct w83793_data *data = dev_get_drvdata(dev);
 	return sprintf(buf, "%d\n", data->vrm);
 }
 
@@ -263,9 +263,7 @@ static ssize_t
 store_vrm(struct device *dev, struct device_attribute *attr,
 	  const char *buf, size_t count)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct w83793_data *data = i2c_get_clientdata(client);
-
+	struct w83793_data *data = dev_get_drvdata(dev);
 	data->vrm = simple_strtoul(buf, NULL, 10);
 	return count;
 }
@@ -407,10 +405,6 @@ store_fan_min(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-#define PWM_DUTY			0
-#define PWM_START			1
-#define PWM_NONSTOP			2
-#define PWM_STOP_TIME			3
 static ssize_t
 show_pwm(struct device *dev, struct device_attribute *attr, char *buf)
 {

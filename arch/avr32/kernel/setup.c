@@ -163,6 +163,7 @@ add_reserved_region(resource_size_t start, resource_size_t end,
 	new->start = start;
 	new->end = end;
 	new->name = name;
+	new->sibling = next;
 	new->flags = IORESOURCE_MEM;
 
 	*pprev = new;
@@ -489,7 +490,8 @@ static void __init setup_bootmem(void)
 		/* Reserve space for the bootmem bitmap... */
 		reserve_bootmem_node(NODE_DATA(node),
 				     PFN_PHYS(bootmap_pfn),
-				     bootmap_size);
+				     bootmap_size,
+				     BOOTMEM_DEFAULT);
 
 		/* ...and any other reserved regions. */
 		for (res = reserved; res; res = res->sibling) {
@@ -505,7 +507,8 @@ static void __init setup_bootmem(void)
 			    && res->end < PFN_PHYS(max_pfn))
 				reserve_bootmem_node(
 					NODE_DATA(node), res->start,
-					res->end - res->start + 1);
+					res->end - res->start + 1,
+					BOOTMEM_DEFAULT);
 		}
 
 		node_set_online(node);

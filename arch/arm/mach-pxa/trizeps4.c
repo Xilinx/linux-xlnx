@@ -217,7 +217,7 @@ void board_pcmcia_power(int power)
 		ConXS_BCR = trizeps_conxs_bcr;
 
 	}
-	pr_debug("%s: o%s 0x%x\n", __FUNCTION__, power ? "n": "ff", trizeps_conxs_bcr);
+	pr_debug("%s: o%s 0x%x\n", __func__, power ? "n": "ff", trizeps_conxs_bcr);
 }
 
 /* backlight power switching for LCD panel */
@@ -228,7 +228,7 @@ static void board_backlight_power(int on)
 	} else {
 		trizeps_conxs_bcr &= ~ConXS_BCR_L_DISP;
 	}
-	pr_debug("%s: o%s 0x%x\n", __FUNCTION__, on ? "n" : "ff", trizeps_conxs_bcr);
+	pr_debug("%s: o%s 0x%x\n", __func__, on ? "n" : "ff", trizeps_conxs_bcr);
 	ConXS_BCR = trizeps_conxs_bcr;
 }
 
@@ -238,10 +238,10 @@ static void board_mci_power(struct device *dev, unsigned int vdd)
 	struct pxamci_platform_data* p_d = dev->platform_data;
 
 	if (( 1 << vdd) & p_d->ocr_mask) {
-		pr_debug("%s: on\n", __FUNCTION__);
+		pr_debug("%s: on\n", __func__);
 		/* FIXME fill in values here */
 	} else {
-		pr_debug("%s: off\n", __FUNCTION__);
+		pr_debug("%s: off\n", __func__);
 		/* FIXME fill in values here */
 	}
 }
@@ -296,11 +296,10 @@ static int trizeps4_mci_init(struct device *dev, irq_handler_t mci_detect_int, v
 	err = request_irq(TRIZEPS4_MMC_IRQ, mci_detect_int,
 			  IRQF_DISABLED | IRQF_TRIGGER_RISING,
 			  "MMC card detect", data);
-	if (err) {
+	if (err)
 		printk(KERN_ERR "trizeps4_mci_init: MMC/SD: can't request MMC card detect IRQ\n");
-		return -1;
-	}
-	return 0;
+
+	return err;
 }
 
 static void trizeps4_mci_exit(struct device *dev, void *data)

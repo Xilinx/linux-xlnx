@@ -16,6 +16,7 @@
 #include <asm/hardware.h>
 
 #include <asm/arch/pxa-regs.h>
+#include <asm/arch/pxa2xx-regs.h>
 
 #define MDREFR_KDIV	0x200a4000	// all banks
 #define CCCR_SLEEP	0x00000107	// L=7 2N=2 A=0 PPDIS=0 CPDIS=0
@@ -43,12 +44,115 @@ pxa_cpu_save_cp:
 pxa_cpu_save_sp:
 	@ preserve phys address of stack
 	mov	r0, sp
-	mov	r2, lr
+	str	lr, [sp, #-4]!
 	bl	sleep_phys_sp
 	ldr	r1, =sleep_save_sp
 	str	r0, [r1]
-	mov	pc, r2
+	ldr	pc, [sp], #4
 
+#ifdef CONFIG_PXA3xx
+/*
+ * pxa3xx_cpu_suspend() - forces CPU into sleep state (S2D3C4)
+ *
+ * NOTE:  unfortunately, pxa_cpu_save_cp can not be reused here since
+ * the auxiliary control register address is different between pxa3xx
+ * and pxa{25x,27x}
+ */
+
+ENTRY(pxa3xx_cpu_suspend)
+
+#ifndef CONFIG_IWMMXT
+	mra	r2, r3, acc0
+#endif
+	stmfd	sp!, {r2 - r12, lr}	@ save registers on stack
+
+	mrc	p14, 0, r3, c6, c0, 0		@ clock configuration, for turbo mode
+	mrc	p15, 0, r4, c15, c1, 0		@ CP access reg
+	mrc	p15, 0, r5, c13, c0, 0		@ PID
+	mrc 	p15, 0, r6, c3, c0, 0		@ domain ID
+	mrc 	p15, 0, r7, c2, c0, 0		@ translation table base addr
+	mrc	p15, 0, r8, c1, c0, 1           @ auxiliary control reg
+	mrc 	p15, 0, r9, c1, c0, 0		@ control reg
+
+	bic	r3, r3, #2			@ clear frequency change bit
+
+	@ store them plus current virtual stack ptr on stack
+	mov	r10, sp
+	stmfd	sp!, {r3 - r10}
+
+	@ store physical address of stack pointer
+	mov	r0, sp
+	bl	sleep_phys_sp
+	ldr	r1, =sleep_save_sp
+	str	r0, [r1]
+
+	@ clean data cache
+	bl	xsc3_flush_kern_cache_all
+
+	mov	r0, #0x06		@ S2D3C4 mode
+	mcr	p14, 0, r0, c7, c0, 0	@ enter sleep
+
+20:	b	20b			@ waiting for sleep
+
+	.data
+	.align 5
+/*
+ * pxa3xx_cpu_resume
+ */
+
+ENTRY(pxa3xx_cpu_resume)
+
+	mov	r0, #PSR_I_BIT | PSR_F_BIT | SVC_MODE	@ set SVC, irqs off
+	msr	cpsr_c, r0
+
+	ldr	r0, sleep_save_sp		@ stack phys addr
+	ldmfd	r0, {r3 - r9, sp}		@ CP regs + virt stack ptr
+
+	mov	r1, #0
+	mcr	p15, 0, r1, c7, c7, 0		@ invalidate I & D caches, BTB
+	mcr	p15, 0, r1, c7, c10, 4		@ drain write (&fill) buffer
+	mcr	p15, 0, r1, c7, c5, 4		@ flush prefetch buffer
+	mcr	p15, 0, r1, c8, c7, 0   	@ invalidate I & D TLBs
+
+	mcr	p14, 0, r3, c6, c0, 0		@ clock configuration, turbo mode.
+	mcr	p15, 0, r4, c15, c1, 0		@ CP access reg
+	mcr	p15, 0, r5, c13, c0, 0		@ PID
+	mcr 	p15, 0, r6, c3, c0, 0		@ domain ID
+	mcr 	p15, 0, r7, c2, c0, 0		@ translation table base addr
+	mcr	p15, 0, r8, c1, c0, 1           @ auxiliary control reg
+
+	@ temporarily map resume_turn_on_mmu into the page table,
+	@ otherwise prefetch abort occurs after MMU is turned on
+	mov	r1, r7
+	bic	r1, r1, #0x00ff
+	bic	r1, r1, #0x3f00
+	ldr	r2, =0x542e
+
+	adr	r3, resume_turn_on_mmu
+	mov	r3, r3, lsr #20
+	orr	r4, r2, r3, lsl #20
+	ldr	r5, [r1, r3, lsl #2]
+	str     r4, [r1, r3, lsl #2]
+
+	@ Mapping page table address in the page table
+	mov	r6, r1, lsr #20
+	orr	r7, r2, r6, lsl #20
+	ldr	r8, [r1, r6, lsl #2]
+	str	r7, [r1, r6, lsl #2]
+
+	ldr	r2, =pxa3xx_resume_after_mmu	@ absolute virtual address
+	b	resume_turn_on_mmu		@ cache align execution
+
+	.text
+pxa3xx_resume_after_mmu:
+	/* restore the temporary mapping */
+	str	r5, [r1, r3, lsl #2]
+	str	r8, [r1, r6, lsl #2]
+	b	resume_after_mmu
+
+#endif /* CONFIG_PXA3xx */
+
+#ifdef CONFIG_PXA27x
 /*
  * pxa27x_cpu_suspend()
  *
@@ -104,9 +208,11 @@ ENTRY(pxa27x_cpu_suspend)
 
 	@ align execution to a cache line
 	b	pxa_cpu_do_suspend
+#endif
 
+#ifdef CONFIG_PXA25x
 /*
- * pxa27x_cpu_suspend()
+ * pxa25x_cpu_suspend()
  *
  * Forces CPU into sleep state.
  *
@@ -169,6 +275,7 @@ ENTRY(pxa25x_cpu_suspend)
 	mcr	p14, 0, r0, c6, c0, 0
 	orr	r0, r0, #2			@ initiate change bit
 	b	pxa_cpu_do_suspend
+#endif
 
 	.ltorg
 	.align	5
@@ -208,7 +315,7 @@ pxa_cpu_do_suspend:
 20:	b	20b				@ loop waiting for sleep
 
 /*
- * cpu_pxa_resume()
+ * pxa_cpu_resume()
  *
  * entry point from bootloader into kernel during resume
  *
@@ -270,5 +377,3 @@ resume_after_mmu:
 	mar	acc0, r2, r3
 #endif
 	ldmfd	sp!, {r4 - r12, pc}		@ return to caller
-
-

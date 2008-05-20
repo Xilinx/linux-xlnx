@@ -31,137 +31,6 @@
 #include <asm/blackfin.h>
 #include <asm/mach/irq.h>
 
-.text
-
-ENTRY(_unmask_wdog_wakeup_evt)
-	[--SP] = ( R7:0, P5:0 );
-#if defined(CONFIG_BF561)
-	P0.H = hi(SICA_IWR1);
-	P0.L = lo(SICA_IWR1);
-#else
-	P0.h = HI(SIC_IWR);
-	P0.l = LO(SIC_IWR);
-#endif
-	R7 = [P0];
-#if defined(CONFIG_BF561)
-	BITSET(R7, 27);
-#else
-	BITSET(R7,(IRQ_WATCH - IVG7));
-#endif
-	[P0] = R7;
-	SSYNC;
-
-	( R7:0, P5:0 ) = [SP++];
-	RTS;
-
-.LWRITE_TO_STAT:
-	/* When watch dog timer is enabled, a write to STAT will load the
-	 * contents of CNT to STAT
-	 */
-	R7 = 0x0000(z);
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_STAT);
-	P0.l = LO(WDOGA_STAT);
-#else
-	P0.h = HI(WDOG_STAT);
-	P0.l = LO(WDOG_STAT);
-#endif
-	[P0] = R7;
-	SSYNC;
-	JUMP .LSKIP_WRITE_TO_STAT;
-
-ENTRY(_program_wdog_timer)
-	[--SP] = ( R7:0, P5:0 );
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_CNT);
-	P0.l = LO(WDOGA_CNT);
-#else
-	P0.h = HI(WDOG_CNT);
-	P0.l = LO(WDOG_CNT);
-#endif
-	[P0] = R0;
-	SSYNC;
-
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_CTL);
-	P0.l = LO(WDOGA_CTL);
-#else
-	P0.h = HI(WDOG_CTL);
-	P0.l = LO(WDOG_CTL);
-#endif
-	R7 = W[P0](Z);
-	CC = BITTST(R7,1);
-	if !CC JUMP .LWRITE_TO_STAT;
-	CC = BITTST(R7,2);
-	if !CC JUMP .LWRITE_TO_STAT;
-
-.LSKIP_WRITE_TO_STAT:
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_CTL);
-	P0.l = LO(WDOGA_CTL);
-#else
-	P0.h = HI(WDOG_CTL);
-	P0.l = LO(WDOG_CTL);
-#endif
-	R7 = W[P0](Z);
-	BITCLR(R7,1);   /* Enable GP event */
-	BITSET(R7,2);
-	W[P0] = R7.L;
-	SSYNC;
-	NOP;
-
-	R7 = W[P0](Z);
-	BITCLR(R7,4);   /* Enable the wdog counter */
-	W[P0] = R7.L;
-	SSYNC;
-
-	( R7:0, P5:0 ) = [SP++];
-	RTS;
-
-ENTRY(_clear_wdog_wakeup_evt)
-	[--SP] = ( R7:0, P5:0 );
-
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_CTL);
-	P0.l = LO(WDOGA_CTL);
-#else
-	P0.h = HI(WDOG_CTL);
-	P0.l = LO(WDOG_CTL);
-#endif
-	R7 = 0x0AD6(Z);
-	W[P0] = R7.L;
-	SSYNC;
-
-	R7 = W[P0](Z);
-	BITSET(R7,15);
-	W[P0] = R7.L;
-	SSYNC;
-
-	R7 = W[P0](Z);
-	BITSET(R7,1);
-	BITSET(R7,2);
-	W[P0] = R7.L;
-	SSYNC;
-
-	( R7:0, P5:0 ) = [SP++];
-	RTS;
-
-ENTRY(_disable_wdog_timer)
-	[--SP] = ( R7:0, P5:0 );
-#if defined(CONFIG_BF561)
-	P0.h = HI(WDOGA_CTL);
-	P0.l = LO(WDOGA_CTL);
-#else
-	P0.h = HI(WDOG_CTL);
-	P0.l = LO(WDOG_CTL);
-#endif
-	R7 = 0xAD6(Z);
-	W[P0] = R7.L;
-	SSYNC;
-	( R7:0, P5:0 ) = [SP++];
-	RTS;
-
-#if !defined(CONFIG_BF561)
 
 .section .l1.text
 
@@ -172,7 +41,7 @@ ENTRY(_sleep_mode)
 	call _set_sic_iwr;
 
 	R0 = 0xFFFF (Z);
-	call _set_rtc_istat
+	call _set_rtc_istat;
 
 	P0.H = hi(PLL_CTL);
 	P0.L = lo(PLL_CTL);
@@ -188,6 +57,9 @@ ENTRY(_sleep_mode)
 	call _test_pll_locked;
 
 	R0 = IWR_ENABLE(0);
+	R1 = IWR_DISABLE_ALL;
+	R2 = IWR_DISABLE_ALL;
+
 	call _set_sic_iwr;
 
 	P0.H = hi(PLL_CTL);
@@ -210,7 +82,7 @@ ENTRY(_hibernate_mode)
 	call _set_sic_iwr;
 
 	R0 = 0xFFFF (Z);
-	call _set_rtc_istat
+	call _set_rtc_istat;
 
 	P0.H = hi(VR_CTL);
 	P0.L = lo(VR_CTL);
@@ -234,9 +106,13 @@ ENTRY(_deep_sleep)
 
 	CLI R4;
 
+	R0 = IWR_ENABLE(0);
+	R1 = IWR_DISABLE_ALL;
+	R2 = IWR_DISABLE_ALL;
+
 	call _set_sic_iwr;
 
-	call _set_sdram_srfs;
+	call _set_dram_srfs;
 
 	/* Clear all the interrupts,bits sticky */
 	R0 = 0xFFFF (Z);
@@ -253,11 +129,14 @@ ENTRY(_deep_sleep)
 	SSYNC;
 	IDLE;
 
-	call _unset_sdram_srfs;
+	call _unset_dram_srfs;
 
 	call _test_pll_locked;
 
 	R0 = IWR_ENABLE(0);
+	R1 = IWR_DISABLE_ALL;
+	R2 = IWR_DISABLE_ALL;
+
 	call _set_sic_iwr;
 
 	P0.H = hi(PLL_CTL);
@@ -283,25 +162,30 @@ ENTRY(_sleep_deeper)
 	CLI R4;
 
 	P3 = R0;
+	P4 = R1;
+	P5 = R2;
+
 	R0 = IWR_ENABLE(0);
+	R1 = IWR_DISABLE_ALL;
+	R2 = IWR_DISABLE_ALL;
+
 	call _set_sic_iwr;
-	call _set_sdram_srfs;
+	call _set_dram_srfs;	/* Set SDRAM Self Refresh */
 
 	/* Clear all the interrupts,bits sticky */
 	R0 = 0xFFFF (Z);
-	call _set_rtc_istat
-
+	call _set_rtc_istat;
 	P0.H = hi(PLL_DIV);
 	P0.L = lo(PLL_DIV);
 	R6 = W[P0](z);
 	R0.L = 0xF;
-	W[P0] = R0.l;
+	W[P0] = R0.l;		/* Set Max VCO to SCLK divider */
 
 	P0.H = hi(PLL_CTL);
 	P0.L = lo(PLL_CTL);
 	R5 = W[P0](z);
 	R0.L = (CONFIG_MIN_VCO_HZ/CONFIG_CLKIN_HZ) << 9;
-	W[P0] = R0.l;
+	W[P0] = R0.l;		/* Set Min CLKIN to VCO multiplier */
 
 	SSYNC;
 	IDLE;
@@ -317,29 +201,33 @@ ENTRY(_sleep_deeper)
 	R1 = R1|R2;
 
 	R2 = DEPOSIT(R7, R1);
-	W[P0] = R2;
+	W[P0] = R2;		/* Set Min Core Voltage */
 
 	SSYNC;
 	IDLE;
 
 	call _test_pll_locked;
 
+	R0 = P3;
+	R1 = P4;
+	R3 = P5;
+	call _set_sic_iwr;	/* Set Awake from IDLE */
+
 	P0.H = hi(PLL_CTL);
 	P0.L = lo(PLL_CTL);
 	R0 = W[P0](z);
 	BITSET (R0, 3);
-	W[P0] = R0.L;
-
-	R0 = P3;
-	call _set_sic_iwr;
-
+	W[P0] = R0.L;		/* Turn CCLK OFF */
 	SSYNC;
 	IDLE;
 
 	call _test_pll_locked;
 
 	R0 = IWR_ENABLE(0);
-	call _set_sic_iwr;
+	R1 = IWR_DISABLE_ALL;
+	R2 = IWR_DISABLE_ALL;
+
+	call _set_sic_iwr;	/* Set Awake from IDLE PLL */
 
 	P0.H = hi(VR_CTL);
 	P0.L = lo(VR_CTL);
@@ -352,15 +240,15 @@ ENTRY(_sleep_deeper)
 
 	P0.H = hi(PLL_DIV);
 	P0.L = lo(PLL_DIV);
-	W[P0]= R6;
+	W[P0]= R6;		/* Restore CCLK and SCLK divider */
 
 	P0.H = hi(PLL_CTL);
 	P0.L = lo(PLL_CTL);
-	w[p0] = R5;
+	w[p0] = R5;		/* Restore VCO multiplier */
 	IDLE;
 	call _test_pll_locked;
 
-	call _unset_sdram_srfs;
+	call _unset_dram_srfs;	/* SDRAM Self Refresh Off */
 
 	STI R4;
 
@@ -368,25 +256,47 @@ ENTRY(_sleep_deeper)
 	( R7:0, P5:0 ) = [SP++];
 	RTS;
 
-ENTRY(_set_sdram_srfs)
-	/*  set the sdram to self refresh mode */
+ENTRY(_set_dram_srfs)
+	/*  set the dram to self refresh mode */
+#if defined(CONFIG_BF54x)
+	P0.H = hi(EBIU_RSTCTL);
+	P0.L = lo(EBIU_RSTCTL);
+	R2 = [P0];
+	R3.H = hi(SRREQ);
+	R3.L = lo(SRREQ);
+#else
 	P0.H = hi(EBIU_SDGCTL);
 	P0.L = lo(EBIU_SDGCTL);
 	R2 = [P0];
 	R3.H = hi(SRFS);
 	R3.L = lo(SRFS);
+#endif
 	R2 = R2|R3;
 	[P0] = R2;
 	ssync;
+#if defined(CONFIG_BF54x)
+.LSRR_MODE:
+	R2 = [P0];
+	CC = BITTST(R2, 4);
+	if !CC JUMP .LSRR_MODE;
+#endif
 	RTS;
 
-ENTRY(_unset_sdram_srfs)
-	/*  set the sdram out of self refresh mode */
+ENTRY(_unset_dram_srfs)
+	/*  set the dram out of self refresh mode */
+#if defined(CONFIG_BF54x)
+	P0.H = hi(EBIU_RSTCTL);
+	P0.L = lo(EBIU_RSTCTL);
+	R2 = [P0];
+	R3.H = hi(SRREQ);
+	R3.L = lo(SRREQ);
+#else
 	P0.H = hi(EBIU_SDGCTL);
 	P0.L = lo(EBIU_SDGCTL);
 	R2 = [P0];
 	R3.H = hi(SRFS);
 	R3.L = lo(SRFS);
+#endif
 	R3 = ~R3;
 	R2 = R2&R3;
 	[P0] = R2;
@@ -394,17 +304,33 @@ ENTRY(_unset_sdram_srfs)
 	RTS;
 
 ENTRY(_set_sic_iwr)
+#if defined(CONFIG_BF54x) || defined(CONFIG_BF52x)  || defined(CONFIG_BF561)
+	P0.H = hi(SIC_IWR0);
+	P0.L = lo(SIC_IWR0);
+	P1.H = hi(SIC_IWR1);
+	P1.L = lo(SIC_IWR1);
+	[P1] = R1;
+#if defined(CONFIG_BF54x)
+	P1.H = hi(SIC_IWR2);
+	P1.L = lo(SIC_IWR2);
+	[P1] = R2;
+#endif
+#else
 	P0.H = hi(SIC_IWR);
 	P0.L = lo(SIC_IWR);
+#endif
 	[P0] = R0;
+
 	SSYNC;
 	RTS;
 
 ENTRY(_set_rtc_istat)
+#ifndef CONFIG_BF561
 	P0.H = hi(RTC_ISTAT);
 	P0.L = lo(RTC_ISTAT);
 	w[P0] = R0.L;
 	SSYNC;
+#endif
 	RTS;
 
 ENTRY(_test_pll_locked)
@@ -415,4 +341,3 @@ ENTRY(_test_pll_locked)
 	CC = BITTST(R0,5);
 	IF !CC JUMP 1b;
 	RTS;
-#endif

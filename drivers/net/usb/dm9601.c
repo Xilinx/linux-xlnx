@@ -20,8 +20,7 @@
 #include <linux/mii.h>
 #include <linux/usb.h>
 #include <linux/crc32.h>
-
-#include "usbnet.h"
+#include <linux/usb/usbnet.h>
 
 /* datasheet:
  http://www.davicom.com.tw/big5/download/Data%20Sheet/DM9601-DS-P01-930914.pdf
@@ -101,17 +100,16 @@ static void dm_write_async_callback(struct urb *urb)
 	usb_free_urb(urb);
 }
 
-static void dm_write_async(struct usbnet *dev, u8 reg, u16 length, void *data)
+static void dm_write_async_helper(struct usbnet *dev, u8 reg, u8 value,
+				  u16 length, void *data)
 {
 	struct usb_ctrlrequest *req;
 	struct urb *urb;
 	int status;
 
-	devdbg(dev, "dm_write_async() reg=0x%02x length=%d", reg, length);
-
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb) {
-		deverr(dev, "Error allocating URB in dm_write_async!");
+		deverr(dev, "Error allocating URB in dm_write_async_helper!");
 		return;
 	}
 
@@ -123,8 +121,8 @@ static void dm_write_async(struct usbnet *dev, u8 reg, u16 length, void *data)
 	}
 
 	req->bRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE;
-	req->bRequest = DM_WRITE_REGS;
-	req->wValue = 0;
+	req->bRequest = length ? DM_WRITE_REGS : DM_WRITE_REG;
+	req->wValue = cpu_to_le16(value);
 	req->wIndex = cpu_to_le16(reg);
 	req->wLength = cpu_to_le16(length);
 
@@ -142,45 +140,19 @@ static void dm_write_async(struct usbnet *dev, u8 reg, u16 length, void *data)
 	}
 }
 
+static void dm_write_async(struct usbnet *dev, u8 reg, u16 length, void *data)
+{
+	devdbg(dev, "dm_write_async() reg=0x%02x length=%d", reg, length);
+
+	dm_write_async_helper(dev, reg, 0, length, data);
+}
+
 static void dm_write_reg_async(struct usbnet *dev, u8 reg, u8 value)
 {
-	struct usb_ctrlrequest *req;
-	struct urb *urb;
-	int status;
-
 	devdbg(dev, "dm_write_reg_async() reg=0x%02x value=0x%02x",
 	       reg, value);
 
-	urb = usb_alloc_urb(0, GFP_ATOMIC);
-	if (!urb) {
-		deverr(dev, "Error allocating URB in dm_write_async!");
-		return;
-	}
-
-	req = kmalloc(sizeof(struct usb_ctrlrequest), GFP_ATOMIC);
-	if (!req) {
-		deverr(dev, "Failed to allocate memory for control request");
-		usb_free_urb(urb);
-		return;
-	}
-
-	req->bRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE;
-	req->bRequest = DM_WRITE_REG;
-	req->wValue = cpu_to_le16(value);
-	req->wIndex = cpu_to_le16(reg);
-	req->wLength = 0;
-
-	usb_fill_control_urb(urb, dev->udev,
-			     usb_sndctrlpipe(dev->udev, 0),
-			     (void *)req, NULL, 0, dm_write_async_callback, req);
-
-	status = usb_submit_urb(urb, GFP_ATOMIC);
-	if (status < 0) {
-		deverr(dev, "Error submitting the control message: status=%d",
-		       status);
-		kfree(req);
-		usb_free_urb(urb);
-	}
+	dm_write_async_helper(dev, reg, value, 0, NULL);
 }
 
 static int dm_read_shared_word(struct usbnet *dev, int phy, u8 reg, u16 *value)
@@ -369,7 +341,7 @@ static void dm9601_set_multicast(struct net_device *net)
 	/* We use the 20 byte dev->data for our 8 byte filter buffer
 	 * to avoid allocating memory that is tricky to free later */
 	u8 *hashes = (u8 *) & dev->data;
-	u8 rx_ctl = 0x01;
+	u8 rx_ctl = 0x31;
 
 	memset(hashes, 0x00, DM_MCAST_SIZE);
 	hashes[DM_MCAST_SIZE - 1] |= 0x80;	/* broadcast address */
@@ -382,7 +354,7 @@ static void dm9601_set_multicast(struct net_device *net)
 		struct dev_mc_list *mc_list = net->mc_list;
 		int i;
 
-		for (i = 0; i < net->mc_count; i++) {
+		for (i = 0; i < net->mc_count; i++, mc_list = mc_list->next) {
 			u32 crc = ether_crc(ETH_ALEN, mc_list->dmi_addr) >> 26;
 			hashes[crc >> 3] |= 1 << (crc & 0x7);
 		}
@@ -589,6 +561,10 @@ static const struct usb_device_id products[] = {
 	{
 	 USB_DEVICE(0x0a46, 0x8515),	/* ADMtek ADM8515 USB NIC */
 	 .driver_info = (unsigned long)&dm9601_info,
+	 },
+	{
+	USB_DEVICE(0x0a47, 0x9601),	/* Hirose USB-100 */
+	.driver_info = (unsigned long)&dm9601_info,
 	 },
 	{},			// END
 };

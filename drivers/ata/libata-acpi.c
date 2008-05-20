@@ -118,45 +118,77 @@ static void ata_acpi_associate_ide_port(struct ata_port *ap)
 		ap->pflags |= ATA_PFLAG_INIT_GTM_VALID;
 }
 
-static void ata_acpi_handle_hotplug(struct ata_port *ap, struct kobject *kobj,
+static void ata_acpi_handle_hotplug(struct ata_port *ap, struct ata_device *dev,
 				    u32 event)
 {
 	char event_string[12];
 	char *envp[] = { event_string, NULL };
-	struct ata_eh_info *ehi = &ap->link.eh_info;
+	struct ata_eh_info *ehi;
+	struct kobject *kobj = NULL;
+	int wait = 0;
+	unsigned long flags;
 
-	if (event == 0 || event == 1) {
-	       unsigned long flags;
-	       spin_lock_irqsave(ap->lock, flags);
-	       ata_ehi_clear_desc(ehi);
-	       ata_ehi_push_desc(ehi, "ACPI event");
-	       ata_ehi_hotplugged(ehi);
-	       ata_port_freeze(ap);
-	       spin_unlock_irqrestore(ap->lock, flags);
+	if (!ap)
+		ap = dev->link->ap;
+	ehi = &ap->link.eh_info;
+
+	spin_lock_irqsave(ap->lock, flags);
+
+	switch (event) {
+	case ACPI_NOTIFY_BUS_CHECK:
+	case ACPI_NOTIFY_DEVICE_CHECK:
+		ata_ehi_push_desc(ehi, "ACPI event");
+		ata_ehi_hotplugged(ehi);
+		ata_port_freeze(ap);
+		break;
+
+	case ACPI_NOTIFY_EJECT_REQUEST:
+		ata_ehi_push_desc(ehi, "ACPI event");
+		if (dev)
+			dev->flags |= ATA_DFLAG_DETACH;
+		else {
+			struct ata_link *tlink;
+			struct ata_device *tdev;
+
+			ata_port_for_each_link(tlink, ap)
+				ata_link_for_each_dev(tdev, tlink)
+					tdev->flags |= ATA_DFLAG_DETACH;
+		}
+
+		ata_port_schedule_eh(ap);
+		wait = 1;
+		break;
 	}
+
+	if (dev) {
+		if (dev->sdev)
+			kobj = &dev->sdev->sdev_gendev.kobj;
+	} else
+		kobj = &ap->dev->kobj;
 
 	if (kobj) {
 		sprintf(event_string, "BAY_EVENT=%d", event);
 		kobject_uevent_env(kobj, KOBJ_CHANGE, envp);
 	}
+
+	spin_unlock_irqrestore(ap->lock, flags);
+
+	if (wait)
+		ata_port_wait_eh(ap);
 }
 
 static void ata_acpi_dev_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct ata_device *dev = data;
-	struct kobject *kobj = NULL;
 
-	if (dev->sdev)
-		kobj = &dev->sdev->sdev_gendev.kobj;
-
-	ata_acpi_handle_hotplug(dev->link->ap, kobj, event);
+	ata_acpi_handle_hotplug(NULL, dev, event);
 }
 
 static void ata_acpi_ap_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct ata_port *ap = data;
 
-	ata_acpi_handle_hotplug(ap, &ap->dev->kobj, event);
+	ata_acpi_handle_hotplug(ap, NULL, event);
 }
 
 /**
@@ -191,20 +223,30 @@ void ata_acpi_associate(struct ata_host *host)
 		else
 			ata_acpi_associate_ide_port(ap);
 
-		if (ap->acpi_handle)
-			acpi_install_notify_handler (ap->acpi_handle,
-						     ACPI_SYSTEM_NOTIFY,
-						     ata_acpi_ap_notify,
-						     ap);
+		if (ap->acpi_handle) {
+			acpi_install_notify_handler(ap->acpi_handle,
+						    ACPI_SYSTEM_NOTIFY,
+						    ata_acpi_ap_notify, ap);
+#if defined(CONFIG_ACPI_DOCK) || defined(CONFIG_ACPI_DOCK_MODULE)
+			/* we might be on a docking station */
+			register_hotplug_dock_device(ap->acpi_handle,
+						     ata_acpi_ap_notify, ap);
+#endif
+		}
 
 		for (j = 0; j < ata_link_max_devices(&ap->link); j++) {
 			struct ata_device *dev = &ap->link.device[j];
 
-			if (dev->acpi_handle)
-				acpi_install_notify_handler (dev->acpi_handle,
-							     ACPI_SYSTEM_NOTIFY,
-							     ata_acpi_dev_notify,
-							     dev);
+			if (dev->acpi_handle) {
+				acpi_install_notify_handler(dev->acpi_handle,
+						ACPI_SYSTEM_NOTIFY,
+						ata_acpi_dev_notify, dev);
+#if defined(CONFIG_ACPI_DOCK) || defined(CONFIG_ACPI_DOCK_MODULE)
+				/* we might be on a docking station */
+				register_hotplug_dock_device(dev->acpi_handle,
+						ata_acpi_dev_notify, dev);
+#endif
+			}
 		}
 	}
 }
@@ -382,7 +424,7 @@ static int ata_dev_get_GTF(struct ata_device *dev, struct ata_acpi_gtf **gtf)
 
 	if (ata_msg_probe(ap))
 		ata_dev_printk(dev, KERN_DEBUG, "%s: ENTER: port#: %d\n",
-			       __FUNCTION__, ap->port_no);
+			       __func__, ap->port_no);
 
 	/* _GTF has no input parameters */
 	status = acpi_evaluate_object(dev->acpi_handle, "_GTF", NULL, &output);
@@ -402,7 +444,7 @@ static int ata_dev_get_GTF(struct ata_device *dev, struct ata_acpi_gtf **gtf)
 		if (ata_msg_probe(ap))
 			ata_dev_printk(dev, KERN_DEBUG, "%s: Run _GTF: "
 				"length or ptr is NULL (0x%llx, 0x%p)\n",
-				__FUNCTION__,
+				__func__,
 				(unsigned long long)output.length,
 				output.pointer);
 		rc = -EINVAL;
@@ -432,7 +474,7 @@ static int ata_dev_get_GTF(struct ata_device *dev, struct ata_acpi_gtf **gtf)
 		if (ata_msg_probe(ap))
 			ata_dev_printk(dev, KERN_DEBUG,
 				       "%s: returning gtf=%p, gtf_count=%d\n",
-				       __FUNCTION__, *gtf, rc);
+				       __func__, *gtf, rc);
 	}
 	return rc;
 
@@ -442,40 +484,77 @@ static int ata_dev_get_GTF(struct ata_device *dev, struct ata_acpi_gtf **gtf)
 }
 
 /**
+ * ata_acpi_gtm_xfermode - determine xfermode from GTM parameter
+ * @dev: target device
+ * @gtm: GTM parameter to use
+ *
+ * Determine xfermask for @dev from @gtm.
+ *
+ * LOCKING:
+ * None.
+ *
+ * RETURNS:
+ * Determined xfermask.
+ */
+unsigned long ata_acpi_gtm_xfermask(struct ata_device *dev,
+				    const struct ata_acpi_gtm *gtm)
+{
+	unsigned long xfer_mask = 0;
+	unsigned int type;
+	int unit;
+	u8 mode;
+
+	/* we always use the 0 slot for crap hardware */
+	unit = dev->devno;
+	if (!(gtm->flags & 0x10))
+		unit = 0;
+
+	/* PIO */
+	mode = ata_timing_cycle2mode(ATA_SHIFT_PIO, gtm->drive[unit].pio);
+	xfer_mask |= ata_xfer_mode2mask(mode);
+
+	/* See if we have MWDMA or UDMA data. We don't bother with
+	 * MWDMA if UDMA is available as this means the BIOS set UDMA
+	 * and our error changedown if it works is UDMA to PIO anyway.
+	 */
+	if (!(gtm->flags & (1 << (2 * unit))))
+		type = ATA_SHIFT_MWDMA;
+	else
+		type = ATA_SHIFT_UDMA;
+
+	mode = ata_timing_cycle2mode(type, gtm->drive[unit].dma);
+	xfer_mask |= ata_xfer_mode2mask(mode);
+
+	return xfer_mask;
+}
+EXPORT_SYMBOL_GPL(ata_acpi_gtm_xfermask);
+
+/**
  * ata_acpi_cbl_80wire		-	Check for 80 wire cable
  * @ap: Port to check
+ * @gtm: GTM data to use
  *
- * Return 1 if the ACPI mode data for this port indicates the BIOS selected
- * an 80wire mode.
+ * Return 1 if the @gtm indicates the BIOS selected an 80wire mode.
  */
-
-int ata_acpi_cbl_80wire(struct ata_port *ap)
+int ata_acpi_cbl_80wire(struct ata_port *ap, const struct ata_acpi_gtm *gtm)
 {
-	const struct ata_acpi_gtm *gtm = ata_acpi_init_gtm(ap);
-	int valid = 0;
+	struct ata_device *dev;
 
-	if (!gtm)
-		return 0;
+	ata_link_for_each_dev(dev, &ap->link) {
+		unsigned long xfer_mask, udma_mask;
 
-	/* Split timing, DMA enabled */
-	if ((gtm->flags & 0x11) == 0x11 && gtm->drive[0].dma < 55)
-		valid |= 1;
-	if ((gtm->flags & 0x14) == 0x14 && gtm->drive[1].dma < 55)
-		valid |= 2;
-	/* Shared timing, DMA enabled */
-	if ((gtm->flags & 0x11) == 0x01 && gtm->drive[0].dma < 55)
-		valid |= 1;
-	if ((gtm->flags & 0x14) == 0x04 && gtm->drive[0].dma < 55)
-		valid |= 2;
+		if (!ata_dev_enabled(dev))
+			continue;
 
-	/* Drive check */
-	if ((valid & 1) && ata_dev_enabled(&ap->link.device[0]))
-		return 1;
-	if ((valid & 2) && ata_dev_enabled(&ap->link.device[1]))
-		return 1;
+		xfer_mask = ata_acpi_gtm_xfermask(dev, gtm);
+		ata_unpack_xfermask(xfer_mask, NULL, NULL, &udma_mask);
+
+		if (udma_mask & ~ATA_UDMA_MASK_40C)
+			return 1;
+	}
+
 	return 0;
 }
-
 EXPORT_SYMBOL_GPL(ata_acpi_cbl_80wire);
 
 static void ata_acpi_gtf_to_tf(struct ata_device *dev,
@@ -688,7 +767,7 @@ static int ata_acpi_push_id(struct ata_device *dev)
 
 	if (ata_msg_probe(ap))
 		ata_dev_printk(dev, KERN_DEBUG, "%s: ix = %d, port#: %d\n",
-			       __FUNCTION__, dev->devno, ap->port_no);
+			       __func__, dev->devno, ap->port_no);
 
 	/* Give the drive Identify data to the drive via the _SDD method */
 	/* _SDD: set up input parameters */
@@ -773,6 +852,36 @@ void ata_acpi_on_resume(struct ata_port *ap)
 			dev->flags |= ATA_DFLAG_ACPI_PENDING;
 		}
 	}
+}
+
+/**
+ * ata_acpi_set_state - set the port power state
+ * @ap: target ATA port
+ * @state: state, on/off
+ *
+ * This function executes the _PS0/_PS3 ACPI method to set the power state.
+ * ACPI spec requires _PS0 when IDE power on and _PS3 when power off
+ */
+void ata_acpi_set_state(struct ata_port *ap, pm_message_t state)
+{
+	struct ata_device *dev;
+
+	if (!ap->acpi_handle || (ap->flags & ATA_FLAG_ACPI_SATA))
+		return;
+
+	/* channel first and then drives for power on and vica versa
+	   for power off */
+	if (state.event == PM_EVENT_ON)
+		acpi_bus_set_power(ap->acpi_handle, ACPI_STATE_D0);
+
+	ata_link_for_each_dev(dev, &ap->link) {
+		if (dev->acpi_handle && ata_dev_enabled(dev))
+			acpi_bus_set_power(dev->acpi_handle,
+				state.event == PM_EVENT_ON ?
+					ACPI_STATE_D0 : ACPI_STATE_D3);
+	}
+	if (state.event != PM_EVENT_ON)
+		acpi_bus_set_power(ap->acpi_handle, ACPI_STATE_D3);
 }
 
 /**

@@ -48,7 +48,7 @@ struct class_device_attribute;
 /*The limit of outstanding scsi command that firmware can handle*/
 #define ARCMSR_MAX_OUTSTANDING_CMD						256
 #define ARCMSR_MAX_FREECCB_NUM							320
-#define ARCMSR_DRIVER_VERSION		     "Driver Version 1.20.00.15 2007/08/30"
+#define ARCMSR_DRIVER_VERSION		     "Driver Version 1.20.00.15 2008/02/27"
 #define ARCMSR_SCSI_INITIATOR_ID						255
 #define ARCMSR_MAX_XFER_SECTORS							512
 #define ARCMSR_MAX_XFER_SECTORS_B						4096
@@ -248,6 +248,7 @@ struct FIRMWARE_INFO
 #define ARCMSR_MESSAGE_START_BGRB		      0x00060008
 #define ARCMSR_MESSAGE_START_DRIVER_MODE	      0x000E0008
 #define ARCMSR_MESSAGE_SET_POST_WINDOW		      0x000F0008
+#define ARCMSR_MESSAGE_ACTIVE_EOI_MODE		    0x00100008
 /* ARCMSR_OUTBOUND_MESG1_FIRMWARE_OK */
 #define ARCMSR_MESSAGE_FIRMWARE_OK		      0x80000000
 /* ioctl transfer */
@@ -256,6 +257,7 @@ struct FIRMWARE_INFO
 #define ARCMSR_DRV2IOP_DATA_READ_OK                   0x00000002
 #define ARCMSR_DRV2IOP_CDB_POSTED                     0x00000004
 #define ARCMSR_DRV2IOP_MESSAGE_CMD_POSTED             0x00000008
+#define ARCMSR_DRV2IOP_END_OF_INTERRUPT		0x00000010
 
 /* data tunnel buffer between user space program and its firmware */
 /* user space data to iop 128bytes */
@@ -339,13 +341,13 @@ struct MessageUnit_B
 	uint32_t	done_qbuffer[ARCMSR_MAX_HBB_POSTQUEUE];
 	uint32_t	postq_index;
 	uint32_t	doneq_index;
-	uint32_t	__iomem *drv2iop_doorbell_reg;
-	uint32_t	__iomem *drv2iop_doorbell_mask_reg;
-	uint32_t	__iomem *iop2drv_doorbell_reg;
-	uint32_t	__iomem *iop2drv_doorbell_mask_reg;
-	uint32_t	__iomem *msgcode_rwbuffer_reg;
-	uint32_t	__iomem *ioctl_wbuffer_reg;
-	uint32_t	__iomem *ioctl_rbuffer_reg;
+	void		__iomem *drv2iop_doorbell_reg;
+	void		__iomem *drv2iop_doorbell_mask_reg;
+	void		__iomem *iop2drv_doorbell_reg;
+	void		__iomem *iop2drv_doorbell_mask_reg;
+	void		__iomem *msgcode_rwbuffer_reg;
+	void		__iomem *ioctl_wbuffer_reg;
+	void		__iomem *ioctl_rbuffer_reg;
 };
 
 /*

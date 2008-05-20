@@ -16,7 +16,7 @@
 #include <asm/system.h>
 #include <asm/uaccess.h>
 
-extern void die (char *, struct pt_regs *, long);
+extern int die(char *, struct pt_regs *, long);
 
 #ifdef CONFIG_KPROBES
 static inline int notify_page_fault(struct pt_regs *regs, int trap)
@@ -26,7 +26,7 @@ static inline int notify_page_fault(struct pt_regs *regs, int trap)
 	if (!user_mode(regs)) {
 		/* kprobe_running() needs smp_processor_id() */
 		preempt_disable();
-		if (kprobe_running() && kprobes_fault_handler(regs, trap))
+		if (kprobe_running() && kprobe_fault_handler(regs, trap))
 			ret = 1;
 		preempt_enable();
 	}
@@ -267,9 +267,11 @@ ia64_do_page_fault (unsigned long address, unsigned long isr, struct pt_regs *re
 	else
 		printk(KERN_ALERT "Unable to handle kernel paging request at "
 		       "virtual address %016lx\n", address);
-	die("Oops", regs, isr);
+	if (die("Oops", regs, isr))
+		regs = NULL;
 	bust_spinlocks(0);
-	do_exit(SIGKILL);
+	if (regs)
+		do_exit(SIGKILL);
 	return;
 
   out_of_memory:

@@ -371,6 +371,8 @@ struct input_absinfo {
 #define KEY_BRIGHTNESS_ZERO	244	/* brightness off, use ambient */
 #define KEY_DISPLAY_OFF		245	/* display device to off state */
 
+#define KEY_WIMAX		246
+
 #define BTN_MISC		0x100
 #define BTN_0			0x100
 #define BTN_1			0x101
@@ -1018,7 +1020,6 @@ struct ff_effect {
  * @going_away: marks devices that are in a middle of unregistering and
  *	causes input_open_device*() fail with -ENODEV.
  * @dev: driver model's view of this device
- * @cdev: union for struct device pointer
  * @h_list: list of input handles associated with the device. When
  *	accessing the list dev->mutex must be held
  * @node: used to place the device onto input_dev_list
@@ -1083,9 +1084,6 @@ struct input_dev {
 	int going_away;
 
 	struct device dev;
-	union {			/* temporarily so while we switching to struct device */
-		struct device *dev;
-	} cdev;
 
 	struct list_head	h_list;
 	struct list_head	node;
@@ -1229,12 +1227,13 @@ void input_free_device(struct input_dev *dev);
 
 static inline struct input_dev *input_get_device(struct input_dev *dev)
 {
-	return to_input_dev(get_device(&dev->dev));
+	return dev ? to_input_dev(get_device(&dev->dev)) : NULL;
 }
 
 static inline void input_put_device(struct input_dev *dev)
 {
-	put_device(&dev->dev);
+	if (dev)
+		put_device(&dev->dev);
 }
 
 static inline void *input_get_drvdata(struct input_dev *dev)
@@ -1308,6 +1307,9 @@ static inline void input_set_abs_params(struct input_dev *dev, int axis, int min
 
 	dev->absbit[BIT_WORD(axis)] |= BIT_MASK(axis);
 }
+
+int input_get_keycode(struct input_dev *dev, int scancode, int *keycode);
+int input_set_keycode(struct input_dev *dev, int scancode, int keycode);
 
 extern struct class input_class;
 

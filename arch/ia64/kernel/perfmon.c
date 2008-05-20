@@ -227,12 +227,12 @@
 #ifdef PFM_DEBUGGING
 #define DPRINT(a) \
 	do { \
-		if (unlikely(pfm_sysctl.debug >0)) { printk("%s.%d: CPU%d [%d] ", __FUNCTION__, __LINE__, smp_processor_id(), task_pid_nr(current)); printk a; } \
+		if (unlikely(pfm_sysctl.debug >0)) { printk("%s.%d: CPU%d [%d] ", __func__, __LINE__, smp_processor_id(), task_pid_nr(current)); printk a; } \
 	} while (0)
 
 #define DPRINT_ovfl(a) \
 	do { \
-		if (unlikely(pfm_sysctl.debug > 0 && pfm_sysctl.debug_ovfl >0)) { printk("%s.%d: CPU%d [%d] ", __FUNCTION__, __LINE__, smp_processor_id(), task_pid_nr(current)); printk a; } \
+		if (unlikely(pfm_sysctl.debug > 0 && pfm_sysctl.debug_ovfl >0)) { printk("%s.%d: CPU%d [%d] ", __func__, __LINE__, smp_processor_id(), task_pid_nr(current)); printk a; } \
 	} while (0)
 #endif
 
@@ -583,21 +583,6 @@ static inline void
 pfm_put_task(struct task_struct *task)
 {
 	if (task != current) put_task_struct(task);
-}
-
-static inline void
-pfm_set_task_notify(struct task_struct *task)
-{
-	struct thread_info *info;
-
-	info = (struct thread_info *) ((char *) task + IA64_TASK_SIZE);
-	set_bit(TIF_PERFMON_WORK, &info->flags);
-}
-
-static inline void
-pfm_clear_task_notify(void)
-{
-	clear_thread_flag(TIF_PERFMON_WORK);
 }
 
 static inline void
@@ -2631,7 +2616,7 @@ pfm_task_incompatible(pfm_context_t *ctx, struct task_struct *task)
 	 */
 	if (task == current) return 0;
 
-	if ((task->state != TASK_STOPPED) && (task->state != TASK_TRACED)) {
+	if (!task_is_stopped_or_traced(task)) {
 		DPRINT(("cannot attach to non-stopped task [%d] state=%ld\n", task_pid_nr(task), task->state));
 		return -EBUSY;
 	}
@@ -2654,11 +2639,11 @@ pfm_get_task(pfm_context_t *ctx, pid_t pid, struct task_struct **task)
 	/* XXX: need to add more checks here */
 	if (pid < 2) return -EPERM;
 
-	if (pid != current->pid) {
+	if (pid != task_pid_vnr(current)) {
 
 		read_lock(&tasklist_lock);
 
-		p = find_task_by_pid(pid);
+		p = find_task_by_vpid(pid);
 
 		/* make sure task cannot go away while we operate on it */
 		if (p) get_task_struct(p);
@@ -3724,7 +3709,7 @@ pfm_restart(pfm_context_t *ctx, void *arg, int count, struct pt_regs *regs)
 
 		PFM_SET_WORK_PENDING(task, 1);
 
-		pfm_set_task_notify(task);
+		tsk_set_notify_resume(task);
 
 		/*
 		 * XXX: send reschedule if task runs on another CPU
@@ -4792,7 +4777,7 @@ recheck:
 	 * the task must be stopped.
 	 */
 	if (PFM_CMD_STOPPED(cmd)) {
-		if ((task->state != TASK_STOPPED) && (task->state != TASK_TRACED)) {
+		if (!task_is_stopped_or_traced(task)) {
 			DPRINT(("[%d] task not in stopped state\n", task_pid_nr(task)));
 			return -EBUSY;
 		}
@@ -5082,7 +5067,7 @@ pfm_handle_work(void)
 
 	PFM_SET_WORK_PENDING(current, 0);
 
-	pfm_clear_task_notify();
+	tsk_clear_notify_resume(current);
 
 	regs = task_pt_regs(current);
 
@@ -5450,7 +5435,7 @@ pfm_overflow_handler(struct task_struct *task, pfm_context_t *ctx, u64 pmc0, str
 			 * when coming from ctxsw, current still points to the
 			 * previous task, therefore we must work with task and not current.
 			 */
-			pfm_set_task_notify(task);
+			tsk_set_notify_resume(task);
 		}
 		/*
 		 * defer until state is changed (shorten spin window). the context is locked
@@ -5795,7 +5780,7 @@ pfm_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-struct seq_operations pfm_seq_ops = {
+const struct seq_operations pfm_seq_ops = {
 	.start =	pfm_proc_start,
  	.next =		pfm_proc_next,
  	.stop =		pfm_proc_stop,

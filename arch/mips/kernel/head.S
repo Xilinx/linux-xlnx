@@ -140,7 +140,7 @@ FEXPORT(__kernel_entry)
 	j	kernel_entry
 #endif
 
-	__INIT_REFOK
+	__REF
 
 NESTED(kernel_entry, 16, sp)			# kernel entry point
 
@@ -195,7 +195,7 @@ NESTED(kernel_entry, 16, sp)			# kernel entry point
 	j		start_kernel
 	END(kernel_entry)
 
-	__INIT
+	__CPUINIT
 
 #ifdef CONFIG_SMP
 /*

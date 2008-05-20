@@ -168,8 +168,7 @@ static void pdc2026x_bmdma_start(struct ata_queued_cmd *qc)
 	pdc202xx_set_dmamode(ap, qc->dev);
 
 	/* Cases the state machine will not complete correctly without help */
-	if ((tf->flags & ATA_TFLAG_LBA48) ||  tf->protocol == ATA_PROT_ATAPI_DMA)
-	{
+	if ((tf->flags & ATA_TFLAG_LBA48) ||  tf->protocol == ATAPI_PROT_DMA) {
 		len = qc->nbytes / 2;
 
 		if (tf->flags & ATA_TFLAG_WRITE)
@@ -208,7 +207,7 @@ static void pdc2026x_bmdma_stop(struct ata_queued_cmd *qc)
 	void __iomem *atapi_reg = master + 0x20 + (4 * ap->port_no);
 
 	/* Cases the state machine will not complete correctly */
-	if (tf->protocol == ATA_PROT_ATAPI_DMA || ( tf->flags & ATA_TFLAG_LBA48)) {
+	if (tf->protocol == ATAPI_PROT_DMA || (tf->flags & ATA_TFLAG_LBA48)) {
 		iowrite32(0, atapi_reg);
 		iowrite8(ioread8(clock) & ~sel66, clock);
 	}
@@ -242,6 +241,24 @@ static int pdc2026x_port_start(struct ata_port *ap)
 		iowrite8(burst | 0x01, bmdma + 0x1f);
 	}
 	return ata_sff_port_start(ap);
+}
+
+/**
+ *	pdc2026x_check_atapi_dma - Check whether ATAPI DMA can be supported for this command
+ *	@qc: Metadata associated with taskfile to check
+ *
+ *	Just say no - not supported on older Promise.
+ *
+ *	LOCKING:
+ *	None (inherited from caller).
+ *
+ *	RETURNS: 0 when ATAPI DMA can be used
+ *		 1 otherwise
+ */
+
+static int pdc2026x_check_atapi_dma(struct ata_queued_cmd *qc)
+{
+	return 1;
 }
 
 static struct scsi_host_template pdc202xx_sht = {
@@ -311,6 +328,7 @@ static struct ata_port_operations pdc2026x_port_ops = {
 	.post_internal_cmd = ata_bmdma_post_internal_cmd,
 	.cable_detect	= pdc2026x_cable_detect,
 
+	.check_atapi_dma= pdc2026x_check_atapi_dma,
 	.bmdma_setup 	= ata_bmdma_setup,
 	.bmdma_start 	= pdc2026x_bmdma_start,
 	.bmdma_stop	= pdc2026x_bmdma_stop,

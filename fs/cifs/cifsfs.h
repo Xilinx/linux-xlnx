@@ -32,6 +32,7 @@
 #define TRUE 1
 #endif
 
+extern struct file_system_type cifs_fs_type;
 extern const struct address_space_operations cifs_addr_ops;
 extern const struct address_space_operations cifs_addr_ops_smallbuf;
 
@@ -43,6 +44,7 @@ extern void cifs_read_inode(struct inode *);
 
 /* Functions related to inodes */
 extern const struct inode_operations cifs_dir_inode_ops;
+extern struct inode *cifs_iget(struct super_block *, unsigned long);
 extern int cifs_create(struct inode *, struct dentry *, int,
 		       struct nameidata *);
 extern struct dentry *cifs_lookup(struct inode *, struct dentry *,
@@ -60,6 +62,10 @@ extern int cifs_setattr(struct dentry *, struct iattr *);
 
 extern const struct inode_operations cifs_file_inode_ops;
 extern const struct inode_operations cifs_symlink_inode_ops;
+extern struct list_head cifs_dfs_automount_list;
+extern struct inode_operations cifs_dfs_referral_inode_operations;
+
+
 
 /* Functions related to files and directories */
 extern const struct file_operations cifs_file_ops;

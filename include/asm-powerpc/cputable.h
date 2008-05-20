@@ -46,7 +46,7 @@ enum powerpc_oprofile_type {
 	PPC_OPROFILE_RS64 = 1,
 	PPC_OPROFILE_POWER4 = 2,
 	PPC_OPROFILE_G4 = 3,
-	PPC_OPROFILE_BOOKE = 4,
+	PPC_OPROFILE_FSL_EMB = 4,
 	PPC_OPROFILE_CELL = 5,
 	PPC_OPROFILE_PA6T = 6,
 };
@@ -56,6 +56,14 @@ enum powerpc_pmc_type {
 	PPC_PMC_IBM = 1,
 	PPC_PMC_PA6T = 2,
 };
+
+struct pt_regs;
+
+extern int machine_check_generic(struct pt_regs *regs);
+extern int machine_check_4xx(struct pt_regs *regs);
+extern int machine_check_440A(struct pt_regs *regs);
+extern int machine_check_e500(struct pt_regs *regs);
+extern int machine_check_e200(struct pt_regs *regs);
 
 /* NOTE WELL: Update identify_cpu() if fields are added or removed! */
 struct cpu_spec {
@@ -97,6 +105,11 @@ struct cpu_spec {
 
 	/* Name of processor class, for the ELF AT_PLATFORM entry */
 	char		*platform;
+
+	/* Processor specific machine check handling. Return negative
+	 * if the error is fatal, 1 if it was fully recovered and 0 to
+	 * pass up (not CPU originated) */
+	int		(*machine_check)(struct pt_regs *regs);
 };
 
 extern struct cpu_spec		*cur_cpu_spec;

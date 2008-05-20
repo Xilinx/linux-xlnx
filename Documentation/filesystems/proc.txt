@@ -216,6 +216,7 @@ Table 1-3: Contents of the stat files (as of 2.6.22-rc3)
   priority      priority level
   nice          nice level
   num_threads   number of threads
+  it_real_value	(obsolete, always 0)
   start_time    time the process started after system boot
   vsize         virtual memory size
   rss           resident set memory size
@@ -857,6 +858,45 @@ CPUs.
 The   "procs_blocked" line gives  the  number of  processes currently blocked,
 waiting for I/O to complete.
 
+1.9 Ext4 file system parameters
+------------------------------
+Ext4 file system have one directory per partition under /proc/fs/ext4/
+# ls /proc/fs/ext4/hdc/
+group_prealloc  max_to_scan  mb_groups  mb_history  min_to_scan  order2_req
+stats  stream_req
+
+mb_groups:
+This file gives the details of mutiblock allocator buddy cache of free blocks
+
+mb_history:
+Multiblock allocation history.
+
+stats:
+This file indicate whether the multiblock allocator should start collecting
+statistics. The statistics are shown during unmount
+
+group_prealloc:
+The multiblock allocator normalize the block allocation request to
+group_prealloc filesystem blocks if we don't have strip value set.
+The stripe value can be specified at mount time or during mke2fs.
+
+max_to_scan:
+How long multiblock allocator can look for a best extent (in found extents)
+
+min_to_scan:
+How long multiblock allocator  must look for a best extent
+
+order2_req:
+Multiblock allocator use  2^N search using buddies only for requests greater
+than or equal to order2_req. The request size is specfied in file system
+blocks. A value of 2 indicate only if the requests are greater than or equal
+to 4 blocks.
+
+stream_req:
+Files smaller than stream_req are served by the stream allocator, whose
+purpose is to pack requests as close each to other as possible to
+produce smooth I/O traffic. Avalue of 16 indicate that file smaller than 16
+filesystem block size will use group based preallocation.
 
 ------------------------------------------------------------------------------
 Summary
@@ -989,6 +1029,14 @@ nr_inodes
 Denotes the  number  of  inodes the system has allocated. This number will
 grow and shrink dynamically.
 
+nr_open
+-------
+
+Denotes the maximum number of file-handles a process can
+allocate. Default value is 1024*1024 (1048576) which should be
+enough for most machines. Actual limit depends on RLIMIT_NOFILE
+resource limit.
+
 nr_free_inodes
 --------------
 
@@ -1094,13 +1142,6 @@ check the amount of free space (value is in seconds). Default settings are: 4,
 2, and  30.  That is, suspend accounting if there is less than 2 percent free;
 resume it  if we have a value of 3 or more percent; consider information about
 the amount of free space valid for 30 seconds
-
-audit_argv_kb
--------------
-
-The file contains a single value denoting the limit on the argv array size
-for execve (in KiB). This limit is only applied when system call auditing for
-execve is enabled, otherwise the value is ignored.
 
 ctrl-alt-del
 ------------
@@ -1282,13 +1323,28 @@ for writeout by the pdflush daemons.  It is expressed in 100'ths of a second.
 Data which has been dirty in-memory for longer than this interval will be
 written out next time a pdflush daemon wakes up.
 
+highmem_is_dirtyable
+--------------------
+
+Only present if CONFIG_HIGHMEM is set.
+
+This defaults to 0 (false), meaning that the ratios set above are calculated
+as a percentage of lowmem only.  This protects against excessive scanning
+in page reclaim, swapping and general VM distress.
+
+Setting this to 1 can be useful on 32 bit machines where you want to make
+random changes within an MMAPed file that is larger than your available
+lowmem without causing large quantities of random IO.  Is is safe if the
+behavior of all programs running on the machine is known and memory will
+not be otherwise stressed.
+
 legacy_va_layout
 ----------------
 
 If non-zero, this sysctl disables the new 32-bit mmap mmap layout - the kernel
 will use the legacy (2.4) layout for all processes.
 
-lower_zone_protection
+lowmem_reserve_ratio
 ---------------------
 
 For some specialised workloads on highmem machines it is dangerous for
@@ -1308,25 +1364,71 @@ captured into pinned user memory.
 mechanism will also defend that region from allocations which could use
 highmem or lowmem).
 
-The `lower_zone_protection' tunable determines how aggressive the kernel is
-in defending these lower zones.  The default value is zero - no
-protection at all.
+The `lowmem_reserve_ratio' tunable determines how aggressive the kernel is
+in defending these lower zones.
 
 If you have a machine which uses highmem or ISA DMA and your
 applications are using mlock(), or if you are running with no swap then
-you probably should increase the lower_zone_protection setting.
+you probably should change the lowmem_reserve_ratio setting.
 
-The units of this tunable are fairly vague.  It is approximately equal
-to "megabytes," so setting lower_zone_protection=100 will protect around 100
-megabytes of the lowmem zone from user allocations.  It will also make
-those 100 megabytes unavailable for use by applications and by
-pagecache, so there is a cost.
+The lowmem_reserve_ratio is an array. You can see them by reading this file.
+-
+% cat /proc/sys/vm/lowmem_reserve_ratio
+256     256     32
+-
+Note: # of this elements is one fewer than number of zones. Because the highest
+      zone's value is not necessary for following calculation.
 
-The effects of this tunable may be observed by monitoring
-/proc/meminfo:LowFree.  Write a single huge file and observe the point
-at which LowFree ceases to fall.
+But, these values are not used directly. The kernel calculates # of protection
+pages for each zones from them. These are shown as array of protection pages
+in /proc/zoneinfo like followings. (This is an example of x86-64 box).
+Each zone has an array of protection pages like this.
 
-A reasonable value for lower_zone_protection is 100.
+-
+Node 0, zone      DMA
+  pages free     1355
+        min      3
+        low      3
+        high     4
+	:
+	:
+    numa_other   0
+        protection: (0, 2004, 2004, 2004)
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  pagesets
+    cpu: 0 pcp: 0
+        :
+-
+These protections are added to score to judge whether this zone should be used
+for page allocation or should be reclaimed.
+
+In this example, if normal pages (index=2) are required to this DMA zone and
+pages_high is used for watermark, the kernel judges this zone should not be
+used because pages_free(1355) is smaller than watermark + protection[2]
+(4 + 2004 = 2008). If this protection value is 0, this zone would be used for
+normal page requirement. If requirement is DMA zone(index=0), protection[0]
+(=0) is used.
+
+zone[i]'s protection[j] is calculated by following exprssion.
+
+(i < j):
+  zone[i]->protection[j]
+  = (total sums of present_pages from zone[i+1] to zone[j] on the node)
+    / lowmem_reserve_ratio[i];
+(i = j):
+   (should not be protected. = 0;
+(i > j):
+   (not necessary, but looks 0)
+
+The default values of lowmem_reserve_ratio[i] are
+    256 (if zone[i] means DMA or DMA32 zone)
+    32  (others).
+As above expression, they are reciprocal number of ratio.
+256 means 1/256. # of protection pages becomes about "0.39%" of total present
+pages of higher zones on the node.
+
+If you would like to protect more pages, smaller values are effective.
+The minimum value is 1 (1/1 -> 100%).
 
 page-cluster
 ------------
@@ -1404,13 +1506,13 @@ laptop_mode
 -----------
 
 laptop_mode is a knob that controls "laptop mode". All the things that are
-controlled by this knob are discussed in Documentation/laptop-mode.txt.
+controlled by this knob are discussed in Documentation/laptops/laptop-mode.txt.
 
 block_dump
 ----------
 
 block_dump enables block I/O debugging when set to a nonzero value. More
-information on block I/O debugging is in Documentation/laptop-mode.txt.
+information on block I/O debugging is in Documentation/laptops/laptop-mode.txt.
 
 swap_token_timeout
 ------------------
@@ -1879,11 +1981,6 @@ max_size
 
 Maximum size  of  the routing cache. Old entries will be purged once the cache
 reached has this size.
-
-max_delay, min_delay
---------------------
-
-Delays for flushing the routing cache.
 
 redirect_load, redirect_number
 ------------------------------

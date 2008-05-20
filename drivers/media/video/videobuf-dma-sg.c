@@ -356,7 +356,7 @@ videobuf_vm_close(struct vm_area_struct *vma)
 	map->count--;
 	if (0 == map->count) {
 		dprintk(1,"munmap %p q=%p\n",map,q);
-		mutex_lock(&q->lock);
+		mutex_lock(&q->vb_lock);
 		for (i = 0; i < VIDEO_MAX_FRAME; i++) {
 			if (NULL == q->bufs[i])
 				continue;
@@ -373,7 +373,7 @@ videobuf_vm_close(struct vm_area_struct *vma)
 			q->bufs[i]->baddr = 0;
 			q->ops->buf_release(q,q->bufs[i]);
 		}
-		mutex_unlock(&q->lock);
+		mutex_unlock(&q->vb_lock);
 		kfree(map);
 	}
 	return;
@@ -385,30 +385,27 @@ videobuf_vm_close(struct vm_area_struct *vma)
  * now ...).  Bounce buffers don't work very well for the data rates
  * video capture has.
  */
-static struct page*
-videobuf_vm_nopage(struct vm_area_struct *vma, unsigned long vaddr,
-		   int *type)
+static int
+videobuf_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct page *page;
 
-	dprintk(3,"nopage: fault @ %08lx [vma %08lx-%08lx]\n",
-		vaddr,vma->vm_start,vma->vm_end);
-	if (vaddr > vma->vm_end)
-		return NOPAGE_SIGBUS;
+	dprintk(3,"fault: fault @ %08lx [vma %08lx-%08lx]\n",
+		(unsigned long)vmf->virtual_address,vma->vm_start,vma->vm_end);
 	page = alloc_page(GFP_USER | __GFP_DMA32);
 	if (!page)
-		return NOPAGE_OOM;
-	clear_user_page(page_address(page), vaddr, page);
-	if (type)
-		*type = VM_FAULT_MINOR;
-	return page;
+		return VM_FAULT_OOM;
+	clear_user_page(page_address(page), (unsigned long)vmf->virtual_address,
+			page);
+	vmf->page = page;
+	return 0;
 }
 
 static struct vm_operations_struct videobuf_vm_ops =
 {
 	.open     = videobuf_vm_open,
 	.close    = videobuf_vm_close,
-	.nopage   = videobuf_vm_nopage,
+	.fault    = videobuf_vm_fault,
 };
 
 /* ---------------------------------------------------------------------

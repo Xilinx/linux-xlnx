@@ -32,7 +32,7 @@ static u32 kexec_pte1[1024] PAGE_ALIGNED;
 
 static void set_idt(void *newidt, __u16 limit)
 {
-	struct Xgt_desc_struct curidt;
+	struct desc_ptr curidt;
 
 	/* ia32 supports unaliged loads & stores */
 	curidt.size    = limit;
@@ -44,7 +44,7 @@ static void set_idt(void *newidt, __u16 limit)
 
 static void set_gdt(void *newgdt, __u16 limit)
 {
-	struct Xgt_desc_struct curgdt;
+	struct desc_ptr curgdt;
 
 	/* ia32 supports unaligned loads & stores */
 	curgdt.size    = limit;
@@ -151,7 +151,7 @@ NORET_TYPE void machine_kexec(struct kimage *image)
 
 void arch_crash_save_vmcoreinfo(void)
 {
-#ifdef CONFIG_ARCH_DISCONTIGMEM_ENABLE
+#ifdef CONFIG_NUMA
 	VMCOREINFO_SYMBOL(node_data);
 	VMCOREINFO_LENGTH(node_data, MAX_NUMNODES);
 #endif

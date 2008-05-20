@@ -104,6 +104,17 @@ int request_dma(unsigned int channel, char *device_id)
 
 	mutex_unlock(&(dma_ch[channel].dmalock));
 
+#ifdef CONFIG_BF54x
+	if (channel >= CH_UART2_RX && channel <= CH_UART3_TX) {
+		if (strncmp(device_id, "BFIN_UART", 9) == 0)
+			dma_ch[channel].regs->peripheral_map |=
+				(channel - CH_UART2_RX + 0xC);
+		else
+			dma_ch[channel].regs->peripheral_map |=
+				(channel - CH_UART2_RX + 0x6);
+	}
+#endif
+
 	dma_ch[channel].device_id = device_id;
 	dma_ch[channel].irq_callback = NULL;
 
@@ -339,13 +350,13 @@ EXPORT_SYMBOL(set_dma_config);
 
 unsigned short
 set_bfin_dma_config(char direction, char flow_mode,
-		    char intr_mode, char dma_mode, char width)
+		    char intr_mode, char dma_mode, char width, char syncmode)
 {
 	unsigned short config;
 
 	config =
 	    ((direction << 1) | (width << 2) | (dma_mode << 4) |
-	     (intr_mode << 6) | (flow_mode << 12) | RESTART);
+	     (intr_mode << 6) | (flow_mode << 12) | (syncmode << 5));
 	return config;
 }
 EXPORT_SYMBOL(set_bfin_dma_config);

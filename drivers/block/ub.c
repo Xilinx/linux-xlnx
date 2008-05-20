@@ -8,6 +8,7 @@
  * and is not licensed separately. See file COPYING for details.
  *
  * TODO (sorted by decreasing priority)
+ *  -- Return sense now that rq allows it (we always auto-sense anyway).
  *  -- set readonly flag for CDs, set removable flag for CF readers
  *  -- do inquiry and verify we got a disk and not a tape (for LUN mismatch)
  *  -- verify the 13 conditions and do bulk resets
@@ -359,7 +360,8 @@ static void ub_cmd_build_block(struct ub_dev *sc, struct ub_lun *lun,
 static void ub_cmd_build_packet(struct ub_dev *sc, struct ub_lun *lun,
     struct ub_scsi_cmd *cmd, struct ub_request *urq);
 static void ub_rw_cmd_done(struct ub_dev *sc, struct ub_scsi_cmd *cmd);
-static void ub_end_rq(struct request *rq, unsigned int status);
+static void ub_end_rq(struct request *rq, unsigned int status,
+    unsigned int cmd_len);
 static int ub_rw_cmd_retry(struct ub_dev *sc, struct ub_lun *lun,
     struct ub_request *urq, struct ub_scsi_cmd *cmd);
 static int ub_submit_scsi(struct ub_dev *sc, struct ub_scsi_cmd *cmd);
@@ -642,13 +644,13 @@ static int ub_request_fn_1(struct ub_lun *lun, struct request *rq)
 
 	if (atomic_read(&sc->poison)) {
 		blkdev_dequeue_request(rq);
-		ub_end_rq(rq, DID_NO_CONNECT << 16);
+		ub_end_rq(rq, DID_NO_CONNECT << 16, blk_rq_bytes(rq));
 		return 0;
 	}
 
 	if (lun->changed && !blk_pc_request(rq)) {
 		blkdev_dequeue_request(rq);
-		ub_end_rq(rq, SAM_STAT_CHECK_CONDITION);
+		ub_end_rq(rq, SAM_STAT_CHECK_CONDITION, blk_rq_bytes(rq));
 		return 0;
 	}
 
@@ -657,7 +659,6 @@ static int ub_request_fn_1(struct ub_lun *lun, struct request *rq)
 	if ((cmd = ub_get_cmd(lun)) == NULL)
 		return -1;
 	memset(cmd, 0, sizeof(struct ub_scsi_cmd));
-	sg_init_table(cmd->sgv, UB_MAX_REQ_SG);
 
 	blkdev_dequeue_request(rq);
 
@@ -668,6 +669,7 @@ static int ub_request_fn_1(struct ub_lun *lun, struct request *rq)
 	/*
 	 * get scatterlist from block layer
 	 */
+	sg_init_table(&urq->sgv[0], UB_MAX_REQ_SG);
 	n_elem = blk_rq_map_sg(lun->disk->queue, rq, &urq->sgv[0]);
 	if (n_elem < 0) {
 		/* Impossible, because blk_rq_map_sg should not hit ENOMEM. */
@@ -701,7 +703,7 @@ static int ub_request_fn_1(struct ub_lun *lun, struct request *rq)
 
 drop:
 	ub_put_cmd(lun, cmd);
-	ub_end_rq(rq, DID_ERROR << 16);
+	ub_end_rq(rq, DID_ERROR << 16, blk_rq_bytes(rq));
 	return 0;
 }
 
@@ -770,6 +772,7 @@ static void ub_rw_cmd_done(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 	struct ub_request *urq = cmd->back;
 	struct request *rq;
 	unsigned int scsi_status;
+	unsigned int cmd_len;
 
 	rq = urq->rq;
 
@@ -779,8 +782,18 @@ static void ub_rw_cmd_done(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 				rq->data_len = 0;
 			else
 				rq->data_len -= cmd->act_len;
+			scsi_status = 0;
+		} else {
+			if (cmd->act_len != cmd->len) {
+				if ((cmd->key == MEDIUM_ERROR ||
+				     cmd->key == UNIT_ATTENTION) &&
+				    ub_rw_cmd_retry(sc, lun, urq, cmd) == 0)
+					return;
+				scsi_status = SAM_STAT_CHECK_CONDITION;
+			} else {
+				scsi_status = 0;
+			}
 		}
-		scsi_status = 0;
 	} else {
 		if (blk_pc_request(rq)) {
 			/* UB_SENSE_SIZE is smaller than SCSI_SENSE_BUFFERSIZE */
@@ -801,23 +814,30 @@ static void ub_rw_cmd_done(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 
 	urq->rq = NULL;
 
+	cmd_len = cmd->len;
 	ub_put_cmd(lun, cmd);
-	ub_end_rq(rq, scsi_status);
+	ub_end_rq(rq, scsi_status, cmd_len);
 	blk_start_queue(lun->disk->queue);
 }
 
-static void ub_end_rq(struct request *rq, unsigned int scsi_status)
+static void ub_end_rq(struct request *rq, unsigned int scsi_status,
+    unsigned int cmd_len)
 {
-	int uptodate;
+	int error;
+	long rqlen;
 
 	if (scsi_status == 0) {
-		uptodate = 1;
+		error = 0;
 	} else {
-		uptodate = 0;
+		error = -EIO;
 		rq->errors = scsi_status;
 	}
-	end_that_request_first(rq, uptodate, rq->hard_nr_sectors);
-	end_that_request_last(rq, uptodate);
+	rqlen = blk_rq_bytes(rq);    /* Oddly enough, this is the residue. */
+	if (__blk_end_request(rq, error, cmd_len)) {
+		printk(KERN_WARNING DRV_NAME
+		    ": __blk_end_request blew, %s-cmd total %u rqlen %ld\n",
+		    blk_pc_request(rq)? "pc": "fs", cmd_len, rqlen);
+	}
 }
 
 static int ub_rw_cmd_retry(struct ub_dev *sc, struct ub_lun *lun,
@@ -921,11 +941,6 @@ static int ub_scsi_cmd_start(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 	sc->last_pipe = sc->send_bulk_pipe;
 	usb_fill_bulk_urb(&sc->work_urb, sc->dev, sc->send_bulk_pipe,
 	    bcb, US_BULK_CB_WRAP_LEN, ub_urb_complete, sc);
-
-	/* Fill what we shouldn't be filling, because usb-storage did so. */
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_ATOMIC)) != 0) {
 		/* XXX Clear stalls */
@@ -1313,9 +1328,6 @@ static void ub_data_start(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 	sc->last_pipe = pipe;
 	usb_fill_bulk_urb(&sc->work_urb, sc->dev, pipe, sg_virt(sg),
 	    sg->length, ub_urb_complete, sc);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_ATOMIC)) != 0) {
 		/* XXX Clear stalls */
@@ -1356,9 +1368,6 @@ static int __ub_state_stat(struct ub_dev *sc, struct ub_scsi_cmd *cmd)
 	sc->last_pipe = sc->recv_bulk_pipe;
 	usb_fill_bulk_urb(&sc->work_urb, sc->dev, sc->recv_bulk_pipe,
 	    &sc->work_bcs, US_BULK_CS_WRAP_LEN, ub_urb_complete, sc);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_ATOMIC)) != 0) {
 		/* XXX Clear stalls */
@@ -1473,9 +1482,6 @@ static int ub_submit_clear_stall(struct ub_dev *sc, struct ub_scsi_cmd *cmd,
 
 	usb_fill_control_urb(&sc->work_urb, sc->dev, sc->send_ctrl_pipe,
 	    (unsigned char*) cr, NULL, 0, ub_urb_complete, sc);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_ATOMIC)) != 0) {
 		ub_complete(&sc->work_done);
@@ -1953,9 +1959,6 @@ static int ub_sync_reset(struct ub_dev *sc)
 
 	usb_fill_control_urb(&sc->work_urb, sc->dev, sc->send_ctrl_pipe,
 	    (unsigned char*) cr, NULL, 0, ub_probe_urb_complete, &compl);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_KERNEL)) != 0) {
 		printk(KERN_WARNING
@@ -2007,9 +2010,6 @@ static int ub_sync_getmaxlun(struct ub_dev *sc)
 
 	usb_fill_control_urb(&sc->work_urb, sc->dev, sc->recv_ctrl_pipe,
 	    (unsigned char*) cr, p, 1, ub_probe_urb_complete, &compl);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_KERNEL)) != 0)
 		goto err_submit;
@@ -2077,9 +2077,6 @@ static int ub_probe_clear_stall(struct ub_dev *sc, int stalled_pipe)
 
 	usb_fill_control_urb(&sc->work_urb, sc->dev, sc->send_ctrl_pipe,
 	    (unsigned char*) cr, NULL, 0, ub_probe_urb_complete, &compl);
-	sc->work_urb.actual_length = 0;
-	sc->work_urb.error_count = 0;
-	sc->work_urb.status = 0;
 
 	if ((rc = usb_submit_urb(&sc->work_urb, GFP_KERNEL)) != 0) {
 		printk(KERN_WARNING

@@ -65,6 +65,8 @@ struct exception_table_entry
 	unsigned long insn, fixup;
 };
 
+extern int fixup_exception(struct pt_regs *regs);
+
 #define ARCH_HAS_SEARCH_EXTABLE
 
 /*
@@ -179,10 +181,7 @@ struct __large_struct { unsigned long buf[100]; };
 		"3:	mov %3,%0\n"				\
 		"	jmp 2b\n"				\
 		".previous\n"					\
-		".section __ex_table,\"a\"\n"			\
-		"	.align 8\n"				\
-		"	.quad 1b,3b\n"				\
-		".previous"					\
+		_ASM_EXTABLE(1b,3b)				\
 		: "=r"(err)					\
 		: ltype (x), "m"(__m(addr)), "i"(errno), "0"(err))
 
@@ -224,10 +223,7 @@ do {									\
 		"	xor"itype" %"rtype"1,%"rtype"1\n"	\
 		"	jmp 2b\n"				\
 		".previous\n"					\
-		".section __ex_table,\"a\"\n"			\
-		"	.align 8\n"				\
-		"	.quad 1b,3b\n"				\
-		".previous"					\
+		_ASM_EXTABLE(1b,3b)				\
 		: "=r"(err), ltype (x)				\
 		: "m"(__m(addr)), "i"(errno), "0"(err))
 

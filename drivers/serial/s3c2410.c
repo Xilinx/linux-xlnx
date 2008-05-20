@@ -1527,7 +1527,7 @@ static inline void s3c2440_serial_exit(void)
 #define s3c2440_uart_inf_at NULL
 #endif /* CONFIG_CPU_S3C2440 */
 
-#if defined(CONFIG_CPU_S3C2412) || defined(CONFIG_CPU_S3C2413)
+#if defined(CONFIG_CPU_S3C2412)
 
 static int s3c2412_serial_setsource(struct uart_port *port,
 				     struct s3c24xx_uart_clksrc *clk)
@@ -1935,3 +1935,7 @@ console_initcall(s3c24xx_serial_initconsole);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ben Dooks <ben@simtec.co.uk>");
 MODULE_DESCRIPTION("Samsung S3C2410/S3C2440/S3C2412 Serial port driver");
+MODULE_ALIAS("platform:s3c2400-uart");
+MODULE_ALIAS("platform:s3c2410-uart");
+MODULE_ALIAS("platform:s3c2412-uart");
+MODULE_ALIAS("platform:s3c2440-uart");

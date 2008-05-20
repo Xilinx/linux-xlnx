@@ -1057,10 +1057,9 @@ static int mpc52xx_fec_of_resume(struct of_device *op)
 #endif
 
 static struct of_device_id mpc52xx_fec_match[] = {
-	{
-		.type		= "network",
-		.compatible	= "mpc5200-fec",
-	},
+	{ .type = "network", .compatible = "fsl,mpc5200b-fec", },
+	{ .type = "network", .compatible = "fsl,mpc5200-fec", },
+	{ .type = "network", .compatible = "mpc5200-fec", },
 	{ }
 };
 

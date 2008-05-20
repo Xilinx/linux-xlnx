@@ -8,7 +8,7 @@
  *
  *
  * Modified:
- *               Copyright 2004-2007 Analog Devices Inc.
+ *               Copyright 2007-2008 Analog Devices Inc.
  *
  * Bugs:         Enter bugs at http://blackfin.uclinux.org/
  *
@@ -224,7 +224,8 @@ static int config_dma(struct bfin_bf54xfb_info *fbi)
 	set_dma_config(CH_EPPI0,
 		       set_bfin_dma_config(DIR_READ, DMA_FLOW_AUTO,
 					   INTR_DISABLE, DIMENSION_2D,
-					   DATA_SIZE_32));
+					   DATA_SIZE_32,
+					   DMA_NOSYNC_KEEP_DMA_BUF));
 	set_dma_x_count(CH_EPPI0, (LCD_X_RES * LCD_BPP) / DMA_BUS_SIZE);
 	set_dma_x_modify(CH_EPPI0, DMA_BUS_SIZE / 8);
 	set_dma_y_count(CH_EPPI0, LCD_Y_RES);
@@ -240,7 +241,7 @@ static int request_ports(struct bfin_bf54xfb_info *fbi)
 	u16 eppi_req_18[] = EPPI0_18;
 	u16 disp = fbi->mach_info->disp;
 
-	if (gpio_request(disp, NULL)) {
+	if (gpio_request(disp, DRIVER_NAME)) {
 		printk(KERN_ERR "Requesting GPIO %d faild\n", disp);
 		return -EFAULT;
 	}
@@ -263,8 +264,7 @@ static int request_ports(struct bfin_bf54xfb_info *fbi)
 		}
 	}
 
-	gpio_direction_output(disp);
-	gpio_set_value(disp, 1);
+	gpio_direction_output(disp, 1);
 
 	return 0;
 }
@@ -384,7 +384,7 @@ static int bfin_bf54x_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	 *   Other flags can be set, and are documented in
 	 *   include/linux/mm.h
 	 */
-	vma->vm_flags |= VM_MAYSHARE;
+	vma->vm_flags |=  VM_MAYSHARE | VM_SHARED;
 
 	return 0;
 }
@@ -498,8 +498,7 @@ static struct lcd_device *lcd_dev;
 
 static irqreturn_t bfin_bf54x_irq_error(int irq, void *dev_id)
 {
-
-	/*struct bfin_bf54xfb_info *info = (struct bfin_bf54xfb_info *)dev_id;*/
+	/*struct bfin_bf54xfb_info *info = dev_id;*/
 
 	u16 status = bfin_read_EPPI0_STATUS();
 
@@ -673,7 +672,7 @@ static int __init bfin_bf54x_probe(struct platform_device *pdev)
 				      &bfin_lq043fb_bl_ops);
 	bl_dev->props.max_brightness = 255;
 
-	lcd_dev = lcd_device_register(DRIVER_NAME, NULL, &bfin_lcd_ops);
+	lcd_dev = lcd_device_register(DRIVER_NAME, &pdev->dev, NULL, &bfin_lcd_ops);
 	lcd_dev->props.max_contrast = 255, printk(KERN_INFO "Done.\n");
 #endif
 

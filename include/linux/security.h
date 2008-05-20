@@ -34,11 +34,6 @@
 #include <linux/xfrm.h>
 #include <net/flow.h>
 
-/*
- * Bounding set
- */
-extern kernel_cap_t cap_bset;
-
 extern unsigned securebits;
 
 struct ctl_table;
@@ -62,7 +57,6 @@ extern int cap_inode_need_killpriv(struct dentry *dentry);
 extern int cap_inode_killpriv(struct dentry *dentry);
 extern int cap_task_post_setuid (uid_t old_ruid, uid_t old_euid, uid_t old_suid, int flags);
 extern void cap_task_reparent_to_init (struct task_struct *p);
-extern int cap_task_kill(struct task_struct *p, struct siginfo *info, int sig, u32 secid);
 extern int cap_task_setscheduler (struct task_struct *p, int policy, struct sched_param *lp);
 extern int cap_task_setioprio (struct task_struct *p, int ioprio);
 extern int cap_task_setnice (struct task_struct *p, int nice);
@@ -112,6 +106,32 @@ struct request_sock;
 #define LSM_UNSAFE_PTRACE_CAP	4
 
 #ifdef CONFIG_SECURITY
+
+struct security_mnt_opts {
+	char **mnt_opts;
+	int *mnt_opts_flags;
+	int num_mnt_opts;
+};
+
+static inline void security_init_mnt_opts(struct security_mnt_opts *opts)
+{
+	opts->mnt_opts = NULL;
+	opts->mnt_opts_flags = NULL;
+	opts->num_mnt_opts = 0;
+}
+
+static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
+{
+	int i;
+	if (opts->mnt_opts)
+		for(i = 0; i < opts->num_mnt_opts; i++)
+			kfree(opts->mnt_opts[i]);
+	kfree(opts->mnt_opts);
+	opts->mnt_opts = NULL;
+	kfree(opts->mnt_opts_flags);
+	opts->mnt_opts_flags = NULL;
+	opts->num_mnt_opts = 0;
+}
 
 /**
  * struct security_operations - main security structure
@@ -243,9 +263,6 @@ struct request_sock;
  *	@mnt contains the mounted file system.
  *	@flags contains the new filesystem flags.
  *	@data contains the filesystem-specific data.
- * @sb_post_mountroot:
- *	Update the security module's state when the root filesystem is mounted.
- *	This hook is only called if the mount was successful.
  * @sb_post_addmount:
  *	Update the security module's state when a filesystem is mounted.
  *	This hook is called any time a mount is successfully grafetd to
@@ -261,6 +278,22 @@ struct request_sock;
  *	Update module state after a successful pivot.
  *	@old_nd contains the nameidata structure for the old root.
  *      @new_nd contains the nameidata structure for the new root.
+ * @sb_get_mnt_opts:
+ *	Get the security relevant mount options used for a superblock
+ *	@sb the superblock to get security mount options from
+ *	@opts binary data structure containing all lsm mount data
+ * @sb_set_mnt_opts:
+ *	Set the security relevant mount options used for a superblock
+ *	@sb the superblock to set security mount options for
+ *	@opts binary data structure containing all lsm mount data
+ * @sb_clone_mnt_opts:
+ *	Copy all security options from a given superblock to another
+ *	@oldsb old superblock which contain information to clone
+ *	@newsb new superblock which needs filled in
+ * @sb_parse_opts_str:
+ *	Parse a string of security data filling in the opts structure
+ *	@options string containing all mount options known by the LSM
+ *	@opts binary data structure usable by the LSM
  *
  * Security hooks for inode operations.
  *
@@ -404,15 +437,12 @@ struct request_sock;
  * 	identified by @name for @dentry.
  * 	Return 0 if permission is granted.
  * @inode_getsecurity:
- *	Copy the extended attribute representation of the security label 
- *	associated with @name for @inode into @buffer.  @buffer may be
- *	NULL to request the size of the buffer required.  @size indicates
- *	the size of @buffer in bytes.  Note that @name is the remainder
- *	of the attribute name after the security. prefix has been removed.
- *	@err is the return value from the preceding fs getxattr call,
- *	and can be used by the security module to determine whether it
- *	should try and canonicalize the attribute value.
- *	Return number of bytes used/required on success.
+ *	Retrieve a copy of the extended attribute representation of the
+ *	security label associated with @name for @inode via @buffer.  Note that
+ *	@name is the remainder of the attribute name after the security prefix
+ *	has been removed. @alloc is used to specify of the call should return a
+ *	value via the buffer or just the value length Return size of buffer on
+ *	success.
  * @inode_setsecurity:
  *	Set the security label associated with @name for @inode from the
  *	extended attribute value @value.  @size indicates the size of the
@@ -1183,6 +1213,10 @@ struct request_sock;
  *	Convert secid to security context.
  *	@secid contains the security ID.
  *	@secdata contains the pointer that stores the converted security context.
+ * @secctx_to_secid:
+ *      Convert security context to secid.
+ *      @secid contains the pointer to the generated security ID.
+ *      @secdata contains the security context.
  *
  * @release_secctx:
  *	Release the security context.
@@ -1223,8 +1257,7 @@ struct security_operations {
 
 	int (*sb_alloc_security) (struct super_block * sb);
 	void (*sb_free_security) (struct super_block * sb);
-	int (*sb_copy_data)(struct file_system_type *type,
-			    void *orig, void *copy);
+	int (*sb_copy_data)(char *orig, char *copy);
 	int (*sb_kern_mount) (struct super_block *sb, void *data);
 	int (*sb_statfs) (struct dentry *dentry);
 	int (*sb_mount) (char *dev_name, struct nameidata * nd,
@@ -1235,13 +1268,19 @@ struct security_operations {
 	void (*sb_umount_busy) (struct vfsmount * mnt);
 	void (*sb_post_remount) (struct vfsmount * mnt,
 				 unsigned long flags, void *data);
-	void (*sb_post_mountroot) (void);
 	void (*sb_post_addmount) (struct vfsmount * mnt,
 				  struct nameidata * mountpoint_nd);
 	int (*sb_pivotroot) (struct nameidata * old_nd,
 			     struct nameidata * new_nd);
 	void (*sb_post_pivotroot) (struct nameidata * old_nd,
 				   struct nameidata * new_nd);
+	int (*sb_get_mnt_opts) (const struct super_block *sb,
+				struct security_mnt_opts *opts);
+	int (*sb_set_mnt_opts) (struct super_block *sb,
+				struct security_mnt_opts *opts);
+	void (*sb_clone_mnt_opts) (const struct super_block *oldsb,
+				   struct super_block *newsb);
+	int (*sb_parse_opts_str) (char *options, struct security_mnt_opts *opts);
 
 	int (*inode_alloc_security) (struct inode *inode);	
 	void (*inode_free_security) (struct inode *inode);
@@ -1275,7 +1314,7 @@ struct security_operations {
 	int (*inode_removexattr) (struct dentry *dentry, char *name);
 	int (*inode_need_killpriv) (struct dentry *dentry);
 	int (*inode_killpriv) (struct dentry *dentry);
-  	int (*inode_getsecurity)(const struct inode *inode, const char *name, void *buffer, size_t size, int err);
+	int (*inode_getsecurity)(const struct inode *inode, const char *name, void **buffer, bool alloc);
   	int (*inode_setsecurity)(struct inode *inode, const char *name, const void *value, size_t size, int flags);
   	int (*inode_listsecurity)(struct inode *inode, char *buffer, size_t buffer_size);
 
@@ -1371,6 +1410,7 @@ struct security_operations {
  	int (*getprocattr)(struct task_struct *p, char *name, char **value);
  	int (*setprocattr)(struct task_struct *p, char *name, void *value, size_t size);
 	int (*secid_to_secctx)(u32 secid, char **secdata, u32 *seclen);
+	int (*secctx_to_secid)(char *secdata, u32 seclen, u32 *secid);
 	void (*release_secctx)(char *secdata, u32 seclen);
 
 #ifdef CONFIG_SECURITY_NETWORK
@@ -1485,7 +1525,7 @@ int security_bprm_check(struct linux_binprm *bprm);
 int security_bprm_secureexec(struct linux_binprm *bprm);
 int security_sb_alloc(struct super_block *sb);
 void security_sb_free(struct super_block *sb);
-int security_sb_copy_data(struct file_system_type *type, void *orig, void *copy);
+int security_sb_copy_data(char *orig, char *copy);
 int security_sb_kern_mount(struct super_block *sb, void *data);
 int security_sb_statfs(struct dentry *dentry);
 int security_sb_mount(char *dev_name, struct nameidata *nd,
@@ -1495,10 +1535,16 @@ int security_sb_umount(struct vfsmount *mnt, int flags);
 void security_sb_umount_close(struct vfsmount *mnt);
 void security_sb_umount_busy(struct vfsmount *mnt);
 void security_sb_post_remount(struct vfsmount *mnt, unsigned long flags, void *data);
-void security_sb_post_mountroot(void);
 void security_sb_post_addmount(struct vfsmount *mnt, struct nameidata *mountpoint_nd);
 int security_sb_pivotroot(struct nameidata *old_nd, struct nameidata *new_nd);
 void security_sb_post_pivotroot(struct nameidata *old_nd, struct nameidata *new_nd);
+int security_sb_get_mnt_opts(const struct super_block *sb,
+				struct security_mnt_opts *opts);
+int security_sb_set_mnt_opts(struct super_block *sb, struct security_mnt_opts *opts);
+void security_sb_clone_mnt_opts(const struct super_block *oldsb,
+				struct super_block *newsb);
+int security_sb_parse_opts_str(char *options, struct security_mnt_opts *opts);
+
 int security_inode_alloc(struct inode *inode);
 void security_inode_free(struct inode *inode);
 int security_inode_init_security(struct inode *inode, struct inode *dir,
@@ -1529,7 +1575,7 @@ int security_inode_listxattr(struct dentry *dentry);
 int security_inode_removexattr(struct dentry *dentry, char *name);
 int security_inode_need_killpriv(struct dentry *dentry);
 int security_inode_killpriv(struct dentry *dentry);
-int security_inode_getsecurity(const struct inode *inode, const char *name, void *buffer, size_t size, int err);
+int security_inode_getsecurity(const struct inode *inode, const char *name, void **buffer, bool alloc);
 int security_inode_setsecurity(struct inode *inode, const char *name, const void *value, size_t size, int flags);
 int security_inode_listsecurity(struct inode *inode, char *buffer, size_t buffer_size);
 int security_file_permission(struct file *file, int mask);
@@ -1603,9 +1649,20 @@ int security_setprocattr(struct task_struct *p, char *name, void *value, size_t 
 int security_netlink_send(struct sock *sk, struct sk_buff *skb);
 int security_netlink_recv(struct sk_buff *skb, int cap);
 int security_secid_to_secctx(u32 secid, char **secdata, u32 *seclen);
+int security_secctx_to_secid(char *secdata, u32 seclen, u32 *secid);
 void security_release_secctx(char *secdata, u32 seclen);
 
 #else /* CONFIG_SECURITY */
+struct security_mnt_opts {
+};
+
+static inline void security_init_mnt_opts(struct security_mnt_opts *opts)
+{
+}
+
+static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
+{
+}
 
 /*
  * This is the default capabilities functionality.  Most of these functions
@@ -1733,8 +1790,7 @@ static inline int security_sb_alloc (struct super_block *sb)
 static inline void security_sb_free (struct super_block *sb)
 { }
 
-static inline int security_sb_copy_data (struct file_system_type *type,
-					 void *orig, void *copy)
+static inline int security_sb_copy_data (char *orig, char *copy)
 {
 	return 0;
 }
@@ -1777,9 +1833,6 @@ static inline void security_sb_post_remount (struct vfsmount *mnt,
 					     unsigned long flags, void *data)
 { }
 
-static inline void security_sb_post_mountroot (void)
-{ }
-
 static inline void security_sb_post_addmount (struct vfsmount *mnt,
 					      struct nameidata *mountpoint_nd)
 { }
@@ -1793,6 +1846,27 @@ static inline int security_sb_pivotroot (struct nameidata *old_nd,
 static inline void security_sb_post_pivotroot (struct nameidata *old_nd,
 					       struct nameidata *new_nd)
 { }
+static inline int security_sb_get_mnt_opts(const struct super_block *sb,
+					   struct security_mnt_opts *opts)
+{
+	security_init_mnt_opts(opts);
+	return 0;
+}
+
+static inline int security_sb_set_mnt_opts(struct super_block *sb,
+					   struct security_mnt_opts *opts)
+{
+	return 0;
+}
+
+static inline void security_sb_clone_mnt_opts(const struct super_block *oldsb,
+					      struct super_block *newsb)
+{ }
+
+static inline int security_sb_parse_opts_str(char *options, struct security_mnt_opts *opts)
+{
+	return 0;
+}
 
 static inline int security_inode_alloc (struct inode *inode)
 {
@@ -1933,7 +2007,7 @@ static inline int security_inode_killpriv(struct dentry *dentry)
 	return cap_inode_killpriv(dentry);
 }
 
-static inline int security_inode_getsecurity(const struct inode *inode, const char *name, void *buffer, size_t size, int err)
+static inline int security_inode_getsecurity(const struct inode *inode, const char *name, void **buffer, bool alloc)
 {
 	return -EOPNOTSUPP;
 }
@@ -2112,7 +2186,7 @@ static inline int security_task_kill (struct task_struct *p,
 				      struct siginfo *info, int sig,
 				      u32 secid)
 {
-	return cap_task_kill(p, info, sig, secid);
+	return 0;
 }
 
 static inline int security_task_wait (struct task_struct *p)
@@ -2266,7 +2340,7 @@ static inline struct dentry *securityfs_create_file(const char *name,
 						mode_t mode,
 						struct dentry *parent,
 						void *data,
-						struct file_operations *fops)
+						const struct file_operations *fops)
 {
 	return ERR_PTR(-ENODEV);
 }
@@ -2276,6 +2350,13 @@ static inline void securityfs_remove(struct dentry *dentry)
 }
 
 static inline int security_secid_to_secctx(u32 secid, char **secdata, u32 *seclen)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int security_secctx_to_secid(char *secdata,
+					   u32 seclen,
+					   u32 *secid)
 {
 	return -EOPNOTSUPP;
 }

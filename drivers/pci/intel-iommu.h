@@ -14,8 +14,9 @@
  * this program; if not, write to the Free Software Foundation, Inc., 59 Temple
  * Place - Suite 330, Boston, MA 02111-1307 USA.
  *
- * Copyright (C) Ashok Raj <ashok.raj@intel.com>
- * Copyright (C) Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
+ * Copyright (C) 2006-2008 Intel Corporation
+ * Author: Ashok Raj <ashok.raj@intel.com>
+ * Author: Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
  */
 
 #ifndef _INTEL_IOMMU_H_
@@ -23,8 +24,22 @@
 
 #include <linux/types.h>
 #include <linux/msi.h>
+#include <linux/sysdev.h>
 #include "iova.h"
 #include <linux/io.h>
+
+/*
+ * We need a fixed PAGE_SIZE of 4K irrespective of
+ * arch PAGE_SIZE for IOMMU page tables.
+ */
+#define PAGE_SHIFT_4K		(12)
+#define PAGE_SIZE_4K		(1UL << PAGE_SHIFT_4K)
+#define PAGE_MASK_4K		(((u64)-1) << PAGE_SHIFT_4K)
+#define PAGE_ALIGN_4K(addr)	(((addr) + PAGE_SIZE_4K - 1) & PAGE_MASK_4K)
+
+#define IOVA_PFN(addr)		((addr) >> PAGE_SHIFT_4K)
+#define DMA_32BIT_PFN		IOVA_PFN(DMA_32BIT_MASK)
+#define DMA_64BIT_PFN		IOVA_PFN(DMA_64BIT_MASK)
 
 /*
  * Intel IOMMU register specification per version 1.0 public spec.
@@ -125,6 +140,10 @@ static inline void dmar_writeq(void __iomem *addr, u64 val)
 #define DMA_TLB_IVT (((u64)1) << 63)
 #define DMA_TLB_IH_NONLEAF (((u64)1) << 6)
 #define DMA_TLB_MAX_SIZE (0x3f)
+
+/* PMEN_REG */
+#define DMA_PMEN_EPM (((u32)1)<<31)
+#define DMA_PMEN_PRS (((u32)1)<<0)
 
 /* GCMD_REG */
 #define DMA_GCMD_TE (((u32)1) << 31)

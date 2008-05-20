@@ -606,7 +606,7 @@ static int rhine_napipoll(struct napi_struct *napi, int budget)
 }
 #endif
 
-static void rhine_hw_init(struct net_device *dev, long pioaddr)
+static void __devinit rhine_hw_init(struct net_device *dev, long pioaddr)
 {
 	struct rhine_private *rp = netdev_priv(dev);
 
@@ -1338,7 +1338,7 @@ static irqreturn_t rhine_interrupt(int irq, void *dev_instance)
 				if (debug > 2 &&
 				    ioread8(ioaddr+ChipCmd) & CmdTxOn)
 					printk(KERN_WARNING "%s: "
-					       "rhine_interrupt() Tx engine"
+					       "rhine_interrupt() Tx engine "
 					       "still on.\n", dev->name);
 			}
 			rhine_tx(dev);
@@ -1893,7 +1893,7 @@ static void rhine_shutdown (struct pci_dev *pdev)
 
 	/* Make sure we use pattern 0, 1 and not 4, 5 */
 	if (rp->quirks & rq6patterns)
-		iowrite8(0x04, ioaddr + 0xA7);
+		iowrite8(0x04, ioaddr + WOLcgClr);
 
 	if (rp->wolopts & WAKE_MAGIC) {
 		iowrite8(WOLmagic, ioaddr + WOLcrSet);

@@ -2310,7 +2310,7 @@ static irqreturn_t smctr_interrupt(int irq, void *dev_id)
                                                 && (tp->acb_head->subcmd
                                                 == RW_TRC_STATUS_BLOCK))
                                         {
-                                                if(tp->ptr_bcn_type != 0)
+                                                if(tp->ptr_bcn_type)
                                                 {
                                                         *(tp->ptr_bcn_type)
                                                                 = (__u32)((SBlock *)tp->misc_command_data)->BCN_Type;
@@ -2980,7 +2980,7 @@ static int smctr_load_firmware(struct net_device *dev)
                 return (UCODE_PRESENT);
 
         /* Verify the firmware exists and is there in the right amount. */
-        if((tp->ptr_ucode == 0L)
+        if (!tp->ptr_ucode
                 || (*(tp->ptr_ucode + UCODE_VERSION_OFFSET) < UCODE_VERSION))
         {
                 return (UCODE_NOT_PRESENT);
@@ -3413,7 +3413,7 @@ static int smctr_make_tx_status_code(struct net_device *dev,
         tsv->svi = TRANSMIT_STATUS_CODE;
         tsv->svl = S_TRANSMIT_STATUS_CODE;
 
-        tsv->svv[0] = ((tx_fstatus & 0x0100 >> 6) || IBM_PASS_SOURCE_ADDR);
+	tsv->svv[0] = ((tx_fstatus & 0x0100 >> 6) | IBM_PASS_SOURCE_ADDR);
 
         /* Stripped frame status of Transmitted Frame */
         tsv->svv[1] = tx_fstatus & 0xff;

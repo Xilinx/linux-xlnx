@@ -126,10 +126,6 @@ extern void __chk_io_ptr(const volatile void __iomem *);
  * Mark functions that are referenced only in inline assembly as __used so
  * the code is emitted even though it appears to be unreferenced.
  */
-#ifndef __attribute_used__
-# define __attribute_used__	/* deprecated */
-#endif
-
 #ifndef __used
 # define __used			/* unimplemented */
 #endif
@@ -141,6 +137,12 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 #ifndef noinline
 #define noinline
 #endif
+
+/*
+ * Rather then using noinline to prevent stack consumption, use
+ * noinline_for_stack instead.  For documentaiton reasons.
+ */
+#define noinline_for_stack noinline
 
 #ifndef __always_inline
 #define __always_inline inline
@@ -173,6 +175,11 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 
 #ifndef __cold
 #define __cold
+#endif
+
+/* Simple shorthand for a section definition */
+#ifndef __section
+# define __section(S) __attribute__ ((__section__(#S)))
 #endif
 
 #endif /* __LINUX_COMPILER_H */

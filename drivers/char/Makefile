@@ -26,13 +26,13 @@ obj-$(CONFIG_SERIAL167)		+= serial167.o
 obj-$(CONFIG_CYCLADES)		+= cyclades.o
 obj-$(CONFIG_STALLION)		+= stallion.o
 obj-$(CONFIG_ISTALLION)		+= istallion.o
+obj-$(CONFIG_NOZOMI)		+= nozomi.o
 obj-$(CONFIG_DIGIEPCA)		+= epca.o
 obj-$(CONFIG_SPECIALIX)		+= specialix.o
 obj-$(CONFIG_MOXA_INTELLIO)	+= moxa.o
 obj-$(CONFIG_A2232)		+= ser_a2232.o generic_serial.o
 obj-$(CONFIG_ATARI_DSP56K)	+= dsp56k.o
 obj-$(CONFIG_MOXA_SMARTIO)	+= mxser.o
-obj-$(CONFIG_MOXA_SMARTIO_NEW)	+= mxser_new.o
 obj-$(CONFIG_COMPUTONE)		+= ip2/
 obj-$(CONFIG_RISCOM8)		+= riscom8.o
 obj-$(CONFIG_ISI)		+= isicom.o
@@ -77,7 +77,7 @@ obj-$(CONFIG_SGI_DS1286)	+= ds1286.o
 obj-$(CONFIG_SGI_IP27_RTC)	+= ip27-rtc.o
 obj-$(CONFIG_DS1302)		+= ds1302.o
 obj-$(CONFIG_XILINX_GPIO)	+= xilinx_gpio/
-obj-$(CONFIG_XILINX_HWICAP)    += xilinx_hwicap/
+obj-$(CONFIG_XILINX_HWICAP)	+= xilinx_hwicap/
 ifeq ($(CONFIG_GENERIC_NVRAM),y)
   obj-$(CONFIG_NVRAM)	+= generic_nvram.o
 else

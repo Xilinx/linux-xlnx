@@ -111,7 +111,7 @@ int 		mptscsih_suspend(struct pci_dev *pdev, pm_message_t state);
 int 		mptscsih_resume(struct pci_dev *pdev);
 #endif
 
-#define SNS_LEN(scp)	sizeof((scp)->sense_buffer)
+#define SNS_LEN(scp)	SCSI_SENSE_BUFFERSIZE
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
@@ -1170,6 +1170,10 @@ mptscsih_shutdown(struct pci_dev *pdev)
 int
 mptscsih_suspend(struct pci_dev *pdev, pm_message_t state)
 {
+	MPT_ADAPTER 		*ioc = pci_get_drvdata(pdev);
+
+	scsi_block_requests(ioc->sh);
+	flush_scheduled_work();
 	mptscsih_shutdown(pdev);
 	return mpt_suspend(pdev,state);
 }
@@ -1183,7 +1187,12 @@ mptscsih_suspend(struct pci_dev *pdev, pm_message_t state)
 int
 mptscsih_resume(struct pci_dev *pdev)
 {
-	return mpt_resume(pdev);
+	MPT_ADAPTER 		*ioc = pci_get_drvdata(pdev);
+	int rc;
+
+	rc = mpt_resume(pdev);
+	scsi_unblock_requests(ioc->sh);
+	return rc;
 }
 
 #endif
@@ -1533,7 +1542,7 @@ mptscsih_freeChainBuffers(MPT_ADAPTER *ioc, int req_idx)
  *
  *	Remark: Currently invoked from a non-interrupt thread (_bh).
  *
- *	Remark: With old EH code, at most 1 SCSI TaskMgmt function per IOC
+ *	Note: With old EH code, at most 1 SCSI TaskMgmt function per IOC
  *	will be active.
  *
  *	Returns 0 for SUCCESS, or %FAILED.
@@ -1736,7 +1745,7 @@ mptscsih_IssueTaskMgmt(MPT_SCSI_HOST *hd, u8 type, u8 channel, u8 id, int lun, i
  fail_out:
 
 	/*
-	 * Free task managment mf, and corresponding tm flags
+	 * Free task management mf, and corresponding tm flags
 	 */
 	mpt_free_msg_frame(ioc, mf);
 	hd->tmPending = 0;
@@ -2537,14 +2546,12 @@ mptscsih_copy_sense_data(struct scsi_cmnd *sc, MPT_SCSI_HOST *hd, MPT_FRAME_HDR 
 
 /**
  * mptscsih_get_scsi_lookup
- *
- * retrieves scmd entry from ScsiLookup[] array list
- *
  * @ioc: Pointer to MPT_ADAPTER structure
  * @i: index into the array
  *
- * Returns the scsi_cmd pointer
+ * retrieves scmd entry from ScsiLookup[] array list
  *
+ * Returns the scsi_cmd pointer
  **/
 static struct scsi_cmnd *
 mptscsih_get_scsi_lookup(MPT_ADAPTER *ioc, int i)
@@ -2561,14 +2568,12 @@ mptscsih_get_scsi_lookup(MPT_ADAPTER *ioc, int i)
 
 /**
  * mptscsih_getclear_scsi_lookup
- *
- * retrieves and clears scmd entry from ScsiLookup[] array list
- *
  * @ioc: Pointer to MPT_ADAPTER structure
  * @i: index into the array
  *
- * Returns the scsi_cmd pointer
+ * retrieves and clears scmd entry from ScsiLookup[] array list
  *
+ * Returns the scsi_cmd pointer
  **/
 static struct scsi_cmnd *
 mptscsih_getclear_scsi_lookup(MPT_ADAPTER *ioc, int i)

@@ -191,7 +191,7 @@ static struct usb_serial_driver handspring_device = {
 	.id_table =		id_table,
 	.num_interrupt_in =	NUM_DONT_CARE,
 	.num_bulk_in =		2,
-	.num_bulk_out =		2,
+	.num_bulk_out =		NUM_DONT_CARE,
 	.num_ports =		2,
 	.open =			visor_open,
 	.close =		visor_close,
@@ -349,16 +349,20 @@ static void visor_close (struct usb_serial_port *port, struct file * filp)
 	usb_kill_urb(port->read_urb);
 	usb_kill_urb(port->interrupt_in_urb);
 
-	/* Try to send shutdown message, if the device is gone, this will just fail. */
-	transfer_buffer =  kmalloc (0x12, GFP_KERNEL);
-	if (transfer_buffer) {
-		usb_control_msg (port->serial->dev,
-				 usb_rcvctrlpipe(port->serial->dev, 0),
-				 VISOR_CLOSE_NOTIFICATION, 0xc2,
-				 0x0000, 0x0000, 
-				 transfer_buffer, 0x12, 300);
-		kfree (transfer_buffer);
+	mutex_lock(&port->serial->disc_mutex);
+	if (!port->serial->disconnected) {
+		/* Try to send shutdown message, unless the device is gone */
+		transfer_buffer =  kmalloc (0x12, GFP_KERNEL);
+		if (transfer_buffer) {
+			usb_control_msg (port->serial->dev,
+					 usb_rcvctrlpipe(port->serial->dev, 0),
+					 VISOR_CLOSE_NOTIFICATION, 0xc2,
+					 0x0000, 0x0000,
+					 transfer_buffer, 0x12, 300);
+			kfree (transfer_buffer);
+		}
 	}
+	mutex_unlock(&port->serial->disc_mutex);
 
 	if (stats)
 		dev_info(&port->dev, "Bytes In = %d  Bytes Out = %d\n",

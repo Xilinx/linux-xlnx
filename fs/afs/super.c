@@ -50,8 +50,8 @@ static const struct super_operations afs_super_ops = {
 	.write_inode	= afs_write_inode,
 	.destroy_inode	= afs_destroy_inode,
 	.clear_inode	= afs_clear_inode,
-	.umount_begin	= afs_umount_begin,
 	.put_super	= afs_put_super,
+	.show_options	= generic_show_options,
 };
 
 static struct kmem_cache *afs_inode_cachep;
@@ -357,6 +357,7 @@ static int afs_get_sb(struct file_system_type *fs_type,
 	struct super_block *sb;
 	struct afs_volume *vol;
 	struct key *key;
+	char *new_opts = kstrdup(options, GFP_KERNEL);
 	int ret;
 
 	_enter(",,%s,%p", dev_name, options);
@@ -408,9 +409,11 @@ static int afs_get_sb(struct file_system_type *fs_type,
 			deactivate_super(sb);
 			goto error;
 		}
+		sb->s_options = new_opts;
 		sb->s_flags |= MS_ACTIVE;
 	} else {
 		_debug("reuse");
+		kfree(new_opts);
 		ASSERTCMP(sb->s_flags, &, MS_ACTIVE);
 	}
 
@@ -424,6 +427,7 @@ error:
 	afs_put_volume(params.volume);
 	afs_put_cell(params.cell);
 	key_put(params.key);
+	kfree(new_opts);
 	_leave(" = %d", ret);
 	return ret;
 }

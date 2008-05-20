@@ -163,8 +163,10 @@ static struct iommu_table *iommu_table_find(struct iommu_table * tbl)
 		    (it->it_type == TCE_PCI) &&
 		    (it->it_offset == tbl->it_offset) &&
 		    (it->it_index == tbl->it_index) &&
-		    (it->it_size == tbl->it_size))
+		    (it->it_size == tbl->it_size)) {
+			of_node_put(node);
 			return it;
+		}
 	}
 	return NULL;
 }
@@ -197,7 +199,7 @@ static struct iommu_table vio_iommu_table;
 
 void *iseries_hv_alloc(size_t size, dma_addr_t *dma_handle, gfp_t flag)
 {
-	return iommu_alloc_coherent(&vio_iommu_table, size, dma_handle,
+	return iommu_alloc_coherent(NULL, &vio_iommu_table, size, dma_handle,
 				DMA_32BIT_MASK, flag, -1);
 }
 EXPORT_SYMBOL_GPL(iseries_hv_alloc);
@@ -211,7 +213,7 @@ EXPORT_SYMBOL_GPL(iseries_hv_free);
 dma_addr_t iseries_hv_map(void *vaddr, size_t size,
 			enum dma_data_direction direction)
 {
-	return iommu_map_single(&vio_iommu_table, vaddr, size,
+	return iommu_map_single(NULL, &vio_iommu_table, vaddr, size,
 				DMA_32BIT_MASK, direction);
 }
 

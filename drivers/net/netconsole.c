@@ -306,9 +306,11 @@ static ssize_t show_remote_ip(struct netconsole_target *nt, char *buf)
 
 static ssize_t show_local_mac(struct netconsole_target *nt, char *buf)
 {
+	struct net_device *dev = nt->np.dev;
+
 	DECLARE_MAC_BUF(mac);
-	return snprintf(buf, PAGE_SIZE, "%s\n",
-			print_mac(mac, nt->np.local_mac));
+	return snprintf(buf, PAGE_SIZE, "%s\n", dev ?
+			print_mac(mac, dev->dev_addr) : "ff:ff:ff:ff:ff:ff");
 }
 
 static ssize_t show_remote_mac(struct netconsole_target *nt, char *buf)
@@ -667,7 +669,7 @@ static int netconsole_netdev_event(struct notifier_block *this,
 	struct netconsole_target *nt;
 	struct net_device *dev = ptr;
 
-	if (!(event == NETDEV_CHANGEADDR || event == NETDEV_CHANGENAME))
+	if (!(event == NETDEV_CHANGENAME))
 		goto done;
 
 	spin_lock_irqsave(&target_list_lock, flags);
@@ -675,10 +677,6 @@ static int netconsole_netdev_event(struct notifier_block *this,
 		netconsole_target_get(nt);
 		if (nt->np.dev == dev) {
 			switch (event) {
-			case NETDEV_CHANGEADDR:
-				memcpy(nt->np.local_mac, dev->dev_addr, ETH_ALEN);
-				break;
-
 			case NETDEV_CHANGENAME:
 				strlcpy(nt->np.dev_name, dev->name, IFNAMSIZ);
 				break;
@@ -732,7 +730,7 @@ static void write_msg(struct console *con, const char *msg, unsigned int len)
 
 static struct console netconsole = {
 	.name	= "netcon",
-	.flags	= CON_ENABLED | CON_PRINTBUFFER,
+	.flags	= CON_ENABLED,
 	.write	= write_msg,
 };
 
@@ -751,6 +749,9 @@ static int __init init_netconsole(void)
 				err = PTR_ERR(nt);
 				goto fail;
 			}
+			/* Dump existing printks when we register */
+			netconsole.flags |= CON_PRINTBUFFER;
+
 			spin_lock_irqsave(&target_list_lock, flags);
 			list_add(&nt->list, &target_list);
 			spin_unlock_irqrestore(&target_list_lock, flags);

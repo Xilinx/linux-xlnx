@@ -97,12 +97,22 @@ MODULE_DESCRIPTION ("Linux for S/390 IUCV network driver");
 
 DECLARE_PER_CPU(char[256], iucv_dbf_txt_buf);
 
-#define IUCV_DBF_TEXT_(name,level,text...)				\
-	do {								\
-		char* iucv_dbf_txt_buf = get_cpu_var(iucv_dbf_txt_buf);	\
-		sprintf(iucv_dbf_txt_buf, text);			\
-		debug_text_event(iucv_dbf_##name,level,iucv_dbf_txt_buf); \
-		put_cpu_var(iucv_dbf_txt_buf);				\
+/* Allow to sort out low debug levels early to avoid wasted sprints */
+static inline int iucv_dbf_passes(debug_info_t *dbf_grp, int level)
+{
+	return (level <= dbf_grp->level);
+}
+
+#define IUCV_DBF_TEXT_(name, level, text...) \
+	do { \
+		if (iucv_dbf_passes(iucv_dbf_##name, level)) { \
+			char* iucv_dbf_txt_buf = \
+					get_cpu_var(iucv_dbf_txt_buf); \
+			sprintf(iucv_dbf_txt_buf, text); \
+			debug_text_event(iucv_dbf_##name, level, \
+						iucv_dbf_txt_buf); \
+			put_cpu_var(iucv_dbf_txt_buf); \
+		} \
 	} while (0)
 
 #define IUCV_DBF_SPRINTF(name,level,text...) \
@@ -137,6 +147,7 @@ PRINT_##importance(header "%02x %02x %02x %02x  %02x %02x %02x %02x  " \
 #define PRINTK_HEADER " iucv: "       /* for debugging */
 
 static struct device_driver netiucv_driver = {
+	.owner = THIS_MODULE,
 	.name = "netiucv",
 	.bus  = &iucv_bus,
 };
@@ -198,8 +209,7 @@ struct iucv_connection {
 /**
  * Linked list of all connection structs.
  */
-static struct list_head iucv_connection_list =
-	LIST_HEAD_INIT(iucv_connection_list);
+static LIST_HEAD(iucv_connection_list);
 static DEFINE_RWLOCK(iucv_connection_rwlock);
 
 /**
@@ -573,9 +583,9 @@ static void netiucv_callback_connres(struct iucv_path *path, u8 ipuser[16])
 }
 
 /**
- * Dummy NOP action for all statemachines
+ * NOP action for statemachines
  */
-static void fsm_action_nop(fsm_instance *fi, int event, void *arg)
+static void netiucv_action_nop(fsm_instance *fi, int event, void *arg)
 {
 }
 
@@ -1111,7 +1121,7 @@ static const fsm_node dev_fsm[] = {
 
 	{ DEV_STATE_RUNNING,    DEV_EVENT_STOP,    dev_action_stop     },
 	{ DEV_STATE_RUNNING,    DEV_EVENT_CONDOWN, dev_action_conndown },
-	{ DEV_STATE_RUNNING,    DEV_EVENT_CONUP,   fsm_action_nop      },
+	{ DEV_STATE_RUNNING,    DEV_EVENT_CONUP,   netiucv_action_nop  },
 };
 
 static const int DEV_FSM_LEN = sizeof(dev_fsm) / sizeof(fsm_node);
@@ -2089,6 +2099,11 @@ static struct attribute_group netiucv_drv_attr_group = {
 	.attrs = netiucv_drv_attrs,
 };
 
+static struct attribute_group *netiucv_drv_attr_groups[] = {
+	&netiucv_drv_attr_group,
+	NULL,
+};
+
 static void netiucv_banner(void)
 {
 	PRINT_INFO("NETIUCV driver initialized\n");
@@ -2113,7 +2128,6 @@ static void __exit netiucv_exit(void)
 		netiucv_unregister_device(dev);
 	}
 
-	sysfs_remove_group(&netiucv_driver.kobj, &netiucv_drv_attr_group);
 	driver_unregister(&netiucv_driver);
 	iucv_unregister(&netiucv_handler, 1);
 	iucv_unregister_dbf_views();
@@ -2133,6 +2147,7 @@ static int __init netiucv_init(void)
 	if (rc)
 		goto out_dbf;
 	IUCV_DBF_TEXT(trace, 3, __FUNCTION__);
+	netiucv_driver.groups = netiucv_drv_attr_groups;
 	rc = driver_register(&netiucv_driver);
 	if (rc) {
 		PRINT_ERR("NETIUCV: failed to register driver.\n");
@@ -2140,18 +2155,9 @@ static int __init netiucv_init(void)
 		goto out_iucv;
 	}
 
-	rc = sysfs_create_group(&netiucv_driver.kobj, &netiucv_drv_attr_group);
-	if (rc) {
-		PRINT_ERR("NETIUCV: failed to add driver attributes.\n");
-		IUCV_DBF_TEXT_(setup, 2,
-			       "ret %d - netiucv_drv_attr_group\n", rc);
-		goto out_driver;
-	}
 	netiucv_banner();
 	return rc;
 
-out_driver:
-	driver_unregister(&netiucv_driver);
 out_iucv:
 	iucv_unregister(&netiucv_handler, 1);
 out_dbf:

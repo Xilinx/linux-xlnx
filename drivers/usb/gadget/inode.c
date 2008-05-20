@@ -1458,7 +1458,7 @@ gadgetfs_setup (struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	/* currently one config, two speeds */
 	case USB_REQ_SET_CONFIGURATION:
 		if (ctrl->bRequestType != 0)
-			break;
+			goto unrecognized;
 		if (0 == (u8) w_value) {
 			value = 0;
 			dev->current_config = 0;
@@ -1505,7 +1505,7 @@ gadgetfs_setup (struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	/* PXA automagically handles this request too */
 	case USB_REQ_GET_CONFIGURATION:
 		if (ctrl->bRequestType != 0x80)
-			break;
+			goto unrecognized;
 		*(u8 *)req->buf = dev->current_config;
 		value = min (w_length, (u16) 1);
 		break;
@@ -1699,7 +1699,7 @@ gadgetfs_bind (struct usb_gadget *gadget)
 	if (!dev)
 		return -ESRCH;
 	if (0 != strcmp (CHIP, gadget->name)) {
-		printk (KERN_ERR "%s expected %s controller not %s\n",
+		pr_err("%s expected %s controller not %s\n",
 			shortname, CHIP, gadget->name);
 		return -ENODEV;
 	}

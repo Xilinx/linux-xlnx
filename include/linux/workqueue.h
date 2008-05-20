@@ -149,19 +149,27 @@ struct execute_work {
 
 extern struct workqueue_struct *
 __create_workqueue_key(const char *name, int singlethread,
-		       int freezeable, struct lock_class_key *key);
+		       int freezeable, struct lock_class_key *key,
+		       const char *lock_name);
 
 #ifdef CONFIG_LOCKDEP
 #define __create_workqueue(name, singlethread, freezeable)	\
 ({								\
 	static struct lock_class_key __key;			\
+	const char *__lock_name;				\
+								\
+	if (__builtin_constant_p(name))				\
+		__lock_name = (name);				\
+	else							\
+		__lock_name = #name;				\
 								\
 	__create_workqueue_key((name), (singlethread),		\
-			       (freezeable), &__key);		\
+			       (freezeable), &__key,		\
+			       __lock_name);			\
 })
 #else
 #define __create_workqueue(name, singlethread, freezeable)	\
-	__create_workqueue_key((name), (singlethread), (freezeable), NULL)
+	__create_workqueue_key((name), (singlethread), (freezeable), NULL, NULL)
 #endif
 
 #define create_workqueue(name) __create_workqueue((name), 0, 0)
@@ -170,18 +178,17 @@ __create_workqueue_key(const char *name, int singlethread,
 
 extern void destroy_workqueue(struct workqueue_struct *wq);
 
-extern int FASTCALL(queue_work(struct workqueue_struct *wq, struct work_struct *work));
-extern int FASTCALL(queue_delayed_work(struct workqueue_struct *wq,
-			struct delayed_work *work, unsigned long delay));
+extern int queue_work(struct workqueue_struct *wq, struct work_struct *work);
+extern int queue_delayed_work(struct workqueue_struct *wq,
+			struct delayed_work *work, unsigned long delay);
 extern int queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 			struct delayed_work *work, unsigned long delay);
 
-extern void FASTCALL(flush_workqueue(struct workqueue_struct *wq));
+extern void flush_workqueue(struct workqueue_struct *wq);
 extern void flush_scheduled_work(void);
 
-extern int FASTCALL(schedule_work(struct work_struct *work));
-extern int FASTCALL(schedule_delayed_work(struct delayed_work *work,
-					unsigned long delay));
+extern int schedule_work(struct work_struct *work);
+extern int schedule_delayed_work(struct delayed_work *work, unsigned long delay);
 extern int schedule_delayed_work_on(int cpu, struct delayed_work *work,
 					unsigned long delay);
 extern int schedule_on_each_cpu(work_func_t func);

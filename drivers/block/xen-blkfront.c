@@ -37,6 +37,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/blkdev.h>
+#include <linux/hdreg.h>
 #include <linux/module.h>
 
 #include <xen/xenbus.h>
@@ -133,6 +134,22 @@ static void blkif_restart_queue_callback(void *arg)
 {
 	struct blkfront_info *info = (struct blkfront_info *)arg;
 	schedule_work(&info->work);
+}
+
+int blkif_getgeo(struct block_device *bd, struct hd_geometry *hg)
+{
+	/* We don't have real geometry info, but let's at least return
+	   values consistent with the size of the device */
+	sector_t nsect = get_capacity(bd->bd_disk);
+	sector_t cylinders = nsect;
+
+	hg->heads = 0xff;
+	hg->sectors = 0x3f;
+	sector_div(cylinders, hg->heads * hg->sectors);
+	hg->cylinders = cylinders;
+	if ((sector_t)(hg->cylinders + 1) * hg->heads * hg->sectors < nsect)
+		hg->cylinders = 0xffff;
+	return 0;
 }
 
 /*
@@ -452,7 +469,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 	RING_IDX i, rp;
 	unsigned long flags;
 	struct blkfront_info *info = (struct blkfront_info *)dev_id;
-	int uptodate;
+	int error;
 
 	spin_lock_irqsave(&blkif_io_lock, flags);
 
@@ -477,13 +494,13 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 
 		add_id_to_freelist(info, id);
 
-		uptodate = (bret->status == BLKIF_RSP_OKAY);
+		error = (bret->status == BLKIF_RSP_OKAY) ? 0 : -EIO;
 		switch (bret->operation) {
 		case BLKIF_OP_WRITE_BARRIER:
 			if (unlikely(bret->status == BLKIF_RSP_EOPNOTSUPP)) {
 				printk(KERN_WARNING "blkfront: %s: write barrier op failed\n",
 				       info->gd->disk_name);
-				uptodate = -EOPNOTSUPP;
+				error = -EOPNOTSUPP;
 				info->feature_barrier = 0;
 				xlvbd_barrier(info);
 			}
@@ -494,10 +511,8 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 				dev_dbg(&info->xbdev->dev, "Bad return from blkdev data "
 					"request: %x\n", bret->status);
 
-			ret = end_that_request_first(req, uptodate,
-				req->hard_nr_sectors);
+			ret = __blk_end_request(req, error, blk_rq_bytes(req));
 			BUG_ON(ret);
-			end_that_request_last(req, uptodate);
 			break;
 		default:
 			BUG();
@@ -939,6 +954,7 @@ static struct block_device_operations xlvbd_block_fops =
 	.owner = THIS_MODULE,
 	.open = blkif_open,
 	.release = blkif_release,
+	.getgeo = blkif_getgeo,
 };
 
 

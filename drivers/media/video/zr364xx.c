@@ -93,6 +93,8 @@ static struct usb_device_id device_table[] = {
 	{USB_DEVICE(0x06d6, 0x0034), .driver_info = METHOD0 },
 	{USB_DEVICE(0x0a17, 0x0062), .driver_info = METHOD2 },
 	{USB_DEVICE(0x06d6, 0x003b), .driver_info = METHOD0 },
+	{USB_DEVICE(0x0a17, 0x004e), .driver_info = METHOD2 },
+	{USB_DEVICE(0x041e, 0x405d), .driver_info = METHOD2 },
 	{}			/* Terminating entry */
 };
 
@@ -388,7 +390,7 @@ static int read_frame(struct zr364xx_camera *cam, int framenum)
 }
 
 
-static ssize_t zr364xx_read(struct file *file, char *buf, size_t cnt,
+static ssize_t zr364xx_read(struct file *file, char __user *buf, size_t cnt,
 			    loff_t * ppos)
 {
 	unsigned long count = cnt;
@@ -749,7 +751,7 @@ static int zr364xx_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 
-static struct file_operations zr364xx_fops = {
+static const struct file_operations zr364xx_fops = {
 	.owner = THIS_MODULE,
 	.open = zr364xx_open,
 	.release = zr364xx_release,

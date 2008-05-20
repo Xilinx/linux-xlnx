@@ -21,7 +21,10 @@ KBUILD_DEFCONFIG := BF537-STAMP_defconfig
 
 # setup the machine name and the machine dependent settings
 machine-$(CONFIG_BF522) := bf527
+machine-$(CONFIG_BF523) := bf527
+machine-$(CONFIG_BF524) := bf527
 machine-$(CONFIG_BF525) := bf527
+machine-$(CONFIG_BF526) := bf527
 machine-$(CONFIG_BF527) := bf527
 machine-$(CONFIG_BF531) := bf533
 machine-$(CONFIG_BF532) := bf533
@@ -39,7 +42,10 @@ MACHINE := $(machine-y)
 export MACHINE
 
 cpu-$(CONFIG_BF522) := bf522
+cpu-$(CONFIG_BF523) := bf523
+cpu-$(CONFIG_BF524) := bf524
 cpu-$(CONFIG_BF525) := bf525
+cpu-$(CONFIG_BF526) := bf526
 cpu-$(CONFIG_BF527) := bf527
 cpu-$(CONFIG_BF531) := bf531
 cpu-$(CONFIG_BF532) := bf532
@@ -76,6 +82,12 @@ core-y   += arch/$(ARCH)/mach-$(MACHINE)/
 core-y   += arch/$(ARCH)/mach-$(MACHINE)/boards/
 endif
 
+ifeq ($(CONFIG_MPU),y)
+core-y	+= arch/$(ARCH)/kernel/cplb-mpu/
+else
+core-y	+= arch/$(ARCH)/kernel/cplb-nompu/
+endif
+
 libs-y   += arch/$(ARCH)/lib/
 
 drivers-$(CONFIG_OPROFILE) += arch/$(ARCH)/oprofile/
@@ -86,8 +98,11 @@ drivers-$(CONFIG_OPROFILE) += arch/$(ARCH)/oprofile/
 #	them changed.  We use .mach to indicate when they were updated
 #	last, otherwise make uses the target directory mtime.
 
+       show_mach_symlink = :
+ quiet_show_mach_symlink = echo '  SYMLINK include/asm-$(ARCH)/mach-$(MACHINE) -> include/asm-$(ARCH)/mach'
+silent_show_mach_symlink = :
 include/asm-blackfin/.mach: $(wildcard include/config/arch/*.h) include/config/auto.conf
-	@echo '  SYMLINK include/asm-$(ARCH)/mach-$(MACHINE) -> include/asm-$(ARCH)/mach'
+	@$($(quiet)show_mach_symlink)
 ifneq ($(KBUILD_SRC),)
 	$(Q)mkdir -p include/asm-$(ARCH)
 	$(Q)ln -fsn $(srctree)/include/asm-$(ARCH)/mach-$(MACHINE) include/asm-$(ARCH)/mach
@@ -107,6 +122,7 @@ archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
 
 
+INSTALL_PATH ?= /tftpboot
 boot := arch/$(ARCH)/boot
 BOOT_TARGETS = vmImage
 PHONY += $(BOOT_TARGETS) install

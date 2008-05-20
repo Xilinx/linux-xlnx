@@ -23,7 +23,7 @@
 struct rxrpc_crypt {
 	union {
 		u8	x[FCRYPT_BSIZE];
-		u32	n[2];
+		__be32	n[2];
 	};
 } __attribute__((aligned(8)));
 
@@ -565,9 +565,9 @@ extern void __exit rxrpc_destroy_all_peers(void);
 /*
  * ar-proc.c
  */
-extern const char *rxrpc_call_states[];
-extern struct file_operations rxrpc_call_seq_fops;
-extern struct file_operations rxrpc_connection_seq_fops;
+extern const char *const rxrpc_call_states[];
+extern const struct file_operations rxrpc_call_seq_fops;
+extern const struct file_operations rxrpc_connection_seq_fops;
 
 /*
  * ar-recvmsg.c
@@ -611,7 +611,7 @@ extern struct rxrpc_transport *rxrpc_find_transport(struct rxrpc_local *,
 extern unsigned rxrpc_debug;
 
 #define dbgprintk(FMT,...) \
-	printk("[%x%-6.6s] "FMT"\n", smp_processor_id(), current->comm ,##__VA_ARGS__)
+	printk("[%-6.6s] "FMT"\n", current->comm ,##__VA_ARGS__)
 
 /* make sure we maintain the format strings, even when debugging is disabled */
 static inline __attribute__((format(printf,1,2)))

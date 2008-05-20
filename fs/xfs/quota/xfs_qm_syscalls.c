@@ -200,7 +200,6 @@ xfs_qm_scall_quotaoff(
 	boolean_t		force)
 {
 	uint			dqtype;
-	unsigned long	s;
 	int			error;
 	uint			inactivate_flags;
 	xfs_qoff_logitem_t	*qoffstart;
@@ -237,9 +236,9 @@ xfs_qm_scall_quotaoff(
 	if ((flags & XFS_ALL_QUOTA_ACCT) == 0) {
 		mp->m_qflags &= ~(flags);
 
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 		mp->m_sb.sb_qflags = mp->m_qflags;
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 		mutex_unlock(&(XFS_QI_QOFFLOCK(mp)));
 
 		/* XXX what to do if error ? Revert back to old vals incore ? */
@@ -378,7 +377,7 @@ xfs_qm_scall_trunc_qfiles(
 	if (!capable(CAP_SYS_ADMIN))
 		return XFS_ERROR(EPERM);
 	error = 0;
-	if (!XFS_SB_VERSION_HASQUOTA(&mp->m_sb) || flags == 0) {
+	if (!xfs_sb_version_hasquota(&mp->m_sb) || flags == 0) {
 		qdprintk("qtrunc flags=%x m_qflags=%x\n", flags, mp->m_qflags);
 		return XFS_ERROR(EINVAL);
 	}
@@ -415,7 +414,6 @@ xfs_qm_scall_quotaon(
 	uint		flags)
 {
 	int		error;
-	unsigned long	s;
 	uint		qf;
 	uint		accflags;
 	__int64_t	sbflags;
@@ -468,10 +466,10 @@ xfs_qm_scall_quotaon(
 	 * Change sb_qflags on disk but not incore mp->qflags
 	 * if this is the root filesystem.
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	qf = mp->m_sb.sb_qflags;
 	mp->m_sb.sb_qflags = qf | flags;
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 
 	/*
 	 * There's nothing to change if it's the same.
@@ -524,7 +522,7 @@ xfs_qm_scall_getqstat(
 	memset(out, 0, sizeof(fs_quota_stat_t));
 
 	out->qs_version = FS_QSTAT_VERSION;
-	if (! XFS_SB_VERSION_HASQUOTA(&mp->m_sb)) {
+	if (!xfs_sb_version_hasquota(&mp->m_sb)) {
 		out->qs_uquota.qfs_ino = NULLFSINO;
 		out->qs_gquota.qfs_ino = NULLFSINO;
 		return (0);
@@ -815,7 +813,6 @@ xfs_qm_log_quotaoff(
 {
 	xfs_trans_t	       *tp;
 	int			error;
-	unsigned long	s;
 	xfs_qoff_logitem_t     *qoffi=NULL;
 	uint			oldsbqflag=0;
 
@@ -832,10 +829,10 @@ xfs_qm_log_quotaoff(
 	qoffi = xfs_trans_get_qoff_item(tp, NULL, flags & XFS_ALL_QUOTA_ACCT);
 	xfs_trans_log_quotaoff_item(tp, qoffi);
 
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	oldsbqflag = mp->m_sb.sb_qflags;
 	mp->m_sb.sb_qflags = (mp->m_qflags & ~(flags)) & XFS_MOUNT_QUOTA_ALL;
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 
 	xfs_mod_sb(tp, XFS_SB_QFLAGS);
 
@@ -854,9 +851,9 @@ error0:
 		 * No one else is modifying sb_qflags, so this is OK.
 		 * We still hold the quotaofflock.
 		 */
-		s = XFS_SB_LOCK(mp);
+		spin_lock(&mp->m_sb_lock);
 		mp->m_sb.sb_qflags = oldsbqflag;
-		XFS_SB_UNLOCK(mp, s);
+		spin_unlock(&mp->m_sb_lock);
 	}
 	*qoffstartp = qoffi;
 	return (error);

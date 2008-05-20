@@ -98,7 +98,7 @@ static int sas_get_port_device(struct asd_sas_port *port)
 			dev->dev_type = SATA_PM;
 		else
 			dev->dev_type = SATA_DEV;
-		dev->tproto = SATA_PROTO;
+		dev->tproto = SAS_PROTOCOL_SATA;
 	} else {
 		struct sas_identify_frame *id =
 			(struct sas_identify_frame *) dev->frame_rcvd;
@@ -295,11 +295,14 @@ static void sas_discover_domain(struct work_struct *work)
 	case FANOUT_DEV:
 		error = sas_discover_root_expander(dev);
 		break;
-#ifdef CONFIG_SCSI_SAS_ATA
 	case SATA_DEV:
 	case SATA_PM:
+#ifdef CONFIG_SCSI_SAS_ATA
 		error = sas_discover_sata(dev);
 		break;
+#else
+		SAS_DPRINTK("ATA device seen but CONFIG_SCSI_SAS_ATA=N so cannot attach\n");
+		/* Fall through */
 #endif
 	default:
 		error = -ENXIO;

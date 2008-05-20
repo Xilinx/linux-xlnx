@@ -279,9 +279,7 @@ struct rfcomm_dlc *rfcomm_dlc_alloc(gfp_t prio)
 	if (!d)
 		return NULL;
 
-	init_timer(&d->timer);
-	d->timer.function = rfcomm_dlc_timeout;
-	d->timer.data = (unsigned long) d;
+	setup_timer(&d->timer, rfcomm_dlc_timeout, (unsigned long)d);
 
 	skb_queue_head_init(&d->tx_queue);
 	spin_lock_init(&d->lock);
@@ -425,8 +423,8 @@ static int __rfcomm_dlc_close(struct rfcomm_dlc *d, int err)
 
 		rfcomm_dlc_lock(d);
 		d->state = BT_CLOSED;
-		d->state_change(d, err);
 		rfcomm_dlc_unlock(d);
+		d->state_change(d, err);
 
 		skb_queue_purge(&d->tx_queue);
 		rfcomm_dlc_unlink(d);
@@ -467,7 +465,7 @@ int rfcomm_dlc_send(struct rfcomm_dlc *d, struct sk_buff *skb)
 	return len;
 }
 
-void fastcall __rfcomm_dlc_throttle(struct rfcomm_dlc *d)
+void __rfcomm_dlc_throttle(struct rfcomm_dlc *d)
 {
 	BT_DBG("dlc %p state %ld", d, d->state);
 
@@ -478,7 +476,7 @@ void fastcall __rfcomm_dlc_throttle(struct rfcomm_dlc *d)
 	rfcomm_schedule(RFCOMM_SCHED_TX);
 }
 
-void fastcall __rfcomm_dlc_unthrottle(struct rfcomm_dlc *d)
+void __rfcomm_dlc_unthrottle(struct rfcomm_dlc *d)
 {
 	BT_DBG("dlc %p state %ld", d, d->state);
 

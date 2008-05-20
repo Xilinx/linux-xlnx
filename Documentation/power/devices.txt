@@ -310,9 +310,12 @@ used with suspend-to-disk:
     PM_EVENT_SUSPEND -- quiesce the driver and put hardware into a low-power
 	state.  When used with system sleep states like "suspend-to-RAM" or
 	"standby", the upcoming resume() call will often be able to rely on
-	state kept in hardware, or issue system wakeup events.  When used
-	instead with suspend-to-disk, few devices support this capability;
-	most are completely powered off.
+	state kept in hardware, or issue system wakeup events.
+
+    PM_EVENT_HIBERNATE -- Put hardware into a low-power state and enable wakeup
+	events as appropriate.  It is only used with hibernation
+	(suspend-to-disk) and few devices are able to wake up the system from
+	this state; most are completely powered off.
 
     PM_EVENT_FREEZE -- quiesce the driver, but don't necessarily change into
 	any low power mode.  A system snapshot is about to be taken, often
@@ -329,8 +332,8 @@ used with suspend-to-disk:
 	wakeup events nor DMA are allowed.
 
 To enter "standby" (ACPI S1) or "Suspend to RAM" (STR, ACPI S3) states, or
-the similarly named APM states, only PM_EVENT_SUSPEND is used; for "Suspend
-to Disk" (STD, hibernate, ACPI S4), all of those event codes are used.
+the similarly named APM states, only PM_EVENT_SUSPEND is used; the other event
+codes are used for hibernation ("Suspend to Disk", STD, ACPI S4).
 
 There's also PM_EVENT_ON, a value which never appears as a suspend event
 but is sometimes used to record the "not suspended" device state.
@@ -502,52 +505,3 @@ If the CPU can have a "cpufreq" driver, there also may be opportunities
 to shift to lower voltage settings and reduce the power cost of executing
 a given number of instructions.  (Without voltage adjustment, it's rare
 for cpufreq to save much power; the cost-per-instruction must go down.)
-
-
-/sys/devices/.../power/state files
-==================================
-For now you can also test some of this functionality using sysfs.
-
-	DEPRECATED:  USE "power/state" ONLY FOR DRIVER TESTING, AND
-	AVOID USING dev->power.power_state IN DRIVERS.
-
-	THESE WILL BE REMOVED.  IF THE "power/state" FILE GETS REPLACED,
-	IT WILL BECOME SOMETHING COUPLED TO THE BUS OR DRIVER.
-
-In each device's directory, there is a 'power' directory, which contains
-at least a 'state' file.  The value of this field is effectively boolean,
-PM_EVENT_ON or PM_EVENT_SUSPEND.
-
-   *	Reading from this file displays a value corresponding to
-	the power.power_state.event field.  All nonzero values are
-	displayed as "2", corresponding to a low power state; zero
-	is displayed as "0", corresponding to normal operation.
-
-   *	Writing to this file initiates a transition using the
-   	specified event code number; only '0', '2', and '3' are
-	accepted (without a newline); '2' and '3' are both
-	mapped to PM_EVENT_SUSPEND.
-
-On writes, the PM core relies on that recorded event code and the device/bus
-capabilities to determine whether it uses a partial suspend() or resume()
-sequence to change things so that the recorded event corresponds to the
-numeric parameter.
-
-   -	If the bus requires the irqs-disabled suspend_late()/resume_early()
-	phases, writes fail because those operations are not supported here.
-
-   -	If the recorded value is the expected value, nothing is done.
-
-   -	If the recorded value is nonzero, the device is partially resumed,
-	using the bus.resume() and/or class.resume() methods.
-
-   -	If the target value is nonzero, the device is partially suspended,
-	using the class.suspend() and/or bus.suspend() methods and the
-	PM_EVENT_SUSPEND message.
-
-Drivers have no way to tell whether their suspend() and resume() calls
-have come through the sysfs power/state file or as part of entering a
-system sleep state, except that when accessed through sysfs the normal
-parent/child sequencing rules are ignored.  Drivers (such as bus, bridge,
-or hub drivers) which expose child devices may need to enforce those rules
-on their own.

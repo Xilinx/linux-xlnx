@@ -28,6 +28,7 @@
  */
 
 #include <linux/linkage.h>
+#include <linux/init.h>
 #include <asm/blackfin.h>
 #include <asm/trace.h>
 #if CONFIG_BFIN_KERNEL_CLOCK
@@ -44,10 +45,9 @@
 
 #define INITIAL_STACK   0xFFB01000
 
-.text
+__INIT
 
 ENTRY(__start)
-ENTRY(__stext)
 	/* R0: argument of command line string, passed from uboot, save it */
 	R7 = R0;
 	/* Enable Cycle Counter and Nesting Of Interrupts */
@@ -213,6 +213,7 @@ ENTRY(__stext)
 
 .LWAIT_HERE:
 	jump .LWAIT_HERE;
+ENDPROC(__start)
 
 ENTRY(_real_start)
 	[ -- sp ] = reti;
@@ -285,6 +286,9 @@ ENTRY(_real_start)
 	call _start_kernel;
 .L_exit:
 	jump.s	.L_exit;
+ENDPROC(_real_start)
+
+__FINIT
 
 .section .l1.text
 #if CONFIG_BFIN_KERNEL_CLOCK
@@ -298,8 +302,8 @@ ENTRY(_start_dma_code)
 	w[p0] = r0.l;
 	ssync;
 
-	p0.h = hi(SIC_IWR);
-	p0.l = lo(SIC_IWR);
+	p0.h = hi(SIC_IWR0);
+	p0.l = lo(SIC_IWR0);
 	r0.l = 0x1;
 	r0.h = 0x0;
 	[p0] = r0;
@@ -324,12 +328,25 @@ ENTRY(_start_dma_code)
 	w[p0] = r0.l;
 	ssync;
 
+#if defined(CONFIG_BF54x)
+	P2.H = hi(EBIU_RSTCTL);
+	P2.L = lo(EBIU_RSTCTL);
+	R0 = [P2];
+	BITSET (R0, 3);
+#else
 	P2.H = hi(EBIU_SDGCTL);
 	P2.L = lo(EBIU_SDGCTL);
 	R0 = [P2];
 	BITSET (R0, 24);
+#endif
 	[P2] = R0;
 	SSYNC;
+#if defined(CONFIG_BF54x)
+.LSRR_MODE:
+	R0 = [P2];
+	CC = BITTST(R0, 4);
+	if !CC JUMP .LSRR_MODE;
+#endif
 
 	r0 = CONFIG_VCO_MULT & 63;       /* Load the VCO multiplier         */
 	r0 = r0 << 9;                    /* Shift it over,                  */
@@ -361,6 +378,39 @@ ENTRY(_start_dma_code)
 	w[p0] = r0.l;
 	ssync;
 
+#if defined(CONFIG_BF54x)
+	P2.H = hi(EBIU_RSTCTL);
+	P2.L = lo(EBIU_RSTCTL);
+	R0 = [P2];
+	CC = BITTST(R0, 0);
+	if CC jump .Lskipddrrst;
+	BITSET (R0, 0);
+.Lskipddrrst:
+	BITCLR (R0, 3);
+	[P2] = R0;
+	SSYNC;
+
+	p0.l = lo(EBIU_DDRCTL0);
+	p0.h = hi(EBIU_DDRCTL0);
+	r0.l = lo(mem_DDRCTL0);
+	r0.h = hi(mem_DDRCTL0);
+	[p0] = r0;
+	ssync;
+
+	p0.l = lo(EBIU_DDRCTL1);
+	p0.h = hi(EBIU_DDRCTL1);
+	r0.l = lo(mem_DDRCTL1);
+	r0.h = hi(mem_DDRCTL1);
+	[p0] = r0;
+	ssync;
+
+	p0.l = lo(EBIU_DDRCTL2);
+	p0.h = hi(EBIU_DDRCTL2);
+	r0.l = lo(mem_DDRCTL2);
+	r0.h = hi(mem_DDRCTL2);
+	[p0] = r0;
+	ssync;
+#else
 	p0.l = lo(EBIU_SDRRC);
 	p0.h = hi(EBIU_SDRRC);
 	r0 = mem_SDRRC;
@@ -394,15 +444,17 @@ ENTRY(_start_dma_code)
 	R1 = R1 | R0;
 	[P2] = R1;
 	SSYNC;
+#endif
 
-	p0.h = hi(SIC_IWR);
-	p0.l = lo(SIC_IWR);
+	p0.h = hi(SIC_IWR0);
+	p0.l = lo(SIC_IWR0);
 	r0.l = lo(IWR_ENABLE_ALL);
 	r0.h = hi(IWR_ENABLE_ALL);
 	[p0] = r0;
 	SSYNC;
 
 	RTS;
+ENDPROC(_start_dma_code)
 #endif /* CONFIG_BFIN_KERNEL_CLOCK */
 
 .data

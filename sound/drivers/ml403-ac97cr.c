@@ -33,7 +33,6 @@
  *   But there might still be some ...
  */
 
-#include <sound/driver.h>
 #include <linux/init.h>
 #include <linux/moduleparam.h>
 
@@ -64,7 +63,7 @@
 #include "pcm-indirect2.h"
 
 
-#define SND_ML403_AC97CR_DRIVER "ml403_ac97cr"
+#define SND_ML403_AC97CR_DRIVER "ml403-ac97cr"
 
 MODULE_AUTHOR("Joachim Foerster <JOFT@gmx.de>");
 MODULE_DESCRIPTION("Xilinx ML403 AC97 Controller Reference");
@@ -1311,6 +1310,8 @@ static int __devinit snd_ml403_ac97cr_probe(struct platform_device *pfdev)
 		card->shortname, card->driver,
 		(unsigned long)ml403_ac97cr->port, ml403_ac97cr->irq,
 		ml403_ac97cr->capture_irq, dev + 1);
+
+	snd_card_set_dev(card, &pfdev->dev);
 
 	err = snd_card_register(card);
 	if (err < 0) {

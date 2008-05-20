@@ -25,6 +25,7 @@ static int dmte_irq_map[] = {
 	DMTE2_IRQ,
 	DMTE3_IRQ,
 #if defined(CONFIG_CPU_SUBTYPE_SH7720)  ||	\
+    defined(CONFIG_CPU_SUBTYPE_SH7721)  ||	\
     defined(CONFIG_CPU_SUBTYPE_SH7751R) ||	\
     defined(CONFIG_CPU_SUBTYPE_SH7760)  ||	\
     defined(CONFIG_CPU_SUBTYPE_SH7709)  ||	\
@@ -89,7 +90,7 @@ static irqreturn_t dma_tei(int irq, void *dev_id)
 
 static int sh_dmac_request_dma(struct dma_channel *chan)
 {
-	if (unlikely(!chan->flags & DMA_TEI_CAPABLE))
+	if (unlikely(!(chan->flags & DMA_TEI_CAPABLE)))
 		return 0;
 
 	return request_irq(get_dmte_irq(chan->chan), dma_tei,
@@ -203,6 +204,7 @@ static int sh_dmac_get_dma_residue(struct dma_channel *chan)
 }
 
 #if defined(CONFIG_CPU_SUBTYPE_SH7720) || \
+    defined(CONFIG_CPU_SUBTYPE_SH7721) || \
     defined(CONFIG_CPU_SUBTYPE_SH7780)
 #define dmaor_read_reg()	ctrl_inw(DMAOR)
 #define dmaor_write_reg(data)	ctrl_outw(data, DMAOR)

@@ -156,9 +156,10 @@ static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 	return pgoff >> (PAGE_CACHE_SHIFT - PAGE_SHIFT);
 }
 
-extern void FASTCALL(__lock_page(struct page *page));
-extern void FASTCALL(__lock_page_nosync(struct page *page));
-extern void FASTCALL(unlock_page(struct page *page));
+extern void __lock_page(struct page *page);
+extern int __lock_page_killable(struct page *page);
+extern void __lock_page_nosync(struct page *page);
+extern void unlock_page(struct page *page);
 
 /*
  * lock_page may only be called if we have the page's inode pinned.
@@ -168,6 +169,19 @@ static inline void lock_page(struct page *page)
 	might_sleep();
 	if (TestSetPageLocked(page))
 		__lock_page(page);
+}
+
+/*
+ * lock_page_killable is like lock_page but can be interrupted by fatal
+ * signals.  It returns 0 if it locked the page and -EINTR if it was
+ * killed while waiting.
+ */
+static inline int lock_page_killable(struct page *page)
+{
+	might_sleep();
+	if (TestSetPageLocked(page))
+		return __lock_page_killable(page);
+	return 0;
 }
 
 /*
@@ -185,7 +199,7 @@ static inline void lock_page_nosync(struct page *page)
  * This is exported only for wait_on_page_locked/wait_on_page_writeback.
  * Never use this directly!
  */
-extern void FASTCALL(wait_on_page_bit(struct page *page, int bit_nr));
+extern void wait_on_page_bit(struct page *page, int bit_nr);
 
 /* 
  * Wait for a page to be unlocked.

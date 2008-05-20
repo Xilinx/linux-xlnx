@@ -125,11 +125,11 @@ struct jprobe {
 DECLARE_PER_CPU(struct kprobe *, current_kprobe);
 DECLARE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
 
-#ifdef ARCH_SUPPORTS_KRETPROBES
+#ifdef CONFIG_KRETPROBES
 extern void arch_prepare_kretprobe(struct kretprobe_instance *ri,
 				   struct pt_regs *regs);
 extern int arch_trampoline_kprobe(struct kprobe *p);
-#else /* ARCH_SUPPORTS_KRETPROBES */
+#else /* CONFIG_KRETPROBES */
 static inline void arch_prepare_kretprobe(struct kretprobe *rp,
 					struct pt_regs *regs)
 {
@@ -138,7 +138,7 @@ static inline int arch_trampoline_kprobe(struct kprobe *p)
 {
 	return 0;
 }
-#endif /* ARCH_SUPPORTS_KRETPROBES */
+#endif /* CONFIG_KRETPROBES */
 /*
  * Function-return probe -
  * Note:
@@ -152,8 +152,10 @@ static inline int arch_trampoline_kprobe(struct kprobe *p)
 struct kretprobe {
 	struct kprobe kp;
 	kretprobe_handler_t handler;
+	kretprobe_handler_t entry_handler;
 	int maxactive;
 	int nmissed;
+	size_t data_size;
 	struct hlist_head free_instances;
 	struct hlist_head used_instances;
 };
@@ -164,6 +166,7 @@ struct kretprobe_instance {
 	struct kretprobe *rp;
 	kprobe_opcode_t *ret_addr;
 	struct task_struct *task;
+	char data[0];
 };
 
 struct kretprobe_blackpoint {
@@ -181,6 +184,15 @@ static inline void kretprobe_assert(struct kretprobe_instance *ri,
 		BUG();
 	}
 }
+
+#ifdef CONFIG_KPROBES_SANITY_TEST
+extern int init_test_probes(void);
+#else
+static inline int init_test_probes(void)
+{
+	return 0;
+}
+#endif /* CONFIG_KPROBES_SANITY_TEST */
 
 extern spinlock_t kretprobe_lock;
 extern struct mutex kprobe_mutex;
@@ -227,6 +239,7 @@ void unregister_kretprobe(struct kretprobe *rp);
 
 void kprobe_flush_task(struct task_struct *tk);
 void recycle_rp_inst(struct kretprobe_instance *ri, struct hlist_head *head);
+
 #else /* CONFIG_KPROBES */
 
 #define __kprobes	/**/

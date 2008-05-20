@@ -15,6 +15,7 @@
 #include <linux/tty.h>
 #include <linux/serial_8250.h>
 #include <linux/slab.h>
+#include <linux/i2c-gpio.h>
 #include <linux/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
@@ -120,18 +121,17 @@ static struct platform_device ixdp425_flash_nand = {
 };
 #endif	/* CONFIG_MTD_NAND_PLATFORM */
 
-static struct ixp4xx_i2c_pins ixdp425_i2c_gpio_pins = {
+static struct i2c_gpio_platform_data ixdp425_i2c_gpio_data = {
 	.sda_pin	= IXDP425_SDA_PIN,
 	.scl_pin	= IXDP425_SCL_PIN,
 };
 
-static struct platform_device ixdp425_i2c_controller = {
-	.name		= "IXP4XX-I2C",
+static struct platform_device ixdp425_i2c_gpio = {
+	.name		= "i2c-gpio",
 	.id		= 0,
-	.dev		= {
-		.platform_data = &ixdp425_i2c_gpio_pins,
+	.dev	 = {
+		.platform_data	= &ixdp425_i2c_gpio_data,
 	},
-	.num_resources	= 0
 };
 
 static struct resource ixdp425_uart_resources[] = {
@@ -177,14 +177,41 @@ static struct platform_device ixdp425_uart = {
 	.resource		= ixdp425_uart_resources
 };
 
+/* Built-in 10/100 Ethernet MAC interfaces */
+static struct eth_plat_info ixdp425_plat_eth[] = {
+	{
+		.phy		= 0,
+		.rxq		= 3,
+		.txreadyq	= 20,
+	}, {
+		.phy		= 1,
+		.rxq		= 4,
+		.txreadyq	= 21,
+	}
+};
+
+static struct platform_device ixdp425_eth[] = {
+	{
+		.name			= "ixp4xx_eth",
+		.id			= IXP4XX_ETH_NPEB,
+		.dev.platform_data	= ixdp425_plat_eth,
+	}, {
+		.name			= "ixp4xx_eth",
+		.id			= IXP4XX_ETH_NPEC,
+		.dev.platform_data	= ixdp425_plat_eth + 1,
+	}
+};
+
 static struct platform_device *ixdp425_devices[] __initdata = {
-	&ixdp425_i2c_controller,
+	&ixdp425_i2c_gpio,
 	&ixdp425_flash,
 #if defined(CONFIG_MTD_NAND_PLATFORM) || \
     defined(CONFIG_MTD_NAND_PLATFORM_MODULE)
 	&ixdp425_flash_nand,
 #endif
-	&ixdp425_uart
+	&ixdp425_uart,
+	&ixdp425_eth[0],
+	&ixdp425_eth[1],
 };
 
 static void __init ixdp425_init(void)

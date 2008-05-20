@@ -194,6 +194,9 @@ static int acpi_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_MANUFACTURER:
 		val->strval = battery->oem_info;
 		break;
+	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
+		val->strval = battery->serial_number;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -212,6 +215,7 @@ static enum power_supply_property charge_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
+	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
 
 static enum power_supply_property energy_battery_props[] = {
@@ -226,6 +230,7 @@ static enum power_supply_property energy_battery_props[] = {
 	POWER_SUPPLY_PROP_ENERGY_NOW,
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
+	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
 #endif
 
@@ -288,13 +293,12 @@ static int extract_package(struct acpi_battery *battery,
 				strncpy(ptr, (u8 *)&element->integer.value,
 					sizeof(acpi_integer));
 				ptr[sizeof(acpi_integer)] = 0;
-			} else return -EFAULT;
+			} else
+				*ptr = 0; /* don't have value */
 		} else {
-			if (element->type == ACPI_TYPE_INTEGER) {
-				int *x = (int *)((u8 *)battery +
-						offsets[i].offset);
-				*x = element->integer.value;
-			} else return -EFAULT;
+			int *x = (int *)((u8 *)battery + offsets[i].offset);
+			*x = (element->type == ACPI_TYPE_INTEGER) ?
+				element->integer.value : -1;
 		}
 	}
 	return 0;

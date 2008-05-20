@@ -48,10 +48,8 @@
  * addresses.
  */
 
-static unsigned short normal_i2c[] = { 0x18, 0x19, 0x1a,
-					0x29, 0x2a, 0x2b,
-					0x4c, 0x4d, 0x4e,
-					I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = {
+	0x18, 0x19, 0x1a, 0x29, 0x2a, 0x2b, 0x4c, 0x4d, 0x4e, I2C_CLIENT_END };
 
 /*
  * Insmod parameters
@@ -133,7 +131,6 @@ static struct i2c_driver lm83_driver = {
 	.driver = {
 		.name	= "lm83",
 	},
-	.id		= I2C_DRIVERID_LM83,
 	.attach_adapter	= lm83_attach_adapter,
 	.detach_client	= lm83_detach_client,
 };

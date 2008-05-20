@@ -16,7 +16,6 @@
 #include <linux/initrd.h>
 #include <asm/smp.h>
 #include <linux/user.h>
-#include <linux/a.out.h>
 #include <linux/screen_info.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
@@ -66,7 +65,6 @@ struct screen_info screen_info = {
  */
 
 extern unsigned long trapbase;
-void (*prom_palette)(int);
 
 /* Pretty sick eh? */
 void prom_sync_me(void)
@@ -81,8 +79,6 @@ void prom_sync_me(void)
 			     "nop\n\t"
 			     "nop\n\t" : : "r" (&trapbase));
 
-	if (prom_palette)
-		prom_palette(1);
 	prom_printf("PROM SYNC COMMAND...\n");
 	show_free_areas();
 	if(current->pid != 0) {
@@ -192,7 +188,6 @@ extern int prom_probe_memory(void);
 extern void sun4c_probe_vac(void);
 extern char cputypval;
 extern unsigned long start, end;
-extern void panic_setup(char *, int *);
 
 extern unsigned short root_flags;
 extern unsigned short root_dev;
@@ -379,7 +374,7 @@ static void c_stop(struct seq_file *m, void *v)
 {
 }
 
-struct seq_operations cpuinfo_op = {
+const struct seq_operations cpuinfo_op = {
 	.start =c_start,
 	.next =	c_next,
 	.stop =	c_stop,

@@ -14,6 +14,7 @@ config ZONE_DMA
 config XTENSA
 	bool
 	default y
+	select HAVE_IDE
 	help
 	  Xtensa processors are 32-bit RISC machines designed by Tensilica
 	  primarily for embedded systems.  These processors are both
@@ -48,6 +49,10 @@ config ARCH_HAS_ILOG2_U64
 
 config NO_IOPORT
 	def_bool y
+
+config HZ
+	int
+	default 100
 
 source "init/Kconfig"
 
@@ -174,11 +179,6 @@ config PCI
 	  your box. Other bus systems are ISA, EISA, MicroChannel (MCA) or
 	  VESA. If you have PCI, say Y, otherwise N.
 
-	  The PCI-HOWTO, available from
-	  <http://www.linuxdoc.org/docs.html#howto>, contains valuable
-	  information about which PCI hardware does work under Linux and which
-	  doesn't
-
 source "drivers/pci/Kconfig"
 
 config HOTPLUG
@@ -250,8 +250,6 @@ config EMBEDDED_RAMDISK_IMAGE
 	  The ramdisk image is not part of the kernel distribution; you must
 	  provide one yourself.
 endmenu
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/xtensa/Kconfig.debug"
 

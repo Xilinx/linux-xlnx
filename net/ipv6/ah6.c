@@ -283,7 +283,7 @@ static int ah6_output(struct xfrm_state *x, struct sk_buff *skb)
 
 	ah->reserved = 0;
 	ah->spi = x->id.spi;
-	ah->seq_no = htonl(XFRM_SKB_CB(skb)->seq);
+	ah->seq_no = htonl(XFRM_SKB_CB(skb)->seq.output);
 
 	spin_lock_bh(&x->lock);
 	err = ah_mac_digest(ahp, skb, ah->auth_data);
@@ -370,6 +370,7 @@ static int ah6_input(struct xfrm_state *x, struct sk_buff *skb)
 	ip6h->flow_lbl[2] = 0;
 	ip6h->hop_limit   = 0;
 
+	spin_lock(&x->lock);
 	{
 		u8 auth_data[MAX_AH_AUTH_LEN];
 
@@ -378,14 +379,15 @@ static int ah6_input(struct xfrm_state *x, struct sk_buff *skb)
 		skb_push(skb, hdr_len);
 		err = ah_mac_digest(ahp, skb, ah->auth_data);
 		if (err)
-			goto free_out;
-		err = -EINVAL;
-		if (memcmp(ahp->work_icv, auth_data, ahp->icv_trunc_len)) {
-			LIMIT_NETDEBUG(KERN_WARNING "ipsec ah authentication error\n");
-			x->stats.integrity_failed++;
-			goto free_out;
-		}
+			goto unlock;
+		if (memcmp(ahp->work_icv, auth_data, ahp->icv_trunc_len))
+			err = -EBADMSG;
 	}
+unlock:
+	spin_unlock(&x->lock);
+
+	if (err)
+		goto free_out;
 
 	skb->network_header += ah_hlen;
 	memcpy(skb_network_header(skb), tmp_hdr, hdr_len);
@@ -513,7 +515,7 @@ static void ah6_destroy(struct xfrm_state *x)
 	kfree(ahp);
 }
 
-static struct xfrm_type ah6_type =
+static const struct xfrm_type ah6_type =
 {
 	.description	= "AH6",
 	.owner		= THIS_MODULE,

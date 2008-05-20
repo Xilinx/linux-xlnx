@@ -31,6 +31,7 @@
 #include <linux/pm.h>
 #include <linux/device.h>
 #include <linux/proc_fs.h>
+#include <linux/acpi.h>
 #ifdef CONFIG_X86
 #include <asm/mpspec.h>
 #endif
@@ -39,9 +40,6 @@
 
 #define _COMPONENT		ACPI_BUS_COMPONENT
 ACPI_MODULE_NAME("bus");
-#ifdef	CONFIG_X86
-extern void __init acpi_pic_sci_set_trigger(unsigned int irq, u16 trigger);
-#endif
 
 struct acpi_device *acpi_root;
 struct proc_dir_entry *acpi_root_dir;
@@ -122,6 +120,31 @@ int acpi_bus_get_status(struct acpi_device *device)
 
 EXPORT_SYMBOL(acpi_bus_get_status);
 
+void acpi_bus_private_data_handler(acpi_handle handle,
+				   u32 function, void *context)
+{
+	return;
+}
+EXPORT_SYMBOL(acpi_bus_private_data_handler);
+
+int acpi_bus_get_private_data(acpi_handle handle, void **data)
+{
+	acpi_status status = AE_OK;
+
+	if (!*data)
+		return -EINVAL;
+
+	status = acpi_get_data(handle, acpi_bus_private_data_handler, data);
+	if (ACPI_FAILURE(status) || !*data) {
+		ACPI_DEBUG_PRINT((ACPI_DB_INFO, "No context for object [%p]\n",
+				handle));
+		return -ENODEV;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(acpi_bus_get_private_data);
+
 /* --------------------------------------------------------------------------
                                  Power Management
    -------------------------------------------------------------------------- */
@@ -200,7 +223,7 @@ int acpi_bus_set_power(acpi_handle handle, int state)
 	 * Get device's current power state
 	 */
 	acpi_bus_get_power(device->handle, &device->power.state);
-	if (state == device->power.state) {
+	if ((state == device->power.state) && !device->flags.force_power_state) {
 		ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Device is already at D%d\n",
 				  state));
 		return 0;
@@ -350,10 +373,11 @@ int acpi_bus_receive_event(struct acpi_bus_event *event)
 	}
 
 	spin_lock_irqsave(&acpi_bus_event_lock, flags);
-	entry =
-	    list_entry(acpi_bus_event_list.next, struct acpi_bus_event, node);
-	if (entry)
+	if (!list_empty(&acpi_bus_event_list)) {
+		entry = list_entry(acpi_bus_event_list.next,
+				   struct acpi_bus_event, node);
 		list_del(&entry->node);
+	}
 	spin_unlock_irqrestore(&acpi_bus_event_lock, flags);
 
 	if (!entry)
@@ -366,7 +390,6 @@ int acpi_bus_receive_event(struct acpi_bus_event *event)
 	return 0;
 }
 
-EXPORT_SYMBOL(acpi_bus_receive_event);
 #endif	/* CONFIG_ACPI_PROC_EVENT */
 
 /* --------------------------------------------------------------------------
@@ -629,8 +652,6 @@ void __init acpi_early_init(void)
 
 #ifdef CONFIG_X86
 	if (!acpi_ioapic) {
-		extern u8 acpi_sci_flags;
-
 		/* compatible (0) means level (3) */
 		if (!(acpi_sci_flags & ACPI_MADT_TRIGGER_MASK)) {
 			acpi_sci_flags &= ~ACPI_MADT_TRIGGER_MASK;
@@ -640,7 +661,6 @@ void __init acpi_early_init(void)
 		acpi_pic_sci_set_trigger(acpi_gbl_FADT.sci_interrupt,
 					 (acpi_sci_flags & ACPI_MADT_TRIGGER_MASK) >> 2);
 	} else {
-		extern int acpi_sci_override_gsi;
 		/*
 		 * now that acpi_gbl_FADT is initialized,
 		 * update it with result from INT_SRC_OVR parsing
@@ -743,7 +763,7 @@ static int __init acpi_bus_init(void)
 	return -ENODEV;
 }
 
-decl_subsys(acpi, NULL, NULL);
+struct kobject *acpi_kobj;
 
 static int __init acpi_init(void)
 {
@@ -755,10 +775,11 @@ static int __init acpi_init(void)
 		return -ENODEV;
 	}
 
-	result = firmware_register(&acpi_subsys);
-	if (result < 0)
-		printk(KERN_WARNING "%s: firmware_register error: %d\n",
-			__FUNCTION__, result);
+	acpi_kobj = kobject_create_and_add("acpi", firmware_kobj);
+	if (!acpi_kobj) {
+		printk(KERN_WARNING "%s: kset create error\n", __func__);
+		acpi_kobj = NULL;
+	}
 
 	result = acpi_bus_init();
 

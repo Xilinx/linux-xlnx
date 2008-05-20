@@ -9,7 +9,7 @@
    Steve Hirsch, Andreas Koppenh"ofer, Michael Leodolter, Eyal Lebedinsky,
    Michael Schaefer, J"org Weule, and Eric Youngdale.
 
-   Copyright 1992 - 2007 Kai Makisara
+   Copyright 1992 - 2008 Kai Makisara
    email Kai.Makisara@kolumbus.fi
 
    Some small formal changes - aeb, 950809
@@ -17,7 +17,7 @@
    Last modified: 18-JAN-1998 Richard Gooch <rgooch@atnf.csiro.au> Devfs support
  */
 
-static const char *verstr = "20070203";
+static const char *verstr = "20080221";
 
 #include <linux/module.h>
 
@@ -1172,7 +1172,7 @@ static int st_open(struct inode *inode, struct file *filp)
 	STp->try_dio_now = STp->try_dio;
 	STp->recover_count = 0;
 	DEB( STp->nbr_waits = STp->nbr_finished = 0;
-	     STp->nbr_requests = STp->nbr_dio = STp->nbr_pages = STp->nbr_combinable = 0; )
+	     STp->nbr_requests = STp->nbr_dio = STp->nbr_pages = 0; )
 
 	retval = check_tape(STp, filp);
 	if (retval < 0)
@@ -1226,8 +1226,8 @@ static int st_flush(struct file *filp, fl_owner_t id)
 	}
 
 	DEBC( if (STp->nbr_requests)
-		printk(KERN_DEBUG "%s: Number of r/w requests %d, dio used in %d, pages %d (%d).\n",
-		       name, STp->nbr_requests, STp->nbr_dio, STp->nbr_pages, STp->nbr_combinable));
+		printk(KERN_DEBUG "%s: Number of r/w requests %d, dio used in %d, pages %d.\n",
+		       name, STp->nbr_requests, STp->nbr_dio, STp->nbr_pages));
 
 	if (STps->rw == ST_WRITING && !STp->pos_unknown) {
 		struct st_cmdstatus *cmdstatp = &STp->buffer->cmdstat;
@@ -1422,9 +1422,6 @@ static int setup_buffering(struct scsi_tape *STp, const char __user *buf,
 		     if (STbp->do_dio) {
 			STp->nbr_dio++;
 			STp->nbr_pages += STbp->do_dio;
-			for (i=1; i < STbp->do_dio; i++)
-				if (page_to_pfn(STbp->sg[i].page) == page_to_pfn(STbp->sg[i-1].page) + 1)
-					STp->nbr_combinable++;
 		     }
 		)
 	} else
@@ -3214,8 +3211,7 @@ static int partition_tape(struct scsi_tape *STp, int size)
 
 
 /* The ioctl command */
-static int st_ioctl(struct inode *inode, struct file *file,
-		    unsigned int cmd_in, unsigned long arg)
+static long st_ioctl(struct file *file, unsigned int cmd_in, unsigned long arg)
 {
 	int i, cmd_nr, cmd_type, bt;
 	int retval = 0;
@@ -3870,7 +3866,7 @@ static const struct file_operations st_fops =
 	.owner =	THIS_MODULE,
 	.read =		st_read,
 	.write =	st_write,
-	.ioctl =	st_ioctl,
+	.unlocked_ioctl = st_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = st_compat_ioctl,
 #endif

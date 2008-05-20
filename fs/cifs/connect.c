@@ -1,7 +1,7 @@
 /*
  *   fs/cifs/connect.c
  *
- *   Copyright (C) International Business Machines  Corp., 2002,2007
+ *   Copyright (C) International Business Machines  Corp., 2002,2008
  *   Author(s): Steve French (sfrench@us.ibm.com)
  *
  *   This library is free software; you can redistribute it and/or modify
@@ -1410,7 +1410,7 @@ connect_to_dfs_path(int xid, struct cifsSesInfo *pSesInfo,
 		    const char *old_path, const struct nls_table *nls_codepage,
 		    int remap)
 {
-	unsigned char *referrals = NULL;
+	struct dfs_info3_param *referrals = NULL;
 	unsigned int num_referrals;
 	int rc = 0;
 
@@ -1429,12 +1429,14 @@ connect_to_dfs_path(int xid, struct cifsSesInfo *pSesInfo,
 int
 get_dfs_path(int xid, struct cifsSesInfo *pSesInfo, const char *old_path,
 	     const struct nls_table *nls_codepage, unsigned int *pnum_referrals,
-	     unsigned char **preferrals, int remap)
+	     struct dfs_info3_param **preferrals, int remap)
 {
 	char *temp_unc;
 	int rc = 0;
+	unsigned char *targetUNCs;
 
 	*pnum_referrals = 0;
+	*preferrals = NULL;
 
 	if (pSesInfo->ipc_tid == 0) {
 		temp_unc = kmalloc(2 /* for slashes */ +
@@ -1454,8 +1456,10 @@ get_dfs_path(int xid, struct cifsSesInfo *pSesInfo, const char *old_path,
 		kfree(temp_unc);
 	}
 	if (rc == 0)
-		rc = CIFSGetDFSRefer(xid, pSesInfo, old_path, preferrals,
+		rc = CIFSGetDFSRefer(xid, pSesInfo, old_path, &targetUNCs,
 				     pnum_referrals, nls_codepage, remap);
+	/* BB map targetUNCs to dfs_info3 structures, here or
+		in CIFSGetDFSRefer BB */
 
 	return rc;
 }
@@ -1718,8 +1722,15 @@ void reset_cifs_unix_caps(int xid, struct cifsTconInfo *tcon,
 			   originally at mount time */
 			if ((saved_cap & CIFS_UNIX_POSIX_ACL_CAP) == 0)
 				cap &= ~CIFS_UNIX_POSIX_ACL_CAP;
-			if ((saved_cap & CIFS_UNIX_POSIX_PATHNAMES_CAP) == 0)
+			if ((saved_cap & CIFS_UNIX_POSIX_PATHNAMES_CAP) == 0) {
+				if (cap & CIFS_UNIX_POSIX_PATHNAMES_CAP)
+					cERROR(1, ("POSIXPATH support change"));
 				cap &= ~CIFS_UNIX_POSIX_PATHNAMES_CAP;
+			} else if ((cap & CIFS_UNIX_POSIX_PATHNAMES_CAP) == 0) {
+				cERROR(1, ("possible reconnect error"));
+				cERROR(1,
+					("server disabled POSIX path support"));
+			}
 		}
 
 		cap &= CIFS_UNIX_CAP_MASK;
@@ -1749,9 +1760,8 @@ void reset_cifs_unix_caps(int xid, struct cifsTconInfo *tcon,
 		if (sb && (CIFS_SB(sb)->rsize > 127 * 1024)) {
 			if ((cap & CIFS_UNIX_LARGE_READ_CAP) == 0) {
 				CIFS_SB(sb)->rsize = 127 * 1024;
-#ifdef CONFIG_CIFS_DEBUG2
-				cFYI(1, ("larger reads not supported by srv"));
-#endif
+				cFYI(DBG2,
+					("larger reads not supported by srv"));
 			}
 		}
 
@@ -1785,6 +1795,26 @@ void reset_cifs_unix_caps(int xid, struct cifsTconInfo *tcon,
 					   "option."));
 
 		}
+	}
+}
+
+static void
+convert_delimiter(char *path, char delim)
+{
+	int i;
+	char old_delim;
+
+	if (path == NULL)
+		return;
+
+	if (delim == '/') 
+		old_delim = '\\';
+	else
+		old_delim = '/';
+
+	for (i = 0; path[i] != '\0'; i++) {
+		if (path[i] == old_delim)
+			path[i] = delim;
 	}
 }
 
@@ -1964,7 +1994,15 @@ cifs_mount(struct super_block *sb, struct cifs_sb_info *cifs_sb,
 
 	if (existingCifsSes) {
 		pSesInfo = existingCifsSes;
-		cFYI(1, ("Existing smb sess found"));
+		cFYI(1, ("Existing smb sess found (status=%d)",
+			pSesInfo->status));
+		down(&pSesInfo->sesSem);
+		if (pSesInfo->status == CifsNeedReconnect) {
+			cFYI(1, ("Session needs reconnect"));
+			rc = cifs_setup_session(xid, pSesInfo,
+						cifs_sb->local_nls);
+		}
+		up(&pSesInfo->sesSem);
 	} else if (!rc) {
 		cFYI(1, ("Existing smb sess not found"));
 		pSesInfo = sesInfoAlloc();
@@ -2045,7 +2083,11 @@ cifs_mount(struct super_block *sb, struct cifs_sb_info *cifs_sb,
 		cifs_sb->prepath = volume_info.prepath;
 		if (cifs_sb->prepath) {
 			cifs_sb->prepathlen = strlen(cifs_sb->prepath);
-			cifs_sb->prepath[0] = CIFS_DIR_SEP(cifs_sb);
+			/* we can not convert the / to \ in the path
+			separators in the prefixpath yet because we do not
+			know (until reset_cifs_unix_caps is called later)
+			whether POSIX PATH CAP is available. We normalize
+			the / to \ after reset_cifs_unix_caps is called */
 			volume_info.prepath = NULL;
 		} else
 			cifs_sb->prepathlen = 0;
@@ -2213,11 +2255,15 @@ cifs_mount(struct super_block *sb, struct cifs_sb_info *cifs_sb,
 		else
 			tcon->unix_ext = 0; /* server does not support them */
 
+		/* convert forward to back slashes in prepath here if needed */
+		if ((cifs_sb->mnt_cifs_flags & CIFS_MOUNT_POSIX_PATHS) == 0)
+			convert_delimiter(cifs_sb->prepath,
+					  CIFS_DIR_SEP(cifs_sb));
+
 		if ((tcon->unix_ext == 0) && (cifs_sb->rsize > (1024 * 127))) {
 			cifs_sb->rsize = 1024 * 127;
-#ifdef CONFIG_CIFS_DEBUG2
-			cFYI(1, ("no very large read support, rsize now 127K"));
-#endif
+			cFYI(DBG2,
+				("no very large read support, rsize now 127K"));
 		}
 		if (!(tcon->ses->capabilities & CAP_LARGE_WRITE_X))
 			cifs_sb->wsize = min(cifs_sb->wsize,
@@ -3514,7 +3560,7 @@ cifs_umount(struct super_block *sb, struct cifs_sb_info *cifs_sb)
 		sesInfoFree(ses);
 
 	FreeXid(xid);
-	return rc;	/* BB check if we should always return zero here */
+	return rc;
 }
 
 int cifs_setup_session(unsigned int xid, struct cifsSesInfo *pSesInfo,

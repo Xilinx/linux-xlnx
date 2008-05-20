@@ -161,8 +161,7 @@ static unsigned int translate_open_flags(int flags)
 	int i;
 	unsigned int ret = 0;
 
-	for (i = 0; i < (sizeof(open_flags_table) / sizeof(struct apsp_table));
-	     i++) {
+	for (i = 0; i < ARRAY_SIZE(open_flags_table); i++) {
 		if( (flags & open_flags_table[i].sp) ) {
 			ret |= open_flags_table[i].ap;
 		}
@@ -222,7 +221,7 @@ void sp_work_handle_request(void)
 		}
 	}
 
-	/* Run the syscall at the priviledge of the user who loaded the
+	/* Run the syscall at the privilege of the user who loaded the
 	   SP program */
 
 	if (vpe_getuid(tclimit))

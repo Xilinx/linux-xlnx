@@ -110,11 +110,20 @@
 
 /* vendor id and device id defines */
 
+/* The native mos7840/7820 component */
 #define USB_VENDOR_ID_MOSCHIP           0x9710
 #define MOSCHIP_DEVICE_ID_7840          0x7840
 #define MOSCHIP_DEVICE_ID_7820          0x7820
+/* The native component can have its vendor/device id's overridden
+ * in vendor-specific implementations.  Such devices can be handled
+ * by making a change here, in moschip_port_id_table, and in
+ * moschip_id_table_combined
+ */
+#define USB_VENDOR_ID_BANDB             0x0856
+#define BANDB_DEVICE_ID_USOPTL4_4       0xAC44
+#define BANDB_DEVICE_ID_USOPTL4_2       0xAC42
 
-/* Interrupt Rotinue Defines    */
+/* Interrupt Routine Defines    */
 
 #define SERIAL_IIR_RLS      0x06
 #define SERIAL_IIR_MS       0x00
@@ -159,12 +168,16 @@
 static struct usb_device_id moschip_port_id_table[] = {
 	{USB_DEVICE(USB_VENDOR_ID_MOSCHIP, MOSCHIP_DEVICE_ID_7840)},
 	{USB_DEVICE(USB_VENDOR_ID_MOSCHIP, MOSCHIP_DEVICE_ID_7820)},
+	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_4)},
+	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_2)},
 	{}			/* terminating entry */
 };
 
 static __devinitdata struct usb_device_id moschip_id_table_combined[] = {
 	{USB_DEVICE(USB_VENDOR_ID_MOSCHIP, MOSCHIP_DEVICE_ID_7840)},
 	{USB_DEVICE(USB_VENDOR_ID_MOSCHIP, MOSCHIP_DEVICE_ID_7820)},
+	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_4)},
+	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_2)},
 	{}			/* terminating entry */
 };
 
@@ -1133,7 +1146,7 @@ static int mos7840_chars_in_buffer(struct usb_serial_port *port)
  *	This function will block the close until one of the following:
  *		1. TX count are 0
  *		2. The mos7840 has stopped
- *		3. A timout of 3 seconds without activity has expired
+ *		3. A timeout of 3 seconds without activity has expired
  *
  ************************************************************************/
 static void mos7840_block_until_tx_empty(struct moschip_port *mos7840_port)
@@ -1161,7 +1174,7 @@ static void mos7840_block_until_tx_empty(struct moschip_port *mos7840_port)
 			dbg("%s - TIMEOUT", __FUNCTION__);
 			return;
 		} else {
-			/* Reset timout value back to seconds */
+			/* Reset timeout value back to seconds */
 			wait = 30;
 		}
 	}
@@ -1275,7 +1288,7 @@ static void mos7840_close(struct usb_serial_port *port, struct file *filp)
  *
  *	This function will block the close until one of the following:
  *		1. Response to our Chase comes from mos7840
- *		2. A timout of 10 seconds without activity has expired
+ *		2. A timeout of 10 seconds without activity has expired
  *		   (1K of mos7840 data @ 2400 baud ==> 4 sec to empty)
  *
  ************************************************************************/
@@ -1304,7 +1317,7 @@ static void mos7840_block_until_chase_response(struct moschip_port
 			dbg("%s - TIMEOUT", __FUNCTION__);
 			return;
 		} else {
-			/* Reset timout value back to seconds */
+			/* Reset timeout value back to seconds */
 			wait = 10;
 		}
 	}

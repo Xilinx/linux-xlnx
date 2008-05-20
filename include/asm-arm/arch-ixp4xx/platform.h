@@ -76,17 +76,6 @@ extern unsigned long ixp4xx_exp_bus_size;
 #define IXP4XX_UART_XTAL        	14745600
 
 /*
- * The IXP4xx chips do not have an I2C unit, so GPIO lines are just
- * used to 
- * Used as platform_data to provide GPIO pin information to the ixp42x
- * I2C driver.
- */
-struct ixp4xx_i2c_pins {
-	unsigned long sda_pin;
-	unsigned long scl_pin;
-};
-
-/*
  * This structure provide a means for the board setup code
  * to give information to th pata_ixp4xx driver. It is
  * passed as platform_data.
@@ -101,6 +90,27 @@ struct ixp4xx_pata_data {
 };
 
 struct sys_timer;
+
+#define IXP4XX_ETH_NPEA		0x00
+#define IXP4XX_ETH_NPEB		0x10
+#define IXP4XX_ETH_NPEC		0x20
+
+/* Information about built-in Ethernet MAC interfaces */
+struct eth_plat_info {
+	u8 phy;		/* MII PHY ID, 0 - 31 */
+	u8 rxq;		/* configurable, currently 0 - 31 only */
+	u8 txreadyq;
+	u8 hwaddr[6];
+};
+
+/* Information about built-in HSS (synchronous serial) interfaces */
+struct hss_plat_info {
+	int (*set_clock)(int port, unsigned int clock_type);
+	int (*open)(int port, void *pdev,
+		    void (*set_carrier_cb)(void *pdev, int carrier));
+	void (*close)(int port, void *pdev);
+	u8 txreadyq;
+};
 
 /*
  * Frequency of clock used for primary clocksource

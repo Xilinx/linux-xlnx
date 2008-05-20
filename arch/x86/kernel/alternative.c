@@ -65,7 +65,8 @@ __setup("noreplace-paravirt", setup_noreplace_paravirt);
    get them easily into strings. */
 asm("\t.section .rodata, \"a\"\nintelnops: "
 	GENERIC_NOP1 GENERIC_NOP2 GENERIC_NOP3 GENERIC_NOP4 GENERIC_NOP5 GENERIC_NOP6
-	GENERIC_NOP7 GENERIC_NOP8);
+	GENERIC_NOP7 GENERIC_NOP8
+    "\t.previous");
 extern const unsigned char intelnops[];
 static const unsigned char *const intel_nops[ASM_NOP_MAX+1] = {
 	NULL,
@@ -83,7 +84,8 @@ static const unsigned char *const intel_nops[ASM_NOP_MAX+1] = {
 #ifdef K8_NOP1
 asm("\t.section .rodata, \"a\"\nk8nops: "
 	K8_NOP1 K8_NOP2 K8_NOP3 K8_NOP4 K8_NOP5 K8_NOP6
-	K8_NOP7 K8_NOP8);
+	K8_NOP7 K8_NOP8
+    "\t.previous");
 extern const unsigned char k8nops[];
 static const unsigned char *const k8_nops[ASM_NOP_MAX+1] = {
 	NULL,
@@ -101,7 +103,8 @@ static const unsigned char *const k8_nops[ASM_NOP_MAX+1] = {
 #ifdef K7_NOP1
 asm("\t.section .rodata, \"a\"\nk7nops: "
 	K7_NOP1 K7_NOP2 K7_NOP3 K7_NOP4 K7_NOP5 K7_NOP6
-	K7_NOP7 K7_NOP8);
+	K7_NOP7 K7_NOP8
+    "\t.previous");
 extern const unsigned char k7nops[];
 static const unsigned char *const k7_nops[ASM_NOP_MAX+1] = {
 	NULL,
@@ -119,7 +122,8 @@ static const unsigned char *const k7_nops[ASM_NOP_MAX+1] = {
 #ifdef P6_NOP1
 asm("\t.section .rodata, \"a\"\np6nops: "
 	P6_NOP1 P6_NOP2 P6_NOP3 P6_NOP4 P6_NOP5 P6_NOP6
-	P6_NOP7 P6_NOP8);
+	P6_NOP7 P6_NOP8
+    "\t.previous");
 extern const unsigned char p6nops[];
 static const unsigned char *const p6_nops[ASM_NOP_MAX+1] = {
 	NULL,
@@ -273,6 +277,7 @@ struct smp_alt_module {
 };
 static LIST_HEAD(smp_alt_modules);
 static DEFINE_SPINLOCK(smp_alt);
+static int smp_mode = 1;	/* protected by smp_alt */
 
 void alternatives_smp_module_add(struct module *mod, char *name,
 				 void *locks, void *locks_end,
@@ -341,12 +346,13 @@ void alternatives_smp_switch(int smp)
 
 #ifdef CONFIG_LOCKDEP
 	/*
-	 * A not yet fixed binutils section handling bug prevents
-	 * alternatives-replacement from working reliably, so turn
-	 * it off:
+	 * Older binutils section handling bug prevented
+	 * alternatives-replacement from working reliably.
+	 *
+	 * If this still occurs then you should see a hang
+	 * or crash shortly after this line:
 	 */
-	printk("lockdep: not fixing up alternatives.\n");
-	return;
+	printk("lockdep: fixing up alternatives.\n");
 #endif
 
 	if (noreplace_smp || smp_alt_once)
@@ -354,21 +360,29 @@ void alternatives_smp_switch(int smp)
 	BUG_ON(!smp && (num_online_cpus() > 1));
 
 	spin_lock_irqsave(&smp_alt, flags);
-	if (smp) {
+
+	/*
+	 * Avoid unnecessary switches because it forces JIT based VMs to
+	 * throw away all cached translations, which can be quite costly.
+	 */
+	if (smp == smp_mode) {
+		/* nothing */
+	} else if (smp) {
 		printk(KERN_INFO "SMP alternatives: switching to SMP code\n");
-		clear_bit(X86_FEATURE_UP, boot_cpu_data.x86_capability);
-		clear_bit(X86_FEATURE_UP, cpu_data(0).x86_capability);
+		clear_cpu_cap(&boot_cpu_data, X86_FEATURE_UP);
+		clear_cpu_cap(&cpu_data(0), X86_FEATURE_UP);
 		list_for_each_entry(mod, &smp_alt_modules, next)
 			alternatives_smp_lock(mod->locks, mod->locks_end,
 					      mod->text, mod->text_end);
 	} else {
 		printk(KERN_INFO "SMP alternatives: switching to UP code\n");
-		set_bit(X86_FEATURE_UP, boot_cpu_data.x86_capability);
-		set_bit(X86_FEATURE_UP, cpu_data(0).x86_capability);
+		set_cpu_cap(&boot_cpu_data, X86_FEATURE_UP);
+		set_cpu_cap(&cpu_data(0), X86_FEATURE_UP);
 		list_for_each_entry(mod, &smp_alt_modules, next)
 			alternatives_smp_unlock(mod->locks, mod->locks_end,
 						mod->text, mod->text_end);
 	}
+	smp_mode = smp;
 	spin_unlock_irqrestore(&smp_alt, flags);
 }
 
@@ -431,8 +445,9 @@ void __init alternative_instructions(void)
 	if (smp_alt_once) {
 		if (1 == num_possible_cpus()) {
 			printk(KERN_INFO "SMP alternatives: switching to UP code\n");
-			set_bit(X86_FEATURE_UP, boot_cpu_data.x86_capability);
-			set_bit(X86_FEATURE_UP, cpu_data(0).x86_capability);
+			set_cpu_cap(&boot_cpu_data, X86_FEATURE_UP);
+			set_cpu_cap(&cpu_data(0), X86_FEATURE_UP);
+
 			alternatives_smp_unlock(__smp_locks, __smp_locks_end,
 						_text, _etext);
 		}
@@ -440,7 +455,10 @@ void __init alternative_instructions(void)
 		alternatives_smp_module_add(NULL, "core kernel",
 					    __smp_locks, __smp_locks_end,
 					    _text, _etext);
-		alternatives_smp_switch(0);
+
+		/* Only switch to UP mode if we don't immediately boot others */
+		if (num_possible_cpus() == 1 || setup_max_cpus <= 1)
+			alternatives_smp_switch(0);
 	}
 #endif
  	apply_paravirt(__parainstructions, __parainstructions_end);

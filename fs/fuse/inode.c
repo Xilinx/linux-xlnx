@@ -29,6 +29,8 @@ DEFINE_MUTEX(fuse_mutex);
 
 #define FUSE_SUPER_MAGIC 0x65735546
 
+#define FUSE_DEFAULT_BLKSIZE 512
+
 struct fuse_mount_data {
 	int fd;
 	unsigned rootmode;
@@ -74,11 +76,6 @@ static void fuse_destroy_inode(struct inode *inode)
 	if (fi->forget_req)
 		fuse_request_free(fi->forget_req);
 	kmem_cache_free(fuse_inode_cachep, inode);
-}
-
-static void fuse_read_inode(struct inode *inode)
-{
-	/* No op */
 }
 
 void fuse_send_forget(struct fuse_conn *fc, struct fuse_req *req,
@@ -360,7 +357,7 @@ static int parse_fuse_opt(char *opt, struct fuse_mount_data *d, int is_bdev)
 	char *p;
 	memset(d, 0, sizeof(struct fuse_mount_data));
 	d->max_read = ~0;
-	d->blksize = 512;
+	d->blksize = FUSE_DEFAULT_BLKSIZE;
 
 	while ((p = strsep(&opt, ",")) != NULL) {
 		int token;
@@ -445,6 +442,9 @@ static int fuse_show_options(struct seq_file *m, struct vfsmount *mnt)
 		seq_puts(m, ",allow_other");
 	if (fc->max_read != ~0)
 		seq_printf(m, ",max_read=%u", fc->max_read);
+	if (mnt->mnt_sb->s_bdev &&
+	    mnt->mnt_sb->s_blocksize != FUSE_DEFAULT_BLKSIZE)
+		seq_printf(m, ",blksize=%lu", mnt->mnt_sb->s_blocksize);
 	return 0;
 }
 
@@ -465,6 +465,7 @@ static struct fuse_conn *new_conn(void)
 		INIT_LIST_HEAD(&fc->processing);
 		INIT_LIST_HEAD(&fc->io);
 		INIT_LIST_HEAD(&fc->interrupts);
+		INIT_LIST_HEAD(&fc->bg_queue);
 		atomic_set(&fc->num_waiting, 0);
 		fc->bdi.ra_pages = (VM_MAX_READAHEAD * 1024) / PAGE_CACHE_SIZE;
 		fc->bdi.unplug_io_fn = default_unplug_io_fn;
@@ -514,7 +515,6 @@ static struct inode *get_root_inode(struct super_block *sb, unsigned mode)
 static const struct super_operations fuse_super_operations = {
 	.alloc_inode    = fuse_alloc_inode,
 	.destroy_inode  = fuse_destroy_inode,
-	.read_inode	= fuse_read_inode,
 	.clear_inode	= fuse_clear_inode,
 	.drop_inode	= generic_delete_inode,
 	.remount_fs	= fuse_remount_fs,
@@ -744,9 +744,6 @@ static inline void unregister_fuseblk(void)
 }
 #endif
 
-static decl_subsys(fuse, NULL, NULL);
-static decl_subsys(connections, NULL, NULL);
-
 static void fuse_inode_init_once(struct kmem_cache *cachep, void *foo)
 {
 	struct inode * inode = foo;
@@ -791,32 +788,37 @@ static void fuse_fs_cleanup(void)
 	kmem_cache_destroy(fuse_inode_cachep);
 }
 
+static struct kobject *fuse_kobj;
+static struct kobject *connections_kobj;
+
 static int fuse_sysfs_init(void)
 {
 	int err;
 
-	kobj_set_kset_s(&fuse_subsys, fs_subsys);
-	err = subsystem_register(&fuse_subsys);
-	if (err)
+	fuse_kobj = kobject_create_and_add("fuse", fs_kobj);
+	if (!fuse_kobj) {
+		err = -ENOMEM;
 		goto out_err;
+	}
 
-	kobj_set_kset_s(&connections_subsys, fuse_subsys);
-	err = subsystem_register(&connections_subsys);
-	if (err)
+	connections_kobj = kobject_create_and_add("connections", fuse_kobj);
+	if (!connections_kobj) {
+		err = -ENOMEM;
 		goto out_fuse_unregister;
+	}
 
 	return 0;
 
  out_fuse_unregister:
-	subsystem_unregister(&fuse_subsys);
+	kobject_put(fuse_kobj);
  out_err:
 	return err;
 }
 
 static void fuse_sysfs_cleanup(void)
 {
-	subsystem_unregister(&connections_subsys);
-	subsystem_unregister(&fuse_subsys);
+	kobject_put(connections_kobj);
+	kobject_put(fuse_kobj);
 }
 
 static int __init fuse_init(void)

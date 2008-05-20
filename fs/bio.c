@@ -248,11 +248,13 @@ inline int bio_hw_segments(struct request_queue *q, struct bio *bio)
  */
 void __bio_clone(struct bio *bio, struct bio *bio_src)
 {
-	struct request_queue *q = bdev_get_queue(bio_src->bi_bdev);
-
 	memcpy(bio->bi_io_vec, bio_src->bi_io_vec,
 		bio_src->bi_max_vecs * sizeof(struct bio_vec));
 
+	/*
+	 * most users will be overriding ->bi_bdev with a new target,
+	 * so we don't set nor calculate new physical/hw segment counts here
+	 */
 	bio->bi_sector = bio_src->bi_sector;
 	bio->bi_bdev = bio_src->bi_bdev;
 	bio->bi_flags |= 1 << BIO_CLONED;
@@ -260,8 +262,6 @@ void __bio_clone(struct bio *bio, struct bio *bio_src)
 	bio->bi_vcnt = bio_src->bi_vcnt;
 	bio->bi_size = bio_src->bi_size;
 	bio->bi_idx = bio_src->bi_idx;
-	bio_phys_segments(q, bio);
-	bio_hw_segments(q, bio);
 }
 
 /**
@@ -903,7 +903,7 @@ void bio_set_pages_dirty(struct bio *bio)
 	}
 }
 
-void bio_release_pages(struct bio *bio)
+static void bio_release_pages(struct bio *bio)
 {
 	struct bio_vec *bvec = bio->bi_io_vec;
 	int i;
@@ -1194,6 +1194,8 @@ EXPORT_SYMBOL(bio_hw_segments);
 EXPORT_SYMBOL(bio_add_page);
 EXPORT_SYMBOL(bio_add_pc_page);
 EXPORT_SYMBOL(bio_get_nr_vecs);
+EXPORT_SYMBOL(bio_map_user);
+EXPORT_SYMBOL(bio_unmap_user);
 EXPORT_SYMBOL(bio_map_kern);
 EXPORT_SYMBOL(bio_pair_release);
 EXPORT_SYMBOL(bio_split);

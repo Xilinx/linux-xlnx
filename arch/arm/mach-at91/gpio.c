@@ -13,6 +13,8 @@
 #include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -31,12 +33,10 @@ static int gpio_banks;
 
 static inline void __iomem *pin_to_controller(unsigned pin)
 {
-	void __iomem *sys_base = (void __iomem *) AT91_VA_BASE_SYS;
-
 	pin -= PIN_BASE;
 	pin /= 32;
 	if (likely(pin < gpio_banks))
-		return sys_base + gpio[pin].offset;
+		return gpio[pin].regbase;
 
 	return NULL;
 }
@@ -292,11 +292,11 @@ void at91_gpio_suspend(void)
 	int i;
 
 	for (i = 0; i < gpio_banks; i++) {
-		u32 pio = gpio[i].offset;
+		void __iomem	*pio = gpio[i].regbase;
 
-		backups[i] = at91_sys_read(pio + PIO_IMR);
-		at91_sys_write(pio + PIO_IDR, backups[i]);
-		at91_sys_write(pio + PIO_IER, wakeups[i]);
+		backups[i] = __raw_readl(pio + PIO_IMR);
+		__raw_writel(backups[i], pio + PIO_IDR);
+		__raw_writel(wakeups[i], pio + PIO_IER);
 
 		if (!wakeups[i])
 			clk_disable(gpio[i].clock);
@@ -313,13 +313,13 @@ void at91_gpio_resume(void)
 	int i;
 
 	for (i = 0; i < gpio_banks; i++) {
-		u32 pio = gpio[i].offset;
+		void __iomem	*pio = gpio[i].regbase;
 
 		if (!wakeups[i])
 			clk_enable(gpio[i].clock);
 
-		at91_sys_write(pio + PIO_IDR, wakeups[i]);
-		at91_sys_write(pio + PIO_IER, backups[i]);
+		__raw_writel(wakeups[i], pio + PIO_IDR);
+		__raw_writel(backups[i], pio + PIO_IER);
 	}
 }
 
@@ -359,7 +359,13 @@ static void gpio_irq_unmask(unsigned pin)
 
 static int gpio_irq_type(unsigned pin, unsigned type)
 {
-	return (type == IRQT_BOTHEDGE) ? 0 : -EINVAL;
+	switch (type) {
+	case IRQ_TYPE_NONE:
+	case IRQ_TYPE_EDGE_BOTH:
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 static struct irq_chip gpio_irqchip = {
@@ -374,20 +380,30 @@ static void gpio_irq_handler(unsigned irq, struct irq_desc *desc)
 {
 	unsigned	pin;
 	struct irq_desc	*gpio;
+	struct at91_gpio_bank *bank;
 	void __iomem	*pio;
 	u32		isr;
 
-	pio = get_irq_chip_data(irq);
+	bank = get_irq_chip_data(irq);
+	pio = bank->regbase;
 
 	/* temporarily mask (level sensitive) parent IRQ */
 	desc->chip->ack(irq);
 	for (;;) {
-		/* reading ISR acks the pending (edge triggered) GPIO interrupt */
+		/* Reading ISR acks pending (edge triggered) GPIO interrupts.
+		 * When there none are pending, we're finished unless we need
+		 * to process multiple banks (like ID_PIOCDE on sam9263).
+		 */
 		isr = __raw_readl(pio + PIO_ISR) & __raw_readl(pio + PIO_IMR);
-		if (!isr)
-			break;
+		if (!isr) {
+			if (!bank->next)
+				break;
+			bank = bank->next;
+			pio = bank->regbase;
+			continue;
+		}
 
-		pin = (unsigned) get_irq_data(irq);
+		pin = bank->chipbase;
 		gpio = &irq_desc[pin];
 
 		while (isr) {
@@ -414,29 +430,93 @@ static void gpio_irq_handler(unsigned irq, struct irq_desc *desc)
 
 /*--------------------------------------------------------------------------*/
 
+#ifdef CONFIG_DEBUG_FS
+
+static int at91_gpio_show(struct seq_file *s, void *unused)
+{
+	int bank, j;
+
+	/* print heading */
+	seq_printf(s, "Pin\t");
+	for (bank = 0; bank < gpio_banks; bank++) {
+		seq_printf(s, "PIO%c\t", 'A' + bank);
+	};
+	seq_printf(s, "\n\n");
+
+	/* print pin status */
+	for (j = 0; j < 32; j++) {
+		seq_printf(s, "%i:\t", j);
+
+		for (bank = 0; bank < gpio_banks; bank++) {
+			unsigned	pin  = PIN_BASE + (32 * bank) + j;
+			void __iomem	*pio = pin_to_controller(pin);
+			unsigned	mask = pin_to_mask(pin);
+
+			if (__raw_readl(pio + PIO_PSR) & mask)
+				seq_printf(s, "GPIO:%s", __raw_readl(pio + PIO_PDSR) & mask ? "1" : "0");
+			else
+				seq_printf(s, "%s", __raw_readl(pio + PIO_ABSR) & mask ? "B" : "A");
+
+			seq_printf(s, "\t");
+		}
+
+		seq_printf(s, "\n");
+	}
+
+	return 0;
+}
+
+static int at91_gpio_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, at91_gpio_show, NULL);
+}
+
+static const struct file_operations at91_gpio_operations = {
+	.open		= at91_gpio_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int __init at91_gpio_debugfs_init(void)
+{
+	/* /sys/kernel/debug/at91_gpio */
+	(void) debugfs_create_file("at91_gpio", S_IFREG | S_IRUGO, NULL, NULL, &at91_gpio_operations);
+	return 0;
+}
+postcore_initcall(at91_gpio_debugfs_init);
+
+#endif
+
+/*--------------------------------------------------------------------------*/
+
+/* This lock class tells lockdep that GPIO irqs are in a different
+ * category than their parents, so it won't report false recursion.
+ */
+static struct lock_class_key gpio_lock_class;
+
 /*
  * Called from the processor-specific init to enable GPIO interrupt support.
  */
 void __init at91_gpio_irq_setup(void)
 {
-	unsigned	pioc, pin;
+	unsigned		pioc, pin;
+	struct at91_gpio_bank	*this, *prev;
 
-	for (pioc = 0, pin = PIN_BASE;
-			pioc < gpio_banks;
-			pioc++) {
-		void __iomem	*controller;
-		unsigned	id = gpio[pioc].id;
+	for (pioc = 0, pin = PIN_BASE, this = gpio, prev = NULL;
+			pioc++ < gpio_banks;
+			prev = this, this++) {
+		unsigned	id = this->id;
 		unsigned	i;
 
-		clk_enable(gpio[pioc].clock);	/* enable PIO controller's clock */
+		/* enable PIO controller's clock */
+		clk_enable(this->clock);
 
-		controller = (void __iomem *) AT91_VA_BASE_SYS + gpio[pioc].offset;
-		__raw_writel(~0, controller + PIO_IDR);
+		__raw_writel(~0, this->regbase + PIO_IDR);
 
-		set_irq_data(id, (void *) pin);
-		set_irq_chip_data(id, controller);
+		for (i = 0, pin = this->chipbase; i < 32; i++, pin++) {
+			lockdep_set_class(&irq_desc[pin].lock, &gpio_lock_class);
 
-		for (i = 0; i < 32; i++, pin++) {
 			/*
 			 * Can use the "simple" and not "edge" handler since it's
 			 * shorter, and the AIC handles interrupts sanely.
@@ -446,6 +526,14 @@ void __init at91_gpio_irq_setup(void)
 			set_irq_flags(pin, IRQF_VALID);
 		}
 
+		/* The toplevel handler handles one bank of GPIOs, except
+		 * AT91SAM9263_ID_PIOCDE handles three... PIOC is first in
+		 * the list, so we only set up that handler.
+		 */
+		if (prev && prev->next == this)
+			continue;
+
+		set_irq_chip_data(id, this);
 		set_irq_chained_handler(id, gpio_irq_handler);
 	}
 	pr_info("AT91: %d gpio irqs in %d banks\n", pin - PIN_BASE, gpio_banks);
@@ -456,8 +544,20 @@ void __init at91_gpio_irq_setup(void)
  */
 void __init at91_gpio_init(struct at91_gpio_bank *data, int nr_banks)
 {
+	unsigned		i;
+	struct at91_gpio_bank	*last;
+
 	BUG_ON(nr_banks > MAX_GPIO_BANKS);
 
 	gpio = data;
 	gpio_banks = nr_banks;
+
+	for (i = 0, last = NULL; i < nr_banks; i++, last = data, data++) {
+		data->chipbase = PIN_BASE + i * 32;
+		data->regbase = data->offset + (void __iomem *)AT91_VA_BASE_SYS;
+
+		/* AT91SAM9263_ID_PIOCDE groups PIOC, PIOD, PIOE */
+		if (last && last->id == data->id)
+			last->next = data;
+	}
 }

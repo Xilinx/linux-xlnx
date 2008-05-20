@@ -95,6 +95,9 @@ ENTRY(_ex_workaround_261)
 	R6 = 0x26;	/* Data CPLB Miss */
 	cc = R6 == R7;
 	if cc jump _ex_dcplb_miss (BP);
+	R6 = 0x23;	/* Data CPLB Miss */
+	cc = R6 == R7;
+	if cc jump _ex_dcplb_viol (BP);
 	/* Handle 0x23 Data CPLB Protection Violation
 	 * and Data CPLB Multiple Hits - Linux Trap Zero
 	 */
@@ -102,25 +105,41 @@ ENTRY(_ex_workaround_261)
 ENDPROC(_ex_workaround_261)
 
 #else
+#ifdef CONFIG_MPU
+#define _ex_dviol _ex_dcplb_viol
+#else
 #define _ex_dviol _ex_trap_c
+#endif
 #define _ex_dmiss _ex_dcplb_miss
 #define _ex_dmult _ex_trap_c
 #endif
 
+
+ENTRY(_ex_dcplb_viol)
 ENTRY(_ex_dcplb_miss)
 ENTRY(_ex_icplb_miss)
 	(R7:6,P5:4) = [sp++];
 	ASTAT = [sp++];
 	SAVE_ALL_SYS
+	DEBUG_HWTRACE_SAVE(p5, r7)
+#ifdef CONFIG_MPU
+	R0 = SEQSTAT;
+	R1 = SP;
+	sp += -12;
+	call _cplb_hdr;
+	sp += 12;
+	CC = R0 == 0;
+	IF !CC JUMP _handle_bad_cplb;
+#else
 	call __cplb_hdr;
-	DEBUG_START_HWTRACE(p5, r7)
+#endif
+	DEBUG_HWTRACE_RESTORE(p5, r7)
 	RESTORE_ALL_SYS
 	SP = EX_SCRATCH_REG;
 	rtx;
 ENDPROC(_ex_icplb_miss)
 
 ENTRY(_ex_syscall)
-	DEBUG_START_HWTRACE(p5, r7)
 	(R7:6,P5:4) = [sp++];
 	ASTAT = [sp++];
 	raise 15;		/* invoked by TRAP #0, for sys call */
@@ -159,7 +178,6 @@ ENTRY(_ex_single_step)
 ENDPROC(_ex_single_step)
 
 ENTRY(_bfin_return_from_exception)
-	DEBUG_START_HWTRACE(p5, r7)
 #if ANOMALY_05000257
 	R7=LC0;
 	LC0=R7;
@@ -181,10 +199,9 @@ ENTRY(_handle_bad_cplb)
 	 * need to make a CPLB exception look like a normal exception
 	 */
 
-	DEBUG_START_HWTRACE(p5, r7)
 	RESTORE_ALL_SYS
 	[--sp] = ASTAT;
-	[--sp] = (R7:6, P5:4);
+	[--sp] = (R7:6,P5:4);
 
 ENTRY(_ex_replaceable)
 	nop;
@@ -234,7 +251,6 @@ ENTRY(_ex_trap_c)
 	R6 = SEQSTAT;
 	[P5] = R6;
 
-	DEBUG_START_HWTRACE(p5, r7)
 	(R7:6,P5:4) = [sp++];
 	ASTAT = [sp++];
 	SP = EX_SCRATCH_REG;
@@ -329,7 +345,7 @@ ENTRY(_exception_to_level5)
 	R7 = R7 + R6;
 	P5 = R7;
 	R1 = [P5];
-	[SP + 8] = r1;
+	[SP + PT_SEQSTAT] = r1;
 
 	r0 = sp; 	/* stack frame pt_regs pointer argument ==> r0 */
 	SP += -12;
@@ -363,8 +379,7 @@ ENTRY(_trap) /* Exception: 4th entry into system event table(supervisor mode)*/
 	sp.h = _exception_stack_top;
 	/* Try to deal with syscalls quickly.  */
 	[--sp] = ASTAT;
-	[--sp] = (R7:6, P5:4);
-	DEBUG_STOP_HWTRACE(p5, r7)
+	[--sp] = (R7:6,P5:4);
 	r7 = SEQSTAT;		/* reason code is in bit 5:0 */
 	r6.l = lo(SEQSTAT_EXCAUSE);
 	r6.h = hi(SEQSTAT_EXCAUSE);
@@ -633,9 +648,7 @@ ENTRY(_ret_from_exception)
 	[sp + PT_IPEND] = r0;
 
 1:
-	r1 = 0x37(Z);
-	r2 = ~r1;
-	r2.h = 0;
+	r2 = LO(~0x37) (Z);
 	r0 = r2 & r0;
 	cc = r0 == 0;
 	if !cc jump 4f;	/* if not return to user mode, get out */
@@ -1356,7 +1369,7 @@ ENTRY(_sys_call_table)
 	.long _sys_epoll_pwait
 	.long _sys_utimensat
 	.long _sys_signalfd
-	.long _sys_timerfd
+	.long _sys_timerfd_create
 	.long _sys_eventfd	/* 350 */
 	.long _sys_pread64
 	.long _sys_pwrite64
@@ -1364,6 +1377,10 @@ ENTRY(_sys_call_table)
 	.long _sys_set_robust_list
 	.long _sys_get_robust_list	/* 355 */
 	.long _sys_fallocate
+	.long _sys_semtimedop
+	.long _sys_timerfd_settime
+	.long _sys_timerfd_gettime
+
 	.rept NR_syscalls-(.-_sys_call_table)/4
 	.long _sys_ni_syscall
 	.endr

@@ -4941,7 +4941,7 @@ void sig_ind(PLCI   * plci)
       /* b = IE1                */
       /* S = IE1 length + cont. */
       /* b = IE2                */
-      /* S = IE2 lenght + cont. */
+      /* S = IE2 length + cont. */
       sendf(plci->appl,
         _MANUFACTURER_I,
         Id,
@@ -9027,7 +9027,7 @@ static byte AddInfo(byte   **add_i,
    /* facility is a nested structure */
    /* FTY can be more than once      */
 
-  if(esc_chi[0] && !(esc_chi[esc_chi[0]])&0x7f )
+	if (esc_chi[0] && !(esc_chi[esc_chi[0]] & 0x7f))
   {
     add_i[0] = (byte   *)"\x02\x02\x00"; /* use neither b nor d channel */
   }

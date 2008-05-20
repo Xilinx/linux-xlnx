@@ -30,8 +30,8 @@ struct flow_cache_entry {
 	struct flow_cache_entry	*next;
 	u16			family;
 	u8			dir;
-	struct flowi		key;
 	u32			genid;
+	struct flowi		key;
 	void			*object;
 	atomic_t		*object_ref;
 };
@@ -52,7 +52,7 @@ struct flow_percpu_info {
 	int hash_rnd_recalc;
 	u32 hash_rnd;
 	int count;
-} ____cacheline_aligned;
+};
 static DEFINE_PER_CPU(struct flow_percpu_info, flow_hash_info) = { 0 };
 
 #define flow_hash_rnd_recalc(cpu) \
@@ -293,7 +293,7 @@ void flow_cache_flush(void)
 	static DEFINE_MUTEX(flow_flush_sem);
 
 	/* Don't want cpus going down or up during this. */
-	lock_cpu_hotplug();
+	get_online_cpus();
 	mutex_lock(&flow_flush_sem);
 	atomic_set(&info.cpuleft, num_online_cpus());
 	init_completion(&info.completion);
@@ -305,7 +305,7 @@ void flow_cache_flush(void)
 
 	wait_for_completion(&info.completion);
 	mutex_unlock(&flow_flush_sem);
-	unlock_cpu_hotplug();
+	put_online_cpus();
 }
 
 static void __devinit flow_cache_cpu_prepare(int cpu)
@@ -346,14 +346,13 @@ static int __init flow_cache_init(void)
 
 	flow_cachep = kmem_cache_create("flow_cache",
 					sizeof(struct flow_cache_entry),
-					0, SLAB_HWCACHE_ALIGN|SLAB_PANIC,
+					0, SLAB_PANIC,
 					NULL);
 	flow_hash_shift = 10;
 	flow_lwm = 2 * flow_hash_size;
 	flow_hwm = 4 * flow_hash_size;
 
-	init_timer(&flow_hash_rnd_timer);
-	flow_hash_rnd_timer.function = flow_cache_new_hashrnd;
+	setup_timer(&flow_hash_rnd_timer, flow_cache_new_hashrnd, 0);
 	flow_hash_rnd_timer.expires = jiffies + FLOW_HASH_RND_PERIOD;
 	add_timer(&flow_hash_rnd_timer);
 

@@ -589,9 +589,6 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
 	s32 ret_val;
 	u16 nvm_data;
 
-	if (mac->fc != e1000_fc_default)
-		return 0;
-
 	/* Read and store word 0x0F of the EEPROM. This word contains bits
 	 * that determine the hardware's default PAUSE (flow control) mode,
 	 * a bit that determines whether the HW defaults to enabling or
@@ -1107,34 +1104,13 @@ s32 e1000e_config_fc_after_link_up(struct e1000_hw *hw)
 			 (mii_nway_lp_ability_reg & NWAY_LPAR_ASM_DIR)) {
 			mac->fc = e1000_fc_rx_pause;
 			hw_dbg(hw, "Flow Control = RX PAUSE frames only.\r\n");
-		}
-		/* Per the IEEE spec, at this point flow control should be
-		 * disabled.  However, we want to consider that we could
-		 * be connected to a legacy switch that doesn't advertise
-		 * desired flow control, but can be forced on the link
-		 * partner.  So if we advertised no flow control, that is
-		 * what we will resolve to.  If we advertised some kind of
-		 * receive capability (Rx Pause Only or Full Flow Control)
-		 * and the link partner advertised none, we will configure
-		 * ourselves to enable Rx Flow Control only.  We can do
-		 * this safely for two reasons:  If the link partner really
-		 * didn't want flow control enabled, and we enable Rx, no
-		 * harm done since we won't be receiving any PAUSE frames
-		 * anyway.  If the intent on the link partner was to have
-		 * flow control enabled, then by us enabling RX only, we
-		 * can at least receive pause frames and process them.
-		 * This is a good idea because in most cases, since we are
-		 * predominantly a server NIC, more times than not we will
-		 * be asked to delay transmission of packets than asking
-		 * our link partner to pause transmission of frames.
-		 */
-		else if ((mac->original_fc == e1000_fc_none) ||
-			 (mac->original_fc == e1000_fc_tx_pause)) {
+		} else {
+			/*
+			 * Per the IEEE spec, at this point flow control
+			 * should be disabled.
+			 */
 			mac->fc = e1000_fc_none;
 			hw_dbg(hw, "Flow Control = NONE.\r\n");
-		} else {
-			mac->fc = e1000_fc_rx_pause;
-			hw_dbg(hw, "Flow Control = RX PAUSE frames only.\r\n");
 		}
 
 		/* Now we need to do one last check...  If we auto-
@@ -1164,7 +1140,7 @@ s32 e1000e_config_fc_after_link_up(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_get_speed_and_duplex_copper - Retreive current speed/duplex
+ *  e1000e_get_speed_and_duplex_copper - Retrieve current speed/duplex
  *  @hw: pointer to the HW structure
  *  @speed: stores the current speed
  *  @duplex: stores the current duplex
@@ -1200,7 +1176,7 @@ s32 e1000e_get_speed_and_duplex_copper(struct e1000_hw *hw, u16 *speed, u16 *dup
 }
 
 /**
- *  e1000e_get_speed_and_duplex_fiber_serdes - Retreive current speed/duplex
+ *  e1000e_get_speed_and_duplex_fiber_serdes - Retrieve current speed/duplex
  *  @hw: pointer to the HW structure
  *  @speed: stores the current speed
  *  @duplex: stores the current duplex
@@ -1410,7 +1386,7 @@ s32 e1000e_cleanup_led_generic(struct e1000_hw *hw)
  *  e1000e_blink_led - Blink LED
  *  @hw: pointer to the HW structure
  *
- *  Blink the led's which are set to be on.
+ *  Blink the LEDs which are set to be on.
  **/
 s32 e1000e_blink_led(struct e1000_hw *hw)
 {
@@ -1515,7 +1491,7 @@ void e1000e_set_pcie_no_snoop(struct e1000_hw *hw, u32 no_snoop)
  *  @hw: pointer to the HW structure
  *
  *  Returns 0 if successful, else returns -10
- *  (-E1000_ERR_MASTER_REQUESTS_PENDING) if master disable bit has not casued
+ *  (-E1000_ERR_MASTER_REQUESTS_PENDING) if master disable bit has not caused
  *  the master requests to be disabled.
  *
  *  Disables PCI-Express master access and verifies there are no pending
@@ -1876,7 +1852,7 @@ static s32 e1000_ready_nvm_eeprom(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_read_nvm_spi - Read EEPROM's using SPI
+ *  e1000e_read_nvm_spi - Reads EEPROM using SPI
  *  @hw: pointer to the HW structure
  *  @offset: offset of word in the EEPROM to read
  *  @words: number of words to read
@@ -1980,7 +1956,7 @@ s32 e1000e_read_nvm_eerd(struct e1000_hw *hw, u16 offset, u16 words, u16 *data)
  *  Writes data to EEPROM at offset using SPI interface.
  *
  *  If e1000e_update_nvm_checksum is not called after this function , the
- *  EEPROM will most likley contain an invalid checksum.
+ *  EEPROM will most likely contain an invalid checksum.
  **/
 s32 e1000e_write_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data)
 {
@@ -2059,9 +2035,44 @@ s32 e1000e_read_mac_addr(struct e1000_hw *hw)
 {
 	s32 ret_val;
 	u16 offset, nvm_data, i;
+	u16 mac_addr_offset = 0;
+
+	if (hw->mac.type == e1000_82571) {
+		/* Check for an alternate MAC address.  An alternate MAC
+		 * address can be setup by pre-boot software and must be
+		 * treated like a permanent address and must override the
+		 * actual permanent MAC address. */
+		ret_val = e1000_read_nvm(hw, NVM_ALT_MAC_ADDR_PTR, 1,
+						&mac_addr_offset);
+		if (ret_val) {
+			hw_dbg(hw, "NVM Read Error\n");
+			return ret_val;
+		}
+		if (mac_addr_offset == 0xFFFF)
+			mac_addr_offset = 0;
+
+		if (mac_addr_offset) {
+			if (hw->bus.func == E1000_FUNC_1)
+				mac_addr_offset += ETH_ALEN/sizeof(u16);
+
+			/* make sure we have a valid mac address here
+			 * before using it */
+			ret_val = e1000_read_nvm(hw, mac_addr_offset, 1,
+						 &nvm_data);
+			if (ret_val) {
+				hw_dbg(hw, "NVM Read Error\n");
+				return ret_val;
+			}
+			if (nvm_data & 0x0001)
+				mac_addr_offset = 0;
+		}
+
+		if (mac_addr_offset)
+			hw->dev_spec.e82571.alt_mac_addr_is_present = 1;
+	}
 
 	for (i = 0; i < ETH_ALEN; i += 2) {
-		offset = i >> 1;
+		offset = mac_addr_offset + (i >> 1);
 		ret_val = e1000_read_nvm(hw, offset, 1, &nvm_data);
 		if (ret_val) {
 			hw_dbg(hw, "NVM Read Error\n");
@@ -2072,7 +2083,7 @@ s32 e1000e_read_mac_addr(struct e1000_hw *hw)
 	}
 
 	/* Flip last bit of mac address if we're on second port */
-	if (hw->bus.func == E1000_FUNC_1)
+	if (!mac_addr_offset && hw->bus.func == E1000_FUNC_1)
 		hw->mac.perm_addr[5] ^= 1;
 
 	for (i = 0; i < ETH_ALEN; i++)
@@ -2187,7 +2198,7 @@ static u8 e1000_calculate_checksum(u8 *buffer, u32 length)
  *
  *  Returns E1000_success upon success, else E1000_ERR_HOST_INTERFACE_COMMAND
  *
- *  This function checks whether the HOST IF is enabled for command operaton
+ *  This function checks whether the HOST IF is enabled for command operation
  *  and also checks whether the previous command is completed.  It busy waits
  *  in case of previous command is not completed.
  **/
@@ -2219,7 +2230,7 @@ static s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_check_mng_mode - check managament mode
+ *  e1000e_check_mng_mode - check management mode
  *  @hw: pointer to the HW structure
  *
  *  Reads the firmware semaphore register and returns true (>0) if

@@ -217,17 +217,17 @@ unsigned long long xen_sched_clock(void)
 /* Get the CPU speed from Xen */
 unsigned long xen_cpu_khz(void)
 {
-	u64 cpu_khz = 1000000ULL << 32;
+	u64 xen_khz = 1000000ULL << 32;
 	const struct vcpu_time_info *info =
 		&HYPERVISOR_shared_info->vcpu_info[0].time;
 
-	do_div(cpu_khz, info->tsc_to_system_mul);
+	do_div(xen_khz, info->tsc_to_system_mul);
 	if (info->tsc_shift < 0)
-		cpu_khz <<= -info->tsc_shift;
+		xen_khz <<= -info->tsc_shift;
 	else
-		cpu_khz >>= info->tsc_shift;
+		xen_khz >>= info->tsc_shift;
 
-	return cpu_khz;
+	return xen_khz;
 }
 
 /*
@@ -592,7 +592,7 @@ __init void xen_time_init(void)
 	set_normalized_timespec(&wall_to_monotonic,
 				-xtime.tv_sec, -xtime.tv_nsec);
 
-	tsc_disable = 0;
+	setup_force_cpu_cap(X86_FEATURE_TSC);
 
 	xen_setup_timer(cpu);
 	xen_setup_cpu_clockevents();

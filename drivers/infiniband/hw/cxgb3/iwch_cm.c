@@ -35,6 +35,7 @@
 #include <linux/skbuff.h>
 #include <linux/timer.h>
 #include <linux/notifier.h>
+#include <linux/inetdevice.h>
 
 #include <net/neighbour.h>
 #include <net/netevent.h>
@@ -332,7 +333,7 @@ static struct rtable *find_route(struct t3cdev *dev, __be32 local_ip,
 			  }
 	};
 
-	if (ip_route_output_flow(&rt, &fl, NULL, 0))
+	if (ip_route_output_flow(&init_net, &rt, &fl, NULL, 0))
 		return NULL;
 	return rt;
 }
@@ -1118,7 +1119,7 @@ static int act_open_rpl(struct t3cdev *tdev, struct sk_buff *skb, void *ctx)
 	     status2errno(rpl->status));
 	connect_reply_upcall(ep, status2errno(rpl->status));
 	state_set(&ep->com, DEAD);
-	if (ep->com.tdev->type == T3B && act_open_has_tid(rpl->status))
+	if (ep->com.tdev->type != T3A && act_open_has_tid(rpl->status))
 		release_tid(ep->com.tdev, GET_TID(rpl), NULL);
 	cxgb3_free_atid(ep->com.tdev, ep->atid);
 	dst_release(ep->dst);
@@ -1249,7 +1250,7 @@ static void reject_cr(struct t3cdev *tdev, u32 hwtid, __be32 peer_ip,
 	skb_trim(skb, sizeof(struct cpl_tid_release));
 	skb_get(skb);
 
-	if (tdev->type == T3B)
+	if (tdev->type != T3A)
 		release_tid(tdev, hwtid, skb);
 	else {
 		struct cpl_pass_accept_rpl *rpl;
@@ -1744,7 +1745,7 @@ int iwch_accept_cr(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 
 	/* bind QP to EP and move to RTS */
 	attrs.mpa_attr = ep->mpa_attr;
-	attrs.max_ird = ep->ord;
+	attrs.max_ird = ep->ird;
 	attrs.max_ord = ep->ord;
 	attrs.llp_stream_handle = ep;
 	attrs.next_state = IWCH_QP_STATE_RTS;
@@ -1784,12 +1785,28 @@ err:
 	return err;
 }
 
+static int is_loopback_dst(struct iw_cm_id *cm_id)
+{
+	struct net_device *dev;
+
+	dev = ip_dev_find(&init_net, cm_id->remote_addr.sin_addr.s_addr);
+	if (!dev)
+		return 0;
+	dev_put(dev);
+	return 1;
+}
+
 int iwch_connect(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 {
 	int err = 0;
 	struct iwch_dev *h = to_iwch_dev(cm_id->device);
 	struct iwch_ep *ep;
 	struct rtable *rt;
+
+	if (is_loopback_dst(cm_id)) {
+		err = -ENOSYS;
+		goto out;
+	}
 
 	ep = alloc_ep(sizeof(*ep), GFP_KERNEL);
 	if (!ep) {

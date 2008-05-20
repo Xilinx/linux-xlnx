@@ -76,9 +76,11 @@ static int __init ircomm_init(void)
 
 #ifdef CONFIG_PROC_FS
 	{ struct proc_dir_entry *ent;
-	ent = create_proc_entry("ircomm", 0, proc_irda);
-	if (ent)
-		ent->proc_fops = &ircomm_proc_fops;
+	ent = proc_create("ircomm", 0, proc_irda, &ircomm_proc_fops);
+	if (!ent) {
+		printk(KERN_ERR "ircomm_init: can't create /proc entry!\n");
+		return -ENODEV;
+	}
 	}
 #endif /* CONFIG_PROC_FS */
 
@@ -361,6 +363,18 @@ void ircomm_process_data(struct ircomm_cb *self, struct sk_buff *skb)
 	IRDA_ASSERT(skb->len > 0, return;);
 
 	clen = skb->data[0];
+
+	/*
+	 * Input validation check: a stir4200/mcp2150 combinations sometimes
+	 * results in frames with clen > remaining packet size. These are
+	 * illegal; if we throw away just this frame then it seems to carry on
+	 * fine
+	 */
+	if (unlikely(skb->len < (clen + 1))) {
+		IRDA_DEBUG(2, "%s() throwing away illegal frame\n",
+			   __FUNCTION__ );
+		return;
+	}
 
 	/*
 	 * If there are any data hiding in the control channel, we must

@@ -1,21 +1,21 @@
-/* SCTP kernel reference Implementation
+/* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2001, 2004
  * Copyright (c) 1999-2000 Cisco, Inc.
  * Copyright (c) 1999-2001 Motorola, Inc.
  * Copyright (c) 2002 Intel Corp.
  *
- * This file is part of the SCTP kernel reference Implementation
+ * This file is part of the SCTP kernel implementation
  *
  * This header represents the structures and constants needed to support
  * the SCTP Extension to the Sockets API.
  *
- * The SCTP reference implementation is free software;
+ * This SCTP implementation is free software;
  * you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
- * The SCTP reference implementation is distributed in the hope that it
+ * This SCTP implementation is distributed in the hope that it
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  *                 ************************
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -411,6 +411,7 @@ struct sctp_event_subscribe {
 	__u8 sctp_shutdown_event;
 	__u8 sctp_partial_delivery_event;
 	__u8 sctp_adaptation_layer_event;
+	__u8 sctp_authentication_event;
 };
 
 /*
@@ -587,7 +588,7 @@ struct sctp_authchunk {
  * endpoint requires the peer to use.
 */
 struct sctp_hmacalgo {
-	__u16		shmac_num_idents;
+	__u32		shmac_num_idents;
 	__u16		shmac_idents[];
 };
 
@@ -600,7 +601,7 @@ struct sctp_hmacalgo {
 struct sctp_authkey {
 	sctp_assoc_t	sca_assoc_id;
 	__u16		sca_keynumber;
-	__u16		sca_keylen;
+	__u16		sca_keylength;
 	__u8		sca_key[];
 };
 
@@ -693,8 +694,9 @@ struct sctp_status {
  * the peer requires to be received authenticated only.
  */
 struct sctp_authchunks {
-	sctp_assoc_t            gauth_assoc_id;
-	uint8_t                 gauth_chunks[];
+	sctp_assoc_t	gauth_assoc_id;
+	__u32		gauth_number_of_chunks;
+	uint8_t		gauth_chunks[];
 };
 
 /*

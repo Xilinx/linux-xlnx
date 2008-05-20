@@ -35,6 +35,18 @@ struct fw_attribute_group {
 	struct attribute *attrs[11];
 };
 
+/*
+ * Note, fw_device.generation always has to be read before fw_device.node_id.
+ * Use SMP memory barriers to ensure this.  Otherwise requests will be sent
+ * to an outdated node_id if the generation was updated in the meantime due
+ * to a bus reset.
+ *
+ * Likewise, fw-core will take care to update .node_id before .generation so
+ * that whenever fw_device.generation is current WRT the actual bus generation,
+ * fw_device.node_id is guaranteed to be current too.
+ *
+ * The same applies to fw_device.card->node_id vs. fw_device.generation.
+ */
 struct fw_device {
 	atomic_t state;
 	struct fw_node *node;
@@ -64,14 +76,26 @@ fw_device_is_shutdown(struct fw_device *device)
 	return atomic_read(&device->state) == FW_DEVICE_SHUTDOWN;
 }
 
-struct fw_device *fw_device_get(struct fw_device *device);
-void fw_device_put(struct fw_device *device);
+static inline struct fw_device *
+fw_device_get(struct fw_device *device)
+{
+	get_device(&device->device);
+
+	return device;
+}
+
+static inline void
+fw_device_put(struct fw_device *device)
+{
+	put_device(&device->device);
+}
+
+struct fw_device *fw_device_get_by_devt(dev_t devt);
 int fw_device_enable_phys_dma(struct fw_device *device);
 
 void fw_device_cdev_update(struct fw_device *device);
 void fw_device_cdev_remove(struct fw_device *device);
 
-struct fw_device *fw_device_from_devt(dev_t devt);
 extern int fw_cdev_major;
 
 struct fw_unit {

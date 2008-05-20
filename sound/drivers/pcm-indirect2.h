@@ -112,10 +112,10 @@ struct snd_pcm_indirect2 {
 #endif
 };
 
-typedef size_t(*snd_pcm_indirect2_copy_t) (struct snd_pcm_substream *substream,
+typedef size_t (*snd_pcm_indirect2_copy_t) (struct snd_pcm_substream *substream,
 					   struct snd_pcm_indirect2 *rec,
 					   size_t bytes);
-typedef size_t(*snd_pcm_indirect2_zero_t) (struct snd_pcm_substream *substream,
+typedef size_t (*snd_pcm_indirect2_zero_t) (struct snd_pcm_substream *substream,
 					   struct snd_pcm_indirect2 *rec);
 
 #ifdef SND_PCM_INDIRECT2_STAT

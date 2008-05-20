@@ -1,6 +1,12 @@
 #ifndef __ASM_SH_TLB_H
 #define __ASM_SH_TLB_H
 
+#ifdef CONFIG_SUPERH64
+# include "tlb_64.h"
+#endif
+
+#ifndef __ASSEMBLY__
+
 #define tlb_start_vma(tlb, vma) \
 	flush_cache_range(vma, vma->vm_start, vma->vm_end)
 
@@ -14,5 +20,8 @@
  */
 #define tlb_flush(tlb)				flush_tlb_mm((tlb)->mm)
 
+#include <linux/pagemap.h>
 #include <asm-generic/tlb.h>
-#endif
+
+#endif /* __ASSEMBLY__ */
+#endif /* __ASM_SH_TLB_H */

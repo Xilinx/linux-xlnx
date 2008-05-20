@@ -201,8 +201,8 @@ enum
 
 struct tc_u32_key
 {
-	__u32		mask;
-	__u32		val;
+	__be32		mask;
+	__be32		val;
 	int		off;
 	int		offmask;
 };
@@ -213,12 +213,12 @@ struct tc_u32_sel
 	unsigned char		offshift;
 	unsigned char		nkeys;
 
-	__u16			offmask;
+	__be16			offmask;
 	__u16			off;
 	short			offoff;
 
 	short			hoff;
-	__u32			hmask;
+	__be32			hmask;
 	struct tc_u32_key	keys[0];
 };
 
@@ -328,6 +328,57 @@ enum
 
 #define TCA_TCINDEX_MAX     (__TCA_TCINDEX_MAX - 1)
 
+/* Flow filter */
+
+enum
+{
+	FLOW_KEY_SRC,
+	FLOW_KEY_DST,
+	FLOW_KEY_PROTO,
+	FLOW_KEY_PROTO_SRC,
+	FLOW_KEY_PROTO_DST,
+	FLOW_KEY_IIF,
+	FLOW_KEY_PRIORITY,
+	FLOW_KEY_MARK,
+	FLOW_KEY_NFCT,
+	FLOW_KEY_NFCT_SRC,
+	FLOW_KEY_NFCT_DST,
+	FLOW_KEY_NFCT_PROTO_SRC,
+	FLOW_KEY_NFCT_PROTO_DST,
+	FLOW_KEY_RTCLASSID,
+	FLOW_KEY_SKUID,
+	FLOW_KEY_SKGID,
+	FLOW_KEY_VLAN_TAG,
+	__FLOW_KEY_MAX,
+};
+
+#define FLOW_KEY_MAX	(__FLOW_KEY_MAX - 1)
+
+enum
+{
+	FLOW_MODE_MAP,
+	FLOW_MODE_HASH,
+};
+
+enum
+{
+	TCA_FLOW_UNSPEC,
+	TCA_FLOW_KEYS,
+	TCA_FLOW_MODE,
+	TCA_FLOW_BASECLASS,
+	TCA_FLOW_RSHIFT,
+	TCA_FLOW_ADDEND,
+	TCA_FLOW_MASK,
+	TCA_FLOW_XOR,
+	TCA_FLOW_DIVISOR,
+	TCA_FLOW_ACT,
+	TCA_FLOW_POLICE,
+	TCA_FLOW_EMATCHES,
+	__TCA_FLOW_MAX
+};
+
+#define TCA_FLOW_MAX	(__TCA_FLOW_MAX - 1)
+
 /* Basic filter */
 
 enum
@@ -409,7 +460,8 @@ enum
 #define	TCF_EM_U32		3
 #define	TCF_EM_META		4
 #define	TCF_EM_TEXT		5
-#define	TCF_EM_MAX		5
+#define        TCF_EM_VLAN		6
+#define	TCF_EM_MAX		6
 
 enum
 {

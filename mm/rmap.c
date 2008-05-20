@@ -36,7 +36,6 @@
  *                 mapping->tree_lock (widely used, in set_page_dirty,
  *                           in arch-dependent flush_dcache_mmap_lock,
  *                           within inode_lock in __sync_single_inode)
- *                   zone->lock (within radix tree node alloc)
  */
 
 #include <linux/mm.h>
@@ -49,6 +48,7 @@
 #include <linux/rcupdate.h>
 #include <linux/module.h>
 #include <linux/kallsyms.h>
+#include <linux/memcontrol.h>
 
 #include <asm/tlbflush.h>
 
@@ -284,7 +284,10 @@ static int page_referenced_one(struct page *page,
 	if (!pte)
 		goto out;
 
-	if (ptep_clear_flush_young(vma, address, pte))
+	if (vma->vm_flags & VM_LOCKED) {
+		referenced++;
+		*mapcount = 1;	/* break early from loop */
+	} else if (ptep_clear_flush_young(vma, address, pte))
 		referenced++;
 
 	/* Pretend the page is referenced if the task has the
@@ -299,7 +302,8 @@ out:
 	return referenced;
 }
 
-static int page_referenced_anon(struct page *page)
+static int page_referenced_anon(struct page *page,
+				struct mem_cgroup *mem_cont)
 {
 	unsigned int mapcount;
 	struct anon_vma *anon_vma;
@@ -312,6 +316,13 @@ static int page_referenced_anon(struct page *page)
 
 	mapcount = page_mapcount(page);
 	list_for_each_entry(vma, &anon_vma->head, anon_vma_node) {
+		/*
+		 * If we are reclaiming on behalf of a cgroup, skip
+		 * counting on behalf of references from different
+		 * cgroups
+		 */
+		if (mem_cont && !mm_match_cgroup(vma->vm_mm, mem_cont))
+			continue;
 		referenced += page_referenced_one(page, vma, &mapcount);
 		if (!mapcount)
 			break;
@@ -324,6 +335,7 @@ static int page_referenced_anon(struct page *page)
 /**
  * page_referenced_file - referenced check for object-based rmap
  * @page: the page we're checking references on.
+ * @mem_cont: target memory controller
  *
  * For an object-based mapped page, find all the places it is mapped and
  * check/clear the referenced flag.  This is done by following the page->mapping
@@ -332,7 +344,8 @@ static int page_referenced_anon(struct page *page)
  *
  * This function is only called from page_referenced for object-based pages.
  */
-static int page_referenced_file(struct page *page)
+static int page_referenced_file(struct page *page,
+				struct mem_cgroup *mem_cont)
 {
 	unsigned int mapcount;
 	struct address_space *mapping = page->mapping;
@@ -365,6 +378,13 @@ static int page_referenced_file(struct page *page)
 	mapcount = page_mapcount(page);
 
 	vma_prio_tree_foreach(vma, &iter, &mapping->i_mmap, pgoff, pgoff) {
+		/*
+		 * If we are reclaiming on behalf of a cgroup, skip
+		 * counting on behalf of references from different
+		 * cgroups
+		 */
+		if (mem_cont && !mm_match_cgroup(vma->vm_mm, mem_cont))
+			continue;
 		if ((vma->vm_flags & (VM_LOCKED|VM_MAYSHARE))
 				  == (VM_LOCKED|VM_MAYSHARE)) {
 			referenced++;
@@ -383,11 +403,13 @@ static int page_referenced_file(struct page *page)
  * page_referenced - test if the page was referenced
  * @page: the page to test
  * @is_locked: caller holds lock on the page
+ * @mem_cont: target memory controller
  *
  * Quick test_and_clear_referenced for all mappings to a page,
  * returns the number of ptes which referenced the page.
  */
-int page_referenced(struct page *page, int is_locked)
+int page_referenced(struct page *page, int is_locked,
+			struct mem_cgroup *mem_cont)
 {
 	int referenced = 0;
 
@@ -399,14 +421,15 @@ int page_referenced(struct page *page, int is_locked)
 
 	if (page_mapped(page) && page->mapping) {
 		if (PageAnon(page))
-			referenced += page_referenced_anon(page);
+			referenced += page_referenced_anon(page, mem_cont);
 		else if (is_locked)
-			referenced += page_referenced_file(page);
+			referenced += page_referenced_file(page, mem_cont);
 		else if (TestSetPageLocked(page))
 			referenced++;
 		else {
 			if (page->mapping)
-				referenced += page_referenced_file(page);
+				referenced +=
+					page_referenced_file(page, mem_cont);
 			unlock_page(page);
 		}
 	}
@@ -485,7 +508,7 @@ int page_mkclean(struct page *page)
 EXPORT_SYMBOL_GPL(page_mkclean);
 
 /**
- * page_set_anon_rmap - setup new anonymous rmap
+ * __page_set_anon_rmap - setup new anonymous rmap
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
  * @address:	the user virtual address mapped
@@ -509,7 +532,7 @@ static void __page_set_anon_rmap(struct page *page,
 }
 
 /**
- * page_set_anon_rmap - sanity check anonymous rmap addition
+ * __page_check_anon_rmap - sanity check anonymous rmap addition
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
  * @address:	the user virtual address mapped
@@ -552,11 +575,17 @@ void page_add_anon_rmap(struct page *page,
 	VM_BUG_ON(address < vma->vm_start || address >= vma->vm_end);
 	if (atomic_inc_and_test(&page->_mapcount))
 		__page_set_anon_rmap(page, vma, address);
-	else
+	else {
 		__page_check_anon_rmap(page, vma, address);
+		/*
+		 * We unconditionally charged during prepare, we uncharge here
+		 * This takes care of balancing the reference counts
+		 */
+		mem_cgroup_uncharge_page(page);
+	}
 }
 
-/*
+/**
  * page_add_new_anon_rmap - add pte mapping to a new anonymous page
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
@@ -584,12 +613,20 @@ void page_add_file_rmap(struct page *page)
 {
 	if (atomic_inc_and_test(&page->_mapcount))
 		__inc_zone_page_state(page, NR_FILE_MAPPED);
+	else
+		/*
+		 * We unconditionally charged during prepare, we uncharge here
+		 * This takes care of balancing the reference counts
+		 */
+		mem_cgroup_uncharge_page(page);
 }
 
 #ifdef CONFIG_DEBUG_VM
 /**
  * page_dup_rmap - duplicate pte mapping to a page
  * @page:	the page to add the mapping to
+ * @vma:	the vm area being duplicated
+ * @address:	the user virtual address mapped
  *
  * For copy_page_range only: minimal extract from page_add_file_rmap /
  * page_add_anon_rmap, avoiding unnecessary tests (already checked) so it's
@@ -609,6 +646,7 @@ void page_dup_rmap(struct page *page, struct vm_area_struct *vma, unsigned long 
 /**
  * page_remove_rmap - take down pte mapping from a page
  * @page: page to remove mapping from
+ * @vma: the vm area in which the mapping is removed
  *
  * The caller needs to hold the pte lock.
  */
@@ -644,6 +682,8 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma)
 			page_clear_dirty(page);
 			set_page_dirty(page);
 		}
+		mem_cgroup_uncharge_page(page);
+
 		__dec_zone_page_state(page,
 				PageAnon(page) ? NR_ANON_PAGES : NR_FILE_MAPPED);
 	}
@@ -855,6 +895,7 @@ static int try_to_unmap_anon(struct page *page, int migration)
 /**
  * try_to_unmap_file - unmap file page using the object-based rmap method
  * @page: the page to unmap
+ * @migration: migration flag
  *
  * Find all the mappings of a page using the mapping pointer and the vma chains
  * contained in the address_space struct it points to.
@@ -951,6 +992,7 @@ out:
 /**
  * try_to_unmap - try to remove all page table mappings to a page
  * @page: the page to get unmapped
+ * @migration: migration flag
  *
  * Tries to remove all the page table entries which are mapping this
  * page, used in the pageout path.  Caller must hold the page lock.

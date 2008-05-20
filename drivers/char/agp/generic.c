@@ -80,6 +80,13 @@ static int agp_get_key(void)
 	return -1;
 }
 
+void agp_flush_chipset(struct agp_bridge_data *bridge)
+{
+	if (bridge->driver->chipset_flush)
+		bridge->driver->chipset_flush(bridge);
+}
+EXPORT_SYMBOL(agp_flush_chipset);
+
 /*
  * Use kmalloc if possible for the page list. Otherwise fall back to
  * vmalloc. This speeds things up and also saves memory for small AGP
@@ -197,7 +204,6 @@ void agp_free_memory(struct agp_memory *curr)
 		for (i = 0; i < curr->page_count; i++) {
 			curr->bridge->driver->agp_destroy_page(gart_to_virt(curr->memory[i]), AGP_PAGE_DESTROY_UNMAP);
 		}
-		flush_agp_mappings();
 		for (i = 0; i < curr->page_count; i++) {
 			curr->bridge->driver->agp_destroy_page(gart_to_virt(curr->memory[i]), AGP_PAGE_DESTROY_FREE);
 		}
@@ -266,8 +272,6 @@ struct agp_memory *agp_allocate_memory(struct agp_bridge_data *bridge,
 		new->page_count++;
 	}
 	new->bridge = bridge;
-
-	flush_agp_mappings();
 
 	return new;
 }
@@ -928,9 +932,14 @@ int agp_generic_create_gatt_table(struct agp_bridge_data *bridge)
 	agp_gatt_table = (void *)table;
 
 	bridge->driver->cache_flush();
+#ifdef CONFIG_X86
+	set_memory_uc((unsigned long)table, 1 << page_order);
+	bridge->gatt_table = (void *)table;
+#else
 	bridge->gatt_table = ioremap_nocache(virt_to_gart(table),
 					(PAGE_SIZE * (1 << page_order)));
 	bridge->driver->cache_flush();
+#endif
 
 	if (bridge->gatt_table == NULL) {
 		for (page = virt_to_page(table); page <= virt_to_page(table_end); page++)
@@ -987,7 +996,11 @@ int agp_generic_free_gatt_table(struct agp_bridge_data *bridge)
 	 * called, then all agp memory is deallocated and removed
 	 * from the table. */
 
+#ifdef CONFIG_X86
+	set_memory_wb((unsigned long)bridge->gatt_table, 1 << page_order);
+#else
 	iounmap(bridge->gatt_table);
+#endif
 	table = (char *) bridge->gatt_table_real;
 	table_end = table + ((PAGE_SIZE * (1 << page_order)) - 1);
 

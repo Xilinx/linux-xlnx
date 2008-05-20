@@ -23,6 +23,17 @@
 /* Found in switcher.S */
 extern unsigned long default_idt_entries[];
 
+/* Declarations for definitions in lguest_guest.S */
+extern char lguest_noirq_start[], lguest_noirq_end[];
+extern const char lgstart_cli[], lgend_cli[];
+extern const char lgstart_sti[], lgend_sti[];
+extern const char lgstart_popf[], lgend_popf[];
+extern const char lgstart_pushf[], lgend_pushf[];
+extern const char lgstart_iret[], lgend_iret[];
+
+extern void lguest_iret(void);
+extern void lguest_init(void);
+
 struct lguest_regs
 {
 	/* Manually saved part. */
@@ -44,19 +55,19 @@ struct lguest_ro_state
 {
 	/* Host information we need to restore when we switch back. */
 	u32 host_cr3;
-	struct Xgt_desc_struct host_idt_desc;
-	struct Xgt_desc_struct host_gdt_desc;
+	struct desc_ptr host_idt_desc;
+	struct desc_ptr host_gdt_desc;
 	u32 host_sp;
 
 	/* Fields which are used when guest is running. */
-	struct Xgt_desc_struct guest_idt_desc;
-	struct Xgt_desc_struct guest_gdt_desc;
-	struct i386_hw_tss guest_tss;
+	struct desc_ptr guest_idt_desc;
+	struct desc_ptr guest_gdt_desc;
+	struct x86_hw_tss guest_tss;
 	struct desc_struct guest_idt[IDT_ENTRIES];
 	struct desc_struct guest_gdt[GDT_ENTRIES];
 };
 
-struct lguest_arch
+struct lg_cpu_arch
 {
 	/* The GDT entries copied into lguest_ro_state when running. */
 	struct desc_struct gdt[GDT_ENTRIES];
@@ -78,8 +89,8 @@ static inline void lguest_set_ts(void)
 }
 
 /* Full 4G segment descriptors, suitable for CS and DS. */
-#define FULL_EXEC_SEGMENT ((struct desc_struct){0x0000ffff, 0x00cf9b00})
-#define FULL_SEGMENT ((struct desc_struct){0x0000ffff, 0x00cf9300})
+#define FULL_EXEC_SEGMENT ((struct desc_struct){ { {0x0000ffff, 0x00cf9b00} } })
+#define FULL_SEGMENT ((struct desc_struct){ { {0x0000ffff, 0x00cf9300} } })
 
 #endif /* __ASSEMBLY__ */
 

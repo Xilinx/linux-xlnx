@@ -88,7 +88,7 @@ Events         (highest priority)  EMU         0
 #define IRQ_PINT1		BFIN_IRQ(20)	/* PINT1 Interrupt */
 #define IRQ_MDMAS0		BFIN_IRQ(21)	/* MDMA Stream 0 Interrupt */
 #define IRQ_MDMAS1		BFIN_IRQ(22)	/* MDMA Stream 1 Interrupt */
-#define IRQ_WATCHDOG		BFIN_IRQ(23)	/* Watchdog Interrupt */
+#define IRQ_WATCH		BFIN_IRQ(23)	/* Watchdog Interrupt */
 #define IRQ_DMAC1_ERROR		BFIN_IRQ(24)	/* DMAC1 Status (Error) Interrupt */
 #define IRQ_SPORT2_ERROR	BFIN_IRQ(25)	/* SPORT2 Error Interrupt */
 #define IRQ_SPORT3_ERROR	BFIN_IRQ(26)	/* SPORT3 Error Interrupt */
@@ -99,9 +99,13 @@ Events         (highest priority)  EMU         0
 #define IRQ_UART2_ERROR		BFIN_IRQ(31)	/* UART2 Status (Error) Interrupt */
 #define IRQ_CAN0_ERROR		BFIN_IRQ(32)	/* CAN0 Status (Error) Interrupt */
 #define IRQ_SPORT2_RX		BFIN_IRQ(33)	/* SPORT2 RX (DMA18) Interrupt */
+#define IRQ_UART2_RX		BFIN_IRQ(33)	/* UART2 RX (DMA18) Interrupt */
 #define IRQ_SPORT2_TX		BFIN_IRQ(34)	/* SPORT2 TX (DMA19) Interrupt */
+#define IRQ_UART2_TX		BFIN_IRQ(34)	/* UART2 TX (DMA19) Interrupt */
 #define IRQ_SPORT3_RX		BFIN_IRQ(35)	/* SPORT3 RX (DMA20) Interrupt */
+#define IRQ_UART3_RX		BFIN_IRQ(35)	/* UART3 RX (DMA20) Interrupt */
 #define IRQ_SPORT3_TX		BFIN_IRQ(36)	/* SPORT3 TX (DMA21) Interrupt */
+#define IRQ_UART3_TX		BFIN_IRQ(36)	/* UART3 TX (DMA21) Interrupt */
 #define IRQ_EPPI1		BFIN_IRQ(37)	/* EPP1 (DMA13) Interrupt */
 #define IRQ_EPPI2		BFIN_IRQ(38)	/* EPP2 (DMA14) Interrupt */
 #define IRQ_SPI1		BFIN_IRQ(39)	/* SPI1 (DMA5) Interrupt */
@@ -406,7 +410,7 @@ Events         (highest priority)  EMU         0
 #define IRQ_PINT1_POS		16
 #define IRQ_MDMAS0_POS		20
 #define IRQ_MDMAS1_POS		24
-#define IRQ_WATCHDOG_POS	28
+#define IRQ_WATCH_POS		28
 
 /* IAR3 BIT FIELDS */
 #define IRQ_DMAC1_ERR_POS	0
@@ -421,9 +425,13 @@ Events         (highest priority)  EMU         0
 /* IAR4 BIT FILEDS */
 #define IRQ_CAN0_ERR_POS	0
 #define IRQ_SPORT2_RX_POS	4
+#define IRQ_UART2_RX_POS	4
 #define IRQ_SPORT2_TX_POS	8
+#define IRQ_UART2_TX_POS	8
 #define IRQ_SPORT3_RX_POS	12
+#define IRQ_UART3_RX_POS	12
 #define IRQ_SPORT3_TX_POS	16
+#define IRQ_UART3_TX_POS	16
 #define IRQ_EPPI1_POS		20
 #define IRQ_EPPI2_POS		24
 #define IRQ_SPI1_POS		28

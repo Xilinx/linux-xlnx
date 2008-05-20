@@ -178,6 +178,7 @@ extern struct sock *netlink_kernel_create(struct net *net,
 					  void (*input)(struct sk_buff *skb),
 					  struct mutex *cb_mutex,
 					  struct module *module);
+extern void netlink_kernel_release(struct sock *sk);
 extern int netlink_change_ngroups(struct sock *sk, unsigned int groups);
 extern void netlink_clear_multicast_users(struct sock *sk, unsigned int group);
 extern void netlink_ack(struct sk_buff *in_skb, struct nlmsghdr *nlh, int err);
@@ -218,7 +219,7 @@ struct netlink_callback
 	int		(*dump)(struct sk_buff * skb, struct netlink_callback *cb);
 	int		(*done)(struct netlink_callback *cb);
 	int		family;
-	long		args[5];
+	long		args[6];
 };
 
 struct netlink_notify
@@ -245,7 +246,7 @@ __nlmsg_put(struct sk_buff *skb, u32 pid, u32 seq, int type, int len, int flags)
 }
 
 #define NLMSG_NEW(skb, pid, seq, type, len, flags) \
-({	if (skb_tailroom(skb) < (int)NLMSG_SPACE(len)) \
+({	if (unlikely(skb_tailroom(skb) < (int)NLMSG_SPACE(len))) \
 		goto nlmsg_failure; \
 	__nlmsg_put(skb, pid, seq, type, len, flags); })
 

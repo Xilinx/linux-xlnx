@@ -38,13 +38,13 @@ static void spitzled_green_set(struct led_classdev *led_cdev, enum led_brightnes
 }
 
 static struct led_classdev spitz_amber_led = {
-	.name			= "spitz:amber",
+	.name			= "spitz:amber:charge",
 	.default_trigger	= "sharpsl-charge",
 	.brightness_set		= spitzled_amber_set,
 };
 
 static struct led_classdev spitz_green_led = {
-	.name			= "spitz:green",
+	.name			= "spitz:green:hddactivity",
 	.default_trigger	= "ide-disk",
 	.brightness_set		= spitzled_green_set,
 };
@@ -72,8 +72,10 @@ static int spitzled_probe(struct platform_device *pdev)
 {
 	int ret;
 
-	if (machine_is_akita())
+	if (machine_is_akita()) {
+		spitz_green_led.name = "spitz:green:mail";
 		spitz_green_led.default_trigger = "nand-disk";
+	}
 
 	ret = led_classdev_register(&pdev->dev, &spitz_amber_led);
 	if (ret < 0)
@@ -103,6 +105,7 @@ static struct platform_driver spitzled_driver = {
 #endif
 	.driver		= {
 		.name		= "spitz-led",
+		.owner		= THIS_MODULE,
 	},
 };
 
@@ -122,3 +125,4 @@ module_exit(spitzled_exit);
 MODULE_AUTHOR("Richard Purdie <rpurdie@openedhand.com>");
 MODULE_DESCRIPTION("Spitz LED driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:spitz-led");

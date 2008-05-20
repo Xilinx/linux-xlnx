@@ -51,7 +51,7 @@
  * the local mdio pins, which may not be the same as system mdio bus, used for
  * controlling the external PHYs, for example.
  */
-int gfar_local_mdio_write(struct gfar_mii *regs, int mii_id,
+int gfar_local_mdio_write(struct gfar_mii __iomem *regs, int mii_id,
 			  int regnum, u16 value)
 {
 	/* Set the PHY address and the register address we want to write */
@@ -77,7 +77,7 @@ int gfar_local_mdio_write(struct gfar_mii *regs, int mii_id,
  * and are always tied to the local mdio pins, which may not be the
  * same as system mdio bus, used for controlling the external PHYs, for eg.
  */
-int gfar_local_mdio_read(struct gfar_mii *regs, int mii_id, int regnum)
+int gfar_local_mdio_read(struct gfar_mii __iomem *regs, int mii_id, int regnum)
 
 {
 	u16 value;
@@ -127,7 +127,7 @@ int gfar_mdio_reset(struct mii_bus *bus)
 	struct gfar_mii __iomem *regs = (void __iomem *)bus->priv;
 	unsigned int timeout = PHY_INIT_TIMEOUT;
 
-	spin_lock_bh(&bus->mdio_lock);
+	mutex_lock(&bus->mdio_lock);
 
 	/* Reset the management interface */
 	gfar_write(&regs->miimcfg, MIIMCFG_RESET);
@@ -140,7 +140,7 @@ int gfar_mdio_reset(struct mii_bus *bus)
 			timeout--)
 		cpu_relax();
 
-	spin_unlock_bh(&bus->mdio_lock);
+	mutex_unlock(&bus->mdio_lock);
 
 	if(timeout <= 0) {
 		printk(KERN_ERR "%s: The MII Bus is stuck!\n",

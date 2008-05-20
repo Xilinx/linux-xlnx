@@ -42,8 +42,7 @@
 struct e1000_info;
 
 #define ndev_printk(level, netdev, format, arg...) \
-	printk(level "%s: %s: " format, (netdev)->dev.parent->bus_id, \
-	       (netdev)->name, ## arg)
+	printk(level "%s: " format, (netdev)->name, ## arg)
 
 #ifdef DEBUG
 #define ndev_dbg(netdev, format, arg...) \
@@ -288,7 +287,6 @@ struct e1000_info {
 #define FLAG_HAS_CTRLEXT_ON_LOAD          (1 << 5)
 #define FLAG_HAS_SWSM_ON_LOAD             (1 << 6)
 #define FLAG_HAS_JUMBO_FRAMES             (1 << 7)
-#define FLAG_HAS_ASPM                     (1 << 8)
 #define FLAG_HAS_STATS_ICR_ICT            (1 << 9)
 #define FLAG_HAS_STATS_PTC_PRC            (1 << 10)
 #define FLAG_HAS_SMART_POWER_DOWN         (1 << 11)

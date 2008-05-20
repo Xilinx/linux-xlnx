@@ -32,7 +32,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
-
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
@@ -48,11 +48,11 @@
 #include <asm/debug.h>
 #include <asm/s390_rdev.h>
 #include <asm/qdio.h>
+#include <asm/airq.h>
 
 #include "cio.h"
 #include "css.h"
 #include "device.h"
-#include "airq.h"
 #include "qdio.h"
 #include "ioasm.h"
 #include "chsc.h"
@@ -96,7 +96,7 @@ static debug_info_t *qdio_dbf_slsb_in;
 static volatile struct qdio_q *tiq_list=NULL; /* volatile as it could change
 						 during a while loop */
 static DEFINE_SPINLOCK(ttiq_list_lock);
-static int register_thinint_result;
+static void *tiqdio_ind;
 static void tiqdio_tl(unsigned long);
 static DECLARE_TASKLET(tiqdio_tasklet,tiqdio_tl,0);
 
@@ -399,7 +399,7 @@ qdio_get_indicator(void)
 {
 	int i;
 
-	for (i=1;i<INDICATORS_PER_CACHELINE;i++)
+	for (i = 0; i < INDICATORS_PER_CACHELINE; i++)
 		if (!indicator_used[i]) {
 			indicator_used[i]=1;
 			return indicators+i;
@@ -1215,9 +1215,6 @@ tiqdio_is_inbound_q_done(struct qdio_q *q)
 
 	if (!no_used)
 		return 1;
-	if (!q->siga_sync && !irq->is_qebsm)
-		/* we'll check for more primed buffers in qeth_stop_polling */
-		return 0;
 	if (irq->is_qebsm) {
 		count = 1;
 		start_buf = q->first_to_check;
@@ -1408,8 +1405,7 @@ __tiqdio_inbound_processing(struct qdio_q *q, int spare_ind_was_set)
 	if (q->hydra_gives_outbound_pcis) {
 		if (!q->siga_sync_done_on_thinints) {
 			SYNC_MEMORY_ALL;
-		} else if ((!q->siga_sync_done_on_outb_tis)&&
-			 (q->hydra_gives_outbound_pcis)) {
+		} else if (!q->siga_sync_done_on_outb_tis) {
 			SYNC_MEMORY_ALL_OUTB;
 		}
 	} else {
@@ -1911,8 +1907,7 @@ qdio_fill_thresholds(struct qdio_irq *irq_ptr,
 	}
 }
 
-static int
-tiqdio_thinint_handler(void)
+static void tiqdio_thinint_handler(void *ind, void *drv_data)
 {
 	QDIO_DBF_TEXT4(0,trace,"thin_int");
 
@@ -1925,7 +1920,6 @@ tiqdio_thinint_handler(void)
 		tiqdio_clear_global_summary();
 
 	tiqdio_inbound_checks();
-	return 0;
 }
 
 static void
@@ -2445,7 +2439,7 @@ tiqdio_set_subchannel_ind(struct qdio_irq *irq_ptr, int reset_to_zero)
 		real_addr_dev_st_chg_ind=0;
 	} else {
 		real_addr_local_summary_bit=
-			virt_to_phys((volatile void *)indicators);
+			virt_to_phys((volatile void *)tiqdio_ind);
 		real_addr_dev_st_chg_ind=
 			virt_to_phys((volatile void *)irq_ptr->dev_st_chg_ind);
 	}
@@ -3192,13 +3186,11 @@ qdio_establish(struct qdio_initialize *init_data)
 	spin_lock_irqsave(get_ccwdev_lock(cdev),saveflags);
 
 	ccw_device_set_options_mask(cdev, 0);
-	result=ccw_device_start_timeout(cdev,&irq_ptr->ccw,
-					QDIO_DOING_ESTABLISH,0, 0,
-					QDIO_ESTABLISH_TIMEOUT);
+	result = ccw_device_start(cdev, &irq_ptr->ccw,
+				QDIO_DOING_ESTABLISH, 0, 0);
 	if (result) {
-		result2=ccw_device_start_timeout(cdev,&irq_ptr->ccw,
-						 QDIO_DOING_ESTABLISH,0,0,
-						 QDIO_ESTABLISH_TIMEOUT);
+		result2 = ccw_device_start(cdev, &irq_ptr->ccw,
+					QDIO_DOING_ESTABLISH, 0, 0);
 		sprintf(dbf_text,"eq:io%4x",result);
 		QDIO_DBF_TEXT2(1,setup,dbf_text);
 		if (result2) {
@@ -3222,10 +3214,10 @@ qdio_establish(struct qdio_initialize *init_data)
 		return result;
 	}
 	
-	/* Timeout is cared for already by using ccw_device_start_timeout(). */
-	wait_event_interruptible(cdev->private->wait_q,
-		 irq_ptr->state == QDIO_IRQ_STATE_ESTABLISHED ||
-		 irq_ptr->state == QDIO_IRQ_STATE_ERR);
+	wait_event_interruptible_timeout(cdev->private->wait_q,
+		irq_ptr->state == QDIO_IRQ_STATE_ESTABLISHED ||
+		irq_ptr->state == QDIO_IRQ_STATE_ERR,
+		QDIO_ESTABLISH_TIMEOUT);
 
 	if (irq_ptr->state == QDIO_IRQ_STATE_ESTABLISHED)
 		result = 0;
@@ -3337,13 +3329,7 @@ qdio_activate(struct ccw_device *cdev, int flags)
 		}
 	}
 
-	wait_event_interruptible_timeout(cdev->private->wait_q,
-					 ((irq_ptr->state ==
-					  QDIO_IRQ_STATE_STOPPED) ||
-					  (irq_ptr->state ==
-					   QDIO_IRQ_STATE_ERR)),
-					 QDIO_ACTIVATE_TIMEOUT);
-
+	msleep(QDIO_ACTIVATE_TIMEOUT);
 	switch (irq_ptr->state) {
 	case QDIO_IRQ_STATE_STOPPED:
 	case QDIO_IRQ_STATE_ERR:
@@ -3740,23 +3726,25 @@ static void
 tiqdio_register_thinints(void)
 {
 	char dbf_text[20];
-	register_thinint_result=
-		s390_register_adapter_interrupt(&tiqdio_thinint_handler);
-	if (register_thinint_result) {
-		sprintf(dbf_text,"regthn%x",(register_thinint_result&0xff));
+
+	tiqdio_ind =
+		s390_register_adapter_interrupt(&tiqdio_thinint_handler, NULL);
+	if (IS_ERR(tiqdio_ind)) {
+		sprintf(dbf_text, "regthn%lx", PTR_ERR(tiqdio_ind));
 		QDIO_DBF_TEXT0(0,setup,dbf_text);
 		QDIO_PRINT_ERR("failed to register adapter handler " \
-			       "(rc=%i).\nAdapter interrupts might " \
+			       "(rc=%li).\nAdapter interrupts might " \
 			       "not work. Continuing.\n",
-			       register_thinint_result);
+			       PTR_ERR(tiqdio_ind));
+		tiqdio_ind = NULL;
 	}
 }
 
 static void
 tiqdio_unregister_thinints(void)
 {
-	if (!register_thinint_result)
-		s390_unregister_adapter_interrupt(&tiqdio_thinint_handler);
+	if (tiqdio_ind)
+		s390_unregister_adapter_interrupt(tiqdio_ind);
 }
 
 static int
@@ -3768,8 +3756,8 @@ qdio_get_qdio_memory(void)
 	for (i=1;i<INDICATORS_PER_CACHELINE;i++)
 		indicator_used[i]=0;
 	indicators = kzalloc(sizeof(__u32)*(INDICATORS_PER_CACHELINE),
-				   GFP_KERNEL);
-       	if (!indicators)
+			     GFP_KERNEL);
+	if (!indicators)
 		return -ENOMEM;
 	return 0;
 }
@@ -3779,7 +3767,6 @@ qdio_release_qdio_memory(void)
 {
 	kfree(indicators);
 }
-
 
 static void
 qdio_unregister_dbf_views(void)

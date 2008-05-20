@@ -37,10 +37,8 @@
 #include <asm/nvram.h>
 #include <asm/xmon.h>
 #include <asm/ocp.h>
-#include <asm/prom.h>
 
-#define USES_PPC_SYS (defined(CONFIG_85xx) || defined(CONFIG_83xx) || \
-		      defined(CONFIG_MPC10X_BRIDGE) || defined(CONFIG_8260) || \
+#define USES_PPC_SYS (defined(CONFIG_MPC10X_BRIDGE) || defined(CONFIG_8260) || \
 		      defined(CONFIG_PPC_MPC52xx))
 
 #if USES_PPC_SYS
@@ -277,7 +275,7 @@ static void c_stop(struct seq_file *m, void *v)
 {
 }
 
-struct seq_operations cpuinfo_op = {
+const struct seq_operations cpuinfo_op = {
 	.start =c_start,
 	.next =	c_next,
 	.stop =	c_stop,

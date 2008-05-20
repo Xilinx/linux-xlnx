@@ -36,7 +36,6 @@
  *
  */
 
-#include <sound/driver.h>
 #include <linux/init.h>
 #include <sound/core.h>
 #include <sound/info.h>
@@ -148,9 +147,6 @@ void snd_seq_device_load_drivers(void)
 	 * may cause blocking.
 	 */
 	if (snd_seq_in_init)
-		return;
-
-	if (! current->fs->root)
 		return;
 
 	mutex_lock(&ops_mutex);

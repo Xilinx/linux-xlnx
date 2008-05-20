@@ -1,6 +1,4 @@
 /*
- *  linux/drivers/ide/legacy/ht6560b.c		Version 0.07	Feb  1, 2000
- *
  *  Copyright (C) 1995-2000  Linus Torvalds & author (see below)
  */
 
@@ -23,18 +21,21 @@
  *                      "Prefetch" mode bit OFF for ide disks and
  *                      ON for anything else.
  *
+ *  Version 0.08        Need to force prefetch for CDs and other non-disk
+ *                      devices. (not sure which devices exactly need
+ *                      prefetch)
  *
  *  HT-6560B EIDE-controller support
  *  To activate controller support use kernel parameter "ide0=ht6560b".
  *  Use hdparm utility to enable PIO mode support.
  *
  *  Author:    Mikko Ala-Fossi            <maf@iki.fi>
- *             Jan Evert van Grootheest   <janevert@iae.nl>
+ *             Jan Evert van Grootheest   <janevert@caiway.nl>
  *
  *  Try:  http://www.maf.iki.fi/~maf/ht6560b/
  */
 
-#define HT6560B_VERSION "v0.07"
+#define HT6560B_VERSION "v0.08"
 
 #include <linux/module.h>
 #include <linux/types.h>
@@ -132,15 +133,20 @@ static void ht6560b_selectproc (ide_drive_t *drive)
 	u8 select, timing;
 	
 	local_irq_save(flags);
-	
+
 	select = HT_CONFIG(drive);
 	timing = HT_TIMING(drive);
-	
+
+	/*
+	 * Need to enforce prefetch sometimes because otherwise
+	 * it'll hang (hard).
+	 */
+	if (drive->media != ide_disk || !drive->present)
+		select |= HT_PREFETCH_MODE;
+
 	if (select != current_select || timing != current_timing) {
 		current_select = select;
 		current_timing = timing;
-		if (drive->media != ide_disk || !drive->present)
-			select |= HT_PREFETCH_MODE;
 		(void)inb(HT_CONFIG_PORT);
 		(void)inb(HT_CONFIG_PORT);
 		(void)inb(HT_CONFIG_PORT);
@@ -190,11 +196,12 @@ static int __init try_to_init_ht6560b(void)
 	outb(HT_TIMING_DEFAULT, 0x1f6);  /* IDE_SELECT_REG */
 	(void) inb(0x1f7);               /* IDE_STATUS_REG */
 	
-	printk("\nht6560b " HT6560B_VERSION
+	printk("ht6560b " HT6560B_VERSION
 	       ": chipset detected and initialized"
 #ifdef DEBUG
 	       " with debug enabled"
 #endif
+	       "\n"
 		);
 	return 1;
 }
@@ -302,17 +309,36 @@ static void ht6560b_set_pio_mode(ide_drive_t *drive, const u8 pio)
 #endif
 }
 
+static void __init ht6560b_port_init_devs(ide_hwif_t *hwif)
+{
+	/* Setting default configurations for drives. */
+	int t = (HT_CONFIG_DEFAULT << 8) | HT_TIMING_DEFAULT;
+
+	if (hwif->channel)
+		t |= (HT_SECONDARY_IF << 8);
+
+	hwif->drives[0].drive_data = t;
+	hwif->drives[1].drive_data = t;
+}
+
 int probe_ht6560b = 0;
 
 module_param_named(probe, probe_ht6560b, bool, 0);
 MODULE_PARM_DESC(probe, "probe for HT6560B chipset");
 
-/* Can be called directly from ide.c. */
-int __init ht6560b_init(void)
+static const struct ide_port_info ht6560b_port_info __initdata = {
+	.chipset		= ide_ht6560b,
+	.host_flags		= IDE_HFLAG_SERIALIZE | /* is this needed? */
+				  IDE_HFLAG_NO_DMA |
+				  IDE_HFLAG_NO_AUTOTUNE |
+				  IDE_HFLAG_ABUSE_PREFETCH,
+	.pio_mask		= ATA_PIO4,
+};
+
+static int __init ht6560b_init(void)
 {
 	ide_hwif_t *hwif, *mate;
 	static u8 idx[4] = { 0, 1, 0xff, 0xff };
-	int t;
 
 	if (probe_ht6560b == 0)
 		return -ENODEV;
@@ -331,36 +357,16 @@ int __init ht6560b_init(void)
 		goto release_region;
 	}
 
-	hwif->chipset = ide_ht6560b;
 	hwif->selectproc = &ht6560b_selectproc;
-	hwif->host_flags = IDE_HFLAG_ABUSE_PREFETCH;
-	hwif->pio_mask = ATA_PIO5;
 	hwif->set_pio_mode = &ht6560b_set_pio_mode;
-	hwif->serialized = 1;	/* is this needed? */
-	hwif->mate = mate;
 
-	mate->chipset = ide_ht6560b;
 	mate->selectproc = &ht6560b_selectproc;
-	mate->host_flags = IDE_HFLAG_ABUSE_PREFETCH;
-	mate->pio_mask = ATA_PIO5;
 	mate->set_pio_mode = &ht6560b_set_pio_mode;
-	mate->serialized = 1;	/* is this needed? */
-	mate->mate = hwif;
-	mate->channel = 1;
 
-	/*
-	 * Setting default configurations for drives
-	 */
-	t = (HT_CONFIG_DEFAULT << 8);
-	t |= HT_TIMING_DEFAULT;
-	hwif->drives[0].drive_data = t;
-	hwif->drives[1].drive_data = t;
+	hwif->port_init_devs = ht6560b_port_init_devs;
+	mate->port_init_devs = ht6560b_port_init_devs;
 
-	t |= (HT_SECONDARY_IF << 8);
-	mate->drives[0].drive_data = t;
-	mate->drives[1].drive_data = t;
-
-	ide_device_add(idx);
+	ide_device_add(idx, &ht6560b_port_info);
 
 	return 0;
 
@@ -369,9 +375,7 @@ release_region:
 	return -ENODEV;
 }
 
-#ifdef MODULE
 module_init(ht6560b_init);
-#endif
 
 MODULE_AUTHOR("See Local File");
 MODULE_DESCRIPTION("HT-6560B EIDE-controller support");

@@ -182,8 +182,7 @@ static int ib_fmr_cleanup_thread(void *pool_ptr)
 	struct ib_fmr_pool *pool = pool_ptr;
 
 	do {
-		if (pool->dirty_len >= pool->dirty_watermark ||
-		    atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) < 0) {
+		if (atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) < 0) {
 			ib_fmr_batch_release(pool);
 
 			atomic_inc(&pool->flush_ser);
@@ -194,8 +193,7 @@ static int ib_fmr_cleanup_thread(void *pool_ptr)
 		}
 
 		set_current_state(TASK_INTERRUPTIBLE);
-		if (pool->dirty_len < pool->dirty_watermark &&
-		    atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) >= 0 &&
+		if (atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) >= 0 &&
 		    !kthread_should_stop())
 			schedule();
 		__set_current_state(TASK_RUNNING);
@@ -308,10 +306,13 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 			.max_maps   = pool->max_remaps,
 			.page_shift = params->page_shift
 		};
+		int bytes_per_fmr = sizeof *fmr;
+
+		if (pool->cache_bucket)
+			bytes_per_fmr += params->max_pages_per_fmr * sizeof (u64);
 
 		for (i = 0; i < params->pool_size; ++i) {
-			fmr = kmalloc(sizeof *fmr + params->max_pages_per_fmr * sizeof (u64),
-				      GFP_KERNEL);
+			fmr = kmalloc(bytes_per_fmr, GFP_KERNEL);
 			if (!fmr) {
 				printk(KERN_WARNING PFX "failed to allocate fmr "
 				       "struct for FMR %d\n", i);
@@ -397,8 +398,23 @@ EXPORT_SYMBOL(ib_destroy_fmr_pool);
  */
 int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 {
-	int serial = atomic_inc_return(&pool->req_ser);
+	int serial;
+	struct ib_pool_fmr *fmr, *next;
 
+	/*
+	 * The free_list holds FMRs that may have been used
+	 * but have not been remapped enough times to be dirty.
+	 * Put them on the dirty list now so that the cleanup
+	 * thread will reap them too.
+	 */
+	spin_lock_irq(&pool->pool_lock);
+	list_for_each_entry_safe(fmr, next, &pool->free_list, list) {
+		if (fmr->remap_count > 0)
+			list_move(&fmr->list, &pool->dirty_list);
+	}
+	spin_unlock_irq(&pool->pool_lock);
+
+	serial = atomic_inc_return(&pool->req_ser);
 	wake_up_process(pool->thread);
 
 	if (wait_event_interruptible(pool->force_wait,
@@ -511,8 +527,10 @@ int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr)
 			list_add_tail(&fmr->list, &pool->free_list);
 		} else {
 			list_add_tail(&fmr->list, &pool->dirty_list);
-			++pool->dirty_len;
-			wake_up_process(pool->thread);
+			if (++pool->dirty_len >= pool->dirty_watermark) {
+				atomic_inc(&pool->req_ser);
+				wake_up_process(pool->thread);
+			}
 		}
 	}
 

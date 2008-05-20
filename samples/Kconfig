@@ -13,4 +13,25 @@ config SAMPLE_MARKERS
 	help
 	  This build markers example modules.
 
+config SAMPLE_KOBJECT
+	tristate "Build kobject examples"
+	help
+	  This config option will allow you to build a number of
+	  different kobject sample modules showing how to use kobjects,
+	  ksets, and ktypes properly.
+
+	  If in doubt, say "N" here.
+
+config SAMPLE_KPROBES
+	tristate "Build kprobes examples -- loadable modules only"
+	depends on KPROBES && m
+	help
+	  This build several kprobes example modules.
+
+config SAMPLE_KRETPROBES
+	tristate "Build kretprobes example -- loadable modules only"
+	default m
+	depends on SAMPLE_KPROBES && KRETPROBES
+
 endif # SAMPLES
+

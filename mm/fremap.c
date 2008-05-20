@@ -113,7 +113,7 @@ static int populate_range(struct mm_struct *mm, struct vm_area_struct *vma,
  * mmap()/mremap() it does not create any new vmas. The new mappings are
  * also safe across swapout.
  *
- * NOTE: the 'prot' parameter right now is ignored (but must be zero),
+ * NOTE: the @prot parameter right now is ignored (but must be zero),
  * and the vma's default protection is used. Arbitrary protections
  * might be implemented in the future.
  */
@@ -190,10 +190,13 @@ asmlinkage long sys_remap_file_pages(unsigned long start, unsigned long size,
 		 */
 		if (mapping_cap_account_dirty(mapping)) {
 			unsigned long addr;
+			struct file *file = vma->vm_file;
 
 			flags &= MAP_NONBLOCK;
-			addr = mmap_region(vma->vm_file, start, size,
+			get_file(file);
+			addr = mmap_region(file, start, size,
 					flags, vma->vm_flags, pgoff, 1);
+			fput(file);
 			if (IS_ERR_VALUE(addr)) {
 				err = addr;
 			} else {

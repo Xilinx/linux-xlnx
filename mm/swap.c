@@ -29,6 +29,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/backing-dev.h>
+#include <linux/memcontrol.h>
 
 /* How many pages do we try to swap or page in/out together? */
 int page_cluster;
@@ -41,7 +42,7 @@ static DEFINE_PER_CPU(struct pagevec, lru_rotate_pvecs) = { 0, };
  * This path almost never happens for VM activity - pages are normally
  * freed via pagevecs.  But it gets used by networking.
  */
-static void fastcall __page_cache_release(struct page *page)
+static void __page_cache_release(struct page *page)
 {
 	if (PageLRU(page)) {
 		unsigned long flags;
@@ -77,12 +78,11 @@ void put_page(struct page *page)
 EXPORT_SYMBOL(put_page);
 
 /**
- * put_pages_list(): release a list of pages
+ * put_pages_list() - release a list of pages
+ * @pages: list of pages threaded on page->lru
  *
  * Release a list of pages which are strung together on page.lru.  Currently
  * used by read_cache_pages() and related error recovery code.
- *
- * @pages: list of pages threaded on page->lru
  */
 void put_pages_list(struct list_head *pages)
 {
@@ -165,7 +165,7 @@ int rotate_reclaimable_page(struct page *page)
 /*
  * FIXME: speed this up?
  */
-void fastcall activate_page(struct page *page)
+void activate_page(struct page *page)
 {
 	struct zone *zone = page_zone(page);
 
@@ -175,6 +175,7 @@ void fastcall activate_page(struct page *page)
 		SetPageActive(page);
 		add_page_to_active_list(zone, page);
 		__count_vm_event(PGACTIVATE);
+		mem_cgroup_move_lists(page, true);
 	}
 	spin_unlock_irq(&zone->lru_lock);
 }
@@ -186,7 +187,7 @@ void fastcall activate_page(struct page *page)
  * inactive,referenced		->	active,unreferenced
  * active,unreferenced		->	active,referenced
  */
-void fastcall mark_page_accessed(struct page *page)
+void mark_page_accessed(struct page *page)
 {
 	if (!PageActive(page) && PageReferenced(page) && PageLRU(page)) {
 		activate_page(page);
@@ -202,7 +203,7 @@ EXPORT_SYMBOL(mark_page_accessed);
  * lru_cache_add: add a page to the page lists
  * @page: the page to add
  */
-void fastcall lru_cache_add(struct page *page)
+void lru_cache_add(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvecs);
 
@@ -212,7 +213,7 @@ void fastcall lru_cache_add(struct page *page)
 	put_cpu_var(lru_add_pvecs);
 }
 
-void fastcall lru_cache_add_active(struct page *page)
+void lru_cache_add_active(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_active_pvecs);
 

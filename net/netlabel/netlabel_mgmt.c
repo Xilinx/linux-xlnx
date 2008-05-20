@@ -37,14 +37,14 @@
 #include <net/genetlink.h>
 #include <net/netlabel.h>
 #include <net/cipso_ipv4.h>
+#include <asm/atomic.h>
 
 #include "netlabel_domainhash.h"
 #include "netlabel_user.h"
 #include "netlabel_mgmt.h"
 
-/* NetLabel configured protocol count */
-static DEFINE_SPINLOCK(netlabel_mgmt_protocount_lock);
-static u32 netlabel_mgmt_protocount = 0;
+/* NetLabel configured protocol counter */
+atomic_t netlabel_mgmt_protocount = ATOMIC_INIT(0);
 
 /* Argument struct for netlbl_domhsh_walk() */
 struct netlbl_domhsh_walk_arg {
@@ -69,63 +69,6 @@ static const struct nla_policy netlbl_mgmt_genl_policy[NLBL_MGMT_A_MAX + 1] = {
 	[NLBL_MGMT_A_VERSION] = { .type = NLA_U32 },
 	[NLBL_MGMT_A_CV4DOI] = { .type = NLA_U32 },
 };
-
-/*
- * NetLabel Misc Management Functions
- */
-
-/**
- * netlbl_mgmt_protocount_inc - Increment the configured labeled protocol count
- *
- * Description:
- * Increment the number of labeled protocol configurations in the current
- * NetLabel configuration.  Keep track of this for use in determining if
- * NetLabel label enforcement should be active/enabled or not in the LSM.
- *
- */
-void netlbl_mgmt_protocount_inc(void)
-{
-	spin_lock(&netlabel_mgmt_protocount_lock);
-	netlabel_mgmt_protocount++;
-	spin_unlock(&netlabel_mgmt_protocount_lock);
-}
-
-/**
- * netlbl_mgmt_protocount_dec - Decrement the configured labeled protocol count
- *
- * Description:
- * Decrement the number of labeled protocol configurations in the current
- * NetLabel configuration.  Keep track of this for use in determining if
- * NetLabel label enforcement should be active/enabled or not in the LSM.
- *
- */
-void netlbl_mgmt_protocount_dec(void)
-{
-	spin_lock(&netlabel_mgmt_protocount_lock);
-	if (netlabel_mgmt_protocount > 0)
-		netlabel_mgmt_protocount--;
-	spin_unlock(&netlabel_mgmt_protocount_lock);
-}
-
-/**
- * netlbl_mgmt_protocount_value - Return the number of configured protocols
- *
- * Description:
- * Return the number of labeled protocols in the current NetLabel
- * configuration.  This value is useful in  determining if NetLabel label
- * enforcement should be active/enabled or not in the LSM.
- *
- */
-u32 netlbl_mgmt_protocount_value(void)
-{
-	u32 val;
-
-	rcu_read_lock();
-	val = netlabel_mgmt_protocount;
-	rcu_read_unlock();
-
-	return val;
-}
 
 /*
  * NetLabel Command Handlers
@@ -574,68 +517,63 @@ version_failure:
  * NetLabel Generic NETLINK Command Definitions
  */
 
-static struct genl_ops netlbl_mgmt_genl_c_add = {
+static struct genl_ops netlbl_mgmt_genl_ops[] = {
+	{
 	.cmd = NLBL_MGMT_C_ADD,
 	.flags = GENL_ADMIN_PERM,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_add,
 	.dumpit = NULL,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_remove = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_REMOVE,
 	.flags = GENL_ADMIN_PERM,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_remove,
 	.dumpit = NULL,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_listall = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_LISTALL,
 	.flags = 0,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = NULL,
 	.dumpit = netlbl_mgmt_listall,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_adddef = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_ADDDEF,
 	.flags = GENL_ADMIN_PERM,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_adddef,
 	.dumpit = NULL,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_removedef = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_REMOVEDEF,
 	.flags = GENL_ADMIN_PERM,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_removedef,
 	.dumpit = NULL,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_listdef = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_LISTDEF,
 	.flags = 0,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_listdef,
 	.dumpit = NULL,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_protocols = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_PROTOCOLS,
 	.flags = 0,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = NULL,
 	.dumpit = netlbl_mgmt_protocols,
-};
-
-static struct genl_ops netlbl_mgmt_genl_c_version = {
+	},
+	{
 	.cmd = NLBL_MGMT_C_VERSION,
 	.flags = 0,
 	.policy = netlbl_mgmt_genl_policy,
 	.doit = netlbl_mgmt_version,
 	.dumpit = NULL,
+	},
 };
 
 /*
@@ -650,46 +588,20 @@ static struct genl_ops netlbl_mgmt_genl_c_version = {
  * mechanism.  Returns zero on success, negative values on failure.
  *
  */
-int netlbl_mgmt_genl_init(void)
+int __init netlbl_mgmt_genl_init(void)
 {
-	int ret_val;
+	int ret_val, i;
 
 	ret_val = genl_register_family(&netlbl_mgmt_gnl_family);
 	if (ret_val != 0)
 		return ret_val;
 
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_add);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_remove);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_listall);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_adddef);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_removedef);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_listdef);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_protocols);
-	if (ret_val != 0)
-		return ret_val;
-	ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
-				    &netlbl_mgmt_genl_c_version);
-	if (ret_val != 0)
-		return ret_val;
+	for (i = 0; i < ARRAY_SIZE(netlbl_mgmt_genl_ops); i++) {
+		ret_val = genl_register_ops(&netlbl_mgmt_gnl_family,
+				&netlbl_mgmt_genl_ops[i]);
+		if (ret_val != 0)
+			return ret_val;
+	}
 
 	return 0;
 }

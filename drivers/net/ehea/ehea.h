@@ -40,7 +40,7 @@
 #include <asm/io.h>
 
 #define DRV_NAME	"ehea"
-#define DRV_VERSION	"EHEA_0083"
+#define DRV_VERSION	"EHEA_0090"
 
 /* eHEA capability flags */
 #define DLPAR_PORT_ADD_REM 1
@@ -371,6 +371,7 @@ struct ehea_port_res {
 	struct ehea_q_skb_arr rq2_skba;
 	struct ehea_q_skb_arr rq3_skba;
 	struct ehea_q_skb_arr sq_skba;
+	int sq_skba_size;
 	spinlock_t netif_queue;
 	int queue_stopped;
 	int swqe_refill_th;
@@ -386,6 +387,13 @@ struct ehea_port_res {
 
 
 #define EHEA_MAX_PORTS 16
+
+#define EHEA_NUM_PORTRES_FW_HANDLES    6  /* QP handle, SendCQ handle,
+					     RecvCQ handle, EQ handle,
+					     SendMR handle, RecvMR handle */
+#define EHEA_NUM_PORT_FW_HANDLES       1  /* EQ handle */
+#define EHEA_NUM_ADAPTER_FW_HANDLES    2  /* MR handle, NEQ handle */
+
 struct ehea_adapter {
 	u64 handle;
 	struct of_device *ofdev;
@@ -403,6 +411,31 @@ struct ehea_adapter {
 struct ehea_mc_list {
 	struct list_head list;
 	u64 macaddr;
+};
+
+/* kdump support */
+struct ehea_fw_handle_entry {
+	u64 adh;               /* Adapter Handle */
+	u64 fwh;               /* Firmware Handle */
+};
+
+struct ehea_fw_handle_array {
+	struct ehea_fw_handle_entry *arr;
+	int num_entries;
+	struct semaphore lock;
+};
+
+struct ehea_bcmc_reg_entry {
+	u64 adh;               /* Adapter Handle */
+	u32 port_id;           /* Logical Port Id */
+	u8 reg_type;           /* Registration Type */
+	u64 macaddr;
+};
+
+struct ehea_bcmc_reg_array {
+	struct ehea_bcmc_reg_entry *arr;
+	int num_entries;
+	struct semaphore lock;
 };
 
 #define EHEA_PORT_UP 1
@@ -457,5 +490,8 @@ enum ehea_flag_bits {
 void ehea_set_ethtool_ops(struct net_device *netdev);
 int ehea_sense_port_attr(struct ehea_port *port);
 int ehea_set_portspeed(struct ehea_port *port, u32 port_speed);
+
+extern u64 ehea_driver_flags;
+extern struct work_struct ehea_rereg_mr_task;
 
 #endif	/* __EHEA_H__ */

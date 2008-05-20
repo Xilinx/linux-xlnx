@@ -16,6 +16,9 @@ config LOCKDEP_SUPPORT
 config STACKTRACE_SUPPORT
 	def_bool y
 
+config HAVE_LATENCYTOP_SUPPORT
+	def_bool y
+
 config RWSEM_GENERIC_SPINLOCK
 	bool
 
@@ -47,10 +50,18 @@ config NO_IOMEM
 config NO_DMA
 	def_bool y
 
+config GENERIC_LOCKBREAK
+	bool
+	default y
+	depends on SMP && PREEMPT
+
 mainmenu "Linux Kernel Configuration"
 
 config S390
 	def_bool y
+	select HAVE_OPROFILE
+	select HAVE_KPROBES
+	select HAVE_KRETPROBES
 
 source "init/Kconfig"
 
@@ -81,8 +92,8 @@ config SMP
 	  singleprocessor machines. On a singleprocessor machine, the kernel
 	  will run faster if you say N here.
 
-	  See also the <file:Documentation/smp.txt> and the SMP-HOWTO
-	  available at <http://www.tldp.org/docs.html#howto>.
+	  See also the SMP-HOWTO available at
+	  <http://www.tldp.org/docs.html#howto>.
 
 	  Even if you don't know what to do here, say Y.
 
@@ -90,7 +101,8 @@ config NR_CPUS
 	int "Maximum number of CPUs (2-64)"
 	range 2 64
 	depends on SMP
-	default "32"
+	default "32" if !64BIT
+	default "64" if 64BIT
 	help
 	  This allows you to specify the maximum number of CPUs which this
 	  kernel will support.  The maximum supported value is 64 and the
@@ -276,9 +288,6 @@ source "kernel/Kconfig.preempt"
 
 source "mm/Kconfig"
 
-config HOLES_IN_ZONE
-	def_bool y
-
 comment "I/O subsystem configuration"
 
 config MACHCHK_WARNING
@@ -341,6 +350,10 @@ config IPL_VM
 endchoice
 
 source "fs/Kconfig.binfmt"
+
+config FORCE_MAX_ZONEORDER
+	int
+	default "9"
 
 config PROCESS_DEBUG
 	bool "Show crashed user process info"
@@ -528,8 +541,6 @@ config CCW
 source "drivers/Kconfig"
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/s390/Kconfig.debug"
 

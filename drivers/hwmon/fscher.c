@@ -40,7 +40,7 @@
  * Addresses to scan
  */
 
-static unsigned short normal_i2c[] = { 0x73, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { 0x73, I2C_CLIENT_END };
 
 /*
  * Insmod parameters
@@ -123,7 +123,6 @@ static struct i2c_driver fscher_driver = {
 	.driver = {
 		.name	= "fscher",
 	},
-	.id		= I2C_DRIVERID_FSCHER,
 	.attach_adapter	= fscher_attach_adapter,
 	.detach_client	= fscher_detach_client,
 };

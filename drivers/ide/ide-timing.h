@@ -2,8 +2,6 @@
 #define _IDE_TIMING_H
 
 /*
- * $Id: ide-timing.h,v 1.6 2001/12/23 22:47:56 vojtech Exp $
- *
  *  Copyright (c) 1999-2001 Vojtech Pavlik
  */
 
@@ -201,7 +199,7 @@ static int ide_timing_compute(ide_drive_t *drive, short speed, struct ide_timing
 	}
 
 /*
- * Lenghten active & recovery time so that cycle time is correct.
+ * Lengthen active & recovery time so that cycle time is correct.
  */
 
 	if (t->act8b + t->rec8b < t->cyc8b) {

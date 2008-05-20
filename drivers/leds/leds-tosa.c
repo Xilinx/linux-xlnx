@@ -45,13 +45,13 @@ static void tosaled_green_set(struct led_classdev *led_cdev,
 }
 
 static struct led_classdev tosa_amber_led = {
-	.name			= "tosa:amber",
+	.name			= "tosa:amber:charge",
 	.default_trigger	= "sharpsl-charge",
 	.brightness_set		= tosaled_amber_set,
 };
 
 static struct led_classdev tosa_green_led = {
-	.name			= "tosa:green",
+	.name			= "tosa:green:mail",
 	.default_trigger	= "nand-disk",
 	.brightness_set		= tosaled_green_set,
 };
@@ -109,6 +109,7 @@ static struct platform_driver tosaled_driver = {
 	.resume		= tosaled_resume,
 	.driver		= {
 		.name		= "tosa-led",
+		.owner		= THIS_MODULE,
 	},
 };
 
@@ -128,3 +129,4 @@ module_exit(tosaled_exit);
 MODULE_AUTHOR("Dirk Opfer <Dirk@Opfer-Online.de>");
 MODULE_DESCRIPTION("Tosa LED driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:tosa-led");

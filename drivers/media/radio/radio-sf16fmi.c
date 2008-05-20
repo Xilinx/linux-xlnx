@@ -321,7 +321,7 @@ static struct isapnp_device_id id_table[] __devinitdata = {
 
 MODULE_DEVICE_TABLE(isapnp, id_table);
 
-static int isapnp_fmi_probe(void)
+static int __init isapnp_fmi_probe(void)
 {
 	int i = 0;
 
@@ -361,6 +361,7 @@ static int __init fmi_init(void)
 	}
 	if (!request_region(io, 2, "radio-sf16fmi")) {
 		printk(KERN_ERR "radio-sf16fmi: port 0x%x already in use\n", io);
+		pnp_device_detach(dev);
 		return -EBUSY;
 	}
 

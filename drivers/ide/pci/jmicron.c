@@ -8,12 +8,9 @@
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <linux/delay.h>
 #include <linux/hdreg.h>
 #include <linux/ide.h>
 #include <linux/init.h>
-
-#include <asm/io.h>
 
 typedef enum {
 	PORT_PATA0 = 0,
@@ -30,7 +27,7 @@ typedef enum {
 
 static u8 __devinit ata66_jmicron(ide_hwif_t *hwif)
 {
-	struct pci_dev *pdev = hwif->pci_dev;
+	struct pci_dev *pdev = to_pci_dev(hwif->dev);
 
 	u32 control;
 	u32 control5;
@@ -111,11 +108,7 @@ static void __devinit init_hwif_jmicron(ide_hwif_t *hwif)
 	hwif->set_pio_mode = &jmicron_set_pio_mode;
 	hwif->set_dma_mode = &jmicron_set_dma_mode;
 
-	if (hwif->dma_base == 0)
-		return;
-
-	if (hwif->cbl != ATA_CBL_PATA40_SHORT)
-		hwif->cbl = ata66_jmicron(hwif);
+	hwif->cable_detect = ata66_jmicron;
 }
 
 static const struct ide_port_info jmicron_chipset __devinitdata = {

@@ -4,7 +4,7 @@
 
 #define LHCALL_FLUSH_ASYNC	0
 #define LHCALL_LGUEST_INIT	1
-#define LHCALL_CRASH		2
+#define LHCALL_SHUTDOWN		2
 #define LHCALL_LOAD_GDT		3
 #define LHCALL_NEW_PGTABLE	4
 #define LHCALL_FLUSH_TLB	5
@@ -20,10 +20,14 @@
 
 #define LGUEST_TRAP_ENTRY 0x1F
 
+/* Argument number 3 to LHCALL_LGUEST_SHUTDOWN */
+#define LGUEST_SHUTDOWN_POWEROFF	1
+#define LGUEST_SHUTDOWN_RESTART		2
+
 #ifndef __ASSEMBLY__
 #include <asm/hw_irq.h>
 
-/*G:031 First, how does our Guest contact the Host to ask for privileged
+/*G:031 But first, how does our Guest contact the Host to ask for privileged
  * operations?  There are two ways: the direct way is to make a "hypercall",
  * to make requests of the Host Itself.
  *

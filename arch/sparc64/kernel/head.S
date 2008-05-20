@@ -288,8 +288,12 @@ sun4v_chip_type:
 	/* Leave arg2 as-is, prom_mmu_ihandle_cache */
 	mov	-1, %l3
 	stx	%l3, [%sp + 2047 + 128 + 0x28]	! arg3: mode (-1 default)
-	sethi	%hi(8 * 1024 * 1024), %l3
-	stx	%l3, [%sp + 2047 + 128 + 0x30]	! arg4: size (8MB)
+	/* 4MB align the kernel image size. */
+	set	(_end - KERNBASE), %l3
+	set	((4 * 1024 * 1024) - 1), %l4
+	add	%l3, %l4, %l3
+	andn	%l3, %l4, %l3
+	stx	%l3, [%sp + 2047 + 128 + 0x30]	! arg4: roundup(ksize, 4MB)
 	sethi	%hi(KERNBASE), %l3
 	stx	%l3, [%sp + 2047 + 128 + 0x38]	! arg5: vaddr (KERNBASE)
 	stx	%g0, [%sp + 2047 + 128 + 0x40]	! arg6: empty
@@ -632,10 +636,35 @@ tlb_fixup_done:
 	/* Not reached... */
 
 1:
+	/* If we boot on a non-zero cpu, all of the per-cpu
+	 * variable references we make before setting up the
+	 * per-cpu areas will use a bogus offset.  Put a
+	 * compensating factor into __per_cpu_base to handle
+	 * this cleanly.
+	 *
+	 * What the per-cpu code calculates is:
+	 *
+	 *	__per_cpu_base + (cpu << __per_cpu_shift)
+	 *
+	 * These two variables are zero initially, so to
+	 * make it all cancel out to zero we need to put
+	 * "0 - (cpu << 0)" into __per_cpu_base so that the
+	 * above formula evaluates to zero.
+	 *
+	 * We cannot even perform a printk() until this stuff
+	 * is setup as that calls cpu_clock() which uses
+	 * per-cpu variables.
+	 */
+	sub	%g0, %o0, %o1
+	sethi	%hi(__per_cpu_base), %o2
+	stx	%o1, [%o2 + %lo(__per_cpu_base)]
 #else
 	mov	0, %o0
 #endif
 	sth	%o0, [%g6 + TI_CPU]
+
+	call	prom_init_report
+	 nop
 
 	/* Off we go.... */
 	call	start_kernel

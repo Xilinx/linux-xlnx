@@ -64,6 +64,7 @@ static LIST_HEAD(ipcomp6_tfms_list);
 
 static int ipcomp6_input(struct xfrm_state *x, struct sk_buff *skb)
 {
+	int nexthdr;
 	int err = -ENOMEM;
 	struct ip_comp_hdr *ipch;
 	int plen, dlen;
@@ -79,6 +80,8 @@ static int ipcomp6_input(struct xfrm_state *x, struct sk_buff *skb)
 
 	/* Remove ipcomp header and decompress original payload */
 	ipch = (void *)skb->data;
+	nexthdr = ipch->nexthdr;
+
 	skb->transport_header = skb->network_header + sizeof(*ipch);
 	__skb_pull(skb, sizeof(*ipch));
 
@@ -108,7 +111,7 @@ static int ipcomp6_input(struct xfrm_state *x, struct sk_buff *skb)
 	skb->truesize += dlen - plen;
 	__skb_put(skb, dlen - plen);
 	skb_copy_to_linear_data(skb, scratch, dlen);
-	err = ipch->nexthdr;
+	err = nexthdr;
 
 out_put_cpu:
 	put_cpu();
@@ -143,7 +146,9 @@ static int ipcomp6_output(struct xfrm_state *x, struct sk_buff *skb)
 	scratch = *per_cpu_ptr(ipcomp6_scratches, cpu);
 	tfm = *per_cpu_ptr(ipcd->tfms, cpu);
 
+	local_bh_disable();
 	err = crypto_comp_compress(tfm, start, plen, scratch, &dlen);
+	local_bh_enable();
 	if (err || (dlen + sizeof(*ipch)) >= plen) {
 		put_cpu();
 		goto out_ok;
@@ -190,7 +195,6 @@ static void ipcomp6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 static struct xfrm_state *ipcomp6_tunnel_create(struct xfrm_state *x)
 {
 	struct xfrm_state *t = NULL;
-	u8 mode = XFRM_MODE_TUNNEL;
 
 	t = xfrm_state_alloc();
 	if (!t)
@@ -204,9 +208,7 @@ static struct xfrm_state *ipcomp6_tunnel_create(struct xfrm_state *x)
 	memcpy(t->id.daddr.a6, x->id.daddr.a6, sizeof(struct in6_addr));
 	memcpy(&t->sel, &x->sel, sizeof(t->sel));
 	t->props.family = AF_INET6;
-	if (x->props.mode == XFRM_MODE_BEET)
-		mode = x->props.mode;
-	t->props.mode = mode;
+	t->props.mode = x->props.mode;
 	memcpy(t->props.saddr.a6, x->props.saddr.a6, sizeof(struct in6_addr));
 
 	if (xfrm_init_state(t))
@@ -405,21 +407,21 @@ static int ipcomp6_init_state(struct xfrm_state *x)
 	if (x->encap)
 		goto out;
 
-	err = -ENOMEM;
-	ipcd = kzalloc(sizeof(*ipcd), GFP_KERNEL);
-	if (!ipcd)
-		goto out;
-
 	x->props.header_len = 0;
 	switch (x->props.mode) {
-	case XFRM_MODE_BEET:
 	case XFRM_MODE_TRANSPORT:
 		break;
 	case XFRM_MODE_TUNNEL:
 		x->props.header_len += sizeof(struct ipv6hdr);
+		break;
 	default:
-		goto error;
+		goto out;
 	}
+
+	err = -ENOMEM;
+	ipcd = kzalloc(sizeof(*ipcd), GFP_KERNEL);
+	if (!ipcd)
+		goto out;
 
 	mutex_lock(&ipcomp6_resource_mutex);
 	if (!ipcomp6_alloc_scratches())
@@ -453,7 +455,7 @@ error:
 	goto out;
 }
 
-static struct xfrm_type ipcomp6_type =
+static const struct xfrm_type ipcomp6_type =
 {
 	.description	= "IPCOMP6",
 	.owner		= THIS_MODULE,

@@ -64,13 +64,7 @@ static void mlx4_ib_cq_event(struct mlx4_cq *cq, enum mlx4_event type)
 
 static void *get_cqe_from_buf(struct mlx4_ib_cq_buf *buf, int n)
 {
-	int offset = n * sizeof (struct mlx4_cqe);
-
-	if (buf->buf.nbufs == 1)
-		return buf->buf.u.direct.buf + offset;
-	else
-		return buf->buf.u.page_list[offset >> PAGE_SHIFT].buf +
-			(offset & (PAGE_SIZE - 1));
+	return mlx4_buf_offset(&buf->buf, n * sizeof (struct mlx4_cqe));
 }
 
 static void *get_cqe(struct mlx4_ib_cq *cq, int n)
@@ -313,6 +307,7 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 	struct mlx4_ib_srq *srq;
 	int is_send;
 	int is_error;
+	u32 g_mlpath_rqpn;
 	u16 wqe_ctr;
 
 	cqe = next_cqe_sw(cq);
@@ -330,6 +325,12 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 	is_send  = cqe->owner_sr_opcode & MLX4_CQE_IS_SEND_MASK;
 	is_error = (cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) ==
 		MLX4_CQE_OPCODE_ERROR;
+
+	if (unlikely((cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) == MLX4_OPCODE_NOP &&
+		     is_send)) {
+		printk(KERN_WARNING "Completion for NOP opcode detected!\n");
+		return -EINVAL;
+	}
 
 	if (!*cur_qp ||
 	    (be32_to_cpu(cqe->my_qpn) & 0xffffff) != (*cur_qp)->mqp.qpn) {
@@ -353,8 +354,10 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 
 	if (is_send) {
 		wq = &(*cur_qp)->sq;
-		wqe_ctr = be16_to_cpu(cqe->wqe_index);
-		wq->tail += (u16) (wqe_ctr - (u16) wq->tail);
+		if (!(*cur_qp)->sq_signal_bits) {
+			wqe_ctr = be16_to_cpu(cqe->wqe_index);
+			wq->tail += (u16) (wqe_ctr - (u16) wq->tail);
+		}
 		wc->wr_id = wq->wrid[wq->tail & (wq->wqe_cnt - 1)];
 		++wq->tail;
 	} else if ((*cur_qp)->ibqp.srq) {
@@ -426,10 +429,10 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 
 		wc->slid	   = be16_to_cpu(cqe->rlid);
 		wc->sl		   = cqe->sl >> 4;
-		wc->src_qp	   = be32_to_cpu(cqe->g_mlpath_rqpn) & 0xffffff;
-		wc->dlid_path_bits = (be32_to_cpu(cqe->g_mlpath_rqpn) >> 24) & 0x7f;
-		wc->wc_flags      |= be32_to_cpu(cqe->g_mlpath_rqpn) & 0x80000000 ?
-			IB_WC_GRH : 0;
+		g_mlpath_rqpn	   = be32_to_cpu(cqe->g_mlpath_rqpn);
+		wc->src_qp	   = g_mlpath_rqpn & 0xffffff;
+		wc->dlid_path_bits = (g_mlpath_rqpn >> 24) & 0x7f;
+		wc->wc_flags	  |= g_mlpath_rqpn & 0x80000000 ? IB_WC_GRH : 0;
 		wc->pkey_index     = be32_to_cpu(cqe->immed_rss_invalid) & 0x7f;
 	}
 

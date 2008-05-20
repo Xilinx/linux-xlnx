@@ -46,42 +46,6 @@ static inline int irqs_disabled(void)
 	return flags & 0xf;
 }
 
-#define RSR_CPENABLE(x)	do {						  \
-	__asm__ __volatile__("rsr %0," __stringify(CPENABLE) : "=a" (x)); \
-	} while(0);
-#define WSR_CPENABLE(x)	do {						  \
-  	__asm__ __volatile__("wsr %0," __stringify(CPENABLE)";rsync" 	  \
-	    		     :: "a" (x));} while(0);
-
-#define clear_cpenable() __clear_cpenable()
-
-static inline void __clear_cpenable(void)
-{
-#if XCHAL_HAVE_CP
-	unsigned long i = 0;
-	WSR_CPENABLE(i);
-#endif
-}
-
-static inline void enable_coprocessor(int i)
-{
-#if XCHAL_HAVE_CP
-	int cp;
-	RSR_CPENABLE(cp);
-	cp |= 1 << i;
-	WSR_CPENABLE(cp);
-#endif
-}
-
-static inline void disable_coprocessor(int i)
-{
-#if XCHAL_HAVE_CP
-	int cp;
-	RSR_CPENABLE(cp);
-	cp &= ~(1 << i);
-	WSR_CPENABLE(cp);
-#endif
-}
 
 #define smp_read_barrier_depends() do { } while(0)
 #define read_barrier_depends() do { } while(0)
@@ -111,7 +75,6 @@ extern void *_switch_to(void *last, void *next);
 
 #define switch_to(prev,next,last)		\
 do {						\
-	clear_cpenable();			\
 	(last) = _switch_to(prev, next);	\
 } while(0)
 
@@ -156,8 +119,30 @@ __cmpxchg(volatile void *ptr, unsigned long old, unsigned long new, int size)
 	   			        (unsigned long)_n_, sizeof (*(ptr))); \
 	})
 
+#include <asm-generic/cmpxchg-local.h>
 
+static inline unsigned long __cmpxchg_local(volatile void *ptr,
+				      unsigned long old,
+				      unsigned long new, int size)
+{
+	switch (size) {
+	case 4:
+		return __cmpxchg_u32(ptr, old, new);
+	default:
+		return __cmpxchg_local_generic(ptr, old, new, size);
+	}
 
+	return old;
+}
+
+/*
+ * cmpxchg_local and cmpxchg64_local are atomic wrt current CPU. Always make
+ * them available.
+ */
+#define cmpxchg_local(ptr, o, n)				  	       \
+	((__typeof__(*(ptr)))__cmpxchg_local_generic((ptr), (unsigned long)(o),\
+			(unsigned long)(n), sizeof(*(ptr))))
+#define cmpxchg64_local(ptr, o, n) __cmpxchg64_local_generic((ptr), (o), (n))
 
 /*
  * xchg_u32
@@ -222,7 +207,7 @@ static inline void spill_registers(void)
 		"wsr	a13," __stringify(SAR) "\n\t"
 		"wsr	a14," __stringify(PS) "\n\t"
 		:: "a" (&a0), "a" (&ps)
-		: "a2", "a3", "a12", "a13", "a14", "a15", "memory");
+		: "a2", "a3", "a4", "a7", "a11", "a12", "a13", "a14", "a15", "memory");
 }
 
 #define arch_align_stack(x) (x)

@@ -11,6 +11,7 @@
 #include <linux/fs.h>
 #include <linux/ptrace.h>
 #include <linux/reboot.h>
+#include <linux/tick.h>
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
 
@@ -30,8 +31,10 @@ void cpu_idle(void)
 {
 	/* endless idle loop with no priority at all */
 	while (1) {
+		tick_nohz_stop_sched_tick();
 		while (!need_resched())
 			cpu_idle_sleep();
+		tick_nohz_restart_sched_tick();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
@@ -103,7 +106,7 @@ EXPORT_SYMBOL(kernel_thread);
  */
 void exit_thread(void)
 {
-	/* nothing to do */
+	ocd_disable(current);
 }
 
 void flush_thread(void)
@@ -344,6 +347,10 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long usp,
 	p->thread.cpu_context.sr = MODE_SUPERVISOR | SR_GM;
 	p->thread.cpu_context.ksp = (unsigned long)childregs;
 	p->thread.cpu_context.pc = (unsigned long)ret_from_fork;
+
+	clear_tsk_thread_flag(p, TIF_DEBUG);
+	if ((clone_flags & CLONE_PTRACE) && test_thread_flag(TIF_DEBUG))
+		ocd_enable(p);
 
 	return 0;
 }

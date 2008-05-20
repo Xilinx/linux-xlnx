@@ -221,35 +221,31 @@ static struct ip_tunnel * ipip_tunnel_locate(struct ip_tunnel_parm *parms, int c
 
 	if (parms->name[0])
 		strlcpy(name, parms->name, IFNAMSIZ);
-	else {
-		int i;
-		for (i=1; i<100; i++) {
-			sprintf(name, "tunl%d", i);
-			if (__dev_get_by_name(&init_net, name) == NULL)
-				break;
-		}
-		if (i==100)
-			goto failed;
-	}
+	else
+		sprintf(name, "tunl%%d");
 
 	dev = alloc_netdev(sizeof(*t), name, ipip_tunnel_setup);
 	if (dev == NULL)
 		return NULL;
 
+	if (strchr(name, '%')) {
+		if (dev_alloc_name(dev, name) < 0)
+			goto failed_free;
+	}
+
 	nt = netdev_priv(dev);
 	dev->init = ipip_tunnel_init;
 	nt->parms = *parms;
 
-	if (register_netdevice(dev) < 0) {
-		free_netdev(dev);
-		goto failed;
-	}
+	if (register_netdevice(dev) < 0)
+		goto failed_free;
 
 	dev_hold(dev);
 	ipip_tunnel_link(nt);
 	return nt;
 
-failed:
+failed_free:
+	free_netdev(dev);
 	return NULL;
 }
 
@@ -405,7 +401,7 @@ out:
 	fl.fl4_daddr = eiph->saddr;
 	fl.fl4_tos = RT_TOS(eiph->tos);
 	fl.proto = IPPROTO_IPIP;
-	if (ip_route_output_key(&rt, &key)) {
+	if (ip_route_output_key(&init_net, &rt, &key)) {
 		kfree_skb(skb2);
 		return 0;
 	}
@@ -418,7 +414,7 @@ out:
 		fl.fl4_daddr = eiph->daddr;
 		fl.fl4_src = eiph->saddr;
 		fl.fl4_tos = eiph->tos;
-		if (ip_route_output_key(&rt, &fl) ||
+		if (ip_route_output_key(&init_net, &rt, &fl) ||
 		    rt->u.dst.dev->type != ARPHRD_TUNNEL) {
 			ip_rt_put(rt);
 			kfree_skb(skb2);
@@ -547,7 +543,7 @@ static int ipip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 						.saddr = tiph->saddr,
 						.tos = RT_TOS(tos) } },
 				    .proto = IPPROTO_IPIP };
-		if (ip_route_output_key(&rt, &fl)) {
+		if (ip_route_output_key(&init_net, &rt, &fl)) {
 			tunnel->stat.tx_carrier_errors++;
 			goto tx_error_icmp;
 		}
@@ -651,6 +647,40 @@ tx_error:
 	return 0;
 }
 
+static void ipip_tunnel_bind_dev(struct net_device *dev)
+{
+	struct net_device *tdev = NULL;
+	struct ip_tunnel *tunnel;
+	struct iphdr *iph;
+
+	tunnel = netdev_priv(dev);
+	iph = &tunnel->parms.iph;
+
+	if (iph->daddr) {
+		struct flowi fl = { .oif = tunnel->parms.link,
+				    .nl_u = { .ip4_u =
+					      { .daddr = iph->daddr,
+						.saddr = iph->saddr,
+						.tos = RT_TOS(iph->tos) } },
+				    .proto = IPPROTO_IPIP };
+		struct rtable *rt;
+		if (!ip_route_output_key(&init_net, &rt, &fl)) {
+			tdev = rt->u.dst.dev;
+			ip_rt_put(rt);
+		}
+		dev->flags |= IFF_POINTOPOINT;
+	}
+
+	if (!tdev && tunnel->parms.link)
+		tdev = __dev_get_by_index(&init_net, tunnel->parms.link);
+
+	if (tdev) {
+		dev->hard_header_len = tdev->hard_header_len + sizeof(struct iphdr);
+		dev->mtu = tdev->mtu - sizeof(struct iphdr);
+	}
+	dev->iflink = tunnel->parms.link;
+}
+
 static int
 ipip_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 {
@@ -723,6 +753,11 @@ ipip_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 				t->parms.iph.ttl = p.iph.ttl;
 				t->parms.iph.tos = p.iph.tos;
 				t->parms.iph.frag_off = p.iph.frag_off;
+				if (t->parms.link != p.link) {
+					t->parms.link = p.link;
+					ipip_tunnel_bind_dev(dev);
+					netdev_state_change(dev);
+				}
 			}
 			if (copy_to_user(ifr->ifr_ifru.ifru_data, &t->parms, sizeof(p)))
 				err = -EFAULT;
@@ -791,12 +826,9 @@ static void ipip_tunnel_setup(struct net_device *dev)
 
 static int ipip_tunnel_init(struct net_device *dev)
 {
-	struct net_device *tdev = NULL;
 	struct ip_tunnel *tunnel;
-	struct iphdr *iph;
 
 	tunnel = netdev_priv(dev);
-	iph = &tunnel->parms.iph;
 
 	tunnel->dev = dev;
 	strcpy(tunnel->parms.name, dev->name);
@@ -804,29 +836,7 @@ static int ipip_tunnel_init(struct net_device *dev)
 	memcpy(dev->dev_addr, &tunnel->parms.iph.saddr, 4);
 	memcpy(dev->broadcast, &tunnel->parms.iph.daddr, 4);
 
-	if (iph->daddr) {
-		struct flowi fl = { .oif = tunnel->parms.link,
-				    .nl_u = { .ip4_u =
-					      { .daddr = iph->daddr,
-						.saddr = iph->saddr,
-						.tos = RT_TOS(iph->tos) } },
-				    .proto = IPPROTO_IPIP };
-		struct rtable *rt;
-		if (!ip_route_output_key(&rt, &fl)) {
-			tdev = rt->u.dst.dev;
-			ip_rt_put(rt);
-		}
-		dev->flags |= IFF_POINTOPOINT;
-	}
-
-	if (!tdev && tunnel->parms.link)
-		tdev = __dev_get_by_index(&init_net, tunnel->parms.link);
-
-	if (tdev) {
-		dev->hard_header_len = tdev->hard_header_len + sizeof(struct iphdr);
-		dev->mtu = tdev->mtu - sizeof(struct iphdr);
-	}
-	dev->iflink = tunnel->parms.link;
+	ipip_tunnel_bind_dev(dev);
 
 	return 0;
 }

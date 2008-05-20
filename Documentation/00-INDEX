@@ -14,6 +14,7 @@ Following translations are available on the WWW:
 	- this file.
 ABI/
 	- info on kernel <-> userspace ABI and relative interface stability.
+
 BUG-HUNTING
 	- brute force method of doing binary search of patches to find bug.
 Changes
@@ -66,6 +67,8 @@ VGA-softcursor.txt
 	- how to change your VGA cursor from a blinking underscore.
 accounting/
 	- documentation on accounting and taskstats.
+acpi/
+	- info on ACPI-specific hooks in the kernel.
 aoe/
 	- description of AoE (ATA over Ethernet) along with config examples.
 applying-patches.txt
@@ -106,6 +109,8 @@ cpu-hotplug.txt
 	- document describing CPU hotplug support in the Linux kernel.
 cpu-load.txt
 	- document describing how CPU load statistics are collected.
+cpuidle/
+	- info on CPU_IDLE, CPU idle state management subsystem.
 cpusets.txt
 	- documents the cpusets feature; assign CPUs and Mem to a set of tasks.
 cputopology.txt
@@ -126,18 +131,16 @@ devices.txt
 	- plain ASCII listing of all the nodes in /dev/ with major minor #'s.
 digiepca.txt
 	- info on Digi Intl. {PC,PCI,EISA}Xx and Xem series cards.
-dnotify.txt
-	- info about directory notification in Linux.
 dontdiff
 	- file containing a list of files that should never be diff'ed.
 driver-model/
 	- directory with info about Linux driver model.
-drivers/
-	- directory with driver documentation (currently only EDAC).
 dvb/
 	- info on Linux Digital Video Broadcast (DVB) subsystem.
 early-userspace/
 	- info about initramfs, klibc, and userspace early during boot.
+edac.txt
+	- information on EDAC - Error Detection And Correction
 eisa.txt
 	- info on EISA bus support.
 exception.txt
@@ -154,7 +157,7 @@ firmware_class/
 	- request_firmware() hotplug interface info.
 floppy.txt
 	- notes and driver options for the floppy disk driver.
-fujitsu/
+frv/
 	- Fujitsu FR-V Linux documentation.
 gpio.txt
 	- overview of GPIO (General Purpose Input/Output) access conventions.
@@ -180,8 +183,6 @@ i386/
 	- directory with info about Linux on Intel 32 bit architecture.
 ia64/
 	- directory with info about Linux on Intel 64 bit architecture.
-ide.txt
-	- important info for users of ATA devices (IDE/EIDE disks and CD-ROMS).
 infiniband/
 	- directory with documents concerning Linux InfiniBand support.
 initrd.txt
@@ -224,8 +225,8 @@ kprobes.txt
 	- documents the kernel probes debugging feature.
 kref.txt
 	- docs on adding reference counters (krefs) to kernel objects.
-laptop-mode.txt
-	- how to conserve battery power using laptop-mode.
+laptops/
+	- directory with laptop related info and laptop driver documentation.
 ldm.txt
 	- a brief description of LDM (Windows Dynamic Disks).
 leds-class.txt
@@ -270,8 +271,6 @@ netlabel/
 	- directory with information on the NetLabel subsystem.
 networking/
 	- directory with info on various aspects of networking with Linux.
-nfsroot.txt
-	- short guide on setting up a diskless box with NFS root filesystem.
 nmi_watchdog.txt
 	- info on NMI watchdog for SMP systems.
 nommu-mmap.txt
@@ -298,12 +297,8 @@ pcmcia/
 	- info on the Linux PCMCIA driver.
 pi-futex.txt
 	- documentation on lightweight PI-futexes.
-pm.txt
-	- info on Linux power management support.
 pnp.txt
 	- Linux Plug and Play documentation.
-power_supply_class.txt
-	- Tells userspace about battery, UPS, AC or DC power supply properties
 power/
 	- directory with info on Linux PCI power management.
 powerpc/
@@ -324,8 +319,6 @@ robust-futexes.txt
 	- a description of what robust futexes are.
 rocket.txt
 	- info on the Comtrol RocketPort multiport serial driver.
-rpc-cache.txt
-	- introduction to the caching mechanisms in the sunrpc layer.
 rt-mutex-design.txt
 	- description of the RealTime mutex implementation design.
 rt-mutex.txt
@@ -334,20 +327,8 @@ rtc.txt
 	- notes on how to use the Real Time Clock (aka CMOS clock) driver.
 s390/
 	- directory with info on using Linux on the IBM S390.
-sched-arch.txt
-	- CPU Scheduler implementation hints for architecture specific code.
-sched-coding.txt
-	- reference for various scheduler-related methods in the O(1) scheduler.
-sched-design.txt
-	- goals, design and implementation of the Linux O(1) scheduler.
-sched-design-CFS.txt
-	- goals, design and implementation of the Complete Fair Scheduler.
-sched-domains.txt
-	- information on scheduling domains.
-sched-nice-design.txt
-	- How and why the scheduler's nice levels are implemented.
-sched-stats.txt
-	- information on schedstats (Linux Scheduler Statistics).
+scheduler/
+	- directory with info on the scheduler.
 scsi/
 	- directory with info on Linux scsi support.
 serial/
@@ -360,16 +341,8 @@ sgi-visws.txt
 	- short blurb on the SGI Visual Workstations.
 sh/
 	- directory with info on porting Linux to a new architecture.
-sharedsubtree.txt
-	- a description of shared subtrees for namespaces.
 smart-config.txt
 	- description of the Smart Config makefile feature.
-smp.txt
-	- a few notes on symmetric multi-processing.
-sony-laptop.txt
-	- Sony Notebook Control Driver (SNC) Readme.
-sonypi.txt
-	- info on Linux Sony Programmable I/O Device support.
 sound/
 	- directory with info on sound card support.
 sparc/
@@ -400,8 +373,6 @@ sysrq.txt
 	- info on the magic SysRq key.
 telephony/
 	- directory with info on telephony (e.g. voice over IP) support.
-thinkpad-acpi.txt
-	- information on the (IBM and Lenovo) ThinkPad ACPI Extras driver.
 time_interpolators.txt
 	- info on time interpolators.
 tipar.txt

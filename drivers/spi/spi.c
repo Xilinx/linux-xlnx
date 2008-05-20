@@ -18,7 +18,6 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <linux/autoconf.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/init.h>
@@ -77,39 +76,33 @@ static int spi_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 #ifdef	CONFIG_PM
 
-/*
- * NOTE:  the suspend() method for an spi_master controller driver
- * should verify that all its child devices are marked as suspended;
- * suspend requests delivered through sysfs power/state files don't
- * enforce such constraints.
- */
 static int spi_suspend(struct device *dev, pm_message_t message)
 {
-	int			value;
+	int			value = 0;
 	struct spi_driver	*drv = to_spi_driver(dev->driver);
 
-	if (!drv || !drv->suspend)
-		return 0;
-
 	/* suspend will stop irqs and dma; no more i/o */
-	value = drv->suspend(to_spi_device(dev), message);
-	if (value == 0)
-		dev->power.power_state = message;
+	if (drv) {
+		if (drv->suspend)
+			value = drv->suspend(to_spi_device(dev), message);
+		else
+			dev_dbg(dev, "... can't suspend\n");
+	}
 	return value;
 }
 
 static int spi_resume(struct device *dev)
 {
-	int			value;
+	int			value = 0;
 	struct spi_driver	*drv = to_spi_driver(dev->driver);
 
-	if (!drv || !drv->resume)
-		return 0;
-
 	/* resume may restart the i/o queue */
-	value = drv->resume(to_spi_device(dev));
-	if (value == 0)
-		dev->power.power_state = PMSG_ON;
+	if (drv) {
+		if (drv->resume)
+			value = drv->resume(to_spi_device(dev));
+		else
+			dev_dbg(dev, "... can't resume\n");
+	}
 	return value;
 }
 
@@ -485,6 +478,15 @@ void spi_unregister_master(struct spi_master *master)
 }
 EXPORT_SYMBOL_GPL(spi_unregister_master);
 
+static int __spi_master_match(struct device *dev, void *data)
+{
+	struct spi_master *m;
+	u16 *bus_num = data;
+
+	m = container_of(dev, struct spi_master, dev);
+	return m->bus_num == *bus_num;
+}
+
 /**
  * spi_busnum_to_master - look up master associated with bus_num
  * @bus_num: the master's bus number
@@ -499,17 +501,12 @@ struct spi_master *spi_busnum_to_master(u16 bus_num)
 {
 	struct device		*dev;
 	struct spi_master	*master = NULL;
-	struct spi_master	*m;
 
-	down(&spi_master_class.sem);
-	list_for_each_entry(dev, &spi_master_class.children, node) {
-		m = container_of(dev, struct spi_master, dev);
-		if (m->bus_num == bus_num) {
-			master = spi_master_get(m);
-			break;
-		}
-	}
-	up(&spi_master_class.sem);
+	dev = class_find_device(&spi_master_class, &bus_num,
+				__spi_master_match);
+	if (dev)
+		master = container_of(dev, struct spi_master, dev);
+	/* reference got in class_find_device */
 	return master;
 }
 EXPORT_SYMBOL_GPL(spi_busnum_to_master);

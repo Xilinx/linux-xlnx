@@ -41,6 +41,9 @@ _jiffies = _jiffies_64;
 SECTIONS
 {
 	. = CONFIG_BOOT_LOAD;
+	/* Neither the text, ro_data or bss section need to be aligned
+	 * So pack them back to back
+	 */
 	.text :
 	{
 		__text = .;
@@ -58,22 +61,25 @@ SECTIONS
 		*(__ex_table)
 		___stop___ex_table = .;
 
-		. = ALIGN(4);
 		__etext = .;
 	}
 
-	RO_DATA(PAGE_SIZE)
+	/* Just in case the first read only is a 32-bit access */
+	RO_DATA(4)
+
+	.bss :
+	{
+		. = ALIGN(4);
+		___bss_start = .;
+		*(.bss .bss.*)
+		*(COMMON)
+		___bss_stop = .;
+	}
 
 	.data :
 	{
-		/* make sure the init_task is aligned to the
-		 * kernel thread size so we can locate the kernel
-		 * stack properly and quickly.
-		 */
 		__sdata = .;
-		. = ALIGN(THREAD_SIZE);
-		*(.data.init_task)
-
+		/* This gets done first, so the glob doesn't suck it in */
 		. = ALIGN(32);
 		*(.data.cacheline_aligned)
 
@@ -81,23 +87,35 @@ SECTIONS
 		*(.data.*)
 		CONSTRUCTORS
 
+		/* make sure the init_task is aligned to the
+		 * kernel thread size so we can locate the kernel
+		 * stack properly and quickly.
+		 */
 		. = ALIGN(THREAD_SIZE);
+		*(.init_task.data)
+
 		__edata = .;
 	}
 
+	/* The init section should be last, so when we free it, it goes into
+	 * the general memory pool, and (hopefully) will decrease fragmentation
+	 * a tiny bit. The init section has a _requirement_ that it be
+	 * PAGE_SIZE aligned
+	 */
+	. = ALIGN(PAGE_SIZE);
 	___init_begin = .;
 
 	.init.text :
 	{
 		. = ALIGN(PAGE_SIZE);
 		__sinittext = .;
-		*(.init.text)
+		INIT_TEXT
 		__einittext = .;
 	}
 	.init.data :
 	{
 		. = ALIGN(16);
-		*(.init.data)
+		INIT_DATA
 	}
 	.init.setup :
 	{
@@ -129,44 +147,64 @@ SECTIONS
 
 	__l1_lma_start = .;
 
+#if L1_CODE_LENGTH
+# define LDS_L1_CODE *(.l1.text)
+#else
+# define LDS_L1_CODE
+#endif
 	.text_l1 L1_CODE_START : AT(LOADADDR(.init.ramfs) + SIZEOF(.init.ramfs))
 	{
 		. = ALIGN(4);
 		__stext_l1 = .;
-		*(.l1.text)
-
+		LDS_L1_CODE
 		. = ALIGN(4);
 		__etext_l1 = .;
 	}
 
+#if L1_DATA_A_LENGTH
+# define LDS_L1_A_DATA  *(.l1.data)
+# define LDS_L1_A_BSS   *(.l1.bss)
+# define LDS_L1_A_CACHE *(.data_l1.cacheline_aligned)
+#else
+# define LDS_L1_A_DATA
+# define LDS_L1_A_BSS
+# define LDS_L1_A_CACHE
+#endif
 	.data_l1 L1_DATA_A_START : AT(LOADADDR(.text_l1) + SIZEOF(.text_l1))
 	{
 		. = ALIGN(4);
 		__sdata_l1 = .;
-		*(.l1.data)
+		LDS_L1_A_DATA
 		__edata_l1 = .;
 
 		. = ALIGN(4);
 		__sbss_l1 = .;
-		*(.l1.bss)
+		LDS_L1_A_BSS
 
 		. = ALIGN(32);
-		*(.data_l1.cacheline_aligned)
+		LDS_L1_A_CACHE
 
 		. = ALIGN(4);
 		__ebss_l1 = .;
 	}
 
+#if L1_DATA_B_LENGTH
+# define LDS_L1_B_DATA  *(.l1.data.B)
+# define LDS_L1_B_BSS   *(.l1.bss.B)
+#else
+# define LDS_L1_B_DATA
+# define LDS_L1_B_BSS
+#endif
 	.data_b_l1 L1_DATA_B_START : AT(LOADADDR(.data_l1) + SIZEOF(.data_l1))
 	{
 		. = ALIGN(4);
 		__sdata_b_l1 = .;
-		*(.l1.data.B)
+		LDS_L1_B_DATA
 		__edata_b_l1 = .;
 
 		. = ALIGN(4);
 		__sbss_b_l1 = .;
-		*(.l1.bss.B)
+		LDS_L1_B_BSS
 
 		. = ALIGN(4);
 		__ebss_b_l1 = .;
@@ -179,16 +217,7 @@ SECTIONS
 	. = ALIGN(PAGE_SIZE);
 	___init_end = .;
 
-	.bss :
-	{
-		. = ALIGN(4);
-		___bss_start = .;
-		*(.bss .bss.*)
-		*(COMMON)
-		. = ALIGN(4);
-		___bss_stop = .;
-		__end = .;
-	}
+	__end =.;
 
 	STABS_DEBUG
 
@@ -198,8 +227,8 @@ SECTIONS
 
 	/DISCARD/ :
 	{
-		*(.exit.text)
-		*(.exit.data)
+		EXIT_TEXT
+		EXIT_DATA
 		*(.exitcall.exit)
 	}
 }

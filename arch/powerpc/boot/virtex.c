@@ -12,8 +12,9 @@
  * by the Free Software Foundation.
  */
 
+#include <stddef.h>
+#include <stdio.h>
 #include "ops.h"
-#include "stdio.h"
 #include "dcr.h"
 #include "4xx.h"
 #include "io.h"
@@ -22,8 +23,8 @@
 BSS_STACK(4096);
 
 #include "types.h"
-#include "flatdevtree.h"
 #include "gunzip_util.h"
+#include <libfdt.h>
 #include "../../../include/linux/autoconf.h"
 
 #define UART_DLL		0	/* Out: Divisor Latch Low */
@@ -114,6 +115,10 @@ static int virtex_serial_console_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_COMPRESSED_DEVICE_TREE
+static struct gunzip_state gzstate;
+#endif
+
 void platform_init(void)
 {
 	u32 memreg[4];
@@ -131,7 +136,7 @@ void platform_init(void)
 	u32 dtbz_size;
 	void *dtb_addr;
 	u32 dtb_size;
-	struct boot_param_header dtb_header;
+	struct fdt_header dtb_header;
 	int len;
 #endif
 
@@ -185,12 +190,12 @@ void platform_init(void)
 				len, dtb_size);
 	printf("done 0x%x bytes\n\r", len);
 	simple_alloc_init(0x800000, size - (unsigned long)0x800000, 32, 64);
-	ft_init(dtb_addr, dtb_size, 32);
+	fdt_init(dtb_addr);
 #else
         /** FIXME: flatdevicetrees need the initializer allocated,
             libfdt will fix this. */
 	simple_alloc_init(_end, size - (unsigned long)_end, 32, 64);
-	ft_init(_dtb_start, _dtb_end - _dtb_start, 32);
+	fdt_init(_dtb_start);
 #endif
 
 	root = finddevice("/");

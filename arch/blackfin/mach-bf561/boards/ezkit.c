@@ -29,10 +29,13 @@
 
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/mtd/mtd.h>
+#include <linux/mtd/partitions.h>
+#include <linux/mtd/physmap.h>
 #include <linux/spi/spi.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
-#include <linux/pata_platform.h>
+#include <linux/ata_platform.h>
 #include <asm/dma.h>
 #include <asm/bfin5xx_spi.h>
 #include <asm/portmux.h>
@@ -87,6 +90,68 @@ void __exit bfin_isp1761_exit(void)
 }
 
 arch_initcall(bfin_isp1761_init);
+#endif
+
+#if defined(CONFIG_USB_ISP1362_HCD) || defined(CONFIG_USB_ISP1362_HCD_MODULE)
+#include <linux/usb/isp1362.h>
+
+static struct resource isp1362_hcd_resources[] = {
+	{
+		.start = 0x2c060000,
+		.end = 0x2c060000,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = 0x2c060004,
+		.end = 0x2c060004,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_PF8,
+		.end = IRQ_PF8,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct isp1362_platform_data isp1362_priv = {
+	.sel15Kres = 1,
+	.clknotstop = 0,
+	.oc_enable = 0,
+	.int_act_high = 0,
+	.int_edge_triggered = 0,
+	.remote_wakeup_connected = 0,
+	.no_power_switching = 1,
+	.power_switching_mode = 0,
+};
+
+static struct platform_device isp1362_hcd_device = {
+	.name = "isp1362-hcd",
+	.id = 0,
+	.dev = {
+		.platform_data = &isp1362_priv,
+	},
+	.num_resources = ARRAY_SIZE(isp1362_hcd_resources),
+	.resource = isp1362_hcd_resources,
+};
+#endif
+
+#if defined(CONFIG_USB_NET2272) || defined(CONFIG_USB_NET2272_MODULE)
+static struct resource net2272_bfin_resources[] = {
+	{
+		.start = 0x2C000000,
+		.end = 0x2C000000 + 0x7F,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_PF10,
+		.end = IRQ_PF10,
+		.flags = IORESOURCE_IRQ | IORESOURCE_IRQ_LOWLEVEL,
+	},
+};
+
+static struct platform_device net2272_bfin_device = {
+	.name = "net2272",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(net2272_bfin_resources),
+	.resource = net2272_bfin_resources,
+};
 #endif
 
 /*
@@ -155,12 +220,57 @@ static struct platform_device bfin_uart_device = {
 };
 #endif
 
+static struct mtd_partition ezkit_partitions[] = {
+	{
+		.name       = "Bootloader",
+		.size       = 0x40000,
+		.offset     = 0,
+	}, {
+		.name       = "Kernel",
+		.size       = 0xE0000,
+		.offset     = MTDPART_OFS_APPEND,
+	}, {
+		.name       = "RootFS",
+		.size       = MTDPART_SIZ_FULL,
+		.offset     = MTDPART_OFS_APPEND,
+	}
+};
+
+static struct physmap_flash_data ezkit_flash_data = {
+	.width      = 2,
+	.parts      = ezkit_partitions,
+	.nr_parts   = ARRAY_SIZE(ezkit_partitions),
+};
+
+static struct resource ezkit_flash_resource = {
+	.start = 0x20000000,
+	.end   = 0x207fffff,
+	.flags = IORESOURCE_MEM,
+};
+
+static struct platform_device ezkit_flash_device = {
+	.name          = "physmap-flash",
+	.id            = 0,
+	.dev = {
+		.platform_data = &ezkit_flash_data,
+	},
+	.num_resources = 1,
+	.resource      = &ezkit_flash_resource,
+};
+
 #ifdef CONFIG_SPI_BFIN
 #if defined(CONFIG_SND_BLACKFIN_AD1836) \
 	|| defined(CONFIG_SND_BLACKFIN_AD1836_MODULE)
 static struct bfin5xx_spi_chip ad1836_spi_chip_info = {
 	.enable_dma = 0,
 	.bits_per_word = 16,
+};
+#endif
+
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+static struct bfin5xx_spi_chip spidev_chip_info = {
+	.enable_dma = 0,
+	.bits_per_word = 8,
 };
 #endif
 #endif
@@ -207,6 +317,15 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 		.controller_data = &ad1836_spi_chip_info,
 	},
 #endif
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_SPI_SPIDEV_MODULE)
+	{
+		.modalias = "spidev",
+		.max_speed_hz = 3125000,     /* max spi clock (SCK) speed in HZ */
+		.bus_num = 0,
+		.chip_select = 1,
+		.controller_data = &spidev_chip_info,
+	},
+#endif
 };
 
 #if defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
@@ -246,6 +365,63 @@ static struct platform_device bfin_pata_device = {
 };
 #endif
 
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+#include <linux/input.h>
+#include <linux/gpio_keys.h>
+
+static struct gpio_keys_button bfin_gpio_keys_table[] = {
+	{BTN_0, GPIO_PF5, 1, "gpio-keys: BTN0"},
+	{BTN_1, GPIO_PF6, 1, "gpio-keys: BTN1"},
+	{BTN_2, GPIO_PF7, 1, "gpio-keys: BTN2"},
+	{BTN_3, GPIO_PF8, 1, "gpio-keys: BTN3"},
+};
+
+static struct gpio_keys_platform_data bfin_gpio_keys_data = {
+	.buttons        = bfin_gpio_keys_table,
+	.nbuttons       = ARRAY_SIZE(bfin_gpio_keys_table),
+};
+
+static struct platform_device bfin_device_gpiokeys = {
+	.name      = "gpio-keys",
+	.dev = {
+		.platform_data = &bfin_gpio_keys_data,
+	},
+};
+#endif
+
+static struct resource bfin_gpios_resources = {
+	.start = 0,
+	.end   = MAX_BLACKFIN_GPIOS - 1,
+	.flags = IORESOURCE_IRQ,
+};
+
+static struct platform_device bfin_gpios_device = {
+	.name = "simple-gpio",
+	.id = -1,
+	.num_resources = 1,
+	.resource = &bfin_gpios_resources,
+};
+
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+#include <linux/i2c-gpio.h>
+
+static struct i2c_gpio_platform_data i2c_gpio_data = {
+	.sda_pin		= 1,
+	.scl_pin		= 0,
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_device = {
+	.name		= "i2c-gpio",
+	.id		= 0,
+	.dev		= {
+		.platform_data	= &i2c_gpio_data,
+	},
+};
+#endif
+
 static struct platform_device *ezkit_devices[] __initdata = {
 #if defined(CONFIG_SMC91X) || defined(CONFIG_SMC91X_MODULE)
 	&smc91x_device,
@@ -255,15 +431,36 @@ static struct platform_device *ezkit_devices[] __initdata = {
 	&ax88180_device,
 #endif
 
+#if defined(CONFIG_USB_NET2272) || defined(CONFIG_USB_NET2272_MODULE)
+	&net2272_bfin_device,
+#endif
+
 #if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
 	&bfin_spi0_device,
 #endif
+
 #if defined(CONFIG_SERIAL_BFIN) || defined(CONFIG_SERIAL_BFIN_MODULE)
 	&bfin_uart_device,
 #endif
+
 #if defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
 	&bfin_pata_device,
 #endif
+
+#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+	&bfin_device_gpiokeys,
+#endif
+
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+	&i2c_gpio_device,
+#endif
+
+#if defined(CONFIG_USB_ISP1362_HCD) || defined(CONFIG_USB_ISP1362_HCD_MODULE)
+	&isp1362_hcd_device,
+#endif
+
+	&bfin_gpios_device,
+	&ezkit_flash_device,
 };
 
 static int __init ezkit_init(void)

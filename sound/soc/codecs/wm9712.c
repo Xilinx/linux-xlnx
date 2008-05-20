@@ -19,7 +19,6 @@
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
-#include <sound/driver.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/ac97_codec.h>
@@ -102,7 +101,8 @@ SOC_SINGLE("Speaker Playback ZC Switch", AC97_MASTER, 7, 1, 0),
 SOC_SINGLE("Speaker Playback Invert Switch", AC97_MASTER, 6, 1, 0),
 SOC_SINGLE("Headphone Playback ZC Switch", AC97_HEADPHONE, 7, 1, 0),
 SOC_SINGLE("Mono Playback ZC Switch", AC97_MASTER_MONO, 7, 1, 0),
-SOC_SINGLE("Mono Playback Volume", AC97_MASTER_MONO, 0, 31, 0),
+SOC_SINGLE("Mono Playback Volume", AC97_MASTER_MONO, 0, 31, 1),
+SOC_SINGLE("Mono Playback Switch", AC97_MASTER_MONO, 15, 1, 1),
 
 SOC_SINGLE("ALC Target Volume", AC97_CODEC_CLASS_REV, 12, 15, 0),
 SOC_SINGLE("ALC Hold Time", AC97_CODEC_CLASS_REV, 8, 15, 0),
@@ -131,7 +131,7 @@ SOC_SINGLE("Aux Playback Headphone Volume", AC97_CD, 12, 7, 1),
 SOC_SINGLE("Aux Playback Speaker Volume", AC97_CD, 8, 7, 1),
 SOC_SINGLE("Aux Playback Phone Volume", AC97_CD, 4, 7, 1),
 
-SOC_SINGLE("Phone Volume", AC97_PHONE, 0, 15, 0),
+SOC_SINGLE("Phone Volume", AC97_PHONE, 0, 15, 1),
 SOC_DOUBLE("Line Capture Volume", AC97_LINE, 8, 0, 31, 1),
 
 SOC_SINGLE("Capture 20dB Boost Switch", AC97_REC_SEL, 14, 1, 0),
@@ -145,8 +145,8 @@ SOC_ENUM("Bass Control", wm9712_enum[5]),
 SOC_SINGLE("Bass Cut-off Switch", AC97_MASTER_TONE, 12, 1, 1),
 SOC_SINGLE("Tone Cut-off Switch", AC97_MASTER_TONE, 4, 1, 1),
 SOC_SINGLE("Playback Attenuate (-6dB) Switch", AC97_MASTER_TONE, 6, 1, 0),
-SOC_SINGLE("Bass Volume", AC97_MASTER_TONE, 8, 15, 0),
-SOC_SINGLE("Treble Volume", AC97_MASTER_TONE, 0, 15, 0),
+SOC_SINGLE("Bass Volume", AC97_MASTER_TONE, 8, 15, 1),
+SOC_SINGLE("Treble Volume", AC97_MASTER_TONE, 0, 15, 1),
 
 SOC_SINGLE("Capture ADC Switch", AC97_REC_GAIN, 15, 1, 1),
 SOC_ENUM("Capture Volume Steps", wm9712_enum[6]),
@@ -176,7 +176,8 @@ static int wm9712_add_controls(struct snd_soc_codec *codec)
  * the codec only has a single control that is shared by both channels.
  * This makes it impossible to determine the audio path.
  */
-static int mixer_event (struct snd_soc_dapm_widget *w, int event)
+static int mixer_event(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *k, int event)
 {
 	u16 l, r, beep, line, phone, mic, pcm, aux;
 

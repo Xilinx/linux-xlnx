@@ -29,7 +29,7 @@
 #include <linux/dma-mapping.h>
 
 /**
- * enum dma_state - resource PNP/power managment state
+ * enum dma_state - resource PNP/power management state
  * @DMA_RESOURCE_SUSPEND: DMA device going into low power state
  * @DMA_RESOURCE_RESUME: DMA device returning to full power
  * @DMA_RESOURCE_AVAILABLE: DMA device available to the system
@@ -95,6 +95,15 @@ enum dma_transaction_type {
 #define DMA_TX_TYPE_END (DMA_INTERRUPT + 1)
 
 /**
+ * enum dma_prep_flags - DMA flags to augment operation preparation
+ * @DMA_PREP_INTERRUPT - trigger an interrupt (callback) upon completion of
+ * 	this transaction
+ */
+enum dma_prep_flags {
+	DMA_PREP_INTERRUPT = (1 << 0),
+};
+
+/**
  * dma_cap_mask_t - capabilities bitmap modeled after cpumask_t.
  * See linux/cpumask.h
  */
@@ -132,7 +141,7 @@ struct dma_chan {
 
 	/* sysfs */
 	int chan_id;
-	struct class_device class_dev;
+	struct device dev;
 
 	struct kref refcount;
 	int slow_ref;
@@ -142,6 +151,7 @@ struct dma_chan {
 	struct dma_chan_percpu *local;
 };
 
+#define to_dma_chan(p) container_of(p, struct dma_chan, dev)
 
 void dma_chan_cleanup(struct kref *kref);
 
@@ -208,8 +218,6 @@ typedef void (*dma_async_tx_callback)(void *dma_async_param);
  *	descriptors
  * @chan: target channel for this operation
  * @tx_submit: set the prepared descriptor(s) to be executed by the engine
- * @tx_set_dest: set a destination address in a hardware descriptor
- * @tx_set_src: set a source address in a hardware descriptor
  * @callback: routine to call after this operation is complete
  * @callback_param: general parameter to pass to the callback routine
  * ---async_tx api specific fields---
@@ -226,10 +234,6 @@ struct dma_async_tx_descriptor {
 	struct list_head tx_list;
 	struct dma_chan *chan;
 	dma_cookie_t (*tx_submit)(struct dma_async_tx_descriptor *tx);
-	void (*tx_set_dest)(dma_addr_t addr,
-		struct dma_async_tx_descriptor *tx, int index);
-	void (*tx_set_src)(dma_addr_t addr,
-		struct dma_async_tx_descriptor *tx, int index);
 	dma_async_tx_callback callback;
 	void *callback_param;
 	struct list_head depend_list;
@@ -278,15 +282,17 @@ struct dma_device {
 	void (*device_free_chan_resources)(struct dma_chan *chan);
 
 	struct dma_async_tx_descriptor *(*device_prep_dma_memcpy)(
-		struct dma_chan *chan, size_t len, int int_en);
+		struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
+		size_t len, unsigned long flags);
 	struct dma_async_tx_descriptor *(*device_prep_dma_xor)(
-		struct dma_chan *chan, unsigned int src_cnt, size_t len,
-		int int_en);
+		struct dma_chan *chan, dma_addr_t dest, dma_addr_t *src,
+		unsigned int src_cnt, size_t len, unsigned long flags);
 	struct dma_async_tx_descriptor *(*device_prep_dma_zero_sum)(
-		struct dma_chan *chan, unsigned int src_cnt, size_t len,
-		u32 *result, int int_en);
+		struct dma_chan *chan, dma_addr_t *src,	unsigned int src_cnt,
+		size_t len, u32 *result, unsigned long flags);
 	struct dma_async_tx_descriptor *(*device_prep_dma_memset)(
-		struct dma_chan *chan, int value, size_t len, int int_en);
+		struct dma_chan *chan, dma_addr_t dest, int value, size_t len,
+		unsigned long flags);
 	struct dma_async_tx_descriptor *(*device_prep_dma_interrupt)(
 		struct dma_chan *chan);
 
@@ -360,7 +366,7 @@ __dma_has_cap(enum dma_transaction_type tx_type, dma_cap_mask_t *srcp)
  */
 static inline void dma_async_issue_pending(struct dma_chan *chan)
 {
-	return chan->device->device_issue_pending(chan);
+	chan->device->device_issue_pending(chan);
 }
 
 #define dma_async_memcpy_issue_pending(chan) dma_async_issue_pending(chan)
@@ -417,7 +423,7 @@ void dma_async_device_unregister(struct dma_device *device);
 /* --- Helper iov-locking functions --- */
 
 struct dma_page_list {
-	char *base_address;
+	char __user *base_address;
 	int nr_pages;
 	struct page **pages;
 };

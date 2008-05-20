@@ -31,7 +31,9 @@
 #define cmt_clock_enable() do {	ctrl_outb(ctrl_inb(STBCR3) & ~0x10, STBCR3); } while(0)
 #define CMT_CMCSR_INIT	0x0040
 #define CMT_CMCSR_CALIB	0x0000
-#elif defined(CONFIG_CPU_SUBTYPE_SH7206)
+#elif defined(CONFIG_CPU_SUBTYPE_SH7203) || \
+      defined(CONFIG_CPU_SUBTYPE_SH7206) || \
+      defined(CONFIG_CPU_SUBTYPE_SH7263)
 #define CMT_CMSTR	0xfffec000
 #define CMT_CMCSR_0	0xfffec002
 #define CMT_CMCNT_0	0xfffec004
@@ -75,7 +77,7 @@ static unsigned long cmt_timer_get_offset(void)
 				count -= LATCH;
 			} else {
 				printk("%s (): hardware timer problem?\n",
-				       __FUNCTION__);
+				       __func__);
 			}
 		}
 	} else
@@ -98,16 +100,7 @@ static irqreturn_t cmt_timer_interrupt(int irq, void *dev_id)
 	timer_status &= ~0x80;
 	ctrl_outw(timer_status, CMT_CMCSR_0);
 
-	/*
-	 * Here we are in the timer irq handler. We just have irqs locally
-	 * disabled but we don't know if the timer_bh is running on the other
-	 * CPU. We need to avoid to SMP race with it. NOTE: we don' t need
-	 * the irq version of write_lock because as just said we have irq
-	 * locally disabled. -arca
-	 */
-	write_seqlock(&xtime_lock);
 	handle_timer_tick();
-	write_sequnlock(&xtime_lock);
 
 	return IRQ_HANDLED;
 }

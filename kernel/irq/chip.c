@@ -246,6 +246,17 @@ static unsigned int default_startup(unsigned int irq)
 }
 
 /*
+ * default shutdown function
+ */
+static void default_shutdown(unsigned int irq)
+{
+	struct irq_desc *desc = irq_desc + irq;
+
+	desc->chip->mask(irq);
+	desc->status |= IRQ_MASKED;
+}
+
+/*
  * Fixup enable/disable function pointers
  */
 void irq_chip_set_defaults(struct irq_chip *chip)
@@ -256,8 +267,15 @@ void irq_chip_set_defaults(struct irq_chip *chip)
 		chip->disable = default_disable;
 	if (!chip->startup)
 		chip->startup = default_startup;
+	/*
+	 * We use chip->disable, when the user provided its own. When
+	 * we have default_disable set for chip->disable, then we need
+	 * to use default_shutdown, otherwise the irq line is not
+	 * disabled on free_irq():
+	 */
 	if (!chip->shutdown)
-		chip->shutdown = chip->disable;
+		chip->shutdown = chip->disable != default_disable ?
+			chip->disable : default_shutdown;
 	if (!chip->name)
 		chip->name = chip->typename;
 	if (!chip->end)
@@ -286,7 +304,7 @@ static inline void mask_ack_irq(struct irq_desc *desc, int irq)
  *	Note: The caller is expected to handle the ack, clear, mask and
  *	unmask issues if necessary.
  */
-void fastcall
+void
 handle_simple_irq(unsigned int irq, struct irq_desc *desc)
 {
 	struct irqaction *action;
@@ -327,7 +345,7 @@ out_unlock:
  *	it after the associated handler has acknowledged the device, so the
  *	interrupt line is back to inactive.
  */
-void fastcall
+void
 handle_level_irq(unsigned int irq, struct irq_desc *desc)
 {
 	unsigned int cpu = smp_processor_id();
@@ -375,7 +393,7 @@ out_unlock:
  *	for modern forms of interrupt handlers, which handle the flow
  *	details in hardware, transparently.
  */
-void fastcall
+void
 handle_fasteoi_irq(unsigned int irq, struct irq_desc *desc)
 {
 	unsigned int cpu = smp_processor_id();
@@ -434,7 +452,7 @@ out:
  *	the handler was running. If all pending interrupts are handled, the
  *	loop is left.
  */
-void fastcall
+void
 handle_edge_irq(unsigned int irq, struct irq_desc *desc)
 {
 	const unsigned int cpu = smp_processor_id();
@@ -505,7 +523,7 @@ out_unlock:
  *
  *	Per CPU interrupts on SMP machines without locking requirements
  */
-void fastcall
+void
 handle_percpu_irq(unsigned int irq, struct irq_desc *desc)
 {
 	irqreturn_t action_ret;
@@ -588,4 +606,40 @@ set_irq_chip_and_handler_name(unsigned int irq, struct irq_chip *chip,
 {
 	set_irq_chip(irq, chip);
 	__set_irq_handler(irq, handle, 0, name);
+}
+
+void __init set_irq_noprobe(unsigned int irq)
+{
+	struct irq_desc *desc;
+	unsigned long flags;
+
+	if (irq >= NR_IRQS) {
+		printk(KERN_ERR "Trying to mark IRQ%d non-probeable\n", irq);
+
+		return;
+	}
+
+	desc = irq_desc + irq;
+
+	spin_lock_irqsave(&desc->lock, flags);
+	desc->status |= IRQ_NOPROBE;
+	spin_unlock_irqrestore(&desc->lock, flags);
+}
+
+void __init set_irq_probe(unsigned int irq)
+{
+	struct irq_desc *desc;
+	unsigned long flags;
+
+	if (irq >= NR_IRQS) {
+		printk(KERN_ERR "Trying to mark IRQ%d probeable\n", irq);
+
+		return;
+	}
+
+	desc = irq_desc + irq;
+
+	spin_lock_irqsave(&desc->lock, flags);
+	desc->status &= ~IRQ_NOPROBE;
+	spin_unlock_irqrestore(&desc->lock, flags);
 }

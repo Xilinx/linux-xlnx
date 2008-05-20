@@ -188,6 +188,8 @@ static inline void check_wait(void)
 	case CPU_AU1500:
 	case CPU_AU1550:
 	case CPU_AU1200:
+	case CPU_AU1210:
+	case CPU_AU1250:
 		if (allow_au1k_wait)
 			cpu_wait = au1k_wait;
 		break;
@@ -548,7 +550,7 @@ static inline void cpu_probe_legacy(struct cpuinfo_mips *c)
 	}
 }
 
-static char unknown_isa[] __initdata = KERN_ERR \
+static char unknown_isa[] __cpuinitdata = KERN_ERR \
 	"Unsupported ISA type, c0.config0: %d.";
 
 static inline unsigned int decode_config0(struct cpuinfo_mips *c)
@@ -654,7 +656,7 @@ static inline unsigned int decode_config3(struct cpuinfo_mips *c)
 	return config3 & MIPS_CONF_M;
 }
 
-static void __init decode_configs(struct cpuinfo_mips *c)
+static void __cpuinit decode_configs(struct cpuinfo_mips *c)
 {
 	/* MIPS32 or MIPS64 compliant CPU.  */
 	c->options = MIPS_CPU_4KEX | MIPS_CPU_4K_CACHE | MIPS_CPU_COUNTER |
@@ -733,6 +735,11 @@ static inline void cpu_probe_alchemy(struct cpuinfo_mips *c)
 			break;
 		case 4:
 			c->cputype = CPU_AU1200;
+			if (2 == (c->processor_id & 0xff))
+				c->cputype = CPU_AU1250;
+			break;
+		case 5:
+			c->cputype = CPU_AU1210;
 			break;
 		default:
 			panic("Unknown Au Core!");
@@ -807,7 +814,7 @@ const char *__cpu_name[NR_CPUS];
 /*
  * Name a CPU
  */
-static __init const char *cpu_to_name(struct cpuinfo_mips *c)
+static __cpuinit const char *cpu_to_name(struct cpuinfo_mips *c)
 {
 	const char *name = NULL;
 
@@ -858,6 +865,8 @@ static __init const char *cpu_to_name(struct cpuinfo_mips *c)
 	case CPU_AU1100:	name = "Au1100"; break;
 	case CPU_AU1550:	name = "Au1550"; break;
 	case CPU_AU1200:	name = "Au1200"; break;
+	case CPU_AU1210:	name = "Au1210"; break;
+	case CPU_AU1250:	name = "Au1250"; break;
 	case CPU_4KEC:		name = "MIPS 4KEc"; break;
 	case CPU_4KSC:		name = "MIPS 4KSc"; break;
 	case CPU_VR41XX:	name = "NEC Vr41xx"; break;
@@ -887,7 +896,7 @@ static __init const char *cpu_to_name(struct cpuinfo_mips *c)
 	return name;
 }
 
-__init void cpu_probe(void)
+__cpuinit void cpu_probe(void)
 {
 	struct cpuinfo_mips *c = &current_cpu_data;
 	unsigned int cpu = smp_processor_id();
@@ -950,7 +959,7 @@ __init void cpu_probe(void)
 		c->srsets = 1;
 }
 
-__init void cpu_report(void)
+__cpuinit void cpu_report(void)
 {
 	struct cpuinfo_mips *c = &current_cpu_data;
 

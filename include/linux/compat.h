@@ -191,6 +191,10 @@ asmlinkage long compat_sys_select(int n, compat_ulong_t __user *inp,
 		compat_ulong_t __user *outp, compat_ulong_t __user *exp,
 		struct compat_timeval __user *tvp);
 
+asmlinkage long compat_sys_wait4(compat_pid_t pid,
+				 compat_uint_t __user *stat_addr, int options,
+				 struct compat_rusage __user *ru);
+
 #define BITS_PER_COMPAT_LONG    (8*sizeof(compat_long_t))
 
 #define BITS_TO_COMPAT_LONGS(bits) \
@@ -239,19 +243,22 @@ asmlinkage long compat_sys_migrate_pages(compat_pid_t pid,
 		compat_ulong_t maxnode, const compat_ulong_t __user *old_nodes,
 		const compat_ulong_t __user *new_nodes);
 
+extern int compat_ptrace_request(struct task_struct *child,
+				 compat_long_t request,
+				 compat_ulong_t addr, compat_ulong_t data);
+
+#ifdef __ARCH_WANT_COMPAT_SYS_PTRACE
+extern long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
+			       compat_ulong_t addr, compat_ulong_t data);
+asmlinkage long compat_sys_ptrace(compat_long_t request, compat_long_t pid,
+				  compat_long_t addr, compat_long_t data);
+#endif	/* __ARCH_WANT_COMPAT_SYS_PTRACE */
+
 /*
  * epoll (fs/eventpoll.c) compat bits follow ...
  */
-#ifndef CONFIG_HAS_COMPAT_EPOLL_EVENT
 struct epoll_event;
 #define compat_epoll_event	epoll_event
-#else
-asmlinkage long compat_sys_epoll_ctl(int epfd, int op, int fd,
-			struct compat_epoll_event __user *event);
-asmlinkage long compat_sys_epoll_wait(int epfd,
-			struct compat_epoll_event __user *events,
-			int maxevents, int timeout);
-#endif
 asmlinkage long compat_sys_epoll_pwait(int epfd,
 			struct compat_epoll_event __user *events,
 			int maxevents, int timeout,
@@ -264,8 +271,11 @@ asmlinkage long compat_sys_utimensat(unsigned int dfd, char __user *filename,
 asmlinkage long compat_sys_signalfd(int ufd,
 				const compat_sigset_t __user *sigmask,
                                 compat_size_t sigsetsize);
-asmlinkage long compat_sys_timerfd(int ufd, int clockid, int flags,
-				const struct compat_itimerspec __user *utmr);
+asmlinkage long compat_sys_timerfd_settime(int ufd, int flags,
+				   const struct compat_itimerspec __user *utmr,
+				   struct compat_itimerspec __user *otmr);
+asmlinkage long compat_sys_timerfd_gettime(int ufd,
+				   struct compat_itimerspec __user *otmr);
 
 #endif /* CONFIG_COMPAT */
 #endif /* _LINUX_COMPAT_H */

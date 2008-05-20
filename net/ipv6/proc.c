@@ -27,6 +27,7 @@
 #include <net/ip.h>
 #include <net/sock.h>
 #include <net/tcp.h>
+#include <net/udp.h>
 #include <net/transp_v6.h>
 #include <net/ipv6.h>
 
@@ -35,15 +36,15 @@ static struct proc_dir_entry *proc_net_devsnmp6;
 static int sockstat6_seq_show(struct seq_file *seq, void *v)
 {
 	seq_printf(seq, "TCP6: inuse %d\n",
-		       sock_prot_inuse(&tcpv6_prot));
+		       sock_prot_inuse_get(&tcpv6_prot));
 	seq_printf(seq, "UDP6: inuse %d\n",
-		       sock_prot_inuse(&udpv6_prot));
+		       sock_prot_inuse_get(&udpv6_prot));
 	seq_printf(seq, "UDPLITE6: inuse %d\n",
-			sock_prot_inuse(&udplitev6_prot));
+			sock_prot_inuse_get(&udplitev6_prot));
 	seq_printf(seq, "RAW6: inuse %d\n",
-		       sock_prot_inuse(&rawv6_prot));
+		       sock_prot_inuse_get(&rawv6_prot));
 	seq_printf(seq, "FRAG6: inuse %d memory %d\n",
-		       ip6_frag_nqueues(), ip6_frag_mem());
+		       ip6_frag_nqueues(&init_net), ip6_frag_mem(&init_net));
 	return 0;
 }
 
@@ -88,7 +89,7 @@ static char *icmp6type2name[256] = {
 	[ICMPV6_PKT_TOOBIG] = "PktTooBigs",
 	[ICMPV6_TIME_EXCEED] = "TimeExcds",
 	[ICMPV6_PARAMPROB] = "ParmProblems",
-	[ICMPV6_ECHO_REQUEST] = "EchoRequest",
+	[ICMPV6_ECHO_REQUEST] = "Echos",
 	[ICMPV6_ECHO_REPLY] = "EchoReplies",
 	[ICMPV6_MGM_QUERY] = "GroupMembQueries",
 	[ICMPV6_MGM_REPORT] = "GroupMembResponses",
@@ -98,7 +99,7 @@ static char *icmp6type2name[256] = {
 	[NDISC_ROUTER_SOLICITATION] = "RouterSolicits",
 	[NDISC_NEIGHBOUR_ADVERTISEMENT] = "NeighborAdvertisements",
 	[NDISC_NEIGHBOUR_SOLICITATION] = "NeighborSolicits",
-	[NDISC_REDIRECT] = "NeighborRedirects",
+	[NDISC_REDIRECT] = "Redirects",
 };
 
 
@@ -216,12 +217,12 @@ int snmp6_register_dev(struct inet6_dev *idev)
 	if (!proc_net_devsnmp6)
 		return -ENOENT;
 
-	p = create_proc_entry(idev->dev->name, S_IRUGO, proc_net_devsnmp6);
+	p = proc_create(idev->dev->name, S_IRUGO,
+			proc_net_devsnmp6, &snmp6_seq_fops);
 	if (!p)
 		return -ENOMEM;
 
 	p->data = idev;
-	p->proc_fops = &snmp6_seq_fops;
 
 	idev->stats.proc_dir_entry = p;
 	return 0;

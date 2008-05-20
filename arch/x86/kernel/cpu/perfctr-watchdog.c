@@ -167,7 +167,6 @@ void release_evntsel_nmi(unsigned int msr)
 	clear_bit(counter, evntsel_nmi_owner);
 }
 
-EXPORT_SYMBOL(avail_to_resrv_perfctr_nmi);
 EXPORT_SYMBOL(avail_to_resrv_perfctr_nmi_bit);
 EXPORT_SYMBOL(reserve_perfctr_nmi);
 EXPORT_SYMBOL(release_perfctr_nmi);
@@ -653,9 +652,6 @@ static void probe_nmi_watchdog(void)
 			wd_ops = &p6_wd_ops;
 			break;
 		case 15:
-			if (boot_cpu_data.x86_model > 0x4)
-				return;
-
 			wd_ops = &p4_wd_ops;
 			break;
 		default:
@@ -671,8 +667,10 @@ int lapic_watchdog_init(unsigned nmi_hz)
 {
 	if (!wd_ops) {
 		probe_nmi_watchdog();
-		if (!wd_ops)
+		if (!wd_ops) {
+			printk(KERN_INFO "NMI watchdog: CPU not supported\n");
 			return -1;
+		}
 
 		if (!wd_ops->reserve()) {
 			printk(KERN_ERR

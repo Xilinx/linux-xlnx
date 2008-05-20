@@ -23,12 +23,12 @@
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
 
-extern void die_if_kernel(char *str, struct pt_regs *regs, long err);
+extern int die_if_kernel(char *str, struct pt_regs *regs, long err);
 
 #undef DEBUG_UNALIGNED_TRAP
 
 #ifdef DEBUG_UNALIGNED_TRAP
-# define DPRINT(a...)	do { printk("%s %u: ", __FUNCTION__, __LINE__); printk (a); } while (0)
+# define DPRINT(a...)	do { printk("%s %u: ", __func__, __LINE__); printk (a); } while (0)
 # define DDUMP(str,vp,len)	dump(str, vp, len)
 
 static void
@@ -674,9 +674,10 @@ emulate_load_updates (update_t type, load_store_t ld, struct pt_regs *regs, unsi
 	 * just in case.
 	 */
 	if (ld.x6_op == 1 || ld.x6_op == 3) {
-		printk(KERN_ERR "%s: register update on speculative load, error\n", __FUNCTION__);
-		die_if_kernel("unaligned reference on speculative load with register update\n",
-			      regs, 30);
+		printk(KERN_ERR "%s: register update on speculative load, error\n", __func__);
+		if (die_if_kernel("unaligned reference on speculative load with register update\n",
+				  regs, 30))
+			return;
 	}
 
 
@@ -1103,7 +1104,7 @@ emulate_load_floatpair (unsigned long ifa, load_store_t ld, struct pt_regs *regs
 		 */
 		if (ld.x6_op == 1 || ld.x6_op == 3)
 			printk(KERN_ERR "%s: register update on speculative load pair, error\n",
-			       __FUNCTION__);
+			       __func__);
 
 		setreg(ld.r3, ifa, 0, regs);
 	}
@@ -1317,7 +1318,8 @@ ia64_handle_unaligned (unsigned long ifa, struct pt_regs *regs)
 
 	if (ia64_psr(regs)->be) {
 		/* we don't support big-endian accesses */
-		die_if_kernel("big-endian unaligned accesses are not supported", regs, 0);
+		if (die_if_kernel("big-endian unaligned accesses are not supported", regs, 0))
+			return;
 		goto force_sigbus;
 	}
 
@@ -1534,7 +1536,8 @@ ia64_handle_unaligned (unsigned long ifa, struct pt_regs *regs)
 			ia64_handle_exception(regs, eh);
 			goto done;
 		}
-		die_if_kernel("error during unaligned kernel access\n", regs, ret);
+		if (die_if_kernel("error during unaligned kernel access\n", regs, ret))
+			return;
 		/* NOT_REACHED */
 	}
   force_sigbus:

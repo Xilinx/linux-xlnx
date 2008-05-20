@@ -44,7 +44,7 @@ static struct fb_fix_screeninfo uvesafb_fix __devinitdata = {
 
 static int mtrr		__devinitdata = 3; /* enable mtrr by default */
 static int blank	= 1;		   /* enable blanking by default */
-static int ypan		__devinitdata = 1; /* 0: scroll, 1: ypan, 2: ywrap */
+static int ypan		= 1; 		 /* 0: scroll, 1: ypan, 2: ywrap */
 static int pmi_setpal	__devinitdata = 1; /* use PMI for palette changes */
 static int nocrtc	__devinitdata; /* ignore CRTC settings */
 static int noedid	__devinitdata; /* don't try DDC transfers */
@@ -2003,12 +2003,12 @@ static void __devexit uvesafb_exit(void)
 
 module_exit(uvesafb_exit);
 
-static inline int param_get_scroll(char *buffer, struct kernel_param *kp)
+static int param_get_scroll(char *buffer, struct kernel_param *kp)
 {
 	return 0;
 }
 
-static inline int param_set_scroll(const char *val, struct kernel_param *kp)
+static int param_set_scroll(const char *val, struct kernel_param *kp)
 {
 	ypan = 0;
 
@@ -2022,11 +2022,11 @@ static inline int param_set_scroll(const char *val, struct kernel_param *kp)
 	return 0;
 }
 
-#define param_check_scroll(name, p) __param_check(name, p, void);
+#define param_check_scroll(name, p) __param_check(name, p, void)
 
 module_param_named(scroll, ypan, scroll, 0);
 MODULE_PARM_DESC(scroll,
-	"Scrolling mode, set to 'redraw', ''ypan' or 'ywrap'");
+	"Scrolling mode, set to 'redraw', 'ypan', or 'ywrap'");
 module_param_named(vgapal, pmi_setpal, invbool, 0);
 MODULE_PARM_DESC(vgapal, "Set palette using VGA registers");
 module_param_named(pmipal, pmi_setpal, bool, 0);

@@ -660,7 +660,7 @@ static int pt_open(struct inode *inode, struct file *file)
 	pt_identify(tape);
 
 	err = -ENODEV;
-	if (!tape->flags & PT_MEDIA)
+	if (!(tape->flags & PT_MEDIA))
 		goto out;
 
 	err = -EROFS;
@@ -972,10 +972,10 @@ static int __init pt_init(void)
 
 	for (unit = 0; unit < PT_UNITS; unit++)
 		if (pt[unit].present) {
-			class_device_create(pt_class, NULL, MKDEV(major, unit),
-					NULL, "pt%d", unit);
-			class_device_create(pt_class, NULL, MKDEV(major, unit + 128),
-					NULL, "pt%dn", unit);
+			device_create(pt_class, NULL, MKDEV(major, unit),
+				      "pt%d", unit);
+			device_create(pt_class, NULL, MKDEV(major, unit + 128),
+				      "pt%dn", unit);
 		}
 	goto out;
 
@@ -990,8 +990,8 @@ static void __exit pt_exit(void)
 	int unit;
 	for (unit = 0; unit < PT_UNITS; unit++)
 		if (pt[unit].present) {
-			class_device_destroy(pt_class, MKDEV(major, unit));
-			class_device_destroy(pt_class, MKDEV(major, unit + 128));
+			device_destroy(pt_class, MKDEV(major, unit));
+			device_destroy(pt_class, MKDEV(major, unit + 128));
 		}
 	class_destroy(pt_class);
 	unregister_chrdev(major, name);

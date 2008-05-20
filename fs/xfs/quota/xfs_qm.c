@@ -310,7 +310,6 @@ xfs_qm_mount_quotas(
 	xfs_mount_t	*mp,
 	int		mfsi_flags)
 {
-	unsigned long	s;
 	int		error = 0;
 	uint		sbf;
 
@@ -367,13 +366,13 @@ xfs_qm_mount_quotas(
 
  write_changes:
 	/*
-	 * We actually don't have to acquire the SB_LOCK at all.
+	 * We actually don't have to acquire the m_sb_lock at all.
 	 * This can only be called from mount, and that's single threaded. XXX
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	sbf = mp->m_sb.sb_qflags;
 	mp->m_sb.sb_qflags = mp->m_qflags & XFS_MOUNT_QUOTA_ALL;
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 
 	if (sbf != (mp->m_qflags & XFS_MOUNT_QUOTA_ALL)) {
 		if (xfs_qm_write_sb_changes(mp, XFS_SB_QFLAGS)) {
@@ -1139,7 +1138,7 @@ xfs_qm_init_quotainfo(
 		return error;
 	}
 
-	spinlock_init(&qinf->qi_pinlock, "xfs_qinf_pin");
+	spin_lock_init(&qinf->qi_pinlock);
 	xfs_qm_list_init(&qinf->qi_dqlist, "mpdqlist", 0);
 	qinf->qi_dqreclaims = 0;
 
@@ -1370,7 +1369,6 @@ xfs_qm_qino_alloc(
 {
 	xfs_trans_t	*tp;
 	int		error;
-	unsigned long	s;
 	int		committed;
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_QM_QINOCREATE);
@@ -1402,18 +1400,18 @@ xfs_qm_qino_alloc(
 	 * sbfields arg may contain fields other than *QUOTINO;
 	 * VERSIONNUM for example.
 	 */
-	s = XFS_SB_LOCK(mp);
+	spin_lock(&mp->m_sb_lock);
 	if (flags & XFS_QMOPT_SBVERSION) {
 #if defined(DEBUG) && defined(XFS_LOUD_RECOVERY)
 		unsigned oldv = mp->m_sb.sb_versionnum;
 #endif
-		ASSERT(!XFS_SB_VERSION_HASQUOTA(&mp->m_sb));
+		ASSERT(!xfs_sb_version_hasquota(&mp->m_sb));
 		ASSERT((sbfields & (XFS_SB_VERSIONNUM | XFS_SB_UQUOTINO |
 				   XFS_SB_GQUOTINO | XFS_SB_QFLAGS)) ==
 		       (XFS_SB_VERSIONNUM | XFS_SB_UQUOTINO |
 			XFS_SB_GQUOTINO | XFS_SB_QFLAGS));
 
-		XFS_SB_VERSION_ADDQUOTA(&mp->m_sb);
+		xfs_sb_version_addquota(&mp->m_sb);
 		mp->m_sb.sb_uquotino = NULLFSINO;
 		mp->m_sb.sb_gquotino = NULLFSINO;
 
@@ -1429,7 +1427,7 @@ xfs_qm_qino_alloc(
 		mp->m_sb.sb_uquotino = (*ip)->i_ino;
 	else
 		mp->m_sb.sb_gquotino = (*ip)->i_ino;
-	XFS_SB_UNLOCK(mp, s);
+	spin_unlock(&mp->m_sb_lock);
 	xfs_mod_sb(tp, sbfields);
 
 	if ((error = xfs_trans_commit(tp, XFS_TRANS_RELEASE_LOG_RES))) {
@@ -1650,14 +1648,14 @@ xfs_qm_quotacheck_dqadjust(
 	 * Adjust the inode count and the block count to reflect this inode's
 	 * resource usage.
 	 */
-	be64_add(&dqp->q_core.d_icount, 1);
+	be64_add_cpu(&dqp->q_core.d_icount, 1);
 	dqp->q_res_icount++;
 	if (nblks) {
-		be64_add(&dqp->q_core.d_bcount, nblks);
+		be64_add_cpu(&dqp->q_core.d_bcount, nblks);
 		dqp->q_res_bcount += nblks;
 	}
 	if (rtblks) {
-		be64_add(&dqp->q_core.d_rtbcount, rtblks);
+		be64_add_cpu(&dqp->q_core.d_rtbcount, rtblks);
 		dqp->q_res_rtbcount += rtblks;
 	}
 
@@ -1956,7 +1954,7 @@ xfs_qm_init_quotainos(
 	/*
 	 * Get the uquota and gquota inodes
 	 */
-	if (XFS_SB_VERSION_HASQUOTA(&mp->m_sb)) {
+	if (xfs_sb_version_hasquota(&mp->m_sb)) {
 		if (XFS_IS_UQUOTA_ON(mp) &&
 		    mp->m_sb.sb_uquotino != NULLFSINO) {
 			ASSERT(mp->m_sb.sb_uquotino > 0);

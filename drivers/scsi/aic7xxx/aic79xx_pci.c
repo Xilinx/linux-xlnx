@@ -389,6 +389,7 @@ ahd_pci_config(struct ahd_softc *ahd, struct ahd_pci_identity *entry)
 	return error;
 }
 
+#ifdef CONFIG_PM
 void
 ahd_pci_suspend(struct ahd_softc *ahd)
 {
@@ -415,6 +416,7 @@ ahd_pci_resume(struct ahd_softc *ahd)
 	ahd_pci_write_config(ahd->dev_softc, CSIZE_LATTIME,
 			     ahd->suspend_state.pci_state.csize_lattime, /*bytes*/1);
 }
+#endif
 
 /*
  * Perform some simple tests that should catch situations where
@@ -977,7 +979,7 @@ ahd_aic790X_setup(struct ahd_softc *ahd)
 			  |  AHD_FAINT_LED_BUG;
 
 		/*
-		 * IO Cell paramter setup.
+		 * IO Cell parameter setup.
 		 */
 		AHD_SET_PRECOMP(ahd, AHD_PRECOMP_CUTBACK_29);
 
@@ -1004,7 +1006,7 @@ ahd_aic790X_setup(struct ahd_softc *ahd)
 			ahd->bugs |= AHD_INTCOLLISION_BUG|AHD_ABORT_LQI_BUG;
 
 		/*
-		 * IO Cell paramter setup.
+		 * IO Cell parameter setup.
 		 */
 		AHD_SET_PRECOMP(ahd, AHD_PRECOMP_CUTBACK_29);
 		AHD_SET_SLEWRATE(ahd, AHD_SLEWRATE_DEF_REVB);

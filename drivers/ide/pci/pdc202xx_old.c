@@ -1,30 +1,8 @@
 /*
- *  linux/drivers/ide/pci/pdc202xx_old.c	Version 0.52	Aug 27, 2007
- *
  *  Copyright (C) 1998-2002		Andre Hedrick <andre@linux-ide.org>
  *  Copyright (C) 2006-2007		MontaVista Software, Inc.
  *  Copyright (C) 2007			Bartlomiej Zolnierkiewicz
  *
- *  Promise Ultra33 cards with BIOS v1.20 through 1.28 will need this
- *  compiled into the kernel if you have more than one card installed.
- *  Note that BIOS v1.29 is reported to fix the problem.  Since this is
- *  safe chipset tuning, including this support is harmless
- *
- *  Promise Ultra66 cards with BIOS v1.11 this
- *  compiled into the kernel if you have more than one card installed.
- *
- *  Promise Ultra100 cards.
- *
- *  The latest chipset code will support the following ::
- *  Three Ultra33 controllers and 12 drives.
- *  8 are UDMA supported and 4 are limited to DMA mode 2 multi-word.
- *  The 8/4 ratio is a BIOS code limit by promise.
- *
- *  UNLESS you enable "CONFIG_PDC202XX_BURST"
- *
- */
-
-/*
  *  Portions Copyright (C) 1999 Promise Technology, Inc.
  *  Author: Frank Tiernan (frankt@promise.com)
  *  Released under terms of General Public License
@@ -34,18 +12,13 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <linux/timer.h>
-#include <linux/mm.h>
-#include <linux/ioport.h>
 #include <linux/blkdev.h>
 #include <linux/hdreg.h>
-#include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/init.h>
 #include <linux/ide.h>
 
 #include <asm/io.h>
-#include <asm/irq.h>
 
 #define PDC202XX_DEBUG_DRIVE_INFO	0
 
@@ -66,7 +39,7 @@ static void pdc_old_disable_66MHz_clock(ide_hwif_t *);
 static void pdc202xx_set_mode(ide_drive_t *drive, const u8 speed)
 {
 	ide_hwif_t *hwif	= HWIF(drive);
-	struct pci_dev *dev	= hwif->pci_dev;
+	struct pci_dev *dev	= to_pci_dev(hwif->dev);
 	u8 drive_pci		= 0x60 + (drive->dn << 2);
 
 	u8			AP = 0, BP = 0, CP = 0;
@@ -142,11 +115,12 @@ static void pdc202xx_set_pio_mode(ide_drive_t *drive, const u8 pio)
 	pdc202xx_set_mode(drive, XFER_PIO_0 + pio);
 }
 
-static u8 pdc202xx_old_cable_detect (ide_hwif_t *hwif)
+static u8 __devinit pdc2026x_old_cable_detect(ide_hwif_t *hwif)
 {
-	u16 CIS = 0, mask = (hwif->channel) ? (1<<11) : (1<<10);
+	struct pci_dev *dev = to_pci_dev(hwif->dev);
+	u16 CIS, mask = hwif->channel ? (1 << 11) : (1 << 10);
 
-	pci_read_config_word(hwif->pci_dev, 0x50, &CIS);
+	pci_read_config_word(dev, 0x50, &CIS);
 
 	return (CIS & mask) ? ATA_CBL_PATA40 : ATA_CBL_PATA80;
 }
@@ -162,7 +136,7 @@ static u8 pdc202xx_old_cable_detect (ide_hwif_t *hwif)
  */
 static void pdc_old_enable_66MHz_clock(ide_hwif_t *hwif)
 {
-	unsigned long clock_reg = hwif->dma_master + 0x11;
+	unsigned long clock_reg = hwif->extra_base + 0x01;
 	u8 clock = inb(clock_reg);
 
 	outb(clock | (hwif->channel ? 0x08 : 0x02), clock_reg);
@@ -170,20 +144,23 @@ static void pdc_old_enable_66MHz_clock(ide_hwif_t *hwif)
 
 static void pdc_old_disable_66MHz_clock(ide_hwif_t *hwif)
 {
-	unsigned long clock_reg = hwif->dma_master + 0x11;
+	unsigned long clock_reg = hwif->extra_base + 0x01;
 	u8 clock = inb(clock_reg);
 
 	outb(clock & ~(hwif->channel ? 0x08 : 0x02), clock_reg);
 }
 
-static int pdc202xx_quirkproc (ide_drive_t *drive)
+static void pdc202xx_quirkproc(ide_drive_t *drive)
 {
 	const char **list, *model = drive->id->model;
 
 	for (list = pdc_quirk_drives; *list != NULL; list++)
-		if (strstr(model, *list) != NULL)
-			return 2;
-	return 0;
+		if (strstr(model, *list) != NULL) {
+			drive->quirk_list = 2;
+			return;
+		}
+
+	drive->quirk_list = 0;
 }
 
 static void pdc202xx_old_ide_dma_start(ide_drive_t *drive)
@@ -193,7 +170,7 @@ static void pdc202xx_old_ide_dma_start(ide_drive_t *drive)
 	if (drive->media != ide_disk || drive->addressing == 1) {
 		struct request *rq	= HWGROUP(drive)->rq;
 		ide_hwif_t *hwif	= HWIF(drive);
-		unsigned long high_16   = hwif->dma_master;
+		unsigned long high_16	= hwif->extra_base - 16;
 		unsigned long atapi_reg	= high_16 + (hwif->channel ? 0x24 : 0x20);
 		u32 word_count	= 0;
 		u8 clock = inb(high_16 + 0x11);
@@ -212,7 +189,7 @@ static int pdc202xx_old_ide_dma_end(ide_drive_t *drive)
 {
 	if (drive->media != ide_disk || drive->addressing == 1) {
 		ide_hwif_t *hwif	= HWIF(drive);
-		unsigned long high_16	= hwif->dma_master;
+		unsigned long high_16	= hwif->extra_base - 16;
 		unsigned long atapi_reg	= high_16 + (hwif->channel ? 0x24 : 0x20);
 		u8 clock		= 0;
 
@@ -228,7 +205,7 @@ static int pdc202xx_old_ide_dma_end(ide_drive_t *drive)
 static int pdc202xx_old_ide_dma_test_irq(ide_drive_t *drive)
 {
 	ide_hwif_t *hwif	= HWIF(drive);
-	unsigned long high_16	= hwif->dma_master;
+	unsigned long high_16	= hwif->extra_base - 16;
 	u8 dma_stat		= inb(hwif->dma_status);
 	u8 sc1d			= inb(high_16 + 0x001d);
 
@@ -271,7 +248,7 @@ static void pdc202xx_dma_timeout(ide_drive_t *drive)
 
 static void pdc202xx_reset_host (ide_hwif_t *hwif)
 {
-	unsigned long high_16	= hwif->dma_master;
+	unsigned long high_16	= hwif->extra_base - 16;
 	u8 udma_speed_flag	= inb(high_16 | 0x001f);
 
 	outb(udma_speed_flag | 0x10, high_16 | 0x001f);
@@ -302,13 +279,18 @@ static unsigned int __devinit init_chipset_pdc202xx(struct pci_dev *dev,
 
 static void __devinit init_hwif_pdc202xx(ide_hwif_t *hwif)
 {
+	struct pci_dev *dev = to_pci_dev(hwif->dev);
+
 	hwif->set_pio_mode = &pdc202xx_set_pio_mode;
 	hwif->set_dma_mode = &pdc202xx_set_mode;
 
 	hwif->quirkproc = &pdc202xx_quirkproc;
 
-	if (hwif->pci_dev->device != PCI_DEVICE_ID_PROMISE_20246)
+	if (dev->device != PCI_DEVICE_ID_PROMISE_20246) {
 		hwif->resetproc = &pdc202xx_reset;
+
+		hwif->cable_detect = pdc2026x_old_cable_detect;
+	}
 
 	if (hwif->dma_base == 0)
 		return;
@@ -316,10 +298,7 @@ static void __devinit init_hwif_pdc202xx(ide_hwif_t *hwif)
 	hwif->dma_lost_irq = &pdc202xx_dma_lost_irq;
 	hwif->dma_timeout = &pdc202xx_dma_timeout;
 
-	if (hwif->pci_dev->device != PCI_DEVICE_ID_PROMISE_20246) {
-		if (hwif->cbl != ATA_CBL_PATA40_SHORT)
-			hwif->cbl = pdc202xx_old_cable_detect(hwif);
-
+	if (dev->device != PCI_DEVICE_ID_PROMISE_20246) {
 		hwif->dma_start = &pdc202xx_old_ide_dma_start;
 		hwif->ide_dma_end = &pdc202xx_old_ide_dma_end;
 	} 
@@ -331,7 +310,7 @@ static void __devinit init_dma_pdc202xx(ide_hwif_t *hwif, unsigned long dmabase)
 	u8 udma_speed_flag = 0, primary_mode = 0, secondary_mode = 0;
 
 	if (hwif->channel) {
-		ide_setup_dma(hwif, dmabase, 8);
+		ide_setup_dma(hwif, dmabase);
 		return;
 	}
 
@@ -345,7 +324,6 @@ static void __devinit init_dma_pdc202xx(ide_hwif_t *hwif, unsigned long dmabase)
 		(primary_mode & 1) ? "MASTER" : "PCI",
 		(secondary_mode & 1) ? "MASTER" : "PCI" );
 
-#ifdef CONFIG_PDC202XX_BURST
 	if (!(udma_speed_flag & 1)) {
 		printk(KERN_INFO "%s: FORCING BURST BIT 0x%02x->0x%02x ",
 			hwif->cds->name, udma_speed_flag,
@@ -353,9 +331,8 @@ static void __devinit init_dma_pdc202xx(ide_hwif_t *hwif, unsigned long dmabase)
 		outb(udma_speed_flag | 1, dmabase | 0x1f);
 		printk("%sACTIVE\n", (inb(dmabase | 0x1f) & 1) ? "" : "IN");
 	}
-#endif /* CONFIG_PDC202XX_BURST */
 
-	ide_setup_dma(hwif, dmabase, 8);
+	ide_setup_dma(hwif, dmabase);
 }
 
 static void __devinit pdc202ata4_fixup_irq(struct pci_dev *dev,
@@ -375,6 +352,11 @@ static void __devinit pdc202ata4_fixup_irq(struct pci_dev *dev,
 	}
 }
 
+#define IDE_HFLAGS_PDC202XX \
+	(IDE_HFLAG_ERROR_STOPS_FIFO | \
+	 IDE_HFLAG_ABUSE_SET_DMA_MODE | \
+	 IDE_HFLAG_OFF_BOARD)
+
 #define DECLARE_PDC2026X_DEV(name_str, udma, extra_flags) \
 	{ \
 		.name		= name_str, \
@@ -382,9 +364,7 @@ static void __devinit pdc202ata4_fixup_irq(struct pci_dev *dev,
 		.init_hwif	= init_hwif_pdc202xx, \
 		.init_dma	= init_dma_pdc202xx, \
 		.extra		= 48, \
-		.host_flags	= IDE_HFLAG_ERROR_STOPS_FIFO | \
-				  extra_flags | \
-				  IDE_HFLAG_OFF_BOARD, \
+		.host_flags	= IDE_HFLAGS_PDC202XX | extra_flags, \
 		.pio_mask	= ATA_PIO4, \
 		.mwdma_mask	= ATA_MWDMA2, \
 		.udma_mask	= udma, \
@@ -397,8 +377,7 @@ static const struct ide_port_info pdc202xx_chipsets[] __devinitdata = {
 		.init_hwif	= init_hwif_pdc202xx,
 		.init_dma	= init_dma_pdc202xx,
 		.extra		= 16,
-		.host_flags	= IDE_HFLAG_ERROR_STOPS_FIFO |
-				  IDE_HFLAG_OFF_BOARD,
+		.host_flags	= IDE_HFLAGS_PDC202XX,
 		.pio_mask	= ATA_PIO4,
 		.mwdma_mask	= ATA_MWDMA2,
 		.udma_mask	= ATA_UDMA2,

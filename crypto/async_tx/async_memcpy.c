@@ -35,7 +35,7 @@
  * @src: src page
  * @offset: offset in pages to start transaction
  * @len: length in bytes
- * @flags: ASYNC_TX_ASSUME_COHERENT, ASYNC_TX_ACK, ASYNC_TX_DEP_ACK,
+ * @flags: ASYNC_TX_ACK, ASYNC_TX_DEP_ACK,
  * @depend_tx: memcpy depends on the result of this transaction
  * @cb_fn: function to call when the memcpy completes
  * @cb_param: parameter to pass to the callback routine
@@ -46,35 +46,31 @@ async_memcpy(struct page *dest, struct page *src, unsigned int dest_offset,
 	struct dma_async_tx_descriptor *depend_tx,
 	dma_async_tx_callback cb_fn, void *cb_param)
 {
-	struct dma_chan *chan = async_tx_find_channel(depend_tx, DMA_MEMCPY);
+	struct dma_chan *chan = async_tx_find_channel(depend_tx, DMA_MEMCPY,
+						      &dest, 1, &src, 1, len);
 	struct dma_device *device = chan ? chan->device : NULL;
-	int int_en = cb_fn ? 1 : 0;
-	struct dma_async_tx_descriptor *tx = device ?
-		device->device_prep_dma_memcpy(chan, len,
-		int_en) : NULL;
+	struct dma_async_tx_descriptor *tx = NULL;
 
-	if (tx) { /* run the memcpy asynchronously */
-		dma_addr_t addr;
-		enum dma_data_direction dir;
+	if (device) {
+		dma_addr_t dma_dest, dma_src;
+		unsigned long dma_prep_flags = cb_fn ? DMA_PREP_INTERRUPT : 0;
 
-		pr_debug("%s: (async) len: %zu\n", __FUNCTION__, len);
+		dma_dest = dma_map_page(device->dev, dest, dest_offset, len,
+					DMA_FROM_DEVICE);
 
-		dir = (flags & ASYNC_TX_ASSUME_COHERENT) ?
-			DMA_NONE : DMA_FROM_DEVICE;
+		dma_src = dma_map_page(device->dev, src, src_offset, len,
+				       DMA_TO_DEVICE);
 
-		addr = dma_map_page(device->dev, dest, dest_offset, len, dir);
-		tx->tx_set_dest(addr, tx, 0);
+		tx = device->device_prep_dma_memcpy(chan, dma_dest, dma_src,
+						    len, dma_prep_flags);
+	}
 
-		dir = (flags & ASYNC_TX_ASSUME_COHERENT) ?
-			DMA_NONE : DMA_TO_DEVICE;
-
-		addr = dma_map_page(device->dev, src, src_offset, len, dir);
-		tx->tx_set_src(addr, tx, 0);
-
+	if (tx) {
+		pr_debug("%s: (async) len: %zu\n", __func__, len);
 		async_tx_submit(chan, tx, flags, depend_tx, cb_fn, cb_param);
-	} else { /* run the memcpy synchronously */
+	} else {
 		void *dest_buf, *src_buf;
-		pr_debug("%s: (sync) len: %zu\n", __FUNCTION__, len);
+		pr_debug("%s: (sync) len: %zu\n", __func__, len);
 
 		/* wait for any prerequisite operations */
 		if (depend_tx) {
@@ -84,7 +80,7 @@ async_memcpy(struct page *dest, struct page *src, unsigned int dest_offset,
 			BUG_ON(depend_tx->ack);
 			if (dma_wait_for_async_tx(depend_tx) == DMA_ERROR)
 				panic("%s: DMA_ERROR waiting for depend_tx\n",
-					__FUNCTION__);
+					__func__);
 		}
 
 		dest_buf = kmap_atomic(dest, KM_USER0) + dest_offset;

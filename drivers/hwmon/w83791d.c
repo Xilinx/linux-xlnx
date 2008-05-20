@@ -47,7 +47,8 @@
 #define NUMBER_OF_TEMPIN	3
 
 /* Addresses to scan */
-static unsigned short normal_i2c[] = { 0x2c, 0x2d, 0x2e, 0x2f, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { 0x2c, 0x2d, 0x2e, 0x2f,
+						I2C_CLIENT_END };
 
 /* Insmod parameters */
 I2C_CLIENT_INSMOD_1(w83791d);
@@ -840,14 +841,12 @@ static ssize_t store_vrm_reg(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct w83791d_data *data = i2c_get_clientdata(client);
-	unsigned long val = simple_strtoul(buf, NULL, 10);
+	struct w83791d_data *data = dev_get_drvdata(dev);
 
 	/* No lock needed as vrm is internal to the driver
 	   (not read from a chip register) and so is not
 	   updated in w83791d_update_device() */
-	data->vrm = val;
+	data->vrm = simple_strtoul(buf, NULL, 10);
 
 	return count;
 }

@@ -1,11 +1,9 @@
 #ifndef _NET_IP6_ROUTE_H
 #define _NET_IP6_ROUTE_H
 
-#define IP6_RT_PRIO_FW		16
 #define IP6_RT_PRIO_USER	1024
 #define IP6_RT_PRIO_ADDRCONF	256
 #define IP6_RT_PRIO_KERN	512
-#define IP6_RT_FLOW_MASK	0x00ff
 
 struct route_info {
 	__u8			type;
@@ -43,14 +41,12 @@ extern struct rt6_info	ip6_prohibit_entry;
 extern struct rt6_info	ip6_blk_hole_entry;
 #endif
 
-extern int ip6_rt_gc_interval;
-
 extern void			ip6_route_input(struct sk_buff *skb);
 
 extern struct dst_entry *	ip6_route_output(struct sock *sk,
 						 struct flowi *fl);
 
-extern void			ip6_route_init(void);
+extern int			ip6_route_init(void);
 extern void			ip6_route_cleanup(void);
 
 extern int			ipv6_route_ioctl(unsigned int cmd, void __user *arg);

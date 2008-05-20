@@ -74,7 +74,6 @@ typedef struct
         struct dbdma_cmd        *dma_table_cpu;
         dma_addr_t              dma_table_dma;
 #endif
-        struct device           *dev;
 	int			irq;
 	u32			regbase;
 #ifdef CONFIG_PM
@@ -122,24 +121,6 @@ static const struct drive_list_entry dma_black_list [] = {
         { NULL                  ,       NULL            }
 };
 #endif
-
-/* function prototyping */
-u8 auide_inb(unsigned long port);
-u16 auide_inw(unsigned long port);
-u32 auide_inl(unsigned long port);
-void auide_insw(unsigned long port, void *addr, u32 count);
-void auide_insl(unsigned long port, void *addr, u32 count);
-void auide_outb(u8 addr, unsigned long port);
-void auide_outbsync(ide_drive_t *drive, u8 addr, unsigned long port);
-void auide_outw(u16 addr, unsigned long port);
-void auide_outl(u32 addr, unsigned long port);
-void auide_outsw(unsigned long port, void *addr, u32 count);
-void auide_outsl(unsigned long port, void *addr, u32 count);
-static void auide_tune_drive(ide_drive_t *drive, byte pio);
-static int auide_tune_chipset(ide_drive_t *drive, u8 speed);
-static int auide_ddma_init( _auide_hwif *auide );
-static void auide_setup_ports(hw_regs_t *hw, _auide_hwif *ahwif);
-int __init auide_probe(void);
 
 /*******************************************************************************
 * PIO Mode timing calculation :                                                *

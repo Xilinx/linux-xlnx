@@ -1,21 +1,21 @@
-/* SCTP kernel reference Implementation
+/* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2001, 2004
  * Copyright (c) 1999 Cisco, Inc.
  * Copyright (c) 1999-2001 Motorola, Inc.
  *
- * This file is part of the SCTP kernel reference Implementation
+ * This file is part of the SCTP kernel implementation
  *
  * These functions work with the state functions in sctp_sm_statefuns.c
  * to implement that state operations.  These functions implement the
  * steps which require modifying existing data structures.
  *
- * The SCTP reference implementation is free software;
+ * This SCTP implementation is free software;
  * you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
- * The SCTP reference implementation is distributed in the hope that it
+ * This SCTP implementation is distributed in the hope that it
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  *                 ************************
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -1535,6 +1535,9 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 		case SCTP_CMD_ASSOC_SHKEY:
 			error = sctp_auth_asoc_init_active_key(asoc,
 						GFP_ATOMIC);
+			break;
+		case SCTP_CMD_UPDATE_INITTAG:
+			asoc->peer.i.init_tag = cmd->obj.u32;
 			break;
 
 		default:

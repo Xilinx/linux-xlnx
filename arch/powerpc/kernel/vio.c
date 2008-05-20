@@ -37,8 +37,6 @@
 #include <asm/iseries/hv_call_xm.h>
 #include <asm/iseries/iommu.h>
 
-extern struct kset devices_subsys; /* needed for vio_find_name() */
-
 static struct bus_type vio_bus_type;
 
 static struct vio_dev vio_bus_device  = { /* fake "parent" device */
@@ -178,7 +176,7 @@ static void __devinit vio_dev_release(struct device *dev)
  * Returns a pointer to the created vio_dev or NULL if node has
  * NULL device_type or compatible fields.
  */
-struct vio_dev * __devinit vio_register_device_node(struct device_node *of_node)
+struct vio_dev *vio_register_device_node(struct device_node *of_node)
 {
 	struct vio_dev *viodev;
 	const unsigned int *unit_address;
@@ -361,19 +359,16 @@ EXPORT_SYMBOL(vio_get_attribute);
 #ifdef CONFIG_PPC_PSERIES
 /* vio_find_name() - internal because only vio.c knows how we formatted the
  * kobject name
- * XXX once vio_bus_type.devices is actually used as a kset in
- * drivers/base/bus.c, this function should be removed in favor of
- * "device_find(kobj_name, &vio_bus_type)"
  */
-static struct vio_dev *vio_find_name(const char *kobj_name)
+static struct vio_dev *vio_find_name(const char *name)
 {
-	struct kobject *found;
+	struct device *found;
 
-	found = kset_find_obj(&devices_subsys, kobj_name);
+	found = bus_find_device_by_name(&vio_bus_type, NULL, name);
 	if (!found)
 		return NULL;
 
-	return to_vio_dev(container_of(found, struct device, kobj));
+	return to_vio_dev(found);
 }
 
 /**

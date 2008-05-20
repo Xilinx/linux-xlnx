@@ -29,10 +29,6 @@
 
 #define DEBUGFS_MAGIC	0x64626720
 
-/* declared over in file.c */
-extern struct file_operations debugfs_file_operations;
-extern struct inode_operations debugfs_link_operations;
-
 static struct vfsmount *debugfs_mount;
 static int debugfs_mount_count;
 
@@ -426,20 +422,19 @@ exit:
 }
 EXPORT_SYMBOL_GPL(debugfs_rename);
 
-static decl_subsys(debug, NULL, NULL);
+static struct kobject *debug_kobj;
 
 static int __init debugfs_init(void)
 {
 	int retval;
 
-	kobj_set_kset_s(&debug_subsys, kernel_subsys);
-	retval = subsystem_register(&debug_subsys);
-	if (retval)
-		return retval;
+	debug_kobj = kobject_create_and_add("debug", kernel_kobj);
+	if (!debug_kobj)
+		return -EINVAL;
 
 	retval = register_filesystem(&debug_fs_type);
 	if (retval)
-		subsystem_unregister(&debug_subsys);
+		kobject_put(debug_kobj);
 	return retval;
 }
 
@@ -447,7 +442,7 @@ static void __exit debugfs_exit(void)
 {
 	simple_release_fs(&debugfs_mount, &debugfs_mount_count);
 	unregister_filesystem(&debug_fs_type);
-	subsystem_unregister(&debug_subsys);
+	kobject_put(debug_kobj);
 }
 
 core_initcall(debugfs_init);

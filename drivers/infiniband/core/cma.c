@@ -168,15 +168,15 @@ struct cma_work {
 union cma_ip_addr {
 	struct in6_addr ip6;
 	struct {
-		__u32 pad[3];
-		__u32 addr;
+		__be32 pad[3];
+		__be32 addr;
 	} ip4;
 };
 
 struct cma_hdr {
 	u8 cma_version;
 	u8 ip_version;	/* IP version: 7:4 */
-	__u16 port;
+	__be16 port;
 	union cma_ip_addr src_addr;
 	union cma_ip_addr dst_addr;
 };
@@ -186,8 +186,8 @@ struct sdp_hh {
 	u8 sdp_version; /* Major version: 7:4 */
 	u8 ip_version;	/* IP version: 7:4 */
 	u8 sdp_specific1[10];
-	__u16 port;
-	__u16 sdp_specific2;
+	__be16 port;
+	__be16 sdp_specific2;
 	union cma_ip_addr src_addr;
 	union cma_ip_addr dst_addr;
 };
@@ -488,7 +488,8 @@ void rdma_destroy_qp(struct rdma_cm_id *id)
 }
 EXPORT_SYMBOL(rdma_destroy_qp);
 
-static int cma_modify_qp_rtr(struct rdma_id_private *id_priv)
+static int cma_modify_qp_rtr(struct rdma_id_private *id_priv,
+			     struct rdma_conn_param *conn_param)
 {
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
@@ -514,13 +515,16 @@ static int cma_modify_qp_rtr(struct rdma_id_private *id_priv)
 	if (ret)
 		goto out;
 
+	if (conn_param)
+		qp_attr.max_dest_rd_atomic = conn_param->responder_resources;
 	ret = ib_modify_qp(id_priv->id.qp, &qp_attr, qp_attr_mask);
 out:
 	mutex_unlock(&id_priv->qp_mutex);
 	return ret;
 }
 
-static int cma_modify_qp_rts(struct rdma_id_private *id_priv)
+static int cma_modify_qp_rts(struct rdma_id_private *id_priv,
+			     struct rdma_conn_param *conn_param)
 {
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
@@ -536,6 +540,8 @@ static int cma_modify_qp_rts(struct rdma_id_private *id_priv)
 	if (ret)
 		goto out;
 
+	if (conn_param)
+		qp_attr.max_rd_atomic = conn_param->initiator_depth;
 	ret = ib_modify_qp(id_priv->id.qp, &qp_attr, qp_attr_mask);
 out:
 	mutex_unlock(&id_priv->qp_mutex);
@@ -624,7 +630,8 @@ static inline int cma_zero_addr(struct sockaddr *addr)
 	struct in6_addr *ip6;
 
 	if (addr->sa_family == AF_INET)
-		return ZERONET(((struct sockaddr_in *) addr)->sin_addr.s_addr);
+		return ipv4_is_zeronet(
+			((struct sockaddr_in *)addr)->sin_addr.s_addr);
 	else {
 		ip6 = &((struct sockaddr_in6 *) addr)->sin6_addr;
 		return (ip6->s6_addr32[0] | ip6->s6_addr32[1] |
@@ -634,7 +641,7 @@ static inline int cma_zero_addr(struct sockaddr *addr)
 
 static inline int cma_loopback_addr(struct sockaddr *addr)
 {
-	return LOOPBACK(((struct sockaddr_in *) addr)->sin_addr.s_addr);
+	return ipv4_is_loopback(((struct sockaddr_in *) addr)->sin_addr.s_addr);
 }
 
 static inline int cma_any_addr(struct sockaddr *addr)
@@ -656,7 +663,7 @@ static inline int cma_any_port(struct sockaddr *addr)
 }
 
 static int cma_get_net_info(void *hdr, enum rdma_port_space ps,
-			    u8 *ip_ver, __u16 *port,
+			    u8 *ip_ver, __be16 *port,
 			    union cma_ip_addr **src, union cma_ip_addr **dst)
 {
 	switch (ps) {
@@ -688,7 +695,7 @@ static int cma_get_net_info(void *hdr, enum rdma_port_space ps,
 
 static void cma_save_net_info(struct rdma_addr *addr,
 			      struct rdma_addr *listen_addr,
-			      u8 ip_ver, __u16 port,
+			      u8 ip_ver, __be16 port,
 			      union cma_ip_addr *src, union cma_ip_addr *dst)
 {
 	struct sockaddr_in *listen4, *ip4;
@@ -866,11 +873,11 @@ static int cma_rep_recv(struct rdma_id_private *id_priv)
 {
 	int ret;
 
-	ret = cma_modify_qp_rtr(id_priv);
+	ret = cma_modify_qp_rtr(id_priv, NULL);
 	if (ret)
 		goto reject;
 
-	ret = cma_modify_qp_rts(id_priv);
+	ret = cma_modify_qp_rts(id_priv, NULL);
 	if (ret)
 		goto reject;
 
@@ -989,7 +996,7 @@ static struct rdma_id_private *cma_new_conn_id(struct rdma_cm_id *listen_id,
 	struct rdma_cm_id *id;
 	struct rdma_route *rt;
 	union cma_ip_addr *src, *dst;
-	__u16 port;
+	__be16 port;
 	u8 ip_ver;
 
 	if (cma_get_net_info(ib_event->private_data, listen_id->ps,
@@ -1036,7 +1043,7 @@ static struct rdma_id_private *cma_new_udp_id(struct rdma_cm_id *listen_id,
 	struct rdma_id_private *id_priv;
 	struct rdma_cm_id *id;
 	union cma_ip_addr *src, *dst;
-	__u16 port;
+	__be16 port;
 	u8 ip_ver;
 	int ret;
 
@@ -1100,7 +1107,6 @@ static int cma_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *ib_event)
 		event.param.ud.private_data_len =
 				IB_CM_SIDR_REQ_PRIVATE_DATA_SIZE - offset;
 	} else {
-		ib_send_cm_mra(cm_id, CMA_CM_MRA_SETTING, NULL, 0);
 		conn_id = cma_new_conn_id(&listen_id->id, ib_event);
 		cma_set_req_event_data(&event, &ib_event->param.req_rcvd,
 				       ib_event->private_data, offset);
@@ -1122,8 +1128,19 @@ static int cma_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *ib_event)
 	cm_id->cm_handler = cma_ib_handler;
 
 	ret = conn_id->id.event_handler(&conn_id->id, &event);
-	if (!ret)
+	if (!ret) {
+		/*
+		 * Acquire mutex to prevent user executing rdma_destroy_id()
+		 * while we're accessing the cm_id.
+		 */
+		mutex_lock(&lock);
+		if (cma_comp(conn_id, CMA_CONNECT) &&
+		    !cma_is_ud_ps(conn_id->id.ps))
+			ib_send_cm_mra(cm_id, CMA_CM_MRA_SETTING, NULL, 0);
+		mutex_unlock(&lock);
+		cma_enable_remove(conn_id);
 		goto out;
+	}
 
 	/* Destroy the CM ID by returning a non-zero value. */
 	conn_id->cm_id.ib = NULL;
@@ -1148,7 +1165,7 @@ static void cma_set_compare_data(enum rdma_port_space ps, struct sockaddr *addr,
 {
 	struct cma_hdr *cma_data, *cma_mask;
 	struct sdp_hh *sdp_data, *sdp_mask;
-	__u32 ip4_addr;
+	__be32 ip4_addr;
 	struct in6_addr ip6_addr;
 
 	memset(compare, 0, sizeof *compare);
@@ -1164,12 +1181,12 @@ static void cma_set_compare_data(enum rdma_port_space ps, struct sockaddr *addr,
 			sdp_set_ip_ver(sdp_data, 4);
 			sdp_set_ip_ver(sdp_mask, 0xF);
 			sdp_data->dst_addr.ip4.addr = ip4_addr;
-			sdp_mask->dst_addr.ip4.addr = ~0;
+			sdp_mask->dst_addr.ip4.addr = htonl(~0);
 		} else {
 			cma_set_ip_ver(cma_data, 4);
 			cma_set_ip_ver(cma_mask, 0xF);
 			cma_data->dst_addr.ip4.addr = ip4_addr;
-			cma_mask->dst_addr.ip4.addr = ~0;
+			cma_mask->dst_addr.ip4.addr = htonl(~0);
 		}
 		break;
 	case AF_INET6:
@@ -1262,6 +1279,7 @@ static int iw_conn_req_handler(struct iw_cm_id *cm_id,
 	struct net_device *dev = NULL;
 	struct rdma_cm_event event;
 	int ret;
+	struct ib_device_attr attr;
 
 	listen_id = cm_id->context;
 	if (cma_disable_remove(listen_id, CMA_LISTEN))
@@ -1279,7 +1297,7 @@ static int iw_conn_req_handler(struct iw_cm_id *cm_id,
 	atomic_inc(&conn_id->dev_remove);
 	conn_id->state = CMA_CONNECT;
 
-	dev = ip_dev_find(iw_event->local_addr.sin_addr.s_addr);
+	dev = ip_dev_find(&init_net, iw_event->local_addr.sin_addr.s_addr);
 	if (!dev) {
 		ret = -EADDRNOTAVAIL;
 		cma_enable_remove(conn_id);
@@ -1311,10 +1329,19 @@ static int iw_conn_req_handler(struct iw_cm_id *cm_id,
 	sin = (struct sockaddr_in *) &new_cm_id->route.addr.dst_addr;
 	*sin = iw_event->remote_addr;
 
+	ret = ib_query_device(conn_id->id.device, &attr);
+	if (ret) {
+		cma_enable_remove(conn_id);
+		rdma_destroy_id(new_cm_id);
+		goto out;
+	}
+
 	memset(&event, 0, sizeof event);
 	event.event = RDMA_CM_EVENT_CONNECT_REQUEST;
 	event.param.conn.private_data = iw_event->private_data;
 	event.param.conn.private_data_len = iw_event->private_data_len;
+	event.param.conn.initiator_depth = attr.max_qp_init_rd_atom;
+	event.param.conn.responder_resources = attr.max_qp_rd_atom;
 	ret = conn_id->id.event_handler(&conn_id->id, &event);
 	if (ret) {
 		/* User wants to destroy the CM ID */
@@ -2272,7 +2299,7 @@ static int cma_connect_iw(struct rdma_id_private *id_priv,
 	sin = (struct sockaddr_in*) &id_priv->id.route.addr.dst_addr;
 	cm_id->remote_addr = *sin;
 
-	ret = cma_modify_qp_rtr(id_priv);
+	ret = cma_modify_qp_rtr(id_priv, conn_param);
 	if (ret)
 		goto out;
 
@@ -2335,25 +2362,15 @@ static int cma_accept_ib(struct rdma_id_private *id_priv,
 			 struct rdma_conn_param *conn_param)
 {
 	struct ib_cm_rep_param rep;
-	struct ib_qp_attr qp_attr;
-	int qp_attr_mask, ret;
+	int ret;
 
-	if (id_priv->id.qp) {
-		ret = cma_modify_qp_rtr(id_priv);
-		if (ret)
-			goto out;
+	ret = cma_modify_qp_rtr(id_priv, conn_param);
+	if (ret)
+		goto out;
 
-		qp_attr.qp_state = IB_QPS_RTS;
-		ret = ib_cm_init_qp_attr(id_priv->cm_id.ib, &qp_attr,
-					 &qp_attr_mask);
-		if (ret)
-			goto out;
-
-		qp_attr.max_rd_atomic = conn_param->initiator_depth;
-		ret = ib_modify_qp(id_priv->id.qp, &qp_attr, qp_attr_mask);
-		if (ret)
-			goto out;
-	}
+	ret = cma_modify_qp_rts(id_priv, conn_param);
+	if (ret)
+		goto out;
 
 	memset(&rep, 0, sizeof rep);
 	rep.qp_num = id_priv->qp_num;
@@ -2378,7 +2395,7 @@ static int cma_accept_iw(struct rdma_id_private *id_priv,
 	struct iw_cm_conn_param iw_param;
 	int ret;
 
-	ret = cma_modify_qp_rtr(id_priv);
+	ret = cma_modify_qp_rtr(id_priv, conn_param);
 	if (ret)
 		return ret;
 
@@ -2598,11 +2615,9 @@ static void cma_set_mgid(struct rdma_id_private *id_priv,
 		/* IPv6 address is an SA assigned MGID. */
 		memcpy(mgid, &sin6->sin6_addr, sizeof *mgid);
 	} else {
-		ip_ib_mc_map(sin->sin_addr.s_addr, mc_map);
+		ip_ib_mc_map(sin->sin_addr.s_addr, dev_addr->broadcast, mc_map);
 		if (id_priv->id.ps == RDMA_PS_UDP)
 			mc_map[7] = 0x01;	/* Use RDMA CM signature */
-		mc_map[8] = ib_addr_get_pkey(dev_addr) >> 8;
-		mc_map[9] = (unsigned char) ib_addr_get_pkey(dev_addr);
 		*mgid = *(union ib_gid *) (mc_map + 4);
 	}
 }

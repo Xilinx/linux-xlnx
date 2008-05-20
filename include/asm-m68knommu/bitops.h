@@ -262,7 +262,7 @@ static __inline__ unsigned long ext2_find_next_zero_bit(void *addr, unsigned lon
 		 * tmp = __swab32(*(p++));
 		 * tmp |= ~0UL >> (32-offset);
 		 *
-		 * but this would decrease preformance, so we change the
+		 * but this would decrease performance, so we change the
 		 * shift:
 		 */
 		tmp = *(p++);
@@ -294,6 +294,8 @@ found_middle:
 	return result + ffz(__swab32(tmp));
 }
 
+#define ext2_find_next_bit(addr, size, off) \
+	generic_find_next_le_bit((unsigned long *)(addr), (size), (off))
 #include <asm-generic/bitops/minix.h>
 
 #endif /* __KERNEL__ */

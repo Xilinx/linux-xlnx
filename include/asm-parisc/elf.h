@@ -28,7 +28,7 @@
 #define EFA_PARISC_1_1		    0x0210 /* PA-RISC 1.1 big-endian.  */
 #define EFA_PARISC_2_0		    0x0214 /* PA-RISC 2.0 big-endian.  */
 
-/* Additional section indeces.  */
+/* Additional section indices.  */
 
 #define SHN_PARISC_ANSI_COMMON	0xff00	   /* Section for tenatively declared
 					      symbols in ANSI C.  */
@@ -204,7 +204,7 @@ typedef struct elf64_fdesc {
 /*
  * The following definitions are those for 32-bit ELF binaries on a 32-bit
  * kernel and for 64-bit binaries on a 64-bit kernel.  To run 32-bit binaries
- * on a 64-bit kernel, arch/parisc64/kernel/binfmt_elf32.c defines these
+ * on a 64-bit kernel, arch/parisc/kernel/binfmt_elf32.c defines these
  * macros appropriately and then #includes binfmt_elf.c, which then includes
  * this file.
  */
@@ -216,34 +216,30 @@ typedef struct elf64_fdesc {
  * Note that this header file is used by default in fs/binfmt_elf.c. So
  * the following macros are for the default case. However, for the 64
  * bit kernel we also support 32 bit parisc binaries. To do that
- * arch/parisc64/kernel/binfmt_elf32.c defines its own set of these
+ * arch/parisc/kernel/binfmt_elf32.c defines its own set of these
  * macros, and then it includes fs/binfmt_elf.c to provide an alternate
  * elf binary handler for 32 bit binaries (on the 64 bit kernel).
  */
 #ifdef CONFIG_64BIT
-#define ELF_CLASS       ELFCLASS64
+#define ELF_CLASS   ELFCLASS64
 #else
 #define ELF_CLASS	ELFCLASS32
 #endif
 
 typedef unsigned long elf_greg_t;
 
-/* This yields a string that ld.so will use to load implementation
-   specific libraries for optimization.  This is more specific in
-   intent than poking at uname or /proc/cpuinfo.
+/*
+ * This yields a string that ld.so will use to load implementation
+ * specific libraries for optimization.  This is more specific in
+ * intent than poking at uname or /proc/cpuinfo.
+ */
 
-   For the moment, we have only optimizations for the Intel generations,
-   but that could change... */
+#define ELF_PLATFORM  ("PARISC\0")
 
-#define ELF_PLATFORM  ("PARISC\0" /*+((boot_cpu_data.x86-3)*5) */)
-
-#ifdef __KERNEL__
 #define SET_PERSONALITY(ex, ibcs2) \
 	current->personality = PER_LINUX; \
 	current->thread.map_base = DEFAULT_MAP_BASE; \
 	current->thread.task_size = DEFAULT_TASK_SIZE \
-
-#endif
 
 /*
  * Fill in general registers in a core dump.  This saves pretty
@@ -313,7 +309,7 @@ struct pt_regs;	/* forward declaration... */
 #define ELF_OSABI 	ELFOSABI_LINUX
 
 /* %r23 is set by ld.so to a pointer to a function which might be 
-   registered using atexit.  This provides a mean for the dynamic
+   registered using atexit.  This provides a means for the dynamic
    linker to call DT_FINI functions for shared libraries that have
    been loaded before the code runs.
 
@@ -342,6 +338,5 @@ struct pt_regs;	/* forward declaration... */
    but it's not easy, and we've already done it here.  */
 
 #define ELF_HWCAP	0
-/* (boot_cpu_data.x86_capability) */
 
 #endif

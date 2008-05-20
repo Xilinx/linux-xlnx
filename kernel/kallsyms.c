@@ -53,14 +53,6 @@ static inline int is_kernel_inittext(unsigned long addr)
 	return 0;
 }
 
-static inline int is_kernel_extratext(unsigned long addr)
-{
-	if (addr >= (unsigned long)_sextratext
-	    && addr <= (unsigned long)_eextratext)
-		return 1;
-	return 0;
-}
-
 static inline int is_kernel_text(unsigned long addr)
 {
 	if (addr >= (unsigned long)_stext && addr <= (unsigned long)_etext)
@@ -80,8 +72,7 @@ static int is_ksym_addr(unsigned long addr)
 	if (all_var)
 		return is_kernel(addr);
 
-	return is_kernel_text(addr) || is_kernel_inittext(addr) ||
-		is_kernel_extratext(addr);
+	return is_kernel_text(addr) || is_kernel_inittext(addr);
 }
 
 /* expand a compressed symbol data into the resulting uncompressed string,
@@ -233,10 +224,11 @@ static unsigned long get_symbol_pos(unsigned long addr,
 int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,
 				unsigned long *offset)
 {
+	char namebuf[KSYM_NAME_LEN];
 	if (is_ksym_addr(addr))
 		return !!get_symbol_pos(addr, symbolsize, offset);
 
-	return !!module_address_lookup(addr, symbolsize, offset, NULL);
+	return !!module_address_lookup(addr, symbolsize, offset, NULL, namebuf);
 }
 
 /*
@@ -251,8 +243,6 @@ const char *kallsyms_lookup(unsigned long addr,
 			    unsigned long *offset,
 			    char **modname, char *namebuf)
 {
-	const char *msym;
-
 	namebuf[KSYM_NAME_LEN - 1] = 0;
 	namebuf[0] = 0;
 
@@ -268,10 +258,8 @@ const char *kallsyms_lookup(unsigned long addr,
 	}
 
 	/* see if it's in a module */
-	msym = module_address_lookup(addr, symbolsize, offset, modname);
-	if (msym)
-		return strncpy(namebuf, msym, KSYM_NAME_LEN - 1);
-
+	return module_address_lookup(addr, symbolsize, offset, modname,
+				     namebuf);
 	return NULL;
 }
 

@@ -5,6 +5,7 @@
 config FRV
 	bool
 	default y
+	select HAVE_IDE
 
 config ZONE_DMA
 	bool
@@ -57,6 +58,10 @@ config ARCH_HAS_ILOG2_U64
 	bool
 	default y
 
+config HZ
+	int
+	default 1000
+
 mainmenu "Fujitsu FR-V Kernel Configuration"
 
 source "init/Kconfig"
@@ -79,7 +84,7 @@ config FRV_OUTOFLINE_ATOMIC_OPS
 	  Setting this option causes the FR-V atomic operations to be mostly
 	  implemented out-of-line.
 
-	  See Documentation/fujitsu/frv/atomic-ops.txt for more information.
+	  See Documentation/frv/atomic-ops.txt for more information.
 
 config HIGHMEM
 	bool "High memory support"
@@ -137,6 +142,15 @@ config UCPAGE_OFFSET_C0000000
        bool "0xC0000000 (Recommended)"
 
 endchoice
+
+config PAGE_OFFSET
+	hex
+	default 0x20000000 if UCPAGE_OFFSET_20000000
+	default 0x40000000 if UCPAGE_OFFSET_40000000
+	default 0x60000000 if UCPAGE_OFFSET_60000000
+	default 0x80000000 if UCPAGE_OFFSET_80000000
+	default 0xA0000000 if UCPAGE_OFFSET_A0000000
+	default 0xC0000000
 
 config PROTECT_KERNEL
 	bool "Protect core kernel against userspace"
@@ -322,11 +336,6 @@ config PCI
 	  onboard. If you have one of these boards and you wish to use the PCI
 	  facilities, say Y here.
 
-	  The PCI-HOWTO, available from
-	  <http://www.tldp.org/docs.html#howto>, contains valuable
-	  information about which PCI hardware does work under Linux and which
-	  doesn't.
-
 config RESERVE_DMA_COHERENT
 	bool "Reserve DMA coherent memory"
 	depends on PCI && !MMU
@@ -357,6 +366,11 @@ source "drivers/pcmcia/Kconfig"
 #	  should probably wait a while.
 
 menu "Power management options"
+
+config ARCH_SUSPEND_POSSIBLE
+	def_bool y
+	depends on !SMP
+
 source kernel/power/Kconfig
 endmenu
 
@@ -374,8 +388,6 @@ source "net/Kconfig"
 source "drivers/Kconfig"
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/frv/Kconfig.debug"
 

@@ -168,7 +168,8 @@ struct acpi_device_flags {
 	u32 power_manageable:1;
 	u32 performance_manageable:1;
 	u32 wake_capable:1;	/* Wakeup(_PRW) supported? */
-	u32 reserved:20;
+	u32 force_power_state:1;
+	u32 reserved:19;
 };
 
 /* File System */
@@ -318,8 +319,13 @@ struct acpi_bus_event {
 	u32 data;
 };
 
-extern struct kset acpi_subsys;
+extern struct kobject *acpi_kobj;
 extern int acpi_bus_generate_netlink_event(const char*, const char*, u8, int);
+void acpi_bus_private_data_handler(acpi_handle, u32, void *);
+int acpi_bus_get_private_data(acpi_handle, void **);
+extern int acpi_notifier_call_chain(struct acpi_device *, u32, u32);
+extern int register_acpi_notifier(struct notifier_block *);
+extern int unregister_acpi_notifier(struct notifier_block *);
 /*
  * External Functions
  */

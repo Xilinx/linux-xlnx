@@ -93,7 +93,7 @@ extern unsigned long empty_zero_page;
 
 /*
  * we use 2-level page tables, folding the PMD (mid-level table) into the PGE (top-level entry)
- * [see Documentation/fujitsu/frv/mmu-layout.txt]
+ * [see Documentation/frv/mmu-layout.txt]
  *
  * Page Directory:
  *  - Size: 16KB
@@ -226,7 +226,7 @@ static inline pud_t *pud_offset(pgd_t *pgd, unsigned long address)
  * inside the pgd, so has no extra memory associated with it.
  */
 #define pud_alloc_one(mm, address)		NULL
-#define pud_free(x)				do { } while (0)
+#define pud_free(mm, x)				do { } while (0)
 #define __pud_free_tlb(tlb, x)			do { } while (0)
 
 /*
@@ -507,13 +507,22 @@ static inline int pte_file(pte_t pte)
  */
 static inline void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t pte)
 {
+	struct mm_struct *mm;
 	unsigned long ampr;
-	pgd_t *pge = pgd_offset(current->mm, address);
-	pud_t *pue = pud_offset(pge, address);
-	pmd_t *pme = pmd_offset(pue, address);
 
-	ampr = pme->ste[0] & 0xffffff00;
-	ampr |= xAMPRx_L | xAMPRx_SS_16Kb | xAMPRx_S | xAMPRx_C | xAMPRx_V;
+	mm = current->mm;
+	if (mm) {
+		pgd_t *pge = pgd_offset(mm, address);
+		pud_t *pue = pud_offset(pge, address);
+		pmd_t *pme = pmd_offset(pue, address);
+
+		ampr = pme->ste[0] & 0xffffff00;
+		ampr |= xAMPRx_L | xAMPRx_SS_16Kb | xAMPRx_S | xAMPRx_C |
+			xAMPRx_V;
+	} else {
+		address = ULONG_MAX;
+		ampr = 0;
+	}
 
 	asm volatile("movgs %0,scr0\n"
 		     "movgs %0,scr1\n"

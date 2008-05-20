@@ -94,7 +94,7 @@ static int
 lcs_register_debug_facility(void)
 {
 	lcs_dbf_setup = debug_register("lcs_setup", 2, 1, 8);
-	lcs_dbf_trace = debug_register("lcs_trace", 2, 2, 8);
+	lcs_dbf_trace = debug_register("lcs_trace", 4, 1, 8);
 	if (lcs_dbf_setup == NULL || lcs_dbf_trace == NULL) {
 		PRINT_ERR("Not enough memory for debug facility.\n");
 		lcs_unregister_debug_facility();
@@ -1115,7 +1115,7 @@ list_modified:
 			rc = lcs_send_setipm(card, ipm);
 			spin_lock_irqsave(&card->ipm_lock, flags);
 			if (rc) {
-				PRINT_INFO("Adding multicast address failed."
+				PRINT_INFO("Adding multicast address failed. "
 					   "Table possibly full!\n");
 				/* store ipm in failed list -> will be added
 				 * to ipm_list again, so a retry will be done

@@ -151,20 +151,20 @@ core-$(CONFIG_XMON)		+= arch/powerpc/xmon/
 drivers-$(CONFIG_OPROFILE)	+= arch/powerpc/oprofile/
 
 # Default to zImage, override when needed
-defaultimage-y			:= zImage
-defaultimage-$(CONFIG_DEFAULT_UIMAGE) := uImage
-KBUILD_IMAGE := $(defaultimage-y)
-all: $(KBUILD_IMAGE)
+all: zImage
 
 CPPFLAGS_vmlinux.lds	:= -Upowerpc
 
-BOOT_TARGETS = zImage zImage.initrd uImage
+BOOT_TARGETS = zImage zImage.initrd uImage zImage% dtbImage% treeImage.% cuImage.%
 
 PHONY += $(BOOT_TARGETS)
 
 boot := arch/$(ARCH)/boot
 
 $(BOOT_TARGETS): vmlinux
+	$(Q)$(MAKE) ARCH=ppc64 $(build)=$(boot) $(patsubst %,$(boot)/%,$@)
+
+bootwrapper_install:
 	$(Q)$(MAKE) ARCH=ppc64 $(build)=$(boot) $(patsubst %,$(boot)/%,$@)
 
 define archhelp
@@ -176,8 +176,8 @@ define archhelp
   @echo '  *_defconfig     - Select default config from arch/$(ARCH)/configs'
 endef
 
-install: vdso_install
-	$(Q)$(MAKE) $(build)=$(boot) BOOTIMAGE=$(KBUILD_IMAGE) install
+install:
+	$(Q)$(MAKE) $(build)=$(boot) install
 
 vdso_install:
 ifeq ($(CONFIG_PPC64),y)

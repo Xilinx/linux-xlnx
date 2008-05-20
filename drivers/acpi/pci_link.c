@@ -95,7 +95,7 @@ static struct {
 	int count;
 	struct list_head entries;
 } acpi_link;
-DEFINE_MUTEX(acpi_link_lock);
+static DEFINE_MUTEX(acpi_link_lock);
 
 /* --------------------------------------------------------------------------
                             PCI Link Device Management
@@ -911,7 +911,7 @@ __setup("acpi_irq_balance", acpi_irq_balance_set);
 
 /* FIXME: we will remove this interface after all drivers call pci_disable_device */
 static struct sysdev_class irqrouter_sysdev_class = {
-	set_kset_name("irqrouter"),
+	.name = "irqrouter",
 	.resume = irqrouter_resume,
 };
 

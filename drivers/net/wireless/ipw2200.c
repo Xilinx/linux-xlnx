@@ -2352,27 +2352,13 @@ static int ipw_set_sensitivity(struct ipw_priv *priv, u16 sens)
 static int ipw_send_associate(struct ipw_priv *priv,
 			      struct ipw_associate *associate)
 {
-	struct ipw_associate tmp_associate;
-
 	if (!priv || !associate) {
 		IPW_ERROR("Invalid args\n");
 		return -1;
 	}
 
-	memcpy(&tmp_associate, associate, sizeof(*associate));
-	tmp_associate.policy_support =
-	    cpu_to_le16(tmp_associate.policy_support);
-	tmp_associate.assoc_tsf_msw = cpu_to_le32(tmp_associate.assoc_tsf_msw);
-	tmp_associate.assoc_tsf_lsw = cpu_to_le32(tmp_associate.assoc_tsf_lsw);
-	tmp_associate.capability = cpu_to_le16(tmp_associate.capability);
-	tmp_associate.listen_interval =
-	    cpu_to_le16(tmp_associate.listen_interval);
-	tmp_associate.beacon_interval =
-	    cpu_to_le16(tmp_associate.beacon_interval);
-	tmp_associate.atim_window = cpu_to_le16(tmp_associate.atim_window);
-
-	return ipw_send_cmd_pdu(priv, IPW_CMD_ASSOCIATE, sizeof(tmp_associate),
-				&tmp_associate);
+	return ipw_send_cmd_pdu(priv, IPW_CMD_ASSOCIATE, sizeof(*associate),
+				associate);
 }
 
 static int ipw_send_supported_rates(struct ipw_priv *priv,
@@ -2403,14 +2389,13 @@ static int ipw_set_random_seed(struct ipw_priv *priv)
 
 static int ipw_send_card_disable(struct ipw_priv *priv, u32 phy_off)
 {
+	__le32 v = cpu_to_le32(phy_off);
 	if (!priv) {
 		IPW_ERROR("Invalid args\n");
 		return -1;
 	}
 
-	phy_off = cpu_to_le32(phy_off);
-	return ipw_send_cmd_pdu(priv, IPW_CMD_CARD_DISABLE, sizeof(phy_off),
-				&phy_off);
+	return ipw_send_cmd_pdu(priv, IPW_CMD_CARD_DISABLE, sizeof(v), &v);
 }
 
 static int ipw_send_tx_power(struct ipw_priv *priv, struct ipw_tx_power *power)
@@ -2499,7 +2484,7 @@ static int ipw_send_frag_threshold(struct ipw_priv *priv, u16 frag)
 
 static int ipw_send_power_mode(struct ipw_priv *priv, u32 mode)
 {
-	u32 param;
+	__le32 param;
 
 	if (!priv) {
 		IPW_ERROR("Invalid args\n");
@@ -2510,17 +2495,16 @@ static int ipw_send_power_mode(struct ipw_priv *priv, u32 mode)
 	 * level */
 	switch (mode) {
 	case IPW_POWER_BATTERY:
-		param = IPW_POWER_INDEX_3;
+		param = cpu_to_le32(IPW_POWER_INDEX_3);
 		break;
 	case IPW_POWER_AC:
-		param = IPW_POWER_MODE_CAM;
+		param = cpu_to_le32(IPW_POWER_MODE_CAM);
 		break;
 	default:
-		param = mode;
+		param = cpu_to_le32(mode);
 		break;
 	}
 
-	param = cpu_to_le32(param);
 	return ipw_send_cmd_pdu(priv, IPW_CMD_POWER_MODE, sizeof(param),
 				&param);
 }
@@ -2654,13 +2638,13 @@ static void eeprom_parse_mac(struct ipw_priv *priv, u8 * mac)
 static void ipw_eeprom_init_sram(struct ipw_priv *priv)
 {
 	int i;
-	u16 *eeprom = (u16 *) priv->eeprom;
+	__le16 *eeprom = (__le16 *) priv->eeprom;
 
 	IPW_DEBUG_TRACE(">>\n");
 
 	/* read entire contents of eeprom into private buffer */
 	for (i = 0; i < 128; i++)
-		eeprom[i] = le16_to_cpu(eeprom_read_u16(priv, (u8) i));
+		eeprom[i] = cpu_to_le16(eeprom_read_u16(priv, (u8) i));
 
 	/*
 	   If the data looks correct, then copy it to our private
@@ -3040,17 +3024,17 @@ static void ipw_arc_release(struct ipw_priv *priv)
 }
 
 struct fw_chunk {
-	u32 address;
-	u32 length;
+	__le32 address;
+	__le32 length;
 };
 
 static int ipw_load_ucode(struct ipw_priv *priv, u8 * data, size_t len)
 {
 	int rc = 0, i, addr;
 	u8 cr = 0;
-	u16 *image;
+	__le16 *image;
 
-	image = (u16 *) data;
+	image = (__le16 *) data;
 
 	IPW_DEBUG_TRACE(">> \n");
 
@@ -3097,7 +3081,7 @@ static int ipw_load_ucode(struct ipw_priv *priv, u8 * data, size_t len)
 	/* load new ipw uCode */
 	for (i = 0; i < len / 2; i++)
 		ipw_write_reg16(priv, IPW_BASEBAND_CONTROL_STORE,
-				cpu_to_le16(image[i]));
+				le16_to_cpu(image[i]));
 
 	/* enable DINO */
 	ipw_write_reg8(priv, IPW_BASEBAND_CONTROL_STATUS, 0);
@@ -3116,11 +3100,11 @@ static int ipw_load_ucode(struct ipw_priv *priv, u8 * data, size_t len)
 
 	if (cr & DINO_RXFIFO_DATA) {
 		/* alive_command_responce size is NOT multiple of 4 */
-		u32 response_buffer[(sizeof(priv->dino_alive) + 3) / 4];
+		__le32 response_buffer[(sizeof(priv->dino_alive) + 3) / 4];
 
 		for (i = 0; i < ARRAY_SIZE(response_buffer); i++)
 			response_buffer[i] =
-			    le32_to_cpu(ipw_read_reg32(priv,
+			    cpu_to_le32(ipw_read_reg32(priv,
 						       IPW_BASEBAND_RX_FIFO_READ));
 		memcpy(&priv->dino_alive, response_buffer,
 		       sizeof(priv->dino_alive));
@@ -3381,7 +3365,6 @@ static void ipw_rx_queue_reset(struct ipw_priv *priv,
 	/* Set us so that we have processed and used all buffers, but have
 	 * not restocked the Rx queue with fresh buffers */
 	rxq->read = rxq->write = 0;
-	rxq->processed = RX_QUEUE_SIZE - 1;
 	rxq->free_count = 0;
 	spin_unlock_irqrestore(&rxq->lock, flags);
 }
@@ -3623,7 +3606,22 @@ static int ipw_load(struct ipw_priv *priv)
  * Driver allocates buffers of this size for Rx
  */
 
-static inline int ipw_queue_space(const struct clx2_queue *q)
+/**
+ * ipw_rx_queue_space - Return number of free slots available in queue.
+ */
+static int ipw_rx_queue_space(const struct ipw_rx_queue *q)
+{
+	int s = q->read - q->write;
+	if (s <= 0)
+		s += RX_QUEUE_SIZE;
+	/* keep some buffer to not confuse full and empty queue */
+	s -= 2;
+	if (s < 0)
+		s = 0;
+	return s;
+}
+
+static inline int ipw_tx_queue_space(const struct clx2_queue *q)
 {
 	int s = q->last_used - q->first_empty;
 	if (s <= 0)
@@ -4170,7 +4168,7 @@ static void ipw_gather_stats(struct ipw_priv *priv)
 	priv->last_missed_beacons = priv->missed_beacons;
 	if (priv->assoc_request.beacon_interval) {
 		missed_beacons_percent = missed_beacons_delta *
-		    (HZ * priv->assoc_request.beacon_interval) /
+		    (HZ * le16_to_cpu(priv->assoc_request.beacon_interval)) /
 		    (IPW_STATS_INTERVAL * 10);
 	} else {
 		missed_beacons_percent = 0;
@@ -4396,9 +4394,10 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 				       struct ipw_rx_notification *notif)
 {
 	DECLARE_MAC_BUF(mac);
+	u16 size = le16_to_cpu(notif->size);
 	notif->size = le16_to_cpu(notif->size);
 
-	IPW_DEBUG_NOTIF("type = %i (%d bytes)\n", notif->subtype, notif->size);
+	IPW_DEBUG_NOTIF("type = %i (%d bytes)\n", notif->subtype, size);
 
 	switch (notif->subtype) {
 	case HOST_NOTIFICATION_STATUS_ASSOCIATED:{
@@ -4433,9 +4432,9 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 								   workqueue,
 								   &priv->
 								   adhoc_check,
-								   priv->
+								   le16_to_cpu(priv->
 								   assoc_request.
-								   beacon_interval);
+								   beacon_interval));
 						break;
 					}
 
@@ -4453,20 +4452,17 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 						if ((sizeof
 						     (struct
 						      ieee80211_assoc_response)
-						     <= notif->size)
-						    && (notif->size <= 2314)) {
+						     <= size)
+						    && (size <= 2314)) {
 							struct
 							ieee80211_rx_stats
 							    stats = {
-								.len =
-								    notif->
-								    size - 1,
+								.len = size - 1,
 							};
 
 							IPW_DEBUG_QOS
 							    ("QoS Associate "
-							     "size %d\n",
-							     notif->size);
+							     "size %d\n", size);
 							ieee80211_rx_mgt(priv->
 									 ieee,
 									 (struct
@@ -4671,20 +4667,20 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 			struct notif_channel_result *x =
 			    &notif->u.channel_result;
 
-			if (notif->size == sizeof(*x)) {
+			if (size == sizeof(*x)) {
 				IPW_DEBUG_SCAN("Scan result for channel %d\n",
 					       x->channel_num);
 			} else {
 				IPW_DEBUG_SCAN("Scan result of wrong size %d "
 					       "(should be %zd)\n",
-					       notif->size, sizeof(*x));
+					       size, sizeof(*x));
 			}
 			break;
 		}
 
 	case HOST_NOTIFICATION_STATUS_SCAN_COMPLETED:{
 			struct notif_scan_complete *x = &notif->u.scan_complete;
-			if (notif->size == sizeof(*x)) {
+			if (size == sizeof(*x)) {
 				IPW_DEBUG_SCAN
 				    ("Scan completed: type %d, %d channels, "
 				     "%d status\n", x->scan_type,
@@ -4692,7 +4688,7 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 			} else {
 				IPW_ERROR("Scan completed of wrong size %d "
 					  "(should be %zd)\n",
-					  notif->size, sizeof(*x));
+					  size, sizeof(*x));
 			}
 
 			priv->status &=
@@ -4758,13 +4754,13 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 	case HOST_NOTIFICATION_STATUS_FRAG_LENGTH:{
 			struct notif_frag_length *x = &notif->u.frag_len;
 
-			if (notif->size == sizeof(*x))
+			if (size == sizeof(*x))
 				IPW_ERROR("Frag length: %d\n",
 					  le16_to_cpu(x->frag_length));
 			else
 				IPW_ERROR("Frag length of wrong size %d "
 					  "(should be %zd)\n",
-					  notif->size, sizeof(*x));
+					  size, sizeof(*x));
 			break;
 		}
 
@@ -4772,7 +4768,7 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 			struct notif_link_deterioration *x =
 			    &notif->u.link_deterioration;
 
-			if (notif->size == sizeof(*x)) {
+			if (size == sizeof(*x)) {
 				IPW_DEBUG(IPW_DL_NOTIF | IPW_DL_STATE,
 					"link deterioration: type %d, cnt %d\n",
 					x->silence_notification_type,
@@ -4782,7 +4778,7 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 			} else {
 				IPW_ERROR("Link Deterioration of wrong size %d "
 					  "(should be %zd)\n",
-					  notif->size, sizeof(*x));
+					  size, sizeof(*x));
 			}
 			break;
 		}
@@ -4798,10 +4794,10 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 
 	case HOST_NOTIFICATION_STATUS_BEACON_STATE:{
 			struct notif_beacon_state *x = &notif->u.beacon_state;
-			if (notif->size != sizeof(*x)) {
+			if (size != sizeof(*x)) {
 				IPW_ERROR
 				    ("Beacon state of wrong size %d (should "
-				     "be %zd)\n", notif->size, sizeof(*x));
+				     "be %zd)\n", size, sizeof(*x));
 				break;
 			}
 
@@ -4816,7 +4812,7 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 
 	case HOST_NOTIFICATION_STATUS_TGI_TX_KEY:{
 			struct notif_tgi_tx_key *x = &notif->u.tgi_tx_key;
-			if (notif->size == sizeof(*x)) {
+			if (size == sizeof(*x)) {
 				IPW_ERROR("TGi Tx Key: state 0x%02x sec type "
 					  "0x%02x station %d\n",
 					  x->key_state, x->security_type,
@@ -4826,14 +4822,14 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 
 			IPW_ERROR
 			    ("TGi Tx Key of wrong size %d (should be %zd)\n",
-			     notif->size, sizeof(*x));
+			     size, sizeof(*x));
 			break;
 		}
 
 	case HOST_NOTIFICATION_CALIB_KEEP_RESULTS:{
 			struct notif_calibration *x = &notif->u.calibration;
 
-			if (notif->size == sizeof(*x)) {
+			if (size == sizeof(*x)) {
 				memcpy(&priv->calib, x, sizeof(*x));
 				IPW_DEBUG_INFO("TODO: Calibration\n");
 				break;
@@ -4841,12 +4837,12 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 
 			IPW_ERROR
 			    ("Calibration of wrong size %d (should be %zd)\n",
-			     notif->size, sizeof(*x));
+			     size, sizeof(*x));
 			break;
 		}
 
 	case HOST_NOTIFICATION_NOISE_STATS:{
-			if (notif->size == sizeof(u32)) {
+			if (size == sizeof(u32)) {
 				priv->exp_avg_noise =
 				    exponential_average(priv->exp_avg_noise,
 				    (u8) (le32_to_cpu(notif->u.noise.value) & 0xff),
@@ -4856,14 +4852,14 @@ static void ipw_rx_notification(struct ipw_priv *priv,
 
 			IPW_ERROR
 			    ("Noise stat is wrong size %d (should be %zd)\n",
-			     notif->size, sizeof(u32));
+			     size, sizeof(u32));
 			break;
 		}
 
 	default:
 		IPW_DEBUG_NOTIF("Unknown notification: "
 				"subtype=%d,flags=0x%2x,size=%d\n",
-				notif->subtype, notif->flags, notif->size);
+				notif->subtype, notif->flags, size);
 	}
 }
 
@@ -4935,7 +4931,7 @@ static int ipw_queue_reset(struct ipw_priv *priv)
 /**
  * Reclaim Tx queue entries no more used by NIC.
  *
- * When FW adwances 'R' index, all entries between old and
+ * When FW advances 'R' index, all entries between old and
  * new 'R' index need to be reclaimed. As result, some free space
  * forms. If there is enough free space (> low mark), wake Tx queue.
  *
@@ -4965,7 +4961,7 @@ static int ipw_queue_tx_reclaim(struct ipw_priv *priv,
 		priv->tx_packets++;
 	}
       done:
-	if ((ipw_queue_space(q) > q->low_mark) &&
+	if ((ipw_tx_queue_space(q) > q->low_mark) &&
 	    (qindex >= 0) &&
 	    (priv->status & STATUS_ASSOCIATED) && netif_running(priv->net_dev))
 		netif_wake_queue(priv->net_dev);
@@ -4983,7 +4979,7 @@ static int ipw_queue_tx_hcmd(struct ipw_priv *priv, int hcmd, void *buf,
 	struct clx2_queue *q = &txq->q;
 	struct tfd_frame *tfd;
 
-	if (ipw_queue_space(q) < (sync ? 1 : 2)) {
+	if (ipw_tx_queue_space(q) < (sync ? 1 : 2)) {
 		IPW_ERROR("No space for Tx\n");
 		return -EBUSY;
 	}
@@ -5088,7 +5084,7 @@ static void ipw_rx_queue_restock(struct ipw_priv *priv)
 
 	spin_lock_irqsave(&rxq->lock, flags);
 	write = rxq->write;
-	while ((rxq->write != rxq->processed) && (rxq->free_count)) {
+	while ((ipw_rx_queue_space(rxq) > 0) && (rxq->free_count)) {
 		element = rxq->rx_free.next;
 		rxb = list_entry(element, struct ipw_rx_mem_buffer, list);
 		list_del(element);
@@ -5205,7 +5201,6 @@ static struct ipw_rx_queue *ipw_rx_queue_alloc(struct ipw_priv *priv)
 	/* Set us so that we have processed and used all buffers, but have
 	 * not restocked the Rx queue with fresh buffers */
 	rxq->read = rxq->write = 0;
-	rxq->processed = RX_QUEUE_SIZE - 1;
 	rxq->free_count = 0;
 
 	return rxq;
@@ -6048,7 +6043,7 @@ static void ipw_adhoc_check(void *data)
 	}
 
 	queue_delayed_work(priv->workqueue, &priv->adhoc_check,
-			   priv->assoc_request.beacon_interval);
+			   le16_to_cpu(priv->assoc_request.beacon_interval));
 }
 
 static void ipw_bg_adhoc_check(struct work_struct *work)
@@ -6767,7 +6762,7 @@ static int ipw_wx_set_mlme(struct net_device *dev,
 {
 	struct ipw_priv *priv = ieee80211_priv(dev);
 	struct iw_mlme *mlme = (struct iw_mlme *)extra;
-	u16 reason;
+	__le16 reason;
 
 	reason = cpu_to_le16(mlme->reason_code);
 
@@ -6904,7 +6899,7 @@ static int ipw_qos_activate(struct ipw_priv *priv,
 		burst_duration = ipw_qos_get_burst_duration(priv);
 		for (i = 0; i < QOS_QUEUE_NUM; i++)
 			qos_parameters[QOS_PARAM_SET_ACTIVE].tx_op_limit[i] =
-			    (u16)burst_duration;
+			    cpu_to_le16(burst_duration);
 	} else if (priv->ieee->iw_mode == IW_MODE_ADHOC) {
 		if (type == IEEE_B) {
 			IPW_DEBUG_QOS("QoS activate IBSS nework mode %d\n",
@@ -6936,20 +6931,11 @@ static int ipw_qos_activate(struct ipw_priv *priv,
 			burst_duration = ipw_qos_get_burst_duration(priv);
 			for (i = 0; i < QOS_QUEUE_NUM; i++)
 				qos_parameters[QOS_PARAM_SET_ACTIVE].
-				    tx_op_limit[i] = (u16)burst_duration;
+				    tx_op_limit[i] = cpu_to_le16(burst_duration);
 		}
 	}
 
 	IPW_DEBUG_QOS("QoS sending IPW_CMD_QOS_PARAMETERS\n");
-	for (i = 0; i < 3; i++) {
-		int j;
-		for (j = 0; j < QOS_QUEUE_NUM; j++) {
-			qos_parameters[i].cw_min[j] = cpu_to_le16(qos_parameters[i].cw_min[j]);
-			qos_parameters[i].cw_max[j] = cpu_to_le16(qos_parameters[i].cw_max[j]);
-			qos_parameters[i].tx_op_limit[j] = cpu_to_le16(qos_parameters[i].tx_op_limit[j]);
-		}
-	}
-
 	err = ipw_send_qos_params_command(priv,
 					  (struct ieee80211_qos_parameters *)
 					  &(qos_parameters[0]));
@@ -7300,7 +7286,7 @@ static int ipw_associate_network(struct ipw_priv *priv,
 		priv->assoc_request.auth_type = AUTH_OPEN;
 
 	if (priv->ieee->wpa_ie_len) {
-		priv->assoc_request.policy_support = 0x02;	/* RSN active */
+		priv->assoc_request.policy_support = cpu_to_le16(0x02);	/* RSN active */
 		ipw_set_rsn_capa(priv, priv->ieee->wpa_ie,
 				 priv->ieee->wpa_ie_len);
 	}
@@ -7317,7 +7303,7 @@ static int ipw_associate_network(struct ipw_priv *priv,
 	else if (network->mode & priv->ieee->mode & IEEE_B)
 		priv->assoc_request.ieee_mode = IPW_B_MODE;
 
-	priv->assoc_request.capability = network->capability;
+	priv->assoc_request.capability = cpu_to_le16(network->capability);
 	if ((network->capability & WLAN_CAPABILITY_SHORT_PREAMBLE)
 	    && !(priv->config & CFG_PREAMBLE_LONG)) {
 		priv->assoc_request.preamble_length = DCT_FLAG_SHORT_PREAMBLE;
@@ -7326,13 +7312,13 @@ static int ipw_associate_network(struct ipw_priv *priv,
 
 		/* Clear the short preamble if we won't be supporting it */
 		priv->assoc_request.capability &=
-		    ~WLAN_CAPABILITY_SHORT_PREAMBLE;
+		    ~cpu_to_le16(WLAN_CAPABILITY_SHORT_PREAMBLE);
 	}
 
 	/* Clear capability bits that aren't used in Ad Hoc */
 	if (priv->ieee->iw_mode == IW_MODE_ADHOC)
 		priv->assoc_request.capability &=
-		    ~WLAN_CAPABILITY_SHORT_SLOT_TIME;
+		    ~cpu_to_le16(WLAN_CAPABILITY_SHORT_SLOT_TIME);
 
 	IPW_DEBUG_ASSOC("%sssocation attempt: '%s', channel %d, "
 			"802.11%c [%d], %s[:%s], enc=%s%s%s%c%c\n",
@@ -7354,7 +7340,7 @@ static int ipw_associate_network(struct ipw_priv *priv,
 			'1' + priv->ieee->sec.active_key : '.',
 			priv->capability & CAP_PRIVACY_ON ? '.' : ' ');
 
-	priv->assoc_request.beacon_interval = network->beacon_interval;
+	priv->assoc_request.beacon_interval = cpu_to_le16(network->beacon_interval);
 	if ((priv->ieee->iw_mode == IW_MODE_ADHOC) &&
 	    (network->time_stamp[0] == 0) && (network->time_stamp[1] == 0)) {
 		priv->assoc_request.assoc_type = HC_IBSS_START;
@@ -7365,21 +7351,21 @@ static int ipw_associate_network(struct ipw_priv *priv,
 			priv->assoc_request.assoc_type = HC_REASSOCIATE;
 		else
 			priv->assoc_request.assoc_type = HC_ASSOCIATE;
-		priv->assoc_request.assoc_tsf_msw = network->time_stamp[1];
-		priv->assoc_request.assoc_tsf_lsw = network->time_stamp[0];
+		priv->assoc_request.assoc_tsf_msw = cpu_to_le32(network->time_stamp[1]);
+		priv->assoc_request.assoc_tsf_lsw = cpu_to_le32(network->time_stamp[0]);
 	}
 
 	memcpy(priv->assoc_request.bssid, network->bssid, ETH_ALEN);
 
 	if (priv->ieee->iw_mode == IW_MODE_ADHOC) {
 		memset(&priv->assoc_request.dest, 0xFF, ETH_ALEN);
-		priv->assoc_request.atim_window = network->atim_window;
+		priv->assoc_request.atim_window = cpu_to_le16(network->atim_window);
 	} else {
 		memcpy(priv->assoc_request.dest, network->bssid, ETH_ALEN);
 		priv->assoc_request.atim_window = 0;
 	}
 
-	priv->assoc_request.listen_interval = network->listen_interval;
+	priv->assoc_request.listen_interval = cpu_to_le16(network->listen_interval);
 
 	err = ipw_send_ssid(priv, priv->essid, priv->essid_len);
 	if (err) {
@@ -7768,11 +7754,11 @@ static void ipw_handle_data_packet_monitor(struct ipw_priv *priv,
 
 	ipw_rt->rt_hdr.it_version = PKTHDR_RADIOTAP_VERSION;
 	ipw_rt->rt_hdr.it_pad = 0;	/* always good to zero */
-	ipw_rt->rt_hdr.it_len = sizeof(struct ipw_rt_hdr);	/* total header+data */
+	ipw_rt->rt_hdr.it_len = cpu_to_le16(sizeof(struct ipw_rt_hdr));	/* total header+data */
 
 	/* Big bitfield of all the fields we provide in radiotap */
-	ipw_rt->rt_hdr.it_present =
-	    ((1 << IEEE80211_RADIOTAP_TSFT) |
+	ipw_rt->rt_hdr.it_present = cpu_to_le32(
+	     (1 << IEEE80211_RADIOTAP_TSFT) |
 	     (1 << IEEE80211_RADIOTAP_FLAGS) |
 	     (1 << IEEE80211_RADIOTAP_RATE) |
 	     (1 << IEEE80211_RADIOTAP_CHANNEL) |
@@ -7801,7 +7787,7 @@ static void ipw_handle_data_packet_monitor(struct ipw_priv *priv,
 		    cpu_to_le16((IEEE80211_CHAN_CCK | IEEE80211_CHAN_2GHZ));
 	} else {		/* 802.11g */
 		ipw_rt->rt_chbitmask =
-		    (IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ);
+		    cpu_to_le16(IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ);
 	}
 
 	/* set the rate in multiples of 500k/s */
@@ -7982,14 +7968,14 @@ static void ipw_handle_promiscuous_rx(struct ipw_priv *priv,
 
 	ipw_rt->rt_hdr.it_version = PKTHDR_RADIOTAP_VERSION;
 	ipw_rt->rt_hdr.it_pad = 0;	/* always good to zero */
-	ipw_rt->rt_hdr.it_len = sizeof(*ipw_rt);	/* total header+data */
+	ipw_rt->rt_hdr.it_len = cpu_to_le16(sizeof(*ipw_rt));	/* total header+data */
 
 	/* Set the size of the skb to the size of the frame */
-	skb_put(skb, ipw_rt->rt_hdr.it_len + len);
+	skb_put(skb, sizeof(*ipw_rt) + len);
 
 	/* Big bitfield of all the fields we provide in radiotap */
-	ipw_rt->rt_hdr.it_present =
-	    ((1 << IEEE80211_RADIOTAP_TSFT) |
+	ipw_rt->rt_hdr.it_present = cpu_to_le32(
+	     (1 << IEEE80211_RADIOTAP_TSFT) |
 	     (1 << IEEE80211_RADIOTAP_FLAGS) |
 	     (1 << IEEE80211_RADIOTAP_RATE) |
 	     (1 << IEEE80211_RADIOTAP_CHANNEL) |
@@ -8018,7 +8004,7 @@ static void ipw_handle_promiscuous_rx(struct ipw_priv *priv,
 		    cpu_to_le16((IEEE80211_CHAN_CCK | IEEE80211_CHAN_2GHZ));
 	} else {		/* 802.11g */
 		ipw_rt->rt_chbitmask =
-		    (IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ);
+		    cpu_to_le16(IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ);
 	}
 
 	/* set the rate in multiples of 500k/s */
@@ -8250,13 +8236,17 @@ static void ipw_rx(struct ipw_priv *priv)
 	struct ieee80211_hdr_4addr *header;
 	u32 r, w, i;
 	u8 network_packet;
+	u8 fill_rx = 0;
 	DECLARE_MAC_BUF(mac);
 	DECLARE_MAC_BUF(mac2);
 	DECLARE_MAC_BUF(mac3);
 
 	r = ipw_read32(priv, IPW_RX_READ_INDEX);
 	w = ipw_read32(priv, IPW_RX_WRITE_INDEX);
-	i = (priv->rxq->processed + 1) % RX_QUEUE_SIZE;
+	i = priv->rxq->read;
+
+	if (ipw_rx_queue_space (priv->rxq) > (RX_QUEUE_SIZE / 2))
+		fill_rx = 1;
 
 	while (i != r) {
 		rxb = priv->rxq->queue[i];
@@ -8431,11 +8421,17 @@ static void ipw_rx(struct ipw_priv *priv)
 		list_add_tail(&rxb->list, &priv->rxq->rx_used);
 
 		i = (i + 1) % RX_QUEUE_SIZE;
+
+		/* If there are a lot of unsued frames, restock the Rx queue
+		 * so the ucode won't assert */
+		if (fill_rx) {
+			priv->rxq->read = i;
+			ipw_rx_queue_replenish(priv);
+		}
 	}
 
 	/* Backtrack one entry */
-	priv->rxq->processed = (i ? i : RX_QUEUE_SIZE) - 1;
-
+	priv->rxq->read = i;
 	ipw_rx_queue_restock(priv);
 }
 
@@ -8911,6 +8907,8 @@ static int ipw_wx_get_range(struct net_device *dev,
 
 	range->enc_capa = IW_ENC_CAPA_WPA | IW_ENC_CAPA_WPA2 |
 		IW_ENC_CAPA_CIPHER_TKIP | IW_ENC_CAPA_CIPHER_CCMP;
+
+	range->scan_capa = IW_SCAN_CAPA_ESSID | IW_SCAN_CAPA_TYPE;
 
 	IPW_DEBUG_WX("GET Range\n");
 	return 0;
@@ -10194,7 +10192,6 @@ static int ipw_tx_skb(struct ipw_priv *priv, struct ieee80211_txb *txb,
 	u8 id, hdr_len, unicast;
 	u16 remaining_bytes;
 	int fc;
-	DECLARE_MAC_BUF(mac);
 
 	hdr_len = ieee80211_get_hdrlen(le16_to_cpu(hdr->frame_ctl));
 	switch (priv->ieee->iw_mode) {
@@ -10205,8 +10202,10 @@ static int ipw_tx_skb(struct ipw_priv *priv, struct ieee80211_txb *txb,
 			id = ipw_add_station(priv, hdr->addr1);
 			if (id == IPW_INVALID_STATION) {
 				IPW_WARNING("Attempt to send data to "
-					    "invalid cell: %s\n",
-					    print_mac(mac, hdr->addr1));
+					    "invalid cell: " MAC_FMT "\n",
+					    hdr->addr1[0], hdr->addr1[1],
+					    hdr->addr1[2], hdr->addr1[3],
+					    hdr->addr1[4], hdr->addr1[5]);
 				goto drop;
 			}
 		}
@@ -10348,7 +10347,7 @@ static int ipw_tx_skb(struct ipw_priv *priv, struct ieee80211_txb *txb,
 			tfd->u.data.chunk_ptr[i] =
 			    cpu_to_le32(pci_map_single
 					(priv->pci_dev, skb->data,
-					 tfd->u.data.chunk_len[i],
+					 remaining_bytes,
 					 PCI_DMA_TODEVICE));
 
 			tfd->u.data.num_chunks =
@@ -10361,7 +10360,7 @@ static int ipw_tx_skb(struct ipw_priv *priv, struct ieee80211_txb *txb,
 	q->first_empty = ipw_queue_inc_wrap(q->first_empty, q->n_bd);
 	ipw_write32(priv, q->reg_w, q->first_empty);
 
-	if (ipw_queue_space(q) < q->high_mark)
+	if (ipw_tx_queue_space(q) < q->high_mark)
 		netif_stop_queue(priv->net_dev);
 
 	return NETDEV_TX_OK;
@@ -10382,7 +10381,7 @@ static int ipw_net_is_queue_full(struct net_device *dev, int pri)
 	struct clx2_tx_queue *txq = &priv->txq[0];
 #endif				/* CONFIG_IPW2200_QOS */
 
-	if (ipw_queue_space(&txq->q) < txq->q.high_mark)
+	if (ipw_tx_queue_space(&txq->q) < txq->q.high_mark)
 		return 1;
 
 	return 0;
@@ -10443,24 +10442,24 @@ static void ipw_handle_promiscuous_tx(struct ipw_priv *priv,
 		rt_hdr->it_version = PKTHDR_RADIOTAP_VERSION;
 		rt_hdr->it_pad = 0;
 		rt_hdr->it_present = 0; /* after all, it's just an idea */
-		rt_hdr->it_present |=  (1 << IEEE80211_RADIOTAP_CHANNEL);
+		rt_hdr->it_present |=  cpu_to_le32(1 << IEEE80211_RADIOTAP_CHANNEL);
 
-		*(u16*)skb_put(dst, sizeof(u16)) = cpu_to_le16(
+		*(__le16*)skb_put(dst, sizeof(u16)) = cpu_to_le16(
 			ieee80211chan2mhz(priv->channel));
 		if (priv->channel > 14) 	/* 802.11a */
-			*(u16*)skb_put(dst, sizeof(u16)) =
+			*(__le16*)skb_put(dst, sizeof(u16)) =
 				cpu_to_le16(IEEE80211_CHAN_OFDM |
 					     IEEE80211_CHAN_5GHZ);
 		else if (priv->ieee->mode == IEEE_B) /* 802.11b */
-			*(u16*)skb_put(dst, sizeof(u16)) =
+			*(__le16*)skb_put(dst, sizeof(u16)) =
 				cpu_to_le16(IEEE80211_CHAN_CCK |
 					     IEEE80211_CHAN_2GHZ);
 		else 		/* 802.11g */
-			*(u16*)skb_put(dst, sizeof(u16)) =
+			*(__le16*)skb_put(dst, sizeof(u16)) =
 				cpu_to_le16(IEEE80211_CHAN_OFDM |
 				 IEEE80211_CHAN_2GHZ);
 
-		rt_hdr->it_len = dst->len;
+		rt_hdr->it_len = cpu_to_le16(dst->len);
 
 		skb_copy_from_linear_data(src, skb_put(dst, len), len);
 
@@ -10873,9 +10872,9 @@ static void shim__set_security(struct net_device *dev,
 #if 0
 	if ((priv->status & (STATUS_ASSOCIATED | STATUS_ASSOCIATING)) &&
 	    (((priv->assoc_request.capability &
-	       WLAN_CAPABILITY_PRIVACY) && !sec->enabled) ||
+	       cpu_to_le16(WLAN_CAPABILITY_PRIVACY)) && !sec->enabled) ||
 	     (!(priv->assoc_request.capability &
-		WLAN_CAPABILITY_PRIVACY) && sec->enabled))) {
+		cpu_to_le16(WLAN_CAPABILITY_PRIVACY)) && sec->enabled))) {
 		IPW_DEBUG_ASSOC("Disassociating due to capability "
 				"change.\n");
 		ipw_disassociate(priv);
@@ -11578,6 +11577,7 @@ static int ipw_prom_alloc(struct ipw_priv *priv)
 	priv->prom_priv->priv = priv;
 
 	strcpy(priv->prom_net_dev->name, "rtap%d");
+	memcpy(priv->prom_net_dev->dev_addr, priv->mac_addr, ETH_ALEN);
 
 	priv->prom_net_dev->type = ARPHRD_IEEE80211_RADIOTAP;
 	priv->prom_net_dev->open = ipw_prom_open;

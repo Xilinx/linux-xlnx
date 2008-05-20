@@ -11,6 +11,25 @@
 #include <linux/types.h>
 
 /*
+ * The maximum number of SG segments that we will put inside a
+ * scatterlist (unless chaining is used). Should ideally fit inside a
+ * single page, to avoid a higher order allocation.  We could define this
+ * to SG_MAX_SINGLE_ALLOC to pack correctly at the highest order.  The
+ * minimum value is 32
+ */
+#define SCSI_MAX_SG_SEGMENTS	128
+
+/*
+ * Like SCSI_MAX_SG_SEGMENTS, but for archs that have sg chaining. This limit
+ * is totally arbitrary, a setting of 2048 will get you at least 8mb ios.
+ */
+#ifdef ARCH_HAS_SG_CHAIN
+#define SCSI_MAX_SG_CHAIN_SEGMENTS	2048
+#else
+#define SCSI_MAX_SG_CHAIN_SEGMENTS	SCSI_MAX_SG_SEGMENTS
+#endif
+
+/*
  *	SCSI command lengths
  */
 
@@ -83,6 +102,7 @@ extern const unsigned char scsi_command_size[8];
 #define READ_TOC              0x43
 #define LOG_SELECT            0x4c
 #define LOG_SENSE             0x4d
+#define XDWRITEREAD_10        0x53
 #define MODE_SELECT_10        0x55
 #define RESERVE_10            0x56
 #define RELEASE_10            0x57
@@ -214,6 +234,20 @@ static inline int scsi_status_is_good(int status)
 #define TYPE_ENCLOSURE      0x0d    /* Enclosure Services Device */
 #define TYPE_RBC	    0x0e
 #define TYPE_NO_LUN         0x7f
+
+/* SCSI protocols; these are taken from SPC-3 section 7.5 */
+enum scsi_protocol {
+	SCSI_PROTOCOL_FCP = 0,	/* Fibre Channel */
+	SCSI_PROTOCOL_SPI = 1,	/* parallel SCSI */
+	SCSI_PROTOCOL_SSA = 2,	/* Serial Storage Architecture - Obsolete */
+	SCSI_PROTOCOL_SBP = 3,	/* firewire */
+	SCSI_PROTOCOL_SRP = 4,	/* Infiniband RDMA */
+	SCSI_PROTOCOL_ISCSI = 5,
+	SCSI_PROTOCOL_SAS = 6,
+	SCSI_PROTOCOL_ADT = 7,	/* Media Changers */
+	SCSI_PROTOCOL_ATA = 8,
+	SCSI_PROTOCOL_UNSPEC = 0xf, /* No specific protocol */
+};
 
 /* Returns a human-readable name for the device */
 extern const char * scsi_device_type(unsigned type);

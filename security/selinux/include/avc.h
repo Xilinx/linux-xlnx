@@ -13,6 +13,7 @@
 #include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/in6.h>
+#include <linux/path.h>
 #include <asm/system.h>
 #include "flask.h"
 #include "av_permissions.h"
@@ -30,8 +31,6 @@ extern int selinux_enforcing;
 struct avc_entry;
 
 struct task_struct;
-struct vfsmount;
-struct dentry;
 struct inode;
 struct sock;
 struct sk_buff;
@@ -46,12 +45,11 @@ struct avc_audit_data {
 	struct task_struct *tsk;
 	union 	{
 		struct {
-			struct vfsmount *mnt;
-			struct dentry *dentry;
+			struct path path;
 			struct inode *inode;
 		} fs;
 		struct {
-			char *netif;
+			int netif;
 			struct sock *sk;
 			u16 family;
 			__be16 dport;

@@ -24,7 +24,8 @@ extern int sm501_unit_power(struct device *dev,
 extern unsigned long sm501_set_clock(struct device *dev,
 				     int clksrc, unsigned long freq);
 
-extern unsigned long sm501_find_clock(int clksrc, unsigned long req_freq);
+extern unsigned long sm501_find_clock(struct device *dev,
+				      int clksrc, unsigned long req_freq);
 
 /* sm501_misc_control
  *
@@ -70,6 +71,8 @@ extern unsigned long sm501_gpio_get(struct device *dev,
 #define SM501FB_FLAG_DISABLE_AT_EXIT	(1<<1)
 #define SM501FB_FLAG_USE_HWCURSOR	(1<<2)
 #define SM501FB_FLAG_USE_HWACCEL	(1<<3)
+#define SM501FB_FLAG_PANEL_USE_FPEN	(1<<4)
+#define SM501FB_FLAG_PANEL_USE_VBIASEN	(1<<5)
 
 struct sm501_platdata_fbsub {
 	struct fb_videomode	*def_mode;

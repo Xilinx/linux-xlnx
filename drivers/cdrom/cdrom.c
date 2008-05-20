@@ -1152,8 +1152,8 @@ clean_up_and_return:
 /* This code is similar to that in open_for_data. The routine is called
    whenever an audio play operation is requested.
 */
-int check_for_audio_disc(struct cdrom_device_info * cdi,
-			 struct cdrom_device_ops * cdo)
+static int check_for_audio_disc(struct cdrom_device_info * cdi,
+				struct cdrom_device_ops * cdo)
 {
         int ret;
 	tracktype tracks;
@@ -1206,25 +1206,26 @@ int check_for_audio_disc(struct cdrom_device_info * cdi,
 	return 0;
 }
 
-/* Admittedly, the logic below could be performed in a nicer way. */
 int cdrom_release(struct cdrom_device_info *cdi, struct file *fp)
 {
 	struct cdrom_device_ops *cdo = cdi->ops;
 	int opened_for_data;
 
-	cdinfo(CD_CLOSE, "entering cdrom_release\n"); 
+	cdinfo(CD_CLOSE, "entering cdrom_release\n");
 
 	if (cdi->use_count > 0)
 		cdi->use_count--;
-	if (cdi->use_count == 0)
+
+	if (cdi->use_count == 0) {
 		cdinfo(CD_CLOSE, "Use count for \"/dev/%s\" now zero\n", cdi->name);
-	if (cdi->use_count == 0)
 		cdrom_dvd_rw_close_write(cdi);
-	if (cdi->use_count == 0 &&
-	    (cdo->capability & CDC_LOCK) && !keeplocked) {
-		cdinfo(CD_CLOSE, "Unlocking door!\n");
-		cdo->lock_door(cdi, 0);
+
+		if ((cdo->capability & CDC_LOCK) && !keeplocked) {
+			cdinfo(CD_CLOSE, "Unlocking door!\n");
+			cdo->lock_door(cdi, 0);
+		}
 	}
+
 	opened_for_data = !(cdi->options & CDO_USE_FFLAGS) ||
 		!(fp && fp->f_flags & O_NONBLOCK);
 
@@ -2785,12 +2786,6 @@ int cdrom_ioctl(struct file * file, struct cdrom_device_info *cdi,
 	}
 
 	return -ENOSYS;
-}
-
-static inline
-int msf_to_lba(char m, char s, char f)
-{
-	return (((m * CD_SECS) + s) * CD_FRAMES + f) - CD_MSF_OFFSET;
 }
 
 /*

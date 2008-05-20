@@ -290,9 +290,9 @@ static int ibmvstgt_cmd_done(struct scsi_cmnd *sc,
 	int err = 0;
 
 	dprintk("%p %p %x %u\n", iue, target, vio_iu(iue)->srp.cmd.cdb[0],
-		cmd->usg_sg);
+		scsi_sg_count(sc));
 
-	if (sc->use_sg)
+	if (scsi_sg_count(sc))
 		err = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
 
 	spin_lock_irqsave(&target->lock, flags);
@@ -539,9 +539,9 @@ out:
 		srp_iu_put(iue);
 }
 
-static irqreturn_t ibmvstgt_interrupt(int irq, void *data)
+static irqreturn_t ibmvstgt_interrupt(int dummy, void *data)
 {
-	struct srp_target *target = (struct srp_target *) data;
+	struct srp_target *target = data;
 	struct vio_port *vport = target_to_port(target);
 
 	vio_disable_interrupts(vport->dma_dev);
@@ -838,9 +838,6 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	if (!shost)
 		goto free_vport;
 	shost->transportt = ibmvstgt_transport_template;
-	err = scsi_tgt_alloc_queue(shost);
-	if (err)
-		goto put_host;
 
 	target = host_to_srp_target(shost);
 	target->shost = shost;
@@ -869,6 +866,10 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 		goto free_srp_target;
 
 	err = scsi_add_host(shost, target->dev);
+	if (err)
+		goto destroy_queue;
+
+	err = scsi_tgt_alloc_queue(shost);
 	if (err)
 		goto destroy_queue;
 

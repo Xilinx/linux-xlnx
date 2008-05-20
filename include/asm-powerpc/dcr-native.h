@@ -22,6 +22,8 @@
 #ifdef __KERNEL__
 #ifndef __ASSEMBLY__
 
+#include <linux/spinlock.h>
+
 typedef struct {
 	unsigned int base;
 } dcr_host_t;
@@ -55,20 +57,39 @@ do {								\
 } while (0)
 
 /* R/W of indirect DCRs make use of standard naming conventions for DCRs */
-#define mfdcri(base, reg)			\
-({						\
-	mtdcr(base ## _CFGADDR, base ## _ ## reg);	\
-	mfdcr(base ## _CFGDATA);			\
-})
+extern spinlock_t dcr_ind_lock;
 
-#define mtdcri(base, reg, data)			\
-do {						\
-	mtdcr(base ## _CFGADDR, base ## _ ## reg);	\
-	mtdcr(base ## _CFGDATA, data);		\
-} while (0)
+static inline unsigned __mfdcri(int base_addr, int base_data, int reg)
+{
+	unsigned long flags;
+	unsigned int val;
+
+	spin_lock_irqsave(&dcr_ind_lock, flags);
+	__mtdcr(base_addr, reg);
+	val = __mfdcr(base_data);
+	spin_unlock_irqrestore(&dcr_ind_lock, flags);
+	return val;
+}
+
+static inline void __mtdcri(int base_addr, int base_data, int reg,
+			    unsigned val)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dcr_ind_lock, flags);
+	__mtdcr(base_addr, reg);
+	__mtdcr(base_data, val);
+	spin_unlock_irqrestore(&dcr_ind_lock, flags);
+}
+
+#define mfdcri(base, reg)	__mfdcri(DCRN_ ## base ## _CONFIG_ADDR,	\
+					 DCRN_ ## base ## _CONFIG_DATA,	\
+					 reg)
+
+#define mtdcri(base, reg, data)	__mtdcri(DCRN_ ## base ## _CONFIG_ADDR,	\
+					 DCRN_ ## base ## _CONFIG_DATA,	\
+					 reg, data)
 
 #endif /* __ASSEMBLY__ */
 #endif /* __KERNEL__ */
 #endif /* _ASM_POWERPC_DCR_NATIVE_H */
-
-

@@ -54,7 +54,7 @@ static unsigned int debugflags;
 #endif /* NDEBUG */
 
 static unsigned int nbds_max = 16;
-static struct nbd_device nbd_dev[MAX_NBD];
+static struct nbd_device *nbd_dev;
 
 /*
  * Use just one lock (or at most 1 per NIC). Two arguments for this:
@@ -100,17 +100,15 @@ static const char *nbdcmd_to_ascii(int cmd)
 
 static void nbd_end_request(struct request *req)
 {
-	int uptodate = (req->errors == 0) ? 1 : 0;
+	int error = req->errors ? -EIO : 0;
 	struct request_queue *q = req->q;
 	unsigned long flags;
 
 	dprintk(DBG_BLKDEV, "%s: request %p: %s\n", req->rq_disk->disk_name,
-			req, uptodate? "done": "failed");
+			req, error ? "failed" : "done");
 
 	spin_lock_irqsave(q->queue_lock, flags);
-	if (!end_that_request_first(req, uptodate, req->nr_sectors)) {
-		end_that_request_last(req, uptodate);
-	}
+	__blk_end_request(req, error, req->nr_sectors << 9);
 	spin_unlock_irqrestore(q->queue_lock, flags);
 }
 
@@ -154,6 +152,12 @@ static int sock_xmit(struct nbd_device *lo, int send, void *buf, int size,
 	struct msghdr msg;
 	struct kvec iov;
 	sigset_t blocked, oldset;
+
+	if (unlikely(!sock)) {
+		printk(KERN_ERR "%s: Attempted %s on closed socket in sock_xmit\n",
+		       lo->disk->disk_name, (send ? "send" : "recv"));
+		return -EINVAL;
+	}
 
 	/* Allow interception of SIGKILL only
 	 * Don't allow other signals to interrupt the transmission */
@@ -375,14 +379,17 @@ harderror:
 	return NULL;
 }
 
-static ssize_t pid_show(struct gendisk *disk, char *page)
+static ssize_t pid_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
 {
-	return sprintf(page, "%ld\n",
+	struct gendisk *disk = dev_to_disk(dev);
+
+	return sprintf(buf, "%ld\n",
 		(long) ((struct nbd_device *)disk->private_data)->pid);
 }
 
-static struct disk_attribute pid_attr = {
-	.attr = { .name = "pid", .mode = S_IRUGO },
+static struct device_attribute pid_attr = {
+	.attr = { .name = "pid", .mode = S_IRUGO, .owner = THIS_MODULE },
 	.show = pid_show,
 };
 
@@ -394,7 +401,7 @@ static int nbd_do_it(struct nbd_device *lo)
 	BUG_ON(lo->magic != LO_MAGIC);
 
 	lo->pid = current->pid;
-	ret = sysfs_create_file(&lo->disk->kobj, &pid_attr.attr);
+	ret = sysfs_create_file(&lo->disk->dev.kobj, &pid_attr.attr);
 	if (ret) {
 		printk(KERN_ERR "nbd: sysfs_create_file failed!");
 		return ret;
@@ -403,7 +410,7 @@ static int nbd_do_it(struct nbd_device *lo)
 	while ((req = nbd_read_stat(lo)) != NULL)
 		nbd_end_request(req);
 
-	sysfs_remove_file(&lo->disk->kobj, &pid_attr.attr);
+	sysfs_remove_file(&lo->disk->dev.kobj, &pid_attr.attr);
 	return 0;
 }
 
@@ -648,14 +655,13 @@ static int __init nbd_init(void)
 
 	BUILD_BUG_ON(sizeof(struct nbd_request) != 28);
 
-	if (nbds_max > MAX_NBD) {
-		printk(KERN_CRIT "nbd: cannot allocate more than %u nbds; %u requested.\n", MAX_NBD,
-				nbds_max);
-		return -EINVAL;
-	}
+	nbd_dev = kcalloc(nbds_max, sizeof(*nbd_dev), GFP_KERNEL);
+	if (!nbd_dev)
+		return -ENOMEM;
 
 	for (i = 0; i < nbds_max; i++) {
 		struct gendisk *disk = alloc_disk(1);
+		elevator_t *old_e;
 		if (!disk)
 			goto out;
 		nbd_dev[i].disk = disk;
@@ -668,6 +674,11 @@ static int __init nbd_init(void)
 		if (!disk->queue) {
 			put_disk(disk);
 			goto out;
+		}
+		old_e = disk->queue->elevator;
+		if (elevator_init(disk->queue, "deadline") == 0 ||
+			elevator_init(disk->queue, "noop") == 0) {
+				elevator_exit(old_e);
 		}
 	}
 

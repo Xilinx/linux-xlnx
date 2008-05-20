@@ -4,6 +4,11 @@
 
 EXTRA_AFLAGS	:= -traditional
 
+#
+# Passing null pointers is ok for smp code, since we access the lowcore here.
+#
+CFLAGS_smp.o	:= -Wno-nonnull
+
 obj-y	:=  bitmap.o traps.o time.o process.o base.o early.o \
             setup.o sys_s390.o ptrace.o signal.o cpcmd.o ebcdic.o \
 	    semaphore.o s390_ext.o debug.o irq.o ipl.o dis.o diag.o
@@ -31,7 +36,3 @@ S390_KEXEC_OBJS := machine_kexec.o crash.o
 S390_KEXEC_OBJS += $(if $(CONFIG_64BIT),relocate_kernel64.o,relocate_kernel.o)
 obj-$(CONFIG_KEXEC) += $(S390_KEXEC_OBJS)
 
-#
-# This is just to get the dependencies...
-#
-binfmt_elf32.o:	$(TOPDIR)/fs/binfmt_elf.c

@@ -583,6 +583,20 @@ static void __init check_cpu_pa_features(unsigned long node)
 		      ibm_pa_features, ARRAY_SIZE(ibm_pa_features));
 }
 
+#ifdef CONFIG_PPC64
+static void __init check_cpu_slb_size(unsigned long node)
+{
+	u32 *slb_size_ptr;
+
+	slb_size_ptr = of_get_flat_dt_prop(node, "ibm,slb-size", NULL);
+	if (slb_size_ptr != NULL) {
+		mmu_slb_size = *slb_size_ptr;
+	}
+}
+#else
+#define check_cpu_slb_size(node) do { } while(0)
+#endif
+
 static struct feature_property {
 	const char *name;
 	u32 min_value;
@@ -599,6 +613,29 @@ static struct feature_property {
 	{"ibm,spurr", 1, CPU_FTR_SPURR, 0},
 #endif /* CONFIG_PPC64 */
 };
+
+#if defined(CONFIG_44x) && defined(CONFIG_PPC_FPU)
+static inline void identical_pvr_fixup(unsigned long node)
+{
+	unsigned int pvr;
+	char *model = of_get_flat_dt_prop(node, "model", NULL);
+
+	/*
+	 * Since 440GR(x)/440EP(x) processors have the same pvr,
+	 * we check the node path and set bit 28 in the cur_cpu_spec
+	 * pvr for EP(x) processor version. This bit is always 0 in
+	 * the "real" pvr. Then we call identify_cpu again with
+	 * the new logical pvr to enable FPU support.
+	 */
+	if (model && strstr(model, "440EP")) {
+		pvr = cur_cpu_spec->pvr_value | 0x8;
+		identify_cpu(0, pvr);
+		DBG("Using logical pvr %x for %s\n", pvr, model);
+	}
+}
+#else
+#define identical_pvr_fixup(node) do { } while(0)
+#endif
 
 static void __init check_cpu_feature_properties(unsigned long node)
 {
@@ -697,22 +734,13 @@ static int __init early_init_dt_scan_cpus(unsigned long node,
 		prop = of_get_flat_dt_prop(node, "cpu-version", NULL);
 		if (prop && (*prop & 0xff000000) == 0x0f000000)
 			identify_cpu(0, *prop);
-#if defined(CONFIG_44x) && defined(CONFIG_PPC_FPU)
-		/*
-		 * Since 440GR(x)/440EP(x) processors have the same pvr,
-		 * we check the node path and set bit 28 in the cur_cpu_spec
-		 * pvr for EP(x) processor version. This bit is always 0 in
-		 * the "real" pvr. Then we call identify_cpu again with
-		 * the new logical pvr to enable FPU support.
-		 */
-		if (strstr(uname, "440EP")) {
-			identify_cpu(0, cur_cpu_spec->pvr_value | 0x8);
-		}
-#endif
+
+		identical_pvr_fixup(node);
 	}
 
 	check_cpu_feature_properties(node);
 	check_cpu_pa_features(node);
+	check_cpu_slb_size(node);
 
 #ifdef CONFIG_PPC_PSERIES
 	if (nthreads > 1)
@@ -837,12 +865,12 @@ static int __init early_init_dt_scan_root(unsigned long node,
 	return 1;
 }
 
-static unsigned long __init dt_mem_next_cell(int s, cell_t **cellp)
+static u64 __init dt_mem_next_cell(int s, cell_t **cellp)
 {
 	cell_t *p = *cellp;
 
 	*cellp = p + s;
-	return of_read_ulong(p, s);
+	return of_read_number(p, s);
 }
 
 #ifdef CONFIG_PPC_PSERIES
@@ -855,8 +883,8 @@ static unsigned long __init dt_mem_next_cell(int s, cell_t **cellp)
 static int __init early_init_dt_scan_drconf_memory(unsigned long node)
 {
 	cell_t *dm, *ls;
-	unsigned long l, n;
-	unsigned long base, size, lmb_size, flags;
+	unsigned long l, n, flags;
+	u64 base, size, lmb_size;
 
 	ls = (cell_t *)of_get_flat_dt_prop(node, "ibm,lmb-size", &l);
 	if (ls == NULL || l < dt_root_size_cells * sizeof(cell_t))
@@ -931,14 +959,15 @@ static int __init early_init_dt_scan_memory(unsigned long node,
 	    uname, l, reg[0], reg[1], reg[2], reg[3]);
 
 	while ((endp - reg) >= (dt_root_addr_cells + dt_root_size_cells)) {
-		unsigned long base, size;
+		u64 base, size;
 
 		base = dt_mem_next_cell(dt_root_addr_cells, &reg);
 		size = dt_mem_next_cell(dt_root_size_cells, &reg);
 
 		if (size == 0)
 			continue;
-		DBG(" - %lx ,  %lx\n", base, size);
+		DBG(" - %llx ,  %llx\n", (unsigned long long)base,
+		    (unsigned long long)size);
 #ifdef CONFIG_PPC64
 		if (iommu_is_off) {
 			if (base >= 0x80000000ul)

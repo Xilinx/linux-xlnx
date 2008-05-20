@@ -30,12 +30,12 @@
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/dma-mapping.h>
-#include <linux/init.h>
 #include <linux/bitops.h>
 #include <linux/pci_ids.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/scatterlist.h>
+#include <linux/iommu-helper.h>
 #include <asm/gart.h>
 #include <asm/calgary.h>
 #include <asm/tce.h>
@@ -183,7 +183,7 @@ static struct calgary_bus_info bus_info[MAX_PHB_BUS_NUM] = { { NULL, 0, 0 }, };
 
 /* enable this to stress test the chip's TCE cache */
 #ifdef CONFIG_IOMMU_DEBUG
-int debugging __read_mostly = 1;
+static int debugging = 1;
 
 static inline unsigned long verify_bit_range(unsigned long* bitmap,
 	int expected, unsigned long start, unsigned long end)
@@ -202,7 +202,7 @@ static inline unsigned long verify_bit_range(unsigned long* bitmap,
 	return ~0UL;
 }
 #else /* debugging is disabled */
-int debugging __read_mostly = 0;
+static int debugging;
 
 static inline unsigned long verify_bit_range(unsigned long* bitmap,
 	int expected, unsigned long start, unsigned long end)
@@ -261,22 +261,28 @@ static void iommu_range_reserve(struct iommu_table *tbl,
 	spin_unlock_irqrestore(&tbl->it_lock, flags);
 }
 
-static unsigned long iommu_range_alloc(struct iommu_table *tbl,
-	unsigned int npages)
+static unsigned long iommu_range_alloc(struct device *dev,
+				       struct iommu_table *tbl,
+				       unsigned int npages)
 {
 	unsigned long flags;
 	unsigned long offset;
+	unsigned long boundary_size;
+
+	boundary_size = ALIGN(dma_get_seg_boundary(dev) + 1,
+			      PAGE_SIZE) >> PAGE_SHIFT;
 
 	BUG_ON(npages == 0);
 
 	spin_lock_irqsave(&tbl->it_lock, flags);
 
-	offset = find_next_zero_string(tbl->it_map, tbl->it_hint,
-				       tbl->it_size, npages);
+	offset = iommu_area_alloc(tbl->it_map, tbl->it_size, tbl->it_hint,
+				  npages, 0, boundary_size, 0);
 	if (offset == ~0UL) {
 		tbl->chip_ops->tce_cache_blast(tbl);
-		offset = find_next_zero_string(tbl->it_map, 0,
-					       tbl->it_size, npages);
+
+		offset = iommu_area_alloc(tbl->it_map, tbl->it_size, 0,
+					  npages, 0, boundary_size, 0);
 		if (offset == ~0UL) {
 			printk(KERN_WARNING "Calgary: IOMMU full.\n");
 			spin_unlock_irqrestore(&tbl->it_lock, flags);
@@ -287,7 +293,6 @@ static unsigned long iommu_range_alloc(struct iommu_table *tbl,
 		}
 	}
 
-	set_bit_string(tbl->it_map, offset, npages);
 	tbl->it_hint = offset + npages;
 	BUG_ON(tbl->it_hint > tbl->it_size);
 
@@ -296,13 +301,13 @@ static unsigned long iommu_range_alloc(struct iommu_table *tbl,
 	return offset;
 }
 
-static dma_addr_t iommu_alloc(struct iommu_table *tbl, void *vaddr,
-	unsigned int npages, int direction)
+static dma_addr_t iommu_alloc(struct device *dev, struct iommu_table *tbl,
+			      void *vaddr, unsigned int npages, int direction)
 {
 	unsigned long entry;
 	dma_addr_t ret = bad_dma_address;
 
-	entry = iommu_range_alloc(tbl, npages);
+	entry = iommu_range_alloc(dev, tbl, npages);
 
 	if (unlikely(entry == bad_dma_address))
 		goto error;
@@ -355,7 +360,7 @@ static void iommu_free(struct iommu_table *tbl, dma_addr_t dma_addr,
 			       badbit, tbl, dma_addr, entry, npages);
 	}
 
-	__clear_bit_string(tbl->it_map, entry, npages);
+	iommu_area_free(tbl->it_map, entry, npages);
 
 	spin_unlock_irqrestore(&tbl->it_lock, flags);
 }
@@ -439,7 +444,7 @@ static int calgary_map_sg(struct device *dev, struct scatterlist *sg,
 		vaddr = (unsigned long) sg_virt(s);
 		npages = num_dma_pages(vaddr, s->length);
 
-		entry = iommu_range_alloc(tbl, npages);
+		entry = iommu_range_alloc(dev, tbl, npages);
 		if (entry == bad_dma_address) {
 			/* makes sure unmap knows to stop */
 			s->dma_length = 0;
@@ -477,7 +482,7 @@ static dma_addr_t calgary_map_single(struct device *dev, void *vaddr,
 	npages = num_dma_pages(uaddr, size);
 
 	if (translation_enabled(tbl))
-		dma_handle = iommu_alloc(tbl, vaddr, npages, direction);
+		dma_handle = iommu_alloc(dev, tbl, vaddr, npages, direction);
 	else
 		dma_handle = virt_to_bus(vaddr);
 
@@ -517,7 +522,7 @@ static void* calgary_alloc_coherent(struct device *dev, size_t size,
 
 	if (translation_enabled(tbl)) {
 		/* set up tces to cover the allocated range */
-		mapping = iommu_alloc(tbl, ret, npages, DMA_BIDIRECTIONAL);
+		mapping = iommu_alloc(dev, tbl, ret, npages, DMA_BIDIRECTIONAL);
 		if (mapping == bad_dma_address)
 			goto free;
 
@@ -1007,7 +1012,7 @@ static void __init calgary_set_split_completion_timeout(void __iomem *bbar,
 	readq(target); /* flush */
 }
 
-static void calioc2_handle_quirks(struct iommu_table *tbl, struct pci_dev *dev)
+static void __init calioc2_handle_quirks(struct iommu_table *tbl, struct pci_dev *dev)
 {
 	unsigned char busnum = dev->bus->number;
 	void __iomem *bbar = tbl->bbar;
@@ -1023,7 +1028,7 @@ static void calioc2_handle_quirks(struct iommu_table *tbl, struct pci_dev *dev)
 	writel(cpu_to_be32(val), target);
 }
 
-static void calgary_handle_quirks(struct iommu_table *tbl, struct pci_dev *dev)
+static void __init calgary_handle_quirks(struct iommu_table *tbl, struct pci_dev *dev)
 {
 	unsigned char busnum = dev->bus->number;
 

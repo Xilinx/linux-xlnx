@@ -285,7 +285,7 @@ static int clip_constructor(struct neighbour *neigh)
 	struct neigh_parms *parms;
 
 	pr_debug("clip_constructor (neigh %p, entry %p)\n", neigh, entry);
-	neigh->type = inet_addr_type(entry->ip);
+	neigh->type = inet_addr_type(&init_net, entry->ip);
 	if (neigh->type != RTN_UNICAST)
 		return -EINVAL;
 
@@ -534,7 +534,7 @@ static int clip_setentry(struct atm_vcc *vcc, __be32 ip)
 		unlink_clip_vcc(clip_vcc);
 		return 0;
 	}
-	error = ip_route_output_key(&rt, &fl);
+	error = ip_route_output_key(&init_net, &rt, &fl);
 	if (error)
 		return error;
 	neigh = __neigh_lookup(&clip_tbl, &ip, rt->u.dst.dev, 1);
@@ -903,6 +903,8 @@ static void *clip_seq_sub_iter(struct neigh_seq_state *_state,
 
 static void *clip_seq_start(struct seq_file *seq, loff_t * pos)
 {
+	struct clip_seq_state *state = seq->private;
+	state->ns.neigh_sub_iter = clip_seq_sub_iter;
 	return neigh_seq_start(seq, pos, &clip_tbl, NEIGH_SEQ_NEIGH_ONLY);
 }
 
@@ -932,39 +934,20 @@ static const struct seq_operations arp_seq_ops = {
 
 static int arp_seq_open(struct inode *inode, struct file *file)
 {
-	struct clip_seq_state *state;
-	struct seq_file *seq;
-	int rc = -EAGAIN;
-
-	state = kzalloc(sizeof(*state), GFP_KERNEL);
-	if (!state) {
-		rc = -ENOMEM;
-		goto out_kfree;
-	}
-	state->ns.neigh_sub_iter = clip_seq_sub_iter;
-
-	rc = seq_open(file, &arp_seq_ops);
-	if (rc)
-		goto out_kfree;
-
-	seq = file->private_data;
-	seq->private = state;
-out:
-	return rc;
-
-out_kfree:
-	kfree(state);
-	goto out;
+	return seq_open_net(inode, file, &arp_seq_ops,
+			    sizeof(struct clip_seq_state));
 }
 
 static const struct file_operations arp_seq_fops = {
 	.open		= arp_seq_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release_private,
+	.release	= seq_release_net,
 	.owner		= THIS_MODULE
 };
 #endif
+
+static void atm_clip_exit_noproc(void);
 
 static int __init atm_clip_init(void)
 {
@@ -981,20 +964,22 @@ static int __init atm_clip_init(void)
 	{
 		struct proc_dir_entry *p;
 
-		p = create_proc_entry("arp", S_IRUGO, atm_proc_root);
-		if (p)
-			p->proc_fops = &arp_seq_fops;
+		p = proc_create("arp", S_IRUGO, atm_proc_root, &arp_seq_fops);
+		if (!p) {
+			printk(KERN_ERR "Unable to initialize "
+			       "/proc/net/atm/arp\n");
+			atm_clip_exit_noproc();
+			return -ENOMEM;
+		}
 	}
 #endif
 
 	return 0;
 }
 
-static void __exit atm_clip_exit(void)
+static void atm_clip_exit_noproc(void)
 {
 	struct net_device *dev, *next;
-
-	remove_proc_entry("arp", atm_proc_root);
 
 	unregister_inetaddr_notifier(&clip_inet_notifier);
 	unregister_netdevice_notifier(&clip_dev_notifier);
@@ -1024,6 +1009,13 @@ static void __exit atm_clip_exit(void)
 	neigh_table_clear(&clip_tbl);
 
 	clip_tbl_hook = NULL;
+}
+
+static void __exit atm_clip_exit(void)
+{
+	remove_proc_entry("arp", atm_proc_root);
+
+	atm_clip_exit_noproc();
 }
 
 module_init(atm_clip_init);

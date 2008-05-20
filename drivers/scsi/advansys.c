@@ -566,7 +566,7 @@ typedef struct asc_dvc_var {
 	ASC_SCSI_BIT_ID_TYPE unit_not_ready;
 	ASC_SCSI_BIT_ID_TYPE queue_full_or_busy;
 	ASC_SCSI_BIT_ID_TYPE start_motor;
-	uchar overrun_buf[ASC_OVERRUN_BSIZE] __aligned(8);
+	uchar *overrun_buf;
 	dma_addr_t overrun_dma;
 	uchar scsi_reset_wait;
 	uchar chip_no;
@@ -6439,7 +6439,7 @@ static int AdvLoadMicrocode(AdvPortAddr iop_base, unsigned char *buf, int size,
 			i += 2;
 			len += 2;
 		} else {
-			unsigned char off = buf[i] * 2;
+			unsigned int off = buf[i] * 2;
 			unsigned short word = (buf[off + 1] << 8) | buf[off];
 			AdvWriteWordAutoIncLram(iop_base, word);
 			len += 2;
@@ -8233,7 +8233,7 @@ static void adv_isr_callback(ADV_DVC_VAR *adv_dvc_varp, ADV_SCSI_REQ_Q *scsiqp)
 			if (scsiqp->scsi_status == SAM_STAT_CHECK_CONDITION) {
 				ASC_DBG(2, "SAM_STAT_CHECK_CONDITION\n");
 				ASC_DBG_PRT_SENSE(2, scp->sense_buffer,
-						  sizeof(scp->sense_buffer));
+						  SCSI_SENSE_BUFFERSIZE);
 				/*
 				 * Note: The 'status_byte()' macro used by
 				 * target drivers defined in scsi.h shifts the
@@ -9136,7 +9136,7 @@ static void asc_isr_callback(ASC_DVC_VAR *asc_dvc_varp, ASC_QDONE_INFO *qdonep)
 	BUG_ON(asc_dvc_varp != &boardp->dvc_var.asc_dvc_var);
 
 	dma_unmap_single(boardp->dev, scp->SCp.dma_handle,
-			sizeof(scp->sense_buffer), DMA_FROM_DEVICE);
+			 SCSI_SENSE_BUFFERSIZE, DMA_FROM_DEVICE);
 	/*
 	 * 'qdonep' contains the command's ending status.
 	 */
@@ -9166,7 +9166,7 @@ static void asc_isr_callback(ASC_DVC_VAR *asc_dvc_varp, ASC_QDONE_INFO *qdonep)
 			if (qdonep->d3.scsi_stat == SAM_STAT_CHECK_CONDITION) {
 				ASC_DBG(2, "SAM_STAT_CHECK_CONDITION\n");
 				ASC_DBG_PRT_SENSE(2, scp->sense_buffer,
-						  sizeof(scp->sense_buffer));
+						  SCSI_SENSE_BUFFERSIZE);
 				/*
 				 * Note: The 'status_byte()' macro used by
 				 * target drivers defined in scsi.h shifts the
@@ -9881,9 +9881,9 @@ static __le32 advansys_get_sense_buffer_dma(struct scsi_cmnd *scp)
 {
 	struct asc_board *board = shost_priv(scp->device->host);
 	scp->SCp.dma_handle = dma_map_single(board->dev, scp->sense_buffer,
-				sizeof(scp->sense_buffer), DMA_FROM_DEVICE);
+					     SCSI_SENSE_BUFFERSIZE, DMA_FROM_DEVICE);
 	dma_cache_sync(board->dev, scp->sense_buffer,
-				sizeof(scp->sense_buffer), DMA_FROM_DEVICE);
+		       SCSI_SENSE_BUFFERSIZE, DMA_FROM_DEVICE);
 	return cpu_to_le32(scp->SCp.dma_handle);
 }
 
@@ -9914,7 +9914,7 @@ static int asc_build_req(struct asc_board *boardp, struct scsi_cmnd *scp,
 	asc_scsi_q->q2.target_ix =
 	    ASC_TIDLUN_TO_IX(scp->device->id, scp->device->lun);
 	asc_scsi_q->q1.sense_addr = advansys_get_sense_buffer_dma(scp);
-	asc_scsi_q->q1.sense_len = sizeof(scp->sense_buffer);
+	asc_scsi_q->q1.sense_len = SCSI_SENSE_BUFFERSIZE;
 
 	/*
 	 * If there are any outstanding requests for the current target,
@@ -10173,7 +10173,7 @@ adv_build_req(struct asc_board *boardp, struct scsi_cmnd *scp,
 	scsiqp->target_lun = scp->device->lun;
 
 	scsiqp->sense_addr = cpu_to_le32(virt_to_bus(&scp->sense_buffer[0]));
-	scsiqp->sense_len = sizeof(scp->sense_buffer);
+	scsiqp->sense_len = SCSI_SENSE_BUFFERSIZE;
 
 	/* Build ADV_SCSI_REQ_Q */
 
@@ -12261,7 +12261,7 @@ static ushort __devinit AdvReadEEPWord(AdvPortAddr iop_base, int eep_word_addr)
 /*
  * Write the EEPROM from 'cfg_buf'.
  */
-void __devinit
+static void __devinit
 AdvSet3550EEPConfig(AdvPortAddr iop_base, ADVEEP_3550_CONFIG *cfg_buf)
 {
 	ushort *wbuf;
@@ -12328,7 +12328,7 @@ AdvSet3550EEPConfig(AdvPortAddr iop_base, ADVEEP_3550_CONFIG *cfg_buf)
 /*
  * Write the EEPROM from 'cfg_buf'.
  */
-void __devinit
+static void __devinit
 AdvSet38C0800EEPConfig(AdvPortAddr iop_base, ADVEEP_38C0800_CONFIG *cfg_buf)
 {
 	ushort *wbuf;
@@ -12395,7 +12395,7 @@ AdvSet38C0800EEPConfig(AdvPortAddr iop_base, ADVEEP_38C0800_CONFIG *cfg_buf)
 /*
  * Write the EEPROM from 'cfg_buf'.
  */
-void __devinit
+static void __devinit
 AdvSet38C1600EEPConfig(AdvPortAddr iop_base, ADVEEP_38C1600_CONFIG *cfg_buf)
 {
 	ushort *wbuf;
@@ -13833,6 +13833,12 @@ static int __devinit advansys_board_found(struct Scsi_Host *shost,
 	 */
 	if (ASC_NARROW_BOARD(boardp)) {
 		ASC_DBG(2, "AscInitAsc1000Driver()\n");
+
+		asc_dvc_varp->overrun_buf = kzalloc(ASC_OVERRUN_BSIZE, GFP_KERNEL);
+		if (!asc_dvc_varp->overrun_buf) {
+			ret = -ENOMEM;
+			goto err_free_wide_mem;
+		}
 		warn_code = AscInitAsc1000Driver(asc_dvc_varp);
 
 		if (warn_code || asc_dvc_varp->err_code) {
@@ -13840,8 +13846,10 @@ static int __devinit advansys_board_found(struct Scsi_Host *shost,
 					"warn 0x%x, error 0x%x\n",
 					asc_dvc_varp->init_state, warn_code,
 					asc_dvc_varp->err_code);
-			if (asc_dvc_varp->err_code)
+			if (asc_dvc_varp->err_code) {
 				ret = -ENODEV;
+				kfree(asc_dvc_varp->overrun_buf);
+			}
 		}
 	} else {
 		if (advansys_wide_init_chip(shost))
@@ -13894,6 +13902,7 @@ static int advansys_release(struct Scsi_Host *shost)
 		dma_unmap_single(board->dev,
 					board->dvc_var.asc_dvc_var.overrun_dma,
 					ASC_OVERRUN_BSIZE, DMA_FROM_DEVICE);
+		kfree(board->dvc_var.asc_dvc_var.overrun_buf);
 	} else {
 		iounmap(board->ioremap_addr);
 		advansys_wide_free_mem(board);

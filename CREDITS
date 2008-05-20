@@ -508,12 +508,8 @@ D: REINER SCT cyberJack pinpad/e-com USB chipcard reader driver
 S: Germany
 
 N: Adrian Bunk
-E: bunk@stusta.de
 P: 1024D/4F12B400  B29C E71E FE19 6755 5C8A  84D4 99FC EA98 4F12 B400
 D: misc kernel hacking and testing
-S: Grasmeierstrasse 11
-S: 80805 Muenchen
-S: Germany
 
 N: Ray Burr
 E: ryb@nightmare.com
@@ -1124,6 +1120,9 @@ S: 1150 Ringwood Court
 S: San Jose, California 95131
 S: USA
 
+N: Adam Fritzler
+E: mid@zigamorph.net
+
 N: Fernando Fuganti
 E: fuganti@conectiva.com.br
 E: fuganti@netbank.com.br
@@ -1352,6 +1351,14 @@ D: MTRR emulation with Centaur MCRs
 S: Gen Stedmanstraat 212
 S: 5623 HZ Eindhoven
 S: The Netherlands
+
+N: Oliver Hartkopp
+E: oliver.hartkopp@volkswagen.de
+W: http://www.volkswagen.de
+D: Controller Area Network (network layer core)
+S: Brieffach 1776
+S: 38436 Wolfsburg
+S: Germany
 
 N: Andrew Haylett
 E: ajh@primag.co.uk
@@ -3305,6 +3312,14 @@ S: IRISA
 S: Universit=E9 de Rennes I
 S: F-35042 Rennes Cedex
 S: France
+
+N: Urs Thuermann
+E: urs.thuermann@volkswagen.de
+W: http://www.volkswagen.de
+D: Controller Area Network (network layer core)
+S: Brieffach 1776
+S: 38436 Wolfsburg
+S: Germany
 
 N: Jon Tombs
 E: jon@gte.esi.us.es

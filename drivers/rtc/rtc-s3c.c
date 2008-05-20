@@ -20,6 +20,7 @@
 #include <linux/rtc.h>
 #include <linux/bcd.h>
 #include <linux/clk.h>
+#include <linux/log2.h>
 
 #include <asm/hardware.h>
 #include <asm/uaccess.h>
@@ -309,9 +310,7 @@ static int s3c_rtc_ioctl(struct device *dev,
 		break;
 
 	case RTC_IRQP_SET:
-		/* check for power of 2 */
-
-		if ((arg & (arg-1)) != 0 || arg < 1) {
+		if (!is_power_of_2(arg)) {
 			ret = -EINVAL;
 			goto exit;
 		}
@@ -593,3 +592,4 @@ module_exit(s3c_rtc_exit);
 MODULE_DESCRIPTION("Samsung S3C RTC Driver");
 MODULE_AUTHOR("Ben Dooks <ben@simtec.co.uk>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:s3c2410-rtc");

@@ -103,6 +103,7 @@
 					   - '3' from resolv.h */
 
 #define NONE __constant_htonl(INADDR_NONE)
+#define ANY __constant_htonl(INADDR_ANY)
 
 /*
  * Public IP configuration
@@ -139,6 +140,9 @@ __be32 ic_servaddr = NONE;	/* Boot server IP address */
 
 __be32 root_server_addr = NONE;	/* Address of NFS server */
 u8 root_server_path[256] = { 0, };	/* Path to mount as root */
+
+/* vendor class identifier */
+static char vendor_class_identifier[253] __initdata;
 
 /* Persistent data: */
 
@@ -299,7 +303,7 @@ static int __init ic_route_ioctl(unsigned int cmd, struct rtentry *arg)
 
 	mm_segment_t oldfs = get_fs();
 	set_fs(get_ds());
-	res = ip_rt_ioctl(cmd, (void __user *) arg);
+	res = ip_rt_ioctl(&init_net, cmd, (void __user *) arg);
 	set_fs(oldfs);
 	return res;
 }
@@ -588,6 +592,7 @@ ic_dhcp_init_options(u8 *options)
 	u8 mt = ((ic_servaddr == NONE)
 		 ? DHCPDISCOVER : DHCPREQUEST);
 	u8 *e = options;
+	int len;
 
 #ifdef IPCONFIG_DEBUG
 	printk("DHCP: Sending message type %d\n", mt);
@@ -628,6 +633,16 @@ ic_dhcp_init_options(u8 *options)
 		*e++ = sizeof(ic_req_params);
 		memcpy(e, ic_req_params, sizeof(ic_req_params));
 		e += sizeof(ic_req_params);
+
+		if (*vendor_class_identifier) {
+			printk(KERN_INFO "DHCP: sending class identifier \"%s\"\n",
+			       vendor_class_identifier);
+			*e++ = 60;	/* Class-identifier */
+			len = strlen(vendor_class_identifier);
+			*e++ = len;
+			memcpy(e, vendor_class_identifier, len);
+			e += len;
+		}
 	}
 
 	*e++ = 255;	/* End of the list */
@@ -739,9 +754,9 @@ static void __init ic_bootp_send_if(struct ic_device *d, unsigned long jiffies_d
 		printk("Unknown ARP type 0x%04x for device %s\n", dev->type, dev->name);
 		b->htype = dev->type; /* can cause undefined behavior */
 	}
+
+	/* server_ip and your_ip address are both already zero per RFC2131 */
 	b->hlen = dev->addr_len;
-	b->your_ip = NONE;
-	b->server_ip = NONE;
 	memcpy(b->hw_addr, dev->dev_addr, dev->addr_len);
 	b->secs = htons(jiffies_diff / HZ);
 	b->xid = d->xid;
@@ -1376,7 +1391,7 @@ static int __init ip_auto_config(void)
 	 * Clue in the operator.
 	 */
 	printk("IP-Config: Complete:");
-	printk("\n      device=%s", ic_dev->name);
+	printk("\n     device=%s", ic_dev->name);
 	printk(", addr=%u.%u.%u.%u", NIPQUAD(ic_myaddr));
 	printk(", mask=%u.%u.%u.%u", NIPQUAD(ic_netmask));
 	printk(", gw=%u.%u.%u.%u", NIPQUAD(ic_gateway));
@@ -1396,7 +1411,7 @@ late_initcall(ip_auto_config);
 
 /*
  *  Decode any IP configuration options in the "ip=" or "nfsaddrs=" kernel
- *  command line parameter.  See Documentation/nfsroot.txt.
+ *  command line parameter.  See Documentation/filesystems/nfsroot.txt.
  */
 static int __init ic_proto_name(char *name)
 {
@@ -1465,19 +1480,19 @@ static int __init ip_auto_config_setup(char *addrs)
 			DBG(("IP-Config: Parameter #%d: `%s'\n", num, ip));
 			switch (num) {
 			case 0:
-				if ((ic_myaddr = in_aton(ip)) == INADDR_ANY)
+				if ((ic_myaddr = in_aton(ip)) == ANY)
 					ic_myaddr = NONE;
 				break;
 			case 1:
-				if ((ic_servaddr = in_aton(ip)) == INADDR_ANY)
+				if ((ic_servaddr = in_aton(ip)) == ANY)
 					ic_servaddr = NONE;
 				break;
 			case 2:
-				if ((ic_gateway = in_aton(ip)) == INADDR_ANY)
+				if ((ic_gateway = in_aton(ip)) == ANY)
 					ic_gateway = NONE;
 				break;
 			case 3:
-				if ((ic_netmask = in_aton(ip)) == INADDR_ANY)
+				if ((ic_netmask = in_aton(ip)) == ANY)
 					ic_netmask = NONE;
 				break;
 			case 4:
@@ -1513,5 +1528,16 @@ static int __init nfsaddrs_config_setup(char *addrs)
 	return ip_auto_config_setup(addrs);
 }
 
+static int __init vendor_class_identifier_setup(char *addrs)
+{
+	if (strlcpy(vendor_class_identifier, addrs,
+		    sizeof(vendor_class_identifier))
+	    >= sizeof(vendor_class_identifier))
+		printk(KERN_WARNING "DHCP: vendorclass too long, truncated to \"%s\"",
+		       vendor_class_identifier);
+	return 1;
+}
+
 __setup("ip=", ip_auto_config_setup);
 __setup("nfsaddrs=", nfsaddrs_config_setup);
+__setup("dhcpclass=", vendor_class_identifier_setup);

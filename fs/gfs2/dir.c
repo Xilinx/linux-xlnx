@@ -1498,7 +1498,7 @@ struct inode *gfs2_dir_search(struct inode *dir, const struct qstr *name)
 	dent = gfs2_dirent_search(dir, name, gfs2_dirent_find, &bh);
 	if (dent) {
 		if (IS_ERR(dent))
-			return ERR_PTR(PTR_ERR(dent));
+			return ERR_CAST(dent);
 		inode = gfs2_inode_lookup(dir->i_sb, 
 				be16_to_cpu(dent->de_type),
 				be64_to_cpu(dent->de_inum.no_addr),
@@ -1876,7 +1876,7 @@ static int leaf_dealloc(struct gfs2_inode *dip, u32 index, u32 len,
 	if (error)
 		goto out;
 
-	error = gfs2_rindex_hold(sdp, &dip->i_alloc.al_ri_gh);
+	error = gfs2_rindex_hold(sdp, &dip->i_alloc->al_ri_gh);
 	if (error)
 		goto out_qs;
 
@@ -1949,7 +1949,7 @@ out_rg_gunlock:
 	gfs2_glock_dq_m(rlist.rl_rgrps, rlist.rl_ghs);
 out_rlist:
 	gfs2_rlist_free(&rlist);
-	gfs2_glock_dq_uninit(&dip->i_alloc.al_ri_gh);
+	gfs2_glock_dq_uninit(&dip->i_alloc->al_ri_gh);
 out_qs:
 	gfs2_quota_unhold(dip);
 out:

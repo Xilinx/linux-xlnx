@@ -14,7 +14,7 @@
 #include "base.h"
 
 struct sysdev_class cpu_sysdev_class = {
-	set_kset_name("cpu"),
+	.name = "cpu",
 };
 EXPORT_SYMBOL(cpu_sysdev_class);
 
@@ -110,7 +110,7 @@ static SYSDEV_ATTR(crash_notes, 0400, show_crash_notes, NULL);
  *
  * Initialize and register the CPU device.
  */
-int __devinit register_cpu(struct cpu *cpu, int num)
+int __cpuinit register_cpu(struct cpu *cpu, int num)
 {
 	int error;
 	cpu->node_id = cpu_to_node(num);

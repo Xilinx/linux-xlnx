@@ -1,5 +1,4 @@
-/* linux/drivers/ide/arm/bast-ide.c
- *
+/*
  * Copyright (c) 2003-2004 Simtec Electronics
  *  Ben Dooks <ben@simtec.co.uk>
  *
@@ -22,15 +21,12 @@
 #include <asm/arch/bast-map.h>
 #include <asm/arch/bast-irq.h>
 
-/* list of registered interfaces */
-static ide_hwif_t *ifs[2];
-
-static int __init
-bastide_register(unsigned int base, unsigned int aux, int irq,
-		 ide_hwif_t **hwif)
+static int __init bastide_register(unsigned int base, unsigned int aux, int irq)
 {
+	ide_hwif_t *hwif;
 	hw_regs_t hw;
 	int i;
+	u8 idx[4] = { 0xff, 0xff, 0xff, 0xff };
 
 	memset(&hw, 0, sizeof(hw));
 
@@ -45,8 +41,24 @@ bastide_register(unsigned int base, unsigned int aux, int irq,
 	hw.io_ports[IDE_CONTROL_OFFSET] = aux + (6 * 0x20);
 	hw.irq = irq;
 
-	ide_register_hw(&hw, NULL, 0, hwif);
+	hwif = ide_deprecated_find_port(hw.io_ports[IDE_DATA_OFFSET]);
+	if (hwif == NULL)
+		goto out;
 
+	i = hwif->index;
+
+	if (hwif->present)
+		ide_unregister(i, 0, 0);
+	else if (!hwif->hold)
+		ide_init_port_data(hwif, i);
+
+	ide_init_port_hw(hwif, &hw);
+	hwif->quirkproc = NULL;
+
+	idx[0] = i;
+
+	ide_device_add(idx, NULL);
+out:
 	return 0;
 }
 
@@ -59,8 +71,9 @@ static int __init bastide_init(void)
 
 	printk("BAST: IDE driver, (c) 2003-2004 Simtec Electronics\n");
 
-	bastide_register(BAST_VA_IDEPRI, BAST_VA_IDEPRIAUX, IRQ_IDE0, &ifs[0]);
-	bastide_register(BAST_VA_IDESEC, BAST_VA_IDESECAUX, IRQ_IDE1, &ifs[1]);
+	bastide_register(BAST_VA_IDEPRI, BAST_VA_IDEPRIAUX, IRQ_IDE0);
+	bastide_register(BAST_VA_IDESEC, BAST_VA_IDESECAUX, IRQ_IDE1);
+
 	return 0;
 }
 

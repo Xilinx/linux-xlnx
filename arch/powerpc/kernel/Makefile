@@ -2,8 +2,10 @@
 # Makefile for the linux kernel.
 #
 
+CFLAGS_ptrace.o		+= -DUTS_MACHINE='"$(UTS_MACHINE)"'
+
 ifeq ($(CONFIG_PPC64),y)
-EXTRA_CFLAGS	+= -mno-minimal-toc
+CFLAGS_prom_init.o	+= -mno-minimal-toc
 endif
 ifeq ($(CONFIG_PPC32),y)
 CFLAGS_prom_init.o      += -fPIC
@@ -15,7 +17,7 @@ obj-y				:= semaphore.o cputable.o ptrace.o syscalls.o \
 				   init_task.o process.o systbl.o idle.o \
 				   signal.o
 obj-y				+= vdso32/
-obj-$(CONFIG_PPC64)		+= setup_64.o binfmt_elf32.o sys_ppc32.o \
+obj-$(CONFIG_PPC64)		+= setup_64.o sys_ppc32.o \
 				   signal_64.o ptrace32.o \
 				   paca.o cpu_setup_ppc970.o \
 				   cpu_setup_pa6t.o \
@@ -70,6 +72,7 @@ pci64-$(CONFIG_PPC64)		+= pci_dn.o isa-bridge.o
 obj-$(CONFIG_PCI)		+= pci_$(CONFIG_WORD_SIZE).o $(pci64-y) \
 				   pci-common.o
 obj-$(CONFIG_PCI_MSI)		+= msi.o
+obj-$(CONFIG_RAPIDIO)		+= rio.o
 obj-$(CONFIG_KEXEC)		+= machine_kexec.o crash.o \
 				   machine_kexec_$(CONFIG_WORD_SIZE).o
 obj-$(CONFIG_AUDIT)		+= audit.o
@@ -91,3 +94,15 @@ obj-$(CONFIG_PPC64)		+= $(obj64-y)
 
 extra-$(CONFIG_PPC_FPU)		+= fpu.o
 extra-$(CONFIG_PPC64)		+= entry_64.o
+
+extra-y				+= systbl_chk.i
+$(obj)/systbl.o:		systbl_chk
+
+quiet_cmd_systbl_chk = CALL    $<
+      cmd_systbl_chk = $(CONFIG_SHELL) $< $(obj)/systbl_chk.i
+
+PHONY += systbl_chk
+systbl_chk: $(src)/systbl_chk.sh $(obj)/systbl_chk.i
+	$(call cmd,systbl_chk)
+
+clean-files := vmlinux.lds

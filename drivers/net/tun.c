@@ -67,9 +67,42 @@
 #include <asm/system.h>
 #include <asm/uaccess.h>
 
+/* Uncomment to enable debugging */
+/* #define TUN_DEBUG 1 */
+
 #ifdef TUN_DEBUG
 static int debug;
+
+#define DBG  if(tun->debug)printk
+#define DBG1 if(debug==2)printk
+#else
+#define DBG( a... )
+#define DBG1( a... )
 #endif
+
+struct tun_struct {
+	struct list_head        list;
+	unsigned long 		flags;
+	int			attached;
+	uid_t			owner;
+	gid_t			group;
+
+	wait_queue_head_t	read_wait;
+	struct sk_buff_head	readq;
+
+	struct net_device	*dev;
+
+	struct fasync_struct    *fasync;
+
+	unsigned long if_flags;
+	u8 dev_addr[ETH_ALEN];
+	u32 chr_filter[2];
+	u32 net_filter[2];
+
+#ifdef TUN_DEBUG
+	int debug;
+#endif
+};
 
 /* Network device part of the driver */
 
@@ -253,8 +286,11 @@ static __inline__ ssize_t tun_get_user(struct tun_struct *tun, struct iovec *iv,
 			return -EFAULT;
 	}
 
-	if ((tun->flags & TUN_TYPE_MASK) == TUN_TAP_DEV)
+	if ((tun->flags & TUN_TYPE_MASK) == TUN_TAP_DEV) {
 		align = NET_IP_ALIGN;
+		if (unlikely(len < ETH_HLEN))
+			return -EINVAL;
+	}
 
 	if (!(skb = alloc_skb(len + align, GFP_KERNEL))) {
 		tun->dev->stats.rx_dropped++;
@@ -292,17 +328,6 @@ static __inline__ ssize_t tun_get_user(struct tun_struct *tun, struct iovec *iv,
 	return count;
 }
 
-static inline size_t iov_total(const struct iovec *iv, unsigned long count)
-{
-	unsigned long i;
-	size_t len;
-
-	for (i = 0, len = 0; i < count; i++)
-		len += iv[i].iov_len;
-
-	return len;
-}
-
 static ssize_t tun_chr_aio_write(struct kiocb *iocb, const struct iovec *iv,
 			      unsigned long count, loff_t pos)
 {
@@ -313,7 +338,7 @@ static ssize_t tun_chr_aio_write(struct kiocb *iocb, const struct iovec *iv,
 
 	DBG(KERN_INFO "%s: tun_chr_write %ld\n", tun->dev->name, count);
 
-	return tun_get_user(tun, (struct iovec *) iv, iov_total(iv, count));
+	return tun_get_user(tun, (struct iovec *) iv, iov_length(iv, count));
 }
 
 /* Put packet to the user space buffer */
@@ -364,7 +389,7 @@ static ssize_t tun_chr_aio_read(struct kiocb *iocb, const struct iovec *iv,
 
 	DBG(KERN_INFO "%s: tun_chr_read\n", tun->dev->name);
 
-	len = iov_total(iv, count);
+	len = iov_length(iv, count);
 	if (len < 0)
 		return -EINVAL;
 
@@ -517,7 +542,7 @@ static int tun_set_iff(struct file *file, struct ifreq *ifr)
 		/* Be promiscuous by default to maintain previous behaviour. */
 		tun->if_flags = IFF_PROMISC;
 		/* Generate random Ethernet address. */
-		*(u16 *)tun->dev_addr = htons(0x00FF);
+		*(__be16 *)tun->dev_addr = htons(0x00FF);
 		get_random_bytes(tun->dev_addr + sizeof(u16), 4);
 		memset(tun->chr_filter, 0, sizeof tun->chr_filter);
 
@@ -540,9 +565,13 @@ static int tun_set_iff(struct file *file, struct ifreq *ifr)
 
 	if (ifr->ifr_flags & IFF_NO_PI)
 		tun->flags |= TUN_NO_PI;
+	else
+		tun->flags &= ~TUN_NO_PI;
 
 	if (ifr->ifr_flags & IFF_ONE_QUEUE)
 		tun->flags |= TUN_ONE_QUEUE;
+	else
+		tun->flags &= ~TUN_ONE_QUEUE;
 
 	file->private_data = tun;
 	tun->attached = 1;
@@ -670,7 +699,11 @@ static int tun_chr_ioctl(struct inode *inode, struct file *file,
 	case SIOCSIFHWADDR:
 	{
 		/* try to set the actual net device's hw address */
-		int ret = dev_set_mac_address(tun->dev, &ifr.ifr_hwaddr);
+		int ret;
+
+		rtnl_lock();
+		ret = dev_set_mac_address(tun->dev, &ifr.ifr_hwaddr);
+		rtnl_unlock();
 
 		if (ret == 0) {
 			/** Set the character device's hardware address. This is used when

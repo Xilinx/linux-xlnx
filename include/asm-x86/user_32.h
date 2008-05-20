@@ -75,13 +75,23 @@ struct user_fxsr_struct {
  * doesn't use the extra segment registers)
  */
 struct user_regs_struct {
-	long ebx, ecx, edx, esi, edi, ebp, eax;
-	unsigned short ds, __ds, es, __es;
-	unsigned short fs, __fs, gs, __gs;
-	long orig_eax, eip;
-	unsigned short cs, __cs;
-	long eflags, esp;
-	unsigned short ss, __ss;
+	unsigned long	bx;
+	unsigned long	cx;
+	unsigned long	dx;
+	unsigned long	si;
+	unsigned long	di;
+	unsigned long	bp;
+	unsigned long	ax;
+	unsigned long	ds;
+	unsigned long	es;
+	unsigned long	fs;
+	unsigned long	gs;
+	unsigned long	orig_ax;
+	unsigned long	ip;
+	unsigned long	cs;
+	unsigned long	flags;
+	unsigned long	sp;
+	unsigned long	ss;
 };
 
 /* When the kernel dumps core, it starts by dumping the user struct -
@@ -106,7 +116,7 @@ struct user{
 				   esp register.  */
   long int signal;     		/* Signal that caused the core dump. */
   int reserved;			/* No longer used */
-  struct user_pt_regs * u_ar0;	/* Used by gdb to help find the values for */
+  unsigned long u_ar0;		/* Used by gdb to help find the values for */
 				/* the registers. */
   struct user_i387_struct* u_fpstate;	/* Math Co-processor pointer. */
   unsigned long magic;		/* To uniquely identify a core file */

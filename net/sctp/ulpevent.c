@@ -1,4 +1,4 @@
-/* SCTP kernel reference Implementation
+/* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2001, 2004
  * Copyright (c) 1999-2000 Cisco, Inc.
  * Copyright (c) 1999-2001 Motorola, Inc.
@@ -8,13 +8,14 @@
  *
  * These functions manipulate an sctp event.   The struct ulpevent is used
  * to carry notifications and data to the ULP (sockets).
- * The SCTP reference implementation is free software;
+ *
+ * This SCTP implementation is free software;
  * you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
- * The SCTP reference implementation is distributed in the hope that it
+ * This SCTP implementation is distributed in the hope that it
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  *                 ************************
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -205,7 +206,7 @@ struct sctp_ulpevent  *sctp_ulpevent_make_assoc_change(
 	 * This field is the total length of the notification data, including
 	 * the notification header.
 	 */
-	sac->sac_length = sizeof(struct sctp_assoc_change);
+	sac->sac_length = skb->len;
 
 	/* Socket Extensions for SCTP
 	 * 5.3.1.1 SCTP_ASSOC_CHANGE
@@ -700,7 +701,7 @@ struct sctp_ulpevent *sctp_ulpevent_make_rcvmsg(struct sctp_association *asoc,
 	if (rx_count >= asoc->base.sk->sk_rcvbuf) {
 
 		if ((asoc->base.sk->sk_userlocks & SOCK_RCVBUF_LOCK) ||
-		   (!sk_stream_rmem_schedule(asoc->base.sk, chunk->skb)))
+		    (!sk_rmem_schedule(asoc->base.sk, chunk->skb->truesize)))
 			goto fail;
 	}
 
@@ -858,7 +859,7 @@ __u16 sctp_ulpevent_get_notification_type(const struct sctp_ulpevent *event)
 	union sctp_notification *notification;
 	struct sk_buff *skb;
 
-	skb = sctp_event2skb((struct sctp_ulpevent *)event);
+	skb = sctp_event2skb(event);
 	notification = (union sctp_notification *) skb->data;
 	return notification->sn_header.sn_type;
 }

@@ -89,7 +89,7 @@ int ipv6_sock_ac_join(struct sock *sk, int ifindex, struct in6_addr *addr)
 		return -EPERM;
 	if (ipv6_addr_is_multicast(addr))
 		return -EINVAL;
-	if (ipv6_chk_addr(addr, NULL, 0))
+	if (ipv6_chk_addr(&init_net, addr, NULL, 0))
 		return -EINVAL;
 
 	pac = sock_kmalloc(sk, sizeof(struct ipv6_ac_socklist), GFP_KERNEL);
@@ -334,9 +334,7 @@ int ipv6_dev_ac_inc(struct net_device *dev, struct in6_addr *addr)
 	idev->ac_list = aca;
 	write_unlock_bh(&idev->lock);
 
-	dst_hold(&rt->u.dst);
-	if (ip6_ins_rt(rt))
-		dst_release(&rt->u.dst);
+	ip6_ins_rt(rt);
 
 	addrconf_join_solict(dev, &aca->aca_addr);
 
@@ -378,10 +376,7 @@ int __ipv6_dev_ac_dec(struct inet6_dev *idev, struct in6_addr *addr)
 	addrconf_leave_solict(idev, &aca->aca_addr);
 
 	dst_hold(&aca->aca_rt->u.dst);
-	if (ip6_del_rt(aca->aca_rt))
-		dst_free(&aca->aca_rt->u.dst);
-	else
-		dst_release(&aca->aca_rt->u.dst);
+	ip6_del_rt(aca->aca_rt);
 
 	aca_put(aca);
 	return 0;
@@ -504,6 +499,7 @@ static struct ifacaddr6 *ac6_get_idx(struct seq_file *seq, loff_t pos)
 }
 
 static void *ac6_seq_start(struct seq_file *seq, loff_t *pos)
+	__acquires(dev_base_lock)
 {
 	read_lock(&dev_base_lock);
 	return ac6_get_idx(seq, *pos);
@@ -518,6 +514,7 @@ static void *ac6_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 }
 
 static void ac6_seq_stop(struct seq_file *seq, void *v)
+	__releases(dev_base_lock)
 {
 	struct ac6_iter_state *state = ac6_seq_private(seq);
 	if (likely(state->idev != NULL)) {

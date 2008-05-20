@@ -5,6 +5,8 @@
 config ALPHA
 	bool
 	default y
+	select HAVE_IDE
+	select HAVE_OPROFILE
 	help
 	  The Alpha is a 64-bit general-purpose processor designed and
 	  marketed by the Digital Equipment Corporation of blessed memory,
@@ -65,6 +67,9 @@ config AUTO_IRQ_AFFINITY
 	bool
 	depends on SMP
 	default y
+
+config ARCH_SUPPORTS_AOUT
+	def_bool y
 
 source "init/Kconfig"
 
@@ -318,16 +323,14 @@ config PCI
 	  your box. Other bus systems are ISA, EISA, MicroChannel (MCA) or
 	  VESA. If you have PCI, say Y, otherwise N.
 
-	  The PCI-HOWTO, available from
-	  <http://www.tldp.org/docs.html#howto>, contains valuable
-	  information about which PCI hardware does work under Linux and which
-	  doesn't.
-
 config PCI_DOMAINS
 	bool
 	default y
 
 config PCI_SYSCALL
+	def_bool PCI
+
+config IOMMU_HELPER
 	def_bool PCI
 
 config ALPHA_CORE_AGP
@@ -536,8 +539,8 @@ config SMP
 	  singleprocessor machines. On a singleprocessor machine, the kernel
 	  will run faster if you say N here.
 
-	  See also the <file:Documentation/smp.txt>, and the SMP-HOWTO
-	  available at <http://www.tldp.org/docs.html#howto>.
+	  See also the SMP-HOWTO available at
+	  <http://www.tldp.org/docs.html#howto>.
 
 	  If you don't know what to do here, say N.
 
@@ -616,6 +619,11 @@ config VERBOSE_MCHECK_ON
 
 	  Take the default (1) unless you want more control or more info.
 
+config HZ
+	int
+	default 1200 if ALPHA_RAWHIDE
+	default 1024
+
 source "drivers/pci/Kconfig"
 source "drivers/eisa/Kconfig"
 
@@ -653,8 +661,6 @@ source "net/Kconfig"
 source "drivers/Kconfig"
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/alpha/Kconfig.debug"
 

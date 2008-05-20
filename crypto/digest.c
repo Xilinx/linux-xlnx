@@ -12,6 +12,7 @@
  *
  */
 
+#include <crypto/scatterwalk.h>
 #include <linux/mm.h>
 #include <linux/errno.h>
 #include <linux/hardirq.h>
@@ -21,7 +22,6 @@
 #include <linux/scatterlist.h>
 
 #include "internal.h"
-#include "scatterwalk.h"
 
 static int init(struct hash_desc *desc)
 {

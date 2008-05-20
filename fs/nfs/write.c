@@ -39,6 +39,7 @@ static struct nfs_page * nfs_update_request(struct nfs_open_context*,
 					    unsigned int, unsigned int);
 static void nfs_pageio_init_write(struct nfs_pageio_descriptor *desc,
 				  struct inode *inode, int ioflags);
+static void nfs_redirty_request(struct nfs_page *req);
 static const struct rpc_call_ops nfs_write_partial_ops;
 static const struct rpc_call_ops nfs_write_full_ops;
 static const struct rpc_call_ops nfs_commit_ops;
@@ -196,7 +197,7 @@ static int nfs_writepage_setup(struct nfs_open_context *ctx, struct page *page,
 	}
 	/* Update file length */
 	nfs_grow_file(page, offset, count);
-	nfs_unlock_request(req);
+	nfs_clear_page_tag_locked(req);
 	return 0;
 }
 
@@ -252,7 +253,6 @@ static int nfs_page_async_flush(struct nfs_pageio_descriptor *pgio,
 				struct page *page)
 {
 	struct inode *inode = page->mapping->host;
-	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_page *req;
 	int ret;
 
@@ -263,10 +263,10 @@ static int nfs_page_async_flush(struct nfs_pageio_descriptor *pgio,
 			spin_unlock(&inode->i_lock);
 			return 0;
 		}
-		if (nfs_lock_request_dontget(req))
+		if (nfs_set_page_tag_locked(req))
 			break;
 		/* Note: If we hold the page lock, as is the case in nfs_writepage,
-		 *	 then the call to nfs_lock_request_dontget() will always
+		 *	 then the call to nfs_set_page_tag_locked() will always
 		 *	 succeed provided that someone hasn't already marked the
 		 *	 request as dirty (in which case we don't care).
 		 */
@@ -280,7 +280,7 @@ static int nfs_page_async_flush(struct nfs_pageio_descriptor *pgio,
 	if (test_bit(PG_NEED_COMMIT, &req->wb_flags)) {
 		/* This request is marked for commit */
 		spin_unlock(&inode->i_lock);
-		nfs_unlock_request(req);
+		nfs_clear_page_tag_locked(req);
 		nfs_pageio_complete(pgio);
 		return 0;
 	}
@@ -288,10 +288,13 @@ static int nfs_page_async_flush(struct nfs_pageio_descriptor *pgio,
 		spin_unlock(&inode->i_lock);
 		BUG();
 	}
-	radix_tree_tag_set(&nfsi->nfs_page_tree, req->wb_index,
-			NFS_PAGE_TAG_LOCKED);
 	spin_unlock(&inode->i_lock);
-	nfs_pageio_add_request(pgio, req);
+	if (!nfs_pageio_add_request(pgio, req)) {
+		nfs_redirty_request(req);
+		nfs_end_page_writeback(page);
+		nfs_clear_page_tag_locked(req);
+		return pgio->pg_error;
+	}
 	return 0;
 }
 
@@ -381,6 +384,7 @@ static int nfs_inode_add_request(struct inode *inode, struct nfs_page *req)
 	set_page_private(req->wb_page, (unsigned long)req);
 	nfsi->npages++;
 	kref_get(&req->wb_kref);
+	radix_tree_tag_set(&nfsi->nfs_page_tree, req->wb_index, NFS_PAGE_TAG_LOCKED);
 	return 0;
 }
 
@@ -490,7 +494,7 @@ int nfs_reschedule_unstable_write(struct nfs_page *req)
 /*
  * Wait for a request to complete.
  *
- * Interruptible by signals only if mounted with intr flag.
+ * Interruptible by fatal signals only.
  */
 static int nfs_wait_on_requests_locked(struct inode *inode, pgoff_t idx_start, unsigned int npages)
 {
@@ -596,7 +600,7 @@ static struct nfs_page * nfs_update_request(struct nfs_open_context* ctx,
 		spin_lock(&inode->i_lock);
 		req = nfs_page_find_request_locked(page);
 		if (req) {
-			if (!nfs_lock_request_dontget(req)) {
+			if (!nfs_set_page_tag_locked(req)) {
 				int error;
 
 				spin_unlock(&inode->i_lock);
@@ -646,7 +650,7 @@ static struct nfs_page * nfs_update_request(struct nfs_open_context* ctx,
 	    || req->wb_page != page
 	    || !nfs_dirty_request(req)
 	    || offset > rqend || end < req->wb_offset) {
-		nfs_unlock_request(req);
+		nfs_clear_page_tag_locked(req);
 		return ERR_PTR(-EBUSY);
 	}
 
@@ -667,9 +671,7 @@ zero_page:
 	 * then we need to zero any uninitalised data. */
 	if (req->wb_pgbase == 0 && req->wb_bytes != PAGE_CACHE_SIZE
 			&& !PageUptodate(req->wb_page))
-		zero_user_page(req->wb_page, req->wb_bytes,
-				PAGE_CACHE_SIZE - req->wb_bytes,
-				KM_USER0);
+		zero_user_segment(req->wb_page, req->wb_bytes, PAGE_CACHE_SIZE);
 	return req;
 }
 
@@ -701,6 +703,17 @@ int nfs_flush_incompatible(struct file *file, struct page *page)
 }
 
 /*
+ * If the page cache is marked as unsafe or invalid, then we can't rely on
+ * the PageUptodate() flag. In this case, we will need to turn off
+ * write optimisations that depend on the page contents being correct.
+ */
+static int nfs_write_pageuptodate(struct page *page, struct inode *inode)
+{
+	return PageUptodate(page) &&
+		!(NFS_I(inode)->cache_validity & (NFS_INO_REVAL_PAGECACHE|NFS_INO_INVALID_DATA));
+}
+
+/*
  * Update and possibly write a cached page of an NFS file.
  *
  * XXX: Keep an eye on generic_file_read to make sure it doesn't do bad
@@ -721,10 +734,13 @@ int nfs_updatepage(struct file *file, struct page *page,
 		(long long)(page_offset(page) +offset));
 
 	/* If we're not using byte range locks, and we know the page
-	 * is entirely in cache, it may be more efficient to avoid
-	 * fragmenting write requests.
+	 * is up to date, it may be more efficient to extend the write
+	 * to cover the entire page in order to avoid fragmentation
+	 * inefficiencies.
 	 */
-	if (PageUptodate(page) && inode->i_flock == NULL && !(file->f_mode & O_SYNC)) {
+	if (nfs_write_pageuptodate(page, inode) &&
+			inode->i_flock == NULL &&
+			!(file->f_flags & O_SYNC)) {
 		count = max(count + offset, nfs_page_length(page));
 		offset = 0;
 	}
@@ -755,7 +771,7 @@ static void nfs_writepage_release(struct nfs_page *req)
 	nfs_clear_page_tag_locked(req);
 }
 
-static inline int flush_task_priority(int how)
+static int flush_task_priority(int how)
 {
 	switch (how & (FLUSH_HIGHPRI|FLUSH_LOWPRI)) {
 		case FLUSH_HIGHPRI:
@@ -775,15 +791,31 @@ static void nfs_write_rpcsetup(struct nfs_page *req,
 		unsigned int count, unsigned int offset,
 		int how)
 {
-	struct inode		*inode;
-	int flags;
+	struct inode *inode = req->wb_context->path.dentry->d_inode;
+	int flags = (how & FLUSH_SYNC) ? 0 : RPC_TASK_ASYNC;
+	int priority = flush_task_priority(how);
+	struct rpc_task *task;
+	struct rpc_message msg = {
+		.rpc_argp = &data->args,
+		.rpc_resp = &data->res,
+		.rpc_cred = req->wb_context->cred,
+	};
+	struct rpc_task_setup task_setup_data = {
+		.rpc_client = NFS_CLIENT(inode),
+		.task = &data->task,
+		.rpc_message = &msg,
+		.callback_ops = call_ops,
+		.callback_data = data,
+		.flags = flags,
+		.priority = priority,
+	};
 
 	/* Set up the RPC argument and reply structs
 	 * NB: take care not to mess about with data->commit et al. */
 
 	data->req = req;
 	data->inode = inode = req->wb_context->path.dentry->d_inode;
-	data->cred = req->wb_context->cred;
+	data->cred = msg.rpc_cred;
 
 	data->args.fh     = NFS_FH(inode);
 	data->args.offset = req_offset(req) + offset;
@@ -791,6 +823,12 @@ static void nfs_write_rpcsetup(struct nfs_page *req,
 	data->args.pages  = data->pagevec;
 	data->args.count  = count;
 	data->args.context = req->wb_context;
+	data->args.stable  = NFS_UNSTABLE;
+	if (how & FLUSH_STABLE) {
+		data->args.stable = NFS_DATA_SYNC;
+		if (!NFS_I(inode)->ncommit)
+			data->args.stable = NFS_FILE_SYNC;
+	}
 
 	data->res.fattr   = &data->fattr;
 	data->res.count   = count;
@@ -798,12 +836,7 @@ static void nfs_write_rpcsetup(struct nfs_page *req,
 	nfs_fattr_init(&data->fattr);
 
 	/* Set up the initial task struct.  */
-	flags = (how & FLUSH_SYNC) ? 0 : RPC_TASK_ASYNC;
-	rpc_init_task(&data->task, NFS_CLIENT(inode), flags, call_ops, data);
-	NFS_PROTO(inode)->write_setup(data, how);
-
-	data->task.tk_priority = flush_task_priority(how);
-	data->task.tk_cookie = (unsigned long)inode;
+	NFS_PROTO(inode)->write_setup(data, &msg);
 
 	dprintk("NFS: %5u initiated write call "
 		"(req %s/%Ld, %u bytes @ offset %Lu)\n",
@@ -812,16 +845,10 @@ static void nfs_write_rpcsetup(struct nfs_page *req,
 		(long long)NFS_FILEID(inode),
 		count,
 		(unsigned long long)data->args.offset);
-}
 
-static void nfs_execute_write(struct nfs_write_data *data)
-{
-	struct rpc_clnt *clnt = NFS_CLIENT(data->inode);
-	sigset_t oldset;
-
-	rpc_clnt_sigmask(clnt, &oldset);
-	rpc_execute(&data->task);
-	rpc_clnt_sigunmask(clnt, &oldset);
+	task = rpc_run_task(&task_setup_data);
+	if (!IS_ERR(task))
+		rpc_put_task(task);
 }
 
 /*
@@ -868,7 +895,6 @@ static int nfs_flush_multi(struct inode *inode, struct list_head *head, unsigned
 				   wsize, offset, how);
 		offset += wsize;
 		nbytes -= wsize;
-		nfs_execute_write(data);
 	} while (nbytes != 0);
 
 	return 0;
@@ -916,7 +942,6 @@ static int nfs_flush_one(struct inode *inode, struct list_head *head, unsigned i
 	/* Set up the argument struct */
 	nfs_write_rpcsetup(req, data, &nfs_write_full_ops, count, 0, how);
 
-	nfs_execute_write(data);
 	return 0;
  out_bad:
 	while (!list_empty(head)) {
@@ -932,7 +957,7 @@ static int nfs_flush_one(struct inode *inode, struct list_head *head, unsigned i
 static void nfs_pageio_init_write(struct nfs_pageio_descriptor *pgio,
 				  struct inode *inode, int ioflags)
 {
-	int wsize = NFS_SERVER(inode)->wsize;
+	size_t wsize = NFS_SERVER(inode)->wsize;
 
 	if (wsize < PAGE_CACHE_SIZE)
 		nfs_pageio_init(pgio, inode, nfs_flush_multi, wsize, ioflags);
@@ -1146,19 +1171,33 @@ static void nfs_commit_rpcsetup(struct list_head *head,
 		struct nfs_write_data *data,
 		int how)
 {
-	struct nfs_page		*first;
-	struct inode		*inode;
-	int flags;
+	struct nfs_page *first = nfs_list_entry(head->next);
+	struct inode *inode = first->wb_context->path.dentry->d_inode;
+	int flags = (how & FLUSH_SYNC) ? 0 : RPC_TASK_ASYNC;
+	int priority = flush_task_priority(how);
+	struct rpc_task *task;
+	struct rpc_message msg = {
+		.rpc_argp = &data->args,
+		.rpc_resp = &data->res,
+		.rpc_cred = first->wb_context->cred,
+	};
+	struct rpc_task_setup task_setup_data = {
+		.task = &data->task,
+		.rpc_client = NFS_CLIENT(inode),
+		.rpc_message = &msg,
+		.callback_ops = &nfs_commit_ops,
+		.callback_data = data,
+		.flags = flags,
+		.priority = priority,
+	};
 
 	/* Set up the RPC argument and reply structs
 	 * NB: take care not to mess about with data->commit et al. */
 
 	list_splice_init(head, &data->pages);
-	first = nfs_list_entry(data->pages.next);
-	inode = first->wb_context->path.dentry->d_inode;
 
 	data->inode	  = inode;
-	data->cred	  = first->wb_context->cred;
+	data->cred	  = msg.rpc_cred;
 
 	data->args.fh     = NFS_FH(data->inode);
 	/* Note: we always request a commit of the entire inode */
@@ -1170,14 +1209,13 @@ static void nfs_commit_rpcsetup(struct list_head *head,
 	nfs_fattr_init(&data->fattr);
 
 	/* Set up the initial task struct.  */
-	flags = (how & FLUSH_SYNC) ? 0 : RPC_TASK_ASYNC;
-	rpc_init_task(&data->task, NFS_CLIENT(inode), flags, &nfs_commit_ops, data);
-	NFS_PROTO(inode)->commit_setup(data, how);
+	NFS_PROTO(inode)->commit_setup(data, &msg);
 
-	data->task.tk_priority = flush_task_priority(how);
-	data->task.tk_cookie = (unsigned long)inode;
-	
 	dprintk("NFS: %5u initiated commit call\n", data->task.tk_pid);
+
+	task = rpc_run_task(&task_setup_data);
+	if (!IS_ERR(task))
+		rpc_put_task(task);
 }
 
 /*
@@ -1197,7 +1235,6 @@ nfs_commit_list(struct inode *inode, struct list_head *head, int how)
 	/* Set up the argument struct */
 	nfs_commit_rpcsetup(head, data, how);
 
-	nfs_execute_write(data);
 	return 0;
  out_bad:
 	while (!list_empty(head)) {

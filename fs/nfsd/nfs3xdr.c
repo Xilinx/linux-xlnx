@@ -21,6 +21,7 @@
 #include <linux/sunrpc/svc.h>
 #include <linux/nfsd/nfsd.h>
 #include <linux/nfsd/xdr3.h>
+#include "auth.h"
 
 #define NFSDDBG_FACILITY		NFSDDBG_XDR
 
@@ -88,10 +89,10 @@ encode_fh(__be32 *p, struct svc_fh *fhp)
  * no slashes or null bytes.
  */
 static __be32 *
-decode_filename(__be32 *p, char **namp, int *lenp)
+decode_filename(__be32 *p, char **namp, unsigned int *lenp)
 {
 	char		*name;
-	int		i;
+	unsigned int	i;
 
 	if ((p = xdr_decode_string_inplace(p, namp, lenp, NFS3_MAXNAMLEN)) != NULL) {
 		for (i = 0, name = *namp; i < *lenp; i++, name++) {
@@ -217,7 +218,7 @@ encode_post_op_attr(struct svc_rqst *rqstp, __be32 *p, struct svc_fh *fhp)
 	        int err;
 		struct kstat stat;
 
-		err = vfs_getattr(fhp->fh_export->ex_mnt, dentry, &stat);
+		err = vfs_getattr(fhp->fh_export->ex_path.mnt, dentry, &stat);
 		if (!err) {
 			*p++ = xdr_one;		/* attributes follow */
 			lease_get_mtime(dentry->d_inode, &stat.mtime);
@@ -269,7 +270,7 @@ void fill_post_wcc(struct svc_fh *fhp)
 	if (fhp->fh_post_saved)
 		printk("nfsd: inode locked twice during operation.\n");
 
-	err = vfs_getattr(fhp->fh_export->ex_mnt, fhp->fh_dentry,
+	err = vfs_getattr(fhp->fh_export->ex_path.mnt, fhp->fh_dentry,
 			&fhp->fh_post_attr);
 	if (err)
 		fhp->fh_post_saved = 0;
@@ -452,8 +453,7 @@ int
 nfs3svc_decode_symlinkargs(struct svc_rqst *rqstp, __be32 *p,
 					struct nfsd3_symlinkargs *args)
 {
-	unsigned int len;
-	int avail;
+	unsigned int len, avail;
 	char *old, *new;
 	struct kvec *vec;
 
@@ -486,7 +486,8 @@ nfs3svc_decode_symlinkargs(struct svc_rqst *rqstp, __be32 *p,
 	/* now copy next page if there is one */
 	if (len && !avail && rqstp->rq_arg.page_len) {
 		avail = rqstp->rq_arg.page_len;
-		if (avail > PAGE_SIZE) avail = PAGE_SIZE;
+		if (avail > PAGE_SIZE)
+			avail = PAGE_SIZE;
 		old = page_address(rqstp->rq_arg.pages[0]);
 	}
 	while (len && avail && *old) {
@@ -816,11 +817,11 @@ static __be32 *
 encode_entryplus_baggage(struct nfsd3_readdirres *cd, __be32 *p,
 		struct svc_fh *fhp)
 {
-		p = encode_post_op_attr(cd->rqstp, p, fhp);
-		*p++ = xdr_one;			/* yes, a file handle follows */
-		p = encode_fh(p, fhp);
-		fh_put(fhp);
-		return p;
+	p = encode_post_op_attr(cd->rqstp, p, fhp);
+	*p++ = xdr_one;			/* yes, a file handle follows */
+	p = encode_fh(p, fhp);
+	fh_put(fhp);
+	return p;
 }
 
 static int

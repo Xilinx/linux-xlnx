@@ -11,7 +11,6 @@
 #include <linux/init.h>
 #include <linux/dmi.h>
 #include <linux/device.h>
-#include <linux/autoconf.h>
 
 struct dmi_device_attribute{
 	struct device_attribute dev_attr;
@@ -172,8 +171,6 @@ static struct device *dmi_dev;
 #define ADD_DMI_ATTR(_name, _field) \
 	if (dmi_get_system_info(_field)) \
 		sys_dmi_attributes[i++] = &sys_dmi_##_name##_attr.dev_attr.attr;
-
-extern int dmi_available;
 
 /* In a separate function to keep gcc 3.2 happy - do NOT merge this in
    dmi_id_init! */

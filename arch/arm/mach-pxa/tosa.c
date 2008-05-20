@@ -21,6 +21,8 @@
 #include <linux/mmc/host.h>
 #include <linux/pm.h>
 #include <linux/delay.h>
+#include <linux/gpio_keys.h>
+#include <linux/input.h>
 
 #include <asm/setup.h>
 #include <asm/memory.h>
@@ -29,6 +31,7 @@
 #include <asm/irq.h>
 #include <asm/system.h>
 #include <asm/arch/pxa-regs.h>
+#include <asm/arch/pxa2xx-regs.h>
 #include <asm/arch/irda.h>
 #include <asm/arch/mmc.h>
 #include <asm/arch/udc.h>
@@ -157,15 +160,10 @@ static void tosa_udc_command(int cmd)
 	}
 }
 
-static int tosa_udc_is_connected(void)
-{
-	return ((GPLR(TOSA_GPIO_USB_IN) & GPIO_bit(TOSA_GPIO_USB_IN)) == 0);
-}
-
-
 static struct pxa2xx_udc_mach_info udc_info __initdata = {
 	.udc_command		= tosa_udc_command,
-	.udc_is_connected	= tosa_udc_is_connected,
+	.gpio_vbus		= TOSA_GPIO_USB_IN,
+	.gpio_vbus_inverted	= 1,
 };
 
 /*
@@ -184,16 +182,13 @@ static int tosa_mci_init(struct device *dev, irq_handler_t tosa_detect_int, void
 
 	tosa_mci_platform_data.detect_delay = msecs_to_jiffies(250);
 
-	err = request_irq(TOSA_IRQ_GPIO_nSD_DETECT, tosa_detect_int, IRQF_DISABLED,
+	err = request_irq(TOSA_IRQ_GPIO_nSD_DETECT, tosa_detect_int,
+			  IRQF_DISABLED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 				"MMC/SD card detect", data);
-	if (err) {
+	if (err)
 		printk(KERN_ERR "tosa_mci_init: MMC/SD: can't request MMC card detect IRQ\n");
-		return -1;
-	}
 
-	set_irq_type(TOSA_IRQ_GPIO_nSD_DETECT, IRQT_BOTHEDGE);
-
-	return 0;
+	return err;
 }
 
 static void tosa_mci_setpower(struct device *dev, unsigned int vdd)
@@ -253,6 +248,46 @@ static struct platform_device tosakbd_device = {
 	.id		= -1,
 };
 
+static struct gpio_keys_button tosa_gpio_keys[] = {
+	{
+		.type	= EV_PWR,
+		.code	= KEY_SUSPEND,
+		.gpio	= TOSA_GPIO_ON_KEY,
+		.desc	= "On key",
+		.wakeup	= 1,
+		.active_low = 1,
+	},
+	{
+		.type	= EV_KEY,
+		.code	= TOSA_KEY_RECORD,
+		.gpio	= TOSA_GPIO_RECORD_BTN,
+		.desc	= "Record Button",
+		.wakeup	= 1,
+		.active_low = 1,
+	},
+	{
+		.type	= EV_KEY,
+		.code	= TOSA_KEY_SYNC,
+		.gpio	= TOSA_GPIO_SYNC,
+		.desc	= "Sync Button",
+		.wakeup	= 1,
+		.active_low = 1,
+	},
+};
+
+static struct gpio_keys_platform_data tosa_gpio_keys_platform_data = {
+	.buttons	= tosa_gpio_keys,
+	.nbuttons	= ARRAY_SIZE(tosa_gpio_keys),
+};
+
+static struct platform_device tosa_gpio_keys_device = {
+	.name	= "gpio-keys",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &tosa_gpio_keys_platform_data,
+	},
+};
+
 /*
  * Tosa LEDs
  */
@@ -265,6 +300,7 @@ static struct platform_device *devices[] __initdata = {
 	&tosascoop_device,
 	&tosascoop_jc_device,
 	&tosakbd_device,
+	&tosa_gpio_keys_device,
 	&tosaled_device,
 };
 

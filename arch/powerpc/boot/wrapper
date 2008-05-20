@@ -45,6 +45,7 @@ CROSS=
 
 # directory for object and other files used by this script
 object=arch/powerpc/boot
+objbin=$object
 
 # directory for working files
 tmpdir=.
@@ -95,6 +96,7 @@ while [ "$#" -gt 0 ]; do
 	shift
 	[ "$#" -gt 0 ] || usage
 	object="$1"
+	objbin="$1"
 	;;
     -W)
 	shift
@@ -116,11 +118,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -n "$dts" ]; then
-    dtasm="$object/$platform.dtb.S"
-    dto="$object/$platform.dtb.o"
-    echo '.section .kernel:dtb,"a"' > "$dtasm"
-    dtc -O asm -b 0 -V 16 "$dts" >> "$dtasm"
-    ${CROSS}gcc "$dtasm" -c -o "$dto"
+    if [ ! -r "$dts" -a -r "$object/dts/$dts" ]; then
+	dts="$object/dts/$dts"
+    fi
+    if [ -z "$dtb" ]; then
+	dtb="$platform.dtb"
+    fi
+    $object/dtc -O dtb -o "$dtb" -b 0 "$dts"
 fi
 
 if [ -z "$kernel" ]; then
@@ -154,6 +158,29 @@ miboot|uboot)
 cuboot*)
     binary=y
     gzip=
+    case "$platform" in
+    *-mpc885ads|*-adder875*|*-ep88xc)
+        platformo=$object/cuboot-8xx.o
+        ;;
+    *5200*|*-motionpro)
+        platformo=$object/cuboot-52xx.o
+        ;;
+    *-pq2fads|*-ep8248e|*-mpc8272*|*-storcenter)
+        platformo=$object/cuboot-pq2.o
+        ;;
+    *-mpc824*)
+        platformo=$object/cuboot-824x.o
+        ;;
+    *-mpc83*)
+        platformo=$object/cuboot-83xx.o
+        ;;
+    *-tqm8541|*-mpc8560*|*-tqm8560|*-tqm8555)
+        platformo=$object/cuboot-85xx-cpm2.o
+        ;;
+    *-mpc85*|*-tqm8540|*-sbc85*)
+        platformo=$object/cuboot-85xx.o
+        ;;
+    esac
     ;;
 ps3)
     platformo="$object/ps3-head.o $object/ps3-hvcall.o $object/ps3.o"
@@ -164,12 +191,12 @@ ps3)
     ksection=.kernel:vmlinux.bin
     isection=.kernel:initrd
     ;;
-ep88xc)
+ep88xc|ep405|ep8248e)
     platformo="$object/fixed-head.o $object/$platform.o"
     binary=y
     ;;
-raw)
-    platformo="$object/fixed-head.o $object/raw-platform.o"
+adder875-redboot)
+    platformo="$object/fixed-head.o $object/redboot-8xx.o"
     binary=y
     ;;
 esac
@@ -251,11 +278,11 @@ fi
 # post-processing needed for some platforms
 case "$platform" in
 pseries|chrp)
-    $object/addnote "$ofile"
+    $objbin/addnote "$ofile"
     ;;
 coff)
     ${CROSS}objcopy -O aixcoff-rs6000 --set-start "$entry" "$ofile"
-    $object/hack-coff "$ofile"
+    $objbin/hack-coff "$ofile"
     ;;
 cuboot*)
     gzip -f -9 "$ofile"
@@ -264,7 +291,7 @@ cuboot*)
     ;;
 treeboot*)
     mv "$ofile" "$ofile.elf"
-    $object/mktree "$ofile.elf" "$ofile" "$base" "$entry"
+    $objbin/mktree "$ofile.elf" "$ofile" "$base" "$entry"
     if [ -z "$cacheit" ]; then
 	rm -f "$ofile.elf"
     fi
@@ -292,8 +319,6 @@ ps3)
     overlay_dest="256"
     overlay_size="256"
 
-    rm -f "$object/otheros.bld"
-
     ${CROSS}objcopy -O binary "$ofile" "$ofile.bin"
 
     dd if="$ofile.bin" of="$ofile.bin" conv=notrunc   \
@@ -304,6 +329,8 @@ ps3)
         skip=$system_reset_overlay seek=$overlay_dest \
         count=$overlay_size bs=1
 
-    gzip --force -9 --stdout "$ofile.bin" > "$object/otheros.bld"
+    odir="$(dirname "$ofile.bin")"
+    rm -f "$odir/otheros.bld"
+    gzip --force -9 --stdout "$ofile.bin" > "$odir/otheros.bld"
     ;;
 esac

@@ -45,7 +45,7 @@ static void ieee80211_monitor_rx(struct ieee80211_device *ieee,
 	skb_reset_mac_header(skb);
 	skb_pull(skb, ieee80211_get_hdrlen(fc));
 	skb->pkt_type = PACKET_OTHERHOST;
-	skb->protocol = __constant_htons(ETH_P_80211_RAW);
+	skb->protocol = htons(ETH_P_80211_RAW);
 	memset(skb->cb, 0, sizeof(skb->cb));
 	netif_rx(skb);
 }
@@ -271,7 +271,6 @@ ieee80211_rx_frame_decrypt(struct ieee80211_device *ieee, struct sk_buff *skb,
 {
 	struct ieee80211_hdr_3addr *hdr;
 	int res, hdrlen;
-	DECLARE_MAC_BUF(mac);
 
 	if (crypt == NULL || crypt->ops->decrypt_mpdu == NULL)
 		return 0;
@@ -283,8 +282,12 @@ ieee80211_rx_frame_decrypt(struct ieee80211_device *ieee, struct sk_buff *skb,
 	res = crypt->ops->decrypt_mpdu(skb, hdrlen, crypt->priv);
 	atomic_dec(&crypt->refcnt);
 	if (res < 0) {
-		IEEE80211_DEBUG_DROP("decryption failed (SA=%s"
-				     ") res=%d\n", print_mac(mac, hdr->addr2), res);
+		IEEE80211_DEBUG_DROP("decryption failed (SA=" MAC_FMT
+				     ") res=%d\n",
+				     hdr->addr2[0], hdr->addr2[1],
+				     hdr->addr2[2], hdr->addr2[3],
+				     hdr->addr2[4], hdr->addr2[5],
+				     res);
 		if (res == -2)
 			IEEE80211_DEBUG_DROP("Decryption failed ICV "
 					     "mismatch (key %d)\n",
@@ -304,7 +307,6 @@ ieee80211_rx_frame_decrypt_msdu(struct ieee80211_device *ieee,
 {
 	struct ieee80211_hdr_3addr *hdr;
 	int res, hdrlen;
-	DECLARE_MAC_BUF(mac);
 
 	if (crypt == NULL || crypt->ops->decrypt_msdu == NULL)
 		return 0;
@@ -317,8 +319,12 @@ ieee80211_rx_frame_decrypt_msdu(struct ieee80211_device *ieee,
 	atomic_dec(&crypt->refcnt);
 	if (res < 0) {
 		printk(KERN_DEBUG "%s: MSDU decryption/MIC verification failed"
-		       " (SA=%s keyidx=%d)\n",
-		       ieee->dev->name, print_mac(mac, hdr->addr2), keyidx);
+		       " (SA=" MAC_FMT " keyidx=%d)\n",
+		       ieee->dev->name,
+		       hdr->addr2[0], hdr->addr2[1],
+		       hdr->addr2[2], hdr->addr2[3],
+		       hdr->addr2[4], hdr->addr2[5],
+		       keyidx);
 		return -1;
 	}
 
@@ -462,8 +468,10 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 			 * frames silently instead of filling system log with
 			 * these reports. */
 			IEEE80211_DEBUG_DROP("Decryption failed (not set)"
-					     " (SA=%s)\n",
-					     print_mac(mac, hdr->addr2));
+					     " (SA=" MAC_FMT ")\n",
+					     hdr->addr2[0], hdr->addr2[1],
+					     hdr->addr2[2], hdr->addr2[3],
+					     hdr->addr2[4], hdr->addr2[5]);
 			ieee->ieee_stats.rx_discards_undecryptable++;
 			goto rx_dropped;
 		}
@@ -474,8 +482,10 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 		    fc & IEEE80211_FCTL_PROTECTED && ieee->host_decrypt &&
 		    (keyidx = hostap_rx_frame_decrypt(ieee, skb, crypt)) < 0) {
 			printk(KERN_DEBUG "%s: failed to decrypt mgmt::auth "
-			       "from %s\n", dev->name,
-			       print_mac(mac, hdr->addr2));
+			       "from " MAC_FMT "\n", dev->name,
+			       hdr->addr2[0], hdr->addr2[1],
+			       hdr->addr2[2], hdr->addr2[3],
+			       hdr->addr2[4], hdr->addr2[5]);
 			/* TODO: could inform hostapd about this so that it
 			 * could send auth failure report */
 			goto rx_dropped;
@@ -653,8 +663,11 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 			 * configured */
 		} else {
 			IEEE80211_DEBUG_DROP("encryption configured, but RX "
-					     "frame not encrypted (SA=%s"
-					     ")\n", print_mac(mac, hdr->addr2));
+					     "frame not encrypted (SA="
+					     MAC_FMT ")\n",
+					     hdr->addr2[0], hdr->addr2[1],
+					     hdr->addr2[2], hdr->addr2[3],
+					     hdr->addr2[4], hdr->addr2[5]);
 			goto rx_dropped;
 		}
 	}
@@ -662,9 +675,11 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 	if (crypt && !(fc & IEEE80211_FCTL_PROTECTED) && !ieee->open_wep &&
 	    !ieee80211_is_eapol_frame(ieee, skb)) {
 		IEEE80211_DEBUG_DROP("dropped unencrypted RX data "
-				     "frame from %s"
+				     "frame from " MAC_FMT
 				     " (drop_unencrypted=1)\n",
-				     print_mac(mac, hdr->addr2));
+				     hdr->addr2[0], hdr->addr2[1],
+				     hdr->addr2[2], hdr->addr2[3],
+				     hdr->addr2[4], hdr->addr2[5]);
 		goto rx_dropped;
 	}
 
@@ -754,7 +769,7 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 		memcpy(skb_push(skb, ETH_ALEN), src, ETH_ALEN);
 		memcpy(skb_push(skb, ETH_ALEN), dst, ETH_ALEN);
 	} else {
-		u16 len;
+		__be16 len;
 		/* Leave Ethernet header part of hdr and full payload */
 		skb_pull(skb, hdrlen);
 		len = htons(skb->len);
@@ -800,7 +815,7 @@ int ieee80211_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 	if (skb2 != NULL) {
 		/* send to wireless media */
 		skb2->dev = dev;
-		skb2->protocol = __constant_htons(ETH_P_802_3);
+		skb2->protocol = htons(ETH_P_802_3);
 		skb_reset_mac_header(skb2);
 		skb_reset_network_header(skb2);
 		/* skb2->network_header += ETH_HLEN; */
@@ -1032,16 +1047,16 @@ static int ieee80211_qos_convert_ac_to_parameters(struct
 		qos_param->aifs[i] -= (qos_param->aifs[i] < 2) ? 0 : 2;
 
 		cw_min = ac_params->ecw_min_max & 0x0F;
-		qos_param->cw_min[i] = (u16) ((1 << cw_min) - 1);
+		qos_param->cw_min[i] = cpu_to_le16((1 << cw_min) - 1);
 
 		cw_max = (ac_params->ecw_min_max & 0xF0) >> 4;
-		qos_param->cw_max[i] = (u16) ((1 << cw_max) - 1);
+		qos_param->cw_max[i] = cpu_to_le16((1 << cw_max) - 1);
 
 		qos_param->flag[i] =
 		    (ac_params->aci_aifsn & 0x10) ? 0x01 : 0x00;
 
 		txop = le16_to_cpu(ac_params->tx_op_limit) * 32;
-		qos_param->tx_op_limit[i] = (u16) txop;
+		qos_param->tx_op_limit[i] = cpu_to_le16(txop);
 	}
 	return rc;
 }
@@ -1585,26 +1600,25 @@ static void ieee80211_process_probe_response(struct ieee80211_device
 	DECLARE_MAC_BUF(mac);
 
 	IEEE80211_DEBUG_SCAN("'%s' (%s"
-			     "): %c%c%c%c %c%c%c%c-%c%c%c%c %c%c%c%c\n",
-			     escape_essid(info_element->data,
-					  info_element->len),
-			     print_mac(mac, beacon->header.addr3),
-			     (beacon->capability & (1 << 0xf)) ? '1' : '0',
-			     (beacon->capability & (1 << 0xe)) ? '1' : '0',
-			     (beacon->capability & (1 << 0xd)) ? '1' : '0',
-			     (beacon->capability & (1 << 0xc)) ? '1' : '0',
-			     (beacon->capability & (1 << 0xb)) ? '1' : '0',
-			     (beacon->capability & (1 << 0xa)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x9)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x8)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x7)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x6)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x5)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x4)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x3)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x2)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x1)) ? '1' : '0',
-			     (beacon->capability & (1 << 0x0)) ? '1' : '0');
+		     "): %c%c%c%c %c%c%c%c-%c%c%c%c %c%c%c%c\n",
+		     escape_essid(info_element->data, info_element->len),
+		     print_mac(mac, beacon->header.addr3),
+		     (beacon->capability & cpu_to_le16(1 << 0xf)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0xe)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0xd)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0xc)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0xb)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0xa)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x9)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x8)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x7)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x6)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x5)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x4)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x3)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x2)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x1)) ? '1' : '0',
+		     (beacon->capability & cpu_to_le16(1 << 0x0)) ? '1' : '0');
 
 	if (ieee80211_network_init(ieee, beacon, &network, stats)) {
 		IEEE80211_DEBUG_SCAN("Dropped '%s' (%s) via %s.\n",

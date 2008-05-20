@@ -333,13 +333,14 @@ static unsigned int sata_fsl_fill_sg(struct ata_queued_cmd *qc, void *cmd_desc,
 	struct prde *prd_ptr_to_indirect_ext = NULL;
 	unsigned indirect_ext_segment_sz = 0;
 	dma_addr_t indirect_ext_segment_paddr;
+	unsigned int si;
 
-	VPRINTK("SATA FSL : cd = 0x%x, prd = 0x%x\n", cmd_desc, prd);
+	VPRINTK("SATA FSL : cd = 0x%p, prd = 0x%p\n", cmd_desc, prd);
 
 	indirect_ext_segment_paddr = cmd_desc_paddr +
 	    SATA_FSL_CMD_DESC_OFFSET_TO_PRDT + SATA_FSL_MAX_PRD_DIRECT * 16;
 
-	ata_for_each_sg(sg, qc) {
+	for_each_sg(qc->sg, sg, qc->n_elem, si) {
 		dma_addr_t sg_addr = sg_dma_address(sg);
 		u32 sg_len = sg_dma_len(sg);
 
@@ -354,8 +355,8 @@ static unsigned int sata_fsl_fill_sg(struct ata_queued_cmd *qc, void *cmd_desc,
 			ata_port_printk(qc->ap, KERN_ERR,
 					"s/g len unaligned : 0x%x\n", sg_len);
 
-		if ((num_prde == (SATA_FSL_MAX_PRD_DIRECT - 1)) &&
-		    (qc->n_iter + 1 != qc->n_elem)) {
+		if (num_prde == (SATA_FSL_MAX_PRD_DIRECT - 1) &&
+		    sg_next(sg) != NULL) {
 			VPRINTK("setting indirect prde\n");
 			prd_ptr_to_indirect_ext = prd;
 			prd->dba = cpu_to_le32(indirect_ext_segment_paddr);
@@ -417,7 +418,7 @@ static void sata_fsl_qc_prep(struct ata_queued_cmd *qc)
 	}
 
 	/* setup "ACMD - atapi command" in cmd. desc. if this is ATAPI cmd */
-	if (is_atapi_taskfile(&qc->tf)) {
+	if (ata_is_atapi(qc->tf.protocol)) {
 		desc_info |= ATAPI_CMD;
 		memset((void *)&cd->acmd, 0, 32);
 		memcpy((void *)&cd->acmd, qc->cdb, qc->dev->cdb_len);
@@ -458,7 +459,8 @@ static unsigned int sata_fsl_qc_issue(struct ata_queued_cmd *qc)
 	VPRINTK("CE=0x%x, DE=0x%x, CC=0x%x, CmdStat = 0x%x\n",
 		ioread32(CE + hcr_base),
 		ioread32(DE + hcr_base),
-		ioread32(CC + hcr_base), ioread32(COMMANDSTAT + csr_base));
+		ioread32(CC + hcr_base),
+		ioread32(COMMANDSTAT + host_priv->csr_base));
 
 	return 0;
 }
@@ -521,7 +523,8 @@ static void sata_fsl_freeze(struct ata_port *ap)
 		ioread32(CQ + hcr_base),
 		ioread32(CA + hcr_base),
 		ioread32(CE + hcr_base), ioread32(DE + hcr_base));
-	VPRINTK("CmdStat = 0x%x\n", ioread32(csr_base + COMMANDSTAT));
+	VPRINTK("CmdStat = 0x%x\n",
+		ioread32(host_priv->csr_base + COMMANDSTAT));
 
 	/* disable interrupts on the controller/port */
 	temp = ioread32(hcr_base + HCONTROL);
@@ -600,21 +603,9 @@ static int sata_fsl_port_start(struct ata_port *ap)
 	if (!pp)
 		return -ENOMEM;
 
-	/*
-	 * allocate per command dma alignment pad buffer, which is used
-	 * internally by libATA to ensure that all transfers ending on
-	 * unaligned boundaries are padded, to align on Dword boundaries
-	 */
-	retval = ata_pad_alloc(ap, dev);
-	if (retval) {
-		kfree(pp);
-		return retval;
-	}
-
 	mem = dma_alloc_coherent(dev, SATA_FSL_PORT_PRIV_DMA_SZ, &mem_dma,
 				 GFP_KERNEL);
 	if (!mem) {
-		ata_pad_free(ap, dev);
 		kfree(pp);
 		return -ENOMEM;
 	}
@@ -693,7 +684,6 @@ static void sata_fsl_port_stop(struct ata_port *ap)
 	dma_free_coherent(dev, SATA_FSL_PORT_PRIV_DMA_SZ,
 			  pp->cmdslot, pp->cmdslot_paddr);
 
-	ata_pad_free(ap, dev);
 	kfree(pp);
 }
 
@@ -1266,7 +1256,6 @@ static int sata_fsl_probe(struct of_device *ofdev,
 	void __iomem *ssr_base = NULL;
 	void __iomem *csr_base = NULL;
 	struct sata_fsl_host_priv *host_priv = NULL;
-	struct resource *r;
 	int irq;
 	struct ata_host *host;
 
@@ -1275,8 +1264,6 @@ static int sata_fsl_probe(struct of_device *ofdev,
 
 	dev_printk(KERN_INFO, &ofdev->dev,
 		   "Sata FSL Platform/CSB Driver init\n");
-
-	r = kmalloc(sizeof(struct resource), GFP_KERNEL);
 
 	hcr_base = of_iomap(ofdev->node, 0);
 	if (!hcr_base)
@@ -1358,10 +1345,7 @@ static int sata_fsl_remove(struct of_device *ofdev)
 
 static struct of_device_id fsl_sata_match[] = {
 	{
-		.compatible = "fsl,mpc8315-sata",
-	},
-	{
-		.compatible = "fsl,mpc8379-sata",
+		.compatible = "fsl,pq-sata",
 	},
 	{},
 };

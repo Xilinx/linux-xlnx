@@ -43,7 +43,7 @@
  * fix some real stupidity. It's only by chance we can bump
  * past 0.99 at all due to some boolean logic error. */
 #define AGPGART_VERSION_MAJOR 0
-#define AGPGART_VERSION_MINOR 102
+#define AGPGART_VERSION_MINOR 103
 static const struct agp_version agp_current_version =
 {
 	.major = AGPGART_VERSION_MAJOR,
@@ -147,7 +147,6 @@ static int agp_backend_initialize(struct agp_bridge_data *bridge)
 			printk(KERN_ERR PFX "unable to get memory for scratch page.\n");
 			return -ENOMEM;
 		}
-		flush_agp_mappings();
 
 		bridge->scratch_page_real = virt_to_gart(addr);
 		bridge->scratch_page =
@@ -191,7 +190,6 @@ err_out:
 	if (bridge->driver->needs_scratch_page) {
 		bridge->driver->agp_destroy_page(gart_to_virt(bridge->scratch_page_real),
 						 AGP_PAGE_DESTROY_UNMAP);
-		flush_agp_mappings();
 		bridge->driver->agp_destroy_page(gart_to_virt(bridge->scratch_page_real),
 						 AGP_PAGE_DESTROY_FREE);
 	}
@@ -219,7 +217,6 @@ static void agp_backend_cleanup(struct agp_bridge_data *bridge)
 	    bridge->driver->needs_scratch_page) {
 		bridge->driver->agp_destroy_page(gart_to_virt(bridge->scratch_page_real),
 						 AGP_PAGE_DESTROY_UNMAP);
-		flush_agp_mappings();
 		bridge->driver->agp_destroy_page(gart_to_virt(bridge->scratch_page_real),
 						 AGP_PAGE_DESTROY_FREE);
 	}

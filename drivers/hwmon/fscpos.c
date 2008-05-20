@@ -43,7 +43,7 @@
 /*
  * Addresses to scan
  */
-static unsigned short normal_i2c[] = { 0x73, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { 0x73, I2C_CLIENT_END };
 
 /*
  * Insmod parameters
@@ -105,7 +105,6 @@ static struct i2c_driver fscpos_driver = {
 	.driver = {
 		.name	= "fscpos",
 	},
-	.id		= I2C_DRIVERID_FSCPOS,
 	.attach_adapter	= fscpos_attach_adapter,
 	.detach_client	= fscpos_detach_client,
 };

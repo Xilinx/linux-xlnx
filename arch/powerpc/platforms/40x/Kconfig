@@ -14,27 +14,33 @@
 #	help
 #	  This option enables support for the CPCI405 board.
 
-#config EP405
-#	bool "EP405/EP405PC"
-#	depends on 40x
-#	default n
-#	select 405GP
-#	help
-#	  This option enables support for the EP405/EP405PC boards.
-
-#config EP405PC
-#	bool "EP405PC Support"
-#	depends on EP405
-#	default y
-#	help
-#	  This option enables support for the extra features of the EP405PC board.
+config EP405
+	bool "EP405/EP405PC"
+	depends on 40x
+	default n
+	select 405GP
+	select PCI
+	help
+	  This option enables support for the EP405/EP405PC boards.
 
 config KILAUEA
 	bool "Kilauea"
 	depends on 40x
 	default n
+	select 405EX
+	select PPC4xx_PCI_EXPRESS
 	help
 	  This option enables support for the AMCC PPC405EX evaluation board.
+
+config MAKALU
+	bool "Makalu"
+	depends on 40x
+	default n
+	select 405EX
+	select PCI
+	select PPC4xx_PCI_EXPRESS
+	help
+	  This option enables support for the AMCC PPC405EX board.
 
 #config REDWOOD_5
 #	bool "Redwood-5"
@@ -65,6 +71,8 @@ config WALNUT
 	depends on 40x
 	default y
 	select 405GP
+	select PCI
+	select OF_RTC
 	help
 	  This option enables support for the IBM PPC405GP evaluation board.
 
@@ -74,6 +82,7 @@ config XILINX_VIRTEX_GENERIC_BOARD
 	default n
 	select XILINX_VIRTEX_II_PRO
 	select XILINX_VIRTEX_4_FX
+	select WANT_DEVICE_TREE
 	help
 	  This option enables generic support for Xilinx Virtex based boards.
 
@@ -105,6 +114,11 @@ config 405GP
 config 405EP
 	bool
 
+config 405EX
+	bool
+	select IBM_NEW_EMAC_EMAC4
+	select IBM_NEW_EMAC_RGMII
+
 config 405GPR
 	bool
 
@@ -113,10 +127,12 @@ config XILINX_VIRTEX_II_PRO
 	select XILINX_VIRTEX
 	select IBM405_ERR77
 	select IBM405_ERR51
+	select WANT_DEVICE_TREE
 
 config XILINX_VIRTEX_4_FX
 	bool
 	select XILINX_VIRTEX
+	select WANT_DEVICE_TREE
 
 config STB03xxx
 	bool

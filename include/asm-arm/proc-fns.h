@@ -185,6 +185,14 @@
 #   define CPU_NAME cpu_xsc3
 #  endif
 # endif
+# ifdef CONFIG_CPU_FEROCEON
+#  ifdef CPU_NAME
+#   undef  MULTI_CPU
+#   define MULTI_CPU
+#  else
+#   define CPU_NAME cpu_feroceon
+#  endif
+# endif
 # ifdef CONFIG_CPU_V6
 #  ifdef CPU_NAME
 #   undef  MULTI_CPU
@@ -206,9 +214,9 @@
 #ifndef __ASSEMBLY__
 
 #ifndef MULTI_CPU
-#include "asm/cpu-single.h"
+#include <asm/cpu-single.h>
 #else
-#include "asm/cpu-multi32.h"
+#include <asm/cpu-multi32.h>
 #endif
 
 #include <asm/memory.h>

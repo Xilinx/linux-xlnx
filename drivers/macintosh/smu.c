@@ -12,7 +12,7 @@
  *  - maybe add timeout to commands ?
  *  - blocking version of time functions
  *  - polling version of i2c commands (including timer that works with
- *    interrutps off)
+ *    interrupts off)
  *  - maybe avoid some data copies with i2c by directly using the smu cmd
  *    buffer and a lower level internal interface
  *  - understand SMU -> CPU events and implement reception of them via
@@ -85,6 +85,7 @@ struct smu_device {
 	u32			cmd_buf_abs;	/* command buffer absolute */
 	struct list_head	cmd_list;
 	struct smu_cmd		*cmd_cur;	/* pending command */
+	int			broken_nap;
 	struct list_head	cmd_i2c_list;
 	struct smu_i2c_cmd	*cmd_i2c_cur;	/* pending i2c command */
 	struct timer_list	i2c_timer;
@@ -135,6 +136,19 @@ static void smu_start_cmd(void)
 	fend = faddr + smu->cmd_buf->length + 2;
 	flush_inval_dcache_range(faddr, fend);
 
+
+	/* We also disable NAP mode for the duration of the command
+	 * on U3 based machines.
+	 * This is slightly racy as it can be written back to 1 by a sysctl
+	 * but that never happens in practice. There seem to be an issue with
+	 * U3 based machines such as the iMac G5 where napping for the
+	 * whole duration of the command prevents the SMU from fetching it
+	 * from memory. This might be related to the strange i2c based
+	 * mechanism the SMU uses to access memory.
+	 */
+	if (smu->broken_nap)
+		powersave_nap = 0;
+
 	/* This isn't exactly a DMA mapping here, I suspect
 	 * the SMU is actually communicating with us via i2c to the
 	 * northbridge or the CPU to access RAM.
@@ -179,7 +193,7 @@ static irqreturn_t smu_db_intr(int irq, void *arg)
 		/* CPU might have brought back the cache line, so we need
 		 * to flush again before peeking at the SMU response. We
 		 * flush the entire buffer for now as we haven't read the
-		 * reply lenght (it's only 2 cache lines anyway)
+		 * reply length (it's only 2 cache lines anyway)
 		 */
 		faddr = (unsigned long)smu->cmd_buf;
 		flush_inval_dcache_range(faddr, faddr + 256);
@@ -211,6 +225,10 @@ static irqreturn_t smu_db_intr(int irq, void *arg)
 	misc = cmd->misc;
 	mb();
 	cmd->status = rc;
+
+	/* Re-enable NAP mode */
+	if (smu->broken_nap)
+		powersave_nap = 1;
  bail:
 	/* Start next command if any */
 	smu_start_cmd();
@@ -461,7 +479,7 @@ int __init smu_init (void)
         if (np == NULL)
 		return -ENODEV;
 
-	printk(KERN_INFO "SMU driver %s %s\n", VERSION, AUTHOR);
+	printk(KERN_INFO "SMU: Driver %s %s\n", VERSION, AUTHOR);
 
 	if (smu_cmdbuf_abs == 0) {
 		printk(KERN_ERR "SMU: Command buffer not allocated !\n");
@@ -532,6 +550,11 @@ int __init smu_init (void)
 		printk(KERN_ERR "SMU: Can't map doorbell buffer pointer !\n");
 		goto fail;
 	}
+
+	/* U3 has an issue with NAP mode when issuing SMU commands */
+	smu->broken_nap = pmac_get_uninorth_variant() < 4;
+	if (smu->broken_nap)
+		printk(KERN_INFO "SMU: using NAP mode workaround\n");
 
 	sys_ctrler = SYS_CTRLER_SMU;
 	return 0;

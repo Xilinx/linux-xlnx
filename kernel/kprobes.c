@@ -498,27 +498,36 @@ static int __kprobes in_kprobes_functions(unsigned long addr)
 	return 0;
 }
 
+/*
+ * If we have a symbol_name argument, look it up and add the offset field
+ * to it. This way, we can specify a relative address to a symbol.
+ */
+static kprobe_opcode_t __kprobes *kprobe_addr(struct kprobe *p)
+{
+	kprobe_opcode_t *addr = p->addr;
+	if (p->symbol_name) {
+		if (addr)
+			return NULL;
+		kprobe_lookup_name(p->symbol_name, addr);
+	}
+
+	if (!addr)
+		return NULL;
+	return (kprobe_opcode_t *)(((char *)addr) + p->offset);
+}
+
 static int __kprobes __register_kprobe(struct kprobe *p,
 	unsigned long called_from)
 {
 	int ret = 0;
 	struct kprobe *old_p;
 	struct module *probed_mod;
+	kprobe_opcode_t *addr;
 
-	/*
-	 * If we have a symbol_name argument look it up,
-	 * and add it to the address.  That way the addr
-	 * field can either be global or relative to a symbol.
-	 */
-	if (p->symbol_name) {
-		if (p->addr)
-			return -EINVAL;
-		kprobe_lookup_name(p->symbol_name, p->addr);
-	}
-
-	if (!p->addr)
+	addr = kprobe_addr(p);
+	if (!addr)
 		return -EINVAL;
-	p->addr = (kprobe_opcode_t *)(((char *)p->addr)+ p->offset);
+	p->addr = addr;
 
 	if (!kernel_text_address((unsigned long) p->addr) ||
 	    in_kprobes_functions((unsigned long) p->addr))
@@ -678,8 +687,7 @@ void __kprobes unregister_jprobe(struct jprobe *jp)
 	unregister_kprobe(&jp->kp);
 }
 
-#ifdef ARCH_SUPPORTS_KRETPROBES
-
+#ifdef CONFIG_KRETPROBES
 /*
  * This kprobe pre_handler is registered with every kretprobe. When probe
  * hits it will set up the return probe.
@@ -699,6 +707,12 @@ static int __kprobes pre_handler_kretprobe(struct kprobe *p,
 				 struct kretprobe_instance, uflist);
 		ri->rp = rp;
 		ri->task = current;
+
+		if (rp->entry_handler && rp->entry_handler(ri, regs)) {
+			spin_unlock_irqrestore(&kretprobe_lock, flags);
+			return 0;
+		}
+
 		arch_prepare_kretprobe(ri, regs);
 
 		/* XXX(hch): why is there no hlist_move_head? */
@@ -716,12 +730,12 @@ int __kprobes register_kretprobe(struct kretprobe *rp)
 	int ret = 0;
 	struct kretprobe_instance *inst;
 	int i;
-	void *addr = rp->kp.addr;
+	void *addr;
 
 	if (kretprobe_blacklist_size) {
-		if (addr == NULL)
-			kprobe_lookup_name(rp->kp.symbol_name, addr);
-		addr += rp->kp.offset;
+		addr = kprobe_addr(&rp->kp);
+		if (!addr)
+			return -EINVAL;
 
 		for (i = 0; kretprobe_blacklist[i].name != NULL; i++) {
 			if (kretprobe_blacklist[i].addr == addr)
@@ -745,7 +759,8 @@ int __kprobes register_kretprobe(struct kretprobe *rp)
 	INIT_HLIST_HEAD(&rp->used_instances);
 	INIT_HLIST_HEAD(&rp->free_instances);
 	for (i = 0; i < rp->maxactive; i++) {
-		inst = kmalloc(sizeof(struct kretprobe_instance), GFP_KERNEL);
+		inst = kmalloc(sizeof(struct kretprobe_instance) +
+			       rp->data_size, GFP_KERNEL);
 		if (inst == NULL) {
 			free_rp_inst(rp);
 			return -ENOMEM;
@@ -762,8 +777,7 @@ int __kprobes register_kretprobe(struct kretprobe *rp)
 	return ret;
 }
 
-#else /* ARCH_SUPPORTS_KRETPROBES */
-
+#else /* CONFIG_KRETPROBES */
 int __kprobes register_kretprobe(struct kretprobe *rp)
 {
 	return -ENOSYS;
@@ -774,8 +788,7 @@ static int __kprobes pre_handler_kretprobe(struct kprobe *p,
 {
 	return 0;
 }
-
-#endif /* ARCH_SUPPORTS_KRETPROBES */
+#endif /* CONFIG_KRETPROBES */
 
 void __kprobes unregister_kretprobe(struct kretprobe *rp)
 {
@@ -824,6 +837,8 @@ static int __init init_kprobes(void)
 	if (!err)
 		err = register_die_notifier(&kprobe_exceptions_nb);
 
+	if (!err)
+		init_test_probes();
 	return err;
 }
 

@@ -5,6 +5,7 @@
 config M68K
 	bool
 	default y
+	select HAVE_IDE
 
 config MMU
 	bool
@@ -51,6 +52,13 @@ config NO_IOPORT
 
 config NO_DMA
 	def_bool SUN3
+
+config ARCH_SUPPORTS_AOUT
+	def_bool y
+
+config HZ
+	int
+	default 100
 
 mainmenu "Linux/68k Kernel Configuration"
 
@@ -144,11 +152,6 @@ config PCI
 	  bus system, i.e. the way the CPU talks to the other stuff inside
 	  your box. Other bus systems are ISA, EISA, MicroChannel (MCA) or
 	  VESA. If you have PCI, say Y, otherwise N.
-
-	  The PCI-HOWTO, available from
-	  <http://www.tldp.org/docs.html#howto>, contains valuable
-	  information about which PCI hardware does work under Linux and which
-	  doesn't.
 
 config MAC
 	bool "Macintosh support"
@@ -582,20 +585,6 @@ config MAC_HID
 	depends on INPUT_ADBHID
 	default y
 
-config MAC_ADBKEYCODES
-	bool "Support for ADB raw keycodes"
-	depends on INPUT_ADBHID
-	help
-	  This provides support for sending raw ADB keycodes to console
-	  devices.  This is the default up to 2.4.0, but in future this may be
-	  phased out in favor of generic Linux keycodes.  If you say Y here,
-	  you can dynamically switch via the
-	  /proc/sys/dev/mac_hid/keyboard_sends_linux_keycodes
-	  sysctl and with the "keyboard_sends_linux_keycodes=" kernel
-	  argument.
-
-	  If unsure, say Y here.
-
 config ADB_KEYBOARD
 	bool "Support for ADB keyboard (old driver)"
 	depends on MAC && !INPUT_ADBHID
@@ -682,8 +671,6 @@ config SERIAL_CONSOLE
 endmenu
 
 source "fs/Kconfig"
-
-source "kernel/Kconfig.instrumentation"
 
 source "arch/m68k/Kconfig.debug"
 

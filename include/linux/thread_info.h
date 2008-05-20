@@ -23,6 +23,7 @@ struct restart_block {
 			u32 *uaddr;
 			u32 val;
 			u32 flags;
+			u32 bitset;
 			u64 time;
 		} futex;
 	};
@@ -42,27 +43,27 @@ extern long do_no_restart_syscall(struct restart_block *parm);
 
 static inline void set_ti_thread_flag(struct thread_info *ti, int flag)
 {
-	set_bit(flag,&ti->flags);
+	set_bit(flag, (unsigned long *)&ti->flags);
 }
 
 static inline void clear_ti_thread_flag(struct thread_info *ti, int flag)
 {
-	clear_bit(flag,&ti->flags);
+	clear_bit(flag, (unsigned long *)&ti->flags);
 }
 
 static inline int test_and_set_ti_thread_flag(struct thread_info *ti, int flag)
 {
-	return test_and_set_bit(flag,&ti->flags);
+	return test_and_set_bit(flag, (unsigned long *)&ti->flags);
 }
 
 static inline int test_and_clear_ti_thread_flag(struct thread_info *ti, int flag)
 {
-	return test_and_clear_bit(flag,&ti->flags);
+	return test_and_clear_bit(flag, (unsigned long *)&ti->flags);
 }
 
 static inline int test_ti_thread_flag(struct thread_info *ti, int flag)
 {
-	return test_bit(flag,&ti->flags);
+	return test_bit(flag, (unsigned long *)&ti->flags);
 }
 
 #define set_thread_flag(flag) \

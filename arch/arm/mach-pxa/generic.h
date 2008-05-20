@@ -16,6 +16,7 @@ extern void __init pxa_init_irq_low(void);
 extern void __init pxa_init_irq_high(void);
 extern void __init pxa_init_irq_gpio(int gpio_nr);
 extern void __init pxa_init_irq_set_wake(int (*set_wake)(unsigned int, unsigned int));
+extern void __init pxa_init_gpio(int gpio_nr);
 extern void __init pxa25x_init_irq(void);
 extern void __init pxa27x_init_irq(void);
 extern void __init pxa3xx_init_irq(void);
@@ -52,3 +53,6 @@ extern unsigned pxa3xx_get_memclk_frequency_10khz(void);
 #define pxa3xx_get_clk_frequency_khz(x)		(0)
 #define pxa3xx_get_memclk_frequency_10khz()	(0)
 #endif
+
+extern struct sysdev_class pxa_irq_sysclass;
+extern struct sysdev_class pxa_gpio_sysclass;

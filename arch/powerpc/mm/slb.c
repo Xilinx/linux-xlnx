@@ -124,6 +124,12 @@ void slb_flush_and_rebolt(void)
 		ksp_vsid_data = get_slb_shadow()->save_area[2].vsid;
 	}
 
+	/*
+	 * We can't take a PMU exception in the following code, so hard
+	 * disable interrupts.
+	 */
+	hard_irq_disable();
+
 	/* We need to do this all in asm, so we're sure we don't touch
 	 * the stack between the slbia and rebolting it. */
 	asm volatile("isync\n"
@@ -256,6 +262,7 @@ void slb_initialize(void)
 	static int slb_encoding_inited;
 	extern unsigned int *slb_miss_kernel_load_linear;
 	extern unsigned int *slb_miss_kernel_load_io;
+	extern unsigned int *slb_compare_rr_to_size;
 
 	/* Prepare our SLB miss handler based on our page size */
 	linear_llp = mmu_psize_defs[mmu_linear_psize].sllp;
@@ -269,6 +276,8 @@ void slb_initialize(void)
 				   SLB_VSID_KERNEL | linear_llp);
 		patch_slb_encoding(slb_miss_kernel_load_io,
 				   SLB_VSID_KERNEL | io_llp);
+		patch_slb_encoding(slb_compare_rr_to_size,
+				   mmu_slb_size);
 
 		DBG("SLB: linear  LLP = %04x\n", linear_llp);
 		DBG("SLB: io      LLP = %04x\n", io_llp);

@@ -425,12 +425,13 @@ enum {
 
 /*	B2_CHIP_ID		 8 bit 	Chip Identification Number */
 enum {
-	CHIP_ID_YUKON_XL   = 0xb3, /* Chip ID for YUKON-2 XL */
-	CHIP_ID_YUKON_EC_U = 0xb4, /* Chip ID for YUKON-2 EC Ultra */
-	CHIP_ID_YUKON_EX   = 0xb5, /* Chip ID for YUKON-2 Extreme */
-	CHIP_ID_YUKON_EC   = 0xb6, /* Chip ID for YUKON-2 EC */
- 	CHIP_ID_YUKON_FE   = 0xb7, /* Chip ID for YUKON-2 FE */
- 	CHIP_ID_YUKON_FE_P = 0xb8, /* Chip ID for YUKON-2 FE+ */
+	CHIP_ID_YUKON_XL   = 0xb3, /* YUKON-2 XL */
+	CHIP_ID_YUKON_EC_U = 0xb4, /* YUKON-2 EC Ultra */
+	CHIP_ID_YUKON_EX   = 0xb5, /* YUKON-2 Extreme */
+	CHIP_ID_YUKON_EC   = 0xb6, /* YUKON-2 EC */
+ 	CHIP_ID_YUKON_FE   = 0xb7, /* YUKON-2 FE */
+ 	CHIP_ID_YUKON_FE_P = 0xb8, /* YUKON-2 FE+ */
+	CHIP_ID_YUKON_SUPR = 0xb9, /* YUKON-2 Supreme */
 };
 enum yukon_ec_rev {
 	CHIP_REV_YU_EC_A1    = 0,  /* Chip Rev. for Yukon-EC A1/A0 */
@@ -1317,18 +1318,21 @@ enum {
 	BLINK_670MS	= 4,/* 670 ms */
 };
 
-/**** PHY_MARV_LED_OVER    16 bit r/w LED control */
-enum {
-	PHY_M_LED_MO_DUP  = 3<<10,/* Bit 11..10:  Duplex */
-	PHY_M_LED_MO_10	  = 3<<8, /* Bit  9.. 8:  Link 10 */
-	PHY_M_LED_MO_100  = 3<<6, /* Bit  7.. 6:  Link 100 */
-	PHY_M_LED_MO_1000 = 3<<4, /* Bit  5.. 4:  Link 1000 */
-	PHY_M_LED_MO_RX	  = 3<<2, /* Bit  3.. 2:  Rx */
-	PHY_M_LED_MO_TX	  = 3<<0, /* Bit  1.. 0:  Tx */
+/*****  PHY_MARV_LED_OVER	16 bit r/w	Manual LED Override Reg *****/
+#define PHY_M_LED_MO_SGMII(x)	((x)<<14)	/* Bit 15..14:  SGMII AN Timer */
 
-	PHY_M_LED_ALL	  = PHY_M_LED_MO_DUP | PHY_M_LED_MO_10 
-			    | PHY_M_LED_MO_100 | PHY_M_LED_MO_1000
-			    | PHY_M_LED_MO_RX,
+#define PHY_M_LED_MO_DUP(x)	((x)<<10)	/* Bit 11..10:  Duplex */
+#define PHY_M_LED_MO_10(x)	((x)<<8)	/* Bit  9.. 8:  Link 10 */
+#define PHY_M_LED_MO_100(x)	((x)<<6)	/* Bit  7.. 6:  Link 100 */
+#define PHY_M_LED_MO_1000(x)	((x)<<4)	/* Bit  5.. 4:  Link 1000 */
+#define PHY_M_LED_MO_RX(x)	((x)<<2)	/* Bit  3.. 2:  Rx */
+#define PHY_M_LED_MO_TX(x)	((x)<<0)	/* Bit  1.. 0:  Tx */
+
+enum led_mode {
+	MO_LED_NORM  = 0,
+	MO_LED_BLINK = 1,
+	MO_LED_OFF   = 2,
+	MO_LED_ON    = 3,
 };
 
 /*****  PHY_MARV_EXT_CTRL_2	16 bit r/w	Ext. PHY Specific Ctrl 2 *****/
@@ -2044,7 +2048,7 @@ struct sky2_hw {
 #define SKY2_HW_FIBRE_PHY	0x00000002
 #define SKY2_HW_GIGABIT		0x00000004
 #define SKY2_HW_NEWER_PHY	0x00000008
-#define SKY2_HW_FIFO_HANG_CHECK	0x00000010
+#define SKY2_HW_RAM_BUFFER	0x00000010
 #define SKY2_HW_NEW_LE		0x00000020	/* new LSOv2 format */
 #define SKY2_HW_AUTO_TX_SUM	0x00000040	/* new IP decode for Tx */
 #define SKY2_HW_ADV_POWER_CTL	0x00000080	/* additional PHY power regs */

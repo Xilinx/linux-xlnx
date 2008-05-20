@@ -674,12 +674,13 @@ static struct orc_scb *__orc_alloc_scb(struct orc_host * host)
 		for (index = 0; index < 32; index++) {
 			if ((host->allocation_map[channel][i] >> index) & 0x01) {
 				host->allocation_map[channel][i] &= ~(1 << index);
-				break;
+				idx = index + 32 * i;
+				/*
+				 * Translate the index to a structure instance
+				 */
+				return host->scb_virt + idx;
 			}
 		}
-		idx = index + 32 * i;
-		/* Translate the index to a structure instance */
-		return (struct orc_scb *) ((unsigned long) host->scb_virt + (idx * sizeof(struct orc_scb)));
 	}
 	return NULL;
 }
@@ -1071,7 +1072,6 @@ static struct scsi_host_template inia100_template = {
 	.sg_tablesize		= SG_ALL,
 	.cmd_per_lun 		= 1,
 	.use_clustering		= ENABLE_CLUSTERING,
-	.use_sg_chaining	= ENABLE_SG_CHAINING,
 };
 
 static int __devinit inia100_probe_one(struct pci_dev *pdev,

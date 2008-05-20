@@ -88,13 +88,17 @@ static noinline __init void create_kernel_nss(void)
 
 	__cpcmd(defsys_cmd, NULL, 0, &response);
 
-	if (response != 0)
+	if (response != 0) {
+		kernel_nss_name[0] = '\0';
 		return;
+	}
 
 	__cpcmd(savesys_cmd, NULL, 0, &response);
 
-	if (response != strlen(savesys_cmd))
+	if (response != strlen(savesys_cmd)) {
+		kernel_nss_name[0] = '\0';
 		return;
+	}
 
 	ipl_flags = IPL_NSS_VALID;
 }
@@ -276,7 +280,7 @@ void __init startup_init(void)
 	create_kernel_nss();
 	sort_main_extable();
 	setup_lowcore_early();
-	sclp_readinfo_early();
+	sclp_read_info_early();
 	sclp_facilities_detect();
 	memsize = sclp_memory_detect();
 #ifndef CONFIG_64BIT

@@ -1,18 +1,18 @@
-/* SCTP kernel reference Implementation
+/* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2002, 2004
  * Copyright (c) 2002 Intel Corp.
  *
- * This file is part of the SCTP kernel reference Implementation
+ * This file is part of the SCTP kernel implementation
  *
  * Sysctl related interfaces for SCTP.
  *
- * The SCTP reference implementation is free software;
+ * This SCTP implementation is free software;
  * you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
- * The SCTP reference implementation is distributed in the hope that it
+ * This SCTP implementation is distributed in the hope that it
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  *                 ************************
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -275,24 +275,10 @@ static ctl_table sctp_table[] = {
 	{ .ctl_name = 0 }
 };
 
-static ctl_table sctp_net_table[] = {
-	{
-		.ctl_name	= NET_SCTP,
-		.procname	= "sctp",
-		.mode		= 0555,
-		.child		= sctp_table
-	},
-	{ .ctl_name = 0 }
-};
-
-static ctl_table sctp_root_table[] = {
-	{
-		.ctl_name	= CTL_NET,
-		.procname	= "net",
-		.mode		= 0555,
-		.child		= sctp_net_table
-	},
-	{ .ctl_name = 0 }
+static struct ctl_path sctp_path[] = {
+	{ .procname = "net", .ctl_name = CTL_NET, },
+	{ .procname = "sctp", .ctl_name = NET_SCTP, },
+	{ }
 };
 
 static struct ctl_table_header * sctp_sysctl_header;
@@ -300,7 +286,7 @@ static struct ctl_table_header * sctp_sysctl_header;
 /* Sysctl registration.  */
 void sctp_sysctl_register(void)
 {
-	sctp_sysctl_header = register_sysctl_table(sctp_root_table);
+	sctp_sysctl_header = register_sysctl_paths(sctp_path, sctp_table);
 }
 
 /* Sysctl deregistration.  */

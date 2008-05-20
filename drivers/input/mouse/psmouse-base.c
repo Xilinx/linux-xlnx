@@ -13,7 +13,6 @@
 
 #include <linux/delay.h>
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
@@ -1247,6 +1246,8 @@ static int psmouse_connect(struct serio *serio, struct serio_driver *drv)
  err_pt_deactivate:
 	if (parent && parent->pt_deactivate)
 		parent->pt_deactivate(parent);
+	input_unregister_device(psmouse->dev);
+	input_dev = NULL; /* so we don't try to free it below */
  err_protocol_disconnect:
 	if (psmouse->disconnect)
 		psmouse->disconnect(psmouse);

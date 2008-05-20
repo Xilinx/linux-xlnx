@@ -38,7 +38,6 @@
  */
 
 
-#include <sound/driver.h>
 #include <linux/bitops.h>
 #include <linux/init.h>
 #include <linux/list.h>
@@ -470,6 +469,33 @@ static int retire_playback_sync_urb_hs(struct snd_usb_substream *subs,
 	if (urb->iso_frame_desc[0].status == 0 &&
 	    urb->iso_frame_desc[0].actual_length == 4) {
 		f = combine_quad((u8*)urb->transfer_buffer) & 0x0fffffff;
+		if (f >= subs->freqn - subs->freqn / 8 && f <= subs->freqmax) {
+			spin_lock_irqsave(&subs->lock, flags);
+			subs->freqm = f;
+			spin_unlock_irqrestore(&subs->lock, flags);
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * process after E-Mu 0202/0404 high speed playback sync complete
+ *
+ * These devices return the number of samples per packet instead of the number
+ * of samples per microframe.
+ */
+static int retire_playback_sync_urb_hs_emu(struct snd_usb_substream *subs,
+					   struct snd_pcm_runtime *runtime,
+					   struct urb *urb)
+{
+	unsigned int f;
+	unsigned long flags;
+
+	if (urb->iso_frame_desc[0].status == 0 &&
+	    urb->iso_frame_desc[0].actual_length == 4) {
+		f = combine_quad((u8*)urb->transfer_buffer) & 0x0fffffff;
+		f >>= subs->datainterval;
 		if (f >= subs->freqn - subs->freqn / 8 && f <= subs->freqmax) {
 			spin_lock_irqsave(&subs->lock, flags);
 			subs->freqm = f;
@@ -1736,6 +1762,8 @@ static int check_hw_params_convention(struct snd_usb_substream *subs)
 
 	channels = kcalloc(MAX_MASK, sizeof(u32), GFP_KERNEL);
 	rates = kcalloc(MAX_MASK, sizeof(u32), GFP_KERNEL);
+	if (!channels || !rates)
+		goto __out;
 
 	list_for_each(p, &subs->fmt_list) {
 		struct audioformat *f;
@@ -2078,6 +2106,14 @@ static int usb_audio_probe(struct usb_interface *intf,
 			   const struct usb_device_id *id);
 static void usb_audio_disconnect(struct usb_interface *intf);
 
+#ifdef CONFIG_PM
+static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message);
+static int usb_audio_resume(struct usb_interface *intf);
+#else
+#define usb_audio_suspend NULL
+#define usb_audio_resume NULL
+#endif
+
 static struct usb_device_id usb_audio_ids [] = {
 #include "usbquirks.h"
     { .match_flags = (USB_DEVICE_ID_MATCH_INT_CLASS | USB_DEVICE_ID_MATCH_INT_SUBCLASS),
@@ -2092,6 +2128,8 @@ static struct usb_driver usb_audio_driver = {
 	.name =		"snd-usb-audio",
 	.probe =	usb_audio_probe,
 	.disconnect =	usb_audio_disconnect,
+	.suspend =	usb_audio_suspend,
+	.resume =	usb_audio_resume,
 	.id_table =	usb_audio_ids,
 };
 
@@ -2210,10 +2248,17 @@ static void init_substream(struct snd_usb_stream *as, int stream, struct audiofo
 	subs->stream = as;
 	subs->direction = stream;
 	subs->dev = as->chip->dev;
-	if (snd_usb_get_speed(subs->dev) == USB_SPEED_FULL)
+	if (snd_usb_get_speed(subs->dev) == USB_SPEED_FULL) {
 		subs->ops = audio_urb_ops[stream];
-	else
+	} else {
 		subs->ops = audio_urb_ops_high_speed[stream];
+		switch (as->chip->usb_id) {
+		case USB_ID(0x041e, 0x3f02): /* E-Mu 0202 USB */
+		case USB_ID(0x041e, 0x3f04): /* E-Mu 0404 USB */
+			subs->ops.retire_sync = retire_playback_sync_urb_hs_emu;
+			break;
+		}
+	}
 	snd_pcm_set_ops(as->pcm, stream,
 			stream == SNDRV_PCM_STREAM_PLAYBACK ?
 			&snd_usb_playback_ops : &snd_usb_capture_ops);
@@ -3654,6 +3699,45 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 				 dev_get_drvdata(&intf->dev));
 }
 
+#ifdef CONFIG_PM
+static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
+{
+	struct snd_usb_audio *chip = dev_get_drvdata(&intf->dev);
+	struct list_head *p;
+	struct snd_usb_stream *as;
+
+	if (chip == (void *)-1L)
+		return 0;
+
+	snd_power_change_state(chip->card, SNDRV_CTL_POWER_D3hot);
+	if (!chip->num_suspended_intf++) {
+		list_for_each(p, &chip->pcm_list) {
+			as = list_entry(p, struct snd_usb_stream, list);
+			snd_pcm_suspend_all(as->pcm);
+		}
+	}
+
+	return 0;
+}
+
+static int usb_audio_resume(struct usb_interface *intf)
+{
+	struct snd_usb_audio *chip = dev_get_drvdata(&intf->dev);
+
+	if (chip == (void *)-1L)
+		return 0;
+	if (--chip->num_suspended_intf)
+		return 0;
+	/*
+	 * ALSA leaves material resumption to user space
+	 * we just notify
+	 */
+
+	snd_power_change_state(chip->card, SNDRV_CTL_POWER_D0);
+
+	return 0;
+}
+#endif		/* CONFIG_PM */
 
 static int __init snd_usb_audio_init(void)
 {

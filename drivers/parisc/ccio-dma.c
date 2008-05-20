@@ -43,6 +43,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/scatterlist.h>
+#include <linux/iommu-helper.h>
 
 #include <asm/byteorder.h>
 #include <asm/cache.h>		/* for L1_CACHE_BYTES */
@@ -302,13 +303,17 @@ static int ioc_count;
 */
 #define CCIO_SEARCH_LOOP(ioc, res_idx, mask, size)  \
        for(; res_ptr < res_end; ++res_ptr) { \
-               if(0 == (*res_ptr & mask)) { \
-                       *res_ptr |= mask; \
-                       res_idx = (unsigned int)((unsigned long)res_ptr - (unsigned long)ioc->res_map); \
-                       ioc->res_hint = res_idx + (size >> 3); \
-                       goto resource_found; \
-               } \
-       }
+		int ret;\
+		unsigned int idx;\
+		idx = (unsigned int)((unsigned long)res_ptr - (unsigned long)ioc->res_map); \
+		ret = iommu_is_span_boundary(idx << 3, pages_needed, 0, boundary_size);\
+		if ((0 == (*res_ptr & mask)) && !ret) { \
+			*res_ptr |= mask; \
+			res_idx = idx;\
+			ioc->res_hint = res_idx + (size >> 3); \
+			goto resource_found; \
+		} \
+	}
 
 #define CCIO_FIND_FREE_MAPPING(ioa, res_idx, mask, size) \
        u##size *res_ptr = (u##size *)&((ioc)->res_map[ioa->res_hint & ~((size >> 3) - 1)]); \
@@ -341,10 +346,11 @@ static int ioc_count;
  * of available pages for the requested size.
  */
 static int
-ccio_alloc_range(struct ioc *ioc, size_t size)
+ccio_alloc_range(struct ioc *ioc, struct device *dev, size_t size)
 {
 	unsigned int pages_needed = size >> IOVP_SHIFT;
 	unsigned int res_idx;
+	unsigned long boundary_size;
 #ifdef CCIO_SEARCH_TIME
 	unsigned long cr_start = mfctl(16);
 #endif
@@ -360,10 +366,13 @@ ccio_alloc_range(struct ioc *ioc, size_t size)
 	** ggg sacrifices another 710 to the computer gods.
 	*/
 
+	boundary_size = ALIGN((unsigned long long)dma_get_seg_boundary(dev) + 1,
+			      1ULL << IOVP_SHIFT) >> IOVP_SHIFT;
+
 	if (pages_needed <= 8) {
 		/*
 		 * LAN traffic will not thrash the TLB IFF the same NIC
-		 * uses 8 adjacent pages to map seperate payload data.
+		 * uses 8 adjacent pages to map separate payload data.
 		 * ie the same byte in the resource bit map.
 		 */
 #if 0
@@ -760,7 +769,7 @@ ccio_map_single(struct device *dev, void *addr, size_t size,
 	ioc->msingle_pages += size >> IOVP_SHIFT;
 #endif
 
-	idx = ccio_alloc_range(ioc, size);
+	idx = ccio_alloc_range(ioc, dev, size);
 	iovp = (dma_addr_t)MKIOVP(idx);
 
 	pdir_start = &(ioc->pdir_base[idx]);
@@ -941,7 +950,7 @@ ccio_map_sg(struct device *dev, struct scatterlist *sglist, int nents,
 	** w/o this association, we wouldn't have coherent DMA!
 	** Access to the virtual address is what forces a two pass algorithm.
 	*/
-	coalesced = iommu_coalesce_chunks(ioc, sglist, nents, ccio_alloc_range);
+	coalesced = iommu_coalesce_chunks(ioc, dev, sglist, nents, ccio_alloc_range);
 
 	/*
 	** Program the I/O Pdir
@@ -1589,7 +1598,7 @@ static int __init ccio_probe(struct parisc_device *dev)
 }
 
 /**
- * ccio_init - ccio initalization procedure.
+ * ccio_init - ccio initialization procedure.
  *
  * Register this driver.
  */

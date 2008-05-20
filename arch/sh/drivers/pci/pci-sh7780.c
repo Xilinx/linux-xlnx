@@ -52,12 +52,13 @@ static int __init sh7780_pci_init(void)
 
 	pr_debug("PCI: Starting intialization.\n");
 
-	outl(0x00000001, SH7780_PCI_VCR2); /* Enable PCIC */
+	ctrl_outl(0x00000001, SH7780_PCI_VCR2); /* Enable PCIC */
 
 	/* check for SH7780/SH7780R hardware */
 	id = pci_read_reg(SH7780_PCIVID);
 	if ((id & 0xffff) == SH7780_VENDOR_ID) {
 		switch ((id >> 16) & 0xffff) {
+		case SH7763_DEVICE_ID:
 		case SH7780_DEVICE_ID:
 		case SH7781_DEVICE_ID:
 		case SH7785_DEVICE_ID:

@@ -122,6 +122,13 @@ int build_phys_page_list(struct ib_phys_buf *buffer_list,
 		*total_size += buffer_list[i].size;
 		if (i > 0)
 			mask |= buffer_list[i].addr;
+		else
+			mask |= buffer_list[i].addr & PAGE_MASK;
+		if (i != num_phys_buf - 1)
+			mask |= buffer_list[i].addr + buffer_list[i].size;
+		else
+			mask |= (buffer_list[i].addr + buffer_list[i].size +
+				PAGE_SIZE - 1) & PAGE_MASK;
 	}
 
 	if (*total_size > 0xFFFFFFFFULL)
@@ -129,14 +136,8 @@ int build_phys_page_list(struct ib_phys_buf *buffer_list,
 
 	/* Find largest page shift we can use to cover buffers */
 	for (*shift = PAGE_SHIFT; *shift < 27; ++(*shift))
-		if (num_phys_buf > 1) {
-			if ((1ULL << *shift) & mask)
-				break;
-		} else
-			if (1ULL << *shift >=
-			    buffer_list[0].size +
-			    (buffer_list[0].addr & ((1ULL << *shift) - 1)))
-				break;
+		if ((1ULL << *shift) & mask)
+			break;
 
 	buffer_list[0].size += buffer_list[0].addr & ((1ULL << *shift) - 1);
 	buffer_list[0].addr &= ~0ull << *shift;

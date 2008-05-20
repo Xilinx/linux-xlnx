@@ -1343,6 +1343,8 @@ static int mptsas_smp_handler(struct Scsi_Host *shost, struct sas_rphy *rphy,
 		smprep = (SmpPassthroughReply_t *)ioc->sas_mgmt.reply;
 		memcpy(req->sense, smprep, sizeof(*smprep));
 		req->sense_len = sizeof(*smprep);
+		req->data_len = 0;
+		rsp->data_len -= smprep->ResponseDataLength;
 	} else {
 		printk(MYIOC_s_ERR_FMT "%s: smp passthru reply failed to be returned\n",
 		    ioc->name, __FUNCTION__);
@@ -1698,6 +1700,11 @@ mptsas_sas_expander_pg0(MPT_ADAPTER *ioc, struct mptsas_portinfo *port_info,
 	error = mpt_config(ioc, &cfg);
 	if (error)
 		goto out_free_consistent;
+
+	if (!buffer->NumPhys) {
+		error = -ENODEV;
+		goto out_free_consistent;
+	}
 
 	/* save config data */
 	port_info->num_phys = buffer->NumPhys;

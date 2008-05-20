@@ -48,12 +48,12 @@ SECTIONS
 	__init_begin = .;
 	.init.text : {
 		_sinittext = .;
-		*(.init.text)
+		INIT_TEXT
 		_einittext = .;
 	}
 	__init_text_end = .;
 	.init.data : {
-		*(.init.data)
+		INIT_DATA
 	}
 	. = ALIGN(16);
 	.init.setup : {
@@ -89,6 +89,10 @@ SECTIONS
 	.data.cacheline_aligned : {
 		*(.data.cacheline_aligned)
 	}
+	. = ALIGN(32);
+	.data.read_mostly : {
+		*(.data.read_mostly)
+	}
 
 	__bss_start = .;
 	.sbss : {
@@ -102,8 +106,8 @@ SECTIONS
 	_end = . ;
 	PROVIDE (end = .);
 	/DISCARD/ : {
-		*(.exit.text)
-		*(.exit.data)
+		EXIT_TEXT
+		EXIT_DATA
 		*(.exitcall.exit)
 	}
 

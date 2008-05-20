@@ -27,10 +27,10 @@
 #include <linux/of_platform.h>
 
 /* Match table for of_platform binding */
-static struct of_device_id __devinitdata ulite_of_match[] = {
-	{ .type = "serial", .compatible = "xlnx,opb-uartlite-1.00.b", },
-	{ .type = "serial", .compatible = "xlnx,xps-uartlite-1.00.a", },
-	{},
+static struct of_device_id ulite_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,opb-uartlite-1.00.b", },
+	{ .compatible = "xlnx,xps-uartlite-1.00.a", },
+	{}
 };
 MODULE_DEVICE_TABLE(of, ulite_of_match);
 
@@ -155,7 +155,7 @@ static int ulite_transmit(struct uart_port *port, int stat)
 
 static irqreturn_t ulite_isr(int irq, void *dev_id)
 {
-	struct uart_port *port = (struct uart_port *)dev_id;
+	struct uart_port *port = dev_id;
 	int busy;
 
 	do {
@@ -288,6 +288,9 @@ static void ulite_release_port(struct uart_port *port)
 
 static int ulite_request_port(struct uart_port *port)
 {
+	pr_debug("ulite console: port=%p; port->mapbase=%x\n",
+		 port, port->mapbase);
+
 	if (!request_mem_region(port->mapbase, ULITE_REGION, "uartlite")) {
 		dev_err(port->dev, "Memory region busy\n");
 		return -EBUSY;
@@ -632,9 +635,12 @@ static int __devexit ulite_remove(struct platform_device *pdev)
 	return ulite_release(&pdev->dev);
 }
 
+/* work with hotplug and coldplug */
+MODULE_ALIAS("platform:uartlite");
+
 static struct platform_driver ulite_platform_driver = {
 	.probe	= ulite_probe,
-	.remove	= ulite_remove,
+	.remove	= __devexit_p(ulite_remove),
 	.driver	= {
 		   .owner = THIS_MODULE,
 		   .name  = "uartlite",

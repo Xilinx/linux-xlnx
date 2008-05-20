@@ -695,15 +695,16 @@ ahc_handle_seqint(struct ahc_softc *ahc, u_int intstat)
 			scb_index = ahc_inb(ahc, SCB_TAG);
 			scb = ahc_lookup_scb(ahc, scb_index);
 			if (devinfo.role == ROLE_INITIATOR) {
-				if (scb == NULL)
-					panic("HOST_MSG_LOOP with "
-					      "invalid SCB %x\n", scb_index);
+				if (bus_phase == P_MESGOUT) {
+					if (scb == NULL)
+						panic("HOST_MSG_LOOP with "
+						      "invalid SCB %x\n",
+						      scb_index);
 
-				if (bus_phase == P_MESGOUT)
 					ahc_setup_initiator_msgout(ahc,
 								   &devinfo,
 								   scb);
-				else {
+				} else {
 					ahc->msg_type =
 					    MSG_TYPE_INITIATOR_MSGIN;
 					ahc->msgin_index = 0;
@@ -5078,6 +5079,7 @@ ahc_pause_and_flushwork(struct ahc_softc *ahc)
 	ahc->flags &= ~AHC_ALL_INTERRUPTS;
 }
 
+#ifdef CONFIG_PM
 int
 ahc_suspend(struct ahc_softc *ahc)
 {
@@ -5113,7 +5115,7 @@ ahc_resume(struct ahc_softc *ahc)
 	ahc_restart(ahc);
 	return (0);
 }
-
+#endif
 /************************** Busy Target Table *********************************/
 /*
  * Return the untagged transaction id for a given target/channel lun.

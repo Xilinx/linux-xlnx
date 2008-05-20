@@ -148,7 +148,7 @@ static void macb_handle_link_change(struct net_device *dev)
 
 			if (phydev->duplex)
 				reg |= MACB_BIT(FD);
-			if (phydev->speed)
+			if (phydev->speed == SPEED_100)
 				reg |= MACB_BIT(SPD);
 
 			macb_writel(bp, NCFGR, reg);
@@ -242,12 +242,12 @@ static int macb_mii_init(struct macb *bp)
 	/* Enable managment port */
 	macb_writel(bp, NCR, MACB_BIT(MPE));
 
-	bp->mii_bus.name = "MACB_mii_bus",
-	bp->mii_bus.read = &macb_mdio_read,
-	bp->mii_bus.write = &macb_mdio_write,
-	bp->mii_bus.reset = &macb_mdio_reset,
-	bp->mii_bus.id = bp->pdev->id,
-	bp->mii_bus.priv = bp,
+	bp->mii_bus.name = "MACB_mii_bus";
+	bp->mii_bus.read = &macb_mdio_read;
+	bp->mii_bus.write = &macb_mdio_write;
+	bp->mii_bus.reset = &macb_mdio_reset;
+	bp->mii_bus.id = bp->pdev->id;
+	bp->mii_bus.priv = bp;
 	bp->mii_bus.dev = &bp->dev->dev;
 	pdata = bp->pdev->dev.platform_data;
 
@@ -1084,7 +1084,7 @@ static int macb_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	return phy_mii_ioctl(phydev, if_mii(rq), cmd);
 }
 
-static int __devinit macb_probe(struct platform_device *pdev)
+static int __init macb_probe(struct platform_device *pdev)
 {
 	struct eth_platform_data *pdata;
 	struct resource *regs;
@@ -1248,7 +1248,7 @@ err_out:
 	return err;
 }
 
-static int __devexit macb_remove(struct platform_device *pdev)
+static int __exit macb_remove(struct platform_device *pdev)
 {
 	struct net_device *dev;
 	struct macb *bp;
@@ -1257,6 +1257,8 @@ static int __devexit macb_remove(struct platform_device *pdev)
 
 	if (dev) {
 		bp = netdev_priv(dev);
+		if (bp->phy_dev)
+			phy_disconnect(bp->phy_dev);
 		mdiobus_unregister(&bp->mii_bus);
 		kfree(bp->mii_bus.irq);
 		unregister_netdev(dev);
@@ -1276,8 +1278,7 @@ static int __devexit macb_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver macb_driver = {
-	.probe		= macb_probe,
-	.remove		= __devexit_p(macb_remove),
+	.remove		= __exit_p(macb_remove),
 	.driver		= {
 		.name		= "macb",
 	},
@@ -1285,7 +1286,7 @@ static struct platform_driver macb_driver = {
 
 static int __init macb_init(void)
 {
-	return platform_driver_register(&macb_driver);
+	return platform_driver_probe(&macb_driver, macb_probe);
 }
 
 static void __exit macb_exit(void)

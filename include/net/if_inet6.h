@@ -112,13 +112,13 @@ struct ifmcaddr6
 	struct ip6_sf_list	*mca_sources;
 	struct ip6_sf_list	*mca_tomb;
 	unsigned int		mca_sfmode;
+	unsigned char		mca_crcount;
 	unsigned long		mca_sfcount[2];
 	struct timer_list	mca_timer;
 	unsigned		mca_flags;
 	int			mca_users;
 	atomic_t		mca_refcnt;
 	spinlock_t		mca_lock;
-	unsigned char		mca_crcount;
 	unsigned long		mca_cstamp;
 	unsigned long		mca_tstamp;
 };
@@ -166,11 +166,11 @@ struct inet6_dev
 	struct ifmcaddr6	*mc_list;
 	struct ifmcaddr6	*mc_tomb;
 	rwlock_t		mc_lock;
-	unsigned long		mc_v1_seen;
-	unsigned long		mc_maxdelay;
 	unsigned char		mc_qrv;
 	unsigned char		mc_gq_running;
 	unsigned char		mc_ifc_count;
+	unsigned long		mc_v1_seen;
+	unsigned long		mc_maxdelay;
 	struct timer_list	mc_gq_timer;	/* general query timer */
 	struct timer_list	mc_ifc_timer;	/* interface change timer */
 
@@ -269,18 +269,21 @@ static inline void ipv6_arcnet_mc_map(const struct in6_addr *addr, char *buf)
 	buf[0] = 0x00;
 }
 
-static inline void ipv6_ib_mc_map(struct in6_addr *addr, char *buf)
+static inline void ipv6_ib_mc_map(const struct in6_addr *addr,
+				  const unsigned char *broadcast, char *buf)
 {
+	unsigned char scope = broadcast[5] & 0xF;
+
 	buf[0]  = 0;		/* Reserved */
 	buf[1]  = 0xff;		/* Multicast QPN */
 	buf[2]  = 0xff;
 	buf[3]  = 0xff;
 	buf[4]  = 0xff;
-	buf[5]  = 0x12;		/* link local scope */
+	buf[5]  = 0x10 | scope;	/* scope from broadcast address */
 	buf[6]  = 0x60;		/* IPv6 signature */
 	buf[7]  = 0x1b;
-	buf[8]  = 0;		/* P_Key */
-	buf[9]  = 0;
+	buf[8]  = broadcast[8];	/* P_Key */
+	buf[9]  = broadcast[9];
 	memcpy(buf + 10, addr->s6_addr + 6, 10);
 }
 #endif

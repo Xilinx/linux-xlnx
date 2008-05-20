@@ -1,6 +1,4 @@
 /*
- * linux/drivers/ide/mips/au1xxx-ide.c  version 01.30.00        Aug. 02 2005
- *
  * BRIEF MODULE DESCRIPTION
  * AMD Alchemy Au1xxx IDE interface routines over the Static Bus
  *
@@ -34,23 +32,15 @@
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
-
 #include <linux/init.h>
 #include <linux/ide.h>
-#include <linux/sysdev.h>
+#include <linux/scatterlist.h>
 
-#include <linux/dma-mapping.h>
-
-#include "ide-timing.h"
-
-#include <asm/io.h>
 #include <asm/mach-au1x00/au1xxx.h>
 #include <asm/mach-au1x00/au1xxx_dbdma.h>
-
 #include <asm/mach-au1x00/au1xxx_ide.h>
 
 #define DRV_NAME	"au1200-ide"
-#define DRV_VERSION	"1.0"
 #define DRV_AUTHOR	"Enrico Walther <enrico.walther@amd.com> / Pete Popov <ppopov@embeddedalley.com>"
 
 /* enable the burstmode in the dbdma */
@@ -58,6 +48,8 @@
 
 static _auide_hwif auide_hwif;
 static int dbdma_init_done;
+
+static int auide_ddma_init(_auide_hwif *auide);
 
 #if defined(CONFIG_BLK_DEV_IDE_AU1XXX_PIO_DBDMA)
 
@@ -198,8 +190,6 @@ static void auide_set_dma_mode(ide_drive_t *drive, const u8 speed)
 
 		break;
 #endif
-	default:
-		return;
 	}
 
 	au_writel(mem_sttime,MEM_STTIME2);
@@ -211,24 +201,6 @@ static void auide_set_dma_mode(ide_drive_t *drive, const u8 speed)
  */
 
 #ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
-
-static int auide_build_sglist(ide_drive_t *drive,  struct request *rq)
-{
-	ide_hwif_t *hwif = drive->hwif;
-	_auide_hwif *ahwif = (_auide_hwif*)hwif->hwif_data;
-	struct scatterlist *sg = hwif->sg_table;
-
-	ide_map_sg(drive, rq);
-
-	if (rq_data_dir(rq) == READ)
-		hwif->sg_dma_direction = DMA_FROM_DEVICE;
-	else
-		hwif->sg_dma_direction = DMA_TO_DEVICE;
-
-	return dma_map_sg(ahwif->dev, sg, hwif->sg_nents,
-			  hwif->sg_dma_direction);
-}
-
 static int auide_build_dmatable(ide_drive_t *drive)
 {
 	int i, iswrite, count = 0;
@@ -243,8 +215,7 @@ static int auide_build_dmatable(ide_drive_t *drive)
 	/* Save for interrupt context */
 	ahwif->drive = drive;
 
-	/* Build sglist */
-	hwif->sg_nents = i = auide_build_sglist(drive, rq);
+	hwif->sg_nents = i = ide_build_sglist(drive, rq);
 
 	if (!i)
 		return 0;
@@ -302,10 +273,7 @@ static int auide_build_dmatable(ide_drive_t *drive)
 		return 1;
 
  use_pio_instead:
-	dma_unmap_sg(ahwif->dev,
-		     hwif->sg_table,
-		     hwif->sg_nents,
-		     hwif->sg_dma_direction);
+	ide_destroy_dmatable(drive);
 
 	return 0; /* revert to PIO for this request */
 }
@@ -313,11 +281,9 @@ static int auide_build_dmatable(ide_drive_t *drive)
 static int auide_dma_end(ide_drive_t *drive)
 {
 	ide_hwif_t *hwif = HWIF(drive);
-	_auide_hwif *ahwif = (_auide_hwif*)hwif->hwif_data;
 
 	if (hwif->sg_nents) {
-		dma_unmap_sg(ahwif->dev, hwif->sg_table, hwif->sg_nents,
-			     hwif->sg_dma_direction);
+		ide_destroy_dmatable(drive);
 		hwif->sg_nents = 0;
 	}
 
@@ -397,24 +363,8 @@ static int auide_dma_test_irq(ide_drive_t *drive)
 	return 0;
 }
 
-static void auide_dma_host_on(ide_drive_t *drive)
+static void auide_dma_host_set(ide_drive_t *drive, int on)
 {
-}
-
-static int auide_dma_on(ide_drive_t *drive)
-{
-	drive->using_dma = 1;
-
-	return 0;
-}
-
-static void auide_dma_host_off(ide_drive_t *drive)
-{
-}
-
-static void auide_dma_off_quietly(ide_drive_t *drive)
-{
-	drive->using_dma = 0;
 }
 
 static void auide_dma_lost_irq(ide_drive_t *drive)
@@ -522,7 +472,7 @@ static int auide_ddma_init(_auide_hwif *auide) {
 	auide->rx_desc_head = (void*)au1xxx_dbdma_ring_alloc(auide->rx_chan,
 							     NUM_DESCRIPTORS);
  
-	hwif->dmatable_cpu = dma_alloc_coherent(auide->dev,
+	hwif->dmatable_cpu = dma_alloc_coherent(hwif->dev,
 						PRD_ENTRIES * PRD_BYTES,        /* 1 Page */
 						&hwif->dmatable_dma, GFP_KERNEL);
 	
@@ -593,6 +543,17 @@ static void auide_setup_ports(hw_regs_t *hw, _auide_hwif *ahwif)
 	*ata_regs = ahwif->regbase + (14 << AU1XXX_ATA_REG_OFFSET);
 }
 
+static const struct ide_port_info au1xxx_port_info = {
+	.host_flags		= IDE_HFLAG_POST_SET_MODE |
+				  IDE_HFLAG_NO_DMA | /* no SFF-style DMA */
+				  IDE_HFLAG_NO_IO_32BIT |
+				  IDE_HFLAG_UNMASK_IRQS,
+	.pio_mask		= ATA_PIO4,
+#ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
+	.mwdma_mask		= ATA_MWDMA2,
+#endif
+};
+
 static int au_ide_probe(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -610,9 +571,6 @@ static int au_ide_probe(struct device *dev)
 #endif
 
 	memset(&auide_hwif, 0, sizeof(_auide_hwif));
-	auide_hwif.dev                  = 0;
-
-	ahwif->dev = dev;
 	ahwif->irq = platform_get_irq(pdev, 0);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -628,13 +586,14 @@ static int au_ide_probe(struct device *dev)
 		goto out;
 	}
 
-	if (!request_mem_region (res->start, res->end-res->start, pdev->name)) {
+	if (!request_mem_region(res->start, res->end - res->start + 1,
+				pdev->name)) {
 		pr_debug("%s: request_mem_region failed\n", DRV_NAME);
 		ret =  -EBUSY;
 		goto out;
 	}
 
-	ahwif->regbase = (u32)ioremap(res->start, res->end-res->start);
+	ahwif->regbase = (u32)ioremap(res->start, res->end - res->start + 1);
 	if (ahwif->regbase == 0) {
 		ret = -ENOMEM;
 		goto out;
@@ -643,28 +602,16 @@ static int au_ide_probe(struct device *dev)
 	/* FIXME:  This might possibly break PCMCIA IDE devices */
 
 	hwif                            = &ide_hwifs[pdev->id];
-	hwif->irq			= ahwif->irq;
-	hwif->chipset                   = ide_au1xxx;
 
 	memset(&hw, 0, sizeof(hw));
 	auide_setup_ports(&hw, ahwif);
-	memcpy(hwif->io_ports, hw.io_ports, sizeof(hwif->io_ports));
+	hw.irq = ahwif->irq;
+	hw.dev = dev;
+	hw.chipset = ide_au1xxx;
 
-	hwif->ultra_mask                = 0x0;  /* Disable Ultra DMA */
-#ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
-	hwif->mwdma_mask                = 0x07; /* Multimode-2 DMA  */
-	hwif->swdma_mask                = 0x00;
-#else
-	hwif->mwdma_mask                = 0x0;
-	hwif->swdma_mask                = 0x0;
-#endif
+	ide_init_port_hw(hwif, &hw);
 
-	hwif->pio_mask = ATA_PIO4;
-	hwif->host_flags = IDE_HFLAG_POST_SET_MODE;
-
-	hwif->noprobe = 0;
-	hwif->drives[0].unmask          = 1;
-	hwif->drives[1].unmask          = 1;
+	hwif->dev = dev;
 
 	/* hold should be on in all cases */
 	hwif->hold                      = 1;
@@ -684,31 +631,20 @@ static int au_ide_probe(struct device *dev)
 	hwif->set_dma_mode		= &auide_set_dma_mode;
 
 #ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
-	hwif->dma_off_quietly		= &auide_dma_off_quietly;
 	hwif->dma_timeout		= &auide_dma_timeout;
 
 	hwif->mdma_filter		= &auide_mdma_filter;
 
+	hwif->dma_host_set		= &auide_dma_host_set;
 	hwif->dma_exec_cmd              = &auide_dma_exec_cmd;
 	hwif->dma_start                 = &auide_dma_start;
 	hwif->ide_dma_end               = &auide_dma_end;
 	hwif->dma_setup                 = &auide_dma_setup;
 	hwif->ide_dma_test_irq          = &auide_dma_test_irq;
-	hwif->dma_host_off		= &auide_dma_host_off;
-	hwif->dma_host_on		= &auide_dma_host_on;
 	hwif->dma_lost_irq		= &auide_dma_lost_irq;
-	hwif->ide_dma_on                = &auide_dma_on;
-#else /* !CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA */
-	hwif->channel                   = 0;
-	hwif->hold                      = 1;
+#endif
 	hwif->select_data               = 0;    /* no chipset-specific code */
 	hwif->config_data               = 0;    /* no chipset-specific code */
-
-	hwif->drives[0].autotune        = 1;    /* 1=autotune, 2=noautotune, 0=default */
-	hwif->drives[1].autotune	= 1;
-#endif
-	hwif->drives[0].no_io_32bit	= 1;
-	hwif->drives[1].no_io_32bit	= 1;
 
 	auide_hwif.hwif                 = hwif;
 	hwif->hwif_data                 = &auide_hwif;
@@ -720,7 +656,7 @@ static int au_ide_probe(struct device *dev)
 
 	idx[0] = hwif->index;
 
-	ide_device_add(idx);
+	ide_device_add(idx, &au1xxx_port_info);
 
 	dev_set_drvdata(dev, hwif);
 
@@ -737,12 +673,12 @@ static int au_ide_remove(struct device *dev)
 	ide_hwif_t *hwif = dev_get_drvdata(dev);
 	_auide_hwif *ahwif = &auide_hwif;
 
-	ide_unregister(hwif - ide_hwifs);
+	ide_unregister(hwif->index, 0, 0);
 
 	iounmap((void *)ahwif->regbase);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(res->start, res->end - res->start);
+	release_mem_region(res->start, res->end - res->start + 1);
 
 	return 0;
 }

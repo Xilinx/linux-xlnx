@@ -86,12 +86,6 @@ static struct tcp_sock_af_ops tcp_sock_ipv6_specific;
 static struct tcp_sock_af_ops tcp_sock_ipv6_mapped_specific;
 #endif
 
-static int tcp_v6_get_port(struct sock *sk, unsigned short snum)
-{
-	return inet_csk_get_port(&tcp_hashinfo, sk, snum,
-				 inet6_csk_bind_conflict);
-}
-
 static void tcp_v6_hash(struct sock *sk)
 {
 	if (sk->sk_state != TCP_CLOSE) {
@@ -100,7 +94,7 @@ static void tcp_v6_hash(struct sock *sk)
 			return;
 		}
 		local_bh_disable();
-		__inet6_hash(&tcp_hashinfo, sk);
+		__inet6_hash(sk);
 		local_bh_enable();
 	}
 }
@@ -265,7 +259,7 @@ static int tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 	if (final_p)
 		ipv6_addr_copy(&fl.fl6_dst, final_p);
 
-	if ((err = __xfrm_lookup(&dst, &fl, sk, 1)) < 0) {
+	if ((err = __xfrm_lookup(&dst, &fl, sk, XFRM_LOOKUP_WAIT)) < 0) {
 		if (err == -EREMOTE)
 			err = ip6_dst_blackhole(sk, &dst, &fl);
 		if (err < 0)
@@ -330,8 +324,8 @@ static void tcp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	struct tcp_sock *tp;
 	__u32 seq;
 
-	sk = inet6_lookup(&tcp_hashinfo, &hdr->daddr, th->dest, &hdr->saddr,
-			  th->source, skb->dev->ifindex);
+	sk = inet6_lookup(skb->dev->nd_net, &tcp_hashinfo, &hdr->daddr,
+			th->dest, &hdr->saddr, th->source, skb->dev->ifindex);
 
 	if (sk == NULL) {
 		ICMP6_INC_STATS_BH(__in6_dev_get(skb->dev), ICMP6_MIB_INERRORS);
@@ -733,7 +727,7 @@ static int tcp_v6_do_calc_md5_hash(char *md5_hash, struct tcp_md5sig_key *key,
 				   struct in6_addr *saddr,
 				   struct in6_addr *daddr,
 				   struct tcphdr *th, int protocol,
-				   int tcplen)
+				   unsigned int tcplen)
 {
 	struct scatterlist sg[4];
 	__u16 data_len;
@@ -818,7 +812,7 @@ static int tcp_v6_calc_md5_hash(char *md5_hash, struct tcp_md5sig_key *key,
 				struct dst_entry *dst,
 				struct request_sock *req,
 				struct tcphdr *th, int protocol,
-				int tcplen)
+				unsigned int tcplen)
 {
 	struct in6_addr *saddr, *daddr;
 
@@ -985,7 +979,7 @@ static void tcp_v6_send_reset(struct sock *sk, struct sk_buff *skb)
 	struct tcphdr *th = tcp_hdr(skb), *t1;
 	struct sk_buff *buff;
 	struct flowi fl;
-	int tot_len = sizeof(*th);
+	unsigned int tot_len = sizeof(*th);
 #ifdef CONFIG_TCP_MD5SIG
 	struct tcp_md5sig_key *key;
 #endif
@@ -1085,7 +1079,7 @@ static void tcp_v6_send_ack(struct tcp_timewait_sock *tw,
 	struct tcphdr *th = tcp_hdr(skb), *t1;
 	struct sk_buff *buff;
 	struct flowi fl;
-	int tot_len = sizeof(struct tcphdr);
+	unsigned int tot_len = sizeof(struct tcphdr);
 	__be32 *topt;
 #ifdef CONFIG_TCP_MD5SIG
 	struct tcp_md5sig_key *key;
@@ -1208,9 +1202,9 @@ static struct sock *tcp_v6_hnd_req(struct sock *sk,struct sk_buff *skb)
 	if (req)
 		return tcp_check_req(sk, skb, req, prev);
 
-	nsk = __inet6_lookup_established(&tcp_hashinfo, &ipv6_hdr(skb)->saddr,
-					 th->source, &ipv6_hdr(skb)->daddr,
-					 ntohs(th->dest), inet6_iif(skb));
+	nsk = __inet6_lookup_established(sk->sk_net, &tcp_hashinfo,
+			&ipv6_hdr(skb)->saddr, th->source,
+			&ipv6_hdr(skb)->daddr, ntohs(th->dest), inet6_iif(skb));
 
 	if (nsk) {
 		if (nsk->sk_state != TCP_TIME_WAIT) {
@@ -1504,8 +1498,8 @@ static struct sock * tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 	}
 #endif
 
-	__inet6_hash(&tcp_hashinfo, newsk);
-	inet_inherit_port(&tcp_hashinfo, sk, newsk);
+	__inet6_hash(newsk);
+	inet_inherit_port(sk, newsk);
 
 	return newsk;
 
@@ -1710,9 +1704,10 @@ static int tcp_v6_rcv(struct sk_buff *skb)
 	TCP_SKB_CB(skb)->flags = ipv6_get_dsfield(ipv6_hdr(skb));
 	TCP_SKB_CB(skb)->sacked = 0;
 
-	sk = __inet6_lookup(&tcp_hashinfo, &ipv6_hdr(skb)->saddr, th->source,
-			    &ipv6_hdr(skb)->daddr, ntohs(th->dest),
-			    inet6_iif(skb));
+	sk = __inet6_lookup(skb->dev->nd_net, &tcp_hashinfo,
+			&ipv6_hdr(skb)->saddr, th->source,
+			&ipv6_hdr(skb)->daddr, ntohs(th->dest),
+			inet6_iif(skb));
 
 	if (!sk)
 		goto no_tcp_socket;
@@ -1792,7 +1787,7 @@ do_time_wait:
 	{
 		struct sock *sk2;
 
-		sk2 = inet6_lookup_listener(&tcp_hashinfo,
+		sk2 = inet6_lookup_listener(skb->dev->nd_net, &tcp_hashinfo,
 					    &ipv6_hdr(skb)->daddr,
 					    ntohs(th->dest), inet6_iif(skb));
 		if (sk2 != NULL) {
@@ -1832,6 +1827,7 @@ static struct inet_connection_sock_af_ops ipv6_specific = {
 	.getsockopt	   = ipv6_getsockopt,
 	.addr2sockaddr	   = inet6_csk_addr2sockaddr,
 	.sockaddr_len	   = sizeof(struct sockaddr_in6),
+	.bind_conflict	   = inet6_csk_bind_conflict,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt = compat_ipv6_setsockopt,
 	.compat_getsockopt = compat_ipv6_getsockopt,
@@ -1863,6 +1859,7 @@ static struct inet_connection_sock_af_ops ipv6_mapped = {
 	.getsockopt	   = ipv6_getsockopt,
 	.addr2sockaddr	   = inet6_csk_addr2sockaddr,
 	.sockaddr_len	   = sizeof(struct sockaddr_in6),
+	.bind_conflict	   = inet6_csk_bind_conflict,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt = compat_ipv6_setsockopt,
 	.compat_getsockopt = compat_ipv6_getsockopt,
@@ -2126,8 +2123,8 @@ struct proto tcpv6_prot = {
 	.recvmsg		= tcp_recvmsg,
 	.backlog_rcv		= tcp_v6_do_rcv,
 	.hash			= tcp_v6_hash,
-	.unhash			= tcp_unhash,
-	.get_port		= tcp_v6_get_port,
+	.unhash			= inet_unhash,
+	.get_port		= inet_csk_get_port,
 	.enter_memory_pressure	= tcp_enter_memory_pressure,
 	.sockets_allocated	= &tcp_sockets_allocated,
 	.memory_allocated	= &tcp_memory_allocated,
@@ -2140,6 +2137,7 @@ struct proto tcpv6_prot = {
 	.obj_size		= sizeof(struct tcp6_sock),
 	.twsk_prot		= &tcp6_timewait_sock_ops,
 	.rsk_prot		= &tcp6_request_sock_ops,
+	.hashinfo		= &tcp_hashinfo,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt	= compat_tcp_setsockopt,
 	.compat_getsockopt	= compat_tcp_getsockopt,
@@ -2166,14 +2164,36 @@ static struct inet_protosw tcpv6_protosw = {
 				INET_PROTOSW_ICSK,
 };
 
-void __init tcpv6_init(void)
+int __init tcpv6_init(void)
 {
-	/* register inet6 protocol */
-	if (inet6_add_protocol(&tcpv6_protocol, IPPROTO_TCP) < 0)
-		printk(KERN_ERR "tcpv6_init: Could not register protocol\n");
-	inet6_register_protosw(&tcpv6_protosw);
+	int ret;
 
-	if (inet_csk_ctl_sock_create(&tcp6_socket, PF_INET6, SOCK_RAW,
-				     IPPROTO_TCP) < 0)
-		panic("Failed to create the TCPv6 control socket.\n");
+	ret = inet6_add_protocol(&tcpv6_protocol, IPPROTO_TCP);
+	if (ret)
+		goto out;
+
+	/* register inet6 protocol */
+	ret = inet6_register_protosw(&tcpv6_protosw);
+	if (ret)
+		goto out_tcpv6_protocol;
+
+	ret = inet_csk_ctl_sock_create(&tcp6_socket, PF_INET6,
+				       SOCK_RAW, IPPROTO_TCP);
+	if (ret)
+		goto out_tcpv6_protosw;
+out:
+	return ret;
+
+out_tcpv6_protocol:
+	inet6_del_protocol(&tcpv6_protocol, IPPROTO_TCP);
+out_tcpv6_protosw:
+	inet6_unregister_protosw(&tcpv6_protosw);
+	goto out;
+}
+
+void tcpv6_exit(void)
+{
+	sock_release(tcp6_socket);
+	inet6_unregister_protosw(&tcpv6_protosw);
+	inet6_del_protocol(&tcpv6_protocol, IPPROTO_TCP);
 }

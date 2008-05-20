@@ -44,6 +44,7 @@ struct spu_gang;
 enum {
 	SPU_SCHED_NOTIFY_ACTIVE,
 	SPU_SCHED_WAS_ACTIVE,	/* was active upon spu_acquire_saved()  */
+	SPU_SCHED_SPU_RUN,	/* context is within spu_run */
 };
 
 struct spu_context {
@@ -71,6 +72,7 @@ struct spu_context {
 	wait_queue_head_t wbox_wq;
 	wait_queue_head_t stop_wq;
 	wait_queue_head_t mfc_wq;
+	wait_queue_head_t run_wq;
 	struct fasync_struct *ibox_fasync;
 	struct fasync_struct *wbox_fasync;
 	struct fasync_struct *mfc_fasync;
@@ -168,8 +170,10 @@ struct spu_context_ops {
 	void (*npc_write) (struct spu_context * ctx, u32 data);
 	 u32(*status_read) (struct spu_context * ctx);
 	char*(*get_ls) (struct spu_context * ctx);
+	void (*privcntl_write) (struct spu_context *ctx, u64 data);
 	 u32 (*runcntl_read) (struct spu_context * ctx);
 	void (*runcntl_write) (struct spu_context * ctx, u32 data);
+	void (*runcntl_stop) (struct spu_context * ctx);
 	void (*master_start) (struct spu_context * ctx);
 	void (*master_stop) (struct spu_context * ctx);
 	int (*set_mfc_query)(struct spu_context * ctx, u32 mask, u32 mode);
@@ -219,15 +223,16 @@ void spu_gang_add_ctx(struct spu_gang *gang, struct spu_context *ctx);
 
 /* fault handling */
 int spufs_handle_class1(struct spu_context *ctx);
+int spufs_handle_class0(struct spu_context *ctx);
 
 /* affinity */
 struct spu *affinity_check(struct spu_context *ctx);
 
 /* context management */
 extern atomic_t nr_spu_contexts;
-static inline void spu_acquire(struct spu_context *ctx)
+static inline int __must_check spu_acquire(struct spu_context *ctx)
 {
-	mutex_lock(&ctx->state_mutex);
+	return mutex_lock_interruptible(&ctx->state_mutex);
 }
 
 static inline void spu_release(struct spu_context *ctx)
@@ -242,10 +247,11 @@ int put_spu_context(struct spu_context *ctx);
 void spu_unmap_mappings(struct spu_context *ctx);
 
 void spu_forget(struct spu_context *ctx);
-int spu_acquire_runnable(struct spu_context *ctx, unsigned long flags);
-void spu_acquire_saved(struct spu_context *ctx);
+int __must_check spu_acquire_saved(struct spu_context *ctx);
 void spu_release_saved(struct spu_context *ctx);
 
+int spu_stopped(struct spu_context *ctx, u32 * stat);
+void spu_del_from_rq(struct spu_context *ctx);
 int spu_activate(struct spu_context *ctx, unsigned long flags);
 void spu_deactivate(struct spu_context *ctx);
 void spu_yield(struct spu_context *ctx);
@@ -263,6 +269,9 @@ extern char *isolated_loader;
  *	Same as wait_event_interruptible(), except that here
  *	we need to call spu_release(ctx) before sleeping, and
  *	then spu_acquire(ctx) when awoken.
+ *
+ * 	Returns with state_mutex re-acquired when successfull or
+ * 	with -ERESTARTSYS and the state_mutex dropped when interrupted.
  */
 
 #define spufs_wait(wq, condition)					\
@@ -273,13 +282,15 @@ extern char *isolated_loader;
 		prepare_to_wait(&(wq), &__wait, TASK_INTERRUPTIBLE);	\
 		if (condition)						\
 			break;						\
+		spu_release(ctx);					\
 		if (signal_pending(current)) {				\
 			__ret = -ERESTARTSYS;				\
 			break;						\
 		}							\
-		spu_release(ctx);					\
 		schedule();						\
-		spu_acquire(ctx);					\
+		__ret = spu_acquire(ctx);				\
+		if (__ret)						\
+			break;						\
 	}								\
 	finish_wait(&(wq), &__wait);					\
 	__ret;								\
@@ -306,41 +317,21 @@ struct spufs_coredump_reader {
 extern struct spufs_coredump_reader spufs_coredump_read[];
 extern int spufs_coredump_num_notes;
 
-/*
- * This function is a little bit too large for an inline, but
- * as fault.c is built into the kernel we can't move it out of
- * line.
- */
-static inline void spuctx_switch_state(struct spu_context *ctx,
-		enum spu_utilization_state new_state)
-{
-	unsigned long long curtime;
-	signed long long delta;
-	struct timespec ts;
-	struct spu *spu;
-	enum spu_utilization_state old_state;
+extern int spu_init_csa(struct spu_state *csa);
+extern void spu_fini_csa(struct spu_state *csa);
+extern int spu_save(struct spu_state *prev, struct spu *spu);
+extern int spu_restore(struct spu_state *new, struct spu *spu);
+extern int spu_switch(struct spu_state *prev, struct spu_state *new,
+		      struct spu *spu);
+extern int spu_alloc_lscsa(struct spu_state *csa);
+extern void spu_free_lscsa(struct spu_state *csa);
 
-	ktime_get_ts(&ts);
-	curtime = timespec_to_ns(&ts);
-	delta = curtime - ctx->stats.tstamp;
+extern void spuctx_switch_state(struct spu_context *ctx,
+		enum spu_utilization_state new_state);
 
-	WARN_ON(!mutex_is_locked(&ctx->state_mutex));
-	WARN_ON(delta < 0);
-
-	spu = ctx->spu;
-	old_state = ctx->stats.util_state;
-	ctx->stats.util_state = new_state;
-	ctx->stats.tstamp = curtime;
-
-	/*
-	 * Update the physical SPU utilization statistics.
-	 */
-	if (spu) {
-		ctx->stats.times[old_state] += delta;
-		spu->stats.times[old_state] += delta;
-		spu->stats.util_state = new_state;
-		spu->stats.tstamp = curtime;
-	}
-}
+#define spu_context_trace(name, ctx, spu) \
+	trace_mark(name, "%p %p", ctx, spu);
+#define spu_context_nospu_trace(name, ctx) \
+	trace_mark(name, "%p", ctx);
 
 #endif

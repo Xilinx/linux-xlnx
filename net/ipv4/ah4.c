@@ -96,7 +96,7 @@ static int ah_output(struct xfrm_state *x, struct sk_buff *skb)
 
 	ah->reserved = 0;
 	ah->spi = x->id.spi;
-	ah->seq_no = htonl(XFRM_SKB_CB(skb)->seq);
+	ah->seq_no = htonl(XFRM_SKB_CB(skb)->seq.output);
 
 	spin_lock_bh(&x->lock);
 	err = ah_mac_digest(ahp, skb, ah->auth_data);
@@ -169,6 +169,8 @@ static int ah_input(struct xfrm_state *x, struct sk_buff *skb)
 		if (ip_clear_mutable_options(iph, &dummy))
 			goto out;
 	}
+
+	spin_lock(&x->lock);
 	{
 		u8 auth_data[MAX_AH_AUTH_LEN];
 
@@ -176,13 +178,16 @@ static int ah_input(struct xfrm_state *x, struct sk_buff *skb)
 		skb_push(skb, ihl);
 		err = ah_mac_digest(ahp, skb, ah->auth_data);
 		if (err)
-			goto out;
-		err = -EINVAL;
-		if (memcmp(ahp->work_icv, auth_data, ahp->icv_trunc_len)) {
-			x->stats.integrity_failed++;
-			goto out;
-		}
+			goto unlock;
+		if (memcmp(ahp->work_icv, auth_data, ahp->icv_trunc_len))
+			err = -EBADMSG;
 	}
+unlock:
+	spin_unlock(&x->lock);
+
+	if (err)
+		goto out;
+
 	skb->network_header += ah_hlen;
 	memcpy(skb_network_header(skb), work_buf, ihl);
 	skb->transport_header = skb->network_header;
@@ -295,7 +300,7 @@ static void ah_destroy(struct xfrm_state *x)
 }
 
 
-static struct xfrm_type ah_type =
+static const struct xfrm_type ah_type =
 {
 	.description	= "AH4",
 	.owner		= THIS_MODULE,

@@ -612,6 +612,7 @@ static void mpsc_hw_init(struct mpsc_port_info *pi)
 
 	/* No preamble, 16x divider, low-latency, */
 	writel(0x04400400, pi->mpsc_base + MPSC_MMCRH);
+	mpsc_set_baudrate(pi, pi->default_baud);
 
 	if (pi->mirror_regs) {
 		pi->MPSC_CHR_1_m = 0;
@@ -1963,6 +1964,7 @@ static struct platform_driver mpsc_driver = {
 	.remove	= mpsc_drv_remove,
 	.driver	= {
 		.name	= MPSC_CTLR_NAME,
+		.owner	= THIS_MODULE,
 	},
 };
 
@@ -2006,3 +2008,4 @@ MODULE_DESCRIPTION("Generic Marvell MPSC serial/UART driver $Revision: 1.00 $");
 MODULE_VERSION(MPSC_VERSION);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CHARDEV_MAJOR(MPSC_MAJOR);
+MODULE_ALIAS("platform:" MPSC_CTLR_NAME);

@@ -139,7 +139,7 @@ static __be32 decode_compound_hdr_arg(struct xdr_stream *xdr, struct cb_compound
 	if (unlikely(status != 0))
 		return status;
 	/* We do not like overly long tags! */
-	if (hdr->taglen > CB_OP_TAGLEN_MAXSZ-12 || hdr->taglen < 0) {
+	if (hdr->taglen > CB_OP_TAGLEN_MAXSZ - 12) {
 		printk("NFSv4 CALLBACK %s: client sent tag of length %u\n",
 				__FUNCTION__, hdr->taglen);
 		return htonl(NFS4ERR_RESOURCE);
@@ -176,7 +176,7 @@ static __be32 decode_getattr_args(struct svc_rqst *rqstp, struct xdr_stream *xdr
 	status = decode_fh(xdr, &args->fh);
 	if (unlikely(status != 0))
 		goto out;
-	args->addr = svc_addr_in(rqstp);
+	args->addr = svc_addr(rqstp);
 	status = decode_bitmap(xdr, args->bitmap);
 out:
 	dprintk("%s: exit with status = %d\n", __FUNCTION__, ntohl(status));
@@ -188,7 +188,7 @@ static __be32 decode_recall_args(struct svc_rqst *rqstp, struct xdr_stream *xdr,
 	__be32 *p;
 	__be32 status;
 
-	args->addr = svc_addr_in(rqstp);
+	args->addr = svc_addr(rqstp);
 	status = decode_stateid(xdr, &args->stateid);
 	if (unlikely(status != 0))
 		goto out;
@@ -254,7 +254,7 @@ static __be32 encode_attr_change(struct xdr_stream *xdr, const uint32_t *bitmap,
 	if (!(bitmap[0] & FATTR4_WORD0_CHANGE))
 		return 0;
 	p = xdr_reserve_space(xdr, 8);
-	if (unlikely(p == 0))
+	if (unlikely(!p))
 		return htonl(NFS4ERR_RESOURCE);
 	p = xdr_encode_hyper(p, change);
 	return 0;
@@ -267,7 +267,7 @@ static __be32 encode_attr_size(struct xdr_stream *xdr, const uint32_t *bitmap, u
 	if (!(bitmap[0] & FATTR4_WORD0_SIZE))
 		return 0;
 	p = xdr_reserve_space(xdr, 8);
-	if (unlikely(p == 0))
+	if (unlikely(!p))
 		return htonl(NFS4ERR_RESOURCE);
 	p = xdr_encode_hyper(p, size);
 	return 0;
@@ -278,7 +278,7 @@ static __be32 encode_attr_time(struct xdr_stream *xdr, const struct timespec *ti
 	__be32 *p;
 
 	p = xdr_reserve_space(xdr, 12);
-	if (unlikely(p == 0))
+	if (unlikely(!p))
 		return htonl(NFS4ERR_RESOURCE);
 	p = xdr_encode_hyper(p, time->tv_sec);
 	*p = htonl(time->tv_nsec);

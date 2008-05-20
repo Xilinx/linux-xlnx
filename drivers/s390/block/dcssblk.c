@@ -82,7 +82,7 @@ struct dcssblk_dev_info {
 	struct request_queue *dcssblk_queue;
 };
 
-static struct list_head dcssblk_devices = LIST_HEAD_INIT(dcssblk_devices);
+static LIST_HEAD(dcssblk_devices);
 static struct rw_semaphore dcssblk_devices_sem;
 
 /*
@@ -415,6 +415,8 @@ dcssblk_add_store(struct device *dev, struct device_attribute *attr, const char 
 	dev_info->gd->queue = dev_info->dcssblk_queue;
 	dev_info->gd->private_data = dev_info;
 	dev_info->gd->driverfs_dev = &dev_info->dev;
+	blk_queue_make_request(dev_info->dcssblk_queue, dcssblk_make_request);
+	blk_queue_hardsect_size(dev_info->dcssblk_queue, 4096);
 	/*
 	 * load the segment
 	 */
@@ -471,9 +473,6 @@ dcssblk_add_store(struct device *dev, struct device_attribute *attr, const char 
 	rc = device_create_file(&dev_info->dev, &dev_attr_save);
 	if (rc)
 		goto unregister_dev;
-
-	blk_queue_make_request(dev_info->dcssblk_queue, dcssblk_make_request);
-	blk_queue_hardsect_size(dev_info->dcssblk_queue, 4096);
 
 	add_disk(dev_info->gd);
 
@@ -667,7 +666,7 @@ dcssblk_make_request(struct request_queue *q, struct bio *bio)
 		page_addr = (unsigned long)
 			page_address(bvec->bv_page) + bvec->bv_offset;
 		source_addr = dev_info->start + (index<<12) + bytes_done;
-		if (unlikely(page_addr & 4095) != 0 || (bvec->bv_len & 4095) != 0)
+		if (unlikely((page_addr & 4095) != 0) || (bvec->bv_len & 4095) != 0)
 			// More paranoia.
 			goto fail;
 		if (bio_data_dir(bio) == READ) {

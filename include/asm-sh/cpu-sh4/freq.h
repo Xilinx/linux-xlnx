@@ -10,13 +10,16 @@
 #ifndef __ASM_CPU_SH4_FREQ_H
 #define __ASM_CPU_SH4_FREQ_H
 
-#if defined(CONFIG_CPU_SUBTYPE_SH7722)
+#if defined(CONFIG_CPU_SUBTYPE_SH7722) || defined(CONFIG_CPU_SUBTYPE_SH7366)
 #define FRQCR		        0xa4150000
 #define VCLKCR			0xa4150004
 #define SCLKACR			0xa4150008
 #define SCLKBCR			0xa415000c
+#if defined(CONFIG_CPU_SUBTYPE_SH7722)
 #define IrDACLKCR		0xa4150010
-#elif defined(CONFIG_CPU_SUBTYPE_SH7780)
+#endif
+#elif defined(CONFIG_CPU_SUBTYPE_SH7763) || \
+      defined(CONFIG_CPU_SUBTYPE_SH7780)
 #define	FRQCR			0xffc80000
 #elif defined(CONFIG_CPU_SUBTYPE_SH7785)
 #define FRQCR0			0xffc80000

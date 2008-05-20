@@ -39,21 +39,15 @@ static struct socket *dccp_v6_ctl_socket;
 static struct inet_connection_sock_af_ops dccp_ipv6_mapped;
 static struct inet_connection_sock_af_ops dccp_ipv6_af_ops;
 
-static int dccp_v6_get_port(struct sock *sk, unsigned short snum)
-{
-	return inet_csk_get_port(&dccp_hashinfo, sk, snum,
-				 inet6_csk_bind_conflict);
-}
-
 static void dccp_v6_hash(struct sock *sk)
 {
 	if (sk->sk_state != DCCP_CLOSED) {
 		if (inet_csk(sk)->icsk_af_ops == &dccp_ipv6_mapped) {
-			dccp_hash(sk);
+			inet_hash(sk);
 			return;
 		}
 		local_bh_disable();
-		__inet6_hash(&dccp_hashinfo, sk);
+		__inet6_hash(sk);
 		local_bh_enable();
 	}
 }
@@ -101,8 +95,8 @@ static void dccp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	int err;
 	__u64 seq;
 
-	sk = inet6_lookup(&dccp_hashinfo, &hdr->daddr, dh->dccph_dport,
-			  &hdr->saddr, dh->dccph_sport, inet6_iif(skb));
+	sk = inet6_lookup(&init_net, &dccp_hashinfo, &hdr->daddr, dh->dccph_dport,
+			&hdr->saddr, dh->dccph_sport, inet6_iif(skb));
 
 	if (sk == NULL) {
 		ICMP6_INC_STATS_BH(__in6_dev_get(skb->dev), ICMP6_MIB_INERRORS);
@@ -366,7 +360,7 @@ static struct sock *dccp_v6_hnd_req(struct sock *sk,struct sk_buff *skb)
 	if (req != NULL)
 		return dccp_check_req(sk, skb, req, prev);
 
-	nsk = __inet6_lookup_established(&dccp_hashinfo,
+	nsk = __inet6_lookup_established(&init_net, &dccp_hashinfo,
 					 &iph->saddr, dh->dccph_sport,
 					 &iph->daddr, ntohs(dh->dccph_dport),
 					 inet6_iif(skb));
@@ -415,10 +409,11 @@ static int dccp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 	if (req == NULL)
 		goto drop;
 
-	if (dccp_parse_options(sk, skb))
-		goto drop_and_free;
-
 	dccp_reqsk_init(req, skb);
+
+	dreq = dccp_rsk(req);
+	if (dccp_parse_options(sk, dreq, skb))
+		goto drop_and_free;
 
 	if (security_inet_conn_request(sk, skb, req))
 		goto drop_and_free;
@@ -449,7 +444,6 @@ static int dccp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 	 *   In fact we defer setting S.GSR, S.SWL, S.SWH to
 	 *   dccp_create_openreq_child.
 	 */
-	dreq = dccp_rsk(req);
 	dreq->dreq_isr	   = dcb->dccpd_seq;
 	dreq->dreq_iss	   = dccp_v6_init_sequence(skb);
 	dreq->dreq_service = service;
@@ -630,8 +624,8 @@ static struct sock *dccp_v6_request_recv_sock(struct sock *sk,
 
 	newinet->daddr = newinet->saddr = newinet->rcv_saddr = LOOPBACK4_IPV6;
 
-	__inet6_hash(&dccp_hashinfo, newsk);
-	inet_inherit_port(&dccp_hashinfo, sk, newsk);
+	__inet6_hash(newsk);
+	inet_inherit_port(sk, newsk);
 
 	return newsk;
 
@@ -797,7 +791,7 @@ static int dccp_v6_rcv(struct sk_buff *skb)
 
 	/* Step 2:
 	 *	Look up flow ID in table and get corresponding socket */
-	sk = __inet6_lookup(&dccp_hashinfo, &ipv6_hdr(skb)->saddr,
+	sk = __inet6_lookup(&init_net, &dccp_hashinfo, &ipv6_hdr(skb)->saddr,
 			    dh->dccph_sport,
 			    &ipv6_hdr(skb)->daddr, ntohs(dh->dccph_dport),
 			    inet6_iif(skb));
@@ -994,7 +988,7 @@ static int dccp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 	if (final_p)
 		ipv6_addr_copy(&fl.fl6_dst, final_p);
 
-	err = __xfrm_lookup(&dst, &fl, sk, 1);
+	err = __xfrm_lookup(&dst, &fl, sk, XFRM_LOOKUP_WAIT);
 	if (err < 0) {
 		if (err == -EREMOTE)
 			err = ip6_dst_blackhole(sk, &dst, &fl);
@@ -1054,6 +1048,7 @@ static struct inet_connection_sock_af_ops dccp_ipv6_af_ops = {
 	.getsockopt	   = ipv6_getsockopt,
 	.addr2sockaddr	   = inet6_csk_addr2sockaddr,
 	.sockaddr_len	   = sizeof(struct sockaddr_in6),
+	.bind_conflict	   = inet6_csk_bind_conflict,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt = compat_ipv6_setsockopt,
 	.compat_getsockopt = compat_ipv6_getsockopt,
@@ -1123,9 +1118,9 @@ static struct proto dccp_v6_prot = {
 	.recvmsg	   = dccp_recvmsg,
 	.backlog_rcv	   = dccp_v6_do_rcv,
 	.hash		   = dccp_v6_hash,
-	.unhash		   = dccp_unhash,
+	.unhash		   = inet_unhash,
 	.accept		   = inet_csk_accept,
-	.get_port	   = dccp_v6_get_port,
+	.get_port	   = inet_csk_get_port,
 	.shutdown	   = dccp_shutdown,
 	.destroy	   = dccp_v6_destroy_sock,
 	.orphan_count	   = &dccp_orphan_count,
@@ -1133,6 +1128,7 @@ static struct proto dccp_v6_prot = {
 	.obj_size	   = sizeof(struct dccp6_sock),
 	.rsk_prot	   = &dccp6_request_sock_ops,
 	.twsk_prot	   = &dccp6_timewait_sock_ops,
+	.hashinfo	   = &dccp_hashinfo,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt = compat_dccp_setsockopt,
 	.compat_getsockopt = compat_dccp_getsockopt,

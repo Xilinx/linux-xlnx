@@ -23,7 +23,9 @@ extern struct security_operations dummy_security_ops;
 extern void security_fixup_ops(struct security_operations *ops);
 
 struct security_operations *security_ops;	/* Initialized to NULL */
-unsigned long mmap_min_addr;		/* 0 means no protection */
+
+/* amount of vm to protect from userspace access */
+unsigned long mmap_min_addr = CONFIG_SECURITY_DEFAULT_MMAP_MIN_ADDR;
 
 static inline int verify(struct security_operations *ops)
 {
@@ -242,10 +244,11 @@ void security_sb_free(struct super_block *sb)
 	security_ops->sb_free_security(sb);
 }
 
-int security_sb_copy_data(struct file_system_type *type, void *orig, void *copy)
+int security_sb_copy_data(char *orig, char *copy)
 {
-	return security_ops->sb_copy_data(type, orig, copy);
+	return security_ops->sb_copy_data(orig, copy);
 }
+EXPORT_SYMBOL(security_sb_copy_data);
 
 int security_sb_kern_mount(struct super_block *sb, void *data)
 {
@@ -288,11 +291,6 @@ void security_sb_post_remount(struct vfsmount *mnt, unsigned long flags, void *d
 	security_ops->sb_post_remount(mnt, flags, data);
 }
 
-void security_sb_post_mountroot(void)
-{
-	security_ops->sb_post_mountroot();
-}
-
 void security_sb_post_addmount(struct vfsmount *mnt, struct nameidata *mountpoint_nd)
 {
 	security_ops->sb_post_addmount(mnt, mountpoint_nd);
@@ -307,6 +305,32 @@ void security_sb_post_pivotroot(struct nameidata *old_nd, struct nameidata *new_
 {
 	security_ops->sb_post_pivotroot(old_nd, new_nd);
 }
+
+int security_sb_get_mnt_opts(const struct super_block *sb,
+				struct security_mnt_opts *opts)
+{
+	return security_ops->sb_get_mnt_opts(sb, opts);
+}
+
+int security_sb_set_mnt_opts(struct super_block *sb,
+				struct security_mnt_opts *opts)
+{
+	return security_ops->sb_set_mnt_opts(sb, opts);
+}
+EXPORT_SYMBOL(security_sb_set_mnt_opts);
+
+void security_sb_clone_mnt_opts(const struct super_block *oldsb,
+				struct super_block *newsb)
+{
+	security_ops->sb_clone_mnt_opts(oldsb, newsb);
+}
+EXPORT_SYMBOL(security_sb_clone_mnt_opts);
+
+int security_sb_parse_opts_str(char *options, struct security_mnt_opts *opts)
+{
+	return security_ops->sb_parse_opts_str(options, opts);
+}
+EXPORT_SYMBOL(security_sb_parse_opts_str);
 
 int security_inode_alloc(struct inode *inode)
 {
@@ -478,11 +502,11 @@ int security_inode_killpriv(struct dentry *dentry)
 	return security_ops->inode_killpriv(dentry);
 }
 
-int security_inode_getsecurity(const struct inode *inode, const char *name, void *buffer, size_t size, int err)
+int security_inode_getsecurity(const struct inode *inode, const char *name, void **buffer, bool alloc)
 {
 	if (unlikely(IS_PRIVATE(inode)))
 		return 0;
-	return security_ops->inode_getsecurity(inode, name, buffer, size, err);
+	return security_ops->inode_getsecurity(inode, name, buffer, alloc);
 }
 
 int security_inode_setsecurity(struct inode *inode, const char *name, const void *value, size_t size, int flags)
@@ -815,6 +839,12 @@ int security_secid_to_secctx(u32 secid, char **secdata, u32 *seclen)
 	return security_ops->secid_to_secctx(secid, secdata, seclen);
 }
 EXPORT_SYMBOL(security_secid_to_secctx);
+
+int security_secctx_to_secid(char *secdata, u32 seclen, u32 *secid)
+{
+	return security_ops->secctx_to_secid(secdata, seclen, secid);
+}
+EXPORT_SYMBOL(security_secctx_to_secid);
 
 void security_release_secctx(char *secdata, u32 seclen)
 {

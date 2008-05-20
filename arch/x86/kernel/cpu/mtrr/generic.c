@@ -9,11 +9,12 @@
 #include <asm/msr.h>
 #include <asm/system.h>
 #include <asm/cpufeature.h>
+#include <asm/processor-flags.h>
 #include <asm/tlbflush.h>
 #include "mtrr.h"
 
 struct mtrr_state {
-	struct mtrr_var_range *var_ranges;
+	struct mtrr_var_range var_ranges[MAX_VAR_RANGES];
 	mtrr_type fixed_ranges[NUM_FIXED_RANGES];
 	unsigned char enabled;
 	unsigned char have_fixed;
@@ -85,12 +86,6 @@ void __init get_mtrr_state(void)
 	struct mtrr_var_range *vrs;
 	unsigned lo, dummy;
 
-	if (!mtrr_state.var_ranges) {
-		mtrr_state.var_ranges = kmalloc(num_var_ranges * sizeof (struct mtrr_var_range), 
-						GFP_KERNEL);
-		if (!mtrr_state.var_ranges)
-			return;
-	} 
 	vrs = mtrr_state.var_ranges;
 
 	rdmsr(MTRRcap_MSR, lo, dummy);
@@ -181,14 +176,15 @@ static inline void k8_enable_fixed_iorrs(void)
 }
 
 /**
- * Checks and updates an fixed-range MTRR if it differs from the value it
- * should have. If K8 extentions are wanted, update the K8 SYSCFG MSR also.
- * see AMD publication no. 24593, chapter 7.8.1, page 233 for more information
- * \param msr MSR address of the MTTR which should be checked and updated
- * \param changed pointer which indicates whether the MTRR needed to be changed
- * \param msrwords pointer to the MSR values which the MSR should have
+ * set_fixed_range - checks & updates a fixed-range MTRR if it differs from the value it should have
+ * @msr: MSR address of the MTTR which should be checked and updated
+ * @changed: pointer which indicates whether the MTRR needed to be changed
+ * @msrwords: pointer to the MSR values which the MSR should have
+ *
+ * If K8 extentions are wanted, update the K8 SYSCFG MSR also.
+ * See AMD publication no. 24593, chapter 7.8.1, page 233 for more information.
  */
-static void set_fixed_range(int msr, int * changed, unsigned int * msrwords)
+static void set_fixed_range(int msr, bool *changed, unsigned int *msrwords)
 {
 	unsigned lo, hi;
 
@@ -200,16 +196,19 @@ static void set_fixed_range(int msr, int * changed, unsigned int * msrwords)
 		    ((msrwords[0] | msrwords[1]) & K8_MTRR_RDMEM_WRMEM_MASK))
 			k8_enable_fixed_iorrs();
 		mtrr_wrmsr(msr, msrwords[0], msrwords[1]);
-		*changed = TRUE;
+		*changed = true;
 	}
 }
 
+/**
+ * generic_get_free_region - Get a free MTRR.
+ * @base: The starting (base) address of the region.
+ * @size: The size (in bytes) of the region.
+ * @replace_reg: mtrr index to be replaced; set to invalid value if none.
+ *
+ * Returns: The index of the region on success, else negative on error.
+ */
 int generic_get_free_region(unsigned long base, unsigned long size, int replace_reg)
-/*  [SUMMARY] Get a free MTRR.
-    <base> The starting (base) address of the region.
-    <size> The size (in bytes) of the region.
-    [RETURNS] The index of the region on success, else -1 on error.
-*/
 {
 	int i, max;
 	mtrr_type ltype;
@@ -254,13 +253,13 @@ static void generic_get_mtrr(unsigned int reg, unsigned long *base,
 }
 
 /**
- * Checks and updates the fixed-range MTRRs if they differ from the saved set
- * \param frs pointer to fixed-range MTRR values, saved by get_fixed_ranges()
+ * set_fixed_ranges - checks & updates the fixed-range MTRRs if they differ from the saved set
+ * @frs: pointer to fixed-range MTRR values, saved by get_fixed_ranges()
  */
 static int set_fixed_ranges(mtrr_type * frs)
 {
 	unsigned long long *saved = (unsigned long long *) frs;
-	int changed = FALSE;
+	bool changed = false;
 	int block=-1, range;
 
 	while (fixed_range_blocks[++block].ranges)
@@ -273,17 +272,17 @@ static int set_fixed_ranges(mtrr_type * frs)
 
 /*  Set the MSR pair relating to a var range. Returns TRUE if
     changes are made  */
-static int set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
+static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 {
 	unsigned int lo, hi;
-	int changed = FALSE;
+	bool changed = false;
 
 	rdmsr(MTRRphysBase_MSR(index), lo, hi);
 	if ((vr->base_lo & 0xfffff0ffUL) != (lo & 0xfffff0ffUL)
 	    || (vr->base_hi & (size_and_mask >> (32 - PAGE_SHIFT))) !=
 		(hi & (size_and_mask >> (32 - PAGE_SHIFT)))) {
 		mtrr_wrmsr(MTRRphysBase_MSR(index), vr->base_lo, vr->base_hi);
-		changed = TRUE;
+		changed = true;
 	}
 
 	rdmsr(MTRRphysMask_MSR(index), lo, hi);
@@ -292,20 +291,20 @@ static int set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 	    || (vr->mask_hi & (size_and_mask >> (32 - PAGE_SHIFT))) !=
 		(hi & (size_and_mask >> (32 - PAGE_SHIFT)))) {
 		mtrr_wrmsr(MTRRphysMask_MSR(index), vr->mask_lo, vr->mask_hi);
-		changed = TRUE;
+		changed = true;
 	}
 	return changed;
 }
 
 static u32 deftype_lo, deftype_hi;
 
+/**
+ * set_mtrr_state - Set the MTRR state for this CPU.
+ *
+ * NOTE: The CPU must already be in a safe state for MTRR changes.
+ * RETURNS: 0 if no changes made, else a mask indicating what was changed.
+ */
 static unsigned long set_mtrr_state(void)
-/*  [SUMMARY] Set the MTRR state for this CPU.
-    <state> The MTRR state information to read.
-    <ctxt> Some relevant CPU context.
-    [NOTE] The CPU must already be in a safe state for MTRR changes.
-    [RETURNS] 0 if no changes made, else a mask indication what was changed.
-*/
 {
 	unsigned int i;
 	unsigned long change_mask = 0;
@@ -350,7 +349,7 @@ static void prepare_set(void) __acquires(set_atomicity_lock)
 	spin_lock(&set_atomicity_lock);
 
 	/*  Enter the no-fill (CD=1, NW=0) cache mode and flush caches. */
-	cr0 = read_cr0() | 0x40000000;	/* set CD flag */
+	cr0 = read_cr0() | X86_CR0_CD;
 	write_cr0(cr0);
 	wbinvd();
 
@@ -417,8 +416,6 @@ static void generic_set_mtrr(unsigned int reg, unsigned long base,
     <base> The base address of the region.
     <size> The size of the region. If this is 0 the region is disabled.
     <type> The type of the region.
-    <do_safe> If TRUE, do the change safely. If FALSE, safety measures should
-    be done externally.
     [RETURNS] Nothing.
 */
 {

@@ -85,7 +85,7 @@
 	(sizeof(struct netxen_cmd_buffer) * adapter->max_tx_desc_count)
 #define RCV_BUFFSIZE	\
 	(sizeof(struct netxen_rx_buffer) * rcv_desc->max_rx_desc_count)
-#define find_diff_among(a,b,range) ((a)<=(b)?((b)-(a)):((b)+(range)-(a)))
+#define find_diff_among(a,b,range) ((a)<(b)?((b)-(a)):((b)+(range)-(a)))
 
 #define NETXEN_NETDEV_STATUS		0x1
 #define NETXEN_RCV_PRODUCER_OFFSET	0
@@ -113,8 +113,8 @@
 #define FLUSH_SCHEDULED_WORK()	flush_workqueue(netxen_workq)
 extern struct workqueue_struct *netxen_workq;
 
-/* 
- * normalize a 64MB crb address to 32MB PCI window 
+/*
+ * normalize a 64MB crb address to 32MB PCI window
  * To use NETXEN_CRB_NORMALIZE, window _must_ be set to 1
  */
 #define NETXEN_CRB_NORMAL(reg)	\
@@ -204,7 +204,7 @@ enum {
 			? RCV_DESC_LRO :	\
 			(RCV_DESC_NORMAL)))
 
-#define MAX_CMD_DESCRIPTORS		1024
+#define MAX_CMD_DESCRIPTORS		4096
 #define MAX_RCV_DESCRIPTORS		16384
 #define MAX_CMD_DESCRIPTORS_HOST	(MAX_CMD_DESCRIPTORS / 4)
 #define MAX_RCV_DESCRIPTORS_1G		(MAX_RCV_DESCRIPTORS / 4)
@@ -736,11 +736,11 @@ struct netxen_skb_frag {
 	(config_word) &= ~__tmask;      \
 	(config_word) |= (((__tvalue) << (start)) & __tmask); \
 }
-	
+
 #define _netxen_clear_bits(config_word, start, bits) {\
 	unsigned long long __tmask = (((1ULL << (bits)) - 1) << (start));  \
 	(config_word) &= ~__tmask; \
-}		
+}
 
 /*    Following defines are for the state of the buffers    */
 #define	NETXEN_BUFFER_FREE	0
@@ -818,15 +818,8 @@ struct netxen_adapter_stats {
 	u64  badskblen;
 	u64  nocmddescriptor;
 	u64  polled;
-	u64  uphappy;
-	u64  updropped;
-	u64  uplcong;
-	u64  uphcong;
-	u64  upmcong;
-	u64  updunno;
-	u64  skbfreed;
+	u64  rxdropped;
 	u64  txdropped;
-	u64  txnullskb;
 	u64  csummed;
 	u64  no_rcv;
 	u64  rxbytes;
@@ -842,7 +835,6 @@ struct netxen_rcv_desc_ctx {
 	u32 flags;
 	u32 producer;
 	u32 rcv_pending;	/* Num of bufs posted in phantom */
-	u32 rcv_free;		/* Num of bufs in free list */
 	dma_addr_t phys_addr;
 	struct pci_dev *phys_pdev;
 	struct rcv_desc *desc_head;	/* address of rx ring in Phantom */
@@ -879,7 +871,7 @@ struct netxen_dummy_dma {
 
 struct netxen_adapter {
 	struct netxen_hardware_context ahw;
-	
+
 	struct netxen_adapter *master;
 	struct net_device *netdev;
 	struct pci_dev *pdev;
@@ -889,8 +881,6 @@ struct netxen_adapter {
 	int mtu;
 	int portnum;
 
-	spinlock_t tx_lock;
-	spinlock_t lock;
 	struct work_struct watchdog_task;
 	struct timer_list watchdog_timer;
 	struct work_struct  tx_timeout_task;
@@ -898,17 +888,13 @@ struct netxen_adapter {
 	u32 curr_window;
 
 	u32 cmd_producer;
-	u32 *cmd_consumer;
-
+	__le32 *cmd_consumer;
 	u32 last_cmd_consumer;
+
 	u32 max_tx_desc_count;
 	u32 max_rx_desc_count;
 	u32 max_jumbo_rx_desc_count;
 	u32 max_lro_rx_desc_count;
-	/* Num of instances active on cmd buffer ring */
-	u32 proc_cmd_buf_counter;
-
-	u32 num_threads, total_threads;	/*Use to keep track of xmit threads */
 
 	u32 flags;
 	u32 irq;
@@ -916,7 +902,7 @@ struct netxen_adapter {
 	u32 temp;
 
 	struct netxen_adapter_stats stats;
-	
+
 	u16 portno;
 	u16 link_speed;
 	u16 link_duplex;
@@ -942,6 +928,7 @@ struct netxen_adapter {
 	struct pci_dev *ctx_desc_pdev;
 	dma_addr_t ctx_desc_phys_addr;
 	int intr_scheme;
+	int msi_mode;
 	int (*enable_phy_interrupts) (struct netxen_adapter *);
 	int (*disable_phy_interrupts) (struct netxen_adapter *);
 	void (*handle_phy_intr) (struct netxen_adapter *);
@@ -1018,14 +1005,8 @@ int netxen_niu_xgbe_enable_phy_interrupts(struct netxen_adapter *adapter);
 int netxen_niu_gbe_enable_phy_interrupts(struct netxen_adapter *adapter);
 int netxen_niu_xgbe_disable_phy_interrupts(struct netxen_adapter *adapter);
 int netxen_niu_gbe_disable_phy_interrupts(struct netxen_adapter *adapter);
-int netxen_niu_xgbe_clear_phy_interrupts(struct netxen_adapter *adapter);
-int netxen_niu_gbe_clear_phy_interrupts(struct netxen_adapter *adapter);
 void netxen_nic_xgbe_handle_phy_intr(struct netxen_adapter *adapter);
 void netxen_nic_gbe_handle_phy_intr(struct netxen_adapter *adapter);
-void netxen_niu_gbe_set_mii_mode(struct netxen_adapter *adapter, int port,
-				 long enable);
-void netxen_niu_gbe_set_gmii_mode(struct netxen_adapter *adapter, int port,
-				  long enable);
 int netxen_niu_gbe_phy_read(struct netxen_adapter *adapter, long reg,
 			    __u32 * readval);
 int netxen_niu_gbe_phy_write(struct netxen_adapter *adapter,
@@ -1048,7 +1029,6 @@ int netxen_nic_hw_write_wx(struct netxen_adapter *adapter, u64 off, void *data,
 			   int len);
 void netxen_crb_writelit_adapter(struct netxen_adapter *adapter,
 				 unsigned long off, int data);
-int netxen_nic_erase_pxe(struct netxen_adapter *adapter);
 
 /* Functions from netxen_nic_init.c */
 void netxen_free_adapter_offload(struct netxen_adapter *adapter);
@@ -1057,9 +1037,9 @@ int netxen_phantom_init(struct netxen_adapter *adapter, int pegtune_val);
 int netxen_load_firmware(struct netxen_adapter *adapter);
 int netxen_pinit_from_rom(struct netxen_adapter *adapter, int verbose);
 int netxen_rom_fast_read(struct netxen_adapter *adapter, int addr, int *valp);
-int netxen_rom_fast_read_words(struct netxen_adapter *adapter, int addr, 
+int netxen_rom_fast_read_words(struct netxen_adapter *adapter, int addr,
 				u8 *bytes, size_t size);
-int netxen_rom_fast_write_words(struct netxen_adapter *adapter, int addr, 
+int netxen_rom_fast_write_words(struct netxen_adapter *adapter, int addr,
 				u8 *bytes, size_t size);
 int netxen_flash_unlock(struct netxen_adapter *adapter);
 int netxen_backup_crbinit(struct netxen_adapter *adapter);
@@ -1067,15 +1047,10 @@ int netxen_flash_erase_secondary(struct netxen_adapter *adapter);
 int netxen_flash_erase_primary(struct netxen_adapter *adapter);
 void netxen_halt_pegs(struct netxen_adapter *adapter);
 
-int netxen_rom_fast_write(struct netxen_adapter *adapter, int addr, int data);
 int netxen_rom_se(struct netxen_adapter *adapter, int addr);
-int netxen_do_rom_se(struct netxen_adapter *adapter, int addr);
 
 /* Functions from netxen_nic_isr.c */
 int netxen_nic_link_ok(struct netxen_adapter *adapter);
-void netxen_nic_isr_other(struct netxen_adapter *adapter);
-void netxen_indicate_link_status(struct netxen_adapter *adapter, u32 link);
-void netxen_handle_port_int(struct netxen_adapter *adapter, u32 enable);
 void netxen_initialize_adapter_sw(struct netxen_adapter *adapter);
 void netxen_initialize_adapter_hw(struct netxen_adapter *adapter);
 void *netxen_alloc(struct pci_dev *pdev, size_t sz, dma_addr_t * ptr,
@@ -1087,14 +1062,10 @@ void netxen_tso_check(struct netxen_adapter *adapter,
 		      struct cmd_desc_type0 *desc, struct sk_buff *skb);
 int netxen_nic_hw_resources(struct netxen_adapter *adapter);
 void netxen_nic_clear_stats(struct netxen_adapter *adapter);
-int netxen_nic_rx_has_work(struct netxen_adapter *adapter);
-int netxen_nic_tx_has_work(struct netxen_adapter *adapter);
 void netxen_watchdog_task(struct work_struct *work);
 void netxen_post_rx_buffers(struct netxen_adapter *adapter, u32 ctx,
 			    u32 ringid);
-void netxen_post_rx_buffers_nodb(struct netxen_adapter *adapter, u32 ctx,
-				 u32 ringid);
-int netxen_process_cmd_ring(unsigned long data);
+int netxen_process_cmd_ring(struct netxen_adapter *adapter);
 u32 netxen_process_rcv_ring(struct netxen_adapter *adapter, int ctx, int max);
 void netxen_nic_set_multi(struct net_device *netdev);
 int netxen_nic_change_mtu(struct net_device *netdev, int new_mtu);
@@ -1209,7 +1180,7 @@ dma_watchdog_wakeup(struct netxen_adapter *adapter)
 
 
 int netxen_is_flash_supported(struct netxen_adapter *adapter);
-int netxen_get_flash_mac_addr(struct netxen_adapter *adapter, u64 mac[]);
+int netxen_get_flash_mac_addr(struct netxen_adapter *adapter, __le64 mac[]);
 extern void netxen_change_ringparam(struct netxen_adapter *adapter);
 extern int netxen_rom_fast_read(struct netxen_adapter *adapter, int addr,
 				int *valp);

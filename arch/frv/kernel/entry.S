@@ -253,7 +253,7 @@ __entry_kernel_external_interrupt_reentry:
 	andi.p		gr5,#~PSR_ET,gr5
 
 	# set CCCR.CC3 to Undefined to abort atomic-modify completion inside the kernel
-	# - for an explanation of how it works, see: Documentation/fujitsu/frv/atomic-ops.txt
+	# - for an explanation of how it works, see: Documentation/frv/atomic-ops.txt
 	andi		gr25,#~0xc0,gr25
 
 	sti		gr20,@(gr28,#REG_TBR)
@@ -445,7 +445,7 @@ __entry_kernel_softprog_interrupt_reentry:
 	sti		gr22,@(sp,#REG_SP)
 
 	# set CCCR.CC3 to Undefined to abort atomic-modify completion inside the kernel
-	# - for an explanation of how it works, see: Documentation/fujitsu/frv/atomic-ops.txt
+	# - for an explanation of how it works, see: Documentation/frv/atomic-ops.txt
 	movsg		cccr,gr20
 	andi		gr20,#~0xc0,gr20
 	movgs		gr20,cccr
@@ -653,6 +653,26 @@ __entry_debug_exception:
 	ori		gr4,#PSR_ET,gr4
 	movgs		gr4,psr
 	jmpl		@(gr5,gr0)	; call ill_insn(esfr1,epcr0,esr0)
+
+###############################################################################
+#
+# handle atomic operation emulation for userspace
+#
+###############################################################################
+	.globl		__entry_atomic_op
+__entry_atomic_op:
+	LEDS		0x6012
+	sethi.p		%hi(atomic_operation),gr5
+	setlo		%lo(atomic_operation),gr5
+	movsg		esfr1,gr8
+	movsg		epcr0,gr9
+	movsg		esr0,gr10
+
+	# now that we've accessed the exception regs, we can enable exceptions
+	movsg		psr,gr4
+	ori		gr4,#PSR_ET,gr4
+	movgs		gr4,psr
+	jmpl		@(gr5,gr0)	; call atomic_operation(esfr1,epcr0,esr0)
 
 ###############################################################################
 #
@@ -1494,9 +1514,11 @@ sys_call_table:
 	.long sys_epoll_pwait
 	.long sys_utimensat		/* 320 */
 	.long sys_signalfd
-	.long sys_timerfd
+	.long sys_timerfd_create
 	.long sys_eventfd
 	.long sys_fallocate
+	.long sys_timerfd_settime	/* 325 */
+	.long sys_timerfd_gettime
 
 
 syscall_table_size = (. - sys_call_table)

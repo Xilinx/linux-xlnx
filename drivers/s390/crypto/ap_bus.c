@@ -61,9 +61,9 @@ module_param_named(domain, ap_domain_index, int, 0000);
 MODULE_PARM_DESC(domain, "domain index for ap devices");
 EXPORT_SYMBOL(ap_domain_index);
 
-static int ap_thread_flag = 1;
+static int ap_thread_flag = 0;
 module_param_named(poll_thread, ap_thread_flag, int, 0000);
-MODULE_PARM_DESC(poll_thread, "Turn on/off poll thread, default is 1 (on).");
+MODULE_PARM_DESC(poll_thread, "Turn on/off poll thread, default is 0 (off).");
 
 static struct device *ap_root_device = NULL;
 static DEFINE_SPINLOCK(ap_device_lock);
@@ -490,10 +490,12 @@ static int ap_device_probe(struct device *dev)
 	int rc;
 
 	ap_dev->drv = ap_drv;
-	spin_lock_bh(&ap_device_lock);
-	list_add(&ap_dev->list, &ap_device_list);
-	spin_unlock_bh(&ap_device_lock);
 	rc = ap_drv->probe ? ap_drv->probe(ap_dev) : -ENODEV;
+	if (!rc) {
+		spin_lock_bh(&ap_device_lock);
+		list_add(&ap_dev->list, &ap_device_list);
+		spin_unlock_bh(&ap_device_lock);
+	}
 	return rc;
 }
 
@@ -532,11 +534,11 @@ static int ap_device_remove(struct device *dev)
 
 	ap_flush_queue(ap_dev);
 	del_timer_sync(&ap_dev->timeout);
-	if (ap_drv->remove)
-		ap_drv->remove(ap_dev);
 	spin_lock_bh(&ap_device_lock);
 	list_del_init(&ap_dev->list);
 	spin_unlock_bh(&ap_device_lock);
+	if (ap_drv->remove)
+		ap_drv->remove(ap_dev);
 	spin_lock_bh(&ap_dev->lock);
 	atomic_sub(ap_dev->queue_count, &ap_poll_requests);
 	spin_unlock_bh(&ap_dev->lock);
