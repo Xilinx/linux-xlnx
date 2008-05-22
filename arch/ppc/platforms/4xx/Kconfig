@@ -182,6 +182,24 @@ config XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
 	  at http://www.xilinx.com for more details and if you need to enable
 	  this workaround for your silicon revision.
 
+config XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
+	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
+	bool "Enable Xilinx FPU prefetch workaround"
+	default y
+	help
+	  This option enables a workaround for a bug in the APU controller of
+	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
+	  http://www.xilinx.com/support/answers/30529.htm for more details.
+
+config XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
+	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
+	bool "Enable Xilinx FPU TLB instruction miss workaround"
+	default y
+	help
+	  This option enables a workaround for a bug in the APU controller of
+	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
+	  http://www.xilinx.com/support/answers/30570.htm for more details.
+
 config XILINX_INTC_IVR_WORKAROUND
 	bool "Enable Xilinx INTC IVR workaround"
 	depends on XILINX_ML507

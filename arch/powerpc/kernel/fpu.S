@@ -38,6 +38,21 @@ _GLOBAL(load_up_fpu)
 	ori	r5,r5,excep_state@l
 	stw	r3,0(r5)
 #endif /* CONFIG_XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND */
+
+#if defined(CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND) || defined(CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND)
+	mfspr   r5,SPRN_CCR0
+#ifdef CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
+	/* set CCR0[9] to disable the load miss queue inside the ppc440 */
+	oris    r5,r5, (1<<6)
+#endif
+#ifdef CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
+	/* set CCR0[26] to ... */
+	ori	r5,r5, (1<<5)
+#endif
+	mtspr   SPRN_CCR0,r5
+	isync
+#endif
+
 	mfmsr	r5
 	ori	r5,r5,MSR_FP
 	SYNC
@@ -100,6 +115,20 @@ _GLOBAL(load_up_fpu)
  * Enables the FPU for use in the kernel on return.
  */
 _GLOBAL(giveup_fpu)
+#if defined(CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND) || defined(CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND)
+	mfspr   r5,SPRN_CCR0
+#ifdef CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
+	/* set CCR0[9] to disable the load miss queue inside the ppc440 */
+	oris    r5,r5, (1<<6)
+#endif
+#ifdef CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
+	/* set CCR0[26] to ... */
+	ori	r5,r5, (1<<5)
+#endif
+	mtspr   SPRN_CCR0,r5
+	isync
+#endif
+
 	mfmsr	r5
 	ori	r5,r5,MSR_FP
 	SYNC_601

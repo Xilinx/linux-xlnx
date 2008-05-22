@@ -117,6 +117,24 @@ config XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
 	  the PPC440 processor block in Virtex-5 FXT. See the answer record 
 	  at http://www.xilinx.com/support/answers/30579.htm for more details.
 
+config XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
+	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
+	bool "Enable Xilinx FPU prefetch workaround"
+	default y
+	help
+	  This option enables a workaround for a bug in the APU controller of
+	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
+	  http://www.xilinx.com/support/answers/30529.htm for more details.
+
+config XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
+	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
+	bool "Enable Xilinx FPU TLB instruction miss workaround"
+	default y
+	help
+	  This option enables a workaround for a bug in the APU controller of
+	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
+	  http://www.xilinx.com/support/answers/30570.htm for more details.
+
 # 44x specific CPU modules, selected based on the board above.
 config 440EP
 	bool

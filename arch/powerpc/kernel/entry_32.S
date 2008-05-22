@@ -531,6 +531,17 @@ END_FTR_SECTION_IFSET(CPU_FTR_SPE)
 	andc	r11,r11,r0
 	MTMSRD(r11)
 	isync
+#if defined(CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND) || defined(CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND)
+	mfspr   r5,SPRN_CCR0
+#ifdef CONFIG_XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
+	andis.  r5,r5, ~(1<<6)@l
+#endif
+#ifdef CONFIG_XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
+	andi.	r5,r5, ~(1<<5)@l
+#endif
+	mtspr   SPRN_CCR0,r5
+	isync
+#endif
 1:	stw	r11,_MSR(r1)
 	mfcr	r10
 	stw	r10,_CCR(r1)
