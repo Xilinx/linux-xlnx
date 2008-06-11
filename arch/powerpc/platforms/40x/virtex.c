@@ -14,6 +14,8 @@
 #include <asm/prom.h>
 #include <asm/time.h>
 #include <asm/xilinx_intc.h>
+#include <asm/reg.h>
+#include "40x.h"
 
 static struct of_device_id xilinx_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
@@ -51,4 +53,5 @@ define_machine(virtex) {
 	.init_IRQ		= xilinx_intc_init_tree,
 	.get_irq		= xilinx_intc_get_irq,
 	.calibrate_decr		= generic_calibrate_decr,
+	.restart                = ppc40x_reset_system,
 };
