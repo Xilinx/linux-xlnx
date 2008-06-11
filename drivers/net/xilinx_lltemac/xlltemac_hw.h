@@ -254,15 +254,15 @@ extern "C" {
 
 #define XTE_PHYC_RGLINKSPD_10        0x00000000	  /**< XTE_GMIC_RGLINKSPD_MASK
                                                        for 10 Mbit */
-#define XTE_PHYC_RGLINKSPD_100       0x40000000	  /**< XTE_GMIC_RGLINKSPD_MASK
+#define XTE_PHYC_RGLINKSPD_100       0x00000004	  /**< XTE_GMIC_RGLINKSPD_MASK
                                                        for 100 Mbit */
-#define XTE_PHYC_RGLINKSPD_1000      0x80000000	  /**< XTE_GMIC_RGLINKSPD_MASK
+#define XTE_PHYC_RGLINKSPD_1000      0x00000008	  /**< XTE_GMIC_RGLINKSPD_MASK
                                                        for 1000 Mbit */
 #define XTE_PHYC_SGLINKSPD_10        0x00000000	  /**< XTE_SGMIC_RGLINKSPD_MASK
                                                        for 10 Mbit */
-#define XTE_PHYC_SGLINKSPD_100       0x00000004	  /**< XTE_SGMIC_RGLINKSPD_MASK
+#define XTE_PHYC_SGLINKSPD_100       0x40000000	  /**< XTE_SGMIC_RGLINKSPD_MASK
                                                        for 100 Mbit */
-#define XTE_PHYC_SGLINKSPD_1000      0x00000008	  /**< XTE_SGMIC_RGLINKSPD_MASK
+#define XTE_PHYC_SGLINKSPD_1000      0x80000000	  /**< XTE_SGMIC_RGLINKSPD_MASK
                                                        for 1000 Mbit */
 /*@}*/
 
