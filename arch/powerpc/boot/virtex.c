@@ -241,6 +241,6 @@ void platform_init(void)
 #else
 #endif
         printf("booting virtex\n\r");
-        printf("memstart=0x%Lx\n\r", start);
-        printf("memsize=0x%Lx\n\r", size);
+        printf("memstart=0x%llx\n\r", start);
+        printf("memsize=0x%llx\n\r", size);
 }

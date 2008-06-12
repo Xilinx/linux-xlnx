@@ -33,6 +33,7 @@ zImage.pmac
 zImage.pseries
 zImage.redboot*
 zImage.sandpoint
+zImage.virtex
 zImage.vmode
 zconf.h
 zlib.h
