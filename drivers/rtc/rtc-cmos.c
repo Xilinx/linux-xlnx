@@ -854,11 +854,12 @@ cmos_pnp_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
 		 * don't define the IRQ. It should always be safe to
 		 * hardcode it in these cases
 		 */
-		return cmos_do_probe(&pnp->dev, &pnp->res.port_resource[0], 8);
+		return cmos_do_probe(&pnp->dev,
+				pnp_get_resource(pnp, IORESOURCE_IO, 0), 8);
 	else
 		return cmos_do_probe(&pnp->dev,
-				     &pnp->res.port_resource[0],
-				     pnp->res.irq_resource[0].start);
+				pnp_get_resource(pnp, IORESOURCE_IO, 0),
+				pnp_irq(pnp, 0));
 }
 
 static void __exit cmos_pnp_remove(struct pnp_dev *pnp)
@@ -904,19 +905,7 @@ static struct pnp_driver cmos_pnp_driver = {
 	.resume		= cmos_pnp_resume,
 };
 
-static int __init cmos_init(void)
-{
-	return pnp_register_driver(&cmos_pnp_driver);
-}
-module_init(cmos_init);
-
-static void __exit cmos_exit(void)
-{
-	pnp_unregister_driver(&cmos_pnp_driver);
-}
-module_exit(cmos_exit);
-
-#else	/* no PNP */
+#endif	/* CONFIG_PNP */
 
 /*----------------------------------------------------------------*/
 
@@ -957,19 +946,32 @@ static struct platform_driver cmos_platform_driver = {
 
 static int __init cmos_init(void)
 {
+#ifdef	CONFIG_PNP
+	if (pnp_platform_devices)
+		return pnp_register_driver(&cmos_pnp_driver);
+	else
+		return platform_driver_probe(&cmos_platform_driver,
+			cmos_platform_probe);
+#else
 	return platform_driver_probe(&cmos_platform_driver,
 			cmos_platform_probe);
+#endif /* CONFIG_PNP */
 }
 module_init(cmos_init);
 
 static void __exit cmos_exit(void)
 {
+#ifdef	CONFIG_PNP
+	if (pnp_platform_devices)
+		pnp_unregister_driver(&cmos_pnp_driver);
+	else
+		platform_driver_unregister(&cmos_platform_driver);
+#else
 	platform_driver_unregister(&cmos_platform_driver);
+#endif /* CONFIG_PNP */
 }
 module_exit(cmos_exit);
 
-
-#endif	/* !PNP */
 
 MODULE_AUTHOR("David Brownell");
 MODULE_DESCRIPTION("Driver for PC-style 'CMOS' RTCs");

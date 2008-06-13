@@ -44,60 +44,34 @@ char  empty_zero_page[PAGE_SIZE] __attribute__((__aligned__(PAGE_SIZE)));
 
 void show_mem(void)
 {
-	int i, total = 0, reserved = 0;
-	int shared = 0, cached = 0;
+	unsigned long i, total = 0, reserved = 0;
+	unsigned long shared = 0, cached = 0;
+	unsigned long flags;
 	struct page *page;
+	pg_data_t *pgdat;
 
 	printk("Mem-info:\n");
 	show_free_areas();
-	printk("Free swap:       %6ldkB\n", nr_swap_pages << (PAGE_SHIFT - 10));
-	i = max_mapnr;
-	while (i-- > 0) {
-		if (!pfn_valid(i))
-			continue;
-		page = pfn_to_page(i);
-		total++;
-		if (PageReserved(page))
-			reserved++;
-		else if (PageSwapCache(page))
-			cached++;
-		else if (page_count(page))
-			shared += page_count(page) - 1;
+	for_each_online_pgdat(pgdat) {
+		pgdat_resize_lock(pgdat, &flags);
+		for (i = 0; i < pgdat->node_spanned_pages; i++) {
+			if (!pfn_valid(pgdat->node_start_pfn + i))
+				continue;
+			page = pfn_to_page(pgdat->node_start_pfn + i);
+			total++;
+			if (PageReserved(page))
+				reserved++;
+			else if (PageSwapCache(page))
+				cached++;
+			else if (page_count(page))
+				shared += page_count(page) - 1;
+		}
+		pgdat_resize_unlock(pgdat, &flags);
 	}
-	printk("%d pages of RAM\n", total);
-	printk("%d reserved pages\n", reserved);
-	printk("%d pages shared\n", shared);
-	printk("%d pages swap cached\n", cached);
-
-	printk("%lu pages dirty\n", global_page_state(NR_FILE_DIRTY));
-	printk("%lu pages writeback\n", global_page_state(NR_WRITEBACK));
-	printk("%lu pages mapped\n", global_page_state(NR_FILE_MAPPED));
-	printk("%lu pages slab\n",
-	       global_page_state(NR_SLAB_RECLAIMABLE) +
-	       global_page_state(NR_SLAB_UNRECLAIMABLE));
-	printk("%lu pages pagetables\n", global_page_state(NR_PAGETABLE));
-}
-
-static void __init setup_ro_region(void)
-{
-	pgd_t *pgd;
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *pte;
-	pte_t new_pte;
-	unsigned long address, end;
-
-	address = ((unsigned long)&_stext) & PAGE_MASK;
-	end = PFN_ALIGN((unsigned long)&_eshared);
-
-	for (; address < end; address += PAGE_SIZE) {
-		pgd = pgd_offset_k(address);
-		pud = pud_offset(pgd, address);
-		pmd = pmd_offset(pud, address);
-		pte = pte_offset_kernel(pmd, address);
-		new_pte = mk_pte_phys(address, __pgprot(_PAGE_RO));
-		*pte = new_pte;
-	}
+	printk("%ld pages of RAM\n", total);
+	printk("%ld reserved pages\n", reserved);
+	printk("%ld pages shared\n", shared);
+	printk("%ld pages swap cached\n", cached);
 }
 
 /*
@@ -122,7 +96,6 @@ void __init paging_init(void)
 	clear_table((unsigned long *) init_mm.pgd, pgd_type,
 		    sizeof(unsigned long)*2048);
 	vmem_map_init();
-	setup_ro_region();
 
         /* enable virtual mapping in kernel mode */
 	__ctl_load(S390_lowcore.kernel_asce, 1, 1);
@@ -130,6 +103,8 @@ void __init paging_init(void)
 	__ctl_load(S390_lowcore.kernel_asce, 13, 13);
 	__raw_local_irq_ssm(ssm_mask);
 
+	sparse_memory_present_with_active_regions(MAX_NUMNODES);
+	sparse_init();
 	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
 #ifdef CONFIG_ZONE_DMA
 	max_zone_pfns[ZONE_DMA] = PFN_DOWN(MAX_DMA_ADDRESS);
@@ -147,6 +122,9 @@ void __init mem_init(void)
 
         /* clear the zero-page */
         memset(empty_zero_page, 0, PAGE_SIZE);
+
+	/* Setup guest page hinting */
+	cmma_init();
 
 	/* this will put all low memory onto the freelists */
 	totalram_pages += free_all_bootmem();

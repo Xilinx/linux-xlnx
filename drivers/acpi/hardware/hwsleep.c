@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2007, R. Byron Moore
+ * Copyright (C) 2000 - 2008, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -70,9 +70,10 @@ acpi_set_firmware_waking_vector(acpi_physical_address physical_address)
 
 	/* Get the FACS */
 
-	status =
-	    acpi_get_table_by_index(ACPI_TABLE_INDEX_FACS,
-				    (struct acpi_table_header **)&facs);
+	status = acpi_get_table_by_index(ACPI_TABLE_INDEX_FACS,
+					 ACPI_CAST_INDIRECT_PTR(struct
+								acpi_table_header,
+								&facs));
 	if (ACPI_FAILURE(status)) {
 		return_ACPI_STATUS(status);
 	}
@@ -124,9 +125,10 @@ acpi_get_firmware_waking_vector(acpi_physical_address * physical_address)
 
 	/* Get the FACS */
 
-	status =
-	    acpi_get_table_by_index(ACPI_TABLE_INDEX_FACS,
-				    (struct acpi_table_header **)&facs);
+	status = acpi_get_table_by_index(ACPI_TABLE_INDEX_FACS,
+					 ACPI_CAST_INDIRECT_PTR(struct
+								acpi_table_header,
+								&facs));
 	if (ACPI_FAILURE(status)) {
 		return_ACPI_STATUS(status);
 	}
@@ -221,15 +223,17 @@ acpi_status acpi_enter_sleep_state_prep(u8 sleep_state)
 		break;
 	}
 
-	/* Set the system indicators to show the desired sleep state. */
-
+	/*
+	 * Set the system indicators to show the desired sleep state.
+	 * _SST is an optional method (return no error if not found)
+	 */
 	status = acpi_evaluate_object(NULL, METHOD_NAME__SST, &arg_list, NULL);
 	if (ACPI_FAILURE(status) && status != AE_NOT_FOUND) {
 		ACPI_EXCEPTION((AE_INFO, status,
 				"While executing method _SST"));
 	}
 
-	return_ACPI_STATUS(status);
+	return_ACPI_STATUS(AE_OK);
 }
 
 ACPI_EXPORT_SYMBOL(acpi_enter_sleep_state_prep)

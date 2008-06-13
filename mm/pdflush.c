@@ -17,8 +17,8 @@
 #include <linux/gfp.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/fs.h>		// Needed by writeback.h
-#include <linux/writeback.h>	// Prototypes pdflush_operation()
+#include <linux/fs.h>		/* Needed by writeback.h	  */
+#include <linux/writeback.h>	/* Prototypes pdflush_operation() */
 #include <linux/kthread.h>
 #include <linux/cpuset.h>
 #include <linux/freezer.h>
@@ -187,8 +187,8 @@ static int pdflush(void *dummy)
 	 * This is needed as pdflush's are dynamically created and destroyed.
 	 * The boottime pdflush's are easily placed w/o these 2 lines.
 	 */
-	cpus_allowed = cpuset_cpus_allowed(current);
-	set_cpus_allowed(current, cpus_allowed);
+	cpuset_cpus_allowed(current, &cpus_allowed);
+	set_cpus_allowed_ptr(current, &cpus_allowed);
 
 	return __pdflush(&my_work);
 }
@@ -207,7 +207,6 @@ int pdflush_operation(void (*fn)(unsigned long), unsigned long arg0)
 
 	spin_lock_irqsave(&pdflush_lock, flags);
 	if (list_empty(&pdflush_list)) {
-		spin_unlock_irqrestore(&pdflush_lock, flags);
 		ret = -1;
 	} else {
 		struct pdflush_work *pdf;
@@ -219,8 +218,9 @@ int pdflush_operation(void (*fn)(unsigned long), unsigned long arg0)
 		pdf->fn = fn;
 		pdf->arg0 = arg0;
 		wake_up_process(pdf->who);
-		spin_unlock_irqrestore(&pdflush_lock, flags);
 	}
+	spin_unlock_irqrestore(&pdflush_lock, flags);
+
 	return ret;
 }
 

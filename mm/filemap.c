@@ -576,10 +576,12 @@ EXPORT_SYMBOL(unlock_page);
  */
 void end_page_writeback(struct page *page)
 {
-	if (!TestClearPageReclaim(page) || rotate_reclaimable_page(page)) {
-		if (!test_clear_page_writeback(page))
-			BUG();
-	}
+	if (TestClearPageReclaim(page))
+		rotate_reclaimable_page(page);
+
+	if (!test_clear_page_writeback(page))
+		BUG();
+
 	smp_mb__after_clear_bit();
 	wake_up_page(page, PG_writeback);
 }
@@ -1459,6 +1461,11 @@ page_not_uptodate:
 	 */
 	ClearPageError(page);
 	error = mapping->a_ops->readpage(file, page);
+	if (!error) {
+		wait_on_page_locked(page);
+		if (!PageUptodate(page))
+			error = -EIO;
+	}
 	page_cache_release(page);
 
 	if (!error || error == AOP_TRUNCATED_PAGE)
@@ -1653,7 +1660,7 @@ int should_remove_suid(struct dentry *dentry)
 }
 EXPORT_SYMBOL(should_remove_suid);
 
-int __remove_suid(struct dentry *dentry, int kill)
+static int __remove_suid(struct dentry *dentry, int kill)
 {
 	struct iattr newattrs;
 

@@ -252,7 +252,7 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	SET_IVOR(12, WatchdogTimer);
 	SET_IVOR(13, DataTLBError);
 	SET_IVOR(14, InstructionTLBError);
-	SET_IVOR(15, Debug);
+	SET_IVOR(15, DebugCrit);
 
 	/* Establish the interrupt vector base */
 	lis	r4,interrupt_base@h	/* IVPR only uses the high 16-bits */
@@ -622,7 +622,7 @@ interrupt_base:
 	b	InstructionStorage
 
 	/* Debug Interrupt */
-	DEBUG_EXCEPTION
+	DEBUG_CRIT_EXCEPTION
 
 /*
  * Local functions
@@ -697,7 +697,14 @@ finish_tlb_load:
 	rlwimi	r10, r11, 0, 26, 26		/* UX = HWEXEC & USER */
 
 	rlwimi	r12, r10, 0, 26, 31		/* Insert static perms */
-	rlwinm	r12, r12, 0, 20, 15		/* Clear U0-U3 */
+
+	/*
+	 * Clear U0-U3 and WL1 IL1I IL1D IL2I IL2D bits which are added
+	 * on newer 440 cores like the 440x6 used on AMCC 460EX/460GT (see
+	 * include/asm-powerpc/pgtable-ppc32.h for details).
+	 */
+	rlwinm	r12, r12, 0, 20, 10
+
 #ifdef CONFIG_XILINX_DISABLE_44x_CACHE
 	ori	r12, r12, PPC44x_TLB_I
 #endif

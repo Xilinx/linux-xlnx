@@ -65,7 +65,7 @@ static DEFINE_MUTEX(dev_mutex);
 
 static void rnic_init(struct iwch_dev *rnicp)
 {
-	PDBG("%s iwch_dev %p\n", __FUNCTION__,  rnicp);
+	PDBG("%s iwch_dev %p\n", __func__,  rnicp);
 	idr_init(&rnicp->cqidr);
 	idr_init(&rnicp->qpidr);
 	idr_init(&rnicp->mmidr);
@@ -83,6 +83,7 @@ static void rnic_init(struct iwch_dev *rnicp)
 	rnicp->attr.max_phys_buf_entries = T3_MAX_PBL_SIZE;
 	rnicp->attr.max_pds = T3_MAX_NUM_PD - 1;
 	rnicp->attr.mem_pgsizes_bitmask = 0x7FFF;	/* 4KB-128MB */
+	rnicp->attr.max_mr_size = T3_MAX_MR_SIZE;
 	rnicp->attr.can_resize_wq = 0;
 	rnicp->attr.max_rdma_reads_per_qp = 8;
 	rnicp->attr.max_rdma_read_resources =
@@ -106,7 +107,7 @@ static void open_rnic_dev(struct t3cdev *tdev)
 	struct iwch_dev *rnicp;
 	static int vers_printed;
 
-	PDBG("%s t3cdev %p\n", __FUNCTION__,  tdev);
+	PDBG("%s t3cdev %p\n", __func__,  tdev);
 	if (!vers_printed++)
 		printk(KERN_INFO MOD "Chelsio T3 RDMA Driver - version %s\n",
 		       DRV_VERSION);
@@ -144,7 +145,7 @@ static void open_rnic_dev(struct t3cdev *tdev)
 static void close_rnic_dev(struct t3cdev *tdev)
 {
 	struct iwch_dev *dev, *tmp;
-	PDBG("%s t3cdev %p\n", __FUNCTION__,  tdev);
+	PDBG("%s t3cdev %p\n", __func__,  tdev);
 	mutex_lock(&dev_mutex);
 	list_for_each_entry_safe(dev, tmp, &dev_list, entry) {
 		if (dev->rdev.t3cdev_p == tdev) {

@@ -172,9 +172,7 @@ extern unsigned long thread_saved_pc(struct task_struct *t);
  */
 extern void task_show_regs(struct seq_file *m, struct task_struct *task);
 
-extern void show_registers(struct pt_regs *regs);
 extern void show_code(struct pt_regs *regs);
-extern void show_trace(struct task_struct *task, unsigned long *sp);
 
 unsigned long get_wchan(struct task_struct *p);
 #define task_pt_regs(tsk) ((struct pt_regs *) \

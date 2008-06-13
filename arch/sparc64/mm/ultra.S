@@ -1,7 +1,7 @@
-/* $Id: ultra.S,v 1.72 2002/02/09 19:49:31 davem Exp $
+/*
  * ultra.S: Don't expand these all over the place...
  *
- * Copyright (C) 1997, 2000 David S. Miller (davem@redhat.com)
+ * Copyright (C) 1997, 2000, 2008 David S. Miller (davem@davemloft.net)
  */
 
 #include <asm/asi.h>
@@ -15,6 +15,7 @@
 #include <asm/thread_info.h>
 #include <asm/cacheflush.h>
 #include <asm/hypervisor.h>
+#include <asm/cpudata.h>
 
 	/* Basically, most of the Spitfire vs. Cheetah madness
 	 * has to do with the fact that Cheetah does not support
@@ -476,7 +477,6 @@ xcall_sync_tick:
 #endif
 	call		smp_synchronize_tick_client
 	 nop
-	clr		%l6
 	b		rtrap_xcall
 	 ldx		[%sp + PTREGS_OFF + PT_V9_TSTATE], %l1
 
@@ -511,10 +511,35 @@ xcall_report_regs:
 #endif
 	call		__show_regs
 	 add		%sp, PTREGS_OFF, %o0
-	clr		%l6
 	/* Has to be a non-v9 branch due to the large distance. */
 	b		rtrap_xcall
 	 ldx		[%sp + PTREGS_OFF + PT_V9_TSTATE], %l1
+
+#ifdef CONFIG_MAGIC_SYSRQ
+	.globl		xcall_fetch_glob_regs
+xcall_fetch_glob_regs:
+	sethi		%hi(global_reg_snapshot), %g1
+	or		%g1, %lo(global_reg_snapshot), %g1
+	__GET_CPUID(%g2)
+	sllx		%g2, 6, %g3
+	add		%g1, %g3, %g1
+	rdpr		%tstate, %g7
+	stx		%g7, [%g1 + GR_SNAP_TSTATE]
+	rdpr		%tpc, %g7
+	stx		%g7, [%g1 + GR_SNAP_TPC]
+	rdpr		%tnpc, %g7
+	stx		%g7, [%g1 + GR_SNAP_TNPC]
+	stx		%o7, [%g1 + GR_SNAP_O7]
+	stx		%i7, [%g1 + GR_SNAP_I7]
+	sethi		%hi(trap_block), %g7
+	or		%g7, %lo(trap_block), %g7
+	sllx		%g2, TRAP_BLOCK_SZ_SHIFT, %g2
+	add		%g7, %g2, %g7
+	ldx		[%g7 + TRAP_PER_CPU_THREAD], %g3
+	membar		#StoreStore
+	stx		%g3, [%g1 + GR_SNAP_THREAD]
+	retry
+#endif /* CONFIG_MAGIC_SYSRQ */
 
 #ifdef DCACHE_ALIASING_POSSIBLE
 	.align		32
@@ -576,7 +601,7 @@ __hypervisor_tlb_xcall_error:
 	mov	%l4, %o0
 	call	hypervisor_tlbop_error_xcall
 	 mov	%l5, %o1
-	ba,a,pt	%xcc, rtrap_clr_l6
+	ba,a,pt	%xcc, rtrap
 
 	.globl		__hypervisor_xcall_flush_tlb_mm
 __hypervisor_xcall_flush_tlb_mm: /* 21 insns */
@@ -677,6 +702,33 @@ xcall_capture:
 xcall_new_mmu_context_version:
 	wr		%g0, (1 << PIL_SMP_CTX_NEW_VERSION), %set_softint
 	retry
+
+#ifdef CONFIG_KGDB
+	.globl		xcall_kgdb_capture
+xcall_kgdb_capture:
+661:	rdpr		%pstate, %g2
+	wrpr		%g2, PSTATE_IG | PSTATE_AG, %pstate
+	.section	.sun4v_2insn_patch, "ax"
+	.word		661b
+	nop
+	nop
+	.previous
+
+	rdpr		%pil, %g2
+	wrpr		%g0, 15, %pil
+	sethi		%hi(109f), %g7
+	ba,pt		%xcc, etrap_irq
+109:	 or		%g7, %lo(109b), %g7
+#ifdef CONFIG_TRACE_IRQFLAGS
+	call		trace_hardirqs_off
+	 nop
+#endif
+	call		smp_kgdb_capture_client
+	 add		%sp, PTREGS_OFF, %o0
+	/* Has to be a non-v9 branch due to the large distance. */
+	ba		rtrap_xcall
+	 ldx		[%sp + PTREGS_OFF + PT_V9_TSTATE], %l1
+#endif
 
 #endif /* CONFIG_SMP */
 

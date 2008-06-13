@@ -43,13 +43,22 @@ static const u8 setup[] = {
 	0x00, 0x00, 0x00, 0x00, 0xa4, 0x83, 0x02, 0x13,
 };
 
+static const struct ide_port_ops delkin_cb_port_ops = {
+	.quirkproc		= ide_undecoded_slave,
+};
+
+static const struct ide_port_info delkin_cb_port_info = {
+	.port_ops		= &delkin_cb_port_ops,
+	.host_flags		= IDE_HFLAG_IO_32BIT | IDE_HFLAG_UNMASK_IRQS |
+				  IDE_HFLAG_NO_DMA,
+};
+
 static int __devinit
 delkin_cb_probe (struct pci_dev *dev, const struct pci_device_id *id)
 {
 	unsigned long base;
 	hw_regs_t hw;
 	ide_hwif_t *hwif = NULL;
-	ide_drive_t *drive;
 	int i, rc;
 	u8 idx[4] = { 0xff, 0xff, 0xff, 0xff };
 
@@ -71,45 +80,32 @@ delkin_cb_probe (struct pci_dev *dev, const struct pci_device_id *id)
 		if (setup[i])
 			outb(setup[i], base + i);
 	}
-	pci_release_regions(dev);	/* IDE layer handles regions itself */
 
 	memset(&hw, 0, sizeof(hw));
 	ide_std_init_ports(&hw, base + 0x10, base + 0x1e);
 	hw.irq = dev->irq;
+	hw.dev = &dev->dev;
 	hw.chipset = ide_pci;		/* this enables IRQ sharing */
 
-	hwif = ide_deprecated_find_port(hw.io_ports[IDE_DATA_OFFSET]);
+	hwif = ide_find_port();
 	if (hwif == NULL)
 		goto out_disable;
 
 	i = hwif->index;
 
-	if (hwif->present)
-		ide_unregister(i, 0, 0);
-	else if (!hwif->hold)
-		ide_init_port_data(hwif, i);
-
+	ide_init_port_data(hwif, i);
 	ide_init_port_hw(hwif, &hw);
-	hwif->quirkproc = &ide_undecoded_slave;
 
 	idx[0] = i;
 
-	ide_device_add(idx, NULL);
-
-	if (!hwif->present)
-		goto out_disable;
+	ide_device_add(idx, &delkin_cb_port_info);
 
 	pci_set_drvdata(dev, hwif);
-	hwif->dev = &dev->dev;
-	drive = &hwif->drives[0];
-	if (drive->present) {
-		drive->io_32bit = 1;
-		drive->unmask   = 1;
-	}
+
 	return 0;
 
 out_disable:
-	printk(KERN_ERR "delkin_cb: no IDE devices found\n");
+	pci_release_regions(dev);
 	pci_disable_device(dev);
 	return -ENODEV;
 }
@@ -119,9 +115,9 @@ delkin_cb_remove (struct pci_dev *dev)
 {
 	ide_hwif_t *hwif = pci_get_drvdata(dev);
 
-	if (hwif)
-		ide_unregister(hwif->index, 0, 0);
+	ide_unregister(hwif);
 
+	pci_release_regions(dev);
 	pci_disable_device(dev);
 }
 
@@ -139,14 +135,12 @@ static struct pci_driver driver = {
 	.remove		= delkin_cb_remove,
 };
 
-static int
-delkin_cb_init (void)
+static int __init delkin_cb_init(void)
 {
 	return pci_register_driver(&driver);
 }
 
-static void
-delkin_cb_exit (void)
+static void __exit delkin_cb_exit(void)
 {
 	pci_unregister_driver(&driver);
 }

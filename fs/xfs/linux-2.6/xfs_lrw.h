@@ -50,7 +50,6 @@ struct xfs_iomap;
 #define	XFS_INVAL_CACHED	18
 #define	XFS_DIORD_ENTER		19
 #define	XFS_DIOWR_ENTER		20
-#define	XFS_SENDFILE_ENTER	21
 #define	XFS_WRITEPAGE_ENTER	22
 #define	XFS_RELEASEPAGE_ENTER	23
 #define	XFS_INVALIDPAGE_ENTER	24
@@ -68,7 +67,8 @@ extern void xfs_inval_cached_trace(struct xfs_inode *,
 #define xfs_inval_cached_trace(ip, offset, len, first, last)
 #endif
 
-extern int xfsbdstrat(struct xfs_mount *, struct xfs_buf *);
+/* errors from xfsbdstrat() must be extracted from the buffer */
+extern void xfsbdstrat(struct xfs_mount *, struct xfs_buf *);
 extern int xfs_bdstrat_cb(struct xfs_buf *);
 extern int xfs_dev_is_read_only(struct xfs_mount *, char *);
 

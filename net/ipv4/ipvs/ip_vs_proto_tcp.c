@@ -550,7 +550,7 @@ tcp_app_conn_bind(struct ip_vs_conn *cp)
 
 			IP_VS_DBG(9, "%s: Binding conn %u.%u.%u.%u:%u->"
 				  "%u.%u.%u.%u:%u to app %s on port %u\n",
-				  __FUNCTION__,
+				  __func__,
 				  NIPQUAD(cp->caddr), ntohs(cp->cport),
 				  NIPQUAD(cp->vaddr), ntohs(cp->vport),
 				  inc->name, ntohs(inc->port));
@@ -594,6 +594,7 @@ static void ip_vs_tcp_exit(struct ip_vs_protocol *pp)
 struct ip_vs_protocol ip_vs_protocol_tcp = {
 	.name =			"TCP",
 	.protocol =		IPPROTO_TCP,
+	.num_states =		IP_VS_TCP_S_LAST,
 	.dont_defrag =		0,
 	.appcnt =		ATOMIC_INIT(0),
 	.init =			ip_vs_tcp_init,

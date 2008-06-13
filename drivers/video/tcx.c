@@ -17,10 +17,9 @@
 #include <linux/init.h>
 #include <linux/fb.h>
 #include <linux/mm.h>
+#include <linux/of_device.h>
 
 #include <asm/io.h>
-#include <asm/prom.h>
-#include <asm/of_device.h>
 #include <asm/fbio.h>
 
 #include "sbuslib.h"
@@ -84,7 +83,7 @@ struct tcx_tec {
 
 struct tcx_thc {
 	u32 thc_rev;
-        u32 thc_pad0[511];
+	u32 thc_pad0[511];
 	u32 thc_hs;		/* hsync timing */
 	u32 thc_hsdvs;
 	u32 thc_hd;
@@ -126,10 +125,10 @@ struct tcx_par {
 };
 
 /* Reset control plane so that WID is 8-bit plane. */
-static void __tcx_set_control_plane (struct tcx_par *par)
+static void __tcx_set_control_plane(struct tcx_par *par)
 {
 	u32 __iomem *p, *pend;
-        
+
 	if (par->lowdepth)
 		return;
 
@@ -143,8 +142,8 @@ static void __tcx_set_control_plane (struct tcx_par *par)
 		sbus_writel(tmp, p);
 	}
 }
-                                                
-static void tcx_reset (struct fb_info *info)
+
+static void tcx_reset(struct fb_info *info)
 {
 	struct tcx_par *par = (struct tcx_par *) info->par;
 	unsigned long flags;
@@ -365,7 +364,8 @@ static void tcx_unmap_regs(struct of_device *op, struct fb_info *info,
 			   info->screen_base, par->fbsize);
 }
 
-static int __devinit tcx_init_one(struct of_device *op)
+static int __devinit tcx_probe(struct of_device *op,
+			       const struct of_device_id *match)
 {
 	struct device_node *dp = op->node;
 	struct fb_info *info;
@@ -384,7 +384,7 @@ static int __devinit tcx_init_one(struct of_device *op)
 	par->lowdepth =
 		(of_find_property(dp, "tcx-8-bit", NULL) != NULL);
 
-	sbusfb_fill_var(&info->var, dp->node, 8);
+	sbusfb_fill_var(&info->var, dp, 8);
 	info->var.red.length = 8;
 	info->var.green.length = 8;
 	info->var.blue.length = 8;
@@ -419,7 +419,7 @@ static int __devinit tcx_init_one(struct of_device *op)
 		par->mmap_map[6].size = SBUS_MMAP_EMPTY;
 	}
 
-	par->physbase = 0;
+	par->physbase = op->resource[0].start;
 	par->which_io = op->resource[0].flags & IORESOURCE_BITS;
 
 	for (i = 0; i < TCX_MMAP_ENTRIES; i++) {
@@ -470,10 +470,10 @@ static int __devinit tcx_init_one(struct of_device *op)
 
 	dev_set_drvdata(&op->dev, info);
 
-	printk("%s: TCX at %lx:%lx, %s\n",
+	printk(KERN_INFO "%s: TCX at %lx:%lx, %s\n",
 	       dp->full_name,
 	       par->which_io,
-	       op->resource[0].start,
+	       par->physbase,
 	       par->lowdepth ? "8-bit only" : "24-bit depth");
 
 	return 0;
@@ -486,13 +486,6 @@ out_unmap_regs:
 
 out_err:
 	return err;
-}
-
-static int __devinit tcx_probe(struct of_device *dev, const struct of_device_id *match)
-{
-	struct of_device *op = to_of_device(&dev->dev);
-
-	return tcx_init_one(op);
 }
 
 static int __devexit tcx_remove(struct of_device *op)
@@ -527,7 +520,7 @@ static struct of_platform_driver tcx_driver = {
 	.remove		= __devexit_p(tcx_remove),
 };
 
-int __init tcx_init(void)
+static int __init tcx_init(void)
 {
 	if (fb_get_options("tcxfb", NULL))
 		return -ENODEV;
@@ -535,7 +528,7 @@ int __init tcx_init(void)
 	return of_register_driver(&tcx_driver, &of_bus_type);
 }
 
-void __exit tcx_exit(void)
+static void __exit tcx_exit(void)
 {
 	of_unregister_driver(&tcx_driver);
 }

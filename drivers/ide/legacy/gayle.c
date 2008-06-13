@@ -16,6 +16,7 @@
 #include <linux/ide.h>
 #include <linux/init.h>
 #include <linux/zorro.h>
+#include <linux/module.h>
 
 #include <asm/setup.h>
 #include <asm/amigahw.h>
@@ -62,7 +63,12 @@
 					       GAYLE_NUM_HWIFS-1)
 #define GAYLE_HAS_CONTROL_REG	(!ide_doubler)
 #define GAYLE_IDEREG_SIZE	(ide_doubler ? 0x1000 : 0x2000)
+
 int ide_doubler = 0;	/* support IDE doublers? */
+EXPORT_SYMBOL_GPL(ide_doubler);
+
+module_param_named(doubler, ide_doubler, bool, 0);
+MODULE_PARM_DESC(doubler, "enable support for IDE doublers");
 #endif /* CONFIG_BLK_DEV_IDEDOUBLER */
 
 
@@ -74,7 +80,7 @@ static int gayle_ack_intr_a4000(ide_hwif_t *hwif)
 {
     unsigned char ch;
 
-    ch = z_readb(hwif->io_ports[IDE_IRQ_OFFSET]);
+    ch = z_readb(hwif->io_ports.irq_addr);
     if (!(ch & GAYLE_IRQ_IDE))
 	return 0;
     return 1;
@@ -84,11 +90,11 @@ static int gayle_ack_intr_a1200(ide_hwif_t *hwif)
 {
     unsigned char ch;
 
-    ch = z_readb(hwif->io_ports[IDE_IRQ_OFFSET]);
+    ch = z_readb(hwif->io_ports.irq_addr);
     if (!(ch & GAYLE_IRQ_IDE))
 	return 0;
-    (void)z_readb(hwif->io_ports[IDE_STATUS_OFFSET]);
-    z_writeb(0x7c, hwif->io_ports[IDE_IRQ_OFFSET]);
+    (void)z_readb(hwif->io_ports.status_addr);
+    z_writeb(0x7c, hwif->io_ports.irq_addr);
     return 1;
 }
 
@@ -100,16 +106,18 @@ static void __init gayle_setup_ports(hw_regs_t *hw, unsigned long base,
 
 	memset(hw, 0, sizeof(*hw));
 
-	hw->io_ports[IDE_DATA_OFFSET] = base;
+	hw->io_ports.data_addr = base;
 
 	for (i = 1; i < 8; i++)
-		hw->io_ports[i] = base + 2 + i * 4;
+		hw->io_ports_array[i] = base + 2 + i * 4;
 
-	hw->io_ports[IDE_CONTROL_OFFSET] = ctl;
-	hw->io_ports[IDE_IRQ_OFFSET] = irq_port;
+	hw->io_ports.ctl_addr = ctl;
+	hw->io_ports.irq_addr = irq_port;
 
 	hw->irq = IRQ_AMIGA_PORTS;
 	hw->ack_intr = ack_intr;
+
+	hw->chipset = ide_generic;
 }
 
     /*
@@ -175,14 +183,12 @@ found:
 
 	gayle_setup_ports(&hw, base, ctrlport, irqport, ack_intr);
 
-	hwif = ide_find_port(base);
+	hwif = ide_find_port();
 	if (hwif) {
 	    u8 index = hwif->index;
 
 	    ide_init_port_data(hwif, index);
 	    ide_init_port_hw(hwif, &hw);
-
-	    hwif->mmio = 1;
 
 	    idx[i] = index;
 	} else

@@ -45,6 +45,7 @@
 #include "mthca_cmd.h"
 #include "mthca_profile.h"
 #include "mthca_memfree.h"
+#include "mthca_wqe.h"
 
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("Mellanox InfiniBand HCA low-level driver");
@@ -200,7 +201,18 @@ static int mthca_dev_lim(struct mthca_dev *mdev, struct mthca_dev_lim *dev_lim)
 	mdev->limits.gid_table_len  	= dev_lim->max_gids;
 	mdev->limits.pkey_table_len 	= dev_lim->max_pkeys;
 	mdev->limits.local_ca_ack_delay = dev_lim->local_ca_ack_delay;
-	mdev->limits.max_sg             = dev_lim->max_sg;
+	/*
+	 * Need to allow for worst case send WQE overhead and check
+	 * whether max_desc_sz imposes a lower limit than max_sg; UD
+	 * send has the biggest overhead.
+	 */
+	mdev->limits.max_sg		= min_t(int, dev_lim->max_sg,
+					      (dev_lim->max_desc_sz -
+					       sizeof (struct mthca_next_seg) -
+					       (mthca_is_memfree(mdev) ?
+						sizeof (struct mthca_arbel_ud_seg) :
+						sizeof (struct mthca_tavor_ud_seg))) /
+						sizeof (struct mthca_data_seg));
 	mdev->limits.max_wqes           = dev_lim->max_qp_sz;
 	mdev->limits.max_qp_init_rdma   = dev_lim->max_requester_per_qp;
 	mdev->limits.reserved_qps       = dev_lim->reserved_qps;
@@ -267,11 +279,16 @@ static int mthca_dev_lim(struct mthca_dev *mdev, struct mthca_dev_lim *dev_lim)
 	if (dev_lim->flags & DEV_LIM_FLAG_SRQ)
 		mdev->mthca_flags |= MTHCA_FLAG_SRQ;
 
+	if (mthca_is_memfree(mdev))
+		if (dev_lim->flags & DEV_LIM_FLAG_IPOIB_CSUM)
+			mdev->device_cap_flags |= IB_DEVICE_UD_IP_CSUM;
+
 	return 0;
 }
 
 static int mthca_init_tavor(struct mthca_dev *mdev)
 {
+	s64 size;
 	u8 status;
 	int err;
 	struct mthca_dev_lim        dev_lim;
@@ -324,9 +341,11 @@ static int mthca_init_tavor(struct mthca_dev *mdev)
 	if (mdev->mthca_flags & MTHCA_FLAG_SRQ)
 		profile.num_srq = dev_lim.max_srqs;
 
-	err = mthca_make_profile(mdev, &profile, &dev_lim, &init_hca);
-	if (err < 0)
+	size = mthca_make_profile(mdev, &profile, &dev_lim, &init_hca);
+	if (size < 0) {
+		err = size;
 		goto err_disable;
+	}
 
 	err = mthca_INIT_HCA(mdev, &init_hca, &status);
 	if (err) {
@@ -605,7 +624,7 @@ static int mthca_init_arbel(struct mthca_dev *mdev)
 	struct mthca_dev_lim        dev_lim;
 	struct mthca_profile        profile;
 	struct mthca_init_hca_param init_hca;
-	u64 icm_size;
+	s64 icm_size;
 	u8 status;
 	int err;
 
@@ -653,7 +672,7 @@ static int mthca_init_arbel(struct mthca_dev *mdev)
 		profile.num_srq = dev_lim.max_srqs;
 
 	icm_size = mthca_make_profile(mdev, &profile, &dev_lim, &init_hca);
-	if ((int) icm_size < 0) {
+	if (icm_size < 0) {
 		err = icm_size;
 		goto err_stop_fw;
 	}

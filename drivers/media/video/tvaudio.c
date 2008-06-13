@@ -38,7 +38,7 @@
 /* ---------------------------------------------------------------------- */
 /* insmod args                                                            */
 
-static int debug = 0;	/* insmod parameter */
+static int debug;	/* insmod parameter */
 module_param(debug, int, 0644);
 
 MODULE_DESCRIPTION("device driver for various i2c TV sound decoder / audiomux chips");
@@ -1235,11 +1235,11 @@ static int tda9850  = 1;
 static int tda9855  = 1;
 static int tda9873  = 1;
 static int tda9874a = 1;
-static int tea6300  = 0;  /* address clash with msp34xx */
-static int tea6320  = 0;  /* address clash with msp34xx */
+static int tea6300;	/* default 0 - address clash with msp34xx */
+static int tea6320;	/* default 0 - address clash with msp34xx */
 static int tea6420  = 1;
 static int pic16c54 = 1;
-static int ta8874z  = 0;  /* address clash with tda9840 */
+static int ta8874z;	/* default 0 - address clash with tda9840 */
 
 module_param(tda8425, int, 0444);
 module_param(tda9840, int, 0444);
@@ -1461,7 +1461,7 @@ static struct CHIPDESC chiplist[] = {
 /* ---------------------------------------------------------------------- */
 /* i2c registration                                                       */
 
-static int chip_probe(struct i2c_client *client)
+static int chip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct CHIPSTATE *chip;
 	struct CHIPDESC  *desc;
@@ -1505,7 +1505,8 @@ static int chip_probe(struct i2c_client *client)
 	}
 
 	/* fill required data structures */
-	strcpy(client->name, desc->name);
+	if (!id)
+		strlcpy(client->name, desc->name, I2C_NAME_SIZE);
 	chip->type = desc-chiplist;
 	chip->shadow.count = desc->registers+1;
 	chip->prevmode = -1;
@@ -1830,6 +1831,15 @@ static int chip_legacy_probe(struct i2c_adapter *adap)
 	return 0;
 }
 
+/* This driver supports many devices and the idea is to let the driver
+   detect which device is present. So rather than listing all supported
+   devices here, we pretend to support a single, fake device type. */
+static const struct i2c_device_id chip_id[] = {
+	{ "tvaudio", 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, chip_id);
+
 static struct v4l2_i2c_driver_data v4l2_i2c_data = {
 	.name = "tvaudio",
 	.driverid = I2C_DRIVERID_TVAUDIO,
@@ -1837,6 +1847,7 @@ static struct v4l2_i2c_driver_data v4l2_i2c_data = {
 	.probe = chip_probe,
 	.remove = chip_remove,
 	.legacy_probe = chip_legacy_probe,
+	.id_table = chip_id,
 };
 
 /*

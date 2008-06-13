@@ -65,6 +65,9 @@ struct property *of_find_property(const struct device_node *np,
 {
 	struct property *pp;
 
+	if (!np)
+		return NULL;
+
 	read_lock(&devtree_lock);
 	for (pp = np->properties; pp != 0; pp = pp->next) {
 		if (of_prop_cmp(pp->name, name) == 0) {
@@ -115,6 +118,32 @@ int of_device_is_compatible(const struct device_node *device,
 	return 0;
 }
 EXPORT_SYMBOL(of_device_is_compatible);
+
+/**
+ *  of_device_is_available - check if a device is available for use
+ *
+ *  @device: Node to check for availability
+ *
+ *  Returns 1 if the status property is absent or set to "okay" or "ok",
+ *  0 otherwise
+ */
+int of_device_is_available(const struct device_node *device)
+{
+	const char *status;
+	int statlen;
+
+	status = of_get_property(device, "status", &statlen);
+	if (status == NULL)
+		return 1;
+
+	if (statlen > 0) {
+		if (!strcmp(status, "okay") || !strcmp(status, "ok"))
+			return 1;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(of_device_is_available);
 
 /**
  *	of_get_parent - Get a node's parent if any

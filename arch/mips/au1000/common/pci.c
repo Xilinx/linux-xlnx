@@ -2,9 +2,8 @@
  * BRIEF MODULE DESCRIPTION
  *	Alchemy/AMD Au1x00 PCI support.
  *
- * Copyright 2001-2003, 2007 MontaVista Software Inc.
- * Author: MontaVista Software, Inc.
- *         	ppopov@mvista.com or source@mvista.com
+ * Copyright 2001-2003, 2007-2008 MontaVista Software Inc.
+ * Author: MontaVista Software, Inc. <source@mvista.com>
  *
  * Copyright (C) 2004 by Ralf Baechle (ralf@linux-mips.org)
  *
@@ -30,7 +29,7 @@
  *  with this program; if not, write  to the Free Software Foundation, Inc.,
  *  675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <linux/types.h>
+
 #include <linux/pci.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -86,9 +85,9 @@ static int __init au1x_pci_setup(void)
 		u32 prid = read_c0_prid();
 
 		if ((prid & 0xFF000000) == 0x01000000 && prid < 0x01030202) {
-		       au_writel((1 << 16) | au_readl(Au1500_PCI_CFG),
-			         Au1500_PCI_CFG);
-		       printk("Non-coherent PCI accesses enabled\n");
+			au_writel((1 << 16) | au_readl(Au1500_PCI_CFG),
+				  Au1500_PCI_CFG);
+			printk(KERN_INFO "Non-coherent PCI accesses enabled\n");
 		}
 	}
 #endif

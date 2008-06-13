@@ -47,15 +47,15 @@ MODULE_LICENSE("GPL");
 
 /* ------------------------------------------------------------------ */
 
-static unsigned int core_debug = 0;
+static unsigned int core_debug;
 module_param(core_debug,int,0644);
 MODULE_PARM_DESC(core_debug,"enable debug messages [core]");
 
-static unsigned int nicam = 0;
+static unsigned int nicam;
 module_param(nicam,int,0644);
 MODULE_PARM_DESC(nicam,"tv audio is nicam");
 
-static unsigned int nocomb = 0;
+static unsigned int nocomb;
 module_param(nocomb,int,0644);
 MODULE_PARM_DESC(nocomb,"disable comb filter");
 
@@ -70,7 +70,7 @@ static DEFINE_MUTEX(devlist);
 
 /* @lpi: lines per IRQ, or 0 to not generate irqs. Note: IRQ to be
 	 generated _after_ lpi lines are transferred. */
-static u32* cx88_risc_field(u32 *rp, struct scatterlist *sglist,
+static __le32* cx88_risc_field(__le32 *rp, struct scatterlist *sglist,
 			    unsigned int offset, u32 sync_line,
 			    unsigned int bpl, unsigned int padding,
 			    unsigned int lines, unsigned int lpi)
@@ -130,7 +130,7 @@ int cx88_risc_buffer(struct pci_dev *pci, struct btcx_riscmem *risc,
 		     unsigned int bpl, unsigned int padding, unsigned int lines)
 {
 	u32 instructions,fields;
-	u32 *rp;
+	__le32 *rp;
 	int rc;
 
 	fields = 0;
@@ -168,7 +168,7 @@ int cx88_risc_databuffer(struct pci_dev *pci, struct btcx_riscmem *risc,
 			 unsigned int lines, unsigned int lpi)
 {
 	u32 instructions;
-	u32 *rp;
+	__le32 *rp;
 	int rc;
 
 	/* estimate risc mem: worst case is one write per page border +
@@ -193,7 +193,7 @@ int cx88_risc_databuffer(struct pci_dev *pci, struct btcx_riscmem *risc,
 int cx88_risc_stopper(struct pci_dev *pci, struct btcx_riscmem *risc,
 		      u32 reg, u32 mask, u32 value)
 {
-	u32 *rp;
+	__le32 *rp;
 	int rc;
 
 	if ((rc = btcx_riscmem_alloc(pci, risc, 4*16)) < 0)
@@ -219,7 +219,7 @@ cx88_free_buffer(struct videobuf_queue *q, struct cx88_buffer *buf)
 	videobuf_waiton(&buf->vb,0,0);
 	videobuf_dma_unmap(q, dma);
 	videobuf_dma_free(dma);
-	btcx_riscmem_free((struct pci_dev *)q->dev, &buf->risc);
+	btcx_riscmem_free(to_pci_dev(q->dev), &buf->risc);
 	buf->vb.state = VIDEOBUF_NEEDS_INIT;
 }
 
@@ -548,7 +548,7 @@ void cx88_wakeup(struct cx88_core *core,
 		mod_timer(&q->timeout, jiffies+BUFFER_TIMEOUT);
 	}
 	if (bc != 1)
-		printk("%s: %d buffers handled (should be 1)\n",__FUNCTION__,bc);
+		printk("%s: %d buffers handled (should be 1)\n",__func__,bc);
 }
 
 void cx88_shutdown(struct cx88_core *core)
@@ -577,7 +577,7 @@ void cx88_shutdown(struct cx88_core *core)
 
 int cx88_reset(struct cx88_core *core)
 {
-	dprintk(1,"%s\n",__FUNCTION__);
+	dprintk(1,"%s\n",__func__);
 	cx88_shutdown(core);
 
 	/* clear irq status */
@@ -929,7 +929,10 @@ int cx88_set_tvnorm(struct cx88_core *core, v4l2_std_id norm)
 
 	dprintk(1,"set_tvnorm: MO_INPUT_FORMAT  0x%08x [old=0x%08x]\n",
 		cxiformat, cx_read(MO_INPUT_FORMAT) & 0x0f);
-	cx_andor(MO_INPUT_FORMAT, 0xf, cxiformat);
+	/* Chroma AGC must be disabled if SECAM is used, we enable it
+	   by default on PAL and NTSC */
+	cx_andor(MO_INPUT_FORMAT, 0x40f,
+		 norm & V4L2_STD_SECAM ? cxiformat : cxiformat | 0x400);
 
 	// FIXME: as-is from DScaler
 	dprintk(1,"set_tvnorm: MO_OUTPUT_FORMAT 0x%08x [old=0x%08x]\n",

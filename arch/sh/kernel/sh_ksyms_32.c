@@ -9,7 +9,6 @@
 #include <linux/pci.h>
 #include <linux/irq.h>
 #include <asm/sections.h>
-#include <asm/semaphore.h>
 #include <asm/processor.h>
 #include <asm/uaccess.h>
 #include <asm/checksum.h>
@@ -20,8 +19,6 @@
 
 extern int dump_fpu(struct pt_regs *, elf_fpregset_t *);
 extern struct hw_interrupt_type no_irq_type;
-
-EXPORT_SYMBOL(sh_mv);
 
 /* platform dependent support */
 EXPORT_SYMBOL(dump_fpu);
@@ -47,12 +44,6 @@ EXPORT_SYMBOL(__copy_user);
 #ifdef CONFIG_MMU
 EXPORT_SYMBOL(get_vm_area);
 #endif
-
-/* semaphore exports */
-EXPORT_SYMBOL(__up);
-EXPORT_SYMBOL(__down);
-EXPORT_SYMBOL(__down_interruptible);
-EXPORT_SYMBOL(__down_trylock);
 
 EXPORT_SYMBOL(__udelay);
 EXPORT_SYMBOL(__ndelay);

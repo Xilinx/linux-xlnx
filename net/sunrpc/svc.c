@@ -18,7 +18,6 @@
 #include <linux/mm.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
-#include <linux/sched.h>
 
 #include <linux/sunrpc/types.h>
 #include <linux/sunrpc/xdr.h>
@@ -301,7 +300,6 @@ static inline int
 svc_pool_map_set_cpumask(unsigned int pidx, cpumask_t *oldmask)
 {
 	struct svc_pool_map *m = &svc_pool_map;
-	unsigned int node; /* or cpu */
 
 	/*
 	 * The caller checks for sv_nrpools > 1, which
@@ -314,15 +312,22 @@ svc_pool_map_set_cpumask(unsigned int pidx, cpumask_t *oldmask)
 	default:
 		return 0;
 	case SVC_POOL_PERCPU:
-		node = m->pool_to[pidx];
+	{
+		unsigned int cpu = m->pool_to[pidx];
+
 		*oldmask = current->cpus_allowed;
-		set_cpus_allowed(current, cpumask_of_cpu(node));
+		set_cpus_allowed_ptr(current, &cpumask_of_cpu(cpu));
 		return 1;
+	}
 	case SVC_POOL_PERNODE:
-		node = m->pool_to[pidx];
+	{
+		unsigned int node = m->pool_to[pidx];
+		node_to_cpumask_ptr(nodecpumask, node);
+
 		*oldmask = current->cpus_allowed;
-		set_cpus_allowed(current, node_to_cpumask(node));
+		set_cpus_allowed_ptr(current, nodecpumask);
 		return 1;
+	}
 	}
 }
 
@@ -504,8 +509,7 @@ EXPORT_SYMBOL(svc_destroy);
 static int
 svc_init_buffer(struct svc_rqst *rqstp, unsigned int size)
 {
-	int pages;
-	int arghi;
+	unsigned int pages, arghi;
 
 	pages = size / PAGE_SIZE + 1; /* extra page as we hold both request and reply.
 				       * We assume one is at most one page
@@ -519,7 +523,7 @@ svc_init_buffer(struct svc_rqst *rqstp, unsigned int size)
 		rqstp->rq_pages[arghi++] = p;
 		pages--;
 	}
-	return ! pages;
+	return pages == 0;
 }
 
 /*
@@ -528,8 +532,9 @@ svc_init_buffer(struct svc_rqst *rqstp, unsigned int size)
 static void
 svc_release_buffer(struct svc_rqst *rqstp)
 {
-	int i;
-	for (i=0; i<ARRAY_SIZE(rqstp->rq_pages); i++)
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(rqstp->rq_pages); i++)
 		if (rqstp->rq_pages[i])
 			put_page(rqstp->rq_pages[i]);
 }
@@ -584,7 +589,7 @@ __svc_create_thread(svc_thread_fn func, struct svc_serv *serv,
 	struct svc_rqst	*rqstp;
 	int		error = -ENOMEM;
 	int		have_oldmask = 0;
-	cpumask_t	oldmask;
+	cpumask_t	uninitialized_var(oldmask);
 
 	rqstp = svc_prepare_thread(serv, pool);
 	if (IS_ERR(rqstp)) {
@@ -611,16 +616,6 @@ out_thread:
 	svc_exit_thread(rqstp);
 	goto out;
 }
-
-/*
- * Create a thread in the default pool.  Caller must hold BKL.
- */
-int
-svc_create_thread(svc_thread_fn func, struct svc_serv *serv)
-{
-	return __svc_create_thread(func, serv, &serv->sv_pools[0]);
-}
-EXPORT_SYMBOL(svc_create_thread);
 
 /*
  * Choose a pool in which to create a new thread, for svc_set_num_threads
@@ -915,8 +910,7 @@ svc_process(struct svc_rqst *rqstp)
 	case SVC_OK:
 		break;
 	case SVC_GARBAGE:
-		rpc_stat = rpc_garbage_args;
-		goto err_bad;
+		goto err_garbage;
 	case SVC_SYSERR:
 		rpc_stat = rpc_system_err;
 		goto err_bad;

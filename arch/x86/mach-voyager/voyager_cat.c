@@ -4,8 +4,6 @@
  *
  * Author: J.E.J.Bottomley@HansenPartnership.com
  *
- * linux/arch/i386/kernel/voyager_cat.c
- *
  * This file contains all the logic for manipulating the CAT bus
  * in a level 5 machine.
  *
@@ -879,7 +877,7 @@ void __init voyager_cat_init(void)
 			request_resource(&iomem_resource, res);
 		}
 
-		qic_addr = (unsigned long)ioremap(qic_addr, 0x400);
+		qic_addr = (unsigned long)ioremap_cache(qic_addr, 0x400);
 
 		for (j = 0; j < 4; j++) {
 			__u8 cpu;

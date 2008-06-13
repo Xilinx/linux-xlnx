@@ -1,6 +1,4 @@
 /*
- *  $Id: hashtable.S,v 1.6 1999/10/08 01:56:15 paulus Exp $
- *
  *  PowerPC version
  *    Copyright (C) 1995-1996 Gary Thomas (gdt@linuxppc.org)
  *  Rewritten by Cort Dougan (cort@cs.nmt.edu) for PReP
@@ -191,7 +189,7 @@ _GLOBAL(add_hash_page)
 	add	r3,r3,r0		/* note create_hpte trims to 24 bits */
 
 #ifdef CONFIG_SMP
-	rlwinm	r8,r1,0,0,18		/* use cpu number to make tag */
+	rlwinm	r8,r1,0,0,(31-THREAD_SHIFT) /* use cpu number to make tag */
 	lwz	r8,TI_CPU(r8)		/* to go in mmu_hash_lock */
 	oris	r8,r8,12
 #endif /* CONFIG_SMP */
@@ -526,7 +524,7 @@ _GLOBAL(flush_hash_pages)
 #ifdef CONFIG_SMP
 	addis	r9,r7,mmu_hash_lock@ha
 	addi	r9,r9,mmu_hash_lock@l
-	rlwinm	r8,r1,0,0,18
+	rlwinm	r8,r1,0,0,(31-THREAD_SHIFT)
 	add	r8,r8,r7
 	lwz	r8,TI_CPU(r8)
 	oris	r8,r8,9

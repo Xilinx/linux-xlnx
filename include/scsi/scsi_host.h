@@ -172,6 +172,7 @@ struct scsi_host_template {
 	 */
 	int (* eh_abort_handler)(struct scsi_cmnd *);
 	int (* eh_device_reset_handler)(struct scsi_cmnd *);
+	int (* eh_target_reset_handler)(struct scsi_cmnd *);
 	int (* eh_bus_reset_handler)(struct scsi_cmnd *);
 	int (* eh_host_reset_handler)(struct scsi_cmnd *);
 
@@ -469,7 +470,7 @@ struct scsi_host_template {
 	/*
 	 * Pointer to the sysfs class properties for this host, NULL terminated.
 	 */
-	struct class_device_attribute **shost_attrs;
+	struct device_attribute **shost_attrs;
 
 	/*
 	 * Pointer to the SCSI device properties for this host, NULL terminated.
@@ -572,13 +573,11 @@ struct Scsi_Host {
 	/*
 	 * The maximum length of SCSI commands that this host can accept.
 	 * Probably 12 for most host adapters, but could be 16 for others.
+	 * or 260 if the driver supports variable length cdbs.
 	 * For drivers that don't set this field, a value of 12 is
-	 * assumed.  I am leaving this as a number rather than a bit
-	 * because you never know what subsequent SCSI standards might do
-	 * (i.e. could there be a 20 byte or a 24-byte command a few years
-	 * down the road?).  
+	 * assumed.
 	 */
-	unsigned char max_cmd_len;
+	unsigned short max_cmd_len;
 
 	int this_id;
 	int can_queue;
@@ -654,8 +653,7 @@ struct Scsi_Host {
 	enum scsi_host_state shost_state;
 
 	/* ldm bits */
-	struct device		shost_gendev;
-	struct class_device	shost_classdev;
+	struct device		shost_gendev, shost_dev;
 
 	/*
 	 * List of hosts per template.
@@ -682,7 +680,7 @@ struct Scsi_Host {
 };
 
 #define		class_to_shost(d)	\
-	container_of(d, struct Scsi_Host, shost_classdev)
+	container_of(d, struct Scsi_Host, shost_dev)
 
 #define shost_printk(prefix, shost, fmt, a...)	\
 	dev_printk(prefix, &(shost)->shost_gendev, fmt, ##a)

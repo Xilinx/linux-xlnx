@@ -445,7 +445,7 @@ static void scsi_init_cmd_errh(struct scsi_cmnd *cmd)
 	scsi_set_resid(cmd, 0);
 	memset(cmd->sense_buffer, 0, SCSI_SENSE_BUFFERSIZE);
 	if (cmd->cmd_len == 0)
-		cmd->cmd_len = COMMAND_SIZE(cmd->cmnd[0]);
+		cmd->cmd_len = scsi_command_size(cmd->cmnd);
 }
 
 void scsi_device_unbusy(struct scsi_device *sdev)
@@ -536,6 +536,9 @@ static void scsi_run_queue(struct request_queue *q)
 	       !shost->host_blocked && !shost->host_self_blocked &&
 		!((shost->can_queue > 0) &&
 		  (shost->host_busy >= shost->can_queue))) {
+
+		int flagset;
+
 		/*
 		 * As long as shost is accepting commands and we have
 		 * starved queues, call blk_run_queue. scsi_request_fn
@@ -549,19 +552,20 @@ static void scsi_run_queue(struct request_queue *q)
 		sdev = list_entry(shost->starved_list.next,
 					  struct scsi_device, starved_entry);
 		list_del_init(&sdev->starved_entry);
-		spin_unlock_irqrestore(shost->host_lock, flags);
+		spin_unlock(shost->host_lock);
 
+		spin_lock(sdev->request_queue->queue_lock);
+		flagset = test_bit(QUEUE_FLAG_REENTER, &q->queue_flags) &&
+				!test_bit(QUEUE_FLAG_REENTER,
+					&sdev->request_queue->queue_flags);
+		if (flagset)
+			queue_flag_set(QUEUE_FLAG_REENTER, sdev->request_queue);
+		__blk_run_queue(sdev->request_queue);
+		if (flagset)
+			queue_flag_clear(QUEUE_FLAG_REENTER, sdev->request_queue);
+		spin_unlock(sdev->request_queue->queue_lock);
 
-		if (test_bit(QUEUE_FLAG_REENTER, &q->queue_flags) &&
-		    !test_and_set_bit(QUEUE_FLAG_REENTER,
-				      &sdev->request_queue->queue_flags)) {
-			blk_run_queue(sdev->request_queue);
-			clear_bit(QUEUE_FLAG_REENTER,
-				  &sdev->request_queue->queue_flags);
-		} else
-			blk_run_queue(sdev->request_queue);
-
-		spin_lock_irqsave(shost->host_lock, flags);
+		spin_lock(shost->host_lock);
 		if (unlikely(!list_empty(&sdev->starved_entry)))
 			/*
 			 * sdev lost a race, and was put back on the
@@ -784,7 +788,7 @@ EXPORT_SYMBOL(scsi_release_buffers);
  * in req->data_len and req->next_rq->data_len. The upper-layer driver can
  * decide what to do with this information.
  */
-void scsi_end_bidi_request(struct scsi_cmnd *cmd)
+static void scsi_end_bidi_request(struct scsi_cmnd *cmd)
 {
 	struct request *req = cmd->request;
 	unsigned int dlen = req->data_len;
@@ -839,7 +843,7 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 	int this_count = scsi_bufflen(cmd);
 	struct request_queue *q = cmd->device->request_queue;
 	struct request *req = cmd->request;
-	int clear_errors = 1;
+	int error = 0;
 	struct scsi_sense_hdr sshdr;
 	int sense_valid = 0;
 	int sense_deferred = 0;
@@ -853,7 +857,6 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 	if (blk_pc_request(req)) { /* SG_IO ioctl from block level */
 		req->errors = result;
 		if (result) {
-			clear_errors = 0;
 			if (sense_valid && req->sense) {
 				/*
 				 * SG_IO wants current and deferred errors
@@ -865,6 +868,8 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 				memcpy(req->sense, cmd->sense_buffer,  len);
 				req->sense_len = len;
 			}
+			if (!sense_deferred)
+				error = -EIO;
 		}
 		if (scsi_bidi_cmnd(cmd)) {
 			/* will also release_buffers */
@@ -885,14 +890,11 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 				      "%d bytes done.\n",
 				      req->nr_sectors, good_bytes));
 
-	if (clear_errors)
-		req->errors = 0;
-
 	/* A number of bytes were successfully read.  If there
 	 * are leftovers and there is some kind of error
 	 * (result != 0), retry the rest.
 	 */
-	if (scsi_end_request(cmd, 0, good_bytes, result == 0) == NULL)
+	if (scsi_end_request(cmd, error, good_bytes, result == 0) == NULL)
 		return;
 
 	/* good_bytes = 0, or (inclusive) there were leftovers and
@@ -1092,6 +1094,8 @@ static struct scsi_cmnd *scsi_get_cmd_from_req(struct scsi_device *sdev,
 	cmd->tag = req->tag;
 	cmd->request = req;
 
+	cmd->cmnd = req->cmd;
+
 	return cmd;
 }
 
@@ -1129,8 +1133,6 @@ int scsi_setup_blk_pc_cmnd(struct scsi_device *sdev, struct request *req)
 		req->buffer = NULL;
 	}
 
-	BUILD_BUG_ON(sizeof(req->cmd) > sizeof(cmd->cmnd));
-	memcpy(cmd->cmnd, req->cmd, sizeof(cmd->cmnd));
 	cmd->cmd_len = req->cmd_len;
 	if (!req->data_len)
 		cmd->sc_data_direction = DMA_NONE;
@@ -1167,6 +1169,7 @@ int scsi_setup_fs_cmnd(struct scsi_device *sdev, struct request *req)
 	if (unlikely(!cmd))
 		return BLKPREP_DEFER;
 
+	memset(cmd->cmnd, 0, BLK_MAX_CDB);
 	return scsi_init_io(cmd, GFP_ATOMIC);
 }
 EXPORT_SYMBOL(scsi_setup_fs_cmnd);
@@ -1587,8 +1590,9 @@ struct request_queue *__scsi_alloc_queue(struct Scsi_Host *shost,
 
 	blk_queue_max_segment_size(q, dma_get_max_seg_size(dev));
 
+	/* New queue, no concurrency on queue_flags */
 	if (!shost->use_clustering)
-		clear_bit(QUEUE_FLAG_CLUSTER, &q->queue_flags);
+		queue_flag_clear_unlocked(QUEUE_FLAG_CLUSTER, q);
 
 	/*
 	 * set a reasonable default alignment on word boundaries: the

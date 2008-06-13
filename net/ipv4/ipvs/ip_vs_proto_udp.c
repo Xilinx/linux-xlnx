@@ -344,7 +344,7 @@ static int udp_app_conn_bind(struct ip_vs_conn *cp)
 
 			IP_VS_DBG(9, "%s: Binding conn %u.%u.%u.%u:%u->"
 				  "%u.%u.%u.%u:%u to app %s on port %u\n",
-				  __FUNCTION__,
+				  __func__,
 				  NIPQUAD(cp->caddr), ntohs(cp->cport),
 				  NIPQUAD(cp->vaddr), ntohs(cp->vport),
 				  inc->name, ntohs(inc->port));
@@ -409,6 +409,7 @@ static void udp_exit(struct ip_vs_protocol *pp)
 struct ip_vs_protocol ip_vs_protocol_udp = {
 	.name =			"UDP",
 	.protocol =		IPPROTO_UDP,
+	.num_states =		IP_VS_UDP_S_LAST,
 	.dont_defrag =		0,
 	.init =			udp_init,
 	.exit =			udp_exit,

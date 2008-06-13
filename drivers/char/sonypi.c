@@ -506,7 +506,7 @@ static struct sonypi_device {
 	while (--n && (command)) \
 		udelay(1); \
 	if (!n && (verbose || !quiet)) \
-		printk(KERN_WARNING "sonypi command failed at %s : %s (line %d)\n", __FILE__, __FUNCTION__, __LINE__); \
+		printk(KERN_WARNING "sonypi command failed at %s : %s (line %d)\n", __FILE__, __func__, __LINE__); \
 }
 
 #ifdef CONFIG_ACPI
@@ -1147,7 +1147,7 @@ static int sonypi_acpi_remove(struct acpi_device *device, int type)
 	return 0;
 }
 
-const static struct acpi_device_id sonypi_device_ids[] = {
+static const struct acpi_device_id sonypi_device_ids[] = {
 	{"SNY6001", 0},
 	{"", 0},
 };

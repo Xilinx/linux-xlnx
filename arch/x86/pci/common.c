@@ -77,70 +77,48 @@ int pcibios_scanned;
  */
 DEFINE_SPINLOCK(pci_config_lock);
 
-/*
- * Several buggy motherboards address only 16 devices and mirror
- * them to next 16 IDs. We try to detect this `feature' on all
- * primary buses (those containing host bridges as they are
- * expected to be unique) and remove the ghost devices.
- */
-
-static void __devinit pcibios_fixup_ghosts(struct pci_bus *b)
+static int __devinit can_skip_ioresource_align(const struct dmi_system_id *d)
 {
-	struct list_head *ln, *mn;
-	struct pci_dev *d, *e;
-	int mirror = PCI_DEVFN(16,0);
-	int seen_host_bridge = 0;
-	int i;
-
-	DBG("PCI: Scanning for ghost devices on bus %d\n", b->number);
-	list_for_each(ln, &b->devices) {
-		d = pci_dev_b(ln);
-		if ((d->class >> 8) == PCI_CLASS_BRIDGE_HOST)
-			seen_host_bridge++;
-		for (mn=ln->next; mn != &b->devices; mn=mn->next) {
-			e = pci_dev_b(mn);
-			if (e->devfn != d->devfn + mirror ||
-			    e->vendor != d->vendor ||
-			    e->device != d->device ||
-			    e->class != d->class)
-				continue;
-			for(i=0; i<PCI_NUM_RESOURCES; i++)
-				if (e->resource[i].start != d->resource[i].start ||
-				    e->resource[i].end != d->resource[i].end ||
-				    e->resource[i].flags != d->resource[i].flags)
-					continue;
-			break;
-		}
-		if (mn == &b->devices)
-			return;
-	}
-	if (!seen_host_bridge)
-		return;
-	printk(KERN_WARNING "PCI: Ignoring ghost devices on bus %02x\n", b->number);
-
-	ln = &b->devices;
-	while (ln->next != &b->devices) {
-		d = pci_dev_b(ln->next);
-		if (d->devfn >= mirror) {
-			list_del(&d->global_list);
-			list_del(&d->bus_list);
-			kfree(d);
-		} else
-			ln = ln->next;
-	}
+	pci_probe |= PCI_CAN_SKIP_ISA_ALIGN;
+	printk(KERN_INFO "PCI: %s detected, can skip ISA alignment\n", d->ident);
+	return 0;
 }
 
-static void __devinit pcibios_fixup_device_resources(struct pci_dev *dev)
-{
-	struct resource *rom_r = &dev->resource[PCI_ROM_RESOURCE];
+static struct dmi_system_id can_skip_pciprobe_dmi_table[] __devinitdata = {
+/*
+ * Systems where PCI IO resource ISA alignment can be skipped
+ * when the ISA enable bit in the bridge control is not set
+ */
+	{
+		.callback = can_skip_ioresource_align,
+		.ident = "IBM System x3800",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "IBM"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "x3800"),
+		},
+	},
+	{
+		.callback = can_skip_ioresource_align,
+		.ident = "IBM System x3850",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "IBM"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "x3850"),
+		},
+	},
+	{
+		.callback = can_skip_ioresource_align,
+		.ident = "IBM System x3950",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "IBM"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "x3950"),
+		},
+	},
+	{}
+};
 
-	if (rom_r->parent)
-		return;
-	if (rom_r->start)
-		/* we deal with BIOS assigned ROM later */
-		return;
-	if (!(pci_probe & PCI_ASSIGN_ROMS))
-		rom_r->start = rom_r->end = rom_r->flags = 0;
+void __init dmi_check_skip_isa_align(void)
+{
+	dmi_check_system(can_skip_pciprobe_dmi_table);
 }
 
 /*
@@ -150,12 +128,7 @@ static void __devinit pcibios_fixup_device_resources(struct pci_dev *dev)
 
 void __devinit  pcibios_fixup_bus(struct pci_bus *b)
 {
-	struct pci_dev *dev;
-
-	pcibios_fixup_ghosts(b);
 	pci_read_bridge_bases(b);
-	list_for_each_entry(dev, &b->devices, bus_list)
-		pcibios_fixup_device_resources(dev);
 }
 
 /*
@@ -329,18 +302,18 @@ static struct dmi_system_id __devinitdata pciprobe_dmi_table[] = {
 	},
 	{
 		.callback = set_bf_sort,
-		.ident = "HP ProLiant DL385 G2",
+		.ident = "HP ProLiant DL360",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ProLiant DL385 G2"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ProLiant DL360"),
 		},
 	},
 	{
 		.callback = set_bf_sort,
-		.ident = "HP ProLiant DL585 G2",
+		.ident = "HP ProLiant DL380",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "ProLiant DL585 G2"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ProLiant DL380"),
 		},
 	},
 #ifdef __i386__
@@ -372,12 +345,15 @@ static struct dmi_system_id __devinitdata pciprobe_dmi_table[] = {
 	{}
 };
 
+void __init dmi_check_pciprobe(void)
+{
+	dmi_check_system(pciprobe_dmi_table);
+}
+
 struct pci_bus * __devinit pcibios_scan_root(int busnum)
 {
 	struct pci_bus *bus = NULL;
 	struct pci_sysdata *sd;
-
-	dmi_check_system(pciprobe_dmi_table);
 
 	while ((bus = pci_find_next_bus(bus)) != NULL) {
 		if (bus->number == busnum) {
@@ -396,9 +372,14 @@ struct pci_bus * __devinit pcibios_scan_root(int busnum)
 		return NULL;
 	}
 
-	printk(KERN_DEBUG "PCI: Probing PCI hardware (bus %02x)\n", busnum);
+	sd->node = get_mp_bus_to_node(busnum);
 
-	return pci_scan_bus_parented(NULL, busnum, &pci_root_ops, sd);
+	printk(KERN_DEBUG "PCI: Probing PCI hardware (bus %02x)\n", busnum);
+	bus = pci_scan_bus_parented(NULL, busnum, &pci_root_ops, sd);
+	if (!bus)
+		kfree(sd);
+
+	return bus;
 }
 
 extern u8 pci_cache_line_size;
@@ -427,10 +408,6 @@ static int __init pcibios_init(void)
 
 	if (pci_bf_sort >= pci_force_bf)
 		pci_sort_breadthfirst();
-#ifdef CONFIG_PCI_BIOS
-	if ((pci_probe & PCI_BIOS_SORT) && !(pci_probe & PCI_NO_SORT))
-		pcibios_sort();
-#endif
 	return 0;
 }
 
@@ -455,9 +432,6 @@ char * __devinit  pcibios_setup(char *str)
 	} else if (!strcmp(str, "nobios")) {
 		pci_probe &= ~PCI_PROBE_BIOS;
 		return NULL;
-	} else if (!strcmp(str, "nosort")) {
-		pci_probe |= PCI_NO_SORT;
-		return NULL;
 	} else if (!strcmp(str, "biosirq")) {
 		pci_probe |= PCI_BIOS_IRQ_SCAN;
 		return NULL;
@@ -479,6 +453,10 @@ char * __devinit  pcibios_setup(char *str)
 #ifdef CONFIG_PCI_MMCONFIG
 	else if (!strcmp(str, "nommconf")) {
 		pci_probe &= ~PCI_PROBE_MMCONF;
+		return NULL;
+	}
+	else if (!strcmp(str, "check_enable_amd_mmconf")) {
+		pci_probe |= PCI_CHECK_ENABLE_AMD_MMCONF;
 		return NULL;
 	}
 #endif
@@ -514,6 +492,9 @@ char * __devinit  pcibios_setup(char *str)
 	} else if (!strcmp(str, "routeirq")) {
 		pci_routeirq = 1;
 		return NULL;
+	} else if (!strcmp(str, "skip_isa_align")) {
+		pci_probe |= PCI_CAN_SKIP_ISA_ALIGN;
+		return NULL;
 	}
 	return str;
 }
@@ -527,7 +508,7 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
 	int err;
 
-	if ((err = pcibios_enable_resources(dev, mask)) < 0)
+	if ((err = pci_enable_resources(dev, mask)) < 0)
 		return err;
 
 	if (!dev->msi_enabled)
@@ -541,7 +522,7 @@ void pcibios_disable_device (struct pci_dev *dev)
 		pcibios_disable_irq(dev);
 }
 
-struct pci_bus *__devinit pci_scan_bus_with_sysdata(int busno)
+struct pci_bus * __devinit pci_scan_bus_on_node(int busno, struct pci_ops *ops, int node)
 {
 	struct pci_bus *bus = NULL;
 	struct pci_sysdata *sd;
@@ -556,10 +537,15 @@ struct pci_bus *__devinit pci_scan_bus_with_sysdata(int busno)
 		printk(KERN_ERR "PCI: OOM, skipping PCI bus %02x\n", busno);
 		return NULL;
 	}
-	sd->node = -1;
-	bus = pci_scan_bus(busno, &pci_root_ops, sd);
+	sd->node = node;
+	bus = pci_scan_bus(busno, ops, sd);
 	if (!bus)
 		kfree(sd);
 
 	return bus;
+}
+
+struct pci_bus * __devinit pci_scan_bus_with_sysdata(int busno)
+{
+	return pci_scan_bus_on_node(busno, &pci_root_ops, -1);
 }

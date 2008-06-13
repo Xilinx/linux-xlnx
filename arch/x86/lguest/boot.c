@@ -582,8 +582,9 @@ static void __init lguest_init_IRQ(void)
 		int vector = FIRST_EXTERNAL_VECTOR + i;
 		if (vector != SYSCALL_VECTOR) {
 			set_intr_gate(vector, interrupt[i]);
-			set_irq_chip_and_handler(i, &lguest_irq_controller,
-						 handle_level_irq);
+			set_irq_chip_and_handler_name(i, &lguest_irq_controller,
+						      handle_level_irq,
+						      "level");
 		}
 	}
 	/* This call is required to set up for 4k stacks, where we have
@@ -661,7 +662,7 @@ static int lguest_clockevent_set_next_event(unsigned long delta,
 	if (delta < LG_CLOCK_MIN_DELTA) {
 		if (printk_ratelimit())
 			printk(KERN_DEBUG "%s: small delta %lu ns\n",
-			       __FUNCTION__, delta);
+			       __func__, delta);
 		return -ETIME;
 	}
 

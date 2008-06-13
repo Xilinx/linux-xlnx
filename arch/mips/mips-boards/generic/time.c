@@ -55,6 +55,7 @@
 unsigned long cpu_khz;
 
 static int mips_cpu_timer_irq;
+static int mips_cpu_perf_irq;
 extern int cp0_perfcount_irq;
 
 static void mips_timer_dispatch(void)
@@ -64,7 +65,7 @@ static void mips_timer_dispatch(void)
 
 static void mips_perf_dispatch(void)
 {
-	do_IRQ(cp0_perfcount_irq);
+	do_IRQ(mips_cpu_perf_irq);
 }
 
 /*
@@ -127,21 +128,20 @@ unsigned long read_persistent_clock(void)
 	return mc146818_get_cmos_time();
 }
 
-void __init plat_perf_setup(void)
+static void __init plat_perf_setup(void)
 {
-	cp0_perfcount_irq = -1;
-
 #ifdef MSC01E_INT_BASE
 	if (cpu_has_veic) {
 		set_vi_handler(MSC01E_INT_PERFCTR, mips_perf_dispatch);
-		cp0_perfcount_irq = MSC01E_INT_BASE + MSC01E_INT_PERFCTR;
+		mips_cpu_perf_irq = MSC01E_INT_BASE + MSC01E_INT_PERFCTR;
 	} else
 #endif
 	if (cp0_perfcount_irq >= 0) {
 		if (cpu_has_vint)
 			set_vi_handler(cp0_perfcount_irq, mips_perf_dispatch);
+		mips_cpu_perf_irq = MIPS_CPU_IRQ_BASE + cp0_perfcount_irq;
 #ifdef CONFIG_SMP
-		set_irq_handler(cp0_perfcount_irq, handle_percpu_irq);
+		set_irq_handler(mips_cpu_perf_irq, handle_percpu_irq);
 #endif
 	}
 }

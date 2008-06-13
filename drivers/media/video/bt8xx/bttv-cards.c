@@ -34,6 +34,7 @@
 #include <linux/firmware.h>
 #include <net/checksum.h>
 
+#include <asm/unaligned.h>
 #include <asm/io.h>
 
 #include "bttvp.h"
@@ -70,6 +71,8 @@ static void kodicom4400r_init(struct bttv *btv);
 
 static void sigmaSLC_muxsel(struct bttv *btv, unsigned int input);
 static void sigmaSQ_muxsel(struct bttv *btv, unsigned int input);
+
+static void geovision_muxsel(struct bttv *btv, unsigned int input);
 
 static int terratec_active_radio_upgrade(struct bttv *btv);
 static int tea5757_read(struct bttv *btv);
@@ -301,6 +304,7 @@ static struct CARD {
 	{ 0xd50018ac, BTTV_BOARD_DVICO_FUSIONHDTV_5_LITE,    "DViCO FusionHDTV 5 Lite" },
 	{ 0x00261822, BTTV_BOARD_TWINHAN_DST,	"DNTV Live! Mini "},
 	{ 0xd200dbc0, BTTV_BOARD_DVICO_FUSIONHDTV_2,	"DViCO FusionHDTV 2" },
+	{ 0x763c008a, BTTV_BOARD_GEOVISION_GV600,	"GeoVision GV-600" },
 
 	{ 0, -1, NULL }
 };
@@ -576,6 +580,8 @@ struct tvcard bttv_tvcards[] = {
 		.needs_tvaudio	= 1,
 		.pll		= PLL_28,
 		.tuner_type	= UNSET,
+		.tuner_addr     = ADDR_UNSET,
+		.radio_addr     = ADDR_UNSET,
 	},
 	[BTTV_BOARD_WINVIEW_601] = {
 		.name		= "Leadtek WinView 601",
@@ -2322,7 +2328,7 @@ struct tvcard bttv_tvcards[] = {
 		.tuner          = 0,
 		.svhs           = 2,
 		.muxsel         = { 2, 3, 1, 0 },
-		.tuner_type     = TUNER_PHILIPS_ATSC,
+		.tuner_type     = TUNER_PHILIPS_FCV1236D,
 		.tuner_addr	= ADDR_UNSET,
 		.radio_addr     = ADDR_UNSET,
 		.has_dvb        = 1,
@@ -2961,7 +2967,7 @@ struct tvcard bttv_tvcards[] = {
 	[BTTV_BOARD_DVICO_FUSIONHDTV_2] = {
 		.name           = "DViCO FusionHDTV 2",
 		.tuner          = 0,
-		.tuner_type     = TUNER_PHILIPS_ATSC, /* FCV1236D */
+		.tuner_type     = TUNER_PHILIPS_FCV1236D,
 		.tuner_addr	= ADDR_UNSET,
 		.radio_addr     = ADDR_UNSET,
 		.video_inputs   = 3,
@@ -2991,6 +2997,45 @@ struct tvcard bttv_tvcards[] = {
 		.tuner_type     = TUNER_PHILIPS_PAL_I,
 		.tuner_addr     = ADDR_UNSET,
 		.radio_addr     = ADDR_UNSET,
+	},
+	[BTTV_BOARD_GEOVISION_GV600] = {
+		/* emhn@usb.ve */
+		.name             = "Geovision GV-600",
+		.video_inputs     = 16,
+		.audio_inputs     = 0,
+		.tuner            = UNSET,
+		.svhs             = UNSET,
+		.gpiomask         = 0x0,
+		.muxsel           = { 2, 2, 2, 2, 2, 2, 2, 2,
+				      2, 2, 2, 2, 2, 2, 2, 2 },
+		.muxsel_hook      = geovision_muxsel,
+		.gpiomux          = { 0 },
+		.no_msp34xx       = 1,
+		.pll              = PLL_28,
+		.tuner_type       = UNSET,
+		.tuner_addr	  = ADDR_UNSET,
+		.radio_addr       = ADDR_UNSET,
+	},
+	[BTTV_BOARD_KOZUMI_KTV_01C] = {
+		/* Mauro Lacy <mauro@lacy.com.ar>
+		 * Based on MagicTV and Conceptronic CONTVFMi */
+
+		.name           = "Kozumi KTV-01C",
+		.video_inputs   = 3,
+		.audio_inputs   = 1,
+		.tuner          = 0,
+		.svhs           = 2,
+		.gpiomask       = 0x008007,
+		.muxsel         = { 2, 3, 1, 1 },
+		.gpiomux        = { 0, 1, 2, 2 }, /* CONTVFMi */
+		.gpiomute 	= 3, /* CONTVFMi */
+		.needs_tvaudio  = 0,
+		.tuner_type     = TUNER_PHILIPS_FM1216ME_MK3, /* TCL MK3 */
+		.tuner_addr     = ADDR_UNSET,
+		.radio_addr     = ADDR_UNSET,
+		.pll            = PLL_28,
+		.has_radio      = 1,
+		.has_remote     = 1,
 	},
 };
 
@@ -3329,6 +3374,13 @@ static void sigmaSLC_muxsel(struct bttv *btv, unsigned int input)
 	unsigned int inmux = input % 4;
 	gpio_inout( 3<<9, 3<<9 );
 	gpio_bits( 3<<9, inmux<<9 );
+}
+
+static void geovision_muxsel(struct bttv *btv, unsigned int input)
+{
+	unsigned int inmux = input % 16;
+	gpio_inout(0xf, 0xf);
+	gpio_bits(0xf, inmux);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -3807,7 +3859,7 @@ static void __devinit osprey_eeprom(struct bttv *btv, const u8 ee[256])
 		ee += i;
 
 		/* found a valid descriptor */
-		type = be16_to_cpup((u16*)(ee+4));
+		type = get_unaligned_be16((__be16 *)(ee+4));
 
 		switch(type) {
 		/* 848 based */
@@ -3867,7 +3919,7 @@ static void __devinit osprey_eeprom(struct bttv *btv, const u8 ee[256])
 			       btv->c.nr, type);
 			break;
 		}
-		serial = be32_to_cpup((u32*)(ee+6));
+		serial = get_unaligned_be32((__be32 *)(ee+6));
 	}
 
 	printk(KERN_INFO "bttv%d: osprey eeprom: card=%d '%s' serial=%u\n",

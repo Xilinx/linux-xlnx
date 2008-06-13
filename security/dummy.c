@@ -27,6 +27,8 @@
 #include <linux/hugetlb.h>
 #include <linux/ptrace.h>
 #include <linux/file.h>
+#include <linux/prctl.h>
+#include <linux/securebits.h>
 
 static int dummy_ptrace (struct task_struct *parent, struct task_struct *child)
 {
@@ -196,13 +198,13 @@ static int dummy_sb_statfs (struct dentry *dentry)
 	return 0;
 }
 
-static int dummy_sb_mount (char *dev_name, struct nameidata *nd, char *type,
+static int dummy_sb_mount (char *dev_name, struct path *path, char *type,
 			   unsigned long flags, void *data)
 {
 	return 0;
 }
 
-static int dummy_sb_check_sb (struct vfsmount *mnt, struct nameidata *nd)
+static int dummy_sb_check_sb (struct vfsmount *mnt, struct path *path)
 {
 	return 0;
 }
@@ -229,17 +231,17 @@ static void dummy_sb_post_remount (struct vfsmount *mnt, unsigned long flags,
 }
 
 
-static void dummy_sb_post_addmount (struct vfsmount *mnt, struct nameidata *nd)
+static void dummy_sb_post_addmount (struct vfsmount *mnt, struct path *path)
 {
 	return;
 }
 
-static int dummy_sb_pivotroot (struct nameidata *old_nd, struct nameidata *new_nd)
+static int dummy_sb_pivotroot (struct path *old_path, struct path *new_path)
 {
 	return 0;
 }
 
-static void dummy_sb_post_pivotroot (struct nameidata *old_nd, struct nameidata *new_nd)
+static void dummy_sb_post_pivotroot (struct path *old_path, struct path *new_path)
 {
 	return;
 }
@@ -365,8 +367,8 @@ static void dummy_inode_delete (struct inode *ino)
 	return;
 }
 
-static int dummy_inode_setxattr (struct dentry *dentry, char *name, void *value,
-				size_t size, int flags)
+static int dummy_inode_setxattr (struct dentry *dentry, const char *name,
+				 const void *value, size_t size, int flags)
 {
 	if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof(XATTR_SECURITY_PREFIX) - 1) &&
@@ -375,12 +377,13 @@ static int dummy_inode_setxattr (struct dentry *dentry, char *name, void *value,
 	return 0;
 }
 
-static void dummy_inode_post_setxattr (struct dentry *dentry, char *name, void *value,
-				       size_t size, int flags)
+static void dummy_inode_post_setxattr (struct dentry *dentry, const char *name,
+				       const void *value, size_t size,
+				       int flags)
 {
 }
 
-static int dummy_inode_getxattr (struct dentry *dentry, char *name)
+static int dummy_inode_getxattr (struct dentry *dentry, const char *name)
 {
 	return 0;
 }
@@ -390,7 +393,7 @@ static int dummy_inode_listxattr (struct dentry *dentry)
 	return 0;
 }
 
-static int dummy_inode_removexattr (struct dentry *dentry, char *name)
+static int dummy_inode_removexattr (struct dentry *dentry, const char *name)
 {
 	if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof(XATTR_SECURITY_PREFIX) - 1) &&
@@ -422,6 +425,11 @@ static int dummy_inode_setsecurity(struct inode *inode, const char *name, const 
 static int dummy_inode_listsecurity(struct inode *inode, char *buffer, size_t buffer_size)
 {
 	return 0;
+}
+
+static void dummy_inode_getsecid(const struct inode *inode, u32 *secid)
+{
+	*secid = 0;
 }
 
 static int dummy_file_permission (struct file *file, int mask)
@@ -542,7 +550,9 @@ static int dummy_task_getsid (struct task_struct *p)
 }
 
 static void dummy_task_getsecid (struct task_struct *p, u32 *secid)
-{ }
+{
+	*secid = 0;
+}
 
 static int dummy_task_setgroups (struct group_info *group_info)
 {
@@ -597,9 +607,29 @@ static int dummy_task_kill (struct task_struct *p, struct siginfo *info,
 }
 
 static int dummy_task_prctl (int option, unsigned long arg2, unsigned long arg3,
-			     unsigned long arg4, unsigned long arg5)
+			     unsigned long arg4, unsigned long arg5, long *rc_p)
 {
-	return 0;
+	switch (option) {
+	case PR_CAPBSET_READ:
+		*rc_p = (cap_valid(arg2) ? 1 : -EINVAL);
+		break;
+	case PR_GET_KEEPCAPS:
+		*rc_p = issecure(SECURE_KEEP_CAPS);
+		break;
+	case PR_SET_KEEPCAPS:
+		if (arg2 > 1)
+			*rc_p = -EINVAL;
+		else if (arg2)
+			current->securebits |= issecure_mask(SECURE_KEEP_CAPS);
+		else
+			current->securebits &=
+				~issecure_mask(SECURE_KEEP_CAPS);
+		break;
+	default:
+		return 0;
+	}
+
+	return 1;
 }
 
 static void dummy_task_reparent_to_init (struct task_struct *p)
@@ -614,6 +644,11 @@ static void dummy_task_to_inode(struct task_struct *p, struct inode *inode)
 static int dummy_ipc_permission (struct kern_ipc_perm *ipcp, short flag)
 {
 	return 0;
+}
+
+static void dummy_ipc_getsecid(struct kern_ipc_perm *ipcp, u32 *secid)
+{
+	*secid = 0;
 }
 
 static int dummy_msg_msg_alloc_security (struct msg_msg *msg)
@@ -876,22 +911,23 @@ static inline void dummy_req_classify_flow(const struct request_sock *req,
 #endif	/* CONFIG_SECURITY_NETWORK */
 
 #ifdef CONFIG_SECURITY_NETWORK_XFRM
-static int dummy_xfrm_policy_alloc_security(struct xfrm_policy *xp,
-		struct xfrm_user_sec_ctx *sec_ctx)
+static int dummy_xfrm_policy_alloc_security(struct xfrm_sec_ctx **ctxp,
+					    struct xfrm_user_sec_ctx *sec_ctx)
 {
 	return 0;
 }
 
-static inline int dummy_xfrm_policy_clone_security(struct xfrm_policy *old, struct xfrm_policy *new)
+static inline int dummy_xfrm_policy_clone_security(struct xfrm_sec_ctx *old_ctx,
+					   struct xfrm_sec_ctx **new_ctxp)
 {
 	return 0;
 }
 
-static void dummy_xfrm_policy_free_security(struct xfrm_policy *xp)
+static void dummy_xfrm_policy_free_security(struct xfrm_sec_ctx *ctx)
 {
 }
 
-static int dummy_xfrm_policy_delete_security(struct xfrm_policy *xp)
+static int dummy_xfrm_policy_delete_security(struct xfrm_sec_ctx *ctx)
 {
 	return 0;
 }
@@ -911,7 +947,8 @@ static int dummy_xfrm_state_delete_security(struct xfrm_state *x)
 	return 0;
 }
 
-static int dummy_xfrm_policy_lookup(struct xfrm_policy *xp, u32 sk_sid, u8 dir)
+static int dummy_xfrm_policy_lookup(struct xfrm_sec_ctx *ctx,
+				    u32 sk_sid, u8 dir)
 {
 	return 0;
 }
@@ -953,7 +990,7 @@ static int dummy_secid_to_secctx(u32 secid, char **secdata, u32 *seclen)
 	return -EOPNOTSUPP;
 }
 
-static int dummy_secctx_to_secid(char *secdata, u32 seclen, u32 *secid)
+static int dummy_secctx_to_secid(const char *secdata, u32 seclen, u32 *secid)
 {
 	return -EOPNOTSUPP;
 }
@@ -979,9 +1016,42 @@ static inline int dummy_key_permission(key_ref_t key_ref,
 {
 	return 0;
 }
+
+static int dummy_key_getsecurity(struct key *key, char **_buffer)
+{
+	*_buffer = NULL;
+	return 0;
+}
+
 #endif /* CONFIG_KEYS */
 
-struct security_operations dummy_security_ops;
+#ifdef CONFIG_AUDIT
+static inline int dummy_audit_rule_init(u32 field, u32 op, char *rulestr,
+					void **lsmrule)
+{
+	return 0;
+}
+
+static inline int dummy_audit_rule_known(struct audit_krule *krule)
+{
+	return 0;
+}
+
+static inline int dummy_audit_rule_match(u32 secid, u32 field, u32 op,
+					 void *lsmrule,
+					 struct audit_context *actx)
+{
+	return 0;
+}
+
+static inline void dummy_audit_rule_free(void *lsmrule)
+{ }
+
+#endif /* CONFIG_AUDIT */
+
+struct security_operations dummy_security_ops = {
+	.name = "dummy",
+};
 
 #define set_to_dummy_if_null(ops, function)				\
 	do {								\
@@ -1058,6 +1128,7 @@ void security_fixup_ops (struct security_operations *ops)
 	set_to_dummy_if_null(ops, inode_getsecurity);
 	set_to_dummy_if_null(ops, inode_setsecurity);
 	set_to_dummy_if_null(ops, inode_listsecurity);
+	set_to_dummy_if_null(ops, inode_getsecid);
 	set_to_dummy_if_null(ops, file_permission);
 	set_to_dummy_if_null(ops, file_alloc_security);
 	set_to_dummy_if_null(ops, file_free_security);
@@ -1094,6 +1165,7 @@ void security_fixup_ops (struct security_operations *ops)
 	set_to_dummy_if_null(ops, task_reparent_to_init);
  	set_to_dummy_if_null(ops, task_to_inode);
 	set_to_dummy_if_null(ops, ipc_permission);
+	set_to_dummy_if_null(ops, ipc_getsecid);
 	set_to_dummy_if_null(ops, msg_msg_alloc_security);
 	set_to_dummy_if_null(ops, msg_msg_free_security);
 	set_to_dummy_if_null(ops, msg_queue_alloc_security);
@@ -1167,7 +1239,13 @@ void security_fixup_ops (struct security_operations *ops)
 	set_to_dummy_if_null(ops, key_alloc);
 	set_to_dummy_if_null(ops, key_free);
 	set_to_dummy_if_null(ops, key_permission);
+	set_to_dummy_if_null(ops, key_getsecurity);
 #endif	/* CONFIG_KEYS */
-
+#ifdef CONFIG_AUDIT
+	set_to_dummy_if_null(ops, audit_rule_init);
+	set_to_dummy_if_null(ops, audit_rule_known);
+	set_to_dummy_if_null(ops, audit_rule_match);
+	set_to_dummy_if_null(ops, audit_rule_free);
+#endif
 }
 

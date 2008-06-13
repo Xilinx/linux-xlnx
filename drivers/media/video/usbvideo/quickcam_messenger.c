@@ -46,11 +46,11 @@
 static int debug;
 #define DEBUG(n, format, arg...) \
 	if (n <= debug) {	 \
-		printk(KERN_DEBUG __FILE__ ":%s(): " format "\n", __FUNCTION__ , ## arg); \
+		printk(KERN_DEBUG __FILE__ ":%s(): " format "\n", __func__ , ## arg); \
 	}
 #else
 #define DEBUG(n, arg...)
-static const int debug = 0;
+static const int debug;
 #endif
 
 #define DRIVER_VERSION "v0.01"
@@ -210,7 +210,7 @@ static int qcm_stv_setb(struct usb_device *dev, u16 reg, u8 val)
 	return ret;
 }
 
-static int qcm_stv_setw(struct usb_device *dev, u16 reg, u16 val)
+static int qcm_stv_setw(struct usb_device *dev, u16 reg, __le16 val)
 {
 	int ret;
 

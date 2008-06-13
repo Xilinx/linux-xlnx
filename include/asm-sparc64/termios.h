@@ -1,4 +1,3 @@
-/* $Id: termios.h,v 1.11 2001/06/01 08:12:11 davem Exp $ */
 #ifndef _SPARC64_TERMIOS_H
 #define _SPARC64_TERMIOS_H
 
@@ -32,11 +31,6 @@ struct ltchars {
 	char	t_lnextc;
 };
 #endif /* __KERNEL__ */
-
-struct sunos_ttysize {
-	int st_lines;   /* Lines on the terminal */
-	int st_columns; /* Columns on the terminal */
-};
 
 struct winsize {
 	unsigned short ws_row;

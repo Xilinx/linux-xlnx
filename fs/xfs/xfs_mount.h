@@ -66,17 +66,17 @@ struct xfs_mru_cache;
  * Prototypes and functions for the Data Migration subsystem.
  */
 
-typedef int	(*xfs_send_data_t)(int, bhv_vnode_t *,
-			xfs_off_t, size_t, int, bhv_vrwlock_t *);
+typedef int	(*xfs_send_data_t)(int, struct xfs_inode *,
+			xfs_off_t, size_t, int, int *);
 typedef int	(*xfs_send_mmap_t)(struct vm_area_struct *, uint);
-typedef int	(*xfs_send_destroy_t)(bhv_vnode_t *, dm_right_t);
+typedef int	(*xfs_send_destroy_t)(struct xfs_inode *, dm_right_t);
 typedef int	(*xfs_send_namesp_t)(dm_eventtype_t, struct xfs_mount *,
-			bhv_vnode_t *,
-			dm_right_t, bhv_vnode_t *, dm_right_t,
-			char *, char *, mode_t, int, int);
+			struct xfs_inode *, dm_right_t,
+			struct xfs_inode *, dm_right_t,
+			const char *, const char *, mode_t, int, int);
 typedef int	(*xfs_send_mount_t)(struct xfs_mount *, dm_right_t,
 			char *, char *);
-typedef void	(*xfs_send_unmount_t)(struct xfs_mount *, bhv_vnode_t *,
+typedef void	(*xfs_send_unmount_t)(struct xfs_mount *, struct xfs_inode *,
 			dm_right_t, mode_t, int, int);
 
 typedef struct xfs_dmops {
@@ -88,20 +88,20 @@ typedef struct xfs_dmops {
 	xfs_send_unmount_t	xfs_send_unmount;
 } xfs_dmops_t;
 
-#define XFS_SEND_DATA(mp, ev,vp,off,len,fl,lock) \
-	(*(mp)->m_dm_ops->xfs_send_data)(ev,vp,off,len,fl,lock)
+#define XFS_SEND_DATA(mp, ev,ip,off,len,fl,lock) \
+	(*(mp)->m_dm_ops->xfs_send_data)(ev,ip,off,len,fl,lock)
 #define XFS_SEND_MMAP(mp, vma,fl) \
 	(*(mp)->m_dm_ops->xfs_send_mmap)(vma,fl)
-#define XFS_SEND_DESTROY(mp, vp,right) \
-	(*(mp)->m_dm_ops->xfs_send_destroy)(vp,right)
+#define XFS_SEND_DESTROY(mp, ip,right) \
+	(*(mp)->m_dm_ops->xfs_send_destroy)(ip,right)
 #define XFS_SEND_NAMESP(mp, ev,b1,r1,b2,r2,n1,n2,mode,rval,fl) \
 	(*(mp)->m_dm_ops->xfs_send_namesp)(ev,NULL,b1,r1,b2,r2,n1,n2,mode,rval,fl)
 #define XFS_SEND_PREUNMOUNT(mp,b1,r1,b2,r2,n1,n2,mode,rval,fl) \
 	(*(mp)->m_dm_ops->xfs_send_namesp)(DM_EVENT_PREUNMOUNT,mp,b1,r1,b2,r2,n1,n2,mode,rval,fl)
 #define XFS_SEND_MOUNT(mp,right,path,name) \
 	(*(mp)->m_dm_ops->xfs_send_mount)(mp,right,path,name)
-#define XFS_SEND_UNMOUNT(mp, vp,right,mode,rval,fl) \
-	(*(mp)->m_dm_ops->xfs_send_unmount)(mp,vp,right,mode,rval,fl)
+#define XFS_SEND_UNMOUNT(mp, ip,right,mode,rval,fl) \
+	(*(mp)->m_dm_ops->xfs_send_unmount)(mp,ip,right,mode,rval,fl)
 
 
 /*
@@ -206,21 +206,22 @@ typedef struct xfs_icsb_cnts {
 
 #define XFS_ICSB_FLAG_LOCK	(1 << 0)	/* counter lock bit */
 
-#define XFS_ICSB_SB_LOCKED	(1 << 0)	/* sb already locked */
 #define XFS_ICSB_LAZY_COUNT	(1 << 1)	/* accuracy not needed */
 
 extern int	xfs_icsb_init_counters(struct xfs_mount *);
 extern void	xfs_icsb_reinit_counters(struct xfs_mount *);
-extern void	xfs_icsb_sync_counters_flags(struct xfs_mount *, int);
+extern void	xfs_icsb_sync_counters(struct xfs_mount *, int);
+extern void	xfs_icsb_sync_counters_locked(struct xfs_mount *, int);
 
 #else
 #define xfs_icsb_init_counters(mp)	(0)
 #define xfs_icsb_reinit_counters(mp)	do { } while (0)
-#define xfs_icsb_sync_counters_flags(mp, flags)	do { } while (0)
+#define xfs_icsb_sync_counters(mp, flags)	do { } while (0)
+#define xfs_icsb_sync_counters_locked(mp, flags) do { } while (0)
 #endif
 
 typedef struct xfs_ail {
-	xfs_ail_entry_t		xa_ail;
+	struct list_head	xa_ail;
 	uint			xa_gen;
 	struct task_struct	*xa_task;
 	xfs_lsn_t		xa_target;
@@ -401,7 +402,7 @@ typedef struct xfs_mount {
 
 /*
  * Allow large block sizes to be reported to userspace programs if the
- * "largeio" mount option is used. 
+ * "largeio" mount option is used.
  *
  * If compatibility mode is specified, simply return the basic unit of caching
  * so that we don't get inefficient read/modify/write I/O from user apps.

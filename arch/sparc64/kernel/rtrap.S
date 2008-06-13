@@ -1,4 +1,4 @@
-/* $Id: rtrap.S,v 1.61 2002/02/09 19:49:31 davem Exp $
+/*
  * rtrap.S: Preparing for return from trap on Sparc V9.
  *
  * Copyright (C) 1997,1998 Jakub Jelinek (jj@sunsite.mff.cuni.cz)
@@ -17,12 +17,6 @@
 #define		RTRAP_PSTATE		(PSTATE_RMO|PSTATE_PEF|PSTATE_PRIV|PSTATE_IE)
 #define		RTRAP_PSTATE_IRQOFF	(PSTATE_RMO|PSTATE_PEF|PSTATE_PRIV)
 #define		RTRAP_PSTATE_AG_IRQOFF	(PSTATE_RMO|PSTATE_PEF|PSTATE_PRIV|PSTATE_AG)
-
-		/* Register %l6 keeps track of whether we are returning
-		 * from a system call or not.  It is cleared if we call
-		 * do_notify_resume, and it must not be otherwise modified
-		 * until we fully commit to returning to userspace.
-		 */
 
 		.text
 		.align			32
@@ -52,18 +46,16 @@ __handle_user_windows:
 		wrpr			%g0, RTRAP_PSTATE_IRQOFF, %pstate
 		ldx			[%g6 + TI_FLAGS], %l0
 
-1:		andcc			%l0, (_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK), %g0
+1:		andcc			%l0, _TIF_SIGPENDING, %g0
 		be,pt			%xcc, __handle_user_windows_continue
 		 nop
 		mov			%l5, %o1
-		mov			%l6, %o2
 		add			%sp, PTREGS_OFF, %o0
-		mov			%l0, %o3
+		mov			%l0, %o2
 
 		call			do_notify_resume
 		 wrpr			%g0, RTRAP_PSTATE, %pstate
 		wrpr			%g0, RTRAP_PSTATE_IRQOFF, %pstate
-		clr			%l6
 		/* Signal delivery can modify pt_regs tstate, so we must
 		 * reload it.
 		 */
@@ -94,19 +86,17 @@ __handle_perfctrs:
 		 wrpr			%g0, RTRAP_PSTATE, %pstate
 		wrpr			%g0, RTRAP_PSTATE_IRQOFF, %pstate
 		ldx			[%g6 + TI_FLAGS], %l0
-1:		andcc			%l0, (_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK), %g0
+1:		andcc			%l0, _TIF_SIGPENDING, %g0
 
 		be,pt			%xcc, __handle_perfctrs_continue
 		 sethi			%hi(TSTATE_PEF), %o0
 		mov			%l5, %o1
-		mov			%l6, %o2
 		add			%sp, PTREGS_OFF, %o0
-		mov			%l0, %o3
+		mov			%l0, %o2
 		call			do_notify_resume
 
 		 wrpr			%g0, RTRAP_PSTATE, %pstate
 		wrpr			%g0, RTRAP_PSTATE_IRQOFF, %pstate
-		clr			%l6
 		/* Signal delivery can modify pt_regs tstate, so we must
 		 * reload it.
 		 */
@@ -127,13 +117,11 @@ __handle_userfpu:
 
 __handle_signal:
 		mov			%l5, %o1
-		mov			%l6, %o2
 		add			%sp, PTREGS_OFF, %o0
-		mov			%l0, %o3
+		mov			%l0, %o2
 		call			do_notify_resume
 		 wrpr			%g0, RTRAP_PSTATE, %pstate
 		wrpr			%g0, RTRAP_PSTATE_IRQOFF, %pstate
-		clr			%l6
 
 		/* Signal delivery can modify pt_regs tstate, so we must
 		 * reload it.
@@ -145,9 +133,8 @@ __handle_signal:
 		 andn			%l1, %l4, %l1
 
 		.align			64
-		.globl			rtrap_irq, rtrap_clr_l6, rtrap, irqsz_patchme, rtrap_xcall
+		.globl			rtrap_irq, rtrap, irqsz_patchme, rtrap_xcall
 rtrap_irq:
-rtrap_clr_l6:	clr			%l6
 rtrap:
 #ifndef CONFIG_SMP
 		sethi			%hi(per_cpu____cpu_data), %l0
@@ -208,7 +195,7 @@ __handle_preemption_continue:
 		 andcc			%l1, %o0, %g0
 		andcc			%l0, _TIF_NEED_RESCHED, %g0
 		bne,pn			%xcc, __handle_preemption
-		 andcc			%l0, (_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK), %g0
+		 andcc			%l0, _TIF_SIGPENDING, %g0
 		bne,pn			%xcc, __handle_signal
 __handle_signal_continue:
 		 ldub			[%g6 + TI_WSAVED], %o2
@@ -270,6 +257,7 @@ rt_continue:	ldx			[%sp + PTREGS_OFF + PT_V9_G1], %g1
 		wr			%o3, %g0, %y
 		wrpr			%l4, 0x0, %pil
 		wrpr			%g0, 0x1, %tl
+		andn			%l1, TSTATE_SYSCALL, %l1
 		wrpr			%l1, %g0, %tstate
 		wrpr			%l2, %g0, %tpc
 		wrpr			%o2, %g0, %tnpc
@@ -375,6 +363,7 @@ kern_rtt:	rdpr			%canrestore, %g1
 		brz,pn			%g1, kern_rtt_fill
 		 nop
 kern_rtt_restore:
+		stw			%g0, [%sp + PTREGS_OFF + PT_V9_MAGIC]
 		restore
 		retry
 

@@ -51,6 +51,7 @@
 
 #include "nfs4_fs.h"
 #include "delegation.h"
+#include "internal.h"
 #include "iostat.h"
 
 #define NFSDBG_FACILITY		NFSDBG_PROC
@@ -72,7 +73,7 @@ int nfs4_map_errors(int err)
 {
 	if (err < -1000) {
 		dprintk("%s could not handle NFSv4 error %d\n",
-				__FUNCTION__, -err);
+				__func__, -err);
 		return -EIO;
 	}
 	return err;
@@ -239,6 +240,8 @@ static void nfs4_init_opendata_res(struct nfs4_opendata *p)
 {
 	p->o_res.f_attr = &p->f_attr;
 	p->o_res.dir_attr = &p->dir_attr;
+	p->o_res.seqid = p->o_arg.seqid;
+	p->c_res.seqid = p->c_arg.seqid;
 	p->o_res.server = p->o_arg.server;
 	nfs_fattr_init(&p->f_attr);
 	nfs_fattr_init(&p->dir_attr);
@@ -303,8 +306,7 @@ static void nfs4_opendata_free(struct kref *kref)
 		nfs4_put_open_state(p->state);
 	nfs4_put_state_owner(p->owner);
 	dput(p->dir);
-	dput(p->path.dentry);
-	mntput(p->path.mnt);
+	path_put(&p->path);
 	kfree(p);
 }
 
@@ -729,7 +731,6 @@ static void nfs4_open_confirm_done(struct rpc_task *task, void *calldata)
 		renew_lease(data->o_res.server, data->timestamp);
 		data->rpc_done = 1;
 	}
-	nfs_increment_open_seqid(data->rpc_status, data->c_arg.seqid);
 }
 
 static void nfs4_open_confirm_release(void *calldata)
@@ -773,6 +774,7 @@ static int _nfs4_proc_open_confirm(struct nfs4_opendata *data)
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_open_confirm_ops,
 		.callback_data = data,
+		.workqueue = nfsiod_workqueue,
 		.flags = RPC_TASK_ASYNC,
 	};
 	int status;
@@ -858,7 +860,6 @@ static void nfs4_open_done(struct rpc_task *task, void *calldata)
 		if (!(data->o_res.rflags & NFS4_OPEN_RESULT_CONFIRM))
 			nfs_confirm_seqid(&data->owner->so_seqid, 0);
 	}
-	nfs_increment_open_seqid(data->rpc_status, data->o_arg.seqid);
 	data->rpc_done = 1;
 }
 
@@ -910,6 +911,7 @@ static int _nfs4_proc_open(struct nfs4_opendata *data)
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_open_ops,
 		.callback_data = data,
+		.workqueue = nfsiod_workqueue,
 		.flags = RPC_TASK_ASYNC,
 	};
 	int status;
@@ -979,11 +981,8 @@ static int _nfs4_open_expired(struct nfs_open_context *ctx, struct nfs4_state *s
 	if (IS_ERR(opendata))
 		return PTR_ERR(opendata);
 	ret = nfs4_open_recover(opendata, state);
-	if (ret == -ESTALE) {
-		/* Invalidate the state owner so we don't ever use it again */
-		nfs4_drop_state_owner(state->owner);
+	if (ret == -ESTALE)
 		d_drop(ctx->path.dentry);
-	}
 	nfs4_opendata_put(opendata);
 	return ret;
 }
@@ -1210,8 +1209,7 @@ static void nfs4_free_closedata(void *data)
 	nfs4_put_open_state(calldata->state);
 	nfs_free_seqid(calldata->arg.seqid);
 	nfs4_put_state_owner(sp);
-	dput(calldata->path.dentry);
-	mntput(calldata->path.mnt);
+	path_put(&calldata->path);
 	kfree(calldata);
 }
 
@@ -1226,7 +1224,6 @@ static void nfs4_close_done(struct rpc_task *task, void *data)
         /* hmm. we are done with the inode, and in the process of freeing
 	 * the state_owner. we keep this around to process errors
 	 */
-	nfs_increment_open_seqid(task->tk_status, calldata->arg.seqid);
 	switch (task->tk_status) {
 		case 0:
 			nfs_set_open_stateid(state, &calldata->res.stateid, 0);
@@ -1315,6 +1312,7 @@ int nfs4_do_close(struct path *path, struct nfs4_state *state, int wait)
 		.rpc_client = server->client,
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_close_ops,
+		.workqueue = nfsiod_workqueue,
 		.flags = RPC_TASK_ASYNC,
 	};
 	int status = -ENOMEM;
@@ -1332,6 +1330,7 @@ int nfs4_do_close(struct path *path, struct nfs4_state *state, int wait)
 		goto out_free_calldata;
 	calldata->arg.bitmask = server->attr_bitmask;
 	calldata->res.fattr = &calldata->fattr;
+	calldata->res.seqid = calldata->arg.seqid;
 	calldata->res.server = server;
 	calldata->path.mnt = mntget(path->mnt);
 	calldata->path.dentry = dget(path->dentry);
@@ -1404,7 +1403,7 @@ nfs4_atomic_open(struct inode *dir, struct dentry *dentry, struct nameidata *nd)
 		BUG_ON(nd->intent.open.flags & O_CREAT);
 	}
 
-	cred = rpcauth_lookupcred(NFS_CLIENT(dir)->cl_auth, 0);
+	cred = rpc_lookup_cred();
 	if (IS_ERR(cred))
 		return (struct dentry *)cred;
 	parent = dentry->d_parent;
@@ -1439,7 +1438,7 @@ nfs4_open_revalidate(struct inode *dir, struct dentry *dentry, int openflags, st
 	struct rpc_cred *cred;
 	struct nfs4_state *state;
 
-	cred = rpcauth_lookupcred(NFS_CLIENT(dir)->cl_auth, 0);
+	cred = rpc_lookup_cred();
 	if (IS_ERR(cred))
 		return PTR_ERR(cred);
 	state = nfs4_do_open(dir, &path, openflags, NULL, cred);
@@ -1577,7 +1576,7 @@ static int nfs4_get_referral(struct inode *dir, const struct qstr *name, struct 
 		goto out;
 	/* Make sure server returned a different fsid for the referral */
 	if (nfs_fsid_equal(&NFS_SERVER(dir)->fsid, &locations->fattr.fsid)) {
-		dprintk("%s: server did not return a different fsid for a referral at %s\n", __FUNCTION__, name->name);
+		dprintk("%s: server did not return a different fsid for a referral at %s\n", __func__, name->name);
 		status = -EIO;
 		goto out;
 	}
@@ -1656,7 +1655,7 @@ nfs4_proc_setattr(struct dentry *dentry, struct nfs_fattr *fattr,
 
 	nfs_fattr_init(fattr);
 	
-	cred = rpcauth_lookupcred(NFS_CLIENT(inode)->cl_auth, 0);
+	cred = rpc_lookup_cred();
 	if (IS_ERR(cred))
 		return PTR_ERR(cred);
 
@@ -1892,7 +1891,7 @@ nfs4_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 	struct rpc_cred *cred;
 	int status = 0;
 
-	cred = rpcauth_lookupcred(NFS_CLIENT(dir)->cl_auth, 0);
+	cred = rpc_lookup_cred();
 	if (IS_ERR(cred)) {
 		status = PTR_ERR(cred);
 		goto out;
@@ -2210,7 +2209,7 @@ static int _nfs4_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
 	};
 	int			status;
 
-	dprintk("%s: dentry = %s/%s, cookie = %Lu\n", __FUNCTION__,
+	dprintk("%s: dentry = %s/%s, cookie = %Lu\n", __func__,
 			dentry->d_parent->d_name.name,
 			dentry->d_name.name,
 			(unsigned long long)cookie);
@@ -2222,7 +2221,7 @@ static int _nfs4_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
 
 	nfs_invalidate_atime(dir);
 
-	dprintk("%s: returns %d\n", __FUNCTION__, status);
+	dprintk("%s: returns %d\n", __func__, status);
 	return status;
 }
 
@@ -2761,10 +2760,10 @@ nfs4_async_handle_error(struct rpc_task *task, const struct nfs_server *server)
 		case -NFS4ERR_STALE_CLIENTID:
 		case -NFS4ERR_STALE_STATEID:
 		case -NFS4ERR_EXPIRED:
-			rpc_sleep_on(&clp->cl_rpcwaitq, task, NULL, NULL);
+			rpc_sleep_on(&clp->cl_rpcwaitq, task, NULL);
 			nfs4_schedule_state_recovery(clp);
 			if (test_bit(NFS4CLNT_STATE_RECOVER, &clp->cl_state) == 0)
-				rpc_wake_up_task(task);
+				rpc_wake_up_queued_task(&clp->cl_rpcwaitq, task);
 			task->tk_status = 0;
 			return -EAGAIN;
 		case -NFS4ERR_DELAY:
@@ -2884,7 +2883,7 @@ int nfs4_proc_setclientid(struct nfs_client *clp, u32 program, unsigned short po
 							RPC_DISPLAY_ADDR),
 				rpc_peeraddr2str(clp->cl_rpcclient,
 							RPC_DISPLAY_PROTO),
-				cred->cr_ops->cr_name,
+				clp->cl_rpcclient->cl_auth->au_ops->au_name,
 				clp->cl_id_uniquifier);
 		setclientid.sc_netid_len = scnprintf(setclientid.sc_netid,
 				sizeof(setclientid.sc_netid),
@@ -3158,6 +3157,7 @@ static struct nfs4_unlockdata *nfs4_alloc_unlockdata(struct file_lock *fl,
 	p->arg.fh = NFS_FH(inode);
 	p->arg.fl = &p->fl;
 	p->arg.seqid = seqid;
+	p->res.seqid = seqid;
 	p->arg.stateid = &lsp->ls_stateid;
 	p->lsp = lsp;
 	atomic_inc(&lsp->ls_count);
@@ -3183,7 +3183,6 @@ static void nfs4_locku_done(struct rpc_task *task, void *data)
 
 	if (RPC_ASSASSINATED(task))
 		return;
-	nfs_increment_lock_seqid(task->tk_status, calldata->arg.seqid);
 	switch (task->tk_status) {
 		case 0:
 			memcpy(calldata->lsp->ls_stateid.data,
@@ -3235,6 +3234,7 @@ static struct rpc_task *nfs4_do_unlck(struct file_lock *fl,
 		.rpc_client = NFS_CLIENT(lsp->ls_state->inode),
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_locku_ops,
+		.workqueue = nfsiod_workqueue,
 		.flags = RPC_TASK_ASYNC,
 	};
 
@@ -3261,6 +3261,7 @@ static int nfs4_proc_unlck(struct nfs4_state *state, int cmd, struct file_lock *
 	struct nfs4_lock_state *lsp;
 	struct rpc_task *task;
 	int status = 0;
+	unsigned char fl_flags = request->fl_flags;
 
 	status = nfs4_set_lock_state(state, request);
 	/* Unlock _before_ we do the RPC call */
@@ -3284,6 +3285,7 @@ static int nfs4_proc_unlck(struct nfs4_state *state, int cmd, struct file_lock *
 	status = nfs4_wait_for_completion_rpc_task(task);
 	rpc_put_task(task);
 out:
+	request->fl_flags = fl_flags;
 	return status;
 }
 
@@ -3320,6 +3322,7 @@ static struct nfs4_lockdata *nfs4_alloc_lockdata(struct file_lock *fl,
 	p->arg.lock_stateid = &lsp->ls_stateid;
 	p->arg.lock_owner.clientid = server->nfs_client->cl_clientid;
 	p->arg.lock_owner.id = lsp->ls_id.id;
+	p->res.lock_seqid = p->arg.lock_seqid;
 	p->lsp = lsp;
 	atomic_inc(&lsp->ls_count);
 	p->ctx = get_nfs_open_context(ctx);
@@ -3337,7 +3340,7 @@ static void nfs4_lock_prepare(struct rpc_task *task, void *calldata)
 	struct nfs4_lockdata *data = calldata;
 	struct nfs4_state *state = data->lsp->ls_state;
 
-	dprintk("%s: begin!\n", __FUNCTION__);
+	dprintk("%s: begin!\n", __func__);
 	if (nfs_wait_on_sequence(data->arg.lock_seqid, task) != 0)
 		return;
 	/* Do we need to do an open_to_lock_owner? */
@@ -3346,24 +3349,24 @@ static void nfs4_lock_prepare(struct rpc_task *task, void *calldata)
 			return;
 		data->arg.open_stateid = &state->stateid;
 		data->arg.new_lock_owner = 1;
+		data->res.open_seqid = data->arg.open_seqid;
 	} else
 		data->arg.new_lock_owner = 0;
 	data->timestamp = jiffies;
 	rpc_call_start(task);
-	dprintk("%s: done!, ret = %d\n", __FUNCTION__, data->rpc_status);
+	dprintk("%s: done!, ret = %d\n", __func__, data->rpc_status);
 }
 
 static void nfs4_lock_done(struct rpc_task *task, void *calldata)
 {
 	struct nfs4_lockdata *data = calldata;
 
-	dprintk("%s: begin!\n", __FUNCTION__);
+	dprintk("%s: begin!\n", __func__);
 
 	data->rpc_status = task->tk_status;
 	if (RPC_ASSASSINATED(task))
 		goto out;
 	if (data->arg.new_lock_owner != 0) {
-		nfs_increment_open_seqid(data->rpc_status, data->arg.open_seqid);
 		if (data->rpc_status == 0)
 			nfs_confirm_seqid(&data->lsp->ls_seqid, 0);
 		else
@@ -3375,16 +3378,15 @@ static void nfs4_lock_done(struct rpc_task *task, void *calldata)
 		data->lsp->ls_flags |= NFS_LOCK_INITIALIZED;
 		renew_lease(NFS_SERVER(data->ctx->path.dentry->d_inode), data->timestamp);
 	}
-	nfs_increment_lock_seqid(data->rpc_status, data->arg.lock_seqid);
 out:
-	dprintk("%s: done, ret = %d!\n", __FUNCTION__, data->rpc_status);
+	dprintk("%s: done, ret = %d!\n", __func__, data->rpc_status);
 }
 
 static void nfs4_lock_release(void *calldata)
 {
 	struct nfs4_lockdata *data = calldata;
 
-	dprintk("%s: begin!\n", __FUNCTION__);
+	dprintk("%s: begin!\n", __func__);
 	nfs_free_seqid(data->arg.open_seqid);
 	if (data->cancelled != 0) {
 		struct rpc_task *task;
@@ -3392,13 +3394,13 @@ static void nfs4_lock_release(void *calldata)
 				data->arg.lock_seqid);
 		if (!IS_ERR(task))
 			rpc_put_task(task);
-		dprintk("%s: cancelling lock!\n", __FUNCTION__);
+		dprintk("%s: cancelling lock!\n", __func__);
 	} else
 		nfs_free_seqid(data->arg.lock_seqid);
 	nfs4_put_lock_state(data->lsp);
 	put_nfs_open_context(data->ctx);
 	kfree(data);
-	dprintk("%s: done!\n", __FUNCTION__);
+	dprintk("%s: done!\n", __func__);
 }
 
 static const struct rpc_call_ops nfs4_lock_ops = {
@@ -3419,11 +3421,12 @@ static int _nfs4_do_setlk(struct nfs4_state *state, int cmd, struct file_lock *f
 		.rpc_client = NFS_CLIENT(state->inode),
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_lock_ops,
+		.workqueue = nfsiod_workqueue,
 		.flags = RPC_TASK_ASYNC,
 	};
 	int ret;
 
-	dprintk("%s: begin!\n", __FUNCTION__);
+	dprintk("%s: begin!\n", __func__);
 	data = nfs4_alloc_lockdata(fl, nfs_file_open_context(fl->fl_file),
 			fl->fl_u.nfs4_fl.owner);
 	if (data == NULL)
@@ -3446,7 +3449,7 @@ static int _nfs4_do_setlk(struct nfs4_state *state, int cmd, struct file_lock *f
 	} else
 		data->cancelled = 1;
 	rpc_put_task(task);
-	dprintk("%s: done, ret = %d!\n", __FUNCTION__, ret);
+	dprintk("%s: done, ret = %d!\n", __func__, ret);
 	return ret;
 }
 
@@ -3522,7 +3525,7 @@ static int _nfs4_proc_setlk(struct nfs4_state *state, int cmd, struct file_lock 
 	/* Note: we always want to sleep here! */
 	request->fl_flags = fl_flags | FL_SLEEP;
 	if (do_vfs_lock(request->fl_file, request) < 0)
-		printk(KERN_WARNING "%s: VFS is out of sync with lock manager!\n", __FUNCTION__);
+		printk(KERN_WARNING "%s: VFS is out of sync with lock manager!\n", __func__);
 out_unlock:
 	up_read(&clp->cl_sem);
 out:
@@ -3660,12 +3663,12 @@ int nfs4_proc_fs_locations(struct inode *dir, const struct qstr *name,
 	};
 	int status;
 
-	dprintk("%s: start\n", __FUNCTION__);
+	dprintk("%s: start\n", __func__);
 	nfs_fattr_init(&fs_locations->fattr);
 	fs_locations->server = server;
 	fs_locations->nlocations = 0;
 	status = rpc_call_sync(server->client, &msg, 0);
-	dprintk("%s: returned status = %d\n", __FUNCTION__, status);
+	dprintk("%s: returned status = %d\n", __func__, status);
 	return status;
 }
 

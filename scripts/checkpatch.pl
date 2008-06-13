@@ -9,7 +9,7 @@ use strict;
 my $P = $0;
 $P =~ s@.*/@@g;
 
-my $V = '0.16';
+my $V = '0.19';
 
 use Getopt::Long qw(:config no_auto_abbrev);
 
@@ -115,6 +115,7 @@ our $Attribute	= qr{
 			__kprobes|
 			__(?:mem|cpu|dev|)(?:initdata|init)
 		  }x;
+our $Modifier;
 our $Inline	= qr{inline|__always_inline|noinline};
 our $Member	= qr{->$Ident|\.$Ident|\[[^]]*\]};
 our $Lval	= qr{$Ident(?:$Member)*};
@@ -131,19 +132,30 @@ our $NonptrType;
 our $Type;
 our $Declare;
 
+our $UTF8	= qr {
+	[\x09\x0A\x0D\x20-\x7E]              # ASCII
+	| [\xC2-\xDF][\x80-\xBF]             # non-overlong 2-byte
+	|  \xE0[\xA0-\xBF][\x80-\xBF]        # excluding overlongs
+	| [\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}  # straight 3-byte
+	|  \xED[\x80-\x9F][\x80-\xBF]        # excluding surrogates
+	|  \xF0[\x90-\xBF][\x80-\xBF]{2}     # planes 1-3
+	| [\xF1-\xF3][\x80-\xBF]{3}          # planes 4-15
+	|  \xF4[\x80-\x8F][\x80-\xBF]{2}     # plane 16
+}x;
+
 our @typeList = (
 	qr{void},
-	qr{char},
-	qr{short},
-	qr{int},
-	qr{long},
+	qr{(?:unsigned\s+)?char},
+	qr{(?:unsigned\s+)?short},
+	qr{(?:unsigned\s+)?int},
+	qr{(?:unsigned\s+)?long},
+	qr{(?:unsigned\s+)?long\s+int},
+	qr{(?:unsigned\s+)?long\s+long},
+	qr{(?:unsigned\s+)?long\s+long\s+int},
 	qr{unsigned},
 	qr{float},
 	qr{double},
 	qr{bool},
-	qr{long\s+int},
-	qr{long\s+long},
-	qr{long\s+long\s+int},
 	qr{(?:__)?(?:u|s|be|le)(?:8|16|32|64)},
 	qr{struct\s+$Ident},
 	qr{union\s+$Ident},
@@ -152,26 +164,29 @@ our @typeList = (
 	qr{${Ident}_handler},
 	qr{${Ident}_handler_fn},
 );
+our @modifierList = (
+	qr{fastcall},
+);
 
 sub build_types {
+	my $mods = "(?:  \n" . join("|\n  ", @modifierList) . "\n)";
 	my $all = "(?:  \n" . join("|\n  ", @typeList) . "\n)";
 	$NonptrType	= qr{
-			\b
 			(?:const\s+)?
-			(?:unsigned\s+)?
+			(?:$mods\s+)?
 			(?:
-				$all|
-				(?:typeof|__typeof__)\s*\(\s*\**\s*$Ident\s*\)
+				(?:typeof|__typeof__)\s*\(\s*\**\s*$Ident\s*\)|
+				(?:${all}\b)
 			)
 			(?:\s+$Sparse|\s+const)*
-			\b
 		  }x;
 	$Type	= qr{
-			\b$NonptrType\b
+			$NonptrType
 			(?:\s*\*+\s*const|\s*\*+|(?:\s*\[\s*\])+)?
-			(?:\s+$Inline|\s+$Sparse|\s+$Attribute)*
+			(?:\s+$Inline|\s+$Sparse|\s+$Attribute|\s+$mods)*
 		  }x;
 	$Declare	= qr{(?:$Storage\s+)?$Type};
+	$Modifier	= qr{(?:$Attribute|$Sparse|$mods)};
 }
 build_types();
 
@@ -318,7 +333,7 @@ sub sanitise_line {
 			$off++;
 			next;
 		}
-		if (substr($line, $off, 2) eq $sanitise_quote) {
+		if (substr($line, $off, 2) eq '*/') {
 			$sanitise_quote = '';
 			substr($res, $off, 2, "$;$;");
 			$off++;
@@ -355,14 +370,14 @@ sub sanitise_line {
 	}
 
 	# The pathname on a #include may be surrounded by '<' and '>'.
-	if ($res =~ /^.#\s*include\s+\<(.*)\>/) {
+	if ($res =~ /^.\s*\#\s*include\s+\<(.*)\>/) {
 		my $clean = 'X' x length($1);
 		$res =~ s@\<.*\>@<$clean>@;
 
 	# The whole of a #error is a string.
-	} elsif ($res =~ /^.#\s*(?:error|warning)\s+(.*)\b/) {
+	} elsif ($res =~ /^.\s*\#\s*(?:error|warning)\s+(.*)\b/) {
 		my $clean = 'X' x length($1);
-		$res =~ s@(#\s*(?:error|warning)\s+).*@$1$clean@;
+		$res =~ s@(\#\s*(?:error|warning)\s+).*@$1$clean@;
 	}
 
 	return $res;
@@ -692,7 +707,7 @@ sub annotate_values {
 	while (length($cur)) {
 		@av_paren_type = ('E') if ($#av_paren_type < 0);
 		print " <" . join('', @av_paren_type) .
-					"> <$type> " if ($dbg_values > 1);
+				"> <$type> <$av_pending>" if ($dbg_values > 1);
 		if ($cur =~ /^(\s+)/o) {
 			print "WS($1)\n" if ($dbg_values > 1);
 			if ($1 =~ /\n/ && $av_preprocessor) {
@@ -704,28 +719,37 @@ sub annotate_values {
 			print "DECLARE($1)\n" if ($dbg_values > 1);
 			$type = 'T';
 
-		} elsif ($cur =~ /^(#\s*define\s*$Ident)(\(?)/o) {
-			print "DEFINE($1)\n" if ($dbg_values > 1);
+		} elsif ($cur =~ /^(\#\s*define\s*$Ident)(\(?)/o) {
+			print "DEFINE($1,$2)\n" if ($dbg_values > 1);
 			$av_preprocessor = 1;
-			$av_pending = 'N';
+			push(@av_paren_type, $type);
+			if ($2 ne '') {
+				$av_pending = 'N';
+			}
+			$type = 'E';
 
-		} elsif ($cur =~ /^(#\s*(?:ifdef|ifndef|if))/o) {
+		} elsif ($cur =~ /^(\#\s*(?:undef\s*$Ident|include\b))/o) {
+			print "UNDEF($1)\n" if ($dbg_values > 1);
+			$av_preprocessor = 1;
+			push(@av_paren_type, $type);
+
+		} elsif ($cur =~ /^(\#\s*(?:ifdef|ifndef|if))/o) {
 			print "PRE_START($1)\n" if ($dbg_values > 1);
 			$av_preprocessor = 1;
 
 			push(@av_paren_type, $type);
 			push(@av_paren_type, $type);
-			$type = 'N';
+			$type = 'E';
 
-		} elsif ($cur =~ /^(#\s*(?:else|elif))/o) {
+		} elsif ($cur =~ /^(\#\s*(?:else|elif))/o) {
 			print "PRE_RESTART($1)\n" if ($dbg_values > 1);
 			$av_preprocessor = 1;
 
 			push(@av_paren_type, $av_paren_type[$#av_paren_type]);
 
-			$type = 'N';
+			$type = 'E';
 
-		} elsif ($cur =~ /^(#\s*(?:endif))/o) {
+		} elsif ($cur =~ /^(\#\s*(?:endif))/o) {
 			print "PRE_END($1)\n" if ($dbg_values > 1);
 
 			$av_preprocessor = 1;
@@ -734,10 +758,15 @@ sub annotate_values {
 			# one does, and continue as if the #endif was not here.
 			pop(@av_paren_type);
 			push(@av_paren_type, $type);
-			$type = 'N';
+			$type = 'E';
 
 		} elsif ($cur =~ /^(\\\n)/o) {
 			print "PRECONT($1)\n" if ($dbg_values > 1);
+
+		} elsif ($cur =~ /^(__attribute__)\s*\(?/o) {
+			print "ATTR($1)\n" if ($dbg_values > 1);
+			$av_pending = $type;
+			$type = 'N';
 
 		} elsif ($cur =~ /^(sizeof)\s*(\()?/o) {
 			print "SIZEOF($1)\n" if ($dbg_values > 1);
@@ -812,14 +841,26 @@ sub annotate_values {
 sub possible {
 	my ($possible, $line) = @_;
 
-	#print "CHECK<$possible>\n";
+	print "CHECK<$possible> ($line)\n" if ($dbg_possible > 1);
 	if ($possible !~ /^(?:$Storage|$Type|DEFINE_\S+)$/ &&
 	    $possible ne 'goto' && $possible ne 'return' &&
-	    $possible ne 'struct' && $possible ne 'enum' &&
 	    $possible ne 'case' && $possible ne 'else' &&
-	    $possible ne 'typedef') {
-		warn "POSSIBLE: $possible ($line)\n" if ($dbg_possible);
-		push(@typeList, $possible);
+	    $possible ne 'asm' &&
+	    $possible !~ /^(typedef|struct|enum)\b/) {
+		# Check for modifiers.
+		$possible =~ s/\s*$Storage\s*//g;
+		$possible =~ s/\s*$Sparse\s*//g;
+		if ($possible =~ /^\s*$/) {
+
+		} elsif ($possible =~ /\s/) {
+			$possible =~ s/\s*$Type\s*//g;
+			warn "MODIFIER: $possible ($line)\n" if ($dbg_possible);
+			push(@modifierList, $possible);
+
+		} else {
+			warn "POSSIBLE: $possible ($line)\n" if ($dbg_possible);
+			push(@typeList, $possible);
+		}
 		build_types();
 	}
 }
@@ -924,13 +965,14 @@ sub process {
 			} else {
 				$realcnt=1+1;
 			}
+			$in_comment = 0;
 
 			# Guestimate if this is a continuing comment.  Run
 			# the context looking for a comment "edge".  If this
 			# edge is a close comment then we must be in a comment
 			# at context start.
 			my $edge;
-			for (my $ln = $linenr; $ln < ($linenr + $realcnt); $ln++) {
+			for (my $ln = $linenr + 1; $ln < ($linenr + $realcnt); $ln++) {
 				next if ($line =~ /^-/);
 				($edge) = ($rawlines[$ln - 1] =~ m@(/\*|\*/)@);
 				last if (defined $edge);
@@ -951,9 +993,9 @@ sub process {
 			##print "COMMENT:$in_comment edge<$edge> $rawline\n";
 			sanitise_line_reset($in_comment);
 
-		} elsif ($realcnt) {
+		} elsif ($realcnt && $rawline =~ /^(?:\+| |$)/) {
 			# Standardise the strings and chars within the input to
-			# simplify matching.
+			# simplify matching -- only bother with positive lines.
 			$line = sanitise_line($rawline);
 		}
 		push(@lines, $line);
@@ -1066,17 +1108,14 @@ sub process {
 
 # UTF-8 regex found at http://www.w3.org/International/questions/qa-forms-utf-8.en.php
 		if (($realfile =~ /^$/ || $line =~ /^\+/) &&
-		     !($rawline =~ m/^(
-				[\x09\x0A\x0D\x20-\x7E]              # ASCII
-				| [\xC2-\xDF][\x80-\xBF]             # non-overlong 2-byte
-				|  \xE0[\xA0-\xBF][\x80-\xBF]        # excluding overlongs
-				| [\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}  # straight 3-byte
-				|  \xED[\x80-\x9F][\x80-\xBF]        # excluding surrogates
-				|  \xF0[\x90-\xBF][\x80-\xBF]{2}     # planes 1-3
-				| [\xF1-\xF3][\x80-\xBF]{3}          # planes 4-15
-				|  \xF4[\x80-\x8F][\x80-\xBF]{2}     # plane 16
-				)*$/x )) {
-			ERROR("Invalid UTF-8, patch and commit message should be encoded in UTF-8\n" . $herecurr);
+		    $rawline !~ m/^$UTF8*$/) {
+			my ($utf8_prefix) = ($rawline =~ /^($UTF8*)/);
+
+			my $blank = copy_spacing($rawline);
+			my $ptr = substr($blank, 0, length($utf8_prefix)) . "^";
+			my $hereptr = "$hereline$ptr\n";
+
+			ERROR("Invalid UTF-8, patch and commit message should be encoded in UTF-8\n" . $hereptr);
 		}
 
 #ignore lines being removed
@@ -1095,7 +1134,9 @@ sub process {
 			ERROR("trailing whitespace\n" . $herevet);
 		}
 #80 column limit
-		if ($line =~ /^\+/ && !($prevrawline=~/\/\*\*/) && $length > 80) {
+		if ($line =~ /^\+/ && $prevrawline !~ /\/\*\*/ &&
+		    $rawline !~ /^.\s*\*\s*\@$Ident\s/ && $length > 80)
+		{
 			WARN("line over 80 characters\n" . $herecurr);
 		}
 
@@ -1112,7 +1153,7 @@ sub process {
 		if ($rawline =~ /^\+\s* \t\s*\S/ ||
 		    $rawline =~ /^\+\s*        \s*/) {
 			my $herevet = "$here\n" . cat_vet($rawline) . "\n";
-			ERROR("use tabs not spaces\n" . $herevet);
+			ERROR("code indent should use tabs where possible\n" . $herevet);
 		}
 
 # check for RCS/CVS revision markers
@@ -1121,35 +1162,42 @@ sub process {
 		}
 
 # Check for potential 'bare' types
-		if ($realcnt) {
-			my ($s, $c) = ctx_statement_block($linenr, $realcnt, 0);
-			$s =~ s/\n./ /g;
-			$s =~ s/{.*$//;
+		my ($stat, $cond);
+		if ($realcnt && $line =~ /.\s*\S/) {
+			($stat, $cond) = ctx_statement_block($linenr,
+								$realcnt, 0);
+			$stat =~ s/\n./\n /g;
+			$cond =~ s/\n./\n /g;
+
+			my $s = $stat;
+			$s =~ s/{.*$//s;
 
 			# Ignore goto labels.
-			if ($s =~ /$Ident:\*$/) {
+			if ($s =~ /$Ident:\*$/s) {
 
 			# Ignore functions being called
-			} elsif ($s =~ /^.\s*$Ident\s*\(/) {
-
-			# definitions in global scope can only start with types
-			} elsif ($s =~ /^.(?:$Storage\s+)?(?:$Inline\s+)?(?:const\s+)?($Ident)\b/) {
-				possible($1, $s);
+			} elsif ($s =~ /^.\s*$Ident\s*\(/s) {
 
 			# declarations always start with types
-			} elsif ($prev_values eq 'E' && $s =~ /^.\s*(?:$Storage\s+)?(?:const\s+)?($Ident)\b(:?\s+$Sparse)?\s*\**\s*$Ident\s*(?:;|=|,)/) {
-				possible($1, $s);
+			} elsif ($prev_values eq 'E' && $s =~ /^.\s*(?:$Storage\s+)?(?:$Inline\s+)?(?:const\s+)?((?:\s*$Ident)+)\b(?:\s+$Sparse)?\s*\**\s*(?:$Ident|\(\*[^\)]*\))\s*(?:;|=|,|\()/s) {
+				my $type = $1;
+				$type =~ s/\s+/ /g;
+				possible($type, "A:" . $s);
+
+			# definitions in global scope can only start with types
+			} elsif ($s =~ /^.(?:$Storage\s+)?(?:$Inline\s+)?(?:const\s+)?($Ident)\b/s) {
+				possible($1, "B:" . $s);
 			}
 
 			# any (foo ... *) is a pointer cast, and foo is a type
-			while ($s =~ /\(($Ident)(?:\s+$Sparse)*\s*\*+\s*\)/g) {
-				possible($1, $s);
+			while ($s =~ /\(($Ident)(?:\s+$Sparse)*\s*\*+\s*\)/sg) {
+				possible($1, "C:" . $s);
 			}
 
 			# Check for any sort of function declaration.
 			# int foo(something bar, other baz);
 			# void (*store_gdt)(x86_descr_ptr *);
-			if ($prev_values eq 'E' && $s =~ /^(.(?:typedef\s*)?(?:(?:$Storage|$Inline)\s*)*\s*$Type\s*(?:\b$Ident|\(\*\s*$Ident\))\s*)\(/) {
+			if ($prev_values eq 'E' && $s =~ /^(.(?:typedef\s*)?(?:(?:$Storage|$Inline)\s*)*\s*$Type\s*(?:\b$Ident|\(\*\s*$Ident\))\s*)\(/s) {
 				my ($name_len) = length($1);
 
 				my $ctx = $s;
@@ -1157,9 +1205,9 @@ sub process {
 				$ctx =~ s/\)[^\)]*$//;
 
 				for my $arg (split(/\s*,\s*/, $ctx)) {
-					if ($arg =~ /^(?:const\s+)?($Ident)(?:\s+$Sparse)*\s*\**\s*(:?\b$Ident)?$/ || $arg =~ /^($Ident)$/) {
+					if ($arg =~ /^(?:const\s+)?($Ident)(?:\s+$Sparse)*\s*\**\s*(:?\b$Ident)?$/s || $arg =~ /^($Ident)$/s) {
 
-						possible($1, $s);
+						possible($1, "D:" . $s);
 					}
 				}
 			}
@@ -1194,7 +1242,7 @@ sub process {
 
 # if/while/etc brace do not go on next line, unless defining a do while loop,
 # or if that brace on the next line is for something else
-		if ($line =~ /(.*)\b((?:if|while|for|switch)\s*\(|do\b|else\b)/ && $line !~ /^.#/) {
+		if ($line =~ /(.*)\b((?:if|while|for|switch)\s*\(|do\b|else\b)/ && $line !~ /^.\s*\#/) {
 			my $pre_ctx = "$1$2";
 
 			my ($level, @ctx) = ctx_statement_level($linenr, $realcnt, 0);
@@ -1212,7 +1260,7 @@ sub process {
 
 			if ($ctx !~ /{\s*/ && defined($lines[$ctx_ln -1]) && $lines[$ctx_ln - 1] =~ /^\+\s*{/) {
 				ERROR("that open brace { should be on the previous line\n" .
-					"$here\n$ctx\n$lines[$ctx_ln - 1]");
+					"$here\n$ctx\n$lines[$ctx_ln - 1]\n");
 			}
 			if ($level == 0 && $pre_ctx !~ /}\s*while\s*\($/ &&
 			    $ctx =~ /\)\s*\;\s*$/ &&
@@ -1221,7 +1269,7 @@ sub process {
 				my ($nlength, $nindent) = line_stats($lines[$ctx_ln - 1]);
 				if ($nindent > $indent) {
 					WARN("trailing semicolon indicates no statements, indent implies otherwise\n" .
-						"$here\n$ctx\n$lines[$ctx_ln - 1]");
+						"$here\n$ctx\n$lines[$ctx_ln - 1]\n");
 				}
 			}
 		}
@@ -1257,7 +1305,7 @@ sub process {
 #
 
 # check for malformed paths in #include statements (uses RAW line)
-		if ($rawline =~ m{^.#\s*include\s+[<"](.*)[">]}) {
+		if ($rawline =~ m{^.\s*\#\s*include\s+[<"](.*)[">]}) {
 			my $path = $1;
 			if ($path =~ m{//}) {
 				ERROR("malformed #include filename\n" .
@@ -1282,18 +1330,19 @@ sub process {
 			   ($prevline !~ /^ }/) &&
 			   ($prevline !~ /^.DECLARE_$Ident\(\Q$name\E\)/) &&
 			   ($prevline !~ /^.LIST_HEAD\(\Q$name\E\)/) &&
+			   ($prevline !~ /^.$Type\s*\(\s*\*\s*\Q$name\E\s*\)\s*\(/) &&
 			   ($prevline !~ /\b\Q$name\E(?:\s+$Attribute)?\s*(?:;|=|\[)/)) {
 				WARN("EXPORT_SYMBOL(foo); should immediately follow its function/variable\n" . $herecurr);
 			}
 		}
 
 # check for external initialisers.
-		if ($line =~ /^.$Type\s*$Ident\s*=\s*(0|NULL);/) {
+		if ($line =~ /^.$Type\s*$Ident\s*(?:\s+$Modifier)*\s*=\s*(0|NULL|false)\s*;/) {
 			ERROR("do not initialise externals to 0 or NULL\n" .
 				$herecurr);
 		}
 # check for static initialisers.
-		if ($line =~ /\s*static\s.*=\s*(0|NULL);/) {
+		if ($line =~ /\s*static\s.*=\s*(0|NULL|false)\s*;/) {
 			ERROR("do not initialise statics to 0 or NULL\n" .
 				$herecurr);
 		}
@@ -1302,6 +1351,7 @@ sub process {
 # make sense.
 		if ($line =~ /\btypedef\s/ &&
 		    $line !~ /\btypedef\s+$Type\s+\(\s*\*?$Ident\s*\)\s*\(/ &&
+		    $line !~ /\btypedef\s+$Type\s+$Ident\s*\(/ &&
 		    $line !~ /\b__bitwise(?:__|)\b/) {
 			WARN("do not add new typedefs\n" . $herecurr);
 		}
@@ -1360,8 +1410,8 @@ sub process {
 
 # function brace can't be on same line, except for #defines of do while,
 # or if closed on same line
-		if (($line=~/$Type\s*[A-Za-z\d_]+\(.*\).*\s{/) and
-		    !($line=~/\#define.*do\s{/) and !($line=~/}/)) {
+		if (($line=~/$Type\s*$Ident\(.*\).*\s{/) and
+		    !($line=~/\#\s*define.*do\s{/) and !($line=~/}/)) {
 			ERROR("open brace '{' following function declarations go on the next line\n" . $herecurr);
 		}
 
@@ -1388,10 +1438,10 @@ sub process {
 			# cpp #define statements have non-optional spaces, ie
 			# if there is a space between the name and the open
 			# parenthesis it is simply not a parameter group.
-			} elsif ($ctx_before =~ /^.\#\s*define\s*$/) {
+			} elsif ($ctx_before =~ /^.\s*\#\s*define\s*$/) {
 
 			# cpp #elif statement condition may start with a (
-			} elsif ($ctx =~ /^.\#\s*elif\s*$/) {
+			} elsif ($ctx =~ /^.\s*\#\s*elif\s*$/) {
 
 			# If this whole things ends with a type its most
 			# likely a typedef for a function.
@@ -1512,7 +1562,10 @@ sub process {
 					if ($ctx !~ /[WEBC]x./ && $ca !~ /(?:\)|!|~|\*|-|\&|\||\+\+|\-\-|\{)$/) {
 						ERROR("space required before that '$op' $at\n" . $hereptr);
 					}
-					if ($ctx =~ /.xW/) {
+					if ($op  eq '*' && $cc =~/\s*const\b/) {
+						# A unary '*' may be const
+
+					} elsif ($ctx =~ /.xW/) {
 						ERROR("space prohibited after that '$op' $at\n" . $hereptr);
 					}
 
@@ -1594,13 +1647,14 @@ sub process {
 			ERROR("space prohibited before that close square bracket ']'\n" . $herecurr);
 		}
 
-# check spacing on paretheses
+# check spacing on parentheses
 		if ($line =~ /\(\s/ && $line !~ /\(\s*(?:\\)?$/ &&
 		    $line !~ /for\s*\(\s+;/) {
 			ERROR("space prohibited after that open parenthesis '('\n" . $herecurr);
 		}
 		if ($line =~ /(\s+)\)/ && $line !~ /^.\s*\)/ &&
-		    $line !~ /for\s*\(.*;\s+\)/) {
+		    $line !~ /for\s*\(.*;\s+\)/ &&
+		    $line !~ /:\s+\)/) {
 			ERROR("space prohibited before that close parenthesis ')'\n" . $herecurr);
 		}
 
@@ -1610,6 +1664,23 @@ sub process {
 			WARN("labels should not be indented\n" . $herecurr);
 		}
 
+# Return is not a function.
+		if (defined($stat) && $stat =~ /^.\s*return(\s*)(\(.*);/s) {
+			my $spacing = $1;
+			my $value = $2;
+
+			# Flatten any parentheses and braces
+			while ($value =~ s/\([^\(\)]*\)/1/) {
+			}
+
+			if ($value =~ /^(?:$Ident|-?$Constant)$/) {
+				ERROR("return is not a function, parentheses are not required\n" . $herecurr);
+
+			} elsif ($spacing !~ /\s+/) {
+				ERROR("space required before the open parenthesis '('\n" . $herecurr);
+			}
+		}
+
 # Need a space before open parenthesis after if, while etc
 		if ($line=~/\b(if|while|for|switch)\(/) {
 			ERROR("space required before the open parenthesis '('\n" . $herecurr);
@@ -1617,7 +1688,7 @@ sub process {
 
 # Check for illegal assignment in if conditional.
 		if ($line =~ /\bif\s*\(/) {
-			my ($s, $c) = ctx_statement_block($linenr, $realcnt, 0);
+			my ($s, $c) = ($stat, $cond);
 
 			if ($c =~ /\bif\s*\(.*[^<>!=]=[^=].*/) {
 				ERROR("do not use assignment in if condition\n" . $herecurr);
@@ -1629,7 +1700,7 @@ sub process {
 			$s =~ s/\n.*//g;
 			$s =~ s/$;//g; 	# Remove any comments
 			if (length($c) && $s !~ /^\s*({|;|)\s*\\*\s*$/ &&
-			    $c !~ /^.\#\s*if/)
+			    $c !~ /^.\s*\#\s*if/)
 			{
 				ERROR("trailing statements should be on next line\n" . $herecurr);
 			}
@@ -1688,14 +1759,16 @@ sub process {
 #		}
 
 #no spaces allowed after \ in define
-		if ($line=~/\#define.*\\\s$/) {
+		if ($line=~/\#\s*define.*\\\s$/) {
 			WARN("Whitepspace after \\ makes next lines useless\n" . $herecurr);
 		}
 
 #warn if <asm/foo.h> is #included and <linux/foo.h> is available (uses RAW line)
-		if ($tree && $rawline =~ m{^.\#\s*include\s*\<asm\/(.*)\.h\>}) {
-			my $checkfile = "$root/include/linux/$1.h";
-			if (-f $checkfile && $1 ne 'irq.h') {
+		if ($tree && $rawline =~ m{^.\s*\#\s*include\s*\<asm\/(.*)\.h\>}) {
+			my $checkfile = "include/linux/$1.h";
+			if (-f "$root/$checkfile" && $realfile ne $checkfile &&
+			    $1 ne 'irq')
+			{
 				WARN("Use #include <linux/$1.h> instead of <asm/$1.h>\n" .
 					$herecurr);
 			}
@@ -1704,45 +1777,87 @@ sub process {
 # multi-statement macros should be enclosed in a do while loop, grab the
 # first statement and ensure its the whole macro if its not enclosed
 # in a known good container
-		if ($prevline =~ /\#define.*\\/ &&
-		   $prevline !~/(?:do\s+{|\(\{|\{)/ &&
-		   $line !~ /(?:do\s+{|\(\{|\{)/ &&
-		   $line !~ /^.\s*$Declare\s/) {
-			# Grab the first statement, if that is the entire macro
-			# its ok.  This may start either on the #define line
-			# or the one below.
+		if ($line =~ /^.\s*\#\s*define\s*$Ident(\()?/) {
 			my $ln = $linenr;
 			my $cnt = $realcnt;
-			my $off = 0;
+			my ($off, $dstat, $dcond, $rest);
+			my $ctx = '';
 
-			# If the macro starts on the define line start
-			# grabbing the statement after the identifier
-			$prevline =~ m{^(.#\s*define\s*$Ident(?:\([^\)]*\))?\s*)(.*)\\\s*$};
-			##print "1<$1> 2<$2>\n";
-			if (defined $2 && $2 ne '') {
-				$off = length($1);
-				$ln--;
-				$cnt++;
-				while ($lines[$ln - 1] =~ /^-/) {
-					$ln--;
-					$cnt++;
-				}
+			my $args = defined($1);
+
+			# Find the end of the macro and limit our statement
+			# search to that.
+			while ($cnt > 0 && defined $lines[$ln - 1] &&
+				$lines[$ln - 1] =~ /^(?:-|..*\\$)/)
+			{
+				$ctx .= $rawlines[$ln - 1] . "\n";
+				$ln++;
+				$cnt--;
 			}
-			my @ctx = ctx_statement($ln, $cnt, $off);
-			my $ctx_ln = $ln + $#ctx + 1;
-			my $ctx = join("\n", @ctx);
+			$ctx .= $rawlines[$ln - 1];
 
-			# Pull in any empty extension lines.
-			while ($ctx =~ /\\$/ &&
-			       $lines[$ctx_ln - 1] =~ /^.\s*(?:\\)?$/) {
-				$ctx .= $lines[$ctx_ln - 1];
-				$ctx_ln++;
+			($dstat, $dcond, $ln, $cnt, $off) =
+				ctx_statement_block($linenr, $ln - $linenr + 1, 0);
+			#print "dstat<$dstat> dcond<$dcond> cnt<$cnt> off<$off>\n";
+			#print "LINE<$lines[$ln]> len<" . length($lines[$ln]) . "\n";
+
+			# Extract the remainder of the define (if any) and
+			# rip off surrounding spaces, and trailing \'s.
+			$rest = '';
+			if (defined $lines[$ln - 1] &&
+			    $off > length($lines[$ln - 1]))
+			{
+				$ln++;
+				$cnt--;
+				$off = 0;
+			}
+			while ($cnt > 0) {
+				$rest .= substr($lines[$ln - 1], $off) . "\n";
+				$ln++;
+				$cnt--;
+				$off = 0;
+			}
+			$rest =~ s/\\\n.//g;
+			$rest =~ s/^\s*//s;
+			$rest =~ s/\s*$//s;
+
+			# Clean up the original statement.
+			if ($args) {
+				substr($dstat, 0, length($dcond), '');
+			} else {
+				$dstat =~ s/^.\s*\#\s*define\s+$Ident\s*//;
+			}
+			$dstat =~ s/\\\n.//g;
+			$dstat =~ s/^\s*//s;
+			$dstat =~ s/\s*$//s;
+
+			# Flatten any parentheses and braces
+			while ($dstat =~ s/\([^\(\)]*\)/1/) {
+			}
+			while ($dstat =~ s/\{[^\{\}]*\}/1/) {
 			}
 
-			if ($ctx =~ /\\$/) {
-				if ($ctx =~ /;/) {
+			my $exceptions = qr{
+				$Declare|
+				module_param_named|
+				MODULE_PARAM_DESC|
+				DECLARE_PER_CPU|
+				DEFINE_PER_CPU|
+				__typeof__\(
+			}x;
+			if ($rest ne '') {
+				if ($rest !~ /while\s*\(/ &&
+				    $dstat !~ /$exceptions/)
+				{
 					ERROR("Macros with multiple statements should be enclosed in a do - while loop\n" . "$here\n$ctx\n");
-				} else {
+				}
+
+			} elsif ($ctx !~ /;/) {
+				if ($dstat ne '' &&
+				    $dstat !~ /^(?:$Ident|-?$Constant)$/ &&
+				    $dstat !~ /$exceptions/ &&
+				    $dstat =~ /$Operators/)
+				{
 					ERROR("Macros with complex values should be enclosed in parenthesis\n" . "$here\n$ctx\n");
 				}
 			}
@@ -1853,7 +1968,7 @@ sub process {
 
 # don't include deprecated include files (uses RAW line)
 		for my $inc (@dep_includes) {
-			if ($rawline =~ m@\#\s*include\s*\<$inc>@) {
+			if ($rawline =~ m@^.\s*\#\s*include\s*\<$inc>@) {
 				ERROR("Don't use <$inc>: see Documentation/feature-removal-schedule.txt\n" . $herecurr);
 			}
 		}
@@ -1877,7 +1992,7 @@ sub process {
 		}
 
 # warn about #if 0
-		if ($line =~ /^.#\s*if\s+0\b/) {
+		if ($line =~ /^.\s*\#\s*if\s+0\b/) {
 			CHK("if this code is redundant consider removing it\n" .
 				$herecurr);
 		}
@@ -1891,19 +2006,20 @@ sub process {
 		}
 
 # warn about #ifdefs in C files
-#		if ($line =~ /^.#\s*if(|n)def/ && ($realfile =~ /\.c$/)) {
+#		if ($line =~ /^.\s*\#\s*if(|n)def/ && ($realfile =~ /\.c$/)) {
 #			print "#ifdef in C files should be avoided\n";
 #			print "$herecurr";
 #			$clean = 0;
 #		}
 
 # warn about spacing in #ifdefs
-		if ($line =~ /^.#\s*(ifdef|ifndef|elif)\s\s+/) {
+		if ($line =~ /^.\s*\#\s*(ifdef|ifndef|elif)\s\s+/) {
 			ERROR("exactly one space required after that #$1\n" . $herecurr);
 		}
 
 # check for spinlock_t definitions without a comment.
-		if ($line =~ /^.\s*(struct\s+mutex|spinlock_t)\s+\S+;/) {
+		if ($line =~ /^.\s*(struct\s+mutex|spinlock_t)\s+\S+;/ ||
+		    $line =~ /^.\s*(DEFINE_MUTEX)\s*\(/) {
 			my $which = $1;
 			if (!ctx_has_comment($first_line, $linenr)) {
 				CHK("$1 definition without comment\n" . $herecurr);
@@ -1916,7 +2032,7 @@ sub process {
 			}
 		}
 # check of hardware specific defines
-		if ($line =~ m@^.#\s*if.*\b(__i386__|__powerpc64__|__sun__|__s390x__)\b@ && $realfile !~ m@include/asm-@) {
+		if ($line =~ m@^.\s*\#\s*if.*\b(__i386__|__powerpc64__|__sun__|__s390x__)\b@ && $realfile !~ m@include/asm-@) {
 			CHK("architecture specific defines should be avoided\n" .  $herecurr);
 		}
 
@@ -1933,7 +2049,29 @@ sub process {
 		}
 
 # check for new externs in .c files.
-		if ($line =~ /^.\s*extern\s/ && ($realfile =~ /\.c$/)) {
+		if ($realfile =~ /\.c$/ && defined $stat &&
+		    $stat =~ /^.\s*(?:extern\s+)?$Type\s+($Ident)(\s*)\(/s)
+		{
+			my $function_name = $1;
+			my $paren_space = $2;
+
+			my $s = $stat;
+			if (defined $cond) {
+				substr($s, 0, length($cond), '');
+			}
+			if ($s =~ /^\s*;/ &&
+			    $function_name ne 'uninitialized_var')
+			{
+				WARN("externs should be avoided in .c files\n" .  $herecurr);
+			}
+
+			if ($paren_space =~ /\n/) {
+				WARN("arguments for function declarations should follow identifier\n" . $herecurr);
+			}
+
+		} elsif ($realfile =~ /\.c$/ && defined $stat &&
+		    $stat =~ /^.\s*extern\s+/)
+		{
 			WARN("externs should be avoided in .c files\n" .  $herecurr);
 		}
 
@@ -1957,11 +2095,11 @@ sub process {
 		}
 
 # check for semaphores used as mutexes
-		if ($line =~ /\b(DECLARE_MUTEX|init_MUTEX)\s*\(/) {
+		if ($line =~ /^.\s*(DECLARE_MUTEX|init_MUTEX)\s*\(/) {
 			WARN("mutexes are preferred for single holder semaphores\n" . $herecurr);
 		}
 # check for semaphores used as mutexes
-		if ($line =~ /\binit_MUTEX_LOCKED\s*\(/) {
+		if ($line =~ /^.\s*init_MUTEX_LOCKED\s*\(/) {
 			WARN("consider using a completion\n" . $herecurr);
 		}
 # recommend strict_strto* over simple_strto*
@@ -1972,10 +2110,23 @@ sub process {
 # use of NR_CPUS is usually wrong
 # ignore definitions of NR_CPUS and usage to define arrays as likely right
 		if ($line =~ /\bNR_CPUS\b/ &&
-		    $line !~ /^.#\s*define\s+NR_CPUS\s+/ &&
-		    $line !~ /^.\s*$Declare\s.*\[[^\]]*NR_CPUS[^\]]*\]/)
+		    $line !~ /^.\s*\s*#\s*if\b.*\bNR_CPUS\b/ &&
+		    $line !~ /^.\s*\s*#\s*define\b.*\bNR_CPUS\b/ &&
+		    $line !~ /^.\s*$Declare\s.*\[[^\]]*NR_CPUS[^\]]*\]/ &&
+		    $line !~ /\[[^\]]*\.\.\.[^\]]*NR_CPUS[^\]]*\]/ &&
+		    $line !~ /\[[^\]]*NR_CPUS[^\]]*\.\.\.[^\]]*\]/)
 		{
 			WARN("usage of NR_CPUS is often wrong - consider using cpu_possible(), num_possible_cpus(), for_each_possible_cpu(), etc\n" . $herecurr);
+		}
+
+# check for %L{u,d,i} in strings
+		my $string;
+		while ($line =~ /(?:^|")([X\t]*)(?:"|$)/g) {
+			$string = substr($rawline, $-[1], $+[1] - $-[1]);
+			if ($string =~ /(?<!%)%L[udi]/) {
+				WARN("\%Ld/%Lu are not-standard C, use %lld/%llu\n" . $herecurr);
+				last;
+			}
 		}
 	}
 

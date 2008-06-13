@@ -1,7 +1,6 @@
 /*
- * Copyright 2001 MontaVista Software Inc.
- * Author: MontaVista Software, Inc.
- *		ppopov@mvista.com or source@mvista.com
+ * Copyright 2001, 2007-2008 MontaVista Software Inc.
+ * Author: MontaVista Software, Inc. <source@mvista.com>
  *
  * Copyright (C) 2007 Ralf Baechle (ralf@linux-mips.org)
  *
@@ -27,7 +26,6 @@
  */
 #include <linux/bitops.h>
 #include <linux/init.h>
-#include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 
@@ -212,10 +210,8 @@ static inline void mask_and_ack_either_edge_irq(unsigned int irq_nr)
 	au_sync();
 }
 
-
 static inline void mask_and_ack_level_irq(unsigned int irq_nr)
 {
-
 	local_disable_irq(irq_nr);
 	au_sync();
 #if defined(CONFIG_MIPS_PB1000)
@@ -265,14 +261,14 @@ void restore_local_and_enable(int controller, unsigned long mask)
 	unsigned long flags, new_mask;
 
 	spin_lock_irqsave(&irq_lock, flags);
-	for (i = 0; i < 32; i++) {
+	for (i = 0; i < 32; i++)
 		if (mask & (1 << i)) {
 			if (controller)
 				local_enable_irq(i + 32);
 			else
 				local_enable_irq(i);
 		}
-	}
+
 	if (controller)
 		new_mask = au_readl(IC1_MASKSET);
 	else
@@ -591,7 +587,7 @@ void __init arch_init_irq(void)
 		imp++;
 	}
 
-	set_c0_status(ALLINTS);
+	set_c0_status(IE_IRQ0 | IE_IRQ1 | IE_IRQ2 | IE_IRQ3 | IE_IRQ4);
 
 	/* Board specific IRQ initialization.
 	*/

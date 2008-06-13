@@ -96,7 +96,6 @@
 
  /* PDC registers */
 #define UART_PUT_PTCR(port,v)	__raw_writel(v, (port)->membase + ATMEL_PDC_PTCR)
-#define UART_GET_TCR(port)      __raw_readl((port)->membase + ATMEL_PDC_TCR)
 #define UART_GET_PTSR(port)	__raw_readl((port)->membase + ATMEL_PDC_PTSR)
 
 #define UART_PUT_RPR(port,v)	__raw_writel(v, (port)->membase + ATMEL_PDC_RPR)
@@ -1319,7 +1318,7 @@ static void __init atmel_console_get_options(struct uart_port *port, int *baud,
 	 * If the baud rate generator isn't running, the port wasn't
 	 * initialized by the boot loader.
 	 */
-	quot = UART_GET_BRGR(port);
+	quot = UART_GET_BRGR(port) & ATMEL_US_CD;
 	if (!quot)
 		return;
 

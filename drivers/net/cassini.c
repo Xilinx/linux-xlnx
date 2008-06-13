@@ -142,8 +142,8 @@
 
 #define DRV_MODULE_NAME		"cassini"
 #define PFX DRV_MODULE_NAME	": "
-#define DRV_MODULE_VERSION	"1.5"
-#define DRV_MODULE_RELDATE	"4 Jan 2008"
+#define DRV_MODULE_VERSION	"1.6"
+#define DRV_MODULE_RELDATE	"21 May 2008"
 
 #define CAS_DEF_MSG_ENABLE	  \
 	(NETIF_MSG_DRV		| \
@@ -532,8 +532,7 @@ static void cas_spare_free(struct cas *cp)
 	/* free spare buffers */
 	INIT_LIST_HEAD(&list);
 	spin_lock(&cp->rx_spare_lock);
-	list_splice(&cp->rx_spare_list, &list);
-	INIT_LIST_HEAD(&cp->rx_spare_list);
+	list_splice_init(&cp->rx_spare_list, &list);
 	spin_unlock(&cp->rx_spare_lock);
 	list_for_each_safe(elem, tmp, &list) {
 		cas_page_free(cp, list_entry(elem, cas_page_t, list));
@@ -546,13 +545,11 @@ static void cas_spare_free(struct cas *cp)
 	 * lock than used everywhere else to manipulate this list.
 	 */
 	spin_lock(&cp->rx_inuse_lock);
-	list_splice(&cp->rx_inuse_list, &list);
-	INIT_LIST_HEAD(&cp->rx_inuse_list);
+	list_splice_init(&cp->rx_inuse_list, &list);
 	spin_unlock(&cp->rx_inuse_lock);
 #else
 	spin_lock(&cp->rx_spare_lock);
-	list_splice(&cp->rx_inuse_list, &list);
-	INIT_LIST_HEAD(&cp->rx_inuse_list);
+	list_splice_init(&cp->rx_inuse_list, &list);
 	spin_unlock(&cp->rx_spare_lock);
 #endif
 	list_for_each_safe(elem, tmp, &list) {
@@ -573,8 +570,7 @@ static void cas_spare_recover(struct cas *cp, const gfp_t flags)
 	/* make a local copy of the list */
 	INIT_LIST_HEAD(&list);
 	spin_lock(&cp->rx_inuse_lock);
-	list_splice(&cp->rx_inuse_list, &list);
-	INIT_LIST_HEAD(&cp->rx_inuse_list);
+	list_splice_init(&cp->rx_inuse_list, &list);
 	spin_unlock(&cp->rx_inuse_lock);
 
 	list_for_each_safe(elem, tmp, &list) {
@@ -2140,9 +2136,12 @@ end_copy_pkt:
 		if (addr)
 			cas_page_unmap(addr);
 	}
-	skb->csum = csum_unfold(~csum);
-	skb->ip_summed = CHECKSUM_COMPLETE;
 	skb->protocol = eth_type_trans(skb, cp->dev);
+	if (skb->protocol == htons(ETH_P_IP)) {
+		skb->csum = csum_unfold(~csum);
+		skb->ip_summed = CHECKSUM_COMPLETE;
+	} else
+		skb->ip_summed = CHECKSUM_NONE;
 	return len;
 }
 

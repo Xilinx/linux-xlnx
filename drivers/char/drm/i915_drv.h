@@ -119,6 +119,7 @@ typedef struct drm_i915_private {
 	u8 saveLBB;
 	u32 saveDSPACNTR;
 	u32 saveDSPBCNTR;
+	u32 saveDSPARB;
 	u32 savePIPEACONF;
 	u32 savePIPEBCONF;
 	u32 savePIPEASRC;
@@ -188,6 +189,7 @@ typedef struct drm_i915_private {
 	u32 saveIIR;
 	u32 saveIMR;
 	u32 saveCACHE_MODE_0;
+	u32 saveD_STATE;
 	u32 saveDSPCLK_GATE_D;
 	u32 saveMI_ARB_STATE;
 	u32 saveSWF0[16];
@@ -197,10 +199,10 @@ typedef struct drm_i915_private {
 	u8 saveSR[8];
 	u8 saveGR[25];
 	u8 saveAR_INDEX;
-	u8 saveAR[20];
+	u8 saveAR[21];
 	u8 saveDACMASK;
 	u8 saveDACDATA[256*3]; /* 256 3-byte colors */
-	u8 saveCR[36];
+	u8 saveCR[37];
 } drm_i915_private_t;
 
 extern struct drm_ioctl_desc i915_ioctls[];
@@ -263,7 +265,7 @@ extern void i915_mem_release(struct drm_device * dev,
 	if (I915_VERBOSE)				\
 		DRM_DEBUG("BEGIN_LP_RING(%d)\n", (n));	\
 	if (dev_priv->ring.space < (n)*4)		\
-		i915_wait_ring(dev, (n)*4, __FUNCTION__);		\
+		i915_wait_ring(dev, (n)*4, __func__);		\
 	outcount = 0;					\
 	outring = dev_priv->ring.tail;			\
 	ringmask = dev_priv->ring.tail_mask;		\
@@ -566,6 +568,8 @@ extern int i915_wait_ring(struct drm_device * dev, int n, const char *caller);
 #define XY_SRC_COPY_BLT_CMD		((2<<29)|(0x53<<22)|6)
 #define XY_SRC_COPY_BLT_WRITE_ALPHA	(1<<21)
 #define XY_SRC_COPY_BLT_WRITE_RGB	(1<<20)
+#define XY_SRC_COPY_BLT_SRC_TILED	(1<<15)
+#define XY_SRC_COPY_BLT_DST_TILED	(1<<11)
 
 #define MI_BATCH_BUFFER		((0x30<<23)|1)
 #define MI_BATCH_BUFFER_START	(0x31<<23)
@@ -668,6 +672,8 @@ extern int i915_wait_ring(struct drm_device * dev, int n, const char *caller);
 /** P1 value is 2 greater than this field */
 # define VGA0_PD_P1_MASK	(0x1f << 0)
 
+/* PCI D state control register */
+#define D_STATE		0x6104
 #define DSPCLK_GATE_D	0x6200
 
 /* I830 CRTC registers */
@@ -977,6 +983,12 @@ extern int i915_wait_ring(struct drm_device * dev, int n, const char *caller);
 #define PIPECONF_PROGRESSIVE	(0 << 21)
 #define PIPECONF_INTERLACE_W_FIELD_INDICATION	(6 << 21)
 #define PIPECONF_INTERLACE_FIELD_0_ONLY		(7 << 21)
+
+#define DSPARB	  0x70030
+#define DSPARB_CSTART_MASK	(0x7f << 7)
+#define DSPARB_CSTART_SHIFT	7
+#define DSPARB_BSTART_MASK	(0x7f)		 
+#define DSPARB_BSTART_SHIFT	0
 
 #define PIPEBCONF 0x71008
 #define PIPEBCONF_ENABLE	(1<<31)

@@ -994,13 +994,13 @@ static int aha152x_internal_queue(Scsi_Cmnd *SCpnt, struct completion *complete,
 	SCpnt->SCp.sent_command	= 0;
 
 	if(SCpnt->SCp.phase & (resetting|check_condition)) {
-		if(SCpnt->host_scribble==0 || SCSEM(SCpnt) || SCNEXT(SCpnt)) {
+		if (!SCpnt->host_scribble || SCSEM(SCpnt) || SCNEXT(SCpnt)) {
 			printk(ERR_LEAD "cannot reuse command\n", CMDINFO(SCpnt));
 			return FAILED;
 		}
 	} else {
 		SCpnt->host_scribble = kmalloc(sizeof(struct aha152x_scdata), GFP_ATOMIC);
-		if(SCpnt->host_scribble==0) {
+		if(!SCpnt->host_scribble) {
 			printk(ERR_LEAD "allocation failed\n", CMDINFO(SCpnt));
 			return FAILED;
 		}
@@ -1162,7 +1162,7 @@ static int aha152x_device_reset(Scsi_Cmnd * SCpnt)
 	}
 
 	DO_LOCK(flags);
-	issued       = remove_SC(&ISSUE_SC, SCpnt)==0;
+	issued       = remove_SC(&ISSUE_SC, SCpnt) == NULL;
 	disconnected = issued && remove_SC(&DISCONNECTED_SC, SCpnt);
 	DO_UNLOCK(flags);
 
@@ -1432,14 +1432,9 @@ static void run(struct work_struct *work)
  */
 static irqreturn_t intr(int irqno, void *dev_id)
 {
-	struct Scsi_Host *shpnt = (struct Scsi_Host *)dev_id;
+	struct Scsi_Host *shpnt = dev_id;
 	unsigned long flags;
 	unsigned char rev, dmacntrl0;
-
-	if (!shpnt) {
-		printk(KERN_ERR "aha152x: catched interrupt %d for unknown controller.\n", irqno);
-		return IRQ_NONE;
-	}
 
 	/*
 	 * Read a couple of registers that are known to not be all 1's. If
@@ -3587,7 +3582,7 @@ static int checksetup(struct aha152x_setup *setup)
 	if (i == ARRAY_SIZE(ports))
 		return 0;
 
-	if ( request_region(setup->io_port, IO_RANGE, "aha152x")==0 ) {
+	if (!request_region(setup->io_port, IO_RANGE, "aha152x")) {
 		printk(KERN_ERR "aha152x: io port 0x%x busy.\n", setup->io_port);
 		return 0;
 	}
@@ -3835,7 +3830,7 @@ static int __init aha152x_init(void)
 			iounmap(p);
 		}
 		if (!ok && setup_count == 0)
-			return 0;
+			return -ENODEV;
 
 		printk(KERN_INFO "aha152x: BIOS test: passed, ");
 #else
@@ -3847,7 +3842,7 @@ static int __init aha152x_init(void)
 			if ((setup_count == 1) && (setup[0].io_port == ports[i]))
 				continue;
 
-			if ( request_region(ports[i], IO_RANGE, "aha152x")==0 ) {
+			if (!request_region(ports[i], IO_RANGE, "aha152x")) {
 				printk(KERN_ERR "aha152x: io port 0x%x busy.\n", ports[i]);
 				continue;
 			}
@@ -3914,14 +3909,14 @@ static int __init aha152x_init(void)
 #endif
 	}
 
-	return 1;
+	return 0;
 }
 
 static void __exit aha152x_exit(void)
 {
-	struct aha152x_hostdata *hd;
+	struct aha152x_hostdata *hd, *tmp;
 
-	list_for_each_entry(hd, &aha152x_host_list, host_list) {
+	list_for_each_entry_safe(hd, tmp, &aha152x_host_list, host_list) {
 		struct Scsi_Host *shost = container_of((void *)hd, struct Scsi_Host, hostdata);
 
 		aha152x_release(shost);

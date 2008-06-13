@@ -11,6 +11,7 @@
 #include <asm/hpet.h>
 #include <asm/timex.h>
 #include <asm/timer.h>
+#include <asm/vgtod.h>
 
 static int notsc __initdata = 0;
 
@@ -44,8 +45,8 @@ DEFINE_PER_CPU(unsigned long, cyc2ns);
 
 static void set_cyc2ns_scale(unsigned long cpu_khz, int cpu)
 {
-	unsigned long flags, prev_scale, *scale;
 	unsigned long long tsc_now, ns_now;
+	unsigned long flags, *scale;
 
 	local_irq_save(flags);
 	sched_clock_idle_sleep_event();
@@ -55,7 +56,6 @@ static void set_cyc2ns_scale(unsigned long cpu_khz, int cpu)
 	rdtscll(tsc_now);
 	ns_now = __cycles_2_ns(tsc_now);
 
-	prev_scale = *scale;
 	if (cpu_khz)
 		*scale = (NSEC_PER_MSEC << CYC2NS_SCALE_FACTOR)/cpu_khz;
 
@@ -227,14 +227,14 @@ void __init tsc_calibrate(void)
 	/* hpet or pmtimer available ? */
 	if (!hpet && !pm1 && !pm2) {
 		printk(KERN_INFO "TSC calibrated against PIT\n");
-		return;
+		goto out;
 	}
 
 	/* Check, whether the sampling was disturbed by an SMI */
 	if (tsc1 == ULONG_MAX || tsc2 == ULONG_MAX) {
 		printk(KERN_WARNING "TSC calibration disturbed by SMI, "
 		       "using PIT calibration result\n");
-		return;
+		goto out;
 	}
 
 	tsc2 = (tsc2 - tsc1) * 1000000L;
@@ -255,6 +255,7 @@ void __init tsc_calibrate(void)
 
 	tsc_khz = tsc2 / tsc1;
 
+out:
 	for_each_possible_cpu(cpu)
 		set_cyc2ns_scale(tsc_khz, cpu);
 }
@@ -288,18 +289,34 @@ int __init notsc_setup(char *s)
 
 __setup("notsc", notsc_setup);
 
+static struct clocksource clocksource_tsc;
 
-/* clock source code: */
+/*
+ * We compare the TSC to the cycle_last value in the clocksource
+ * structure to avoid a nasty time-warp. This can be observed in a
+ * very small window right after one CPU updated cycle_last under
+ * xtime/vsyscall_gtod lock and the other CPU reads a TSC value which
+ * is smaller than the cycle_last reference value due to a TSC which
+ * is slighty behind. This delta is nowhere else observable, but in
+ * that case it results in a forward time jump in the range of hours
+ * due to the unsigned delta calculation of the time keeping core
+ * code, which is necessary to support wrapping clocksources like pm
+ * timer.
+ */
 static cycle_t read_tsc(void)
 {
 	cycle_t ret = (cycle_t)get_cycles();
-	return ret;
+
+	return ret >= clocksource_tsc.cycle_last ?
+		ret : clocksource_tsc.cycle_last;
 }
 
 static cycle_t __vsyscall_fn vread_tsc(void)
 {
 	cycle_t ret = (cycle_t)vget_cycles();
-	return ret;
+
+	return ret >= __vsyscall_gtod_data.clock.cycle_last ?
+		ret : __vsyscall_gtod_data.clock.cycle_last;
 }
 
 static struct clocksource clocksource_tsc = {

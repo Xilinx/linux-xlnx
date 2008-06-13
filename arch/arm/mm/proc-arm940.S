@@ -222,7 +222,7 @@ ENTRY(arm940_dma_flush_range)
 #ifndef CONFIG_CPU_DCACHE_WRITETHROUGH
 	mcr	p15, 0, r3, c7, c14, 2		@ clean/flush D entry
 #else
-	mcr	p15, 0, r3, c7, c10, 2		@ clean D entry
+	mcr	p15, 0, r3, c7, c6, 2		@ invalidate D entry
 #endif
 	subs	r3, r3, #1 << 26
 	bcs	2b				@ entries 63 to 0
@@ -321,6 +321,7 @@ __arm940_setup:
 	.type	arm940_processor_functions, #object
 ENTRY(arm940_processor_functions)
 	.word	nommu_early_abort
+	.word	pabort_noifar
 	.word	cpu_arm940_proc_init
 	.word	cpu_arm940_proc_fin
 	.word	cpu_arm940_reset

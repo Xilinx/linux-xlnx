@@ -80,13 +80,13 @@ static void __devinit pci_process_ISA_OF_ranges(struct device_node *isa_node,
 	 *			(size depending on dev->n_addr_cells)
 	 *   cell 5:		the size of the range
 	 */
-	if ((range->isa_addr.a_hi && ISA_SPACE_MASK) != ISA_SPACE_IO) {
+	if ((range->isa_addr.a_hi & ISA_SPACE_MASK) != ISA_SPACE_IO) {
 		range++;
 		rlen -= sizeof(struct isa_range);
 		if (rlen < sizeof(struct isa_range))
 			goto inval_range;
 	}
-	if ((range->isa_addr.a_hi && ISA_SPACE_MASK) != ISA_SPACE_IO)
+	if ((range->isa_addr.a_hi & ISA_SPACE_MASK) != ISA_SPACE_IO)
 		goto inval_range;
 
 	isa_addr = range->isa_addr.a_lo;
@@ -99,7 +99,7 @@ static void __devinit pci_process_ISA_OF_ranges(struct device_node *isa_node,
 	 */
 	if ((pci_addr != 0) || (isa_addr != 0)) {
 		printk(KERN_ERR "unexpected isa to pci mapping: %s\n",
-		       __FUNCTION__);
+		       __func__);
 		return;
 	}
 
@@ -107,9 +107,6 @@ static void __devinit pci_process_ISA_OF_ranges(struct device_node *isa_node,
 	size = PAGE_ALIGN(range->size);
 	if (size > 0x10000)
 		size = 0x10000;
-
-	printk(KERN_ERR "no ISA IO ranges or unexpected isa range, "
-	       "mapping 64k\n");
 
 	__ioremap_at(phb_io_base_phys, (void *)ISA_IO_BASE,
 		     size, _PAGE_NO_CACHE|_PAGE_GUARDED);

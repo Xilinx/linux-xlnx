@@ -44,8 +44,8 @@
 #include <linux/smp.h>
 #include <linux/timer.h>
 #include <linux/vmalloc.h>
+#include <linux/semaphore.h>
 
-#include <asm/semaphore.h>
 #include <asm/sal.h>
 #include <asm/uaccess.h>
 
@@ -648,18 +648,16 @@ salinfo_init(void)
 		if (!dir)
 			continue;
 
-		entry = create_proc_entry("event", S_IRUSR, dir);
+		entry = proc_create_data("event", S_IRUSR, dir,
+					 &salinfo_event_fops, data);
 		if (!entry)
 			continue;
-		entry->data = data;
-		entry->proc_fops = &salinfo_event_fops;
 		*sdir++ = entry;
 
-		entry = create_proc_entry("data", S_IRUSR | S_IWUSR, dir);
+		entry = proc_create_data("data", S_IRUSR | S_IWUSR, dir,
+					 &salinfo_data_fops, data);
 		if (!entry)
 			continue;
-		entry->data = data;
-		entry->proc_fops = &salinfo_data_fops;
 		*sdir++ = entry;
 
 		/* we missed any events before now */

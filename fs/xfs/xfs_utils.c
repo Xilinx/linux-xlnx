@@ -40,71 +40,6 @@
 #include "xfs_itable.h"
 #include "xfs_utils.h"
 
-/*
- * xfs_get_dir_entry is used to get a reference to an inode given
- * its parent directory inode and the name of the file.	 It does
- * not lock the child inode, and it unlocks the directory before
- * returning.  The directory's generation number is returned for
- * use by a later call to xfs_lock_dir_and_entry.
- */
-int
-xfs_get_dir_entry(
-	bhv_vname_t	*dentry,
-	xfs_inode_t	**ipp)
-{
-	bhv_vnode_t	*vp;
-
-	vp = VNAME_TO_VNODE(dentry);
-
-	*ipp = xfs_vtoi(vp);
-	if (!*ipp)
-		return XFS_ERROR(ENOENT);
-	VN_HOLD(vp);
-	return 0;
-}
-
-int
-xfs_dir_lookup_int(
-	xfs_inode_t	*dp,
-	uint		lock_mode,
-	bhv_vname_t	*dentry,
-	xfs_ino_t	*inum,
-	xfs_inode_t	**ipp)
-{
-	int		error;
-
-	xfs_itrace_entry(dp);
-
-	error = xfs_dir_lookup(NULL, dp, VNAME(dentry), VNAMELEN(dentry), inum);
-	if (!error) {
-		/*
-		 * Unlock the directory. We do this because we can't
-		 * hold the directory lock while doing the vn_get()
-		 * in xfs_iget().  Doing so could cause us to hold
-		 * a lock while waiting for the inode to finish
-		 * being inactive while it's waiting for a log
-		 * reservation in the inactive routine.
-		 */
-		xfs_iunlock(dp, lock_mode);
-		error = xfs_iget(dp->i_mount, NULL, *inum, 0, 0, ipp, 0);
-		xfs_ilock(dp, lock_mode);
-
-		if (error) {
-			*ipp = NULL;
-		} else if ((*ipp)->i_d.di_mode == 0) {
-			/*
-			 * The inode has been freed.  Something is
-			 * wrong so just get out of here.
-			 */
-			xfs_iunlock(dp, lock_mode);
-			xfs_iput_new(*ipp, 0);
-			*ipp = NULL;
-			xfs_ilock(dp, lock_mode);
-			error = XFS_ERROR(ENOENT);
-		}
-	}
-	return error;
-}
 
 /*
  * Allocates a new inode from disk and return a pointer to the
@@ -332,7 +267,7 @@ xfs_bump_ino_vers2(
 {
 	xfs_mount_t	*mp;
 
-	ASSERT(ismrlocked (&ip->i_lock, MR_UPDATE));
+	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 	ASSERT(ip->i_d.di_version == XFS_DINODE_VERSION_1);
 
 	ip->i_d.di_version = XFS_DINODE_VERSION_2;

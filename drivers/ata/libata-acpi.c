@@ -77,7 +77,7 @@ void ata_acpi_associate_sata_port(struct ata_port *ap)
 {
 	WARN_ON(!(ap->flags & ATA_FLAG_ACPI_SATA));
 
-	if (!ap->nr_pmp_links) {
+	if (!sata_pmp_attached(ap)) {
 		acpi_integer adr = SATA_ADR(ap->port_no, NO_PORT_MULT);
 
 		ap->link.device->acpi_handle =
@@ -118,19 +118,82 @@ static void ata_acpi_associate_ide_port(struct ata_port *ap)
 		ap->pflags |= ATA_PFLAG_INIT_GTM_VALID;
 }
 
+static void ata_acpi_eject_device(acpi_handle handle)
+{
+	struct acpi_object_list arg_list;
+	union acpi_object arg;
+
+	arg_list.count = 1;
+	arg_list.pointer = &arg;
+	arg.type = ACPI_TYPE_INTEGER;
+	arg.integer.value = 1;
+
+	if (ACPI_FAILURE(acpi_evaluate_object(handle, "_EJ0",
+					      &arg_list, NULL)))
+		printk(KERN_ERR "Failed to evaluate _EJ0!\n");
+}
+
+/* @ap and @dev are the same as ata_acpi_handle_hotplug() */
+static void ata_acpi_detach_device(struct ata_port *ap, struct ata_device *dev)
+{
+	if (dev)
+		dev->flags |= ATA_DFLAG_DETACH;
+	else {
+		struct ata_link *tlink;
+		struct ata_device *tdev;
+
+		ata_port_for_each_link(tlink, ap)
+			ata_link_for_each_dev(tdev, tlink)
+				tdev->flags |= ATA_DFLAG_DETACH;
+	}
+
+	ata_port_schedule_eh(ap);
+}
+
+/**
+ * ata_acpi_handle_hotplug - ACPI event handler backend
+ * @ap: ATA port ACPI event occurred
+ * @dev: ATA device ACPI event occurred (can be NULL)
+ * @event: ACPI event which occurred
+ * @is_dock_event: boolean indicating whether the event was a dock one
+ *
+ * All ACPI bay / device realted events end up in this function.  If
+ * the event is port-wide @dev is NULL.  If the event is specific to a
+ * device, @dev points to it.
+ *
+ * Hotplug (as opposed to unplug) notification is always handled as
+ * port-wide while unplug only kills the target device on device-wide
+ * event.
+ *
+ * LOCKING:
+ * ACPI notify handler context.  May sleep.
+ */
 static void ata_acpi_handle_hotplug(struct ata_port *ap, struct ata_device *dev,
-				    u32 event)
+				    u32 event, int is_dock_event)
 {
 	char event_string[12];
 	char *envp[] = { event_string, NULL };
-	struct ata_eh_info *ehi;
+	struct ata_eh_info *ehi = &ap->link.eh_info;
 	struct kobject *kobj = NULL;
 	int wait = 0;
 	unsigned long flags;
+	acpi_handle handle, tmphandle;
+	unsigned long sta;
+	acpi_status status;
 
-	if (!ap)
-		ap = dev->link->ap;
-	ehi = &ap->link.eh_info;
+	if (dev) {
+		if (dev->sdev)
+			kobj = &dev->sdev->sdev_gendev.kobj;
+		handle = dev->acpi_handle;
+	} else {
+		kobj = &ap->dev->kobj;
+		handle = ap->acpi_handle;
+	}
+
+	status = acpi_get_handle(handle, "_EJ0", &tmphandle);
+	if (ACPI_FAILURE(status))
+		/* This device does not support hotplug */
+		return;
 
 	spin_lock_irqsave(ap->lock, flags);
 
@@ -138,57 +201,80 @@ static void ata_acpi_handle_hotplug(struct ata_port *ap, struct ata_device *dev,
 	case ACPI_NOTIFY_BUS_CHECK:
 	case ACPI_NOTIFY_DEVICE_CHECK:
 		ata_ehi_push_desc(ehi, "ACPI event");
-		ata_ehi_hotplugged(ehi);
-		ata_port_freeze(ap);
-		break;
 
-	case ACPI_NOTIFY_EJECT_REQUEST:
-		ata_ehi_push_desc(ehi, "ACPI event");
-		if (dev)
-			dev->flags |= ATA_DFLAG_DETACH;
-		else {
-			struct ata_link *tlink;
-			struct ata_device *tdev;
-
-			ata_port_for_each_link(tlink, ap)
-				ata_link_for_each_dev(tdev, tlink)
-					tdev->flags |= ATA_DFLAG_DETACH;
+		status = acpi_evaluate_integer(handle, "_STA", NULL, &sta);
+		if (ACPI_FAILURE(status)) {
+			ata_port_printk(ap, KERN_ERR,
+				"acpi: failed to determine bay status (0x%x)\n",
+				status);
+			break;
 		}
 
-		ata_port_schedule_eh(ap);
+		if (sta) {
+			ata_ehi_hotplugged(ehi);
+			ata_port_freeze(ap);
+		} else {
+			/* The device has gone - unplug it */
+			ata_acpi_detach_device(ap, dev);
+			wait = 1;
+		}
+		break;
+	case ACPI_NOTIFY_EJECT_REQUEST:
+		ata_ehi_push_desc(ehi, "ACPI event");
+
+		if (!is_dock_event)
+			break;
+
+		/* undock event - immediate unplug */
+		ata_acpi_detach_device(ap, dev);
 		wait = 1;
 		break;
 	}
 
-	if (dev) {
-		if (dev->sdev)
-			kobj = &dev->sdev->sdev_gendev.kobj;
-	} else
-		kobj = &ap->dev->kobj;
+	/* make sure kobj doesn't go away while ap->lock is released */
+	kobject_get(kobj);
 
-	if (kobj) {
+	spin_unlock_irqrestore(ap->lock, flags);
+
+	if (wait) {
+		ata_port_wait_eh(ap);
+		ata_acpi_eject_device(handle);
+	}
+
+	if (kobj && !is_dock_event) {
 		sprintf(event_string, "BAY_EVENT=%d", event);
 		kobject_uevent_env(kobj, KOBJ_CHANGE, envp);
 	}
 
-	spin_unlock_irqrestore(ap->lock, flags);
+	kobject_put(kobj);
+}
 
-	if (wait)
-		ata_port_wait_eh(ap);
+static void ata_acpi_dev_notify_dock(acpi_handle handle, u32 event, void *data)
+{
+	struct ata_device *dev = data;
+
+	ata_acpi_handle_hotplug(dev->link->ap, dev, event, 1);
+}
+
+static void ata_acpi_ap_notify_dock(acpi_handle handle, u32 event, void *data)
+{
+	struct ata_port *ap = data;
+
+	ata_acpi_handle_hotplug(ap, NULL, event, 1);
 }
 
 static void ata_acpi_dev_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct ata_device *dev = data;
 
-	ata_acpi_handle_hotplug(NULL, dev, event);
+	ata_acpi_handle_hotplug(dev->link->ap, dev, event, 0);
 }
 
 static void ata_acpi_ap_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct ata_port *ap = data;
 
-	ata_acpi_handle_hotplug(ap, NULL, event);
+	ata_acpi_handle_hotplug(ap, NULL, event, 0);
 }
 
 /**
@@ -227,11 +313,9 @@ void ata_acpi_associate(struct ata_host *host)
 			acpi_install_notify_handler(ap->acpi_handle,
 						    ACPI_SYSTEM_NOTIFY,
 						    ata_acpi_ap_notify, ap);
-#if defined(CONFIG_ACPI_DOCK) || defined(CONFIG_ACPI_DOCK_MODULE)
 			/* we might be on a docking station */
 			register_hotplug_dock_device(ap->acpi_handle,
-						     ata_acpi_ap_notify, ap);
-#endif
+					     ata_acpi_ap_notify_dock, ap);
 		}
 
 		for (j = 0; j < ata_link_max_devices(&ap->link); j++) {
@@ -241,11 +325,9 @@ void ata_acpi_associate(struct ata_host *host)
 				acpi_install_notify_handler(dev->acpi_handle,
 						ACPI_SYSTEM_NOTIFY,
 						ata_acpi_dev_notify, dev);
-#if defined(CONFIG_ACPI_DOCK) || defined(CONFIG_ACPI_DOCK_MODULE)
 				/* we might be on a docking station */
 				register_hotplug_dock_device(dev->acpi_handle,
-						ata_acpi_dev_notify, dev);
-#endif
+					     ata_acpi_dev_notify_dock, dev);
 			}
 		}
 	}
@@ -839,7 +921,8 @@ void ata_acpi_on_resume(struct ata_port *ap)
 		 */
 		ata_link_for_each_dev(dev, &ap->link) {
 			ata_acpi_clear_gtf(dev);
-			if (ata_dev_get_GTF(dev, NULL) >= 0)
+			if (ata_dev_enabled(dev) &&
+			    ata_dev_get_GTF(dev, NULL) >= 0)
 				dev->flags |= ATA_DFLAG_ACPI_PENDING;
 		}
 	} else {
@@ -849,7 +932,8 @@ void ata_acpi_on_resume(struct ata_port *ap)
 		 */
 		ata_link_for_each_dev(dev, &ap->link) {
 			ata_acpi_clear_gtf(dev);
-			dev->flags |= ATA_DFLAG_ACPI_PENDING;
+			if (ata_dev_enabled(dev))
+				dev->flags |= ATA_DFLAG_ACPI_PENDING;
 		}
 	}
 }

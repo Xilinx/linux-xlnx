@@ -48,10 +48,11 @@ s390_collect_crw_info(void *param)
 	int ccode;
 	struct semaphore *sem;
 	unsigned int chain;
+	int ignore;
 
 	sem = (struct semaphore *)param;
 repeat:
-	down_interruptible(sem);
+	ignore = down_interruptible(sem);
 	chain = 0;
 	while (1) {
 		if (unlikely(chain > 1)) {
@@ -59,15 +60,15 @@ repeat:
 
 			printk(KERN_WARNING"%s: Code does not support more "
 			       "than two chained crws; please report to "
-			       "linux390@de.ibm.com!\n", __FUNCTION__);
+			       "linux390@de.ibm.com!\n", __func__);
 			ccode = stcrw(&tmp_crw);
 			printk(KERN_WARNING"%s: crw reports slct=%d, oflw=%d, "
 			       "chn=%d, rsc=%X, anc=%d, erc=%X, rsid=%X\n",
-			       __FUNCTION__, tmp_crw.slct, tmp_crw.oflw,
+			       __func__, tmp_crw.slct, tmp_crw.oflw,
 			       tmp_crw.chn, tmp_crw.rsc, tmp_crw.anc,
 			       tmp_crw.erc, tmp_crw.rsid);
 			printk(KERN_WARNING"%s: This was crw number %x in the "
-			       "chain\n", __FUNCTION__, chain);
+			       "chain\n", __func__, chain);
 			if (ccode != 0)
 				break;
 			chain = tmp_crw.chn ? chain + 1 : 0;
@@ -83,7 +84,7 @@ repeat:
 		       crw[chain].rsid);
 		/* Check for overflows. */
 		if (crw[chain].oflw) {
-			pr_debug("%s: crw overflow detected!\n", __FUNCTION__);
+			pr_debug("%s: crw overflow detected!\n", __func__);
 			css_schedule_eval_all();
 			chain = 0;
 			continue;
@@ -206,6 +207,7 @@ s390_handle_mcck(void)
 		do_exit(SIGSEGV);
 	}
 }
+EXPORT_SYMBOL_GPL(s390_handle_mcck);
 
 /*
  * returns 0 if all registers could be validated

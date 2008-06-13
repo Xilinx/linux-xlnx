@@ -39,6 +39,11 @@
 #include <asm/apic.h>
 #include <asm/io.h>
 #include <asm/mpspec.h>
+#include <asm/smp.h>
+
+#ifdef CONFIG_X86_LOCAL_APIC
+# include <mach_apic.h>
+#endif
 
 static int __initdata acpi_force = 0;
 
@@ -52,9 +57,7 @@ EXPORT_SYMBOL(acpi_disabled);
 #ifdef	CONFIG_X86_64
 
 #include <asm/proto.h>
-
-static inline int acpi_madt_oem_check(char *oem_id, char *oem_table_id) { return 0; }
-
+#include <asm/genapic.h>
 
 #else				/* X86 */
 
@@ -111,7 +114,7 @@ char *__init __acpi_map_table(unsigned long phys_addr, unsigned long size)
 	if (!phys_addr || !size)
 		return NULL;
 
-	if (phys_addr+size <= (end_pfn_map << PAGE_SHIFT) + PAGE_SIZE)
+	if (phys_addr+size <= (max_pfn_mapped << PAGE_SHIFT) + PAGE_SIZE)
 		return __va(phys_addr);
 
 	return NULL;
@@ -237,6 +240,23 @@ static int __init acpi_parse_madt(struct acpi_table_header *table)
 	return 0;
 }
 
+static void __cpuinit acpi_register_lapic(int id, u8 enabled)
+{
+	unsigned int ver = 0;
+
+	if (!enabled) {
+		++disabled_cpus;
+		return;
+	}
+
+#ifdef CONFIG_X86_32
+	if (boot_cpu_physical_apicid != -1U)
+		ver = apic_version[boot_cpu_physical_apicid];
+#endif
+
+	generic_processor_info(id, ver);
+}
+
 static int __init
 acpi_parse_lapic(struct acpi_subtable_header * header, const unsigned long end)
 {
@@ -256,8 +276,26 @@ acpi_parse_lapic(struct acpi_subtable_header * header, const unsigned long end)
 	 * to not preallocating memory for all NR_CPUS
 	 * when we use CPU hotplug.
 	 */
-	mp_register_lapic(processor->id,	/* APIC ID */
-			  processor->lapic_flags & ACPI_MADT_ENABLED);	/* Enabled? */
+	acpi_register_lapic(processor->id,	/* APIC ID */
+			    processor->lapic_flags & ACPI_MADT_ENABLED);
+
+	return 0;
+}
+
+static int __init
+acpi_parse_sapic(struct acpi_subtable_header *header, const unsigned long end)
+{
+	struct acpi_madt_local_sapic *processor = NULL;
+
+	processor = (struct acpi_madt_local_sapic *)header;
+
+	if (BAD_MADT_ENTRY(processor, end))
+		return -EINVAL;
+
+	acpi_table_print_madt_entry(header);
+
+	acpi_register_lapic((processor->id << 8) | processor->eid,/* APIC ID */
+			    processor->lapic_flags & ACPI_MADT_ENABLED);
 
 	return 0;
 }
@@ -299,6 +337,8 @@ acpi_parse_lapic_nmi(struct acpi_subtable_header * header, const unsigned long e
 #endif				/*CONFIG_X86_LOCAL_APIC */
 
 #ifdef CONFIG_X86_IO_APIC
+
+struct mp_ioapic_routing mp_ioapic_routing[MAX_IO_APICS];
 
 static int __init
 acpi_parse_ioapic(struct acpi_subtable_header * header, const unsigned long end)
@@ -532,7 +572,7 @@ static int __cpuinit _acpi_map_lsapic(acpi_handle handle, int *pcpu)
 	buffer.pointer = NULL;
 
 	tmp_map = cpu_present_map;
-	mp_register_lapic(physid, lapic->lapic_flags & ACPI_MADT_ENABLED);
+	acpi_register_lapic(physid, lapic->lapic_flags & ACPI_MADT_ENABLED);
 
 	/*
 	 * If mp_register_lapic successfully generates a new logical cpu
@@ -664,10 +704,6 @@ static int __init acpi_parse_hpet(struct acpi_table_header *table)
 #define HPET_RESOURCE_NAME_SIZE 9
 	hpet_res = alloc_bootmem(sizeof(*hpet_res) + HPET_RESOURCE_NAME_SIZE);
 
-	if (!hpet_res)
-		return 0;
-
-	memset(hpet_res, 0, sizeof(*hpet_res));
 	hpet_res->name = (void *)&hpet_res[1];
 	hpet_res->flags = IORESOURCE_MEM;
 	snprintf((char *)hpet_res->name, HPET_RESOURCE_NAME_SIZE, "HPET %u",
@@ -732,6 +768,47 @@ static int __init acpi_parse_fadt(struct acpi_table_header *table)
  * Parse LAPIC entries in MADT
  * returns 0 on success, < 0 on error
  */
+
+static void __init acpi_register_lapic_address(unsigned long address)
+{
+	mp_lapic_addr = address;
+
+	set_fixmap_nocache(FIX_APIC_BASE, address);
+	if (boot_cpu_physical_apicid == -1U) {
+		boot_cpu_physical_apicid  = GET_APIC_ID(read_apic_id());
+#ifdef CONFIG_X86_32
+		apic_version[boot_cpu_physical_apicid] =
+			 GET_APIC_VERSION(apic_read(APIC_LVR));
+#endif
+	}
+}
+
+static int __init early_acpi_parse_madt_lapic_addr_ovr(void)
+{
+	int count;
+
+	if (!cpu_has_apic)
+		return -ENODEV;
+
+	/*
+	 * Note that the LAPIC address is obtained from the MADT (32-bit value)
+	 * and (optionally) overriden by a LAPIC_ADDR_OVR entry (64-bit value).
+	 */
+
+	count =
+	    acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_APIC_OVERRIDE,
+				  acpi_parse_lapic_addr_ovr, 0);
+	if (count < 0) {
+		printk(KERN_ERR PREFIX
+		       "Error parsing LAPIC address override entry\n");
+		return count;
+	}
+
+	acpi_register_lapic_address(acpi_lapic_addr);
+
+	return count;
+}
+
 static int __init acpi_parse_madt_lapic_entries(void)
 {
 	int count;
@@ -753,10 +830,14 @@ static int __init acpi_parse_madt_lapic_entries(void)
 		return count;
 	}
 
-	mp_register_lapic_address(acpi_lapic_addr);
+	acpi_register_lapic_address(acpi_lapic_addr);
 
-	count = acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_APIC, acpi_parse_lapic,
-				      MAX_APICS);
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_SAPIC,
+				      acpi_parse_sapic, MAX_APICS);
+
+	if (!count)
+		count = acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_APIC,
+					      acpi_parse_lapic, MAX_APICS);
 	if (!count) {
 		printk(KERN_ERR PREFIX "No LAPIC entries present\n");
 		/* TBD: Cleanup to allow fallback to MPS */
@@ -857,6 +938,33 @@ static inline int acpi_parse_madt_ioapic_entries(void)
 	return -1;
 }
 #endif	/* !CONFIG_X86_IO_APIC */
+
+static void __init early_acpi_process_madt(void)
+{
+#ifdef CONFIG_X86_LOCAL_APIC
+	int error;
+
+	if (!acpi_table_parse(ACPI_SIG_MADT, acpi_parse_madt)) {
+
+		/*
+		 * Parse MADT LAPIC entries
+		 */
+		error = early_acpi_parse_madt_lapic_addr_ovr();
+		if (!error) {
+			acpi_lapic = 1;
+			smp_found_config = 1;
+		}
+		if (error == -EINVAL) {
+			/*
+			 * Dell Precision Workstation 410, 610 come here.
+			 */
+			printk(KERN_ERR PREFIX
+			       "Invalid BIOS MADT, disabling ACPI\n");
+			disable_acpi();
+		}
+	}
+#endif
+}
 
 static void __init acpi_process_madt(void)
 {
@@ -1186,6 +1294,23 @@ int __init acpi_boot_table_init(void)
 			return error;
 		}
 	}
+
+	return 0;
+}
+
+int __init early_acpi_boot_init(void)
+{
+	/*
+	 * If acpi_disabled, bail out
+	 * One exception: acpi=ht continues far enough to enumerate LAPICs
+	 */
+	if (acpi_disabled && !acpi_ht)
+		return 1;
+
+	/*
+	 * Process the Multiple APIC Description Table (MADT), if present
+	 */
+	early_acpi_process_madt();
 
 	return 0;
 }

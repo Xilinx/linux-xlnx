@@ -22,17 +22,28 @@ static inline void __native_flush_tlb(void)
 
 static inline void __native_flush_tlb_global(void)
 {
-	unsigned long cr4 = read_cr4();
+	unsigned long flags;
+	unsigned long cr4;
 
+	/*
+	 * Read-modify-write to CR4 - protect it from preemption and
+	 * from interrupts. (Use the raw variant because this code can
+	 * be called from deep inside debugging code.)
+	 */
+	raw_local_irq_save(flags);
+
+	cr4 = read_cr4();
 	/* clear PGE */
 	write_cr4(cr4 & ~X86_CR4_PGE);
 	/* write old PGE again and flush TLBs */
 	write_cr4(cr4);
+
+	raw_local_irq_restore(flags);
 }
 
 static inline void __native_flush_tlb_single(unsigned long addr)
 {
-	__asm__ __volatile__("invlpg (%0)" ::"r" (addr) : "memory");
+	asm volatile("invlpg (%0)" ::"r" (addr) : "memory");
 }
 
 static inline void __flush_tlb_all(void)
@@ -134,8 +145,7 @@ void native_flush_tlb_others(const cpumask_t *cpumask, struct mm_struct *mm,
 #define TLBSTATE_LAZY	2
 
 #ifdef CONFIG_X86_32
-struct tlb_state
-{
+struct tlb_state {
 	struct mm_struct *active_mm;
 	int state;
 	char __cacheline_padding[L1_CACHE_BYTES-8];

@@ -12,7 +12,7 @@ CFLAGS_prom_init.o      += -fPIC
 CFLAGS_btext.o		+= -fPIC
 endif
 
-obj-y				:= semaphore.o cputable.o ptrace.o syscalls.o \
+obj-y				:= cputable.o ptrace.o syscalls.o \
 				   irq.o align.o signal_32.o pmc.o vdso.o \
 				   init_task.o process.o systbl.o idle.o \
 				   signal.o
@@ -67,12 +67,12 @@ obj-$(CONFIG_BOOTX_TEXT)	+= btext.o
 obj-$(CONFIG_SMP)		+= smp.o
 obj-$(CONFIG_KPROBES)		+= kprobes.o
 obj-$(CONFIG_PPC_UDBG_16550)	+= legacy_serial.o udbg_16550.o
+obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 
 pci64-$(CONFIG_PPC64)		+= pci_dn.o isa-bridge.o
 obj-$(CONFIG_PCI)		+= pci_$(CONFIG_WORD_SIZE).o $(pci64-y) \
 				   pci-common.o
 obj-$(CONFIG_PCI_MSI)		+= msi.o
-obj-$(CONFIG_RAPIDIO)		+= rio.o
 obj-$(CONFIG_KEXEC)		+= machine_kexec.o crash.o \
 				   machine_kexec_$(CONFIG_WORD_SIZE).o
 obj-$(CONFIG_AUDIT)		+= audit.o
@@ -104,5 +104,20 @@ quiet_cmd_systbl_chk = CALL    $<
 PHONY += systbl_chk
 systbl_chk: $(src)/systbl_chk.sh $(obj)/systbl_chk.i
 	$(call cmd,systbl_chk)
+
+
+ifeq ($(CONFIG_PPC_MERGE),y)
+
+$(obj)/built-in.o:		prom_init_check
+
+quiet_cmd_prom_init_check = CALL    $<
+      cmd_prom_init_check = $(CONFIG_SHELL) $< "$(NM)" "$(obj)/prom_init.o"
+
+PHONY += prom_init_check
+prom_init_check: $(src)/prom_init_check.sh $(obj)/prom_init.o
+	$(call cmd,prom_init_check)
+
+endif
+
 
 clean-files := vmlinux.lds

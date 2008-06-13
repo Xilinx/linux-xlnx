@@ -6,29 +6,9 @@
 
 #include <linux/sched.h>
 #include <linux/errno.h>
-#include <linux/fcntl.h>
-#include <linux/net.h>
-#include <linux/in.h>
-#include <linux/inet.h>
-#include <linux/udp.h>
-#include <linux/tcp.h>
-#include <linux/unistd.h>
-#include <linux/slab.h>
-#include <linux/netdevice.h>
-#include <linux/skbuff.h>
-#include <linux/file.h>
 #include <linux/freezer.h>
+#include <linux/kthread.h>
 #include <net/sock.h>
-#include <net/checksum.h>
-#include <net/ip.h>
-#include <net/ipv6.h>
-#include <net/tcp_states.h>
-#include <linux/uaccess.h>
-#include <asm/ioctls.h>
-
-#include <linux/sunrpc/types.h>
-#include <linux/sunrpc/clnt.h>
-#include <linux/sunrpc/xdr.h>
 #include <linux/sunrpc/stats.h>
 #include <linux/sunrpc/svc_xprt.h>
 
@@ -294,8 +274,6 @@ void svc_xprt_enqueue(struct svc_xprt *xprt)
 
 	if (!(xprt->xpt_flags &
 	      ((1<<XPT_CONN)|(1<<XPT_DATA)|(1<<XPT_CLOSE)|(1<<XPT_DEFERRED))))
-		return;
-	if (test_bit(XPT_DEAD, &xprt->xpt_flags))
 		return;
 
 	cpu = get_cpu();
@@ -586,8 +564,12 @@ int svc_recv(struct svc_rqst *rqstp, long timeout)
 		while (rqstp->rq_pages[i] == NULL) {
 			struct page *p = alloc_page(GFP_KERNEL);
 			if (!p) {
-				int j = msecs_to_jiffies(500);
-				schedule_timeout_uninterruptible(j);
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (signalled() || kthread_should_stop()) {
+					set_current_state(TASK_RUNNING);
+					return -EINTR;
+				}
+				schedule_timeout(msecs_to_jiffies(500));
 			}
 			rqstp->rq_pages[i] = p;
 		}
@@ -607,7 +589,7 @@ int svc_recv(struct svc_rqst *rqstp, long timeout)
 
 	try_to_freeze();
 	cond_resched();
-	if (signalled())
+	if (signalled() || kthread_should_stop())
 		return -EINTR;
 
 	spin_lock_bh(&pool->sp_lock);
@@ -626,6 +608,20 @@ int svc_recv(struct svc_rqst *rqstp, long timeout)
 		 * to bring down the daemons ...
 		 */
 		set_current_state(TASK_INTERRUPTIBLE);
+
+		/*
+		 * checking kthread_should_stop() here allows us to avoid
+		 * locking and signalling when stopping kthreads that call
+		 * svc_recv. If the thread has already been woken up, then
+		 * we can exit here without sleeping. If not, then it
+		 * it'll be woken up quickly during the schedule_timeout
+		 */
+		if (kthread_should_stop()) {
+			set_current_state(TASK_RUNNING);
+			spin_unlock_bh(&pool->sp_lock);
+			return -EINTR;
+		}
+
 		add_wait_queue(&rqstp->rq_wait, &wait);
 		spin_unlock_bh(&pool->sp_lock);
 
@@ -641,7 +637,10 @@ int svc_recv(struct svc_rqst *rqstp, long timeout)
 			svc_thread_dequeue(pool, rqstp);
 			spin_unlock_bh(&pool->sp_lock);
 			dprintk("svc: server %p, no data yet\n", rqstp);
-			return signalled()? -EINTR : -EAGAIN;
+			if (signalled() || kthread_should_stop())
+				return -EINTR;
+			else
+				return -EAGAIN;
 		}
 	}
 	spin_unlock_bh(&pool->sp_lock);

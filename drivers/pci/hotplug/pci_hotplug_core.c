@@ -43,7 +43,7 @@
 
 #define MY_NAME	"pci_hotplug"
 
-#define dbg(fmt, arg...) do { if (debug) printk(KERN_DEBUG "%s: %s: " fmt , MY_NAME , __FUNCTION__ , ## arg); } while (0)
+#define dbg(fmt, arg...) do { if (debug) printk(KERN_DEBUG "%s: %s: " fmt , MY_NAME , __func__ , ## arg); } while (0)
 #define err(format, arg...) printk(KERN_ERR "%s: " format , MY_NAME , ## arg)
 #define info(format, arg...) printk(KERN_INFO "%s: " format , MY_NAME , ## arg)
 #define warn(format, arg...) printk(KERN_WARNING "%s: " format , MY_NAME , ## arg)
@@ -619,6 +619,7 @@ static struct hotplug_slot *get_slot_from_name (const char *name)
 int pci_hp_register (struct hotplug_slot *slot)
 {
 	int result;
+	struct hotplug_slot *tmp;
 
 	if (slot == NULL)
 		return -ENODEV;
@@ -630,7 +631,11 @@ int pci_hp_register (struct hotplug_slot *slot)
 		return -EINVAL;
 	}
 
-	/* this can fail if we have already registered a slot with the same name */
+	/* Check if we have already registered a slot with the same name. */
+	tmp = get_slot_from_name(slot->name);
+	if (tmp)
+		return -EEXIST;
+
 	slot->kobj.kset = pci_hotplug_slots_kset;
 	result = kobject_init_and_add(&slot->kobj, &hotplug_slot_ktype, NULL,
 				      "%s", slot->name);

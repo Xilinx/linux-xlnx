@@ -260,7 +260,7 @@ void ocfs2_shutdown_local_alloc(struct ocfs2_super *osb)
 	bh = osb->local_alloc_bh;
 	alloc = (struct ocfs2_dinode *) bh->b_data;
 
-	alloc_copy = kmalloc(bh->b_size, GFP_KERNEL);
+	alloc_copy = kmalloc(bh->b_size, GFP_NOFS);
 	if (!alloc_copy) {
 		status = -ENOMEM;
 		goto out_commit;
@@ -447,6 +447,8 @@ out_mutex:
 	iput(main_bm_inode);
 
 out:
+	if (!status)
+		ocfs2_init_inode_steal_slot(osb);
 	mlog_exit(status);
 	return status;
 }
@@ -523,6 +525,8 @@ int ocfs2_reserve_local_alloc_bits(struct ocfs2_super *osb,
 	}
 
 	ac->ac_inode = local_alloc_inode;
+	/* We should never use localalloc from another slot */
+	ac->ac_alloc_slot = osb->slot_num;
 	ac->ac_which = OCFS2_AC_USE_LOCAL;
 	get_bh(osb->local_alloc_bh);
 	ac->ac_bh = osb->local_alloc_bh;
@@ -927,7 +931,7 @@ static int ocfs2_local_alloc_slide_window(struct ocfs2_super *osb,
 	 * local alloc shutdown won't try to double free main bitmap
 	 * bits. Make a copy so the sync function knows which bits to
 	 * free. */
-	alloc_copy = kmalloc(osb->local_alloc_bh->b_size, GFP_KERNEL);
+	alloc_copy = kmalloc(osb->local_alloc_bh->b_size, GFP_NOFS);
 	if (!alloc_copy) {
 		status = -ENOMEM;
 		mlog_errno(status);

@@ -5,7 +5,7 @@
 menuconfig PHYLIB
 	tristate "PHY Device support and infrastructure"
 	depends on !S390
-	depends on NET_ETHERNET && (BROKEN || !S390)
+	depends on NET_ETHERNET
 	help
 	  Ethernet controllers are usually attached to PHY
 	  devices.  This option provides infrastructure for
@@ -48,7 +48,7 @@ config VITESSE_PHY
 config SMSC_PHY
 	tristate "Drivers for SMSC PHYs"
 	---help---
-	  Currently supports the LAN83C185 PHY
+	  Currently supports the LAN83C185, LAN8187 and LAN8700 PHYs
 
 config BROADCOM_PHY
 	tristate "Drivers for Broadcom PHYs"

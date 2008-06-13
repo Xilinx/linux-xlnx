@@ -177,6 +177,7 @@ extern struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT];
 extern int mmu_linear_psize;
 extern int mmu_virtual_psize;
 extern int mmu_vmalloc_psize;
+extern int mmu_vmemmap_psize;
 extern int mmu_io_psize;
 extern int mmu_kernel_ssize;
 extern int mmu_highuser_ssize;
@@ -468,9 +469,6 @@ static inline unsigned long get_vsid(unsigned long context, unsigned long ea,
 #define VSID_SCRAMBLE(pvsid)	(((pvsid) * VSID_MULTIPLIER_256M) %	\
 				 VSID_MODULUS_256M)
 #define KERNEL_VSID(ea)		VSID_SCRAMBLE(GET_ESID(ea))
-
-/* Physical address used by some IO functions */
-typedef unsigned long phys_addr_t;
 
 #endif /* __ASSEMBLY__ */
 

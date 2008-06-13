@@ -3,9 +3,8 @@
  * BRIEF MODULE DESCRIPTION
  *	Alchemy Pb1550 board setup.
  *
- * Copyright 2000 MontaVista Software Inc.
- * Author: MontaVista Software, Inc.
- *         	ppopov@mvista.com or source@mvista.com
+ * Copyright 2000, 2008 MontaVista Software Inc.
+ * Author: MontaVista Software, Inc. <source@mvista.com>
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
@@ -27,34 +26,24 @@
  *  with this program; if not, write  to the Free Software Foundation, Inc.,
  *  675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <linux/init.h>
-#include <linux/sched.h>
-#include <linux/ioport.h>
-#include <linux/mm.h>
-#include <linux/console.h>
-#include <linux/mc146818rtc.h>
-#include <linux/delay.h>
 
-#include <asm/cpu.h>
-#include <asm/bootinfo.h>
-#include <asm/irq.h>
-#include <asm/mipsregs.h>
-#include <asm/reboot.h>
-#include <asm/pgtable.h>
+#include <linux/init.h>
+
 #include <asm/mach-au1x00/au1000.h>
 #include <asm/mach-pb1x00/pb1550.h>
 
 void board_reset(void)
 {
-    /* Hit BCSR.SYSTEM_CONTROL[SW_RST] */
-	au_writew(au_readw(0xAF00001C) & ~(1<<15), 0xAF00001C);
+	/* Hit BCSR.SYSTEM[RESET] */
+	au_writew(au_readw(0xAF00001C) & ~BCSR_SYSTEM_RESET, 0xAF00001C);
 }
 
 void __init board_setup(void)
 {
 	u32 pin_func;
 
-	/* Enable PSC1 SYNC for AC97.  Normaly done in audio driver,
+	/*
+	 * Enable PSC1 SYNC for AC'97.  Normaly done in audio driver,
 	 * but it is board specific code, so put it here.
 	 */
 	pin_func = au_readl(SYS_PINFUNC);
@@ -62,8 +51,8 @@ void __init board_setup(void)
 	pin_func |= SYS_PF_MUST_BE_SET | SYS_PF_PSC1_S1;
 	au_writel(pin_func, SYS_PINFUNC);
 
-	au_writel(0, (u32)bcsr|0x10); /* turn off pcmcia power */
+	au_writel(0, (u32)bcsr | 0x10); /* turn off PCMCIA power */
 	au_sync();
 
-	printk("AMD Alchemy Pb1550 Board\n");
+	printk(KERN_INFO "AMD Alchemy Pb1550 Board\n");
 }

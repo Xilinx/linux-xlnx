@@ -1,7 +1,6 @@
 #ifndef _LINUX__INIT_TASK_H
 #define _LINUX__INIT_TASK_H
 
-#include <linux/file.h>
 #include <linux/rcupdate.h>
 #include <linux/irqflags.h>
 #include <linux/utsname.h>
@@ -9,29 +8,10 @@
 #include <linux/ipc.h>
 #include <linux/pid_namespace.h>
 #include <linux/user_namespace.h>
+#include <linux/securebits.h>
 #include <net/net_namespace.h>
 
-#define INIT_FDTABLE \
-{							\
-	.max_fds	= NR_OPEN_DEFAULT, 		\
-	.fd		= &init_files.fd_array[0], 	\
-	.close_on_exec	= (fd_set *)&init_files.close_on_exec_init, \
-	.open_fds	= (fd_set *)&init_files.open_fds_init, 	\
-	.rcu		= RCU_HEAD_INIT, 		\
-	.next		= NULL,		 		\
-}
-
-#define INIT_FILES \
-{ 							\
-	.count		= ATOMIC_INIT(1), 		\
-	.fdt		= &init_files.fdtab, 		\
-	.fdtab		= INIT_FDTABLE,			\
-	.file_lock	= __SPIN_LOCK_UNLOCKED(init_task.file_lock), \
-	.next_fd	= 0, 				\
-	.close_on_exec_init = { { 0, } }, 		\
-	.open_fds_init	= { { 0, } }, 			\
-	.fd_array	= { NULL, } 			\
-}
+extern struct files_struct init_files;
 
 #define INIT_KIOCTX(name, which_mm) \
 {							\
@@ -151,6 +131,9 @@ extern struct group_info init_groups;
 	.cpus_allowed	= CPU_MASK_ALL,					\
 	.mm		= NULL,						\
 	.active_mm	= &init_mm,					\
+	.se		= {						\
+		.group_node 	= LIST_HEAD_INIT(tsk.se.group_node),	\
+	},								\
 	.rt		= {						\
 		.run_list	= LIST_HEAD_INIT(tsk.rt.run_list),	\
 		.time_slice	= HZ, 					\
@@ -169,7 +152,7 @@ extern struct group_info init_groups;
 	.cap_inheritable = CAP_INIT_INH_SET,				\
 	.cap_permitted	= CAP_FULL_SET,					\
 	.cap_bset 	= CAP_INIT_BSET,				\
-	.keep_capabilities = 0,						\
+	.securebits     = SECUREBITS_DEFAULT,				\
 	.user		= INIT_USER,					\
 	.comm		= "swapper",					\
 	.thread		= INIT_THREAD,					\

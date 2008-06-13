@@ -71,9 +71,6 @@ static struct list_head sclp_vt220_outqueue;
 /* Number of requests in outqueue */
 static int sclp_vt220_outqueue_count;
 
-/* Wait queue used to delay write requests while we've run out of buffers */
-static wait_queue_head_t sclp_vt220_waitq;
-
 /* Timer used for delaying write requests to merge subsequent messages into
  * a single buffer */
 static struct timer_list sclp_vt220_timer;
@@ -133,7 +130,6 @@ sclp_vt220_process_queue(struct sclp_vt220_request *request)
 	} while (request && __sclp_vt220_emit(request));
 	if (request == NULL && sclp_vt220_flush_later)
 		sclp_vt220_emit_current();
-	wake_up(&sclp_vt220_waitq);
 	/* Check if the tty needs a wake up call */
 	if (sclp_vt220_tty != NULL) {
 		tty_wakeup(sclp_vt220_tty);
@@ -383,7 +379,7 @@ sclp_vt220_timeout(unsigned long data)
  */
 static int
 __sclp_vt220_write(const unsigned char *buf, int count, int do_schedule,
-		   int convertlf)
+		   int convertlf, int may_fail)
 {
 	unsigned long flags;
 	void *page;
@@ -395,16 +391,14 @@ __sclp_vt220_write(const unsigned char *buf, int count, int do_schedule,
 	overall_written = 0;
 	spin_lock_irqsave(&sclp_vt220_lock, flags);
 	do {
-		/* Create a sclp output buffer if none exists yet */
+		/* Create an sclp output buffer if none exists yet */
 		if (sclp_vt220_current_request == NULL) {
 			while (list_empty(&sclp_vt220_empty)) {
-				spin_unlock_irqrestore(&sclp_vt220_lock,
-						       flags);
-				if (in_atomic())
-					sclp_sync_wait();
+				spin_unlock_irqrestore(&sclp_vt220_lock, flags);
+				if (may_fail)
+					goto out;
 				else
-					wait_event(sclp_vt220_waitq,
-						!list_empty(&sclp_vt220_empty));
+					sclp_sync_wait();
 				spin_lock_irqsave(&sclp_vt220_lock, flags);
 			}
 			page = (void *) sclp_vt220_empty.next;
@@ -438,6 +432,7 @@ __sclp_vt220_write(const unsigned char *buf, int count, int do_schedule,
 		add_timer(&sclp_vt220_timer);
 	}
 	spin_unlock_irqrestore(&sclp_vt220_lock, flags);
+out:
 	return overall_written;
 }
 
@@ -450,7 +445,7 @@ __sclp_vt220_write(const unsigned char *buf, int count, int do_schedule,
 static int
 sclp_vt220_write(struct tty_struct *tty, const unsigned char *buf, int count)
 {
-	return __sclp_vt220_write(buf, count, 1, 0);
+	return __sclp_vt220_write(buf, count, 1, 0, 1);
 }
 
 #define SCLP_VT220_SESSION_ENDED	0x01
@@ -521,15 +516,11 @@ sclp_vt220_close(struct tty_struct *tty, struct file *filp)
  * character to the tty device.  If the kernel uses this routine,
  * it must call the flush_chars() routine (if defined) when it is
  * done stuffing characters into the driver.
- *
- * NOTE: include/linux/tty_driver.h specifies that a character should be
- * ignored if there is no room in the queue. This driver implements a different
- * semantic in that it will block when there is no more room left.
  */
-static void
+static int
 sclp_vt220_put_char(struct tty_struct *tty, unsigned char ch)
 {
-	__sclp_vt220_write(&ch, 1, 0, 0);
+	return __sclp_vt220_write(&ch, 1, 0, 0, 1);
 }
 
 /*
@@ -650,7 +641,6 @@ static int __init __sclp_vt220_init(void)
 	spin_lock_init(&sclp_vt220_lock);
 	INIT_LIST_HEAD(&sclp_vt220_empty);
 	INIT_LIST_HEAD(&sclp_vt220_outqueue);
-	init_waitqueue_head(&sclp_vt220_waitq);
 	init_timer(&sclp_vt220_timer);
 	sclp_vt220_current_request = NULL;
 	sclp_vt220_buffered_chars = 0;
@@ -746,7 +736,7 @@ __initcall(sclp_vt220_tty_init);
 static void
 sclp_vt220_con_write(struct console *con, const char *buf, unsigned int count)
 {
-	__sclp_vt220_write((const unsigned char *) buf, count, 1, 1);
+	__sclp_vt220_write((const unsigned char *) buf, count, 1, 1, 0);
 }
 
 static struct tty_driver *
@@ -783,6 +773,7 @@ sclp_vt220_con_init(void)
 {
 	int rc;
 
+	INIT_LIST_HEAD(&sclp_vt220_register.list);
 	if (!CONSOLE_IS_SCLP)
 		return 0;
 	rc = __sclp_vt220_init();

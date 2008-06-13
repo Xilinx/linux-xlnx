@@ -173,7 +173,6 @@ struct hrtimer_clock_base {
  * struct hrtimer_cpu_base - the per cpu clock bases
  * @lock:		lock protecting the base and associated clock bases
  *			and timers
- * @lock_key:		the lock_class_key for use with lockdep
  * @clock_base:		array of clock bases for this cpu
  * @curr_timer:		the timer which is executing a callback right now
  * @expires_next:	absolute time of the next event which was scheduled
@@ -189,7 +188,6 @@ struct hrtimer_clock_base {
  */
 struct hrtimer_cpu_base {
 	spinlock_t			lock;
-	struct lock_class_key		lock_key;
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
 	struct list_head		cb_pending;
 #ifdef CONFIG_HIGH_RES_TIMERS
@@ -268,6 +266,21 @@ extern ktime_t ktime_get_real(void);
 extern void hrtimer_init(struct hrtimer *timer, clockid_t which_clock,
 			 enum hrtimer_mode mode);
 
+#ifdef CONFIG_DEBUG_OBJECTS_TIMERS
+extern void hrtimer_init_on_stack(struct hrtimer *timer, clockid_t which_clock,
+				  enum hrtimer_mode mode);
+
+extern void destroy_hrtimer_on_stack(struct hrtimer *timer);
+#else
+static inline void hrtimer_init_on_stack(struct hrtimer *timer,
+					 clockid_t which_clock,
+					 enum hrtimer_mode mode)
+{
+	hrtimer_init(timer, which_clock, mode);
+}
+static inline void destroy_hrtimer_on_stack(struct hrtimer *timer) { }
+#endif
+
 /* Basic timer operations: */
 extern int hrtimer_start(struct hrtimer *timer, ktime_t tim,
 			 const enum hrtimer_mode mode);
@@ -301,6 +314,15 @@ static inline int hrtimer_is_queued(struct hrtimer *timer)
 {
 	return timer->state &
 		(HRTIMER_STATE_ENQUEUED | HRTIMER_STATE_PENDING);
+}
+
+/*
+ * Helper function to check, whether the timer is running the callback
+ * function
+ */
+static inline int hrtimer_callback_running(struct hrtimer *timer)
+{
+	return timer->state & HRTIMER_STATE_CALLBACK;
 }
 
 /* Forward a hrtimer so it expires after now: */

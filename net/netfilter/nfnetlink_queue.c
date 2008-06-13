@@ -454,9 +454,8 @@ nfqnl_mangle(void *data, int data_len, struct nf_queue_entry *e)
 		if (data_len > 0xFFFF)
 			return -EINVAL;
 		if (diff > skb_tailroom(e->skb)) {
-			nskb = skb_copy_expand(e->skb, 0,
-					       diff - skb_tailroom(e->skb),
-					       GFP_ATOMIC);
+			nskb = skb_copy_expand(e->skb, skb_headroom(e->skb),
+					       diff, GFP_ATOMIC);
 			if (!nskb) {
 				printk(KERN_WARNING "nf_queue: OOM "
 				      "in mangle, dropping packet\n");
@@ -557,7 +556,7 @@ nfqnl_rcv_dev_event(struct notifier_block *this,
 {
 	struct net_device *dev = ptr;
 
-	if (dev->nd_net != &init_net)
+	if (dev_net(dev) != &init_net)
 		return NOTIFY_DONE;
 
 	/* Drop any packets associated with the downed device */

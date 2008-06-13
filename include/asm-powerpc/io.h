@@ -2,7 +2,7 @@
 #define _ASM_POWERPC_IO_H
 #ifdef __KERNEL__
 
-/* 
+/*
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version
@@ -17,6 +17,9 @@ extern int check_legacy_ioport(unsigned long base_port);
 #define _PIDXR		0x279
 #define _PNPWRP		0xa79
 #define PNPBIOS_BASE	0xf000
+
+#include <linux/device.h>
+#include <linux/io.h>
 
 #include <linux/compiler.h>
 #include <asm/page.h>
@@ -97,7 +100,7 @@ static inline type name(const volatile type __iomem *addr)		\
 {									\
 	type ret;							\
 	__asm__ __volatile__("sync;" insn ";twi 0,%0,0;isync"		\
- 		: "=r" (ret) : "r" (addr), "m" (*addr));		\
+		: "=r" (ret) : "r" (addr), "m" (*addr) : "memory");	\
 	return ret;							\
 }
 
@@ -105,8 +108,8 @@ static inline type name(const volatile type __iomem *addr)		\
 static inline void name(volatile type __iomem *addr, type val)		\
 {									\
 	__asm__ __volatile__("sync;" insn				\
- 		: "=m" (*addr) : "r" (val), "r" (addr));		\
-	IO_SET_SYNC_FLAG();					\
+		: "=m" (*addr) : "r" (val), "r" (addr) : "memory");	\
+	IO_SET_SYNC_FLAG();						\
 }
 
 
@@ -330,7 +333,8 @@ static inline unsigned int name(unsigned int port)	\
 		"	.long	3b,5b\n"		\
 		".previous"				\
 		: "=&r" (x)				\
-		: "r" (port + _IO_BASE));		\
+		: "r" (port + _IO_BASE)			\
+		: "memory");  				\
 	return x;					\
 }
 
@@ -347,7 +351,8 @@ static inline void name(unsigned int val, unsigned int port) \
 		"	.long	0b,2b\n"		\
 		"	.long	1b,2b\n"		\
 		".previous"				\
-		: : "r" (val), "r" (port + _IO_BASE));	\
+		: : "r" (val), "r" (port + _IO_BASE)	\
+		: "memory");   	   	   		\
 }
 
 __do_in_asm(_rec_inb, "lbzx")
@@ -458,8 +463,8 @@ __do_out_asm(_rec_outl, "stwbrx")
 /* Structure containing all the hooks */
 extern struct ppc_pci_io {
 
-#define DEF_PCI_AC_RET(name, ret, at, al)	ret (*name) at;
-#define DEF_PCI_AC_NORET(name, at, al)		void (*name) at;
+#define DEF_PCI_AC_RET(name, ret, at, al, space, aa)	ret (*name) at;
+#define DEF_PCI_AC_NORET(name, at, al, space, aa)	void (*name) at;
 
 #include <asm/io-defs.h>
 
@@ -469,7 +474,7 @@ extern struct ppc_pci_io {
 } ppc_pci_io;
 
 /* The inline wrappers */
-#define DEF_PCI_AC_RET(name, ret, at, al)			\
+#define DEF_PCI_AC_RET(name, ret, at, al, space, aa)		\
 static inline ret name at					\
 {								\
 	if (DEF_PCI_HOOK(ppc_pci_io.name) != NULL)		\
@@ -477,7 +482,7 @@ static inline ret name at					\
 	return __do_##name al;					\
 }
 
-#define DEF_PCI_AC_NORET(name, at, al)				\
+#define DEF_PCI_AC_NORET(name, at, al, space, aa)		\
 static inline void name at					\
 {								\
 	if (DEF_PCI_HOOK(ppc_pci_io.name) != NULL)		\
@@ -743,6 +748,9 @@ static inline void * bus_to_virt(unsigned long address)
 #define clrsetbits_le16(addr, clear, set) clrsetbits(le32, addr, clear, set)
 
 #define clrsetbits_8(addr, clear, set) clrsetbits(8, addr, clear, set)
+
+void __iomem *devm_ioremap_prot(struct device *dev, resource_size_t offset,
+				size_t size, unsigned long flags);
 
 #endif /* __KERNEL__ */
 

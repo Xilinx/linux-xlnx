@@ -38,7 +38,6 @@
 #include <linux/personality.h>
 
 #include <asm/uaccess.h>
-#include <asm/semaphore.h>
 #include <asm/syscalls.h>
 #include <asm/time.h>
 #include <asm/unistd.h>
@@ -135,23 +134,6 @@ int sys_ipc(uint call, int first, unsigned long second, long third,
 	}
 
 	return ret;
-}
-
-/*
- * sys_pipe() is the normal C calling standard for creating
- * a pipe. It's not the way unix traditionally does this, though.
- */
-int sys_pipe(int __user *fildes)
-{
-	int fd[2];
-	int error;
-
-	error = do_pipe(fd);
-	if (!error) {
-		if (copy_to_user(fildes, fd, 2*sizeof(int)))
-			error = -EFAULT;
-	}
-	return error;
 }
 
 static inline unsigned long do_mmap2(unsigned long addr, size_t len,

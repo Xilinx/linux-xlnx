@@ -450,7 +450,7 @@ static void pars_2_message(_cmsg * cmsg)
 			cmsg->l += 4;
 			break;
 		case _CSTRUCT:
-			if (*(u8 **) OFF == 0) {
+			if (*(u8 **) OFF == NULL) {
 				*(cmsg->m + cmsg->l) = '\0';
 				cmsg->l++;
 			} else if (**(_cstruct *) OFF != 0xff) {
@@ -948,17 +948,17 @@ int __init cdebug_init(void)
 {
 	g_cmsg= kmalloc(sizeof(_cmsg), GFP_KERNEL);
 	if (!g_cmsg)
-		return ENOMEM;
+		return -ENOMEM;
 	g_debbuf = kmalloc(sizeof(_cdebbuf), GFP_KERNEL);
 	if (!g_debbuf) {
 		kfree(g_cmsg);
-		return ENOMEM;
+		return -ENOMEM;
 	}
 	g_debbuf->buf = kmalloc(CDEBUG_GSIZE, GFP_KERNEL);
 	if (!g_debbuf->buf) {
 		kfree(g_cmsg);
 		kfree(g_debbuf);
-		return ENOMEM;;
+		return -ENOMEM;;
 	}
 	g_debbuf->size = CDEBUG_GSIZE;
 	g_debbuf->buf[0] = 0;

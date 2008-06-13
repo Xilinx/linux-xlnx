@@ -30,8 +30,6 @@
 #include <linux/bit_spinlock.h>
 #include <linux/mutex.h>
 #include <linux/timer.h>
-
-#include <asm/semaphore.h>
 #endif
 
 #define journal_oom_retry 1
@@ -920,6 +918,9 @@ struct journal_s
 	spinlock_t		j_history_lock;
 	struct proc_dir_entry	*j_proc_entry;
 	struct transaction_stats_s j_stats;
+
+	/* Failed journal commit ID */
+	unsigned int		j_failed_commit;
 
 	/*
 	 * An opaque pointer to fs-private information.  ext3 puts its

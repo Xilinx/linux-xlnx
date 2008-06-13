@@ -35,18 +35,6 @@ config XFS_QUOTA
 	  with or without the generic quota support enabled (CONFIG_QUOTA) -
 	  they are completely independent subsystems.
 
-config XFS_SECURITY
-	bool "XFS Security Label support"
-	depends on XFS_FS
-	help
-	  Security labels support alternative access control models
-	  implemented by security modules like SELinux.  This option
-	  enables an extended attribute namespace for inode security
-	  labels in the XFS filesystem.
-
-	  If you are not using a security module that requires using
-	  extended attributes for inode security labels, say N.
-
 config XFS_POSIX_ACL
 	bool "XFS POSIX ACL support"
 	depends on XFS_FS
@@ -76,3 +64,16 @@ config XFS_RT
 	  See the xfs man page in section 5 for additional information.
 
 	  If unsure, say N.
+
+config XFS_DEBUG
+	bool "XFS Debugging support (EXPERIMENTAL)"
+	depends on XFS_FS && EXPERIMENTAL
+	help
+	  Say Y here to get an XFS build with many debugging features,
+	  including ASSERT checks, function wrappers around macros,
+	  and extra sanity-checking functions in various code paths.
+
+	  Note that the resulting code will be HUGE and SLOW, and probably
+	  not useful unless you are debugging a particular problem.
+
+	  Say N unless you are an XFS developer, or you play one on TV.

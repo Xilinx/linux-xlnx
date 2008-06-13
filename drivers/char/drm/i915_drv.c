@@ -147,7 +147,7 @@ static void i915_save_vga(struct drm_device *dev)
 	i915_write_indexed(cr_index, cr_data, 0x11,
 			   i915_read_indexed(cr_index, cr_data, 0x11) &
 			   (~0x80));
-	for (i = 0; i < 0x24; i++)
+	for (i = 0; i <= 0x24; i++)
 		dev_priv->saveCR[i] =
 			i915_read_indexed(cr_index, cr_data, i);
 	/* Make sure we don't turn off CR group 0 writes */
@@ -156,7 +156,7 @@ static void i915_save_vga(struct drm_device *dev)
 	/* Attribute controller registers */
 	inb(st01);
 	dev_priv->saveAR_INDEX = inb(VGA_AR_INDEX);
-	for (i = 0; i < 20; i++)
+	for (i = 0; i <= 0x14; i++)
 		dev_priv->saveAR[i] = i915_read_ar(st01, i, 0);
 	inb(st01);
 	outb(dev_priv->saveAR_INDEX, VGA_AR_INDEX);
@@ -206,7 +206,7 @@ static void i915_restore_vga(struct drm_device *dev)
 	/* CRT controller regs */
 	/* Enable CR group 0 writes */
 	i915_write_indexed(cr_index, cr_data, 0x11, dev_priv->saveCR[0x11]);
-	for (i = 0; i < 0x24; i++)
+	for (i = 0; i <= 0x24; i++)
 		i915_write_indexed(cr_index, cr_data, i, dev_priv->saveCR[i]);
 
 	/* Graphics controller regs */
@@ -223,7 +223,7 @@ static void i915_restore_vga(struct drm_device *dev)
 
 	/* Attribute controller registers */
 	inb(st01);
-	for (i = 0; i < 20; i++)
+	for (i = 0; i <= 0x14; i++)
 		i915_write_ar(st01, i, dev_priv->saveAR[i], 0);
 	inb(st01); /* switch back to index mode */
 	outb(dev_priv->saveAR_INDEX | 0x20, VGA_AR_INDEX);
@@ -255,6 +255,9 @@ static int i915_suspend(struct drm_device *dev, pm_message_t state)
 
 	pci_save_state(dev->pdev);
 	pci_read_config_byte(dev->pdev, LBB, &dev_priv->saveLBB);
+
+	/* Display arbitration control */
+	dev_priv->saveDSPARB = I915_READ(DSPARB);
 
 	/* Pipe & plane A info */
 	dev_priv->savePIPEACONF = I915_READ(PIPEACONF);
@@ -349,6 +352,7 @@ static int i915_suspend(struct drm_device *dev, pm_message_t state)
 	dev_priv->saveVGACNTRL = I915_READ(VGACNTRL);
 
 	/* Clock gating state */
+	dev_priv->saveD_STATE = I915_READ(D_STATE);
 	dev_priv->saveDSPCLK_GATE_D = I915_READ(DSPCLK_GATE_D);
 
 	/* Cache mode state */
@@ -387,6 +391,8 @@ static int i915_resume(struct drm_device *dev)
 		return -1;
 
 	pci_write_config_byte(dev->pdev, LBB, dev_priv->saveLBB);
+
+	I915_WRITE(DSPARB, dev_priv->saveDSPARB);
 
 	/* Pipe & plane A info */
 	/* Prime the clock */
@@ -507,6 +513,7 @@ static int i915_resume(struct drm_device *dev)
 	udelay(150);
 
 	/* Clock gating state */
+	I915_WRITE (D_STATE, dev_priv->saveD_STATE);
 	I915_WRITE (DSPCLK_GATE_D, dev_priv->saveDSPCLK_GATE_D);
 
 	/* Cache mode state */

@@ -194,9 +194,9 @@ static int __devinit fs_enet_mdio_probe(struct of_device *ofdev,
 
 	ret = of_address_to_resource(ofdev->node, 0, &res);
 	if (ret)
-		return ret;
+		goto out_res;
 
-	new_bus->id = res.start;
+	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%x", res.start);
 
 	fec->fecp = ioremap(res.start, res.end - res.start + 1);
 	if (!fec->fecp)
@@ -236,6 +236,7 @@ out_free_irqs:
 	kfree(new_bus->irq);
 out_unmap_regs:
 	iounmap(fec->fecp);
+out_res:
 out_fec:
 	kfree(fec);
 out_mii:
@@ -309,7 +310,7 @@ static int __devinit fs_enet_fec_mdio_probe(struct device *dev)
 	new_bus->read = &fs_enet_fec_mii_read,
 	new_bus->write = &fs_enet_fec_mii_write,
 	new_bus->reset = &fs_enet_fec_mii_reset,
-	new_bus->id = pdev->id;
+	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%x", pdev->id);
 
 	pdata = (struct fs_mii_fec_platform_info *)pdev->dev.platform_data;
 

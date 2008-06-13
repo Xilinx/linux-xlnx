@@ -110,18 +110,23 @@
 #define WDOGB_STAT 				0xFFC01208	/* Watchdog Status register */
 
 /* UART Controller (0xFFC00400 - 0xFFC004FF) */
-#define UART_THR             	0xFFC00400	/* Transmit Holding register */
-#define UART_RBR             	0xFFC00400	/* Receive Buffer register */
-#define UART_DLL              	0xFFC00400	/* Divisor Latch (Low-Byte) */
-#define UART_IER              	0xFFC00404	/* Interrupt Enable Register */
-#define UART_DLH              	0xFFC00404	/* Divisor Latch (High-Byte) */
-#define UART_IIR              	0xFFC00408	/* Interrupt Identification Register */
-#define UART_LCR              	0xFFC0040C	/* Line Control Register */
-#define UART_MCR			 	0xFFC00410	/* Modem Control Register */
-#define UART_LSR              	0xFFC00414	/* Line Status Register */
-#define UART_MSR            	0xFFC00418	/* Modem Status Register */
-#define UART_SCR              	0xFFC0041C	/* SCR Scratch Register */
-#define UART_GCTL      	      	0xFFC00424	/* Global Control Register */
+
+/*
+ * Because include/linux/serial_reg.h have defined UART_*,
+ * So we define blackfin uart regs to BFIN_UART0_*.
+ */
+#define BFIN_UART_THR			0xFFC00400  /* Transmit Holding register */
+#define BFIN_UART_RBR			0xFFC00400  /* Receive Buffer register */
+#define BFIN_UART_DLL			0xFFC00400  /* Divisor Latch (Low-Byte) */
+#define BFIN_UART_IER			0xFFC00404  /* Interrupt Enable Register */
+#define BFIN_UART_DLH			0xFFC00404  /* Divisor Latch (High-Byte) */
+#define BFIN_UART_IIR			0xFFC00408  /* Interrupt Identification Register */
+#define BFIN_UART_LCR			0xFFC0040C  /* Line Control Register */
+#define BFIN_UART_MCR			0xFFC00410  /* Modem Control Register */
+#define BFIN_UART_LSR			0xFFC00414  /* Line Status Register */
+#define BFIN_UART_MSR			0xFFC00418  /* Modem Status Register */
+#define BFIN_UART_SCR			0xFFC0041C  /* SCR Scratch Register */
+#define BFIN_UART_GCTL			0xFFC00424  /* Global Control Register */
 
 /* SPI Controller (0xFFC00500 - 0xFFC005FF) */
 #define SPI0_REGBASE          		0xFFC00500
@@ -863,9 +868,39 @@
 #define CHIPID_FAMILY          0x0FFFF000
 #define CHIPID_MANUFACTURE     0x00000FFE
 
+/* VR_CTL Masks																	*/
+#define	FREQ			0x0003	/* Switching Oscillator Frequency For Regulator	*/
+#define	HIBERNATE		0x0000	/* Powerdown/Bypass On-Board Regulation	*/
+#define	FREQ_333		0x0001	/* Switching Frequency Is 333 kHz */
+#define	FREQ_667		0x0002	/* Switching Frequency Is 667 kHz */
+#define	FREQ_1000		0x0003	/* Switching Frequency Is 1 MHz */
+
+#define	GAIN			0x000C	/* Voltage Level Gain	*/
+#define	GAIN_5			0x0000	/* GAIN = 5*/
+#define	GAIN_10			0x0004	/* GAIN = 1*/
+#define	GAIN_20			0x0008	/* GAIN = 2*/
+#define	GAIN_50			0x000C	/* GAIN = 5*/
+
+#define	VLEV			0x00F0	/* Internal Voltage Level */
+#define	VLEV_085 		0x0060	/* VLEV = 0.85 V (-5% - +10% Accuracy) */
+#define	VLEV_090		0x0070	/* VLEV = 0.90 V (-5% - +10% Accuracy) */
+#define	VLEV_095		0x0080	/* VLEV = 0.95 V (-5% - +10% Accuracy) */
+#define	VLEV_100		0x0090	/* VLEV = 1.00 V (-5% - +10% Accuracy) */
+#define	VLEV_105		0x00A0	/* VLEV = 1.05 V (-5% - +10% Accuracy) */
+#define	VLEV_110		0x00B0	/* VLEV = 1.10 V (-5% - +10% Accuracy) */
+#define	VLEV_115		0x00C0	/* VLEV = 1.15 V (-5% - +10% Accuracy) */
+#define	VLEV_120		0x00D0	/* VLEV = 1.20 V (-5% - +10% Accuracy) */
+#define	VLEV_125		0x00E0	/* VLEV = 1.25 V (-5% - +10% Accuracy) */
+#define	VLEV_130		0x00F0	/* VLEV = 1.30 V (-5% - +10% Accuracy) */
+
+#define	WAKE			0x0100	/* Enable RTC/Reset Wakeup From Hibernate */
+#define	SCKELOW			0x8000	/* Do Not Drive SCKE High During Reset After Hibernate */
+
 /* PLL_DIV Masks */
 #define SCLK_DIV(x)  (x)	/* SCLK = VCO / x */
 
+#define CSEL			0x30		/* Core Select */
+#define SSEL			0xf		/* System Select */
 #define CCLK_DIV1              0x00000000	/* CCLK = VCO / 1 */
 #define CCLK_DIV2              0x00000010	/* CCLK = VCO / 2 */
 #define CCLK_DIV4              0x00000020	/* CCLK = VCO / 4 */

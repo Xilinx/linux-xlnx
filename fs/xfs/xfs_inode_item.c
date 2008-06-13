@@ -40,6 +40,7 @@
 #include "xfs_btree.h"
 #include "xfs_ialloc.h"
 #include "xfs_rw.h"
+#include "xfs_error.h"
 
 
 kmem_zone_t	*xfs_ili_zone;		/* inode log item zone */
@@ -546,7 +547,7 @@ STATIC void
 xfs_inode_item_pin(
 	xfs_inode_log_item_t	*iip)
 {
-	ASSERT(ismrlocked(&(iip->ili_inode->i_lock), MR_UPDATE));
+	ASSERT(xfs_isilocked(iip->ili_inode, XFS_ILOCK_EXCL));
 	xfs_ipin(iip->ili_inode);
 }
 
@@ -663,13 +664,13 @@ xfs_inode_item_unlock(
 
 	ASSERT(iip != NULL);
 	ASSERT(iip->ili_inode->i_itemp != NULL);
-	ASSERT(ismrlocked(&(iip->ili_inode->i_lock), MR_UPDATE));
+	ASSERT(xfs_isilocked(iip->ili_inode, XFS_ILOCK_EXCL));
 	ASSERT((!(iip->ili_inode->i_itemp->ili_flags &
 		  XFS_ILI_IOLOCKED_EXCL)) ||
-	       ismrlocked(&(iip->ili_inode->i_iolock), MR_UPDATE));
+	       xfs_isilocked(iip->ili_inode, XFS_IOLOCK_EXCL));
 	ASSERT((!(iip->ili_inode->i_itemp->ili_flags &
 		  XFS_ILI_IOLOCKED_SHARED)) ||
-	       ismrlocked(&(iip->ili_inode->i_iolock), MR_ACCESS));
+	       xfs_isilocked(iip->ili_inode, XFS_IOLOCK_SHARED));
 	/*
 	 * Clear the transaction pointer in the inode.
 	 */
@@ -768,7 +769,7 @@ xfs_inode_item_pushbuf(
 
 	ip = iip->ili_inode;
 
-	ASSERT(ismrlocked(&(ip->i_lock), MR_ACCESS));
+	ASSERT(xfs_isilocked(ip, XFS_ILOCK_SHARED));
 
 	/*
 	 * The ili_pushbuf_flag keeps others from
@@ -813,7 +814,12 @@ xfs_inode_item_pushbuf(
 					      XFS_LOG_FORCE);
 			}
 			if (dopush) {
-				xfs_bawrite(mp, bp);
+				int	error;
+				error = xfs_bawrite(mp, bp);
+				if (error)
+					xfs_fs_cmn_err(CE_WARN, mp,
+		"xfs_inode_item_pushbuf: pushbuf error %d on iip %p, bp %p",
+							error, iip, bp);
 			} else {
 				xfs_buf_relse(bp);
 			}
@@ -851,7 +857,7 @@ xfs_inode_item_push(
 
 	ip = iip->ili_inode;
 
-	ASSERT(ismrlocked(&(ip->i_lock), MR_ACCESS));
+	ASSERT(xfs_isilocked(ip, XFS_ILOCK_SHARED));
 	ASSERT(issemalocked(&(ip->i_flock)));
 	/*
 	 * Since we were able to lock the inode's flush lock and

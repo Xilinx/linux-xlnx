@@ -20,10 +20,6 @@ menuconfig RTC_CLASS
 
 if RTC_CLASS
 
-if GEN_RTC || RTC
-comment "Conflicting RTC option has been selected, check GEN_RTC and RTC"
-endif
-
 config RTC_HCTOSYS
 	bool "Set system time from RTC on startup and resume"
 	depends on RTC_CLASS = y
@@ -260,6 +256,17 @@ config RTC_DRV_S35390A
 	  This driver can also be built as a module. If so the module
 	  will be called rtc-s35390a.
 
+config RTC_DRV_FM3130
+	tristate "Ramtron FM3130"
+	help
+	  If you say Y here you will get support for the
+	  Ramtron FM3130 RTC chips.
+	  Ramtron FM3130 is a chip with two separate devices inside,
+	  RTC clock and FRAM. This driver provides only RTC functionality.
+
+	  This driver can also be built as a module. If so the module
+	  will be called rtc-fm3130.
+
 endif # I2C
 
 comment "SPI RTC drivers"
@@ -304,6 +311,7 @@ comment "Platform RTC drivers"
 config RTC_DRV_CMOS
 	tristate "PC-style 'CMOS'"
 	depends on X86 || ALPHA || ARM || M32R || ATARI || PPC || MIPS
+	default y if X86
 	help
 	  Say "yes" here to get direct support for the real time clock
 	  found in every PC or ACPI-based system, and some other boards.
@@ -536,5 +544,13 @@ config RTC_DRV_RS5C313
 	depends on SH_LANDISK
 	help
 	  If you say yes here you get support for the Ricoh RS5C313 RTC chips.
+
+config RTC_DRV_PPC
+       tristate "PowerPC machine dependent RTC support"
+       depends on PPC_MERGE
+       help
+	 The PowerPC kernel has machine-specific functions for accessing
+	 the RTC. This exposes that functionality through the generic RTC
+	 class.
 
 endif # RTC_CLASS

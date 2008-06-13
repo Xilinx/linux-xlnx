@@ -42,11 +42,8 @@
 #include <asm/s390_ext.h>
 #include <asm/lowcore.h>
 #include <asm/debug.h>
+#include "entry.h"
 
-/* Called from entry.S only */
-extern void handle_per_exception(struct pt_regs *regs);
-
-typedef void pgm_check_handler_t(struct pt_regs *, long);
 pgm_check_handler_t *pgm_check_table[128];
 
 #ifdef CONFIG_SYSCTL
@@ -59,7 +56,6 @@ int sysctl_userprocess_debug = 0;
 
 extern pgm_check_handler_t do_protection_exception;
 extern pgm_check_handler_t do_dat_exception;
-extern pgm_check_handler_t do_monitor_call;
 extern pgm_check_handler_t do_asce_exception;
 
 #define stack_pointer ({ void **sp; asm("la %0,0(15)" : "=&d" (sp)); sp; })
@@ -117,7 +113,7 @@ __show_trace(unsigned long sp, unsigned long low, unsigned long high)
 	}
 }
 
-void show_trace(struct task_struct *task, unsigned long *stack)
+static void show_trace(struct task_struct *task, unsigned long *stack)
 {
 	register unsigned long __r15 asm ("15");
 	unsigned long sp;
@@ -138,7 +134,6 @@ void show_trace(struct task_struct *task, unsigned long *stack)
 	else
 		__show_trace(sp, S390_lowcore.thread_info,
 			     S390_lowcore.thread_info + THREAD_SIZE);
-	printk("\n");
 	if (!task)
 		task = current;
 	debug_show_held_locks(task);
@@ -164,6 +159,15 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 	}
 	printk("\n");
 	show_trace(task, sp);
+}
+
+static void show_last_breaking_event(struct pt_regs *regs)
+{
+#ifdef CONFIG_64BIT
+	printk("Last Breaking-Event-Address:\n");
+	printk(" [<%016lx>] ", regs->args[0] & PSW_ADDR_INSN);
+	print_symbol("%s\n", regs->args[0] & PSW_ADDR_INSN);
+#endif
 }
 
 /*
@@ -218,6 +222,24 @@ void show_registers(struct pt_regs *regs)
 
 	show_code(regs);
 }	
+
+void show_regs(struct pt_regs *regs)
+{
+	print_modules();
+	printk("CPU: %d %s %s %.*s\n",
+	       task_thread_info(current)->cpu, print_tainted(),
+	       init_utsname()->release,
+	       (int)strcspn(init_utsname()->version, " "),
+	       init_utsname()->version);
+	printk("Process %s (pid: %d, task: %p, ksp: %p)\n",
+	       current->comm, current->pid, current,
+	       (void *) current->thread.ksp);
+	show_registers(regs);
+	/* Show stack backtrace if pt_regs is from kernel mode */
+	if (!(regs->psw.mask & PSW_MASK_PSTATE))
+		show_trace(NULL, (unsigned long *) regs->gprs[15]);
+	show_last_breaking_event(regs);
+}
 
 /* This is called from fs/proc/array.c */
 void task_show_regs(struct seq_file *m, struct task_struct *task)
@@ -739,6 +761,5 @@ void __init trap_init(void)
         pgm_check_table[0x15] = &operand_exception;
         pgm_check_table[0x1C] = &space_switch_exception;
         pgm_check_table[0x1D] = &hfp_sqrt_exception;
-	pgm_check_table[0x40] = &do_monitor_call;
 	pfault_irq_init();
 }

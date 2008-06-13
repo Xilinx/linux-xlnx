@@ -1782,7 +1782,7 @@ static int sctp_process_inv_paramlength(const struct sctp_association *asoc,
 					const struct sctp_chunk *chunk,
 					struct sctp_chunk **errp)
 {
-	char		error[] = "The following parameter had invalid length:";
+	static const char error[] = "The following parameter had invalid length:";
 	size_t		payload_len = WORD_ROUND(sizeof(error)) +
 						sizeof(sctp_paramhdr_t);
 
@@ -2269,8 +2269,8 @@ int sctp_process_init(struct sctp_association *asoc, sctp_cid_t cid,
 	 * high (for example, implementations MAY use the size of the receiver
 	 * advertised window).
 	 */
-	list_for_each(pos, &asoc->peer.transport_addr_list) {
-		transport = list_entry(pos, struct sctp_transport, transports);
+	list_for_each_entry(transport, &asoc->peer.transport_addr_list,
+			transports) {
 		transport->ssthresh = asoc->peer.i.a_rwnd;
 	}
 
@@ -2418,7 +2418,8 @@ static int sctp_process_param(struct sctp_association *asoc,
 				break;
 
 			case SCTP_PARAM_IPV6_ADDRESS:
-				asoc->peer.ipv6_address = 1;
+				if (PF_INET6 == asoc->base.sk->sk_family)
+					asoc->peer.ipv6_address = 1;
 				break;
 
 			case SCTP_PARAM_HOST_NAME_ADDRESS:
@@ -2829,6 +2830,19 @@ static __be16 sctp_process_asconf_param(struct sctp_association *asoc,
 	addr_param = (union sctp_addr_param *)
 			((void *)asconf_param + sizeof(sctp_addip_param_t));
 
+	switch (addr_param->v4.param_hdr.type) {
+	case SCTP_PARAM_IPV6_ADDRESS:
+		if (!asoc->peer.ipv6_address)
+			return SCTP_ERROR_INV_PARAM;
+		break;
+	case SCTP_PARAM_IPV4_ADDRESS:
+		if (!asoc->peer.ipv4_address)
+			return SCTP_ERROR_INV_PARAM;
+		break;
+	default:
+		return SCTP_ERROR_INV_PARAM;
+	}
+
 	af = sctp_get_af_specific(param_type2af(addr_param->v4.param_hdr.type));
 	if (unlikely(!af))
 		return SCTP_ERROR_INV_PARAM;
@@ -3066,7 +3080,6 @@ static int sctp_asconf_param_success(struct sctp_association *asoc,
 	union sctp_addr	addr;
 	struct sctp_bind_addr *bp = &asoc->base.bind_addr;
 	union sctp_addr_param *addr_param;
-	struct list_head *pos;
 	struct sctp_transport *transport;
 	struct sctp_sockaddr_entry *saddr;
 	int retval = 0;
@@ -3094,9 +3107,8 @@ static int sctp_asconf_param_success(struct sctp_association *asoc,
 		local_bh_disable();
 		retval = sctp_del_bind_addr(bp, &addr);
 		local_bh_enable();
-		list_for_each(pos, &asoc->peer.transport_addr_list) {
-			transport = list_entry(pos, struct sctp_transport,
-						 transports);
+		list_for_each_entry(transport, &asoc->peer.transport_addr_list,
+				transports) {
 			dst_release(transport->dst);
 			sctp_transport_route(transport, NULL,
 					     sctp_sk(asoc->base.sk));

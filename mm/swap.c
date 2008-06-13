@@ -132,34 +132,21 @@ static void pagevec_move_tail(struct pagevec *pvec)
  * Writeback is about to end against a page which has been marked for immediate
  * reclaim.  If it still appears to be reclaimable, move it to the tail of the
  * inactive list.
- *
- * Returns zero if it cleared PG_writeback.
  */
-int rotate_reclaimable_page(struct page *page)
+void  rotate_reclaimable_page(struct page *page)
 {
-	struct pagevec *pvec;
-	unsigned long flags;
+	if (!PageLocked(page) && !PageDirty(page) && !PageActive(page) &&
+	    PageLRU(page)) {
+		struct pagevec *pvec;
+		unsigned long flags;
 
-	if (PageLocked(page))
-		return 1;
-	if (PageDirty(page))
-		return 1;
-	if (PageActive(page))
-		return 1;
-	if (!PageLRU(page))
-		return 1;
-
-	page_cache_get(page);
-	local_irq_save(flags);
-	pvec = &__get_cpu_var(lru_rotate_pvecs);
-	if (!pagevec_add(pvec, page))
-		pagevec_move_tail(pvec);
-	local_irq_restore(flags);
-
-	if (!test_clear_page_writeback(page))
-		BUG();
-
-	return 0;
+		page_cache_get(page);
+		local_irq_save(flags);
+		pvec = &__get_cpu_var(lru_rotate_pvecs);
+		if (!pagevec_add(pvec, page))
+			pagevec_move_tail(pvec);
+		local_irq_restore(flags);
+	}
 }
 
 /*
@@ -516,7 +503,7 @@ void vm_acct_memory(long pages)
 	local = &__get_cpu_var(committed_space);
 	*local += pages;
 	if (*local > ACCT_THRESHOLD || *local < -ACCT_THRESHOLD) {
-		atomic_add(*local, &vm_committed_space);
+		atomic_long_add(*local, &vm_committed_space);
 		*local = 0;
 	}
 	preempt_enable();
@@ -533,7 +520,7 @@ static int cpu_swap_callback(struct notifier_block *nfb,
 
 	committed = &per_cpu(committed_space, (long)hcpu);
 	if (action == CPU_DEAD || action == CPU_DEAD_FROZEN) {
-		atomic_add(*committed, &vm_committed_space);
+		atomic_long_add(*committed, &vm_committed_space);
 		*committed = 0;
 		drain_cpu_pagevecs((long)hcpu);
 	}

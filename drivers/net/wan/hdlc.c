@@ -43,8 +43,7 @@ static const char* version = "HDLC support module revision 1.22";
 
 #undef DEBUG_LINK
 
-static struct hdlc_proto *first_proto = NULL;
-
+static struct hdlc_proto *first_proto;
 
 static int hdlc_change_mtu(struct net_device *dev, int new_mtu)
 {
@@ -68,7 +67,7 @@ static int hdlc_rcv(struct sk_buff *skb, struct net_device *dev,
 {
 	struct hdlc_device *hdlc = dev_to_hdlc(dev);
 
-	if (dev->nd_net != &init_net) {
+	if (dev_net(dev) != &init_net) {
 		kfree_skb(skb);
 		return 0;
 	}
@@ -105,7 +104,7 @@ static int hdlc_device_event(struct notifier_block *this, unsigned long event,
 	unsigned long flags;
 	int on;
  
-	if (dev->nd_net != &init_net)
+	if (dev_net(dev) != &init_net)
 		return NOTIFY_DONE;
 
 	if (dev->get_stats != hdlc_get_stats)
@@ -314,21 +313,25 @@ void detach_hdlc_protocol(struct net_device *dev)
 
 void register_hdlc_protocol(struct hdlc_proto *proto)
 {
+	rtnl_lock();
 	proto->next = first_proto;
 	first_proto = proto;
+	rtnl_unlock();
 }
 
 
 void unregister_hdlc_protocol(struct hdlc_proto *proto)
 {
-	struct hdlc_proto **p = &first_proto;
-	while (*p) {
-		if (*p == proto) {
-			*p = proto->next;
-			return;
-		}
+	struct hdlc_proto **p;
+
+	rtnl_lock();
+	p = &first_proto;
+	while (*p != proto) {
+		BUG_ON(!*p);
 		p = &((*p)->next);
 	}
+	*p = proto->next;
+	rtnl_unlock();
 }
 
 

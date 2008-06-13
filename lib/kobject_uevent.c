@@ -15,11 +15,13 @@
  */
 
 #include <linux/spinlock.h>
+#include <linux/string.h>
+#include <linux/kobject.h>
+#include <linux/module.h>
+
 #include <linux/socket.h>
 #include <linux/skbuff.h>
 #include <linux/netlink.h>
-#include <linux/string.h>
-#include <linux/kobject.h>
 #include <net/sock.h>
 
 
@@ -99,7 +101,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 	int retval = 0;
 
 	pr_debug("kobject: '%s' (%p): %s\n",
-		 kobject_name(kobj), kobj, __FUNCTION__);
+		 kobject_name(kobj), kobj, __func__);
 
 	/* search the kset we belong to */
 	top_kobj = kobj;
@@ -109,7 +111,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 	if (!top_kobj->kset) {
 		pr_debug("kobject: '%s' (%p): %s: attempted to send uevent "
 			 "without kset!\n", kobject_name(kobj), kobj,
-			 __FUNCTION__);
+			 __func__);
 		return -EINVAL;
 	}
 
@@ -121,7 +123,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		if (!uevent_ops->filter(kset, kobj)) {
 			pr_debug("kobject: '%s' (%p): %s: filter function "
 				 "caused the event to drop!\n",
-				 kobject_name(kobj), kobj, __FUNCTION__);
+				 kobject_name(kobj), kobj, __func__);
 			return 0;
 		}
 
@@ -133,7 +135,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 	if (!subsystem) {
 		pr_debug("kobject: '%s' (%p): %s: unset subsystem caused the "
 			 "event to drop!\n", kobject_name(kobj), kobj,
-			 __FUNCTION__);
+			 __func__);
 		return 0;
 	}
 
@@ -175,7 +177,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		if (retval) {
 			pr_debug("kobject: '%s' (%p): %s: uevent() returned "
 				 "%d\n", kobject_name(kobj), kobj,
-				 __FUNCTION__, retval);
+				 __func__, retval);
 			goto exit;
 		}
 	}

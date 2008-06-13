@@ -33,6 +33,8 @@
 #include <linux/serial_8250.h>
 #include <linux/bootmem.h>
 #include <linux/pci.h>
+#include <linux/lockdep.h>
+#include <linux/lmb.h>
 #include <asm/io.h>
 #include <asm/kdump.h>
 #include <asm/prom.h>
@@ -55,7 +57,6 @@
 #include <asm/cache.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
-#include <asm/lmb.h>
 #include <asm/firmware.h>
 #include <asm/xmon.h>
 #include <asm/udbg.h>
@@ -169,11 +170,21 @@ void __init setup_paca(int cpu)
 
 void __init early_setup(unsigned long dt_ptr)
 {
+	/* -------- printk is _NOT_ safe to use here ! ------- */
+
+	/* Fill in any unititialised pacas */
+	initialise_pacas();
+
 	/* Identify CPU type */
 	identify_cpu(0, mfspr(SPRN_PVR));
 
 	/* Assume we're on cpu 0 for now. Don't write to the paca yet! */
 	setup_paca(0);
+
+	/* Initialize lockdep early or else spinlocks will blow */
+	lockdep_init();
+
+	/* -------- printk is now safe to use ------- */
 
 	/* Enable early debugging if any specified (see udbg.h) */
 	udbg_early_init();
@@ -431,7 +442,7 @@ void __init setup_system(void)
 		printk("htab_address                  = 0x%p\n", htab_address);
 	printk("htab_hash_mask                = 0x%lx\n", htab_hash_mask);
 #if PHYSICAL_START > 0
-	printk("physical_start                = 0x%x\n", PHYSICAL_START);
+	printk("physical_start                = 0x%lx\n", PHYSICAL_START);
 #endif
 	printk("-----------------------------------------------------\n");
 
@@ -480,9 +491,12 @@ static void __init emergency_stack_init(void)
 	 */
 	limit = min(0x10000000UL, lmb.rmo_size);
 
-	for_each_possible_cpu(i)
-		paca[i].emergency_sp =
-		__va(lmb_alloc_base(HW_PAGE_SIZE, 128, limit)) + HW_PAGE_SIZE;
+	for_each_possible_cpu(i) {
+		unsigned long sp;
+		sp  = lmb_alloc_base(THREAD_SIZE, THREAD_SIZE, limit);
+		sp += THREAD_SIZE;
+		paca[i].emergency_sp = __va(sp);
+	}
 }
 
 /*
@@ -510,7 +524,7 @@ void __init setup_arch(char **cmdline_p)
 	if (ppc_md.panic)
 		setup_panic();
 
-	init_mm.start_code = PAGE_OFFSET;
+	init_mm.start_code = (unsigned long)_stext;
 	init_mm.end_code = (unsigned long) _etext;
 	init_mm.end_data = (unsigned long) _edata;
 	init_mm.brk = klimit;

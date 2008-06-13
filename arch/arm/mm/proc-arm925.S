@@ -332,7 +332,7 @@ ENTRY(arm925_dma_flush_range)
 #ifndef CONFIG_CPU_DCACHE_WRITETHROUGH
 	mcr	p15, 0, r0, c7, c14, 1		@ clean+invalidate D entry
 #else
-	mcr	p15, 0, r0, c7, c10, 1		@ clean D entry
+	mcr	p15, 0, r0, c7, c6, 1		@ invalidate D entry
 #endif
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
@@ -484,6 +484,7 @@ arm925_crval:
 	.type	arm925_processor_functions, #object
 arm925_processor_functions:
 	.word	v4t_early_abort
+	.word	pabort_noifar
 	.word	cpu_arm925_proc_init
 	.word	cpu_arm925_proc_fin
 	.word	cpu_arm925_reset

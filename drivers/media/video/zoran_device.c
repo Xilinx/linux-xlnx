@@ -31,7 +31,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/vmalloc.h>
-#include <linux/byteorder/generic.h>
 
 #include <linux/interrupt.h>
 #include <linux/proc_fs.h>
@@ -47,6 +46,7 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 
+#include <asm/byteorder.h>
 #include <asm/io.h>
 
 #include "videocodec.h"
@@ -60,7 +60,8 @@
 
 extern const struct zoran_format zoran_formats[];
 
-static int lml33dpath = 0;	/* 1 will use digital path in capture
+static int lml33dpath;		/* default = 0
+				 * 1 will use digital path in capture
 				 * mode instead of analog. It can be
 				 * used for picture adjustments using
 				 * tool like xawtv while watching image
@@ -927,11 +928,6 @@ count_reset_interrupt (struct zoran *zr)
 	return isr;
 }
 
-/* hack */
-extern void zr36016_write (struct videocodec *codec,
-			   u16                reg,
-			   u32                val);
-
 void
 jpeg_start (struct zoran *zr)
 {
@@ -987,7 +983,7 @@ void
 zr36057_enable_jpg (struct zoran          *zr,
 		    enum zoran_codec_mode  mode)
 {
-	static int zero = 0;
+	static int zero;
 	static int one = 1;
 	struct vfe_settings cap;
 	int field_size =
@@ -1324,7 +1320,7 @@ error_handler (struct zoran *zr,
 			if (i) {
 				/* Rotate stat_comm entries to make current entry first */
 				int j;
-				u32 bus_addr[BUZ_NUM_STAT_COM];
+				__le32 bus_addr[BUZ_NUM_STAT_COM];
 
 				/* Here we are copying the stat_com array, which
 				 * is already in little endian format, so
@@ -1726,7 +1722,7 @@ decoder_command (struct zoran *zr,
 		return -EIO;
 
 	if (zr->card.type == LML33 &&
-	    (cmd == DECODER_SET_NORM || DECODER_SET_INPUT)) {
+	    (cmd == DECODER_SET_NORM || cmd == DECODER_SET_INPUT)) {
 		int res;
 
 		// Bt819 needs to reset its FIFO buffer using #FRST pin and

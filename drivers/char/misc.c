@@ -232,9 +232,8 @@ int misc_register(struct miscdevice * misc)
 }
 
 /**
- *	__misc_deregister - unregister a miscellaneous device
+ *	misc_deregister - unregister a miscellaneous device
  *	@misc: device to unregister
- *	@suspended: to be set if the function is used during suspend/resume
  *
  *	Unregister a miscellaneous device that was previously
  *	successfully registered with misc_register(). Success
@@ -242,7 +241,7 @@ int misc_register(struct miscdevice * misc)
  *	indicates an error.
  */
 
-int __misc_deregister(struct miscdevice *misc, bool suspended)
+int misc_deregister(struct miscdevice *misc)
 {
 	int i = misc->minor;
 
@@ -251,11 +250,7 @@ int __misc_deregister(struct miscdevice *misc, bool suspended)
 
 	mutex_lock(&misc_mtx);
 	list_del(&misc->list);
-	if (suspended)
-		destroy_suspended_device(misc_class,
-					MKDEV(MISC_MAJOR, misc->minor));
-	else
-		device_destroy(misc_class, MKDEV(MISC_MAJOR, misc->minor));
+	device_destroy(misc_class, MKDEV(MISC_MAJOR, misc->minor));
 	if (i < DYNAMIC_MINORS && i>0) {
 		misc_minors[i>>3] &= ~(1 << (misc->minor & 7));
 	}
@@ -264,27 +259,30 @@ int __misc_deregister(struct miscdevice *misc, bool suspended)
 }
 
 EXPORT_SYMBOL(misc_register);
-EXPORT_SYMBOL(__misc_deregister);
+EXPORT_SYMBOL(misc_deregister);
 
 static int __init misc_init(void)
 {
-#ifdef CONFIG_PROC_FS
-	struct proc_dir_entry *ent;
+	int err;
 
-	ent = create_proc_entry("misc", 0, NULL);
-	if (ent)
-		ent->proc_fops = &misc_proc_fops;
+#ifdef CONFIG_PROC_FS
+	proc_create("misc", 0, NULL, &misc_proc_fops);
 #endif
 	misc_class = class_create(THIS_MODULE, "misc");
+	err = PTR_ERR(misc_class);
 	if (IS_ERR(misc_class))
-		return PTR_ERR(misc_class);
+		goto fail_remove;
 
-	if (register_chrdev(MISC_MAJOR,"misc",&misc_fops)) {
-		printk("unable to get major %d for misc devices\n",
-		       MISC_MAJOR);
-		class_destroy(misc_class);
-		return -EIO;
-	}
+	err = -EIO;
+	if (register_chrdev(MISC_MAJOR,"misc",&misc_fops))
+		goto fail_printk;
 	return 0;
+
+fail_printk:
+	printk("unable to get major %d for misc devices\n", MISC_MAJOR);
+	class_destroy(misc_class);
+fail_remove:
+	remove_proc_entry("misc", NULL);
+	return err;
 }
 subsys_initcall(misc_init);

@@ -11,7 +11,6 @@
 #include <linux/interrupt.h>
 
 #include <asm/atomic.h>
-#include <asm/semaphore.h>
 #include <asm/uaccess.h>
 
 /* Since we effect priority and affinity (both of which are visible
@@ -35,7 +34,7 @@ static int stopmachine(void *cpu)
 	int irqs_disabled = 0;
 	int prepared = 0;
 
-	set_cpus_allowed(current, cpumask_of_cpu((int)(long)cpu));
+	set_cpus_allowed_ptr(current, &cpumask_of_cpu((int)(long)cpu));
 
 	/* Ack: we are alive */
 	smp_mb(); /* Theoretically the ack = 0 might not be on this CPU yet. */
@@ -63,8 +62,7 @@ static int stopmachine(void *cpu)
 		 * help our sisters onto their CPUs. */
 		if (!prepared && !irqs_disabled)
 			yield();
-		else
-			cpu_relax();
+		cpu_relax();
 	}
 
 	/* Ack: we are exiting. */
@@ -107,8 +105,10 @@ static int stop_machine(void)
 	}
 
 	/* Wait for them all to come to life. */
-	while (atomic_read(&stopmachine_thread_ack) != stopmachine_num_threads)
+	while (atomic_read(&stopmachine_thread_ack) != stopmachine_num_threads) {
 		yield();
+		cpu_relax();
+	}
 
 	/* If some failed, kill them all. */
 	if (ret < 0) {
@@ -135,8 +135,7 @@ static void restart_machine(void)
 	preempt_enable_no_resched();
 }
 
-struct stop_machine_data
-{
+struct stop_machine_data {
 	int (*fn)(void *);
 	void *data;
 	struct completion done;

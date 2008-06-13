@@ -773,14 +773,14 @@ static int make_request(struct request_queue *q, struct bio * bio)
 	r1bio_t *r1_bio;
 	struct bio *read_bio;
 	int i, targets = 0, disks;
-	mdk_rdev_t *rdev;
-	struct bitmap *bitmap = mddev->bitmap;
+	struct bitmap *bitmap;
 	unsigned long flags;
 	struct bio_list bl;
 	struct page **behind_pages = NULL;
 	const int rw = bio_data_dir(bio);
 	const int do_sync = bio_sync(bio);
 	int do_barriers;
+	mdk_rdev_t *blocked_rdev;
 
 	/*
 	 * Register the new request and wait if the reconstruction
@@ -801,6 +801,8 @@ static int make_request(struct request_queue *q, struct bio * bio)
 	}
 
 	wait_barrier(conf);
+
+	bitmap = mddev->bitmap;
 
 	disk_stat_inc(mddev->gendisk, ios[rw]);
 	disk_stat_add(mddev->gendisk, sectors[rw], bio_sectors(bio));
@@ -862,10 +864,17 @@ static int make_request(struct request_queue *q, struct bio * bio)
 	first = 0;
 	}
 #endif
+ retry_write:
+	blocked_rdev = NULL;
 	rcu_read_lock();
 	for (i = 0;  i < disks; i++) {
-		if ((rdev=rcu_dereference(conf->mirrors[i].rdev)) != NULL &&
-		    !test_bit(Faulty, &rdev->flags)) {
+		mdk_rdev_t *rdev = rcu_dereference(conf->mirrors[i].rdev);
+		if (rdev && unlikely(test_bit(Blocked, &rdev->flags))) {
+			atomic_inc(&rdev->nr_pending);
+			blocked_rdev = rdev;
+			break;
+		}
+		if (rdev && !test_bit(Faulty, &rdev->flags)) {
 			atomic_inc(&rdev->nr_pending);
 			if (test_bit(Faulty, &rdev->flags)) {
 				rdev_dec_pending(rdev, mddev);
@@ -877,6 +886,20 @@ static int make_request(struct request_queue *q, struct bio * bio)
 			r1_bio->bios[i] = NULL;
 	}
 	rcu_read_unlock();
+
+	if (unlikely(blocked_rdev)) {
+		/* Wait for this device to become unblocked */
+		int j;
+
+		for (j = 0; j < i; j++)
+			if (r1_bio->bios[j])
+				rdev_dec_pending(conf->mirrors[j].rdev, mddev);
+
+		allow_barrier(conf);
+		md_wait_for_blocked_rdev(blocked_rdev, mddev);
+		wait_barrier(conf);
+		goto retry_write;
+	}
 
 	BUG_ON(targets == 0); /* we never fail the last device */
 
@@ -1004,12 +1027,12 @@ static void error(mddev_t *mddev, mdk_rdev_t *rdev)
 		/*
 		 * if recovery is running, make sure it aborts.
 		 */
-		set_bit(MD_RECOVERY_ERR, &mddev->recovery);
+		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
 	} else
 		set_bit(Faulty, &rdev->flags);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	printk(KERN_ALERT "raid1: Disk failure on %s, disabling device. \n"
-		"	Operation continuing on %d devices\n",
+	printk(KERN_ALERT "raid1: Disk failure on %s, disabling device.\n"
+		"raid1: Operation continuing on %d devices.\n",
 		bdevname(rdev->bdev,b), conf->raid_disks - mddev->degraded);
 }
 
@@ -1122,6 +1145,14 @@ static int raid1_remove_disk(mddev_t *mddev, int number)
 	if (rdev) {
 		if (test_bit(In_sync, &rdev->flags) ||
 		    atomic_read(&rdev->nr_pending)) {
+			err = -EBUSY;
+			goto abort;
+		}
+		/* Only remove non-faulty devices is recovery
+		 * is not possible.
+		 */
+		if (!test_bit(Faulty, &rdev->flags) &&
+		    mddev->degraded < conf->raid_disks) {
 			err = -EBUSY;
 			goto abort;
 		}
@@ -1261,6 +1292,7 @@ static void sync_request_write(mddev_t *mddev, r1bio_t *r1_bio)
 					rdev_dec_pending(conf->mirrors[i].rdev, mddev);
 				} else {
 					/* fixup the bio for reuse */
+					int size;
 					sbio->bi_vcnt = vcnt;
 					sbio->bi_size = r1_bio->sectors << 9;
 					sbio->bi_idx = 0;
@@ -1274,10 +1306,20 @@ static void sync_request_write(mddev_t *mddev, r1bio_t *r1_bio)
 					sbio->bi_sector = r1_bio->sector +
 						conf->mirrors[i].rdev->data_offset;
 					sbio->bi_bdev = conf->mirrors[i].rdev->bdev;
-					for (j = 0; j < vcnt ; j++)
-						memcpy(page_address(sbio->bi_io_vec[j].bv_page),
+					size = sbio->bi_size;
+					for (j = 0; j < vcnt ; j++) {
+						struct bio_vec *bi;
+						bi = &sbio->bi_io_vec[j];
+						bi->bv_offset = 0;
+						if (size > PAGE_SIZE)
+							bi->bv_len = PAGE_SIZE;
+						else
+							bi->bv_len = size;
+						size -= PAGE_SIZE;
+						memcpy(page_address(bi->bv_page),
 						       page_address(pbio->bi_io_vec[j].bv_page),
 						       PAGE_SIZE);
+					}
 
 				}
 			}
@@ -1914,6 +1956,9 @@ static int run(mddev_t *mddev)
 	if (!conf->r1bio_pool)
 		goto out_no_mem;
 
+	spin_lock_init(&conf->device_lock);
+	mddev->queue->queue_lock = &conf->device_lock;
+
 	rdev_for_each(rdev, tmp, mddev) {
 		disk_idx = rdev->raid_disk;
 		if (disk_idx >= mddev->raid_disks
@@ -1937,7 +1982,6 @@ static int run(mddev_t *mddev)
 	}
 	conf->raid_disks = mddev->raid_disks;
 	conf->mddev = mddev;
-	spin_lock_init(&conf->device_lock);
 	INIT_LIST_HEAD(&conf->retry_list);
 
 	spin_lock_init(&conf->resync_lock);

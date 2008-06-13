@@ -467,6 +467,25 @@ static void parse_elf_finish(struct elf_info *info)
 	release_file(info->hdr, info->size);
 }
 
+static int ignore_undef_symbol(struct elf_info *info, const char *symname)
+{
+	/* ignore __this_module, it will be resolved shortly */
+	if (strcmp(symname, MODULE_SYMBOL_PREFIX "__this_module") == 0)
+		return 1;
+	/* ignore global offset table */
+	if (strcmp(symname, "_GLOBAL_OFFSET_TABLE_") == 0)
+		return 1;
+	if (info->hdr->e_machine == EM_PPC)
+		/* Special register function linked on all modules during final link of .ko */
+		if (strncmp(symname, "_restgpr_", sizeof("_restgpr_") - 1) == 0 ||
+		    strncmp(symname, "_savegpr_", sizeof("_savegpr_") - 1) == 0 ||
+		    strncmp(symname, "_rest32gpr_", sizeof("_rest32gpr_") - 1) == 0 ||
+		    strncmp(symname, "_save32gpr_", sizeof("_save32gpr_") - 1) == 0)
+			return 1;
+	/* Do not ignore this symbol */
+	return 0;
+}
+
 #define CRC_PFX     MODULE_SYMBOL_PREFIX "__crc_"
 #define KSYMTAB_PFX MODULE_SYMBOL_PREFIX "__ksymtab_"
 
@@ -493,11 +512,7 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 		if (ELF_ST_BIND(sym->st_info) != STB_GLOBAL &&
 		    ELF_ST_BIND(sym->st_info) != STB_WEAK)
 			break;
-		/* ignore global offset table */
-		if (strcmp(symname, "_GLOBAL_OFFSET_TABLE_") == 0)
-			break;
-		/* ignore __this_module, it will be resolved shortly */
-		if (strcmp(symname, MODULE_SYMBOL_PREFIX "__this_module") == 0)
+		if (ignore_undef_symbol(info, symname))
 			break;
 /* cope with newer glibc (2.3.4 or higher) STT_ definition in elf.h */
 #if defined(STT_REGISTER) || defined(STT_SPARC_REGISTER)
@@ -721,7 +736,7 @@ static int check_section(const char *modname, const char *sec)
 		/* consume all digits */
 		while (*e && e != sec && isdigit(*e))
 			e--;
-		if (*e == '.') {
+		if (*e == '.' && !strstr(sec, ".linkonce")) {
 			warn("%s (%s): unexpected section name.\n"
 			     "The (.[number]+) following section name are "
 			     "ld generated and not expected.\n"
@@ -1552,6 +1567,10 @@ static void read_symbols(char *modname)
 	}
 
 	license = get_modinfo(info.modinfo, info.modinfo_len, "license");
+	if (info.modinfo && !license && !is_vmlinux(modname))
+		warn("modpost: missing MODULE_LICENSE() in %s\n"
+		     "see include/linux/module.h for "
+		     "more information\n", modname);
 	while (license) {
 		if (license_is_gpl_compatible(license))
 			mod->gpl_compatible = 1;
@@ -2015,6 +2034,11 @@ static void write_markers(const char *fname)
 	write_if_changed(&buf, fname);
 }
 
+struct ext_sym_list {
+	struct ext_sym_list *next;
+	const char *file;
+};
+
 int main(int argc, char **argv)
 {
 	struct module *mod;
@@ -2025,8 +2049,10 @@ int main(int argc, char **argv)
 	char *markers_write = NULL;
 	int opt;
 	int err;
+	struct ext_sym_list *extsym_iter;
+	struct ext_sym_list *extsym_start = NULL;
 
-	while ((opt = getopt(argc, argv, "i:I:cmsSo:awM:K:")) != -1) {
+	while ((opt = getopt(argc, argv, "i:I:e:cmsSo:awM:K:")) != -1) {
 		switch (opt) {
 		case 'i':
 			kernel_read = optarg;
@@ -2037,6 +2063,14 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 			cross_build = 1;
+			break;
+		case 'e':
+			external_module = 1;
+			extsym_iter =
+			   NOFAIL(malloc(sizeof(*extsym_iter)));
+			extsym_iter->next = extsym_start;
+			extsym_iter->file = optarg;
+			extsym_start = extsym_iter;
 			break;
 		case 'm':
 			modversions = 1;
@@ -2071,6 +2105,12 @@ int main(int argc, char **argv)
 		read_dump(kernel_read, 1);
 	if (module_read)
 		read_dump(module_read, 0);
+	while (extsym_start) {
+		read_dump(extsym_start->file, 0);
+		extsym_iter = extsym_start->next;
+		free(extsym_start);
+		extsym_start = extsym_iter;
+	}
 
 	while (optind < argc)
 		read_symbols(argv[optind++]);

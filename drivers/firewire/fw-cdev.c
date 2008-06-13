@@ -113,6 +113,11 @@ static int fw_device_op_open(struct inode *inode, struct file *file)
 	if (device == NULL)
 		return -ENODEV;
 
+	if (fw_device_is_shutdown(device)) {
+		fw_device_put(device);
+		return -ENODEV;
+	}
+
 	client = kzalloc(sizeof(*client), GFP_KERNEL);
 	if (client == NULL) {
 		fw_device_put(device);
@@ -269,20 +274,27 @@ static int ioctl_get_info(struct client *client, void *buffer)
 {
 	struct fw_cdev_get_info *get_info = buffer;
 	struct fw_cdev_event_bus_reset bus_reset;
+	unsigned long ret = 0;
 
 	client->version = get_info->version;
 	get_info->version = FW_CDEV_VERSION;
+
+	down_read(&fw_device_rwsem);
 
 	if (get_info->rom != 0) {
 		void __user *uptr = u64_to_uptr(get_info->rom);
 		size_t want = get_info->rom_length;
 		size_t have = client->device->config_rom_length * 4;
 
-		if (copy_to_user(uptr, client->device->config_rom,
-				 min(want, have)))
-			return -EFAULT;
+		ret = copy_to_user(uptr, client->device->config_rom,
+				   min(want, have));
 	}
 	get_info->rom_length = client->device->config_rom_length * 4;
+
+	up_read(&fw_device_rwsem);
+
+	if (ret != 0)
+		return -EFAULT;
 
 	client->bus_reset_closure = get_info->bus_reset_closure;
 	if (get_info->bus_reset != 0) {
@@ -894,6 +906,9 @@ fw_device_op_ioctl(struct file *file,
 {
 	struct client *client = file->private_data;
 
+	if (fw_device_is_shutdown(client->device))
+		return -ENODEV;
+
 	return dispatch_ioctl(client, cmd, (void __user *) arg);
 }
 
@@ -903,6 +918,9 @@ fw_device_op_compat_ioctl(struct file *file,
 			  unsigned int cmd, unsigned long arg)
 {
 	struct client *client = file->private_data;
+
+	if (fw_device_is_shutdown(client->device))
+		return -ENODEV;
 
 	return dispatch_ioctl(client, cmd, compat_ptr(arg));
 }
@@ -914,6 +932,9 @@ static int fw_device_op_mmap(struct file *file, struct vm_area_struct *vma)
 	enum dma_data_direction direction;
 	unsigned long size;
 	int page_count, retval;
+
+	if (fw_device_is_shutdown(client->device))
+		return -ENODEV;
 
 	/* FIXME: We could support multiple buffers, but we don't. */
 	if (client->buffer.pages != NULL)

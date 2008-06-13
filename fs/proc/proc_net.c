@@ -44,7 +44,9 @@ int seq_open_net(struct inode *ino, struct file *f,
 		put_net(net);
 		return -ENOMEM;
 	}
+#ifdef CONFIG_NET_NS
 	p->net = net;
+#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(seq_open_net);
@@ -52,12 +54,10 @@ EXPORT_SYMBOL_GPL(seq_open_net);
 int seq_release_net(struct inode *ino, struct file *f)
 {
 	struct seq_file *seq;
-	struct seq_net_private *p;
 
 	seq = f->private_data;
-	p = seq->private;
 
-	put_net(p->net);
+	put_net(seq_file_net(seq));
 	seq_release_private(ino, f);
 	return 0;
 }
@@ -158,17 +158,6 @@ struct net *get_proc_net(const struct inode *inode)
 	return maybe_get_net(PDE_NET(PDE(inode)));
 }
 EXPORT_SYMBOL_GPL(get_proc_net);
-
-struct proc_dir_entry *proc_net_mkdir(struct net *net, const char *name,
-		struct proc_dir_entry *parent)
-{
-	struct proc_dir_entry *pde;
-	pde = proc_mkdir_mode(name, S_IRUGO | S_IXUGO, parent);
-	if (pde != NULL)
-		pde->data = net;
-	return pde;
-}
-EXPORT_SYMBOL_GPL(proc_net_mkdir);
 
 static __net_init int proc_net_ns_init(struct net *net)
 {

@@ -10,15 +10,13 @@
 #include <linux/reboot.h>
 #include <linux/delay.h>
 #include <linux/initrd.h>
-#if defined(CONFIG_IDE) || defined(CONFIG_IDE_MODULE)
-#include <linux/ide.h>
-#endif
 #include <linux/tty.h>
 #include <linux/bootmem.h>
 #include <linux/seq_file.h>
 #include <linux/root_dev.h>
 #include <linux/cpu.h>
 #include <linux/console.h>
+#include <linux/lmb.h>
 
 #include <asm/io.h>
 #include <asm/prom.h>
@@ -50,11 +48,6 @@
 #endif
 
 extern void bootx_init(unsigned long r4, unsigned long phys);
-
-#if defined(CONFIG_BLK_DEV_IDE) || defined(CONFIG_BLK_DEV_IDE_MODULE)
-struct ide_machdep_calls ppc_ide_md;
-EXPORT_SYMBOL(ppc_ide_md);
-#endif
 
 int boot_cpuid;
 EXPORT_SYMBOL_GPL(boot_cpuid);
@@ -172,6 +165,18 @@ int __init ppc_setup_l2cr(char *str)
 }
 __setup("l2cr=", ppc_setup_l2cr);
 
+/* Checks "l3cr=xxxx" command-line option */
+int __init ppc_setup_l3cr(char *str)
+{
+	if (cpu_has_feature(CPU_FTR_L3CR)) {
+		unsigned long val = simple_strtoul(str, NULL, 0);
+		printk(KERN_INFO "l3cr set to %lx\n", val);
+		_set_L3CR(val);		/* and enable it */
+	}
+	return 1;
+}
+__setup("l3cr=", ppc_setup_l3cr);
+
 #ifdef CONFIG_GENERIC_NVRAM
 
 /* Generic nvram hooks used by drivers/char/gen_nvram.c */
@@ -225,6 +230,24 @@ int __init ppc_init(void)
 
 arch_initcall(ppc_init);
 
+#ifdef CONFIG_IRQSTACKS
+static void __init irqstack_early_init(void)
+{
+	unsigned int i;
+
+	/* interrupt stacks must be in lowmem, we get that for free on ppc32
+	 * as the lmb is limited to lowmem by LMB_REAL_LIMIT */
+	for_each_possible_cpu(i) {
+		softirq_ctx[i] = (struct thread_info *)
+			__va(lmb_alloc(THREAD_SIZE, THREAD_SIZE));
+		hardirq_ctx[i] = (struct thread_info *)
+			__va(lmb_alloc(THREAD_SIZE, THREAD_SIZE));
+	}
+}
+#else
+#define irqstack_early_init()
+#endif
+
 /* Warning, IO base is not yet inited */
 void __init setup_arch(char **cmdline_p)
 {
@@ -277,10 +300,12 @@ void __init setup_arch(char **cmdline_p)
 	if (ppc_md.panic)
 		setup_panic();
 
-	init_mm.start_code = PAGE_OFFSET;
+	init_mm.start_code = (unsigned long)_stext;
 	init_mm.end_code = (unsigned long) _etext;
 	init_mm.end_data = (unsigned long) _edata;
 	init_mm.brk = klimit;
+
+	irqstack_early_init();
 
 	/* set up the bootmem stuff with available memory */
 	do_init_bootmem();

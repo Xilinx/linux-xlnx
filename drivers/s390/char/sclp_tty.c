@@ -332,7 +332,7 @@ sclp_tty_write_string(const unsigned char *str, int count)
 		if (sclp_ttybuf == NULL) {
 			while (list_empty(&sclp_tty_pages)) {
 				spin_unlock_irqrestore(&sclp_tty_lock, flags);
-				if (in_atomic())
+				if (in_interrupt())
 					sclp_sync_wait();
 				else
 					wait_event(sclp_tty_waitq,
@@ -412,14 +412,14 @@ sclp_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
  * - including previous characters from sclp_tty_put_char() and strings from
  * sclp_write() without final '\n' - will be written.
  */
-static void
+static int
 sclp_tty_put_char(struct tty_struct *tty, unsigned char ch)
 {
 	sclp_tty_chars[sclp_tty_chars_count++] = ch;
 	if (ch == '\n' || sclp_tty_chars_count >= SCLP_TTY_BUF_SIZE) {
 		sclp_tty_write_string(sclp_tty_chars, sclp_tty_chars_count);
 		sclp_tty_chars_count = 0;
-	}
+	} return 1;
 }
 
 /*

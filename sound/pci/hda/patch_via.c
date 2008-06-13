@@ -39,7 +39,7 @@
 #include <sound/core.h>
 #include "hda_codec.h"
 #include "hda_local.h"
-
+#include "hda_patch.h"
 
 /* amp values */
 #define AMP_VAL_IDX_SHIFT	19
@@ -357,7 +357,8 @@ static int via_playback_pcm_open(struct hda_pcm_stream *hinfo,
 				 struct snd_pcm_substream *substream)
 {
 	struct via_spec *spec = codec->spec;
-	return snd_hda_multi_out_analog_open(codec, &spec->multiout, substream);
+	return snd_hda_multi_out_analog_open(codec, &spec->multiout, substream,
+					     hinfo);
 }
 
 static int via_playback_pcm_prepare(struct hda_pcm_stream *hinfo,
@@ -430,8 +431,7 @@ static int via_capture_pcm_cleanup(struct hda_pcm_stream *hinfo,
 				   struct snd_pcm_substream *substream)
 {
 	struct via_spec *spec = codec->spec;
-	snd_hda_codec_setup_stream(codec, spec->adc_nids[substream->number],
-				   0, 0, 0);
+	snd_hda_codec_cleanup_stream(codec, spec->adc_nids[substream->number]);
 	return 0;
 }
 
@@ -440,6 +440,23 @@ static struct hda_pcm_stream vt1708_pcm_analog_playback = {
 	.channels_min = 2,
 	.channels_max = 8,
 	.nid = 0x10, /* NID to query formats and rates */
+	.ops = {
+		.open = via_playback_pcm_open,
+		.prepare = via_playback_pcm_prepare,
+		.cleanup = via_playback_pcm_cleanup
+	},
+};
+
+static struct hda_pcm_stream vt1708_pcm_analog_s16_playback = {
+	.substreams = 1,
+	.channels_min = 2,
+	.channels_max = 8,
+	.nid = 0x10, /* NID to query formats and rates */
+	/* We got noisy outputs on the right channel on VT1708 when
+	 * 24bit samples are used.  Until any workaround is found,
+	 * disable the 24bit format, so far.
+	 */
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	.ops = {
 		.open = via_playback_pcm_open,
 		.prepare = via_playback_pcm_prepare,
@@ -493,6 +510,11 @@ static int via_build_controls(struct hda_codec *codec)
 						    spec->multiout.dig_out_nid);
 		if (err < 0)
 			return err;
+		err = snd_hda_create_spdif_share_sw(codec,
+						    &spec->multiout);
+		if (err < 0)
+			return err;
+		spec->multiout.share_spdif = 1;
 	}
 	if (spec->dig_in_nid) {
 		err = snd_hda_create_spdif_in_ctls(codec, spec->dig_in_nid);
@@ -523,6 +545,7 @@ static int via_build_pcms(struct hda_codec *codec)
 		codec->num_pcms++;
 		info++;
 		info->name = spec->stream_name_digital;
+		info->pcm_type = HDA_PCM_TYPE_SPDIF;
 		if (spec->multiout.dig_out_nid) {
 			info->stream[SNDRV_PCM_STREAM_PLAYBACK] =
 				*(spec->stream_digital_playback);
@@ -893,6 +916,9 @@ static int patch_vt1708(struct hda_codec *codec)
 	
 	spec->stream_name_analog = "VT1708 Analog";
 	spec->stream_analog_playback = &vt1708_pcm_analog_playback;
+	/* disable 32bit format on VT1708 */
+	if (codec->vendor_id == 0x11061708)
+		spec->stream_analog_playback = &vt1708_pcm_analog_s16_playback;
 	spec->stream_analog_capture = &vt1708_pcm_analog_capture;
 
 	spec->stream_name_digital = "VT1708 Digital";

@@ -40,7 +40,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/string.h>
-#include <asm/semaphore.h>
+#include <linux/semaphore.h>
 
 #define PREFIX "HP SDC MLC: "
 
@@ -305,6 +305,11 @@ static void hp_sdc_mlc_out(hil_mlc *mlc)
 static int __init hp_sdc_mlc_init(void)
 {
 	hil_mlc *mlc = &hp_sdc_mlc;
+
+#ifdef __mc68000__
+	if (!MACH_IS_HP300)
+		return -ENODEV;
+#endif
 
 	printk(KERN_INFO PREFIX "Registering the System Domain Controller's HIL MLC.\n");
 

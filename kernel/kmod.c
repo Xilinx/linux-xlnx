@@ -27,6 +27,7 @@
 #include <linux/mnt_namespace.h>
 #include <linux/completion.h>
 #include <linux/file.h>
+#include <linux/fdtable.h>
 #include <linux/workqueue.h>
 #include <linux/security.h>
 #include <linux/mount.h>
@@ -165,7 +166,7 @@ static int ____call_usermodehelper(void *data)
 	}
 
 	/* We can run anywhere, unlike our parent keventd(). */
-	set_cpus_allowed(current, CPU_MASK_ALL);
+	set_cpus_allowed_ptr(current, CPU_MASK_ALL_PTR);
 
 	/*
 	 * Our parent is keventd, which runs with elevated scheduling priority.

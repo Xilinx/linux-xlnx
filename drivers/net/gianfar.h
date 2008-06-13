@@ -102,7 +102,7 @@ extern const char gfar_driver_version[];
 #define DEFAULT_FIFO_TX_STARVE 0x40
 #define DEFAULT_FIFO_TX_STARVE_OFF 0x80
 #define DEFAULT_BD_STASH 1
-#define DEFAULT_STASH_LENGTH	64
+#define DEFAULT_STASH_LENGTH	96
 #define DEFAULT_STASH_INDEX	0
 
 /* The number of Exact Match registers */
@@ -124,13 +124,19 @@ extern const char gfar_driver_version[];
 
 #define DEFAULT_TX_COALESCE 1
 #define DEFAULT_TXCOUNT	16
-#define DEFAULT_TXTIME	4
+#define DEFAULT_TXTIME	21
 
+#define DEFAULT_RXTIME	21
+
+/* Non NAPI Case */
+#ifndef CONFIG_GFAR_NAPI
 #define DEFAULT_RX_COALESCE 1
 #define DEFAULT_RXCOUNT	16
-#define DEFAULT_RXTIME	4
+#else
+#define DEFAULT_RX_COALESCE 0
+#define DEFAULT_RXCOUNT	0
+#endif /* CONFIG_GFAR_NAPI */
 
-#define TBIPA_VALUE		0x1f
 #define MIIMCFG_INIT_VALUE	0x00000007
 #define MIIMCFG_RESET           0x80000000
 #define MIIMIND_BUSY            0x00000001
@@ -242,6 +248,7 @@ extern const char gfar_driver_version[];
 #define IEVENT_PERR		0x00000001
 #define IEVENT_RX_MASK          (IEVENT_RXB0 | IEVENT_RXF0)
 #define IEVENT_TX_MASK          (IEVENT_TXB | IEVENT_TXF)
+#define IEVENT_RTX_MASK         (IEVENT_RX_MASK | IEVENT_TX_MASK)
 #define IEVENT_ERR_MASK         \
 (IEVENT_RXC | IEVENT_BSY | IEVENT_EBERR | IEVENT_MSRO | \
  IEVENT_BABT | IEVENT_TXC | IEVENT_TXE | IEVENT_LC \
@@ -269,11 +276,12 @@ extern const char gfar_driver_version[];
 #define IMASK_FIQ		0x00000004
 #define IMASK_DPE		0x00000002
 #define IMASK_PERR		0x00000001
-#define IMASK_RX_DISABLED ~(IMASK_RXFEN0 | IMASK_BSY)
 #define IMASK_DEFAULT  (IMASK_TXEEN | IMASK_TXFEN | IMASK_TXBEN | \
 		IMASK_RXFEN0 | IMASK_BSY | IMASK_EBERR | IMASK_BABR | \
 		IMASK_XFUN | IMASK_RXC | IMASK_BABT | IMASK_DPE \
 		| IMASK_PERR)
+#define IMASK_RTX_DISABLED ((~(IMASK_RXFEN0 | IMASK_TXFEN | IMASK_BSY)) \
+			   & IMASK_DEFAULT)
 
 /* Fifo management */
 #define FIFO_TX_THR_MASK	0x01ff
@@ -340,6 +348,9 @@ extern const char gfar_driver_version[];
 #define RXBD_OVERRUN		0x0002
 #define RXBD_TRUNCATED		0x0001
 #define RXBD_STATS		0x01ff
+#define RXBD_ERR		(RXBD_LARGE | RXBD_SHORT | RXBD_NONOCTET 	\
+				| RXBD_CRCERR | RXBD_OVERRUN			\
+				| RXBD_TRUNCATED)
 
 /* Rx FCB status field bits */
 #define RXFCB_VLN		0x8000
@@ -771,5 +782,8 @@ extern void gfar_halt(struct net_device *dev);
 extern void gfar_phy_test(struct mii_bus *bus, struct phy_device *phydev,
 		int enable, u32 regnum, u32 read);
 void gfar_init_sysfs(struct net_device *dev);
+int gfar_local_mdio_write(struct gfar_mii __iomem *regs, int mii_id,
+			  int regnum, u16 value);
+int gfar_local_mdio_read(struct gfar_mii __iomem *regs, int mii_id, int regnum);
 
 #endif /* __GIANFAR_H */

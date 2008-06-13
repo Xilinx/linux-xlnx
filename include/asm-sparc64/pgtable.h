@@ -1,4 +1,4 @@
-/* $Id: pgtable.h,v 1.156 2002/02/09 19:49:31 davem Exp $
+/*
  * pgtable.h: SpitFire page table operations.
  *
  * Copyright 1996,1997 David S. Miller (davem@caip.rutgers.edu)
@@ -506,6 +506,11 @@ static inline pte_t pte_mkyoung(pte_t pte)
 	return __pte(pte_val(pte) | mask);
 }
 
+static inline pte_t pte_mkspecial(pte_t pte)
+{
+	return pte;
+}
+
 static inline unsigned long pte_young(pte_t pte)
 {
 	unsigned long mask;
@@ -606,6 +611,11 @@ static inline unsigned long pte_present(pte_t pte)
 	: "0" (val), "i" (_PAGE_PRESENT_4U), "i" (_PAGE_PRESENT_4V));
 
 	return val;
+}
+
+static inline int pte_special(pte_t pte)
+{
+	return 0;
 }
 
 #define pmd_set(pmdp, ptep)	\

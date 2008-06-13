@@ -168,7 +168,7 @@ static void mcp23s08_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 {
 	struct mcp23s08	*mcp;
 	char		bank;
-	unsigned	t;
+	int		t;
 	unsigned	mask;
 
 	mcp = container_of(chip, struct mcp23s08, chip);
@@ -239,6 +239,7 @@ static int mcp23s08_probe(struct spi_device *spi)
 	mcp->chip.base = pdata->base;
 	mcp->chip.ngpio = 8;
 	mcp->chip.can_sleep = 1;
+	mcp->chip.owner = THIS_MODULE;
 
 	spi_set_drvdata(spi, mcp);
 

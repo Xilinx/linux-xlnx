@@ -287,9 +287,9 @@ extern int dir_notify_enable;
 #include <linux/pid.h>
 #include <linux/mutex.h>
 #include <linux/capability.h>
+#include <linux/semaphore.h>
 
 #include <asm/atomic.h>
-#include <asm/semaphore.h>
 #include <asm/byteorder.h>
 
 struct export_operations;
@@ -305,7 +305,6 @@ struct vfsmount;
 
 extern void __init inode_init(void);
 extern void __init inode_init_early(void);
-extern void __init mnt_init(void);
 extern void __init files_init(unsigned long);
 
 struct buffer_head;
@@ -475,8 +474,8 @@ struct address_space_operations {
 	int (*releasepage) (struct page *, gfp_t);
 	ssize_t (*direct_IO)(int, struct kiocb *, const struct iovec *iov,
 			loff_t offset, unsigned long nr_segs);
-	struct page* (*get_xip_page)(struct address_space *, sector_t,
-			int);
+	int (*get_xip_mem)(struct address_space *, pgoff_t, int,
+						void **, unsigned long *);
 	/* migrate the contents of a page to the specified target */
 	int (*migratepage) (struct address_space *,
 			struct page *, struct page *);
@@ -776,6 +775,9 @@ static inline int ra_has_index(struct file_ra_state *ra, pgoff_t index)
 		index <  ra->start + ra->size);
 }
 
+#define FILE_MNT_WRITE_TAKEN	1
+#define FILE_MNT_WRITE_RELEASED	2
+
 struct file {
 	/*
 	 * fu_list becomes invalid after file_free is called and queued via
@@ -810,6 +812,9 @@ struct file {
 	spinlock_t		f_ep_lock;
 #endif /* #ifdef CONFIG_EPOLL */
 	struct address_space	*f_mapping;
+#ifdef CONFIG_DEBUG_WRITECOUNT
+	unsigned long f_mnt_write_state;
+#endif
 };
 extern spinlock_t files_lock;
 #define file_list_lock() spin_lock(&files_lock);
@@ -817,6 +822,49 @@ extern spinlock_t files_lock;
 
 #define get_file(x)	atomic_inc(&(x)->f_count)
 #define file_count(x)	atomic_read(&(x)->f_count)
+
+#ifdef CONFIG_DEBUG_WRITECOUNT
+static inline void file_take_write(struct file *f)
+{
+	WARN_ON(f->f_mnt_write_state != 0);
+	f->f_mnt_write_state = FILE_MNT_WRITE_TAKEN;
+}
+static inline void file_release_write(struct file *f)
+{
+	f->f_mnt_write_state |= FILE_MNT_WRITE_RELEASED;
+}
+static inline void file_reset_write(struct file *f)
+{
+	f->f_mnt_write_state = 0;
+}
+static inline void file_check_state(struct file *f)
+{
+	/*
+	 * At this point, either both or neither of these bits
+	 * should be set.
+	 */
+	WARN_ON(f->f_mnt_write_state == FILE_MNT_WRITE_TAKEN);
+	WARN_ON(f->f_mnt_write_state == FILE_MNT_WRITE_RELEASED);
+}
+static inline int file_check_writeable(struct file *f)
+{
+	if (f->f_mnt_write_state == FILE_MNT_WRITE_TAKEN)
+		return 0;
+	printk(KERN_WARNING "writeable file with no "
+			    "mnt_want_write()\n");
+	WARN_ON(1);
+	return -EINVAL;
+}
+#else /* !CONFIG_DEBUG_WRITECOUNT */
+static inline void file_take_write(struct file *filp) {}
+static inline void file_release_write(struct file *filp) {}
+static inline void file_reset_write(struct file *filp) {}
+static inline void file_check_state(struct file *filp) {}
+static inline int file_check_writeable(struct file *filp)
+{
+	return 0;
+}
+#endif /* CONFIG_DEBUG_WRITECOUNT */
 
 #define	MAX_NON_LFS	((1UL<<31) - 1)
 
@@ -925,6 +973,7 @@ extern int do_sync_mapping_range(struct address_space *mapping, loff_t offset,
 /* fs/locks.c */
 extern void locks_init_lock(struct file_lock *);
 extern void locks_copy_lock(struct file_lock *, struct file_lock *);
+extern void __locks_copy_lock(struct file_lock *, const struct file_lock *);
 extern void locks_remove_posix(struct file *, fl_owner_t);
 extern void locks_remove_flock(struct file *);
 extern void posix_test_lock(struct file *, struct file_lock *);
@@ -1129,7 +1178,8 @@ struct block_device_operations {
 	int (*ioctl) (struct inode *, struct file *, unsigned, unsigned long);
 	long (*unlocked_ioctl) (struct file *, unsigned, unsigned long);
 	long (*compat_ioctl) (struct file *, unsigned, unsigned long);
-	int (*direct_access) (struct block_device *, sector_t, unsigned long *);
+	int (*direct_access) (struct block_device *, sector_t,
+						void **, unsigned long *);
 	int (*media_changed) (struct gendisk *);
 	int (*revalidate_disk) (struct gendisk *);
 	int (*getgeo)(struct block_device *, struct hd_geometry *);
@@ -1239,17 +1289,12 @@ extern ssize_t vfs_readv(struct file *, const struct iovec __user *,
 extern ssize_t vfs_writev(struct file *, const struct iovec __user *,
 		unsigned long, loff_t *);
 
-/*
- * NOTE: write_inode, delete_inode, clear_inode, put_inode can be called
- * without the big kernel lock held in all filesystems.
- */
 struct super_operations {
    	struct inode *(*alloc_inode)(struct super_block *sb);
 	void (*destroy_inode)(struct inode *);
 
    	void (*dirty_inode) (struct inode *);
 	int (*write_inode) (struct inode *, int);
-	void (*put_inode) (struct inode *);
 	void (*drop_inode) (struct inode *);
 	void (*delete_inode) (struct inode *);
 	void (*put_super) (struct super_block *);
@@ -1260,7 +1305,7 @@ struct super_operations {
 	int (*statfs) (struct dentry *, struct kstatfs *);
 	int (*remount_fs) (struct super_block *, int *, char *);
 	void (*clear_inode) (struct inode *);
-	void (*umount_begin) (struct vfsmount *, int);
+	void (*umount_begin) (struct super_block *);
 
 	int (*show_options)(struct seq_file *, struct vfsmount *);
 	int (*show_stats)(struct seq_file *, struct vfsmount *);
@@ -1471,7 +1516,6 @@ extern int get_sb_pseudo(struct file_system_type *, char *,
 	const struct super_operations *ops, unsigned long,
 	struct vfsmount *mnt);
 extern int simple_set_mnt(struct vfsmount *mnt, struct super_block *sb);
-int __put_super(struct super_block *sb);
 int __put_super_and_need_restart(struct super_block *sb);
 void unnamed_dev_init(void);
 
@@ -1487,12 +1531,7 @@ extern struct vfsmount *kern_mount_data(struct file_system_type *, void *data);
 #define kern_mount(type) kern_mount_data(type, NULL)
 extern int may_umount_tree(struct vfsmount *);
 extern int may_umount(struct vfsmount *);
-extern void umount_tree(struct vfsmount *, int, struct list_head *);
-extern void release_mounts(struct list_head *);
 extern long do_mount(char *, char *, char *, unsigned long, void *);
-extern struct vfsmount *copy_tree(struct vfsmount *, struct dentry *, int);
-extern void mnt_set_mountpoint(struct vfsmount *, struct dentry *,
-				  struct vfsmount *);
 extern struct vfsmount *collect_mounts(struct vfsmount *, struct dentry *);
 extern void drop_collected_mounts(struct vfsmount *);
 
@@ -1735,7 +1774,8 @@ extern struct file *create_read_pipe(struct file *f);
 extern struct file *create_write_pipe(void);
 extern void free_write_pipe(struct file *);
 
-extern int open_namei(int dfd, const char *, int, int, struct nameidata *);
+extern struct file *do_filp_open(int dfd, const char *pathname,
+		int open_flag, int mode);
 extern int may_open(struct nameidata *, int, int);
 
 extern int kernel_read(struct file *, unsigned long, char *, unsigned long);
@@ -1776,7 +1816,6 @@ extern void iget_failed(struct inode *);
 extern void clear_inode(struct inode *);
 extern void destroy_inode(struct inode *);
 extern struct inode *new_inode(struct super_block *);
-extern int __remove_suid(struct dentry *, int);
 extern int should_remove_suid(struct dentry *);
 extern int remove_suid(struct dentry *);
 
@@ -1919,7 +1958,6 @@ extern int vfs_stat_fd(int dfd, char __user *, struct kstat *);
 extern int vfs_lstat_fd(int dfd, char __user *, struct kstat *);
 extern int vfs_fstat(unsigned int, struct kstat *);
 
-extern long vfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 extern int do_vfs_ioctl(struct file *filp, unsigned int fd, unsigned int cmd,
 		    unsigned long arg);
 
@@ -1962,7 +2000,10 @@ extern int simple_fill_super(struct super_block *, int, struct tree_descr *);
 extern int simple_pin_fs(struct file_system_type *, struct vfsmount **mount, int *count);
 extern void simple_release_fs(struct vfsmount **mount, int *count);
 
-extern ssize_t simple_read_from_buffer(void __user *, size_t, loff_t *, const void *, size_t);
+extern ssize_t simple_read_from_buffer(void __user *to, size_t count,
+			loff_t *ppos, const void *from, size_t available);
+extern ssize_t memory_read_from_buffer(void *to, size_t count, loff_t *ppos,
+			const void *from, size_t available);
 
 #ifdef CONFIG_MIGRATION
 extern int buffer_migrate_page(struct address_space *,
@@ -1988,9 +2029,6 @@ static inline ino_t parent_ino(struct dentry *dentry)
 	spin_unlock(&dentry->d_lock);
 	return res;
 }
-
-/* kernel/fork.c */
-extern int unshare_files(void);
 
 /* Transaction based IO helpers */
 

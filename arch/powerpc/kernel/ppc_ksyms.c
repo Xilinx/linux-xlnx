@@ -15,7 +15,6 @@
 #include <linux/bitops.h>
 
 #include <asm/page.h>
-#include <asm/semaphore.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
 #include <asm/uaccess.h>
@@ -45,10 +44,6 @@
 #include <asm/signal.h>
 #include <asm/dcr.h>
 
-#ifdef CONFIG_PPC64
-EXPORT_SYMBOL(local_irq_restore);
-#endif
-
 #ifdef CONFIG_PPC32
 extern void transfer_to_handler(void);
 extern void do_IRQ(struct pt_regs *regs);
@@ -58,7 +53,6 @@ extern void program_check_exception(struct pt_regs *regs);
 extern void single_step_exception(struct pt_regs *regs);
 extern int sys_sigreturn(struct pt_regs *regs);
 
-EXPORT_SYMBOL(empty_zero_page);
 EXPORT_SYMBOL(clear_pages);
 EXPORT_SYMBOL(copy_page);
 EXPORT_SYMBOL(ISA_DMA_THRESHOLD);
@@ -79,6 +73,7 @@ EXPORT_SYMBOL(strncpy);
 EXPORT_SYMBOL(strcat);
 EXPORT_SYMBOL(strlen);
 EXPORT_SYMBOL(strcmp);
+EXPORT_SYMBOL(strncmp);
 
 EXPORT_SYMBOL(csum_partial);
 EXPORT_SYMBOL(csum_partial_copy_generic);
@@ -138,9 +133,6 @@ EXPORT_SYMBOL(adb_try_handler_change);
 EXPORT_SYMBOL(cuda_request);
 EXPORT_SYMBOL(cuda_poll);
 #endif /* CONFIG_ADB_CUDA */
-#ifdef CONFIG_VT
-EXPORT_SYMBOL(kd_mksound);
-#endif
 EXPORT_SYMBOL(to_tm);
 
 #ifdef CONFIG_PPC32
@@ -192,3 +184,4 @@ EXPORT_SYMBOL(intercept_table);
 EXPORT_SYMBOL(__mtdcr);
 EXPORT_SYMBOL(__mfdcr);
 #endif
+EXPORT_SYMBOL(empty_zero_page);

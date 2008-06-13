@@ -88,85 +88,6 @@ static inline gfp_t root_gfp_mask(struct radix_tree_root *root)
 	return root->gfp_mask & __GFP_BITS_MASK;
 }
 
-/*
- * This assumes that the caller has performed appropriate preallocation, and
- * that the caller has pinned this thread of control to the current CPU.
- */
-static struct radix_tree_node *
-radix_tree_node_alloc(struct radix_tree_root *root)
-{
-	struct radix_tree_node *ret = NULL;
-	gfp_t gfp_mask = root_gfp_mask(root);
-
-	if (!(gfp_mask & __GFP_WAIT)) {
-		struct radix_tree_preload *rtp;
-
-		/*
-		 * Provided the caller has preloaded here, we will always
-		 * succeed in getting a node here (and never reach
-		 * kmem_cache_alloc)
-		 */
-		rtp = &__get_cpu_var(radix_tree_preloads);
-		if (rtp->nr) {
-			ret = rtp->nodes[rtp->nr - 1];
-			rtp->nodes[rtp->nr - 1] = NULL;
-			rtp->nr--;
-		}
-	}
-	if (ret == NULL)
-		ret = kmem_cache_alloc(radix_tree_node_cachep,
-				set_migrateflags(gfp_mask, __GFP_RECLAIMABLE));
-
-	BUG_ON(radix_tree_is_indirect_ptr(ret));
-	return ret;
-}
-
-static void radix_tree_node_rcu_free(struct rcu_head *head)
-{
-	struct radix_tree_node *node =
-			container_of(head, struct radix_tree_node, rcu_head);
-	kmem_cache_free(radix_tree_node_cachep, node);
-}
-
-static inline void
-radix_tree_node_free(struct radix_tree_node *node)
-{
-	call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
-}
-
-/*
- * Load up this CPU's radix_tree_node buffer with sufficient objects to
- * ensure that the addition of a single element in the tree cannot fail.  On
- * success, return zero, with preemption disabled.  On error, return -ENOMEM
- * with preemption not disabled.
- */
-int radix_tree_preload(gfp_t gfp_mask)
-{
-	struct radix_tree_preload *rtp;
-	struct radix_tree_node *node;
-	int ret = -ENOMEM;
-
-	preempt_disable();
-	rtp = &__get_cpu_var(radix_tree_preloads);
-	while (rtp->nr < ARRAY_SIZE(rtp->nodes)) {
-		preempt_enable();
-		node = kmem_cache_alloc(radix_tree_node_cachep,
-				set_migrateflags(gfp_mask, __GFP_RECLAIMABLE));
-		if (node == NULL)
-			goto out;
-		preempt_disable();
-		rtp = &__get_cpu_var(radix_tree_preloads);
-		if (rtp->nr < ARRAY_SIZE(rtp->nodes))
-			rtp->nodes[rtp->nr++] = node;
-		else
-			kmem_cache_free(radix_tree_node_cachep, node);
-	}
-	ret = 0;
-out:
-	return ret;
-}
-EXPORT_SYMBOL(radix_tree_preload);
-
 static inline void tag_set(struct radix_tree_node *node, unsigned int tag,
 		int offset)
 {
@@ -189,7 +110,6 @@ static inline void root_tag_set(struct radix_tree_root *root, unsigned int tag)
 {
 	root->gfp_mask |= (__force gfp_t)(1 << (tag + __GFP_BITS_SHIFT));
 }
-
 
 static inline void root_tag_clear(struct radix_tree_root *root, unsigned int tag)
 {
@@ -219,6 +139,93 @@ static inline int any_tag_set(struct radix_tree_node *node, unsigned int tag)
 	}
 	return 0;
 }
+/*
+ * This assumes that the caller has performed appropriate preallocation, and
+ * that the caller has pinned this thread of control to the current CPU.
+ */
+static struct radix_tree_node *
+radix_tree_node_alloc(struct radix_tree_root *root)
+{
+	struct radix_tree_node *ret = NULL;
+	gfp_t gfp_mask = root_gfp_mask(root);
+
+	if (!(gfp_mask & __GFP_WAIT)) {
+		struct radix_tree_preload *rtp;
+
+		/*
+		 * Provided the caller has preloaded here, we will always
+		 * succeed in getting a node here (and never reach
+		 * kmem_cache_alloc)
+		 */
+		rtp = &__get_cpu_var(radix_tree_preloads);
+		if (rtp->nr) {
+			ret = rtp->nodes[rtp->nr - 1];
+			rtp->nodes[rtp->nr - 1] = NULL;
+			rtp->nr--;
+		}
+	}
+	if (ret == NULL)
+		ret = kmem_cache_alloc(radix_tree_node_cachep, gfp_mask);
+
+	BUG_ON(radix_tree_is_indirect_ptr(ret));
+	return ret;
+}
+
+static void radix_tree_node_rcu_free(struct rcu_head *head)
+{
+	struct radix_tree_node *node =
+			container_of(head, struct radix_tree_node, rcu_head);
+
+	/*
+	 * must only free zeroed nodes into the slab. radix_tree_shrink
+	 * can leave us with a non-NULL entry in the first slot, so clear
+	 * that here to make sure.
+	 */
+	tag_clear(node, 0, 0);
+	tag_clear(node, 1, 0);
+	node->slots[0] = NULL;
+	node->count = 0;
+
+	kmem_cache_free(radix_tree_node_cachep, node);
+}
+
+static inline void
+radix_tree_node_free(struct radix_tree_node *node)
+{
+	call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
+}
+
+/*
+ * Load up this CPU's radix_tree_node buffer with sufficient objects to
+ * ensure that the addition of a single element in the tree cannot fail.  On
+ * success, return zero, with preemption disabled.  On error, return -ENOMEM
+ * with preemption not disabled.
+ */
+int radix_tree_preload(gfp_t gfp_mask)
+{
+	struct radix_tree_preload *rtp;
+	struct radix_tree_node *node;
+	int ret = -ENOMEM;
+
+	preempt_disable();
+	rtp = &__get_cpu_var(radix_tree_preloads);
+	while (rtp->nr < ARRAY_SIZE(rtp->nodes)) {
+		preempt_enable();
+		node = kmem_cache_alloc(radix_tree_node_cachep, gfp_mask);
+		if (node == NULL)
+			goto out;
+		preempt_disable();
+		rtp = &__get_cpu_var(radix_tree_preloads);
+		if (rtp->nr < ARRAY_SIZE(rtp->nodes))
+			rtp->nodes[rtp->nr++] = node;
+		else
+			kmem_cache_free(radix_tree_node_cachep, node);
+	}
+	ret = 0;
+out:
+	return ret;
+}
+EXPORT_SYMBOL(radix_tree_preload);
 
 /*
  *	Return the maximum key which can be store into a
@@ -932,11 +939,6 @@ static inline void radix_tree_shrink(struct radix_tree_root *root)
 			newptr = radix_tree_ptr_to_indirect(newptr);
 		root->rnode = newptr;
 		root->height--;
-		/* must only free zeroed nodes into the slab */
-		tag_clear(to_free, 0, 0);
-		tag_clear(to_free, 1, 0);
-		to_free->slots[0] = NULL;
-		to_free->count = 0;
 		radix_tree_node_free(to_free);
 	}
 }
@@ -1098,7 +1100,8 @@ void __init radix_tree_init(void)
 {
 	radix_tree_node_cachep = kmem_cache_create("radix_tree_node",
 			sizeof(struct radix_tree_node), 0,
-			SLAB_PANIC, radix_tree_node_ctor);
+			SLAB_PANIC | SLAB_RECLAIM_ACCOUNT,
+			radix_tree_node_ctor);
 	radix_tree_init_maxindex();
 	hotcpu_notifier(radix_tree_callback, 0);
 }

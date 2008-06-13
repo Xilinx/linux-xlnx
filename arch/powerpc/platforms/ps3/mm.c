@@ -21,9 +21,10 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/memory_hotplug.h>
+#include <linux/lmb.h>
 
 #include <asm/firmware.h>
-#include <asm/lmb.h>
+#include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/lv1call.h>
 
@@ -315,6 +316,9 @@ static int __init ps3_mm_add_memory(void)
 			__func__, __LINE__, result);
 		return result;
 	}
+
+	lmb_add(start_addr, map.r1.size);
+	lmb_analyze();
 
 	result = online_pages(start_pfn, nr_pages);
 

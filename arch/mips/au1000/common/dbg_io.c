@@ -1,5 +1,5 @@
+#include <linux/types.h>
 
-#include <asm/io.h>
 #include <asm/mach-au1x00/au1000.h>
 
 #ifdef CONFIG_KGDB
@@ -9,12 +9,6 @@
  * uart to be used for debugging.
  */
 #define DEBUG_BASE  UART_DEBUG_BASE
-/**/
-
-/* we need uint32 uint8 */
-/* #include "types.h" */
-typedef         unsigned char uint8;
-typedef         unsigned int  uint32;
 
 #define         UART16550_BAUD_2400             2400
 #define         UART16550_BAUD_4800             4800
@@ -52,26 +46,23 @@ typedef         unsigned int  uint32;
 #define UART_MOD_CNTRL	0x100	/* Module Control */
 
 /* memory-mapped read/write of the port */
-#define UART16550_READ(y)    (au_readl(DEBUG_BASE + y) & 0xff)
-#define UART16550_WRITE(y, z) (au_writel(z&0xff, DEBUG_BASE + y))
+#define UART16550_READ(y)     (au_readl(DEBUG_BASE + y) & 0xff)
+#define UART16550_WRITE(y, z) (au_writel(z & 0xff, DEBUG_BASE + y))
 
-extern unsigned long get_au1x00_uart_baud_base(void);
-extern unsigned long cal_r4koff(void);
+extern unsigned long calc_clock(void);
 
-void debugInit(uint32 baud, uint8 data, uint8 parity, uint8 stop)
+void debugInit(u32 baud, u8 data, u8 parity, u8 stop)
 {
-
-	if (UART16550_READ(UART_MOD_CNTRL) != 0x3) {
+	if (UART16550_READ(UART_MOD_CNTRL) != 0x3)
 		UART16550_WRITE(UART_MOD_CNTRL, 3);
-	}
-	cal_r4koff();
+	calc_clock();
 
 	/* disable interrupts */
 	UART16550_WRITE(UART_IER, 0);
 
 	/* set up baud rate */
 	{
-		uint32 divisor;
+		u32 divisor;
 
 		/* set divisor */
 		divisor = get_au1x00_uart_baud_base() / baud;
@@ -82,9 +73,9 @@ void debugInit(uint32 baud, uint8 data, uint8 parity, uint8 stop)
 	UART16550_WRITE(UART_LCR, (data | parity | stop));
 }
 
-static int remoteDebugInitialized = 0;
+static int remoteDebugInitialized;
 
-uint8 getDebugChar(void)
+u8 getDebugChar(void)
 {
 	if (!remoteDebugInitialized) {
 		remoteDebugInitialized = 1;
@@ -94,15 +85,13 @@ uint8 getDebugChar(void)
 			  UART16550_STOP_1BIT);
 	}
 
-	while((UART16550_READ(UART_LSR) & 0x1) == 0);
+	while ((UART16550_READ(UART_LSR) & 0x1) == 0);
 	return UART16550_READ(UART_RX);
 }
 
 
-int putDebugChar(uint8 byte)
+int putDebugChar(u8 byte)
 {
-//	int i;
-
 	if (!remoteDebugInitialized) {
 		remoteDebugInitialized = 1;
 		debugInit(UART16550_BAUD_115200,
@@ -111,9 +100,8 @@ int putDebugChar(uint8 byte)
 			  UART16550_STOP_1BIT);
 	}
 
-	while ((UART16550_READ(UART_LSR)&0x40) == 0);
+	while ((UART16550_READ(UART_LSR) & 0x40) == 0);
 	UART16550_WRITE(UART_TX, byte);
-	//for (i=0;i<0xfff;i++);
 
 	return 1;
 }

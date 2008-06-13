@@ -71,6 +71,14 @@
 # endif
 #endif
 
+#ifdef CONFIG_CPU_COPY_FEROCEON
+# ifdef _USER
+#  define MULTI_USER 1
+# else
+#  define _USER feroceon
+# endif
+#endif
+
 #ifdef CONFIG_CPU_SA1100
 # ifdef _USER
 #  define MULTI_USER 1
@@ -171,9 +179,9 @@ typedef unsigned long pgprot_t;
 
 #endif /* STRICT_MM_TYPECHECKS */
 
-typedef struct page *pgtable_t;
-
 #endif /* CONFIG_MMU */
+
+typedef struct page *pgtable_t;
 
 #include <asm/memory.h>
 

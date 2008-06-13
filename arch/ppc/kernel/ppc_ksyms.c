@@ -12,7 +12,6 @@
 #include <linux/irq.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
-#include <linux/ide.h>
 #include <linux/pm.h>
 #include <linux/bitops.h>
 
@@ -25,6 +24,7 @@
 #include <asm/checksum.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
+#include <asm/cacheflush.h>
 #include <linux/adb.h>
 #include <linux/cuda.h>
 #include <linux/pmu.h>
@@ -60,8 +60,10 @@ long long __ashrdi3(long long, int);
 long long __ashldi3(long long, int);
 long long __lshrdi3(long long, int);
 
+EXPORT_SYMBOL(empty_zero_page);
 EXPORT_SYMBOL(clear_pages);
 EXPORT_SYMBOL(clear_user_page);
+EXPORT_SYMBOL(copy_page);
 EXPORT_SYMBOL(transfer_to_handler);
 EXPORT_SYMBOL(do_IRQ);
 EXPORT_SYMBOL(machine_check_exception);
@@ -89,6 +91,7 @@ EXPORT_SYMBOL(strncpy);
 EXPORT_SYMBOL(strcat);
 EXPORT_SYMBOL(strlen);
 EXPORT_SYMBOL(strcmp);
+EXPORT_SYMBOL(strncmp);
 
 EXPORT_SYMBOL(csum_partial);
 EXPORT_SYMBOL(csum_partial_copy_generic);
@@ -123,10 +126,6 @@ EXPORT_SYMBOL(ioremap64);
 EXPORT_SYMBOL(__ioremap);
 EXPORT_SYMBOL(iounmap);
 EXPORT_SYMBOL(ioremap_bot);	/* aka VMALLOC_END */
-
-#if defined(CONFIG_BLK_DEV_IDE) || defined(CONFIG_BLK_DEV_IDE_MODULE)
-EXPORT_SYMBOL(ppc_ide_md);
-#endif
 
 #ifdef CONFIG_PCI
 EXPORT_SYMBOL(isa_io_base);
@@ -186,9 +185,6 @@ EXPORT_SYMBOL(cuda_poll);
 #endif /* CONFIG_ADB_CUDA */
 #if defined(CONFIG_BOOTX_TEXT)
 EXPORT_SYMBOL(btext_update_display);
-#endif
-#ifdef CONFIG_VT
-EXPORT_SYMBOL(kd_mksound);
 #endif
 EXPORT_SYMBOL(to_tm);
 

@@ -73,8 +73,9 @@ static void grf5101_rf_set_channel(struct ieee80211_hw *dev,
 				   struct ieee80211_conf *conf)
 {
 	struct rtl8180_priv *priv = dev->priv;
-	u32 txpw = priv->channels[conf->channel - 1].val & 0xFF;
-	u32 chan = conf->channel - 1;
+	int channel = ieee80211_frequency_to_channel(conf->channel->center_freq);
+	u32 txpw = priv->channels[channel - 1].hw_value & 0xFF;
+	u32 chan = channel - 1;
 
 	/* set TX power */
 	write_grf5101(dev, 0x15, 0x0);
@@ -87,7 +88,7 @@ static void grf5101_rf_set_channel(struct ieee80211_hw *dev,
 	write_grf5101(dev, 0x0B, chan);
 	write_grf5101(dev, 0x07, 0x1000);
 
-	grf5101_write_phy_antenna(dev, chan);
+	grf5101_write_phy_antenna(dev, channel);
 }
 
 static void grf5101_rf_stop(struct ieee80211_hw *dev)

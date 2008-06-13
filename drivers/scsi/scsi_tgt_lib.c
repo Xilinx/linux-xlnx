@@ -107,6 +107,8 @@ struct scsi_cmnd *scsi_host_get_command(struct Scsi_Host *shost,
 	cmd->jiffies_at_alloc = jiffies;
 	cmd->request = rq;
 
+	cmd->cmnd = rq->cmd;
+
 	rq->special = cmd;
 	rq->cmd_type = REQ_TYPE_SPECIAL;
 	rq->cmd_flags |= REQ_TYPE_BLOCK_PC;
@@ -621,9 +623,7 @@ static int __init scsi_tgt_init(void)
 {
 	int err;
 
-	scsi_tgt_cmd_cache = kmem_cache_create("scsi_tgt_cmd",
-					       sizeof(struct scsi_tgt_cmd),
-					       0, 0, NULL);
+	scsi_tgt_cmd_cache =  KMEM_CACHE(scsi_tgt_cmd, 0);
 	if (!scsi_tgt_cmd_cache)
 		return -ENOMEM;
 

@@ -36,6 +36,7 @@
 #include <asm/mach/irq.h>
 
 #include <asm/arch/pxa-regs.h>
+#include <asm/arch/pxa2xx-gpio.h>
 #include <asm/arch/irda.h>
 #include <asm/arch/mmc.h>
 #include <asm/arch/udc.h>
@@ -492,8 +493,6 @@ static struct platform_device *devices[] __initdata = {
 
 static void corgi_poweroff(void)
 {
-	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
-
 	if (!machine_is_corgi())
 		/* Green LED off tells the bootloader to halt */
 		reset_scoop_gpio(&corgiscoop_device.dev, CORGI_SCP_LED_GREEN);
@@ -502,8 +501,6 @@ static void corgi_poweroff(void)
 
 static void corgi_restart(char mode)
 {
-	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
-
 	if (!machine_is_corgi())
 		/* Green LED on tells the bootloader to reboot */
 		set_scoop_gpio(&corgiscoop_device.dev, CORGI_SCP_LED_GREEN);

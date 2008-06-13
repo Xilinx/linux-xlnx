@@ -114,10 +114,9 @@ static int ac97_surround_jack_mode_put(struct snd_kcontrol *kcontrol, struct snd
 
 static int ac97_channel_mode_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
 {
-	static const char *texts[] = { "2ch", "4ch", "6ch" };
-	if (kcontrol->private_value)
-		return ac97_enum_text_info(kcontrol, uinfo, texts, 2); /* 4ch only */
-	return ac97_enum_text_info(kcontrol, uinfo, texts, 3);
+	static const char *texts[] = { "2ch", "4ch", "6ch", "8ch" };
+	return ac97_enum_text_info(kcontrol, uinfo, texts,
+		kcontrol->private_value);
 }
 
 static int ac97_channel_mode_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -133,13 +132,8 @@ static int ac97_channel_mode_put(struct snd_kcontrol *kcontrol, struct snd_ctl_e
 	struct snd_ac97 *ac97 = snd_kcontrol_chip(kcontrol);
 	unsigned char mode = ucontrol->value.enumerated.item[0];
 
-	if (kcontrol->private_value) {
-		if (mode >= 2)
-			return -EINVAL;
-	} else {
-		if (mode >= 3)
-			return -EINVAL;
-	}
+	if (mode >= kcontrol->private_value)
+		return -EINVAL;
 
 	if (mode != ac97->channel_mode) {
 		ac97->channel_mode = mode;
@@ -158,6 +152,7 @@ static int ac97_channel_mode_put(struct snd_kcontrol *kcontrol, struct snd_ctl_e
 		.get = ac97_surround_jack_mode_get, \
 		.put = ac97_surround_jack_mode_put, \
 	}
+/* 6ch */
 #define AC97_CHANNEL_MODE_CTL \
 	{ \
 		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER, \
@@ -165,7 +160,9 @@ static int ac97_channel_mode_put(struct snd_kcontrol *kcontrol, struct snd_ctl_e
 		.info = ac97_channel_mode_info, \
 		.get = ac97_channel_mode_get, \
 		.put = ac97_channel_mode_put, \
+		.private_value = 3, \
 	}
+/* 4ch */
 #define AC97_CHANNEL_MODE_4CH_CTL \
 	{ \
 		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER, \
@@ -173,7 +170,17 @@ static int ac97_channel_mode_put(struct snd_kcontrol *kcontrol, struct snd_ctl_e
 		.info = ac97_channel_mode_info, \
 		.get = ac97_channel_mode_get, \
 		.put = ac97_channel_mode_put, \
-		.private_value = 1, \
+		.private_value = 2, \
+	}
+/* 8ch */
+#define AC97_CHANNEL_MODE_8CH_CTL \
+	{ \
+		.iface  = SNDRV_CTL_ELEM_IFACE_MIXER, \
+		.name   = "Channel Mode", \
+		.info = ac97_channel_mode_info, \
+		.get = ac97_channel_mode_get, \
+		.put = ac97_channel_mode_put, \
+		.private_value = 4, \
 	}
 
 static inline int is_surround_on(struct snd_ac97 *ac97)
@@ -210,6 +217,10 @@ static inline int is_shared_micin(struct snd_ac97 *ac97)
 	return !ac97->indep_surround && !is_clfe_on(ac97);
 }
 
+static inline int alc850_is_aux_back_surround(struct snd_ac97 *ac97)
+{
+	return is_surround_on(ac97);
+}
 
 /* The following snd_ac97_ymf753_... items added by David Shust (dshust@shustring.com) */
 /* Modified for YMF743 by Keita Maehara <maehara@debian.org> */
@@ -1960,6 +1971,9 @@ static int snd_ac97_ad1888_lohpsel_get(struct snd_kcontrol *kcontrol, struct snd
 
 	val = ac97->regs[AC97_AD_MISC];
 	ucontrol->value.integer.value[0] = !(val & AC97_AD198X_LOSEL);
+	if (ac97->spec.ad18xx.lo_as_master)
+		ucontrol->value.integer.value[0] =
+			!ucontrol->value.integer.value[0];
 	return 0;
 }
 
@@ -1968,8 +1982,10 @@ static int snd_ac97_ad1888_lohpsel_put(struct snd_kcontrol *kcontrol, struct snd
 	struct snd_ac97 *ac97 = snd_kcontrol_chip(kcontrol);
 	unsigned short val;
 
-	val = !ucontrol->value.integer.value[0]
-		? (AC97_AD198X_LOSEL | AC97_AD198X_HPSEL) : 0;
+	val = !ucontrol->value.integer.value[0];
+	if (ac97->spec.ad18xx.lo_as_master)
+		val = !val;
+	val = val ? (AC97_AD198X_LOSEL | AC97_AD198X_HPSEL) : 0;
 	return snd_ac97_update_bits(ac97, AC97_AD_MISC,
 				    AC97_AD198X_LOSEL | AC97_AD198X_HPSEL, val);
 }
@@ -2020,7 +2036,7 @@ static void ad1888_update_jacks(struct snd_ac97 *ac97)
 {
 	unsigned short val = 0;
 	/* clear LODIS if shared jack is to be used for Surround out */
-	if (is_shared_linein(ac97))
+	if (!ac97->spec.ad18xx.lo_as_master && is_shared_linein(ac97))
 		val |= (1 << 12);
 	/* clear CLDIS if shared jack is to be used for C/LFE out */
 	if (is_shared_micin(ac97))
@@ -2056,9 +2072,13 @@ static const struct snd_kcontrol_new snd_ac97_ad1888_controls[] = {
 
 static int patch_ad1888_specific(struct snd_ac97 *ac97)
 {
-	/* rename 0x04 as "Master" and 0x02 as "Master Surround" */
-	snd_ac97_rename_vol_ctl(ac97, "Master Playback", "Master Surround Playback");
-	snd_ac97_rename_vol_ctl(ac97, "Headphone Playback", "Master Playback");
+	if (!ac97->spec.ad18xx.lo_as_master) {
+		/* rename 0x04 as "Master" and 0x02 as "Master Surround" */
+		snd_ac97_rename_vol_ctl(ac97, "Master Playback",
+					"Master Surround Playback");
+		snd_ac97_rename_vol_ctl(ac97, "Headphone Playback",
+					"Master Playback");
+	}
 	return patch_build_controls(ac97, snd_ac97_ad1888_controls, ARRAY_SIZE(snd_ac97_ad1888_controls));
 }
 
@@ -2077,16 +2097,27 @@ static int patch_ad1888(struct snd_ac97 * ac97)
 	
 	patch_ad1881(ac97);
 	ac97->build_ops = &patch_ad1888_build_ops;
-	/* Switch FRONT/SURROUND LINE-OUT/HP-OUT default connection */
-	/* it seems that most vendors connect line-out connector to headphone out of AC'97 */
+
+	/*
+	 * LO can be used as a real line-out on some devices,
+	 * and we need to revert the front/surround mixer switches
+	 */
+	if (ac97->subsystem_vendor == 0x1043 &&
+	    ac97->subsystem_device == 0x1193) /* ASUS A9T laptop */
+		ac97->spec.ad18xx.lo_as_master = 1;
+
+	misc = snd_ac97_read(ac97, AC97_AD_MISC);
 	/* AD-compatible mode */
 	/* Stereo mutes enabled */
-	misc = snd_ac97_read(ac97, AC97_AD_MISC);
-	snd_ac97_write_cache(ac97, AC97_AD_MISC, misc |
-			     AC97_AD198X_LOSEL |
-			     AC97_AD198X_HPSEL |
-			     AC97_AD198X_MSPLT |
-			     AC97_AD198X_AC97NC);
+	misc |= AC97_AD198X_MSPLT | AC97_AD198X_AC97NC;
+	if (!ac97->spec.ad18xx.lo_as_master)
+		/* Switch FRONT/SURROUND LINE-OUT/HP-OUT default connection */
+		/* it seems that most vendors connect line-out connector to
+		 * headphone out of AC'97
+		 */
+		misc |= AC97_AD198X_LOSEL | AC97_AD198X_HPSEL;
+
+	snd_ac97_write_cache(ac97, AC97_AD_MISC, misc);
 	ac97->flags |= AC97_STEREO_MUTES;
 	return 0;
 }
@@ -2816,10 +2847,12 @@ static int patch_alc655(struct snd_ac97 * ac97)
 
 #define AC97_ALC850_JACK_SELECT	0x76
 #define AC97_ALC850_MISC1	0x7a
+#define AC97_ALC850_MULTICH    0x6a
 
 static void alc850_update_jacks(struct snd_ac97 *ac97)
 {
 	int shared;
+	int aux_is_back_surround;
 	
 	/* shared Line-In / Surround Out */
 	shared = is_shared_surrout(ac97);
@@ -2837,13 +2870,18 @@ static void alc850_update_jacks(struct snd_ac97 *ac97)
 	/* MIC-IN = 1, CENTER-LFE = 5 */
 	snd_ac97_update_bits(ac97, AC97_ALC850_JACK_SELECT, 7 << 4,
 			     shared ? (5<<4) : (1<<4));
+
+	aux_is_back_surround = alc850_is_aux_back_surround(ac97);
+	/* Aux is Back Surround */
+	snd_ac97_update_bits(ac97, AC97_ALC850_MULTICH, 1 << 10,
+				 aux_is_back_surround ? (1<<10) : (0<<10));
 }
 
 static const struct snd_kcontrol_new snd_ac97_controls_alc850[] = {
 	AC97_PAGE_SINGLE("Duplicate Front", AC97_ALC650_MULTICH, 0, 1, 0, 0),
 	AC97_SINGLE("Mic Front Input Switch", AC97_ALC850_JACK_SELECT, 15, 1, 1),
 	AC97_SURROUND_JACK_MODE_CTL,
-	AC97_CHANNEL_MODE_CTL,
+	AC97_CHANNEL_MODE_8CH_CTL,
 };
 
 static int patch_alc850_specific(struct snd_ac97 *ac97)
@@ -2869,6 +2907,7 @@ static int patch_alc850(struct snd_ac97 *ac97)
 	ac97->build_ops = &patch_alc850_ops;
 
 	ac97->spec.dev_flags = 0; /* for IEC958 playback route - ALC655 compatible */
+	ac97->flags |= AC97_HAS_8CH;
 
 	/* assume only page 0 for writing cache */
 	snd_ac97_update_bits(ac97, AC97_INT_PAGING, AC97_PAGE_MASK, AC97_PAGE_VENDOR);
@@ -2878,6 +2917,7 @@ static int patch_alc850(struct snd_ac97 *ac97)
 	   spdif-in monitor off, spdif-in PCM off
 	   center on mic off, surround on line-in off
 	   duplicate front off
+	   NB default bit 10=0 = Aux is Capture, not Back Surround
 	*/
 	snd_ac97_write_cache(ac97, AC97_ALC650_MULTICH, 1<<15);
 	/* SURR_OUT: on, Surr 1kOhm: on, Surr Amp: off, Front 1kOhm: off
@@ -3426,6 +3466,7 @@ static const struct snd_kcontrol_new snd_ac97_controls_vt1617a[] = {
 int patch_vt1617a(struct snd_ac97 * ac97)
 {
 	int err = 0;
+	int val;
 
 	/* we choose to not fail out at this point, but we tell the
 	   caller when we return */
@@ -3436,7 +3477,13 @@ int patch_vt1617a(struct snd_ac97 * ac97)
 	/* bring analog power consumption to normal by turning off the
 	 * headphone amplifier, like WinXP driver for EPIA SP
 	 */
-	snd_ac97_write_cache(ac97, 0x5c, 0x20);
+	/* We need to check the bit before writing it.
+	 * On some (many?) hardwares, setting bit actually clears it!
+	 */
+	val = snd_ac97_read(ac97, 0x5c);
+	if (!(val & 0x20))
+		snd_ac97_write_cache(ac97, 0x5c, 0x20);
+
 	ac97->ext_id |= AC97_EI_SPDIF;	/* force the detection of spdif */
 	ac97->rates[AC97_RATES_SPDIF] = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000;
 	ac97->build_ops = &patch_vt1616_ops;

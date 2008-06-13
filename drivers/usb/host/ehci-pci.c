@@ -129,7 +129,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 	switch (pdev->vendor) {
 	case PCI_VENDOR_ID_TDI:
 		if (pdev->device == PCI_DEVICE_ID_TDI_EHCI) {
-			ehci->is_tdi_rh_tt = 1;
+			hcd->has_tt = 1;
 			tdi_reset(ehci);
 		}
 		break;
@@ -221,6 +221,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 		ehci_warn(ehci, "selective suspend/wakeup unavailable\n");
 #endif
 
+	ehci_port_power(ehci, 1);
 	retval = ehci_pci_reinit(ehci, pdev);
 done:
 	return retval;
@@ -299,7 +300,7 @@ static int ehci_pci_resume(struct usb_hcd *hcd)
 	if (ehci_readl(ehci, &ehci->regs->configured_flag) == FLAG_CF) {
 		int	mask = INTR_MASK;
 
-		if (!device_may_wakeup(&hcd->self.root_hub->dev))
+		if (!hcd->self.root_hub->do_remote_wakeup)
 			mask &= ~STS_PCD;
 		ehci_writel(ehci, mask, &ehci->regs->intr_enable);
 		ehci_readl(ehci, &ehci->regs->intr_enable);
@@ -329,7 +330,6 @@ static int ehci_pci_resume(struct usb_hcd *hcd)
 
 	/* here we "know" root ports should always stay powered */
 	ehci_port_power(ehci, 1);
-	ehci_handover_companion_ports(ehci);
 
 	hcd->state = HC_STATE_SUSPENDED;
 	return 0;
@@ -353,8 +353,8 @@ static const struct hc_driver ehci_pci_hc_driver = {
 	.reset =		ehci_pci_setup,
 	.start =		ehci_run,
 #ifdef	CONFIG_PM
-	.suspend =		ehci_pci_suspend,
-	.resume =		ehci_pci_resume,
+	.pci_suspend =		ehci_pci_suspend,
+	.pci_resume =		ehci_pci_resume,
 #endif
 	.stop =			ehci_stop,
 	.shutdown =		ehci_shutdown,
@@ -378,7 +378,8 @@ static const struct hc_driver ehci_pci_hc_driver = {
 	.hub_control =		ehci_hub_control,
 	.bus_suspend =		ehci_bus_suspend,
 	.bus_resume =		ehci_bus_resume,
-	.relinquish_port = 	ehci_relinquish_port,
+	.relinquish_port =	ehci_relinquish_port,
+	.port_handed_over =	ehci_port_handed_over,
 };
 
 /*-------------------------------------------------------------------------*/

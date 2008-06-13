@@ -65,39 +65,19 @@ struct audit_watch {
 	struct list_head	rules;	/* associated rules */
 };
 
-struct audit_field {
-	u32				type;
-	u32				val;
-	u32				op;
-	char				*se_str;
-	struct selinux_audit_rule	*se_rule;
-};
-
 struct audit_tree;
 struct audit_chunk;
-
-struct audit_krule {
-	int			vers_ops;
-	u32			flags;
-	u32			listnr;
-	u32			action;
-	u32			mask[AUDIT_BITMASK_SIZE];
-	u32			buflen; /* for data alloc on list rules */
-	u32			field_count;
-	char			*filterkey; /* ties events to rules */
-	struct audit_field	*fields;
-	struct audit_field	*arch_f; /* quick access to arch field */
-	struct audit_field	*inode_f; /* quick access to an inode field */
-	struct audit_watch	*watch;	/* associated watch */
-	struct audit_tree	*tree;	/* associated watched tree */
-	struct list_head	rlist;	/* entry in audit_{watch,tree}.rules list */
-};
 
 struct audit_entry {
 	struct list_head	list;
 	struct rcu_head		rcu;
 	struct audit_krule	rule;
 };
+
+#ifdef CONFIG_AUDIT
+extern int audit_enabled;
+extern int audit_ever_enabled;
+#endif
 
 extern int audit_pid;
 
@@ -129,6 +109,9 @@ struct audit_netlink_list {
 int audit_send_list(void *);
 
 struct inotify_watch;
+/* Inotify handle */
+extern struct inotify_handle *audit_ih;
+
 extern void audit_free_parent(struct inotify_watch *);
 extern void audit_handle_ievent(struct inotify_watch *, u32, u32, u32,
 				const char *, struct inode *);
@@ -136,6 +119,7 @@ extern int selinux_audit_rule_update(void);
 
 extern struct mutex audit_filter_mutex;
 extern void audit_free_rule_rcu(struct rcu_head *);
+extern struct list_head audit_filter_list[];
 
 #ifdef CONFIG_AUDIT_TREE
 extern struct audit_chunk *audit_tree_lookup(const struct inode *);
@@ -161,6 +145,10 @@ extern void audit_put_tree(struct audit_tree *);
 #endif
 
 extern char *audit_unpack_string(void **, size_t *, size_t);
+
+extern pid_t audit_sig_pid;
+extern uid_t audit_sig_uid;
+extern u32 audit_sig_sid;
 
 #ifdef CONFIG_AUDITSYSCALL
 extern int __audit_signal_info(int sig, struct task_struct *t);

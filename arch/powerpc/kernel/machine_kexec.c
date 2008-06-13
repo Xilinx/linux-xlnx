@@ -12,8 +12,9 @@
 #include <linux/kexec.h>
 #include <linux/reboot.h>
 #include <linux/threads.h>
+#include <linux/lmb.h>
 #include <asm/machdep.h>
-#include <asm/lmb.h>
+#include <asm/prom.h>
 
 void machine_crash_shutdown(struct pt_regs *regs)
 {
@@ -73,19 +74,19 @@ void __init reserve_crashkernel(void)
 	ret = parse_crashkernel(boot_command_line, lmb_phys_mem_size(),
 			&crash_size, &crash_base);
 	if (ret == 0 && crash_size > 0) {
-		if (crash_base == 0)
-			crash_base = KDUMP_KERNELBASE;
 		crashk_res.start = crash_base;
-	} else {
-		/* handle the device tree */
-		crash_size = crashk_res.end - crashk_res.start + 1;
+		crashk_res.end = crash_base + crash_size - 1;
 	}
 
-	if (crash_size == 0)
+	if (crashk_res.end == crashk_res.start) {
+		crashk_res.start = crashk_res.end = 0;
 		return;
+	}
 
 	/* We might have got these values via the command line or the
 	 * device tree, either way sanitise them now. */
+
+	crash_size = crashk_res.end - crashk_res.start + 1;
 
 	if (crashk_res.start != KDUMP_KERNELBASE)
 		printk("Crash kernel location must be 0x%x\n",

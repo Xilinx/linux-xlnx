@@ -22,6 +22,7 @@
 #include <linux/cpumask.h>
 #include <linux/kernel_stat.h>
 #include <linux/kdebug.h>
+#include <linux/slab.h>
 
 #include <asm/smp.h>
 #include <asm/nmi.h>
@@ -67,7 +68,7 @@ static __init void nmi_cpu_busy(void *data)
 }
 #endif
 
-static int __init check_nmi_watchdog(void)
+int __init check_nmi_watchdog(void)
 {
 	unsigned int *prev_nmi_count;
 	int cpu;
@@ -129,8 +130,6 @@ static int __init check_nmi_watchdog(void)
 	kfree(prev_nmi_count);
 	return 0;
 }
-/* This needs to happen later in boot so counters are working */
-late_initcall(check_nmi_watchdog);
 
 static int __init setup_nmi_watchdog(char *str)
 {
@@ -317,7 +316,8 @@ EXPORT_SYMBOL(touch_nmi_watchdog);
 
 extern void die_nmi(struct pt_regs *, const char *msg);
 
-__kprobes int nmi_watchdog_tick(struct pt_regs * regs, unsigned reason)
+notrace __kprobes int
+nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
 {
 
 	/*

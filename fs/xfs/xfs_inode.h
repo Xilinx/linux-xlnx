@@ -133,19 +133,6 @@ typedef struct dm_attrs_s {
 } dm_attrs_t;
 
 /*
- * This is the xfs inode cluster structure.  This structure is used by
- * xfs_iflush to find inodes that share a cluster and can be flushed to disk at
- * the same time.
- */
-typedef struct xfs_icluster {
-	struct hlist_head	icl_inodes;	/* list of inodes on cluster */
-	xfs_daddr_t		icl_blkno;	/* starting block number of
-						 * the cluster */
-	struct xfs_buf		*icl_buf;	/* the inode buffer */
-	spinlock_t		icl_lock;	/* inode list lock */
-} xfs_icluster_t;
-
-/*
  * This is the xfs in-core inode structure.
  * Most of the on-disk inode is embedded in the i_d field.
  *
@@ -240,10 +227,6 @@ typedef struct xfs_inode {
 	atomic_t		i_pincount;	/* inode pin count */
 	wait_queue_head_t	i_ipin_wait;	/* inode pinning wait queue */
 	spinlock_t		i_flags_lock;	/* inode i_flags lock */
-#ifdef HAVE_REFCACHE
-	struct xfs_inode	**i_refcache;	/* ptr to entry in ref cache */
-	struct xfs_inode	*i_release;	/* inode to unref */
-#endif
 	/* Miscellaneous state. */
 	unsigned short		i_flags;	/* see defined flags below */
 	unsigned char		i_update_core;	/* timestamps/size is dirty */
@@ -252,8 +235,6 @@ typedef struct xfs_inode {
 	unsigned int		i_delayed_blks;	/* count of delay alloc blks */
 
 	xfs_icdinode_t		i_d;		/* most of ondisk inode */
-	xfs_icluster_t		*i_cluster;	/* cluster list header */
-	struct hlist_node	i_cnode;	/* cluster link node */
 
 	xfs_fsize_t		i_size;		/* in-memory size */
 	xfs_fsize_t		i_new_size;	/* size when write completes */
@@ -405,20 +386,9 @@ xfs_iflags_test_and_clear(xfs_inode_t *ip, unsigned short flags)
 #define	XFS_ILOCK_EXCL		(1<<2)
 #define	XFS_ILOCK_SHARED	(1<<3)
 #define	XFS_IUNLOCK_NONOTIFY	(1<<4)
-/*	#define XFS_IOLOCK_NESTED	(1<<5)	*/
-#define XFS_EXTENT_TOKEN_RD	(1<<6)
-#define XFS_SIZE_TOKEN_RD	(1<<7)
-#define XFS_EXTSIZE_RD		(XFS_EXTENT_TOKEN_RD|XFS_SIZE_TOKEN_RD)
-#define XFS_WILLLEND		(1<<8)	/* Always acquire tokens for lending */
-#define XFS_EXTENT_TOKEN_WR	(XFS_EXTENT_TOKEN_RD | XFS_WILLLEND)
-#define XFS_SIZE_TOKEN_WR       (XFS_SIZE_TOKEN_RD | XFS_WILLLEND)
-#define XFS_EXTSIZE_WR		(XFS_EXTSIZE_RD | XFS_WILLLEND)
-/* TODO:XFS_SIZE_TOKEN_WANT	(1<<9) */
 
 #define XFS_LOCK_MASK		(XFS_IOLOCK_EXCL | XFS_IOLOCK_SHARED \
-				| XFS_ILOCK_EXCL | XFS_ILOCK_SHARED \
-				| XFS_EXTENT_TOKEN_RD | XFS_SIZE_TOKEN_RD \
-				| XFS_WILLLEND)
+				| XFS_ILOCK_EXCL | XFS_ILOCK_SHARED)
 
 /*
  * Flags for lockdep annotations.
@@ -461,6 +431,7 @@ xfs_iflags_test_and_clear(xfs_inode_t *ip, unsigned short flags)
 #define	XFS_IFLUSH_SYNC			3
 #define	XFS_IFLUSH_ASYNC		4
 #define	XFS_IFLUSH_DELWRI		5
+#define	XFS_IFLUSH_ASYNC_NOBLOCK	6
 
 /*
  * Flags for xfs_itruncate_start().
@@ -501,6 +472,7 @@ void		xfs_ilock(xfs_inode_t *, uint);
 int		xfs_ilock_nowait(xfs_inode_t *, uint);
 void		xfs_iunlock(xfs_inode_t *, uint);
 void		xfs_ilock_demote(xfs_inode_t *, uint);
+int		xfs_isilocked(xfs_inode_t *, uint);
 void		xfs_iflock(xfs_inode_t *);
 int		xfs_iflock_nowait(xfs_inode_t *);
 uint		xfs_ilock_map_shared(xfs_inode_t *);
@@ -515,7 +487,7 @@ int		xfs_finish_reclaim_all(struct xfs_mount *, int);
  */
 int		xfs_itobp(struct xfs_mount *, struct xfs_trans *,
 			  xfs_inode_t *, struct xfs_dinode **, struct xfs_buf **,
-			  xfs_daddr_t, uint);
+			  xfs_daddr_t, uint, uint);
 int		xfs_iread(struct xfs_mount *, struct xfs_trans *, xfs_ino_t,
 			  xfs_inode_t **, xfs_daddr_t, uint);
 int		xfs_iread_extents(struct xfs_trans *, xfs_inode_t *, int);
@@ -552,7 +524,7 @@ int		xfs_iflush(xfs_inode_t *, uint);
 void		xfs_iflush_all(struct xfs_mount *);
 void		xfs_ichgtime(xfs_inode_t *, int);
 xfs_fsize_t	xfs_file_last_byte(xfs_inode_t *);
-void		xfs_lock_inodes(xfs_inode_t **, int, int, uint);
+void		xfs_lock_inodes(xfs_inode_t **, int, uint);
 
 void		xfs_synchronize_atime(xfs_inode_t *);
 void		xfs_mark_inode_dirty_sync(xfs_inode_t *);
@@ -597,7 +569,6 @@ void		xfs_inobp_check(struct xfs_mount *, struct xfs_buf *);
 #define	xfs_inobp_check(mp, bp)
 #endif /* DEBUG */
 
-extern struct kmem_zone	*xfs_icluster_zone;
 extern struct kmem_zone	*xfs_ifork_zone;
 extern struct kmem_zone	*xfs_inode_zone;
 extern struct kmem_zone	*xfs_ili_zone;

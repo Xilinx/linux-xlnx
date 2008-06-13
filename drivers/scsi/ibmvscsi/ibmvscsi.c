@@ -686,7 +686,7 @@ static void handle_cmd_rsp(struct srp_event_struct *evt_struct)
 	}
 	
 	if (cmnd) {
-		cmnd->result = rsp->status;
+		cmnd->result |= rsp->status;
 		if (((cmnd->result >> 1) & 0x1f) == CHECK_CONDITION)
 			memcpy(cmnd->sense_buffer,
 			       rsp->data,
@@ -730,6 +730,7 @@ static int ibmvscsi_queuecommand(struct scsi_cmnd *cmnd,
 	u16 lun = lun_from_dev(cmnd->device);
 	u8 out_fmt, in_fmt;
 
+	cmnd->result = (DID_OK << 16);
 	evt_struct = get_event_struct(&hostdata->pool);
 	if (!evt_struct)
 		return SCSI_MLQUEUE_HOST_BUSY;
@@ -738,7 +739,7 @@ static int ibmvscsi_queuecommand(struct scsi_cmnd *cmnd,
 	srp_cmd = &evt_struct->iu.srp.cmd;
 	memset(srp_cmd, 0x00, SRP_MAX_IU_LEN);
 	srp_cmd->opcode = SRP_CMD;
-	memcpy(srp_cmd->cdb, cmnd->cmnd, sizeof(cmnd->cmnd));
+	memcpy(srp_cmd->cdb, cmnd->cmnd, sizeof(srp_cmd->cdb));
 	srp_cmd->lun = ((u64) lun) << 48;
 
 	if (!map_data_for_srp_cmd(cmnd, evt_struct, srp_cmd, hostdata->dev)) {
@@ -1347,6 +1348,8 @@ void ibmvscsi_handle_crq(struct viosrp_crq *crq,
 
 	del_timer(&evt_struct->timer);
 
+	if ((crq->status != VIOSRP_OK && crq->status != VIOSRP_OK2) && evt_struct->cmnd)
+		evt_struct->cmnd->result = DID_ERROR << 16;
 	if (evt_struct->done)
 		evt_struct->done(evt_struct);
 	else
@@ -1456,9 +1459,10 @@ static int ibmvscsi_change_queue_depth(struct scsi_device *sdev, int qdepth)
 /* ------------------------------------------------------------
  * sysfs attributes
  */
-static ssize_t show_host_srp_version(struct class_device *class_dev, char *buf)
+static ssize_t show_host_srp_version(struct device *dev,
+				     struct device_attribute *attr, char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
@@ -1467,7 +1471,7 @@ static ssize_t show_host_srp_version(struct class_device *class_dev, char *buf)
 	return len;
 }
 
-static struct class_device_attribute ibmvscsi_host_srp_version = {
+static struct device_attribute ibmvscsi_host_srp_version = {
 	.attr = {
 		 .name = "srp_version",
 		 .mode = S_IRUGO,
@@ -1475,10 +1479,11 @@ static struct class_device_attribute ibmvscsi_host_srp_version = {
 	.show = show_host_srp_version,
 };
 
-static ssize_t show_host_partition_name(struct class_device *class_dev,
+static ssize_t show_host_partition_name(struct device *dev,
+					struct device_attribute *attr,
 					char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
@@ -1487,7 +1492,7 @@ static ssize_t show_host_partition_name(struct class_device *class_dev,
 	return len;
 }
 
-static struct class_device_attribute ibmvscsi_host_partition_name = {
+static struct device_attribute ibmvscsi_host_partition_name = {
 	.attr = {
 		 .name = "partition_name",
 		 .mode = S_IRUGO,
@@ -1495,10 +1500,11 @@ static struct class_device_attribute ibmvscsi_host_partition_name = {
 	.show = show_host_partition_name,
 };
 
-static ssize_t show_host_partition_number(struct class_device *class_dev,
+static ssize_t show_host_partition_number(struct device *dev,
+					  struct device_attribute *attr,
 					  char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
@@ -1507,7 +1513,7 @@ static ssize_t show_host_partition_number(struct class_device *class_dev,
 	return len;
 }
 
-static struct class_device_attribute ibmvscsi_host_partition_number = {
+static struct device_attribute ibmvscsi_host_partition_number = {
 	.attr = {
 		 .name = "partition_number",
 		 .mode = S_IRUGO,
@@ -1515,9 +1521,10 @@ static struct class_device_attribute ibmvscsi_host_partition_number = {
 	.show = show_host_partition_number,
 };
 
-static ssize_t show_host_mad_version(struct class_device *class_dev, char *buf)
+static ssize_t show_host_mad_version(struct device *dev,
+				     struct device_attribute *attr, char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
@@ -1526,7 +1533,7 @@ static ssize_t show_host_mad_version(struct class_device *class_dev, char *buf)
 	return len;
 }
 
-static struct class_device_attribute ibmvscsi_host_mad_version = {
+static struct device_attribute ibmvscsi_host_mad_version = {
 	.attr = {
 		 .name = "mad_version",
 		 .mode = S_IRUGO,
@@ -1534,9 +1541,10 @@ static struct class_device_attribute ibmvscsi_host_mad_version = {
 	.show = show_host_mad_version,
 };
 
-static ssize_t show_host_os_type(struct class_device *class_dev, char *buf)
+static ssize_t show_host_os_type(struct device *dev,
+				 struct device_attribute *attr, char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
@@ -1544,7 +1552,7 @@ static ssize_t show_host_os_type(struct class_device *class_dev, char *buf)
 	return len;
 }
 
-static struct class_device_attribute ibmvscsi_host_os_type = {
+static struct device_attribute ibmvscsi_host_os_type = {
 	.attr = {
 		 .name = "os_type",
 		 .mode = S_IRUGO,
@@ -1552,9 +1560,10 @@ static struct class_device_attribute ibmvscsi_host_os_type = {
 	.show = show_host_os_type,
 };
 
-static ssize_t show_host_config(struct class_device *class_dev, char *buf)
+static ssize_t show_host_config(struct device *dev,
+				struct device_attribute *attr, char *buf)
 {
-	struct Scsi_Host *shost = class_to_shost(class_dev);
+	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 
 	/* returns null-terminated host config data */
@@ -1564,7 +1573,7 @@ static ssize_t show_host_config(struct class_device *class_dev, char *buf)
 		return 0;
 }
 
-static struct class_device_attribute ibmvscsi_host_config = {
+static struct device_attribute ibmvscsi_host_config = {
 	.attr = {
 		 .name = "config",
 		 .mode = S_IRUGO,
@@ -1572,7 +1581,7 @@ static struct class_device_attribute ibmvscsi_host_config = {
 	.show = show_host_config,
 };
 
-static struct class_device_attribute *ibmvscsi_attrs[] = {
+static struct device_attribute *ibmvscsi_attrs[] = {
 	&ibmvscsi_host_srp_version,
 	&ibmvscsi_host_partition_name,
 	&ibmvscsi_host_partition_number,

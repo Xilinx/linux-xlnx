@@ -136,9 +136,11 @@ static void __init pirq_peer_trick(void)
 		busmap[e->bus] = 1;
 	}
 	for(i = 1; i < 256; i++) {
+		int node;
 		if (!busmap[i] || pci_find_bus(0, i))
 			continue;
-		if (pci_scan_bus_with_sysdata(i))
+		node = get_mp_bus_to_node(i);
+		if (pci_scan_bus_on_node(i, &pci_root_ops, node))
 			printk(KERN_INFO "PCI: Discovered primary peer "
 			       "bus %02x [IRQ]\n", i);
 	}
@@ -200,7 +202,7 @@ static int pirq_ali_get(struct pci_dev *router, struct pci_dev *dev, int pirq)
 {
 	static const unsigned char irqmap[16] = { 0, 9, 3, 10, 4, 5, 7, 6, 1, 11, 0, 12, 0, 14, 0, 15 };
 
-	WARN_ON_ONCE(pirq >= 16);
+	WARN_ON_ONCE(pirq > 16);
 	return irqmap[read_config_nybble(router, 0x48, pirq-1)];
 }
 
@@ -209,7 +211,7 @@ static int pirq_ali_set(struct pci_dev *router, struct pci_dev *dev, int pirq, i
 	static const unsigned char irqmap[16] = { 0, 8, 0, 2, 4, 5, 7, 6, 0, 1, 3, 9, 11, 0, 13, 15 };
 	unsigned int val = irqmap[irq];
 
-	WARN_ON_ONCE(pirq >= 16);
+	WARN_ON_ONCE(pirq > 16);
 	if (val) {
 		write_config_nybble(router, 0x48, pirq-1, val);
 		return 1;
@@ -260,7 +262,7 @@ static int pirq_via586_get(struct pci_dev *router, struct pci_dev *dev, int pirq
 {
 	static const unsigned int pirqmap[5] = { 3, 2, 5, 1, 1 };
 
-	WARN_ON_ONCE(pirq >= 5);
+	WARN_ON_ONCE(pirq > 5);
 	return read_config_nybble(router, 0x55, pirqmap[pirq-1]);
 }
 
@@ -268,7 +270,7 @@ static int pirq_via586_set(struct pci_dev *router, struct pci_dev *dev, int pirq
 {
 	static const unsigned int pirqmap[5] = { 3, 2, 5, 1, 1 };
 
-	WARN_ON_ONCE(pirq >= 5);
+	WARN_ON_ONCE(pirq > 5);
 	write_config_nybble(router, 0x55, pirqmap[pirq-1], irq);
 	return 1;
 }
@@ -282,7 +284,7 @@ static int pirq_ite_get(struct pci_dev *router, struct pci_dev *dev, int pirq)
 {
 	static const unsigned char pirqmap[4] = { 1, 0, 2, 3 };
 
-	WARN_ON_ONCE(pirq >= 4);
+	WARN_ON_ONCE(pirq > 4);
 	return read_config_nybble(router,0x43, pirqmap[pirq-1]);
 }
 
@@ -290,7 +292,7 @@ static int pirq_ite_set(struct pci_dev *router, struct pci_dev *dev, int pirq, i
 {
 	static const unsigned char pirqmap[4] = { 1, 0, 2, 3 };
 
-	WARN_ON_ONCE(pirq >= 4);
+	WARN_ON_ONCE(pirq > 4);
 	write_config_nybble(router, 0x43, pirqmap[pirq-1], irq);
 	return 1;
 }
@@ -618,6 +620,13 @@ static __init int via_router_probe(struct irq_router *r,
 			 * as 586-compatible
 			 */
 			device = PCI_DEVICE_ID_VIA_8235;
+			break;
+		case PCI_DEVICE_ID_VIA_8237:
+			/**
+			 * Asus a7v600 bios wrongly reports 8237
+			 * as 586-compatible
+			 */
+			device = PCI_DEVICE_ID_VIA_8237;
 			break;
 		}
 	}

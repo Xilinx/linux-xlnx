@@ -18,14 +18,15 @@
 /*
  * MegaRAID SAS Driver meta data
  */
-#define MEGASAS_VERSION				"00.00.03.16-rc1"
-#define MEGASAS_RELDATE				"Nov. 07, 2007"
-#define MEGASAS_EXT_VERSION			"Thu. Nov. 07 10:09:32 PDT 2007"
+#define MEGASAS_VERSION			"00.00.03.20-rc1"
+#define MEGASAS_RELDATE			"March 10, 2008"
+#define MEGASAS_EXT_VERSION		"Mon. March 10 11:02:31 PDT 2008"
 
 /*
  * Device IDs
  */
 #define	PCI_DEVICE_ID_LSI_SAS1078R		0x0060
+#define	PCI_DEVICE_ID_LSI_SAS1078DE		0x007C
 #define	PCI_DEVICE_ID_LSI_VERDE_ZCR		0x0413
 
 /*
@@ -541,6 +542,10 @@ struct megasas_ctrl_info {
 #define MEGASAS_DBG_LVL				1
 
 #define MEGASAS_FW_BUSY				1
+
+/* Frame Type */
+#define IO_FRAME				0
+#define PTHRU_FRAME				1
 
 /*
  * When SCSI mid-layer calls driver's reset routine, driver waits for

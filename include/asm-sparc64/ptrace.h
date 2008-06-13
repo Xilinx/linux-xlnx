@@ -1,4 +1,3 @@
-/* $Id: ptrace.h,v 1.14 2002/02/09 19:49:32 davem Exp $ */
 #ifndef _SPARC64_PTRACE_H
 #define _SPARC64_PTRACE_H
 
@@ -8,7 +7,14 @@
  * stack during a system call and basically all traps.
  */
 
+/* This magic value must have the low 9 bits clear,
+ * as that is where we encode the %tt value, see below.
+ */
+#define PT_REGS_MAGIC 0x57ac6c00
+
 #ifndef __ASSEMBLY__
+
+#include <linux/types.h>
 
 struct pt_regs {
 	unsigned long u_regs[16]; /* globals and ins */
@@ -16,8 +22,35 @@ struct pt_regs {
 	unsigned long tpc;
 	unsigned long tnpc;
 	unsigned int y;
-	unsigned int fprs;
+
+	/* We encode a magic number, PT_REGS_MAGIC, along
+	 * with the %tt (trap type) register value at trap
+	 * entry time.  The magic number allows us to identify
+	 * accurately a trap stack frame in the stack
+	 * unwinder, and the %tt value allows us to test
+	 * things like "in a system call" etc. for an arbitray
+	 * process.
+	 *
+	 * The PT_REGS_MAGIC is choosen such that it can be
+	 * loaded completely using just a sethi instruction.
+	 */
+	unsigned int magic;
 };
+
+static inline int pt_regs_trap_type(struct pt_regs *regs)
+{
+	return regs->magic & 0x1ff;
+}
+
+static inline bool pt_regs_is_syscall(struct pt_regs *regs)
+{
+	return (regs->tstate & TSTATE_SYSCALL);
+}
+
+static inline bool pt_regs_clear_syscall(struct pt_regs *regs)
+{
+	return (regs->tstate &= ~TSTATE_SYSCALL);
+}
 
 struct pt_regs32 {
 	unsigned int psr;
@@ -95,6 +128,17 @@ struct sparc_trapf {
 
 #ifdef __KERNEL__
 
+struct global_reg_snapshot {
+	unsigned long		tstate;
+	unsigned long		tpc;
+	unsigned long		tnpc;
+	unsigned long		o7;
+	unsigned long		i7;
+	struct thread_info	*thread;
+	unsigned long		pad1;
+	unsigned long		pad2;
+};
+
 #define __ARCH_WANT_COMPAT_SYS_PTRACE
 
 #define force_successful_syscall_return()	    \
@@ -147,7 +191,7 @@ extern void __show_regs(struct pt_regs *);
 #define PT_V9_TPC    0x88
 #define PT_V9_TNPC   0x90
 #define PT_V9_Y      0x98
-#define PT_V9_FPRS   0x9c
+#define PT_V9_MAGIC  0x9c
 #define PT_TSTATE	PT_V9_TSTATE
 #define PT_TPC		PT_V9_TPC
 #define PT_TNPC		PT_V9_TNPC
@@ -262,7 +306,22 @@ extern void __show_regs(struct pt_regs *);
 #define SF_XARG5  0x58
 #define SF_XXARG  0x5c
 
+#ifdef __KERNEL__
+
+/* global_reg_snapshot offsets */
+#define GR_SNAP_TSTATE	0x00
+#define GR_SNAP_TPC	0x08
+#define GR_SNAP_TNPC	0x10
+#define GR_SNAP_O7	0x18
+#define GR_SNAP_I7	0x20
+#define GR_SNAP_THREAD	0x28
+#define GR_SNAP_PAD1	0x30
+#define GR_SNAP_PAD2	0x38
+
+#endif  /*  __KERNEL__  */
+
 /* Stuff for the ptrace system call */
+#define PTRACE_SPARC_DETACH       11
 #define PTRACE_GETREGS            12
 #define PTRACE_SETREGS            13
 #define PTRACE_GETFPREGS          14

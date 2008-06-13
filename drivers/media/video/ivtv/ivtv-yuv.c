@@ -718,9 +718,11 @@ static u32 ivtv_yuv_window_setup(struct ivtv *itv, struct yuv_frame_info *f)
 		f->src_w -= (osd_scale * osd_crop) >> 16;
 	}
 
-	/* The OSD can be moved. Track to it */
-	f->dst_x += itv->yuv_info.osd_x_offset;
-	f->dst_y += itv->yuv_info.osd_y_offset;
+	if (itv->yuv_info.track_osd) {
+		/* The OSD can be moved. Track to it */
+		f->dst_x += itv->yuv_info.osd_x_offset;
+		f->dst_y += itv->yuv_info.osd_y_offset;
+	}
 
 	/* Width & height for both src & dst must be even.
 	   Same for coordinates. */
@@ -792,11 +794,19 @@ void ivtv_yuv_work_handler(struct ivtv *itv)
 	IVTV_DEBUG_YUV("Update yuv registers for frame %d\n", frame);
 	f = yi->new_frame_info[frame];
 
-	/* Update the osd pan info */
-	f.pan_x = yi->osd_x_pan;
-	f.pan_y = yi->osd_y_pan;
-	f.vis_w = yi->osd_vis_w;
-	f.vis_h = yi->osd_vis_h;
+	if (yi->track_osd) {
+		/* Snapshot the osd pan info */
+		f.pan_x = yi->osd_x_pan;
+		f.pan_y = yi->osd_y_pan;
+		f.vis_w = yi->osd_vis_w;
+		f.vis_h = yi->osd_vis_h;
+	} else {
+		/* Not tracking the osd, so assume full screen */
+		f.pan_x = 0;
+		f.pan_y = 0;
+		f.vis_w = 720;
+		f.vis_h = yi->decode_height;
+	}
 
 	/* Calculate the display window coordinates. Exit if nothing left */
 	if (!(yuv_update = ivtv_yuv_window_setup(itv, &f)))
@@ -898,7 +908,7 @@ static void ivtv_yuv_init(struct ivtv *itv)
 	}
 
 	/* We need a buffer for blanking when Y plane is offset - non-fatal if we can't get one */
-	yi->blanking_ptr = kzalloc(720 * 16, GFP_KERNEL);
+	yi->blanking_ptr = kzalloc(720 * 16, GFP_KERNEL|__GFP_NOWARN);
 	if (yi->blanking_ptr) {
 		yi->blanking_dmaptr = pci_map_single(itv->dev, yi->blanking_ptr, 720*16, PCI_DMA_TODEVICE);
 	} else {
@@ -914,7 +924,7 @@ static void ivtv_yuv_init(struct ivtv *itv)
 }
 
 /* Get next available yuv buffer on PVR350 */
-void ivtv_yuv_next_free(struct ivtv *itv)
+static void ivtv_yuv_next_free(struct ivtv *itv)
 {
 	int draw, display;
 	struct yuv_playback_info *yi = &itv->yuv_info;
@@ -937,7 +947,7 @@ void ivtv_yuv_next_free(struct ivtv *itv)
 }
 
 /* Set up frame according to ivtv_dma_frame parameters */
-void ivtv_yuv_setup_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
+static void ivtv_yuv_setup_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 {
 	struct yuv_playback_info *yi = &itv->yuv_info;
 	u8 frame = yi->draw_frame;
@@ -964,12 +974,6 @@ void ivtv_yuv_setup_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 
 	/* Are we going to offset the Y plane */
 	nf->offset_y = (nf->tru_h + nf->src_x < 512 - 16) ? 1 : 0;
-
-	/* Snapshot the osd pan info */
-	nf->pan_x = yi->osd_x_pan;
-	nf->pan_y = yi->osd_y_pan;
-	nf->vis_w = yi->osd_vis_w;
-	nf->vis_h = yi->osd_vis_h;
 
 	nf->update = 0;
 	nf->interlaced_y = 0;
@@ -1042,7 +1046,7 @@ void ivtv_yuv_frame_complete(struct ivtv *itv)
 			(itv->yuv_info.draw_frame + 1) % IVTV_YUV_BUFFERS);
 }
 
-int ivtv_yuv_udma_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
+static int ivtv_yuv_udma_frame(struct ivtv *itv, struct ivtv_dma_frame *args)
 {
 	DEFINE_WAIT(wait);
 	int rc = 0;
@@ -1094,8 +1098,8 @@ void ivtv_yuv_setup_stream_frame(struct ivtv *itv)
 	ivtv_yuv_next_free(itv);
 
 	/* Copy V4L2 parameters to an ivtv_dma_frame struct... */
-	dma_args.y_source = 0L;
-	dma_args.uv_source = 0L;
+	dma_args.y_source = NULL;
+	dma_args.uv_source = NULL;
 	dma_args.src.left = 0;
 	dma_args.src.top = 0;
 	dma_args.src.width = yi->v4l2_src_w;
@@ -1112,7 +1116,7 @@ void ivtv_yuv_setup_stream_frame(struct ivtv *itv)
 }
 
 /* Attempt to dma a frame from a user buffer */
-int ivtv_yuv_udma_stream_frame(struct ivtv *itv, void *src)
+int ivtv_yuv_udma_stream_frame(struct ivtv *itv, void __user *src)
 {
 	struct yuv_playback_info *yi = &itv->yuv_info;
 	struct ivtv_dma_frame dma_args;

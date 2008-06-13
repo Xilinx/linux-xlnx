@@ -39,7 +39,6 @@
 #include <asm/ppc-pci.h>
 #include <asm/rtas.h>
 
-#undef DEBUG
 
 /** Overview:
  *  EEH, or "Extended Error Handling" is a PCI bridge technology for
@@ -945,7 +944,6 @@ static void *early_enable_eeh(struct device_node *dn, void *data)
 	unsigned int rets[3];
 	struct eeh_early_enable_info *info = data;
 	int ret;
-	const char *status = of_get_property(dn, "status", NULL);
 	const u32 *class_code = of_get_property(dn, "class-code", NULL);
 	const u32 *vendor_id = of_get_property(dn, "vendor-id", NULL);
 	const u32 *device_id = of_get_property(dn, "device-id", NULL);
@@ -959,8 +957,8 @@ static void *early_enable_eeh(struct device_node *dn, void *data)
 	pdn->eeh_freeze_count = 0;
 	pdn->eeh_false_positives = 0;
 
-	if (status && strncmp(status, "ok", 2) != 0)
-		return NULL;	/* ignore devices with bad status */
+	if (!of_device_is_available(dn))
+		return NULL;
 
 	/* Ignore bad nodes. */
 	if (!class_code || !vendor_id || !device_id)
@@ -1261,14 +1259,8 @@ static const struct file_operations proc_eeh_operations = {
 
 static int __init eeh_init_proc(void)
 {
-	struct proc_dir_entry *e;
-
-	if (machine_is(pseries)) {
-		e = create_proc_entry("ppc64/eeh", 0, NULL);
-		if (e)
-			e->proc_fops = &proc_eeh_operations;
-	}
-
+	if (machine_is(pseries))
+		proc_create("ppc64/eeh", 0, NULL, &proc_eeh_operations);
 	return 0;
 }
 __initcall(eeh_init_proc);

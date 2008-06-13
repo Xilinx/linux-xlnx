@@ -15,6 +15,7 @@
 #include <asm/time.h>
 #include <asm/xilinx_intc.h>
 #include <asm/reg.h>
+#include <asm/ppc4xx.h>
 #include "44x.h"
 
 static struct of_device_id xilinx_of_bus_ids[] __initdata = {
@@ -53,5 +54,5 @@ define_machine(virtex) {
 	.init_IRQ		= xilinx_intc_init_tree,
 	.get_irq		= xilinx_intc_get_irq,
 	.calibrate_decr		= generic_calibrate_decr,
-	.restart                = ppc44x_reset_system,
+	.restart                = ppc4xx_reset_system,
 };

@@ -516,7 +516,7 @@ static int parse_sec_desc(struct cifs_ntsd *pntsd, int acl_len,
 
 /* Convert permission bits from mode to equivalent CIFS ACL */
 static int build_sec_desc(struct cifs_ntsd *pntsd, struct cifs_ntsd *pnntsd,
-				int acl_len, struct inode *inode, __u64 nmode)
+				struct inode *inode, __u64 nmode)
 {
 	int rc = 0;
 	__u32 dacloffset;
@@ -559,7 +559,7 @@ static struct cifs_ntsd *get_cifs_acl(u32 *pacllen, struct inode *inode,
 				       const char *path, const __u16 *pfid)
 {
 	struct cifsFileInfo *open_file = NULL;
-	int unlock_file = FALSE;
+	bool unlock_file = false;
 	int xid;
 	int rc = -EIO;
 	__u16 fid;
@@ -586,10 +586,10 @@ static struct cifs_ntsd *get_cifs_acl(u32 *pacllen, struct inode *inode,
 	cifs_sb = CIFS_SB(sb);
 
 	if (open_file) {
-		unlock_file = TRUE;
+		unlock_file = true;
 		fid = open_file->netfid;
 	} else if (pfid == NULL) {
-		int oplock = FALSE;
+		int oplock = 0;
 		/* open file */
 		rc = CIFSSMBOpen(xid, cifs_sb->tcon, path, FILE_OPEN,
 				READ_CONTROL, 0, &fid, &oplock, NULL,
@@ -604,7 +604,7 @@ static struct cifs_ntsd *get_cifs_acl(u32 *pacllen, struct inode *inode,
 
 	rc = CIFSSMBGetCIFSACL(xid, cifs_sb->tcon, fid, &pntsd, pacllen);
 	cFYI(1, ("GetCIFSACL rc = %d ACL len %d", rc, *pacllen));
-	if (unlock_file == TRUE) /* find_readable_file increments ref count */
+	if (unlock_file == true) /* find_readable_file increments ref count */
 		atomic_dec(&open_file->wrtPending);
 	else if (pfid == NULL) /* if opened above we have to close the handle */
 		CIFSSMBClose(xid, cifs_sb->tcon, fid);
@@ -619,7 +619,7 @@ static int set_cifs_acl(struct cifs_ntsd *pnntsd, __u32 acllen,
 				struct inode *inode, const char *path)
 {
 	struct cifsFileInfo *open_file;
-	int unlock_file = FALSE;
+	bool unlock_file = false;
 	int xid;
 	int rc = -EIO;
 	__u16 fid;
@@ -640,10 +640,10 @@ static int set_cifs_acl(struct cifs_ntsd *pnntsd, __u32 acllen,
 
 	open_file = find_readable_file(CIFS_I(inode));
 	if (open_file) {
-		unlock_file = TRUE;
+		unlock_file = true;
 		fid = open_file->netfid;
 	} else {
-		int oplock = FALSE;
+		int oplock = 0;
 		/* open file */
 		rc = CIFSSMBOpen(xid, cifs_sb->tcon, path, FILE_OPEN,
 				WRITE_DAC, 0, &fid, &oplock, NULL,
@@ -658,7 +658,7 @@ static int set_cifs_acl(struct cifs_ntsd *pnntsd, __u32 acllen,
 
 	rc = CIFSSMBSetCIFSACL(xid, cifs_sb->tcon, fid, pnntsd, acllen);
 	cFYI(DBG2, ("SetCIFSACL rc = %d", rc));
-	if (unlock_file == TRUE)
+	if (unlock_file)
 		atomic_dec(&open_file->wrtPending);
 	else
 		CIFSSMBClose(xid, cifs_sb->tcon, fid);
@@ -692,14 +692,14 @@ void acl_to_uid_mode(struct inode *inode, const char *path, const __u16 *pfid)
 int mode_to_acl(struct inode *inode, const char *path, __u64 nmode)
 {
 	int rc = 0;
-	__u32 acllen = 0;
+	__u32 secdesclen = 0;
 	struct cifs_ntsd *pntsd = NULL; /* acl obtained from server */
 	struct cifs_ntsd *pnntsd = NULL; /* modified acl to be sent to server */
 
 	cFYI(DBG2, ("set ACL from mode for %s", path));
 
 	/* Get the security descriptor */
-	pntsd = get_cifs_acl(&acllen, inode, path, NULL);
+	pntsd = get_cifs_acl(&secdesclen, inode, path, NULL);
 
 	/* Add three ACEs for owner, group, everyone getting rid of
 	   other ACEs as chmod disables ACEs and set the security descriptor */
@@ -709,20 +709,22 @@ int mode_to_acl(struct inode *inode, const char *path, __u64 nmode)
 		   set security descriptor request security descriptor
 		   parameters, and secuirty descriptor itself */
 
-		pnntsd = kmalloc(acllen, GFP_KERNEL);
+		secdesclen = secdesclen < DEFSECDESCLEN ?
+					DEFSECDESCLEN : secdesclen;
+		pnntsd = kmalloc(secdesclen, GFP_KERNEL);
 		if (!pnntsd) {
 			cERROR(1, ("Unable to allocate security descriptor"));
 			kfree(pntsd);
 			return (-ENOMEM);
 		}
 
-		rc = build_sec_desc(pntsd, pnntsd, acllen, inode, nmode);
+		rc = build_sec_desc(pntsd, pnntsd, inode, nmode);
 
 		cFYI(DBG2, ("build_sec_desc rc: %d", rc));
 
 		if (!rc) {
 			/* Set the security descriptor */
-			rc = set_cifs_acl(pnntsd, acllen, inode, path);
+			rc = set_cifs_acl(pnntsd, secdesclen, inode, path);
 			cFYI(DBG2, ("set_cifs_acl rc: %d", rc));
 		}
 

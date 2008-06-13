@@ -387,6 +387,8 @@ _xfs_buf_lookup_pages(
 		if (unlikely(page == NULL)) {
 			if (flags & XBF_READ_AHEAD) {
 				bp->b_page_count = i;
+				for (i = 0; i < bp->b_page_count; i++)
+					unlock_page(bp->b_pages[i]);
 				return -ENOMEM;
 			}
 
@@ -400,7 +402,7 @@ _xfs_buf_lookup_pages(
 				printk(KERN_ERR
 					"XFS: possible memory allocation "
 					"deadlock in %s (mode:0x%x)\n",
-					__FUNCTION__, gfp_mask);
+					__func__, gfp_mask);
 
 			XFS_STATS_INC(xb_page_retries);
 			xfsbufd_wakeup(0, gfp_mask);
@@ -416,15 +418,22 @@ _xfs_buf_lookup_pages(
 		ASSERT(!PagePrivate(page));
 		if (!PageUptodate(page)) {
 			page_count--;
-			if (blocksize < PAGE_CACHE_SIZE && !PagePrivate(page)) {
+			if (blocksize >= PAGE_CACHE_SIZE) {
+				if (flags & XBF_READ)
+					bp->b_flags |= _XBF_PAGE_LOCKED;
+			} else if (!PagePrivate(page)) {
 				if (test_page_region(page, offset, nbytes))
 					page_count++;
 			}
 		}
 
-		unlock_page(page);
 		bp->b_pages[i] = page;
 		offset = 0;
+	}
+
+	if (!(bp->b_flags & _XBF_PAGE_LOCKED)) {
+		for (i = 0; i < bp->b_page_count; i++)
+			unlock_page(bp->b_pages[i]);
 	}
 
 	if (page_count == bp->b_page_count)
@@ -598,7 +607,7 @@ xfs_buf_get_flags(
 		error = _xfs_buf_map_pages(bp, flags);
 		if (unlikely(error)) {
 			printk(KERN_WARNING "%s: failed to map pages\n",
-					__FUNCTION__);
+					__func__);
 			goto no_buffer;
 		}
 	}
@@ -746,6 +755,7 @@ xfs_buf_associate_memory(
 	bp->b_count_desired = len;
 	bp->b_buffer_length = buflen;
 	bp->b_flags |= XBF_MAPPED;
+	bp->b_flags &= ~_XBF_PAGE_LOCKED;
 
 	return 0;
 }
@@ -778,7 +788,7 @@ xfs_buf_get_noaddr(
 	error = _xfs_buf_map_pages(bp, XBF_MAPPED);
 	if (unlikely(error)) {
 		printk(KERN_WARNING "%s: failed to map pages\n",
-				__FUNCTION__);
+				__func__);
 		goto fail_free_mem;
 	}
 
@@ -886,7 +896,7 @@ int
 xfs_buf_lock_value(
 	xfs_buf_t		*bp)
 {
-	return atomic_read(&bp->b_sema.count);
+	return bp->b_sema.count;
 }
 #endif
 
@@ -1060,7 +1070,7 @@ xfs_buf_iostart(
 		bp->b_flags &= ~(XBF_READ | XBF_WRITE | XBF_ASYNC);
 		bp->b_flags |= flags & (XBF_DELWRI | XBF_ASYNC);
 		xfs_buf_delwri_queue(bp, 1);
-		return status;
+		return 0;
 	}
 
 	bp->b_flags &= ~(XBF_READ | XBF_WRITE | XBF_ASYNC | XBF_DELWRI | \
@@ -1093,8 +1103,10 @@ _xfs_buf_ioend(
 	xfs_buf_t		*bp,
 	int			schedule)
 {
-	if (atomic_dec_and_test(&bp->b_io_remaining) == 1)
+	if (atomic_dec_and_test(&bp->b_io_remaining) == 1) {
+		bp->b_flags &= ~_XBF_PAGE_LOCKED;
 		xfs_buf_ioend(bp, schedule);
+	}
 }
 
 STATIC void
@@ -1125,6 +1137,9 @@ xfs_buf_bio_end_io(
 
 		if (--bvec >= bio->bi_io_vec)
 			prefetchw(&bvec->bv_page->flags);
+
+		if (bp->b_flags & _XBF_PAGE_LOCKED)
+			unlock_page(page);
 	} while (bvec >= bio->bi_io_vec);
 
 	_xfs_buf_ioend(bp, 1);
@@ -1163,7 +1178,8 @@ _xfs_buf_ioapply(
 	 * filesystem block size is not smaller than the page size.
 	 */
 	if ((bp->b_buffer_length < PAGE_CACHE_SIZE) &&
-	    (bp->b_flags & XBF_READ) &&
+	    ((bp->b_flags & (XBF_READ|_XBF_PAGE_LOCKED)) ==
+	      (XBF_READ|_XBF_PAGE_LOCKED)) &&
 	    (blocksize >= PAGE_CACHE_SIZE)) {
 		bio = bio_alloc(GFP_NOIO, 1);
 

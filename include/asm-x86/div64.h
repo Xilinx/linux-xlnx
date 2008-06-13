@@ -17,40 +17,41 @@
  * This ends up being the most efficient "calling
  * convention" on x86.
  */
-#define do_div(n,base) ({ \
-	unsigned long __upper, __low, __high, __mod, __base; \
-	__base = (base); \
-	asm("":"=a" (__low), "=d" (__high):"A" (n)); \
-	__upper = __high; \
-	if (__high) { \
-		__upper = __high % (__base); \
-		__high = __high / (__base); \
-	} \
-	asm("divl %2":"=a" (__low), "=d" (__mod):"rm" (__base), "0" (__low), "1" (__upper)); \
-	asm("":"=A" (n):"a" (__low),"d" (__high)); \
-	__mod; \
+#define do_div(n, base)						\
+({								\
+	unsigned long __upper, __low, __high, __mod, __base;	\
+	__base = (base);					\
+	asm("":"=a" (__low), "=d" (__high) : "A" (n));		\
+	__upper = __high;					\
+	if (__high) {						\
+		__upper = __high % (__base);			\
+		__high = __high / (__base);			\
+	}							\
+	asm("divl %2":"=a" (__low), "=d" (__mod)		\
+	    : "rm" (__base), "0" (__low), "1" (__upper));	\
+	asm("":"=A" (n) : "a" (__low), "d" (__high));		\
+	__mod;							\
 })
 
-/*
- * (long)X = ((long long)divs) / (long)div
- * (long)rem = ((long long)divs) % (long)div
- *
- * Warning, this will do an exception if X overflows.
- */
-#define div_long_long_rem(a,b,c) div_ll_X_l_rem(a,b,c)
-
-static inline long
-div_ll_X_l_rem(long long divs, long div, long *rem)
+static inline u64 div_u64_rem(u64 dividend, u32 divisor, u32 *remainder)
 {
-	long dum2;
-      __asm__("divl %2":"=a"(dum2), "=d"(*rem)
-      :	"rm"(div), "A"(divs));
+	union {
+		u64 v64;
+		u32 v32[2];
+	} d = { dividend };
+	u32 upper;
 
-	return dum2;
-
+	upper = d.v32[1];
+	d.v32[1] = 0;
+	if (upper >= divisor) {
+		d.v32[1] = upper / divisor;
+		upper %= divisor;
+	}
+	asm ("divl %2" : "=a" (d.v32[0]), "=d" (*remainder) :
+		"rm" (divisor), "0" (d.v32[0]), "1" (upper));
+	return d.v64;
 }
-
-extern uint64_t div64_64(uint64_t dividend, uint64_t divisor);
+#define div_u64_rem	div_u64_rem
 
 #else
 # include <asm-generic/div64.h>

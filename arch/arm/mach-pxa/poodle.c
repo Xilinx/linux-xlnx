@@ -32,6 +32,7 @@
 #include <asm/mach/irq.h>
 
 #include <asm/arch/pxa-regs.h>
+#include <asm/arch/pxa2xx-gpio.h>
 #include <asm/arch/mmc.h>
 #include <asm/arch/udc.h>
 #include <asm/arch/irda.h>
@@ -325,13 +326,11 @@ static struct platform_device *devices[] __initdata = {
 
 static void poodle_poweroff(void)
 {
-	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
 	arm_machine_restart('h');
 }
 
 static void poodle_restart(char mode)
 {
-	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
 	arm_machine_restart('h');
 }
 

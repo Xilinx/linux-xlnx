@@ -9,8 +9,6 @@
  * ----------------------------------------------------------------------- */
 
 /*
- * arch/i386/boot/printf.c
- *
  * Oh, it's a waste of space, but oh-so-yummy for debugging.  This
  * version of printf() does not include 64-bit support.  "Live with
  * it."
@@ -58,7 +56,7 @@ static char *number(char *str, long num, int base, int size, int precision,
 	if (type & LEFT)
 		type &= ~ZEROPAD;
 	if (base < 2 || base > 36)
-		return 0;
+		return NULL;
 	c = (type & ZEROPAD) ? '0' : ' ';
 	sign = 0;
 	if (type & SIGN) {

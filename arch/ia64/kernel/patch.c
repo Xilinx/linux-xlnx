@@ -115,6 +115,29 @@ ia64_patch_vtop (unsigned long start, unsigned long end)
 	ia64_srlz_i();
 }
 
+/*
+ * Disable the RSE workaround by turning the conditional branch
+ * that we tagged in each place the workaround was used into an
+ * unconditional branch.
+ */
+void __init
+ia64_patch_rse (unsigned long start, unsigned long end)
+{
+	s32 *offp = (s32 *) start;
+	u64 ip, *b;
+
+	while (offp < (s32 *) end) {
+		ip = (u64) offp + *offp;
+
+		b = (u64 *)(ip & -16);
+		b[1] &= ~0xf800000L;
+		ia64_fc((void *) ip);
+		++offp;
+	}
+	ia64_sync_i();
+	ia64_srlz_i();
+}
+
 void __init
 ia64_patch_mckinley_e9 (unsigned long start, unsigned long end)
 {
@@ -135,10 +158,10 @@ ia64_patch_mckinley_e9 (unsigned long start, unsigned long end)
 
 	while (offp < (s32 *) end) {
 		wp = (u64 *) ia64_imva((char *) offp + *offp);
-		wp[0] = 0x0000000100000000UL; /* nop.m 0; nop.i 0; nop.i 0 */
-		wp[1] = 0x0004000000000200UL;
-		wp[2] = 0x0000000100000011UL; /* nop.m 0; nop.i 0; br.ret.sptk.many b6 */
-		wp[3] = 0x0084006880000200UL;
+		wp[0] = 0x0000000100000011UL; /* nop.m 0; nop.i 0; br.ret.sptk.many b6 */
+		wp[1] = 0x0084006880000200UL;
+		wp[2] = 0x0000000100000000UL; /* nop.m 0; nop.i 0; nop.i 0 */
+		wp[3] = 0x0004000000000200UL;
 		ia64_fc(wp); ia64_fc(wp + 2);
 		++offp;
 	}

@@ -53,10 +53,6 @@ struct user_struct root_user = {
 	.files		= ATOMIC_INIT(0),
 	.sigpending	= ATOMIC_INIT(0),
 	.locked_shm     = 0,
-#ifdef CONFIG_KEYS
-	.uid_keyring	= &root_user_keyring,
-	.session_keyring = &root_session_keyring,
-#endif
 #ifdef CONFIG_USER_SCHED
 	.tg		= &init_task_group,
 #endif
@@ -101,7 +97,7 @@ static int sched_create_user(struct user_struct *up)
 {
 	int rc = 0;
 
-	up->tg = sched_create_group();
+	up->tg = sched_create_group(&root_task_group);
 	if (IS_ERR(up->tg))
 		rc = -ENOMEM;
 
@@ -193,6 +189,33 @@ static ssize_t cpu_rt_runtime_store(struct kobject *kobj,
 
 static struct kobj_attribute cpu_rt_runtime_attr =
 	__ATTR(cpu_rt_runtime, 0644, cpu_rt_runtime_show, cpu_rt_runtime_store);
+
+static ssize_t cpu_rt_period_show(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   char *buf)
+{
+	struct user_struct *up = container_of(kobj, struct user_struct, kobj);
+
+	return sprintf(buf, "%lu\n", sched_group_rt_period(up->tg));
+}
+
+static ssize_t cpu_rt_period_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t size)
+{
+	struct user_struct *up = container_of(kobj, struct user_struct, kobj);
+	unsigned long rt_period;
+	int rc;
+
+	sscanf(buf, "%lu", &rt_period);
+
+	rc = sched_group_set_rt_period(up->tg, rt_period);
+
+	return (rc ? rc : size);
+}
+
+static struct kobj_attribute cpu_rt_period_attr =
+	__ATTR(cpu_rt_period, 0644, cpu_rt_period_show, cpu_rt_period_store);
 #endif
 
 /* default attributes per uid directory */
@@ -202,6 +225,7 @@ static struct attribute *uids_attributes[] = {
 #endif
 #ifdef CONFIG_RT_GROUP_SCHED
 	&cpu_rt_runtime_attr.attr,
+	&cpu_rt_period_attr.attr,
 #endif
 	NULL
 };
@@ -360,7 +384,7 @@ void free_uid(struct user_struct *up)
 		local_irq_restore(flags);
 }
 
-struct user_struct * alloc_uid(struct user_namespace *ns, uid_t uid)
+struct user_struct *alloc_uid(struct user_namespace *ns, uid_t uid)
 {
 	struct hlist_head *hashent = uidhashentry(ns, uid);
 	struct user_struct *up, *new;
@@ -375,29 +399,15 @@ struct user_struct * alloc_uid(struct user_namespace *ns, uid_t uid)
 	spin_unlock_irq(&uidhash_lock);
 
 	if (!up) {
-		new = kmem_cache_alloc(uid_cachep, GFP_KERNEL);
+		new = kmem_cache_zalloc(uid_cachep, GFP_KERNEL);
 		if (!new)
 			goto out_unlock;
 
 		new->uid = uid;
 		atomic_set(&new->__count, 1);
-		atomic_set(&new->processes, 0);
-		atomic_set(&new->files, 0);
-		atomic_set(&new->sigpending, 0);
-#ifdef CONFIG_INOTIFY_USER
-		atomic_set(&new->inotify_watches, 0);
-		atomic_set(&new->inotify_devs, 0);
-#endif
-#ifdef CONFIG_POSIX_MQUEUE
-		new->mq_bytes = 0;
-#endif
-		new->locked_shm = 0;
-
-		if (alloc_uid_keyring(new, current) < 0)
-			goto out_free_user;
 
 		if (sched_create_user(new) < 0)
-			goto out_put_keys;
+			goto out_free_user;
 
 		if (uids_user_create(new))
 			goto out_destoy_sched;
@@ -431,9 +441,6 @@ struct user_struct * alloc_uid(struct user_namespace *ns, uid_t uid)
 
 out_destoy_sched:
 	sched_destroy_user(new);
-out_put_keys:
-	key_put(new->uid_keyring);
-	key_put(new->session_keyring);
 out_free_user:
 	kmem_cache_free(uid_cachep, new);
 out_unlock:

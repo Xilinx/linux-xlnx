@@ -43,8 +43,9 @@
 #include "xfs_rw.h"
 #include "xfs_quota.h"
 #include "xfs_fsops.h"
+#include "xfs_utils.h"
 
-STATIC void	xfs_mount_log_sb(xfs_mount_t *, __int64_t);
+STATIC int	xfs_mount_log_sb(xfs_mount_t *, __int64_t);
 STATIC int	xfs_uuid_mount(xfs_mount_t *);
 STATIC void	xfs_uuid_unmount(xfs_mount_t *mp);
 STATIC void	xfs_unmountfs_wait(xfs_mount_t *);
@@ -53,17 +54,18 @@ STATIC void	xfs_unmountfs_wait(xfs_mount_t *);
 #ifdef HAVE_PERCPU_SB
 STATIC void	xfs_icsb_destroy_counters(xfs_mount_t *);
 STATIC void	xfs_icsb_balance_counter(xfs_mount_t *, xfs_sb_field_t,
-						int, int);
-STATIC void	xfs_icsb_sync_counters(xfs_mount_t *);
+						int);
+STATIC void	xfs_icsb_balance_counter_locked(xfs_mount_t *, xfs_sb_field_t,
+						int);
 STATIC int	xfs_icsb_modify_counters(xfs_mount_t *, xfs_sb_field_t,
 						int64_t, int);
-STATIC int	xfs_icsb_disable_counter(xfs_mount_t *, xfs_sb_field_t);
+STATIC void	xfs_icsb_disable_counter(xfs_mount_t *, xfs_sb_field_t);
 
 #else
 
 #define xfs_icsb_destroy_counters(mp)			do { } while (0)
-#define xfs_icsb_balance_counter(mp, a, b, c)		do { } while (0)
-#define xfs_icsb_sync_counters(mp)			do { } while (0)
+#define xfs_icsb_balance_counter(mp, a, b)		do { } while (0)
+#define xfs_icsb_balance_counter_locked(mp, a, b)	do { } while (0)
 #define xfs_icsb_modify_counters(mp, a, b, c)		do { } while (0)
 
 #endif
@@ -956,7 +958,6 @@ xfs_mountfs(
 {
 	xfs_sb_t	*sbp = &(mp->m_sb);
 	xfs_inode_t	*rip;
-	bhv_vnode_t	*rvp = NULL;
 	__uint64_t	resblks;
 	__int64_t	update_flags = 0LL;
 	uint		quotamount, quotaflags;
@@ -964,11 +965,6 @@ xfs_mountfs(
 	int		uuid_mounted = 0;
 	int		error = 0;
 
-	if (mp->m_sb_bp == NULL) {
-		error = xfs_readsb(mp, mfsi_flags);
-		if (error)
-			return error;
-	}
 	xfs_mount_common(mp, sbp);
 
 	/*
@@ -1163,7 +1159,6 @@ xfs_mountfs(
 	}
 
 	ASSERT(rip != NULL);
-	rvp = XFS_ITOV(rip);
 
 	if (unlikely((rip->i_d.di_mode & S_IFMT) != S_IFDIR)) {
 		cmn_err(CE_WARN, "XFS: corrupted root inode");
@@ -1195,8 +1190,13 @@ xfs_mountfs(
 	/*
 	 * If fs is not mounted readonly, then update the superblock changes.
 	 */
-	if (update_flags && !(mp->m_flags & XFS_MOUNT_RDONLY))
-		xfs_mount_log_sb(mp, update_flags);
+	if (update_flags && !(mp->m_flags & XFS_MOUNT_RDONLY)) {
+		error = xfs_mount_log_sb(mp, update_flags);
+		if (error) {
+			cmn_err(CE_WARN, "XFS: failed to write sb changes");
+			goto error4;
+		}
+	}
 
 	/*
 	 * Initialise the XFS quota management subsystem for this mount
@@ -1233,12 +1233,15 @@ xfs_mountfs(
 	 *
 	 * We default to 5% or 1024 fsbs of space reserved, whichever is smaller.
 	 * This may drive us straight to ENOSPC on mount, but that implies
-	 * we were already there on the last unmount.
+	 * we were already there on the last unmount. Warn if this occurs.
 	 */
 	resblks = mp->m_sb.sb_dblocks;
 	do_div(resblks, 20);
 	resblks = min_t(__uint64_t, resblks, 1024);
-	xfs_reserve_blocks(mp, &resblks, NULL);
+	error = xfs_reserve_blocks(mp, &resblks, NULL);
+	if (error)
+		cmn_err(CE_WARN, "XFS: Unable to allocate reserve blocks. "
+				"Continuing without a reserve pool.");
 
 	return 0;
 
@@ -1246,7 +1249,7 @@ xfs_mountfs(
 	/*
 	 * Free up the root inode.
 	 */
-	VN_RELE(rvp);
+	IRELE(rip);
  error3:
 	xfs_log_unmount_dealloc(mp);
  error2:
@@ -1274,6 +1277,7 @@ int
 xfs_unmountfs(xfs_mount_t *mp, struct cred *cr)
 {
 	__uint64_t	resblks;
+	int		error = 0;
 
 	/*
 	 * We can potentially deadlock here if we have an inode cluster
@@ -1317,9 +1321,15 @@ xfs_unmountfs(xfs_mount_t *mp, struct cred *cr)
 	 * value does not matter....
 	 */
 	resblks = 0;
-	xfs_reserve_blocks(mp, &resblks, NULL);
+	error = xfs_reserve_blocks(mp, &resblks, NULL);
+	if (error)
+		cmn_err(CE_WARN, "XFS: Unable to free reserved block pool. "
+				"Freespace may not be correct on next mount.");
 
-	xfs_log_sbcount(mp, 1);
+	error = xfs_log_sbcount(mp, 1);
+	if (error)
+		cmn_err(CE_WARN, "XFS: Unable to update superblock counters. "
+				"Freespace may not be correct on next mount.");
 	xfs_unmountfs_writesb(mp);
 	xfs_unmountfs_wait(mp); 		/* wait for async bufs */
 	xfs_log_unmount(mp);			/* Done! No more fs ops. */
@@ -1391,7 +1401,7 @@ xfs_log_sbcount(
 	if (!xfs_fs_writable(mp))
 		return 0;
 
-	xfs_icsb_sync_counters(mp);
+	xfs_icsb_sync_counters(mp, 0);
 
 	/*
 	 * we don't need to do this if we are updating the superblock
@@ -1411,9 +1421,8 @@ xfs_log_sbcount(
 	xfs_mod_sb(tp, XFS_SB_IFREE | XFS_SB_ICOUNT | XFS_SB_FDBLOCKS);
 	if (sync)
 		xfs_trans_set_sync(tp);
-	xfs_trans_commit(tp, 0);
-
-	return 0;
+	error = xfs_trans_commit(tp, 0);
+	return error;
 }
 
 STATIC void
@@ -1462,7 +1471,6 @@ xfs_unmountfs_writesb(xfs_mount_t *mp)
 		XFS_BUF_UNASYNC(sbp);
 		ASSERT(XFS_BUF_TARGET(sbp) == mp->m_ddev_targp);
 		xfsbdstrat(mp, sbp);
-		/* Nevermind errors we might get here. */
 		error = xfs_iowait(sbp);
 		if (error)
 			xfs_ioerror_alert("xfs_unmountfs_writesb",
@@ -1911,24 +1919,27 @@ xfs_uuid_unmount(
  * be altered by the mount options, as well as any potential sb_features2
  * fixup. Only the first superblock is updated.
  */
-STATIC void
+STATIC int
 xfs_mount_log_sb(
 	xfs_mount_t	*mp,
 	__int64_t	fields)
 {
 	xfs_trans_t	*tp;
+	int		error;
 
 	ASSERT(fields & (XFS_SB_UNIT | XFS_SB_WIDTH | XFS_SB_UUID |
 			 XFS_SB_FEATURES2 | XFS_SB_BAD_FEATURES2));
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_SB_UNIT);
-	if (xfs_trans_reserve(tp, 0, mp->m_sb.sb_sectsize + 128, 0, 0,
-				XFS_DEFAULT_LOG_COUNT)) {
+	error = xfs_trans_reserve(tp, 0, mp->m_sb.sb_sectsize + 128, 0, 0,
+				XFS_DEFAULT_LOG_COUNT);
+	if (error) {
 		xfs_trans_cancel(tp, 0);
-		return;
+		return error;
 	}
 	xfs_mod_sb(tp, fields);
-	xfs_trans_commit(tp, 0);
+	error = xfs_trans_commit(tp, 0);
+	return error;
 }
 
 
@@ -2016,9 +2027,9 @@ xfs_icsb_cpu_notify(
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
 		xfs_icsb_lock(mp);
-		xfs_icsb_balance_counter(mp, XFS_SBS_ICOUNT, 0, 0);
-		xfs_icsb_balance_counter(mp, XFS_SBS_IFREE, 0, 0);
-		xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS, 0, 0);
+		xfs_icsb_balance_counter(mp, XFS_SBS_ICOUNT, 0);
+		xfs_icsb_balance_counter(mp, XFS_SBS_IFREE, 0);
+		xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS, 0);
 		xfs_icsb_unlock(mp);
 		break;
 	case CPU_DEAD:
@@ -2038,12 +2049,9 @@ xfs_icsb_cpu_notify(
 
 		memset(cntp, 0, sizeof(xfs_icsb_cnts_t));
 
-		xfs_icsb_balance_counter(mp, XFS_SBS_ICOUNT,
-					 XFS_ICSB_SB_LOCKED, 0);
-		xfs_icsb_balance_counter(mp, XFS_SBS_IFREE,
-					 XFS_ICSB_SB_LOCKED, 0);
-		xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS,
-					 XFS_ICSB_SB_LOCKED, 0);
+		xfs_icsb_balance_counter_locked(mp, XFS_SBS_ICOUNT, 0);
+		xfs_icsb_balance_counter_locked(mp, XFS_SBS_IFREE, 0);
+		xfs_icsb_balance_counter_locked(mp, XFS_SBS_FDBLOCKS, 0);
 		spin_unlock(&mp->m_sb_lock);
 		xfs_icsb_unlock(mp);
 		break;
@@ -2095,9 +2103,9 @@ xfs_icsb_reinit_counters(
 	 * initial balance kicks us off correctly
 	 */
 	mp->m_icsb_counters = -1;
-	xfs_icsb_balance_counter(mp, XFS_SBS_ICOUNT, 0, 0);
-	xfs_icsb_balance_counter(mp, XFS_SBS_IFREE, 0, 0);
-	xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS, 0, 0);
+	xfs_icsb_balance_counter(mp, XFS_SBS_ICOUNT, 0);
+	xfs_icsb_balance_counter(mp, XFS_SBS_IFREE, 0);
+	xfs_icsb_balance_counter(mp, XFS_SBS_FDBLOCKS, 0);
 	xfs_icsb_unlock(mp);
 }
 
@@ -2189,7 +2197,7 @@ xfs_icsb_counter_disabled(
 	return test_bit(field, &mp->m_icsb_counters);
 }
 
-STATIC int
+STATIC void
 xfs_icsb_disable_counter(
 	xfs_mount_t	*mp,
 	xfs_sb_field_t	field)
@@ -2207,13 +2215,13 @@ xfs_icsb_disable_counter(
 	 * the m_icsb_mutex.
 	 */
 	if (xfs_icsb_counter_disabled(mp, field))
-		return 0;
+		return;
 
 	xfs_icsb_lock_all_counters(mp);
 	if (!test_and_set_bit(field, &mp->m_icsb_counters)) {
 		/* drain back to superblock */
 
-		xfs_icsb_count(mp, &cnt, XFS_ICSB_SB_LOCKED|XFS_ICSB_LAZY_COUNT);
+		xfs_icsb_count(mp, &cnt, XFS_ICSB_LAZY_COUNT);
 		switch(field) {
 		case XFS_SBS_ICOUNT:
 			mp->m_sb.sb_icount = cnt.icsb_icount;
@@ -2230,8 +2238,6 @@ xfs_icsb_disable_counter(
 	}
 
 	xfs_icsb_unlock_all_counters(mp);
-
-	return 0;
 }
 
 STATIC void
@@ -2270,38 +2276,33 @@ xfs_icsb_enable_counter(
 }
 
 void
-xfs_icsb_sync_counters_flags(
+xfs_icsb_sync_counters_locked(
 	xfs_mount_t	*mp,
 	int		flags)
 {
 	xfs_icsb_cnts_t	cnt;
 
-	/* Pass 1: lock all counters */
-	if ((flags & XFS_ICSB_SB_LOCKED) == 0)
-		spin_lock(&mp->m_sb_lock);
-
 	xfs_icsb_count(mp, &cnt, flags);
 
-	/* Step 3: update mp->m_sb fields */
 	if (!xfs_icsb_counter_disabled(mp, XFS_SBS_ICOUNT))
 		mp->m_sb.sb_icount = cnt.icsb_icount;
 	if (!xfs_icsb_counter_disabled(mp, XFS_SBS_IFREE))
 		mp->m_sb.sb_ifree = cnt.icsb_ifree;
 	if (!xfs_icsb_counter_disabled(mp, XFS_SBS_FDBLOCKS))
 		mp->m_sb.sb_fdblocks = cnt.icsb_fdblocks;
-
-	if ((flags & XFS_ICSB_SB_LOCKED) == 0)
-		spin_unlock(&mp->m_sb_lock);
 }
 
 /*
  * Accurate update of per-cpu counters to incore superblock
  */
-STATIC void
+void
 xfs_icsb_sync_counters(
-	xfs_mount_t	*mp)
+	xfs_mount_t	*mp,
+	int		flags)
 {
-	xfs_icsb_sync_counters_flags(mp, 0);
+	spin_lock(&mp->m_sb_lock);
+	xfs_icsb_sync_counters_locked(mp, flags);
+	spin_unlock(&mp->m_sb_lock);
 }
 
 /*
@@ -2324,18 +2325,14 @@ xfs_icsb_sync_counters(
 #define XFS_ICSB_FDBLK_CNTR_REENABLE(mp) \
 		(uint64_t)(512 + XFS_ALLOC_SET_ASIDE(mp))
 STATIC void
-xfs_icsb_balance_counter(
+xfs_icsb_balance_counter_locked(
 	xfs_mount_t	*mp,
 	xfs_sb_field_t  field,
-	int		flags,
 	int		min_per_cpu)
 {
 	uint64_t	count, resid;
 	int		weight = num_online_cpus();
 	uint64_t	min = (uint64_t)min_per_cpu;
-
-	if (!(flags & XFS_ICSB_SB_LOCKED))
-		spin_lock(&mp->m_sb_lock);
 
 	/* disable counter and sync counter */
 	xfs_icsb_disable_counter(mp, field);
@@ -2346,19 +2343,19 @@ xfs_icsb_balance_counter(
 		count = mp->m_sb.sb_icount;
 		resid = do_div(count, weight);
 		if (count < max(min, XFS_ICSB_INO_CNTR_REENABLE))
-			goto out;
+			return;
 		break;
 	case XFS_SBS_IFREE:
 		count = mp->m_sb.sb_ifree;
 		resid = do_div(count, weight);
 		if (count < max(min, XFS_ICSB_INO_CNTR_REENABLE))
-			goto out;
+			return;
 		break;
 	case XFS_SBS_FDBLOCKS:
 		count = mp->m_sb.sb_fdblocks;
 		resid = do_div(count, weight);
 		if (count < max(min, XFS_ICSB_FDBLK_CNTR_REENABLE(mp)))
-			goto out;
+			return;
 		break;
 	default:
 		BUG();
@@ -2367,9 +2364,17 @@ xfs_icsb_balance_counter(
 	}
 
 	xfs_icsb_enable_counter(mp, field, count, resid);
-out:
-	if (!(flags & XFS_ICSB_SB_LOCKED))
-		spin_unlock(&mp->m_sb_lock);
+}
+
+STATIC void
+xfs_icsb_balance_counter(
+	xfs_mount_t	*mp,
+	xfs_sb_field_t  fields,
+	int		min_per_cpu)
+{
+	spin_lock(&mp->m_sb_lock);
+	xfs_icsb_balance_counter_locked(mp, fields, min_per_cpu);
+	spin_unlock(&mp->m_sb_lock);
 }
 
 STATIC int
@@ -2476,7 +2481,7 @@ slow_path:
 	 * we are done.
 	 */
 	if (ret != ENOSPC)
-		xfs_icsb_balance_counter(mp, field, 0, 0);
+		xfs_icsb_balance_counter(mp, field, 0);
 	xfs_icsb_unlock(mp);
 	return ret;
 
@@ -2500,7 +2505,7 @@ balance_counter:
 	 * will either succeed through the fast path or slow path without
 	 * another balance operation being required.
 	 */
-	xfs_icsb_balance_counter(mp, field, 0, delta);
+	xfs_icsb_balance_counter(mp, field, delta);
 	xfs_icsb_unlock(mp);
 	goto again;
 }

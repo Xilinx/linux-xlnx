@@ -366,6 +366,12 @@ and is between 256 and 4096 characters. It is defined in the file
 			possible to determine what the correct size should be.
 			This option provides an override for these situations.
 
+	security=	[SECURITY] Choose a security module to enable at boot.
+			If this boot parameter is not specified, only the first
+			security module asking for security registration will be
+			loaded. An invalid security module name will be treated
+			as if no module has been chosen.
+
 	capability.disable=
 			[SECURITY] Disable capabilities.  This would normally
 			be used only if an alternative security model is to be
@@ -390,9 +396,6 @@ and is between 256 and 4096 characters. It is defined in the file
 				/selinux/checkreqprot.
 
 	cio_ignore=	[S390]
-			See Documentation/s390/CommonIO for details.
-
-	cio_msg=	[S390]
 			See Documentation/s390/CommonIO for details.
 
 	clock=		[BUGS=X86-32, HW] gettimeofday clocksource override.
@@ -490,6 +493,11 @@ and is between 256 and 4096 characters. It is defined in the file
 			switching to the matching ttyS device later.  The
 			options are the same as for ttyS, above.
 
+                If the device connected to the port is not a TTY but a braille
+                device, prepend "brl," before the device type, for instance
+			console=brl,ttyS0
+		For now, only VisioBraille is supported.
+
 	earlycon=	[KNL] Output early console device and options.
 		uart[8250],io,<addr>[,options]
 		uart[8250],mmio,<addr>[,options]
@@ -549,6 +557,8 @@ and is between 256 and 4096 characters. It is defined in the file
 			We default to 0 (no extra messages), setting it to
 			1 will print _a lot_ more information - normally
 			only useful to kernel developers.
+
+	debug_objects	[KNL] Enable object debugging
 
 	decnet.addr=	[HW,NET]
 			Format: <area>[,<node>]
@@ -621,8 +631,7 @@ and is between 256 and 4096 characters. It is defined in the file
 	eata=		[HW,SCSI]
 
 	edd=		[EDD]
-			Format: {"of[f]" | "sk[ipmbr]"}
-			See comment in arch/i386/boot/edd.S
+			Format: {"off" | "on" | "skip[mbr]"}
 
 	eisa_irq_edge=	[PARISC,HW]
 			See header of drivers/parisc/eisa.c.
@@ -676,6 +685,12 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	floppy=		[HW]
 			See Documentation/floppy.txt.
+
+	force_pal_cache_flush
+			[IA-64] Avoid check_sal_cache_flush which may hang on
+			buggy SAL_CACHE_FLUSH implementations. Using this
+			parameter will force ia64_sal_cache_flush to call
+			ia64_pal_cache_flush instead of SAL_CACHE_FLUSH.
 
 	gamecon.map[2|3]=
 			[HW,JOY] Multisystem joystick and NES/SNES/PSX pad
@@ -763,11 +778,7 @@ and is between 256 and 4096 characters. It is defined in the file
 			Format: <io>[,<membase>[,<icn_id>[,<icn_id2>]]]
 
 	ide=		[HW] (E)IDE subsystem
-			Format: ide=nodma or ide=doubler or ide=reverse
-			See Documentation/ide/ide.txt.
-
-	ide?=		[HW] (E)IDE subsystem
-			Format: ide?=noprobe or chipset specific parameters.
+			Format: ide=nodma or ide=doubler
 			See Documentation/ide/ide.txt.
 
 	idebus=		[HW] (E)IDE subsystem - VLB/PCI bus speed
@@ -812,6 +823,19 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	inttest=	[IA64]
 
+	iommu=		[x86]
+		off
+		force
+		noforce
+		biomerge
+		panic
+		nopanic
+		merge
+		nomerge
+		forcesac
+		soft
+
+
 	intel_iommu=	[DMAR] Intel IOMMU driver (DMAR) option
 		off
 			Disable intel iommu driver.
@@ -828,6 +852,10 @@ and is between 256 and 4096 characters. It is defined in the file
 			than 32 bit addressing. The default is to look
 			for translation below 32 bit and if not available
 			then look in the higher range.
+		strict [Default Off]
+			With this option on every unmap_single operation will
+			result in a hardware IOTLB flush operation as opposed
+			to batching them for performance.
 
 	io_delay=	[X86-32,X86-64] I/O delay method
 		0x80
@@ -928,7 +956,14 @@ and is between 256 and 4096 characters. It is defined in the file
 	kstack=N	[X86-32,X86-64] Print N words from the kernel stack
 			in oops dumps.
 
+	kgdboc=		[HW] kgdb over consoles.
+			Requires a tty driver that supports console polling.
+			(only serial suported for now)
+			Format: <serial_device>[,baud]
+
 	l2cr=		[PPC]
+
+	l3cr=		[PPC]
 
 	lapic		[X86-32,APIC] Enable the local APIC even if BIOS
 			disabled it.
@@ -1062,9 +1097,6 @@ and is between 256 and 4096 characters. It is defined in the file
 	mac5380=	[HW,SCSI] Format:
 			<can_queue>,<cmd_per_lun>,<sg_tablesize>,<hostid>,<use_tags>
 
-	mac53c9x=	[HW,SCSI] Format:
-			<num_esps>,<disconnect>,<nosync>,<can_queue>,<cmd_per_lun>,<sg_tablesize>,<hostid>,<use_tags>
-
 	machvec=	[IA64] Force the use of a particular machine-vector
 			(machvec) in a generic kernel.
 			Example: machvec=hpzx1_swiotlb
@@ -1133,6 +1165,11 @@ and is between 256 and 4096 characters. It is defined in the file
 			         memmap=64K$0x18690000
 			         or
 			         memmap=0x10000$0x18690000
+
+	memtest=	[KNL,X86_64] Enable memtest
+			Format: <integer>
+			range: 0,4 : pattern number
+			default : 0 <disable>
 
 	meye.*=		[HW] Set MotionEye Camera parameters
 			See Documentation/video4linux/meye.txt.
@@ -1251,8 +1288,16 @@ and is between 256 and 4096 characters. It is defined in the file
 	noexec		[IA-64]
 
 	noexec		[X86-32,X86-64]
+			On X86-32 available only on PAE configured kernels.
 			noexec=on: enable non-executable mappings (default)
-			noexec=off: disable nn-executable mappings
+			noexec=off: disable non-executable mappings
+
+	noexec32	[X86-64]
+			This affects only 32-bit executables.
+			noexec32=on: enable non-executable mappings (default)
+				read doesn't imply executable mappings
+			noexec32=off: disable non-executable mappings
+				read implies executable mappings
 
 	nofxsr		[BUGS=X86-32] Disables x86 floating point extended
 			register save and restore. The kernel will only save
@@ -1339,12 +1384,23 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	nowb		[ARM]
 
+	nptcg=		[IA64] Override max number of concurrent global TLB
+			purges which is reported from either PAL_VM_SUMMARY or
+			SAL PALO.
+
 	numa_zonelist_order= [KNL, BOOT] Select zonelist order for NUMA.
 			one of ['zone', 'node', 'default'] can be specified
 			This can be set from sysctl after boot.
 			See Documentation/sysctl/vm.txt for details.
 
 	nr_uarts=	[SERIAL] maximum number of UARTs to be registered.
+
+	olpc_ec_timeout= [OLPC] ms delay when issuing EC commands
+			Rather than timing out after 20 ms if an EC
+			command is not properly ACKed, override the length
+			of the timeout.  We have interrupts disabled while
+			waiting for the ACK, so if this is set too high
+			interrupts *may* be lost!
 
 	opl3=		[HW,OSS]
 			Format: <io>
@@ -1428,10 +1484,6 @@ and is between 256 and 4096 characters. It is defined in the file
 		nomsi		[MSI] If the PCI_MSI kernel config parameter is
 				enabled, this kernel boot option can be used to
 				disable the use of MSI interrupts system-wide.
-		nosort		[X86-32] Don't sort PCI devices according to
-				order given by the PCI BIOS. This sorting is
-				done to get a device order compatible with
-				older kernels.
 		biosirq		[X86-32] Use PCI BIOS calls to get the interrupt
 				routing table. These calls are known to be buggy
 				on several machines and they hang the machine
@@ -1473,6 +1525,8 @@ and is between 256 and 4096 characters. It is defined in the file
 				This is normally done in pci_enable_device(),
 				so this option is a temporary workaround
 				for broken drivers that don't call it.
+		skip_isa_align	[X86] do not align io start addr, so can
+				handle more pci cards
 		firmware	[ARM] Do not re-enumerate the bus but instead
 				just use the configuration from the
 				bootloader. This is currently used on

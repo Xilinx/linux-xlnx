@@ -19,6 +19,8 @@
  *
  */
 
+#undef DEBUG
+
 #include <linux/signal.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
@@ -38,11 +40,11 @@
 #include <linux/nodemask.h>
 #include <linux/module.h>
 #include <linux/poison.h>
+#include <linux/lmb.h>
 
 #include <asm/pgalloc.h>
 #include <asm/page.h>
 #include <asm/prom.h>
-#include <asm/lmb.h>
 #include <asm/rtas.h>
 #include <asm/io.h>
 #include <asm/mmu_context.h>
@@ -72,8 +74,8 @@
 #warning TASK_SIZE is smaller than it needs to be.
 #endif
 
-/* max amount of RAM to use */
-unsigned long __max_memory;
+phys_addr_t memstart_addr = ~0;
+phys_addr_t kernstart_addr;
 
 void free_initmem(void)
 {
@@ -122,7 +124,7 @@ static int __init setup_kcore(void)
 		/* GFP_ATOMIC to avoid might_sleep warnings during boot */
 		kcore_mem = kmalloc(sizeof(struct kcore_list), GFP_ATOMIC);
 		if (!kcore_mem)
-			panic("%s: kmalloc failed\n", __FUNCTION__);
+			panic("%s: kmalloc failed\n", __func__);
 
 		kclist_add(kcore_mem, __va(base), size);
 	}
@@ -208,12 +210,12 @@ int __meminit vmemmap_populated(unsigned long start, int page_size)
 }
 
 int __meminit vmemmap_populate(struct page *start_page,
-					unsigned long nr_pages, int node)
+			       unsigned long nr_pages, int node)
 {
 	unsigned long mode_rw;
 	unsigned long start = (unsigned long)start_page;
 	unsigned long end = (unsigned long)(start_page + nr_pages);
-	unsigned long page_size = 1 << mmu_psize_defs[mmu_linear_psize].shift;
+	unsigned long page_size = 1 << mmu_psize_defs[mmu_vmemmap_psize].shift;
 
 	mode_rw = _PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_COHERENT | PP_RWXX;
 
@@ -235,11 +237,11 @@ int __meminit vmemmap_populate(struct page *start_page,
 			start, p, __pa(p));
 
 		mapped = htab_bolt_mapping(start, start + page_size,
-					__pa(p), mode_rw, mmu_linear_psize,
+					__pa(p), mode_rw, mmu_vmemmap_psize,
 					mmu_kernel_ssize);
 		BUG_ON(mapped < 0);
 	}
 
 	return 0;
 }
-#endif
+#endif /* CONFIG_SPARSEMEM_VMEMMAP */

@@ -338,7 +338,8 @@ static int iop_get_config_mv(struct hptiop_hba *hba,
 	req->header.size =
 		cpu_to_le32(sizeof(struct hpt_iop_request_get_config));
 	req->header.result = cpu_to_le32(IOP_RESULT_PENDING);
-	req->header.context = cpu_to_le64(IOP_REQUEST_TYPE_GET_CONFIG<<5);
+	req->header.context = cpu_to_le32(IOP_REQUEST_TYPE_GET_CONFIG<<5);
+	req->header.context_hi32 = 0;
 
 	if (iop_send_sync_request_mv(hba, 0, 20000)) {
 		dprintk("Get config send cmd failed\n");
@@ -392,7 +393,8 @@ static int iop_set_config_mv(struct hptiop_hba *hba,
 	req->header.size =
 		cpu_to_le32(sizeof(struct hpt_iop_request_set_config));
 	req->header.result = cpu_to_le32(IOP_RESULT_PENDING);
-	req->header.context = cpu_to_le64(IOP_REQUEST_TYPE_SET_CONFIG<<5);
+	req->header.context = cpu_to_le32(IOP_REQUEST_TYPE_SET_CONFIG<<5);
+	req->header.context_hi32 = 0;
 
 	if (iop_send_sync_request_mv(hba, 0, 20000)) {
 		dprintk("Set config send cmd failed\n");
@@ -442,7 +444,7 @@ static void __iomem *hptiop_map_pci_bar(struct hptiop_hba *hba, int index)
 	if (!(pci_resource_flags(pcidev, index) & IORESOURCE_MEM)) {
 		printk(KERN_ERR "scsi%d: pci resource invalid\n",
 				hba->host->host_no);
-		return 0;
+		return NULL;
 	}
 
 	mem_base_phy = pci_resource_start(pcidev, index);
@@ -452,7 +454,7 @@ static void __iomem *hptiop_map_pci_bar(struct hptiop_hba *hba, int index)
 	if (!mem_base_virt) {
 		printk(KERN_ERR "scsi%d: Fail to ioremap memory space\n",
 				hba->host->host_no);
-		return 0;
+		return NULL;
 	}
 	return mem_base_virt;
 }
@@ -474,11 +476,11 @@ static void hptiop_unmap_pci_bar_itl(struct hptiop_hba *hba)
 static int hptiop_map_pci_bar_mv(struct hptiop_hba *hba)
 {
 	hba->u.mv.regs = hptiop_map_pci_bar(hba, 0);
-	if (hba->u.mv.regs == 0)
+	if (hba->u.mv.regs == NULL)
 		return -1;
 
 	hba->u.mv.mu = hptiop_map_pci_bar(hba, 2);
-	if (hba->u.mv.mu == 0) {
+	if (hba->u.mv.mu == NULL) {
 		iounmap(hba->u.mv.regs);
 		return -1;
 	}
@@ -761,9 +763,9 @@ static int hptiop_queuecommand(struct scsi_cmnd *scp,
 			scp,
 			host->host_no, scp->device->channel,
 			scp->device->id, scp->device->lun,
-			*((u32 *)&scp->cmnd),
-			*((u32 *)&scp->cmnd + 1),
-			*((u32 *)&scp->cmnd + 2),
+			((u32 *)scp->cmnd)[0],
+			((u32 *)scp->cmnd)[1],
+			((u32 *)scp->cmnd)[2],
 			_req->index, _req->req_virt);
 
 	scp->result = 0;
@@ -857,14 +859,16 @@ static int hptiop_adjust_disk_queue_depth(struct scsi_device *sdev,
 	return queue_depth;
 }
 
-static ssize_t hptiop_show_version(struct class_device *class_dev, char *buf)
+static ssize_t hptiop_show_version(struct device *dev,
+				   struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%s\n", driver_ver);
 }
 
-static ssize_t hptiop_show_fw_version(struct class_device *class_dev, char *buf)
+static ssize_t hptiop_show_fw_version(struct device *dev,
+				      struct device_attribute *attr, char *buf)
 {
-	struct Scsi_Host *host = class_to_shost(class_dev);
+	struct Scsi_Host *host = class_to_shost(dev);
 	struct hptiop_hba *hba = (struct hptiop_hba *)host->hostdata;
 
 	return snprintf(buf, PAGE_SIZE, "%d.%d.%d.%d\n",
@@ -874,7 +878,7 @@ static ssize_t hptiop_show_fw_version(struct class_device *class_dev, char *buf)
 				hba->firmware_version & 0xff);
 }
 
-static struct class_device_attribute hptiop_attr_version = {
+static struct device_attribute hptiop_attr_version = {
 	.attr = {
 		.name = "driver-version",
 		.mode = S_IRUGO,
@@ -882,7 +886,7 @@ static struct class_device_attribute hptiop_attr_version = {
 	.show = hptiop_show_version,
 };
 
-static struct class_device_attribute hptiop_attr_fw_version = {
+static struct device_attribute hptiop_attr_fw_version = {
 	.attr = {
 		.name = "firmware-version",
 		.mode = S_IRUGO,
@@ -890,7 +894,7 @@ static struct class_device_attribute hptiop_attr_fw_version = {
 	.show = hptiop_show_fw_version,
 };
 
-static struct class_device_attribute *hptiop_attrs[] = {
+static struct device_attribute *hptiop_attrs[] = {
 	&hptiop_attr_version,
 	&hptiop_attr_fw_version,
 	NULL
@@ -903,7 +907,6 @@ static struct scsi_host_template driver_template = {
 	.eh_device_reset_handler    = hptiop_reset,
 	.eh_bus_reset_handler       = hptiop_reset,
 	.info                       = hptiop_info,
-	.unchecked_isa_dma          = 0,
 	.emulated                   = 0,
 	.use_clustering             = ENABLE_CLUSTERING,
 	.proc_name                  = driver_name,
@@ -1207,8 +1210,8 @@ static void hptiop_remove(struct pci_dev *pcidev)
 
 static struct hptiop_adapter_ops hptiop_itl_ops = {
 	.iop_wait_ready    = iop_wait_ready_itl,
-	.internal_memalloc = 0,
-	.internal_memfree  = 0,
+	.internal_memalloc = NULL,
+	.internal_memfree  = NULL,
 	.map_pci_bar       = hptiop_map_pci_bar_itl,
 	.unmap_pci_bar     = hptiop_unmap_pci_bar_itl,
 	.enable_intr       = hptiop_enable_intr_itl,

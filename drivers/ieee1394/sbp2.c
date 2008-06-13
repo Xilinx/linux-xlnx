@@ -615,7 +615,7 @@ static struct sbp2_command_info *sbp2util_allocate_command_orb(
 		cmd->Current_SCpnt = Current_SCpnt;
 		list_add_tail(&cmd->list, &lu->cmd_orb_inuse);
 	} else
-		SBP2_ERR("%s: no orbs available", __FUNCTION__);
+		SBP2_ERR("%s: no orbs available", __func__);
 	spin_unlock_irqrestore(&lu->cmd_orb_lock, flags);
 	return cmd;
 }
@@ -1294,7 +1294,7 @@ static int sbp2_set_busy_timeout(struct sbp2_lu *lu)
 
 	data = cpu_to_be32(SBP2_BUSY_TIMEOUT_VALUE);
 	if (hpsb_node_write(lu->ne, SBP2_BUSY_TIMEOUT_ADDRESS, &data, 4))
-		SBP2_ERR("%s error", __FUNCTION__);
+		SBP2_ERR("%s error", __func__);
 	return 0;
 }
 
@@ -1539,15 +1539,13 @@ static void sbp2_prep_command_orb_sg(struct sbp2_command_orb *orb,
 
 static void sbp2_create_command_orb(struct sbp2_lu *lu,
 				    struct sbp2_command_info *cmd,
-				    unchar *scsi_cmd,
-				    unsigned int scsi_use_sg,
-				    unsigned int scsi_request_bufflen,
-				    struct scatterlist *sg,
-				    enum dma_data_direction dma_dir)
+				    struct scsi_cmnd *SCpnt)
 {
 	struct sbp2_fwhost_info *hi = lu->hi;
 	struct sbp2_command_orb *orb = &cmd->command_orb;
 	u32 orb_direction;
+	unsigned int scsi_request_bufflen = scsi_bufflen(SCpnt);
+	enum dma_data_direction dma_dir = SCpnt->sc_data_direction;
 
 	/*
 	 * Set-up our command ORB.
@@ -1580,13 +1578,14 @@ static void sbp2_create_command_orb(struct sbp2_lu *lu,
 		orb->data_descriptor_lo = 0x0;
 		orb->misc |= ORB_SET_DIRECTION(1);
 	} else
-		sbp2_prep_command_orb_sg(orb, hi, cmd, scsi_use_sg, sg,
+		sbp2_prep_command_orb_sg(orb, hi, cmd, scsi_sg_count(SCpnt),
+					 scsi_sglist(SCpnt),
 					 orb_direction, dma_dir);
 
 	sbp2util_cpu_to_be32_buffer(orb, sizeof(*orb));
 
-	memset(orb->cdb, 0, 12);
-	memcpy(orb->cdb, scsi_cmd, COMMAND_SIZE(*scsi_cmd));
+	memset(orb->cdb, 0, sizeof(orb->cdb));
+	memcpy(orb->cdb, SCpnt->cmnd, SCpnt->cmd_len);
 }
 
 static void sbp2_link_orb_command(struct sbp2_lu *lu,
@@ -1669,16 +1668,13 @@ static void sbp2_link_orb_command(struct sbp2_lu *lu,
 static int sbp2_send_command(struct sbp2_lu *lu, struct scsi_cmnd *SCpnt,
 			     void (*done)(struct scsi_cmnd *))
 {
-	unchar *scsi_cmd = (unchar *)SCpnt->cmnd;
 	struct sbp2_command_info *cmd;
 
 	cmd = sbp2util_allocate_command_orb(lu, SCpnt, done);
 	if (!cmd)
 		return -EIO;
 
-	sbp2_create_command_orb(lu, cmd, scsi_cmd, scsi_sg_count(SCpnt),
-				scsi_bufflen(SCpnt), scsi_sglist(SCpnt),
-				SCpnt->sc_data_direction);
+	sbp2_create_command_orb(lu, cmd, SCpnt);
 	sbp2_link_orb_command(lu, cmd);
 
 	return 0;
@@ -1985,11 +1981,8 @@ static int sbp2scsi_slave_alloc(struct scsi_device *sdev)
 	lu->sdev = sdev;
 	sdev->allow_restart = 1;
 
-	/*
-	 * Update the dma alignment (minimum alignment requirements for
-	 * start and end of DMA transfers) to be a sector
-	 */
-	blk_queue_update_dma_alignment(sdev->request_queue, 511);
+	/* SBP-2 requires quadlet alignment of the data buffers. */
+	blk_queue_update_dma_alignment(sdev->request_queue, 4 - 1);
 
 	if (lu->workarounds & SBP2_WORKAROUND_INQUIRY_36)
 		sdev->inquiry_len = 36;

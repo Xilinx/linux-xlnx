@@ -89,7 +89,7 @@ change_position_v30(struct phidget_servo *servo, int servo_no, int degrees,
 	buffer = kmalloc(6, GFP_KERNEL);
 	if (!buffer) {
 		dev_err(&servo->udev->dev, "%s - out of memory\n",
-			__FUNCTION__);
+			__func__);
 		return -ENOMEM;
 	}
 
@@ -162,7 +162,7 @@ change_position_v20(struct phidget_servo *servo, int servo_no, int degrees,
 	buffer = kmalloc(2, GFP_KERNEL);
 	if (!buffer) {
 		dev_err(&servo->udev->dev, "%s - out of memory\n",
-			__FUNCTION__);
+			__func__);
 		return -ENOMEM;
 	}
 
@@ -259,7 +259,7 @@ servo_probe(struct usb_interface *interface, const struct usb_device_id *id)
 
 	dev = kzalloc(sizeof (struct phidget_servo), GFP_KERNEL);
 	if (dev == NULL) {
-		dev_err(&interface->dev, "%s - out of memory\n", __FUNCTION__);
+		dev_err(&interface->dev, "%s - out of memory\n", __func__);
 		rc = -ENOMEM;
 		goto out;
 	}
@@ -275,14 +275,14 @@ servo_probe(struct usb_interface *interface, const struct usb_device_id *id)
         } while (value);
 	dev->dev_no = bit;
 
-	dev->dev = device_create(phidget_class, &dev->udev->dev, 0,
-				 "servo%d", dev->dev_no);
+	dev->dev = device_create_drvdata(phidget_class, &dev->udev->dev,
+					 MKDEV(0, 0), dev,
+					 "servo%d", dev->dev_no);
 	if (IS_ERR(dev->dev)) {
 		rc = PTR_ERR(dev->dev);
 		dev->dev = NULL;
 		goto out;
 	}
-	dev_set_drvdata(dev->dev, dev);
 
 	servo_count = dev->type & SERVO_COUNT_QUAD ? 4 : 1;
 

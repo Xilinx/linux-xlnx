@@ -69,6 +69,7 @@ static const char *version =
 #include <linux/atalk.h>
 #include <linux/spinlock.h>
 #include <linux/bitops.h>
+#include <linux/jiffies.h>
 
 #include <asm/system.h>
 #include <asm/io.h>
@@ -498,19 +499,13 @@ static void cops_reset(struct net_device *dev, int sleep)
         {
                 outb(0, ioaddr+DAYNA_RESET);	/* Assert the reset port */
                 inb(ioaddr+DAYNA_RESET);	/* Clear the reset */
-                if(sleep)
-                {
-                        long snap=jiffies;
-
-			/* Let card finish initializing, about 1/3 second */
-	                while(jiffies-snap<HZ/3)
-                                schedule();
-                }
-                else
-                        mdelay(333);
+		if (sleep)
+			msleep(333);
+		else
+			mdelay(333);
         }
+
 	netif_wake_queue(dev);
-	return;
 }
 
 static void cops_load (struct net_device *dev)
@@ -1010,7 +1005,7 @@ module_param(io, int, 0);
 module_param(irq, int, 0);
 module_param(board_type, int, 0);
 
-int __init init_module(void)
+static int __init cops_module_init(void)
 {
 	if (io == 0)
 		printk(KERN_WARNING "%s: You shouldn't autoprobe with insmod\n",
@@ -1021,12 +1016,14 @@ int __init init_module(void)
         return 0;
 }
 
-void __exit cleanup_module(void)
+static void __exit cops_module_exit(void)
 {
 	unregister_netdev(cops_dev);
 	cleanup_card(cops_dev);
 	free_netdev(cops_dev);
 }
+module_init(cops_module_init);
+module_exit(cops_module_exit);
 #endif /* MODULE */
 
 /*

@@ -1499,7 +1499,7 @@ static inline int l2cap_connect_req(struct l2cap_conn *conn, struct l2cap_cmd_hd
 		goto response;
 	}
 
-	sk = l2cap_sock_alloc(parent->sk_net, NULL, BTPROTO_L2CAP, GFP_ATOMIC);
+	sk = l2cap_sock_alloc(sock_net(parent), NULL, BTPROTO_L2CAP, GFP_ATOMIC);
 	if (!sk)
 		goto response;
 
@@ -1827,7 +1827,7 @@ static inline int l2cap_information_rsp(struct l2cap_conn *conn, struct l2cap_cm
 	del_timer(&conn->info_timer);
 
 	if (type == L2CAP_IT_FEAT_MASK)
-		conn->feat_mask = __le32_to_cpu(get_unaligned((__le32 *) rsp->data));
+		conn->feat_mask = get_unaligned_le32(rsp->data);
 
 	l2cap_conn_start(conn);
 

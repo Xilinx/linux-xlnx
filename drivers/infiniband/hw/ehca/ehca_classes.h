@@ -66,6 +66,7 @@ struct ehca_av;
 #include "ehca_irq.h"
 
 #define EHCA_EQE_CACHE_SIZE 20
+#define EHCA_MAX_NUM_QUEUES 0xffff
 
 struct ehca_eqe_cache_entry {
 	struct ehca_eqe *eqe;
@@ -127,12 +128,13 @@ struct ehca_shca {
 	/* MR pgsize: bit 0-3 means 4K, 64K, 1M, 16M respectively */
 	u32 hca_cap_mr_pgsize;
 	int max_mtu;
+	atomic_t num_cqs;
+	atomic_t num_qps;
 };
 
 struct ehca_pd {
 	struct ib_pd ib_pd;
 	struct ipz_pd fw_pd;
-	u32 ownpid;
 	/* small queue mgmt */
 	struct mutex lock;
 	struct list_head free[2];
@@ -161,6 +163,7 @@ struct ehca_qp {
 	};
 	u32 qp_type;
 	enum ehca_ext_qp_type ext_type;
+	enum ib_qp_state state;
 	struct ipz_queue ipz_squeue;
 	struct ipz_queue ipz_rqueue;
 	struct h_galpas galpas;
@@ -189,6 +192,8 @@ struct ehca_qp {
 	int mtu_shift;
 	u32 message_count;
 	u32 packet_count;
+	atomic_t nr_events; /* events seen */
+	wait_queue_head_t wait_completion;
 };
 
 #define IS_SRQ(qp) (qp->ext_type == EQPT_SRQ)
@@ -215,7 +220,6 @@ struct ehca_cq {
 	atomic_t nr_events; /* #events seen */
 	wait_queue_head_t wait_completion;
 	spinlock_t task_lock;
-	u32 ownpid;
 	/* mmap counter for resources mapped into user space */
 	u32 mm_count_queue;
 	u32 mm_count_galpa;
@@ -345,6 +349,8 @@ extern int ehca_use_hp_mr;
 extern int ehca_scaling_code;
 extern int ehca_lock_hcalls;
 extern int ehca_nr_ports;
+extern int ehca_max_cq;
+extern int ehca_max_qp;
 
 struct ipzu_queue_resp {
 	u32 qe_size;      /* queue entry size */

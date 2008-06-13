@@ -149,12 +149,14 @@
 /* Freescale ColdFire */
 #define PORT_MCF	78
 
-#define PORT_SC26XX	79
-
+/* Blackfin SPORT */
+#define PORT_BFIN_SPORT		79
 
 /* MN10300 on-chip UART numbers */
 #define PORT_MN10300		80
 #define PORT_MN10300_CTS	81
+
+#define PORT_SC26XX	82
 
 #ifdef __KERNEL__
 
@@ -190,6 +192,7 @@ struct uart_ops {
 	void		(*shutdown)(struct uart_port *);
 	void		(*set_termios)(struct uart_port *, struct ktermios *new,
 				       struct ktermios *old);
+	void		(*set_ldisc)(struct uart_port *);
 	void		(*pm)(struct uart_port *, unsigned int state,
 			      unsigned int oldstate);
 	int		(*set_wake)(struct uart_port *, unsigned int state);
@@ -213,6 +216,10 @@ struct uart_ops {
 	void		(*config_port)(struct uart_port *, int);
 	int		(*verify_port)(struct uart_port *, struct serial_struct *);
 	int		(*ioctl)(struct uart_port *, unsigned int, unsigned long);
+#ifdef CONFIG_CONSOLE_POLL
+	void	(*poll_put_char)(struct uart_port *, unsigned char);
+	int		(*poll_get_char)(struct uart_port *);
+#endif
 };
 
 #define UART_CONFIG_TYPE	(1 << 0)

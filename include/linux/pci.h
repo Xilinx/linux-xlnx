@@ -44,6 +44,7 @@
 #include <linux/mod_devicetable.h>
 
 #include <linux/types.h>
+#include <linux/init.h>
 #include <linux/ioport.h>
 #include <linux/list.h>
 #include <linux/compiler.h>
@@ -128,11 +129,13 @@ struct pci_cap_saved_state {
 	u32 data[0];
 };
 
+struct pcie_link_state;
+struct pci_vpd;
+
 /*
  * The pci_dev structure is used to describe PCI devices.
  */
 struct pci_dev {
-	struct list_head global_list;	/* node in list of all PCI devices */
 	struct list_head bus_list;	/* node in per-bus list */
 	struct pci_bus	*bus;		/* bus this device is on */
 	struct pci_bus	*subordinate;	/* bus this device bridges to */
@@ -165,6 +168,10 @@ struct pci_dev {
 					   this is D0-D3, D0 being fully functional,
 					   and D3 being off. */
 
+#ifdef CONFIG_PCIEASPM
+	struct pcie_link_state	*link_state;	/* ASPM link state. */
+#endif
+
 	pci_channel_state_t error_state;	/* current connectivity state */
 	struct	device	dev;		/* Generic device interface */
 
@@ -181,6 +188,7 @@ struct pci_dev {
 	unsigned int	transparent:1;	/* Transparent PCI bridge */
 	unsigned int	multifunction:1;/* Part of multi-function device */
 	/* keep track of device state */
+	unsigned int	is_added:1;
 	unsigned int	is_busmaster:1; /* device is busmaster */
 	unsigned int	no_msi:1;	/* device may not use msi */
 	unsigned int	no_d1d2:1;   /* only allow d0 or d3 */
@@ -201,11 +209,11 @@ struct pci_dev {
 #ifdef CONFIG_PCI_MSI
 	struct list_head msi_list;
 #endif
+	struct pci_vpd *vpd;
 };
 
 extern struct pci_dev *alloc_pci_dev(void);
 
-#define pci_dev_g(n) list_entry(n, struct pci_dev, global_list)
 #define pci_dev_b(n) list_entry(n, struct pci_dev, bus_list)
 #define	to_pci_dev(n) container_of(n, struct pci_dev, dev)
 #define for_each_pci_dev(d) while ((d = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, d)) != NULL)
@@ -247,7 +255,7 @@ static inline void pci_add_saved_cap(struct pci_dev *pci_dev,
 #define PCI_NUM_RESOURCES	11
 
 #ifndef PCI_BUS_NUM_RESOURCES
-#define PCI_BUS_NUM_RESOURCES	8
+#define PCI_BUS_NUM_RESOURCES	16
 #endif
 
 #define PCI_REGION_FLAG_MASK	0x0fU	/* These bits of resource flags tell us the PCI region flags */
@@ -449,7 +457,6 @@ extern struct bus_type pci_bus_type;
 /* Do NOT directly access these two variables, unless you are arch specific pci
  * code, or pci core code. */
 extern struct list_head pci_root_buses;	/* list of all known PCI buses */
-extern struct list_head pci_devices;	/* list of all devices */
 /* Some device drivers need know if pci is initiated */
 extern int no_pci_devices(void);
 
@@ -468,7 +475,7 @@ extern struct pci_bus *pci_find_bus(int domain, int busnr);
 void pci_bus_add_devices(struct pci_bus *bus);
 struct pci_bus *pci_scan_bus_parented(struct device *parent, int bus,
 				      struct pci_ops *ops, void *sysdata);
-static inline struct pci_bus *pci_scan_bus(int bus, struct pci_ops *ops,
+static inline struct pci_bus * __devinit pci_scan_bus(int bus, struct pci_ops *ops,
 					   void *sysdata)
 {
 	struct pci_bus *root_bus;
@@ -517,17 +524,13 @@ struct pci_bus *pci_find_next_bus(const struct pci_bus *from);
 
 struct pci_dev *pci_get_device(unsigned int vendor, unsigned int device,
 				struct pci_dev *from);
-struct pci_dev *pci_get_device_reverse(unsigned int vendor, unsigned int device,
-				struct pci_dev *from);
-
 struct pci_dev *pci_get_subsys(unsigned int vendor, unsigned int device,
 				unsigned int ss_vendor, unsigned int ss_device,
-				struct pci_dev *from);
+				const struct pci_dev *from);
 struct pci_dev *pci_get_slot(struct pci_bus *bus, unsigned int devfn);
 struct pci_dev *pci_get_bus_and_slot(unsigned int bus, unsigned int devfn);
 struct pci_dev *pci_get_class(unsigned int class, struct pci_dev *from);
 int pci_dev_present(const struct pci_device_id *ids);
-const struct pci_device_id *pci_find_present(const struct pci_device_id *ids);
 
 int pci_bus_read_config_byte(struct pci_bus *bus, unsigned int devfn,
 			     int where, u8 *val);
@@ -601,7 +604,6 @@ int pcie_get_readrq(struct pci_dev *dev);
 int pcie_set_readrq(struct pci_dev *dev, int rq);
 void pci_update_resource(struct pci_dev *dev, struct resource *res, int resno);
 int __must_check pci_assign_resource(struct pci_dev *dev, int i);
-int __must_check pci_assign_resource_fixed(struct pci_dev *dev, int i);
 int pci_select_bars(struct pci_dev *dev, unsigned long flags);
 
 /* ROM control related routines */
@@ -626,6 +628,7 @@ int pci_claim_resource(struct pci_dev *, int);
 void pci_assign_unassigned_resources(void);
 void pdev_enable_device(struct pci_dev *);
 void pdev_sort_resources(struct pci_dev *, struct resource_list *);
+int pci_enable_resources(struct pci_dev *, int mask);
 void pci_fixup_irqs(u8 (*)(struct pci_dev *, u8 *),
 		    int (*)(struct pci_dev *, u8, u8));
 #define HAVE_PCI_REQ_REGIONS	2
@@ -664,6 +667,7 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max,
 
 void pci_walk_bus(struct pci_bus *top, void (*cb)(struct pci_dev *, void *),
 		  void *userdata);
+int pci_cfg_space_size_ext(struct pci_dev *dev);
 int pci_cfg_space_size(struct pci_dev *dev);
 unsigned char pci_bus_max_busnr(struct pci_bus *bus);
 
@@ -699,6 +703,8 @@ static inline int pci_enable_msi(struct pci_dev *dev)
 	return -1;
 }
 
+static inline void pci_msi_shutdown(struct pci_dev *dev)
+{ }
 static inline void pci_disable_msi(struct pci_dev *dev)
 { }
 
@@ -708,6 +714,8 @@ static inline int pci_enable_msix(struct pci_dev *dev,
 	return -1;
 }
 
+static inline void pci_msix_shutdown(struct pci_dev *dev)
+{ }
 static inline void pci_disable_msix(struct pci_dev *dev)
 { }
 
@@ -718,9 +726,11 @@ static inline void pci_restore_msi_state(struct pci_dev *dev)
 { }
 #else
 extern int pci_enable_msi(struct pci_dev *dev);
+extern void pci_msi_shutdown(struct pci_dev *dev);
 extern void pci_disable_msi(struct pci_dev *dev);
 extern int pci_enable_msix(struct pci_dev *dev,
 	struct msix_entry *entries, int nvec);
+extern void pci_msix_shutdown(struct pci_dev *dev);
 extern void pci_disable_msix(struct pci_dev *dev);
 extern void msi_remove_pci_irq_vectors(struct pci_dev *dev);
 extern void pci_restore_msi_state(struct pci_dev *dev);
@@ -793,18 +803,11 @@ static inline struct pci_dev *pci_get_device(unsigned int vendor,
 	return NULL;
 }
 
-static inline struct pci_dev *pci_get_device_reverse(unsigned int vendor,
-						     unsigned int device,
-						     struct pci_dev *from)
-{
-	return NULL;
-}
-
 static inline struct pci_dev *pci_get_subsys(unsigned int vendor,
 					     unsigned int device,
 					     unsigned int ss_vendor,
 					     unsigned int ss_device,
-					     struct pci_dev *from)
+					     const struct pci_dev *from)
 {
 	return NULL;
 }
@@ -817,7 +820,6 @@ static inline struct pci_dev *pci_get_class(unsigned int class,
 
 #define pci_dev_present(ids)	(0)
 #define no_pci_devices()	(1)
-#define pci_find_present(ids)	(NULL)
 #define pci_dev_put(dev)	do { } while (0)
 
 static inline void pci_set_master(struct pci_dev *dev)
@@ -1058,6 +1060,14 @@ extern unsigned long pci_cardbus_io_size;
 extern unsigned long pci_cardbus_mem_size;
 
 extern int pcibios_add_platform_entries(struct pci_dev *dev);
+
+#ifdef CONFIG_PCI_MMCONFIG
+extern void __init pci_mmcfg_early_init(void);
+extern void __init pci_mmcfg_late_init(void);
+#else
+static inline void pci_mmcfg_early_init(void) { }
+static inline void pci_mmcfg_late_init(void) { }
+#endif
 
 #endif /* __KERNEL__ */
 #endif /* LINUX_PCI_H */

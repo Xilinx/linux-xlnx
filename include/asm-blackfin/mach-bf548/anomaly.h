@@ -75,6 +75,8 @@
 #define ANOMALY_05000365 (1)
 /* Addressing Conflict between Boot ROM and Asynchronous Memory */
 #define ANOMALY_05000369 (1)
+/* Possible RETS Register Corruption when Subroutine Is under 5 Cycles in Duration */
+#define ANOMALY_05000371 (1)
 /* Mobile DDR Operation Not Functional */
 #define ANOMALY_05000377 (1)
 /* Security/Authentication Speedpath Causes Authentication To Fail To Initiate */
@@ -93,5 +95,6 @@
 #define ANOMALY_05000273 (0)
 #define ANOMALY_05000311 (0)
 #define ANOMALY_05000323 (0)
+#define ANOMALY_05000363 (0)
 
 #endif

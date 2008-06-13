@@ -19,19 +19,31 @@ void save_stack_trace(struct stack_trace *trace)
 	fp = ksp + STACK_BIAS;
 	thread_base = (unsigned long) tp;
 	do {
-		struct reg_window *rw;
+		struct sparc_stackf *sf;
+		struct pt_regs *regs;
+		unsigned long pc;
 
 		/* Bogus frame pointer? */
 		if (fp < (thread_base + sizeof(struct thread_info)) ||
 		    fp >= (thread_base + THREAD_SIZE))
 			break;
 
-		rw = (struct reg_window *) fp;
+		sf = (struct sparc_stackf *) fp;
+		regs = (struct pt_regs *) (sf + 1);
+
+		if ((regs->magic & ~0x1ff) == PT_REGS_MAGIC) {
+			if (!(regs->tstate & TSTATE_PRIV))
+				break;
+			pc = regs->tpc;
+			fp = regs->u_regs[UREG_I6] + STACK_BIAS;
+		} else {
+			pc = sf->callers_pc;
+			fp = (unsigned long)sf->fp + STACK_BIAS;
+		}
+
 		if (trace->skip > 0)
 			trace->skip--;
 		else
-			trace->entries[trace->nr_entries++] = rw->ins[7];
-
-		fp = rw->ins[6] + STACK_BIAS;
+			trace->entries[trace->nr_entries++] = pc;
 	} while (trace->nr_entries < trace->max_entries);
 }

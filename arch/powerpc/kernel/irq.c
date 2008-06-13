@@ -114,7 +114,7 @@ static inline void set_soft_enabled(unsigned long enable)
 	: : "r" (enable), "i" (offsetof(struct paca_struct, soft_enabled)));
 }
 
-void local_irq_restore(unsigned long en)
+void raw_local_irq_restore(unsigned long en)
 {
 	/*
 	 * get_paca()->soft_enabled = en;
@@ -174,6 +174,7 @@ void local_irq_restore(unsigned long en)
 
 	__hard_irq_enable();
 }
+EXPORT_SYMBOL(raw_local_irq_restore);
 #endif /* CONFIG_PPC64 */
 
 int show_interrupts(struct seq_file *p, void *v)
@@ -306,12 +307,29 @@ void do_IRQ(struct pt_regs *regs)
 		if (curtp != irqtp) {
 			struct irq_desc *desc = irq_desc + irq;
 			void *handler = desc->handle_irq;
+			unsigned long saved_sp_limit = current->thread.ksp_limit;
 			if (handler == NULL)
 				handler = &__do_IRQ;
 			irqtp->task = curtp->task;
 			irqtp->flags = 0;
+
+			/* Copy the softirq bits in preempt_count so that the
+			 * softirq checks work in the hardirq context.
+			 */
+			irqtp->preempt_count =
+				(irqtp->preempt_count & ~SOFTIRQ_MASK) |
+				(curtp->preempt_count & SOFTIRQ_MASK);
+
+			current->thread.ksp_limit = (unsigned long)irqtp +
+				_ALIGN_UP(sizeof(struct thread_info), 16);
 			call_handle_irq(irq, desc, irqtp, handler);
+			current->thread.ksp_limit = saved_sp_limit;
 			irqtp->task = NULL;
+
+
+			/* Set any flag that may have been set on the
+			 * alternate stack
+			 */
 			if (irqtp->flags)
 				set_bits(irqtp->flags, &curtp->flags);
 		} else
@@ -338,9 +356,7 @@ void __init init_IRQ(void)
 {
 	if (ppc_md.init_IRQ)
 		ppc_md.init_IRQ();
-#ifdef CONFIG_PPC64
 	irq_ctx_init();
-#endif
 }
 
 
@@ -357,7 +373,7 @@ void irq_ctx_init(void)
 		memset((void *)softirq_ctx[i], 0, THREAD_SIZE);
 		tp = softirq_ctx[i];
 		tp->cpu = i;
-		tp->preempt_count = SOFTIRQ_OFFSET;
+		tp->preempt_count = 0;
 
 		memset((void *)hardirq_ctx[i], 0, THREAD_SIZE);
 		tp = hardirq_ctx[i];
@@ -369,11 +385,15 @@ void irq_ctx_init(void)
 static inline void do_softirq_onstack(void)
 {
 	struct thread_info *curtp, *irqtp;
+	unsigned long saved_sp_limit = current->thread.ksp_limit;
 
 	curtp = current_thread_info();
 	irqtp = softirq_ctx[smp_processor_id()];
 	irqtp->task = curtp->task;
+	current->thread.ksp_limit = (unsigned long)irqtp +
+				    _ALIGN_UP(sizeof(struct thread_info), 16);
 	call_do_softirq(irqtp);
+	current->thread.ksp_limit = saved_sp_limit;
 	irqtp->task = NULL;
 }
 

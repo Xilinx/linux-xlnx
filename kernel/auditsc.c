@@ -61,16 +61,12 @@
 #include <linux/security.h>
 #include <linux/list.h>
 #include <linux/tty.h>
-#include <linux/selinux.h>
 #include <linux/binfmts.h>
 #include <linux/highmem.h>
 #include <linux/syscalls.h>
 #include <linux/inotify.h>
 
 #include "audit.h"
-
-extern struct list_head audit_filter_list[];
-extern int audit_ever_enabled;
 
 /* AUDIT_NAMES is the number of slots we reserve in the audit_context
  * for saving names from getname(). */
@@ -282,6 +278,19 @@ static int audit_match_perm(struct audit_context *ctx, int mask)
 	default:
 		return 0;
 	}
+}
+
+static int audit_match_filetype(struct audit_context *ctx, int which)
+{
+	unsigned index = which & ~S_IFMT;
+	mode_t mode = which & S_IFMT;
+	if (index >= ctx->name_count)
+		return 0;
+	if (ctx->names[index].ino == -1)
+		return 0;
+	if ((ctx->names[index].mode ^ mode) & S_IFMT)
+		return 0;
+	return 1;
 }
 
 /*
@@ -528,14 +537,14 @@ static int audit_filter_rules(struct task_struct *tsk,
 			   match for now to avoid losing information that
 			   may be wanted.   An error message will also be
 			   logged upon error */
-			if (f->se_rule) {
+			if (f->lsm_rule) {
 				if (need_sid) {
-					selinux_get_task_sid(tsk, &sid);
+					security_task_getsecid(tsk, &sid);
 					need_sid = 0;
 				}
-				result = selinux_audit_rule_match(sid, f->type,
+				result = security_audit_rule_match(sid, f->type,
 				                                  f->op,
-				                                  f->se_rule,
+				                                  f->lsm_rule,
 				                                  ctx);
 			}
 			break;
@@ -546,18 +555,18 @@ static int audit_filter_rules(struct task_struct *tsk,
 		case AUDIT_OBJ_LEV_HIGH:
 			/* The above note for AUDIT_SUBJ_USER...AUDIT_SUBJ_CLR
 			   also applies here */
-			if (f->se_rule) {
+			if (f->lsm_rule) {
 				/* Find files that match */
 				if (name) {
-					result = selinux_audit_rule_match(
+					result = security_audit_rule_match(
 					           name->osid, f->type, f->op,
-					           f->se_rule, ctx);
+					           f->lsm_rule, ctx);
 				} else if (ctx) {
 					for (j = 0; j < ctx->name_count; j++) {
-						if (selinux_audit_rule_match(
+						if (security_audit_rule_match(
 						      ctx->names[j].osid,
 						      f->type, f->op,
-						      f->se_rule, ctx)) {
+						      f->lsm_rule, ctx)) {
 							++result;
 							break;
 						}
@@ -570,7 +579,7 @@ static int audit_filter_rules(struct task_struct *tsk,
 					     aux = aux->next) {
 						if (aux->type == AUDIT_IPC) {
 							struct audit_aux_data_ipcctl *axi = (void *)aux;
-							if (selinux_audit_rule_match(axi->osid, f->type, f->op, f->se_rule, ctx)) {
+							if (security_audit_rule_match(axi->osid, f->type, f->op, f->lsm_rule, ctx)) {
 								++result;
 								break;
 							}
@@ -592,6 +601,9 @@ static int audit_filter_rules(struct task_struct *tsk,
 			break;
 		case AUDIT_PERM:
 			result = audit_match_perm(ctx, f->val);
+			break;
+		case AUDIT_FILETYPE:
+			result = audit_match_filetype(ctx, f->val);
 			break;
 		}
 
@@ -885,11 +897,11 @@ void audit_log_task_context(struct audit_buffer *ab)
 	int error;
 	u32 sid;
 
-	selinux_get_task_sid(current, &sid);
+	security_task_getsecid(current, &sid);
 	if (!sid)
 		return;
 
-	error = selinux_sid_to_string(sid, &ctx, &len);
+	error = security_secid_to_secctx(sid, &ctx, &len);
 	if (error) {
 		if (error != -EINVAL)
 			goto error_path;
@@ -897,7 +909,7 @@ void audit_log_task_context(struct audit_buffer *ab)
 	}
 
 	audit_log_format(ab, " subj=%s", ctx);
-	kfree(ctx);
+	security_release_secctx(ctx, len);
 	return;
 
 error_path:
@@ -941,7 +953,7 @@ static int audit_log_pid_context(struct audit_context *context, pid_t pid,
 				 u32 sid, char *comm)
 {
 	struct audit_buffer *ab;
-	char *s = NULL;
+	char *ctx = NULL;
 	u32 len;
 	int rc = 0;
 
@@ -951,15 +963,16 @@ static int audit_log_pid_context(struct audit_context *context, pid_t pid,
 
 	audit_log_format(ab, "opid=%d oauid=%d ouid=%d oses=%d", pid, auid,
 			 uid, sessionid);
-	if (selinux_sid_to_string(sid, &s, &len)) {
+	if (security_secid_to_secctx(sid, &ctx, &len)) {
 		audit_log_format(ab, " obj=(none)");
 		rc = 1;
-	} else
-		audit_log_format(ab, " obj=%s", s);
+	} else {
+		audit_log_format(ab, " obj=%s", ctx);
+		security_release_secctx(ctx, len);
+	}
 	audit_log_format(ab, " ocomm=");
 	audit_log_untrustedstring(ab, comm);
 	audit_log_end(ab);
-	kfree(s);
 
 	return rc;
 }
@@ -1095,7 +1108,7 @@ static int audit_log_single_execve_arg(struct audit_context *context,
 			audit_log_format(*ab, "[%d]", i);
 		audit_log_format(*ab, "=");
 		if (has_cntl)
-			audit_log_hex(*ab, buf, to_send);
+			audit_log_n_hex(*ab, buf, to_send);
 		else
 			audit_log_format(*ab, "\"%s\"", buf);
 		audit_log_format(*ab, "\n");
@@ -1271,14 +1284,15 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			if (axi->osid != 0) {
 				char *ctx = NULL;
 				u32 len;
-				if (selinux_sid_to_string(
+				if (security_secid_to_secctx(
 						axi->osid, &ctx, &len)) {
 					audit_log_format(ab, " osid=%u",
 							axi->osid);
 					call_panic = 1;
-				} else
+				} else {
 					audit_log_format(ab, " obj=%s", ctx);
-				kfree(ctx);
+					security_release_secctx(ctx, len);
+				}
 			}
 			break; }
 
@@ -1295,7 +1309,6 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			break; }
 
 		case AUDIT_SOCKETCALL: {
-			int i;
 			struct audit_aux_data_socketcall *axs = (void *)aux;
 			audit_log_format(ab, "nargs=%d", axs->nargs);
 			for (i=0; i<axs->nargs; i++)
@@ -1306,7 +1319,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			struct audit_aux_data_sockaddr *axs = (void *)aux;
 
 			audit_log_format(ab, "saddr=");
-			audit_log_hex(ab, axs->a, axs->len);
+			audit_log_n_hex(ab, axs->a, axs->len);
 			break; }
 
 		case AUDIT_FD_PAIR: {
@@ -1320,7 +1333,6 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 
 	for (aux = context->aux_pids; aux; aux = aux->next) {
 		struct audit_aux_data_pids *axs = (void *)aux;
-		int i;
 
 		for (i = 0; i < axs->pid_count; i++)
 			if (audit_log_pid_context(context, axs->target_pid[i],
@@ -1370,8 +1382,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			default:
 				/* log the name's directory component */
 				audit_log_format(ab, " name=");
-				audit_log_n_untrustedstring(ab, n->name_len,
-							    n->name);
+				audit_log_n_untrustedstring(ab, n->name,
+							    n->name_len);
 			}
 		} else
 			audit_log_format(ab, " name=(null)");
@@ -1392,13 +1404,14 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 		if (n->osid != 0) {
 			char *ctx = NULL;
 			u32 len;
-			if (selinux_sid_to_string(
+			if (security_secid_to_secctx(
 				n->osid, &ctx, &len)) {
 				audit_log_format(ab, " osid=%u", n->osid);
 				call_panic = 2;
-			} else
+			} else {
 				audit_log_format(ab, " obj=%s", ctx);
-			kfree(ctx);
+				security_release_secctx(ctx, len);
+			}
 		}
 
 		audit_log_end(ab);
@@ -1594,7 +1607,7 @@ static inline void handle_one(const struct inode *inode)
 	if (likely(put_tree_ref(context, chunk)))
 		return;
 	if (unlikely(!grow_tree_refs(context))) {
-		printk(KERN_WARNING "out of memory, audit has lost a tree reference");
+		printk(KERN_WARNING "out of memory, audit has lost a tree reference\n");
 		audit_set_auditable(context);
 		audit_put_chunk(chunk);
 		unroll_tree_refs(context, p, count);
@@ -1654,7 +1667,7 @@ retry:
 		}
 		/* too bad */
 		printk(KERN_WARNING
-			"out of memory, audit has lost a tree reference");
+			"out of memory, audit has lost a tree reference\n");
 		unroll_tree_refs(context, p, count);
 		audit_set_auditable(context);
 		return;
@@ -1750,13 +1763,13 @@ static int audit_inc_name_count(struct audit_context *context,
 	if (context->name_count >= AUDIT_NAMES) {
 		if (inode)
 			printk(KERN_DEBUG "name_count maxed, losing inode data: "
-			       "dev=%02x:%02x, inode=%lu",
+			       "dev=%02x:%02x, inode=%lu\n",
 			       MAJOR(inode->i_sb->s_dev),
 			       MINOR(inode->i_sb->s_dev),
 			       inode->i_ino);
 
 		else
-			printk(KERN_DEBUG "name_count maxed, losing inode data");
+			printk(KERN_DEBUG "name_count maxed, losing inode data\n");
 		return 1;
 	}
 	context->name_count++;
@@ -1775,7 +1788,7 @@ static void audit_copy_inode(struct audit_names *name, const struct inode *inode
 	name->uid   = inode->i_uid;
 	name->gid   = inode->i_gid;
 	name->rdev  = inode->i_rdev;
-	selinux_get_inode_sid(inode, &name->osid);
+	security_inode_getsecid(inode, &name->osid);
 }
 
 /**
@@ -2190,8 +2203,7 @@ int __audit_ipc_obj(struct kern_ipc_perm *ipcp)
 	ax->uid = ipcp->uid;
 	ax->gid = ipcp->gid;
 	ax->mode = ipcp->mode;
-	selinux_get_ipc_sid(ipcp, &ax->osid);
-
+	security_ipc_getsecid(ipcp, &ax->osid);
 	ax->d.type = AUDIT_IPC;
 	ax->d.next = context->aux;
 	context->aux = (void *)ax;
@@ -2343,7 +2355,7 @@ void __audit_ptrace(struct task_struct *t)
 	context->target_auid = audit_get_loginuid(t);
 	context->target_uid = t->uid;
 	context->target_sessionid = audit_get_sessionid(t);
-	selinux_get_task_sid(t, &context->target_sid);
+	security_task_getsecid(t, &context->target_sid);
 	memcpy(context->target_comm, t->comm, TASK_COMM_LEN);
 }
 
@@ -2360,9 +2372,6 @@ int __audit_signal_info(int sig, struct task_struct *t)
 	struct audit_aux_data_pids *axp;
 	struct task_struct *tsk = current;
 	struct audit_context *ctx = tsk->audit_context;
-	extern pid_t audit_sig_pid;
-	extern uid_t audit_sig_uid;
-	extern u32 audit_sig_sid;
 
 	if (audit_pid && t->tgid == audit_pid) {
 		if (sig == SIGTERM || sig == SIGHUP || sig == SIGUSR1) {
@@ -2371,7 +2380,7 @@ int __audit_signal_info(int sig, struct task_struct *t)
 				audit_sig_uid = tsk->loginuid;
 			else
 				audit_sig_uid = tsk->uid;
-			selinux_get_task_sid(tsk, &audit_sig_sid);
+			security_task_getsecid(tsk, &audit_sig_sid);
 		}
 		if (!audit_signals || audit_dummy_context())
 			return 0;
@@ -2384,7 +2393,7 @@ int __audit_signal_info(int sig, struct task_struct *t)
 		ctx->target_auid = audit_get_loginuid(t);
 		ctx->target_uid = t->uid;
 		ctx->target_sessionid = audit_get_sessionid(t);
-		selinux_get_task_sid(t, &ctx->target_sid);
+		security_task_getsecid(t, &ctx->target_sid);
 		memcpy(ctx->target_comm, t->comm, TASK_COMM_LEN);
 		return 0;
 	}
@@ -2405,7 +2414,7 @@ int __audit_signal_info(int sig, struct task_struct *t)
 	axp->target_auid[axp->pid_count] = audit_get_loginuid(t);
 	axp->target_uid[axp->pid_count] = t->uid;
 	axp->target_sessionid[axp->pid_count] = audit_get_sessionid(t);
-	selinux_get_task_sid(t, &axp->target_sid[axp->pid_count]);
+	security_task_getsecid(t, &axp->target_sid[axp->pid_count]);
 	memcpy(axp->target_comm[axp->pid_count], t->comm, TASK_COMM_LEN);
 	axp->pid_count++;
 
@@ -2435,16 +2444,17 @@ void audit_core_dumps(long signr)
 	ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_ANOM_ABEND);
 	audit_log_format(ab, "auid=%u uid=%u gid=%u ses=%u",
 			auid, current->uid, current->gid, sessionid);
-	selinux_get_task_sid(current, &sid);
+	security_task_getsecid(current, &sid);
 	if (sid) {
 		char *ctx = NULL;
 		u32 len;
 
-		if (selinux_sid_to_string(sid, &ctx, &len))
+		if (security_secid_to_secctx(sid, &ctx, &len))
 			audit_log_format(ab, " ssid=%u", sid);
-		else
+		else {
 			audit_log_format(ab, " subj=%s", ctx);
-		kfree(ctx);
+			security_release_secctx(ctx, len);
+		}
 	}
 	audit_log_format(ab, " pid=%d comm=", current->pid);
 	audit_log_untrustedstring(ab, current->comm);

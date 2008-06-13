@@ -35,7 +35,6 @@
 #include <linux/types.h>
 #include <linux/mutex.h>
 #include <asm/io.h>
-#include <asm/semaphore.h>
 
 #include "dcdbas.h"
 
@@ -64,7 +63,7 @@ static void smi_data_buf_free(void)
 		return;
 
 	dev_dbg(&dcdbas_pdev->dev, "%s: phys: %x size: %lu\n",
-		__FUNCTION__, smi_data_buf_phys_addr, smi_data_buf_size);
+		__func__, smi_data_buf_phys_addr, smi_data_buf_size);
 
 	dma_free_coherent(&dcdbas_pdev->dev, smi_data_buf_size, smi_data_buf,
 			  smi_data_buf_handle);
@@ -93,7 +92,7 @@ static int smi_data_buf_realloc(unsigned long size)
 	if (!buf) {
 		dev_dbg(&dcdbas_pdev->dev,
 			"%s: failed to allocate memory size %lu\n",
-			__FUNCTION__, size);
+			__func__, size);
 		return -ENOMEM;
 	}
 	/* memory zeroed by dma_alloc_coherent */
@@ -111,7 +110,7 @@ static int smi_data_buf_realloc(unsigned long size)
 	smi_data_buf_size = size;
 
 	dev_dbg(&dcdbas_pdev->dev, "%s: phys: %x size: %lu\n",
-		__FUNCTION__, smi_data_buf_phys_addr, smi_data_buf_size);
+		__func__, smi_data_buf_phys_addr, smi_data_buf_size);
 
 	return 0;
 }
@@ -259,16 +258,16 @@ static int smi_request(struct smi_cmd *smi_cmd)
 
 	if (smi_cmd->magic != SMI_CMD_MAGIC) {
 		dev_info(&dcdbas_pdev->dev, "%s: invalid magic value\n",
-			 __FUNCTION__);
+			 __func__);
 		return -EBADR;
 	}
 
 	/* SMI requires CPU 0 */
 	old_mask = current->cpus_allowed;
-	set_cpus_allowed(current, cpumask_of_cpu(0));
+	set_cpus_allowed_ptr(current, &cpumask_of_cpu(0));
 	if (smp_processor_id() != 0) {
 		dev_dbg(&dcdbas_pdev->dev, "%s: failed to get CPU 0\n",
-			__FUNCTION__);
+			__func__);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -285,7 +284,7 @@ static int smi_request(struct smi_cmd *smi_cmd)
 	);
 
 out:
-	set_cpus_allowed(current, old_mask);
+	set_cpus_allowed_ptr(current, &old_mask);
 	return ret;
 }
 
@@ -429,7 +428,7 @@ static int host_control_smi(void)
 
 	default:
 		dev_dbg(&dcdbas_pdev->dev, "%s: invalid SMI type %u\n",
-			__FUNCTION__, host_control_smi_type);
+			__func__, host_control_smi_type);
 		return -ENOSYS;
 	}
 
@@ -457,13 +456,13 @@ static void dcdbas_host_control(void)
 	host_control_action = HC_ACTION_NONE;
 
 	if (!smi_data_buf) {
-		dev_dbg(&dcdbas_pdev->dev, "%s: no SMI buffer\n", __FUNCTION__);
+		dev_dbg(&dcdbas_pdev->dev, "%s: no SMI buffer\n", __func__);
 		return;
 	}
 
 	if (smi_data_buf_size < sizeof(struct apm_cmd)) {
 		dev_dbg(&dcdbas_pdev->dev, "%s: SMI buffer too small\n",
-			__FUNCTION__);
+			__func__);
 		return;
 	}
 

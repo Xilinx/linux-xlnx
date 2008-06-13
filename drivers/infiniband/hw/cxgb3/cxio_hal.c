@@ -140,7 +140,7 @@ static int cxio_hal_clear_qp_ctx(struct cxio_rdev *rdev_p, u32 qpid)
 	struct t3_modify_qp_wr *wqe;
 	struct sk_buff *skb = alloc_skb(sizeof(*wqe), GFP_KERNEL);
 	if (!skb) {
-		PDBG("%s alloc_skb failed\n", __FUNCTION__);
+		PDBG("%s alloc_skb failed\n", __func__);
 		return -ENOMEM;
 	}
 	wqe = (struct t3_modify_qp_wr *) skb_put(skb, sizeof(*wqe));
@@ -225,7 +225,7 @@ static u32 get_qpid(struct cxio_rdev *rdev_p, struct cxio_ucontext *uctx)
 	}
 out:
 	mutex_unlock(&uctx->lock);
-	PDBG("%s qpid 0x%x\n", __FUNCTION__, qpid);
+	PDBG("%s qpid 0x%x\n", __func__, qpid);
 	return qpid;
 }
 
@@ -237,7 +237,7 @@ static void put_qpid(struct cxio_rdev *rdev_p, u32 qpid,
 	entry = kmalloc(sizeof *entry, GFP_KERNEL);
 	if (!entry)
 		return;
-	PDBG("%s qpid 0x%x\n", __FUNCTION__, qpid);
+	PDBG("%s qpid 0x%x\n", __func__, qpid);
 	entry->qpid = qpid;
 	mutex_lock(&uctx->lock);
 	list_add_tail(&entry->entry, &uctx->qpids);
@@ -300,7 +300,7 @@ int cxio_create_qp(struct cxio_rdev *rdev_p, u32 kernel_domain,
 	if (!kernel_domain)
 		wq->udb = (u64)rdev_p->rnic_info.udbell_physbase +
 					(wq->qpid << rdev_p->qpshift);
-	PDBG("%s qpid 0x%x doorbell 0x%p udb 0x%llx\n", __FUNCTION__,
+	PDBG("%s qpid 0x%x doorbell 0x%p udb 0x%llx\n", __func__,
 	     wq->qpid, wq->doorbell, (unsigned long long) wq->udb);
 	return 0;
 err4:
@@ -345,7 +345,7 @@ static void insert_recv_cqe(struct t3_wq *wq, struct t3_cq *cq)
 {
 	struct t3_cqe cqe;
 
-	PDBG("%s wq %p cq %p sw_rptr 0x%x sw_wptr 0x%x\n", __FUNCTION__,
+	PDBG("%s wq %p cq %p sw_rptr 0x%x sw_wptr 0x%x\n", __func__,
 	     wq, cq, cq->sw_rptr, cq->sw_wptr);
 	memset(&cqe, 0, sizeof(cqe));
 	cqe.header = cpu_to_be32(V_CQE_STATUS(TPT_ERR_SWFLUSH) |
@@ -359,18 +359,22 @@ static void insert_recv_cqe(struct t3_wq *wq, struct t3_cq *cq)
 	cq->sw_wptr++;
 }
 
-void cxio_flush_rq(struct t3_wq *wq, struct t3_cq *cq, int count)
+int cxio_flush_rq(struct t3_wq *wq, struct t3_cq *cq, int count)
 {
 	u32 ptr;
+	int flushed = 0;
 
-	PDBG("%s wq %p cq %p\n", __FUNCTION__, wq, cq);
+	PDBG("%s wq %p cq %p\n", __func__, wq, cq);
 
 	/* flush RQ */
-	PDBG("%s rq_rptr %u rq_wptr %u skip count %u\n", __FUNCTION__,
+	PDBG("%s rq_rptr %u rq_wptr %u skip count %u\n", __func__,
 	    wq->rq_rptr, wq->rq_wptr, count);
 	ptr = wq->rq_rptr + count;
-	while (ptr++ != wq->rq_wptr)
+	while (ptr++ != wq->rq_wptr) {
 		insert_recv_cqe(wq, cq);
+		flushed++;
+	}
+	return flushed;
 }
 
 static void insert_sq_cqe(struct t3_wq *wq, struct t3_cq *cq,
@@ -378,7 +382,7 @@ static void insert_sq_cqe(struct t3_wq *wq, struct t3_cq *cq,
 {
 	struct t3_cqe cqe;
 
-	PDBG("%s wq %p cq %p sw_rptr 0x%x sw_wptr 0x%x\n", __FUNCTION__,
+	PDBG("%s wq %p cq %p sw_rptr 0x%x sw_wptr 0x%x\n", __func__,
 	     wq, cq, cq->sw_rptr, cq->sw_wptr);
 	memset(&cqe, 0, sizeof(cqe));
 	cqe.header = cpu_to_be32(V_CQE_STATUS(TPT_ERR_SWFLUSH) |
@@ -394,18 +398,21 @@ static void insert_sq_cqe(struct t3_wq *wq, struct t3_cq *cq,
 	cq->sw_wptr++;
 }
 
-void cxio_flush_sq(struct t3_wq *wq, struct t3_cq *cq, int count)
+int cxio_flush_sq(struct t3_wq *wq, struct t3_cq *cq, int count)
 {
 	__u32 ptr;
+	int flushed = 0;
 	struct t3_swsq *sqp = wq->sq + Q_PTR2IDX(wq->sq_rptr, wq->sq_size_log2);
 
 	ptr = wq->sq_rptr + count;
-	sqp += count;
+	sqp = wq->sq + Q_PTR2IDX(ptr, wq->sq_size_log2);
 	while (ptr != wq->sq_wptr) {
 		insert_sq_cqe(wq, cq, sqp);
-		sqp++;
 		ptr++;
+		sqp = wq->sq + Q_PTR2IDX(ptr, wq->sq_size_log2);
+		flushed++;
 	}
+	return flushed;
 }
 
 /*
@@ -415,11 +422,11 @@ void cxio_flush_hw_cq(struct t3_cq *cq)
 {
 	struct t3_cqe *cqe, *swcqe;
 
-	PDBG("%s cq %p cqid 0x%x\n", __FUNCTION__, cq, cq->cqid);
+	PDBG("%s cq %p cqid 0x%x\n", __func__, cq, cq->cqid);
 	cqe = cxio_next_hw_cqe(cq);
 	while (cqe) {
 		PDBG("%s flushing hwcq rptr 0x%x to swcq wptr 0x%x\n",
-		     __FUNCTION__, cq->rptr, cq->sw_wptr);
+		     __func__, cq->rptr, cq->sw_wptr);
 		swcqe = cq->sw_queue + Q_PTR2IDX(cq->sw_wptr, cq->size_log2);
 		*swcqe = *cqe;
 		swcqe->header |= cpu_to_be32(V_CQE_SWCQE(1));
@@ -456,12 +463,13 @@ void cxio_count_scqes(struct t3_cq *cq, struct t3_wq *wq, int *count)
 	ptr = cq->sw_rptr;
 	while (!Q_EMPTY(ptr, cq->sw_wptr)) {
 		cqe = cq->sw_queue + (Q_PTR2IDX(ptr, cq->size_log2));
-		if ((SQ_TYPE(*cqe) || (CQE_OPCODE(*cqe) == T3_READ_RESP)) &&
+		if ((SQ_TYPE(*cqe) ||
+		     ((CQE_OPCODE(*cqe) == T3_READ_RESP) && wq->oldest_read)) &&
 		    (CQE_QPID(*cqe) == wq->qpid))
 			(*count)++;
 		ptr++;
 	}
-	PDBG("%s cq %p count %d\n", __FUNCTION__, cq, *count);
+	PDBG("%s cq %p count %d\n", __func__, cq, *count);
 }
 
 void cxio_count_rcqes(struct t3_cq *cq, struct t3_wq *wq, int *count)
@@ -470,7 +478,7 @@ void cxio_count_rcqes(struct t3_cq *cq, struct t3_wq *wq, int *count)
 	u32 ptr;
 
 	*count = 0;
-	PDBG("%s count zero %d\n", __FUNCTION__, *count);
+	PDBG("%s count zero %d\n", __func__, *count);
 	ptr = cq->sw_rptr;
 	while (!Q_EMPTY(ptr, cq->sw_wptr)) {
 		cqe = cq->sw_queue + (Q_PTR2IDX(ptr, cq->size_log2));
@@ -479,7 +487,7 @@ void cxio_count_rcqes(struct t3_cq *cq, struct t3_wq *wq, int *count)
 			(*count)++;
 		ptr++;
 	}
-	PDBG("%s cq %p count %d\n", __FUNCTION__, cq, *count);
+	PDBG("%s cq %p count %d\n", __func__, cq, *count);
 }
 
 static int cxio_hal_init_ctrl_cq(struct cxio_rdev *rdev_p)
@@ -506,12 +514,12 @@ static int cxio_hal_init_ctrl_qp(struct cxio_rdev *rdev_p)
 
 	skb = alloc_skb(sizeof(*wqe), GFP_KERNEL);
 	if (!skb) {
-		PDBG("%s alloc_skb failed\n", __FUNCTION__);
+		PDBG("%s alloc_skb failed\n", __func__);
 		return -ENOMEM;
 	}
 	err = cxio_hal_init_ctrl_cq(rdev_p);
 	if (err) {
-		PDBG("%s err %d initializing ctrl_cq\n", __FUNCTION__, err);
+		PDBG("%s err %d initializing ctrl_cq\n", __func__, err);
 		goto err;
 	}
 	rdev_p->ctrl_qp.workq = dma_alloc_coherent(
@@ -521,7 +529,7 @@ static int cxio_hal_init_ctrl_qp(struct cxio_rdev *rdev_p)
 					&(rdev_p->ctrl_qp.dma_addr),
 					GFP_KERNEL);
 	if (!rdev_p->ctrl_qp.workq) {
-		PDBG("%s dma_alloc_coherent failed\n", __FUNCTION__);
+		PDBG("%s dma_alloc_coherent failed\n", __func__);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -580,7 +588,7 @@ static int cxio_hal_destroy_ctrl_qp(struct cxio_rdev *rdev_p)
  * caller aquires the ctrl_qp lock before the call
  */
 static int cxio_hal_ctrl_qp_write_mem(struct cxio_rdev *rdev_p, u32 addr,
-				      u32 len, void *data, int completion)
+				      u32 len, void *data)
 {
 	u32 i, nr_wqe, copy_len;
 	u8 *copy_data;
@@ -591,32 +599,32 @@ static int cxio_hal_ctrl_qp_write_mem(struct cxio_rdev *rdev_p, u32 addr,
 	addr &= 0x7FFFFFF;
 	nr_wqe = len % 96 ? len / 96 + 1 : len / 96;	/* 96B max per WQE */
 	PDBG("%s wptr 0x%x rptr 0x%x len %d, nr_wqe %d data %p addr 0x%0x\n",
-	     __FUNCTION__, rdev_p->ctrl_qp.wptr, rdev_p->ctrl_qp.rptr, len,
+	     __func__, rdev_p->ctrl_qp.wptr, rdev_p->ctrl_qp.rptr, len,
 	     nr_wqe, data, addr);
 	utx_len = 3;		/* in 32B unit */
 	for (i = 0; i < nr_wqe; i++) {
 		if (Q_FULL(rdev_p->ctrl_qp.rptr, rdev_p->ctrl_qp.wptr,
 		           T3_CTRL_QP_SIZE_LOG2)) {
 			PDBG("%s ctrl_qp full wtpr 0x%0x rptr 0x%0x, "
-			     "wait for more space i %d\n", __FUNCTION__,
+			     "wait for more space i %d\n", __func__,
 			     rdev_p->ctrl_qp.wptr, rdev_p->ctrl_qp.rptr, i);
 			if (wait_event_interruptible(rdev_p->ctrl_qp.waitq,
 					     !Q_FULL(rdev_p->ctrl_qp.rptr,
 						     rdev_p->ctrl_qp.wptr,
 						     T3_CTRL_QP_SIZE_LOG2))) {
 				PDBG("%s ctrl_qp workq interrupted\n",
-				     __FUNCTION__);
+				     __func__);
 				return -ERESTARTSYS;
 			}
 			PDBG("%s ctrl_qp wakeup, continue posting work request "
-			     "i %d\n", __FUNCTION__, i);
+			     "i %d\n", __func__, i);
 		}
 		wqe = (__be64 *)(rdev_p->ctrl_qp.workq + (rdev_p->ctrl_qp.wptr %
 						(1 << T3_CTRL_QP_SIZE_LOG2)));
 		flag = 0;
 		if (i == (nr_wqe - 1)) {
 			/* last WQE */
-			flag = completion ? T3_COMPLETION_FLAG : 0;
+			flag = T3_COMPLETION_FLAG;
 			if (len % 32)
 				utx_len = len / 32 + 1;
 			else
@@ -630,7 +638,7 @@ static int cxio_hal_ctrl_qp_write_mem(struct cxio_rdev *rdev_p, u32 addr,
 		if ((i != 0) &&
 		    (i % (((1 << T3_CTRL_QP_SIZE_LOG2)) >> 1) == 0)) {
 			flag = T3_COMPLETION_FLAG;
-			PDBG("%s force completion at i %d\n", __FUNCTION__, i);
+			PDBG("%s force completion at i %d\n", __func__, i);
 		}
 
 		/* build the utx mem command */
@@ -675,21 +683,20 @@ static int cxio_hal_ctrl_qp_write_mem(struct cxio_rdev *rdev_p, u32 addr,
 	return 0;
 }
 
-/* IN: stag key, pdid, perm, zbva, to, len, page_size, pbl, and pbl_size
- * OUT: stag index, actual pbl_size, pbl_addr allocated.
+/* IN: stag key, pdid, perm, zbva, to, len, page_size, pbl_size and pbl_addr
+ * OUT: stag index
  * TBD: shared memory region support
  */
 static int __cxio_tpt_op(struct cxio_rdev *rdev_p, u32 reset_tpt_entry,
 			 u32 *stag, u8 stag_state, u32 pdid,
 			 enum tpt_mem_type type, enum tpt_mem_perm perm,
-			 u32 zbva, u64 to, u32 len, u8 page_size, __be64 *pbl,
-			 u32 *pbl_size, u32 *pbl_addr)
+			 u32 zbva, u64 to, u32 len, u8 page_size,
+			 u32 pbl_size, u32 pbl_addr)
 {
 	int err;
 	struct tpt_entry tpt;
 	u32 stag_idx;
 	u32 wptr;
-	int rereg = (*stag != T3_STAG_UNSET);
 
 	stag_state = stag_state > 0;
 	stag_idx = (*stag) >> 8;
@@ -701,31 +708,9 @@ static int __cxio_tpt_op(struct cxio_rdev *rdev_p, u32 reset_tpt_entry,
 		*stag = (stag_idx << 8) | ((*stag) & 0xFF);
 	}
 	PDBG("%s stag_state 0x%0x type 0x%0x pdid 0x%0x, stag_idx 0x%x\n",
-	     __FUNCTION__, stag_state, type, pdid, stag_idx);
-
-	if (reset_tpt_entry)
-		cxio_hal_pblpool_free(rdev_p, *pbl_addr, *pbl_size << 3);
-	else if (!rereg) {
-		*pbl_addr = cxio_hal_pblpool_alloc(rdev_p, *pbl_size << 3);
-		if (!*pbl_addr) {
-			return -ENOMEM;
-		}
-	}
+	     __func__, stag_state, type, pdid, stag_idx);
 
 	mutex_lock(&rdev_p->ctrl_qp.lock);
-
-	/* write PBL first if any - update pbl only if pbl list exist */
-	if (pbl) {
-
-		PDBG("%s *pdb_addr 0x%x, pbl_base 0x%x, pbl_size %d\n",
-		     __FUNCTION__, *pbl_addr, rdev_p->rnic_info.pbl_base,
-		     *pbl_size);
-		err = cxio_hal_ctrl_qp_write_mem(rdev_p,
-				(*pbl_addr >> 5),
-				(*pbl_size << 3), pbl, 0);
-		if (err)
-			goto ret;
-	}
 
 	/* write TPT entry */
 	if (reset_tpt_entry)
@@ -741,23 +726,23 @@ static int __cxio_tpt_op(struct cxio_rdev *rdev_p, u32 reset_tpt_entry,
 				V_TPT_ADDR_TYPE((zbva ? TPT_ZBTO : TPT_VATO)) |
 				V_TPT_PAGE_SIZE(page_size));
 		tpt.rsvd_pbl_addr = reset_tpt_entry ? 0 :
-				    cpu_to_be32(V_TPT_PBL_ADDR(PBL_OFF(rdev_p, *pbl_addr)>>3));
+				    cpu_to_be32(V_TPT_PBL_ADDR(PBL_OFF(rdev_p, pbl_addr)>>3));
 		tpt.len = cpu_to_be32(len);
 		tpt.va_hi = cpu_to_be32((u32) (to >> 32));
 		tpt.va_low_or_fbo = cpu_to_be32((u32) (to & 0xFFFFFFFFULL));
 		tpt.rsvd_bind_cnt_or_pstag = 0;
 		tpt.rsvd_pbl_size = reset_tpt_entry ? 0 :
-				  cpu_to_be32(V_TPT_PBL_SIZE((*pbl_size) >> 2));
+				  cpu_to_be32(V_TPT_PBL_SIZE(pbl_size >> 2));
 	}
 	err = cxio_hal_ctrl_qp_write_mem(rdev_p,
 				       stag_idx +
 				       (rdev_p->rnic_info.tpt_base >> 5),
-				       sizeof(tpt), &tpt, 1);
+				       sizeof(tpt), &tpt);
 
 	/* release the stag index to free pool */
 	if (reset_tpt_entry)
 		cxio_hal_put_stag(rdev_p->rscp, stag_idx);
-ret:
+
 	wptr = rdev_p->ctrl_qp.wptr;
 	mutex_unlock(&rdev_p->ctrl_qp.lock);
 	if (!err)
@@ -768,44 +753,67 @@ ret:
 	return err;
 }
 
+int cxio_write_pbl(struct cxio_rdev *rdev_p, __be64 *pbl,
+		   u32 pbl_addr, u32 pbl_size)
+{
+	u32 wptr;
+	int err;
+
+	PDBG("%s *pdb_addr 0x%x, pbl_base 0x%x, pbl_size %d\n",
+	     __func__, pbl_addr, rdev_p->rnic_info.pbl_base,
+	     pbl_size);
+
+	mutex_lock(&rdev_p->ctrl_qp.lock);
+	err = cxio_hal_ctrl_qp_write_mem(rdev_p, pbl_addr >> 5, pbl_size << 3,
+					 pbl);
+	wptr = rdev_p->ctrl_qp.wptr;
+	mutex_unlock(&rdev_p->ctrl_qp.lock);
+	if (err)
+		return err;
+
+	if (wait_event_interruptible(rdev_p->ctrl_qp.waitq,
+				     SEQ32_GE(rdev_p->ctrl_qp.rptr,
+					      wptr)))
+		return -ERESTARTSYS;
+
+	return 0;
+}
+
 int cxio_register_phys_mem(struct cxio_rdev *rdev_p, u32 *stag, u32 pdid,
 			   enum tpt_mem_perm perm, u32 zbva, u64 to, u32 len,
-			   u8 page_size, __be64 *pbl, u32 *pbl_size,
-			   u32 *pbl_addr)
+			   u8 page_size, u32 pbl_size, u32 pbl_addr)
 {
 	*stag = T3_STAG_UNSET;
 	return __cxio_tpt_op(rdev_p, 0, stag, 1, pdid, TPT_NON_SHARED_MR, perm,
-			     zbva, to, len, page_size, pbl, pbl_size, pbl_addr);
+			     zbva, to, len, page_size, pbl_size, pbl_addr);
 }
 
 int cxio_reregister_phys_mem(struct cxio_rdev *rdev_p, u32 *stag, u32 pdid,
 			   enum tpt_mem_perm perm, u32 zbva, u64 to, u32 len,
-			   u8 page_size, __be64 *pbl, u32 *pbl_size,
-			   u32 *pbl_addr)
+			   u8 page_size, u32 pbl_size, u32 pbl_addr)
 {
 	return __cxio_tpt_op(rdev_p, 0, stag, 1, pdid, TPT_NON_SHARED_MR, perm,
-			     zbva, to, len, page_size, pbl, pbl_size, pbl_addr);
+			     zbva, to, len, page_size, pbl_size, pbl_addr);
 }
 
 int cxio_dereg_mem(struct cxio_rdev *rdev_p, u32 stag, u32 pbl_size,
 		   u32 pbl_addr)
 {
-	return __cxio_tpt_op(rdev_p, 1, &stag, 0, 0, 0, 0, 0, 0ULL, 0, 0, NULL,
-			     &pbl_size, &pbl_addr);
+	return __cxio_tpt_op(rdev_p, 1, &stag, 0, 0, 0, 0, 0, 0ULL, 0, 0,
+			     pbl_size, pbl_addr);
 }
 
 int cxio_allocate_window(struct cxio_rdev *rdev_p, u32 * stag, u32 pdid)
 {
-	u32 pbl_size = 0;
 	*stag = T3_STAG_UNSET;
 	return __cxio_tpt_op(rdev_p, 0, stag, 0, pdid, TPT_MW, 0, 0, 0ULL, 0, 0,
-			     NULL, &pbl_size, NULL);
+			     0, 0);
 }
 
 int cxio_deallocate_window(struct cxio_rdev *rdev_p, u32 stag)
 {
-	return __cxio_tpt_op(rdev_p, 1, &stag, 0, 0, 0, 0, 0, 0ULL, 0, 0, NULL,
-			     NULL, NULL);
+	return __cxio_tpt_op(rdev_p, 1, &stag, 0, 0, 0, 0, 0, 0ULL, 0, 0,
+			     0, 0);
 }
 
 int cxio_rdma_init(struct cxio_rdev *rdev_p, struct t3_rdma_init_attr *attr)
@@ -814,7 +822,7 @@ int cxio_rdma_init(struct cxio_rdev *rdev_p, struct t3_rdma_init_attr *attr)
 	struct sk_buff *skb = alloc_skb(sizeof(*wqe), GFP_ATOMIC);
 	if (!skb)
 		return -ENOMEM;
-	PDBG("%s rdev_p %p\n", __FUNCTION__, rdev_p);
+	PDBG("%s rdev_p %p\n", __func__, rdev_p);
 	wqe = (struct t3_rdma_init_wr *) __skb_put(skb, sizeof(*wqe));
 	wqe->wrh.op_seop_flags = cpu_to_be32(V_FW_RIWR_OP(T3_WR_INIT));
 	wqe->wrh.gen_tid_len = cpu_to_be32(V_FW_RIWR_TID(attr->tid) |
@@ -829,7 +837,8 @@ int cxio_rdma_init(struct cxio_rdev *rdev_p, struct t3_rdma_init_attr *attr)
 	wqe->mpaattrs = attr->mpaattrs;
 	wqe->qpcaps = attr->qpcaps;
 	wqe->ulpdu_size = cpu_to_be16(attr->tcp_emss);
-	wqe->flags = cpu_to_be32(attr->flags);
+	wqe->rqe_count = cpu_to_be16(attr->rqe_count);
+	wqe->flags_rtr_type = cpu_to_be16(attr->flags|V_RTR_TYPE(attr->rtr_type));
 	wqe->ord = cpu_to_be32(attr->ord);
 	wqe->ird = cpu_to_be32(attr->ird);
 	wqe->qp_dma_addr = cpu_to_be64(attr->qp_dma_addr);
@@ -856,7 +865,7 @@ static int cxio_hal_ev_handler(struct t3cdev *t3cdev_p, struct sk_buff *skb)
 	struct respQ_msg_t *rsp_msg = (struct respQ_msg_t *) skb->data;
 	PDBG("%d: %s cq_id 0x%x cq_ptr 0x%x genbit %0x overflow %0x an %0x"
 	     " se %0x notify %0x cqbranch %0x creditth %0x\n",
-	     cnt, __FUNCTION__, RSPQ_CQID(rsp_msg), RSPQ_CQPTR(rsp_msg),
+	     cnt, __func__, RSPQ_CQID(rsp_msg), RSPQ_CQPTR(rsp_msg),
 	     RSPQ_GENBIT(rsp_msg), RSPQ_OVERFLOW(rsp_msg), RSPQ_AN(rsp_msg),
 	     RSPQ_SE(rsp_msg), RSPQ_NOTIFY(rsp_msg), RSPQ_CQBRANCH(rsp_msg),
 	     RSPQ_CREDIT_THRESH(rsp_msg));
@@ -868,7 +877,7 @@ static int cxio_hal_ev_handler(struct t3cdev *t3cdev_p, struct sk_buff *skb)
 	     CQE_WRID_HI(rsp_msg->cqe), CQE_WRID_LOW(rsp_msg->cqe));
 	rdev_p = (struct cxio_rdev *)t3cdev_p->ulp;
 	if (!rdev_p) {
-		PDBG("%s called by t3cdev %p with null ulp\n", __FUNCTION__,
+		PDBG("%s called by t3cdev %p with null ulp\n", __func__,
 		     t3cdev_p);
 		return 0;
 	}
@@ -908,13 +917,13 @@ int cxio_rdev_open(struct cxio_rdev *rdev_p)
 		strncpy(rdev_p->dev_name, rdev_p->t3cdev_p->name,
 			T3_MAX_DEV_NAME_LEN);
 	} else {
-		PDBG("%s t3cdev_p or dev_name must be set\n", __FUNCTION__);
+		PDBG("%s t3cdev_p or dev_name must be set\n", __func__);
 		return -EINVAL;
 	}
 
 	list_add_tail(&rdev_p->entry, &rdev_list);
 
-	PDBG("%s opening rnic dev %s\n", __FUNCTION__, rdev_p->dev_name);
+	PDBG("%s opening rnic dev %s\n", __func__, rdev_p->dev_name);
 	memset(&rdev_p->ctrl_qp, 0, sizeof(rdev_p->ctrl_qp));
 	if (!rdev_p->t3cdev_p)
 		rdev_p->t3cdev_p = dev2t3cdev(netdev_p);
@@ -923,14 +932,14 @@ int cxio_rdev_open(struct cxio_rdev *rdev_p)
 					 &(rdev_p->rnic_info));
 	if (err) {
 		printk(KERN_ERR "%s t3cdev_p(%p)->ctl returned error %d.\n",
-		     __FUNCTION__, rdev_p->t3cdev_p, err);
+		     __func__, rdev_p->t3cdev_p, err);
 		goto err1;
 	}
 	err = rdev_p->t3cdev_p->ctl(rdev_p->t3cdev_p, GET_PORTS,
 				    &(rdev_p->port_info));
 	if (err) {
 		printk(KERN_ERR "%s t3cdev_p(%p)->ctl returned error %d.\n",
-		     __FUNCTION__, rdev_p->t3cdev_p, err);
+		     __func__, rdev_p->t3cdev_p, err);
 		goto err1;
 	}
 
@@ -947,7 +956,7 @@ int cxio_rdev_open(struct cxio_rdev *rdev_p)
 	rdev_p->qpmask = (65536 >> ilog2(rdev_p->qpnr)) - 1;
 	PDBG("%s rnic %s info: tpt_base 0x%0x tpt_top 0x%0x num stags %d "
 	     "pbl_base 0x%0x pbl_top 0x%0x rqt_base 0x%0x, rqt_top 0x%0x\n",
-	     __FUNCTION__, rdev_p->dev_name, rdev_p->rnic_info.tpt_base,
+	     __func__, rdev_p->dev_name, rdev_p->rnic_info.tpt_base,
 	     rdev_p->rnic_info.tpt_top, cxio_num_stags(rdev_p),
 	     rdev_p->rnic_info.pbl_base,
 	     rdev_p->rnic_info.pbl_top, rdev_p->rnic_info.rqt_base,
@@ -961,7 +970,7 @@ int cxio_rdev_open(struct cxio_rdev *rdev_p)
 	err = cxio_hal_init_ctrl_qp(rdev_p);
 	if (err) {
 		printk(KERN_ERR "%s error %d initializing ctrl_qp.\n",
-		       __FUNCTION__, err);
+		       __func__, err);
 		goto err1;
 	}
 	err = cxio_hal_init_resource(rdev_p, cxio_num_stags(rdev_p), 0,
@@ -969,19 +978,19 @@ int cxio_rdev_open(struct cxio_rdev *rdev_p)
 				     T3_MAX_NUM_PD);
 	if (err) {
 		printk(KERN_ERR "%s error %d initializing hal resources.\n",
-		       __FUNCTION__, err);
+		       __func__, err);
 		goto err2;
 	}
 	err = cxio_hal_pblpool_create(rdev_p);
 	if (err) {
 		printk(KERN_ERR "%s error %d initializing pbl mem pool.\n",
-		       __FUNCTION__, err);
+		       __func__, err);
 		goto err3;
 	}
 	err = cxio_hal_rqtpool_create(rdev_p);
 	if (err) {
 		printk(KERN_ERR "%s error %d initializing rqt mem pool.\n",
-		       __FUNCTION__, err);
+		       __func__, err);
 		goto err4;
 	}
 	return 0;
@@ -1043,7 +1052,7 @@ static void flush_completed_wrs(struct t3_wq *wq, struct t3_cq *cq)
 			 * Insert this completed cqe into the swcq.
 			 */
 			PDBG("%s moving cqe into swcq sq idx %ld cq idx %ld\n",
-			     __FUNCTION__, Q_PTR2IDX(ptr,  wq->sq_size_log2),
+			     __func__, Q_PTR2IDX(ptr,  wq->sq_size_log2),
 			     Q_PTR2IDX(cq->sw_wptr, cq->size_log2));
 			sqp->cqe.header |= htonl(V_CQE_SWCQE(1));
 			*(cq->sw_queue + Q_PTR2IDX(cq->sw_wptr, cq->size_log2))
@@ -1112,7 +1121,7 @@ int cxio_poll_cq(struct t3_wq *wq, struct t3_cq *cq, struct t3_cqe *cqe,
 
 	PDBG("%s CQE OOO %d qpid 0x%0x genbit %d type %d status 0x%0x"
 	     " opcode 0x%0x len 0x%0x wrid_hi_stag 0x%x wrid_low_msn 0x%x\n",
-	     __FUNCTION__, CQE_OOO(*hw_cqe), CQE_QPID(*hw_cqe),
+	     __func__, CQE_OOO(*hw_cqe), CQE_QPID(*hw_cqe),
 	     CQE_GENBIT(*hw_cqe), CQE_TYPE(*hw_cqe), CQE_STATUS(*hw_cqe),
 	     CQE_OPCODE(*hw_cqe), CQE_LEN(*hw_cqe), CQE_WRID_HI(*hw_cqe),
 	     CQE_WRID_LOW(*hw_cqe));
@@ -1133,6 +1142,18 @@ int cxio_poll_cq(struct t3_wq *wq, struct t3_cq *cq, struct t3_cqe *cqe,
 	 *	4) cq_type is RQ_TYPE not SQ_TYPE.
 	 */
 	if (RQ_TYPE(*hw_cqe) && (CQE_OPCODE(*hw_cqe) == T3_READ_RESP)) {
+
+		/*
+		 * If this is an unsolicited read response, then the read
+		 * was generated by the kernel driver as part of peer-2-peer
+		 * connection setup.  So ignore the completion.
+		 */
+		if (!wq->oldest_read) {
+			if (CQE_STATUS(*hw_cqe))
+				wq->error = 1;
+			ret = -1;
+			goto skip_cqe;
+		}
 
 		/*
 		 * Don't write to the HWCQ, so create a new read req CQE
@@ -1215,7 +1236,7 @@ int cxio_poll_cq(struct t3_wq *wq, struct t3_cq *cq, struct t3_cqe *cqe,
 		struct t3_swsq *sqp;
 
 		PDBG("%s out of order completion going in swsq at idx %ld\n",
-		     __FUNCTION__,
+		     __func__,
 		     Q_PTR2IDX(CQE_WRID_SQ_WPTR(*hw_cqe), wq->sq_size_log2));
 		sqp = wq->sq +
 		      Q_PTR2IDX(CQE_WRID_SQ_WPTR(*hw_cqe), wq->sq_size_log2);
@@ -1234,13 +1255,13 @@ proc_cqe:
 	 */
 	if (SQ_TYPE(*hw_cqe)) {
 		wq->sq_rptr = CQE_WRID_SQ_WPTR(*hw_cqe);
-		PDBG("%s completing sq idx %ld\n", __FUNCTION__,
+		PDBG("%s completing sq idx %ld\n", __func__,
 		     Q_PTR2IDX(wq->sq_rptr, wq->sq_size_log2));
 		*cookie = (wq->sq +
 			   Q_PTR2IDX(wq->sq_rptr, wq->sq_size_log2))->wr_id;
 		wq->sq_rptr++;
 	} else {
-		PDBG("%s completing rq idx %ld\n", __FUNCTION__,
+		PDBG("%s completing rq idx %ld\n", __func__,
 		     Q_PTR2IDX(wq->rq_rptr, wq->rq_size_log2));
 		*cookie = *(wq->rq + Q_PTR2IDX(wq->rq_rptr, wq->rq_size_log2));
 		wq->rq_rptr++;
@@ -1255,11 +1276,11 @@ flush_wq:
 skip_cqe:
 	if (SW_CQE(*hw_cqe)) {
 		PDBG("%s cq %p cqid 0x%x skip sw cqe sw_rptr 0x%x\n",
-		     __FUNCTION__, cq, cq->cqid, cq->sw_rptr);
+		     __func__, cq, cq->cqid, cq->sw_rptr);
 		++cq->sw_rptr;
 	} else {
 		PDBG("%s cq %p cqid 0x%x skip hw cqe rptr 0x%x\n",
-		     __FUNCTION__, cq, cq->cqid, cq->rptr);
+		     __func__, cq, cq->cqid, cq->rptr);
 		++cq->rptr;
 
 		/*

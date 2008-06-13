@@ -17,10 +17,9 @@
 #include <linux/fb.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
+#include <linux/of_device.h>
 
 #include <asm/io.h>
-#include <asm/prom.h>
-#include <asm/of_device.h>
 #include <asm/fbio.h>
 
 #include "sbuslib.h"
@@ -482,7 +481,7 @@ static int __devinit cg14_probe(struct of_device *op, const struct of_device_id 
 
 	spin_lock_init(&par->lock);
 
-	sbusfb_fill_var(&info->var, dp->node, 8);
+	sbusfb_fill_var(&info->var, dp, 8);
 	info->var.red.length = 8;
 	info->var.green.length = 8;
 	info->var.blue.length = 8;
@@ -556,7 +555,7 @@ static int __devinit cg14_probe(struct of_device *op, const struct of_device_id 
 
 	dev_set_drvdata(&op->dev, info);
 
-	printk("%s: cgfourteen at %lx:%lx, %dMB\n",
+	printk(KERN_INFO "%s: cgfourteen at %lx:%lx, %dMB\n",
 	       dp->full_name,
 	       par->iospace, par->physbase,
 	       par->ramsize >> 20);
@@ -605,7 +604,7 @@ static struct of_platform_driver cg14_driver = {
 	.remove		= __devexit_p(cg14_remove),
 };
 
-int __init cg14_init(void)
+static int __init cg14_init(void)
 {
 	if (fb_get_options("cg14fb", NULL))
 		return -ENODEV;
@@ -613,7 +612,7 @@ int __init cg14_init(void)
 	return of_register_driver(&cg14_driver, &of_bus_type);
 }
 
-void __exit cg14_exit(void)
+static void __exit cg14_exit(void)
 {
 	of_unregister_driver(&cg14_driver);
 }

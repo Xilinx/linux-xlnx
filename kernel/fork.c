@@ -22,6 +22,7 @@
 #include <linux/mempolicy.h>
 #include <linux/sem.h>
 #include <linux/file.h>
+#include <linux/fdtable.h>
 #include <linux/key.h>
 #include <linux/binfmts.h>
 #include <linux/mman.h>
@@ -132,6 +133,14 @@ void __put_task_struct(struct task_struct *tsk)
 		free_task(tsk);
 }
 
+/*
+ * macro override instead of weak attribute alias, to workaround
+ * gcc 4.1.0 and 4.1.1 bugs with weak attribute and empty functions.
+ */
+#ifndef arch_task_cache_init
+#define arch_task_cache_init()
+#endif
+
 void __init fork_init(unsigned long mempages)
 {
 #ifndef __HAVE_ARCH_TASK_STRUCT_ALLOCATOR
@@ -143,6 +152,9 @@ void __init fork_init(unsigned long mempages)
 		kmem_cache_create("task_struct", sizeof(struct task_struct),
 			ARCH_MIN_TASKALIGN, SLAB_PANIC, NULL);
 #endif
+
+	/* do the arch specific task caches init */
+	arch_task_cache_init();
 
 	/*
 	 * The default maximum number of threads is set to a safe
@@ -163,6 +175,13 @@ void __init fork_init(unsigned long mempages)
 		init_task.signal->rlim[RLIMIT_NPROC];
 }
 
+int __attribute__((weak)) arch_dup_task_struct(struct task_struct *dst,
+					       struct task_struct *src)
+{
+	*dst = *src;
+	return 0;
+}
+
 static struct task_struct *dup_task_struct(struct task_struct *orig)
 {
 	struct task_struct *tsk;
@@ -181,15 +200,15 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 		return NULL;
 	}
 
-	*tsk = *orig;
+ 	err = arch_dup_task_struct(tsk, orig);
+	if (err)
+		goto out;
+
 	tsk->stack = ti;
 
 	err = prop_local_init_single(&tsk->dirties);
-	if (err) {
-		free_thread_info(ti);
-		free_task_struct(tsk);
-		return NULL;
-	}
+	if (err)
+		goto out;
 
 	setup_thread_stack(tsk, orig);
 
@@ -205,6 +224,11 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 #endif
 	tsk->splice_pipe = NULL;
 	return tsk;
+
+out:
+	free_thread_info(ti);
+	free_task_struct(tsk);
+	return NULL;
 }
 
 #ifdef CONFIG_MMU
@@ -256,7 +280,7 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 		if (!tmp)
 			goto fail_nomem;
 		*tmp = *mpnt;
-		pol = mpol_copy(vma_policy(mpnt));
+		pol = mpol_dup(vma_policy(mpnt));
 		retval = PTR_ERR(pol);
 		if (IS_ERR(pol))
 			goto fail_nomem_policy;
@@ -358,14 +382,13 @@ static struct mm_struct * mm_init(struct mm_struct * mm, struct task_struct *p)
 	mm->ioctx_list = NULL;
 	mm->free_area_cache = TASK_UNMAPPED_BASE;
 	mm->cached_hole_size = ~0UL;
-	mm_init_cgroup(mm, p);
+	mm_init_owner(mm, p);
 
 	if (likely(!mm_alloc_pgd(mm))) {
 		mm->def_flags = 0;
 		return mm;
 	}
 
-	mm_free_cgroup(mm);
 	free_mm(mm);
 	return NULL;
 }
@@ -409,13 +432,13 @@ void mmput(struct mm_struct *mm)
 	if (atomic_dec_and_test(&mm->mm_users)) {
 		exit_aio(mm);
 		exit_mmap(mm);
+		set_mm_exe_file(mm, NULL);
 		if (!list_empty(&mm->mmlist)) {
 			spin_lock(&mmlist_lock);
 			list_del(&mm->mmlist);
 			spin_unlock(&mmlist_lock);
 		}
 		put_swap_token(mm);
-		mm_free_cgroup(mm);
 		mmdrop(mm);
 	}
 }
@@ -498,7 +521,7 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
  * Allocate a new mm structure and copy contents from the
  * mm structure of the passed in task structure.
  */
-static struct mm_struct *dup_mm(struct task_struct *tsk)
+struct mm_struct *dup_mm(struct task_struct *tsk)
 {
 	struct mm_struct *mm, *oldmm = current->mm;
 	int err;
@@ -521,6 +544,8 @@ static struct mm_struct *dup_mm(struct task_struct *tsk)
 
 	if (init_new_context(tsk, mm))
 		goto fail_nocontext;
+
+	dup_mm_exe_file(oldmm, mm);
 
 	err = dup_mmap(mm, oldmm);
 	if (err)
@@ -635,136 +660,6 @@ static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
-static int count_open_files(struct fdtable *fdt)
-{
-	int size = fdt->max_fds;
-	int i;
-
-	/* Find the last open fd */
-	for (i = size/(8*sizeof(long)); i > 0; ) {
-		if (fdt->open_fds->fds_bits[--i])
-			break;
-	}
-	i = (i+1) * 8 * sizeof(long);
-	return i;
-}
-
-static struct files_struct *alloc_files(void)
-{
-	struct files_struct *newf;
-	struct fdtable *fdt;
-
-	newf = kmem_cache_alloc(files_cachep, GFP_KERNEL);
-	if (!newf)
-		goto out;
-
-	atomic_set(&newf->count, 1);
-
-	spin_lock_init(&newf->file_lock);
-	newf->next_fd = 0;
-	fdt = &newf->fdtab;
-	fdt->max_fds = NR_OPEN_DEFAULT;
-	fdt->close_on_exec = (fd_set *)&newf->close_on_exec_init;
-	fdt->open_fds = (fd_set *)&newf->open_fds_init;
-	fdt->fd = &newf->fd_array[0];
-	INIT_RCU_HEAD(&fdt->rcu);
-	fdt->next = NULL;
-	rcu_assign_pointer(newf->fdt, fdt);
-out:
-	return newf;
-}
-
-/*
- * Allocate a new files structure and copy contents from the
- * passed in files structure.
- * errorp will be valid only when the returned files_struct is NULL.
- */
-static struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
-{
-	struct files_struct *newf;
-	struct file **old_fds, **new_fds;
-	int open_files, size, i;
-	struct fdtable *old_fdt, *new_fdt;
-
-	*errorp = -ENOMEM;
-	newf = alloc_files();
-	if (!newf)
-		goto out;
-
-	spin_lock(&oldf->file_lock);
-	old_fdt = files_fdtable(oldf);
-	new_fdt = files_fdtable(newf);
-	open_files = count_open_files(old_fdt);
-
-	/*
-	 * Check whether we need to allocate a larger fd array and fd set.
-	 * Note: we're not a clone task, so the open count won't change.
-	 */
-	if (open_files > new_fdt->max_fds) {
-		new_fdt->max_fds = 0;
-		spin_unlock(&oldf->file_lock);
-		spin_lock(&newf->file_lock);
-		*errorp = expand_files(newf, open_files-1);
-		spin_unlock(&newf->file_lock);
-		if (*errorp < 0)
-			goto out_release;
-		new_fdt = files_fdtable(newf);
-		/*
-		 * Reacquire the oldf lock and a pointer to its fd table
-		 * who knows it may have a new bigger fd table. We need
-		 * the latest pointer.
-		 */
-		spin_lock(&oldf->file_lock);
-		old_fdt = files_fdtable(oldf);
-	}
-
-	old_fds = old_fdt->fd;
-	new_fds = new_fdt->fd;
-
-	memcpy(new_fdt->open_fds->fds_bits,
-		old_fdt->open_fds->fds_bits, open_files/8);
-	memcpy(new_fdt->close_on_exec->fds_bits,
-		old_fdt->close_on_exec->fds_bits, open_files/8);
-
-	for (i = open_files; i != 0; i--) {
-		struct file *f = *old_fds++;
-		if (f) {
-			get_file(f);
-		} else {
-			/*
-			 * The fd may be claimed in the fd bitmap but not yet
-			 * instantiated in the files array if a sibling thread
-			 * is partway through open().  So make sure that this
-			 * fd is available to the new process.
-			 */
-			FD_CLR(open_files - i, new_fdt->open_fds);
-		}
-		rcu_assign_pointer(*new_fds++, f);
-	}
-	spin_unlock(&oldf->file_lock);
-
-	/* compute the remainder to be cleared */
-	size = (new_fdt->max_fds - open_files) * sizeof(struct file *);
-
-	/* This is long word aligned thus could use a optimized version */
-	memset(new_fds, 0, size);
-
-	if (new_fdt->max_fds > open_files) {
-		int left = (new_fdt->max_fds-open_files)/8;
-		int start = open_files / (8 * sizeof(unsigned long));
-
-		memset(&new_fdt->open_fds->fds_bits[start], 0, left);
-		memset(&new_fdt->close_on_exec->fds_bits[start], 0, left);
-	}
-
-	return newf;
-
-out_release:
-	kmem_cache_free(files_cachep, newf);
-out:
-	return NULL;
-}
-
 static int copy_files(unsigned long clone_flags, struct task_struct * tsk)
 {
 	struct files_struct *oldf, *newf;
@@ -782,12 +677,6 @@ static int copy_files(unsigned long clone_flags, struct task_struct * tsk)
 		goto out;
 	}
 
-	/*
-	 * Note: we may be using current for both targets (See exec.c)
-	 * This works because we cache current->files (old) as oldf. Don't
-	 * break this.
-	 */
-	tsk->files = NULL;
 	newf = dup_fd(oldf, &error);
 	if (!newf)
 		goto out;
@@ -822,34 +711,6 @@ static int copy_io(unsigned long clone_flags, struct task_struct *tsk)
 #endif
 	return 0;
 }
-
-/*
- *	Helper to unshare the files of the current task.
- *	We don't want to expose copy_files internals to
- *	the exec layer of the kernel.
- */
-
-int unshare_files(void)
-{
-	struct files_struct *files  = current->files;
-	int rc;
-
-	BUG_ON(!files);
-
-	/* This can race but the race causes us to copy when we don't
-	   need to and drop the copy */
-	if(atomic_read(&files->count) == 1)
-	{
-		atomic_inc(&files->count);
-		return 0;
-	}
-	rc = copy_files(0, current);
-	if(rc)
-		current->files = files;
-	return rc;
-}
-
-EXPORT_SYMBOL(unshare_files);
 
 static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 {
@@ -902,7 +763,7 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	sig->group_exit_code = 0;
 	sig->group_exit_task = NULL;
 	sig->group_stop_count = 0;
-	sig->curr_target = NULL;
+	sig->curr_target = tsk;
 	init_sigpending(&sig->shared_pending);
 	INIT_LIST_HEAD(&sig->posix_timers);
 
@@ -992,6 +853,13 @@ static void rt_mutex_init_task(struct task_struct *p)
 	p->pi_blocked_on = NULL;
 #endif
 }
+
+#ifdef CONFIG_MM_OWNER
+void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
+{
+	mm->owner = p;
+}
+#endif /* CONFIG_MM_OWNER */
 
 /*
  * This creates a new process as a copy of the old one,
@@ -1127,7 +995,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	p->audit_context = NULL;
 	cgroup_fork(p);
 #ifdef CONFIG_NUMA
- 	p->mempolicy = mpol_copy(p->mempolicy);
+	p->mempolicy = mpol_dup(p->mempolicy);
  	if (IS_ERR(p->mempolicy)) {
  		retval = PTR_ERR(p->mempolicy);
  		p->mempolicy = NULL;
@@ -1385,7 +1253,7 @@ bad_fork_cleanup_security:
 	security_task_free(p);
 bad_fork_cleanup_policy:
 #ifdef CONFIG_NUMA
-	mpol_free(p->mempolicy);
+	mpol_put(p->mempolicy);
 bad_fork_cleanup_cgroup:
 #endif
 	cgroup_exit(p, cgroup_callbacks_done);
@@ -1675,18 +1543,6 @@ static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp
 }
 
 /*
- * Unsharing of semundo for tasks created with CLONE_SYSVSEM is not
- * supported yet
- */
-static int unshare_semundo(unsigned long unshare_flags, struct sem_undo_list **new_ulistp)
-{
-	if (unshare_flags & CLONE_SYSVSEM)
-		return -EINVAL;
-
-	return 0;
-}
-
-/*
  * unshare allows a process to 'unshare' part of the process
  * context which was originally shared using clone.  copy_*
  * functions used by do_fork() cannot be used here directly
@@ -1701,8 +1557,8 @@ asmlinkage long sys_unshare(unsigned long unshare_flags)
 	struct sighand_struct *new_sigh = NULL;
 	struct mm_struct *mm, *new_mm = NULL, *active_mm = NULL;
 	struct files_struct *fd, *new_fd = NULL;
-	struct sem_undo_list *new_ulist = NULL;
 	struct nsproxy *new_nsproxy = NULL;
+	int do_sysvsem = 0;
 
 	check_unshare_flags(&unshare_flags);
 
@@ -1714,6 +1570,13 @@ asmlinkage long sys_unshare(unsigned long unshare_flags)
 				CLONE_NEWNET))
 		goto bad_unshare_out;
 
+	/*
+	 * CLONE_NEWIPC must also detach from the undolist: after switching
+	 * to a new ipc namespace, the semaphore arrays from the old
+	 * namespace are unreachable.
+	 */
+	if (unshare_flags & (CLONE_NEWIPC|CLONE_SYSVSEM))
+		do_sysvsem = 1;
 	if ((err = unshare_thread(unshare_flags)))
 		goto bad_unshare_out;
 	if ((err = unshare_fs(unshare_flags, &new_fs)))
@@ -1724,13 +1587,17 @@ asmlinkage long sys_unshare(unsigned long unshare_flags)
 		goto bad_unshare_cleanup_sigh;
 	if ((err = unshare_fd(unshare_flags, &new_fd)))
 		goto bad_unshare_cleanup_vm;
-	if ((err = unshare_semundo(unshare_flags, &new_ulist)))
-		goto bad_unshare_cleanup_fd;
 	if ((err = unshare_nsproxy_namespaces(unshare_flags, &new_nsproxy,
 			new_fs)))
-		goto bad_unshare_cleanup_semundo;
+		goto bad_unshare_cleanup_fd;
 
-	if (new_fs ||  new_mm || new_fd || new_ulist || new_nsproxy) {
+	if (new_fs ||  new_mm || new_fd || do_sysvsem || new_nsproxy) {
+		if (do_sysvsem) {
+			/*
+			 * CLONE_SYSVSEM is equivalent to sys_exit().
+			 */
+			exit_sem(current);
+		}
 
 		if (new_nsproxy) {
 			switch_task_namespaces(current, new_nsproxy);
@@ -1766,7 +1633,6 @@ asmlinkage long sys_unshare(unsigned long unshare_flags)
 	if (new_nsproxy)
 		put_nsproxy(new_nsproxy);
 
-bad_unshare_cleanup_semundo:
 bad_unshare_cleanup_fd:
 	if (new_fd)
 		put_files_struct(new_fd);
@@ -1787,4 +1653,28 @@ bad_unshare_cleanup_fs:
 bad_unshare_cleanup_thread:
 bad_unshare_out:
 	return err;
+}
+
+/*
+ *	Helper to unshare the files of the current task.
+ *	We don't want to expose copy_files internals to
+ *	the exec layer of the kernel.
+ */
+
+int unshare_files(struct files_struct **displaced)
+{
+	struct task_struct *task = current;
+	struct files_struct *copy = NULL;
+	int error;
+
+	error = unshare_fd(CLONE_FILES, &copy);
+	if (error || !copy) {
+		*displaced = NULL;
+		return error;
+	}
+	*displaced = task->files;
+	task_lock(task);
+	task->files = copy;
+	task_unlock(task);
+	return 0;
 }

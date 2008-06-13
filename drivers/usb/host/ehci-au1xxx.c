@@ -223,6 +223,7 @@ static const struct hc_driver ehci_au1xxx_hc_driver = {
 	.bus_suspend = ehci_bus_suspend,
 	.bus_resume = ehci_bus_resume,
 	.relinquish_port = ehci_relinquish_port,
+	.port_handed_over = ehci_port_handed_over,
 };
 
 /*-------------------------------------------------------------------------*/
@@ -237,6 +238,7 @@ static int ehci_hcd_au1xxx_drv_probe(struct platform_device *pdev)
 	if (usb_disabled())
 		return -ENODEV;
 
+	/* FIXME we only want one one probe() not two */
 	ret = usb_ehci_au1xxx_probe(&ehci_au1xxx_hc_driver, &hcd, pdev);
 	return ret;
 }
@@ -245,6 +247,7 @@ static int ehci_hcd_au1xxx_drv_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 
+	/* FIXME we only want one one remove() not two */
 	usb_ehci_au1xxx_remove(hcd, pdev);
 	return 0;
 }
@@ -265,7 +268,7 @@ static int ehci_hcd_au1xxx_drv_resume(struct device *dev)
 	return 0;
 }
 */
-MODULE_ALIAS("au1xxx-ehci");
+MODULE_ALIAS("platform:au1xxx-ehci");
 static struct platform_driver ehci_hcd_au1xxx_driver = {
 	.probe = ehci_hcd_au1xxx_drv_probe,
 	.remove = ehci_hcd_au1xxx_drv_remove,
@@ -274,6 +277,5 @@ static struct platform_driver ehci_hcd_au1xxx_driver = {
 	/*.resume       = ehci_hcd_au1xxx_drv_resume, */
 	.driver = {
 		.name = "au1xxx-ehci",
-		.bus = &platform_bus_type
 	}
 };

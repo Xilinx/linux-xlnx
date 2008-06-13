@@ -24,7 +24,7 @@
 
 MODULE_AUTHOR("Kristoffer Ericson <kristoffer.ericson@gmail.com>");
 MODULE_DESCRIPTION("HP Jornada 710/720/728 touchscreen driver");
-MODULE_LICENSE("GPLv2");
+MODULE_LICENSE("GPL v2");
 
 struct jornada_ts {
 	struct input_dev *dev;
@@ -160,11 +160,15 @@ static int __devexit jornada720_ts_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/* work with hotplug and coldplug */
+MODULE_ALIAS("platform:jornada_ts");
+
 static struct platform_driver jornada720_ts_driver = {
 	.probe		= jornada720_ts_probe,
 	.remove		= __devexit_p(jornada720_ts_remove),
 	.driver		= {
 		.name	= "jornada_ts",
+		.owner	= THIS_MODULE,
 	},
 };
 

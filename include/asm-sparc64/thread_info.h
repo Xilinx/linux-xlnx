@@ -1,5 +1,4 @@
-/* $Id: thread_info.h,v 1.1 2002/02/10 00:00:58 davem Exp $
- * thread_info.h: sparc64 low-level thread information
+/* thread_info.h: sparc64 low-level thread information
  *
  * Copyright (C) 2002  David S. Miller (davem@redhat.com)
  */
@@ -39,7 +38,7 @@ struct thread_info {
 	struct task_struct	*task;
 	unsigned long		flags;
 	__u8			fpsaved[7];
-	__u8			pad;
+	__u8			status;
 	unsigned long		ksp;
 
 	/* D$ line 2 */
@@ -218,12 +217,12 @@ register struct thread_info *current_thread_info_reg asm("g6");
  *	 nop
  */
 #define TIF_SYSCALL_TRACE	0	/* syscall trace active */
-#define TIF_RESTORE_SIGMASK	1	/* restore signal mask in do_signal() */
+/* flags bit 1 is available */
 #define TIF_SIGPENDING		2	/* signal pending */
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_PERFCTR		4	/* performance counters active */
 #define TIF_UNALIGNED		5	/* allowed to do unaligned accesses */
-#define TIF_NEWSIGNALS		6	/* wants new-style signals */
+/* flag bit 6 is available */
 #define TIF_32BIT		7	/* 32-bit binary */
 /* flag bit 8 is available */
 #define TIF_SECCOMP		9	/* secure computing */
@@ -242,17 +241,36 @@ register struct thread_info *current_thread_info_reg asm("g6");
 #define _TIF_NEED_RESCHED	(1<<TIF_NEED_RESCHED)
 #define _TIF_PERFCTR		(1<<TIF_PERFCTR)
 #define _TIF_UNALIGNED		(1<<TIF_UNALIGNED)
-#define _TIF_NEWSIGNALS		(1<<TIF_NEWSIGNALS)
 #define _TIF_32BIT		(1<<TIF_32BIT)
 #define _TIF_SECCOMP		(1<<TIF_SECCOMP)
 #define _TIF_SYSCALL_AUDIT	(1<<TIF_SYSCALL_AUDIT)
-#define _TIF_RESTORE_SIGMASK	(1<<TIF_RESTORE_SIGMASK)
 #define _TIF_ABI_PENDING	(1<<TIF_ABI_PENDING)
 #define _TIF_POLLING_NRFLAG	(1<<TIF_POLLING_NRFLAG)
 
 #define _TIF_USER_WORK_MASK	((0xff << TI_FLAG_WSAVED_SHIFT) | \
-				 (_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK | \
+				 (_TIF_SIGPENDING | \
 				  _TIF_NEED_RESCHED | _TIF_PERFCTR))
+
+/*
+ * Thread-synchronous status.
+ *
+ * This is different from the flags in that nobody else
+ * ever touches our thread-synchronous status, so we don't
+ * have to worry about atomic accesses.
+ *
+ * Note that there are only 8 bits available.
+ */
+#define TS_RESTORE_SIGMASK	0x0001	/* restore signal mask in do_signal() */
+
+#ifndef __ASSEMBLY__
+#define HAVE_SET_RESTORE_SIGMASK	1
+static inline void set_restore_sigmask(void)
+{
+	struct thread_info *ti = current_thread_info();
+	ti->status |= TS_RESTORE_SIGMASK;
+	set_bit(TIF_SIGPENDING, &ti->flags);
+}
+#endif	/* !__ASSEMBLY__ */
 
 #endif /* __KERNEL__ */
 

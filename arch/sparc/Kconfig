@@ -1,4 +1,3 @@
-# $Id: config.in,v 1.113 2002/01/24 22:14:44 davem Exp $
 # For a description of the syntax of this configuration file,
 # see Documentation/kbuild/kconfig-language.txt.
 #
@@ -25,9 +24,6 @@ config ARCH_NO_VIRT_TO_BUS
 	def_bool y
 
 config OF
-	def_bool y
-
-config ARCH_SUPPORTS_AOUT
 	def_bool y
 
 config HZ
@@ -71,6 +67,7 @@ config SPARC
 	default y
 	select HAVE_IDE
 	select HAVE_OPROFILE
+	select HAVE_ARCH_KGDB if !SMP
 
 # Identify this as a Sparc32 build
 config SPARC32
@@ -256,15 +253,6 @@ config SPARC_LED
 	  via writes to /proc/led
 
 source "fs/Kconfig.binfmt"
-
-config SUNOS_EMUL
-	bool "SunOS binary emulation"
-	help
-	  This allows you to run most SunOS binaries.  If you want to do this,
-	  say Y here and place appropriate files in /usr/gnemul/sunos. See
-	  <http://www.ultralinux.org/faq.html> for more information.  If you
-	  want to run SunOS binaries on an Ultra you must also say Y to
-	  "Kernel support for 32-bit a.out binaries" above.
 
 source "mm/Kconfig"
 

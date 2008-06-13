@@ -10,8 +10,16 @@
 
 #ifdef __KERNEL__
 
-#define PHYSICAL_PAGE_MASK	(PAGE_MASK & __PHYSICAL_MASK)
-#define PTE_MASK		(_AT(long, PHYSICAL_PAGE_MASK))
+#define __PHYSICAL_MASK		((phys_addr_t)(1ULL << __PHYSICAL_MASK_SHIFT) - 1)
+#define __VIRTUAL_MASK		((1UL << __VIRTUAL_MASK_SHIFT) - 1)
+
+/* Cast PAGE_MASK to a signed type so that it is sign-extended if
+   virtual addresses are 32-bits but physical addresses are larger
+   (ie, 32-bit PAE). */
+#define PHYSICAL_PAGE_MASK	(((signed long)PAGE_MASK) & __PHYSICAL_MASK)
+
+/* PTE_MASK extracts the PFN from a (pte|pmd|pud|pgd)val_t */
+#define PTE_MASK		((pteval_t)PHYSICAL_PAGE_MASK)
 
 #define PMD_PAGE_SIZE		(_AC(1, UL) << PMD_SHIFT)
 #define PMD_PAGE_MASK		(~(PMD_PAGE_SIZE-1))
@@ -24,19 +32,14 @@
 /* to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr)	(((addr)+PAGE_SIZE-1)&PAGE_MASK)
 
-#define __PHYSICAL_MASK		_AT(phys_addr_t, (_AC(1,ULL) << __PHYSICAL_MASK_SHIFT) - 1)
-#define __VIRTUAL_MASK		((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - 1)
-
 #ifndef __ASSEMBLY__
 #include <linux/types.h>
 #endif
 
 #ifdef CONFIG_X86_64
 #include <asm/page_64.h>
-#define max_pfn_mapped		end_pfn_map
 #else
 #include <asm/page_32.h>
-#define max_pfn_mapped		max_low_pfn
 #endif	/* CONFIG_X86_64 */
 
 #define PAGE_OFFSET		((unsigned long)__PAGE_OFFSET)
@@ -49,6 +52,9 @@
 #ifndef __ASSEMBLY__
 
 extern int page_is_ram(unsigned long pagenr);
+extern int devmem_is_allowed(unsigned long pagenr);
+
+extern unsigned long max_pfn_mapped;
 
 struct page;
 

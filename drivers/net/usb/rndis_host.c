@@ -194,7 +194,7 @@ int rndis_command(struct usbnet *dev, struct rndis_msg_hdr *buf)
 			dev_dbg(&info->control->dev,
 				"rndis response error, code %d\n", retval);
 		}
-		msleep(2);
+		msleep(20);
 	}
 	dev_dbg(&info->control->dev, "rndis response timeout\n");
 	return -ETIMEDOUT;
@@ -218,7 +218,7 @@ EXPORT_SYMBOL_GPL(rndis_command);
  * ActiveSync 4.1 Windows driver.
  */
 static int rndis_query(struct usbnet *dev, struct usb_interface *intf,
-		void *buf, u32 oid, u32 in_len,
+		void *buf, __le32 oid, u32 in_len,
 		void **reply, int *reply_len)
 {
 	int retval;
@@ -283,7 +283,8 @@ generic_rndis_bind(struct usbnet *dev, struct usb_interface *intf, int flags)
 		struct rndis_set_c	*set_c;
 		struct rndis_halt	*halt;
 	} u;
-	u32			tmp, phym_unspec, *phym;
+	u32			tmp;
+	__le32			phym_unspec, *phym;
 	int			reply_len;
 	unsigned char		*bp;
 

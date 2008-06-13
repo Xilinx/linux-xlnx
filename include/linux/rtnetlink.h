@@ -246,6 +246,7 @@ enum rt_class_t
 {
 	RT_TABLE_UNSPEC=0,
 /* User defined values */
+	RT_TABLE_COMPAT=252,
 	RT_TABLE_DEFAULT=253,
 	RT_TABLE_MAIN=254,
 	RT_TABLE_LOCAL=255,
@@ -267,10 +268,10 @@ enum rtattr_type_t
 	RTA_PREFSRC,
 	RTA_METRICS,
 	RTA_MULTIPATH,
-	RTA_PROTOINFO,
+	RTA_PROTOINFO, /* no longer used */
 	RTA_FLOW,
 	RTA_CACHEINFO,
-	RTA_SESSION,
+	RTA_SESSION, /* no longer used */
 	RTA_MP_ALGO, /* no longer used */
 	RTA_TABLE,
 	__RTA_MAX
@@ -740,13 +741,13 @@ extern void rtmsg_ifinfo(int type, struct net_device *dev, unsigned change);
 extern void rtnl_lock(void);
 extern void rtnl_unlock(void);
 extern int rtnl_trylock(void);
+extern int rtnl_is_locked(void);
 
 extern void rtnetlink_init(void);
 extern void __rtnl_unlock(void);
 
 #define ASSERT_RTNL() do { \
-	if (unlikely(rtnl_trylock())) { \
-		rtnl_unlock(); \
+	if (unlikely(!rtnl_is_locked())) { \
 		printk(KERN_ERR "RTNL: assertion failed at %s (%d)\n", \
 		       __FILE__,  __LINE__); \
 		dump_stack(); \

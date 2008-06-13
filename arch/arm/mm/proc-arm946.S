@@ -265,7 +265,7 @@ ENTRY(arm946_dma_flush_range)
 #ifndef CONFIG_CPU_DCACHE_WRITETHROUGH
 	mcr	p15, 0, r0, c7, c14, 1		@ clean+invalidate D entry
 #else
-	mcr	p15, 0, r0, c7, c10, 1		@ clean D entry
+	mcr	p15, 0, r0, c7, c6, 1		@ invalidate D entry
 #endif
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
@@ -376,6 +376,7 @@ __arm946_setup:
 	.type	arm946_processor_functions, #object
 ENTRY(arm946_processor_functions)
 	.word	nommu_early_abort
+	.word	pabort_noifar
 	.word	cpu_arm946_proc_init
 	.word	cpu_arm946_proc_fin
 	.word	cpu_arm946_reset

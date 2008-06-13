@@ -191,9 +191,9 @@ void line_flush_chars(struct tty_struct *tty)
 	line_flush_buffer(tty);
 }
 
-void line_put_char(struct tty_struct *tty, unsigned char ch)
+int line_put_char(struct tty_struct *tty, unsigned char ch)
 {
-	line_write(tty, &ch, sizeof(ch));
+	return line_write(tty, &ch, sizeof(ch));
 }
 
 int line_write(struct tty_struct *tty, const unsigned char *buf, int len)
@@ -304,7 +304,7 @@ int line_ioctl(struct tty_struct *tty, struct file * file,
 				break;
 		if (i == ARRAY_SIZE(tty_ioctls)) {
 			printk(KERN_ERR "%s: %s: unknown ioctl: 0x%x\n",
-			       __FUNCTION__, tty->name, cmd);
+			       __func__, tty->name, cmd);
 		}
 		ret = -ENOIOCTLCMD;
 		break;

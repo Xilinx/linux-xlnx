@@ -18,8 +18,8 @@
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/freezer.h>
+#include <linux/semaphore.h>
 #include <asm/atomic.h>
-#include <asm/semaphore.h>
 
 #include "csr.h"
 #include "highlevel.h"
@@ -520,8 +520,11 @@ static ssize_t fw_show_drv_device_ids(struct device_driver *drv, char *buf)
 	char *scratch = buf;
 
 	driver = container_of(drv, struct hpsb_protocol_driver, driver);
+	id = driver->id_table;
+	if (!id)
+		return 0;
 
-	for (id = driver->id_table; id->match_flags != 0; id++) {
+	for (; id->match_flags != 0; id++) {
 		int need_coma = 0;
 
 		if (id->match_flags & IEEE1394_MATCH_VENDOR_ID) {
@@ -701,7 +704,11 @@ static int nodemgr_bus_match(struct device * dev, struct device_driver * drv)
 		return 0;
 
 	driver = container_of(drv, struct hpsb_protocol_driver, driver);
-	for (id = driver->id_table; id->match_flags != 0; id++) {
+	id = driver->id_table;
+	if (!id)
+		return 0;
+
+	for (; id->match_flags != 0; id++) {
 		if ((id->match_flags & IEEE1394_MATCH_VENDOR_ID) &&
 		    id->vendor_id != ud->vendor_id)
 			continue;

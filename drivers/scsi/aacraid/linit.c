@@ -42,7 +42,6 @@
 #include <linux/syscalls.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
-#include <asm/semaphore.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -402,6 +401,8 @@ static int aac_biosparm(struct scsi_device *sdev, struct block_device *bdev,
 static int aac_slave_configure(struct scsi_device *sdev)
 {
 	struct aac_dev *aac = (struct aac_dev *)sdev->host->hostdata;
+	if (aac->jbod && (sdev->type == TYPE_DISK))
+		sdev->removable = 1;
 	if ((sdev->type == TYPE_DISK) &&
 			(sdev_channel(sdev) != CONTAINER_CHANNEL) &&
 			(!aac->jbod || sdev->inq_periph_qual) &&
@@ -755,10 +756,10 @@ static long aac_compat_cfg_ioctl(struct file *file, unsigned cmd, unsigned long 
 }
 #endif
 
-static ssize_t aac_show_model(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_model(struct device *device,
+			      struct device_attribute *attr, char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len;
 
 	if (dev->supplement_adapter_info.AdapterTypeText[0]) {
@@ -774,10 +775,10 @@ static ssize_t aac_show_model(struct class_device *class_dev,
 	return len;
 }
 
-static ssize_t aac_show_vendor(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_vendor(struct device *device,
+			       struct device_attribute *attr, char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len;
 
 	if (dev->supplement_adapter_info.AdapterTypeText[0]) {
@@ -793,10 +794,11 @@ static ssize_t aac_show_vendor(struct class_device *class_dev,
 	return len;
 }
 
-static ssize_t aac_show_flags(struct class_device *class_dev, char *buf)
+static ssize_t aac_show_flags(struct device *cdev,
+			      struct device_attribute *attr, char *buf)
 {
 	int len = 0;
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(cdev)->hostdata;
 
 	if (nblank(dprintk(x)))
 		len = snprintf(buf, PAGE_SIZE, "dprintk\n");
@@ -809,13 +811,20 @@ static ssize_t aac_show_flags(struct class_device *class_dev, char *buf)
 				"SAI_READ_CAPACITY_16\n");
 	if (dev->jbod)
 		len += snprintf(buf + len, PAGE_SIZE - len, "SUPPORTED_JBOD\n");
+	if (dev->supplement_adapter_info.SupportedOptions2 &
+		AAC_OPTION_POWER_MANAGEMENT)
+		len += snprintf(buf + len, PAGE_SIZE - len,
+				"SUPPORTED_POWER_MANAGEMENT\n");
+	if (dev->msi)
+		len += snprintf(buf + len, PAGE_SIZE - len, "PCI_HAS_MSI\n");
 	return len;
 }
 
-static ssize_t aac_show_kernel_version(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_kernel_version(struct device *device,
+				       struct device_attribute *attr,
+				       char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len, tmp;
 
 	tmp = le32_to_cpu(dev->adapter_info.kernelrev);
@@ -825,10 +834,11 @@ static ssize_t aac_show_kernel_version(struct class_device *class_dev,
 	return len;
 }
 
-static ssize_t aac_show_monitor_version(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_monitor_version(struct device *device,
+					struct device_attribute *attr,
+					char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len, tmp;
 
 	tmp = le32_to_cpu(dev->adapter_info.monitorrev);
@@ -838,10 +848,11 @@ static ssize_t aac_show_monitor_version(struct class_device *class_dev,
 	return len;
 }
 
-static ssize_t aac_show_bios_version(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_bios_version(struct device *device,
+				     struct device_attribute *attr,
+				     char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len, tmp;
 
 	tmp = le32_to_cpu(dev->adapter_info.biosrev);
@@ -851,9 +862,10 @@ static ssize_t aac_show_bios_version(struct class_device *class_dev,
 	return len;
 }
 
-ssize_t aac_show_serial_number(struct class_device *class_dev, char *buf)
+ssize_t aac_show_serial_number(struct device *device,
+			       struct device_attribute *attr, char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len = 0;
 
 	if (le32_to_cpu(dev->adapter_info.serial[0]) != 0xBAD0)
@@ -869,35 +881,39 @@ ssize_t aac_show_serial_number(struct class_device *class_dev, char *buf)
 	return len;
 }
 
-static ssize_t aac_show_max_channel(struct class_device *class_dev, char *buf)
+static ssize_t aac_show_max_channel(struct device *device,
+				    struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n",
-	  class_to_shost(class_dev)->max_channel);
+	  class_to_shost(device)->max_channel);
 }
 
-static ssize_t aac_show_max_id(struct class_device *class_dev, char *buf)
+static ssize_t aac_show_max_id(struct device *device,
+			       struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n",
-	  class_to_shost(class_dev)->max_id);
+	  class_to_shost(device)->max_id);
 }
 
-static ssize_t aac_store_reset_adapter(struct class_device *class_dev,
-		const char *buf, size_t count)
+static ssize_t aac_store_reset_adapter(struct device *device,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
 {
 	int retval = -EACCES;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return retval;
-	retval = aac_reset_adapter((struct aac_dev*)class_to_shost(class_dev)->hostdata, buf[0] == '!');
+	retval = aac_reset_adapter((struct aac_dev*)class_to_shost(device)->hostdata, buf[0] == '!');
 	if (retval >= 0)
 		retval = count;
 	return retval;
 }
 
-static ssize_t aac_show_reset_adapter(struct class_device *class_dev,
-		char *buf)
+static ssize_t aac_show_reset_adapter(struct device *device,
+				      struct device_attribute *attr,
+				      char *buf)
 {
-	struct aac_dev *dev = (struct aac_dev*)class_to_shost(class_dev)->hostdata;
+	struct aac_dev *dev = (struct aac_dev*)class_to_shost(device)->hostdata;
 	int len, tmp;
 
 	tmp = aac_adapter_check_health(dev);
@@ -907,70 +923,70 @@ static ssize_t aac_show_reset_adapter(struct class_device *class_dev,
 	return len;
 }
 
-static struct class_device_attribute aac_model = {
+static struct device_attribute aac_model = {
 	.attr = {
 		.name = "model",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_model,
 };
-static struct class_device_attribute aac_vendor = {
+static struct device_attribute aac_vendor = {
 	.attr = {
 		.name = "vendor",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_vendor,
 };
-static struct class_device_attribute aac_flags = {
+static struct device_attribute aac_flags = {
 	.attr = {
 		.name = "flags",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_flags,
 };
-static struct class_device_attribute aac_kernel_version = {
+static struct device_attribute aac_kernel_version = {
 	.attr = {
 		.name = "hba_kernel_version",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_kernel_version,
 };
-static struct class_device_attribute aac_monitor_version = {
+static struct device_attribute aac_monitor_version = {
 	.attr = {
 		.name = "hba_monitor_version",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_monitor_version,
 };
-static struct class_device_attribute aac_bios_version = {
+static struct device_attribute aac_bios_version = {
 	.attr = {
 		.name = "hba_bios_version",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_bios_version,
 };
-static struct class_device_attribute aac_serial_number = {
+static struct device_attribute aac_serial_number = {
 	.attr = {
 		.name = "serial_number",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_serial_number,
 };
-static struct class_device_attribute aac_max_channel = {
+static struct device_attribute aac_max_channel = {
 	.attr = {
 		.name = "max_channel",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_max_channel,
 };
-static struct class_device_attribute aac_max_id = {
+static struct device_attribute aac_max_id = {
 	.attr = {
 		.name = "max_id",
 		.mode = S_IRUGO,
 	},
 	.show = aac_show_max_id,
 };
-static struct class_device_attribute aac_reset = {
+static struct device_attribute aac_reset = {
 	.attr = {
 		.name = "reset_host",
 		.mode = S_IWUSR|S_IRUGO,
@@ -979,7 +995,7 @@ static struct class_device_attribute aac_reset = {
 	.show = aac_show_reset_adapter,
 };
 
-static struct class_device_attribute *aac_attrs[] = {
+static struct device_attribute *aac_attrs[] = {
 	&aac_model,
 	&aac_vendor,
 	&aac_flags,
@@ -993,6 +1009,10 @@ static struct class_device_attribute *aac_attrs[] = {
 	NULL
 };
 
+ssize_t aac_get_serial_number(struct device *device, char *buf)
+{
+	return aac_show_serial_number(device, &aac_serial_number, buf);
+}
 
 static const struct file_operations aac_cfg_fops = {
 	.owner		= THIS_MODULE,
@@ -1094,7 +1114,7 @@ static int __devinit aac_probe_one(struct pci_dev *pdev,
 	aac->pdev = pdev;
 	aac->name = aac_driver_template.name;
 	aac->id = shost->unique_id;
-	aac->cardtype =  index;
+	aac->cardtype = index;
 	INIT_LIST_HEAD(&aac->entry);
 
 	aac->fibs = kmalloc(sizeof(struct fib) * (shost->can_queue + AAC_NUM_MGT_FIB), GFP_KERNEL);
@@ -1134,19 +1154,19 @@ static int __devinit aac_probe_one(struct pci_dev *pdev,
 		goto out_deinit;
 
 	/*
- 	 * Lets override negotiations and drop the maximum SG limit to 34
- 	 */
+	 * Lets override negotiations and drop the maximum SG limit to 34
+	 */
 	if ((aac_drivers[index].quirks & AAC_QUIRK_34SG) &&
 			(shost->sg_tablesize > 34)) {
 		shost->sg_tablesize = 34;
 		shost->max_sectors = (shost->sg_tablesize * 8) + 112;
- 	}
+	}
 
- 	if ((aac_drivers[index].quirks & AAC_QUIRK_17SG) &&
+	if ((aac_drivers[index].quirks & AAC_QUIRK_17SG) &&
 			(shost->sg_tablesize > 17)) {
 		shost->sg_tablesize = 17;
 		shost->max_sectors = (shost->sg_tablesize * 8) + 112;
- 	}
+	}
 
 	error = pci_set_dma_max_seg_size(pdev,
 		(aac->adapter_info.options & AAC_OPT_NEW_COMM) ?
@@ -1162,7 +1182,7 @@ static int __devinit aac_probe_one(struct pci_dev *pdev,
 	else
 		aac->printf_enabled = 0;
 
- 	/*
+	/*
 	 * max channel will be the physical channels plus 1 virtual channel
 	 * all containers are on the virtual channel 0 (CONTAINER_CHANNEL)
 	 * physical channels are address by their actual physical number+1

@@ -58,7 +58,7 @@ static struct xt_af *xt;
 #define duprintf(format, args...)
 #endif
 
-static const char *xt_prefix[NPROTO] = {
+static const char *const xt_prefix[NPROTO] = {
 	[AF_INET]	= "ip",
 	[AF_INET6]	= "ip6",
 	[NF_ARP]	= "arp",
@@ -248,7 +248,7 @@ EXPORT_SYMBOL_GPL(xt_request_find_target);
 
 static int match_revfn(int af, const char *name, u8 revision, int *bestp)
 {
-	struct xt_match *m;
+	const struct xt_match *m;
 	int have_rev = 0;
 
 	list_for_each_entry(m, &xt[af].match, list) {
@@ -264,7 +264,7 @@ static int match_revfn(int af, const char *name, u8 revision, int *bestp)
 
 static int target_revfn(int af, const char *name, u8 revision, int *bestp)
 {
-	struct xt_target *t;
+	const struct xt_target *t;
 	int have_rev = 0;
 
 	list_for_each_entry(t, &xt[af].target, list) {
@@ -385,7 +385,7 @@ short xt_compat_calc_jump(int af, unsigned int offset)
 }
 EXPORT_SYMBOL_GPL(xt_compat_calc_jump);
 
-int xt_compat_match_offset(struct xt_match *match)
+int xt_compat_match_offset(const struct xt_match *match)
 {
 	u_int16_t csize = match->compatsize ? : match->matchsize;
 	return XT_ALIGN(match->matchsize) - COMPAT_XT_ALIGN(csize);
@@ -395,7 +395,7 @@ EXPORT_SYMBOL_GPL(xt_compat_match_offset);
 int xt_compat_match_from_user(struct xt_entry_match *m, void **dstptr,
 			      unsigned int *size)
 {
-	struct xt_match *match = m->u.kernel.match;
+	const struct xt_match *match = m->u.kernel.match;
 	struct compat_xt_entry_match *cm = (struct compat_xt_entry_match *)m;
 	int pad, off = xt_compat_match_offset(match);
 	u_int16_t msize = cm->u.user.match_size;
@@ -422,7 +422,7 @@ EXPORT_SYMBOL_GPL(xt_compat_match_from_user);
 int xt_compat_match_to_user(struct xt_entry_match *m, void __user **dstptr,
 			    unsigned int *size)
 {
-	struct xt_match *match = m->u.kernel.match;
+	const struct xt_match *match = m->u.kernel.match;
 	struct compat_xt_entry_match __user *cm = *dstptr;
 	int off = xt_compat_match_offset(match);
 	u_int16_t msize = m->u.user.match_size - off;
@@ -479,7 +479,7 @@ int xt_check_target(const struct xt_target *target, unsigned short family,
 EXPORT_SYMBOL_GPL(xt_check_target);
 
 #ifdef CONFIG_COMPAT
-int xt_compat_target_offset(struct xt_target *target)
+int xt_compat_target_offset(const struct xt_target *target)
 {
 	u_int16_t csize = target->compatsize ? : target->targetsize;
 	return XT_ALIGN(target->targetsize) - COMPAT_XT_ALIGN(csize);
@@ -489,7 +489,7 @@ EXPORT_SYMBOL_GPL(xt_compat_target_offset);
 void xt_compat_target_from_user(struct xt_entry_target *t, void **dstptr,
 				unsigned int *size)
 {
-	struct xt_target *target = t->u.kernel.target;
+	const struct xt_target *target = t->u.kernel.target;
 	struct compat_xt_entry_target *ct = (struct compat_xt_entry_target *)t;
 	int pad, off = xt_compat_target_offset(target);
 	u_int16_t tsize = ct->u.user.target_size;
@@ -515,7 +515,7 @@ EXPORT_SYMBOL_GPL(xt_compat_target_from_user);
 int xt_compat_target_to_user(struct xt_entry_target *t, void __user **dstptr,
 			     unsigned int *size)
 {
-	struct xt_target *target = t->u.kernel.target;
+	const struct xt_target *target = t->u.kernel.target;
 	struct compat_xt_entry_target __user *ct = *dstptr;
 	int off = xt_compat_target_offset(target);
 	u_int16_t tsize = t->u.user.target_size - off;
@@ -727,7 +727,7 @@ struct xt_names_priv {
 static void *xt_table_seq_start(struct seq_file *seq, loff_t *pos)
 {
 	struct xt_names_priv *priv = seq->private;
-	struct net *net = priv->p.net;
+	struct net *net = seq_file_net(seq);
 	int af = priv->af;
 
 	mutex_lock(&xt[af].mutex);
@@ -737,7 +737,7 @@ static void *xt_table_seq_start(struct seq_file *seq, loff_t *pos)
 static void *xt_table_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
 	struct xt_names_priv *priv = seq->private;
-	struct net *net = priv->p.net;
+	struct net *net = seq_file_net(seq);
 	int af = priv->af;
 
 	return seq_list_next(v, &net->xt.tables[af], pos);
@@ -787,7 +787,7 @@ static const struct file_operations xt_table_ops = {
 	.open	 = xt_table_open,
 	.read	 = seq_read,
 	.llseek	 = seq_lseek,
-	.release = seq_release,
+	.release = seq_release_net,
 };
 
 static void *xt_match_seq_start(struct seq_file *seq, loff_t *pos)
@@ -936,25 +936,24 @@ int xt_proto_init(struct net *net, int af)
 #ifdef CONFIG_PROC_FS
 	strlcpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TABLES, sizeof(buf));
-	proc = proc_net_fops_create(net, buf, 0440, &xt_table_ops);
+	proc = proc_create_data(buf, 0440, net->proc_net, &xt_table_ops,
+				(void *)(unsigned long)af);
 	if (!proc)
 		goto out;
-	proc->data = (void *)(unsigned long)af;
-
 
 	strlcpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_MATCHES, sizeof(buf));
-	proc = proc_net_fops_create(net, buf, 0440, &xt_match_ops);
+	proc = proc_create_data(buf, 0440, net->proc_net, &xt_match_ops,
+				(void *)(unsigned long)af);
 	if (!proc)
 		goto out_remove_tables;
-	proc->data = (void *)(unsigned long)af;
 
 	strlcpy(buf, xt_prefix[af], sizeof(buf));
 	strlcat(buf, FORMAT_TARGETS, sizeof(buf));
-	proc = proc_net_fops_create(net, buf, 0440, &xt_target_ops);
+	proc = proc_create_data(buf, 0440, net->proc_net, &xt_target_ops,
+				(void *)(unsigned long)af);
 	if (!proc)
 		goto out_remove_matches;
-	proc->data = (void *)(unsigned long)af;
 #endif
 
 	return 0;

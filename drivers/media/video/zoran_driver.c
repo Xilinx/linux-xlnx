@@ -52,7 +52,6 @@
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
-#include <linux/byteorder/generic.h>
 
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
@@ -74,6 +73,7 @@
 #include <media/v4l2-common.h>
 #include "videocodec.h"
 
+#include <asm/byteorder.h>
 #include <asm/io.h>
 #include <asm/uaccess.h>
 #include <linux/proc_fs.h>
@@ -85,7 +85,6 @@
 #include "zoran_device.h"
 #include "zoran_card.h"
 
-#ifdef CONFIG_VIDEO_V4L2
 	/* we declare some card type definitions here, they mean
 	 * the same as the v4l1 ZORAN_VID_TYPE above, except it's v4l2 */
 #define ZORAN_V4L2_VID_FLAGS ( \
@@ -94,19 +93,15 @@
 				V4L2_CAP_VIDEO_OUTPUT |\
 				V4L2_CAP_VIDEO_OVERLAY \
 			      )
-#endif
 
 #include <asm/byteorder.h>
 
-#if defined(CONFIG_VIDEO_V4L2) && defined(CONFIG_VIDEO_V4L1_COMPAT)
+#if defined(CONFIG_VIDEO_V4L1_COMPAT)
 #define ZFMT(pal, fcc, cs) \
 	.palette = (pal), .fourcc = (fcc), .colorspace = (cs)
-#elif defined(CONFIG_VIDEO_V4L2)
-#define ZFMT(pal, fcc, cs) \
-	.fourcc = (fcc), .colorspace = (cs)
 #else
 #define ZFMT(pal, fcc, cs) \
-	.palette = (pal)
+	.fourcc = (fcc), .colorspace = (cs)
 #endif
 
 const struct zoran_format zoran_formats[] = {
@@ -205,11 +200,10 @@ extern int jpg_nbufs;
 extern int jpg_bufsize;
 extern int pass_through;
 
-static int lock_norm = 0;	/* 1=Don't change TV standard (norm) */
+static int lock_norm;	/* 0 = default 1 = Don't change TV standard (norm) */
 module_param(lock_norm, int, 0644);
 MODULE_PARM_DESC(lock_norm, "Prevent norm changes (1 = ignore, >1 = fail)");
 
-#ifdef CONFIG_VIDEO_V4L2
 	/* small helper function for calculating buffersizes for v4l2
 	 * we calculate the nearest higher power-of-two, which
 	 * will be the recommended buffersize */
@@ -232,7 +226,6 @@ zoran_v4l2_calc_bufsize (struct zoran_jpg_settings *settings)
 		return 8192;
 	return result;
 }
-#endif
 
 /* forward references */
 static void v4l_fbuffer_free(struct file *file);
@@ -502,7 +495,7 @@ jpg_fbuffer_alloc (struct file *file)
 			jpg_fbuffer_free(file);
 			return -ENOBUFS;
 		}
-		fh->jpg_buffers.buffer[i].frag_tab = (u32 *) mem;
+		fh->jpg_buffers.buffer[i].frag_tab = (__le32 *) mem;
 		fh->jpg_buffers.buffer[i].frag_tab_bus =
 		    virt_to_bus((void *) mem);
 
@@ -1174,7 +1167,7 @@ zoran_close_end_session (struct file *file)
 
 	/* v4l capture */
 	if (fh->v4l_buffers.active != ZORAN_FREE) {
-		long flags;
+		unsigned long flags;
 
 		spin_lock_irqsave(&zr->spinlock, flags);
 		zr36057_set_memgrab(zr, 0);
@@ -1709,7 +1702,6 @@ setup_overlay (struct file *file,
 	return wait_grab_pending(zr);
 }
 
-#ifdef CONFIG_VIDEO_V4L2
 	/* get the status of a buffer in the clients buffer queue */
 static int
 zoran_v4l2_buffer_status (struct file        *file,
@@ -1815,7 +1807,6 @@ zoran_v4l2_buffer_status (struct file        *file,
 
 	return 0;
 }
-#endif
 
 static int
 zoran_set_norm (struct zoran *zr,
@@ -2623,8 +2614,6 @@ zoran_do_ioctl (struct inode *inode,
 		return res;
 	}
 		break;
-
-#ifdef CONFIG_VIDEO_V4L2
 
 		/* The new video4linux2 capture interface - much nicer than video4linux1, since
 		 * it allows for integrating the JPEG capturing calls inside standard v4l2
@@ -3447,7 +3436,7 @@ zoran_do_ioctl (struct inode *inode,
 
 			/* unload capture */
 			if (zr->v4l_memgrab_active) {
-				long flags;
+				unsigned long flags;
 
 				spin_lock_irqsave(&zr->spinlock, flags);
 				zr36057_set_memgrab(zr, 0);
@@ -4197,7 +4186,6 @@ zoran_do_ioctl (struct inode *inode,
 		return 0;
 	}
 		break;
-#endif
 
 	default:
 		dprintk(1, KERN_DEBUG "%s: UNKNOWN ioctl cmd: 0x%x\n",
@@ -4247,7 +4235,7 @@ zoran_poll (struct file *file,
 		dprintk(3,
 			KERN_DEBUG
 			"%s: %s() raw - active=%c, sync_tail=%lu/%c, pend_tail=%lu, pend_head=%lu\n",
-			ZR_DEVNAME(zr), __FUNCTION__,
+			ZR_DEVNAME(zr), __func__,
 			"FAL"[fh->v4l_buffers.active], zr->v4l_sync_tail,
 			"UPMD"[zr->v4l_buffers.buffer[frame].state],
 			zr->v4l_pend_tail, zr->v4l_pend_head);
@@ -4269,7 +4257,7 @@ zoran_poll (struct file *file,
 		dprintk(3,
 			KERN_DEBUG
 			"%s: %s() jpg - active=%c, que_tail=%lu/%c, que_head=%lu, dma=%lu/%lu\n",
-			ZR_DEVNAME(zr), __FUNCTION__,
+			ZR_DEVNAME(zr), __func__,
 			"FAL"[fh->jpg_buffers.active], zr->jpg_que_tail,
 			"UPMD"[zr->jpg_buffers.buffer[frame].state],
 			zr->jpg_que_head, zr->jpg_dma_tail, zr->jpg_dma_head);
@@ -4387,7 +4375,7 @@ zoran_vm_close (struct vm_area_struct *vma)
 				mutex_lock(&zr->resource_lock);
 
 				if (fh->v4l_buffers.active != ZORAN_FREE) {
-					long flags;
+					unsigned long flags;
 
 					spin_lock_irqsave(&zr->spinlock, flags);
 					zr36057_set_memgrab(zr, 0);
@@ -4518,7 +4506,7 @@ zoran_mmap (struct file           *file,
 				if (todo > fraglen)
 					todo = fraglen;
 				pos =
-				    le32_to_cpu((unsigned long) fh->jpg_buffers.
+				    le32_to_cpu(fh->jpg_buffers.
 				    buffer[i].frag_tab[2 * j]);
 				/* should just be pos on i386 */
 				page = virt_to_phys(bus_to_virt(pos))
@@ -4644,7 +4632,9 @@ static const struct file_operations zoran_fops = {
 	.open = zoran_open,
 	.release = zoran_close,
 	.ioctl = zoran_ioctl,
+#ifdef CONFIG_COMPAT
 	.compat_ioctl	= v4l_compat_ioctl32,
+#endif
 	.llseek = no_llseek,
 	.read = zoran_read,
 	.write = zoran_write,
@@ -4655,9 +4645,7 @@ static const struct file_operations zoran_fops = {
 struct video_device zoran_template __devinitdata = {
 	.name = ZORAN_NAME,
 	.type = ZORAN_VID_TYPE,
-#ifdef CONFIG_VIDEO_V4L2
 	.type2 = ZORAN_V4L2_VID_FLAGS,
-#endif
 	.fops = &zoran_fops,
 	.release = &zoran_vdev_release,
 	.minor = -1

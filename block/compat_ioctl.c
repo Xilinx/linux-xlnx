@@ -555,7 +555,7 @@ static int compat_blk_trace_setup(struct block_device *bdev, char __user *arg)
 	if (copy_from_user(&cbuts, arg, sizeof(cbuts)))
 		return -EFAULT;
 
-	strcpy(b, bdevname(bdev, b));
+	bdevname(bdev, b);
 
 	buts = (struct blk_user_trace_setup) {
 		.act_mask = cbuts.act_mask,
@@ -624,7 +624,6 @@ static int compat_blkdev_driver_ioctl(struct inode *inode, struct file *file,
 	case HDIO_GET_IDENTITY:
 	case HDIO_DRIVE_TASK:
 	case HDIO_DRIVE_CMD:
-	case HDIO_SCAN_HWIF:
 	/* 0x330 is reserved -- it used to be HDIO_GETGEO_BIG */
 	case 0x330:
 	/* 0x02 -- Floppy ioctls */

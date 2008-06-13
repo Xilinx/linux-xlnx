@@ -1249,11 +1249,6 @@ static int snd_emu10k1_free(struct snd_emu10k1 *emu)
 	if (emu->port) {	/* avoid access to already used hardware */
 	       	snd_emu10k1_fx8010_tram_setup(emu, 0);
 		snd_emu10k1_done(emu);
-		/* remove reserved page */
-		if (emu->reserved_page) {
-			snd_emu10k1_synth_free(emu, (struct snd_util_memblk *)emu->reserved_page);
-			emu->reserved_page = NULL;
-		}
 		snd_emu10k1_free_efx(emu);
        	}
 	if (emu->card_capabilities->emu_model == EMU_MODEL_EMU1010) {
@@ -1262,6 +1257,14 @@ static int snd_emu10k1_free(struct snd_emu10k1 *emu)
 	}
 	if (emu->emu1010.firmware_thread)
 		kthread_stop(emu->emu1010.firmware_thread);
+	if (emu->irq >= 0)
+		free_irq(emu->irq, emu);
+	/* remove reserved page */
+	if (emu->reserved_page) {
+		snd_emu10k1_synth_free(emu,
+			(struct snd_util_memblk *)emu->reserved_page);
+		emu->reserved_page = NULL;
+	}
 	if (emu->memhdr)
 		snd_util_memhdr_free(emu->memhdr);
 	if (emu->silent_page.area)
@@ -1273,8 +1276,6 @@ static int snd_emu10k1_free(struct snd_emu10k1 *emu)
 #ifdef CONFIG_PM
 	free_pm_buffer(emu);
 #endif
-	if (emu->irq >= 0)
-		free_irq(emu->irq, emu);
 	if (emu->port)
 		pci_release_regions(emu->pci);
 	if (emu->card_capabilities->ca0151_chip) /* P16V */	
@@ -1817,13 +1818,6 @@ int __devinit snd_emu10k1_create(struct snd_card *card,
 	}
 	emu->port = pci_resource_start(pci, 0);
 
-	if (request_irq(pci->irq, snd_emu10k1_interrupt, IRQF_SHARED,
-			"EMU10K1", emu)) {
-		err = -EBUSY;
-		goto error;
-	}
-	emu->irq = pci->irq;
-
 	emu->max_cache_pages = max_cache_bytes >> PAGE_SHIFT;
 	if (snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, snd_dma_pci_data(pci),
 				32 * 1024, &emu->ptb_pages) < 0) {
@@ -1885,6 +1879,14 @@ int __devinit snd_emu10k1_create(struct snd_card *card,
 	emu->fx8010.itram_size = (16 * 1024)/2;
 	emu->fx8010.etram_pages.area = NULL;
 	emu->fx8010.etram_pages.bytes = 0;
+
+	/* irq handler must be registered after I/O ports are activated */
+	if (request_irq(pci->irq, snd_emu10k1_interrupt, IRQF_SHARED,
+			"EMU10K1", emu)) {
+		err = -EBUSY;
+		goto error;
+	}
+	emu->irq = pci->irq;
 
 	/*
 	 *  Init to 0x02109204 :

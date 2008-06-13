@@ -523,8 +523,12 @@ struct nfs_open_context *get_nfs_open_context(struct nfs_open_context *ctx)
 
 static void __put_nfs_open_context(struct nfs_open_context *ctx, int wait)
 {
-	struct inode *inode = ctx->path.dentry->d_inode;
+	struct inode *inode;
 
+	if (ctx == NULL)
+		return;
+
+	inode = ctx->path.dentry->d_inode;
 	if (!atomic_dec_and_lock(&ctx->count, &inode->i_lock))
 		return;
 	list_del(&ctx->list);
@@ -537,8 +541,7 @@ static void __put_nfs_open_context(struct nfs_open_context *ctx, int wait)
 	}
 	if (ctx->cred != NULL)
 		put_rpccred(ctx->cred);
-	dput(ctx->path.dentry);
-	mntput(ctx->path.mnt);
+	path_put(&ctx->path);
 	kfree(ctx);
 }
 
@@ -610,7 +613,7 @@ int nfs_open(struct inode *inode, struct file *filp)
 	struct nfs_open_context *ctx;
 	struct rpc_cred *cred;
 
-	cred = rpcauth_lookupcred(NFS_CLIENT(inode)->cl_auth, 0);
+	cred = rpc_lookup_cred();
 	if (IS_ERR(cred))
 		return PTR_ERR(cred);
 	ctx = alloc_nfs_open_context(filp->f_path.mnt, filp->f_path.dentry, cred);
@@ -703,6 +706,13 @@ int nfs_attribute_timeout(struct inode *inode)
 
 	if (nfs_have_delegation(inode, FMODE_READ))
 		return 0;
+	/*
+	 * Special case: if the attribute timeout is set to 0, then always
+	 * 		 treat the cache as having expired (unless holding
+	 * 		 a delegation).
+	 */
+	if (nfsi->attrtimeo == 0)
+		return 1;
 	return !time_in_range(jiffies, nfsi->read_cache_jiffies, nfsi->read_cache_jiffies + nfsi->attrtimeo);
 }
 
@@ -991,7 +1001,7 @@ static int nfs_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 	unsigned long now = jiffies;
 
 	dfprintk(VFS, "NFS: %s(%s/%ld ct=%d info=0x%x)\n",
-			__FUNCTION__, inode->i_sb->s_id, inode->i_ino,
+			__func__, inode->i_sb->s_id, inode->i_ino,
 			atomic_read(&inode->i_count), fattr->valid);
 
 	if (nfsi->fileid != fattr->fileid)
@@ -1115,7 +1125,7 @@ static int nfs_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 	 * Big trouble! The inode has become a different object.
 	 */
 	printk(KERN_DEBUG "%s: inode %ld mode changed, %07o to %07o\n",
-			__FUNCTION__, inode->i_ino, inode->i_mode, fattr->mode);
+			__func__, inode->i_ino, inode->i_mode, fattr->mode);
  out_err:
 	/*
 	 * No need to worry about unhashing the dentry, as the
@@ -1218,12 +1228,46 @@ static void nfs_destroy_inodecache(void)
 	kmem_cache_destroy(nfs_inode_cachep);
 }
 
+struct workqueue_struct *nfsiod_workqueue;
+
+/*
+ * start up the nfsiod workqueue
+ */
+static int nfsiod_start(void)
+{
+	struct workqueue_struct *wq;
+	dprintk("RPC:       creating workqueue nfsiod\n");
+	wq = create_singlethread_workqueue("nfsiod");
+	if (wq == NULL)
+		return -ENOMEM;
+	nfsiod_workqueue = wq;
+	return 0;
+}
+
+/*
+ * Destroy the nfsiod workqueue
+ */
+static void nfsiod_stop(void)
+{
+	struct workqueue_struct *wq;
+
+	wq = nfsiod_workqueue;
+	if (wq == NULL)
+		return;
+	nfsiod_workqueue = NULL;
+	destroy_workqueue(wq);
+}
+
 /*
  * Initialize NFS
  */
 static int __init init_nfs_fs(void)
 {
 	int err;
+
+	err = nfsiod_start();
+	if (err)
+		goto out6;
 
 	err = nfs_fs_proc_init();
 	if (err)
@@ -1271,6 +1315,8 @@ out3:
 out4:
 	nfs_fs_proc_exit();
 out5:
+	nfsiod_stop();
+out6:
 	return err;
 }
 
@@ -1286,6 +1332,7 @@ static void __exit exit_nfs_fs(void)
 #endif
 	unregister_nfs_fs();
 	nfs_fs_proc_exit();
+	nfsiod_stop();
 }
 
 /* Not quite true; I just maintain it */

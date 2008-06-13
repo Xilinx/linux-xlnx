@@ -1,4 +1,4 @@
-/* $Id: ide.h,v 1.21 2001/09/25 20:21:48 kanoj Exp $
+/*
  * ide.h: Ultra/PCI specific IDE glue.
  *
  * Copyright (C) 1997  David S. Miller (davem@caip.rutgers.edu)
@@ -23,8 +23,6 @@
 #define MAX_HWIFS	2
 # endif
 #endif
-
-#define ide_default_io_ctl(base)	((base) + 0x206) /* obsolete */
 
 #define __ide_insl(data_reg, buffer, wcount) \
 	__ide_insw(data_reg, buffer, (wcount)<<1)

@@ -193,8 +193,15 @@ int ccw_device_start_key(struct ccw_device *cdev, struct ccw1 *cpa,
 			return -EACCES;
 	}
 	ret = cio_start_key (sch, cpa, lpm, key);
-	if (ret == 0)
+	switch (ret) {
+	case 0:
 		cdev->private->intparm = intparm;
+		break;
+	case -EACCES:
+	case -ENODEV:
+		dev_fsm_event(cdev, DEV_EVENT_VERIFY);
+		break;
+	}
 	return ret;
 }
 
@@ -501,7 +508,7 @@ ccw_device_stlck(struct ccw_device *cdev)
 		return -ENOMEM;
 	}
 	spin_lock_irqsave(sch->lock, flags);
-	ret = cio_enable_subchannel(sch, 3, (u32)(addr_t)sch);
+	ret = cio_enable_subchannel(sch, (u32)(addr_t)sch);
 	if (ret)
 		goto out_unlock;
 	/*

@@ -20,7 +20,7 @@
 #include <linux/cache.h>
 #include <linux/jiffies.h>
 #include <linux/profile.h>
-#include <linux/bootmem.h>
+#include <linux/lmb.h>
 
 #include <asm/head.h>
 #include <asm/ptrace.h>
@@ -38,7 +38,6 @@
 #include <asm/pgtable.h>
 #include <asm/oplib.h>
 #include <asm/uaccess.h>
-#include <asm/timer.h>
 #include <asm/starfire.h>
 #include <asm/tlb.h>
 #include <asm/sections.h>
@@ -901,8 +900,14 @@ extern unsigned long xcall_flush_tlb_mm;
 extern unsigned long xcall_flush_tlb_pending;
 extern unsigned long xcall_flush_tlb_kernel_range;
 extern unsigned long xcall_report_regs;
+#ifdef CONFIG_MAGIC_SYSRQ
+extern unsigned long xcall_fetch_glob_regs;
+#endif
 extern unsigned long xcall_receive_signal;
 extern unsigned long xcall_new_mmu_context_version;
+#ifdef CONFIG_KGDB
+extern unsigned long xcall_kgdb_capture;
+#endif
 
 #ifdef DCACHE_ALIASING_POSSIBLE
 extern unsigned long xcall_flush_dcache_page_cheetah;
@@ -1066,10 +1071,24 @@ void smp_new_mmu_context_version(void)
 	smp_cross_call(&xcall_new_mmu_context_version, 0, 0, 0);
 }
 
+#ifdef CONFIG_KGDB
+void kgdb_roundup_cpus(unsigned long flags)
+{
+	smp_cross_call(&xcall_kgdb_capture, 0, 0, 0);
+}
+#endif
+
 void smp_report_regs(void)
 {
 	smp_cross_call(&xcall_report_regs, 0, 0, 0);
 }
+
+#ifdef CONFIG_MAGIC_SYSRQ
+void smp_fetch_global_regs(void)
+{
+	smp_cross_call(&xcall_fetch_glob_regs, 0, 0, 0);
+}
+#endif
 
 /* We know that the window frames of the user have been flushed
  * to the stack before we get here because all callers of us
@@ -1431,7 +1450,7 @@ EXPORT_SYMBOL(__per_cpu_shift);
 
 void __init real_setup_per_cpu_areas(void)
 {
-	unsigned long goal, size, i;
+	unsigned long paddr, goal, size, i;
 	char *ptr;
 
 	/* Copy section for each CPU (we discard the original) */
@@ -1441,8 +1460,13 @@ void __init real_setup_per_cpu_areas(void)
 	for (size = PAGE_SIZE; size < goal; size <<= 1UL)
 		__per_cpu_shift++;
 
-	ptr = alloc_bootmem_pages(size * NR_CPUS);
+	paddr = lmb_alloc(size * NR_CPUS, PAGE_SIZE);
+	if (!paddr) {
+		prom_printf("Cannot allocate per-cpu memory.\n");
+		prom_halt();
+	}
 
+	ptr = __va(paddr);
 	__per_cpu_base = ptr - __per_cpu_start;
 
 	for (i = 0; i < NR_CPUS; i++, ptr += size)

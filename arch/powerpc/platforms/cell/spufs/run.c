@@ -11,7 +11,7 @@
 #include "spufs.h"
 
 /* interrupt-level stop callback function. */
-void spufs_stop_callback(struct spu *spu)
+void spufs_stop_callback(struct spu *spu, int irq)
 {
 	struct spu_context *ctx = spu->ctx;
 
@@ -24,9 +24,19 @@ void spufs_stop_callback(struct spu *spu)
 	 */
 	if (ctx) {
 		/* Copy exception arguments into module specific structure */
-		ctx->csa.class_0_pending = spu->class_0_pending;
-		ctx->csa.dsisr = spu->dsisr;
-		ctx->csa.dar = spu->dar;
+		switch(irq) {
+		case 0 :
+			ctx->csa.class_0_pending = spu->class_0_pending;
+			ctx->csa.class_0_dsisr = spu->class_0_dsisr;
+			ctx->csa.class_0_dar = spu->class_0_dar;
+			break;
+		case 1 :
+			ctx->csa.class_1_dsisr = spu->class_1_dsisr;
+			ctx->csa.class_1_dar = spu->class_1_dar;
+			break;
+		case 2 :
+			break;
+		}
 
 		/* ensure that the exception status has hit memory before a
 		 * thread waiting on the context's stop queue is woken */
@@ -34,11 +44,6 @@ void spufs_stop_callback(struct spu *spu)
 
 		wake_up_all(&ctx->stop_wq);
 	}
-
-	/* Clear callback arguments from spu structure */
-	spu->class_0_pending = 0;
-	spu->dsisr = 0;
-	spu->dar = 0;
 }
 
 int spu_stopped(struct spu_context *ctx, u32 *stat)
@@ -56,7 +61,11 @@ int spu_stopped(struct spu_context *ctx, u32 *stat)
 	if (!(*stat & SPU_STATUS_RUNNING) && (*stat & stopped))
 		return 1;
 
-	dsisr = ctx->csa.dsisr;
+	dsisr = ctx->csa.class_0_dsisr;
+	if (dsisr & (MFC_DSISR_PTE_NOT_FOUND | MFC_DSISR_ACCESS_DENIED))
+		return 1;
+
+	dsisr = ctx->csa.class_1_dsisr;
 	if (dsisr & (MFC_DSISR_PTE_NOT_FOUND | MFC_DSISR_ACCESS_DENIED))
 		return 1;
 
@@ -98,7 +107,7 @@ static int spu_setup_isolated(struct spu_context *ctx)
 			!= MFC_CNTL_PURGE_DMA_COMPLETE) {
 		if (time_after(jiffies, timeout)) {
 			printk(KERN_ERR "%s: timeout flushing MFC DMA queue\n",
-					__FUNCTION__);
+					__func__);
 			ret = -EIO;
 			goto out;
 		}
@@ -124,7 +133,7 @@ static int spu_setup_isolated(struct spu_context *ctx)
 				status_loading) {
 		if (time_after(jiffies, timeout)) {
 			printk(KERN_ERR "%s: timeout waiting for loader\n",
-					__FUNCTION__);
+					__func__);
 			ret = -EIO;
 			goto out_drop_priv;
 		}
@@ -134,7 +143,7 @@ static int spu_setup_isolated(struct spu_context *ctx)
 	if (!(status & SPU_STATUS_RUNNING)) {
 		/* If isolated LOAD has failed: run SPU, we will get a stop-and
 		 * signal later. */
-		pr_debug("%s: isolated LOAD failed\n", __FUNCTION__);
+		pr_debug("%s: isolated LOAD failed\n", __func__);
 		ctx->ops->runcntl_write(ctx, SPU_RUNCNTL_RUNNABLE);
 		ret = -EACCES;
 		goto out_drop_priv;
@@ -142,7 +151,7 @@ static int spu_setup_isolated(struct spu_context *ctx)
 
 	if (!(status & SPU_STATUS_ISOLATED_STATE)) {
 		/* This isn't allowed by the CBEA, but check anyway */
-		pr_debug("%s: SPU fell out of isolated mode?\n", __FUNCTION__);
+		pr_debug("%s: SPU fell out of isolated mode?\n", __func__);
 		ctx->ops->runcntl_write(ctx, SPU_RUNCNTL_STOP);
 		ret = -EINVAL;
 		goto out_drop_priv;
@@ -282,7 +291,7 @@ static int spu_handle_restartsys(struct spu_context *ctx, long *spu_ret,
 		break;
 	default:
 		printk(KERN_WARNING "%s: unexpected return code %ld\n",
-			__FUNCTION__, *spu_ret);
+			__func__, *spu_ret);
 		ret = 0;
 	}
 	return ret;
@@ -294,7 +303,7 @@ static int spu_process_callback(struct spu_context *ctx)
 	u32 ls_pointer, npc;
 	void __iomem *ls;
 	long spu_ret;
-	int ret, ret2;
+	int ret;
 
 	/* get syscall block from local store */
 	npc = ctx->ops->npc_read(ctx) & ~3;
@@ -316,12 +325,14 @@ static int spu_process_callback(struct spu_context *ctx)
 		if (spu_ret <= -ERESTARTSYS) {
 			ret = spu_handle_restartsys(ctx, &spu_ret, &npc);
 		}
-		ret2 = spu_acquire(ctx);
+		mutex_lock(&ctx->state_mutex);
 		if (ret == -ERESTARTSYS)
 			return ret;
-		if (ret2)
-			return -EINTR;
 	}
+
+	/* need to re-get the ls, as it may have changed when we released the
+	 * spu */
+	ls = (void __iomem *)ctx->ops->get_ls(ctx);
 
 	/* write result, jump over indirect pointer */
 	memcpy_toio(ls + ls_pointer, &spu_ret, sizeof(spu_ret));
@@ -339,12 +350,13 @@ long spufs_run_spu(struct spu_context *ctx, u32 *npc, u32 *event)
 	if (mutex_lock_interruptible(&ctx->run_mutex))
 		return -ERESTARTSYS;
 
-	spu_enable_spu(ctx);
 	ctx->event_return = 0;
 
 	ret = spu_acquire(ctx);
 	if (ret)
 		goto out_unlock;
+
+	spu_enable_spu(ctx);
 
 	spu_update_sched_info(ctx);
 
@@ -400,6 +412,8 @@ long spufs_run_spu(struct spu_context *ctx, u32 *npc, u32 *event)
 	spu_disable_spu(ctx);
 	ret = spu_run_fini(ctx, npc, &status);
 	spu_yield(ctx);
+
+	spu_switch_log_notify(NULL, ctx, SWITCH_LOG_EXIT, status);
 
 	if ((status & SPU_STATUS_STOPPED_BY_STOP) &&
 	    (((status >> SPU_STOP_STATUS_SHIFT) & 0x3f00) == 0x2100))

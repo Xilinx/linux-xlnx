@@ -402,7 +402,7 @@ static int macvlan_newlink(struct net_device *dev,
 	if (!tb[IFLA_LINK])
 		return -EINVAL;
 
-	lowerdev = __dev_get_by_index(dev->nd_net, nla_get_u32(tb[IFLA_LINK]));
+	lowerdev = __dev_get_by_index(dev_net(dev), nla_get_u32(tb[IFLA_LINK]));
 	if (lowerdev == NULL)
 		return -ENODEV;
 
@@ -450,7 +450,7 @@ static void macvlan_dellink(struct net_device *dev)
 	unregister_netdevice(dev);
 
 	if (list_empty(&port->vlans))
-		macvlan_port_destroy(dev);
+		macvlan_port_destroy(port->dev);
 }
 
 static struct rtnl_link_ops macvlan_link_ops __read_mostly = {

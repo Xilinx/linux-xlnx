@@ -87,7 +87,7 @@ static inline int wpa2_capable(void)
 
 static inline int precise_ie(void)
 {
-	return 0; /* FIXME */
+	return (0 <= ps3_compare_firmware_version(2, 2, 0));
 }
 /*
  * post_eurus_cmd helpers
@@ -2473,6 +2473,8 @@ static void gelic_wl_free(struct gelic_wl_info *wl)
 	unsigned int i;
 
 	pr_debug("%s: <-\n", __func__);
+
+	free_page((unsigned long)wl->buf);
 
 	pr_debug("%s: destroy queues\n", __func__);
 	destroy_workqueue(wl->eurus_cmd_queue);

@@ -146,7 +146,7 @@
 /* Rule structure sizes -- if these change, different AUDIT_ADD and
  * AUDIT_LIST commands must be implemented. */
 #define AUDIT_MAX_FIELDS   64
-#define AUDIT_MAX_KEY_LEN  32
+#define AUDIT_MAX_KEY_LEN  256
 #define AUDIT_BITMASK_SIZE 64
 #define AUDIT_WORD(nr) ((__u32)((nr)/32))
 #define AUDIT_BIT(nr)  (1 << ((nr) - AUDIT_WORD(nr)*32))
@@ -209,6 +209,7 @@
 #define AUDIT_WATCH	105
 #define AUDIT_PERM	106
 #define AUDIT_DIR	107
+#define AUDIT_FILETYPE	108
 
 #define AUDIT_ARG0      200
 #define AUDIT_ARG1      (AUDIT_ARG0+1)
@@ -353,6 +354,33 @@ struct netlink_skb_parms;
 struct linux_binprm;
 struct mq_attr;
 struct mqstat;
+struct audit_watch;
+struct audit_tree;
+
+struct audit_krule {
+	int			vers_ops;
+	u32			flags;
+	u32			listnr;
+	u32			action;
+	u32			mask[AUDIT_BITMASK_SIZE];
+	u32			buflen; /* for data alloc on list rules */
+	u32			field_count;
+	char			*filterkey; /* ties events to rules */
+	struct audit_field	*fields;
+	struct audit_field	*arch_f; /* quick access to arch field */
+	struct audit_field	*inode_f; /* quick access to an inode field */
+	struct audit_watch	*watch;	/* associated watch */
+	struct audit_tree	*tree;	/* associated watched tree */
+	struct list_head	rlist;	/* entry in audit_{watch,tree}.rules list */
+};
+
+struct audit_field {
+	u32				type;
+	u32				val;
+	u32				op;
+	char				*lsm_str;
+	void				*lsm_rule;
+};
 
 #define AUDITSC_INVALID 0
 #define AUDITSC_SUCCESS 1
@@ -522,25 +550,32 @@ extern void		    audit_log_format(struct audit_buffer *ab,
 					     const char *fmt, ...)
 			    __attribute__((format(printf,2,3)));
 extern void		    audit_log_end(struct audit_buffer *ab);
-extern void		    audit_log_hex(struct audit_buffer *ab,
-					  const unsigned char *buf,
-					  size_t len);
 extern int		    audit_string_contains_control(const char *string,
 							  size_t len);
+extern void		    audit_log_n_hex(struct audit_buffer *ab,
+					  const unsigned char *buf,
+					  size_t len);
+extern void		    audit_log_n_string(struct audit_buffer *ab,
+					       const char *buf,
+					       size_t n);
+#define audit_log_string(a,b) audit_log_n_string(a, b, strlen(b));
+extern void		    audit_log_n_untrustedstring(struct audit_buffer *ab,
+							const char *string,
+							size_t n);
 extern void		    audit_log_untrustedstring(struct audit_buffer *ab,
 						      const char *string);
-extern void		    audit_log_n_untrustedstring(struct audit_buffer *ab,
-							size_t n,
-							const char *string);
 extern void		    audit_log_d_path(struct audit_buffer *ab,
 					     const char *prefix,
 					     struct path *path);
 extern void		    audit_log_lost(const char *message);
+extern int		    audit_update_lsm_rules(void);
+
 				/* Private API (for audit.c only) */
 extern int audit_filter_user(struct netlink_skb_parms *cb, int type);
 extern int audit_filter_type(int type);
 extern int  audit_receive_filter(int type, int pid, int uid, int seq,
-			 void *data, size_t datasz, uid_t loginuid, u32 sid);
+				void *data, size_t datasz, uid_t loginuid,
+				u32 sessionid, u32 sid);
 extern int audit_enabled;
 #else
 #define audit_log(c,g,t,f,...) do { ; } while (0)
@@ -548,9 +583,11 @@ extern int audit_enabled;
 #define audit_log_vformat(b,f,a) do { ; } while (0)
 #define audit_log_format(b,f,...) do { ; } while (0)
 #define audit_log_end(b) do { ; } while (0)
-#define audit_log_hex(a,b,l) do { ; } while (0)
-#define audit_log_untrustedstring(a,s) do { ; } while (0)
+#define audit_log_n_hex(a,b,l) do { ; } while (0)
+#define audit_log_n_string(a,c,l) do { ; } while (0)
+#define audit_log_string(a,c) do { ; } while (0)
 #define audit_log_n_untrustedstring(a,n,s) do { ; } while (0)
+#define audit_log_untrustedstring(a,s) do { ; } while (0)
 #define audit_log_d_path(b, p, d) do { ; } while (0)
 #define audit_enabled 0
 #endif

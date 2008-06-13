@@ -41,8 +41,8 @@ config BINFMT_ELF_FDPIC
 	  It is also possible to run FDPIC ELF binaries on MMU linux also.
 
 config BINFMT_FLAT
-	tristate "Kernel support for flat binaries"
-	depends on !MMU
+	bool "Kernel support for flat binaries"
+	depends on !MMU && (!FRV || BROKEN)
 	help
 	  Support uClinux FLAT format binaries.
 
@@ -62,7 +62,7 @@ config BINFMT_SHARED_FLAT
 config BINFMT_AOUT
 	tristate "Kernel support for a.out and ECOFF binaries"
 	depends on ARCH_SUPPORTS_AOUT && \
-		(X86_32 || ALPHA || ARM || M68K || SPARC32)
+		(X86_32 || ALPHA || ARM || M68K)
 	---help---
 	  A.out (Assembler.OUTput) is a set of formats for libraries and
 	  executables used in the earliest versions of UNIX.  Linux used

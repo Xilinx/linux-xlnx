@@ -527,6 +527,7 @@ static void __init ppc4xx_probe_pcix_bridge(struct device_node *np)
  *
  * ibm,plb-pciex-440spe
  * ibm,plb-pciex-405ex
+ * ibm,plb-pciex-460ex
  *
  * Anything else will be rejected for now as they are all subtly
  * different unfortunately.
@@ -645,7 +646,7 @@ static int __init ppc440spe_pciex_core_init(struct device_node *np)
 	int time_out = 20;
 
 	/* Set PLL clock receiver to LVPECL */
-	mtdcri(SDR0, PESDR0_PLLLCT1, mfdcri(SDR0, PESDR0_PLLLCT1) | 1 << 28);
+	dcri_clrset(SDR0, PESDR0_PLLLCT1, 0, 1 << 28);
 
 	/* Shouldn't we do all the calibration stuff etc... here ? */
 	if (ppc440spe_pciex_check_reset(np))
@@ -659,8 +660,7 @@ static int __init ppc440spe_pciex_core_init(struct device_node *np)
 	}
 
 	/* De-assert reset of PCIe PLL, wait for lock */
-	mtdcri(SDR0, PESDR0_PLLLCT1,
-	       mfdcri(SDR0, PESDR0_PLLLCT1) & ~(1 << 24));
+	dcri_clrset(SDR0, PESDR0_PLLLCT1, 1 << 24, 0);
 	udelay(3);
 
 	while (time_out) {
@@ -712,9 +712,8 @@ static int ppc440spe_pciex_init_port_hw(struct ppc4xx_pciex_port *port)
 		mtdcri(SDR0, port->sdr_base + PESDRn_440SPE_HSSL7SET1,
 		       0x35000000);
 	}
-	val = mfdcri(SDR0, port->sdr_base + PESDRn_RCSSET);
-	mtdcri(SDR0, port->sdr_base + PESDRn_RCSSET,
-	       (val & ~(1 << 24 | 1 << 16)) | 1 << 12);
+	dcri_clrset(SDR0, port->sdr_base + PESDRn_RCSSET,
+			(1 << 24) | (1 << 16), 1 << 12);
 
 	return 0;
 }
@@ -775,6 +774,115 @@ static struct ppc4xx_pciex_hwops ppc440speB_pcie_hwops __initdata =
 	.setup_utl	= ppc440speB_pciex_init_utl,
 };
 
+static int __init ppc460ex_pciex_core_init(struct device_node *np)
+{
+	/* Nothing to do, return 2 ports */
+	return 2;
+}
+
+static int ppc460ex_pciex_init_port_hw(struct ppc4xx_pciex_port *port)
+{
+	u32 val;
+	u32 utlset1;
+
+	if (port->endpoint)
+		val = PTYPE_LEGACY_ENDPOINT << 20;
+	else
+		val = PTYPE_ROOT_PORT << 20;
+
+	if (port->index == 0) {
+		val |= LNKW_X1 << 12;
+		utlset1 = 0x20000000;
+	} else {
+		val |= LNKW_X4 << 12;
+		utlset1 = 0x20101101;
+	}
+
+	mtdcri(SDR0, port->sdr_base + PESDRn_DLPSET, val);
+	mtdcri(SDR0, port->sdr_base + PESDRn_UTLSET1, utlset1);
+	mtdcri(SDR0, port->sdr_base + PESDRn_UTLSET2, 0x01210000);
+
+	switch (port->index) {
+	case 0:
+		mtdcri(SDR0, PESDR0_460EX_L0CDRCTL, 0x00003230);
+		mtdcri(SDR0, PESDR0_460EX_L0DRV, 0x00000136);
+		mtdcri(SDR0, PESDR0_460EX_L0CLK, 0x00000006);
+
+		mtdcri(SDR0, PESDR0_460EX_PHY_CTL_RST,0x10000000);
+		break;
+
+	case 1:
+		mtdcri(SDR0, PESDR1_460EX_L0CDRCTL, 0x00003230);
+		mtdcri(SDR0, PESDR1_460EX_L1CDRCTL, 0x00003230);
+		mtdcri(SDR0, PESDR1_460EX_L2CDRCTL, 0x00003230);
+		mtdcri(SDR0, PESDR1_460EX_L3CDRCTL, 0x00003230);
+		mtdcri(SDR0, PESDR1_460EX_L0DRV, 0x00000136);
+		mtdcri(SDR0, PESDR1_460EX_L1DRV, 0x00000136);
+		mtdcri(SDR0, PESDR1_460EX_L2DRV, 0x00000136);
+		mtdcri(SDR0, PESDR1_460EX_L3DRV, 0x00000136);
+		mtdcri(SDR0, PESDR1_460EX_L0CLK, 0x00000006);
+		mtdcri(SDR0, PESDR1_460EX_L1CLK, 0x00000006);
+		mtdcri(SDR0, PESDR1_460EX_L2CLK, 0x00000006);
+		mtdcri(SDR0, PESDR1_460EX_L3CLK, 0x00000006);
+
+		mtdcri(SDR0, PESDR1_460EX_PHY_CTL_RST,0x10000000);
+		break;
+	}
+
+	mtdcri(SDR0, port->sdr_base + PESDRn_RCSSET,
+	       mfdcri(SDR0, port->sdr_base + PESDRn_RCSSET) |
+	       (PESDRx_RCSSET_RSTGU | PESDRx_RCSSET_RSTPYN));
+
+	/* Poll for PHY reset */
+	/* XXX FIXME add timeout */
+	switch (port->index) {
+	case 0:
+		while (!(mfdcri(SDR0, PESDR0_460EX_RSTSTA) & 0x1))
+			udelay(10);
+		break;
+	case 1:
+		while (!(mfdcri(SDR0, PESDR1_460EX_RSTSTA) & 0x1))
+			udelay(10);
+		break;
+	}
+
+	mtdcri(SDR0, port->sdr_base + PESDRn_RCSSET,
+	       (mfdcri(SDR0, port->sdr_base + PESDRn_RCSSET) &
+		~(PESDRx_RCSSET_RSTGU | PESDRx_RCSSET_RSTDL)) |
+	       PESDRx_RCSSET_RSTPYN);
+
+	port->has_ibpre = 1;
+
+	return 0;
+}
+
+static int ppc460ex_pciex_init_utl(struct ppc4xx_pciex_port *port)
+{
+	dcr_write(port->dcrs, DCRO_PEGPL_SPECIAL, 0x0);
+
+	/*
+	 * Set buffer allocations and then assert VRB and TXE.
+	 */
+	out_be32(port->utl_base + PEUTL_PBCTL,	0x0800000c);
+	out_be32(port->utl_base + PEUTL_OUTTR,	0x08000000);
+	out_be32(port->utl_base + PEUTL_INTR,	0x02000000);
+	out_be32(port->utl_base + PEUTL_OPDBSZ,	0x04000000);
+	out_be32(port->utl_base + PEUTL_PBBSZ,	0x00000000);
+	out_be32(port->utl_base + PEUTL_IPHBSZ,	0x02000000);
+	out_be32(port->utl_base + PEUTL_IPDBSZ,	0x04000000);
+	out_be32(port->utl_base + PEUTL_RCIRQEN,0x00f00000);
+	out_be32(port->utl_base + PEUTL_PCTL,	0x80800066);
+
+	return 0;
+}
+
+static struct ppc4xx_pciex_hwops ppc460ex_pcie_hwops __initdata =
+{
+	.core_init	= ppc460ex_pciex_core_init,
+	.port_init_hw	= ppc460ex_pciex_init_port_hw,
+	.setup_utl	= ppc460ex_pciex_init_utl,
+};
+
 #endif /* CONFIG_44x */
 
 #ifdef CONFIG_40x
@@ -830,17 +938,9 @@ static int ppc405ex_pciex_init_port_hw(struct ppc4xx_pciex_port *port)
 	 * PCIe boards don't show this problem.
 	 * This has to be re-tested and fixed in a later release!
 	 */
-#if 0 /* XXX FIXME: Not resetting the PHY will leave all resources
-       * configured as done previously by U-Boot. Then Linux will currently
-       * not reassign them. So the PHY reset is now done always. This will
-       * lead to problems with the Atheros PCIe board again.
-       */
 	val = mfdcri(SDR0, port->sdr_base + PESDRn_LOOP);
 	if (!(val & 0x00001000))
 		ppc405ex_pcie_phy_reset(port);
-#else
-	ppc405ex_pcie_phy_reset(port);
-#endif
 
 	dcr_write(port->dcrs, DCRO_PEGPL_CFG, 0x10000000);  /* guarded on */
 
@@ -896,6 +996,8 @@ static int __init ppc4xx_pciex_check_core_init(struct device_node *np)
 		else
 			ppc4xx_pciex_hwops = &ppc440speB_pcie_hwops;
 	}
+	if (of_device_is_compatible(np, "ibm,plb-pciex-460ex"))
+		ppc4xx_pciex_hwops = &ppc460ex_pcie_hwops;
 #endif /* CONFIG_44x    */
 #ifdef CONFIG_40x
 	if (of_device_is_compatible(np, "ibm,plb-pciex-405ex"))
@@ -1042,8 +1144,7 @@ static int __init ppc4xx_pciex_port_init(struct ppc4xx_pciex_port *port)
 		port->link = 0;
 	}
 
-	mtdcri(SDR0, port->sdr_base + PESDRn_RCSSET,
-	       mfdcri(SDR0, port->sdr_base + PESDRn_RCSSET) | 1 << 20);
+	dcri_clrset(SDR0, port->sdr_base + PESDRn_RCSSET, 0, 1 << 20);
 	msleep(100);
 
 	return 0;
@@ -1286,27 +1387,58 @@ static void __init ppc4xx_configure_pciex_PIMs(struct ppc4xx_pciex_port *port,
 	resource_size_t size = res->end - res->start + 1;
 	u64 sa;
 
-	/* Calculate window size */
-	sa = (0xffffffffffffffffull << ilog2(size));;
-	if (res->flags & IORESOURCE_PREFETCH)
-		sa |= 0x8;
+	if (port->endpoint) {
+		resource_size_t ep_addr = 0;
+		resource_size_t ep_size = 32 << 20;
 
-	out_le32(mbase + PECFG_BAR0HMPA, RES_TO_U32_HIGH(sa));
-	out_le32(mbase + PECFG_BAR0LMPA, RES_TO_U32_LOW(sa));
+		/* Currently we map a fixed 64MByte window to PLB address
+		 * 0 (SDRAM). This should probably be configurable via a dts
+		 * property.
+		 */
 
-	/* The setup of the split looks weird to me ... let's see if it works */
-	out_le32(mbase + PECFG_PIM0LAL, 0x00000000);
-	out_le32(mbase + PECFG_PIM0LAH, 0x00000000);
-	out_le32(mbase + PECFG_PIM1LAL, 0x00000000);
-	out_le32(mbase + PECFG_PIM1LAH, 0x00000000);
-	out_le32(mbase + PECFG_PIM01SAH, 0xffff0000);
-	out_le32(mbase + PECFG_PIM01SAL, 0x00000000);
+		/* Calculate window size */
+		sa = (0xffffffffffffffffull << ilog2(ep_size));;
+
+		/* Setup BAR0 */
+		out_le32(mbase + PECFG_BAR0HMPA, RES_TO_U32_HIGH(sa));
+		out_le32(mbase + PECFG_BAR0LMPA, RES_TO_U32_LOW(sa) |
+			 PCI_BASE_ADDRESS_MEM_TYPE_64);
+
+		/* Disable BAR1 & BAR2 */
+		out_le32(mbase + PECFG_BAR1MPA, 0);
+		out_le32(mbase + PECFG_BAR2HMPA, 0);
+		out_le32(mbase + PECFG_BAR2LMPA, 0);
+
+		out_le32(mbase + PECFG_PIM01SAH, RES_TO_U32_HIGH(sa));
+		out_le32(mbase + PECFG_PIM01SAL, RES_TO_U32_LOW(sa));
+
+		out_le32(mbase + PCI_BASE_ADDRESS_0, RES_TO_U32_LOW(ep_addr));
+		out_le32(mbase + PCI_BASE_ADDRESS_1, RES_TO_U32_HIGH(ep_addr));
+	} else {
+		/* Calculate window size */
+		sa = (0xffffffffffffffffull << ilog2(size));;
+		if (res->flags & IORESOURCE_PREFETCH)
+			sa |= 0x8;
+
+		out_le32(mbase + PECFG_BAR0HMPA, RES_TO_U32_HIGH(sa));
+		out_le32(mbase + PECFG_BAR0LMPA, RES_TO_U32_LOW(sa));
+
+		/* The setup of the split looks weird to me ... let's see
+		 * if it works
+		 */
+		out_le32(mbase + PECFG_PIM0LAL, 0x00000000);
+		out_le32(mbase + PECFG_PIM0LAH, 0x00000000);
+		out_le32(mbase + PECFG_PIM1LAL, 0x00000000);
+		out_le32(mbase + PECFG_PIM1LAH, 0x00000000);
+		out_le32(mbase + PECFG_PIM01SAH, 0xffff0000);
+		out_le32(mbase + PECFG_PIM01SAL, 0x00000000);
+
+		out_le32(mbase + PCI_BASE_ADDRESS_0, RES_TO_U32_LOW(res->start));
+		out_le32(mbase + PCI_BASE_ADDRESS_1, RES_TO_U32_HIGH(res->start));
+	}
 
 	/* Enable inbound mapping */
 	out_le32(mbase + PECFG_PIMEN, 0x1);
-
-	out_le32(mbase + PCI_BASE_ADDRESS_0, RES_TO_U32_LOW(res->start));
-	out_le32(mbase + PCI_BASE_ADDRESS_1, RES_TO_U32_HIGH(res->start));
 
 	/* Enable I/O, Mem, and Busmaster cycles */
 	out_le16(mbase + PCI_COMMAND,
@@ -1321,13 +1453,8 @@ static void __init ppc4xx_pciex_port_setup_hose(struct ppc4xx_pciex_port *port)
 	const int *bus_range;
 	int primary = 0, busses;
 	void __iomem *mbase = NULL, *cfg_data = NULL;
-
-	/* XXX FIXME: Handle endpoint mode properly */
-	if (port->endpoint) {
-		printk(KERN_WARNING "PCIE%d: Port in endpoint mode !\n",
-		       port->index);
-		return;
-	}
+	const u32 *pval;
+	u32 val;
 
 	/* Check if primary bridge */
 	if (of_get_property(port->node, "primary", NULL))
@@ -1361,21 +1488,30 @@ static void __init ppc4xx_pciex_port_setup_hose(struct ppc4xx_pciex_port *port)
 		hose->last_busno = hose->first_busno + busses;
 	}
 
-	/* We map the external config space in cfg_data and the host config
-	 * space in cfg_addr. External space is 1M per bus, internal space
-	 * is 4K
+	if (!port->endpoint) {
+		/* Only map the external config space in cfg_data for
+		 * PCIe root-complexes. External space is 1M per bus
+		 */
+		cfg_data = ioremap(port->cfg_space.start +
+				   (hose->first_busno + 1) * 0x100000,
+				   busses * 0x100000);
+		if (cfg_data == NULL) {
+			printk(KERN_ERR "%s: Can't map external config space !",
+			       port->node->full_name);
+			goto fail;
+		}
+		hose->cfg_data = cfg_data;
+	}
+
+	/* Always map the host config space in cfg_addr.
+	 * Internal space is 4K
 	 */
-	cfg_data = ioremap(port->cfg_space.start +
-				 (hose->first_busno + 1) * 0x100000,
-				 busses * 0x100000);
 	mbase = ioremap(port->cfg_space.start + 0x10000000, 0x1000);
-	if (cfg_data == NULL || mbase == NULL) {
-		printk(KERN_ERR "%s: Can't map config space !",
+	if (mbase == NULL) {
+		printk(KERN_ERR "%s: Can't map internal config space !",
 		       port->node->full_name);
 		goto fail;
 	}
-
-	hose->cfg_data = cfg_data;
 	hose->cfg_addr = mbase;
 
 	pr_debug("PCIE %s, bus %d..%d\n", port->node->full_name,
@@ -1388,12 +1524,14 @@ static void __init ppc4xx_pciex_port_setup_hose(struct ppc4xx_pciex_port *port)
 	port->hose = hose;
 	mbase = (void __iomem *)hose->cfg_addr;
 
-	/*
-	 * Set bus numbers on our root port
-	 */
-	out_8(mbase + PCI_PRIMARY_BUS, hose->first_busno);
-	out_8(mbase + PCI_SECONDARY_BUS, hose->first_busno + 1);
-	out_8(mbase + PCI_SUBORDINATE_BUS, hose->last_busno);
+	if (!port->endpoint) {
+		/*
+		 * Set bus numbers on our root port
+		 */
+		out_8(mbase + PCI_PRIMARY_BUS, hose->first_busno);
+		out_8(mbase + PCI_SECONDARY_BUS, hose->first_busno + 1);
+		out_8(mbase + PCI_SUBORDINATE_BUS, hose->last_busno);
+	}
 
 	/*
 	 * OMRs are already reset, also disable PIMs
@@ -1414,17 +1552,49 @@ static void __init ppc4xx_pciex_port_setup_hose(struct ppc4xx_pciex_port *port)
 	ppc4xx_configure_pciex_PIMs(port, hose, mbase, &dma_window);
 
 	/* The root complex doesn't show up if we don't set some vendor
-	 * and device IDs into it. Those are the same bogus one that the
-	 * initial code in arch/ppc add. We might want to change that.
+	 * and device IDs into it. The defaults below are the same bogus
+	 * one that the initial code in arch/ppc had. This can be
+	 * overwritten by setting the "vendor-id/device-id" properties
+	 * in the pciex node.
 	 */
-	out_le16(mbase + 0x200, 0xaaa0 + port->index);
-	out_le16(mbase + 0x202, 0xbed0 + port->index);
 
-	/* Set Class Code to PCI-PCI bridge and Revision Id to 1 */
-	out_le32(mbase + 0x208, 0x06040001);
+	/* Get the (optional) vendor-/device-id from the device-tree */
+	pval = of_get_property(port->node, "vendor-id", NULL);
+	if (pval) {
+		val = *pval;
+	} else {
+		if (!port->endpoint)
+			val = 0xaaa0 + port->index;
+		else
+			val = 0xeee0 + port->index;
+	}
+	out_le16(mbase + 0x200, val);
 
-	printk(KERN_INFO "PCIE%d: successfully set as root-complex\n",
-	       port->index);
+	pval = of_get_property(port->node, "device-id", NULL);
+	if (pval) {
+		val = *pval;
+	} else {
+		if (!port->endpoint)
+			val = 0xbed0 + port->index;
+		else
+			val = 0xfed0 + port->index;
+	}
+	out_le16(mbase + 0x202, val);
+
+	if (!port->endpoint) {
+		/* Set Class Code to PCI-PCI bridge and Revision Id to 1 */
+		out_le32(mbase + 0x208, 0x06040001);
+
+		printk(KERN_INFO "PCIE%d: successfully set as root-complex\n",
+		       port->index);
+	} else {
+		/* Set Class Code to Processor/PPC */
+		out_le32(mbase + 0x208, 0x0b200001);
+
+		printk(KERN_INFO "PCIE%d: successfully set as endpoint\n",
+		       port->index);
+	}
+
 	return;
  fail:
 	if (hose)
@@ -1441,6 +1611,7 @@ static void __init ppc4xx_probe_pciex_bridge(struct device_node *np)
 	const u32 *pval;
 	int portno;
 	unsigned int dcrs;
+	const char *val;
 
 	/* First, proceed to core initialization as we assume there's
 	 * only one PCIe core in the system
@@ -1472,8 +1643,20 @@ static void __init ppc4xx_probe_pciex_bridge(struct device_node *np)
 	}
 	port->sdr_base = *pval;
 
-	/* XXX Currently, we only support root complex mode */
-	port->endpoint = 0;
+	/* Check if device_type property is set to "pci" or "pci-endpoint".
+	 * Resulting from this setup this PCIe port will be configured
+	 * as root-complex or as endpoint.
+	 */
+	val = of_get_property(port->node, "device_type", NULL);
+	if (!strcmp(val, "pci-endpoint")) {
+		port->endpoint = 1;
+	} else if (!strcmp(val, "pci")) {
+		port->endpoint = 0;
+	} else {
+		printk(KERN_ERR "PCIE: missing or incorrect device_type for %s\n",
+		       np->full_name);
+		return;
+	}
 
 	/* Fetch config space registers address */
 	if (of_address_to_resource(np, 0, &port->cfg_space)) {

@@ -4,12 +4,13 @@
 #include <linux/acpi.h>
 #include <linux/bcd.h>
 #include <linux/mc146818rtc.h>
+#include <linux/platform_device.h>
+#include <linux/pnp.h>
 
 #include <asm/time.h>
 #include <asm/vsyscall.h>
 
 #ifdef CONFIG_X86_32
-# define CMOS_YEARS_OFFS 1900
 /*
  * This is a special lock that is owned by the CPU and holds the index
  * register we are working with.  It is required for NMI access to the
@@ -17,13 +18,10 @@
  */
 volatile unsigned long cmos_lock = 0;
 EXPORT_SYMBOL(cmos_lock);
-#else
-/*
- * x86-64 systems only exists since 2002.
- * This will work up to Dec 31, 2100
- */
-# define CMOS_YEARS_OFFS 2000
 #endif
+
+/* For two digit years assume time is always after that */
+#define CMOS_YEARS_OFFS 2000
 
 DEFINE_SPINLOCK(rtc_lock);
 EXPORT_SYMBOL(rtc_lock);
@@ -98,7 +96,7 @@ int mach_set_rtc_mmss(unsigned long nowtime)
 
 unsigned long mach_get_cmos_time(void)
 {
-	unsigned int year, mon, day, hour, min, sec, century = 0;
+	unsigned int status, year, mon, day, hour, min, sec, century = 0;
 
 	/*
 	 * If UIP is clear, then we have >= 244 microseconds before
@@ -116,14 +114,16 @@ unsigned long mach_get_cmos_time(void)
 	mon = CMOS_READ(RTC_MONTH);
 	year = CMOS_READ(RTC_YEAR);
 
-#if defined(CONFIG_ACPI) && defined(CONFIG_X86_64)
-	/* CHECKME: Is this really 64bit only ??? */
+#ifdef CONFIG_ACPI
 	if (acpi_gbl_FADT.header.revision >= FADT2_REVISION_ID &&
 	    acpi_gbl_FADT.century)
 		century = CMOS_READ(acpi_gbl_FADT.century);
 #endif
 
-	if (RTC_ALWAYS_BCD || !(CMOS_READ(RTC_CONTROL) & RTC_DM_BINARY)) {
+	status = CMOS_READ(RTC_CONTROL);
+	WARN_ON_ONCE(RTC_ALWAYS_BCD && (status & RTC_DM_BINARY));
+
+	if (RTC_ALWAYS_BCD || !(status & RTC_DM_BINARY)) {
 		BCD_TO_BIN(sec);
 		BCD_TO_BIN(min);
 		BCD_TO_BIN(hour);
@@ -136,11 +136,8 @@ unsigned long mach_get_cmos_time(void)
 		BCD_TO_BIN(century);
 		year += century * 100;
 		printk(KERN_INFO "Extended CMOS year: %d\n", century * 100);
-	} else {
+	} else
 		year += CMOS_YEARS_OFFS;
-		if (year < 1970)
-			year += 100;
-	}
 
 	return mktime(year, mon, day, hour, min, sec);
 }
@@ -151,8 +148,8 @@ unsigned char rtc_cmos_read(unsigned char addr)
 	unsigned char val;
 
 	lock_cmos_prefix(addr);
-	outb_p(addr, RTC_PORT(0));
-	val = inb_p(RTC_PORT(1));
+	outb(addr, RTC_PORT(0));
+	val = inb(RTC_PORT(1));
 	lock_cmos_suffix(addr);
 	return val;
 }
@@ -161,8 +158,8 @@ EXPORT_SYMBOL(rtc_cmos_read);
 void rtc_cmos_write(unsigned char val, unsigned char addr)
 {
 	lock_cmos_prefix(addr);
-	outb_p(addr, RTC_PORT(0));
-	outb_p(val, RTC_PORT(1));
+	outb(addr, RTC_PORT(0));
+	outb(val, RTC_PORT(1));
 	lock_cmos_suffix(addr);
 }
 EXPORT_SYMBOL(rtc_cmos_write);
@@ -202,3 +199,35 @@ unsigned long long native_read_tsc(void)
 }
 EXPORT_SYMBOL(native_read_tsc);
 
+
+static struct resource rtc_resources[] = {
+	[0] = {
+		.start	= RTC_PORT(0),
+		.end	= RTC_PORT(1),
+		.flags	= IORESOURCE_IO,
+	},
+	[1] = {
+		.start	= RTC_IRQ,
+		.end	= RTC_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+
+static struct platform_device rtc_device = {
+	.name		= "rtc_cmos",
+	.id		= -1,
+	.resource	= rtc_resources,
+	.num_resources	= ARRAY_SIZE(rtc_resources),
+};
+
+static __init int add_rtc_cmos(void)
+{
+#ifdef CONFIG_PNP
+	if (!pnp_platform_devices)
+		platform_device_register(&rtc_device);
+#else
+	platform_device_register(&rtc_device);
+#endif /* CONFIG_PNP */
+	return 0;
+}
+device_initcall(add_rtc_cmos);

@@ -37,7 +37,9 @@
 #include <linux/linkage.h>
 #include <linux/types.h>
 
-#if defined(CONFIG_DMA_UNCACHED_2M)
+#if defined(CONFIG_DMA_UNCACHED_4M)
+# define DMA_UNCACHED_REGION (4 * 1024 * 1024)
+#elif defined(CONFIG_DMA_UNCACHED_2M)
 # define DMA_UNCACHED_REGION (2 * 1024 * 1024)
 #elif defined(CONFIG_DMA_UNCACHED_1M)
 # define DMA_UNCACHED_REGION (1024 * 1024)
@@ -103,29 +105,12 @@ extern int sram_free(const void*);
 extern void *sram_alloc_with_lsl(size_t, unsigned long);
 extern int sram_free_with_lsl(const void*);
 
-extern void led_on(int);
-extern void led_off(int);
-extern void led_toggle(int);
-extern void led_disp_num(int);
-extern void led_toggle_num(int);
-extern void init_leds(void);
-
 extern const char bfin_board_name[];
 extern unsigned long wall_jiffies;
-extern unsigned long ipdt_table[];
-extern unsigned long dpdt_table[];
-extern unsigned long icplb_table[];
-extern unsigned long dcplb_table[];
-
-extern unsigned long ipdt_swapcount_table[];
-extern unsigned long dpdt_swapcount_table[];
-
-extern unsigned long table_start, table_end;
 
 extern unsigned long bfin_sic_iwr[];
 extern u16 _bfin_swrst; /* shadow for Software Reset Register (SWRST) */
 extern struct file_operations dpmc_fops;
-extern char _start;
 extern unsigned long _ramstart, _ramend, _rambase;
 extern unsigned long memory_start, memory_end, physical_mem_end;
 extern char _stext_l1[], _etext_l1[], _sdata_l1[], _edata_l1[], _sbss_l1[],

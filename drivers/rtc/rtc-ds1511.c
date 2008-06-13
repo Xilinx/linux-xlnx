@@ -181,11 +181,10 @@ ds1511_wdog_disable(void)
  * stupidly, some callers call with year unmolested;
  * and some call with  year = year - 1900.  thanks.
  */
- int
-ds1511_rtc_set_time(struct device *dev, struct rtc_time *rtc_tm)
+static int ds1511_rtc_set_time(struct device *dev, struct rtc_time *rtc_tm)
 {
 	u8 mon, day, dow, hrs, min, sec, yrs, cen;
-	unsigned int flags;
+	unsigned long flags;
 
 	/*
 	 * won't have to change this for a while
@@ -245,11 +244,10 @@ ds1511_rtc_set_time(struct device *dev, struct rtc_time *rtc_tm)
 	return 0;
 }
 
- int
-ds1511_rtc_read_time(struct device *dev, struct rtc_time *rtc_tm)
+static int ds1511_rtc_read_time(struct device *dev, struct rtc_time *rtc_tm)
 {
 	unsigned int century;
-	unsigned int flags;
+	unsigned long flags;
 
 	spin_lock_irqsave(&ds1511_lock, flags);
 	rtc_disable_update();

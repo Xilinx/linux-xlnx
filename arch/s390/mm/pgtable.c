@@ -30,11 +30,27 @@
 #define TABLES_PER_PAGE	4
 #define FRAG_MASK	15UL
 #define SECOND_HALVES	10UL
+
+void clear_table_pgstes(unsigned long *table)
+{
+	clear_table(table, _PAGE_TYPE_EMPTY, PAGE_SIZE/4);
+	memset(table + 256, 0, PAGE_SIZE/4);
+	clear_table(table + 512, _PAGE_TYPE_EMPTY, PAGE_SIZE/4);
+	memset(table + 768, 0, PAGE_SIZE/4);
+}
+
 #else
 #define ALLOC_ORDER	2
 #define TABLES_PER_PAGE	2
 #define FRAG_MASK	3UL
 #define SECOND_HALVES	2UL
+
+void clear_table_pgstes(unsigned long *table)
+{
+	clear_table(table, _PAGE_TYPE_EMPTY, PAGE_SIZE/2);
+	memset(table + 256, 0, PAGE_SIZE/2);
+}
+
 #endif
 
 unsigned long *crst_table_alloc(struct mm_struct *mm, int noexec)
@@ -153,7 +169,7 @@ unsigned long *page_table_alloc(struct mm_struct *mm)
 	unsigned long *table;
 	unsigned long bits;
 
-	bits = mm->context.noexec ? 3UL : 1UL;
+	bits = (mm->context.noexec || mm->context.pgstes) ? 3UL : 1UL;
 	spin_lock(&mm->page_table_lock);
 	page = NULL;
 	if (!list_empty(&mm->context.pgtable_list)) {
@@ -170,7 +186,10 @@ unsigned long *page_table_alloc(struct mm_struct *mm)
 		pgtable_page_ctor(page);
 		page->flags &= ~FRAG_MASK;
 		table = (unsigned long *) page_to_phys(page);
-		clear_table(table, _PAGE_TYPE_EMPTY, PAGE_SIZE);
+		if (mm->context.pgstes)
+			clear_table_pgstes(table);
+		else
+			clear_table(table, _PAGE_TYPE_EMPTY, PAGE_SIZE);
 		spin_lock(&mm->page_table_lock);
 		list_add(&page->lru, &mm->context.pgtable_list);
 	}
@@ -191,7 +210,7 @@ void page_table_free(struct mm_struct *mm, unsigned long *table)
 	struct page *page;
 	unsigned long bits;
 
-	bits = mm->context.noexec ? 3UL : 1UL;
+	bits = (mm->context.noexec || mm->context.pgstes) ? 3UL : 1UL;
 	bits <<= (__pa(table) & (PAGE_SIZE - 1)) / 256 / sizeof(unsigned long);
 	page = pfn_to_page(__pa(table) >> PAGE_SHIFT);
 	spin_lock(&mm->page_table_lock);
@@ -228,3 +247,53 @@ void disable_noexec(struct mm_struct *mm, struct task_struct *tsk)
 	mm->context.noexec = 0;
 	update_mm(mm, tsk);
 }
+
+/*
+ * switch on pgstes for its userspace process (for kvm)
+ */
+int s390_enable_sie(void)
+{
+	struct task_struct *tsk = current;
+	struct mm_struct *mm, *old_mm;
+
+	/* Do we have pgstes? if yes, we are done */
+	if (tsk->mm->context.pgstes)
+		return 0;
+
+	/* lets check if we are allowed to replace the mm */
+	task_lock(tsk);
+	if (!tsk->mm || atomic_read(&tsk->mm->mm_users) > 1 ||
+	    tsk->mm != tsk->active_mm || tsk->mm->ioctx_list) {
+		task_unlock(tsk);
+		return -EINVAL;
+	}
+	task_unlock(tsk);
+
+	/* we copy the mm with pgstes enabled */
+	tsk->mm->context.pgstes = 1;
+	mm = dup_mm(tsk);
+	tsk->mm->context.pgstes = 0;
+	if (!mm)
+		return -ENOMEM;
+
+	/* Now lets check again if somebody attached ptrace etc */
+	task_lock(tsk);
+	if (!tsk->mm || atomic_read(&tsk->mm->mm_users) > 1 ||
+	    tsk->mm != tsk->active_mm || tsk->mm->ioctx_list) {
+		mmput(mm);
+		task_unlock(tsk);
+		return -EINVAL;
+	}
+
+	/* ok, we are alone. No ptrace, no threads, etc. */
+	old_mm = tsk->mm;
+	tsk->mm = tsk->active_mm = mm;
+	preempt_disable();
+	update_mm(mm, tsk);
+	cpu_set(smp_processor_id(), mm->cpu_vm_mask);
+	preempt_enable();
+	task_unlock(tsk);
+	mmput(old_mm);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(s390_enable_sie);

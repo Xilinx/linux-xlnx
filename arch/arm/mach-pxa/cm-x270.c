@@ -30,6 +30,7 @@
 
 #include <asm/arch/pxa-regs.h>
 #include <asm/arch/pxa2xx-regs.h>
+#include <asm/arch/pxa2xx-gpio.h>
 #include <asm/arch/pxafb.h>
 #include <asm/arch/ohci.h>
 #include <asm/arch/mmc.h>
@@ -58,7 +59,7 @@ static struct resource cmx270_dm9k_resource[] = {
 	[2] = {
 		.start = CMX270_ETHIRQ,
 		.end   = CMX270_ETHIRQ,
-		.flags = IORESOURCE_IRQ,
+		.flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
 	}
 };
 

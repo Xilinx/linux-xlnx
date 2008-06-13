@@ -1,4 +1,3 @@
-/* $Id: ioctls.h,v 1.7 1998/02/23 02:49:41 davem Exp $ */
 #ifndef _ASM_SPARC64_IOCTLS_H
 #define _ASM_SPARC64_IOCTLS_H
 
@@ -44,8 +43,6 @@
 #define __TIOCSETX        _IOW('t', 34, int) /* SunOS Specific */
 #define __TIOCGETX        _IOR('t', 35, int) /* SunOS Specific */
 #define TIOCCONS	_IO('t', 36)
-#define __TIOCSSIZE     _IOW('t', 37, struct sunos_ttysize) /* SunOS Specific */
-#define __TIOCGSIZE     _IOR('t', 38, struct sunos_ttysize) /* SunOS Specific */
 #define TIOCGSOFTCAR	_IOR('t', 100, int)
 #define TIOCSSOFTCAR	_IOW('t', 101, int)
 #define __TIOCUCNTL       _IOW('t', 102, int) /* SunOS Specific */

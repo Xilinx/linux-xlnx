@@ -40,7 +40,7 @@
 #include <asm/io.h>
 
 #define DRV_NAME	"ehea"
-#define DRV_VERSION	"EHEA_0090"
+#define DRV_VERSION	"EHEA_0091"
 
 /* eHEA capability flags */
 #define DLPAR_PORT_ADD_REM 1
@@ -118,6 +118,13 @@
 #define EHEA_MR_ACC_CTRL       0x00800000
 
 #define EHEA_BUSMAP_START      0x8000000000000000ULL
+#define EHEA_INVAL_ADDR        0xFFFFFFFFFFFFFFFFULL
+#define EHEA_DIR_INDEX_SHIFT 13                   /* 8k Entries in 64k block */
+#define EHEA_TOP_INDEX_SHIFT (EHEA_DIR_INDEX_SHIFT * 2)
+#define EHEA_MAP_ENTRIES (1 << EHEA_DIR_INDEX_SHIFT)
+#define EHEA_MAP_SIZE (0x10000)                   /* currently fixed map size */
+#define EHEA_INDEX_MASK (EHEA_MAP_ENTRIES - 1)
+
 
 #define EHEA_WATCH_DOG_TIMEOUT 10*HZ
 
@@ -192,10 +199,20 @@ struct h_epas {
 				   set to 0 if unused */
 };
 
-struct ehea_busmap {
-	unsigned int entries;		/* total number of entries */
-	unsigned int valid_sections;	/* number of valid sections */
-	u64 *vaddr;
+/*
+ * Memory map data structures
+ */
+struct ehea_dir_bmap
+{
+	u64 ent[EHEA_MAP_ENTRIES];
+};
+struct ehea_top_bmap
+{
+	struct ehea_dir_bmap *dir[EHEA_MAP_ENTRIES];
+};
+struct ehea_bmap
+{
+	struct ehea_top_bmap *top[EHEA_MAP_ENTRIES];
 };
 
 struct ehea_qp;
@@ -422,7 +439,7 @@ struct ehea_fw_handle_entry {
 struct ehea_fw_handle_array {
 	struct ehea_fw_handle_entry *arr;
 	int num_entries;
-	struct semaphore lock;
+	struct mutex lock;
 };
 
 struct ehea_bcmc_reg_entry {
@@ -435,7 +452,7 @@ struct ehea_bcmc_reg_entry {
 struct ehea_bcmc_reg_array {
 	struct ehea_bcmc_reg_entry *arr;
 	int num_entries;
-	struct semaphore lock;
+	struct mutex lock;
 };
 
 #define EHEA_PORT_UP 1
@@ -453,7 +470,7 @@ struct ehea_port {
 	struct vlan_group *vgrp;
 	struct ehea_eq *qp_eq;
 	struct work_struct reset_task;
-	struct semaphore port_lock;
+	struct mutex port_lock;
 	char int_aff_name[EHEA_IRQ_NAME_SIZE];
 	int allmulti;			 /* Indicates IFF_ALLMULTI state */
 	int promisc;		 	 /* Indicates IFF_PROMISC state */

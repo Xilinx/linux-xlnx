@@ -1,6 +1,4 @@
 /*
- * $Id: hid-debug.h,v 1.8 2001/09/25 09:37:57 vojtech Exp $
- *
  *  (c) 1999 Andreas Gal		<gal@cs.uni-magdeburg.de>
  *  (c) 2000-2001 Vojtech Pavlik	<vojtech@ucw.cz>
  *  (c) 2007 Jiri Kosina
@@ -498,7 +496,7 @@ void hid_dump_device(struct hid_device *device) {
 EXPORT_SYMBOL_GPL(hid_dump_device);
 
 void hid_dump_input(struct hid_usage *usage, __s32 value) {
-	if (!hid_debug)
+	if (hid_debug < 2)
 		return;
 
 	printk(KERN_DEBUG "hid-debug: input ");

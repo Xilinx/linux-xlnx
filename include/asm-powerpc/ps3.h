@@ -178,9 +178,6 @@ enum ps3_cpu_binding {
 	PS3_BINDING_CPU_1 = 1,
 };
 
-int ps3_virq_setup(enum ps3_cpu_binding cpu, unsigned long outlet,
-	unsigned int *virq);
-int ps3_virq_destroy(unsigned int virq);
 int ps3_irq_plug_setup(enum ps3_cpu_binding cpu, unsigned long outlet,
 	unsigned int *virq);
 int ps3_irq_plug_destroy(unsigned int virq);
@@ -434,8 +431,11 @@ struct ps3_sys_manager_ops {
 };
 
 void ps3_sys_manager_register_ops(const struct ps3_sys_manager_ops *ops);
-void ps3_sys_manager_power_off(void);
-void ps3_sys_manager_restart(void);
+void __noreturn ps3_sys_manager_power_off(void);
+void __noreturn ps3_sys_manager_restart(void);
+void __noreturn ps3_sys_manager_halt(void);
+int ps3_sys_manager_get_wol(void);
+void ps3_sys_manager_set_wol(int state);
 
 struct ps3_prealloc {
     const char *name;

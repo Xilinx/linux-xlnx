@@ -637,7 +637,9 @@ struct input_absinfo {
 #define SW_LID			0x00  /* set = lid shut */
 #define SW_TABLET_MODE		0x01  /* set = tablet mode */
 #define SW_HEADPHONE_INSERT	0x02  /* set = inserted */
-#define SW_RADIO		0x03  /* set = radio enabled */
+#define SW_RFKILL_ALL		0x03  /* rfkill master switch, type "any"
+					 set = radio enabled */
+#define SW_RADIO		SW_RFKILL_ALL	/* deprecated */
 #define SW_MAX			0x0f
 #define SW_CNT			(SW_MAX+1)
 
@@ -1025,10 +1027,6 @@ struct ff_effect {
  * @node: used to place the device onto input_dev_list
  */
 struct input_dev {
-	/* private: */
-	void *private;	/* do not use */
-	/* public: */
-
 	const char *name;
 	const char *phys;
 	const char *uniq;
@@ -1238,12 +1236,12 @@ static inline void input_put_device(struct input_dev *dev)
 
 static inline void *input_get_drvdata(struct input_dev *dev)
 {
-	return dev->private;
+	return dev_get_drvdata(&dev->dev);
 }
 
 static inline void input_set_drvdata(struct input_dev *dev, void *data)
 {
-	dev->private = data;
+	dev_set_drvdata(&dev->dev, data);
 }
 
 int __must_check input_register_device(struct input_dev *);

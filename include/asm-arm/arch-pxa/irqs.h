@@ -181,7 +181,8 @@
 #elif defined(CONFIG_ARCH_LUBBOCK) || \
       defined(CONFIG_MACH_LOGICPD_PXA270) || \
       defined(CONFIG_MACH_MAINSTONE) || \
-      defined(CONFIG_MACH_PCM027)
+      defined(CONFIG_MACH_PCM027) || \
+      defined(CONFIG_MACH_MAGICIAN)
 #define NR_IRQS			(IRQ_BOARD_END)
 #else
 #define NR_IRQS			(IRQ_BOARD_START)
@@ -238,7 +239,7 @@
 /* ITE8152 irqs */
 /* add IT8152 IRQs beyond BOARD_END */
 #ifdef CONFIG_PCI_HOST_ITE8152
-#define IT8152_IRQ(x)   (IRQ_GPIO(IRQ_BOARD_END) + 1 + (x))
+#define IT8152_IRQ(x)   (IRQ_BOARD_END + (x))
 
 /* IRQ-sources in 3 groups - local devices, LPC (serial), and external PCI */
 #define IT8152_LD_IRQ_COUNT     9
@@ -252,6 +253,9 @@
 
 #define IT8152_LAST_IRQ         IT8152_LD_IRQ(IT8152_LD_IRQ_COUNT - 1)
 
+#if NR_IRQS < (IT8152_LAST_IRQ+1)
 #undef NR_IRQS
 #define NR_IRQS (IT8152_LAST_IRQ+1)
 #endif
+
+#endif /* CONFIG_PCI_HOST_ITE8152 */

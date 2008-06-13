@@ -469,8 +469,9 @@ void *__kmalloc_node(size_t size, gfp_t gfp, int node)
 			return ZERO_SIZE_PTR;
 
 		m = slob_alloc(size + align, gfp, align, node);
-		if (m)
-			*m = size;
+		if (!m)
+			return NULL;
+		*m = size;
 		return (void *)m + align;
 	} else {
 		void *ret;
@@ -533,7 +534,8 @@ struct kmem_cache *kmem_cache_create(const char *name, size_t size,
 {
 	struct kmem_cache *c;
 
-	c = slob_alloc(sizeof(struct kmem_cache), flags, 0, -1);
+	c = slob_alloc(sizeof(struct kmem_cache),
+		flags, ARCH_KMALLOC_MINALIGN, -1);
 
 	if (c) {
 		c->name = name;

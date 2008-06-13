@@ -24,7 +24,6 @@ static struct {
 
 static int md_setup_ents __initdata;
 
-extern int mdp_major;
 /*
  * Parse the command-line parameters given our kernel, but do not
  * actually try to invoke the MD device now; that is handled by
@@ -133,7 +132,7 @@ static void __init md_setup_drive(void)
 		else
 			dev = MKDEV(MD_MAJOR, minor);
 		create_dev(name, dev);
-		for (i = 0; i < MD_SB_DISKS && devname != 0; i++) {
+		for (i = 0; i < MD_SB_DISKS && devname != NULL; i++) {
 			char *p;
 			char comp_name[64];
 			u32 rdev;

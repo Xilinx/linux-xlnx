@@ -1,4 +1,3 @@
-/* $Id: socket.h,v 1.17 2001/06/13 16:25:03 davem Exp $ */
 #ifndef _ASM_SOCKET_H
 #define _ASM_SOCKET_H
 
@@ -23,9 +22,6 @@
 #define SO_RCVTIMEO     0x2000
 #define SO_SNDTIMEO     0x4000
 #define SO_ACCEPTCONN	0x8000
-
-/* wha!??? */
-#define SO_DONTLINGER   (~SO_LINGER)  /* Older SunOS compat. hack */
 
 #define SO_SNDBUF	0x1001
 #define SO_RCVBUF	0x1002

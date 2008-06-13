@@ -1425,13 +1425,13 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 	res = netdev_set_master(slave_dev, bond_dev);
 	if (res) {
 		dprintk("Error %d calling netdev_set_master\n", res);
-		goto err_close;
+		goto err_restore_mac;
 	}
 	/* open the slave since the application closed it */
 	res = dev_open(slave_dev);
 	if (res) {
 		dprintk("Openning slave %s failed\n", slave_dev->name);
-		goto err_restore_mac;
+		goto err_unset_master;
 	}
 
 	new_slave->dev = slave_dev;
@@ -1444,7 +1444,7 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 		 */
 		res = bond_alb_init_slave(bond, new_slave);
 		if (res) {
-			goto err_unset_master;
+			goto err_close;
 		}
 	}
 
@@ -1619,7 +1619,7 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 
 	res = bond_create_slave_symlinks(bond_dev, slave_dev);
 	if (res)
-		goto err_unset_master;
+		goto err_close;
 
 	printk(KERN_INFO DRV_NAME
 	       ": %s: enslaving %s as a%s interface with a%s link.\n",
@@ -1631,11 +1631,11 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 	return 0;
 
 /* Undo stages on error */
-err_unset_master:
-	netdev_set_master(slave_dev, NULL);
-
 err_close:
 	dev_close(slave_dev);
+
+err_unset_master:
+	netdev_set_master(slave_dev, NULL);
 
 err_restore_mac:
 	if (!bond->params.fail_over_mac) {
@@ -2629,7 +2629,7 @@ static int bond_arp_rcv(struct sk_buff *skb, struct net_device *dev, struct pack
 	unsigned char *arp_ptr;
 	__be32 sip, tip;
 
-	if (dev->nd_net != &init_net)
+	if (dev_net(dev) != &init_net)
 		goto out;
 
 	if (!(dev->priv_flags & IFF_BONDING) || !(dev->flags & IFF_MASTER))
@@ -2646,10 +2646,7 @@ static int bond_arp_rcv(struct sk_buff *skb, struct net_device *dev, struct pack
 	if (!slave || !slave_do_arp_validate(bond, slave))
 		goto out_unlock;
 
-	/* ARP header, plus 2 device addresses, plus 2 IP addresses.  */
-	if (!pskb_may_pull(skb, (sizeof(struct arphdr) +
-				 (2 * dev->addr_len) +
-				 (2 * sizeof(u32)))))
+	if (!pskb_may_pull(skb, arp_hdr_len(dev)))
 		goto out_unlock;
 
 	arp = arp_hdr(skb);
@@ -3068,8 +3065,6 @@ out:
 
 #ifdef CONFIG_PROC_FS
 
-#define SEQ_START_TOKEN ((void *)1)
-
 static void *bond_info_seq_start(struct seq_file *seq, loff_t *pos)
 {
 	struct bonding *bond = seq->private;
@@ -3287,17 +3282,14 @@ static int bond_create_proc_entry(struct bonding *bond)
 	struct net_device *bond_dev = bond->dev;
 
 	if (bond_proc_dir) {
-		bond->proc_entry = create_proc_entry(bond_dev->name,
-						     S_IRUGO,
-						     bond_proc_dir);
+		bond->proc_entry = proc_create_data(bond_dev->name,
+						    S_IRUGO, bond_proc_dir,
+						    &bond_info_fops, bond);
 		if (bond->proc_entry == NULL) {
 			printk(KERN_WARNING DRV_NAME
 			       ": Warning: Cannot create /proc/net/%s/%s\n",
 			       DRV_NAME, bond_dev->name);
 		} else {
-			bond->proc_entry->data = bond;
-			bond->proc_entry->proc_fops = &bond_info_fops;
-			bond->proc_entry->owner = THIS_MODULE;
 			memcpy(bond->proc_file_name, bond_dev->name, IFNAMSIZ);
 		}
 	}
@@ -3473,7 +3465,7 @@ static int bond_netdev_event(struct notifier_block *this, unsigned long event, v
 {
 	struct net_device *event_dev = (struct net_device *)ptr;
 
-	if (event_dev->nd_net != &init_net)
+	if (dev_net(event_dev) != &init_net)
 		return NOTIFY_DONE;
 
 	dprintk("event_dev: %s, event: %lx\n",
@@ -3510,6 +3502,9 @@ static int bond_inetaddr_event(struct notifier_block *this, unsigned long event,
 	struct net_device *vlan_dev, *event_dev = ifa->ifa_dev->dev;
 	struct bonding *bond, *bond_next;
 	struct vlan_entry *vlan, *vlan_next;
+
+	if (dev_net(ifa->ifa_dev->dev) != &init_net)
+		return NOTIFY_DONE;
 
 	list_for_each_entry_safe(bond, bond_next, &bond_dev_list, bond_list) {
 		if (bond->dev == event_dev) {
@@ -4941,7 +4936,9 @@ int bond_create(char *name, struct bond_params *params, struct bonding **newbond
 	if (res < 0) {
 		rtnl_lock();
 		down_write(&bonding_rwsem);
-		goto out_bond;
+		bond_deinit(bond_dev);
+		unregister_netdevice(bond_dev);
+		goto out_rtnl;
 	}
 
 	return 0;
@@ -4995,9 +4992,10 @@ err:
 		destroy_workqueue(bond->wq);
 	}
 
+	bond_destroy_sysfs();
+
 	rtnl_lock();
 	bond_free_all();
-	bond_destroy_sysfs();
 	rtnl_unlock();
 out:
 	return res;
@@ -5009,9 +5007,10 @@ static void __exit bonding_exit(void)
 	unregister_netdevice_notifier(&bond_netdev_notifier);
 	unregister_inetaddr_notifier(&bond_inetaddr_notifier);
 
+	bond_destroy_sysfs();
+
 	rtnl_lock();
 	bond_free_all();
-	bond_destroy_sysfs();
 	rtnl_unlock();
 }
 

@@ -2621,10 +2621,13 @@ static int __devinit aty_init(struct fb_info *info)
 #endif /* CONFIG_FB_ATY_CT */
 	info->var = var;
 
-	fb_alloc_cmap(&info->cmap, 256, 0);
-
-	if (register_framebuffer(info) < 0)
+	if (fb_alloc_cmap(&info->cmap, 256, 0) < 0)
 		goto aty_init_exit;
+
+	if (register_framebuffer(info) < 0) {
+		fb_dealloc_cmap(&info->cmap);
+		goto aty_init_exit;
+	}
 
 	fb_list = info;
 
@@ -3353,7 +3356,7 @@ static int __devinit atyfb_setup_generic(struct pci_dev *pdev, struct fb_info *i
 
 	info->fix.mmio_start = raddr;
 	par->ati_regbase = ioremap(info->fix.mmio_start, 0x1000);
-	if (par->ati_regbase == 0)
+	if (par->ati_regbase == NULL)
 		return -ENOMEM;
 
 	info->fix.mmio_start += par->aux_start ? 0x400 : 0xc00;

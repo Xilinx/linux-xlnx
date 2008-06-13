@@ -65,15 +65,15 @@
 
 #define VMALLOC_REGION_ID	(REGION_ID(VMALLOC_START))
 #define KERNEL_REGION_ID	(REGION_ID(PAGE_OFFSET))
+#define VMEMMAP_REGION_ID	(0xfUL)
 #define USER_REGION_ID		(0UL)
 
 /*
- * Defines the address of the vmemap area, in the top 16th of the
- * kernel region.
+ * Defines the address of the vmemap area, in its own region
  */
-#define VMEMMAP_BASE (ASM_CONST(CONFIG_KERNEL_START) + \
-					(0xfUL << (REGION_SHIFT - 4)))
-#define vmemmap ((struct page *)VMEMMAP_BASE)
+#define VMEMMAP_BASE		(VMEMMAP_REGION_ID << REGION_SHIFT)
+#define vmemmap			((struct page *)VMEMMAP_BASE)
+
 
 /*
  * Common bits in a linux-style PTE.  These match the bits in the
@@ -239,6 +239,7 @@ static inline int pte_write(pte_t pte) { return pte_val(pte) & _PAGE_RW;}
 static inline int pte_dirty(pte_t pte) { return pte_val(pte) & _PAGE_DIRTY;}
 static inline int pte_young(pte_t pte) { return pte_val(pte) & _PAGE_ACCESSED;}
 static inline int pte_file(pte_t pte) { return pte_val(pte) & _PAGE_FILE;}
+static inline int pte_special(pte_t pte) { return 0; }
 
 static inline void pte_uncache(pte_t pte) { pte_val(pte) |= _PAGE_NO_CACHE; }
 static inline void pte_cache(pte_t pte)   { pte_val(pte) &= ~_PAGE_NO_CACHE; }
@@ -256,6 +257,8 @@ static inline pte_t pte_mkdirty(pte_t pte) {
 static inline pte_t pte_mkyoung(pte_t pte) {
 	pte_val(pte) |= _PAGE_ACCESSED; return pte; }
 static inline pte_t pte_mkhuge(pte_t pte) {
+	return pte; }
+static inline pte_t pte_mkspecial(pte_t pte) {
 	return pte; }
 
 /* Atomic PTE updates */

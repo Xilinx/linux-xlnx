@@ -69,14 +69,9 @@
 
 /***************************** INCLUDES *****************************/
 
-/* This header is used in user-space, therefore need to be sanitised
- * for that purpose. Those includes are usually not compatible with glibc.
- * To know which includes to use in user-space, check iwlib.h. */
-#ifdef __KERNEL__
-#include <linux/types.h>		/* for "caddr_t" et al		*/
+#include <linux/types.h>		/* for __u* and __s* typedefs */
 #include <linux/socket.h>		/* for "struct sockaddr" et al	*/
 #include <linux/if.h>			/* for IFNAMSIZ and co... */
-#endif	/* __KERNEL__ */
 
 /***************************** VERSION *****************************/
 /*
@@ -455,6 +450,7 @@
 #define IW_MODE_REPEAT	4	/* Wireless Repeater (forwarder) */
 #define IW_MODE_SECOND	5	/* Secondary master/repeater (backup) */
 #define IW_MODE_MONITOR	6	/* Passive monitor (listen only) */
+#define IW_MODE_MESH	7	/* Mesh (IEEE 802.11s) network */
 
 /* Statistics flags (bitmask in updated) */
 #define IW_QUAL_QUAL_UPDATED	0x01	/* Value was updated since last read */

@@ -162,7 +162,7 @@ static __init void relocate_vdso(Elf32_Ehdr *ehdr)
 	Elf32_Shdr *shdr;
 	int i;
 
-	BUG_ON(memcmp(ehdr->e_ident, ELFMAG, 4) != 0 ||
+	BUG_ON(memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0 ||
 	       !elf_check_arch_ia32(ehdr) ||
 	       ehdr->e_type != ET_DYN);
 
@@ -210,8 +210,12 @@ static int use_sysenter __read_mostly = -1;
 /* May not be __init: called during resume */
 void syscall32_cpu_init(void)
 {
-	if (use_sysenter < 0)
-		use_sysenter = (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL);
+	if (use_sysenter < 0) {
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
+			use_sysenter = 1;
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_CENTAUR)
+			use_sysenter = 1;
+	}
 
 	/* Load these always in case some future AMD CPU supports
 	   SYSENTER from compat mode too. */
@@ -299,8 +303,6 @@ int __init sysenter_setup(void)
 
 #ifdef CONFIG_X86_32
 	gate_vma_init();
-
-	printk("Compat vDSO mapped to %08lx.\n", __fix_to_virt(FIX_VDSO));
 #endif
 
 	if (!vdso32_sysenter()) {
@@ -324,6 +326,9 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int exstack)
 	unsigned long addr;
 	int ret = 0;
 	bool compat;
+
+	if (vdso_enabled == VDSO_DISABLED)
+		return 0;
 
 	down_write(&mm->mmap_sem);
 

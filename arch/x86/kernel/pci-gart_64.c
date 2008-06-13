@@ -26,6 +26,7 @@
 #include <linux/kdebug.h>
 #include <linux/scatterlist.h>
 #include <linux/iommu-helper.h>
+#include <linux/sysdev.h>
 #include <asm/atomic.h>
 #include <asm/io.h>
 #include <asm/mtrr.h>
@@ -264,9 +265,9 @@ static dma_addr_t dma_map_area(struct device *dev, dma_addr_t phys_mem,
 }
 
 static dma_addr_t
-gart_map_simple(struct device *dev, char *buf, size_t size, int dir)
+gart_map_simple(struct device *dev, phys_addr_t paddr, size_t size, int dir)
 {
-	dma_addr_t map = dma_map_area(dev, virt_to_bus(buf), size, dir);
+	dma_addr_t map = dma_map_area(dev, paddr, size, dir);
 
 	flush_gart();
 
@@ -275,18 +276,17 @@ gart_map_simple(struct device *dev, char *buf, size_t size, int dir)
 
 /* Map a single area into the IOMMU */
 static dma_addr_t
-gart_map_single(struct device *dev, void *addr, size_t size, int dir)
+gart_map_single(struct device *dev, phys_addr_t paddr, size_t size, int dir)
 {
-	unsigned long phys_mem, bus;
+	unsigned long bus;
 
 	if (!dev)
 		dev = &fallback_dev;
 
-	phys_mem = virt_to_phys(addr);
-	if (!need_iommu(dev, phys_mem, size))
-		return phys_mem;
+	if (!need_iommu(dev, paddr, size))
+		return paddr;
 
-	bus = gart_map_simple(dev, addr, size, dir);
+	bus = gart_map_simple(dev, paddr, size, dir);
 
 	return bus;
 }
@@ -549,6 +549,28 @@ static __init unsigned read_aperture(struct pci_dev *dev, u32 *size)
 	return aper_base;
 }
 
+static int gart_resume(struct sys_device *dev)
+{
+	return 0;
+}
+
+static int gart_suspend(struct sys_device *dev, pm_message_t state)
+{
+	return -EINVAL;
+}
+
+static struct sysdev_class gart_sysdev_class = {
+	.name = "gart",
+	.suspend = gart_suspend,
+	.resume = gart_resume,
+
+};
+
+static struct sys_device device_gart = {
+	.id	= 0,
+	.cls	= &gart_sysdev_class,
+};
+
 /*
  * Private Northbridge GATT initialization in case we cannot use the
  * AGP driver for some reason.
@@ -559,7 +581,7 @@ static __init int init_k8_gatt(struct agp_kern_info *info)
 	unsigned aper_base, new_aper_base;
 	struct pci_dev *dev;
 	void *gatt;
-	int i;
+	int i, error;
 
 	printk(KERN_INFO "PCI-DMA: Disabling AGP.\n");
 	aper_size = aper_base = info->aper_size = 0;
@@ -607,6 +629,12 @@ static __init int init_k8_gatt(struct agp_kern_info *info)
 
 		pci_write_config_dword(dev, 0x90, ctl);
 	}
+
+	error = sysdev_class_register(&gart_sysdev_class);
+	if (!error)
+		error = sysdev_register(&device_gart);
+	if (error)
+		panic("Could not register gart_sysdev -- would corrupt data on next suspend");
 	flush_gart();
 
 	printk(KERN_INFO "PCI-DMA: aperture base @ %x size %u KB\n",

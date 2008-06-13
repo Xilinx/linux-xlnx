@@ -28,7 +28,9 @@
 
 /*-------------------------------------------------------------------------*/
 
-#ifdef	CONFIG_USB_PERSIST
+#define	PORT_WAKE_BITS	(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E)
+
+#ifdef	CONFIG_PM
 
 static int ehci_hub_control(
 	struct usb_hcd	*hcd,
@@ -104,15 +106,6 @@ static void ehci_handover_companion_ports(struct ehci_hcd *ehci)
 	ehci->owned_ports = 0;
 }
 
-#else	/* CONFIG_USB_PERSIST */
-
-static inline void ehci_handover_companion_ports(struct ehci_hcd *ehci)
-{ }
-
-#endif
-
-#ifdef	CONFIG_PM
-
 static int ehci_bus_suspend (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
@@ -158,10 +151,10 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		}
 
 		/* enable remote wakeup on all ports */
-		if (device_may_wakeup(&hcd->self.root_hub->dev))
-			t2 |= PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E;
+		if (hcd->self.root_hub->do_remote_wakeup)
+			t2 |= PORT_WAKE_BITS;
 		else
-			t2 &= ~(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E);
+			t2 &= ~PORT_WAKE_BITS;
 
 		if (t1 != t2) {
 			ehci_vdbg (ehci, "port %d, %08x -> %08x\n",
@@ -183,7 +176,7 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 
 	/* allow remote wakeup */
 	mask = INTR_MASK;
-	if (!device_may_wakeup(&hcd->self.root_hub->dev))
+	if (!hcd->self.root_hub->do_remote_wakeup)
 		mask &= ~STS_PCD;
 	ehci_writel(ehci, mask, &ehci->regs->intr_enable);
 	ehci_readl(ehci, &ehci->regs->intr_enable);
@@ -241,8 +234,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	i = HCS_N_PORTS (ehci->hcs_params);
 	while (i--) {
 		temp = ehci_readl(ehci, &ehci->regs->port_status [i]);
-		temp &= ~(PORT_RWC_BITS
-			| PORT_WKOC_E | PORT_WKDISC_E | PORT_WKCONN_E);
+		temp &= ~(PORT_RWC_BITS | PORT_WAKE_BITS);
 		if (test_bit(i, &ehci->bus_suspended) &&
 				(temp & PORT_SUSPEND)) {
 			ehci->reset_done [i] = jiffies + msecs_to_jiffies (20);
@@ -281,9 +273,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	ehci_writel(ehci, INTR_MASK, &ehci->regs->intr_enable);
 
 	spin_unlock_irq (&ehci->lock);
-
-	if (!power_okay)
-		ehci_handover_companion_ports(ehci);
+	ehci_handover_companion_ports(ehci);
 	return 0;
 }
 
@@ -540,12 +530,10 @@ ehci_hub_descriptor (
 	if (HCS_INDICATOR (ehci->hcs_params))
 		temp |= 0x0080;		/* per-port indicators (LEDs) */
 #endif
-	desc->wHubCharacteristics = (__force __u16)cpu_to_le16 (temp);
+	desc->wHubCharacteristics = cpu_to_le16(temp);
 }
 
 /*-------------------------------------------------------------------------*/
-
-#define	PORT_WAKE_BITS	(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E)
 
 static int ehci_hub_control (
 	struct usb_hcd	*hcd,
@@ -621,7 +609,7 @@ static int ehci_hub_control (
 			}
 			break;
 		case USB_PORT_FEAT_C_SUSPEND:
-			/* we auto-clear this feature */
+			clear_bit(wIndex, &ehci->port_c_suspend);
 			break;
 		case USB_PORT_FEAT_POWER:
 			if (HCS_PPC (ehci->hcs_params))
@@ -700,7 +688,7 @@ static int ehci_hub_control (
 			/* resume completed? */
 			else if (time_after_eq(jiffies,
 					ehci->reset_done[wIndex])) {
-				status |= 1 << USB_PORT_FEAT_C_SUSPEND;
+				set_bit(wIndex, &ehci->port_c_suspend);
 				ehci->reset_done[wIndex] = 0;
 
 				/* stop resume signaling */
@@ -777,12 +765,14 @@ static int ehci_hub_control (
 			status |= 1 << USB_PORT_FEAT_RESET;
 		if (temp & PORT_POWER)
 			status |= 1 << USB_PORT_FEAT_POWER;
+		if (test_bit(wIndex, &ehci->port_c_suspend))
+			status |= 1 << USB_PORT_FEAT_C_SUSPEND;
 
-#ifndef	EHCI_VERBOSE_DEBUG
+#ifndef	VERBOSE_DEBUG
 	if (status & ~0xffff)	/* only if wPortChange is interesting */
 #endif
 		dbg_port (ehci, "GetStatus", wIndex + 1, temp);
-		put_unaligned(cpu_to_le32 (status), (__le32 *) buf);
+		put_unaligned_le32(status, buf);
 		break;
 	case SetHubFeature:
 		switch (wValue) {
@@ -812,8 +802,6 @@ static int ehci_hub_control (
 			if ((temp & PORT_PE) == 0
 					|| (temp & PORT_RESET) != 0)
 				goto error;
-			if (device_may_wakeup(&hcd->self.root_hub->dev))
-				temp |= PORT_WAKE_BITS;
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
 			break;
 		case USB_PORT_FEAT_POWER:
@@ -889,3 +877,13 @@ static void ehci_relinquish_port(struct usb_hcd *hcd, int portnum)
 	set_owner(ehci, --portnum, PORT_OWNER);
 }
 
+static int ehci_port_handed_over(struct usb_hcd *hcd, int portnum)
+{
+	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
+	u32 __iomem		*reg;
+
+	if (ehci_is_TDI(ehci))
+		return 0;
+	reg = &ehci->regs->port_status[portnum - 1];
+	return ehci_readl(ehci, reg) & PORT_OWNER;
+}

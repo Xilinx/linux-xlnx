@@ -16,7 +16,7 @@
 	.cache_nice_tries	= 2,			\
 	.busy_idx		= 3,			\
 	.idle_idx		= 2,			\
-	.newidle_idx		= 0,			\
+	.newidle_idx		= 2,			\
 	.wake_idx		= 1,			\
 	.forkexec_idx		= 1,			\
 	.flags			= SD_LOAD_BALANCE	\
@@ -29,6 +29,17 @@
 	.nr_balance_failed	= 0,			\
 }
 
+#define cpu_to_node(cpu)	((void)(cpu),0)
+#define parent_node(node)	((void)(node),0)
+
+#define node_to_cpumask(node)	((void)node, cpu_online_map)
+#define node_to_first_cpu(node)	((void)(node),0)
+
+#define pcibus_to_node(bus)	((void)(bus), -1)
+#define pcibus_to_cpumask(bus)	(pcibus_to_node(bus) == -1 ? \
+					CPU_MASK_ALL : \
+					node_to_cpumask(pcibus_to_node(bus)) \
+				)
 #endif
 
 #include <asm-generic/topology.h>

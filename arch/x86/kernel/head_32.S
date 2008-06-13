@@ -1,5 +1,4 @@
 /*
- *  linux/arch/i386/kernel/head.S -- the 32-bit startup code.
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  *
@@ -190,7 +189,7 @@ default_entry:
 	 * this stage.
 	 */
 
-#define KPMDS ((0x100000000-__PAGE_OFFSET) >> 30) /* Number of kernel PMDs */
+#define KPMDS (((-__PAGE_OFFSET) >> 30) & 3) /* Number of kernel PMDs */
 
 	xorl %ebx,%ebx				/* %ebx is kept at zero */
 
@@ -450,7 +449,7 @@ is386:	movl $2,%ecx		# set MP
 	jmp initialize_secondary # all other CPUs call initialize_secondary
 1:
 #endif /* CONFIG_SMP */
-	jmp start_kernel
+	jmp i386_start_kernel
 
 /*
  * We depend on ET to be correct. This checks for 287/387.
@@ -657,15 +656,16 @@ int_msg:
 	.asciz "Unknown interrupt or fault at EIP %p %p %p\n"
 
 fault_msg:
-	.asciz								\
-/* fault info: */	"BUG: Int %d: CR2 %p\n"				\
-/* pusha regs: */	"     EDI %p  ESI %p  EBP %p  ESP %p\n"		\
-			"     EBX %p  EDX %p  ECX %p  EAX %p\n"		\
-/* fault frame: */	"     err %p  EIP %p   CS %p  flg %p\n"		\
-									\
-			"Stack: %p %p %p %p %p %p %p %p\n"		\
-			"       %p %p %p %p %p %p %p %p\n"		\
-			"       %p %p %p %p %p %p %p %p\n"
+/* fault info: */
+	.ascii "BUG: Int %d: CR2 %p\n"
+/* pusha regs: */
+	.ascii "     EDI %p  ESI %p  EBP %p  ESP %p\n"
+	.ascii "     EBX %p  EDX %p  ECX %p  EAX %p\n"
+/* fault frame: */
+	.ascii "     err %p  EIP %p   CS %p  flg %p\n"
+	.ascii "Stack: %p %p %p %p %p %p %p %p\n"
+	.ascii "       %p %p %p %p %p %p %p %p\n"
+	.asciz "       %p %p %p %p %p %p %p %p\n"
 
 #include "../../x86/xen/xen-head.S"
 

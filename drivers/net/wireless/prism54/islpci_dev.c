@@ -387,7 +387,16 @@ islpci_open(struct net_device *ndev)
 	}
 
 	netif_start_queue(ndev);
-/*      netif_mark_up( ndev ); */
+
+	/* Turn off carrier if in STA or Ad-hoc mode. It will be turned on
+	 * once the firmware receives a trap of being associated
+	 * (GEN_OID_LINKSTATE). In other modes (AP or WDS or monitor) we
+	 * should just leave the carrier on as its expected the firmware
+	 * won't send us a trigger. */
+	if (priv->iw_mode == IW_MODE_INFRA || priv->iw_mode == IW_MODE_ADHOC)
+		netif_carrier_off(ndev);
+	else
+		netif_carrier_on(ndev);
 
 	return 0;
 }
@@ -864,7 +873,7 @@ islpci_setup(struct pci_dev *pdev)
 	mutex_init(&priv->mgmt_lock);
 	priv->mgmt_received = NULL;
 	init_waitqueue_head(&priv->mgmt_wqueue);
-	sema_init(&priv->stats_sem, 1);
+	mutex_init(&priv->stats_lock);
 	spin_lock_init(&priv->slock);
 
 	/* init state machine with off#1 state */

@@ -243,10 +243,8 @@ struct zoran_format {
 #ifdef CONFIG_VIDEO_V4L1_COMPAT
 	int palette;
 #endif
-#ifdef CONFIG_VIDEO_V4L2
 	__u32 fourcc;
 	int colorspace;
-#endif
 	int depth;
 	__u32 flags;
 	__u32 vfespfr;
@@ -271,20 +269,6 @@ struct zoran_v4l_settings {
 	const struct zoran_format *format;	/* capture format */
 };
 
-/* whoops, this one is undeclared if !v4l2 */
-#ifndef CONFIG_VIDEO_V4L2
-struct v4l2_jpegcompression {
-	int quality;
-	int APPn;
-	int APP_len;
-	char APP_data[60];
-	int COM_len;
-	char COM_data[60];
-	__u32 jpeg_markers;
-	__u8 reserved[116];
-};
-#endif
-
 /* jpg-capture/-playback settings */
 struct zoran_jpg_settings {
 	int decimation;		/* this bit is used to set everything to default */
@@ -301,7 +285,7 @@ struct zoran_mapping {
 
 struct zoran_jpg_buffer {
 	struct zoran_mapping *map;
-	u32 *frag_tab;		/* addresses of frag table */
+	__le32 *frag_tab;		/* addresses of frag table */
 	u32 frag_tab_bus;	/* same value cached to save time in ISR */
 	enum zoran_buffer_state state;	/* non-zero if corresponding buffer is in use in grab queue */
 	struct zoran_sync bs;	/* DONE: info to return to application */
@@ -466,7 +450,7 @@ struct zoran {
 	unsigned long jpg_queued_num;	/* count of frames queued since grab/play started */
 
 	/* zr36057's code buffer table */
-	u32 *stat_com;		/* stat_com[i] is indexed by dma_head/tail & BUZ_MASK_STAT_COM */
+	__le32 *stat_com;		/* stat_com[i] is indexed by dma_head/tail & BUZ_MASK_STAT_COM */
 
 	/* (value & BUZ_MASK_FRAME) corresponds to index in pend[] queue */
 	int jpg_pend[BUZ_MAX_FRAME];

@@ -954,7 +954,7 @@ static int netlbl_unlhsh_netdev_handler(struct notifier_block *this,
 	struct net_device *dev = ptr;
 	struct netlbl_unlhsh_iface *iface = NULL;
 
-	if (dev->nd_net != &init_net)
+	if (dev_net(dev) != &init_net)
 		return NOTIFY_DONE;
 
 	/* XXX - should this be a check for NETDEV_DOWN or _UNREGISTER? */
@@ -1339,6 +1339,10 @@ static int netlbl_unlabel_staticlist_gen(u32 cmd,
 
 	if (iface->ifindex > 0) {
 		dev = dev_get_by_index(&init_net, iface->ifindex);
+		if (!dev) {
+			ret_val = -ENODEV;
+			goto list_cb_failure;
+		}
 		ret_val = nla_put_string(cb_arg->skb,
 					 NLBL_UNLABEL_A_IFACE, dev->name);
 		dev_put(dev);
@@ -1776,6 +1780,7 @@ int __init netlbl_unlabel_defconf(void)
 	 * messages so don't worry to much about these values. */
 	security_task_getsecid(current, &audit_info.secid);
 	audit_info.loginuid = 0;
+	audit_info.sessionid = 0;
 
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	if (entry == NULL)

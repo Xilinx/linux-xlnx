@@ -30,6 +30,7 @@
 #include <asm/uaccess.h>
 #include <asm/desc.h>
 #include <asm/user.h>
+#include <asm/i387.h>
 
 #include "fpu_system.h"
 #include "fpu_emu.h"
@@ -146,17 +147,19 @@ asmlinkage void math_emulate(long arg)
 	unsigned long code_limit = 0;	/* Initialized to stop compiler warnings */
 	struct desc_struct code_descriptor;
 
+	if (!used_math()) {
+		if (init_fpu(current)) {
+			do_group_exit(SIGKILL);
+			return;
+		}
+	}
+
 #ifdef RE_ENTRANT_CHECKING
 	if (emulating) {
 		printk("ERROR: wm-FPU-emu is not RE-ENTRANT!\n");
 	}
 	RE_ENTRANT_CHECK_ON;
 #endif /* RE_ENTRANT_CHECKING */
-
-	if (!used_math()) {
-		finit();
-		set_used_math();
-	}
 
 	SETUP_DATA_AREA(arg);
 
@@ -276,6 +279,7 @@ asmlinkage void math_emulate(long arg)
 	entry_sel_off.offset = FPU_ORIG_EIP;
 	entry_sel_off.selector = FPU_CS;
 	entry_sel_off.opcode = (byte1 << 8) | FPU_modrm;
+	entry_sel_off.empty = 0;
 
 	FPU_rm = FPU_modrm & 7;
 
@@ -677,7 +681,7 @@ int fpregs_soft_set(struct task_struct *target,
 		    unsigned int pos, unsigned int count,
 		    const void *kbuf, const void __user *ubuf)
 {
-	struct i387_soft_struct *s387 = &target->thread.i387.soft;
+	struct i387_soft_struct *s387 = &target->thread.xstate->soft;
 	void *space = s387->st_space;
 	int ret;
 	int offset, other, i, tags, regnr, tag, newtop;
@@ -729,7 +733,7 @@ int fpregs_soft_get(struct task_struct *target,
 		    unsigned int pos, unsigned int count,
 		    void *kbuf, void __user *ubuf)
 {
-	struct i387_soft_struct *s387 = &target->thread.i387.soft;
+	struct i387_soft_struct *s387 = &target->thread.xstate->soft;
 	const void *space = s387->st_space;
 	int ret;
 	int offset = (S387->ftop & 7) * 10, other = 80 - offset;

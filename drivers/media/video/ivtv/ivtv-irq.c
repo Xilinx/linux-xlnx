@@ -231,14 +231,14 @@ static void dma_post(struct ivtv_stream *s)
 	struct ivtv_buffer *buf = NULL;
 	struct list_head *p;
 	u32 offset;
-	u32 *u32buf;
+	__le32 *u32buf;
 	int x = 0;
 
 	IVTV_DEBUG_HI_DMA("%s %s completed (%x)\n", ivtv_use_pio(s) ? "PIO" : "DMA",
 			s->name, s->dma_offset);
 	list_for_each(p, &s->q_dma.list) {
 		buf = list_entry(p, struct ivtv_buffer, list);
-		u32buf = (u32 *)buf->buf;
+		u32buf = (__le32 *)buf->buf;
 
 		/* Sync Buffer */
 		ivtv_buf_sync_for_cpu(s, buf);
@@ -384,6 +384,8 @@ static void ivtv_dma_enc_start_xfer(struct ivtv_stream *s)
 	ivtv_stream_sync_for_device(s);
 	write_reg(s->sg_handle, IVTV_REG_ENCDMAADDR);
 	write_reg_sync(read_reg(IVTV_REG_DMAXFER) | 0x02, IVTV_REG_DMAXFER);
+	itv->dma_timer.expires = jiffies + msecs_to_jiffies(300);
+	add_timer(&itv->dma_timer);
 }
 
 static void ivtv_dma_dec_start_xfer(struct ivtv_stream *s)
@@ -398,6 +400,8 @@ static void ivtv_dma_dec_start_xfer(struct ivtv_stream *s)
 	ivtv_stream_sync_for_device(s);
 	write_reg(s->sg_handle, IVTV_REG_DECDMAADDR);
 	write_reg_sync(read_reg(IVTV_REG_DMAXFER) | 0x01, IVTV_REG_DMAXFER);
+	itv->dma_timer.expires = jiffies + msecs_to_jiffies(300);
+	add_timer(&itv->dma_timer);
 }
 
 /* start the encoder DMA */
@@ -440,7 +444,7 @@ static void ivtv_dma_enc_start(struct ivtv_stream *s)
 	}
 
 	s->dma_xfer_cnt++;
-	memcpy(s->sg_processing, s->sg_pending, sizeof(struct ivtv_sg_element) * s->sg_pending_size);
+	memcpy(s->sg_processing, s->sg_pending, sizeof(struct ivtv_sg_host_element) * s->sg_pending_size);
 	s->sg_processing_size = s->sg_pending_size;
 	s->sg_pending_size = 0;
 	s->sg_processed = 0;
@@ -459,8 +463,6 @@ static void ivtv_dma_enc_start(struct ivtv_stream *s)
 		ivtv_dma_enc_start_xfer(s);
 		set_bit(IVTV_F_I_DMA, &itv->i_flags);
 		itv->cur_dma_stream = s->type;
-		itv->dma_timer.expires = jiffies + msecs_to_jiffies(100);
-		add_timer(&itv->dma_timer);
 	}
 }
 
@@ -471,7 +473,7 @@ static void ivtv_dma_dec_start(struct ivtv_stream *s)
 	if (s->q_predma.bytesused)
 		ivtv_queue_move(s, &s->q_predma, NULL, &s->q_dma, s->q_predma.bytesused);
 	s->dma_xfer_cnt++;
-	memcpy(s->sg_processing, s->sg_pending, sizeof(struct ivtv_sg_element) * s->sg_pending_size);
+	memcpy(s->sg_processing, s->sg_pending, sizeof(struct ivtv_sg_host_element) * s->sg_pending_size);
 	s->sg_processing_size = s->sg_pending_size;
 	s->sg_pending_size = 0;
 	s->sg_processed = 0;
@@ -481,8 +483,6 @@ static void ivtv_dma_dec_start(struct ivtv_stream *s)
 	ivtv_dma_dec_start_xfer(s);
 	set_bit(IVTV_F_I_DMA, &itv->i_flags);
 	itv->cur_dma_stream = s->type;
-	itv->dma_timer.expires = jiffies + msecs_to_jiffies(100);
-	add_timer(&itv->dma_timer);
 }
 
 static void ivtv_irq_dma_read(struct ivtv *itv)
@@ -492,10 +492,11 @@ static void ivtv_irq_dma_read(struct ivtv *itv)
 	int hw_stream_type = 0;
 
 	IVTV_DEBUG_HI_IRQ("DEC DMA READ\n");
-	if (!test_bit(IVTV_F_I_UDMA, &itv->i_flags) && itv->cur_dma_stream < 0) {
-		del_timer(&itv->dma_timer);
+
+	del_timer(&itv->dma_timer);
+
+	if (!test_bit(IVTV_F_I_UDMA, &itv->i_flags) && itv->cur_dma_stream < 0)
 		return;
-	}
 
 	if (!test_bit(IVTV_F_I_UDMA, &itv->i_flags)) {
 		s = &itv->streams[itv->cur_dma_stream];
@@ -543,7 +544,6 @@ static void ivtv_irq_dma_read(struct ivtv *itv)
 		}
 		wake_up(&s->waitq);
 	}
-	del_timer(&itv->dma_timer);
 	clear_bit(IVTV_F_I_UDMA, &itv->i_flags);
 	clear_bit(IVTV_F_I_DMA, &itv->i_flags);
 	itv->cur_dma_stream = -1;
@@ -557,10 +557,12 @@ static void ivtv_irq_enc_dma_complete(struct ivtv *itv)
 
 	ivtv_api_get_data(&itv->enc_mbox, IVTV_MBOX_DMA_END, data);
 	IVTV_DEBUG_HI_IRQ("ENC DMA COMPLETE %x %d (%d)\n", data[0], data[1], itv->cur_dma_stream);
-	if (itv->cur_dma_stream < 0) {
-		del_timer(&itv->dma_timer);
+
+	del_timer(&itv->dma_timer);
+
+	if (itv->cur_dma_stream < 0)
 		return;
-	}
+
 	s = &itv->streams[itv->cur_dma_stream];
 	ivtv_stream_sync_for_cpu(s);
 
@@ -585,7 +587,6 @@ static void ivtv_irq_enc_dma_complete(struct ivtv *itv)
 		ivtv_dma_enc_start_xfer(s);
 		return;
 	}
-	del_timer(&itv->dma_timer);
 	clear_bit(IVTV_F_I_DMA, &itv->i_flags);
 	itv->cur_dma_stream = -1;
 	dma_post(s);

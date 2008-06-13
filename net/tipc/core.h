@@ -180,6 +180,12 @@ extern int  tipc_core_start(void);
 extern void tipc_core_stop(void);
 extern int  tipc_core_start_net(void);
 extern void tipc_core_stop_net(void);
+extern int  tipc_handler_start(void);
+extern void tipc_handler_stop(void);
+extern int  tipc_netlink_start(void);
+extern void tipc_netlink_stop(void);
+extern int  tipc_socket_init(void);
+extern void tipc_socket_stop(void);
 
 static inline int delimit(int val, int min, int max)
 {
@@ -273,15 +279,14 @@ static inline void k_term_timer(struct timer_list *timer)
 /*
  * TIPC message buffer code
  *
- * TIPC message buffer headroom reserves space for a link-level header
- * (in case the message is sent off-node),
- * while ensuring TIPC header is word aligned for quicker access
+ * TIPC message buffer headroom reserves space for the worst-case
+ * link-level device header (in case the message is sent off-node).
  *
- * The largest header currently supported is 18 bytes, which is used when
- * the standard 14 byte Ethernet header has 4 added bytes for VLAN info
+ * Note: Headroom should be a multiple of 4 to ensure the TIPC header fields
+ *       are word aligned for quicker access
  */
 
-#define BUF_HEADROOM 20u
+#define BUF_HEADROOM LL_MAX_HEADER
 
 struct tipc_skb_cb {
 	void *handle;
@@ -310,7 +315,7 @@ static inline struct sk_buff *buf_acquire(u32 size)
 	struct sk_buff *skb;
 	unsigned int buf_size = (BUF_HEADROOM + size + 3) & ~3u;
 
-	skb = alloc_skb(buf_size, GFP_ATOMIC);
+	skb = alloc_skb_fclone(buf_size, GFP_ATOMIC);
 	if (skb) {
 		skb_reserve(skb, BUF_HEADROOM);
 		skb_put(skb, size);
@@ -328,8 +333,19 @@ static inline struct sk_buff *buf_acquire(u32 size)
 
 static inline void buf_discard(struct sk_buff *skb)
 {
-	if (likely(skb != NULL))
-		kfree_skb(skb);
+	kfree_skb(skb);
+}
+
+/**
+ * buf_linearize - convert a TIPC message buffer into a single contiguous piece
+ * @skb: message buffer
+ *
+ * Returns 0 on success.
+ */
+
+static inline int buf_linearize(struct sk_buff *skb)
+{
+	return skb_linearize(skb);
 }
 
 #endif

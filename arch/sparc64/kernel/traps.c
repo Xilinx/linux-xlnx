@@ -2091,9 +2091,8 @@ static void user_instruction_dump(unsigned int __user *pc)
 
 void show_stack(struct task_struct *tsk, unsigned long *_ksp)
 {
-	unsigned long pc, fp, thread_base, ksp;
+	unsigned long fp, thread_base, ksp;
 	struct thread_info *tp;
-	struct reg_window *rw;
 	int count = 0;
 
 	ksp = (unsigned long) _ksp;
@@ -2117,15 +2116,29 @@ void show_stack(struct task_struct *tsk, unsigned long *_ksp)
 	printk("\n");
 #endif
 	do {
+		struct sparc_stackf *sf;
+		struct pt_regs *regs;
+		unsigned long pc;
+
 		/* Bogus frame pointer? */
 		if (fp < (thread_base + sizeof(struct thread_info)) ||
 		    fp >= (thread_base + THREAD_SIZE))
 			break;
-		rw = (struct reg_window *)fp;
-		pc = rw->ins[7];
+		sf = (struct sparc_stackf *) fp;
+		regs = (struct pt_regs *) (sf + 1);
+
+		if ((regs->magic & ~0x1ff) == PT_REGS_MAGIC) {
+			if (!(regs->tstate & TSTATE_PRIV))
+				break;
+			pc = regs->tpc;
+			fp = regs->u_regs[UREG_I6] + STACK_BIAS;
+		} else {
+			pc = sf->callers_pc;
+			fp = (unsigned long)sf->fp + STACK_BIAS;
+		}
+
 		printk(" [%016lx] ", pc);
 		print_symbol("%s\n", pc);
-		fp = rw->ins[6] + STACK_BIAS;
 	} while (++count < 16);
 #ifndef CONFIG_KALLSYMS
 	printk("\n");

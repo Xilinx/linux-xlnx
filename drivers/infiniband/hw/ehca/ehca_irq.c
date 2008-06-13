@@ -204,6 +204,8 @@ static void qp_event_callback(struct ehca_shca *shca, u64 eqe,
 
 	read_lock(&ehca_qp_idr_lock);
 	qp = idr_find(&ehca_qp_idr, token);
+	if (qp)
+		atomic_inc(&qp->nr_events);
 	read_unlock(&ehca_qp_idr_lock);
 
 	if (!qp)
@@ -223,6 +225,8 @@ static void qp_event_callback(struct ehca_shca *shca, u64 eqe,
 	if (fatal && qp->ext_type == EQPT_SRQBASE)
 		dispatch_qp_event(shca, qp, IB_EVENT_QP_LAST_WQE_REACHED);
 
+	if (atomic_dec_and_test(&qp->nr_events))
+		wake_up(&qp->wait_completion);
 	return;
 }
 
@@ -633,7 +637,7 @@ static inline int find_next_online_cpu(struct ehca_comp_pool *pool)
 	unsigned long flags;
 
 	WARN_ON_ONCE(!in_interrupt());
-	if (ehca_debug_level)
+	if (ehca_debug_level >= 3)
 		ehca_dmp(&cpu_online_map, sizeof(cpumask_t), "");
 
 	spin_lock_irqsave(&pool->last_cpu_lock, flags);

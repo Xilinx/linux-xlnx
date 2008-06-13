@@ -23,6 +23,8 @@
 #include <linux/kexec.h>
 #include <linux/module.h>
 #include <linux/smp.h>
+#include <linux/err.h>
+#include <linux/debugfs.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/page.h>
@@ -51,6 +53,7 @@ EXPORT_SYMBOL(cpu_data);
  * sh_mv= on the command line, prior to .machvec.init teardown.
  */
 struct sh_machine_vector sh_mv = { .mv_name = "generic", };
+EXPORT_SYMBOL(sh_mv);
 
 #ifdef CONFIG_VT
 struct screen_info screen_info;
@@ -74,10 +77,17 @@ static struct resource data_resource = {
 	.flags = IORESOURCE_BUSY | IORESOURCE_MEM,
 };
 
+static struct resource bss_resource = {
+	.name	= "Kernel bss",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM,
+};
+
 unsigned long memory_start;
 EXPORT_SYMBOL(memory_start);
 unsigned long memory_end = 0;
 EXPORT_SYMBOL(memory_end);
+
+static struct resource mem_resources[MAX_NUMNODES];
 
 int l1i_cache_shape, l1d_cache_shape, l2_cache_shape;
 
@@ -167,6 +177,40 @@ static inline void __init reserve_crashkernel(void)
 {}
 #endif
 
+void __init __add_active_range(unsigned int nid, unsigned long start_pfn,
+						unsigned long end_pfn)
+{
+	struct resource *res = &mem_resources[nid];
+
+	WARN_ON(res->name); /* max one active range per node for now */
+
+	res->name = "System RAM";
+	res->start = start_pfn << PAGE_SHIFT;
+	res->end = (end_pfn << PAGE_SHIFT) - 1;
+	res->flags = IORESOURCE_MEM | IORESOURCE_BUSY;
+	if (request_resource(&iomem_resource, res)) {
+		pr_err("unable to request memory_resource 0x%lx 0x%lx\n",
+		       start_pfn, end_pfn);
+		return;
+	}
+
+	/*
+	 *  We don't know which RAM region contains kernel data,
+	 *  so we try it repeatedly and let the resource manager
+	 *  test it.
+	 */
+	request_resource(res, &code_resource);
+	request_resource(res, &data_resource);
+	request_resource(res, &bss_resource);
+
+#ifdef CONFIG_KEXEC
+	if (crashk_res.start != crashk_res.end)
+		request_resource(res, &crashk_res);
+#endif
+
+	add_active_range(nid, start_pfn, end_pfn);
+}
+
 void __init setup_bootmem_allocator(unsigned long free_pfn)
 {
 	unsigned long bootmap_size;
@@ -179,7 +223,7 @@ void __init setup_bootmem_allocator(unsigned long free_pfn)
 	bootmap_size = init_bootmem_node(NODE_DATA(0), free_pfn,
 					 min_low_pfn, max_low_pfn);
 
-	add_active_range(0, min_low_pfn, max_low_pfn);
+	__add_active_range(0, min_low_pfn, max_low_pfn);
 	register_bootmem_low_pages();
 
 	node_set_online(0);
@@ -248,6 +292,17 @@ void __init setup_arch(char **cmdline_p)
 
 	ROOT_DEV = old_decode_dev(ORIG_ROOT_DEV);
 
+	printk(KERN_NOTICE "Boot params:\n"
+			   "... MOUNT_ROOT_RDONLY - %08lx\n"
+			   "... RAMDISK_FLAGS     - %08lx\n"
+			   "... ORIG_ROOT_DEV     - %08lx\n"
+			   "... LOADER_TYPE       - %08lx\n"
+			   "... INITRD_START      - %08lx\n"
+			   "... INITRD_SIZE       - %08lx\n",
+			   MOUNT_ROOT_RDONLY, RAMDISK_FLAGS,
+			   ORIG_ROOT_DEV, LOADER_TYPE,
+			   INITRD_START, INITRD_SIZE);
+
 #ifdef CONFIG_BLK_DEV_RAM
 	rd_image_start = RAMDISK_FLAGS & RAMDISK_IMAGE_START_MASK;
 	rd_prompt = ((RAMDISK_FLAGS & RAMDISK_PROMPT_FLAG) != 0);
@@ -265,6 +320,8 @@ void __init setup_arch(char **cmdline_p)
 	code_resource.end = virt_to_phys(_etext)-1;
 	data_resource.start = virt_to_phys(_etext);
 	data_resource.end = virt_to_phys(_edata)-1;
+	bss_resource.start = virt_to_phys(__bss_start);
+	bss_resource.end = virt_to_phys(_ebss)-1;
 
 	memory_start = (unsigned long)__va(__MEMORY_START);
 	if (!memory_end)
@@ -333,6 +390,7 @@ static const char *cpu_name[] = {
 	[CPU_SH7343]	= "SH7343",	[CPU_SH7785]	= "SH7785",
 	[CPU_SH7722]	= "SH7722",	[CPU_SHX3]	= "SH-X3",
 	[CPU_SH5_101]	= "SH5-101",	[CPU_SH5_103]	= "SH5-103",
+	[CPU_MXG]	= "MX-G",	[CPU_SH7723]	= "SH7723",
 	[CPU_SH7366]	= "SH7366",	[CPU_SH_NONE]	= "Unknown"
 };
 
@@ -443,3 +501,15 @@ const struct seq_operations cpuinfo_op = {
 	.show	= show_cpuinfo,
 };
 #endif /* CONFIG_PROC_FS */
+
+struct dentry *sh_debugfs_root;
+
+static int __init sh_debugfs_init(void)
+{
+	sh_debugfs_root = debugfs_create_dir("sh", NULL);
+	if (IS_ERR(sh_debugfs_root))
+		return PTR_ERR(sh_debugfs_root);
+
+	return 0;
+}
+arch_initcall(sh_debugfs_init);

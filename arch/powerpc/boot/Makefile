@@ -40,6 +40,7 @@ $(obj)/ebony.o: BOOTCFLAGS += -mcpu=405
 $(obj)/cuboot-taishan.o: BOOTCFLAGS += -mcpu=405
 $(obj)/cuboot-katmai.o: BOOTCFLAGS += -mcpu=405
 $(obj)/treeboot-walnut.o: BOOTCFLAGS += -mcpu=405
+$(obj)/virtex405-head.o: BOOTAFLAGS += -mcpu=405
 
 
 zlib       := inffast.c inflate.c inftrees.c
@@ -64,7 +65,8 @@ src-plat := of.c cuboot-52xx.c cuboot-824x.c cuboot-83xx.c cuboot-85xx.c holly.c
 		cuboot-bamboo.c cuboot-mpc7448hpc2.c cuboot-taishan.c \
 		fixed-head.S ep88xc.c ep405.c \
 		cuboot-katmai.c cuboot-rainier.c redboot-8xx.c ep8248e.c \
-		cuboot-warp.c cuboot-85xx-cpm2.c virtex.c
+		cuboot-warp.c cuboot-85xx-cpm2.c cuboot-yosemite.c simpleboot.c \
+		virtex.c virtex405-head.S
 src-boot := $(src-wlib) $(src-plat) empty.c
 
 src-boot := $(addprefix $(obj)/, $(src-boot))
@@ -97,7 +99,7 @@ $(obj)/zImage.lds $(obj)/zImage.coff.lds $(obj)/zImage.ps3.lds: $(obj)/%: $(srct
 	@cp $< $@
 
 clean-files := $(zlib) $(zlibheader) $(zliblinuxheader) \
-		empty.c zImage zImage.coff.lds zImage.ps3.lds zImage.lds
+		empty.c zImage.coff.lds zImage.ps3.lds zImage.lds
 
 quiet_cmd_bootcc = BOOTCC  $@
       cmd_bootcc = $(CROSS32CC) -Wp,-MD,$(depfile) $(BOOTCFLAGS) -c -o $@ $<
@@ -192,7 +194,7 @@ image-$(CONFIG_PPC_CHRP)		+= zImage.chrp
 image-$(CONFIG_PPC_EFIKA)		+= zImage.chrp
 image-$(CONFIG_PPC_PMAC)		+= zImage.pmac
 image-$(CONFIG_PPC_HOLLY)		+= zImage.holly
-image-$(CONFIG_PPC_PRPMC2800)		+= zImage.prpmc2800
+image-$(CONFIG_PPC_PRPMC2800)		+= dtbImage.prpmc2800
 image-$(CONFIG_PPC_ISERIES)		+= zImage.iseries
 image-$(CONFIG_DEFAULT_UIMAGE)		+= uImage
 image-$(CONFIG_XILINX_VIRTEX)		+= zImage.virtex
@@ -217,10 +219,11 @@ image-$(CONFIG_RAINIER)			+= cuImage.rainier
 image-$(CONFIG_TAISHAN)			+= cuImage.taishan
 image-$(CONFIG_KATMAI)			+= cuImage.katmai
 image-$(CONFIG_WARP)			+= cuImage.warp
+image-$(CONFIG_YOSEMITE)		+= cuImage.yosemite
 
 # Board ports in arch/powerpc/platform/8xx/Kconfig
-image-$(CONFIG_PPC_MPC86XADS)		+= cuImage.mpc866ads
-image-$(CONFIG_PPC_MPC885ADS)		+= cuImage.mpc885ads
+image-$(CONFIG_MPC86XADS)		+= cuImage.mpc866ads
+image-$(CONFIG_MPC885ADS)		+= cuImage.mpc885ads
 image-$(CONFIG_PPC_EP88XC)		+= dtbImage.ep88xc
 image-$(CONFIG_PPC_ADDER875)		+= cuImage.adder875-uboot \
 					   dtbImage.adder875-redboot
@@ -256,6 +259,7 @@ image-$(CONFIG_TQM8555)			+= cuImage.tqm8555
 image-$(CONFIG_TQM8560)			+= cuImage.tqm8560
 image-$(CONFIG_SBC8548)			+= cuImage.sbc8548
 image-$(CONFIG_SBC8560)			+= cuImage.sbc8560
+image-$(CONFIG_KSI8560)			+= cuImage.ksi8560
 
 # Board ports in arch/powerpc/platform/embedded6xx/Kconfig
 image-$(CONFIG_STORCENTER)		+= cuImage.storcenter
@@ -295,11 +299,11 @@ $(obj)/zImage.initrd.%: vmlinux $(wrapperbits) $(dts)
 $(obj)/zImage.%: vmlinux $(wrapperbits) $(dts)
 	$(call if_changed,wrap,$*,$(dts))
 # dtbImage% - a dtbImage is a zImage with an embedded device tree blob
-$(obj)/dtbImage.initrd.%: vmlinux $(wrapperbits) $(dtstree)/%.dts
-	$(call if_changed,wrap,$*,$(dtstree)/$*.dts,,$(obj)/ramdisk.image.gz)
+$(obj)/dtbImage.initrd.%: vmlinux $(wrapperbits) $(obj)/%.dtb
+	$(call if_changed,wrap,$*,,$(obj)/$*.dtb,$(obj)/ramdisk.image.gz)
 
-$(obj)/dtbImage.%: vmlinux $(wrapperbits) $(dtstree)/%.dts
-	$(call if_changed,wrap,$*,$(dtstree)/$*.dts)
+$(obj)/dtbImage.%: vmlinux $(wrapperbits) $(obj)/%.dtb
+	$(call if_changed,wrap,$*,,$(obj)/$*.dtb)
 
 # This cannot be in the root of $(src) as the zImage rule always adds a $(obj)
 # prefix
@@ -312,14 +316,24 @@ $(obj)/zImage.iseries: vmlinux
 $(obj)/uImage: vmlinux $(wrapperbits)
 	$(call if_changed,wrap,uboot)
 
-$(obj)/cuImage.%: vmlinux $(dtstree)/%.dts $(wrapperbits)
-	$(call if_changed,wrap,cuboot-$*,$(dtstree)/$*.dts)
+$(obj)/cuImage.%: vmlinux $(obj)/%.dtb $(wrapperbits)
+	$(call if_changed,wrap,cuboot-$*,,$(obj)/$*.dtb)
 
-$(obj)/treeImage.initrd.%: vmlinux $(dtstree)/%.dts $(wrapperbits)
-	$(call if_changed,wrap,treeboot-$*,$(dtstree)/$*.dts,,$(obj)/ramdisk.image.gz)
+$(obj)/simpleImage.initrd.%: vmlinux $(obj)/%.dtb $(wrapperbits)
+	$(call if_changed,wrap,simpleboot-$*,,$(obj)/$*.dtb,$(obj)/ramdisk.image.gz)
 
-$(obj)/treeImage.%: vmlinux $(dtstree)/%.dts $(wrapperbits)
-	$(call if_changed,wrap,treeboot-$*,$(dtstree)/$*.dts)
+$(obj)/simpleImage.%: vmlinux $(obj)/%.dtb $(wrapperbits)
+	$(call if_changed,wrap,simpleboot-$*,,$(obj)/$*.dtb)
+
+$(obj)/treeImage.initrd.%: vmlinux $(obj)/%.dtb $(wrapperbits)
+	$(call if_changed,wrap,treeboot-$*,,$(obj)/$*.dtb,$(obj)/ramdisk.image.gz)
+
+$(obj)/treeImage.%: vmlinux $(obj)/%.dtb $(wrapperbits)
+	$(call if_changed,wrap,treeboot-$*,,$(obj)/$*.dtb)
+
+# Rule to build device tree blobs
+$(obj)/%.dtb: $(dtstree)/%.dts $(obj)/dtc
+	$(obj)/dtc -O dtb -o $(obj)/$*.dtb -b 0 $(DTS_FLAGS) $(dtstree)/$*.dts
 
 $(obj)/zImage.raw: vmlinux $(dts) $(wrapperbits)
 	$(call if_changed,wrap,raw,$(dts))
@@ -338,8 +352,10 @@ install: $(CONFIGURE) $(addprefix $(obj)/, $(image-y))
 	sh -x $(srctree)/$(src)/install.sh "$(KERNELRELEASE)" vmlinux System.map "$(INSTALL_PATH)" $<
 
 # anything not in $(targets)
-clean-files += $(image-) $(initrd-) zImage zImage.initrd cuImage.* treeImage.* \
-	otheros.bld
+clean-files += $(image-) $(initrd-) cuImage.* dtbImage.* treeImage.* \
+	zImage zImage.initrd zImage.chrp zImage.coff zImage.holly \
+	zImage.iseries zImage.miboot zImage.pmac zImage.pseries \
+	otheros.bld *.dtb
 
 # clean up files cached by wrapper
 clean-kernel := vmlinux.strip vmlinux.bin
