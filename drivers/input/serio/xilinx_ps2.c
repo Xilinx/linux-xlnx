@@ -30,7 +30,6 @@
 #include <asm/io.h>
 
 #ifdef CONFIG_OF		/* For open firmware */
- #include <linux/of.h>
  #include <linux/of_device.h>
  #include <linux/of_platform.h>
 #endif /* CONFIG_OF */
@@ -265,10 +264,6 @@ static int xps2_probe(struct device *dev)
 	/* Find irq number, map the control registers in */
 	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!regs_res || !irq_res) {
-		dev_err(dev,  "IO resource(s) not found\n");
-		return -ENODEV;
-	}
 	return xps2_setup(dev, pdev->id, regs_res, irq_res);
 }
 
@@ -293,13 +288,11 @@ static int xps2_setup(struct device *dev, int id, struct resource *regs_res,
 	spin_lock_init(&drvdata->lock);
 	dev_set_drvdata(dev, (void *)drvdata);
 
-#ifdef CONFIG_OF
 	if (!regs_res || !irq_res) {
 		dev_err(dev, "IO resource(s) not found\n");
 		retval = -EFAULT;
 		goto failed1;
 	}
-#endif
 
 	drvdata->irq = irq_res->start;
 	remap_size = regs_res->end - regs_res->start + 1;
@@ -314,8 +307,7 @@ static int xps2_setup(struct device *dev, int id, struct resource *regs_res,
 	/* Fill in configuration data and add them to the list */
 	drvdata->phys_addr = regs_res->start;
 	drvdata->remap_size = remap_size;
-	drvdata->device_id = id;
-	drvdata->base_address= ioremap(regs_res->start, remap_size);
+	drvdata->base_address = ioremap(regs_res->start, remap_size);
 	if (drvdata->base_address == NULL) {
 
 		dev_err(dev,"Couldn't ioremap memory at 0x%08X\n",
@@ -432,7 +424,7 @@ static int __devexit xps2_of_remove(struct of_device *dev)
 	return xps2_remove(&dev->dev);
 }
 
-static struct of_device_id xps2_of_match[] = {
+static struct of_device_id __devinitdata xps2_of_match[] = {
 	{ .compatible = "xlnx,xps-ps2-1.00.a", },
 	{ /* end of list */ },
 };
@@ -467,7 +459,7 @@ static void __exit xps2_cleanup(void)
 module_init(xps2_init);
 module_exit(xps2_cleanup);
 
-MODULE_AUTHOR("MontaVista Software, Inc. <source@mvista.com>");
+MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION(DRIVER_DESCRIPTION);
 MODULE_LICENSE("GPL");
 

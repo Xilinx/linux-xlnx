@@ -77,7 +77,6 @@
 
 struct xps2data {
 	int irq;
-	u32 device_id;
 	u32 phys_addr;
 	u32 remap_size;
 	spinlock_t lock;
