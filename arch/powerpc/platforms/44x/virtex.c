@@ -1,7 +1,9 @@
 /*
- * Xilinx Virtex 5FXT based board support
+ * Xilinx Virtex 5FXT based board support, derived from
+ * the Xilinx Virtex (IIpro & 4FX) based board support
  *
  * Copyright 2007 Secret Lab Technologies Ltd.
+ * Copyright 2008 Xilinx, Inc.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2. This program is licensed "as is" without any warranty of any
@@ -42,17 +44,17 @@ static int __init virtex_probe(void)
 {
 	unsigned long root = of_get_flat_dt_root();
 
-	if (!of_flat_dt_is_compatible(root, "xlnx,virtex"))
+	if (!of_flat_dt_is_compatible(root, "xlnx,virtex440"))
 		return 0;
 
 	return 1;
 }
 
 define_machine(virtex) {
-	.name			= "Xilinx Virtex",
+	.name			= "Xilinx Virtex440",
 	.probe			= virtex_probe,
 	.init_IRQ		= xilinx_intc_init_tree,
 	.get_irq		= xilinx_intc_get_irq,
 	.calibrate_decr		= generic_calibrate_decr,
-	.restart                = ppc4xx_reset_system,
+	.restart		= ppc4xx_reset_system,
 };

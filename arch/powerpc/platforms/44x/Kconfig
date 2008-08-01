@@ -17,6 +17,15 @@ config EBONY
 	help
 	  This option enables support for the IBM PPC440GP evaluation board.
 
+config SAM440EP
+        bool "Sam440ep"
+	depends on 44x
+        default n
+        select 440EP
+        select PCI
+        help
+          This option enables support for the ACube Sam440ep board.
+
 config SEQUOIA
 	bool "Sequoia"
 	depends on 44x
@@ -102,57 +111,21 @@ config YOSEMITE
 #	help
 #	  This option enables support for the IBM PPC440GX evaluation board.
 
-config XILINX_ML507
-	bool "Xilinx ML507 Reference System"
+config XILINX_VIRTEX440_GENERIC_BOARD
+	bool "Generic Xilinx Virtex 440 board"
 	depends on 44x
 	default n
-	select XILINX_ML5XX
-	select WANT_DEVICE_TREE
+	select XILINX_VIRTEX_5_FXT
 	help
-	  This option enables support for the Xilinx ML507 board.
+	  This option enables generic support for Xilinx Virtex based boards
+	  that use a 440 based processor in the Virtex 5 FXT FPGA architecture.
 
-config XILINX_DISABLE_44x_CACHE
-	bool "Disable PPC440 caches"
-	depends on XILINX_ML507
-	help
-	  This option allows to disable the caches on the PPC440. Some early
-	  PPC440 soft-cores do not work with caches enabled. Also, some early
-	  ML507 boards do have a non-functioning cache. If you have any
-	  problems running the ML5, try using this option.
+	  The generic virtex board support matches any device tree which
+	  specifies 'xlnx,virtex440' in its compatible field.  This includes
+	  the Xilinx ML5xx reference designs using the powerpc core.
 
-config PPC_FPU
-	depends on XILINX_VIRTEX_5_FXT
-	bool "Enable Xilinx Soft FPU"
-	help
-	  This option enables the Xilinx Soft FPU attached to the APU
-	  interface of the PPC440 (requires DP_FULL FPU pcore).
-
-config XILINX_ERRONEOUS_EXCEPTIONS_WORKAROUND
-	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
-	bool "Enable Spurious Program Exceptions Workaround"
-	default y
-	help
-	  This option enables a workaround for a bug in the APU controller of
-	  the PPC440 processor block in Virtex-5 FXT. See the answer record 
-	  at http://www.xilinx.com/support/answers/30579.htm for more details.
-
-config XILINX_FPU_LOAD_CORRUPTION_WORKAROUND
-	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
-	bool "Enable Xilinx FPU prefetch workaround"
-	default y
-	help
-	  This option enables a workaround for a bug in the APU controller of
-	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
-	  http://www.xilinx.com/support/answers/30529.htm for more details.
-
-config XILINX_FPU_ITLB_EXCEPTION_WORKAROUND
-	depends on XILINX_VIRTEX_5_FXT && PPC_FPU
-	bool "Enable Xilinx FPU TLB instruction miss workaround"
-	default y
-	help
-	  This option enables a workaround for a bug in the APU controller of
-	  the PPC440 processor block in Virtex-5 FXT. See the answer record at
-	  http://www.xilinx.com/support/answers/30570.htm for more details.
+	  Most Virtex 5 designs should use this unless it needs to do some
+	  special configuration at board probe time.
 
 # 44x specific CPU modules, selected based on the board above.
 config 440EP
@@ -205,14 +178,8 @@ config 460EX
 config IBM440EP_ERR42
 	bool
 
-
-# Xilinx specific config options.
-config XILINX_ML5XX
-	bool
-	select XILINX_VIRTEX
-
+# Xilinx Virtex 5 FXT FPGA architecture, selected by a Xilinx board above
 config XILINX_VIRTEX_5_FXT
 	bool
-	depends on XILINX_ML507
-	default y
+	select XILINX_VIRTEX
 

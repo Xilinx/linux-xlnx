@@ -23,3 +23,4 @@ obj-$(CONFIG_SERIO_LIBPS2)	+= libps2.o
 obj-$(CONFIG_SERIO_XILINXPS2)		+= xilinx_ps2/
 obj-$(CONFIG_SERIO_XILINX_XPS_PS2)	+= xilinx_ps2.o
 obj-$(CONFIG_SERIO_RAW)		+= serio_raw.o
+obj-$(CONFIG_SERIO_XILINX_XPS_PS2)	+= xilinx_ps2.o

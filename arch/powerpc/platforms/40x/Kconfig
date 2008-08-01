@@ -82,7 +82,6 @@ config XILINX_VIRTEX_GENERIC_BOARD
 	default n
 	select XILINX_VIRTEX_II_PRO
 	select XILINX_VIRTEX_4_FX
-	select WANT_DEVICE_TREE
 	help
 	  This option enables generic support for Xilinx Virtex based boards.
 
@@ -127,12 +126,10 @@ config XILINX_VIRTEX_II_PRO
 	select XILINX_VIRTEX
 	select IBM405_ERR77
 	select IBM405_ERR51
-	select WANT_DEVICE_TREE
 
 config XILINX_VIRTEX_4_FX
 	bool
 	select XILINX_VIRTEX
-	select WANT_DEVICE_TREE
 
 config STB03xxx
 	bool
