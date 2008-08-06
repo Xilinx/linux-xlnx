@@ -199,7 +199,6 @@ image-$(CONFIG_PPC_HOLLY)		+= zImage.holly
 image-$(CONFIG_PPC_PRPMC2800)		+= dtbImage.prpmc2800
 image-$(CONFIG_PPC_ISERIES)		+= zImage.iseries
 image-$(CONFIG_DEFAULT_UIMAGE)		+= uImage
-image-$(CONFIG_XILINX_VIRTEX)		+= zImage.virtex
 
 #
 # Targets which embed a device tree blob
@@ -290,24 +289,14 @@ targets	+= $(image-y) $(initrd-y)
 
 $(addprefix $(obj)/, $(initrd-y)): $(obj)/ramdisk.image.gz
 
-# If CONFIG_WANT_DEVICE_TREE is set and CONFIG_DEVICE_TREE isn't an
-# empty string, define 'dts' to be path to the dts
-# CONFIG_DEVICE_TREE will have "" around it, make sure to strip them
-ifeq ($(CONFIG_WANT_DEVICE_TREE),y)
-ifneq ($(CONFIG_DEVICE_TREE),"")
-dts = $(if $(shell echo $(CONFIG_DEVICE_TREE) | grep '^/'),\
-	,$(srctree)/$(src)/dts/)$(CONFIG_DEVICE_TREE:"%"=%)
-endif
-endif
-
 # Don't put the ramdisk on the pattern rule; when its missing make will try
 # the pattern rule with less dependencies that also matches (even with the
 # hard dependency listed).
-$(obj)/zImage.initrd.%: vmlinux $(wrapperbits) $(dts)
-	$(call if_changed,wrap,$*,$(dts),,$(obj)/ramdisk.image.gz)
+$(obj)/zImage.initrd.%: vmlinux $(wrapperbits)
+	$(call if_changed,wrap,$*,,,$(obj)/ramdisk.image.gz)
 
-$(obj)/zImage.%: vmlinux $(wrapperbits) $(dts)
-	$(call if_changed,wrap,$*,$(dts))
+$(obj)/zImage.%: vmlinux $(wrapperbits)
+	$(call if_changed,wrap,$*)
 # dtbImage% - a dtbImage is a zImage with an embedded device tree blob
 $(obj)/dtbImage.initrd.%: vmlinux $(wrapperbits) $(obj)/%.dtb
 	$(call if_changed,wrap,$*,,$(obj)/$*.dtb,$(obj)/ramdisk.image.gz)
@@ -344,9 +333,6 @@ $(obj)/treeImage.%: vmlinux $(obj)/%.dtb $(wrapperbits)
 # Rule to build device tree blobs
 $(obj)/%.dtb: $(dtstree)/%.dts $(obj)/dtc
 	$(obj)/dtc -O dtb -o $(obj)/$*.dtb -b 0 $(DTS_FLAGS) $(dtstree)/$*.dts
-
-$(obj)/zImage.raw: vmlinux $(dts) $(wrapperbits)
-	$(call if_changed,wrap,raw,$(dts))
 
 # If there isn't a platform selected then just strip the vmlinux.
 ifeq (,$(image-y))
