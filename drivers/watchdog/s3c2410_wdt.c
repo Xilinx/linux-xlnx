@@ -49,7 +49,7 @@
 #include <linux/uaccess.h>
 #include <linux/io.h>
 
-#include <asm/arch/map.h>
+#include <mach/map.h>
 
 #undef S3C_VA_WATCHDOG
 #define S3C_VA_WATCHDOG (0)
@@ -112,17 +112,6 @@ static void s3c2410wdt_keepalive(void)
 {
 	spin_lock(&wdt_lock);
 	writel(wdt_count, wdt_base + S3C2410_WTCNT);
-	spin_unlock(&wdt_lock);
-}
-
-static void __s3c2410wdt_stop(void)
-{
-	unsigned long wtcon;
-
-	spin_lock(&wdt_lock);
-	wtcon = readl(wdt_base + S3C2410_WTCON);
-	wtcon &= ~(S3C2410_WTCON_ENABLE | S3C2410_WTCON_RSTEN);
-	writel(wtcon, wdt_base + S3C2410_WTCON);
 	spin_unlock(&wdt_lock);
 }
 
@@ -305,8 +294,6 @@ static long s3c2410wdt_ioctl(struct file *file,	unsigned int cmd,
 	int new_margin;
 
 	switch (cmd) {
-	default:
-		return -ENOTTY;
 	case WDIOC_GETSUPPORT:
 		return copy_to_user(argp, &s3c2410_wdt_ident,
 			sizeof(s3c2410_wdt_ident)) ? -EFAULT : 0;
@@ -325,6 +312,8 @@ static long s3c2410wdt_ioctl(struct file *file,	unsigned int cmd,
 		return put_user(tmr_margin, p);
 	case WDIOC_GETTIMEOUT:
 		return put_user(tmr_margin, p);
+	default:
+		return -ENOTTY;
 	}
 }
 
