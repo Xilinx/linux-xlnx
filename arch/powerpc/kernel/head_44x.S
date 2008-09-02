@@ -156,7 +156,19 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	tlbwe	r5,r0,PPC44x_TLB_ATTRIB	/* Load the attrib/access fields */
 
 	/* Force context change */
+#ifdef CONFIG_XILINX_VIRTEX_5_FXT
+	/* We can not use the content of the MSR register when we are using XMD
+	 * to connect to a ml5xx board as XMD changes the contents of the MSR
+	 * register. We load the default value instead. 
+	 *
+	 * EDK 10.1 fixes this issue so this should be removed once the automated 
+	 * testing is updated to 10.1 tools.
+	 */
+        lis     r0,MSR_KERNEL@h
+        ori     r0,r0,MSR_KERNEL@l
+#else
 	mfmsr	r0
+#endif
 	mtspr	SPRN_SRR1, r0
 	lis	r0,3f@h
 	ori	r0,r0,3f@l
