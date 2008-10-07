@@ -811,11 +811,12 @@ static int string_to_context_struct(struct policydb *pol,
 	/* Check the validity of the new context. */
 	if (!policydb_context_isvalid(pol, ctx)) {
 		rc = -EINVAL;
-		context_destroy(ctx);
 		goto out;
 	}
 	rc = 0;
 out:
+	if (rc)
+		context_destroy(ctx);
 	return rc;
 }
 
@@ -868,8 +869,7 @@ static int security_context_to_sid_core(const char *scontext, u32 scontext_len,
 	} else if (rc)
 		goto out;
 	rc = sidtab_context_to_sid(&sidtab, &context, sid);
-	if (rc)
-		context_destroy(&context);
+	context_destroy(&context);
 out:
 	read_unlock(&policy_rwlock);
 	kfree(scontext2);
@@ -2737,6 +2737,7 @@ int security_netlbl_secattr_to_sid(struct netlbl_lsm_secattr *secattr,
 		if (ctx == NULL)
 			goto netlbl_secattr_to_sid_return;
 
+		context_init(&ctx_new);
 		ctx_new.user = ctx->user;
 		ctx_new.role = ctx->role;
 		ctx_new.type = ctx->type;
@@ -2745,13 +2746,9 @@ int security_netlbl_secattr_to_sid(struct netlbl_lsm_secattr *secattr,
 			if (ebitmap_netlbl_import(&ctx_new.range.level[0].cat,
 						  secattr->attr.mls.cat) != 0)
 				goto netlbl_secattr_to_sid_return;
-			ctx_new.range.level[1].cat.highbit =
-				ctx_new.range.level[0].cat.highbit;
-			ctx_new.range.level[1].cat.node =
-				ctx_new.range.level[0].cat.node;
-		} else {
-			ebitmap_init(&ctx_new.range.level[0].cat);
-			ebitmap_init(&ctx_new.range.level[1].cat);
+			memcpy(&ctx_new.range.level[1].cat,
+			       &ctx_new.range.level[0].cat,
+			       sizeof(ctx_new.range.level[0].cat));
 		}
 		if (mls_context_isvalid(&policydb, &ctx_new) != 1)
 			goto netlbl_secattr_to_sid_return_cleanup;

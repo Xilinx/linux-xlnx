@@ -34,7 +34,6 @@
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/delay.h>
@@ -584,7 +583,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	/* out 4 */
 	{"Out4 Mux", "VREF", "VREF"},
-	{"Out4 Mux", "Capture ST", "Capture ST Mixer"},
+	{"Out4 Mux", "Capture ST", "Playback Mixer"},
 	{"Out4 Mux", "LOUT2", "LOUT2"},
 	{"Out 4", NULL, "Out4 Mux"},
 	{"OUT4", NULL, "Out 4"},
@@ -608,7 +607,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	/* Capture Right Mux */
 	{"Capture Right Mux", "PGA", "Right Capture Volume"},
 	{"Capture Right Mux", "Line or RXP-RXN", "Line Right Mux"},
-	{"Capture Right Mux", "Sidetone", "Capture ST Mixer"},
+	{"Capture Right Mux", "Sidetone", "Playback Mixer"},
 
 	/* Mono Capture mixer-mux */
 	{"Capture Right Mixer", "Stereo", "Capture Right Mux"},
@@ -1661,10 +1660,9 @@ static int wm8753_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.addr = addr;
 
 	i2c =  kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
-	if (!i2c) {
-		kfree(codec);
+	if (!i2c)
 		return -ENOMEM;
-	}
+
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 
@@ -1683,7 +1681,6 @@ static int wm8753_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	return ret;
 
 err:
-	kfree(codec);
 	kfree(i2c);
 	return ret;
 }
@@ -1760,6 +1757,11 @@ static int wm8753_probe(struct platform_device *pdev)
 #else
 		/* Add other interfaces here */
 #endif
+
+	if (ret != 0) {
+		kfree(codec->private_data);
+		kfree(codec);
+	}
 	return ret;
 }
 
