@@ -69,6 +69,7 @@
 #if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/of_i2c.h>
 #endif
 
 MODULE_AUTHOR("MontaVista Software, Inc. <source@mvista.com>");
@@ -448,6 +449,7 @@ static int __devexit xilinx_iic_remove(struct device *device)
 /** Shared device initialization code */
 static int __devinit xilinx_iic_setup(
 				struct device *device,
+				struct device_node *node,
 				struct resource *r_mem,
 				struct resource *r_irq,
 				u32 ten_bit_addr, 
@@ -549,6 +551,10 @@ static int __devinit xilinx_iic_setup(
 			kfree(scan_results);
 		}
 	}
+	
+	if (node) {
+		of_register_i2c_devices(&dev->adap, node);
+	}
 
 	error = device_create_file(device, &dev_attr_scan);
       out:
@@ -577,7 +583,7 @@ static int __devinit xilinx_iic_probe(struct device *device)
 		return -ENODEV;
 	}
 
-        return xilinx_iic_setup(device, r_mem, r_irq, 0, 0);
+        return xilinx_iic_setup(device, 0, r_mem, r_irq, 0, 0);
 }
 
 #ifdef CONFIG_OF
@@ -629,7 +635,7 @@ static int __devinit xilinx_iic_of_probe(struct of_device *ofdev, const struct o
 	ten_bit_addr = get_u32(ofdev, "xlnx,ten-bit-adr");
 	gpo_width = get_u32(ofdev, "xlnx,gpo-width");
 
-        return xilinx_iic_setup(&ofdev->dev, r_mem, r_irq, ten_bit_addr, gpo_width);
+        return xilinx_iic_setup(&ofdev->dev, ofdev->node, r_mem, r_irq, ten_bit_addr, gpo_width);
 }
 
 static int __devexit xilinx_iic_of_remove(struct of_device *ofdev)
