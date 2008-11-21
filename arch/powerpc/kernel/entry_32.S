@@ -1169,7 +1169,7 @@ machine_check_in_rtas:
 
 #endif /* CONFIG_PPC_RTAS */
 
-#ifdef CONFIG_FTRACE
+#ifdef CONFIG_FUNCTION_TRACER
 #ifdef CONFIG_DYNAMIC_FTRACE
 _GLOBAL(mcount)
 _GLOBAL(_mcount)
