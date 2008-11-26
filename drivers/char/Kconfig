@@ -863,13 +863,6 @@ config DTLK
 	  To compile this driver as a module, choose M here: the
 	  module will be called dtlk.
 
-config XILINX_GPIO
-	tristate "Xilinx OPB GPIO Support"
-	depends on XILINX_DRIVERS
-	select XILINX_EDK
-	help
-		This option enables support for Xilinx GPIO.
-
 config XILINX_HWICAP
 	tristate "Xilinx HWICAP Support"
 	depends on XILINX_DRIVERS
