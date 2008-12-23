@@ -287,8 +287,9 @@ static int xilinxfb_assign(struct device *dev, dcr_host_t dcr_host,
 	}
 
 	/* Put a banner in the log (for DEBUG) */
-	dev_dbg(dev, "fb: phys=%p, virt=%p, size=%x\n",
-		(void*)drvdata->fb_phys, drvdata->fb_virt, fbsize);
+	dev_dbg(dev, "fb: phys=%llx, virt=%p, size=%x\n",
+		(unsigned long long) drvdata->fb_phys, drvdata->fb_virt,
+		fbsize);
 
 	return 0;	/* success */
 
