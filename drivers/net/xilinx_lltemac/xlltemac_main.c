@@ -518,7 +518,7 @@ typedef enum DUPLEX { UNKNOWN_DUPLEX, HALF_DUPLEX, FULL_DUPLEX } DUPLEX;
 
 int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int retries = 2;
 	int wait_count;
 	u16 phy_reg0 = BMCR_ANENABLE | BMCR_ANRESTART;
@@ -727,7 +727,7 @@ void set_mac_speed(struct net_local *lp)
  */
 static void reset(struct net_device *dev, u32 line_num)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 TxThreshold, TxWaitBound, RxThreshold, RxWaitBound;
 	u32 Options;
 	static u32 reset_cnt = 0;
@@ -828,7 +828,7 @@ static void reset(struct net_device *dev, u32 line_num)
  */
 static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u16 reg;
 
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, &reg);
@@ -855,7 +855,7 @@ static void poll_gmii(unsigned long data)
 	int netif_carrier;
 
 	dev = (struct net_device *) data;
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 
 	/* First, find out what's going on with the PHY. */
 	if (get_phy_status(dev, &phy_duplex, &phy_carrier)) {
@@ -887,7 +887,7 @@ static void poll_gmii(unsigned long data)
 static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/*
 	 * All we care about here is the RxRject interrupts. Explanation below:
@@ -933,7 +933,7 @@ DECLARE_TASKLET(FifoRecvBH, FifoRecvHandler, 0);
 static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 irq_status;
 
 	unsigned long flags;
@@ -998,7 +998,7 @@ static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct list_head *cur_lp;
 
         unsigned long flags;
@@ -1034,7 +1034,7 @@ static irqreturn_t xenet_dma_tx_interrupt(int irq, void *dev_id)
 {
 	u32 irq_status;
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct list_head *cur_lp;
 
 	unsigned long flags;
@@ -1127,7 +1127,7 @@ static int xenet_open(struct net_device *dev)
 	 * really care.
 	 */
 	netif_stop_queue(dev);
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 	_XLlTemac_Stop(&lp->Emac);
 
 	INIT_LIST_HEAD(&(lp->rcv));
@@ -1270,7 +1270,7 @@ static int xenet_close(struct net_device *dev)
 	struct net_local *lp;
 	unsigned long flags;
 
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 
 	/* Shut down the PHY monitoring timer. */
 	del_timer_sync(&lp->phy_timer);
@@ -1305,7 +1305,7 @@ static int xenet_close(struct net_device *dev)
 
 static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	return &lp->stats;
 }
@@ -1317,7 +1317,7 @@ static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 #else
 	int head_size = XTE_HDR_SIZE;
 #endif
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int max_frame = new_mtu + head_size + XTE_TRL_SIZE;
 	int min_frame = 1 + head_size + XTE_TRL_SIZE;
 
@@ -1350,7 +1350,7 @@ static int xenet_FifoSend(struct sk_buff *skb, struct net_device *dev)
 	 * or other processor in SMP case.
 	 */
 	spin_lock_irqsave(&XTE_tx_spinlock, flags);
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 
 	fifo_free_bytes = XLlFifo_TxVacancy(&lp->Fifo) * 4;
 	if (fifo_free_bytes < total_len) {
@@ -1389,7 +1389,7 @@ static void FifoSendHandler(struct net_device *dev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&XTE_tx_spinlock, flags);
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 	lp->stats.tx_packets++;
 
 	/*Send out the deferred skb and wake up send queue if a deferred skb exists */
@@ -1482,7 +1482,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	XLlDma_Bd *last_bd_ptr;
 	skb_frag_t *frag;
 
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 
 	/* get skb_shinfo(skb)->nr_frags + 1 buffer descriptors */
 	total_frags = skb_shinfo(skb)->nr_frags + 1;
@@ -1743,7 +1743,7 @@ static void xenet_tx_timeout(struct net_device *dev)
 	 */
 	spin_lock_irqsave(&XTE_tx_spinlock, flags);
 
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 	printk(KERN_ERR
 	       "%s: XLlTemac: exceeded transmit timeout of %lu ms.  Resetting emac.\n",
 	       dev->name, TX_TIMEOUT * 1000UL / HZ);
@@ -1828,7 +1828,7 @@ static void FifoRecvHandler(unsigned long p)
  */
 static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	int free_bd_count = XLlDma_mBdRingGetFreeCnt(&lp->Dma.RxBdRing);
 	int num_sk_buffs;
@@ -2093,7 +2093,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 
 static int descriptor_init(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int recvsize, sendsize;
 	int dftsize;
 	u32 *recvpoolptr, *sendpoolptr;
@@ -2149,7 +2149,7 @@ static int descriptor_init(struct net_device *dev)
 
 	printk(KERN_INFO
 	       "XLlTemac: (buffer_descriptor_init) phy: 0x%x, virt: 0x%x, size: 0x%x\n",
-	       lp->desc_space_handle, (unsigned int) lp->desc_space,
+	       (unsigned int)lp->desc_space_handle, (unsigned int) lp->desc_space,
 	       lp->desc_space_size);
 
 	/* calc size of send and recv descriptor space */
@@ -2184,7 +2184,7 @@ static int descriptor_init(struct net_device *dev)
 
 static void free_descriptor_skb(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	XLlDma_Bd *BdPtr;
 	struct sk_buff *skb;
 	dma_addr_t skb_dma_addr;
@@ -2240,7 +2240,7 @@ static void free_descriptor_skb(struct net_device *dev)
 static int
 xenet_ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 mac_options;
 	u32 threshold, timer;
 	u16 gmii_cmd, gmii_status, gmii_advControl;
@@ -2293,7 +2293,7 @@ xenet_ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 static int
 xenet_ethtool_set_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	if ((ecmd->duplex != DUPLEX_FULL) ||
 	    (ecmd->transceiver != XCVR_INTERNAL) ||
@@ -2321,7 +2321,7 @@ xenet_ethtool_set_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 static int
 xenet_ethtool_get_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 threshold, waitbound;
 
 	memset(ec, 0, sizeof(struct ethtool_coalesce));
@@ -2404,7 +2404,7 @@ xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 	int ret;
 	struct net_local *lp;
 
-	lp = (struct net_local *) dev->priv;
+	lp = (struct net_local *) netdev_priv(dev);
 
 	if (ec->rx_coalesce_usecs == 0) {
 		ec->rx_coalesce_usecs = 1;
@@ -2458,7 +2458,7 @@ static void
 xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 		       void *ret)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct mac_regsDump *dump = (struct mac_regsDump *) regs;
 	int i;
 
@@ -2486,7 +2486,7 @@ xenet_ethtool_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *ed)
 
 static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct ethtool_cmd ecmd;
 	struct ethtool_coalesce eco;
 	struct ethtool_drvinfo edrv;
@@ -2740,7 +2740,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 
 static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/* gmii_ioctl_data has 4 u16 fields: phy_id, reg_num, val_in & val_out */
 	struct mii_ioctl_data *data = (struct mii_ioctl_data *) &rq->ifr_data;

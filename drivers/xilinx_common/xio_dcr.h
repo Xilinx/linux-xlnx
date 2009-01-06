@@ -391,8 +391,10 @@ extern "C" {
 *******************************************************************************/
 #define XIo_mDcrLock(DcrBase) \
 ({ \
- mtdcr((DcrBase) | XDCR_CTRLCFGSTAT, \
-       (mfdcr((DcrBase) | XDCR_CTRLCFGSTAT) | XDCR_ALL_LOCK) & ~XDCR_ALL_TIMEOUT); \
+ u32 temp;	\
+ temp = mfdcr((DcrBase) + XDCR_CTRLCFGSTAT);		\
+ temp = (temp | XDCR_ALL_LOCK) & ~XDCR_ALL_TIMEOUT;	\
+ mtdcr(((DcrBase) + XDCR_CTRLCFGSTAT), temp); \
 })
 
 /******************************************************************************/
@@ -418,8 +420,10 @@ extern "C" {
 *******************************************************************************/
 #define XIo_mDcrUnlock(DcrBase) \
 ({ \
- mtdcr((DcrBase) | XDCR_CTRLCFGSTAT, \
-       (mfdcr((DcrBase) | XDCR_CTRLCFGSTAT) & ~(XDCR_ALL_LOCK | XDCR_ALL_TIMEOUT))); \
+ u32 temp;						\
+ temp = mfdcr((DcrBase) + XDCR_CTRLCFGSTAT);		\
+ temp = temp & ~(XDCR_ALL_LOCK | XDCR_ALL_TIMEOUT);	\
+ mtdcr(((DcrBase) + XDCR_CTRLCFGSTAT), temp);		\
 })
 
 /******************************************************************************/
