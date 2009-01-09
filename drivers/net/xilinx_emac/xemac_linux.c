@@ -207,7 +207,7 @@ static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 typedef enum DUPLEX { UNKNOWN_DUPLEX, HALF_DUPLEX, FULL_DUPLEX } DUPLEX;
 static void reset(struct net_device *dev, DUPLEX duplex)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 Options;
 	u8 IfgPart1;
 	u8 IfgPart2;
@@ -400,7 +400,7 @@ inline static u16 AddCsumRxPseudoHeader(struct sk_buff *skb, u16 InitCSum,
 
 static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u16 reg;
 	int xs;
 
@@ -478,7 +478,7 @@ static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 static void poll_mii(unsigned long data)
 {
 	struct net_device *dev = (struct net_device *) data;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 Options;
 	DUPLEX phy_duplex, mac_duplex;
 	int phy_carrier, netif_carrier;
@@ -544,7 +544,7 @@ static void poll_mii(unsigned long data)
 static irqreturn_t xenet_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/* Call it. */
 	(*(lp->Isr)) (&lp->Emac);
@@ -557,7 +557,7 @@ static irqreturn_t xenet_interrupt(int irq, void *dev_id)
 
 static int xenet_open(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 Options;
 	DUPLEX phy_duplex, mac_duplex;
 	int phy_carrier;
@@ -655,7 +655,7 @@ static int xenet_open(struct net_device *dev)
 }
 static int xenet_close(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned long flags;
 
 	/* Shut down the PHY monitoring timer. */
@@ -699,14 +699,14 @@ static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 }
 static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	return &lp->stats;
 }
 
 static int xenet_FifoSend(struct sk_buff *orig_skb, struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct sk_buff *new_skb;
 	unsigned int len, align;
 	unsigned long flags;
@@ -767,7 +767,7 @@ static int xenet_FifoSend(struct sk_buff *orig_skb, struct net_device *dev)
 static void FifoSendHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	if (lp->deferred_skb) {
 		if (XEmac_FifoSend
@@ -787,7 +787,7 @@ static void FifoSendHandler(void *CallbackRef)
 /* The send function for frames sent in DMA mode. */
 static int xenet_SgSend(struct sk_buff *skb, struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned int len;
 	XBufDescriptor bd;
 	int result;
@@ -861,7 +861,7 @@ static XBufDescriptor bd[10];
 
 static int xenet_SgSendDre(struct sk_buff *skb, struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned int len;
 	int result;
 	u32 physAddr;
@@ -1148,7 +1148,7 @@ static void SgSendHandlerBH(unsigned long p)
 static void SgSendHandler(void *CallBackRef, XBufDescriptor * BdPtr, u32 NumBds)
 {
 	struct net_device *dev = (struct net_device *) CallBackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct list_head *cur_lp = NULL;
 
 	spin_lock(&xmitSpin);
@@ -1378,7 +1378,7 @@ static void SgRecvHandlerBH(unsigned long p)
 static void SgRecvHandler(void *CallBackRef, XBufDescriptor * BdPtr, u32 NumBds)
 {
 	struct net_device *dev = (struct net_device *) CallBackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct list_head *cur_lp = NULL;
 
 	spin_lock(&rcvSpin);
@@ -1399,7 +1399,7 @@ static void SgRecvHandler(void *CallBackRef, XBufDescriptor * BdPtr, u32 NumBds)
 
 static void xenet_tx_timeout(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned long flags;
 
 	printk("%s: Exceeded transmit timeout of %lu ms.\n",
@@ -1415,7 +1415,7 @@ static void xenet_tx_timeout(struct net_device *dev)
 static void FifoRecvHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct sk_buff *skb;
 	unsigned int align;
 	u32 len;
@@ -1504,7 +1504,7 @@ static void ErrorHandler(void *CallbackRef, int Code)
 
 static int descriptor_init(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int i, recvsize, sendsize;
 	int dftsize;
 	u32 *recvpoolptr, *sendpoolptr;
@@ -1597,7 +1597,7 @@ static int descriptor_init(struct net_device *dev)
 
 static void free_descriptor_skb(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int i;
 	XBufDescriptor *BdPtr;
 	struct sk_buff *skb;
@@ -1616,7 +1616,7 @@ static void free_descriptor_skb(struct net_device *dev)
 
 static void xenet_set_multicast_list(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 Options;
 	unsigned long flags;
 	int ret = 0;
@@ -1697,7 +1697,7 @@ static int
 xenet_ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 {
 	int ret;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u32 mac_options;
 	u8 threshold;
 	u16 mii_cmd;
@@ -1799,7 +1799,7 @@ static int
 xenet_ethtool_get_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 {
 	int ret;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	u8 threshold;
 
 	memset(ec, 0, sizeof(struct ethtool_coalesce));
@@ -1836,7 +1836,7 @@ static int
 xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 {
 	int ret;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned long flags;
 
 	spin_lock_irqsave(&reset_lock, flags);
@@ -1905,7 +1905,7 @@ static void
 xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 		       void *ret)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct mac_regsDump *dump = (struct mac_regsDump *) regs;
 	int i;
 	int r;
@@ -1926,7 +1926,7 @@ xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 
 static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct ethtool_cmd ecmd;
 	struct ethtool_coalesce eco;
 	struct ethtool_drvinfo edrv;
@@ -2178,7 +2178,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 
 static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/* mii_ioctl_data has 4 u16 fields: phy_id, reg_num, val_in & val_out */
 	struct mii_ioctl_data *data = (struct mii_ioctl_data *) &rq->ifr_data;

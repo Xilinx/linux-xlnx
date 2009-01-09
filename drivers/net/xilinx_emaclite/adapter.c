@@ -159,7 +159,7 @@ static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
 typedef enum DUPLEX { UNKNOWN_DUPLEX, HALF_DUPLEX, FULL_DUPLEX } DUPLEX;
 static void reset(struct net_device *dev, DUPLEX duplex)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/* Shouldn't really be necessary, but shouldn't hurt. */
 	netif_stop_queue(dev);
@@ -187,7 +187,7 @@ static irqreturn_t
 xemaclite_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	/* Call it. */
 	(*(lp->Isr)) (&lp->EmacLite);
@@ -197,7 +197,7 @@ xemaclite_interrupt(int irq, void *dev_id)
 
 static int xemaclite_open(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int retval;
 
 	/*
@@ -233,7 +233,7 @@ static int xemaclite_open(struct net_device *dev)
 }
 static int xemaclite_close(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned long flags;
 
 	netif_stop_queue(dev);
@@ -252,14 +252,14 @@ static int xemaclite_close(struct net_device *dev)
 }
 static struct net_device_stats *xemaclite_get_stats(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	return &lp->stats;
 }
 
 static int xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct sk_buff *new_skb;
 	unsigned int len;
 	unsigned long flags;
@@ -289,7 +289,7 @@ static int xemaclite_Send(struct sk_buff *orig_skb, struct net_device *dev)
 static void SendHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 
 	if (lp->deferred_skb) {
 		if (XEmacLite_Send
@@ -308,7 +308,7 @@ static void SendHandler(void *CallbackRef)
 
 static void xemaclite_tx_timeout(struct net_device *dev)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	unsigned long flags;
 
 	printk("%s: Exceeded transmit timeout of %lu ms.\n",
@@ -324,7 +324,7 @@ static void xemaclite_tx_timeout(struct net_device *dev)
 static void RecvHandler(void *CallbackRef)
 {
 	struct net_device *dev = (struct net_device *) CallbackRef;
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct sk_buff *skb;
 	unsigned int align;
 	u32 len;
@@ -378,7 +378,7 @@ static void RecvHandler(void *CallbackRef)
 
 static int xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-	struct net_local *lp = (struct net_local *) dev->priv;
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	struct hw_addr_data *hw_addr = (struct sockaddr *) &rq->ifr_hwaddr;
 
 	switch (cmd) {
