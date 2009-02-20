@@ -265,7 +265,7 @@ static void frame_prepare(struct video_card *video, unsigned int this_frame)
 	/* these flags denote packets that need special attention */
 	int empty_packet, first_packet, last_packet, mid_packet;
 
-	u32 *branch_address, *last_branch_address = NULL;
+	__le32 *branch_address, *last_branch_address = NULL;
 	unsigned long data_p;
 	int first_packet_empty = 0;
 	u32 cycleTimer, ct_sec, ct_cyc, ct_off;
@@ -848,7 +848,7 @@ static void receive_packets(struct video_card *video)
 	dma_addr_t block_dma = 0;
 	struct packet *data = NULL;
 	dma_addr_t data_dma = 0;
-	u32 *last_branch_address = NULL;
+	__le32 *last_branch_address = NULL;
 	unsigned long irq_flags;
 	int want_interrupt = 0;
 	struct frame *f = NULL;
@@ -1823,6 +1823,10 @@ static int dv1394_open(struct inode *inode, struct file *file)
 
 #endif
 
+	printk(KERN_INFO "%s: NOTE, the dv1394 interface is unsupported "
+	       "and will not be available in the new firewire driver stack. "
+	       "Try libraw1394 based programs instead.\n", current->comm);
+
 	return 0;
 }
 
@@ -2110,17 +2114,17 @@ static void ir_tasklet_func(unsigned long data)
 			f = video->frames[next_i / MAX_PACKETS];
 			next = &(f->descriptor_pool[next_i % MAX_PACKETS]);
 			next_dma = ((unsigned long) block - (unsigned long) f->descriptor_pool) + f->descriptor_pool_dma;
-			next->u.in.il.q[0] |= 3 << 20; /* enable interrupt */
-			next->u.in.il.q[2] = 0; /* disable branch */
+			next->u.in.il.q[0] |= cpu_to_le32(3 << 20); /* enable interrupt */
+			next->u.in.il.q[2] = cpu_to_le32(0); /* disable branch */
 
 			/* link previous to next */
 			prev_i = (next_i == 0) ? (MAX_PACKETS * video->n_frames - 1) : (next_i - 1);
 			f = video->frames[prev_i / MAX_PACKETS];
 			prev = &(f->descriptor_pool[prev_i % MAX_PACKETS]);
 			if (prev_i % (MAX_PACKETS/2)) {
-				prev->u.in.il.q[0] &= ~(3 << 20); /* no interrupt */
+				prev->u.in.il.q[0] &= ~cpu_to_le32(3 << 20); /* no interrupt */
 			} else {
-				prev->u.in.il.q[0] |= 3 << 20; /* enable interrupt */
+				prev->u.in.il.q[0] |= cpu_to_le32(3 << 20); /* enable interrupt */
 			}
 			prev->u.in.il.q[2] = cpu_to_le32(next_dma | 1); /* set Z=1 */
 			wmb();
@@ -2566,10 +2570,6 @@ static void __exit dv1394_exit_module(void)
 static int __init dv1394_init_module(void)
 {
 	int ret;
-
-	printk(KERN_WARNING
-	       "NOTE: The dv1394 driver is unsupported and may be removed in a "
-	       "future Linux release. Use raw1394 instead.\n");
 
 	cdev_init(&dv1394_cdev, &dv1394_fops);
 	dv1394_cdev.owner = THIS_MODULE;

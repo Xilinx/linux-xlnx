@@ -25,6 +25,7 @@
 #include <linux/timer.h>
 #include <linux/mm.h>
 #include <linux/highmem.h>
+#include <linux/hrtimer.h>
 
 static void __jbd2_journal_temp_unlink_buffer(struct journal_head *jh);
 
@@ -48,6 +49,7 @@ jbd2_get_transaction(journal_t *journal, transaction_t *transaction)
 {
 	transaction->t_journal = journal;
 	transaction->t_state = T_RUNNING;
+	transaction->t_start_time = ktime_get();
 	transaction->t_tid = journal->j_transaction_sequence++;
 	transaction->t_expires = jiffies + journal->j_commit_interval;
 	spin_lock_init(&transaction->t_handle_lock);
@@ -741,6 +743,12 @@ done:
 		source = kmap_atomic(page, KM_USER0);
 		memcpy(jh->b_frozen_data, source+offset, jh2bh(jh)->b_size);
 		kunmap_atomic(source, KM_USER0);
+
+		/*
+		 * Now that the frozen data is saved off, we need to store
+		 * any matching triggers.
+		 */
+		jh->b_frozen_triggers = jh->b_triggers;
 	}
 	jbd_unlock_bh_state(bh);
 
@@ -942,6 +950,47 @@ out:
 		jbd2_free(committed_data, bh->b_size);
 	return err;
 }
+
+/**
+ * void jbd2_journal_set_triggers() - Add triggers for commit writeout
+ * @bh: buffer to trigger on
+ * @type: struct jbd2_buffer_trigger_type containing the trigger(s).
+ *
+ * Set any triggers on this journal_head.  This is always safe, because
+ * triggers for a committing buffer will be saved off, and triggers for
+ * a running transaction will match the buffer in that transaction.
+ *
+ * Call with NULL to clear the triggers.
+ */
+void jbd2_journal_set_triggers(struct buffer_head *bh,
+			       struct jbd2_buffer_trigger_type *type)
+{
+	struct journal_head *jh = bh2jh(bh);
+
+	jh->b_triggers = type;
+}
+
+void jbd2_buffer_commit_trigger(struct journal_head *jh, void *mapped_data,
+				struct jbd2_buffer_trigger_type *triggers)
+{
+	struct buffer_head *bh = jh2bh(jh);
+
+	if (!triggers || !triggers->t_commit)
+		return;
+
+	triggers->t_commit(triggers, bh, mapped_data, bh->b_size);
+}
+
+void jbd2_buffer_abort_trigger(struct journal_head *jh,
+			       struct jbd2_buffer_trigger_type *triggers)
+{
+	if (!triggers || !triggers->t_abort)
+		return;
+
+	triggers->t_abort(triggers, jh2bh(jh));
+}
+
+
 
 /**
  * int jbd2_journal_dirty_metadata() -  mark a buffer as containing dirty metadata
@@ -1193,7 +1242,7 @@ int jbd2_journal_stop(handle_t *handle)
 {
 	transaction_t *transaction = handle->h_transaction;
 	journal_t *journal = transaction->t_journal;
-	int old_handle_count, err;
+	int err;
 	pid_t pid;
 
 	J_ASSERT(journal_current_handle() == handle);
@@ -1216,24 +1265,54 @@ int jbd2_journal_stop(handle_t *handle)
 	/*
 	 * Implement synchronous transaction batching.  If the handle
 	 * was synchronous, don't force a commit immediately.  Let's
-	 * yield and let another thread piggyback onto this transaction.
-	 * Keep doing that while new threads continue to arrive.
-	 * It doesn't cost much - we're about to run a commit and sleep
-	 * on IO anyway.  Speeds up many-threaded, many-dir operations
-	 * by 30x or more...
+	 * yield and let another thread piggyback onto this
+	 * transaction.  Keep doing that while new threads continue to
+	 * arrive.  It doesn't cost much - we're about to run a commit
+	 * and sleep on IO anyway.  Speeds up many-threaded, many-dir
+	 * operations by 30x or more...
 	 *
-	 * But don't do this if this process was the most recent one to
-	 * perform a synchronous write.  We do this to detect the case where a
-	 * single process is doing a stream of sync writes.  No point in waiting
-	 * for joiners in that case.
+	 * We try and optimize the sleep time against what the
+	 * underlying disk can do, instead of having a static sleep
+	 * time.  This is useful for the case where our storage is so
+	 * fast that it is more optimal to go ahead and force a flush
+	 * and wait for the transaction to be committed than it is to
+	 * wait for an arbitrary amount of time for new writers to
+	 * join the transaction.  We achieve this by measuring how
+	 * long it takes to commit a transaction, and compare it with
+	 * how long this transaction has been running, and if run time
+	 * < commit time then we sleep for the delta and commit.  This
+	 * greatly helps super fast disks that would see slowdowns as
+	 * more threads started doing fsyncs.
+	 *
+	 * But don't do this if this process was the most recent one
+	 * to perform a synchronous write.  We do this to detect the
+	 * case where a single process is doing a stream of sync
+	 * writes.  No point in waiting for joiners in that case.
 	 */
 	pid = current->pid;
 	if (handle->h_sync && journal->j_last_sync_writer != pid) {
+		u64 commit_time, trans_time;
+
 		journal->j_last_sync_writer = pid;
-		do {
-			old_handle_count = transaction->t_handle_count;
-			schedule_timeout_uninterruptible(1);
-		} while (old_handle_count != transaction->t_handle_count);
+
+		spin_lock(&journal->j_state_lock);
+		commit_time = journal->j_average_commit_time;
+		spin_unlock(&journal->j_state_lock);
+
+		trans_time = ktime_to_ns(ktime_sub(ktime_get(),
+						   transaction->t_start_time));
+
+		commit_time = max_t(u64, commit_time,
+				    1000*journal->j_min_batch_time);
+		commit_time = min_t(u64, commit_time,
+				    1000*journal->j_max_batch_time);
+
+		if (trans_time < commit_time) {
+			ktime_t expires = ktime_add_ns(ktime_get(),
+						       commit_time);
+			set_current_state(TASK_UNINTERRUPTIBLE);
+			schedule_hrtimeout(&expires, HRTIMER_MODE_ABS);
+		}
 	}
 
 	current->journal_info = NULL;
@@ -2050,26 +2129,46 @@ done:
 }
 
 /*
- * This function must be called when inode is journaled in ordered mode
- * before truncation happens. It starts writeout of truncated part in
- * case it is in the committing transaction so that we stand to ordered
- * mode consistency guarantees.
+ * File truncate and transaction commit interact with each other in a
+ * non-trivial way.  If a transaction writing data block A is
+ * committing, we cannot discard the data by truncate until we have
+ * written them.  Otherwise if we crashed after the transaction with
+ * write has committed but before the transaction with truncate has
+ * committed, we could see stale data in block A.  This function is a
+ * helper to solve this problem.  It starts writeout of the truncated
+ * part in case it is in the committing transaction.
+ *
+ * Filesystem code must call this function when inode is journaled in
+ * ordered mode before truncation happens and after the inode has been
+ * placed on orphan list with the new inode size. The second condition
+ * avoids the race that someone writes new data and we start
+ * committing the transaction after this function has been called but
+ * before a transaction for truncate is started (and furthermore it
+ * allows us to optimize the case where the addition to orphan list
+ * happens in the same transaction as write --- we don't have to write
+ * any data in such case).
  */
-int jbd2_journal_begin_ordered_truncate(struct jbd2_inode *inode,
+int jbd2_journal_begin_ordered_truncate(journal_t *journal,
+					struct jbd2_inode *jinode,
 					loff_t new_size)
 {
-	journal_t *journal;
-	transaction_t *commit_trans;
+	transaction_t *inode_trans, *commit_trans;
 	int ret = 0;
 
-	if (!inode->i_transaction && !inode->i_next_transaction)
+	/* This is a quick check to avoid locking if not necessary */
+	if (!jinode->i_transaction)
 		goto out;
-	journal = inode->i_transaction->t_journal;
+	/* Locks are here just to force reading of recent values, it is
+	 * enough that the transaction was not committing before we started
+	 * a transaction adding the inode to orphan list */
 	spin_lock(&journal->j_state_lock);
 	commit_trans = journal->j_committing_transaction;
 	spin_unlock(&journal->j_state_lock);
-	if (inode->i_transaction == commit_trans) {
-		ret = filemap_fdatawrite_range(inode->i_vfs_inode->i_mapping,
+	spin_lock(&journal->j_list_lock);
+	inode_trans = jinode->i_transaction;
+	spin_unlock(&journal->j_list_lock);
+	if (inode_trans == commit_trans) {
+		ret = filemap_fdatawrite_range(jinode->i_vfs_inode->i_mapping,
 			new_size, LLONG_MAX);
 		if (ret)
 			jbd2_journal_abort(journal, ret);

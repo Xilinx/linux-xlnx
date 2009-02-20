@@ -712,7 +712,7 @@ static inline void pasemi_mac_rx_error(const struct pasemi_mac *mac,
 	rcmdsta = read_dma_reg(PAS_DMA_RXINT_RCMDSTA(mac->dma_if));
 	ccmdsta = read_dma_reg(PAS_DMA_RXCHAN_CCMDSTA(chan->chno));
 
-	printk(KERN_ERR "pasemi_mac: rx error. macrx %016lx, rx status %lx\n",
+	printk(KERN_ERR "pasemi_mac: rx error. macrx %016llx, rx status %llx\n",
 		macrx, *chan->status);
 
 	printk(KERN_ERR "pasemi_mac: rcmdsta %08x ccmdsta %08x\n",
@@ -730,8 +730,8 @@ static inline void pasemi_mac_tx_error(const struct pasemi_mac *mac,
 
 	cmdsta = read_dma_reg(PAS_DMA_TXCHAN_TCMDSTA(chan->chno));
 
-	printk(KERN_ERR "pasemi_mac: tx error. mactx 0x%016lx, "\
-		"tx status 0x%016lx\n", mactx, *chan->status);
+	printk(KERN_ERR "pasemi_mac: tx error. mactx 0x%016llx, "\
+		"tx status 0x%016llx\n", mactx, *chan->status);
 
 	printk(KERN_ERR "pasemi_mac: tcmdsta 0x%08x\n", cmdsta);
 }
@@ -954,7 +954,6 @@ static irqreturn_t pasemi_mac_rx_intr(int irq, void *data)
 {
 	const struct pasemi_mac_rxring *rxring = data;
 	struct pasemi_mac *mac = rxring->mac;
-	struct net_device *dev = mac->netdev;
 	const struct pasemi_dmachan *chan = &rxring->chan;
 	unsigned int reg;
 
@@ -1634,7 +1633,6 @@ static void pasemi_mac_set_rx_mode(struct net_device *dev)
 static int pasemi_mac_poll(struct napi_struct *napi, int budget)
 {
 	struct pasemi_mac *mac = container_of(napi, struct pasemi_mac, napi);
-	struct net_device *dev = mac->netdev;
 	int pkts;
 
 	pasemi_mac_clean_tx(tx_ring(mac));

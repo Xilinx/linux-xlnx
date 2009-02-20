@@ -406,6 +406,7 @@ static int nbd_do_it(struct nbd_device *lo)
 	ret = sysfs_create_file(&disk_to_dev(lo->disk)->kobj, &pid_attr.attr);
 	if (ret) {
 		printk(KERN_ERR "nbd: sysfs_create_file failed!");
+		lo->pid = 0;
 		return ret;
 	}
 
@@ -413,6 +414,7 @@ static int nbd_do_it(struct nbd_device *lo)
 		nbd_end_request(req);
 
 	sysfs_remove_file(&disk_to_dev(lo->disk)->kobj, &pid_attr.attr);
+	lo->pid = 0;
 	return 0;
 }
 
@@ -547,6 +549,15 @@ static void do_nbd_request(struct request_queue * q)
 
 		BUG_ON(lo->magic != LO_MAGIC);
 
+		if (unlikely(!lo->sock)) {
+			printk(KERN_ERR "%s: Attempted send on closed socket\n",
+				lo->disk->disk_name);
+			req->errors++;
+			nbd_end_request(req);
+			spin_lock_irq(q->queue_lock);
+			continue;
+		}
+
 		spin_lock_irq(&lo->queue_lock);
 		list_add_tail(&req->queuelist, &lo->waiting_queue);
 		spin_unlock_irq(&lo->queue_lock);
@@ -648,6 +659,8 @@ static int nbd_ioctl(struct block_device *bdev, fmode_t mode,
 		set_capacity(lo->disk, lo->bytesize >> 9);
 		return 0;
 	case NBD_DO_IT:
+		if (lo->pid)
+			return -EBUSY;
 		if (!lo->file)
 			return -EINVAL;
 		thread = kthread_create(nbd_thread, lo, lo->disk->disk_name);
@@ -722,7 +735,6 @@ static int __init nbd_init(void)
 
 	for (i = 0; i < nbds_max; i++) {
 		struct gendisk *disk = alloc_disk(1 << part_shift);
-		elevator_t *old_e;
 		if (!disk)
 			goto out;
 		nbd_dev[i].disk = disk;
@@ -736,11 +748,10 @@ static int __init nbd_init(void)
 			put_disk(disk);
 			goto out;
 		}
-		old_e = disk->queue->elevator;
-		if (elevator_init(disk->queue, "deadline") == 0 ||
-			elevator_init(disk->queue, "noop") == 0) {
-				elevator_exit(old_e);
-		}
+		/*
+		 * Tell the block layer that we are not a rotational device
+		 */
+		queue_flag_set_unlocked(QUEUE_FLAG_NONROT, disk->queue);
 	}
 
 	if (register_blkdev(NBD_MAJOR, "nbd")) {

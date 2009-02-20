@@ -90,10 +90,11 @@ struct bio {
 
 	unsigned int		bi_comp_cpu;	/* completion CPU */
 
+	atomic_t		bi_cnt;		/* pin count */
+
 	struct bio_vec		*bi_io_vec;	/* the actual vec list */
 
 	bio_end_io_t		*bi_end_io;
-	atomic_t		bi_cnt;		/* pin count */
 
 	void			*bi_private;
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
@@ -101,6 +102,13 @@ struct bio {
 #endif
 
 	bio_destructor_t	*bi_destructor;	/* destructor */
+
+	/*
+	 * We can inline a number of vecs at the end of the bio, to avoid
+	 * double allocations for a small number of bio_vecs. This member
+	 * MUST obviously be kept at the very end of the bio.
+	 */
+	struct bio_vec		bi_inline_vecs[0];
 };
 
 /*
@@ -117,6 +125,7 @@ struct bio {
 #define BIO_CPU_AFFINE	8	/* complete bio on same CPU as submitted */
 #define BIO_NULL_MAPPED 9	/* contains invalid user pages */
 #define BIO_FS_INTEGRITY 10	/* fs owns integrity data, not block layer */
+#define BIO_QUIET	11	/* Make BIO Quiet */
 #define bio_flagged(bio, flag)	((bio)->bi_flags & (1 << (flag)))
 
 /*
@@ -135,7 +144,7 @@ struct bio {
  * bit 1 -- rw-ahead when set
  * bit 2 -- barrier
  *	Insert a serialization point in the IO queue, forcing previously
- *	submitted IO to be completed before this oen is issued.
+ *	submitted IO to be completed before this one is issued.
  * bit 3 -- synchronous I/O hint: the block layer will unplug immediately
  *	Note that this does NOT indicate that the IO itself is sync, just
  *	that the block layer will not postpone issue of this IO by plugging.
@@ -154,12 +163,31 @@ struct bio {
 #define BIO_RW		0	/* Must match RW in req flags (blkdev.h) */
 #define BIO_RW_AHEAD	1	/* Must match FAILFAST in req flags */
 #define BIO_RW_BARRIER	2
-#define BIO_RW_SYNC	3
-#define BIO_RW_META	4
-#define BIO_RW_DISCARD	5
-#define BIO_RW_FAILFAST_DEV		6
-#define BIO_RW_FAILFAST_TRANSPORT	7
-#define BIO_RW_FAILFAST_DRIVER		8
+#define BIO_RW_SYNCIO	3
+#define BIO_RW_UNPLUG	4
+#define BIO_RW_META	5
+#define BIO_RW_DISCARD	6
+#define BIO_RW_FAILFAST_DEV		7
+#define BIO_RW_FAILFAST_TRANSPORT	8
+#define BIO_RW_FAILFAST_DRIVER		9
+
+#define bio_rw_flagged(bio, flag)	((bio)->bi_rw & (1 << (flag)))
+
+/*
+ * Old defines, these should eventually be replaced by direct usage of
+ * bio_rw_flagged()
+ */
+#define bio_barrier(bio)	bio_rw_flagged(bio, BIO_RW_BARRIER)
+#define bio_sync(bio)		bio_rw_flagged(bio, BIO_RW_SYNCIO)
+#define bio_unplug(bio)		bio_rw_flagged(bio, BIO_RW_UNPLUG)
+#define bio_failfast_dev(bio)	bio_rw_flagged(bio, BIO_RW_FAILFAST_DEV)
+#define bio_failfast_transport(bio)	\
+		bio_rw_flagged(bio, BIO_RW_FAILFAST_TRANSPORT)
+#define bio_failfast_driver(bio) 	\
+		bio_rw_flagged(bio, BIO_RW_FAILFAST_DRIVER)
+#define bio_rw_ahead(bio)	bio_rw_flagged(bio, BIO_RW_AHEAD)
+#define bio_rw_meta(bio)	bio_rw_flagged(bio, BIO_RW_META)
+#define bio_discard(bio)	bio_rw_flagged(bio, BIO_RW_DISCARD)
 
 /*
  * upper 16 bits of bi_rw define the io priority of this bio
@@ -184,15 +212,6 @@ struct bio {
 #define bio_offset(bio)		bio_iovec((bio))->bv_offset
 #define bio_segments(bio)	((bio)->bi_vcnt - (bio)->bi_idx)
 #define bio_sectors(bio)	((bio)->bi_size >> 9)
-#define bio_barrier(bio)	((bio)->bi_rw & (1 << BIO_RW_BARRIER))
-#define bio_sync(bio)		((bio)->bi_rw & (1 << BIO_RW_SYNC))
-#define bio_failfast_dev(bio)	((bio)->bi_rw &	(1 << BIO_RW_FAILFAST_DEV))
-#define bio_failfast_transport(bio)	\
-	((bio)->bi_rw & (1 << BIO_RW_FAILFAST_TRANSPORT))
-#define bio_failfast_driver(bio) ((bio)->bi_rw & (1 << BIO_RW_FAILFAST_DRIVER))
-#define bio_rw_ahead(bio)	((bio)->bi_rw & (1 << BIO_RW_AHEAD))
-#define bio_rw_meta(bio)	((bio)->bi_rw & (1 << BIO_RW_META))
-#define bio_discard(bio)	((bio)->bi_rw & (1 << BIO_RW_DISCARD))
 #define bio_empty_barrier(bio)	(bio_barrier(bio) && !bio_has_data(bio) && !bio_discard(bio))
 
 static inline unsigned int bio_cur_sectors(struct bio *bio)
@@ -209,6 +228,11 @@ static inline void *bio_data(struct bio *bio)
 		return page_address(bio_page(bio)) + bio_offset(bio);
 
 	return NULL;
+}
+
+static inline int bio_has_allocated_vec(struct bio *bio)
+{
+	return bio->bi_io_vec && bio->bi_io_vec != bio->bi_inline_vecs;
 }
 
 /*
@@ -298,7 +322,6 @@ struct bio_integrity_payload {
 	void			*bip_buf;	/* generated integrity data */
 	bio_end_io_t		*bip_end_io;	/* saved I/O completion fn */
 
-	int			bip_error;	/* saved I/O error */
 	unsigned int		bip_size;
 
 	unsigned short		bip_pool;	/* pool the ivec came from */
@@ -332,7 +355,7 @@ struct bio_pair {
 extern struct bio_pair *bio_split(struct bio *bi, int first_sectors);
 extern void bio_pair_release(struct bio_pair *dbio);
 
-extern struct bio_set *bioset_create(int, int);
+extern struct bio_set *bioset_create(unsigned int, unsigned int);
 extern void bioset_free(struct bio_set *);
 
 extern struct bio *bio_alloc(gfp_t, int);
@@ -377,6 +400,7 @@ extern struct bio *bio_copy_user_iov(struct request_queue *,
 extern int bio_uncopy_user(struct bio *);
 void zero_fill_bio(struct bio *bio);
 extern struct bio_vec *bvec_alloc_bs(gfp_t, int, unsigned long *, struct bio_set *);
+extern void bvec_free_bs(struct bio_set *, struct bio_vec *, unsigned int);
 extern unsigned int bvec_nr_vecs(unsigned short idx);
 
 /*
@@ -395,13 +419,17 @@ static inline void bio_set_completion_cpu(struct bio *bio, unsigned int cpu)
  */
 #define BIO_POOL_SIZE 2
 #define BIOVEC_NR_POOLS 6
+#define BIOVEC_MAX_IDX	(BIOVEC_NR_POOLS - 1)
 
 struct bio_set {
+	struct kmem_cache *bio_slab;
+	unsigned int front_pad;
+
 	mempool_t *bio_pool;
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
 	mempool_t *bio_integrity_pool;
 #endif
-	mempool_t *bvec_pools[BIOVEC_NR_POOLS];
+	mempool_t *bvec_pool;
 };
 
 struct biovec_slab {
@@ -411,6 +439,7 @@ struct biovec_slab {
 };
 
 extern struct bio_set *fs_bio_set;
+extern struct biovec_slab bvec_slabs[BIOVEC_NR_POOLS] __read_mostly;
 
 /*
  * a small number of entries is fine, not going to be performance critical.
@@ -420,12 +449,13 @@ extern struct bio_set *fs_bio_set;
 
 #ifdef CONFIG_HIGHMEM
 /*
- * remember to add offset! and never ever reenable interrupts between a
- * bvec_kmap_irq and bvec_kunmap_irq!!
+ * remember never ever reenable interrupts between a bvec_kmap_irq and
+ * bvec_kunmap_irq!
  *
  * This function MUST be inlined - it plays with the CPU interrupt flags.
  */
-static inline char *bvec_kmap_irq(struct bio_vec *bvec, unsigned long *flags)
+static __always_inline char *bvec_kmap_irq(struct bio_vec *bvec,
+		unsigned long *flags)
 {
 	unsigned long addr;
 
@@ -441,7 +471,8 @@ static inline char *bvec_kmap_irq(struct bio_vec *bvec, unsigned long *flags)
 	return (char *) addr + bvec->bv_offset;
 }
 
-static inline void bvec_kunmap_irq(char *buffer, unsigned long *flags)
+static __always_inline void bvec_kunmap_irq(char *buffer,
+		unsigned long *flags)
 {
 	unsigned long ptr = (unsigned long) buffer & PAGE_MASK;
 

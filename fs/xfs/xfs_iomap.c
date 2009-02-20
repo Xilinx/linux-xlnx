@@ -155,7 +155,7 @@ xfs_imap_to_bmap(
 			iomapp->iomap_bn = IOMAP_DADDR_NULL;
 			iomapp->iomap_flags |= IOMAP_DELAY;
 		} else {
-			iomapp->iomap_bn = XFS_FSB_TO_DB(ip, start_block);
+			iomapp->iomap_bn = xfs_fsb_to_db(ip, start_block);
 			if (ISUNWRITTEN(imap))
 				iomapp->iomap_flags |= IOMAP_UNWRITTEN;
 		}
@@ -261,7 +261,7 @@ xfs_iomap(
 		xfs_iunlock(ip, lockmode);
 		lockmode = 0;
 
-		if (nimaps && !ISNULLSTARTBLOCK(imap.br_startblock)) {
+		if (nimaps && !isnullstartblock(imap.br_startblock)) {
 			xfs_iomap_map_trace(XFS_IOMAP_WRITE_MAP, ip,
 					offset, count, iomapp, &imap, flags);
 			break;
@@ -290,7 +290,6 @@ STATIC int
 xfs_iomap_eof_align_last_fsb(
 	xfs_mount_t	*mp,
 	xfs_inode_t	*ip,
-	xfs_fsize_t	isize,
 	xfs_extlen_t	extsize,
 	xfs_fileoff_t	*last_fsb)
 {
@@ -306,14 +305,14 @@ xfs_iomap_eof_align_last_fsb(
 	 * stripe width and we are allocating past the allocation eof.
 	 */
 	else if (mp->m_swidth && (mp->m_flags & XFS_MOUNT_SWALLOC) &&
-	        (isize >= XFS_FSB_TO_B(mp, mp->m_swidth)))
+	        (ip->i_size >= XFS_FSB_TO_B(mp, mp->m_swidth)))
 		new_last_fsb = roundup_64(*last_fsb, mp->m_swidth);
 	/*
 	 * Roundup the allocation request to a stripe unit (m_dalign) boundary
 	 * if the file size is >= stripe unit size, and we are allocating past
 	 * the allocation eof.
 	 */
-	else if (mp->m_dalign && (isize >= XFS_FSB_TO_B(mp, mp->m_dalign)))
+	else if (mp->m_dalign && (ip->i_size >= XFS_FSB_TO_B(mp, mp->m_dalign)))
 		new_last_fsb = roundup_64(*last_fsb, mp->m_dalign);
 
 	/*
@@ -403,7 +402,6 @@ xfs_iomap_write_direct(
 	xfs_filblks_t	count_fsb, resaligned;
 	xfs_fsblock_t	firstfsb;
 	xfs_extlen_t	extsz, temp;
-	xfs_fsize_t	isize;
 	int		nimaps;
 	int		bmapi_flag;
 	int		quota_flag;
@@ -426,15 +424,10 @@ xfs_iomap_write_direct(
 	rt = XFS_IS_REALTIME_INODE(ip);
 	extsz = xfs_get_extsz_hint(ip);
 
-	isize = ip->i_size;
-	if (ip->i_new_size > isize)
-		isize = ip->i_new_size;
-
 	offset_fsb = XFS_B_TO_FSBT(mp, offset);
 	last_fsb = XFS_B_TO_FSB(mp, ((xfs_ufsize_t)(offset + count)));
-	if ((offset + count) > isize) {
-		error = xfs_iomap_eof_align_last_fsb(mp, ip, isize, extsz,
-							&last_fsb);
+	if ((offset + count) > ip->i_size) {
+		error = xfs_iomap_eof_align_last_fsb(mp, ip, extsz, &last_fsb);
 		if (error)
 			goto error_out;
 	} else {
@@ -498,7 +491,7 @@ xfs_iomap_write_direct(
 	/*
 	 * Issue the xfs_bmapi() call to allocate the blocks
 	 */
-	XFS_BMAP_INIT(&free_list, &firstfsb);
+	xfs_bmap_init(&free_list, &firstfsb);
 	nimaps = 1;
 	error = xfs_bmapi(tp, ip, offset_fsb, count_fsb, bmapi_flag,
 		&firstfsb, 0, &imap, &nimaps, &free_list, NULL);
@@ -559,7 +552,6 @@ STATIC int
 xfs_iomap_eof_want_preallocate(
 	xfs_mount_t	*mp,
 	xfs_inode_t	*ip,
-	xfs_fsize_t	isize,
 	xfs_off_t	offset,
 	size_t		count,
 	int		ioflag,
@@ -573,7 +565,7 @@ xfs_iomap_eof_want_preallocate(
 	int		n, error, imaps;
 
 	*prealloc = 0;
-	if ((ioflag & BMAPI_SYNC) || (offset + count) <= isize)
+	if ((ioflag & BMAPI_SYNC) || (offset + count) <= ip->i_size)
 		return 0;
 
 	/*
@@ -617,7 +609,6 @@ xfs_iomap_write_delay(
 	xfs_fileoff_t	ioalign;
 	xfs_fsblock_t	firstblock;
 	xfs_extlen_t	extsz;
-	xfs_fsize_t	isize;
 	int		nimaps;
 	xfs_bmbt_irec_t imap[XFS_WRITE_IMAPS];
 	int		prealloc, fsynced = 0;
@@ -637,11 +628,7 @@ xfs_iomap_write_delay(
 	offset_fsb = XFS_B_TO_FSBT(mp, offset);
 
 retry:
-	isize = ip->i_size;
-	if (ip->i_new_size > isize)
-		isize = ip->i_new_size;
-
-	error = xfs_iomap_eof_want_preallocate(mp, ip, isize, offset, count,
+	error = xfs_iomap_eof_want_preallocate(mp, ip, offset, count,
 				ioflag, imap, XFS_WRITE_IMAPS, &prealloc);
 	if (error)
 		return error;
@@ -655,8 +642,7 @@ retry:
 	}
 
 	if (prealloc || extsz) {
-		error = xfs_iomap_eof_align_last_fsb(mp, ip, isize, extsz,
-							&last_fsb);
+		error = xfs_iomap_eof_align_last_fsb(mp, ip, extsz, &last_fsb);
 		if (error)
 			return error;
 	}
@@ -765,7 +751,7 @@ xfs_iomap_write_allocate(
 			xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
 			xfs_trans_ihold(tp, ip);
 
-			XFS_BMAP_INIT(&free_list, &first_block);
+			xfs_bmap_init(&free_list, &first_block);
 
 			/*
 			 * it is possible that the extents have changed since
@@ -925,7 +911,7 @@ xfs_iomap_write_unwritten(
 		/*
 		 * Modify the unwritten extent state of the buffer.
 		 */
-		XFS_BMAP_INIT(&free_list, &firstfsb);
+		xfs_bmap_init(&free_list, &firstfsb);
 		nimaps = 1;
 		error = xfs_bmapi(tp, ip, offset_fsb, count_fsb,
 				  XFS_BMAPI_WRITE|XFS_BMAPI_CONVERT, &firstfsb,

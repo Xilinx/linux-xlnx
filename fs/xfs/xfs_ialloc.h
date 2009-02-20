@@ -20,6 +20,7 @@
 
 struct xfs_buf;
 struct xfs_dinode;
+struct xfs_imap;
 struct xfs_mount;
 struct xfs_trans;
 
@@ -38,7 +39,6 @@ struct xfs_trans;
 /*
  * Make an inode pointer out of the buffer/offset.
  */
-#define	XFS_MAKE_IPTR(mp,b,o)		xfs_make_iptr(mp,b,o)
 static inline struct xfs_dinode *
 xfs_make_iptr(struct xfs_mount *mp, struct xfs_buf *b, int o)
 {
@@ -49,14 +49,12 @@ xfs_make_iptr(struct xfs_mount *mp, struct xfs_buf *b, int o)
 /*
  * Find a free (set) bit in the inode bitmask.
  */
-#define	XFS_IALLOC_FIND_FREE(fp)	xfs_ialloc_find_free(fp)
 static inline int xfs_ialloc_find_free(xfs_inofree_t *fp)
 {
 	return xfs_lowbit64(*fp);
 }
 
 
-#ifdef __KERNEL__
 /*
  * Allocate an inode on disk.
  * Mode is used to tell whether the new inode will need space, and whether
@@ -105,17 +103,14 @@ xfs_difree(
 	xfs_ino_t	*first_ino);	/* first inode in deleted cluster */
 
 /*
- * Return the location of the inode in bno/len/off,
- * for mapping it into a buffer.
+ * Return the location of the inode in imap, for mapping it into a buffer.
  */
 int
-xfs_dilocate(
+xfs_imap(
 	struct xfs_mount *mp,		/* file system mount structure */
 	struct xfs_trans *tp,		/* transaction pointer */
 	xfs_ino_t	ino,		/* inode to locate */
-	xfs_fsblock_t	*bno,		/* output: block containing inode */
-	int		*len,		/* output: num blocks in cluster*/
-	int		*off,		/* output: index in block of inode */
+	struct xfs_imap	*imap,		/* location map structure */
 	uint		flags);		/* flags for inode btree lookup */
 
 /*
@@ -154,6 +149,24 @@ xfs_ialloc_pagi_init(
 	struct xfs_trans *tp,		/* transaction pointer */
         xfs_agnumber_t  agno);		/* allocation group number */
 
-#endif	/* __KERNEL__ */
+/*
+ * Lookup the first record greater than or equal to ino
+ * in the btree given by cur.
+ */
+int xfs_inobt_lookup_ge(struct xfs_btree_cur *cur, xfs_agino_t ino,
+		__int32_t fcnt,	xfs_inofree_t free, int *stat);
+
+/*
+ * Lookup the first record less than or equal to ino
+ * in the btree given by cur.
+ */
+int xfs_inobt_lookup_le(struct xfs_btree_cur *cur, xfs_agino_t ino,
+		__int32_t fcnt,	xfs_inofree_t free, int *stat);
+
+/*
+ * Get the data from the pointed-to record.
+ */
+extern int xfs_inobt_get_rec(struct xfs_btree_cur *cur, xfs_agino_t *ino,
+			     __int32_t *fcnt, xfs_inofree_t *free, int *stat);
 
 #endif	/* __XFS_IALLOC_H__ */

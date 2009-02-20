@@ -42,7 +42,8 @@ static int show_schedstat(struct seq_file *seq, void *v)
 		for_each_domain(cpu, sd) {
 			enum cpu_idle_type itype;
 
-			cpumask_scnprintf(mask_str, mask_len, sd->span);
+			cpumask_scnprintf(mask_str, mask_len,
+					  sched_domain_span(sd));
 			seq_printf(seq, "domain%d %s", dcount++, mask_str);
 			for (itype = CPU_IDLE; itype < CPU_MAX_IDLE_TYPES;
 					itype++) {
@@ -295,20 +296,21 @@ sched_info_switch(struct task_struct *prev, struct task_struct *next)
 static inline void account_group_user_time(struct task_struct *tsk,
 					   cputime_t cputime)
 {
-	struct signal_struct *sig;
+	struct thread_group_cputimer *cputimer;
 
 	/* tsk == current, ensure it is safe to use ->signal */
 	if (unlikely(tsk->exit_state))
 		return;
 
-	sig = tsk->signal;
-	if (sig->cputime.totals) {
-		struct task_cputime *times;
+	cputimer = &tsk->signal->cputimer;
 
-		times = per_cpu_ptr(sig->cputime.totals, get_cpu());
-		times->utime = cputime_add(times->utime, cputime);
-		put_cpu_no_resched();
-	}
+	if (!cputimer->running)
+		return;
+
+	spin_lock(&cputimer->lock);
+	cputimer->cputime.utime =
+		cputime_add(cputimer->cputime.utime, cputime);
+	spin_unlock(&cputimer->lock);
 }
 
 /**
@@ -324,20 +326,21 @@ static inline void account_group_user_time(struct task_struct *tsk,
 static inline void account_group_system_time(struct task_struct *tsk,
 					     cputime_t cputime)
 {
-	struct signal_struct *sig;
+	struct thread_group_cputimer *cputimer;
 
 	/* tsk == current, ensure it is safe to use ->signal */
 	if (unlikely(tsk->exit_state))
 		return;
 
-	sig = tsk->signal;
-	if (sig->cputime.totals) {
-		struct task_cputime *times;
+	cputimer = &tsk->signal->cputimer;
 
-		times = per_cpu_ptr(sig->cputime.totals, get_cpu());
-		times->stime = cputime_add(times->stime, cputime);
-		put_cpu_no_resched();
-	}
+	if (!cputimer->running)
+		return;
+
+	spin_lock(&cputimer->lock);
+	cputimer->cputime.stime =
+		cputime_add(cputimer->cputime.stime, cputime);
+	spin_unlock(&cputimer->lock);
 }
 
 /**
@@ -353,6 +356,7 @@ static inline void account_group_system_time(struct task_struct *tsk,
 static inline void account_group_exec_runtime(struct task_struct *tsk,
 					      unsigned long long ns)
 {
+	struct thread_group_cputimer *cputimer;
 	struct signal_struct *sig;
 
 	sig = tsk->signal;
@@ -361,11 +365,12 @@ static inline void account_group_exec_runtime(struct task_struct *tsk,
 	if (unlikely(!sig))
 		return;
 
-	if (sig->cputime.totals) {
-		struct task_cputime *times;
+	cputimer = &sig->cputimer;
 
-		times = per_cpu_ptr(sig->cputime.totals, get_cpu());
-		times->sum_exec_runtime += ns;
-		put_cpu_no_resched();
-	}
+	if (!cputimer->running)
+		return;
+
+	spin_lock(&cputimer->lock);
+	cputimer->cputime.sum_exec_runtime += ns;
+	spin_unlock(&cputimer->lock);
 }

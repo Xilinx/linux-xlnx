@@ -144,6 +144,7 @@ static inline u32 smsc911x_reg_read(struct smsc911x_data *pdata, u32 reg)
 	}
 
 	BUG();
+	return 0;
 }
 
 static inline void smsc911x_reg_write(struct smsc911x_data *pdata, u32 reg,
@@ -952,7 +953,7 @@ smsc911x_rx_fastforward(struct smsc911x_data *pdata, unsigned int pktbytes)
 		do {
 			udelay(1);
 			val = smsc911x_reg_read(pdata, RX_DP_CTRL);
-		} while (timeout-- && (val & RX_DP_CTRL_RX_FFWD_));
+		} while (--timeout && (val & RX_DP_CTRL_RX_FFWD_));
 
 		if (unlikely(timeout == 0))
 			SMSC_WARNING(HW, "Timed out waiting for "
@@ -1484,13 +1485,13 @@ static irqreturn_t smsc911x_irqhandler(int irq, void *dev_id)
 	}
 
 	if (likely(intsts & inten & INT_STS_RSFL_)) {
-		if (likely(netif_rx_schedule_prep(dev, &pdata->napi))) {
+		if (likely(netif_rx_schedule_prep(&pdata->napi))) {
 			/* Disable Rx interrupts */
 			temp = smsc911x_reg_read(pdata, INT_EN);
 			temp &= (~INT_EN_RSFL_EN_);
 			smsc911x_reg_write(pdata, INT_EN, temp);
 			/* Schedule a NAPI poll */
-			__netif_rx_schedule(dev, &pdata->napi);
+			__netif_rx_schedule(&pdata->napi);
 		} else {
 			SMSC_WARNING(RX_ERR,
 				"netif_rx_schedule_prep failed");
@@ -1740,6 +1741,7 @@ static const struct net_device_ops smsc911x_netdev_ops = {
 	.ndo_set_multicast_list	= smsc911x_set_multicast_list,
 	.ndo_do_ioctl		= smsc911x_do_ioctl,
 	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_set_mac_address 	= eth_mac_addr,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= smsc911x_poll_controller,
 #endif
@@ -1967,7 +1969,7 @@ static int __devinit smsc911x_drv_probe(struct platform_device *pdev)
 	smsc911x_reg_write(pdata, INT_STS, 0xFFFFFFFF);
 
 	retval = request_irq(dev->irq, smsc911x_irqhandler, IRQF_DISABLED,
-			     SMSC_CHIPNAME, dev);
+			     dev->name, dev);
 	if (retval) {
 		SMSC_WARNING(PROBE,
 			"Unable to claim requested irq: %d", dev->irq);

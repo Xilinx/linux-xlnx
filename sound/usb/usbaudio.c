@@ -2524,7 +2524,6 @@ static int parse_audio_format_rates(struct snd_usb_audio *chip, struct audioform
 		 * build the rate table and bitmap flags
 		 */
 		int r, idx;
-		unsigned int nonzero_rates = 0;
 
 		fp->rate_table = kmalloc(sizeof(int) * nr_rates, GFP_KERNEL);
 		if (fp->rate_table == NULL) {
@@ -2532,24 +2531,27 @@ static int parse_audio_format_rates(struct snd_usb_audio *chip, struct audioform
 			return -1;
 		}
 
-		fp->nr_rates = nr_rates;
-		fp->rate_min = fp->rate_max = combine_triple(&fmt[8]);
+		fp->nr_rates = 0;
+		fp->rate_min = fp->rate_max = 0;
 		for (r = 0, idx = offset + 1; r < nr_rates; r++, idx += 3) {
 			unsigned int rate = combine_triple(&fmt[idx]);
+			if (!rate)
+				continue;
 			/* C-Media CM6501 mislabels its 96 kHz altsetting */
 			if (rate == 48000 && nr_rates == 1 &&
-			    chip->usb_id == USB_ID(0x0d8c, 0x0201) &&
+			    (chip->usb_id == USB_ID(0x0d8c, 0x0201) ||
+			     chip->usb_id == USB_ID(0x0d8c, 0x0102)) &&
 			    fp->altsetting == 5 && fp->maxpacksize == 392)
 				rate = 96000;
-			fp->rate_table[r] = rate;
-			nonzero_rates |= rate;
-			if (rate < fp->rate_min)
+			fp->rate_table[fp->nr_rates] = rate;
+			if (!fp->rate_min || rate < fp->rate_min)
 				fp->rate_min = rate;
-			else if (rate > fp->rate_max)
+			if (!fp->rate_max || rate > fp->rate_max)
 				fp->rate_max = rate;
 			fp->rates |= snd_pcm_rate_to_rate_bit(rate);
+			fp->nr_rates++;
 		}
-		if (!nonzero_rates) {
+		if (!fp->nr_rates) {
 			hwc_debug("All rates were zero. Skipping format!\n");
 			return -1;
 		}
@@ -2966,6 +2968,7 @@ static int create_fixed_stream_quirk(struct snd_usb_audio *chip,
 		return -EINVAL;
 	}
 	alts = &iface->altsetting[fp->altset_idx];
+	fp->maxpacksize = le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize);
 	usb_set_interface(chip->dev, fp->iface, 0);
 	init_usb_pitch(chip->dev, fp->iface, alts, fp);
 	init_usb_sample_rate(chip->dev, fp->iface, alts, fp, fp->rate_max);
@@ -3709,7 +3712,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	void *chip;
 	chip = snd_usb_audio_probe(interface_to_usbdev(intf), intf, id);
 	if (chip) {
-		dev_set_drvdata(&intf->dev, chip);
+		usb_set_intfdata(intf, chip);
 		return 0;
 	} else
 		return -EIO;
@@ -3718,13 +3721,13 @@ static int usb_audio_probe(struct usb_interface *intf,
 static void usb_audio_disconnect(struct usb_interface *intf)
 {
 	snd_usb_audio_disconnect(interface_to_usbdev(intf),
-				 dev_get_drvdata(&intf->dev));
+				 usb_get_intfdata(intf));
 }
 
 #ifdef CONFIG_PM
 static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 {
-	struct snd_usb_audio *chip = dev_get_drvdata(&intf->dev);
+	struct snd_usb_audio *chip = usb_get_intfdata(intf);
 	struct list_head *p;
 	struct snd_usb_stream *as;
 
@@ -3744,7 +3747,7 @@ static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 
 static int usb_audio_resume(struct usb_interface *intf)
 {
-	struct snd_usb_audio *chip = dev_get_drvdata(&intf->dev);
+	struct snd_usb_audio *chip = usb_get_intfdata(intf);
 
 	if (chip == (void *)-1L)
 		return 0;

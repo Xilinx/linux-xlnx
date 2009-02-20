@@ -24,6 +24,11 @@ else
 	tree=${srctree}/
 fi
 
+# Detect if ALLSOURCE_ARCHS is set. If not, we assume SRCARCH
+if [ "${ALLSOURCE_ARCHS}" = "" ]; then
+	ALLSOURCE_ARCHS=${SRCARCH}
+fi
+
 # find sources in arch/$ARCH
 find_arch_sources()
 {
@@ -54,26 +59,32 @@ find_other_sources()
 find_sources()
 {
 	find_arch_sources $1 "$2"
-	find_include_sources "$2"
-	find_other_sources "$2"
 }
 
 all_sources()
 {
-	find_sources $SRCARCH '*.[chS]'
+	for arch in $ALLSOURCE_ARCHS
+	do
+		find_sources $arch '*.[chS]'
+	done
 	if [ ! -z "$archinclude" ]; then
 		find_arch_include_sources $archinclude '*.[chS]'
 	fi
+	find_include_sources '*.[chS]'
+	find_other_sources '*.[chS]'
 }
 
 all_kconfigs()
 {
-	find_sources $SRCARCH 'Kconfig*'
+	for arch in $ALLSOURCE_ARCHS; do
+		find_sources $arch 'Kconfig*'
+	done
+	find_other_sources 'Kconfig*'
 }
 
 all_defconfigs()
 {
-	find_sources $SRCARCH "defconfig"
+	find_sources $ALLSOURCE_ARCHS "defconfig"
 }
 
 docscope()
@@ -84,7 +95,6 @@ docscope()
 
 exuberant()
 {
-	all_sources > all
 	all_sources | xargs $1 -a                               \
 	-I __initdata,__exitdata,__acquires,__releases          \
 	-I __read_mostly,____cacheline_aligned                  \
@@ -92,7 +102,8 @@ exuberant()
 	-I ____cacheline_internodealigned_in_smp                \
 	-I EXPORT_SYMBOL,EXPORT_SYMBOL_GPL                      \
 	--extra=+f --c-kinds=+px                                \
-	--regex-asm='/^ENTRY\(([^)]*)\).*/\1/'
+	--regex-asm='/^ENTRY\(([^)]*)\).*/\1/'                  \
+	--regex-c='/^SYSCALL_DEFINE[[:digit:]]?\(([^,)]*).*/sys_\1/'
 
 	all_kconfigs | xargs $1 -a                              \
 	--langdef=kconfig --language-force=kconfig              \
@@ -110,7 +121,9 @@ exuberant()
 
 emacs()
 {
-	all_sources | xargs $1 -a
+	all_sources | xargs $1 -a                               \
+	--regex='/^ENTRY(\([^)]*\)).*/\1/'                      \
+	--regex='/^SYSCALL_DEFINE[0-9]?(\([^,)]*\).*/sys_\1/'
 
 	all_kconfigs | xargs $1 -a                              \
 	--regex='/^[ \t]*\(\(menu\)*config\)[ \t]+\([a-zA-Z0-9_]+\)/\3/'

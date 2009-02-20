@@ -83,8 +83,8 @@ typedef struct xfs_dquot {
 	xfs_qcnt_t	 q_res_rtbcount;/* total realtime blks used+reserved */
 	mutex_t		 q_qlock;	/* quota lock */
 	struct completion q_flush;	/* flush completion queue */
-	uint		 q_pincount;	/* pin count for this dquot */
-	sv_t		 q_pinwait;	/* sync var for pinning */
+	atomic_t          q_pincount;	/* dquot pin count */
+	wait_queue_head_t q_pinwait;	/* dquot pinning wait queue */
 #ifdef XFS_DQUOT_TRACE
 	struct ktrace	*q_trace;	/* trace header structure */
 #endif
@@ -96,6 +96,16 @@ typedef struct xfs_dquot {
 #define dq_mplist	q_lists.dqm_mplist
 #define dq_hashlist	q_lists.dqm_hashlist
 #define dq_flags	q_lists.dqm_flags
+
+/*
+ * Lock hierachy for q_qlock:
+ *	XFS_QLOCK_NORMAL is the implicit default,
+ * 	XFS_QLOCK_NESTED is the dquot with the higher id in xfs_dqlock2
+ */
+enum {
+	XFS_QLOCK_NORMAL = 0,
+	XFS_QLOCK_NESTED,
+};
 
 #define XFS_DQHOLD(dqp)		((dqp)->q_nrefs++)
 

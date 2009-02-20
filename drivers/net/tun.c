@@ -157,10 +157,16 @@ static int update_filter(struct tap_filter *filter, void __user *arg)
 
 	nexact = n;
 
-	/* The rest is hashed */
+	/* Remaining multicast addresses are hashed,
+	 * unicast will leave the filter disabled. */
 	memset(filter->mask, 0, sizeof(filter->mask));
-	for (; n < uf.count; n++)
+	for (; n < uf.count; n++) {
+		if (!is_multicast_ether_addr(addr[n].u)) {
+			err = 0; /* no filter */
+			goto done;
+		}
 		addr_hash_set(filter->mask, addr[n].u);
+	}
 
 	/* For ALLMULTI just set the mask to all ones.
 	 * This overrides the mask populated above. */
@@ -213,7 +219,7 @@ static int check_filter(struct tap_filter *filter, const struct sk_buff *skb)
 
 /* Network device part of the driver */
 
-static unsigned int tun_net_id;
+static int tun_net_id;
 struct tun_net {
 	struct list_head dev_list;
 };
@@ -343,7 +349,7 @@ static void tun_net_init(struct net_device *dev)
 		break;
 
 	case TUN_TAP_DEV:
-		dev->netdev_ops = &tun_netdev_ops;
+		dev->netdev_ops = &tap_netdev_ops;
 		/* Ethernet TAP Device */
 		ether_setup(dev);
 

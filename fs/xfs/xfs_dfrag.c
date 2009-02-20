@@ -49,29 +49,17 @@
  */
 int
 xfs_swapext(
-	xfs_swapext_t	__user *sxu)
+	xfs_swapext_t	*sxp)
 {
-	xfs_swapext_t	*sxp;
 	xfs_inode_t     *ip, *tip;
 	struct file	*file, *target_file;
 	int		error = 0;
-
-	sxp = kmem_alloc(sizeof(xfs_swapext_t), KM_MAYFAIL);
-	if (!sxp) {
-		error = XFS_ERROR(ENOMEM);
-		goto out;
-	}
-
-	if (copy_from_user(sxp, sxu, sizeof(xfs_swapext_t))) {
-		error = XFS_ERROR(EFAULT);
-		goto out_free_sxp;
-	}
 
 	/* Pull information for the target fd */
 	file = fget((int)sxp->sx_fdtarget);
 	if (!file) {
 		error = XFS_ERROR(EINVAL);
-		goto out_free_sxp;
+		goto out;
 	}
 
 	if (!(file->f_mode & FMODE_WRITE) || (file->f_flags & O_APPEND)) {
@@ -115,8 +103,6 @@ xfs_swapext(
 	fput(target_file);
  out_put_file:
 	fput(file);
- out_free_sxp:
-	kmem_free(sxp);
  out:
 	return error;
 }

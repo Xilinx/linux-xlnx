@@ -220,6 +220,35 @@ static pgoff_t vma_hugecache_offset(struct hstate *h,
 }
 
 /*
+ * Return the size of the pages allocated when backing a VMA. In the majority
+ * cases this will be same size as used by the page table entries.
+ */
+unsigned long vma_kernel_pagesize(struct vm_area_struct *vma)
+{
+	struct hstate *hstate;
+
+	if (!is_vm_hugetlb_page(vma))
+		return PAGE_SIZE;
+
+	hstate = hstate_vma(vma);
+
+	return 1UL << (hstate->order + PAGE_SHIFT);
+}
+
+/*
+ * Return the page size being used by the MMU to back a VMA. In the majority
+ * of cases, the page size used by the kernel matches the MMU size. On
+ * architectures where it differs, an architecture-specific version of this
+ * function is required.
+ */
+#ifndef vma_mmu_pagesize
+unsigned long vma_mmu_pagesize(struct vm_area_struct *vma)
+{
+	return vma_kernel_pagesize(vma);
+}
+#endif
+
+/*
  * Flags for MAP_PRIVATE reservations.  These are stored in the bottom
  * bits of the reservation map pointer, which are always clear due to
  * alignment.
@@ -371,8 +400,10 @@ static void clear_huge_page(struct page *page,
 {
 	int i;
 
-	if (unlikely(sz > MAX_ORDER_NR_PAGES))
-		return clear_gigantic_page(page, addr, sz);
+	if (unlikely(sz > MAX_ORDER_NR_PAGES)) {
+		clear_gigantic_page(page, addr, sz);
+		return;
+	}
 
 	might_sleep();
 	for (i = 0; i < sz/PAGE_SIZE; i++) {
@@ -404,8 +435,10 @@ static void copy_huge_page(struct page *dst, struct page *src,
 	int i;
 	struct hstate *h = hstate_vma(vma);
 
-	if (unlikely(pages_per_huge_page(h) > MAX_ORDER_NR_PAGES))
-		return copy_gigantic_page(dst, src, addr, vma);
+	if (unlikely(pages_per_huge_page(h) > MAX_ORDER_NR_PAGES)) {
+		copy_gigantic_page(dst, src, addr, vma);
+		return;
+	}
 
 	might_sleep();
 	for (i = 0; i < pages_per_huge_page(h); i++) {
@@ -972,7 +1005,7 @@ static struct page *alloc_huge_page(struct vm_area_struct *vma,
 	return page;
 }
 
-__attribute__((weak)) int alloc_bootmem_huge_page(struct hstate *h)
+int __weak alloc_bootmem_huge_page(struct hstate *h)
 {
 	struct huge_bootmem_page *m;
 	int nr_nodes = nodes_weight(node_online_map);
@@ -991,8 +1024,7 @@ __attribute__((weak)) int alloc_bootmem_huge_page(struct hstate *h)
 			 * puts them into the mem_map).
 			 */
 			m = addr;
-			if (m)
-				goto found;
+			goto found;
 		}
 		hstate_next_node(h);
 		nr_nodes--;
@@ -2237,12 +2269,18 @@ void hugetlb_change_protection(struct vm_area_struct *vma,
 
 int hugetlb_reserve_pages(struct inode *inode,
 					long from, long to,
-					struct vm_area_struct *vma)
+					struct vm_area_struct *vma,
+					int acctflag)
 {
 	long ret, chg;
 	struct hstate *h = hstate_inode(inode);
 
-	if (vma && vma->vm_flags & VM_NORESERVE)
+	/*
+	 * Only apply hugepage reservation if asked. At fault time, an
+	 * attempt will be made for VM_NORESERVE to allocate a page
+	 * and filesystem quota without using reserves
+	 */
+	if (acctflag & VM_NORESERVE)
 		return 0;
 
 	/*
@@ -2267,13 +2305,31 @@ int hugetlb_reserve_pages(struct inode *inode,
 	if (chg < 0)
 		return chg;
 
+	/* There must be enough filesystem quota for the mapping */
 	if (hugetlb_get_quota(inode->i_mapping, chg))
 		return -ENOSPC;
+
+	/*
+	 * Check enough hugepages are available for the reservation.
+	 * Hand back the quota if there are not
+	 */
 	ret = hugetlb_acct_memory(h, chg);
 	if (ret < 0) {
 		hugetlb_put_quota(inode->i_mapping, chg);
 		return ret;
 	}
+
+	/*
+	 * Account for the reservations made. Shared mappings record regions
+	 * that have reservations as they are shared by multiple VMAs.
+	 * When the last VMA disappears, the region map says how much
+	 * the reservation was and the page cache tells how much of
+	 * the reservation was consumed. Private mappings are per-VMA and
+	 * only the consumed reservations are tracked. When the VMA
+	 * disappears, the original reservation is the VMA size and the
+	 * consumed reservations are stored in the map. Hence, nothing
+	 * else has to be done for private mappings here
+	 */
 	if (!vma || vma->vm_flags & VM_SHARED)
 		region_add(&inode->i_mapping->private_list, from, to);
 	return 0;

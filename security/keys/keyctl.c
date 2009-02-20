@@ -54,11 +54,11 @@ static int key_get_type_from_user(char *type,
  * - returns the new key's serial number
  * - implements add_key()
  */
-asmlinkage long sys_add_key(const char __user *_type,
-			    const char __user *_description,
-			    const void __user *_payload,
-			    size_t plen,
-			    key_serial_t ringid)
+SYSCALL_DEFINE5(add_key, const char __user *, _type,
+		const char __user *, _description,
+		const void __user *, _payload,
+		size_t, plen,
+		key_serial_t, ringid)
 {
 	key_ref_t keyring_ref, key_ref;
 	char type[32], *description;
@@ -146,10 +146,10 @@ asmlinkage long sys_add_key(const char __user *_type,
  *   - if the _callout_info string is empty, it will be rendered as "-"
  * - implements request_key()
  */
-asmlinkage long sys_request_key(const char __user *_type,
-				const char __user *_description,
-				const char __user *_callout_info,
-				key_serial_t destringid)
+SYSCALL_DEFINE4(request_key, const char __user *, _type,
+		const char __user *, _description,
+		const char __user *, _callout_info,
+		key_serial_t, destringid)
 {
 	struct key_type *ktype;
 	struct key *key;
@@ -270,6 +270,7 @@ long keyctl_join_session_keyring(const char __user *_name)
 
 	/* join the session */
 	ret = join_session_keyring(name);
+	kfree(name);
 
  error:
 	return ret;
@@ -838,11 +839,11 @@ static long get_instantiation_keyring(key_serial_t ringid,
 {
 	key_ref_t dkref;
 
+	*_dest_keyring = NULL;
+
 	/* just return a NULL pointer if we weren't asked to make a link */
-	if (ringid == 0) {
-		*_dest_keyring = NULL;
+	if (ringid == 0)
 		return 0;
-	}
 
 	/* if a specific keyring is nominated by ID, then use that */
 	if (ringid > 0) {
@@ -1216,8 +1217,8 @@ long keyctl_get_security(key_serial_t keyid,
 /*
  * the key control system call
  */
-asmlinkage long sys_keyctl(int option, unsigned long arg2, unsigned long arg3,
-			   unsigned long arg4, unsigned long arg5)
+SYSCALL_DEFINE5(keyctl, int, option, unsigned long, arg2, unsigned long, arg3,
+		unsigned long, arg4, unsigned long, arg5)
 {
 	switch (option) {
 	case KEYCTL_GET_KEYRING_ID:
@@ -1294,7 +1295,7 @@ asmlinkage long sys_keyctl(int option, unsigned long arg2, unsigned long arg3,
 
 	case KEYCTL_GET_SECURITY:
 		return keyctl_get_security((key_serial_t) arg2,
-					   (char *) arg3,
+					   (char __user *) arg3,
 					   (size_t) arg4);
 
 	default:
