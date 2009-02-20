@@ -45,7 +45,6 @@
 #include "xfs_fsops.h"
 #include "xfs_utils.h"
 
-STATIC int	xfs_mount_log_sb(xfs_mount_t *, __int64_t);
 STATIC int	xfs_uuid_mount(xfs_mount_t *);
 STATIC void	xfs_unmountfs_wait(xfs_mount_t *);
 
@@ -567,8 +566,6 @@ xfs_readsb(xfs_mount_t *mp, int flags)
 STATIC void
 xfs_mount_common(xfs_mount_t *mp, xfs_sb_t *sbp)
 {
-	int	i;
-
 	mp->m_agfrotor = mp->m_agirotor = 0;
 	spin_lock_init(&mp->m_agirotor_lock);
 	mp->m_maxagi = mp->m_sb.sb_agcount;
@@ -577,12 +574,10 @@ xfs_mount_common(xfs_mount_t *mp, xfs_sb_t *sbp)
 	mp->m_sectbb_log = sbp->sb_sectlog - BBSHIFT;
 	mp->m_agno_log = xfs_highbit32(sbp->sb_agcount - 1) + 1;
 	mp->m_agino_log = sbp->sb_inopblog + sbp->sb_agblklog;
-	mp->m_litino = sbp->sb_inodesize -
-		((uint)sizeof(xfs_dinode_core_t) + (uint)sizeof(xfs_agino_t));
+	mp->m_litino = sbp->sb_inodesize - sizeof(struct xfs_dinode);
 	mp->m_blockmask = sbp->sb_blocksize - 1;
 	mp->m_blockwsize = sbp->sb_blocksize >> XFS_WORDLOG;
 	mp->m_blockwmask = mp->m_blockwsize - 1;
-	INIT_LIST_HEAD(&mp->m_del_inodes);
 
 	/*
 	 * Setup for attributes, in case they get created.
@@ -605,24 +600,20 @@ xfs_mount_common(xfs_mount_t *mp, xfs_sb_t *sbp)
 	}
 	ASSERT(mp->m_attroffset < XFS_LITINO(mp));
 
-	for (i = 0; i < 2; i++) {
-		mp->m_alloc_mxr[i] = XFS_BTREE_BLOCK_MAXRECS(sbp->sb_blocksize,
-			xfs_alloc, i == 0);
-		mp->m_alloc_mnr[i] = XFS_BTREE_BLOCK_MINRECS(sbp->sb_blocksize,
-			xfs_alloc, i == 0);
-	}
-	for (i = 0; i < 2; i++) {
-		mp->m_bmap_dmxr[i] = XFS_BTREE_BLOCK_MAXRECS(sbp->sb_blocksize,
-			xfs_bmbt, i == 0);
-		mp->m_bmap_dmnr[i] = XFS_BTREE_BLOCK_MINRECS(sbp->sb_blocksize,
-			xfs_bmbt, i == 0);
-	}
-	for (i = 0; i < 2; i++) {
-		mp->m_inobt_mxr[i] = XFS_BTREE_BLOCK_MAXRECS(sbp->sb_blocksize,
-			xfs_inobt, i == 0);
-		mp->m_inobt_mnr[i] = XFS_BTREE_BLOCK_MINRECS(sbp->sb_blocksize,
-			xfs_inobt, i == 0);
-	}
+	mp->m_alloc_mxr[0] = xfs_allocbt_maxrecs(mp, sbp->sb_blocksize, 1);
+	mp->m_alloc_mxr[1] = xfs_allocbt_maxrecs(mp, sbp->sb_blocksize, 0);
+	mp->m_alloc_mnr[0] = mp->m_alloc_mxr[0] / 2;
+	mp->m_alloc_mnr[1] = mp->m_alloc_mxr[1] / 2;
+
+	mp->m_inobt_mxr[0] = xfs_inobt_maxrecs(mp, sbp->sb_blocksize, 1);
+	mp->m_inobt_mxr[1] = xfs_inobt_maxrecs(mp, sbp->sb_blocksize, 0);
+	mp->m_inobt_mnr[0] = mp->m_inobt_mxr[0] / 2;
+	mp->m_inobt_mnr[1] = mp->m_inobt_mxr[1] / 2;
+
+	mp->m_bmap_dmxr[0] = xfs_bmbt_maxrecs(mp, sbp->sb_blocksize, 1);
+	mp->m_bmap_dmxr[1] = xfs_bmbt_maxrecs(mp, sbp->sb_blocksize, 0);
+	mp->m_bmap_dmnr[0] = mp->m_bmap_dmxr[0] / 2;
+	mp->m_bmap_dmnr[1] = mp->m_bmap_dmxr[1] / 2;
 
 	mp->m_bsize = XFS_FSB_TO_BB(mp, 1);
 	mp->m_ialloc_inos = (int)MAX((__uint16_t)XFS_INODES_PER_CHUNK,
@@ -690,7 +681,7 @@ xfs_initialize_perag_data(xfs_mount_t *mp, xfs_agnumber_t agcount)
  * Update alignment values based on mount options and sb values
  */
 STATIC int
-xfs_update_alignment(xfs_mount_t *mp, __uint64_t *update_flags)
+xfs_update_alignment(xfs_mount_t *mp)
 {
 	xfs_sb_t	*sbp = &(mp->m_sb);
 
@@ -744,11 +735,11 @@ xfs_update_alignment(xfs_mount_t *mp, __uint64_t *update_flags)
 		if (xfs_sb_version_hasdalign(sbp)) {
 			if (sbp->sb_unit != mp->m_dalign) {
 				sbp->sb_unit = mp->m_dalign;
-				*update_flags |= XFS_SB_UNIT;
+				mp->m_update_flags |= XFS_SB_UNIT;
 			}
 			if (sbp->sb_width != mp->m_swidth) {
 				sbp->sb_width = mp->m_swidth;
-				*update_flags |= XFS_SB_WIDTH;
+				mp->m_update_flags |= XFS_SB_WIDTH;
 			}
 		}
 	} else if ((mp->m_flags & XFS_MOUNT_NOALIGN) != XFS_MOUNT_NOALIGN &&
@@ -913,7 +904,6 @@ xfs_mountfs(
 	xfs_sb_t	*sbp = &(mp->m_sb);
 	xfs_inode_t	*rip;
 	__uint64_t	resblks;
-	__int64_t	update_flags = 0LL;
 	uint		quotamount, quotaflags;
 	int		uuid_mounted = 0;
 	int		error = 0;
@@ -941,7 +931,7 @@ xfs_mountfs(
 			"XFS: correcting sb_features alignment problem");
 		sbp->sb_features2 |= sbp->sb_bad_features2;
 		sbp->sb_bad_features2 = sbp->sb_features2;
-		update_flags |= XFS_SB_FEATURES2 | XFS_SB_BAD_FEATURES2;
+		mp->m_update_flags |= XFS_SB_FEATURES2 | XFS_SB_BAD_FEATURES2;
 
 		/*
 		 * Re-check for ATTR2 in case it was found in bad_features2
@@ -955,11 +945,11 @@ xfs_mountfs(
 	if (xfs_sb_version_hasattr2(&mp->m_sb) &&
 	   (mp->m_flags & XFS_MOUNT_NOATTR2)) {
 		xfs_sb_version_removeattr2(&mp->m_sb);
-		update_flags |= XFS_SB_FEATURES2;
+		mp->m_update_flags |= XFS_SB_FEATURES2;
 
 		/* update sb_versionnum for the clearing of the morebits */
 		if (!sbp->sb_features2)
-			update_flags |= XFS_SB_VERSIONNUM;
+			mp->m_update_flags |= XFS_SB_VERSIONNUM;
 	}
 
 	/*
@@ -968,7 +958,7 @@ xfs_mountfs(
 	 * allocator alignment is within an ag, therefore ag has
 	 * to be aligned at stripe boundary.
 	 */
-	error = xfs_update_alignment(mp, &update_flags);
+	error = xfs_update_alignment(mp);
 	if (error)
 		goto error1;
 
@@ -1145,10 +1135,12 @@ xfs_mountfs(
 	}
 
 	/*
-	 * If fs is not mounted readonly, then update the superblock changes.
+	 * If this is a read-only mount defer the superblock updates until
+	 * the next remount into writeable mode.  Otherwise we would never
+	 * perform the update e.g. for the root filesystem.
 	 */
-	if (update_flags && !(mp->m_flags & XFS_MOUNT_RDONLY)) {
-		error = xfs_mount_log_sb(mp, update_flags);
+	if (mp->m_update_flags && !(mp->m_flags & XFS_MOUNT_RDONLY)) {
+		error = xfs_mount_log_sb(mp, mp->m_update_flags);
 		if (error) {
 			cmn_err(CE_WARN, "XFS: failed to write sb changes");
 			goto error4;
@@ -1228,6 +1220,16 @@ xfs_unmountfs(
 	__uint64_t		resblks;
 	int			error;
 
+	/*
+	 * Release dquot that rootinode, rbmino and rsumino might be holding,
+	 * and release the quota inodes.
+	 */
+	XFS_QM_UNMOUNT(mp);
+
+	if (mp->m_rbmip)
+		IRELE(mp->m_rbmip);
+	if (mp->m_rsumip)
+		IRELE(mp->m_rsumip);
 	IRELE(mp->m_rootip);
 
 	/*
@@ -1241,7 +1243,7 @@ xfs_unmountfs(
 	 * need to force the log first.
 	 */
 	xfs_log_force(mp, (xfs_lsn_t)0, XFS_LOG_FORCE | XFS_LOG_SYNC);
-	xfs_iflush_all(mp);
+	xfs_reclaim_inodes(mp, 0, XFS_IFLUSH_ASYNC);
 
 	XFS_QM_DQPURGEALL(mp, XFS_QMOPT_QUOTALL | XFS_QMOPT_UMOUNTING);
 
@@ -1287,11 +1289,6 @@ xfs_unmountfs(
 	xfs_unmountfs_writesb(mp);
 	xfs_unmountfs_wait(mp); 		/* wait for async bufs */
 	xfs_log_unmount(mp);			/* Done! No more fs ops. */
-
-	/*
-	 * All inodes from this mount point should be freed.
-	 */
-	ASSERT(mp->m_inodes == NULL);
 
 	if ((mp->m_flags & XFS_MOUNT_NOUUID) == 0)
 		uuid_table_remove(&mp->m_sb.sb_uuid);
@@ -1365,24 +1362,6 @@ xfs_log_sbcount(
 	return error;
 }
 
-STATIC void
-xfs_mark_shared_ro(
-	xfs_mount_t	*mp,
-	xfs_buf_t	*bp)
-{
-	xfs_dsb_t	*sb = XFS_BUF_TO_SBP(bp);
-	__uint16_t	version;
-
-	if (!(sb->sb_flags & XFS_SBF_READONLY))
-		sb->sb_flags |= XFS_SBF_READONLY;
-
-	version = be16_to_cpu(sb->sb_versionnum);
-	if ((version & XFS_SB_VERSION_NUMBITS) != XFS_SB_VERSION_4 ||
-	    !(version & XFS_SB_VERSION_SHAREDBIT))
-		version |= XFS_SB_VERSION_SHAREDBIT;
-	sb->sb_versionnum = cpu_to_be16(version);
-}
-
 int
 xfs_unmountfs_writesb(xfs_mount_t *mp)
 {
@@ -1398,12 +1377,6 @@ xfs_unmountfs_writesb(xfs_mount_t *mp)
 
 		sbp = xfs_getsb(mp, 0);
 
-		/*
-		 * mark shared-readonly if desired
-		 */
-		if (mp->m_mk_sharedro)
-			xfs_mark_shared_ro(mp, sbp);
-
 		XFS_BUF_UNDONE(sbp);
 		XFS_BUF_UNREAD(sbp);
 		XFS_BUF_UNDELAYWRITE(sbp);
@@ -1415,8 +1388,6 @@ xfs_unmountfs_writesb(xfs_mount_t *mp)
 		if (error)
 			xfs_ioerror_alert("xfs_unmountfs_writesb",
 					  mp, sbp, XFS_BUF_ADDR(sbp));
-		if (error && mp->m_mk_sharedro)
-			xfs_fs_cmn_err(CE_ALERT, mp, "Superblock write error detected while unmounting.  Filesystem may not be marked shared readonly");
 		xfs_buf_relse(sbp);
 	}
 	return error;
@@ -1849,7 +1820,7 @@ xfs_uuid_mount(
  * be altered by the mount options, as well as any potential sb_features2
  * fixup. Only the first superblock is updated.
  */
-STATIC int
+int
 xfs_mount_log_sb(
 	xfs_mount_t	*mp,
 	__int64_t	fields)

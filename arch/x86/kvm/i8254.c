@@ -207,7 +207,7 @@ static int __pit_timer_fn(struct kvm_kpit_state *ps)
 	hrtimer_add_expires_ns(&pt->timer, pt->period);
 	pt->scheduled = hrtimer_get_expires_ns(&pt->timer);
 	if (pt->period)
-		ps->channels[0].count_load_time = hrtimer_get_expires(&pt->timer);
+		ps->channels[0].count_load_time = ktime_get();
 
 	return (pt->period == 0 ? 0 : 1);
 }
@@ -603,10 +603,29 @@ void kvm_free_pit(struct kvm *kvm)
 
 static void __inject_pit_timer_intr(struct kvm *kvm)
 {
+	struct kvm_vcpu *vcpu;
+	int i;
+
 	mutex_lock(&kvm->lock);
 	kvm_set_irq(kvm, kvm->arch.vpit->irq_source_id, 0, 1);
 	kvm_set_irq(kvm, kvm->arch.vpit->irq_source_id, 0, 0);
 	mutex_unlock(&kvm->lock);
+
+	/*
+	 * Provides NMI watchdog support via Virtual Wire mode.
+	 * The route is: PIT -> PIC -> LVT0 in NMI mode.
+	 *
+	 * Note: Our Virtual Wire implementation is simplified, only
+	 * propagating PIT interrupts to all VCPUs when they have set
+	 * LVT0 to NMI delivery. Other PIC interrupts are just sent to
+	 * VCPU0, and only if its LVT0 is in EXTINT mode.
+	 */
+	if (kvm->arch.vapics_in_nmi_mode > 0)
+		for (i = 0; i < KVM_MAX_VCPUS; ++i) {
+			vcpu = kvm->vcpus[i];
+			if (vcpu)
+				kvm_apic_nmi_wd_deliver(vcpu);
+		}
 }
 
 void kvm_inject_pit_timer_irqs(struct kvm_vcpu *vcpu)

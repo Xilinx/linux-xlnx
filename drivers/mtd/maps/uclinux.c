@@ -51,16 +51,7 @@ int uclinux_point(struct mtd_info *mtd, loff_t from, size_t len,
 
 /****************************************************************************/
 
-inline unsigned get_rootfs_len(unsigned *addr)
-{
-        if (memcmp(&addr[0], "-rom1fs-", 8) == 0)       /* romfs */
-                return be32_to_cpu(addr[2]);
-        else if(addr[0] == le32_to_cpu(0x28cd3d45)) /* cramfs */
-                return le32_to_cpu(addr[1]);
-        return 0;
-}
-
-int __init uclinux_mtd_init(void)
+static int __init uclinux_mtd_init(void)
 {
 	struct mtd_info *mtd;
 	struct map_info *mapp;
@@ -103,7 +94,7 @@ int __init uclinux_mtd_init(void)
 
 /****************************************************************************/
 
-void __exit uclinux_mtd_cleanup(void)
+static void __exit uclinux_mtd_cleanup(void)
 {
 	if (uclinux_ram_mtdinfo) {
 		del_mtd_partitions(uclinux_ram_mtdinfo);

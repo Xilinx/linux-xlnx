@@ -79,9 +79,22 @@ MODULE_VERSION(my_VERSION);
 /*
  *  cmd line parameters
  */
-static int mpt_msi_enable = -1;
-module_param(mpt_msi_enable, int, 0);
-MODULE_PARM_DESC(mpt_msi_enable, " MSI Support Enable (default=0)");
+
+static int mpt_msi_enable_spi;
+module_param(mpt_msi_enable_spi, int, 0);
+MODULE_PARM_DESC(mpt_msi_enable_spi, " Enable MSI Support for SPI \
+		controllers (default=0)");
+
+static int mpt_msi_enable_fc;
+module_param(mpt_msi_enable_fc, int, 0);
+MODULE_PARM_DESC(mpt_msi_enable_fc, " Enable MSI Support for FC \
+		controllers (default=0)");
+
+static int mpt_msi_enable_sas;
+module_param(mpt_msi_enable_sas, int, 1);
+MODULE_PARM_DESC(mpt_msi_enable_sas, " Enable MSI Support for SAS \
+		controllers (default=1)");
+
 
 static int mpt_channel_mapping;
 module_param(mpt_channel_mapping, int, 0);
@@ -91,7 +104,17 @@ static int mpt_debug_level;
 static int mpt_set_debug_level(const char *val, struct kernel_param *kp);
 module_param_call(mpt_debug_level, mpt_set_debug_level, param_get_int,
 		  &mpt_debug_level, 0600);
-MODULE_PARM_DESC(mpt_debug_level, " debug level - refer to mptdebug.h - (default=0)");
+MODULE_PARM_DESC(mpt_debug_level, " debug level - refer to mptdebug.h \
+	- (default=0)");
+
+int mpt_fwfault_debug;
+EXPORT_SYMBOL(mpt_fwfault_debug);
+module_param_call(mpt_fwfault_debug, param_set_int, param_get_int,
+	  &mpt_fwfault_debug, 0600);
+MODULE_PARM_DESC(mpt_fwfault_debug, "Enable detection of Firmware fault"
+	" and halt Firmware on fault - (default=0)");
+
+
 
 #ifdef MFCNT
 static int mfcounter = 0;
@@ -952,7 +975,6 @@ mpt_put_msg_frame_hi_pri(u8 cb_idx, MPT_ADAPTER *ioc, MPT_FRAME_HDR *mf)
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
  *	mpt_free_msg_frame - Place MPT request frame back on FreeQ.
- *	@handle: Handle of registered MPT protocol driver
  *	@ioc: Pointer to MPT adapter structure
  *	@mf: Pointer to MPT request frame
  *
@@ -1752,16 +1774,25 @@ mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id)
 		ioc->bus_type = SAS;
 	}
 
-	if (mpt_msi_enable == -1) {
-		/* Enable on SAS, disable on FC and SPI */
-		if (ioc->bus_type == SAS)
-			ioc->msi_enable = 1;
-		else
-			ioc->msi_enable = 0;
-	} else
-		/* follow flag: 0 - disable; 1 - enable */
-		ioc->msi_enable = mpt_msi_enable;
 
+	switch (ioc->bus_type) {
+
+	case SAS:
+		ioc->msi_enable = mpt_msi_enable_sas;
+		break;
+
+	case SPI:
+		ioc->msi_enable = mpt_msi_enable_spi;
+		break;
+
+	case FC:
+		ioc->msi_enable = mpt_msi_enable_fc;
+		break;
+
+	default:
+		ioc->msi_enable = 0;
+		break;
+	}
 	if (ioc->errata_flag_1064)
 		pci_disable_io_access(pdev);
 
@@ -4563,7 +4594,7 @@ WaitForDoorbellReply(MPT_ADAPTER *ioc, int howlong, int sleepFlag)
 			failcnt++;
 		hword = le16_to_cpu(CHIPREG_READ32(&ioc->chip->Doorbell) & 0x0000FFFF);
 		/* don't overflow our IOC hs_reply[] buffer! */
-		if (u16cnt < sizeof(ioc->hs_reply) / sizeof(ioc->hs_reply[0]))
+		if (u16cnt < ARRAY_SIZE(ioc->hs_reply))
 			hs_reply[u16cnt] = hword;
 		CHIPREG_WRITE32(&ioc->chip->IntStatus, 0);
 	}
@@ -5422,7 +5453,6 @@ mpt_raid_phys_disk_pg0(MPT_ADAPTER *ioc, u8 phys_disk_num, pRaidPhysDiskPage0_t 
 /**
  *	mpt_findImVolumes - Identify IDs of hidden disks and RAID Volumes
  *	@ioc: Pointer to a Adapter Strucutre
- *	@portnum: IOC port number
  *
  *	Return:
  *	0 on success
@@ -6315,6 +6345,33 @@ mpt_print_ioc_summary(MPT_ADAPTER *ioc, char *buffer, int *size, int len, int sh
 	*size = y;
 }
 
+
+/**
+ *	mpt_halt_firmware - Halts the firmware if it is operational and panic
+ *	the kernel
+ *	@ioc: Pointer to MPT_ADAPTER structure
+ *
+ **/
+void
+mpt_halt_firmware(MPT_ADAPTER *ioc)
+{
+	u32	 ioc_raw_state;
+
+	ioc_raw_state = mpt_GetIocState(ioc, 0);
+
+	if ((ioc_raw_state & MPI_IOC_STATE_MASK) == MPI_IOC_STATE_FAULT) {
+		printk(MYIOC_s_ERR_FMT "IOC is in FAULT state (%04xh)!!!\n",
+			ioc->name, ioc_raw_state & MPI_DOORBELL_DATA_MASK);
+		panic("%s: IOC Fault (%04xh)!!!\n", ioc->name,
+			ioc_raw_state & MPI_DOORBELL_DATA_MASK);
+	} else {
+		CHIPREG_WRITE32(&ioc->chip->Doorbell, 0xC0FFEE00);
+		panic("%s: Firmware is halted due to command timeout\n",
+			ioc->name);
+	}
+}
+EXPORT_SYMBOL(mpt_halt_firmware);
+
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /*
  *	Reset Handling
@@ -6347,6 +6404,8 @@ mpt_HardResetHandler(MPT_ADAPTER *ioc, int sleepFlag)
 	printk(MYIOC_s_INFO_FMT "HardResetHandler Entered!\n", ioc->name);
 	printk("MF count 0x%x !\n", ioc->mfcnt);
 #endif
+	if (mpt_fwfault_debug)
+		mpt_halt_firmware(ioc);
 
 	/* Reset the adapter. Prevent more than 1 call to
 	 * mpt_do_ioc_recovery at any instant in time.
@@ -6939,7 +6998,6 @@ mpt_fc_log_info(MPT_ADAPTER *ioc, u32 log_info)
 /**
  *	mpt_spi_log_info - Log information returned from SCSI Parallel IOC.
  *	@ioc: Pointer to MPT_ADAPTER structure
- *	@mr: Pointer to MPT reply frame
  *	@log_info: U32 LogInfo word from the IOC
  *
  *	Refer to lsi/sp_log.h.
@@ -7176,7 +7234,7 @@ union loginfo_type {
 
 	sas_loginfo.loginfo = log_info;
 	if ((sas_loginfo.dw.bus_type != 3 /*SAS*/) &&
-	    (sas_loginfo.dw.originator < sizeof(originator_str)/sizeof(char*)))
+	    (sas_loginfo.dw.originator < ARRAY_SIZE(originator_str)))
 		return;
 
 	originator_desc = originator_str[sas_loginfo.dw.originator];
@@ -7185,21 +7243,21 @@ union loginfo_type {
 
 		case 0:  /* IOP */
 			if (sas_loginfo.dw.code <
-			    sizeof(iop_code_str)/sizeof(char*))
+			    ARRAY_SIZE(iop_code_str))
 				code_desc = iop_code_str[sas_loginfo.dw.code];
 			break;
 		case 1:  /* PL */
 			if (sas_loginfo.dw.code <
-			    sizeof(pl_code_str)/sizeof(char*))
+			    ARRAY_SIZE(pl_code_str))
 				code_desc = pl_code_str[sas_loginfo.dw.code];
 			break;
 		case 2:  /* IR */
 			if (sas_loginfo.dw.code >=
-			    sizeof(ir_code_str)/sizeof(char*))
+			    ARRAY_SIZE(ir_code_str))
 				break;
 			code_desc = ir_code_str[sas_loginfo.dw.code];
 			if (sas_loginfo.dw.subcode >=
-			    sizeof(raid_sub_code_str)/sizeof(char*))
+			    ARRAY_SIZE(raid_sub_code_str))
 			break;
 			if (sas_loginfo.dw.code == 0)
 				sub_code_desc =

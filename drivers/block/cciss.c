@@ -164,7 +164,7 @@ static int cciss_getgeo(struct block_device *bdev, struct hd_geometry *geo);
 
 static int cciss_revalidate(struct gendisk *disk);
 static int rebuild_lun_table(ctlr_info_t *h, int first_time);
-static int deregister_disk(struct gendisk *disk, drive_info_struct *drv,
+static int deregister_disk(ctlr_info_t *h, int drv_index,
 			   int clear_all);
 
 static void cciss_read_capacity(int ctlr, int logvol, int withirq,
@@ -215,31 +215,17 @@ static struct block_device_operations cciss_fops = {
 /*
  * Enqueuing and dequeuing functions for cmdlists.
  */
-static inline void addQ(CommandList_struct **Qptr, CommandList_struct *c)
+static inline void addQ(struct hlist_head *list, CommandList_struct *c)
 {
-	if (*Qptr == NULL) {
-		*Qptr = c;
-		c->next = c->prev = c;
-	} else {
-		c->prev = (*Qptr)->prev;
-		c->next = (*Qptr);
-		(*Qptr)->prev->next = c;
-		(*Qptr)->prev = c;
-	}
+	hlist_add_head(&c->list, list);
 }
 
-static inline CommandList_struct *removeQ(CommandList_struct **Qptr,
-					  CommandList_struct *c)
+static inline void removeQ(CommandList_struct *c)
 {
-	if (c && c->next != c) {
-		if (*Qptr == c)
-			*Qptr = c->next;
-		c->prev->next = c->next;
-		c->next->prev = c->prev;
-	} else {
-		*Qptr = NULL;
-	}
-	return c;
+	if (WARN_ON(hlist_unhashed(&c->list)))
+		return;
+
+	hlist_del_init(&c->list);
 }
 
 #include "cciss_scsi.c"		/* For SCSI tape support */
@@ -506,6 +492,7 @@ static CommandList_struct *cmd_alloc(ctlr_info_t *h, int get_from_pool)
 		c->cmdindex = i;
 	}
 
+	INIT_HLIST_NODE(&c->list);
 	c->busaddr = (__u32) cmd_dma_handle;
 	temp64.val = (__u64) err_dma_handle;
 	c->ErrDesc.Addr.lower = temp64.val32.lower;
@@ -1492,8 +1479,7 @@ static void cciss_update_drive_info(int ctlr, int drv_index, int first_time)
 		 * which keeps the interrupt handler from starting
 		 * the queue.
 		 */
-		ret = deregister_disk(h->gendisk[drv_index],
-				      &h->drv[drv_index], 0);
+		ret = deregister_disk(h, drv_index, 0);
 		h->drv[drv_index].busy_configuring = 0;
 	}
 
@@ -1711,8 +1697,7 @@ static int rebuild_lun_table(ctlr_info_t *h, int first_time)
 			spin_lock_irqsave(CCISS_LOCK(h->ctlr), flags);
 			h->drv[i].busy_configuring = 1;
 			spin_unlock_irqrestore(CCISS_LOCK(h->ctlr), flags);
-			return_code = deregister_disk(h->gendisk[i],
-				&h->drv[i], 1);
+			return_code = deregister_disk(h, i, 1);
 			h->drv[i].busy_configuring = 0;
 		}
 	}
@@ -1782,14 +1767,18 @@ mem_msg:
  *             the highest_lun should be left unchanged and the LunID
  *             should not be cleared.
 */
-static int deregister_disk(struct gendisk *disk, drive_info_struct *drv,
+static int deregister_disk(ctlr_info_t *h, int drv_index,
 			   int clear_all)
 {
 	int i;
-	ctlr_info_t *h = get_host(disk);
+	struct gendisk *disk;
+	drive_info_struct *drv;
 
 	if (!capable(CAP_SYS_RAWIO))
 		return -EPERM;
+
+	drv = &h->drv[drv_index];
+	disk = h->gendisk[drv_index];
 
 	/* make sure logical volume is NOT is use */
 	if (clear_all || (h->gendisk[0] == disk)) {
@@ -2548,7 +2537,8 @@ static void start_io(ctlr_info_t *h)
 {
 	CommandList_struct *c;
 
-	while ((c = h->reqQ) != NULL) {
+	while (!hlist_empty(&h->reqQ)) {
+		c = hlist_entry(h->reqQ.first, CommandList_struct, list);
 		/* can't do anything if fifo is full */
 		if ((h->access.fifo_full(h))) {
 			printk(KERN_WARNING "cciss: fifo full\n");
@@ -2556,14 +2546,14 @@ static void start_io(ctlr_info_t *h)
 		}
 
 		/* Get the first entry from the Request Q */
-		removeQ(&(h->reqQ), c);
+		removeQ(c);
 		h->Qdepth--;
 
 		/* Tell the controller execute command */
 		h->access.submit_command(h, c);
 
 		/* Put job onto the completed Q */
-		addQ(&(h->cmpQ), c);
+		addQ(&h->cmpQ, c);
 	}
 }
 
@@ -2576,7 +2566,7 @@ static inline void resend_cciss_cmd(ctlr_info_t *h, CommandList_struct *c)
 	memset(c->err_info, 0, sizeof(ErrorInfo_struct));
 
 	/* add it to software queue and then send it to the controller */
-	addQ(&(h->reqQ), c);
+	addQ(&h->reqQ, c);
 	h->Qdepth++;
 	if (h->Qdepth > h->maxQsinceinit)
 		h->maxQsinceinit = h->Qdepth;
@@ -2897,7 +2887,7 @@ static void do_cciss_request(struct request_queue *q)
 
 	spin_lock_irq(q->queue_lock);
 
-	addQ(&(h->reqQ), c);
+	addQ(&h->reqQ, c);
 	h->Qdepth++;
 	if (h->Qdepth > h->maxQsinceinit)
 		h->maxQsinceinit = h->Qdepth;
@@ -2985,16 +2975,12 @@ static irqreturn_t do_cciss_intr(int irq, void *dev_id)
 				a = c->busaddr;
 
 			} else {
+				struct hlist_node *tmp;
+
 				a &= ~3;
-				if ((c = h->cmpQ) == NULL) {
-					printk(KERN_WARNING
-					       "cciss: Completion of %08x ignored\n",
-					       a1);
-					continue;
-				}
-				while (c->busaddr != a) {
-					c = c->next;
-					if (c == h->cmpQ)
+				c = NULL;
+				hlist_for_each_entry(c, tmp, &h->cmpQ, list) {
+					if (c->busaddr == a)
 						break;
 				}
 			}
@@ -3002,8 +2988,8 @@ static irqreturn_t do_cciss_intr(int irq, void *dev_id)
 			 * If we've found the command, take it off the
 			 * completion Q and free it
 			 */
-			if (c->busaddr == a) {
-				removeQ(&h->cmpQ, c);
+			if (c && c->busaddr == a) {
+				removeQ(c);
 				if (c->cmd_type == CMD_RWREQ) {
 					complete_command(h, c, 0);
 				} else if (c->cmd_type == CMD_IOCTL_PEND) {
@@ -3404,6 +3390,203 @@ static void free_hba(int i)
 	kfree(p);
 }
 
+/* Send a message CDB to the firmware. */
+static __devinit int cciss_message(struct pci_dev *pdev, unsigned char opcode, unsigned char type)
+{
+	typedef struct {
+		CommandListHeader_struct CommandHeader;
+		RequestBlock_struct Request;
+		ErrDescriptor_struct ErrorDescriptor;
+	} Command;
+	static const size_t cmd_sz = sizeof(Command) + sizeof(ErrorInfo_struct);
+	Command *cmd;
+	dma_addr_t paddr64;
+	uint32_t paddr32, tag;
+	void __iomem *vaddr;
+	int i, err;
+
+	vaddr = ioremap_nocache(pci_resource_start(pdev, 0), pci_resource_len(pdev, 0));
+	if (vaddr == NULL)
+		return -ENOMEM;
+
+	/* The Inbound Post Queue only accepts 32-bit physical addresses for the
+	   CCISS commands, so they must be allocated from the lower 4GiB of
+	   memory. */
+	err = pci_set_consistent_dma_mask(pdev, DMA_32BIT_MASK);
+	if (err) {
+		iounmap(vaddr);
+		return -ENOMEM;
+	}
+
+	cmd = pci_alloc_consistent(pdev, cmd_sz, &paddr64);
+	if (cmd == NULL) {
+		iounmap(vaddr);
+		return -ENOMEM;
+	}
+
+	/* This must fit, because of the 32-bit consistent DMA mask.  Also,
+	   although there's no guarantee, we assume that the address is at
+	   least 4-byte aligned (most likely, it's page-aligned). */
+	paddr32 = paddr64;
+
+	cmd->CommandHeader.ReplyQueue = 0;
+	cmd->CommandHeader.SGList = 0;
+	cmd->CommandHeader.SGTotal = 0;
+	cmd->CommandHeader.Tag.lower = paddr32;
+	cmd->CommandHeader.Tag.upper = 0;
+	memset(&cmd->CommandHeader.LUN.LunAddrBytes, 0, 8);
+
+	cmd->Request.CDBLen = 16;
+	cmd->Request.Type.Type = TYPE_MSG;
+	cmd->Request.Type.Attribute = ATTR_HEADOFQUEUE;
+	cmd->Request.Type.Direction = XFER_NONE;
+	cmd->Request.Timeout = 0; /* Don't time out */
+	cmd->Request.CDB[0] = opcode;
+	cmd->Request.CDB[1] = type;
+	memset(&cmd->Request.CDB[2], 0, 14); /* the rest of the CDB is reserved */
+
+	cmd->ErrorDescriptor.Addr.lower = paddr32 + sizeof(Command);
+	cmd->ErrorDescriptor.Addr.upper = 0;
+	cmd->ErrorDescriptor.Len = sizeof(ErrorInfo_struct);
+
+	writel(paddr32, vaddr + SA5_REQUEST_PORT_OFFSET);
+
+	for (i = 0; i < 10; i++) {
+		tag = readl(vaddr + SA5_REPLY_PORT_OFFSET);
+		if ((tag & ~3) == paddr32)
+			break;
+		schedule_timeout_uninterruptible(HZ);
+	}
+
+	iounmap(vaddr);
+
+	/* we leak the DMA buffer here ... no choice since the controller could
+	   still complete the command. */
+	if (i == 10) {
+		printk(KERN_ERR "cciss: controller message %02x:%02x timed out\n",
+			opcode, type);
+		return -ETIMEDOUT;
+	}
+
+	pci_free_consistent(pdev, cmd_sz, cmd, paddr64);
+
+	if (tag & 2) {
+		printk(KERN_ERR "cciss: controller message %02x:%02x failed\n",
+			opcode, type);
+		return -EIO;
+	}
+
+	printk(KERN_INFO "cciss: controller message %02x:%02x succeeded\n",
+		opcode, type);
+	return 0;
+}
+
+#define cciss_soft_reset_controller(p) cciss_message(p, 1, 0)
+#define cciss_noop(p) cciss_message(p, 3, 0)
+
+static __devinit int cciss_reset_msi(struct pci_dev *pdev)
+{
+/* the #defines are stolen from drivers/pci/msi.h. */
+#define msi_control_reg(base)		(base + PCI_MSI_FLAGS)
+#define PCI_MSIX_FLAGS_ENABLE		(1 << 15)
+
+	int pos;
+	u16 control = 0;
+
+	pos = pci_find_capability(pdev, PCI_CAP_ID_MSI);
+	if (pos) {
+		pci_read_config_word(pdev, msi_control_reg(pos), &control);
+		if (control & PCI_MSI_FLAGS_ENABLE) {
+			printk(KERN_INFO "cciss: resetting MSI\n");
+			pci_write_config_word(pdev, msi_control_reg(pos), control & ~PCI_MSI_FLAGS_ENABLE);
+		}
+	}
+
+	pos = pci_find_capability(pdev, PCI_CAP_ID_MSIX);
+	if (pos) {
+		pci_read_config_word(pdev, msi_control_reg(pos), &control);
+		if (control & PCI_MSIX_FLAGS_ENABLE) {
+			printk(KERN_INFO "cciss: resetting MSI-X\n");
+			pci_write_config_word(pdev, msi_control_reg(pos), control & ~PCI_MSIX_FLAGS_ENABLE);
+		}
+	}
+
+	return 0;
+}
+
+/* This does a hard reset of the controller using PCI power management
+ * states. */
+static __devinit int cciss_hard_reset_controller(struct pci_dev *pdev)
+{
+	u16 pmcsr, saved_config_space[32];
+	int i, pos;
+
+	printk(KERN_INFO "cciss: using PCI PM to reset controller\n");
+
+	/* This is very nearly the same thing as
+
+	   pci_save_state(pci_dev);
+	   pci_set_power_state(pci_dev, PCI_D3hot);
+	   pci_set_power_state(pci_dev, PCI_D0);
+	   pci_restore_state(pci_dev);
+
+	   but we can't use these nice canned kernel routines on
+	   kexec, because they also check the MSI/MSI-X state in PCI
+	   configuration space and do the wrong thing when it is
+	   set/cleared.  Also, the pci_save/restore_state functions
+	   violate the ordering requirements for restoring the
+	   configuration space from the CCISS document (see the
+	   comment below).  So we roll our own .... */
+
+	for (i = 0; i < 32; i++)
+		pci_read_config_word(pdev, 2*i, &saved_config_space[i]);
+
+	pos = pci_find_capability(pdev, PCI_CAP_ID_PM);
+	if (pos == 0) {
+		printk(KERN_ERR "cciss_reset_controller: PCI PM not supported\n");
+		return -ENODEV;
+	}
+
+	/* Quoting from the Open CISS Specification: "The Power
+	 * Management Control/Status Register (CSR) controls the power
+	 * state of the device.  The normal operating state is D0,
+	 * CSR=00h.  The software off state is D3, CSR=03h.  To reset
+	 * the controller, place the interface device in D3 then to
+	 * D0, this causes a secondary PCI reset which will reset the
+	 * controller." */
+
+	/* enter the D3hot power management state */
+	pci_read_config_word(pdev, pos + PCI_PM_CTRL, &pmcsr);
+	pmcsr &= ~PCI_PM_CTRL_STATE_MASK;
+	pmcsr |= PCI_D3hot;
+	pci_write_config_word(pdev, pos + PCI_PM_CTRL, pmcsr);
+
+	schedule_timeout_uninterruptible(HZ >> 1);
+
+	/* enter the D0 power management state */
+	pmcsr &= ~PCI_PM_CTRL_STATE_MASK;
+	pmcsr |= PCI_D0;
+	pci_write_config_word(pdev, pos + PCI_PM_CTRL, pmcsr);
+
+	schedule_timeout_uninterruptible(HZ >> 1);
+
+	/* Restore the PCI configuration space.  The Open CISS
+	 * Specification says, "Restore the PCI Configuration
+	 * Registers, offsets 00h through 60h. It is important to
+	 * restore the command register, 16-bits at offset 04h,
+	 * last. Do not restore the configuration status register,
+	 * 16-bits at offset 06h."  Note that the offset is 2*i. */
+	for (i = 0; i < 32; i++) {
+		if (i == 2 || i == 3)
+			continue;
+		pci_write_config_word(pdev, 2*i, saved_config_space[i]);
+	}
+	wmb();
+	pci_write_config_word(pdev, 4, saved_config_space[2]);
+
+	return 0;
+}
+
 /*
  *  This is it.  Find all the controllers and register them.  I really hate
  *  stealing all these major device numbers.
@@ -3418,11 +3601,31 @@ static int __devinit cciss_init_one(struct pci_dev *pdev,
 	int dac, return_code;
 	InquiryData_struct *inq_buff = NULL;
 
+	if (reset_devices) {
+		/* Reset the controller with a PCI power-cycle */
+		if (cciss_hard_reset_controller(pdev) || cciss_reset_msi(pdev))
+			return -ENODEV;
+
+		/* Some devices (notably the HP Smart Array 5i Controller)
+		   need a little pause here */
+		schedule_timeout_uninterruptible(30*HZ);
+
+		/* Now try to get the controller to respond to a no-op */
+		for (i=0; i<12; i++) {
+			if (cciss_noop(pdev) == 0)
+				break;
+			else
+				printk("cciss: no-op failed%s\n", (i < 11 ? "; re-trying" : ""));
+		}
+	}
+
 	i = alloc_cciss_hba();
 	if (i < 0)
 		return -1;
 
 	hba[i]->busy_initializing = 1;
+	INIT_HLIST_HEAD(&hba[i]->cmpQ);
+	INIT_HLIST_HEAD(&hba[i]->reqQ);
 
 	if (cciss_pci_init(hba[i], pdev) != 0)
 		goto clean1;
@@ -3730,15 +3933,17 @@ static void fail_all_cmds(unsigned long ctlr)
 	pci_disable_device(h->pdev);	/* Make sure it is really dead. */
 
 	/* move everything off the request queue onto the completed queue */
-	while ((c = h->reqQ) != NULL) {
-		removeQ(&(h->reqQ), c);
+	while (!hlist_empty(&h->reqQ)) {
+		c = hlist_entry(h->reqQ.first, CommandList_struct, list);
+		removeQ(c);
 		h->Qdepth--;
-		addQ(&(h->cmpQ), c);
+		addQ(&h->cmpQ, c);
 	}
 
 	/* Now, fail everything on the completed queue with a HW error */
-	while ((c = h->cmpQ) != NULL) {
-		removeQ(&h->cmpQ, c);
+	while (!hlist_empty(&h->cmpQ)) {
+		c = hlist_entry(h->cmpQ.first, CommandList_struct, list);
+		removeQ(c);
 		c->err_info->CommandStatus = CMD_HARDWARE_ERR;
 		if (c->cmd_type == CMD_RWREQ) {
 			complete_command(h, c, 0);

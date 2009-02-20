@@ -171,13 +171,10 @@ static int gxfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 
 static int gxfb_set_par(struct fb_info *info)
 {
-	if (info->var.bits_per_pixel > 8) {
+	if (info->var.bits_per_pixel > 8)
 		info->fix.visual = FB_VISUAL_TRUECOLOR;
-		fb_dealloc_cmap(&info->cmap);
-	} else {
+	else
 		info->fix.visual = FB_VISUAL_PSEUDOCOLOR;
-		fb_alloc_cmap(&info->cmap, 1<<info->var.bits_per_pixel, 0);
-	}
 
 	info->fix.line_length = gx_line_delta(info->var.xres, info->var.bits_per_pixel);
 
@@ -242,23 +239,21 @@ static int __init gxfb_map_video_memory(struct fb_info *info, struct pci_dev *de
 	ret = pci_request_region(dev, 3, "gxfb (video processor)");
 	if (ret < 0)
 		return ret;
-	par->vid_regs = ioremap(pci_resource_start(dev, 3),
-				pci_resource_len(dev, 3));
+	par->vid_regs = pci_ioremap_bar(dev, 3);
 	if (!par->vid_regs)
 		return -ENOMEM;
 
 	ret = pci_request_region(dev, 2, "gxfb (display controller)");
 	if (ret < 0)
 		return ret;
-	par->dc_regs = ioremap(pci_resource_start(dev, 2), pci_resource_len(dev, 2));
+	par->dc_regs = pci_ioremap_bar(dev, 2);
 	if (!par->dc_regs)
 		return -ENOMEM;
 
 	ret = pci_request_region(dev, 1, "gxfb (graphics processor)");
 	if (ret < 0)
 		return ret;
-	par->gp_regs = ioremap(pci_resource_start(dev, 1),
-	pci_resource_len(dev, 1));
+	par->gp_regs = pci_ioremap_bar(dev, 1);
 
 	if (!par->gp_regs)
 		return -ENOMEM;
@@ -332,6 +327,11 @@ static struct fb_info * __init gxfb_init_fbinfo(struct device *dev)
 	info->pseudo_palette	= (void *)par + sizeof(struct gxfb_par);
 
 	info->var.grayscale	= 0;
+
+	if (fb_alloc_cmap(&info->cmap, 256, 0) < 0) {
+		framebuffer_release(info);
+		return NULL;
+	}
 
 	return info;
 }
@@ -445,8 +445,10 @@ static int __init gxfb_probe(struct pci_dev *pdev, const struct pci_device_id *i
 		pci_release_region(pdev, 1);
 	}
 
-	if (info)
+	if (info) {
+		fb_dealloc_cmap(&info->cmap);
 		framebuffer_release(info);
+	}
 	return ret;
 }
 
@@ -469,6 +471,7 @@ static void gxfb_remove(struct pci_dev *pdev)
 	iounmap(par->gp_regs);
 	pci_release_region(pdev, 1);
 
+	fb_dealloc_cmap(&info->cmap);
 	pci_set_drvdata(pdev, NULL);
 
 	framebuffer_release(info);

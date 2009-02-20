@@ -35,6 +35,12 @@
 #include "kvm_cache_regs.h"
 #include "irq.h"
 
+#ifndef CONFIG_X86_64
+#define mod_64(x, y) ((x) - (y) * div64_u64(x, y))
+#else
+#define mod_64(x, y) ((x) % (y))
+#endif
+
 #define PRId64 "d"
 #define PRIx64 "llx"
 #define PRIu64 "u"
@@ -128,6 +134,11 @@ static inline int apic_lvt_vector(struct kvm_lapic *apic, int lvt_type)
 static inline int apic_lvtt_period(struct kvm_lapic *apic)
 {
 	return apic_get_reg(apic, APIC_LVTT) & APIC_LVT_TIMER_PERIODIC;
+}
+
+static inline int apic_lvt_nmi_mode(u32 lvt_val)
+{
+	return (lvt_val & (APIC_MODE_MASK | APIC_LVT_MASKED)) == APIC_DM_NMI;
 }
 
 static unsigned int apic_lvt_mask[APIC_LVT_NUM] = {
@@ -354,6 +365,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 
 	case APIC_DM_NMI:
 		kvm_inject_nmi(vcpu);
+		kvm_vcpu_kick(vcpu);
 		break;
 
 	case APIC_DM_INIT:
@@ -378,6 +390,14 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 			vcpu->arch.mp_state = KVM_MP_STATE_SIPI_RECEIVED;
 			kvm_vcpu_kick(vcpu);
 		}
+		break;
+
+	case APIC_DM_EXTINT:
+		/*
+		 * Should only be called by kvm_apic_local_deliver() with LVT0,
+		 * before NMI watchdog was enabled. Already handled by
+		 * kvm_apic_accept_pic_intr().
+		 */
 		break;
 
 	default:
@@ -497,52 +517,22 @@ static void apic_send_ipi(struct kvm_lapic *apic)
 
 static u32 apic_get_tmcct(struct kvm_lapic *apic)
 {
-	u64 counter_passed;
-	ktime_t passed, now;
+	ktime_t remaining;
+	s64 ns;
 	u32 tmcct;
 
 	ASSERT(apic != NULL);
 
-	now = apic->timer.dev.base->get_time();
-	tmcct = apic_get_reg(apic, APIC_TMICT);
-
 	/* if initial count is 0, current count should also be 0 */
-	if (tmcct == 0)
+	if (apic_get_reg(apic, APIC_TMICT) == 0)
 		return 0;
 
-	if (unlikely(ktime_to_ns(now) <=
-		ktime_to_ns(apic->timer.last_update))) {
-		/* Wrap around */
-		passed = ktime_add(( {
-				    (ktime_t) {
-				    .tv64 = KTIME_MAX -
-				    (apic->timer.last_update).tv64}; }
-				   ), now);
-		apic_debug("time elapsed\n");
-	} else
-		passed = ktime_sub(now, apic->timer.last_update);
+	remaining = hrtimer_expires_remaining(&apic->timer.dev);
+	if (ktime_to_ns(remaining) < 0)
+		remaining = ktime_set(0, 0);
 
-	counter_passed = div64_u64(ktime_to_ns(passed),
-				   (APIC_BUS_CYCLE_NS * apic->timer.divide_count));
-
-	if (counter_passed > tmcct) {
-		if (unlikely(!apic_lvtt_period(apic))) {
-			/* one-shot timers stick at 0 until reset */
-			tmcct = 0;
-		} else {
-			/*
-			 * periodic timers reset to APIC_TMICT when they
-			 * hit 0. The while loop simulates this happening N
-			 * times. (counter_passed %= tmcct) would also work,
-			 * but might be slower or not work on 32-bit??
-			 */
-			while (counter_passed > tmcct)
-				counter_passed -= tmcct;
-			tmcct -= counter_passed;
-		}
-	} else {
-		tmcct -= counter_passed;
-	}
+	ns = mod_64(ktime_to_ns(remaining), apic->timer.period);
+	tmcct = div64_u64(ns, (APIC_BUS_CYCLE_NS * apic->timer.divide_count));
 
 	return tmcct;
 }
@@ -639,8 +629,6 @@ static void start_apic_timer(struct kvm_lapic *apic)
 {
 	ktime_t now = apic->timer.dev.base->get_time();
 
-	apic->timer.last_update = now;
-
 	apic->timer.period = apic_get_reg(apic, APIC_TMICT) *
 		    APIC_BUS_CYCLE_NS * apic->timer.divide_count;
 	atomic_set(&apic->timer.pending, 0);
@@ -661,6 +649,20 @@ static void start_apic_timer(struct kvm_lapic *apic)
 			   apic->timer.period,
 			   ktime_to_ns(ktime_add_ns(now,
 					apic->timer.period)));
+}
+
+static void apic_manage_nmi_watchdog(struct kvm_lapic *apic, u32 lvt0_val)
+{
+	int nmi_wd_enabled = apic_lvt_nmi_mode(apic_get_reg(apic, APIC_LVT0));
+
+	if (apic_lvt_nmi_mode(lvt0_val)) {
+		if (!nmi_wd_enabled) {
+			apic_debug("Receive NMI setting on APIC_LVT0 "
+				   "for cpu %d\n", apic->vcpu->vcpu_id);
+			apic->vcpu->kvm->arch.vapics_in_nmi_mode++;
+		}
+	} else if (nmi_wd_enabled)
+		apic->vcpu->kvm->arch.vapics_in_nmi_mode--;
 }
 
 static void apic_mmio_write(struct kvm_io_device *this,
@@ -743,10 +745,11 @@ static void apic_mmio_write(struct kvm_io_device *this,
 		apic_set_reg(apic, APIC_ICR2, val & 0xff000000);
 		break;
 
+	case APIC_LVT0:
+		apic_manage_nmi_watchdog(apic, val);
 	case APIC_LVTT:
 	case APIC_LVTTHMR:
 	case APIC_LVTPC:
-	case APIC_LVT0:
 	case APIC_LVT1:
 	case APIC_LVTERR:
 		/* TODO: Check vector */
@@ -961,12 +964,26 @@ int apic_has_pending_timer(struct kvm_vcpu *vcpu)
 	return 0;
 }
 
-static int __inject_apic_timer_irq(struct kvm_lapic *apic)
+static int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 {
-	int vector;
+	u32 reg = apic_get_reg(apic, lvt_type);
+	int vector, mode, trig_mode;
 
-	vector = apic_lvt_vector(apic, APIC_LVTT);
-	return __apic_accept_irq(apic, APIC_DM_FIXED, vector, 1, 0);
+	if (apic_hw_enabled(apic) && !(reg & APIC_LVT_MASKED)) {
+		vector = reg & APIC_VECTOR_MASK;
+		mode = reg & APIC_MODE_MASK;
+		trig_mode = reg & APIC_LVT_LEVEL_TRIGGER;
+		return __apic_accept_irq(apic, mode, vector, 1, trig_mode);
+	}
+	return 0;
+}
+
+void kvm_apic_nmi_wd_deliver(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	if (apic)
+		kvm_apic_local_deliver(apic, APIC_LVT0);
 }
 
 static enum hrtimer_restart apic_timer_fn(struct hrtimer *data)
@@ -1061,21 +1078,10 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
-	if (apic && apic_lvt_enabled(apic, APIC_LVTT) &&
-		atomic_read(&apic->timer.pending) > 0) {
-		if (__inject_apic_timer_irq(apic))
+	if (apic && atomic_read(&apic->timer.pending) > 0) {
+		if (kvm_apic_local_deliver(apic, APIC_LVTT))
 			atomic_dec(&apic->timer.pending);
 	}
-}
-
-void kvm_apic_timer_intr_post(struct kvm_vcpu *vcpu, int vec)
-{
-	struct kvm_lapic *apic = vcpu->arch.apic;
-
-	if (apic && apic_lvt_vector(apic, APIC_LVTT) == vec)
-		apic->timer.last_update = ktime_add_ns(
-				apic->timer.last_update,
-				apic->timer.period);
 }
 
 int kvm_get_apic_interrupt(struct kvm_vcpu *vcpu)

@@ -29,7 +29,7 @@
 
 #include <asm/system.h>
 #include <mach/hardware.h>
-#include <asm/dma.h>
+#include <mach/dma.h>
 
 #include <mach/tc.h>
 
@@ -278,14 +278,11 @@ void omap_set_dma_transfer_params(int lch, int data_type, int elem_count,
 		u32 val;
 
 		val = dma_read(CCR(lch));
-		val &= ~(3 << 19);
-		if (dma_trigger > 63)
-			val |= 1 << 20;
-		if (dma_trigger > 31)
-			val |= 1 << 19;
 
-		val &= ~(0x1f);
-		val |= (dma_trigger & 0x1f);
+		/* DMA_SYNCHRO_CONTROL_UPPER depends on the channel number */
+		val &= ~((3 << 19) | 0x1f);
+		val |= (dma_trigger & ~0x1f) << 14;
+		val |= dma_trigger & 0x1f;
 
 		if (sync_mode & OMAP_DMA_SYNC_FRAME)
 			val |= 1 << 5;
@@ -712,6 +709,7 @@ int omap_request_dma(int dev_id, const char *dev_name,
 	chan->dev_name = dev_name;
 	chan->callback = callback;
 	chan->data = data;
+	chan->flags = 0;
 
 #ifndef CONFIG_ARCH_OMAP1
 	if (cpu_class_is_omap2()) {
@@ -1848,9 +1846,22 @@ static int omap2_dma_handle_ch(int ch)
 		printk(KERN_INFO
 		       "DMA synchronization event drop occurred with device "
 		       "%d\n", dma_chan[ch].dev_id);
-	if (unlikely(status & OMAP2_DMA_TRANS_ERR_IRQ))
+	if (unlikely(status & OMAP2_DMA_TRANS_ERR_IRQ)) {
 		printk(KERN_INFO "DMA transaction error with device %d\n",
 		       dma_chan[ch].dev_id);
+		if (cpu_class_is_omap2()) {
+			/* Errata: sDMA Channel is not disabled
+			 * after a transaction error. So we explicitely
+			 * disable the channel
+			 */
+			u32 ccr;
+
+			ccr = dma_read(CCR(ch));
+			ccr &= ~OMAP_DMA_CCR_EN;
+			dma_write(ccr, CCR(ch));
+			dma_chan[ch].flags &= ~OMAP_DMA_ACTIVE;
+		}
+	}
 	if (unlikely(status & OMAP2_DMA_SECURE_ERR_IRQ))
 		printk(KERN_INFO "DMA secure error with device %d\n",
 		       dma_chan[ch].dev_id);
@@ -1878,10 +1889,10 @@ static int omap2_dma_handle_ch(int ch)
 		status = dma_read(CSR(ch));
 	}
 
+	dma_write(status, CSR(ch));
+
 	if (likely(dma_chan[ch].callback != NULL))
 		dma_chan[ch].callback(ch, status, dma_chan[ch].data);
-
-	dma_write(status, CSR(ch));
 
 	return 0;
 }

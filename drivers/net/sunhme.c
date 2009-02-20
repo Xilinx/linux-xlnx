@@ -2543,25 +2543,36 @@ static struct quattro * __devinit quattro_sbus_find(struct of_device *child)
 }
 
 /* After all quattro cards have been probed, we call these functions
- * to register the IRQ handlers.
+ * to register the IRQ handlers for the cards that have been
+ * successfully probed and skip the cards that failed to initialize
  */
-static void __init quattro_sbus_register_irqs(void)
+static int __init quattro_sbus_register_irqs(void)
 {
 	struct quattro *qp;
 
 	for (qp = qfe_sbus_list; qp != NULL; qp = qp->next) {
 		struct of_device *op = qp->quattro_dev;
-		int err;
+		int err, qfe_slot, skip = 0;
+
+		for (qfe_slot = 0; qfe_slot < 4; qfe_slot++) {
+			if (!qp->happy_meals[qfe_slot])
+				skip = 1;
+		}
+		if (skip)
+			continue;
 
 		err = request_irq(op->irqs[0],
 				  quattro_sbus_interrupt,
 				  IRQF_SHARED, "Quattro",
 				  qp);
 		if (err != 0) {
-			printk(KERN_ERR "Quattro: Fatal IRQ registery error %d.\n", err);
-			panic("QFE request irq");
+			printk(KERN_ERR "Quattro HME: IRQ registration "
+			       "error %d.\n", err);
+			return err;
 		}
 	}
+
+	return 0;
 }
 
 static void quattro_sbus_free_irqs(void)
@@ -2570,6 +2581,14 @@ static void quattro_sbus_free_irqs(void)
 
 	for (qp = qfe_sbus_list; qp != NULL; qp = qp->next) {
 		struct of_device *op = qp->quattro_dev;
+		int qfe_slot, skip = 0;
+
+		for (qfe_slot = 0; qfe_slot < 4; qfe_slot++) {
+			if (!qp->happy_meals[qfe_slot])
+				skip = 1;
+		}
+		if (skip)
+			continue;
 
 		free_irq(op->irqs[0], qp);
 	}
@@ -2607,6 +2626,18 @@ static struct quattro * __devinit quattro_pci_find(struct pci_dev *pdev)
 }
 #endif /* CONFIG_PCI */
 
+static const struct net_device_ops hme_netdev_ops = {
+	.ndo_open		= happy_meal_open,
+	.ndo_stop		= happy_meal_close,
+	.ndo_start_xmit		= happy_meal_start_xmit,
+	.ndo_tx_timeout		= happy_meal_tx_timeout,
+	.ndo_get_stats		= happy_meal_get_stats,
+	.ndo_set_multicast_list = happy_meal_set_multicast,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_set_mac_address 	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+
 #ifdef CONFIG_SBUS
 static int __devinit happy_meal_sbus_probe_one(struct of_device *op, int is_qfe)
 {
@@ -2616,6 +2647,14 @@ static int __devinit happy_meal_sbus_probe_one(struct of_device *op, int is_qfe)
 	struct net_device *dev;
 	int i, qfe_slot = -1;
 	int err = -ENODEV;
+
+	sbus_dp = to_of_device(op->dev.parent)->node;
+	if (is_qfe)
+		sbus_dp = to_of_device(op->dev.parent->parent)->node;
+
+	/* We can match PCI devices too, do not accept those here. */
+	if (strcmp(sbus_dp->name, "sbus"))
+		return err;
 
 	if (is_qfe) {
 		qp = quattro_sbus_find(op);
@@ -2722,10 +2761,6 @@ static int __devinit happy_meal_sbus_probe_one(struct of_device *op, int is_qfe)
 	if (qp != NULL)
 		hp->happy_flags |= HFLAG_QUATTRO;
 
-	sbus_dp = to_of_device(op->dev.parent)->node;
-	if (is_qfe)
-		sbus_dp = to_of_device(op->dev.parent->parent)->node;
-
 	/* Get the supported DVMA burst sizes from our Happy SBUS. */
 	hp->happy_bursts = of_getintprop_default(sbus_dp,
 						 "burst-sizes", 0x00);
@@ -2750,12 +2785,7 @@ static int __devinit happy_meal_sbus_probe_one(struct of_device *op, int is_qfe)
 	init_timer(&hp->happy_timer);
 
 	hp->dev = dev;
-	dev->open = &happy_meal_open;
-	dev->stop = &happy_meal_close;
-	dev->hard_start_xmit = &happy_meal_start_xmit;
-	dev->get_stats = &happy_meal_get_stats;
-	dev->set_multicast_list = &happy_meal_set_multicast;
-	dev->tx_timeout = &happy_meal_tx_timeout;
+	dev->netdev_ops = &hme_netdev_ops;
 	dev->watchdog_timeo = 5*HZ;
 	dev->ethtool_ops = &hme_ethtool_ops;
 
@@ -2816,6 +2846,9 @@ err_out_iounmap:
 		of_iounmap(&op->resource[3], hp->bigmacregs, BMAC_REG_SIZE);
 	if (hp->tcvregs)
 		of_iounmap(&op->resource[4], hp->tcvregs, TCVR_REG_SIZE);
+
+	if (qp)
+		qp->happy_meals[qfe_slot] = NULL;
 
 err_out_free_netdev:
 	free_netdev(dev);
@@ -3076,12 +3109,7 @@ static int __devinit happy_meal_pci_probe(struct pci_dev *pdev,
 	init_timer(&hp->happy_timer);
 
 	hp->dev = dev;
-	dev->open = &happy_meal_open;
-	dev->stop = &happy_meal_close;
-	dev->hard_start_xmit = &happy_meal_start_xmit;
-	dev->get_stats = &happy_meal_get_stats;
-	dev->set_multicast_list = &happy_meal_set_multicast;
-	dev->tx_timeout = &happy_meal_tx_timeout;
+	dev->netdev_ops = &hme_netdev_ops;
 	dev->watchdog_timeo = 5*HZ;
 	dev->ethtool_ops = &hme_ethtool_ops;
 	dev->irq = pdev->irq;
@@ -3279,7 +3307,7 @@ static int __init happy_meal_sbus_init(void)
 
 	err = of_register_driver(&hme_sbus_driver, &of_bus_type);
 	if (!err)
-		quattro_sbus_register_irqs();
+		err = quattro_sbus_register_irqs();
 
 	return err;
 }

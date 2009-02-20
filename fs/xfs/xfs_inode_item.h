@@ -111,6 +111,20 @@ typedef struct xfs_inode_log_format_64 {
 
 #define	XFS_ILI_IOLOCKED_ANY   (XFS_ILI_IOLOCKED_EXCL | XFS_ILI_IOLOCKED_SHARED)
 
+static inline int xfs_ilog_fbroot(int w)
+{
+	return (w == XFS_DATA_FORK ? XFS_ILOG_DBROOT : XFS_ILOG_ABROOT);
+}
+
+static inline int xfs_ilog_fext(int w)
+{
+	return (w == XFS_DATA_FORK ? XFS_ILOG_DEXT : XFS_ILOG_AEXT);
+}
+
+static inline int xfs_ilog_fdata(int w)
+{
+	return (w == XFS_DATA_FORK ? XFS_ILOG_DDATA : XFS_ILOG_ADATA);
+}
 
 #ifdef __KERNEL__
 
@@ -148,35 +162,12 @@ typedef struct xfs_inode_log_item {
 } xfs_inode_log_item_t;
 
 
-#define	XFS_ILOG_FDATA(w)	xfs_ilog_fdata(w)
-static inline int xfs_ilog_fdata(int w)
-{
-	return (w == XFS_DATA_FORK ? XFS_ILOG_DDATA : XFS_ILOG_ADATA);
-}
-
-#endif	/* __KERNEL__ */
-
-#define	XFS_ILOG_FBROOT(w)	xfs_ilog_fbroot(w)
-static inline int xfs_ilog_fbroot(int w)
-{
-	return (w == XFS_DATA_FORK ? XFS_ILOG_DBROOT : XFS_ILOG_ABROOT);
-}
-
-#define	XFS_ILOG_FEXT(w)	xfs_ilog_fext(w)
-static inline int xfs_ilog_fext(int w)
-{
-	return (w == XFS_DATA_FORK ? XFS_ILOG_DEXT : XFS_ILOG_AEXT);
-}
-
 static inline int xfs_inode_clean(xfs_inode_t *ip)
 {
 	return (!ip->i_itemp ||
 		!(ip->i_itemp->ili_format.ilf_fields & XFS_ILOG_ALL)) &&
 	       !ip->i_update_core;
 }
-
-
-#ifdef __KERNEL__
 
 extern void xfs_inode_item_init(struct xfs_inode *, struct xfs_mount *);
 extern void xfs_inode_item_destroy(struct xfs_inode *);

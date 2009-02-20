@@ -95,5 +95,6 @@ void __trigger_all_cpu_backtrace(void);
 extern void *hardirq_stack[NR_CPUS];
 extern void *softirq_stack[NR_CPUS];
 #define __ARCH_HAS_DO_SOFTIRQ
+#define ARCH_HAS_NMI_WATCHDOG
 
 #endif

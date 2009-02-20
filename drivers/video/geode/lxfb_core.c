@@ -278,13 +278,10 @@ static int lxfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 
 static int lxfb_set_par(struct fb_info *info)
 {
-	if (info->var.bits_per_pixel > 8) {
+	if (info->var.bits_per_pixel > 8)
 		info->fix.visual = FB_VISUAL_TRUECOLOR;
-		fb_dealloc_cmap(&info->cmap);
-	} else {
+	else
 		info->fix.visual = FB_VISUAL_PSEUDOCOLOR;
-		fb_alloc_cmap(&info->cmap, 1<<info->var.bits_per_pixel, 0);
-	}
 
 	info->fix.line_length = lx_get_pitch(info->var.xres,
 		info->var.bits_per_pixel);
@@ -379,20 +376,17 @@ static int __init lxfb_map_video_memory(struct fb_info *info,
 	if (info->screen_base == NULL)
 		return ret;
 
-	par->gp_regs = ioremap(pci_resource_start(dev, 1),
-				pci_resource_len(dev, 1));
+	par->gp_regs = pci_ioremap_bar(dev, 1);
 
 	if (par->gp_regs == NULL)
 		return ret;
 
-	par->dc_regs = ioremap(pci_resource_start(dev, 2),
-			       pci_resource_len(dev, 2));
+	par->dc_regs = pci_ioremap_bar(dev, 2);
 
 	if (par->dc_regs == NULL)
 		return ret;
 
-	par->vp_regs = ioremap(pci_resource_start(dev, 3),
-			       pci_resource_len(dev, 3));
+	par->vp_regs = pci_ioremap_bar(dev, 3);
 
 	if (par->vp_regs == NULL)
 		return ret;
@@ -453,6 +447,11 @@ static struct fb_info * __init lxfb_init_fbinfo(struct device *dev)
 	info->node		= -1;
 
 	info->pseudo_palette	= (void *)par + sizeof(struct lxfb_par);
+
+	if (fb_alloc_cmap(&info->cmap, 256, 0) < 0) {
+		framebuffer_release(info);
+		return NULL;
+	}
 
 	info->var.grayscale	= 0;
 
@@ -582,8 +581,10 @@ err:
 		pci_release_region(pdev, 3);
 	}
 
-	if (info)
+	if (info) {
+		fb_dealloc_cmap(&info->cmap);
 		framebuffer_release(info);
+	}
 
 	return ret;
 }
@@ -607,6 +608,7 @@ static void lxfb_remove(struct pci_dev *pdev)
 	iounmap(par->vp_regs);
 	pci_release_region(pdev, 3);
 
+	fb_dealloc_cmap(&info->cmap);
 	pci_set_drvdata(pdev, NULL);
 	framebuffer_release(info);
 }

@@ -4,7 +4,6 @@
 #include <linux/kernel.h>
 #include <linux/videodev2.h>
 
-
 /*
  * Dynamic controls
  */
@@ -73,149 +72,149 @@ struct uvc_xu_control {
  * UVC constants
  */
 
-#define SC_UNDEFINED                    0x00
-#define SC_VIDEOCONTROL                 0x01
-#define SC_VIDEOSTREAMING               0x02
-#define SC_VIDEO_INTERFACE_COLLECTION   0x03
+#define SC_UNDEFINED			0x00
+#define SC_VIDEOCONTROL			0x01
+#define SC_VIDEOSTREAMING		0x02
+#define SC_VIDEO_INTERFACE_COLLECTION	0x03
 
-#define PC_PROTOCOL_UNDEFINED           0x00
+#define PC_PROTOCOL_UNDEFINED		0x00
 
-#define CS_UNDEFINED                    0x20
-#define CS_DEVICE                       0x21
-#define CS_CONFIGURATION                0x22
-#define CS_STRING                       0x23
-#define CS_INTERFACE                    0x24
-#define CS_ENDPOINT                     0x25
+#define CS_UNDEFINED			0x20
+#define CS_DEVICE			0x21
+#define CS_CONFIGURATION		0x22
+#define CS_STRING			0x23
+#define CS_INTERFACE			0x24
+#define CS_ENDPOINT			0x25
 
 /* VideoControl class specific interface descriptor */
-#define VC_DESCRIPTOR_UNDEFINED         0x00
-#define VC_HEADER                       0x01
-#define VC_INPUT_TERMINAL               0x02
-#define VC_OUTPUT_TERMINAL              0x03
-#define VC_SELECTOR_UNIT                0x04
-#define VC_PROCESSING_UNIT              0x05
-#define VC_EXTENSION_UNIT               0x06
+#define VC_DESCRIPTOR_UNDEFINED		0x00
+#define VC_HEADER			0x01
+#define VC_INPUT_TERMINAL		0x02
+#define VC_OUTPUT_TERMINAL		0x03
+#define VC_SELECTOR_UNIT		0x04
+#define VC_PROCESSING_UNIT		0x05
+#define VC_EXTENSION_UNIT		0x06
 
 /* VideoStreaming class specific interface descriptor */
-#define VS_UNDEFINED                    0x00
-#define VS_INPUT_HEADER                 0x01
-#define VS_OUTPUT_HEADER                0x02
-#define VS_STILL_IMAGE_FRAME            0x03
-#define VS_FORMAT_UNCOMPRESSED          0x04
-#define VS_FRAME_UNCOMPRESSED           0x05
-#define VS_FORMAT_MJPEG                 0x06
-#define VS_FRAME_MJPEG                  0x07
-#define VS_FORMAT_MPEG2TS               0x0a
-#define VS_FORMAT_DV                    0x0c
-#define VS_COLORFORMAT                  0x0d
-#define VS_FORMAT_FRAME_BASED           0x10
-#define VS_FRAME_FRAME_BASED            0x11
-#define VS_FORMAT_STREAM_BASED          0x12
+#define VS_UNDEFINED			0x00
+#define VS_INPUT_HEADER			0x01
+#define VS_OUTPUT_HEADER		0x02
+#define VS_STILL_IMAGE_FRAME		0x03
+#define VS_FORMAT_UNCOMPRESSED		0x04
+#define VS_FRAME_UNCOMPRESSED		0x05
+#define VS_FORMAT_MJPEG			0x06
+#define VS_FRAME_MJPEG			0x07
+#define VS_FORMAT_MPEG2TS		0x0a
+#define VS_FORMAT_DV			0x0c
+#define VS_COLORFORMAT			0x0d
+#define VS_FORMAT_FRAME_BASED		0x10
+#define VS_FRAME_FRAME_BASED		0x11
+#define VS_FORMAT_STREAM_BASED		0x12
 
 /* Endpoint type */
-#define EP_UNDEFINED                    0x00
-#define EP_GENERAL                      0x01
-#define EP_ENDPOINT                     0x02
-#define EP_INTERRUPT                    0x03
+#define EP_UNDEFINED			0x00
+#define EP_GENERAL			0x01
+#define EP_ENDPOINT			0x02
+#define EP_INTERRUPT			0x03
 
 /* Request codes */
-#define RC_UNDEFINED                    0x00
-#define SET_CUR                         0x01
-#define GET_CUR                         0x81
-#define GET_MIN                         0x82
-#define GET_MAX                         0x83
-#define GET_RES                         0x84
-#define GET_LEN                         0x85
-#define GET_INFO                        0x86
-#define GET_DEF                         0x87
+#define RC_UNDEFINED			0x00
+#define SET_CUR				0x01
+#define GET_CUR				0x81
+#define GET_MIN				0x82
+#define GET_MAX				0x83
+#define GET_RES				0x84
+#define GET_LEN				0x85
+#define GET_INFO			0x86
+#define GET_DEF				0x87
 
 /* VideoControl interface controls */
-#define VC_CONTROL_UNDEFINED            0x00
-#define VC_VIDEO_POWER_MODE_CONTROL     0x01
-#define VC_REQUEST_ERROR_CODE_CONTROL   0x02
+#define VC_CONTROL_UNDEFINED		0x00
+#define VC_VIDEO_POWER_MODE_CONTROL	0x01
+#define VC_REQUEST_ERROR_CODE_CONTROL	0x02
 
 /* Terminal controls */
-#define TE_CONTROL_UNDEFINED            0x00
+#define TE_CONTROL_UNDEFINED		0x00
 
 /* Selector Unit controls */
-#define SU_CONTROL_UNDEFINED            0x00
-#define SU_INPUT_SELECT_CONTROL         0x01
+#define SU_CONTROL_UNDEFINED		0x00
+#define SU_INPUT_SELECT_CONTROL		0x01
 
 /* Camera Terminal controls */
-#define CT_CONTROL_UNDEFINED            		0x00
-#define CT_SCANNING_MODE_CONTROL        		0x01
-#define CT_AE_MODE_CONTROL              		0x02
-#define CT_AE_PRIORITY_CONTROL          		0x03
-#define CT_EXPOSURE_TIME_ABSOLUTE_CONTROL               0x04
-#define CT_EXPOSURE_TIME_RELATIVE_CONTROL               0x05
-#define CT_FOCUS_ABSOLUTE_CONTROL       		0x06
-#define CT_FOCUS_RELATIVE_CONTROL       		0x07
-#define CT_FOCUS_AUTO_CONTROL           		0x08
-#define CT_IRIS_ABSOLUTE_CONTROL        		0x09
-#define CT_IRIS_RELATIVE_CONTROL        		0x0a
-#define CT_ZOOM_ABSOLUTE_CONTROL        		0x0b
-#define CT_ZOOM_RELATIVE_CONTROL        		0x0c
-#define CT_PANTILT_ABSOLUTE_CONTROL     		0x0d
-#define CT_PANTILT_RELATIVE_CONTROL     		0x0e
-#define CT_ROLL_ABSOLUTE_CONTROL        		0x0f
-#define CT_ROLL_RELATIVE_CONTROL        		0x10
-#define CT_PRIVACY_CONTROL              		0x11
+#define CT_CONTROL_UNDEFINED				0x00
+#define CT_SCANNING_MODE_CONTROL			0x01
+#define CT_AE_MODE_CONTROL				0x02
+#define CT_AE_PRIORITY_CONTROL				0x03
+#define CT_EXPOSURE_TIME_ABSOLUTE_CONTROL		0x04
+#define CT_EXPOSURE_TIME_RELATIVE_CONTROL		0x05
+#define CT_FOCUS_ABSOLUTE_CONTROL			0x06
+#define CT_FOCUS_RELATIVE_CONTROL			0x07
+#define CT_FOCUS_AUTO_CONTROL				0x08
+#define CT_IRIS_ABSOLUTE_CONTROL			0x09
+#define CT_IRIS_RELATIVE_CONTROL			0x0a
+#define CT_ZOOM_ABSOLUTE_CONTROL			0x0b
+#define CT_ZOOM_RELATIVE_CONTROL			0x0c
+#define CT_PANTILT_ABSOLUTE_CONTROL			0x0d
+#define CT_PANTILT_RELATIVE_CONTROL			0x0e
+#define CT_ROLL_ABSOLUTE_CONTROL			0x0f
+#define CT_ROLL_RELATIVE_CONTROL			0x10
+#define CT_PRIVACY_CONTROL				0x11
 
 /* Processing Unit controls */
-#define PU_CONTROL_UNDEFINED            		0x00
-#define PU_BACKLIGHT_COMPENSATION_CONTROL               0x01
-#define PU_BRIGHTNESS_CONTROL           		0x02
-#define PU_CONTRAST_CONTROL             		0x03
-#define PU_GAIN_CONTROL                 		0x04
-#define PU_POWER_LINE_FREQUENCY_CONTROL 		0x05
-#define PU_HUE_CONTROL                  		0x06
-#define PU_SATURATION_CONTROL           		0x07
-#define PU_SHARPNESS_CONTROL            		0x08
-#define PU_GAMMA_CONTROL                		0x09
-#define PU_WHITE_BALANCE_TEMPERATURE_CONTROL            0x0a
-#define PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL       0x0b
-#define PU_WHITE_BALANCE_COMPONENT_CONTROL              0x0c
-#define PU_WHITE_BALANCE_COMPONENT_AUTO_CONTROL         0x0d
-#define PU_DIGITAL_MULTIPLIER_CONTROL   		0x0e
-#define PU_DIGITAL_MULTIPLIER_LIMIT_CONTROL             0x0f
-#define PU_HUE_AUTO_CONTROL             		0x10
-#define PU_ANALOG_VIDEO_STANDARD_CONTROL                0x11
-#define PU_ANALOG_LOCK_STATUS_CONTROL   		0x12
+#define PU_CONTROL_UNDEFINED				0x00
+#define PU_BACKLIGHT_COMPENSATION_CONTROL		0x01
+#define PU_BRIGHTNESS_CONTROL				0x02
+#define PU_CONTRAST_CONTROL				0x03
+#define PU_GAIN_CONTROL					0x04
+#define PU_POWER_LINE_FREQUENCY_CONTROL			0x05
+#define PU_HUE_CONTROL					0x06
+#define PU_SATURATION_CONTROL				0x07
+#define PU_SHARPNESS_CONTROL				0x08
+#define PU_GAMMA_CONTROL				0x09
+#define PU_WHITE_BALANCE_TEMPERATURE_CONTROL		0x0a
+#define PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL	0x0b
+#define PU_WHITE_BALANCE_COMPONENT_CONTROL		0x0c
+#define PU_WHITE_BALANCE_COMPONENT_AUTO_CONTROL		0x0d
+#define PU_DIGITAL_MULTIPLIER_CONTROL			0x0e
+#define PU_DIGITAL_MULTIPLIER_LIMIT_CONTROL		0x0f
+#define PU_HUE_AUTO_CONTROL				0x10
+#define PU_ANALOG_VIDEO_STANDARD_CONTROL		0x11
+#define PU_ANALOG_LOCK_STATUS_CONTROL			0x12
 
 #define LXU_MOTOR_PANTILT_RELATIVE_CONTROL		0x01
 #define LXU_MOTOR_PANTILT_RESET_CONTROL			0x02
 #define LXU_MOTOR_FOCUS_MOTOR_CONTROL			0x03
 
 /* VideoStreaming interface controls */
-#define VS_CONTROL_UNDEFINED            0x00
-#define VS_PROBE_CONTROL                0x01
-#define VS_COMMIT_CONTROL               0x02
-#define VS_STILL_PROBE_CONTROL          0x03
-#define VS_STILL_COMMIT_CONTROL         0x04
-#define VS_STILL_IMAGE_TRIGGER_CONTROL  0x05
-#define VS_STREAM_ERROR_CODE_CONTROL    0x06
-#define VS_GENERATE_KEY_FRAME_CONTROL   0x07
-#define VS_UPDATE_FRAME_SEGMENT_CONTROL 0x08
-#define VS_SYNC_DELAY_CONTROL           0x09
+#define VS_CONTROL_UNDEFINED		0x00
+#define VS_PROBE_CONTROL		0x01
+#define VS_COMMIT_CONTROL		0x02
+#define VS_STILL_PROBE_CONTROL		0x03
+#define VS_STILL_COMMIT_CONTROL		0x04
+#define VS_STILL_IMAGE_TRIGGER_CONTROL	0x05
+#define VS_STREAM_ERROR_CODE_CONTROL	0x06
+#define VS_GENERATE_KEY_FRAME_CONTROL	0x07
+#define VS_UPDATE_FRAME_SEGMENT_CONTROL	0x08
+#define VS_SYNC_DELAY_CONTROL		0x09
 
-#define TT_VENDOR_SPECIFIC              0x0100
-#define TT_STREAMING                    0x0101
+#define TT_VENDOR_SPECIFIC		0x0100
+#define TT_STREAMING			0x0101
 
 /* Input Terminal types */
-#define ITT_VENDOR_SPECIFIC             0x0200
-#define ITT_CAMERA                      0x0201
-#define ITT_MEDIA_TRANSPORT_INPUT       0x0202
+#define ITT_VENDOR_SPECIFIC		0x0200
+#define ITT_CAMERA			0x0201
+#define ITT_MEDIA_TRANSPORT_INPUT	0x0202
 
 /* Output Terminal types */
-#define OTT_VENDOR_SPECIFIC             0x0300
-#define OTT_DISPLAY                     0x0301
-#define OTT_MEDIA_TRANSPORT_OUTPUT      0x0302
+#define OTT_VENDOR_SPECIFIC		0x0300
+#define OTT_DISPLAY			0x0301
+#define OTT_MEDIA_TRANSPORT_OUTPUT	0x0302
 
 /* External Terminal types */
-#define EXTERNAL_VENDOR_SPECIFIC        0x0400
-#define COMPOSITE_CONNECTOR             0x0401
-#define SVIDEO_CONNECTOR                0x0402
-#define COMPONENT_CONNECTOR             0x0403
+#define EXTERNAL_VENDOR_SPECIFIC	0x0400
+#define COMPOSITE_CONNECTOR		0x0401
+#define SVIDEO_CONNECTOR		0x0402
+#define COMPONENT_CONNECTOR		0x0403
 
 #define UVC_TERM_INPUT			0x0000
 #define UVC_TERM_OUTPUT			0x8000
@@ -316,6 +315,7 @@ struct uvc_xu_control {
 #define UVC_QUIRK_BUILTIN_ISIGHT	0x00000008
 #define UVC_QUIRK_STREAM_NO_FID		0x00000010
 #define UVC_QUIRK_IGNORE_SELECTOR_UNIT	0x00000020
+#define UVC_QUIRK_PRUNE_CONTROLS	0x00000040
 
 /* Format flags */
 #define UVC_FMT_FLAG_COMPRESSED		0x00000001
@@ -383,6 +383,11 @@ struct uvc_control_mapping {
 
 	struct uvc_menu_info *menu_info;
 	__u32 menu_count;
+
+	__s32 (*get) (struct uvc_control_mapping *mapping, __u8 query,
+		      const __u8 *data);
+	void (*set) (struct uvc_control_mapping *mapping, __s32 value,
+		     __u8 *data);
 };
 
 struct uvc_control {
@@ -523,6 +528,7 @@ struct uvc_streaming {
 	__u16 maxpsize;
 
 	struct uvc_streaming_header header;
+	enum v4l2_buf_type type;
 
 	unsigned int nformats;
 	struct uvc_format *format;
@@ -535,11 +541,11 @@ struct uvc_streaming {
 };
 
 enum uvc_buffer_state {
-	UVC_BUF_STATE_IDLE       = 0,
-	UVC_BUF_STATE_QUEUED     = 1,
-	UVC_BUF_STATE_ACTIVE     = 2,
-	UVC_BUF_STATE_DONE       = 3,
-	UVC_BUF_STATE_ERROR      = 4,
+	UVC_BUF_STATE_IDLE	= 0,
+	UVC_BUF_STATE_QUEUED	= 1,
+	UVC_BUF_STATE_ACTIVE	= 2,
+	UVC_BUF_STATE_DONE	= 3,
+	UVC_BUF_STATE_ERROR	= 4,
 };
 
 struct uvc_buffer {
@@ -558,12 +564,15 @@ struct uvc_buffer {
 #define UVC_QUEUE_DROP_INCOMPLETE	(1 << 2)
 
 struct uvc_video_queue {
+	enum v4l2_buf_type type;
+
 	void *mem;
 	unsigned int flags;
 	__u32 sequence;
 
 	unsigned int count;
 	unsigned int buf_size;
+	unsigned int buf_used;
 	struct uvc_buffer buffer[UVC_MAX_VIDEO_BUFFERS];
 	struct mutex mutex;	/* protects buffers and mainqueue */
 	spinlock_t irqlock;	/* protects irqqueue */
@@ -578,8 +587,9 @@ struct uvc_video_device {
 	atomic_t active;
 	unsigned int frozen : 1;
 
-	struct list_head iterms;
-	struct uvc_entity *oterm;
+	struct list_head iterms;		/* Input terminals */
+	struct uvc_entity *oterm;		/* Output terminal */
+	struct uvc_entity *sterm;		/* USB streaming terminal */
 	struct uvc_entity *processing;
 	struct uvc_entity *selector;
 	struct list_head extensions;
@@ -617,6 +627,7 @@ enum uvc_device_state {
 struct uvc_device {
 	struct usb_device *udev;
 	struct usb_interface *intf;
+	unsigned long warnings;
 	__u32 quirks;
 	int intfnum;
 	char name[32];
@@ -679,12 +690,22 @@ struct uvc_driver {
 #define UVC_TRACE_SUSPEND	(1 << 8)
 #define UVC_TRACE_STATUS	(1 << 9)
 
+#define UVC_WARN_MINMAX		0
+#define UVC_WARN_PROBE_DEF	1
+
+extern unsigned int uvc_no_drop_param;
 extern unsigned int uvc_trace_param;
 
 #define uvc_trace(flag, msg...) \
 	do { \
 		if (uvc_trace_param & flag) \
 			printk(KERN_DEBUG "uvcvideo: " msg); \
+	} while (0)
+
+#define uvc_warn_once(dev, warn, msg...) \
+	do { \
+		if (!test_and_set_bit(warn, &dev->warnings)) \
+			printk(KERN_INFO "uvcvideo: " msg); \
 	} while (0)
 
 #define uvc_printk(level, msg...) \
@@ -709,7 +730,8 @@ extern struct uvc_driver uvc_driver;
 extern void uvc_delete(struct kref *kref);
 
 /* Video buffers queue management. */
-extern void uvc_queue_init(struct uvc_video_queue *queue);
+extern void uvc_queue_init(struct uvc_video_queue *queue,
+		enum v4l2_buf_type type);
 extern int uvc_alloc_buffers(struct uvc_video_queue *queue,
 		unsigned int nbuffers, unsigned int buflength);
 extern int uvc_free_buffers(struct uvc_video_queue *queue);
@@ -731,7 +753,7 @@ static inline int uvc_queue_streaming(struct uvc_video_queue *queue)
 }
 
 /* V4L2 interface */
-extern struct file_operations uvc_fops;
+extern const struct v4l2_file_operations uvc_fops;
 
 /* Video */
 extern int uvc_video_init(struct uvc_video_device *video);
@@ -740,10 +762,10 @@ extern int uvc_video_resume(struct uvc_video_device *video);
 extern int uvc_video_enable(struct uvc_video_device *video, int enable);
 extern int uvc_probe_video(struct uvc_video_device *video,
 		struct uvc_streaming_control *probe);
+extern int uvc_commit_video(struct uvc_video_device *video,
+		struct uvc_streaming_control *ctrl);
 extern int uvc_query_ctrl(struct uvc_device *dev, __u8 query, __u8 unit,
 		__u8 intfnum, __u8 cs, void *data, __u16 size);
-extern int uvc_set_video_ctrl(struct uvc_video_device *video,
-		struct uvc_streaming_control *ctrl, int probe);
 
 /* Status */
 extern int uvc_status_init(struct uvc_device *dev);

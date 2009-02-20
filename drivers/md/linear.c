@@ -25,13 +25,13 @@ static inline dev_info_t *which_dev(mddev_t *mddev, sector_t sector)
 {
 	dev_info_t *hash;
 	linear_conf_t *conf = mddev_to_conf(mddev);
+	sector_t idx = sector >> conf->sector_shift;
 
 	/*
 	 * sector_div(a,b) returns the remainer and sets a to a/b
 	 */
-	sector >>= conf->sector_shift;
-	(void)sector_div(sector, conf->spacing);
-	hash = conf->hash_table[sector];
+	(void)sector_div(idx, conf->spacing);
+	hash = conf->hash_table[idx];
 
 	while (sector >= hash->num_sectors + hash->start_sector)
 		hash++;
@@ -105,7 +105,6 @@ static linear_conf_t *linear_conf(mddev_t *mddev, int raid_disks)
 	int i, nb_zone, cnt;
 	sector_t min_sectors;
 	sector_t curr_sector;
-	struct list_head *tmp;
 
 	conf = kzalloc (sizeof (*conf) + raid_disks*sizeof(dev_info_t),
 			GFP_KERNEL);
@@ -115,7 +114,7 @@ static linear_conf_t *linear_conf(mddev_t *mddev, int raid_disks)
 	cnt = 0;
 	conf->array_sectors = 0;
 
-	rdev_for_each(rdev, tmp, mddev) {
+	list_for_each_entry(rdev, &mddev->disks, same_set) {
 		int j = rdev->raid_disk;
 		dev_info_t *disk = conf->disks + j;
 

@@ -16,6 +16,7 @@
 #include <linux/lockdep.h>
 #include <linux/notifier.h>
 #include <linux/module.h>
+#include <linux/sysctl.h>
 
 #include <asm/irq_regs.h>
 
@@ -87,6 +88,14 @@ void touch_all_softlockup_watchdogs(void)
 		per_cpu(touch_timestamp, cpu) = 0;
 }
 EXPORT_SYMBOL(touch_all_softlockup_watchdogs);
+
+int proc_dosoftlockup_thresh(struct ctl_table *table, int write,
+			     struct file *filp, void __user *buffer,
+			     size_t *lenp, loff_t *ppos)
+{
+	touch_all_softlockup_watchdogs();
+	return proc_dointvec_minmax(table, write, filp, buffer, lenp, ppos);
+}
 
 /*
  * This callback runs from the timer interrupt, and checks
@@ -164,7 +173,7 @@ unsigned long __read_mostly sysctl_hung_task_check_count = 1024;
 /*
  * Zero means infinite timeout - no checking done:
  */
-unsigned long __read_mostly sysctl_hung_task_timeout_secs = 120;
+unsigned long __read_mostly sysctl_hung_task_timeout_secs = 480;
 
 unsigned long __read_mostly sysctl_hung_task_warnings = 10;
 
@@ -303,17 +312,15 @@ cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		break;
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
-		check_cpu = any_online_cpu(cpu_online_map);
+		check_cpu = cpumask_any(cpu_online_mask);
 		wake_up_process(per_cpu(watchdog_task, hotcpu));
 		break;
 #ifdef CONFIG_HOTPLUG_CPU
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 		if (hotcpu == check_cpu) {
-			cpumask_t temp_cpu_online_map = cpu_online_map;
-
-			cpu_clear(hotcpu, temp_cpu_online_map);
-			check_cpu = any_online_cpu(temp_cpu_online_map);
+			/* Pick any other online cpu. */
+			check_cpu = cpumask_any_but(cpu_online_mask, hotcpu);
 		}
 		break;
 
@@ -323,7 +330,7 @@ cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
 			break;
 		/* Unbind so it can run.  Fall thru. */
 		kthread_bind(per_cpu(watchdog_task, hotcpu),
-			     any_online_cpu(cpu_online_map));
+			     cpumask_any(cpu_online_mask));
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
 		p = per_cpu(watchdog_task, hotcpu);

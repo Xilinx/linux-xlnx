@@ -26,6 +26,7 @@
 #include <linux/ioport.h>
 #include <linux/types.h>
 #include <linux/errno.h>
+#include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/interrupt.h>
@@ -370,6 +371,9 @@ static int qe_ep_bd_init(struct qe_udc *udc, unsigned char pipe_num)
 	/* alloc multi-ram for BD rings and set the ep parameters */
 	tmp_addr = cpm_muram_alloc(sizeof(struct qe_bd) * (bdring_len +
 				USB_BDRING_LEN_TX), QE_ALIGNMENT_OF_BD);
+	if (IS_ERR_VALUE(tmp_addr))
+		return -ENOMEM;
+
 	out_be16(&epparam->rbase, (u16)tmp_addr);
 	out_be16(&epparam->tbase, (u16)(tmp_addr +
 				(sizeof(struct qe_bd) * bdring_len)));
@@ -689,7 +693,7 @@ en_done2:
 en_done1:
 	spin_unlock_irqrestore(&udc->lock, flags);
 en_done:
-	dev_dbg(udc->dev, "failed to initialize %s\n", ep->ep.name);
+	dev_err(udc->dev, "failed to initialize %s\n", ep->ep.name);
 	return -ENODEV;
 }
 
@@ -1618,6 +1622,8 @@ static int qe_ep_disable(struct usb_ep *_ep)
 	nuke(ep, -ESHUTDOWN);
 	ep->desc = NULL;
 	ep->stopped = 1;
+	ep->tx_req = NULL;
+	qe_ep_reset(udc, ep->epnum);
 	spin_unlock_irqrestore(&udc->lock, flags);
 
 	cpm_muram_free(cpm_muram_offset(ep->rxbase));
@@ -1677,14 +1683,11 @@ static void qe_free_request(struct usb_ep *_ep, struct usb_request *_req)
 		kfree(req);
 }
 
-/* queues (submits) an I/O request to an endpoint */
-static int qe_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
-				gfp_t gfp_flags)
+static int __qe_ep_queue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct qe_ep *ep = container_of(_ep, struct qe_ep, ep);
 	struct qe_req *req = container_of(_req, struct qe_req, req);
 	struct qe_udc *udc;
-	unsigned long flags;
 	int reval;
 
 	udc = ep->udc;
@@ -1728,7 +1731,7 @@ static int qe_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	list_add_tail(&req->queue, &ep->queue);
 	dev_vdbg(udc->dev, "gadget have request in %s! %d\n",
 			ep->name, req->req.length);
-	spin_lock_irqsave(&udc->lock, flags);
+
 	/* push the request to device */
 	if (ep_is_in(ep))
 		reval = ep_req_send(ep, req);
@@ -1744,9 +1747,22 @@ static int qe_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	if (ep->dir == USB_DIR_OUT)
 		reval = ep_req_receive(ep, req);
 
-	spin_unlock_irqrestore(&udc->lock, flags);
-
 	return 0;
+}
+
+/* queues (submits) an I/O request to an endpoint */
+static int qe_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
+		       gfp_t gfp_flags)
+{
+	struct qe_ep *ep = container_of(_ep, struct qe_ep, ep);
+	struct qe_udc *udc = ep->udc;
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&udc->lock, flags);
+	ret = __qe_ep_queue(_ep, _req);
+	spin_unlock_irqrestore(&udc->lock, flags);
+	return ret;
 }
 
 /* dequeues (cancels, unlinks) an I/O request from an endpoint */
@@ -2004,7 +2020,7 @@ static void ch9getstatus(struct qe_udc *udc, u8 request_type, u16 value,
 	udc->ep0_dir = USB_DIR_IN;
 
 	/* data phase */
-	status = qe_ep_queue(&ep->ep, &req->req, GFP_ATOMIC);
+	status = __qe_ep_queue(&ep->ep, &req->req);
 
 	if (status == 0)
 		return;
@@ -2146,6 +2162,9 @@ static void idle_irq(struct qe_udc *udc)
 static int reset_irq(struct qe_udc *udc)
 {
 	unsigned char i;
+
+	if (udc->usb_state == USB_STATE_DEFAULT)
+		return 0;
 
 	qe_usb_disable();
 	out_8(&udc->usb_regs->usb_usadr, 0);
@@ -2408,6 +2427,8 @@ static struct qe_udc __devinit *qe_udc_config(struct of_device *ofdev)
 	tmp_addr = cpm_muram_alloc((USB_MAX_ENDPOINTS *
 					sizeof(struct usb_ep_para)),
 					   USB_EP_PARA_ALIGNMENT);
+	if (IS_ERR_VALUE(tmp_addr))
+		goto cleanup;
 
 	for (i = 0; i < USB_MAX_ENDPOINTS; i++) {
 		out_be16(&usbpram->epptr[i], (u16)tmp_addr);
@@ -2436,8 +2457,12 @@ static int __devinit qe_udc_reg_init(struct qe_udc *udc)
 	struct usb_ctlr __iomem *qe_usbregs;
 	qe_usbregs = udc->usb_regs;
 
-	/* Init the usb register */
+	/* Spec says that we must enable the USB controller to change mode. */
 	out_8(&qe_usbregs->usb_usmod, 0x01);
+	/* Mode changed, now disable it, since muram isn't initialized yet. */
+	out_8(&qe_usbregs->usb_usmod, 0x00);
+
+	/* Initialize the rest. */
 	out_be16(&qe_usbregs->usb_usbmr, 0);
 	out_8(&qe_usbregs->usb_uscom, 0);
 	out_be16(&qe_usbregs->usb_usber, USBER_ALL_CLEAR);
@@ -2513,7 +2538,7 @@ static int __devinit qe_udc_probe(struct of_device *ofdev,
 	/* Initialize the udc structure including QH member and other member */
 	udc_controller = qe_udc_config(ofdev);
 	if (!udc_controller) {
-		dev_dbg(&ofdev->dev, "udc_controll is NULL\n");
+		dev_err(&ofdev->dev, "failed to initialize\n");
 		return -ENOMEM;
 	}
 
@@ -2545,7 +2570,7 @@ static int __devinit qe_udc_probe(struct of_device *ofdev,
 
 	device_initialize(&udc_controller->gadget.dev);
 
-	strcpy(udc_controller->gadget.dev.bus_id, "gadget");
+	dev_set_name(&udc_controller->gadget.dev, "gadget");
 
 	udc_controller->gadget.dev.release = qe_udc_release;
 	udc_controller->gadget.dev.parent = &ofdev->dev;
@@ -2568,7 +2593,7 @@ static int __devinit qe_udc_probe(struct of_device *ofdev,
 	/* create a buf for ZLP send, need to remain zeroed */
 	udc_controller->nullbuf = kzalloc(256, GFP_KERNEL);
 	if (udc_controller->nullbuf == NULL) {
-		dev_dbg(udc_controller->dev, "cannot alloc nullbuf\n");
+		dev_err(udc_controller->dev, "cannot alloc nullbuf\n");
 		ret = -ENOMEM;
 		goto err3;
 	}
@@ -2598,6 +2623,10 @@ static int __devinit qe_udc_probe(struct of_device *ofdev,
 			(unsigned long)udc_controller);
 	/* request irq and disable DR  */
 	udc_controller->usb_irq = irq_of_parse_and_map(np, 0);
+	if (!udc_controller->usb_irq) {
+		ret = -EINVAL;
+		goto err_noirq;
+	}
 
 	ret = request_irq(udc_controller->usb_irq, qe_udc_irq, 0,
 				driver_name, udc_controller);
@@ -2619,6 +2648,8 @@ static int __devinit qe_udc_probe(struct of_device *ofdev,
 err6:
 	free_irq(udc_controller->usb_irq, udc_controller);
 err5:
+	irq_dispose_mapping(udc_controller->usb_irq);
+err_noirq:
 	if (udc_controller->nullmap) {
 		dma_unmap_single(udc_controller->gadget.dev.parent,
 			udc_controller->nullp, 256,
@@ -2642,7 +2673,7 @@ err2:
 	iounmap(udc_controller->usb_regs);
 err1:
 	kfree(udc_controller);
-
+	udc_controller = NULL;
 	return ret;
 }
 
@@ -2704,6 +2735,7 @@ static int __devexit qe_udc_remove(struct of_device *ofdev)
 	kfree(ep->txframe);
 
 	free_irq(udc_controller->usb_irq, udc_controller);
+	irq_dispose_mapping(udc_controller->usb_irq);
 
 	tasklet_kill(&udc_controller->rx_tasklet);
 

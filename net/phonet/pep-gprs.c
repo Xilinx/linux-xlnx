@@ -207,7 +207,6 @@ static int gprs_xmit(struct sk_buff *skb, struct net_device *dev)
 				dev->name, err);
 		dev->stats.tx_aborted_errors++;
 		dev->stats.tx_errors++;
-		dev_kfree_skb(skb);
 	} else {
 		dev->stats.tx_packets++;
 		dev->stats.tx_bytes += len;
@@ -227,6 +226,13 @@ static int gprs_set_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
+static const struct net_device_ops gprs_netdev_ops = {
+	.ndo_open	= gprs_open,
+	.ndo_stop	= gprs_close,
+	.ndo_start_xmit	= gprs_xmit,
+	.ndo_change_mtu	= gprs_set_mtu,
+};
+
 static void gprs_setup(struct net_device *dev)
 {
 	dev->features		= NETIF_F_FRAGLIST;
@@ -237,11 +243,8 @@ static void gprs_setup(struct net_device *dev)
 	dev->addr_len		= 0;
 	dev->tx_queue_len	= 10;
 
+	dev->netdev_ops		= &gprs_netdev_ops;
 	dev->destructor		= free_netdev;
-	dev->open		= gprs_open;
-	dev->stop		= gprs_close;
-	dev->hard_start_xmit	= gprs_xmit; /* mandatory */
-	dev->change_mtu		= gprs_set_mtu;
 }
 
 /*

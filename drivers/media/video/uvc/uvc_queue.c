@@ -1,7 +1,7 @@
 /*
  *      uvc_queue.c  --  USB Video Class driver - Buffers management
  *
- *      Copyright (C) 2005-2008
+ *      Copyright (C) 2005-2009
  *          Laurent Pinchart (laurent.pinchart@skynet.be)
  *
  *      This program is free software; you can redistribute it and/or modify
@@ -12,7 +12,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/version.h>
 #include <linux/mm.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -37,22 +36,22 @@
  * to user space will return -EBUSY.
  *
  * Video buffers are managed using two queues. However, unlike most USB video
- * drivers which use an in queue and an out queue, we use a main queue which
- * holds all queued buffers (both 'empty' and 'done' buffers), and an irq
- * queue which holds empty buffers. This design (copied from video-buf)
- * minimizes locking in interrupt, as only one queue is shared between
- * interrupt and user contexts.
+ * drivers that use an in queue and an out queue, we use a main queue to hold
+ * all queued buffers (both 'empty' and 'done' buffers), and an irq queue to
+ * hold empty buffers. This design (copied from video-buf) minimizes locking
+ * in interrupt, as only one queue is shared between interrupt and user
+ * contexts.
  *
  * Use cases
  * ---------
  *
- * Unless stated otherwise, all operations which modify the irq buffers queue
+ * Unless stated otherwise, all operations that modify the irq buffers queue
  * are protected by the irq spinlock.
  *
  * 1. The user queues the buffers, starts streaming and dequeues a buffer.
  *
  *    The buffers are added to the main and irq queues. Both operations are
- *    protected by the queue lock, and the latert is protected by the irq
+ *    protected by the queue lock, and the later is protected by the irq
  *    spinlock as well.
  *
  *    The completion handler fetches a buffer from the irq queue and fills it
@@ -60,7 +59,7 @@
  *    returns immediately.
  *
  *    When the buffer is full, the completion handler removes it from the irq
- *    queue, marks it as ready (UVC_BUF_STATE_DONE) and wake its wait queue.
+ *    queue, marks it as ready (UVC_BUF_STATE_DONE) and wakes its wait queue.
  *    At that point, any process waiting on the buffer will be woken up. If a
  *    process tries to dequeue a buffer after it has been marked ready, the
  *    dequeing will succeed immediately.
@@ -79,19 +78,20 @@
  *
  */
 
-void uvc_queue_init(struct uvc_video_queue *queue)
+void uvc_queue_init(struct uvc_video_queue *queue, enum v4l2_buf_type type)
 {
 	mutex_init(&queue->mutex);
 	spin_lock_init(&queue->irqlock);
 	INIT_LIST_HEAD(&queue->mainqueue);
 	INIT_LIST_HEAD(&queue->irqqueue);
+	queue->type = type;
 }
 
 /*
  * Allocate the video buffers.
  *
- * Pages are reserved to make sure they will not be swaped, as they will be
- * filled in URB completion handler.
+ * Pages are reserved to make sure they will not be swapped, as they will be
+ * filled in the URB completion handler.
  *
  * Buffers will be individually mapped, so they must all be page aligned.
  */
@@ -132,7 +132,7 @@ int uvc_alloc_buffers(struct uvc_video_queue *queue, unsigned int nbuffers,
 		queue->buffer[i].buf.index = i;
 		queue->buffer[i].buf.m.offset = i * bufsize;
 		queue->buffer[i].buf.length = buflength;
-		queue->buffer[i].buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		queue->buffer[i].buf.type = queue->type;
 		queue->buffer[i].buf.sequence = 0;
 		queue->buffer[i].buf.field = V4L2_FIELD_NONE;
 		queue->buffer[i].buf.memory = V4L2_MEMORY_MMAP;
@@ -209,8 +209,8 @@ int uvc_query_buffer(struct uvc_video_queue *queue,
 	__uvc_query_buffer(&queue->buffer[v4l2_buf->index], v4l2_buf);
 
 done:
-       mutex_unlock(&queue->mutex);
-       return ret;
+	mutex_unlock(&queue->mutex);
+	return ret;
 }
 
 /*
@@ -226,7 +226,7 @@ int uvc_queue_buffer(struct uvc_video_queue *queue,
 
 	uvc_trace(UVC_TRACE_CAPTURE, "Queuing buffer %u.\n", v4l2_buf->index);
 
-	if (v4l2_buf->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+	if (v4l2_buf->type != queue->type ||
 	    v4l2_buf->memory != V4L2_MEMORY_MMAP) {
 		uvc_trace(UVC_TRACE_CAPTURE, "[E] Invalid buffer type (%u) "
 			"and/or memory (%u).\n", v4l2_buf->type,
@@ -235,7 +235,7 @@ int uvc_queue_buffer(struct uvc_video_queue *queue,
 	}
 
 	mutex_lock(&queue->mutex);
-	if (v4l2_buf->index >= queue->count)  {
+	if (v4l2_buf->index >= queue->count) {
 		uvc_trace(UVC_TRACE_CAPTURE, "[E] Out of range index.\n");
 		ret = -EINVAL;
 		goto done;
@@ -249,6 +249,13 @@ int uvc_queue_buffer(struct uvc_video_queue *queue,
 		goto done;
 	}
 
+	if (v4l2_buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT &&
+	    v4l2_buf->bytesused > buf->buf.length) {
+		uvc_trace(UVC_TRACE_CAPTURE, "[E] Bytes used out of bounds.\n");
+		ret = -EINVAL;
+		goto done;
+	}
+
 	spin_lock_irqsave(&queue->irqlock, flags);
 	if (queue->flags & UVC_QUEUE_DISCONNECTED) {
 		spin_unlock_irqrestore(&queue->irqlock, flags);
@@ -256,7 +263,11 @@ int uvc_queue_buffer(struct uvc_video_queue *queue,
 		goto done;
 	}
 	buf->state = UVC_BUF_STATE_QUEUED;
-	buf->buf.bytesused = 0;
+	if (v4l2_buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		buf->buf.bytesused = 0;
+	else
+		buf->buf.bytesused = v4l2_buf->bytesused;
+
 	list_add_tail(&buf->stream, &queue->mainqueue);
 	list_add_tail(&buf->queue, &queue->irqqueue);
 	spin_unlock_irqrestore(&queue->irqlock, flags);
@@ -289,7 +300,7 @@ int uvc_dequeue_buffer(struct uvc_video_queue *queue,
 	struct uvc_buffer *buf;
 	int ret = 0;
 
-	if (v4l2_buf->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+	if (v4l2_buf->type != queue->type ||
 	    v4l2_buf->memory != V4L2_MEMORY_MMAP) {
 		uvc_trace(UVC_TRACE_CAPTURE, "[E] Invalid buffer type (%u) "
 			"and/or memory (%u).\n", v4l2_buf->type,
@@ -397,6 +408,7 @@ int uvc_queue_enable(struct uvc_video_queue *queue, int enable)
 		}
 		queue->sequence = 0;
 		queue->flags |= UVC_QUEUE_STREAMING;
+		queue->buf_used = 0;
 	} else {
 		uvc_queue_cancel(queue, 0);
 		INIT_LIST_HEAD(&queue->mainqueue);
@@ -416,7 +428,7 @@ done:
  * Cancel the video buffers queue.
  *
  * Cancelling the queue marks all buffers on the irq queue as erroneous,
- * wakes them up and remove them from the queue.
+ * wakes them up and removes them from the queue.
  *
  * If the disconnect parameter is set, further calls to uvc_queue_buffer will
  * fail with -ENODEV.

@@ -73,11 +73,7 @@ ssize_t part_timeout_store(struct device *dev, struct device_attribute *attr,
  */
 void blk_delete_timer(struct request *req)
 {
-	struct request_queue *q = req->q;
-
 	list_del_init(&req->timeout_list);
-	if (list_empty(&q->timeout_list))
-		del_timer(&q->timeout);
 }
 
 static void blk_rq_timed_out(struct request *req)
@@ -111,7 +107,7 @@ static void blk_rq_timed_out(struct request *req)
 void blk_rq_timed_out_timer(unsigned long data)
 {
 	struct request_queue *q = (struct request_queue *) data;
-	unsigned long flags, uninitialized_var(next), next_set = 0;
+	unsigned long flags, next = 0;
 	struct request *rq, *tmp;
 
 	spin_lock_irqsave(q->queue_lock, flags);
@@ -126,15 +122,18 @@ void blk_rq_timed_out_timer(unsigned long data)
 			if (blk_mark_rq_complete(rq))
 				continue;
 			blk_rq_timed_out(rq);
+		} else {
+			if (!next || time_after(next, rq->deadline))
+				next = rq->deadline;
 		}
-		if (!next_set) {
-			next = rq->deadline;
-			next_set = 1;
-		} else if (time_after(next, rq->deadline))
-			next = rq->deadline;
 	}
 
-	if (next_set && !list_empty(&q->timeout_list))
+	/*
+	 * next can never be 0 here with the list non-empty, since we always
+	 * bump ->deadline to 1 so we can detect if the timer was ever added
+	 * or not. See comment in blk_add_timer()
+	 */
+	if (next)
 		mod_timer(&q->timeout, round_jiffies_up(next));
 
 	spin_unlock_irqrestore(q->queue_lock, flags);
@@ -210,12 +209,19 @@ void blk_abort_queue(struct request_queue *q)
 {
 	unsigned long flags;
 	struct request *rq, *tmp;
+	LIST_HEAD(list);
 
 	spin_lock_irqsave(q->queue_lock, flags);
 
 	elv_abort_queue(q);
 
-	list_for_each_entry_safe(rq, tmp, &q->timeout_list, timeout_list)
+	/*
+	 * Splice entries to local list, to avoid deadlocking if entries
+	 * get readded to the timeout list by error handling
+	 */
+	list_splice_init(&q->timeout_list, &list);
+
+	list_for_each_entry_safe(rq, tmp, &list, timeout_list)
 		blk_abort_request(rq);
 
 	spin_unlock_irqrestore(q->queue_lock, flags);

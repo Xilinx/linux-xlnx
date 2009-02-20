@@ -552,7 +552,7 @@ static void mlx4_en_linkstate(struct work_struct *work)
 }
 
 
-static int mlx4_en_start_port(struct net_device *dev)
+int mlx4_en_start_port(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -707,7 +707,7 @@ cq_err:
 }
 
 
-static void mlx4_en_stop_port(struct net_device *dev)
+void mlx4_en_stop_port(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -826,7 +826,7 @@ static int mlx4_en_close(struct net_device *dev)
 	return 0;
 }
 
-static void mlx4_en_free_resources(struct mlx4_en_priv *priv)
+void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 {
 	int i;
 
@@ -845,7 +845,7 @@ static void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 	}
 }
 
-static int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
+int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_port_profile *prof = priv->prof;
@@ -952,6 +952,7 @@ static const struct net_device_ops mlx4_netdev_ops = {
 	.ndo_get_stats		= mlx4_en_get_stats,
 	.ndo_set_multicast_list	= mlx4_en_set_multicast,
 	.ndo_set_mac_address	= mlx4_en_set_mac,
+	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_change_mtu		= mlx4_en_change_mtu,
 	.ndo_tx_timeout		= mlx4_en_tx_timeout,
 	.ndo_vlan_rx_register	= mlx4_en_vlan_rx_register,
