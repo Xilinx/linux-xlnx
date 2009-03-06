@@ -134,10 +134,10 @@
     XLlDma_mBdWrite((BdPtr), XLLDMA_BD_USR2_OFFSET, 0)
 
 #define BdCsumGet(BdPtr) \
-    XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR3_OFFSET)
+    (XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR3_OFFSET) & 0xffff)
 
 #define BdGetRxLen(BdPtr) \
-    XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR4_OFFSET)
+    (XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR4_OFFSET) & 0x3fff)
 
 /*
  * Our private per device data.  When a net_device is allocated we will
