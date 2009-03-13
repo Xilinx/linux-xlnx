@@ -2400,6 +2400,14 @@ config XILINX_LLTEMAC_MARVELL_88E1111_MII
 	  selections, then choose this option.  This option includes generic
 	  speed autonegotation code.
 
+config XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	bool "NATIONAL DP83865 using GMII"
+   help
+	  This phy is used by many Avnet boards.  This option includes
+	  code for enabling GMII over copper, and for setting the correct
+	  speed based on whatever the phy is able to autonegotiate.  This is
+	  usually the best option to use on Avnet boards.
+
 endchoice
 
 config JME
