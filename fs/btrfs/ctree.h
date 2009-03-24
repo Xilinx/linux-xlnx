@@ -596,13 +596,27 @@ struct btrfs_block_group_item {
 
 struct btrfs_space_info {
 	u64 flags;
-	u64 total_bytes;
-	u64 bytes_used;
-	u64 bytes_pinned;
-	u64 bytes_reserved;
-	u64 bytes_readonly;
-	int full;
-	int force_alloc;
+
+	u64 total_bytes;	/* total bytes in the space */
+	u64 bytes_used;		/* total bytes used on disk */
+	u64 bytes_pinned;	/* total bytes pinned, will be freed when the
+				   transaction finishes */
+	u64 bytes_reserved;	/* total bytes the allocator has reserved for
+				   current allocations */
+	u64 bytes_readonly;	/* total bytes that are read only */
+
+	/* delalloc accounting */
+	u64 bytes_delalloc;	/* number of bytes reserved for allocation,
+				   this space is not necessarily reserved yet
+				   by the allocator */
+	u64 bytes_may_use;	/* number of bytes that may be used for
+				   delalloc */
+
+	int full;		/* indicates that we cannot allocate any more
+				   chunks for this space */
+	int force_alloc;	/* set if we need to force a chunk alloc for
+				   this space */
+
 	struct list_head list;
 
 	/* for block groups in our same type */
@@ -770,7 +784,14 @@ struct btrfs_fs_info {
 	struct list_head dirty_cowonly_roots;
 
 	struct btrfs_fs_devices *fs_devices;
+
+	/*
+	 * the space_info list is almost entirely read only.  It only changes
+	 * when we add a new raid type to the FS, and that happens
+	 * very rarely.  RCU is used to protect it.
+	 */
 	struct list_head space_info;
+
 	spinlock_t delalloc_lock;
 	spinlock_t new_trans_lock;
 	u64 delalloc_bytes;
@@ -1782,6 +1803,18 @@ int btrfs_add_dead_reloc_root(struct btrfs_root *root);
 int btrfs_cleanup_reloc_trees(struct btrfs_root *root);
 int btrfs_reloc_clone_csums(struct inode *inode, u64 file_pos, u64 len);
 u64 btrfs_reduce_alloc_profile(struct btrfs_root *root, u64 flags);
+void btrfs_set_inode_space_info(struct btrfs_root *root, struct inode *ionde);
+void btrfs_clear_space_info_full(struct btrfs_fs_info *info);
+
+int btrfs_check_metadata_free_space(struct btrfs_root *root);
+int btrfs_check_data_free_space(struct btrfs_root *root, struct inode *inode,
+				u64 bytes);
+void btrfs_free_reserved_data_space(struct btrfs_root *root,
+				    struct inode *inode, u64 bytes);
+void btrfs_delalloc_reserve_space(struct btrfs_root *root, struct inode *inode,
+				 u64 bytes);
+void btrfs_delalloc_free_space(struct btrfs_root *root, struct inode *inode,
+			      u64 bytes);
 /* ctree.c */
 int btrfs_previous_item(struct btrfs_root *root,
 			struct btrfs_path *path, u64 min_objectid,
@@ -2027,8 +2060,6 @@ int btrfs_merge_bio_hook(struct page *page, unsigned long offset,
 unsigned long btrfs_force_ra(struct address_space *mapping,
 			      struct file_ra_state *ra, struct file *file,
 			      pgoff_t offset, pgoff_t last_index);
-int btrfs_check_free_space(struct btrfs_root *root, u64 num_required,
-			   int for_del);
 int btrfs_page_mkwrite(struct vm_area_struct *vma, struct page *page);
 int btrfs_readpage(struct file *file, struct page *page);
 void btrfs_delete_inode(struct inode *inode);
