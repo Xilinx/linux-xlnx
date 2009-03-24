@@ -20,6 +20,7 @@
 #include <linux/writeback.h>
 #include <linux/blkdev.h>
 #include <linux/sort.h>
+#include <linux/rcupdate.h>
 #include "compat.h"
 #include "hash.h"
 #include "crc32c.h"
@@ -59,6 +60,10 @@ static int update_block_group(struct btrfs_trans_handle *trans,
 			      struct btrfs_root *root,
 			      u64 bytenr, u64 num_bytes, int alloc,
 			      int mark_free);
+
+static int do_chunk_alloc(struct btrfs_trans_handle *trans,
+			  struct btrfs_root *extent_root, u64 alloc_bytes,
+			  u64 flags, int force);
 
 static int block_group_bits(struct btrfs_block_group_cache *cache, u64 bits)
 {
@@ -326,11 +331,31 @@ static struct btrfs_space_info *__find_space_info(struct btrfs_fs_info *info,
 {
 	struct list_head *head = &info->space_info;
 	struct btrfs_space_info *found;
-	list_for_each_entry(found, head, list) {
-		if (found->flags == flags)
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(found, head, list) {
+		if (found->flags == flags) {
+			rcu_read_unlock();
 			return found;
+		}
 	}
+	rcu_read_unlock();
 	return NULL;
+}
+
+/*
+ * after adding space to the filesystem, we need to clear the full flags
+ * on all the space infos.
+ */
+void btrfs_clear_space_info_full(struct btrfs_fs_info *info)
+{
+	struct list_head *head = &info->space_info;
+	struct btrfs_space_info *found;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(found, head, list)
+		found->full = 0;
+	rcu_read_unlock();
 }
 
 static u64 div_factor(u64 num, int factor)
@@ -1899,7 +1924,6 @@ static int update_space_info(struct btrfs_fs_info *info, u64 flags,
 	if (!found)
 		return -ENOMEM;
 
-	list_add(&found->list, &info->space_info);
 	INIT_LIST_HEAD(&found->block_groups);
 	init_rwsem(&found->groups_sem);
 	spin_lock_init(&found->lock);
@@ -1909,9 +1933,11 @@ static int update_space_info(struct btrfs_fs_info *info, u64 flags,
 	found->bytes_pinned = 0;
 	found->bytes_reserved = 0;
 	found->bytes_readonly = 0;
+	found->bytes_delalloc = 0;
 	found->full = 0;
 	found->force_alloc = 0;
 	*space_info = found;
+	list_add_rcu(&found->list, &info->space_info);
 	return 0;
 }
 
@@ -1970,6 +1996,233 @@ u64 btrfs_reduce_alloc_profile(struct btrfs_root *root, u64 flags)
 	     (flags & BTRFS_BLOCK_GROUP_DUP)))
 		flags &= ~BTRFS_BLOCK_GROUP_RAID0;
 	return flags;
+}
+
+static u64 btrfs_get_alloc_profile(struct btrfs_root *root, u64 data)
+{
+	struct btrfs_fs_info *info = root->fs_info;
+	u64 alloc_profile;
+
+	if (data) {
+		alloc_profile = info->avail_data_alloc_bits &
+			info->data_alloc_profile;
+		data = BTRFS_BLOCK_GROUP_DATA | alloc_profile;
+	} else if (root == root->fs_info->chunk_root) {
+		alloc_profile = info->avail_system_alloc_bits &
+			info->system_alloc_profile;
+		data = BTRFS_BLOCK_GROUP_SYSTEM | alloc_profile;
+	} else {
+		alloc_profile = info->avail_metadata_alloc_bits &
+			info->metadata_alloc_profile;
+		data = BTRFS_BLOCK_GROUP_METADATA | alloc_profile;
+	}
+
+	return btrfs_reduce_alloc_profile(root, data);
+}
+
+void btrfs_set_inode_space_info(struct btrfs_root *root, struct inode *inode)
+{
+	u64 alloc_target;
+
+	alloc_target = btrfs_get_alloc_profile(root, 1);
+	BTRFS_I(inode)->space_info = __find_space_info(root->fs_info,
+						       alloc_target);
+}
+
+/*
+ * for now this just makes sure we have at least 5% of our metadata space free
+ * for use.
+ */
+int btrfs_check_metadata_free_space(struct btrfs_root *root)
+{
+	struct btrfs_fs_info *info = root->fs_info;
+	struct btrfs_space_info *meta_sinfo;
+	u64 alloc_target, thresh;
+	int committed = 0, ret;
+
+	/* get the space info for where the metadata will live */
+	alloc_target = btrfs_get_alloc_profile(root, 0);
+	meta_sinfo = __find_space_info(info, alloc_target);
+
+again:
+	spin_lock(&meta_sinfo->lock);
+	if (!meta_sinfo->full)
+		thresh = meta_sinfo->total_bytes * 80;
+	else
+		thresh = meta_sinfo->total_bytes * 95;
+
+	do_div(thresh, 100);
+
+	if (meta_sinfo->bytes_used + meta_sinfo->bytes_reserved +
+	    meta_sinfo->bytes_pinned + meta_sinfo->bytes_readonly > thresh) {
+		struct btrfs_trans_handle *trans;
+		if (!meta_sinfo->full) {
+			meta_sinfo->force_alloc = 1;
+			spin_unlock(&meta_sinfo->lock);
+
+			trans = btrfs_start_transaction(root, 1);
+			if (!trans)
+				return -ENOMEM;
+
+			ret = do_chunk_alloc(trans, root->fs_info->extent_root,
+					     2 * 1024 * 1024, alloc_target, 0);
+			btrfs_end_transaction(trans, root);
+			goto again;
+		}
+		spin_unlock(&meta_sinfo->lock);
+
+		if (!committed) {
+			committed = 1;
+			trans = btrfs_join_transaction(root, 1);
+			if (!trans)
+				return -ENOMEM;
+			ret = btrfs_commit_transaction(trans, root);
+			if (ret)
+				return ret;
+			goto again;
+		}
+		return -ENOSPC;
+	}
+	spin_unlock(&meta_sinfo->lock);
+
+	return 0;
+}
+
+/*
+ * This will check the space that the inode allocates from to make sure we have
+ * enough space for bytes.
+ */
+int btrfs_check_data_free_space(struct btrfs_root *root, struct inode *inode,
+				u64 bytes)
+{
+	struct btrfs_space_info *data_sinfo;
+	int ret = 0, committed = 0;
+
+	/* make sure bytes are sectorsize aligned */
+	bytes = (bytes + root->sectorsize - 1) & ~((u64)root->sectorsize - 1);
+
+	data_sinfo = BTRFS_I(inode)->space_info;
+again:
+	/* make sure we have enough space to handle the data first */
+	spin_lock(&data_sinfo->lock);
+	if (data_sinfo->total_bytes - data_sinfo->bytes_used -
+	    data_sinfo->bytes_delalloc - data_sinfo->bytes_reserved -
+	    data_sinfo->bytes_pinned - data_sinfo->bytes_readonly -
+	    data_sinfo->bytes_may_use < bytes) {
+		struct btrfs_trans_handle *trans;
+
+		/*
+		 * if we don't have enough free bytes in this space then we need
+		 * to alloc a new chunk.
+		 */
+		if (!data_sinfo->full) {
+			u64 alloc_target;
+
+			data_sinfo->force_alloc = 1;
+			spin_unlock(&data_sinfo->lock);
+
+			alloc_target = btrfs_get_alloc_profile(root, 1);
+			trans = btrfs_start_transaction(root, 1);
+			if (!trans)
+				return -ENOMEM;
+
+			ret = do_chunk_alloc(trans, root->fs_info->extent_root,
+					     bytes + 2 * 1024 * 1024,
+					     alloc_target, 0);
+			btrfs_end_transaction(trans, root);
+			if (ret)
+				return ret;
+			goto again;
+		}
+		spin_unlock(&data_sinfo->lock);
+
+		/* commit the current transaction and try again */
+		if (!committed) {
+			committed = 1;
+			trans = btrfs_join_transaction(root, 1);
+			if (!trans)
+				return -ENOMEM;
+			ret = btrfs_commit_transaction(trans, root);
+			if (ret)
+				return ret;
+			goto again;
+		}
+
+		printk(KERN_ERR "no space left, need %llu, %llu delalloc bytes"
+		       ", %llu bytes_used, %llu bytes_reserved, "
+		       "%llu bytes_pinned, %llu bytes_readonly, %llu may use"
+		       "%llu total\n", bytes, data_sinfo->bytes_delalloc,
+		       data_sinfo->bytes_used, data_sinfo->bytes_reserved,
+		       data_sinfo->bytes_pinned, data_sinfo->bytes_readonly,
+		       data_sinfo->bytes_may_use, data_sinfo->total_bytes);
+		return -ENOSPC;
+	}
+	data_sinfo->bytes_may_use += bytes;
+	BTRFS_I(inode)->reserved_bytes += bytes;
+	spin_unlock(&data_sinfo->lock);
+
+	return btrfs_check_metadata_free_space(root);
+}
+
+/*
+ * if there was an error for whatever reason after calling
+ * btrfs_check_data_free_space, call this so we can cleanup the counters.
+ */
+void btrfs_free_reserved_data_space(struct btrfs_root *root,
+				    struct inode *inode, u64 bytes)
+{
+	struct btrfs_space_info *data_sinfo;
+
+	/* make sure bytes are sectorsize aligned */
+	bytes = (bytes + root->sectorsize - 1) & ~((u64)root->sectorsize - 1);
+
+	data_sinfo = BTRFS_I(inode)->space_info;
+	spin_lock(&data_sinfo->lock);
+	data_sinfo->bytes_may_use -= bytes;
+	BTRFS_I(inode)->reserved_bytes -= bytes;
+	spin_unlock(&data_sinfo->lock);
+}
+
+/* called when we are adding a delalloc extent to the inode's io_tree */
+void btrfs_delalloc_reserve_space(struct btrfs_root *root, struct inode *inode,
+				  u64 bytes)
+{
+	struct btrfs_space_info *data_sinfo;
+
+	/* get the space info for where this inode will be storing its data */
+	data_sinfo = BTRFS_I(inode)->space_info;
+
+	/* make sure we have enough space to handle the data first */
+	spin_lock(&data_sinfo->lock);
+	data_sinfo->bytes_delalloc += bytes;
+
+	/*
+	 * we are adding a delalloc extent without calling
+	 * btrfs_check_data_free_space first.  This happens on a weird
+	 * writepage condition, but shouldn't hurt our accounting
+	 */
+	if (unlikely(bytes > BTRFS_I(inode)->reserved_bytes)) {
+		data_sinfo->bytes_may_use -= BTRFS_I(inode)->reserved_bytes;
+		BTRFS_I(inode)->reserved_bytes = 0;
+	} else {
+		data_sinfo->bytes_may_use -= bytes;
+		BTRFS_I(inode)->reserved_bytes -= bytes;
+	}
+
+	spin_unlock(&data_sinfo->lock);
+}
+
+/* called when we are clearing an delalloc extent from the inode's io_tree */
+void btrfs_delalloc_free_space(struct btrfs_root *root, struct inode *inode,
+			      u64 bytes)
+{
+	struct btrfs_space_info *info;
+
+	info = BTRFS_I(inode)->space_info;
+
+	spin_lock(&info->lock);
+	info->bytes_delalloc -= bytes;
+	spin_unlock(&info->lock);
 }
 
 static int do_chunk_alloc(struct btrfs_trans_handle *trans,
@@ -3105,6 +3358,10 @@ static void dump_space_info(struct btrfs_space_info *info, u64 bytes)
 	       (unsigned long long)(info->total_bytes - info->bytes_used -
 				    info->bytes_pinned - info->bytes_reserved),
 	       (info->full) ? "" : "not ");
+	printk(KERN_INFO "space_info total=%llu, pinned=%llu, delalloc=%llu,"
+	       " may_use=%llu, used=%llu\n", info->total_bytes,
+	       info->bytes_pinned, info->bytes_delalloc, info->bytes_may_use,
+	       info->bytes_used);
 
 	down_read(&info->groups_sem);
 	list_for_each_entry(cache, &info->block_groups, list) {
@@ -3131,24 +3388,10 @@ static int __btrfs_reserve_extent(struct btrfs_trans_handle *trans,
 {
 	int ret;
 	u64 search_start = 0;
-	u64 alloc_profile;
 	struct btrfs_fs_info *info = root->fs_info;
 
-	if (data) {
-		alloc_profile = info->avail_data_alloc_bits &
-			info->data_alloc_profile;
-		data = BTRFS_BLOCK_GROUP_DATA | alloc_profile;
-	} else if (root == root->fs_info->chunk_root) {
-		alloc_profile = info->avail_system_alloc_bits &
-			info->system_alloc_profile;
-		data = BTRFS_BLOCK_GROUP_SYSTEM | alloc_profile;
-	} else {
-		alloc_profile = info->avail_metadata_alloc_bits &
-			info->metadata_alloc_profile;
-		data = BTRFS_BLOCK_GROUP_METADATA | alloc_profile;
-	}
+	data = btrfs_get_alloc_profile(root, data);
 again:
-	data = btrfs_reduce_alloc_profile(root, data);
 	/*
 	 * the only place that sets empty_size is btrfs_realloc_node, which
 	 * is not called recursively on allocations
@@ -4196,13 +4439,13 @@ int btrfs_drop_subtree(struct btrfs_trans_handle *trans,
 	path = btrfs_alloc_path();
 	BUG_ON(!path);
 
-	BUG_ON(!btrfs_tree_locked(parent));
+	btrfs_assert_tree_locked(parent);
 	parent_level = btrfs_header_level(parent);
 	extent_buffer_get(parent);
 	path->nodes[parent_level] = parent;
 	path->slots[parent_level] = btrfs_header_nritems(parent);
 
-	BUG_ON(!btrfs_tree_locked(node));
+	btrfs_assert_tree_locked(node);
 	level = btrfs_header_level(node);
 	extent_buffer_get(node);
 	path->nodes[level] = node;
@@ -6098,6 +6341,7 @@ out:
 int btrfs_free_block_groups(struct btrfs_fs_info *info)
 {
 	struct btrfs_block_group_cache *block_group;
+	struct btrfs_space_info *space_info;
 	struct rb_node *n;
 
 	spin_lock(&info->block_group_cache_lock);
@@ -6119,6 +6363,23 @@ int btrfs_free_block_groups(struct btrfs_fs_info *info)
 		spin_lock(&info->block_group_cache_lock);
 	}
 	spin_unlock(&info->block_group_cache_lock);
+
+	/* now that all the block groups are freed, go through and
+	 * free all the space_info structs.  This is only called during
+	 * the final stages of unmount, and so we know nobody is
+	 * using them.  We call synchronize_rcu() once before we start,
+	 * just to be on the safe side.
+	 */
+	synchronize_rcu();
+
+	while(!list_empty(&info->space_info)) {
+		space_info = list_entry(info->space_info.next,
+					struct btrfs_space_info,
+					list);
+
+		list_del(&space_info->list);
+		kfree(space_info);
+	}
 	return 0;
 }
 
