@@ -438,7 +438,7 @@ static int xemaclite_setup(
 
 	u32 virt_baddr;		/* virtual base address of emac */
 
-	XEmacLite_Config Config;
+	XEmacLite_Config *Config = NULL;
 
 	struct net_device *ndev = NULL;
 	struct net_local *lp = NULL;
@@ -470,10 +470,17 @@ static int xemaclite_setup(
 	lp = netdev_priv(ndev);
 	lp->ndev = ndev;
 
+	Config = kzalloc(sizeof *Config, GFP_KERNEL);
+	if (!Config) {
+		dev_err(dev, "Unable to allocate Config object\n");
+		rc = -ENOMEM;
+		goto error;
+	}
+
 	/* Setup the Config structure for the XEmacLite_CfgInitialize() call. */
-	Config.BaseAddress	= r_mem->start;	/* Physical address */
-	Config.TxPingPong	= pdata->tx_ping_pong;
-	Config.RxPingPong	= pdata->rx_ping_pong;
+	Config->BaseAddress	= r_mem->start;	/* Physical address */
+	Config->TxPingPong	= pdata->tx_ping_pong;
+	Config->RxPingPong	= pdata->rx_ping_pong;
 
 
 	/* Get the virtual base address for the device */
@@ -485,7 +492,7 @@ static int xemaclite_setup(
 	}
 
 
-	if (XEmacLite_CfgInitialize(&lp->EmacLite, &Config, virt_baddr) != XST_SUCCESS) {
+	if (XEmacLite_CfgInitialize(&lp->EmacLite, Config, virt_baddr) != XST_SUCCESS) {
 		dev_err(dev, "XEmacLite: Could not initialize device.\n");
 		rc = -ENODEV;
 		goto error;
@@ -533,6 +540,7 @@ static int xemaclite_setup(
 	       lp->EmacLite.BaseAddress, ndev->irq);
 	return 0;
  error:
+	kfree(Config);
 	if (ndev) {
 		xemaclite_remove_ndev(ndev);
 	}
