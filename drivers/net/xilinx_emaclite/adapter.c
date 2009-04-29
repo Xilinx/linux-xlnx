@@ -168,7 +168,7 @@ static void reset(struct net_device *dev, DUPLEX duplex)
 	XEmacLite_EnableInterrupts(&lp->EmacLite);
 
 	if (lp->deferred_skb) {
-		dev_kfree_skb(lp->deferred_skb);
+		dev_kfree_skb_any(lp->deferred_skb);
 		lp->deferred_skb = NULL;
 		lp->stats.tx_errors++;
 	}
@@ -298,7 +298,7 @@ static void SendHandler(void *CallbackRef)
 			return;
 		}
 		else {
-			dev_kfree_skb(lp->deferred_skb);
+			dev_kfree_skb_irq(lp->deferred_skb);
 			lp->deferred_skb = NULL;
 			netif_wake_queue(dev);
 		}
@@ -354,7 +354,7 @@ static void RecvHandler(void *CallbackRef)
 	if (!len) {
 
 		lp->stats.rx_errors++;
-		dev_kfree_skb(skb);
+		dev_kfree_skb_irq(skb);
 		//printk(KERN_ERR "%s: Could not receive buffer\n",dev->name);
 		spin_lock(&reset_lock);
 		//reset(dev, UNKNOWN_DUPLEX);
