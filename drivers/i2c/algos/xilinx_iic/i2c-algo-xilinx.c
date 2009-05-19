@@ -250,11 +250,10 @@ xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
 					udelay(25);
 					Status = XIic_MasterRecv(&dev->Iic, pmsg->buf, pmsg->len);
 					dev->Iic.Stats.TxErrors = 0;
-					retries--;
 				}
-
+				retries--;
 				udelay(25);
-                       }
+			}
 		}
 		else
 		{
@@ -265,9 +264,8 @@ xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
 					udelay(25);
 					Status = XIic_MasterSend(&dev->Iic, pmsg->buf, pmsg->len);
 					dev->Iic.Stats.TxErrors = 0;
-					retries--;
 				}
-
+				retries--;
 				udelay(25);
 			}
 		}
@@ -275,8 +273,9 @@ xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
 
 		if(retries == 0)
 		{
-			printk("Unable to talk to Device\n");
-			printk("Wrong Slave address or Slave device Busy\n");
+			printk(KERN_WARNING "Unable to talk to Device\n");
+			printk(KERN_WARNING "Wrong Slave address or Slave device Busy\n");
+			return -EIO;
 		}
 	}
     return num;
