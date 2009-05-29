@@ -56,8 +56,8 @@ config GENERIC_GPIO
 config PCI
 	def_bool n
 
-config NO_DMA
-	def_bool y
+#config NO_DMA
+#	def_bool y
 
 source "init/Kconfig"
 

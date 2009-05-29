@@ -572,18 +572,21 @@ extern unsigned long ioremap_bot;
 asmlinkage void __init mmu_init(void);
 
 void __init *early_get_page(void);
-
-void *consistent_alloc(int gfp, size_t size, dma_addr_t *dma_handle);
-void consistent_free(void *vaddr);
-void consistent_sync(void *vaddr, size_t size, int direction);
-void consistent_sync_page(struct page *page, unsigned long offset,
-	size_t size, int direction);
 #endif /* __ASSEMBLY__ */
 #endif /* __KERNEL__ */
 
 #endif /* CONFIG_MMU */
 
+
 #ifndef __ASSEMBLY__
+#ifdef __KERNEL__
+void *consistent_alloc(int gfp, size_t size, dma_addr_t *dma_handle);
+void consistent_free(void *vaddr);
+void consistent_sync(void *vaddr, size_t size, int direction);
+void consistent_sync_page(struct page *page, unsigned long offset,
+	size_t size, int direction);
+#endif /* __KERNEL__ */
+
 #include <asm-generic/pgtable.h>
 
 void setup_memory(void);
