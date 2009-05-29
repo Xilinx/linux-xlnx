@@ -271,3 +271,6 @@ obj-$(CONFIG_VIRTIO_NET) += virtio_net.o
 obj-$(CONFIG_SFC) += sfc/
 
 obj-$(CONFIG_WIMAX) += wimax/
+
+obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite/
+obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
