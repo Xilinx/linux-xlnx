@@ -1,1 +1,0 @@
-lib-y := uaccess.o memcpy.o memmove.o memset.o checksum.o
