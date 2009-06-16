@@ -33,7 +33,15 @@ static int ide_generic_all;		/* Set to claim all devices */
 module_param_named(all_generic_ide, ide_generic_all, bool, 0444);
 MODULE_PARM_DESC(all_generic_ide, "IDE generic will claim all unknown PCI IDE storage controllers.");
 
-#define IDE_HFLAGS_UMC (IDE_HFLAG_NO_DMA | IDE_HFLAG_FORCE_LEGACY_IRQS)
+static void netcell_quirkproc(ide_drive_t *drive)
+{
+	/* mark words 85-87 as valid */
+	drive->id[ATA_ID_CSF_DEFAULT] |= 0x4000;
+}
+
+static const struct ide_port_ops netcell_port_ops = {
+	.quirkproc		= netcell_quirkproc,
+};
 
 #define DECLARE_GENERIC_PCI_DEV(extra_flags) \
 	{ \
@@ -61,7 +69,7 @@ static const struct ide_port_info generic_chipsets[] __devinitdata = {
 	/*  2: SAMURAI / HT6565 / HINT_IDE */
 	DECLARE_GENERIC_PCI_DEV(0),
 	/*  3: UM8673F / UM8886A / UM8886BF */
-	DECLARE_GENERIC_PCI_DEV(IDE_HFLAGS_UMC),
+	DECLARE_GENERIC_PCI_DEV(IDE_HFLAG_NO_DMA),
 	/*  4: VIA_IDE / OPTI621V / Piccolo010{2,3,5} */
 	DECLARE_GENERIC_PCI_DEV(IDE_HFLAG_NO_AUTODMA),
 
@@ -76,6 +84,7 @@ static const struct ide_port_info generic_chipsets[] __devinitdata = {
 
 	{	/* 6: Revolution */
 		.name		= DRV_NAME,
+		.port_ops	= &netcell_port_ops,
 		.host_flags	= IDE_HFLAG_CLEAR_SIMPLEX |
 				  IDE_HFLAG_TRUST_BIOS_FOR_DMA |
 				  IDE_HFLAG_OFF_BOARD,

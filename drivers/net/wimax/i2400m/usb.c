@@ -73,7 +73,14 @@
 
 
 /* Our firmware file name */
-#define I2400MU_FW_FILE_NAME "i2400m-fw-usb-" I2400M_FW_VERSION ".sbcf"
+static const char *i2400mu_bus_fw_names[] = {
+#define I2400MU_FW_FILE_NAME_v1_4 "i2400m-fw-usb-1.4.sbcf"
+	I2400MU_FW_FILE_NAME_v1_4,
+#define I2400MU_FW_FILE_NAME_v1_3 "i2400m-fw-usb-1.3.sbcf"
+	I2400MU_FW_FILE_NAME_v1_3,
+	NULL,
+};
+
 
 static
 int i2400mu_bus_dev_start(struct i2400m *i2400m)
@@ -211,16 +218,16 @@ int i2400mu_bus_reset(struct i2400m *i2400m, enum i2400m_reset_type rt)
 		container_of(i2400m, struct i2400mu, i2400m);
 	struct device *dev = i2400m_dev(i2400m);
 	static const __le32 i2400m_WARM_BOOT_BARKER[4] = {
-		__constant_cpu_to_le32(I2400M_WARM_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_WARM_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_WARM_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_WARM_RESET_BARKER),
+		cpu_to_le32(I2400M_WARM_RESET_BARKER),
+		cpu_to_le32(I2400M_WARM_RESET_BARKER),
+		cpu_to_le32(I2400M_WARM_RESET_BARKER),
+		cpu_to_le32(I2400M_WARM_RESET_BARKER),
 	};
 	static const __le32 i2400m_COLD_BOOT_BARKER[4] = {
-		__constant_cpu_to_le32(I2400M_COLD_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_COLD_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_COLD_RESET_BARKER),
-		__constant_cpu_to_le32(I2400M_COLD_RESET_BARKER),
+		cpu_to_le32(I2400M_COLD_RESET_BARKER),
+		cpu_to_le32(I2400M_COLD_RESET_BARKER),
+		cpu_to_le32(I2400M_COLD_RESET_BARKER),
+		cpu_to_le32(I2400M_COLD_RESET_BARKER),
 	};
 
 	d_fnstart(3, dev, "(i2400m %p rt %u)\n", i2400m, rt);
@@ -394,7 +401,7 @@ int i2400mu_probe(struct usb_interface *iface,
 	i2400m->bus_reset = i2400mu_bus_reset;
 	i2400m->bus_bm_cmd_send = i2400mu_bus_bm_cmd_send;
 	i2400m->bus_bm_wait_for_ack = i2400mu_bus_bm_wait_for_ack;
-	i2400m->bus_fw_name = I2400MU_FW_FILE_NAME;
+	i2400m->bus_fw_names = i2400mu_bus_fw_names;
 	i2400m->bus_bm_mac_addr_impaired = 0;
 
 #ifdef CONFIG_PM
@@ -498,27 +505,52 @@ int i2400mu_suspend(struct usb_interface *iface, pm_message_t pm_msg)
 #ifdef CONFIG_PM
 	struct usb_device *usb_dev = i2400mu->usb_dev;
 #endif
+	unsigned is_autosuspend = 0;
 	struct i2400m *i2400m = &i2400mu->i2400m;
+
+#ifdef CONFIG_PM
+	if (usb_dev->auto_pm > 0)
+		is_autosuspend = 1;
+#endif
 
 	d_fnstart(3, dev, "(iface %p pm_msg %u)\n", iface, pm_msg.event);
 	if (i2400m->updown == 0)
 		goto no_firmware;
-	d_printf(1, dev, "fw up, requesting standby\n");
+	if (i2400m->state == I2400M_SS_DATA_PATH_CONNECTED && is_autosuspend) {
+		/* ugh -- the device is connected and this suspend
+		 * request is an autosuspend one (not a system standby
+		 * / hibernate).
+		 *
+		 * The only way the device can go to standby is if the
+		 * link with the base station is in IDLE mode; that
+		 * were the case, we'd be in status
+		 * I2400M_SS_CONNECTED_IDLE. But we are not.
+		 *
+		 * If we *tell* him to go power save now, it'll reset
+		 * as a precautionary measure, so if this is an
+		 * autosuspend thing, say no and it'll come back
+		 * later, when the link is IDLE
+		 */
+		result = -EBADF;
+		d_printf(1, dev, "fw up, link up, not-idle, autosuspend: "
+			 "not entering powersave\n");
+		goto error_not_now;
+	}
+	d_printf(1, dev, "fw up: entering powersave\n");
 	atomic_dec(&i2400mu->do_autopm);
 	result = i2400m_cmd_enter_powersave(i2400m);
 	atomic_inc(&i2400mu->do_autopm);
-#ifdef CONFIG_PM
-	if (result < 0 && usb_dev->auto_pm == 0) {
+	if (result < 0 && !is_autosuspend) {
 		/* System suspend, can't fail */
 		dev_err(dev, "failed to suspend, will reset on resume\n");
 		result = 0;
 	}
-#endif
 	if (result < 0)
 		goto error_enter_powersave;
 	i2400mu_notification_release(i2400mu);
-	d_printf(1, dev, "fw up, got standby\n");
+	d_printf(1, dev, "powersave requested\n");
 error_enter_powersave:
+error_not_now:
 no_firmware:
 	d_fnend(3, dev, "(iface %p pm_msg %u) = %d\n",
 		iface, pm_msg.event, result);
@@ -594,4 +626,5 @@ module_exit(i2400mu_driver_exit);
 MODULE_AUTHOR("Intel Corporation <linux-wimax@intel.com>");
 MODULE_DESCRIPTION("Intel 2400M WiMAX networking for USB");
 MODULE_LICENSE("GPL");
-MODULE_FIRMWARE(I2400MU_FW_FILE_NAME);
+MODULE_FIRMWARE(I2400MU_FW_FILE_NAME_v1_4);
+MODULE_FIRMWARE(I2400MU_FW_FILE_NAME_v1_3);

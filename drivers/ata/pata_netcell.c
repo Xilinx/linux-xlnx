@@ -20,13 +20,24 @@
 
 /* No PIO or DMA methods needed for this device */
 
+static unsigned int netcell_read_id(struct ata_device *adev,
+					struct ata_taskfile *tf, u16 *id)
+{
+	unsigned int err_mask = ata_do_dev_read_id(adev, tf, id);
+	/* Firmware forgets to mark words 85-87 valid */
+	if (err_mask == 0)
+		id[ATA_ID_CSF_DEFAULT] |= 0x4000;
+	return err_mask;
+}
+
 static struct scsi_host_template netcell_sht = {
 	ATA_BMDMA_SHT(DRV_NAME),
 };
 
 static struct ata_port_operations netcell_ops = {
 	.inherits	= &ata_bmdma_port_ops,
-	.cable_detect		= ata_cable_80wire,
+	.cable_detect	= ata_cable_80wire,
+	.read_id	= netcell_read_id,
 };
 
 
@@ -51,8 +62,8 @@ static int netcell_init_one (struct pci_dev *pdev, const struct pci_device_id *e
 		.flags		= ATA_FLAG_SLAVE_POSS,
 		/* Actually we don't really care about these as the
 		   firmware deals with it */
-		.pio_mask	= 0x1f,	/* pio0-4 */
-		.mwdma_mask	= 0x07, /* mwdma0-2 */
+		.pio_mask	= ATA_PIO4,
+		.mwdma_mask	= ATA_MWDMA2,
 		.udma_mask 	= ATA_UDMA5, /* UDMA 133 */
 		.port_ops	= &netcell_ops,
 	};

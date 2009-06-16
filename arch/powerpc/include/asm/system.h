@@ -212,7 +212,7 @@ extern struct task_struct *_switch(struct thread_struct *prev,
 extern unsigned int rtas_data;
 extern int mem_init_done;	/* set on boot once kmalloc can be called */
 extern int init_bootmem_done;	/* set on !NUMA once bootmem is available */
-extern unsigned long memory_limit;
+extern phys_addr_t memory_limit;
 extern unsigned long klimit;
 
 extern void *alloc_maybe_bootmem(size_t size, gfp_t mask);
@@ -531,7 +531,7 @@ __cmpxchg_local(volatile void *ptr, unsigned long old, unsigned long new,
 #define cmpxchg64_local(ptr, o, n) __cmpxchg64_local_generic((ptr), (o), (n))
 #endif
 
-#define arch_align_stack(x) (x)
+extern unsigned long arch_align_stack(unsigned long sp);
 
 /* Used in very early kernel initialization. */
 extern unsigned long reloc_offset(void);

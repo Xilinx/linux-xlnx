@@ -74,20 +74,22 @@ static int get_sb_mtd_aux(struct file_system_type *fs_type, int flags,
 
 	ret = fill_super(sb, data, flags & MS_SILENT ? 1 : 0);
 	if (ret < 0) {
-		up_write(&sb->s_umount);
-		deactivate_super(sb);
+		deactivate_locked_super(sb);
 		return ret;
 	}
 
 	/* go */
 	sb->s_flags |= MS_ACTIVE;
-	return simple_set_mnt(mnt, sb);
+	simple_set_mnt(mnt, sb);
+
+	return 0;
 
 	/* new mountpoint for an already mounted superblock */
 already_mounted:
 	DEBUG(1, "MTDSB: Device %d (\"%s\") is already mounted\n",
 	      mtd->index, mtd->name);
-	ret = simple_set_mnt(mnt, sb);
+	simple_set_mnt(mnt, sb);
+	ret = 0;
 	goto out_put;
 
 out_error:

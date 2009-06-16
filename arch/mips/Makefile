@@ -14,8 +14,6 @@
 
 KBUILD_DEFCONFIG := ip22_defconfig
 
-cflags-y := -ffunction-sections
-
 #
 # Select the object file format to substitute into the linker script.
 #
@@ -49,6 +47,9 @@ ifneq ($(SUBARCH),$(ARCH))
     CROSS_COMPILE := $(call cc-cross-prefix, $(tool-archpref)-linux-  $(tool-archpref)-linux-gnu-  $(tool-archpref)-unknown-linux-gnu-)
   endif
 endif
+
+cflags-y := -ffunction-sections
+cflags-y += $(call cc-option, -mno-check-zero-division)
 
 ifdef CONFIG_32BIT
 ld-emul			= $(32bit-emul)
@@ -472,12 +473,12 @@ endif
 # Simplified: what IP22 does at 128MB+ in ksegN, IP28 does at 512MB+ in xkphys
 #
 ifdef CONFIG_SGI_IP28
-  ifeq ($(call cc-option-yn,-mr10k-cache-barrier=1), n)
-      $(error gcc doesn't support needed option -mr10k-cache-barrier=1)
+  ifeq ($(call cc-option-yn,-mr10k-cache-barrier=store), n)
+      $(error gcc doesn't support needed option -mr10k-cache-barrier=store)
   endif
 endif
 core-$(CONFIG_SGI_IP28)		+= arch/mips/sgi-ip22/
-cflags-$(CONFIG_SGI_IP28)	+= -mr10k-cache-barrier=1 -I$(srctree)/arch/mips/include/asm/mach-ip28
+cflags-$(CONFIG_SGI_IP28)	+= -mr10k-cache-barrier=store -I$(srctree)/arch/mips/include/asm/mach-ip28
 load-$(CONFIG_SGI_IP28)		+= 0xa800000020004000
 
 #
@@ -720,11 +721,17 @@ ifdef CONFIG_MIPS32_O32
 	$(Q)$(MAKE) $(build)=. missing-syscalls EXTRA_CFLAGS="-mabi=32"
 endif
 
+install:
+	$(Q)install -D -m 755 vmlinux $(INSTALL_PATH)/vmlinux-$(KERNELRELEASE)
+	$(Q)install -D -m 644 .config $(INSTALL_PATH)/config-$(KERNELRELEASE)
+	$(Q)install -D -m 644 System.map $(INSTALL_PATH)/System.map-$(KERNELRELEASE)
+
 archclean:
 	@$(MAKE) $(clean)=arch/mips/boot
 	@$(MAKE) $(clean)=arch/mips/lasat
 
 define archhelp
+	echo '  install              - install kernel into $(INSTALL_PATH)'
 	echo '  vmlinux.ecoff        - ECOFF boot image'
 	echo '  vmlinux.bin          - Raw binary boot image'
 	echo '  vmlinux.srec         - SREC boot image'

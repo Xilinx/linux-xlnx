@@ -41,10 +41,22 @@ static int reiserfs_dir_fsync(struct file *filp, struct dentry *dentry,
 
 #define store_ih(where,what) copy_item_head (where, what)
 
-//
-static int reiserfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
+static inline bool is_privroot_deh(struct dentry *dir,
+				   struct reiserfs_de_head *deh)
 {
-	struct inode *inode = filp->f_path.dentry->d_inode;
+	int ret = 0;
+#ifdef CONFIG_REISERFS_FS_XATTR
+	struct dentry *privroot = REISERFS_SB(dir->d_sb)->priv_root;
+	ret = (dir == dir->d_parent && privroot->d_inode &&
+	       deh->deh_objectid == INODE_PKEY(privroot->d_inode)->k_objectid);
+#endif
+	return ret;
+}
+
+int reiserfs_readdir_dentry(struct dentry *dentry, void *dirent,
+			   filldir_t filldir, loff_t *pos)
+{
+	struct inode *inode = dentry->d_inode;
 	struct cpu_key pos_key;	/* key of current position in the directory (key of directory entry) */
 	INITIALIZE_PATH(path_to_entry);
 	struct buffer_head *bh;
@@ -64,12 +76,8 @@ static int reiserfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 	/* form key for search the next directory entry using f_pos field of
 	   file structure */
-	make_cpu_key(&pos_key, inode,
-		     (filp->f_pos) ? (filp->f_pos) : DOT_OFFSET, TYPE_DIRENTRY,
-		     3);
+	make_cpu_key(&pos_key, inode, *pos ?: DOT_OFFSET, TYPE_DIRENTRY, 3);
 	next_pos = cpu_key_k_offset(&pos_key);
-
-	/*  reiserfs_warning (inode->i_sb, "reiserfs_readdir 1: f_pos = %Ld", filp->f_pos); */
 
 	path_to_entry.reada = PATH_READA;
 	while (1) {
@@ -142,21 +150,11 @@ static int reiserfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 				}
 
 				/* Ignore the .reiserfs_priv entry */
-				if (reiserfs_xattrs(inode->i_sb) &&
-				    !old_format_only(inode->i_sb) &&
-				    filp->f_path.dentry == inode->i_sb->s_root &&
-				    REISERFS_SB(inode->i_sb)->priv_root &&
-				    REISERFS_SB(inode->i_sb)->priv_root->d_inode
-				    && deh_objectid(deh) ==
-				    le32_to_cpu(INODE_PKEY
-						(REISERFS_SB(inode->i_sb)->
-						 priv_root->d_inode)->
-						k_objectid)) {
+				if (is_privroot_deh(dentry, deh))
 					continue;
-				}
 
 				d_off = deh_offset(deh);
-				filp->f_pos = d_off;
+				*pos = d_off;
 				d_ino = deh_objectid(deh);
 				if (d_reclen <= 32) {
 					local_buf = small_buf;
@@ -223,13 +221,19 @@ static int reiserfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 	}			/* while */
 
-      end:
-	filp->f_pos = next_pos;
+end:
+	*pos = next_pos;
 	pathrelse(&path_to_entry);
 	reiserfs_check_path(&path_to_entry);
-      out:
+out:
 	reiserfs_write_unlock(inode->i_sb);
 	return ret;
+}
+
+static int reiserfs_readdir(struct file *file, void *dirent, filldir_t filldir)
+{
+	struct dentry *dentry = file->f_path.dentry;
+	return reiserfs_readdir_dentry(dentry, dirent, filldir, &file->f_pos);
 }
 
 /* compose directory item containing "." and ".." entries (entries are

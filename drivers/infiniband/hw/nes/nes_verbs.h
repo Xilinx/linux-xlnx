@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 - 2008 NetEffect, Inc. All rights reserved.
+ * Copyright (c) 2006 - 2009 Intel-NE, Inc.  All rights reserved.
  * Copyright (c) 2005 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
@@ -112,6 +112,7 @@ struct nes_cq {
 	spinlock_t       lock;
 	u8               virtual_cq;
 	u8               pad[3];
+	u32		 mcrqf;
 };
 
 struct nes_wq {

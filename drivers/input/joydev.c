@@ -159,12 +159,9 @@ static void joydev_event(struct input_handle *handle,
 
 static int joydev_fasync(int fd, struct file *file, int on)
 {
-	int retval;
 	struct joydev_client *client = file->private_data;
 
-	retval = fasync_helper(fd, file, on, &client->fasync);
-
-	return retval < 0 ? retval : 0;
+	return fasync_helper(fd, file, on, &client->fasync);
 }
 
 static void joydev_free(struct device *dev)
@@ -846,7 +843,13 @@ static const struct input_device_id joydev_blacklist[] = {
 				INPUT_DEVICE_ID_MATCH_KEYBIT,
 		.evbit = { BIT_MASK(EV_KEY) },
 		.keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
-	},	/* Avoid itouchpads, touchscreens and tablets */
+	},	/* Avoid itouchpads and touchscreens */
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
+				INPUT_DEVICE_ID_MATCH_KEYBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+		.keybit = { [BIT_WORD(BTN_DIGI)] = BIT_MASK(BTN_DIGI) },
+	},	/* Avoid tablets, digitisers and similar devices */
 	{ }	/* Terminating entry */
 };
 

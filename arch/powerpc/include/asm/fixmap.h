@@ -14,8 +14,6 @@
 #ifndef _ASM_FIXMAP_H
 #define _ASM_FIXMAP_H
 
-extern unsigned long FIXADDR_TOP;
-
 #ifndef __ASSEMBLY__
 #include <linux/kernel.h>
 #include <asm/page.h>
@@ -23,6 +21,8 @@ extern unsigned long FIXADDR_TOP;
 #include <linux/threads.h>
 #include <asm/kmap_types.h>
 #endif
+
+#define FIXADDR_TOP	((unsigned long)(-PAGE_SIZE))
 
 /*
  * Here we define all the compile-time 'special' virtual
@@ -61,7 +61,7 @@ extern void __set_fixmap (enum fixed_addresses idx,
  * Some hardware wants to get fixmapped without caching.
  */
 #define set_fixmap_nocache(idx, phys) \
-		__set_fixmap(idx, phys, PAGE_KERNEL_NOCACHE)
+		__set_fixmap(idx, phys, PAGE_KERNEL_NCG)
 
 #define clear_fixmap(idx) \
 		__set_fixmap(idx, 0, __pgprot(0))

@@ -98,7 +98,7 @@ static struct rt6_info *rt6_get_route_info(struct net *net,
 
 static struct dst_ops ip6_dst_ops_template = {
 	.family			=	AF_INET6,
-	.protocol		=	__constant_htons(ETH_P_IPV6),
+	.protocol		=	cpu_to_be16(ETH_P_IPV6),
 	.gc			=	ip6_dst_gc,
 	.gc_thresh		=	1024,
 	.check			=	ip6_dst_check,
@@ -117,7 +117,7 @@ static void ip6_rt_blackhole_update_pmtu(struct dst_entry *dst, u32 mtu)
 
 static struct dst_ops ip6_dst_blackhole_ops = {
 	.family			=	AF_INET6,
-	.protocol		=	__constant_htons(ETH_P_IPV6),
+	.protocol		=	cpu_to_be16(ETH_P_IPV6),
 	.destroy		=	ip6_dst_destroy,
 	.check			=	ip6_dst_check,
 	.update_pmtu		=	ip6_rt_blackhole_update_pmtu,
@@ -137,6 +137,7 @@ static struct rt6_info ip6_null_entry_template = {
 		}
 	},
 	.rt6i_flags	= (RTF_REJECT | RTF_NONEXTHOP),
+	.rt6i_protocol  = RTPROT_KERNEL,
 	.rt6i_metric	= ~(u32) 0,
 	.rt6i_ref	= ATOMIC_INIT(1),
 };
@@ -159,6 +160,7 @@ static struct rt6_info ip6_prohibit_entry_template = {
 		}
 	},
 	.rt6i_flags	= (RTF_REJECT | RTF_NONEXTHOP),
+	.rt6i_protocol  = RTPROT_KERNEL,
 	.rt6i_metric	= ~(u32) 0,
 	.rt6i_ref	= ATOMIC_INIT(1),
 };
@@ -176,6 +178,7 @@ static struct rt6_info ip6_blk_hole_entry_template = {
 		}
 	},
 	.rt6i_flags	= (RTF_REJECT | RTF_NONEXTHOP),
+	.rt6i_protocol  = RTPROT_KERNEL,
 	.rt6i_metric	= ~(u32) 0,
 	.rt6i_ref	= ATOMIC_INIT(1),
 };
@@ -2400,8 +2403,9 @@ void inet6_rt_notify(int event, struct rt6_info *rt, struct nl_info *info)
 		kfree_skb(skb);
 		goto errout;
 	}
-	err = rtnl_notify(skb, net, info->pid, RTNLGRP_IPV6_ROUTE,
-			  info->nlh, gfp_any());
+	rtnl_notify(skb, net, info->pid, RTNLGRP_IPV6_ROUTE,
+		    info->nlh, gfp_any());
+	return;
 errout:
 	if (err < 0)
 		rtnl_set_sk_err(net, RTNLGRP_IPV6_ROUTE, err);

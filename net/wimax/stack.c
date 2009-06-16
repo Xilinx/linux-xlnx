@@ -163,16 +163,12 @@ int wimax_gnl_re_state_change_send(
 	struct device *dev = wimax_dev_to_dev(wimax_dev);
 	d_fnstart(3, dev, "(wimax_dev %p report_skb %p)\n",
 		  wimax_dev, report_skb);
-	if (report_skb == NULL)
+	if (report_skb == NULL) {
+		result = -ENOMEM;
 		goto out;
-	genlmsg_end(report_skb, header);
-	result = genlmsg_multicast(report_skb, 0, wimax_gnl_mcg.id, GFP_KERNEL);
-	if (result == -ESRCH)	/* Nobody connected, ignore it */
-		result = 0;	/* btw, the skb is freed already */
-	if (result < 0) {
-		dev_err(dev, "RE_STCH: Error sending: %d\n", result);
-		nlmsg_free(report_skb);
 	}
+	genlmsg_end(report_skb, header);
+	genlmsg_multicast(report_skb, 0, wimax_gnl_mcg.id, GFP_KERNEL);
 out:
 	d_fnend(3, dev, "(wimax_dev %p report_skb %p) = %d\n",
 		wimax_dev, report_skb, result);
@@ -342,8 +338,21 @@ out:
  */
 void wimax_state_change(struct wimax_dev *wimax_dev, enum wimax_st new_state)
 {
+	/*
+	 * A driver cannot take the wimax_dev out of the
+	 * __WIMAX_ST_NULL state unless by calling wimax_dev_add(). If
+	 * the wimax_dev's state is still NULL, we ignore any request
+	 * to change its state because it means it hasn't been yet
+	 * registered.
+	 *
+	 * There is no need to complain about it, as routines that
+	 * call this might be shared from different code paths that
+	 * are called before or after wimax_dev_add() has done its
+	 * job.
+	 */
 	mutex_lock(&wimax_dev->mutex);
-	__wimax_state_change(wimax_dev, new_state);
+	if (wimax_dev->state > __WIMAX_ST_NULL)
+		__wimax_state_change(wimax_dev, new_state);
 	mutex_unlock(&wimax_dev->mutex);
 	return;
 }
@@ -380,7 +389,7 @@ EXPORT_SYMBOL_GPL(wimax_state_get);
 void wimax_dev_init(struct wimax_dev *wimax_dev)
 {
 	INIT_LIST_HEAD(&wimax_dev->id_table_node);
-	__wimax_state_set(wimax_dev, WIMAX_ST_UNINITIALIZED);
+	__wimax_state_set(wimax_dev, __WIMAX_ST_NULL);
 	mutex_init(&wimax_dev->mutex);
 	mutex_init(&wimax_dev->mutex_reset);
 }

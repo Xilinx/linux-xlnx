@@ -97,7 +97,7 @@ static unsigned int steal_context_smp(unsigned int id)
 		mm->context.id = MMU_NO_CONTEXT;
 
 		/* Mark it stale on all CPUs that used this mm */
-		for_each_cpu_mask_nr(cpu, mm->cpu_vm_mask)
+		for_each_cpu(cpu, mm_cpumask(mm))
 			__set_bit(id, stale_map[cpu]);
 		return id;
 	}
@@ -127,11 +127,11 @@ static unsigned int steal_context_up(unsigned int id)
 
 	pr_debug("[%d] steal context %d from mm @%p\n", cpu, id, mm);
 
-	/* Mark this mm has having no context anymore */
-	mm->context.id = MMU_NO_CONTEXT;
-
 	/* Flush the TLB for that context */
 	local_flush_tlb_mm(mm);
+
+	/* Mark this mm has having no context anymore */
+	mm->context.id = MMU_NO_CONTEXT;
 
 	/* XXX This clear should ultimately be part of local_flush_tlb_mm */
 	__clear_bit(id, stale_map[cpu]);
@@ -380,7 +380,7 @@ void __init mmu_context_init(void)
 #endif
 
 	printk(KERN_INFO
-	       "MMU: Allocated %d bytes of context maps for %d contexts\n",
+	       "MMU: Allocated %zu bytes of context maps for %d contexts\n",
 	       2 * CTX_MAP_SIZE + (sizeof(void *) * (last_context + 1)),
 	       last_context - first_context + 1);
 

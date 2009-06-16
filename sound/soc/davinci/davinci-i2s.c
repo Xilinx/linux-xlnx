@@ -24,6 +24,26 @@
 
 #include "davinci-pcm.h"
 
+
+/*
+ * NOTE:  terminology here is confusing.
+ *
+ *  - This driver supports the "Audio Serial Port" (ASP),
+ *    found on dm6446, dm355, and other DaVinci chips.
+ *
+ *  - But it labels it a "Multi-channel Buffered Serial Port"
+ *    (McBSP) as on older chips like the dm642 ... which was
+ *    backward-compatible, possibly explaining that confusion.
+ *
+ *  - OMAP chips have a controller called McBSP, which is
+ *    incompatible with the DaVinci flavor of McBSP.
+ *
+ *  - Newer DaVinci chips have a controller called McASP,
+ *    incompatible with ASP and with either McBSP.
+ *
+ * In short:  this uses ASP to implement I2S, not McBSP.
+ * And it won't be the only DaVinci implemention of I2S.
+ */
 #define DAVINCI_MCBSP_DRR_REG	0x00
 #define DAVINCI_MCBSP_DXR_REG	0x04
 #define DAVINCI_MCBSP_SPCR_REG	0x08
@@ -421,7 +441,7 @@ static int davinci_i2s_probe(struct platform_device *pdev,
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_card *card = socdev->card;
-	struct snd_soc_dai *cpu_dai = card->dai_link[pdev->id].cpu_dai;
+	struct snd_soc_dai *cpu_dai = card->dai_link->cpu_dai;
 	struct davinci_mcbsp_dev *dev;
 	struct resource *mem, *ioarea;
 	struct evm_snd_platform_data *pdata;
@@ -448,7 +468,7 @@ static int davinci_i2s_probe(struct platform_device *pdev,
 
 	cpu_dai->private_data = dev;
 
-	dev->clk = clk_get(&pdev->dev, "McBSPCLK");
+	dev->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(dev->clk)) {
 		ret = -ENODEV;
 		goto err_free_mem;
@@ -483,7 +503,7 @@ static void davinci_i2s_remove(struct platform_device *pdev,
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_card *card = socdev->card;
-	struct snd_soc_dai *cpu_dai = card->dai_link[pdev->id].cpu_dai;
+	struct snd_soc_dai *cpu_dai = card->dai_link->cpu_dai;
 	struct davinci_mcbsp_dev *dev = cpu_dai->private_data;
 	struct resource *mem;
 
@@ -498,6 +518,13 @@ static void davinci_i2s_remove(struct platform_device *pdev,
 }
 
 #define DAVINCI_I2S_RATES	SNDRV_PCM_RATE_8000_96000
+
+static struct snd_soc_dai_ops davinci_i2s_dai_ops = {
+	.startup	= davinci_i2s_startup,
+	.trigger	= davinci_i2s_trigger,
+	.hw_params	= davinci_i2s_hw_params,
+	.set_fmt	= davinci_i2s_set_dai_fmt,
+};
 
 struct snd_soc_dai davinci_i2s_dai = {
 	.name = "davinci-i2s",
@@ -514,12 +541,7 @@ struct snd_soc_dai davinci_i2s_dai = {
 		.channels_max = 2,
 		.rates = DAVINCI_I2S_RATES,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,},
-	.ops = {
-		.startup = davinci_i2s_startup,
-		.trigger = davinci_i2s_trigger,
-		.hw_params = davinci_i2s_hw_params,
-		.set_fmt = davinci_i2s_set_dai_fmt,
-	},
+	.ops = &davinci_i2s_dai_ops,
 };
 EXPORT_SYMBOL_GPL(davinci_i2s_dai);
 

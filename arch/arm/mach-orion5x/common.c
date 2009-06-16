@@ -31,6 +31,7 @@
 #include <plat/ehci-orion.h>
 #include <plat/mv_xor.h>
 #include <plat/orion_nand.h>
+#include <plat/orion5x_wdt.h>
 #include <plat/time.h>
 #include "common.h"
 
@@ -187,6 +188,9 @@ static struct platform_device orion5x_eth = {
 	.id		= 0,
 	.num_resources	= 1,
 	.resource	= orion5x_eth_resources,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
 };
 
 void __init orion5x_eth_init(struct mv643xx_eth_platform_data *eth_data)
@@ -219,14 +223,17 @@ static struct platform_device orion5x_switch_device = {
 
 void __init orion5x_eth_switch_init(struct dsa_platform_data *d, int irq)
 {
+	int i;
+
 	if (irq != NO_IRQ) {
 		orion5x_switch_resources[0].start = irq;
 		orion5x_switch_resources[0].end = irq;
 		orion5x_switch_device.num_resources = 1;
 	}
 
-	d->mii_bus = &orion5x_eth_shared.dev;
 	d->netdev = &orion5x_eth.dev;
+	for (i = 0; i < d->nr_chips; i++)
+		d->chip[i].mii_bus = &orion5x_eth_shared.dev;
 	orion5x_switch_device.dev.platform_data = d;
 
 	platform_device_register(&orion5x_switch_device);
@@ -244,12 +251,10 @@ static struct mv64xxx_i2c_pdata orion5x_i2c_pdata = {
 
 static struct resource orion5x_i2c_resources[] = {
 	{
-		.name	= "i2c base",
 		.start	= I2C_PHYS_BASE,
 		.end	= I2C_PHYS_BASE + 0x1f,
 		.flags	= IORESOURCE_MEM,
 	}, {
-		.name	= "i2c irq",
 		.start	= IRQ_ORION5X_I2C,
 		.end	= IRQ_ORION5X_I2C,
 		.flags	= IORESOURCE_IRQ,
@@ -459,7 +464,7 @@ static struct platform_device orion5x_xor_shared = {
 	.resource	= orion5x_xor_shared_resources,
 };
 
-static u64 orion5x_xor_dmamask = DMA_32BIT_MASK;
+static u64 orion5x_xor_dmamask = DMA_BIT_MASK(32);
 
 static struct resource orion5x_xor0_resources[] = {
 	[0] = {
@@ -482,7 +487,7 @@ static struct platform_device orion5x_xor0_channel = {
 	.resource	= orion5x_xor0_resources,
 	.dev		= {
 		.dma_mask		= &orion5x_xor_dmamask,
-		.coherent_dma_mask	= DMA_64BIT_MASK,
+		.coherent_dma_mask	= DMA_BIT_MASK(64),
 		.platform_data		= (void *)&orion5x_xor0_data,
 	},
 };
@@ -508,7 +513,7 @@ static struct platform_device orion5x_xor1_channel = {
 	.resource	= orion5x_xor1_resources,
 	.dev		= {
 		.dma_mask		= &orion5x_xor_dmamask,
-		.coherent_dma_mask	= DMA_64BIT_MASK,
+		.coherent_dma_mask	= DMA_BIT_MASK(64),
 		.platform_data		= (void *)&orion5x_xor1_data,
 	},
 };
@@ -529,6 +534,29 @@ void __init orion5x_xor_init(void)
 	dma_cap_set(DMA_MEMSET, orion5x_xor1_data.cap_mask);
 	dma_cap_set(DMA_XOR, orion5x_xor1_data.cap_mask);
 	platform_device_register(&orion5x_xor1_channel);
+}
+
+
+/*****************************************************************************
+ * Watchdog
+ ****************************************************************************/
+static struct orion5x_wdt_platform_data orion5x_wdt_data = {
+	.tclk			= 0,
+};
+
+static struct platform_device orion5x_wdt_device = {
+	.name		= "orion5x_wdt",
+	.id		= -1,
+	.dev		= {
+		.platform_data	= &orion5x_wdt_data,
+	},
+	.num_resources	= 0,
+};
+
+void __init orion5x_wdt_init(void)
+{
+	orion5x_wdt_data.tclk = orion5x_tclk;
+	platform_device_register(&orion5x_wdt_device);
 }
 
 
@@ -631,6 +659,11 @@ void __init orion5x_init(void)
 		printk(KERN_INFO "Orion: Applying 5281 D0 WFI workaround.\n");
 		disable_hlt();
 	}
+
+	/*
+	 * Register watchdog driver
+	 */
+	orion5x_wdt_init();
 }
 
 /*

@@ -323,7 +323,7 @@ static int tt_available (
 		 * already scheduled transactions
 		 */
 		if (125 < usecs) {
-			int ufs = (usecs / 125) - 1;
+			int ufs = (usecs / 125);
 			int i;
 			for (i = uframe; i < (uframe + ufs) && i < 8; i++)
 				if (0 < tt_usecs[i]) {
@@ -563,7 +563,7 @@ static int qh_unlink_periodic(struct ehci_hcd *ehci, struct ehci_qh *qh)
 	//   and this qh is active in the current uframe
 	//   (and overlay token SplitXstate is false?)
 	// THEN
-	//   qh->hw_info1 |= __constant_cpu_to_hc32(1 << 7 /* "ignore" */);
+	//   qh->hw_info1 |= cpu_to_hc32(1 << 7 /* "ignore" */);
 
 	/* high bandwidth, or otherwise part of every microframe */
 	if ((period = qh->period) == 0)

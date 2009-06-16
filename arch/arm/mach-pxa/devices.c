@@ -4,7 +4,6 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 
-#include <mach/pxa-regs.h>
 #include <mach/udc.h>
 #include <mach/pxafb.h>
 #include <mach/mmc.h>
@@ -73,7 +72,10 @@ void __init pxa_set_mci_info(struct pxamci_platform_data *info)
 }
 
 
-static struct pxa2xx_udc_mach_info pxa_udc_info;
+static struct pxa2xx_udc_mach_info pxa_udc_info = {
+	.gpio_pullup = -1,
+	.gpio_vbus   = -1,
+};
 
 void __init pxa_set_udc_info(struct pxa2xx_udc_mach_info *info)
 {

@@ -115,7 +115,7 @@ static inline unsigned int wm8990_read_reg_cache(struct snd_soc_codec *codec,
 	unsigned int reg)
 {
 	u16 *cache = codec->reg_cache;
-	BUG_ON(reg > (ARRAY_SIZE(wm8990_reg)) - 1);
+	BUG_ON(reg >= ARRAY_SIZE(wm8990_reg));
 	return cache[reg];
 }
 
@@ -128,7 +128,7 @@ static inline void wm8990_write_reg_cache(struct snd_soc_codec *codec,
 	u16 *cache = codec->reg_cache;
 
 	/* Reset register and reserved registers are uncached */
-	if (reg == 0 || reg > ARRAY_SIZE(wm8990_reg) - 1)
+	if (reg == 0 || reg >= ARRAY_SIZE(wm8990_reg))
 		return;
 
 	cache[reg] = value;
@@ -417,21 +417,6 @@ SOC_SINGLE("RIN34 Mute Switch", WM8990_RIGHT_LINE_INPUT_3_4_VOLUME,
 	WM8990_RI34MUTE_BIT, 1, 0),
 
 };
-
-/* add non dapm controls */
-static int wm8990_add_controls(struct snd_soc_codec *codec)
-{
-	int err, i;
-
-	for (i = 0; i < ARRAY_SIZE(wm8990_snd_controls); i++) {
-		err = snd_ctl_add(codec->card,
-				snd_soc_cnew(&wm8990_snd_controls[i], codec,
-					NULL));
-		if (err < 0)
-			return err;
-	}
-	return 0;
-}
 
 /*
  * _DAPM_ Controls
@@ -744,7 +729,7 @@ SND_SOC_DAPM_MIXER_E("INMIXL", WM8990_INTDRIVBITS, WM8990_INMIXL_PWR_BIT, 0,
 	inmixer_event, SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
 /* AINLMUX */
-SND_SOC_DAPM_MUX_E("AILNMUX", WM8990_INTDRIVBITS, WM8990_AINLMUX_PWR_BIT, 0,
+SND_SOC_DAPM_MUX_E("AINLMUX", WM8990_INTDRIVBITS, WM8990_AINLMUX_PWR_BIT, 0,
 	&wm8990_dapm_ainlmux_controls, inmixer_event,
 	SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
@@ -755,7 +740,7 @@ SND_SOC_DAPM_MIXER_E("INMIXR", WM8990_INTDRIVBITS, WM8990_INMIXR_PWR_BIT, 0,
 	inmixer_event, SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
 /* AINRMUX */
-SND_SOC_DAPM_MUX_E("AIRNMUX", WM8990_INTDRIVBITS, WM8990_AINRMUX_PWR_BIT, 0,
+SND_SOC_DAPM_MUX_E("AINRMUX", WM8990_INTDRIVBITS, WM8990_AINRMUX_PWR_BIT, 0,
 	&wm8990_dapm_ainrmux_controls, inmixer_event,
 	SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
@@ -863,40 +848,40 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"LIN12 PGA", "LIN2 Switch", "LIN2"},
 	/* LIN34 PGA */
 	{"LIN34 PGA", "LIN3 Switch", "LIN3"},
-	{"LIN34 PGA", "LIN4 Switch", "LIN4"},
+	{"LIN34 PGA", "LIN4 Switch", "LIN4/RXN"},
 	/* INMIXL */
 	{"INMIXL", "Record Left Volume", "LOMIX"},
 	{"INMIXL", "LIN2 Volume", "LIN2"},
 	{"INMIXL", "LINPGA12 Switch", "LIN12 PGA"},
 	{"INMIXL", "LINPGA34 Switch", "LIN34 PGA"},
-	/* AILNMUX */
-	{"AILNMUX", "INMIXL Mix", "INMIXL"},
-	{"AILNMUX", "DIFFINL Mix", "LIN12PGA"},
-	{"AILNMUX", "DIFFINL Mix", "LIN34PGA"},
-	{"AILNMUX", "RXVOICE Mix", "LIN4/RXN"},
-	{"AILNMUX", "RXVOICE Mix", "RIN4/RXP"},
+	/* AINLMUX */
+	{"AINLMUX", "INMIXL Mix", "INMIXL"},
+	{"AINLMUX", "DIFFINL Mix", "LIN12 PGA"},
+	{"AINLMUX", "DIFFINL Mix", "LIN34 PGA"},
+	{"AINLMUX", "RXVOICE Mix", "LIN4/RXN"},
+	{"AINLMUX", "RXVOICE Mix", "RIN4/RXP"},
 	/* ADC */
-	{"Left ADC", NULL, "AILNMUX"},
+	{"Left ADC", NULL, "AINLMUX"},
 
 	/* RIN12 PGA */
 	{"RIN12 PGA", "RIN1 Switch", "RIN1"},
 	{"RIN12 PGA", "RIN2 Switch", "RIN2"},
 	/* RIN34 PGA */
 	{"RIN34 PGA", "RIN3 Switch", "RIN3"},
-	{"RIN34 PGA", "RIN4 Switch", "RIN4"},
+	{"RIN34 PGA", "RIN4 Switch", "RIN4/RXP"},
 	/* INMIXL */
 	{"INMIXR", "Record Right Volume", "ROMIX"},
 	{"INMIXR", "RIN2 Volume", "RIN2"},
 	{"INMIXR", "RINPGA12 Switch", "RIN12 PGA"},
 	{"INMIXR", "RINPGA34 Switch", "RIN34 PGA"},
-	/* AIRNMUX */
-	{"AIRNMUX", "INMIXR Mix", "INMIXR"},
-	{"AIRNMUX", "DIFFINR Mix", "RIN12PGA"},
-	{"AIRNMUX", "DIFFINR Mix", "RIN34PGA"},
-	{"AIRNMUX", "RXVOICE Mix", "RIN4/RXN"},
-	{"AIRNMUX", "RXVOICE Mix", "RIN4/RXP"},
+	/* AINRMUX */
+	{"AINRMUX", "INMIXR Mix", "INMIXR"},
+	{"AINRMUX", "DIFFINR Mix", "RIN12 PGA"},
+	{"AINRMUX", "DIFFINR Mix", "RIN34 PGA"},
+	{"AINRMUX", "RXVOICE Mix", "LIN4/RXN"},
+	{"AINRMUX", "RXVOICE Mix", "RIN4/RXP"},
 	/* ADC */
-	{"Right ADC", NULL, "AIRNMUX"},
+	{"Right ADC", NULL, "AINRMUX"},
 
 	/* LOMIX */
 	{"LOMIX", "LOMIX RIN3 Bypass Switch", "RIN3"},
@@ -937,7 +922,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"LOPMIX", "LOPMIX Left Mixer PGA Switch", "LOPGA"},
 
 	/* OUT3MIX */
-	{"OUT3MIX", "OUT3MIX LIN4/RXP Bypass Switch", "LIN4/RXP"},
+	{"OUT3MIX", "OUT3MIX LIN4/RXP Bypass Switch", "LIN4/RXN"},
 	{"OUT3MIX", "OUT3MIX Left Out PGA Switch", "LOPGA"},
 
 	/* OUT4MIX */
@@ -964,7 +949,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	/* Output Pins */
 	{"LON", NULL, "LONMIX"},
 	{"LOP", NULL, "LOPMIX"},
-	{"OUT", NULL, "OUT3MIX"},
+	{"OUT3", NULL, "OUT3MIX"},
 	{"LOUT", NULL, "LOUT PGA"},
 	{"SPKN", NULL, "SPKMIX"},
 	{"ROUT", NULL, "ROUT PGA"},
@@ -1178,7 +1163,7 @@ static int wm8990_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_device *socdev = rtd->socdev;
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 	u16 audio1 = wm8990_read_reg_cache(codec, WM8990_AUDIO_INTERFACE_1);
 
 	audio1 &= ~WM8990_AIF_WL_MASK;
@@ -1347,6 +1332,15 @@ static int wm8990_set_bias_level(struct snd_soc_codec *codec,
  * 1. ADC/DAC on Primary Interface
  * 2. ADC on Primary Interface/DAC on secondary
  */
+static struct snd_soc_dai_ops wm8990_dai_ops = {
+	.hw_params	= wm8990_hw_params,
+	.digital_mute	= wm8990_mute,
+	.set_fmt	= wm8990_set_dai_fmt,
+	.set_clkdiv	= wm8990_set_dai_clkdiv,
+	.set_pll	= wm8990_set_dai_pll,
+	.set_sysclk	= wm8990_set_dai_sysclk,
+};
+
 struct snd_soc_dai wm8990_dai = {
 /* ADC/DAC on primary */
 	.name = "WM8990 ADC/DAC Primary",
@@ -1363,21 +1357,14 @@ struct snd_soc_dai wm8990_dai = {
 		.channels_max = 2,
 		.rates = WM8990_RATES,
 		.formats = WM8990_FORMATS,},
-	.ops = {
-		.hw_params = wm8990_hw_params,
-		.digital_mute = wm8990_mute,
-		.set_fmt = wm8990_set_dai_fmt,
-		.set_clkdiv = wm8990_set_dai_clkdiv,
-		.set_pll = wm8990_set_dai_pll,
-		.set_sysclk = wm8990_set_dai_sysclk,
-	},
+	.ops = &wm8990_dai_ops,
 };
 EXPORT_SYMBOL_GPL(wm8990_dai);
 
 static int wm8990_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 
 	/* we only need to suspend if we are a valid card */
 	if (!codec->card)
@@ -1390,7 +1377,7 @@ static int wm8990_suspend(struct platform_device *pdev, pm_message_t state)
 static int wm8990_resume(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 	int i;
 	u8 data[2];
 	u16 *cache = codec->reg_cache;
@@ -1418,7 +1405,7 @@ static int wm8990_resume(struct platform_device *pdev)
  */
 static int wm8990_init(struct snd_soc_device *socdev)
 {
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 	u16 reg;
 	int ret = 0;
 
@@ -1461,7 +1448,8 @@ static int wm8990_init(struct snd_soc_device *socdev)
 	wm8990_write(codec, WM8990_LEFT_OUTPUT_VOLUME, 0x50 | (1<<8));
 	wm8990_write(codec, WM8990_RIGHT_OUTPUT_VOLUME, 0x50 | (1<<8));
 
-	wm8990_add_controls(codec);
+	snd_soc_add_controls(codec, wm8990_snd_controls,
+				ARRAY_SIZE(wm8990_snd_controls));
 	wm8990_add_widgets(codec);
 	ret = snd_soc_init_card(socdev);
 	if (ret < 0) {
@@ -1495,7 +1483,7 @@ static int wm8990_i2c_probe(struct i2c_client *i2c,
 			    const struct i2c_device_id *id)
 {
 	struct snd_soc_device *socdev = wm8990_socdev;
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 	int ret;
 
 	i2c_set_clientdata(i2c, codec);
@@ -1594,7 +1582,7 @@ static int wm8990_probe(struct platform_device *pdev)
 	}
 
 	codec->private_data = wm8990;
-	socdev->codec = codec;
+	socdev->card->codec = codec;
 	mutex_init(&codec->mutex);
 	INIT_LIST_HEAD(&codec->dapm_widgets);
 	INIT_LIST_HEAD(&codec->dapm_paths);
@@ -1620,7 +1608,7 @@ static int wm8990_probe(struct platform_device *pdev)
 static int wm8990_remove(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
-	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_codec *codec = socdev->card->codec;
 
 	if (codec->control_data)
 		wm8990_set_bias_level(codec, SND_SOC_BIAS_OFF);

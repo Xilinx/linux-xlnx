@@ -1,6 +1,6 @@
 config PPC_ISERIES
 	bool "IBM Legacy iSeries"
-	depends on PPC_MULTIPLATFORM && PPC64
+	depends on PPC64 && PPC_BOOK3S
 	select PPC_INDIRECT_IO
 	select PPC_PCI_CHOICE if EMBEDDED
 
@@ -17,6 +17,7 @@ config VIODASD
 
 config VIOCD
 	tristate "iSeries Virtual I/O CD support"
+	depends on BLOCK
 	select VIOPATH
 	help
 	  If you are running Linux on an IBM iSeries system and you want to

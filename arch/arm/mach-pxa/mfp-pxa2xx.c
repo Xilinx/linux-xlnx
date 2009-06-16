@@ -18,14 +18,11 @@
 #include <linux/init.h>
 #include <linux/sysdev.h>
 
-#include <mach/hardware.h>
-#include <mach/pxa-regs.h>
+#include <mach/gpio.h>
 #include <mach/pxa2xx-regs.h>
 #include <mach/mfp-pxa2xx.h>
 
 #include "generic.h"
-
-#define gpio_to_bank(gpio)	((gpio) >> 5)
 
 #define PGSR(x)		__REG2(0x40F00020, (x) << 2)
 #define __GAFR(u, x)	__REG2((u) ? 0x40E00058 : 0x40E00054, (x) << 3)
@@ -325,6 +322,7 @@ static inline void pxa27x_mfp_init(void) {}
 #ifdef CONFIG_PM
 static unsigned long saved_gafr[2][4];
 static unsigned long saved_gpdr[4];
+static unsigned long saved_pgsr[4];
 
 static int pxa2xx_mfp_suspend(struct sys_device *d, pm_message_t state)
 {
@@ -335,6 +333,7 @@ static int pxa2xx_mfp_suspend(struct sys_device *d, pm_message_t state)
 		saved_gafr[0][i] = GAFR_L(i);
 		saved_gafr[1][i] = GAFR_U(i);
 		saved_gpdr[i] = GPDR(i * 32);
+		saved_pgsr[i] = PGSR(i);
 
 		GPDR(i * 32) = gpdr_lpm[i];
 	}
@@ -349,6 +348,7 @@ static int pxa2xx_mfp_resume(struct sys_device *d)
 		GAFR_L(i) = saved_gafr[0][i];
 		GAFR_U(i) = saved_gafr[1][i];
 		GPDR(i * 32) = saved_gpdr[i];
+		PGSR(i) = saved_pgsr[i];
 	}
 	PSSR = PSSR_RDH | PSSR_PH;
 	return 0;
@@ -376,6 +376,9 @@ static int __init pxa2xx_mfp_init(void)
 
 	if (cpu_is_pxa27x())
 		pxa27x_mfp_init();
+
+	/* clear RDH bit to enable GPIO receivers after reset/sleep exit */
+	PSSR = PSSR_RDH;
 
 	/* initialize gafr_run[], pgsr_lpm[] from existing values */
 	for (i = 0; i <= gpio_to_bank(pxa_last_gpio); i++)

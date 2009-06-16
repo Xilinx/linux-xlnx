@@ -160,7 +160,7 @@ xfs_growfs_data_private(
 	nagcount = new + (nb_mod != 0);
 	if (nb_mod && nb_mod < XFS_MIN_AG_BLOCKS) {
 		nagcount--;
-		nb = nagcount * mp->m_sb.sb_agblocks;
+		nb = (xfs_rfsblock_t)nagcount * mp->m_sb.sb_agblocks;
 		if (nb < mp->m_sb.sb_dblocks)
 			return XFS_ERROR(EINVAL);
 	}
@@ -576,7 +576,7 @@ out:
 	if (fdblks_delta) {
 		/*
 		 * If we are putting blocks back here, m_resblks_avail is
-		 * already at it's max so this will put it in the free pool.
+		 * already at its max so this will put it in the free pool.
 		 *
 		 * If we need space, we'll either succeed in getting it
 		 * from the free block count or we'll get an enospc. If

@@ -49,6 +49,7 @@ asynchronous and synchronous parts of the kernel.
 */
 
 #include <linux/async.h>
+#include <linux/bug.h>
 #include <linux/module.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
@@ -91,19 +92,18 @@ extern int initcall_debug;
 static async_cookie_t  __lowest_in_progress(struct list_head *running)
 {
 	struct async_entry *entry;
+
 	if (!list_empty(running)) {
 		entry = list_first_entry(running,
 			struct async_entry, list);
 		return entry->cookie;
-	} else if (!list_empty(&async_pending)) {
-		entry = list_first_entry(&async_pending,
-			struct async_entry, list);
-		return entry->cookie;
-	} else {
-		/* nothing in progress... next_cookie is "infinity" */
-		return next_cookie;
 	}
 
+	list_for_each_entry(entry, &async_pending, list)
+		if (entry->running == running)
+			return entry->cookie;
+
+	return next_cookie;	/* "infinity" value */
 }
 
 static async_cookie_t  lowest_in_progress(struct list_head *running)
@@ -387,20 +387,11 @@ static int async_manager_thread(void *unused)
 
 static int __init async_init(void)
 {
-	if (async_enabled)
-		if (IS_ERR(kthread_run(async_manager_thread, NULL,
-				       "async/mgr")))
-			async_enabled = 0;
+	async_enabled =
+		!IS_ERR(kthread_run(async_manager_thread, NULL, "async/mgr"));
+
+	WARN_ON(!async_enabled);
 	return 0;
 }
-
-static int __init setup_async(char *str)
-{
-	async_enabled = 1;
-	return 1;
-}
-
-__setup("fastboot", setup_async);
-
 
 core_initcall(async_init);

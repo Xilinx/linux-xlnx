@@ -67,8 +67,7 @@ static int proc_get_sb(struct file_system_type *fs_type,
 		sb->s_flags = flags;
 		err = proc_fill_super(sb);
 		if (err) {
-			up_write(&sb->s_umount);
-			deactivate_super(sb);
+			deactivate_locked_super(sb);
 			return err;
 		}
 
@@ -83,7 +82,8 @@ static int proc_get_sb(struct file_system_type *fs_type,
 		ns->proc_mnt = mnt;
 	}
 
-	return simple_set_mnt(mnt, sb);
+	simple_set_mnt(mnt, sb);
+	return 0;
 }
 
 static void proc_kill_sb(struct super_block *sb)

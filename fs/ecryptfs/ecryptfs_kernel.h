@@ -269,6 +269,7 @@ struct ecryptfs_crypt_stat {
 #define ECRYPTFS_ENCRYPT_FILENAMES    0x00000800
 #define ECRYPTFS_ENCFN_USE_MOUNT_FNEK 0x00001000
 #define ECRYPTFS_ENCFN_USE_FEK        0x00002000
+#define ECRYPTFS_UNLINK_SIGS	      0x00004000
 	u32 flags;
 	unsigned int file_version;
 	size_t iv_bytes;
@@ -580,7 +581,7 @@ extern const struct inode_operations ecryptfs_main_iops;
 extern const struct inode_operations ecryptfs_dir_iops;
 extern const struct inode_operations ecryptfs_symlink_iops;
 extern const struct super_operations ecryptfs_sops;
-extern struct dentry_operations ecryptfs_dops;
+extern const struct dentry_operations ecryptfs_dops;
 extern struct address_space_operations ecryptfs_aops;
 extern int ecryptfs_verbosity;
 extern unsigned int ecryptfs_message_buf_len;

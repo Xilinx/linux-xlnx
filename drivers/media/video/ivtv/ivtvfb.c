@@ -298,7 +298,8 @@ static int ivtvfb_prep_dec_dma_to_device(struct ivtv *itv,
 	prepare_to_wait(&itv->dma_waitq, &wait, TASK_INTERRUPTIBLE);
 	/* if no UDMA is pending and no UDMA is in progress, then the DMA
 	   is finished */
-	while (itv->i_flags & (IVTV_F_I_UDMA_PENDING | IVTV_F_I_UDMA)) {
+	while (test_bit(IVTV_F_I_UDMA_PENDING, &itv->i_flags) ||
+	       test_bit(IVTV_F_I_UDMA, &itv->i_flags)) {
 		/* don't interrupt if the DMA is in progress but break off
 		   a still pending DMA. */
 		got_sig = signal_pending(current);
@@ -1192,12 +1193,12 @@ static int ivtvfb_init_card(struct ivtv *itv)
 static int __init ivtvfb_callback_init(struct device *dev, void *p)
 {
 	struct v4l2_device *v4l2_dev = dev_get_drvdata(dev);
-	struct ivtv *itv = container_of(v4l2_dev, struct ivtv, device);
+	struct ivtv *itv = container_of(v4l2_dev, struct ivtv, v4l2_dev);
 
 	if (itv && (itv->v4l2_cap & V4L2_CAP_VIDEO_OUTPUT)) {
 		if (ivtvfb_init_card(itv) == 0) {
 			IVTVFB_INFO("Framebuffer registered on %s\n",
-					itv->device.name);
+					itv->v4l2_dev.name);
 			(*(int *)p)++;
 		}
 	}
@@ -1207,7 +1208,7 @@ static int __init ivtvfb_callback_init(struct device *dev, void *p)
 static int ivtvfb_callback_cleanup(struct device *dev, void *p)
 {
 	struct v4l2_device *v4l2_dev = dev_get_drvdata(dev);
-	struct ivtv *itv = container_of(v4l2_dev, struct ivtv, device);
+	struct ivtv *itv = container_of(v4l2_dev, struct ivtv, v4l2_dev);
 
 	if (itv && (itv->v4l2_cap & V4L2_CAP_VIDEO_OUTPUT)) {
 		if (unregister_framebuffer(&itv->osd_info->ivtvfb_info)) {

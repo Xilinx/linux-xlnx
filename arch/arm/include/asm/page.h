@@ -76,6 +76,14 @@
 # endif
 #endif
 
+#ifdef CONFIG_CPU_COPY_FA
+# ifdef _USER
+#  define MULTI_USER 1
+# else
+#  define _USER fa
+# endif
+#endif
+
 #ifdef CONFIG_CPU_SA1100
 # ifdef _USER
 #  define MULTI_USER 1
@@ -193,13 +201,6 @@ typedef struct page *pgtable_t;
 #define VM_DATA_DEFAULT_FLAGS \
 	(((current->personality & READ_IMPLIES_EXEC) ? VM_EXEC : 0) | \
 	 VM_READ | VM_WRITE | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
-
-/*
- * With EABI on ARMv5 and above we must have 64-bit aligned slab pointers.
- */
-#if defined(CONFIG_AEABI) && (__LINUX_ARM_ARCH__ >= 5)
-#define ARCH_SLAB_MINALIGN 8
-#endif
 
 #include <asm-generic/page.h>
 

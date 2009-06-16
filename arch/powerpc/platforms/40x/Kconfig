@@ -151,6 +151,10 @@ config 405EZ
 config 405GPR
 	bool
 
+config XILINX_VIRTEX
+	bool
+	select DEFAULT_UIMAGE
+
 config XILINX_VIRTEX_II_PRO
 	bool
 	select XILINX_VIRTEX

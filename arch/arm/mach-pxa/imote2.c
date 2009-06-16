@@ -28,11 +28,8 @@
 #include <asm/mach/map.h>
 #include <asm/mach/flash.h>
 
+#include <mach/pxa27x.h>
 #include <mach/i2c.h>
-#include <mach/pxa-regs.h>
-#include <mach/pxa2xx-regs.h>
-#include <mach/mfp-pxa27x.h>
-#include <mach/regs-ssp.h>
 #include <mach/udc.h>
 #include <mach/mmc.h>
 #include <mach/pxa2xx_spi.h>
@@ -415,7 +412,7 @@ static struct platform_device imote2_flash_device = {
  */
 static struct i2c_board_info __initdata imote2_i2c_board_info[] = {
 	{ /* UCAM sensor board */
-		.type = "max1238",
+		.type = "max1239",
 		.addr = 0x35,
 	}, { /* ITS400 Sensor board only */
 		.type = "max1363",

@@ -67,6 +67,7 @@ static struct via_isa_bridge {
 	u8 udma_mask;
 	u8 flags;
 } via_isa_bridges[] = {
+	{ "vx855",	PCI_DEVICE_ID_VIA_VX855,    0x00, 0x2f, ATA_UDMA6, VIA_BAD_AST },
 	{ "vx800",	PCI_DEVICE_ID_VIA_VX800,    0x00, 0x2f, ATA_UDMA6, VIA_BAD_AST },
 	{ "cx700",	PCI_DEVICE_ID_VIA_CX700,    0x00, 0x2f, ATA_UDMA6, VIA_BAD_AST },
 	{ "vt8237s",	PCI_DEVICE_ID_VIA_8237S,    0x00, 0x2f, ATA_UDMA6, VIA_BAD_AST },
@@ -267,7 +268,7 @@ static void via_cable_detect(struct via82cxxx_dev *vdev, u32 u)
  *	and initialize its drive independent registers.
  */
 
-static unsigned int init_chipset_via82cxxx(struct pci_dev *dev)
+static int init_chipset_via82cxxx(struct pci_dev *dev)
 {
 	struct ide_host *host = pci_get_drvdata(dev);
 	struct via82cxxx_dev *vdev = host->host_priv;
@@ -443,16 +444,6 @@ static int __devinit via_init_one(struct pci_dev *dev, const struct pci_device_i
 	if ((via_config->flags & VIA_NO_UNMASK) == 0)
 		d.host_flags |= IDE_HFLAG_UNMASK_IRQS;
 
-#ifdef CONFIG_PPC_CHRP
-	if (machine_is(chrp) && _chrp_type == _CHRP_Pegasos)
-		d.host_flags |= IDE_HFLAG_FORCE_LEGACY_IRQS;
-#endif
-
-#ifdef CONFIG_AMIGAONE
-	if (machine_is(amigaone))
-		d.host_flags |= IDE_HFLAG_FORCE_LEGACY_IRQS;
-#endif
-
 	d.udma_mask = via_config->udma_mask;
 
 	vdev = kzalloc(sizeof(*vdev), GFP_KERNEL);
@@ -484,6 +475,7 @@ static const struct pci_device_id via_pci_tbl[] = {
 	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_82C576_1),  0 },
 	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_82C586_1),  0 },
 	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_CX700_IDE), 0 },
+	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_VX855_IDE), 0 },
 	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_6410),      1 },
 	{ PCI_VDEVICE(VIA, PCI_DEVICE_ID_VIA_SATA_EIDE), 1 },
 	{ 0, },

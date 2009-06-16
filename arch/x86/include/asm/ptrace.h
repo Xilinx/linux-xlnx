@@ -28,7 +28,7 @@ struct pt_regs {
 	int  xds;
 	int  xes;
 	int  xfs;
-	/* int  gs; */
+	int  xgs;
 	long orig_eax;
 	long eip;
 	int  xcs;
@@ -50,7 +50,7 @@ struct pt_regs {
 	unsigned long ds;
 	unsigned long es;
 	unsigned long fs;
-	/* int  gs; */
+	unsigned long gs;
 	unsigned long orig_ax;
 	unsigned long ip;
 	unsigned long cs;
@@ -187,14 +187,15 @@ static inline int v8086_mode(struct pt_regs *regs)
 
 /*
  * X86_32 CPUs don't save ss and esp if the CPU is already in kernel mode
- * when it traps.  So regs will be the current sp.
+ * when it traps.  The previous stack will be directly underneath the saved
+ * registers, and 'sp/ss' won't even have been saved. Thus the '&regs->sp'.
  *
  * This is valid only for kernel mode traps.
  */
-static inline unsigned long kernel_trap_sp(struct pt_regs *regs)
+static inline unsigned long kernel_stack_pointer(struct pt_regs *regs)
 {
 #ifdef CONFIG_X86_32
-	return (unsigned long)regs;
+	return (unsigned long)(&regs->sp);
 #else
 	return regs->sp;
 #endif

@@ -190,6 +190,9 @@
 #define   I830_FENCE_SIZE_BITS(size)	((ffs((size) >> 19) - 1) << 8)
 #define   I830_FENCE_PITCH_SHIFT	4
 #define   I830_FENCE_REG_VALID		(1<<0)
+#define   I915_FENCE_MAX_PITCH_VAL	0x10
+#define   I830_FENCE_MAX_PITCH_VAL	6
+#define   I830_FENCE_MAX_SIZE_VAL	(1<<8)
 
 #define   I915_FENCE_START_MASK		0x0ff00000
 #define   I915_FENCE_SIZE_BITS(size)	((ffs((size) >> 20) - 1) << 8)
@@ -198,6 +201,7 @@
 #define   I965_FENCE_PITCH_SHIFT	2
 #define   I965_FENCE_TILING_Y_SHIFT	1
 #define   I965_FENCE_REG_VALID		(1<<0)
+#define   I965_FENCE_MAX_PITCH_VAL	0x0400
 
 /*
  * Instruction and interrupt control regs
@@ -359,6 +363,7 @@
 #define   DPLLB_LVDS_P2_CLOCK_DIV_7	(1 << 24) /* i915 */
 #define   DPLL_P2_CLOCK_DIV_MASK	0x03000000 /* i915 */
 #define   DPLL_FPA01_P1_POST_DIV_MASK	0x00ff0000 /* i915 */
+#define   DPLL_FPA01_P1_POST_DIV_MASK_IGD	0x00ff8000 /* IGD */
 
 #define I915_FIFO_UNDERRUN_STATUS		(1UL<<31)
 #define I915_CRC_ERROR_ENABLE			(1UL<<29)
@@ -435,6 +440,7 @@
  */
 #define   DPLL_FPA01_P1_POST_DIV_MASK_I830_LVDS	0x003f0000
 #define   DPLL_FPA01_P1_POST_DIV_SHIFT	16
+#define   DPLL_FPA01_P1_POST_DIV_SHIFT_IGD 15
 /* i830, required in DVO non-gang */
 #define   PLL_P2_DIVIDE_BY_4		(1 << 23)
 #define   PLL_P1_DIVIDE_BY_TWO		(1 << 21) /* i830 */
@@ -501,10 +507,12 @@
 #define FPB0	0x06048
 #define FPB1	0x0604c
 #define   FP_N_DIV_MASK		0x003f0000
+#define   FP_N_IGD_DIV_MASK	0x00ff0000
 #define   FP_N_DIV_SHIFT		16
 #define   FP_M1_DIV_MASK	0x00003f00
 #define   FP_M1_DIV_SHIFT		 8
 #define   FP_M2_DIV_MASK	0x0000003f
+#define   FP_M2_IGD_DIV_MASK	0x000000ff
 #define   FP_M2_DIV_SHIFT		 0
 #define DPLL_TEST	0x606c
 #define   DPLLB_TEST_SDVO_DIV_1		(0 << 22)
@@ -519,6 +527,7 @@
 #define   DPLLA_INPUT_BUFFER_ENABLE	(1 << 0)
 #define D_STATE		0x6104
 #define CG_2D_DIS	0x6200
+#define DPCUNIT_CLOCK_GATE_DISABLE	(1 << 24)
 #define CG_3D_DIS	0x6204
 
 /*
@@ -629,6 +638,30 @@
 #define   TV_HOTPLUG_INT_EN			(1 << 18)
 #define   CRT_HOTPLUG_INT_EN			(1 << 9)
 #define   CRT_HOTPLUG_FORCE_DETECT		(1 << 3)
+#define CRT_HOTPLUG_ACTIVATION_PERIOD_32	(0 << 8)
+/* must use period 64 on GM45 according to docs */
+#define CRT_HOTPLUG_ACTIVATION_PERIOD_64	(1 << 8)
+#define CRT_HOTPLUG_DAC_ON_TIME_2M		(0 << 7)
+#define CRT_HOTPLUG_DAC_ON_TIME_4M		(1 << 7)
+#define CRT_HOTPLUG_VOLTAGE_COMPARE_40		(0 << 5)
+#define CRT_HOTPLUG_VOLTAGE_COMPARE_50		(1 << 5)
+#define CRT_HOTPLUG_VOLTAGE_COMPARE_60		(2 << 5)
+#define CRT_HOTPLUG_VOLTAGE_COMPARE_70		(3 << 5)
+#define CRT_HOTPLUG_VOLTAGE_COMPARE_MASK	(3 << 5)
+#define CRT_HOTPLUG_DETECT_DELAY_1G		(0 << 4)
+#define CRT_HOTPLUG_DETECT_DELAY_2G		(1 << 4)
+#define CRT_HOTPLUG_DETECT_VOLTAGE_325MV	(0 << 2)
+#define CRT_HOTPLUG_DETECT_VOLTAGE_475MV	(1 << 2)
+#define CRT_HOTPLUG_MASK			(0x3fc) /* Bits 9-2 */
+#define CRT_FORCE_HOTPLUG_MASK			0xfffffe1f
+#define HOTPLUG_EN_MASK (HDMIB_HOTPLUG_INT_EN | \
+			 HDMIC_HOTPLUG_INT_EN |	  \
+			 HDMID_HOTPLUG_INT_EN |	  \
+			 SDVOB_HOTPLUG_INT_EN |	  \
+			 SDVOC_HOTPLUG_INT_EN |	  \
+			 TV_HOTPLUG_INT_EN |	  \
+			 CRT_HOTPLUG_INT_EN)
+
 
 #define PORT_HOTPLUG_STAT	0x61114
 #define   HDMIB_HOTPLUG_INT_STATUS		(1 << 29)
@@ -856,7 +889,7 @@
  */
 # define TV_ENC_C0_FIX			(1 << 10)
 /** Bits that must be preserved by software */
-# define TV_CTL_SAVE			((3 << 8) | (3 << 6))
+# define TV_CTL_SAVE			((1 << 11) | (3 << 9) | (7 << 6) | 0xf)
 # define TV_FUSE_STATE_MASK		(3 << 4)
 /** Read-only state that reports all features enabled */
 # define TV_FUSE_STATE_ENABLED		(0 << 4)
@@ -1378,9 +1411,25 @@
 
 /* Cursor A & B regs */
 #define CURACNTR		0x70080
+/* Old style CUR*CNTR flags (desktop 8xx) */
+#define   CURSOR_ENABLE		0x80000000
+#define   CURSOR_GAMMA_ENABLE	0x40000000
+#define   CURSOR_STRIDE_MASK	0x30000000
+#define   CURSOR_FORMAT_SHIFT	24
+#define   CURSOR_FORMAT_MASK	(0x07 << CURSOR_FORMAT_SHIFT)
+#define   CURSOR_FORMAT_2C	(0x00 << CURSOR_FORMAT_SHIFT)
+#define   CURSOR_FORMAT_3C	(0x01 << CURSOR_FORMAT_SHIFT)
+#define   CURSOR_FORMAT_4C	(0x02 << CURSOR_FORMAT_SHIFT)
+#define   CURSOR_FORMAT_ARGB	(0x04 << CURSOR_FORMAT_SHIFT)
+#define   CURSOR_FORMAT_XRGB	(0x05 << CURSOR_FORMAT_SHIFT)
+/* New style CUR*CNTR flags */
+#define   CURSOR_MODE		0x27
 #define   CURSOR_MODE_DISABLE   0x00
 #define   CURSOR_MODE_64_32B_AX 0x07
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
+#define   MCURSOR_PIPE_SELECT	(1 << 28)
+#define   MCURSOR_PIPE_A	0x00
+#define   MCURSOR_PIPE_B	(1 << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
 #define CURABASE		0x70084
 #define CURAPOS			0x70088
@@ -1388,6 +1437,7 @@
 #define   CURSOR_POS_SIGN       0x8000
 #define   CURSOR_X_SHIFT        0
 #define   CURSOR_Y_SHIFT        16
+#define CURSIZE			0x700a0
 #define CURBCNTR		0x700c0
 #define CURBBASE		0x700c4
 #define CURBPOS			0x700c8
@@ -1415,6 +1465,7 @@
 #define   DISPPLANE_NO_LINE_DOUBLE		0
 #define   DISPPLANE_STEREO_POLARITY_FIRST	0
 #define   DISPPLANE_STEREO_POLARITY_SECOND	(1<<18)
+#define   DISPPLANE_TILED			(1<<10)
 #define DSPAADDR		0x70184
 #define DSPASTRIDE		0x70188
 #define DSPAPOS			0x7018C /* reserved */

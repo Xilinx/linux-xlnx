@@ -175,9 +175,13 @@ static void service_arp_queue(struct netpoll_info *npi)
 void netpoll_poll(struct netpoll *np)
 {
 	struct net_device *dev = np->dev;
-	const struct net_device_ops *ops = dev->netdev_ops;
+	const struct net_device_ops *ops;
 
-	if (!dev || !netif_running(dev) || !ops->ndo_poll_controller)
+	if (!dev || !netif_running(dev))
+		return;
+
+	ops = dev->netdev_ops;
+	if (!ops->ndo_poll_controller)
 		return;
 
 	/* Process pending work on NIC */
@@ -345,8 +349,8 @@ void netpoll_send_udp(struct netpoll *np, const char *msg, int len)
 	udph->dest = htons(np->remote_port);
 	udph->len = htons(udp_len);
 	udph->check = 0;
-	udph->check = csum_tcpudp_magic(htonl(np->local_ip),
-					htonl(np->remote_ip),
+	udph->check = csum_tcpudp_magic(np->local_ip,
+					np->remote_ip,
 					udp_len, IPPROTO_UDP,
 					csum_partial(udph, udp_len, 0));
 	if (udph->check == 0)
@@ -365,8 +369,8 @@ void netpoll_send_udp(struct netpoll *np, const char *msg, int len)
 	iph->ttl      = 64;
 	iph->protocol = IPPROTO_UDP;
 	iph->check    = 0;
-	put_unaligned(htonl(np->local_ip), &(iph->saddr));
-	put_unaligned(htonl(np->remote_ip), &(iph->daddr));
+	put_unaligned(np->local_ip, &(iph->saddr));
+	put_unaligned(np->remote_ip, &(iph->daddr));
 	iph->check    = ip_fast_csum((unsigned char *)iph, iph->ihl);
 
 	eth = (struct ethhdr *) skb_push(skb, ETH_HLEN);
@@ -424,7 +428,7 @@ static void arp_reply(struct sk_buff *skb)
 	memcpy(&tip, arp_ptr, 4);
 
 	/* Should we ignore arp? */
-	if (tip != htonl(np->local_ip) ||
+	if (tip != np->local_ip ||
 	    ipv4_is_loopback(tip) || ipv4_is_multicast(tip))
 		return;
 
@@ -533,9 +537,9 @@ int __netpoll_rx(struct sk_buff *skb)
 		goto out;
 	if (checksum_udp(skb, uh, ulen, iph->saddr, iph->daddr))
 		goto out;
-	if (np->local_ip && np->local_ip != ntohl(iph->daddr))
+	if (np->local_ip && np->local_ip != iph->daddr)
 		goto out;
-	if (np->remote_ip && np->remote_ip != ntohl(iph->saddr))
+	if (np->remote_ip && np->remote_ip != iph->saddr)
 		goto out;
 	if (np->local_port && np->local_port != ntohs(uh->dest))
 		goto out;
@@ -560,14 +564,14 @@ void netpoll_print_options(struct netpoll *np)
 {
 	printk(KERN_INFO "%s: local port %d\n",
 			 np->name, np->local_port);
-	printk(KERN_INFO "%s: local IP %d.%d.%d.%d\n",
-			 np->name, HIPQUAD(np->local_ip));
+	printk(KERN_INFO "%s: local IP %pI4\n",
+			 np->name, &np->local_ip);
 	printk(KERN_INFO "%s: interface %s\n",
 			 np->name, np->dev_name);
 	printk(KERN_INFO "%s: remote port %d\n",
 			 np->name, np->remote_port);
-	printk(KERN_INFO "%s: remote IP %d.%d.%d.%d\n",
-			 np->name, HIPQUAD(np->remote_ip));
+	printk(KERN_INFO "%s: remote IP %pI4\n",
+			 np->name, &np->remote_ip);
 	printk(KERN_INFO "%s: remote ethernet address %pM\n",
 	                 np->name, np->remote_mac);
 }
@@ -589,7 +593,7 @@ int netpoll_parse_options(struct netpoll *np, char *opt)
 		if ((delim = strchr(cur, '/')) == NULL)
 			goto parse_failed;
 		*delim = 0;
-		np->local_ip = ntohl(in_aton(cur));
+		np->local_ip = in_aton(cur);
 		cur = delim;
 	}
 	cur++;
@@ -618,7 +622,7 @@ int netpoll_parse_options(struct netpoll *np, char *opt)
 	if ((delim = strchr(cur, '/')) == NULL)
 		goto parse_failed;
 	*delim = 0;
-	np->remote_ip = ntohl(in_aton(cur));
+	np->remote_ip = in_aton(cur);
 	cur = delim + 1;
 
 	if (*cur != 0) {
@@ -759,10 +763,9 @@ int netpoll_setup(struct netpoll *np)
 			goto release;
 		}
 
-		np->local_ip = ntohl(in_dev->ifa_list->ifa_local);
+		np->local_ip = in_dev->ifa_list->ifa_local;
 		rcu_read_unlock();
-		printk(KERN_INFO "%s: local IP %d.%d.%d.%d\n",
-		       np->name, HIPQUAD(np->local_ip));
+		printk(KERN_INFO "%s: local IP %pI4\n", np->name, &np->local_ip);
 	}
 
 	if (np->rx_hook) {

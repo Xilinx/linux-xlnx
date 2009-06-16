@@ -426,7 +426,7 @@ static int __init early_parse_mem(char *p)
 		return 1;
 
 	memory_limit = PAGE_ALIGN(memparse(p, &p));
-	DBG("memory limit = 0x%lx\n", memory_limit);
+	DBG("memory limit = 0x%llx\n", (unsigned long long)memory_limit);
 
 	return 0;
 }
@@ -1075,11 +1075,6 @@ static void __init early_reserve_mem(void)
 		DBG("reserving: %llx -> %llx\n", base, size);
 		lmb_reserve(base, size);
 	}
-
-#if 0
-	DBG("memory reserved, lmbs :\n");
-      	lmb_dump_all();
-#endif
 }
 
 #ifdef CONFIG_PHYP_DUMP
@@ -1165,7 +1160,7 @@ static inline void __init phyp_dump_reserve_mem(void) {}
 
 void __init early_init_devtree(void *params)
 {
-	unsigned long limit;
+	phys_addr_t limit;
 
 	DBG(" -> early_init_devtree(%p)\n", params);
 
@@ -1209,7 +1204,7 @@ void __init early_init_devtree(void *params)
 
 	limit = memory_limit;
 	if (! limit) {
-		unsigned long memsize;
+		phys_addr_t memsize;
 
 		/* Ensure that total memory size is page-aligned, because
 		 * otherwise mark_bootmem() gets upset. */
@@ -1221,8 +1216,9 @@ void __init early_init_devtree(void *params)
 	lmb_enforce_memory_limit(limit);
 
 	lmb_analyze();
+	lmb_dump_all();
 
-	DBG("Phys. mem: %lx\n", lmb_phys_mem_size());
+	DBG("Phys. mem: %llx\n", lmb_phys_mem_size());
 
 	/* We may need to relocate the flat tree, do it now.
 	 * FIXME .. and the initrd too? */

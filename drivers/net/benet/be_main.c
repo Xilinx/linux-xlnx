@@ -16,6 +16,7 @@
  */
 
 #include "be.h"
+#include <asm/div64.h>
 
 MODULE_VERSION(DRV_VER);
 MODULE_DEVICE_TABLE(pci, be_dev_ids);
@@ -27,10 +28,10 @@ static unsigned int rx_frag_size = 2048;
 module_param(rx_frag_size, uint, S_IRUGO);
 MODULE_PARM_DESC(rx_frag_size, "Size of a fragment that holds rcvd data.");
 
-#define BE_VENDOR_ID 		0x19a2
-#define BE2_DEVICE_ID_1 	0x0211
 static DEFINE_PCI_DEVICE_TABLE(be_dev_ids) = {
-	{ PCI_DEVICE(BE_VENDOR_ID, BE2_DEVICE_ID_1) },
+	{ PCI_DEVICE(BE_VENDOR_ID, BE_DEVICE_ID1) },
+	{ PCI_DEVICE(BE_VENDOR_ID, OC_DEVICE_ID1) },
+	{ PCI_DEVICE(BE_VENDOR_ID, OC_DEVICE_ID2) },
 	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, be_dev_ids);
@@ -245,19 +246,29 @@ static void be_link_status_update(struct be_adapter *adapter)
 /* Update the EQ delay n BE based on the RX frags consumed / sec */
 static void be_rx_eqd_update(struct be_adapter *adapter)
 {
-	u32 eqd;
 	struct be_ctrl_info *ctrl = &adapter->ctrl;
 	struct be_eq_obj *rx_eq = &adapter->rx_eq;
 	struct be_drvr_stats *stats = &adapter->stats.drvr_stats;
+	ulong now = jiffies;
+	u32 eqd;
+
+	if (!rx_eq->enable_aic)
+		return;
+
+	/* Wrapped around */
+	if (time_before(now, stats->rx_fps_jiffies)) {
+		stats->rx_fps_jiffies = now;
+		return;
+	}
 
 	/* Update once a second */
-	if (((jiffies - stats->rx_fps_jiffies) < HZ) || rx_eq->enable_aic == 0)
+	if ((now - stats->rx_fps_jiffies) < HZ)
 		return;
 
 	stats->be_rx_fps = (stats->be_rx_frags - stats->be_prev_rx_frags) /
-			((jiffies - stats->rx_fps_jiffies) / HZ);
+			((now - stats->rx_fps_jiffies) / HZ);
 
-	stats->rx_fps_jiffies = jiffies;
+	stats->rx_fps_jiffies = now;
 	stats->be_prev_rx_frags = stats->be_rx_frags;
 	eqd = stats->be_rx_fps / 110000;
 	eqd = eqd << 3;
@@ -280,26 +291,47 @@ static struct net_device_stats *be_get_stats(struct net_device *dev)
 	return &adapter->stats.net_stats;
 }
 
+static u32 be_calc_rate(u64 bytes, unsigned long ticks)
+{
+	u64 rate = bytes;
+
+	do_div(rate, ticks / HZ);
+	rate <<= 3;			/* bytes/sec -> bits/sec */
+	do_div(rate, 1000000ul);	/* MB/Sec */
+
+	return rate;
+}
+
+static void be_tx_rate_update(struct be_adapter *adapter)
+{
+	struct be_drvr_stats *stats = drvr_stats(adapter);
+	ulong now = jiffies;
+
+	/* Wrapped around? */
+	if (time_before(now, stats->be_tx_jiffies)) {
+		stats->be_tx_jiffies = now;
+		return;
+	}
+
+	/* Update tx rate once in two seconds */
+	if ((now - stats->be_tx_jiffies) > 2 * HZ) {
+		stats->be_tx_rate = be_calc_rate(stats->be_tx_bytes
+						  - stats->be_tx_bytes_prev,
+						 now - stats->be_tx_jiffies);
+		stats->be_tx_jiffies = now;
+		stats->be_tx_bytes_prev = stats->be_tx_bytes;
+	}
+}
+
 static void be_tx_stats_update(struct be_adapter *adapter,
 			u32 wrb_cnt, u32 copied, bool stopped)
 {
-	struct be_drvr_stats *stats = &adapter->stats.drvr_stats;
+	struct be_drvr_stats *stats = drvr_stats(adapter);
 	stats->be_tx_reqs++;
 	stats->be_tx_wrbs += wrb_cnt;
 	stats->be_tx_bytes += copied;
 	if (stopped)
 		stats->be_tx_stops++;
-
-	/* Update tx rate once in two seconds */
-	if ((jiffies - stats->be_tx_jiffies) > 2 * HZ) {
-		u32 r;
-		r = (stats->be_tx_bytes - stats->be_tx_bytes_prev) /
-			((u32) (jiffies - stats->be_tx_jiffies) / HZ);
-		r = (r / 1000000);			/* M bytes/s */
-		stats->be_tx_rate = (r * 8);	/* M bits/s */
-		stats->be_tx_jiffies = jiffies;
-		stats->be_tx_bytes_prev = stats->be_tx_bytes;
-	}
 }
 
 /* Determine number of WRB entries needed to xmit data in an skb */
@@ -573,26 +605,36 @@ static void be_set_multicast_list(struct net_device *netdev)
 	}
 }
 
-static void be_rx_rate_update(struct be_adapter *adapter, u32 pktsize,
-			u16 numfrags)
+static void be_rx_rate_update(struct be_adapter *adapter)
 {
-	struct be_drvr_stats *stats = &adapter->stats.drvr_stats;
-	u32 rate;
+	struct be_drvr_stats *stats = drvr_stats(adapter);
+	ulong now = jiffies;
+
+	/* Wrapped around */
+	if (time_before(now, stats->be_rx_jiffies)) {
+		stats->be_rx_jiffies = now;
+		return;
+	}
+
+	/* Update the rate once in two seconds */
+	if ((now - stats->be_rx_jiffies) < 2 * HZ)
+		return;
+
+	stats->be_rx_rate = be_calc_rate(stats->be_rx_bytes
+					  - stats->be_rx_bytes_prev,
+					 now - stats->be_rx_jiffies);
+	stats->be_rx_jiffies = now;
+	stats->be_rx_bytes_prev = stats->be_rx_bytes;
+}
+
+static void be_rx_stats_update(struct be_adapter *adapter,
+		u32 pktsize, u16 numfrags)
+{
+	struct be_drvr_stats *stats = drvr_stats(adapter);
 
 	stats->be_rx_compl++;
 	stats->be_rx_frags += numfrags;
 	stats->be_rx_bytes += pktsize;
-
-	/* Update the rate once in two seconds */
-	if ((jiffies - stats->be_rx_jiffies) < 2 * HZ)
-		return;
-
-	rate = (stats->be_rx_bytes - stats->be_rx_bytes_prev) /
-		((u32) (jiffies - stats->be_rx_jiffies) / HZ);
-	rate = (rate / 1000000);	/* MB/Sec */
-	stats->be_rx_rate = (rate * 8); 	/* Mega Bits/Sec */
-	stats->be_rx_jiffies = jiffies;
-	stats->be_rx_bytes_prev = stats->be_rx_bytes;
 }
 
 static struct be_rx_page_info *
@@ -700,7 +742,7 @@ static void skb_fill_rx_data(struct be_adapter *adapter,
 		memset(page_info, 0, sizeof(*page_info));
 	}
 
-	be_rx_rate_update(adapter, pktsize, num_rcvd);
+	be_rx_stats_update(adapter, pktsize, num_rcvd);
 	return;
 }
 
@@ -799,7 +841,7 @@ static void be_rx_compl_process_lro(struct be_adapter *adapter,
 			vid, NULL, 0);
 	}
 
-	be_rx_rate_update(adapter, pkt_size, num_rcvd);
+	be_rx_stats_update(adapter, pkt_size, num_rcvd);
 	return;
 }
 
@@ -840,7 +882,6 @@ static void be_post_rx_frags(struct be_adapter *adapter)
 	struct be_eth_rx_d *rxd;
 	u64 page_dmaaddr = 0, frag_dmaaddr;
 	u32 posted, page_offset = 0;
-
 
 	page_info = &page_info_tbl[rxq->head];
 	for (posted = 0; posted < MAX_RX_POST && !page_info->page; posted++) {
@@ -1304,6 +1345,9 @@ static void be_worker(struct work_struct *work)
 
 	/* Set EQ delay */
 	be_rx_eqd_update(adapter);
+
+	be_tx_rate_update(adapter);
+	be_rx_rate_update(adapter);
 
 	if (adapter->rx_post_starved) {
 		adapter->rx_post_starved = false;
@@ -1777,11 +1821,11 @@ static int __devinit be_probe(struct pci_dev *pdev,
 
 	be_msix_enable(adapter);
 
-	status = pci_set_dma_mask(pdev, DMA_64BIT_MASK);
+	status = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
 	if (!status) {
 		netdev->features |= NETIF_F_HIGHDMA;
 	} else {
-		status = pci_set_dma_mask(pdev, DMA_32BIT_MASK);
+		status = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
 		if (status) {
 			dev_err(&pdev->dev, "Could not set PCI DMA Mask\n");
 			goto free_netdev;
@@ -1815,7 +1859,7 @@ static int __devinit be_probe(struct pci_dev *pdev,
 	if (status != 0)
 		goto stats_clean;
 
-	dev_info(&pdev->dev, BE_NAME " port %d\n", adapter->port_num);
+	dev_info(&pdev->dev, "%s port %d\n", nic_name(pdev), adapter->port_num);
 	return 0;
 
 stats_clean:
@@ -1829,7 +1873,7 @@ rel_reg:
 disable_dev:
 	pci_disable_device(pdev);
 do_none:
-	dev_warn(&pdev->dev, BE_NAME " initialization failed\n");
+	dev_err(&pdev->dev, "%s initialization failed\n", nic_name(pdev));
 	return status;
 }
 

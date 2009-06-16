@@ -26,7 +26,9 @@
  * allocate the space "normally" and use the cache management functions
  * to ensure it is consistent.
  */
-extern void *__dma_alloc_coherent(size_t size, dma_addr_t *handle, gfp_t gfp);
+struct device;
+extern void *__dma_alloc_coherent(struct device *dev, size_t size,
+				  dma_addr_t *handle, gfp_t gfp);
 extern void __dma_free_coherent(size_t size, void *vaddr);
 extern void __dma_sync(void *vaddr, size_t size, int direction);
 extern void __dma_sync_page(struct page *page, unsigned long offset,
@@ -37,7 +39,7 @@ extern void __dma_sync_page(struct page *page, unsigned long offset,
  * Cache coherent cores.
  */
 
-#define __dma_alloc_coherent(gfp, size, handle)	NULL
+#define __dma_alloc_coherent(dev, gfp, size, handle)	NULL
 #define __dma_free_coherent(size, addr)		((void)0)
 #define __dma_sync(addr, size, rw)		((void)0)
 #define __dma_sync_page(pg, off, sz, rw)	((void)0)
@@ -109,18 +111,8 @@ static inline struct dma_mapping_ops *get_dma_ops(struct device *dev)
 	 * only ISA DMA device we support is the floppy and we have a hack
 	 * in the floppy driver directly to get a device for us.
 	 */
-
-	if (unlikely(dev == NULL) || dev->archdata.dma_ops == NULL) {
-#ifdef CONFIG_PPC64
+	if (unlikely(dev == NULL))
 		return NULL;
-#else
-		/* Use default on 32-bit if dma_ops is not set up */
-		/* TODO: Long term, we should fix drivers so that dev and
-		 * archdata dma_ops are set up for all buses.
-		 */
-		return &dma_direct_ops;
-#endif
-	}
 
 	return dev->archdata.dma_ops;
 }

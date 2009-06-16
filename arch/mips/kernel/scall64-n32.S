@@ -253,7 +253,7 @@ EXPORT(sysn32_call_table)
 	PTR	compat_sys_utime		/* 6130 */
 	PTR	sys_mknod
 	PTR	sys_32_personality
-	PTR	sys_32_ustat
+	PTR	compat_sys_ustat
 	PTR	compat_sys_statfs
 	PTR	compat_sys_fstatfs		/* 6135 */
 	PTR	sys_sysfs
@@ -405,12 +405,14 @@ EXPORT(sysn32_call_table)
 	PTR	sys_eventfd
 	PTR	sys_fallocate
 	PTR	sys_timerfd_create
-	PTR	sys_timerfd_gettime		/* 5285 */
-	PTR	sys_timerfd_settime
+	PTR	compat_sys_timerfd_gettime	/* 5285 */
+	PTR	compat_sys_timerfd_settime
 	PTR	sys_signalfd4
 	PTR	sys_eventfd2
 	PTR	sys_epoll_create1
 	PTR	sys_dup3			/* 5290 */
 	PTR	sys_pipe2
 	PTR	sys_inotify_init1
+	PTR	sys_preadv
+	PTR	sys_pwritev
 	.size	sysn32_call_table,.-sysn32_call_table

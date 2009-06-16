@@ -44,9 +44,7 @@
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
 
-#include <mach/pxa-regs.h>
-#include <mach/pxa2xx-regs.h>
-#include <mach/mfp-pxa27x.h>
+#include <mach/pxa27x.h>
 #include <mach/pxa27x-udc.h>
 #include <mach/reset.h>
 #include <mach/i2c.h>
@@ -104,6 +102,12 @@ static unsigned long spitz_pin_config[] __initdata = {
 	GPIO56_nPWAIT,
 	GPIO57_nIOIS16,
 	GPIO104_PSKTSEL,
+
+	/* I2S */
+	GPIO28_I2S_BITCLK_OUT,
+	GPIO29_I2S_SDATA_IN,
+	GPIO30_I2S_SDATA_OUT,
+	GPIO31_I2S_SYNC,
 
 	/* MMC */
 	GPIO32_MMC_CLK,
@@ -295,12 +299,22 @@ static struct pxa2xx_spi_master spitz_spi_info = {
 	.num_chipselect	= 3,
 };
 
+static void spitz_wait_for_hsync(void)
+{
+	while (gpio_get_value(SPITZ_GPIO_HSYNC))
+		cpu_relax();
+
+	while (!gpio_get_value(SPITZ_GPIO_HSYNC))
+		cpu_relax();
+}
+
 static struct ads7846_platform_data spitz_ads7846_info = {
 	.model			= 7846,
 	.vref_delay_usecs	= 100,
 	.x_plate_ohms		= 419,
 	.y_plate_ohms		= 486,
 	.gpio_pendown		= SPITZ_GPIO_TP_INT,
+	.wait_for_sync		= spitz_wait_for_hsync,
 };
 
 static void spitz_ads7846_cs(u32 command)
@@ -517,9 +531,15 @@ static int spitz_ohci_init(struct device *dev)
 	return gpio_direction_output(SPITZ_GPIO_USB_HOST, 1);
 }
 
+static void spitz_ohci_exit(struct device *dev)
+{
+	gpio_free(SPITZ_GPIO_USB_HOST);
+}
+
 static struct pxaohci_platform_data spitz_ohci_platform_data = {
 	.port_mode	= PMM_NPS_MODE,
 	.init		= spitz_ohci_init,
+	.exit		= spitz_ohci_exit,
 	.flags		= ENABLE_PORT_ALL | NO_OC_PROTECTION,
 	.power_budget	= 150,
 };
@@ -703,10 +723,10 @@ static struct platform_device *devices[] __initdata = {
 
 static void spitz_poweroff(void)
 {
-	arm_machine_restart('g');
+	arm_machine_restart('g', NULL);
 }
 
-static void spitz_restart(char mode)
+static void spitz_restart(char mode, const char *cmd)
 {
 	/* Bootloader magic for a reboot */
 	if((MSC0 & 0xffff0000) == 0x7ff00000)
@@ -717,7 +737,7 @@ static void spitz_restart(char mode)
 
 static void __init common_init(void)
 {
-	init_gpio_reset(SPITZ_GPIO_ON_RESET, 1);
+	init_gpio_reset(SPITZ_GPIO_ON_RESET, 1, 0);
 	pm_power_off = spitz_poweroff;
 	arm_pm_restart = spitz_restart;
 
