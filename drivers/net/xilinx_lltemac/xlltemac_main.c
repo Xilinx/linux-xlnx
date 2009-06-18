@@ -1591,7 +1591,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	len = skb_headlen(skb);
 
 	/* get the physical address of the header */
-	phy_addr = (u32) dma_map_single(NULL, skb->data, len, DMA_TO_DEVICE);
+	phy_addr = (u32) dma_map_single(dev->dev.parent, skb->data, len, DMA_TO_DEVICE);
 
 	/* get the header fragment, it's in the skb differently */
 	XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
@@ -1666,7 +1666,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 		virt_addr =
 			(void *) page_address(frag->page) + frag->page_offset;
 		phy_addr =
-			(u32) dma_map_single(NULL, virt_addr, frag->size,
+			(u32) dma_map_single(dev->dev.parent, virt_addr, frag->size,
 					     DMA_TO_DEVICE);
 
 		XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
@@ -1760,7 +1760,7 @@ static void DmaSendHandlerBH(unsigned long p)
 			do {
 				len = XLlDma_mBdGetLength(BdCurPtr);
 				skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
-				dma_unmap_single(NULL, skb_dma_addr, len,
+				dma_unmap_single(dev->dev.parent, skb_dma_addr, len,
 						 DMA_TO_DEVICE);
 
 				/* get ptr to skb */
@@ -1963,7 +1963,7 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 		}
 
 		/* Get dma handle of skb->data */
-		new_skb_baddr = (u32) dma_map_single(NULL, new_skb->data,
+		new_skb_baddr = (u32) dma_map_single(dev->dev.parent, new_skb->data,
 						     lp->max_frame_size,
 						     DMA_FROM_DEVICE);
 
@@ -2041,7 +2041,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 
 				/* get and free up dma handle used by skb->data */
 				skb_baddr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
-				dma_unmap_single(NULL, skb_baddr,
+				dma_unmap_single(dev->dev.parent, skb_baddr,
 						 lp->max_frame_size,
 						 DMA_FROM_DEVICE);
 
@@ -2276,8 +2276,8 @@ static void free_descriptor_skb(struct net_device *dev)
 		skb = (struct sk_buff *) XLlDma_mBdGetId(BdPtr);
 		if (skb) {
 			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
-			dma_unmap_single(NULL, skb_dma_addr, lp->max_frame_size,
-					 DMA_FROM_DEVICE);
+			dma_unmap_single(dev->dev.parent, skb_dma_addr, 
+					 lp->max_frame_size, DMA_FROM_DEVICE);
 			dev_kfree_skb(skb);
 		}
 		/* find the next BD in the DMA RX BD ring */
@@ -2297,7 +2297,7 @@ static void free_descriptor_skb(struct net_device *dev)
 		if (skb) {
 			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
 			len = XLlDma_mBdGetLength(BdPtr);
-			dma_unmap_single(NULL, skb_dma_addr, len,
+			dma_unmap_single(dev->dev.parent, skb_dma_addr, len,
 					 DMA_TO_DEVICE);
 			dev_kfree_skb(skb);
 		}
@@ -3067,6 +3067,11 @@ static int xtenet_setup(
 		goto error;
 	}
 	dev_set_drvdata(dev, ndev);
+
+	/* the following is needed starting in 2.6.30 as the dma_ops now require
+	   the device to be used in the dma calls 
+	*/
+	SET_NETDEV_DEV(ndev, dev);
 
 	ndev->irq = r_irq->start;
 
