@@ -31,11 +31,8 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
-#ifdef CONFIG_OF
-// For open firmware.
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#endif
 
 #include "xbasic_types.h"
 #include "xlltemac.h"
@@ -2236,7 +2233,8 @@ static int descriptor_init(struct net_device *dev)
 	recvpoolptr = lp->desc_space;
 	sendpoolptr = (void *) ((u32) lp->desc_space + recvsize);
 
-	recvpoolphy = (void *) lp->desc_space_handle;
+	/* cast the handle to a u32 1st just to keep the compiler happy */
+	recvpoolphy = (void *) (u32)lp->desc_space_handle;
 	sendpoolphy = (void *) ((u32) lp->desc_space_handle + recvsize);
 
 	result = XLlDma_BdRingCreate(&lp->Dma.RxBdRing, (u32) recvpoolphy,
@@ -3272,46 +3270,6 @@ error:
 	return rc;
 }
 
-static int xtenet_probe(struct device *dev)
-{
-	struct resource *r_irq = NULL;	/* Interrupt resources */
-	struct resource *r_mem = NULL;	/* IO mem resources */
-	struct xlltemac_platform_data *pdata;
-	struct platform_device *pdev = to_platform_device(dev);
-
-	/* param check */
-	if (!pdev) {
-		dev_err(dev, "Probe called with NULL param.\n");
-		return -ENODEV;
-	}
-
-	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(dev, "Couldn't find platform data.\n");
-
-		return -ENODEV;
-	}
-
-	/* Get iospace and an irq for the device */
-	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r_irq || !r_mem) {
-		dev_err(dev, "IO resource(s) not found.\n");
-		return -ENODEV;
-	}
-
-        return xtenet_setup(dev, r_mem, r_irq, pdata);
-}
-
-static struct device_driver xtenet_driver = {
-	.name = DRIVER_NAME,
-	.bus = &platform_bus_type,
-
-	.probe = xtenet_probe,
-	.remove = xtenet_remove
-};
-
-#ifdef CONFIG_OF
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -3488,12 +3446,9 @@ static struct of_platform_driver xtenet_of_driver = {
 	.probe		= xtenet_of_probe,
 	.remove		= __devexit_p(xtenet_of_remove),
 };
-#endif
 
 static int __init xtenet_init(void)
 {
-	int status;
-
 	/*
 	 * Make sure the locks are initialized
 	 */
@@ -3511,20 +3466,12 @@ static int __init xtenet_init(void)
 	 * No kernel boot options used,
 	 * so we just need to register the driver
 	 */
-	status = driver_register(&xtenet_driver);
-#ifdef CONFIG_OF
-	status |= of_register_platform_driver(&xtenet_of_driver);
-#endif
-        return status;
-
+	return of_register_platform_driver(&xtenet_of_driver);
 }
 
 static void __exit xtenet_cleanup(void)
 {
-	driver_unregister(&xtenet_driver);
-#ifdef CONFIG_OF
 	of_unregister_platform_driver(&xtenet_of_driver);
-#endif
 }
 
 module_init(xtenet_init);
