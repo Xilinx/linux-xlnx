@@ -36,6 +36,7 @@ SECTIONS {
 	. = ALIGN (4) ;
 	__fdt_blob : AT(ADDR(__fdt_blob) - LOAD_OFFSET) {
 		_fdt_start = . ;		/* place for fdt blob */
+		*(__fdt_blob) ;			/* Any link-placed DTB */
 	        . = _fdt_start + 0x4000;	/* Pad up to 16kbyte */
 		_fdt_end = . ;
 	}
