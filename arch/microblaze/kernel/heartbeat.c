@@ -65,7 +65,7 @@ void setup_heartbeat(void)
 		printk(KERN_NOTICE "Heartbeat GPIO at 0x%x\n", base_addr);
 
 		/* GPIO is configured as output */
-		prop = (int *)of_get_property(gpio, "xlnx,is-bidir", NULL);
+		prop = (int *) of_get_property(gpio, "xlnx,is-bidir", NULL);
 		if (prop)
 			out_be32(base_addr + 4, 0);
 	}

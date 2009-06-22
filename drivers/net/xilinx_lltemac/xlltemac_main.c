@@ -75,7 +75,7 @@
  * copy to this alignment for better performance.
  */
 
-#define ALIGNMENT_RECV          32
+#define ALIGNMENT_RECV          34
 #define ALIGNMENT_SEND          8
 #define ALIGNMENT_SEND_PERF     32
 
@@ -87,8 +87,8 @@
 
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
 #define BUFFER_ALIGNSEND(adr) ((ALIGNMENT_SEND - ((u32) adr)) % ALIGNMENT_SEND)
-#define BUFFER_ALIGNSEND_PERF(adr) ((ALIGNMENT_SEND_PERF - ((u32) adr)) % ALIGNMENT_SEND_PERF)
-#define BUFFER_ALIGNRECV(adr) ((ALIGNMENT_RECV - ((u32) adr)) % ALIGNMENT_RECV)
+#define BUFFER_ALIGNSEND_PERF(adr) ((ALIGNMENT_SEND_PERF - ((u32) adr)) % 32)
+#define BUFFER_ALIGNRECV(adr) ((ALIGNMENT_RECV - ((u32) adr)) % 32)
 
 /* Default TX/RX Threshold and waitbound values for SGDMA mode */
 #define DFT_TX_THRESHOLD  24
@@ -134,10 +134,10 @@
     XLlDma_mBdWrite((BdPtr), XLLDMA_BD_USR2_OFFSET, 0)
 
 #define BdCsumGet(BdPtr) \
-    XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR3_OFFSET)
+    (XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR3_OFFSET) & 0xffff)
 
 #define BdGetRxLen(BdPtr) \
-    XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR4_OFFSET)
+    (XLlDma_mBdRead((BdPtr), XLLDMA_BD_USR4_OFFSET) & 0x3fff)
 
 /*
  * Our private per device data.  When a net_device is allocated we will
@@ -3243,6 +3243,7 @@ static u32 get_u32(struct of_device *ofdev, const char *s) {
 static struct of_device_id xtenet_fifo_of_match[] = {
 	{ .compatible = "xlnx,xps-ll-fifo-1.00.a", },
 	{ .compatible = "xlnx,xps-ll-fifo-1.00.b", },
+	{ .compatible = "xlnx,xps-ll-fifo-1.01.a", },
 	{ /* end of list */ },
 };
 
