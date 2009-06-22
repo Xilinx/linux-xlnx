@@ -53,6 +53,10 @@ core-y		+= arch/microblaze/kernel/ arch/microblaze/mm/ \
 
 boot := arch/$(ARCH)/boot
 
+ifneq ($(DTB),)
+	core-y	+= $(boot)/
+endif
+
 # defines filename extension depending memory management type
 ifeq ($(CONFIG_MMU),)
 MMUEXT		:= -nommu
@@ -61,10 +65,12 @@ export	MMUEXT
 
 all: linux.bin
 
+BOOT_TARGETS = linux.bin linux.bin.gz
+
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
 
-linux.bin linux.bin.gz: vmlinux
+$(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 define archhelp
