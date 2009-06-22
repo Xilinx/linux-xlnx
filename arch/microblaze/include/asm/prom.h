@@ -16,11 +16,13 @@
 #define _ASM_MICROBLAZE_PROM_H
 #ifdef __KERNEL__
 
+#ifndef __ASSEMBLY__
 #include <linux/types.h>
 #include <linux/proc_fs.h>
 #include <linux/platform_device.h>
 #include <asm/irq.h>
 #include <asm/atomic.h>
+#endif	/* __ASSEMBLY__ */
 
 #define OF_ROOT_NODE_ADDR_CELLS_DEFAULT	1
 #define OF_ROOT_NODE_SIZE_CELLS_DEFAULT	1
@@ -39,6 +41,7 @@
 
 #define OF_DT_VERSION		0x10
 
+#ifndef __ASSEMBLY__
 /*
  * This is what gets passed to the kernel by prom_init or kexec
  *
@@ -309,5 +312,6 @@ extern void __iomem *of_iomap(struct device_node *device, int index);
  */
 #include <linux/of.h>
 
+#endif /* __ASSEMBLY__ */
 #endif /* __KERNEL__ */
 #endif /* _ASM_MICROBLAZE_PROM_H */
