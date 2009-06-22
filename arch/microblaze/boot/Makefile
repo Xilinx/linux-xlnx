@@ -62,4 +62,6 @@ $(obj)/dtc-src/dtc-lexer.lex.c: $(src)/dtc-src/dtc-lexer.l FORCE
 	$(call if_changed,flex)
 endif
 
-clean-kernel += linux.bin linux.bin.gz system.dtb
+clean-kernel += linux.bin linux.bin.gz
+
+clean-files += *.dtb
