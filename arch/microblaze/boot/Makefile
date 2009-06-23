@@ -4,7 +4,7 @@
 
 obj-y += linked_dtb.o
 
-targets := linux.bin linux.bin.gz
+targets := linux.bin linux.bin.gz simpleImage.%
 
 OBJCOPYFLAGS_linux.bin  := -O binary
 
@@ -31,6 +31,13 @@ $(obj)/linux.bin: vmlinux FORCE
 
 $(obj)/linux.bin.gz: $(obj)/linux.bin FORCE
 	$(call if_changed,gzip)
+	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
+
+quiet_cmd_cp = CP      $@
+      cmd_cp = cp $< $@
+
+$(obj)/simpleImage.%: vmlinux FORCE
+	$(call if_changed,cp)
 	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
 
 # Rule to build device tree blobs
@@ -62,6 +69,6 @@ $(obj)/dtc-src/dtc-lexer.lex.c: $(src)/dtc-src/dtc-lexer.l FORCE
 	$(call if_changed,flex)
 endif
 
-clean-kernel += linux.bin linux.bin.gz
+clean-kernel += linux.bin linux.bin.gz simpleImage.*
 
 clean-files += *.dtb
