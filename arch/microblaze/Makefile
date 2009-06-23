@@ -53,6 +53,9 @@ core-y		+= arch/microblaze/kernel/ arch/microblaze/mm/ \
 
 boot := arch/$(ARCH)/boot
 
+# Are we making a simpleImage.<boardname> target? If so, crack out the boardname
+DTB:=$(subst simpleImage.,,$(filter simpleImage.%, $(MAKECMDGOALS)))
+
 ifneq ($(DTB),)
 	core-y	+= $(boot)/
 endif
@@ -61,11 +64,11 @@ endif
 ifeq ($(CONFIG_MMU),)
 MMUEXT		:= -nommu
 endif
-export	MMUEXT
+export	MMUEXT DTB
 
 all: linux.bin
 
-BOOT_TARGETS = linux.bin linux.bin.gz
+BOOT_TARGETS = linux.bin linux.bin.gz simpleImage.%
 
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
@@ -74,6 +77,7 @@ $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 define archhelp
-  echo  '* linux.bin    - Create raw binary'
-  echo  '  linux.bin.gz - Create compressed raw binary'
+  echo  '* linux.bin        - Create raw binary'
+  echo  '  linux.bin.gz     - Create compressed raw binary'
+  echo  '  simpleImage.<dt> - ELF image with $(arch)/boot/dts/<dt>.dts linked in'
 endef
