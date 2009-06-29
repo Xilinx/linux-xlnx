@@ -447,5 +447,5 @@ static void TxErrorHandler(XIic * InstancePtr)
 ******************************************************************************/
 static void StubFunction(XIic * InstancePtr)
 {
-	return;
+	XASSERT_VOID_ALWAYS();
 }
