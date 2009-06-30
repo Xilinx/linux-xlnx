@@ -474,7 +474,6 @@ static int __devinit xilinx_iic_setup(
 	dev->irq = r_irq->start;
 
 	/* initialize fields to satisfy i2c  */
-	strcpy(dev->adap.name, device->bus_id);
 	dev->index = 0;
 
 	init_completion(&dev->complete);
