@@ -127,7 +127,7 @@ xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
     int i, retries;
     u32 Status;
     u32 writeop;
-
+	
     for (i = 0; i < num; i++)
     {
         pmsg = &msgs[i];
@@ -224,49 +224,52 @@ xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
         }
 
         /*
-		 * Wait till the data is transmitted or received. If there is an error
-		 * retry for 160 times.
-		 */
-		retries = 160;
+	 * Wait till the data is transmitted or received. If there is an error
+	 * retry for 10 times.
+	 */
+	retries = 10;
 
-		if(pmsg->flags & I2C_M_RD)
+	if(pmsg->flags & I2C_M_RD)
+	{
+		while((((volatile int)(dev->receive_intr_flag)) != 0) && (retries != 0))
 		{
-			while((((volatile int)(dev->receive_intr_flag)) != 0) && (retries != 0))
+			if ( dev->Iic.Stats.TxErrors != 0)
 			{
-				if ( dev->Iic.Stats.TxErrors != 0)
-				{
-					udelay(25);
-					Status = XIic_MasterRecv(&dev->Iic, pmsg->buf, pmsg->len);
-					dev->Iic.Stats.TxErrors = 0;
-					retries--;
-				}
-
 				udelay(25);
-                       }
-		}
-		else
-		{
-			while((((volatile int)(dev->transmit_intr_flag)) != 0) && (retries != 0))
-			{
-				if ( dev->Iic.Stats.TxErrors != 0)
-				{
-					udelay(25);
-					Status = XIic_MasterSend(&dev->Iic, pmsg->buf, pmsg->len);
-					dev->Iic.Stats.TxErrors = 0;
-					retries--;
-				}
-
-				udelay(25);
+				Status = XIic_MasterRecv(&dev->Iic, pmsg->buf, pmsg->len);
+				dev->Iic.Stats.TxErrors = 0;
+				retries--;
 			}
-		}
 
-
-		if(retries == 0)
+			/* the udelay was not working for Microblaze and this seems
+			   like a better solution */	
+			schedule_timeout_interruptible(1);
+                }
+	}
+	else
+	{
+		while((((volatile int)(dev->transmit_intr_flag)) != 0) && (retries != 0))
 		{
-			printk("Unable to talk to Device\n");
-			printk("Wrong Slave address or Slave device Busy\n");
+			if ( dev->Iic.Stats.TxErrors != 0)
+			{
+				udelay(25);
+				Status = XIic_MasterSend(&dev->Iic, pmsg->buf, pmsg->len);
+				dev->Iic.Stats.TxErrors = 0;
+				retries--;
+			}
+
+			/* the udelay was not working for Microblaze and this seems
+			   like a better solution */	
+			schedule_timeout_interruptible(1);
 		}
 	}
+
+	if(retries == 0)
+	{
+		printk("Unable to talk to Device\n");
+		printk("Wrong Slave address or Slave device Busy\n");
+	}
+    }
     return num;
 }
 
