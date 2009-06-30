@@ -66,11 +66,9 @@
 #include "xiic.h"
 #include "xiic_i.h"
 
-#if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/of_i2c.h>
-#endif
 
 MODULE_AUTHOR("MontaVista Software, Inc. <source@mvista.com>");
 MODULE_DESCRIPTION("Xilinx IIC driver");
@@ -83,16 +81,6 @@ static int scan = 0;		/* have a look at what's hanging 'round */
 #define XIIC_RETRY             3
 
 #define XILINX_IIC             "xilinx_iic"
-
-static int __devinit xilinx_iic_probe(struct device *device);
-static int __devexit xilinx_iic_remove(struct device *device);
-
-static struct device_driver xilinx_iic_driver = {
-	.bus = &platform_bus_type,
-	.name = XILINX_IIC,
-	.probe = xilinx_iic_probe,
-	.remove = xilinx_iic_remove,
-};
 
 /* Our private per device data. */
 struct xiic_data {
@@ -562,30 +550,6 @@ static int __devinit xilinx_iic_setup(
       out2:
 	return error;
 }
-static int __devinit xilinx_iic_probe(struct device *device)
-{
-	struct platform_device *pdev = to_platform_device(device);
-	struct resource *r_irq = NULL;	/* Interrupt resources */
-	struct resource *r_mem = NULL;	/* IO mem resources */
-
-	/* param check */
-	if (!pdev) {
-		dev_err(device, "Probe called with NULL param.\n");
-		return -ENODEV;
-	}
-
-	/* Get iospace and an irq for the device */
-	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r_irq || !r_mem) {
-		dev_err(device, "IO resource(s) not found.\n");
-		return -ENODEV;
-	}
-
-        return xilinx_iic_setup(device, 0, r_mem, r_irq, 0, 0);
-}
-
-#ifdef CONFIG_OF
 
 /* Match table for of_platform binding */
 static struct of_device_id __devinitdata xilinx_iic_of_match[] = {
@@ -659,39 +623,19 @@ static inline void __exit xilinx_iic_of_unregister(void)
 	of_unregister_platform_driver(&xilinx_iic_of_driver);
 }
 
-#else /* CONFIG_OF */
-
-/* CONFIG_OF not enabled; do nothing helpers */
-static inline int __init xilinx_iic_of_register(void) { return 0; }
-static inline void __exit xilinx_iic_of_unregister(void) { }
-
-#endif /* CONFIG_OF */
-
 static int __init xiic_init(void)
 {
 	int ret;
 
-	ret = driver_register(&xilinx_iic_driver);
-	if (ret)
-		goto err_driver;
-
 	ret = xilinx_iic_of_register();
 	if (ret) 
-		goto err_of;
+		printk(KERN_ERR "registering iic driver failed: err=%i", ret);
 
-	return 0;
-
-err_of:
-	driver_unregister(&xilinx_iic_driver);	
-
-err_driver:
-	printk(KERN_ERR "registering iic driver failed: err=%i", ret);
 	return ret;
 }
 
 static void __exit xiic_cleanup(void)
 {
-	driver_unregister(&xilinx_iic_driver);
 	xilinx_iic_of_unregister();
 }
 
