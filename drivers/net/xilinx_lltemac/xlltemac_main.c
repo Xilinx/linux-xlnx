@@ -31,11 +31,8 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
-#ifdef CONFIG_OF
-// For open firmware.
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#endif
 
 #include "xbasic_types.h"
 #include "xlltemac.h"
@@ -457,12 +454,44 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 #define DEBUG_ERROR KERN_ERR
 #define DEBUG_LOG(level, ...) printk(level __VA_ARGS__)
 
+#define NATIONAL_DP83865_CONTROL_INIT       0x9200
+#define NATIONAL_DP83865_CONTROL            0
+#define NATIONAL_DP83865_STATUS             1
+#define NATIONAL_DP83865_STATUS_LINK        0x04
+#define NATIONAL_DP83865_STATUS_AUTONEGEND  0x20
+#define NATIONAL_DP83865_STATUS_AUTONEG     0x11
+#define NATIONAL_DP83865_LINKSPEED_1000M    0x10
+#define NATIONAL_DP83865_LINKSPEED_100M     0x8
+#define NATIONAL_DP83865_LINKSPEED_MASK     0x18
+#define NATIONAL_DP83865_RETRIES            5
+
+
+
 /*
  * Perform any necessary special phy setup. In the gmii case, nothing needs to
  * be done.
  */
 static void phy_setup(struct net_local *lp)
 {
+    #ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+
+    u16 RegValue;
+
+    printk(KERN_INFO "NATIONAL DP83865 PHY\n");
+    RegValue = NATIONAL_DP83865_CONTROL_INIT;
+    /*Do not reset phy*/
+    _XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr,
+              NATIONAL_DP83865_CONTROL, RegValue);
+
+    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+             NATIONAL_DP83865_STATUS, &RegValue);
+
+    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+             NATIONAL_DP83865_STATUS, &RegValue);
+#endif
+
+
+
 #ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 	u16 Register;
 
@@ -619,7 +648,46 @@ void set_mac_speed(struct net_local *lp)
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
 
-#ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+    u16 RegValue;
+    int i;
+
+    for (i = 0; i < NATIONAL_DP83865_RETRIES*10; i++) {
+        _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+                 NATIONAL_DP83865_STATUS, &RegValue);
+        if (RegValue & (NATIONAL_DP83865_STATUS_AUTONEGEND
+                    |NATIONAL_DP83865_STATUS_LINK))
+            break;
+        udelay(1 * 100000);
+    }
+
+    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+             NATIONAL_DP83865_STATUS_AUTONEG, &RegValue);
+    /* Get current link speed */
+    phylinkspeed = (RegValue & NATIONAL_DP83865_LINKSPEED_MASK);
+
+    /* Update TEMAC speed accordingly */
+    switch (phylinkspeed) {
+    case (NATIONAL_DP83865_LINKSPEED_1000M):
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 1000);
+        printk(KERN_INFO "XLlTemac: speed set to 1000Mb/s\n");
+        break;
+    case (NATIONAL_DP83865_LINKSPEED_100M):
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 100);
+        printk(KERN_INFO "XLlTemac: speed set to 100Mb/s\n");
+        break;
+    default:
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 10);
+        printk(KERN_INFO "XLlTemac: speed set to 10Mb/s\n");
+        break;
+    }
+
+    return;
+
+
+#elif CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
+
+/* #ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII */
 	/*
 	 * This function is specific to MARVELL 88E1111 PHY chip on
 	 * many Xilinx boards and assumes GMII interface is being used
@@ -834,9 +902,15 @@ static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, &reg);
 	*duplex = FULL_DUPLEX;
 
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+                 NATIONAL_DP83865_STATUS, &reg);
+	*linkup=(reg & NATIONAL_DP83865_STATUS_LINK) != 0;
+
+#else
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &reg);
 	*linkup = (reg & BMSR_LSTATUS) != 0;
-
+#endif
 	return 0;
 }
 
@@ -1514,7 +1588,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	len = skb_headlen(skb);
 
 	/* get the physical address of the header */
-	phy_addr = (u32) dma_map_single(NULL, skb->data, len, DMA_TO_DEVICE);
+	phy_addr = (u32) dma_map_single(dev->dev.parent, skb->data, len, DMA_TO_DEVICE);
 
 	/* get the header fragment, it's in the skb differently */
 	XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
@@ -1589,7 +1663,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 		virt_addr =
 			(void *) page_address(frag->page) + frag->page_offset;
 		phy_addr =
-			(u32) dma_map_single(NULL, virt_addr, frag->size,
+			(u32) dma_map_single(dev->dev.parent, virt_addr, frag->size,
 					     DMA_TO_DEVICE);
 
 		XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
@@ -1683,7 +1757,7 @@ static void DmaSendHandlerBH(unsigned long p)
 			do {
 				len = XLlDma_mBdGetLength(BdCurPtr);
 				skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
-				dma_unmap_single(NULL, skb_dma_addr, len,
+				dma_unmap_single(dev->dev.parent, skb_dma_addr, len,
 						 DMA_TO_DEVICE);
 
 				/* get ptr to skb */
@@ -1886,7 +1960,7 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 		}
 
 		/* Get dma handle of skb->data */
-		new_skb_baddr = (u32) dma_map_single(NULL, new_skb->data,
+		new_skb_baddr = (u32) dma_map_single(dev->dev.parent, new_skb->data,
 						     lp->max_frame_size,
 						     DMA_FROM_DEVICE);
 
@@ -1964,7 +2038,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 
 				/* get and free up dma handle used by skb->data */
 				skb_baddr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
-				dma_unmap_single(NULL, skb_baddr,
+				dma_unmap_single(dev->dev.parent, skb_baddr,
 						 lp->max_frame_size,
 						 DMA_FROM_DEVICE);
 
@@ -2149,7 +2223,7 @@ static int descriptor_init(struct net_device *dev)
 
 	printk(KERN_INFO
 	       "XLlTemac: (buffer_descriptor_init) phy: 0x%x, virt: 0x%x, size: 0x%x\n",
-	       lp->desc_space_handle, (unsigned int) lp->desc_space,
+	       (unsigned int)lp->desc_space_handle, (unsigned int) lp->desc_space,
 	       lp->desc_space_size);
 
 	/* calc size of send and recv descriptor space */
@@ -2159,7 +2233,8 @@ static int descriptor_init(struct net_device *dev)
 	recvpoolptr = lp->desc_space;
 	sendpoolptr = (void *) ((u32) lp->desc_space + recvsize);
 
-	recvpoolphy = (void *) lp->desc_space_handle;
+	/* cast the handle to a u32 1st just to keep the compiler happy */
+	recvpoolphy = (void *) (u32)lp->desc_space_handle;
 	sendpoolphy = (void *) ((u32) lp->desc_space_handle + recvsize);
 
 	result = XLlDma_BdRingCreate(&lp->Dma.RxBdRing, (u32) recvpoolphy,
@@ -2199,8 +2274,8 @@ static void free_descriptor_skb(struct net_device *dev)
 		skb = (struct sk_buff *) XLlDma_mBdGetId(BdPtr);
 		if (skb) {
 			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
-			dma_unmap_single(NULL, skb_dma_addr, lp->max_frame_size,
-					 DMA_FROM_DEVICE);
+			dma_unmap_single(dev->dev.parent, skb_dma_addr, 
+					 lp->max_frame_size, DMA_FROM_DEVICE);
 			dev_kfree_skb(skb);
 		}
 		/* find the next BD in the DMA RX BD ring */
@@ -2220,7 +2295,7 @@ static void free_descriptor_skb(struct net_device *dev)
 		if (skb) {
 			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
 			len = XLlDma_mBdGetLength(BdPtr);
-			dma_unmap_single(NULL, skb_dma_addr, len,
+			dma_unmap_single(dev->dev.parent, skb_dma_addr, len,
 					 DMA_TO_DEVICE);
 			dev_kfree_skb(skb);
 		}
@@ -2991,6 +3066,11 @@ static int xtenet_setup(
 	}
 	dev_set_drvdata(dev, ndev);
 
+	/* the following is needed starting in 2.6.30 as the dma_ops now require
+	   the device to be used in the dma calls 
+	*/
+	SET_NETDEV_DEV(ndev, dev);
+
 	ndev->irq = r_irq->start;
 
 	/* Initialize the private data used by XEmac_LookupConfig().
@@ -3190,46 +3270,6 @@ error:
 	return rc;
 }
 
-static int xtenet_probe(struct device *dev)
-{
-	struct resource *r_irq = NULL;	/* Interrupt resources */
-	struct resource *r_mem = NULL;	/* IO mem resources */
-	struct xlltemac_platform_data *pdata;
-	struct platform_device *pdev = to_platform_device(dev);
-
-	/* param check */
-	if (!pdev) {
-		dev_err(dev, "Probe called with NULL param.\n");
-		return -ENODEV;
-	}
-
-	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(dev, "Couldn't find platform data.\n");
-
-		return -ENODEV;
-	}
-
-	/* Get iospace and an irq for the device */
-	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r_irq || !r_mem) {
-		dev_err(dev, "IO resource(s) not found.\n");
-		return -ENODEV;
-	}
-
-        return xtenet_setup(dev, r_mem, r_irq, pdata);
-}
-
-static struct device_driver xtenet_driver = {
-	.name = DRIVER_NAME,
-	.bus = &platform_bus_type,
-
-	.probe = xtenet_probe,
-	.remove = xtenet_remove
-};
-
-#ifdef CONFIG_OF
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -3406,12 +3446,9 @@ static struct of_platform_driver xtenet_of_driver = {
 	.probe		= xtenet_of_probe,
 	.remove		= __devexit_p(xtenet_of_remove),
 };
-#endif
 
 static int __init xtenet_init(void)
 {
-	int status;
-
 	/*
 	 * Make sure the locks are initialized
 	 */
@@ -3429,20 +3466,12 @@ static int __init xtenet_init(void)
 	 * No kernel boot options used,
 	 * so we just need to register the driver
 	 */
-	status = driver_register(&xtenet_driver);
-#ifdef CONFIG_OF
-	status |= of_register_platform_driver(&xtenet_of_driver);
-#endif
-        return status;
-
+	return of_register_platform_driver(&xtenet_of_driver);
 }
 
 static void __exit xtenet_cleanup(void)
 {
-	driver_unregister(&xtenet_driver);
-#ifdef CONFIG_OF
 	of_unregister_platform_driver(&xtenet_of_driver);
-#endif
 }
 
 module_init(xtenet_init);

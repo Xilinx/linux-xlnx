@@ -1515,6 +1515,7 @@ platforms are moved over to use the flattened-device-tree model.
 		reg = <ec100000 10000>;
 		interrupt-parent = <&opb_intc_0>;
 		interrupts = <1 0>; // got this from the opb_intc parameters
+		port-number = <0>;
 		current-speed = <d#115200>;	// standard serial device prop
 		clock-frequency = <d#50000000>;	// standard serial device prop
 		xlnx,data-bits = <8>;
@@ -1703,7 +1704,10 @@ platforms are moved over to use the flattened-device-tree model.
 
       Required properties:
        - current-speed : Baud rate of uartlite
-
+		Optional properties:
+       - port-number : unique ordinal index of the device. This
+         property is required for a console on uartlite.
+		 
       v) Xilinx hwicap
 
 		Xilinx hwicap devices provide access to the configuration logic

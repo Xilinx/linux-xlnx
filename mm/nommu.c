@@ -1910,3 +1910,17 @@ int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, in
 	mmput(mm);
 	return len;
 }
+
+asmlinkage int sys_memory_ok(unsigned long addr, unsigned long size)
+{
+	struct vm_area_struct * vma;
+	int ret;
+	struct mm_struct *mm = current->mm;
+
+	if (!mm) return 1;
+
+	down_write(&mm->mmap_sem);
+	ret = (vma = find_vma(mm, addr)) != NULL && vma->vm_end >= addr+size;
+	up_write(&mm->mmap_sem);
+	return ret;
+}

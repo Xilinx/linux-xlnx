@@ -14,4 +14,9 @@ config I2C_ALGOPCF
 config I2C_ALGOPCA
 	tristate "I2C PCA 9564 interfaces"
 
+config XILINX_IIC
+	tristate "Xilinx IIC interface"
+	depends on I2C && XILINX_DRIVERS
+	help
+	  Supports the Xilinx IIC interface.
 endmenu

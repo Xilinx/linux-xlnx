@@ -1901,6 +1901,22 @@ config NE_H8300
 	  Say Y here if you want to use the NE2000 compatible
 	  controller on the Renesas H8/300 processor.
 
+config XILINX_EMAC
+	tristate "Xilinx 10/100 OPB EMAC support"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_IPIF
+	help
+	  This driver supports the Xilinx 10/100 opb_emac
+
+config XILINX_EMACLITE
+	tristate "Xilinx 10/100 OPB EMACLITE support"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_IPIF
+	help
+	  This driver supports the 10/100 OPB EMACLITE.
+
 config ATL2
 	tristate "Atheros L2 Fast Ethernet support"
 	depends on PCI
@@ -2391,6 +2407,16 @@ config ATL1
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1.
 
+config XILINX_TEMAC
+	tristate "Xilinx TEMAC 10/100/1000 Ethernet MAC driver"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_DMAV3
+	select NEED_XILINX_IPIF
+	help
+	  This driver supports the Xilinx TEMAC found in Virtex 4 FPGAs
+	  when the plb_temac adapter interface is used.
+
 config ATL1E
 	tristate "Atheros L1E Gigabit Ethernet support (EXPERIMENTAL)"
 	depends on PCI && EXPERIMENTAL
@@ -2398,32 +2424,8 @@ config ATL1E
 	select MII
 	help
 	  This driver supports the Atheros L1E gigabit ethernet adapter.
-
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1e.
-
-config ATL1C
-	tristate "Atheros L1C Gigabit Ethernet support (EXPERIMENTAL)"
-	depends on PCI && EXPERIMENTAL
-	select CRC32
-	select MII
-	help
-	  This driver supports the Atheros L1C gigabit ethernet adapter.
-
-	  To compile this driver as a module, choose M here.  The module
-	  will be called atl1c.
-
-config JME
-	tristate "JMicron(R) PCI-Express Gigabit Ethernet support"
-	depends on PCI
-	select CRC32
-	select MII
-	---help---
-	  This driver supports the PCI-Express gigabit ethernet adapters
-	  based on JMicron JMC250 chipset.
-
-	  To compile this driver as a module, choose M here. The module
-	  will be called jme.
 
 config XILINX_LLTEMAC
 	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"
@@ -2458,7 +2460,38 @@ config XILINX_LLTEMAC_MARVELL_88E1111_MII
 	  selections, then choose this option.  This option includes generic
 	  speed autonegotation code.
 
+config XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	bool "NATIONAL DP83865 using GMII"
+   help
+	  This phy is used by many Avnet boards.  This option includes
+	  code for enabling GMII over copper, and for setting the correct
+	  speed based on whatever the phy is able to autonegotiate.  This is
+	  usually the best option to use on Avnet boards.
+
 endchoice
+
+config ATL1C
+	tristate "Atheros L1C Gigabit Ethernet support (EXPERIMENTAL)"
+	depends on PCI && EXPERIMENTAL
+	select CRC32
+	select MII
+	help
+	  This driver supports the Atheros L1C gigabit ethernet adapter.
+
+	  To compile this driver as a module, choose M here.  The module
+	  will be called atl1c.
+
+config JME
+	tristate "JMicron(R) PCI-Express Gigabit Ethernet support"
+	depends on PCI
+	select CRC32
+	select MII
+	---help---
+	  This driver supports the PCI-Express gigabit ethernet adapters
+	  based on JMicron JMC250 chipset.
+
+	  To compile this driver as a module, choose M here. The module
+	  will be called jme.
 
 endif # NETDEV_1000
 

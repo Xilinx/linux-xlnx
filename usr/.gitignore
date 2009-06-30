@@ -6,3 +6,5 @@ initramfs_data.cpio
 initramfs_data.cpio.gz
 initramfs_list
 include
+initramfs_data.S
+bin2asm
