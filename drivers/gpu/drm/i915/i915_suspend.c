@@ -295,6 +295,16 @@ int i915_save_state(struct drm_device *dev)
 	i915_save_palette(dev, PIPE_B);
 	dev_priv->savePIPEBSTAT = I915_READ(PIPEBSTAT);
 
+	/* Cursor state */
+	dev_priv->saveCURACNTR = I915_READ(CURACNTR);
+	dev_priv->saveCURAPOS = I915_READ(CURAPOS);
+	dev_priv->saveCURABASE = I915_READ(CURABASE);
+	dev_priv->saveCURBCNTR = I915_READ(CURBCNTR);
+	dev_priv->saveCURBPOS = I915_READ(CURBPOS);
+	dev_priv->saveCURBBASE = I915_READ(CURBBASE);
+	if (!IS_I9XX(dev))
+		dev_priv->saveCURSIZE = I915_READ(CURSIZE);
+
 	/* CRT state */
 	dev_priv->saveADPA = I915_READ(ADPA);
 
@@ -312,6 +322,20 @@ int i915_save_state(struct drm_device *dev)
 	dev_priv->savePP_OFF_DELAYS = I915_READ(PP_OFF_DELAYS);
 	dev_priv->savePP_DIVISOR = I915_READ(PP_DIVISOR);
 
+	/* Display Port state */
+	if (SUPPORTS_INTEGRATED_DP(dev)) {
+		dev_priv->saveDP_B = I915_READ(DP_B);
+		dev_priv->saveDP_C = I915_READ(DP_C);
+		dev_priv->saveDP_D = I915_READ(DP_D);
+		dev_priv->savePIPEA_GMCH_DATA_M = I915_READ(PIPEA_GMCH_DATA_M);
+		dev_priv->savePIPEB_GMCH_DATA_M = I915_READ(PIPEB_GMCH_DATA_M);
+		dev_priv->savePIPEA_GMCH_DATA_N = I915_READ(PIPEA_GMCH_DATA_N);
+		dev_priv->savePIPEB_GMCH_DATA_N = I915_READ(PIPEB_GMCH_DATA_N);
+		dev_priv->savePIPEA_DP_LINK_M = I915_READ(PIPEA_DP_LINK_M);
+		dev_priv->savePIPEB_DP_LINK_M = I915_READ(PIPEB_DP_LINK_M);
+		dev_priv->savePIPEA_DP_LINK_N = I915_READ(PIPEA_DP_LINK_N);
+		dev_priv->savePIPEB_DP_LINK_N = I915_READ(PIPEB_DP_LINK_N);
+	}
 	/* FIXME: save TV & SDVO state */
 
 	/* FBC state */
@@ -394,7 +418,19 @@ int i915_restore_state(struct drm_device *dev)
 			for (i = 0; i < 8; i++)
 				I915_WRITE(FENCE_REG_945_8 + (i * 4), dev_priv->saveFENCE[i+8]);
 	}
-
+	
+	/* Display port ratios (must be done before clock is set) */
+	if (SUPPORTS_INTEGRATED_DP(dev)) {
+		I915_WRITE(PIPEA_GMCH_DATA_M, dev_priv->savePIPEA_GMCH_DATA_M);
+		I915_WRITE(PIPEB_GMCH_DATA_M, dev_priv->savePIPEB_GMCH_DATA_M);
+		I915_WRITE(PIPEA_GMCH_DATA_N, dev_priv->savePIPEA_GMCH_DATA_N);
+		I915_WRITE(PIPEB_GMCH_DATA_N, dev_priv->savePIPEB_GMCH_DATA_N);
+		I915_WRITE(PIPEA_DP_LINK_M, dev_priv->savePIPEA_DP_LINK_M);
+		I915_WRITE(PIPEB_DP_LINK_M, dev_priv->savePIPEB_DP_LINK_M);
+		I915_WRITE(PIPEA_DP_LINK_N, dev_priv->savePIPEA_DP_LINK_N);
+		I915_WRITE(PIPEB_DP_LINK_N, dev_priv->savePIPEB_DP_LINK_N);
+	}
+	
 	/* Pipe & plane A info */
 	/* Prime the clock */
 	if (dev_priv->saveDPLL_A & DPLL_VCO_ENABLE) {
@@ -480,6 +516,16 @@ int i915_restore_state(struct drm_device *dev)
 	I915_WRITE(DSPBCNTR, dev_priv->saveDSPBCNTR);
 	I915_WRITE(DSPBADDR, I915_READ(DSPBADDR));
 
+	/* Cursor state */
+	I915_WRITE(CURAPOS, dev_priv->saveCURAPOS);
+	I915_WRITE(CURACNTR, dev_priv->saveCURACNTR);
+	I915_WRITE(CURABASE, dev_priv->saveCURABASE);
+	I915_WRITE(CURBPOS, dev_priv->saveCURBPOS);
+	I915_WRITE(CURBCNTR, dev_priv->saveCURBCNTR);
+	I915_WRITE(CURBBASE, dev_priv->saveCURBBASE);
+	if (!IS_I9XX(dev))
+		I915_WRITE(CURSIZE, dev_priv->saveCURSIZE);
+
 	/* CRT state */
 	I915_WRITE(ADPA, dev_priv->saveADPA);
 
@@ -498,6 +544,12 @@ int i915_restore_state(struct drm_device *dev)
 	I915_WRITE(PP_DIVISOR, dev_priv->savePP_DIVISOR);
 	I915_WRITE(PP_CONTROL, dev_priv->savePP_CONTROL);
 
+	/* Display Port state */
+	if (SUPPORTS_INTEGRATED_DP(dev)) {
+		I915_WRITE(DP_B, dev_priv->saveDP_B);
+		I915_WRITE(DP_C, dev_priv->saveDP_C);
+		I915_WRITE(DP_D, dev_priv->saveDP_D);
+	}
 	/* FIXME: restore TV & SDVO state */
 
 	/* FBC info */

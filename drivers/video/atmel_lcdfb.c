@@ -270,7 +270,9 @@ static int atmel_lcdfb_alloc_video_memory(struct atmel_lcdfb_info *sinfo)
 
 	smem_len = (var->xres_virtual * var->yres_virtual
 		    * ((var->bits_per_pixel + 7) / 8));
+	mutex_lock(&info->mm_lock);
 	info->fix.smem_len = max(smem_len, sinfo->smem_len);
+	mutex_unlock(&info->mm_lock);
 
 	info->screen_base = dma_alloc_writecombine(info->device, info->fix.smem_len,
 					(dma_addr_t *)&info->fix.smem_start, GFP_KERNEL);
@@ -345,7 +347,7 @@ static int atmel_lcdfb_check_var(struct fb_var_screeninfo *var,
 	dev_dbg(dev, "  bpp:        %u\n", var->bits_per_pixel);
 	dev_dbg(dev, "  clk:        %lu KHz\n", clk_value_khz);
 
-	if ((PICOS2KHZ(var->pixclock) * var->bits_per_pixel / 8) > clk_value_khz) {
+	if (PICOS2KHZ(var->pixclock) > clk_value_khz) {
 		dev_err(dev, "%lu KHz pixel clock is too fast\n", PICOS2KHZ(var->pixclock));
 		return -EINVAL;
 	}
