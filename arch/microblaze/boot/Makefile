@@ -33,11 +33,16 @@ $(obj)/linux.bin.gz: $(obj)/linux.bin FORCE
 	$(call if_changed,gzip)
 	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
 
-quiet_cmd_cp = CP      $@
-      cmd_cp = cp $< $@
+quiet_cmd_cp = CP      $@$(if $2,$2)
+      cmd_cp = cp $< $@$(if $2,$2)
+
+quiet_cmd_strip = STRIP   $@
+      cmd_strip = $(STRIP) -K _start -K _end -K __log_buf -K _fdt_start vmlinux -o $@
 
 $(obj)/simpleImage.%: vmlinux FORCE
 	$(call if_changed,cp)
+	$(call if_changed,cp,.unstrip)
+	$(call if_changed,strip)
 	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
 
 # Rule to build device tree blobs
