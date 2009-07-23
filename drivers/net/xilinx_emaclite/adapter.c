@@ -379,7 +379,7 @@ static void RecvHandler(void *CallbackRef)
 static int xemaclite_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	struct net_local *lp = (struct net_local *) netdev_priv(dev);
-	struct hw_addr_data *hw_addr = (struct sockaddr *) &rq->ifr_hwaddr;
+	struct hw_addr_data *hw_addr = (struct hw_addr_data*) &rq->ifr_hwaddr;
 
 	switch (cmd) {
 	case SIOCETHTOOL:
@@ -412,16 +412,13 @@ static void xemaclite_remove_ndev(struct net_device *ndev)
 	}
 }
 
-static int xemaclite_remove(struct device *dev)
+static int __devexit xemaclite_remove(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 
 	unregister_netdev(ndev);
-	xemaclite_remove_ndev(ndev);
-
         release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start+1);
-
-	free_netdev(ndev);
+	xemaclite_remove_ndev(ndev);
 
 	dev_set_drvdata(dev, NULL);
 
@@ -636,7 +633,7 @@ static int __devinit xemaclite_of_probe(struct of_device *ofdev, const struct of
 	dev_info(&ofdev->dev, "Ping/Pong %d/%d\n",
 			pdata_struct.tx_ping_pong, pdata_struct.rx_ping_pong);
 
-        mac_address = of_get_mac_address(ofdev->node);
+        mac_address = (void *)of_get_mac_address(ofdev->node);
         if(mac_address) {
             memcpy(pdata_struct.mac_addr, mac_address, 6);
         } else {
