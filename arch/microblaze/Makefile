@@ -77,7 +77,14 @@ $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 define archhelp
-  echo  '* linux.bin        - Create raw binary'
-  echo  '  linux.bin.gz     - Create compressed raw binary'
-  echo  '  simpleImage.<dt> - ELF image with $(arch)/boot/dts/<dt>.dts linked in'
+  echo '* linux.bin        - Create raw binary'
+  echo '  linux.bin.gz     - Create compressed raw binary'
+  echo '  simpleImage.<dt> - ELF image with $(arch)/boot/dts/<dt>.dts linked in'
+  echo '  *_defconfig      - Select default config from arch/microblaze/configs'
+  echo ''
+  echo '  Targets with <dt> embed a device tree blob inside the image'
+  echo '  These targets support board with firmware that does not'
+  echo '  support passing a device tree directly.  Replace <dt> with the'
+  echo '  name of a dts file from the arch/microblaze/boot/dts/ directory'
+  echo '  (minus the .dts extension).'
 endef
