@@ -54,6 +54,7 @@ struct pt_regs {
 	int pt_mode;
 };
 
+#ifdef __KERNEL__
 #define kernel_mode(regs)		((regs)->pt_mode)
 #define user_mode(regs)			(!kernel_mode(regs))
 
@@ -61,6 +62,15 @@ struct pt_regs {
 #define profile_pc(regs)		instruction_pointer(regs)
 
 void show_regs(struct pt_regs *);
+#endif /* __KERNEL */
+
+/* pt_regs offsets used by gdbserver etc in ptrace syscalls */
+#define PT_GPR(n)	((n) * sizeof(microblaze_reg_t))
+#define PT_PC		(32 * sizeof(microblaze_reg_t))
+#define PT_PSW		(33 * sizeof(microblaze_reg_t))
+#define PT_EAR		(34 * sizeof(microblaze_reg_t))
+#define PT_ESR		(35 * sizeof(microblaze_reg_t))
+#define PT_FSR		(36 * sizeof(microblaze_reg_t))
 
 #endif /* __ASSEMBLY__ */
 

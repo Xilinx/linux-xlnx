@@ -1929,12 +1929,10 @@ config ATL2
 	  will be called atl2.
 
 config XILINX_EMACLITE
-	tristate "Xilinx 10/100 OPB EMACLITE support"
-	depends on XILINX_DRIVERS
-	select XILINX_EDK
-	select NEED_XILINX_IPIF
+	tristate "Xilinx 10/100 Ethernet Lite support"
+	depends on PPC32 || MICROBLAZE
 	help
-	  This driver supports the 10/100 OPB EMACLITE.
+	  This driver supports the 10/100 Ethernet Lite from Xilinx.
 
 source "drivers/net/fs_enet/Kconfig"
 
