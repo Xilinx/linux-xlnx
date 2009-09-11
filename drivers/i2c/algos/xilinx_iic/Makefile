@@ -2,7 +2,7 @@
 # Makefile for the Xilinx IIC driver
 #
 
-EXTRA_CFLAGS	+= -I$(TOPDIR)/drivers/xilinx_common
+EXTRA_CFLAGS	+= -Idrivers/xilinx_common
 
 obj-$(CONFIG_XILINX_IIC) := xilinx_iic.o
 
