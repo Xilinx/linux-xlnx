@@ -909,16 +909,18 @@ void __symbol_put(const char *symbol)
 }
 EXPORT_SYMBOL(__symbol_put);
 
+/* Note this assumes addr is a function, which it currently always is. */
 void symbol_put_addr(void *addr)
 {
 	struct module *modaddr;
+	unsigned long a = (unsigned long)dereference_function_descriptor(addr);
 
-	if (core_kernel_text((unsigned long)addr))
+	if (core_kernel_text(a))
 		return;
 
 	/* module_text_address is safe here: we're supposed to have reference
 	 * to module from symbol_get, so it can't go away. */
-	modaddr = __module_text_address((unsigned long)addr);
+	modaddr = __module_text_address(a);
 	BUG_ON(!modaddr);
 	module_put(modaddr);
 }
@@ -1068,7 +1070,8 @@ static inline int check_modstruct_version(Elf_Shdr *sechdrs,
 {
 	const unsigned long *crc;
 
-	if (!find_symbol("module_layout", NULL, &crc, true, false))
+	if (!find_symbol(MODULE_SYMBOL_PREFIX "module_layout", NULL,
+			 &crc, true, false))
 		BUG();
 	return check_version(sechdrs, versindex, "module_layout", mod, crc);
 }
@@ -1270,6 +1273,10 @@ static void add_notes_attrs(struct module *mod, unsigned int nsect,
 	unsigned int notes, loaded, i;
 	struct module_notes_attrs *notes_attrs;
 	struct bin_attribute *nattr;
+
+	/* failed to create section attributes, so can't create notes */
+	if (!mod->sect_attrs)
+		return;
 
 	/* Count notes sections and allocate structures.  */
 	notes = 0;
@@ -2451,9 +2458,9 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 		return ret;
 	}
 	if (ret > 0) {
-		printk(KERN_WARNING "%s: '%s'->init suspiciously returned %d, "
-				    "it should follow 0/-E convention\n"
-		       KERN_WARNING "%s: loading module anyway...\n",
+		printk(KERN_WARNING
+"%s: '%s'->init suspiciously returned %d, it should follow 0/-E convention\n"
+"%s: loading module anyway...\n",
 		       __func__, mod->name, ret,
 		       __func__);
 		dump_stack();

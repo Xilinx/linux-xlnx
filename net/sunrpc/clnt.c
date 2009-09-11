@@ -28,7 +28,6 @@
 #include <linux/kallsyms.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
-#include <linux/smp_lock.h>
 #include <linux/utsname.h>
 #include <linux/workqueue.h>
 #include <linux/in6.h>
@@ -938,6 +937,7 @@ static inline void
 rpc_task_force_reencode(struct rpc_task *task)
 {
 	task->tk_rqstp->rq_snd_buf.len = 0;
+	task->tk_rqstp->rq_bytes_sent = 0;
 }
 
 static inline void

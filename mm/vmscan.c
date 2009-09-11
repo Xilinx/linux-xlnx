@@ -630,9 +630,14 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 		referenced = page_referenced(page, 1,
 						sc->mem_cgroup, &vm_flags);
-		/* In active use or really unfreeable?  Activate it. */
+		/*
+		 * In active use or really unfreeable?  Activate it.
+		 * If page which have PG_mlocked lost isoltation race,
+		 * try_to_unmap moves it to unevictable list
+		 */
 		if (sc->order <= PAGE_ALLOC_COSTLY_ORDER &&
-					referenced && page_mapping_inuse(page))
+					referenced && page_mapping_inuse(page)
+					&& !(vm_flags & VM_LOCKED))
 			goto activate_locked;
 
 		/*
@@ -1104,7 +1109,7 @@ static unsigned long shrink_inactive_list(unsigned long max_scan,
 		 */
 		if (nr_freed < nr_taken && !current_is_kswapd() &&
 		    lumpy_reclaim) {
-			congestion_wait(WRITE, HZ/10);
+			congestion_wait(BLK_RW_ASYNC, HZ/10);
 
 			/*
 			 * The attempt at page out may have made some
@@ -1721,7 +1726,7 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 
 		/* Take a nap, wait for some writeback to complete */
 		if (sc->nr_scanned && priority < DEF_PRIORITY - 2)
-			congestion_wait(WRITE, HZ/10);
+			congestion_wait(BLK_RW_ASYNC, HZ/10);
 	}
 	/* top priority shrink_zones still had more to do? don't OOM, then */
 	if (!sc->all_unreclaimable && scanning_global_lru(sc))
@@ -1960,7 +1965,7 @@ loop_again:
 		 * another pass across the zones.
 		 */
 		if (total_scanned && priority < DEF_PRIORITY - 2)
-			congestion_wait(WRITE, HZ/10);
+			congestion_wait(BLK_RW_ASYNC, HZ/10);
 
 		/*
 		 * We do this so kswapd doesn't build up large priorities for
@@ -2233,7 +2238,7 @@ unsigned long shrink_all_memory(unsigned long nr_pages)
 				goto out;
 
 			if (sc.nr_scanned && prio < DEF_PRIORITY - 2)
-				congestion_wait(WRITE, HZ / 10);
+				congestion_wait(BLK_RW_ASYNC, HZ / 10);
 		}
 	}
 

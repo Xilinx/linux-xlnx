@@ -738,16 +738,22 @@ static void rq_completed(struct mapped_device *md, int run_queue)
 	dm_put(md);
 }
 
+static void free_rq_clone(struct request *clone)
+{
+	struct dm_rq_target_io *tio = clone->end_io_data;
+
+	blk_rq_unprep_clone(clone);
+	free_rq_tio(tio);
+}
+
 static void dm_unprep_request(struct request *rq)
 {
 	struct request *clone = rq->special;
-	struct dm_rq_target_io *tio = clone->end_io_data;
 
 	rq->special = NULL;
 	rq->cmd_flags &= ~REQ_DONTPREP;
 
-	blk_rq_unprep_clone(clone);
-	free_rq_tio(tio);
+	free_rq_clone(clone);
 }
 
 /*
@@ -825,8 +831,7 @@ static void dm_end_request(struct request *clone, int error)
 			rq->sense_len = clone->sense_len;
 	}
 
-	BUG_ON(clone->bio);
-	free_rq_tio(tio);
+	free_rq_clone(clone);
 
 	blk_end_request_all(rq, error);
 
@@ -2202,16 +2207,6 @@ int dm_swap_table(struct mapped_device *md, struct dm_table *table)
 		DMWARN("can't change the device type after a table is bound");
 		goto out;
 	}
-
-	/*
-	 * It is enought that blk_queue_ordered() is called only once when
-	 * the first bio-based table is bound.
-	 *
-	 * This setting should be moved to alloc_dev() when request-based dm
-	 * supports barrier.
-	 */
-	if (!md->map && dm_table_bio_based(table))
-		blk_queue_ordered(md->queue, QUEUE_ORDERED_DRAIN, NULL);
 
 	__unbind(md);
 	r = __bind(md, table, &limits);

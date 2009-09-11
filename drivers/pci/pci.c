@@ -846,6 +846,8 @@ pci_restore_state(struct pci_dev *dev)
 	int i;
 	u32 val;
 
+	if (!dev->state_saved)
+		return 0;
 	/* PCI Express register must be restored first */
 	pci_restore_pcie_state(dev);
 
@@ -1517,11 +1519,20 @@ void pci_enable_ari(struct pci_dev *dev)
  *
  * Perform INTx swizzling for a device behind one level of bridge.  This is
  * required by section 9.1 of the PCI-to-PCI bridge specification for devices
- * behind bridges on add-in cards.
+ * behind bridges on add-in cards.  For devices with ARI enabled, the slot
+ * number is always 0 (see the Implementation Note in section 2.2.8.1 of
+ * the PCI Express Base Specification, Revision 2.1)
  */
 u8 pci_swizzle_interrupt_pin(struct pci_dev *dev, u8 pin)
 {
-	return (((pin - 1) + PCI_SLOT(dev->devfn)) % 4) + 1;
+	int slot;
+
+	if (pci_ari_enabled(dev->bus))
+		slot = 0;
+	else
+		slot = PCI_SLOT(dev->devfn);
+
+	return (((pin - 1) + slot) % 4) + 1;
 }
 
 int
@@ -2171,7 +2182,7 @@ static int pci_parent_bus_reset(struct pci_dev *dev, int probe)
 	u16 ctrl;
 	struct pci_dev *pdev;
 
-	if (dev->subordinate)
+	if (pci_is_root_bus(dev->bus) || dev->subordinate || !dev->bus->self)
 		return -ENOTTY;
 
 	list_for_each_entry(pdev, &dev->bus->devices, bus_list)

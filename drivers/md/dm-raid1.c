@@ -638,6 +638,7 @@ static void do_writes(struct mirror_set *ms, struct bio_list *writes)
 		spin_lock_irq(&ms->lock);
 		bio_list_merge(&ms->writes, &requeue);
 		spin_unlock_irq(&ms->lock);
+		delayed_wake(ms);
 	}
 
 	/*
@@ -647,7 +648,13 @@ static void do_writes(struct mirror_set *ms, struct bio_list *writes)
 	 */
 	dm_rh_inc_pending(ms->rh, &sync);
 	dm_rh_inc_pending(ms->rh, &nosync);
-	ms->log_failure = dm_rh_flush(ms->rh) ? 1 : 0;
+
+	/*
+	 * If the flush fails on a previous call and succeeds here,
+	 * we must not reset the log_failure variable.  We need
+	 * userspace interaction to do that.
+	 */
+	ms->log_failure = dm_rh_flush(ms->rh) ? 1 : ms->log_failure;
 
 	/*
 	 * Dispatch io.
@@ -1292,7 +1299,7 @@ static int mirror_iterate_devices(struct dm_target *ti,
 
 	for (i = 0; !ret && i < ms->nr_mirrors; i++)
 		ret = fn(ti, ms->mirror[i].dev,
-			 ms->mirror[i].offset, data);
+			 ms->mirror[i].offset, ti->len, data);
 
 	return ret;
 }
