@@ -272,7 +272,6 @@ obj-$(CONFIG_ETRAX_ETHERNET) += cris/
 obj-$(CONFIG_ENP2611_MSF_NET) += ixp2000/
 
 obj-$(CONFIG_XILINX_EMAC) += xilinx_emac/
-obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite/
 obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
 obj-$(CONFIG_XILINX_TEMAC) += xilinx_temac/
   
@@ -286,3 +285,4 @@ obj-$(CONFIG_VIRTIO_NET) += virtio_net.o
 obj-$(CONFIG_SFC) += sfc/
 
 obj-$(CONFIG_WIMAX) += wimax/
+obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
