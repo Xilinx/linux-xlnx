@@ -47,3 +47,10 @@ extern void __umodsi3(void);
 EXPORT_SYMBOL(__umodsi3);
 extern char *_ebss;
 EXPORT_SYMBOL_GPL(_ebss);
+
+#ifdef CONFIG_OPT_LIB_ASM
+EXPORT_SYMBOL(memcpy);
+EXPORT_SYMBOL(memmove);
+#endif
+
+EXPORT_SYMBOL(__copy_tofrom_user);

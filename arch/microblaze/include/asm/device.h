@@ -16,6 +16,18 @@ struct dev_archdata {
 	struct device_node	*of_node;
 };
 
+static inline void dev_archdata_set_node(struct dev_archdata *ad,
+					 struct device_node *np)
+{
+	ad->of_node = np;
+}
+
+static inline struct device_node *
+dev_archdata_get_node(const struct dev_archdata *ad)
+{
+	return ad->of_node;
+}
+
 #endif /* _ASM_MICROBLAZE_DEVICE_H */
 
 
