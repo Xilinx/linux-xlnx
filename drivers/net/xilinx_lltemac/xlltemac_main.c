@@ -605,7 +605,7 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 		/* initiate an autonegotiation of the speed */
 		_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, phy_reg0);
 
-		wait_count = 20;	/* so we don't loop forever */
+		wait_count = 5;	/* so we don't loop forever */
 		while (wait_count--) {
 			/* wait a bit for the negotiation to complete */
 			mdelay(500);
