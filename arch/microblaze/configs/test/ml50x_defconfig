@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.30
-# Mon Aug 10 09:21:09 2009
+# Tue Jul 28 15:47:44 2009
 #
 CONFIG_MICROBLAZE=y
 # CONFIG_SWAP is not set
@@ -305,7 +305,7 @@ CONFIG_BLK_DEV_RAM_SIZE=8192
 # CONFIG_BLK_DEV_XIP is not set
 # CONFIG_CDROM_PKTCDVD is not set
 # CONFIG_ATA_OVER_ETH is not set
-# CONFIG_XILINX_SYSACE is not set
+CONFIG_XILINX_SYSACE=y
 CONFIG_MISC_DEVICES=y
 # CONFIG_ICS932S401 is not set
 # CONFIG_ENCLOSURE_SERVICES is not set
