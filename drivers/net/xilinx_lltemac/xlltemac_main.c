@@ -2401,6 +2401,10 @@ xenet_ethtool_get_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 
 	memset(ec, 0, sizeof(struct ethtool_coalesce));
 
+	if (!(XLlTemac_IsDma(&lp->Emac))) {
+		return -EIO;
+	}
+
 	XLlDma_BdRingGetCoalesce(&lp->Dma.RxBdRing, &threshold, &waitbound);
 	ec->rx_max_coalesced_frames = threshold;
 	ec->rx_coalesce_usecs = waitbound;
@@ -2481,6 +2485,10 @@ xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 
 	lp = (struct net_local *) netdev_priv(dev);
 
+	if (!(XLlTemac_IsDma(&lp->Emac))) {
+		return -EIO;
+	}
+
 	if (ec->rx_coalesce_usecs == 0) {
 		ec->rx_coalesce_usecs = 1;
 		dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK & ~XLLDMA_CR_IRQ_DELAY_EN_MASK;
@@ -2510,7 +2518,7 @@ xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 	return 0;
 }
 
-static int
+static void
 xenet_ethtool_get_ringparam(struct net_device *dev,
 			    struct ethtool_ringparam *erp)
 {
@@ -2520,14 +2528,186 @@ xenet_ethtool_get_ringparam(struct net_device *dev,
 	erp->tx_max_pending = XTE_SEND_BD_CNT;
 	erp->rx_pending = XTE_RECV_BD_CNT;
 	erp->tx_pending = XTE_SEND_BD_CNT;
+}
+
+static void
+xenet_ethtool_get_pauseparam(struct net_device *dev,
+			     struct ethtool_pauseparam *epp)
+{
+	u32 Options;
+	u16 gmii_status;
+	struct net_local *lp = netdev_priv(dev);
+
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &gmii_status);
+
+	/* I suspect that the expected value is that autonegotiation is
+	 * enabled,  not completed.  
+	 * As seen in xenet_do_ethtool_ioctl() */
+        if (gmii_status & BMSR_ANEGCOMPLETE) {
+                epp->autoneg = AUTONEG_ENABLE;
+        }
+        else {
+                epp->autoneg = AUTONEG_DISABLE;
+        }
+
+	Options = XLlTemac_GetOptions(&lp->Emac);
+	if (Options & XTE_FLOW_CONTROL_OPTION) {
+		epp->rx_pause = 1;
+		epp->tx_pause = 1;
+	}
+	else {
+		epp->rx_pause = 0;
+		epp->tx_pause = 0;
+	}
+}
+
+static u32
+xenet_ethtool_get_rx_csum(struct net_device *dev)
+{
+	struct net_local *lp = netdev_priv(dev);
+	u32 retval;
+   
+ 	retval = (lp->local_features & LOCAL_FEATURE_RX_CSUM) != 0;
+
+ 	return retval;
+}
+
+static int
+xenet_ethtool_set_rx_csum(struct net_device *dev, u32 onoff)
+{
+	struct net_local *lp = netdev_priv(dev);
+
+	if (onoff) {
+		if (XLlTemac_IsRxCsum(&lp->Emac) == TRUE) {
+			lp->local_features |=
+				LOCAL_FEATURE_RX_CSUM;
+		}
+	}
+	else {
+		lp->local_features &= ~LOCAL_FEATURE_RX_CSUM;
+	}
+
 	return 0;
 }
+
+static u32
+xenet_ethtool_get_tx_csum(struct net_device *dev)
+{
+	u32 retval;
+
+	retval = (dev->features & NETIF_F_IP_CSUM) != 0;
+	return retval;
+}
+
+static int
+xenet_ethtool_set_tx_csum(struct net_device *dev, u32 onoff)
+{
+	struct net_local *lp = netdev_priv(dev);
+
+	if (onoff) {
+		if (XLlTemac_IsTxCsum(&lp->Emac) == TRUE) {
+			dev->features |= NETIF_F_IP_CSUM;
+		}
+	}
+	else {
+		dev->features &= ~NETIF_F_IP_CSUM;
+	}
+
+	return 0;
+}
+
+static u32
+xenet_ethtool_get_sg(struct net_device *dev)
+{
+	u32 retval;
+
+	retval = (dev->features & NETIF_F_SG) != 0;
+
+	return retval;
+}
+
+static int
+xenet_ethtool_set_sg(struct net_device *dev, u32 onoff)
+{
+	struct net_local *lp = netdev_priv(dev);
+
+	if (onoff) {
+		if (XLlTemac_IsDma(&lp->Emac)) {
+			dev->features |=
+				NETIF_F_SG | NETIF_F_FRAGLIST;
+		}
+	}
+	else {
+		dev->features &=
+			~(NETIF_F_SG | NETIF_F_FRAGLIST);
+	}
+
+	return 0;
+}
+
+static void
+xenet_ethtool_get_strings(struct net_device *dev, u32 stringset, u8 *strings)
+{
+	*strings = 0;
+
+	switch (stringset) {
+	case ETH_SS_STATS:
+		memcpy(strings,
+			&xenet_ethtool_gstrings_stats,
+			sizeof(xenet_ethtool_gstrings_stats));
+
+		break;
+
+	default:
+		break;
+	}
+}
+
+static void
+xenet_ethtool_get_ethtool_stats(struct net_device *dev,
+	struct ethtool_stats *stats, u64 *data)
+{
+	struct net_local *lp = netdev_priv(dev);
+
+	data[0] = lp->stats.tx_packets;
+	data[1] = lp->stats.tx_dropped;
+	data[2] = lp->stats.tx_errors;
+	data[3] = lp->stats.tx_fifo_errors;
+	data[4] = lp->stats.rx_packets;
+	data[5] = lp->stats.rx_dropped;
+	data[6] = lp->stats.rx_errors;
+	data[7] = lp->stats.rx_fifo_errors;
+	data[8] = lp->stats.rx_crc_errors;
+	data[9] = lp->max_frags_in_a_packet;
+	data[10] = lp->tx_hw_csums;
+	data[11] = lp->rx_hw_csums;
+}
+
+static int
+xenet_ethtool_get_sset_count(struct net_device *netdev, int sset)
+{
+	switch (sset) {
+	case ETH_SS_STATS:
+		return XENET_STATS_LEN;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 
 #define EMAC_REGS_N 32
 struct mac_regsDump {
 	struct ethtool_regs hd;
 	u16 data[EMAC_REGS_N];
 };
+
+int
+xenet_ethtool_get_regs_len(struct net_device *dev)
+{
+	return (sizeof(u16) * EMAC_REGS_N);
+}
 
 static void
 xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
@@ -2548,7 +2728,7 @@ xenet_ethtool_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 	*(int *) ret = 0;
 }
 
-static int
+static void
 xenet_ethtool_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *ed)
 {
 	memset(ed, 0, sizeof(struct ethtool_drvinfo));
@@ -2556,9 +2736,13 @@ xenet_ethtool_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *ed)
 	strncpy(ed->version, DRIVER_VERSION, sizeof(ed->version) - 1);
 	/* Also tell how much memory is needed for dumping register values */
 	ed->regdump_len = sizeof(u16) * EMAC_REGS_N;
-	return 0;
+	ed->n_stats = XENET_STATS_LEN;
 }
 
+/*
+ * xenet_do_ethtool_ioctl:
+ * DEPRECATED
+ */
 static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 {
 	struct net_local *lp = (struct net_local *) netdev_priv(dev);
@@ -2717,10 +2901,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 		break;
 	case ETHTOOL_GDRVINFO:	/* Get driver information. Use "-i" w/ ethtool */
 		edrv.cmd = edrv.cmd;
-		ret = xenet_ethtool_get_drvinfo(dev, &edrv);
-		if (ret < 0) {
-			return -EIO;
-		}
+		xenet_ethtool_get_drvinfo(dev, &edrv);
 		edrv.n_stats = XENET_STATS_LEN;
 		if (copy_to_user
 		    (rq->ifr_data, &edrv, sizeof(struct ethtool_drvinfo))) {
@@ -2742,10 +2923,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 		break;
 	case ETHTOOL_GRINGPARAM:	/* Get RX/TX ring parameters. Use "-g" w/ ethtool */
 		erp.cmd = edrv.cmd;
-		ret = xenet_ethtool_get_ringparam(dev, &(erp));
-		if (ret < 0) {
-			return ret;
-		}
+		xenet_ethtool_get_ringparam(dev, &(erp));
 		if (copy_to_user
 		    (rq->ifr_data, &erp, sizeof(struct ethtool_ringparam))) {
 			return -EFAULT;
@@ -2835,6 +3013,7 @@ static int xenet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 	switch (cmd) {
 	case SIOCETHTOOL:
+		/* DEPRECATED */
 		return xenet_do_ethtool_ioctl(dev, rq);
 	case SIOCGMIIPHY:	/* Get address of GMII PHY in use. */
 	case SIOCDEVPRIVATE:	/* for binary compat, remove in 2.5 */
@@ -3043,6 +3222,28 @@ static int detect_phy(struct net_local *lp, char *dev_name)
 
 static struct net_device_ops xilinx_netdev_ops;
 
+/* From include/linux/ethtool.h */
+static struct ethtool_ops ethtool_ops = {
+	.get_settings = xenet_ethtool_get_settings,
+	.set_settings = xenet_ethtool_set_settings,
+	.get_drvinfo  = xenet_ethtool_get_drvinfo,
+	.get_regs_len = xenet_ethtool_get_regs_len,
+	.get_regs     = xenet_ethtool_get_regs,
+	.get_coalesce = xenet_ethtool_get_coalesce,
+	.set_coalesce = xenet_ethtool_set_coalesce,
+	.get_ringparam  = xenet_ethtool_get_ringparam,
+	.get_pauseparam = xenet_ethtool_get_pauseparam,
+	.get_rx_csum  = xenet_ethtool_get_rx_csum,
+	.set_rx_csum  = xenet_ethtool_set_rx_csum,
+	.get_tx_csum  = xenet_ethtool_get_tx_csum,
+	.set_tx_csum  = xenet_ethtool_set_tx_csum,
+	.get_sg       = xenet_ethtool_get_sg,
+	.set_sg       = xenet_ethtool_set_sg,
+	.get_strings  = xenet_ethtool_get_strings,
+	.get_ethtool_stats = xenet_ethtool_get_ethtool_stats,
+	.get_sset_count    = xenet_ethtool_get_sset_count,
+};
+
 /** Shared device initialization code */
 static int xtenet_setup(
 		struct device *dev,
@@ -3242,6 +3443,11 @@ static int xtenet_setup(
 	lp->stripping =
 		(XLlTemac_GetOptions(&(lp->Emac)) & XTE_FCS_STRIP_OPTION) != 0;
 #endif
+
+	/* Set ethtool IOCTL handler vectors.
+	 * xenet_do_ethtool_ioctl() is deprecated.
+	 */
+	SET_ETHTOOL_OPS(ndev, &ethtool_ops);
 
 	rc = register_netdev(ndev);
 	if (rc) {
