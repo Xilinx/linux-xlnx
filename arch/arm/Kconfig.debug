@@ -71,13 +71,13 @@ config DEBUG_LL
 	  in the kernel.  This is helpful if you are debugging code that
 	  executes before the console is initialized.
 
-config DEBUG_LL_CONSOLE
-	bool "kernel early console"
-	default n
+config EARLY_PRINTK
+	bool "Early printk"
 	depends on DEBUG_LL
 	help
-	  Say Y here if you want to have an early console using the Kernel
-	  low-level debugging functions
+	  Say Y here if you want to have an early console using the
+	  kernel low-level debugging functions. Add earlyprintk to your
+	  kernel parameters to enable this console.
 
 config DEBUG_ICEDCC
 	bool "Kernel low-level debugging via EmbeddedICE DCC channel"
