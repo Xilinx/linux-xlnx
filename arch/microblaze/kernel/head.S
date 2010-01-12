@@ -234,19 +234,6 @@ start_here:
 	bralid	r15, mmu_init
 	nop
 
-	/* Go back to running unmapped so we can load up new values
-	 * and change to using our exception vectors.
-	 * On the MicroBlaze, all we invalidate the used TLB entries to clear
-	 * the old 16M byte TLB mappings.
-	 */
-	ori	r15,r0,TOPHYS(kernel_load_context)
-	ori	r4,r0,MSR_KERNEL
-	mts	rmsr,r4
-	nop
-	bri	4
-	rted	r15,0
-	nop
-
 	/* Load up the kernel context */
 kernel_load_context:
 	# Keep entry 0 and 1 valid. Entry 3 mapped to LMB can go away.
