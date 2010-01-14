@@ -16,6 +16,7 @@
 #
 # machine_is_xxx	CONFIG_xxxx		MACH_TYPE_xxx		number
 #
+xilinx			ARCH_XILINX		XILINX			4000
 ebsa110			ARCH_EBSA110		EBSA110			0
 riscpc			ARCH_RPC		RISCPC			1
 nexuspci		ARCH_NEXUSPCI		NEXUSPCI		3

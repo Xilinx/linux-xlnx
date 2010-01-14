@@ -702,7 +702,20 @@ config ARCH_BCMRING
 	help
 	  Support for Broadcom's BCMRing platform.
 
+config ARCH_XILINX
+	bool "Xilinx ARM1176 based FPGA"
+	select GENERIC_TIME
+	select GENERIC_CLOCKEVENTS
+	select ARM_GIC
+	select ARM_AMBA
+	select ARCH_REQUIRE_GPIOLIB
+	help
+	  Support for Xilinx FPGAs with 1176 based processors
+
+
 endchoice
+
+source "arch/arm/mach-xilinx/Kconfig"
 
 source "arch/arm/mach-clps711x/Kconfig"
 
