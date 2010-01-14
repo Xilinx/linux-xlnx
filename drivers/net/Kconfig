@@ -2419,6 +2419,7 @@ config XILINX_LL_TEMAC
 
 config XILINX_PSS_EMAC
         tristate "Xilinx PSS tri-speed EMAC support"
+	select PHYLIB
         help
           This driver supports tri-speed EMAC.
 

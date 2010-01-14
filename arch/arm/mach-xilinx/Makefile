@@ -3,4 +3,4 @@
 #
 
 # Common support
-obj-y := time.o devices.o xilinx.o
+obj-y := time.o devices.o xilinx.o pl330.o

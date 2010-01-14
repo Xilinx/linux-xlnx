@@ -705,7 +705,7 @@ static int __devinit xspipss_probe(struct platform_device *dev)
 
 	INIT_WORK(&xspi->work, xspipss_work_queue);
 	xspi->workqueue =
-		create_singlethread_workqueue(master->dev.bus_id);
+		create_singlethread_workqueue(dev_name(&master->dev));
 	if (!xspi->workqueue) {
 		ret = -ENOMEM;
 		dev_err(&dev->dev, "problem initializing queue\n");

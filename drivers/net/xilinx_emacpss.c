@@ -568,6 +568,8 @@ struct net_local {
 	unsigned               ip_summed;
 };
 
+static struct net_device_ops netdev_ops;
+
 /**
  * xemacpss_mdio_read - Read current value of phy register indicated by
  * phyreg.
@@ -776,7 +778,7 @@ static int xemacpss_mii_probe(struct net_device *ndev)
 
 	pdata = lp->pdev->dev.platform_data;
 
-	phydev = phy_connect(ndev, phydev->dev.bus_id,
+	phydev = phy_connect(ndev, dev_name(&phydev->dev),
 		&xemacpss_adjust_link, 0, PHY_INTERFACE_MODE_RGMII_ID);
 
 	if (IS_ERR(phydev)) {
@@ -1314,7 +1316,6 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 {
 	struct net_local *lp = container_of(napi, struct net_local, napi);
-	struct net_device *ndev = lp->ndev;
 	int work_done = 0;
 	u32 regval;
 
@@ -1326,7 +1327,7 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 		 * before this function is called and no receive packets
 		 * are available to be processed.
 		 */
-		netif_rx_complete(ndev, napi);
+		napi_complete(napi);
 		goto out;
 	}
 
@@ -1340,13 +1341,13 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 	if (!(regval & XEMACPSS_RXSR_FRAMERX_MASK)) {
 		dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
 		regval);
-		netif_rx_complete(ndev, napi);
+		napi_complete(napi);
 		goto out;
 	}
 
 	work_done = xemacpss_rx(lp, budget);
 	if (work_done < budget)
-		netif_rx_complete(ndev, napi);
+		napi_complete(napi);
 
 out:
 	/* We disable RX interrupts in interrupt service routine, now
@@ -1472,7 +1473,7 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 		/* RX interrupts */
 		if (regisr &
 		(XEMACPSS_IXR_FRAMERX_MASK | XEMACPSS_IXR_RX_ERR_MASK)) {
-			if (netif_rx_schedule_prep(ndev, &lp->napi)) {
+			if (napi_schedule_prep(&lp->napi)) {
 				/* acknowledge RX interrupt and disable it,
 				 * napi will be the one processing it.  */
 				xemacpss_write(lp->baseaddr,
@@ -1481,7 +1482,7 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 					 XEMACPSS_IXR_RX_ERR_MASK));
 				dev_dbg(&lp->pdev->dev,
 					"schedule RX softirq\n");
-				__netif_rx_schedule(ndev, &lp->napi);
+				__napi_schedule(&lp->napi);
 			}
 		}
 
@@ -2549,16 +2550,8 @@ static int __init xemacpss_probe(struct platform_device *pdev)
 		goto err_out_iounmap;
 	}
 
-	ndev->open               = xemacpss_open;
-	ndev->stop               = xemacpss_close;
-	ndev->tx_timeout         = xemacpss_tx_timeout;
+	ndev->netdev_ops 	 = &netdev_ops;
 	ndev->watchdog_timeo     = TX_TIMEOUT;
-	ndev->set_mac_address    = xemacpss_set_mac_address;
-	ndev->hard_start_xmit    = xemacpss_start_xmit;
-	ndev->set_multicast_list = xemacpss_set_rx_mode;
-	ndev->do_ioctl           = xemacpss_ioctl;
-	ndev->change_mtu         = xemacpss_change_mtu;
-	ndev->get_stats          = xemacpss_get_stats;
 	ndev->ethtool_ops        = &xemacpss_ethtool_ops;
 	ndev->base_addr          = r_mem->start;
 	ndev->features           = NETIF_F_IP_CSUM;
@@ -2671,6 +2664,18 @@ static int xemacpss_resume(struct platform_device *pdev)
 	netif_device_attach(ndev);
 	return 0;
 }
+
+static struct net_device_ops netdev_ops = {
+	.ndo_open 		= xemacpss_open,
+	.ndo_stop		= xemacpss_close,
+	.ndo_start_xmit		= xemacpss_start_xmit,
+	.ndo_set_multicast_list = xemacpss_set_rx_mode,
+	.ndo_set_mac_address    = xemacpss_set_mac_address,
+	.ndo_do_ioctl		= xemacpss_ioctl,
+	.ndo_change_mtu		= xemacpss_change_mtu,
+	.ndo_tx_timeout		= xemacpss_tx_timeout,
+	.ndo_get_stats		= xemacpss_get_stats,
+};
 
 static struct platform_driver xemacpss_driver = {
 	.probe   = xemacpss_probe,

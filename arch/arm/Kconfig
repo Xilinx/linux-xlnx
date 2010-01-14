@@ -708,6 +708,7 @@ config ARCH_XILINX
 	select GENERIC_CLOCKEVENTS
 	select ARM_GIC
 	select ARM_AMBA
+	select ISA_DMA_API
 	select ARCH_REQUIRE_GPIOLIB
 	help
 	  Support for Xilinx FPGAs with 1176 based processors

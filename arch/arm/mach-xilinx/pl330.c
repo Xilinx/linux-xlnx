@@ -2177,8 +2177,6 @@ static int __devinit pl330_platform_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	pdev->dev.driver_data = &driver_data;
-
 	pl330_init_device_data(pdev_id, pdev);
 
 	/* assume the init_device_data is invoked before this point */

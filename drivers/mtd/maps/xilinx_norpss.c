@@ -167,7 +167,7 @@ static int __devinit xnorpss_probe(struct platform_device *pdev)
 	xnorpss_init_nor_flash(info->smc_regs);
 
 	/* Set the NOR flash mapping information */
-	info->map.name		= pdev->dev.bus_id;
+	info->map.name		= dev_name(&pdev->dev);
 	info->map.phys		= nor_res->start;
 	info->map.size		= flash_size;
 	info->map.bankwidth	= *((int *)(pdev->dev.platform_data));
