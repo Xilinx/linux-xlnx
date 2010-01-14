@@ -79,6 +79,12 @@ config GPIO_XILINX
 	help
 	  Say yes here to support the Xilinx FPGA GPIO device
 
+config GPIO_XILINX_PSS
+	tristate "Xilinx GPIO PSS"
+	depends on ARCH_XILINX
+	help
+	  Say yes here to support Xilinx GPIO PSS controller
+
 config GPIO_VR41XX
 	tristate "NEC VR4100 series General-purpose I/O Uint support"
 	depends on CPU_VR41XX

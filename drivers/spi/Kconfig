@@ -244,6 +244,12 @@ config SPI_XILINX
 	  See the "OPB Serial Peripheral Interface (SPI) (v1.00e)"
 	  Product Specification document (DS464) for hardware details.
 
+config SPI_XILINX_PSS_SPI
+	tristate "Xilinx PSS SPI controller"
+	depends on SPI_MASTER && EXPERIMENTAL
+	help
+	  This selects the SPI controller master driver from the Xilinx.
+
 #
 # Add new SPI master controllers in alphabetical order above this line
 #

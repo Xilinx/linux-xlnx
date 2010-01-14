@@ -2417,6 +2417,11 @@ config XILINX_LL_TEMAC
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
 
+config XILINX_PSS_EMAC
+        tristate "Xilinx PSS tri-speed EMAC support"
+        help
+          This driver supports tri-speed EMAC.
+
 config QLA3XXX
 	tristate "QLogic QLA3XXX Network Driver Support"
 	depends on PCI

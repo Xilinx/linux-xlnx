@@ -564,6 +564,12 @@ config I2C_VERSATILE
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-versatile.
 
+config I2C_XILINX_PSS
+	tristate "XILINX PSS I2C Controller"
+	depends on ARCH_XILINX
+	help
+	  Say yes here to select Xilnx PSS I2C Host Controller
+
 comment "External I2C/SMBus adapter drivers"
 
 config I2C_PARPORT
