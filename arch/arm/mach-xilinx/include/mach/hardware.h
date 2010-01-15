@@ -28,15 +28,18 @@
 #define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
 
 /*
- * Device base addresses, all are mapped flat such that virtual = physical
+ * Device base addresses, all are mapped flat such that virtual = physical, is
+ * still true now with EPA9 addresses?
  */
+#define	EPA9_BASE		0x90000000
 #define IO_BASE			0xE0000000
+
+#define TTC0_BASE		(EPA9_BASE + 0x00001000)/* 0x90001000 */
+#define GIC_DIST_BASE		(EPA9_BASE + 0x00100000)/* 0x90100000 */
 
 #define UART0_BASE		(IO_BASE)		/* 0xE0000000 */
 #define UART1_BASE		(IO_BASE + 0x00001000)	/* 0xE0001000 */
 #define GIC_CPU_BASE		(IO_BASE + 0x08000000)	/* 0xE8000000 */
-#define TTC0_BASE		(IO_BASE + 0x1E001000)	/* 0xFE001000 */
-#define GIC_DIST_BASE		(IO_BASE + 0x1E100000)	/* 0xFE100000 */
 #define DMAC0_BASE		(IO_BASE + 0x0C000000)	/* 0xEC000000 */
 #define DMAC1_BASE		(IO_BASE + 0x0C001000)	/* 0xEC001000 */
 #define I2C0_BASE		(IO_BASE + 0x00004000)	/* 0xE0004000 */
@@ -47,7 +50,6 @@
 #define ETH1_BASE               (IO_BASE + 0x0000C000)  /* 0xE000C000 */
 #define SPI0_BASE		(IO_BASE + 0x00006000)	/* 0xE0006000 */
 #define SPI1_BASE		(IO_BASE + 0x00007000)	/* 0xE0007000 */
-
 
 /*
  * GIC Interrupts
