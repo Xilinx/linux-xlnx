@@ -14,6 +14,7 @@ ENTRY(_start)
 
 #include <asm/page.h>
 #include <asm-generic/vmlinux.lds.h>
+#include <asm/thread_info.h>
 
 jiffies = jiffies_64 + 4;
 
@@ -25,8 +26,8 @@ SECTIONS {
 		_stext = . ;
 		*(.text .text.*)
 		*(.fixup)
-
-		*(.exitcall.exit)
+               EXIT_TEXT
+               EXIT_CALL
 		SCHED_TEXT
 		LOCK_TEXT
 		KPROBES_TEXT
@@ -43,13 +44,8 @@ SECTIONS {
 	}
 
 	. = ALIGN(16);
-	RO_DATA(16)
-	. = ALIGN(16);
-	__ex_table : AT(ADDR(__ex_table) - LOAD_OFFSET) {
-		__start___ex_table = .;
-		*(__ex_table)
-		__stop___ex_table = .;
-	}
+	RODATA
+	EXCEPTION_TABLE(16)
 
 	/*
 	 * sdata2 section can go anywhere, but must be word aligned
@@ -66,27 +62,13 @@ SECTIONS {
 	}
 
 	_sdata = . ;
-	/* page aligned when MMU used - origin 0x4 */
-	.data ALIGN (4096) : AT(ADDR(.data) - LOAD_OFFSET) {
-		DATA_DATA
-		CONSTRUCTORS
-	}
-	. = ALIGN(32);
-	.data.cacheline_aligned : AT(ADDR(.data.cacheline_aligned) - LOAD_OFFSET) {
-		*(.data.cacheline_aligned)
-	}
+	RW_DATA_SECTION(32, PAGE_SIZE, THREAD_SIZE)
 	_edata = . ;
 
 	/* Reserve some low RAM for r0 based memory references */
 	. = ALIGN(0x4) ;
 	r0_ram = . ;
 	. = . +  4096;	/* a page should be enough */
-
-	/* The initial task */
-	. = ALIGN(8192);
-	.data.init_task : AT(ADDR(.data.init_task) - LOAD_OFFSET) {
-		*(.data.init_task)
-	}
 
 	/* Under the microblaze ABI, .sdata and .sbss must be contiguous */
 	. = ALIGN(8);
@@ -106,12 +88,7 @@ SECTIONS {
 
 	__init_begin = .;
 
-	. = ALIGN(4096);
-	.init.text : AT(ADDR(.init.text) - LOAD_OFFSET) {
-		_sinittext = . ;
-		INIT_TEXT
-		_einittext = .;
-	}
+	INIT_TEXT_SECTION(PAGE_SIZE)
 
 	.init.data : AT(ADDR(.init.data) - LOAD_OFFSET) {
 		INIT_DATA
@@ -125,21 +102,15 @@ SECTIONS {
 	}
 
 	.init.setup : AT(ADDR(.init.setup) - LOAD_OFFSET) {
-		__setup_start = .;
-		*(.init.setup)
-		__setup_end = .;
+		INIT_SETUP(0)
 	}
 
 	.initcall.init : AT(ADDR(.initcall.init) - LOAD_OFFSET ) {
-		__initcall_start = .;
-		INITCALLS
-		__initcall_end = .;
+		INIT_CALLS
 	}
 
 	.con_initcall.init : AT(ADDR(.con_initcall.init) - LOAD_OFFSET) {
-		__con_initcall_start = .;
-		*(.con_initcall.init)
-		__con_initcall_end = .;
+		CON_INITCALL
 	}
 
 	SECURITY_INIT
@@ -173,4 +144,6 @@ SECTIONS {
 	}
 	. = ALIGN(4096);
 	_end = .;
+
+	DISCARDS
 }

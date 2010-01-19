@@ -56,9 +56,6 @@ boot := arch/microblaze/boot
 # Are we making a simpleImage.<boardname> target? If so, crack out the boardname
 DTB:=$(subst simpleImage.,,$(filter simpleImage.%, $(MAKECMDGOALS)))
 
-# Are we making a simpleImage.<boardname> target? If so, crack out the boardname
-DTB:=$(subst simpleImage.,,$(filter simpleImage.%, $(MAKECMDGOALS)))
-
 ifneq ($(DTB),)
 	core-y	+= $(boot)/
 endif
@@ -67,6 +64,7 @@ endif
 ifeq ($(CONFIG_MMU),)
 MMU := -nommu
 endif
+
 export MMU DTB
 
 all: linux.bin
@@ -80,14 +78,16 @@ $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 define archhelp
-  echo '* linux.bin        - Create raw binary'
-  echo '  linux.bin.gz     - Create compressed raw binary'
+  echo '* linux.bin    - Create raw binary'
+  echo '  linux.bin.gz - Create compressed raw binary'
   echo '  simpleImage.<dt> - ELF image with $(arch)/boot/dts/<dt>.dts linked in'
+  echo '                   - stripped elf with fdt blob
+  echo '  simpleImage.<dt>.unstrip - full ELF image with fdt blob'
   echo '  *_defconfig      - Select default config from arch/microblaze/configs'
   echo ''
   echo '  Targets with <dt> embed a device tree blob inside the image'
   echo '  These targets support board with firmware that does not'
-  echo '  support passing a device tree directly.  Replace <dt> with the'
+  echo '  support passing a device tree directly. Replace <dt> with the'
   echo '  name of a dts file from the arch/microblaze/boot/dts/ directory'
   echo '  (minus the .dts extension).'
 endef
