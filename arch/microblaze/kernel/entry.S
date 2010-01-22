@@ -382,6 +382,9 @@ C_ENTRY(ret_from_trap):
 /* See if returning to kernel mode, if so, skip resched &c.  */
 	bnei	r11, 2f;
 
+	swi	r3, r1, PTO + PT_R3
+	swi	r4, r1, PTO + PT_R4
+
 	/* We're returning to user mode, so check for various conditions that
 	 * trigger rescheduling. */
 	# FIXME: Restructure all these flag checks.
@@ -391,12 +394,8 @@ C_ENTRY(ret_from_trap):
 	andi	r11, r11, _TIF_WORK_SYSCALL_MASK
 	beqi	r11, 1f
 
-	swi	r3, r1, PTO + PT_R3
-	swi	r4, r1, PTO + PT_R4
 	brlid	r15, do_syscall_trace_leave
 	addik	r5, r1, PTO + PT_R0
-	lwi	r3, r1, PTO + PT_R3
-	lwi	r4, r1, PTO + PT_R4
 1:
 
 	/* We're returning to user mode, so check for various conditions that
@@ -408,12 +407,8 @@ C_ENTRY(ret_from_trap):
 	andi	r11, r11, _TIF_NEED_RESCHED;
 	beqi	r11, 5f;
 
-	swi	r3, r1, PTO + PT_R3; /* store syscall result */
-	swi	r4, r1, PTO + PT_R4;
 	bralid	r15, schedule;	/* Call scheduler */
 	nop;				/* delay slot */
-	lwi	r3, r1, PTO + PT_R3; /* restore syscall result */
-	lwi	r4, r1, PTO + PT_R4;
 
 	/* Maybe handle a signal */
 5:	add	r11, r0, CURRENT_TASK; /* Get current task ptr into r11 */
@@ -422,18 +417,18 @@ C_ENTRY(ret_from_trap):
 	andi	r11, r11, _TIF_SIGPENDING;
 	beqi	r11, 1f;		/* Signals to handle, handle them */
 
-	swi	r3, r1, PTO + PT_R3; /* store syscall result */
-	swi	r4, r1, PTO + PT_R4;
 	la	r5, r1, PTO;		/* Arg 1: struct pt_regs *regs */
 	add	r6, r0, r0;		/* Arg 2: sigset_t *oldset */
 	addi	r7, r0, 1;		/* Arg 3: int in_syscall */
 	bralid	r15, do_signal;	/* Handle any signals */
 	nop;
+
+/* Finally, return to user state.  */
+1:
 	lwi	r3, r1, PTO + PT_R3; /* restore syscall result */
 	lwi	r4, r1, PTO + PT_R4;
 
-/* Finally, return to user state.  */
-1:	swi	r0, r0, PER_CPU(KM);	/* Now officially in user state. */
+	swi	r0, r0, PER_CPU(KM);	/* Now officially in user state. */
 	add	r11, r0, CURRENT_TASK;	/* Get current task ptr into r11 */
 	swi	r11, r0, PER_CPU(CURRENT_SAVE); /* save current */
 	VM_OFF;
