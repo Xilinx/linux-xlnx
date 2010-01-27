@@ -414,7 +414,7 @@ config CPU_32v6K
 # ARMv7
 config CPU_V7
 	bool "Support ARM V7 processor" if ARCH_INTEGRATOR || MACH_REALVIEW_EB || MACH_REALVIEW_PBX  || ARCH_XILINX
-	select CPU_32v6K
+#	select CPU_32v6K
 	select CPU_32v7
 	select CPU_ABRT_EV7
 	select CPU_PABRT_V7
