@@ -24,7 +24,7 @@
 /*
  * defines the clock rates
  */
-#define PERIPHERAL_CLOCK_RATE	12500000 		/* was 781250 */
+#define PERIPHERAL_CLOCK_RATE	781250
 #define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
 
 /*
