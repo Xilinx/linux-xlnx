@@ -16,7 +16,7 @@
 #define __ASM_ARCH_HARDWARE_H__
 
 #ifdef DEBUG
-#define xilinx_debug(x, ...)	pr_info(x, ...)
+#define xilinx_debug(x, ...)	printk(x, ...)
 #else
 #define xilinx_debug(x, ...)
 #endif
@@ -24,18 +24,22 @@
 /*
  * defines the clock rates
  */
-#define PERIPHERAL_CLOCK_RATE	781250
+#define PERIPHERAL_CLOCK_RATE	12500000 		/* was 781250 */
 #define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
 
 /*
  * Device base addresses, all are mapped flat such that virtual = physical, is
  * still true now with EPA9 addresses?
  */
-#define	EPA9_BASE		0x90000000
 #define IO_BASE			0xE0000000
 
-#define TTC0_BASE		(EPA9_BASE + 0x00001000)/* 0x90001000 */
-#define GIC_DIST_BASE		(EPA9_BASE + 0x00100000)/* 0x90100000 */
+#define	EPA9_BASE		0x90000000
+#define VBASE_OFFSET 		0x54000000	/* JHL hack to be fixed */
+#define TTC0_BASE		(EPA9_BASE + 0x00001000)	/* 0x90001000 */
+#define GIC_DIST_BASE		(EPA9_BASE + 0x00100000)	/* 0x90100000 */
+#define TTC0_VBASE		(TTC0_BASE + VBASE_OFFSET)	/* 0xE4001000 */
+#define GIC_DIST_VBASE		(GIC_DIST_BASE + VBASE_OFFSET)	/* 0xE4100000 */
+
 
 #define UART0_BASE		(IO_BASE)		/* 0xE0000000 */
 #define UART1_BASE		(IO_BASE + 0x00001000)	/* 0xE0001000 */

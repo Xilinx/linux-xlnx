@@ -54,7 +54,7 @@ static void __init irq_init(void)
 	xilinx_debug("->irq_init\n");
 
 	gic_cpu_base_addr = (void __iomem *)GIC_CPU_BASE;
-	gic_dist_init(0, (void __iomem *)GIC_DIST_BASE, IRQ_GIC_START); 
+	gic_dist_init(0, (void __iomem *)GIC_DIST_VBASE, IRQ_GIC_START); 
 	gic_cpu_init(0, gic_cpu_base_addr);
 
 	xilinx_debug("<-irq_init\n");
@@ -64,6 +64,7 @@ static void __init irq_init(void)
    include the GIC, UART and Timer Counter. Some of the devices are on the shared 
    bus (default) while others are on the private bus (non-shared).
  */
+
 static struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= GIC_CPU_BASE,
@@ -71,15 +72,15 @@ static struct map_desc io_desc[] __initdata = {
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	}, {
-		.virtual	= GIC_DIST_BASE,
+		.virtual	= GIC_DIST_VBASE,	/* JHL Hacked */
 		.pfn		= __phys_to_pfn(GIC_DIST_BASE),
 		.length		= SZ_4K,
-		.type		= MT_DEVICE_NONSHARED,
+		.type		= MT_DEVICE,
 	}, {
-		.virtual	= TTC0_BASE,
+		.virtual	= TTC0_VBASE,		/* JHL Hacked */
 		.pfn		= __phys_to_pfn(TTC0_BASE),
 		.length		= SZ_4K,
-		.type		= MT_DEVICE_NONSHARED,
+		.type		= MT_DEVICE,
 	}, 
 
 #ifdef CONFIG_DEBUG_LL

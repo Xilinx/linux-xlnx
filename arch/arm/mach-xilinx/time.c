@@ -45,7 +45,7 @@
 /*
  * Base address of Triple Timer Counter
  */
-#define XTTCPSS_TIMER_BASE	TTC0_BASE /* 0xFE007000 Timer base address */
+#define XTTCPSS_TIMER_BASE	TTC0_VBASE /* 0xFE007000 Timer base address */
 
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
@@ -136,7 +136,7 @@ static void xttcpss_set_interval(struct xttcpss_timer *timer,
 static irqreturn_t xttcpss_clock_source_interrupt(int irq, void *dev_id)
 {
 	struct xttcpss_timer *timer = dev_id;
-
+	
 	/* Acknowledge the interrupt */
 	xttcpss_write(timer->base_addr + XTTCPSS_ISR_OFFSET,
 		xttcpss_read(timer->base_addr + XTTCPSS_ISR_OFFSET));
@@ -330,8 +330,6 @@ static void __init xttcpss_timer_init(void)
 {
 	u32 shift;
 	u64 temp;
-
-	xilinx_debug("->xttcpss_timer_init\n");
 
 	xttcpss_timer_hardware_init();
 
