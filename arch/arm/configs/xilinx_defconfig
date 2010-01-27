@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.32
-# Wed Jan 27 10:12:55 2010
+# Wed Jan 27 14:17:39 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -204,7 +204,7 @@ CONFIG_CPU_CP15_MMU=y
 #
 CONFIG_ARM_THUMB=y
 # CONFIG_ARM_THUMBEE is not set
-CONFIG_CPU_ICACHE_DISABLE=y
+# CONFIG_CPU_ICACHE_DISABLE is not set
 CONFIG_CPU_DCACHE_DISABLE=y
 # CONFIG_CPU_BPREDICT_DISABLE is not set
 CONFIG_HAS_TLS_REG=y
