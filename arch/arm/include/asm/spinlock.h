@@ -1,7 +1,7 @@
 #ifndef __ASM_SPINLOCK_H
 #define __ASM_SPINLOCK_H
 
-#if __LINUX_ARM_ARCH__ < 6 || defined(CONFIG_ARCH_XILINX)
+#if __LINUX_ARM_ARCH__ < 6
 #error SMP not supported on pre-ARMv6 CPUs
 #endif
 
