@@ -121,7 +121,7 @@ static void __init map_io(void)
  * be defined here and pointed to also.
  */
 
-MACHINE_START(XILINX, "Xilinx DragonFire Emulation Platform")
+MACHINE_START(XILINX, "Xilinx Pele A9 Emulation Platform")
 	.phys_io	= IO_BASE,
 	.io_pg_offst	= ((IO_BASE) >> 18) & 0xfffc,
 	.boot_params    = 0,

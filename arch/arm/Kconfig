@@ -703,7 +703,7 @@ config ARCH_BCMRING
 	  Support for Broadcom's BCMRing platform.
 
 config ARCH_XILINX
-	bool "Xilinx ARM1176 based FPGA"
+	bool "Xilinx ARM Cortex A9 based FPGA"
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	select ARM_GIC
