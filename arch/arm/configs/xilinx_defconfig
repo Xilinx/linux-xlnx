@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.32
-# Thu Jan 28 12:18:23 2010
+# Wed Feb 10 15:37:54 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -268,7 +268,7 @@ CONFIG_ALIGNMENT_TRAP=y
 #
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="console=ttyDF0,9600n8 root=/dev/ram rw initrd=0x00800000,2M earlyprintk"
+CONFIG_CMDLINE="console=ttyDF0,9600n8 root=/dev/ram rw initrd=0x00800000,3M earlyprintk"
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
 
