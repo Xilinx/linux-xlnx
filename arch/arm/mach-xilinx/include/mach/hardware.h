@@ -54,6 +54,7 @@
 #define ETH1_BASE               (IO_BASE + 0x0000C000)  /* 0xE000C000 */
 #define SPI0_BASE		(IO_BASE + 0x00006000)	/* 0xE0006000 */
 #define SPI1_BASE		(IO_BASE + 0x00007000)	/* 0xE0007000 */
+#define WDT0_BASE		(IO_BASE + 0x0C002000)	/* 0xEC002000 */
 
 /*
  * GIC Interrupts

@@ -289,6 +289,13 @@ config ADX_WATCHDOG
 	  Say Y here if you want support for the watchdog timer on Avionic
 	  Design Xanthos boards.
 
+config XILINX_PSS_WATCHDOG
+	tristate "Xilinx PSS Watchdog Timer"
+	depends on ARCH_XILINX
+	help
+	  Say Y here if you want to include support for the watchdog
+	  timer in the Xilinx PSS.
+
 # AVR32 Architecture
 
 config AT32AP700X_WDT

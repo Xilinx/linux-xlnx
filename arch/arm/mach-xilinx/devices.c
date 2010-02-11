@@ -315,6 +315,24 @@ static struct platform_device xilinx_spipss_0_device = {
 	.num_resources = ARRAY_SIZE(xspipss_0_resource),
 };
 
+/*************************PSS WDT*********************/
+static struct resource xwdtpss_0_resource[] = {
+	{
+		.start	= WDT0_BASE,
+		.end	= WDT0_BASE + 0x00FF,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct platform_device xilinx_wdtpss_0_device = {
+	.name = "xilinx_pss_wdt",
+	.id = 0,
+	.dev = {
+		.platform_data = NULL,
+	},
+	.resource = xwdtpss_0_resource,
+	.num_resources = ARRAY_SIZE(xwdtpss_0_resource),
+};
 
 /* add all platform devices to the following table so they
  * will be registered
@@ -332,6 +350,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&eth_device1,
 #endif
 	&xilinx_spipss_0_device,
+	&xilinx_wdtpss_0_device,
 };
 
 /**
