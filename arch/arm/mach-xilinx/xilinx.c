@@ -66,22 +66,29 @@ static void __init irq_init(void)
  */
 
 static struct map_desc io_desc[] __initdata = {
+
 	{
 		.virtual	= GIC_CPU_BASE,
 		.pfn		= __phys_to_pfn(GIC_CPU_BASE),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	}, {
-		.virtual	= GIC_DIST_VBASE,	/* JHL Hacked */
+		.virtual	= GIC_DIST_VBASE,	
 		.pfn		= __phys_to_pfn(GIC_DIST_BASE),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	}, {
-		.virtual	= TTC0_VBASE,		/* JHL Hacked */
+		.virtual	= TTC0_VBASE,
 		.pfn		= __phys_to_pfn(TTC0_BASE),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
+	}, {
+		.virtual	= SCU_PERIPH_BASE,
+		.pfn		= __phys_to_pfn(SCU_PERIPH_BASE),
+		.length		= SZ_8K,
+		.type		= MT_DEVICE,
 	}, 
+
 
 #ifdef CONFIG_DEBUG_LL
 	{
