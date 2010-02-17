@@ -34,21 +34,21 @@
 
 #define IO_BASE			0xE0000000
 
-/* The following are older and need to be cleaned up 
+/* The following are older and need to be cleaned up
  * and corrected.
  */
 
 #define SMC_BASE		(IO_BASE + 0x0000E000)
 #define NOR_BASE		(IO_BASE + 0x02000000)
-#define WDT0_BASE		(IO_BASE + 0x0C002000)	
+#define WDT0_BASE		(IO_BASE + 0x0C002000)
 
-/* Cleaned up addresses start here, please keep addresses in order to make 
+/* Cleaned up addresses start here, please keep addresses in order to make
  * them easier to read.
  */
 
-#define UART0_BASE		(IO_BASE)		
-#define UART1_BASE		(IO_BASE + 0x1000)	
-#define USB0_BASE		(IO_BASE + 0x2000)	
+#define UART0_BASE		(IO_BASE)
+#define UART1_BASE		(IO_BASE + 0x1000)
+#define USB0_BASE		(IO_BASE + 0x2000)
 #define USB1_BASE		(IO_BASE + 0x3000)
 #define I2C0_BASE		(IO_BASE + 0x4000)
 #define I2C1_BASE		(IO_BASE + 0x5000)
@@ -65,24 +65,25 @@
 #define SLC_REG			(PERIPH_BASE)
 
 /* #define TTC0_BASE		(PERIPH_BASE + 0x1000) */
-	
-#define TTC1_BASE		(PERIPH_BASE + 0x2000)	
-#define DMAC0_BASE		(PERIPH_BASE + 0x3000)	
-#define DMAC1_BASE		(PERIPH_BASE + 0x4000)	
-#define WDT_BASE		(PERIPH_BASE + 0x5000)	
+
+#define TTC1_BASE		(PERIPH_BASE + 0x2000)
+#define DMAC0_BASE		(PERIPH_BASE + 0x3000)
+#define DMAC1_BASE		(PERIPH_BASE + 0x4000)
+#define WDT_BASE		(PERIPH_BASE + 0x5000)
 
 #define SCU_PERIPH_BASE		0xFEF00000
 
 #define SCU_GIC_CPU_BASE	(SCU_PERIPH_BASE + 0x100)
 #define SCU_GTIMER_BASE		(SCU_PERIPH_BASE + 0x200)
 #define SCU_PTIMER_BASE		(SCU_PERIPH_BASE + 0x600)
+#define SCU_PWDT_BASE		(SCU_PERIPH_BASE + 0x620)
 #define SCU_GIC_DIST_BASE	(SCU_PERIPH_BASE + 0x1000)
 
 /* The following allow the older PSS GIC and TTC to be used, they are now also
- * in the A9 SCU, but not tested well yet. 
+ * in the A9 SCU, but not tested well yet.
  *
- * In Pele, the PSS GIC And TTC were moved to addresses that were lower than the 
- * kernel which was wierd so this is a hack as it will go away once the GIC and 
+ * In Pele, the PSS GIC And TTC were moved to addresses that were lower than the
+ * kernel which was wierd so this is a hack as it will go away once the GIC and
  * TTC in the SCU of the A9 are working.
  *
  * Uncomment the TTC based above when this code is removed.
@@ -94,8 +95,8 @@
 #define TTC0_BASE	(EPA9_BASE + 0x00001000)
 #define GIC_DIST_BASE	(EPA9_BASE + 0x00100000)
 
-#define TTC0_VBASE	(TTC0_BASE + VBASE_OFFSET)	
-#define GIC_DIST_VBASE	(GIC_DIST_BASE + VBASE_OFFSET)	
+#define TTC0_VBASE	(TTC0_BASE + VBASE_OFFSET)
+#define GIC_DIST_VBASE	(GIC_DIST_BASE + VBASE_OFFSET)
 
 #define GIC_CPU_BASE	(IO_BASE + 0x08000000)
 

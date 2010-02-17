@@ -334,6 +334,24 @@ static struct platform_device xilinx_wdtpss_0_device = {
 	.num_resources = ARRAY_SIZE(xwdtpss_0_resource),
 };
 
+/*************************Private WDT***********************/
+static struct resource xa9wdt_resource[] = {
+	{
+		.start	= SCU_PWDT_BASE,
+		.end	= SCU_PWDT_BASE + 0x20,
+		.flags	= IORESOURCE_MEM
+	},
+};
+struct platform_device xilinx_a9wdt_device = {
+	.name = "xilinx_a9wdt",
+	.id = 0,
+	.dev = {
+		.platform_data = NULL,
+	},
+	.resource =  xa9wdt_resource,
+	.num_resources = ARRAY_SIZE(xa9wdt_resource),
+};
+
 /* add all platform devices to the following table so they
  * will be registered
  */
@@ -351,6 +369,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 #endif
 	&xilinx_spipss_0_device,
 	&xilinx_wdtpss_0_device,
+	&xilinx_a9wdt_device,
 };
 
 /**
