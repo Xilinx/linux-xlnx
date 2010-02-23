@@ -53,8 +53,8 @@ static void __init irq_init(void)
 {
 	xilinx_debug("->irq_init\n");
 
-	gic_cpu_base_addr = (void __iomem *)GIC_CPU_BASE;
-	gic_dist_init(0, (void __iomem *)GIC_DIST_VBASE, IRQ_GIC_START); 
+	gic_cpu_base_addr = (void __iomem *)SCU_GIC_CPU_BASE;
+	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, IRQ_GIC_START); 
 	gic_cpu_init(0, gic_cpu_base_addr);
 
 	xilinx_debug("<-irq_init\n");
@@ -66,18 +66,7 @@ static void __init irq_init(void)
  */
 
 static struct map_desc io_desc[] __initdata = {
-
 	{
-		.virtual	= GIC_CPU_BASE,
-		.pfn		= __phys_to_pfn(GIC_CPU_BASE),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-		.virtual	= GIC_DIST_VBASE,	
-		.pfn		= __phys_to_pfn(GIC_DIST_BASE),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
 		.virtual	= TTC0_VBASE,
 		.pfn		= __phys_to_pfn(TTC0_BASE),
 		.length		= SZ_4K,
