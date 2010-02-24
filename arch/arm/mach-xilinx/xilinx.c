@@ -113,7 +113,7 @@ static void __init irq_init(void)
 
 static struct map_desc io_desc[] __initdata = {
 	{
-		.virtual	= TTC0_VBASE,
+		.virtual	= TTC0_BASE,
 		.pfn		= __phys_to_pfn(TTC0_BASE),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,

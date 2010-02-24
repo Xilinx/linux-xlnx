@@ -45,7 +45,7 @@
 /*
  * Base address of Triple Timer Counter
  */
-#define XTTCPSS_TIMER_BASE	TTC0_VBASE /* 0xFE007000 Timer base address */
+#define XTTCPSS_TIMER_BASE	TTC0_BASE 
 
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4

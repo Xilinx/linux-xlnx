@@ -65,9 +65,7 @@
 #define PERIPH_BASE		0xFE000000
 
 #define SLC_REG			(PERIPH_BASE)
-
-/* #define TTC0_BASE		(PERIPH_BASE + 0x1000) */
-
+#define TTC0_BASE		(PERIPH_BASE + 0x1000)
 #define TTC1_BASE		(PERIPH_BASE + 0x2000)
 #define WDT_BASE		(PERIPH_BASE + 0x5000)
 
@@ -78,22 +76,6 @@
 #define SCU_PTIMER_BASE		(SCU_PERIPH_BASE + 0x600)
 #define SCU_PWDT_BASE		(SCU_PERIPH_BASE + 0x620)
 #define SCU_GIC_DIST_BASE	(SCU_PERIPH_BASE + 0x1000)
-
-/* The following allow the older PSS GIC and TTC to be used, they are now also
- * in the A9 SCU, but not tested well yet.
- *
- * In Pele, the PSS GIC And TTC were moved to addresses that were lower than the
- * kernel which was wierd so this is a hack as it will go away once the GIC and
- * TTC in the SCU of the A9 are working.
- *
- * Uncomment the TTC based above when this code is removed.
- */
-
-#define	EPA9_BASE	0x90000000
-#define VBASE_OFFSET	0x54000000
-
-#define TTC0_BASE	(EPA9_BASE + 0x00001000)
-#define TTC0_VBASE	(TTC0_BASE + VBASE_OFFSET)
 
 /*
  * GIC Interrupts
