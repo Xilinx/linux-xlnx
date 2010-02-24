@@ -290,3 +290,4 @@ obj-$(CONFIG_SFC) += sfc/
 obj-$(CONFIG_WIMAX) += wimax/
 obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
+obj-$(CONFIG_OCTEON_MGMT_ETHERNET) += octeon/

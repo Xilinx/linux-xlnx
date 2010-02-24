@@ -73,19 +73,19 @@ static int ehci_xilinx_port_handed_over(struct usb_hcd *hcd, int portnum)
 	dev_warn(hcd->self.controller, "port %d cannot be enabled\n", portnum);
 	if (hcd->has_tt) {
 		dev_warn(hcd->self.controller,
-			"Maybe you have connected an LS device?\n");
+			"Maybe you have connected a low speed device?\n");
 
 		dev_warn(hcd->self.controller,
-			"We do not support LS devices\n");
+			"We do not support low speed devices\n");
 	} else {
 		dev_warn(hcd->self.controller,
-			"Maybe your device is not an HS device?\n");
+			"Maybe your device is not a high speed device?\n");
 		dev_warn(hcd->self.controller,
-			"The USB host controller does not support FS or "
-			"LS devices\n");
+			"The USB host controller does not support full speed "
+			"nor low speed devices\n");
 		dev_warn(hcd->self.controller,
 			"You can reconfigure the host controller to have "
-			"FS support\n");
+			"full speed support\n");
 	}
 
 	return 0;
@@ -134,6 +134,8 @@ static const struct hc_driver ehci_xilinx_of_hc_driver = {
 #endif
 	.relinquish_port	= NULL,
 	.port_handed_over	= ehci_xilinx_port_handed_over,
+
+	.clear_tt_buffer_complete = ehci_clear_tt_buffer_complete,
 };
 
 /**
@@ -228,8 +230,8 @@ ehci_hcd_xilinx_of_probe(struct of_device *op, const struct of_device_id *match)
 		return 0;
 
 	iounmap(hcd->regs);
+
 err_ioremap:
-	irq_dispose_mapping(irq);
 err_irq:
 	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
 err_rmr:
@@ -255,7 +257,6 @@ static int ehci_hcd_xilinx_of_remove(struct of_device *op)
 	usb_remove_hcd(hcd);
 
 	iounmap(hcd->regs);
-	irq_dispose_mapping(hcd->irq);
 	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
 
 	usb_put_hcd(hcd);
@@ -281,9 +282,7 @@ static int ehci_hcd_xilinx_of_shutdown(struct of_device *op)
 
 
 static struct of_device_id ehci_hcd_xilinx_of_match[] = {
-	{
-		.compatible = "usb-ehci",
-	},
+		{.compatible = "xlnx,xps-usb-host-1.00.a",},
 	{},
 };
 MODULE_DEVICE_TABLE(of, ehci_hcd_xilinx_of_match);

@@ -15,6 +15,7 @@ static inline dma_addr_t dma_map_single_attrs(struct device *dev, void *ptr,
 	dma_addr_t addr;
 
 	kmemcheck_mark_initialized(ptr, size);
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	addr = ops->map_page(dev, virt_to_page(ptr),
 			     (unsigned long)ptr & ~PAGE_MASK, size,
@@ -32,6 +33,7 @@ static inline void dma_unmap_single_attrs(struct device *dev, dma_addr_t addr,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->unmap_page)
 		ops->unmap_page(dev, addr, size, dir, attrs);
@@ -48,6 +50,7 @@ static inline int dma_map_sg_attrs(struct device *dev, struct scatterlist *sg,
 
 	for_each_sg(sg, s, nents, i)
 		kmemcheck_mark_initialized(sg_virt(s), s->length);
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	ents = ops->map_sg(dev, sg, nents, dir, attrs);
 	debug_dma_map_sg(dev, sg, nents, ents, dir);
@@ -61,6 +64,7 @@ static inline void dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sg
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	debug_dma_unmap_sg(dev, sg, nents, dir);
 	if (ops->unmap_sg)
@@ -75,6 +79,7 @@ static inline dma_addr_t dma_map_page(struct device *dev, struct page *page,
 	dma_addr_t addr;
 
 	kmemcheck_mark_initialized(page_address(page) + offset, size);
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	addr = ops->map_page(dev, page, offset, size, dir, NULL);
 	debug_dma_map_page(dev, page, offset, size, dir, addr, false);
@@ -87,6 +92,7 @@ static inline void dma_unmap_page(struct device *dev, dma_addr_t addr,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->unmap_page)
 		ops->unmap_page(dev, addr, size, dir, NULL);
@@ -125,6 +131,7 @@ static inline void dma_sync_single_range_for_cpu(struct device *dev,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->sync_single_range_for_cpu) {
 		ops->sync_single_range_for_cpu(dev, addr, offset, size, dir);
@@ -142,6 +149,7 @@ static inline void dma_sync_single_range_for_device(struct device *dev,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->sync_single_range_for_device) {
 		ops->sync_single_range_for_device(dev, addr, offset, size, dir);
@@ -157,6 +165,7 @@ dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->sync_sg_for_cpu)
 		ops->sync_sg_for_cpu(dev, sg, nelems, dir);
@@ -169,6 +178,7 @@ dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
 {
 	struct dma_map_ops *ops = get_dma_ops(dev);
 
+	BUG_ON(!ops);
 	BUG_ON(!valid_dma_direction(dir));
 	if (ops->sync_sg_for_device)
 		ops->sync_sg_for_device(dev, sg, nelems, dir);

@@ -78,7 +78,7 @@ static struct kmem_cache *bio_find_or_create_slab(unsigned int extra_size)
 
 	i = 0;
 	while (i < bio_slab_nr) {
-		struct bio_slab *bslab = &bio_slabs[i];
+		bslab = &bio_slabs[i];
 
 		if (!bslab->slab && entry == -1)
 			entry = i;
@@ -272,7 +272,7 @@ EXPORT_SYMBOL(bio_init);
  *   for a &struct bio to become free. If a %NULL @bs is passed in, we will
  *   fall back to just using @kmalloc to allocate the required memory.
  *
- *   Note that the caller must set ->bi_destructor on succesful return
+ *   Note that the caller must set ->bi_destructor on successful return
  *   of a bio, to do the appropriate freeing of the bio once the reference
  *   count drops to zero.
  **/
@@ -542,13 +542,18 @@ static int __bio_add_page(struct request_queue *q, struct bio *bio, struct page
 
 		if (page == prev->bv_page &&
 		    offset == prev->bv_offset + prev->bv_len) {
+			unsigned int prev_bv_len = prev->bv_len;
 			prev->bv_len += len;
 
 			if (q->merge_bvec_fn) {
 				struct bvec_merge_data bvm = {
+					/* prev_bvec is already charged in
+					   bi_size, discharge it in order to
+					   simulate merging updated prev_bvec
+					   as new bvec. */
 					.bi_bdev = bio->bi_bdev,
 					.bi_sector = bio->bi_sector,
-					.bi_size = bio->bi_size,
+					.bi_size = bio->bi_size - prev_bv_len,
 					.bi_rw = bio->bi_rw,
 				};
 
@@ -1392,6 +1397,18 @@ void bio_check_pages_dirty(struct bio *bio)
 		bio_put(bio);
 	}
 }
+
+#if ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE
+void bio_flush_dcache_pages(struct bio *bi)
+{
+	int i;
+	struct bio_vec *bvec;
+
+	bio_for_each_segment(bvec, bi, i)
+		flush_dcache_page(bvec->bv_page);
+}
+EXPORT_SYMBOL(bio_flush_dcache_pages);
+#endif
 
 /**
  * bio_endio - end I/O on a bio

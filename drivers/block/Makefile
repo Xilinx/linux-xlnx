@@ -38,5 +38,6 @@ obj-$(CONFIG_XILINX_SYSACE_OLD)	+= xilinx_sysace/
 obj-$(CONFIG_BLK_DEV_HD)	+= hd.o
 
 obj-$(CONFIG_XEN_BLKDEV_FRONTEND)	+= xen-blkfront.o
+obj-$(CONFIG_BLK_DEV_DRBD)     += drbd/
 
 swim_mod-objs	:= swim.o swim_asm.o

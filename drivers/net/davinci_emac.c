@@ -2272,7 +2272,7 @@ static int emac_mii_reset(struct mii_bus *bus)
 	unsigned int clk_div;
 	int mdio_bus_freq = emac_bus_frequency;
 
-	if (mdio_max_freq & mdio_bus_freq)
+	if (mdio_max_freq && mdio_bus_freq)
 		clk_div = ((mdio_bus_freq / mdio_max_freq) - 1);
 	else
 		clk_div = 0xFF;
@@ -2711,6 +2711,8 @@ static int __devinit davinci_emac_probe(struct platform_device *pdev)
 	SET_ETHTOOL_OPS(ndev, &ethtool_ops);
 	netif_napi_add(ndev, &priv->napi, emac_poll, EMAC_POLL_WEIGHT);
 
+	clk_enable(emac_clk);
+
 	/* register the network device */
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 	rc = register_netdev(ndev);
@@ -2720,7 +2722,6 @@ static int __devinit davinci_emac_probe(struct platform_device *pdev)
 		goto netdev_reg_err;
 	}
 
-	clk_enable(emac_clk);
 
 	/* MII/Phy intialisation, mdio bus registration */
 	emac_mii = mdiobus_alloc();
@@ -2760,6 +2761,7 @@ mdiobus_quit:
 
 netdev_reg_err:
 mdio_alloc_err:
+	clk_disable(emac_clk);
 no_irq_res:
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	release_mem_region(res->start, res->end - res->start + 1);
@@ -2803,11 +2805,33 @@ static int __devexit davinci_emac_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static
+int davinci_emac_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	struct net_device *dev = platform_get_drvdata(pdev);
+
+	if (netif_running(dev))
+		emac_dev_stop(dev);
+
+	clk_disable(emac_clk);
+
+	return 0;
+}
+
+static int davinci_emac_resume(struct platform_device *pdev)
+{
+	struct net_device *dev = platform_get_drvdata(pdev);
+
+	clk_enable(emac_clk);
+
+	if (netif_running(dev))
+		emac_dev_open(dev);
+
+	return 0;
+}
+
 /**
  * davinci_emac_driver: EMAC platform driver structure
- *
- * We implement only probe and remove functions - suspend/resume and
- * others not supported by this module
  */
 static struct platform_driver davinci_emac_driver = {
 	.driver = {
@@ -2816,6 +2840,8 @@ static struct platform_driver davinci_emac_driver = {
 	},
 	.probe = davinci_emac_probe,
 	.remove = __devexit_p(davinci_emac_remove),
+	.suspend = davinci_emac_suspend,
+	.resume = davinci_emac_resume,
 };
 
 /**

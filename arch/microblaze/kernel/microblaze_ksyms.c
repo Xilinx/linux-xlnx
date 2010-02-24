@@ -18,6 +18,7 @@
 #include <linux/io.h>
 #include <asm/page.h>
 #include <asm/system.h>
+#include <linux/ftrace.h>
 #include <linux/uaccess.h>
 
 /*
@@ -47,10 +48,7 @@ extern void __umodsi3(void);
 EXPORT_SYMBOL(__umodsi3);
 extern char *_ebss;
 EXPORT_SYMBOL_GPL(_ebss);
-
-#ifdef CONFIG_OPT_LIB_ASM
-EXPORT_SYMBOL(memcpy);
-EXPORT_SYMBOL(memmove);
+#ifdef CONFIG_FUNCTION_TRACER
+extern void _mcount(void);
+EXPORT_SYMBOL(_mcount);
 #endif
-
-EXPORT_SYMBOL(__copy_tofrom_user);

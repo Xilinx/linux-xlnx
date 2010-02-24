@@ -477,7 +477,7 @@ static int host_mapping_level(struct kvm *kvm, gfn_t gfn)
 
 	addr = gfn_to_hva(kvm, gfn);
 	if (kvm_is_error_hva(addr))
-		return page_size;
+		return PT_PAGE_TABLE_LEVEL;
 
 	down_read(&current->mm->mmap_sem);
 	vma = find_vma(current->mm, addr);
@@ -515,11 +515,9 @@ static int mapping_level(struct kvm_vcpu *vcpu, gfn_t large_gfn)
 	if (host_level == PT_PAGE_TABLE_LEVEL)
 		return host_level;
 
-	for (level = PT_DIRECTORY_LEVEL; level <= host_level; ++level) {
-
+	for (level = PT_DIRECTORY_LEVEL; level <= host_level; ++level)
 		if (has_wrprotected_page(vcpu->kvm, large_gfn, level))
 			break;
-	}
 
 	return level - 1;
 }
@@ -2789,7 +2787,7 @@ int kvm_mmu_page_fault(struct kvm_vcpu *vcpu, gva_t cr2, u32 error_code)
 	if (r)
 		goto out;
 
-	er = emulate_instruction(vcpu, vcpu->run, cr2, error_code, 0);
+	er = emulate_instruction(vcpu, cr2, error_code, 0);
 
 	switch (er) {
 	case EMULATE_DONE:
@@ -2800,6 +2798,7 @@ int kvm_mmu_page_fault(struct kvm_vcpu *vcpu, gva_t cr2, u32 error_code)
 	case EMULATE_FAIL:
 		vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
 		vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_EMULATION;
+		vcpu->run->internal.ndata = 0;
 		return 0;
 	default:
 		BUG();

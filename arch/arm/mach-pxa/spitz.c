@@ -389,13 +389,13 @@ static struct gpio_keys_button spitz_gpio_keys[] = {
 		.type	= EV_SW,
 		.code	= 0,
 		.gpio	= SPITZ_GPIO_SWA,
-		.desc	= "﻿Display Down",
+		.desc	= "Display Down",
 	},
 	{
 		.type	= EV_SW,
 		.code	= 1,
 		.gpio	= SPITZ_GPIO_SWB,
-		.desc	= "﻿Lid Closed",
+		.desc	= "Lid Closed",
 	},
 };
 
@@ -767,6 +767,10 @@ static void __init common_init(void)
 	PCFR |= PCFR_OPDE;
 
 	pxa2xx_mfp_config(ARRAY_AND_SIZE(spitz_pin_config));
+
+	pxa_set_ffuart_info(NULL);
+	pxa_set_btuart_info(NULL);
+	pxa_set_stuart_info(NULL);
 
 	spitz_init_spi();
 
