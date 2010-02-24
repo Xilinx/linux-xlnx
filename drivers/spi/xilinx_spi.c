@@ -330,6 +330,26 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static inline unsigned int spi_ioread32(void __iomem *addr)
+{
+	return __raw_readl(addr);
+}
+
+static inline void spi_iowrite32(u32 v, void __iomem *addr)
+{
+	__raw_writel(v, addr);
+}
+
+static inline unsigned int spi_ioread32be(void __iomem *addr)
+{
+	return __raw_readl(addr);
+}
+
+static inline void spi_iowrite32be(u32 v, void __iomem *addr)
+{
+	__raw_writel(v, addr);
+}
+
 struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 	u32 irq, s16 bus_num)
 {
@@ -374,11 +394,11 @@ struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 	xspi->mem = *mem;
 	xspi->irq = irq;
 	if (pdata->little_endian) {
-		xspi->read_fn = ioread32;
-		xspi->write_fn = iowrite32;
+		xspi->read_fn = spi_ioread32;
+		xspi->write_fn = spi_iowrite32;
 	} else {
-		xspi->read_fn = ioread32be;
-		xspi->write_fn = iowrite32be;
+		xspi->read_fn = spi_ioread32be;
+		xspi->write_fn = spi_iowrite32be;
 	}
 	xspi->bits_per_word = pdata->bits_per_word;
 	if (xspi->bits_per_word == 8) {
