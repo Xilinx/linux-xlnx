@@ -25,7 +25,9 @@ void arch_decomp_setup(void)
 	xilinx_uart_init();
 }
 
-#define flush() do { } while (0)
+static inline void flush(void) 
+{
+}
 
 #define arch_decomp_wdog()
 

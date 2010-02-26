@@ -30,4 +30,7 @@
  */
 #define __bus_to_virt(a)	__phys_to_virt(a)
 
+#define __pfn_to_bus(p)		__pfn_to_phys(p)
+#define __bus_to_pfn(b)		__phys_to_pfn(b)
+
 #endif /* __ASM_ARCH_MXC_MEMORY_H__ */
