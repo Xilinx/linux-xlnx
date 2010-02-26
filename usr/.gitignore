@@ -8,3 +8,5 @@ initramfs_data.cpio.bz2
 initramfs_data.cpio.lzma
 initramfs_list
 include
+initramfs_data.S
+bin2asm

@@ -18,7 +18,9 @@
 #include <asm/ppc4xx.h>
 
 static struct of_device_id xilinx_of_bus_ids[] __initdata = {
+	{ .compatible = "simple-bus", },
 	{ .compatible = "xlnx,plb-v46-1.00.a", },
+	{ .compatible = "xlnx,plb-v46-1.02.a", },
 	{ .compatible = "xlnx,plb-v34-1.01.a", },
 	{ .compatible = "xlnx,plb-v34-1.02.a", },
 	{ .compatible = "xlnx,opb-v20-1.10.c", },
@@ -39,7 +41,7 @@ static int __init virtex_probe(void)
 {
 	unsigned long root = of_get_flat_dt_root();
 
-	if (!of_flat_dt_is_compatible(root, "xlnx,virtex"))
+	if (!of_flat_dt_is_compatible(root, "xlnx,virtex405"))
 		return 0;
 
 	return 1;

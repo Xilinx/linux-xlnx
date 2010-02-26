@@ -1001,7 +1001,7 @@ config SMC911X
 
 config SMSC911X
 	tristate "SMSC LAN911x/LAN921x families embedded ethernet support"
-	depends on ARM || SUPERH || BLACKFIN
+	depends on ARM || SUPERH || BLACKFIN || MIPS
 	select CRC32
 	select MII
 	select PHYLIB
@@ -1925,6 +1925,14 @@ config NE_H8300
 	  Say Y here if you want to use the NE2000 compatible
 	  controller on the Renesas H8/300 processor.
 
+config XILINX_EMAC
+	tristate "Xilinx 10/100 OPB EMAC support"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_IPIF
+	help
+	  This driver supports the Xilinx 10/100 opb_emac
+
 config ATL2
 	tristate "Atheros L2 Fast Ethernet support"
 	depends on PCI
@@ -1952,6 +1960,8 @@ config BCM63XX_ENET
 	  MIPS chipset family (BCM63XX).
 
 source "drivers/net/fs_enet/Kconfig"
+
+source "drivers/net/octeon/Kconfig"
 
 endif # NET_ETHERNET
 
@@ -2344,6 +2354,7 @@ config GELIC_NET
 
 config GELIC_WIRELESS
 	bool "PS3 Wireless support"
+	depends on WLAN
 	depends on GELIC_NET
 	select WIRELESS_EXT
 	help
@@ -2356,6 +2367,7 @@ config GELIC_WIRELESS
 config GELIC_WIRELESS_OLD_PSK_INTERFACE
        bool "PS3 Wireless private PSK interface (OBSOLETE)"
        depends on GELIC_WIRELESS
+       select WEXT_PRIV
        help
           This option retains the obsolete private interface to pass
           the PSK from user space programs to the driver.  The PSK
@@ -2444,6 +2456,16 @@ config ATL1
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1.
 
+config XILINX_TEMAC
+	tristate "Xilinx TEMAC 10/100/1000 Ethernet MAC driver"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_DMAV3
+	select NEED_XILINX_IPIF
+	help
+	  This driver supports the Xilinx TEMAC found in Virtex 4 FPGAs
+	  when the plb_temac adapter interface is used.
+
 config ATL1E
 	tristate "Atheros L1E Gigabit Ethernet support (EXPERIMENTAL)"
 	depends on PCI && EXPERIMENTAL
@@ -2451,9 +2473,51 @@ config ATL1E
 	select MII
 	help
 	  This driver supports the Atheros L1E gigabit ethernet adapter.
-
 	  To compile this driver as a module, choose M here.  The module
 	  will be called atl1e.
+
+config XILINX_LLTEMAC
+	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_LLDMA
+	help
+	  This driver supports the 10/100/1000 LLTEMAC.
+
+choice
+	prompt "Xilinx LLTEMAC PHY Support"
+	default XILINX_LLTEMAC_MARVELL_88E1111_GMII
+	
+config XILINX_LLTEMAC_MARVELL_88E1111_RGMII
+	bool "MARVELL 88E1111 using RGMII"
+   help
+	  This phy is used by many Xilinx boards.  This option includes
+	  code for enabling RGMII over copper.
+
+config XILINX_LLTEMAC_MARVELL_88E1111_GMII
+	bool "MARVELL 88E1111 using GMII"
+   help
+	  This phy is used by many Xilinx boards.  This option includes
+	  code for enabling GMII over copper, and for setting the correct
+	  speed based on whatever the phy is able to autonegotiate.  This is
+	  usually the best option to use on ML40x and ML50x boards.
+
+config XILINX_LLTEMAC_MARVELL_88E1111_MII
+	bool "MARVELL 88E1111 using MII or other PHY"
+   help
+	  If your physical interface is not covered by the other
+	  selections, then choose this option.  This option includes generic
+	  speed autonegotation code.
+
+config XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	bool "NATIONAL DP83865 using GMII"
+   help
+	  This phy is used by many Avnet boards.  This option includes
+	  code for enabling GMII over copper, and for setting the correct
+	  speed based on whatever the phy is able to autonegotiate.  This is
+	  usually the best option to use on Avnet boards.
+
+endchoice
 
 config ATL1C
 	tristate "Atheros L1C Gigabit Ethernet support (EXPERIMENTAL)"
@@ -2702,6 +2766,7 @@ config NETXEN_NIC
 config NIU
 	tristate "Sun Neptune 10Gbit Ethernet support"
 	depends on PCI
+	select CRC32
 	help
 	  This enables support for cards based upon Sun's
 	  Neptune chipset.
@@ -3241,7 +3306,7 @@ config VIRTIO_NET
 
 config VMXNET3
        tristate "VMware VMXNET3 ethernet driver"
-       depends on PCI && X86 && INET
+       depends on PCI && INET
        help
          This driver supports VMware's vmxnet3 virtual ethernet NIC.
          To compile this driver as a module, choose M here: the

@@ -56,6 +56,16 @@ config IRQ_PER_CPU
 	bool
 	default y
 
+config NR_IRQS
+	int "Number of virtual interrupt numbers"
+	range 32 512
+	default "512"
+	help
+	  This defines the number of virtual interrupt numbers the kernel
+	  can manage. Virtual interrupt numbers are what you see in
+	  /proc/interrupts. If you configure your system to have too few,
+	  drivers will fail to load or worse - handle with care.
+
 config STACKTRACE_SUPPORT
 	bool
 	default y
@@ -199,24 +209,14 @@ config DEFAULT_UIMAGE
 config REDBOOT
 	bool
 
-config HIBERNATE_32
-	bool
-	depends on (PPC_PMAC && !SMP) || BROKEN
-	default y
-
-config HIBERNATE_64
-	bool
-	depends on BROKEN || (PPC_PMAC64 && EXPERIMENTAL)
-	default y
-
 config ARCH_HIBERNATION_POSSIBLE
 	bool
-	depends on (PPC64 && HIBERNATE_64) || (PPC32 && HIBERNATE_32)
 	default y
 
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
-	depends on ADB_PMU || PPC_EFIKA || PPC_LITE5200 || PPC_83xx
+	depends on ADB_PMU || PPC_EFIKA || PPC_LITE5200 || PPC_83xx || \
+		   PPC_85xx || PPC_86xx
 
 config PPC_DCR_NATIVE
 	bool
@@ -320,6 +320,10 @@ config HOTPLUG_CPU
 
 	  Say N if you are unsure.
 
+config ARCH_CPU_PROBE_RELEASE
+	def_bool y
+	depends on HOTPLUG_CPU
+
 config ARCH_ENABLE_MEMORY_HOTPLUG
 	def_bool y
 
@@ -377,6 +381,19 @@ config IRQ_ALL_CPUS
 	  multiple CPUs.  Saying N here will route all IRQs to the first
 	  CPU.  Generally saying Y is safe, although some problems have been
 	  reported with SMP Power Macintoshes with this option enabled.
+
+config SPARSE_IRQ
+	bool "Support sparse irq numbering"
+	default y
+	help
+	  This enables support for sparse irqs. This is useful for distro
+	  kernels that want to define a high CONFIG_NR_CPUS value but still
+	  want to have low kernel memory footprint on smaller machines.
+
+	  ( Sparse IRQs can also be beneficial on NUMA boxes, as they spread
+	    out the irq_desc[] array in a more NUMA-friendly way. )
+
+	  If you don't know what to do here, say Y.
 
 config NUMA
 	bool "NUMA support"
@@ -604,6 +621,44 @@ config SECCOMP
 
 	  If unsure, say Y. Only embedded should say N here.
 
+config COMPRESSED_DEVICE_TREE
+	bool "Use compressed device tree"
+	depends on XILINX_VIRTEX
+	help
+	  In Xilinx FPGAs, the hardware can change quite dramatically while
+	  still running the same kernel.  In this case and other similar
+	  ones, it is preferable to associate the device tree with a
+	  particular build of the hardware design.  This configuration
+	  option assumes that the device tree blob has been compressed and
+	  stored in Block RAM in the FPGA design.  Typically, such a block
+	  ram is available in order to provide a bootloop or other code
+	  close to the reset vector at the top of the address space.  By
+	  default, the parameter options associated with this configuration
+	  assumes that exactly one block ram (2KB) of storage is available,
+	  which should be sufficient for most designs.  If necessary in a
+	  particular design, due to boot code requirement or a large number
+	  of devices, this address (and the corresponding parameters in the
+	  EDK design) must be modified.
+
+	  Note that in some highly area constrained designs, no block rams
+	  may be available in the design, and some other mechanism may be
+	  used to hold the processor in reset while external memory is
+	  initialized with processor code.  In such cases, that mechanism
+	  should also be used to load the device tree at an appropriate
+	  location, and the parameters associated with this configuration
+	  option should be modified to point to that location in external
+	  memory.
+
+config COMPRESSED_DTB_START
+	hex "Start of compressed device tree"
+	depends on COMPRESSED_DEVICE_TREE
+	default 0xfffff800
+
+config COMPRESSED_DTB_SIZE
+	hex "Size of compressed device tree"
+	depends on COMPRESSED_DEVICE_TREE
+	default 0x800
+
 endmenu
 
 config ISA_DMA_API
@@ -652,6 +707,14 @@ config FSL_PCI
 	select PPC_INDIRECT_PCI
 	select PCI_QUIRKS
 
+config FSL_PMC
+	bool
+	default y
+	depends on SUSPEND && (PPC_85xx || PPC_86xx)
+	help
+	  Freescale MPC85xx/MPC86xx power management controller support
+	  (suspend/resume). For MPC83xx see platforms/83xx/suspend.c
+
 config 4xx_SOC
 	bool
 
@@ -679,7 +742,7 @@ config PPC_PCI_CHOICE
 config PCI
 	bool "PCI support" if PPC_PCI_CHOICE
 	default y if !40x && !CPM2 && !8xx && !PPC_83xx \
-		&& !PPC_85xx && !PPC_86xx
+		&& !PPC_85xx && !PPC_86xx && !GAMECUBE_COMMON
 	default PCI_PERMEDIA if !4xx && !CPM2 && !8xx
 	default PCI_QSPAN if !4xx && !CPM2 && 8xx
 	select ARCH_SUPPORTS_MSI

@@ -14,6 +14,8 @@ CFLAGS_legacy.o += -Wno-deprecated-declarations
 # Build PCI Express stuff if needed
 obj-$(CONFIG_PCIEPORTBUS) += pcie/
 
+obj-$(CONFIG_PCI_IOAPIC) += ioapic.o
+
 obj-$(CONFIG_HOTPLUG) += hotplug.o
 
 # Build the PCI Hotplug drivers if we were asked to
@@ -47,6 +49,7 @@ obj-$(CONFIG_PPC) += setup-bus.o
 obj-$(CONFIG_MIPS) += setup-bus.o setup-irq.o
 obj-$(CONFIG_X86_VISWS) += setup-irq.o
 obj-$(CONFIG_MN10300) += setup-bus.o
+obj-$(CONFIG_MICROBLAZE) += setup-bus.o
 
 #
 # ACPI Related PCI FW Functions

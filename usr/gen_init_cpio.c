@@ -17,6 +17,11 @@
  * Hard link support by Luciano Rocha
  */
 
+#ifdef __CYGWIN32__
+#undef PATH_MAX
+#define PATH_MAX 259
+#endif
+
 #define xstr(s) #s
 #define str(s) xstr(s)
 
@@ -309,7 +314,11 @@ static int cpio_mkfile(const char *name, const char *location,
 		goto error;
 	}
 
+#ifdef __CYGWIN32__
+	file = open (location, O_RDONLY | O_BINARY);
+#else
 	file = open (location, O_RDONLY);
+#endif
 	if (file < 0) {
 		fprintf (stderr, "File %s could not be opened for reading\n", location);
 		goto error;
@@ -354,7 +363,10 @@ static int cpio_mkfile(const char *name, const char *location,
 		push_pad();
 
 		if (size) {
-			fwrite(filebuf, size, 1, stdout);
+			if (fwrite(filebuf, size, 1, stdout) != 1) {
+				fprintf(stderr, "writing filebuf failed\n");
+				goto error;
+			}
 			offset += size;
 			push_pad();
 		}

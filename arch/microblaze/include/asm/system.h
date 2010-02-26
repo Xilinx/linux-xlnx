@@ -16,6 +16,8 @@
 #include <asm-generic/cmpxchg.h>
 #include <asm-generic/cmpxchg-local.h>
 
+#define __ARCH_WANT_INTERRUPTS_ON_CTXSW
+
 struct task_struct;
 struct thread_info;
 
@@ -84,6 +86,9 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end);
 void free_initmem(void);
 extern char *klimit;
 extern void ret_from_fork(void);
+
+extern void *alloc_maybe_bootmem(size_t size, gfp_t mask);
+extern void *zalloc_maybe_bootmem(size_t size, gfp_t mask);
 
 #ifdef CONFIG_DEBUG_FS
 extern struct dentry *of_debugfs_root;

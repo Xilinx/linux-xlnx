@@ -22,7 +22,10 @@
 #include <linux/io.h>
 #include <linux/bug.h>
 #include <linux/param.h>
+#include <linux/pci.h>
 #include <linux/cache.h>
+#include <linux/of_platform.h>
+#include <linux/dma-mapping.h>
 #include <asm/cacheflush.h>
 #include <asm/entry.h>
 #include <asm/cpuinfo.h>
@@ -52,15 +55,11 @@ void __init setup_arch(char **cmdline_p)
 	/* irq_early_init(); */
 	setup_cpuinfo();
 
-	__invalidate_icache_all();
-	__enable_icache();
-
-	__invalidate_dcache_all();
-	__enable_dcache();
-
-	panic_timeout = 120;
+	microblaze_cache_init();
 
 	setup_memory();
+
+	xilinx_pci_init();
 
 #if defined(CONFIG_SELFMOD_INTC) || defined(CONFIG_SELFMOD_TIMER)
 	printk(KERN_NOTICE "Self modified code enable\n");
@@ -131,6 +130,8 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 		strlcpy(cmd_line, cmdline, COMMAND_LINE_SIZE);
 #endif
 
+	lockdep_init();
+
 /* initialize device tree for usage in early_printk */
 	early_init_devtree((void *)_fdt_start);
 
@@ -187,31 +188,36 @@ static int microblaze_debugfs_init(void)
 arch_initcall(microblaze_debugfs_init);
 #endif
 
-void machine_restart(char *cmd)
+static int dflt_bus_notify(struct notifier_block *nb,
+				unsigned long action, void *data)
 {
-	printk(KERN_NOTICE "Machine restart...\n");
-	dump_stack();
-	while (1)
-		;
+	struct device *dev = data;
+
+	/* We are only intereted in device addition */
+	if (action != BUS_NOTIFY_ADD_DEVICE)
+		return 0;
+
+	set_dma_ops(dev, &dma_direct_ops);
+
+	return NOTIFY_DONE;
 }
 
-void machine_shutdown(void)
+static struct notifier_block dflt_plat_bus_notifier = {
+	.notifier_call = dflt_bus_notify,
+	.priority = INT_MAX,
+};
+
+static struct notifier_block dflt_of_bus_notifier = {
+	.notifier_call = dflt_bus_notify,
+	.priority = INT_MAX,
+};
+
+static int __init setup_bus_notifier(void)
 {
-	printk(KERN_NOTICE "Machine shutdown...\n");
-	while (1)
-		;
+	bus_register_notifier(&platform_bus_type, &dflt_plat_bus_notifier);
+	bus_register_notifier(&of_platform_bus_type, &dflt_of_bus_notifier);
+
+	return 0;
 }
 
-void machine_halt(void)
-{
-	printk(KERN_NOTICE "Machine halt...\n");
-	while (1)
-		;
-}
-
-void machine_power_off(void)
-{
-	printk(KERN_NOTICE "Machine power off...\n");
-	while (1)
-		;
-}
+arch_initcall(setup_bus_notifier);

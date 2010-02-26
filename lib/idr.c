@@ -156,10 +156,12 @@ static int sub_alloc(struct idr *idp, int *starting_id, struct idr_layer **pa)
 			id = (id | ((1 << (IDR_BITS * l)) - 1)) + 1;
 
 			/* if already at the top layer, we need to grow */
-			if (!(p = pa[l])) {
+			if (id >= 1 << (idp->layers * IDR_BITS)) {
 				*starting_id = id;
 				return IDR_NEED_TO_GROW;
 			}
+			p = pa[l];
+			BUG_ON(!p);
 
 			/* If we need to go up one layer, continue the
 			 * loop; otherwise, restart from the top.
@@ -281,7 +283,7 @@ static int idr_get_new_above_int(struct idr *idp, void *ptr, int starting_id)
 /**
  * idr_get_new_above - allocate new idr entry above or equal to a start id
  * @idp: idr handle
- * @ptr: pointer you want associated with the ide
+ * @ptr: pointer you want associated with the id
  * @start_id: id to start search at
  * @id: pointer to the allocated handle
  *
@@ -313,7 +315,7 @@ EXPORT_SYMBOL(idr_get_new_above);
 /**
  * idr_get_new - allocate new idr entry
  * @idp: idr handle
- * @ptr: pointer you want associated with the ide
+ * @ptr: pointer you want associated with the id
  * @id: pointer to the allocated handle
  *
  * This is the allocate id function.  It should be called with any

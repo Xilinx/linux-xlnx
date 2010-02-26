@@ -1147,7 +1147,7 @@ void init_request_from_bio(struct request *req, struct bio *bio)
  */
 static inline bool queue_should_plug(struct request_queue *q)
 {
-	return !(blk_queue_nonrot(q) && blk_queue_queuing(q));
+	return !(blk_queue_nonrot(q) && blk_queue_tagged(q));
 }
 
 static int __make_request(struct request_queue *q, struct bio *bio)
@@ -1859,15 +1859,8 @@ void blk_dequeue_request(struct request *rq)
 	 * and to it is freed is accounted as io that is in progress at
 	 * the driver side.
 	 */
-	if (blk_account_rq(rq)) {
+	if (blk_account_rq(rq))
 		q->in_flight[rq_is_sync(rq)]++;
-		/*
-		 * Mark this device as supporting hardware queuing, if
-		 * we have more IOs in flight than 4.
-		 */
-		if (!blk_queue_queuing(q) && queue_in_flight(q) > 4)
-			set_bit(QUEUE_FLAG_CQ, &q->queue_flags);
-	}
 }
 
 /**
@@ -2357,6 +2350,25 @@ void blk_rq_bio_prep(struct request_queue *q, struct request *rq,
 	if (bio->bi_bdev)
 		rq->rq_disk = bio->bi_bdev->bd_disk;
 }
+
+#if ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE
+/**
+ * rq_flush_dcache_pages - Helper function to flush all pages in a request
+ * @rq: the request to be flushed
+ *
+ * Description:
+ *     Flush all pages in @rq.
+ */
+void rq_flush_dcache_pages(struct request *rq)
+{
+	struct req_iterator iter;
+	struct bio_vec *bvec;
+
+	rq_for_each_segment(bvec, rq, iter)
+		flush_dcache_page(bvec->bv_page);
+}
+EXPORT_SYMBOL_GPL(rq_flush_dcache_pages);
+#endif
 
 /**
  * blk_lld_busy - Check if underlying low-level drivers of a device are busy

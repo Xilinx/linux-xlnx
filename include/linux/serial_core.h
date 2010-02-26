@@ -179,8 +179,11 @@
 /* BCM63xx family SoCs */
 #define PORT_BCM63XX	89
 
+/* Aeroflex Gaisler GRLIB APBUART */
+#define PORT_APBUART    90
+
 /* Xilinx */
-#define PORT_XUARTPSS	90
+#define PORT_XUARTPSS	91
 
 #ifdef __KERNEL__
 

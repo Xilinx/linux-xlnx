@@ -86,7 +86,7 @@ static int mpc8568_fixup_125_clock(struct phy_device *phydev)
 	scr = phy_read(phydev, MV88E1111_SCR);
 
 	if (scr < 0)
-		return err;
+		return scr;
 
 	err = phy_write(phydev, MV88E1111_SCR, scr | 0x0008);
 
@@ -301,6 +301,7 @@ static struct of_device_id mpc85xx_ids[] = {
 	{ .compatible = "fsl,qe", },
 	{ .compatible = "gianfar", },
 	{ .compatible = "fsl,rapidio-delta", },
+	{ .compatible = "fsl,mpc8548-guts", },
 	{},
 };
 
@@ -337,7 +338,8 @@ static void __init mpc85xx_mds_pic_init(void)
 	}
 
 	mpic = mpic_alloc(np, r.start,
-			MPIC_PRIMARY | MPIC_WANTS_RESET | MPIC_BIG_ENDIAN,
+			MPIC_PRIMARY | MPIC_WANTS_RESET | MPIC_BIG_ENDIAN |
+			MPIC_BROKEN_FRR_NIRQS,
 			0, 256, " OpenPIC  ");
 	BUG_ON(mpic == NULL);
 	of_node_put(np);
