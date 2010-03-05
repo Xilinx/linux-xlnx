@@ -242,6 +242,18 @@ skpinv:	addi	r4,r4,1				/* Increment */
 	mtspr	SPRN_IVPR,r4
 
 	/*
+	 * The following code is needed to make GDB work with soft breakpoints.
+	 * This patch was provided by Brian Hill. 
+	 */ 
+	lis     r2,DBCR0_IDM@h
+	mtspr   SPRN_DBCR0,r2
+	isync
+
+	/* clear any residual debug events */
+	li      r2,-1
+	mtspr   SPRN_DBSR,r2
+
+	/*
 	 * This is where the main kernel code starts.
 	 */
 
