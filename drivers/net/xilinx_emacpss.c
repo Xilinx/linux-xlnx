@@ -70,7 +70,7 @@
 #define RX_IP_ALIGN_OFFSET       2
 
 /* DMA buffer descriptors must be aligned on a 4-byte boundary. */
-#define ALIGNMENT_BD             4
+#define ALIGNMENT_BD             8
 
 /* Maximum value for hash bits. 2**6 */
 #define XEMACPSS_MAX_HASH_BITS   64
@@ -93,8 +93,8 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #undef DEBUG
 #define DEBUG_SPEED
 
-#define XEMACPSS_SEND_BD_CNT  128
-#define XEMACPSS_RECV_BD_CNT  128
+#define XEMACPSS_SEND_BD_CNT  4
+#define XEMACPSS_RECV_BD_CNT  4
 
 #define XEMACPSS_NAPI_WEIGHT  64
 
@@ -324,7 +324,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 
 /* transmit status register bit definitions */
 #define XEMACPSS_TXSR_HRESPNOK_MASK   0x00000100 /* Transmit hresp not OK */
-#define XEMACPSS_TXSR_COL1000_MASK    0x00000040 /* Collision Gbs mode */
+#define XEMACPSS_TXSR_COL1000_MASK    0x00000080 /* Collision Gbs mode */
 #define XEMACPSS_TXSR_URUN_MASK       0x00000040 /* Transmit underrun */
 #define XEMACPSS_TXSR_TXCOMPL_MASK    0x00000020 /* Transmit completed OK */
 #define XEMACPSS_TXSR_BUFEXH_MASK     0x00000010 /* Transmit buffs exhausted
@@ -1380,6 +1380,13 @@ static void xemacpss_tx_poll(unsigned long data)
 		printk(KERN_ERR "Kernel passing null pointer!\n");
 		return;
 	}
+/* wsy, debug */
+regval = xemacpss_read(lp->baseaddr, XEMACPSS_ISR_OFFSET);
+if (regval & (XEMACPSS_IXR_TXEXH_MASK | XEMACPSS_IXR_RETRY_MASK |
+	XEMACPSS_IXR_URUN_MASK))
+{
+printk(KERN_ERR "TX error 0x%x!\n", regval);
+}
 
 	regval = xemacpss_read(lp->baseaddr, XEMACPSS_TXSR_OFFSET);
 	xemacpss_write(lp->baseaddr, XEMACPSS_TXSR_OFFSET, regval);
@@ -1389,9 +1396,11 @@ static void xemacpss_tx_poll(unsigned long data)
 	 * we can do to revive hardware other than reset hardware.
 	 * Or try to close this interface and reopen it.
 	 */
-	if (regval & XEMACPSS_TXSR_HRESPNOK_MASK) {
-		printk(KERN_ERR "%s: TX underrun, resetting buffers?\n",
-			ndev->name);
+	if (regval & (XEMACPSS_TXSR_URUN_MASK | XEMACPSS_TXSR_RXOVR_MASK |
+		XEMACPSS_TXSR_HRESPNOK_MASK | XEMACPSS_TXSR_COL1000_MASK |
+		XEMACPSS_TXSR_BUFEXH_MASK | XEMACPSS_TXSR_COL100_MASK)) {
+		printk(KERN_ERR "%s: TX error 0x%x, resetting buffers?\n",
+			ndev->name, regval);
 	}
 
 	/* This may happen when a buffer becomes complete
@@ -1410,6 +1419,10 @@ static void xemacpss_tx_poll(unsigned long data)
 		rmb();
 		regval  = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
 		bdidx = XEMACPSS_BD_TO_INDEX(&lp->tx_ring, bdptr);
+/* wsy, debug */
+if ((bdidx < 0) || (bdidx >= XEMACPSS_SEND_BD_CNT) || (NULL == bdptr))
+printk(KERN_INFO "%d TX bd index %d BD_STAT 0x%08x bdptr 0x%x.\n", __LINE__, bdidx, regval, bdptr);
+
 		rp = &lp->tx_skb[bdidx];
 		skb = rp->skb;
 		len += skb->len;
@@ -1900,21 +1913,31 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	printk("\n");
 #endif
 
+/* wsy, debug */
+if (NULL == skb)
+printk(KERN_INFO "%d skb 0x%x\n", __LINE__, skb);
+
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
+	spin_lock_irq(&lp->lock);
+
+/* wsy, debug */ 
+if (nr_frags != 1)
+printk(KERN_INFO "%d nr_frags %d\n", __LINE__, nr_frags);
 
 	if (nr_frags < lp->tx_ring.freecnt) {
 		rc = xemacpss_bdringalloc(&lp->tx_ring, nr_frags, &bdptr);
 		if (rc) {
 			netif_stop_queue(ndev); /* stop send queue */
+			spin_unlock_irq(&lp->lock);
 			return rc;
 		}
 	} else {
 		netif_stop_queue(ndev); /* stop send queue */
 		printk(KERN_ERR "too many fragments. %d\n", nr_frags);
+		spin_unlock_irq(&lp->lock);
 		return -EIO;
 	}
 
-	spin_lock_irq(&lp->lock);
 	frag = &skb_shinfo(skb)->frags[0];
 	bdptrs = bdptr;
 #ifdef DEBUG
@@ -1937,6 +1960,10 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 
 		bdidx = XEMACPSS_BD_TO_INDEX(&lp->tx_ring, bdptr);
+/* wsy, debug */
+if ((bdidx < 0) || (bdidx >= XEMACPSS_SEND_BD_CNT) || (NULL == bdptr) || (NULL == skb) || (NULL == mapping))
+printk(KERN_INFO "%d TX bd index %d bdptr 0x%x skb 0x%x mapping 0x%x \n", __LINE__, bdidx, bdptr, skb, mapping);
+
 		lp->tx_skb[bdidx].skb = skb;
 		lp->tx_skb[bdidx].mapping = mapping;
 		wmb();
