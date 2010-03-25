@@ -86,7 +86,7 @@
  */
 #define XI2CPSS_IXR_ALL_INTR_MASK 0x000002FF /* All ISR Mask */
 
-#define XI2CPSS_FIFO_DEPTH	128		/* FIFO Depth */
+#define XI2CPSS_FIFO_DEPTH	16		/* FIFO Depth */
 #define XI2CPSS_TIMEOUT		(50 * HZ)	/* Timeout for bus busy check */
 #define XI2CPSS_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
 
@@ -391,7 +391,7 @@ static int xi2cpss_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	 * Set the flag to zero when multiple messages are to be
 	 * processed with a repeated start.
 	 */
-	if (num == 1) {
+	if (num > 1) {
 		id->bus_hold_flag = 0;
 		xi2cpss_writereg((xi2cpss_readreg(XI2CPSS_CR_OFFSET) |
 				XI2CPSS_CR_HOLD_BUS_MASK), XI2CPSS_CR_OFFSET);
