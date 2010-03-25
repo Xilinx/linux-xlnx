@@ -126,8 +126,10 @@
 #endif
 
 
+static dma_t dma_chan[MAX_DMA_CHANNELS];
+
 /**
- * pl330_device_data - Stores information related to the device.
+ * struct pl330_device_data - Stores information related to the device.
  * @base: Device base address
  * @channels: Number of channels
  * @starting_channel: Starting channel number in the driver API
@@ -158,7 +160,7 @@ struct pl330_device_data {
 };
 
 /**
- * pl330_channel_static_data - Static information related to a channel.
+ * struct pl330_channel_static_data - Static information related to a channel.
  * @dev_id: Device id
  * @channel: Channel number of the DMA driver. This is the number that passed
  *	to the DMA API. The number starts at 0. For example, if a system
@@ -180,7 +182,7 @@ struct pl330_channel_static_data {
 };
 
 /**
- * pl330_channel_data - Channel related information
+ * struct pl330_channel_data - Channel related information
  * @dma_program: Starting address of DMA program for the channel set by users
  * @dma_prog_buf: Buffer for DMA program if there is a need to construct the
  * 	program. This is a virtual address.
@@ -211,7 +213,7 @@ struct pl330_channel_data {
 };
 
 /**
- * pl330_driver_data - Top level struct for the driver data.
+ * struct pl330_driver_data - Top level struct for the driver data.
  * @dma_chan: Pointer to the dma_struct array.
  * @device_data: Array of pl330_device_data.
  * @channel_data: Array of pl330_channel_data.
@@ -225,14 +227,15 @@ struct pl330_driver_data {
 };
 
 
-/**
- * Root instance of the pl330_driver_data.
+/*
+ * driver_data Root instance of the pl330_driver_data.
  */
-struct pl330_driver_data driver_data;
+static struct pl330_driver_data driver_data;
 
-/**
+/*
  * read and write macros for register IO.
  */
+
 #define pl330_readreg(base, offset) \
 	__raw_readl((void __iomem *)((u32)(base) + (u32)(offset)))
 #define pl330_writereg(data, base, offset) \
@@ -716,9 +719,9 @@ inline unsigned pl330_to_burst_size_bits(unsigned burst_size)
  * 	to CCR value. All the values passed to the functions are in terms
  *	of assembly languages, not in terms of the register bit encoding.
  * @src_bus_des: The source AXI bus descriptor.
- * @src_incr: Whether the source address should be increment.
+ * @src_inc: Whether the source address should be increment.
  * @dst_bus_des: The destination AXI bus descriptor.
- * @dst_incr: Whether the destination address should be increment.
+ * @dst_inc: Whether the destination address should be increment.
  * @endian_swap_size: Endian swap szie
  *
  * Returns the 32-bit CCR value.
@@ -1566,6 +1569,11 @@ void pl330_init_device_data(unsigned int dev_id,
 	u32 cfg_reg;
 	u32 value;
 
+	u32 pid;
+	u32 cid;
+
+	int i;
+
 	struct pl330_device_data *device_data =
 		driver_data.device_data + dev_id;
 
@@ -1600,6 +1608,16 @@ void pl330_init_device_data(unsigned int dev_id,
 	       (u32)virt_to_bus(device_data->base));
 	PDEBUG("page_to_phys(base) is %#08x\n",
 	       (u32)page_to_phys(virt_to_page(device_data->base)));
+
+	for (pid = 0, i = 0; i < 4; i++)
+		pid |= (pl330_readreg(device_data->base, 0xFE0 + i * 4) & 0xFF)
+			<< (i * 8);
+	PDEBUG("Periperal ID is %#08x\n", pid);
+
+	for (cid = 0, i = 0; i < 4; i++)
+		cid |= (pl330_readreg(device_data->base, 0xFF0 + i * 4) & 0xFF)
+			<< (i * 8);
+	PDEBUG("PrimeCell ID is %#08x\n", cid);
 
 	/* store the PL330 id. The device id starts from zero.
 	 * The last one is MAX_DMA_DEVICES - 1
@@ -1706,6 +1724,8 @@ static int pl330_request_dma(unsigned int channel, dma_t *indexed_dma_chan)
 	 */
 	struct pl330_channel_data *channel_data =
 		driver_data.channel_data + channel;
+
+	PDEBUG("PL330::pl330_request_dma() ...\n");
 
 	memset(channel_data, 0, sizeof(struct pl330_channel_data));
 
@@ -2080,7 +2100,7 @@ static void pl330_disable_dma(unsigned int channel,
 	return;
 }
 
-/**
+/*
  * Platform bus binding
  */
 static struct dma_ops pl330_ops = {
@@ -2246,9 +2266,8 @@ static struct platform_driver pl330_platform_driver = {
 /**
  * pl330_driver_init - Initialize the dma_struct array and store the pointer
  *	to array
- * @dma_chan: array of dma_struct
  */
-static void pl330_driver_init(struct dma_struct *dma_chan)
+static void pl330_driver_init(void)
 {
 	unsigned int i;
 
@@ -2257,10 +2276,12 @@ static void pl330_driver_init(struct dma_struct *dma_chan)
 
 	driver_data.dma_chan = dma_chan;
 
-	memset(dma_chan, 0, sizeof(dma_t[MAX_DMA_CHANNELS]));
+	memset(dma_chan, 0, sizeof(dma_chan[MAX_DMA_CHANNELS]));
 
-	for (i = 0; i < MAX_DMA_CHANNELS; i++)
+	for (i = 0; i < MAX_DMA_CHANNELS; i++) {
 		dma_chan[i].d_ops = &pl330_ops;
+		isa_dma_add(i, dma_chan + i);
+	}
 
 }
 
@@ -2294,7 +2315,7 @@ void setup_default_bus_des(unsigned int default_burst_size,
  * set_pl330_client_data - Associate an instance of struct pl330_client_data
  * 	with a DMA channel.
  * @channel: DMA channel number.
- * @dev_data: instance of the struct pl330_client_data.
+ * @client_data: instance of the struct pl330_client_data.
  * Returns 0 on success, -EINVAL if the channel number is out of range,
  * 	-ACCESS if the channel has not been allocated.
  */
@@ -2484,6 +2505,7 @@ EXPORT_SYMBOL(set_pl330_done_callback);
  *	channel.
  * @channel: The DMA channel number.
  * @fault_callback: Channel fault callback.
+ * @data: The callback data
  * Returns 0 on success, -EINVAL if the channel number is out of range,
  * 	-ACCESS if the channel has not been allocated.
  */
@@ -2612,6 +2634,8 @@ static int __init pl330_init(void)
 {
 	int status;
 
+	pl330_driver_init();
+
 	status = platform_driver_register(&pl330_platform_driver);
 	PDEBUG("platform_driver_register: %d\n", status);
 	return status;
@@ -2631,15 +2655,6 @@ static void __exit pl330_exit(void)
 	PDEBUG("platform_driver_unregister\n");
 }
 module_exit(pl330_exit);
-
-/*
- * arch_dma_init - Initialize the driver data with pointer to the dma_struct.
- *	This function is invoked by the init_dma in dma.c
- */
-void arch_dma_init(struct dma_struct *dma_chan_ptr)
-{
-	pl330_driver_init(dma_chan_ptr);
-}
 
 
 MODULE_LICENSE("GPL");
