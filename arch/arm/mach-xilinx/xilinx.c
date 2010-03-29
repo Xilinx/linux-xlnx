@@ -26,11 +26,50 @@
 #include <mach/uart.h>
 #include <mach/common.h>
 
+#include <linux/i2c.h>
+#include <linux/i2c/at24.h>
+#include <linux/spi/spi.h>
+#include <linux/spi/eeprom.h>
+
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
 
 /* used by entry-macro.S */
 void __iomem *gic_cpu_base_addr;
+
+static struct at24_platform_data board_eeprom = {
+	.byte_len = 8*1024,
+	.page_size = 32,
+	.flags = AT24_FLAG_ADDR16,
+};
+
+static struct i2c_board_info i2c_devs[] __initdata = {
+	{ 
+		I2C_BOARD_INFO("24c64", 0x50), 
+		.platform_data = &board_eeprom,
+	},
+};
+
+#ifndef CONFIG_SPI_SPIDEV
+
+static struct spi_eeprom at25640 = {
+        .name           = "at25LC640",
+        .byte_len       = 8*1024,
+        .page_size      = 32,
+        .flags          = EE_ADDR2,
+};
+
+static struct spi_board_info spi_devs[] __initdata = {
+        {
+                .modalias = "at25",
+                .max_speed_hz = 5000000,
+                .bus_num = 0,
+                .chip_select = 0,
+                .platform_data = &at25640,
+        },
+};
+
+#endif
 
 /**
  * board_init - Board specific initialization for the Xilinx BSP.
@@ -41,6 +80,13 @@ static void __init board_init(void)
 	xilinx_debug("->board_init\n");
 
 	platform_device_init();
+
+	i2c_register_board_info(0, i2c_devs, ARRAY_SIZE(i2c_devs));
+
+#ifndef CONFIG_SPI_SPIDEV
+	spi_register_board_info(spi_devs,
+ 			         ARRAY_SIZE(spi_devs));
+#endif
 
 	xilinx_debug("<-board_init\n");
 }

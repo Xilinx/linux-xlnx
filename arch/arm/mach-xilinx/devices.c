@@ -277,11 +277,14 @@ struct platform_device eth_device1 = {
 #endif
 
 /*************************PSS SPI*********************/
+
 static struct xspi_platform_data xspi_0_pdata = {
 	.speed_hz = 50000000,
 	.bus_num = 0,
 	.num_chipselect = 4
 };
+
+#ifdef CONFIG_SPI_SPIDEV
 
 static struct spi_board_info __initdata xilinx_spipss_0_boardinfo = {
 	.modalias		= "spidev",
@@ -291,6 +294,8 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo = {
 	.bus_num		= 0,
 	.chip_select		= 0,
 };
+
+#endif
 
 static struct resource xspipss_0_resource[] = {
 	{
@@ -392,8 +397,11 @@ void __init platform_device_init(void)
 		if (ret)
 			pr_info("Unable to register platform device '%s': %d\n",
 				xilinx_pdevices[i]->name, ret);
+#ifdef CONFIG_SPI_SPIDEV
 		else if (&xilinx_spipss_0_device == xilinx_pdevices[i])
 			spi_register_board_info(&xilinx_spipss_0_boardinfo, 1);
+#endif
+
 	}
 }
 
