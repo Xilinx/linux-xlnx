@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.33
-# Mon Mar 29 16:00:22 2010
+# Tue Mar 30 10:27:14 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -222,6 +222,11 @@ CONFIG_MMU=y
 # CONFIG_ARCH_BCMRING is not set
 CONFIG_ARCH_XILINX=y
 # CONFIG_ARCH_U8500 is not set
+
+#
+# Xilinx Specific Options
+#
+CONFIG_XILINX_TEST=y
 
 #
 # Processor Type

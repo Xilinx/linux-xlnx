@@ -1,3 +1,12 @@
 if ARCH_XILINX
 
+menu "Xilinx Specific Options"
+config XILINX_TEST
+	bool "Testing On Kernel Boot"
+	default n
+	help
+	  Select if you want kernel tests to run on boot.  The tests may take
+	  several minutes on kernel boot.
+endmenu
+
 endif

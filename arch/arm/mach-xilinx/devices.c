@@ -62,6 +62,7 @@ static struct resource uart1[] = {
 	},
 };
 
+/*************************PSS DMA***********************/
 static u64 dma_mask = 0xFFFFFFFFUL;
 
 struct platform_device uart_device1 = {
@@ -131,6 +132,22 @@ struct platform_device dmac_device1 = {
 	.resource = dmac1,
 	.num_resources = ARRAY_SIZE(dmac1),
 };
+
+#ifdef CONFIG_XILINX_TEST
+
+static struct platform_device xilinx_dma_test = {
+	.name = "pl330_test",
+	.id = 0,
+	.dev = {
+		.platform_data = NULL,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = NULL,
+	.num_resources = 0,
+};
+
+#endif
 
 /*************************PSS I2C***********************/
 static struct xi2cpss_platform_data xi2cpss_pdata = {
@@ -365,6 +382,9 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&uart_device1,
 	&dmac_device0,
 	&dmac_device1,
+#ifdef CONFIG_XILINX_TEST
+	&xilinx_dma_test,
+#endif
 	&xilinx_i2cpss_0_device,
 	&xilinx_gpiopss_0_device,
 	&xilinx_norpss_device,
