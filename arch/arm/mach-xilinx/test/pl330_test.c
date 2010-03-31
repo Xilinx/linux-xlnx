@@ -93,7 +93,7 @@ static void failed_tests_print(void)
 	int i;
 
 	if (!tests_count) {
-		printk(KERN_INFO "No failed tests logged\n");
+// JHL		printk(KERN_INFO "No failed tests logged\n");
 		return;
 	}
 
