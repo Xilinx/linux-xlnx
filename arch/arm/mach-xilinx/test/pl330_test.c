@@ -13,8 +13,59 @@
 #include <asm/dma.h>
 #include <mach/pl330.h>
 
+/*
+ * This is a test module for pl330 linux driver.
+ *
+ * There are a couple ways to run this test.
+ *
+ * One is to compile it as a loadable module, then run insmod pl330_test.ko.
+ *
+ * You also need to register a pl330_test device.
+ *
+ * The other way is to make it as part of the kernel and compile with the
+ * kernel.
+ *
+ * Here are the steps:
+ *
+ * 1. Change the Makefile inside arch/arm/mach-xilinx/Makefile, and add
+ * pl330_test.o the obj-y
+ * 2. Add the following declaration to arch/arm/mach-xilinx/devices.c
+ * static struct platform_device xilinx_dma_test = {
+ * 	.name = "pl330_test",
+ * 	.id = 0,
+ * 	.dev = {
+ *		.platform_data = NULL,
+ * 		.dma_mask = &dma_mask,
+ * 		.coherent_dma_mask = 0xFFFFFFFF,
+ *	},
+ *	.resource = NULL,
+ * 	.num_resources = 0,
+ * };
+ * 3. Add the following line to struct platform_device *xilinx_pdevices[]
+ * declaration:
+ * 	&xilinx_dma_test,
+ *
+ * 4. Make the zImage
+ *
+ * Either way, a device named "pl330_test" must be registered first.
+ *
+ * The test has 8 test suites. To run individual suite, you need to change
+ * the suite_num in the pl330_test.c to the suite you want to run, or you can
+ * pass the suite_num parameter when you insmod.
+ *
+ * Each test suite has many test cases. To run a particular test case, you need
+ * to modify the test_id in the pl330_test.c to the test case id you want to
+ * run.
+ *
+ * Or you can pass the test_id parameter when you insmod.
+ *
+ * By default, all tests will be run.
+ *
+ */
+
+
 #ifndef NO_IRQ
-#define NO_IRQ ((unsigned int )(-1))
+#define NO_IRQ ((unsigned int)(-1))
 #endif
 
 #define DRIVER_NAME         "pl330_test"
@@ -27,7 +78,9 @@ MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_VERSION(DRIVER_VERSION);
 
 
-//#define PL330_TEST_DEBUG
+/*
+#define PL330_TEST_DEBUG
+*/
 #undef PDBG
 #ifdef PL330_TEST_DEBUG
 #	define PDBG(fmt, args...) printk(KERN_INFO fmt, ## args)
@@ -43,18 +96,21 @@ MODULE_VERSION(DRIVER_VERSION);
 static const char *PASS = "PASS";
 static const char *FAIL = "FAIL";
 
-static struct device *test_device = NULL;
+static struct device *test_device;
 
-static int suite_num = 0;
+/*
+ * if suite_number is zero, all tests will be run.
+ */
+static int suite_num;
 static int test_id = -1;
-static int disp_dma_prog = 0;
+static int disp_dma_prog;
 
 module_param(suite_num, int, S_IRUGO);
 module_param(test_id, int, S_IRUGO);
 
-static int tests_run = 0;
-static int tests_failed = 0;
-static int tests_passed = 0;
+static int tests_run;
+static int tests_failed;
+static int tests_passed;
 
 #define dev_write8(data, addr)
 #define dev_write16(data, addr)
@@ -66,6 +122,12 @@ static int tests_passed = 0;
 #define dev_read64(addr) (0)
 
 #define MAX_FAILED_TESTS	128
+
+/**
+ * struct suite_case_pair - This defines a test case suite pair
+ * @test_suite:		The test suite number
+ * @test_case:		The test case number
+ */
 struct suite_case_pair {
 	int test_suite;
 	int test_case;
@@ -92,10 +154,8 @@ static void failed_tests_print(void)
 {
 	int i;
 
-	if (!tests_count) {
-// JHL		printk(KERN_INFO "No failed tests logged\n");
+	if (!tests_count)
 		return;
-	}
 
 	printk(KERN_INFO "The following tests failed:\n");
 	for (i = 0; i < tests_count; i++) {
@@ -105,9 +165,13 @@ static void failed_tests_print(void)
 	}
 }
 
-/*
- * assume all channels are free, 
- * request all the channels and expect to get 0 as return value
+/**
+ * test_request_free_channels - Tests request_dma for all the channels. It
+ * assumes all channels are free. It requests all the channels and expect to
+ * get 0 as return value
+ *
+ * returns: 	0 - success
+ * 		-1 - failure
  */
 static int test_request_free_channels(void)
 {
@@ -121,8 +185,7 @@ static int test_request_free_channels(void)
 		st = request_dma(i, DRIVER_NAME);
 		if (st == 0) {
 			PDBG("request_dma(%d) free = %d %s\n", i, st, PASS);
-		}
-		else {
+		} else {
 			PDBG("request_dma(%d) free = %d %s\n", i, st, FAIL);
 			status = -1;
 		}
@@ -132,6 +195,13 @@ static int test_request_free_channels(void)
 	return status;
 }
 
+/**
+ * test_request_busy_channels - Tests request_dma for all the channels that
+ * have been requested. It expects request_dma returns -EBUSY.
+ *
+ * returns: 	0 - success
+ * 		-1 - failure
+ */
 static int test_request_busy_channels(void)
 {
 	int status = 0;
@@ -144,8 +214,7 @@ static int test_request_busy_channels(void)
 		st = request_dma(i, DRIVER_NAME);
 		if (st == -EBUSY) {
 			PDBG("request_dma(%d) busy = %d %s\n", i, st, PASS);
-		}
-		else {
+		} else {
 			PDBG("request_dma(%d) busy = %d %s\n", i, st, FAIL);
 			status = -1;
 		}
@@ -156,20 +225,27 @@ static int test_request_busy_channels(void)
 	return status;
 }
 
+/**
+ * test_request_invalid_channels - Tests request_dma for all the channels that
+ * are out of the valid channel range. It expects request_dma returns -EINVAL.
+ *
+ * returns: 	0 - success
+ * 		-1 - failure
+ */
 static int test_request_invalid_channels(void)
 {
 	int status = 0;
 	unsigned int i;
 	int st;
 	unsigned int chan2test[8] = {
-		MAX_DMA_CHANNELS, 
-		MAX_DMA_CHANNELS + 1, 
-		MAX_DMA_CHANNELS + 2, 
-		MAX_DMA_CHANNELS + 3, 
-		MAX_DMA_CHANNELS * 10, 
-		MAX_DMA_CHANNELS * 10 + 1, 
-		MAX_DMA_CHANNELS * 10+ 2, 
-		MAX_DMA_CHANNELS * 10 + 3, 
+		MAX_DMA_CHANNELS,
+		MAX_DMA_CHANNELS + 1,
+		MAX_DMA_CHANNELS + 2,
+		MAX_DMA_CHANNELS + 3,
+		MAX_DMA_CHANNELS * 10,
+		MAX_DMA_CHANNELS * 10 + 1,
+		MAX_DMA_CHANNELS * 10 + 2,
+		MAX_DMA_CHANNELS * 10 + 3,
 	};
 
 	PDBG("inside test_request_invalid_channels\n");
@@ -179,8 +255,7 @@ static int test_request_invalid_channels(void)
 		if (st == -EINVAL) {
 			PDBG("request_dma(%d) invalid = %d %s\n",
 			     chan2test[i], st, PASS);
-		}
-		else {
+		} else {
 			PDBG("request_dma(%d) invalid = %d %s\n",
 			     chan2test[i], st, FAIL);
 			status = -1;
@@ -194,20 +269,29 @@ static int test_request_invalid_channels(void)
 
 }
 
+/**
+ * free_all_channels - Frees all the channels.
+ */
 static void free_all_channels(void)
 {
 	unsigned int i;
 
 	PDBG("inside free_channels\n");
 
-	for (i = 0; i < TEST_MAX_CHANNELS; i++) {
+	for (i = 0; i < TEST_MAX_CHANNELS; i++)
 		free_dma(i);
-	}
 	PDBG("free_channels DONE\n");
 
 	return;
 }
 
+/**
+ * test1 - Invokes test_request_invalid_channels, test_request_free_channels,
+ * test_request_busy_channels, and free_all_channels to test the request_dma
+ * and free_dma calls.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int test1(void)
 {
 	int status = 0;
@@ -241,7 +325,7 @@ static int test1(void)
 	free_all_channels();
 
 	PINFO("PL330 test1 %s\n", (status ? FAIL : PASS));
-	
+
 	return status;
 }
 
@@ -287,6 +371,16 @@ static volatile struct test_result test_results[MAX_TEST_RESULTS];
 
 #define index2char(index, off) ((char)((index) + (off)))
 
+/**
+ * init_memory - Initializes a memory buffer with a particular pattern.
+ * 	This function will be used if the source of a DMA transaction is
+ * 	memory buffer.
+ * @buf:	Pointer to the buffer
+ * @count:	The buffer length in bytes
+ * @off:	The starting value of the memory content
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int init_memory(void *buf, int count, int off)
 {
 	int i;
@@ -300,6 +394,18 @@ static int init_memory(void *buf, int count, int off)
 	return 0;
 }
 
+/**
+ * init_device - Initializes a device with a particular pattern.
+ * 	This function will be used if the source of a DMA transaction is
+ * 	memory buffer.  After initialization, this device will be ready for
+ * 	a DMA transaction.
+ * @dev_addr:	The device data buffer/FIFO address.
+ * @count:	The buffer length in bytes
+ * @off:	The starting value of the initial values
+ * @burst_size:	The DMA burst size the device supports.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int init_device(void *dev_addr, int count, int off,
 		       unsigned int burst_size)
 {
@@ -313,16 +419,20 @@ static int init_device(void *dev_addr, int count, int off,
 		if (char_index == burst_size - 1) {
 			/* it's tiime to write the word */
 			switch (burst_size) {
-			case 1: dev_write8(*((u8 *)local_buf),
+			case 1:
+				dev_write8(*((u8 *)local_buf),
 					   dev_addr);
 				break;
-			case 2: dev_write16(*((u16 *)local_buf),
+			case 2:
+				dev_write16(*((u16 *)local_buf),
 					    dev_addr);
 				break;
-			case 4: dev_write32(*((u32 *)local_buf),
+			case 4:
+				dev_write32(*((u32 *)local_buf),
 					    dev_addr);
 				break;
-			case 8: dev_write64(*((u64 *)local_buf),
+			case 8:
+				dev_write64(*((u64 *)local_buf),
 					    dev_addr);
 				break;
 			default:
@@ -343,6 +453,16 @@ static int init_device(void *dev_addr, int count, int off,
 	return 0;
 }
 
+/**
+ * verify_memory - Verifies the target memory buffer to see whehter the DMA
+ * 	transaction is completed successfully. This function is used when
+ * 	the target of a DMA transaction is a memory buffer.
+ * @buf:	Pointer to the buffer
+ * @count:	The buffer length in bytes
+ * @off:	The starting value of the memory content
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int verify_memory(void *buf, int count, int off)
 {
 	int i;
@@ -365,6 +485,17 @@ static int verify_memory(void *buf, int count, int off)
 	return 0;
 }
 
+/**
+ * verify_device - Verifies the target device buffer to see whehter the DMA
+ * 	transaction is completed successfully. This function is used when
+ * 	the target of a DMA transaction is a device buffer.
+ * @dev_addr:	The device data buffer/FIFO address.
+ * @count:	The buffer length in bytes
+ * @off:	The starting value of the initial values
+ * @burst_size:	The DMA burst size the device supports.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int verify_device(void *dev_addr, int count, int off,
 			 unsigned int burst_size)
 {
@@ -382,13 +513,17 @@ static int verify_device(void *dev_addr, int count, int off,
 		if (char_index == burst_size - 1) {
 			/* it's tiime to read the word */
 			switch (burst_size) {
-			case 1: (*((u8 *)got_buf)) = dev_read8(dev_addr);
+			case 1:
+				(*((u8 *)got_buf)) = dev_read8(dev_addr);
 				break;
-			case 2: (*((u16 *)got_buf)) = dev_read16(dev_addr);
+			case 2:
+				(*((u16 *)got_buf)) = dev_read16(dev_addr);
 				break;
-			case 4: (*((u32 *)got_buf)) = dev_read32(dev_addr);
+			case 4:
+				(*((u32 *)got_buf)) = dev_read32(dev_addr);
 				break;
-			case 8: (*((u64 *)got_buf)) = dev_read64(dev_addr);
+			case 8:
+				(*((u64 *)got_buf)) = dev_read64(dev_addr);
 				break;
 			default:
 				printk(KERN_ERR
@@ -430,6 +565,12 @@ static int verify_device(void *dev_addr, int count, int off,
 	return 0;
 }
 
+/**
+ * init_source - Initialize the source of a DMA transaction.
+ * @test_data:	Intance pointer to the test_data_t struct.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int init_source(struct test_data_t *test_data)
 {
 	int count = test_data->count;
@@ -455,6 +596,12 @@ static int init_source(struct test_data_t *test_data)
 }
 
 
+/**
+ * verify_destination - Initialize the source of a DMA transaction.
+ * @test_data:	Intance pointer to the test_data_t struct.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int verify_destination(struct test_data_t *test_data)
 {
 	void *buf = test_data->buf_virt_addr;
@@ -474,16 +621,30 @@ static int verify_destination(struct test_data_t *test_data)
 		return verify_device(dev_addr, count, off, dev_burst_size);
 }
 
+/**
+ * print_dma_prog - Print the content of DMA program.
+ * @dma_prog:	The starting address of the DMA program
+ * @len:	The length of the DMA program.
+ */
 static void print_dma_prog(char *dma_prog, unsigned int len)
 {
 	int i;
-	
+
 	PINFO("DMA Program is\n");
-	for (i = 0; i < len; i++) {
+	for (i = 0; i < len; i++)
 		PINFO("[%02x]\t%02x\n", i, dma_prog[i]);
-	}
 }
 
+/**
+ * verify_one_address - Verifies an address register to see whether it has the
+ * 			expected value.
+ * @start_addr:		Starting address
+ * @count:		The length of the DMA transaction
+ * @end_addr:		Ending address
+ * @inc:		Tag indicating whether the address of a DMA is
+ * 			incremental
+ * @name:		The name of an address register.
+ */
 static int verify_one_address(u32 start_addr,
 			      int count,
 			      u32 end_addr,
@@ -513,13 +674,20 @@ static int verify_one_address(u32 start_addr,
 	}
 }
 
+/**
+ * verify_address_registers - Verifies an address registers SA and DA to see
+ * 		whether they have the expected values after DMA is done.
+ * @test_data:	Intance pointer to the test_data_t struct.
+ *
+ * returns:	0 on success, -1 on failure.
+ */
 static int verify_address_registers(struct test_data_t *test_data)
 {
 	int status = 0;
 
 	u32 sa = get_pl330_sa_reg(test_data->channel);
 	u32 da = get_pl330_da_reg(test_data->channel);
-	
+
 	u32 sa_start;
 	u32 da_start;
 
@@ -541,7 +709,7 @@ static int verify_address_registers(struct test_data_t *test_data)
 		if (test_data->inc_dev_addr)
 			dst_inc = 1;
 	}
-	
+
 	if (verify_one_address(sa_start,
 			       test_data->count,
 			       sa,
@@ -559,6 +727,14 @@ static int verify_address_registers(struct test_data_t *test_data)
 	return status;
 }
 
+/**
+ * dma_done_callback2 - The callback function when the DMA is done.
+ * 		This function verifies whether the destination has the
+ * 		expected content and the SA and DA regsiters have the
+ * 		expected values. If not, mark the test case as failure.
+ * @channel:		The DMA channel number.
+ * @data:		The callback data.
+ */
 static void dma_done_callback2(unsigned int channel, void *data)
 {
 	struct test_data_t *test_data = (struct test_data_t *)data;
@@ -567,7 +743,7 @@ static void dma_done_callback2(unsigned int channel, void *data)
 	char *dma_prog;
 	unsigned int dma_prog_len;
 	int id = test_data->id;
-	
+
 	PDBG("DMA channel %d done suite %d case %d\n",
 	     channel, test_data->suite, id);
 
@@ -593,7 +769,16 @@ static void dma_done_callback2(unsigned int channel, void *data)
 	barrier();
 }
 
-
+/**
+ * dma_fault_callback2 - The callback function when the DMA is fault.
+ * 		This function verifies whether the destination has the
+ * 		expected content and the SA and DA regsiters have the
+ * 		expected values. If not, mark the test case as failure.
+ * @channel:		The DMA channel number.
+ * @fault_type:		The DMA fault type.
+ * @fault_address:	The DMA fault address.
+ * @data:		The callback data.
+ */
 static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 				unsigned int fault_address, void *data)
 {
@@ -615,7 +800,7 @@ static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 			      fault_type);
 			st = -1;
 		}
-			
+
 		if (test_data->expected_fault_pc
 		    &&	test_data->expected_fault_pc != fault_address) {
 			PINFO("DMA channel %d fault address is not in"
@@ -626,13 +811,12 @@ static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 			      fault_address);
 			st = -1;
 		}
-	}
-	else
+	} else
 		st = -1;
 
 	if (st) {
 		PINFO("DMA fault: channel %d, "
-		      "type %#08x, pc %#08x, test_data.count %d\n", 
+		      "type %#08x, pc %#08x, test_data.count %d\n",
 		      channel, fault_type, fault_address, test_data->count);
 		PINFO("suite %d, case %d,  count %d\n",
 		      test_data->suite,
@@ -648,13 +832,12 @@ static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 		} else {
 			dma_prog = get_pl330_dma_program(channel, &prog_size);
 		}
-	
+
 		print_dma_prog(dma_prog, prog_size);
 
 		test_results[id].status = -1;
 		test_results[id].done = -1;
-	}
-	else {
+	} else {
 		test_results[id].status = 0;
 		test_results[id].done = 1;
 
@@ -663,6 +846,14 @@ static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 	barrier();
 }
 
+/**
+ * test_one_case - Run one DMA test case based on the configuration in the
+ * 		test_data_t struct. This contains a full example of
+ * 		how to use DMA.
+ * @suite:		The test suite number
+ * @test_data:		The instance pointer to test configuration.
+ *
+ */
 static int test_one_case(int suite, struct test_data_t *test_data)
 {
 	int status;
@@ -738,7 +929,7 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 
 	enable_dma(channel);
 
-	while(!test_results[id].done)
+	while (!test_results[id].done)
 		barrier();
 
 	disable_dma(channel);
@@ -748,9 +939,9 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 	if (test_results[id].status) {
 		failed_tests_add(suite, id);
 		PINFO("PL330 test suite %d case %d %s \n", suite, id, FAIL);
-	}
-	else
+	} else {
 		PINFO("PL330 test suite %d case %d %s \n", suite, id, PASS);
+	}
 
 	if (!test_results[id].status)
 		tests_passed++;
@@ -763,6 +954,10 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 	return -1;
 }
 
+/**
+ * clear_test_count - Clear the global counters for tests.
+ *
+ */
 static void clear_test_counts(void)
 {
 	tests_run = 0;
@@ -788,8 +983,10 @@ static void print_test_suite_results(int suite)
 
 static int off_array[] = {35, 43, 33, 27, 98, 17, 19, 25, 9, 15, 19};
 
-/*
- * test DMA_MODE_READ for all channels with default bus_des
+/**
+ * pl330_test_suite_1 - tests DMA_MODE_READ for all channels with default
+ * 	bus_des
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_1(void)
 {
@@ -806,7 +1003,7 @@ static int pl330_test_suite_1(void)
 	int id;
 
 	clear_test_counts();
-	
+
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
@@ -872,9 +1069,10 @@ static int pl330_test_suite_1(void)
 	return status;
 }
 
-/*
- * The suite 2 exercises all burst sizes and burst lengths for
- * DMA read and write.
+/**
+ * pl330_test_suite_2 - The suite 2 exercises all burst sizes and burst
+ * 	lengths for DMA read and write.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_2(void)
 {
@@ -893,7 +1091,7 @@ static int pl330_test_suite_2(void)
 	unsigned int dma_modes[2] = {DMA_MODE_READ, DMA_MODE_WRITE};
 	int id;
 
-	
+
 	clear_test_counts();
 
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
@@ -972,8 +1170,9 @@ static int pl330_test_suite_2(void)
 	return status;
 }
 
-/*
- * The suite 3 exercises unaligned head and tail.
+/**
+ * pl330_test_suite_3 - The suite 3 exercises unaligned head and tail.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_3(void)
 {
@@ -996,7 +1195,7 @@ static int pl330_test_suite_3(void)
 	struct pl330_bus_des *mem_bus_des;
 
 	clear_test_counts();
-	
+
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
@@ -1052,7 +1251,7 @@ static int pl330_test_suite_3(void)
 				suite_test_data.dev_virt_addr = dev_v_addr;
 
 				if (inc_dev_addr) {
-					suite_client_data.dev_addr += 
+					suite_client_data.dev_addr +=
 						head_off;
 					suite_test_data.dev_virt_addr +=
 						head_off;
@@ -1078,8 +1277,10 @@ static int pl330_test_suite_3(void)
 }
 
 
-/*
- * The suite 4 exercises unaligned tail special cases.
+/**
+ * pl330_test_suite_4 - The suite 4 exercises unaligned tail special cases.
+ * @returns	0 on success, -1 on failure
+ *
  */
 static int pl330_test_suite_4(void)
 {
@@ -1098,7 +1299,7 @@ static int pl330_test_suite_4(void)
 	struct pl330_bus_des *dev_bus_des;
 	struct pl330_bus_des *mem_bus_des;
 
-	
+
 	clear_test_counts();
 
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
@@ -1136,24 +1337,24 @@ static int pl330_test_suite_4(void)
 	suite_test_data.off = 95;
 	suite_test_data.id = id;
 	suite_test_data.inc_dev_addr = 1;
-	
+
 	memset(&suite_client_data, 0,
 	       sizeof(struct pl330_client_data));
-	
+
 	suite_client_data.dev_addr = dev_d_addr;
-	
+
 	dev_bus_des = &suite_client_data.dev_bus_des;
 	dev_bus_des->burst_size = burst_size;
 	dev_bus_des->burst_len = burst_len;
-	
+
 	mem_bus_des = &suite_client_data.mem_bus_des;
 	mem_bus_des->burst_size = burst_size;
 	mem_bus_des->burst_len = burst_len;
-	
+
 	suite_test_data.dev_virt_addr = dev_v_addr;
 	suite_test_data.client_data =
 		&suite_client_data;
-	
+
 	if (test_one_case(suite, &suite_test_data))
 		status = -1;
 
@@ -1167,8 +1368,9 @@ static int pl330_test_suite_4(void)
 	return status;
 }
 
-/*
- * suite_5 tests user defined program.
+/**
+ * pl330_test_suite_5 - Tests user defined program.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_5(void)
 {
@@ -1198,7 +1400,7 @@ static int pl330_test_suite_5(void)
 		 * CCR[31:16]: 31 30 9 8 7 6 5 4 3 2 1 20 9 8 7 16
 		 *       	0  0 0 0 0 0 0 0 0 0 0 0  1 1 0 1
 		 * CCR[15:0] : 15 4 3 2 1 10 9 8 7 6 5 4 3 2 1 0
-		 *	 	0 1 0 0 0 0  0 0 0 0 1 1 0 1 0 1       
+		 *	 	0 1 0 0 0 0  0 0 0 0 1 1 0 1 0 1
 		 * 0x000d4035
 		 */
 		/*[24]*/	0xbc, 0x01, 0x35, 0x40, 0x0d, 0x00,
@@ -1207,13 +1409,13 @@ static int pl330_test_suite_5(void)
 		/*[32]*/	0x34, 0x00,
 		/*[34]*/	0x00,
 	};
-	
+
 	/* for fixed unalgined burst, use this CCR
 	 * DMAMOV CCR SS32 SB4 SAF DS32 SB4 DAF
 	 * CCR[31:16]: 31 30 9 8 7 6 5 4 3 2 1 20 9 8 7 16
 	 *       	0  0 0 0 0 0 0 0 0 0 0 0  1 1 0 1
 	 * CCR[15:0] : 15 4 3 2 1 10 9 8 7 6 5 4 3 2 1 0
-	 *	 	0 0 0 0 0 0  0 0 0 0 1 1 0 1 0 0       
+	 *	 	0 0 0 0 0 0  0 0 0 0 1 1 0 1 0 0
 	 * 0x000d0034
 	 */
 	char prog1[] = {
@@ -1221,7 +1423,7 @@ static int pl330_test_suite_5(void)
 		/* [6] */	0xbc, 0x02, 0x00, 0x00, 0x00, 0x00,
 		/* [12]*/	0xbc, 0x00, 0x00, 0x00, 0x00, 0x00,
 		/* [18]*/	0xbc, 0x02, 0x00, 0x00, 0x00, 0x00,
-		
+
 		/*[24]*/	0xbc, 0x01, 0x35, 0x40, 0x0d, 0x00,
 		/*[30]*/	0x04,
 		/*[30]*/	0x04,
@@ -1230,7 +1432,7 @@ static int pl330_test_suite_5(void)
 		/*[32]*/	0x34, 0x00,
 		/*[34]*/	0x00,
 	};
-	
+
 	clear_test_counts();
 
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
@@ -1273,20 +1475,20 @@ static int pl330_test_suite_5(void)
 		(char *)buf_v_addr + 1;
 	suite_test_data.off = 95;
 	suite_test_data.inc_dev_addr = 1;
-	
+
 	memset(&suite_client_data, 0,
 	       sizeof(struct pl330_client_data));
-	
+
 	suite_client_data.dev_addr = dev_d_addr + 5;
-	
+
 	dev_bus_des = &suite_client_data.dev_bus_des;
 	dev_bus_des->burst_size = burst_size;
 	dev_bus_des->burst_len = burst_len;
-	
+
 	mem_bus_des = &suite_client_data.mem_bus_des;
 	mem_bus_des->burst_size = burst_size;
 	mem_bus_des->burst_len = burst_len;
-	
+
 	suite_test_data.dev_virt_addr = dev_v_addr + 5;
 	suite_test_data.client_data = &suite_client_data;
 
@@ -1300,7 +1502,7 @@ static int pl330_test_suite_5(void)
 	suite_test_data.dma_prog = prog_d_addr;
 	suite_test_data.dma_prog_v_addr = prog_v_addr;
 	suite_test_data.dma_prog_len = ARRAY_SIZE(prog);
-	
+
 	if (test_one_case(suite, &suite_test_data))
 		status = -1;
 
@@ -1325,11 +1527,9 @@ static int pl330_test_suite_5(void)
 	suite_test_data.dma_prog = prog_d_addr;
 	suite_test_data.dma_prog_v_addr = prog_v_addr;
 	suite_test_data.dma_prog_len = ARRAY_SIZE(prog1);
-	
+
 	if (test_one_case(suite, &suite_test_data))
 		status = -1;
-
-	
 
 	id++;
 
@@ -1342,8 +1542,11 @@ static int pl330_test_suite_5(void)
 	return status;
 }
 
-/*
- * print_buf prints the content of a buffer
+/**
+ * print_buf - Prints the content of a buffer.
+ * @buf:	Memory buffer
+ * @len:	Buffer length in bytes
+ * @buf_name:	Buffer name
  */
 void print_buf(void *buf, int len, char *buf_name)
 {
@@ -1354,8 +1557,9 @@ void print_buf(void *buf, int len, char *buf_name)
 		PINFO("[%02x] %02x\n", i, *((u8 *)(buf + i)));
 }
 
-/*
- * The suite 6 exercises small DMA size.
+/**
+ * pl330_test_suite_6 - The suite 6 exercises small DMA size.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_6(void)
 {
@@ -1374,7 +1578,7 @@ static int pl330_test_suite_6(void)
 	int id;
 	int count;
 	int i;
-	
+
 	clear_test_counts();
 
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
@@ -1415,17 +1619,17 @@ static int pl330_test_suite_6(void)
 			suite_test_data.off =
 				off_array[id % ARRAY_SIZE(off_array)];
 			suite_test_data.inc_dev_addr = 1;
-			
+
 			memset(&suite_client_data, 0,
 			       sizeof(struct pl330_client_data));
-			
+
 			suite_client_data.dev_addr = (u32)dev_d_addr;
-			
+
 			suite_client_data.dev_bus_des.burst_size =
 				burst_size;
 			suite_client_data.dev_bus_des.burst_len =
 				burst_len;
-			
+
 			suite_client_data.mem_bus_des.burst_size =
 				burst_size;
 			suite_client_data.mem_bus_des.burst_len =
@@ -1448,7 +1652,7 @@ static int pl330_test_suite_6(void)
 					       i, *((u8 *)(dev_v_addr + i)));
 				}
 			}
-			
+
 			id++;
 		}
 	}
@@ -1461,8 +1665,9 @@ static int pl330_test_suite_6(void)
 	return status;
 }
 
-/*
- * The suite 7 exercises big DMA size.
+/**
+ * pl330_test_suite_7 - The suite 7 exercises big DMA size.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_7(void)
 {
@@ -1482,7 +1687,7 @@ static int pl330_test_suite_7(void)
 	int count_sel;
 	int id;
 	int count;
-	
+
 	clear_test_counts();
 
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_128K,
@@ -1528,18 +1733,18 @@ static int pl330_test_suite_7(void)
 				suite_test_data.off =
 					off_array[id % ARRAY_SIZE(off_array)];
 				suite_test_data.inc_dev_addr = 1;
-	
+
 				memset(&suite_client_data, 0,
 				       sizeof(struct pl330_client_data));
-	
+
 				suite_client_data.dev_addr = (u32)dev_d_addr;
-	
+
 				burst_size = 1 << size_sel;
 				suite_client_data.dev_bus_des.burst_size =
 					burst_size;
 				suite_client_data.dev_bus_des.burst_len =
 					burst_len;
-			
+
 				suite_client_data.mem_bus_des.burst_size =
 					burst_size;
 				suite_client_data.mem_bus_des.burst_len =
@@ -1551,7 +1756,7 @@ static int pl330_test_suite_7(void)
 
 				if (test_one_case(suite, &suite_test_data))
 					status = -1;
-			
+
 				id++;
 
 				channel = (channel + 1) % TEST_MAX_CHANNELS;
@@ -1567,8 +1772,9 @@ static int pl330_test_suite_7(void)
 	return status;
 }
 
-/*
- * suite_8 tests fault interrupt.
+/**
+ * pl330_test_suite_8 - suite_8 tests fault interrupt.
+ * @returns	0 on success, -1 on failure
  */
 static int pl330_test_suite_8(void)
 {
@@ -1598,7 +1804,7 @@ static int pl330_test_suite_8(void)
 		 * CCR[31:16]: 31 30 9 8 7 6 5 4 3 2 1 20 9 8 7 16
 		 *       	0  0 0 0 0 0 0 0 0 0 0 0  1 1 0 1
 		 * CCR[15:0] : 15 4 3 2 1 10 9 8 7 6 5 4 3 2 1 0
-		 *	 	0 1 0 0 0 0  0 0 0 0 1 1 0 1 0 1       
+		 *	 	0 1 0 0 0 0  0 0 0 0 1 1 0 1 0 1
 		 * 0x000d4035
 		 */
 		/*[24]*/	0xbc, 0x01, 0x35, 0x40, 0x0d, 0x00,
@@ -1647,20 +1853,20 @@ static int pl330_test_suite_8(void)
 		(char *)buf_v_addr + 1;
 	suite_test_data.off = 95;
 	suite_test_data.inc_dev_addr = 1;
-	
+
 	memset(&suite_client_data, 0,
 	       sizeof(struct pl330_client_data));
-	
+
 	suite_client_data.dev_addr = dev_d_addr + 5;
-	
+
 	dev_bus_des = &suite_client_data.dev_bus_des;
 	dev_bus_des->burst_size = burst_size;
 	dev_bus_des->burst_len = burst_len;
-	
+
 	mem_bus_des = &suite_client_data.mem_bus_des;
 	mem_bus_des->burst_size = burst_size;
 	mem_bus_des->burst_len = burst_len;
-	
+
 	suite_test_data.dev_virt_addr = dev_v_addr + 5;
 	suite_test_data.client_data = &suite_client_data;
 
@@ -1674,7 +1880,7 @@ static int pl330_test_suite_8(void)
 	suite_test_data.dma_prog = prog_d_addr;
 	suite_test_data.dma_prog_v_addr = prog_v_addr;
 	suite_test_data.dma_prog_len = ARRAY_SIZE(prog);
-	
+
 	suite_test_data.fault_expected = 1;
 	suite_test_data.expected_fault_type = 0x80000000;
 
@@ -1709,7 +1915,7 @@ static int pl330_test_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-        PDBG("pl330_test probing dev_id %d\n", pdev->id);
+	PDBG("pl330_test probing dev_id %d\n", pdev->id);
 
 	pdev_id = 0;
 
