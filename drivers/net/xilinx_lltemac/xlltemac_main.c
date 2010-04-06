@@ -3473,6 +3473,40 @@ error:
 	return rc;
 }
 
+int xenet_set_mac_address(struct net_device *ndev, void* address) { 
+	struct net_local *lp; 
+	struct sockaddr *macaddr; 
+
+	if (ndev->flags & IFF_UP) 
+		return -EBUSY; 
+
+	lp = netdev_priv(ndev); 
+
+	macaddr = (struct sockaddr*)address; 
+ 
+	if (!is_valid_ether_addr(macaddr->sa_data)) 
+		return -EADDRNOTAVAIL; 
+ 
+	/* synchronized against open : rtnl_lock() held by caller */ 
+	memcpy(ndev->dev_addr, macaddr->sa_data, ETH_ALEN); 
+ 
+	if (!is_valid_ether_addr(ndev->dev_addr)) 
+		return -EADDRNOTAVAIL; 
+ 
+	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) { 
+		/* should not fail right after an initialize */ 
+		dev_err(&ndev->dev, "XLlTemac: could not set MAC address.\n"); 
+		return -EIO; 
+	} 
+	dev_info(&ndev->dev, 
+		"MAC address is now %02x:%02x:%02x:%02x:%02x:%02x\n", 
+		ndev->dev_addr[0], ndev->dev_addr[1], 
+		ndev->dev_addr[2], ndev->dev_addr[3], 
+		ndev->dev_addr[4], ndev->dev_addr[5]); 
+
+	return 0; 
+} 
+
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -3491,6 +3525,7 @@ static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_change_mtu	= xenet_change_mtu,
 	.ndo_tx_timeout	= xenet_tx_timeout,
 	.ndo_get_stats	= xenet_get_stats,
+	.ndo_set_mac_address = xenet_set_mac_address,
 };
 
 static struct of_device_id xtenet_fifo_of_match[] = {
