@@ -82,6 +82,8 @@
  */
 #define IRQ_GIC_START		32
 
+/* Dragonfire interrupt map
+
 #define IRQ_TIMERCOUNTER0	(IRQ_GIC_START + 1)
 #define IRQ_TIMERCOUNTER1	(IRQ_GIC_START + 2)
 #define IRQ_UART0		(IRQ_GIC_START + 20)
@@ -94,6 +96,26 @@
 #define IRQ_ETH1                (IRQ_GIC_START + 41)
 #define IRQ_SPI0		(IRQ_GIC_START + 19)
 #define IRQ_SPI1		(IRQ_GIC_START + 44)
+
+*/
+
+/* 
+ * Pele interrupt map
+ */
+
+#define IRQ_TIMERCOUNTER0	(IRQ_GIC_START + 10)
+#define IRQ_TIMERCOUNTER1	(IRQ_GIC_START + 11)
+#define IRQ_DMAC0		(IRQ_GIC_START + 13)
+#define IRQ_GPIO0		(IRQ_GIC_START + 20)
+#define IRQ_ETH0                (IRQ_GIC_START + 22)
+#define IRQ_I2C0		(IRQ_GIC_START + 25)
+#define IRQ_SPI0		(IRQ_GIC_START + 26)
+#define IRQ_UART0		(IRQ_GIC_START + 27)
+#define IRQ_DMAC1		(IRQ_GIC_START + 40)
+#define IRQ_ETH1                (IRQ_GIC_START + 45)
+#define IRQ_I2C1		(IRQ_GIC_START + 48)
+#define IRQ_SPI1		(IRQ_GIC_START + 49)
+#define IRQ_UART1		(IRQ_GIC_START + 50)
 
 /*
  * Start and size of physical RAM
