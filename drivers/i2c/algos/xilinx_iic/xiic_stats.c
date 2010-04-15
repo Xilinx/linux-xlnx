@@ -1,4 +1,4 @@
-/* $Id: xiic_options.c,v 1.1.2.1 2010/04/12 12:13:14 svemula Exp $ */
+/* $Id: xiic_stats.c,v 1.1.2.1 2010/04/12 12:13:14 svemula Exp $ */
 /******************************************************************************
 *
 * (c) Copyright 2002-2009 Xilinx, Inc. All rights reserved.
@@ -42,10 +42,9 @@
 /*****************************************************************************/
 /**
 *
-* @file xiic_options.c
+* @file xiic_stats.c
 *
-* Contains options functions for the XIic component. This file is not required
-* unless the functions in this file are called.
+* Contains statistics functions for the XIic component.
 *
 * <pre>
 * MODIFICATION HISTORY:
@@ -57,6 +56,8 @@
 * 1.13a wgr 03/22/07 Converted to new coding style.
 * 2.00a ktn 10/22/09 Converted all register accesses to 32 bit access.
 *		     Updated to use the HAL APIs/macros.
+*		     XIic_ClearStats function is updated as the
+*		     macro XIIC_CLEAR_STATS has been removed.
 * </pre>
 *
 ****************************************************************************/
@@ -68,116 +69,75 @@
 
 /************************** Constant Definitions ***************************/
 
-
 /**************************** Type Definitions *****************************/
-
 
 /***************** Macros (Inline Functions) Definitions *******************/
 
-
 /************************** Function Prototypes ****************************/
 
-
 /************************** Variable Definitions **************************/
-
 
 /*****************************************************************************/
 /**
 *
-* This function sets the options for the IIC device driver. The options control
-* how the device behaves relative to the IIC bus. If an option applies to
-* how messages are sent or received on the IIC bus, it must be set prior to
-* calling functions which send or receive data.
-*
-* To set multiple options, the values must be ORed together. To not change
-* existing options, read/modify/write with the current options using
-* XIic_GetOptions().
-*
-* <b>USAGE EXAMPLE:</b>
-*
-* Read/modify/write to enable repeated start:
-* <pre>
-*   u8 Options;
-*   Options = XIic_GetOptions(&Iic);
-*   XIic_SetOptions(&Iic, Options | XII_REPEATED_START_OPTION);
-* </pre>
-*
-* Disabling General Call:
-* <pre>
-*   Options = XIic_GetOptions(&Iic);
-*   XIic_SetOptions(&Iic, Options &= ~XII_GENERAL_CALL_OPTION);
-* </pre>
+* Gets a copy of the statistics for an IIC device.
 *
 * @param	InstancePtr is a pointer to the XIic instance to be worked on.
-* @param	NewOptions are the options to be set.  See xiic.h for a list of
-*		the available options.
+* @param	StatsPtr is a pointer to a XIicStats structure which will get a
+*		copy of current statistics.
 *
 * @return	None.
 *
-* @note
-*
-* Sending or receiving messages with repeated start enabled, and then
-* disabling repeated start, will not take effect until another master
-* transaction is completed. i.e. After using repeated start, the bus will
-* continue to be throttled after repeated start is disabled until a master
-* transaction occurs allowing the IIC to release the bus.
-* <br><br>
-* Options enabled will have a 1 in its appropriate bit position.
+* @note		None.
 *
 ****************************************************************************/
-void XIic_SetOptions(XIic *InstancePtr, u32 NewOptions)
+void XIic_GetStats(XIic *InstancePtr, XIicStats * StatsPtr)
 {
-	u32 CntlReg;
+	u8 NumBytes;
+	u8 *SrcPtr;
+	u8 *DestPtr;
 
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
 	Xil_AssertVoid(InstancePtr != NULL);
-
-	XIic_IntrGlobalDisable(InstancePtr->BaseAddress);
-
-	/*
-	 * Update the options in the instance and get the contents of the
-	 * control register such that the general call option can be modified.
-	 */
-	InstancePtr->Options = NewOptions;
-	CntlReg = XIic_ReadReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET);
+	Xil_AssertVoid(StatsPtr != NULL);
 
 	/*
-	 * The general call option is the only option that maps directly to
-	 * a hardware register feature.
+	 * Setup pointers to copy the stats structure
 	 */
-	if (NewOptions & XII_GENERAL_CALL_OPTION) {
-		CntlReg |= XIIC_CR_GENERAL_CALL_MASK;
-	} else {
-		CntlReg &= ~XIIC_CR_GENERAL_CALL_MASK;
+	SrcPtr = (u8 *) &InstancePtr->Stats;
+	DestPtr = (u8 *) StatsPtr;
+
+	/*
+	 * Copy the current statistics to the structure passed in
+	 */
+	for (NumBytes = 0; NumBytes < sizeof(XIicStats); NumBytes++) {
+		*DestPtr++ = *SrcPtr++;
 	}
-
-	/*
-	 * Write the new control register value to the register.
-	 */
-	XIic_WriteReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET, CntlReg);
-
-	XIic_IntrGlobalEnable(InstancePtr->BaseAddress);
 }
 
 /*****************************************************************************/
 /**
 *
-* This function gets the current options for the IIC device. Options control
-* the how the device behaves on the IIC bus. See SetOptions for more information
-* on options.
+* Clears the statistics for the IIC device by zeroing all counts.
 *
 * @param	InstancePtr is a pointer to the XIic instance to be worked on.
 *
-* @return	The options of the IIC device. See xiic.h for a list of
-*		available options.
+* @return	None.
 *
-* @note
-*
-* Options enabled will have a 1 in its appropriate bit position.
+* @note		None.
 *
 ****************************************************************************/
-u32 XIic_GetOptions(XIic *InstancePtr)
+void XIic_ClearStats(XIic *InstancePtr)
 {
-	Xil_AssertNonvoid(InstancePtr != NULL);
+	u8 NumBytes;
+	u8 *DestPtr;
 
-	return InstancePtr->Options;
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+	Xil_AssertVoid(InstancePtr != NULL);
+
+	DestPtr = (u8 *)&InstancePtr->Stats;
+	for (NumBytes = 0; NumBytes < sizeof(XIicStats); NumBytes++) {
+		*DestPtr++ = 0;
+	}
+
 }

@@ -1,30 +1,42 @@
-/* $Id: xiic.c,v 1.1 2007/12/03 15:44:58 meinelte Exp $ */
+/* $Id: xiic.c,v 1.1.2.1 2010/04/12 12:13:13 svemula Exp $ */
 /******************************************************************************
 *
-*       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
-*       AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
-*       SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
-*       OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
-*       APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
-*       THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
-*       AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
-*       FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
-*       WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
-*       IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
-*       REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
-*       INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-*       FOR A PARTICULAR PURPOSE.
+* (c) Copyright 2002-2009 Xilinx, Inc. All rights reserved.
 *
-*       (c) Copyright 2002-2006 Xilinx Inc.
-*       All rights reserved.
-* This program is free software; you can redistribute it and/or modify it
-* under the terms of the GNU General Public License as published by the
-* Free Software Foundation; either version 2 of the License, or (at your
-* option) any later version.
+* This file contains confidential and proprietary information of Xilinx, Inc.
+* and is protected under U.S. and international copyright and other
+* intellectual property laws.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+* DISCLAIMER
+* This disclaimer is not a license and does not grant any rights to the
+* materials distributed herewith. Except as otherwise provided in a valid
+* license issued to you by Xilinx, and to the maximum extent permitted by
+* applicable law: (1) THESE MATERIALS ARE MADE AVAILABLE "AS IS" AND WITH ALL
+* FAULTS, AND XILINX HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS,
+* IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+* MERCHANTABILITY, NON-INFRINGEMENT, OR FITNESS FOR ANY PARTICULAR PURPOSE;
+* and (2) Xilinx shall not be liable (whether in contract or tort, including
+* negligence, or under any other theory of liability) for any loss or damage
+* of any kind or nature related to, arising under or in connection with these
+* materials, including for any direct, or any indirect, special, incidental,
+* or consequential loss or damage (including loss of data, profits, goodwill,
+* or any type of loss or damage suffered as a result of any action brought by
+* a third party) even if such damage or loss was reasonably foreseeable or
+* Xilinx had been advised of the possibility of the same.
+*
+* CRITICAL APPLICATIONS
+* Xilinx products are not designed or intended to be fail-safe, or for use in
+* any application requiring fail-safe performance, such as life-support or
+* safety devices or systems, Class III medical devices, nuclear facilities,
+* applications related to the deployment of airbags, or any other applications
+* that could lead to death, personal injury, or severe property or
+* environmental damage (individually and collectively, "Critical
+* Applications"). Customer assumes the sole risk and liability of any use of
+* Xilinx products in Critical Applications, subject only to applicable laws
+* and regulations governing limitations on product liability.
+*
+* THIS COPYRIGHT NOTICE AND DISCLAIMER MUST BE RETAINED AS PART OF THIS FILE
+* AT ALL TIMES.
 *
 ******************************************************************************/
 /*****************************************************************************/
@@ -44,16 +56,34 @@
 * 1.01c ecm  12/05/02 new rev
 * 1.01c rmm  05/14/03 Fixed diab compiler warnings relating to asserts.
 * 1.01d jhl  10/08/03 Added general purpose output feature
-* 1.02a jvb  12/13/05 I changed Initialize() into CfgInitialize(), and made
-*                     CfgInitialize() take a pointer to a config structure
-*                     instead of a device id. I moved Initialize() into
-*                     xgpio_sinit.c, and had Initialize() call CfgInitialize()
-*                     after it retrieved the config structure using the device
-*                     id. I removed include of xparameters.h along with any
-*                     dependencies on xparameters.h and the _g.c config table.
-* 1.02a mta	 03/09/06 Added a new function XIic_IsIicBusy() which returns
-*					  whether IIC Bus is Busy or Free.
+* 1.02a jvb  12/13/05 Added CfgInitialize(), and made CfgInitialize() take
+*                     a pointer to a config structure instead of a device id.
+*                     Moved Initialize() into xiic_sinit.c, and have
+*                     Initialize() call CfgInitialize() after it retrieved the
+*                     config structure using the device id. Removed include of
+*                     xparameters.h along with any dependencies on xparameters.h
+*                     and the _g.c config table.
+* 1.02a mta  03/09/06 Added a new function XIic_IsIicBusy() which returns
+*			whether IIC Bus is Busy or Free.
 * 1.13a wgr  03/22/07 Converted to new coding style.
+* 1.15a ktn  02/17/09 Fixed XIic_GetAddress() to return correct device address.
+* 1.16a ktn  07/18/09 Updated the notes in XIic_Reset function to clearly
+*                     indicate that only the Interrupt Registers are reset.
+* 1.16a ktn  10/16/09 Updated the notes in the XIic_SelfTest() API to mention
+*                     that the complete IIC core is Reset on giving a software
+*                     reset to the IIC core. This issue is fixed in the latest
+*                     version of the IIC core (some previous versions of the
+*                     core only reset the Interrupt Logic/Registers), please
+*		      see the Hw specification for further information.
+* 2.00a ktn  10/22/09 Converted all register accesses to 32 bit access.
+		      Some of the macros have been renamed to remove _m from
+*		      the name see the xiic_i.h and xiic_l.h file for further
+*		      information (Example XIic_mClearIntr is now
+*		      XIic_ClearIntr).
+*		      Some of the macros have been renamed to be consistent,
+*		      see the xiic_l.h file for further information
+*		      (Example XIIC_WRITE_IIER is renamed as XIic_WriteIier).
+*		      The driver has been updated to use the HAL APIs/macros.
 * </pre>
 *
 ****************************************************************************/
@@ -62,7 +92,6 @@
 
 #include "xiic.h"
 #include "xiic_i.h"
-#include "xio.h"
 
 /************************** Constant Definitions ***************************/
 
@@ -87,14 +116,13 @@ static void XIic_StubHandler(void *CallBackRef, int ByteCount);
 *
 * Initializes a specific XIic instance.  The initialization entails:
 *
-* - Check the device has an entry in the configuration table.
 * - Initialize the driver to allow access to the device registers and
 *   initialize other subcomponents necessary for the operation of the device.
 * - Default options to:
-*     - 7-bit slave addressing
-*     - Send messages as a slave device
-*     - Repeated start off
-*     - General call recognition disabled
+*	 - 7-bit slave addressing
+*	 - Send messages as a slave device
+*	 - Repeated start off
+*	 - General call recognition disabled
 * - Clear messageing and error statistics
 *
 * The XIic_Start() function must be called after this function before the device
@@ -104,48 +132,46 @@ static void XIic_StubHandler(void *CallBackRef, int ByteCount);
 * routine to the interrupt handler. This is done by the user, and not
 * XIic_Start() to allow the user to use an interrupt controller of their choice.
 *
-* @param InstancePtr is a pointer to the XIic instance to be worked on.
-* @param Config is a reference to a structure containing information about
-*        a specific IIC device. This function initializes an InstancePtr object
-*        for a specific device specified by the contents of Config. This
-*        function can initialize multiple instance objects with the use of
-*        multiple calls giving different Config information on each call.
-* @param EffectiveAddr is the device base address in the virtual memory address
-*        space. The caller is responsible for keeping the address mapping
-*        from EffectiveAddr to the device physical base address unchanged
-*        once this function is invoked. Unexpected errors may occur if the
-*        address mapping changes after this function is called. If address
-*        translation is not used, use Config->BaseAddress for this parameters,
-*        passing the physical address instead.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	Config is a reference to a structure containing information
+*		about a specific IIC device. This function can initialize
+*		multiple instance objects with the use of multiple calls giving
+*		different Config information on each call.
+* @param	EffectiveAddr is the device base address in the virtual memory
+*		address space. The caller is responsible for keeping the
+*		address mapping from EffectiveAddr to the device physical base
+*		address unchanged once this function is invoked. Unexpected
+*		errors may occur if the address mapping changes after this
+*		function is called. If address translation is not used, use
+*		Config->BaseAddress for this parameters, passing the physical
+*		address instead.
 *
 * @return
+*		- XST_SUCCESS when successful
+*		- XST_DEVICE_IS_STARTED indicates the device is started
+*		(i.e. interrupts enabled and messaging is possible). Must stop
+*		before re-initialization is allowed.
 *
-* - XST_SUCCESS when successful
-* - XST_DEVICE_IS_STARTED indicates the device is started (i.e. interrupts
-*   enabled and messaging is possible). Must stop before re-initialization
-*   is allowed.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-int XIic_CfgInitialize(XIic * InstancePtr, XIic_Config * Config,
-		       u32 EffectiveAddr)
+int XIic_CfgInitialize(XIic *InstancePtr, XIic_Config * Config,
+			   u32 EffectiveAddr)
 {
 	/*
 	 * Asserts test the validity of selected input arguments.
 	 */
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
 	InstancePtr->IsReady = 0;
 
 	/*
 	 * If the device is started, disallow the initialize and return a Status
 	 * indicating it is started.  This allows the user to stop the device
-	 * and reinitialize, but prevents a user from inadvertently initializing
+	 * and reinitialize, but prevents a user from inadvertently
+	 * initializing.
 	 */
-	if (InstancePtr->IsStarted == XCOMPONENT_IS_STARTED) {
+	if (InstancePtr->IsStarted == XIL_COMPONENT_IS_STARTED) {
 		return XST_DEVICE_IS_STARTED;
 	}
 
@@ -162,19 +188,18 @@ int XIic_CfgInitialize(XIic * InstancePtr, XIic_Config * Config,
 	InstancePtr->SendBufferPtr = NULL;
 	InstancePtr->StatusHandler = XIic_StubStatusHandler;
 	InstancePtr->Has10BitAddr = Config->Has10BitAddr;
-	InstancePtr->IsReady = XCOMPONENT_IS_READY;
+	InstancePtr->IsReady = XIL_COMPONENT_IS_READY;
 	InstancePtr->Options = 0;
 	InstancePtr->BNBOnly = FALSE;
 	InstancePtr->GpOutWidth = Config->GpOutWidth;
 	InstancePtr->IsDynamic = FALSE;
 
 	/*
-	 * Reset the device so it's in the reset state, this must be after the
-	 * IPIF is initialized since it resets thru the IPIF and clear the stats
+	 * Reset the device.
 	 */
 	XIic_Reset(InstancePtr);
 
-	XIIC_CLEAR_STATS(InstancePtr);
+	XIic_ClearStats(InstancePtr);
 
 	return XST_SUCCESS;
 }
@@ -193,15 +218,13 @@ int XIic_CfgInitialize(XIic * InstancePtr, XIic_Config * Config,
 * Start enables:
 *  - IIC device
 *  - Interrupts:
-*     - Addressed as slave to allow messages from another master
-*     - Arbitration Lost to detect Tx arbitration errors
-*     - Global IIC interrupt within the IPIF interface
+*	 - Addressed as slave to allow messages from another master
+*	 - Arbitration Lost to detect Tx arbitration errors
+*	 - Global IIC interrupt
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
 *
-* @return
-*
-* XST_SUCCESS always
+* @return	XST_SUCCESS always.
 *
 * @note
 *
@@ -216,44 +239,46 @@ int XIic_CfgInitialize(XIic * InstancePtr, XIic_Config * Config,
 * interrupts from the processor.
 *
 ****************************************************************************/
-int XIic_Start(XIic * InstancePtr)
+int XIic_Start(XIic *InstancePtr)
 {
-	XASSERT_NONVOID(InstancePtr != NULL);
-	XASSERT_NONVOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	Xil_AssertNonvoid(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
 
 	/*
 	 * Mask off all interrupts, each is enabled when needed.
 	 */
-	XIIC_WRITE_IIER(InstancePtr->BaseAddress, 0);
+	XIic_WriteIier(InstancePtr->BaseAddress, 0);
 
 	/*
 	 * Clear all interrupts by reading and rewriting exact value back.
-	 * Only those bits set will get written as 1 (writing 1 clears intr)
+	 * Only those bits set will get written as 1 (writing 1 clears intr).
 	 */
-	XIic_mClearIntr(InstancePtr->BaseAddress, 0xFFFFFFFF);
+	XIic_ClearIntr(InstancePtr->BaseAddress, 0xFFFFFFFF);
 
 	/*
-	 * Enable the device
+	 * Enable the device.
 	 */
-	XIo_Out8(InstancePtr->BaseAddress + XIIC_CR_REG_OFFSET,
+	XIic_WriteReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET,
 		 XIIC_CR_ENABLE_DEVICE_MASK);
 	/*
-	 * Set Rx FIFO Occupancy depth to throttle at first byte(after reset = 0)
+	 * Set Rx FIFO Occupancy depth to throttle at
+	 * first byte(after reset = 0).
 	 */
-	XIo_Out8(InstancePtr->BaseAddress + XIIC_RFD_REG_OFFSET, 0);
+	XIic_WriteReg(InstancePtr->BaseAddress, XIIC_RFD_REG_OFFSET, 0);
 
 	/*
-	 * Clear and enable the interrupts needed
+	 * Clear and enable the interrupts needed.
 	 */
-	XIic_mClearEnableIntr(InstancePtr->BaseAddress,
-			      XIIC_INTR_AAS_MASK | XIIC_INTR_ARB_LOST_MASK);
+	XIic_ClearEnableIntr(InstancePtr->BaseAddress,
+				XIIC_INTR_AAS_MASK | XIIC_INTR_ARB_LOST_MASK);
 
-	InstancePtr->IsStarted = XCOMPONENT_IS_STARTED;
+	InstancePtr->IsStarted = XIL_COMPONENT_IS_STARTED;
 	InstancePtr->IsDynamic = FALSE;
 
-	/* Enable all interrupts by the global enable in the IPIF */
-
-	XIIC_GINTR_ENABLE(InstancePtr->BaseAddress);
+	/*
+	 * Enable the Global interrupt enable.
+	 */
+	XIic_IntrGlobalEnable(InstancePtr->BaseAddress);
 
 	return XST_SUCCESS;
 }
@@ -273,42 +298,41 @@ int XIic_Start(XIic * InstancePtr)
 * sending or receiving data from the IIC bus or the bus is being throttled
 * by this device, but instead return XST_IIC_BUS_BUSY.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
 *
 * @return
+*		- XST_SUCCESS indicates all IIC interrupts are disabled.
+*		No messages can be received or transmitted until XIic_Start()
+*		is called.
+*		- XST_IIC_BUS_BUSY indicates this device is currently engaged
+*		in message traffic and cannot be stopped.
 *
-* - XST_SUCCESS indicates all IIC interrupts are disabled. No messages can
-*   be received or transmitted until XIic_Start() is called.
-* - XST_IIC_BUS_BUSY indicates this device is currently engaged in message
-*   traffic and cannot be stopped.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-int XIic_Stop(XIic * InstancePtr)
+int XIic_Stop(XIic *InstancePtr)
 {
-	u8 Status;
-	u8 CntlReg;
+	u32 Status;
+	u32 CntlReg;
 
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
 	/*
-	 * Disable all interrupts globally using the IPIF
+	 * Disable all interrupts globally.
 	 */
-	XIIC_GINTR_DISABLE(InstancePtr->BaseAddress);
+	XIic_IntrGlobalDisable(InstancePtr->BaseAddress);
 
-	CntlReg = XIo_In8(InstancePtr->BaseAddress + XIIC_CR_REG_OFFSET);
-	Status = XIo_In8(InstancePtr->BaseAddress + XIIC_SR_REG_OFFSET);
+	CntlReg = XIic_ReadReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET);
+	Status = XIic_ReadReg(InstancePtr->BaseAddress, XIIC_SR_REG_OFFSET);
 
 	if ((CntlReg & XIIC_CR_MSMS_MASK) ||
-	    (Status & XIIC_SR_ADDR_AS_SLAVE_MASK)) {
-		/* when this device is using the bus
+		(Status & XIIC_SR_ADDR_AS_SLAVE_MASK)) {
+		/*
+		 * When this device is using the bus
 		 * - re-enable interrupts to finish current messaging
 		 * - return bus busy
 		 */
-		XIIC_GINTR_ENABLE(InstancePtr->BaseAddress);
+		XIic_IntrGlobalEnable(InstancePtr->BaseAddress);
 
 		return XST_IIC_BUS_BUSY;
 	}
@@ -321,36 +345,25 @@ int XIic_Stop(XIic * InstancePtr)
 /*****************************************************************************/
 /**
 *
-* Resets the IIC device. Reset must only be called after the driver has been
-* initialized. The configuration after this reset is as follows:
-*   - Repeated start is disabled
-*   - General call is disabled
-*
-* The upper layer software is responsible for initializing and re-configuring
-* (if necessary) and restarting the IIC device after the reset.
+* Resets the IIC device.
 *
 * @param    InstancePtr is a pointer to the XIic instance to be worked on.
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* None.
-*
-* @internal
-*
-* The reset is accomplished by setting the IPIF reset register.  This takes
-* care of resetting all IPIF hardware blocks, including the IIC device.
+* @note     The complete IIC core is Reset on giving a software reset to
+*           the IIC core. Some previous versions of the core only reset
+*           the Interrupt Logic/Registers, please refer to the HW specification
+*           for futher details about this.
 *
 ****************************************************************************/
-void XIic_Reset(XIic * InstancePtr)
+void XIic_Reset(XIic *InstancePtr)
 {
-	XASSERT_VOID(InstancePtr != NULL);
-	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
+	Xil_AssertVoid(InstancePtr != NULL);
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
 
-	XIIC_RESET(InstancePtr->BaseAddress);
+	XIic_WriteReg(InstancePtr->BaseAddress, XIIC_RESETR_OFFSET,
+			XIIC_RESET_MASK);
 }
 
 /*****************************************************************************/
@@ -372,25 +385,27 @@ void XIic_Reset(XIic * InstancePtr)
 * the bit placement is not handled the same depending on which options are
 * used such as repeated start.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
-* @param    AddressType indicates which address is being modified; the address
-*           which this device responds to on the IIC bus as a slave, or the
-*           slave address to communicate with when this device is a master. One
-*           of the following values must be contained in this argument.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	AddressType indicates which address is being modified, the
+*		address which this device responds to on the IIC bus as a slave,
+*		or the slave address to communicate with when this device is a
+*		master. One of the following values must be contained in
+*		this argument.
 * <pre>
-*   XII_ADDRESS_TO_SEND         Slave being addressed by a this master
-*   XII_ADDRESS_TO_RESPOND      Address to respond to as a slave device
+*   XII_ADDRESS_TO_SEND		Slave being addressed by a this master
+*   XII_ADDRESS_TO_RESPOND	Address to respond to as a slave device
 * </pre>
-* @param    Address contains the address to be set; 7 bit or 10 bit address.
-*           A ten bit address must be within the range: 0 - 1023 and a 7 bit
-*           address must be within the range 0 - 127.
+*
+* @param	Address contains the address to be set, 7 bit or 10 bit address.
+*		A ten bit address must be within the range: 0 - 1023 and a 7 bit
+*		address must be within the range 0 - 127.
 *
 * @return
-*
-* XST_SUCCESS is returned if the address was successfully set, otherwise one
-* of the following errors is returned.
-* - XST_IIC_NO_10_BIT_ADDRESSING indicates only 7 bit addressing supported.
-* - XST_INVALID_PARAM indicates an invalid parameter was specified.
+*		- XST_SUCCESS is returned if the address was successfully set.
+*		- XST_IIC_NO_10_BIT_ADDRESSING indicates only 7 bit addressing
+*		  supported.
+*		- XST_INVALID_PARAM indicates an invalid parameter was
+*		  specified.
 *
 * @note
 *
@@ -398,34 +413,40 @@ void XIic_Reset(XIic * InstancePtr)
 * as a ten bit device.
 *
 ****************************************************************************/
-int XIic_SetAddress(XIic * InstancePtr, int AddressType, int Address)
+int XIic_SetAddress(XIic *InstancePtr, int AddressType, int Address)
 {
-	u8 SendAddr;
+	u32 SendAddr;
 
-	XASSERT_NONVOID(InstancePtr != NULL);
-	XASSERT_NONVOID(Address < 1023);
+	Xil_AssertNonvoid(InstancePtr != NULL);
+	Xil_AssertNonvoid(Address < 1023);
 
-	/* Set address to respond to for this device into address registers */
-
+	/*
+	 * Set address to respond to for this device into address registers.
+	 */
 	if (AddressType == XII_ADDR_TO_RESPOND_TYPE) {
-		SendAddr = (u8) ((Address & 0x007F) << 1);	/* Addr in upper 7 bits */
-		XIo_Out8(InstancePtr->BaseAddress + XIIC_ADR_REG_OFFSET,
-			 SendAddr);
+		/*
+		 * Address in upper 7 bits.
+		 */
+		SendAddr = ((Address & 0x007F) << 1);
+		XIic_WriteReg(InstancePtr->BaseAddress, XIIC_ADR_REG_OFFSET,
+				SendAddr);
 
 		if (InstancePtr->Has10BitAddr == TRUE) {
-			/* Write upper 3 bits of addr to DTR only when 10 bit option
-			 * included in design i.e. register exists
+			/*
+			 * Write upper 3 bits of addr to DTR only when 10 bit
+			 * option included in design i.e. register exists.
 			 */
-			SendAddr = (u8) ((Address & 0x0380) >> 7);
-			XIo_Out8(InstancePtr->BaseAddress + XIIC_TBA_REG_OFFSET,
-				 SendAddr);
+			SendAddr = ((Address & 0x0380) >> 7);
+			XIic_WriteReg(InstancePtr->BaseAddress,
+					XIIC_TBA_REG_OFFSET, SendAddr);
 		}
 
 		return XST_SUCCESS;
 	}
 
-	/* Store address of slave device being read from */
-
+	/*
+	 * Store address of slave device being read from.
+	 */
 	if (AddressType == XII_ADDR_TO_SEND_TYPE) {
 		InstancePtr->AddrOfSlave = Address;
 		return XST_SUCCESS;
@@ -442,50 +463,48 @@ int XIic_SetAddress(XIic * InstancePtr, int AddressType, int Address)
 * slave address to communicate with on the bus. The address returned has the
 * same format whether 7 or 10 bits.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
-* @param    AddressType indicates which address, the address which this
-*           responds to on the IIC bus as a slave, or the slave address to
-*           communicate with when this device is a master. One of the following
-*           values must be contained in this argument.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	AddressType indicates which address, the address which this
+*		responds to on the IIC bus as a slave, or the slave address to
+*		communicate with when this device is a master. One of the
+*		following values must be contained in this argument.
 * <pre>
-*   XII_ADDRESS_TO_SEND_TYPE         slave being addressed as a master
-*   XII_ADDRESS_TO_RESPOND_TYPE      slave address to respond to as a slave
+*   XII_ADDRESS_TO_SEND_TYPE	Slave being addressed as a master
+*   XII_ADDRESS_TO_RESPOND_TYPE	Slave address to respond to as a slave
 * </pre>
 *  If neither of the two valid arguments are used, the function returns
 *  the address of the slave device
 *
-* @return
+* @return	The address retrieved.
 *
-* The address retrieved.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-u16 XIic_GetAddress(XIic * InstancePtr, int AddressType)
+u16 XIic_GetAddress(XIic *InstancePtr, int AddressType)
 {
-	u8 LowAddr;
+	u8  LowAddr;
 	u16 HighAddr = 0;
 
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
-	/* return this devices address */
-
+	/*
+	 * Return this device's address.
+	 */
 	if (AddressType == XII_ADDR_TO_RESPOND_TYPE) {
 
-		LowAddr =
-			XIo_In8(InstancePtr->BaseAddress + XIIC_ADR_REG_OFFSET);
+		LowAddr = (u8) XIic_ReadReg(InstancePtr->BaseAddress,
+					     XIIC_ADR_REG_OFFSET);
 
 		if (InstancePtr->Has10BitAddr == TRUE) {
-			HighAddr = (u16) XIo_In8(InstancePtr->BaseAddress +
-						 XIIC_TBA_REG_OFFSET);
+			HighAddr = (u16) XIic_ReadReg(InstancePtr->BaseAddress,
+							XIIC_TBA_REG_OFFSET);
 		}
-		return ((HighAddr << 8) & (u16) LowAddr);
+		return ((HighAddr << 8) | (u16) LowAddr);
 	}
 
-	/* Otherwise return address of slave device on the IIC bus */
-
+	/*
+	 * Otherwise return address of slave device on the IIC bus.
+	 */
 	return InstancePtr->AddrOfSlave;
 }
 
@@ -499,79 +518,70 @@ u16 XIic_GetAddress(XIic * InstancePtr, int AddressType)
 * ensure that the number of bits in the register are sufficient for the
 * value being written (won't cause a bus error).
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
-*
-* @param    OutputValue contains the value to be written to the register.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	OutputValue contains the value to be written to the register.
 *
 * @return
+*		- XST_SUCCESS if the given data is written to the GPO register.
+* 		- XST_NO_FEATURE if the hardware is configured such that this
+*		register does not contain any bits to read or write.
 *
-* A value indicating success, XST_SUCCESS, or XST_NO_FEATURE if the hardware
-* is configured such that this register does not contain any bits to read
-* or write.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-int XIic_SetGpOutput(XIic * InstancePtr, u8 OutputValue)
+int XIic_SetGpOutput(XIic *InstancePtr, u8 OutputValue)
 {
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
-	/* If the general purpose output register is implemented by the hardware
-	 * then write the specified value to it, otherwise indicate an error
+	/*
+	 * If the general purpose output register is implemented by the hardware
+	 * then write the specified value to it, otherwise indicate an error.
 	 */
 	if (InstancePtr->GpOutWidth > 0) {
-		XIic_mWriteReg(InstancePtr->BaseAddress, XIIC_GPO_REG_OFFSET,
-			       OutputValue);
+		XIic_WriteReg(InstancePtr->BaseAddress, XIIC_GPO_REG_OFFSET,
+				OutputValue);
 		return XST_SUCCESS;
-	}
-	else {
+	} else {
 		return XST_NO_FEATURE;
 	}
 }
-
 
 /*****************************************************************************/
 /**
 *
 * This function gets the contents of the General Purpose Output register
 * for the IIC device driver. Note that the number of bits in this register is
-* parameterizable in the hardware such that it may not exist.  This function
+* parameterizable in the hardware such that it may not exist. This function
 * checks to ensure that it does exist to prevent bus errors.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
-*
-* @param    OutputValuePtr contains the value which was read from the
-*           register.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	OutputValuePtr contains the value which was read from the
+*		register.
 *
 * @return
-*
-* A value indicating success, XST_SUCCESS, or XST_NO_FEATURE if the hardware
-* is configured such that this register does not contain any bits to read
-* or write.
+*		- XST_SUCCESS if the given data is read from the GPO register.
+* 		- XST_NO_FEATURE if the hardware is configured such that this
+*		register does not contain any bits to read or write.
 *
 * The OutputValuePtr is also an output as it contains the value read.
 *
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-int XIic_GetGpOutput(XIic * InstancePtr, u8 *OutputValuePtr)
+int XIic_GetGpOutput(XIic *InstancePtr, u8 *OutputValuePtr)
 {
-	XASSERT_NONVOID(InstancePtr != NULL);
-	XASSERT_NONVOID(OutputValuePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
+	Xil_AssertNonvoid(OutputValuePtr != NULL);
 
-	/* If the general purpose output register is implemented by the hardware
-	 * then read the value from it, otherwise indicate an error
+	/*
+	 * If the general purpose output register is implemented by the hardware
+	 * then read the value from it, otherwise indicate an error.
 	 */
 	if (InstancePtr->GpOutWidth > 0) {
-		*OutputValuePtr = XIic_mReadReg(InstancePtr->BaseAddress,
+		*OutputValuePtr = XIic_ReadReg(InstancePtr->BaseAddress,
 						XIIC_GPO_REG_OFFSET);
 		return XST_SUCCESS;
-	}
-	else {
+	} else {
 		return XST_NO_FEATURE;
 	}
 }
@@ -579,25 +589,23 @@ int XIic_GetGpOutput(XIic * InstancePtr, u8 *OutputValuePtr)
 /*****************************************************************************/
 /**
 *
-* A function to determine if the device is currently addressed as a slave
+* A function to determine if the device is currently addressed as a slave.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
 *
 * @return
+* 		- TRUE if the device is addressed as slave.
+*		- FALSE if the device is NOT addressed as slave.
 *
-* TRUE if the device is addressed as slave, and FALSE otherwise.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ****************************************************************************/
-u32 XIic_IsSlave(XIic * InstancePtr)
+u32 XIic_IsSlave(XIic *InstancePtr)
 {
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
-	if ((XIo_In8(InstancePtr->BaseAddress + XIIC_SR_REG_OFFSET) &
-	     XIIC_SR_ADDR_AS_SLAVE_MASK) == 0) {
+	if ((XIic_ReadReg(InstancePtr->BaseAddress, XIIC_SR_REG_OFFSET) &
+		 XIIC_SR_ADDR_AS_SLAVE_MASK) == 0) {
 		return FALSE;
 	}
 	return TRUE;
@@ -617,26 +625,22 @@ u32 XIic_IsSlave(XIic * InstancePtr)
 *
 * The number of bytes received is passed to the handler as an argument.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
-* @param    CallBackRef is the upper layer callback reference passed back when
-*           the callback function is invoked.
-* @param    FuncPtr is the pointer to the callback function.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	CallBackRef is the upper layer callback reference passed back
+*		when the callback function is invoked.
+* @param	FuncPtr is the pointer to the callback function.
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* The handler is called within interrupt context ...
+* @note		The handler is called within interrupt context .
 *
 ****************************************************************************/
-void XIic_SetRecvHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetRecvHandler(XIic *InstancePtr, void *CallBackRef,
 			 XIic_Handler FuncPtr)
 {
-	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
-	XASSERT_VOID(InstancePtr != NULL);
-	XASSERT_VOID(FuncPtr != NULL);
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+	Xil_AssertVoid(InstancePtr != NULL);
+	Xil_AssertVoid(FuncPtr != NULL);
 
 	InstancePtr->RecvHandler = FuncPtr;
 	InstancePtr->RecvCallBackRef = CallBackRef;
@@ -650,26 +654,22 @@ void XIic_SetRecvHandler(XIic * InstancePtr, void *CallBackRef,
 * context such that it must minimize the amount of processing performed such
 * as transferring data to a thread context.
 *
-* @param    InstancePtr the pointer to the XIic instance to be worked on.
-* @param    CallBackRef the upper layer callback reference passed back when
-*           the callback function is invoked.
-* @param    FuncPtr the pointer to the callback function.
+* @param	InstancePtr the pointer to the XIic instance to be worked on.
+* @param	CallBackRef the upper layer callback reference passed back when
+*		the callback function is invoked.
+* @param	FuncPtr the pointer to the callback function.
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* The handler is called within interrupt context ...
+* @note		The handler is called within interrupt context .
 *
 ****************************************************************************/
-void XIic_SetSendHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetSendHandler(XIic *InstancePtr, void *CallBackRef,
 			 XIic_Handler FuncPtr)
 {
-	XASSERT_VOID(InstancePtr != NULL);
-	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
-	XASSERT_VOID(FuncPtr != NULL);
+	Xil_AssertVoid(InstancePtr != NULL);
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+	Xil_AssertVoid(FuncPtr != NULL);
 
 	InstancePtr->SendHandler = FuncPtr;
 	InstancePtr->SendCallBackRef = CallBackRef;
@@ -684,26 +684,22 @@ void XIic_SetSendHandler(XIic * InstancePtr, void *CallBackRef,
 * processing performed such as transferring data to a thread context. The
 * status events that can be returned are described in xiic.h.
 *
-* @param    InstancePtr points to the XIic instance to be worked on.
-* @param    CallBackRef is the upper layer callback reference passed back when
-*           the callback function is invoked.
-* @param    FuncPtr is the pointer to the callback function.
+* @param	InstancePtr points to the XIic instance to be worked on.
+* @param	CallBackRef is the upper layer callback reference passed back
+*		when the callback function is invoked.
+* @param	FuncPtr is the pointer to the callback function.
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* The handler is called within interrupt context ...
+* @note		The handler is called within interrupt context .
 *
 ****************************************************************************/
-void XIic_SetStatusHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetStatusHandler(XIic *InstancePtr, void *CallBackRef,
 			   XIic_StatusHandler FuncPtr)
 {
-	XASSERT_VOID(InstancePtr != NULL);
-	XASSERT_VOID(InstancePtr->IsReady == XCOMPONENT_IS_READY);
-	XASSERT_VOID(FuncPtr != NULL);
+	Xil_AssertVoid(InstancePtr != NULL);
+	Xil_AssertVoid(InstancePtr->IsReady == XIL_COMPONENT_IS_READY);
+	Xil_AssertVoid(FuncPtr != NULL);
 
 	InstancePtr->StatusHandler = FuncPtr;
 	InstancePtr->StatusCallBackRef = CallBackRef;
@@ -714,21 +710,17 @@ void XIic_SetStatusHandler(XIic * InstancePtr, void *CallBackRef,
 * This is a stub for the send and recv callbacks. The stub is here in case the
 * upper layers forget to set the handlers.
 *
-* @param    CallBackRef is a pointer to the upper layer callback reference
-* @param    ByteCount is the number of bytes sent or received
+* @param	CallBackRef is a pointer to the upper layer callback reference
+* @param	ByteCount is the number of bytes sent or received
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ******************************************************************************/
 static void XIic_StubHandler(void *CallBackRef, int ByteCount)
 {
-	XASSERT_VOID_ALWAYS();
+	Xil_AssertVoidAlways();
 }
 
 /*****************************************************************************
@@ -736,43 +728,41 @@ static void XIic_StubHandler(void *CallBackRef, int ByteCount)
 * This is a stub for the asynchronous error callback. The stub is here in case
 * the upper layers forget to set the handler.
 *
-* @param    CallBackRef is a pointer to the upper layer callback reference
-* @param    ErrorCode is the Xilinx error code, indicating the cause of the error
+* @param	CallBackRef is a pointer to the upper layer callback reference.
+* @param	ErrorCode is the Xilinx error code, indicating the cause of
+*		the error.
 *
-* @return
+* @return	None.
 *
-* None.
-*
-* @note
-*
-* None.
+* @note		None.
 *
 ******************************************************************************/
 static void XIic_StubStatusHandler(void *CallBackRef, int ErrorCode)
 {
-	XASSERT_VOID_ALWAYS();
+	Xil_AssertVoidAlways();
 }
 
 /*****************************************************************************
 *
 * This is a function which tells whether Bus is Busy or free.
 *
-* @param    InstancePtr points to the XIic instance to be worked on.
+* @param	InstancePtr points to the XIic instance to be worked on.
 *
-* @return  TRUE if Bus is Busy else FALSE
+* @return
+*		- TRUE if the Bus is Busy.
+*		- FALSE if the Bus is NOT Busy.
 *
-* @note    None.
+* @note		None.
 *
 ******************************************************************************/
-u32 XIic_IsIicBusy(XIic * InstancePtr)
+u32 XIic_IsIicBusy(XIic *InstancePtr)
 {
-	u8 StatusReg;
+	u32 StatusReg;
 
-	StatusReg = XIic_mReadReg(InstancePtr->BaseAddress, XIIC_SR_REG_OFFSET);
+	StatusReg = XIic_ReadReg(InstancePtr->BaseAddress, XIIC_SR_REG_OFFSET);
 	if (StatusReg & XIIC_SR_BUS_BUSY_MASK) {
 		return TRUE;
-	}
-	else {
+	} else {
 		return FALSE;
 	}
 }
