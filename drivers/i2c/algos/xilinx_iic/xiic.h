@@ -1,30 +1,42 @@
-/* $Id: xiic.h,v 1.3 2007/12/17 19:15:38 meinelte Exp $ */
+/* $Id: xiic.h,v 1.1.2.1 2010/04/12 12:13:13 svemula Exp $ */
 /******************************************************************************
 *
-*       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
-*       AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
-*       SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
-*       OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
-*       APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
-*       THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
-*       AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
-*       FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
-*       WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
-*       IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
-*       REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
-*       INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-*       FOR A PARTICULAR PURPOSE.
+* (c) Copyright 2002-2009 Xilinx, Inc. All rights reserved.
 *
-*      (c) Copyright 2002-2007 Xilinx Inc.
-*       All rights reserved.
-* This program is free software; you can redistribute it and/or modify it
-* under the terms of the GNU General Public License as published by the
-* Free Software Foundation; either version 2 of the License, or (at your
-* option) any later version.
+* This file contains confidential and proprietary information of Xilinx, Inc.
+* and is protected under U.S. and international copyright and other
+* intellectual property laws.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+* DISCLAIMER
+* This disclaimer is not a license and does not grant any rights to the
+* materials distributed herewith. Except as otherwise provided in a valid
+* license issued to you by Xilinx, and to the maximum extent permitted by
+* applicable law: (1) THESE MATERIALS ARE MADE AVAILABLE "AS IS" AND WITH ALL
+* FAULTS, AND XILINX HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS,
+* IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+* MERCHANTABILITY, NON-INFRINGEMENT, OR FITNESS FOR ANY PARTICULAR PURPOSE;
+* and (2) Xilinx shall not be liable (whether in contract or tort, including
+* negligence, or under any other theory of liability) for any loss or damage
+* of any kind or nature related to, arising under or in connection with these
+* materials, including for any direct, or any indirect, special, incidental,
+* or consequential loss or damage (including loss of data, profits, goodwill,
+* or any type of loss or damage suffered as a result of any action brought by
+* a third party) even if such damage or loss was reasonably foreseeable or
+* Xilinx had been advised of the possibility of the same.
+*
+* CRITICAL APPLICATIONS
+* Xilinx products are not designed or intended to be fail-safe, or for use in
+* any application requiring fail-safe performance, such as life-support or
+* safety devices or systems, Class III medical devices, nuclear facilities,
+* applications related to the deployment of airbags, or any other applications
+* that could lead to death, personal injury, or severe property or
+* environmental damage (individually and collectively, "Critical
+* Applications"). Customer assumes the sole risk and liability of any use of
+* Xilinx products in Critical Applications, subject only to applicable laws
+* and regulations governing limitations on product liability.
+*
+* THIS COPYRIGHT NOTICE AND DISCLAIMER MUST BE RETAINED AS PART OF THIS FILE
+* AT ALL TIMES.
 *
 ******************************************************************************/
 /*****************************************************************************/
@@ -45,12 +57,12 @@
 * Two sets of higher level API's are available in the XIic driver that can
 * be used for Transmission/Reception in Master mode :
 * - XIic_MasterSend()/ XIic_MasterRecv() which is used in normal mode.
-* - XIic_DynMasterSend()/XIic_DynMasterRecv() which is used in Dynamic mode.
+* - XIic_DynMasterSend()/ XIic_DynMasterRecv() which is used in Dynamic mode.
 *
 * Similarly two sets of lower level API's are available in XIic driver that
 * can be used for Transmission/Reception in Master mode:
-* - XIic_Send()/XIic_Recv() which is used in normal mode
-* - XIic_DynSend()/XIic_DynRecv() which is used in Dynamic mode.
+* - XIic_Send()/ XIic_Recv() which is used in normal mode
+* - XIic_DynSend()/ XIic_DynRecv() which is used in Dynamic mode.
 *
 * The user should use a single set of APIs as per his requirement and
 * should not intermix them.
@@ -71,14 +83,14 @@
 * by various operating systems, the driver instance can be initialized in one
 * of the following ways:
 *
-*   - XIic_Initialize(InstancePtr, DeviceId) - The driver looks up its own
+*   - XIic_Initialize() - The driver looks up its own
 *     configuration structure created by the tool-chain based on an ID provided
 *     by the tool-chain.
 *
-*   - XIic_CfgInitialize(InstancePtr, CfgPtr, EffectiveAddr) - Uses a
-*     configuration structure provided by the caller. If running in a system
-*     with address translation, the provided virtual memory base address
-*     replaces the physical address present in the configuration structure.
+*   - XIic_CfgInitialize() - The driver uses a configuration structure provided
+*     by the caller. If running in a system with address translation, the
+*     provided virtual memory base address replaces the physical address present
+*     in the configuration structure.
 *
 * <b>General Purpose Output</b>
 * The IIC hardware provides a General Purpose Output Register that allows the
@@ -175,11 +187,11 @@
 *
 * The following table provides a mapping of the interrupts to the events which
 * are passed to the status handler and the intended role (master or slave) for
-* the event.  Some interrupts can cause multiple events which are combined
+* the event. Some interrupts can cause multiple events which are combined
 * together into a single status event such as XII_MASTER_WRITE_EVENT and
 * XII_GENERAL_CALL_EVENT
 * <pre>
-* Interrupt                         Event(s)                     Role
+* Interrupt                         Event(s)                      Role
 *
 * Arbitration Lost Interrupt        XII_ARB_LOST_EVENT            Master
 * Transmit Error                    XII_SLAVE_NO_ACK_EVENT        Master
@@ -220,18 +232,46 @@
 *                     _Initialize and _LookupConfig to _sinit.c. I also added
 *                     the new _CfgInitialize routine.
 * 1.02a mta  03/09/06 Added a new function XIic_IsIicBusy() which returns
-*					  whether IIC Bus is Busy or Free.
+*			whether IIC Bus is Busy or Free.
 * 1.02a mta  03/09/06 Implemented Repeated Start in the Low Level Driver.
 * 1.03a mta  07/17/06 Added files to support Dynamic IIC controller in High
 *		      level driver. Added xiic_dyn_master.c. Added support
 * 		      for IIC Dynamic controller in Low level driver in xiic_l.c
 * 1.13a wgr  03/22/07 Converted to new coding style.
 * 1.13b ecm  11/29/07 added BB polling loops to the DynSend and DynRecv
-*					  routines to handle the race condition with BNB in IISR.
+*		      routines to handle the race condition with BNB in IISR.
+* 1.14a sdm  08/22/08 Removed support for static interrupt handlers from the MDD
+*		      file
+* 1.14a ecm  11/13/08 changed BB polling loops in DynRecv to handle race
+*		      condition, CR491889. DynSend was correct from v1.13.b
+* 1.15a ktn  02/17/09 Fixed XIic_GetAddress() to return correct device address.
+* 1.16a ktn  07/17/09 Updated the XIic_SelfTest() to test only Interrupt
+*		      Registers.
+* 2.00a ktn  10/22/09 Converted all register accesses to 32 bit access.,
+*		      Removed the macro XIIC_RESET, XIic_Reset API should be
+*		      used in its place.
+*		      Removed the XIIC_CLEAR_STATS macro, XIic_ClearStats API
+*		      should be used in its place.
+*		      Removed the macro XIic_mEnterCriticalRegion,
+*		      XIic_IntrGlobalDisable should be used in its place.
+*		      Removed the macro XIic_mExitCriticalRegion,
+*		      XIic_IntrGlobalEnable should be used in its place.
+*		      Some of the macros have been renamed to remove _m from
+*		      the name see the xiic_i.h and xiic_l.h file for further
+*		      information (Example XIic_mClearIntr is now
+*		      XIic_ClearIntr).
+*		      Some of the macros have been renamed to be consistent,
+*		      see the xiic_l.h file for further information
+*		      (Example XIIC_WRITE_IIER is renamed as XIic_WriteIier).
+*		      The driver has been updated to use the HAL APIs/macros
+*		      (Example XASSERT_NONVOID is now Xil_AssertNonvoid)
+* 2.01a ktn  04/09/10 Updated TxErrorhandler in xiic_intr.c to be called for
+*		      Master Transmitter case based on Addressed As Slave (AAS)
+*		      bit rather than MSMS bit(CR 540199).
+*
 * </pre>
 *
 ******************************************************************************/
-
 #ifndef XIIC_H			/* prevent circular inclusions */
 #define XIIC_H			/* by using protection macros */
 
@@ -241,7 +281,8 @@ extern "C" {
 
 /***************************** Include Files *********************************/
 
-#include "xbasic_types.h"
+#include "xil_types.h"
+#include "xil_assert.h"
 #include "xstatus.h"
 #include "xiic_l.h"
 
@@ -250,43 +291,43 @@ extern "C" {
 /** @name Configuration options
  *
  * The following options may be specified or retrieved for the device and
- * enable/disable additional features of the IIC bus.  Each of the options
+ * enable/disable additional features of the IIC bus. Each of the options
  * are bit fields such that more than one may be specified.
  * @{
  */
 /**
  * <pre>
- * XII_GENERAL_CALL_OPTION      The general call option allows an IIC slave to
- *                              recognized the general call address. The status
- *                              handler is called as usual indicating the device
- *                              has been addressed as a slave with a general
- *                              call. It is the application's responsibility to
- *                              perform any special processing for the general
- *                              call.
+ * XII_GENERAL_CALL_OPTION	The general call option allows an IIC slave to
+ *				recognized the general call address. The status
+ *				handler is called as usual indicating the device
+ *				has been addressed as a slave with a general
+ *				call. It is the application's responsibility to
+ *				perform any special processing for the general
+ *				call.
  *
- * XII_REPEATED_START_OPTION    The repeated start option allows multiple
- *                              messages to be sent/received on the IIC bus
- *                              without rearbitrating for the bus.  The messages
- *                              are sent as a series of messages such that the
- *                              option must be enabled before the 1st message of
- *                              the series, to prevent an stop condition from
- *                              being generated on the bus, and disabled before
- *                              the last message of the series, to allow the
- *                              stop condition to be generated.
+ * XII_REPEATED_START_OPTION	The repeated start option allows multiple
+ *				messages to be sent/received on the IIC bus
+ *				without rearbitrating for the bus.  The messages
+ *				are sent as a series of messages such that the
+ *				option must be enabled before the 1st message of
+ *				the series, to prevent an stop condition from
+ *				being generated on the bus, and disabled before
+ *				the last message of the series, to allow the
+ *				stop condition to be generated.
  *
- * XII_SEND_10_BIT_OPTION       The send 10 bit option allows 10 bit addresses
- *                              to be sent on the bus when the device is a
- *                              master. The device can be configured to respond
- *                              as to 7 bit addresses even though it may be
- *                              communicating with other devices that support 10
- *                              bit addresses.  When this option is not enabled,
- *                              only 7 bit addresses are sent on the bus.
+ * XII_SEND_10_BIT_OPTION	The send 10 bit option allows 10 bit addresses
+ *				to be sent on the bus when the device is a
+ *				master. The device can be configured to respond
+ *				as to 7 bit addresses even though it may be
+ *				communicating with other devices that support 10
+ *				bit addresses.  When this option is not enabled,
+ *				only 7 bit addresses are sent on the bus.
  *
  * </pre>
  */
-#define XII_GENERAL_CALL_OPTION    0x00000001
-#define XII_REPEATED_START_OPTION  0x00000002
-#define XII_SEND_10_BIT_OPTION     0x00000004
+#define XII_GENERAL_CALL_OPTION		0x00000001
+#define XII_REPEATED_START_OPTION	0x00000002
+#define XII_SEND_10_BIT_OPTION		0x00000004
 
 /*@}*/
 
@@ -298,33 +339,22 @@ extern "C" {
  * more than one may be specified.
  * @{
  */
-/**
- * <pre>
- *   XII_BUS_NOT_BUSY_EVENT      bus transitioned to not busy
- *   XII_ARB_LOST_EVENT          arbitration was lost
- *   XII_SLAVE_NO_ACK_EVENT      slave did not acknowledge data (had error)
- *   XII_MASTER_READ_EVENT       master reading from slave
- *   XII_MASTER_WRITE_EVENT      master writing to slave
- *   XII_GENERAL_CALL_EVENT      general call to all slaves
- * </pre>
- */
-#define XII_BUS_NOT_BUSY_EVENT   0x00000001
-#define XII_ARB_LOST_EVENT       0x00000002
-#define XII_SLAVE_NO_ACK_EVENT   0x00000004
-#define XII_MASTER_READ_EVENT    0x00000008
-#define XII_MASTER_WRITE_EVENT   0x00000010
-#define XII_GENERAL_CALL_EVENT   0x00000020
+#define XII_BUS_NOT_BUSY_EVENT	0x00000001 /**< Bus transitioned to not busy */
+#define XII_ARB_LOST_EVENT	0x00000002 /**< Arbitration was lost */
+#define XII_SLAVE_NO_ACK_EVENT	0x00000004 /**< Slave did not ACK (had error) */
+#define XII_MASTER_READ_EVENT	0x00000008 /**< Master reading from slave */
+#define XII_MASTER_WRITE_EVENT	0x00000010 /**< Master writing to slave */
+#define XII_GENERAL_CALL_EVENT	0x00000020 /**< General call to all slaves */
 /*@}*/
 
 
-/* The following address types are used when setting and getting the addresses
+/*
+ * The following address types are used when setting and getting the addresses
  * of the driver. These are mutually exclusive such that only one or the other
  * may be specified.
  */
-/** bus address of slave device */
-#define XII_ADDR_TO_SEND_TYPE       1
-/** this device's bus address when slave */
-#define XII_ADDR_TO_RESPOND_TYPE    2
+#define XII_ADDR_TO_SEND_TYPE	 1 /**< Bus address of slave device */
+#define XII_ADDR_TO_RESPOND_TYPE 2 /**< This device's bus address as slave */
 
 /**************************** Type Definitions *******************************/
 
@@ -332,47 +362,48 @@ extern "C" {
  * This typedef contains configuration information for the device.
  */
 typedef struct {
-	u16 DeviceId;	/**< Unique ID  of device */
-	u32 BaseAddress;/**< Device base address */
-	int Has10BitAddr;
-		       /**< does device have 10 bit address decoding */
-	u8 GpOutWidth;	/**< number of bits in general purpose output */
+	u16 DeviceId;	  /**< Unique ID  of device */
+	u32 BaseAddress;  /**< Device base address */
+	int Has10BitAddr; /**< Does device have 10 bit address decoding */
+	u8 GpOutWidth;	  /**< Number of bits in general purpose output */
 } XIic_Config;
 
+/****************************************************************************/
 /**
- * This callback function data type is defined to handle the asynchronous
- * processing of sent and received data of the IIC driver.  The application
- * using this driver is expected to define a handler of this type to support
- * interrupt driven mode. The handlers are called in an interrupt context such
- * that minimal processing should be performed. The handler data type is
- * utilized for both send and receive handlers.
- *
- * @param CallBackRef is a callback reference passed in by the upper layer when
- *        setting the callback functions, and passed back to the upper layer
- *        when the callback is invoked. Its type is unimportant to the driver
- *        component, so it is a void pointer.
- *
- * @param ByteCount indicates the number of bytes remaining to be sent or
- *        received.  A value of zero indicates that the requested number of
- *        bytes were sent or received.
- */
+* This callback function data type is defined to handle the asynchronous
+* processing of sent and received data of the IIC driver.  The application
+* using this driver is expected to define a handler of this type to support
+* interrupt driven mode. The handlers are called in an interrupt context such
+* that minimal processing should be performed. The handler data type is
+* utilized for both send and receive handlers.
+*
+* @param	CallBackRef is a callback reference passed in by the upper
+*		layer when setting the callback functions, and passed back
+*		to the upper layer when the callback is invoked. Its type is
+*		unimportant to the driver  component, so it is a void pointer.
+* @param	ByteCount indicates the number of bytes remaining to be sent or
+*		received.  A value of zero indicates that the requested number
+*		of bytes were sent or received.
+*
+******************************************************************************/
 typedef void (*XIic_Handler) (void *CallBackRef, int ByteCount);
 
+/******************************************************************************/
 /**
- * This callback function data type is defined to handle the asynchronous
- * processing of status events of the IIC driver.  The application using
- * this driver is expected to define a handler of this type to support
- * interrupt driven mode. The handler is called in an interrupt context such
- * that minimal processing should be performed.
- *
- * @param CallBackRef is a callback reference passed in by the upper layer when
- *        setting the callback functions, and passed back to the upper layer
- *        when the callback is invoked. Its type is unimportant to the driver
- *        component, so it is a void pointer.
- *
- * @param StatusEvent indicates one or more status events that occurred.  See
- *        the definition of the status events above.
- */
+* This callback function data type is defined to handle the asynchronous
+* processing of status events of the IIC driver.  The application using
+* this driver is expected to define a handler of this type to support
+* interrupt driven mode. The handler is called in an interrupt context such
+* that minimal processing should be performed.
+*
+* @param	CallBackRef is a callback reference passed in by the upper
+*		layer when setting the callback functions, and passed back
+*		to the upper layer when the callback is invoked. Its type is
+*		unimportant to the driver component, so it is a void pointer.
+* @param	StatusEvent indicates one or more status events that occurred.
+*		See the definition of the status events above.
+*
+********************************************************************************/
 typedef void (*XIic_StatusHandler) (void *CallBackRef, int StatusEvent);
 
 /**
@@ -390,79 +421,75 @@ typedef struct {
 	u8 IicInterrupts;  /**< Number of IIC (device) interrupts */
 } XIicStats;
 
-
 /**
  * The XIic driver instance data. The user is required to allocate a
  * variable of this type for every IIC device in the system. A pointer
  * to a variable of this type is then passed to the driver API functions.
  */
 typedef struct {
-	XIicStats Stats;	/* Statistics                              */
-	u32 BaseAddress;	/* Device base address                     */
-	int Has10BitAddr;	/* TRUE when 10 bit addressing in design  */
-	int IsReady;		/* Device is initialized and ready         */
-	int IsStarted;		/* Device has been started                 */
-	int AddrOfSlave;	/* Slave addr writing to                   */
+	XIicStats Stats;	/**< Statistics */
+	u32 BaseAddress;	/**< Device base address */
+	int Has10BitAddr;	/**< TRUE when 10 bit addressing in design */
+	int IsReady;		/**< Device is initialized and ready */
+	int IsStarted;		/**< Device has been started */
+	int AddrOfSlave;	/**< Slave Address writing to */
 
-	u32 Options;		/* current operating options               */
-	u8 *SendBufferPtr;	/* Buffer to send (state)                  */
-	u8 *RecvBufferPtr;	/* Buffer to receive (state)               */
-	u8 TxAddrMode;		/* State of Tx Address transmission        */
-	int SendByteCount;	/* Number of data bytes in buffer (state)  */
-	int RecvByteCount;	/* Number of empty bytes in buffer (state) */
+	u32 Options;		/**< Current operating options */
+	u8 *SendBufferPtr;	/**< Buffer to send (state) */
+	u8 *RecvBufferPtr;	/**< Buffer to receive (state) */
+	u8 TxAddrMode;		/**< State of Tx Address transmission */
+	int SendByteCount;	/**< Number of data bytes in buffer (state)  */
+	int RecvByteCount;	/**< Number of empty bytes in buffer (state) */
 
-	u32 BNBOnly;		/* TRUE when BNB interrupt needs to   */
-	/* call callback  */
-	u8 GpOutWidth;		/* General purpose output width            */
+	u32 BNBOnly;		/**< TRUE when BNB interrupt needs to */
+				/**< call callback  */
+	u8 GpOutWidth;		/**< General purpose output width */
 
-	XIic_StatusHandler StatusHandler;
-	void *StatusCallBackRef;	/* Callback reference for status handler */
-	XIic_Handler RecvHandler;
-	void *RecvCallBackRef;	/* Callback reference for recv handler */
-	XIic_Handler SendHandler;
-	void *SendCallBackRef;	/* Callback reference for send handler */
-	int IsDynamic;
+	XIic_StatusHandler StatusHandler; /**< Status Handler */
+	void *StatusCallBackRef;  /**< Callback reference for status handler */
+	XIic_Handler RecvHandler; /**< Receive Handler */
+	void *RecvCallBackRef;	  /**< Callback reference for Recv handler */
+	XIic_Handler SendHandler; /**< Send Handler */
+	void *SendCallBackRef;	  /**< Callback reference for send handler */
+	int IsDynamic;		  /**< TRUE when Dynamic control is used*/
 
 } XIic;
 
-
 /***************** Macros (Inline Functions) Definitions *********************/
-
 
 /************************** Function Prototypes ******************************/
 
 /*
  * Initialization functions in xiic_sinit.c
  */
-int XIic_Initialize(XIic * InstancePtr, u16 DeviceId);
+int XIic_Initialize(XIic *InstancePtr, u16 DeviceId);
 XIic_Config *XIic_LookupConfig(u16 DeviceId);
 
 /*
- * Required functions in xiic.c
+ * Functions in xiic.c
  */
-int XIic_CfgInitialize(XIic * InstancePtr, XIic_Config * Config,
+int XIic_CfgInitialize(XIic *InstancePtr, XIic_Config *Config,
 		       u32 EffectiveAddr);
 
-int XIic_Start(XIic * InstancePtr);
-int XIic_Stop(XIic * InstancePtr);
+int XIic_Start(XIic *InstancePtr);
+int XIic_Stop(XIic *InstancePtr);
 
-void XIic_Reset(XIic * InstancePtr);
+void XIic_Reset(XIic *InstancePtr);
 
-int XIic_SetAddress(XIic * InstancePtr, int AddressType, int Address);
-u16 XIic_GetAddress(XIic * InstancePtr, int AddressType);
+int XIic_SetAddress(XIic *InstancePtr, int AddressType, int Address);
+u16 XIic_GetAddress(XIic *InstancePtr, int AddressType);
 
-int XIic_SetGpOutput(XIic * InstancePtr, u8 OutputValue);
-int XIic_GetGpOutput(XIic * InstancePtr, u8 *OutputValuePtr);
+int XIic_SetGpOutput(XIic *InstancePtr, u8 OutputValue);
+int XIic_GetGpOutput(XIic *InstancePtr, u8 *OutputValuePtr);
 
-u32 XIic_IsSlave(XIic * InstancePtr);
+u32 XIic_IsSlave(XIic *InstancePtr);
 
-void XIic_SetRecvHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetRecvHandler(XIic *InstancePtr, void *CallBackRef,
 			 XIic_Handler FuncPtr);
-void XIic_SetSendHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetSendHandler(XIic *InstancePtr, void *CallBackRef,
 			 XIic_Handler FuncPtr);
-void XIic_SetStatusHandler(XIic * InstancePtr, void *CallBackRef,
+void XIic_SetStatusHandler(XIic *InstancePtr, void *CallBackRef,
 			   XIic_StatusHandler FuncPtr);
-
 
 /*
  * Interrupt functions in xiic_intr.c
@@ -472,48 +499,48 @@ void XIic_InterruptHandler(void *InstancePtr);
 /*
  * Master send and receive functions in normal mode in xiic_master.c
  */
-int XIic_MasterRecv(XIic * InstancePtr, u8 *RxMsgPtr, int ByteCount);
-int XIic_MasterSend(XIic * InstancePtr, u8 *TxMsgPtr, int ByteCount);
+int XIic_MasterRecv(XIic *InstancePtr, u8 *RxMsgPtr, int ByteCount);
+int XIic_MasterSend(XIic *InstancePtr, u8 *TxMsgPtr, int ByteCount);
 
 /*
  * Master send and receive functions in dynamic mode in xiic_master.c
  */
-int XIic_DynMasterRecv(XIic * InstancePtr, u8 *RxMsgPtr, u8 ByteCount);
-int XIic_DynMasterSend(XIic * InstancePtr, u8 *TxMsgPtr, u8 ByteCount);
+int XIic_DynMasterRecv(XIic *InstancePtr, u8 *RxMsgPtr, u8 ByteCount);
+int XIic_DynMasterSend(XIic *InstancePtr, u8 *TxMsgPtr, u8 ByteCount);
 
 /*
  * Dynamic IIC Core Initialization.
  */
-int XIic_DynamicInitialize(XIic * InstancePtr);
+int XIic_DynamicInitialize(XIic *InstancePtr);
 
 /*
  * Slave send and receive functions in xiic_slave.c
  */
 void XIic_SlaveInclude(void);
-int XIic_SlaveRecv(XIic * InstancePtr, u8 *RxMsgPtr, int ByteCount);
-int XIic_SlaveSend(XIic * InstancePtr, u8 *TxMsgPtr, int ByteCount);
+int XIic_SlaveRecv(XIic *InstancePtr, u8 *RxMsgPtr, int ByteCount);
+int XIic_SlaveSend(XIic *InstancePtr, u8 *TxMsgPtr, int ByteCount);
 
 /*
  * Statistics functions in xiic_stats.c
  */
-void XIic_GetStats(XIic * InstancePtr, XIicStats * StatsPtr);
-void XIic_ClearStats(XIic * InstancePtr);
+void XIic_GetStats(XIic *InstancePtr, XIicStats *StatsPtr);
+void XIic_ClearStats(XIic *InstancePtr);
 
 /*
  * Self test functions in xiic_selftest.c
  */
-int XIic_SelfTest(XIic * InstancePtr);
+int XIic_SelfTest(XIic *InstancePtr);
 
 /*
  * Bus busy Function in xiic.c
  */
-u32 XIic_IsIicBusy(XIic * InstancePtr);
+u32 XIic_IsIicBusy(XIic *InstancePtr);
 
 /*
  * Options functions in xiic_options.c
  */
-void XIic_SetOptions(XIic * InstancePtr, u32 Options);
-u32 XIic_GetOptions(XIic * InstancePtr);
+void XIic_SetOptions(XIic *InstancePtr, u32 Options);
+u32 XIic_GetOptions(XIic *InstancePtr);
 
 /*
  * Multi-master functions in xiic_multi_master.c

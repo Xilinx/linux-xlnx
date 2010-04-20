@@ -2,7 +2,7 @@
 
 obj-$(CONFIG_XILINX_EDK) += xbasic_types.o xilinx_syms.o					\
 				xversion.o	xpacket_fifo_v2_00_a.o xpacket_fifo_l_v2_00_a.o	\
-				xdma_channel.o xdma_channel_sg.o xio.o
+				xdma_channel.o xdma_channel_sg.o xio.o xil_assert.o
 
 obj-$(CONFIG_NEED_XILINX_DMAV3) += \
 			    xdmav3.o xdmav3_intr.o xdmav3_sg.o			\
