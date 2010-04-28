@@ -59,14 +59,14 @@
 #define GPIO0_BASE		(IO_BASE + 0xA000)
 #define ETH0_BASE               (IO_BASE + 0xB000)
 #define ETH1_BASE               (IO_BASE + 0xC000)
-#define DMAC0_BASE		0xEC000000
-#define DMAC1_BASE		0xEC001000
 
 #define PERIPH_BASE		0xFE000000
 
 #define SLC_REG			(PERIPH_BASE)
 #define TTC0_BASE		(PERIPH_BASE + 0x1000)
 #define TTC1_BASE		(PERIPH_BASE + 0x2000)
+#define DMAC0_BASE		(PERIPH_BASE + 0x3000)
+#define DMAC1_BASE		(PERIPH_BASE + 0x4000)
 #define WDT_BASE		(PERIPH_BASE + 0x5000)
 
 #define SCU_PERIPH_BASE		0xFEF00000
