@@ -85,7 +85,6 @@
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
 #define BUFFER_ALIGNSEND(adr) ((ALIGNMENT_SEND - ((u32) adr)) % ALIGNMENT_SEND)
 #define BUFFER_ALIGNSEND_PERF(adr) ((ALIGNMENT_SEND_PERF - ((u32) adr)) % 32)
-#define BUFFER_ALIGNRECV(adr) ((ALIGNMENT_RECV - ((u32) adr)) % 32)
 
 /* Default TX/RX Threshold and waitbound values for SGDMA mode */
 #define DFT_TX_THRESHOLD  24
@@ -1910,19 +1909,11 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 	struct sk_buff *new_skb;
 	u32 new_skb_baddr;
 	XLlDma_Bd *BdPtr, *BdCurPtr;
-	u32 align;
 	int result;
-
-#if 0
-	int align_max = ALIGNMENT_RECV;
-#else
-	int align_max = 0;
-#endif
-
 
 	skb_queue_head_init(&sk_buff_list);
 	for (num_sk_buffs = 0; num_sk_buffs < free_bd_count; num_sk_buffs++) {
-		new_skb = alloc_skb(lp->max_frame_size + align_max, GFP_ATOMIC);
+		new_skb = netdev_alloc_skb_ip_align(dev, lp->max_frame_size);
 		if (new_skb == NULL) {
 			break;
 		}
@@ -1953,12 +1944,6 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 
 	new_skb = skb_dequeue(&sk_buff_list);
 	while (new_skb) {
-		/* make sure we're long-word aligned */
-		align = BUFFER_ALIGNRECV(new_skb->data);
-		if (align) {
-			skb_reserve(new_skb, align);
-		}
-
 		/* Get dma handle of skb->data */
 		new_skb_baddr = (u32) dma_map_single(dev->dev.parent, new_skb->data,
 						     lp->max_frame_size,
