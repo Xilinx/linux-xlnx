@@ -359,8 +359,8 @@ static struct platform_device xilinx_wdtpss_0_device = {
 /*************************Private WDT***********************/
 static struct resource xa9wdt_resource[] = {
 	{
-		.start	= SCU_PWDT_BASE,
-		.end	= SCU_PWDT_BASE + 0x20,
+		.start	= SCU_WDT_BASE,
+		.end	= SCU_WDT_BASE + 0x20,
 		.flags	= IORESOURCE_MEM
 	},
 };

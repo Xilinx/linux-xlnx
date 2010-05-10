@@ -100,7 +100,7 @@ static void __init irq_init(void)
 	xilinx_debug("->irq_init\n");
 
 	gic_cpu_base_addr = (void __iomem *)SCU_GIC_CPU_BASE;
-	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, IRQ_GIC_START); 
+	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, IRQ_GIC_SPI_START); 
 	gic_cpu_init(0, gic_cpu_base_addr);
 
 	xilinx_debug("<-irq_init\n");

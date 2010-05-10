@@ -72,50 +72,37 @@
 #define SCU_PERIPH_BASE		0xFEF00000
 
 #define SCU_GIC_CPU_BASE	(SCU_PERIPH_BASE + 0x100)
-#define SCU_GTIMER_BASE		(SCU_PERIPH_BASE + 0x200)
-#define SCU_PTIMER_BASE		(SCU_PERIPH_BASE + 0x600)
-#define SCU_PWDT_BASE		(SCU_PERIPH_BASE + 0x620)
+#define SCU_GLOBAL_TIMER_BASE	(SCU_PERIPH_BASE + 0x200)
+#define SCU_CPU_TIMER_BASE	(SCU_PERIPH_BASE + 0x600)
+#define SCU_WDT_BASE		(SCU_PERIPH_BASE + 0x620)
 #define SCU_GIC_DIST_BASE	(SCU_PERIPH_BASE + 0x1000)
 
 /*
- * GIC Interrupts
- */
-#define IRQ_GIC_START		32
-
-/* Dragonfire interrupt map
-
-#define IRQ_TIMERCOUNTER0	(IRQ_GIC_START + 1)
-#define IRQ_TIMERCOUNTER1	(IRQ_GIC_START + 2)
-#define IRQ_UART0		(IRQ_GIC_START + 20)
-#define IRQ_UART1		(IRQ_GIC_START + 45)
-#define IRQ_DMAC0		(IRQ_GIC_START + 4)
-#define IRQ_DMAC1		(IRQ_GIC_START + 34)
-#define IRQ_I2C0		(IRQ_GIC_START + 18)
-#define IRQ_GPIO0		(IRQ_GIC_START + 13)
-#define IRQ_ETH0                (IRQ_GIC_START + 15)
-#define IRQ_ETH1                (IRQ_GIC_START + 41)
-#define IRQ_SPI0		(IRQ_GIC_START + 19)
-#define IRQ_SPI1		(IRQ_GIC_START + 44)
-
-*/
-
-/* 
- * Pele interrupt map
+ * GIC Interrupts for Pele
  */
 
-#define IRQ_TIMERCOUNTER0	(IRQ_GIC_START + 10)
-#define IRQ_TIMERCOUNTER1	(IRQ_GIC_START + 11)
-#define IRQ_DMAC0		(IRQ_GIC_START + 13)
-#define IRQ_GPIO0		(IRQ_GIC_START + 20)
-#define IRQ_ETH0                (IRQ_GIC_START + 22)
-#define IRQ_I2C0		(IRQ_GIC_START + 25)
-#define IRQ_SPI0		(IRQ_GIC_START + 26)
-#define IRQ_UART0		(IRQ_GIC_START + 27)
-#define IRQ_DMAC1		(IRQ_GIC_START + 40)
-#define IRQ_ETH1                (IRQ_GIC_START + 45)
-#define IRQ_I2C1		(IRQ_GIC_START + 48)
-#define IRQ_SPI1		(IRQ_GIC_START + 49)
-#define IRQ_UART1		(IRQ_GIC_START + 50)
+#define IRQ_SCU_GLOBAL_TIMER	27
+#define IRQ_FABRIC_NFIQ		28
+#define IRQ_SCU_CPU_TIMER	29
+#define IRQ_SCU_WDT		30
+#define IRQ_FABRIC_NIRQ		31
+
+/* Shared peripheral interrupts */
+
+#define IRQ_GIC_SPI_START	32
+#define IRQ_TIMERCOUNTER0	42
+#define IRQ_TIMERCOUNTER1	43
+#define IRQ_DMAC0		45
+#define IRQ_GPIO0		52
+#define IRQ_ETH0                54
+#define IRQ_I2C0		57
+#define IRQ_SPI0		58
+#define IRQ_UART0		59
+#define IRQ_DMAC1		72
+#define IRQ_ETH1                77
+#define IRQ_I2C1		80
+#define IRQ_SPI1		81
+#define IRQ_UART1		82
 
 /*
  * Start and size of physical RAM
