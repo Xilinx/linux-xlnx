@@ -95,7 +95,7 @@ static struct clock_event_device xttcpss_clockevent;
  */
 static int xttcpss_timer_irqs[2] = {
 	IRQ_TIMERCOUNTER0,	/* Timer 1 IRQ number */
-	IRQ_TIMERCOUNTER1,	/* Timer 2 IRQ number */
+	IRQ_TIMERCOUNTER0 + 1,	/* Timer 2 IRQ number */
 };
 
 /**

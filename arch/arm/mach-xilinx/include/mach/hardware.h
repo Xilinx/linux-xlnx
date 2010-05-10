@@ -91,13 +91,13 @@
 
 #define IRQ_GIC_SPI_START	32
 #define IRQ_TIMERCOUNTER0	42
-#define IRQ_TIMERCOUNTER1	43
 #define IRQ_DMAC0		45
 #define IRQ_GPIO0		52
 #define IRQ_ETH0                54
 #define IRQ_I2C0		57
 #define IRQ_SPI0		58
 #define IRQ_UART0		59
+#define IRQ_TIMERCOUNTER1	69
 #define IRQ_DMAC1		72
 #define IRQ_ETH1                77
 #define IRQ_I2C1		80
