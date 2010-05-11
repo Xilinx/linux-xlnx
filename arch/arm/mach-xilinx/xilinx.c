@@ -36,6 +36,7 @@ extern void platform_device_init(void);
 
 /* used by entry-macro.S */
 void __iomem *gic_cpu_base_addr;
+void __iomem *boot_base_virtual;
 
 static struct at24_platform_data board_eeprom = {
 	.byte_len = 8*1024,
@@ -87,6 +88,14 @@ static void __init board_init(void)
 	spi_register_board_info(spi_devs,
  			         ARRAY_SIZE(spi_devs));
 #endif
+
+	/* map the boot registers into the MMU so they can be used later
+	   to boot the secondary CPU
+	*/
+
+	boot_base_virtual = ioremap(BOOT_REG_BASE, SZ_4K); 
+	if (!boot_base_virtual)
+		printk("Xilinx: failure to remap boot registers memory\n");
 
 	xilinx_debug("<-board_init\n");
 }

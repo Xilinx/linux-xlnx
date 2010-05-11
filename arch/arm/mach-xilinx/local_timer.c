@@ -1,13 +1,9 @@
 /*
- * The MPU local timer source file. In OMAP4, both cortex-a9 cores have
- * own timer in it's MPU domain. These timers will be driving the
- * linux kernel SMP tick framework when active. These timers are not
- * part of the wake up domain.
+ * The local timer source file. Both cortex-a9 cores have
+ * own timer in it's CPU domain. These timers will be driving the
+ * linux kernel SMP tick framework when active. 
  *
- * Copyright (C) 2009 Texas Instruments, Inc.
- *
- * Author:
- *      Santosh Shilimkar <santosh.shilimkar@ti.com>
+ * Copyright (C) 2010 Xilinx, Inc.
  *
  * This file is based on arm realview smp platform file.
  * Copyright (C) 2002 ARM Ltd.
@@ -28,6 +24,7 @@
  */
 void __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
-
+	evt->irq = IRQ_SCU_CPU_TIMER;
+	twd_timer_setup(evt);
 }
 

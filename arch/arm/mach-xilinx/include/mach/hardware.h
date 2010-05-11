@@ -27,6 +27,17 @@
 #define PERIPHERAL_CLOCK_RATE	781250
 #define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
 
+/* There are a couple ram addresses needed for communication between the boot
+ * loader software and the linux kernel and the multiple cpus of the kernel.
+ * A single page of memory is reserved so that the primary CPU can map it in
+ * the MMU. The register addresses are reserved in the on-board SRAM. 
+ */
+
+#define BOOT_REG_BASE		0x1F000
+
+#define BOOT_REG0_OFFSET	0x00FF8	/* can be used with a virtual base */
+#define BOOT_REG1_OFFSET	0x00FFC /* can be used with a virtual base */
+
 /*
  * Device base addresses, all are mapped flat such that virtual = physical, is
  * still true now with EPA9 addresses?
