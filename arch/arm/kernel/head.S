@@ -77,6 +77,20 @@
  */
 	__HEAD
 ENTRY(stext)
+
+#ifdef CONFIG_ARCH_XILINX
+
+	/* the following code belongs in a boot loader but is here for now
+	 * for early SMP testing
+	 */
+	mrc	p15,0,r0,c0,c0,5
+	and	r0,r0,#0x0f
+	cmp	r0,#1
+	beq	secondary_startup
+
+	mov	r0,#0
+#endif
+
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9 @ ensure svc mode
 						@ and irqs disabled
 	mrc	p15, 0, r9, c0, c0		@ get processor id
@@ -116,6 +130,37 @@ ENDPROC(stext)
 
 #if defined(CONFIG_SMP)
 ENTRY(secondary_startup)
+
+#ifdef CONFIG_ARCH_XILINX
+
+	/* JHL Xilinx hacking for SMP testin. this code should really
+	   be in the boot loader, this code is a mailbox type system
+	   so that CPU1 is held waiting for CPU0 to turn it lose and
+	   let it run the kernel.
+
+	   r0 = lock address, r1 = lock value, r2 = key address
+	   r3 = virtual to physical convert mask, r4 = key value
+	 */
+	ldr	r0, =Cpu1BootLock	@ initialize the lock to locked
+					@ wait for the key from smp code
+					@ then boot CPU1
+	ldr	r2, =Cpu1BootKey	@ get the key address
+	mov	r3, #0x00FFFFFF		@ mask for virtual to physical conversion
+	and	r0, r3, r0		@ convert addresses to physical
+	and	r2, r3, r2
+
+	str	r0, [r0]		@ initialize the boot lock
+
+wait4key:
+	ldr	r1, [r0]		@ get the lock 
+	ldr	r4, [r2]		@ get the key 
+	cmp	r1, r4			@ is the key in the lock
+	bne	wait4key		@ if not then wait for the key
+/*
+	str	r3, [r0]		
+*/
+#endif
+
 	/*
 	 * Common entry point for secondary CPUs.
 	 *
@@ -129,7 +174,6 @@ ENTRY(secondary_startup)
 	movs	r10, r5				@ invalid processor?
 	moveq	r0, #'p'			@ yes, error 'p'
 	beq	__error
-
 	/*
 	 * Use the page tables supplied from  __cpu_up.
 	 */

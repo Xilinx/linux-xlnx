@@ -281,7 +281,7 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	/*
 	 * Setup the percpu timer for this CPU.
 	 */
-	percpu_timer_setup();
+//	percpu_timer_setup();
 
 	calibrate_delay();
 

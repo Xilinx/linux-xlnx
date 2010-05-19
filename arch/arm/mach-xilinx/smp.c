@@ -24,6 +24,11 @@
 #include <asm/smp_scu.h>
 #include <mach/hardware.h>
 
+#include <asm/cacheflush.h>
+
+volatile int Cpu1BootLock;
+volatile int Cpu1BootKey = 0xDEADBEEF;
+
 extern void xilinx_secondary_startup(void);
 
 extern void __iomem *boot_base_virtual;
@@ -65,6 +70,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	unsigned long timeout;
+	int count;
 
 	/*
 	 * Set synchronisation state between this boot processor
@@ -78,7 +84,23 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * till the boot register 1 is updated with cpu state
 	 * A barrier is added to ensure that write buffer is drained
 	 */
+
+/*	hack for now JHL with SMP
+	
 	__raw_writel(cpu, boot_base_virtual + BOOT_REG1_OFFSET);
+*/
+	printk("Xilinx SMP: booting CPU1 now\n");
+
+	/* The following code seems brittle right now, beware of any changes even
+	 * even if they make sense as the kernel seems to get stuck in boot at 
+	 * somewhat random places on palladium, but we have no control of the 
+	 * processor yet to understand it better.
+	 */
+	Cpu1BootLock = Cpu1BootKey;
+	smp_wmb();
+
+	flush_cache_all();
+
 	smp_wmb();
 
 	timeout = jiffies + (1 * HZ);
@@ -102,8 +124,14 @@ static void __init wakeup_secondary(void)
 	 * on secondary core once out of WFE
 	 * A barrier is added to ensure that write buffer is drained
 	 */
+
+/* nothing to do for now, jhl hacking on SMP
+
+
 	__raw_writel(virt_to_phys(xilinx_secondary_startup), 
 					boot_base_virtual + BOOT_REG0_OFFSET);
+*/
+
 	smp_wmb();
 
 	/*
@@ -165,7 +193,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		 * Enable the local timer or broadcast device for the
 		 * boot CPU, but only if we have more than one CPU.
 		 */
-		percpu_timer_setup();
+//		percpu_timer_setup();
 
 		/*
 		 * Initialise the SCU and wake up the secondary core using
