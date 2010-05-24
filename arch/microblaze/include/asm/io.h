@@ -108,6 +108,11 @@ static inline void writel(unsigned int v, volatile void __iomem *addr)
 #define iowrite16(v, addr)	__raw_writew((u16)(v), (u16 *)(addr))
 #define iowrite32(v, addr)	__raw_writel((u32)(v), (u32 *)(addr))
 
+#define ioread16be(addr)	__raw_readw((u16 *)(addr))
+#define ioread32be(addr)	__raw_readl((u32 *)(addr))
+#define iowrite16be(v, addr)	__raw_writew((u16)(v), (u16 *)(addr))
+#define iowrite32be(v, addr)	__raw_writel((u32)(v), (u32 *)(addr))
+
 /* These are the definitions for the x86 IO instructions
  * inb/inw/inl/outb/outw/outl, the "string" versions
  * insb/insw/insl/outsb/outsw/outsl, and the "pausing" versions
@@ -134,8 +139,6 @@ static inline void writel(unsigned int v, volatile void __iomem *addr)
 
 #ifdef CONFIG_MMU
 
-#define mm_ptov(addr)		((void *)__phys_to_virt(addr))
-#define mm_vtop(addr)		((unsigned long)__virt_to_phys(addr))
 #define phys_to_virt(addr)	((void *)__phys_to_virt(addr))
 #define virt_to_phys(addr)	((unsigned long)__virt_to_phys(addr))
 #define virt_to_bus(addr)	((unsigned long)__virt_to_phys(addr))
@@ -240,7 +243,7 @@ static inline void __iomem *__ioremap(phys_addr_t address, unsigned long size,
 #define out_8(a, v) __raw_writeb((v), (a))
 #define in_8(a) __raw_readb(a)
 
-#define ioport_map(port, nr)	((void __iomem*)(port))
+#define ioport_map(port, nr)	((void __iomem *)(port))
 #define ioport_unmap(addr)
 
 #endif /* _ASM_MICROBLAZE_IO_H */

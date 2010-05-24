@@ -1,8 +1,8 @@
 /*
  *  HID driver for N-Trig touchscreens
  *
- *  Copyright (c) 2008 Rafi Rubin
- *  Copyright (c) 2009 Stephane Chatty
+ *  Copyright (c) 2008-2010 Rafi Rubin
+ *  Copyright (c) 2009-2010 Stephane Chatty
  *
  */
 
@@ -15,21 +15,28 @@
 
 #include <linux/device.h>
 #include <linux/hid.h>
+#include <linux/usb.h>
+#include "usbhid/usbhid.h"
 #include <linux/module.h>
+#include <linux/slab.h>
 
 #include "hid-ids.h"
 
 #define NTRIG_DUPLICATE_USAGES	0x001
 
-#define nt_map_key_clear(c)	hid_map_usage_clear(hi, usage, bit, max, \
-					EV_KEY, (c))
-
 struct ntrig_data {
-	__s32 x, y, id, w, h;
-	char reading_a_point, found_contact_id;
-	char pen_active;
-	char finger_active;
-	char inverted;
+	/* Incoming raw values for a single contact */
+	__u16 x, y, w, h;
+	__u16 id;
+
+	bool tipswitch;
+	bool confidence;
+	bool first_contact_touch;
+
+	bool reading_mt;
+
+	__u8 mt_footer[4];
+	__u8 mt_foot_count;
 };
 
 /*
@@ -42,8 +49,11 @@ static int ntrig_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		struct hid_field *field, struct hid_usage *usage,
 		unsigned long **bit, int *max)
 {
-	switch (usage->hid & HID_USAGE_PAGE) {
+	/* No special mappings needed for the pen and single touch */
+	if (field->physical)
+		return 0;
 
+	switch (usage->hid & HID_USAGE_PAGE) {
 	case HID_UP_GENDESK:
 		switch (usage->hid) {
 		case HID_GD_X:
@@ -66,17 +76,11 @@ static int ntrig_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	case HID_UP_DIGITIZER:
 		switch (usage->hid) {
 		/* we do not want to map these for now */
-		case HID_DG_CONTACTID: /* value is useless */
+		case HID_DG_CONTACTID: /* Not trustworthy, squelch for now */
 		case HID_DG_INPUTMODE:
 		case HID_DG_DEVICEINDEX:
-		case HID_DG_CONTACTCOUNT:
 		case HID_DG_CONTACTMAX:
 			return -1;
-
-		/* original mapping by Rafi Rubin */
-		case HID_DG_CONFIDENCE:
-			nt_map_key_clear(BTN_TOOL_DOUBLETAP);
-			return 1;
 
 		/* width/height mapped on TouchMajor/TouchMinor/Orientation */
 		case HID_DG_WIDTH:
@@ -104,6 +108,10 @@ static int ntrig_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 		struct hid_field *field, struct hid_usage *usage,
 		unsigned long **bit, int *max)
 {
+	/* No special mappings needed for the pen and single touch */
+	if (field->physical)
+		return 0;
+
 	if (usage->type == EV_KEY || usage->type == EV_REL
 			|| usage->type == EV_ABS)
 		clear_bit(usage->code, *bit);
@@ -123,31 +131,34 @@ static int ntrig_event (struct hid_device *hid, struct hid_field *field,
 	struct input_dev *input = field->hidinput->input;
 	struct ntrig_data *nd = hid_get_drvdata(hid);
 
+	/* No special handling needed for the pen */
+	if (field->application == HID_DG_PEN)
+		return 0;
+
         if (hid->claimed & HID_CLAIMED_INPUT) {
 		switch (usage->hid) {
-
-		case HID_DG_INRANGE:
-			if (field->application & 0x3)
-				nd->pen_active = (value != 0);
-			else
-				nd->finger_active = (value != 0);
-			return 0;
-
-		case HID_DG_INVERT:
-			nd->inverted = value;
-			return 0;
-
+		case 0xff000001:
+			/* Tag indicating the start of a multitouch group */
+			nd->reading_mt = 1;
+			nd->first_contact_touch = 0;
+			break;
+		case HID_DG_TIPSWITCH:
+			nd->tipswitch = value;
+			/* Prevent emission of touch until validated */
+			return 1;
+		case HID_DG_CONFIDENCE:
+			nd->confidence = value;
+			break;
 		case HID_GD_X:
 			nd->x = value;
-			nd->reading_a_point = 1;
+			/* Clear the contact footer */
+			nd->mt_foot_count = 0;
 			break;
 		case HID_GD_Y:
 			nd->y = value;
 			break;
 		case HID_DG_CONTACTID:
 			nd->id = value;
-			/* we receive this only when in multitouch mode */
-			nd->found_contact_id = 1;
 			break;
 		case HID_DG_WIDTH:
 			nd->w = value;
@@ -159,33 +170,17 @@ static int ntrig_event (struct hid_device *hid, struct hid_field *field,
 			 * report received in a finger event. We want
 			 * to emit a normal (X, Y) position
 			 */
-			if (!nd->found_contact_id) {
-				if (nd->pen_active && nd->finger_active) {
-					input_report_key(input, BTN_TOOL_DOUBLETAP, 0);
-					input_report_key(input, BTN_TOOL_DOUBLETAP, 1);
-				}
+			if (!nd->reading_mt) {
+				/*
+				 * TipSwitch indicates the presence of a
+				 * finger in single touch mode.
+				 */
+				input_report_key(input, BTN_TOUCH,
+						 nd->tipswitch);
+				input_report_key(input, BTN_TOOL_DOUBLETAP,
+						 nd->tipswitch);
 				input_event(input, EV_ABS, ABS_X, nd->x);
 				input_event(input, EV_ABS, ABS_Y, nd->y);
-			}
-			break;
-		case HID_DG_TIPPRESSURE:
-			/*
-			 * when in single touch mode, this is the last
-			 * report received in a pen event. We want
-			 * to emit a normal (X, Y) position
-			 */
-			if (! nd->found_contact_id) {
-				if (nd->pen_active && nd->finger_active) {
-					input_report_key(input,
-							nd->inverted ? BTN_TOOL_RUBBER : BTN_TOOL_PEN
-							, 0);
-					input_report_key(input,
-							nd->inverted ? BTN_TOOL_RUBBER : BTN_TOOL_PEN
-							, 1);
-				}
-				input_event(input, EV_ABS, ABS_X, nd->x);
-				input_event(input, EV_ABS, ABS_Y, nd->y);
-				input_event(input, EV_ABS, ABS_PRESSURE, value);
 			}
 			break;
 		case 0xff000002:
@@ -195,10 +190,40 @@ static int ntrig_event (struct hid_device *hid, struct hid_field *field,
 			 * this usage tells if the contact point is real
 			 * or a placeholder
 			 */
-			if (!nd->reading_a_point || value != 1)
+
+			/* Shouldn't get more than 4 footer packets, so skip */
+			if (nd->mt_foot_count >= 4)
 				break;
+
+			nd->mt_footer[nd->mt_foot_count++] = value;
+
+			/* if the footer isn't complete break */
+			if (nd->mt_foot_count != 4)
+				break;
+
+			/* Pen activity signal, trigger end of touch. */
+			if (nd->mt_footer[2]) {
+				nd->confidence = 0;
+				break;
+			}
+
+			/* If the contact was invalid */
+			if (!(nd->confidence && nd->mt_footer[0])
+					|| nd->w <= 250
+					|| nd->h <= 190) {
+				nd->confidence = 0;
+				break;
+			}
+
 			/* emit a normal (X, Y) for the first point only */
 			if (nd->id == 0) {
+				/*
+				 * TipSwitch is superfluous in multitouch
+				 * mode.  The footer events tell us
+				 * if there is a finger on the screen or
+				 * not.
+				 */
+				nd->first_contact_touch = nd->confidence;
 				input_event(input, EV_ABS, ABS_X, nd->x);
 				input_event(input, EV_ABS, ABS_Y, nd->y);
 			}
@@ -220,8 +245,21 @@ static int ntrig_event (struct hid_device *hid, struct hid_field *field,
 						ABS_MT_TOUCH_MINOR, nd->w);
 			}
 			input_mt_sync(field->hidinput->input);
-			nd->reading_a_point = 0;
-			nd->found_contact_id = 0;
+			break;
+
+		case HID_DG_CONTACTCOUNT: /* End of a multitouch group */
+			if (!nd->reading_mt)
+				break;
+
+			nd->reading_mt = 0;
+
+			if (nd->first_contact_touch) {
+				input_report_key(input, BTN_TOOL_DOUBLETAP, 1);
+				input_report_key(input, BTN_TOUCH, 1);
+			} else {
+				input_report_key(input, BTN_TOOL_DOUBLETAP, 0);
+				input_report_key(input, BTN_TOUCH, 0);
+			}
 			break;
 
 		default:
@@ -231,8 +269,8 @@ static int ntrig_event (struct hid_device *hid, struct hid_field *field,
 	}
 
 	/* we have handled the hidinput part, now remains hiddev */
-        if (hid->claimed & HID_CLAIMED_HIDDEV && hid->hiddev_hid_event)
-                hid->hiddev_hid_event(hid, field, usage, value);
+	if ((hid->claimed & HID_CLAIMED_HIDDEV) && hid->hiddev_hid_event)
+		hid->hiddev_hid_event(hid, field, usage, value);
 
 	return 1;
 }
@@ -241,23 +279,75 @@ static int ntrig_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	int ret;
 	struct ntrig_data *nd;
+	struct hid_input *hidinput;
+	struct input_dev *input;
+	struct hid_report *report;
+
+	if (id->driver_data)
+		hdev->quirks |= HID_QUIRK_MULTI_INPUT;
 
 	nd = kmalloc(sizeof(struct ntrig_data), GFP_KERNEL);
 	if (!nd) {
 		dev_err(&hdev->dev, "cannot allocate N-Trig data\n");
 		return -ENOMEM;
 	}
-	nd->reading_a_point = 0;
-	nd->found_contact_id = 0;
+
+	nd->reading_mt = 0;
 	hid_set_drvdata(hdev, nd);
 
 	ret = hid_parse(hdev);
-	if (!ret)
-		ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+	if (ret) {
+		dev_err(&hdev->dev, "parse failed\n");
+		goto err_free;
+	}
 
-	if (ret)
-		kfree (nd);
+	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT & ~HID_CONNECT_FF);
+	if (ret) {
+		dev_err(&hdev->dev, "hw start failed\n");
+		goto err_free;
+	}
 
+
+	list_for_each_entry(hidinput, &hdev->inputs, list) {
+		if (hidinput->report->maxfield < 1)
+			continue;
+
+		input = hidinput->input;
+		switch (hidinput->report->field[0]->application) {
+		case HID_DG_PEN:
+			input->name = "N-Trig Pen";
+			break;
+		case HID_DG_TOUCHSCREEN:
+			/* These keys are redundant for fingers, clear them
+			 * to prevent incorrect identification */
+			__clear_bit(BTN_TOOL_PEN, input->keybit);
+			__clear_bit(BTN_TOOL_FINGER, input->keybit);
+			__clear_bit(BTN_0, input->keybit);
+			__set_bit(BTN_TOOL_DOUBLETAP, input->keybit);
+			/*
+			 * The physical touchscreen (single touch)
+			 * input has a value for physical, whereas
+			 * the multitouch only has logical input
+			 * fields.
+			 */
+			input->name =
+				(hidinput->report->field[0]
+				 ->physical) ?
+				"N-Trig Touchscreen" :
+				"N-Trig MultiTouch";
+			break;
+		}
+	}
+
+	/* This is needed for devices with more recent firmware versions */
+	report = hdev->report_enum[HID_FEATURE_REPORT].report_id_hash[0x0a];
+	if (report)
+		usbhid_submit_report(hdev, report, USB_DIR_OUT);
+
+
+	return 0;
+err_free:
+	kfree(nd);
 	return ret;
 }
 
@@ -276,7 +366,7 @@ MODULE_DEVICE_TABLE(hid, ntrig_devices);
 
 static const struct hid_usage_id ntrig_grabbed_usages[] = {
 	{ HID_ANY_ID, HID_ANY_ID, HID_ANY_ID },
-	{ HID_ANY_ID - 1, HID_ANY_ID - 1, HID_ANY_ID - 1}
+	{ HID_ANY_ID - 1, HID_ANY_ID - 1, HID_ANY_ID - 1 }
 };
 
 static struct hid_driver ntrig_driver = {

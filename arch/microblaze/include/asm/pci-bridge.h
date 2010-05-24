@@ -167,7 +167,7 @@ static inline void pci_add_flags(int flags)
 
 static inline int pci_has_flag(int flag)
 {
-	return (pci_flags & flag);
+	return pci_flags & flag;
 }
 
 extern struct list_head hose_list;

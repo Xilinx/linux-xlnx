@@ -30,6 +30,7 @@
 #include <linux/buffer_head.h>
 #include <linux/exportfs.h>
 #include <linux/crc32.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 #include <linux/seq_file.h>
 #include <linux/smp_lock.h>
@@ -129,6 +130,11 @@ static void jfs_destroy_inode(struct inode *inode)
 	}
 	spin_unlock_irq(&ji->ag_lock);
 	kmem_cache_free(jfs_inode_cachep, ji);
+}
+
+static void jfs_clear_inode(struct inode *inode)
+{
+	dquot_drop(inode);
 }
 
 static int jfs_statfs(struct dentry *dentry, struct kstatfs *buf)
@@ -440,10 +446,8 @@ static int jfs_fill_super(struct super_block *sb, void *data, int silent)
 	/* initialize the mount flag and determine the default error handler */
 	flag = JFS_ERR_REMOUNT_RO;
 
-	if (!parse_options((char *) data, sb, &newLVSize, &flag)) {
-		kfree(sbi);
-		return -EINVAL;
-	}
+	if (!parse_options((char *) data, sb, &newLVSize, &flag))
+		goto out_kfree;
 	sbi->flag = flag;
 
 #ifdef CONFIG_JFS_POSIX_ACL
@@ -452,7 +456,7 @@ static int jfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	if (newLVSize) {
 		printk(KERN_ERR "resize option for remount only\n");
-		return -EINVAL;
+		goto out_kfree;
 	}
 
 	/*
@@ -472,7 +476,7 @@ static int jfs_fill_super(struct super_block *sb, void *data, int silent)
 	inode = new_inode(sb);
 	if (inode == NULL) {
 		ret = -ENOMEM;
-		goto out_kfree;
+		goto out_unload;
 	}
 	inode->i_ino = 0;
 	inode->i_nlink = 1;
@@ -544,9 +548,10 @@ out_mount_failed:
 	make_bad_inode(sbi->direct_inode);
 	iput(sbi->direct_inode);
 	sbi->direct_inode = NULL;
-out_kfree:
+out_unload:
 	if (sbi->nls_tab)
 		unload_nls(sbi->nls_tab);
+out_kfree:
 	kfree(sbi);
 	return ret;
 }
@@ -745,6 +750,7 @@ static const struct super_operations jfs_super_operations = {
 	.dirty_inode	= jfs_dirty_inode,
 	.write_inode	= jfs_write_inode,
 	.delete_inode	= jfs_delete_inode,
+	.clear_inode	= jfs_clear_inode,
 	.put_super	= jfs_put_super,
 	.sync_fs	= jfs_sync_fs,
 	.freeze_fs	= jfs_freeze,
