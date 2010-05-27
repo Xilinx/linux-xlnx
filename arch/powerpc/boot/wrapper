@@ -143,8 +143,11 @@ objflags=-S
 tmp=$tmpdir/zImage.$$.o
 ksection=.kernel:vmlinux.strip
 isection=.kernel:initrd
-link_address='0x400000'
 make_space=y
+
+# default auto-calculate link_address to make room for the kernel
+# round up kernel image size to nearest megabyte
+link_address=`${CROSS}size -x ${kernel} | grep ${kernel} | awk '{printf("0x%08x", and($4 + 0x0fffff, 0xfffe0000))}'`
 
 case "$platform" in
 pseries)
