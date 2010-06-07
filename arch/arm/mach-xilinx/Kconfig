@@ -7,6 +7,12 @@ config XILINX_TEST
 	help
 	  Select if you want kernel tests to run on boot.  The tests may take
 	  several minutes on kernel boot.
+
+config XILINX_AMP_ON_2ND_CPU
+	bool "Run Kernel On CPU1 (not CPU0)"
+	default n
+	help
+	  Select if you want to run the kernel on the 2nd CPU for Pele.
 endmenu
 
 endif
