@@ -118,7 +118,7 @@
 /*
  * Start and size of physical RAM
  */
-#define PHYS_OFFSET             0
+#define PHYS_OFFSET             0x200000
 #define MEM_SIZE		(32 * 1024 * 1024)
 
 /*
