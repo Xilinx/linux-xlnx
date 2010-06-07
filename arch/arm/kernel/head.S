@@ -78,7 +78,7 @@
 	__HEAD
 ENTRY(stext)
 
-#ifdef CONFIG_ARCH_XILINX
+#if defined(CONFIG_ARCH_XILINX) && defined(CONFIG_SMP)
 
 	/* the following code belongs in a boot loader but is here for now
 	 * for early SMP testing
