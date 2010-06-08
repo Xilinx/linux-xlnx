@@ -27,12 +27,7 @@
  *    calculations.
  * 4. Two instances are supported from EP3 but no second phy connection.
  *    We need to revisit/verify this when hardware is available.
- * 5. Ping with large packet size (>1400) is not stable. The problem is
- *    not determined at this point. By adding a read/check parameter
- *    passed in from kernel sees some improvement. When data cache is
- *    disabled, kernel will not boot.
- *    When ping fails, Kernel panic log is,...
- * Unable to handle kernel NULL pointer dereference at virtual address 00000054
+ *
  * 6. NFS mounted root file system and performance test are not done until
  *    hardware is stable and processor speed is back to normal.
  * 7. JUMBO frame is not enabled per EPs spec. Please update it if this
@@ -59,21 +54,21 @@
 /************************** Constant Definitions *****************************/
 
 /* Must be shorter than length of ethtool_drvinfo.driver field to fit */
-#define DRIVER_NAME         "xemacpss"
-#define DRIVER_DESCRIPTION  "Xilinx Tri-Mode Ethernet MAC driver"
-#define DRIVER_VERSION      "1.00a"
+#define DRIVER_NAME		"xemacpss"
+#define DRIVER_DESCRIPTION	"Xilinx Tri-Mode Ethernet MAC driver"
+#define DRIVER_VERSION		"1.00a"
 
 /* Transmission timeout is 3 seconds. */
-#define TX_TIMEOUT   (3*HZ)
+#define TX_TIMEOUT		(3*HZ)
 
 /* for RX skb IP header word-aligned */
-#define RX_IP_ALIGN_OFFSET       2
+#define RX_IP_ALIGN_OFFSET	2
 
 /* DMA buffer descriptors must be aligned on a 4-byte boundary. */
-#define ALIGNMENT_BD             8
+#define ALIGNMENT_BD		8
 
 /* Maximum value for hash bits. 2**6 */
-#define XEMACPSS_MAX_HASH_BITS   64
+#define XEMACPSS_MAX_HASH_BITS	64
 
 /* MDC clock division
  * currently supporting 8, 16, 32, 48, 64, 96, 128, 224.
@@ -82,21 +77,21 @@ enum { MDC_DIV_8 = 0, MDC_DIV_16, MDC_DIV_32, MDC_DIV_48,
 MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 
 /* Specify the receive buffer size in bytes, 64, 128, 192, ... 10240 */
-#define XEMACPSS_RX_BUF_SIZE 1536
+#define XEMACPSS_RX_BUF_SIZE	1600
 
 /* Number of receive buffer bytes as a unit, this is HW setup */
-#define XEMACPSS_RX_BUF_UNIT   64
+#define XEMACPSS_RX_BUF_UNIT	64
 
 /* Default SEND and RECV buffer descriptors (BD) numbers.
  * BD Space needed is (XEMACPSS_SEND_BD_CNT+XEMACPSS_RECV_BD_CNT)*8
  */
-#undef DEBUG
+#undef  DEBUG
 #define DEBUG_SPEED
 
-#define XEMACPSS_SEND_BD_CNT  4
-#define XEMACPSS_RECV_BD_CNT  4
+#define XEMACPSS_SEND_BD_CNT	128
+#define XEMACPSS_RECV_BD_CNT	128
 
-#define XEMACPSS_NAPI_WEIGHT  64
+#define XEMACPSS_NAPI_WEIGHT	64
 
 /* Register offset definitions. Unless otherwise noted, register access is
  * 32 bit. Names are self explained here.
@@ -1049,6 +1044,7 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 	u32 bdstr = 0;
 	unsigned int bdcount = 0;
 	unsigned int bdpartialcount = 0;
+	unsigned int sop = 0;
 
 	curbdptr = ringptr->hwhead;
 
@@ -1064,19 +1060,26 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 	 */
 	while (bdcount < bdlimit) {
 		/* Read the status */
-		rmb();
 		bdstr = xemacpss_read(curbdptr, XEMACPSS_BD_STAT_OFFSET);
 
-		bdcount++;
+		if ((sop == 0) && (bdstr & XEMACPSS_TXBUF_USED_MASK)) {
+			sop = 1;
+		} else {
+			break;
+		}
 
+		if (sop == 1) {
+			bdcount++;
+			bdpartialcount++;
+		}
 		/* hardware has processed this BD so check the "last" bit.
 		 * If it is clear, then there are more BDs for the current
 		 * packet. Keep a count of these partial packet BDs.
 		 */
-		if (bdstr & XEMACPSS_TXBUF_LAST_MASK)
+		if ((sop == 1) && (bdstr & XEMACPSS_TXBUF_LAST_MASK)) {
+			sop = 0;
 			bdpartialcount = 0;
-		else
-			bdpartialcount++;
+		}
 
 		/* Reached the end of the work group */
 		if (curbdptr == ringptr->hwtail)
@@ -1090,7 +1093,7 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 	bdcount -= bdpartialcount;
 
 	/* If bdcount is non-zero then BDs were found to return. Set return
-	 * parameters, update pointers and counters, return success
+	 * parameters, update pointers and counters, return number of BDs
 	 */
 	if (bdcount > 0) {
 		*bdptr = ringptr->hwhead;
@@ -1117,10 +1120,8 @@ u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 		struct xemacpss_bd **bdptr)
 {
 	struct xemacpss_bd *curbdptr;
-	u32 bdstr = 0;
+	u32 bdadd = 0;
 	unsigned int bdcount = 0;
-	unsigned int bdpartialcount = 0;
-
 	curbdptr = ringptr->hwhead;
 
 	/* If no BDs in work group, then there's nothing to search */
@@ -1136,24 +1137,13 @@ u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 	 *  - The number of requested BDs has been processed
 	 */
 	while (bdcount < bdlimit) {
-		/* Read the status */
-		rmb();
-		if (!(xemacpss_read(curbdptr, XEMACPSS_BD_ADDR_OFFSET) &
-			XEMACPSS_RXBUF_NEW_MASK))
+		/* Read the status word to see if BD has been processed. */
+		bdadd = xemacpss_read(curbdptr, XEMACPSS_BD_ADDR_OFFSET);
+		if (bdadd & XEMACPSS_RXBUF_NEW_MASK) {
+			bdcount++;
+		} else {
 			break;
-
-		bdstr = xemacpss_read(curbdptr, XEMACPSS_BD_STAT_OFFSET);
-
-		bdcount++;
-
-		/* hardware has processed this BD so check the "last" bit.
-		 * If it is clear, then there are more BDs for the current
-		 * packet. Keep a count of these partial packet BDs.
-		 */
-		if (bdstr & XEMACPSS_RXBUF_EOF_MASK)
-			bdpartialcount = 0;
-		else
-			bdpartialcount++;
+		}
 
 		/* Reached the end of the work group */
 		if (curbdptr == ringptr->hwtail)
@@ -1163,11 +1153,8 @@ u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 		curbdptr = XEMACPSS_BDRING_NEXT(ringptr, curbdptr);
 	}
 
-	/* Subtract off any partial packet BDs found */
-	bdcount -= bdpartialcount;
-
 	/* If bdcount is non-zero then BDs were found to return. Set return
-	 * parameters, update pointers and counters, return success
+	 * parameters, update pointers and counters, return number of BDs
 	 */
 	if (bdcount > 0) {
 		*bdptr = ringptr->hwhead;
@@ -1219,7 +1206,7 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 	u32 regval, sof = 0, len = 0, offset = 0;
 	struct sk_buff *skb = NULL;
 	struct xemacpss_bd *bdptr, *bdptrfree, *bdsofptr = NULL, *bdeofptr;
-	unsigned int numbd, numbdfree, bdidx = 0, rc = 0;
+	unsigned int numbdfree, numbd = 0, bdidx = 0, rc = 0;
 
 	numbd = xemacpss_bdringfromhwrx(&lp->rx_ring, XEMACPSS_RECV_BD_CNT,
 		&bdptr);
@@ -1287,6 +1274,11 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_ADDR_OFFSET);
 		regval &= ~XEMACPSS_RXBUF_NEW_MASK;
 		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, regval);
+
+		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
+		regval &= ~(XEMACPSS_RXBUF_EOF_MASK | XEMACPSS_RXBUF_SOF_MASK |
+			XEMACPSS_RXBUF_LEN_MASK);
+		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->rx_ring, bdptr);
 		numbd--;
 		wmb();
@@ -1372,22 +1364,6 @@ static void xemacpss_tx_poll(unsigned long data)
 	struct sk_buff *skb;
 	unsigned int numbd, numbdfree, bdidx, rc;
 
-	/* This should never happen! Parameter passed from kernel is
-	 * a NULL pointer!? Other net drivers do not check on this.
-	 */
-	/* TODO, Remove this 'if statement' before product released */
-	if (!data) {
-		printk(KERN_ERR "Kernel passing null pointer!\n");
-		return;
-	}
-/* wsy, debug */
-regval = xemacpss_read(lp->baseaddr, XEMACPSS_ISR_OFFSET);
-if (regval & (XEMACPSS_IXR_TXEXH_MASK | XEMACPSS_IXR_RETRY_MASK |
-	XEMACPSS_IXR_URUN_MASK))
-{
-printk(KERN_ERR "TX error 0x%x!\n", regval);
-}
-
 	regval = xemacpss_read(lp->baseaddr, XEMACPSS_TXSR_OFFSET);
 	xemacpss_write(lp->baseaddr, XEMACPSS_TXSR_OFFSET, regval);
 	dev_dbg(&lp->pdev->dev, "TX status 0x%x\n", regval);
@@ -1419,12 +1395,11 @@ printk(KERN_ERR "TX error 0x%x!\n", regval);
 		rmb();
 		regval  = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
 		bdidx = XEMACPSS_BD_TO_INDEX(&lp->tx_ring, bdptr);
-/* wsy, debug */
-if ((bdidx < 0) || (bdidx >= XEMACPSS_SEND_BD_CNT) || (NULL == bdptr))
-printk(KERN_INFO "%d TX bd index %d BD_STAT 0x%08x bdptr 0x%x.\n", __LINE__, bdidx, regval, bdptr);
-
 		rp = &lp->tx_skb[bdidx];
 		skb = rp->skb;
+
+		BUG_ON(skb == NULL);
+
 		len += skb->len;
 		rmb();
 		dma_unmap_single(&lp->pdev->dev, rp->mapping, skb->len,
@@ -1445,8 +1420,8 @@ printk(KERN_INFO "%d TX bd index %d BD_STAT 0x%08x bdptr 0x%x.\n", __LINE__, bdi
 			}
 			len = 0;
 		}
-		/* clear LAST buffer bit regardless */
-		regval &= ~XEMACPSS_TXBUF_LAST_MASK;
+		/* clear last buffer and length bits */
+		regval &= ~(XEMACPSS_TXBUF_LAST_MASK | XEMACPSS_TXBUF_LEN_MASK);
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->tx_ring, bdptr);
 		numbd--;
@@ -1502,7 +1477,9 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 		/* TX interrupts */
 		if (regisr &
 		(XEMACPSS_IXR_TXCOMPL_MASK | XEMACPSS_IXR_TX_ERR_MASK))
+		{
 			tasklet_schedule(&lp->tasklet);
+		}
 
 		regisr = xemacpss_read(lp->baseaddr, XEMACPSS_ISR_OFFSET);
 	}
@@ -1906,23 +1883,15 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 #ifdef DEBUG
 	printk(KERN_INFO "TX data:");
 	for (i = 0; i < 48; i++) {
-		if (!(i%16))
-			printk(KERN_INFO "\n");
-		printk(KERN_INFO " %02x", (unsigned int)skb->data[i]);
+		if (!(i % 16))
+			printk("\n");
+		printk(" %02x", (unsigned int)skb->data[i]);
 	}
 	printk("\n");
 #endif
 
-/* wsy, debug */
-if (NULL == skb)
-printk(KERN_INFO "%d skb 0x%x\n", __LINE__, skb);
-
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
 	spin_lock_irq(&lp->lock);
-
-/* wsy, debug */ 
-if (nr_frags != 1)
-printk(KERN_INFO "%d nr_frags %d\n", __LINE__, nr_frags);
 
 	if (nr_frags < lp->tx_ring.freecnt) {
 		rc = xemacpss_bdringalloc(&lp->tx_ring, nr_frags, &bdptr);
@@ -1960,17 +1929,17 @@ printk(KERN_INFO "%d nr_frags %d\n", __LINE__, nr_frags);
 		}
 
 		bdidx = XEMACPSS_BD_TO_INDEX(&lp->tx_ring, bdptr);
-/* wsy, debug */
-if ((bdidx < 0) || (bdidx >= XEMACPSS_SEND_BD_CNT) || (NULL == bdptr) || (NULL == skb) || (NULL == mapping))
-printk(KERN_INFO "%d TX bd index %d bdptr 0x%x skb 0x%x mapping 0x%x \n", __LINE__, bdidx, bdptr, skb, mapping);
 
 		lp->tx_skb[bdidx].skb = skb;
 		lp->tx_skb[bdidx].mapping = mapping;
 		wmb();
 
+		/* clear used bit first */
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
-		regval |= ((regval & ~XEMACPSS_TXBUF_LEN_MASK) | len);
 		regval &= ~XEMACPSS_TXBUF_USED_MASK;
+		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
+		/* update length field */
+		regval |= ((regval & ~XEMACPSS_TXBUF_LEN_MASK) | len);
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 #ifdef DEBUG
 		printk(KERN_INFO "TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
