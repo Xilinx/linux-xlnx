@@ -39,14 +39,13 @@ void __iomem *gic_cpu_base_addr;
 void __iomem *boot_base_virtual;
 
 static struct at24_platform_data board_eeprom = {
-	.byte_len = 8*1024,
-	.page_size = 32,
-	.flags = AT24_FLAG_ADDR16,
+	.byte_len = 8*256,
+	.page_size = 16,
 };
 
 static struct i2c_board_info i2c_devs[] __initdata = {
 	{ 
-		I2C_BOARD_INFO("24c64", 0x50), 
+		I2C_BOARD_INFO("24c02", 0x55), 
 		.platform_data = &board_eeprom,
 	},
 };
