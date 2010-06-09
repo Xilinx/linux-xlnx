@@ -119,7 +119,7 @@
  * Start and size of physical RAM
  */
 #define PHYS_OFFSET             0x200000
-#define MEM_SIZE		(32 * 1024 * 1024)
+#define MEM_SIZE		(128 * 1024 * 1024)
 
 /*
  * Mandatory for CONFIG_LL_DEBUG
