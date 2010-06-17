@@ -35,7 +35,7 @@
 		 * interrupt controller spec. 
 		 *
 		 * Interrupts 0-15 are SFI and are filtered
-		 * Interrupts 16-1019 are normal and should be processed
+		 * Interrupts 31-1019 are normal and should be processed
 		 * 1020-1021 are reserved and are filtered
 		 * 1022 is not needed and filtered
 		 * 1023 is "spurious" (no interrupt) and is filtered 
@@ -53,7 +53,7 @@
 
 		bic     \irqnr, \irqstat, #0x1c00
 
-		cmp     \irqnr, #16
+		cmp     \irqnr, #31
 		cmpcc	\irqnr, \irqnr
 		cmpne	\irqnr, \tmp
 		cmpcs	\irqnr, \irqnr

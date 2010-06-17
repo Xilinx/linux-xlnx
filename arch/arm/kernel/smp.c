@@ -281,7 +281,7 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	/*
 	 * Setup the percpu timer for this CPU.
 	 */
-//	percpu_timer_setup();
+	percpu_timer_setup();
 
 	calibrate_delay();
 
@@ -406,6 +406,11 @@ asmlinkage void __exception do_local_timer(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int cpu = smp_processor_id();
+
+	static int count = 0;
+
+	if ((count++ % 10) == 0)
+		printk("do_local_timer, count = %d\n", count);
 
 	if (local_timer_ack()) {
 		irq_stat[cpu].local_timer_irqs++;

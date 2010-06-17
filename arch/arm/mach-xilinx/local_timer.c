@@ -24,6 +24,8 @@
  */
 void __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
+	twd_base = (void __iomem *)SCU_CPU_TIMER_BASE;
+
 	evt->irq = IRQ_SCU_CPU_TIMER;
 	twd_timer_setup(evt);
 }
