@@ -96,12 +96,20 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * somewhat random places on palladium, but we have no control of the 
 	 * processor yet to understand it better.
 	 */
+
 	Cpu1BootLock = Cpu1BootKey;
 	smp_wmb();
 
 	flush_cache_all();
 
 	smp_wmb();
+
+	/*
+	 * Send a 'sev' to wake the secondary core from WFE. Make sure to do this after
+	 * writing to the key and flushing the cache to ensure that CPU1 sees the boot key
+	 * when it wakes up from the wfe instruction.
+	 */
+	set_event();
 
 	timeout = jiffies + (1 * HZ);
 	while (time_before(jiffies, timeout))
@@ -135,9 +143,11 @@ static void __init wakeup_secondary(void)
 	smp_wmb();
 
 	/*
-	 * Send a 'sev' to wake the secondary core from WFE.
+	 * Send a 'sev' to wake the secondary core from WFE.  Don't do this now
+	 * as we need to write the boot key for CPU1 before doing the sev and we'll
+	 * do that later.
 	 */
-	set_event();
+//	set_event();
 	mb();
 }
 

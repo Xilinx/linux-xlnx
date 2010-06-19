@@ -151,14 +151,25 @@ ENTRY(secondary_startup)
 
 	str	r0, [r0]		@ initialize the boot lock
 
+	/* CPU1 needs to wait for CPU0 to be ready for it to execute, so wait
+	   here. Don't spin waiting for the key as it seems to prevent CPU0 from
+	   getting any throughput and it won't boot.
+ 
+	   Wait for an event from CPU0 but not just once as events happen many
+	   times when using the JTAG TCL environment, like targeting the other CPU,
+	   because of debug events. CPU0 will flush it's D cache with the key before
+	   it does a sev instruction so that after the correct wfe wakeup CPU1 will
+	   see the boot key.
+	*/
+
 wait4key:
+	wfe
+
 	ldr	r1, [r0]		@ get the lock 
 	ldr	r4, [r2]		@ get the key 
 	cmp	r1, r4			@ is the key in the lock
 	bne	wait4key		@ if not then wait for the key
-/*
-	str	r3, [r0]		
-*/
+
 #endif
 
 	/*
