@@ -22,22 +22,30 @@
 
 /*
  * Xilinx specific entry point for secondary CPU to jump from ROM
- * code.  This routine also provides a holding flag into which
- * secondary core is held until we're ready for it to initialise.
- * The primary core will update the this flag using a hardware
- * register BOOT_REG1.
+ * code.  This routine provides a wait loop in which secondary core
+ * is held until we're ready for it to initialise. The primary core 
+ * will update the boot lock with the boot key when it's ready for 
+ * the secondary CPU to boot.
+ *
+ * The WFE must be in the loop when using this code with a probe 
+ * because any operations cause debug events when wake up CPU1 falsely.
  */
 ENTRY(xilinx_secondary_startup)
-	mrc	p15, 0, r0, c0, c0, 5
-	and	r0, r0, #0x0f
-hold:	ldr	r1, =(BOOT_REG_BASE + BOOT_REG1_OFFSET)	
+	mov	r0, #0
+	ldr	r1, =(BOOT_REG_BASE + BOOT_LOCKREG_OFFSET)	
+	ldr	r0, =BOOT_LOCK_KEY
+	mov	r3, #0
+hold:	
+	wfe
+	add	r3, #1			@ only track number of wakeups 
+					@ for diagnostics
 	ldr	r2, [r1]
 	cmp	r2, r0
 	bne	hold
 
 	/*
-	 * we've been released from the cpu_release,secondary_stack
-	 * should now contain the SVC stack for this core
+	 * CPU0 released CPU1 by writing the key to the lock, go ahead
+	 * and start CPU1 running the kernel
 	 */
 	b	secondary_startup
 

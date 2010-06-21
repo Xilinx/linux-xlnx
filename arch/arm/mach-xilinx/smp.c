@@ -26,12 +26,7 @@
 
 #include <asm/cacheflush.h>
 
-volatile int Cpu1BootLock;
-volatile int Cpu1BootKey = 0xDEADBEEF;
-
 extern void xilinx_secondary_startup(void);
-
-extern void __iomem *boot_base_virtual;
 
 /* SCU base address */
 static void __iomem *scu_base = (void *)SCU_PERIPH_BASE;
@@ -70,7 +65,6 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	unsigned long timeout;
-	int count;
 
 	/*
 	 * Set synchronisation state between this boot processor
@@ -78,43 +72,35 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
-	/*
-	 * Update boot register 1 with boot state for secondary core.
-	 * xilinx_secondary_startup() routine will hold the secondary core 
-	 * till the boot register 1 is updated with cpu state
-	 * A barrier is added to ensure that write buffer is drained
-	 */
-
-/*	hack for now JHL with SMP
-	
-	__raw_writel(cpu, boot_base_virtual + BOOT_REG1_OFFSET);
-*/
 	printk("Xilinx SMP: booting CPU1 now\n");
 
-	/* The following code seems brittle right now, beware of any changes even
-	 * even if they make sense as the kernel seems to get stuck in boot at 
-	 * somewhat random places on palladium, but we have no control of the 
-	 * processor yet to understand it better.
+	/*
+	 * Update boot lock register with the boot key to allow the 
+	 * secondary processor to start the kernel. The function, 
+	 * xilinx_secondary_startup(), will hold the secondary core 
+	 * till the boot register lock is updated with a key.
 	 */
+	__raw_writel(BOOT_LOCK_KEY, BOOT_REG_BASE + BOOT_LOCKREG_OFFSET);
 
-	Cpu1BootLock = Cpu1BootKey;
-	smp_wmb();
-
+	/* Flush the kernel cache to ensure that the page tables are 
+	 * available for the secondary CPU to use. A barrier is added 
+	 * to ensure that write buffer is drained.
+	 */
 	flush_cache_all();
-
 	smp_wmb();
 
 	/*
-	 * Send a 'sev' to wake the secondary core from WFE. Make sure to do this after
-	 * writing to the key and flushing the cache to ensure that CPU1 sees the boot key
-	 * when it wakes up from the wfe instruction.
+	 * Send a 'sev' to wake the secondary core from WFE. Make sure 
+	 * to do this after writing to the key and flushing the cache to 
+	 * ensure that CPU1 sees the boot key when it wakes up.
 	 */
 	set_event();
 
+	/* Give the secondary CPU some time to start the kernel. 
+	 */
 	timeout = jiffies + (1 * HZ);
 	while (time_before(jiffies, timeout))
 		;
-
 	/*
 	 * Now the secondary core is starting up let it run its
 	 * calibrations, then wait for it to finish
@@ -128,26 +114,26 @@ static void __init wakeup_secondary(void)
 {
 	/*
 	 * Write the address of secondary startup routine into the
-	 * AuxCoreBoot0 where ROM code will jump and start executing
-	 * on secondary core once out of WFE
-	 * A barrier is added to ensure that write buffer is drained
+	 * boot address register. The secondary CPU will use this value 
+	 * to get into the kernel after it's awake (in WFE state now).
+	 *
+	 * Note the physical address is needed as the secondary CPU
+	 * will not have the MMU on yet. A barrier is added to ensure
+	 * that write buffer is drained.
 	 */
-
-/* nothing to do for now, jhl hacking on SMP
-
-
 	__raw_writel(virt_to_phys(xilinx_secondary_startup), 
-					boot_base_virtual + BOOT_REG0_OFFSET);
-*/
-
+					BOOT_REG_BASE + BOOT_ADDRREG_OFFSET);
 	smp_wmb();
 
 	/*
-	 * Send a 'sev' to wake the secondary core from WFE.  Don't do this now
-	 * as we need to write the boot key for CPU1 before doing the sev and we'll
-	 * do that later.
+	 * Send a 'sev' to wake the secondary core from WFE. 
+	 *
+	 * Secondary CPU kernel startup is a 2 phase process.
+	 * 1st phase is transition from a boot loader to the kernel, but 
+	 * then wait not starting the kernel yet. 2nd phase to start the 
+	 * the kernel. In both phases, the secondary CPU uses WFE.
 	 */
-//	set_event();
+	set_event();
 	mb();
 }
 

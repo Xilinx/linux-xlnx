@@ -80,16 +80,54 @@ ENTRY(stext)
 
 #if defined(CONFIG_ARCH_XILINX) && defined(CONFIG_SMP)
 
-	/* the following code belongs in a boot loader but is here for now
-	 * for early SMP testing
-	 */
+	/* Determine which CPU is executing this code as CPU0 is the primary CPU
+	   and should execute the kernel as normal, CPU1 would normally be held
+	   in a WFE state by a boot loader.
+	*/
+
 	mrc	p15,0,r0,c0,c0,5
 	and	r0,r0,#0x0f
-	cmp	r0,#1
-	beq	secondary_startup
+	cmp	r0,#0
+	beq	primary_startup
 
-	mov	r0,#0
+	/* This code is a mailbox type system so that CPU1 is held waiting for 
+	   CPU0 to turn it lose. CPU0 will write the boot address into the boot
+	   address register which CPU1 is waiting for. CPU0 must also do an sev
+	   instruction to get CPU0 out of it's sleep state.
+	*/
+
+	mov	r0, #0			
+	ldr	r1, =(BOOT_REG_BASE + BOOT_ADDRREG_OFFSET)	
+	ldr	r2, =(BOOT_REG_BASE + BOOT_LOCKREG_OFFSET)	
+	str	r0, [r2]			@ initialize the boot lock
+	str	r0, [r1]			@ initialize the boot address, this has to 
+						@ get done before CPU0 uses it 
+
+	/* CPU1 needs to wait for CPU0 to be ready for it to execute, so wait
+	   here. Don't spin waiting for the address as it seems to prevent CPU0 from
+	   getting any throughput and it won't boot.
+ 
+	   Wait for an event from CPU0 but not just once as events happen many
+	   times when using the JTAG TCL environment, like targeting the other CPU,
+	   because of debug events. CPU0 will flush it's D cache with the address before
+	   it does a sev instruction so that after the correct wfe wakeup CPU1 will
+	   see the boot key.
+	*/
+	mov 	r3, #0				@ keep a count of number of wakeups for diag
+
+wait4address:
+	wfe					@ wait for an event so CPU0 gets thruput
+	add	r3, #1				@ count # of times wakeup happens
+	ldr	r2,[r1]				@ get the boot address register contents
+	cmp	r2,r0				@ if it's zero then wait for a non-zero value
+	beq	wait4address
+
+	mov	pc,r2				@ jump to the boot address specified in the 
+						@ boot address register from CPU0
+
 #endif
+
+primary_startup:
 
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9 @ ensure svc mode
 						@ and irqs disabled
@@ -130,47 +168,6 @@ ENDPROC(stext)
 
 #if defined(CONFIG_SMP)
 ENTRY(secondary_startup)
-
-#ifdef CONFIG_ARCH_XILINX
-
-	/* JHL Xilinx hacking for SMP testin. this code should really
-	   be in the boot loader, this code is a mailbox type system
-	   so that CPU1 is held waiting for CPU0 to turn it lose and
-	   let it run the kernel.
-
-	   r0 = lock address, r1 = lock value, r2 = key address
-	   r3 = virtual to physical convert mask, r4 = key value
-	 */
-	ldr	r0, =Cpu1BootLock	@ initialize the lock to locked
-					@ wait for the key from smp code
-					@ then boot CPU1
-	ldr	r2, =Cpu1BootKey	@ get the key address
-	mov	r3, #0x00FFFFFF		@ mask for virtual to physical conversion
-	and	r0, r3, r0		@ convert addresses to physical
-	and	r2, r3, r2
-
-	str	r0, [r0]		@ initialize the boot lock
-
-	/* CPU1 needs to wait for CPU0 to be ready for it to execute, so wait
-	   here. Don't spin waiting for the key as it seems to prevent CPU0 from
-	   getting any throughput and it won't boot.
- 
-	   Wait for an event from CPU0 but not just once as events happen many
-	   times when using the JTAG TCL environment, like targeting the other CPU,
-	   because of debug events. CPU0 will flush it's D cache with the key before
-	   it does a sev instruction so that after the correct wfe wakeup CPU1 will
-	   see the boot key.
-	*/
-
-wait4key:
-	wfe
-
-	ldr	r1, [r0]		@ get the lock 
-	ldr	r4, [r2]		@ get the key 
-	cmp	r1, r4			@ is the key in the lock
-	bne	wait4key		@ if not then wait for the key
-
-#endif
 
 	/*
 	 * Common entry point for secondary CPUs.

@@ -36,7 +36,6 @@ extern void platform_device_init(void);
 
 /* used by entry-macro.S */
 void __iomem *gic_cpu_base_addr;
-void __iomem *boot_base_virtual;
 
 static struct at24_platform_data board_eeprom = {
 	.byte_len = 8*256,
@@ -77,7 +76,7 @@ static struct spi_board_info spi_devs[] __initdata = {
  **/
 static void __init board_init(void)
 {
-	xilinx_debug("->board_init\n");
+	pr_debug("->board_init\n");
 
 	platform_device_init();
 
@@ -88,15 +87,7 @@ static void __init board_init(void)
  			         ARRAY_SIZE(spi_devs));
 #endif
 
-	/* map the boot registers into the MMU so they can be used later
-	   to boot the secondary CPU
-	*/
-
-	boot_base_virtual = ioremap(BOOT_REG_BASE, SZ_4K); 
-	if (!boot_base_virtual)
-		printk("Xilinx: failure to remap boot registers memory\n");
-
-	xilinx_debug("<-board_init\n");
+	pr_debug("<-board_init\n");
 }
 
 /**
@@ -105,18 +96,20 @@ static void __init board_init(void)
  **/
 static void __init irq_init(void)
 {
-	xilinx_debug("->irq_init\n");
+	pr_debug("->irq_init\n");
 
 	gic_cpu_base_addr = (void __iomem *)SCU_GIC_CPU_BASE;
 	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, 29); 
 	gic_cpu_init(0, gic_cpu_base_addr);
 
-	xilinx_debug("<-irq_init\n");
+	pr_debug("<-irq_init\n");
 }
 
 /* The minimum devices needed to be mapped before the VM system is up and running
    include the GIC, UART and Timer Counter. Some of the devices are on the shared 
-   bus (default) while others are on the private bus (non-shared).
+   bus (default) while others are on the private bus (non-shared). The boot 
+   register addresses are also setup at this time so that SMP processing can use
+   them.
  */
 
 static struct map_desc io_desc[] __initdata = {
@@ -130,8 +123,15 @@ static struct map_desc io_desc[] __initdata = {
 		.pfn		= __phys_to_pfn(SCU_PERIPH_BASE),
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
+	},
+#ifdef CONFIG_SMP
+	{
+		.virtual	= BOOT_REG_BASE,
+		.pfn		= __phys_to_pfn(BOOT_REG_BASE),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
 	}, 
-
+#endif
 
 #ifdef CONFIG_DEBUG_LL
 	{
@@ -150,7 +150,7 @@ static struct map_desc io_desc[] __initdata = {
  **/
 static void __init map_io(void)
 {
-	xilinx_debug("->map_io\n");
+	pr_debug("->map_io\n");
 
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
 
@@ -158,11 +158,11 @@ static void __init map_io(void)
 
 	/* call this very early before the kernel early console is enabled */
 
-	xilinx_debug("Xilinx early UART initialized\n");
+	pr_debug("Xilinx early UART initialized\n");
 	xilinx_uart_init();	
 #endif
 
-	xilinx_debug("<-map_io\n");
+	pr_debug("<-map_io\n");
 }
 
 /* Xilinx uses a probe to load the kernel such that ATAGs are not setup.

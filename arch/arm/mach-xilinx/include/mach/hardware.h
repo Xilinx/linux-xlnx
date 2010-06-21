@@ -28,15 +28,23 @@
 #define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
 
 /* There are a couple ram addresses needed for communication between the boot
- * loader software and the linux kernel and the multiple cpus of the kernel.
+ * loader software and the linux kernel with multiple cpus in the kernel (SMP).
  * A single page of memory is reserved so that the primary CPU can map it in
- * the MMU. The register addresses are reserved in the on-board SRAM. 
+ * the MMU. 
+
+ * The register addresses are reserved in the on-chip RAM and these addresses 
+ * are mapped flat (virtual = physical). The page must be mapped early before 
+ * the VM system is running for the SMP code to use it. Stay away from the end
+ * of the page (0xFFC) as it seems to cause issues and it maybe related to 64
+ * bit accesses on the bus for on chip memory.
  */
 
-#define BOOT_REG_BASE		0x1F000
+#define BOOT_REG_BASE		0xFFFE7000
 
-#define BOOT_REG0_OFFSET	0x00FF8	/* can be used with a virtual base */
-#define BOOT_REG1_OFFSET	0x00FFC /* can be used with a virtual base */
+#define BOOT_ADDRREG_OFFSET	0xFF0	
+#define BOOT_LOCKREG_OFFSET	0xFF4   
+
+#define BOOT_LOCK_KEY		0xFACECAFE
 
 /*
  * Device base addresses, all are mapped flat such that virtual = physical, is
