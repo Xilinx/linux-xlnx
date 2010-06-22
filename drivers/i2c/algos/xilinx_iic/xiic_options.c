@@ -1,30 +1,42 @@
-/* $Id: xiic_options.c,v 1.1 2007/12/03 15:44:58 meinelte Exp $ */
+/* $Id: xiic_options.c,v 1.1.2.1 2010/04/12 12:13:14 svemula Exp $ */
 /******************************************************************************
 *
-*       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
-*       AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
-*       SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
-*       OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
-*       APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
-*       THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
-*       AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
-*       FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
-*       WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
-*       IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
-*       REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
-*       INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-*       FOR A PARTICULAR PURPOSE.
+* (c) Copyright 2002-2009 Xilinx, Inc. All rights reserved.
 *
-*       (c) Copyright 2002 Xilinx Inc.
-*       All rights reserved.
-* This program is free software; you can redistribute it and/or modify it
-* under the terms of the GNU General Public License as published by the
-* Free Software Foundation; either version 2 of the License, or (at your
-* option) any later version.
+* This file contains confidential and proprietary information of Xilinx, Inc.
+* and is protected under U.S. and international copyright and other
+* intellectual property laws.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+* DISCLAIMER
+* This disclaimer is not a license and does not grant any rights to the
+* materials distributed herewith. Except as otherwise provided in a valid
+* license issued to you by Xilinx, and to the maximum extent permitted by
+* applicable law: (1) THESE MATERIALS ARE MADE AVAILABLE "AS IS" AND WITH ALL
+* FAULTS, AND XILINX HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS,
+* IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+* MERCHANTABILITY, NON-INFRINGEMENT, OR FITNESS FOR ANY PARTICULAR PURPOSE;
+* and (2) Xilinx shall not be liable (whether in contract or tort, including
+* negligence, or under any other theory of liability) for any loss or damage
+* of any kind or nature related to, arising under or in connection with these
+* materials, including for any direct, or any indirect, special, incidental,
+* or consequential loss or damage (including loss of data, profits, goodwill,
+* or any type of loss or damage suffered as a result of any action brought by
+* a third party) even if such damage or loss was reasonably foreseeable or
+* Xilinx had been advised of the possibility of the same.
+*
+* CRITICAL APPLICATIONS
+* Xilinx products are not designed or intended to be fail-safe, or for use in
+* any application requiring fail-safe performance, such as life-support or
+* safety devices or systems, Class III medical devices, nuclear facilities,
+* applications related to the deployment of airbags, or any other applications
+* that could lead to death, personal injury, or severe property or
+* environmental damage (individually and collectively, "Critical
+* Applications"). Customer assumes the sole risk and liability of any use of
+* Xilinx products in Critical Applications, subject only to applicable laws
+* and regulations governing limitations on product liability.
+*
+* THIS COPYRIGHT NOTICE AND DISCLAIMER MUST BE RETAINED AS PART OF THIS FILE
+* AT ALL TIMES.
 *
 ******************************************************************************/
 /*****************************************************************************/
@@ -42,7 +54,9 @@
 * ----- --- ------- -----------------------------------------------
 * 1.01b jhl 3/26/02 repartioned the driver
 * 1.01c ecm 12/05/02 new rev
-* 1.13a wgr  03/22/07 Converted to new coding style.
+* 1.13a wgr 03/22/07 Converted to new coding style.
+* 2.00a ktn 10/22/09 Converted all register accesses to 32 bit access.
+*		     Updated to use the HAL APIs/macros.
 * </pre>
 *
 ****************************************************************************/
@@ -51,7 +65,6 @@
 
 #include "xiic.h"
 #include "xiic_i.h"
-#include "xio.h"
 
 /************************** Constant Definitions ***************************/
 
@@ -95,14 +108,11 @@
 *   XIic_SetOptions(&Iic, Options &= ~XII_GENERAL_CALL_OPTION);
 * </pre>
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	NewOptions are the options to be set.  See xiic.h for a list of
+*		the available options.
 *
-* @param    NewOptions are the options to be set.  See xiic.h for a list of
-*           the available options.
-*
-* @return
-*
-* None.
+* @return	None.
 *
 * @note
 *
@@ -115,35 +125,37 @@
 * Options enabled will have a 1 in its appropriate bit position.
 *
 ****************************************************************************/
-void XIic_SetOptions(XIic * InstancePtr, u32 NewOptions)
+void XIic_SetOptions(XIic *InstancePtr, u32 NewOptions)
 {
-	u8 CntlReg;
+	u32 CntlReg;
 
-	XASSERT_VOID(InstancePtr != NULL);
+	Xil_AssertVoid(InstancePtr != NULL);
 
-	XIic_mEnterCriticalRegion(InstancePtr->BaseAddress);
+	XIic_IntrGlobalDisable(InstancePtr->BaseAddress);
 
-	/* Update the options in the instance and get the contents of the control
-	 * register such that the general call option can be modified
+	/*
+	 * Update the options in the instance and get the contents of the
+	 * control register such that the general call option can be modified.
 	 */
 	InstancePtr->Options = NewOptions;
-	CntlReg = XIo_In8(InstancePtr->BaseAddress + XIIC_CR_REG_OFFSET);
+	CntlReg = XIic_ReadReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET);
 
-	/* The general call option is the only option that maps directly to
-	 * a hardware register feature
+	/*
+	 * The general call option is the only option that maps directly to
+	 * a hardware register feature.
 	 */
 	if (NewOptions & XII_GENERAL_CALL_OPTION) {
 		CntlReg |= XIIC_CR_GENERAL_CALL_MASK;
-	}
-	else {
+	} else {
 		CntlReg &= ~XIIC_CR_GENERAL_CALL_MASK;
 	}
 
-	/* Write the new control register value to the register */
+	/*
+	 * Write the new control register value to the register.
+	 */
+	XIic_WriteReg(InstancePtr->BaseAddress, XIIC_CR_REG_OFFSET, CntlReg);
 
-	XIo_Out8(InstancePtr->BaseAddress + XIIC_CR_REG_OFFSET, CntlReg);
-
-	XIic_mExitCriticalRegion(InstancePtr->BaseAddress);
+	XIic_IntrGlobalEnable(InstancePtr->BaseAddress);
 }
 
 /*****************************************************************************/
@@ -153,20 +165,19 @@ void XIic_SetOptions(XIic * InstancePtr, u32 NewOptions)
 * the how the device behaves on the IIC bus. See SetOptions for more information
 * on options.
 *
-* @param    InstancePtr is a pointer to the XIic instance to be worked on.
+* @param	InstancePtr is a pointer to the XIic instance to be worked on.
 *
-* @return
-*
-* The options of the IIC device. See xiic.h for a list of available options.
+* @return	The options of the IIC device. See xiic.h for a list of
+*		available options.
 *
 * @note
 *
 * Options enabled will have a 1 in its appropriate bit position.
 *
 ****************************************************************************/
-u32 XIic_GetOptions(XIic * InstancePtr)
+u32 XIic_GetOptions(XIic *InstancePtr)
 {
-	XASSERT_NONVOID(InstancePtr != NULL);
+	Xil_AssertNonvoid(InstancePtr != NULL);
 
 	return InstancePtr->Options;
 }

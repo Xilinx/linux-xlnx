@@ -20,7 +20,7 @@
 #include <mach/uart.h>
 #include <mach/debug-xilinx.S>
 
-		.macro	addruart,rx
+		.macro	addruart,rx,tmp
 		mrc	p15, 0, \rx, c1, c0
 		tst	\rx, #1			@ MMU enabled?
 		ldreq	\rx, =MXC_LL_UART_PADDR	@ physical

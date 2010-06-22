@@ -227,8 +227,10 @@ typedef int XENV_TIME_STAMP;
 #define XCACHE_ENABLE_ICACHE()		__enable_icache()
 #define XCACHE_DISABLE_ICACHE()		__disable_icache()
 
-#define XCACHE_INVALIDATE_DCACHE_RANGE(Addr, Len) invalidate_dcache_range((u32)(Addr), (u32)((Addr)+(Len)))
-#define XCACHE_FLUSH_DCACHE_RANGE(Addr, Len)      flush_dcache_range((u32)(Addr), (u32)((Addr)+(Len)))
+#define XCACHE_INVALIDATE_DCACHE_RANGE(Addr, Len) \
+        invalidate_dcache_range((unsigned long)(Addr), ((unsigned long)(Addr)+(Len)))
+#define XCACHE_FLUSH_DCACHE_RANGE(Addr, Len)      \
+        flush_dcache_range((unsigned long)(Addr), ((unsigned long)(Addr)+(Len)))
 
 #define XCACHE_INVALIDATE_ICACHE_RANGE(Addr, Len) "XCACHE_INVALIDATE_ICACHE_RANGE unsupported"
 #define XCACHE_FLUSH_ICACHE_RANGE(Addr, Len)      flush_icache_range(Addr, Len)

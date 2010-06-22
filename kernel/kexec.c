@@ -41,7 +41,7 @@
 #include <asm/sections.h>
 
 /* Per cpu memory for storing cpu states in case of system crash. */
-note_buf_t* crash_notes;
+note_buf_t __percpu *crash_notes;
 
 /* vmcoreinfo stuff */
 static unsigned char vmcoreinfo_data[VMCOREINFO_BYTES];
@@ -1134,11 +1134,9 @@ int crash_shrink_memory(unsigned long new_size)
 
 	free_reserved_phys_range(end, crashk_res.end);
 
-	if (start == end) {
-		crashk_res.end = end;
+	if (start == end)
 		release_resource(&crashk_res);
-	} else
-		crashk_res.end = end - 1;
+	crashk_res.end = end - 1;
 
 unlock:
 	mutex_unlock(&kexec_mutex);

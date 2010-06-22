@@ -44,6 +44,7 @@
 #include <linux/interrupt.h>
 #include <linux/xilinx_devices.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 /*
  * Register Map

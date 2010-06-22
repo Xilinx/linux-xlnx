@@ -100,9 +100,9 @@ void __init xilinx_early_pci_scan(struct pci_controller *hose)
 					printk(KERN_CONT "\nABSENT");
 					break;
 				}
-				if(!(offset % 0x10)) {
+				if (!(offset % 0x10))
 					printk(KERN_CONT "\n%04x:    ", offset);
-				}
+
 				printk(KERN_CONT "%08x  ", val);
 			}
 			printk(KERN_INFO "\n");

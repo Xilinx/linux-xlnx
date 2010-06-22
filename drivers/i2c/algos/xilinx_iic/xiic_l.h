@@ -1,32 +1,44 @@
-/* $Id: xiic_l.h,v 1.1 2007/12/03 15:44:58 meinelte Exp $ */
-/*****************************************************************************
+/* $Id: xiic_l.h,v 1.1.2.1 2010/04/12 12:13:14 svemula Exp $ */
+/******************************************************************************
 *
-*       XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
-*       AS A COURTESY TO YOU, SOLELY FOR USE IN DEVELOPING PROGRAMS AND
-*       SOLUTIONS FOR XILINX DEVICES.  BY PROVIDING THIS DESIGN, CODE,
-*       OR INFORMATION AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE,
-*       APPLICATION OR STANDARD, XILINX IS MAKING NO REPRESENTATION
-*       THAT THIS IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
-*       AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
-*       FOR YOUR IMPLEMENTATION.  XILINX EXPRESSLY DISCLAIMS ANY
-*       WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
-*       IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
-*       REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
-*       INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-*       FOR A PARTICULAR PURPOSE.
+* (c) Copyright 2002-2009 Xilinx, Inc. All rights reserved.
 *
-*       (c) Copyright 2002-2007 Xilinx Inc.
-*       All rights reserved.
-* This program is free software; you can redistribute it and/or modify it
-* under the terms of the GNU General Public License as published by the
-* Free Software Foundation; either version 2 of the License, or (at your
-* option) any later version.
+* This file contains confidential and proprietary information of Xilinx, Inc.
+* and is protected under U.S. and international copyright and other
+* intellectual property laws.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+* DISCLAIMER
+* This disclaimer is not a license and does not grant any rights to the
+* materials distributed herewith. Except as otherwise provided in a valid
+* license issued to you by Xilinx, and to the maximum extent permitted by
+* applicable law: (1) THESE MATERIALS ARE MADE AVAILABLE "AS IS" AND WITH ALL
+* FAULTS, AND XILINX HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS,
+* IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+* MERCHANTABILITY, NON-INFRINGEMENT, OR FITNESS FOR ANY PARTICULAR PURPOSE;
+* and (2) Xilinx shall not be liable (whether in contract or tort, including
+* negligence, or under any other theory of liability) for any loss or damage
+* of any kind or nature related to, arising under or in connection with these
+* materials, including for any direct, or any indirect, special, incidental,
+* or consequential loss or damage (including loss of data, profits, goodwill,
+* or any type of loss or damage suffered as a result of any action brought by
+* a third party) even if such damage or loss was reasonably foreseeable or
+* Xilinx had been advised of the possibility of the same.
 *
-*****************************************************************************/
+* CRITICAL APPLICATIONS
+* Xilinx products are not designed or intended to be fail-safe, or for use in
+* any application requiring fail-safe performance, such as life-support or
+* safety devices or systems, Class III medical devices, nuclear facilities,
+* applications related to the deployment of airbags, or any other applications
+* that could lead to death, personal injury, or severe property or
+* environmental damage (individually and collectively, "Critical
+* Applications"). Customer assumes the sole risk and liability of any use of
+* Xilinx products in Critical Applications, subject only to applicable laws
+* and regulations governing limitations on product liability.
+*
+* THIS COPYRIGHT NOTICE AND DISCLAIMER MUST BE RETAINED AS PART OF THIS FILE
+* AT ALL TIMES.
+*
+******************************************************************************/
 /****************************************************************************/
 /**
 *
@@ -48,10 +60,37 @@
 * 1.03a mta  04/04/06 Implemented Dynamic IIC core routines.
 * 1.03a rpm  09/08/06 Added include of xstatus.h for completeness
 * 1.13a wgr  03/22/07 Converted to new coding style.
+* 1.16a ktn  07/18/09 Updated the notes in XIIC_RESET macro to clearly indicate
+*                     that only the Interrupt Registers are reset.
+* 1.16a ktn  10/16/09 Updated the notes in the XIIC_RESET macro to mention
+*                     that the complete IIC core is Reset on giving a software
+*                     reset to the IIC core. Some previous versions of the
+*                     core only reset the Interrupt Logic/Registers, please
+*                     refer to the HW specification for futher details.
+* 2.00a sdm  10/22/09 Converted all register accesses to 32 bit access,
+*		      the register offsets are defined to be on 32 bit boundry.
+*		      Removed the macro XIIC_RESET, XIic_Reset API should be
+*		      used in its place.
+*		      Some of the macros have been renamed to be consistent -
+*		      XIIC_GINTR_DISABLE is renamed as XIic_IntrGlobalDisable,
+*		      XIIC_GINTR_ENABLE is renamed as XIic_IntrGlobalEnable,
+*		      XIIC_IS_GINTR_ENABLED is renamed as
+*		      XIic_IsIntrGlobalEnabled,
+*		      XIIC_WRITE_IISR is renamed as XIic_WriteIisr,
+*		      XIIC_READ_IISR is renamed as XIic_ReadIisr,
+*		      XIIC_WRITE_IIER is renamed as XIic_WriteIier
+*		      The _m prefix in the name of the macros has been removed -
+*		      XIic_mClearIisr is now XIic_ClearIisr,
+*		      XIic_mSend7BitAddress is now XIic_Send7BitAddress,
+*		      XIic_mDynSend7BitAddress is now XIic_DynSend7BitAddress,
+*		      XIic_mDynSendStartStopAddress is now
+*		      XIic_DynSendStartStopAddress,
+*		      XIic_mDynSendStop is now XIic_DynSendStop.
+*
+*
 * </pre>
 *
 *****************************************************************************/
-
 #ifndef XIIC_L_H		/* prevent circular inclusions */
 #define XIIC_L_H		/* by using protection macros */
 
@@ -61,499 +100,479 @@ extern "C" {
 
 /***************************** Include Files ********************************/
 
-#include "xbasic_types.h"
+#include "xil_types.h"
+#include "xil_assert.h"
 #include "xstatus.h"
+#include "xil_io.h"
 
 /************************** Constant Definitions ****************************/
 
-#define XIIC_MSB_OFFSET                3
-
-#define XIIC_REG_OFFSET 0x100 + XIIC_MSB_OFFSET
-
-/*
- * Register offsets in bytes from RegisterBase. Three is added to the
- * base offset to access LSB (IBM style) of the word
+/** @name Register Map
+ *
+ * Register offsets for the XIic device.
+ * @{
  */
-#define XIIC_CR_REG_OFFSET   0x00+XIIC_REG_OFFSET	/* Control Register   */
-#define XIIC_SR_REG_OFFSET   0x04+XIIC_REG_OFFSET	/* Status Register    */
-#define XIIC_DTR_REG_OFFSET  0x08+XIIC_REG_OFFSET	/* Data Tx Register   */
-#define XIIC_DRR_REG_OFFSET  0x0C+XIIC_REG_OFFSET	/* Data Rx Register   */
-#define XIIC_ADR_REG_OFFSET  0x10+XIIC_REG_OFFSET	/* Address Register   */
-#define XIIC_TFO_REG_OFFSET  0x14+XIIC_REG_OFFSET	/* Tx FIFO Occupancy  */
-#define XIIC_RFO_REG_OFFSET  0x18+XIIC_REG_OFFSET	/* Rx FIFO Occupancy  */
-#define XIIC_TBA_REG_OFFSET  0x1C+XIIC_REG_OFFSET	/* 10 Bit Address reg */
-#define XIIC_RFD_REG_OFFSET  0x20+XIIC_REG_OFFSET	/* Rx FIFO Depth reg  */
-#define XIIC_GPO_REG_OFFSET  0x24+XIIC_REG_OFFSET	/* Output Register    */
+#define XIIC_DGIER_OFFSET	0x1C  /**< Global Interrupt Enable Register */
+#define XIIC_IISR_OFFSET	0x20  /**< Interrupt Status Register */
+#define XIIC_IIER_OFFSET	0x28  /**< Interrupt Enable Register */
+#define XIIC_RESETR_OFFSET	0x40  /**< Reset Register */
+#define XIIC_CR_REG_OFFSET	0x100 /**< Control Register */
+#define XIIC_SR_REG_OFFSET	0x104 /**< Status Register */
+#define XIIC_DTR_REG_OFFSET	0x108 /**< Data Tx Register */
+#define XIIC_DRR_REG_OFFSET	0x10C /**< Data Rx Register */
+#define XIIC_ADR_REG_OFFSET	0x110 /**< Address Register */
+#define XIIC_TFO_REG_OFFSET	0x114 /**< Tx FIFO Occupancy */
+#define XIIC_RFO_REG_OFFSET	0x118 /**< Rx FIFO Occupancy */
+#define XIIC_TBA_REG_OFFSET	0x11C /**< 10 Bit Address reg */
+#define XIIC_RFD_REG_OFFSET	0x120 /**< Rx FIFO Depth reg */
+#define XIIC_GPO_REG_OFFSET	0x124 /**< Output Register */
+/* @} */
 
-/* Control Register masks */
 
-#define XIIC_CR_ENABLE_DEVICE_MASK        0x01	/* Device enable = 1      */
-#define XIIC_CR_TX_FIFO_RESET_MASK        0x02	/* Transmit FIFO reset=1  */
-#define XIIC_CR_MSMS_MASK                 0x04	/* Master starts Txing=1  */
-#define XIIC_CR_DIR_IS_TX_MASK            0x08	/* Dir of tx. Txing=1     */
-#define XIIC_CR_NO_ACK_MASK               0x10	/* Tx Ack. NO ack = 1     */
-#define XIIC_CR_REPEATED_START_MASK       0x20	/* Repeated start = 1     */
-#define XIIC_CR_GENERAL_CALL_MASK         0x40	/* Gen Call enabled = 1   */
-
-/* Status Register masks */
-
-#define XIIC_SR_GEN_CALL_MASK             0x01	/* 1=a mstr issued a GC   */
-#define XIIC_SR_ADDR_AS_SLAVE_MASK        0x02	/* 1=when addr as slave   */
-#define XIIC_SR_BUS_BUSY_MASK             0x04	/* 1 = bus is busy        */
-#define XIIC_SR_MSTR_RDING_SLAVE_MASK     0x08	/* 1=Dir: mstr <-- slave  */
-#define XIIC_SR_TX_FIFO_FULL_MASK         0x10	/* 1 = Tx FIFO full       */
-#define XIIC_SR_RX_FIFO_FULL_MASK         0x20	/* 1 = Rx FIFO full       */
-#define XIIC_SR_RX_FIFO_EMPTY_MASK        0x40	/* 1 = Rx FIFO empty      */
-#define XIIC_SR_TX_FIFO_EMPTY_MASK        0x80	/* 1 = Tx FIFO empty      */
-
-/* Interrupt Status Register masks    Interrupt occurs when...       */
-
-#define XIIC_INTR_ARB_LOST_MASK           0x01	/* 1 = arbitration lost   */
-#define XIIC_INTR_TX_ERROR_MASK           0x02	/* 1=Tx error/msg complete */
-#define XIIC_INTR_TX_EMPTY_MASK           0x04	/* 1 = Tx FIFO/reg empty  */
-#define XIIC_INTR_RX_FULL_MASK            0x08	/* 1=Rx FIFO/reg=OCY level */
-#define XIIC_INTR_BNB_MASK                0x10	/* 1 = Bus not busy       */
-#define XIIC_INTR_AAS_MASK                0x20	/* 1 = when addr as slave */
-#define XIIC_INTR_NAAS_MASK               0x40	/* 1 = not addr as slave  */
-#define XIIC_INTR_TX_HALF_MASK            0x80	/* 1 = TX FIFO half empty */
-
-#define XIIC_TX_ADDR_SENT             0x00
-#define XIIC_TX_ADDR_MSTR_RECV_MASK   0x02
-
-/* The following constants specify the depth of the FIFOs */
-
-#define IIC_RX_FIFO_DEPTH         16	/* Rx fifo capacity               */
-#define IIC_TX_FIFO_DEPTH         16	/* Tx fifo capacity               */
-
-/* The following constants specify groups of interrupts that are typically
- * enabled or disables at the same time
+/**
+ * @name Device Global Interrupt Enable Register masks (CR) mask(s)
+ * @{
  */
-#define XIIC_TX_INTERRUPTS                                          \
-            (XIIC_INTR_TX_ERROR_MASK | XIIC_INTR_TX_EMPTY_MASK |    \
-             XIIC_INTR_TX_HALF_MASK)
+#define XIIC_GINTR_ENABLE_MASK	0x80000000 /**< Global Interrupt Enable Mask */
+/* @} */
 
-#define XIIC_TX_RX_INTERRUPTS (XIIC_INTR_RX_FULL_MASK | XIIC_TX_INTERRUPTS)
-
-/* The following constants are used with the following macros to specify the
- * operation, a read or write operation.
+/** @name IIC Device Interrupt Status/Enable (INTR) Register Masks
+ *
+ * <b> Interrupt Status Register (IISR) </b>
+ *
+ * This register holds the interrupt status flags for the Spi device.
+ *
+ * <b> Interrupt Enable Register (IIER) </b>
+ *
+ * This register is used to enable interrupt sources for the IIC device.
+ * Writing a '1' to a bit in this register enables the corresponding Interrupt.
+ * Writing a '0' to a bit in this register disables the corresponding Interrupt.
+ *
+ * IISR/IIER registers have the same bit definitions and are only defined once.
+ * @{
  */
-#define XIIC_READ_OPERATION  1
-#define XIIC_WRITE_OPERATION 0
+#define XIIC_INTR_ARB_LOST_MASK	0x00000001 /**< 1 = Arbitration lost */
+#define XIIC_INTR_TX_ERROR_MASK	0x00000002 /**< 1 = Tx error/msg complete */
+#define XIIC_INTR_TX_EMPTY_MASK	0x00000004 /**< 1 = Tx FIFO/reg empty */
+#define XIIC_INTR_RX_FULL_MASK	0x00000008 /**< 1 = Rx FIFO/reg=OCY level */
+#define XIIC_INTR_BNB_MASK	0x00000010 /**< 1 = Bus not busy */
+#define XIIC_INTR_AAS_MASK	0x00000020 /**< 1 = When addr as slave */
+#define XIIC_INTR_NAAS_MASK	0x00000040 /**< 1 = Not addr as slave */
+#define XIIC_INTR_TX_HALF_MASK	0x00000080 /**< 1 = Tx FIFO half empty */
 
-/* The following constants are used with the transmit FIFO fill function to
+/**
+ * All Tx interrupts commonly used.
+ */
+#define XIIC_TX_INTERRUPTS	(XIIC_INTR_TX_ERROR_MASK | \
+				 XIIC_INTR_TX_EMPTY_MASK |  \
+				 XIIC_INTR_TX_HALF_MASK)
+
+/**
+ * All interrupts commonly used
+ */
+#define XIIC_TX_RX_INTERRUPTS	(XIIC_INTR_RX_FULL_MASK | XIIC_TX_INTERRUPTS)
+
+/* @} */
+
+/**
+ * @name Reset Register mask
+ * @{
+ */
+#define XIIC_RESET_MASK		0x0000000A /**< RESET Mask  */
+/* @} */
+
+
+/**
+ * @name Control Register masks (CR) mask(s)
+ * @{
+ */
+#define XIIC_CR_ENABLE_DEVICE_MASK	0x00000001 /**< Device enable = 1 */
+#define XIIC_CR_TX_FIFO_RESET_MASK	0x00000002 /**< Transmit FIFO reset=1 */
+#define XIIC_CR_MSMS_MASK		0x00000004 /**< Master starts Txing=1 */
+#define XIIC_CR_DIR_IS_TX_MASK		0x00000008 /**< Dir of Tx. Txing=1 */
+#define XIIC_CR_NO_ACK_MASK		0x00000010 /**< Tx Ack. NO ack = 1 */
+#define XIIC_CR_REPEATED_START_MASK	0x00000020 /**< Repeated start = 1 */
+#define XIIC_CR_GENERAL_CALL_MASK	0x00000040 /**< Gen Call enabled = 1 */
+/* @} */
+
+/**
+ * @name Status Register masks (SR) mask(s)
+ * @{
+ */
+#define XIIC_SR_GEN_CALL_MASK		0x00000001 /**< 1 = A Master issued
+						    * a GC */
+#define XIIC_SR_ADDR_AS_SLAVE_MASK	0x00000002 /**< 1 = When addressed as
+						    * slave */
+#define XIIC_SR_BUS_BUSY_MASK		0x00000004 /**< 1 = Bus is busy */
+#define XIIC_SR_MSTR_RDING_SLAVE_MASK	0x00000008 /**< 1 = Dir: Master <--
+						    * slave */
+#define XIIC_SR_TX_FIFO_FULL_MASK	0x00000010 /**< 1 = Tx FIFO full */
+#define XIIC_SR_RX_FIFO_FULL_MASK	0x00000020 /**< 1 = Rx FIFO full */
+#define XIIC_SR_RX_FIFO_EMPTY_MASK	0x00000040 /**< 1 = Rx FIFO empty */
+#define XIIC_SR_TX_FIFO_EMPTY_MASK	0x00000080 /**< 1 = Tx FIFO empty */
+/* @} */
+
+/**
+ * @name Data Tx Register (DTR) mask(s)
+ * @{
+ */
+#define XIIC_TX_DYN_START_MASK		0x00000100 /**< 1 = Set dynamic start */
+#define XIIC_TX_DYN_STOP_MASK		0x00000200 /**< 1 = Set dynamic stop */
+#define IIC_TX_FIFO_DEPTH		16     /**< Tx fifo capacity */
+/* @} */
+
+/**
+ * @name Data Rx Register (DRR) mask(s)
+ * @{
+ */
+#define IIC_RX_FIFO_DEPTH		16	/**< Rx fifo capacity */
+/* @} */
+
+
+#define XIIC_TX_ADDR_SENT		0x00
+#define XIIC_TX_ADDR_MSTR_RECV_MASK	0x02
+
+
+/**
+ * The following constants are used to specify whether to do
+ * Read or a Write operation on IIC bus.
+ */
+#define XIIC_READ_OPERATION	1 /**< Read operation on the IIC bus */
+#define XIIC_WRITE_OPERATION	0 /**< Write operation on the IIC bus */
+
+/**
+ * The following constants are used with the transmit FIFO fill function to
  * specify the role which the IIC device is acting as, a master or a slave.
  */
-#define XIIC_MASTER_ROLE     1
-#define XIIC_SLAVE_ROLE      0
+#define XIIC_MASTER_ROLE	1 /**< Master on the IIC bus */
+#define XIIC_SLAVE_ROLE		0 /**< Slave on the IIC bus */
 
-/*
+/**
  * The following constants are used with Transmit Function (XIic_Send) to
  * specify whether to STOP after the current transfer of data or own the bus
  * with a Repeated start.
  */
-#define XIIC_STOP		0x00
-#define XIIC_REPEATED_START	0x01
-
- /*
-  * Tx Fifo upper bit masks.
-  */
-
-#define XIIC_TX_DYN_START_MASK            0x0100 /* 1 = Set dynamic start */
-#define XIIC_TX_DYN_STOP_MASK             0x0200 /* 1 = Set dynamic stop */
-
-
-/**************************** Type Definitions ******************************/
-
-
-/***************** Macros (Inline Functions) Definitions ********************/
-
-/************************** Constant Definitions *****************************/
-
-/*
- * The following constants define the register offsets for the Interrupt
- * registers. There are some holes in the memory map for reserved addresses
- * to allow other registers to be added and still match the memory map of the
- * interrupt controller registers
- */
-#define XIIC_DGIER_OFFSET    0x1C /* Device Global Interrupt Enable Register */
-#define XIIC_IISR_OFFSET     0x20 /* Interrupt Status Register */
-#define XIIC_IIER_OFFSET     0x28 /* Interrupt Enable Register */
-#define XIIC_RESETR_OFFSET   0x40 /* Reset Register */
-
-
-#define XIIC_RESET_MASK             0xAUL
-
-/*
- * The following constant is used for the device global interrupt enable
- * register, to enable all interrupts for the device, this is the only bit
- * in the register
- */
-#define XIIC_GINTR_ENABLE_MASK      0x80000000UL
-
-
-/**************************** Type Definitions *******************************/
-
+#define XIIC_STOP		0x00 /**< Send a stop on the IIC bus after
+					* the current data transfer */
+#define XIIC_REPEATED_START	0x01 /**< Donot Send a stop on the IIC bus after
+					* the current data transfer */
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
+#define XIic_In32 	Xil_In32
+#define XIic_Out32 	Xil_Out32
 
-/******************************************************************************
+/****************************************************************************/
+/**
 *
-* This macro resets the IIC device.
+* Read from the specified IIC device register.
 *
-* @param	RegBaseAddress is the base address of the IIC device.
+* @param	BaseAddress is the base address of the device.
+* @param	RegOffset is the offset from the 1st register of the device to
+*		select the specific register.
+*
+* @return	The value read from the register.
+*
+* @note		C-Style signature:
+*		u32 XIic_ReadReg(u32 BaseAddress, u32 RegOffset);
+*
+* 		This macro does not do any checking to ensure that the
+*		register exists if the register may be excluded due to
+*		parameterization, such as the GPO Register.
+*
+******************************************************************************/
+#define XIic_ReadReg(BaseAddress, RegOffset) \
+	XIic_In32((BaseAddress) + (RegOffset))
+
+/***************************************************************************/
+/**
+*
+* Write to the specified IIC device register.
+*
+* @param	BaseAddress is the base address of the device.
+* @param	RegOffset is the offset from the 1st register of the
+*		device to select the specific register.
+* @param	RegisterValue is the value to be written to the register.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-*		void XIIC_RESET(u32 RegBaseAddress);
+*		void XIic_WriteReg(u32 BaseAddress, u32 RegOffset,
+*					u32 RegisterValue);
+* 		This macro does not do any checking to ensure that the
+*		register exists if the register may be excluded due to
+*		parameterization, such as the GPO Register.
 *
 ******************************************************************************/
-#define XIIC_RESET(RegBaseAddress) \
-	XIo_Out32(RegBaseAddress + XIIC_RESETR_OFFSET, XIIC_RESET_MASK)
+#define XIic_WriteReg(BaseAddress, RegOffset, RegisterValue) \
+	XIic_Out32((BaseAddress) + (RegOffset), (RegisterValue))
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro disables all interrupts for the device by writing to the Global
-* interrupt enable register.  This register provides the ability to disable
-* interrupts without any modifications to the interrupt enable register such
-* that it is minimal effort to restore the interrupts to the previous enabled
-* state.  The corresponding function, XIIC_GINTR_ENABLE, is provided to
-* restore the interrupts to the previous enabled state.  This function is
-* designed to be used in critical sections of device drivers such that it is
-* not necessary to disable other device interrupts.
+* interrupt enable register.
 *
-* @param	RegBaseAddress is the base address of the IIC device.
+* @param	BaseAddress is the base address of the IIC device.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-*		void XIIC_GINTR_DISABLE(u32 RegBaseAddress);
+*		void XIic_IntrGlobalDisable(u32 BaseAddress);
 *
 ******************************************************************************/
-#define XIIC_GINTR_DISABLE(RegBaseAddress)				\
-	XIo_Out32((RegBaseAddress) + XIIC_DGIER_OFFSET, 0)
+#define XIic_IntrGlobalDisable(BaseAddress)				\
+	XIic_WriteReg((BaseAddress), XIIC_DGIER_OFFSET, 0)
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro writes to the global interrupt enable register to enable
-* interrupts from the device.  This register provides the ability to enable
-* interrupts without any modifications to the interrupt enable register such
-* that it is minimal effort to restore the interrupts to the previous enabled
-* state. This function does not enable individual interrupts as the interrupt
-* enable register must be set appropriately.  This function is designed to be
-* used in critical sections of device drivers such that it is not necessary to
-* disable other device interrupts.
+* interrupts from the device. This function does not enable individual
+* interrupts as the Interrupt Enable Register must be set appropriately.
 *
-* @param	RegBaseAddress is the base address of the IIC device.
+* @param	BaseAddress is the base address of the IIC device.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-*		void XIIC_GINTR_ENABLE(u32 RegBaseAddress);
+*		void XIic_IntrGlobalEnable(u32 BaseAddress);
 *
 ******************************************************************************/
-#define XIIC_GINTR_ENABLE(RegBaseAddress)				\
-	XIo_Out32((RegBaseAddress) + XIIC_DGIER_OFFSET, XIIC_GINTR_ENABLE_MASK)
-
-/******************************************************************************
-*
-* This function determines if interrupts are enabled at the global level by
-* reading the gloabl interrupt register. This register provides the ability to
-* disable interrupts without any modifications to the interrupt enable register
-* such that it is minimal effort to restore the interrupts to the previous
-* enabled state.
-*
-* @param	RegBaseAddress is the base address of the IIC device.
-*
-* @return
-*		- TRUE if global interrupts are enabled.
-*		- FALSE if global interrupts are disabled.
-*
-* @note		C-Style signature:
-*		int XIIC_IS_GINTR_ENABLED(u32 RegBaseAddress);
-*
-******************************************************************************/
-#define XIIC_IS_GINTR_ENABLED(RegBaseAddress)				\
-	(XIo_In32((RegBaseAddress) + XIIC_DGIER_OFFSET) ==		\
+#define XIic_IntrGlobalEnable(BaseAddress)				\
+	XIic_WriteReg((BaseAddress), XIIC_DGIER_OFFSET, 		\
 		XIIC_GINTR_ENABLE_MASK)
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
+* This function determines if interrupts are enabled at the global level by
+* reading the global interrupt register.
+*
+* @param	BaseAddress is the base address of the IIC device.
+*
+* @return
+*		- TRUE if the global interrupt is enabled.
+*		- FALSE if global interrupt is disabled.
+*
+* @note		C-Style signature:
+*		int XIic_IsIntrGlobalEnabled(u32 BaseAddress);
+*
+******************************************************************************/
+#define XIic_IsIntrGlobalEnabled(BaseAddress)			\
+	(XIic_ReadReg((BaseAddress), XIIC_DGIER_OFFSET) ==		\
+		XIIC_GINTR_ENABLE_MASK)
+
+/******************************************************************************/
+/**
 *
 * This function sets the Interrupt status register to the specified value.
-* This register indicates the status of interrupt sources for the device.
-* The status is independent of whether interrupts are enabled such that
-* the status register may also be polled when interrupts are not enabled.
 *
-* Each bit of the register correlates to a specific interrupt source within the
-* IIC device.  All bits of this register are latched. Setting a bit which is zero
-* within this register causes an interrupt to be generated.  The device global
-* interrupt enable register and the device interrupt enable register must be set
-* appropriately to allow an interrupt to be passed out of the device. The
-* interrupt is cleared by writing to this register with the bits to be
-* cleared set to a one and all others to zero.  This register implements a
-* toggle on write functionality meaning any bits which are set in the value
-* written cause the bits in the register to change to the opposite state.
+* This register implements a toggle on write functionality. The interrupt is
+* cleared by writing to this register with the bits to be cleared set to a one
+* and all others to zero. Setting a bit which is zero within this register
+* causes an interrupt to be generated.
 *
 * This function writes only the specified value to the register such that
 * some status bits may be set and others cleared.  It is the caller's
 * responsibility to get the value of the register prior to setting the value
 * to prevent an destructive behavior.
 *
-* @param	RegBaseAddress is the base address of the IIC device.
-* @param	Status contains the value to be written to the Interrupt
+* @param	BaseAddress is the base address of the IIC device.
+* @param	Status is the value to be written to the Interrupt
 *		status register.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-*		void XIIC_WRITE_IISR(u32 RegBaseAddress, u32 Status);
+*		void XIic_WriteIisr(u32 BaseAddress, u32 Status);
 *
 ******************************************************************************/
-#define XIIC_WRITE_IISR(RegBaseAddress, Status)				\
-	XIo_Out32((RegBaseAddress) + XIIC_IISR_OFFSET, (Status))
+#define XIic_WriteIisr(BaseAddress, Status)	\
+	XIic_WriteReg((BaseAddress), XIIC_IISR_OFFSET, (Status))
 
-/******************************************************************************
-*
+/******************************************************************************/
+/**
 *
 * This function gets the contents of the Interrupt Status Register.
 * This register indicates the status of interrupt sources for the device.
 * The status is independent of whether interrupts are enabled such
 * that the status register may also be polled when interrupts are not enabled.
 *
-* Each bit of the register correlates to a specific interrupt source within the
-* device.  All bits of this register are latched.  Writing a 1 to a bit within
-* this register causes an interrupt to be generated if enabled in the interrupt
-* enable register and the global interrupt enable is set.  Since the status is
-* latched, each status bit must be acknowledged in order for the bit in the
-* status register to be updated.  Each bit can be acknowledged by writing a
-* 0 to the bit in the status register.
-
-* @param	RegBaseAddress is the base address of the IIC device.
+* @param	BaseAddress is the base address of the IIC device.
 *
-* @return	A status which contains the value read from the Interrupt
-*		Status Register.
+* @return	The value read from the Interrupt Status Register.
 *
 * @note		C-Style signature:
-*		u32 XIIC_READ_IISR(u32 RegBaseAddress);
+*		u32 XIic_ReadIisr(u32 BaseAddress);
 *
 ******************************************************************************/
-#define XIIC_READ_IISR(RegBaseAddress) 					\
-	XIo_In32((RegBaseAddress) + XIIC_IISR_OFFSET)
+#define XIic_ReadIisr(BaseAddress) 					\
+	XIic_ReadReg((BaseAddress), XIIC_IISR_OFFSET)
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
-* This function sets the contents of the Interrupt Enable Register . This
-* register controls which interrupt sources of the IIC device are allowed to
-* generate an interrupt. The global interrupt enable register and the device
-* interrupt enable register must also be set appropriately for an interrupt to be
-* passed out of the device.
-*
-* Each bit of the register correlates to a specific interrupt source within the
-* device.  Setting a bit in this register enables the interrupt source to generate
-* an interrupt.  Clearing a bit in this register disables interrupt generation
-* for that interrupt source.
+* This function sets the contents of the Interrupt Enable Register.
 *
 * This function writes only the specified value to the register such that
 * some interrupt sources may be enabled and others disabled.  It is the
 * caller's responsibility to get the value of the interrupt enable register
 * prior to setting the value to prevent a destructive behavior.
 *
-* @param	RegBaseAddress is the base address of the IIC device.
-* @param	Enable contains the value to be written to the Interrupt Enable
-*		Register.
+* @param	BaseAddress is the base address of the IIC device.
+* @param	Enable is the value to be written to the Interrupt Enable
+*		Register. Bit positions of 1 will be enabled. Bit positions of 0
+*		will be disabled.
 *
 * @return 	None
 *
 * @note		C-Style signature:
-*		void XIIC_WRITE_IIER(u32 RegBaseAddress, u32 Enable);
+*		void XIic_WriteIier(u32 BaseAddress, u32 Enable);
 *
 ******************************************************************************/
-#define XIIC_WRITE_IIER(RegBaseAddress, Enable)				\
-	XIo_Out32((RegBaseAddress) + XIIC_IIER_OFFSET, (Enable))
+#define XIic_WriteIier(BaseAddress, Enable)				\
+	XIic_WriteReg((BaseAddress), XIIC_IIER_OFFSET, (Enable))
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 *
-* This function gets the Interrupt enable register contents.  This register
-* controls which interrupt sources of the device are allowed to generate an
-* interrupt.  The global interrupt enable register and the device interrupt
-* enable register must also be set appropriately for an interrupt to be
-* passed out of the IIC device.
+* This function gets the Interrupt Enable Register contents.
 *
-* Each bit of the register correlates to a specific interrupt source within the
-* IIC device. Setting a bit in this register enables the interrupt source to
-* generate an interrupt.  Clearing a bit in this register disables interrupt
-* generation for that interrupt source.
-*
-* @param	RegBaseAddress is the base address of the IIC device.
+* @param	BaseAddress is the base address of the IIC device.
 *
 * @return	The contents read from the Interrupt Enable Register.
+*		Bit positions of 1 indicate that the corresponding interrupt
+*		is enabled. Bit positions of 0 indicate that the corresponding
+*		interrupt is disabled.
 *
 * @note		C-Style signature:
-*		u32 XIIC_READ_IIER(u32 RegBaseAddress)
+*		u32 XIic_ReadIier(u32 BaseAddress)
 *
 ******************************************************************************/
-#define XIIC_READ_IIER(RegBaseAddress)					\
-	XIo_In32((RegBaseAddress) + XIIC_IIER_OFFSET)
+#define XIic_ReadIier(BaseAddress)					\
+	XIic_ReadReg((BaseAddress), XIIC_IIER_OFFSET)
 
-/************************** Function Prototypes ******************************/
-
-
-/******************************************************************************
-*
-* This macro reads a register in the IIC device using an 8 bit read operation.
-* This macro does not do any checking to ensure that the register exists if the
-* register may be excluded due to parameterization, such as the GPO Register.
-*
-* @param	BaseAddress of the IIC device.
-* @param	RegisterOffset contains the offset of the register from the
-*		device base address.
-*
-* @return	The value read from the register.
-*
-* @note		C-Style signature:
-* 		u8 XIic_mReadReg(u32 BaseAddress, int RegisterOffset);
-*
-******************************************************************************/
-#define XIic_mReadReg(BaseAddress, RegisterOffset) 			\
-	XIo_In8((BaseAddress) + (RegisterOffset))
-
-/******************************************************************************
-*
-* This macro writes a register in the IIC device using an 8 bit write
-* operation. This macro does not do any checking to ensure that the register
-* exists if the register may be excluded due to parameterization, such as the
-* GPO Register.
-*
-* @param	BaseAddress of the IIC device.
-* @param	RegisterOffset contains the offset of the register from the
-*		device base address.
-* @param	Data contains the data to be written to the register.
-*
-* @return	None.
-*
-* @note		C-Style signature:
-*		void XIic_mWriteReg(u32 BaseAddress, int RegisterOffset,
-					u8 Data);
-*
-******************************************************************************/
-#define XIic_mWriteReg(BaseAddress, RegisterOffset, Data) 		\
-	XIo_Out8((BaseAddress) + (RegisterOffset), (Data))
-
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro clears the specified interrupt in the Interrupt status
 * register.  It is non-destructive in that the register is read and only the
 * interrupt specified is cleared.  Clearing an interrupt acknowledges it.
 *
-* @param	BaseAddress contains the IIC registers base address.
-* @param	InterruptMask contains the interrupts to be disabled
+* @param	BaseAddress is the base address of the IIC device.
+* @param	InterruptMask is the bit mask of the interrupts to be cleared.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-*		void XIic_mClearIisr(u32 BaseAddress, u32 InterruptMask);
+*		void XIic_ClearIisr(u32 BaseAddress, u32 InterruptMask);
 *
 ******************************************************************************/
-#define XIic_mClearIisr(BaseAddress, InterruptMask)			\
-	XIIC_WRITE_IISR((BaseAddress),					\
-	XIIC_READ_IISR(BaseAddress) & (InterruptMask))
+#define XIic_ClearIisr(BaseAddress, InterruptMask)		\
+	XIic_WriteIisr((BaseAddress),			\
+	XIic_ReadIisr(BaseAddress) & (InterruptMask))
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro sends the address for a 7 bit address during both read and write
 * operations. It takes care of the details to format the address correctly.
 * This macro is designed to be called internally to the drivers.
 *
-* @param	BaseAddress contains the base address of the IIC Device.
-* @param	SlaveAddress contains the address of the slave to send to.
+* @param	BaseAddress is the base address of the IIC Device.
+* @param	SlaveAddress is the address of the slave to send to.
 * @param	Operation indicates XIIC_READ_OPERATION or XIIC_WRITE_OPERATION
 *
 * @return	None.
 *
 * @note		C-Style signature:
-* 		void XIic_mSend7BitAddress(u32 BaseAddress, u8 SlaveAddress,
+*		void XIic_Send7BitAddress(u32 BaseAddress, u8 SlaveAddress,
 *						u8 Operation);
 *
 ******************************************************************************/
-#define XIic_mSend7BitAddress(BaseAddress, SlaveAddress, Operation)	\
+#define XIic_Send7BitAddress(BaseAddress, SlaveAddress, Operation)	\
 {									\
 	u8 LocalAddr = (u8)(SlaveAddress << 1);				\
 	LocalAddr = (LocalAddr & 0xFE) | (Operation);			\
-	XIo_Out8(BaseAddress + XIIC_DTR_REG_OFFSET, LocalAddr);		\
+	XIic_WriteReg(BaseAddress, XIIC_DTR_REG_OFFSET, LocalAddr);	\
 }
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro sends the address for a 7 bit address during both read and write
 * operations. It takes care of the details to format the address correctly.
-* This macro is designed to be called internally to the drivers.
+* This macro is designed to be called internally to the drivers for Dynamic
+* controller functionality.
 *
-* @param	BaseAddress contains the base address of the IIC Device.
-* @param	SlaveAddress contains the address of the slave to send to.
+* @param	BaseAddress is the base address of the IIC Device.
+* @param	SlaveAddress is the address of the slave to send to.
 * @param	Operation indicates XIIC_READ_OPERATION or XIIC_WRITE_OPERATION.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-* 		void XIic_mDynSend7BitAddress(u32 BaseAddress, u8 SlaveAddress,
-*						u8 Operation);
+* 		void XIic_DynSend7BitAddress(u32 BaseAddress,
+*				u8 SlaveAddress, u8 Operation);
 *
 ******************************************************************************/
-#define XIic_mDynSend7BitAddress(BaseAddress, SlaveAddress, Operation)	\
+#define XIic_DynSend7BitAddress(BaseAddress, SlaveAddress, Operation)	\
 {									\
 	u8 LocalAddr = (u8)(SlaveAddress << 1);				\
 	LocalAddr = (LocalAddr & 0xFE) | (Operation);			\
-	XIo_Out16(BaseAddress + XIIC_DTR_REG_OFFSET - 1,		\
+	XIic_WriteReg(BaseAddress, XIIC_DTR_REG_OFFSET,		\
 			XIIC_TX_DYN_START_MASK | LocalAddr);		\
 }
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro sends the address, start and stop for a 7 bit address during both
 * write operations. It takes care of the details to format the address
-* correctly.
-* This macro is designed to be called internally to the drivers.
+* correctly. This macro is designed to be called internally to the drivers.
 *
-* @param	BaseAddress contains the base address of the IIC Device.
-* @param	SlaveAddress contains the address of the slave to send to.
+* @param	BaseAddress is the base address of the IIC Device.
+* @param	SlaveAddress is the address of the slave to send to.
 * @param	Operation indicates XIIC_WRITE_OPERATION.
 *
 * @return	None.
 *
 * @note		C-Style signature:
-* 		void XIic_mDynSendStartStopAddress(u32 BaseAddress,
+* 		void XIic_DynSendStartStopAddress(u32 BaseAddress,
 *							u8 SlaveAddress,
 *							u8 Operation);
 *
 ******************************************************************************/
-#define XIic_mDynSendStartStopAddress(BaseAddress, SlaveAddress, Operation)  \
-{									     \
-	u8 LocalAddr = (u8)(SlaveAddress << 1);				     \
-	LocalAddr = (LocalAddr & 0xFE) | (Operation);			     \
-	XIo_Out16(BaseAddress + XIIC_DTR_REG_OFFSET - 1,		     \
-		XIIC_TX_DYN_START_MASK | XIIC_TX_DYN_STOP_MASK | LocalAddr); \
+#define XIic_DynSendStartStopAddress(BaseAddress, SlaveAddress, Operation) \
+{									 \
+	u8 LocalAddr = (u8)(SlaveAddress << 1);				 \
+	LocalAddr = (LocalAddr & 0xFE) | (Operation);			 \
+	XIic_WriteReg(BaseAddress, XIIC_DTR_REG_OFFSET,		 \
+			XIIC_TX_DYN_START_MASK | XIIC_TX_DYN_STOP_MASK | \
+			LocalAddr);					 \
 }
 
-/******************************************************************************
+/******************************************************************************/
+/**
 *
 * This macro sends a stop condition on IIC bus for Dynamic logic.
 *
-* @param	BaseAddress contains the base address of the IIC Device.
+* @param	BaseAddress is the base address of the IIC Device.
 * @param	ByteCount is the number of Rx bytes received before the master.
 *		doesn't respond with ACK.
 *
 * @return	None.
 *
-* @note		None.
+* @note		C-Style signature:
+* 		void XIic_DynSendStop(u32 BaseAddress, u32 ByteCount);
 *
 ******************************************************************************/
-#define XIic_mDynSendStop(BaseAddress, ByteCount)			       \
-{									       \
-	XIo_Out16(BaseAddress + XIIC_DTR_REG_OFFSET-1, XIIC_TX_DYN_STOP_MASK | \
-    		  ByteCount); 						       \
+#define XIic_DynSendStop(BaseAddress, ByteCount)			\
+{									\
+	XIic_WriteReg(BaseAddress, XIIC_DTR_REG_OFFSET,		\
+			XIIC_TX_DYN_STOP_MASK | ByteCount); 		\
 }
 
 /************************** Function Prototypes *****************************/
@@ -577,4 +596,3 @@ int XIic_DynInit(u32 BaseAddress);
 #endif
 
 #endif /* end of protection macro */
-

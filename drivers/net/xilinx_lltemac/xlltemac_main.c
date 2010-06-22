@@ -85,7 +85,6 @@
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
 #define BUFFER_ALIGNSEND(adr) ((ALIGNMENT_SEND - ((u32) adr)) % ALIGNMENT_SEND)
 #define BUFFER_ALIGNSEND_PERF(adr) ((ALIGNMENT_SEND_PERF - ((u32) adr)) % 32)
-#define BUFFER_ALIGNRECV(adr) ((ALIGNMENT_RECV - ((u32) adr)) % 32)
 
 /* Default TX/RX Threshold and waitbound values for SGDMA mode */
 #define DFT_TX_THRESHOLD  24
@@ -154,6 +153,7 @@ struct net_local {
 	XInterruptHandler Isr;	/* Pointer to the XLlTemac ISR routine */
 #endif
 	u8 gmii_addr;		/* The GMII address of the PHY */
+	u32 virt_dma_addr;	/* Virtual address to mapped dma */
 
 	/* The underlying OS independent code needs space as well.  A
 	 * pointer to the following XLlTemac structure will be passed to
@@ -167,7 +167,7 @@ struct net_local {
 	unsigned int fifo_irq;	/* fifo irq */
 	unsigned int dma_irq_s;	/* send irq */
 	unsigned int dma_irq_r;	/* recv irq */
-	unsigned int max_frame_size;
+	unsigned int frame_size; /* actual frame size = mtu + padding */
 
 	int cur_speed;
 
@@ -1222,6 +1222,7 @@ static int xenet_open(struct net_device *dev)
 	 */
 	Options = XLlTemac_GetOptions(&lp->Emac);
 	Options |= XTE_FLOW_CONTROL_OPTION;
+	/* Enabling jumbo packets shouldn't be a problem if MTU is smaller */
 	Options |= XTE_JUMBO_OPTION;
 	Options |= XTE_TRANSMITTER_ENABLE_OPTION;
 	Options |= XTE_RECEIVER_ENABLE_OPTION;
@@ -1384,8 +1385,13 @@ static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 	return &lp->stats;
 }
 
+static int descriptor_init(struct net_device *dev);
+static void free_descriptor_skb(struct net_device *dev);
+
 static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 {
+	int result;
+	int device_enable = 0;
 #ifdef CONFIG_XILINX_GIGE_VLAN
 	int head_size = XTE_HDR_VLAN_SIZE;
 #else
@@ -1395,10 +1401,36 @@ static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 	int max_frame = new_mtu + head_size + XTE_TRL_SIZE;
 	int min_frame = 1 + head_size + XTE_TRL_SIZE;
 
-	if ((max_frame < min_frame) || (max_frame > lp->max_frame_size))
+	if (max_frame < min_frame)
 		return -EINVAL;
 
+	if (max_frame > XTE_MAX_JUMBO_FRAME_SIZE) {
+		printk(KERN_INFO "Wrong MTU packet size. Use %d size\n",
+							XTE_JUMBO_MTU);
+		new_mtu = XTE_JUMBO_MTU;
+	}
+
 	dev->mtu = new_mtu;	/* change mtu in net_device structure */
+
+	/* stop driver */
+	if (netif_running(dev)) {
+		device_enable = 1;
+		xenet_close(dev);
+	}
+	/* free all created descriptors for previous size */
+	free_descriptor_skb(dev);
+	/* setup new frame size */
+	lp->frame_size = dev->mtu + XTE_HDR_SIZE + XTE_TRL_SIZE;
+	XLlDma_Initialize(&lp->Dma, lp->virt_dma_addr); /* initialize dma */
+
+	result = descriptor_init(dev); /* create new skb with new size */
+	if (result) {
+		printk(KERN_ERR "Descriptor initialization failed.\n");
+		return -EINVAL;
+	}
+
+	if (device_enable)
+		xenet_open(dev); /* open the device */
 	return 0;
 }
 
@@ -1910,19 +1942,11 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 	struct sk_buff *new_skb;
 	u32 new_skb_baddr;
 	XLlDma_Bd *BdPtr, *BdCurPtr;
-	u32 align;
 	int result;
-
-#if 0
-	int align_max = ALIGNMENT_RECV;
-#else
-	int align_max = 0;
-#endif
-
 
 	skb_queue_head_init(&sk_buff_list);
 	for (num_sk_buffs = 0; num_sk_buffs < free_bd_count; num_sk_buffs++) {
-		new_skb = alloc_skb(lp->max_frame_size + align_max, GFP_ATOMIC);
+		new_skb = netdev_alloc_skb_ip_align(dev, lp->frame_size);
 		if (new_skb == NULL) {
 			break;
 		}
@@ -1953,19 +1977,13 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 
 	new_skb = skb_dequeue(&sk_buff_list);
 	while (new_skb) {
-		/* make sure we're long-word aligned */
-		align = BUFFER_ALIGNRECV(new_skb->data);
-		if (align) {
-			skb_reserve(new_skb, align);
-		}
-
 		/* Get dma handle of skb->data */
-		new_skb_baddr = (u32) dma_map_single(dev->dev.parent, new_skb->data,
-						     lp->max_frame_size,
+		new_skb_baddr = (u32) dma_map_single(dev->dev.parent,
+					new_skb->data, lp->frame_size,
 						     DMA_FROM_DEVICE);
 
 		XLlDma_mBdSetBufAddr(BdCurPtr, new_skb_baddr);
-		XLlDma_mBdSetLength(BdCurPtr, lp->max_frame_size);
+		XLlDma_mBdSetLength(BdCurPtr, lp->frame_size);
 		XLlDma_mBdSetId(BdCurPtr, new_skb);
 		XLlDma_mBdSetStsCtrl(BdCurPtr,
 				     XLLDMA_BD_STSCTRL_SOP_MASK |
@@ -2039,7 +2057,7 @@ static void DmaRecvHandlerBH(unsigned long p)
 				/* get and free up dma handle used by skb->data */
 				skb_baddr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
 				dma_unmap_single(dev->dev.parent, skb_baddr,
-						 lp->max_frame_size,
+						 lp->frame_size,
 						 DMA_FROM_DEVICE);
 
 				/* reset ID */
@@ -2274,8 +2292,8 @@ static void free_descriptor_skb(struct net_device *dev)
 		skb = (struct sk_buff *) XLlDma_mBdGetId(BdPtr);
 		if (skb) {
 			skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdPtr);
-			dma_unmap_single(dev->dev.parent, skb_dma_addr, 
-					 lp->max_frame_size, DMA_FROM_DEVICE);
+			dma_unmap_single(dev->dev.parent, skb_dma_addr,
+					lp->frame_size, DMA_FROM_DEVICE);
 			dev_kfree_skb(skb);
 		}
 		/* find the next BD in the DMA RX BD ring */
@@ -2304,9 +2322,11 @@ static void free_descriptor_skb(struct net_device *dev)
 	}
 
 #if BD_IN_BRAM == 0
-	dma_free_coherent(NULL,
+	kfree(lp->desc_space);
+/* this is old approach which was removed */
+/*	dma_free_coherent(NULL,
 			  lp->desc_space_size,
-			  lp->desc_space, lp->desc_space_handle);
+			  lp->desc_space, lp->desc_space_handle); */
 #else
 	iounmap(lp->desc_space);
 #endif
@@ -3331,10 +3351,10 @@ static int xtenet_setup(
 			pdata->mac_addr[2], pdata->mac_addr[3],
 			pdata->mac_addr[4], pdata->mac_addr[5]);
 
-	lp->max_frame_size = XTE_MAX_JUMBO_FRAME_SIZE;
 	if (ndev->mtu > XTE_JUMBO_MTU)
 		ndev->mtu = XTE_JUMBO_MTU;
 
+	lp->frame_size = ndev->mtu + XTE_HDR_SIZE + XTE_TRL_SIZE;
 
 	if (XLlTemac_IsDma(&lp->Emac)) {
 		int result;
@@ -3346,6 +3366,7 @@ static int xtenet_setup(
 			XLlDma_Initialize(&lp->Dma, pdata->ll_dev_baseaddress);
 		} else {
 		        virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
+			lp->virt_dma_addr = virt_baddr;
 			if (0 == virt_baddr) {
 			        dev_err(dev,
 					"XLlTemac: Could not allocate iomem for local link connected device.\n");
@@ -3473,6 +3494,40 @@ error:
 	return rc;
 }
 
+int xenet_set_mac_address(struct net_device *ndev, void* address) { 
+	struct net_local *lp; 
+	struct sockaddr *macaddr; 
+
+	if (ndev->flags & IFF_UP) 
+		return -EBUSY; 
+
+	lp = netdev_priv(ndev); 
+
+	macaddr = (struct sockaddr*)address; 
+ 
+	if (!is_valid_ether_addr(macaddr->sa_data)) 
+		return -EADDRNOTAVAIL; 
+ 
+	/* synchronized against open : rtnl_lock() held by caller */ 
+	memcpy(ndev->dev_addr, macaddr->sa_data, ETH_ALEN); 
+ 
+	if (!is_valid_ether_addr(ndev->dev_addr)) 
+		return -EADDRNOTAVAIL; 
+ 
+	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) { 
+		/* should not fail right after an initialize */ 
+		dev_err(&ndev->dev, "XLlTemac: could not set MAC address.\n"); 
+		return -EIO; 
+	} 
+	dev_info(&ndev->dev, 
+		"MAC address is now %02x:%02x:%02x:%02x:%02x:%02x\n", 
+		ndev->dev_addr[0], ndev->dev_addr[1], 
+		ndev->dev_addr[2], ndev->dev_addr[3], 
+		ndev->dev_addr[4], ndev->dev_addr[5]); 
+
+	return 0; 
+} 
+
 static u32 get_u32(struct of_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
 	if(p) {
@@ -3491,6 +3546,7 @@ static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_change_mtu	= xenet_change_mtu,
 	.ndo_tx_timeout	= xenet_tx_timeout,
 	.ndo_get_stats	= xenet_get_stats,
+	.ndo_set_mac_address = xenet_set_mac_address,
 };
 
 static struct of_device_id xtenet_fifo_of_match[] = {

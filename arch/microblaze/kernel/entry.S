@@ -305,7 +305,7 @@ C_ENTRY(_user_exception):
 	swi	r11, r1, PTO+PT_R1;		/* Store user SP.  */
 	addi	r11, r0, 1;
 	swi	r11, r0, TOPHYS(PER_CPU(KM));	/* Now we're in kernel-mode.  */
-2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));	/* get saved current */
+2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
 	/* Save away the syscall number.  */
 	swi	r12, r1, PTO+PT_R0;
 	tovirt(r1,r1)
@@ -397,7 +397,8 @@ C_ENTRY(ret_from_trap):
 1:
 	/* We're returning to user mode, so check for various conditions that
 	 * trigger rescheduling. */
-	lwi	r11, CURRENT_TASK, TS_THREAD_INFO;/* get thread info from current task */
+	/* get thread info from current task */
+	lwi	r11, CURRENT_TASK, TS_THREAD_INFO;
 	lwi	r11, r11, TI_FLAGS;		/* get flags in thread info */
 	andi	r11, r11, _TIF_NEED_RESCHED;
 	beqi	r11, 5f;
@@ -406,7 +407,8 @@ C_ENTRY(ret_from_trap):
 	nop;				/* delay slot */
 
 	/* Maybe handle a signal */
-5:	lwi	r11, CURRENT_TASK, TS_THREAD_INFO;/* get thread info from current task*/
+5:	/* get thread info from current task*/
+	lwi	r11, CURRENT_TASK, TS_THREAD_INFO;
 	lwi	r11, r11, TI_FLAGS;	/* get flags in thread info */
 	andi	r11, r11, _TIF_SIGPENDING;
 	beqi	r11, 1f;		/* Signals to handle, handle them */
@@ -552,7 +554,7 @@ C_ENTRY(sys_rt_sigreturn_wrapper):
 	swi	r11, r1, PTO+PT_R1; /* Store user SP.  */		\
 	addi	r11, r0, 1;						\
 	swi	r11, r0, TOPHYS(PER_CPU(KM)); /* Now we're in kernel-mode.*/\
-2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE)); /* get saved current */\
+2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));	\
 	/* Save away the syscall number.  */				\
 	swi	r0, r1, PTO+PT_R0;					\
 	tovirt(r1,r1)
@@ -835,7 +837,8 @@ no_intr_resched:
 2:
 #ifdef CONFIG_PREEMPT
 	lwi	r11, CURRENT_TASK, TS_THREAD_INFO;
-	lwi	r5, r11, TI_PREEMPT_COUNT; /* MS: get preempt_count from thread info */
+	/* MS: get preempt_count from thread info */
+	lwi	r5, r11, TI_PREEMPT_COUNT;
 	bgti	r5, restore;
 
 	lwi	r5, r11, TI_FLAGS;		/* get flags in thread info */
@@ -914,7 +917,7 @@ C_ENTRY(_debug_exception):
 	swi	r11, r1, PTO+PT_R1; /* Store user SP.  */
 	addi	r11, r0, 1;
 	swi	r11, r0, TOPHYS(PER_CPU(KM));	/* Now we're in kernel-mode.  */
-2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE)); /* get saved current */
+2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
 	/* Save away the syscall number.  */
 	swi	r0, r1, PTO+PT_R0;
 	tovirt(r1,r1)
@@ -1046,8 +1049,8 @@ ENTRY(_switch_to)
 	nop
 	swi	r12, r11, CC_FSR
 
-	/* update r31, the current */
-	lwi	CURRENT_TASK, r6, TI_TASK/* give me pointer to task which will be next */
+	/* update r31, the current-give me pointer to task which will be next */
+	lwi	CURRENT_TASK, r6, TI_TASK
 	/* stored it to current_save too */
 	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE)
 

@@ -20,6 +20,7 @@
 #include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 
 #define DRIVER_NAME "xilinx_gpiopss"
