@@ -96,6 +96,8 @@
 #define SCU_WDT_BASE		(SCU_PERIPH_BASE + 0x620)
 #define SCU_GIC_DIST_BASE	(SCU_PERIPH_BASE + 0x1000)
 
+#define PL310_L2CC_BASE		0xFFE00000
+
 /*
  * GIC Interrupts for Pele
  */
