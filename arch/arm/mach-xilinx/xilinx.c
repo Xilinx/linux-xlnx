@@ -22,6 +22,7 @@
 #include <asm/mach/map.h>
 #include <linux/io.h>
 #include <asm/hardware/gic.h>
+#include <asm/hardware/cache-l2x0.h>
 #include <mach/hardware.h>
 #include <mach/uart.h>
 #include <mach/common.h>
@@ -76,9 +77,24 @@ static struct spi_board_info spi_devs[] __initdata = {
  **/
 static void __init board_init(void)
 {
+#ifdef CONFIG_CACHE_L2X0
+	void *l2cache_base;
+#endif
+
 	pr_debug("->board_init\n");
 
 	platform_device_init();
+
+#ifdef CONFIG_CACHE_L2X0
+	/* Static mapping, never released */
+	l2cache_base = ioremap(PL310_L2CC_BASE, SZ_4K);
+	BUG_ON(!l2cache_base);
+
+	/*
+	 * 64KB way size, 8-way associativity, parity disabled
+	 */
+	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
+#endif
 
 	i2c_register_board_info(0, i2c_devs, ARRAY_SIZE(i2c_devs));
 
