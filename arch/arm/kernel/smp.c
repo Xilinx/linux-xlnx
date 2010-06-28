@@ -415,11 +415,6 @@ asmlinkage void __exception do_local_timer(struct pt_regs *regs)
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int cpu = smp_processor_id();
 
-	static int count = 0;
-
-	if ((count++ % 10) == 0)
-		printk("do_local_timer, count = %d\n", count);
-
 	if (local_timer_ack()) {
 		irq_stat[cpu].local_timer_irqs++;
 		ipi_timer();
