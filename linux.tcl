@@ -14,7 +14,7 @@ mwr 0xfef00000 0x2
 
 # load the ramdisk
 
-dow -norst ramdisk1M.image.elf
+dow -norst ramdisk1M.image.gz.elf
 
 # load the kernel
 
