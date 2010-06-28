@@ -289,9 +289,7 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	/*
 	 * Setup the percpu timer for this CPU.
 	 */
-#ifdef CONFIG_LOCAL_TIMERS		/* hack for Xilinx for now */
 	percpu_timer_setup();
-#endif
 
 	calibrate_delay();
 

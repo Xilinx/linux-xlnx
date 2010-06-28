@@ -189,13 +189,8 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		 * Enable the local timer or broadcast device for the
 		 * boot CPU, but only if we have more than one CPU.
 		 */
-#ifdef CONFIG_LOCAL_TIMERS		/* hack for Xilinx for now */
 		percpu_timer_setup();
-#endif
-		/*
-		 * Initialise the SCU and wake up the secondary core using
-		 * wakeup_secondary().
-		 */
+
 		scu_enable(scu_base);
 		wakeup_secondary();
 	}
