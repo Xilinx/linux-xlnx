@@ -223,7 +223,7 @@ struct platform_device xilinx_norpss_device = {
 	.num_resources = ARRAY_SIZE(xnorpss_0_resource),
 };
 
-#define ETH0_PHY_MASK 7
+#define ETH0_PHY_MASK 0x17
 #define ETH1_PHY_MASK 24
 
 struct xemacpss_eth_data {
