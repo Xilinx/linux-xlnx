@@ -62,7 +62,7 @@ static struct spi_eeprom at25640 = {
 static struct spi_board_info spi_devs[] __initdata = {
         {
                 .modalias = "at25",
-                .max_speed_hz = 5000000,
+                .max_speed_hz = 1000000,
                 .bus_num = 0,
                 .chip_select = 0,
                 .platform_data = &at25640,
