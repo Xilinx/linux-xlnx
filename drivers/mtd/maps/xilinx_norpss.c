@@ -38,13 +38,13 @@
  * Register values for using NOR interface of SMC Controller
  */
 #define SET_CYCLES_REG ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
-			(0x0 << 17) | /* set_t5 or t_tr from sram_cycles */    \
-			(0x1 << 14) | /* set_t4 or t_pc from sram_cycles */    \
+			(0x1 << 17) | /* set_t5 or t_tr from sram_cycles */    \
+			(0x2 << 14) | /* set_t4 or t_pc from sram_cycles */    \
 			(0x5 << 11) | /* set_t3 or t_wp from sram_cycles */    \
-			(0x1 << 8)  | /* set_t2 t_ceoe from sram_cycles */     \
+			(0x2 << 8)  | /* set_t2 t_ceoe from sram_cycles */     \
 			(0x7 << 4)  | /* set_t1 t_wc from sram_cycles */       \
 			(0x7))	      /* set_t0 t_rc from sram_cycles */
-				      /* 0x00006977 */
+
 #define SET_OPMODE_REG ((0x1 << 13) | /* set_burst_align,set to 32 beats */    \
 			(0x0 << 12) | /* set_bls,set to default */	       \
 			(0x0 << 11) | /* set_adv bit, set to default */	       \
@@ -53,13 +53,13 @@
 			(0x0 << 6)  | /* set_wr_sync, set to 0 */	       \
 			(0x0 << 3)  | /* set_rd_bl,read brust len,set to 0 */  \
 			(0x0 << 2)  | /* set_rd_sync, set to 0 */	       \
-			(0x1))	      /* set_mw, memory width, 16bits width*/
-				      /* 0x00002001 */
-#define DIRECT_CMD_REG ((0x0 << 23) | /* Chip 0 from interface 0 */	       \
+			(0x0))	      /* set_mw, memory width, 16bits width*/
+				      /* 0x00002000 */
+#define DIRECT_CMD_REG ((0x1 << 23) | /* Chip 1 from interface 0 */	       \
 			(0x2 << 21) | /* UpdateRegs operation */	       \
 			(0x0 << 20) | /* No ModeReg write */		       \
 			(0x0))	      /* Addr, not used in UpdateRegs */
-				      /* 0x00400000 */
+				      /* 0x01400000 */
 
 
 /**
