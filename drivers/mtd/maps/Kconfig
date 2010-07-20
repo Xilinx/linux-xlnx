@@ -540,12 +540,6 @@ config MTD_VMU
 	  To build this as a module select M here, the module will be called
 	  vmu-flash.
 
-config MTD_XILINX_PSS_NOR
-	tristate "Xilinx PSS board NOR flash mappings"
-	depends on MTD_CFI && ARCH_XILINX
-	help
-	  This enables access to the NOR flash chips on PSS board.
-
 config MTD_PISMO
 	tristate "MTD discovery driver for PISMO modules"
 	depends on I2C

@@ -23,6 +23,7 @@
 #include <mach/hardware.h>
 #include <mach/dma.h>
 #include <linux/spi/spi.h>
+#include <linux/mtd/physmap.h>
 
 /* Create all the platform devices for the BSP */
 
@@ -200,24 +201,22 @@ struct platform_device xilinx_gpiopss_0_device = {
 };
 
 /*************************PSS NOR***********************/
-int flash_width = 2;
+static struct physmap_flash_data xilinx_norpss_data = {
+	.width		= 1, /* operating width of the flash */
+};
+
 static struct resource xnorpss_0_resource[] = {
 	{
 		.start	= NOR_BASE,
-		.end	= NOR_BASE + 0xFFFFFF,
-		.flags	= IORESOURCE_MEM
-	},
-	{
-		.start	= SMC_BASE,
-		.end	= SMC_BASE + 0xFF,
+		.end	= NOR_BASE + SZ_32M - 1,
 		.flags	= IORESOURCE_MEM
 	},
 };
 struct platform_device xilinx_norpss_device = {
-	.name = "xnorpss",
+	.name = "physmap-flash",
 	.id = 0,
 	.dev = {
-		.platform_data = &flash_width,
+		.platform_data = &xilinx_norpss_data,
 	},
 	.resource =  xnorpss_0_resource,
 	.num_resources = ARRAY_SIZE(xnorpss_0_resource),

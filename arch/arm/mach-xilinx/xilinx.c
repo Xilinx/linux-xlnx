@@ -26,11 +26,39 @@
 #include <mach/hardware.h>
 #include <mach/uart.h>
 #include <mach/common.h>
+#include <mach/smc.h>
 
 #include <linux/i2c.h>
 #include <linux/i2c/at24.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/eeprom.h>
+
+/*
+ * Register values for using NOR interface of SMC Controller
+ */
+#define SET_CYCLES_REG ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
+			(0x1 << 17) | /* set_t5 or t_tr from sram_cycles */    \
+			(0x2 << 14) | /* set_t4 or t_pc from sram_cycles */    \
+			(0x5 << 11) | /* set_t3 or t_wp from sram_cycles */    \
+			(0x2 << 8)  | /* set_t2 t_ceoe from sram_cycles */     \
+			(0x7 << 4)  | /* set_t1 t_wc from sram_cycles */       \
+			(0x7))	      /* set_t0 t_rc from sram_cycles */
+
+#define SET_OPMODE_REG ((0x1 << 13) | /* set_burst_align,set to 32 beats */    \
+			(0x0 << 12) | /* set_bls,set to default */	       \
+			(0x0 << 11) | /* set_adv bit, set to default */	       \
+			(0x0 << 10) | /* set_baa, we don't use baa_n */	       \
+			(0x0 << 7)  | /* set_wr_bl,write brust len,set to 0 */ \
+			(0x0 << 6)  | /* set_wr_sync, set to 0 */	       \
+			(0x0 << 3)  | /* set_rd_bl,read brust len,set to 0 */  \
+			(0x0 << 2)  | /* set_rd_sync, set to 0 */	       \
+			(0x0))	      /* set_mw, memory width, 16bits width*/
+				      /* 0x00002000 */
+#define DIRECT_CMD_REG ((0x1 << 23) | /* Chip 1 from interface 0 */	       \
+			(0x2 << 21) | /* UpdateRegs operation */	       \
+			(0x0 << 20) | /* No ModeReg write */		       \
+			(0x0))	      /* Addr, not used in UpdateRegs */
+				      /* 0x01400000 */
 
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
@@ -44,8 +72,8 @@ static struct at24_platform_data board_eeprom = {
 };
 
 static struct i2c_board_info i2c_devs[] __initdata = {
-	{ 
-		I2C_BOARD_INFO("24c02", 0x55), 
+	{
+		I2C_BOARD_INFO("24c02", 0x55),
 		.platform_data = &board_eeprom,
 	},
 };
@@ -72,6 +100,19 @@ static struct spi_board_info spi_devs[] __initdata = {
 #endif
 
 /**
+ * smc_init_nor - Initialize the NOR flash interface of the SMC.
+ *
+ **/
+#ifdef CONFIG_MTD_PHYSMAP
+static void smc_init_nor(void __iomem *smc_base)
+{
+	__raw_writel(SET_CYCLES_REG, smc_base + XSMCPSS_MC_SET_CYCLES);
+	__raw_writel(SET_OPMODE_REG, smc_base + XSMCPSS_MC_SET_OPMODE);
+	__raw_writel(DIRECT_CMD_REG, smc_base + XSMCPSS_MC_DIRECT_CMD);
+}
+#endif
+
+/**
  * board_init - Board specific initialization for the Xilinx BSP.
  *
  **/
@@ -79,6 +120,10 @@ static void __init board_init(void)
 {
 #ifdef CONFIG_CACHE_L2X0
 	void *l2cache_base;
+#endif
+
+#ifdef CONFIG_MTD_PHYSMAP
+	void __iomem *smc_base;
 #endif
 
 	pr_debug("->board_init\n");
@@ -103,6 +148,11 @@ static void __init board_init(void)
  			         ARRAY_SIZE(spi_devs));
 #endif
 
+#ifdef CONFIG_MTD_PHYSMAP
+	smc_base = ioremap(SMC_BASE, SZ_256);
+	smc_init_nor(smc_base);
+#endif
+
 	pr_debug("<-board_init\n");
 }
 
@@ -115,15 +165,15 @@ static void __init irq_init(void)
 	pr_debug("->irq_init\n");
 
 	gic_cpu_base_addr = (void __iomem *)SCU_GIC_CPU_BASE;
-	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, 29); 
+	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, 29);
 	gic_cpu_init(0, gic_cpu_base_addr);
 
 	pr_debug("<-irq_init\n");
 }
 
 /* The minimum devices needed to be mapped before the VM system is up and running
-   include the GIC, UART and Timer Counter. Some of the devices are on the shared 
-   bus (default) while others are on the private bus (non-shared). The boot 
+   include the GIC, UART and Timer Counter. Some of the devices are on the shared
+   bus (default) while others are on the private bus (non-shared). The boot
    register addresses are also setup at this time so that SMP processing can use
    them.
  */
@@ -146,7 +196,7 @@ static struct map_desc io_desc[] __initdata = {
 		.pfn		= __phys_to_pfn(BOOT_REG_BASE),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
-	}, 
+	},
 #endif
 
 #ifdef CONFIG_DEBUG_LL
@@ -175,15 +225,15 @@ static void __init map_io(void)
 	/* call this very early before the kernel early console is enabled */
 
 	pr_debug("Xilinx early UART initialized\n");
-	xilinx_uart_init();	
+	xilinx_uart_init();
 #endif
 
 	pr_debug("<-map_io\n");
 }
 
 /* Xilinx uses a probe to load the kernel such that ATAGs are not setup.
- * The boot parameters in the machine description below are set to zero 
- * so that that the default ATAGs will be used in setup.c. Defaults could 
+ * The boot parameters in the machine description below are set to zero
+ * so that that the default ATAGs will be used in setup.c. Defaults could
  * be defined here and pointed to also.
  */
 
