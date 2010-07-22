@@ -523,6 +523,7 @@ struct cfi_fixup {
 #define CFI_MFR_ATMEL	0x001F
 #define CFI_MFR_SAMSUNG	0x00EC
 #define CFI_MFR_ST	0x0020 /* STMicroelectronics */
+#define CFI_MFR_NMX 	0x0089 /* Numonyx */
 
 void cfi_fixup(struct mtd_info *mtd, struct cfi_fixup* fixups);
 

@@ -158,6 +158,9 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 	__u32 base = 0;
 	int num_erase_regions = cfi_read_query(map, base + (0x10 + 28)*ofs_factor);
 	int i;
+	int extendedId1 = 0;
+	int extendedId2 = 0;
+	int extendedId3 = 0;
 
 	xip_enable(base, map, cfi);
 #ifdef DEBUG_CFI
@@ -195,6 +198,15 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 	cfi->mfr = cfi_read_query16(map, base);
 	cfi->id = cfi_read_query16(map, base + ofs_factor);
 
+	/* Get device ID cycle 1,2,3 for Numonyx/ST devices */
+	if ((cfi->mfr == CFI_MFR_NMX || cfi->mfr == CFI_MFR_ST)
+		&& ((cfi->id & 0xff) == 0x7e)
+		&& (le16_to_cpu(cfi->cfiq->P_ID) == 0x0002)) {
+		extendedId1 = cfi_read_query16(map, base + 0x1 * ofs_factor);
+		extendedId2 = cfi_read_query16(map, base + 0xe * ofs_factor);
+		extendedId3 = cfi_read_query16(map, base + 0xf * ofs_factor);
+	}
+
 	/* Get AMD/Spansion extended JEDEC ID */
 	if (cfi->mfr == CFI_MFR_AMD && (cfi->id & 0xff) == 0x7e)
 		cfi->id = cfi_read_query(map, base + 0xe * ofs_factor) << 8 |
@@ -212,6 +224,16 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 	cfi->cfiq->A_ADR = le16_to_cpu(cfi->cfiq->A_ADR);
 	cfi->cfiq->InterfaceDesc = le16_to_cpu(cfi->cfiq->InterfaceDesc);
 	cfi->cfiq->MaxBufWriteSize = le16_to_cpu(cfi->cfiq->MaxBufWriteSize);
+
+   /* If the device is a M29EW used in 8-bit mode, adjust buffer size */
+	if ((cfi->cfiq->MaxBufWriteSize > 0x8) && (cfi->mfr == CFI_MFR_NMX ||
+		 cfi->mfr == CFI_MFR_ST) && (extendedId1 == 0x7E) &&
+		 (extendedId2 == 0x22 || extendedId2 == 0x23 || extendedId2 == 0x28) &&
+		 (extendedId3 == 0x01)) {
+		cfi->cfiq->MaxBufWriteSize = 0x8;
+		pr_warning("Adjusted buffer size on Numonyx flash M29EW family");
+		pr_warning("in 8 bit mode\n");
+    }
 
 #ifdef DEBUG_CFI
 	/* Dump the information therein */
