@@ -73,7 +73,7 @@ static struct at24_platform_data board_eeprom = {
 
 static struct i2c_board_info i2c_devs[] __initdata = {
 	{
-		I2C_BOARD_INFO("24c02", 0x55),
+		I2C_BOARD_INFO("24c02", 0x50),
 		.platform_data = &board_eeprom,
 	},
 };
