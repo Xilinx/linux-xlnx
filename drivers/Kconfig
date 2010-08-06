@@ -110,6 +110,8 @@ source "drivers/dca/Kconfig"
 
 source "drivers/auxdisplay/Kconfig"
 
+source "drivers/xilinx_common/Kconfig"
+
 source "drivers/uio/Kconfig"
 
 source "drivers/vlynq/Kconfig"
