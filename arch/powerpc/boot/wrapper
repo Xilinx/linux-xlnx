@@ -164,7 +164,7 @@ coff)
     link_address='0x500000'
     pie=
     ;;
-miboot|uboot*)
+miboot|uboot|uboot-fit)
     # miboot and U-boot want just the bare bits, not an ELF binary
     ext=bin
     objflags="-O binary"
@@ -336,6 +336,16 @@ uboot-obs600)
     if [ -z "$cacheit" ]; then
 	rm -f "$vmz"
     fi
+    exit 0
+    ;;
+uboot-fit)
+    pwd
+    rm -f "$ofile"
+    #[ "$vmz" != vmlinux.bin.gz ] && mv "$vmz" "vmlinux.bin.gz"
+    mv "$dtb" "target.dtb"
+    cp arch/powerpc/boot/kernel_fdt.its .
+    mkimage -f kernel_fdt.its "$ofile"
+    #rm kernet_fdt.its
     exit 0
     ;;
 esac
