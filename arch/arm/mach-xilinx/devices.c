@@ -82,14 +82,22 @@ static struct resource dmac0[] = {
 		.end = DMAC0_BASE + 0xFFF,
 		.flags = IORESOURCE_MEM,
 	}, {
+		.start = IRQ_DMAC0_ABORT,
+		.end = IRQ_DMAC0_ABORT,
+		.flags = IORESOURCE_IRQ,
+	}, {
 		.start = IRQ_DMAC0,
-		.end = IRQ_DMAC0 + 4,
+		.end = IRQ_DMAC0 + 3,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_DMAC3,
+		.end = IRQ_DMAC3 + 3,
 		.flags = IORESOURCE_IRQ,
 	},
 };
 
 struct pl330_platform_config dmac_config0 = {
-	.channels = 4,
+	.channels = 8,
 	.starting_channel = 0,
 };
 
@@ -105,34 +113,6 @@ struct platform_device dmac_device0 = {
 	.num_resources = ARRAY_SIZE(dmac0),
 };
 
-static struct resource dmac1[] = {
-	{
-		.start = DMAC1_BASE,
-		.end = DMAC1_BASE + 0xFFF,
-		.flags = IORESOURCE_MEM,
-	}, {
-		.start = IRQ_DMAC1,
-		.end = IRQ_DMAC1 + 4,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-
-struct pl330_platform_config dmac_config1 = {
-	.channels = 4,
-	.starting_channel = 4,
-};
-
-struct platform_device dmac_device1 = {
-	.name = "pl330",
-	.id = 1,
-	.dev = {
-		.platform_data = &dmac_config1,
-		.dma_mask = &dma_mask,
-		.coherent_dma_mask = 0xFFFFFFFF,
-	},
-	.resource = dmac1,
-	.num_resources = ARRAY_SIZE(dmac1),
-};
 
 #ifdef CONFIG_XILINX_TEST
 
@@ -380,7 +360,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&uart_device0,
 	&uart_device1,
 	&dmac_device0,
-	&dmac_device1,
+	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
 	&xilinx_dma_test,
 #endif

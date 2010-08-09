@@ -24,16 +24,16 @@
 /*
  * defines the clock rates
  */
-#define PERIPHERAL_CLOCK_RATE	2500000
-#define CLOCK_TICK_RATE		PERIPHERAL_CLOCK_RATE / 32 /* prescaled in timer */
+#define PERIPHERAL_CLOCK_RATE 2500000
+#define CLOCK_TICK_RATE	(PERIPHERAL_CLOCK_RATE / 32) /* prescaled in timer */
 
 /* There are a couple ram addresses needed for communication between the boot
  * loader software and the linux kernel with multiple cpus in the kernel (SMP).
  * A single page of memory is reserved so that the primary CPU can map it in
- * the MMU. 
+ * the MMU.
 
- * The register addresses are reserved in the on-chip RAM and these addresses 
- * are mapped flat (virtual = physical). The page must be mapped early before 
+ * The register addresses are reserved in the on-chip RAM and these addresses
+ * are mapped flat (virtual = physical). The page must be mapped early before
  * the VM system is running for the SMP code to use it. Stay away from the end
  * of the page (0xFFC) as it seems to cause issues and it maybe related to 64
  * bit accesses on the bus for on chip memory.
@@ -41,8 +41,8 @@
 
 #define BOOT_REG_BASE		0xFFFE7000
 
-#define BOOT_ADDRREG_OFFSET	0xFF0	
-#define BOOT_LOCKREG_OFFSET	0xFF4   
+#define BOOT_ADDRREG_OFFSET	0xFF0
+#define BOOT_LOCKREG_OFFSET	0xFF4
 
 #define BOOT_LOCK_KEY		0xFACECAFE
 
@@ -112,14 +112,15 @@
 
 #define IRQ_GIC_SPI_START	32
 #define IRQ_TIMERCOUNTER0	42
-#define IRQ_DMAC0		45
+#define IRQ_DMAC0_ABORT		45
+#define IRQ_DMAC0		46
 #define IRQ_GPIO0		52
 #define IRQ_ETH0                54
 #define IRQ_I2C0		57
 #define IRQ_SPI0		58
 #define IRQ_UART0		59
 #define IRQ_TIMERCOUNTER1	69
-#define IRQ_DMAC1		72
+#define IRQ_DMAC3		72
 #define IRQ_ETH1                77
 #define IRQ_I2C1		80
 #define IRQ_SPI1		81

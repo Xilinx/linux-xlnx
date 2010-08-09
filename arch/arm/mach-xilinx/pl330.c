@@ -131,8 +131,10 @@ static dma_t dma_chan[MAX_DMA_CHANNELS];
  * @base: Device base address
  * @channels: Number of channels
  * @starting_channel: Starting channel number in the driver API
- * @starting_irq: Starting interrupt number in the driver API
- * @ending_irq: Last interrupt number in the driver API
+ * @starting_irq: Starting interrupt number in the driver API of 1st half
+ * @ending_irq: Last interrupt number in the driver API of 1st section
+ * @starting_irq1: Starting interrupt number in the driver API of 2nd half
+ * @ending_irq1: Last interrupt number in the driver API of 2nd section
  * @dev_id: Device id. The id starts from zero for the first PL330 device. The
  *	last id is MAX_DMA_DEVICES - 1.
  * @dev: Pointer to the device struct.
@@ -149,6 +151,8 @@ struct pl330_device_data {
 	unsigned int starting_channel;
 	unsigned int starting_irq;
 	unsigned int ending_irq;
+	unsigned int starting_irq1;
+	unsigned int ending_irq1;
 	unsigned int dev_id;
 	struct device *dev;
 	spinlock_t lock;
@@ -166,10 +170,10 @@ struct pl330_device_data {
  *	number is from 0 to 7. The channel number for the first DMA device is
  *	from 0 to 3. The channel number for the second DMA device is 4 to 7.
  * @dev_chan: Channel number of the device. This number is relative to the
- * 	corresponding device. The number starts at 0. For example, if a system
- * 	system has two DMA devices, each DMA device has 4 channels. The
- * 	dev_chan for the first device is 0 to 3. The dev_chan for the second
- * 	second device is also 0 to 3.
+ *	corresponding device. The number starts at 0. For example, if a system
+ *	system has two DMA devices, each DMA device has 4 channels. The
+ *	dev_chan for the first device is 0 to 3. The dev_chan for the second
+ *	second device is also 0 to 3.
  * @irq: Interrupt number assigned to the channel
  */
 struct pl330_channel_static_data {
@@ -183,7 +187,7 @@ struct pl330_channel_static_data {
  * struct pl330_channel_data - Channel related information
  * @dma_program: Starting address of DMA program for the channel set by users
  * @dma_prog_buf: Buffer for DMA program if there is a need to construct the
- * 	program. This is a virtual address.
+ *	program. This is a virtual address.
  * @dma_prog_phy: Buffer physical address for DMA program. This is needed when
  *	the buffer is released by dma_free_coherent.
  * @dma_prog_len: Length of constructed DMA program.
@@ -249,7 +253,7 @@ static struct pl330_driver_data driver_data;
 #define PL330_ES_OFFSET		0x024 /* DMA Event Status Register */
 #define PL330_INTSTATUS_OFFSET	0x028 /* DMA Interrupt Status Register */
 #define PL330_INTCLR_OFFSET	0x02c /* DMA Interrupt Clear Register */
-#define PL330_FSM_OFFSET 	0x030 /* DMA Fault Status DMA Manager
+#define PL330_FSM_OFFSET	0x030 /* DMA Fault Status DMA Manager
 				       * Register
 				       */
 #define PL330_FSC_OFFSET	0x034 /* DMA Fault Status DMA Chanel Register
@@ -492,7 +496,7 @@ inline int pl330_instr_dmalp(char *dma_prog, unsigned lc,
  * @dma_prog: the DMA program buffer, it's the starting address for the
  *	instruction being constructed
  * @body_start: the starting address of the loop body. It is used to calculate
- * 	the bytes of backward jump.
+ *	the bytes of backward jump.
  * @lc:	Loop counter register, can either be 0 or 1.
  *
  * Returns the number of bytes for this instruction which is 2.
@@ -685,7 +689,7 @@ inline unsigned pl330_to_endian_swap_size_bits(unsigned endian_swap_size)
  * pl330_to_burst_size_bits - conversion function from the burst
  *	size to the bit encoding of the CCR
  * @burst_size: The burst size. It's the data width. In terms of bytes,
- * 	it could be 1, 2, 4, 8, 16, 32, 64, or 128. It must be no larger
+ *	it could be 1, 2, 4, 8, 16, 32, 64, or 128. It must be no larger
  *	than the bus width. (We are using DMA assembly syntax.)
  *
  * Returns the burst size bit encoding for the CCR.
@@ -714,7 +718,7 @@ inline unsigned pl330_to_burst_size_bits(unsigned burst_size)
 
 /**
  * pl330_to_ccr_value - conversion function from PL330 bus transfer descriptors
- * 	to CCR value. All the values passed to the functions are in terms
+ *	to CCR value. All the values passed to the functions are in terms
  *	of assembly languages, not in terms of the register bit encoding.
  * @src_bus_des: The source AXI bus descriptor.
  * @src_inc: Whether the source address should be increment.
@@ -791,12 +795,12 @@ u32 pl330_to_ccr_value(struct pl330_bus_des *src_bus_des,
  *	as the body using loop counter 0. The function also makes sure the
  *	loop body and the lpend is in the same cache line.
  * @dma_prog_start: The very start address of the DMA program. This is used
- * 	to calculate whether the loop is in a cache line.
+ *	to calculate whether the loop is in a cache line.
  * @cache_length: The icache line length, in terms of bytes. If it's zero, the
  *	performance enhancement feature will be turned off.
  * @dma_prog_loop_start: The starting address of the loop (DMALP).
  * @loop_count: The inner loop count. Loop count - 1 will be used to initialize
- * 	the loop counter.
+ *	the loop counter.
  * Returns the number of bytes the loop has.
  */
 int pl330_construct_single_loop(char *dma_prog_start,
@@ -846,17 +850,17 @@ int pl330_construct_single_loop(char *dma_prog_start,
 
 /**
  * pl330_construct_nested_loop - Construct a nested loop with only
- * 	DMALD and DMAST in the inner loop body. It uses loop counter 1 for
+ *	DMALD and DMAST in the inner loop body. It uses loop counter 1 for
  *	the outer loop and loop counter 0 for the inner loop.
  * @dma_prog_start: The very start address of the DMA program. This is used
- * 	to caculate whether the loop is in a cache line.
+ *	to caculate whether the loop is in a cache line.
  * @cache_length: The icache line length, in terms of bytes. If it's zero, the
  *	performance enhancement feture will be turned off.
  * @dma_prog_loop_start: The starting address of the loop (DMALP).
  * @loop_count_outer: The outer loop count. Loop count - 1 will be used to
- * 	initialize the loop counter.
+ *	initialize the loop counter.
  * @loop_count_inner: The inner loop count. Loop count - 1 will be used to
- * 	initialize the loop counter.
+ *	initialize the loop counter.
  */
 int pl330_construct_nested_loop(char *dma_prog_start,
 				int cache_length,
@@ -960,8 +964,8 @@ int pl330_construct_nested_loop(char *dma_prog_start,
  * @src_is_mem: Source is memory buffer and the address is incremental.
  * @endian_swap_size: endian swap size, in bits, 8, 16, 32, 64, or 128.
  * @cache_length: The DMA instruction cache line length, in bytes. This
- * 	is used to make sure the loop is in one cache line. If this argument
- * 	is zero, the performance enhancement will be turned off.
+ *	is used to make sure the loop is in one cache line. If this argument
+ *	is zero, the performance enhancement will be turned off.
  */
 struct prog_build_args {
 	unsigned int channel;
@@ -996,7 +1000,7 @@ int pl330_build_dma_prog(unsigned int channel,
 */
 /**
  * pl330_build_dma_prog - Construct the DMA program based on the descriptions
- * 	of the DMA transfer. The function handles memory to device and device
+ *	of the DMA transfer. The function handles memory to device and device
  *	to memory DMA transfers. It also handles unalgined head and small
  *	amount of residue tail.
  * @build_args: Instance of program build arguments. See the above struct
@@ -1142,7 +1146,7 @@ int pl330_build_dma_prog(struct prog_build_args *build_args)
 	}
 
 	if (loop_count > 0) {
-		PDEBUG("now loop count is %d \n", loop_count);
+		PDEBUG("now loop count is %d\n", loop_count);
 		dma_prog_buf += pl330_construct_single_loop(dma_prog_start,
 							    cache_length,
 							    dma_prog_buf,
@@ -1155,7 +1159,7 @@ int pl330_build_dma_prog(struct prog_build_args *build_args)
 		tail_bytes = tail_bytes % mem_bus_des->burst_size;
 
 		if (tail_words) {
-			PDEBUG("tail words is %d \n", tail_words);
+			PDEBUG("tail words is %d\n", tail_words);
 			/*
 			 * if we can transfer the tail in words, we will
 			 * transfer words as much as possible
@@ -1208,7 +1212,7 @@ int pl330_build_dma_prog(struct prog_build_args *build_args)
 						   PL330_MOV_CCR,
 						   ccr_value);
 
-			PDEBUG("tail bytes is %d \n", tail_bytes);
+			PDEBUG("tail bytes is %d\n", tail_bytes);
 			dma_prog_buf +=
 				pl330_construct_single_loop(dma_prog_start,
 							    cache_length,
@@ -1465,7 +1469,7 @@ int pl330_request_irq(unsigned int dev_id)
 	channel_static_data = driver_data.channel_static_data
 		+ device_data->starting_channel;
 
-	irq = device_data->starting_irq;
+	irq = device_data->fault_irq;
 
 	/* set up the fault irq */
 	status = request_irq(irq, pl330_fault_isr,
@@ -1476,14 +1480,12 @@ int pl330_request_irq(unsigned int dev_id)
 		       irq, status);
 		return -1;
 	} else {
-		device_data->fault_irq = irq;
-
 		PDEBUG("PL330 request fault irq %d successful\n", irq);
 	}
 
 
-	for (irq = device_data->starting_irq + 1;
-	     irq <= device_data->ending_irq; irq++) {
+	for (irq = device_data->starting_irq;
+	     irq != 0 && irq <= device_data->ending_irq; irq++) {
 
 		/* set up the done irq */
 		status = request_irq(irq, pl330_done_isr,
@@ -1504,14 +1506,43 @@ int pl330_request_irq(unsigned int dev_id)
 		channel_static_data++;
 	}
 
+	for (irq = device_data->starting_irq1;
+	     irq != 0 && irq <= device_data->ending_irq1; irq++) {
+
+		/* set up the done irq */
+		status = request_irq(irq, pl330_done_isr,
+				     IRQF_DISABLED, DRIVER_NAME,
+				     channel_static_data);
+
+		if (status) {
+			printk(KERN_ERR
+			       "PL330 request done irq %d failed %d\n",
+			       irq, status);
+			goto req_done_irq1_failed;
+		} else {
+			channel_static_data->irq = irq;
+
+			PDEBUG("PL330 request done irq %d successful\n", irq);
+		}
+
+		channel_static_data++;
+	}
+
 	return 0;
 
- req_done_irq_failed:
-	for (irq2 = device_data->starting_irq + 1;
+ req_done_irq1_failed:
+	for (irq2 = device_data->starting_irq1;
 	     irq2 < irq; irq2++)
 		free_irq(irq2, channel_static_data);
 
-	free_irq(device_data->starting_irq, channel_static_data);
+	irq = device_data->ending_irq + 1;
+
+ req_done_irq_failed:
+	for (irq2 = device_data->starting_irq;
+	     irq2 < irq; irq2++)
+		free_irq(irq2, channel_static_data);
+
+	free_irq(device_data->fault_irq, channel_static_data);
 
 	return -1;
 }
@@ -1635,17 +1666,52 @@ void pl330_init_device_data(unsigned int dev_id,
 	       device_data->channels);
 
 	/* now get the irq configurations */
+
+	/* The 1st IRQ resource is for fault irq */
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!res)
 		printk(KERN_ERR "get_resource for IRQ resource for dev %d "
 		       "failed\n", dev_id);
 
-	device_data->starting_irq = res->start;
-	device_data->ending_irq = res->end;
-	PDEBUG("pl330 device %d starting irq %d, ending irq %d\n",
+	if (res->start != res->end)
+		printk(KERN_ERR "the first IRQ resource for dev %d should "
+		       "be a single IRQ for FAULT\n", dev_id);
+	device_data->fault_irq = res->start;
+
+	/* The 2nd IRQ resource is for 1st half of channel IRQ */
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
+	if (!res) {
+		printk(KERN_ERR "get_resource for IRQ resource %d for dev %d "
+		       "failed\n", 1, dev_id);
+
+		device_data->starting_irq = 0;
+		device_data->ending_irq = 0;
+	} else {
+		device_data->starting_irq = res->start;
+		device_data->ending_irq = res->end;
+	}
+
+	PDEBUG("pl330 device %d 1st half starting irq %d, ending irq %d\n",
 	       dev_id,
 	       device_data->starting_irq,
 	       device_data->ending_irq);
+
+	/* The 3rd IRQ resource is for 2nd half of channel IRQ */
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 2);
+	if (!res) {
+		printk(KERN_ERR "get_resource for IRQ resource %d for dev %d "
+		       "failed\n", 2, dev_id);
+		device_data->starting_irq1 = 0;
+		device_data->ending_irq1 = 0;
+	} else {
+		device_data->starting_irq1 = res->start;
+		device_data->ending_irq1 = res->end;
+	}
+
+	PDEBUG("pl330 device %d 2nd half starting irq %d, ending irq %d\n",
+	       dev_id,
+	       device_data->starting_irq1,
+	       device_data->ending_irq1);
 
 #ifdef PL330_OPTIMIZE_ICACHE
 	/*
@@ -1669,7 +1735,7 @@ void pl330_init_device_data(unsigned int dev_id,
 
 /**
  * pl330_setspeed_dma - Implementation of set_dma_speed. The function actually
- * 	doesn't do anything.
+ *	doesn't do anything.
  * @channel: DMA channel number, from 0 to MAX_DMA_CHANNELS - 1
  * @indexed_dma_chan: Instance of dma_struct for the channel.
  * @cycle_ns: DMA speed.
@@ -1699,11 +1765,11 @@ static int pl330_get_residue_dma(unsigned int channel,
 
 /**
  * pl330_request_dma - Implementation of request_dma.
- *  	Is this channel one of those allowed for the requesting device
- * 	- platform data defines which channels are for which devices
- * 	Requesting device name from driver stored in indexed_channel
- * 	We want the hardware bus id to match to a channel and the mode
- * 	to be correct.
+ *	Is this channel one of those allowed for the requesting device
+ *	- platform data defines which channels are for which devices
+ *	Requesting device name from driver stored in indexed_channel
+ *	We want the hardware bus id to match to a channel and the mode
+ *	to be correct.
  * @channel: DMA channel number, from 0 to MAX_DMA_CHANNELS - 1
  * @indexed_dma_chan: Instance of dma_struct for the channel.
  *
@@ -2102,13 +2168,13 @@ static void pl330_disable_dma(unsigned int channel,
  * Platform bus binding
  */
 static struct dma_ops pl330_ops = {
-	.request 	= pl330_request_dma,
-	.free 		= pl330_free_dma,
-	.enable		= pl330_enable_dma,
-	.disable	= pl330_disable_dma,
-	.setspeed 	= pl330_setspeed_dma,
-	.residue 	= pl330_get_residue_dma,
-	.type = "PL330",
+	.request     = pl330_request_dma,
+	.free        = pl330_free_dma,
+	.enable      = pl330_enable_dma,
+	.disable     = pl330_disable_dma,
+	.setspeed    = pl330_setspeed_dma,
+	.residue     = pl330_get_residue_dma,
+	.type        = "PL330",
 };
 
 void pl330_set_default_burst_size(unsigned int dev_id)
@@ -2311,11 +2377,11 @@ void setup_default_bus_des(unsigned int default_burst_size,
 
 /**
  * set_pl330_client_data - Associate an instance of struct pl330_client_data
- * 	with a DMA channel.
+ *	with a DMA channel.
  * @channel: DMA channel number.
  * @client_data: instance of the struct pl330_client_data.
  * Returns 0 on success, -EINVAL if the channel number is out of range,
- * 	-ACCESS if the channel has not been allocated.
+ *	-ACCESS if the channel has not been allocated.
  */
 
 int set_pl330_client_data(unsigned int channel,
@@ -2396,7 +2462,7 @@ EXPORT_SYMBOL(set_pl330_client_data);
  * @channel: DMA channel number.
  * @start_address: DMA program starting address
  * Returns 0 on success, -EINVAL if the channel number is out of range,
- * 	-ACCESS if the channel has not been allocated.
+ *	-ACCESS if the channel has not been allocated.
  */
 int set_pl330_dma_prog_addr(unsigned int channel,
 			    u32 start_address)
@@ -2463,7 +2529,7 @@ EXPORT_SYMBOL(get_pl330_dma_program);
  * @data: The callback reference data, usually the instance of the driver data
  *
  * Returns 0 on success, -EINVAL if the channel number is out of range,
- * 	-ACCESS if the channel has not been allocated.
+ *	-ACCESS if the channel has not been allocated.
  */
 
 int set_pl330_done_callback(unsigned int channel,
@@ -2505,7 +2571,7 @@ EXPORT_SYMBOL(set_pl330_done_callback);
  * @fault_callback: Channel fault callback.
  * @data: The callback data
  * Returns 0 on success, -EINVAL if the channel number is out of range,
- * 	-ACCESS if the channel has not been allocated.
+ *	-ACCESS if the channel has not been allocated.
  */
 
 int set_pl330_fault_callback(unsigned int channel,
@@ -2546,7 +2612,7 @@ EXPORT_SYMBOL(set_pl330_fault_callback);
  * @flag: If it's 1 the device address will be increment, 0, the address
  *	will be fixed.
  * Returns 0 on success, -EINVAL if the channel number is out of range,
- * 	-ACCESS if the channel has not been allocated.
+ *	-ACCESS if the channel has not been allocated.
  */
 int set_pl330_incr_dev_addr(unsigned int channel,
 			    unsigned int flag)

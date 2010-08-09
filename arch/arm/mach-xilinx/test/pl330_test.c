@@ -91,7 +91,7 @@ MODULE_VERSION(DRIVER_VERSION);
 #undef PINFO
 #define PINFO(fmt, args...) printk(KERN_INFO fmt, ## args)
 
-#define TEST_MAX_CHANNELS	4
+#define TEST_MAX_CHANNELS	8
 
 static const char *PASS = "PASS";
 static const char *FAIL = "FAIL";
@@ -1882,7 +1882,7 @@ static int pl330_test_suite_8(void)
 	suite_test_data.dma_prog_len = ARRAY_SIZE(prog);
 
 	suite_test_data.fault_expected = 1;
-	suite_test_data.expected_fault_type = 0x80000000;
+	suite_test_data.expected_fault_type = 0x2000;
 
 	for (channel = 0; channel < TEST_MAX_CHANNELS; channel++) {
 		suite_test_data.channel = channel;
