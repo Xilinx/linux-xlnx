@@ -319,8 +319,8 @@ static struct platform_device xilinx_spipss_0_device = {
 /*************************PSS WDT*********************/
 static struct resource xwdtpss_0_resource[] = {
 	{
-		.start	= WDT0_BASE,
-		.end	= WDT0_BASE + 0x00FF,
+		.start	= WDT_BASE,
+		.end	= WDT_BASE + 0x00FF,
 		.flags	= IORESOURCE_MEM,
 	},
 };

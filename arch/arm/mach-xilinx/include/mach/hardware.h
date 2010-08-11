@@ -59,7 +59,6 @@
 
 #define SMC_BASE		(IO_BASE + 0x0000E000)
 #define NOR_BASE		(IO_BASE + 0x04000000)
-#define WDT0_BASE		(IO_BASE + 0x0C002000)
 
 /* Cleaned up addresses start here, please keep addresses in order to make
  * them easier to read.
