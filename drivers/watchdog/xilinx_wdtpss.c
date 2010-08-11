@@ -25,6 +25,7 @@
 #include <linux/irq.h>
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 
 #define XWDTPSS_DEFAULT_TIMEOUT	10	/* Supports 1 - 600 sec */
