@@ -3,7 +3,7 @@
  *
  * Author: Xilinx, Inc.
  *
- * 2009 (c) Xilinx, Inc. This file is licensed uner the terms of the GNU
+ * 2010 (c) Xilinx, Inc. This file is licensed uner the terms of the GNU
  * General Public License version 2.1. This program is licensed "as is"
  * without any warranty of any kind, whether express or implied.
  *
@@ -86,10 +86,11 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
  * BD Space needed is (XEMACPSS_SEND_BD_CNT+XEMACPSS_RECV_BD_CNT)*8
  */
 #undef  DEBUG
+#define DEBUG
 #define DEBUG_SPEED
 
-#define XEMACPSS_SEND_BD_CNT	128
-#define XEMACPSS_RECV_BD_CNT	128
+#define XEMACPSS_SEND_BD_CNT	8
+#define XEMACPSS_RECV_BD_CNT	8
 
 #define XEMACPSS_NAPI_WEIGHT	64
 
@@ -671,7 +672,7 @@ static void xemacpss_phy_init(struct net_device *ndev)
 	for (i = 0; i < 10; i++)
 		mdelay(500);
 #ifdef DEBUG
-	printk(KERN_INFO "phy register dump, start from 0, four in a row.");
+	printk(KERN_INFO "GEM: phy register dump, start from 0, four in a row.");
 	for (i = 0; i <= 30; i++) {
 		if (!(i%4))
 			printk("\n %02d:  ", i);
@@ -782,7 +783,7 @@ static int xemacpss_mii_probe(struct net_device *ndev)
 	}
 
 #ifdef DEBUG
-	printk(KERN_INFO "phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
+	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
 #endif
 	phydev->supported &= PHY_GBIT_FEATURES;
@@ -876,7 +877,7 @@ static void __init xemacpss_update_hwaddr(struct net_local *lp)
 	addr[4] = regvalh & 0xFF;
 	addr[5] = (regvalh >> 8) & 0xFF;
 #ifdef DEBUG
-	printk(KERN_INFO "MAC addr %02x:%02x:%02x:%02x:%02x:%02x\n",
+	printk(KERN_INFO "GEM: MAC addr %02x:%02x:%02x:%02x:%02x:%02x\n",
 		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 #endif
 	if (is_valid_ether_addr(addr)) {
@@ -914,7 +915,7 @@ static void xemacpss_set_hwaddr(struct net_local *lp)
 #ifdef DEBUG
 	regvall = xemacpss_read(lp->baseaddr, XEMACPSS_LADDR1L_OFFSET);
 	regvalh = xemacpss_read(lp->baseaddr, XEMACPSS_LADDR1H_OFFSET);
-	printk(KERN_INFO "MAC 0x%08x, 0x%08x, %02x:%02x:%02x:%02x:%02x:%02x\n",
+	printk(KERN_INFO "GEM: MAC 0x%08x, 0x%08x, %02x:%02x:%02x:%02x:%02x:%02x\n",
 		regvall, regvalh,
 		(regvall & 0xff), ((regvall >> 8) & 0xff),
 		((regvall >> 16) & 0xff), (regvall >> 24),
@@ -1214,6 +1215,11 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 	numbdfree = numbd;
 	bdptrfree = bdptr;
 
+#ifdef DEBUG_VERBOSE
+	printk(KERN_INFO "GEM: %s: numbd %d\n",
+			__FUNCTION__, numbd);
+#endif 
+
 	while (numbd) {
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
 		/* sof == 1 && we receive another BD with sof asserted.
@@ -1231,7 +1237,7 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 		}
 
 		/* When eof reached, we have one complete packet. */
-		if ((1 == sof) && (regval & XEMACPSS_RXBUF_EOF_MASK)) {
+		if ((sof == 1) && (regval & XEMACPSS_RXBUF_EOF_MASK)) {
 			offset = 0;
 			bdeofptr = bdptr;
 			/* only the last BD has the whole packet length */
@@ -1266,19 +1272,19 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 			sof = 0;
 		}
 
-#ifdef DEBUG
-		printk(KERN_INFO "RX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
-			bdidx, bdptr, regval);
+#ifdef DEBUG_VERBOSE
+		printk(KERN_INFO "GEM: %s: RX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
+			__FUNCTION__, bdidx, bdptr, regval);
 #endif
 
+		regval = 0;
+		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
+
+		/* Assign ownership back to hardware */
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_ADDR_OFFSET);
 		regval &= ~XEMACPSS_RXBUF_NEW_MASK;
 		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, regval);
 
-		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
-		regval &= ~(XEMACPSS_RXBUF_EOF_MASK | XEMACPSS_RXBUF_SOF_MASK |
-			XEMACPSS_RXBUF_LEN_MASK);
-		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->rx_ring, bdptr);
 		numbd--;
 		wmb();
@@ -1325,10 +1331,6 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 
 	dev_dbg(&lp->pdev->dev, "poll RX status 0x%x weight 0x%x\n",
 		regval, budget);
-
-	/* Log errors here, it is not ideal though. */
-	if (regval & XEMACPSS_IXR_RX_ERR_MASK)
-		lp->stats.rx_errors++;
 
 	if (!(regval & XEMACPSS_RXSR_FRAMERX_MASK)) {
 		dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
@@ -1406,8 +1408,8 @@ static void xemacpss_tx_poll(unsigned long data)
 			DMA_TO_DEVICE);
 		rp->skb = NULL;
 		dev_kfree_skb_irq(skb);
-#ifdef DEBUG
-		printk(KERN_INFO "TX bd index %d BD_STAT 0x%08x after sent.\n",
+#ifdef DEBUG_VERBOSE
+		printk(KERN_INFO "GEM: TX bd index %d BD_STAT 0x%08x after sent.\n",
 			bdidx, regval);
 #endif
 		/* log tx completed packets and bytes, errors logs
@@ -1417,12 +1419,16 @@ static void xemacpss_tx_poll(unsigned long data)
 			if (!(regval & XEMACPSS_TXBUF_ERR_MASK)) {
 				lp->stats.tx_packets++;
 				lp->stats.tx_bytes += len;
+			} else {
+				lp->stats.tx_errors++;
 			}
 			len = 0;
 		}
-		/* clear last buffer and length bits */
-		regval &= ~(XEMACPSS_TXBUF_LAST_MASK | XEMACPSS_TXBUF_LEN_MASK);
+
+		/* Preserve used and wrap bits; clear everything else. */
+		regval &= (XEMACPSS_TXBUF_USED_MASK | XEMACPSS_TXBUF_WRAP_MASK);
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
+
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->tx_ring, bdptr);
 		numbd--;
 		wmb();
@@ -1431,6 +1437,9 @@ static void xemacpss_tx_poll(unsigned long data)
 	rc = xemacpss_bdringfree(&lp->tx_ring, numbdfree, bdptrfree);
 	if (rc)
 		printk(KERN_ERR "%s TX bdringfree() error.\n", ndev->name);
+
+	if (netif_queue_stopped(ndev))
+		netif_start_queue(ndev);
 
 	return;
 }
@@ -1458,9 +1467,16 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 		/* acknowledge interrupt and clear it */
 		xemacpss_write(lp->baseaddr, XEMACPSS_ISR_OFFSET, regisr);
 
+		/* Log errors here. ISR status is cleared;
+		 * this must be recorded here.
+		 */
+		if (regisr & XEMACPSS_IXR_RX_ERR_MASK)
+			lp->stats.rx_errors++;
+
 		/* RX interrupts */
 		if (regisr &
 		(XEMACPSS_IXR_FRAMERX_MASK | XEMACPSS_IXR_RX_ERR_MASK)) {
+
 			if (napi_schedule_prep(&lp->napi)) {
 				/* acknowledge RX interrupt and disable it,
 				 * napi will be the one processing it.  */
@@ -1561,9 +1577,9 @@ static int xemacpss_descriptor_init(struct net_local *lp)
 		size, lp->rx_buffer_dma, lp->rx_buffer);
 
 #ifdef DEBUG
-	printk(KERN_INFO "lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
+	printk(KERN_INFO "GEM: lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
 		lp->tx_bd, lp->tx_bd_dma, lp->tx_skb);
-	printk(KERN_INFO "lp->rx_bd %p lp->rx_bd_dma %p lp->rx_buffer %p\n",
+	printk(KERN_INFO "GEM: lp->rx_bd %p lp->rx_bd_dma %p lp->rx_buffer %p\n",
 		lp->rx_bd, lp->rx_bd_dma, lp->rx_buffer);
 #endif
 	return 0;
@@ -1853,7 +1869,7 @@ static int xemacpss_set_mac_address(struct net_device *ndev, void *addr)
 	if (!is_valid_ether_addr(hwaddr->sa_data))
 		return -EADDRNOTAVAIL;
 #ifdef DEBUG
-	printk(KERN_INFO "hwaddr 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+	printk(KERN_INFO "GEM: hwaddr 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
 		hwaddr->sa_data[0], hwaddr->sa_data[1], hwaddr->sa_data[2],
 		hwaddr->sa_data[3], hwaddr->sa_data[4], hwaddr->sa_data[5]);
 #endif
@@ -1880,8 +1896,8 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	void       *virt_addr;
 	skb_frag_t *frag;
 
-#ifdef DEBUG
-	printk(KERN_INFO "TX data:");
+#ifdef DEBUG_VERBOSE
+	printk(KERN_INFO "%s: TX data:", __FUNCTION__);
 	for (i = 0; i < 48; i++) {
 		if (!(i % 16))
 			printk("\n");
@@ -1902,20 +1918,20 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 	} else {
 		netif_stop_queue(ndev); /* stop send queue */
-		printk(KERN_ERR "too many fragments. %d\n", nr_frags);
+		printk(KERN_ERR "GEM: too many fragments. %d\n", nr_frags);
 		spin_unlock_irq(&lp->lock);
 		return -EIO;
 	}
 
 	frag = &skb_shinfo(skb)->frags[0];
 	bdptrs = bdptr;
-#ifdef DEBUG
-	printk(KERN_INFO "nr_frags %d, skb->len 0x%x, skb_headlen(skb) 0x%x\n",
+#ifdef DEBUG_VERBOSE
+	printk(KERN_INFO "GEM: TX nr_frags %d, skb->len 0x%x, skb_headlen(skb) 0x%x\n",
 		nr_frags, skb->len, skb_headlen(skb));
 #endif
 
 	for (i = 0; i < nr_frags; i++) {
-		if (0 == i) {
+		if (i == 0) {
 			len = skb_headlen(skb);
 			mapping = dma_map_single(&lp->pdev->dev, skb->data,
 				len, DMA_TO_DEVICE);
@@ -1934,24 +1950,26 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		lp->tx_skb[bdidx].mapping = mapping;
 		wmb();
 
-		/* clear used bit first */
+		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, mapping);
+		wmb();
+
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
+		/* clear used bit - hardware to own this descriptor */
 		regval &= ~XEMACPSS_TXBUF_USED_MASK;
-		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 		/* update length field */
 		regval |= ((regval & ~XEMACPSS_TXBUF_LEN_MASK) | len);
+		/* last fragment of this packet? */
+		if (i == (nr_frags - 1)) {
+			regval |= XEMACPSS_TXBUF_LAST_MASK;
+		}
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
-#ifdef DEBUG
-		printk(KERN_INFO "TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
+
+#ifdef DEBUG_VERBOSE
+		printk(KERN_INFO "GEM: TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
 			bdidx, bdptr, regval);
 #endif
-		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, mapping);
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->tx_ring, bdptr);
 	}
-	bdptr = XEMACPSS_BDRING_PREV(&lp->tx_ring, bdptr);
-	regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
-	regval |= XEMACPSS_TXBUF_LAST_MASK;
-	xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 	wmb();
 
 	rc = xemacpss_bdringtohw(&lp->tx_ring, nr_frags, bdptrs);
@@ -2031,7 +2049,7 @@ static void xemacpss_set_hashtable(struct net_device *ndev)
 			break;
 		mc_addr = curr->dmi_addr;
 #ifdef DEBUG
-		printk(KERN_INFO "mc addr 0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
+		printk(KERN_INFO "GEM: mc addr 0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
 		mc_addr[0], mc_addr[1], mc_addr[2],
 		mc_addr[3], mc_addr[4], mc_addr[5]);
 #endif
@@ -2535,6 +2553,9 @@ static int __init xemacpss_probe(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto err_out_free_netdev;
 	}
+#ifdef DEBUG
+	printk(KERN_INFO "GEM: BASEADDRESS hw: 0x%08x virt: 0x%08x\n", r_mem->start, lp->baseaddr);
+#endif
 
 	ndev->irq = platform_get_irq(pdev, 0);
 
