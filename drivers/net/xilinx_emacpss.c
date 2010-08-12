@@ -1918,7 +1918,6 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 	} else {
 		netif_stop_queue(ndev); /* stop send queue */
-		printk(KERN_ERR "GEM: too many fragments. %d\n", nr_frags);
 		spin_unlock_irq(&lp->lock);
 		return -EIO;
 	}
