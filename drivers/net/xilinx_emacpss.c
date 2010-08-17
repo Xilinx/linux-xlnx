@@ -1386,38 +1386,38 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 	int work_done = 0;
 	u32 regval;
 
+	/* Schedule TX completion */
+	if (lp->tx_ring.hwcnt) {
+		tasklet_schedule(&lp->tasklet);
+	}
+
 	regval = xemacpss_read(lp->baseaddr, XEMACPSS_RXSR_OFFSET);
 	xemacpss_write(lp->baseaddr, XEMACPSS_RXSR_OFFSET, regval);
 
-	if (!regval) {
-		/* This might happen when an interrupt is asserted
-		 * before this function is called and no receive packets
-		 * are available to be processed.
-		 */
-		napi_complete(napi);
-		goto out;
+	while (work_done < budget) {
+
+		dev_dbg(&lp->pdev->dev, "poll RX status 0x%x weight 0x%x\n",
+			regval, budget);
+
+		if (!(regval & XEMACPSS_RXSR_FRAMERX_MASK)) {
+			dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
+				regval);
+			napi_complete(napi);
+			break;
+		}
+
+		work_done += xemacpss_rx(lp, budget);
+
+		regval = xemacpss_read(lp->baseaddr, XEMACPSS_RXSR_OFFSET);
+		xemacpss_write(lp->baseaddr, XEMACPSS_RXSR_OFFSET, regval);
 	}
 
-	dev_dbg(&lp->pdev->dev, "poll RX status 0x%x weight 0x%x\n",
-		regval, budget);
-
-	if (!(regval & XEMACPSS_RXSR_FRAMERX_MASK)) {
-		dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
-		regval);
-		napi_complete(napi);
-		goto out;
-	}
-
-	work_done = xemacpss_rx(lp, budget);
-	if (work_done < budget)
-		napi_complete(napi);
-
-out:
 	/* We disable RX interrupts in interrupt service routine, now
 	 * it is time to enable it back.
 	 */
 	regval = (XEMACPSS_IXR_FRAMERX_MASK | XEMACPSS_IXR_RX_ERR_MASK);
 	xemacpss_write(lp->baseaddr, XEMACPSS_IER_OFFSET, regval);
+
 	return work_done;
 }
 
