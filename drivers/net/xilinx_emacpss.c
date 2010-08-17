@@ -89,8 +89,8 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define DEBUG
 #define DEBUG_SPEED
 
-#define XEMACPSS_SEND_BD_CNT	8
-#define XEMACPSS_RECV_BD_CNT	8
+#define XEMACPSS_SEND_BD_CNT	32
+#define XEMACPSS_RECV_BD_CNT	32
 
 #define XEMACPSS_NAPI_WEIGHT	64
 
@@ -527,6 +527,8 @@ struct xemacpss_bdring {
 	unsigned precnt;     /* Number of BDs in pre-work group */
 	unsigned postcnt;    /* Number of BDs in post-work group */
 	unsigned allcnt;     /* Total Number of BDs for channel */
+
+	int is_rx;           /* Is this an RX or a TX ring? */
 };
 
 /* Our private device data. */
@@ -536,14 +538,13 @@ struct net_local {
 	struct xemacpss_bdring rx_ring;
 
 	struct ring_info       *tx_skb;
+	struct ring_info       *rx_skb;
 
 	void                   *rx_bd;        /* virtual address */
 	void                   *tx_bd;        /* virtual address */
-	void                   *rx_buffer;    /* virtual address */
 
 	dma_addr_t             rx_bd_dma;     /* physical address */
 	dma_addr_t             tx_bd_dma;     /* physical address */
-	dma_addr_t             rx_buffer_dma; /* physical address */
 
 	spinlock_t             lock;
 
@@ -994,6 +995,29 @@ int xemacpss_bdringunalloc(struct xemacpss_bdring *ringptr, unsigned numbd,
 	return 0;
 }
 
+#ifdef DEBUG_VERBOSE
+static void print_ring(struct xemacpss_bdring *ring)
+{
+	int i;
+	unsigned regval;
+	struct xemacpss_bd *bd;
+
+	printk(KERN_INFO "freehead %p prehead %p hwhead %p hwtail %p posthead %p\n",
+		ring->freehead, ring->prehead, ring->hwhead, ring->hwtail, ring->posthead);
+	printk(KERN_INFO "freecnt %d hwcnt %d precnt %d postcnt %d allcnt %d\n",
+		ring->freecnt, ring->hwcnt, ring->precnt, ring->postcnt, ring->allcnt);
+
+	bd = (struct xemacpss_bd *)ring->firstbdaddr;
+	for (i=0; i<XEMACPSS_RECV_BD_CNT; i++) {
+		regval = xemacpss_read(bd, XEMACPSS_BD_ADDR_OFFSET);
+		printk(KERN_INFO "BD %p: ADDR: 0x%08x\n", bd, regval);
+		regval = xemacpss_read(bd, XEMACPSS_BD_STAT_OFFSET);
+		printk(KERN_INFO "BD %p: STAT: 0x%08x\n", bd, regval);
+		bd++;
+	}
+}
+#endif
+
 /**
  * xemacpss_bdringtohw - Enqueue a set of BDs to hardware that were
  * previously allocated by xemacpss_bdringalloc().
@@ -1007,17 +1031,33 @@ int xemacpss_bdringtohw(struct xemacpss_bdring *ringptr, unsigned numbd,
 {
 	struct xemacpss_bd *curbdptr;
 	unsigned int i;
+	unsigned int regval;
 
 	/* if no bds to process, simply return. */
-	if (0 == numbd)
+	if (numbd == 0)
 		return 0;
 
 	/* Make sure we are in sync with xemacpss_bdringalloc() */
-	if ((ringptr->precnt < numbd) || (ringptr->prehead != bdptr))
+	if ((ringptr->precnt < numbd) || (ringptr->prehead != bdptr)) {
 		return -ENOSPC;
+	}
 
 	curbdptr = bdptr;
 	for (i = 0; i < numbd; i++) {
+		/* Assign ownership back to hardware */
+		if (ringptr->is_rx) {
+			xemacpss_write(curbdptr, XEMACPSS_BD_STAT_OFFSET, 0);
+			wmb();
+
+			regval = xemacpss_read(curbdptr, XEMACPSS_BD_ADDR_OFFSET);
+			regval &= ~XEMACPSS_RXBUF_NEW_MASK;
+			xemacpss_write(curbdptr, XEMACPSS_BD_ADDR_OFFSET, regval);
+		} else {
+			regval = xemacpss_read(curbdptr, XEMACPSS_BD_STAT_OFFSET);
+			/* clear used bit - hardware to own this descriptor */
+			regval &= ~XEMACPSS_TXBUF_USED_MASK;
+			xemacpss_write(curbdptr, XEMACPSS_BD_STAT_OFFSET, regval);
+		}
 		wmb();
 		curbdptr = XEMACPSS_BDRING_NEXT(ringptr, curbdptr);
 	}
@@ -1026,6 +1066,7 @@ int xemacpss_bdringtohw(struct xemacpss_bdring *ringptr, unsigned numbd,
 	ringptr->hwtail  = curbdptr;
 	ringptr->precnt -= numbd;
 	ringptr->hwcnt  += numbd;
+
 	return 0;
 }
 
@@ -1055,6 +1096,10 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 		return 0;
 	}
 
+	if (bdlimit > ringptr->hwcnt) {
+		bdlimit = ringptr->hwcnt;
+	}
+
 	/* Starting at hwhead, keep moving forward in the list until:
 	 *  - ringptr->hwtail is reached.
 	 *  - The number of requested BDs has been processed
@@ -1081,10 +1126,6 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 			sop = 0;
 			bdpartialcount = 0;
 		}
-
-		/* Reached the end of the work group */
-		if (curbdptr == ringptr->hwtail)
-			break;
 
 		/* Move on to next BD in work group */
 		curbdptr = XEMACPSS_BDRING_NEXT(ringptr, curbdptr);
@@ -1131,6 +1172,10 @@ u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 		return 0;
 	}
 
+	if (bdlimit > ringptr->hwcnt) {
+		bdlimit = ringptr->hwcnt;
+	}
+
 	/* Starting at hwhead, keep moving forward in the list until:
 	 *  - A BD is encountered with its new/used bit set which means
 	 *    hardware has not completed processing of that BD.
@@ -1145,10 +1190,6 @@ u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
 		} else {
 			break;
 		}
-
-		/* Reached the end of the work group */
-		if (curbdptr == ringptr->hwtail)
-			break;
 
 		/* Move on to next BD in work group */
 		curbdptr = XEMACPSS_BDRING_NEXT(ringptr, curbdptr);
@@ -1186,14 +1227,73 @@ int xemacpss_bdringfree(struct xemacpss_bdring *ringptr, unsigned numbd,
 		return 0;
 
 	/* Make sure we are in sync with xemacpss_bdringfromhw() */
-	if ((ringptr->postcnt < numbd) || (ringptr->posthead != bdptr))
+	if ((ringptr->postcnt < numbd) || (ringptr->posthead != bdptr)) {
+		printk(KERN_ERR "GEM: Improper bdringfree()\n");
 		return -ENOSPC;
+	}
 
 	/* Update pointers and counters */
 	ringptr->freecnt += numbd;
 	ringptr->postcnt -= numbd;
 	XEMACPSS_RING_SEEKAHEAD(ringptr, ringptr->posthead, numbd);
 	return 0;
+}
+
+
+/**
+ * xemacpss_DmaSetupRecvBuffers - allocates socket buffers (sk_buff's) 
+ * up to the number of free RX buffer descriptors. Then it sets up the RX
+ * buffer descriptors to DMA into the socket_buffers.
+ * @ndev: the net_device 
+ **/
+static void xemacpss_DmaSetupRecvBuffers(struct net_device *ndev)
+{
+	struct net_local *lp;
+	struct xemacpss_bdring *rxringptr;
+	struct xemacpss_bd *bdptr;
+	struct sk_buff *new_skb;
+	u32 new_skb_baddr;
+	int free_bd_count;
+	int num_sk_buffs;
+	int bdidx;
+	int result;
+
+	lp = (struct net_local *) netdev_priv(ndev);
+	rxringptr = &lp->rx_ring;
+	free_bd_count = rxringptr->freecnt;
+
+	for (num_sk_buffs = 0; num_sk_buffs < free_bd_count; num_sk_buffs++) {
+		new_skb = netdev_alloc_skb(ndev, XEMACPSS_RX_BUF_SIZE);
+		if (new_skb == NULL) {
+			break;
+		}
+
+		result = xemacpss_bdringalloc(rxringptr, 1, &bdptr);
+		if (result) {
+			printk(KERN_ERR "%s RX bdringalloc() error.\n", lp->ndev->name);
+			break;
+		}
+
+		/* Get dma handle of skb->data */
+		new_skb_baddr = (u32) dma_map_single(ndev->dev.parent, new_skb->data,
+			XEMACPSS_RX_BUF_SIZE, DMA_FROM_DEVICE);
+
+		XEMACPSS_SET_BUFADDR_RX(bdptr, new_skb_baddr);
+		bdidx = XEMACPSS_BD_TO_INDEX(rxringptr, bdptr);
+		lp->rx_skb[bdidx].skb = new_skb;
+		lp->rx_skb[bdidx].mapping = new_skb_baddr;
+		wmb();
+
+		/* enqueue RxBD with the attached skb buffers such that it is
+		 * ready for frame reception
+		 */
+		result = xemacpss_bdringtohw(rxringptr, 1, bdptr);
+		if (result) {
+			printk(KERN_ERR "%s: bdringtohw unsuccessful (%d)\n",
+				ndev->name, result);
+			break;
+		}
+	}
 }
 
 /**
@@ -1204,9 +1304,9 @@ int xemacpss_bdringfree(struct xemacpss_bdring *ringptr, unsigned numbd,
  **/
 static int xemacpss_rx(struct net_local *lp, int budget)
 {
-	u32 regval, sof = 0, len = 0, offset = 0;
+	u32 regval, len = 0;
 	struct sk_buff *skb = NULL;
-	struct xemacpss_bd *bdptr, *bdptrfree, *bdsofptr = NULL, *bdeofptr;
+	struct xemacpss_bd *bdptr, *bdptrfree;
 	unsigned int numbdfree, numbd = 0, bdidx = 0, rc = 0;
 
 	numbd = xemacpss_bdringfromhwrx(&lp->rx_ring, XEMACPSS_RECV_BD_CNT,
@@ -1221,73 +1321,47 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 #endif 
 
 	while (numbd) {
+		bdidx = XEMACPSS_BD_TO_INDEX(&lp->rx_ring, bdptr);
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
-		/* sof == 1 && we receive another BD with sof asserted.
-		 * This could happen when incomplete frames received.
-		 * We still need to move SOF bdptr and continue without
-		 * crashing the hardware.
-		 * Data received without matched sof and eof, is
-		 * incomplete and thrown away. High level protocol can
-		 * request to retransmit if preferred.
-		 */
-		/* look for start of packet */
-		if (regval & XEMACPSS_RXBUF_SOF_MASK) {
-			sof = 1;
-			bdsofptr = bdptr;
-		}
-
-		/* When eof reached, we have one complete packet. */
-		if ((sof == 1) && (regval & XEMACPSS_RXBUF_EOF_MASK)) {
-			offset = 0;
-			bdeofptr = bdptr;
-			/* only the last BD has the whole packet length */
-			len = regval & XEMACPSS_RXBUF_LEN_MASK;
-			skb = dev_alloc_skb(len + RX_IP_ALIGN_OFFSET);
-			skb_reserve(skb, RX_IP_ALIGN_OFFSET);
-			skb->ip_summed = lp->ip_summed;
-			skb_put(skb, len);
-
-			bdidx = XEMACPSS_BD_TO_INDEX(&lp->rx_ring, bdsofptr);
-			skb_copy_to_linear_data_offset(skb, 0,
-			(lp->rx_buffer + (bdidx * XEMACPSS_RX_BUF_SIZE)),
-			min((u32)XEMACPSS_RX_BUF_SIZE, len));
-
-			/* Process one packet spread across multiple BDs.
-			 * Reuse bdsofptr as index to reach bdeofptr */
-			while (bdsofptr != bdeofptr) {
-				bdsofptr = XEMACPSS_BDRING_NEXT(&lp->rx_ring,
-					bdsofptr);
-				offset += XEMACPSS_RX_BUF_SIZE;
-				bdidx = XEMACPSS_BD_TO_INDEX(&lp->rx_ring,
-					bdsofptr);
-				skb_copy_to_linear_data_offset(skb, offset,
-				(lp->rx_buffer+(bdidx * XEMACPSS_RX_BUF_SIZE)),
-				min((u32)XEMACPSS_RX_BUF_SIZE, (len - offset)));
-			}
-			wmb();
-			skb->protocol = eth_type_trans(skb, lp->ndev);
-			lp->stats.rx_packets++;
-			lp->stats.rx_bytes += len;
-			netif_receive_skb(skb);
-			sof = 0;
-		}
 
 #ifdef DEBUG_VERBOSE
 		printk(KERN_INFO "GEM: %s: RX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
 			__FUNCTION__, bdidx, bdptr, regval);
 #endif
 
-		regval = 0;
-		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
+		/* look for start of packet */
+		if (!(regval & XEMACPSS_RXBUF_SOF_MASK) ||
+		    !(regval & XEMACPSS_RXBUF_EOF_MASK)) {
+			printk(KERN_INFO "GEM: %s: SOF and EOF not set (0x%08x) BD %p\n",
+				__FUNCTION__, regval, bdptr);
+			return 0;
+		}
 
-		/* Assign ownership back to hardware */
-		regval = xemacpss_read(bdptr, XEMACPSS_BD_ADDR_OFFSET);
-		regval &= ~XEMACPSS_RXBUF_NEW_MASK;
-		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, regval);
+		/* the packet length */
+		len = regval & XEMACPSS_RXBUF_LEN_MASK;
+
+		skb = lp->rx_skb[bdidx].skb;
+		dma_unmap_single(lp->ndev->dev.parent, lp->rx_skb[bdidx].mapping,
+						 XEMACPSS_RX_BUF_SIZE,
+						 DMA_FROM_DEVICE);
+
+		lp->rx_skb[bdidx].skb = NULL;
+		lp->rx_skb[bdidx].mapping = 0;
+
+		/* setup received skb and send it upstream */
+		skb_put(skb, len);  /* Tell the skb how much data we got. */
+		skb->dev = lp->ndev;
+
+		skb->protocol = eth_type_trans(skb, lp->ndev);
+
+		skb->ip_summed = lp->ip_summed;
+
+		lp->stats.rx_packets++;
+		lp->stats.rx_bytes += len;
+		netif_receive_skb(skb);
 
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->rx_ring, bdptr);
 		numbd--;
-		wmb();
 	}
 
 	/* Make used BDs available */
@@ -1295,13 +1369,8 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 	if (rc)
 		printk(KERN_ERR "%s RX bdringfree() error.\n", lp->ndev->name);
 
-	rc = xemacpss_bdringalloc(&lp->rx_ring, numbdfree, &bdptrfree);
-	if (rc)
-		printk(KERN_ERR "%s RX bdringalloc() error.\n", lp->ndev->name);
-
-	rc = xemacpss_bdringtohw(&lp->rx_ring, numbdfree, bdptrfree);
-	if (rc)
-		printk(KERN_ERR "%s RX bdringtohw() error.\n", lp->ndev->name);
+	/* Refill RX buffers */
+	xemacpss_DmaSetupRecvBuffers(lp->ndev);
 
 	return numbdfree;
 }
@@ -1408,7 +1477,7 @@ static void xemacpss_tx_poll(unsigned long data)
 			DMA_TO_DEVICE);
 		rp->skb = NULL;
 		dev_kfree_skb_irq(skb);
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_VERBOSE_TX
 		printk(KERN_INFO "GEM: TX bd index %d BD_STAT 0x%08x after sent.\n",
 			bdidx, regval);
 #endif
@@ -1511,10 +1580,26 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 static void xemacpss_descriptor_free(struct net_local *lp)
 {
 	int size;
+	int i;
+
+	for (i=0; i < XEMACPSS_RECV_BD_CNT; i++) {
+		if (lp->rx_skb && lp->rx_skb[i].skb) {
+			dma_unmap_single(lp->ndev->dev.parent,
+			                 lp->rx_skb[i].mapping,
+					 XEMACPSS_RX_BUF_SIZE,
+					 DMA_FROM_DEVICE);
+
+			dev_kfree_skb(lp->rx_skb[i].skb);
+			lp->rx_skb[i].skb = NULL;
+			lp->rx_skb[i].mapping = 0;
+		}
+	}
 
 	/* kfree(NULL) is safe, no need to check here */
 	kfree(lp->tx_skb);
 	lp->tx_skb = NULL;
+	kfree(lp->rx_skb);
+	lp->rx_skb = NULL;
 
 	size = XEMACPSS_RECV_BD_CNT * sizeof(struct xemacpss_bd);
 	if (lp->rx_bd) {
@@ -1528,13 +1613,6 @@ static void xemacpss_descriptor_free(struct net_local *lp)
 		dma_free_coherent(&lp->pdev->dev, size,
 			lp->tx_bd, lp->tx_bd_dma);
 		lp->tx_bd = NULL;
-	}
-
-	size = XEMACPSS_RECV_BD_CNT * XEMACPSS_RX_BUF_SIZE;
-	if (lp->rx_buffer) {
-		dma_free_coherent(&lp->pdev->dev, size,
-			lp->rx_buffer, lp->rx_buffer_dma);
-		lp->rx_buffer = NULL;
 	}
 }
 
@@ -1550,6 +1628,10 @@ static int xemacpss_descriptor_init(struct net_local *lp)
 	size = XEMACPSS_SEND_BD_CNT * sizeof(struct ring_info);
 	lp->tx_skb = kmalloc(size, GFP_KERNEL);
 	if (!lp->tx_skb)
+		goto err_out;
+	size = XEMACPSS_RECV_BD_CNT * sizeof(struct ring_info);
+	lp->rx_skb = kmalloc(size, GFP_KERNEL);
+	if (!lp->rx_skb)
 		goto err_out;
 
 	size = XEMACPSS_RECV_BD_CNT * sizeof(struct xemacpss_bd);
@@ -1568,19 +1650,11 @@ static int xemacpss_descriptor_init(struct net_local *lp)
 	dev_dbg(&lp->pdev->dev, "TX ring %d bytes at 0x%x mapped %p\n",
 			size, lp->tx_bd_dma, lp->tx_bd);
 
-	size = XEMACPSS_RECV_BD_CNT * XEMACPSS_RX_BUF_SIZE;
-	lp->rx_buffer = dma_alloc_coherent(&lp->pdev->dev, size,
-			&lp->rx_buffer_dma, GFP_KERNEL);
-	if (!lp->rx_buffer)
-		goto err_out;
-	dev_dbg(&lp->pdev->dev, "RX buffers %d bytes at 0x%x mapped %p\n",
-		size, lp->rx_buffer_dma, lp->rx_buffer);
-
 #ifdef DEBUG
 	printk(KERN_INFO "GEM: lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
-		lp->tx_bd, lp->tx_bd_dma, lp->tx_skb);
-	printk(KERN_INFO "GEM: lp->rx_bd %p lp->rx_bd_dma %p lp->rx_buffer %p\n",
-		lp->rx_bd, lp->rx_bd_dma, lp->rx_buffer);
+		lp->tx_bd, (void*)lp->tx_bd_dma, lp->tx_skb);
+	printk(KERN_INFO "GEM: lp->rx_bd %p lp->rx_bd_dma %p lp->rx_skb %p\n",
+		lp->rx_bd, (void*)lp->rx_bd_dma, lp->rx_skb);
 #endif
 	return 0;
 
@@ -1598,9 +1672,7 @@ static int xemacpss_setup_ring(struct net_local *lp)
 {
 	int i;
 	u32 regval;
-	dma_addr_t addr;
 	struct xemacpss_bd *bdptr;
-	unsigned int rc;
 
 	lp->rx_ring.separation   = (sizeof(struct xemacpss_bd) +
 		(ALIGNMENT_BD - 1)) & ~(ALIGNMENT_BD - 1);
@@ -1620,30 +1692,22 @@ static int xemacpss_setup_ring(struct net_local *lp)
 	lp->rx_ring.precnt       = 0;
 	lp->rx_ring.hwcnt        = 0;
 	lp->rx_ring.postcnt      = 0;
+	lp->rx_ring.is_rx        = 1;
 
-	addr  = lp->rx_buffer_dma;
 	bdptr = (struct xemacpss_bd *)lp->rx_ring.firstbdaddr;
 
 	/* Setup RX BD ring structure and populate buffer address. */
 	for (i = 0; i < (XEMACPSS_RECV_BD_CNT - 1); i++) {
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, 0);
-		XEMACPSS_SET_BUFADDR_RX(bdptr, addr);
-		addr += XEMACPSS_RX_BUF_SIZE;
+		xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, 0);
 		bdptr = XEMACPSS_BDRING_NEXT(&lp->rx_ring, bdptr);
 	}
 	/* wrap bit set for last BD, bdptr is moved to last here */
 	xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, 0);
-	XEMACPSS_SET_BUFADDR_RX(bdptr, addr);
-	regval = xemacpss_read(bdptr, XEMACPSS_BD_ADDR_OFFSET);
-	regval |= XEMACPSS_RXBUF_WRAP_MASK;
-	xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, regval);
+	xemacpss_write(bdptr, XEMACPSS_BD_ADDR_OFFSET, XEMACPSS_RXBUF_WRAP_MASK);
 
-	rc  = xemacpss_bdringalloc(&lp->rx_ring, (XEMACPSS_RECV_BD_CNT - 1),
-		&bdptr);
-	rc |= xemacpss_bdringtohw(&lp->rx_ring, (XEMACPSS_RECV_BD_CNT - 1),
-		bdptr);
-	if (rc)
-		return -EPERM;
+	/* Allocate RX skbuffs; set descriptor buffer addresses */
+	xemacpss_DmaSetupRecvBuffers(lp->ndev);
 
 	lp->tx_ring.separation   = (sizeof(struct xemacpss_bd) +
 		(ALIGNMENT_BD - 1)) & ~(ALIGNMENT_BD - 1);
@@ -1663,6 +1727,7 @@ static int xemacpss_setup_ring(struct net_local *lp)
 	lp->tx_ring.precnt       = 0;
 	lp->tx_ring.hwcnt        = 0;
 	lp->tx_ring.postcnt      = 0;
+	lp->tx_ring.is_rx        = 0;
 
 	bdptr = (struct xemacpss_bd *)lp->tx_ring.firstbdaddr;
 
@@ -1896,7 +1961,7 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	void       *virt_addr;
 	skb_frag_t *frag;
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_VERBOSE_TX
 	printk(KERN_INFO "%s: TX data:", __FUNCTION__);
 	for (i = 0; i < 48; i++) {
 		if (!(i % 16))
@@ -1924,7 +1989,8 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	frag = &skb_shinfo(skb)->frags[0];
 	bdptrs = bdptr;
-#ifdef DEBUG_VERBOSE
+
+#ifdef DEBUG_VERBOSE_TX
 	printk(KERN_INFO "GEM: TX nr_frags %d, skb->len 0x%x, skb_headlen(skb) 0x%x\n",
 		nr_frags, skb->len, skb_headlen(skb));
 #endif
@@ -1953,8 +2019,10 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		wmb();
 
 		regval = xemacpss_read(bdptr, XEMACPSS_BD_STAT_OFFSET);
-		/* clear used bit - hardware to own this descriptor */
-		regval &= ~XEMACPSS_TXBUF_USED_MASK;
+		/* Preserve only critical status bits.  Packet is NOT to be
+		 * committed to hardware at this time.
+		 */
+		regval &= (XEMACPSS_TXBUF_USED_MASK | XEMACPSS_TXBUF_WRAP_MASK);
 		/* update length field */
 		regval |= ((regval & ~XEMACPSS_TXBUF_LEN_MASK) | len);
 		/* last fragment of this packet? */
@@ -1963,7 +2031,7 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 		xemacpss_write(bdptr, XEMACPSS_BD_STAT_OFFSET, regval);
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_VERBOSE_TX
 		printk(KERN_INFO "GEM: TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
 			bdidx, bdptr, regval);
 #endif
@@ -2553,7 +2621,7 @@ static int __init xemacpss_probe(struct platform_device *pdev)
 		goto err_out_free_netdev;
 	}
 #ifdef DEBUG
-	printk(KERN_INFO "GEM: BASEADDRESS hw: 0x%08x virt: 0x%08x\n", r_mem->start, lp->baseaddr);
+	printk(KERN_INFO "GEM: BASEADDRESS hw: %p virt: %p\n", (void*)r_mem->start, lp->baseaddr);
 #endif
 
 	ndev->irq = platform_get_irq(pdev, 0);
