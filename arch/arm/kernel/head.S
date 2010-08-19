@@ -125,9 +125,30 @@ wait4address:
 	mov	pc,r2				@ jump to the boot address specified in the 
 						@ boot address register from CPU0
 
-#endif
-
 primary_startup:
+
+	# turn CPU1 lose so it transitions from the boot rom to the kernel
+	# do this by resetting CPU1 (set reset register bit, then clear it)
+
+	# unlock SLCR
+	ldr r1, =(SLC_REG + 8)
+	ldr r2, =0xDF0D
+	str r2, [r1]
+
+	#reset CPU1
+	ldr r1, =(SLC_REG + 0x244)
+	ldr r2, =0x2
+	str r2, [r1]
+	ldr r2, =0x0
+	str r2, [r1]
+
+	# relock SLCR
+	ldr r1, =(SLC_REG + 0x4)
+	ldr r2, =0x767B
+	str r2, [r1]
+
+#endif
+	# Normal kernel startup starts here (non-Xilinx)
 
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9 @ ensure svc mode
 						@ and irqs disabled
