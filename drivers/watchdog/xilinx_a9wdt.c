@@ -24,9 +24,11 @@
 #include <linux/watchdog.h>
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 /* These are temporary values. Need to finalize when we have a fixed clock */
-#define XA9WDT_MAX_TIMEOUT	300
+#define XA9WDT_CLOCK		5000000
+#define XA9WDT_MAX_TIMEOUT	600
 #define XA9WDT_DEFAULT_TIMEOUT	 10
 #define XA9WDT_PRESCALER	 00
 
@@ -89,7 +91,7 @@ static struct watchdog_info xa9wdt_info = {
 /**
  * xa9wdt_start -  Enable and start the watchdog.
  *
- * The clock to the WDT is 12.5 MHz and the counter value is calculated
+ * The clock to the WDT is 5 MHz and the counter value is calculated
  * according to the formula:
  *	load count = ((timeout * clock) / (prescalar + 1)) - 1.
  * This needs to be re-visited when the PERIPHCLK clock changes in HW.
@@ -97,7 +99,7 @@ static struct watchdog_info xa9wdt_info = {
  **/
 static void xa9wdt_start(void)
 {
-	wdt_count = ((wdt_timeout * 12500000) / (XA9WDT_PRESCALER + 1)) - 1;
+	wdt_count = ((wdt_timeout * XA9WDT_CLOCK) / (XA9WDT_PRESCALER + 1)) - 1;
 
 	spin_lock(&wdt->io_lock);
 	xa9wdt_writereg(wdt_count, XA9WDT_LOAD_OFFSET);
@@ -506,8 +508,9 @@ static int __init xa9wdt_init(void)
 	 */
 	if (xa9wdt_settimeout(wdt_timeout)) {
 		xa9wdt_settimeout(XA9WDT_DEFAULT_TIMEOUT);
-		pr_info("xa9wdt: wdt_timeout value limited to 1 - 300 sec, \
-		using default %dsec timeout\n", XA9WDT_DEFAULT_TIMEOUT);
+		pr_info("xa9wdt: wdt_timeout value limited to 1 - %d sec, "
+		"using default %dsec timeout\n",
+		XA9WDT_MAX_TIMEOUT, XA9WDT_DEFAULT_TIMEOUT);
 	}
 	return platform_driver_register(&xa9wdt_driver);
 }

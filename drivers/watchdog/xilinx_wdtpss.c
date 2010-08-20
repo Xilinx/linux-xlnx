@@ -27,8 +27,9 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-
-#define XWDTPSS_DEFAULT_TIMEOUT	10	/* Supports 1 - 600 sec */
+#define XWDTPSS_CLOCK		2500000
+#define XWDTPSS_DEFAULT_TIMEOUT	10
+#define XWDTPSS_MAX_TIMEOUT	400	/* Supports 1 - 400 sec */
 
 static int wdt_timeout = XWDTPSS_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
@@ -128,7 +129,7 @@ static void xwdtpss_reload(void)
 /**
  * xwdtpss_start -  Enable and start the watchdog.
  *
- * The clock to the WDT is 100 MHz, the prescalar is set to divide
+ * The clock to the WDT is 2.5 MHz, the prescalar is set to divide
  * the clock by 4096 and the counter value is calculated according to
  * the formula:
  *		calculated count = (timeout * clock) / prescalar + 1.
@@ -149,11 +150,11 @@ static void xwdtpss_start(void)
 	 * 64		- Prescalar divide value.
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
-	 * 781250	- Input clock value.
+	 * 2500000	- Input clock value.
 	 * This code needs to be modified when the clock value increases
 	 * in H/W.
 	 */
-	count = (wdt_timeout * 781250) / (64 * 0x1000) + 1;
+	count = (wdt_timeout * XWDTPSS_CLOCK) / (64 * 0x1000) + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -192,7 +193,7 @@ static void xwdtpss_start(void)
  **/
 static int xwdtpss_settimeout(int new_time)
 {
-	if ((new_time <= 0) || (new_time > 600))
+	if ((new_time <= 0) || (new_time > XWDTPSS_MAX_TIMEOUT))
 		return -ENOTSUPP;
 	wdt_timeout = new_time;
 	return 0;
@@ -548,9 +549,9 @@ static int __init xwdtpss_init(void)
 	 */
 	if (xwdtpss_settimeout(wdt_timeout)) {
 		xwdtpss_settimeout(XWDTPSS_DEFAULT_TIMEOUT);
-		pr_info("xwdtpss: wdt_timeout value limited to 1 - 600 sec, "
+		pr_info("xwdtpss: wdt_timeout value limited to 1 - %d sec, "
 			"using default timeout of %dsec\n",
-			XWDTPSS_DEFAULT_TIMEOUT);
+			XWDTPSS_MAX_TIMEOUT, XWDTPSS_DEFAULT_TIMEOUT);
 	}
 	return platform_driver_register(&xwdtpss_driver);
 }
