@@ -127,6 +127,15 @@ wait4address:
 
 primary_startup:
 
+	# there's not a reset vector at 0 and the 2nd CPU needs one to get to the Linux
+	# kernel, so make it for now with a b to 0x8000 which is where the kernel is
+	# in ram, this assumes low vectors for CPU1 and the kernel is at 0x8000
+	# this assumes DDR is mapped to 0 and the MMU is off coming into Linux
+
+	ldr r1, =0x0
+	ldr r2, =0xE3A0F902
+	str r2, [r1]
+
 	# turn CPU1 lose so it transitions from the boot rom to the kernel
 	# do this by resetting CPU1 (set reset register bit, then clear it)
 
