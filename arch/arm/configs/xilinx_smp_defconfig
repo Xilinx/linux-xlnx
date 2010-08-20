@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.34
-# Fri Aug 20 11:38:09 2010
+# Fri Aug 20 11:43:23 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -325,7 +325,7 @@ CONFIG_ALIGNMENT_TRAP=y
 #
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="console=ttyDF0,9600n8 root=/dev/ram rw initrd=0x00800000,8M earlyprintk mtdparts=physmap-flash.0:1M(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
+CONFIG_CMDLINE="console=ttyDF0,9600n8 root=/dev/ram rw initrd=0x00800000,16M earlyprintk mtdparts=physmap-flash.0:1M(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
 
