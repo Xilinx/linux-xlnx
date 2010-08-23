@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.34
-# Fri Aug 20 11:17:31 2010
+# Mon Aug 23 14:12:33 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -825,7 +825,7 @@ CONFIG_WATCHDOG=y
 # Watchdog Device Drivers
 #
 # CONFIG_SOFT_WATCHDOG is not set
-# CONFIG_XILINX_PSS_WATCHDOG is not set
+CONFIG_XILINX_PSS_WATCHDOG=y
 # CONFIG_XILINX_A9_WATCHDOG is not set
 # CONFIG_MAX63XX_WATCHDOG is not set
 CONFIG_SSB_POSSIBLE=y
