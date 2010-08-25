@@ -62,8 +62,24 @@
 /* Add ECC reg, nand_cycles, sram_cycles and opmode_x_n registers
    There are multiple interfaces also we need to take care.*/
 
+/* Register definitions */
+/* ECC register offset */
+#define XSMCPSS_ECC_IF0_OFFSET		0x300   /* Interface 0 ECC register */
+#define XSMCPSS_ECC_IF1_OFFSET		0x400   /* Interface 1 ECC register */
+#define XSMCPSS_ECC_STATUS_OFFSET(addr)	(0x000 + addr) /* ECC status register */
+#define XSMCPSS_ECC_MEMCFG_OFFSET(addr)	(0x004 + addr) /* ECC mem config reg */
+#define XSMCPSS_ECC_MEMCMD1_OFFSET(addr)(0x008 + addr) /*ECC mem cmd1 reg*/
+#define XSMCPSS_ECC_MEMCMD2_OFFSET(addr)(0x00C + addr) /*ECC mem cmd2 reg*/
+#define XSMCPSS_ECC_ADDR0_OFFSET(addr)	(0x010 + addr) /* ECC address0 reg */
+#define XSMCPSS_ECC_ADDR1_OFFSET(addr)	(0x014 + addr) /* ECC address1 reg */
+#define XSMCPSS_ECC_VALUE0_OFFSET(addr)	(0x018 + addr) /* ECC value 0 reg */
+#define XSMCPSS_ECC_VALUE1_OFFSET(addr)	(0x01C + addr) /* ECC value 1 reg */
+#define XSMCPSS_ECC_VALUE2_OFFSET(addr)	(0x020 + addr) /* ECC value 2 reg */
+#define XSMCPSS_ECC_VALUE3_OFFSET(addr)	(0x024 + addr) /* ECC value 3 reg */
+#define XSMCPSS_ECC_VALUE4_OFFSET(addr)	(0x028 + addr) /* ECC value 4 reg */
+
+/* nand_cycles, sram_cycles and opmode_x_n registers offsets*/
+#define XSMCPSS_FLASH_CYCLES(addr)	(0x000 + addr) /* NAND and SRAM cycle */
+#define XSMCPSS_OPMODE(addr)		(0x004 + addr) /* Chip opmode reg */
+
 #endif /* __ASM_ARCH_SMC_H__ */
-
-
-
-
