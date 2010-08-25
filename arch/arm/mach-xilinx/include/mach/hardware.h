@@ -59,6 +59,7 @@
 
 #define SMC_BASE		(IO_BASE + 0x0000E000)
 #define NOR_BASE		(IO_BASE + 0x04000000)
+#define NAND_BASE		(IO_BASE + 0x01000000)
 
 /* Cleaned up addresses start here, please keep addresses in order to make
  * them easier to read.
@@ -113,6 +114,7 @@
 #define IRQ_TIMERCOUNTER0	42
 #define IRQ_DMAC0_ABORT		45
 #define IRQ_DMAC0		46
+#define IRQ_SMC			50
 #define IRQ_GPIO0		52
 #define IRQ_ETH0                54
 #define IRQ_I2C0		57

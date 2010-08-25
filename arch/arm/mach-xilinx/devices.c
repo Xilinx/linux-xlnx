@@ -202,6 +202,32 @@ struct platform_device xilinx_norpss_device = {
 	.num_resources = ARRAY_SIZE(xnorpss_0_resource),
 };
 
+/*************************PSS NAND ***********************/
+#include <linux/mtd/nand.h>
+static u32 options = NAND_NO_AUTOINCR | NAND_USE_FLASH_BBT;
+static struct resource xnand_res[] = {
+	{
+		.start  = NAND_BASE,
+		.end    = NAND_BASE + 0xFFFFFF,
+		.flags  = IORESOURCE_MEM
+	},
+	{
+		.start  = SMC_BASE,
+		.end    = SMC_BASE + 0xFFF,
+		.flags  = IORESOURCE_MEM
+	},
+};
+
+struct platform_device xilinx_nandpss_device = {
+	.name = "Xilinx_PSS_NAND",
+	.id = 0,
+	.dev = {
+		.platform_data = &options,
+	},
+	.num_resources = ARRAY_SIZE(xnand_res),
+	.resource = xnand_res,
+};
+
 #define ETH0_PHY_MASK 0x17
 #define ETH1_PHY_MASK 24
 
@@ -374,6 +400,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_spipss_0_device,
 	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
+	&xilinx_nandpss_device,
 };
 
 /**
