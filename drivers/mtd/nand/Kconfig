@@ -488,4 +488,10 @@ config MTD_NAND_W90P910
 	  This enables the driver for the NAND Flash on evaluation board based
 	  on w90p910.
 
+config MTD_NAND_XILINX_PSS
+	tristate "Xilinx PSS NAND flash Driver"
+	depends on MTD_NAND && ARCH_XILINX
+	help
+	  This enables access to the NAND flash device on Xilinx PSS.
+
 endif # MTD_NAND
