@@ -388,7 +388,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&dmac_device0,
 	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
-//	&xilinx_dma_test,
+	&xilinx_dma_test,
 #endif
 	&xilinx_i2cpss_0_device,
 	&xilinx_gpiopss_0_device,
