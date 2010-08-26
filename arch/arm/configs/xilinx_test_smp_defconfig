@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.34
-# Tue Aug 24 14:59:00 2010
+# Thu Aug 26 11:01:13 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -233,7 +233,7 @@ CONFIG_ARCH_XILINX=y
 #
 # Xilinx Specific Options
 #
-# CONFIG_XILINX_TEST is not set
+CONFIG_XILINX_TEST=y
 # CONFIG_XILINX_AMP_ON_2ND_CPU is not set
 
 #
