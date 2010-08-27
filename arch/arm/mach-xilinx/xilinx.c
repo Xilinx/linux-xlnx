@@ -33,10 +33,8 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/eeprom.h>
 
-/*
- * Register values for using NOR interface of SMC Controller
- */
-#define SET_CYCLES_REG ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
+/* Register values for using NOR interface of SMC Controller */
+#define NOR_SET_CYCLES ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
 			(0x1 << 17) | /* set_t5 or t_tr from sram_cycles */    \
 			(0x2 << 14) | /* set_t4 or t_pc from sram_cycles */    \
 			(0x5 << 11) | /* set_t3 or t_wp from sram_cycles */    \
@@ -44,7 +42,7 @@
 			(0x7 << 4)  | /* set_t1 t_wc from sram_cycles */       \
 			(0x7))	      /* set_t0 t_rc from sram_cycles */
 
-#define SET_OPMODE_REG ((0x1 << 13) | /* set_burst_align,set to 32 beats */    \
+#define NOR_SET_OPMODE ((0x1 << 13) | /* set_burst_align,set to 32 beats */    \
 			(0x0 << 12) | /* set_bls,set to default */	       \
 			(0x0 << 11) | /* set_adv bit, set to default */	       \
 			(0x0 << 10) | /* set_baa, we don't use baa_n */	       \
@@ -54,17 +52,25 @@
 			(0x0 << 2)  | /* set_rd_sync, set to 0 */	       \
 			(0x0))	      /* set_mw, memory width, 16bits width*/
 				      /* 0x00002000 */
-#define DIRECT_CMD_REG ((0x1 << 23) | /* Chip 1 from interface 0 */	       \
+#define NOR_DIRECT_CMD ((0x1 << 23) | /* Chip 1 from interface 0 */	       \
 			(0x2 << 21) | /* UpdateRegs operation */	       \
 			(0x0 << 20) | /* No ModeReg write */		       \
 			(0x0))	      /* Addr, not used in UpdateRegs */
 				      /* 0x01400000 */
+
+/* Register values for using SRAM interface of SMC Controller */
+#define SRAM_SET_CYCLES (0x00125155)
+#define SRAM_SET_OPMODE (0x00002000)
+#define SRAM_DIRECT_CMD (0x00400000)
 
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
 
 /* used by entry-macro.S */
 void __iomem *gic_cpu_base_addr;
+
+/* SRAM base address */
+void __iomem *xsram_base;
 
 static struct at24_platform_data board_eeprom = {
 	.byte_len = 8*256,
@@ -106,11 +112,22 @@ static struct spi_board_info spi_devs[] __initdata = {
 #ifdef CONFIG_MTD_PHYSMAP
 static void smc_init_nor(void __iomem *smc_base)
 {
-	__raw_writel(SET_CYCLES_REG, smc_base + XSMCPSS_MC_SET_CYCLES);
-	__raw_writel(SET_OPMODE_REG, smc_base + XSMCPSS_MC_SET_OPMODE);
-	__raw_writel(DIRECT_CMD_REG, smc_base + XSMCPSS_MC_DIRECT_CMD);
+	__raw_writel(NOR_SET_CYCLES, smc_base + XSMCPSS_MC_SET_CYCLES);
+	__raw_writel(NOR_SET_OPMODE, smc_base + XSMCPSS_MC_SET_OPMODE);
+	__raw_writel(NOR_DIRECT_CMD, smc_base + XSMCPSS_MC_DIRECT_CMD);
 }
 #endif
+
+/**
+ * smc_init_sram - Initialize the SRAM interface of the SMC.
+ *
+ **/
+static void smc_init_sram(void __iomem *smc_base)
+{
+	__raw_writel(SRAM_SET_CYCLES, smc_base + XSMCPSS_MC_SET_CYCLES);
+	__raw_writel(SRAM_SET_OPMODE, smc_base + XSMCPSS_MC_SET_OPMODE);
+	__raw_writel(SRAM_DIRECT_CMD, smc_base + XSMCPSS_MC_DIRECT_CMD);
+}
 
 /**
  * board_init - Board specific initialization for the Xilinx BSP.
@@ -122,9 +139,7 @@ static void __init board_init(void)
 	void *l2cache_base;
 #endif
 
-#ifdef CONFIG_MTD_PHYSMAP
 	void __iomem *smc_base;
-#endif
 
 	pr_debug("->board_init\n");
 
@@ -148,10 +163,16 @@ static void __init board_init(void)
  			         ARRAY_SIZE(spi_devs));
 #endif
 
-#ifdef CONFIG_MTD_PHYSMAP
 	smc_base = ioremap(SMC_BASE, SZ_256);
+
+#ifdef CONFIG_MTD_PHYSMAP
 	smc_init_nor(smc_base);
 #endif
+
+	smc_init_sram(smc_base);
+	xsram_base = ioremap(SRAM_BASE, SZ_256K);
+	pr_info("SRAM at 0x%X mapped to 0x%X\n", SRAM_BASE,
+		(unsigned int)xsram_base);
 
 	pr_debug("<-board_init\n");
 }
