@@ -58,6 +58,7 @@
  */
 
 #define SMC_BASE		(IO_BASE + 0x0000E000)
+#define SRAM_BASE		(IO_BASE + 0x02000000)
 #define NOR_BASE		(IO_BASE + 0x04000000)
 #define NAND_BASE		(IO_BASE + 0x01000000)
 
