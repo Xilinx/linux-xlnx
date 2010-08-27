@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.34
-# Thu Aug 26 11:01:13 2010
+# Fri Aug 27 15:27:05 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -325,7 +325,7 @@ CONFIG_ALIGNMENT_TRAP=y
 #
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="console=ttyDF0,9600n8 init=/test/pele_test.sh ip=10.10.70.1 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=physmap-flash.0:1M(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
+CONFIG_CMDLINE="console=ttyDF0,9600n8 init=/test/pele_test.sh ip=10.10.70.1 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=xilinx_nand:16M(nandtest),-(nandother);physmap-flash.0:1M(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
 
@@ -554,7 +554,16 @@ CONFIG_MTD_PHYSMAP=y
 # CONFIG_MTD_DOC2000 is not set
 # CONFIG_MTD_DOC2001 is not set
 # CONFIG_MTD_DOC2001PLUS is not set
-# CONFIG_MTD_NAND is not set
+CONFIG_MTD_NAND=y
+# CONFIG_MTD_NAND_VERIFY_WRITE is not set
+# CONFIG_MTD_NAND_ECC_SMC is not set
+# CONFIG_MTD_NAND_MUSEUM_IDS is not set
+# CONFIG_MTD_NAND_GPIO is not set
+CONFIG_MTD_NAND_IDS=y
+# CONFIG_MTD_NAND_DISKONCHIP is not set
+# CONFIG_MTD_NAND_NANDSIM is not set
+# CONFIG_MTD_NAND_PLATFORM is not set
+CONFIG_MTD_NAND_XILINX_PSS=y
 # CONFIG_MTD_ONENAND is not set
 
 #
