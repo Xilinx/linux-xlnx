@@ -72,24 +72,27 @@ void __iomem *gic_cpu_base_addr;
 /* SRAM base address */
 void __iomem *xsram_base;
 
-static struct at24_platform_data board_eeprom = {
-	.byte_len = 8*256,
-	.page_size = 16,
-};
-
+/* The 1st I2C bus has an eeprom and a real time clock on
+   it.
+*/
 static struct i2c_board_info i2c_devs_0[] __initdata = {
 	{
 		I2C_BOARD_INFO("24c02", 0x50),
-		.platform_data = &board_eeprom,
+	},
+	{
+		I2C_BOARD_INFO("rtc8564", 0x51),
 	},
 };
 
+/* The 2nd I2C bus has DDR DIMMs on it with small eeproms
+   referred to as SPD.
+*/
 static struct i2c_board_info i2c_devs_1[] __initdata = {
 	{
-		I2C_BOARD_INFO("rtc8564", 0x51),
-		.platform_data = 0,
+		I2C_BOARD_INFO("spd", 0x50),
 	},
 };
+
 
 #ifndef CONFIG_SPI_SPIDEV
 
@@ -107,7 +110,7 @@ static struct spi_eeprom at25640_1 = {
         .flags          = EE_ADDR2,
 };
 
-static struct spi_board_info spi_devs_0[] __initdata = {
+static struct spi_board_info spi_devs[] __initdata = {
         {
                 .modalias = "at25",
                 .max_speed_hz = 1000000,
@@ -115,9 +118,6 @@ static struct spi_board_info spi_devs_0[] __initdata = {
                 .chip_select = 0,
                 .platform_data = &at25640_0,
         },
-};
-
-static struct spi_board_info spi_devs_1[] __initdata = {
         {
                 .modalias = "at25",
                 .max_speed_hz = 1000000,
@@ -184,10 +184,8 @@ static void __init board_init(void)
 	i2c_register_board_info(1, i2c_devs_1, ARRAY_SIZE(i2c_devs_1));
 
 #ifndef CONFIG_SPI_SPIDEV
-	spi_register_board_info(spi_devs_0,
- 			         ARRAY_SIZE(spi_devs_0));
-	spi_register_board_info(spi_devs_1,
- 			         ARRAY_SIZE(spi_devs_1));
+	spi_register_board_info(spi_devs,
+ 			         ARRAY_SIZE(spi_devs));
 #endif
 
 	smc_base = ioremap(SMC_BASE, SZ_256);
