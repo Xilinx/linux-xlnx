@@ -77,29 +77,53 @@ static struct at24_platform_data board_eeprom = {
 	.page_size = 16,
 };
 
-static struct i2c_board_info i2c_devs[] __initdata = {
+static struct i2c_board_info i2c_devs_0[] __initdata = {
 	{
 		I2C_BOARD_INFO("24c02", 0x50),
 		.platform_data = &board_eeprom,
 	},
 };
 
+static struct i2c_board_info i2c_devs_1[] __initdata = {
+	{
+		I2C_BOARD_INFO("rtc8564", 0x51),
+		.platform_data = 0,
+	},
+};
+
 #ifndef CONFIG_SPI_SPIDEV
 
-static struct spi_eeprom at25640 = {
+static struct spi_eeprom at25640_0 = {
         .name           = "at25LC640",
         .byte_len       = 8*1024,
         .page_size      = 32,
         .flags          = EE_ADDR2,
 };
 
-static struct spi_board_info spi_devs[] __initdata = {
+static struct spi_eeprom at25640_1 = {
+        .name           = "at25LC640",
+        .byte_len       = 8*1024,
+        .page_size      = 32,
+        .flags          = EE_ADDR2,
+};
+
+static struct spi_board_info spi_devs_0[] __initdata = {
         {
                 .modalias = "at25",
                 .max_speed_hz = 1000000,
                 .bus_num = 0,
                 .chip_select = 0,
-                .platform_data = &at25640,
+                .platform_data = &at25640_0,
+        },
+};
+
+static struct spi_board_info spi_devs_1[] __initdata = {
+        {
+                .modalias = "at25",
+                .max_speed_hz = 1000000,
+                .bus_num = 1,
+                .chip_select = 0,
+                .platform_data = &at25640_1,
         },
 };
 
@@ -156,11 +180,14 @@ static void __init board_init(void)
 	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
 #endif
 
-	i2c_register_board_info(0, i2c_devs, ARRAY_SIZE(i2c_devs));
+	i2c_register_board_info(0, i2c_devs_0, ARRAY_SIZE(i2c_devs_0));
+	i2c_register_board_info(1, i2c_devs_1, ARRAY_SIZE(i2c_devs_1));
 
 #ifndef CONFIG_SPI_SPIDEV
-	spi_register_board_info(spi_devs,
- 			         ARRAY_SIZE(spi_devs));
+	spi_register_board_info(spi_devs_0,
+ 			         ARRAY_SIZE(spi_devs_0));
+	spi_register_board_info(spi_devs_1,
+ 			         ARRAY_SIZE(spi_devs_1));
 #endif
 
 	smc_base = ioremap(SMC_BASE, SZ_256);

@@ -131,7 +131,7 @@ static struct platform_device xilinx_dma_test = {
 #endif
 
 /*************************PSS I2C***********************/
-static struct xi2cpss_platform_data xi2cpss_pdata = {
+static struct xi2cpss_platform_data xi2cpss_0_pdata = {
 	.input_clk = 50000000,
 	.i2c_clk = 100000,
 };
@@ -153,11 +153,40 @@ static struct platform_device xilinx_i2cpss_0_device = {
 	.name = "XILINX_PSS_I2C",
 	.id = 0,
 	.dev = {
-		.platform_data = &xi2cpss_pdata,
+		.platform_data = &xi2cpss_0_pdata,
 	},
 	.resource = xi2cpss_0_resource,
 	.num_resources = ARRAY_SIZE(xi2cpss_0_resource),
 };
+
+static struct xi2cpss_platform_data xi2cpss_1_pdata = {
+	.input_clk = 50000000,
+	.i2c_clk = 100000,
+};
+
+static struct resource xi2cpss_1_resource[] = {
+	{
+		.start = I2C1_BASE,
+		.end = I2C1_BASE + 0x00FF,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_I2C1,
+		.end = IRQ_I2C1,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device xilinx_i2cpss_1_device = {
+	.name = "XILINX_PSS_I2C",
+	.id = 1,
+	.dev = {
+		.platform_data = &xi2cpss_1_pdata,
+	},
+	.resource = xi2cpss_1_resource,
+	.num_resources = ARRAY_SIZE(xi2cpss_1_resource),
+};
+
 
 /*************************PSS GPIO*********************/
 static struct resource xgpiopss_0_resource[] = {
@@ -229,7 +258,7 @@ struct platform_device xilinx_nandpss_device = {
 };
 
 #define ETH0_PHY_MASK 0x17
-#define ETH1_PHY_MASK 24
+#define ETH1_PHY_MASK 0x10
 
 struct xemacpss_eth_data {
 	u32 phy_mask;
@@ -239,12 +268,9 @@ static struct xemacpss_eth_data __initdata eth0_data = {
 	.phy_mask = ~(1U << ETH0_PHY_MASK),
 };
 
-/* eth1 will be available in EP5 and up, comment out for now. */
-#ifdef EP5_AND_UP
 static struct xemacpss_eth_data __initdata eth1_data = {
 	.phy_mask = ~(1U << ETH1_PHY_MASK),
 };
-#endif
 
 static struct resource eth0[] = {
 	{
@@ -271,7 +297,6 @@ struct platform_device eth_device0 = {
 	.num_resources = ARRAY_SIZE(eth0),
 };
 
-#ifdef EP5_AND_UP
 static struct resource eth1[] = {
 	{
 		.start = ETH1_BASE,
@@ -296,13 +321,18 @@ struct platform_device eth_device1 = {
 	.resource = eth1,
 	.num_resources = ARRAY_SIZE(eth1),
 };
-#endif
 
 /*************************PSS SPI*********************/
 
 static struct xspi_platform_data xspi_0_pdata = {
 	.speed_hz = 50000000,
 	.bus_num = 0,
+	.num_chipselect = 4
+};
+
+static struct xspi_platform_data xspi_1_pdata = {
+	.speed_hz = 50000000,
+	.bus_num = 1,
 	.num_chipselect = 4
 };
 
@@ -314,6 +344,15 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo = {
 	.irq			= IRQ_SPI0,
 	.max_speed_hz		= 50000000, /* max sample rate at 3V */
 	.bus_num		= 0,
+	.chip_select		= 0,
+};
+
+static struct spi_board_info __initdata xilinx_spipss_1_boardinfo = {
+	.modalias		= "spidev",
+	.platform_data		= &xspi_1_pdata,
+	.irq			= IRQ_SPI1,
+	.max_speed_hz		= 50000000, /* max sample rate at 3V */
+	.bus_num		= 1,
 	.chip_select		= 0,
 };
 
@@ -341,6 +380,30 @@ static struct platform_device xilinx_spipss_0_device = {
 	.resource = xspipss_0_resource,
 	.num_resources = ARRAY_SIZE(xspipss_0_resource),
 };
+
+static struct resource xspipss_1_resource[] = {
+	{
+		.start	= SPI1_BASE,
+		.end	= SPI1_BASE + 0xFFF,
+		.flags	= IORESOURCE_MEM
+	},
+	{
+		.start	= IRQ_SPI1,
+		.end	= IRQ_SPI1,
+		.flags	= IORESOURCE_IRQ
+	},
+};
+
+static struct platform_device xilinx_spipss_1_device = {
+	.name = "Xilinx_PSS_SPI",
+	.id = 1,
+	.dev = {
+		.platform_data = &xspi_1_pdata,
+	},
+	.resource = xspipss_1_resource,
+	.num_resources = ARRAY_SIZE(xspipss_1_resource),
+};
+
 
 /*************************PSS WDT*********************/
 static struct resource xwdtpss_0_resource[] = {
@@ -391,13 +454,13 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_dma_test,
 #endif
 	&xilinx_i2cpss_0_device,
+	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
 	&xilinx_norpss_device,
 	&eth_device0,
-#ifdef EP5_AND_UP
 	&eth_device1,
-#endif
 	&xilinx_spipss_0_device,
+	&xilinx_spipss_1_device,
 	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
