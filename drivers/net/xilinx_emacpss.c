@@ -2061,6 +2061,45 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	return rc;
 }
 
+/*
+ * Get the MAC Address bit from the specified position
+ */
+static unsigned get_bit(u8 *mac, unsigned bit)
+{
+	unsigned byte;
+
+	byte = mac[bit / 8];
+	byte >>= (bit & 0x7);
+	byte &= 1;
+
+	return byte;
+}
+
+/*
+ * Calculate a GEM MAC Address hash index
+ */
+static unsigned calc_mac_hash(u8 *mac)
+{
+	int index_bit, mac_bit;
+	unsigned hash_index;
+
+	hash_index = 0;
+	mac_bit = 5;
+	for (index_bit = 5; index_bit >= 0; index_bit--) {
+		hash_index |= (get_bit(mac,  mac_bit) ^
+					get_bit(mac, mac_bit + 6) ^
+					get_bit(mac, mac_bit + 12) ^
+					get_bit(mac, mac_bit + 18) ^
+					get_bit(mac, mac_bit + 24) ^
+					get_bit(mac, mac_bit + 30) ^
+					get_bit(mac, mac_bit + 36) ^
+					get_bit(mac, mac_bit + 42)) << index_bit;
+		mac_bit--;
+	}
+
+	return hash_index;
+}
+
 /**
  * xemacpss_set_hashtable - Add multicast addresses to the internal
  * multicast-hash table. Called from xemac_set_rx_mode().
@@ -2101,10 +2140,12 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 static void xemacpss_set_hashtable(struct net_device *ndev)
 {
 	struct dev_mc_list *curr;
-	unsigned int i, result;
-	u32 regvalh, regvall;
-	u8 *mc_addr, temp1, temp2, temp3, temp4, temp5, temp6, temp7, temp8;
-	struct net_local *lp = netdev_priv(ndev);
+	unsigned int i;
+	u32 regvalh, regvall, hash_index;
+	u8 *mc_addr;
+	struct net_local *lp;
+
+	lp = netdev_priv(ndev);
 
 	regvalh = regvall = 0;
 
@@ -2119,26 +2160,17 @@ static void xemacpss_set_hashtable(struct net_device *ndev)
 		mc_addr[0], mc_addr[1], mc_addr[2],
 		mc_addr[3], mc_addr[4], mc_addr[5]);
 #endif
-		temp1 = mc_addr[0] & 0x3F;
-		temp2 = ((mc_addr[0] >> 6) & 0x3) | (mc_addr[1] & 0xF);
-		temp3 = ((mc_addr[1] >> 4) & 0xF) | (mc_addr[2] & 0x3);
-		temp4 = ((mc_addr[2] >> 2) & 0x3F);
-		temp5 = mc_addr[3] & 0x3F;
-		temp6 = ((mc_addr[3] >> 6) & 0x3) | (mc_addr[4] & 0xF);
-		temp7 = ((mc_addr[4] >> 4) & 0xF) | (mc_addr[5] & 0x3);
-		temp8 = ((mc_addr[5] >> 2) & 0x3F);
-		result = temp1 ^ temp2 ^ temp3 ^ temp4 ^ temp5 ^ temp6 ^
-			temp7 ^ temp8;
+		hash_index = calc_mac_hash(mc_addr);
 
-		if (result >= XEMACPSS_MAX_HASH_BITS) {
+		if (hash_index >= XEMACPSS_MAX_HASH_BITS) {
 			printk(KERN_ERR "hash calculation out of range %d\n",
-				result);
+				hash_index);
 			break;
 		}
-		if (result < 32)
-			regvall |= (1 << result);
+		if (hash_index < 32)
+			regvall |= (1 << hash_index);
 		else
-			regvalh |= (1 << (result - 32));
+			regvalh |= (1 << (hash_index - 32));
 	}
 
 	xemacpss_write(lp->baseaddr, XEMACPSS_HASHL_OFFSET, regvall);
