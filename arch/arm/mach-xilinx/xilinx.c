@@ -84,12 +84,11 @@ static struct i2c_board_info i2c_devs_0[] __initdata = {
 	},
 };
 
-/* The 2nd I2C bus has DDR DIMMs on it with small eeproms
-   referred to as SPD.
+/* The 2nd I2C bus has an eeprom on it also.
 */
 static struct i2c_board_info i2c_devs_1[] __initdata = {
 	{
-		I2C_BOARD_INFO("spd", 0x50),
+		I2C_BOARD_INFO("24c02", 0x55),
 	},
 };
 
