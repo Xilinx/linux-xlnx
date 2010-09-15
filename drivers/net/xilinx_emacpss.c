@@ -551,7 +551,6 @@ struct net_local {
 	struct net_device      *ndev;   /* this device */
 
 	struct napi_struct     napi;    /* napi information for device */
-	struct tasklet_struct  tasklet; /* tasklet for device */
 
 	struct net_device_stats stats;  /* Statistics for this device */
 
@@ -1385,11 +1384,6 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 	int work_done = 0;
 	u32 regval;
 
-	/* Schedule TX completion */
-	if (lp->tx_ring.hwcnt) {
-		tasklet_schedule(&lp->tasklet);
-	}
-
 	regval = xemacpss_read(lp->baseaddr, XEMACPSS_RXSR_OFFSET);
 	xemacpss_write(lp->baseaddr, XEMACPSS_RXSR_OFFSET, regval);
 
@@ -1424,9 +1418,8 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
  * xemacpss_tx_poll - tasklet poll routine
  * @data: pointer to network interface device structure
  **/
-static void xemacpss_tx_poll(unsigned long data)
+static void xemacpss_tx_poll(struct net_device *ndev)
 {
-	struct net_device *ndev = (struct net_device *)data;
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regval, len = 0;
 	struct xemacpss_bd *bdptr, *bdptrfree;
@@ -1562,7 +1555,7 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 		if (regisr &
 		(XEMACPSS_IXR_TXCOMPL_MASK | XEMACPSS_IXR_TX_ERR_MASK))
 		{
-			tasklet_schedule(&lp->tasklet);
+			xemacpss_tx_poll(ndev);
 		}
 
 		regisr = xemacpss_read(lp->baseaddr, XEMACPSS_ISR_OFFSET);
@@ -1843,7 +1836,6 @@ static int xemacpss_open(struct net_device *ndev)
 	}
 	xemacpss_init_hw(lp);
 	napi_enable(&lp->napi);
-	tasklet_init(&lp->tasklet, xemacpss_tx_poll, (unsigned long)ndev);
 #ifdef DEBUG_SPEED
 	xemacpss_phy_init(ndev);
 #else
@@ -1874,7 +1866,6 @@ static int xemacpss_close(struct net_device *ndev)
 
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
-	tasklet_kill(&lp->tasklet);
 	if (lp->phy_dev)
 		phy_stop(lp->phy_dev);
 
@@ -1901,7 +1892,6 @@ static void xemacpss_tx_timeout(struct net_device *ndev)
 		ndev->name, TX_TIMEOUT * 1000UL / HZ);
 
 	netif_stop_queue(ndev);
-	tasklet_disable(&lp->tasklet);
 	napi_disable(&lp->napi);
 	xemacpss_descriptor_free(lp);
 	xemacpss_init_hw(lp);
@@ -1911,7 +1901,6 @@ static void xemacpss_tx_timeout(struct net_device *ndev)
 		printk(KERN_ERR "%s Unable to setup BD or rings, rc %d\n",
 		ndev->name, rc);
 	ndev->trans_start = jiffies;
-	tasklet_enable(&lp->tasklet);
 	napi_enable(&lp->napi);
 	netif_wake_queue(ndev);
 }
