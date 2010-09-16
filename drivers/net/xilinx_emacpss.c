@@ -962,7 +962,7 @@ int xemacpss_bdringalloc(struct xemacpss_bdring *ringptr, unsigned numbd,
 {
 	/* Enough free BDs available for the request? */
 	if (ringptr->freecnt < numbd)
-		return -ENOSPC;
+		return NETDEV_TX_BUSY;
 
 	/* Set the return argument and move FreeHead forward */
 	*bdptr = ringptr->freehead;
@@ -1156,12 +1156,12 @@ u32 xemacpss_bdringfromhwtx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
  *         examination.
  * return number of BDs processed by hardware.
  **/
-u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, unsigned bdlimit,
+u32 xemacpss_bdringfromhwrx(struct xemacpss_bdring *ringptr, int bdlimit,
 		struct xemacpss_bd **bdptr)
 {
 	struct xemacpss_bd *curbdptr;
 	u32 bdadd = 0;
-	unsigned int bdcount = 0;
+	int bdcount = 0;
 	curbdptr = ringptr->hwhead;
 
 	/* If no BDs in work group, then there's nothing to search */
@@ -1307,8 +1307,7 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 	struct xemacpss_bd *bdptr, *bdptrfree;
 	unsigned int numbdfree, numbd = 0, bdidx = 0, rc = 0;
 
-	numbd = xemacpss_bdringfromhwrx(&lp->rx_ring, XEMACPSS_RECV_BD_CNT,
-		&bdptr);
+	numbd = xemacpss_bdringfromhwrx(&lp->rx_ring, budget, &bdptr);
 
 	numbdfree = numbd;
 	bdptrfree = bdptr;
@@ -1396,20 +1395,20 @@ static int xemacpss_rx_poll(struct napi_struct *napi, int budget)
 			dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
 				regval);
 			napi_complete(napi);
+
+			/* We disable RX interrupts in interrupt service routine, now
+			 * it is time to enable it back.
+			 */
+			regval = (XEMACPSS_IXR_FRAMERX_MASK | XEMACPSS_IXR_RX_ERR_MASK);
+			xemacpss_write(lp->baseaddr, XEMACPSS_IER_OFFSET, regval);
 			break;
 		}
 
-		work_done += xemacpss_rx(lp, budget);
+		work_done += xemacpss_rx(lp, budget - work_done);
 
 		regval = xemacpss_read(lp->baseaddr, XEMACPSS_RXSR_OFFSET);
 		xemacpss_write(lp->baseaddr, XEMACPSS_RXSR_OFFSET, regval);
 	}
-
-	/* We disable RX interrupts in interrupt service routine, now
-	 * it is time to enable it back.
-	 */
-	regval = (XEMACPSS_IXR_FRAMERX_MASK | XEMACPSS_IXR_RX_ERR_MASK);
-	xemacpss_write(lp->baseaddr, XEMACPSS_IER_OFFSET, regval);
 
 	return work_done;
 }
@@ -1440,14 +1439,16 @@ static void xemacpss_tx_poll(struct net_device *ndev)
 		XEMACPSS_TXSR_BUFEXH_MASK | XEMACPSS_TXSR_COL100_MASK)) {
 		printk(KERN_ERR "%s: TX error 0x%x, resetting buffers?\n",
 			ndev->name, regval);
+		lp->stats.tx_errors++;
 	}
 
 	/* This may happen when a buffer becomes complete
 	 * between reading the ISR and scanning the descriptors.
 	 * Nothing to worry about.
 	 */
-	if (!(regval & XEMACPSS_TXSR_TXCOMPL_MASK))
-		return;
+	if (!(regval & XEMACPSS_TXSR_TXCOMPL_MASK)) {
+		goto tx_poll_out;
+	}
 
 	numbd = xemacpss_bdringfromhwtx(&lp->tx_ring, XEMACPSS_SEND_BD_CNT,
 		&bdptr);
@@ -1499,10 +1500,9 @@ static void xemacpss_tx_poll(struct net_device *ndev)
 	if (rc)
 		printk(KERN_ERR "%s TX bdringfree() error.\n", ndev->name);
 
+tx_poll_out:
 	if (netif_queue_stopped(ndev))
 		netif_start_queue(ndev);
-
-	return;
 }
 
 /**
@@ -1565,13 +1565,11 @@ static irqreturn_t xemacpss_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-/**
- * xemacpss_descriptor_free - Free allocated TX and RX BDs
- * @lp: local device instance pointer
- **/
-static void xemacpss_descriptor_free(struct net_local *lp)
+/*
+ * Free all packets presently in the descriptor rings.
+ */
+static void xemacpss_clean_rings(struct net_local *lp)
 {
-	int size;
 	int i;
 
 	for (i=0; i < XEMACPSS_RECV_BD_CNT; i++) {
@@ -1586,6 +1584,30 @@ static void xemacpss_descriptor_free(struct net_local *lp)
 			lp->rx_skb[i].mapping = 0;
 		}
 	}
+
+	for (i=0; i < XEMACPSS_SEND_BD_CNT; i++) {
+		if (lp->tx_skb && lp->tx_skb[i].skb) {
+			dma_unmap_single(lp->ndev->dev.parent,
+			                 lp->tx_skb[i].mapping,
+					 lp->tx_skb[i].skb->len,
+					 DMA_TO_DEVICE);
+
+			dev_kfree_skb(lp->tx_skb[i].skb);
+			lp->tx_skb[i].skb = NULL;
+			lp->tx_skb[i].mapping = 0;
+		}
+	}
+}
+
+/**
+ * xemacpss_descriptor_free - Free allocated TX and RX BDs
+ * @lp: local device instance pointer
+ **/
+static void xemacpss_descriptor_free(struct net_local *lp)
+{
+	int size;
+
+	xemacpss_clean_rings(lp);
 
 	/* kfree(NULL) is safe, no need to check here */
 	kfree(lp->tx_skb);
@@ -1885,24 +1907,30 @@ static int xemacpss_close(struct net_device *ndev)
  **/
 static void xemacpss_tx_timeout(struct net_device *ndev)
 {
+	unsigned long flags;
 	struct net_local *lp = netdev_priv(ndev);
 	int rc;
 
 	printk(KERN_ERR "%s transmit timeout %lu ms, reseting...\n",
 		ndev->name, TX_TIMEOUT * 1000UL / HZ);
+	lp->stats.tx_errors++;
+
+	spin_lock_irqsave(&lp->lock, flags);
 
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
-	xemacpss_descriptor_free(lp);
-	xemacpss_init_hw(lp);
-	rc  = xemacpss_descriptor_init(lp);
-	rc |= xemacpss_setup_ring(lp);
+	xemacpss_reset_hw(lp);
+	xemacpss_clean_rings(lp);
+	rc  = xemacpss_setup_ring(lp);
 	if (rc)
 		printk(KERN_ERR "%s Unable to setup BD or rings, rc %d\n",
 		ndev->name, rc);
+	xemacpss_init_hw(lp);
 	ndev->trans_start = jiffies;
 	napi_enable(&lp->napi);
 	netif_wake_queue(ndev);
+
+	spin_unlock_irqrestore(&lp->lock, flags);
 }
 
 /**
@@ -1972,7 +2000,7 @@ static int xemacpss_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	} else {
 		netif_stop_queue(ndev); /* stop send queue */
 		spin_unlock_irq(&lp->lock);
-		return -EIO;
+		return NETDEV_TX_BUSY;
 	}
 
 	frag = &skb_shinfo(skb)->frags[0];
