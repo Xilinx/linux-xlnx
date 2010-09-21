@@ -1640,11 +1640,11 @@ static int xemacpss_descriptor_init(struct net_local *lp)
 	int size;
 
 	size = XEMACPSS_SEND_BD_CNT * sizeof(struct ring_info);
-	lp->tx_skb = kmalloc(size, GFP_KERNEL);
+	lp->tx_skb = kzalloc(size, GFP_KERNEL);
 	if (!lp->tx_skb)
 		goto err_out;
 	size = XEMACPSS_RECV_BD_CNT * sizeof(struct ring_info);
-	lp->rx_skb = kmalloc(size, GFP_KERNEL);
+	lp->rx_skb = kzalloc(size, GFP_KERNEL);
 	if (!lp->rx_skb)
 		goto err_out;
 
