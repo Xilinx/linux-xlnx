@@ -51,6 +51,10 @@
 #include <linux/version.h>
 #include <mach/board.h>
 
+#include <linux/clocksource.h>
+#include <linux/timecompare.h>
+#include <linux/net_tstamp.h>
+
 /************************** Constant Definitions *****************************/
 
 /* Must be shorter than length of ethtool_drvinfo.driver field to fit */
@@ -86,6 +90,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
  * BD Space needed is (XEMACPSS_SEND_BD_CNT+XEMACPSS_RECV_BD_CNT)*8
  */
 #undef  DEBUG
+#define DEBUG
 #define DEBUG_SPEED
 
 #define XEMACPSS_SEND_BD_CNT	32
@@ -241,6 +246,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 						Nanoseconds */
 
 /* network control register bit definitions */
+#define XEMACPSS_NWCTRL_RXTSTAMP_MASK    0x00008000 /* RX Timestamp in CRC */
 #define XEMACPSS_NWCTRL_ZEROPAUSETX_MASK 0x00001000 /* Transmit zero quantum
 						pause frame */
 #define XEMACPSS_NWCTRL_PAUSETX_MASK     0x00000800 /* Transmit pause frame */
@@ -551,8 +557,13 @@ struct net_local {
 	struct net_device      *ndev;   /* this device */
 
 	struct napi_struct     napi;    /* napi information for device */
-
 	struct net_device_stats stats;  /* Statistics for this device */
+
+	/* Manage internal timer for packet timestamping */
+	struct cyclecounter    cycles;
+	struct timecounter     clock;
+	struct timecompare     compare;
+	struct hwtstamp_config hwtstamp_config;
 
 	struct mii_bus         *mii_bus;
 	struct phy_device      *phy_dev;
@@ -1294,6 +1305,90 @@ static void xemacpss_DmaSetupRecvBuffers(struct net_device *ndev)
 	}
 }
 
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+
+/**
+ * xemacpss_get_hwticks - get the current value of the GEM internal timer
+ * @lp: local device instance pointer
+ * return: nothing
+ **/
+static inline void
+xemacpss_get_hwticks(struct net_local *lp, u64 *sec, u64 *nsec)
+{
+	do { 
+		*nsec = xemacpss_read(lp->baseaddr, XEMACPSS_1588NS_OFFSET);
+		*sec = xemacpss_read(lp->baseaddr, XEMACPSS_1588S_OFFSET);
+	} while (*nsec > xemacpss_read(lp->baseaddr, XEMACPSS_1588NS_OFFSET) );
+}
+
+/**
+ * xemacpss_read_clock - read raw cycle counter (to be used by time counter)
+ */
+static cycle_t xemacpss_read_clock(const struct cyclecounter *tc)
+{
+	struct net_local *lp =
+                container_of(tc, struct net_local, cycles);
+        u64 stamp;
+	u64 sec, nsec;
+
+	xemacpss_get_hwticks(lp, &sec, &nsec);
+	stamp = (sec << 32) | nsec;
+
+        return stamp;
+}
+
+
+/**
+ * xemacpss_systim_to_hwtstamp - convert system time value to hw timestamp
+ * @adapter: board private structure
+ * @shhwtstamps: timestamp structure to update
+ * @regval: unsigned 64bit system time value.
+ *
+ * We need to convert the system time value stored in the RX/TXSTMP registers
+ * into a hwtstamp which can be used by the upper level timestamping functions
+ */
+static void xemacpss_systim_to_hwtstamp(struct net_local *lp,
+                                   struct skb_shared_hwtstamps *shhwtstamps,
+                                   u64 regval)
+{
+    u64 ns;
+
+    ns = timecounter_cyc2time(&lp->clock, regval);
+    timecompare_update(&lp->compare, ns);
+    memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
+    shhwtstamps->hwtstamp = ns_to_ktime(ns);
+    shhwtstamps->syststamp = timecompare_transform(&lp->compare, ns);
+}
+
+static void xemacpss_rx_hwtstamp(struct net_local *lp, struct sk_buff *skb)
+{
+	u64 time64, sec, nsec, packet_ns_stamp;
+			
+	/* Get the current hw timer value */
+	xemacpss_get_hwticks(lp, &sec, &nsec);
+
+	/* Get the receive timestamp value for this packet.
+	 * The GEM has been configured to record this in the FCS field of the 
+	 * packet.  Only the nanoseconds value was recorded (so the present
+	 * timestamp is used to fill in the rest.)
+	 * NOTE: this means there is a maximum of 1 second to process this
+	 * packet to this point before overflow.
+	 */
+	packet_ns_stamp = *(skb->tail-1) << 24 |
+					*(skb->tail-2) << 16 |
+					*(skb->tail-3) <<  8 |
+					*(skb->tail-4);
+
+	/* ns wrap ? */
+	if (nsec < packet_ns_stamp) {
+		sec--;
+	}
+
+	time64 = (sec << 32) | packet_ns_stamp;
+	xemacpss_systim_to_hwtstamp(lp, skb_hwtstamps(skb), time64);
+}
+#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+
 /**
  * xemacpss_rx - process received packets when napi called
  * @lp: local device instance pointer
@@ -1352,6 +1447,17 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 		skb->protocol = eth_type_trans(skb, lp->ndev);
 
 		skb->ip_summed = lp->ip_summed;
+
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef NOTNOW_BHILL
+		if (lp->hwtstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) {
+#else
+		{
+#endif
+			/* Timestamp this packet */
+			xemacpss_rx_hwtstamp(lp, skb);
+		}
+#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
 
 		lp->stats.rx_packets++;
 		lp->stats.rx_bytes += len;
@@ -1760,6 +1866,56 @@ static int xemacpss_setup_ring(struct net_local *lp)
 	return 0;
 }
 
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+static void xemacpss_init_tsu(struct net_local *lp, u32 tsu_clock_hz)
+{
+	struct timeval tv;
+u32 regval;
+
+	/* Stuff the timer with some (totally incorrect...) inital concept
+	 * of the time.
+	 */
+	tv = ktime_to_timeval(ktime_get_real());
+	xemacpss_write(lp->baseaddr, XEMACPSS_1588NS_OFFSET, tv.tv_usec * 1000);
+	xemacpss_write(lp->baseaddr, XEMACPSS_1588S_OFFSET, tv.tv_sec);
+
+	/* program the timer increment register with the numer of nanoseconds
+	 * per clock tick.
+	 * HACK BHILL FIXME: PEEP 50Mhz clock; 20 ns per tick.
+	 */
+	xemacpss_write(lp->baseaddr, XEMACPSS_1588INC_OFFSET, 20);	
+
+	memset(&lp->cycles, 0, sizeof(lp->cycles));
+	lp->cycles.read = xemacpss_read_clock;
+	lp->cycles.mask = CLOCKSOURCE_MASK(64);
+	lp->cycles.mult = 1;
+
+	timecounter_init(&lp->clock,
+	                 &lp->cycles,
+	                 ktime_to_ns(ktime_get_real()));
+	/*
+	 * Synchronize our NIC clock against system wall clock. 
+	 */
+	memset(&lp->compare, 0, sizeof(lp->compare));
+	lp->compare.source = &lp->clock;
+	lp->compare.target = ktime_get_real;
+	lp->compare.num_samples = 10;
+	timecompare_update(&lp->compare, 0);
+
+/* HACK FIXME BHILL -- remove this - perform in ioctl */
+	/* Do not strip RX FCS */
+	regval = xemacpss_read(lp->baseaddr, XEMACPSS_NWCFG_OFFSET);
+	regval &= ~XEMACPSS_NWCFG_FCSREM_MASK;
+	xemacpss_write(lp->baseaddr, XEMACPSS_NWCFG_OFFSET, regval);
+
+/* HACK FIXME BHILL -- remove this - perform in ioctl */
+	/* replace RX FCS with present counter nanosecond snapshot */
+	regval = xemacpss_read(lp->baseaddr, XEMACPSS_NWCTRL_OFFSET);
+	xemacpss_write(lp->baseaddr, XEMACPSS_NWCTRL_OFFSET,
+			(regval | XEMACPSS_NWCTRL_RXTSTAMP_MASK));
+}
+#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+
 /**
  * xemacpss_init_hw - Initialize hardware to known good state
  * @lp: local device instance pointer
@@ -1814,6 +1970,11 @@ static void xemacpss_init_hw(struct net_local *lp)
 	regval |= XEMACPSS_NWCTRL_TXEN_MASK;
 	regval |= XEMACPSS_NWCTRL_RXEN_MASK;
 	xemacpss_write(lp->baseaddr, XEMACPSS_NWCTRL_OFFSET, regval);
+
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+	/* Initialize the Time Stamp Unit */
+	xemacpss_init_tsu(lp, 50000000);
+#endif
 
 	/* Enable interrupts */
 	regval  = XEMACPSS_IXR_ALL_MASK;
@@ -2600,6 +2761,54 @@ static struct ethtool_ops xemacpss_ethtool_ops = {
 	.set_pauseparam = xemacpss_set_pauseparam,
 };
 
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+static int xemacpss_hwtstamp_ioctl(struct net_device *netdev,
+                              struct ifreq *ifr, int cmd)
+{
+	struct hwtstamp_config config;
+	struct net_local *lp;
+	u32 regval;
+
+	lp = netdev_priv(netdev);
+
+	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+printk(KERN_INFO "GEM: harware packet timestamp not yet implemented.\n");
+printk(KERN_INFO "     cmd %d config.rx_filter %d\n", cmd, config.rx_filter); 
+
+	switch (config.rx_filter) {
+	case HWTSTAMP_FILTER_NONE:
+		break;
+	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
+	case HWTSTAMP_FILTER_ALL:
+	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
+		config.rx_filter = HWTSTAMP_FILTER_ALL;
+		regval = xemacpss_read(lp->baseaddr, XEMACPSS_NWCTRL_OFFSET);
+		xemacpss_write(lp->baseaddr, XEMACPSS_NWCTRL_OFFSET,
+			(regval | XEMACPSS_NWCTRL_RXTSTAMP_MASK));
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	lp->hwtstamp_config = config;
+
+	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ?
+		-EFAULT : 0;
+}
+#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+
 /**
  * xemacpss_ioctl - ioctl entry point
  * @ndev: network device
@@ -2619,8 +2828,22 @@ static int xemacpss_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 	if (!phydev)
 		return -ENODEV;
 
-	/* cmd can expended depends on hardware/software capabilities. */
-	return phy_mii_ioctl(phydev, if_mii(rq), cmd);
+printk(KERN_INFO "xemacpss_ioctl: cmd %d \n", cmd); 
+
+	switch (cmd) {
+	case SIOCGMIIPHY:
+	case SIOCGMIIREG:
+	case SIOCSMIIREG:
+		return phy_mii_ioctl(phydev, if_mii(rq), cmd);
+#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+	case SIOCSHWTSTAMP:
+		return xemacpss_hwtstamp_ioctl(ndev, rq, cmd);
+#endif
+	default:
+		printk(KERN_INFO "GEM: ioctl %d not implemented.\n", cmd);
+		return -EOPNOTSUPP;
+	}
+
 }
 
 /**
