@@ -1444,18 +1444,31 @@ static int xemacpss_rx(struct net_local *lp, int budget)
 		skb_put(skb, len);  /* Tell the skb how much data we got. */
 		skb->dev = lp->ndev;
 
+		/* Why does this return the protocol in network bye order ? */
 		skb->protocol = eth_type_trans(skb, lp->ndev);
 
 		skb->ip_summed = lp->ip_summed;
 
 #ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
-#ifdef NOTNOW_BHILL
-		if (lp->hwtstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) {
-#else
-		{
-#endif
-			/* Timestamp this packet */
-			xemacpss_rx_hwtstamp(lp, skb);
+		if ((lp->hwtstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) &&
+		    (ntohs(skb->protocol) == 0x800)) {
+			unsigned ip_proto, dest_port;
+
+			/* While the GEM can timestamp PTP packets, it does not mark the
+			 * RX descriptor to identify them.  This is entirely the wrong
+			 * place to be parsing UDP headers, but some minimal effort must
+			 * be made.
+			 * NOTE: the below parsing of ip_proto and dest_port depend on
+			 * the use of Ethernet_II encapsulation, IPv4 without any options.
+			 */
+	 		ip_proto = *((u8*)skb->mac_header + 14 + 9);
+	 		dest_port = ntohs(*(((u16*)skb->mac_header) + ((14 + 20 + 2)/2) ));
+			if ((ip_proto == IPPROTO_UDP) &&
+			    (dest_port == 0x13F)) {
+
+				/* Timestamp this packet */
+				xemacpss_rx_hwtstamp(lp, skb);
+			}
 		}
 #endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
 
@@ -1867,6 +1880,61 @@ static int xemacpss_setup_ring(struct net_local *lp)
 }
 
 #ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+
+#define NS_PER_SEC 1000000000ULL      /* Nanoseconds per second */
+#define FP_MULT    100000000ULL       /* Defined Fixed Point */
+#define FP_ROUNDUP (FP_MULT / 200000) /* Value used to round up fractionals */
+#define FRAC_MIN   (FP_MULT / 1000)   /* Expect at lest four digits of '0' */
+
+/*
+ * Calculate clock configuration register values for indicated input clock
+ */
+static unsigned xemacpss_tsu_calc_clk(u32 freq)
+{
+    u64 period_ns_XFP;
+    u64 nn;
+    u64 acc;
+    u64 iacc;
+    u64 int1, int2;
+    u64 frac_part;
+    unsigned retval;
+
+    retval = 0;
+    period_ns_XFP = (NS_PER_SEC * FP_MULT)/freq;
+
+    nn = 1;
+    while (nn <= 256) {
+        acc = (nn * period_ns_XFP) + FP_ROUNDUP;
+        iacc = acc/FP_MULT;
+        frac_part = acc - ((acc/FP_MULT) *FP_MULT);
+
+        if (frac_part <= (FP_MULT/FRAC_MIN) ) {
+            break;
+        } else {
+            nn += 1;
+        }
+    }
+
+    if (nn > 256) {
+        printk(KERN_ERR "GEM: failed to calculate TSU input clock config.\n");
+    } else {
+        int1 = period_ns_XFP / FP_MULT;
+        int2 = iacc - (nn-1)*int1;
+        retval =  ((nn - 1) << 16) | (int2 << 8) | int1;
+#ifdef DEBUG
+        printk(KERN_INFO "GEM: TSU: %lld x %lld = %lld.%08lld\n",
+            int1, nn, iacc, frac_part);
+        printk(KERN_INFO "GEM: TSU:  solution: %lld of %lld, then 1 of %lld\n",
+            nn-1, int1, int2);
+#endif
+    }
+
+    return retval;
+}
+
+/*
+ * Initialize the GEM Time Stamp Unit
+ */
 static void xemacpss_init_tsu(struct net_local *lp, u32 tsu_clock_hz)
 {
 	struct timeval tv;
@@ -1881,9 +1949,9 @@ u32 regval;
 
 	/* program the timer increment register with the numer of nanoseconds
 	 * per clock tick.
-	 * HACK BHILL FIXME: PEEP 50Mhz clock; 20 ns per tick.
 	 */
-	xemacpss_write(lp->baseaddr, XEMACPSS_1588INC_OFFSET, 20);	
+	xemacpss_write(lp->baseaddr, XEMACPSS_1588INC_OFFSET, 
+		xemacpss_tsu_calc_clk(tsu_clock_hz) );
 
 	memset(&lp->cycles, 0, sizeof(lp->cycles));
 	lp->cycles.read = xemacpss_read_clock;
