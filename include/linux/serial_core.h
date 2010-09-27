@@ -182,8 +182,13 @@
 /* Aeroflex Gaisler GRLIB APBUART */
 #define PORT_APBUART    90
 
+/* Altera UARTs */
+#define PORT_ALTERA_JTAGUART	91
+#define PORT_ALTERA_UART	92
+
 /* Xilinx */
-#define PORT_XUARTPSS	91
+#define PORT_XUARTPSS	93
+
 
 #ifdef __KERNEL__
 
@@ -249,6 +254,7 @@ struct uart_ops {
 #endif
 };
 
+#define NO_POLL_CHAR		0x00ff0000
 #define UART_CONFIG_TYPE	(1 << 0)
 #define UART_CONFIG_IRQ		(1 << 1)
 

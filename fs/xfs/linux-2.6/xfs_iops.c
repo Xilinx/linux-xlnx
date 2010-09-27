@@ -585,11 +585,20 @@ xfs_vn_fallocate(
 	bf.l_len = len;
 
 	xfs_ilock(ip, XFS_IOLOCK_EXCL);
+
+	/* check the new inode size is valid before allocating */
+	if (!(mode & FALLOC_FL_KEEP_SIZE) &&
+	    offset + len > i_size_read(inode)) {
+		new_size = offset + len;
+		error = inode_newsize_ok(inode, new_size);
+		if (error)
+			goto out_unlock;
+	}
+
 	error = -xfs_change_file_space(ip, XFS_IOC_RESVSP, &bf,
 				       0, XFS_ATTR_NOLOCK);
-	if (!error && !(mode & FALLOC_FL_KEEP_SIZE) &&
-	    offset + len > i_size_read(inode))
-		new_size = offset + len;
+	if (error)
+		goto out_unlock;
 
 	/* Change file size if needed */
 	if (new_size) {
@@ -600,6 +609,7 @@ xfs_vn_fallocate(
 		error = -xfs_setattr(ip, &iattr, XFS_ATTR_NOLOCK);
 	}
 
+out_unlock:
 	xfs_iunlock(ip, XFS_IOLOCK_EXCL);
 out_error:
 	return error;
@@ -673,7 +683,10 @@ xfs_vn_fiemap(
 		bm.bmv_length = BTOBB(length);
 
 	/* We add one because in getbmap world count includes the header */
-	bm.bmv_count = fieinfo->fi_extents_max + 1;
+	bm.bmv_count = !fieinfo->fi_extents_max ? MAXEXTNUM :
+					fieinfo->fi_extents_max + 1;
+	bm.bmv_count = min_t(__s32, bm.bmv_count,
+			     (PAGE_SIZE * 16 / sizeof(struct getbmapx)));
 	bm.bmv_iflags = BMV_IF_PREALLOC;
 	if (fieinfo->fi_flags & FIEMAP_FLAG_XATTR)
 		bm.bmv_iflags |= BMV_IF_ATTRFORK;

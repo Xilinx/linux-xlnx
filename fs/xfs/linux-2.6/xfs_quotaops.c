@@ -19,10 +19,10 @@
 #include "xfs_dmapi.h"
 #include "xfs_sb.h"
 #include "xfs_inum.h"
+#include "xfs_log.h"
 #include "xfs_ag.h"
 #include "xfs_mount.h"
 #include "xfs_quota.h"
-#include "xfs_log.h"
 #include "xfs_trans.h"
 #include "xfs_bmap_btree.h"
 #include "xfs_inode.h"
@@ -97,7 +97,7 @@ xfs_fs_set_xstate(
 }
 
 STATIC int
-xfs_fs_get_xquota(
+xfs_fs_get_dqblk(
 	struct super_block	*sb,
 	int			type,
 	qid_t			id,
@@ -114,7 +114,7 @@ xfs_fs_get_xquota(
 }
 
 STATIC int
-xfs_fs_set_xquota(
+xfs_fs_set_dqblk(
 	struct super_block	*sb,
 	int			type,
 	qid_t			id,
@@ -135,6 +135,6 @@ xfs_fs_set_xquota(
 const struct quotactl_ops xfs_quotactl_operations = {
 	.get_xstate		= xfs_fs_get_xstate,
 	.set_xstate		= xfs_fs_set_xstate,
-	.get_xquota		= xfs_fs_get_xquota,
-	.set_xquota		= xfs_fs_set_xquota,
+	.get_dqblk		= xfs_fs_get_dqblk,
+	.set_dqblk		= xfs_fs_set_dqblk,
 };

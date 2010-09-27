@@ -31,12 +31,11 @@
 #include <linux/list.h>
 #include <linux/interrupt.h>
 #include <linux/usb.h>
+#include <linux/usb/hcd.h>
 #include <linux/moduleparam.h>
 #include <linux/dma-mapping.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
-
-#include "../core/hcd.h"
 
 #include <asm/byteorder.h>
 #include <asm/io.h>
@@ -1136,7 +1135,7 @@ MODULE_LICENSE ("GPL");
 
 #ifdef CONFIG_XPS_USB_HCD_XILINX
 #include "ehci-xilinx-of.c"
-#define OF_PLATFORM_DRIVER	ehci_hcd_xilinx_of_driver
+#define XILINX_OF_PLATFORM_DRIVER	ehci_hcd_xilinx_of_driver
 #endif
 
 #ifdef CONFIG_PLAT_ORION
@@ -1160,7 +1159,8 @@ MODULE_LICENSE ("GPL");
 #endif
 
 #if !defined(PCI_DRIVER) && !defined(PLATFORM_DRIVER) && \
-    !defined(PS3_SYSTEM_BUS_DRIVER) && !defined(OF_PLATFORM_DRIVER)
+    !defined(PS3_SYSTEM_BUS_DRIVER) && !defined(OF_PLATFORM_DRIVER) && \
+    !defined(XILINX_OF_PLATFORM_DRIVER)
 #error "missing bus glue for ehci-hcd"
 #endif
 
@@ -1214,10 +1214,20 @@ static int __init ehci_hcd_init(void)
 	if (retval < 0)
 		goto clean3;
 #endif
+
+#ifdef XILINX_OF_PLATFORM_DRIVER
+	retval = of_register_platform_driver(&XILINX_OF_PLATFORM_DRIVER);
+	if (retval < 0)
+		goto clean4;
+#endif
 	return retval;
 
+#ifdef XILINX_OF_PLATFORM_DRIVER
+	/* of_unregister_platform_driver(&XILINX_OF_PLATFORM_DRIVER); */
+clean4:
+#endif
 #ifdef OF_PLATFORM_DRIVER
-	/* of_unregister_platform_driver(&OF_PLATFORM_DRIVER); */
+	of_unregister_platform_driver(&OF_PLATFORM_DRIVER);
 clean3:
 #endif
 #ifdef PS3_SYSTEM_BUS_DRIVER
@@ -1244,6 +1254,9 @@ module_init(ehci_hcd_init);
 
 static void __exit ehci_hcd_cleanup(void)
 {
+#ifdef XILINX_OF_PLATFORM_DRIVER
+	of_unregister_platform_driver(&XILINX_OF_PLATFORM_DRIVER);
+#endif
 #ifdef OF_PLATFORM_DRIVER
 	of_unregister_platform_driver(&OF_PLATFORM_DRIVER);
 #endif

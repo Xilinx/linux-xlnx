@@ -49,6 +49,7 @@ obj-$(CONFIG_ADX_WATCHDOG) += adx_wdt.o
 obj-$(CONFIG_XILINX_PSS_WATCHDOG) += xilinx_wdtpss.o
 obj-$(CONFIG_XILINX_A9_WATCHDOG) += xilinx_a9wdt.o
 obj-$(CONFIG_TS72XX_WATCHDOG) += ts72xx_wdt.o
+obj-$(CONFIG_IMX2_WDT) += imx2_wdt.o
 
 # AVR32 Architecture
 obj-$(CONFIG_AT32AP700X_WDT) += at32ap700x_wdt.o

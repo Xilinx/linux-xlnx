@@ -670,8 +670,6 @@ static int __devinit lm8323_probe(struct i2c_client *client,
 		goto fail1;
 	}
 
-	i2c_set_clientdata(client, lm);
-
 	lm->client = client;
 	lm->idev = idev;
 	mutex_init(&lm->lock);
@@ -752,6 +750,8 @@ static int __devinit lm8323_probe(struct i2c_client *client,
 		dev_err(&client->dev, "could not get IRQ %d\n", client->irq);
 		goto fail4;
 	}
+
+	i2c_set_clientdata(client, lm);
 
 	device_init_wakeup(&client->dev, 1);
 	enable_irq_wake(client->irq);

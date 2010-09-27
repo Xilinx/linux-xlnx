@@ -165,6 +165,8 @@ struct ceph_mds_request {
 	struct inode *r_locked_dir; /* dir (if any) i_mutex locked by vfs */
 	struct inode *r_target_inode;       /* resulting inode */
 
+	struct mutex r_fill_mutex;
+
 	union ceph_mds_request_args r_args;
 	int r_fmode;        /* file mode, if expecting cap */
 
@@ -186,6 +188,7 @@ struct ceph_mds_request {
 	int r_old_inode_drop, r_old_inode_unless;
 
 	struct ceph_msg  *r_request;  /* original request */
+	int r_request_release_offset;
 	struct ceph_msg  *r_reply;
 	struct ceph_mds_reply_info_parsed r_reply_info;
 	int r_err;
@@ -213,7 +216,7 @@ struct ceph_mds_request {
 	struct completion r_safe_completion;
 	ceph_mds_request_callback_t r_callback;
 	struct list_head  r_unsafe_item;  /* per-session unsafe list item */
-	bool		  r_got_unsafe, r_got_safe;
+	bool		  r_got_unsafe, r_got_safe, r_got_result;
 
 	bool              r_did_prepopulate;
 	u32               r_readdir_offset;
@@ -301,6 +304,8 @@ extern void ceph_mdsc_lease_release(struct ceph_mds_client *mdsc,
 				    struct inode *inode,
 				    struct dentry *dn, int mask);
 
+extern void ceph_invalidate_dir_request(struct ceph_mds_request *req);
+
 extern struct ceph_mds_request *
 ceph_mdsc_create_request(struct ceph_mds_client *mdsc, int op, int mode);
 extern void ceph_mdsc_submit_request(struct ceph_mds_client *mdsc,
@@ -317,6 +322,12 @@ static inline void ceph_mdsc_put_request(struct ceph_mds_request *req)
 {
 	kref_put(&req->r_kref, ceph_mdsc_release_request);
 }
+
+extern int ceph_add_cap_releases(struct ceph_mds_client *mdsc,
+				 struct ceph_mds_session *session,
+				 int extra);
+extern void ceph_send_cap_releases(struct ceph_mds_client *mdsc,
+				   struct ceph_mds_session *session);
 
 extern void ceph_mdsc_pre_umount(struct ceph_mds_client *mdsc);
 

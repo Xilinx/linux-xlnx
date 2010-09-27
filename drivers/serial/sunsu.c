@@ -1200,7 +1200,7 @@ static int __devinit sunsu_kbd_ms_init(struct uart_sunsu_port *up)
 		return -ENODEV;
 
 	printk("%s: %s port at %llx, irq %u\n",
-	       to_of_device(up->port.dev)->node->full_name,
+	       to_of_device(up->port.dev)->dev.of_node->full_name,
 	       (up->su_type == SU_PORT_KBD) ? "Keyboard" : "Mouse",
 	       (unsigned long long) up->port.mapbase,
 	       up->port.irq);
@@ -1352,7 +1352,7 @@ static int __init sunsu_console_setup(struct console *co, char *options)
 	spin_lock_init(&port->lock);
 
 	/* Get firmware console settings.  */
-	sunserial_console_termios(co, to_of_device(port->dev)->node);
+	sunserial_console_termios(co, to_of_device(port->dev)->dev.of_node);
 
 	memset(&termios, 0, sizeof(struct ktermios));
 	termios.c_cflag = co->cflag;
@@ -1409,7 +1409,7 @@ static enum su_type __devinit su_get_type(struct device_node *dp)
 static int __devinit su_probe(struct of_device *op, const struct of_device_id *match)
 {
 	static int inst;
-	struct device_node *dp = op->node;
+	struct device_node *dp = op->dev.of_node;
 	struct uart_sunsu_port *up;
 	struct resource *rp;
 	enum su_type type;
@@ -1500,19 +1500,24 @@ out_unmap:
 static int __devexit su_remove(struct of_device *op)
 {
 	struct uart_sunsu_port *up = dev_get_drvdata(&op->dev);
+	bool kbdms = false;
 
 	if (up->su_type == SU_PORT_MS ||
-	    up->su_type == SU_PORT_KBD) {
+	    up->su_type == SU_PORT_KBD)
+		kbdms = true;
+
+	if (kbdms) {
 #ifdef CONFIG_SERIO
 		serio_unregister_port(&up->serio);
 #endif
-		kfree(up);
-	} else if (up->port.type != PORT_UNKNOWN) {
+	} else if (up->port.type != PORT_UNKNOWN)
 		uart_remove_one_port(&sunsu_reg, &up->port);
-	}
 
 	if (up->port.membase)
 		of_iounmap(&op->resource[0], up->port.membase, up->reg_size);
+
+	if (kbdms)
+		kfree(up);
 
 	dev_set_drvdata(&op->dev, NULL);
 
@@ -1539,8 +1544,11 @@ static const struct of_device_id su_match[] = {
 MODULE_DEVICE_TABLE(of, su_match);
 
 static struct of_platform_driver su_driver = {
-	.name		= "su",
-	.match_table	= su_match,
+	.driver = {
+		.name = "su",
+		.owner = THIS_MODULE,
+		.of_match_table = su_match,
+	},
 	.probe		= su_probe,
 	.remove		= __devexit_p(su_remove),
 };

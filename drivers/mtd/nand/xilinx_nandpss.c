@@ -737,7 +737,7 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 	xnandpss_init_nand_flash(xnand->smc_regs, nand_chip->options);
 
 	/* first scan to find the device and get the page size */
-	if (nand_scan_ident(mtd, 1)) {
+	if (nand_scan_ident(mtd, 1, NULL)) {
 		err = -ENXIO;
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
 		goto out_unmap_all_mem;

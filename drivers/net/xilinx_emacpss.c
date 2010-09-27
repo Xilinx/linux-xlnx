@@ -2385,8 +2385,7 @@ static unsigned calc_mac_hash(u8 *mac)
  **/
 static void xemacpss_set_hashtable(struct net_device *ndev)
 {
-	struct dev_mc_list *curr;
-	unsigned int i;
+	struct netdev_hw_addr *curr;
 	u32 regvalh, regvall, hash_index;
 	u8 *mc_addr;
 	struct net_local *lp;
@@ -2395,12 +2394,10 @@ static void xemacpss_set_hashtable(struct net_device *ndev)
 
 	regvalh = regvall = 0;
 
-	curr = ndev->mc_list;
-
-	for (i = 0; i < ndev->mc_count; i++, curr = curr->next) {
+	netdev_for_each_mc_addr(curr, ndev) {
 		if (!curr)	/* end of list */
 			break;
-		mc_addr = curr->dmi_addr;
+		mc_addr = curr->addr;
 #ifdef DEBUG
 		printk(KERN_INFO "GEM: mc addr 0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
 		mc_addr[0], mc_addr[1], mc_addr[2],
@@ -2446,7 +2443,7 @@ static void xemacpss_set_rx_mode(struct net_device *ndev)
 		xemacpss_write(lp->baseaddr, XEMACPSS_HASHL_OFFSET, ~0UL);
 		xemacpss_write(lp->baseaddr, XEMACPSS_HASHH_OFFSET, ~0UL);
 	/* Specific multicast mode */
-	} else if ((ndev->flags & IFF_MULTICAST) && (ndev->mc_count > 0)) {
+	} else if ((ndev->flags & IFF_MULTICAST) && (netdev_mc_count(ndev) > 0)) {
 		regval |= XEMACPSS_NWCFG_MCASTHASHEN_MASK;
 		xemacpss_set_hashtable(ndev);
 	/* Disable multicast mode */

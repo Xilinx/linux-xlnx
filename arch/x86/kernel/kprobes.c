@@ -422,14 +422,22 @@ static void __kprobes set_current_kprobe(struct kprobe *p, struct pt_regs *regs,
 
 static void __kprobes clear_btf(void)
 {
-	if (test_thread_flag(TIF_DEBUGCTLMSR))
-		update_debugctlmsr(0);
+	if (test_thread_flag(TIF_BLOCKSTEP)) {
+		unsigned long debugctl = get_debugctlmsr();
+
+		debugctl &= ~DEBUGCTLMSR_BTF;
+		update_debugctlmsr(debugctl);
+	}
 }
 
 static void __kprobes restore_btf(void)
 {
-	if (test_thread_flag(TIF_DEBUGCTLMSR))
-		update_debugctlmsr(current->thread.debugctlmsr);
+	if (test_thread_flag(TIF_BLOCKSTEP)) {
+		unsigned long debugctl = get_debugctlmsr();
+
+		debugctl |= DEBUGCTLMSR_BTF;
+		update_debugctlmsr(debugctl);
+	}
 }
 
 void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
@@ -632,8 +640,8 @@ static int __kprobes kprobe_handler(struct pt_regs *regs)
 	/* Skip cs, ip, orig_ax and gs. */	\
 	"	subl $16, %esp\n"	\
 	"	pushl %fs\n"		\
-	"	pushl %ds\n"		\
 	"	pushl %es\n"		\
+	"	pushl %ds\n"		\
 	"	pushl %eax\n"		\
 	"	pushl %ebp\n"		\
 	"	pushl %edi\n"		\

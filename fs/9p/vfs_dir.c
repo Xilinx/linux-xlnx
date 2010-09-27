@@ -146,7 +146,7 @@ static int v9fs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		while (rdir->head < rdir->tail) {
 			p9stat_init(&st);
 			err = p9stat_read(rdir->buf + rdir->head,
-						buflen - rdir->head, &st,
+						rdir->tail - rdir->head, &st,
 						fid->clnt->proto_version);
 			if (err) {
 				P9_DPRINTK(P9_DEBUG_VFS, "returned %d\n", err);
@@ -197,6 +197,14 @@ int v9fs_dir_release(struct inode *inode, struct file *filp)
 }
 
 const struct file_operations v9fs_dir_operations = {
+	.read = generic_read_dir,
+	.llseek = generic_file_llseek,
+	.readdir = v9fs_dir_readdir,
+	.open = v9fs_file_open,
+	.release = v9fs_dir_release,
+};
+
+const struct file_operations v9fs_dir_operations_dotl = {
 	.read = generic_read_dir,
 	.llseek = generic_file_llseek,
 	.readdir = v9fs_dir_readdir,
