@@ -48,7 +48,6 @@ static struct timer_list sync_supers_timer;
 
 static int bdi_sync_supers(void *);
 static void sync_supers_timer_fn(unsigned long);
-static void arm_supers_timer(void);
 
 static void bdi_add_default_flusher_task(struct backing_dev_info *bdi);
 
@@ -105,15 +104,13 @@ static int bdi_debug_stats_show(struct seq_file *m, void *v)
 		   "b_more_io:        %8lu\n"
 		   "bdi_list:         %8u\n"
 		   "state:            %8lx\n"
-		   "wb_mask:          %8lx\n"
-		   "wb_list:          %8u\n"
-		   "wb_cnt:           %8u\n",
+		   "wb_list:          %8u\n",
 		   (unsigned long) K(bdi_stat(bdi, BDI_WRITEBACK)),
 		   (unsigned long) K(bdi_stat(bdi, BDI_RECLAIMABLE)),
 		   K(bdi_thresh), K(dirty_thresh),
 		   K(background_thresh), nr_wb, nr_dirty, nr_io, nr_more_io,
-		   !list_empty(&bdi->bdi_list), bdi->state, bdi->wb_mask,
-		   !list_empty(&bdi->wb_list), bdi->wb_cnt);
+		   !list_empty(&bdi->bdi_list), bdi->state,
+		   !list_empty(&bdi->wb_list));
 #undef K
 
 	return 0;
@@ -252,7 +249,7 @@ static int __init default_bdi_init(void)
 
 	init_timer(&sync_supers_timer);
 	setup_timer(&sync_supers_timer, sync_supers_timer_fn, 0);
-	arm_supers_timer();
+	bdi_arm_supers_timer();
 
 	err = bdi_init(&default_backing_dev_info);
 	if (!err)
@@ -341,14 +338,13 @@ int bdi_has_dirty_io(struct backing_dev_info *bdi)
 static void bdi_flush_io(struct backing_dev_info *bdi)
 {
 	struct writeback_control wbc = {
-		.bdi			= bdi,
 		.sync_mode		= WB_SYNC_NONE,
 		.older_than_this	= NULL,
 		.range_cyclic		= 1,
 		.nr_to_write		= 1024,
 	};
 
-	writeback_inodes_wbc(&wbc);
+	writeback_inodes_wb(&bdi->wb, &wbc);
 }
 
 /*
@@ -374,9 +370,12 @@ static int bdi_sync_supers(void *unused)
 	return 0;
 }
 
-static void arm_supers_timer(void)
+void bdi_arm_supers_timer(void)
 {
 	unsigned long next;
+
+	if (!dirty_writeback_interval)
+		return;
 
 	next = msecs_to_jiffies(dirty_writeback_interval * 10) + jiffies;
 	mod_timer(&sync_supers_timer, round_jiffies_up(next));
@@ -385,7 +384,7 @@ static void arm_supers_timer(void)
 static void sync_supers_timer_fn(unsigned long unused)
 {
 	wake_up_process(sync_supers_tsk);
-	arm_supers_timer();
+	bdi_arm_supers_timer();
 }
 
 static int bdi_forker_task(void *ptr)
@@ -428,7 +427,10 @@ static int bdi_forker_task(void *ptr)
 
 			spin_unlock_bh(&bdi_lock);
 			wait = msecs_to_jiffies(dirty_writeback_interval * 10);
-			schedule_timeout(wait);
+			if (wait)
+				schedule_timeout(wait);
+			else
+				schedule();
 			try_to_freeze();
 			continue;
 		}
@@ -669,12 +671,6 @@ int bdi_init(struct backing_dev_info *bdi)
 	INIT_LIST_HEAD(&bdi->work_list);
 
 	bdi_wb_init(&bdi->wb, bdi);
-
-	/*
-	 * Just one thread support for now, hard code mask and count
-	 */
-	bdi->wb_mask = 1;
-	bdi->wb_cnt = 1;
 
 	for (i = 0; i < NR_BDI_STAT_ITEMS; i++) {
 		err = percpu_counter_init(&bdi->bdi_stat[i], 0);

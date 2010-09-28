@@ -253,8 +253,8 @@ static int pxa_videobuf_setup(struct videobuf_queue *vq, unsigned int *count,
 
 	if (0 == *count)
 		*count = 32;
-	while (*size * *count > vid_limit * 1024 * 1024)
-		(*count)--;
+	if (*size * *count > vid_limit * 1024 * 1024)
+		*count = (vid_limit * 1024 * 1024) / *size;
 
 	return 0;
 }
@@ -1247,7 +1247,7 @@ static bool pxa_camera_packing_supported(const struct soc_mbus_pixelfmt *fmt)
 		 fmt->packing == SOC_MBUS_PACKING_EXTEND16);
 }
 
-static int pxa_camera_get_formats(struct soc_camera_device *icd, int idx,
+static int pxa_camera_get_formats(struct soc_camera_device *icd, unsigned int idx,
 				  struct soc_camera_format_xlate *xlate)
 {
 	struct v4l2_subdev *sd = soc_camera_to_subdev(icd);
@@ -1264,7 +1264,7 @@ static int pxa_camera_get_formats(struct soc_camera_device *icd, int idx,
 
 	fmt = soc_mbus_get_fmtdesc(code);
 	if (!fmt) {
-		dev_err(dev, "Invalid format code #%d: %d\n", idx, code);
+		dev_err(dev, "Invalid format code #%u: %d\n", idx, code);
 		return 0;
 	}
 

@@ -67,6 +67,8 @@ static inline void macvlan_count_rx(const struct macvlan_dev *vlan,
 	}
 }
 
+extern void macvlan_common_setup(struct net_device *dev);
+
 extern int macvlan_common_newlink(struct net *src_net, struct net_device *dev,
 				  struct nlattr *tb[], struct nlattr *data[],
 				  int (*receive)(struct sk_buff *skb),
@@ -85,6 +87,7 @@ extern netdev_tx_t macvlan_start_xmit(struct sk_buff *skb,
 				      struct net_device *dev);
 
 
-extern struct sk_buff *(*macvlan_handle_frame_hook)(struct sk_buff *);
+extern struct sk_buff *(*macvlan_handle_frame_hook)(struct macvlan_port *,
+						    struct sk_buff *);
 
 #endif /* _LINUX_IF_MACVLAN_H */

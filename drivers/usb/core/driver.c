@@ -26,8 +26,9 @@
 #include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/usb/quirks.h>
+#include <linux/usb/hcd.h>
 #include <linux/pm_runtime.h>
-#include "hcd.h"
+
 #include "usb.h"
 
 
@@ -333,7 +334,8 @@ static int usb_probe_interface(struct device *dev)
 	usb_cancel_queued_reset(intf);
 
 	/* Unbound interfaces are always runtime-PM-disabled and -suspended */
-	pm_runtime_disable(dev);
+	if (driver->supports_autosuspend)
+		pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
 
 	usb_autosuspend_device(udev);
@@ -388,7 +390,8 @@ static int usb_unbind_interface(struct device *dev)
 	intf->needs_remote_wakeup = 0;
 
 	/* Unbound interfaces are always runtime-PM-disabled and -suspended */
-	pm_runtime_disable(dev);
+	if (driver->supports_autosuspend)
+		pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
 
 	/* Undo any residual pm_autopm_get_interface_* calls */
@@ -437,14 +440,17 @@ int usb_driver_claim_interface(struct usb_driver *driver,
 
 	iface->condition = USB_INTERFACE_BOUND;
 
-	/* Claimed interfaces are initially inactive (suspended).  They are
-	 * runtime-PM-enabled only if the driver has autosuspend support.
-	 * They are sensitive to their children's power states.
+	/* Claimed interfaces are initially inactive (suspended) and
+	 * runtime-PM-enabled, but only if the driver has autosuspend
+	 * support.  Otherwise they are marked active, to prevent the
+	 * device from being autosuspended, but left disabled.  In either
+	 * case they are sensitive to their children's power states.
 	 */
-	pm_runtime_set_suspended(dev);
 	pm_suspend_ignore_children(dev, false);
 	if (driver->supports_autosuspend)
 		pm_runtime_enable(dev);
+	else
+		pm_runtime_set_active(dev);
 
 	/* if interface was already added, bind now; else let
 	 * the future device_add() bind it, bypassing probe()
@@ -1266,8 +1272,7 @@ static int usb_resume_both(struct usb_device *udev, pm_message_t msg)
 
 static void choose_wakeup(struct usb_device *udev, pm_message_t msg)
 {
-	int			w, i;
-	struct usb_interface	*intf;
+	int	w;
 
 	/* Remote wakeup is needed only when we actually go to sleep.
 	 * For things like FREEZE and QUIESCE, if the device is already
@@ -1279,16 +1284,10 @@ static void choose_wakeup(struct usb_device *udev, pm_message_t msg)
 		return;
 	}
 
-	/* If remote wakeup is permitted, see whether any interface drivers
+	/* Enable remote wakeup if it is allowed, even if no interface drivers
 	 * actually want it.
 	 */
-	w = 0;
-	if (device_may_wakeup(&udev->dev) && udev->actconfig) {
-		for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
-			intf = udev->actconfig->interface[i];
-			w |= intf->needs_remote_wakeup;
-		}
-	}
+	w = device_may_wakeup(&udev->dev);
 
 	/* If the device is autosuspended with the wrong wakeup setting,
 	 * autoresume now so the setting can be changed.
@@ -1322,6 +1321,7 @@ int usb_resume(struct device *dev, pm_message_t msg)
 
 	/* For all other calls, take the device back to full power and
 	 * tell the PM core in case it was autosuspended previously.
+	 * Unbind the interfaces that will need rebinding later.
 	 */
 	} else {
 		status = usb_resume_both(udev, msg);
@@ -1330,6 +1330,7 @@ int usb_resume(struct device *dev, pm_message_t msg)
 			pm_runtime_set_active(dev);
 			pm_runtime_enable(dev);
 			udev->last_busy = jiffies;
+			do_unbind_rebind(udev, DO_REBIND);
 		}
 	}
 
@@ -1355,13 +1356,9 @@ int usb_resume(struct device *dev, pm_message_t msg)
  *
  * The caller must hold @udev's device lock.
  */
-int usb_enable_autosuspend(struct usb_device *udev)
+void usb_enable_autosuspend(struct usb_device *udev)
 {
-	if (udev->autosuspend_disabled) {
-		udev->autosuspend_disabled = 0;
-		usb_autosuspend_device(udev);
-	}
-	return 0;
+	pm_runtime_allow(&udev->dev);
 }
 EXPORT_SYMBOL_GPL(usb_enable_autosuspend);
 
@@ -1374,16 +1371,9 @@ EXPORT_SYMBOL_GPL(usb_enable_autosuspend);
  *
  * The caller must hold @udev's device lock.
  */
-int usb_disable_autosuspend(struct usb_device *udev)
+void usb_disable_autosuspend(struct usb_device *udev)
 {
-	int rc = 0;
-
-	if (!udev->autosuspend_disabled) {
-		rc = usb_autoresume_device(udev);
-		if (rc == 0)
-			udev->autosuspend_disabled = 1;
-	}
-	return rc;
+	pm_runtime_forbid(&udev->dev);
 }
 EXPORT_SYMBOL_GPL(usb_disable_autosuspend);
 
@@ -1485,9 +1475,6 @@ int usb_autoresume_device(struct usb_device *udev)
  * 0, a delayed autosuspend request for @intf's device is attempted.  The
  * attempt may fail (see autosuspend_check()).
  *
- * If the driver has set @intf->needs_remote_wakeup then autosuspend will
- * take place only if the device's remote-wakeup facility is enabled.
- *
  * This routine can run only in process context.
  */
 void usb_autopm_put_interface(struct usb_interface *intf)
@@ -1530,7 +1517,7 @@ void usb_autopm_put_interface_async(struct usb_interface *intf)
 	atomic_dec(&intf->pm_usage_cnt);
 	pm_runtime_put_noidle(&intf->dev);
 
-	if (!udev->autosuspend_disabled) {
+	if (udev->dev.power.runtime_auto) {
 		/* Optimization: Don't schedule a delayed autosuspend if
 		 * the timer is already running and the expiration time
 		 * wouldn't change.
@@ -1672,14 +1659,14 @@ EXPORT_SYMBOL_GPL(usb_autopm_get_interface_no_resume);
 /* Internal routine to check whether we may autosuspend a device. */
 static int autosuspend_check(struct usb_device *udev)
 {
-	int			i;
+	int			w, i;
 	struct usb_interface	*intf;
 	unsigned long		suspend_time, j;
 
 	/* Fail if autosuspend is disabled, or any interfaces are in use, or
 	 * any interface drivers require remote wakeup but it isn't available.
 	 */
-	udev->do_remote_wakeup = device_may_wakeup(&udev->dev);
+	w = 0;
 	if (udev->actconfig) {
 		for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
 			intf = udev->actconfig->interface[i];
@@ -1693,12 +1680,7 @@ static int autosuspend_check(struct usb_device *udev)
 				continue;
 			if (atomic_read(&intf->dev.power.usage_count) > 0)
 				return -EBUSY;
-			if (intf->needs_remote_wakeup &&
-					!udev->do_remote_wakeup) {
-				dev_dbg(&udev->dev, "remote wakeup needed "
-						"for autosuspend\n");
-				return -EOPNOTSUPP;
-			}
+			w |= intf->needs_remote_wakeup;
 
 			/* Don't allow autosuspend if the device will need
 			 * a reset-resume and any of its interface drivers
@@ -1714,6 +1696,11 @@ static int autosuspend_check(struct usb_device *udev)
 			}
 		}
 	}
+	if (w && !device_can_wakeup(&udev->dev)) {
+		dev_dbg(&udev->dev, "remote wakeup needed for autosuspend\n");
+		return -EOPNOTSUPP;
+	}
+	udev->do_remote_wakeup = w;
 
 	/* If everything is okay but the device hasn't been idle for long
 	 * enough, queue a delayed autosuspend request.

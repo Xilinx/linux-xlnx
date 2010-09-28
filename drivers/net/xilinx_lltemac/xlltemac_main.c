@@ -3529,7 +3529,7 @@ int xenet_set_mac_address(struct net_device *ndev, void* address) {
 } 
 
 static u32 get_u32(struct of_device *ofdev, const char *s) {
-	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 	if(p) {
 		return *p;
 	} else {
@@ -3579,17 +3579,17 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	u32 *dcrreg_property;
 
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
-                        ofdev->node->name);
+                        ofdev->dev.of_node->name); 
 
 	/* Get iospace for the device */
-	rc = of_address_to_resource(ofdev->node, 0, r_mem);
+	rc = of_address_to_resource(ofdev->dev.of_node, 0, r_mem);
 	if(rc) {
 		dev_warn(&ofdev->dev, "invalid address\n");
 		return rc;
 	}
 
 	/* Get IRQ for the device */
-	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	rc = of_irq_to_resource(ofdev->dev.of_node, 0, r_irq);
 	if(rc == NO_IRQ) {
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
 		return rc;
@@ -3599,7 +3599,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
 	pdata_struct.rx_csum		= get_u32(ofdev, "xlnx,rxcsum");
 	pdata_struct.phy_type           = get_u32(ofdev, "xlnx,phy-type");
         llink_connected_handle =
-		of_get_property(ofdev->node, "llink-connected", NULL);
+		of_get_property(ofdev->dev.of_node, "llink-connected", NULL);
         if(!llink_connected_handle) {
             dev_warn(&ofdev->dev, "no Locallink connection found.\n");
             return rc;
@@ -3684,7 +3684,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
         }
 
 	of_node_put(llink_connected_node);
-        mac_address = of_get_mac_address(ofdev->node);
+        mac_address = of_get_mac_address(ofdev->dev.of_node);
         if(mac_address) {
             memcpy(pdata_struct.mac_addr, mac_address, 6);
         } else {
@@ -3710,8 +3710,11 @@ static struct of_device_id xtenet_of_match[] = {
 MODULE_DEVICE_TABLE(of, xtenet_of_match);
 
 static struct of_platform_driver xtenet_of_driver = {
-	.name		= DRIVER_NAME,
-	.match_table	= xtenet_of_match,
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+		.of_match_table = xtenet_of_match,
+	},
 	.probe		= xtenet_of_probe,
 	.remove		= __devexit_p(xtenet_of_remove),
 };

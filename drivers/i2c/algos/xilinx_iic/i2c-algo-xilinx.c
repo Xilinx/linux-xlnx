@@ -562,7 +562,7 @@ static struct of_device_id __devinitdata xilinx_iic_of_match[] = {
 MODULE_DEVICE_TABLE(of, xilinx_iic_of_match);
 
 static u32 get_u32(struct of_device *ofdev, const char *s) {
-	u32 *p = (u32 *)of_get_property(ofdev->node, s, NULL);
+	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 	if(p) {
 		return *p;
 	} else {
@@ -582,17 +582,17 @@ static int __devinit xilinx_iic_of_probe(struct of_device *ofdev, const struct o
 	int rc = 0;
 
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
-                        ofdev->node->name);
+                        ofdev->dev.of_node->name);
 
 	/* Get iospace for the device */
-	rc = of_address_to_resource(ofdev->node, 0, r_mem);
+	rc = of_address_to_resource(ofdev->dev.of_node, 0, r_mem);
 	if(rc) {
 		dev_warn(&ofdev->dev, "invalid address\n");
 		return rc;
 	}
 
 	/* Get IRQ for the device */
-	rc = of_irq_to_resource(ofdev->node, 0, r_irq);
+	rc = of_irq_to_resource(ofdev->dev.of_node, 0, r_irq);
 	if(rc == NO_IRQ) {
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
 		return rc;
@@ -601,7 +601,7 @@ static int __devinit xilinx_iic_of_probe(struct of_device *ofdev, const struct o
 	ten_bit_addr = get_u32(ofdev, "xlnx,ten-bit-adr");
 	gpo_width = get_u32(ofdev, "xlnx,gpo-width");
 
-        return xilinx_iic_setup(&ofdev->dev, ofdev->node, r_mem, r_irq, ten_bit_addr, gpo_width);
+        return xilinx_iic_setup(&ofdev->dev, ofdev->dev.of_node, r_mem, r_irq, ten_bit_addr, gpo_width);
 }
 
 static int __devexit xilinx_iic_of_remove(struct of_device *ofdev)
@@ -610,8 +610,11 @@ static int __devexit xilinx_iic_of_remove(struct of_device *ofdev)
 }
 
 static struct of_platform_driver xilinx_iic_of_driver = {
-	.name		= "iic",
-	.match_table	= xilinx_iic_of_match,
+	.driver = {
+		.name = "iic",
+		.owner = THIS_MODULE,
+		.of_match_table = xilinx_iic_of_match,
+	},
 	.probe		= xilinx_iic_of_probe,
 	.remove		= __devexit_p(xilinx_iic_of_remove), };
 
