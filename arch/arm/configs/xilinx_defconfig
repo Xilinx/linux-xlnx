@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35
-# Wed Oct  6 11:54:56 2010
+# Thu Oct  7 10:50:57 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -347,7 +347,9 @@ CONFIG_CMDLINE="console=ttyDF0,9600n8 root=/dev/ram rw initrd=0x00800000,16M ear
 #
 # At least one emulation must be selected
 #
-# CONFIG_VFP is not set
+CONFIG_VFP=y
+CONFIG_VFPv3=y
+CONFIG_NEON=y
 
 #
 # Userspace binary formats
