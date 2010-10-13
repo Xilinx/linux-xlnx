@@ -68,6 +68,20 @@
 #define XNANDPSS_DIRECT_CMD	((0x4 << 23) |	/* Chip 0 from interface 1 */ \
 				(0x2 << 21))	/* UpdateRegs operation */
 
+#define XNANDPSS_ECC_CONFIG	((0x1 << 2)  |	/* ECC available on APB */ \
+				(0x1 << 4)   |	/* ECC read at end of page */ \
+				(0x0 << 5))	/* No Jumping */
+
+#define XNANDPSS_ECC_CMD1	((0x80)      |	/* Write command */ \
+				(0x00 << 8)  |	/* Read command */ \
+				(0x30 << 16) |	/* Read End command */ \
+				(0x1 << 24))	/* Read End command calid */
+
+#define XNANDPSS_ECC_CMD2	((0x85)      |	/* Write col change cmd */ \
+				(0x05 << 8)  |	/* Read col change cmd */ \
+				(0xE0 << 16) |	/* Read col change end cmd */ \
+				(0x1 << 24))	/* Read col change
+							end cmd valid */
 /*
  * AXI Address definitions
  */
@@ -155,6 +169,25 @@ static struct xnandpss_command_format xnandpss_commands[] __devinitdata = {
 	 * {NAND_CMD_SEQIN, NAND_CMD_CACHEDPROG, 5, XNANDPSS_YES}, */
 };
 
+/* Define default oob placement schemes for large and small page devices */
+static struct nand_ecclayout nand_oob_16 = {
+	.eccbytes = 3,
+	.eccpos = {0, 1, 2},
+	.oobfree = {
+		{.offset = 8,
+		 . length = 8}}
+};
+
+static struct nand_ecclayout nand_oob_64 = {
+	.eccbytes = 12,
+	.eccpos = {
+		   52, 53, 54, 55, 56, 57,
+		   58, 59, 60, 61, 62, 63},
+	.oobfree = {
+		{.offset = 2,
+		 .length = 50}}
+};
+
 /**
  * xnandpss_init_nand_flash - Initialize NAND controller
  * @smc_regs:	Virtual address of the NAND controller registers
@@ -175,6 +208,128 @@ static void xnandpss_init_nand_flash(void __iomem *smc_regs, int option)
 		xnandpss_write32(smc_regs + XSMCPSS_MC_SET_OPMODE,
 				XNANDPSS_SET_OPMODE);
 	xnandpss_write32(smc_regs + XSMCPSS_MC_DIRECT_CMD, XNANDPSS_DIRECT_CMD);
+
+	/* Wait till the ECC operation is complete */
+	while ( (xnandpss_read32(smc_regs + XSMCPSS_ECC_STATUS_OFFSET(
+			XSMCPSS_ECC_IF1_OFFSET))) & XNANDPSS_ECC_BUSY)
+			;
+	/* Set the command1 and command2 register */
+	xnandpss_write32(smc_regs +
+		(XSMCPSS_ECC_MEMCMD1_OFFSET(XSMCPSS_ECC_IF1_OFFSET)),
+		XNANDPSS_ECC_CMD1);
+	xnandpss_write32(smc_regs +
+		(XSMCPSS_ECC_MEMCMD2_OFFSET(XSMCPSS_ECC_IF1_OFFSET)),
+		XNANDPSS_ECC_CMD2);
+}
+
+/**
+ * xnandpss_calculate_hwecc - Calculate Hardware ECC
+ * @mtd:	Pointer to the mtd_info structure
+ * @data:	Pointer to the page data
+ * @ecc_code:	Pointer to the ECC buffer where ECC data needs to be stored
+ *
+ * This function retrieves the Hardware ECC data from the controller and returns
+ * ECC data back to the MTD subsystem.
+ *
+ * returns:	0 on success or error value on failure
+ **/
+static int
+xnandpss_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
+{
+	struct xnandpss_info *xnand =
+				container_of(mtd, struct xnandpss_info, mtd);
+	u32 ecc_value = 0;
+	u8 ecc_reg, ecc_byte;
+	u32 ecc_status;
+
+	/* Wait till the ECC operation is complete */
+	do {
+		ecc_status = xnandpss_read32(xnand->smc_regs +
+			XSMCPSS_ECC_STATUS_OFFSET(XSMCPSS_ECC_IF1_OFFSET));
+	} while (ecc_status & XNANDPSS_ECC_BUSY);
+
+	for (ecc_reg = 0; ecc_reg < 4; ecc_reg++) {
+		/* Read ECC value for each block */
+		ecc_value = (xnandpss_read32(xnand->smc_regs +
+			(XSMCPSS_ECC_VALUE0_OFFSET(XSMCPSS_ECC_IF1_OFFSET) +
+			(ecc_reg*4))));
+		ecc_status = (ecc_value >> 24) & 0xFF;
+		/* ECC value valid */
+		if (ecc_status & 0x40) {
+			for (ecc_byte = 0; ecc_byte < 3; ecc_byte++) {
+				/* Copy ECC bytes to MTD buffer */
+				*ecc_code = ecc_value & 0xFF;
+				ecc_value = ecc_value >> 8;
+				ecc_code++;
+			}
+		} else {
+			printk(KERN_INFO "pl350: ecc status failed\n");
+		}
+	}
+	return 0;
+}
+
+/**
+ * onehot - onehot function
+ * @value:	value to check for onehot
+ *
+ * This function checks whether a value is onehot or not.
+ * onehot is if and only if onebit is set.
+ *
+ **/
+int onehot(unsigned short value)
+{
+	return ((value & (value-1)) == 0);
+}
+
+/**
+ * xnandpss_correct_data - ECC correction function
+ * @mtd:	Pointer to the mtd_info structure
+ * @buf:	Pointer to the page data
+ * @read_ecc:	Pointer to the ECC value read from spare data area
+ * @calc_ecc:	Pointer to the calculated ECC value
+ *
+ * This function corrects the ECC single bit errors & detects 2-bit errors.
+ *
+ * returns:	0 if no ECC errors found
+ *		1 if single bit error found and corrected.
+ *		-1 if multiple ECC errors found.
+ **/
+int xnandpss_correct_data(struct mtd_info *mtd, unsigned char *buf,
+			unsigned char *read_ecc, unsigned char *calc_ecc)
+{
+	unsigned char bit_addr;
+	unsigned int byte_addr;
+	unsigned short ecc_odd, ecc_even;
+	unsigned short read_ecc_lower, read_ecc_upper;
+	unsigned short calc_ecc_lower, calc_ecc_upper;
+
+	read_ecc_lower = (read_ecc[0] | (read_ecc[1] << 8)) & 0xfff;
+	read_ecc_upper = ((read_ecc[1] >> 4) | (read_ecc[2] << 4)) & 0xfff;
+
+	calc_ecc_lower = (calc_ecc[0] | (calc_ecc[1] << 8)) & 0xfff;
+	calc_ecc_upper = ((calc_ecc[1] >> 4) | (calc_ecc[2] << 4)) & 0xfff;
+
+	ecc_odd = read_ecc_lower ^ calc_ecc_lower;
+	ecc_even = read_ecc_upper ^ calc_ecc_upper;
+
+	if ((ecc_odd == 0) && (ecc_even == 0))
+		return 0;       /* no error */
+	else if (ecc_odd == (~ecc_even & 0xfff)) {
+		/* bits [11:3] of error code is byte offset */
+		byte_addr = (ecc_odd >> 3) & 0x1ff;
+		/* bits [2:0] of error code is bit offset */
+		bit_addr = ecc_odd & 0x7;
+		/* Toggling error bit */
+		buf[byte_addr] ^= (1 << bit_addr);
+		return 1;
+	} else if (onehot(ecc_odd | ecc_even) == 1) {
+		return 1; /* one error in parity */
+	}
+	else {
+		printk(KERN_ERR "xnandpss: uncorrectable error\r\n");
+		return -1;
+	}
 }
 
 /**
@@ -185,7 +340,7 @@ static void xnandpss_init_nand_flash(void __iomem *smc_regs, int option)
  * @sndcmd:	flag whether to issue read command or not
  */
 static int xnandpss_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
-			     int page, int sndcmd)
+			int page, int sndcmd)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -215,7 +370,7 @@ static int xnandpss_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * @page:	page number to write
  */
 static int xnandpss_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
-			      int page)
+			int page)
 {
 	int status = 0;
 	const uint8_t *buf = chip->oob_poi;
@@ -309,14 +464,66 @@ void xnandpss_write_page_hwecc(struct mtd_info *mtd,
 				struct nand_chip *chip, const uint8_t *buf)
 {
 	int i, eccsize = chip->ecc.size;
+	int eccsteps = chip->ecc.steps;
+	uint8_t *ecc_calc = chip->buffers->ecccalc;
+	const uint8_t *p = buf;
+	uint32_t *eccpos = chip->ecc.layout->eccpos;
+	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4;
+	uint8_t *oob_ptr;
+
+	for ( ; (eccsteps - 1); eccsteps--) {
+		chip->write_buf(mtd, p, eccsize);
+		p += eccsize;
+	}
+	chip->write_buf(mtd, p, (eccsize - data_width));
+	p += (eccsize - data_width);
+
+	/* Set ECC Last bit to 1 */
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
+	data_phase_addr |= XNANDPSS_ECC_LAST;
+	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->write_buf(mtd, p, data_width);
+
+	/* Wait for ECC to be calculated and read the error values */
+	p = buf;
+	chip->ecc.calculate(mtd, p, &ecc_calc[0]);
+
+	for (i = 0; i < chip->ecc.total; i++)
+		chip->oob_poi[eccpos[i]] = ~(ecc_calc[i]);
+
+	/* Clear ECC last bit */
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
+	data_phase_addr &= ~XNANDPSS_ECC_LAST;
+	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+
+	/* Write the spare area with ECC bytes */
+	oob_ptr = chip->oob_poi;
+	chip->write_buf(mtd, oob_ptr, (mtd->oobsize - data_width));
+
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
+	data_phase_addr |= XNANDPSS_CLEAR_CS;
+	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
+	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	oob_ptr += (mtd->oobsize - data_width);
+	chip->write_buf(mtd, oob_ptr, data_width);
+}
+
+/**
+ * xnandpss_write_page_swecc - [REPLACABLE] software ecc based page write function
+ * @mtd:	mtd info structure
+ * @chip:	nand chip info structure
+ * @buf:	data buffer
+ */
+static void xnandpss_write_page_swecc(struct mtd_info *mtd, struct nand_chip *chip,
+				  const uint8_t *buf)
+{
+	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
 	int eccsteps = chip->ecc.steps;
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	const uint8_t *p = buf;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	u32 data_phase_addr = 0;
-	u8 data_width = 4;
-	uint8_t *oob_ptr;
 
 	/* Software ecc calculation */
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
@@ -325,19 +532,7 @@ void xnandpss_write_page_hwecc(struct mtd_info *mtd,
 	for (i = 0; i < chip->ecc.total; i++)
 		chip->oob_poi[eccpos[i]] = ecc_calc[i];
 
-	chip->write_buf(mtd, buf, mtd->writesize);
-
-	/* Write the spare area with ECC bytes */
-	oob_ptr = chip->oob_poi;
-	chip->write_buf(mtd, oob_ptr, (mtd->oobsize - data_width));
-
-	data_phase_addr = (u32 __force)chip->IO_ADDR_W;
-	data_phase_addr |= XNANDPSS_CLEAR_CS;
-	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
-
-	oob_ptr += (mtd->oobsize - data_width);
-	chip->write_buf(mtd, oob_ptr, data_width);
+	chip->ecc.write_page_raw(mtd, chip, buf);
 }
 
 /**
@@ -361,24 +556,81 @@ int xnandpss_read_page_hwecc(struct mtd_info *mtd,
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	uint8_t *ecc_code = chip->buffers->ecccode;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	u32 data_phase_addr = 0;
-	u8 data_width = 4;
+	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4;
 	uint8_t *oob_ptr;
 
-	chip->read_buf(mtd, buf, mtd->writesize);
+	for ( ; (eccsteps - 1); eccsteps--) {
+		chip->read_buf(mtd, p, eccsize);
+		p += eccsize;
+	}
+	chip->read_buf(mtd, p, (eccsize - data_width));
+	p += (eccsize - data_width);
+
+	/* Set ECC Last bit to 1 */
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
+	data_phase_addr |= XNANDPSS_ECC_LAST;
+	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->read_buf(mtd, p, data_width);
+
+	/* Read the calculated ECC value */
+	p = buf;
+	chip->ecc.calculate(mtd, p, &ecc_calc[0]);
+
+	/* Clear ECC last bit */
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
+	data_phase_addr &= ~XNANDPSS_ECC_LAST;
+	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+
 	/* Read the stored ECC value */
 	oob_ptr = chip->oob_poi;
 	chip->read_buf(mtd, oob_ptr, (mtd->oobsize - data_width));
 
 	/* de-assert chip select */
-	data_phase_addr = (u32 __force)chip->IO_ADDR_R;
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= XNANDPSS_CLEAR_CS;
 	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
 
 	oob_ptr += (mtd->oobsize - data_width);
 	chip->read_buf(mtd, oob_ptr, data_width);
 
-	/* Read the calculated ECC value */
+	for (i = 0; i < chip->ecc.total; i++)
+		ecc_code[i] = ~(chip->oob_poi[eccpos[i]]);
+
+	eccsteps = chip->ecc.steps;
+	p = buf;
+
+	/* Check ECC error for all blocks and correct if it is correctable */
+	for (i = 0 ; eccsteps; eccsteps--, i += eccbytes, p += eccsize) {
+		stat = chip->ecc.correct(mtd, p, &ecc_code[i], &ecc_calc[i]);
+		if (stat < 0)
+			mtd->ecc_stats.failed++;
+		else
+			mtd->ecc_stats.corrected += stat;
+	}
+	return 0;
+}
+
+/**
+ * xnandpss_read_page_swecc - [REPLACABLE] software ecc based page read function
+ * @mtd:	mtd info structure
+ * @chip:	nand chip info structure
+ * @buf:	buffer to store read data
+ * @page:	page number to read
+ */
+static int xnandpss_read_page_swecc(struct mtd_info *mtd, struct nand_chip *chip,
+				uint8_t *buf, int page)
+{
+	int i, eccsize = chip->ecc.size;
+	int eccbytes = chip->ecc.bytes;
+	int eccsteps = chip->ecc.steps;
+	uint8_t *p = buf;
+	uint8_t *ecc_calc = chip->buffers->ecccalc;
+	uint8_t *ecc_code = chip->buffers->ecccode;
+	uint32_t *eccpos = chip->ecc.layout->eccpos;
+
+	chip->ecc.read_page_raw(mtd, chip, buf, page);
+
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
 		chip->ecc.calculate(mtd, p, &ecc_calc[i]);
 
@@ -388,8 +640,9 @@ int xnandpss_read_page_hwecc(struct mtd_info *mtd,
 	eccsteps = chip->ecc.steps;
 	p = buf;
 
-	/* Check ECC error for all blocks and correct if it is correctable */
 	for (i = 0 ; eccsteps; eccsteps--, i += eccbytes, p += eccsize) {
+		int stat;
+
 		stat = chip->ecc.correct(mtd, p, &ecc_code[i], &ecc_calc[i]);
 		if (stat < 0)
 			mtd->ecc_stats.failed++;
@@ -459,6 +712,9 @@ static void xnandpss_cmd_function(struct mtd_info *mtd, unsigned int command,
 	}
 	if (curr_cmd == NULL)
 		return;
+
+	/* Clear interrupt */
+	xnandpss_write32((xnand->smc_regs + XSMCPSS_MC_CLR_CONFIG), (1 << 4));
 
 	/* Get the command phase address */
 	if (curr_cmd->end_cmd_valid == XNANDPSS_CMD_PHASE)
@@ -532,7 +788,8 @@ static void xnandpss_cmd_function(struct mtd_info *mtd, unsigned int command,
 #define READ_CMD_HACK
 #ifdef READ_CMD_HACK
 	if (command == NAND_CMD_READ0) {
-		udelay(20);
+		while(!chip->dev_ready(mtd));
+		//udelay(20);
 		return;
 	}
 #endif
@@ -612,10 +869,11 @@ static int xnandpss_device_ready(struct mtd_info *mtd)
 {
 	struct xnandpss_info *xnand =
 		container_of(mtd, struct xnandpss_info, mtd);
+	unsigned long status;
 
 	/* Check the raw_int_status1 bit */
-	return (xnandpss_read32(xnand->smc_regs + XSMCPSS_MC_STATUS) & 0x40) \
-		? 1 : 0;
+	status = xnandpss_read32(xnand->smc_regs + XSMCPSS_MC_STATUS) & 0x40;
+	return status?1:0;
 }
 
 /**
@@ -632,6 +890,7 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 	struct mtd_info *mtd;
 	struct nand_chip *nand_chip;
 	struct resource *nand_res, *smc_res;
+	unsigned long ecc_page_size;
 	int err = 0;
 #ifdef CONFIG_MTD_PARTITIONS
 	int  nr_parts;
@@ -704,7 +963,8 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 
 	/* Set the driver entry points for MTD */
 	nand_chip->cmdfunc = xnandpss_cmd_function;
-	nand_chip->dev_ready = NULL;
+	//nand_chip->dev_ready = NULL;
+	nand_chip->dev_ready = xnandpss_device_ready;
 	nand_chip->select_chip = xnandpss_select_chip;
 
 	/* If we don't set this delay driver sets 20us by default */
@@ -720,10 +980,10 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 
 	/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
 	nand_chip->ecc.mode = NAND_ECC_HW;
-	nand_chip->ecc.size = 256;
+	nand_chip->ecc.size = XNANDPSS_ECC_SIZE;
 	nand_chip->ecc.bytes = 3;
-	nand_chip->ecc.calculate = nand_calculate_ecc;
-	nand_chip->ecc.correct = nand_correct_data;
+	nand_chip->ecc.calculate = xnandpss_calculate_hwecc;
+	nand_chip->ecc.correct = xnandpss_correct_data;
 	nand_chip->ecc.hwctl = NULL;
 	nand_chip->ecc.read_page = xnandpss_read_page_hwecc;
 	nand_chip->ecc.write_page = xnandpss_write_page_hwecc;
@@ -742,6 +1002,52 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
 		goto out_unmap_all_mem;
 	}
+
+	switch (mtd->writesize) {
+	case 512:
+		ecc_page_size = 0x1;
+		/* Set the ECC memory config register */
+		xnandpss_write32(xnand->smc_regs +
+			(XSMCPSS_ECC_MEMCFG_OFFSET(XSMCPSS_ECC_IF1_OFFSET)),
+			(XNANDPSS_ECC_CONFIG | ecc_page_size));
+		break;
+	case 1024:
+		ecc_page_size = 0x2;
+		/* Set the ECC memory config register */
+		xnandpss_write32(xnand->smc_regs +
+			(XSMCPSS_ECC_MEMCFG_OFFSET(XSMCPSS_ECC_IF1_OFFSET)),
+			(XNANDPSS_ECC_CONFIG | ecc_page_size));
+		break;
+	case 2048:
+		ecc_page_size = 0x3;
+		/* Set the ECC memory config register */
+		xnandpss_write32(xnand->smc_regs +
+			(XSMCPSS_ECC_MEMCFG_OFFSET(XSMCPSS_ECC_IF1_OFFSET)),
+			(XNANDPSS_ECC_CONFIG | ecc_page_size));
+		break;
+	default:
+		/* The software ECC routines won't work with the SMC controller */
+		nand_chip->ecc.mode = NAND_ECC_HW;
+		nand_chip->ecc.calculate = nand_calculate_ecc;
+		nand_chip->ecc.correct = nand_correct_data;
+		nand_chip->ecc.read_page = xnandpss_read_page_swecc;
+		/* nand_chip->ecc.read_subpage = nand_read_subpage; */
+		nand_chip->ecc.write_page = xnandpss_write_page_swecc;
+		nand_chip->ecc.read_page_raw = xnandpss_read_page_raw;
+		nand_chip->ecc.write_page_raw = xnandpss_write_page_raw;
+		nand_chip->ecc.read_oob = xnandpss_read_oob;
+		nand_chip->ecc.write_oob = xnandpss_write_oob;
+		nand_chip->ecc.size = 256;
+		nand_chip->ecc.bytes = 3;
+		break;
+	}
+
+	if (mtd->oobsize == 16)
+		nand_chip->ecc.layout = &nand_oob_16;
+	else if (mtd->oobsize == 64)
+		nand_chip->ecc.layout = &nand_oob_64;
+	else
+		;
 
 	/* second phase scan */
 	if (nand_scan_tail(mtd)) {
