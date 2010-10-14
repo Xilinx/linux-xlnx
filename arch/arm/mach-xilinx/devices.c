@@ -447,6 +447,48 @@ static struct platform_device xilinx_spipss_1_device = {
 	.num_resources = ARRAY_SIZE(xspipss_1_resource),
 };
 
+/*************************PSS QSPI*********************/
+static struct xspi_platform_data xqspi_0_pdata = {
+	.speed_hz = 100000000,
+	.bus_num = 2,
+	.num_chipselect = 1
+};
+
+#ifdef CONFIG_SPI_SPIDEV
+
+static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {
+	.modalias		= "spidev",
+	.platform_data		= &xqspi_0_pdata,
+	.irq			= IRQ_QSPI0,
+	.max_speed_hz		= 50000000, /* max sample rate at 3V */
+	.bus_num		= 2,
+	.chip_select		= 0,
+};
+
+#endif
+
+static struct resource xqspipss_0_resource[] = {
+	{
+		.start	= QSPI0_BASE,
+		.end	= QSPI0_BASE + 0xFFF,
+		.flags	= IORESOURCE_MEM
+	},
+	{
+		.start	= IRQ_QSPI0,
+		.end	= IRQ_QSPI0,
+		.flags	= IORESOURCE_IRQ
+	},
+};
+
+static struct platform_device xilinx_qspipss_0_device = {
+	.name = "Xilinx_PSS_QSPI",
+	.id = 0,
+	.dev = {
+		.platform_data = &xqspi_0_pdata,
+	},
+	.resource = xqspipss_0_resource,
+	.num_resources = ARRAY_SIZE(xqspipss_0_resource),
+};
 
 /*************************PSS WDT*********************/
 static struct resource xwdtpss_0_resource[] = {
@@ -504,6 +546,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&eth_device1,
 	&xilinx_spipss_0_device,
 	&xilinx_spipss_1_device,
+	&xilinx_qspipss_0_device,
 	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
@@ -532,8 +575,14 @@ void __init platform_device_init(void)
 			pr_info("Unable to register platform device '%s': %d\n",
 				xilinx_pdevices[i]->name, ret);
 #ifdef CONFIG_SPI_SPIDEV
-		else if (&xilinx_spipss_0_device == xilinx_pdevices[i])
-			spi_register_board_info(&xilinx_spipss_0_boardinfo, 1);
+		else {
+			if (&xilinx_spipss_0_device == xilinx_pdevices[i])
+				spi_register_board_info(
+						&xilinx_spipss_0_boardinfo, 1);
+			else if (&xilinx_qspipss_0_device == xilinx_pdevices[i])
+				spi_register_board_info(
+						&xilinx_qspipss_0_boardinfo, 1);
+		}
 #endif
 
 	}

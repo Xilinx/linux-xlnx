@@ -79,6 +79,7 @@
 #define GPIO0_BASE		(IO_BASE + 0xA000)
 #define ETH0_BASE               (IO_BASE + 0xB000)
 #define ETH1_BASE               (IO_BASE + 0xC000)
+#define QSPI0_BASE		(IO_BASE + 0xD000)
 #define SDIO0_BASE		(IO_BASE + 0x00100000)
 #define SDIO1_BASE		(IO_BASE + 0x00101000)
 
@@ -118,6 +119,7 @@
 #define IRQ_DMAC0_ABORT		45
 #define IRQ_DMAC0		46
 #define IRQ_SMC			50
+#define IRQ_QSPI0		51
 #define IRQ_GPIO0		52
 #define IRQ_ETH0                54
 #define SDIO0_IRQ		56
