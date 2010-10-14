@@ -329,11 +329,18 @@ config SPI_XILINX_PLTFM
 	  This is the platform driver for the SPI controller IP
 	  from the Xilinx EDK.
 
+config SPI_XILINX_PSS_QSPI
+	tristate "Xilinx PSS QSPI controller"
+	depends on SPI_MASTER && EXPERIMENTAL
+	help
+	  This selects the Quad SPI controller master driver from the Xilinx.
+
 config SPI_XILINX_PSS_SPI
 	tristate "Xilinx PSS SPI controller"
 	depends on SPI_MASTER && EXPERIMENTAL
 	help
 	  This selects the SPI controller master driver from the Xilinx.
+
 
 config SPI_NUC900
 	tristate "Nuvoton NUC900 series SPI"
