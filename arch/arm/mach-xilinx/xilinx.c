@@ -31,9 +31,7 @@
 #include <linux/i2c.h>
 #include <linux/i2c/at24.h>
 #include <linux/spi/spi.h>
-#include <linux/spi/flash.h>
 #include <linux/spi/eeprom.h>
-#include <linux/mtd/partitions.h>
 
 /* Register values for using NOR interface of SMC Controller */
 #define NOR_SET_CYCLES ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
@@ -111,23 +109,6 @@ static struct spi_eeprom at25640_1 = {
         .flags          = EE_ADDR2,
 };
 
-/* spi device, spi flash info */
-
-static struct mtd_partition spi_flash_partitions[] = {
-        {
-                .name = "spitest",
-                .size = 0x0100000,
-                .offset = 0,
-        },
-};
-
-static struct flash_platform_data spi_flash_data = {
-        .name = "qspiflash",
-        .parts =  spi_flash_partitions,
-        .nr_parts = ARRAY_SIZE(spi_flash_partitions),
-        .type = "m25p128",
-};
-
 static struct spi_board_info spi_devs[] __initdata = {
         {
                 .modalias = "at25",
@@ -143,16 +124,6 @@ static struct spi_board_info spi_devs[] __initdata = {
                 .chip_select = 0,
                 .platform_data = &at25640_1,
         },
-        {
-                .modalias = "m25p80",
-                .max_speed_hz = 1000000,
-                .bus_num = 2,
-                .chip_select = 0,
-                .platform_data = &spi_flash_data,
-		.irq = IRQ_QSPI0,
-                .mode = SPI_MODE_0,
-        },
-
 };
 
 #endif
