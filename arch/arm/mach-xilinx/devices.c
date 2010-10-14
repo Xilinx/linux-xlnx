@@ -257,6 +257,49 @@ struct platform_device xilinx_nandpss_device = {
 	.resource = xnand_res,
 };
 
+/*************************PSS SDIO ***********************/
+static struct resource xsdio0_res[] = {
+	{
+		.start  = SDIO0_BASE,
+		.end    = SDIO0_BASE + 0xFFF,
+		.flags  = IORESOURCE_MEM
+	},
+	{
+		.start  = SDIO0_IRQ,
+		.end    = SDIO0_IRQ,
+		.flags  = IORESOURCE_IRQ
+	},
+};
+
+struct platform_device xilinx_sdio0pss_device = {
+	.name = "sdhci",
+	.id = 0,
+	.dev.platform_data = NULL,
+	.num_resources = ARRAY_SIZE(xsdio0_res),
+	.resource = xsdio0_res,
+};
+
+static struct resource xsdio1_res[] = {
+	{
+		.start  = SDIO1_BASE,
+		.end    = SDIO1_BASE + 0xFFF,
+		.flags  = IORESOURCE_MEM
+	},
+	{
+		.start  = SDIO1_IRQ,
+		.end    = SDIO1_IRQ,
+		.flags  = IORESOURCE_IRQ
+	},
+};
+
+struct platform_device xilinx_sdio1pss_device = {
+	.name = "sdhci",
+	.id = 1,
+	.dev.platform_data = NULL,
+	.num_resources = ARRAY_SIZE(xsdio1_res),
+	.resource = xsdio1_res,
+};
+
 #define ETH0_PHY_MASK 0x17
 #define ETH1_PHY_MASK 0x10
 
@@ -464,6 +507,8 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
+	&xilinx_sdio0pss_device,
+	&xilinx_sdio1pss_device,
 };
 
 /**

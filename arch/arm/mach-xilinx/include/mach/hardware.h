@@ -79,6 +79,8 @@
 #define GPIO0_BASE		(IO_BASE + 0xA000)
 #define ETH0_BASE               (IO_BASE + 0xB000)
 #define ETH1_BASE               (IO_BASE + 0xC000)
+#define SDIO0_BASE		(IO_BASE + 0x00100000)
+#define SDIO1_BASE		(IO_BASE + 0x00101000)
 
 #define PERIPH_BASE		0xF8000000
 
@@ -118,12 +120,14 @@
 #define IRQ_SMC			50
 #define IRQ_GPIO0		52
 #define IRQ_ETH0                54
+#define SDIO0_IRQ		56
 #define IRQ_I2C0		57
 #define IRQ_SPI0		58
 #define IRQ_UART0		59
 #define IRQ_TIMERCOUNTER1	69
 #define IRQ_DMAC3		72
 #define IRQ_ETH1                77
+#define SDIO1_IRQ		79
 #define IRQ_I2C1		80
 #define IRQ_SPI1		81
 #define IRQ_UART1		82
