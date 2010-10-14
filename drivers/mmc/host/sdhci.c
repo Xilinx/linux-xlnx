@@ -28,6 +28,8 @@
 
 #define DRIVER_NAME "sdhci"
 
+#define XILINX_HACK_CARD_INS
+
 #define DBG(f, x...) \
 	pr_debug(DRIVER_NAME " [%s()]: " f, __func__,## x)
 
@@ -142,12 +144,13 @@ static void sdhci_reset(struct sdhci_host *host, u8 mask)
 	unsigned long timeout;
 	u32 uninitialized_var(ier);
 
+#ifndef XILINX_HACK_CARD_INS
 	if (host->quirks & SDHCI_QUIRK_NO_CARD_NO_RESET) {
 		if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) &
 			SDHCI_CARD_PRESENT))
 			return;
 	}
-
+#endif
 	if (host->quirks & SDHCI_QUIRK_RESTORE_IRQS_AFTER_RESET)
 		ier = sdhci_readl(host, SDHCI_INT_ENABLE);
 
@@ -1115,8 +1118,12 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	if (host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION)
 		present = true;
 	else
+#ifdef XILINX_HACK_CARD_INS
+		present = true;
+#else
 		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
 				SDHCI_CARD_PRESENT;
+#endif
 
 	if (!present || host->flags & SDHCI_DEVICE_DEAD) {
 		host->mrq->cmd->error = -ENOMEDIUM;
@@ -1245,12 +1252,16 @@ static void sdhci_tasklet_card(unsigned long param)
 {
 	struct sdhci_host *host;
 	unsigned long flags;
+	bool present = true;
 
 	host = (struct sdhci_host*)param;
 
 	spin_lock_irqsave(&host->lock, flags);
 
-	if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) & SDHCI_CARD_PRESENT)) {
+#ifndef XILINX_HACK_CARD_INS
+	present = sdhci_readl(host, SDHCI_PRESENT_STATE) & SDHCI_CARD_PRESENT;
+#endif
+	if (!present) {
 		if (host->mrq) {
 			printk(KERN_ERR "%s: Card removed during transfer!\n",
 				mmc_hostname(host->mmc));
