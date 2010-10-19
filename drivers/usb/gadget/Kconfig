@@ -122,6 +122,7 @@ choice
 # Integrated controllers
 #
 
+
 config USB_GADGET_AT91
 	boolean "Atmel AT91 USB Device Port"
 	depends on ARCH_AT91 && !ARCH_AT91SAM9RL && !ARCH_AT91CAP9 && !ARCH_AT91SAM9G45
@@ -269,6 +270,19 @@ config USB_R8A66597
 	depends on USB_GADGET_R8A66597
 	default USB_GADGET
 	select USB_GADGET_SELECTED
+
+config USB_GADGET_XILINX
+	boolean "Xilinx USB Driver"
+	select USB_GADGET_DUALSPEED
+	help
+	   Sample USB gadget driver
+
+config USB_GADGET_CORE_XILINX
+	tristate
+	depends on USB_GADGET_XILINX
+	default USB_GADGET
+	select USB_GADGET_SELECTED
+	select XILINX_EDK
 
 config USB_GADGET_PXA27X
 	boolean "PXA 27x"
@@ -520,11 +534,11 @@ config USB_GADGET_DUMMY_HCD
 	  side is the master; the gadget side is the slave.  Gadget drivers
 	  can be high, full, or low speed; and they have access to endpoints
 	  like those from NET2280, PXA2xx, or SA1100 hardware.
-	  
+
 	  This may help in some stages of creating a driver to embed in a
 	  Linux device, since it lets you debug several parts of the gadget
 	  driver without its hardware or drivers being involved.
-	  
+
 	  Since such a gadget side driver needs to interoperate with a host
 	  side Linux-USB device driver, this may help to debug both sides
 	  of a USB protocol stack.
@@ -633,7 +647,7 @@ config USB_ETH
 	help
 	  This driver implements Ethernet style communication, in one of
 	  several ways:
-	  
+
 	   - The "Communication Device Class" (CDC) Ethernet Control Model.
 	     That protocol is often avoided with pure Ethernet adapters, in
 	     favor of simpler vendor-specific hardware, but is widely
@@ -673,7 +687,7 @@ config USB_ETH_RNDIS
 	   If you say "y" here, the Ethernet gadget driver will try to provide
 	   a second device configuration, supporting RNDIS to talk to such
 	   Microsoft USB hosts.
-	   
+
 	   To make MS-Windows work with this, use Documentation/usb/linux.inf
 	   as the "driver info file".  For versions of MS-Windows older than
 	   XP, you'll need to download drivers from Microsoft's website; a URL
