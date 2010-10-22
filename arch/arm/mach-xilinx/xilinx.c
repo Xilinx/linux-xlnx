@@ -63,6 +63,9 @@
 #define SRAM_SET_OPMODE (0x00002000)
 #define SRAM_DIRECT_CMD (0x00400000)
 
+#define L2_TAG_LATENCY (0x111)
+#define L2_DATA_LATENCY (0x111)
+
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
 
@@ -172,6 +175,11 @@ static void __init board_init(void)
 	/* Static mapping, never released */
 	l2cache_base = ioremap(PL310_L2CC_BASE, SZ_4K);
 	BUG_ON(!l2cache_base);
+
+	__raw_writel(L2_TAG_LATENCY, l2cache_base + L2X0_TAG_LATENCY_CTRL);
+	__raw_writel(L2_DATA_LATENCY, l2cache_base + L2X0_TAG_LATENCY_CTRL);
+	printk(KERN_INFO "l2x0: Tag Latency set to 0x%X cycles\n", L2_TAG_LATENCY);
+	printk(KERN_INFO "l2x0: Data Latency set to 0x%X cycles\n", L2_DATA_LATENCY);
 
 	/*
 	 * 64KB way size, 8-way associativity, parity disabled
