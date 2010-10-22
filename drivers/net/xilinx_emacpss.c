@@ -681,7 +681,7 @@ static void xemacpss_phy_init(struct net_device *ndev)
 	xemacpss_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, regval);
 	for (i = 0; i < 10; i++)
 		mdelay(500);
-#ifdef DEBUG
+#ifdef DEBUG_VERBOSE
 	printk(KERN_INFO "GEM: phy register dump, start from 0, four in a row.");
 	for (i = 0; i <= 30; i++) {
 		if (!(i%4))
