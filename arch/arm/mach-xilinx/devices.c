@@ -24,6 +24,7 @@
 #include <mach/dma.h>
 #include <linux/spi/spi.h>
 #include <linux/mtd/physmap.h>
+#include <linux/spi/flash.h>
 
 /* Create all the platform devices for the BSP */
 
@@ -465,6 +466,52 @@ static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {
 	.chip_select		= 0,
 };
 
+#elif defined CONFIG_MTD_M25P80
+
+static struct mtd_partition qspi_flash_partitions[] = {
+	{
+		.name		= "u-boot",
+		.size		= 0x100000,
+		.offset		= 0,
+	},
+	{
+		.name		= "linux",
+		.size		= 0x500000,
+		.offset		= 0x100000,
+	},
+	{
+		.name		= "user",
+		.size		= 0x100000,
+		.offset		= 0x600000,
+	},
+	{
+		.name		= "scratch",
+		.size		= 0x100000,
+		.offset		= 0x700000,
+	},
+	{
+		.name		= "rootfs",
+		.size		= 0x800000,
+		.offset		= 0x800000,
+	},
+};
+
+static struct flash_platform_data qspi_flash_pdata = {
+	.name			= "serial_flash",
+	.parts			= qspi_flash_partitions,
+	.nr_parts		= ARRAY_SIZE(qspi_flash_partitions),
+	.type			= "n25q128"	/* Type of the flash */
+};
+
+static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {
+	.modalias		= "m25p80",
+	.platform_data		= &qspi_flash_pdata,
+	.irq			= IRQ_QSPI0,
+	.max_speed_hz		= 50000000, /* max sample rate at 3V */
+	.bus_num		= 2,
+	.chip_select		= 0,
+};
+
 #endif
 
 static struct resource xqspipss_0_resource[] = {
@@ -575,16 +622,13 @@ void __init platform_device_init(void)
 			pr_info("Unable to register platform device '%s': %d\n",
 				xilinx_pdevices[i]->name, ret);
 #ifdef CONFIG_SPI_SPIDEV
-		else {
-			if (&xilinx_spipss_0_device == xilinx_pdevices[i])
-				spi_register_board_info(
-						&xilinx_spipss_0_boardinfo, 1);
-			else if (&xilinx_qspipss_0_device == xilinx_pdevices[i])
-				spi_register_board_info(
-						&xilinx_qspipss_0_boardinfo, 1);
-		}
+		else if (&xilinx_spipss_0_device == xilinx_pdevices[i])
+			spi_register_board_info(&xilinx_spipss_0_boardinfo, 1);
 #endif
-
+#if (defined CONFIG_SPI_SPIDEV || defined CONFIG_MTD_M25P80)
+		else if (&xilinx_qspipss_0_device == xilinx_pdevices[i])
+			spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
+#endif
 	}
 }
 
