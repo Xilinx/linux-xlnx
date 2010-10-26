@@ -186,8 +186,8 @@ struct xqspipss_inst_format {
 static struct xqspipss_inst_format __devinitdata flash_inst[] = {
 	{ XQSPIPSS_FLASH_OPCODE_WREN, 1, XQSPIPSS_TXD_00_01_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_WRDS, 1, XQSPIPSS_TXD_00_01_OFFSET },
-	{ XQSPIPSS_FLASH_OPCODE_RDSR1, 2, XQSPIPSS_TXD_00_10_OFFSET },
-	{ XQSPIPSS_FLASH_OPCODE_RDSR2, 2, XQSPIPSS_TXD_00_10_OFFSET },
+	{ XQSPIPSS_FLASH_OPCODE_RDSR1, 1, XQSPIPSS_TXD_00_01_OFFSET },
+	{ XQSPIPSS_FLASH_OPCODE_RDSR2, 1, XQSPIPSS_TXD_00_01_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_WRSR, 3, XQSPIPSS_TXD_00_11_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_PP, 4, XQSPIPSS_TXD_00_00_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_SE, 4, XQSPIPSS_TXD_00_00_OFFSET },
@@ -196,7 +196,7 @@ static struct xqspipss_inst_format __devinitdata flash_inst[] = {
 	{ XQSPIPSS_FLASH_OPCODE_BE, 1, XQSPIPSS_TXD_00_01_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_ERASE_SUS, 1, XQSPIPSS_TXD_00_01_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_ERASE_RES, 1, XQSPIPSS_TXD_00_01_OFFSET },
-	{ XQSPIPSS_FLASH_OPCODE_RDID, 4, XQSPIPSS_TXD_00_00_OFFSET },
+	{ XQSPIPSS_FLASH_OPCODE_RDID, 1, XQSPIPSS_TXD_00_01_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_NORM_READ, 4, XQSPIPSS_TXD_00_00_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_FAST_READ, 4, XQSPIPSS_TXD_00_00_OFFSET },
 	{ XQSPIPSS_FLASH_OPCODE_DUAL_READ, 4, XQSPIPSS_TXD_00_00_OFFSET },
@@ -606,9 +606,10 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 			if (instruction == flash_inst[index].opcode)
 				break;
 
-		/* Instruction is not supported, return error */
+		/* Instruction might have already been transmitted. This is a
+		 * 'data only' transfer */
 		if (index == ARRAY_SIZE(flash_inst))
-			return 0;
+			goto xfer_data;
 
 		xqspi->curr_inst = &flash_inst[index];
 		xqspi->inst_response = 1;
@@ -638,6 +639,7 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 		}
 	}
 
+xfer_data:
 	INIT_COMPLETION(xqspi->done);
 	if (xqspi->bytes_to_transfer)
 		xqspipss_fill_tx_fifo(xqspi);
@@ -778,8 +780,11 @@ xqspipss_transfer(struct spi_device *qspi, struct spi_message *message)
 		bits_per_word = bits_per_word ? : 32;
 		if (!transfer->tx_buf && !transfer->rx_buf && transfer->len)
 			return -EINVAL;
-		if (bits_per_word != 32)
-			return -EINVAL;
+		/* QSPI controller supports only 32 bit transfers whereas higher
+		 * layer drivers request 8 bit transfers. Re-visit at a later
+		 * time */
+		/* if (bits_per_word != 32)
+			return -EINVAL; */
 	}
 
 	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
