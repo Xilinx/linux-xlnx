@@ -283,6 +283,9 @@ static void xqspipss_copy_read_data(struct xqspipss *xqspi, u32 data, u8 size)
 		}
 	}
 	xqspi->bytes_to_receive -= size;
+        if (xqspi->bytes_to_receive < 0) {
+                xqspi->bytes_to_receive = 0;
+        }
 }
 
 /**
@@ -325,6 +328,9 @@ static void xqspipss_copy_write_data(struct xqspipss *xqspi, u32 *data, u8 size)
 		*data = 0;
 
 	xqspi->bytes_to_transfer -= size;
+        if (xqspi->bytes_to_transfer < 0) {
+                xqspi->bytes_to_transfer = 0;
+        }
 }
 
 /**
@@ -596,12 +602,12 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 		instruction = *(u8 *)xqspi->txbuf;
 
 	if (instruction) {
-		for (index = 0 ; index < sizeof(flash_inst); index++)
+		for (index = 0 ; index < ARRAY_SIZE(flash_inst); index++)
 			if (instruction == flash_inst[index].opcode)
 				break;
 
 		/* Instruction is not supported, return error */
-		if (index == sizeof(flash_inst))
+		if (index == ARRAY_SIZE(flash_inst))
 			return 0;
 
 		xqspi->curr_inst = &flash_inst[index];
