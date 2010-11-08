@@ -79,11 +79,13 @@
  * @name: 	Name of Timer
  * @base_addr: 	Base address of timer
  * @timer_irq: 	irqaction structure for the timer device
+ * @mode:       only valid for an clock event, periodic or one-shot
  **/
 struct xttcpss_timer {
 	char *name;
 	unsigned long base_addr;
 	struct irqaction timer_irq;
+	enum clock_event_mode mode;
 };
 
 
@@ -119,7 +121,10 @@ static void xttcpss_set_interval(struct xttcpss_timer *timer,
 
 	xttcpss_write(timer->base_addr + XTTCPSS_INTR_VAL_OFFSET, cycles);
 
+	/* Reset the counter (0x10) so that it starts from 0, one-shot 
+	   mode makes this needed for timing to be right. */
 	ctrl_reg &= XTTCPSS_CNT_CNTRL_ENABLE_MASK;
+	ctrl_reg |= 0x10;
 	xttcpss_write(timer->base_addr + XTTCPSS_CNT_CNTRL_OFFSET, ctrl_reg);
 }
 
@@ -156,10 +161,19 @@ static irqreturn_t xttcpss_clock_event_interrupt(int irq, void *dev_id)
 {
 	struct clock_event_device *evt = &xttcpss_clockevent;
 	struct xttcpss_timer *timer = dev_id;
-
+	u32 ctrl_reg;
+	
 	/* Acknowledge the interrupt and call event handler */
 	xttcpss_write(timer->base_addr + XTTCPSS_ISR_OFFSET,
 		xttcpss_read(timer->base_addr + XTTCPSS_ISR_OFFSET));
+
+	if (timer->mode == CLOCK_EVT_MODE_ONESHOT) {
+
+		/* Disable the counter as it would keep running. */
+		ctrl_reg = xttcpss_read(timer->base_addr + XTTCPSS_CNT_CNTRL_OFFSET);
+		ctrl_reg |= ~(XTTCPSS_CNT_CNTRL_ENABLE_MASK);
+		xttcpss_write(timer->base_addr + XTTCPSS_CNT_CNTRL_OFFSET, ctrl_reg);
+	}
 
 	evt->event_handler(evt);
 
@@ -282,14 +296,13 @@ static void xttcpss_set_mode(enum clock_event_mode mode,
 	struct xttcpss_timer *timer = &timers[XTTCPSS_CLOCKEVENT];
 	u32 ctrl_reg;
 
+	timer->mode = mode;
+
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
 		xttcpss_set_interval(timer, CLOCK_TICK_RATE / HZ);
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:
-		printk(KERN_ERR "xttcpss_set_mode: one shot mode is not"
-			" supported by Triple Timer Counter in PSS \n");
-		break;
 	case CLOCK_EVT_MODE_UNUSED:
 	case CLOCK_EVT_MODE_SHUTDOWN:
 		ctrl_reg = xttcpss_read(timer->base_addr +
@@ -313,7 +326,7 @@ static void xttcpss_set_mode(enum clock_event_mode mode,
  */
 static struct clock_event_device xttcpss_clockevent = {
 	.name		= "xttcpss_timer2",
-	.features	= CLOCK_EVT_FEAT_PERIODIC,
+	.features	= CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
 	.shift		= 0,		/* Initialized to zero */
 	.set_next_event	= xttcpss_set_next_event,
 	.set_mode	= xttcpss_set_mode,
