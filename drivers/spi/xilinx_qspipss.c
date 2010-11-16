@@ -286,9 +286,9 @@ static void xqspipss_copy_read_data(struct xqspipss *xqspi, u32 data, u8 size)
 		}
 	}
 	xqspi->bytes_to_receive -= size;
-        if (xqspi->bytes_to_receive < 0) {
-                xqspi->bytes_to_receive = 0;
-        }
+	if (xqspi->bytes_to_receive < 0) {
+		xqspi->bytes_to_receive = 0;
+	}
 }
 
 /**
@@ -331,9 +331,9 @@ static void xqspipss_copy_write_data(struct xqspipss *xqspi, u32 *data, u8 size)
 		*data = 0;
 
 	xqspi->bytes_to_transfer -= size;
-        if (xqspi->bytes_to_transfer < 0) {
-                xqspi->bytes_to_transfer = 0;
-        }
+	if (xqspi->bytes_to_transfer < 0) {
+		xqspi->bytes_to_transfer = 0;
+	}
 }
 
 /**
