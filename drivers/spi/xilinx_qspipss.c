@@ -727,13 +727,12 @@ static void xqspipss_work_queue(struct work_struct *work)
 			if (transfer->delay_usecs)
 				udelay(transfer->delay_usecs);
 
-			if (!cs_change)
-				continue;
+			if (cs_change)
+				/* Deselect the chip */
+				xqspipss_chipselect(qspi, 0);
+
 			if (transfer->transfer_list.next == &msg->transfers)
 				break;
-
-			/* Deselect the chip */
-			xqspipss_chipselect(qspi, 0);
 		}
 
 		msg->status = status;
