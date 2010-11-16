@@ -147,6 +147,7 @@
  * @done:		Transfer complete status
  * @curr_inst:		Current executing instruction format
  * @inst_response:	Responce to the instruction or data
+ * @is_inst:		Flag to indicate the first message in a Transfer request
  **/
 struct xqspipss {
 	struct workqueue_struct *workqueue;
@@ -167,6 +168,7 @@ struct xqspipss {
 	struct completion done;
 	struct xqspipss_inst_format *curr_inst;
 	u8 inst_response;
+	bool is_inst;
 };
 
 /**
@@ -603,7 +605,7 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 	if (xqspi->txbuf)
 		instruction = *(u8 *)xqspi->txbuf;
 
-	if (instruction) {
+	if (instruction && xqspi->is_inst) {
 		for (index = 0 ; index < ARRAY_SIZE(flash_inst); index++)
 			if (instruction == flash_inst[index].opcode)
 				break;
@@ -692,6 +694,7 @@ static void xqspipss_work_queue(struct work_struct *work)
 		list_del_init(&msg->queue);
 		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
 		qspi = msg->spi;
+		xqspi->is_inst = 1;
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 			if (transfer->bits_per_word || transfer->speed_hz) {
@@ -714,9 +717,11 @@ static void xqspipss_work_queue(struct work_struct *work)
 			}
 
 			/* Request the transfer */
-			if (transfer->len)
+			if (transfer->len) {
 				status =
 					xqspipss_start_transfer(qspi, transfer);
+				xqspi->is_inst = 0;
+			}
 
 			if (status != transfer->len) {
 				if (status > 0)
