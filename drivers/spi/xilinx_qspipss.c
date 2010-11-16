@@ -77,6 +77,7 @@
 #define XQSPIPSS_IXR_TXFULL_MASK	0x00000008 /* QSPI TX FIFO is full */
 #define XQSPIPSS_IXR_RXNEMTY_MASK	0x00000010 /* QSPI RX FIFO Not Empty */
 #define XQSPIPSS_IXR_ALL_MASK		(XQSPIPSS_IXR_TXNFULL_MASK | \
+					 XQSPIPSS_IXR_RXNEMTY_MASK | \
 					 XQSPIPSS_IXR_MODF_MASK)
 
 /*
@@ -518,7 +519,8 @@ static irqreturn_t xqspipss_irq(int irq, void *dev_id)
 		 * identify the error as the remaining bytes to be
 		 * transferred is non-zero */
 		complete(&xqspi->done);
-	} else if (intr_status & XQSPIPSS_IXR_TXNFULL_MASK) {
+	} else if ((intr_status & XQSPIPSS_IXR_TXNFULL_MASK) ||
+		   (intr_status & XQSPIPSS_IXR_RXNEMTY_MASK)) {
 		/* This bit is set when Tx FIFO has < THRESHOLD entries. We have
 		   the THRESHOLD value set to 1, so this bit indicates Tx FIFO
 		   is empty */
