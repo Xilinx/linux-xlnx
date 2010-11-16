@@ -53,6 +53,7 @@
 #define XQSPIPSS_TX_THRESH_OFFSET	0x28 /* TX FIFO Watermark Reg, RW */
 #define XQSPIPSS_RX_THRESH_OFFSET	0x2C /* RX FIFO Watermark Reg, RW */
 #define XQSPIPSS_GPIO_OFFSET		0x30 /* GPIO Register, RW */
+#define XQSPIPSS_LINEAR_CFG_OFFSET	0xA0 /* Linear Adapter Config Ref, RW */
 #define XQSPIPSS_MOD_ID_OFFSET		0xFC /* Module ID Register, RO */
 
 /*
@@ -234,6 +235,9 @@ static void xqspipss_init_hw(void __iomem *regs_base)
 	xqspipss_write(regs_base + XQSPIPSS_ENABLE_OFFSET,
 		~XQSPIPSS_ENABLE_ENABLE_MASK);
 	xqspipss_write(regs_base + XQSPIPSS_IDIS_OFFSET, 0x7F);
+
+	/* Disable linear mode as the boot loader may have used it */
+	xqspipss_write(regs_base + XQSPIPSS_LINEAR_CFG_OFFSET, 0);
 
 	/* Clear the RX FIFO */
 	while (xqspipss_read(regs_base + XQSPIPSS_STATUS_OFFSET) &
