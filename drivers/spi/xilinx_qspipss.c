@@ -485,11 +485,6 @@ static void xqspipss_fill_tx_fifo(struct xqspipss *xqspi)
 
 		xqspipss_write(xqspi->regs + XQSPIPSS_TXD_00_00_OFFSET, data);
 	}
-
-	if (xqspi->bytes_to_transfer)
-		xqspipss_write(xqspi->regs + XQSPIPSS_TX_THRESH_OFFSET, 127);
-	else
-		xqspipss_write(xqspi->regs + XQSPIPSS_TX_THRESH_OFFSET, 1);
 }
 
 /**
