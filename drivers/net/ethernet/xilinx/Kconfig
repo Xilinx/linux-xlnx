@@ -25,6 +25,14 @@ config XILINX_EMACLITE
 	---help---
 	  This driver supports the 10/100 Ethernet Lite from Xilinx.
 
+config XILINX_AXI_ETHERNET
+	tristate "Xilinx Axi Ethernet driver"
+	depends on MICROBLAZE
+	select PHYLIB
+	help
+	  This driver supports the Xilinx 10/100/1000 Axi Ethernet IP
+	  core used in Xilinx Spartan6 and Virtex6 FPGAs
+
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
 	depends on (PPC || MICROBLAZE)
