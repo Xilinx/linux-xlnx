@@ -52,11 +52,14 @@ int of_mdiobus_register(struct mii_bus *mdio, struct device_node *np)
 
 	/* Loop over the child nodes and register a phy_device for each one */
 	for_each_child_of_node(np, child) {
-		const __be32 *addr;
+		__be32 *addr;
+
 		int len;
 
 		/* A PHY must have a reg property in the range [0-31] */
-		addr = of_get_property(child, "reg", &len);
+		addr = (__be32 *)of_get_property(child, "reg", &len);
+
+		*addr = be32_to_cpup(addr);
 		if (!addr || len < sizeof(*addr) || *addr >= 32 || *addr < 0) {
 			dev_err(&mdio->dev, "%s has invalid PHY address\n",
 				child->full_name);
@@ -69,7 +72,7 @@ int of_mdiobus_register(struct mii_bus *mdio, struct device_node *np)
 				mdio->irq[*addr] = PHY_POLL;
 		}
 
-		phy = get_phy_device(mdio, be32_to_cpup(addr));
+		phy = get_phy_device(mdio, *addr);
 		if (!phy || IS_ERR(phy)) {
 			dev_err(&mdio->dev, "error probing PHY at address %i\n",
 				*addr);
