@@ -28,6 +28,7 @@
 #include <linux/delay.h>
 #include <linux/xilinx_devices.h>
 
+#define HACK_WRITE_NO_DELAY
 
 /*
  * Name of this driver
@@ -595,11 +596,24 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 	u32 data = 0;
 	u8 instruction = 0;
 	u8 index;
+#ifdef HACK_WRITE_NO_DELAY
+	static bool no_delay = 0;
+#endif
 
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
 	xqspi->bytes_to_transfer = transfer->len;
 	xqspi->bytes_to_receive = transfer->len;
+
+#ifdef HACK_WRITE_NO_DELAY
+	if (no_delay) {
+		/* Indicates Page programm command + address is already in Tx
+		 * FIFO. We need to receive extra 4 bytes for command + address
+		 */
+		xqspi->bytes_to_receive += 4;
+		no_delay = 0;
+	}
+#endif
 
 	if (xqspi->txbuf)
 		instruction = *(u8 *)xqspi->txbuf;
@@ -628,6 +642,18 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 		 * delayed if the user tries to write when write FIFO is full
 		 */
 		xqspipss_write(xqspi->regs + xqspi->curr_inst->offset, data);
+
+#ifdef HACK_WRITE_NO_DELAY
+		if (xqspi->curr_inst->opcode == XQSPIPSS_FLASH_OPCODE_PP) {
+			/* Write instruction + address to the Tx FIFO, but do
+			 * not start transmission yet. Wait for the next
+			 * spi_message with data, and start transmission after
+			 * data is filled into the FIFO
+			 */
+			no_delay = 1;
+			return (transfer->len);
+		}
+#endif
 
 		/* Read status register and Read ID instructions don't require
 		 * to ignore the extra bytes in response of instruction as
