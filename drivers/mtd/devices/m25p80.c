@@ -33,6 +33,13 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/flash.h>
 
+#define HACK_PAGE_SZ_128		/* temp hack to use 128 byte page */
+#ifdef HACK_PAGE_SZ_128
+ #define MTD_PAGE_SIZE	128
+#else
+ #define MTD_PAGE_SIZE	256
+#endif
+
 /* Flash opcodes. */
 #define	OPCODE_WREN		0x06	/* Write enable */
 #define	OPCODE_RDSR		0x05	/* Read status register */
@@ -606,7 +613,7 @@ struct flash_info {
 		.ext_id = (_ext_id),					\
 		.sector_size = (_sector_size),				\
 		.n_sectors = (_n_sectors),				\
-		.page_size = 256,					\
+		.page_size = MTD_PAGE_SIZE,				\
 		.addr_width = 3,					\
 		.flags = (_flags),					\
 	})
