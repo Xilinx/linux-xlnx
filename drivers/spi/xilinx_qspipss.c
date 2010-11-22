@@ -276,7 +276,7 @@ static void xqspipss_copy_read_data(struct xqspipss *xqspi, u32 data, u8 size)
 		case 3:
 			*((u16 *)xqspi->rxbuf) = data;
 			xqspi->rxbuf += 2;
-			byte3 = (u8)data >> 16;
+			byte3 = (u8)(data >> 16);
 			*((u8 *)xqspi->rxbuf) = byte3;
 			xqspi->rxbuf += 1;
 			break;
