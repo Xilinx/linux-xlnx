@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35
-# Mon Nov  8 13:54:00 2010
+# Wed Nov 24 08:37:17 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -371,7 +371,7 @@ CONFIG_NET=y
 #
 # Networking options
 #
-# CONFIG_PACKET is not set
+CONFIG_PACKET=y
 # CONFIG_UNIX is not set
 CONFIG_XFRM=y
 # CONFIG_XFRM_USER is not set
