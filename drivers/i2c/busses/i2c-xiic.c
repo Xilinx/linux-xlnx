@@ -34,6 +34,10 @@
 #include <linux/errno.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/of_i2c.h>
+#include <linux/of_address.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
@@ -63,6 +67,8 @@ enum xilinx_i2c_state {
  * @rx_pos:	Position within current RX message
  */
 struct xiic_i2c {
+	struct device *dev;
+	int irq;
 	void __iomem		*base;
 	wait_queue_head_t	wait;
 	struct i2c_adapter	adap;
@@ -314,7 +320,7 @@ static void xiic_fill_tx_fifo(struct xiic_i2c *i2c)
 
 			xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
 		} else
-			xiic_setreg8(i2c, XIIC_DTR_REG_OFFSET, data);
+			xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
 	}
 }
 
@@ -426,7 +432,7 @@ static void xiic_process(struct xiic_i2c *i2c)
 			xiic_wakeup(i2c, STATE_ERROR);
 
 	} else if (pend & (XIIC_INTR_TX_EMPTY_MASK | XIIC_INTR_TX_HALF_MASK)) {
-		/* Transmit register/FIFO is empty or ½ empty */
+		/* Transmit register/FIFO is empty or half empty */
 
 		clr = pend &
 			(XIIC_INTR_TX_EMPTY_MASK | XIIC_INTR_TX_HALF_MASK);
@@ -688,116 +694,95 @@ static struct i2c_adapter xiic_adapter = {
 };
 
 
-static int __devinit xiic_i2c_probe(struct platform_device *pdev)
+static int __devinit xiic_i2c_probe(struct platform_device *op)
 {
 	struct xiic_i2c *i2c;
-	struct xiic_i2c_platform_data *pdata;
-	struct resource *res;
-	int ret, irq;
-	u8 i;
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		goto resource_missing;
-
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		goto resource_missing;
-
-	pdata = (struct xiic_i2c_platform_data *) pdev->dev.platform_data;
-	if (!pdata)
-		return -EINVAL;
+	int result = 0;
 
 	i2c = kzalloc(sizeof(*i2c), GFP_KERNEL);
 	if (!i2c)
 		return -ENOMEM;
 
-	if (!request_mem_region(res->start, resource_size(res), pdev->name)) {
-		dev_err(&pdev->dev, "Memory region busy\n");
-		ret = -EBUSY;
-		goto request_mem_failed;
-	}
-
-	i2c->base = ioremap(res->start, resource_size(res));
-	if (!i2c->base) {
-		dev_err(&pdev->dev, "Unable to map registers\n");
-		ret = -EIO;
-		goto map_failed;
-	}
-
-	/* hook up driver to tree */
-	platform_set_drvdata(pdev, i2c);
-	i2c->adap = xiic_adapter;
-	i2c_set_adapdata(&i2c->adap, i2c);
-	i2c->adap.dev.parent = &pdev->dev;
-
-	xiic_reinit(i2c);
+	i2c->dev = &op->dev; /* for debug and error output */
 
 	spin_lock_init(&i2c->lock);
 	init_waitqueue_head(&i2c->wait);
-	ret = request_irq(irq, xiic_isr, 0, pdev->name, i2c);
-	if (ret) {
-		dev_err(&pdev->dev, "Cannot claim IRQ\n");
-		goto request_irq_failed;
+
+	i2c->base = of_iomap(op->dev.of_node, 0);
+	if (!i2c->base) {
+		dev_err(i2c->dev, "failed to map controller\n");
+		result = -ENOMEM;
+		goto fail_map;
 	}
 
-	/* add i2c adapter to i2c tree */
-	ret = i2c_add_adapter(&i2c->adap);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to add adapter\n");
-		goto add_adapter_failed;
+	i2c->irq = irq_of_parse_and_map(op->dev.of_node, 0);
+	if (i2c->irq) { /* no i2c->irq implies polling */
+		result = request_irq(i2c->irq, xiic_isr,
+				     0, op->name, i2c);
+		if (result < 0) {
+			dev_err(i2c->dev, "failed to attach interrupt\n");
+			goto fail_request;
+		}
 	}
 
-	/* add in known devices to the bus */
-	for (i = 0; i < pdata->num_devices; i++)
-		i2c_new_device(&i2c->adap, pdata->devices + i);
+	dev_set_drvdata(&op->dev, i2c);
+	i2c->adap = xiic_adapter;
+	i2c_set_adapdata(&i2c->adap, i2c);
+	i2c->adap.dev.parent = &op->dev;
+	i2c->adap.dev.of_node = of_node_get(op->dev.of_node);
 
-	return 0;
+	result = i2c_add_adapter(&i2c->adap);
+	if (result < 0) {
+		dev_err(i2c->dev, "failed to add adapter\n");
+		goto fail_add;
+	}
 
-add_adapter_failed:
-	free_irq(irq, i2c);
-request_irq_failed:
-	xiic_deinit(i2c);
+	dev_info(i2c->dev, "mapped to 0x%08X, irq=%d\n", (unsigned int)i2c->base, i2c->irq);
+
+	xiic_reinit(i2c);
+	of_i2c_register_devices(&i2c->adap);
+
+	return result;
+
+ fail_add:
+	dev_set_drvdata(&op->dev, NULL);
+	free_irq(i2c->irq, i2c);
+ fail_request:
+	irq_dispose_mapping(i2c->irq);
 	iounmap(i2c->base);
-map_failed:
-	release_mem_region(res->start, resource_size(res));
-request_mem_failed:
+ fail_map:
 	kfree(i2c);
-
-	return ret;
-resource_missing:
-	dev_err(&pdev->dev, "IRQ or Memory resource is missing\n");
-	return -ENOENT;
+	return result;
 }
 
-static int __devexit xiic_i2c_remove(struct platform_device* pdev)
+static int __devexit xiic_i2c_remove(struct platform_device *op)
 {
-	struct xiic_i2c *i2c = platform_get_drvdata(pdev);
-	struct resource *res;
+	struct xiic_i2c *i2c = dev_get_drvdata(&op->dev);
 
-	/* remove adapter & data */
 	i2c_del_adapter(&i2c->adap);
-
 	xiic_deinit(i2c);
+	dev_set_drvdata(&op->dev, NULL);
 
-	platform_set_drvdata(pdev, NULL);
+	if (i2c->irq)
+		free_irq(i2c->irq, i2c);
 
-	free_irq(platform_get_irq(pdev, 0), i2c);
-
+	irq_dispose_mapping(i2c->irq);
 	iounmap(i2c->base);
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res)
-		release_mem_region(res->start, resource_size(res));
-
 	kfree(i2c);
-
 	return 0;
 }
-
 
 /* work with hotplug and coldplug */
 MODULE_ALIAS("platform:"DRIVER_NAME);
+
+#ifdef CONFIG_OF
+/* Match table for of_platform binding */
+static struct of_device_id __devinitdata xilinx_iic_of_match[] = {
+	{ .compatible = "xlnx,xps-iic-2.00.a", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, xilinx_iic_of_match);
+#endif
 
 static struct platform_driver xiic_i2c_driver = {
 	.probe   = xiic_i2c_probe,
@@ -805,6 +790,9 @@ static struct platform_driver xiic_i2c_driver = {
 	.driver  = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,
+#ifdef CONFIG_OF
+		.of_match_table = xilinx_iic_of_match,
+#endif
 	},
 };
 
