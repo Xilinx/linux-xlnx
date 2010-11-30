@@ -32,6 +32,7 @@
 #include <linux/delay.h>
 #include <linux/mtd/nand_ecc.h>
 #include <mach/smc.h>
+#include <mach/nand.h>
 
 #define XNANDPSS_DRIVER_NAME "Xilinx_PSS_NAND"
 
@@ -140,6 +141,8 @@ struct xnandpss_info {
 #ifdef CONFIG_MTD_PARTITIONS
 	struct mtd_partition	*parts;
 #endif
+	struct platform_device	*pdev;
+
 	void __iomem		*nand_base;
 	void __iomem		*smc_regs;
 	unsigned long		end_cmd_pending;
@@ -896,6 +899,14 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 	int  nr_parts;
 	static const char *part_probe_types[] = {"cmdlinepart", NULL};
 #endif
+	struct xnand_platform_data	*pdata;
+
+	pdata = pdev->dev.platform_data;
+	if (pdata == NULL) {
+		dev_err(&pdev->dev, "platform data missing\n");
+		return -ENODEV;
+	}
+
 	xnand = kzalloc(sizeof(struct xnandpss_info), GFP_KERNEL);
 	if (!xnand) {
 		dev_err(&pdev->dev, "failed to allocate device structure.\n");
@@ -948,6 +959,8 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 		goto out_release_smc_mem_region;
 	}
 
+	xnand->pdev = pdev;
+
 	/* Link the private data with the MTD structure */
 	mtd = &xnand->mtd;
 	nand_chip = &xnand->chip;
@@ -976,7 +989,7 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 	nand_chip->verify_buf = xnandpss_verify_buf;
 
 	/* Set the device option and flash width */
-	nand_chip->options = *((u32 *)pdev->dev.platform_data);
+	nand_chip->options = pdata->options;
 
 	/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
 	nand_chip->ecc.mode = NAND_ECC_HW;
@@ -1062,15 +1075,16 @@ static int __init xnandpss_probe(struct platform_device *pdev)
 	nr_parts = parse_mtd_partitions(mtd, part_probe_types,
 					&xnand->parts, 0);
 	if (nr_parts > 0) {
-		dev_info(&pdev->dev, "found %d number of partition information"
-		" through command line", nr_parts);
+		dev_info(&pdev->dev, "found %d partitions in command line", nr_parts);
 		add_mtd_partitions(mtd, xnand->parts, nr_parts);
 		return 0;
-	} else {
+	} else if (pdata->parts)
+		add_mtd_partitions(&xnand->mtd, pdata->parts, pdata->nr_parts);
+	else {
 #endif
-		dev_info(&pdev->dev, "Command line partition table is not"
-		" available, or command line partition option is not enabled"
-		"creating single partition on flash\n");
+		dev_info(&pdev->dev, "Command line partition table is not available,\n"
+				"or command line partition option is not enabled\n"
+				"creating single partition on flash\n");
 #endif
 		err = add_mtd_device(mtd);
 #ifdef CONFIG_MTD_CMDLINE_PARTS
