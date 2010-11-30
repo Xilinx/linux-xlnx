@@ -3,6 +3,13 @@
  *
  * (c) 2010 Xilinx, Inc.
  *
+ * Copyright (C) 2004 by Thomas Rathbone
+ * Copyright (C) 2005 by HP Labs
+ * Copyright (C) 2005 by David Brownell
+ *
+ * Some parts of this driver code is based on the driver for at91-series
+ * USB peripheral controller (at91_udc.c).
+ *
  * This program is free software; you can redistribute it
  * and/or modify it under the terms of the GNU General Public
  * License as published by the Free Software Foundation;
@@ -25,7 +32,7 @@
 #include <linux/seq_file.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#include <xenv.h>
+#include <linux/dma-mapping.h>
 #include "gadget_chips.h"
 
 
@@ -343,8 +350,10 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 	u32 *eprambase;
 	u32 bytestosend;
 	u8 *temprambase;
-	u32 srcaddr, dstaddr;
-
+	unsigned long timeout;
+	u32 srcaddr = 0;
+	u32 dstaddr = 0;
+	int rc = 0;
 	bytestosend = bufferlen;
 
 	/* Put the transmit buffer into the correct ping-pong buffer.*/
@@ -355,10 +364,10 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 
 		if (ep->udc->dma_enabled) {
 			if (direction == EP_TRANSMIT) {
-				srcaddr = virt_to_phys(bufferptr);
+				srcaddr = dma_map_single(
+					ep->udc->gadget.dev.parent,
+					bufferptr, bufferlen, DMA_TO_DEVICE);
 				dstaddr = virt_to_phys(eprambase);
-				XCACHE_FLUSH_DCACHE_RANGE(bufferptr, bufferlen);
-				XCACHE_FLUSH_DCACHE_RANGE(eprambase, bufferlen);
 				out_be32((ep->udc->base_address +
 						  ep->endpointoffset +
 						  XUSB_EP_BUF0COUNT_OFFSET),
@@ -369,10 +378,9 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 							(1 << (ep->epnumber)));
 			} else {
 				srcaddr = virt_to_phys(eprambase);
-				dstaddr = virt_to_phys(bufferptr);
-
-				XCACHE_INVALIDATE_DCACHE_RANGE(bufferptr,
-						bufferlen);
+				dstaddr = dma_map_single(
+					ep->udc->gadget.dev.parent,
+					bufferptr, bufferlen, DMA_FROM_DEVICE);
 
 				out_be32((ep->udc->base_address +
 						XUSB_DMA_CONTROL_OFFSET),
@@ -438,12 +446,10 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 					ep->rambase + ep->ep.maxpacket);
 			if (ep->udc->dma_enabled) {
 				if (direction == EP_TRANSMIT) {
-					srcaddr = virt_to_phys(bufferptr);
+					srcaddr = dma_map_single(
+						ep->udc->gadget.dev.parent,
+						bufferptr, bufferlen, DMA_TO_DEVICE);
 					dstaddr = virt_to_phys(eprambase);
-					XCACHE_FLUSH_DCACHE_RANGE(bufferptr,
-								bufferlen);
-					XCACHE_FLUSH_DCACHE_RANGE(eprambase,
-								bufferlen);
 					out_be32((ep->udc->base_address +
 							  ep->endpointoffset +
 						XUSB_EP_BUF1COUNT_OFFSET),
@@ -455,9 +461,9 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 						XUSB_STATUS_EP_BUFF2_SHIFT)));
 				} else {
 					srcaddr = virt_to_phys(eprambase);
-					dstaddr = virt_to_phys(bufferptr);
-					XCACHE_INVALIDATE_DCACHE_RANGE(
-						bufferptr, bufferlen);
+					dstaddr = dma_map_single(
+						ep->udc->gadget.dev.parent,
+						bufferptr, bufferlen, DMA_FROM_DEVICE);
 					out_be32((ep->udc->base_address +
 						XUSB_DMA_CONTROL_OFFSET),
 							XUSB_DMA_BRR_CTRL |
@@ -534,16 +540,32 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 		while ((in_be32(ep->udc->base_address +
 			XUSB_DMA_STATUS_OFFSET) & XUSB_DMA_DMASR_BUSY) ==
 			XUSB_DMA_DMASR_BUSY) {
-			;
+			timeout = jiffies + 10000;
+
+			if (time_after(jiffies, timeout)) {
+				rc = -ETIMEDOUT;
+				goto clean;
+			}
+
 		}
 
 		if ((in_be32(ep->udc->base_address +
 			XUSB_DMA_STATUS_OFFSET) & XUSB_DMA_DMASR_ERROR) ==
 			XUSB_DMA_DMASR_ERROR)
 			dev_dbg(&ep->udc->gadget.dev, "DMA Error\n");
-	}
-	return 0;
+clean:
+		if (direction == EP_TRANSMIT) {
 
+			dma_unmap_single(ep->udc->gadget.dev.parent,
+				srcaddr, bufferlen, DMA_TO_DEVICE);
+		} else {
+
+			dma_unmap_single(ep->udc->gadget.dev.parent,
+				dstaddr, bufferlen, DMA_FROM_DEVICE);
+		}
+
+	}
+	return rc;
 }
 
 /**
@@ -2282,6 +2304,8 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 		  XUSB_STATUS_EP0_BUFF1_COMP_MASK));
 
 	platform_set_drvdata(pdev, udc);
+
+	udc->gadget.dev.parent = &pdev->dev;
 
 	dev_info(dev, "%s version %s\n", driver_name, DRIVER_VERSION);
 	dev_info(dev, "%s #%d at 0x%08X mapped to 0x%08X\n",
