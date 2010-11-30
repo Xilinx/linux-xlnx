@@ -25,6 +25,7 @@
 #include <linux/spi/spi.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
+#include <mach/nand.h> 
 
 /* Create all the platform devices for the BSP */
 
@@ -234,7 +235,51 @@ struct platform_device xilinx_norpss_device = {
 
 /*************************PSS NAND ***********************/
 #include <linux/mtd/nand.h>
-static u32 options = NAND_NO_AUTOINCR | NAND_USE_FLASH_BBT;
+
+static struct mtd_partition nand_flash_partitions[] = {
+	{
+		.name		= "nand-fsbl",
+		.size		= 0x100000,	/* 1MB */
+		.offset		= 0,
+	},
+	{
+		.name		= "nand-u-boot",
+		.size		= 0x100000,	/* 1MB */
+		.offset		= 0x100000,
+	},
+	{
+		.name		= "nand-linux",
+		.size		= 0x500000,	/* 5MB */
+		.offset		= 0x200000,
+	},
+	{
+		.name		= "nand-user",
+		.size		= 0x100000,	/* 1MB */
+		.offset		= 0x700000,
+	},
+	{
+		.name		= "nand-scratch",
+		.size		= 0x100000,	/* 1MB */
+		.offset		= 0x800000,
+	},
+	{
+		.name		= "nand-rootfs",
+		.size		= 0x8000000,	/* 128MB */
+		.offset		= 0x900000,
+	},
+	{
+		.name		= "nand-bitstreams",
+		.size		= 0x7700000,	/* 119MB */
+		.offset		= 0x8900000,
+	},
+};
+
+static struct xnand_platform_data xilinx_nand_pdata = {
+	.options = NAND_NO_AUTOINCR | NAND_USE_FLASH_BBT,
+	.parts = &nand_flash_partitions,
+	.nr_parts = ARRAY_SIZE(nand_flash_partitions),
+};
+
 static struct resource xnand_res[] = {
 	{
 		.start  = NAND_BASE,
@@ -252,7 +297,7 @@ struct platform_device xilinx_nandpss_device = {
 	.name = "Xilinx_PSS_NAND",
 	.id = 0,
 	.dev = {
-		.platform_data = &options,
+		.platform_data = &xilinx_nand_pdata,
 	},
 	.num_resources = ARRAY_SIZE(xnand_res),
 	.resource = xnand_res,
@@ -470,27 +515,32 @@ static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {
 
 static struct mtd_partition qspi_flash_partitions[] = {
 	{
-		.name		= "u-boot",
-		.size		= 0x100000,
+		.name		= "qpsi-fsbl",
+		.size		= 0x80000,
 		.offset		= 0,
 	},
 	{
-		.name		= "linux",
+		.name		= "qpsi-u-boot",
+		.size		= 0x80000,
+		.offset		= 0x80000,
+	},
+	{
+		.name		= "qpsi-linux",
 		.size		= 0x500000,
 		.offset		= 0x100000,
 	},
 	{
-		.name		= "user",
+		.name		= "qpsi-user",
 		.size		= 0x100000,
 		.offset		= 0x600000,
 	},
 	{
-		.name		= "scratch",
+		.name		= "qpsi-scratch",
 		.size		= 0x100000,
 		.offset		= 0x700000,
 	},
 	{
-		.name		= "rootfs",
+		.name		= "qpsi-rootfs",
 		.size		= 0x800000,
 		.offset		= 0x800000,
 	},
