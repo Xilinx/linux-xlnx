@@ -7,6 +7,4 @@ obj-$(CONFIG_I2C_ALGOPCF)	+= i2c-algo-pcf.o
 obj-$(CONFIG_I2C_ALGOPCA)	+= i2c-algo-pca.o
 obj-$(CONFIG_XILINX_IIC)	+= xilinx_iic/
 
-ifeq ($(CONFIG_I2C_DEBUG_ALGO),y)
-EXTRA_CFLAGS += -DDEBUG
-endif
+ccflags-$(CONFIG_I2C_DEBUG_ALGO) := -DDEBUG

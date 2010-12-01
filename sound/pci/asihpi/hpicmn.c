@@ -353,7 +353,12 @@ short hpi_check_control_cache(struct hpi_control_cache *p_cache,
 			phr->u.c.param1 = pC->u.t.band;
 		else if ((phm->u.c.attribute == HPI_TUNER_LEVEL)
 			&& (phm->u.c.param1 == HPI_TUNER_LEVEL_AVERAGE))
-			phr->u.c.param1 = pC->u.t.level;
+			if (pC->u.t.level == HPI_ERROR_ILLEGAL_CACHE_VALUE) {
+				phr->u.c.param1 = 0;
+				phr->error =
+					HPI_ERROR_INVALID_CONTROL_ATTRIBUTE;
+			} else
+				phr->u.c.param1 = pC->u.t.level;
 		else
 			found = 0;
 		break;
@@ -397,7 +402,8 @@ short hpi_check_control_cache(struct hpi_control_cache *p_cache,
 			if (pC->u.clk.source_index ==
 				HPI_ERROR_ILLEGAL_CACHE_VALUE) {
 				phr->u.c.param1 = 0;
-				phr->error = HPI_ERROR_INVALID_OPERATION;
+				phr->error =
+					HPI_ERROR_INVALID_CONTROL_ATTRIBUTE;
 			} else
 				phr->u.c.param1 = pC->u.clk.source_index;
 		} else if (phm->u.c.attribute == HPI_SAMPLECLOCK_SAMPLERATE)
@@ -565,14 +571,20 @@ struct hpi_control_cache *hpi_alloc_control_cache(const u32
 {
 	struct hpi_control_cache *p_cache =
 		kmalloc(sizeof(*p_cache), GFP_KERNEL);
+	if (!p_cache)
+		return NULL;
+	p_cache->p_info =
+		kmalloc(sizeof(*p_cache->p_info) * number_of_controls,
+			GFP_KERNEL);
+	if (!p_cache->p_info) {
+		kfree(p_cache);
+		return NULL;
+	}
 	p_cache->cache_size_in_bytes = size_in_bytes;
 	p_cache->control_count = number_of_controls;
 	p_cache->p_cache =
 		(struct hpi_control_cache_single *)pDSP_control_buffer;
 	p_cache->init = 0;
-	p_cache->p_info =
-		kmalloc(sizeof(*p_cache->p_info) * p_cache->control_count,
-		GFP_KERNEL);
 	return p_cache;
 }
 
