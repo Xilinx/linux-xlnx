@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35
-# Thu Dec  2 07:42:10 2010
+# Thu Dec  2 09:20:59 2010
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -327,7 +327,7 @@ CONFIG_ALIGNMENT_TRAP=y
 #
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="console=ttyDF0,9600n8 init=/test/pele_test.sh ip=10.10.70.1:::::eth0 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=physmap-flash.0:1M(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
+CONFIG_CMDLINE="console=ttyDF0,9600n8 init=/test/pele_test.sh ip=10.10.70.1:::::eth0 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=physmap-flash.0:512K(fsbl),512K(u-boot),5M(linux),9M(user),1M(scratch),-(rootfs)"
 # CONFIG_CMDLINE_FORCE is not set
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
