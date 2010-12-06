@@ -121,6 +121,7 @@
 #define IRQ_SMC			50
 #define IRQ_QSPI0		51
 #define IRQ_GPIO0		52
+#define IRQ_USB0		53
 #define IRQ_ETH0                54
 #define SDIO0_IRQ		56
 #define IRQ_I2C0		57
@@ -128,6 +129,7 @@
 #define IRQ_UART0		59
 #define IRQ_TIMERCOUNTER1	69
 #define IRQ_DMAC3		72
+#define IRQ_USB1		76
 #define IRQ_ETH1                77
 #define SDIO1_IRQ		79
 #define IRQ_I2C1		80
