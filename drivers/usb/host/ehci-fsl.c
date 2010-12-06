@@ -116,6 +116,11 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
 		goto err3;
 	}
 
+#ifdef CONFIG_ARCH_XILINX
+	/* Set to Host mode */
+	temp = readl(hcd->regs + 0x1a8);
+	writel(temp | 0x3, hcd->regs + 0x1a8);
+#else
 	/* Enable USB controller */
 	temp = in_be32(hcd->regs + 0x500);
 	out_be32(hcd->regs + 0x500, temp | 0x4);
@@ -123,6 +128,7 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
 	/* Set to Host mode */
 	temp = in_le32(hcd->regs + 0x1a8);
 	out_le32(hcd->regs + 0x1a8, temp | 0x3);
+#endif
 
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 	if (retval != 0)
@@ -194,10 +200,12 @@ static void mpc83xx_usb_setup(struct usb_hcd *hcd)
 	pdata =
 	    (struct fsl_usb2_platform_data *)hcd->self.controller->
 	    platform_data;
+#ifndef CONFIG_ARCH_XILINX
 	/* Enable PHY interface in the control reg. */
 	temp = in_be32(non_ehci + FSL_SOC_USB_CTRL);
 	out_be32(non_ehci + FSL_SOC_USB_CTRL, temp | 0x00000004);
 	out_be32(non_ehci + FSL_SOC_USB_SNOOP1, 0x0000001b);
+#endif
 
 #if defined(CONFIG_PPC32) && !defined(CONFIG_NOT_COHERENT_CACHE)
 	/*
@@ -219,6 +227,7 @@ static void mpc83xx_usb_setup(struct usb_hcd *hcd)
 	if (pdata->operating_mode == FSL_USB2_MPH_HOST) {
 		unsigned int chip, rev, svr;
 
+#ifndef CONFIG_ARCH_XILINX
 		svr = mfspr(SPRN_SVR);
 		chip = svr >> 16;
 		rev = (svr >> 4) & 0xf;
@@ -226,6 +235,7 @@ static void mpc83xx_usb_setup(struct usb_hcd *hcd)
 		/* Deal with USB Erratum #14 on MPC834x Rev 1.0 & 1.1 chips */
 		if ((rev == 1) && (chip >= 0x8050) && (chip <= 0x8055))
 			ehci->has_fsl_port_bug = 1;
+#endif
 
 		if (pdata->port_enables & FSL_USB2_PORT0_ENABLED)
 			mpc83xx_setup_phy(ehci, pdata->phy_mode, 0);
@@ -235,6 +245,7 @@ static void mpc83xx_usb_setup(struct usb_hcd *hcd)
 
 	/* put controller in host mode. */
 	ehci_writel(ehci, 0x00000003, non_ehci + FSL_SOC_USB_USBMODE);
+#ifndef CONFIG_ARCH_XILINX
 #ifdef CONFIG_PPC_85xx
 	out_be32(non_ehci + FSL_SOC_USB_PRICTRL, 0x00000008);
 	out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000080);
@@ -243,6 +254,7 @@ static void mpc83xx_usb_setup(struct usb_hcd *hcd)
 	out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000040);
 #endif
 	out_be32(non_ehci + FSL_SOC_USB_SICTRL, 0x00000001);
+#endif
 }
 
 /* called after powerup, by probe or system-pm "wakeup" */
@@ -292,13 +304,13 @@ static int ehci_fsl_setup(struct usb_hcd *hcd)
 struct ehci_fsl {
 	struct ehci_hcd	ehci;
 
-#ifdef CONFIG_PM
+#if defined(CONFIG_PM) && !defined(CONFIG_ARCH_XILINX)
 	/* Saved USB PHY settings, need to restore after deep sleep. */
 	u32 usb_ctrl;
 #endif
 };
 
-#ifdef CONFIG_PM
+#if defined(CONFIG_PM) && !defined(CONFIG_ARCH_XILINX)
 
 static struct ehci_fsl *hcd_to_ehci_fsl(struct usb_hcd *hcd)
 {

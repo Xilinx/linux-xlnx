@@ -617,6 +617,9 @@ static int ehci_run (struct usb_hcd *hcd)
 	int			retval;
 	u32			temp;
 	u32			hcc_params;
+#ifdef CONFIG_ARCH_XILINX
+	void __iomem *non_ehci = hcd->regs;
+#endif
 
 	hcd->uses_new_polling = 1;
 	hcd->poll_rh = 0;
@@ -690,7 +693,11 @@ static int ehci_run (struct usb_hcd *hcd)
 
 	ehci_writel(ehci, INTR_MASK,
 		    &ehci->regs->intr_enable); /* Turn On Interrupts */
-
+#ifdef CONFIG_ARCH_XILINX
+	/* Modifying FIFO Burst Threshold value from 2 to 8 */
+	temp = readl(non_ehci + 0x164);
+	ehci_writel(ehci, 0x00080000, non_ehci + 0x164);
+#endif
 	/* GRR this is run-once init(), being done every time the HC starts.
 	 * So long as they're part of class devices, we can't do it init()
 	 * since the class device isn't created that early.
