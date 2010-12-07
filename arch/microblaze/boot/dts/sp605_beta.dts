@@ -316,7 +316,7 @@
 			xlnx,sck-ratio = <0x20>;
 		} ;
 		Soft_Ethernet_MAC: axi-ethernet@86000000 {
-			compatible = "xlnx,axi-ethernet-1.01.a";
+			compatible = "xlnx,axi-ethernet-1.00.a", "xlnx,axi-ethernet-1.01.a";
 			interrupt-parent = <&Interrupt_Cntlr>;
 			interrupts = < 2 2 >;
 			reg = < 0x86000000 0x80000 >;
@@ -350,6 +350,17 @@
 			xlnx,txvlan-tag = <0x0>;
 			xlnx,txvlan-tran = <0x0>;
 			xlnx,type = <0x1>;
+			axistream-connected = <&AXI_DMA_Ethernet>;
+			phy-handle = <&phy0>;
+			local-mac-address = [ 00 0a 35 85 e0 00 ];
+			mdio {
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                phy0: phy@7 {
+                                        phy-probe-address;
+                                        reg = <7>;
+                                } ;
+                        } ;
 		} ;
 	} ;
 } ;
