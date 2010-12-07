@@ -154,6 +154,13 @@
 		#size-cells = <1>;
 		compatible = "xlnx,axi-interconnect-1.00.a", "xlnx,axi-interconnect-1.01.a", "simple-bus";
 		ranges ;
+
+		FLASH_32Mx16: flash@48000000 {
+			bank-width = <2>;
+			compatible = "cfi-flash";
+			reg = < 0x48000000 0x2000000 >;
+		} ;
+
 		AXI_DMA_Ethernet: axi-dma@80000000 {
 			compatible = "xlnx,axi-dma-2.00.a";
 			interrupt-parent = <&Interrupt_Cntlr>;
@@ -237,6 +244,12 @@
 			xlnx,sda-inertial-delay = <0x0>;
 			xlnx,sda-level = <0x1>;
 			xlnx,ten-bit-adr = <0x0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c08 {
+				compatible = "at,24c08";
+				reg = <0x54>;
+			};
 		} ;
 		Interrupt_Cntlr: interrupt-controller@81800000 {
 			#interrupt-cells = <0x2>;
@@ -309,6 +322,13 @@
 			xlnx,num-ss-bits = <0x1>;
 			xlnx,num-transfer-bits = <0x8>;
 			xlnx,sck-ratio = <0x20>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			spi_flash@0 {
+				compatible = "stm,m25p80", "s25fl064k";
+				reg = <0x0>;
+				spi-max-frequency = <10000000>;
+			};
 		} ;
 		Soft_Ethernet_MAC: axi-ethernet@86000000 {
 			compatible = "xlnx,axi-ethernet-1.00.a", "xlnx,axi-ethernet-1.01.a";
