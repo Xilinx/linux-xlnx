@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux/microblaze 2.6.37-rc4 Kernel Configuration
-# Tue Dec  7 14:05:54 2010
+# Thu Dec  9 15:03:04 2010
 #
 CONFIG_MICROBLAZE=y
 # CONFIG_SWAP is not set
@@ -587,8 +587,7 @@ CONFIG_SERIAL_OF_PLATFORM=y
 # CONFIG_SERIAL_GRLIB_GAISLER_APBUART is not set
 # CONFIG_SERIAL_ALTERA_JTAGUART is not set
 # CONFIG_SERIAL_ALTERA_UART is not set
-CONFIG_UNIX98_PTYS=y
-# CONFIG_DEVPTS_MULTIPLE_INSTANCES is not set
+# CONFIG_UNIX98_PTYS is not set
 CONFIG_LEGACY_PTYS=y
 CONFIG_LEGACY_PTY_COUNT=256
 # CONFIG_TTY_PRINTK is not set
@@ -609,7 +608,16 @@ CONFIG_I2C_BOARDINFO=y
 CONFIG_I2C_COMPAT=y
 # CONFIG_I2C_CHARDEV is not set
 # CONFIG_I2C_MUX is not set
-CONFIG_I2C_HELPER_AUTO=y
+# CONFIG_I2C_HELPER_AUTO is not set
+# CONFIG_I2C_SMBUS is not set
+
+#
+# I2C Algorithms
+#
+# CONFIG_I2C_ALGOBIT is not set
+# CONFIG_I2C_ALGOPCF is not set
+# CONFIG_I2C_ALGOPCA is not set
+CONFIG_XILINX_IIC=y
 
 #
 # I2C Hardware Bus support
@@ -622,7 +630,7 @@ CONFIG_I2C_HELPER_AUTO=y
 # CONFIG_I2C_OCORES is not set
 # CONFIG_I2C_PCA_PLATFORM is not set
 # CONFIG_I2C_SIMTEC is not set
-CONFIG_I2C_XILINX=y
+# CONFIG_I2C_XILINX is not set
 
 #
 # External I2C/SMBus adapter drivers
