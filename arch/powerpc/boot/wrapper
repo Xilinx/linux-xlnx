@@ -142,7 +142,7 @@ objflags=-S
 tmp=$tmpdir/zImage.$$.o
 ksection=.kernel:vmlinux.strip
 isection=.kernel:initrd
-link_address='0x400000'
+link_address='0x800000'
 
 case "$platform" in
 pseries)
