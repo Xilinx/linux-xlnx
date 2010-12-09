@@ -519,7 +519,7 @@ static int __devinit xilinx_iic_setup(
 	   not long lived as there's a new driver in the upstream, it's not 
 	   worth a lot of time.
 	*/
-	strcpy(dev->adapt.name, "xilinx-iic");
+	strcpy(dev->adap.name, "xilinx-iic");
 
 	dev->adap.algo = &xiic_algo;
 	dev->adap.algo_data = NULL;
