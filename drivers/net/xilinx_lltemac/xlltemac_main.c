@@ -31,8 +31,10 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
-#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/of_platform.h>
+#include <linux/of_device.h>
+#include <linux/of_address.h>
 
 #include "xbasic_types.h"
 #include "xlltemac.h"
@@ -3528,7 +3530,7 @@ int xenet_set_mac_address(struct net_device *ndev, void* address) {
 	return 0; 
 } 
 
-static u32 get_u32(struct of_device *ofdev, const char *s) {
+static u32 get_u32(struct platform_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 	if(p) {
 		return *p;
@@ -3561,7 +3563,7 @@ static struct of_device_id xtenet_sdma_of_match[] = {
 	{ /* end of list */ },
 };
 
-static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_device_id *match)
+static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct of_device_id *match)
 {
 	struct resource r_irq_struct;
 	struct resource r_mem_struct;
@@ -3694,7 +3696,7 @@ static int __devinit xtenet_of_probe(struct of_device *ofdev, const struct of_de
         return xtenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
 }
 
-static int __devexit xtenet_of_remove(struct of_device *dev)
+static int __devexit xtenet_of_remove(struct platform_device *dev)
 {
 	return xtenet_remove(&dev->dev);
 }
