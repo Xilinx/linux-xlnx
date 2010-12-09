@@ -57,6 +57,7 @@
 #include <linux/device.h>
 #include <linux/i2c.h>
 #include <linux/xilinx_devices.h>
+#include <linux/semaphore.h>
 
 #include <asm/delay.h>
 #include <asm/io.h>
@@ -66,9 +67,10 @@
 #include "xiic.h"
 #include "xiic_i.h"
 
-#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/of_platform.h>
 #include <linux/of_i2c.h>
+#include <linux/of_address.h>
 
 MODULE_AUTHOR("MontaVista Software, Inc. <source@mvista.com>");
 MODULE_DESCRIPTION("Xilinx IIC driver");
@@ -117,7 +119,7 @@ struct xiic_data {
  * released.
  ******************************************************************************/
 
-static DECLARE_MUTEX(cfg_sem);
+static DEFINE_SEMAPHORE(cfg_sem);
 static int
 xiic_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg msgs[], int num)
 {
@@ -512,12 +514,7 @@ static int __devinit xilinx_iic_setup(
 	dev->started = 1;
 
 	/* Now tell the core I2C code about our new device. */
-	/*
-	 * SAATODO: Get a real ID (perhaps I2C_HW_XILINX) after
-	 * initial release.  Will need to email lm78@stimpy.netroedge.com
-	 * per http://www2.lm-sensors.nu/~lm78/support.html
-	 */
-	dev->adap.id = 0;
+
 	dev->adap.algo = &xiic_algo;
 	dev->adap.algo_data = NULL;
 	dev->adap.timeout = XIIC_TIMEOUT;
@@ -543,7 +540,7 @@ static int __devinit xilinx_iic_setup(
 	}
 	
 	if (node) {
-		of_register_i2c_devices(&dev->adap, node);
+		of_i2c_register_devices(&dev->adap);
 	}
 
 	error = device_create_file(device, &dev_attr_scan);
@@ -561,7 +558,7 @@ static struct of_device_id __devinitdata xilinx_iic_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, xilinx_iic_of_match);
 
-static u32 get_u32(struct of_device *ofdev, const char *s) {
+static u32 get_u32(struct platform_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 	if(p) {
 		return *p;
@@ -571,7 +568,7 @@ static u32 get_u32(struct of_device *ofdev, const char *s) {
 	}
 }
 
-static int __devinit xilinx_iic_of_probe(struct of_device *ofdev, const struct of_device_id *match)
+static int __devinit xilinx_iic_of_probe(struct platform_device *ofdev, const struct of_device_id *match)
 {
 	u32 ten_bit_addr, gpo_width;
 	struct resource r_irq_struct;
@@ -604,7 +601,7 @@ static int __devinit xilinx_iic_of_probe(struct of_device *ofdev, const struct o
         return xilinx_iic_setup(&ofdev->dev, ofdev->dev.of_node, r_mem, r_irq, ten_bit_addr, gpo_width);
 }
 
-static int __devexit xilinx_iic_of_remove(struct of_device *ofdev)
+static int __devexit xilinx_iic_of_remove(struct platform_device *ofdev)
 {
 	return xilinx_iic_remove(&ofdev->dev);
 }
