@@ -515,12 +515,8 @@ static int __devinit xilinx_iic_setup(
 
 	/* Now tell the core I2C code about our new device. */
 
-	/* the following is a hack to force it to work, but since this driver is 
-	   not long lived as there's a new driver in the upstream, it's not 
-	   worth a lot of time.
-	*/
 	strcpy(dev->adap.name, "xilinx-iic");
-
+	dev->adap.dev.of_node = node;
 	dev->adap.algo = &xiic_algo;
 	dev->adap.algo_data = NULL;
 	dev->adap.timeout = XIIC_TIMEOUT;
@@ -545,9 +541,7 @@ static int __devinit xilinx_iic_setup(
 		}
 	}
 	
-	if (node) {
-		of_i2c_register_devices(&dev->adap);
-	}
+	of_i2c_register_devices(&dev->adap);
 
 	error = device_create_file(device, &dev_attr_scan);
       out:
@@ -567,7 +561,7 @@ MODULE_DEVICE_TABLE(of, xilinx_iic_of_match);
 static u32 get_u32(struct platform_device *ofdev, const char *s) {
 	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 	if(p) {
-		return *p;
+		return __be32_to_cpup(p);
 	} else {
 		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to 0.\n", s);
 		return 0;
