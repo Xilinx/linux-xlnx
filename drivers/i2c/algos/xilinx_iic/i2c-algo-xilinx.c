@@ -515,6 +515,12 @@ static int __devinit xilinx_iic_setup(
 
 	/* Now tell the core I2C code about our new device. */
 
+	/* the following is a hack to force it to work, but since this driver is 
+	   not long lived as there's a new driver in the upstream, it's not 
+	   worth a lot of time.
+	*/
+	strcpy(dev->adapt.name, "xilinx-iic");
+
 	dev->adap.algo = &xiic_algo;
 	dev->adap.algo_data = NULL;
 	dev->adap.timeout = XIIC_TIMEOUT;
