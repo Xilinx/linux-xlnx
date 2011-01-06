@@ -3,7 +3,7 @@
 #
 
 menu "I2C Algorithms"
-	depends on !I2C_HELPER_AUTO
+	visible if !I2C_HELPER_AUTO
 
 config I2C_ALGOBIT
 	tristate "I2C bit-banging interfaces"
@@ -20,15 +20,3 @@ config XILINX_IIC
 	help
 	  Supports the Xilinx IIC interface.
 endmenu
-
-# In automatic configuration mode, we still have to define the
-# symbols to avoid unmet dependencies.
-
-if I2C_HELPER_AUTO
-config I2C_ALGOBIT
-	tristate
-config I2C_ALGOPCF
-	tristate
-config I2C_ALGOPCA
-	tristate
-endif
