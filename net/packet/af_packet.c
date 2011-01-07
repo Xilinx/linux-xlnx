@@ -83,6 +83,7 @@
 #include <linux/if_vlan.h>
 #include <linux/virtio_net.h>
 #include <linux/errqueue.h>
+#include <linux/net_tstamp.h>
 
 #ifdef CONFIG_INET
 #include <net/inet_common.h>
@@ -202,6 +203,7 @@ struct packet_sock {
 	unsigned int		tp_hdrlen;
 	unsigned int		tp_reserve;
 	unsigned int		tp_loss:1;
+	unsigned int		tp_tstamp;
 	struct packet_type	prot_hook ____cacheline_aligned_in_smp;
 };
 
@@ -486,7 +488,7 @@ retry:
 	skb->dev = dev;
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
-	err = sock_tx_timestamp(msg, sk, skb_tx(skb));
+	err = sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
 	if (err < 0)
 		goto out_unlock;
 
@@ -656,6 +658,7 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 	struct sk_buff *copy_skb = NULL;
 	struct timeval tv;
 	struct timespec ts;
+	struct skb_shared_hwtstamps *shhwtstamps = skb_hwtstamps(skb);
 
 	if (skb->pkt_type == PACKET_LOOPBACK)
 		goto drop;
@@ -737,7 +740,13 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		h.h1->tp_snaplen = snaplen;
 		h.h1->tp_mac = macoff;
 		h.h1->tp_net = netoff;
-		if (skb->tstamp.tv64)
+		if ((po->tp_tstamp & SOF_TIMESTAMPING_SYS_HARDWARE)
+				&& shhwtstamps->syststamp.tv64)
+			tv = ktime_to_timeval(shhwtstamps->syststamp);
+		else if ((po->tp_tstamp & SOF_TIMESTAMPING_RAW_HARDWARE)
+				&& shhwtstamps->hwtstamp.tv64)
+			tv = ktime_to_timeval(shhwtstamps->hwtstamp);
+		else if (skb->tstamp.tv64)
 			tv = ktime_to_timeval(skb->tstamp);
 		else
 			do_gettimeofday(&tv);
@@ -750,7 +759,13 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		h.h2->tp_snaplen = snaplen;
 		h.h2->tp_mac = macoff;
 		h.h2->tp_net = netoff;
-		if (skb->tstamp.tv64)
+		if ((po->tp_tstamp & SOF_TIMESTAMPING_SYS_HARDWARE)
+				&& shhwtstamps->syststamp.tv64)
+			ts = ktime_to_timespec(shhwtstamps->syststamp);
+		else if ((po->tp_tstamp & SOF_TIMESTAMPING_RAW_HARDWARE)
+				&& shhwtstamps->hwtstamp.tv64)
+			ts = ktime_to_timespec(shhwtstamps->hwtstamp);
+		else if (skb->tstamp.tv64)
 			ts = ktime_to_timespec(skb->tstamp);
 		else
 			getnstimeofday(&ts);
@@ -1194,7 +1209,7 @@ static int packet_snd(struct socket *sock,
 	err = skb_copy_datagram_from_iovec(skb, offset, msg->msg_iov, 0, len);
 	if (err)
 		goto out_free;
-	err = sock_tx_timestamp(msg, sk, skb_tx(skb));
+	err = sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
 	if (err < 0)
 		goto out_free;
 
@@ -1595,8 +1610,10 @@ static int packet_recvmsg(struct kiocb *iocb, struct socket *sock,
 
 		err = -EINVAL;
 		vnet_hdr_len = sizeof(vnet_hdr);
-		if ((len -= vnet_hdr_len) < 0)
+		if (len < vnet_hdr_len)
 			goto out_free;
+
+		len -= vnet_hdr_len;
 
 		if (skb_is_gso(skb)) {
 			struct skb_shared_info *sinfo = skb_shinfo(skb);
@@ -1704,7 +1721,7 @@ static int packet_getname_spkt(struct socket *sock, struct sockaddr *uaddr,
 	rcu_read_lock();
 	dev = dev_get_by_index_rcu(sock_net(sk), pkt_sk(sk)->ifindex);
 	if (dev)
-		strlcpy(uaddr->sa_data, dev->name, 15);
+		strncpy(uaddr->sa_data, dev->name, 14);
 	else
 		memset(uaddr->sa_data, 0, 14);
 	rcu_read_unlock();
@@ -1727,6 +1744,7 @@ static int packet_getname(struct socket *sock, struct sockaddr *uaddr,
 	sll->sll_family = AF_PACKET;
 	sll->sll_ifindex = po->ifindex;
 	sll->sll_protocol = po->num;
+	sll->sll_pkttype = 0;
 	rcu_read_lock();
 	dev = dev_get_by_index_rcu(sock_net(sk), po->ifindex);
 	if (dev) {
@@ -2027,6 +2045,18 @@ packet_setsockopt(struct socket *sock, int level, int optname, char __user *optv
 		po->has_vnet_hdr = !!val;
 		return 0;
 	}
+	case PACKET_TIMESTAMP:
+	{
+		int val;
+
+		if (optlen != sizeof(val))
+			return -EINVAL;
+		if (copy_from_user(&val, optval, sizeof(val)))
+			return -EFAULT;
+
+		po->tp_tstamp = val;
+		return 0;
+	}
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -2117,6 +2147,12 @@ static int packet_getsockopt(struct socket *sock, int level, int optname,
 		if (len > sizeof(unsigned int))
 			len = sizeof(unsigned int);
 		val = po->tp_loss;
+		data = &val;
+		break;
+	case PACKET_TIMESTAMP:
+		if (len > sizeof(int))
+			len = sizeof(int);
+		val = po->tp_tstamp;
 		data = &val;
 		break;
 	default:

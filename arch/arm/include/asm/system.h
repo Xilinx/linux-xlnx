@@ -83,7 +83,11 @@ void arm_notify_die(const char *str, struct pt_regs *regs, struct siginfo *info,
 
 void hook_fault_code(int nr, int (*fn)(unsigned long, unsigned int,
 				       struct pt_regs *),
-		     int sig, const char *name);
+		     int sig, int code, const char *name);
+
+void hook_ifault_code(int nr, int (*fn)(unsigned long, unsigned int,
+				       struct pt_regs *),
+		     int sig, int code, const char *name);
 
 #define xchg(ptr,x) \
 	((__typeof__(*(ptr)))__xchg((unsigned long)(x),(ptr),sizeof(*(ptr))))
@@ -146,6 +150,7 @@ extern unsigned int user_debug;
 #define rmb()		dmb()
 #define wmb()		mb()
 #else
+#include <asm/memory.h>
 #define mb()	do { if (arch_is_coherent()) dmb(); else barrier(); } while (0)
 #define rmb()	do { if (arch_is_coherent()) dmb(); else barrier(); } while (0)
 #define wmb()	do { if (arch_is_coherent()) dmb(); else barrier(); } while (0)
@@ -324,6 +329,8 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
 
 extern void disable_hlt(void);
 extern void enable_hlt(void);
+
+void cpu_idle_wait(void);
 
 #include <asm-generic/cmpxchg-local.h>
 

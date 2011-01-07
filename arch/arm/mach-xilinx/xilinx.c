@@ -291,8 +291,6 @@ static void __init map_io(void)
  */
 
 MACHINE_START(XILINX, "Xilinx Pele A9 Emulation Platform")
-	.phys_io	= IO_BASE,
-	.io_pg_offst	= ((IO_BASE) >> 18) & 0xfffc,
 	.boot_params    = 0,
 	.map_io         = map_io,
 	.init_irq       = irq_init,

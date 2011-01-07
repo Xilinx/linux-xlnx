@@ -123,7 +123,7 @@ static void calibrate_dc_servo(struct snd_soc_codec *codec)
 			reg_r = reg & WM8993_DCS_DAC_WR_VAL_0_MASK;
 			break;
 		default:
-			WARN(1, "Unknown DCS readback method");
+			WARN(1, "Unknown DCS readback method\n");
 			break;
 		}
 
@@ -293,7 +293,7 @@ SOC_DOUBLE_R("Speaker Switch",
 SOC_DOUBLE_R("Speaker ZC Switch",
 	     WM8993_SPEAKER_VOLUME_LEFT, WM8993_SPEAKER_VOLUME_RIGHT,
 	     7, 1, 0),
-SOC_DOUBLE_TLV("Speaker Boost Volume", WM8993_SPKOUT_BOOST, 0, 3, 7, 0,
+SOC_DOUBLE_TLV("Speaker Boost Volume", WM8993_SPKOUT_BOOST, 3, 0, 7, 0,
 	       spkboost_tlv),
 SOC_ENUM("Speaker Reference", speaker_ref),
 SOC_ENUM("Speaker Mode", speaker_mode),
@@ -409,6 +409,8 @@ static int hp_event(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, WM8993_ANALOGUE_HP_0,
 				    WM8993_HPOUT1L_DLY |
 				    WM8993_HPOUT1R_DLY, 0);
+
+		snd_soc_write(codec, WM8993_DC_SERVO_0, 0);
 
 		snd_soc_update_bits(codec, WM8993_POWER_MANAGEMENT_1,
 				    WM8993_HPOUT1L_ENA | WM8993_HPOUT1R_ENA,

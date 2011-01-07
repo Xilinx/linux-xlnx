@@ -179,7 +179,7 @@ struct ax88172_int_data {
 	__le16 res2;
 	u8 status;
 	__le16 res3;
-} __attribute__ ((packed));
+} __packed;
 
 static int asix_read_cmd(struct usbnet *dev, u8 cmd, u16 value, u16 index,
 			    u16 size, void *data)
@@ -1506,6 +1506,10 @@ static const struct usb_device_id	products [] = {
 }, {
 	// ASIX AX88178 10/100/1000
 	USB_DEVICE (0x0b95, 0x1780),
+	.driver_info = (unsigned long) &ax88178_info,
+}, {
+	// Logitec LAN-GTJ/U2A
+	USB_DEVICE (0x0789, 0x0160),
 	.driver_info = (unsigned long) &ax88178_info,
 }, {
 	// Linksys USB200M Rev 2

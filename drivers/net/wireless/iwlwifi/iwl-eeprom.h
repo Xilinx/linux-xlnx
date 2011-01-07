@@ -118,7 +118,18 @@ enum {
 struct iwl_eeprom_channel {
 	u8 flags;		/* EEPROM_CHANNEL_* flags copied from EEPROM */
 	s8 max_power_avg;	/* max power (dBm) on this chnl, limit 31 */
-} __attribute__ ((packed));
+} __packed;
+
+enum iwl_eeprom_enhanced_txpwr_flags {
+	IWL_EEPROM_ENH_TXP_FL_VALID		= BIT(0),
+	IWL_EEPROM_ENH_TXP_FL_BAND_52G		= BIT(1),
+	IWL_EEPROM_ENH_TXP_FL_OFDM		= BIT(2),
+	IWL_EEPROM_ENH_TXP_FL_40MHZ		= BIT(3),
+	IWL_EEPROM_ENH_TXP_FL_HT_AP		= BIT(4),
+	IWL_EEPROM_ENH_TXP_FL_RES1		= BIT(5),
+	IWL_EEPROM_ENH_TXP_FL_RES2		= BIT(6),
+	IWL_EEPROM_ENH_TXP_FL_COMMON_TYPE	= BIT(7),
+};
 
 /**
  * iwl_eeprom_enhanced_txpwr structure
@@ -127,24 +138,26 @@ struct iwl_eeprom_channel {
  *    Enhanced regulatory tx power portion of eeprom image can be broken down
  *    into individual structures; each one is 8 bytes in size and contain the
  *    following information
- * @common: (desc + channel) not used by driver, should _NOT_ be "zero"
+ * @flags: entry flags
+ * @channel: channel number
  * @chain_a_max_pwr: chain a max power in 1/2 dBm
  * @chain_b_max_pwr: chain b max power in 1/2 dBm
  * @chain_c_max_pwr: chain c max power in 1/2 dBm
- * @reserved: not used, should be "zero"
+ * @delta_20_in_40: 20-in-40 deltas (hi/lo)
  * @mimo2_max_pwr: mimo2 max power in 1/2 dBm
  * @mimo3_max_pwr: mimo3 max power in 1/2 dBm
  *
  */
 struct iwl_eeprom_enhanced_txpwr {
-	__le16 common;
+	u8 flags;
+	u8 channel;
 	s8 chain_a_max;
 	s8 chain_b_max;
 	s8 chain_c_max;
-	s8 reserved;
+	u8 delta_20_in_40;
 	s8 mimo2_max;
 	s8 mimo3_max;
-} __attribute__ ((packed));
+} __packed;
 
 /* 3945 Specific */
 #define EEPROM_3945_EEPROM_VERSION	(0x2f)
@@ -186,6 +199,8 @@ struct iwl_eeprom_enhanced_txpwr {
 #define EEPROM_LINK_CALIBRATION      (2*0x67)
 #define EEPROM_LINK_PROCESS_ADJST    (2*0x68)
 #define EEPROM_LINK_OTHERS           (2*0x69)
+#define EEPROM_LINK_TXP_LIMIT        (2*0x6a)
+#define EEPROM_LINK_TXP_LIMIT_SIZE   (2*0x6b)
 
 /* agn regulatory - indirect access */
 #define EEPROM_REG_BAND_1_CHANNELS       ((0x08)\
@@ -276,6 +291,10 @@ struct iwl_eeprom_enhanced_txpwr {
 #define EEPROM_6050_TX_POWER_VERSION    (4)
 #define EEPROM_6050_EEPROM_VERSION	(0x532)
 
+/* 6x50g2 Specific */
+#define EEPROM_6050G2_TX_POWER_VERSION    (6)
+#define EEPROM_6050G2_EEPROM_VERSION	(0x553)
+
 /* 6x00g2 Specific */
 #define EEPROM_6000G2_TX_POWER_VERSION    (6)
 #define EEPROM_6000G2_EEPROM_VERSION	(0x709)
@@ -312,7 +331,7 @@ struct iwl_eeprom_calib_measure {
 	u8 gain_idx;		/* Index into gain table */
 	u8 actual_pow;		/* Measured RF output power, half-dBm */
 	s8 pa_det;		/* Power amp detector level (not used) */
-} __attribute__ ((packed));
+} __packed;
 
 
 /*
@@ -328,7 +347,7 @@ struct iwl_eeprom_calib_ch_info {
 	struct iwl_eeprom_calib_measure
 		measurements[EEPROM_TX_POWER_TX_CHAINS]
 			[EEPROM_TX_POWER_MEASUREMENTS];
-} __attribute__ ((packed));
+} __packed;
 
 /*
  * txpower subband info.
@@ -345,7 +364,7 @@ struct iwl_eeprom_calib_subband_info {
 	u8 ch_to;	/* channel number of highest channel in subband */
 	struct iwl_eeprom_calib_ch_info ch1;
 	struct iwl_eeprom_calib_ch_info ch2;
-} __attribute__ ((packed));
+} __packed;
 
 
 /*
@@ -374,7 +393,7 @@ struct iwl_eeprom_calib_info {
 	__le16 voltage;		/* signed */
 	struct iwl_eeprom_calib_subband_info
 		band_info[EEPROM_TX_POWER_BANDS];
-} __attribute__ ((packed));
+} __packed;
 
 
 #define ADDRESS_MSK                 0x0000FFFF
@@ -385,6 +404,8 @@ struct iwl_eeprom_calib_info {
 #define INDIRECT_CALIBRATION        0x00040000
 #define INDIRECT_PROCESS_ADJST      0x00050000
 #define INDIRECT_OTHERS             0x00060000
+#define INDIRECT_TXP_LIMIT          0x00070000
+#define INDIRECT_TXP_LIMIT_SIZE     0x00080000
 #define INDIRECT_ADDRESS            0x00100000
 
 /* General */
@@ -398,6 +419,7 @@ struct iwl_eeprom_calib_info {
 #define EEPROM_WOWLAN_MODE                  (2*0x47)	/* 2  bytes */
 #define EEPROM_RADIO_CONFIG                 (2*0x48)	/* 2  bytes */
 #define EEPROM_3945_M_VERSION               (2*0x4A)	/* 1  bytes */
+#define EEPROM_NUM_MAC_ADDRESS              (2*0x4C)	/* 2  bytes */
 
 /* The following masks are to be applied on EEPROM_RADIO_CONFIG */
 #define EEPROM_RF_CFG_TYPE_MSK(x)   (x & 0x3)         /* bits 0-1   */
@@ -488,7 +510,6 @@ struct iwl_eeprom_calib_info {
 
 struct iwl_eeprom_ops {
 	const u32 regulatory_bands[7];
-	int (*verify_signature) (struct iwl_priv *priv);
 	int (*acquire_semaphore) (struct iwl_priv *priv);
 	void (*release_semaphore) (struct iwl_priv *priv);
 	u16 (*calib_version) (struct iwl_priv *priv);
@@ -497,18 +518,13 @@ struct iwl_eeprom_ops {
 };
 
 
-void iwl_eeprom_get_mac(const struct iwl_priv *priv, u8 *mac);
 int iwl_eeprom_init(struct iwl_priv *priv);
 void iwl_eeprom_free(struct iwl_priv *priv);
 int  iwl_eeprom_check_version(struct iwl_priv *priv);
 const u8 *iwl_eeprom_query_addr(const struct iwl_priv *priv, size_t offset);
-u16 iwl_eeprom_query16(const struct iwl_priv *priv, size_t offset);
-
 int iwlcore_eeprom_verify_signature(struct iwl_priv *priv);
-int iwlcore_eeprom_acquire_semaphore(struct iwl_priv *priv);
-void iwlcore_eeprom_release_semaphore(struct iwl_priv *priv);
+u16 iwl_eeprom_query16(const struct iwl_priv *priv, size_t offset);
 const u8 *iwlcore_eeprom_query_addr(const struct iwl_priv *priv, size_t offset);
-void iwlcore_eeprom_enhanced_txpower(struct iwl_priv *priv);
 int iwl_init_channel_map(struct iwl_priv *priv);
 void iwl_free_channel_map(struct iwl_priv *priv);
 const struct iwl_channel_info *iwl_get_channel_info(

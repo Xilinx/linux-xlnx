@@ -44,6 +44,8 @@
 #include <linux/usb.h>
 #include <linux/usb/usbnet.h>
 #include <linux/slab.h>
+#include <linux/kernel.h>
+#include <linux/pm_runtime.h>
 
 #define DRIVER_VERSION		"22-Aug-2005"
 
@@ -158,16 +160,6 @@ int usbnet_get_endpoints(struct usbnet *dev, struct usb_interface *intf)
 }
 EXPORT_SYMBOL_GPL(usbnet_get_endpoints);
 
-static u8 nibble(unsigned char c)
-{
-	if (likely(isdigit(c)))
-		return c - '0';
-	c = toupper(c);
-	if (likely(isxdigit(c)))
-		return 10 + c - 'A';
-	return 0;
-}
-
 int usbnet_get_ethernet_addr(struct usbnet *dev, int iMACAddress)
 {
 	int 		tmp, i;
@@ -183,7 +175,7 @@ int usbnet_get_ethernet_addr(struct usbnet *dev, int iMACAddress)
 	}
 	for (i = tmp = 0; i < 6; i++, tmp += 2)
 		dev->net->dev_addr [i] =
-			(nibble(buf [tmp]) << 4) + nibble(buf [tmp + 1]);
+			(hex_to_bin(buf[tmp]) << 4) + hex_to_bin(buf[tmp + 1]);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(usbnet_get_ethernet_addr);
@@ -324,7 +316,7 @@ EXPORT_SYMBOL_GPL(usbnet_defer_kevent);
 
 static void rx_complete (struct urb *urb);
 
-static void rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
+static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 {
 	struct sk_buff		*skb;
 	struct skb_data		*entry;
@@ -336,7 +328,7 @@ static void rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 		netif_dbg(dev, rx_err, dev->net, "no rx skb\n");
 		usbnet_defer_kevent (dev, EVENT_RX_MEMORY);
 		usb_free_urb (urb);
-		return;
+		return -ENOMEM;
 	}
 	skb_reserve (skb, NET_IP_ALIGN);
 
@@ -366,6 +358,9 @@ static void rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 			netif_dbg(dev, ifdown, dev->net, "device gone\n");
 			netif_device_detach (dev->net);
 			break;
+		case -EHOSTUNREACH:
+			retval = -ENOLINK;
+			break;
 		default:
 			netif_dbg(dev, rx_err, dev->net,
 				  "rx submit, %d\n", retval);
@@ -383,6 +378,7 @@ static void rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 		dev_kfree_skb_any (skb);
 		usb_free_urb (urb);
 	}
+	return retval;
 }
 
 
@@ -624,7 +620,7 @@ static void usbnet_terminate_urbs(struct usbnet *dev)
 	while (!skb_queue_empty(&dev->rxq)
 		&& !skb_queue_empty(&dev->txq)
 		&& !skb_queue_empty(&dev->done)) {
-			schedule_timeout(UNLINK_TIMEOUT_MS);
+			schedule_timeout(msecs_to_jiffies(UNLINK_TIMEOUT_MS));
 			set_current_state(TASK_UNINTERRUPTIBLE);
 			netif_dbg(dev, ifdown, dev->net,
 				  "waited for %d urb completions\n", temp);
@@ -643,7 +639,7 @@ int usbnet_stop (struct net_device *net)
 	netif_stop_queue (net);
 
 	netif_info(dev, ifdown, dev->net,
-		   "stop stats: rx/tx %ld/%ld, errs %ld/%ld\n",
+		   "stop stats: rx/tx %lu/%lu, errs %lu/%lu\n",
 		   net->stats.rx_packets, net->stats.tx_packets,
 		   net->stats.rx_errors, net->stats.tx_errors);
 
@@ -921,6 +917,7 @@ fail_halt:
 	/* tasklet could resubmit itself forever if memory is tight */
 	if (test_bit (EVENT_RX_MEMORY, &dev->flags)) {
 		struct urb	*urb = NULL;
+		int resched = 1;
 
 		if (netif_running (dev->net))
 			urb = usb_alloc_urb (0, GFP_KERNEL);
@@ -931,10 +928,12 @@ fail_halt:
 			status = usb_autopm_get_interface(dev->intf);
 			if (status < 0)
 				goto fail_lowmem;
-			rx_submit (dev, urb, GFP_KERNEL);
+			if (rx_submit (dev, urb, GFP_KERNEL) == -ENOLINK)
+				resched = 0;
 			usb_autopm_put_interface(dev->intf);
 fail_lowmem:
-			tasklet_schedule (&dev->bh);
+			if (resched)
+				tasklet_schedule (&dev->bh);
 		}
 	}
 
@@ -1184,8 +1183,11 @@ static void usbnet_bh (unsigned long param)
 			// don't refill the queue all at once
 			for (i = 0; i < 10 && dev->rxq.qlen < qlen; i++) {
 				urb = usb_alloc_urb (0, GFP_ATOMIC);
-				if (urb != NULL)
-					rx_submit (dev, urb, GFP_ATOMIC);
+				if (urb != NULL) {
+					if (rx_submit (dev, urb, GFP_ATOMIC) ==
+					    -ENOLINK)
+						return;
+				}
 			}
 			if (temp != dev->rxq.qlen)
 				netif_dbg(dev, link, dev->net,
@@ -1272,6 +1274,16 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	struct usb_device		*xdev;
 	int				status;
 	const char			*name;
+	struct usb_driver 	*driver = to_usb_driver(udev->dev.driver);
+
+	/* usbnet already took usb runtime pm, so have to enable the feature
+	 * for usb interface, otherwise usb_autopm_get_interface may return
+	 * failure if USB_SUSPEND(RUNTIME_PM) is enabled.
+	 */
+	if (!driver->supports_autosuspend) {
+		driver->supports_autosuspend = 1;
+		pm_runtime_enable(&udev->dev);
+	}
 
 	name = udev->dev.driver->name;
 	info = (struct driver_info *) prod->driver_info;
@@ -1466,7 +1478,6 @@ int usbnet_resume (struct usb_interface *intf)
 		spin_lock_irq(&dev->txq.lock);
 		while ((res = usb_get_from_anchor(&dev->deferred))) {
 
-			printk(KERN_INFO"%s has delayed data\n", __func__);
 			skb = (struct sk_buff *)res->context;
 			retval = usb_submit_urb(res, GFP_ATOMIC);
 			if (retval < 0) {

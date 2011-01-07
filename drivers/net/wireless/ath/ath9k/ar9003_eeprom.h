@@ -234,7 +234,9 @@ struct ar9300_modal_eep_header {
 	u8 txEndToRxOn;
 	u8 txFrameToXpaOn;
 	u8 thresh62;
-	u8 futureModal[32];
+	__le32 papdRateMaskHt20;
+	__le32 papdRateMaskHt40;
+	u8 futureModal[24];
 } __packed;
 
 struct ar9300_cal_data_per_freq_op_loop {
@@ -259,17 +261,12 @@ struct cal_tgt_pow_ht {
 	u8 tPow2x[14];
 } __packed;
 
-struct cal_ctl_edge_pwr {
-	u8 tPower:6,
-	   flag:2;
-} __packed;
-
 struct cal_ctl_data_2g {
-	struct cal_ctl_edge_pwr ctlEdges[AR9300_NUM_BAND_EDGES_2G];
+	u8 ctlEdges[AR9300_NUM_BAND_EDGES_2G];
 } __packed;
 
 struct cal_ctl_data_5g {
-	struct cal_ctl_edge_pwr ctlEdges[AR9300_NUM_BAND_EDGES_5G];
+	u8 ctlEdges[AR9300_NUM_BAND_EDGES_5G];
 } __packed;
 
 struct ar9300_eeprom {
