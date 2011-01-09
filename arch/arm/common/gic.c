@@ -222,7 +222,7 @@ void __init gic_dist_init(unsigned int gic_nr, void __iomem *base,
 	if (gic_nr >= MAX_GIC_NR)
 		BUG();
 
-#ifdef CONFIG_XILINX_AMP_ON_2ND_CPU
+#if defined(CONFIG_XILINX_CPU1_TEST)
 
 	/* Xilinx hack for now, this is needed for interrupts to be on CPU1 and I'm not
 	   sure why.

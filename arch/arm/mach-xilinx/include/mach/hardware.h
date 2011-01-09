@@ -137,10 +137,23 @@
 #define IRQ_UART1		82
 
 /*
- * Start and size of physical RAM
+ * Start and size of physical RAM, for AMP with both processors 
+ * running images split the memory into 2 parts, otherwise use
+ * all of the memory, leaving a temporary gap 2MB for u-boot since
+ * we are using u-boot for right now to load the 2nd image also
+ *
+ * For CPU1, it's built at 0x4200000, load it at 0x4208000
  */
-#define PHYS_OFFSET             0x0
-#define MEM_SIZE		(128 * 1024 * 1024)
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+	#define PHYS_OFFSET             0x0
+	#define MEM_SIZE		(64 * 1024 * 1024)
+#elif defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
+	#define PHYS_OFFSET             (66 * 1024 * 1024) 
+	#define MEM_SIZE		(62 * 1024 * 1024) 
+#else
+	#define PHYS_OFFSET             0x0
+	#define MEM_SIZE		(128 * 1024 * 1024)
+#endif
 
 /*
  * Mandatory for CONFIG_LL_DEBUG
