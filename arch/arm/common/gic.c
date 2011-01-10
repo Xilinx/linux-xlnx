@@ -218,25 +218,22 @@ void __init gic_dist_init(unsigned int gic_nr, void __iomem *base,
 {
 	unsigned int gic_irqs, irq_limit, i;
 	u32 cpumask = 1 << smp_processor_id();
+	u32 cpu1mask = 2;
 
 	if (gic_nr >= MAX_GIC_NR)
 		BUG();
 
-#if defined(CONFIG_XILINX_CPU1_TEST)
-
-	/* Xilinx hack for now, this is needed for interrupts to be on CPU1 and I'm not
-	   sure why.
-	 */
-
-	cpumask = 2;
-#endif
 
 	cpumask |= cpumask << 8;
 	cpumask |= cpumask << 16;
 
+	cpu1mask |= cpu1mask << 8;
+	cpu1mask |= cpu1mask << 16;
+
 	gic_data[gic_nr].dist_base = base;
 	gic_data[gic_nr].irq_offset = (irq_start - 1) & ~31;
 
+#ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
 	writel(0, base + GIC_DIST_CTRL);
 
 	/*
@@ -257,8 +254,28 @@ void __init gic_dist_init(unsigned int gic_nr, void __iomem *base,
 	/*
 	 * Set all global interrupts to this CPU only.
 	 */
-	for (i = 32; i < gic_irqs; i += 4)
+	for (i = 32; i < gic_irqs; i += 4) {
+
+		/* Xilinx AMP, CPU0 is the master of the GIC, but put the 2nd
+		   set of devices onto CPU1 for now. For CPU1 testing, just
+		   put all devices onto CPU1.
+		*/
+
+#if !defined(CONFIG_XILINX_AMP_CPU0_MASTER) && 		\
+	!defined(CONFIG_XILINX_AMP_CPU1_TEST) && 	\
+	!defined(CONFIG_XILINX_CPU1_TEST)	
 		writel(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
+
+#elif defined(CONFIG_XILINX_CPU1_TEST)
+		writel(cpu1mask, base + GIC_DIST_TARGET + i * 4 / 4);
+
+#elif defined(CONFIG_XILINX_AMP_CPU0_MASTER)
+		if (i < 68) 
+			writel(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
+		else
+			writel(cpu1mask, base + GIC_DIST_TARGET + i * 4 / 4);
+#endif
+	}
 
 	/*
 	 * Set priority on all global interrupts.
@@ -272,6 +289,8 @@ void __init gic_dist_init(unsigned int gic_nr, void __iomem *base,
 	 */
 	for (i = 32; i < gic_irqs; i += 32)
 		writel(0xffffffff, base + GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
+
+#endif
 
 	/*
 	 * Limit number of interrupts registered to the platform maximum
@@ -290,7 +309,10 @@ void __init gic_dist_init(unsigned int gic_nr, void __iomem *base,
 		set_irq_flags(i, IRQF_VALID | IRQF_PROBE);
 	}
 
+#ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
 	writel(1, base + GIC_DIST_CTRL);
+#endif
+
 }
 
 void __cpuinit gic_cpu_init(unsigned int gic_nr, void __iomem *base)
