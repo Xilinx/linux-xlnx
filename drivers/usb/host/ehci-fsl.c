@@ -29,7 +29,6 @@
 #include <linux/pm.h>
 #include <linux/platform_device.h>
 #include <linux/fsl_devices.h>
-#include <asm/io.h>
 
 #include "ehci-fsl.h"
 
@@ -131,23 +130,22 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
 	 * Check if it is MPC5121 SoC, otherwise set pdata->have_sysif_regs
 	 * flag for 83xx or 8536 system interface registers.
 	 */
+#ifndef CONFIG_ARCH_XILINX
 	if (pdata->big_endian_mmio)
 		temp = in_be32(hcd->regs + FSL_SOC_USB_ID);
 	else
 		temp = in_le32(hcd->regs + FSL_SOC_USB_ID);
+#else
+	temp = readl(hcd->regs + FSL_SOC_USB_ID);
+#endif
 
 	if ((temp & ID_MSK) != (~((temp & NID_MSK) >> 8) & ID_MSK))
 		pdata->have_sysif_regs = 1;
 
-#ifdef CONFIG_ARCH_XILINX
-	/* Set to Host mode */
-	temp = readl(hcd->regs + 0x1a8);
-	writel(temp | 0x3, hcd->regs + 0x1a8);
-#else
+#ifndef CONFIG_ARCH_XILINX
 	/* Enable USB controller, 83xx or 8536 */
 	if (pdata->have_sysif_regs)
 		setbits32(hcd->regs + FSL_SOC_USB_CTRL, 0x4);
-
 #endif
 
 	/* Don't need to set host mode here. It will be done by tdi_reset() */
@@ -237,11 +235,7 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 	pdata = hcd->self.controller->platform_data;
 
 #ifndef CONFIG_ARCH_XILINX
-	/* Enable PHY interface in the control reg. */
-	temp = in_be32(non_ehci + FSL_SOC_USB_CTRL);
-	out_be32(non_ehci + FSL_SOC_USB_CTRL, temp | 0x00000004);
-	out_be32(non_ehci + FSL_SOC_USB_SNOOP1, 0x0000001b);
-#else
+
 	/* Enable PHY interface in the control reg. */
 	if (pdata->have_sysif_regs) {
 		temp = in_be32(non_ehci + FSL_SOC_USB_CTRL);
@@ -249,6 +243,7 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		out_be32(non_ehci + FSL_SOC_USB_SNOOP1, 0x0000001b);
 	}
 #endif
+
 
 #if defined(CONFIG_PPC32) && !defined(CONFIG_NOT_COHERENT_CACHE)
 	/*
@@ -268,9 +263,9 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		ehci_fsl_setup_phy(ehci, pdata->phy_mode, 0);
 
 	if (pdata->operating_mode == FSL_USB2_MPH_HOST) {
+#ifndef CONFIG_ARCH_XILINX
 		unsigned int chip, rev, svr;
 
-#ifndef CONFIG_ARCH_XILINX
 		svr = mfspr(SPRN_SVR);
 		chip = svr >> 16;
 		rev = (svr >> 4) & 0xf;
@@ -279,15 +274,15 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		if ((rev == 1) && (chip >= 0x8050) && (chip <= 0x8055))
 			ehci->has_fsl_port_bug = 1;
 #endif
-
 		if (pdata->port_enables & FSL_USB2_PORT0_ENABLED)
 			ehci_fsl_setup_phy(ehci, pdata->phy_mode, 0);
 		if (pdata->port_enables & FSL_USB2_PORT1_ENABLED)
 			ehci_fsl_setup_phy(ehci, pdata->phy_mode, 1);
 	}
 
-#ifndef CONFIG_ARCH_XILINX
 	if (pdata->have_sysif_regs) {
+
+#ifndef CONFIG_ARCH_XILINX
 #ifdef CONFIG_PPC_85xx
 		out_be32(non_ehci + FSL_SOC_USB_PRICTRL, 0x00000008);
 		out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000080);
@@ -296,8 +291,8 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000040);
 #endif
 		out_be32(non_ehci + FSL_SOC_USB_SICTRL, 0x00000001);
-	}
 #endif
+	}
 }
 
 /* called after powerup, by probe or system-pm "wakeup" */
