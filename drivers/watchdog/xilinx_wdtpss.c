@@ -241,7 +241,6 @@ static int xwdtpss_close(struct inode *inode, struct file *file)
 /**
  * xwdtpss_ioctl -  Handle IOCTL operations on the device.
  *
- * @inode: inode of the device.
  * @file: file handle to the device.
  * @cmd: watchdog command.
  * @arg: argument pointer.
@@ -253,7 +252,7 @@ static int xwdtpss_close(struct inode *inode, struct file *file)
  * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
  * Returns 0 on success, negative error otherwise.
  **/
-static int xwdtpss_ioctl(struct inode *inode, struct file *file,
+static long xwdtpss_ioctl(struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
@@ -352,7 +351,7 @@ static int xwdtpss_notify_sys(struct notifier_block *this, unsigned long code,
 static const struct file_operations xwdtpss_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= no_llseek,
-	.ioctl		= xwdtpss_ioctl,
+	.unlocked_ioctl	= xwdtpss_ioctl,
 	.open		= xwdtpss_open,
 	.release	= xwdtpss_close,
 	.write		= xwdtpss_write,

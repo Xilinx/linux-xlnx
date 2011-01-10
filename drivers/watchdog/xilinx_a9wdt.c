@@ -196,7 +196,6 @@ static int xa9wdt_close(struct inode *inode, struct file *file)
 /**
  * xa9wdt_ioctl -  Handle IOCTL operations on the device.
  *
- * @inode:	inode of the device.
  * @file:	file handle to the device.
  * @cmd:	watchdog command.
  * @arg:	argument pointer.
@@ -208,7 +207,7 @@ static int xa9wdt_close(struct inode *inode, struct file *file)
  * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
  * Returns 0 on success, negative error otherwise.
  **/
-static int xa9wdt_ioctl(struct inode *inode, struct file *file,
+static long xa9wdt_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
@@ -307,7 +306,7 @@ static int xa9wdt_notify_sys(struct notifier_block *this, unsigned long code,
 static const struct file_operations xa9wdt_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= no_llseek,
-	.ioctl		= xa9wdt_ioctl,
+	.unlocked_ioctl	= xa9wdt_ioctl,
 	.open		= xa9wdt_open,
 	.release	= xa9wdt_close,
 	.write		= xa9wdt_write,
