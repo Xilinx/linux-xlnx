@@ -805,7 +805,7 @@ void __init platform_device_init(void)
 			spi_register_board_info(&xilinx_spipss_0_boardinfo, 1);
 #endif
 #if (defined CONFIG_SPI_SPIDEV || defined CONFIG_MTD_M25P80)
-		else if (&xilinx_qspipss_0_device == *devptr])
+		else if (&xilinx_qspipss_0_device == *devptr)
 			spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
 #endif
 	}
