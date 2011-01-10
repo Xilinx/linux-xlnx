@@ -2899,7 +2899,7 @@ printk(KERN_INFO "xemacpss_ioctl: cmd %d \n", cmd);
 	case SIOCGMIIPHY:
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
-		return phy_mii_ioctl(phydev, if_mii(rq), cmd);
+		return phy_mii_ioctl(phydev, rq, cmd);
 #ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
 	case SIOCSHWTSTAMP:
 		return xemacpss_hwtstamp_ioctl(ndev, rq, cmd);
