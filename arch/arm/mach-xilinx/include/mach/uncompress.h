@@ -36,9 +36,9 @@ static void putc(char ch)
         /*
          * Wait for room in the FIFO, then write the char into the FIFO
          */
-        while (IsTransmitFull(UART0_BASE));
+        while (IsTransmitFull(MXC_LL_UART_VADDR));
 
-        WriteReg(UART0_BASE, UART_FIFO_OFFSET, ch);
+        WriteReg(MXC_LL_UART_VADDR, UART_FIFO_OFFSET, ch);
 }
 
 #endif	/* __ASM_ARCH_UNCOMPRESS_H__ */

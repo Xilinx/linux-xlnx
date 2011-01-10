@@ -32,16 +32,16 @@ static inline void xilinx_uart_init(void)
 	   the kernel is loaded using a Xilinx probe.
 	 */
 
-	if (ReadReg(UART0_BASE, UART_MR_OFFSET) != 0)
+	if (ReadReg(MXC_LL_UART_VADDR, UART_MR_OFFSET) != 0)
 		return;
 	
 	/* Enable the transmitter and receiver, the mode for no parity, 1 stop,
 	   8 data bits, and baud rate of 9600 
 	 */
 
-	WriteReg(UART0_BASE, UART_CR_OFFSET, (UART_CR_TX_EN | UART_CR_RX_EN));
-	WriteReg(UART0_BASE, UART_MR_OFFSET, UART_MR_PARITY_NONE);
-	WriteReg(UART0_BASE, UART_BAUDGEN_OFFSET, UART_BAUD); 
+	WriteReg(MXC_LL_UART_VADDR, UART_CR_OFFSET, (UART_CR_TX_EN | UART_CR_RX_EN));
+	WriteReg(MXC_LL_UART_VADDR, UART_MR_OFFSET, UART_MR_PARITY_NONE);
+	WriteReg(MXC_LL_UART_VADDR, UART_BAUDGEN_OFFSET, UART_BAUD); 
 }
 
 #endif	/* __ASM_ARCH_COMMON_H__ */

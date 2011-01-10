@@ -43,9 +43,14 @@
 #define  XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
 
 /*
- * Base address of Triple Timer Counter
+ * Base address of Triple Timer Counter, user TTC1 for running on CPU1 with AMP,
+ * but normally use TTC0
  */
-#define XTTCPSS_TIMER_BASE	TTC0_BASE 
+#if defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
+	#define XTTCPSS_TIMER_BASE	TTC1_BASE 
+#else
+	#define XTTCPSS_TIMER_BASE	TTC0_BASE 
+#endif
 
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
@@ -93,11 +98,17 @@ static struct xttcpss_timer timers[];
 static struct clock_event_device xttcpss_clockevent;
 
 /*
- * xttcpss_timer_irqs - Timers IRQ number
+ * xttcpss_timer_irqs - Timers IRQ number, for CPU1 AMP, use TTC1, otherwise for all
+ * others use TTC0
  */
 static int xttcpss_timer_irqs[2] = {
+#if defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
+	IRQ_TIMERCOUNTER1,	/* Timer 1 IRQ number */
+	IRQ_TIMERCOUNTER1 + 1,	/* Timer 2 IRQ number */
+#else
 	IRQ_TIMERCOUNTER0,	/* Timer 1 IRQ number */
 	IRQ_TIMERCOUNTER0 + 1,	/* Timer 2 IRQ number */
+#endif
 };
 
 /**

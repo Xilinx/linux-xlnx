@@ -713,7 +713,8 @@ struct platform_device xilinx_usbpss_1_device = {
 };
 
 /* add all platform devices to the following table so they
- * will be registered
+ * will be registered, create seperate lists for AMP on each
+ * CPU so that they don't try to use the same devices
  */
 struct platform_device *xilinx_pdevices[] __initdata = {
 	&uart_device0,
@@ -741,6 +742,31 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_usbpss_1_host,
 };
 
+struct platform_device *xilinx_pdevices_amp0[] __initdata = {
+	&uart_device0,
+	&dmac_device0,
+	&xilinx_i2cpss_0_device,
+	&xilinx_gpiopss_0_device,
+	&xilinx_norpss_device,
+	&eth_device0,
+	&xilinx_spipss_0_device,
+	&xilinx_qspipss_0_device,
+	&xilinx_wdtpss_0_device,
+	&xilinx_a9wdt_device,
+	&xilinx_nandpss_device,
+	&xilinx_sdio0pss_device,
+	&xilinx_usbpss_0_device,
+};
+
+struct platform_device *xilinx_pdevices_amp1[] __initdata = {
+	&uart_device1,
+	&xilinx_i2cpss_1_device,
+	&eth_device1,
+	&xilinx_spipss_1_device,
+	&xilinx_sdio1pss_device,
+	&xilinx_usbpss_1_host,
+};
+
 /**
  * platform_device_init - Initialize all the platform devices.
  *
@@ -748,25 +774,38 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 void __init platform_device_init(void)
 {
 	int ret, i;
+	struct platform_device **devptr;
+	int size;
+
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+	devptr = &xilinx_pdevices_amp0[0];
+	size = ARRAY_SIZE(xilinx_pdevices_amp0);
+#elif defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
+	devptr = &xilinx_pdevices_amp1[0];
+	size = ARRAY_SIZE(xilinx_pdevices_amp1);
+#else
+	devptr = &xilinx_pdevices[0];
+	size = ARRAY_SIZE(xilinx_pdevices);
+#endif
 
 	ret = 0;
 
 	/* Initialize all the platform devices */
 
-	for (i = 0; i < ARRAY_SIZE(xilinx_pdevices); i++) {
+	for (i = 0; i < size; i++, devptr++) {
 		pr_info("registering platform device '%s' id %d\n",
-			xilinx_pdevices[i]->name,
-			xilinx_pdevices[i]->id);
-		ret = platform_device_register(xilinx_pdevices[i]);
+			(*devptr)->name,
+			(*devptr)->id);
+			ret = platform_device_register(*devptr);
 		if (ret)
 			pr_info("Unable to register platform device '%s': %d\n",
-				xilinx_pdevices[i]->name, ret);
+				(*devptr)->name, ret);
 #ifdef CONFIG_SPI_SPIDEV
-		else if (&xilinx_spipss_0_device == xilinx_pdevices[i])
+		else if (&xilinx_spipss_0_device == *devptr)
 			spi_register_board_info(&xilinx_spipss_0_boardinfo, 1);
 #endif
 #if (defined CONFIG_SPI_SPIDEV || defined CONFIG_MTD_M25P80)
-		else if (&xilinx_qspipss_0_device == xilinx_pdevices[i])
+		else if (&xilinx_qspipss_0_device == *devptr])
 			spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
 #endif
 	}

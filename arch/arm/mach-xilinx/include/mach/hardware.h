@@ -156,9 +156,14 @@
 #endif
 
 /*
- * Mandatory for CONFIG_LL_DEBUG
+ * Mandatory for CONFIG_LL_DEBUG, use UART0 for normal kernels, use UART1
+ * for CPU1 when in AMP mode
  */
-#define MXC_LL_UART_PADDR	UART0_BASE
-#define MXC_LL_UART_VADDR	UART0_BASE
-
+#if defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
+	#define MXC_LL_UART_PADDR	UART1_BASE
+	#define MXC_LL_UART_VADDR	UART1_BASE
+#else 
+	#define MXC_LL_UART_PADDR	UART0_BASE
+	#define MXC_LL_UART_VADDR	UART0_BASE
+#endif 
 #endif /* __ASM_ARCH_HARDWARE_H__ */

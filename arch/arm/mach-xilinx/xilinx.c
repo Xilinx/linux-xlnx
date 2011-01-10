@@ -235,7 +235,7 @@ static struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= TTC0_BASE,
 		.pfn		= __phys_to_pfn(TTC0_BASE),
-		.length		= SZ_4K,
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	}, {
 		.virtual	= SCU_PERIPH_BASE,
@@ -256,7 +256,7 @@ static struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= UART0_BASE,
 		.pfn		= __phys_to_pfn(UART0_BASE),
-		.length		= SZ_4K,
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	},
 #endif
