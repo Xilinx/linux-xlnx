@@ -39,7 +39,7 @@
  * bit accesses on the bus for on chip memory.
  */
 
-#define BOOT_REG_BASE		0xFFFE7000
+#define BOOT_REG_BASE		0xFFFFF000
 
 #define BOOT_ADDRREG_OFFSET	0xFF0
 #define BOOT_LOCKREG_OFFSET	0xFF4
