@@ -82,6 +82,26 @@
 	__HEAD
 ENTRY(stext)
 
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+
+	/* For AMP code, in the master, to allow an application on the master to 
+	   reset CPU1 and cause it to come here, then to CPU1 kernel code.
+
+	   Determine which CPU is executing this code as CPU0 is the primary CPU
+	   and should execute the kernel as normal, CPU1 just jumps to the kernel
+	   as this just servers as an intermediate jump for now, once the boot rom
+	   has the new handshake protocol in it this will go away
+	*/
+
+	mrc	p15,0,r0,c0,c0,5
+	and	r0,r0,#0x0f
+	cmp	r0,#0
+	beq	normal_startup
+
+	ldr	r1, =0x4208000			@ load CPU1 boot address
+	mov	pc,r1				@ jump to the boot address for CPU1
+#endif
+
 #if defined(CONFIG_ARCH_XILINX) && defined(CONFIG_SMP)
 
 	/* Determine which CPU is executing this code as CPU0 is the primary CPU
@@ -161,6 +181,9 @@ primary_startup:
 	str r2, [r1]
 
 #endif
+
+normal_startup:
+
 	# Normal kernel startup starts here (non-Xilinx)
 
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9 @ ensure svc mode
