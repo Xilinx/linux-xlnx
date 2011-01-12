@@ -104,6 +104,8 @@ ENTRY(stext)
 
 #if defined(CONFIG_ARCH_XILINX) && defined(CONFIG_SMP)
 
+#ifdef NO_BOOT_ROM_MULTICORE_PROTOCOL
+
 	/* Determine which CPU is executing this code as CPU0 is the primary CPU
 	   and should execute the kernel as normal, CPU1 would normally be held
 	   in a WFE state by a boot loader.
@@ -179,6 +181,7 @@ primary_startup:
 	ldr r1, =(SLC_REG + 0x4)
 	ldr r2, =0x767B
 	str r2, [r1]
+#endif
 
 #endif
 

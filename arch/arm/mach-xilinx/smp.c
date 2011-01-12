@@ -112,6 +112,11 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static void __init wakeup_secondary(void)
 {
+	/* Initialize the boot lock register to prevent CPU1 from 
+	   starting the kernel before CPU0 is ready for that.
+	*/
+	__raw_writel(0, BOOT_REG_BASE + BOOT_LOCKREG_OFFSET);
+
 	/*
 	 * Write the address of secondary startup routine into the
 	 * boot address register. The secondary CPU will use this value 
