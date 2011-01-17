@@ -221,6 +221,8 @@ extern struct meminfo meminfo;
 #define bank_phys_end(bank)	((bank)->start + (bank)->size)
 #define bank_phys_size(bank)	(bank)->size
 
+extern void arm_reserve_devtree(unsigned long start, unsigned long size);
+
 #endif  /*  __KERNEL__  */
 
 #endif
