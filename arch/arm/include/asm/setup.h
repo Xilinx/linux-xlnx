@@ -223,6 +223,7 @@ extern struct meminfo meminfo;
 
 extern void arm_reserve_devtree(unsigned long start, unsigned long size);
 extern int arm_add_memory(unsigned long start, unsigned long size);
+extern char cmd_line[COMMAND_LINE_SIZE];
 
 #endif  /*  __KERNEL__  */
 
