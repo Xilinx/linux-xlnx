@@ -14,7 +14,12 @@
 #define ATAG_CORE 0x54410001
 #define ATAG_CORE_SIZE ((2*4 + 3*4) >> 2)
 #define ATAG_CORE_SIZE_EMPTY ((2*4) >> 2)
+
+#ifdef CONFIG_CPU_BIG_ENDIAN
+#define OF_DT_MAGIC 0xd00dfeed
+#else
 #define OF_DT_MAGIC 0xedfe0dd0 /* 0xd00dfeed in big-endian */
+#endif
 
 /*
  * Exception handling.  Something went wrong and we can't proceed.  We
@@ -121,9 +126,9 @@ __vet_atags:
 	tst	r2, #0x3			@ aligned?
 	bne	1f
 
+	ldr	r5, [r2, #0]
 #ifdef CONFIG_OF_FLATTREE
-	ldr	r5, [r2, #0]			@ is it a DTB?
-	ldr	r6, =OF_DT_MAGIC
+	ldr	r6, =OF_DT_MAGIC		@ is it a DTB?
 	cmp	r5, r6
 	beq	2f
 #endif
