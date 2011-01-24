@@ -69,9 +69,6 @@
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
 
-/* used by entry-macro.S */
-void __iomem *gic_cpu_base_addr;
-
 /* SRAM base address */
 void __iomem *xsram_base;
 
@@ -218,8 +215,8 @@ static void __init irq_init(void)
 	pr_debug("->irq_init\n");
 
 	gic_cpu_base_addr = (void __iomem *)SCU_GIC_CPU_BASE;
-	gic_dist_init(0, (void __iomem *)SCU_GIC_DIST_BASE, 29);
-	gic_cpu_init(0, gic_cpu_base_addr);
+
+	gic_init(0, 29, (void __iomem *)SCU_GIC_DIST_BASE, gic_cpu_base_addr);
 
 	pr_debug("<-irq_init\n");
 }
