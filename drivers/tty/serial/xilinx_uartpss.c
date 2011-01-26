@@ -25,7 +25,7 @@
 #include <linux/delay.h>
 #include <linux/irq.h>
 #include <linux/io.h>
-
+#include <linux/of.h>
 
 #define XUARTPSS_NR_PORTS	2
 #define XUARTPSS_FIFO_SIZE	16 /* FIFO size */
@@ -932,7 +932,6 @@ static int __init xuartpss_console_init(void)
 
 #endif /* CONFIG_SERIAL_XILINX_PSS_UART_CONSOLE */
 
-
 /** Structure Definitions
  */
 static struct uart_driver xuartpss_uart_driver = {
@@ -947,6 +946,44 @@ static struct uart_driver xuartpss_uart_driver = {
 #endif
 };
 
+/**
+ * xuartpss_get_data - Get the clock and ID data from platform data 
+ *			or the device tree when OF is used 
+ * @pdev: Pointer to the platform device structure
+ *
+ * Returns 0 on success, negative error otherwise
+ **/
+static int __devinit xuartpss_get_data(struct platform_device *pdev, 
+					int *clk, int *id)
+{
+	/* handle the platform specific data based on platform bus
+	   or device tree depending on how the kernel is configured,
+	   the address and irq info are handled automatically
+	*/
+#ifndef CONFIG_OF
+	*clk = *((unsigned int *)(pdev->dev.platform_data));
+	*id = pdev->id;
+#else
+	const unsigned int *temp_ptr = 0;
+
+	temp_ptr = of_get_property(pdev->dev.of_node, "clock", NULL);
+	if (!temp_ptr) {
+		dev_err(&pdev->dev, "no clock specified\n");		
+		return -ENODEV;
+	} else {
+		*clk = be32_to_cpup(temp_ptr);
+	}				
+
+	temp_ptr = of_get_property(pdev->dev.of_node, "port-number", NULL);
+	if (!temp_ptr) {
+		dev_err(&pdev->dev, "no port-number specified\n");		
+		return -ENODEV;
+	} else {
+		*id = be32_to_cpup(temp_ptr);
+	}
+#endif
+	return 0;
+}
 
 /* ---------------------------------------------------------------------
  * Platform bus binding
@@ -959,21 +996,24 @@ static struct uart_driver xuartpss_uart_driver = {
  **/
 static int __devinit xuartpss_probe(struct platform_device *pdev)
 {
-
 	int rc;
 	struct uart_port *port;
 	struct resource *res, *res2;
+	int id, clk;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
+ 	if (!res)
 		return -ENODEV;
 
 	res2 = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!res2)
 		return -ENODEV;
 
+	rc = xuartpss_get_data(pdev, &clk, &id);
+	if (rc)	return rc;
+
 	/* Initialize the port structure */
-	port = xuartpss_get_port(pdev->id);
+	port = xuartpss_get_port(id);
 	if (!port) {
 		dev_err(&pdev->dev, "Cannot get uart_port structure\n");
 		return -ENODEV;
@@ -985,7 +1025,7 @@ static int __devinit xuartpss_probe(struct platform_device *pdev)
 		port->mapbase = res->start;
 		port->irq = res2->start;
 		port->dev = &pdev->dev;
-		port->uartclk = *((unsigned int *)(pdev->dev.platform_data));
+		port->uartclk = clk;
 		dev_set_drvdata(&pdev->dev, port);
 		rc = uart_add_one_port(&xuartpss_uart_driver, port);
 		if (rc) {
@@ -1046,6 +1086,16 @@ static int xuartpss_resume(struct platform_device *pdev)
 	return 0;
 }
 
+/* Match table for of_platform binding */
+
+#ifdef CONFIG_OF
+static struct of_device_id xuartpss_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xuartpss", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, xuartpss_of_match);
+#endif
+
 static struct platform_driver xuartpss_platform_driver = {
 	.probe   = xuartpss_probe,		/* Probe method */
 	.remove  = __exit_p(xuartpss_remove),	/* Detach method */
@@ -1054,6 +1104,9 @@ static struct platform_driver xuartpss_platform_driver = {
 	.driver  = {
 		.owner = THIS_MODULE,
 		.name = "xuartpss",		/* Driver name */
+#ifdef CONFIG_OF
+		.of_match_table = xuartpss_of_match,
+#endif
 		},
 };
 

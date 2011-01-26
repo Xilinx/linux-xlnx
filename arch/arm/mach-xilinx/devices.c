@@ -980,8 +980,10 @@ struct platform_device xilinx_devcfg_device = {
  * CPU so that they don't try to use the same devices
  */
 struct platform_device *xilinx_pdevices[] __initdata = {
+#ifndef CONFIG_OF
 	&uart_device0,
 	&uart_device1,
+#endif
 #ifdef AXI_DMA
 	&axidma_device,
 #endif
