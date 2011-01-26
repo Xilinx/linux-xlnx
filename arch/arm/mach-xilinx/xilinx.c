@@ -33,6 +33,8 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/eeprom.h>
 
+#include <linux/of_platform.h>
+
 /* Register values for using NOR interface of SMC Controller */
 #define NOR_SET_CYCLES ((0x0 << 20) | /* set_t6 or we_time from sram_cycles */ \
 			(0x1 << 17) | /* set_t5 or t_tr from sram_cycles */    \
@@ -156,6 +158,12 @@ static void smc_init_sram(void __iomem *smc_base)
  * board_init - Board specific initialization for the Xilinx BSP.
  *
  **/
+
+static struct of_device_id xilinx_of_bus_ids[] __initdata = {
+        { .compatible = "simple-bus", },
+        {}
+};
+
 static void __init board_init(void)
 {
 #ifdef CONFIG_CACHE_L2X0
@@ -167,6 +175,10 @@ static void __init board_init(void)
 	pr_debug("->board_init\n");
 
 	platform_device_init();
+#ifdef CONFIG_OF
+	pr_info("Xilinx: using device tree\n");
+        of_platform_bus_probe(NULL, xilinx_of_bus_ids, NULL);
+#endif
 
 #ifdef CONFIG_CACHE_L2X0
 	/* Static mapping, never released */
@@ -281,6 +293,11 @@ static void __init map_io(void)
 	pr_debug("<-map_io\n");
 }
 
+static const char * xilinx_peep_board_compat[] = {
+	"xlnx,arm-ep",
+	NULL
+};
+
 /* Xilinx uses a probe to load the kernel such that ATAGs are not setup.
  * The boot parameters in the machine description below are set to zero
  * so that that the default ATAGs will be used in setup.c. Defaults could
@@ -293,4 +310,5 @@ MACHINE_START(XILINX, "Xilinx Pele A9 Emulation Platform")
 	.init_irq       = irq_init,
 	.init_machine   = board_init,
 	.timer          = &xttcpss_sys_timer,
+	.dt_compat      = xilinx_peep_board_compat,
 MACHINE_END
