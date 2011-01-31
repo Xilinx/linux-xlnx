@@ -863,7 +863,7 @@ void __init setup_arch(char **cmdline_p)
 	paging_init(mdesc);
 	request_standard_resources(mdesc);
 
-	unflatten_device_tree();
+	arm_unflatten_device_tree();
 
 #ifdef CONFIG_SMP
 	if (is_smp())

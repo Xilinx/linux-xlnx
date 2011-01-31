@@ -50,6 +50,36 @@ EXPORT_SYMBOL_GPL(irq_create_of_mapping);
 extern struct machine_desc __arch_info_begin, __arch_info_end;
 
 /**
+ * arm_unflatten_device_tree - Copy dtb into a safe area and unflatten it.
+ *
+ * Copies the dtb out of initial memory and into an allocated block so that
+ * it doesn't get overwritten by the kernel and then unflatten it into the
+ * live tree representation.
+ */
+void __init arm_unflatten_device_tree(void)
+{
+	struct boot_param_header *devtree;
+	u32 dtb_size;
+
+	if (!initial_boot_params)
+		return;
+
+	/* Save the dtb to an allocated buffer */
+	dtb_size = be32_to_cpu(initial_boot_params->totalsize);
+	devtree = early_init_dt_alloc_memory_arch(dtb_size, SZ_4K);
+	if (!devtree) {
+		printk("Unable to allocate memory for device tree\n");
+		while(1);
+	}
+	pr_info("relocating device tree from 0x%p to 0x%p, length 0x%x\n",
+		initial_boot_params, devtree, dtb_size);
+	memmove(devtree, initial_boot_params, dtb_size);
+	initial_boot_params = devtree;
+
+	unflatten_device_tree();
+}
+
+/**
  * setup_machine_fdt - Machine setup when an dtb was passed to the kernel
  * @dt_phys: physical address of dt blob
  *
@@ -58,20 +88,19 @@ extern struct machine_desc __arch_info_begin, __arch_info_end;
  */
 struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 {
-	struct boot_param_header *devtree;
+	struct boot_param_header *devtree = phys_to_virt(dt_phys);
 	struct machine_desc *mdesc, *mdesc_best = NULL;
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
 
-	devtree = phys_to_virt(dt_phys);
-
 	/* check device tree validity */
-	if (be32_to_cpu(devtree->magic) != OF_DT_HEADER)
+	if (!dt_phys || be32_to_cpu(devtree->magic) != OF_DT_HEADER)
 		return NULL;
 
 	/* Search the mdescs for the 'best' compatible value match */
 	initial_boot_params = devtree;
+
 	dt_root = of_get_flat_dt_root();
 	for (mdesc = &__arch_info_begin; mdesc < &__arch_info_end; mdesc++) {
 		score = of_flat_dt_match(dt_root, mdesc->dt_compat);
@@ -91,8 +120,6 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	if (!model)
 		model = "<unknown>";
 	pr_info("Machine: %s, model: %s\n", mdesc_best->name, model);
-
-	arm_reserve_devtree(dt_phys, be32_to_cpu(devtree->totalsize));
 
 	/* Retrieve various information from the /chosen node */
 	of_scan_flat_dt(early_init_dt_scan_chosen, NULL);
