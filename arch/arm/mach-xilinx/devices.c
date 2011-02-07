@@ -27,6 +27,7 @@
 #include <linux/spi/flash.h>
 #include <mach/nand.h> 
 #include <linux/fsl_devices.h>
+#include <linux/amba/xilinx_dma.h>
 
 /* Create all the platform devices for the BSP */
 
@@ -129,6 +130,189 @@ static struct platform_device xilinx_dma_test = {
 	},
 	.resource = NULL,
 	.num_resources = 0,
+};
+
+#endif
+
+/*************************AXI CDMA***********************/
+/* There is a single driver for all AXI DMA cores. Note 
+ * the name of the driver for all is xilinx-axidma. The
+ * following platform data sort of mimics the device 
+ * tree that is used with MicroBlaze Linux. The user needs
+ * to setup the resources and configurations for each
+ * core. Once we have device tree on ARM this will all 
+ * go away and be much easier.
+ */
+
+//#define AXI_CDMA
+#ifdef AXI_CDMA
+
+#define AXI_CDMA_BASE	0x44600000
+#define AXI_CDMA_IRQ0	91
+
+static struct resource cdma_resources[] = {
+	{
+		.start = AXI_CDMA_BASE,
+		.end = AXI_CDMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_CDMA_IRQ0,
+		.end = AXI_CDMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config cdma_channel_config[] = {
+	{
+		.type = "axi-cdma",
+		.lite_mode = 0,		/* must use 128 test length, no dre */
+		.include_dre = 1,
+		.datawidth = 64,
+		.max_burst_len = 16,
+	},
+};
+
+struct dma_device_config cdma_device_config = {
+	.type = "axi-cdma",
+	.include_sg = 1,
+	.channel_count = 1,
+	.channel_config = &cdma_channel_config[0],
+};
+
+struct platform_device axicdma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &cdma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = cdma_resources,
+	.num_resources = ARRAY_SIZE(cdma_resources),
+};
+
+#endif
+
+/*************************AXI VDMA***********************/
+
+//#define AXI_VDMA 
+#ifdef AXI_VDMA
+
+#define AXI_VDMA_BASE	0x40000000
+#define AXI_VDMA_IRQ0	91
+#define AXI_VDMA_IRQ1	90
+
+static struct resource vdma_resources[] = {
+	{
+		.start = AXI_VDMA_BASE,
+		.end = AXI_VDMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_VDMA_IRQ0,
+		.end = AXI_VDMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = AXI_VDMA_IRQ1,
+		.end = AXI_VDMA_IRQ1,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config vdma_channel_config[] = {
+	{
+		.type = "axi-vdma-mm2s-channel",
+		.include_dre = 0,
+		.genlock_mode = 0,
+		.datawidth = 64,
+		.max_burst_len = 256,
+	},
+	{
+		.type = "axi-vdma-s2mm-channel",
+		.include_dre = 0,
+		.genlock_mode = 0,
+		.datawidth = 64,
+		.max_burst_len = 256,
+	},
+};
+
+struct dma_device_config vdma_device_config = {
+	.type = "axi-vdma",
+	.include_sg = 1,
+	.num_fstores = 3,
+	.channel_count = 2,
+	.channel_config = &vdma_channel_config[0],
+};
+
+struct platform_device axivdma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &vdma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = vdma_resources,
+	.num_resources = ARRAY_SIZE(vdma_resources),
+};
+
+#endif
+
+/*************************AXI DMA***********************/
+
+// #define AXI_DMA
+#ifdef AXI_DMA
+
+#define AXI_DMA_BASE	0x40000000
+#define AXI_DMA_IRQ0	91
+#define AXI_DMA_IRQ1	90
+
+static struct resource dma_resources[] = {
+	{
+		.start = AXI_DMA_BASE,
+		.end = AXI_DMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_DMA_IRQ0,
+		.end = AXI_DMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = AXI_DMA_IRQ1,
+		.end = AXI_DMA_IRQ1,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config dma_channel_config[] = {
+	{
+		.type = "axi-dma-mm2s-channel",
+		.include_dre = 0,		/* DRE not working yet */
+		.datawidth = 64,
+	},
+	{
+		.type = "axi-dma-s2mm-channel",
+		.include_dre = 0,		/* DRE not working yet */
+		.datawidth = 64,
+	},
+};
+
+struct dma_device_config dma_device_config = {
+	.type = "axi-dma",
+	.include_sg = 1,
+	.sg_include_stscntrl_strm = 1,
+	.channel_count = 2,
+	.channel_config = &dma_channel_config[0],
+};
+
+struct platform_device axidma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &dma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = dma_resources,
+	.num_resources = ARRAY_SIZE(dma_resources),
 };
 
 #endif
@@ -719,6 +903,15 @@ struct platform_device xilinx_usbpss_1_device = {
 struct platform_device *xilinx_pdevices[] __initdata = {
 	&uart_device0,
 	&uart_device1,
+#ifdef AXI_DMA
+	&axidma_device,
+#endif
+#ifdef AXI_CDMA
+	&axicdma_device,
+#endif
+#ifdef AXI_VDMA
+	&axivdma_device,
+#endif
 	&dmac_device0,
 	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
