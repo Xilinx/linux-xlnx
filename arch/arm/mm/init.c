@@ -22,6 +22,7 @@
 #include <linux/sort.h>
 
 #include <asm/mach-types.h>
+#include <asm/prom.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/sizes.h>
@@ -73,19 +74,10 @@ static int __init parse_tag_initrd2(const struct tag *tag)
 __tagtable(ATAG_INITRD2, parse_tag_initrd2);
 
 #ifdef CONFIG_OF_FLATTREE
-static unsigned long phys_devtree_start __initdata = 0;
-static unsigned long phys_devtree_size __initdata = 0;
-
 void __init early_init_dt_setup_initrd_arch(unsigned long start, unsigned long end)
 {
 	phys_initrd_start = start;
 	phys_initrd_size = end - start + 1;
-}
-
-void __init arm_reserve_devtree(unsigned long start, unsigned long size)
-{
-	phys_devtree_start = start;
-	phys_devtree_size = size;
 }
 #endif /* CONFIG_OF_FLATTREE */
 
@@ -329,12 +321,9 @@ void __init arm_memblock_init(struct meminfo *mi, struct machine_desc *mdesc)
 		initrd_end = initrd_start + phys_initrd_size;
 	}
 #endif
-#ifdef CONFIG_OF_FLATTREE
-	if (phys_devtree_size)
-		memblock_reserve(phys_devtree_start, phys_devtree_size);
-#endif
 
 	arm_mm_memblock_reserve();
+	arm_dt_memblock_reserve();
 
 	/* reserve any platform specific memblock areas */
 	if (mdesc->reserve)
