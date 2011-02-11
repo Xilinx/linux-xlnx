@@ -22,6 +22,7 @@
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/mach/arch.h>
+#include <asm/mach-types.h>
 
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
@@ -127,6 +128,9 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
 	/* Save command line for /proc/cmdline  */
 	strlcpy(boot_command_line, cmd_line, COMMAND_LINE_SIZE);
+
+	/* Change machine number to match the mdesc we're using */
+	__machine_arch_type = mdesc->nr;
 
 	return mdesc_best;
 }
