@@ -456,6 +456,19 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 #define MARVELL_88E1111_EXTENDED_PHY_STATUS_REG_OFFSET  27
 #endif
 
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+# define NATIONAL_DP83865_CONTROL_INIT		0x9200
+# define NATIONAL_DP83865_CONTROL		0
+# define NATIONAL_DP83865_STATUS		1
+# define NATIONAL_DP83865_STATUS_LINK		0x04
+# define NATIONAL_DP83865_STATUS_AUTONEGEND	0x20
+# define NATIONAL_DP83865_STATUS_AUTONEG	0x11
+# define NATIONAL_DP83865_LINKSPEED_1000M	0x10
+# define NATIONAL_DP83865_LINKSPEED_100M	0x8
+# define NATIONAL_DP83865_LINKSPEED_MASK	0x18
+# define NATIONAL_DP83865_RETRIES		5
+#endif
+
 #define DEBUG_ERROR KERN_ERR
 #define DEBUG_LOG(level, ...) printk(level __VA_ARGS__)
 
@@ -465,6 +478,21 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
  */
 static void phy_setup(struct net_local *lp)
 {
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	u16 RegValue;
+
+	printk(KERN_INFO "NATIONAL DP83865 PHY\n");
+	RegValue = NATIONAL_DP83865_CONTROL_INIT;
+	/*Do not reset phy*/
+	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_CONTROL, RegValue);
+
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_STATUS, &RegValue);
+
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_STATUS, &RegValue);
+#endif
 #ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 	u16 Register;
 
@@ -574,6 +602,7 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_ADVERTISE, phy_reg4);
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_EXADVERTISE, phy_reg9);
 
+#ifndef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
 	while (retries--) {
 		/* initiate an autonegotiation of the speed */
 		_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, phy_reg0);
@@ -611,6 +640,12 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	       "%s: XLlTemac: Not able to set the speed to %d\n", dev->name,
 	       speed);
 	return -1;
+#else
+	printk(KERN_INFO
+			       "%s: XLlTemac: We renegotiated the speed to: %d\n",
+			       dev->name, speed);
+	return 0;
+#endif
 }
 
 /*
@@ -621,7 +656,43 @@ void set_mac_speed(struct net_local *lp)
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
 
-#ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+    u16 RegValue;
+    int i;
+
+    for (i = 0; i < NATIONAL_DP83865_RETRIES*10; i++) {
+        _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+                 NATIONAL_DP83865_STATUS, &RegValue);
+        if (RegValue & (NATIONAL_DP83865_STATUS_AUTONEGEND
+                    |NATIONAL_DP83865_STATUS_LINK))
+            break;
+        udelay(1 * 100000);
+    }
+
+    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+             NATIONAL_DP83865_STATUS_AUTONEG, &RegValue);
+    /* Get current link speed */
+    phylinkspeed = (RegValue & NATIONAL_DP83865_LINKSPEED_MASK);
+
+    /* Update TEMAC speed accordingly */
+    switch (phylinkspeed) {
+    case (NATIONAL_DP83865_LINKSPEED_1000M):
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 1000);
+        printk(KERN_INFO "XLlTemac: speed set to 1000Mb/s\n");
+        break;
+    case (NATIONAL_DP83865_LINKSPEED_100M):
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 100);
+        printk(KERN_INFO "XLlTemac: speed set to 100Mb/s\n");
+        break;
+    default:
+        _XLlTemac_SetOperatingSpeed(&lp->Emac, 10);
+        printk(KERN_INFO "XLlTemac: speed set to 10Mb/s\n");
+        break;
+    }
+
+    return;
+
+#elif CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
 	/*
 	 * This function is specific to MARVELL 88E1111 PHY chip on
 	 * many Xilinx boards and assumes GMII interface is being used
@@ -836,8 +907,15 @@ static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMCR, &reg);
 	*duplex = FULL_DUPLEX;
 
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+                 NATIONAL_DP83865_STATUS, &reg);
+	*linkup=(reg & NATIONAL_DP83865_STATUS_LINK) != 0;
+
+#else
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &reg);
 	*linkup = (reg & BMSR_LSTATUS) != 0;
+#endif
 
 	return 0;
 }
