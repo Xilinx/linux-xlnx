@@ -89,9 +89,9 @@ config GPIO_PL061
 
 config GPIO_XILINX
 	bool "Xilinx GPIO support"
-	depends on PPC_OF || MICROBLAZE
+	depends on PPC_OF || MICROBLAZE || ARCH_XILINX
 	help
-	  Say yes here to support the Xilinx FPGA GPIO device
+	  Say yes here to support the Xilinx AXI/XPS GPIO device
 
 config GPIO_XILINX_PSS
 	tristate "Xilinx GPIO PSS"

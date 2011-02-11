@@ -25,7 +25,7 @@
 #include <linux/spi/spi.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
-#include <mach/nand.h> 
+#include <mach/nand.h>
 #include <linux/fsl_devices.h>
 #include <linux/amba/xilinx_dma.h>
 
@@ -135,12 +135,12 @@ static struct platform_device xilinx_dma_test = {
 #endif
 
 /*************************AXI CDMA***********************/
-/* There is a single driver for all AXI DMA cores. Note 
+/* There is a single driver for all AXI DMA cores. Note
  * the name of the driver for all is xilinx-axidma. The
- * following platform data sort of mimics the device 
+ * following platform data sort of mimics the device
  * tree that is used with MicroBlaze Linux. The user needs
  * to setup the resources and configurations for each
- * core. Once we have device tree on ARM this will all 
+ * core. Once we have device tree on ARM this will all
  * go away and be much easier.
  */
 
@@ -195,7 +195,7 @@ struct platform_device axicdma_device = {
 
 /*************************AXI VDMA***********************/
 
-//#define AXI_VDMA 
+//#define AXI_VDMA
 #ifdef AXI_VDMA
 
 #define AXI_VDMA_BASE	0x40000000
@@ -395,6 +395,44 @@ struct platform_device xilinx_gpiopss_0_device = {
 	.resource =  xgpiopss_0_resource,
 	.num_resources = ARRAY_SIZE(xgpiopss_0_resource),
 };
+
+/*************************AXI GPIO*********************/
+/*
+ * Platform data for AXI GPIO soft IP.
+ * Users need to update this data based on the system configuration.
+ * This info will not be required when we have device-tree support for ARM.
+ */
+// #define AXI_GPIO
+
+#ifdef AXI_GPIO
+
+#define AXI_GPIO_0_BASE		0x40000000
+#define AXI_GPIO_0_DOUT_DEFAULT	0x00000000
+#define AXI_GPIO_0_TRI_DEFAULT	0xFFFFF7FF
+#define AXI_GPIO_0_WIDTH	32
+
+static struct xgpio_platform_data xilinx_gpio_0_data = {
+	.state	= AXI_GPIO_0_DOUT_DEFAULT,
+	.dir	= AXI_GPIO_0_TRI_DEFAULT,
+	.width	= AXI_GPIO_0_WIDTH,
+};
+
+static struct resource xgpio_0_resource[] = {
+	{
+		.start	= AXI_GPIO_0_BASE,
+		.end	= AXI_GPIO_0_BASE + 0xFFF,
+		.flags	= IORESOURCE_MEM
+	},
+};
+struct platform_device xilinx_gpio_0_device = {
+	.name = "xilinx_gpio",
+	.id = 0,
+	.dev.platform_data = &xilinx_gpio_0_data,
+	.resource =  xgpio_0_resource,
+	.num_resources = ARRAY_SIZE(xgpio_0_resource),
+};
+
+#endif
 
 /*************************PSS NOR***********************/
 static struct physmap_flash_data xilinx_norpss_data = {
@@ -920,6 +958,9 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_i2cpss_0_device,
 	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
+#ifdef AXI_GPIO
+	&xilinx_gpio_0_device,
+#endif
 	&xilinx_norpss_device,
 	&eth_device0,
 	&eth_device1,
