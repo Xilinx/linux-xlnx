@@ -934,6 +934,23 @@ struct platform_device xilinx_usbpss_1_device = {
 	.num_resources = ARRAY_SIZE(xusbpss_1_resource),
 };
 
+/************************* SLCR ***********************/
+static struct resource xslcr_res[] = {
+	{
+		.start  = SLC_REG,
+		.end    = SLC_REG + 0xFFF,
+		.flags  = IORESOURCE_MEM
+	},
+};
+
+struct platform_device xilinx_slcr_device = {
+	.name = "xilinx_slcr",
+	.id = 0,
+	.dev.platform_data = NULL,
+	.num_resources = ARRAY_SIZE(xslcr_res),
+	.resource = xslcr_res,
+};
+
 /* add all platform devices to the following table so they
  * will be registered, create seperate lists for AMP on each
  * CPU so that they don't try to use the same devices
@@ -974,6 +991,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_sdio1pss_device,
 	&xilinx_usbpss_0_device,
 	&xilinx_usbpss_1_host,
+	&xilinx_slcr_device,
 };
 
 struct platform_device *xilinx_pdevices_amp0[] __initdata = {
