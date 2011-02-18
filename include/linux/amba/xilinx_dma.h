@@ -31,13 +31,8 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 
-/* Hardware register mask definitions
- */
-
 /* Specific hardware configuration-related constants
  */
-#define XILINX_DMA_MAX_CHANS_PER_DEVICE  0x2
-#define XILINX_DMA_MAX_TRANS_LEN         0x7FFFFF
 #define XILINX_DMA_NO_CHANGE             0xFFFF;
 
 /* DMA IP masks 
@@ -70,7 +65,27 @@ struct xilinx_dma_config {
 	int park_frm;                      /* Frame to park on */
 	int coalesc;                       /* Interrupt coalescing threshold */
 	int delay;                         /* Delay counter */
-	int disable_intr;                   /* Whether use interrupts */
+	int disable_intr;                  /* Whether use interrupts */
+};
+
+/* Platform data definition until ARM supports device tree */
+
+struct dma_channel_config {
+	char *type;	
+	unsigned int lite_mode;       /* cdma only */
+	unsigned int include_dre;
+	unsigned int genlock_mode;    /* vdma only */
+	unsigned int datawidth;
+	unsigned int max_burst_len;
+};
+
+struct dma_device_config {
+	char *type;	
+	unsigned int include_sg;
+	unsigned int num_fstores;    /* vdma only */
+	unsigned int sg_include_stscntrl_strm;  /* dma only */
+	unsigned int channel_count;
+	struct dma_channel_config *channel_config;
 };
 
 #endif
