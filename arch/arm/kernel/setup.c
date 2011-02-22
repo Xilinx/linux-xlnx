@@ -327,28 +327,6 @@ static void __init early_print(const char *str, ...)
 	printk("%s", buf);
 }
 
-static struct machine_desc * __init lookup_machine_type(unsigned int type)
-{
-	extern struct machine_desc __arch_info_begin[], __arch_info_end[];
-	struct machine_desc *p;
-
-	for (p = __arch_info_begin; p < __arch_info_end; p++)
-		if (type == p->nr)
-			return p;
-
-	early_print("\n"
-		"Error: unrecognized/unsupported machine ID (r1 = 0x%08x).\n\n"
-		"Available machine support:\n\nID (hex)\tNAME\n", type);
-
-	for (p = __arch_info_begin; p < __arch_info_end; p++)
-		early_print("%08x\t%s\n", p->nr, p->name);
-
-	early_print("\nPlease check your kernel config and/or bootloader.\n");
-
-	while (true)
-		/* can't use cpu_relax() here as it may require MMU setup */;
-}
-
 static void __init feat_v6_fixup(void)
 {
 	int id = read_cpuid_id();
@@ -818,18 +796,34 @@ static void __init squash_mem_tags(struct tag *tag)
 
 static struct machine_desc * __init setup_machine_tags(unsigned int nr)
 {
+	extern struct machine_desc __arch_info_begin[], __arch_info_end[];
 	struct tag *tags = (struct tag *)&init_tags;
-	struct machine_desc *mdesc;
+	struct machine_desc *mdesc = NULL, *p;
 	char *from = default_command_line;
 
 	/*
 	 * locate machine in the list of supported machines.
 	 */
-	mdesc = lookup_machine_type(nr);
+	for (p = __arch_info_begin; p < __arch_info_end; p++)
+		if (nr == p->nr) {
+			printk("Machine: %s\n", p->name);
+			mdesc = p;
+			break;
+		}
+
 	if (!mdesc) {
-		printk("Machine configuration botched (nr %d), unable "
-		       "to continue.\n", nr);
-		while (1);
+		early_print("\nError: unrecognized/unsupported machine ID"
+			" (r1 = 0x%08x).\n\n"
+			"Available machine support:\n\nID (hex)\tNAME\n", nr);
+
+		for (p = __arch_info_begin; p < __arch_info_end; p++)
+			early_print("%08x\t%s\n", p->nr, p->name);
+
+		early_print("\nPlease check your kernel config"
+			    " and/or bootloader.\n");
+
+		while (true)
+			/* can't use cpu_relax() as it may require MMU setup */;
 	}
 
 	printk("Machine: %s\n", mdesc->name);
