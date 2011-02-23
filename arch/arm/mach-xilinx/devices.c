@@ -951,6 +951,30 @@ struct platform_device xilinx_slcr_device = {
 	.resource = xslcr_res,
 };
 
+/************************* Device Config ***********************/
+static struct resource xdevcfg_resource[] = {
+        {
+                .start  = DVC_BASE,
+                .end    = DVC_BASE + 0x7FFF,
+                .flags  = IORESOURCE_MEM
+        },
+        {
+                .start  = IRQ_DVC,
+                .end    = IRQ_DVC,
+                .flags  = IORESOURCE_IRQ
+        },
+
+};
+struct platform_device xilinx_devcfg_device = {
+        .name = "xdevcfg",
+        .id = 0,
+        .dev = {
+                .platform_data = NULL,
+        },
+        .resource =  xdevcfg_resource,
+        .num_resources = ARRAY_SIZE(xdevcfg_resource),
+};
+
 /* add all platform devices to the following table so they
  * will be registered, create seperate lists for AMP on each
  * CPU so that they don't try to use the same devices
@@ -992,6 +1016,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_usbpss_0_device,
 	&xilinx_usbpss_1_host,
 	&xilinx_slcr_device,
+        &xilinx_devcfg_device,
 };
 
 struct platform_device *xilinx_pdevices_amp0[] __initdata = {

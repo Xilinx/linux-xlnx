@@ -90,7 +90,9 @@
 #define TTC1_BASE		(PERIPH_BASE + 0x2000)
 #define DMAC0_BASE		(PERIPH_BASE + 0x3000)
 #define DMAC1_BASE		(PERIPH_BASE + 0x4000)
-#define WDT_BASE		(PERIPH_BASE + 0x5000)
+#define WDT_BASE                (PERIPH_BASE + 0x5000)
+#define DVC_BASE                (PERIPH_BASE + 0x7000)
+
 
 #define SCU_PERIPH_BASE		0xF8F00000
 
@@ -115,6 +117,7 @@
 /* Shared peripheral interrupts */
 
 #define IRQ_GIC_SPI_START	32
+#define IRQ_DVC			40
 #define IRQ_TIMERCOUNTER0	42
 #define IRQ_DMAC0_ABORT		45
 #define IRQ_DMAC0		46
