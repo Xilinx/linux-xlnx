@@ -223,6 +223,8 @@ extern struct meminfo meminfo;
 
 extern int arm_add_memory(unsigned long start, unsigned long size);
 extern char cmd_line[COMMAND_LINE_SIZE];
+extern void early_print(const char *str, ...);
+extern void dump_machine_table(void);
 
 #endif  /*  __KERNEL__  */
 

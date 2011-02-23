@@ -311,7 +311,7 @@ static void __init cacheid_init(void)
  */
 extern struct proc_info_list *lookup_processor_type(unsigned int);
 
-static void __init early_print(const char *str, ...)
+void __init early_print(const char *str, ...)
 {
 	extern void printascii(const char *);
 	char buf[256];
@@ -439,6 +439,20 @@ void cpu_init(void)
 	      "I" (offsetof(struct stack, und[0])),
 	      PLC (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
 	    : "r14");
+}
+
+void __init dump_machine_table(void)
+{
+	struct machine_desc *p;
+
+	early_print("Available machine support:\n\nID (hex)\tNAME\n");
+	for_each_machine_desc(p)
+		early_print("%08x\t%s\n", p->nr, p->name);
+
+	early_print("\nPlease check your kernel config and/or bootloader.\n");
+
+	while (true)
+		/* can't use cpu_relax() here as it may require MMU setup */;
 }
 
 int __init arm_add_memory(unsigned long start, unsigned long size)
@@ -796,7 +810,6 @@ static void __init squash_mem_tags(struct tag *tag)
 
 static struct machine_desc * __init setup_machine_tags(unsigned int nr)
 {
-	extern struct machine_desc __arch_info_begin[], __arch_info_end[];
 	struct tag *tags = (struct tag *)&init_tags;
 	struct machine_desc *mdesc = NULL, *p;
 	char *from = default_command_line;
@@ -804,7 +817,7 @@ static struct machine_desc * __init setup_machine_tags(unsigned int nr)
 	/*
 	 * locate machine in the list of supported machines.
 	 */
-	for (p = __arch_info_begin; p < __arch_info_end; p++)
+	for_each_machine_desc(p)
 		if (nr == p->nr) {
 			printk("Machine: %s\n", p->name);
 			mdesc = p;
@@ -813,17 +826,8 @@ static struct machine_desc * __init setup_machine_tags(unsigned int nr)
 
 	if (!mdesc) {
 		early_print("\nError: unrecognized/unsupported machine ID"
-			" (r1 = 0x%08x).\n\n"
-			"Available machine support:\n\nID (hex)\tNAME\n", nr);
-
-		for (p = __arch_info_begin; p < __arch_info_end; p++)
-			early_print("%08x\t%s\n", p->nr, p->name);
-
-		early_print("\nPlease check your kernel config"
-			    " and/or bootloader.\n");
-
-		while (true)
-			/* can't use cpu_relax() as it may require MMU setup */;
+			" (r1 = 0x%08x).\n\n", nr);
+		dump_machine_table(); /* does not return */
 	}
 
 	printk("Machine: %s\n", mdesc->name);

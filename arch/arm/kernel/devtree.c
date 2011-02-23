@@ -75,8 +75,6 @@ unsigned int irq_create_of_mapping(struct device_node *controller,
 }
 EXPORT_SYMBOL_GPL(irq_create_of_mapping);
 
-extern struct machine_desc __arch_info_begin, __arch_info_end;
-
 /**
  * setup_machine_fdt - Machine setup when an dtb was passed to the kernel
  * @dt_phys: physical address of dt blob
@@ -101,7 +99,7 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	/* Search the mdescs for the 'best' compatible value match */
 	initial_boot_params = devtree;
 	dt_root = of_get_flat_dt_root();
-	for (mdesc = &__arch_info_begin; mdesc < &__arch_info_end; mdesc++) {
+	for_each_machine_desc(mdesc) {
 		score = of_flat_dt_match(dt_root, mdesc->dt_compat);
 		if (score > 0 && score < mdesc_score) {
 			mdesc_best = mdesc;
@@ -109,8 +107,21 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 		}
 	}
 	if (!mdesc_best) {
-		printk("Machine not supported, unable to continue.\n");
-		while (1);
+		const char *prop;
+		long size;
+
+		early_print("\nError: unrecognized/unsupported "
+			    "device tree compatible list:\n[ ");
+
+		prop = of_get_flat_dt_prop(dt_root, "compatible", &size);
+		while (size > 0) {
+			early_print("'%s' ", prop);
+			size -= strlen(prop) + 1;
+			prop += strlen(prop) + 1;
+		}
+		early_print("]\n\n");
+
+		dump_machine_table(); /* does not return */
 	}
 
 	model = of_get_flat_dt_prop(dt_root, "model", NULL);
