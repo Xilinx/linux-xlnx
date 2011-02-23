@@ -257,7 +257,7 @@ it with special cases.
 
                 r2 : physical pointer to the device-tree block
                 (defined in chapter II) in RAM.  Device tree can be located
-                anywhere in system RAM, but it should be aligned on a 32 bit
+                anywhere in system RAM, but it should be aligned on a 64 bit
                 boundary.
 
    The kernel will differentiate between ATAGS and device tree booting by
