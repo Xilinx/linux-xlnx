@@ -99,14 +99,9 @@ ENTRY(stext)
 	mov	r2,#0x0
 #endif
 
-	bl	__lookup_machine_type		@ r5=machinfo
-	movs	r8, r5				@ invalid machine (r5=0)?
- THUMB( it	eq )		@ force fixup-able long branch encoding
-	beq	__error_a			@ yes, error 'a'
-
 	/*
 	 * r1 = machine no, r2 = atags or dtb,
-	 * r8 = machinfo, r9 = cpuid, r10 = procinfo
+	 * r9 = cpuid, r10 = procinfo
 	 */
 	bl	__vet_atags
 #ifdef CONFIG_SMP_ON_UP
@@ -117,7 +112,7 @@ ENTRY(stext)
 	/*
 	 * The following calls CPU specific code in a position independent
 	 * manner.  See arch/arm/mm/proc-*.S for details.  r10 = base of
-	 * xxx_proc_info structure selected by __lookup_machine_type
+	 * xxx_proc_info structure selected by __lookup_processor_type
 	 * above.  On return, the CPU will be ready for the MMU to be
 	 * turned on, and r0 will hold the CPU control register value.
 	 */
@@ -136,7 +131,6 @@ ENDPROC(stext)
  * amount which are required to get the kernel running, which
  * generally means mapping in the kernel code.
  *
- * r8  = machinfo
  * r9  = cpuid
  * r10 = procinfo
  *
@@ -217,15 +211,32 @@ __create_page_tables:
 #endif
 
 	/*
-	 * Then map first 1MB of ram in case it contains our boot params.
+	 * Then map first 1MB of ram if boot params address is not specified.
 	 */
+	cmp	r2, #0
+	bne	1f
 	add	r0, r4, #PAGE_OFFSET >> 18
 	orr	r6, r7, #(PHYS_OFFSET & 0xff000000)
 	.if	(PHYS_OFFSET & 0x00f00000)
 	orr	r6, r6, #(PHYS_OFFSET & 0x00f00000)
 	.endif
 	str	r6, [r0]
+	b	2f
 
+	/*
+	 * Otherwise map the 1MB region r2 points to (atags or dtb)
+	 */
+1:	mov	r0, r2, lsr #20
+	mov	r0, r0, lsl #20
+	sub	r3, r0, #(PHYS_OFFSET & 0xff000000)
+	.if	(PHYS_OFFSET & 0x00f00000)
+	sub	r3, r3, #(PHYS_OFFSET & 0x00f00000)
+	.endif
+	add	r3, r3, #PAGE_OFFSET
+	add	r3, r4, r3, lsr #18
+	orr	r6, r7, r0
+	str	r6, [r3]
+2:
 #ifdef CONFIG_DEBUG_LL
 #ifndef CONFIG_DEBUG_ICEDCC
 	/*

@@ -22,6 +22,7 @@
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/mach/arch.h>
+#include <asm/mach-types.h>
 
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
@@ -30,7 +31,34 @@ void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 
 void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
 {
-	return __va(memblock_alloc(size, align));
+	return alloc_bootmem_align(size, align);
+}
+
+void __init arm_dt_memblock_reserve(void)
+{
+	u64 *reserve_map, base, size;
+
+	if (!initial_boot_params)
+		return;
+
+	/* Reserve the dtb region */
+	memblock_reserve(virt_to_phys(initial_boot_params),
+			 be32_to_cpu(initial_boot_params->totalsize));
+
+	/*
+	 * Process the reserve map.  This will probably overlap the initrd
+	 * and dtb locations which are already reserved, but overlaping
+	 * doesn't hurt anything
+	 */
+	reserve_map = ((void*)initial_boot_params) +
+			be32_to_cpu(initial_boot_params->off_mem_rsvmap);
+	while (1) {
+		base = be64_to_cpup(reserve_map++);
+		size = be64_to_cpup(reserve_map++);
+		if (!size)
+			break;
+		memblock_reserve(base, size);
+	}
 }
 
 /**
@@ -47,38 +75,6 @@ unsigned int irq_create_of_mapping(struct device_node *controller,
 }
 EXPORT_SYMBOL_GPL(irq_create_of_mapping);
 
-extern struct machine_desc __arch_info_begin, __arch_info_end;
-
-/**
- * arm_unflatten_device_tree - Copy dtb into a safe area and unflatten it.
- *
- * Copies the dtb out of initial memory and into an allocated block so that
- * it doesn't get overwritten by the kernel and then unflatten it into the
- * live tree representation.
- */
-void __init arm_unflatten_device_tree(void)
-{
-	struct boot_param_header *devtree;
-	u32 dtb_size;
-
-	if (!initial_boot_params)
-		return;
-
-	/* Save the dtb to an allocated buffer */
-	dtb_size = be32_to_cpu(initial_boot_params->totalsize);
-	devtree = early_init_dt_alloc_memory_arch(dtb_size, SZ_4K);
-	if (!devtree) {
-		printk("Unable to allocate memory for device tree\n");
-		while(1);
-	}
-	pr_info("relocating device tree from 0x%p to 0x%p, length 0x%x\n",
-		initial_boot_params, devtree, dtb_size);
-	memmove(devtree, initial_boot_params, dtb_size);
-	initial_boot_params = devtree;
-
-	unflatten_device_tree();
-}
-
 /**
  * setup_machine_fdt - Machine setup when an dtb was passed to the kernel
  * @dt_phys: physical address of dt blob
@@ -88,21 +84,22 @@ void __init arm_unflatten_device_tree(void)
  */
 struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 {
-	struct boot_param_header *devtree = phys_to_virt(dt_phys);
+	struct boot_param_header *devtree;
 	struct machine_desc *mdesc, *mdesc_best = NULL;
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
 
+	devtree = phys_to_virt(dt_phys);
+
 	/* check device tree validity */
-	if (!dt_phys || be32_to_cpu(devtree->magic) != OF_DT_HEADER)
+	if (be32_to_cpu(devtree->magic) != OF_DT_HEADER)
 		return NULL;
 
 	/* Search the mdescs for the 'best' compatible value match */
 	initial_boot_params = devtree;
-
 	dt_root = of_get_flat_dt_root();
-	for (mdesc = &__arch_info_begin; mdesc < &__arch_info_end; mdesc++) {
+	for_each_machine_desc(mdesc) {
 		score = of_flat_dt_match(dt_root, mdesc->dt_compat);
 		if (score > 0 && score < mdesc_score) {
 			mdesc_best = mdesc;
@@ -110,8 +107,21 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 		}
 	}
 	if (!mdesc_best) {
-		printk("Machine not supported, unable to continue.\n");
-		while (1);
+		const char *prop;
+		long size;
+
+		early_print("\nError: unrecognized/unsupported "
+			    "device tree compatible list:\n[ ");
+
+		prop = of_get_flat_dt_prop(dt_root, "compatible", &size);
+		while (size > 0) {
+			early_print("'%s' ", prop);
+			size -= strlen(prop) + 1;
+			prop += strlen(prop) + 1;
+		}
+		early_print("]\n\n");
+
+		dump_machine_table(); /* does not return */
 	}
 
 	model = of_get_flat_dt_prop(dt_root, "model", NULL);
@@ -129,6 +139,9 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
 	/* Save command line for /proc/cmdline  */
 	strlcpy(boot_command_line, cmd_line, COMMAND_LINE_SIZE);
+
+	/* Change machine number to match the mdesc we're using */
+	__machine_arch_type = mdesc->nr;
 
 	return mdesc_best;
 }
