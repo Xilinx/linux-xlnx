@@ -151,8 +151,8 @@
 #define PEEP8_AND_LATER
 
 #ifdef CONFIG_XILINX_AMP_CPU0_MASTER
-	#define PHYS_OFFSET             0x0
-	#define MEM_SIZE		(64 * 1024 * 1024)
+	#define PHYS_OFFSET             0x400000
+	#define MEM_SIZE		(60 * 1024 * 1024)
 #elif defined(CONFIG_XILINX_AMP_CPU1_SLAVE) || defined(CONFIG_XILINX_CPU1_TEST)
 	#define PHYS_OFFSET             (66 * 1024 * 1024) 
 	#define MEM_SIZE		(62 * 1024 * 1024) 

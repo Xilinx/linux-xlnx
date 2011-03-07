@@ -39,6 +39,13 @@
 	adrne	lr, BSYM(1b)
 	bne	asm_do_IRQ
 
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+	test_for_ipi r0, r6, r5, lr
+	movne	r0, sp
+	adrne	lr, BSYM(1b)
+	bne	do_IPI
+#endif
+
 #ifdef CONFIG_SMP
 	/*
 	 * XXX

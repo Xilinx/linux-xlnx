@@ -28,6 +28,9 @@
 #include <linux/smp.h>
 #include <linux/cpumask.h>
 #include <linux/io.h>
+#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER)
+#include <linux/module.h>
+#endif
 
 #include <asm/irq.h>
 #include <asm/mach/irq.h>
@@ -345,7 +348,7 @@ void __cpuinit gic_cpu_init(unsigned int gic_nr, void __iomem *base)
 	writel(1, base + GIC_CPU_CTRL);
 }
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER)
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	unsigned long map = *cpus_addr(*mask);
@@ -353,4 +356,5 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	/* this always happens on GIC0 */
 	writel(map << 16 | irq, gic_data[0].dist_base + GIC_DIST_SOFTINT);
 }
+EXPORT_SYMBOL(gic_raise_softirq);
 #endif
