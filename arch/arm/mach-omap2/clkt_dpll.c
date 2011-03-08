@@ -24,7 +24,6 @@
 #include <plat/clock.h>
 
 #include "clock.h"
-#include "cm.h"
 #include "cm-regbits-24xx.h"
 #include "cm-regbits-34xx.h"
 
@@ -78,7 +77,7 @@ static int _dpll_test_fint(struct clk *clk, u8 n)
 	dd = clk->dpll_data;
 
 	/* DPLL divider must result in a valid jitter correction val */
-	fint = clk->parent->rate / (n + 1);
+	fint = clk->parent->rate / n;
 	if (fint < DPLL_FINT_BAND1_MIN) {
 
 		pr_debug("rejecting n=%d due to Fint failure, "

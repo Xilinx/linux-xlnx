@@ -110,10 +110,8 @@ static int __ip_vs_addr_is_local_v6(const struct in6_addr *addr)
 	struct rt6_info *rt;
 	struct flowi fl = {
 		.oif = 0,
-		.nl_u = {
-			.ip6_u = {
-				.daddr = *addr,
-				.saddr = { .s6_addr32 = {0, 0, 0, 0} }, } },
+		.fl6_dst = *addr,
+		.fl6_src = { .s6_addr32 = {0, 0, 0, 0} },
 	};
 
 	rt = (struct rt6_info *)ip6_route_output(&init_net, NULL, &fl);
@@ -810,9 +808,9 @@ __ip_vs_update_dest(struct ip_vs_service *svc, struct ip_vs_dest *dest,
 	dest->u_threshold = udest->u_threshold;
 	dest->l_threshold = udest->l_threshold;
 
-	spin_lock(&dest->dst_lock);
+	spin_lock_bh(&dest->dst_lock);
 	ip_vs_dst_reset(dest);
-	spin_unlock(&dest->dst_lock);
+	spin_unlock_bh(&dest->dst_lock);
 
 	if (add)
 		ip_vs_new_estimator(&dest->stats);
@@ -3432,7 +3430,7 @@ void ip_vs_control_cleanup(void)
 {
 	EnterFunction(2);
 	ip_vs_trash_cleanup();
-	cancel_rearming_delayed_work(&defense_work);
+	cancel_delayed_work_sync(&defense_work);
 	cancel_work_sync(&defense_work.work);
 	ip_vs_kill_estimator(&ip_vs_stats);
 	unregister_sysctl_table(sysctl_header);

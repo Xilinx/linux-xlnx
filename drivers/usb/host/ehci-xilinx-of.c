@@ -29,6 +29,7 @@
 
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/of_address.h>
 
 /**
  * ehci_xilinx_of_setup - Initialize the device for ehci_reset()
@@ -117,6 +118,7 @@ static const struct hc_driver ehci_xilinx_of_hc_driver = {
 	.urb_enqueue		= ehci_urb_enqueue,
 	.urb_dequeue		= ehci_urb_dequeue,
 	.endpoint_disable	= ehci_endpoint_disable,
+	.endpoint_reset		= ehci_endpoint_reset,
 
 	/*
 	 * scheduling support

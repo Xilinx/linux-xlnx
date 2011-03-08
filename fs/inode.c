@@ -102,26 +102,29 @@ static DECLARE_RWSEM(iprune_sem);
  */
 struct inodes_stat_t inodes_stat;
 
-static struct percpu_counter nr_inodes __cacheline_aligned_in_smp;
-static struct percpu_counter nr_inodes_unused __cacheline_aligned_in_smp;
+static DEFINE_PER_CPU(unsigned int, nr_inodes);
 
 static struct kmem_cache *inode_cachep __read_mostly;
 
-static inline int get_nr_inodes(void)
+static int get_nr_inodes(void)
 {
-	return percpu_counter_sum_positive(&nr_inodes);
+	int i;
+	int sum = 0;
+	for_each_possible_cpu(i)
+		sum += per_cpu(nr_inodes, i);
+	return sum < 0 ? 0 : sum;
 }
 
 static inline int get_nr_inodes_unused(void)
 {
-	return percpu_counter_sum_positive(&nr_inodes_unused);
+	return inodes_stat.nr_unused;
 }
 
 int get_nr_dirty_inodes(void)
 {
+	/* not actually dirty inodes, but a wild approximation */
 	int nr_dirty = get_nr_inodes() - get_nr_inodes_unused();
 	return nr_dirty > 0 ? nr_dirty : 0;
-
 }
 
 /*
@@ -132,7 +135,6 @@ int proc_nr_inodes(ctl_table *table, int write,
 		   void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	inodes_stat.nr_inodes = get_nr_inodes();
-	inodes_stat.nr_unused = get_nr_inodes_unused();
 	return proc_dointvec(table, write, buffer, lenp, ppos);
 }
 #endif
@@ -224,7 +226,7 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	inode->i_fsnotify_mask = 0;
 #endif
 
-	percpu_counter_inc(&nr_inodes);
+	this_cpu_inc(nr_inodes);
 
 	return 0;
 out:
@@ -255,6 +257,12 @@ static struct inode *alloc_inode(struct super_block *sb)
 	return inode;
 }
 
+void free_inode_nonrcu(struct inode *inode)
+{
+	kmem_cache_free(inode_cachep, inode);
+}
+EXPORT_SYMBOL(free_inode_nonrcu);
+
 void __destroy_inode(struct inode *inode)
 {
 	BUG_ON(inode_has_buffers(inode));
@@ -266,9 +274,16 @@ void __destroy_inode(struct inode *inode)
 	if (inode->i_default_acl && inode->i_default_acl != ACL_NOT_CACHED)
 		posix_acl_release(inode->i_default_acl);
 #endif
-	percpu_counter_dec(&nr_inodes);
+	this_cpu_dec(nr_inodes);
 }
 EXPORT_SYMBOL(__destroy_inode);
+
+static void i_callback(struct rcu_head *head)
+{
+	struct inode *inode = container_of(head, struct inode, i_rcu);
+	INIT_LIST_HEAD(&inode->i_dentry);
+	kmem_cache_free(inode_cachep, inode);
+}
 
 static void destroy_inode(struct inode *inode)
 {
@@ -277,8 +292,22 @@ static void destroy_inode(struct inode *inode)
 	if (inode->i_sb->s_op->destroy_inode)
 		inode->i_sb->s_op->destroy_inode(inode);
 	else
-		kmem_cache_free(inode_cachep, (inode));
+		call_rcu(&inode->i_rcu, i_callback);
 }
+
+void address_space_init_once(struct address_space *mapping)
+{
+	memset(mapping, 0, sizeof(*mapping));
+	INIT_RADIX_TREE(&mapping->page_tree, GFP_ATOMIC);
+	spin_lock_init(&mapping->tree_lock);
+	spin_lock_init(&mapping->i_mmap_lock);
+	INIT_LIST_HEAD(&mapping->private_list);
+	spin_lock_init(&mapping->private_lock);
+	INIT_RAW_PRIO_TREE_ROOT(&mapping->i_mmap);
+	INIT_LIST_HEAD(&mapping->i_mmap_nonlinear);
+	mutex_init(&mapping->unmap_mutex);
+}
+EXPORT_SYMBOL(address_space_init_once);
 
 /*
  * These are initializations that only need to be done
@@ -293,13 +322,7 @@ void inode_init_once(struct inode *inode)
 	INIT_LIST_HEAD(&inode->i_devices);
 	INIT_LIST_HEAD(&inode->i_wb_list);
 	INIT_LIST_HEAD(&inode->i_lru);
-	INIT_RADIX_TREE(&inode->i_data.page_tree, GFP_ATOMIC);
-	spin_lock_init(&inode->i_data.tree_lock);
-	spin_lock_init(&inode->i_data.i_mmap_lock);
-	INIT_LIST_HEAD(&inode->i_data.private_list);
-	spin_lock_init(&inode->i_data.private_lock);
-	INIT_RAW_PRIO_TREE_ROOT(&inode->i_data.i_mmap);
-	INIT_LIST_HEAD(&inode->i_data.i_mmap_nonlinear);
+	address_space_init_once(&inode->i_data);
 	i_size_ordered_init(inode);
 #ifdef CONFIG_FSNOTIFY
 	INIT_HLIST_HEAD(&inode->i_fsnotify_marks);
@@ -335,7 +358,7 @@ static void inode_lru_list_add(struct inode *inode)
 {
 	if (list_empty(&inode->i_lru)) {
 		list_add(&inode->i_lru, &inode_lru);
-		percpu_counter_inc(&nr_inodes_unused);
+		inodes_stat.nr_unused++;
 	}
 }
 
@@ -343,7 +366,7 @@ static void inode_lru_list_del(struct inode *inode)
 {
 	if (!list_empty(&inode->i_lru)) {
 		list_del_init(&inode->i_lru);
-		percpu_counter_dec(&nr_inodes_unused);
+		inodes_stat.nr_unused--;
 	}
 }
 
@@ -430,6 +453,7 @@ void end_writeback(struct inode *inode)
 	BUG_ON(!(inode->i_state & I_FREEING));
 	BUG_ON(inode->i_state & I_CLEAR);
 	inode_sync_wait(inode);
+	/* don't need i_lock here, no concurrent mods to i_state */
 	inode->i_state = I_FREEING | I_CLEAR;
 }
 EXPORT_SYMBOL(end_writeback);
@@ -513,7 +537,7 @@ void evict_inodes(struct super_block *sb)
 		list_move(&inode->i_lru, &dispose);
 		list_del_init(&inode->i_wb_list);
 		if (!(inode->i_state & (I_DIRTY | I_SYNC)))
-			percpu_counter_dec(&nr_inodes_unused);
+			inodes_stat.nr_unused--;
 	}
 	spin_unlock(&inode_lock);
 
@@ -524,11 +548,14 @@ void evict_inodes(struct super_block *sb)
 /**
  * invalidate_inodes	- attempt to free all inodes on a superblock
  * @sb:		superblock to operate on
+ * @kill_dirty: flag to guide handling of dirty inodes
  *
  * Attempts to free all inodes for a given superblock.  If there were any
  * busy inodes return a non-zero value, else zero.
+ * If @kill_dirty is set, discard dirty inodes too, otherwise treat
+ * them as busy.
  */
-int invalidate_inodes(struct super_block *sb)
+int invalidate_inodes(struct super_block *sb, bool kill_dirty)
 {
 	int busy = 0;
 	struct inode *inode, *next;
@@ -540,6 +567,10 @@ int invalidate_inodes(struct super_block *sb)
 	list_for_each_entry_safe(inode, next, &sb->s_inodes, i_sb_list) {
 		if (inode->i_state & (I_NEW | I_FREEING | I_WILL_FREE))
 			continue;
+		if (inode->i_state & I_DIRTY && !kill_dirty) {
+			busy = 1;
+			continue;
+		}
 		if (atomic_read(&inode->i_count)) {
 			busy = 1;
 			continue;
@@ -554,7 +585,7 @@ int invalidate_inodes(struct super_block *sb)
 		list_move(&inode->i_lru, &dispose);
 		list_del_init(&inode->i_wb_list);
 		if (!(inode->i_state & (I_DIRTY | I_SYNC)))
-			percpu_counter_dec(&nr_inodes_unused);
+			inodes_stat.nr_unused--;
 	}
 	spin_unlock(&inode_lock);
 
@@ -616,7 +647,7 @@ static void prune_icache(int nr_to_scan)
 		if (atomic_read(&inode->i_count) ||
 		    (inode->i_state & ~I_REFERENCED)) {
 			list_del_init(&inode->i_lru);
-			percpu_counter_dec(&nr_inodes_unused);
+			inodes_stat.nr_unused--;
 			continue;
 		}
 
@@ -650,7 +681,7 @@ static void prune_icache(int nr_to_scan)
 		 */
 		list_move(&inode->i_lru, &freeable);
 		list_del_init(&inode->i_wb_list);
-		percpu_counter_dec(&nr_inodes_unused);
+		inodes_stat.nr_unused--;
 	}
 	if (current_is_kswapd())
 		__count_vm_events(KSWAPD_INODESTEAL, reap);
@@ -1648,8 +1679,6 @@ void __init inode_init(void)
 					 SLAB_MEM_SPREAD),
 					 init_once);
 	register_shrinker(&icache_shrinker);
-	percpu_counter_init(&nr_inodes, 0);
-	percpu_counter_init(&nr_inodes_unused, 0);
 
 	/* Hash may have been set up in inode_init_early */
 	if (!hashdist)
