@@ -45,7 +45,7 @@
 	test_for_ipi r0, r6, r5, lr
 	movne	r0, sp
 	adrne	lr, BSYM(1b)
-	bne	do_IPI
+	bne	do_amp_IPI
 #endif
 
 9997:

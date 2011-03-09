@@ -132,7 +132,7 @@ EXPORT_SYMBOL(set_ipi_handler);
  * AMP Inter-Processor Interrupt handler (called from 
  * entry-armv.S).
  */
-asmlinkage void __exception do_IPI(struct pt_regs *regs)
+asmlinkage void __exception do_amp_IPI(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
