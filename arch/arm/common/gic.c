@@ -374,7 +374,7 @@ void __cpuinit gic_enable_ppi(unsigned int irq)
 	local_irq_restore(flags);
 }
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER)
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	unsigned long map = *cpus_addr(*mask);
