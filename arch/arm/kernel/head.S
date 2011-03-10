@@ -91,12 +91,15 @@ ENTRY(stext)
 	beq	__error_p			@ yes, error 'p'
 
 	/* the machine has no way to get setup when we're using a pod so setup it
-	 * up for now this way
+	 * up for now this way, if the device tree is expected at the fixed address
+	 * then load R2 to find the device tree at that address
 	 */
 #ifdef CONFIG_ARCH_XILINX
 	mov	r0,#0x0
 	ldr	r1,=MACH_TYPE_XILINX
-	mov	r2,#0x0
+#ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
+	mov	r2,#0x1000000
+#endif
 #endif
 
 	/*

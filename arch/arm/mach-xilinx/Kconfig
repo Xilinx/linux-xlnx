@@ -1,6 +1,15 @@
 if ARCH_XILINX
 
 menu "Xilinx Specific Options"
+config XILINX_FIXED_DEVTREE_ADDR
+	tristate "Device Tree At Fixed Address"
+	default y
+	depends on OF
+	help
+	  Select if you want the kernel to assume a device tree is located at a
+	  fixed address of 0x1000000 on kernel boot.  This allows the go command
+	  in u-boot to be used since the bootm command is slow in the EP107.
+
 config XILINX_SLCR
 	tristate "Xilinx SLCR driver"
 	default n
