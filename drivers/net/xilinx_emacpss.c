@@ -322,6 +322,10 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPSS_DMACR_RXSIZE_MASK    0x00000300 /* RX buffer memory size */
 #define XEMACPSS_DMACR_ENDIAN_MASK    0x00000080 /* Endian configuration */
 #define XEMACPSS_DMACR_BLENGTH_MASK   0x0000001F /* Buffer burst length */
+#define XEMACPSS_DMACR_BLENGTH_INCR16 0x00000010 /* Buffer burst length */
+#define XEMACPSS_DMACR_BLENGTH_INCR8  0x00000008 /* Buffer burst length */
+#define XEMACPSS_DMACR_BLENGTH_INCR4  0x00000004 /* Buffer burst length */
+#define XEMACPSS_DMACR_BLENGTH_SINGLE 0x00000002 /* Buffer burst length */
 
 /* transmit status register bit definitions */
 #define XEMACPSS_TXSR_HRESPNOK_MASK   0x00000100 /* Transmit hresp not OK */
@@ -2030,6 +2034,7 @@ static void xemacpss_init_hw(struct net_local *lp)
 #ifdef __BIG_ENDIAN
 	regval |= XEMACPSS_DMACR_ENDIAN_MASK;
 #endif
+	regval |= XEMACPSS_DMACR_BLENGTH_INCR16;
 	xemacpss_write(lp->baseaddr, XEMACPSS_DMACR_OFFSET, regval);
 
 	/* Enable TX, RX and MDIO port */

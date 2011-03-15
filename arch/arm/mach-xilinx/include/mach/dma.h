@@ -15,6 +15,8 @@
 #ifndef __ASM_ARCH_DMA_H__
 #define __ASM_ARCH_DMA_H__
 
+#include <linux/ioport.h>
+
 #ifndef MAX_DMA_DEVICES
 #define MAX_DMA_DEVICES 2
 #endif

@@ -106,6 +106,11 @@ static void __init versatile_pb_init(void)
 	}
 }
 
+static const char *versatile_pb_match[] __initdata = {
+	"arm,versatile-pb",
+	NULL,
+};
+
 MACHINE_START(VERSATILE_PB, "ARM-Versatile PB")
 	/* Maintainer: ARM Ltd/Deep Blue Solutions Ltd */
 	.boot_params	= 0x00000100,
@@ -113,4 +118,5 @@ MACHINE_START(VERSATILE_PB, "ARM-Versatile PB")
 	.init_irq	= versatile_init_irq,
 	.timer		= &versatile_timer,
 	.init_machine	= versatile_pb_init,
+	.dt_compat	= versatile_pb_match,
 MACHINE_END

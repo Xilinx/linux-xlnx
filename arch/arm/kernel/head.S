@@ -67,7 +67,7 @@
  *
  * This is normally called from the decompressor code.  The requirements
  * are: MMU = off, D-cache = off, I-cache = dont care, r0 = 0,
- * r1 = machine nr, r2 = atags pointer.
+ * r1 = machine nr, r2 = atags or dtb pointer.
  *
  * This code is mostly position independent, so if you link the kernel at
  * 0xc0008000, you call this at __pa(0xc0008000).
@@ -91,18 +91,21 @@ ENTRY(stext)
 	beq	__error_p			@ yes, error 'p'
 
 	/* the machine has no way to get setup when we're using a pod so setup it
-	 * up for now this way
+	 * up for now this way, if the device tree is expected at the fixed address
+	 * then load R2 to find the device tree at that address
 	 */
 #ifdef CONFIG_ARCH_XILINX
 	mov	r0,#0x0
 	ldr	r1,=MACH_TYPE_XILINX
-	mov	r2,#0x0
+#ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
+	mov	r2,#0x1000000
+#endif
 #endif
 
-	bl	__lookup_machine_type		@ r5=machinfo
-	movs	r8, r5				@ invalid machine (r5=0)?
- THUMB( it	eq )		@ force fixup-able long branch encoding
-	beq	__error_a			@ yes, error 'a'
+	/*
+	 * r1 = machine no, r2 = atags or dtb,
+	 * r9 = cpuid, r10 = procinfo
+	 */
 	bl	__vet_atags
 #ifdef CONFIG_SMP_ON_UP
 	bl	__fixup_smp
@@ -112,7 +115,7 @@ ENTRY(stext)
 	/*
 	 * The following calls CPU specific code in a position independent
 	 * manner.  See arch/arm/mm/proc-*.S for details.  r10 = base of
-	 * xxx_proc_info structure selected by __lookup_machine_type
+	 * xxx_proc_info structure selected by __lookup_processor_type
 	 * above.  On return, the CPU will be ready for the MMU to be
 	 * turned on, and r0 will hold the CPU control register value.
 	 */
@@ -131,7 +134,6 @@ ENDPROC(stext)
  * amount which are required to get the kernel running, which
  * generally means mapping in the kernel code.
  *
- * r8  = machinfo
  * r9  = cpuid
  * r10 = procinfo
  *
@@ -212,15 +214,32 @@ __create_page_tables:
 #endif
 
 	/*
-	 * Then map first 1MB of ram in case it contains our boot params.
+	 * Then map first 1MB of ram if boot params address is not specified.
 	 */
+	cmp	r2, #0
+	bne	1f
 	add	r0, r4, #PAGE_OFFSET >> 18
 	orr	r6, r7, #(PHYS_OFFSET & 0xff000000)
 	.if	(PHYS_OFFSET & 0x00f00000)
 	orr	r6, r6, #(PHYS_OFFSET & 0x00f00000)
 	.endif
 	str	r6, [r0]
+	b	2f
 
+	/*
+	 * Otherwise map the 1MB region r2 points to (atags or dtb)
+	 */
+1:	mov	r0, r2, lsr #20
+	mov	r0, r0, lsl #20
+	sub	r3, r0, #(PHYS_OFFSET & 0xff000000)
+	.if	(PHYS_OFFSET & 0x00f00000)
+	sub	r3, r3, #(PHYS_OFFSET & 0x00f00000)
+	.endif
+	add	r3, r3, #PAGE_OFFSET
+	add	r3, r4, r3, lsr #18
+	orr	r6, r7, r0
+	str	r6, [r3]
+2:
 #ifdef CONFIG_DEBUG_LL
 #ifndef CONFIG_DEBUG_ICEDCC
 	/*
@@ -342,7 +361,7 @@ __secondary_data:
  *
  *  r0  = cp#15 control register
  *  r1  = machine ID
- *  r2  = atags pointer
+ *  r2  = atags or dtb pointer
  *  r4  = page table pointer
  *  r9  = processor ID
  *  r13 = *virtual* address to jump to upon completion
@@ -379,7 +398,7 @@ ENDPROC(__enable_mmu)
  *
  *  r0  = cp#15 control register
  *  r1  = machine ID
- *  r2  = atags pointer
+ *  r2  = atags or dtb pointer
  *  r9  = processor ID
  *  r13 = *virtual* address to jump to upon completion
  *
@@ -398,37 +417,32 @@ ENDPROC(__turn_mmu_on)
 
 
 #ifdef CONFIG_SMP_ON_UP
+	__INIT
 __fixup_smp:
-	mov	r7, #0x00070000
-	orr	r6, r7, #0xff000000	@ mask 0xff070000
-	orr	r7, r7, #0x41000000	@ val 0x41070000
-	and	r0, r9, r6
-	teq	r0, r7			@ ARM CPU and ARMv6/v7?
+	and	r3, r9, #0x000f0000	@ architecture version
+	teq	r3, #0x000f0000		@ CPU ID supported?
 	bne	__fixup_smp_on_up	@ no, assume UP
 
-	orr	r6, r6, #0x0000ff00
-	orr	r6, r6, #0x000000f0	@ mask 0xff07fff0
-	orr	r7, r7, #0x0000b000
-	orr	r7, r7, #0x00000020	@ val 0x4107b020
-	and	r0, r9, r6
-	teq	r0, r7			@ ARM 11MPCore?
+	bic	r3, r9, #0x00ff0000
+	bic	r3, r3, #0x0000000f	@ mask 0xff00fff0
+	mov	r4, #0x41000000
+	orr	r4, r4, #0x0000b000
+	orr	r4, r4, #0x00000020	@ val 0x4100b020
+	teq	r3, r4			@ ARM 11MPCore?
 	moveq	pc, lr			@ yes, assume SMP
 
 	mrc	p15, 0, r0, c0, c0, 5	@ read MPIDR
-	tst	r0, #1 << 31
-	movne	pc, lr			@ bit 31 => SMP
+	and	r0, r0, #0xc0000000	@ multiprocessing extensions and
+	teq	r0, #0x80000000		@ not part of a uniprocessor system?
+	moveq	pc, lr			@ yes, assume SMP
 
 __fixup_smp_on_up:
 	adr	r0, 1f
-	ldmia	r0, {r3, r6, r7}
+	ldmia	r0, {r3 - r5}
 	sub	r3, r0, r3
-	add	r6, r6, r3
-	add	r7, r7, r3
-2:	cmp	r6, r7
-	ldmia	r6!, {r0, r4}
-	strlo	r4, [r0, r3]
-	blo	2b
-	mov	pc, lr
+	add	r4, r4, r3
+	add	r5, r5, r3
+	b	__do_fixup_smp_on_up
 ENDPROC(__fixup_smp)
 
 	.align
@@ -442,7 +456,31 @@ smp_on_up:
 	ALT_SMP(.long	1)
 	ALT_UP(.long	0)
 	.popsection
-
 #endif
+
+	.text
+__do_fixup_smp_on_up:
+	cmp	r4, r5
+	movhs	pc, lr
+	ldmia	r4!, {r0, r6}
+ ARM(	str	r6, [r0, r3]	)
+ THUMB(	add	r0, r0, r3	)
+#ifdef __ARMEB__
+ THUMB(	mov	r6, r6, ror #16	)	@ Convert word order for big-endian.
+#endif
+ THUMB(	strh	r6, [r0], #2	)	@ For Thumb-2, store as two halfwords
+ THUMB(	mov	r6, r6, lsr #16	)	@ to be robust against misaligned r3.
+ THUMB(	strh	r6, [r0]	)
+	b	__do_fixup_smp_on_up
+ENDPROC(__do_fixup_smp_on_up)
+
+ENTRY(fixup_smp)
+	stmfd	sp!, {r4 - r6, lr}
+	mov	r4, r0
+	add	r5, r0, r1
+	mov	r3, #0
+	bl	__do_fixup_smp_on_up
+	ldmfd	sp!, {r4 - r6, pc}
+ENDPROC(fixup_smp)
 
 #include "head-common.S"

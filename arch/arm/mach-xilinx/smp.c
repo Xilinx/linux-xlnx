@@ -25,6 +25,7 @@
 #include <mach/hardware.h>
 
 #include <asm/cacheflush.h>
+#include <asm/smp.h>
 
 extern void xilinx_secondary_startup(void);
 
@@ -53,7 +54,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	 * for us: do so
 	 */
 
-	gic_cpu_init(0, (void *)SCU_GIC_CPU_BASE);
+	gic_secondary_init(0);
 
 	/*
 	 * Synchronise with the boot thread.
@@ -94,7 +95,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * to do this after writing to the key and flushing the cache to 
 	 * ensure that CPU1 sees the boot key when it wakes up.
 	 */
-	set_event();
+	sev();
 
 	/* Give the secondary CPU some time to start the kernel. 
 	 */
@@ -138,7 +139,7 @@ static void __init wakeup_secondary(void)
 	 * then wait not starting the kernel yet. 2nd phase to start the 
 	 * the kernel. In both phases, the secondary CPU uses WFE.
 	 */
-	set_event();
+	sev();
 	mb();
 }
 
@@ -149,16 +150,6 @@ static void __init wakeup_secondary(void)
 void __init smp_init_cpus(void)
 {
 	unsigned int i, ncores = get_core_count();
-
-	for (i = 0; i < ncores; i++)
-		set_cpu_possible(i, true);
-}
-
-void __init smp_prepare_cpus(unsigned int max_cpus)
-{
-	unsigned int ncores = get_core_count();
-	unsigned int cpu = smp_processor_id();
-	int i;
 
 	/* sanity check */
 	if (ncores == 0) {
@@ -174,13 +165,14 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		       ncores, NR_CPUS);
 		ncores = NR_CPUS;
 	}
-	smp_store_cpu_info(cpu);
 
-	/*
-	 * are we trying to boot more cores than exist?
-	 */
-	if (max_cpus > ncores)
-		max_cpus = ncores;
+	for (i = 0; i < ncores; i++)
+		set_cpu_possible(i, true);
+}
+
+void __init platform_smp_prepare_cpus(unsigned int max_cpus)
+{
+	int i;
 
 	/*
 	 * Initialise the present map, which describes the set of CPUs
@@ -189,14 +181,9 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 0; i < max_cpus; i++)
 		set_cpu_present(i, true);
 
-	if (max_cpus > 1) {
-		/*
-		 * Enable the local timer or broadcast device for the
-		 * boot CPU, but only if we have more than one CPU.
-		 */
-		percpu_timer_setup();
-
-		scu_enable(scu_base);
-		wakeup_secondary();
-	}
+	/*
+	 * Initialize the SCU and wake up the secondary core 
+	 */
+	scu_enable(scu_base);
+	wakeup_secondary();
 }

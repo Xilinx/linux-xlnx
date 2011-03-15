@@ -25,8 +25,9 @@
 #include <linux/spi/spi.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
-#include <mach/nand.h> 
+#include <mach/nand.h>
 #include <linux/fsl_devices.h>
+#include <linux/amba/xilinx_dma.h>
 
 /* Create all the platform devices for the BSP */
 
@@ -133,6 +134,189 @@ static struct platform_device xilinx_dma_test = {
 
 #endif
 
+/*************************AXI CDMA***********************/
+/* There is a single driver for all AXI DMA cores. Note
+ * the name of the driver for all is xilinx-axidma. The
+ * following platform data sort of mimics the device
+ * tree that is used with MicroBlaze Linux. The user needs
+ * to setup the resources and configurations for each
+ * core. Once we have device tree on ARM this will all
+ * go away and be much easier.
+ */
+
+//#define AXI_CDMA
+#ifdef AXI_CDMA
+
+#define AXI_CDMA_BASE	0x44600000
+#define AXI_CDMA_IRQ0	91
+
+static struct resource cdma_resources[] = {
+	{
+		.start = AXI_CDMA_BASE,
+		.end = AXI_CDMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_CDMA_IRQ0,
+		.end = AXI_CDMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config cdma_channel_config[] = {
+	{
+		.type = "axi-cdma",
+		.lite_mode = 0,		/* must use 128 test length, no dre */
+		.include_dre = 1,
+		.datawidth = 64,
+		.max_burst_len = 16,
+	},
+};
+
+struct dma_device_config cdma_device_config = {
+	.type = "axi-cdma",
+	.include_sg = 1,
+	.channel_count = 1,
+	.channel_config = &cdma_channel_config[0],
+};
+
+struct platform_device axicdma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &cdma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = cdma_resources,
+	.num_resources = ARRAY_SIZE(cdma_resources),
+};
+
+#endif
+
+/*************************AXI VDMA***********************/
+
+//#define AXI_VDMA
+#ifdef AXI_VDMA
+
+#define AXI_VDMA_BASE	0x40000000
+#define AXI_VDMA_IRQ0	91
+#define AXI_VDMA_IRQ1	90
+
+static struct resource vdma_resources[] = {
+	{
+		.start = AXI_VDMA_BASE,
+		.end = AXI_VDMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_VDMA_IRQ0,
+		.end = AXI_VDMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = AXI_VDMA_IRQ1,
+		.end = AXI_VDMA_IRQ1,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config vdma_channel_config[] = {
+	{
+		.type = "axi-vdma-mm2s-channel",
+		.include_dre = 0,
+		.genlock_mode = 0,
+		.datawidth = 64,
+		.max_burst_len = 256,
+	},
+	{
+		.type = "axi-vdma-s2mm-channel",
+		.include_dre = 0,
+		.genlock_mode = 0,
+		.datawidth = 64,
+		.max_burst_len = 256,
+	},
+};
+
+struct dma_device_config vdma_device_config = {
+	.type = "axi-vdma",
+	.include_sg = 1,
+	.num_fstores = 3,
+	.channel_count = 2,
+	.channel_config = &vdma_channel_config[0],
+};
+
+struct platform_device axivdma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &vdma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = vdma_resources,
+	.num_resources = ARRAY_SIZE(vdma_resources),
+};
+
+#endif
+
+/*************************AXI DMA***********************/
+
+// #define AXI_DMA
+#ifdef AXI_DMA
+
+#define AXI_DMA_BASE	0x40000000
+#define AXI_DMA_IRQ0	91
+#define AXI_DMA_IRQ1	90
+
+static struct resource dma_resources[] = {
+	{
+		.start = AXI_DMA_BASE,
+		.end = AXI_DMA_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = AXI_DMA_IRQ0,
+		.end = AXI_DMA_IRQ0,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = AXI_DMA_IRQ1,
+		.end = AXI_DMA_IRQ1,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct dma_channel_config dma_channel_config[] = {
+	{
+		.type = "axi-dma-mm2s-channel",
+		.include_dre = 0,		/* DRE not working yet */
+		.datawidth = 64,
+	},
+	{
+		.type = "axi-dma-s2mm-channel",
+		.include_dre = 0,		/* DRE not working yet */
+		.datawidth = 64,
+	},
+};
+
+struct dma_device_config dma_device_config = {
+	.type = "axi-dma",
+	.include_sg = 1,
+	.sg_include_stscntrl_strm = 1,
+	.channel_count = 2,
+	.channel_config = &dma_channel_config[0],
+};
+
+struct platform_device axidma_device = {
+	.name = "xilinx-axidma",
+	.id = 0,
+	.dev = {
+		.platform_data = &dma_device_config,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = dma_resources,
+	.num_resources = ARRAY_SIZE(dma_resources),
+};
+
+#endif
+
 /*************************PSS I2C***********************/
 static struct xi2cpss_platform_data xi2cpss_0_pdata = {
 	.input_clk = 50000000,
@@ -211,6 +395,44 @@ struct platform_device xilinx_gpiopss_0_device = {
 	.resource =  xgpiopss_0_resource,
 	.num_resources = ARRAY_SIZE(xgpiopss_0_resource),
 };
+
+/*************************AXI GPIO*********************/
+/*
+ * Platform data for AXI GPIO soft IP.
+ * Users need to update this data based on the system configuration.
+ * This info will not be required when we have device-tree support for ARM.
+ */
+// #define AXI_GPIO
+
+#ifdef AXI_GPIO
+
+#define AXI_GPIO_0_BASE		0x40000000
+#define AXI_GPIO_0_DOUT_DEFAULT	0x00000000
+#define AXI_GPIO_0_TRI_DEFAULT	0xFFFFF7FF
+#define AXI_GPIO_0_WIDTH	32
+
+static struct xgpio_platform_data xilinx_gpio_0_data = {
+	.state	= AXI_GPIO_0_DOUT_DEFAULT,
+	.dir	= AXI_GPIO_0_TRI_DEFAULT,
+	.width	= AXI_GPIO_0_WIDTH,
+};
+
+static struct resource xgpio_0_resource[] = {
+	{
+		.start	= AXI_GPIO_0_BASE,
+		.end	= AXI_GPIO_0_BASE + 0xFFF,
+		.flags	= IORESOURCE_MEM
+	},
+};
+struct platform_device xilinx_gpio_0_device = {
+	.name = "xilinx_gpio",
+	.id = 0,
+	.dev.platform_data = &xilinx_gpio_0_data,
+	.resource =  xgpio_0_resource,
+	.num_resources = ARRAY_SIZE(xgpio_0_resource),
+};
+
+#endif
 
 /*************************PSS NOR***********************/
 static struct physmap_flash_data xilinx_norpss_data = {
@@ -712,13 +934,65 @@ struct platform_device xilinx_usbpss_1_device = {
 	.num_resources = ARRAY_SIZE(xusbpss_1_resource),
 };
 
+/************************* SLCR ***********************/
+static struct resource xslcr_res[] = {
+	{
+		.start  = SLC_REG,
+		.end    = SLC_REG + 0xFFF,
+		.flags  = IORESOURCE_MEM
+	},
+};
+
+struct platform_device xilinx_slcr_device = {
+	.name = "xilinx_slcr",
+	.id = 0,
+	.dev.platform_data = NULL,
+	.num_resources = ARRAY_SIZE(xslcr_res),
+	.resource = xslcr_res,
+};
+
+/************************* Device Config ***********************/
+static struct resource xdevcfg_resource[] = {
+        {
+                .start  = DVC_BASE,
+                .end    = DVC_BASE + 0x7FFF,
+                .flags  = IORESOURCE_MEM
+        },
+        {
+                .start  = IRQ_DVC,
+                .end    = IRQ_DVC,
+                .flags  = IORESOURCE_IRQ
+        },
+
+};
+struct platform_device xilinx_devcfg_device = {
+        .name = "xdevcfg",
+        .id = 0,
+        .dev = {
+                .platform_data = NULL,
+        },
+        .resource =  xdevcfg_resource,
+        .num_resources = ARRAY_SIZE(xdevcfg_resource),
+};
+
 /* add all platform devices to the following table so they
  * will be registered, create seperate lists for AMP on each
  * CPU so that they don't try to use the same devices
  */
 struct platform_device *xilinx_pdevices[] __initdata = {
+#ifndef CONFIG_OF
 	&uart_device0,
 	&uart_device1,
+#endif
+#ifdef AXI_DMA
+	&axidma_device,
+#endif
+#ifdef AXI_CDMA
+	&axicdma_device,
+#endif
+#ifdef AXI_VDMA
+	&axivdma_device,
+#endif
 	&dmac_device0,
 	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
@@ -727,6 +1001,9 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_i2cpss_0_device,
 	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
+#ifdef AXI_GPIO
+	&xilinx_gpio_0_device,
+#endif
 	&xilinx_norpss_device,
 	&eth_device0,
 	&eth_device1,
@@ -740,6 +1017,8 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_sdio1pss_device,
 	&xilinx_usbpss_0_device,
 	&xilinx_usbpss_1_host,
+	&xilinx_slcr_device,
+        &xilinx_devcfg_device,
 };
 
 struct platform_device *xilinx_pdevices_amp0[] __initdata = {
