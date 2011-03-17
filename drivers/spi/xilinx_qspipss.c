@@ -28,7 +28,7 @@
 #include <linux/delay.h>
 #include <linux/xilinx_devices.h>
 
-#define HACK_WRITE_NO_DELAY
+#undef HACK_WRITE_NO_DELAY
 
 /*
  * Name of this driver
@@ -250,6 +250,12 @@ static void xqspipss_init_hw(void __iomem *regs_base)
 	config_reg &= 0xFBFFFFFF; /* Set little endian mode of TX FIFO */
 	config_reg |= 0x8000FCC1;
 	xqspipss_write(regs_base + XQSPIPSS_CONFIG_OFFSET, config_reg);
+
+#ifdef CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH
+	/* Enable two memories on seperate buses */
+	xqspipss_write(regs_base + XQSPIPSS_LINEAR_CFG_OFFSET, 0x6400016B);
+#endif
+
 	xqspipss_write(regs_base + XQSPIPSS_ENABLE_OFFSET,
 			XQSPIPSS_ENABLE_ENABLE_MASK);
 }
@@ -630,6 +636,32 @@ static int xqspipss_start_transfer(struct spi_device *qspi,
 
 		xqspi->curr_inst = &flash_inst[index];
 		xqspi->inst_response = 1;
+
+#ifdef CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH
+		/* In case of dual memories, convert 25 bit address to 24 bit
+		 * address before transmitting to the 2 memories
+		 */
+		if ((instruction == XQSPIPSS_FLASH_OPCODE_PP) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_SE) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_BE_32K) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_BE_4K) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_BE) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_NORM_READ) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_FAST_READ) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_DUAL_READ) ||
+		    (instruction == XQSPIPSS_FLASH_OPCODE_QUAD_READ)) {
+
+			u8 *ptr = (u8*) (xqspi->txbuf);
+			data = ((u32) ptr[1] << 24) | ((u32) ptr[2] << 16) |
+				((u32) ptr[3] << 8) | ((u32) ptr[4]);
+			data = data/2;
+			ptr[1] = (u8) (data >> 16);
+			ptr[2] = (u8) (data >> 8);
+			ptr[3] = (u8) (data);
+			xqspi->bytes_to_transfer -= 1;
+			xqspi->bytes_to_receive -= 1;
+		}
+#endif
 
 		/* Get the instruction */
 		data = 0;

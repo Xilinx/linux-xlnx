@@ -719,7 +719,11 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "m25p128", INFO(0x202018,  0, 256 * 1024,  64, 0) },
 
 	/* Numonyx flash n25q128 */
-	{ "n25q128", INFO(0x20bb18,  0,  64 * 1024, 256, 0) },
+#ifdef CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH
+	{ "n25q128x2", INFO(0x20bb18,  0, 128 * 1024, 256, 0) },
+#else
+	{ "n25q128",   INFO(0x20bb18,  0,  64 * 1024, 256, 0) },
+#endif
 
 	{ "m25p05-nonjedec",  INFO(0, 0,  32 * 1024,   2, 0) },
 	{ "m25p10-nonjedec",  INFO(0, 0,  32 * 1024,   4, 0) },
