@@ -62,7 +62,7 @@
 
 /* Register values for using SRAM interface of SMC Controller */
 #define SRAM_SET_CYCLES (0x00125155)
-#define SRAM_SET_OPMODE (0x00002000)
+#define SRAM_SET_OPMODE (0x00003000)
 #define SRAM_DIRECT_CMD (0x00400000)
 
 #define L2_TAG_LATENCY (0x111)
