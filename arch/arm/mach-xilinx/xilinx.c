@@ -45,7 +45,7 @@
 			(0x7))	      /* set_t0 t_rc from sram_cycles */
 
 #define NOR_SET_OPMODE ((0x1 << 13) | /* set_burst_align,set to 32 beats */    \
-			(0x0 << 12) | /* set_bls,set to default */	       \
+			(0x1 << 12) | /* set_bls,set to default */	       \
 			(0x0 << 11) | /* set_adv bit, set to default */	       \
 			(0x0 << 10) | /* set_baa, we don't use baa_n */	       \
 			(0x0 << 7)  | /* set_wr_bl,write brust len,set to 0 */ \
@@ -54,7 +54,7 @@
 			(0x0 << 2)  | /* set_rd_sync, set to 0 */	       \
 			(0x0))	      /* set_mw, memory width, 16bits width*/
 				      /* 0x00002000 */
-#define NOR_DIRECT_CMD ((0x1 << 23) | /* Chip 1 from interface 0 */	       \
+#define NOR_DIRECT_CMD ((0x0 << 23) | /* Chip 0 from interface 0 */	       \
 			(0x2 << 21) | /* UpdateRegs operation */	       \
 			(0x0 << 20) | /* No ModeReg write */		       \
 			(0x0))	      /* Addr, not used in UpdateRegs */
@@ -63,7 +63,7 @@
 /* Register values for using SRAM interface of SMC Controller */
 #define SRAM_SET_CYCLES (0x00125155)
 #define SRAM_SET_OPMODE (0x00003000)
-#define SRAM_DIRECT_CMD (0x00400000)
+#define SRAM_DIRECT_CMD (0x00C00000)	/* Chip 1 */
 
 #define L2_TAG_LATENCY (0x111)
 #define L2_DATA_LATENCY (0x111)
