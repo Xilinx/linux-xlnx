@@ -615,7 +615,7 @@ struct flash_info {
 	u16		flags;
 #define	SECT_4K		0x01		/* OPCODE_BE_4K works uniformly */
 #define	M25P_NO_ERASE	0x02		/* No erase command needed */
-#define	SECT_32K	0x03		/* OPCODE_BE_32K */
+#define	SECT_32K	0x04		/* OPCODE_BE_32K */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -699,7 +699,11 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, 0) },
 	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, 0) },
 	{ "s25fl016k",  INFO(0xef4015,      0,  64 * 1024,  32, SECT_4K) },
-	{ "s25fl064k",  INFO(0xef4017,      0,  64 * 1024, 128, SECT_4K) },
+	/* s25fl064k supports 4KiB, 32KiB and 64KiB sectors erase size. */
+	/* To support JFFS2, the minimum erase size is 8KiB(>4KiB). */
+	/* And thus, the sector size of s25fl064k is set to 32KiB for */
+	/* JFFS2 support. */
+	{ "s25fl064k",  INFO(0xef4017,      0,  64 * 1024, 128, SECT_32K) },
 
 	/* SST -- large erase sizes are "overlays", "sectors" are 4K */
 	{ "sst25vf040b", INFO(0xbf258d, 0, 64 * 1024,  8, SECT_4K) },
