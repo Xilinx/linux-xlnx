@@ -115,4 +115,16 @@ config AB8500_USB
           This transceiver supports high and full speed devices plus,
           in host mode, low speed.
 
+config USB_XUSBPS_OTG
+	tristate "Xilinx USB PS OTG dual-role support"
+	depends on USB && ARCH_XILINX && USB_EHCI_XUSBPS && USB_GADGET_XUSBPS && USB_OTG
+	select USB_OTG_UTILS
+	help
+	  Say Y here if you want to build Xilinx USB PS OTG
+	  driver in kernel. This driver implements role
+	  switch between EHCI host driver and USB gadget driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called xilinx_usbps_otg.
+
 endif # USB || OTG
