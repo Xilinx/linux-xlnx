@@ -1029,9 +1029,20 @@ static int ehci_hub_control (
 			 * Set appropriate bit thus could put phy into low power
 			 * mode if we have hostpc feature
 			 */
+#ifdef CONFIG_USB_XUSBPS_OTG
+			if (ehci->transceiver && (hcd->self.otg_port == (wIndex + 1))
+				&& (hcd->self.b_hnp_enable || hcd->self.is_b_host))
+				ehci->start_hnp(ehci);
+			else {
+				temp &= ~PORT_WKCONN_E;
+				temp |= PORT_WKDISC_E | PORT_WKOC_E;
+				ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
+			}
+#else
 			temp &= ~PORT_WKCONN_E;
 			temp |= PORT_WKDISC_E | PORT_WKOC_E;
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
+#endif
 			if (hostpc_reg) {
 				spin_unlock_irqrestore(&ehci->lock, flags);
 				msleep(5);/* 5ms for HCD enter low pwr mode */
@@ -1047,9 +1058,18 @@ static int ehci_hub_control (
 			set_bit(wIndex, &ehci->suspended_ports);
 			break;
 		case USB_PORT_FEAT_POWER:
+#ifdef CONFIG_USB_XUSBPS_OTG
+			/* Check if otg is enabled */
+			if(!ehci->transceiver) {
+				if (HCS_PPC (ehci->hcs_params))
+					ehci_writel(ehci, temp | PORT_POWER,
+							status_reg);
+			}
+#else
 			if (HCS_PPC (ehci->hcs_params))
 				ehci_writel(ehci, temp | PORT_POWER,
 						status_reg);
+#endif
 			break;
 		case USB_PORT_FEAT_RESET:
 			if (temp & PORT_RESUME)
