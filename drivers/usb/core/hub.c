@@ -1254,7 +1254,11 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	hdev = interface_to_usbdev(intf);
 
 	/* Hubs have proper suspend/resume support */
+#ifdef CONFIG_USB_XUSBPS_OTG
+	usb_disable_autosuspend(hdev);
+#else
 	usb_enable_autosuspend(hdev);
+#endif
 
 	if (hdev->level == MAX_TOPO_LEVEL) {
 		dev_err(&intf->dev,
