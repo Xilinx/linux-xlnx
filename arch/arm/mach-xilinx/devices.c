@@ -26,7 +26,6 @@
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
 #include <mach/nand.h>
-#include <linux/fsl_devices.h>
 #include <linux/amba/xilinx_dma.h>
 
 /* Create all the platform devices for the BSP */
@@ -855,93 +854,6 @@ struct platform_device xilinx_a9wdt_device = {
 	.num_resources = ARRAY_SIZE(xa9wdt_resource),
 };
 
-/*************************PSS USB*********************/
-static struct resource xusbpss_0_resource[] = {
-	{
-		.start	= USB0_BASE,
-		.end	= USB0_BASE + 0xFFF,
-		.flags	= IORESOURCE_MEM
-	},
-	{
-		.start	= IRQ_USB0,
-		.end	= IRQ_USB0,
-		.flags	= IORESOURCE_IRQ
-	},
-};
-
-static struct resource xusbpss_1_resource[] = {
-	{
-		.start	= USB1_BASE,
-		.end	= USB1_BASE + 0xFFF,
-		.flags	= IORESOURCE_MEM
-	},
-	{
-		.start	= IRQ_USB1,
-		.end	= IRQ_USB1,
-		.flags	= IORESOURCE_IRQ
-	},
-};
-
-/* USB Host */
-static struct fsl_usb2_platform_data usb_host_pdata = {
-	.operating_mode = FSL_USB2_DR_HOST,
-	.phy_mode       = FSL_USB2_PHY_ULPI,
-};
-
-static struct platform_device xilinx_usbpss_0_host = {
-	.name = "fsl-ehci",
-	.id = 0,
-	.dev = {
-		.dma_mask		= &dma_mask,
-		.coherent_dma_mask 	= 0xFFFFFFFF,
-		.platform_data 		= &usb_host_pdata,
-	},
-	.resource = xusbpss_0_resource,
-	.num_resources = ARRAY_SIZE(xusbpss_0_resource),
-};
-
-static struct platform_device xilinx_usbpss_1_host = {
-	.name = "fsl-ehci",
-	.id = 1,
-	.dev = {
-		.dma_mask		= &dma_mask,
-		.coherent_dma_mask 	= 0xFFFFFFFF,
-		.platform_data 		= &usb_host_pdata,
-	},
-	.resource = xusbpss_1_resource,
-	.num_resources = ARRAY_SIZE(xusbpss_1_resource),
-};
-
-/* USB Device */
-static struct fsl_usb2_platform_data usb_device_pdata = {
-	.operating_mode = FSL_USB2_DR_DEVICE,
-	.phy_mode       = FSL_USB2_PHY_ULPI,
-};
-
-struct platform_device xilinx_usbpss_0_device = {
-	.name = "fsl-usb2-udc",
-	.id   = 0,
-	.dev  = {
-		.dma_mask		= &dma_mask,
-		.coherent_dma_mask 	= 0xFFFFFFFF,
-		.platform_data		= &usb_device_pdata,
-	},
-	.resource = xusbpss_0_resource,
-	.num_resources = ARRAY_SIZE(xusbpss_0_resource),
-};
-
-struct platform_device xilinx_usbpss_1_device = {
-	.name = "fsl-usb2-udc",
-	.id   = 1,
-	.dev  = {
-		.dma_mask		= &dma_mask,
-		.coherent_dma_mask 	= 0xFFFFFFFF,
-		.platform_data		= &usb_device_pdata,
-	},
-	.resource = xusbpss_1_resource,
-	.num_resources = ARRAY_SIZE(xusbpss_1_resource),
-};
-
 /************************* SLCR ***********************/
 static struct resource xslcr_res[] = {
 	{
@@ -1023,8 +935,6 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_nandpss_device,
 	&xilinx_sdio0pss_device,
 	&xilinx_sdio1pss_device,
-	&xilinx_usbpss_0_device,
-	&xilinx_usbpss_1_host,
 	&xilinx_slcr_device,
         &xilinx_devcfg_device,
 };
@@ -1042,7 +952,6 @@ struct platform_device *xilinx_pdevices_amp0[] __initdata = {
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
 	&xilinx_sdio0pss_device,
-	&xilinx_usbpss_0_device,
 };
 
 struct platform_device *xilinx_pdevices_amp1[] __initdata = {
@@ -1051,7 +960,6 @@ struct platform_device *xilinx_pdevices_amp1[] __initdata = {
 	&eth_device1,
 	&xilinx_spipss_1_device,
 	&xilinx_sdio1pss_device,
-	&xilinx_usbpss_1_host,
 };
 
 /**

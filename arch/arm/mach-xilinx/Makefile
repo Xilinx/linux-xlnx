@@ -3,7 +3,7 @@
 #
 
 # Common support
-obj-y := time.o devices.o xilinx.o pl330.o clock.o
+obj-y := time.o devices.o xilinx.o pl330.o clock.o usb.o
 
 obj-$(CONFIG_SMP)		+= smp.o head_smp.o
 obj-$(CONFIG_LOCAL_TIMERS)	+= local_timer.o 

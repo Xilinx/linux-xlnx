@@ -70,6 +70,7 @@
 
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
+extern void xusbps_init(void);
 
 /* SRAM base address */
 void __iomem *xsram_base;
@@ -175,6 +176,7 @@ static void __init board_init(void)
 	pr_debug("->board_init\n");
 
 	platform_device_init();
+	xusbps_init();
 #ifdef CONFIG_OF
 	pr_info("Xilinx: using device tree\n");
         of_platform_bus_probe(NULL, xilinx_of_bus_ids, NULL);
