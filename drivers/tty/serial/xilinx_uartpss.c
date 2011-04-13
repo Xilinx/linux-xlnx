@@ -477,6 +477,11 @@ static void xuartpss_set_termios(struct uart_port *port,
 	baud = uart_get_baud_rate(port, termios, old, 0, 460800);
 	xuartpss_set_baud_rate(port, baud);
 
+	/*
+	 * Update the per-port timeout.
+	 */
+	uart_update_timeout(port, termios->c_cflag, baud);
+
 	/* Set TX/RX Reset */
 	xuartpss_writereg(xuartpss_readreg(XUARTPSS_CR_OFFSET) |
 			(XUARTPSS_CR_TXRST | XUARTPSS_CR_RXRST),
