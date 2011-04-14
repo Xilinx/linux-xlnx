@@ -1791,7 +1791,7 @@ static void axienet_dma_err_handler(unsigned long data)
 }
 
 /**
- * axienet_of_probe - Axi Ethernet probe function.
+ * axienet_probe - Axi Ethernet probe function.
  * @op:		Pointer to platform device structure.
  * @match:	Pointer to device id structure
  *
@@ -1804,7 +1804,7 @@ static void axienet_dma_err_handler(unsigned long data)
  * axienet_local. It registers the Ethernet device.
  **/
 static int __init
-axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
+axienet_probe(struct platform_device *op)
 {
 	struct device_node *np;
 	struct axienet_local *lp;
@@ -1970,13 +1970,13 @@ nodev:
 }
 
 /**
- * axienet_of_remove() - The device driver remove function.
+ * axienet_remove() - The device driver remove function.
  * @op:		Pointer to the device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit axienet_of_remove(struct platform_device *op)
+static int __devexit axienet_remove(struct platform_device *op)
 {
 	struct net_device *ndev = dev_get_drvdata(&op->dev);
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -1995,9 +1995,9 @@ static int __devexit axienet_of_remove(struct platform_device *op)
 	return 0;
 }
 
-static struct of_platform_driver axienet_of_driver = {
-	.probe = axienet_of_probe,
-	.remove = __devexit_p(axienet_of_remove),
+static struct platform_driver axienet_of_driver = {
+	.probe = axienet_probe,
+	.remove = __devexit_p(axienet_remove),
 	.driver = {
 		 .owner = THIS_MODULE,
 		 .name = "xilinx_axienet",
@@ -2013,7 +2013,7 @@ static struct of_platform_driver axienet_of_driver = {
  **/
 static int __init axienet_init(void)
 {
-	return of_register_platform_driver(&axienet_of_driver);
+	return platform_driver_register(&axienet_of_driver);
 }
 
 module_init(axienet_init);
@@ -2026,7 +2026,7 @@ module_init(axienet_init);
  **/
 static void __exit axienet_exit(void)
 {
-	of_unregister_platform_driver(&axienet_of_driver);
+	platform_driver_unregister(&axienet_of_driver);
 }
 module_exit(axienet_exit);
 
