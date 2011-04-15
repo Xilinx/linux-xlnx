@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/mutex.h>
 #include <linux/sysctl.h>
+#include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
@@ -192,20 +193,22 @@ xdevcfg_write(struct file *file, const char __user *buf,
 	int status;
 	unsigned long timeout;
 	u32 intr_reg;
+	dma_addr_t dma_addr;
+	u32 transfer_length = 0;
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 	status = mutex_lock_interruptible(&drvdata->sem);
 
 	if (status)
 		return status;
 
-	kbuf = (u32 *) __get_free_page(GFP_KERNEL);
+	kbuf = dma_alloc_coherent(drvdata->dev, count,
+					&dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
-		goto error;
+		return status;
 	}
 
 	if (copy_from_user(kbuf, buf, count)) {
-		free_page((unsigned long)kbuf);
 		status = -EFAULT;
 		goto error;
 	}
@@ -228,17 +231,23 @@ xdevcfg_write(struct file *file, const char __user *buf,
 	 * Initiate DMA write command
 	 */
 	if (count < 0x1000)
-		xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_SRC_ADDR_OFFSET,
-				(int)virt_to_phys(kbuf) + 1);
-
+		xdevcfg_writereg(drvdata->base_address +
+			XDCFG_DMA_SRC_ADDR_OFFSET, (u32)(dma_addr + 1));
 	else
-	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_SRC_ADDR_OFFSET,
-				(u32) virt_to_phys(kbuf));
+		xdevcfg_writereg(drvdata->base_address +
+			XDCFG_DMA_SRC_ADDR_OFFSET, (u32) dma_addr);
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_DEST_ADDR_OFFSET,
 				(u32)XDCFG_DMA_INVALID_ADDRESS);
+	/*
+	 * Convert number of bytes to number of words.
+	 */
+	if (count % 4)
+		transfer_length	= (count/4 + 1);
+	else
+		transfer_length	= count/4;
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_SRC_LEN_OFFSET,
-				count/4);
+				transfer_length);
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_DEST_LEN_OFFSET, 0);
 
 	timeout = jiffies + msecs_to_jiffies(1000);
@@ -263,13 +272,8 @@ xdevcfg_write(struct file *file, const char __user *buf,
 				intr_reg | (XDCFG_IXR_DMA_DONE_MASK |
 				XDCFG_IXR_ERROR_FLAGS_MASK));
 
-
-	free_page((unsigned long)kbuf);
-
-
 	/* If we didn't write correctly, then bail out. */
 	if (status) {
-		free_page((unsigned long)kbuf);
 		status = -EFAULT;
 		goto error;
 	}
@@ -278,6 +282,8 @@ xdevcfg_write(struct file *file, const char __user *buf,
 
 
  error:
+	dma_free_coherent(drvdata->dev, count,
+			kbuf, dma_addr);
 	mutex_unlock(&drvdata->sem);
 	return status;
 }
@@ -298,6 +304,7 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	u32 *kbuf;
 	int status;
 	unsigned long timeout;
+	dma_addr_t dma_addr;
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 	u32 intr_reg;
 
@@ -306,10 +313,11 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		return status;
 
 	/* Get new data from the ICAP, and return was requested. */
-	kbuf = (u32 *) get_zeroed_page(GFP_KERNEL);
+	kbuf = dma_alloc_coherent(drvdata->dev, count,
+					&dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
-		goto error;
+		return status;
 	}
 
 	drvdata->dma_done = 0;
@@ -330,7 +338,7 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_SRC_ADDR_OFFSET,
 				(u32)XDCFG_DMA_INVALID_ADDRESS);
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_DEST_ADDR_OFFSET,
-				(u32)kbuf);
+				(u32)dma_addr);
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_SRC_LEN_OFFSET,
 				0);
 	xdevcfg_writereg(drvdata->base_address + XDCFG_DMA_DEST_LEN_OFFSET,
@@ -361,20 +369,20 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 	/* If we didn't read correctly, then bail out. */
 	if (status) {
-		free_page((unsigned long)kbuf);
 		status = -EFAULT;
 		goto error;
 	}
 
 	/* If we fail to return the data to the user, then bail out. */
 	if (copy_to_user(buf, kbuf, count)) {
-		free_page((unsigned long)kbuf);
 		status = -EFAULT;
 		goto error;
 	}
 
 	status = count;
  error:
+	dma_free_coherent(drvdata->dev, count,
+			kbuf, dma_addr);
 	mutex_unlock(&drvdata->sem);
 
 	return status;
@@ -1266,9 +1274,6 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	struct xdevcfg_drvdata *drvdata;
 	dev_t devt;
 	int retval;
-	int slcr_reg;
-
-	void __iomem *slcr_addr;
 
 	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs_res) {
@@ -1337,20 +1342,6 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 		 (unsigned long long) regs_res->start,
 		 drvdata->base_address,
 		 (unsigned long long) (regs_res->end - regs_res->start + 1));
-
-	if (!request_mem_region(0xF8000000, 0xFFF, "slcr")) {
-		retval = -ENXIO;
-		dev_err(&pdev->dev, "Unable to request memory region\n");
-		goto failed3;
-	}
-
-	slcr_addr = ioremap(0xF8000000, 0xFFF);
-	if (!slcr_addr) {
-		retval = -ENOMEM;
-		dev_err(&pdev->dev, "Unable to map I/O memory\n");
-		goto failed3;
-	}
-
 	/*
 	 * Unlock the device
 	 */
