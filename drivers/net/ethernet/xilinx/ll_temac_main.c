@@ -212,7 +212,7 @@ static void temac_dma_bd_release(struct net_device *ndev)
 			break;
 		else {
 			dma_unmap_single(ndev->dev.parent, lp->rx_bd_v[i].phys,
-					XTE_MAX_JUMBO_FRAME_SIZE, DMA_FROM_DEVICE);
+					ndev->mtu, DMA_FROM_DEVICE);
 			dev_kfree_skb(lp->rx_skb[i]);
 		}
 	}
@@ -274,7 +274,7 @@ static int temac_dma_bd_init(struct net_device *ndev)
 				sizeof(*lp->rx_bd_v) * ((i + 1) % RX_BD_NUM);
 
 		skb = netdev_alloc_skb_ip_align(ndev,
-						XTE_MAX_JUMBO_FRAME_SIZE);
+						ndev->mtu);
 
 		if (skb == 0) {
 			dev_err(&ndev->dev, "alloc_skb error %d\n", i);
@@ -284,9 +284,9 @@ static int temac_dma_bd_init(struct net_device *ndev)
 		/* returns physical address of skb->data */
 		lp->rx_bd_v[i].phys = dma_map_single(ndev->dev.parent,
 						     skb->data,
-						     XTE_MAX_JUMBO_FRAME_SIZE,
+						     ndev->mtu,
 						     DMA_FROM_DEVICE);
-		lp->rx_bd_v[i].len = XTE_MAX_JUMBO_FRAME_SIZE;
+		lp->rx_bd_v[i].len = ndev->mtu;
 		lp->rx_bd_v[i].app0 = STS_CTRL_APP0_IRQONEND;
 	}
 
@@ -786,7 +786,7 @@ static void ll_temac_recv(struct net_device *ndev)
 		ndev->stats.rx_bytes += length;
 
 		new_skb = netdev_alloc_skb_ip_align(ndev,
-						XTE_MAX_JUMBO_FRAME_SIZE);
+						ndev->mtu);
 
 		if (new_skb == 0) {
 			dev_err(&ndev->dev, "no memory for new sk_buff\n");
@@ -796,9 +796,9 @@ static void ll_temac_recv(struct net_device *ndev)
 
 		cur_p->app0 = STS_CTRL_APP0_IRQONEND;
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
-					     XTE_MAX_JUMBO_FRAME_SIZE,
+					     ndev->mtu,
 					     DMA_FROM_DEVICE);
-		cur_p->len = XTE_MAX_JUMBO_FRAME_SIZE;
+		cur_p->len = ndev->mtu;
 		lp->rx_skb[lp->rx_bd_ci] = new_skb;
 
 		lp->rx_bd_ci++;
