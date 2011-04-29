@@ -10,15 +10,6 @@ config XILINX_FIXED_DEVTREE_ADDR
 	  fixed address of 0x1000000 on kernel boot.  This allows the go command
 	  in u-boot to be used since the bootm command is slow in the EP107.
 
-config XILINX_SLCR
-	tristate "Xilinx SLCR driver"
-	default n
-	depends on SYSFS
-	help
-	  Select if you want SYSFS support for the MIO and reset functionality
-	  available in SLCR. This driver doesn't provide an interface for
-	  accessing all the other registers in SLCR.
-
 config XILINX_TEST
 	bool "Testing On Kernel Boot"
 	default n

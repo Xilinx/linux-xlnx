@@ -799,6 +799,20 @@ static const struct xslcr_periph_reset reset_info[] = {
 };
 
 /**
+ * xslcr_system_reset - Reset the entire system.
+ *
+ **/
+void xslcr_system_reset(void)
+{
+	/* Unlock the SLCR then reset the system.
+	 * Note that this seems to require raw i/o
+	 * functions or there's a lockup?
+	 */
+	xslcr_writereg(slcr->regs + 8, 0xDF0D);
+	xslcr_writereg(slcr->regs + XSLCR_PSS_RST_CTRL_OFFSET, 1);
+}
+
+/**
  * xslcr_set_bit - Set a bit
  *
  * @data:	Address of the data in which a bit is to be set
