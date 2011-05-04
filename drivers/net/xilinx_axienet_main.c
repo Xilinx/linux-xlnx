@@ -39,6 +39,8 @@
 /* Match table for of_platform binding */
 static struct of_device_id axienet_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", },
+	{ .compatible = "xlnx,axi-ethernet-1.01.a", },
+	{ .compatible = "xlnx,axi-ethernet-2.01.a", },
 	{},
 };
 
@@ -682,7 +684,6 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
 		cur_p->app2 = 0;
-		cur_p->app3 = 0;
 		cur_p->app4 = 0;
 		cur_p->status = 0;
 
@@ -776,14 +777,24 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 	cur_p->cntrl = 0;
-	if (skb->ip_summed == CHECKSUM_PARTIAL) {
-		csum_start_off = skb_transport_offset(skb);
-		csum_index_off = csum_start_off + skb->csum_offset;
 
-		cur_p->app0 |= 1; /* Tx Checksum Enabled */
-		cur_p->app1 = (csum_start_off << 16) | csum_index_off;
-		cur_p->app2 = 0;  /* initial checksum seed */
+
+	if (skb->ip_summed == CHECKSUM_PARTIAL) {
+		if (lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) {
+			csum_start_off = skb_transport_offset(skb);
+			csum_index_off = csum_start_off + skb->csum_offset;
+			/* Tx Partial Checksum Offload Enabled */
+			cur_p->app0 |= 1;
+			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
+			cur_p->app2 = 0;  /* initial checksum seed */
+		} else if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
+			/* Tx Full Checksum Offload Enabled */
+			cur_p->app0 |= 2;
+		}
+	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
+		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
+
 
 	cur_p->cntrl = ((cur_p->cntrl & (~XAXIDMA_BD_CTRL_LENGTH_MASK)) |
 							(skb_headlen(skb)));
@@ -838,6 +849,7 @@ static void axienet_recv(struct net_device *ndev)
 	struct axidma_bd *cur_p;
 	dma_addr_t tail_p;
 	int length;
+	int csumstatus;
 
 	tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
@@ -863,6 +875,15 @@ static void axienet_recv(struct net_device *ndev)
 			(skb->len > 64)) {
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
+		} else if ((lp->features & XAE_FEATURE_FULL_RX_CSUM) &&
+			(skb->protocol == __constant_htons(ETH_P_IP)) &&
+			(skb->len > 64)) {
+			csumstatus = (cur_p->app2 & XAE_FULL_CSUM_STATUS_MASK)
+									>> 3;
+			if ((csumstatus == XAE_IP_TCP_CSUM_VALIDATED) ||
+				(csumstatus == XAE_IP_UDP_CSUM_VALIDATED)) {
+				skb->ip_summed = CHECKSUM_UNNECESSARY;
+			}
 		}
 
 		netif_rx(skb);
@@ -914,29 +935,30 @@ static irqreturn_t axienet_tx_irq(int irq, void *_ndev)
 
 	status = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
 
-	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Tx path");
-
-	if (status & (XAXIDMA_IRQ_DELAY_MASK | XAXIDMA_IRQ_IOC_MASK))
+	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK))
 		axienet_start_xmit_done(lp->ndev);
+	else {
+		if (!(status & XAXIDMA_IRQ_ALL_MASK))
+			dev_err(&ndev->dev, "No interrupts asserted in Tx path");
 
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
-				(lp->tx_bd_v[lp->tx_bd_ci]).phys);
-		cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Tx channel control register */
-		axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
+		if (status & XAXIDMA_IRQ_ERROR_MASK) {
+			dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
+			dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
+					(lp->tx_bd_v[lp->tx_bd_ci]).phys);
+			cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+			/* Disable coalesce, delay timer and error interrupts */
+			cr &= (~XAXIDMA_IRQ_ALL_MASK);
+			/* Write to the Tx channel control register */
+			axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
 
-		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Rx channel control register */
-		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+			cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+			/* Disable coalesce, delay timer and error interrupts */
+			cr &= (~XAXIDMA_IRQ_ALL_MASK);
+			/* Write to the Rx channel control register */
+			axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
 
-		tasklet_schedule(&lp->dma_err_tasklet);
+			tasklet_schedule(&lp->dma_err_tasklet);
+		}
 	}
 
 	axienet_dma_out32(lp, XAXIDMA_TX_SR_OFFSET, status);
@@ -961,31 +983,31 @@ static irqreturn_t axienet_rx_irq(int irq, void *_ndev)
 	unsigned int status;
 	u32 cr;
 
-
 	status = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
 
-	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Rx path");
-
-	if (status & (XAXIDMA_IRQ_DELAY_MASK | XAXIDMA_IRQ_IOC_MASK))
+	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK))
 		axienet_recv(lp->ndev);
+	else {
+		if (!(status & XAXIDMA_IRQ_ALL_MASK))
+			dev_err(&ndev->dev, "No interrupts asserted in Rx path");
 
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
+		if (status & XAXIDMA_IRQ_ERROR_MASK) {
+			dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
+			dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
 					(lp->rx_bd_v[lp->rx_bd_ci]).phys);
-		cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Finally write to the Tx channel control register */
-		axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
+			cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
+			/* Disable coalesce, delay timer and error interrupts */
+			cr &= (~XAXIDMA_IRQ_ALL_MASK);
+			/* Finally write to the Tx channel control register */
+			axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET, cr);
 
-		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* write to the Rx channel control register */
-		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
-		tasklet_schedule(&lp->dma_err_tasklet);
+			cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+			/* Disable coalesce, delay timer and error interrupts */
+			cr &= (~XAXIDMA_IRQ_ALL_MASK);
+			/* write to the Rx channel control register */
+			axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+			tasklet_schedule(&lp->dma_err_tasklet);
+		}
 	}
 
 	axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
@@ -1397,6 +1419,7 @@ axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
 	struct axienet_local *lp;
 	struct net_device *ndev;
 	const void *addr;
+	int k = 0;
 
 	__be32 *p;
 	int size, rc = 0;
@@ -1431,15 +1454,28 @@ axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
 	lp->features = 0;
 
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,txcsum", NULL);
-	if (p && be32_to_cpup(p)) {
-		lp->features |= XAE_FEATURE_PARTIAL_TX_CSUM;
-		/* Can checksum TCP/UDP over IPv4. */
-		ndev->features |= NETIF_F_IP_CSUM;
+
+	if (p) {
+		k = be32_to_cpup(p);
+		if (k == 1) {
+			lp->features |= XAE_FEATURE_PARTIAL_TX_CSUM;
+			/* Can checksum TCP/UDP over IPv4. */
+			ndev->features |= NETIF_F_IP_CSUM;
+		} else if (k == 2) {
+			lp->features |= XAE_FEATURE_FULL_TX_CSUM;
+			/* Can checksum IP as well as TCP packets. */
+			ndev->features |= NETIF_F_HW_CSUM;
+		}
 	}
 
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,rxcsum", NULL);
-	if (p && be32_to_cpup(p))
-		lp->features |= XAE_FEATURE_PARTIAL_RX_CSUM;
+	if (p) {
+		k = be32_to_cpup(p);
+		if (k == 1)
+			lp->features |= XAE_FEATURE_PARTIAL_RX_CSUM;
+		else if (k == 2)
+			lp->features |= XAE_FEATURE_FULL_RX_CSUM;
+	}
 
 	/* For supporting jumbo frames, the Axi Ethernet hardware must have
 	 * a larger Rx/Tx Memory. Typically, the size must be more than or
