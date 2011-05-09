@@ -27,6 +27,7 @@
 #include <linux/spi/flash.h>
 #include <mach/nand.h>
 #include <linux/amba/xilinx_dma.h>
+#include <asm/pmu.h>
 
 /* Create all the platform devices for the BSP */
 
@@ -895,6 +896,19 @@ struct platform_device xilinx_devcfg_device = {
         .num_resources = ARRAY_SIZE(xdevcfg_resource),
 };
 
+static struct resource xilinx_pmu_resource = {
+        .start  = 37,
+        .end    = 38,
+        .flags  = IORESOURCE_IRQ,
+};
+
+static struct platform_device xilinx_pmu_device = {
+        .name           = "arm-pmu",
+        .id             = ARM_PMU_DEVICE_CPU,
+        .num_resources  = 1,
+	.resource	= &xilinx_pmu_resource,
+};
+
 /* add all platform devices to the following table so they
  * will be registered, create seperate lists for AMP on each
  * CPU so that they don't try to use the same devices
@@ -937,6 +951,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_sdio1pss_device,
 	&xilinx_slcr_device,
         &xilinx_devcfg_device,
+	&xilinx_pmu_device,
 };
 
 struct platform_device *xilinx_pdevices_amp0[] __initdata = {
