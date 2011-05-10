@@ -166,6 +166,7 @@
 #define XAE_UAWU_OFFSET		0x00000024 /* Unicast address word upper */
 #define XAE_TPID0_OFFSET	0x00000028 /* VLAN TPID0 register */
 #define XAE_TPID1_OFFSET	0x0000002C /* VLAN TPID1 register */
+#define XAE_PPST_OFFSET		0x00000030 /* PCS PMA Soft Temac Status Reg */
 #define XAE_RCW0_OFFSET		0x00000400 /* Rx Configuration Word 0 */
 #define XAE_RCW1_OFFSET		0x00000404 /* Rx Configuration Word 1 */
 #define XAE_TC_OFFSET		0x00000408 /* Tx Configuration */
@@ -385,6 +386,8 @@
 #define XAE_FEATURE_FULL_RX_CSUM	(1 << 2)
 #define XAE_FEATURE_FULL_TX_CSUM	(1 << 3)
 
+#define XAE_NO_CSUM_OFFLOAD		0
+
 #define XAE_FULL_CSUM_STATUS_MASK	0x00000038
 #define XAE_IP_UDP_CSUM_VALIDATED	0x00000003
 #define XAE_IP_TCP_CSUM_VALIDATED	0x00000002
@@ -507,6 +510,12 @@ struct axienet_local {
 
 	int max_frm_size;
 	int jumbo_support;
+
+	int csum_offload_on_tx_path;
+	int csum_offload_on_rx_path;
+
+	u32 coalesce_count_rx;
+	u32 coalesce_count_tx;
 
 };
 
