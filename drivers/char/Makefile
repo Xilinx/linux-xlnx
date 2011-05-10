@@ -55,7 +55,7 @@ obj-$(CONFIG_GEN_RTC)		+= genrtc.o
 obj-$(CONFIG_EFI_RTC)		+= efirtc.o
 obj-$(CONFIG_DS1302)		+= ds1302.o
 obj-$(CONFIG_XILINX_HWICAP)	+= xilinx_hwicap/
-obj-$(CONFIG_XILINX_DEVCFG)	+= xdevcfg.o
+obj-$(CONFIG_XILINX_DEVCFG)	+= xilinx_devcfg.o
 ifeq ($(CONFIG_GENERIC_NVRAM),y)
   obj-$(CONFIG_NVRAM)	+= generic_nvram.o
 else

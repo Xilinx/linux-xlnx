@@ -221,7 +221,6 @@ xdevcfg_write(struct file *file, const char __user *buf,
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_MASK_OFFSET,
 				(u32) (~(XDCFG_IXR_DMA_DONE_MASK |
-				XDCFG_IXR_PCFG_DONE_MASK |
 				XDCFG_IXR_ERROR_FLAGS_MASK)));
 
 	drvdata->dma_done = 0;
@@ -986,7 +985,6 @@ static ssize_t xdevcfg_show_aes_status(struct device *dev,
 {
 	u32 aes_status;
 	ssize_t status;
-	int intr_status;
 	struct xdevcfg_drvdata *drvdata =
 		(struct xdevcfg_drvdata *)dev_get_drvdata(dev);
 
@@ -994,8 +992,6 @@ static ssize_t xdevcfg_show_aes_status(struct device *dev,
 				XDCFG_CTRL_OFFSET) &
 				XDCFG_CTRL_PCFG_AES_EN_MASK;
 
-	intr_status = xdevcfg_readreg(drvdata->base_address +
-					XDCFG_INT_STS_OFFSET);
 
 	status = sprintf(buf, "%d\n", (aes_status >> 9));
 
@@ -1241,7 +1237,38 @@ static ssize_t xdevcfg_show_dbg_lock_status(struct device *dev,
 static DEVICE_ATTR(dbg_lock, 0644, xdevcfg_show_dbg_lock_status,
 				xdevcfg_set_dbg_lock);
 
+/**
+ * xdevcfg_show_prog_done_status() - The function returns the PROG_DONE bit
+ * status in the interrupt status register.
+ * @dev:	Pointer to the device structure.
+ * @attr:	Pointer to the device attribute structure.
+ * @buf:	Pointer to the buffer location for the configuration
+ *		data.
+ * returns:	size of the buffer.
+ *
+ **/
+static ssize_t xdevcfg_show_prog_done_status(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	u32 prog_done_status;
+	ssize_t status;
+	struct xdevcfg_drvdata *drvdata =
+		(struct xdevcfg_drvdata *)dev_get_drvdata(dev);
+
+	prog_done_status = xdevcfg_readreg(drvdata->base_address +
+				XDCFG_INT_STS_OFFSET) &
+				XDCFG_IXR_PCFG_DONE_MASK;
+
+	status = sprintf(buf, "%d\n", (prog_done_status >> 2));
+
+	return status;
+}
+
+static DEVICE_ATTR(prog_done, 0644, xdevcfg_show_prog_done_status,
+				NULL);
+
 static const struct attribute *xdevcfg_attrs[] = {
+	&dev_attr_prog_done.attr, /* PCFG_DONE bit in Intr Status register */
 	&dev_attr_dbg_lock.attr, /* Debug lock bit in Lock register */
 	&dev_attr_seu_lock.attr, /* SEU lock bit in Lock register */
 	&dev_attr_aes_en_lock.attr, /* AES EN lock bit in Lock register */
@@ -1360,7 +1387,6 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 				(XDCFG_CTRL_PCFG_PROG_B_MASK |
 				XDCFG_CTRL_PCAP_PR_MASK |
 				XDCFG_CTRL_PCAP_MODE_MASK |
-				XDCFG_CTRL_PCAP_RATE_EN_MASK |
 				XDCFG_CTRL_USER_MODE_MASK));
 
 
