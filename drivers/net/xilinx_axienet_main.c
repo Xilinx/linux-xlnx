@@ -788,16 +788,16 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
-		if (lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) {
+		if (lp->features & XAE_FEATURE_FULL_TX_CSUM)
+			/* Tx Full Checksum Offload Enabled */
+			cur_p->app0 |= 2;
+		else if (lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) {
 			csum_start_off = skb_transport_offset(skb);
 			csum_index_off = csum_start_off + skb->csum_offset;
 			/* Tx Partial Checksum Offload Enabled */
 			cur_p->app0 |= 1;
 			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
 			cur_p->app2 = 0;  /* initial checksum seed */
-		} else if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
-			/* Tx Full Checksum Offload Enabled */
-			cur_p->app0 |= 2;
 		}
 	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
@@ -878,20 +878,18 @@ static void axienet_recv(struct net_device *ndev)
 		skb->ip_summed = CHECKSUM_NONE;
 
 		/* if we're doing Rx csum offload, set it up */
-		if (((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0) &&
-			(skb->protocol == __constant_htons(ETH_P_IP)) &&
-			(skb->len > 64)) {
-			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
-			skb->ip_summed = CHECKSUM_COMPLETE;
-		} else if ((lp->features & XAE_FEATURE_FULL_RX_CSUM) &&
-			(skb->protocol == __constant_htons(ETH_P_IP)) &&
-			(skb->len > 64)) {
+		if (lp->features & XAE_FEATURE_FULL_RX_CSUM) {
 			csumstatus = (cur_p->app2 & XAE_FULL_CSUM_STATUS_MASK)
 									>> 3;
 			if ((csumstatus == XAE_IP_TCP_CSUM_VALIDATED) ||
 				(csumstatus == XAE_IP_UDP_CSUM_VALIDATED)) {
 				skb->ip_summed = CHECKSUM_UNNECESSARY;
 			}
+		} else if (((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0)
+			&& (skb->protocol == __constant_htons(ETH_P_IP)) &&
+			(skb->len > 64)) {
+			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
+			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
 
 		netif_rx(skb);
@@ -1863,8 +1861,8 @@ axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
 			lp->csum_offload_on_tx_path =
 					XAE_FEATURE_FULL_TX_CSUM;
 			lp->features |= XAE_FEATURE_FULL_TX_CSUM;
-			/* Can checksum IP as well as TCP packets. */
-			ndev->features |= NETIF_F_HW_CSUM;
+			/* Can checksum TCP/UDP over IPv4. */
+			ndev->features |= NETIF_F_IP_CSUM;
 		} else
 			lp->csum_offload_on_tx_path = XAE_NO_CSUM_OFFLOAD;
 	}
