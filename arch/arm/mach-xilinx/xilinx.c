@@ -65,8 +65,8 @@
 #define SRAM_SET_OPMODE (0x00003000)
 #define SRAM_DIRECT_CMD (0x00C00000)	/* Chip 1 */
 
-#define L2_TAG_LATENCY (0x111)
-#define L2_DATA_LATENCY (0x111)
+#define L2_TAG_LATENCY (0x121)
+#define L2_DATA_LATENCY (0x121)
 
 extern struct sys_timer xttcpss_sys_timer;
 extern void platform_device_init(void);
@@ -188,7 +188,7 @@ static void __init board_init(void)
 	BUG_ON(!l2cache_base);
 
 	__raw_writel(L2_TAG_LATENCY, l2cache_base + L2X0_TAG_LATENCY_CTRL);
-	__raw_writel(L2_DATA_LATENCY, l2cache_base + L2X0_TAG_LATENCY_CTRL);
+	__raw_writel(L2_DATA_LATENCY, l2cache_base + L2X0_DATA_LATENCY_CTRL);
 	printk(KERN_INFO "l2x0: Tag Latency set to 0x%X cycles\n", L2_TAG_LATENCY);
 	printk(KERN_INFO "l2x0: Data Latency set to 0x%X cycles\n", L2_DATA_LATENCY);
 
