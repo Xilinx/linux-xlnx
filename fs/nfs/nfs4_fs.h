@@ -47,6 +47,7 @@ enum nfs4_client_state {
 	NFS4CLNT_LAYOUTRECALL,
 	NFS4CLNT_SESSION_RESET,
 	NFS4CLNT_RECALL_SLOT,
+	NFS4CLNT_LEASE_CONFIRM,
 };
 
 enum nfs4_session_state {
@@ -57,7 +58,8 @@ enum nfs4_session_state {
 struct nfs4_minor_version_ops {
 	u32	minor_version;
 
-	int	(*call_sync)(struct nfs_server *server,
+	int	(*call_sync)(struct rpc_clnt *clnt,
+			struct nfs_server *server,
 			struct rpc_message *msg,
 			struct nfs4_sequence_args *args,
 			struct nfs4_sequence_res *res,
@@ -252,6 +254,9 @@ static inline struct nfs4_session *nfs4_get_session(const struct nfs_server *ser
 extern int nfs4_setup_sequence(const struct nfs_server *server,
 		struct nfs4_sequence_args *args, struct nfs4_sequence_res *res,
 		int cache_reply, struct rpc_task *task);
+extern int nfs41_setup_sequence(struct nfs4_session *session,
+		struct nfs4_sequence_args *args, struct nfs4_sequence_res *res,
+		int cache_reply, struct rpc_task *task);
 extern void nfs4_destroy_session(struct nfs4_session *session);
 extern struct nfs4_session *nfs4_alloc_session(struct nfs_client *clp);
 extern int nfs4_proc_create_session(struct nfs_client *);
@@ -259,6 +264,21 @@ extern int nfs4_proc_destroy_session(struct nfs4_session *);
 extern int nfs4_init_session(struct nfs_server *server);
 extern int nfs4_proc_get_lease_time(struct nfs_client *clp,
 		struct nfs_fsinfo *fsinfo);
+extern int nfs4_proc_layoutcommit(struct nfs4_layoutcommit_data *data,
+				  bool sync);
+
+static inline bool
+is_ds_only_client(struct nfs_client *clp)
+{
+	return (clp->cl_exchange_flags & EXCHGID4_FLAG_MASK_PNFS) ==
+		EXCHGID4_FLAG_USE_PNFS_DS;
+}
+
+static inline bool
+is_ds_client(struct nfs_client *clp)
+{
+	return clp->cl_exchange_flags & EXCHGID4_FLAG_USE_PNFS_DS;
+}
 #else /* CONFIG_NFS_v4_1 */
 static inline struct nfs4_session *nfs4_get_session(const struct nfs_server *server)
 {
@@ -275,6 +295,18 @@ static inline int nfs4_setup_sequence(const struct nfs_server *server,
 static inline int nfs4_init_session(struct nfs_server *server)
 {
 	return 0;
+}
+
+static inline bool
+is_ds_only_client(struct nfs_client *clp)
+{
+	return false;
+}
+
+static inline bool
+is_ds_client(struct nfs_client *clp)
+{
+	return false;
 }
 #endif /* CONFIG_NFS_V4_1 */
 

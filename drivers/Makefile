@@ -119,3 +119,5 @@ obj-y				+= ieee802154/
 obj-y				+= xilinx_common/
 #common clk code
 obj-y				+= clk/
+
+obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/

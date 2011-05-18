@@ -77,7 +77,7 @@ __tagtable(ATAG_INITRD2, parse_tag_initrd2);
 void __init early_init_dt_setup_initrd_arch(unsigned long start, unsigned long end)
 {
 	phys_initrd_start = start;
-	phys_initrd_size = end - start + 1;
+	phys_initrd_size = end - start;
 }
 #endif /* CONFIG_OF_FLATTREE */
 
@@ -88,7 +88,7 @@ void __init early_init_dt_setup_initrd_arch(unsigned long start, unsigned long e
  */
 struct meminfo meminfo;
 
-void show_mem(void)
+void show_mem(unsigned int filter)
 {
 	int free = 0, total = 0, reserved = 0;
 	int shared = 0, cached = 0, slab = 0, i;
@@ -361,7 +361,7 @@ void __init bootmem_init(void)
 	 */
 	arm_bootmem_free(min, max_low, max_high);
 
-	high_memory = __va((max_low << PAGE_SHIFT) - 1) + 1;
+	high_memory = __va(((phys_addr_t)max_low << PAGE_SHIFT) - 1) + 1;
 
 	/*
 	 * This doesn't seem to be used by the Linux memory manager any
@@ -409,8 +409,8 @@ free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 	 * Convert to physical addresses, and
 	 * round start upwards and end downwards.
 	 */
-	pg = PAGE_ALIGN(__pa(start_pg));
-	pgend = __pa(end_pg) & PAGE_MASK;
+	pg = (unsigned long)PAGE_ALIGN(__pa(start_pg));
+	pgend = (unsigned long)__pa(end_pg) & PAGE_MASK;
 
 	/*
 	 * If there are free pages between these,

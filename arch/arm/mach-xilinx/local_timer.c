@@ -19,14 +19,17 @@
 #include <asm/smp_twd.h>
 #include <asm/localtimer.h>
 
+int local_timer_setup(struct clock_event_device *);
+
 /*
  * Setup the local clock events for a CPU.
  */
-void __cpuinit local_timer_setup(struct clock_event_device *evt)
+int __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
 	twd_base = (void __iomem *)SCU_CPU_TIMER_BASE;
 
 	evt->irq = IRQ_SCU_CPU_TIMER;
 	twd_timer_setup(evt);
+	return 0;
 }
 
