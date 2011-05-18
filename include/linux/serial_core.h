@@ -202,9 +202,6 @@
 /* VIA VT8500 SoC */
 #define PORT_VT8500	97
 
-/* Xilinx */
-#define PORT_XUARTPSS	98
-
 #ifdef __KERNEL__
 
 #include <linux/compiler.h>
