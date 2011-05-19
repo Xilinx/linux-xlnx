@@ -46,7 +46,7 @@ static struct resource uart0[] = {
 static unsigned long uart_clk = 50000000;
 
 struct platform_device uart_device0 = {
-	.name = "xuartpss",
+	.name = "xuartps",
 	.id = 0,
 	.dev = {
 		.platform_data = &uart_clk,
@@ -71,7 +71,7 @@ static struct resource uart1[] = {
 static u64 dma_mask = 0xFFFFFFFFUL;
 
 struct platform_device uart_device1 = {
-	.name = "xuartpss",
+	.name = "xuartps",
 	.id = 1,
 	.dev = {
 		.platform_data = &uart_clk,
