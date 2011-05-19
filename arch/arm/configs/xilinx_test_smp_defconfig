@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux/arm 2.6.39 Kernel Configuration
-# Thu May 19 14:02:13 2011
+# Thu May 19 15:06:02 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -384,7 +384,7 @@ CONFIG_ALIGNMENT_TRAP=y
 CONFIG_USE_OF=y
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="console=ttyPS0,9600n8 init=/test/pele_test.sh ip=10.10.70.1:::255.255.255.0::eth0 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=physmap-flash.0:512K(nor-fsbl),512K(nor-u-boot),5M(nor-linux),9M(nor-user),1M(nor-scratch),-(nor-rootfs)"
+CONFIG_CMDLINE="console=ttyPS0,115200n8 init=/test/pele_test.sh ip=10.10.70.1:::255.255.255.0::eth0 root=/dev/nfs rw nfsroot=10.10.70.101:/exports/root,tcp earlyprintk mtdparts=physmap-flash.0:512K(nor-fsbl),512K(nor-u-boot),5M(nor-linux),9M(nor-user),1M(nor-scratch),-(nor-rootfs)"
 CONFIG_CMDLINE_FORCE=y
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
@@ -894,7 +894,6 @@ CONFIG_DEVKMEM=y
 # CONFIG_SERIAL_AMBA_PL011 is not set
 # CONFIG_SERIAL_MAX3100 is not set
 # CONFIG_SERIAL_MAX3107 is not set
-# CONFIG_SERIAL_XILINX_PSS_UART is not set
 CONFIG_SERIAL_CORE=y
 CONFIG_SERIAL_CORE_CONSOLE=y
 # CONFIG_SERIAL_TIMBERDALE is not set
