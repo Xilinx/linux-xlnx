@@ -285,18 +285,18 @@ static int xgpiopss_dir_out(struct gpio_chip *chip, unsigned int pin, int state)
 
 /**
  * xgpiopss_irq_ack - Acknowledge the interrupt of a gpio pin
- * @irq:	irq number of gpio pin for which interrupt is to be ACKed
+ * @irq_data:	irq data containing irq number of gpio pin for the interrupt to ack
  *
  * This function calculates gpio pin number from irq number and sets the bit
  * in the Interrupt Status Register of the corresponding bank, to ACK the irq.
  */
-static void xgpiopss_irq_ack(unsigned int irq)
+static void xgpiopss_irq_ack(struct irq_data *irq_data)
 {
-	struct xgpiopss *gpio = (struct xgpiopss *)get_irq_chip_data(irq);
+	struct xgpiopss *gpio = (struct xgpiopss *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	unsigned int irq_sts;
 
-	device_pin_num = irq_to_gpio(irq); /* get pin num within the device */
+	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiopss_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
 	irq_sts = xgpiopss_readreg(gpio->base_addr +
 				   XGPIOPSS_INTSTS_OFFSET(bank_num)) |
@@ -313,13 +313,13 @@ static void xgpiopss_irq_ack(unsigned int irq)
  * bit in the Interrupt Disable register of the corresponding bank to disable
  * interrupts for that pin.
  */
-static void xgpiopss_irq_mask(unsigned int irq)
+static void xgpiopss_irq_mask(struct irq_data *irq_data)
 {
-	struct xgpiopss *gpio = (struct xgpiopss *)get_irq_chip_data(irq);
+	struct xgpiopss *gpio = (struct xgpiopss *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	unsigned int irq_dis;
 
-	device_pin_num = irq_to_gpio(irq); /* get pin num within the device */
+	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiopss_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
 	irq_dis = xgpiopss_readreg(gpio->base_addr +
 				   XGPIOPSS_INTDIS_OFFSET(bank_num)) |
@@ -330,19 +330,19 @@ static void xgpiopss_irq_mask(unsigned int irq)
 
 /**
  * xgpiopss_irq_unmask - Enable the interrupts for a gpio pin
- * @irq:	irq number of gpio pin for which interrupt is to be enabled
+ * @irq_data:	irq data containing irq number of gpio pin for the interrupt to enable
  *
  * This function calculates the gpio pin number from irq number and sets the
  * bit in the Interrupt Enable register of the corresponding bank to enable
  * interrupts for that pin.
  */
-static void xgpiopss_irq_unmask(unsigned int irq)
+static void xgpiopss_irq_unmask(struct irq_data *irq_data)
 {
-	struct xgpiopss *gpio = (struct xgpiopss *)get_irq_chip_data(irq);
+	struct xgpiopss *gpio = (struct xgpiopss *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	unsigned int irq_en;
 
-	device_pin_num = irq_to_gpio(irq); /* get pin num within the device */
+	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiopss_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
 	irq_en = xgpiopss_readreg(gpio->base_addr +
 				  XGPIOPSS_INTEN_OFFSET(bank_num)) |
@@ -353,7 +353,7 @@ static void xgpiopss_irq_unmask(unsigned int irq)
 
 /**
  * xgpiopss_set_irq_type - Set the irq type for a gpio pin
- * @irq:	irq number of gpio pin for which interrupt type is to be set
+ * @irq_data:	irq data containing irq number of gpio pin 
  * @type:	interrupt type that is to be set for the gpio pin
  *
  * This function gets the gpio pin number and its bank from the gpio pin number
@@ -365,13 +365,13 @@ static void xgpiopss_irq_unmask(unsigned int irq)
  * TYPE-LEVEL_HIGH,   INT_TYPE - 0, INT_POLARITY - 1,  INT_ANY - NA;
  * TYPE-LEVEL_LOW,    INT_TYPE - 0, INT_POLARITY - 0,  INT_ANY - NA
  */
-static int xgpiopss_set_irq_type(unsigned int irq, unsigned int type)
+static int xgpiopss_set_irq_type(struct irq_data *irq_data, unsigned int type)
 {
-	struct xgpiopss *gpio = (struct xgpiopss *)get_irq_chip_data(irq);
+	struct xgpiopss *gpio = (struct xgpiopss *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	unsigned int int_type, int_pol, int_any;
 
-	device_pin_num = irq_to_gpio(irq); /* get pin num within the device */
+	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiopss_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
 
 	int_type = xgpiopss_readreg(gpio->base_addr +
@@ -424,10 +424,10 @@ static int xgpiopss_set_irq_type(unsigned int irq, unsigned int type)
 /* irq chip descriptor */
 static struct irq_chip xgpiopss_irqchip = {
 	.name		= DRIVER_NAME,
-	.ack		= xgpiopss_irq_ack,
-	.mask		= xgpiopss_irq_mask,
-	.unmask		= xgpiopss_irq_unmask,
-	.set_type	= xgpiopss_set_irq_type,
+	.irq_ack	= xgpiopss_irq_ack,
+	.irq_mask	= xgpiopss_irq_mask,
+	.irq_unmask	= xgpiopss_irq_unmask,
+	.irq_set_type	= xgpiopss_set_irq_type,
 };
 
 /**
@@ -443,12 +443,14 @@ static struct irq_chip xgpiopss_irqchip = {
  */
 void xgpiopss_irqhandler(unsigned int irq, struct irq_desc *desc)
 {
-	int gpio_irq = (int) get_irq_data(irq);
-	struct xgpiopss *gpio = (struct xgpiopss *)get_irq_chip_data(gpio_irq);
+	int gpio_irq = (int)irq_get_handler_data(irq);
+	struct xgpiopss *gpio = (struct xgpiopss *)irq_get_chip_data(gpio_irq);
 	unsigned int int_sts, int_enb, bank_num;
 	struct irq_desc *gpio_irq_desc;
+	struct irq_chip *chip = irq_desc_get_chip(desc);
+	struct irq_data *irq_data = irq_get_chip_data(irq);
 
-	desc->chip->ack(irq);
+	chip->irq_ack(irq_data);
 	for (bank_num = 0; bank_num < 4; bank_num++) {
 		int_sts = xgpiopss_readreg(gpio->base_addr +
 					   XGPIOPSS_INTSTS_OFFSET(bank_num));
@@ -464,17 +466,17 @@ void xgpiopss_irqhandler(unsigned int irq, struct irq_desc *desc)
 				continue;
 			BUG_ON(!(irq_desc[gpio_irq].handle_irq));
 			gpio_irq_desc = irq_to_desc(gpio_irq);
-			gpio_irq_desc->chip->ack(gpio_irq);
+			chip->irq_ack(irq_data);
 
 			/* call the pin specific handler */
 			irq_desc[gpio_irq].handle_irq(gpio_irq,
 						      &irq_desc[gpio_irq]);
 		}
 		/* shift to first virtual irq of next bank */
-		gpio_irq = (int) get_irq_data(irq) +
+		gpio_irq = (int)irq_get_handler_data(irq) + 
 				(xgpiopss_pin_table[bank_num] + 1);
 	}
-	desc->chip->unmask(irq);
+	chip->irq_unmask(irq_data);
 }
 
 /**
@@ -566,14 +568,14 @@ static int __init xgpiopss_probe(struct platform_device *pdev)
 	 */
 	gpio_irq = XGPIOPSS_IRQBASE;
 	for (pin_num = 0; pin_num < ARCH_NR_GPIOS; pin_num++, gpio_irq++) {
-		set_irq_chip(gpio_irq, &xgpiopss_irqchip);
-		set_irq_chip_data(gpio_irq, (void *)gpio);
-		set_irq_handler(gpio_irq, handle_simple_irq);
-		set_irq_flags(gpio_irq, IRQF_VALID);
+		irq_set_chip(gpio_irq, &xgpiopss_irqchip);
+		irq_set_chip_data(gpio_irq, (void *)gpio);
+		irq_set_handler(gpio_irq, handle_simple_irq);
+		irq_set_status_flags(gpio_irq, IRQF_VALID);
 	}
 
-	set_irq_data(irq_num, (void *)(XGPIOPSS_IRQBASE));
-	set_irq_chained_handler(irq_num, xgpiopss_irqhandler);
+	irq_set_handler_data(irq_num, (void *)(XGPIOPSS_IRQBASE));
+	irq_set_chained_handler(irq_num, xgpiopss_irqhandler);
 
 	return 0;
 
