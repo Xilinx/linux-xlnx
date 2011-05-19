@@ -26,7 +26,10 @@
 #define UART_MR_PARITY_NONE  	0x00000020  /* No parity mode */
 #define UART_SR_TXFULL   	0x00000010  /* TX FIFO full */
 
-#define UART_BAUD		0x145	/* 9600 based on system clock */
+#define UART_BAUD_9600		0x145	/* 9600 based on 50 MHz clock */
+#define UART_BAUDDIV_9600	0xF	
+#define UART_BAUD_115K		0x56	/* 115200 based on 50 MHz clock */
+#define UART_BAUDDIV_115K	0x4
 
 #define ReadReg(BaseAddress, RegOffset) \
     *(volatile int *)((BaseAddress) + (RegOffset))
