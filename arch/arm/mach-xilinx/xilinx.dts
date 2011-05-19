@@ -13,7 +13,7 @@
    };
 
    chosen {
-	bootargs = "console=ttyDF0,9600 root=/dev/ram rw initrd=0x800000,8M earlyprintk debug";
+	bootargs = "console=ttyPS0,9600 root=/dev/ram rw initrd=0x800000,8M earlyprintk debug";
 	linux,stdout-path = "/amba@0/uart@E0000000";
    };
 
@@ -31,19 +31,17 @@
       };
 
       uart0: uart@E0000000 {
-         compatible = "xlnx,xuartpss";
+         compatible = "xlnx,xuartps";
          reg = <0xE0000000 0x1000>;
          interrupts = <59 0>;
 	 clock = <50000000>;
-	 port-number = <0>;
       };
 
       uart1: uart@E0001000 {
-         compatible = "xlnx,xuartpss";
+         compatible = "xlnx,xuartps";
          reg = <0xE0001000 0x1000>;
          interrupts = <82 0>;
 	 clock = <50000000>;
-	 port-number = <1>;
       };
 
    };
