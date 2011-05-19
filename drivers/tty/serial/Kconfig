@@ -857,18 +857,6 @@ config SERIAL_UARTLITE_CONSOLE
 	  console (the system console is the device which receives all kernel
 	  messages and warnings and which allows logins in single user mode).
 
-config SERIAL_XILINX_PSS_UART
-	tristate "Xilinx Support for PSS UART"
-	select SERIAL_CORE
-	help
-	  Say Y here if you want to use the Xilinx PSS serial controller.
-
-config SERIAL_XILINX_PSS_UART_CONSOLE
-	bool "Support for console on PSS UART"
-	depends on SERIAL_XILINX_PSS_UART=y
-	select SERIAL_CORE_CONSOLE
-	help
-
 config SERIAL_SUNCORE
 	bool
 	depends on SPARC
