@@ -1,8 +1,8 @@
-/*
- * This file contains common function prototypes to avoid externs
- * in the c files.
+/* arch/arm/mach-zynq/include/mach/smp.h
  *
- *  Copyright (C) 2011 Xilinx
+ * Copyright (C) 2011 Xilinx
+ *
+ * based on arch/arm/mach-realview/include/mach/smp.h
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -14,18 +14,17 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __MACH_ZYNQ_COMMON_H__
-#define __MACH_ZYNQ_COMMON_H__
+#ifndef __MACH_SMP_H__
+#define __MACH_SMP_H__
 
-#include <linux/init.h>
-#include <asm/mach/time.h>
+#include <asm/hardware/gic.h>
 
-void xilinx_init_machine(void);
-void xilinx_irq_init(void);
-void xilinx_map_io(void);
-
-void secondary_startup(void);
-
-extern struct sys_timer xttcpss_sys_timer;
+/*
+ * We use IRQ1 as the IPI
+ */
+static inline void smp_cross_call(const struct cpumask *mask, int ipi)
+{
+	gic_raise_softirq(mask, ipi);
+}
 
 #endif
