@@ -25,6 +25,8 @@
 #include <linux/io.h>
 
 #include <asm/mach/time.h>
+#include <asm/smp_twd.h>
+
 #include <mach/zynq_soc.h>
 #include "common.h"
 
@@ -271,6 +273,9 @@ static struct clock_event_device xttcpss_clockevent = {
  **/
 static void __init xttcpss_timer_init(void)
 {
+#ifdef CONFIG_HAVE_ARM_TWD
+	twd_base = SCU_CPU_TIMER_BASE;
+#endif
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss, TIMER_RATE);
 
