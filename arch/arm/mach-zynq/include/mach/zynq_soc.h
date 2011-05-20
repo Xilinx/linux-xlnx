@@ -31,6 +31,12 @@
 #define SCU_PERIPH_PHYS			0xF8F00000
 #define SCU_PERIPH_VIRT			SCU_PERIPH_PHYS
 
+#define OCM_LOW_PHYS			0xFFFC0000
+#define OCM_LOW_VIRT			OCM_LOW_PHYS
+
+#define OCM_HIGH_PHYS			0xFFFF1000
+#define OCM_HIGH_VIRT			OCM_HIGH_PHYS
+
 /* The following are intended for the devices that are mapped early */
 
 #define TTC0_BASE			IOMEM(TTC0_VIRT)
@@ -38,6 +44,17 @@
 #define SCU_GIC_CPU_BASE		(SCU_PERIPH_BASE + 0x100)
 #define SCU_GIC_DIST_BASE		(SCU_PERIPH_BASE + 0x1000)
 #define PL310_L2CC_BASE			IOMEM(PL310_L2CC_VIRT)
+#define OCM_LOW_BASE			IOMEM(OCM_LOW_VIRT)
+#define OCM_HIGH_BASE			IOMEM(OCM_HIGH_VIRT)
+
+/* There are two OCM addresses needed for communication between CPUs in SMP.
+ * The memory addresses are in the high on-chip RAM and these addresses are
+ * mapped flat (virtual = physical). The memory must be mapped early and
+ * non-cached.
+ */
+#define BOOT_ADDR_OFFSET	0xEFF0
+#define BOOT_STATUS_OFFSET	0xEFF4
+#define BOOT_STATUS_CPU1_UP	1
 
 /*
  * Mandatory for CONFIG_LL_DEBUG, UART is mapped virtual = physical
