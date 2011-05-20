@@ -287,22 +287,6 @@ bzImage: zImage
 zImage Image xipImage bootpImage uImage: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
 
-ifeq ($(CONFIG_ARCH_XILINX),y)
-ifeq ($(CONFIG_XILINX_AMP_CPU1_SLAVE),y)
-	./convert_vmlinux.sh cpu1
-else 
-ifeq ($(CONFIG_XILINX_AMP_CPU0_MASTER),y)
-	./convert_vmlinux.sh cpu0amp
-else 
-ifeq ($(CONFIG_XILINX_CPU1_TEST),y)
-	./convert_vmlinux.sh cpu1
-else
-	./convert_vmlinux.sh
-endif
-endif
-endif
-endif
-
 zinstall uinstall install: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $@
 
