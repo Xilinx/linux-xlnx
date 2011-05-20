@@ -25,7 +25,7 @@
 	};
 
 	chosen {
-		bootargs = "console=ttyPS0,9600 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
 		linux,stdout-path = &uart0;
 	};
 
@@ -46,6 +46,12 @@
 			compatible = "xlnx,xuartps";
 			reg = <0xE0000000 0x1000>;
 			interrupts = <59 0>;
+			clock = <50000000>;
+		};
+		uart1: uart@e0001000 {
+			compatible = "xlnx,xuartps";
+			reg = <0xE0001000 0x1000>;
+			interrupts = <82 0>;
 			clock = <50000000>;
 		};
 	};
