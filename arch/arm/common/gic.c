@@ -428,4 +428,23 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	writel(map << 16 | irq, gic_data[0].dist_base + GIC_DIST_SOFTINT);
 }
 EXPORT_SYMBOL(gic_raise_softirq);
+
+void __init gic_set_cpu(unsigned int cpu, unsigned int irq)
+{
+	struct irq_data *d = irq_get_irq_data(irq);
+	void __iomem *reg = gic_dist_base(d) + GIC_DIST_TARGET + (gic_irq(d) & ~3);
+	unsigned int shift = (d->irq % 4) * 8;
+	u32 val, mask, bit;
+
+	mask = 0xff << shift;
+	bit = 1 << (cpu + shift);	/* cpu = 0 based, 0 or 1 for Xilinx */
+
+	spin_lock(&irq_controller_lock);
+	val = readl(reg) & ~mask;
+	writel(val | bit, reg);
+	spin_unlock(&irq_controller_lock);
+}
+EXPORT_SYMBOL(gic_set_cpu);
+
 #endif
+
