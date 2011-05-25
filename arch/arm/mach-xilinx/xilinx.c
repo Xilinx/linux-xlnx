@@ -176,7 +176,11 @@ static void __init board_init(void)
 	pr_debug("->board_init\n");
 
 	platform_device_init();
+
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
 	xusbps_init();
+#endif
+
 #ifdef CONFIG_OF
 	pr_info("Xilinx: using device tree\n");
         of_platform_bus_probe(NULL, xilinx_of_bus_ids, NULL);

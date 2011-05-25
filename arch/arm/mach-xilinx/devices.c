@@ -967,6 +967,9 @@ struct platform_device *xilinx_pdevices_amp0[] __initdata = {
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
 	&xilinx_sdio0pss_device,
+	&xilinx_slcr_device,
+        &xilinx_devcfg_device,
+	&xilinx_pmu_device,
 };
 
 struct platform_device *xilinx_pdevices_amp1[] __initdata = {
