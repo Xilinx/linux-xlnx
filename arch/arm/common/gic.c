@@ -271,13 +271,9 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	unsigned int gic_irqs, irq_limit, i;
 	void __iomem *base = gic->dist_base;
 	u32 cpumask = 1 << smp_processor_id();
-	u32 cpu1mask = 2;
 
 	cpumask |= cpumask << 8;
 	cpumask |= cpumask << 16;
-
-	cpu1mask |= cpu1mask << 8;
-	cpu1mask |= cpu1mask << 16;
 
 #ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
 	writel(0, base + GIC_DIST_CTRL);
@@ -301,26 +297,7 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	 * Set all global interrupts to this CPU only.
 	 */
 	for (i = 32; i < gic_irqs; i += 4) {
-
-		/* Xilinx AMP, CPU0 is the master of the GIC, but put the 2nd
-		   set of devices onto CPU1 for now. For CPU1 testing, just
-		   put all devices onto CPU1.
-		*/
-
-#if !defined(CONFIG_XILINX_AMP_CPU0_MASTER) && 		\
-	!defined(CONFIG_XILINX_AMP_CPU1_TEST) && 	\
-	!defined(CONFIG_XILINX_CPU1_TEST)	
 		writel(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
-
-#elif defined(CONFIG_XILINX_CPU1_TEST)
-		writel(cpu1mask, base + GIC_DIST_TARGET + i * 4 / 4);
-
-#elif defined(CONFIG_XILINX_AMP_CPU0_MASTER)
-		if (i < 68) 
-			writel(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
-		else
-			writel(cpu1mask, base + GIC_DIST_TARGET + i * 4 / 4);
-#endif
 	}
 
 	/*
@@ -419,7 +396,7 @@ void __cpuinit gic_enable_ppi(unsigned int irq)
 	local_irq_restore(flags);
 }
 
-#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER)
+#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER) || defined(CONFIG_XILINX_CPU1_TEST)
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	unsigned long map = *cpus_addr(*mask);
