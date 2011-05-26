@@ -786,7 +786,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	cur_p->cntrl = 0;
 
-
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM)
 			/* Tx Full Checksum Offload Enabled */
@@ -802,7 +801,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
-
 
 	cur_p->cntrl = ((cur_p->cntrl & (~XAXIDMA_BD_CTRL_LENGTH_MASK)) |
 							(skb_headlen(skb)));
@@ -1812,7 +1810,6 @@ axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
 	struct axienet_local *lp;
 	struct net_device *ndev;
 	const void *addr;
-	int k = 0;
 
 	__be32 *p;
 	int size, rc = 0;
@@ -1848,38 +1845,39 @@ axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
 	lp->features = 0;
 
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,txcsum", NULL);
-
 	if (p) {
-		k = be32_to_cpup(p);
-		if (k == 1) {
-			lp->csum_offload_on_tx_path =
+		switch (be32_to_cpup(p)) {
+		case 1:	lp->csum_offload_on_tx_path =
 					XAE_FEATURE_PARTIAL_TX_CSUM;
 			lp->features |= XAE_FEATURE_PARTIAL_TX_CSUM;
 			/* Can checksum TCP/UDP over IPv4. */
 			ndev->features |= NETIF_F_IP_CSUM;
-		} else if (k == 2) {
-			lp->csum_offload_on_tx_path =
+			break;
+		case 2:	lp->csum_offload_on_tx_path =
 					XAE_FEATURE_FULL_TX_CSUM;
 			lp->features |= XAE_FEATURE_FULL_TX_CSUM;
 			/* Can checksum TCP/UDP over IPv4. */
 			ndev->features |= NETIF_F_IP_CSUM;
-		} else
+			break;
+		default:
 			lp->csum_offload_on_tx_path = XAE_NO_CSUM_OFFLOAD;
+		}
 	}
 
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,rxcsum", NULL);
 	if (p) {
-		k = be32_to_cpup(p);
-		if (k == 1) {
-			lp->csum_offload_on_rx_path =
+		switch (be32_to_cpup(p)) {
+		case 1: lp->csum_offload_on_rx_path =
 					XAE_FEATURE_PARTIAL_RX_CSUM;
 			lp->features |= XAE_FEATURE_PARTIAL_RX_CSUM;
-		} else if (k == 2) {
-			lp->csum_offload_on_rx_path =
+			break;
+		case 2:	lp->csum_offload_on_rx_path =
 					XAE_FEATURE_FULL_RX_CSUM;
 			lp->features |= XAE_FEATURE_FULL_RX_CSUM;
-		} else
+			break;
+		default:
 			lp->csum_offload_on_rx_path = XAE_NO_CSUM_OFFLOAD;
+		}
 	}
 
 	/* For supporting jumbo frames, the Axi Ethernet hardware must have
