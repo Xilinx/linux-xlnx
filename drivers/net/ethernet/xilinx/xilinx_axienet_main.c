@@ -727,23 +727,9 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
 								int num_frag)
 {
 	struct axidma_bd *cur_p;
-	int tail;
-
-	tail = lp->tx_bd_tail;
-	cur_p = &lp->tx_bd_v[tail];
-
-	do {
-		if ((cur_p->status) & (XAXIDMA_BD_STS_ACTUAL_LEN_MASK))
-			return NETDEV_TX_BUSY;
-
-		tail++;
-		if (tail >= TX_BD_NUM)
-			tail = 0;
-
-		cur_p = &lp->tx_bd_v[tail];
-		num_frag--;
-	} while (num_frag >= 0);
-
+	cur_p = &lp->tx_bd_v[(lp->tx_bd_tail + num_frag) % TX_BD_NUM];
+	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
+		return NETDEV_TX_BUSY;
 	return 0;
 }
 
