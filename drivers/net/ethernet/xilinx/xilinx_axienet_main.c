@@ -814,12 +814,12 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
 
 	tail_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
+	/* Start the transfer */
+	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
+
 	lp->tx_bd_tail++;
 	if (lp->tx_bd_tail >= TX_BD_NUM)
 		lp->tx_bd_tail = 0;
-
-	/* Start the transfer */
-	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 
 	return NETDEV_TX_OK;
 }
