@@ -544,11 +544,14 @@ static void xuartps_set_termios(struct uart_port *port,
 static int xuartps_startup(struct uart_port *port)
 {
 	unsigned int retval = 0, status = 0;
+	unsigned long flags;
 
 	retval = request_irq(port->irq, xuartps_isr, 0, XUARTPS_NAME,
 								(void *)port);
 	if (retval)
 		return retval;
+
+	spin_lock_irqsave(&port->lock, flags);
 
 	/* Disable the TX and RX */
 	xuartps_writel(XUARTPS_CR_TX_DIS | XUARTPS_CR_RX_DIS,
@@ -591,6 +594,8 @@ static int xuartps_startup(struct uart_port *port)
 		XUARTPS_IXR_FRAMING | XUARTPS_IXR_OVERRUN |
 		XUARTPS_IXR_RXTRIG | XUARTPS_IXR_TOUT), XUARTPS_IDR_OFFSET);
 
+	spin_unlock_irqrestore(&port->lock, flags);
+
 	return retval;
 }
 
@@ -602,6 +607,9 @@ static int xuartps_startup(struct uart_port *port)
 static void xuartps_shutdown(struct uart_port *port)
 {
 	int status;
+	unsigned long flags;
+
+	spin_lock_irqsave(&port->lock, flags);
 
 	/* Disable interrupts */
 	status = xuartps_readl(XUARTPS_IMR_OFFSET);
@@ -610,6 +618,8 @@ static void xuartps_shutdown(struct uart_port *port)
 	/* Disable the TX and RX */
 	xuartps_writel(XUARTPS_CR_TX_DIS | XUARTPS_CR_RX_DIS,
 				 XUARTPS_CR_OFFSET);
+
+	spin_unlock_irqrestore(&port->lock, flags);
 	free_irq(port->irq, port);
 }
 
