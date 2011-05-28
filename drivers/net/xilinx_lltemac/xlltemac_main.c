@@ -1390,6 +1390,45 @@ static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 static int descriptor_init(struct net_device *dev);
 static void free_descriptor_skb(struct net_device *dev);
 
+void xenet_set_multicast_list(struct net_device *dev)
+{
+	struct net_local *lp = (struct net_local *) netdev_priv(dev);
+	int i;
+	u32 Options;
+	unsigned long flags;
+
+	spin_lock_irqsave(&XTE_spinlock, flags);
+	XLlTemac_Stop(&lp->Emac);
+
+	Options = XLlTemac_GetOptions(&lp->Emac);
+	Options &= ~XTE_PROMISC_OPTION;
+	Options &= ~XTE_MULTICAST_OPTION;
+	for (i = 0; i < 4; i++)
+		XLlTemac_MulticastClear(&lp->Emac, i);
+
+	if ((dev->flags & IFF_PROMISC) ||
+			(dev->flags & IFF_ALLMULTI) ||
+			(netdev_mc_count(dev) > 4)) {
+		Options |= XTE_PROMISC_OPTION;
+		goto done;
+	}
+
+	if (dev->flags & IFF_MULTICAST) {
+		struct netdev_hw_addr *ha;
+		i = 0;
+		netdev_for_each_mc_addr(ha, dev) {
+			XLlTemac_MulticastAdd(&lp->Emac, ha->addr, i++);
+		}
+		Options |= XTE_MULTICAST_OPTION;
+	}
+
+done:
+	XLlTemac_SetOptions(&lp->Emac, Options);
+
+	XLlTemac_Start(&lp->Emac);
+	spin_unlock_irqrestore(&XTE_spinlock, flags);
+}
+
 static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 {
 	int result;
@@ -3438,7 +3477,6 @@ static int xtenet_setup(
 	/* initialize the netdev structure */
 
 	ndev->netdev_ops = &xilinx_netdev_ops;
-	ndev->flags &= ~IFF_MULTICAST;
 
 	if (XLlTemac_IsDma(&lp->Emac)) {
 		ndev->features = NETIF_F_SG | NETIF_F_FRAGLIST;
@@ -3549,6 +3587,7 @@ static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_tx_timeout	= xenet_tx_timeout,
 	.ndo_get_stats	= xenet_get_stats,
 	.ndo_set_mac_address = xenet_set_mac_address,
+	.ndo_set_multicast_list	= xenet_set_multicast_list,
 };
 
 static struct of_device_id xtenet_fifo_of_match[] = {
