@@ -801,14 +801,12 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			lp->tx_bd_tail = 0;
 
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
-		cur_p->cntrl = 0;
 		frag = &skb_shinfo(skb)->frags[ii];
 		cur_p->phys = dma_map_single(ndev->dev.parent,
 			(void *)page_address(frag->page) + frag->page_offset,
 			frag->size,
 			DMA_TO_DEVICE);
-		cur_p->cntrl = ((cur_p->cntrl & (~XAXIDMA_BD_CTRL_LENGTH_MASK))
-								| frag->size);
+		cur_p->cntrl = frag->size;
 	}
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
 
