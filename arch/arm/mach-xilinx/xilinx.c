@@ -177,7 +177,7 @@ static void __init board_init(void)
 
 	platform_device_init();
 
-#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+#ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
 	xusbps_init();
 #endif
 
