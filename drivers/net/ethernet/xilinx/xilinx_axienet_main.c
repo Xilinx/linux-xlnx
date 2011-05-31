@@ -768,8 +768,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		return NETDEV_TX_BUSY;
 	}
 
-	cur_p->cntrl = 0;
-
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM)
 			/* Tx Full Checksum Offload Enabled */
@@ -786,9 +784,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
-	cur_p->cntrl = ((cur_p->cntrl & (~XAXIDMA_BD_CTRL_LENGTH_MASK)) |
-							(skb_headlen(skb)));
-	cur_p->cntrl = cur_p->cntrl | XAXIDMA_BD_CTRL_TXSOF_MASK;
+	cur_p->cntrl = skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK;
 	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data, skb->len,
 				     DMA_TO_DEVICE);
 	for (ii = 0; ii < num_frag; ii++) {
