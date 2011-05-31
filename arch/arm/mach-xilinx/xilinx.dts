@@ -1,66 +1,65 @@
 /dts-v1/;
 
 / {
-   model = "Peep";
-   compatible = "xlnx,arm-ep";
-   #address-cells = <1>;
-   #size-cells = <1>;
-   interrupt-parent = <&intc>;
+	model = "Peep";
+	compatible = "xlnx,arm-ep";
+	#address-cells = <1>;
+	#size-cells = <1>;
+	interrupt-parent = <&intc>;
 
-   memory {
-      device_type = "memory";
-      reg = <0x0 0x10000000>;
-   };
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x10000000>;
+   	};
 
-   chosen {
-	bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk debug";
-	linux,stdout-path = "/amba@0/uart@E0000000";
-   };
+	chosen {
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+		linux,stdout-path = "/amba@0/uart@E0000000";
+	};
 
-   amba: amba@0 {
-      compatible = "simple-bus";
-      #address-cells = <1>;
-      #size-cells = <1>;
-      ranges;
+	amba: amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
 
-      intc: intc@F8F01000 {
-         interrupt-controller;
-         compatible = "arm,gic";
-         reg = <0xF8F01000 0x1000>;
-         #interrupt-cells = <2>;
-      };
+		intc: intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,gic";
+			reg = <0xF8F01000 0x1000>;
+			#interrupt-cells = <2>;
+		};
+	
+		uart0: uart@e0000000 {
+			compatible = "xlnx,xuartps";
+			reg = <0xE0000000 0x1000>;
+			interrupts = <59 0>;
+			clock = <50000000>;
+		};
+	
+		uart1: uart@e0001000 {
+			compatible = "xlnx,xuartps";
+			reg = <0xE0001000 0x1000>;
+			interrupts = <82 0>;
+			clock = <50000000>;
+		};
+	
+		spi0: spi@e0006000 {
+			compatible = "xlnx,xspips";
+			reg = <0xE0006000 0x1000>;
+			interrupts = <58 0>;
+			speed-hz = <50000000>;
+			bus-num = <0>;
+			num-chip-select = <4>;
+		};
 
-      uart0: uart@E0000000 {
-         compatible = "xlnx,xuartps";
-         reg = <0xE0000000 0x1000>;
-         interrupts = <59 0>;
-	 clock = <50000000>;
-      };
-
-      uart1: uart@E0001000 {
-         compatible = "xlnx,xuartps";
-         reg = <0xE0001000 0x1000>;
-         interrupts = <82 0>;
-	 clock = <50000000>;
-      };
-
-      spi0: spi@E0006000 {
-         compatible = "xlnx,xspips";
-         reg = <0xE0006000 0x1000>;
-         interrupts = <58 0>;
-	 speed-hz = <50000000>;
-	 bus-num = <0>;
-	 num-chip-select = <4>;
-      };
-
-      spi1: spi@E0007000 {
-         compatible = "xlnx,xspips";
-         reg = <0xE0007000 0x1000>;
-         interrupts = <81 0>;
-	 speed-hz = <50000000>;
-	 bus-num = <1>;
-	 num-chip-select = <4>;
-      };
-
-   };
+		spi1: spi@e0007000 {
+			compatible = "xlnx,xspips";
+			reg = <0xE0007000 0x1000>;
+			interrupts = <81 0>;
+			speed-hz = <50000000>;
+			bus-num = <1>;
+			num-chip-select = <4>;
+		};
+	};
 };

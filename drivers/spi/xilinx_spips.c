@@ -33,7 +33,7 @@
 /*
  * Name of this driver
  */
-#define XSPIPS_NAME		"Xilinx_PS_SPI"
+#define XSPIPS_NAME		"xspips"
 
 /*
  * Register offset definitions
@@ -635,7 +635,6 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	struct xspips *xspi;
 	struct resource *r;
 #ifdef CONFIG_OF
-	struct resource r_mem, r_irq;
 	const unsigned int *prop;
 #else
 	struct xspi_platform_data *platform_info;
@@ -648,28 +647,20 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	xspi = spi_master_get_devdata(master);
 	platform_set_drvdata(dev, master);
 
-#ifdef CONFIG_OF
-	r = &r_mem;
-	ret = of_address_to_resource(dev->dev.of_node, 0, r);
-	if (ret) {
-		dev_err(&dev->dev, "address resource not available\n");
-		goto put_master;
-	}
-#else
+#ifndef CONFIG_OF
 	platform_info = dev->dev.platform_data;
 	if (platform_info == NULL) {
 		ret = -ENODEV;
 		dev_err(&dev->dev, "platform data not available\n");
 		goto put_master;
 	}
-
+#endif
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		ret = -ENODEV;
 		dev_err(&dev->dev, "platform_get_resource failed\n");
 		goto put_master;
 	}
-#endif
 
 	if (!request_mem_region(r->start,
 			r->end - r->start + 1, dev->name)) {
@@ -685,21 +676,12 @@ static int __devinit xspips_probe(struct platform_device *dev)
 		goto release_mem;
 	}
 
-#ifdef CONFIG_OF
-	if (of_irq_to_resource(dev->dev.of_node, 0, &r_irq) == NO_IRQ) {
-		dev_err(&dev->dev, "irq resource not available\n");
-		ret = -ENXIO;
-		goto unmap_io;
-	}
-	xspi->irq = r_irq.start;
-#else
 	xspi->irq = platform_get_irq(dev, 0);
 	if (xspi->irq < 0) {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "irq number is negative\n");
 		goto unmap_io;
 	}
-#endif
 
 	ret = request_irq(xspi->irq, xspips_irq, 0, dev->name, xspi);
 	if (ret != 0) {

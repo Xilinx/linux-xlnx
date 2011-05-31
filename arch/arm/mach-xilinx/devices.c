@@ -684,7 +684,7 @@ static struct resource xspipss_0_resource[] = {
 };
 
 static struct platform_device xilinx_spipss_0_device = {
-	.name = "Xilinx_PSS_SPI",
+	.name = "xspips",
 	.id = 0,
 	.dev = {
 		.platform_data = &xspi_0_pdata,
@@ -707,7 +707,7 @@ static struct resource xspipss_1_resource[] = {
 };
 
 static struct platform_device xilinx_spipss_1_device = {
-	.name = "Xilinx_PSS_SPI",
+	.name = "xspips",
 	.id = 1,
 	.dev = {
 		.platform_data = &xspi_1_pdata,
