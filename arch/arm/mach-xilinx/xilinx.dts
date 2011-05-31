@@ -13,7 +13,7 @@
    };
 
    chosen {
-	bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+	bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk debug";
 	linux,stdout-path = "/amba@0/uart@E0000000";
    };
 
@@ -42,6 +42,24 @@
          reg = <0xE0001000 0x1000>;
          interrupts = <82 0>;
 	 clock = <50000000>;
+      };
+
+      spi0: spi@E0006000 {
+         compatible = "xlnx,xspips";
+         reg = <0xE0006000 0x1000>;
+         interrupts = <58 0>;
+	 speed-hz = <50000000>;
+	 bus-num = <0>;
+	 num-chip-select = <4>;
+      };
+
+      spi1: spi@E0007000 {
+         compatible = "xlnx,xspips";
+         reg = <0xE0007000 0x1000>;
+         interrupts = <81 0>;
+	 speed-hz = <50000000>;
+	 bus-num = <1>;
+	 num-chip-select = <4>;
       };
 
    };
