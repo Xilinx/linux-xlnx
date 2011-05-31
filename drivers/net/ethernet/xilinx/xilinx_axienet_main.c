@@ -688,7 +688,7 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 		if (cur_p->app4)
 			dev_kfree_skb_irq((struct sk_buff *)cur_p->app4);
 
-		cur_p->phys = 0;
+		/*cur_p->phys = 0;*/
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
 		cur_p->app2 = 0;
