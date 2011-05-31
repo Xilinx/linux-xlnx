@@ -419,11 +419,11 @@ config XILINX_PSS_QSPI_USE_DUAL_FLASH
 	  (24-bit addressing) to 32 MB (25-bit addressing), and the throughput
 	  by a factor of 2.
 
-config SPI_XILINX_PSS_SPI
-	tristate "Xilinx PSS SPI controller"
+config SPI_XILINX_PS_SPI
+	tristate "Xilinx PS SPI controller"
 	depends on SPI_MASTER && EXPERIMENTAL
 	help
-	  This selects the SPI controller master driver from the Xilinx.
+	  This selects the PS SPI controller master driver from the Xilinx.
 
 config SPI_NUC900
 	tristate "Nuvoton NUC900 series SPI"

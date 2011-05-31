@@ -1,8 +1,8 @@
 /*
  *
- * Xilinx PSS SPI controller driver (master mode only)
+ * Xilinx PS SPI controller driver (master mode only)
  *
- * (c) 2008 Xilinx, Inc.
+ * (c) 2008-2011 Xilinx, Inc.
  *
  * based on Blackfin On-Chip SPI Driver (spi_bfin5xx.c)
  *
@@ -27,27 +27,28 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/xilinx_devices.h>
-
+#include <linux/of_irq.h>
+#include <linux/of_address.h>
 
 /*
  * Name of this driver
  */
-#define XSPIPSS_NAME		"Xilinx_PSS_SPI"
+#define XSPIPS_NAME		"Xilinx_PS_SPI"
 
 /*
  * Register offset definitions
  */
-#define XSPIPSS_CR_OFFSET	0x00 /* Configuration  Register, RW */
-#define XSPIPSS_ISR_OFFSET	0x04 /* Interrupt Status Register, RO */
-#define XSPIPSS_IER_OFFSET	0x08 /* Interrupt Enable Register, WO */
-#define XSPIPSS_IDR_OFFSET	0x0c /* Interrupt Disable Register, WO */
-#define XSPIPSS_IMR_OFFSET	0x10 /* Interrupt Enabled Mask Register, RO */
-#define XSPIPSS_ER_OFFSET	0x14 /* Enable/Disable Register, RW */
-#define XSPIPSS_DR_OFFSET	0x18 /* Delay Register, RW */
-#define XSPIPSS_TXD_OFFSET	0x1C /* Data Transmit Register, WO */
-#define XSPIPSS_RXD_OFFSET	0x20 /* Data Receive Register, RO */
-#define XSPIPSS_SICR_OFFSET	0x24 /* Slave Idle Count Register, RW */
-#define XSPIPSS_THLD_OFFSET	0x28 /* Transmit FIFO Watermark Register,RW */
+#define XSPIPS_CR_OFFSET	0x00 /* Configuration  Register, RW */
+#define XSPIPS_ISR_OFFSET	0x04 /* Interrupt Status Register, RO */
+#define XSPIPS_IER_OFFSET	0x08 /* Interrupt Enable Register, WO */
+#define XSPIPS_IDR_OFFSET	0x0c /* Interrupt Disable Register, WO */
+#define XSPIPS_IMR_OFFSET	0x10 /* Interrupt Enabled Mask Register, RO */
+#define XSPIPS_ER_OFFSET	0x14 /* Enable/Disable Register, RW */
+#define XSPIPS_DR_OFFSET	0x18 /* Delay Register, RW */
+#define XSPIPS_TXD_OFFSET	0x1C /* Data Transmit Register, WO */
+#define XSPIPS_RXD_OFFSET	0x20 /* Data Receive Register, RO */
+#define XSPIPS_SICR_OFFSET	0x24 /* Slave Idle Count Register, RW */
+#define XSPIPS_THLD_OFFSET	0x28 /* Transmit FIFO Watermark Register,RW */
 
 /*
  * SPI Configuration Register bit Masks
@@ -55,10 +56,10 @@
  * This register contains various control bits that affect the operation
  * of the SPI controller
  */
-#define XSPIPSS_CR_MANSTRT_MASK	0x00010000 /* Manual TX Start */
-#define XSPIPSS_CR_CPHA_MASK	0x00000004 /* Clock Phase Control */
-#define XSPIPSS_CR_CPOL_MASK	0x00000002 /* Clock Polarity Control */
-#define XSPIPSS_CR_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define XSPIPS_CR_MANSTRT_MASK	0x00010000 /* Manual TX Start */
+#define XSPIPS_CR_CPHA_MASK	0x00000004 /* Clock Phase Control */
+#define XSPIPS_CR_CPOL_MASK	0x00000002 /* Clock Polarity Control */
+#define XSPIPS_CR_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
 
 /*
  * SPI Interrupt Registers bit Masks
@@ -66,17 +67,17 @@
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
  * bit definitions.
  */
-#define XSPIPSS_IXR_TXOW_MASK	0x00000004 /* SPI TX FIFO Overwater */
-#define XSPIPSS_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
-#define XSPIPSS_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
-#define XSPIPSS_IXR_ALL_MASK	(XSPIPSS_IXR_TXOW_MASK | XSPIPSS_IXR_MODF_MASK)
+#define XSPIPS_IXR_TXOW_MASK	0x00000004 /* SPI TX FIFO Overwater */
+#define XSPIPS_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
+#define XSPIPS_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
+#define XSPIPS_IXR_ALL_MASK	(XSPIPS_IXR_TXOW_MASK | XSPIPS_IXR_MODF_MASK)
 
 /*
  * SPI Enable Register bit Masks
  *
  * This register is used to enable or disable the SPI controller
  */
-#define XSPIPSS_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
+#define XSPIPS_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
 
 /*
  * The spi->mode bits understood by this driver
@@ -86,18 +87,18 @@
 /*
  * Definitions for the status of queue
  */
-#define XSPIPSS_QUEUE_STOPPED	0
-#define XSPIPSS_QUEUE_RUNNING	1
+#define XSPIPS_QUEUE_STOPPED	0
+#define XSPIPS_QUEUE_RUNNING	1
 
 /*
  * Macros for the SPI controller read/write
  */
-#define xspipss_read(addr)	__raw_readl(addr)
-#define xspipss_write(addr, val)	__raw_writel((val), (addr))
+#define xspips_read(addr)	__raw_readl(addr)
+#define xspips_write(addr, val)	__raw_writel((val), (addr))
 
 
 /**
- * struct xspipss - This definition defines spi driver instance
+ * struct xspips - This definition defines spi driver instance
  * @workqueue:		Queue of all the transfers
  * @work:		Information about current transfer
  * @queue:		Head of the queue
@@ -108,13 +109,13 @@
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
  * @ctrl_reg_lock:	Lock used for accessing configuration register
- * @txbuf: 		Pointer	to the TX buffer
+ * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @remaining_bytes:	Number of bytes left to transfer
  * @dev_busy:		Device busy flag
  * @done:		Transfer complete status
  **/
-struct xspipss {
+struct xspips {
 	struct workqueue_struct *workqueue;
 	struct work_struct work;
 	struct list_head queue;
@@ -134,7 +135,7 @@ struct xspipss {
 
 
 /**
- * xspipss_init_hw - Initialize the hardware and configure the SPI controller
+ * xspips_init_hw - Initialize the hardware and configure the SPI controller
  * @regs_base:		Base address of SPI controller
  *
  * On reset the SPI controller is configured to be in master mode, baud rate
@@ -144,52 +145,52 @@ struct xspipss {
  * interrupts, enable manual slave select and manual start, deselect all the
  * chip select lines, and enable the SPI controller.
  **/
-static void xspipss_init_hw(void __iomem *regs_base)
+static void xspips_init_hw(void __iomem *regs_base)
 {
-	xspipss_write(regs_base + XSPIPSS_ER_OFFSET, ~XSPIPSS_ER_ENABLE_MASK);
-	xspipss_write(regs_base + XSPIPSS_IDR_OFFSET, 0x7F);
+	xspips_write(regs_base + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
+	xspips_write(regs_base + XSPIPS_IDR_OFFSET, 0x7F);
 
 	/* Clear the RX FIFO */
-	while (xspipss_read(regs_base + XSPIPSS_ISR_OFFSET) &
-			XSPIPSS_IXR_RXNEMTY_MASK)
-		xspipss_read(regs_base + XSPIPSS_RXD_OFFSET);
+	while (xspips_read(regs_base + XSPIPS_ISR_OFFSET) &
+			XSPIPS_IXR_RXNEMTY_MASK)
+		xspips_read(regs_base + XSPIPS_RXD_OFFSET);
 
-	xspipss_write(regs_base + XSPIPSS_ISR_OFFSET, 0x7F);
-	xspipss_write(regs_base + XSPIPSS_CR_OFFSET, 0x0000FC01);
-	xspipss_write(regs_base + XSPIPSS_ER_OFFSET, XSPIPSS_ER_ENABLE_MASK);
+	xspips_write(regs_base + XSPIPS_ISR_OFFSET, 0x7F);
+	xspips_write(regs_base + XSPIPS_CR_OFFSET, 0x0000FC01);
+	xspips_write(regs_base + XSPIPS_ER_OFFSET, XSPIPS_ER_ENABLE_MASK);
 }
 
 /**
- * xspipss_chipselect - Select or deselect the chip select line
+ * xspips_chipselect - Select or deselect the chip select line
  * @spi:	Pointer to the spi_device structure
  * @is_on:	Select(1) or deselect (0) the chip select line
  **/
-static void xspipss_chipselect(struct spi_device *spi, int is_on)
+static void xspips_chipselect(struct spi_device *spi, int is_on)
 {
-	struct xspipss *xspi = spi_master_get_devdata(spi->master);
+	struct xspips *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
 	unsigned long flags;
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
-	ctrl_reg = xspipss_read(xspi->regs + XSPIPSS_CR_OFFSET);
+	ctrl_reg = xspips_read(xspi->regs + XSPIPS_CR_OFFSET);
 
 	if (is_on) {
 		/* Select the slave */
-		ctrl_reg &= ~XSPIPSS_CR_SSCTRL_MASK;
+		ctrl_reg &= ~XSPIPS_CR_SSCTRL_MASK;
 		ctrl_reg |= (((~(0x0001 << spi->chip_select)) << 10) &
-				XSPIPSS_CR_SSCTRL_MASK);
+				XSPIPS_CR_SSCTRL_MASK);
 	} else
 		/* Deselect the slave */
-		ctrl_reg |= XSPIPSS_CR_SSCTRL_MASK;
+		ctrl_reg |= XSPIPS_CR_SSCTRL_MASK;
 
-	xspipss_write(xspi->regs + XSPIPSS_CR_OFFSET, ctrl_reg);
+	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 }
 
 /**
- * xspipss_setup_transfer - Configure SPI controller for specified transfer
+ * xspips_setup_transfer - Configure SPI controller for specified transfer
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provides information
  *		about next transfer setup parameters
@@ -206,10 +207,10 @@ static void xspipss_chipselect(struct spi_device *spi, int is_on)
  * controller the driver will set the highest or lowest frequency supported by
  * controller.
  **/
-static int xspipss_setup_transfer(struct spi_device *spi,
+static int xspips_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
-	struct xspipss *xspi = spi_master_get_devdata(spi->master);
+	struct xspips *xspi = spi_master_get_devdata(spi->master);
 	u8 bits_per_word;
 	u32 ctrl_reg;
 	u32 req_hz;
@@ -234,14 +235,14 @@ static int xspipss_setup_transfer(struct spi_device *spi,
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
-	ctrl_reg = xspipss_read(xspi->regs + XSPIPSS_CR_OFFSET);
+	ctrl_reg = xspips_read(xspi->regs + XSPIPS_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
-	ctrl_reg &= (~XSPIPSS_CR_CPHA_MASK) & (~XSPIPSS_CR_CPOL_MASK);
+	ctrl_reg &= (~XSPIPS_CR_CPHA_MASK) & (~XSPIPS_CR_CPOL_MASK);
 	if (spi->mode & SPI_CPHA)
-		ctrl_reg |= XSPIPSS_CR_CPHA_MASK;
+		ctrl_reg |= XSPIPS_CR_CPHA_MASK;
 	if (spi->mode & SPI_CPOL)
-		ctrl_reg |= XSPIPSS_CR_CPOL_MASK;
+		ctrl_reg |= XSPIPS_CR_CPOL_MASK;
 
 	/* Set the clock frequency */
 	if (xspi->speed_hz != req_hz) {
@@ -257,7 +258,7 @@ static int xspipss_setup_transfer(struct spi_device *spi,
 		xspi->speed_hz = (xspi->input_clk_hz / (2 << baud_rate_val));
 	}
 
-	xspipss_write(xspi->regs + XSPIPSS_CR_OFFSET, ctrl_reg);
+	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
@@ -269,7 +270,7 @@ static int xspipss_setup_transfer(struct spi_device *spi,
 }
 
 /**
- * xspipss_setup - Configure the SPI controller
+ * xspips_setup - Configure the SPI controller
  * @spi:	Pointer to the spi_device structure
  *
  * Sets the operational mode of SPI controller for the next SPI transfer, sets
@@ -277,7 +278,7 @@ static int xspipss_setup_transfer(struct spi_device *spi,
  *
  * returns:	0 on success and error value on error
  **/
-static int xspipss_setup(struct spi_device *spi)
+static int xspips_setup(struct spi_device *spi)
 {
 	if ((spi->mode & SPI_LSB_FIRST) != 0)
 		return -EINVAL;
@@ -288,29 +289,29 @@ static int xspipss_setup(struct spi_device *spi)
 	if (!spi->bits_per_word)
 		spi->bits_per_word = 8;
 
-	return xspipss_setup_transfer(spi, NULL);
+	return xspips_setup_transfer(spi, NULL);
 }
 
 /**
- * xspipss_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
- * @xspi:	Pointer to the xspipss structure
+ * xspips_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
+ * @xspi:	Pointer to the xspips structure
  **/
-static void xspipss_fill_tx_fifo(struct xspipss *xspi)
+static void xspips_fill_tx_fifo(struct xspips *xspi)
 {
-	while ((xspipss_read(xspi->regs + XSPIPSS_ISR_OFFSET) & 0x00000008) == 0
+	while ((xspips_read(xspi->regs + XSPIPS_ISR_OFFSET) & 0x00000008) == 0
 		&& (xspi->remaining_bytes > 0)) {
 		if (xspi->txbuf)
-			xspipss_write(xspi->regs + XSPIPSS_TXD_OFFSET,
+			xspips_write(xspi->regs + XSPIPS_TXD_OFFSET,
 					*xspi->txbuf++);
 		else
-			xspipss_write(xspi->regs + XSPIPSS_TXD_OFFSET, 0);
+			xspips_write(xspi->regs + XSPIPS_TXD_OFFSET, 0);
 
 		xspi->remaining_bytes--;
 	}
 }
 
 /**
- * xspipss_irq - Interrupt service routine of the SPI controller
+ * xspips_irq - Interrupt service routine of the SPI controller
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xspi structure
  *
@@ -323,45 +324,45 @@ static void xspipss_fill_tx_fifo(struct xspipss *xspi)
  *
  * returns:	IRQ_HANDLED always
  **/
-static irqreturn_t xspipss_irq(int irq, void *dev_id)
+static irqreturn_t xspips_irq(int irq, void *dev_id)
 {
-	struct xspipss *xspi = dev_id;
+	struct xspips *xspi = dev_id;
 	u32 intr_status;
 
-	intr_status = xspipss_read(xspi->regs + XSPIPSS_ISR_OFFSET);
-	xspipss_write(xspi->regs + XSPIPSS_ISR_OFFSET, intr_status);
-	xspipss_write(xspi->regs + XSPIPSS_IDR_OFFSET, XSPIPSS_IXR_ALL_MASK);
+	intr_status = xspips_read(xspi->regs + XSPIPS_ISR_OFFSET);
+	xspips_write(xspi->regs + XSPIPS_ISR_OFFSET, intr_status);
+	xspips_write(xspi->regs + XSPIPS_IDR_OFFSET, XSPIPS_IXR_ALL_MASK);
 
-	if (intr_status & XSPIPSS_IXR_MODF_MASK) {
+	if (intr_status & XSPIPS_IXR_MODF_MASK) {
 		/* Indicate that transfer is completed, the SPI subsystem will
 		 * identify the error as the remaining bytes to be
 		 * transferred is non-zero */
 		complete(&xspi->done);
-	} else if (intr_status & XSPIPSS_IXR_TXOW_MASK) {
+	} else if (intr_status & XSPIPS_IXR_TXOW_MASK) {
 		u32 ctrl_reg;
 
 		/* Read out the data from the RX FIFO */
-		while (xspipss_read(xspi->regs + XSPIPSS_ISR_OFFSET) &
-				XSPIPSS_IXR_RXNEMTY_MASK) {
+		while (xspips_read(xspi->regs + XSPIPS_ISR_OFFSET) &
+				XSPIPS_IXR_RXNEMTY_MASK) {
 			u8 data;
 
-			data = xspipss_read(xspi->regs + XSPIPSS_RXD_OFFSET);
+			data = xspips_read(xspi->regs + XSPIPS_RXD_OFFSET);
 			if (xspi->rxbuf)
 				*xspi->rxbuf++ = data;
 		}
 
 		if (xspi->remaining_bytes) {
 			/* There is more data to send */
-			xspipss_fill_tx_fifo(xspi);
+			xspips_fill_tx_fifo(xspi);
 
-			xspipss_write(xspi->regs + XSPIPSS_IER_OFFSET,
-					XSPIPSS_IXR_ALL_MASK);
+			xspips_write(xspi->regs + XSPIPS_IER_OFFSET,
+					XSPIPS_IXR_ALL_MASK);
 
 			spin_lock(&xspi->ctrl_reg_lock);
 
-			ctrl_reg = xspipss_read(xspi->regs + XSPIPSS_CR_OFFSET);
-			ctrl_reg |= XSPIPSS_CR_MANSTRT_MASK;
-			xspipss_write(xspi->regs + XSPIPSS_CR_OFFSET, ctrl_reg);
+			ctrl_reg = xspips_read(xspi->regs + XSPIPS_CR_OFFSET);
+			ctrl_reg |= XSPIPS_CR_MANSTRT_MASK;
+			xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
 
 			spin_unlock(&xspi->ctrl_reg_lock);
 		} else {
@@ -374,7 +375,7 @@ static irqreturn_t xspipss_irq(int irq, void *dev_id)
 }
 
 /**
- * xspipss_start_transfer - Initiates the SPI transfer
+ * xspips_start_transfer - Initiates the SPI transfer
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provide information
  *		about next transfer parameters
@@ -384,10 +385,10 @@ static irqreturn_t xspipss_irq(int irq, void *dev_id)
  *
  * returns:	Number of bytes transferred in the last transfer
  **/
-static int xspipss_start_transfer(struct spi_device *spi,
+static int xspips_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
 {
-	struct xspipss *xspi = spi_master_get_devdata(spi->master);
+	struct xspips *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
 	unsigned long flags;
 
@@ -396,16 +397,16 @@ static int xspipss_start_transfer(struct spi_device *spi,
 	xspi->remaining_bytes = transfer->len;
 	INIT_COMPLETION(xspi->done);
 
-	xspipss_fill_tx_fifo(xspi);
+	xspips_fill_tx_fifo(xspi);
 
-	xspipss_write(xspi->regs + XSPIPSS_IER_OFFSET, XSPIPSS_IXR_ALL_MASK);
+	xspips_write(xspi->regs + XSPIPS_IER_OFFSET, XSPIPS_IXR_ALL_MASK);
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
 	/* Start the transfer by enabling manual start bit */
-	ctrl_reg = xspipss_read(xspi->regs + XSPIPSS_CR_OFFSET);
-	ctrl_reg |= XSPIPSS_CR_MANSTRT_MASK;
-	xspipss_write(xspi->regs + XSPIPSS_CR_OFFSET, ctrl_reg);
+	ctrl_reg = xspips_read(xspi->regs + XSPIPS_CR_OFFSET);
+	ctrl_reg |= XSPIPS_CR_MANSTRT_MASK;
+	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
@@ -415,19 +416,19 @@ static int xspipss_start_transfer(struct spi_device *spi,
 }
 
 /**
- * xspipss_work_queue - Get the transfer request from queue to perform transfers
+ * xspips_work_queue - Get the transfer request from queue to perform transfers
  * @work:	Pointer to the work_struct structure
  **/
-static void xspipss_work_queue(struct work_struct *work)
+static void xspips_work_queue(struct work_struct *work)
 {
-	struct xspipss *xspi = container_of(work, struct xspipss, work);
+	struct xspips *xspi = container_of(work, struct xspips, work);
 	unsigned long flags;
 
 	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
 	xspi->dev_busy = 1;
 
 	if (list_empty(&xspi->queue) ||
-		xspi->queue_state == XSPIPSS_QUEUE_STOPPED) {
+		xspi->queue_state == XSPIPS_QUEUE_STOPPED) {
 		xspi->dev_busy = 0;
 		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
 		return;
@@ -447,13 +448,13 @@ static void xspipss_work_queue(struct work_struct *work)
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 			if (transfer->bits_per_word || transfer->speed_hz) {
-				status = xspipss_setup_transfer(spi, transfer);
+				status = xspips_setup_transfer(spi, transfer);
 				if (status < 0)
 					break;
 			}
 
 			if (cs_change)
-				xspipss_chipselect(spi, 1);
+				xspips_chipselect(spi, 1);
 
 			cs_change = transfer->cs_change;
 
@@ -464,7 +465,7 @@ static void xspipss_work_queue(struct work_struct *work)
 			}
 
 			if (transfer->len)
-				status = xspipss_start_transfer(spi, transfer);
+				status = xspips_start_transfer(spi, transfer);
 
 			if (status != transfer->len) {
 				if (status > 0)
@@ -482,16 +483,16 @@ static void xspipss_work_queue(struct work_struct *work)
 			if (transfer->transfer_list.next == &msg->transfers)
 				break;
 
-			xspipss_chipselect(spi, 0);
+			xspips_chipselect(spi, 0);
 		}
 
 		msg->status = status;
 		msg->complete(msg->context);
 
-		xspipss_setup_transfer(spi, NULL);
+		xspips_setup_transfer(spi, NULL);
 
 		if (!(status == 0 && cs_change))
-			xspipss_chipselect(spi, 0);
+			xspips_chipselect(spi, 0);
 
 		spin_lock_irqsave(&xspi->trans_queue_lock, flags);
 	}
@@ -500,20 +501,20 @@ static void xspipss_work_queue(struct work_struct *work)
 }
 
 /**
- * xspipss_transfer - Add a new transfer request at the tail of work queue
+ * xspips_transfer - Add a new transfer request at the tail of work queue
  * @spi:	Pointer to the spi_device structure
  * @message:	Pointer to the spi_transfer structure which provide information
  *		about next transfer parameters
  *
  * returns:	0 on success and error value on error
  **/
-static int xspipss_transfer(struct spi_device *spi, struct spi_message *message)
+static int xspips_transfer(struct spi_device *spi, struct spi_message *message)
 {
-	struct xspipss *xspi = spi_master_get_devdata(spi->master);
+	struct xspips *xspi = spi_master_get_devdata(spi->master);
 	struct spi_transfer *transfer;
 	unsigned long flags;
 
-	if (xspi->queue_state == XSPIPSS_QUEUE_STOPPED)
+	if (xspi->queue_state == XSPIPS_QUEUE_STOPPED)
 		return -ESHUTDOWN;
 
 	message->actual_length = 0;
@@ -541,44 +542,44 @@ static int xspipss_transfer(struct spi_device *spi, struct spi_message *message)
 }
 
 /**
- * xspipss_start_queue - Starts the queue of the SPI driver
- * @xspi:	Pointer to the xspipss structure
+ * xspips_start_queue - Starts the queue of the SPI driver
+ * @xspi:	Pointer to the xspips structure
  *
  * returns:	0 on success and error value on error
  **/
-static inline int xspipss_start_queue(struct xspipss *xspi)
+static inline int xspips_start_queue(struct xspips *xspi)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
 
-	if (xspi->queue_state == XSPIPSS_QUEUE_RUNNING || xspi->dev_busy) {
+	if (xspi->queue_state == XSPIPS_QUEUE_RUNNING || xspi->dev_busy) {
 		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
 		return -EBUSY;
 	}
 
-	xspi->queue_state = XSPIPSS_QUEUE_RUNNING;
+	xspi->queue_state = XSPIPS_QUEUE_RUNNING;
 	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
 
 	return 0;
 }
 
 /**
- * xspipss_stop_queue - Stops the queue of the SPI driver
- * @xspi:	Pointer to the xspipss structure
+ * xspips_stop_queue - Stops the queue of the SPI driver
+ * @xspi:	Pointer to the xspips structure
  *
  * This function waits till queue is empty and then stops the queue.
  * Maximum time out is set to 5 seconds.
  *
  * returns:	0 on success and error value on error
  **/
-static inline int xspipss_stop_queue(struct xspipss *xspi)
+static inline int xspips_stop_queue(struct xspips *xspi)
 {
 	unsigned long flags;
 	unsigned limit = 500;
 	int ret = 0;
 
-	if (xspi->queue_state != XSPIPSS_QUEUE_RUNNING)
+	if (xspi->queue_state != XSPIPS_QUEUE_RUNNING)
 		return ret;
 
 	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
@@ -593,7 +594,7 @@ static inline int xspipss_stop_queue(struct xspipss *xspi)
 		ret = -EBUSY;
 
 	if (ret == 0)
-		xspi->queue_state = XSPIPSS_QUEUE_STOPPED;
+		xspi->queue_state = XSPIPS_QUEUE_STOPPED;
 
 	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
 
@@ -601,16 +602,16 @@ static inline int xspipss_stop_queue(struct xspipss *xspi)
 }
 
 /**
- * xspipss_destroy_queue - Destroys the queue of the SPI driver
- * @xspi:	Pointer to the xspipss structure
+ * xspips_destroy_queue - Destroys the queue of the SPI driver
+ * @xspi:	Pointer to the xspips structure
  *
  * returns:	0 on success and error value on error
  **/
-static inline int xspipss_destroy_queue(struct xspipss *xspi)
+static inline int xspips_destroy_queue(struct xspips *xspi)
 {
 	int ret;
 
-	ret = xspipss_stop_queue(xspi);
+	ret = xspips_stop_queue(xspi);
 	if (ret != 0)
 		return ret;
 
@@ -620,28 +621,41 @@ static inline int xspipss_destroy_queue(struct xspipss *xspi)
 }
 
 /**
- * xspipss_probe - Probe method for the SPI driver
+ * xspips_probe - Probe method for the SPI driver
  * @dev:	Pointer to the platform_device structure
  *
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success and error value on error
  **/
-static int __devinit xspipss_probe(struct platform_device *dev)
+static int __devinit xspips_probe(struct platform_device *dev)
 {
 	int ret = 0;
 	struct spi_master *master;
-	struct xspipss *xspi;
+	struct xspips *xspi;
 	struct resource *r;
+#ifdef CONFIG_OF
+	struct resource r_mem, r_irq;
+	const unsigned int *prop;
+#else
 	struct xspi_platform_data *platform_info;
+#endif
 
-	master = spi_alloc_master(&dev->dev, sizeof(struct xspipss));
+	master = spi_alloc_master(&dev->dev, sizeof(struct xspips));
 	if (master == NULL)
 		return -ENOMEM;
 
 	xspi = spi_master_get_devdata(master);
 	platform_set_drvdata(dev, master);
 
+#ifdef CONFIG_OF
+	r = &r_mem;
+	ret = of_address_to_resource(dev->dev.of_node, 0, r);
+	if (ret) {
+		dev_err(&dev->dev, "address resource not available\n");
+		goto put_master;
+	}
+#else
 	platform_info = dev->dev.platform_data;
 	if (platform_info == NULL) {
 		ret = -ENODEV;
@@ -655,29 +669,39 @@ static int __devinit xspipss_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "platform_get_resource failed\n");
 		goto put_master;
 	}
+#endif
 
 	if (!request_mem_region(r->start,
 			r->end - r->start + 1, dev->name)) {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "request_mem_region failed\n");
-		goto release_mem;
+		goto put_master;
 	}
 
 	xspi->regs = ioremap(r->start, r->end - r->start + 1);
 	if (xspi->regs == NULL) {
 		ret = -ENOMEM;
 		dev_err(&dev->dev, "ioremap failed\n");
-		goto put_master;
+		goto release_mem;
 	}
 
+#ifdef CONFIG_OF
+	if (of_irq_to_resource(dev->dev.of_node, 0, &r_irq) == NO_IRQ) {
+		dev_err(&dev->dev, "irq resource not available\n");
+		ret = -ENXIO;
+		goto unmap_io;
+	}
+	xspi->irq = r_irq.start;
+#else
 	xspi->irq = platform_get_irq(dev, 0);
 	if (xspi->irq < 0) {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "irq number is negative\n");
 		goto unmap_io;
 	}
+#endif
 
-	ret = request_irq(xspi->irq, xspipss_irq, 0, dev->name, xspi);
+	ret = request_irq(xspi->irq, xspips_irq, 0, dev->name, xspi);
 	if (ret != 0) {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "request_irq failed\n");
@@ -685,25 +709,59 @@ static int __devinit xspipss_probe(struct platform_device *dev)
 	}
 
 	/* SPI controller initializations */
-	xspipss_init_hw(xspi->regs);
+	xspips_init_hw(xspi->regs);
 
 	init_completion(&xspi->done);
+
+#ifdef CONFIG_OF
+	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
+	if (prop)
+		master->bus_num = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine bus-num\n");
+		goto free_irq;
+	}
+
+	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
+	if (prop)
+		master->num_chipselect = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
+		goto free_irq;
+	}
+#else
 	master->bus_num = platform_info->bus_num;
 	master->num_chipselect = platform_info->num_chipselect;
-	master->setup = xspipss_setup;
-	master->transfer = xspipss_transfer;
+#endif
+	master->setup = xspips_setup;
+	master->transfer = xspips_transfer;
+
+#ifdef CONFIG_OF
+	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
+	if (prop) {
+		xspi->input_clk_hz = be32_to_cpup(prop);
+		xspi->speed_hz = xspi->input_clk_hz / 2;
+	} else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine speed-hz\n");
+		goto free_irq;
+	}
+#else
 	xspi->input_clk_hz = platform_info->speed_hz;
 	xspi->speed_hz = platform_info->speed_hz / 2;
+#endif
 	xspi->dev_busy = 0;
 
 	INIT_LIST_HEAD(&xspi->queue);
 	spin_lock_init(&xspi->trans_queue_lock);
 	spin_lock_init(&xspi->ctrl_reg_lock);
 
-	xspi->queue_state = XSPIPSS_QUEUE_STOPPED;
+	xspi->queue_state = XSPIPS_QUEUE_STOPPED;
 	xspi->dev_busy = 0;
 
-	INIT_WORK(&xspi->work, xspipss_work_queue);
+	INIT_WORK(&xspi->work, xspips_work_queue);
 	xspi->workqueue =
 		create_singlethread_workqueue(dev_name(&master->dev));
 	if (!xspi->workqueue) {
@@ -712,7 +770,7 @@ static int __devinit xspipss_probe(struct platform_device *dev)
 		goto free_irq;
 	}
 
-	ret = xspipss_start_queue(xspi);
+	ret = xspips_start_queue(xspi);
 	if (ret != 0) {
 		dev_err(&dev->dev, "problem starting queue\n");
 		goto remove_queue;
@@ -730,7 +788,7 @@ static int __devinit xspipss_probe(struct platform_device *dev)
 	return ret;
 
 remove_queue:
-	(void)xspipss_destroy_queue(xspi);
+	(void)xspips_destroy_queue(xspi);
 free_irq:
 	free_irq(xspi->irq, xspi);
 unmap_io:
@@ -744,7 +802,7 @@ put_master:
 }
 
 /**
- * xspipss_remove - Remove method for the SPI driver
+ * xspips_remove - Remove method for the SPI driver
  * @dev:	Pointer to the platform_device structure
  *
  * This function is called if a device is physically removed from the system or
@@ -753,24 +811,35 @@ put_master:
  *
  * returns:	0 on success and error value on error
  **/
-static int __devexit xspipss_remove(struct platform_device *dev)
+static int __devexit xspips_remove(struct platform_device *dev)
 {
 	struct spi_master *master = platform_get_drvdata(dev);
-	struct xspipss *xspi = spi_master_get_devdata(master);
+	struct xspips *xspi = spi_master_get_devdata(master);
 	struct resource *r;
 	int ret = 0;
+#ifdef CONFIG_OF
+	struct resource r_mem;
+
+	r = &r_mem;
+	ret = of_address_to_resource(dev->dev.of_node, 0, r);
+	if (ret) {
+		dev_err(&dev->dev, "address resource not available\n");
+		return -ENODEV;
+	}
+#else
 
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		dev_err(&dev->dev, "platform_get_resource failed\n");
 		return -ENODEV;
 	}
+#endif
 
-	ret = xspipss_destroy_queue(xspi);
+	ret = xspips_destroy_queue(xspi);
 	if (ret != 0)
 		return ret;
 
-	xspipss_write(xspi->regs + XSPIPSS_ER_OFFSET, ~XSPIPSS_ER_ENABLE_MASK);
+	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 
 	free_irq(xspi->irq, xspi);
 	iounmap(xspi->regs);
@@ -789,7 +858,7 @@ static int __devexit xspipss_remove(struct platform_device *dev)
 
 #ifdef CONFIG_PM
 /**
- * xspipss_suspend - Suspend method for the SPI driver
+ * xspips_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
  * @msg:	Power management event message
  *
@@ -797,39 +866,39 @@ static int __devexit xspipss_remove(struct platform_device *dev)
  *
  * returns:	0 on success and error value on error
  **/
-static int xspipss_suspend(struct platform_device *dev, pm_message_t msg)
+static int xspips_suspend(struct platform_device *dev, pm_message_t msg)
 {
 	struct spi_master *master = platform_get_drvdata(dev);
-	struct xspipss *xspi = spi_master_get_devdata(master);
+	struct xspips *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
-	ret = xspipss_stop_queue(xspi);
+	ret = xspips_stop_queue(xspi);
 	if (ret != 0)
 		return ret;
 
-	xspipss_write(xspi->regs + XSPIPSS_ER_OFFSET, ~XSPIPSS_ER_ENABLE_MASK);
+	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 
 	dev_dbg(&dev->dev, "suspend succeeded\n");
 	return 0;
 }
 
 /**
- * xspipss_resume - Resume method for the SPI driver
+ * xspips_resume - Resume method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
  * This function starts the SPI driver queue and initializes the SPI controller
  *
  * returns:	0 on success and error value on error
  **/
-static int xspipss_resume(struct platform_device *dev)
+static int xspips_resume(struct platform_device *dev)
 {
 	struct spi_master *master = platform_get_drvdata(dev);
-	struct xspipss *xspi = spi_master_get_devdata(master);
+	struct xspips *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
-	xspipss_init_hw(xspi->regs);
+	xspips_init_hw(xspi->regs);
 
-	ret = xspipss_start_queue(xspi);
+	ret = xspips_start_queue(xspi);
 	if (ret != 0) {
 		dev_err(&dev->dev, "problem starting queue (%d)\n", ret);
 		return ret;
@@ -839,53 +908,61 @@ static int xspipss_resume(struct platform_device *dev)
 	return 0;
 }
 #else
-#define xspipss_suspend NULL
-#define xspipss_resume  NULL
+#define xspips_suspend NULL
+#define xspips_resume  NULL
 #endif /* CONFIG_PM */
 
-
 /* Work with hotplug and coldplug */
-MODULE_ALIAS("platform:" XSPIPSS_NAME);
+MODULE_ALIAS("platform:" XSPIPS_NAME);
+
+#ifdef CONFIG_OF
+static struct of_device_id xspips_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xspips", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xspips_of_match);
+#else
+#define xspips_of_match NULL
+#endif /* CONFIG_OF */
 
 /*
- * xspipss_driver - This structure defines the SPI subsystem platform driver
+ * xspips_driver - This structure defines the SPI subsystem platform driver
  */
-static struct platform_driver xspipss_driver = {
-	.probe	= xspipss_probe,
-	.remove	= __devexit_p(xspipss_remove),
-	.suspend = xspipss_suspend,
-	.resume = xspipss_resume,
+static struct platform_driver xspips_driver = {
+	.probe	= xspips_probe,
+	.remove	= __devexit_p(xspips_remove),
+	.suspend = xspips_suspend,
+	.resume = xspips_resume,
 	.driver = {
-		.name = XSPIPSS_NAME,
+		.name = XSPIPS_NAME,
 		.owner = THIS_MODULE,
+		.of_match_table = xspips_of_match,
 	},
 };
 
 /**
- * xspipss_init - SPI driver module initialization function
+ * xspips_init - SPI driver module initialization function
  *
  * returns:	0 on success and error value on error
  **/
-static int __init xspipss_init(void)
+static int __init xspips_init(void)
 {
-	return platform_driver_register(&xspipss_driver);
+	return platform_driver_register(&xspips_driver);
 }
 
-module_init(xspipss_init);
+module_init(xspips_init);
 
 /**
- * xspipss_exit - SPI driver module exit function
+ * xspips_exit - SPI driver module exit function
  **/
-static void __exit xspipss_exit(void)
+static void __exit xspips_exit(void)
 {
-	platform_driver_unregister(&xspipss_driver);
+	platform_driver_unregister(&xspips_driver);
 }
 
-module_exit(xspipss_exit);
+module_exit(xspips_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PSS SPI driver");
+MODULE_DESCRIPTION("Xilinx PS SPI driver");
 MODULE_LICENSE("GPL");
-
-
 
