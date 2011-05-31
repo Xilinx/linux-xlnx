@@ -828,7 +828,6 @@ static void axienet_recv(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct sk_buff *skb, *new_skb;
-	unsigned int bdstat;
 	struct axidma_bd *cur_p;
 	dma_addr_t tail_p;
 	int length;
@@ -837,8 +836,7 @@ static void axienet_recv(struct net_device *ndev)
 	tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 
-	bdstat = cur_p->status;
-	while ((bdstat & XAXIDMA_BD_STS_COMPLETE_MASK)) {
+	while ((cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
 		skb = (struct sk_buff *)(cur_p->sw_id_offset);
 		length = cur_p->app4 & 0x0000FFFF;
 
@@ -892,7 +890,6 @@ static void axienet_recv(struct net_device *ndev)
 			lp->rx_bd_ci = 0;
 
 		cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
-		bdstat = cur_p->status;
 	}
 	axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, tail_p);
 }
