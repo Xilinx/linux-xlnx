@@ -941,8 +941,10 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_norpss_device,
 	&eth_device0,
 	&eth_device1,
+#ifndef CONFIG_OF
 	&xilinx_spipss_0_device,
 	&xilinx_spipss_1_device,
+#endif
 	&xilinx_qspipss_0_device,
 	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
