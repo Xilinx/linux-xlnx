@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux/arm 2.6.39 Kernel Configuration
-# Tue May 31 16:28:09 2011
+# Wed Jun  1 07:39:07 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -951,7 +951,7 @@ CONFIG_SPI_MASTER=y
 # CONFIG_SPI_XILINX is not set
 CONFIG_SPI_XILINX_PSS_QSPI=y
 CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH=y
-# CONFIG_SPI_XILINX_PS_SPI is not set
+CONFIG_SPI_XILINX_PS_SPI=y
 # CONFIG_SPI_DESIGNWARE is not set
 
 #
