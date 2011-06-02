@@ -97,5 +97,11 @@
 			};
                 };
 
+		devcfg: devcfg@f8007000 {
+			compatible = "xlnx,xdevcfg";
+			reg = <0xF8007000 0x1000>;
+			interrupts = <40 0>;
+		};
+
 	};
 };

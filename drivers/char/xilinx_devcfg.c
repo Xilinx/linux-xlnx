@@ -1472,6 +1472,16 @@ static struct platform_driver xdevcfg_platform_driver = {
 	},
 };
 
+#ifdef CONFIG_OF
+static struct of_device_id xdevcfg_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xdevcfg", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xdevcfg_of_match);
+#else
+#define xdevcfg_of_match NULL
+#endif /* CONFIG_OF */
+
 /**
  * xdevcfg_module_init -  register the Device Configuration.
  *
