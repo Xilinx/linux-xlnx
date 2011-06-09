@@ -134,7 +134,6 @@
 #define XAXIDMA_DFT_RX_THRESHOLD	01
 #define XAXIDMA_DFT_RX_WAITBOUND	10
 
-#define XAXIDMA_BD_CTRL_LENGTH_MASK	0x007FFFFF	/* Requested len */
 #define XAXIDMA_BD_CTRL_TXSOF_MASK	0x08000000	/* First tx packet */
 #define XAXIDMA_BD_CTRL_TXEOF_MASK	0x04000000	/* Last tx packet */
 #define XAXIDMA_BD_CTRL_ALL_MASK	0x0C000000	/* All control bits */
