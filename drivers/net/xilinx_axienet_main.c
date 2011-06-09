@@ -785,7 +785,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 	cur_p->cntrl = skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK;
-	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data, skb->len,
+	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data, skb_headlen(skb),
 				     DMA_TO_DEVICE);
 	for (ii = 0; ii < num_frag; ii++) {
 
