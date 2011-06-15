@@ -1653,13 +1653,24 @@ static int __devexit xslcr_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id xslcr_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xslcr", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xslcr_of_match);
+#endif
+
 /* Driver Structure */
 static struct platform_driver xslcr_driver = {
 	.probe		= xslcr_probe,
 	.remove		= __devexit_p(xslcr_remove),
 	.driver		= {
-		.name	= "xilinx_slcr",
+		.name	= "xslcr",
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = xslcr_of_match,
+#endif
 	},
 };
 
@@ -1687,3 +1698,4 @@ module_exit(xslcr_exit);
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Driver for Xilinx SLCR Block");
 MODULE_LICENSE("GPL");
+

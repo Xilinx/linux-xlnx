@@ -865,7 +865,7 @@ static struct resource xslcr_res[] = {
 };
 
 struct platform_device xilinx_slcr_device = {
-	.name = "xilinx_slcr",
+	.name = "xslcr",
 	.id = 0,
 	.dev.platform_data = NULL,
 	.num_resources = ARRAY_SIZE(xslcr_res),
