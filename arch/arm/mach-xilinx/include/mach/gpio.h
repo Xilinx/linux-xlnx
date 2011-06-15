@@ -19,7 +19,7 @@
 
 
 #define ARCH_NR_GPIOS		118
-#define XGPIOPSS_IRQBASE	128
+#define XGPIOPS_IRQBASE		128
 
 struct xgpio_platform_data {
         unsigned int            state;

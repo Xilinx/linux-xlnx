@@ -16,6 +16,6 @@
 
 #include <mach/gpio.h>
 
-#define NR_IRQS		(XGPIOPSS_IRQBASE + ARCH_NR_GPIOS)
+#define NR_IRQS		(XGPIOPS_IRQBASE + ARCH_NR_GPIOS)
 
 #endif /* __ASM_ARCH_IRQS_H */
