@@ -103,6 +103,18 @@
 			interrupts = <52 0>;
 		};
 
+		sdhci0: sdhci@e0100000 {
+			compatible = "generic-sdhci";
+			reg = <0xE0100000 0x1000>;
+			interrupts = <56 0>;
+		};
+
+		sdhci1: sdhci@e0101000 {
+			compatible = "generic-sdhci";
+			reg = <0xE0101000 0x1000>;
+			interrupts = <79 0>;
+		};
+
 		nor: nor@e2000000 {
 			compatible = "cfi-flash";
 			bank-width = <1>;
