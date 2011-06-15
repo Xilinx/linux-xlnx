@@ -29,6 +29,11 @@
 			reg = <0xF8F01000 0x1000>;
 			#interrupt-cells = <2>;
 		};
+
+		slcr: slcr@f8000000 {
+			compatible = "xlnx,xslcr";
+			reg = <0xF8000000 0x1000>;
+		};
 	
 		uart0: uart@e0000000 {
 			compatible = "xlnx,xuartps";
