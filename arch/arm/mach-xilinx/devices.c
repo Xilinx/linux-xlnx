@@ -923,6 +923,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_i2cpss_0_device,
 	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
+	&xilinx_slcr_device,
 #endif
 #ifdef AXI_DMA
 	&axidma_device,
@@ -949,7 +950,6 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_nandpss_device,
 	&xilinx_sdio0pss_device,
 	&xilinx_sdio1pss_device,
-	&xilinx_slcr_device,
         &xilinx_devcfg_device,
 	&xilinx_pmu_device,
 };
