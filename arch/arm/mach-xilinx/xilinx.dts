@@ -34,6 +34,12 @@
 			compatible = "xlnx,xslcr";
 			reg = <0xF8000000 0x1000>;
 		};
+
+		wdt0: swdt@f8005000 {
+			device_type = "watchdog";
+			compatible = "xlnx,xwdtps";
+			reg = <0xF8005000 0x100>;
+		};
 	
 		uart0: uart@e0000000 {
 			compatible = "xlnx,xuartps";
