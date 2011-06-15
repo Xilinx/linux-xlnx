@@ -828,7 +828,7 @@ static struct resource xwdtpss_0_resource[] = {
 };
 
 static struct platform_device xilinx_wdtpss_0_device = {
-	.name = "xilinx_pss_wdt",
+	.name = "xwdtps`",
 	.id = 0,
 	.dev = {
 		.platform_data = NULL,
@@ -924,6 +924,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
 	&xilinx_slcr_device,
+	&xilinx_wdtpss_0_device,
 #endif
 #ifdef AXI_DMA
 	&axidma_device,
@@ -945,7 +946,6 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&eth_device0,
 	&eth_device1,
 	&xilinx_qspipss_0_device,
-	&xilinx_wdtpss_0_device,
 	&xilinx_a9wdt_device,
 	&xilinx_nandpss_device,
 	&xilinx_sdio0pss_device,

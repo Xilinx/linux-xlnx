@@ -302,12 +302,12 @@ config ADX_WATCHDOG
 	  Say Y here if you want support for the watchdog timer on Avionic
 	  Design Xanthos boards.
 
-config XILINX_PSS_WATCHDOG
-	tristate "Xilinx PSS Watchdog Timer"
+config XILINX_PS_WATCHDOG
+	tristate "Xilinx PS Watchdog Timer"
 	depends on ARCH_XILINX
 	help
 	  Say Y here if you want to include support for the watchdog
-	  timer in the Xilinx PSS.
+	  timer in the Xilinx PS.
 
 config XILINX_A9_WATCHDOG
 	tristate "Xilinx A9 Private Watchdog Timer"
