@@ -61,6 +61,25 @@
 			bus-num = <1>;
 			num-chip-select = <4>;
 		};
+
+		i2c0: i2c@e0004000 {
+			compatible = "xlnx,xi2cps";
+			reg = <0xE0004000 0x1000>;
+			interrupts = <57 0>;
+			bus-id = <0>;
+			input-clk = <50000000>;
+			i2c-clk = <100000>;
+		};
+
+		i2c1: i2c@e0005000 {
+			compatible = "xlnx,xi2cps";
+			reg = <0xE0005000 0x1000>;
+			interrupts = <80 0>;
+			bus-id = <1>;
+			input-clk = <50000000>;
+			i2c-clk = <100000>;
+		};
+
 		nor: nor@e2000000 {
 			compatible = "cfi-flash";
 			bank-width = <1>;
