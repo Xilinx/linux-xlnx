@@ -1,7 +1,7 @@
 /*
- * Xilinx PSS A9 Private WDT driver
+ * Xilinx SCU WDT driver
  *
- * Copyright (c) 2010 Xilinx Inc.
+ * Copyright (c) 2010-2011 Xilinx Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -27,19 +27,19 @@
 #include <linux/slab.h>
 
 /* These are temporary values. Need to finalize when we have a fixed clock */
-#define XA9WDT_CLOCK		5000000
-#define XA9WDT_MAX_TIMEOUT	600
-#define XA9WDT_DEFAULT_TIMEOUT	 10
-#define XA9WDT_PRESCALER	 00
+#define XSCUWDT_CLOCK		5000000
+#define XSCUWDT_MAX_TIMEOUT	600
+#define XSCUWDT_DEFAULT_TIMEOUT	10
+#define XSCUWDT_PRESCALER	00
 
-static int wdt_timeout = XA9WDT_DEFAULT_TIMEOUT;
+static int wdt_timeout = XSCUWDT_DEFAULT_TIMEOUT;
 static u32 wdt_count;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
 module_param(wdt_timeout, int, 0);
 MODULE_PARM_DESC(wdt_timeout,
 		 "Watchdog timeout in seconds. (default="
-		 __MODULE_STRING(XA9WDT_DEFAULT_TIMEOUT) ")");
+		 __MODULE_STRING(XSCUWDT_DEFAULT_TIMEOUT) ")");
 
 #ifdef CONFIG_WATCHDOG_NOWAYOUT
 module_param(nowayout, int, 0);
@@ -49,47 +49,47 @@ MODULE_PARM_DESC(nowayout,
 #endif
 
 /**
- * struct xa9wdt - Watchdog device structure.
+ * struct xscuwdt - Watchdog device structure.
  * @regs:	baseaddress of device.
  * @busy:	flag for the device.
  * @miscdev:	miscdev structure.
  * @io_lock:	lock used for synchronization.
  *
  * Structure containing the standard miscellaneous device 'miscdev'
- * structure along with the parameters specific to pss watchdog.
+ * structure along with the parameters specific to ps watchdog.
  */
-struct xa9wdt {
+struct xscuwdt {
 	void __iomem		*regs;
 	unsigned long		busy;
 	struct miscdevice	miscdev;
 	spinlock_t		io_lock;
 };
 
-static struct xa9wdt *wdt;
+static struct xscuwdt *wdt;
 
 /*
  * Info structure used to indicate the features supported by the device
  * to the upper layers. This is defined in watchdog.h header file.
  */
-static struct watchdog_info xa9wdt_info = {
-	.identity	= "xa9wdt watchdog",
+static struct watchdog_info xscuwdt_info = {
+	.identity	= "xscuwdt watchdog",
 	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
 };
 
 /* Write access to Registers */
-#define xa9wdt_writereg(val, offset) \
+#define xscuwdt_writereg(val, offset) \
 				__raw_writel(val, (wdt->regs) + offset)
-#define xa9wdt_readreg(offset) __raw_readl((wdt->regs) + offset)
+#define xscuwdt_readreg(offset) __raw_readl((wdt->regs) + offset)
 
 /*************************Register Map**************************************/
 
 /* Register Offsets for the WDT */
-#define XA9WDT_LOAD_OFFSET		0x00 /* Watchdog Load Register */
-#define XA9WDT_CONTROL_OFFSET		0x08 /* Watchdog Control Register */
-#define XA9WDT_DISABLE_OFFSET		0x14 /* Watchdog Disable Register */
+#define XSCUWDT_LOAD_OFFSET		0x00 /* Watchdog Load Register */
+#define XSCUWDT_CONTROL_OFFSET		0x08 /* Watchdog Control Register */
+#define XSCUWDT_DISABLE_OFFSET		0x14 /* Watchdog Disable Register */
 
 /**
- * xa9wdt_start -  Enable and start the watchdog.
+ * xscuwdt_start -  Enable and start the watchdog.
  *
  * The clock to the WDT is 5 MHz and the counter value is calculated
  * according to the formula:
@@ -97,58 +97,58 @@ static struct watchdog_info xa9wdt_info = {
  * This needs to be re-visited when the PERIPHCLK clock changes in HW.
  *
  **/
-static void xa9wdt_start(void)
+static void xscuwdt_start(void)
 {
-	wdt_count = ((wdt_timeout * XA9WDT_CLOCK) / (XA9WDT_PRESCALER + 1)) - 1;
+	wdt_count = ((wdt_timeout * XSCUWDT_CLOCK) / (XSCUWDT_PRESCALER + 1)) - 1;
 
 	spin_lock(&wdt->io_lock);
-	xa9wdt_writereg(wdt_count, XA9WDT_LOAD_OFFSET);
+	xscuwdt_writereg(wdt_count, XSCUWDT_LOAD_OFFSET);
 
-	xa9wdt_writereg(0x09 | (XA9WDT_PRESCALER << 8), XA9WDT_CONTROL_OFFSET);
+	xscuwdt_writereg(0x09 | (XSCUWDT_PRESCALER << 8), XSCUWDT_CONTROL_OFFSET);
 	spin_unlock(&wdt->io_lock);
 }
 
 /**
- * xa9wdt_stop -  Stop the watchdog.
+ * xscuwdt_stop -  Stop the watchdog.
  *
  * Read the contents of the Watchdog Control register, and clear the
  * watchdog enable bit in the register.
  **/
-static void xa9wdt_stop(void)
+static void xscuwdt_stop(void)
 {
 	spin_lock(&wdt->io_lock);
-	xa9wdt_writereg(0x12345678, XA9WDT_DISABLE_OFFSET);
-	xa9wdt_writereg(0x87654321, XA9WDT_DISABLE_OFFSET);
-	xa9wdt_writereg(0x00, XA9WDT_CONTROL_OFFSET);
+	xscuwdt_writereg(0x12345678, XSCUWDT_DISABLE_OFFSET);
+	xscuwdt_writereg(0x87654321, XSCUWDT_DISABLE_OFFSET);
+	xscuwdt_writereg(0x00, XSCUWDT_CONTROL_OFFSET);
 	spin_unlock(&wdt->io_lock);
 }
 
 /**
- * xa9wdt_reload -  Reload the watchdog timer.
+ * xscuwdt_reload -  Reload the watchdog timer.
  *
  * Write the wdt_count to the Watchdog Load register.
  **/
-static void xa9wdt_reload(void)
+static void xscuwdt_reload(void)
 {
 	spin_lock(&wdt->io_lock);
-	xa9wdt_writereg(wdt_count, XA9WDT_LOAD_OFFSET);
+	xscuwdt_writereg(wdt_count, XSCUWDT_LOAD_OFFSET);
 	spin_unlock(&wdt->io_lock);
 }
 
 /**
- * xa9wdt_settimeout -  Set a new timeout value for the watchdog device.
+ * xscuwdt_settimeout -  Set a new timeout value for the watchdog device.
  *
  * @new_time:	new timeout value that needs to be set.
  *
  * Check whether the timeout is in the valid range. If not, don't update the
  * timeout value, otherwise update the global variable wdt_timeout with new
- * value which is used when xa9wdt_start is called.
+ * value which is used when xscuwdt_start is called.
  * Returns -ENOTSUPP, if timeout value is out-of-range.
  * Returns 0 on success.
  **/
-static int xa9wdt_settimeout(int new_time)
+static int xscuwdt_settimeout(int new_time)
 {
-	if ((new_time <= 0) || (new_time > XA9WDT_MAX_TIMEOUT))
+	if ((new_time <= 0) || (new_time > XSCUWDT_MAX_TIMEOUT))
 		return -ENOTSUPP;
 	wdt_timeout = new_time;
 	return 0;
@@ -157,7 +157,7 @@ static int xa9wdt_settimeout(int new_time)
 /*************************WDT Device Operations****************************/
 
 /**
- * xa9wdt_open -  Open the watchdog device.
+ * xscuwdt_open -  Open the watchdog device.
  *
  * @inode:	inode of device.
  * @file:	file handle to device.
@@ -165,16 +165,16 @@ static int xa9wdt_settimeout(int new_time)
  * Check whether the device is already in use and then only start the watchdog
  * timer. Returns 0 on success, otherwise -EBUSY.
  **/
-static int xa9wdt_open(struct inode *inode, struct file *file)
+static int xscuwdt_open(struct inode *inode, struct file *file)
 {
 	if (test_and_set_bit(0, &(wdt->busy)))
 		return -EBUSY;
-	xa9wdt_start();
+	xscuwdt_start();
 	return nonseekable_open(inode, file);
 }
 
 /**
- * xa9wdt_close -  Close the watchdog device only when nowayout is disabled.
+ * xscuwdt_close -  Close the watchdog device only when nowayout is disabled.
  *
  * @inode:	inode of device.
  * @file:	file handle to device.
@@ -182,11 +182,11 @@ static int xa9wdt_open(struct inode *inode, struct file *file)
  * Stops the watchdog and clears the busy flag.
  * Returns 0 on success, -ENOTSUPP when the nowayout is enabled.
  **/
-static int xa9wdt_close(struct inode *inode, struct file *file)
+static int xscuwdt_close(struct inode *inode, struct file *file)
 {
 	if (!nowayout) {
 		/* Disable the watchdog */
-		xa9wdt_stop();
+		xscuwdt_stop();
 		clear_bit(0, &(wdt->busy));
 		return 0;
 	}
@@ -194,7 +194,7 @@ static int xa9wdt_close(struct inode *inode, struct file *file)
 }
 
 /**
- * xa9wdt_ioctl -  Handle IOCTL operations on the device.
+ * xscuwdt_ioctl -  Handle IOCTL operations on the device.
  *
  * @file:	file handle to the device.
  * @cmd:	watchdog command.
@@ -207,7 +207,7 @@ static int xa9wdt_close(struct inode *inode, struct file *file)
  * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
  * Returns 0 on success, negative error otherwise.
  **/
-static long xa9wdt_ioctl(struct file *file,
+static long xscuwdt_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
@@ -217,7 +217,7 @@ static long xa9wdt_ioctl(struct file *file,
 	switch (cmd) {
 	case WDIOC_KEEPALIVE:
 		/* pat the watchdog */
-		xa9wdt_reload();
+		xscuwdt_reload();
 		return 0;
 
 	case WDIOC_GETSUPPORT:
@@ -225,17 +225,17 @@ static long xa9wdt_ioctl(struct file *file,
 		 * Indicate the features supported to the user through the
 		 * instance of watchdog_info structure.
 		 */
-		return copy_to_user(argp, &xa9wdt_info,
-				    sizeof(xa9wdt_info)) ? -EFAULT : 0;
+		return copy_to_user(argp, &xscuwdt_info,
+				    sizeof(xscuwdt_info)) ? -EFAULT : 0;
 
 	case WDIOC_SETTIMEOUT:
 		if (get_user(new_value, p))
 			return -EFAULT;
 
 		/* Check for the validity */
-		if (xa9wdt_settimeout(new_value))
+		if (xscuwdt_settimeout(new_value))
 			return -EINVAL;
-		xa9wdt_start();
+		xscuwdt_start();
 		/* Return current value */
 		return put_user(wdt_timeout, p);
 
@@ -252,9 +252,9 @@ static long xa9wdt_ioctl(struct file *file,
 			return -EFAULT;
 		/* Based on the flag, enable or disable the watchdog */
 		if (new_value & WDIOS_DISABLECARD)
-			xa9wdt_stop();
+			xscuwdt_stop();
 		if (new_value & WDIOS_ENABLECARD)
-			xa9wdt_start();
+			xscuwdt_start();
 		return 0;
 
 	default:
@@ -263,7 +263,7 @@ static long xa9wdt_ioctl(struct file *file,
 }
 
 /**
- * xa9wdt_write -  Pats the watchdog, i.e. reload the counter.
+ * xscuwdt_write -  Pats the watchdog, i.e. reload the counter.
  *
  * @file:	file handle to the device.
  * @data:	value is ignored.
@@ -273,15 +273,15 @@ static long xa9wdt_ioctl(struct file *file,
  * A write to watchdog device is similar to keepalive signal.
  * Returns the value of len.
  **/
-static ssize_t xa9wdt_write(struct file *file, const char __user *data,
+static ssize_t xscuwdt_write(struct file *file, const char __user *data,
 			    size_t len, loff_t *ppos)
 {
-	xa9wdt_reload();		/* pat the watchdog */
+	xscuwdt_reload();		/* pat the watchdog */
 	return len;
 }
 
 /**
- * xa9wdt_notify_sys -  Notifier for reboot or shutdown.
+ * xscuwdt_notify_sys -  Notifier for reboot or shutdown.
  *
  * @this:	handle to notifier block.
  * @code:	turn off indicator.
@@ -292,48 +292,48 @@ static ssize_t xa9wdt_write(struct file *file, const char __user *data,
  * reset on the next boot.
  * Returns NOTIFY_DONE.
  **/
-static int xa9wdt_notify_sys(struct notifier_block *this, unsigned long code,
+static int xscuwdt_notify_sys(struct notifier_block *this, unsigned long code,
 			     void *unused)
 {
 	if (code == SYS_DOWN || code == SYS_HALT) {
 		/* Stop the watchdog */
-		xa9wdt_stop();
+		xscuwdt_stop();
 	}
 	return NOTIFY_DONE;
 }
 
 /* File operations structure */
-static const struct file_operations xa9wdt_fops = {
+static const struct file_operations xscuwdt_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= no_llseek,
-	.unlocked_ioctl	= xa9wdt_ioctl,
-	.open		= xa9wdt_open,
-	.release	= xa9wdt_close,
-	.write		= xa9wdt_write,
+	.unlocked_ioctl	= xscuwdt_ioctl,
+	.open		= xscuwdt_open,
+	.release	= xscuwdt_close,
+	.write		= xscuwdt_write,
 };
 
 /* Notifier Structure */
-static struct notifier_block xa9wdt_notifier = {
-	.notifier_call = xa9wdt_notify_sys,
+static struct notifier_block xscuwdt_notifier = {
+	.notifier_call = xscuwdt_notify_sys,
 };
 
 /************************Platform Operations*****************************/
 /**
- * xa9wdt_probe -  Probe call for the device.
+ * xscuwdt_probe -  Probe call for the device.
  *
  * @pdev:	handle to the platform device structure.
  *
  * It does all the memory allocation and registration for the device.
  * Returns 0 on success, negative error otherwise.
  **/
-static int __init xa9wdt_probe(struct platform_device *pdev)
+static int __init xscuwdt_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int ret;
 
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
-		dev_err(&pdev->dev, "Device Busy, only 1 xa9wdt instance "
+		dev_err(&pdev->dev, "Device Busy, only 1 xscuwdt instance "
 			"supported.\n");
 		return -EBUSY;
 	}
@@ -345,8 +345,8 @@ static int __init xa9wdt_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	/* Allocate an instance of the xa9wdt structure */
-	wdt = kzalloc(sizeof(struct xa9wdt), GFP_KERNEL);
+	/* Allocate an instance of the xscuwdt structure */
+	wdt = kzalloc(sizeof(struct xscuwdt), GFP_KERNEL);
 	if (!wdt) {
 		dev_err(&pdev->dev, "No memory for wdt structure\n");
 		return -ENOMEM;
@@ -360,20 +360,20 @@ static int __init xa9wdt_probe(struct platform_device *pdev)
 	}
 
 	/* Switch to Watchdog mode */
-	xa9wdt_writereg(0x08, XA9WDT_CONTROL_OFFSET);
+	xscuwdt_writereg(0x08, XSCUWDT_CONTROL_OFFSET);
 
 	/* Register the reboot notifier */
-	ret = register_reboot_notifier(&xa9wdt_notifier);
+	ret = register_reboot_notifier(&xscuwdt_notifier);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
 			ret);
 		goto err_iounmap;
 	}
 
-	/* Initialize the members of xa9wdt structure */
+	/* Initialize the members of xscuwdt structure */
 	wdt->miscdev.minor	= WATCHDOG_MINOR,
 	wdt->miscdev.name	= "watchdog",
-	wdt->miscdev.fops	= &xa9wdt_fops,
+	wdt->miscdev.fops	= &xscuwdt_fops,
 
 	/* Initialize the busy flag to zero */
 	clear_bit(0, &wdt->busy);
@@ -389,14 +389,14 @@ static int __init xa9wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, wdt);
 	wdt->miscdev.parent = &pdev->dev;
 
-	dev_info(&pdev->dev, "Xilinx A9 Watchdog Timer at 0x%p with timeout "
+	dev_info(&pdev->dev, "Xilinx SCU Watchdog Timer at 0x%p with timeout "
 		 "%d seconds%s\n", wdt->regs, wdt_timeout,
 		 nowayout ? ", nowayout" : "");
 
 	return 0;
 
 err_notifier:
-	unregister_reboot_notifier(&xa9wdt_notifier);
+	unregister_reboot_notifier(&xscuwdt_notifier);
 err_iounmap:
 	iounmap(wdt->regs);
 err_free:
@@ -406,7 +406,7 @@ err_free:
 }
 
 /**
- * xa9wdt_remove -  Probe call for the device.
+ * xscuwdt_remove -  Probe call for the device.
  *
  * @pdev:	handle to the platform device structure.
  *
@@ -414,16 +414,16 @@ err_free:
  * Stop is allowed only when nowayout is disabled.
  * Returns 0 on success, otherwise negative error.
  **/
-static int __exit xa9wdt_remove(struct platform_device *pdev)
+static int __exit xscuwdt_remove(struct platform_device *pdev)
 {
 	int ret = 0;
 
 	if (wdt && !nowayout) {
-		xa9wdt_stop();
+		xscuwdt_stop();
 		ret = misc_deregister(&wdt->miscdev);
 		if (!ret)
 			wdt->miscdev.parent = NULL;
-		unregister_reboot_notifier(&xa9wdt_notifier);
+		unregister_reboot_notifier(&xscuwdt_notifier);
 		iounmap(wdt->regs);
 		kfree(wdt);
 		wdt = NULL;
@@ -436,97 +436,108 @@ static int __exit xa9wdt_remove(struct platform_device *pdev)
 }
 
 /**
- * xa9wdt_shutdown -  Stop the device.
+ * xscuwdt_shutdown -  Stop the device.
  *
  * @pdev:	handle to the platform structure.
  *
  **/
-static void xa9wdt_shutdown(struct platform_device *pdev)
+static void xscuwdt_shutdown(struct platform_device *pdev)
 {
 	/* Stop the device */
-	xa9wdt_stop();
+	xscuwdt_stop();
 }
 
 #ifdef CONFIG_PM
 /**
- * xa9wdt_suspend -  Stop the device.
+ * xscuwdt_suspend -  Stop the device.
  *
  * @pdev:	handle to the platform structure.
  * @message:	message to the device.
  *
  * Returns 0, always.
  **/
-static int xa9wdt_suspend(struct platform_device *pdev, pm_message_t message)
+static int xscuwdt_suspend(struct platform_device *pdev, pm_message_t message)
 {
 	/* Stop the device */
-	xa9wdt_stop();
+	xscuwdt_stop();
 	return 0;
 }
 
 /**
- * xa9wdt_resume -  Resume the device.
+ * xscuwdt_resume -  Resume the device.
  *
  * @pdev:	handle to the platform structure.
  *
  * Returns 0, always.
  **/
-static int xa9wdt_resume(struct platform_device *pdev)
+static int xscuwdt_resume(struct platform_device *pdev)
 {
 	/* Start the device */
-	xa9wdt_start();
+	xscuwdt_start();
 	return 0;
 }
 #else
-#define xa9wdt_suspend	NULL
-#define xa9wdt_resume	NULL
+#define xscuwdt_suspend	NULL
+#define xscuwdt_resume	NULL
+#endif
+
+#ifdef CONFIG_OF
+static struct of_device_id xscuwdt_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xscuwdt", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xscuwdt_of_match);
 #endif
 
 /* Driver Structure */
-static struct platform_driver xa9wdt_driver = {
-	.probe		= xa9wdt_probe,
-	.remove		= __exit_p(xa9wdt_remove),
-	.shutdown	= xa9wdt_shutdown,
-	.suspend	= xa9wdt_suspend,
-	.resume		= xa9wdt_resume,
+static struct platform_driver xscuwdt_driver = {
+	.probe		= xscuwdt_probe,
+	.remove		= __exit_p(xscuwdt_remove),
+	.shutdown	= xscuwdt_shutdown,
+	.suspend	= xscuwdt_suspend,
+	.resume		= xscuwdt_resume,
 	.driver		= {
-		.name	= "xilinx_a9wdt",
+		.name	= "xscuwdt",
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = xscuwdt_of_match,
+#endif
 	},
 };
 
 /**
- * xa9wdt_init -  Register the WDT.
+ * xscuwdt_init -  Register the WDT.
  *
  * Returns 0 on success, otherwise negative error.
  */
-static int __init xa9wdt_init(void)
+static int __init xscuwdt_init(void)
 {
 	/*
 	 * Check that the timeout value is within range. If not, reset to the
 	 * default.
 	 */
-	if (xa9wdt_settimeout(wdt_timeout)) {
-		xa9wdt_settimeout(XA9WDT_DEFAULT_TIMEOUT);
-		pr_info("xa9wdt: wdt_timeout value limited to 1 - %d sec, "
+	if (xscuwdt_settimeout(wdt_timeout)) {
+		xscuwdt_settimeout(XSCUWDT_DEFAULT_TIMEOUT);
+		pr_info("xscuwdt: wdt_timeout value limited to 1 - %d sec, "
 		"using default %dsec timeout\n",
-		XA9WDT_MAX_TIMEOUT, XA9WDT_DEFAULT_TIMEOUT);
+		XSCUWDT_MAX_TIMEOUT, XSCUWDT_DEFAULT_TIMEOUT);
 	}
-	return platform_driver_register(&xa9wdt_driver);
+	return platform_driver_register(&xscuwdt_driver);
 }
 
 /**
- * xa9wdt_exit -  Unregister the WDT.
+ * xscuwdt_exit -  Unregister the WDT.
  */
-static void __exit xa9wdt_exit(void)
+static void __exit xscuwdt_exit(void)
 {
-	platform_driver_unregister(&xa9wdt_driver);
+	platform_driver_unregister(&xscuwdt_driver);
 }
 
-module_init(xa9wdt_init);
-module_exit(xa9wdt_exit);
+module_init(xscuwdt_init);
+module_exit(xscuwdt_exit);
 
 MODULE_AUTHOR("Xilinx Inc.");
-MODULE_DESCRIPTION("Driver for Pele A9 WDT");
+MODULE_DESCRIPTION("Driver for Zynq SCU WDT");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_MISCDEV(WATCHDOG_MINOR);
-MODULE_ALIAS("platform: xilinx_a9wdt");
+MODULE_ALIAS("platform: xscuwdt");
