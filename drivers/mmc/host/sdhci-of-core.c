@@ -30,6 +30,9 @@
 #include "sdhci-of.h"
 #include "sdhci.h"
 
+static struct sdhci_ops sdhci_of_ops = {
+};
+
 #ifdef CONFIG_MMC_SDHCI_BIG_ENDIAN_32BIT_BYTE_SWAPPER
 
 /*
@@ -167,7 +170,8 @@ static int __devinit sdhci_of_probe(struct platform_device *ofdev)
 	if (sdhci_of_data) {
 		host->quirks = sdhci_of_data->quirks;
 		host->ops = &sdhci_of_data->ops;
-	}
+	} else
+		host->ops = &sdhci_of_ops;
 
 	if (of_get_property(np, "sdhci,auto-cmd12", NULL))
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
