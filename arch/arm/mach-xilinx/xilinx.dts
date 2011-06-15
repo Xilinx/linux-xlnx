@@ -80,6 +80,12 @@
 			i2c-clk = <100000>;
 		};
 
+		gpio0: gpio@e000a000 {
+			compatible = "xlnx,xgpiops";
+			reg = <0xE000A000 0x1000>;
+			interrupts = <52 0>;
+		};
+
 		nor: nor@e2000000 {
 			compatible = "cfi-flash";
 			bank-width = <1>;
