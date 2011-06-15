@@ -389,7 +389,7 @@ static struct resource xgpiopss_0_resource[] = {
 	},
 };
 struct platform_device xilinx_gpiopss_0_device = {
-	.name = "xilinx_gpiopss",
+	.name = "xgpiops",
 	.id = 0,
 	.dev.platform_data = NULL,
 	.resource =  xgpiopss_0_resource,
@@ -920,6 +920,9 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_norpss_device,
 	&xilinx_spipss_0_device,
 	&xilinx_spipss_1_device,
+	&xilinx_i2cpss_0_device,
+	&xilinx_i2cpss_1_device,
+	&xilinx_gpiopss_0_device,
 #endif
 #ifdef AXI_DMA
 	&axidma_device,
@@ -935,9 +938,6 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 #ifdef CONFIG_XILINX_TEST
 	&xilinx_dma_test,
 #endif
-	&xilinx_i2cpss_0_device,
-	&xilinx_i2cpss_1_device,
-	&xilinx_gpiopss_0_device,
 #ifdef AXI_GPIO
 	&xilinx_gpio_0_device,
 #endif
