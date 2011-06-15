@@ -1,7 +1,7 @@
 /*
- * Xilinx I2C bus driver for the PSS I2C Interfaces.
+ * Xilinx I2C bus driver for the PS I2C Interfaces.
  *
- * 2009 (c) Xilinx, Inc.
+ * 2009-2011 (c) Xilinx, Inc.
  *
  * This program is free software; you can redistribute it
  * and/or modify it under the terms of the GNU General Public
@@ -50,27 +50,27 @@
  * Register Map
  * Register offsets for the I2C device.
  */
-#define XI2CPSS_CR_OFFSET	 0x00 /* Control Register, RW */
-#define XI2CPSS_SR_OFFSET	 0x04 /* Status Register, RO */
-#define XI2CPSS_ADDR_OFFSET	 0x08 /* I2C Address Register, RW */
-#define XI2CPSS_DATA_OFFSET	 0x0C /* I2C Data Register, RW */
-#define XI2CPSS_ISR_OFFSET	 0x10 /* Interrupt Status Register, RW */
-#define XI2CPSS_XFER_SIZE_OFFSET 0x14 /* Transfer Size Register, RW */
-#define XI2CPSS_SLV_PAUSE_OFFSET 0x18 /* Slave monitor pause Register, RW */
-#define XI2CPSS_TIME_OUT_OFFSET	 0x1C /* Time Out Register, RW */
-#define XI2CPSS_IMR_OFFSET	 0x20 /* Interrupt Mask Register, RO */
-#define XI2CPSS_IER_OFFSET	 0x24 /* Interrupt Enable Register, WO */
-#define XI2CPSS_IDR_OFFSET	 0x28 /* Interrupt Disable Register, WO */
+#define XI2CPS_CR_OFFSET	0x00 /* Control Register, RW */
+#define XI2CPS_SR_OFFSET	0x04 /* Status Register, RO */
+#define XI2CPS_ADDR_OFFSET	0x08 /* I2C Address Register, RW */
+#define XI2CPS_DATA_OFFSET	0x0C /* I2C Data Register, RW */
+#define XI2CPS_ISR_OFFSET	0x10 /* Interrupt Status Register, RW */
+#define XI2CPS_XFER_SIZE_OFFSET 0x14 /* Transfer Size Register, RW */
+#define XI2CPS_SLV_PAUSE_OFFSET 0x18 /* Slave monitor pause Register, RW */
+#define XI2CPS_TIME_OUT_OFFSET	0x1C /* Time Out Register, RW */
+#define XI2CPS_IMR_OFFSET	0x20 /* Interrupt Mask Register, RO */
+#define XI2CPS_IER_OFFSET	0x24 /* Interrupt Enable Register, WO */
+#define XI2CPS_IDR_OFFSET	0x28 /* Interrupt Disable Register, WO */
 
 /*
  * Control Register Bit mask definitions
  * This register contains various control bits that affect the operation of the
  * I2C controller.
  */
-#define XI2CPSS_CR_HOLD_BUS_MASK 0x00000010 /* Hold Bus bit */
-#define XI2CPSS_CR_RW_MASK	 0x00000001 /* Read or Write Master transfer
+#define XI2CPS_CR_HOLD_BUS_MASK 0x00000010 /* Hold Bus bit */
+#define XI2CPS_CR_RW_MASK	0x00000001 /* Read or Write Master transfer
 					    * 0= Transmitter, 1= Receiver */
-#define XI2CPSS_CR_CLR_FIFO_MASK 0x00000040 /* 1 = Auto init FIFO to zeroes */
+#define XI2CPS_CR_CLR_FIFO_MASK 0x00000040 /* 1 = Auto init FIFO to zeroes */
 
 /*
  * I2C Address Register Bit mask definitions
@@ -78,31 +78,31 @@
  * bits. A write access to this register always initiates a transfer if the I2C
  * is in master mode.
  */
-#define XI2CPSS_ADDR_MASK	0x000003FF /* I2C Address Mask */
+#define XI2CPS_ADDR_MASK	0x000003FF /* I2C Address Mask */
 
 /*
  * I2C Interrupt Registers Bit mask definitions
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
  * bit definitions.
  */
-#define XI2CPSS_IXR_ALL_INTR_MASK 0x000002FF /* All ISR Mask */
+#define XI2CPS_IXR_ALL_INTR_MASK 0x000002FF /* All ISR Mask */
 
-#define XI2CPSS_FIFO_DEPTH	16		/* FIFO Depth */
-#define XI2CPSS_TIMEOUT		(50 * HZ)	/* Timeout for bus busy check */
-#define XI2CPSS_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
+#define XI2CPS_FIFO_DEPTH	16		/* FIFO Depth */
+#define XI2CPS_TIMEOUT		(50 * HZ)	/* Timeout for bus busy check */
+#define XI2CPS_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
 
-#define XI2CPSS_DATA_INTR_DEPTH (XI2CPSS_FIFO_DEPTH - 2)/* FIFO depth at which
+#define XI2CPS_DATA_INTR_DEPTH (XI2CPS_FIFO_DEPTH - 2)/* FIFO depth at which
 							 * the DATA interrupt
 							 * occurs
 							 */
 
-#define DRIVER_NAME		"XILINX_PSS_I2C"
+#define DRIVER_NAME		"xi2cps"
 
-#define xi2cpss_readreg(offset)		__raw_readl(id->membase + offset)
-#define xi2cpss_writereg(val, offset)	__raw_writel(val, id->membase + offset)
+#define xi2cps_readreg(offset)		__raw_readl(id->membase + offset)
+#define xi2cps_writereg(val, offset)	__raw_writel(val, id->membase + offset)
 
 /**
- * struct xi2cpss - I2C device private data structure
+ * struct xi2cps - I2C device private data structure
  * @membase:		Base address of the I2C device
  * @adap:		I2C adapter instance
  * @p_msg:		Message pointer
@@ -117,7 +117,7 @@
  * @input_clk:		Input clock to I2C controller
  * @bus_hold_flag:	Flag used in repeated start for clearing HOLD bit
  */
-struct xi2cpss {
+struct xi2cps {
 	void __iomem *membase;
 	struct i2c_adapter adap;
 	struct i2c_msg	*p_msg;
@@ -133,24 +133,23 @@ struct xi2cpss {
 	unsigned int bus_hold_flag;
 };
 
-
 /**
- * xi2cpss_isr - Interrupt handler for the I2C device
+ * xi2cps_isr - Interrupt handler for the I2C device
  * @irq:	irq number for the I2C device
- * @ptr:	void pointer to xi2cpss structure
+ * @ptr:	void pointer to xi2cps structure
  *
  * Returns IRQ_HANDLED always
  *
  * This function handles the data interrupt, transfer complete interrupt and
  * the error interrupts of the I2C device.
  */
-static irqreturn_t xi2cpss_isr(int irq, void *ptr)
+static irqreturn_t xi2cps_isr(int irq, void *ptr)
 {
 	unsigned int isr_status, avail_bytes;
 	unsigned int bytes_to_recv, bytes_to_send;
-	struct xi2cpss *id = ptr;
+	struct xi2cps *id = ptr;
 
-	isr_status = xi2cpss_readreg(XI2CPSS_ISR_OFFSET);
+	isr_status = xi2cps_readreg(XI2CPS_ISR_OFFSET);
 
 	/* Handling Nack interrupt */
 	if (isr_status & 0x00000004)
@@ -166,9 +165,9 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 		 * In master mode, if the device has more data to receive.
 		 * Calculate received bytes and update the receive count.
 		 */
-		if ((id->recv_count) > XI2CPSS_FIFO_DEPTH) {
-			bytes_to_recv = (XI2CPSS_FIFO_DEPTH + 1) -
-				xi2cpss_readreg(XI2CPSS_XFER_SIZE_OFFSET);
+		if ((id->recv_count) > XI2CPS_FIFO_DEPTH) {
+			bytes_to_recv = (XI2CPS_FIFO_DEPTH + 1) -
+				xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
 			id->recv_count -= bytes_to_recv;
 		/*
 		 * Calculate the expected bytes to be received further and
@@ -176,23 +175,23 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 		 * count is less than FIFO size then clear hold bit if there
 		 * are no further messages to be processed
 		 */
-			if (id->recv_count > XI2CPSS_FIFO_DEPTH)
-				xi2cpss_writereg(XI2CPSS_FIFO_DEPTH + 1,
-						XI2CPSS_XFER_SIZE_OFFSET);
+			if (id->recv_count > XI2CPS_FIFO_DEPTH)
+				xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
+						XI2CPS_XFER_SIZE_OFFSET);
 			else {
-				xi2cpss_writereg(id->recv_count,
-						XI2CPSS_XFER_SIZE_OFFSET);
+				xi2cps_writereg(id->recv_count,
+						XI2CPS_XFER_SIZE_OFFSET);
 				if (id->bus_hold_flag == 0)
 					/* Clear the hold bus bit */
-					xi2cpss_writereg(
-					(xi2cpss_readreg(XI2CPSS_CR_OFFSET) &
-					(~XI2CPSS_CR_HOLD_BUS_MASK)),
-					XI2CPSS_CR_OFFSET);
+					xi2cps_writereg(
+					(xi2cps_readreg(XI2CPS_CR_OFFSET) &
+					(~XI2CPS_CR_HOLD_BUS_MASK)),
+					XI2CPS_CR_OFFSET);
 			}
 			/* Process the data received */
 			while (bytes_to_recv) {
 				*(id->p_recv_buf)++ =
-					xi2cpss_readreg(XI2CPSS_DATA_OFFSET);
+					xi2cps_readreg(XI2CPS_DATA_OFFSET);
 				bytes_to_recv = bytes_to_recv - 1;
 			}
 		}
@@ -207,17 +206,17 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 			 * in FIFO and fill the FIFO with that many bytes.
 			 */
 			if (id->send_count > 0) {
-				avail_bytes = XI2CPSS_FIFO_DEPTH -
-				xi2cpss_readreg(XI2CPSS_XFER_SIZE_OFFSET);
+				avail_bytes = XI2CPS_FIFO_DEPTH -
+				xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
 				if (id->send_count > avail_bytes)
 					bytes_to_send = avail_bytes;
 				else
 					bytes_to_send = id->send_count;
 
 				while (bytes_to_send--) {
-					xi2cpss_writereg(
+					xi2cps_writereg(
 						(*(id->p_send_buf)++),
-						 XI2CPSS_DATA_OFFSET);
+						 XI2CPS_DATA_OFFSET);
 					id->send_count--;
 				}
 			} else {
@@ -228,10 +227,10 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 				complete(&id->xfer_done);
 				if (id->bus_hold_flag == 0)
 					/* Clear the hold bus bit */
-					xi2cpss_writereg(
-					(xi2cpss_readreg(XI2CPSS_CR_OFFSET) &
-					(~XI2CPSS_CR_HOLD_BUS_MASK)),
-					XI2CPSS_CR_OFFSET);
+					xi2cps_writereg(
+					(xi2cps_readreg(XI2CPS_CR_OFFSET) &
+					(~XI2CPS_CR_HOLD_BUS_MASK)),
+					XI2CPS_CR_OFFSET);
 			}
 		} else {
 		/*
@@ -239,10 +238,10 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 		 * of transaction and read the data present in the FIFO.
 		 * Signal the completion of transaction.
 		 */
-			while (xi2cpss_readreg(XI2CPSS_SR_OFFSET)
+			while (xi2cps_readreg(XI2CPS_SR_OFFSET)
 							& 0x00000020) {
 				*(id->p_recv_buf)++ =
-				xi2cpss_readreg(XI2CPSS_DATA_OFFSET);
+				xi2cps_readreg(XI2CPS_DATA_OFFSET);
 				id->recv_count--;
 			}
 			complete(&id->xfer_done);
@@ -251,16 +250,16 @@ static irqreturn_t xi2cpss_isr(int irq, void *ptr)
 
 	/* Update the status for errors */
 	id->err_status = isr_status & 0x000002EC;
-	xi2cpss_writereg(isr_status, XI2CPSS_ISR_OFFSET);
+	xi2cps_writereg(isr_status, XI2CPS_ISR_OFFSET);
 	return IRQ_HANDLED;
 }
 
 /**
- * xi2cpss_mrecv - Prepare and start a master receive operation
+ * xi2cps_mrecv - Prepare and start a master receive operation
  * @id:		pointer to the i2c device structure
  *
  */
-static void xi2cpss_mrecv(struct xi2cpss *id)
+static void xi2cps_mrecv(struct xi2cps *id)
 {
 	unsigned int ctrl_reg;
 
@@ -273,36 +272,36 @@ static void xi2cpss_mrecv(struct xi2cpss *id)
 	 * Check for the message size against FIFO depth and set the
 	 * HOLD bus bit if it is more than FIFO depth.
 	 */
-	ctrl_reg = xi2cpss_readreg(XI2CPSS_CR_OFFSET);
-	ctrl_reg |= (XI2CPSS_CR_RW_MASK | XI2CPSS_CR_CLR_FIFO_MASK);
+	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
+	ctrl_reg |= (XI2CPS_CR_RW_MASK | XI2CPS_CR_CLR_FIFO_MASK);
 
-	if (id->recv_count > XI2CPSS_FIFO_DEPTH)
-		ctrl_reg |= XI2CPSS_CR_HOLD_BUS_MASK;
+	if (id->recv_count > XI2CPS_FIFO_DEPTH)
+		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
 
-	xi2cpss_writereg(ctrl_reg, XI2CPSS_CR_OFFSET);
-	xi2cpss_writereg((id->p_msg->addr & XI2CPSS_ADDR_MASK),
-						XI2CPSS_ADDR_OFFSET);
+	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
+	xi2cps_writereg((id->p_msg->addr & XI2CPS_ADDR_MASK),
+						XI2CPS_ADDR_OFFSET);
 	/*
 	 * The no. of bytes to receive is checked against the limit of
 	 * FIFO depth. Set transfer size register with no. of bytes to
 	 * receive if it is less than FIFO depth and FIFO depth + 1 if
 	 * it is more. Enable the interrupts.
 	 */
-	if (id->recv_count > XI2CPSS_FIFO_DEPTH)
-		xi2cpss_writereg(XI2CPSS_FIFO_DEPTH + 1,
-				XI2CPSS_XFER_SIZE_OFFSET);
+	if (id->recv_count > XI2CPS_FIFO_DEPTH)
+		xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
+				XI2CPS_XFER_SIZE_OFFSET);
 	else
-		xi2cpss_writereg(id->recv_count, XI2CPSS_XFER_SIZE_OFFSET);
+		xi2cps_writereg(id->recv_count, XI2CPS_XFER_SIZE_OFFSET);
 
-	xi2cpss_writereg(XI2CPSS_ENABLED_INTR, XI2CPSS_IER_OFFSET);
+	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
 
 /**
- * xi2cpss_msend - Prepare and start a master send operation
+ * xi2cps_msend - Prepare and start a master send operation
  * @id:		pointer to the i2c device
  *
  */
-static void xi2cpss_msend(struct xi2cpss *id)
+static void xi2cps_msend(struct xi2cps *id)
 {
 	unsigned int avail_bytes;
 	unsigned int bytes_to_send;
@@ -318,21 +317,21 @@ static void xi2cpss_msend(struct xi2cpss *id)
 	 * Check for the message size against FIFO depth and set the
 	 * HOLD bus bit if it is more than FIFO depth.
 	 */
-	ctrl_reg = xi2cpss_readreg(XI2CPSS_CR_OFFSET);
-	ctrl_reg &= ~XI2CPSS_CR_RW_MASK;
-	ctrl_reg |= XI2CPSS_CR_CLR_FIFO_MASK;
+	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
+	ctrl_reg &= ~XI2CPS_CR_RW_MASK;
+	ctrl_reg |= XI2CPS_CR_CLR_FIFO_MASK;
 
-	if ((id->send_count) > XI2CPSS_FIFO_DEPTH)
-		ctrl_reg |= XI2CPSS_CR_HOLD_BUS_MASK;
-	xi2cpss_writereg(ctrl_reg, XI2CPSS_CR_OFFSET);
+	if ((id->send_count) > XI2CPS_FIFO_DEPTH)
+		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
+	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
 
 	/*
 	 * Calculate the space available in FIFO. Check the message length
 	 * against the space available, and fill the FIFO accordingly.
 	 * Enable the interrupts.
 	 */
-	avail_bytes = XI2CPSS_FIFO_DEPTH -
-				xi2cpss_readreg(XI2CPSS_XFER_SIZE_OFFSET);
+	avail_bytes = XI2CPS_FIFO_DEPTH -
+				xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
 
 	if (id->send_count > avail_bytes)
 		bytes_to_send = avail_bytes;
@@ -340,18 +339,18 @@ static void xi2cpss_msend(struct xi2cpss *id)
 		bytes_to_send = id->send_count;
 
 	while (bytes_to_send--) {
-		xi2cpss_writereg((*(id->p_send_buf)++), XI2CPSS_DATA_OFFSET);
+		xi2cps_writereg((*(id->p_send_buf)++), XI2CPS_DATA_OFFSET);
 		id->send_count--;
 	}
 
-	xi2cpss_writereg((id->p_msg->addr & XI2CPSS_ADDR_MASK),
-						XI2CPSS_ADDR_OFFSET);
+	xi2cps_writereg((id->p_msg->addr & XI2CPS_ADDR_MASK),
+						XI2CPS_ADDR_OFFSET);
 
-	xi2cpss_writereg(XI2CPSS_ENABLED_INTR, XI2CPSS_IER_OFFSET);
+	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
 
 /**
- * xi2cpss_master_xfer - The main i2c transfer function
+ * xi2cps_master_xfer - The main i2c transfer function
  * @adap:	pointer to the i2c adapter driver instance
  * @msgs:	pointer to the i2c message structure
  * @num:	the number of messages to transfer
@@ -362,16 +361,16 @@ static void xi2cpss_msend(struct xi2cpss *id)
  * modified by user. Then initiates the send/recv activity based on the
  * transfer message received.
  */
-static int xi2cpss_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
+static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 				int num)
 {
-	struct xi2cpss *id = adap->algo_data;
+	struct xi2cps *id = adap->algo_data;
 	unsigned int count, retries;
 	unsigned long timeout;
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
-	timeout = jiffies + XI2CPSS_TIMEOUT;
-	while ((xi2cpss_readreg(XI2CPSS_SR_OFFSET)) & 0x00000100) {
+	timeout = jiffies + XI2CPS_TIMEOUT;
+	while ((xi2cps_readreg(XI2CPS_SR_OFFSET)) & 0x00000100) {
 		if (time_after(jiffies, timeout)) {
 			dev_warn(id->adap.dev.parent,
 					"timedout waiting for bus ready\n");
@@ -383,8 +382,8 @@ static int xi2cpss_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 
 	/* The bus is free. Set the new timeout value if updated */
 	if (id->adap.timeout != id->cur_timeout) {
-		xi2cpss_writereg((id->adap.timeout & 0xFF),
-					XI2CPSS_TIME_OUT_OFFSET);
+		xi2cps_writereg((id->adap.timeout & 0xFF),
+					XI2CPS_TIME_OUT_OFFSET);
 		id->cur_timeout = id->adap.timeout;
 	}
 
@@ -394,8 +393,8 @@ static int xi2cpss_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	 */
 	if (num > 1) {
 		id->bus_hold_flag = 0;
-		xi2cpss_writereg((xi2cpss_readreg(XI2CPSS_CR_OFFSET) |
-				XI2CPSS_CR_HOLD_BUS_MASK), XI2CPSS_CR_OFFSET);
+		xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) |
+				XI2CPS_CR_HOLD_BUS_MASK), XI2CPS_CR_OFFSET);
 	} else
 		id->bus_hold_flag = 1;
 
@@ -412,25 +411,25 @@ retry:
 
 		/* Check for the TEN Bit mode on each msg */
 		if (msgs->flags & I2C_M_TEN)
-			xi2cpss_writereg((xi2cpss_readreg(XI2CPSS_CR_OFFSET) &
-					(~0x00000004)), XI2CPSS_CR_OFFSET);
+			xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) &
+					(~0x00000004)), XI2CPS_CR_OFFSET);
 		else {
-			if ((xi2cpss_readreg(XI2CPSS_CR_OFFSET) & 0x00000004)
+			if ((xi2cps_readreg(XI2CPS_CR_OFFSET) & 0x00000004)
 								== 0)
-				xi2cpss_writereg(
-					(xi2cpss_readreg(XI2CPSS_CR_OFFSET) |
-					 (0x00000004)), XI2CPSS_CR_OFFSET);
+				xi2cps_writereg(
+					(xi2cps_readreg(XI2CPS_CR_OFFSET) |
+					 (0x00000004)), XI2CPS_CR_OFFSET);
 		}
 
 		/* Check for the R/W flag on each msg */
 		if (msgs->flags & I2C_M_RD)
-			xi2cpss_mrecv(id);
+			xi2cps_mrecv(id);
 		else
-			xi2cpss_msend(id);
+			xi2cps_msend(id);
 
 		/* Wait for the signal of completion */
 		wait_for_completion_interruptible(&id->xfer_done);
-		xi2cpss_writereg(XI2CPSS_IXR_ALL_INTR_MASK, XI2CPSS_IDR_OFFSET);
+		xi2cps_writereg(XI2CPS_IXR_ALL_INTR_MASK, XI2CPS_IDR_OFFSET);
 
 		/* If it is bus arbitration error, try again */
 		if (id->err_status & 0x00000200) {
@@ -459,25 +458,25 @@ retry:
 }
 
 /**
- * xi2cpss_func - Returns the supported features of the I2C driver
+ * xi2cps_func - Returns the supported features of the I2C driver
  * @adap:	pointer to the i2c adapter structure
  *
  * Returns 32 bit value, each bit corresponding to a feature
  */
-static u32 xi2cpss_func(struct i2c_adapter *adap)
+static u32 xi2cps_func(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | I2C_FUNC_10BIT_ADDR | \
 		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
 }
 
-static const struct i2c_algorithm xi2cpss_algo = {
-	.master_xfer	= xi2cpss_master_xfer,
-	.functionality	= xi2cpss_func,
+static const struct i2c_algorithm xi2cps_algo = {
+	.master_xfer	= xi2cps_master_xfer,
+	.functionality	= xi2cps_func,
 };
 
 
 /**
- * xi2cpss_setclk - This function sets the serial clock rate for the I2C device
+ * xi2cps_setclk - This function sets the serial clock rate for the I2C device
  * @fscl:	The clock frequency in Hz
  * @id:		Pointer to the I2C device structure
  *
@@ -492,7 +491,7 @@ static const struct i2c_algorithm xi2cpss_algo = {
  * clock rate. The clock can not be faster than the input clock divide by 22.
  * The two most common clock rates are 100KHz and 400KHz.
  */
-static int xi2cpss_setclk(int fscl, struct xi2cpss *id)
+static int xi2cps_setclk(int fscl, struct xi2cps *id)
 {
 	unsigned int div_a, div_b, calc_div_a = 0;
 	unsigned int best_div_a = 0, best_div_b = 0;
@@ -530,10 +529,10 @@ static int xi2cpss_setclk(int fscl, struct xi2cpss *id)
 		}
 	}
 
-	ctrl_reg = xi2cpss_readreg(XI2CPSS_CR_OFFSET);
+	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg &= ~(0x0000C000 | 0x00003F00);
 	ctrl_reg |= ((best_div_a << 14) | (best_div_b << 8));
-	xi2cpss_writereg(ctrl_reg, XI2CPSS_CR_OFFSET);
+	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
 
 	return 0;
 }
@@ -543,7 +542,7 @@ static int xi2cpss_setclk(int fscl, struct xi2cpss *id)
 /************************/
 
 /**
- * xi2cpss_probe - Platform registration call
+ * xi2cps_probe - Platform registration call
  * @pdev:	Handle to the platform device structure
  *
  * Returns zero on success, negative error otherwise
@@ -552,29 +551,34 @@ static int xi2cpss_setclk(int fscl, struct xi2cpss *id)
  * device. User can modify the address mode to 10 bit address mode using the
  * ioctl call with option I2C_TENBIT.
  */
-static int __devinit xi2cpss_probe(struct platform_device *pdev)
+static int __devinit xi2cps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
-	struct xi2cpss_platform_data *pdata;
-	struct xi2cpss *id;
+	struct xi2cps *id;
 	unsigned int i2c_clk;
 	int ret;
-
+#ifdef CONFIG_OF
+	const unsigned int *prop;
+#else
+	struct xi2cps_platform_data *pdata;
+#endif
 	/*
-	 * Allocate memory for xi2cpss structure.
+	 * Allocate memory for xi2cps structure.
 	 * Initialize the structure to zero and set the platform data.
 	 * Obtain the resource base address from platform data and remap it.
 	 * Get the irq resource from platform data.Initialize the adapter
-	 * structure members and also xi2cpss structure.
+	 * structure members and also xi2cps structure.
 	 */
-	id = kzalloc(sizeof(struct xi2cpss), GFP_KERNEL);
+	id = kzalloc(sizeof(struct xi2cps), GFP_KERNEL);
 	if (!id) {
 		dev_err(&pdev->dev, "no mem for i2c private data\n");
 		return -ENOMEM;
 	}
-	memset((void *)id, 0, sizeof(struct xi2cpss));
+	memset((void *)id, 0, sizeof(struct xi2cps));
 	platform_set_drvdata(pdev, id);
+#ifndef CONFIG_OF
 	pdata = pdev->dev.platform_data;
+#endif
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r_mem) {
@@ -598,8 +602,19 @@ static int __devinit xi2cpss_probe(struct platform_device *pdev)
 		goto err_unmap;
 	}
 
+#ifdef CONFIG_OF
+	prop = of_get_property(pdev->dev.of_node, "bus-id", NULL);
+	if (prop)
+		id->adap.nr = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "couldn't determine bus-id\n");
+		goto err_unmap ;
+	}
+#else
 	id->adap.nr = pdev->id;
-	id->adap.algo = (struct i2c_algorithm *) &xi2cpss_algo;
+#endif
+	id->adap.algo = (struct i2c_algorithm *) &xi2cps_algo;
 	id->adap.timeout = 0x1F;	/* Default timeout value */
 	id->adap.retries = 3;		/* Default retry value. */
 	id->adap.algo_data = id;
@@ -608,8 +623,28 @@ static int __devinit xi2cpss_probe(struct platform_device *pdev)
 		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
+#ifdef CONFIG_OF
+	prop = of_get_property(pdev->dev.of_node, "input-clk", NULL);
+	if (prop)
+		id->input_clk = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "couldn't determine input-clk\n");
+		goto err_unmap ;
+	}
+
+	prop = of_get_property(pdev->dev.of_node, "i2c-clk", NULL);
+	if (prop)
+		i2c_clk = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
+		goto err_unmap;
+	}
+#else
 	id->input_clk = pdata->input_clk;
 	i2c_clk = pdata->i2c_clk;
+#endif
 
 	/*
 	 * Set Master Mode,Normal addressing mode (7 bit address),
@@ -617,17 +652,17 @@ static int __devinit xi2cpss_probe(struct platform_device *pdev)
 	 * Set the timeout and I2C clock and request the IRQ(ISR mapped).
 	 * Call to the i2c_add_numbered_adapter registers the adapter.
 	 */
-	xi2cpss_writereg(0x0000000E, XI2CPSS_CR_OFFSET);
-	xi2cpss_writereg(id->adap.timeout, XI2CPSS_TIME_OUT_OFFSET);
+	xi2cps_writereg(0x0000000E, XI2CPS_CR_OFFSET);
+	xi2cps_writereg(id->adap.timeout, XI2CPS_TIME_OUT_OFFSET);
 
-	ret = xi2cpss_setclk(i2c_clk, id);
+	ret = xi2cps_setclk(i2c_clk, id);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "invalid SCL clock: %dkHz\n", i2c_clk);
 		ret = -EINVAL;
 		goto err_unmap;
 	}
 
-	if (request_irq(id->irq, xi2cpss_isr, 0, DRIVER_NAME, id)) {
+	if (request_irq(id->irq, xi2cps_isr, 0, DRIVER_NAME, id)) {
 		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
 		ret = -EINVAL;
 		goto err_unmap;
@@ -654,16 +689,16 @@ err_free_mem:
 }
 
 /**
- * xi2cpss_remove - Unregister the device after releasing the resources
+ * xi2cps_remove - Unregister the device after releasing the resources
  * @pdev:	Handle to the platform device structure
  *
  * Returns zero always
  *
  * This function frees all the resources allocated to the device.
  */
-static int __devexit xi2cpss_remove(struct platform_device *pdev)
+static int __devexit xi2cps_remove(struct platform_device *pdev)
 {
-	struct xi2cpss *id = platform_get_drvdata(pdev);
+	struct xi2cps *id = platform_get_drvdata(pdev);
 
 	i2c_del_adapter(&id->adap);
 	free_irq(id->irq, id);
@@ -674,40 +709,49 @@ static int __devexit xi2cpss_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver xi2cpss_drv = {
+#ifdef CONFIG_OF
+static struct of_device_id xi2cps_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xi2cps", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xi2cps_of_match);
+#endif
+
+static struct platform_driver xi2cps_drv = {
 	.driver = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = xi2cps_of_match,
+#endif
 	},
-	.probe  = xi2cpss_probe,
-	.remove = __devexit_p(xi2cpss_remove),
+	.probe  = xi2cps_probe,
+	.remove = __devexit_p(xi2cps_remove),
 };
 
 /**
- * xi2cpss_init - Initial driver registration function
+ * xi2cps_init - Initial driver registration function
  *
  * Returns zero on success, otherwise negative error.
  */
-static int __init xi2cpss_init(void)
+static int __init xi2cps_init(void)
 {
-	return platform_driver_register(&xi2cpss_drv);
+	return platform_driver_register(&xi2cps_drv);
 }
 
 /**
- * xi2cpss_exit - Driver Un-registration function
+ * xi2cps_exit - Driver Un-registration function
  */
-static void __exit xi2cpss_exit(void)
+static void __exit xi2cps_exit(void)
 {
-	platform_driver_unregister(&xi2cpss_drv);
+	platform_driver_unregister(&xi2cps_drv);
 }
 
-module_init(xi2cpss_init);
-module_exit(xi2cpss_exit);
+module_init(xi2cps_init);
+module_exit(xi2cps_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PSS I2C bus driver");
+MODULE_DESCRIPTION("Xilinx PS I2C bus driver");
 MODULE_LICENSE("GPL");
-
-
-
+MODULE_ALIAS("platform:" DRIVER_NAME);
 

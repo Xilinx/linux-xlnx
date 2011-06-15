@@ -337,7 +337,7 @@ static struct resource xi2cpss_0_resource[] = {
 };
 
 static struct platform_device xilinx_i2cpss_0_device = {
-	.name = "XILINX_PSS_I2C",
+	.name = "xi2cps",
 	.id = 0,
 	.dev = {
 		.platform_data = &xi2cpss_0_pdata,
@@ -365,7 +365,7 @@ static struct resource xi2cpss_1_resource[] = {
 };
 
 static struct platform_device xilinx_i2cpss_1_device = {
-	.name = "XILINX_PSS_I2C",
+	.name = "xi2cps",
 	.id = 1,
 	.dev = {
 		.platform_data = &xi2cpss_1_pdata,
