@@ -799,23 +799,12 @@ static int __devexit xspips_remove(struct platform_device *dev)
 	struct xspips *xspi = spi_master_get_devdata(master);
 	struct resource *r;
 	int ret = 0;
-#ifdef CONFIG_OF
-	struct resource r_mem;
-
-	r = &r_mem;
-	ret = of_address_to_resource(dev->dev.of_node, 0, r);
-	if (ret) {
-		dev_err(&dev->dev, "address resource not available\n");
-		return -ENODEV;
-	}
-#else
 
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		dev_err(&dev->dev, "platform_get_resource failed\n");
 		return -ENODEV;
 	}
-#endif
 
 	ret = xspips_destroy_queue(xspi);
 	if (ret != 0)
