@@ -93,11 +93,11 @@ config GPIO_XILINX
 	help
 	  Say yes here to support the Xilinx AXI/XPS GPIO device
 
-config GPIO_XILINX_PSS
-	tristate "Xilinx GPIO PSS"
+config GPIO_XILINX_PS
+	tristate "Xilinx GPIO PS"
 	depends on ARCH_XILINX
 	help
-	  Say yes here to support Xilinx GPIO PSS controller
+	  Say yes here to support Xilinx GPIO PS controller
 
 config GPIO_VR41XX
 	tristate "NEC VR4100 series General-purpose I/O Uint support"
