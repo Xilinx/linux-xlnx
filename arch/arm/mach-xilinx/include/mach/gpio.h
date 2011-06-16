@@ -52,12 +52,12 @@ static inline int gpio_cansleep(unsigned int gpio)
 
 static inline unsigned int gpio_to_irq(unsigned int pin)
 {
-	return pin + XGPIOPSS_IRQBASE;
+	return pin + XGPIOPS_IRQBASE;
 }
 
 static inline unsigned int irq_to_gpio(unsigned int irq)
 {
-	return irq - XGPIOPSS_IRQBASE;
+	return irq - XGPIOPS_IRQBASE;
 }
 
 void xgpiodf_set_bypass_mode(struct gpio_chip *chip, unsigned int pin);
