@@ -108,7 +108,7 @@ struct xspi_platform_data {
 #define XGPIO_IS_DUAL		0x00000001
 
 /* PSS-I2C platform data */
-struct xi2cpss_platform_data {
+struct xi2cps_platform_data {
 	unsigned int input_clk;
 	unsigned int i2c_clk;
 };

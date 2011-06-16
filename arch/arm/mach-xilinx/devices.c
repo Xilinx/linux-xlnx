@@ -318,7 +318,7 @@ struct platform_device axidma_device = {
 #endif
 
 /*************************PSS I2C***********************/
-static struct xi2cpss_platform_data xi2cpss_0_pdata = {
+static struct xi2cps_platform_data xi2cpss_0_pdata = {
 	.input_clk = 50000000,
 	.i2c_clk = 100000,
 };
@@ -346,7 +346,7 @@ static struct platform_device xilinx_i2cpss_0_device = {
 	.num_resources = ARRAY_SIZE(xi2cpss_0_resource),
 };
 
-static struct xi2cpss_platform_data xi2cpss_1_pdata = {
+static struct xi2cps_platform_data xi2cpss_1_pdata = {
 	.input_clk = 50000000,
 	.i2c_clk = 100000,
 };
