@@ -878,6 +878,7 @@ config ARCH_XILINX
 	select ARM_AMBA
 	select ISA_DMA_API
 	select ARCH_REQUIRE_GPIOLIB
+	select ZONE_DMA
 	help
 	  Support for Xilinx FPGAs with Cortex A9 based processors
 

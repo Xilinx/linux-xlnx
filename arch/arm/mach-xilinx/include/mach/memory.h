@@ -17,6 +17,12 @@
 
 #include <mach/hardware.h>
 
+#if !defined(__ASSEMBLY__) && defined(CONFIG_ZONE_DMA)
+extern void xilinx_adjust_zones(unsigned long *, unsigned long *);
+#define arch_adjust_zones(size, holes) \
+	xilinx_adjust_zones(size, holes)
+#endif
+
 /*
  * Virtual view <-> DMA view memory address translations
  * This macro is used to translate the virtual address to an address
