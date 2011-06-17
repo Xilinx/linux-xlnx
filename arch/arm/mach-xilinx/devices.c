@@ -476,9 +476,14 @@ static struct mtd_partition nand_flash_partitions[] = {
 		.offset		= 0x200000,
 	},
 	{
-		.name		= "nand-user",
-		.size		= 0x100000,	/* 1MB */
+		.name		= "nand-device-tree",
+		.size		= 0x20000,	/* 5MB */
 		.offset		= 0x700000,
+	},
+	{
+		.name		= "nand-user",
+		.size		= 0xE0000,	/* 1MB */
+		.offset		= 0x720000,
 	},
 	{
 		.name		= "nand-scratch",
@@ -753,9 +758,14 @@ static struct mtd_partition qspi_flash_partitions[] = {
 		.offset		= 0x100000,
 	},
 	{
-		.name		= "qpsi-user",
-		.size		= 0x100000,
+		.name		= "qpsi-device-tree",
+		.size		= 0x20000,
 		.offset		= 0x600000,
+	},
+	{
+		.name		= "qpsi-user",
+		.size		= 0xE0000,
+		.offset		= 0x620000,
 	},
 	{
 		.name		= "qpsi-scratch",
