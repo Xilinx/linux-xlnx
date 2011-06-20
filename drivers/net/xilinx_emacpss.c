@@ -849,8 +849,6 @@ static int xemacpss_mii_init(struct net_local *lp)
 	for (i = 0; i < PHY_MAX_ADDR; i++)
 		lp->mii_bus->irq[i] = PHY_POLL;
 
-	platform_set_drvdata(lp->ndev, lp->mii_bus);
-
 	if (mdiobus_register(lp->mii_bus))
 		goto err_out_free_mdio_irq;
 
