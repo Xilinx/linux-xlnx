@@ -138,9 +138,7 @@ struct xnandpss_command_format {
 struct xnandpss_info {
 	struct nand_chip	chip;
 	struct mtd_info		mtd;
-#ifdef CONFIG_MTD_PARTITIONS
 	struct mtd_partition	*parts;
-#endif
 	struct platform_device	*pdev;
 
 	void __iomem		*nand_base;
@@ -897,10 +895,8 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	struct resource *nand_res, *smc_res;
 	unsigned long ecc_page_size;
 	int err = 0;
-#ifdef CONFIG_MTD_PARTITIONS
 	int  nr_parts;
 	static const char *part_probe_types[] = {"cmdlinepart", NULL};
-#endif
 	struct xnand_platform_data	*pdata;
 
 	pdata = pdev->dev.platform_data;
@@ -1071,7 +1067,8 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-#ifdef CONFIG_MTD_PARTITIONS
+//#ifdef JHL
+
 #ifdef CONFIG_MTD_CMDLINE_PARTS
 	/* Get the partition information from command line argument */
 	nr_parts = parse_mtd_partitions(mtd, part_probe_types,
@@ -1079,18 +1076,16 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	if (nr_parts > 0) {
 		dev_info(&pdev->dev, "found %d partitions in command line",
 				nr_parts);
-		add_mtd_partitions(mtd, xnand->parts, nr_parts);
-		return 0;
+		err = mtd_device_register(mtd, xnand->parts, nr_parts);
 	} else if (pdata->parts)
-		add_mtd_partitions(&xnand->mtd, pdata->parts, pdata->nr_parts);
+		err = mtd_device_register(mtd, pdata->parts, pdata->nr_parts);
 	else {
 #endif
 		dev_info(&pdev->dev,
 			"Command line partition table is not available\n"
 			"or command line partition option is not enabled\n"
 			"creating single partition on flash\n");
-#endif
-		err = add_mtd_device(mtd);
+		err = mtd_device_register(mtd, NULL, 0);
 #ifdef CONFIG_MTD_CMDLINE_PARTS
 	}
 #endif
@@ -1131,10 +1126,9 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 
 	/* Release resources, unregister device */
 	nand_release(&xnand->mtd);
-#ifdef CONFIG_MTD_PARTITIONS
 	/* kfree(NULL) is safe */
 	kfree(xnand->parts);
-#endif
+
 	platform_set_drvdata(pdev, NULL);
 	/* Unmap and release physical address */
 	iounmap(xnand->smc_regs);

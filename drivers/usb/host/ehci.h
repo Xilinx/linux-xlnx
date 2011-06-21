@@ -109,11 +109,6 @@ struct ehci_hcd {			/* one per controller */
 			suspended */
 
 #ifdef CONFIG_USB_XUSBPS_OTG
-	/*
-	 * OTG controllers and transceivers need software interaction;
-	 * other external transceivers should be software-transparent
-	 */
-	struct otg_transceiver	*transceiver;
 	void (*start_hnp)(struct ehci_hcd *ehci);
 #endif
 
