@@ -1469,6 +1469,7 @@ static struct platform_driver xdevcfg_platform_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,
+		.of_match_table = xdevcfg_of_match,
 	},
 };
 
