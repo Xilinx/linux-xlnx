@@ -88,8 +88,7 @@ syscall_trace_entry:
 	SAVE_STATIC
 	move	s0, t2
 	move	a0, sp
-	li	a1, 0
-	jal	do_syscall_trace
+	jal	syscall_trace_enter
 
 	move	t0, s0
 	RESTORE_STATIC
@@ -590,6 +589,7 @@ einval:	li	v0, -ENOSYS
 	sys	sys_open_by_handle_at	3	/* 4340 */
 	sys	sys_clock_adjtime	2
 	sys	sys_syncfs		1
+	sys	sys_setns		2
 	.endm
 
 	/* We pre-compute the number of _instruction_ bytes needed to
