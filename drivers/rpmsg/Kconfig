@@ -24,4 +24,6 @@ config RPMSG_OMX
 
 	  If unsure, say N.
 
+source "drivers/rpmsg/host/Kconfig"
+
 endmenu

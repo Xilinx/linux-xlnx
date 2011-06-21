@@ -1,0 +1,11 @@
+config OMAP_RPMSG
+	tristate "OMAP virtio-based remote processor messaging support"
+	depends on ARCH_OMAP4 && OMAP_REMOTE_PROC
+	select CONFIG_OMAP_MBOX_FWK
+	select RPMSG
+	help
+	  Say Y if you want to enable OMAP's virtio-based remote-processor
+	  messaging, currently only available on OMAP4. This is required
+	  for offloading cpu-intensive and/or latency-sensitive tasks to
+	  the remote on-chip M3s or C64x+ dsp, usually used by multimedia
+	  frameworks.
