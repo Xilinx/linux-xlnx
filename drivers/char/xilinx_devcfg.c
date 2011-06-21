@@ -1462,6 +1462,16 @@ static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
 	return 0;		/* Success */
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id xdevcfg_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,xdevcfg", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xdevcfg_of_match);
+#else
+#define xdevcfg_of_match NULL
+#endif /* CONFIG_OF */
+
 /* Driver Structure */
 static struct platform_driver xdevcfg_platform_driver = {
 	.probe = xdevcfg_drv_probe,
@@ -1472,16 +1482,6 @@ static struct platform_driver xdevcfg_platform_driver = {
 		.of_match_table = xdevcfg_of_match,
 	},
 };
-
-#ifdef CONFIG_OF
-static struct of_device_id xdevcfg_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xdevcfg", },
-	{ /* end of table */}
-};
-MODULE_DEVICE_TABLE(of, xdevcfg_of_match);
-#else
-#define xdevcfg_of_match NULL
-#endif /* CONFIG_OF */
 
 /**
  * xdevcfg_module_init -  register the Device Configuration.
