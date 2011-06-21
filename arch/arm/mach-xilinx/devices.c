@@ -838,7 +838,7 @@ static struct resource xwdtpss_0_resource[] = {
 };
 
 static struct platform_device xilinx_wdtpss_0_device = {
-	.name = "xwdtps`",
+	.name = "xwdtps",
 	.id = 0,
 	.dev = {
 		.platform_data = NULL,
