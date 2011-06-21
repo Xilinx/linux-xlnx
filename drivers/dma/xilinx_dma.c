@@ -25,7 +25,7 @@
  *
  */
 
-// #define TEST_DMA_WITH_LOOPBACK
+#define TEST_DMA_WITH_LOOPBACK
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -1075,6 +1075,10 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	size_t sg_used;
 	dma_addr_t dma_src;
 
+#ifdef TEST_DMA_WITH_LOOPBACK
+	int total_len;
+#endif
+
 	if (!dchan)
 		return NULL;
 
@@ -1083,6 +1087,14 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	if (chan->direction != direction) {
 		return NULL;
 	}
+
+#ifdef TEST_DMA_WITH_LOOPBACK
+	total_len = 0;
+
+	for_each_sg(sgl, sg, sg_len, i) {
+		total_len += sg_dma_len(sg);
+	}
+#endif
 
 	/*
 	 * Build transactions using information in the scatter gather list
@@ -1127,7 +1139,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 				if (direction == DMA_TO_DEVICE) {
 					hw->control |= XILINX_DMA_BD_SOP;
 #ifdef TEST_DMA_WITH_LOOPBACK
-					hw->app_4 = copy;
+					hw->app_4 = total_len;
 #endif
 				}
 			} else {
