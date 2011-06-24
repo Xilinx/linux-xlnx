@@ -156,6 +156,25 @@
 			reg = <0xF8007000 0x1000>;
 			interrupts = <40 0>;
 		};
+		eth0: eth@e000b000 {
+			compatible = "xlnx,xemacps";
+			reg = <0xE000B000 0x1000>;
+			interrupts = <54 0>;
+			phy_mask = <0xFF7FFFFF>;
+			dma_mask = <0xFFFFFFFF>;
+			coherent_dma_mask=<0xFFFFFFFF>;
+			id = <0>;
+		};
+
+		eth1: eth@e000c000 {
+			compatible = "xlnx,xemacps";
+			reg = <0xE000C000 0x1000>;
+			interrupts = <77 0>;
+			phy_mask = <0xFFFEFFFF>;
+			dma_mask = <0xFFFFFFFF>;
+			coherent_dma_mask=<0xFFFFFFFF>;
+			id = <1>;
+		};
 
 	};
 };

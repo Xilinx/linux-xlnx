@@ -21,7 +21,7 @@
 #include <linux/device.h>
 
 /* Ethernet */
-struct xemacpss_eth_data {
+struct xemacps_eth_data {
 	u32	phy_mask;
 	u8	phy_type;	/* using RGMII interface? */
 };
