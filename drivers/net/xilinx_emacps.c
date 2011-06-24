@@ -7,7 +7,7 @@
  * General Public License version 2.1. This program is licensed "as is"
  * without any warranty of any kind, whether express or implied.
  *
- * This is a driver for xilinx processor sub-system (pss) ethernet device.
+ * This is a driver for xilinx processor sub-system (ps) ethernet device.
  * This driver is mainly used in Linux 2.6.30 and above and it does _not_
  * support Linux 2.4 kernel due to certain new features (e.g. NAPI) is
  * introduced in this driver.
@@ -1321,7 +1321,7 @@ static void xemacps_DmaSetupRecvBuffers(struct net_device *ndev)
 	}
 }
 
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 
 /**
  * xemacps_get_hwticks - get the current value of the GEM internal timer
@@ -1403,7 +1403,7 @@ static void xemacps_rx_hwtstamp(struct net_local *lp, struct sk_buff *skb)
 	time64 = (sec << 32) | packet_ns_stamp;
 	xemacps_systim_to_hwtstamp(lp, skb_hwtstamps(skb), time64);
 }
-#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 /**
  * xemacps_rx - process received packets when napi called
@@ -1465,7 +1465,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 
 		skb->ip_summed = lp->ip_summed;
 
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) &&
 		    (ntohs(skb->protocol) == 0x800)) {
 			unsigned ip_proto, dest_port;
@@ -1486,7 +1486,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 				xemacps_rx_hwtstamp(lp, skb);
 			}
 		}
-#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 		lp->stats.rx_packets++;
 		lp->stats.rx_bytes += len;
@@ -1895,7 +1895,7 @@ static int xemacps_setup_ring(struct net_local *lp)
 	return 0;
 }
 
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 
 #define NS_PER_SEC 1000000000ULL      /* Nanoseconds per second */
 #define FP_MULT    100000000ULL       /* Defined Fixed Point */
@@ -1998,7 +1998,7 @@ u32 regval;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET,
 			(regval | XEMACPS_NWCTRL_RXTSTAMP_MASK));
 }
-#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 /**
  * xemacps_init_hw - Initialize hardware to known good state
@@ -2056,7 +2056,7 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCTRL_RXEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
 
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	/* Initialize the Time Stamp Unit */
 	xemacps_init_tsu(lp, 50000000);
 #endif
@@ -2843,7 +2843,7 @@ static struct ethtool_ops xemacps_ethtool_ops = {
 	.set_pauseparam = xemacps_set_pauseparam,
 };
 
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 static int xemacps_hwtstamp_ioctl(struct net_device *netdev,
                               struct ifreq *ifr, int cmd)
 {
@@ -2889,7 +2889,7 @@ printk(KERN_INFO "     cmd %d config.rx_filter %d\n", cmd, config.rx_filter);
 	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ?
 		-EFAULT : 0;
 }
-#endif /* CONFIG_XILINX_PSS_EMAC_HWTSTAMP */
+#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 /**
  * xemacps_ioctl - ioctl entry point
@@ -2917,7 +2917,7 @@ printk(KERN_INFO "xemacps_ioctl: cmd %d \n", cmd);
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
 		return phy_mii_ioctl(phydev, rq, cmd);
-#ifdef CONFIG_XILINX_PSS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	case SIOCSHWTSTAMP:
 		return xemacps_hwtstamp_ioctl(ndev, rq, cmd);
 #endif
