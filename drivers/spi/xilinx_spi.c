@@ -72,6 +72,9 @@
 #define XSPI_INTR_RX_OVERRUN		0x20	/* RxFIFO was overrun */
 #define XSPI_INTR_TX_HALF_EMPTY		0x40	/* TxFIFO is half empty */
 
+/* The following bit is valid only in AXI Quad SPI */
+#define XSP_INTR_CMD_ERR_MASK		0x2000  /* 'Invalid cmd' error */
+
 #define XIPIF_V123B_RESETR_OFFSET	0x40	/* IPIF reset register */
 #define XIPIF_V123B_RESET_MASK		0x0a	/* the value to write */
 
@@ -88,6 +91,7 @@ struct xilinx_spi {
 	const u8 *tx_ptr;	/* pointer in the Rx buffer */
 	int remaining_bytes;	/* the number of bytes left to transfer */
 	u8 bits_per_word;
+	int cmd_err;		/* command error flag, in case of quad spi */
 	unsigned int (*read_fn) (void __iomem *);
 	void (*write_fn) (u32, void __iomem *);
 	void (*tx_fn) (struct xilinx_spi *);
@@ -278,11 +282,11 @@ static int xilinx_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 
 	xilinx_spi_fill_tx_fifo(xspi);
 
-	/* Enable the transmit empty interrupt, which we use to determine
-	 * progress on the transmission.
+	/* Enable the transmit empty and command error interrupts, which we use
+	 * to determine progress on the transmission.
 	 */
 	ipif_ier = xspi->read_fn(xspi->regs + XIPIF_V123B_IIER_OFFSET);
-	xspi->write_fn(ipif_ier | XSPI_INTR_TX_EMPTY,
+	xspi->write_fn(ipif_ier | XSPI_INTR_TX_EMPTY | XSP_INTR_CMD_ERR_MASK,
 		xspi->regs + XIPIF_V123B_IIER_OFFSET);
 
 	/* Start the transfer by not inhibiting the transmitter any longer */
@@ -292,15 +296,25 @@ static int xilinx_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 
 	wait_for_completion(&xspi->done);
 
-	/* Disable the transmit empty interrupt */
+	/* Disable the transmit empty and command error interrupts */
 	xspi->write_fn(ipif_ier, xspi->regs + XIPIF_V123B_IIER_OFFSET);
+
+	if (xspi->cmd_err) {
+		/* Disable the transmitter and reset the FIFOs */
+		xspi->write_fn(cr | XSPI_CR_TRANS_INHIBIT |
+				XSPI_CR_TXFIFO_RESET | XSPI_CR_RXFIFO_RESET,
+				xspi->regs + XSPI_CR_OFFSET);
+
+		xspi->cmd_err = 0;
+		return 0;
+	}
 
 	return t->len - xspi->remaining_bytes;
 }
 
 
 /* This driver supports single master mode only. Hence Tx FIFO Empty
- * is the only interrupt we care about.
+ * and Command Error (quad spi) are the only interrupts we care about.
  * Receive FIFO Overrun, Transmit FIFO Underrun, Mode Fault, and Slave Mode
  * Fault are not to happen.
  */
@@ -312,6 +326,15 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	/* Get the IPIF interrupts, and clear them immediately */
 	ipif_isr = xspi->read_fn(xspi->regs + XIPIF_V123B_IISR_OFFSET);
 	xspi->write_fn(ipif_isr, xspi->regs + XIPIF_V123B_IISR_OFFSET);
+
+	if (ipif_isr & XSP_INTR_CMD_ERR_MASK) {	/* Command error */
+		/* Indicate that transfer is complete, but set the number of
+		 * bytes transferred as zero. SPI subsystem will identify the
+		 * error as the remaining bytes to be transferred is non-zero.
+		 */
+		xspi->cmd_err = 1;
+		complete(&xspi->done);
+	}
 
 	if (ipif_isr & XSPI_INTR_TX_EMPTY) {	/* Transmission completed */
 		u16 cr;
