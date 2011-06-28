@@ -86,6 +86,18 @@
 			bus-id = <0>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
+			
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@50 {
+				compatible = "at,24c02";
+				reg = <0x50>;
+			};
+
+			rtc8564@51 {
+				compatible = "rtc8564";
+				reg = <0x51>;
+			};
 		};
 
 		i2c1: i2c@e0005000 {
@@ -95,6 +107,13 @@
 			bus-id = <1>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@55 {
+				compatible = "at,24c02";
+				reg = <0x55>;
+			};
 		};
 
 		gpio0: gpio@e000a000 {
