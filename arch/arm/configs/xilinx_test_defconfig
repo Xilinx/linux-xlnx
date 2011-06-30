@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux/arm 2.6.39 Kernel Configuration
-# Fri Jun 24 15:44:25 2011
+# Thu Jun 30 14:58:35 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -894,7 +894,7 @@ CONFIG_SERIAL_XILINX_PS_UART_CONSOLE=y
 # CONFIG_HVC_DCC is not set
 # CONFIG_IPMI_HANDLER is not set
 # CONFIG_HW_RANDOM is not set
-# CONFIG_XILINX_DEVCFG is not set
+CONFIG_XILINX_DEVCFG=y
 # CONFIG_R3964 is not set
 # CONFIG_RAW_DRIVER is not set
 # CONFIG_TCG_TPM is not set
