@@ -8,6 +8,9 @@
  * The attributes will be visible in the /sys/devices/platform/xscugtimer.0
  * and this driver is a prototype to see if it really meets the needs.
  *
+ * The counter and compare registers are provided as 32 bit attributes which 
+ * map to the hardware registers and as 64 bit attributes for easier use.
+ *
  * Copyright (c) 2011 Xilinx Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -99,28 +102,89 @@ static ssize_t xscugtimer_get_##name##_reg(struct device *dev,		\
 	int status;							\
 									\
 	reg = xscugtimer_readreg(offset); 				\
-	status = sprintf(buf, "%08X\n", reg);				\
+	status = sprintf(buf, "%X\n", reg);				\
 									\
 	return status;							\
 }									\
 static DEVICE_ATTR(name, 0644, xscugtimer_get_##name##_reg,		\
 				xscugtimer_set_##name##_reg);
 
-/* create the sysfs attributes for each SCU global timer register */
+/**
+ * xscugtimer_set64_xxxx_reg() - This function sets a register in the timer
+ * 	with the given 64 bit value.
+ * @dev:	Pointer to the device structure.
+ * @attr:	Pointer to the device attribute structure.
+ * @buf:	Pointer to the buffer location for the configuration
+ *		data.
+ * @size:	The number of bytes used from the buffer
+ * returns:	negative error if the string could not be converted
+ *		or the size of the buffer.
+ *
+ **/
+/**
+ * xscugtimer_get64_xxxx_reg() - The function returns the 64 bit value read 
+ * 	from the timer register
+ * @dev:	Pointer to the device structure.
+ * @attr:	Pointer to the device attribute structure.
+ * @buf:	Pointer to the buffer location for the configuration
+ *		data.
+ * returns:	Size of the buffer.
+ *
+ **/
+#define xscugtimer_config_attr64(name,offset)				\
+static ssize_t xscugtimer_set_##name##64_reg(struct device *dev,	\
+				     struct device_attribute *attr,	\
+				     const char *buf, size_t size)	\
+{									\
+	unsigned long long reg;						\
+	int status;							\
+									\
+	status = strict_strtoull(buf, 16, &reg);			\
+	if (status)							\
+		return status;						\
+									\
+	xscugtimer_writereg(offset + 4, (reg >> 32));			\
+	xscugtimer_writereg(offset, reg & 0xFFFFFFFF);			\
+	return size;							\
+}									\
+static ssize_t xscugtimer_get_##name##64_reg(struct device *dev,	\
+	struct device_attribute *attr,					\
+	char *buf)							\
+{									\
+	unsigned long long reg;						\
+	int status;							\
+									\
+	reg = (((unsigned long long)xscugtimer_readreg(offset + 4) << 32) | \
+			xscugtimer_readreg(offset)); 			\
+	status = sprintf(buf, "%llX\n", reg);			\
+									\
+	return status;							\
+}									\
+static DEVICE_ATTR(name, 0644, xscugtimer_get_##name##64_reg,		\
+				xscugtimer_set_##name##64_reg);
 
+
+/* create the sysfs attributes for each SCU global timer register, the
+ * counter and compare registers are provided as 32 attributes which map
+ * to the hardware and 64 bit attributes for easier use
+ */
+xscugtimer_config_attr64(counter, XSCUGTIMER_COUNTER0_OFFSET);
 xscugtimer_config_attr(counter0, XSCUGTIMER_COUNTER0_OFFSET);
 xscugtimer_config_attr(counter1, XSCUGTIMER_COUNTER1_OFFSET);
 xscugtimer_config_attr(control, XSCUGTIMER_CONTROL_OFFSET);	
 xscugtimer_config_attr(irq_status, XSCUGTIMER_IRQ_STATUS_OFFSET);
+xscugtimer_config_attr64(compare, XSCUGTIMER_COMPARE0_OFFSET);
 xscugtimer_config_attr(compare0, XSCUGTIMER_COMPARE0_OFFSET);
 xscugtimer_config_attr(compare1, XSCUGTIMER_COMPARE1_OFFSET);
 xscugtimer_config_attr(autoincr, XSCUGTIMER_AUTOINCR_OFFSET);
 
 static const struct attribute *xscugtimer_attrs[] = {
+	&dev_attr_counter.attr, 
 	&dev_attr_counter0.attr, 
 	&dev_attr_counter1.attr, 
 	&dev_attr_control.attr,
 	&dev_attr_irq_status.attr,
+	&dev_attr_compare.attr,
 	&dev_attr_compare0.attr,
 	&dev_attr_compare1.attr,
 	&dev_attr_autoincr.attr,
