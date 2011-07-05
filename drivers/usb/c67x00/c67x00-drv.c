@@ -42,6 +42,12 @@
 #include <linux/usb.h>
 #include <linux/usb/c67x00.h>
 
+#if defined(CONFIG_OF) 
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/of_address.h> 
+#endif 
+
 #include "c67x00.h"
 #include "c67x00-hcd.h"
 
@@ -132,12 +138,36 @@ static int __devinit c67x00_drv_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	pdata = pdev->dev.platform_data;
-	if (!pdata)
+	if (!pdata) {
+#ifdef CONFIG_OF
+		if (!pdev->dev.of_node)
+			return -ENODEV;
+		pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+		if (!pdata)
+			return -ENOMEM;
+		unsigned int *p = 0;
+		p = (unsigned int *)of_get_property(pdev->dev.of_node, "hpi-regstep", NULL);
+		if (!p) {
+			ret = -ENODEV;
+			goto free_pdata_of;
+		}
+		pdata->hpi_regstep = *p;
+		p = (unsigned int *)of_get_property(pdev->dev.of_node, "sie-config", NULL);
+		if (!p) {
+			ret = -ENODEV;
+			goto free_pdata_of;
+		}
+		pdata->sie_config = *p;
+#else
 		return -ENODEV;
+#endif
+	}
 
 	c67x00 = kzalloc(sizeof(*c67x00), GFP_KERNEL);
-	if (!c67x00)
-		return -ENOMEM;
+	if (!c67x00) {
+		ret = -ENOMEM;
+		goto free_pdata_of;
+	}
 
 	if (!request_mem_region(res->start, resource_size(res),
 				pdev->name)) {
@@ -154,7 +184,7 @@ static int __devinit c67x00_drv_probe(struct platform_device *pdev)
 
 	spin_lock_init(&c67x00->hpi.lock);
 	c67x00->hpi.regstep = pdata->hpi_regstep;
-	c67x00->pdata = pdev->dev.platform_data;
+	c67x00->pdata = pdata;
 	c67x00->pdev = pdev;
 
 	c67x00_ll_init(c67x00);
@@ -187,6 +217,10 @@ static int __devinit c67x00_drv_probe(struct platform_device *pdev)
 	release_mem_region(res->start, resource_size(res));
  request_mem_failed:
 	kfree(c67x00);
+ free_pdata_of:
+	/* kfree platform data for CONFIG_OF */
+	if (!pdev->dev.platform_data)
+		kfree(pdata);
 
 	return ret;
 }
@@ -212,10 +246,20 @@ static int __devexit c67x00_drv_remove(struct platform_device *pdev)
 	if (res)
 		release_mem_region(res->start, resource_size(res));
 
+	/* kfree platform data for CONFIG_OF */
+	if (!c67x00->pdev->dev.platform_data)
+		kfree(c67x00->pdata);
 	kfree(c67x00);
 
 	return 0;
 }
+
+/* Match table for OF platform binding - from xilinx_emaclite */
+static struct of_device_id c67x00_of_match[] __devinitdata = {
+	{ .compatible = "cypress,c67x00", },
+	{ /* end of list */ },
+};
+
 
 static struct platform_driver c67x00_driver = {
 	.probe	= c67x00_drv_probe,
@@ -223,6 +267,7 @@ static struct platform_driver c67x00_driver = {
 	.driver	= {
 		.owner = THIS_MODULE,
 		.name = "c67x00",
+		.of_match_table = c67x00_of_match,
 	},
 };
 
