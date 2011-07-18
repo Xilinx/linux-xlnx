@@ -1301,6 +1301,8 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	struct xdevcfg_drvdata *drvdata;
 	dev_t devt;
 	int retval;
+	u32 ctrlreg;
+
 
 	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs_res) {
@@ -1383,11 +1385,13 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	 *  - Set the throughput rate for maximum speed
 	 *  - Se the CPU in user mode
 	 */
+	ctrlreg = xdevcfg_readreg(drvdata->base_address + XDCFG_CTRL_OFFSET);
 	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
 				(XDCFG_CTRL_PCFG_PROG_B_MASK |
 				XDCFG_CTRL_PCAP_PR_MASK |
 				XDCFG_CTRL_PCAP_MODE_MASK |
-				XDCFG_CTRL_USER_MODE_MASK));
+				XDCFG_CTRL_USER_MODE_MASK |
+				ctrlreg));
 
 
 	cdev_init(&drvdata->cdev, &xdevcfg_fops);
