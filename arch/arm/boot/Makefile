@@ -11,6 +11,28 @@
 # Copyright (C) 1995-2002 Russell King
 #
 
+obj-y += linked_dtb.o
+
+# Ensure system.dtb exists
+$(obj)/linked_dtb.o: $(obj)/system.dtb
+
+# Generate system.dtb from $(DTB).dtb
+ifneq ($(DTB),system)
+$(obj)/system.dtb: $(obj)/$(DTB).dtb
+	$(call if_changed,cp)
+endif
+
+quiet_cmd_cp = CP      $< $@$2
+	cmd_cp = cat $< >$@$2 || (rm -f $@ && echo false)
+
+# Rule to build device tree blobs
+DTC_FLAGS := -p 1024
+
+$(obj)/%.dtb: $(src)/dts/%.dts FORCE
+	$(call cmd,dtc)
+
+MKIMAGE         := $(srctree)/scripts/mkuboot.sh
+
 ifneq ($(MACHINE),)
 include $(srctree)/$(MACHINE)/Makefile.boot
 endif

@@ -940,6 +940,11 @@ static int __init meminfo_cmp(const void *_a, const void *_b)
 void __init setup_arch(char **cmdline_p)
 {
 	struct machine_desc *mdesc;
+#ifdef CONFIG_ARCH_ZYNQ
+	extern u32 _fdt_start[];
+	 if (!__atags_pointer)
+		__atags_pointer = virt_to_phys(_fdt_start);
+#endif
 
 	setup_processor();
 	mdesc = setup_machine_fdt(__atags_pointer);
