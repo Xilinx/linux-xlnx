@@ -254,6 +254,17 @@ core-$(CONFIG_VFP)		+= arch/arm/vfp/
 core-y				+= arch/arm/kernel/ arch/arm/mm/ arch/arm/common/
 core-y				+= $(machdirs) $(platdirs)
 
+boot := arch/arm/boot
+
+# Are we making a simpleImage.<boardname> target? If so, crack out the boardname
+DTB:=$(subst simpleImage.,,$(filter simpleImage.%, $(MAKECMDGOALS)))
+
+ifneq ($(DTB),)
+	core-y	+= $(boot)/
+endif
+
+export DTB
+
 drivers-$(CONFIG_OPROFILE)      += arch/arm/oprofile/
 
 libs-y				:= arch/arm/lib/ $(libs-y)
