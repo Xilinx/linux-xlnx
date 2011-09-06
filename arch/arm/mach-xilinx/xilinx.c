@@ -210,9 +210,7 @@ static void __init board_init(void)
 	platform_device_init();
 
 #ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
-#ifndef CONFIG_OF
 	xusbps_init();
-#endif
 #endif
 
 #ifdef CONFIG_OF
