@@ -409,7 +409,7 @@ static int __init xps2_init(void)
 {
 	int status = driver_register(&xps2_driver);
 #ifdef CONFIG_OF
-	status |= of_register_platform_driver(&xps2_of_driver);
+	status |= platform_driver_register(&xps2_of_driver);
 #endif
         return status;
 }
@@ -418,7 +418,7 @@ static void __exit xps2_cleanup(void)
 {
 	driver_unregister(&xps2_driver);
 #ifdef CONFIG_OF
-	of_unregister_platform_driver(&xps2_of_driver);
+	platform_driver_unregister(&xps2_of_driver);
 #endif
 }
 

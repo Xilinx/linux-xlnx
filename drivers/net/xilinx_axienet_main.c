@@ -2015,7 +2015,7 @@ static struct of_platform_driver axienet_of_driver = {
  **/
 static int __init axienet_init(void)
 {
-	return of_register_platform_driver(&axienet_of_driver);
+	return platform_driver_register(&axienet_of_driver);
 }
 
 module_init(axienet_init);
@@ -2028,7 +2028,7 @@ module_init(axienet_init);
  **/
 static void __exit axienet_exit(void)
 {
-	of_unregister_platform_driver(&axienet_of_driver);
+	platform_driver_unregister(&axienet_of_driver);
 }
 module_exit(axienet_exit);
 

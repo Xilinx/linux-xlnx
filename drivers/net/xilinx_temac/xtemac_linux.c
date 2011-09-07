@@ -221,9 +221,10 @@ extern inline int status_requires_reset(int s)
 
 /* BH statics */
 static LIST_HEAD(receivedQueue);
-static spinlock_t receivedQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t receivedQueueSpin = __SPIN_LOCK_UNLOCKED(receivedQueueSpin);
+
 static LIST_HEAD(sentQueue);
-static spinlock_t sentQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t sentQueueSpin = __SPIN_LOCK_UNLOCKED(sentQueueSpin);
 
 /* from mii.h
  *

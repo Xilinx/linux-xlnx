@@ -160,7 +160,7 @@ struct net_local {
 };
 
 /* for exclusion of all program flows (processes, ISRs and BHs) possible to share data with current one */
-static spinlock_t reset_lock = SPIN_LOCK_UNLOCKED;
+static spinlock_t reset_lock = __SPIN_LOCK_UNLOCKED(reset_lock);
 
 /* Helper function to determine if a given XEmac error warrants a reset. */
 extern inline int status_requires_reset(int s)
@@ -172,10 +172,10 @@ extern inline int status_requires_reset(int s)
 
 /* BH statics */
 static LIST_HEAD(receivedQueue);
-static spinlock_t rcvSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t rcvSpin = __SPIN_LOCK_UNLOCKED(rcvSpin);
 
 static LIST_HEAD(sentQueue);
-static spinlock_t xmitSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t xmitSpin = __SPIN_LOCK_UNLOCKED(xmitSpin);
 
 /*
  * The following are notes regarding the critical sections in this
@@ -2785,7 +2785,7 @@ static int __init xenet_init(void)
 	 */
 	int status = driver_register(&xenet_driver);
 #ifdef CONFIG_OF
-	status |= of_register_platform_driver(&xenet_of_driver);
+	status |= platform_driver_register(&xenet_of_driver);
 #endif
 	return status;
 }
@@ -2794,7 +2794,7 @@ static void __exit xenet_cleanup(void)
 {
 	driver_unregister(&xenet_driver);
 #ifdef CONFIG_OF
-	of_unregister_platform_driver(&xenet_of_driver);
+	platform_driver_unregister(&xenet_of_driver);
 #endif
 }
 

@@ -606,7 +606,7 @@ static int __devexit xilinx_iic_of_remove(struct platform_device *ofdev)
 	return xilinx_iic_remove(&ofdev->dev);
 }
 
-static struct of_platform_driver xilinx_iic_of_driver = {
+static struct platform_driver xilinx_iic_of_driver = {
 	.driver = {
 		.name = "iic",
 		.owner = THIS_MODULE,
@@ -618,12 +618,12 @@ static struct of_platform_driver xilinx_iic_of_driver = {
 /* Registration helpers to keep the number of #ifdefs to a minimum */
 static inline int __init xilinx_iic_of_register(void)
 {
-	return of_register_platform_driver(&xilinx_iic_of_driver);
+	return platform_driver_register(&xilinx_iic_of_driver);
 }
 
 static inline void __exit xilinx_iic_of_unregister(void)
 {
-	of_unregister_platform_driver(&xilinx_iic_of_driver);
+	platform_driver_unregister(&xilinx_iic_of_driver);
 }
 
 static int __init xiic_init(void)

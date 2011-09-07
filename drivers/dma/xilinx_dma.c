@@ -1830,7 +1830,7 @@ static const struct of_device_id xilinx_dma_of_ids[] = {
 	{}
 };
 
-static struct of_platform_driver xilinx_dma_of_driver = {
+static struct platform_driver xilinx_dma_of_driver = {
 	.driver = {
 		.name = "xilinx-dma",
 		.owner = THIS_MODULE,
@@ -1850,7 +1850,7 @@ static __init int xilinx_dma_init(void)
 
 	pr_info("Xilinx DMA driver\n");
 
-	ret = of_register_platform_driver(&xilinx_dma_of_driver);
+	ret = platform_driver_register(&xilinx_dma_of_driver);
 	if (ret)
 		pr_err("xilinx_dma: failed to register platform driver\n");
 
@@ -1859,7 +1859,7 @@ static __init int xilinx_dma_init(void)
 
 static void __exit xilinx_dma_exit(void)
 {
-	of_unregister_platform_driver(&xilinx_dma_of_driver);
+	platform_driver_unregister(&xilinx_dma_of_driver);
 }
 
 subsys_initcall(xilinx_dma_init);

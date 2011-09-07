@@ -2427,7 +2427,7 @@ static struct of_platform_driver usb_of_driver = {
  **/
 static int __init udc_init(void)
 {
-	return of_register_platform_driver(&usb_of_driver);
+	return platform_driver_register(&usb_of_driver);
 }
 
 /**
@@ -2438,7 +2438,7 @@ static int __init udc_init(void)
  **/
 static void __devexit udc_exit(void)
 {
-	of_unregister_platform_driver(&usb_of_driver);
+	platform_driver_unregister(&usb_of_driver);
 }
 
 module_init(udc_init);

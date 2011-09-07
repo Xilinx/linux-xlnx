@@ -35,6 +35,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
+#include <linux/of_net.h>
 
 #include "xbasic_types.h"
 #include "xlltemac.h"
@@ -203,9 +204,9 @@ u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 
 /* for exclusion of all program flows (processes, ISRs and BHs) */
-spinlock_t XTE_spinlock = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_tx_spinlock = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_rx_spinlock = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_spinlock = __SPIN_LOCK_UNLOCKED(XTE_spinlock);
+spinlock_t XTE_tx_spinlock = __SPIN_LOCK_UNLOCKED(XTE_tx_spinlock);
+spinlock_t XTE_rx_spinlock = __SPIN_LOCK_UNLOCKED(XTE_rx_spinlock);
 
 /*
  * ethtool has a status reporting feature where we can report any sort of
@@ -230,10 +231,10 @@ extern inline int status_requires_reset(int s)
 
 /* Queues with locks */
 static LIST_HEAD(receivedQueue);
-static spinlock_t receivedQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t receivedQueueSpin = __SPIN_LOCK_UNLOCKED(receivedQueueSpin);
 
 static LIST_HEAD(sentQueue);
-static spinlock_t sentQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t sentQueueSpin = __SPIN_LOCK_UNLOCKED(sentQueueSpin);
 
 
 /* from mii.h
@@ -3750,7 +3751,7 @@ static struct of_device_id xtenet_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, xtenet_of_match);
 
-static struct of_platform_driver xtenet_of_driver = {
+static struct platform_driver xtenet_of_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -3779,12 +3780,12 @@ static int __init xtenet_init(void)
 	 * No kernel boot options used,
 	 * so we just need to register the driver
 	 */
-	return of_register_platform_driver(&xtenet_of_driver);
+	return platform_driver_register(&xtenet_of_driver);
 }
 
 static void __exit xtenet_cleanup(void)
 {
-	of_unregister_platform_driver(&xtenet_of_driver);
+	platform_driver_unregister(&xtenet_of_driver);
 }
 
 module_init(xtenet_init);
