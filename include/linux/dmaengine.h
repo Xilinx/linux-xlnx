@@ -434,7 +434,7 @@ struct dma_tx_state {
  *	zero or error code
  * @device_tx_status: poll for transaction completion, the optional
  *	txstate parameter can be supplied with a pointer to get a
- *	struct with auxilary transfer status information, otherwise the call
+ *	struct with auxiliary transfer status information, otherwise the call
  *	will just return a simple status code
  * @device_issue_pending: push pending transactions to hardware
  */
@@ -532,7 +532,7 @@ static inline int dmaengine_resume(struct dma_chan *chan)
 	return dmaengine_device_control(chan, DMA_RESUME, 0);
 }
 
-static inline int dmaengine_submit(struct dma_async_tx_descriptor *desc)
+static inline dma_cookie_t dmaengine_submit(struct dma_async_tx_descriptor *desc)
 {
 	return desc->tx_submit(desc);
 }

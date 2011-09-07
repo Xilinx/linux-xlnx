@@ -1111,7 +1111,7 @@ static int ips_monitor(void *data)
 		last_msecs = jiffies_to_msecs(jiffies);
 		expire = jiffies + msecs_to_jiffies(IPS_SAMPLE_PERIOD);
 
-		__set_current_state(TASK_UNINTERRUPTIBLE);
+		__set_current_state(TASK_INTERRUPTIBLE);
 		mod_timer(&timer, expire);
 		schedule();
 
@@ -1474,7 +1474,7 @@ ips_gpu_turbo_enabled(struct ips_driver *ips)
 }
 
 void
-ips_link_to_i915_driver()
+ips_link_to_i915_driver(void)
 {
 	/* We can't cleanly get at the various ips_driver structs from
 	 * this caller (the i915 driver), so just set a flag saying

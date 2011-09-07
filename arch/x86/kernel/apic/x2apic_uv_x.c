@@ -23,6 +23,8 @@
 #include <linux/io.h>
 #include <linux/pci.h>
 #include <linux/kdebug.h>
+#include <linux/delay.h>
+#include <linux/crash_dump.h>
 
 #include <asm/uv/uv_mmrs.h>
 #include <asm/uv/uv_hub.h>
@@ -34,6 +36,14 @@
 #include <asm/ipi.h>
 #include <asm/smp.h>
 #include <asm/x86_init.h>
+#include <asm/emergency-restart.h>
+#include <asm/nmi.h>
+
+/* BMC sets a bit this MMR non-zero before sending an NMI */
+#define UVH_NMI_MMR				UVH_SCRATCH5
+#define UVH_NMI_MMR_CLEAR			(UVH_NMI_MMR + 8)
+#define UV_NMI_PENDING_MASK			(1UL << 63)
+DEFINE_PER_CPU(unsigned long, cpu_last_nmi_count);
 
 DEFINE_PER_CPU(int, x2apic_extra_bits);
 
@@ -48,6 +58,16 @@ unsigned int uv_apicid_hibits;
 EXPORT_SYMBOL_GPL(uv_apicid_hibits);
 static DEFINE_SPINLOCK(uv_nmi_lock);
 
+static unsigned long __init uv_early_read_mmr(unsigned long addr)
+{
+	unsigned long val, *mmr;
+
+	mmr = early_ioremap(UV_LOCAL_MMR_BASE | addr, sizeof(*mmr));
+	val = *mmr;
+	early_iounmap(mmr, sizeof(*mmr));
+	return val;
+}
+
 static inline bool is_GRU_range(u64 start, u64 end)
 {
 	return start >= gru_start_paddr && end <= gru_end_paddr;
@@ -58,28 +78,24 @@ static bool uv_is_untracked_pat_range(u64 start, u64 end)
 	return is_ISA_range(start, end) || is_GRU_range(start, end);
 }
 
-static int early_get_nodeid(void)
+static int __init early_get_pnodeid(void)
 {
 	union uvh_node_id_u node_id;
-	unsigned long *mmr;
-
-	mmr = early_ioremap(UV_LOCAL_MMR_BASE | UVH_NODE_ID, sizeof(*mmr));
-	node_id.v = *mmr;
-	early_iounmap(mmr, sizeof(*mmr));
+	union uvh_rh_gam_config_mmr_u  m_n_config;
+	int pnode;
 
 	/* Currently, all blades have same revision number */
+	node_id.v = uv_early_read_mmr(UVH_NODE_ID);
+	m_n_config.v = uv_early_read_mmr(UVH_RH_GAM_CONFIG_MMR);
 	uv_min_hub_revision_id = node_id.s.revision;
 
-	return node_id.s.node_id;
+	pnode = (node_id.s.node_id >> 1) & ((1 << m_n_config.s.n_skt) - 1);
+	return pnode;
 }
 
 static void __init early_get_apic_pnode_shift(void)
 {
-	unsigned long *mmr;
-
-	mmr = early_ioremap(UV_LOCAL_MMR_BASE | UVH_APICID, sizeof(*mmr));
-	uvh_apicid.v = *mmr;
-	early_iounmap(mmr, sizeof(*mmr));
+	uvh_apicid.v = uv_early_read_mmr(UVH_APICID);
 	if (!uvh_apicid.v)
 		/*
 		 * Old bios, use default value
@@ -95,21 +111,17 @@ static void __init early_get_apic_pnode_shift(void)
 static void __init uv_set_apicid_hibit(void)
 {
 	union uvh_lb_target_physical_apic_id_mask_u apicid_mask;
-	unsigned long *mmr;
 
-	mmr = early_ioremap(UV_LOCAL_MMR_BASE |
-		UVH_LB_TARGET_PHYSICAL_APIC_ID_MASK, sizeof(*mmr));
-	apicid_mask.v = *mmr;
-	early_iounmap(mmr, sizeof(*mmr));
+	apicid_mask.v = uv_early_read_mmr(UVH_LB_TARGET_PHYSICAL_APIC_ID_MASK);
 	uv_apicid_hibits = apicid_mask.s.bit_enables & UV_APICID_HIBIT_MASK;
 }
 
 static int __init uv_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 {
-	int nodeid;
+	int pnodeid;
 
 	if (!strcmp(oem_id, "SGI")) {
-		nodeid = early_get_nodeid();
+		pnodeid = early_get_pnodeid();
 		early_get_apic_pnode_shift();
 		x86_platform.is_untracked_pat_range =  uv_is_untracked_pat_range;
 		x86_platform.nmi_init = uv_nmi_init;
@@ -118,8 +130,8 @@ static int __init uv_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 		else if (!strcmp(oem_table_id, "UVX"))
 			uv_system_type = UV_X2APIC;
 		else if (!strcmp(oem_table_id, "UVH")) {
-			__get_cpu_var(x2apic_extra_bits) =
-				nodeid << (uvh_apicid.s.pnode_shift - 1);
+			__this_cpu_write(x2apic_extra_bits,
+				pnodeid << uvh_apicid.s.pnode_shift);
 			uv_system_type = UV_NON_UNIQUE_APIC;
 			uv_set_apicid_hibit();
 			return 1;
@@ -284,7 +296,7 @@ static unsigned int x2apic_get_apic_id(unsigned long x)
 	unsigned int id;
 
 	WARN_ON(preemptible() && num_online_cpus() > 1);
-	id = x | __get_cpu_var(x2apic_extra_bits);
+	id = x | __this_cpu_read(x2apic_extra_bits);
 
 	return id;
 }
@@ -336,8 +348,6 @@ struct apic __refdata apic_x2apic_uv_x = {
 	.ioapic_phys_id_map		= NULL,
 	.setup_apic_routing		= NULL,
 	.multi_timer_check		= NULL,
-	.apicid_to_node			= NULL,
-	.cpu_to_logical_apicid		= NULL,
 	.cpu_present_to_apicid		= default_cpu_present_to_apicid,
 	.apicid_to_cpu_present		= NULL,
 	.setup_portio_remap		= NULL,
@@ -376,7 +386,7 @@ struct apic __refdata apic_x2apic_uv_x = {
 
 static __cpuinit void set_x2apic_extra_bits(int pnode)
 {
-	__get_cpu_var(x2apic_extra_bits) = (pnode << 6);
+	__this_cpu_write(x2apic_extra_bits, pnode << uvh_apicid.s.pnode_shift);
 }
 
 /*
@@ -639,18 +649,46 @@ void __cpuinit uv_cpu_init(void)
  */
 int uv_handle_nmi(struct notifier_block *self, unsigned long reason, void *data)
 {
-	if (reason != DIE_NMI_IPI)
+	unsigned long real_uv_nmi;
+	int bid;
+
+	if (reason != DIE_NMIUNKNOWN)
 		return NOTIFY_OK;
 
 	if (in_crash_kexec)
 		/* do nothing if entering the crash kernel */
 		return NOTIFY_OK;
+
 	/*
-	 * Use a lock so only one cpu prints at a time
-	 * to prevent intermixed output.
+	 * Each blade has an MMR that indicates when an NMI has been sent
+	 * to cpus on the blade. If an NMI is detected, atomically
+	 * clear the MMR and update a per-blade NMI count used to
+	 * cause each cpu on the blade to notice a new NMI.
+	 */
+	bid = uv_numa_blade_id();
+	real_uv_nmi = (uv_read_local_mmr(UVH_NMI_MMR) & UV_NMI_PENDING_MASK);
+
+	if (unlikely(real_uv_nmi)) {
+		spin_lock(&uv_blade_info[bid].nmi_lock);
+		real_uv_nmi = (uv_read_local_mmr(UVH_NMI_MMR) & UV_NMI_PENDING_MASK);
+		if (real_uv_nmi) {
+			uv_blade_info[bid].nmi_count++;
+			uv_write_local_mmr(UVH_NMI_MMR_CLEAR, UV_NMI_PENDING_MASK);
+		}
+		spin_unlock(&uv_blade_info[bid].nmi_lock);
+	}
+
+	if (likely(__get_cpu_var(cpu_last_nmi_count) == uv_blade_info[bid].nmi_count))
+		return NOTIFY_DONE;
+
+	__get_cpu_var(cpu_last_nmi_count) = uv_blade_info[bid].nmi_count;
+
+	/*
+	 * Use a lock so only one cpu prints at a time.
+	 * This prevents intermixed output.
 	 */
 	spin_lock(&uv_nmi_lock);
-	pr_info("NMI stack dump cpu %u:\n", smp_processor_id());
+	pr_info("UV NMI stack dump cpu %u:\n", smp_processor_id());
 	dump_stack();
 	spin_unlock(&uv_nmi_lock);
 
@@ -658,7 +696,8 @@ int uv_handle_nmi(struct notifier_block *self, unsigned long reason, void *data)
 }
 
 static struct notifier_block uv_dump_stack_nmi_nb = {
-	.notifier_call	= uv_handle_nmi
+	.notifier_call	= uv_handle_nmi,
+	.priority = NMI_LOCAL_LOW_PRIOR - 1,
 };
 
 void uv_register_nmi_notifier(void)
@@ -682,27 +721,32 @@ void uv_nmi_init(void)
 void __init uv_system_init(void)
 {
 	union uvh_rh_gam_config_mmr_u  m_n_config;
+	union uvh_rh_gam_mmioh_overlay_config_mmr_u mmioh;
 	union uvh_node_id_u node_id;
 	unsigned long gnode_upper, lowmem_redir_base, lowmem_redir_size;
-	int bytes, nid, cpu, lcpu, pnode, blade, i, j, m_val, n_val;
+	int bytes, nid, cpu, lcpu, pnode, blade, i, j, m_val, n_val, n_io;
 	int gnode_extra, max_pnode = 0;
 	unsigned long mmr_base, present, paddr;
-	unsigned short pnode_mask;
+	unsigned short pnode_mask, pnode_io_mask;
 
 	map_low_mmrs();
 
 	m_n_config.v = uv_read_local_mmr(UVH_RH_GAM_CONFIG_MMR );
 	m_val = m_n_config.s.m_skt;
 	n_val = m_n_config.s.n_skt;
+	mmioh.v = uv_read_local_mmr(UVH_RH_GAM_MMIOH_OVERLAY_CONFIG_MMR);
+	n_io = mmioh.s.n_io;
 	mmr_base =
 	    uv_read_local_mmr(UVH_RH_GAM_MMR_OVERLAY_CONFIG_MMR) &
 	    ~UV_MMR_ENABLE;
 	pnode_mask = (1 << n_val) - 1;
+	pnode_io_mask = (1 << n_io) - 1;
+
 	node_id.v = uv_read_local_mmr(UVH_NODE_ID);
 	gnode_extra = (node_id.s.node_id & ~((1 << n_val) - 1)) >> 1;
 	gnode_upper = ((unsigned long)gnode_extra  << m_val);
-	printk(KERN_DEBUG "UV: N %d, M %d, gnode_upper 0x%lx, gnode_extra 0x%x\n",
-			n_val, m_val, gnode_upper, gnode_extra);
+	printk(KERN_INFO "UV: N %d, M %d, N_IO: %d, gnode_upper 0x%lx, gnode_extra 0x%x, pnode_mask 0x%x, pnode_io_mask 0x%x\n",
+			n_val, m_val, n_io, gnode_upper, gnode_extra, pnode_mask, pnode_io_mask);
 
 	printk(KERN_DEBUG "UV: global MMR base 0x%lx\n", mmr_base);
 
@@ -712,8 +756,9 @@ void __init uv_system_init(void)
 	printk(KERN_DEBUG "UV: Found %d blades\n", uv_num_possible_blades());
 
 	bytes = sizeof(struct uv_blade_info) * uv_num_possible_blades();
-	uv_blade_info = kmalloc(bytes, GFP_KERNEL);
+	uv_blade_info = kzalloc(bytes, GFP_KERNEL);
 	BUG_ON(!uv_blade_info);
+
 	for (blade = 0; blade < uv_num_possible_blades(); blade++)
 		uv_blade_info[blade].memory_nid = -1;
 
@@ -735,10 +780,11 @@ void __init uv_system_init(void)
 		for (j = 0; j < 64; j++) {
 			if (!test_bit(j, &present))
 				continue;
-			pnode = (i * 64 + j);
+			pnode = (i * 64 + j) & pnode_mask;
 			uv_blade_info[blade].pnode = pnode;
 			uv_blade_info[blade].nr_possible_cpus = 0;
 			uv_blade_info[blade].nr_online_cpus = 0;
+			spin_lock_init(&uv_blade_info[blade].nmi_lock);
 			max_pnode = max(pnode, max_pnode);
 			blade++;
 		}
@@ -756,6 +802,7 @@ void __init uv_system_init(void)
 		/*
 		 * apic_pnode_shift must be set before calling uv_apicid_to_pnode();
 		 */
+		uv_cpu_hub_info(cpu)->pnode_mask = pnode_mask;
 		uv_cpu_hub_info(cpu)->apic_pnode_shift = uvh_apicid.s.pnode_shift;
 		pnode = uv_apicid_to_pnode(apicid);
 		blade = boot_pnode_to_blade(pnode);
@@ -772,7 +819,6 @@ void __init uv_system_init(void)
 		uv_cpu_hub_info(cpu)->numa_blade_id = blade;
 		uv_cpu_hub_info(cpu)->blade_processor_id = lcpu;
 		uv_cpu_hub_info(cpu)->pnode = pnode;
-		uv_cpu_hub_info(cpu)->pnode_mask = pnode_mask;
 		uv_cpu_hub_info(cpu)->gpa_mask = (1UL << (m_val + n_val)) - 1;
 		uv_cpu_hub_info(cpu)->gnode_upper = gnode_upper;
 		uv_cpu_hub_info(cpu)->gnode_extra = gnode_extra;
@@ -796,7 +842,7 @@ void __init uv_system_init(void)
 
 	map_gru_high(max_pnode);
 	map_mmr_high(max_pnode);
-	map_mmioh_high(max_pnode);
+	map_mmioh_high(max_pnode & pnode_io_mask);
 
 	uv_cpu_init();
 	uv_scir_register_cpu_notifier();
@@ -805,4 +851,11 @@ void __init uv_system_init(void)
 
 	/* register Legacy VGA I/O redirection handler */
 	pci_register_set_vga_state(uv_set_vga_state);
+
+	/*
+	 * For a kdump kernel the reset must be BOOT_ACPI, not BOOT_EFI, as
+	 * EFI is not enabled in the kdump kernel.
+	 */
+	if (is_kdump_kernel())
+		reboot_type = BOOT_ACPI;
 }

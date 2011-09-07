@@ -145,9 +145,13 @@ int lbs_update_hw_spec(struct lbs_private *priv)
 	if (priv->current_addr[0] == 0xff)
 		memmove(priv->current_addr, cmd.permanentaddr, ETH_ALEN);
 
-	memcpy(priv->dev->dev_addr, priv->current_addr, ETH_ALEN);
-	if (priv->mesh_dev)
-		memcpy(priv->mesh_dev->dev_addr, priv->current_addr, ETH_ALEN);
+	if (!priv->copied_hwaddr) {
+		memcpy(priv->dev->dev_addr, priv->current_addr, ETH_ALEN);
+		if (priv->mesh_dev)
+			memcpy(priv->mesh_dev->dev_addr,
+				priv->current_addr, ETH_ALEN);
+		priv->copied_hwaddr = 1;
+	}
 
 out:
 	lbs_deb_leave(LBS_DEB_CMD);
@@ -176,6 +180,14 @@ int lbs_host_sleep_cfg(struct lbs_private *priv, uint32_t criteria,
 {
 	struct cmd_ds_host_sleep cmd_config;
 	int ret;
+
+	/*
+	 * Certain firmware versions do not support EHS_REMOVE_WAKEUP command
+	 * and the card will return a failure.  Since we need to be
+	 * able to reset the mask, in those cases we set a 0 mask instead.
+	 */
+	if (criteria == EHS_REMOVE_WAKEUP && !priv->ehs_remove_supported)
+		criteria = 0;
 
 	cmd_config.hdr.size = cpu_to_le16(sizeof(cmd_config));
 	cmd_config.criteria = cpu_to_le32(criteria);
@@ -1327,8 +1339,8 @@ int lbs_execute_next_command(struct lbs_private *priv)
 				    cpu_to_le16(PS_MODE_ACTION_EXIT_PS)) {
 					lbs_deb_host(
 					       "EXEC_NEXT_CMD: ignore ENTER_PS cmd\n");
-					list_del(&cmdnode->list);
 					spin_lock_irqsave(&priv->driver_lock, flags);
+					list_del(&cmdnode->list);
 					lbs_complete_command(priv, cmdnode, 0);
 					spin_unlock_irqrestore(&priv->driver_lock, flags);
 
@@ -1340,8 +1352,8 @@ int lbs_execute_next_command(struct lbs_private *priv)
 				    (priv->psstate == PS_STATE_PRE_SLEEP)) {
 					lbs_deb_host(
 					       "EXEC_NEXT_CMD: ignore EXIT_PS cmd in sleep\n");
-					list_del(&cmdnode->list);
 					spin_lock_irqsave(&priv->driver_lock, flags);
+					list_del(&cmdnode->list);
 					lbs_complete_command(priv, cmdnode, 0);
 					spin_unlock_irqrestore(&priv->driver_lock, flags);
 					priv->needtowakeup = 1;
@@ -1354,7 +1366,9 @@ int lbs_execute_next_command(struct lbs_private *priv)
 				       "EXEC_NEXT_CMD: sending EXIT_PS\n");
 			}
 		}
+		spin_lock_irqsave(&priv->driver_lock, flags);
 		list_del(&cmdnode->list);
+		spin_unlock_irqrestore(&priv->driver_lock, flags);
 		lbs_deb_host("EXEC_NEXT_CMD: sending command 0x%04x\n",
 			    le16_to_cpu(cmd->command));
 		lbs_submit_command(priv, cmdnode);

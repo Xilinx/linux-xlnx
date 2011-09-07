@@ -79,7 +79,7 @@
 //}
 //EXPORT_SYMBOL_GPL(sched_clock);
 
-static __read_mostly int sched_clock_running;
+__read_mostly int sched_clock_running;
 
 #ifdef CONFIG_HAVE_UNSTABLE_SCHED_CLOCK
 __read_mostly int sched_clock_stable;

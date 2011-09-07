@@ -29,10 +29,10 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-#include <sound/soc-dapm.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/wm8962.h>
+#include <trace/events/asoc.h>
 
 #include "wm8962.h"
 
@@ -1938,7 +1938,7 @@ static const struct wm8962_reg_access {
 	[21139] = { 0xFFFF, 0xFFFF, 0x0000 }, /* R21139 - VSS_XTS32_0 */
 };
 
-static int wm8962_volatile_register(unsigned int reg)
+static int wm8962_volatile_register(struct snd_soc_codec *codec, unsigned int reg)
 {
 	if (wm8962_reg_access[reg].vol)
 		return 1;
@@ -1946,7 +1946,7 @@ static int wm8962_volatile_register(unsigned int reg)
 		return 0;
 }
 
-static int wm8962_readable_register(unsigned int reg)
+static int wm8962_readable_register(struct snd_soc_codec *codec, unsigned int reg)
 {
 	if (wm8962_reg_access[reg].read)
 		return 1;
@@ -1956,7 +1956,7 @@ static int wm8962_readable_register(unsigned int reg)
 
 static int wm8962_reset(struct snd_soc_codec *codec)
 {
-	return snd_soc_write(codec, WM8962_SOFTWARE_RESET, 0);
+	return snd_soc_write(codec, WM8962_SOFTWARE_RESET, 0x6243);
 }
 
 static const DECLARE_TLV_DB_SCALE(inpga_tlv, -2325, 75, 0);
@@ -2677,6 +2677,7 @@ static const struct snd_soc_dapm_route wm8962_spk_stereo_intercon[] = {
 static int wm8962_add_widgets(struct snd_soc_codec *codec)
 {
 	struct wm8962_pdata *pdata = dev_get_platdata(codec->dev);
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
 
 	snd_soc_add_controls(codec, wm8962_snd_controls,
 			     ARRAY_SIZE(wm8962_snd_controls));
@@ -2688,26 +2689,26 @@ static int wm8962_add_widgets(struct snd_soc_codec *codec)
 				     ARRAY_SIZE(wm8962_spk_stereo_controls));
 
 
-	snd_soc_dapm_new_controls(codec, wm8962_dapm_widgets,
+	snd_soc_dapm_new_controls(dapm, wm8962_dapm_widgets,
 				  ARRAY_SIZE(wm8962_dapm_widgets));
 	if (pdata && pdata->spk_mono)
-		snd_soc_dapm_new_controls(codec, wm8962_dapm_spk_mono_widgets,
+		snd_soc_dapm_new_controls(dapm, wm8962_dapm_spk_mono_widgets,
 					  ARRAY_SIZE(wm8962_dapm_spk_mono_widgets));
 	else
-		snd_soc_dapm_new_controls(codec, wm8962_dapm_spk_stereo_widgets,
+		snd_soc_dapm_new_controls(dapm, wm8962_dapm_spk_stereo_widgets,
 					  ARRAY_SIZE(wm8962_dapm_spk_stereo_widgets));
 
-	snd_soc_dapm_add_routes(codec, wm8962_intercon,
+	snd_soc_dapm_add_routes(dapm, wm8962_intercon,
 				ARRAY_SIZE(wm8962_intercon));
 	if (pdata && pdata->spk_mono)
-		snd_soc_dapm_add_routes(codec, wm8962_spk_mono_intercon,
+		snd_soc_dapm_add_routes(dapm, wm8962_spk_mono_intercon,
 					ARRAY_SIZE(wm8962_spk_mono_intercon));
 	else
-		snd_soc_dapm_add_routes(codec, wm8962_spk_stereo_intercon,
+		snd_soc_dapm_add_routes(dapm, wm8962_spk_stereo_intercon,
 					ARRAY_SIZE(wm8962_spk_stereo_intercon));
 
 
-	snd_soc_dapm_disable_pin(codec, "Beep");
+	snd_soc_dapm_disable_pin(dapm, "Beep");
 
 	return 0;
 }
@@ -2814,7 +2815,7 @@ static int wm8962_set_bias_level(struct snd_soc_codec *codec,
 	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
 	int ret;
 
-	if (level == codec->bias_level)
+	if (level == codec->dapm.bias_level)
 		return 0;
 
 	switch (level) {
@@ -2828,7 +2829,7 @@ static int wm8962_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		if (codec->bias_level == SND_SOC_BIAS_OFF) {
+		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
 			ret = regulator_bulk_enable(ARRAY_SIZE(wm8962->supplies),
 						    wm8962->supplies);
 			if (ret != 0) {
@@ -2878,7 +2879,7 @@ static int wm8962_set_bias_level(struct snd_soc_codec *codec,
 				       wm8962->supplies);
 		break;
 	}
-	codec->bias_level = level;
+	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -3136,7 +3137,7 @@ static int fll_factors(struct _fll_div *fll_div, unsigned int Fref,
 
 	pr_debug("FLL Fvco=%dHz\n", target);
 
-	/* Find an appropraite FLL_FRATIO and factor it out of the target */
+	/* Find an appropriate FLL_FRATIO and factor it out of the target */
 	for (i = 0; i < ARRAY_SIZE(fll_fratios); i++) {
 		if (fll_fratios[i].min <= Fref && Fref <= fll_fratios[i].max) {
 			fll_div->fll_fratio = fll_fratios[i].fll_fratio;
@@ -3348,6 +3349,12 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	if (active & (WM8962_MICSCD_EINT | WM8962_MICD_EINT)) {
 		dev_dbg(codec->dev, "Microphone event detected\n");
 
+#ifndef CONFIG_SND_SOC_WM8962_MODULE
+		trace_snd_soc_jack_irq(dev_name(codec->dev));
+#endif
+
+		pm_wakeup_event(codec->dev, 300);
+
 		schedule_delayed_work(&wm8962->mic_work,
 				      msecs_to_jiffies(250));
 	}
@@ -3433,6 +3440,7 @@ static void wm8962_beep_work(struct work_struct *work)
 	struct wm8962_priv *wm8962 =
 		container_of(work, struct wm8962_priv, beep_work);
 	struct snd_soc_codec *codec = wm8962->codec;
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int i;
 	int reg = 0;
 	int best = 0;
@@ -3449,16 +3457,16 @@ static void wm8962_beep_work(struct work_struct *work)
 
 		reg = WM8962_BEEP_ENA | (best << WM8962_BEEP_RATE_SHIFT);
 
-		snd_soc_dapm_enable_pin(codec, "Beep");
+		snd_soc_dapm_enable_pin(dapm, "Beep");
 	} else {
 		dev_dbg(codec->dev, "Disabling beep\n");
-		snd_soc_dapm_disable_pin(codec, "Beep");
+		snd_soc_dapm_disable_pin(dapm, "Beep");
 	}
 
 	snd_soc_update_bits(codec, WM8962_BEEP_GENERATOR_1,
 			    WM8962_BEEP_ENA | WM8962_BEEP_RATE_MASK, reg);
 
-	snd_soc_dapm_sync(codec);
+	snd_soc_dapm_sync(dapm);
 }
 
 /* For usability define a way of injecting beep events for the device -
@@ -3627,7 +3635,7 @@ static void wm8962_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 	struct snd_soc_codec *codec = wm8962->codec;
 
 	snd_soc_update_bits(codec, WM8962_GPIO_BASE + offset,
-			    WM8962_GP2_LVL, value << WM8962_GP2_LVL_SHIFT);
+			    WM8962_GP2_LVL, !!value << WM8962_GP2_LVL_SHIFT);
 }
 
 static int wm8962_gpio_direction_out(struct gpio_chip *chip,
@@ -3706,7 +3714,7 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 	INIT_DELAYED_WORK(&wm8962->mic_work, wm8962_mic_work);
 
 	codec->cache_sync = 1;
-	codec->idle_bias_off = 1;
+	codec->dapm.idle_bias_off = 1;
 
 	ret = snd_soc_codec_set_cache_io(codec, 16, 16, SND_SOC_I2C);
 	if (ret != 0) {
@@ -3814,16 +3822,26 @@ static int wm8962_probe(struct snd_soc_codec *codec)
 	}
 
 	/* Latch volume update bits */
-	reg_cache[WM8962_LEFT_INPUT_VOLUME] |= WM8962_IN_VU;
-	reg_cache[WM8962_RIGHT_INPUT_VOLUME] |= WM8962_IN_VU;
-	reg_cache[WM8962_LEFT_ADC_VOLUME] |= WM8962_ADC_VU;
-	reg_cache[WM8962_RIGHT_ADC_VOLUME] |= WM8962_ADC_VU;
-	reg_cache[WM8962_LEFT_DAC_VOLUME] |= WM8962_DAC_VU;
-	reg_cache[WM8962_RIGHT_DAC_VOLUME] |= WM8962_DAC_VU;
-	reg_cache[WM8962_SPKOUTL_VOLUME] |= WM8962_SPKOUT_VU;
-	reg_cache[WM8962_SPKOUTR_VOLUME] |= WM8962_SPKOUT_VU;
-	reg_cache[WM8962_HPOUTL_VOLUME] |= WM8962_HPOUT_VU;
-	reg_cache[WM8962_HPOUTR_VOLUME] |= WM8962_HPOUT_VU;
+	snd_soc_update_bits(codec, WM8962_LEFT_INPUT_VOLUME,
+			    WM8962_IN_VU, WM8962_IN_VU);
+	snd_soc_update_bits(codec, WM8962_RIGHT_INPUT_VOLUME,
+			    WM8962_IN_VU, WM8962_IN_VU);
+	snd_soc_update_bits(codec, WM8962_LEFT_ADC_VOLUME,
+			    WM8962_ADC_VU, WM8962_ADC_VU);
+	snd_soc_update_bits(codec, WM8962_RIGHT_ADC_VOLUME,
+			    WM8962_ADC_VU, WM8962_ADC_VU);
+	snd_soc_update_bits(codec, WM8962_LEFT_DAC_VOLUME,
+			    WM8962_DAC_VU, WM8962_DAC_VU);
+	snd_soc_update_bits(codec, WM8962_RIGHT_DAC_VOLUME,
+			    WM8962_DAC_VU, WM8962_DAC_VU);
+	snd_soc_update_bits(codec, WM8962_SPKOUTL_VOLUME,
+			    WM8962_SPKOUT_VU, WM8962_SPKOUT_VU);
+	snd_soc_update_bits(codec, WM8962_SPKOUTR_VOLUME,
+			    WM8962_SPKOUT_VU, WM8962_SPKOUT_VU);
+	snd_soc_update_bits(codec, WM8962_HPOUTL_VOLUME,
+			    WM8962_HPOUT_VU, WM8962_HPOUT_VU);
+	snd_soc_update_bits(codec, WM8962_HPOUTR_VOLUME,
+			    WM8962_HPOUT_VU, WM8962_HPOUT_VU);
 
 	wm8962_add_widgets(codec);
 
@@ -3865,7 +3883,6 @@ err_enable:
 err_get:
 	regulator_bulk_free(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
 err:
-	kfree(wm8962);
 	return ret;
 }
 

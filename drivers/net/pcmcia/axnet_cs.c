@@ -780,7 +780,7 @@ module_exit(exit_axnet_cs);
   Alexey Kuznetsov	: use the 8390's six bit hash multicast filter.
   Paul Gortmaker	: tweak ANK's above multicast changes a bit.
   Paul Gortmaker	: update packet statistics for v2.1.x
-  Alan Cox		: support arbitary stupid port mappings on the
+  Alan Cox		: support arbitrary stupid port mappings on the
   			  68K Macintosh. Support >16bit I/O spaces
   Paul Gortmaker	: add kmod support for auto-loading of the 8390
 			  module by all drivers that require it.
@@ -842,7 +842,7 @@ static void do_set_multicast_list(struct net_device *dev);
 /*
  *	SMP and the 8390 setup.
  *
- *	The 8390 isnt exactly designed to be multithreaded on RX/TX. There is
+ *	The 8390 isn't exactly designed to be multithreaded on RX/TX. There is
  *	a page register that controls bank and packet buffer access. We guard
  *	this with ei_local->page_lock. Nobody should assume or set the page other
  *	than zero when the lock is not held. Lock holders must restore page 0
@@ -876,7 +876,7 @@ static void do_set_multicast_list(struct net_device *dev);
 static int ax_open(struct net_device *dev)
 {
 	unsigned long flags;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 
 	/*
 	 *	Grab the page lock so we own the register set, then call
@@ -927,7 +927,7 @@ static int ax_close(struct net_device *dev)
 static void axnet_tx_timeout(struct net_device *dev)
 {
 	long e8390_base = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	int txsr, isr, tickssofar = jiffies - dev_trans_start(dev);
 	unsigned long flags;
 
@@ -974,7 +974,7 @@ static netdev_tx_t axnet_start_xmit(struct sk_buff *skb,
 					  struct net_device *dev)
 {
 	long e8390_base = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	int length, send_length, output_page;
 	unsigned long flags;
 	u8 packet[ETH_ZLEN];
@@ -1271,7 +1271,7 @@ static void ei_tx_err(struct net_device *dev)
 static void ei_tx_intr(struct net_device *dev)
 {
 	long e8390_base = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	int status = inb(e8390_base + EN0_TSR);
     
 	/*
@@ -1355,7 +1355,7 @@ static void ei_tx_intr(struct net_device *dev)
 static void ei_receive(struct net_device *dev)
 {
 	long e8390_base = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	unsigned char rxing_page, this_frame, next_frame;
 	unsigned short current_offset;
 	int rx_pkt_count = 0;
@@ -1488,12 +1488,10 @@ static void ei_rx_overrun(struct net_device *dev)
     
 	/* 
 	 * Wait a full Tx time (1.2ms) + some guard time, NS says 1.6ms total.
-	 * Early datasheets said to poll the reset bit, but now they say that
-	 * it "is not a reliable indicator and subsequently should be ignored."
-	 * We wait at least 10ms.
+	 * We wait at least 2ms.
 	 */
 
-	mdelay(10);
+	mdelay(2);
 
 	/*
 	 * Reset RBCR[01] back to zero as per magic incantation.
@@ -1540,7 +1538,7 @@ static void ei_rx_overrun(struct net_device *dev)
 static struct net_device_stats *get_stats(struct net_device *dev)
 {
 	long ioaddr = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	unsigned long flags;
     
 	/* If the card is stopped, just return the present stats. */
@@ -1589,7 +1587,7 @@ static void do_set_multicast_list(struct net_device *dev)
 {
 	long e8390_base = dev->base_addr;
 	int i;
-	struct ei_device *ei_local = (struct ei_device*)netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 
 	if (!(dev->flags&(IFF_PROMISC|IFF_ALLMULTI))) {
 		memset(ei_local->mcfilter, 0, 8);
@@ -1647,7 +1645,7 @@ static void AX88190_init(struct net_device *dev, int startp)
 {
 	axnet_dev_t *info = PRIV(dev);
 	long e8390_base = dev->base_addr;
-	struct ei_device *ei_local = (struct ei_device *) netdev_priv(dev);
+	struct ei_device *ei_local = netdev_priv(dev);
 	int i;
 	int endcfg = ei_local->word16 ? (0x48 | ENDCFG_WTS) : 0x48;
     
@@ -1713,7 +1711,7 @@ static void NS8390_trigger_send(struct net_device *dev, unsigned int length,
 								int start_page)
 {
 	long e8390_base = dev->base_addr;
- 	struct ei_device *ei_local __attribute((unused)) = (struct ei_device *) netdev_priv(dev);
+ 	struct ei_device *ei_local __attribute((unused)) = netdev_priv(dev);
     
 	if (inb_p(e8390_base) & E8390_TRANS) 
 	{

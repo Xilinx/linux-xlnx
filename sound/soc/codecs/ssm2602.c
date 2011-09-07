@@ -38,7 +38,6 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-#include <sound/soc-dapm.h>
 #include <sound/initval.h>
 
 #include "ssm2602.h"
@@ -140,7 +139,7 @@ SOC_DOUBLE_R("Capture Volume", SSM2602_LINVOL, SSM2602_RINVOL, 0, 31, 0),
 SOC_DOUBLE_R("Capture Switch", SSM2602_LINVOL, SSM2602_RINVOL, 7, 1, 1),
 
 SOC_SINGLE("Mic Boost (+20dB)", SSM2602_APANA, 0, 1, 0),
-SOC_SINGLE("Mic Boost2 (+20dB)", SSM2602_APANA, 7, 1, 0),
+SOC_SINGLE("Mic Boost2 (+20dB)", SSM2602_APANA, 8, 1, 0),
 SOC_SINGLE("Mic Switch", SSM2602_APANA, 1, 1, 1),
 
 SOC_SINGLE("Sidetone Playback Volume", SSM2602_APANA, 6, 3, 1),
@@ -207,10 +206,11 @@ static const struct snd_soc_dapm_route audio_conn[] = {
 
 static int ssm2602_add_widgets(struct snd_soc_codec *codec)
 {
-	snd_soc_dapm_new_controls(codec, ssm2602_dapm_widgets,
-				  ARRAY_SIZE(ssm2602_dapm_widgets));
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
 
-	snd_soc_dapm_add_routes(codec, audio_conn, ARRAY_SIZE(audio_conn));
+	snd_soc_dapm_new_controls(dapm, ssm2602_dapm_widgets,
+				  ARRAY_SIZE(ssm2602_dapm_widgets));
+	snd_soc_dapm_add_routes(dapm, audio_conn, ARRAY_SIZE(audio_conn));
 
 	return 0;
 }
@@ -493,7 +493,7 @@ static int ssm2602_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	}
-	codec->bias_level = level;
+	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -602,7 +602,7 @@ static struct snd_soc_codec_driver soc_codec_dev_ssm2602 = {
 	.read = ssm2602_read_reg_cache,
 	.write = ssm2602_write,
 	.set_bias_level = ssm2602_set_bias_level,
-	.reg_cache_size = sizeof(ssm2602_reg),
+	.reg_cache_size = ARRAY_SIZE(ssm2602_reg),
 	.reg_word_size = sizeof(u16),
 	.reg_cache_default = ssm2602_reg,
 };
@@ -614,7 +614,7 @@ static struct snd_soc_codec_driver soc_codec_dev_ssm2602 = {
  *    low  = 0x1a
  *    high = 0x1b
  */
-static int ssm2602_i2c_probe(struct i2c_client *i2c,
+static int __devinit ssm2602_i2c_probe(struct i2c_client *i2c,
 			     const struct i2c_device_id *id)
 {
 	struct ssm2602_priv *ssm2602;
@@ -635,7 +635,7 @@ static int ssm2602_i2c_probe(struct i2c_client *i2c,
 	return ret;
 }
 
-static int ssm2602_i2c_remove(struct i2c_client *client)
+static int __devexit ssm2602_i2c_remove(struct i2c_client *client)
 {
 	snd_soc_unregister_codec(&client->dev);
 	kfree(i2c_get_clientdata(client));
@@ -655,7 +655,7 @@ static struct i2c_driver ssm2602_i2c_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = ssm2602_i2c_probe,
-	.remove = ssm2602_i2c_remove,
+	.remove = __devexit_p(ssm2602_i2c_remove),
 	.id_table = ssm2602_i2c_id,
 };
 #endif

@@ -351,11 +351,12 @@ static void blk_account_io_merge(struct request *req)
 		int cpu;
 
 		cpu = part_stat_lock();
-		part = disk_map_sector_rcu(req->rq_disk, blk_rq_pos(req));
+		part = req->part;
 
 		part_round_stats(cpu, part);
 		part_dec_in_flight(part, rq_data_dir(req));
 
+		hd_struct_put(part);
 		part_stat_unlock();
 	}
 }
@@ -463,4 +464,10 @@ int attempt_front_merge(struct request_queue *q, struct request *rq)
 		return attempt_merge(q, prev, rq);
 
 	return 0;
+}
+
+int blk_attempt_req_merge(struct request_queue *q, struct request *rq,
+			  struct request *next)
+{
+	return attempt_merge(q, rq, next);
 }

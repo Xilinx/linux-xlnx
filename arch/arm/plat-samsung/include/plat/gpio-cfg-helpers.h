@@ -114,7 +114,7 @@ extern unsigned s3c_gpio_getcfg_s3c24xx_a(struct s3c_gpio_chip *chip,
  * of control per GPIO, generally in the form of:
  *	0000 = Input
  *	0001 = Output
- *	others = Special functions (dependant on bank)
+ *	others = Special functions (dependent on bank)
  *
  * Note, since the code to deal with the case where there are two control
  * registers instead of one, we do not have a separate set of functions for
@@ -244,7 +244,7 @@ extern int s3c_gpio_setpull_s3c2443(struct s3c_gpio_chip *chip,
  * This helper function reads the state of the pull-{up,down} resistor for the
  * given GPIO in the same case as s3c_gpio_setpull_upown.
 */
-extern s3c_gpio_pull_t s3c_gpio_getpull_s3c24xx(struct s3c_gpio_chip *chip,
+extern s3c_gpio_pull_t s3c_gpio_getpull_s3c2443(struct s3c_gpio_chip *chip,
 						unsigned int off);
 
 #endif /* __PLAT_GPIO_CFG_HELPERS_H */
