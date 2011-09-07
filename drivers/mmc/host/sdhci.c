@@ -42,7 +42,7 @@
 
 #define MAX_TUNING_LOOP 40
 
-static unsigned int debug_quirks = SDHCI_QUIRK_BROKEN_ADMA;
+static unsigned int debug_quirks = 0;
 
 static void sdhci_finish_data(struct sdhci_host *);
 

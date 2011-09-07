@@ -79,6 +79,8 @@ void __iomem *xsram_base;
 /* The 1st I2C bus has an eeprom and a real time clock on
    it.
 */
+#ifndef CONFIG_OF
+
 static struct i2c_board_info i2c_devs_0[] __initdata = {
 	{
 		I2C_BOARD_INFO("24c02", 0x50),
@@ -95,7 +97,7 @@ static struct i2c_board_info i2c_devs_1[] __initdata = {
 		I2C_BOARD_INFO("24c02", 0x55),
 	},
 };
-
+#endif
 
 #ifndef CONFIG_SPI_SPIDEV
 
@@ -232,8 +234,10 @@ static void __init board_init(void)
 	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
 #endif
 
+#ifndef CONFIG_OF
 	i2c_register_board_info(0, i2c_devs_0, ARRAY_SIZE(i2c_devs_0));
 	i2c_register_board_info(1, i2c_devs_1, ARRAY_SIZE(i2c_devs_1));
+#endif
 
 #ifndef CONFIG_SPI_SPIDEV
 	spi_register_board_info(spi_devs,

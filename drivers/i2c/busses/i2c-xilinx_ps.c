@@ -45,6 +45,7 @@
 #include <linux/xilinx_devices.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of_i2c.h>
 
 /*
  * Register Map
@@ -611,6 +612,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "couldn't determine bus-id\n");
 		goto err_unmap ;
 	}
+	id->adap.dev.of_node = pdev->dev.of_node;
 #else
 	id->adap.nr = pdev->id;
 #endif
@@ -673,6 +675,11 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
 		goto err_free_irq;
 	}
+
+
+#ifdef CONFIG_OF
+	of_i2c_register_devices(&id->adap);
+#endif
 
 	dev_info(&pdev->dev, "%d kHz mmio %08lx irq %d\n",
 		 i2c_clk/1000, (unsigned long)r_mem->start, id->irq);

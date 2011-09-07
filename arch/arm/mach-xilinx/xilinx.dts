@@ -86,6 +86,18 @@
 			bus-id = <0>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
+			
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@50 {
+				compatible = "at,24c02";
+				reg = <0x50>;
+			};
+
+			rtc8564@51 {
+				compatible = "rtc8564";
+				reg = <0x51>;
+			};
 		};
 
 		i2c1: i2c@e0005000 {
@@ -95,6 +107,13 @@
 			bus-id = <1>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@55 {
+				compatible = "at,24c02";
+				reg = <0x55>;
+			};
 		};
 
 		gpio0: gpio@e000a000 {
@@ -156,6 +175,79 @@
 			reg = <0xF8007000 0x1000>;
 			interrupts = <40 0>;
 		};
+		eth0: eth@e000b000 {
+			compatible = "xlnx,xemacps";
+			reg = <0xE000B000 0x1000>;
+			interrupts = <54 0>;
+			phy_mask = <0xFF7FFFFF>;
+			dma_mask = <0xFFFFFFFF>;
+			coherent_dma_mask=<0xFFFFFFFF>;
+			id = <0>;
+		};
 
+		eth1: eth@e000c000 {
+			compatible = "xlnx,xemacps";
+			reg = <0xE000C000 0x1000>;
+			interrupts = <77 0>;
+			phy_mask = <0xFFFEFFFF>;
+			dma_mask = <0xFFFFFFFF>;
+			coherent_dma_mask=<0xFFFFFFFF>;
+			id = <1>;
+		};
+
+		nand: nand@e1000000 {
+			compatible = "xlnx,ps7-nand-1.00.a";
+			reg = <0xE1000000 0x1000000 0xE000E000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@0 {
+				label = "nand-fsbl";
+				reg = <0x00000000 0x100000>;	/* 1 MB */
+			};
+			partition@1 {
+				label = "nand-u-boot";
+				reg = <0x100000 0x100000>;	/* 1 MB */
+			};
+			partition@2 {
+				label = "nand-linux";
+				reg = <0x200000 0x500000>;	/* 5 MB */
+			};
+			partition@3 {
+				label = "nand-device-tree";
+				reg = <0x700000 0x20000>;	/* 128 KB */
+			};
+			partition@4 {
+				label = "nand-user";
+				reg = <0x720000 0xE0000>;	/* 896 KB */
+			};
+			partition@5 {
+				label = "nand-scratch";
+				reg = <0x800000 0x100000>;	/* 1 MB */
+			};
+			partition@6 {
+				label = "nand-rootfs";
+				reg = <0x900000 0x8000000>;	/* 128 MB */
+			};
+			partition@7 {
+				label = "nand-bitstreams";
+				reg = <0x8900000 0x7700000>;	/* 119 MB */
+			};
+		};
+
+		usb@e0002000 {
+			compatible = "xlnx,ps7-usb-1.00.a";
+			reg = <0xe0002000 0x1000>;
+			interrupts = <53 0>;
+			dr_mode = "otg";
+			phy_type = "ulpi";
+		};
+
+		usb@e0003000 {
+			compatible = "xlnx,ps7-usb-1.00.a";
+			reg = <0xe0003000 0x1000>;
+			interrupts = <76 0>;
+			dr_mode = "host";
+			phy_type = "ulpi";
+		};
 	};
 };

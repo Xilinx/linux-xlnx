@@ -577,15 +577,15 @@ struct platform_device xilinx_sdio1pss_device = {
 #define ETH0_PHY_MASK 0x17
 #define ETH1_PHY_MASK 0x10
 
-struct xemacpss_eth_data {
+struct xemacps_eth_data {
 	u32 phy_mask;
 };
 
-static struct xemacpss_eth_data __initdata eth0_data = {
+static struct xemacps_eth_data __initdata eth0_data = {
 	.phy_mask = ~(1U << ETH0_PHY_MASK),
 };
 
-static struct xemacpss_eth_data __initdata eth1_data = {
+static struct xemacps_eth_data __initdata eth1_data = {
 	.phy_mask = ~(1U << ETH1_PHY_MASK),
 };
 
@@ -603,7 +603,7 @@ static struct resource eth0[] = {
 };
 
 struct platform_device eth_device0 = {
-	.name = "xemacpss",
+	.name = "xemacps",
 	.id = 0,
 	.dev = {
 		.dma_mask          = &dma_mask,
@@ -628,7 +628,7 @@ static struct resource eth1[] = {
 };
 
 struct platform_device eth_device1 = {
-	.name = "xemacpss",
+	.name = "xemacps",
 	.id = 1,
 	.dev = {
 		.dma_mask          = &dma_mask,
@@ -838,7 +838,7 @@ static struct resource xwdtpss_0_resource[] = {
 };
 
 static struct platform_device xilinx_wdtpss_0_device = {
-	.name = "xwdtps`",
+	.name = "xwdtps",
 	.id = 0,
 	.dev = {
 		.platform_data = NULL,
@@ -939,6 +939,9 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_sdio0pss_device,
 	&xilinx_sdio1pss_device,
         &xilinx_devcfg_device,
+        &eth_device0,
+	&eth_device1,
+	&xilinx_nandpss_device,
 #endif
 #ifdef AXI_DMA
 	&axidma_device,
@@ -957,10 +960,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 #ifdef AXI_GPIO
 	&xilinx_gpio_0_device,
 #endif
-	&eth_device0,
-	&eth_device1,
 	&xilinx_qspipss_0_device,
-	&xilinx_nandpss_device,
 	&xilinx_pmu_device,
 };
 

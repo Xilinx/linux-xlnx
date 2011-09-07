@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
+#define XSLCR_UNLOCK			0x8   /* SCLR unlock register */
 #define XSLCR_APER_CLK_CTRL_OFFSET	0x12C /* AMBA Peripheral Clk Control */
 #define XSLCR_USB0_CLK_CTRL_OFFSET	0x130 /* USB 0 ULPI Clock Control */
 #define XSLCR_USB1_CLK_CTRL_OFFSET	0x134 /* USB 1 ULPI Clock Control */
@@ -1277,6 +1278,7 @@ static ssize_t xslcr_reset_periph(struct device *dev,
 {
 	unsigned long flags, rst;
 	int i, ret;
+	u32 reg;
 
 	/* check for a valid peripheral */
 	for (i = 0; i < ARRAY_SIZE(reset_periph_name); i++) {
@@ -1290,15 +1292,22 @@ static ssize_t xslcr_reset_periph(struct device *dev,
 	}
 
 	ret = strict_strtoul(buf, 10, &rst);
-	if ((ret) || (rst != 1)) {
+	if (ret) {
 		dev_err(dev, "Invalid user argument\n");
 		return -EINVAL;
 	}
 
 	/* reset the peripheral */
 	spin_lock_irqsave(&slcr->io_lock, flags);
-	xslcr_writereg(slcr->regs + reset_info[i].reg_offset,
-		       reset_info[i].reset_mask);
+
+	/* read the register and modify only the specified bit */	
+	reg = xslcr_readreg(slcr->regs + reset_info[i].reg_offset);
+	if (!rst)
+		reg &= ~(reset_info[i].reset_mask);	
+	else
+		reg |= reset_info[i].reset_mask;
+		
+	xslcr_writereg(slcr->regs + reset_info[i].reg_offset, reg);
 
 	spin_unlock_irqrestore(&slcr->io_lock, flags);
 	return size;
@@ -1596,6 +1605,9 @@ static int __init xslcr_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to create sysfs attr\n");
 		goto err_rst_class;
 	}
+
+	/* unlock the SLCR so that registers can be changed */
+	xslcr_writereg(slcr->regs + XSLCR_UNLOCK, 0xDF0D);
 
 	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n", res->start,
 		 (u32 __force)slcr->regs);

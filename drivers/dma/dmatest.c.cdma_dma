@@ -616,12 +616,22 @@ static int dmatest_slave_func(void *data)
 		for (i = 0; i < src_cnt; i++) {
 			u8 *buf = thread->srcs[i] + src_off;
 
+	
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
 						     DMA_TO_DEVICE);
+
 		}
 
 		for (i = 0; i < dst_cnt; i++) {
 	
+			dma_dsts[i] = dma_map_single(rx_dev->dev, thread->dsts[i],
+						     test_buf_size,
+						     DMA_TO_DEVICE);
+
+			dma_unmap_single(rx_dev->dev, dma_dsts[i],
+						 test_buf_size,
+						 DMA_TO_DEVICE);
+
 			dma_dsts[i] = dma_map_single(rx_dev->dev, thread->dsts[i],
 						     test_buf_size,
 						     DMA_FROM_DEVICE);
@@ -639,7 +649,8 @@ static int dmatest_slave_func(void *data)
 
 		}
 
-#if 1   /* Only one interrupt */ 
+
+		/* Only one interrupt */ 
 		config.coalesc = 1;
 		config.delay = 0;
 		rx_dev->device_control(rx_chan, DMA_SLAVE_CONFIG,
@@ -649,7 +660,6 @@ static int dmatest_slave_func(void *data)
 		config.delay = 0;
 		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG,
 		             (unsigned long)&config);
-#endif
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, bd_cnt,
 				DMA_FROM_DEVICE, flags);
@@ -683,9 +693,6 @@ static int dmatest_slave_func(void *data)
 		txd->callback = dmatest_slave_tx_callback;
 		txd->callback_param = &tx_cmp;
 		tx_cookie = txd->tx_submit(txd);
-
-		//printk(KERN_INFO "cookie from submit rx %d tx %d\n", rx_cookie,
-		//	tx_cookie);
 
 		if (dma_submit_error(rx_cookie) || dma_submit_error(tx_cookie)) {
 			pr_warning("%s: #%u: submit error %d/%d with src_off=0x%x "
