@@ -1281,16 +1281,12 @@ static int __init ace_init(void)
 		rc = -ENOMEM;
 		goto err_blk;
 	}
-
 	rc = ace_of_register();
 	if (rc)
 		goto err_of;
 
 	pr_debug("xsysace: registering platform binding\n");
-	rc = platform_driver_register(&ace_platform_driver);
-	if (rc)
-		goto err_plat;
-
+	
 	pr_info("Xilinx SystemACE device driver, major=%i\n", ace_major);
 	return 0;
 
@@ -1306,10 +1302,10 @@ err_blk:
 static void __exit ace_exit(void)
 {
 	pr_debug("Unregistering Xilinx SystemACE driver\n");
-	platform_driver_unregister(&ace_platform_driver);
 	ace_of_unregister();
 	unregister_blkdev(ace_major, "xsysace");
 }
 
 module_init(ace_init);
 module_exit(ace_exit);
+
