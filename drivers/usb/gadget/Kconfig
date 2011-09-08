@@ -180,6 +180,7 @@ config USB_GADGET_XUSBPS
 	boolean "Xilinx PS Highspeed USB DR Peripheral Controller"
 	depends on ARCH_XILINX
 	select USB_GADGET_DUALSPEED
+	select USB_XUSBPS_DR_OF if OF
 	help
 	   Xilinx PS USB controller core supports device mode.
 
