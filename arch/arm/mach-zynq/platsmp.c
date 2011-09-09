@@ -24,8 +24,8 @@
 #include <linux/io.h>
 #include <asm/cacheflush.h>
 #include <asm/smp_scu.h>
+#include <asm/hardware/gic.h>
 #include <mach/zynq_soc.h>
-#include <mach/smp.h>
 #include "common.h"
 
 static DEFINE_SPINLOCK(boot_lock);
@@ -111,6 +111,8 @@ void __init smp_init_cpus(void)
 
 	for (i = 0; i < ncores; i++)
 		set_cpu_possible(i, true);
+
+	set_smp_cross_call(gic_raise_softirq);
 }
 
 void __init platform_smp_prepare_cpus(unsigned int max_cpus)
