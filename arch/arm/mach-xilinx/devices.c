@@ -930,6 +930,7 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_norpss_device,
 	&xilinx_spipss_0_device,
 	&xilinx_spipss_1_device,
+	&xilinx_qspipss_0_device,
 	&xilinx_i2cpss_0_device,
 	&xilinx_i2cpss_1_device,
 	&xilinx_gpiopss_0_device,
@@ -960,7 +961,6 @@ struct platform_device *xilinx_pdevices[] __initdata = {
 #ifdef AXI_GPIO
 	&xilinx_gpio_0_device,
 #endif
-	&xilinx_qspipss_0_device,
 	&xilinx_pmu_device,
 };
 
@@ -1032,5 +1032,9 @@ void __init platform_device_init(void)
 			spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
 #endif
 	}
+
+#if ((defined CONFIG_OF) && (defined CONFIG_SPI_SPIDEV || defined CONFIG_MTD_M25P80))
+	spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
+#endif
 }
 
