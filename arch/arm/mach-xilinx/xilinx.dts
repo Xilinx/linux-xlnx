@@ -79,6 +79,16 @@
 			num-chip-select = <4>;
 		};
 
+		qspi0: spi@e000d000 {
+			compatible = "xlnx,ps7-qspi-1.00.a";
+			reg = <0xE000D000 0x1000>;
+			interrupts = <51 0>;
+			speed-hz = <100000000>;
+			bus-num = <2>;
+			num-chip-select = <1>;
+			is-dual = <1>;
+		};
+
 		i2c0: i2c@e0004000 {
 			compatible = "xlnx,xi2cps";
 			reg = <0xE0004000 0x1000>;

@@ -27,6 +27,8 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/xilinx_devices.h>
+#include <linux/of_irq.h>
+#include <linux/of_address.h>
 
 /*
  * Name of this driver
@@ -146,6 +148,7 @@
  * @dev_busy:		Device busy flag
  * @done:		Transfer complete status
  * @is_inst:		Flag to indicate the first message in a Transfer request
+ * @is_dual:		Flag to indicate whether dual flash memories are used
  **/
 struct xqspips {
 	struct workqueue_struct *workqueue;
@@ -165,6 +168,7 @@ struct xqspips {
 	u8 dev_busy;
 	struct completion done;
 	bool is_inst;
+	bool is_dual;
 };
 
 /**
@@ -206,6 +210,7 @@ static struct xqspips_inst_format __devinitdata flash_inst[] = {
 /**
  * xqspips_init_hw - Initialize the hardware
  * @regs_base:	Base address of QSPI controller
+ * @is_dual:	Indicates whether dual memories are used
  *
  * The default settings of the QSPI controller's configurable parameters on
  * reset are
@@ -223,7 +228,7 @@ static struct xqspips_inst_format __devinitdata flash_inst[] = {
  *	- Set the little endian mode of TX FIFO and
  *	- Enable the QSPI controller
  **/
-static void xqspips_init_hw(void __iomem *regs_base)
+static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 {
 	u32 config_reg;
 
@@ -245,10 +250,10 @@ static void xqspips_init_hw(void __iomem *regs_base)
 	config_reg |= 0x8000FCC1;
 	xqspips_write(regs_base + XQSPIPS_CONFIG_OFFSET, config_reg);
 
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-	/* Enable two memories on seperate buses */
-	xqspips_write(regs_base + XQSPIPS_LINEAR_CFG_OFFSET, 0x6400016B);
-#endif
+	if (is_dual == 1)
+		/* Enable two memories on seperate buses */
+		xqspips_write(regs_base + XQSPIPS_LINEAR_CFG_OFFSET,
+			      0x6400016B);
 
 	xqspips_write(regs_base + XQSPIPS_ENABLE_OFFSET,
 			XQSPIPS_ENABLE_ENABLE_MASK);
@@ -610,19 +615,19 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 
 		curr_inst = &flash_inst[index];
 
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
 		/* In case of dual memories, convert 25 bit address to 24 bit
 		 * address before transmitting to the 2 memories
 		 */
-		if ((instruction == XQSPIPS_FLASH_OPCODE_PP) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_SE) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_BE_32K) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_BE_4K) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_BE) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_NORM_READ) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_FAST_READ) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_DUAL_READ) ||
-		    (instruction == XQSPIPS_FLASH_OPCODE_QUAD_READ)) {
+		if ((xqspi->is_dual == 1) &&
+		    ((instruction == XQSPIPS_FLASH_OPCODE_PP) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_SE) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_BE_32K) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_BE_4K) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_BE) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_NORM_READ) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_FAST_READ) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_DUAL_READ) ||
+		     (instruction == XQSPIPS_FLASH_OPCODE_QUAD_READ))) {
 
 			u8 *ptr = (u8*) (xqspi->txbuf);
 			data = ((u32) ptr[1] << 24) | ((u32) ptr[2] << 16) |
@@ -634,7 +639,6 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 			xqspi->bytes_to_transfer -= 1;
 			xqspi->bytes_to_receive -= 1;
 		}
-#endif
 
 		/* Get the instruction */
 		data = 0;
@@ -911,7 +915,11 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	struct spi_master *master;
 	struct xqspips *xqspi;
 	struct resource *r;
+#ifdef CONFIG_OF
+	const unsigned int *prop;
+#else
 	struct xspi_platform_data *platform_info;
+#endif
 
 	master = spi_alloc_master(&dev->dev, sizeof(struct xqspips));
 	if (master == NULL)
@@ -920,12 +928,14 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	xqspi = spi_master_get_devdata(master);
 	platform_set_drvdata(dev, master);
 
+#ifndef CONFIG_OF
 	platform_info = dev->dev.platform_data;
 	if (platform_info == NULL) {
 		ret = -ENODEV;
 		dev_err(&dev->dev, "platform data not available\n");
 		goto put_master;
 	}
+#endif
 
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
@@ -962,16 +972,63 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		goto unmap_io;
 	}
 
+#ifdef CONFIG_OF
+	prop = of_get_property(dev->dev.of_node, "is-dual", NULL);
+	if (prop)
+		xqspi->is_dual = be32_to_cpup(prop);
+	else {
+		dev_warn(&dev->dev, "couldn't determine configuration info "
+			 "about dual memories. defaulting to single memory\n");
+	}
+#elif defined CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
+	xqspi->is_dual = 1;
+#endif
+
 	/* QSPI controller initializations */
-	xqspips_init_hw(xqspi->regs);
+	xqspips_init_hw(xqspi->regs, xqspi->is_dual);
 
 	init_completion(&xqspi->done);
+
+#ifdef CONFIG_OF
+	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
+	if (prop)
+		master->bus_num = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine bus-num\n");
+		goto free_irq;
+	}
+
+	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
+	if (prop)
+		master->num_chipselect = be32_to_cpup(prop);
+	else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
+		goto free_irq;
+	}
+#else
 	master->bus_num = platform_info->bus_num;
 	master->num_chipselect = platform_info->num_chipselect;
+#endif
+
 	master->setup = xqspips_setup;
 	master->transfer = xqspips_transfer;
+
+#ifdef CONFIG_OF
+	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
+	if (prop) {
+		xqspi->input_clk_hz = be32_to_cpup(prop);
+		xqspi->speed_hz = xqspi->input_clk_hz / 2;
+	} else {
+		ret = -ENXIO;
+		dev_err(&dev->dev, "couldn't determine speed-hz\n");
+		goto free_irq;
+	}
+#else
 	xqspi->input_clk_hz = platform_info->speed_hz;
 	xqspi->speed_hz = platform_info->speed_hz / 2;
+#endif
 	xqspi->dev_busy = 0;
 
 	INIT_LIST_HEAD(&xqspi->queue);
@@ -1068,6 +1125,14 @@ static int __devexit xqspips_remove(struct platform_device *dev)
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" DRIVER_NAME);
 
+#ifdef CONFIG_OF
+static struct of_device_id xqspips_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,ps7-qspi-1.00.a", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, xqspips_of_match);
+#endif
+
 /*
  * xqspips_driver - This structure defines the QSPI platform driver
  */
@@ -1079,6 +1144,9 @@ static struct platform_driver xqspips_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = xqspips_of_match,
+#endif
 	},
 };
 
