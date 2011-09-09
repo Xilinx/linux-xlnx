@@ -4,4 +4,3 @@
 
 # Common support
 obj-y 				:= common.o timer.o board_dt.o
-obj-$(CONFIG_SMP)		+= platsmp.o
