@@ -197,9 +197,9 @@ static struct xqspips_inst_format __devinitdata flash_inst[] = {
 	{ XQSPIPS_FLASH_OPCODE_ERASE_RES, 1, XQSPIPS_TXD_00_01_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_RDID, 1, XQSPIPS_TXD_00_01_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_NORM_READ, 4, XQSPIPS_TXD_00_00_OFFSET },
-	{ XQSPIPS_FLASH_OPCODE_FAST_READ, 4, XQSPIPS_TXD_00_00_OFFSET },
-	{ XQSPIPS_FLASH_OPCODE_DUAL_READ, 4, XQSPIPS_TXD_00_00_OFFSET },
-	{ XQSPIPS_FLASH_OPCODE_QUAD_READ, 4, XQSPIPS_TXD_00_00_OFFSET },
+	{ XQSPIPS_FLASH_OPCODE_FAST_READ, 1, XQSPIPS_TXD_00_01_OFFSET },
+	{ XQSPIPS_FLASH_OPCODE_DUAL_READ, 1, XQSPIPS_TXD_00_01_OFFSET },
+	{ XQSPIPS_FLASH_OPCODE_QUAD_READ, 1, XQSPIPS_TXD_00_01_OFFSET },
 	/* Add all the instructions supported by the flash device */
 };
 
@@ -651,8 +651,16 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 
 xfer_data:
 	INIT_COMPLETION(xqspi->done);
-	if (xqspi->bytes_to_transfer)
+	/* In case of Fast, Dual and Quad reads, transmit the instruction first.
+	 * Address and dummy byte will be transmitted in interrupt handler,
+	 * after instruction is transmitted */
+	if (((xqspi->is_inst == 0) && (xqspi->bytes_to_transfer)) ||
+	     ((xqspi->bytes_to_transfer) &&
+	      (instruction != XQSPIPS_FLASH_OPCODE_FAST_READ) &&
+	      (instruction != XQSPIPS_FLASH_OPCODE_DUAL_READ) &&
+	      (instruction != XQSPIPS_FLASH_OPCODE_QUAD_READ)))
 		xqspips_fill_tx_fifo(xqspi);
+
 	xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 			XQSPIPS_IXR_ALL_MASK);
 	/* Start the transfer by enabling manual start bit */
