@@ -743,38 +743,38 @@ static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {
 
 static struct mtd_partition qspi_flash_partitions[] = {
 	{
-		.name		= "qpsi-fsbl",
+		.name		= "qspi-fsbl",
 		.size		= 0x80000,
 		.offset		= 0,
 	},
 	{
-		.name		= "qpsi-u-boot",
+		.name		= "qspi-u-boot",
 		.size		= 0x80000,
 		.offset		= 0x80000,
 	},
 	{
-		.name		= "qpsi-linux",
+		.name		= "qspi-linux",
 		.size		= 0x500000,
 		.offset		= 0x100000,
 	},
 	{
-		.name		= "qpsi-device-tree",
+		.name		= "qspi-device-tree",
 		.size		= 0x20000,
 		.offset		= 0x600000,
 	},
 	{
-		.name		= "qpsi-user",
+		.name		= "qspi-user",
 		.size		= 0xE0000,
 		.offset		= 0x620000,
 	},
 	{
-		.name		= "qpsi-scratch",
+		.name		= "qspi-scratch",
 		.size		= 0x100000,
 		.offset		= 0x700000,
 	},
 	{
-		.name		= "qpsi-rootfs",
-#ifdef CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH
+		.name		= "qspi-rootfs",
+#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
 		.size		= 0x1800000,
 #else
 		.size		= 0x800000,
@@ -787,7 +787,7 @@ static struct flash_platform_data qspi_flash_pdata = {
 	.name			= "serial_flash",
 	.parts			= qspi_flash_partitions,
 	.nr_parts		= ARRAY_SIZE(qspi_flash_partitions),
-#ifdef CONFIG_XILINX_PSS_QSPI_USE_DUAL_FLASH
+#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
 	.type			= "n25q128x2"	/* dual flash devices */
 #else
 	.type			= "n25q128"	/* single flash device */
@@ -819,7 +819,7 @@ static struct resource xqspipss_0_resource[] = {
 };
 
 static struct platform_device xilinx_qspipss_0_device = {
-	.name = "Xilinx_PSS_QSPI",
+	.name = "xqspips",
 	.id = 0,
 	.dev = {
 		.platform_data = &xqspi_0_pdata,

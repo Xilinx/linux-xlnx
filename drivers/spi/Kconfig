@@ -412,15 +412,15 @@ config SPI_XILINX
 	  Product Specification document (DS464) for hardware details.
 	  Or for the DS570, see "XPS Serial Peripheral Interface (SPI) (v2.00b)"
 
-config SPI_XILINX_PSS_QSPI
-	tristate "Xilinx PSS QSPI controller"
+config SPI_XILINX_PS_QSPI
+	tristate "Xilinx PS QSPI controller"
 	depends on SPI_MASTER && EXPERIMENTAL
 	help
-	  This selects the Quad SPI controller master driver from the Xilinx.
+	  This selects the PS Quad SPI controller master driver from the Xilinx.
 
-config XILINX_PSS_QSPI_USE_DUAL_FLASH
+config XILINX_PS_QSPI_USE_DUAL_FLASH
 	bool "Use dual flash memories with seperate QSPI buses"
-	depends on SPI_XILINX_PSS_QSPI
+	depends on SPI_XILINX_PS_QSPI
 	default y
 	help
 	  This option enables two SPI flash memories operating in parallel mode.
