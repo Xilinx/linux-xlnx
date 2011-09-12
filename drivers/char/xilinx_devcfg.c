@@ -1468,7 +1468,7 @@ static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct of_device_id xdevcfg_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xdevcfg", },
+	{ .compatible = "xlnx,ps7-dev-cfg-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xdevcfg_of_match);

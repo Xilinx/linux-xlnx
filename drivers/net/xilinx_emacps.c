@@ -3155,7 +3155,7 @@ static struct net_device_ops netdev_ops = {
 
 #ifdef CONFIG_OF
 static struct of_device_id xemacps_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xemacps", },
+	{ .compatible = "xlnx,ps7-ethernet-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xemacps_of_match);

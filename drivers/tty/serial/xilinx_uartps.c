@@ -1054,7 +1054,7 @@ static int xuartps_resume(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct of_device_id xuartps_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xuartps", },
+	{ .compatible = "xlnx,ps7-uart-1.00.a", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, xuartps_of_match);

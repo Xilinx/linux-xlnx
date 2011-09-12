@@ -591,7 +591,7 @@ err_free_gpio:
 
 #ifdef CONFIG_OF
 static struct of_device_id xgpiops_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xgpiops", },
+	{ .compatible = "xlnx,ps7-gpio-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xgpiops_of_match);

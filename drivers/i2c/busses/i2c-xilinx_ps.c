@@ -718,7 +718,7 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct of_device_id xi2cps_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xi2cps", },
+	{ .compatible = "xlnx,ps7-i2c-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xi2cps_of_match);
