@@ -19,10 +19,6 @@
 
 #include <asm/mach/time.h>
 
-void xilinx_init_machine(void);
-void xilinx_irq_init(void);
-void xilinx_map_io(void);
-
 void secondary_startup(void);
 
 extern struct sys_timer xttcpss_sys_timer;
