@@ -17,12 +17,7 @@
 #ifndef __MACH_ZYNQ_COMMON_H__
 #define __MACH_ZYNQ_COMMON_H__
 
-#include <linux/init.h>
 #include <asm/mach/time.h>
-
-void xilinx_init_machine(void);
-void xilinx_irq_init(void);
-void xilinx_map_io(void);
 
 void secondary_startup(void);
 

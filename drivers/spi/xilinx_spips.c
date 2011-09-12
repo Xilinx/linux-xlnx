@@ -888,7 +888,7 @@ MODULE_ALIAS("platform:" XSPIPS_NAME);
 
 #ifdef CONFIG_OF
 static struct of_device_id xspips_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xspips", },
+	{ .compatible = "xlnx,ps7-spi-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xspips_of_match);

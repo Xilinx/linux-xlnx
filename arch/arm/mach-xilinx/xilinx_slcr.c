@@ -1667,7 +1667,7 @@ static int __devexit xslcr_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct of_device_id xslcr_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xslcr", },
+	{ .compatible = "xlnx,ps7-slcr-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xslcr_of_match);
