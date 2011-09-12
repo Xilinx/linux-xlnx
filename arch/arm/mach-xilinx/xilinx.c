@@ -231,9 +231,13 @@ static void __init board_init(void)
 	printk(KERN_INFO "l2x0: Data Latency set to 0x%X cycles\n", L2_DATA_LATENCY);
 
 	/*
-	 * 64KB way size, 8-way associativity, parity disabled, prefetching
+	 * 64KB way size, 8-way associativity, parity disabled, prefetching option
 	 */
+#ifndef	CONFIG_XILINX_L2_PREFETCH
+	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
+#else
 	l2x0_init(l2cache_base, 0x72060000, 0xF0F0FFFF);
+#endif
 #endif
 
 #ifndef CONFIG_OF
