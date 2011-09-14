@@ -43,7 +43,7 @@
 
 		wdt1: scuwdt@f8f00620 {
 			device_type = "watchdog";
-			compatible = "xlnx,xscuwdt";
+			compatible = "xlnx,ps7-scuwdt-1.00.a";
 			reg = <0xF8F00620 0x20>;
 		};
 	

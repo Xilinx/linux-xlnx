@@ -483,7 +483,7 @@ static int xscuwdt_resume(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct of_device_id xscuwdt_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,xscuwdt", },
+	{ .compatible = "xlnx,ps7-scuwdt-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xscuwdt_of_match);
