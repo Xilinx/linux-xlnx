@@ -90,9 +90,9 @@ ENTRY(stext)
 #ifdef CONFIG_ARCH_XILINX
 	mov	r0,#0x0
 	ldr	r1,=MACH_TYPE_XILINX
+#endif
 #ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
 	mov	r2,#0x1000000
-#endif
 #endif
 
 #ifndef CONFIG_XIP_KERNEL
