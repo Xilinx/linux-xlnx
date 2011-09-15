@@ -43,13 +43,13 @@
 		};
 
 		uart0: uart@e0000000 {
-			compatible = "xlnx,xuartps";
+			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0000000 0x1000>;
 			interrupts = <59 0>;
 			clock = <50000000>;
 		};
 		uart1: uart@e0001000 {
-			compatible = "xlnx,xuartps";
+			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0001000 0x1000>;
 			interrupts = <82 0>;
 			clock = <50000000>;
