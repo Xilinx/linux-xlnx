@@ -189,20 +189,28 @@
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xE000B000 0x1000>;
 			interrupts = <54 0>;
-			phy_mask = <0xFF7FFFFF>;
-			dma_mask = <0xFFFFFFFF>;
-			coherent_dma_mask=<0xFFFFFFFF>;
-			id = <0>;
+			phy-handle = <&phy0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			phy0: phy@23 {
+				compatible = "marvell,88e1111";
+				device_type = "ethernet-phy";
+				reg = <23>;
+			} ;
 		};
 
 		eth1: eth@e000c000 {
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xE000C000 0x1000>;
 			interrupts = <77 0>;
-			phy_mask = <0xFFFEFFFF>;
-			dma_mask = <0xFFFFFFFF>;
-			coherent_dma_mask=<0xFFFFFFFF>;
-			id = <1>;
+			phy-handle = <&phy1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			phy1: phy@16 {
+				compatible = "marvell,88e1111";
+				device_type = "ethernet-phy";
+				reg = <16>;
+			} ;
 		};
 
 		nand: nand@e1000000 {
