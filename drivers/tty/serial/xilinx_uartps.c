@@ -590,10 +590,10 @@ static int xuartps_startup(struct uart_port *port)
 		| XUARTPS_MR_PARITY_NONE | XUARTPS_MR_CHARLEN_8_BIT,
 		 XUARTPS_MR_OFFSET);
 
-	/* Set the RX FIFO Trigger level to 14 assuming FIFO size as 16 */
+	/* Set the RX FIFO Trigger level value */
 	xuartps_writel(rx_trigger_level, XUARTPS_RXWM_OFFSET);
 
-	/* Receive Timeout register is enabled with value of 10 */
+	/* Set the RX Timeout value */
 	xuartps_writel(rx_timeout, XUARTPS_RXTOUT_OFFSET);
 
 	/* Set the Interrupt Registers with desired interrupts */

@@ -55,6 +55,10 @@
 #include <linux/clocksource.h>
 #include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
+#ifdef CONFIG_OF
+#include <linux/of_address.h>
+#include <linux/of_mdio.h>
+#endif
 
 /************************** Constant Definitions *****************************/
 
@@ -546,7 +550,9 @@ struct net_local {
 	void   __iomem         *baseaddr;
 	struct xemacps_bdring tx_ring;
 	struct xemacps_bdring rx_ring;
-
+#ifdef CONFIG_OF
+	struct device_node *phy_node;
+#endif
 	struct ring_info       *tx_skb;
 	struct ring_info       *rx_skb;
 
@@ -773,10 +779,18 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	struct net_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 #ifndef CONFIG_OF
-	struct xemacps_eth_data *pdata;
-#endif
 	int phy_addr;
+#endif
 
+#ifdef CONFIG_OF
+	if (lp->phy_node) {
+		phydev = of_phy_connect(lp->ndev,
+					lp->phy_node,
+					xemacps_adjust_link,
+					0,
+					PHY_INTERFACE_MODE_RGMII_ID);
+	}
+#else
 	for (phy_addr = 0; phy_addr < PHY_MAX_ADDR; phy_addr++) {
 		if (lp->mii_bus->phy_map[phy_addr]) {
 			phydev = lp->mii_bus->phy_map[phy_addr];
@@ -788,9 +802,6 @@ static int xemacps_mii_probe(struct net_device *ndev)
 		printk(KERN_ERR "%s: no PHY found\n", ndev->name);
 		return -1;
 	}
-#ifndef CONFIG_OF
-	pdata = lp->pdev->dev.platform_data;
-#endif
 
 	phydev = phy_connect(ndev, dev_name(&phydev->dev),
 		&xemacps_adjust_link, 0, PHY_INTERFACE_MODE_RGMII_ID);
@@ -799,7 +810,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 		printk(KERN_ERR "%s: can not connect phy\n", ndev->name);
 		return -1;
 	}
-
+#endif
 #ifdef DEBUG
 	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
@@ -823,12 +834,11 @@ static int xemacps_mii_probe(struct net_device *ndev)
  **/
 static int xemacps_mii_init(struct net_local *lp)
 {
-#ifndef CONFIG_OF
-	struct xemacps_eth_data *pdata;
-#else
-	const unsigned int *prop;
-#endif
 	int rc = -ENXIO, i;
+#ifdef CONFIG_OF
+	struct resource res;
+	struct device_node *np = of_get_parent(lp->phy_node);
+#endif
 
 	lp->mii_bus = mdiobus_alloc();
 	if (lp->mii_bus == NULL) {
@@ -840,19 +850,8 @@ static int xemacps_mii_init(struct net_local *lp)
 	lp->mii_bus->read  = &xemacps_mdio_read;
 	lp->mii_bus->write = &xemacps_mdio_write;
 	lp->mii_bus->reset = &xemacps_mdio_reset;
-	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%x", lp->pdev->id);
 	lp->mii_bus->priv = lp;
 	lp->mii_bus->parent = &lp->ndev->dev;
-#ifndef CONFIG_OF
-	pdata = lp->pdev->dev.platform_data;
-
-	if (pdata)
-		lp->mii_bus->phy_mask = pdata->phy_mask;
-#else
-	prop = of_get_property(lp->pdev->dev.of_node, "phy_mask", NULL);
-	if (prop)
-		lp->mii_bus->phy_mask = be32_to_cpup(prop);
-#endif
 
 	lp->mii_bus->irq = kmalloc(sizeof(int)*PHY_MAX_ADDR, GFP_KERNEL);
 	if (!lp->mii_bus->irq) {
@@ -862,9 +861,17 @@ static int xemacps_mii_init(struct net_local *lp)
 
 	for (i = 0; i < PHY_MAX_ADDR; i++)
 		lp->mii_bus->irq[i] = PHY_POLL;
-
+#ifdef CONFIG_OF
+	of_address_to_resource(np, 0, &res);
+	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%.8llx",
+		 (unsigned long long)res.start);
+	if (of_mdiobus_register(lp->mii_bus, np))
+		goto err_out_free_mdio_irq;
+#else
+	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%x", lp->pdev->id);
 	if (mdiobus_register(lp->mii_bus))
 		goto err_out_free_mdio_irq;
+#endif
 
 	if (xemacps_mii_probe(lp->ndev) != 0) {
 		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
@@ -2963,11 +2970,6 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  **/
 static int __init xemacps_probe(struct platform_device *pdev)
 {
-#ifndef CONFIG_OF
-	struct eth_platform_data *pdata;
-#else
-	const unsigned int *prop;
-#endif
 	struct resource *r_mem = NULL;
 	struct resource *r_irq = NULL;
 	struct net_device *ndev;
@@ -3042,9 +3044,8 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
 
 #ifdef CONFIG_OF
-	prop = of_get_property(lp->pdev->dev.of_node, "id", NULL);
-	if (prop)
-		lp->pdev->id = be32_to_cpup(prop);
+	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
+						"phy-handle", 0);
 #endif
 	if (xemacps_mii_init(lp) != 0) {
 		printk(KERN_ERR "%s: error in xemacps_mii_init\n", ndev->name);
@@ -3053,9 +3054,6 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	xemacps_update_hwaddr(lp);
 
-#ifndef CONFIG_OF
-	pdata = pdev->dev.platform_data;
-#endif
 	platform_set_drvdata(pdev, ndev);
 
 	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
