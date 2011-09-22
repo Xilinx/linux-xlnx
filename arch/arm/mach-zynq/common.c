@@ -22,6 +22,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of.h>
+#include <linux/mmzone.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -39,26 +40,70 @@ static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{}
 };
 
+#define DMA_ZONE_PAGES 		(SZ_32M >> PAGE_SHIFT)
+#define DMA_ZONE_HOLE_PAGES 	(SZ_512K >> PAGE_SHIFT)
+
+/* Setup a special DMA memory zone to deal with the fact the from 0 - 512K cannot
+ * be DMA-ed into. The size of the DMA zone is a bit arbitrary but doesn't hurt to
+ * be larger as the memory allocator will use the DMA zone for normal if needed.
+ */
+void xilinx_adjust_zones(unsigned long *zone_size, unsigned long *zhole_size)
+{
+	/* the normal zone has already been setup when this function is called and is
+	 * assumed to be the only zone, this code is a bit confusing
+	 */
+
+	pr_info("Xilinx: Adjusting memory zones to add DMA zone\n");
+
+	/* setup the zone sizes reducing the normal zone by the size
+	 * of the DMA zone
+	 */
+	zone_size[ZONE_NORMAL] = zone_size[0] - DMA_ZONE_PAGES;
+	zone_size[ZONE_DMA] = DMA_ZONE_PAGES;
+
+	/* setup the holes in each zone, the normal zone has the same hole it had
+	 * on entry to this function which should be no hole
+	 * the dma zone has a hole where DMA can't be done
+	 */
+	zhole_size[ZONE_NORMAL] = zhole_size[0];
+	zhole_size[ZONE_DMA] = DMA_ZONE_HOLE_PAGES;	
+}
+
 /**
  * xilinx_init_machine() - System specific initialization, intended to be
  *			   called from board specific initialization.
  */
-static void __init xilinx_init_machine(void)
+void __init xilinx_init_machine(void)
 {
 #ifdef CONFIG_CACHE_L2X0
+	void *l2cache_base;
+
+	/* Static mapping, never released */
+	l2cache_base = ioremap((int)PL310_L2CC_BASE, SZ_4K);
+	BUG_ON(!l2cache_base);
+
+	__raw_writel(0x121, l2cache_base + L2X0_TAG_LATENCY_CTRL);
+	__raw_writel(0x121, l2cache_base + L2X0_DATA_LATENCY_CTRL);
+
 	/*
-	 * 64KB way size, 8-way associativity, parity disabled
+	 * 64KB way size, 8-way associativity, parity disabled, prefetching option
 	 */
-	l2x0_init(PL310_L2CC_BASE, 0x02060000, 0xF0F0FFFF);
+#ifndef	CONFIG_XILINX_L2_PREFETCH
+	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
+#else
+	l2x0_init(l2cache_base, 0x72060000, 0xF0F0FFFF);
+#endif
 #endif
 
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
+
+	platform_device_init();
 }
 
 /**
  * xilinx_irq_init() - Interrupt controller initialization for the GIC.
  */
-static void __init xilinx_irq_init(void)
+void __init xilinx_irq_init(void)
 {
 	gic_init(0, 29, SCU_GIC_DIST_BASE, SCU_GIC_CPU_BASE);
 }
@@ -113,20 +158,7 @@ static struct map_desc io_desc[] __initdata = {
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.
  */
-static void __init xilinx_map_io(void)
+void __init xilinx_map_io(void)
 {
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
 }
-
-static const char *xilinx_dt_match[] = {
-	"xlnx,zynq-ep107",
-	NULL
-};
-
-MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
-	.map_io		= xilinx_map_io,
-	.init_irq	= xilinx_irq_init,
-	.init_machine	= xilinx_init_machine,
-	.timer		= &xttcpss_sys_timer,
-	.dt_compat	= xilinx_dt_match,
-MACHINE_END

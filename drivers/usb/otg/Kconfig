@@ -124,7 +124,7 @@ config AB8500_USB
 
 config USB_XUSBPS_OTG
 	tristate "Xilinx USB PS OTG dual-role support"
-	depends on USB && ARCH_XILINX && USB_EHCI_XUSBPS && USB_GADGET_XUSBPS && USB_OTG
+	depends on USB && (ARCH_XILINX || ARCH_ZYNQ) && USB_EHCI_XUSBPS && USB_GADGET_XUSBPS && USB_OTG
 	select USB_OTG_UTILS
 	help
 	  Say Y here if you want to build Xilinx USB PS OTG
