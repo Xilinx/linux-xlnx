@@ -35,6 +35,13 @@
 #include <mach/clkdev.h>
 #include "common.h"
 
+#define IRQ_TIMERCOUNTER1	69
+#define IRQ_ETH1                77
+#define SDIO1_IRQ		79
+#define IRQ_I2C1		80
+#define IRQ_SPI1		81
+#define IRQ_UART1		82
+
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
 	{}
@@ -106,6 +113,25 @@ void __init xilinx_init_machine(void)
 void __init xilinx_irq_init(void)
 {
 	gic_init(0, 29, SCU_GIC_DIST_BASE, SCU_GIC_CPU_BASE);
+
+	/* when running in AMP mode on CPU0, allocate unused interrupts to the 
+	 * other CPU so another OS can run on it, or if just running Linux on 
+	 * the 2nd CPU as a test, do the same
+	 */
+#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_XILINX_CPU1_TEST)
+
+	pr_info("Xilinx AMP: Setting IRQs to CPU1\n");
+	gic_set_cpu(1, IRQ_TIMERCOUNTER1);
+	gic_set_cpu(1, IRQ_TIMERCOUNTER1 + 1);
+	gic_set_cpu(1, IRQ_UART1);
+	gic_set_cpu(1, IRQ_I2C1);
+	gic_set_cpu(1, IRQ_ETH1);
+	gic_set_cpu(1, IRQ_SPI1);
+	gic_set_cpu(1, SDIO1_IRQ);
+#endif
+
 }
 
 /* The minimum devices needed to be mapped before the VM system is up and

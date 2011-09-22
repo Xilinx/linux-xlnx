@@ -22,6 +22,9 @@
 #define UART0_PHYS			0xE0000000
 #define UART0_VIRT			UART0_PHYS
 
+#define UART1_PHYS			0xE0001000
+#define UART1_VIRT			UART1_PHYS
+
 #define TTC0_PHYS			0xF8001000
 #define TTC0_VIRT			TTC0_PHYS
 
@@ -60,8 +63,19 @@
 
 /*
  * Mandatory for CONFIG_LL_DEBUG, UART is mapped virtual = physical
+ * When running only on CPU1 or with AMP on CPU1 then use the 2nd
+ * UART
  */
-#define LL_UART_PADDR	UART0_PHYS
-#define LL_UART_VADDR	UART0_VIRT
+#if	defined(CONFIG_XILINX_AMP_CPU1_SLAVE)	|| \
+	defined(CONFIG_XILINX_CPU1_TEST)	|| \
+	defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE)	|| \
+	defined(CONFIG_ZYNQ_CPU1_TEST)
+
+	#define LL_UART_PADDR	UART1_PHYS
+	#define LL_UART_VADDR	UART1_VIRT
+#else
+	#define LL_UART_PADDR	UART0_PHYS
+	#define LL_UART_VADDR	UART0_VIRT
+#endif
 
 #endif
