@@ -31,6 +31,7 @@
 
 #include <mach/smc.h>
 #include <mach/hardware.h>
+#include <mach/uart.h>
 
 #include "common.h"
 
@@ -229,7 +230,11 @@ static void __init board_ep107_init(void)
 #ifndef CONFIG_SPI_SPIDEV
 	spi_register_board_info(spi_devs, ARRAY_SIZE(spi_devs));
 #endif
+
+#if 	defined(CONFIG_SPI_SPIDEV) || \
+	(!defined(CONFIG_SPI_SPIDEV) && defined(CONFIG_MTD_M25P80))
 	spi_register_board_info(&xilinx_qspipss_0_boardinfo, 1);
+#endif
 
 	smc_base = ioremap(SMC_BASE, SZ_256);
 
