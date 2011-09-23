@@ -22,6 +22,7 @@
 
 void arch_decomp_setup(void)
 {
+	uart_init();
 }
 
 static inline void flush(void)
