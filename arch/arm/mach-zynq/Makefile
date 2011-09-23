@@ -3,10 +3,9 @@
 #
 
 # Common support
-obj-y 				:= common.o timer.o slcr.o scu_gtimer.o
+obj-y 				:= common.o timer.o slcr.o scu_gtimer.o board_ep107.o pl330.o platform_devices.o
 
 obj-$(CONFIG_SMP)		+= platsmp.o
-# obj-$(CONFIG_LOCAL_TIMERS)	+= localtimer.o 
 obj-$(CONFIG_CPU_IDLE) 		+= cpuidle.o
 
 # Testing

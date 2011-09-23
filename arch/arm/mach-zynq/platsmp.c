@@ -1,6 +1,4 @@
 /*
- * arch/arm/mach-zynq/platsmp.c
- *
  * This file contains Xilinx specific SMP code, used to start up
  * the second processor.
  *

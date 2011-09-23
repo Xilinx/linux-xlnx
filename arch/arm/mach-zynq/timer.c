@@ -30,8 +30,6 @@
 #include <mach/zynq_soc.h>
 #include "common.h"
 
-#define IRQ_TIMERCOUNTER0	42
-
 /*
  * This driver configures the 2 16-bit count-up timers as follows:
  *
@@ -49,8 +47,23 @@
 #define XTTCPSS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
 #define XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
 
-#define XTTCPSS_TIMER_BASE		TTC0_BASE
-#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER0 + 1)
+/* If running on the 2nd CPU then the 2nd timer is used, this code may not
+ * be pushed so it isn't ideal replicating the irq numbers, but they don't want
+ * #defines in header files unless used in multiple locations
+ */
+#if	defined(CONFIG_XILINX_AMP_CPU1_SLAVE)	|| \
+	defined(CONFIG_XILINX_CPU1_TEST)	|| \
+	defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE)	|| \
+	defined(CONFIG_ZYNQ_CPU1_TEST)
+
+	#define IRQ_TIMERCOUNTER1		69
+	#define XTTCPSS_TIMER_BASE		TTC0_BASE + 0x1000
+	#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER1 + 1)
+#else
+	#define IRQ_TIMERCOUNTER0		42
+	#define XTTCPSS_TIMER_BASE		TTC0_BASE
+	#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER0 + 1)
+#endif
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
  * and use same offsets for Timer 2

@@ -28,7 +28,9 @@
 #include <linux/smp.h>
 #include <linux/cpumask.h>
 #include <linux/io.h>
-#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER)
+#if defined(CONFIG_SMP) || \
+	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
 #include <linux/module.h>
 #endif
 
@@ -275,7 +277,9 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	cpumask |= cpumask << 8;
 	cpumask |= cpumask << 16;
 
-#ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
+#if 	!defined(CONFIG_XILINX_AMP_CPU1_SLAVE) && \
+	!defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE) 
+
 	writel_relaxed(0, base + GIC_DIST_CTRL);
 
 	/*
@@ -331,7 +335,9 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 		set_irq_flags(i, IRQF_VALID | IRQF_PROBE);
 	}
 
-#ifndef CONFIG_XILINX_AMP_CPU1_SLAVE
+#if	!defined(CONFIG_XILINX_AMP_CPU1_SLAVE) && \
+	!defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE)
+
 	writel_relaxed(1, base + GIC_DIST_CTRL);
 #endif
 
@@ -396,7 +402,12 @@ void __cpuinit gic_enable_ppi(unsigned int irq)
 	local_irq_restore(flags);
 }
 
-#if defined(CONFIG_SMP) || defined(CONFIG_XILINX_AMP_CPU0_MASTER) || defined(CONFIG_XILINX_CPU1_TEST)
+#if 	defined(CONFIG_SMP)			|| \
+	defined(CONFIG_XILINX_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_XILINX_CPU1_TEST)	|| \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_ZYNQ_CPU1_TEST)
+
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	unsigned long map = *cpus_addr(*mask);

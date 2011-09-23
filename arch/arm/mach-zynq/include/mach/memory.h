@@ -19,4 +19,10 @@
 
 #define PLAT_PHYS_OFFSET	UL(0x0)
 
+#if !defined(__ASSEMBLY__) && defined(CONFIG_ZONE_DMA)
+extern void xilinx_adjust_zones(unsigned long *, unsigned long *);
+#define arch_adjust_zones(size, holes) \
+	xilinx_adjust_zones(size, holes)
+#endif
+
 #endif
