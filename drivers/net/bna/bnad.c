@@ -23,6 +23,7 @@
 #include <linux/if_vlan.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/prefetch.h>
 
 #include "bnad.h"
 #include "bna.h"
@@ -501,7 +502,7 @@ bnad_poll_cq(struct bnad *bnad, struct bna_ccb *ccb, int budget)
 
 		skb_put(skb, ntohs(cmpl->length));
 		if (likely
-		    (bnad->rx_csum &&
+		    ((bnad->netdev->features & NETIF_F_RXCSUM) &&
 		     (((flags & BNA_CQ_EF_IPV4) &&
 		      (flags & BNA_CQ_EF_L3_CKSUM_OK)) ||
 		      (flags & BNA_CQ_EF_IPV6)) &&
@@ -1110,7 +1111,7 @@ bnad_mbox_irq_alloc(struct bnad *bnad,
 		    struct bna_intr_info *intr_info)
 {
 	int 		err = 0;
-	unsigned long 	flags;
+	unsigned long 	irq_flags = 0, flags;
 	u32	irq;
 	irq_handler_t 	irq_handler;
 
@@ -1124,18 +1125,17 @@ bnad_mbox_irq_alloc(struct bnad *bnad,
 	if (bnad->cfg_flags & BNAD_CF_MSIX) {
 		irq_handler = (irq_handler_t)bnad_msix_mbox_handler;
 		irq = bnad->msix_table[bnad->msix_num - 1].vector;
-		flags = 0;
 		intr_info->intr_type = BNA_INTR_T_MSIX;
 		intr_info->idl[0].vector = bnad->msix_num - 1;
 	} else {
 		irq_handler = (irq_handler_t)bnad_isr;
 		irq = bnad->pcidev->irq;
-		flags = IRQF_SHARED;
+		irq_flags = IRQF_SHARED;
 		intr_info->intr_type = BNA_INTR_T_INTX;
 		/* intr_info->idl.vector = 0 ? */
 	}
 	spin_unlock_irqrestore(&bnad->bna_lock, flags);
-
+	flags = irq_flags;
 	sprintf(bnad->mbox_irq_name, "%s", BNAD_NAME);
 
 	/*
@@ -2902,23 +2902,20 @@ bnad_netdev_init(struct bnad *bnad, bool using_dac)
 {
 	struct net_device *netdev = bnad->netdev;
 
-	netdev->features |= NETIF_F_IPV6_CSUM;
-	netdev->features |= NETIF_F_TSO;
-	netdev->features |= NETIF_F_TSO6;
+	netdev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM |
+		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
+		NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_HW_VLAN_TX;
 
-	netdev->features |= NETIF_F_GRO;
-	pr_warn("bna: GRO enabled, using kernel stack GRO\n");
+	netdev->vlan_features = NETIF_F_SG | NETIF_F_HIGHDMA |
+		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
+		NETIF_F_TSO | NETIF_F_TSO6;
 
-	netdev->features |= NETIF_F_SG | NETIF_F_IP_CSUM;
+	netdev->features |= netdev->hw_features |
+		NETIF_F_HW_VLAN_RX | NETIF_F_HW_VLAN_FILTER;
 
 	if (using_dac)
 		netdev->features |= NETIF_F_HIGHDMA;
 
-	netdev->features |=
-		NETIF_F_HW_VLAN_TX | NETIF_F_HW_VLAN_RX |
-		NETIF_F_HW_VLAN_FILTER;
-
-	netdev->vlan_features = netdev->features;
 	netdev->mem_start = bnad->mmio_start;
 	netdev->mem_end = bnad->mmio_start + bnad->mmio_len - 1;
 
@@ -2969,7 +2966,6 @@ bnad_init(struct bnad *bnad,
 
 	bnad->txq_depth = BNAD_TXQ_DEPTH;
 	bnad->rxq_depth = BNAD_RXQ_DEPTH;
-	bnad->rx_csum = true;
 
 	bnad->tx_coalescing_timeo = BFI_TX_COALESCING_TIMEO;
 	bnad->rx_coalescing_timeo = BFI_RX_COALESCING_TIMEO;

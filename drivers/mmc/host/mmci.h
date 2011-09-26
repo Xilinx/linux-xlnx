@@ -11,23 +11,33 @@
 #define MCI_PWR_OFF		0x00
 #define MCI_PWR_UP		0x02
 #define MCI_PWR_ON		0x03
-#define MCI_DATA2DIREN		(1 << 2)
-#define MCI_CMDDIREN		(1 << 3)
-#define MCI_DATA0DIREN		(1 << 4)
-#define MCI_DATA31DIREN		(1 << 5)
 #define MCI_OD			(1 << 6)
 #define MCI_ROD			(1 << 7)
-/* The ST Micro version does not have ROD */
-#define MCI_FBCLKEN		(1 << 7)
-#define MCI_DATA74DIREN		(1 << 8)
+/*
+ * The ST Micro version does not have ROD and reuse the voltage registers
+ * for direction settings
+ */
+#define MCI_ST_DATA2DIREN	(1 << 2)
+#define MCI_ST_CMDDIREN		(1 << 3)
+#define MCI_ST_DATA0DIREN	(1 << 4)
+#define MCI_ST_DATA31DIREN	(1 << 5)
+#define MCI_ST_FBCLKEN		(1 << 7)
+#define MCI_ST_DATA74DIREN	(1 << 8)
 
 #define MMCICLOCK		0x004
 #define MCI_CLK_ENABLE		(1 << 8)
 #define MCI_CLK_PWRSAVE		(1 << 9)
 #define MCI_CLK_BYPASS		(1 << 10)
 #define MCI_4BIT_BUS		(1 << 11)
-/* 8bit wide buses supported in ST Micro versions */
+/*
+ * 8bit wide buses, hardware flow contronl, negative edges and clock inversion
+ * supported in ST Micro U300 and Ux500 versions
+ */
 #define MCI_ST_8BIT_BUS		(1 << 12)
+#define MCI_ST_U300_HWFCEN	(1 << 13)
+#define MCI_ST_UX500_NEG_EDGE	(1 << 13)
+#define MCI_ST_UX500_HWFCEN	(1 << 14)
+#define MCI_ST_UX500_CLK_INV	(1 << 15)
 
 #define MMCIARGUMENT		0x008
 #define MMCICOMMAND		0x00c
@@ -76,6 +86,7 @@
 #define MCI_CMDRESPEND		(1 << 6)
 #define MCI_CMDSENT		(1 << 7)
 #define MCI_DATAEND		(1 << 8)
+#define MCI_STARTBITERR		(1 << 9)
 #define MCI_DATABLOCKEND	(1 << 10)
 #define MCI_CMDACTIVE		(1 << 11)
 #define MCI_TXACTIVE		(1 << 12)
@@ -88,8 +99,9 @@
 #define MCI_RXFIFOEMPTY		(1 << 19)
 #define MCI_TXDATAAVLBL		(1 << 20)
 #define MCI_RXDATAAVLBL		(1 << 21)
-#define MCI_SDIOIT		(1 << 22)
-#define MCI_CEATAEND		(1 << 23)
+/* Extended status bits for the ST Micro variants */
+#define MCI_ST_SDIOIT		(1 << 22)
+#define MCI_ST_CEATAEND		(1 << 23)
 
 #define MMCICLEAR		0x038
 #define MCI_CMDCRCFAILCLR	(1 << 0)
@@ -101,9 +113,11 @@
 #define MCI_CMDRESPENDCLR	(1 << 6)
 #define MCI_CMDSENTCLR		(1 << 7)
 #define MCI_DATAENDCLR		(1 << 8)
+#define MCI_STARTBITERRCLR	(1 << 9)
 #define MCI_DATABLOCKENDCLR	(1 << 10)
-#define MCI_SDIOITC		(1 << 22)
-#define MCI_CEATAENDC		(1 << 23)
+/* Extended status bits for the ST Micro variants */
+#define MCI_ST_SDIOITC		(1 << 22)
+#define MCI_ST_CEATAENDC	(1 << 23)
 
 #define MMCIMASK0		0x03c
 #define MCI_CMDCRCFAILMASK	(1 << 0)
@@ -115,6 +129,7 @@
 #define MCI_CMDRESPENDMASK	(1 << 6)
 #define MCI_CMDSENTMASK		(1 << 7)
 #define MCI_DATAENDMASK		(1 << 8)
+#define MCI_STARTBITERRMASK	(1 << 9)
 #define MCI_DATABLOCKENDMASK	(1 << 10)
 #define MCI_CMDACTIVEMASK	(1 << 11)
 #define MCI_TXACTIVEMASK	(1 << 12)
@@ -127,8 +142,9 @@
 #define MCI_RXFIFOEMPTYMASK	(1 << 19)
 #define MCI_TXDATAAVLBLMASK	(1 << 20)
 #define MCI_RXDATAAVLBLMASK	(1 << 21)
-#define MCI_SDIOITMASK		(1 << 22)
-#define MCI_CEATAENDMASK	(1 << 23)
+/* Extended status bits for the ST Micro variants */
+#define MCI_ST_SDIOITMASK	(1 << 22)
+#define MCI_ST_CEATAENDMASK	(1 << 23)
 
 #define MMCIMASK1		0x040
 #define MMCIFIFOCNT		0x048
@@ -137,7 +153,7 @@
 #define MCI_IRQENABLE	\
 	(MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|	\
 	MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|	\
-	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK)
+	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_STARTBITERRMASK)
 
 /* These interrupts are directed to IRQ1 when two IRQ lines are available */
 #define MCI_IRQ1MASK \

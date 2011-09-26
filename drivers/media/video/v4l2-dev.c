@@ -167,6 +167,12 @@ static void v4l2_device_release(struct device *cd)
 
 	mutex_unlock(&videodev_lock);
 
+#if defined(CONFIG_MEDIA_CONTROLLER)
+	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
+	    vdev->vfl_type != VFL_TYPE_SUBDEV)
+		media_device_unregister_entity(&vdev->entity);
+#endif
+
 	/* Release video_device and perform other
 	   cleanups as needed. */
 	vdev->release(vdev);
@@ -352,6 +358,23 @@ static long v4l2_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+#ifdef CONFIG_MMU
+#define v4l2_get_unmapped_area NULL
+#else
+static unsigned long v4l2_get_unmapped_area(struct file *filp,
+		unsigned long addr, unsigned long len, unsigned long pgoff,
+		unsigned long flags)
+{
+	struct video_device *vdev = video_devdata(filp);
+
+	if (!vdev->fops->get_unmapped_area)
+		return -ENOSYS;
+	if (!video_is_registered(vdev))
+		return -ENODEV;
+	return vdev->fops->get_unmapped_area(filp, addr, len, pgoff, flags);
+}
+#endif
+
 static int v4l2_mmap(struct file *filp, struct vm_area_struct *vm)
 {
 	struct video_device *vdev = video_devdata(filp);
@@ -372,9 +395,6 @@ static int v4l2_mmap(struct file *filp, struct vm_area_struct *vm)
 static int v4l2_open(struct inode *inode, struct file *filp)
 {
 	struct video_device *vdev;
-#if defined(CONFIG_MEDIA_CONTROLLER)
-	struct media_entity *entity = NULL;
-#endif
 	int ret = 0;
 
 	/* Check if the video device is available */
@@ -388,17 +408,6 @@ static int v4l2_open(struct inode *inode, struct file *filp)
 	/* and increase the device refcount */
 	video_get(vdev);
 	mutex_unlock(&videodev_lock);
-#if defined(CONFIG_MEDIA_CONTROLLER)
-	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
-	    vdev->vfl_type != VFL_TYPE_SUBDEV) {
-		entity = media_entity_get(&vdev->entity);
-		if (!entity) {
-			ret = -EBUSY;
-			video_put(vdev);
-			return ret;
-		}
-	}
-#endif
 	if (vdev->fops->open) {
 		if (vdev->lock && mutex_lock_interruptible(vdev->lock)) {
 			ret = -ERESTARTSYS;
@@ -414,14 +423,8 @@ static int v4l2_open(struct inode *inode, struct file *filp)
 
 err:
 	/* decrease the refcount in case of an error */
-	if (ret) {
-#if defined(CONFIG_MEDIA_CONTROLLER)
-		if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
-		    vdev->vfl_type != VFL_TYPE_SUBDEV)
-			media_entity_put(entity);
-#endif
+	if (ret)
 		video_put(vdev);
-	}
 	return ret;
 }
 
@@ -438,11 +441,6 @@ static int v4l2_release(struct inode *inode, struct file *filp)
 		if (vdev->lock)
 			mutex_unlock(vdev->lock);
 	}
-#if defined(CONFIG_MEDIA_CONTROLLER)
-	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
-	    vdev->vfl_type != VFL_TYPE_SUBDEV)
-		media_entity_put(&vdev->entity);
-#endif
 	/* decrease the refcount unconditionally since the release()
 	   return value is ignored. */
 	video_put(vdev);
@@ -454,6 +452,7 @@ static const struct file_operations v4l2_fops = {
 	.read = v4l2_read,
 	.write = v4l2_write,
 	.open = v4l2_open,
+	.get_unmapped_area = v4l2_get_unmapped_area,
 	.mmap = v4l2_mmap,
 	.unlocked_ioctl = v4l2_ioctl,
 #ifdef CONFIG_COMPAT
@@ -735,12 +734,6 @@ void video_unregister_device(struct video_device *vdev)
 	/* Check if vdev was ever registered at all */
 	if (!vdev || !video_is_registered(vdev))
 		return;
-
-#if defined(CONFIG_MEDIA_CONTROLLER)
-	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
-	    vdev->vfl_type != VFL_TYPE_SUBDEV)
-		media_device_unregister_entity(&vdev->entity);
-#endif
 
 	mutex_lock(&videodev_lock);
 	/* This must be in a critical section to prevent a race with v4l2_open.

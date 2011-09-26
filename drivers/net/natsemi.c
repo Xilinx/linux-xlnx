@@ -140,7 +140,7 @@ MODULE_LICENSE("GPL");
 module_param(mtu, int, 0);
 module_param(debug, int, 0);
 module_param(rx_copybreak, int, 0);
-module_param(dspcfg_workaround, int, 1);
+module_param(dspcfg_workaround, int, 0);
 module_param_array(options, int, NULL, 0);
 module_param_array(full_duplex, int, NULL, 0);
 MODULE_PARM_DESC(mtu, "DP8381x MTU (all boards)");
@@ -2028,8 +2028,8 @@ static void drain_rx(struct net_device *dev)
 		np->rx_ring[i].cmd_status = 0;
 		np->rx_ring[i].addr = cpu_to_le32(0xBADF00D0); /* An invalid address. */
 		if (np->rx_skbuff[i]) {
-			pci_unmap_single(np->pci_dev,
-				np->rx_dma[i], buflen,
+			pci_unmap_single(np->pci_dev, np->rx_dma[i],
+				buflen + NATSEMI_PADDING,
 				PCI_DMA_FROMDEVICE);
 			dev_kfree_skb(np->rx_skbuff[i]);
 		}
@@ -2360,7 +2360,8 @@ static void netdev_rx(struct net_device *dev, int *work_done, int work_to_do)
 					PCI_DMA_FROMDEVICE);
 			} else {
 				pci_unmap_single(np->pci_dev, np->rx_dma[entry],
-					buflen, PCI_DMA_FROMDEVICE);
+						 buflen + NATSEMI_PADDING,
+						 PCI_DMA_FROMDEVICE);
 				skb_put(skb = np->rx_skbuff[entry], pkt_len);
 				np->rx_skbuff[entry] = NULL;
 			}
@@ -2820,7 +2821,7 @@ static int netdev_get_ecmd(struct net_device *dev, struct ethtool_cmd *ecmd)
 	u32 tmp;
 
 	ecmd->port        = dev->if_port;
-	ecmd->speed       = np->speed;
+	ethtool_cmd_speed_set(ecmd, np->speed);
 	ecmd->duplex      = np->duplex;
 	ecmd->autoneg     = np->autoneg;
 	ecmd->advertising = 0;
@@ -2878,9 +2879,9 @@ static int netdev_get_ecmd(struct net_device *dev, struct ethtool_cmd *ecmd)
 		tmp = mii_nway_result(
 			np->advertising & mdio_read(dev, MII_LPA));
 		if (tmp == LPA_100FULL || tmp == LPA_100HALF)
-			ecmd->speed  = SPEED_100;
+			ethtool_cmd_speed_set(ecmd, SPEED_100);
 		else
-			ecmd->speed  = SPEED_10;
+			ethtool_cmd_speed_set(ecmd, SPEED_10);
 		if (tmp == LPA_100FULL || tmp == LPA_10FULL)
 			ecmd->duplex = DUPLEX_FULL;
 		else
@@ -2908,7 +2909,8 @@ static int netdev_set_ecmd(struct net_device *dev, struct ethtool_cmd *ecmd)
 			return -EINVAL;
 		}
 	} else if (ecmd->autoneg == AUTONEG_DISABLE) {
-		if (ecmd->speed != SPEED_10 && ecmd->speed != SPEED_100)
+		u32 speed = ethtool_cmd_speed(ecmd);
+		if (speed != SPEED_10 && speed != SPEED_100)
 			return -EINVAL;
 		if (ecmd->duplex != DUPLEX_HALF && ecmd->duplex != DUPLEX_FULL)
 			return -EINVAL;
@@ -2956,7 +2958,7 @@ static int netdev_set_ecmd(struct net_device *dev, struct ethtool_cmd *ecmd)
 		if (ecmd->advertising & ADVERTISED_100baseT_Full)
 			np->advertising |= ADVERTISE_100FULL;
 	} else {
-		np->speed  = ecmd->speed;
+		np->speed  = ethtool_cmd_speed(ecmd);
 		np->duplex = ecmd->duplex;
 		/* user overriding the initial full duplex parm? */
 		if (np->duplex == DUPLEX_HALF)

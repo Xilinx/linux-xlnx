@@ -27,7 +27,9 @@
 #include <linux/fb.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
+#include <linux/prefetch.h>
 #include <linux/delay.h>
+#include <linux/prefetch.h>
 #include <video/udlfb.h>
 #include "edid.h"
 
@@ -1231,8 +1233,12 @@ static int dlfb_setup_modes(struct dlfb_data *dev,
 			if (dlfb_is_valid_mode(&info->monspecs.modedb[i], info))
 				fb_add_videomode(&info->monspecs.modedb[i],
 					&info->modelist);
-			else /* if we've removed top/best mode */
-				info->monspecs.misc &= ~FB_MISC_1ST_DETAIL;
+			else {
+				if (i == 0)
+					/* if we've removed top/best mode */
+					info->monspecs.misc
+						&= ~FB_MISC_1ST_DETAIL;
+			}
 		}
 
 		default_vmode = fb_find_best_display(&info->monspecs,
@@ -1586,10 +1592,19 @@ static int dlfb_usb_probe(struct usb_interface *interface,
 		goto error;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(fb_device_attrs); i++)
-		device_create_file(info->dev, &fb_device_attrs[i]);
+	for (i = 0; i < ARRAY_SIZE(fb_device_attrs); i++) {
+		retval = device_create_file(info->dev, &fb_device_attrs[i]);
+		if (retval) {
+			pr_err("device_create_file failed %d\n", retval);
+			goto err_del_attrs;
+		}
+	}
 
-	device_create_bin_file(info->dev, &edid_attr);
+	retval = device_create_bin_file(info->dev, &edid_attr);
+	if (retval) {
+		pr_err("device_create_bin_file failed %d\n", retval);
+		goto err_del_attrs;
+	}
 
 	pr_info("DisplayLink USB device /dev/fb%d attached. %dx%d resolution."
 			" Using %dK framebuffer memory\n", info->node,
@@ -1597,6 +1612,10 @@ static int dlfb_usb_probe(struct usb_interface *interface,
 			((dev->backing_buffer) ?
 			info->fix.smem_len * 2 : info->fix.smem_len) >> 10);
 	return 0;
+
+err_del_attrs:
+	for (i -= 1; i >= 0; i--)
+		device_remove_file(info->dev, &fb_device_attrs[i]);
 
 error:
 	if (dev) {

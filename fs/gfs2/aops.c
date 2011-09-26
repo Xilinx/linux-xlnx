@@ -1069,6 +1069,7 @@ int gfs2_releasepage(struct page *page, gfp_t gfp_mask)
 		return 0;
 
 	gfs2_log_lock(sdp);
+	spin_lock(&sdp->sd_ail_lock);
 	head = bh = page_buffers(page);
 	do {
 		if (atomic_read(&bh->b_count))
@@ -1076,10 +1077,11 @@ int gfs2_releasepage(struct page *page, gfp_t gfp_mask)
 		bd = bh->b_private;
 		if (bd && bd->bd_ail)
 			goto cannot_release;
-		gfs2_assert_warn(sdp, !buffer_pinned(bh));
-		gfs2_assert_warn(sdp, !buffer_dirty(bh));
+		if (buffer_pinned(bh) || buffer_dirty(bh))
+			goto not_possible;
 		bh = bh->b_this_page;
 	} while(bh != head);
+	spin_unlock(&sdp->sd_ail_lock);
 	gfs2_log_unlock(sdp);
 
 	head = bh = page_buffers(page);
@@ -1107,7 +1109,12 @@ int gfs2_releasepage(struct page *page, gfp_t gfp_mask)
 	} while (bh != head);
 
 	return try_to_free_buffers(page);
+
+not_possible: /* Should never happen */
+	WARN_ON(buffer_dirty(bh));
+	WARN_ON(buffer_pinned(bh));
 cannot_release:
+	spin_unlock(&sdp->sd_ail_lock);
 	gfs2_log_unlock(sdp);
 	return 0;
 }

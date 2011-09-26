@@ -28,7 +28,7 @@
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
-/* We maintain a trivial check sum in our on disk activity log.
+/* We maintain a trivial checksum in our on disk activity log.
  * With that we can ensure correct operation even when the storage
  * device might do a partial (last) sector write while losing power.
  */
@@ -79,7 +79,7 @@ static int _drbd_md_sync_page_io(struct drbd_conf *mdev,
 	md_io.error = 0;
 
 	if ((rw & WRITE) && !test_bit(MD_NO_FUA, &mdev->flags))
-		rw |= REQ_FUA;
+		rw |= REQ_FUA | REQ_FLUSH;
 	rw |= REQ_SYNC;
 
 	bio = bio_alloc(GFP_NOIO, 1);

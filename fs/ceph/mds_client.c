@@ -578,6 +578,7 @@ static void __register_request(struct ceph_mds_client *mdsc,
 	if (dir) {
 		struct ceph_inode_info *ci = ceph_inode(dir);
 
+		ihold(dir);
 		spin_lock(&ci->i_unsafe_lock);
 		req->r_unsafe_dir = dir;
 		list_add_tail(&req->r_unsafe_dir_item, &ci->i_unsafe_dirops);
@@ -598,6 +599,9 @@ static void __unregister_request(struct ceph_mds_client *mdsc,
 		spin_lock(&ci->i_unsafe_lock);
 		list_del_init(&req->r_unsafe_dir_item);
 		spin_unlock(&ci->i_unsafe_lock);
+
+		iput(req->r_unsafe_dir);
+		req->r_unsafe_dir = NULL;
 	}
 
 	ceph_mdsc_put_request(req);
@@ -1434,12 +1438,15 @@ char *ceph_mdsc_build_path(struct dentry *dentry, int *plen, u64 *base,
 	struct dentry *temp;
 	char *path;
 	int len, pos;
+	unsigned seq;
 
 	if (dentry == NULL)
 		return ERR_PTR(-EINVAL);
 
 retry:
 	len = 0;
+	seq = read_seqbegin(&rename_lock);
+	rcu_read_lock();
 	for (temp = dentry; !IS_ROOT(temp);) {
 		struct inode *inode = temp->d_inode;
 		if (inode && ceph_snap(inode) == CEPH_SNAPDIR)
@@ -1451,10 +1458,12 @@ retry:
 			len += 1 + temp->d_name.len;
 		temp = temp->d_parent;
 		if (temp == NULL) {
+			rcu_read_unlock();
 			pr_err("build_path corrupt dentry %p\n", dentry);
 			return ERR_PTR(-EINVAL);
 		}
 	}
+	rcu_read_unlock();
 	if (len)
 		len--;  /* no leading '/' */
 
@@ -1463,9 +1472,12 @@ retry:
 		return ERR_PTR(-ENOMEM);
 	pos = len;
 	path[pos] = 0;	/* trailing null */
+	rcu_read_lock();
 	for (temp = dentry; !IS_ROOT(temp) && pos != 0; ) {
-		struct inode *inode = temp->d_inode;
+		struct inode *inode;
 
+		spin_lock(&temp->d_lock);
+		inode = temp->d_inode;
 		if (inode && ceph_snap(inode) == CEPH_SNAPDIR) {
 			dout("build_path path+%d: %p SNAPDIR\n",
 			     pos, temp);
@@ -1474,21 +1486,26 @@ retry:
 			break;
 		} else {
 			pos -= temp->d_name.len;
-			if (pos < 0)
+			if (pos < 0) {
+				spin_unlock(&temp->d_lock);
 				break;
+			}
 			strncpy(path + pos, temp->d_name.name,
 				temp->d_name.len);
 		}
+		spin_unlock(&temp->d_lock);
 		if (pos)
 			path[--pos] = '/';
 		temp = temp->d_parent;
 		if (temp == NULL) {
+			rcu_read_unlock();
 			pr_err("build_path corrupt dentry\n");
 			kfree(path);
 			return ERR_PTR(-EINVAL);
 		}
 	}
-	if (pos != 0) {
+	rcu_read_unlock();
+	if (pos != 0 || read_seqretry(&rename_lock, seq)) {
 		pr_err("build_path did not end path lookup where "
 		       "expected, namelen is %d, pos is %d\n", len, pos);
 		/* presumably this is only possible if racing with a
@@ -2691,7 +2708,6 @@ static void handle_lease(struct ceph_mds_client *mdsc,
 {
 	struct super_block *sb = mdsc->fsc->sb;
 	struct inode *inode;
-	struct ceph_inode_info *ci;
 	struct dentry *parent, *dentry;
 	struct ceph_dentry_info *di;
 	int mds = session->s_mds;
@@ -2728,7 +2744,6 @@ static void handle_lease(struct ceph_mds_client *mdsc,
 		dout("handle_lease no inode %llx\n", vino.ino);
 		goto release;
 	}
-	ci = ceph_inode(inode);
 
 	/* dentry */
 	parent = d_find_alias(inode);
@@ -3002,6 +3017,7 @@ int ceph_mdsc_init(struct ceph_fs_client *fsc)
 	spin_lock_init(&mdsc->snap_flush_lock);
 	mdsc->cap_flush_seq = 0;
 	INIT_LIST_HEAD(&mdsc->cap_dirty);
+	INIT_LIST_HEAD(&mdsc->cap_dirty_migrating);
 	mdsc->num_cap_flushing = 0;
 	spin_lock_init(&mdsc->cap_dirty_lock);
 	init_waitqueue_head(&mdsc->cap_flushing_wq);

@@ -38,6 +38,7 @@
 #include <linux/delay.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
+#include <linux/prefetch.h>
 #include <net/ip6_checksum.h>
 
 #include "qlge.h"
@@ -1571,7 +1572,7 @@ static void ql_process_mac_rx_page(struct ql_adapter *qdev,
 	skb->protocol = eth_type_trans(skb, ndev);
 	skb_checksum_none_assert(skb);
 
-	if (qdev->rx_csum &&
+	if ((ndev->features & NETIF_F_RXCSUM) &&
 		!(ib_mac_rsp->flags1 & IB_MAC_CSUM_ERR_MASK)) {
 		/* TCP frame. */
 		if (ib_mac_rsp->flags2 & IB_MAC_IOCB_RSP_T) {
@@ -1684,7 +1685,7 @@ static void ql_process_mac_rx_skb(struct ql_adapter *qdev,
 	/* If rx checksum is on, and there are no
 	 * csum or frame errors.
 	 */
-	if (qdev->rx_csum &&
+	if ((ndev->features & NETIF_F_RXCSUM) &&
 		!(ib_mac_rsp->flags1 & IB_MAC_CSUM_ERR_MASK)) {
 		/* TCP frame. */
 		if (ib_mac_rsp->flags2 & IB_MAC_IOCB_RSP_T) {
@@ -2004,7 +2005,7 @@ static void ql_process_mac_split_rx_intr(struct ql_adapter *qdev,
 	/* If rx checksum is on, and there are no
 	 * csum or frame errors.
 	 */
-	if (qdev->rx_csum &&
+	if ((ndev->features & NETIF_F_RXCSUM) &&
 		!(ib_mac_rsp->flags1 & IB_MAC_CSUM_ERR_MASK)) {
 		/* TCP frame. */
 		if (ib_mac_rsp->flags2 & IB_MAC_IOCB_RSP_T) {
@@ -2151,6 +2152,10 @@ void ql_queue_asic_error(struct ql_adapter *qdev)
 	 * thread
 	 */
 	clear_bit(QL_ADAPTER_UP, &qdev->flags);
+	/* Set asic recovery bit to indicate reset process that we are
+	 * in fatal error recovery process rather than normal close
+	 */
+	set_bit(QL_ASIC_RECOVERY, &qdev->flags);
 	queue_delayed_work(qdev->workqueue, &qdev->asic_reset_work, 0);
 }
 
@@ -2165,23 +2170,20 @@ static void ql_process_chip_ae_intr(struct ql_adapter *qdev,
 		return;
 
 	case CAM_LOOKUP_ERR_EVENT:
-		netif_err(qdev, link, qdev->ndev,
-			  "Multiple CAM hits lookup occurred.\n");
-		netif_err(qdev, drv, qdev->ndev,
-			  "This event shouldn't occur.\n");
+		netdev_err(qdev->ndev, "Multiple CAM hits lookup occurred.\n");
+		netdev_err(qdev->ndev, "This event shouldn't occur.\n");
 		ql_queue_asic_error(qdev);
 		return;
 
 	case SOFT_ECC_ERROR_EVENT:
-		netif_err(qdev, rx_err, qdev->ndev,
-			  "Soft ECC error detected.\n");
+		netdev_err(qdev->ndev, "Soft ECC error detected.\n");
 		ql_queue_asic_error(qdev);
 		break;
 
 	case PCI_ERR_ANON_BUF_RD:
-		netif_err(qdev, rx_err, qdev->ndev,
-			  "PCI error occurred when reading anonymous buffers from rx_ring %d.\n",
-			  ib_ae_rsp->q_id);
+		netdev_err(qdev->ndev, "PCI error occurred when reading "
+					"anonymous buffers from rx_ring %d.\n",
+					ib_ae_rsp->q_id);
 		ql_queue_asic_error(qdev);
 		break;
 
@@ -2436,11 +2438,10 @@ static irqreturn_t qlge_isr(int irq, void *dev_id)
 	 */
 	if (var & STS_FE) {
 		ql_queue_asic_error(qdev);
-		netif_err(qdev, intr, qdev->ndev,
-			  "Got fatal error, STS = %x.\n", var);
+		netdev_err(qdev->ndev, "Got fatal error, STS = %x.\n", var);
 		var = ql_read32(qdev, ERR_STS);
-		netif_err(qdev, intr, qdev->ndev,
-			  "Resetting chip. Error Status Register = 0x%x\n", var);
+		netdev_err(qdev->ndev, "Resetting chip. "
+					"Error Status Register = 0x%x\n", var);
 		return IRQ_HANDLED;
 	}
 
@@ -3817,11 +3818,17 @@ static int ql_adapter_reset(struct ql_adapter *qdev)
 	end_jiffies = jiffies +
 		max((unsigned long)1, usecs_to_jiffies(30));
 
-	/* Stop management traffic. */
-	ql_mb_set_mgmnt_traffic_ctl(qdev, MB_SET_MPI_TFK_STOP);
+	/* Check if bit is set then skip the mailbox command and
+	 * clear the bit, else we are in normal reset process.
+	 */
+	if (!test_bit(QL_ASIC_RECOVERY, &qdev->flags)) {
+		/* Stop management traffic. */
+		ql_mb_set_mgmnt_traffic_ctl(qdev, MB_SET_MPI_TFK_STOP);
 
-	/* Wait for the NIC and MGMNT FIFOs to empty. */
-	ql_wait_fifo_empty(qdev);
+		/* Wait for the NIC and MGMNT FIFOs to empty. */
+		ql_wait_fifo_empty(qdev);
+	} else
+		clear_bit(QL_ASIC_RECOVERY, &qdev->flags);
 
 	ql_write32(qdev, RST_FO, (RST_FO_FR << 16) | RST_FO_FR);
 
@@ -4412,12 +4419,12 @@ error:
 	rtnl_unlock();
 }
 
-static struct nic_operations qla8012_nic_ops = {
+static const struct nic_operations qla8012_nic_ops = {
 	.get_flash		= ql_get_8012_flash_params,
 	.port_initialize	= ql_8012_port_initialize,
 };
 
-static struct nic_operations qla8000_nic_ops = {
+static const struct nic_operations qla8000_nic_ops = {
 	.get_flash		= ql_get_8000_flash_params,
 	.port_initialize	= ql_8000_port_initialize,
 };
@@ -4621,7 +4628,6 @@ static int __devinit ql_init_device(struct pci_dev *pdev,
 	/*
 	 * Set up the operating parameters.
 	 */
-	qdev->rx_csum = 1;
 	qdev->workqueue = create_singlethread_workqueue(ndev->name);
 	INIT_DELAYED_WORK(&qdev->asic_reset_work, ql_asic_reset_work);
 	INIT_DELAYED_WORK(&qdev->mpi_reset_work, ql_mpi_reset_work);
@@ -4695,15 +4701,11 @@ static int __devinit qlge_probe(struct pci_dev *pdev,
 
 	qdev = netdev_priv(ndev);
 	SET_NETDEV_DEV(ndev, &pdev->dev);
-	ndev->features = (0
-			  | NETIF_F_IP_CSUM
-			  | NETIF_F_SG
-			  | NETIF_F_TSO
-			  | NETIF_F_TSO6
-			  | NETIF_F_TSO_ECN
-			  | NETIF_F_HW_VLAN_TX
-			  | NETIF_F_HW_VLAN_RX | NETIF_F_HW_VLAN_FILTER);
-	ndev->features |= NETIF_F_GRO;
+	ndev->hw_features = NETIF_F_SG | NETIF_F_IP_CSUM |
+		NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_TSO_ECN |
+		NETIF_F_HW_VLAN_TX | NETIF_F_RXCSUM;
+	ndev->features = ndev->hw_features |
+		NETIF_F_HW_VLAN_RX | NETIF_F_HW_VLAN_FILTER;
 
 	if (test_bit(QL_DMA64, &qdev->flags))
 		ndev->features |= NETIF_F_HIGHDMA;

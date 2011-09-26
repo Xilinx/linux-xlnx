@@ -667,12 +667,6 @@ static int imx_ssi_probe(struct platform_device *pdev)
 	if (res)
 		ssi->dma_params_rx.dma = res->start;
 
-	if ((cpu_is_mx27() || cpu_is_mx21()) &&
-			!(ssi->flags & IMX_SSI_USE_AC97) &&
-			(ssi->flags & IMX_SSI_DMA)) {
-		ssi->flags |= IMX_SSI_DMA;
-	}
-
 	platform_set_drvdata(pdev, ssi);
 
 	ret = snd_soc_register_dai(&pdev->dev, dai);
@@ -780,4 +774,4 @@ module_exit(imx_ssi_exit);
 MODULE_AUTHOR("Sascha Hauer, <s.hauer@pengutronix.de>");
 MODULE_DESCRIPTION("i.MX I2S/ac97 SoC Interface");
 MODULE_LICENSE("GPL");
-
+MODULE_ALIAS("platform:imx-ssi");

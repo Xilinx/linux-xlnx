@@ -555,7 +555,7 @@ static void tty_ldisc_flush_works(struct tty_struct *tty)
 static int tty_ldisc_wait_idle(struct tty_struct *tty)
 {
 	int ret;
-	ret = wait_event_interruptible_timeout(tty_ldisc_idle,
+	ret = wait_event_timeout(tty_ldisc_idle,
 			atomic_read(&tty->ldisc->users) == 1, 5 * HZ);
 	if (ret < 0)
 		return ret;
@@ -763,6 +763,8 @@ static int tty_ldisc_reinit(struct tty_struct *tty, int ldisc)
 	if (IS_ERR(ld))
 		return -1;
 
+	WARN_ON_ONCE(tty_ldisc_wait_idle(tty));
+
 	tty_ldisc_close(tty, tty->ldisc);
 	tty_ldisc_put(tty->ldisc);
 	tty->ldisc = NULL;
@@ -954,6 +956,19 @@ void tty_ldisc_init(struct tty_struct *tty)
 	if (IS_ERR(ld))
 		panic("n_tty: init_tty");
 	tty_ldisc_assign(tty, ld);
+}
+
+/**
+ *	tty_ldisc_init		-	ldisc cleanup for new tty
+ *	@tty: tty that was allocated recently
+ *
+ *	The tty structure must not becompletely set up (tty_ldisc_setup) when
+ *      this call is made.
+ */
+void tty_ldisc_deinit(struct tty_struct *tty)
+{
+	put_ldisc(tty->ldisc);
+	tty_ldisc_assign(tty, NULL);
 }
 
 void tty_ldisc_begin(void)

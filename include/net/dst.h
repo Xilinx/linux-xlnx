@@ -16,13 +16,6 @@
 #include <net/neighbour.h>
 #include <asm/processor.h>
 
-/*
- * 0 - no debugging messages
- * 1 - rare events and bugs (default)
- * 2 - trace mode.
- */
-#define RT_CACHE_DEBUG		0
-
 #define DST_GC_MIN	(HZ/10)
 #define DST_GC_INC	(HZ/2)
 #define DST_GC_MAX	(120*HZ)
@@ -84,6 +77,7 @@ struct dst_entry {
 #define DST_NOPOLICY		0x0004
 #define DST_NOHASH		0x0008
 #define DST_NOCACHE		0x0010
+#define DST_NOCOUNT		0x0020
 	union {
 		struct dst_entry	*next;
 		struct rtable __rcu	*rt_next;
@@ -91,8 +85,6 @@ struct dst_entry {
 		struct dn_route __rcu	*dn_next;
 	};
 };
-
-#ifdef __KERNEL__
 
 extern u32 *dst_cow_metrics_generic(struct dst_entry *dst, unsigned long old);
 extern const u32 dst_default_metrics[RTAX_MAX];
@@ -119,6 +111,8 @@ static inline void dst_destroy_metrics_generic(struct dst_entry *dst)
 static inline u32 *dst_metrics_write_ptr(struct dst_entry *dst)
 {
 	unsigned long p = dst->_metrics;
+
+	BUG_ON(!p);
 
 	if (p & DST_METRICS_READ_ONLY)
 		return dst->ops->cow_metrics(dst, p);
@@ -352,7 +346,8 @@ static inline struct dst_entry *skb_dst_pop(struct sk_buff *skb)
 }
 
 extern int dst_discard(struct sk_buff *skb);
-extern void *dst_alloc(struct dst_ops * ops, int initial_ref);
+extern void *dst_alloc(struct dst_ops * ops, struct net_device *dev,
+		       int initial_ref, int initial_obsolete, int flags);
 extern void __dst_free(struct dst_entry * dst);
 extern struct dst_entry *dst_destroy(struct dst_entry * dst);
 
@@ -437,7 +432,6 @@ static inline struct dst_entry *xfrm_lookup(struct net *net,
 extern struct dst_entry *xfrm_lookup(struct net *net, struct dst_entry *dst_orig,
 				     const struct flowi *fl, struct sock *sk,
 				     int flags);
-#endif
 #endif
 
 #endif /* _NET_DST_H */

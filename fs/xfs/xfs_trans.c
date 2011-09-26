@@ -608,10 +608,8 @@ STATIC void
 xfs_trans_free(
 	struct xfs_trans	*tp)
 {
-	struct xfs_busy_extent	*busyp, *n;
-
-	list_for_each_entry_safe(busyp, n, &tp->t_busy, list)
-		xfs_alloc_busy_clear(tp->t_mountp, busyp);
+	xfs_alloc_busy_sort(&tp->t_busy);
+	xfs_alloc_busy_clear(tp->t_mountp, &tp->t_busy, false);
 
 	atomic_dec(&tp->t_mountp->m_active_trans);
 	xfs_trans_free_dqinfo(tp);
@@ -1363,7 +1361,7 @@ xfs_trans_item_committed(
 		lip->li_flags |= XFS_LI_ABORTED;
 	item_lsn = IOP_COMMITTED(lip, commit_lsn);
 
-	/* If the committed routine returns -1, item has been freed. */
+	/* item_lsn of -1 means the item needs no further processing */
 	if (XFS_LSN_CMP(item_lsn, (xfs_lsn_t)-1) == 0)
 		return;
 
@@ -1476,7 +1474,7 @@ xfs_trans_committed_bulk(
 			lip->li_flags |= XFS_LI_ABORTED;
 		item_lsn = IOP_COMMITTED(lip, commit_lsn);
 
-		/* item_lsn of -1 means the item was freed */
+		/* item_lsn of -1 means the item needs no further processing */
 		if (XFS_LSN_CMP(item_lsn, (xfs_lsn_t)-1) == 0)
 			continue;
 

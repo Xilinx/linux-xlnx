@@ -179,7 +179,7 @@ not_angel:
 		bl	cache_on
 
 restart:	adr	r0, LC0
-		ldmia	r0, {r1, r2, r3, r6, r9, r11, r12}
+		ldmia	r0, {r1, r2, r3, r6, r10, r11, r12}
 		ldr	sp, [r0, #28]
 
 		/*
@@ -188,6 +188,20 @@ restart:	adr	r0, LC0
 		 */
 		sub	r0, r0, r1		@ calculate the delta offset
 		add	r6, r6, r0		@ _edata
+		add	r10, r10, r0		@ inflated kernel size location
+
+		/*
+		 * The kernel build system appends the size of the
+		 * decompressed kernel at the end of the compressed data
+		 * in little-endian form.
+		 */
+		ldrb	r9, [r10, #0]
+		ldrb	lr, [r10, #1]
+		orr	r9, r9, lr, lsl #8
+		ldrb	lr, [r10, #2]
+		ldrb	r10, [r10, #3]
+		orr	r9, r9, lr, lsl #16
+		orr	r9, r9, r10, lsl #24
 
 #ifndef CONFIG_ZBOOT_ROM
 		/* malloc space is above the relocated stack (64k max) */
@@ -347,10 +361,10 @@ LC0:		.word	LC0			@ r1
 		.word	__bss_start		@ r2
 		.word	_end			@ r3
 		.word	_edata			@ r6
-		.word	_image_size		@ r9
+		.word	input_data_end - 4	@ r10 (inflated size location)
 		.word	_got_start		@ r11
 		.word	_got_end		@ ip
-		.word	user_stack_end		@ sp
+		.word	.L_user_stack_end	@ sp
 		.size	LC0, . - LC0
 
 #ifdef CONFIG_ARCH_RPC
@@ -459,7 +473,11 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		orr	r1, r1, #3 << 10
 		add	r2, r3, #16384
 1:		cmp	r1, r9			@ if virt > start of RAM
+#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
+		orrhs	r1, r1, #0x08		@ set cacheable
+#else
 		orrhs	r1, r1, #0x0c		@ set cacheable, bufferable
+#endif
 		cmp	r1, r10			@ if virt > end of RAM
 		bichs	r1, r1, #0x0c		@ clear cacheable, bufferable
 		str	r1, [r0], #4		@ 1:1 mapping
@@ -483,6 +501,12 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		str	r1, [r0]
 		mov	pc, lr
 ENDPROC(__setup_mmu)
+
+__arm926ejs_mmu_cache_on:
+#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
+		mov	r0, #4			@ put dcache in WT mode
+		mcr	p15, 7, r0, c15, c0, 0
+#endif
 
 __armv4_mmu_cache_on:
 		mov	r12, lr
@@ -573,6 +597,8 @@ __common_mmu_cache_on:
 		sub	pc, lr, r0, lsr #32	@ properly flush pipeline
 #endif
 
+#define PROC_ENTRY_SIZE (4*5)
+
 /*
  * Here follow the relocatable cache support functions for the
  * various processors.  This is a generic hook for locating an
@@ -600,7 +626,7 @@ call_cache_fn:	adr	r12, proc_types
  ARM(		addeq	pc, r12, r3		) @ call cache function
  THUMB(		addeq	r12, r3			)
  THUMB(		moveq	pc, r12			) @ call cache function
-		add	r12, r12, #4*5
+		add	r12, r12, #PROC_ENTRY_SIZE
 		b	1b
 
 /*
@@ -664,6 +690,12 @@ proc_types:
 		W(b)	__armv4_mpu_cache_on
 		W(b)	__armv4_mpu_cache_off
 		W(b)	__armv4_mpu_cache_flush
+
+		.word	0x41069260		@ ARM926EJ-S (v5TEJ)
+		.word	0xff0ffff0
+		W(b)	__arm926ejs_mmu_cache_on
+		W(b)	__armv4_mmu_cache_off
+		W(b)	__armv5tej_mmu_cache_flush
 
 		.word	0x00007000		@ ARM7 IDs
 		.word	0x0000f000
@@ -747,12 +779,6 @@ proc_types:
 		W(b)	__armv4_mmu_cache_off
 		W(b)	__armv6_mmu_cache_flush
 
-		.word	0x560f5810		@ Marvell PJ4 ARMv6
-		.word	0xff0ffff0
-		W(b)	__armv4_mmu_cache_on
-		W(b)	__armv4_mmu_cache_off
-		W(b)	__armv6_mmu_cache_flush
-
 		.word	0x000f0000		@ new CPU Id
 		.word	0x000f0000
 		W(b)	__armv7_mmu_cache_on
@@ -769,6 +795,16 @@ proc_types:
  THUMB(		nop				)
 
 		.size	proc_types, . - proc_types
+
+		/*
+		 * If you get a "non-constant expression in ".if" statement"
+		 * error from the assembler on this line, check that you have
+		 * not accidentally written a "b" instruction where you should
+		 * have written W(b).
+		 */
+		.if (. - proc_types) % PROC_ENTRY_SIZE != 0
+		.error "The size of one or more proc_types entries is wrong."
+		.endif
 
 /*
  * Turn off the Cache and MMU.  ARMv3 does not support
@@ -1078,5 +1114,5 @@ reloc_code_end:
 
 		.align
 		.section ".stack", "aw", %nobits
-user_stack:	.space	4096
-user_stack_end:
+.L_user_stack:	.space	4096
+.L_user_stack_end:

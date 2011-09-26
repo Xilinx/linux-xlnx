@@ -756,6 +756,14 @@ int saa7134_input_init1(struct saa7134_dev *dev)
 		mask_keycode = 0x0ff00;
 		mask_keyup   = 0x040000;
 		break;
+	case SAA7134_BOARD_HAUPPAUGE_HVR1150:
+	case SAA7134_BOARD_HAUPPAUGE_HVR1120:
+		ir_codes     = RC_MAP_HAUPPAUGE;
+		mask_keydown = 0x0040000;	/* Enable GPIO18 line on both edges */
+		mask_keyup   = 0x0040000;
+		mask_keycode = 0xffff;
+		raw_decode   = true;
+		break;
 	}
 	if (NULL == ir_codes) {
 		printk("%s: Oops: IR config error [card=%d]\n",
@@ -955,7 +963,7 @@ static int saa7134_raw_decode_irq(struct saa7134_dev *dev)
 	 * to work with other protocols.
 	 */
 	if (!ir->active) {
-		timeout = jiffies + jiffies_to_msecs(15);
+		timeout = jiffies + msecs_to_jiffies(15);
 		mod_timer(&ir->timer, timeout);
 		ir->active = true;
 	}

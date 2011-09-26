@@ -105,6 +105,7 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	 */
 	secondary_data.stack = task_stack_page(idle) + THREAD_START_SP;
 	secondary_data.pgdir = virt_to_phys(pgd);
+	secondary_data.swapper_pg_dir = virt_to_phys(swapper_pg_dir);
 	__cpuc_flush_dcache_area(&secondary_data, sizeof(secondary_data));
 	outer_clean_range(__pa(&secondary_data), __pa(&secondary_data + 1));
 
@@ -317,9 +318,13 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	smp_store_cpu_info(cpu);
 
 	/*
-	 * OK, now it's safe to let the boot CPU continue
+	 * OK, now it's safe to let the boot CPU continue.  Wait for
+	 * the CPU migration code to notice that the CPU is online
+	 * before we continue.
 	 */
 	set_cpu_online(cpu, true);
+	while (!cpu_active(cpu))
+		cpu_relax();
 
 	/*
 	 * OK, it's off to the idle thread for us
@@ -374,6 +379,13 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		 */
 		platform_smp_prepare_cpus(max_cpus);
 	}
+}
+
+static void (*smp_cross_call)(const struct cpumask *, unsigned int);
+
+void __init set_smp_cross_call(void (*fn)(const struct cpumask *, unsigned int))
+{
+	smp_cross_call = fn;
 }
 
 void arch_send_call_function_ipi_mask(const struct cpumask *mask)
@@ -560,10 +572,7 @@ asmlinkage void __exception_irq_entry do_IPI(int ipinr, struct pt_regs *regs)
 		break;
 
 	case IPI_RESCHEDULE:
-		/*
-		 * nothing more to do - eveything is
-		 * done on the interrupt return path
-		 */
+		scheduler_ipi();
 		break;
 
 	case IPI_CALL_FUNC:

@@ -77,6 +77,12 @@ int acpi_suspend_lowlevel(void)
 
 	header->pmode_cr0 = read_cr0();
 	header->pmode_cr4 = read_cr4_safe();
+	header->pmode_behavior = 0;
+	if (!rdmsr_safe(MSR_IA32_MISC_ENABLE,
+			&header->pmode_misc_en_low,
+			&header->pmode_misc_en_high))
+		header->pmode_behavior |=
+			(1 << WAKEUP_BEHAVIOR_RESTORE_MISC_ENABLE);
 	header->realmode_flags = acpi_realmode_flags;
 	header->real_magic = 0x12345678;
 
@@ -112,11 +118,6 @@ static int __init acpi_sleep_setup(char *str)
 #ifdef CONFIG_HIBERNATION
 		if (strncmp(str, "s4_nohwsig", 10) == 0)
 			acpi_no_s4_hw_signature();
-		if (strncmp(str, "s4_nonvs", 8) == 0) {
-			pr_warning("ACPI: acpi_sleep=s4_nonvs is deprecated, "
-					"please use acpi_sleep=nonvs instead");
-			acpi_nvs_nosave();
-		}
 #endif
 		if (strncmp(str, "nonvs", 5) == 0)
 			acpi_nvs_nosave();

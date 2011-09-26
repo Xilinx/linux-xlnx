@@ -23,6 +23,7 @@
 #include <plat/sdhci.h>
 #include <plat/devs.h>
 #include <plat/fimc-core.h>
+#include <plat/iic-core.h>
 
 #include <mach/regs-irq.h>
 
@@ -97,7 +98,12 @@ static struct map_desc exynos4_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS4_PA_SROMC),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
-	},
+	}, {
+		.virtual	= (unsigned long)S3C_VA_USB_HSPHY,
+		.pfn		= __phys_to_pfn(EXYNOS4_PA_HSPHY),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	}
 };
 
 static void exynos4_idle(void)
@@ -127,6 +133,11 @@ void __init exynos4_map_io(void)
 	s3c_fimc_setname(1, "exynos4-fimc");
 	s3c_fimc_setname(2, "exynos4-fimc");
 	s3c_fimc_setname(3, "exynos4-fimc");
+
+	/* The I2C bus controllers are directly compatible with s3c2440 */
+	s3c_i2c0_setname("s3c2440-i2c");
+	s3c_i2c1_setname("s3c2440-i2c");
+	s3c_i2c2_setname("s3c2440-i2c");
 }
 
 void __init exynos4_init_clocks(int xtal)

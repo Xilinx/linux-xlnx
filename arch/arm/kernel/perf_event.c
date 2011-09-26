@@ -560,11 +560,6 @@ static int armpmu_event_init(struct perf_event *event)
 	event->destroy = hw_perf_event_destroy;
 
 	if (!atomic_inc_not_zero(&active_events)) {
-		if (atomic_read(&active_events) > armpmu->num_events) {
-			atomic_dec(&active_events);
-			return -ENOSPC;
-		}
-
 		mutex_lock(&pmu_reserve_mutex);
 		if (atomic_read(&active_events) == 0) {
 			err = armpmu_reserve_hardware();
@@ -588,7 +583,7 @@ static int armpmu_event_init(struct perf_event *event)
 static void armpmu_enable(struct pmu *pmu)
 {
 	/* Enable all of the perf events on hardware. */
-	int idx;
+	int idx, enabled = 0;
 	struct cpu_hw_events *cpuc = &__get_cpu_var(cpu_hw_events);
 
 	if (!armpmu)
@@ -601,9 +596,11 @@ static void armpmu_enable(struct pmu *pmu)
 			continue;
 
 		armpmu->enable(&event->hw, idx);
+		enabled = 1;
 	}
 
-	armpmu->start();
+	if (enabled)
+		armpmu->start();
 }
 
 static void armpmu_disable(struct pmu *pmu)

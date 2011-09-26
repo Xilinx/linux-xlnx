@@ -188,7 +188,7 @@ struct drm_i915_error_state {
 		u32 dirty:1;
 		u32 purgeable:1;
 		u32 ring:4;
-		u32 agp_type:1;
+		u32 cache_level:2;
 	} *active_bo, *pinned_bo;
 	u32 active_bo_count, pinned_bo_count;
 	struct intel_overlay_error_state *overlay;
@@ -203,12 +203,22 @@ struct drm_i915_display_funcs {
 	int (*get_display_clock_speed)(struct drm_device *dev);
 	int (*get_fifo_size)(struct drm_device *dev, int plane);
 	void (*update_wm)(struct drm_device *dev);
+	int (*crtc_mode_set)(struct drm_crtc *crtc,
+			     struct drm_display_mode *mode,
+			     struct drm_display_mode *adjusted_mode,
+			     int x, int y,
+			     struct drm_framebuffer *old_fb);
+	void (*fdi_link_train)(struct drm_crtc *crtc);
+	void (*init_clock_gating)(struct drm_device *dev);
+	void (*init_pch_clock_gating)(struct drm_device *dev);
+	int (*queue_flip)(struct drm_device *dev, struct drm_crtc *crtc,
+			  struct drm_framebuffer *fb,
+			  struct drm_i915_gem_object *obj);
 	/* clock updates for mode set */
 	/* cursor updates */
 	/* render clock increase/decrease */
 	/* display clock increase/decrease */
 	/* pll clock increase/decrease */
-	/* clock gating init */
 };
 
 struct intel_device_info {
@@ -223,6 +233,7 @@ struct intel_device_info {
 	u8 is_pineview : 1;
 	u8 is_broadwater : 1;
 	u8 is_crestline : 1;
+	u8 is_ivybridge : 1;
 	u8 has_fbc : 1;
 	u8 has_pipe_cxsr : 1;
 	u8 has_hotplug : 1;
@@ -242,6 +253,7 @@ enum no_fbc_reason {
 	FBC_BAD_PLANE, /* fbc not supported on plane */
 	FBC_NOT_TILED, /* buffer not tiled */
 	FBC_MULTIPLE_PIPES, /* more than one pipe active */
+	FBC_MODULE_PARAM,
 };
 
 enum intel_pch {
@@ -250,6 +262,7 @@ enum intel_pch {
 };
 
 #define QUIRK_PIPEA_FORCE (1<<0)
+#define QUIRK_LVDS_SSC_DISABLE (1<<1)
 
 struct intel_fbdev;
 
@@ -676,6 +689,10 @@ typedef struct drm_i915_private {
 
 	bool mchbar_need_disable;
 
+	struct work_struct rps_work;
+	spinlock_t rps_lock;
+	u32 pm_iir;
+
 	u8 cur_delay;
 	u8 min_delay;
 	u8 max_delay;
@@ -703,7 +720,16 @@ typedef struct drm_i915_private {
 	struct intel_fbdev *fbdev;
 
 	struct drm_property *broadcast_rgb_property;
+	struct drm_property *force_audio_property;
+
+	atomic_t forcewake_count;
 } drm_i915_private_t;
+
+enum i915_cache_level {
+	I915_CACHE_NONE,
+	I915_CACHE_LLC,
+	I915_CACHE_LLC_MLC, /* gen6+ */
+};
 
 struct drm_i915_gem_object {
 	struct drm_gem_object base;
@@ -791,6 +817,8 @@ struct drm_i915_gem_object {
 	unsigned int pending_fenced_gpu_access:1;
 	unsigned int fenced_gpu_access:1;
 
+	unsigned int cache_level:2;
+
 	struct page **pages;
 
 	/**
@@ -827,8 +855,6 @@ struct drm_i915_gem_object {
 	/** Record of address bit 17 of each page at last unbind. */
 	unsigned long *bit_17;
 
-	/** AGP mapping type (AGP_USER_MEMORY or AGP_USER_CACHED_MEMORY */
-	uint32_t agp_type;
 
 	/**
 	 * If present, while GEM_DOMAIN_CPU is in the read domain this array
@@ -888,13 +914,6 @@ struct drm_i915_file_private {
 	} mm;
 };
 
-enum intel_chip_family {
-	CHIP_I8XX = 0x01,
-	CHIP_I9XX = 0x02,
-	CHIP_I915 = 0x04,
-	CHIP_I965 = 0x08,
-};
-
 #define INTEL_INFO(dev)	(((struct drm_i915_private *) (dev)->dev_private)->info)
 
 #define IS_I830(dev)		((dev)->pci_device == 0x3577)
@@ -915,13 +934,21 @@ enum intel_chip_family {
 #define IS_G33(dev)		(INTEL_INFO(dev)->is_g33)
 #define IS_IRONLAKE_D(dev)	((dev)->pci_device == 0x0042)
 #define IS_IRONLAKE_M(dev)	((dev)->pci_device == 0x0046)
+#define IS_IVYBRIDGE(dev)	(INTEL_INFO(dev)->is_ivybridge)
 #define IS_MOBILE(dev)		(INTEL_INFO(dev)->is_mobile)
 
+/*
+ * The genX designation typically refers to the render engine, so render
+ * capability related checks should use IS_GEN, while display and other checks
+ * have their own (e.g. HAS_PCH_SPLIT for ILK+ display, IS_foo for particular
+ * chips, etc.).
+ */
 #define IS_GEN2(dev)	(INTEL_INFO(dev)->gen == 2)
 #define IS_GEN3(dev)	(INTEL_INFO(dev)->gen == 3)
 #define IS_GEN4(dev)	(INTEL_INFO(dev)->gen == 4)
 #define IS_GEN5(dev)	(INTEL_INFO(dev)->gen == 5)
 #define IS_GEN6(dev)	(INTEL_INFO(dev)->gen == 6)
+#define IS_GEN7(dev)	(INTEL_INFO(dev)->gen == 7)
 
 #define HAS_BSD(dev)            (INTEL_INFO(dev)->has_bsd_ring)
 #define HAS_BLT(dev)            (INTEL_INFO(dev)->has_blt_ring)
@@ -948,8 +975,8 @@ enum intel_chip_family {
 #define HAS_PIPE_CXSR(dev) (INTEL_INFO(dev)->has_pipe_cxsr)
 #define I915_HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
-#define HAS_PCH_SPLIT(dev) (IS_GEN5(dev) || IS_GEN6(dev))
-#define HAS_PIPE_CONTROL(dev) (IS_GEN5(dev) || IS_GEN6(dev))
+#define HAS_PCH_SPLIT(dev) (IS_GEN5(dev) || IS_GEN6(dev) || IS_IVYBRIDGE(dev))
+#define HAS_PIPE_CONTROL(dev) (INTEL_INFO(dev)->gen >= 5)
 
 #define INTEL_PCH_TYPE(dev) (((struct drm_i915_private *)(dev)->dev_private)->pch_type)
 #define HAS_PCH_CPT(dev) (INTEL_PCH_TYPE(dev) == PCH_CPT)
@@ -967,11 +994,10 @@ extern unsigned int i915_lvds_downclock;
 extern unsigned int i915_panel_use_ssc;
 extern int i915_vbt_sdvo_panel_type;
 extern unsigned int i915_enable_rc6;
+extern unsigned int i915_enable_fbc;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
-extern void i915_save_display(struct drm_device *dev);
-extern void i915_restore_display(struct drm_device *dev);
 extern int i915_master_create(struct drm_device *dev, struct drm_master *master);
 extern void i915_master_destroy(struct drm_device *dev, struct drm_master *master);
 
@@ -1006,18 +1032,12 @@ extern int i915_irq_emit(struct drm_device *dev, void *data,
 extern int i915_irq_wait(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv);
 
-extern irqreturn_t i915_driver_irq_handler(DRM_IRQ_ARGS);
-extern void i915_driver_irq_preinstall(struct drm_device * dev);
-extern int i915_driver_irq_postinstall(struct drm_device *dev);
-extern void i915_driver_irq_uninstall(struct drm_device * dev);
+extern void intel_irq_init(struct drm_device *dev);
+
 extern int i915_vblank_pipe_set(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 extern int i915_vblank_pipe_get(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
-extern int i915_enable_vblank(struct drm_device *dev, int crtc);
-extern void i915_disable_vblank(struct drm_device *dev, int crtc);
-extern u32 i915_get_vblank_counter(struct drm_device *dev, int crtc);
-extern u32 gm45_get_vblank_counter(struct drm_device *dev, int crtc);
 extern int i915_vblank_swap(struct drm_device *dev, void *data,
 			    struct drm_file *file_priv);
 
@@ -1028,13 +1048,6 @@ void
 i915_disable_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask);
 
 void intel_enable_asle (struct drm_device *dev);
-int i915_get_vblank_timestamp(struct drm_device *dev, int crtc,
-			      int *max_error,
-			      struct timeval *vblank_time,
-			      unsigned flags);
-
-int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-			     int *vpos, int *hpos);
 
 #ifdef CONFIG_DEBUG_FS
 extern void i915_destroy_error_state(struct drm_device *dev);
@@ -1182,7 +1195,9 @@ void i915_gem_free_all_phys_object(struct drm_device *dev);
 void i915_gem_release(struct drm_device *dev, struct drm_file *file);
 
 uint32_t
-i915_gem_get_unfenced_gtt_alignment(struct drm_i915_gem_object *obj);
+i915_gem_get_unfenced_gtt_alignment(struct drm_device *dev,
+				    uint32_t size,
+				    int tiling_mode);
 
 /* i915_gem_gtt.c */
 void i915_gem_restore_gtt_mappings(struct drm_device *dev);
@@ -1265,6 +1280,7 @@ static inline void intel_unregister_dsm_handler(void) { return; }
 
 /* modesetting */
 extern void intel_modeset_init(struct drm_device *dev);
+extern void intel_modeset_gem_init(struct drm_device *dev);
 extern void intel_modeset_cleanup(struct drm_device *dev);
 extern int intel_modeset_vga_set_state(struct drm_device *dev, bool state);
 extern void i8xx_disable_fbc(struct drm_device *dev);
@@ -1312,13 +1328,34 @@ extern void intel_display_print_error_state(struct seq_file *m,
 		LOCK_TEST_WITH_RETURN(dev, file);			\
 } while (0)
 
+/* On SNB platform, before reading ring registers forcewake bit
+ * must be set to prevent GT core from power down and stale values being
+ * returned.
+ */
+void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv);
+void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv);
+void __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
+
+/* We give fast paths for the really cool registers */
+#define NEEDS_FORCE_WAKE(dev_priv, reg) \
+	(((dev_priv)->info->gen >= 6) && \
+	((reg) < 0x40000) && \
+	((reg) != FORCEWAKE))
 
 #define __i915_read(x, y) \
 static inline u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg) { \
-	u##x val = read##y(dev_priv->regs + reg); \
+	u##x val = 0; \
+	if (NEEDS_FORCE_WAKE((dev_priv), (reg))) { \
+		gen6_gt_force_wake_get(dev_priv); \
+		val = read##y(dev_priv->regs + reg); \
+		gen6_gt_force_wake_put(dev_priv); \
+	} else { \
+		val = read##y(dev_priv->regs + reg); \
+	} \
 	trace_i915_reg_rw(false, reg, val, sizeof(val)); \
 	return val; \
 }
+
 __i915_read(8, b)
 __i915_read(16, w)
 __i915_read(32, l)
@@ -1328,6 +1365,9 @@ __i915_read(64, q)
 #define __i915_write(x, y) \
 static inline void i915_write##x(struct drm_i915_private *dev_priv, u32 reg, u##x val) { \
 	trace_i915_reg_rw(true, reg, val, sizeof(val)); \
+	if (NEEDS_FORCE_WAKE((dev_priv), (reg))) { \
+		__gen6_gt_wait_for_fifo(dev_priv); \
+	} \
 	write##y(val, dev_priv->regs + reg); \
 }
 __i915_write(8, b)
@@ -1356,33 +1396,4 @@ __i915_write(64, q)
 #define POSTING_READ16(reg)	(void)I915_READ16_NOTRACE(reg)
 
 
-/* On SNB platform, before reading ring registers forcewake bit
- * must be set to prevent GT core from power down and stale values being
- * returned.
- */
-void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv);
-void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv);
-void __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
-
-static inline u32 i915_gt_read(struct drm_i915_private *dev_priv, u32 reg)
-{
-	u32 val;
-
-	if (dev_priv->info->gen >= 6) {
-		__gen6_gt_force_wake_get(dev_priv);
-		val = I915_READ(reg);
-		__gen6_gt_force_wake_put(dev_priv);
-	} else
-		val = I915_READ(reg);
-
-	return val;
-}
-
-static inline void i915_gt_write(struct drm_i915_private *dev_priv,
-				u32 reg, u32 val)
-{
-	if (dev_priv->info->gen >= 6)
-		__gen6_gt_wait_for_fifo(dev_priv);
-	I915_WRITE(reg, val);
-}
 #endif

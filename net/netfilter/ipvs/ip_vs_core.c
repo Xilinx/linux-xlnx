@@ -1382,15 +1382,7 @@ ip_vs_in_icmp(struct sk_buff *skb, int *related, unsigned int hooknum)
 	ip_vs_in_stats(cp, skb);
 	if (IPPROTO_TCP == cih->protocol || IPPROTO_UDP == cih->protocol)
 		offset += 2 * sizeof(__u16);
-	verdict = ip_vs_icmp_xmit(skb, cp, pp, offset);
-	/* LOCALNODE from FORWARD hook is not supported */
-	if (verdict == NF_ACCEPT && hooknum == NF_INET_FORWARD &&
-	    skb_rtable(skb)->rt_flags & RTCF_LOCAL) {
-		IP_VS_DBG(1, "%s(): "
-			  "local delivery to %pI4 but in FORWARD\n",
-			  __func__, &skb_rtable(skb)->rt_dst);
-		verdict = NF_DROP;
-	}
+	verdict = ip_vs_icmp_xmit(skb, cp, pp, offset, hooknum);
 
   out:
 	__ip_vs_conn_put(cp);
@@ -1412,7 +1404,6 @@ ip_vs_in_icmp_v6(struct sk_buff *skb, int *related, unsigned int hooknum)
 	struct ip_vs_protocol *pp;
 	struct ip_vs_proto_data *pd;
 	unsigned int offset, verdict;
-	struct rt6_info *rt;
 
 	*related = 1;
 
@@ -1474,23 +1465,12 @@ ip_vs_in_icmp_v6(struct sk_buff *skb, int *related, unsigned int hooknum)
 	if (!cp)
 		return NF_ACCEPT;
 
-	verdict = NF_DROP;
-
 	/* do the statistics and put it back */
 	ip_vs_in_stats(cp, skb);
 	if (IPPROTO_TCP == cih->nexthdr || IPPROTO_UDP == cih->nexthdr ||
 	    IPPROTO_SCTP == cih->nexthdr)
 		offset += 2 * sizeof(__u16);
-	verdict = ip_vs_icmp_xmit_v6(skb, cp, pp, offset);
-	/* LOCALNODE from FORWARD hook is not supported */
-	if (verdict == NF_ACCEPT && hooknum == NF_INET_FORWARD &&
-	    (rt = (struct rt6_info *) skb_dst(skb)) &&
-	    rt->rt6i_dev && rt->rt6i_dev->flags & IFF_LOOPBACK) {
-		IP_VS_DBG(1, "%s(): "
-			  "local delivery to %pI6 but in FORWARD\n",
-			  __func__, &rt->rt6i_dst);
-		verdict = NF_DROP;
-	}
+	verdict = ip_vs_icmp_xmit_v6(skb, cp, pp, offset, hooknum);
 
 	__ip_vs_conn_put(cp);
 
@@ -1792,7 +1772,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET,
 		.hooknum	= NF_INET_LOCAL_IN,
-		.priority	= 99,
+		.priority	= NF_IP_PRI_NAT_SRC - 2,
 	},
 	/* After packet filtering, forward packet through VS/DR, VS/TUN,
 	 * or VS/NAT(change destination), so that filtering rules can be
@@ -1802,7 +1782,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET,
 		.hooknum	= NF_INET_LOCAL_IN,
-		.priority	= 101,
+		.priority	= NF_IP_PRI_NAT_SRC - 1,
 	},
 	/* Before ip_vs_in, change source only for VS/NAT */
 	{
@@ -1810,7 +1790,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET,
 		.hooknum	= NF_INET_LOCAL_OUT,
-		.priority	= -99,
+		.priority	= NF_IP_PRI_NAT_DST + 1,
 	},
 	/* After mangle, schedule and forward local requests */
 	{
@@ -1818,7 +1798,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET,
 		.hooknum	= NF_INET_LOCAL_OUT,
-		.priority	= -98,
+		.priority	= NF_IP_PRI_NAT_DST + 2,
 	},
 	/* After packet filtering (but before ip_vs_out_icmp), catch icmp
 	 * destined for 0.0.0.0/0, which is for incoming IPVS connections */
@@ -1844,7 +1824,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET6,
 		.hooknum	= NF_INET_LOCAL_IN,
-		.priority	= 99,
+		.priority	= NF_IP6_PRI_NAT_SRC - 2,
 	},
 	/* After packet filtering, forward packet through VS/DR, VS/TUN,
 	 * or VS/NAT(change destination), so that filtering rules can be
@@ -1854,7 +1834,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET6,
 		.hooknum	= NF_INET_LOCAL_IN,
-		.priority	= 101,
+		.priority	= NF_IP6_PRI_NAT_SRC - 1,
 	},
 	/* Before ip_vs_in, change source only for VS/NAT */
 	{
@@ -1862,7 +1842,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET,
 		.hooknum	= NF_INET_LOCAL_OUT,
-		.priority	= -99,
+		.priority	= NF_IP6_PRI_NAT_DST + 1,
 	},
 	/* After mangle, schedule and forward local requests */
 	{
@@ -1870,7 +1850,7 @@ static struct nf_hook_ops ip_vs_ops[] __read_mostly = {
 		.owner		= THIS_MODULE,
 		.pf		= PF_INET6,
 		.hooknum	= NF_INET_LOCAL_OUT,
-		.priority	= -98,
+		.priority	= NF_IP6_PRI_NAT_DST + 2,
 	},
 	/* After packet filtering (but before ip_vs_out_icmp), catch icmp
 	 * destined for 0.0.0.0/0, which is for incoming IPVS connections */
@@ -1965,6 +1945,7 @@ static void __net_exit __ip_vs_dev_cleanup(struct net *net)
 {
 	EnterFunction(2);
 	net_ipvs(net)->enable = 0;	/* Disable packet reception */
+	smp_wmb();
 	__ip_vs_sync_cleanup(net);
 	LeaveFunction(2);
 }

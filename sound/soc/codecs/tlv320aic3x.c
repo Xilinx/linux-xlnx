@@ -157,7 +157,8 @@ static int aic3x_read(struct snd_soc_codec *codec, unsigned int reg,
 static int snd_soc_dapm_put_volsw_aic3x(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_dapm_widget *widget = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_dapm_widget_list *wlist = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_dapm_widget *widget = wlist->widgets[0];
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 	unsigned int reg = mc->reg;
@@ -1113,12 +1114,19 @@ static int aic3x_set_power(struct snd_soc_codec *codec, int power)
 
 		/* Sync reg_cache with the hardware */
 		codec->cache_only = 0;
-		for (i = 0; i < ARRAY_SIZE(aic3x_reg); i++)
+		for (i = AIC3X_SAMPLE_RATE_SEL_REG; i < ARRAY_SIZE(aic3x_reg); i++)
 			snd_soc_write(codec, i, cache[i]);
 		if (aic3x->model == AIC3X_MODEL_3007)
 			aic3x_init_3007(codec);
 		codec->cache_sync = 0;
 	} else {
+		/*
+		 * Do soft reset to this codec instance in order to clear
+		 * possible VDD leakage currents in case the supply regulators
+		 * remain on
+		 */
+		snd_soc_write(codec, AIC3X_RESET, SOFT_RESET);
+		codec->cache_sync = 1;
 		aic3x->power = 0;
 		/* HW writes are needless when bias is off */
 		codec->cache_only = 1;

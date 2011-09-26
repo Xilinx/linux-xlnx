@@ -2025,6 +2025,13 @@ config FTMAC100
 	  from Faraday. It is used on Faraday A320, Andes AG101 and some
 	  other ARM/NDS32 SoC's.
 
+config LANTIQ_ETOP
+	tristate "Lantiq SoC ETOP driver"
+	depends on SOC_TYPE_XWAY
+	help
+	  Support for the MII0 inside the Lantiq SoC
+
+
 source "drivers/net/fs_enet/Kconfig"
 
 source "drivers/net/octeon/Kconfig"
@@ -3477,7 +3484,8 @@ config NETCONSOLE
 
 config NETCONSOLE_DYNAMIC
 	bool "Dynamic reconfiguration of logging targets"
-	depends on NETCONSOLE && SYSFS && CONFIGFS_FS
+	depends on NETCONSOLE && SYSFS && CONFIGFS_FS && \
+			!(NETCONSOLE=y && CONFIGFS_FS=m)
 	help
 	  This option enables the ability to dynamically reconfigure target
 	  parameters (interface, IP addresses, port numbers, MAC addresses)

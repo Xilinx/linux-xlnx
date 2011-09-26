@@ -1,6 +1,4 @@
 /*
- *  linux/drivers/char/atmel_serial.c
- *
  *  Driver for Atmel AT91 / AT32 Serial ports
  *  Copyright (C) 2003 Rick Bronson
  *
@@ -1422,7 +1420,7 @@ static void __devinit atmel_init_port(struct atmel_uart_port *atmel_port,
 	port->flags		= UPF_BOOT_AUTOCONF;
 	port->ops		= &atmel_pops;
 	port->fifosize		= 1;
-	port->line		= pdev->id;
+	port->line		= data->num;
 	port->dev		= &pdev->dev;
 	port->mapbase	= pdev->resource[0].start;
 	port->irq	= pdev->resource[1].start;
@@ -1711,12 +1709,13 @@ static int atmel_serial_resume(struct platform_device *pdev)
 static int __devinit atmel_serial_probe(struct platform_device *pdev)
 {
 	struct atmel_uart_port *port;
+	struct atmel_uart_data *pdata = pdev->dev.platform_data;
 	void *data;
 	int ret;
 
 	BUILD_BUG_ON(ATMEL_SERIAL_RINGSIZE & (ATMEL_SERIAL_RINGSIZE - 1));
 
-	port = &atmel_ports[pdev->id];
+	port = &atmel_ports[pdata->num];
 	port->backup_imr = 0;
 
 	atmel_init_port(port, pdev);
