@@ -860,6 +860,7 @@ config ARCH_OMAP
 
 config ARCH_XILINX
 	bool "Xilinx ARM Cortex A9 based FPGA"
+	select CPU_V7
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	select CLKDEV_LOOKUP
