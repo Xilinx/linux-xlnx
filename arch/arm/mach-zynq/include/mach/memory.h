@@ -17,7 +17,12 @@
 
 #include <asm/sizes.h>
 
-#define PLAT_PHYS_OFFSET	UL(0x0)
+#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
+	#define PLAT_PHYS_OFFSET	UL(0x400000)
+#else
+	#define PLAT_PHYS_OFFSET	UL(0x0)
+#endif
 
 #if !defined(__ASSEMBLY__) && defined(CONFIG_ZONE_DMA)
 extern void xilinx_adjust_zones(unsigned long *, unsigned long *);

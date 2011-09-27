@@ -66,7 +66,8 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	return 0;
 }
 
-#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
 
 static irq_handler_t IPI_handler;
 static void *IPI_callback_data;
