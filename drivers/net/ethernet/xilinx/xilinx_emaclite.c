@@ -848,12 +848,25 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 	int rc;
 	struct resource res;
 	struct device_node *np = of_get_parent(lp->phy_node);
+	struct device_node *npp;
 
 	/* Don't register the MDIO bus if the phy_node or its parent node
 	 * can't be found.
 	 */
-	if (!np)
+	if (!np) {
+		printk(KERN_WARNING "No mdio handler\n");
 		return -ENODEV;
+	}
+	npp = of_get_parent(np);
+
+	of_address_to_resource(npp, 0, &res);
+	if (lp->ndev->mem_start != res.start) {
+		struct phy_device *phydev;
+		phydev = of_phy_find_device(lp->phy_node);
+		if (!phydev)
+			dev_info(dev, "MIDO of the phy is not registered yet\n");
+		return 0;
+	}
 
 	/* Enable the MDIO bus by asserting the enable bit in MDIO Control
 	 * register.
@@ -862,10 +875,11 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 		 XEL_MDIOCTRL_MDIOEN_MASK);
 
 	bus = mdiobus_alloc();
-	if (!bus)
+	if (!bus) {
+		printk(KERN_WARNING "Failed to allocal mdiobus\n");
 		return -ENOMEM;
+	}
 
-	of_address_to_resource(np, 0, &res);
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
 	bus->priv = lp;
@@ -879,8 +893,10 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 	lp->mii_bus = bus;
 
 	rc = of_mdiobus_register(bus, np);
-	if (rc)
+	if (rc) {
+		dev_err(&lp->ndev->dev, "Failed to register mdio bus.\n");
 		goto err_register;
+	}
 
 	return 0;
 
