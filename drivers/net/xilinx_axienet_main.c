@@ -33,7 +33,7 @@
 
 #include "xilinx_axienet.h"
 
-/* Descriptors defines for Tx and Rx DMA */
+/* Descriptors defines for Tx and Rx DMA - 2^n for the best performance */
 #define TX_BD_NUM	64
 #define RX_BD_NUM	128
 
@@ -699,9 +699,7 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 		ndev->stats.tx_bytes += (status &
 					XAXIDMA_BD_STS_ACTUAL_LEN_MASK);
 
-		lp->tx_bd_ci++;
-		if (lp->tx_bd_ci >= TX_BD_NUM)
-			lp->tx_bd_ci = 0;
+		lp->tx_bd_ci = ++lp->tx_bd_ci % TX_BD_NUM;
 
 		cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
 		status = cur_p->status;
@@ -786,10 +784,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data, skb_headlen(skb),
 				     DMA_TO_DEVICE);
 	for (ii = 0; ii < num_frag; ii++) {
-
-		lp->tx_bd_tail++;
-		if (lp->tx_bd_tail >= TX_BD_NUM)
-			lp->tx_bd_tail = 0;
+		lp->tx_bd_tail = ++lp->tx_bd_tail % TX_BD_NUM;
 
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
@@ -806,9 +801,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	/* Start the transfer */
 	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 
-	lp->tx_bd_tail++;
-	if (lp->tx_bd_tail >= TX_BD_NUM)
-		lp->tx_bd_tail = 0;
+	lp->tx_bd_tail = ++lp->tx_bd_tail % TX_BD_NUM;
 
 	return NETDEV_TX_OK;
 }
@@ -883,9 +876,7 @@ static void axienet_recv(struct net_device *ndev)
 		cur_p->status = 0;
 		cur_p->sw_id_offset = (u32)(new_skb);
 
-		lp->rx_bd_ci++;
-		if (lp->rx_bd_ci >= RX_BD_NUM)
-			lp->rx_bd_ci = 0;
+		lp->rx_bd_ci = ++lp->rx_bd_ci % RX_BD_NUM;
 
 		cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 	}
