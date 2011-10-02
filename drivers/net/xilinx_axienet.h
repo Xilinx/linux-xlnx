@@ -491,12 +491,12 @@ struct axienet_local {
 
 	int tx_irq;
 	int rx_irq;
-	int temac_type;
-	int phy_type;
+	u32 temac_type;
+	u32 phy_type;
 
 	u32 options;			/* Current options word */
-	int last_link;
-	unsigned int features;
+	u32 last_link;
+	u32 features;
 
 	/* Buffer descriptors */
 	struct axidma_bd *tx_bd_v;
@@ -507,15 +507,14 @@ struct axienet_local {
 	u32 tx_bd_tail;
 	u32 rx_bd_ci;
 
-	int max_frm_size;
-	int jumbo_support;
+	u32 max_frm_size;
+	u32 jumbo_support;
 
 	int csum_offload_on_tx_path;
 	int csum_offload_on_rx_path;
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
-
 };
 
 /**
