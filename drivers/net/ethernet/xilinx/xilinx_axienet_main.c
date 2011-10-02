@@ -780,7 +780,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			/* Tx Partial Checksum Offload Enabled */
 			cur_p->app0 |= 1;
 			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
-			cur_p->app2 = 0;  /* initial checksum seed */
 		}
 	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
