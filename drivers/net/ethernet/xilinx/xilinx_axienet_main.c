@@ -677,6 +677,8 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axidma_bd *cur_p;
 	unsigned int status = 0;
+	u32 size = 0;
+	u32 packets = 0;
 
 	cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
 	status = cur_p->status;
@@ -695,15 +697,17 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 		cur_p->app4 = 0;
 		cur_p->status = 0;
 
-		ndev->stats.tx_packets++;
-		ndev->stats.tx_bytes += (status &
-					XAXIDMA_BD_STS_ACTUAL_LEN_MASK);
+		size += status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
+		packets++;
 
 		lp->tx_bd_ci = ++lp->tx_bd_ci % TX_BD_NUM;
 
 		cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
 		status = cur_p->status;
 	}
+
+	ndev->stats.tx_packets += packets;
+	ndev->stats.tx_bytes += size;
 
 	netif_wake_queue(ndev);
 }
@@ -826,6 +830,8 @@ static void axienet_recv(struct net_device *ndev)
 	dma_addr_t tail_p;
 	u32 length;
 	u32 csumstatus;
+	u32 size = 0;
+	u32 packets = 0;
 
 	tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
@@ -860,8 +866,8 @@ static void axienet_recv(struct net_device *ndev)
 
 		netif_rx(skb);
 
-		ndev->stats.rx_packets++;
-		ndev->stats.rx_bytes += length;
+		size += length;
+		packets++;
 
 		new_skb = netdev_alloc_skb_ip_align(ndev,
 						lp->max_frm_size);
@@ -882,6 +888,10 @@ static void axienet_recv(struct net_device *ndev)
 
 		cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 	}
+
+	ndev->stats.rx_packets += packets;
+	ndev->stats.rx_bytes += size;
+
 	axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, tail_p);
 }
 
