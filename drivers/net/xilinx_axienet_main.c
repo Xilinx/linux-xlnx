@@ -294,9 +294,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 						skb->data,
 						lp->max_frm_size,
 						DMA_FROM_DEVICE);
-		lp->rx_bd_v[i].cntrl = (((lp->rx_bd_v[i].cntrl) &
-					~XAXIDMA_BD_CTRL_LENGTH_MASK) |
-					(lp->max_frm_size));
+		lp->rx_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
 	/* Start updating the Rx channel control register */
@@ -878,8 +876,7 @@ static void axienet_recv(struct net_device *ndev)
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
 						lp->max_frm_size,
 						DMA_FROM_DEVICE);
-		cur_p->cntrl = (cur_p->cntrl & ~XAXIDMA_BD_CTRL_LENGTH_MASK) |
-						(lp->max_frm_size);
+		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
 		cur_p->sw_id_offset = (u32)(new_skb);
 
