@@ -610,8 +610,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phy = lp->phy_dev;
 	u32 emmc_reg;
-	int link_state;
-	int setspeed = 1;
+	u32 link_state;
+	u32 setspeed = 1;
 
 	/* Hash together the state values to decide if something has changed.*/
 	link_state = phy->speed | (phy->duplex << 1) | phy->link;
@@ -725,9 +725,11 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
 								int num_frag)
 {
 	struct axidma_bd *cur_p;
+
 	cur_p = &lp->tx_bd_v[(lp->tx_bd_tail + num_frag) % TX_BD_NUM];
 	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
 		return NETDEV_TX_BUSY;
+
 	return 0;
 }
 
@@ -798,6 +800,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->app4 = (unsigned long)skb;
 
 	tail_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
+
 	/* Start the transfer */
 	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 
@@ -821,8 +824,8 @@ static void axienet_recv(struct net_device *ndev)
 	struct sk_buff *skb, *new_skb;
 	struct axidma_bd *cur_p;
 	dma_addr_t tail_p;
-	int length;
-	int csumstatus;
+	u32 length;
+	u32 csumstatus;
 
 	tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
