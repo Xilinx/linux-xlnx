@@ -503,9 +503,9 @@ struct axienet_local {
 	dma_addr_t tx_bd_p;
 	struct axidma_bd *rx_bd_v;
 	dma_addr_t rx_bd_p;
-	int tx_bd_ci;
-	int tx_bd_tail;
-	int rx_bd_ci;
+	u32 tx_bd_ci;
+	u32 tx_bd_tail;
+	u32 rx_bd_ci;
 
 	int max_frm_size;
 	int jumbo_support;
