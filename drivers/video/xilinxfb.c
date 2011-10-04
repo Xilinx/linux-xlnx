@@ -154,7 +154,7 @@ static void xilinx_fb_out_be32(struct xilinxfb_drvdata *drvdata, u32 offset,
 				u32 val)
 {
 	if (drvdata->flags & PLB_ACCESS_FLAG)
-		out_be32(drvdata->regs + (offset << 2), val);
+		iowrite32(val, drvdata->regs + (offset << 2));
 #ifdef CONFIG_PPC_DCR
 	else
 		dcr_write(drvdata->dcr_host, offset, val);
