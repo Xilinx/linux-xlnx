@@ -1823,9 +1823,13 @@ axienet_probe(struct platform_device *op)
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 
 	lp->phy_node = of_parse_phandle(op->dev.of_node, "phy-handle", 0);
-	rc = axienet_mdio_setup(lp, op->dev.of_node);
-	if (rc)
-		dev_warn(&op->dev, "error registering MDIO bus\n");
+	if (lp->phy_node) {
+		dev_dbg(lp->dev, "using PHY node %s (%p)\n", np->full_name, np);
+
+		rc = axienet_mdio_setup(lp, op->dev.of_node);
+		if (rc)
+			dev_warn(&op->dev, "error registering MDIO bus\n");
+	}
 
 	rc = register_netdev(lp->ndev);
 	if (rc) {
