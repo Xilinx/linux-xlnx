@@ -26,7 +26,7 @@
    	};
 
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk ip=:::::eth0:dhcp";
 		linux,stdout-path = "/amba@0/uart@E0000000";
 	};
 
