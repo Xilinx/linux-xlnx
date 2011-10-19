@@ -114,14 +114,14 @@ static struct spi_board_info spi_devs[] __initdata = {
                 .modalias = "at25",
                 .max_speed_hz = 1000000,
                 .bus_num = 0,
-                .chip_select = 0,
+                .chip_select = 1,
                 .platform_data = &at25640_0,
         },
         {
                 .modalias = "at25",
                 .max_speed_hz = 1000000,
                 .bus_num = 1,
-                .chip_select = 0,
+                .chip_select = 1,
                 .platform_data = &at25640_1,
         },
 };
