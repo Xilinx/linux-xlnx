@@ -14,4 +14,14 @@ config RPMSG_SERVER_SAMPLE
 	  This is just a sample server driver for the rpmsg bus.
 	  Say either Y or M. You know you want to.
 
+config RPMSG_OMX
+	tristate "rpmsg OMX driver"
+	depends on RPMSG
+	---help---
+	  An rpmsg driver that exposes OMX API to user space, in order to
+	  allow multimedia applications to offload OMX processing to
+	  remote processors.
+
+	  If unsure, say N.
+
 endmenu
