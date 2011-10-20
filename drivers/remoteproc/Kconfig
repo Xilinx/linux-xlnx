@@ -26,4 +26,16 @@ config OMAP_REMOTEPROC
 	  It's safe to say n here if you're not interested in multimedia
 	  offloading or just want a bare minimum kernel.
 
+# Amount of CMA memory to reserve for OMAP's dual-M3 "Ducati" sub-system.
+# We need quite much. Fortunately, CMA makes sure this memory isn't
+# wasted in case we're not loading the remote processors.
+config OMAP_DUCATI_CMA_SIZE
+	hex "Ducati M3 physically contiguous memory pool size (in bytes)"
+	depends on OMAP_REMOTEPROC
+	default 0x6500000
+	help
+	  Allocate a specified size of physically contiguous memory (CMA)
+	  for OMAP's dual M3 "Ducati" sub-system. Vast majority of this
+	  memory isn't wasted in case the M3 sub-system isn't loaded.
+
 endmenu
