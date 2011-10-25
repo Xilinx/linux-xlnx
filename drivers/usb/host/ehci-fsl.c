@@ -128,9 +128,11 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
 		goto err3;
 	}
 
+#ifndef CONFIG_ARCH_XILINX
 	/* Enable USB controller, 83xx or 8536 */
 	if (pdata->have_sysif_regs)
 		setbits32(hcd->regs + FSL_SOC_USB_CTRL, 0x4);
+#endif
 
 	/* Don't need to set host mode here. It will be done by tdi_reset() */
 
@@ -248,12 +250,16 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 
 	pdata = hcd->self.controller->platform_data;
 
+#ifndef CONFIG_ARCH_XILINX
+
 	/* Enable PHY interface in the control reg. */
 	if (pdata->have_sysif_regs) {
 		temp = in_be32(non_ehci + FSL_SOC_USB_CTRL);
 		out_be32(non_ehci + FSL_SOC_USB_CTRL, temp | 0x00000004);
 		out_be32(non_ehci + FSL_SOC_USB_SNOOP1, 0x0000001b);
 	}
+#endif
+
 
 #if defined(CONFIG_PPC32) && !defined(CONFIG_NOT_COHERENT_CACHE)
 	/*
@@ -273,6 +279,7 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		ehci_fsl_setup_phy(ehci, pdata->phy_mode, 0);
 
 	if (pdata->operating_mode == FSL_USB2_MPH_HOST) {
+#ifndef CONFIG_ARCH_XILINX
 		unsigned int chip, rev, svr;
 
 		svr = mfspr(SPRN_SVR);
@@ -282,7 +289,7 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		/* Deal with USB Erratum #14 on MPC834x Rev 1.0 & 1.1 chips */
 		if ((rev == 1) && (chip >= 0x8050) && (chip <= 0x8055))
 			ehci->has_fsl_port_bug = 1;
-
+#endif
 		if (pdata->port_enables & FSL_USB2_PORT0_ENABLED)
 			ehci_fsl_setup_phy(ehci, pdata->phy_mode, 0);
 		if (pdata->port_enables & FSL_USB2_PORT1_ENABLED)
@@ -290,6 +297,8 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 	}
 
 	if (pdata->have_sysif_regs) {
+
+#ifndef CONFIG_ARCH_XILINX
 #ifdef CONFIG_PPC_85xx
 		out_be32(non_ehci + FSL_SOC_USB_PRICTRL, 0x00000008);
 		out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000080);
@@ -298,6 +307,7 @@ static void ehci_fsl_usb_setup(struct ehci_hcd *ehci)
 		out_be32(non_ehci + FSL_SOC_USB_AGECNTTHRSH, 0x00000040);
 #endif
 		out_be32(non_ehci + FSL_SOC_USB_SICTRL, 0x00000001);
+#endif
 	}
 }
 
@@ -353,13 +363,13 @@ static int ehci_fsl_setup(struct usb_hcd *hcd)
 struct ehci_fsl {
 	struct ehci_hcd	ehci;
 
-#ifdef CONFIG_PM
+#if defined(CONFIG_PM) && !defined(CONFIG_ARCH_XILINX)
 	/* Saved USB PHY settings, need to restore after deep sleep. */
 	u32 usb_ctrl;
 #endif
 };
 
-#ifdef CONFIG_PM
+#if defined(CONFIG_PM) && !defined(CONFIG_ARCH_XILINX)
 
 #ifdef CONFIG_PPC_MPC512x
 static int ehci_fsl_mpc512x_drv_suspend(struct device *dev)

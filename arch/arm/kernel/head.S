@@ -21,6 +21,7 @@
 #include <asm/memory.h>
 #include <asm/thread_info.h>
 #include <asm/system.h>
+#include <asm/mach-types.h>
 
 #ifdef CONFIG_DEBUG_LL
 #include <mach/debug-macro.S>
@@ -73,6 +74,7 @@
  */
 	__HEAD
 ENTRY(stext)
+
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9 @ ensure svc mode
 						@ and irqs disabled
 	mrc	p15, 0, r9, c0, c0		@ get processor id
@@ -80,6 +82,18 @@ ENTRY(stext)
 	movs	r10, r5				@ invalid processor (r5=0)?
  THUMB( it	eq )		@ force fixup-able long branch encoding
 	beq	__error_p			@ yes, error 'p'
+
+	/* the machine has no way to get setup when we're using a pod so setup it
+	 * up for now this way, if the device tree is expected at the fixed address
+	 * then load R2 to find the device tree at that address
+	 */
+#ifdef CONFIG_ARCH_XILINX
+	mov	r0,#0x0
+	ldr	r1,=MACH_TYPE_XILINX
+#endif
+#ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
+	mov	r2,#0x1000000
+#endif
 
 #ifndef CONFIG_XIP_KERNEL
 	adr	r3, 2f

@@ -177,6 +177,24 @@ config USB_FSL_USB2
 	default USB_GADGET
 	select USB_GADGET_SELECTED
 
+config USB_GADGET_XUSBPS
+	boolean "Xilinx PS Highspeed USB DR Peripheral Controller"
+	depends on ARCH_XILINX || ARCH_ZYNQ
+	select USB_GADGET_DUALSPEED
+	select USB_XUSBPS_DR_OF if OF
+	help
+	   Xilinx PS USB controller core supports device mode.
+
+	   Say "y" to link the driver statically, or "m" to build a
+	   dynamically linked module called "xilinx_usbps_udc" and
+	   force all gadget drivers to also be dynamically linked.
+
+config USB_XUSBPS
+	tristate
+	depends on USB_GADGET_XUSBPS
+	default USB_GADGET
+	select USB_GADGET_SELECTED
+
 config USB_GADGET_FUSB300
 	boolean "Faraday FUSB300 USB Peripheral Controller"
 	select USB_GADGET_DUALSPEED

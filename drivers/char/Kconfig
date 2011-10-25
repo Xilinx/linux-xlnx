@@ -405,6 +405,12 @@ config XILINX_HWICAP
 
 	  If unsure, say N.
 
+config XILINX_DEVCFG
+	tristate "Xilinx Device Configuration"
+	help
+	  This option enables support for the Xilinx device configuration driver.
+	  If unsure, say N
+
 config R3964
 	tristate "Siemens R3964 line discipline"
 	---help---

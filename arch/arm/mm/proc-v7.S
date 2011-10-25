@@ -362,6 +362,15 @@ __v7_setup:
 	mcrlt	p15, 0, r10, c15, c0, 1		@ write diagnostic register
 #endif
 
+#ifdef CONFIG_XILINX_L1_PREFETCH
+	/* Enable prefetching in aux control register. L2 prefetch must 
+	 * only be enabled if the slave supports it (PL310 does)
+	 */
+	mrc   p15, 0, r0, c1, c0, 1     @ read aux control register
+	orr   r0, r0, #0x6              @ modify
+	mcr   p15, 0, r0, c1, c0, 1     @ write aux control register
+#endif
+
 3:	mov	r10, #0
 #ifdef HARVARD_CACHE
 	mcr	p15, 0, r10, c7, c5, 0		@ I+BTB cache invalidate

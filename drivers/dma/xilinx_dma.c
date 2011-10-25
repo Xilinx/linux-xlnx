@@ -1075,6 +1075,9 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	size_t sg_used;
 	dma_addr_t dma_src;
 
+#ifdef TEST_DMA_WITH_LOOPBACK
+	int total_len;
+#endif
 	if (!dchan)
 		return NULL;
 
@@ -1084,6 +1087,13 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 		return NULL;
 	}
 
+#ifdef TEST_DMA_WITH_LOOPBACK
+	total_len = 0;
+
+	for_each_sg(sgl, sg, sg_len, i) {
+		total_len += sg_dma_len(sg);
+	}
+#endif
 	/*
 	 * Build transactions using information in the scatter gather list
 	 */

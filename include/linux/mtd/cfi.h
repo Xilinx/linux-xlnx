@@ -551,6 +551,8 @@ struct cfi_fixup {
 #define CFI_MFR_TOSHIBA		0x0098
 #define CFI_MFR_WINBOND		0x00DA
 
+#define CFI_MFR_NMX 	0x0089 /* Numonyx */
+
 void cfi_fixup(struct mtd_info *mtd, struct cfi_fixup* fixups);
 
 typedef int (*varsize_frob_t)(struct map_info *map, struct flchip *chip,

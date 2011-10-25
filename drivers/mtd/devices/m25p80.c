@@ -34,6 +34,13 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/flash.h>
 
+#define HACK_PAGE_SZ_128		/* temp hack to use 128 byte page */
+#ifdef HACK_PAGE_SZ_128
+ #define MTD_PAGE_SIZE	128
+#else
+ #define MTD_PAGE_SIZE	256
+#endif
+
 /* Flash opcodes. */
 #define	OPCODE_WREN		0x06	/* Write enable */
 #define	OPCODE_RDSR		0x05	/* Read status register */
@@ -730,6 +737,13 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "m25p32",  INFO(0x202016,  0,  64 * 1024,  64, 0) },
 	{ "m25p64",  INFO(0x202017,  0,  64 * 1024, 128, 0) },
 	{ "m25p128", INFO(0x202018,  0, 256 * 1024,  64, 0) },
+
+	/* Numonyx flash n25q128 */
+#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
+	{ "n25q128x2", INFO(0x20bb18,  0, 128 * 1024, 256, 0) },
+#else
+	{ "n25q128",   INFO(0x20bb18,  0,  64 * 1024, 256, 0) },
+#endif
 
 	{ "m25p05-nonjedec",  INFO(0, 0,  32 * 1024,   2, 0) },
 	{ "m25p10-nonjedec",  INFO(0, 0,  32 * 1024,   4, 0) },

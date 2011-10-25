@@ -41,6 +41,14 @@
 	movne	pc, r5
 #endif
 	arch_irq_handler_default
+
+#ifdef CONFIG_XILINX_AMP_CPU0_MASTER
+	test_for_ipi r0, r6, r5, lr
+	movne	r0, sp
+	adrne	lr, BSYM(1b)
+	bne	do_amp_IPI
+#endif
+
 9997:
 	.endm
 
@@ -905,7 +913,7 @@ __kuser_cmpxchg:				@ 0xffff0fc0
 	ldmfd	sp!, {r7, pc}
 1:	.word	__ARM_NR_cmpxchg
 
-#elif __LINUX_ARM_ARCH__ < 6
+#elif __LINUX_ARM_ARCH__ < 6 || defined(CONFIG_CPU_DCACHE_DISABLE)
 
 #ifdef CONFIG_MMU
 

@@ -2490,6 +2490,22 @@ config XILINX_AXI_ETHERNET
 	  This driver supports the Xilinx 10/100/1000 AXI Ethernet IP
 	  core used in Xilinx FPGAs
 
+config XILINX_PS_EMAC
+        tristate "Xilinx PS tri-speed EMAC support"
+	select PHYLIB
+        help
+          This driver supports tri-speed EMAC.
+
+if XILINX_PS_EMAC
+
+config XILINX_PS_EMAC_HWTSTAMP
+	bool "Generate hardware packet timestamps"
+	default n
+	---help---
+	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
+
+endif
+
 config QLA3XXX
 	tristate "QLogic QLA3XXX Network Driver Support"
 	depends on PCI

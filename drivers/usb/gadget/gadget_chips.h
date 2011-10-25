@@ -1,3 +1,43 @@
+/*
+ * USB device controllers have lots of quirks.  Use these macros in
+ * gadget drivers or other code that needs to deal with them, and which
+ * autoconfigures instead of using early binding to the hardware.
+ *
+ * This SHOULD eventually work like the ARM mach_is_*() stuff, driven by
+ * some config file that gets updated as new hardware is supported.
+ * (And avoiding all runtime comparisons in typical one-choice configs!)
+ *
+ * NOTE:  some of these controller drivers may not be available yet.
+ * Some are available on 2.4 kernels; several are available, but not
+ * yet pushed in the 2.6 mainline tree.
+ */
+
+#ifndef __GADGET_CHIPS_H
+#define __GADGET_CHIPS_H
+
+#ifdef CONFIG_USB_GADGET_NET2280
+#define	gadget_is_net2280(g)	!strcmp("net2280", (g)->name)
+#else
+#define	gadget_is_net2280(g)	0
+#endif
+
+#ifdef CONFIG_USB_GADGET_AMD5536UDC
+#define	gadget_is_amd5536udc(g)	!strcmp("amd5536udc", (g)->name)
+#else
+#define	gadget_is_amd5536udc(g)	0
+#endif
+
+#ifdef CONFIG_USB_GADGET_DUMMY_HCD
+#define	gadget_is_dummy(g)	!strcmp("dummy_udc", (g)->name)
+#else
+#define	gadget_is_dummy(g)	0
+#endif
+
+#ifdef CONFIG_USB_GADGET_PXA25X
+#define	gadget_is_pxa(g)	!strcmp("pxa25x_udc", (g)->name)
+#else
+#define	gadget_is_pxa(g)	0
+#endif
 
 #ifdef CONFIG_USB_GADGET_GOKU
 #define	gadget_is_goku(g)	!strcmp("goku_udc", (g)->name)
@@ -96,10 +136,6 @@
 #define gadget_is_s3c_hsotg(g)    0
 #endif
 
-#ifdef CONFIG_USB_GADGET_XILINX
-#define gadget_is_xlnx(g)	!strcmp("xilinx_udc", (g)->name)
-#else
-#define gadget_is_xlnx(g)	0
 #ifdef CONFIG_USB_S3C_HSUDC
 #define gadget_is_s3c_hsudc(g) (!strcmp("s3c-hsudc", (g)->name))
 #else
@@ -122,6 +158,12 @@
 #define	gadget_is_renesas_usbhs(g) (!strcmp("renesas_usbhs_udc", (g)->name))
 #else
 #define	gadget_is_renesas_usbhs(g) 0
+#endif
+
+#ifdef CONFIG_USB_GADGET_XILINX
+#define gadget_is_xlnx(g)	!strcmp("xilinx_udc", (g)->name)
+#else
+#define gadget_is_xlnx(g)	0
 #endif
 
 /**
@@ -179,8 +221,6 @@ static inline int usb_gadget_controller_number(struct usb_gadget *gadget)
 		return 0x25;
 	else if (gadget_is_s3c_hsotg(gadget))
 		return 0x26;
-	else if (gadget_is_xlnx(gadget))
-		return 0x27;
 	else if (gadget_is_pch(gadget))
 		return 0x27;
 	else if (gadget_is_ci13xxx_msm(gadget))

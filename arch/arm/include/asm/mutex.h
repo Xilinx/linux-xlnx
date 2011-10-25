@@ -8,7 +8,7 @@
 #ifndef _ASM_MUTEX_H
 #define _ASM_MUTEX_H
 
-#if __LINUX_ARM_ARCH__ < 6
+#if __LINUX_ARM_ARCH__ < 6 || defined(CONFIG_CPU_DCACHE_DISABLE)
 /* On pre-ARMv6 hardware the swp based implementation is the most efficient. */
 # include <asm-generic/mutex-xchg.h>
 #else

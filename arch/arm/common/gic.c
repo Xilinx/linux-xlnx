@@ -28,6 +28,11 @@
 #include <linux/smp.h>
 #include <linux/cpumask.h>
 #include <linux/io.h>
+#if defined(CONFIG_SMP) || \
+	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
+#include <linux/module.h>
+#endif
 
 #include <asm/irq.h>
 #include <asm/mach/irq.h>
@@ -272,6 +277,9 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	cpumask |= cpumask << 8;
 	cpumask |= cpumask << 16;
 
+#if 	!defined(CONFIG_XILINX_AMP_CPU1_SLAVE) && \
+	!defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE) 
+
 	writel_relaxed(0, base + GIC_DIST_CTRL);
 
 	/*
@@ -292,8 +300,9 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	/*
 	 * Set all global interrupts to this CPU only.
 	 */
-	for (i = 32; i < gic_irqs; i += 4)
+	for (i = 32; i < gic_irqs; i += 4) {
 		writel_relaxed(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
+	}
 
 	/*
 	 * Set priority on all global interrupts.
@@ -307,6 +316,8 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	 */
 	for (i = 32; i < gic_irqs; i += 32)
 		writel_relaxed(0xffffffff, base + GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
+
+#endif
 
 	/*
 	 * Limit number of interrupts registered to the platform maximum
@@ -324,7 +335,12 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 		set_irq_flags(i, IRQF_VALID | IRQF_PROBE);
 	}
 
+#if	!defined(CONFIG_XILINX_AMP_CPU1_SLAVE) && \
+	!defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE)
+
 	writel_relaxed(1, base + GIC_DIST_CTRL);
+#endif
+
 }
 
 static void __cpuinit gic_cpu_init(struct gic_chip_data *gic)
@@ -386,7 +402,12 @@ void __cpuinit gic_enable_ppi(unsigned int irq)
 	local_irq_restore(flags);
 }
 
-#ifdef CONFIG_SMP
+#if 	defined(CONFIG_SMP)			|| \
+	defined(CONFIG_XILINX_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_XILINX_CPU1_TEST)	|| \
+	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)	|| \
+	defined(CONFIG_ZYNQ_CPU1_TEST)
+
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	unsigned long map = *cpus_addr(*mask);
@@ -400,4 +421,24 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	/* this always happens on GIC0 */
 	writel_relaxed(map << 16 | irq, gic_data[0].dist_base + GIC_DIST_SOFTINT);
 }
+EXPORT_SYMBOL(gic_raise_softirq);
+
+void __init gic_set_cpu(unsigned int cpu, unsigned int irq)
+{
+	struct irq_data *d = irq_get_irq_data(irq);
+	void __iomem *reg = gic_dist_base(d) + GIC_DIST_TARGET + (gic_irq(d) & ~3);
+	unsigned int shift = (d->irq % 4) * 8;
+	u32 val, mask, bit;
+
+	mask = 0xff << shift;
+	bit = 1 << (cpu + shift);	/* cpu = 0 based, 0 or 1 for Xilinx */
+
+	spin_lock(&irq_controller_lock);
+	val = readl(reg) & ~mask;
+	writel(val | bit, reg);
+	spin_unlock(&irq_controller_lock);
+}
+EXPORT_SYMBOL(gic_set_cpu);
+
 #endif
+

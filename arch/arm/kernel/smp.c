@@ -120,7 +120,11 @@ int __cpuinit __cpu_up(unsigned int cpu)
 		 * CPU was successfully started, wait for it
 		 * to come online or time out.
 		 */
+#ifdef CONFIG_ARCH_XILINX
+		timeout = jiffies + (3 * HZ);
+#else
 		timeout = jiffies + HZ;
+#endif
 		while (time_before(jiffies, timeout)) {
 			if (cpu_online(cpu))
 				break;

@@ -59,7 +59,7 @@ static const char driver_name[] = "fsl-usb2-udc";
 static const char driver_desc[] = DRIVER_DESC;
 
 static struct usb_dr_device *dr_regs;
-#ifndef CONFIG_ARCH_MXC
+#if !defined(CONFIG_ARCH_MXC) && !defined(CONFIG_ARCH_XILINX)
 static struct usb_sys_interface *usb_sys_regs;
 #endif
 
@@ -301,6 +301,12 @@ static int dr_controller_setup(struct fsl_udc *udc)
 		tmp |= USB_MODE_ES;
 	fsl_writel(tmp, &dr_regs->usbmode);
 
+#ifdef CONFIG_ARCH_XILINX
+	/* Set OTG Terminate bit */
+	tmp = fsl_readl(&dr_regs->otgsc);
+	tmp |= OTGSC_CTRL_OTG_TERM;
+	fsl_writel(tmp, &dr_regs->otgsc);
+#endif
 	/* Clear the setup status */
 	fsl_writel(0, &dr_regs->usbsts);
 
@@ -365,6 +371,12 @@ static void dr_controller_run(struct fsl_udc *udc)
 	temp |= USB_MODE_CTRL_MODE_DEVICE;
 	fsl_writel(temp, &dr_regs->usbmode);
 
+#ifdef CONFIG_ARCH_XILINX
+	/* Set OTG Terminate bit */
+	temp = fsl_readl(&dr_regs->otgsc);
+	temp |= OTGSC_CTRL_OTG_TERM;
+	fsl_writel(temp, &dr_regs->otgsc);
+#endif
 	/* Set controller to Run */
 	temp = fsl_readl(&dr_regs->usbcmd);
 	temp |= USB_CMD_RUN_STOP;
@@ -776,7 +788,7 @@ static struct ep_td_struct *fsl_build_dtd(struct fsl_req *req, unsigned *length,
 	*length = min(req->req.length - req->req.actual,
 			(unsigned)EP_MAX_LENGTH_TRANSFER);
 
-	dtd = dma_pool_alloc(udc_controller->td_pool, GFP_KERNEL, dma);
+	dtd = dma_pool_alloc(udc_controller->td_pool, GFP_ATOMIC, dma);
 	if (dtd == NULL)
 		return dtd;
 
@@ -853,6 +865,9 @@ static int fsl_req_to_dtd(struct fsl_req *req)
 
 	dtd->next_td_ptr = cpu_to_hc32(DTD_NEXT_TERMINATE);
 
+#ifdef CONFIG_ARCH_XILINX
+	mb();
+#endif
 	req->tail = dtd;
 
 	return 0;
@@ -1672,7 +1687,11 @@ static void dtd_complete_irq(struct fsl_udc *udc)
 	if (!bit_pos)
 		return;
 
+#ifndef CONFIG_ARCH_XILINX
 	for (i = 0; i < udc->max_ep * 2; i++) {
+#else
+	for (i = 0; i < udc->max_ep; i++) {
+#endif
 		ep_num = i >> 1;
 		direction = i % 2;
 
@@ -1823,7 +1842,9 @@ static void reset_irq(struct fsl_udc *udc)
 	/* Write 1s to the flush register */
 	fsl_writel(0xffffffff, &dr_regs->endptflush);
 
+#ifndef CONFIG_ARCH_XILINX
 	if (fsl_readl(&dr_regs->portsc1) & PORTSCX_PORT_RESET) {
+#endif
 		VDBG("Bus reset");
 		/* Bus is reseting */
 		udc->bus_reset = 1;
@@ -1831,6 +1852,7 @@ static void reset_irq(struct fsl_udc *udc)
 		 * head and TR Queue */
 		reset_queues(udc);
 		udc->usb_state = USB_STATE_DEFAULT;
+#ifndef CONFIG_ARCH_XILINX
 	} else {
 		VDBG("Controller reset");
 		/* initialize usb hw reg except for regs for EP, not
@@ -1846,6 +1868,7 @@ static void reset_irq(struct fsl_udc *udc)
 		dr_controller_run(udc);
 		udc->usb_state = USB_STATE_ATTACHED;
 	}
+#endif
 }
 
 /*

@@ -243,7 +243,7 @@ do {									\
 	last = __switch_to(prev,task_thread_info(prev), task_thread_info(next));	\
 } while (0)
 
-#if defined(CONFIG_CPU_SA1100) || defined(CONFIG_CPU_SA110)
+#if defined(CONFIG_CPU_SA1100) || defined(CONFIG_CPU_SA110) || defined(CONFIG_CPU_DCACHE_DISABLE)
 /*
  * On the StrongARM, "swp" is terminally broken since it bypasses the
  * cache totally.  This means that the cache becomes inconsistent, and,
@@ -269,14 +269,14 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
 #ifdef swp_is_buggy
 	unsigned long flags;
 #endif
-#if __LINUX_ARM_ARCH__ >= 6
+#if __LINUX_ARM_ARCH__ >= 6 && !defined(swp_is_buggy)
 	unsigned int tmp;
 #endif
 
 	smp_mb();
 
 	switch (size) {
-#if __LINUX_ARM_ARCH__ >= 6
+#if __LINUX_ARM_ARCH__ >= 6 && !defined(swp_is_buggy)
 	case 1:
 		asm volatile("@	__xchg1\n"
 		"1:	ldrexb	%0, [%3]\n"

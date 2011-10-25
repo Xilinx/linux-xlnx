@@ -48,6 +48,7 @@
 #include <asm/system.h>
 #include <asm/unaligned.h>
 
+#include <linux/usb/otg.h>
 /*-------------------------------------------------------------------------*/
 
 /*
@@ -428,7 +429,13 @@ static void ehci_turn_off_all_ports(struct ehci_hcd *ehci)
 static void ehci_silence_controller(struct ehci_hcd *ehci)
 {
 	ehci_halt(ehci);
+#ifdef CONFIG_USB_XUSBPS_OTG
+	/* turn off for non-otg port */
+	if(!ehci->transceiver)
+		ehci_turn_off_all_ports(ehci);
+#else
 	ehci_turn_off_all_ports(ehci);
+#endif
 
 	/* make BIOS/etc use companion controller during reboot */
 	ehci_writel(ehci, 0, &ehci->regs->configured_flag);
@@ -521,7 +528,12 @@ static void ehci_stop (struct usb_hcd *hcd)
 		ehci_quiesce (ehci);
 
 	ehci_silence_controller(ehci);
+#ifdef CONFIG_USB_XUSBPS_OTG
+	if(!ehci->transceiver)
+		ehci_reset (ehci);
+#else
 	ehci_reset (ehci);
+#endif
 	spin_unlock_irq(&ehci->lock);
 
 	remove_companion_file(ehci);
@@ -675,6 +687,9 @@ static int ehci_run (struct usb_hcd *hcd)
 	int			retval;
 	u32			temp;
 	u32			hcc_params;
+#if defined(CONFIG_ARCH_XILINX) || defined(CONFIG_ARCH_ZYNQ)
+	void __iomem *non_ehci = hcd->regs;
+#endif
 
 	hcd->uses_new_polling = 1;
 
@@ -752,7 +767,11 @@ static int ehci_run (struct usb_hcd *hcd)
 
 	ehci_writel(ehci, INTR_MASK,
 		    &ehci->regs->intr_enable); /* Turn On Interrupts */
-
+#if defined(CONFIG_ARCH_XILINX) || defined(CONFIG_ARCH_ZYNQ)
+	/* Modifying FIFO Burst Threshold value from 2 to 8 */
+	temp = readl(non_ehci + 0x164);
+	ehci_writel(ehci, 0x00080000, non_ehci + 0x164);
+#endif
 	/* GRR this is run-once init(), being done every time the HC starts.
 	 * So long as they're part of class devices, we can't do it init()
 	 * since the class device isn't created that early.
@@ -770,11 +789,35 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
 	u32			status, masked_status, pcd_status = 0, cmd;
 	int			bh;
+	u32			intr_en;
 
 	spin_lock (&ehci->lock);
 
 	status = ehci_readl(ehci, &ehci->regs->status);
+	intr_en = ehci_readl(ehci, &ehci->regs->intr_enable);
 
+#ifdef CONFIG_USB_XUSBPS_OTG
+	if(ehci->transceiver) {
+		/* A device */
+		if (ehci->transceiver->default_a &&
+			(ehci->transceiver->state == OTG_STATE_A_PERIPHERAL)) {
+			spin_unlock(&ehci->lock);
+			return IRQ_NONE;
+		}
+		/* B device */
+		if (!ehci->transceiver->default_a &&
+			((ehci->transceiver->state != OTG_STATE_B_WAIT_ACON) &&
+			(ehci->transceiver->state != OTG_STATE_B_HOST))) {
+			spin_unlock(&ehci->lock);
+			return IRQ_NONE;
+		}
+		/* If HABA is set and B-disconnect occurs, don't process that interrupt */
+		if (ehci_is_TDI(ehci) && tdi_in_host_mode(ehci) == 0) {
+			spin_unlock(&ehci->lock);
+			return IRQ_NONE;
+		}
+	}
+#endif
 	/* e.g. cardbus physical eject */
 	if (status == ~(u32) 0) {
 		ehci_dbg (ehci, "device removed\n");
@@ -1214,6 +1257,11 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_XPS_USB_HCD_XILINX
 #include "ehci-xilinx-of.c"
 #define XILINX_OF_PLATFORM_DRIVER	ehci_hcd_xilinx_of_driver
+#endif
+
+#ifdef CONFIG_USB_EHCI_XUSBPS
+#include "ehci-xilinx-usbps.c"
+#define	PLATFORM_DRIVER		ehci_xusbps_driver
 #endif
 
 #ifdef CONFIG_PLAT_ORION

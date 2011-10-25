@@ -108,6 +108,10 @@ struct ehci_hcd {			/* one per controller */
 	unsigned long		suspended_ports;	/* which ports are
 			suspended */
 
+#ifdef CONFIG_USB_XUSBPS_OTG
+	void (*start_hnp)(struct ehci_hcd *ehci);
+#endif
+
 	/* per-HC memory pools (could be per-bus, but ...) */
 	struct dma_pool		*qh_pool;	/* qh per active urb */
 	struct dma_pool		*qtd_pool;	/* one or more per qh */
