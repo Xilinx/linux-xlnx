@@ -1,6 +1,14 @@
 if ARCH_ZYNQ
 
 menu "Xilinx Specific Options"
+config XILINX_EARLY_UART1
+	tristate "Early Printk On UART1 (2nd UART)"
+	default n
+	help
+	  Select if you want to use the 2nd UART (UART1) in Zynq for the early
+	  printk. If not selected, the 1st UART (UART0) is used.
+
+
 config XILINX_FIXED_DEVTREE_ADDR
 	tristate "Device Tree At Fixed Address"
 	default y
