@@ -160,7 +160,7 @@ static struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= UART0_VIRT,
 		.pfn		= __phys_to_pfn(UART0_PHYS),
-		.length		= SZ_4K,
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	},
 #endif

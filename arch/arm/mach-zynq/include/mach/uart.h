@@ -28,10 +28,16 @@
 #define UART_SR_TXFULL   	0x00000010  /* TX FIFO full */
 #define UART_SR_TXEMPTY		0x00000008  /* TX FIFO empty */
 
-#define UART_BAUD_9600		0x145	/* 9600 based on 50 MHz clock */
-#define UART_BAUDDIV_9600	0xF	
-#define UART_BAUD_115K		0x56	/* 115200 based on 50 MHz clock */
-#define UART_BAUDDIV_115K	0x4
+/* The EP107 uses a different clock (50 MHz) right into the UART while the new boards
+   will be using a 33.333 MHz clock into the chip which then is divided by 63.
+*/
+#ifdef CONFIG_XILINX_EARLY_UART_EP107
+	#define UART_BAUD_115K		0x56	/* 115200 based on 50 MHz clock */
+	#define UART_BAUDDIV_115K	0x4
+#else
+	#define UART_BAUD_115K		0x11	/* 115200 based on 33.33MHz / 63 clock */
+	#define UART_BAUDDIV_115K	0x6
+#endif
 
 #ifndef __ASSEMBLY__
 
