@@ -52,7 +52,9 @@
  */
 
 #define TOTAL_FRAME_BW		12000
-#define DEFAULT_EOT		2250
+#define DEFAULT_EOT		9600 /* This value fits MicroBlaze system.
+					it may requires a bigger value for
+					some USB device. */
 
 #define MAX_FRAME_BW_STD	(TOTAL_FRAME_BW - DEFAULT_EOT)
 #define MAX_FRAME_BW_ISO	2400
