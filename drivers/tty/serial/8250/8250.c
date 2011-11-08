@@ -3098,6 +3098,13 @@ static struct uart_8250_port *serial8250_find_match_or_unused(struct uart_port *
 		if (uart_match_port(&serial8250_ports[i].port, port))
 			return &serial8250_ports[i];
 
+	/* Look at setup port->line port first. If is available, use it */
+	if (port->line >= 0 && port->line < nr_uarts)
+		if (serial8250_ports[port->line].port.type == PORT_UNKNOWN &&
+		    serial8250_ports[port->line].port.iobase == 0) {
+			return &serial8250_ports[port->line];
+		}
+
 	/*
 	 * We didn't find a matching entry, so look for the first
 	 * free entry.  We look for one which hasn't been previously
