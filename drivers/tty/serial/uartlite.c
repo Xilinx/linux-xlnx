@@ -28,7 +28,7 @@
 #define ULITE_NAME		"ttyUL"
 #define ULITE_MAJOR		204
 #define ULITE_MINOR		187
-#define ULITE_NR_UARTS		4
+#define ULITE_NR_UARTS		10
 
 /* ---------------------------------------------------------------------
  * Register definitions
@@ -577,9 +577,27 @@ static int __devinit ulite_probe(struct platform_device *pdev)
 #ifdef CONFIG_OF
 	const __be32 *prop;
 
-	prop = of_get_property(pdev->dev.of_node, "port-number", NULL);
-	if (prop)
-		id = be32_to_cpup(prop);
+	/* Look for a serialN alias */
+	id = of_alias_get_id(pdev->dev.of_node, "serial");
+	if (id < 0) {
+		dev_warn(&pdev->dev, "failed to get alias id, errno %d\n", id);
+		/* Fall back to old port-number property */
+		prop = of_get_property(pdev->dev.of_node, "port-number", NULL);
+		if (prop < 0) {
+			dev_warn(&pdev->dev,
+				"failed to get port-number, errno %d\n", prop);
+			id = -1;
+		} else
+			id = be32_to_cpup(prop);
+	}
+
+	/* we can't register ids which are greater than number of uartlites */
+	if (id >= ULITE_NR_UARTS) {
+		dev_warn(&pdev->dev,
+			"Extern number of allocated uartlite entries "
+			"ULITE_NR_UARTS, id %d\n", id);
+		return -ENODEV;
+	}
 #endif
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
