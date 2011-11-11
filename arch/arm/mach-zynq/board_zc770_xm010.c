@@ -122,6 +122,8 @@ static struct flash_platform_data qspi_flash_pdata = {
 
 #endif
 
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
+
 static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 	{
 #ifdef CONFIG_SPI_SPIDEV
@@ -152,6 +154,8 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 	
 };
 
+#endif
+
 extern struct sys_timer xttcpss_sys_timer;
 
 static void __init board_zc770_xm010_init(void)
@@ -162,8 +166,10 @@ static void __init board_zc770_xm010_init(void)
 	 */
 	xilinx_init_machine();
 
+#if 	defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
 	spi_register_board_info(&xilinx_spipss_0_boardinfo[0], 
 		ARRAY_SIZE(xilinx_spipss_0_boardinfo));
+#endif
 }
 
 static const char *xilinx_dt_match[] = {
