@@ -23,6 +23,7 @@
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
@@ -47,23 +48,8 @@
 #define XTTCPSS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
 #define XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
 
-/* If running on the 2nd CPU then the 2nd timer is used, this code may not
- * be pushed so it isn't ideal replicating the irq numbers, but they don't want
- * #defines in header files unless used in multiple locations
- */
-#if	defined(CONFIG_XILINX_AMP_CPU1_SLAVE)	|| \
-	defined(CONFIG_XILINX_CPU1_TEST)	|| \
-	defined(CONFIG_ZYNQ_AMP_CPU1_SLAVE)	|| \
-	defined(CONFIG_ZYNQ_CPU1_TEST)
+#define IRQ_TIMERCOUNTER0	42	/* default timer interrupt */
 
-	#define IRQ_TIMERCOUNTER1		69
-	#define XTTCPSS_TIMER_BASE		TTC0_BASE + 0x1000
-	#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER1 + 1)
-#else
-	#define IRQ_TIMERCOUNTER0		42
-	#define XTTCPSS_TIMER_BASE		TTC0_BASE
-	#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER0 + 1)
-#endif
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
  * and use same offsets for Timer 2
@@ -80,9 +66,12 @@
 
 #define XTTCPSS_CNT_CNTRL_DISABLE_MASK	0x1
 
-/* Setup the timers to use pre-scaling */
-
-#define TIMER_RATE (PERIPHERAL_CLOCK_RATE / 32)
+/* Setup the timers to use pre-scaling, using a fixed value for now that will work
+ * across most input frequency, but it may need to be more dynamic
+ */
+#define PRESCALE_EXPONENT 	11	/* 2 ^ PRESCALE_EXPONENT = PRESCALE */
+#define PRESCALE 		2048	/* The exponent must match this */
+#define CLK_CNTRL_PRESCALE (((PRESCALE_EXPONENT - 1) << 1) | 0x1)
 
 /**
  * struct xttcpss_timer - This definition defines local timer structure
@@ -91,6 +80,7 @@
  **/
 struct xttcpss_timer {
 	void __iomem *base_addr;
+	int frequency;
 };
 
 static struct xttcpss_timer timers[2];
@@ -161,12 +151,11 @@ static void __init xttcpss_timer_hardware_init(void)
 	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
 	   it by 32 also. Let it start running now.
 	 */
-	timers[XTTCPSS_CLOCKSOURCE].base_addr = XTTCPSS_TIMER_BASE;
-
 	__raw_writel(0x0, timers[XTTCPSS_CLOCKSOURCE].base_addr +
 				XTTCPSS_IER_OFFSET);
-	__raw_writel(0x9, timers[XTTCPSS_CLOCKSOURCE].base_addr +
-				XTTCPSS_CLK_CNTRL_OFFSET);
+	__raw_writel(CLK_CNTRL_PRESCALE, 
+			timers[XTTCPSS_CLOCKSOURCE].base_addr +
+			XTTCPSS_CLK_CNTRL_OFFSET);
 	__raw_writel(0x10, timers[XTTCPSS_CLOCKSOURCE].base_addr +
 				XTTCPSS_CNT_CNTRL_OFFSET);
 
@@ -175,18 +164,13 @@ static void __init xttcpss_timer_hardware_init(void)
 	 * disabled for now.
 	 */
 
-	timers[XTTCPSS_CLOCKEVENT].base_addr = XTTCPSS_TIMER_BASE + 4;
-
 	__raw_writel(0x23, timers[XTTCPSS_CLOCKEVENT].base_addr +
 			XTTCPSS_CNT_CNTRL_OFFSET);
-	__raw_writel(0x9, timers[XTTCPSS_CLOCKEVENT].base_addr +
+	__raw_writel(CLK_CNTRL_PRESCALE, 
+			timers[XTTCPSS_CLOCKEVENT].base_addr + 
 			XTTCPSS_CLK_CNTRL_OFFSET);
 	__raw_writel(0x1, timers[XTTCPSS_CLOCKEVENT].base_addr +
 			XTTCPSS_IER_OFFSET);
-
-	/* Setup IRQ the clock event timer */
-	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
-	setup_irq(XTTCPCC_EVENT_TIMER_IRQ, &event_timer_irq);
 }
 
 /**
@@ -246,7 +230,7 @@ static void xttcpss_set_mode(enum clock_event_mode mode,
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		xttcpss_set_interval(timer, TIMER_RATE / HZ);
+		xttcpss_set_interval(timer, timer->frequency / HZ);
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:
 	case CLOCK_EVT_MODE_UNUSED:
@@ -286,16 +270,74 @@ static struct clock_event_device xttcpss_clockevent = {
  **/
 static void __init xttcpss_timer_init(void)
 {
+	u32 irq;
+	struct device_node *timer = NULL;
+	void *prop = NULL;
+	u32 timer_baseaddr;
+	const char * const timer_list[] = {
+		"xlnx,ps7-ttc-1.00.a",
+		NULL
+	};
+
 #ifdef CONFIG_HAVE_ARM_TWD
 	twd_base = SCU_CPU_TIMER_BASE;
 #endif
+
+	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
+	 * and use it, but if missing use some defaults for now to help the 
+	 * transition, note that the event timer uses the interrupt and it's the
+	 * 2nd TTC hence the +1 for the interrupt
+	 */
+	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
+	if (timer) {
+		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
+		irq = be32_to_cpup(of_get_property(timer, "interrupts", NULL)) + 1;
+		prop = (void *)of_get_property(timer, "clock-frequency", NULL);
+	} else {
+		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
+		timer_baseaddr = (u32)TTC0_BASE;
+		irq = IRQ_TIMERCOUNTER0 + 1;
+	}
+
+	/* Map the memory so it's accessible in the page table */
+
+	timer_baseaddr = (u32)ioremap(timer_baseaddr, PAGE_SIZE);
+	timers[XTTCPSS_CLOCKSOURCE].base_addr = (void __iomem *)timer_baseaddr;
+	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
+
+	/* Setup the interrupt realizing that the 2nd timer in the TTC
+	   (used for the event sournce) interrupt number is +1 from the 1st timer
+	 */
+	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
+	setup_irq(irq, &event_timer_irq);
+
+	printk(KERN_INFO "%s #0 at 0x%08x, irq=%d\n",
+		timer_list[0], timer_baseaddr, irq);
+
+	/* If there is clock-frequency property than use it, otherwise use a default
+	 * that may not be the right timing, but might boot the kernel, the event 
+	 * timer is the only one that needs the frequency, but make them match
+	 */
+	if (prop)
+		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop) 
+								/ PRESCALE;
+	else {
+		printk(KERN_ERR "Error, no clock-frequency specified for timer\n");
+		timers[XTTCPSS_CLOCKEVENT].frequency = PERIPHERAL_CLOCK_RATE
+							 / PRESCALE;
+	}
+	timers[XTTCPSS_CLOCKSOURCE].frequency = 
+				timers[XTTCPSS_CLOCKEVENT].frequency;
+
 	xttcpss_timer_hardware_init();
-	clocksource_register_hz(&clocksource_xttcpss, TIMER_RATE);
+	clocksource_register_hz(&clocksource_xttcpss,
+				timers[XTTCPSS_CLOCKSOURCE].frequency);
 
 	/* Calculate the parameters to allow the clockevent to operate using
 	   integer math
 	*/
-	clockevents_calc_mult_shift(&xttcpss_clockevent, TIMER_RATE, 4);
+	clockevents_calc_mult_shift(&xttcpss_clockevent, 
+				timers[XTTCPSS_CLOCKEVENT].frequency, 4);
 
 	xttcpss_clockevent.max_delta_ns =
 		clockevent_delta2ns(0xfffe, &xttcpss_clockevent);

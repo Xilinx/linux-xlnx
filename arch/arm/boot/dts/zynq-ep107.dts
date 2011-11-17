@@ -43,6 +43,13 @@
 			#interrupt-cells = <2>;
 		};
 
+		timer0: timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xF8001000 0x1000>;
+			interrupts = <42 0>;
+			clock-frequency = <2500000>;
+		};
+
 		slcr: slcr@f8000000 {
 			compatible = "xlnx,ps7-slcr-1.00.a";
 			reg = <0xF8000000 0x1000>;
