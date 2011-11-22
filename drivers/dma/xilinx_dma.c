@@ -25,6 +25,7 @@
  *
  */
 
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -522,6 +523,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 {
 	unsigned long flags;
 	struct xilinx_dma_desc_sw *desch, *desct;
+	struct xilinx_dma_desc_hw *hw;
 
 	if (chan->err)
 		return;
@@ -546,28 +548,66 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->err)
 		goto out_unlock;
 
+	if (chan->has_SG) {
+		desch = list_first_entry(&chan->pending_list,
+				struct xilinx_dma_desc_sw, node);
+
+		desct = container_of(chan->pending_list.prev,
+				struct xilinx_dma_desc_sw, node);
+
+		DMA_OUT(&chan->regs->cdr, desch->async_tx.phys);
+
+		dma_start(chan);
+
+		if (chan->err)
+			goto out_unlock;
+		list_splice_tail_init(&chan->pending_list, &chan->active_list);
+
+		/* Enable interrupts
+		*/
+		DMA_OUT(&chan->regs->cr,
+			DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
+
+		/* Update tail ptr register and start the transfer
+		*/
+		DMA_OUT(&chan->regs->tdr, desct->async_tx.phys);
+		goto out_unlock;
+	}
+
+	/* In simple mode
+	*/
+
+	dma_halt(chan);
+
+	if (chan->err)
+		goto out_unlock;
+
+	printk(KERN_INFO "xilinx_dma_start_transfer::simple DMA mode\n");
+
 	desch = list_first_entry(&chan->pending_list,
-			struct xilinx_dma_desc_sw, node);
+				struct xilinx_dma_desc_sw, node);
 
-	desct = container_of(chan->pending_list.prev,
-			struct xilinx_dma_desc_sw, node);
-
-	DMA_OUT(&chan->regs->cdr, desch->async_tx.phys);
+	list_del(&desch->node);
+	list_add_tail(&desch->node, &chan->active_list);
 
 	dma_start(chan);
 
 	if (chan->err)
 		goto out_unlock;
-	list_splice_tail_init(&chan->pending_list, &chan->active_list);
+
+	hw = &desch->hw;
 
 	/* Enable interrupts
 	*/
 	DMA_OUT(&chan->regs->cr,
 		DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
 
-	/* Update tail ptr register and start the transfer
+	DMA_OUT(&chan->regs->src, hw->buf_addr);
+
+	/* Start the transfer
 	*/
-	DMA_OUT(&chan->regs->tdr, desct->async_tx.phys);
+	DMA_OUT(&chan->regs->btt_ref,
+		hw->control & XILINX_DMA_MAX_TRANS_LEN);
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -1550,7 +1590,9 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	}
 
 	if (feature & XILINX_DMA_IP_DMA) {
-		chan->has_SG = 1;
+		chan->has_SG = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
+					XILINX_DMA_FTR_HAS_SG_SHIFT;
+
 		chan->start_transfer = xilinx_dma_start_transfer;
 
 		if (of_device_is_compatible(node,
@@ -1711,7 +1753,8 @@ static int __devinit xilinx_dma_of_probe(struct platform_device *op,
 				NULL);
 		if (value) {
 			if (be32_to_cpup(value) == 1) {
-				xdev->feature |= XILINX_DMA_FTR_STSCNTRL_STRM;
+				xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
+							XILINX_DMA_FTR_HAS_SG);
 			}
 		}
 
