@@ -1777,8 +1777,8 @@ static void axienet_dma_err_handler(unsigned long data)
  * device. Parses through device tree and populates fields of
  * axienet_local. It registers the Ethernet device.
  **/
-static int __init
-axienet_of_probe(struct platform_device *op, const struct of_device_id *match)
+static int __devinit
+axienet_of_probe(struct platform_device *op)
 {
 	struct device_node *np;
 	struct axienet_local *lp;
