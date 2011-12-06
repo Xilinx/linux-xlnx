@@ -248,10 +248,10 @@ static struct xylonfb_hw_platform_data logiCVC_platform_data[] = {
 		.vmem_baseaddr = 0x0F000000,
 		.xres = 0,
 		.yres = 0,
-		.xvirt = 1024,
-		.yvirt = 1024,
-		.row_stride = 1024,
-		.bpp = 8,
+		.xvirt = 2048, // 1024,
+		.yvirt = 1080, // 1024,
+		.row_stride = 2048, // 1024,
+		.bpp = 32, // 8,
 	},
 	{
 		.regs_baseaddr = 0x40030000,
@@ -1039,7 +1039,7 @@ static int xylonfb_probe(struct platform_device *pdev)
 
 	dbg("%s", __func__);
 
-	layers = ARRAY_SIZE(logiCVC_platform_data);
+	layers = 1; // ARRAY_SIZE(logiCVC_platform_data);
 
 	afbi = kzalloc(sizeof(struct fb_info *) * layers, GFP_KERNEL);
 	if (!afbi) {
