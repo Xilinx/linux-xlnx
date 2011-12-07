@@ -106,6 +106,8 @@ for informational purposes by the guest).
 +----------------------+--------------------+---------------+
 |          6           |     ioMemory       |       -       |
 +----------------------+--------------------+---------------+
+|          7           |       rpmsg        |  Appendix H   |
++----------------------+--------------------+---------------+
 |          9           |   9P transport     |       -       |
 +----------------------+--------------------+---------------+
 
@@ -2198,3 +2200,95 @@ as follows:
   VIRTIO_BALLOON_S_MEMTOT The total amount of memory available
   (in bytes).
 
+Appendix H: Rpmsg: Remote Processor Messaging
+
+Virtio rpmsg devices represent remote processors on the system
+which run in asymmetric multi-processing (AMP) configuration, and
+which are usually used to offload cpu-intensive tasks from the main
+application processor.
+
+Virtio is being used to communicate with those remote processors;
+empty buffers are placed in one virtqueue for receiving messages, and
+non-empty buffers, containing outbound messages, are enqueued in
+a second virtqueue for transmission.
+
+Numerous communication channels can be multiplexed over those two
+virtqueues, so different entities, running on the application and remote
+processor, can directly communicate in a point-to-point fashion.
+
+  Configuration
+
+  Subsystem Device ID 7
+
+  Virtqueues 0:receiveq. 1:transmitq.
+
+  Feature bits
+
+  VIRTIO_RPMSG_F_NS (0) Device sends (and capable of receiving) name service
+    messages announcing the creation (or destruction) of a channel:
+
+/**
+ * struct rpmsg_ns_msg - dynamic name service announcement message
+ * @name: name of remote service that is published
+ * @addr: address of remote service that is published
+ * @flags: indicates whether service is created or destroyed
+ *
+ * This message is sent across to publish a new service (or announce
+ * about its removal). When we receives these messages, an appropriate
+ * rpmsg channel (i.e device) is created/destroyed.
+ */
+struct rpmsg_ns_msg {
+	char name[RPMSG_NAME_SIZE];
+	u32 addr;
+	u32 flags;
+} __packed;
+
+/**
+ * enum rpmsg_ns_flags - dynamic name service announcement flags
+ *
+ * @RPMSG_NS_CREATE: a new remote service was just created
+ * @RPMSG_NS_DESTROY: a remote service was just destroyed
+ */
+enum rpmsg_ns_flags {
+	RPMSG_NS_CREATE		= 0,
+	RPMSG_NS_DESTROY	= 1,
+};
+
+  Device configuration layout
+
+  At his point none currently defined, but the plan is to use the
+  the config space for announcing the existence of static channels
+  and configuring their addresses.
+
+  Device Initialization
+
+  The initialization routine should identify the receive and
+  transmission virtqueues.
+
+  The receive virtqueue should be filled with receive buffers.
+
+  Device Operation
+
+  Messages are transmitted by placing them in the transmitq, and
+  buffers for inbound messages are placed in the receiveq. In any
+  case, messages are always preceded by the following header:
+
+/**
+ * struct rpmsg_hdr - common header for all rpmsg messages
+ * @src: source address
+ * @dst: destination address
+ * @reserved: reserved for future use
+ * @len: length of payload (in bytes)
+ * @flags: message flags
+ * @data: @len bytes of message payload data
+ *
+ * Every message sent(/received) on the rpmsg bus begins with this header.
+ */
+struct rpmsg_hdr {
+	u32 src;
+	u32 dst;
+	u32 reserved;
+	u16 len;
+	u16 flags;
+	u8 data[0];
+} __packed;
