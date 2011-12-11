@@ -1124,7 +1124,7 @@ static int xylonfb_probe(struct platform_device *pdev)
 		sprintf(fbi->fix.id, "Xylon FB%d", i);
 		fbi->fix.smem_start = layer_data->fb_phys;
 		fbi->fix.smem_len = layer_data->fb_size;
-		fbi->fix.type = FB_TYPE_TEXT;
+		fbi->fix.type = FB_TYPE_PACKED_PIXELS;
 		if (pdata->bpp == 8 || pdata->bpp == 16)
 			fbi->fix.visual = FB_VISUAL_DIRECTCOLOR;
 		else
