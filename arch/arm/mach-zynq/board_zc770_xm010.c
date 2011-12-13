@@ -177,10 +177,11 @@ static const char *xilinx_dt_match[] = {
 	NULL
 };
 
-MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
+MACHINE_START(XILINX, "Xilinx Zynq Platform")
 	.map_io		= xilinx_map_io,
 	.init_irq	= xilinx_irq_init,
 	.init_machine	= board_zc770_xm010_init,
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
+	.reserve	= xilinx_memory_init,
 MACHINE_END

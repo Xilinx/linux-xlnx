@@ -28,5 +28,6 @@ void platform_device_init(void);
 void xilinx_init_machine(void);
 void xilinx_irq_init(void);
 void xilinx_map_io(void);
+void xilinx_memory_init(void);
 
 #endif

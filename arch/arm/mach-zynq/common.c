@@ -22,7 +22,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of.h>
-#include <linux/mmzone.h>
+#include <linux/memblock.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -46,35 +46,6 @@ static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
 	{}
 };
-
-#define DMA_ZONE_PAGES 		(SZ_32M >> PAGE_SHIFT)
-#define DMA_ZONE_HOLE_PAGES 	(SZ_512K >> PAGE_SHIFT)
-
-/* Setup a special DMA memory zone to deal with the fact the from 0 - 512K cannot
- * be DMA-ed into. The size of the DMA zone is a bit arbitrary but doesn't hurt to
- * be larger as the memory allocator will use the DMA zone for normal if needed.
- */
-void xilinx_adjust_zones(unsigned long *zone_size, unsigned long *zhole_size)
-{
-	/* the normal zone has already been setup when this function is called and is
-	 * assumed to be the only zone, this code is a bit confusing
-	 */
-
-	pr_info("Xilinx: Adjusting memory zones to add DMA zone\n");
-
-	/* setup the zone sizes reducing the normal zone by the size
-	 * of the DMA zone
-	 */
-	zone_size[ZONE_NORMAL] = zone_size[0] - DMA_ZONE_PAGES;
-	zone_size[ZONE_DMA] = DMA_ZONE_PAGES;
-
-	/* setup the holes in each zone, the normal zone has the same hole it had
-	 * on entry to this function which should be no hole
-	 * the dma zone has a hole where DMA can't be done
-	 */
-	zhole_size[ZONE_NORMAL] = zhole_size[0];
-	zhole_size[ZONE_DMA] = DMA_ZONE_HOLE_PAGES;	
-}
 
 /**
  * xilinx_init_machine() - System specific initialization, intended to be
@@ -182,4 +153,23 @@ static struct map_desc io_desc[] __initdata = {
 void __init xilinx_map_io(void)
 {
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
+}
+
+/**
+ * xilinx_memory_init() - Initialize special memory 
+ * 
+ * We need to stop things allocating the low memory as DMA can't work in
+ * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
+ */
+void __init xilinx_memory_init()
+{
+	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
+	 * which can't be used for DMA
+	 */ 
+	memblock_reserve(0, 0x4000);
+
+	/* the video frame buffer is in DDR and shouldn't be used by the kernel
+	 * as it will be ioremapped by the frame buffer driver
+	 */
+	memblock_remove(0xF000000, 0x1000000);
 }

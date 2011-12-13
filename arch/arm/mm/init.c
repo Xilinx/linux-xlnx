@@ -709,10 +709,16 @@ void free_initmem(void)
 				    "TCM link");
 #endif
 
+/* for Zynq, don't let the kernel free up this init memory as it will get
+ * used for DMAs (lower 512K) which is not allowed, the ARCH_ZYNQ isn't
+ * setup right to allow machine_is_zynq to work
+ */
+#ifndef CONFIG_ARCH_ZYNQ
 	if (!machine_is_integrator() && !machine_is_cintegrator())
 		totalram_pages += free_area(__phys_to_pfn(__pa(__init_begin)),
 					    __phys_to_pfn(__pa(__init_end)),
 					    "init");
+#endif
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
