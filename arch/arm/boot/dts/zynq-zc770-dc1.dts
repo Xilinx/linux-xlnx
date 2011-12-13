@@ -1,0 +1,86 @@
+/dts-v1/;
+
+/ {
+	model = "Xilinx Zynq ZC770 - V&C dt1 - minimum)";
+	compatible = "xlnx,zynq-zc770-xm010";
+	#address-cells = <0x1>;
+	#size-cells = <0x1>;
+	interrupt-parent = <0x1>;
+
+	memory {
+		device_type = "memory";
+		reg = <0x00000000 0x40000000>; 
+	};
+	chosen {
+		bootargs = "console=ttyPS0,115200 console=tty0 root=/dev/ram rw initrd=0x800000,8M earlyprintk ip=:::::eth0:dhcp"; 
+		linux,stdout-path = "/amba@0/uart@E0001000";
+	};
+
+	amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,gic";
+			reg = <0xf8f01000 0x1000>;
+			#interrupt-cells = <0x2>;
+			linux,phandle = <0x1>;
+			phandle = <0x1>;
+		};
+
+		uart@e0001000 {
+			compatible = "xlnx,ps7-uart-1.00.a";
+			reg = <0xe0001000 0x1000>;
+			interrupts = <0x52 0x0>;
+			clock = <50000000>;
+		};
+
+		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0x2a 0x0>;
+			clock-frequency = <133000000>;
+		};
+
+		eth@e000b000 {
+			compatible = "xlnx,ps7-ethernet-1.00.a";
+			reg = <0xe000b000 0x1000>;
+			interrupts = <0x36 0x0>;
+			phy-handle = <0x2>;
+			#address-cells = <0x1>;
+			#size-cells = <0x0>;
+
+			phy@23 {
+				compatible = "marvell,88e1111";
+				device_type = "ethernet-phy";
+				reg = <0x7>;
+				marvell,reg-init = <0x2 0x15 0x0 0x20>;
+				linux,phandle = <0x2>;
+				phandle = <0x2>;
+			};
+		};
+
+		sdhci@e0100000 {
+			compatible = "generic-sdhci";
+			reg = <0xe0100000 0x1000>;
+			interrupts = <0x38 0x0>;
+		};
+
+		usb@e0002000 {
+			compatible = "xlnx,ps7-usb-1.00.a";
+			reg = <0xe0002000 0x1000>;
+			interrupts = <0x35 0x0>;
+			dr_mode = "host";
+			phy_type = "ulpi";
+		};
+
+		gpio@e000a000 {
+			compatible = "xlnx,ps7-gpio-1.00.a";
+			reg = <0xe000a000 0x1000>;
+			interrupts = <0x34 0x0>;
+		};
+	};
+};
