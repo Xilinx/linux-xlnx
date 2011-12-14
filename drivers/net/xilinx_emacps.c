@@ -964,6 +964,7 @@ static void xemacps_set_hwaddr(struct net_local *lp)
  */
 static void xemacps_reset_hw(struct net_local *lp)
 {
+	u32 regisr;
 	/* make sure we have the buffer for ourselves */
 	wmb();
 
@@ -980,7 +981,8 @@ static void xemacps_reset_hw(struct net_local *lp)
 
 	/* Disable all interrupts */
 	xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET, ~0UL);
-	xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
+	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
+	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 }
 
 /**
