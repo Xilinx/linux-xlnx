@@ -12,7 +12,7 @@
 		reg = <0x00000000 0x40000000>; 
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 console=tty0 root=/dev/ram rw initrd=0x800000,8M earlyprintk ip=:::::eth0:dhcp"; 
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk ip=:::::eth0:dhcp debug"; 
 		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
@@ -81,6 +81,40 @@
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
 			interrupts = <0x34 0x0>;
+		};
+		i2c0: i2c@e0004000 {
+			compatible = "xlnx,ps7-i2c-1.00.a";
+			reg = <0xE0004000 0x1000>;
+			interrupts = <57 0>;
+			bus-id = <0>;
+			input-clk = <133000000>;
+			i2c-clk = <400000>;
+			
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@50 {
+				compatible = "at,24c02";
+				reg = <0x50>;
+			};
+		};
+
+		spi1: spi@e0007000 {
+			compatible = "xlnx,ps7-spi-1.00.a";
+			reg = <0xE0007000 0x1000>;
+			interrupts = <81 0>;
+			speed-hz = <166666700>;
+			bus-num = <0>;
+			num-chip-select = <4>;
+		};
+
+		qspi0: spi@e000d000 {
+			compatible = "xlnx,ps7-qspi-1.00.a";
+			reg = <0xE000D000 0x1000>;
+			interrupts = <51 0>;
+			speed-hz = <200000000>;
+			bus-num = <1>;
+			num-chip-select = <1>;
+			is-dual = <0>;
 		};
 	};
 };
