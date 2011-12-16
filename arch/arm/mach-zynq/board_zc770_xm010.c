@@ -63,7 +63,7 @@ static struct flash_platform_data spi_flash_pdata = {
 	.name			= "serial_flash",
 	.parts			= spi_flash_partitions,
 	.nr_parts		= ARRAY_SIZE(spi_flash_partitions),
-	.type			= "sst25wf040"	/* should be 080, but not supported yet */
+	.type			= "sst25wf080"	
 };
 
 
@@ -134,7 +134,7 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 		.platform_data		= &spi_flash_pdata,
 #endif
 		.irq			= IRQ_SPI1,
-		.max_speed_hz		= 75000000, /* max sample rate at 3V */
+		.max_speed_hz		= 40000000, /* max sample rate at 3V */
 		.bus_num		= 0,
 		.chip_select		= 1,
 	},
@@ -147,7 +147,7 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 		.platform_data		= &qspi_flash_pdata,
 #endif
 		.irq			= IRQ_QSPI0,
-		.max_speed_hz		= 50000000, /* max sample rate at 3V */
+		.max_speed_hz		= 100000000, /* max sample rate at 3V */
 		.bus_num		= 1,
 		.chip_select		= 0,
 	},
