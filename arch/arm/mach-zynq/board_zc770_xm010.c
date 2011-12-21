@@ -147,7 +147,7 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 		.platform_data		= &qspi_flash_pdata,
 #endif
 		.irq			= IRQ_QSPI0,
-		.max_speed_hz		= 100000000, /* max sample rate at 3V */
+		.max_speed_hz		= 50000000, /* max sample rate at 3V */
 		.bus_num		= 1,
 		.chip_select		= 0,
 	},

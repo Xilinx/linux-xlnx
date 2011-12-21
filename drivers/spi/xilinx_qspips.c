@@ -79,7 +79,6 @@
 #define XQSPIPS_IXR_TXFULL_MASK		0x00000008 /* QSPI TX FIFO is full */
 #define XQSPIPS_IXR_RXNEMTY_MASK	0x00000010 /* QSPI RX FIFO Not Empty */
 #define XQSPIPS_IXR_ALL_MASK		(XQSPIPS_IXR_TXNFULL_MASK | \
-					 XQSPIPS_IXR_RXNEMTY_MASK | \
 					 XQSPIPS_IXR_MODF_MASK)
 
 /*
@@ -565,8 +564,16 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		} else {
 			/* If transfer and receive is completed then only send
 			 * complete signal */
-			if (!xqspi->bytes_to_receive)
+			if (xqspi->bytes_to_receive)
+				/* There is still some data to be received.
+				   Enable Rx not empty interrupt */
+				xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
+						XQSPIPS_IXR_RXNEMTY_MASK);
+			else {
+				xqspips_write(xqspi->regs + XQSPIPS_IDIS_OFFSET,
+						XQSPIPS_IXR_RXNEMTY_MASK);
 				complete(&xqspi->done);
+			}
 		}
 	}
 
