@@ -32,9 +32,8 @@
  *	To avoid this, we wrote the expected bytes to receive as FIFO depth + 1
  *	instead of FIFO depth. This generated the second DATA interrupt as there
  *	are still outstanding bytes to be received.
- *	In repeated start and read, write in one stop, we need to process
- *	consecutive messages without generating stop condition. So we used a
- *	flag to avoid clearing of HOLD bit after processing each message.
+ *
+ *	This driver has no support for Repeated start.
  *
  */
 
@@ -148,6 +147,7 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 {
 	unsigned int isr_status, avail_bytes;
 	unsigned int bytes_to_recv, bytes_to_send;
+	unsigned int ctrl_reg = 0;
 	struct xi2cps *id = ptr;
 
 	isr_status = xi2cps_readreg(XI2CPS_ISR_OFFSET);
@@ -226,12 +226,19 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 		 * bit if there are no further messages to be processed.
 		 */
 				complete(&id->xfer_done);
-				if (id->bus_hold_flag == 0)
+			}
+			if (id->send_count == 0) {
+				if (id->bus_hold_flag == 0) {
 					/* Clear the hold bus bit */
-					xi2cps_writereg(
-					(xi2cps_readreg(XI2CPS_CR_OFFSET) &
-					(~XI2CPS_CR_HOLD_BUS_MASK)),
-					XI2CPS_CR_OFFSET);
+					ctrl_reg =
+					xi2cps_readreg(XI2CPS_CR_OFFSET);
+					if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
+						== XI2CPS_CR_HOLD_BUS_MASK)
+						xi2cps_writereg(
+						(ctrl_reg &
+						(~XI2CPS_CR_HOLD_BUS_MASK)),
+						XI2CPS_CR_OFFSET);
+				}
 			}
 		} else {
 		/*
@@ -392,11 +399,9 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	 * Set the flag to zero when multiple messages are to be
 	 * processed with a repeated start.
 	 */
-	if (num > 1) {
+	if (num > 1)
 		id->bus_hold_flag = 0;
-		xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) |
-				XI2CPS_CR_HOLD_BUS_MASK), XI2CPS_CR_OFFSET);
-	} else
+	else
 		id->bus_hold_flag = 1;
 
 	/* Process the msg one by one */
