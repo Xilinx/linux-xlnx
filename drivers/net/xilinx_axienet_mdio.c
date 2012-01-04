@@ -4,15 +4,17 @@
  * Copyright (c) 2009 Secret Lab Technologies, Ltd.
  * Copyright (c) 2010 Xilinx, Inc. All rights reserved.
  *
- * TODO:
- * - Fix the clock divisor issue. Currently it is hard-coded in
- *   the function axienet_mdio_setup.
  */
 
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
 
 #include "xilinx_axienet.h"
+
+#define MAX_MDIO_FREQ	   2500000 /* 2.5 MHz */
+#define CPU_NAME		"cpu"
+#define CLOCK_FREQ_PROP_NAME    "clock-frequency"
+#define DEFAULT_CLOCK_DIVISOR   29 /* If all else fails, fallback to this */
 
 /* ----------------------------------------------------------------------------
  * MDIO Bus functions
@@ -142,16 +144,69 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	struct resource res;
 	u32 clk_div;
 	long end = jiffies + 2;
-	struct device_node *np1 = of_get_parent(lp->phy_node);
+	struct device_node *np1;
 
-	/* Calculate a reasonable divisor for the clock rate. Currently it is
-	 * hard-coded to a value of 29. This means for a clock-frequency of
-	 * 50 MHz, the MDIO clock frequency will be 0.833 MHz, for 100 MHz, it
-	 * would be 1.667 MHz and so on. As per IEEE standards, the max MDIO
-	 * clock can be 2.5 MHz.Hence for a clock frequency of more than
-	 * 125 MHz, this hard-coded value will not work. Ideally the clk
-	 * divisor needs to be calculated at runtime. */
-	clk_div = 29;
+	/* clk_div can be calculated by deriving it from the equation:
+	 * fMDIO = fHOST / ((1 + clk_div) * 2)
+	 *
+	 * Where fMDIO <= 2500000, so we get:
+	 * fHOST / ((1 + clk_div) * 2) <= 2500000
+	 *
+	 * Then we get:
+	 * 1 / ((1 + clk_div) * 2) <= (2500000 / fHOST)
+	 *
+	 * Then we get:
+	 * 1 / (1 + clk_div) <= ((2500000 * 2) / fHOST)
+	 *
+	 * Then we get:
+	 * 1 / (1 + clk_div) <= (5000000 / fHOST)
+	 *
+	 * So:
+	 * (1 + clk_div) >= (fHOST / 5000000)
+	 *
+	 * And finally:
+	 * clk_div >= (fHOST / 5000000) - 1
+	 *
+	 * fHOST can be read from the flattened device tree as property "clock-frequency"
+	 * from the CPU
+	 */
+	np1 = of_find_node_by_name(NULL, CPU_NAME);
+	if(NULL == np1)
+	{
+		printk(KERN_WARNING "%s(): Could not find CPU device node.", __FUNCTION__);
+		printk(KERN_WARNING "Setting MDIO clock divisor to default %d\n",
+		       DEFAULT_CLOCK_DIVISOR);
+		clk_div = DEFAULT_CLOCK_DIVISOR;
+	}
+	else
+	{
+		u32 *property_p;
+
+		property_p = (uint32_t *)of_get_property(np1, CLOCK_FREQ_PROP_NAME, NULL);
+		if(NULL == property_p)
+		{
+			printk(KERN_WARNING "%s(): Could not find CPU property %s.",
+			       __FUNCTION__, CLOCK_FREQ_PROP_NAME);
+			printk(KERN_WARNING "Setting MDIO clock divisor to default %d\n",
+			       DEFAULT_CLOCK_DIVISOR);
+			clk_div = DEFAULT_CLOCK_DIVISOR;
+		}
+		else
+		{
+			u32 host_clock = be32_to_cpup(property_p);
+
+			clk_div = (host_clock / (MAX_MDIO_FREQ * 2)) - 1;
+
+			/* If there is any remainder from the division of fHOST / (MAX_MDIO_FREQ * 2),
+			 * then we need to add 1 to the clock divisor or we will surely be
+			 * above 2.5 MHz */
+			if(host_clock % (MAX_MDIO_FREQ * 2))
+				clk_div++;
+			printk(KERN_DEBUG "%s(): Setting MDIO clock divisor to %u based on %u Hz host clock.\n",
+			       __FUNCTION__, clk_div, host_clock);
+		}
+		of_node_put(np1);
+	}
 
 	axienet_iow(lp, XAE_MDIO_MC_OFFSET, (((u32)clk_div) |
 						XAE_MDIO_MC_MDIOEN_MASK));
@@ -168,6 +223,7 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	if (!bus)
 		return -ENOMEM;
 
+	np1 = of_get_parent(lp->phy_node);
 	of_address_to_resource(np1, 0, &res);
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
