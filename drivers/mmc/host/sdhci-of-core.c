@@ -30,7 +30,17 @@
 #include "sdhci-of.h"
 #include "sdhci.h"
 
-static struct sdhci_ops sdhci_of_ops = {
+static unsigned int xilinx_of_get_max_clock(struct sdhci_host *host)
+{
+	struct sdhci_of_host *of_host = sdhci_priv(host);
+	return of_host->clock;
+}
+
+struct sdhci_of_data sdhci_data = { 
+	.quirks = SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK | SDHCI_QUIRK_BROKEN_ADMA,
+	.ops = {
+		.get_max_clock = xilinx_of_get_max_clock,
+	},
 };
 
 #ifdef CONFIG_MMC_SDHCI_BIG_ENDIAN_32BIT_BYTE_SWAPPER
@@ -170,8 +180,7 @@ static int __devinit sdhci_of_probe(struct platform_device *ofdev)
 	if (sdhci_of_data) {
 		host->quirks = sdhci_of_data->quirks;
 		host->ops = &sdhci_of_data->ops;
-	} else
-		host->ops = &sdhci_of_ops;
+	}
 
 	if (of_get_property(np, "sdhci,auto-cmd12", NULL))
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
@@ -222,7 +231,7 @@ static const struct of_device_id sdhci_of_match[] = {
 #ifdef CONFIG_MMC_SDHCI_OF_HLWD
 	{ .compatible = "nintendo,hollywood-sdhci", .data = &sdhci_hlwd, },
 #endif
-	{ .compatible = "generic-sdhci", },
+	{ .compatible = "generic-sdhci", .data = &sdhci_data, },
 	{},
 };
 MODULE_DEVICE_TABLE(of, sdhci_of_match);
