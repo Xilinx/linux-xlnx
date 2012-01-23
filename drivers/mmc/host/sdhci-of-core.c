@@ -37,7 +37,7 @@ static unsigned int xilinx_of_get_max_clock(struct sdhci_host *host)
 }
 
 struct sdhci_of_data sdhci_data = { 
-	.quirks = SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK | SDHCI_QUIRK_BROKEN_ADMA,
+	.quirks = SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
 	.ops = {
 		.get_max_clock = xilinx_of_get_max_clock,
 	},
