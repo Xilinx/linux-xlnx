@@ -32,7 +32,7 @@
  * This will go away as soon as we have the IOMMU-based generic
  * DMA API in place.
  */
-#define OMAP_RPROC_CMA_BASE	(0xa9800000)
+#define OMAP_RPROC_CMA_BASE	(0xa9000000)
 
 /*
  * These data structures define platform-specific information
