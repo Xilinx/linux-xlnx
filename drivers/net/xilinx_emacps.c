@@ -13,25 +13,14 @@
  * introduced in this driver.
  *
  * TODO:
- * 1. Current GEM hardware supports only 100Mbps, when it supprts multiple
- *    speed, please remove DEBUG_SPEED and xemacps_phy_init function.
- *    It can also be done with ethtool, but it depends on if rootfile
- *    system has it or not. So just leave it as is for now.
- * 2. RGMII mode is not yet determined. Four modes are supported by open
- *    source linux Marvell driver found in drivers/net/phy directory.
- *    There might have hardware depenedent configurations and needs to be
- *    verified. The worst case is the subtle configuration does not apply,
- *    we have to modify xemacps_phy_init and hard code it. Ugly...
- * 3. 1588 is not tested due to network setup limitation. If GEM does not
- *    update 1588 related timer counters. Driver need to be updated with
- *    calculations.
- * 4. Two instances are supported from EP3 but no second phy connection.
- *    We need to revisit/verify this when hardware is available.
- *
- * 6. NFS mounted root file system and performance test are not done until
- *    hardware is stable and processor speed is back to normal.
- * 7. JUMBO frame is not enabled per EPs spec. Please update it if this
+ * 1. JUMBO frame is not enabled per EPs spec. Please update it if this
  *    support is added in and set MAX_MTU to 9000.
+ * 2. For PEEP baords 1000 Mbps does not work. Need to debug it.
+ * 3. The SLCR clock divisors are hard coded for Zynq board for the time being.
+ *    The assumption is IO PLL output is 1000 MHz. However, this will not
+ *    be the case always. Ideally the divisors need to be calculated at
+ *    runtime depending upon the IO PLL output frequency. Hence this
+ *    needs to be revsited.
  */
 
 #include <linux/module.h>
@@ -96,7 +85,6 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
  */
 #undef  DEBUG
 #define DEBUG
-#define DEBUG_SPEED
 
 #define XEMACPS_SEND_BD_CNT	32
 #define XEMACPS_RECV_BD_CNT	32
@@ -469,6 +457,20 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_RXBUF_NEW_MASK       0x00000001 /* Used bit.. */
 #define XEMACPS_RXBUF_ADD_MASK       0xFFFFFFFC /* Mask for address */
 
+
+#define XSLCR_EMAC0_CLK_CTRL_OFFSET	0x140 /* EMAC0 Reference Clk Control */
+
+#define BOARD_TYPE_ZYNQ			0x01
+#define BOARD_TYPE_PEEP			0x02
+
+#define SLCR_PEEP_GEM_10M_CLK_CTRL_VALUE     0x00103031
+#define SLCR_PEEP_GEM_100M_CLK_CTRL_VALUE    0x00103001
+#define SLCR_PEEP_GEM_1G_CLK_CTRL_VALUE      0x00103011
+
+#define SLCR_ZYNQ_GEM_10M_CLK_CTRL_VALUE     0x00803201
+#define SLCR_ZYNQ_GEM_100M_CLK_CTRL_VALUE    0x00800501
+#define SLCR_ZYNQ_GEM_1G_CLK_CTRL_VALUE      0x00800101
+
 #define xemacps_read(base, reg)	\
 	__raw_readl((u32)(base) + (u32)(reg))
 #define xemacps_write(base, reg, val)	\
@@ -522,6 +524,9 @@ struct xemacps_bd {
 	u32 addr;
 	u32 ctrl;
 };
+
+void xslcr_write(u32 offset, u32 val) ;
+u32 xslcr_read(u32 offset);
 
 /* This is an internal structure used to maintain the DMA list */
 struct xemacps_bdring {
@@ -583,6 +588,9 @@ struct net_local {
 	unsigned int           duplex;
 	/* RX ip/tcp/udp checksum */
 	unsigned               ip_summed;
+#ifdef CONFIG_OF
+	unsigned int board_type;
+#endif
 };
 
 static struct net_device_ops netdev_ops;
@@ -605,6 +613,7 @@ static int xemacps_mdio_read(struct mii_bus *bus, int mii_id, int phyreg)
 	struct net_local *lp = bus->priv;
 	u32 regval;
 	int value;
+	volatile u32 ipisr;
 
 	regval  = XEMACPS_PHYMNTNC_OP_MASK;
 	regval |= XEMACPS_PHYMNTNC_OP_R_MASK;
@@ -614,9 +623,10 @@ static int xemacps_mdio_read(struct mii_bus *bus, int mii_id, int phyreg)
 	xemacps_write(lp->baseaddr, XEMACPS_PHYMNTNC_OFFSET, regval);
 
 	/* wait for end of transfer */
-	while (!(xemacps_read(lp->baseaddr, XEMACPS_NWSR_OFFSET) &
-			XEMACPS_NWSR_MDIOIDLE_MASK))
+	do {
 		cpu_relax();
+		ipisr = xemacps_read(lp->baseaddr, XEMACPS_NWSR_OFFSET);
+	} while ((ipisr & XEMACPS_NWSR_MDIOIDLE_MASK) == 0);
 
 	value = xemacps_read(lp->baseaddr, XEMACPS_PHYMNTNC_OFFSET) &
 			XEMACPS_PHYMNTNC_DATA_MASK;
@@ -642,6 +652,7 @@ static int xemacps_mdio_write(struct mii_bus *bus, int mii_id, int phyreg,
 {
 	struct net_local *lp = bus->priv;
 	u32 regval;
+	volatile u32 ipisr;
 
 	regval  = XEMACPS_PHYMNTNC_OP_MASK;
 	regval |= XEMACPS_PHYMNTNC_OP_W_MASK;
@@ -652,9 +663,10 @@ static int xemacps_mdio_write(struct mii_bus *bus, int mii_id, int phyreg,
 	xemacps_write(lp->baseaddr, XEMACPS_PHYMNTNC_OFFSET, regval);
 
 	/* wait for end of transfer */
-	while (!(xemacps_read(lp->baseaddr, XEMACPS_NWSR_OFFSET) &
-		XEMACPS_NWSR_MDIOIDLE_MASK))
+	do {
 		cpu_relax();
+		ipisr = xemacps_read(lp->baseaddr, XEMACPS_NWSR_OFFSET);
+	} while ((ipisr & XEMACPS_NWSR_MDIOIDLE_MASK) == 0);
 
 	return 0;
 }
@@ -670,40 +682,6 @@ static int xemacps_mdio_reset(struct mii_bus *bus)
 {
 	return 0;
 }
-
-#ifdef DEBUG_SPEED
-static void xemacps_phy_init(struct net_device *ndev)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	u16 regval;
-	int i = 0;
-
-	/* set RX delay */
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 20);
-	/* 0x0080 for 100Mbps, 0x0060 for 1Gbps. */
-	regval |= 0x0080;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 20, regval);
-
-	/* 0x2100 for 100Mbps, 0x0140 for 1Gbps. */
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, 0x2100);
-
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 0);
-	regval |= 0x8000;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, regval);
-	for (i = 0; i < 10; i++)
-		mdelay(500);
-#ifdef DEBUG_VERBOSE
-	printk(KERN_INFO "GEM: phy register dump, start from 0, four in a row.");
-	for (i = 0; i <= 30; i++) {
-		if (!(i%4))
-			printk("\n %02d:  ", i);
-		regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, i);
-		printk(" 0x%08x", regval);
-	}
-	printk("\n");
-#endif
-}
-#endif
 
 /**
  * xemacps_adjust_link - handles link status changes, such as speed,
@@ -730,15 +708,49 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			else
 				regval &= ~XEMACPS_NWCFG_FDEN_MASK;
 
-			if (phydev->speed == SPEED_1000)
+			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
-			else
+				if (lp->board_type == BOARD_TYPE_ZYNQ)
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_ZYNQ_GEM_1G_CLK_CTRL_VALUE
+					);
+				else
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_PEEP_GEM_1G_CLK_CTRL_VALUE
+					);
+
+			} else
 				regval &= ~XEMACPS_NWCFG_1000_MASK;
 
-			if (phydev->speed == SPEED_100)
+			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
-			else
+				if (lp->board_type == BOARD_TYPE_ZYNQ)
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_ZYNQ_GEM_100M_CLK_CTRL_VALUE
+					);
+				else
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_PEEP_GEM_100M_CLK_CTRL_VALUE
+					);
+			} else
 				regval &= ~XEMACPS_NWCFG_100_MASK;
+
+			if (phydev->speed == SPEED_10) {
+				if (lp->board_type == BOARD_TYPE_ZYNQ)
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_ZYNQ_GEM_10M_CLK_CTRL_VALUE
+					);
+				else
+					xslcr_write(
+					XSLCR_EMAC0_CLK_CTRL_OFFSET,
+					SLCR_PEEP_GEM_10M_CLK_CTRL_VALUE
+					);
+			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
 				regval);
@@ -815,10 +827,17 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
 #endif
-	phydev->supported &= PHY_GBIT_FEATURES;
+	phydev->supported |= PHY_GBIT_FEATURES;
+	phydev->supported |= SUPPORTED_Pause;
+	phydev->supported |= SUPPORTED_Asym_Pause;
 
-	phydev->advertising = phydev->supported;
-
+	if (lp->board_type == BOARD_TYPE_ZYNQ)
+		phydev->advertising = phydev->supported;
+	else {
+		phydev->advertising = PHY_BASIC_FEATURES;
+		phydev->advertising |= SUPPORTED_Pause;
+		phydev->advertising |= SUPPORTED_Asym_Pause;
+	}
 	lp->link    = 0;
 	lp->speed   = 0;
 	lp->duplex  = -1;
@@ -2051,7 +2070,7 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCFG_PAUSEEN_MASK;
 	regval |= XEMACPS_NWCFG_100_MASK;
 	regval |= XEMACPS_NWCFG_1536RXEN_MASK;
-	regval |= (MDC_DIV_32 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 	if (lp->ndev->flags & IFF_PROMISC)	/* copy all */
 		regval |= XEMACPS_NWCFG_COPYALLEN_MASK;
 	if (!(lp->ndev->flags & IFF_BROADCAST))	/* No broadcast */
@@ -2135,12 +2154,10 @@ static int xemacps_open(struct net_device *ndev)
 	}
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
-#ifdef DEBUG_SPEED
-	xemacps_phy_init(ndev);
-#else
+
 	if (lp->phy_dev)
 		phy_start(lp->phy_dev);
-#endif
+
 	netif_carrier_on(ndev);
 
 	netif_start_queue(ndev);
@@ -2976,7 +2993,10 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	struct resource *r_irq = NULL;
 	struct net_device *ndev;
 	struct net_local *lp;
+	struct device_node *np;
+	const void *prop;
 	u32 regval = 0;
+	int size;
 	int rc = -ENXIO;
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -3031,6 +3051,7 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
+	lp->board_type = BOARD_TYPE_ZYNQ;
 
 	rc = register_netdev(ndev);
 	if (rc) {
@@ -3039,13 +3060,25 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	}
 
 	/* Set MDIO clock divider */
-	regval = (MDC_DIV_32 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
 
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
 
 #ifdef CONFIG_OF
+	np = of_get_next_parent(lp->pdev->dev.of_node);
+	np = of_get_next_parent(np);
+	prop = of_get_property(np, "compatible", &size);
+
+	if (prop != NULL) {
+		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
+			lp->board_type = BOARD_TYPE_PEEP;
+		 else
+			lp->board_type = BOARD_TYPE_ZYNQ;
+	} else
+		lp->board_type = BOARD_TYPE_ZYNQ;
+
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
 #endif
