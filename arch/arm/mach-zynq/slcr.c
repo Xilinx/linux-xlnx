@@ -814,6 +814,31 @@ void xslcr_system_reset(void)
 }
 
 /**
+ * xslcr_write - Write to a register in SLCR block
+ *
+ * @offset:	Register offset in SLCR block
+ * @val:	Value to write to the register
+ **/
+void xslcr_write(u32 offset, u32 val)
+{
+	xslcr_writereg(slcr->regs + offset, val);
+}
+EXPORT_SYMBOL(xslcr_write);
+
+/**
+ * xslcr_read - Read a register in SLCR block
+ *
+ * @offset:	Register offset in SLCR block
+ *
+ * return:	Value read from the SLCR register
+ **/
+u32 xslcr_read(u32 offset)
+{
+	return xslcr_readreg(slcr->regs + offset);
+}
+EXPORT_SYMBOL(xslcr_read);
+
+/**
  * xslcr_set_bit - Set a bit
  *
  * @data:	Address of the data in which a bit is to be set
@@ -1695,6 +1720,7 @@ static int __init xslcr_init(void)
 {
 	return platform_driver_register(&xslcr_driver);
 }
+subsys_initcall(xslcr_init);
 
 /**
  * xslcr_exit -  Unregister the SLCR.
