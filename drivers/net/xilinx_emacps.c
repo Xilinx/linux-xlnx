@@ -843,16 +843,6 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	lp->duplex  = -1;
 	lp->phy_dev = phydev;
 
-	phy_start(lp->phy_dev);
-
-#ifdef DEBUG
-	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
-			ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
-
-	printk(KERN_INFO "%s, attach [%s] phy driver\n", ndev->name,
-			lp->phy_dev->drv->name);
-#endif
-
 	return 0;
 }
 
@@ -901,8 +891,16 @@ static int xemacps_mii_init(struct net_local *lp)
 	if (mdiobus_register(lp->mii_bus))
 		goto err_out_free_mdio_irq;
 #endif
+
+	if (xemacps_mii_probe(lp->ndev) != 0) {
+		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
+		goto err_out_unregister_bus;
+	}
+
 	return 0;
 
+err_out_unregister_bus:
+	mdiobus_unregister(lp->mii_bus);
 err_out_free_mdio_irq:
 	kfree(lp->mii_bus->irq);
 err_out_free_mdiobus:
@@ -2156,13 +2154,9 @@ static int xemacps_open(struct net_device *ndev)
 	}
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
-	if (xemacps_mii_probe(ndev) != 0) {
-		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
-		mdiobus_unregister(lp->mii_bus);
-		kfree(lp->mii_bus->irq);
-		mdiobus_free(lp->mii_bus);
-		return -ENXIO;
-	}
+
+	if (lp->phy_dev)
+		phy_start(lp->phy_dev);
 
 	netif_carrier_on(ndev);
 
@@ -2188,12 +2182,13 @@ static int xemacps_close(struct net_device *ndev)
 
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
+	if (lp->phy_dev)
+		phy_stop(lp->phy_dev);
+
 	spin_lock_irqsave(&lp->lock, flags);
 	xemacps_reset_hw(lp);
 	netif_carrier_off(ndev);
 	spin_unlock_irqrestore(&lp->lock, flags);
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
 	xemacps_descriptor_free(lp);
 
 	return 0;
@@ -3098,6 +3093,12 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
 		ndev->name, pdev->id, ndev->base_addr, ndev->irq);
+
+	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
+		ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
+
+	printk(KERN_INFO "%s, attach [%s] phy driver\n", ndev->name,
+		lp->phy_dev->drv->name);
 
 	return 0;
 
