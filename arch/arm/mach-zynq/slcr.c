@@ -1730,7 +1730,6 @@ static void __exit xslcr_exit(void)
 	platform_driver_unregister(&xslcr_driver);
 }
 
-module_init(xslcr_init);
 module_exit(xslcr_exit);
 
 MODULE_AUTHOR("Xilinx Inc.");
