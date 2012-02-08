@@ -29,6 +29,9 @@ extern int zynq_cpun_start(u32 address, int cpu);
 extern const struct smp_operations zynq_smp_ops;
 #endif
 
+extern void zynq_slcr_init_preload_fpga(void);
+extern void zynq_slcr_init_postload_fpga(void);
+
 extern void __iomem *zynq_slcr_base;
 extern void __iomem *zynq_scu_base;
 
