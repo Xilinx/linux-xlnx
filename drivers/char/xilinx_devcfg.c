@@ -32,6 +32,8 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 
+#include <mach/slcr.h>
+
 #define DRIVER_NAME "xdevcfg"
 
 #define XDEVCFG_MAJOR 259
@@ -94,6 +96,10 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 						    *  including: DAP_En,
 						    *  DBGEN,NIDEN, SPNIEN */
 
+/* Status register bit definitions */
+
+#define XDCFG_STATUS_PCFG_INIT_MASK	0x00000010 /* FPGA init status */
+
 /* Interrupt Status/Mask Register Bit definitions */
 #define XDCFG_IXR_DMA_DONE_MASK		0x00002000 /* DMA Command Done */
 #define XDCFG_IXR_PCFG_DONE_MASK	0x00000004 /* FPGA programmed */
@@ -137,6 +143,35 @@ struct xdevcfg_drvdata {
  */
 #define xdevcfg_writereg(offset, val)	__raw_writel(val, offset)
 #define xdevcfg_readreg(offset)		__raw_readl(offset)
+
+/**
+ * xdevcfg_reset_prog_b() - Create a rising edge on PROG_B.
+ * @base_address:	The base address of the device.
+ */
+static void xdevcfg_reset_prog_b(u32 base_address) {
+
+	// Setting PCFG_PROG_B signal to high
+	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
+		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) | XDCFG_CTRL_PCFG_PROG_B_MASK));
+
+	// Setting PCFG_PROG_B signal to low
+	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
+		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) & ~XDCFG_CTRL_PCFG_PROG_B_MASK));
+
+	// Polling the PCFG_INIT status for Reset
+	while(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK);
+
+	// Setting PCFG_PROG_B signal to high
+	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
+		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) | XDCFG_CTRL_PCFG_PROG_B_MASK));
+
+	// Polling the PCFG_INIT status for Set
+	while(!(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK));
+
+	// Reset PCFG_DONE
+	xdevcfg_writereg(base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
+
+}
 
 /**
  * xdevcfg_irq() - The main interrupt handler.
@@ -414,6 +449,10 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 	file->private_data = drvdata;
 	drvdata->is_open = 1;
 
+	xslcr_init_preload_fpga();
+
+	xdevcfg_reset_prog_b((u32)drvdata->base_address);
+
  error:
 	mutex_unlock(&drvdata->sem);
  out:
@@ -431,6 +470,8 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 static int xdevcfg_release(struct inode *inode, struct file *file)
 {
 	struct xdevcfg_drvdata *drvdata = file->private_data;
+
+	xslcr_init_postload_fpga();
 
 	drvdata->is_open = 0;
 

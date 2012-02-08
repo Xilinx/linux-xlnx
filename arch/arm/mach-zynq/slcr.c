@@ -23,7 +23,9 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <mach/slcr.h>
 
+#define XSLCR_LOCK			0x4   /* SLCR lock register */
 #define XSLCR_UNLOCK			0x8   /* SCLR unlock register */
 #define XSLCR_APER_CLK_CTRL_OFFSET	0x12C /* AMBA Peripheral Clk Control */
 #define XSLCR_USB0_CLK_CTRL_OFFSET	0x130 /* USB 0 ULPI Clock Control */
@@ -55,8 +57,8 @@
 #define XSLCR_OCM_RST_CTRL_OFFSET	0x238 /* OCM Software Reset Control */
 #define XSLCR_DEVC_RST_CTRL_OFFSET	0x23C /* Dev Cfg SW Reset Control */
 #define XSLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
-
 #define XSLCR_MIO_PIN_00_OFFSET		0x700 /* MIO PIN0 control register */
+#define XSLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
 /* Bit masks for AMBA Peripheral Clock Control register */
 #define XSLCR_APER_CLK_CTRL_DMA0_MASK	0x00000001 /* DMA0 AMBA Clock active */
@@ -837,6 +839,45 @@ u32 xslcr_read(u32 offset)
 	return xslcr_readreg(slcr->regs + offset);
 }
 EXPORT_SYMBOL(xslcr_read);
+
+/**
+ * xslcr_init_preload_fpga - Disable communication from the PL to PS.
+ */
+void xslcr_init_preload_fpga(void) {
+
+	/* Unlock SLCR */
+	xslcr_write(XSLCR_UNLOCK, 0x0000DF0D);
+
+	/* Disable AXI interface */
+	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x0000000F);
+
+	/* Disable level shifters */
+	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0x0);
+
+	/* Set level shifters (enable output) */
+	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xA);
+
+	/* Lock SLCR */
+	xslcr_write(XSLCR_LOCK, 0x0000767B);
+}
+
+/**
+ * xslcr_init_postload_fpga - Re-enable communication from the PL to PS.
+ */
+void xslcr_init_postload_fpga(void) {
+
+	/* Unlock SLCR */
+	xslcr_write(XSLCR_UNLOCK, 0x0000DF0D);
+
+	/* Set level shifters (enable input) */
+	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xF);
+
+	/* Enable AXI interface */
+	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x00000000);
+
+	/* Lock SLCR */
+	xslcr_write(XSLCR_LOCK, 0x0000767B);
+}
 
 /**
  * xslcr_set_bit - Set a bit
