@@ -5,7 +5,7 @@
 config NET_VENDOR_XILINX
 	bool "Xilinx devices"
 	default y
-	depends on PPC || PPC32 || MICROBLAZE
+	depends on PPC || PPC32 || MICROBLAZE || ARM
 	---help---
 	  If you have a network (Ethernet) card belonging to this class, say Y
 	  and read the Ethernet-HOWTO, available from
@@ -75,6 +75,21 @@ config XILINX_LLTEMAC_MARVELL_88E1111_MII
 	  speed autonegotation code.
 
 endchoice
+
+
+
+config XILINX_PS_EMAC
+	tristate "Xilinx PS tri-speed EMAC support"
+	select PHYLIB
+	---help---
+	  This driver supports tri-speed EMAC.
+
+config XILINX_PS_EMAC_HWTSTAMP
+	bool "Generate hardware packet timestamps"
+	depends on XILINX_PS_EMAC
+	default n
+	---help---
+	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
 
 endif # NET_VENDOR_XILINX

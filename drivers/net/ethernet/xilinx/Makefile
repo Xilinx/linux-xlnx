@@ -8,3 +8,4 @@ obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 obj-$(CONFIG_XILINX_LLTEMAC) += xilinx_lltemac/
 xilinx_axienet-objs := xilinx_axienet_main.o xilinx_axienet_mdio.o
 obj-$(CONFIG_XILINX_AXI_ETHERNET) += xilinx_axienet.o
+obj-$(CONFIG_XILINX_PS_EMAC) += xilinx_emacps.o
