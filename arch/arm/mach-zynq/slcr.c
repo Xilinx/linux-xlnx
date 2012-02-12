@@ -845,20 +845,15 @@ EXPORT_SYMBOL(xslcr_read);
  */
 void xslcr_init_preload_fpga(void) {
 
-	/* Unlock SLCR */
-	xslcr_write(XSLCR_UNLOCK, 0x0000DF0D);
-
-	/* Disable AXI interface */
-	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x0000000F);
+	/* Assert FPGA top level output resets */
+	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0xF);
 
 	/* Disable level shifters */
 	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0x0);
 
-	/* Set level shifters (enable output) */
+	/* Enable output level shifters */
 	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xA);
 
-	/* Lock SLCR */
-	xslcr_write(XSLCR_LOCK, 0x0000767B);
 }
 
 /**
@@ -866,17 +861,12 @@ void xslcr_init_preload_fpga(void) {
  */
 void xslcr_init_postload_fpga(void) {
 
-	/* Unlock SLCR */
-	xslcr_write(XSLCR_UNLOCK, 0x0000DF0D);
-
-	/* Set level shifters (enable input) */
+	/* Enable level shifters */
 	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xF);
 
-	/* Enable AXI interface */
-	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x00000000);
+	/* Deassert AXI interface resets */
+	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x0);
 
-	/* Lock SLCR */
-	xslcr_write(XSLCR_LOCK, 0x0000767B);
 }
 
 /**

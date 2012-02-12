@@ -145,31 +145,26 @@ struct xdevcfg_drvdata {
 #define xdevcfg_readreg(offset)		__raw_readl(offset)
 
 /**
- * xdevcfg_reset_prog_b() - Create a rising edge on PROG_B.
+ * xdevcfg_reset_pl() - Reset the programmable logic.
  * @base_address:	The base address of the device.
  */
-static void xdevcfg_reset_prog_b(u32 base_address) {
+static void xdevcfg_reset_pl(u32 base_address) {
 
-	// Setting PCFG_PROG_B signal to high
+	/*
+	 * Create a rising edge on PCFG_INIT. PCFG_INIT follows PCFG_PROG_B, so we need to
+	 * poll it after setting PCFG_PROG_B to make sure that the rising edge happens.
+	 */
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) | XDCFG_CTRL_PCFG_PROG_B_MASK));
-
-	// Setting PCFG_PROG_B signal to low
-	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
-		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) & ~XDCFG_CTRL_PCFG_PROG_B_MASK));
-
-	// Polling the PCFG_INIT status for Reset
-	while(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK);
-
-	// Setting PCFG_PROG_B signal to high
-	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
-		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) | XDCFG_CTRL_PCFG_PROG_B_MASK));
-
-	// Polling the PCFG_INIT status for Set
 	while(!(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK));
 
-	// Reset PCFG_DONE
-	xdevcfg_writereg(base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
+	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
+		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) & ~XDCFG_CTRL_PCFG_PROG_B_MASK));
+	while(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK);
+
+	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
+		(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) | XDCFG_CTRL_PCFG_PROG_B_MASK));
+	while(!(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) & XDCFG_STATUS_PCFG_INIT_MASK));
 
 }
 
@@ -451,7 +446,9 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 
 	xslcr_init_preload_fpga();
 
-	xdevcfg_reset_prog_b((u32)drvdata->base_address);
+	xdevcfg_reset_pl((u32)drvdata->base_address);
+
+	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
 
  error:
 	mutex_unlock(&drvdata->sem);
