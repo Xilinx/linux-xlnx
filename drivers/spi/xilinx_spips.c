@@ -29,6 +29,7 @@
 #include <linux/xilinx_devices.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/delay.h>
 
 /*
  * Name of this driver
@@ -347,8 +348,15 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
 			u8 data;
 
 			data = xspips_read(xspi->regs + XSPIPS_RXD_OFFSET);
-			if (xspi->rxbuf)
+			if (xspi->rxbuf) {
 				*xspi->rxbuf++ = data;
+
+				/* Hack for now, seeing issues with h/w where
+				 * the status register is not updated quick 
+				 * enough, yes this is not efficient
+				 */		
+				udelay(1);
+			}
 		}
 
 		if (xspi->remaining_bytes) {
