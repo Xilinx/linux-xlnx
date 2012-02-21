@@ -274,7 +274,6 @@ static void dr_controller_run(struct xusbps_udc *udc)
 	temp = xusbps_readl(&dr_regs->usbmode);
 	temp |= USB_MODE_CTRL_MODE_DEVICE;
 	temp |= USB_MODE_SETUP_LOCK_OFF;
-	temp |= USB_MODE_STREAM_DISABLE;
 	xusbps_writel(temp, &dr_regs->usbmode);
 
 	/* Set OTG Terminate bit */
