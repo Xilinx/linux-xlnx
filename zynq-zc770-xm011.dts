@@ -1,0 +1,125 @@
+/dts-v1/;
+
+/ {
+	model = "Xilinx Zynq ZC770 - V&C dt1 - minimum)";
+	compatible = "xlnx,zynq-zc770-xm010";
+	#address-cells = <0x1>;
+	#size-cells = <0x1>;
+	interrupt-parent = <0x1>;
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x40000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+		linux,stdout-path = "/amba@0/uart@E0001000";
+	};
+
+	amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,gic";
+			reg = <0xf8f01000 0x1000>;
+			#interrupt-cells = <0x2>;
+			linux,phandle = <0x1>;
+			phandle = <0x1>;
+		};
+
+		uart@e0001000 {
+			compatible = "xlnx,ps7-uart-1.00.a";
+			reg = <0xe0001000 0x1000>;
+			interrupts = <0x52 0x0>;
+			clock = <0x2faf080>;
+		};
+
+		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0x2a 0x0>;
+			clock-frequency = <0x7ed6b40>;
+		};
+
+		spi: spi@e0006000 {
+			compatible = "xlnx,ps7-spi-1.00.a";
+			reg = <0xe0006000 0x1000>;
+			interrupts = <58 0>;
+			speed-hz = <50000000>;
+			bus-num = <0>;
+			num-chip-select = <4>;
+		};
+
+		nand@e1000000 {
+			compatible = "xlnx,ps7-nand-1.00.a";
+			reg = <0xe1000000 0x1000000 0xe000e000 0x1000>;
+			#address-cells = <0x1>;
+			#size-cells = <0x1>;
+
+			partition@0 {
+				label = "nand-fsbl-uboot-bit";
+				reg = <0x0 0x500000>;
+			};
+
+			partition@1 {
+				label = "nand-linux";
+				reg = <0x500000 0x300000>;
+			};
+
+			partition@2 {
+				label = "nand-devicetree";
+				reg = <0x800000 0x100000>;
+			};
+
+			partition@3 {
+				label = "nand-ramdisk";
+				reg = <0x900000 0x400000>;
+			};
+
+			partition@4 {
+				label = "nand-scratch";
+				reg = <0xd00000 0x200000>;
+			};
+		};
+
+		i2c: i2c@e0005000 {
+			compatible = "xlnx,ps7-i2c-1.00.a";
+			reg = <0xe0005000 0x1000>;
+			interrupts = <80 0>;
+			bus-id = <1>;
+			input-clk = <50000000>;
+			i2c-clk = <100000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+			m24c02_eeprom@52 {
+				compatible = "at,24c02";
+				reg = <0x52>;
+			};
+		};
+
+		usb@e0003000 {
+			compatible = "xlnx,ps7-usb-1.00.a";
+			reg = <0xe0003000 0x1000>;
+			interrupts = <0x4C 0x0>;
+			dr_mode = "host";
+			phy_type = "ulpi";
+		};
+
+		slcr@f8000000 {
+			compatible = "xlnx,ps7-slcr-1.00.a";
+			reg = <0xf8000000 0x1000>;
+		};
+
+		devcfg@f8007000 {
+			compatible = "xlnx,ps7-dev-cfg-1.00.a";
+			reg = <0xf8007000 0x1000>;
+			interrupts = <0x28 0x0>;
+		};
+	};
+};
