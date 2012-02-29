@@ -53,6 +53,8 @@ static struct of_device_id zynq_of_bus_ids[] __initdata = {
  */
 void __init xilinx_init_machine(void)
 {
+	u32 dscr;
+
 #ifdef CONFIG_CACHE_L2X0
 	void *l2cache_base;
 
@@ -72,6 +74,11 @@ void __init xilinx_init_machine(void)
 	l2x0_init(l2cache_base, 0x72060000, 0xF0F0FFFF);
 #endif
 #endif
+	/* clear out the halt debug mode so that the Linux hardware
+	 * breakpoint system is happy 
+	 */
+	ARM_DBG_READ(c1, 0, dscr);
+	ARM_DBG_WRITE(c2, 2, (dscr & ~ARM_DSCR_HDBGEN));
 
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 
