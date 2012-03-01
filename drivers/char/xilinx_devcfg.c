@@ -25,6 +25,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -33,6 +34,7 @@
 #include <linux/uaccess.h>
 
 #include <mach/slcr.h>
+#include <linux/of.h>
 
 #define DRIVER_NAME "xdevcfg"
 
@@ -136,6 +138,7 @@ struct xdevcfg_drvdata {
 	struct mutex sem;
 	spinlock_t lock;
 	void __iomem *base_address;
+	int ep107;
 };
 
 /*
@@ -446,7 +449,12 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 
 	xslcr_init_preload_fpga();
 
-	xdevcfg_reset_pl((u32)drvdata->base_address);
+	/* Only do the reset of the PL for Zynq as it causes problems on the EP107
+	 * and the issue is not understood, but not worth investigating as the emulation
+	 * platform is very different than silicon and not a complete implementation
+	 */
+	if (!drvdata->ep107)
+		xdevcfg_reset_pl((u32)drvdata->base_address);
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
 
@@ -1340,7 +1348,9 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	dev_t devt;
 	int retval;
 	u32 ctrlreg;
-
+	struct device_node *np;
+	const void *prop;
+	int size;
 
 	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs_res) {
@@ -1409,6 +1419,22 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 		 (unsigned long long) regs_res->start,
 		 drvdata->base_address,
 		 (unsigned long long) (regs_res->end - regs_res->start + 1));
+
+	/* Figure out from the device tree if this is running on the EP107 emulation
+	 * platform as it doesn't match the silicon exactly and the driver needs
+	 * to work accordingly.
+	 */
+	np = of_get_next_parent(pdev->dev.of_node);
+	np = of_get_next_parent(np);
+	prop = of_get_property(np, "compatible", &size);
+
+	if (prop != NULL) {
+		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
+			drvdata->ep107 = 1;
+		else
+			drvdata->ep107 = 0;
+	}
+
 	/*
 	 * Unlock the device
 	 */
@@ -1440,7 +1466,6 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 		free_irq(irq_res->start, drvdata);
 		goto failed3;
 	}
-
 
 	/* create sysfs files for the device */
 	retval = sysfs_create_group(&(pdev->dev.kobj), &xdevcfg_attr_group);
