@@ -176,8 +176,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 		npp = of_get_parent(np1);
 	}
 	if(!npp) {
-		printk(KERN_WARNING "%s(): Could not find ethernet controller device node.", __FUNCTION__);
-		printk(KERN_WARNING "Setting MDIO clock divisor to default %d\n",
+		dev_warn(lp->dev, "%s(): Could not find ethernet controller device node.",  __func__);
+		dev_warn(lp->dev, "Setting MDIO clock divisor to default %d\n",
 		       DEFAULT_CLOCK_DIVISOR);
 		clk_div = DEFAULT_CLOCK_DIVISOR;
 	} else {
@@ -185,9 +185,9 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 
 		property_p = (uint32_t *)of_get_property(npp, CLOCK_FREQ_PROP_NAME, NULL);
 		if(!property_p) {
-			printk(KERN_WARNING "%s(): Could not find ethernet controller property %s.",
-			       __FUNCTION__, CLOCK_FREQ_PROP_NAME);
-			printk(KERN_WARNING "Setting MDIO clock divisor to default %d\n",
+			dev_warn(lp->dev, "%s(): Could not find ethernet controller property %s.",
+			       __func__, CLOCK_FREQ_PROP_NAME);
+			dev_warn(lp->dev, "Setting MDIO clock divisor to default %d\n",
 			       DEFAULT_CLOCK_DIVISOR);
 			clk_div = DEFAULT_CLOCK_DIVISOR;
 		} else {
@@ -200,8 +200,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 			 * above 2.5 MHz */
 			if(host_clock % (MAX_MDIO_FREQ * 2))
 				clk_div++;
-			printk(KERN_DEBUG "%s(): Setting MDIO clock divisor to %u based on %u Hz host clock.\n",
-			       __FUNCTION__, clk_div, host_clock);
+			dev_dbg(lp->dev, "%s(): Setting MDIO clock divisor to %u based on %u Hz host clock.\n",
+			       __func__, clk_div, host_clock);
 		}
 	}
 
