@@ -220,7 +220,7 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	if (!bus)
 		return -ENOMEM;
 
-	of_address_to_resource(np1, 0, &res);
+	of_address_to_resource(npp, 0, &res);
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
 	bus->priv = lp;
