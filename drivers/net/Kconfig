@@ -2492,6 +2492,7 @@ config XILINX_AXI_ETHERNET
 
 config XILINX_PS_EMAC
         tristate "Xilinx PS tri-speed EMAC support"
+	depends on ARCH_ZYNQ
 	select PHYLIB
         help
           This driver supports tri-speed EMAC.

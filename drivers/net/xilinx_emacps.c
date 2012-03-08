@@ -44,6 +44,7 @@
 #include <linux/version.h>
 #include <linux/of.h>
 #include <mach/board.h>
+#include <mach/slcr.h>
 
 #include <linux/clocksource.h>
 #include <linux/timecompare.h>
@@ -524,9 +525,6 @@ struct xemacps_bd {
 	u32 addr;
 	u32 ctrl;
 };
-
-void xslcr_write(u32 offset, u32 val) ;
-u32 xslcr_read(u32 offset);
 
 /* This is an internal structure used to maintain the DMA list */
 struct xemacps_bdring {
