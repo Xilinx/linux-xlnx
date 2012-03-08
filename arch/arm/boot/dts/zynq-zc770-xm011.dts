@@ -111,11 +111,6 @@
 			phy_type = "ulpi";
 		};
 
-		slcr@f8000000 {
-			compatible = "xlnx,ps7-slcr-1.00.a";
-			reg = <0xf8000000 0x1000>;
-		};
-
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;

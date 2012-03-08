@@ -25,6 +25,8 @@
 #include <linux/string.h>
 #include <mach/slcr.h>
 
+#define DRIVER_NAME "xslcr"
+
 #define XSLCR_LOCK			0x4   /* SLCR lock register */
 #define XSLCR_UNLOCK			0x8   /* SCLR unlock register */
 #define XSLCR_APER_CLK_CTRL_OFFSET	0x12C /* AMBA Peripheral Clk Control */
@@ -1598,8 +1600,11 @@ next_periph:
  **/
 static int __init xslcr_probe(struct platform_device *pdev)
 {
-	struct resource *res;
+	struct resource res;
 	int ret;
+
+	res.start = 0xF8000000;
+	res.end = 0xF8000FFF;
 
 	if (slcr) {
 		dev_err(&pdev->dev, "Device Busy, only 1 slcr instance "
@@ -1607,30 +1612,27 @@ static int __init xslcr_probe(struct platform_device *pdev)
 		return -EBUSY;
 	}
 
+	if (!request_mem_region(res.start,
+					res.end - res.start + 1,
+					DRIVER_NAME)) {
+		dev_err(&pdev->dev, "Couldn't lock memory region at %Lx\n",
+			(unsigned long long)res.start);
+		return -EBUSY;
+	}
+
 	slcr = kzalloc(sizeof(struct xslcr), GFP_KERNEL);
 	if (!slcr) {
+		ret = -ENOMEM;
 		dev_err(&pdev->dev, "Unable to allocate memory for driver "
 			"data\n");
-		return -ENOMEM;
+		goto err_release;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "Unable to locate mmio resource\n");
-		return -ENODEV;
-	}
-
-	if (!request_mem_region(res->start, resource_size(res), pdev->name)) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "Unable to request memory region\n");
-		goto err_free;
-	}
-
-	slcr->regs = ioremap(res->start, resource_size(res));
+	slcr->regs = ioremap(res.start, (res.end - res.start + 1));
 	if (!slcr->regs) {
 		ret = -ENOMEM;
 		dev_err(&pdev->dev, "Unable to map I/O memory\n");
-		goto err_release;
+		goto err_free;
 	}
 
 	/* init periph_status based on the data from MIO control registers */
@@ -1665,7 +1667,7 @@ static int __init xslcr_probe(struct platform_device *pdev)
 	/* unlock the SLCR so that registers can be changed */
 	xslcr_writereg(slcr->regs + XSLCR_UNLOCK, 0xDF0D);
 
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n", res->start,
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n", res.start,
 		 (u32 __force)slcr->regs);
 	platform_set_drvdata(pdev, slcr);
 
@@ -1679,10 +1681,11 @@ err_mio_class:
 			     ARRAY_SIZE(mio_periph_name));
 err_iounmap:
 	iounmap(slcr->regs);
-err_release:
-	release_mem_region(res->start, resource_size(res));
 err_free:
 	kfree(slcr);
+err_release:
+	release_mem_region(res.start, (res.end - res.start + 1));
+
 	return ret;
 }
 
@@ -1721,25 +1724,19 @@ static int __devexit xslcr_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static struct of_device_id xslcr_of_match[] __devinitdata = {
-	{ .compatible = "xlnx,ps7-slcr-1.00.a", },
-	{ /* end of table */}
-};
-MODULE_DEVICE_TABLE(of, xslcr_of_match);
-#endif
-
 /* Driver Structure */
 static struct platform_driver xslcr_driver = {
 	.probe		= xslcr_probe,
 	.remove		= __devexit_p(xslcr_remove),
 	.driver		= {
-		.name	= "xslcr",
+		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_OF
-		.of_match_table = xslcr_of_match,
-#endif
 	},
+};
+
+struct platform_device xslcr_device = {
+	.name = "xslcr",
+	.dev.platform_data = NULL,
 };
 
 /**
@@ -1749,9 +1746,10 @@ static struct platform_driver xslcr_driver = {
  */
 static int __init xslcr_init(void)
 {
+	platform_device_register(&xslcr_device);
 	return platform_driver_register(&xslcr_driver);
 }
-subsys_initcall(xslcr_init);
+device_initcall(xslcr_init);
 
 /**
  * xslcr_exit -  Unregister the SLCR.
@@ -1760,8 +1758,6 @@ static void __exit xslcr_exit(void)
 {
 	platform_driver_unregister(&xslcr_driver);
 }
-
-module_exit(xslcr_exit);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Driver for Xilinx SLCR Block");
