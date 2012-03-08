@@ -855,8 +855,8 @@ void xslcr_init_preload_fpga(void) {
 
 	/* Enable output level shifters */
 	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xA);
-
 }
+EXPORT_SYMBOL(xslcr_init_preload_fpga);
 
 /**
  * xslcr_init_postload_fpga - Re-enable communication from the PL to PS.
@@ -868,8 +868,8 @@ void xslcr_init_postload_fpga(void) {
 
 	/* Deassert AXI interface resets */
 	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x0);
-
 }
+EXPORT_SYMBOL(xslcr_init_postload_fpga);
 
 /**
  * xslcr_set_bit - Set a bit
