@@ -1749,7 +1749,7 @@ static int __init xslcr_init(void)
 	platform_device_register(&xslcr_device);
 	return platform_driver_register(&xslcr_driver);
 }
-device_initcall(xslcr_init);
+arch_initcall(xslcr_init);
 
 /**
  * xslcr_exit -  Unregister the SLCR.
