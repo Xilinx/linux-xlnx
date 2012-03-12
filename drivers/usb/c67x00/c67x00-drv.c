@@ -151,13 +151,13 @@ static int __devinit c67x00_drv_probe(struct platform_device *pdev)
 			ret = -ENODEV;
 			goto free_pdata_of;
 		}
-		pdata->hpi_regstep = *p;
+		pdata->hpi_regstep = be32_to_cpup(p);
 		p = (unsigned int *)of_get_property(pdev->dev.of_node, "sie-config", NULL);
 		if (!p) {
 			ret = -ENODEV;
 			goto free_pdata_of;
 		}
-		pdata->sie_config = *p;
+		pdata->sie_config = be32_to_cpup(p);
 #else
 		return -ENODEV;
 #endif
