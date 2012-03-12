@@ -45,6 +45,12 @@
 			clock-frequency = <133000000>;
 		};
 
+		swdt@f8005000 {
+			device_type = "watchdog";
+			compatible = "xlnx,ps7-wdt-1.00.a";
+			reg = <0xf8005000 0x100>;
+		};
+
 		eth@e000b000 {
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xe000b000 0x1000>;
