@@ -1235,6 +1235,11 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 	prop = of_get_property(pdev->dev.of_node, "clock", NULL);
 	if (prop)
 		clk = be32_to_cpup(prop);
+	else {
+		prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+		if (prop)
+			clk = be32_to_cpup(prop);
+	}
 #else
 	clk = *((unsigned int *)(pdev->dev.platform_data));
 #endif
