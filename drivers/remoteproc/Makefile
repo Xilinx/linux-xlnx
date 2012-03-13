@@ -7,3 +7,4 @@ remoteproc-y				:= remoteproc_core.o
 remoteproc-y				+= remoteproc_debugfs.o
 remoteproc-y				+= remoteproc_rpmsg.o
 obj-$(CONFIG_OMAP_REMOTEPROC)		+= omap_remoteproc.o
+obj-$(CONFIG_ZYNQ_REMOTEPROC)		+= zynq_remoteproc.o
