@@ -19,8 +19,14 @@
 
 /* For now, all mappings are flat (physical = virtual)
  */
+
+/* Virtual address must be inside vmalloc area - this is weird - better
+ * to create virtual mapping on the fly */
 #define UART0_PHYS			0xE0000000
-#define UART0_VIRT			UART0_PHYS
+#define UART0_VIRT			UART0_PHYS + 0x800000
+
+#define UART1_PHYS			0xE0001000
+#define UART1_VIRT			UART1_PHYS + 0x800000
 
 #define TTC0_PHYS			0xF8001000
 #define TTC0_VIRT			TTC0_PHYS
@@ -43,8 +49,8 @@
 /*
  * Mandatory for CONFIG_LL_DEBUG, UART is mapped virtual = physical
  */
-#define LL_UART_PADDR	UART0_PHYS
-#define LL_UART_VADDR	UART0_VIRT
+#define LL_UART_PADDR	UART1_PHYS
+#define LL_UART_VADDR	UART1_VIRT
 
 
 /* There are two OCM addresses needed for communication between CPUs in SMP.
