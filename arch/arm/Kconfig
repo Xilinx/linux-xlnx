@@ -981,6 +981,7 @@ config ARCH_ZYNQ
 	select ICST
 	select MIGHT_HAVE_CACHE_L2X0
 	select USE_OF
+	select HAVE_SMP
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 endchoice

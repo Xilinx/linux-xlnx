@@ -92,6 +92,17 @@ static struct map_desc io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 
+
+	/* HIGHMEM */
+	/* create a mapping for the OCM  (256K) leaving a hole for the
+	* interrupt vectors which are handled in the kernel
+	*/
+	{
+		.virtual        = OCM_HIGH_VIRT,
+		.pfn            = __phys_to_pfn(OCM_HIGH_PHYS),
+		.length         = SZ_4K,
+		.type           = MT_DEVICE,
+	},
 #ifdef CONFIG_DEBUG_LL
 	{
 		.virtual	= UART0_VIRT,

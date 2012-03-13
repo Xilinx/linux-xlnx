@@ -46,4 +46,20 @@
 #define LL_UART_PADDR	UART0_PHYS
 #define LL_UART_VADDR	UART0_VIRT
 
+
+/* There are two OCM addresses needed for communication between CPUs in SMP.
+ * The memory addresses are in the high on-chip RAM and these addresses are
+ * mapped flat (virtual = physical). The memory must be mapped early and
+ * non-cached.
+ */
+#define BOOT_ADDR_OFFSET	0xFF0
+#define BOOT_STATUS_OFFSET	0xFF4
+#define BOOT_STATUS_CPU1_UP	1
+
+/* not possible to you the last page */
+#define OCM_HIGH_PHYS			0xFFFFF000
+#define OCM_HIGH_VIRT			(OCM_HIGH_PHYS - 0x1000)
+
+#define OCM_HIGH_BASE			IOMEM(OCM_HIGH_VIRT)
+
 #endif
