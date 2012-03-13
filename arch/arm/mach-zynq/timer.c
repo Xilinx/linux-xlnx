@@ -24,6 +24,7 @@
 #include <linux/clockchips.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_irq.h>
 
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
@@ -49,9 +50,6 @@
  */
 #define XTTCPSS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
 #define XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
-
-#define XTTCPSS_TIMER_BASE		TTC0_BASE
-#define XTTCPCC_EVENT_TIMER_IRQ		(IRQ_TIMERCOUNTER0 + 1)
 
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
@@ -294,7 +292,7 @@ static void __init xttcpss_timer_init(void)
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
 		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
-		irq = be32_to_cpup(of_get_property(timer, "interrupts", NULL)) + 1;
+		irq = irq_of_parse_and_map(timer, 1);
 		prop = (void *)of_get_property(timer, "clock-frequency", NULL);
 	} else {
 		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
@@ -305,6 +303,10 @@ static void __init xttcpss_timer_init(void)
 	/* Map the memory so it's accessible in the page table */
 
 	timer_baseaddr = (u32)ioremap(timer_baseaddr, PAGE_SIZE);
+	if (!timer_baseaddr) {
+		printk(KERN_EMERG "Timer ioremap failed!\n");
+		BUG();
+	}
 	timers[XTTCPSS_CLOCKSOURCE].base_addr = (void __iomem *)timer_baseaddr;
 	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
 
