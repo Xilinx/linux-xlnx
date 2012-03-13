@@ -55,12 +55,24 @@ static void __init xilinx_init_machine(void)
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id zynq_dt_irq_match[] __initconst = {
+	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
+	{ .compatible = "arm,gic", .data = gic_of_init },
+	{ }
+};
+#endif
+
 /**
  * xilinx_irq_init() - Interrupt controller initialization for the GIC.
  */
 static void __init xilinx_irq_init(void)
 {
+#ifdef CONFIG_OF
+	of_irq_init(zynq_dt_irq_match);
+#else
 	gic_init(0, 29, SCU_GIC_DIST_BASE, SCU_GIC_CPU_BASE);
+#endif
 }
 
 /* The minimum devices needed to be mapped before the VM system is up and
