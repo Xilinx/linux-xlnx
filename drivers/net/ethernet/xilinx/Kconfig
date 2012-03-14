@@ -33,4 +33,40 @@ config XILINX_LL_TEMAC
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
 
+config XILINX_LLTEMAC
+	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"
+	depends on XILINX_DRIVERS
+	select XILINX_EDK
+	select NEED_XILINX_LLDMA
+	help
+	  This driver supports the 10/100/1000 LLTEMAC.
+
+choice
+	prompt "Xilinx LLTEMAC PHY Support"
+	default XILINX_LLTEMAC_MARVELL_88E1111_GMII
+	
+config XILINX_LLTEMAC_MARVELL_88E1111_RGMII
+	bool "MARVELL 88E1111 using RGMII"
+   help
+	  This phy is used by many Xilinx boards.  This option includes
+	  code for enabling RGMII over copper.
+
+config XILINX_LLTEMAC_MARVELL_88E1111_GMII
+	bool "MARVELL 88E1111 using GMII"
+   help
+	  This phy is used by many Xilinx boards.  This option includes
+	  code for enabling GMII over copper, and for setting the correct
+	  speed based on whatever the phy is able to autonegotiate.  This is
+	  usually the best option to use on ML40x and ML50x boards.
+
+config XILINX_LLTEMAC_MARVELL_88E1111_MII
+	bool "MARVELL 88E1111 using MII or other PHY"
+   help
+	  If your physical interface is not covered by the other
+	  selections, then choose this option.  This option includes generic
+	  speed autonegotation code.
+
+endchoice
+
+
 endif # NET_VENDOR_XILINX
