@@ -329,6 +329,7 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
 {
 	struct xspips *xspi = dev_id;
 	u32 intr_status;
+	u8 fifo_count = 128; /* fifo depth */
 
 	intr_status = xspips_read(xspi->regs + XSPIPS_ISR_OFFSET);
 	xspips_write(xspi->regs + XSPIPS_ISR_OFFSET, intr_status);
@@ -348,15 +349,15 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
 			u8 data;
 
 			data = xspips_read(xspi->regs + XSPIPS_RXD_OFFSET);
-			if (xspi->rxbuf) {
+			if ((xspi->rxbuf) && (fifo_count))
 				*xspi->rxbuf++ = data;
 
-				/* Hack for now, seeing issues with h/w where
-				 * the status register is not updated quick 
-				 * enough, yes this is not efficient
-				 */		
-				udelay(1);
-			}
+			/* Fixing the loop count to fifo depth as
+			 * there is issue with h/w where the status register
+			 * is not updated quick enough.
+			 * Need to revisit after h/w fix.
+			 */
+			--fifo_count;
 		}
 
 		if (xspi->remaining_bytes) {
