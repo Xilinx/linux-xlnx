@@ -25,6 +25,7 @@
 #include <linux/spi/flash.h>
 #include <linux/xilinx_devices.h>
 #include <linux/i2c/pca954x.h>
+#include <linux/i2c/pca953x.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -124,7 +125,7 @@ static struct flash_platform_data qspi_flash_pdata = {
 
 #endif
 
-#if defined(CONFIG_I2C_XILINX_PS)
+#if defined(CONFIG_I2C_XILINX_PS) && defined(CONFIG_I2C_MUX_PCA954x)
 
 static struct pca954x_platform_mode pca954x_platform_modes[] = {
 	{
@@ -173,11 +174,30 @@ static struct i2c_board_info __initdata pca954x_i2c_devices[] = {
 	},
 };
 
-static struct i2c_board_info __initdata pca954x_i2c_mux_devices[] = {
+#if defined(CONFIG_RTC_DRV_PCF8563)
+
+static struct i2c_board_info __initdata rtc8564_board_info[] = {
 	{
 		I2C_BOARD_INFO("rtc8564", 0x51),
 	},
 };
+
+#endif /*CONFIG_RTC_DRV_PCF8563 */
+
+#if defined(CONFIG_GPIO_PCA953X)
+
+static struct pca953x_platform_data tca6416_0 = {
+	.gpio_base = 256,
+};
+
+static struct i2c_board_info __initdata tca6416_board_info[] = {
+	{
+		I2C_BOARD_INFO("tca6416", 0x21),
+		.platform_data = &tca6416_0,
+	}
+};
+
+#endif /* CONFIG_GPIO_PCF8563 */
 	
 
 #endif
@@ -231,12 +251,17 @@ static void __init board_zc702_init(void)
 		ARRAY_SIZE(xilinx_spipss_0_boardinfo));
 #endif
 
-#if	defined(CONFIG_I2C_XILINX_PS)
+#if	defined(CONFIG_I2C_XILINX_PS) && defined(CONFIG_I2C_MUX_PCA954x)
 	i2c_register_board_info(0, pca954x_i2c_devices,
 				ARRAY_SIZE(pca954x_i2c_devices));
-	
-	i2c_register_board_info(5, pca954x_i2c_mux_devices,
-				ARRAY_SIZE(pca954x_i2c_mux_devices));
+#if	defined(CONFIG_RTC_DRV_PCF8563)
+	i2c_register_board_info(5, rtc8564_board_info,
+				ARRAY_SIZE(rtc8564_board_info));
+#endif
+#if 	defined(CONFIG_GPIO_PCA953X)
+	i2c_register_board_info(4, tca6416_board_info,
+				ARRAY_SIZE(tca6416_board_info));
+#endif 
 	
 #endif
 }
