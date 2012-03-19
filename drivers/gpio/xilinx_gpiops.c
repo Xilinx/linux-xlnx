@@ -542,7 +542,7 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	chip->direction_output = xgpiops_dir_out;
 	chip->dbg_show = NULL;
 	chip->base = 0;		/* default pin base */
-	chip->ngpio = ARCH_NR_GPIOS;
+	chip->ngpio = 246;
 	chip->can_sleep = 0;
 
 	/* report a bug if gpio chip registration fails */

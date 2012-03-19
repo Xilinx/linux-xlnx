@@ -18,7 +18,7 @@
 #define __ASM_ARCH_GPIO_H
 
 
-#define ARCH_NR_GPIOS		118
+#define ARCH_NR_GPIOS		512
 #define XGPIOPS_IRQBASE		128
 
 struct xgpio_platform_data {
