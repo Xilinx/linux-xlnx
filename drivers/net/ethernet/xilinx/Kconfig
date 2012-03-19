@@ -33,13 +33,13 @@ config XILINX_AXI_ETHERNET
 	  This driver supports the Xilinx 10/100/1000 Axi Ethernet IP
 	  core used in Xilinx Spartan6 and Virtex6 FPGAs
 
-config XILINX_LL_TEMAC
-	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
-	depends on (PPC || MICROBLAZE)
-	select PHYLIB
-	---help---
-	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
-	  core used in Xilinx Spartan and Virtex FPGAs
+#config XILINX_LL_TEMAC
+#	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
+#	depends on (PPC || MICROBLAZE)
+#	select PHYLIB
+#	---help---
+#	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
+#	  core used in Xilinx Spartan and Virtex FPGAs
 
 config XILINX_LLTEMAC
 	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"

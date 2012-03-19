@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/mm.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -36,6 +37,7 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/of_net.h>
 #endif
 
 #include "xbasic_types.h"
@@ -206,9 +208,9 @@ u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 
 /* for exclusion of all program flows (processes, ISRs and BHs) */
-spinlock_t XTE_spinlock = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_tx_spinlock = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_rx_spinlock = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_spinlock; // = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_tx_spinlock; // = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_rx_spinlock; // = SPIN_LOCK_UNLOCKED;
 
 /*
  * ethtool has a status reporting feature where we can report any sort of
@@ -233,10 +235,10 @@ extern inline int status_requires_reset(int s)
 
 /* Queues with locks */
 static LIST_HEAD(receivedQueue);
-static spinlock_t receivedQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t receivedQueueSpin; // = SPIN_LOCK_UNLOCKED;
 
 static LIST_HEAD(sentQueue);
-static spinlock_t sentQueueSpin = SPIN_LOCK_UNLOCKED;
+static spinlock_t sentQueueSpin; // = SPIN_LOCK_UNLOCKED;
 
 
 /* from mii.h
@@ -1394,7 +1396,7 @@ static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 static int descriptor_init(struct net_device *dev);
 static void free_descriptor_skb(struct net_device *dev);
 
-void xenet_set_multicast_list(struct net_device *dev)
+static void xenet_set_multicast_list(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int i;
@@ -1523,8 +1525,7 @@ static int xenet_FifoSend(struct sk_buff *skb, struct net_device *dev)
 
 	frag = &skb_shinfo(skb)->frags[0];
 	for (i = 1; i < total_frags; i++, frag++) {
-		virt_addr =
-			(void *) page_address(frag->page) + frag->page_offset;
+		virt_addr = skb_frag_address(frag);
 		XLlFifo_Write(&lp->Fifo, virt_addr, frag->size);
 	}
 
@@ -1579,8 +1580,7 @@ static void FifoSendHandler(struct net_device *dev)
 
 		frag = &skb_shinfo(skb)->frags[0];
 		for (i = 1; i < total_frags; i++, frag++) {
-			virt_addr =
-				(void *) page_address(frag->page) + frag->page_offset;
+			virt_addr = skb_frag_address(frag);
 			XLlFifo_Write(&lp->Fifo, virt_addr, frag->size);
 		}
 
@@ -1744,8 +1744,7 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 		bd_ptr = XLlDma_mBdRingNext(&lp->Dma.TxBdRing, bd_ptr);
 		last_bd_ptr = bd_ptr;
 
-		virt_addr =
-			(void *) page_address(frag->page) + frag->page_offset;
+		virt_addr = skb_frag_address(frag);
 		phy_addr =
 			(u32) dma_map_single(dev->dev.parent, virt_addr,
 					frag->size, DMA_TO_DEVICE);
@@ -2645,6 +2644,7 @@ xenet_ethtool_get_pauseparam(struct net_device *dev,
 	}
 }
 
+#if 0
 static u32
 xenet_ethtool_get_rx_csum(struct net_device *dev)
 {
@@ -2728,7 +2728,7 @@ xenet_ethtool_set_sg(struct net_device *dev, u32 onoff)
 
 	return 0;
 }
-
+#endif
 static void
 xenet_ethtool_get_strings(struct net_device *dev, u32 stringset, u8 *strings)
 {
@@ -3317,12 +3317,12 @@ static struct ethtool_ops ethtool_ops = {
 	.set_coalesce = xenet_ethtool_set_coalesce,
 	.get_ringparam  = xenet_ethtool_get_ringparam,
 	.get_pauseparam = xenet_ethtool_get_pauseparam,
-	.get_rx_csum  = xenet_ethtool_get_rx_csum,
+/*	.get_rx_csum  = xenet_ethtool_get_rx_csum,
 	.set_rx_csum  = xenet_ethtool_set_rx_csum,
 	.get_tx_csum  = xenet_ethtool_get_tx_csum,
 	.set_tx_csum  = xenet_ethtool_set_tx_csum,
 	.get_sg       = xenet_ethtool_get_sg,
-	.set_sg       = xenet_ethtool_set_sg,
+	.set_sg       = xenet_ethtool_set_sg, */
 	.get_strings  = xenet_ethtool_get_strings,
 	.get_ethtool_stats = xenet_ethtool_get_ethtool_stats,
 	.get_sset_count    = xenet_ethtool_get_sset_count,
@@ -3353,7 +3353,7 @@ static int xtenet_setup(
 	}
 	dev_set_drvdata(dev, ndev);
 
-	SET_NETDEV_DEV(ndev, &dev->parent);
+	SET_NETDEV_DEV(ndev, dev);
 	ndev->irq = r_irq->start;
 
 	/* Initialize the private data used by XEmac_LookupConfig().
@@ -3554,6 +3554,7 @@ error:
 	return rc;
 }
 
+#if 0
 static int xtenet_probe(struct device *dev)
 {
 	struct resource *r_irq = NULL;	/* Interrupt resources */
@@ -3584,14 +3585,8 @@ static int xtenet_probe(struct device *dev)
 
         return xtenet_setup(dev, r_mem, r_irq, pdata);
 }
+#endif
 
-static struct device_driver xtenet_driver = {
-	.name = DRIVER_NAME,
-	.bus = &platform_bus_type,
-
-	.probe = xtenet_probe,
-	.remove = xtenet_remove
-};
 
 #ifdef CONFIG_OF
 static u32 get_u32(struct platform_device *op, const char *s) {
@@ -3613,7 +3608,7 @@ static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_tx_timeout	= xenet_tx_timeout,
 	.ndo_get_stats	= xenet_get_stats,
 	.ndo_set_mac_address	= eth_mac_addr,
-	.ndo_set_multicast_list	= xenet_set_multicast_list,
+	.ndo_set_rx_mode	= xenet_set_multicast_list,
 	.ndo_validate_addr	= eth_validate_addr,
 };
 
@@ -3629,7 +3624,7 @@ static struct of_device_id xtenet_sdma_of_match[] = {
 	{ /* end of list */ },
 };
 
-static int __devinit xtenet_of_probe(struct platform_device *op, const struct of_device_id *match)
+static int __devinit xtenet_of_probe(struct platform_device *op)
 {
 	struct resource r_irq_struct;
 	struct resource r_mem_struct;
@@ -3646,6 +3641,19 @@ static int __devinit xtenet_of_probe(struct platform_device *op, const struct of
 	struct device_node *llink_connected_node;
 	u32 *dcrreg_property;
 
+	/*
+	 * Make sure the locks are initialized
+	 */
+	spin_lock_init(&XTE_spinlock);
+	spin_lock_init(&XTE_tx_spinlock);
+	spin_lock_init(&XTE_rx_spinlock);
+
+	INIT_LIST_HEAD(&sentQueue);
+	INIT_LIST_HEAD(&receivedQueue);
+
+	spin_lock_init(&sentQueueSpin);
+	spin_lock_init(&receivedQueueSpin);
+
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
                         op->dev.of_node->name);
 
@@ -3658,7 +3666,7 @@ static int __devinit xtenet_of_probe(struct platform_device *op, const struct of
 
 	/* Get IRQ for the device */
 	rc = of_irq_to_resource(op->dev.of_node, 0, r_irq);
-	if(rc == NO_IRQ) {
+	if(!rc) {
 		dev_warn(&op->dev, "no IRQ found.\n");
 		return rc;
 	}
@@ -3692,14 +3700,14 @@ static int __devinit xtenet_of_probe(struct platform_device *op, const struct of
 
 	        pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
 		pdata_struct.ll_dev_type = XPAR_LL_FIFO;
-		pdata_struct.ll_dev_dma_rx_irq	= NO_IRQ;
-		pdata_struct.ll_dev_dma_tx_irq	= NO_IRQ;
+		pdata_struct.ll_dev_dma_rx_irq	= 0;
+		pdata_struct.ll_dev_dma_tx_irq	= 0;
 
 		rc = of_irq_to_resource(
 				llink_connected_node,
 				0,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
+		if(!rc) {
 			dev_warn(&op->dev, "no IRQ found.\n");
 			return rc;
 		}
@@ -3728,7 +3736,7 @@ static int __devinit xtenet_of_probe(struct platform_device *op, const struct of
 				llink_connected_node,
 				0,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
+		if(!rc) {
 			dev_warn(&op->dev, "First IRQ not found.\n");
 			return rc;
 		}
@@ -3737,13 +3745,13 @@ static int __devinit xtenet_of_probe(struct platform_device *op, const struct of
 				llink_connected_node,
 				1,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
+		if(!rc) {
 			dev_warn(&op->dev, "Second IRQ not found.\n");
 			return rc;
 		}
 		pdata_struct.ll_dev_dma_tx_irq	= r_connected_irq_struct.start;
 
-		pdata_struct.ll_dev_fifo_irq	= NO_IRQ;
+		pdata_struct.ll_dev_fifo_irq	= 0;
         } else {
 		dev_warn(&op->dev, "Locallink connection not matched.\n");
 		return rc;
@@ -3765,7 +3773,7 @@ static int __devexit xtenet_of_remove(struct platform_device *op)
 	return xtenet_remove(&op->dev);
 }
 
-static struct of_device_id xtenet_of_match[] = {
+static struct of_device_id xtenet_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,xps-ll-temac-1.00.a", },
 	{ .compatible = "xlnx,xps-ll-temac-1.00.b", },
 	{ .compatible = "xlnx,xps-ll-temac-1.01.a", },
@@ -3774,57 +3782,19 @@ static struct of_device_id xtenet_of_match[] = {
 };
 
 MODULE_DEVICE_TABLE(of, xtenet_of_match);
+#endif
 
-static struct of_platform_driver xtenet_of_driver = {
+static struct platform_driver xtenet_of_driver = {
 	.probe		= xtenet_of_probe,
 	.remove		= __devexit_p(xtenet_of_remove),
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = xtenet_of_match,
+		.of_match_table = of_match_ptr(xtenet_of_match),
 	},
 };
-#endif
 
-static int __init xtenet_init(void)
-{
-	int status;
-
-	/*
-	 * Make sure the locks are initialized
-	 */
-	spin_lock_init(&XTE_spinlock);
-	spin_lock_init(&XTE_tx_spinlock);
-	spin_lock_init(&XTE_rx_spinlock);
-
-	INIT_LIST_HEAD(&sentQueue);
-	INIT_LIST_HEAD(&receivedQueue);
-
-	spin_lock_init(&sentQueueSpin);
-	spin_lock_init(&receivedQueueSpin);
-
-	/*
-	 * No kernel boot options used,
-	 * so we just need to register the driver
-	 */
-	status = driver_register(&xtenet_driver);
-#ifdef CONFIG_OF
-	status |= of_register_platform_driver(&xtenet_of_driver);
-#endif
-        return status;
-
-}
-
-static void __exit xtenet_cleanup(void)
-{
-	driver_unregister(&xtenet_driver);
-#ifdef CONFIG_OF
-	of_unregister_platform_driver(&xtenet_of_driver);
-#endif
-}
-
-module_init(xtenet_init);
-module_exit(xtenet_cleanup);
+module_platform_driver(xtenet_of_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION(DRIVER_DESCRIPTION);
