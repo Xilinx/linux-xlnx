@@ -1,8 +1,8 @@
 /dts-v1/;
 
 / {
-	model = "Xilinx Zynq ZC702)";
-	compatible = "xlnx,zynq-zc770-xm010";
+	model = "Xilinx Zynq ZC702";
+	compatible = "xlnx,zynq-zc702";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;
@@ -42,7 +42,7 @@
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0x2a 0x0>;
-			clock-frequency = <133000000>;
+			clock-frequency = <111111111>;
 		};
 
 		swdt@f8005000 {
@@ -64,6 +64,18 @@
 				device_type = "ethernet-phy";
 				reg = <0x7>;
 			};
+		};
+
+		i2c0: i2c@e0004000 {
+			compatible = "xlnx,ps7-i2c-1.00.a";
+			reg = <0xE0004000 0x1000>;
+			interrupts = <57 0>;
+			bus-id = <0>;
+			input-clk = <111111111>;
+			i2c-clk = <100000>;
+			
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 
 		sdhci@e0100000 {
