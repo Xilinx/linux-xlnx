@@ -12,6 +12,7 @@
 
 #include "util/debug.h"
 #include "util/session.h"
+#include "util/tool.h"
 
 #include <sys/types.h>
 #include <sys/prctl.h>
@@ -325,7 +326,7 @@ alloc_failed:
 	die("memory allocation failed\n");
 }
 
-static char			const *input_name = "perf.data";
+static const char *input_name;
 
 struct raw_event_sample {
 	u32			size;
@@ -845,12 +846,13 @@ static void dump_info(void)
 		die("Unknown type of information\n");
 }
 
-static int process_sample_event(union perf_event *event,
+static int process_sample_event(struct perf_tool *tool __used,
+				union perf_event *event,
 				struct perf_sample *sample,
 				struct perf_evsel *evsel __used,
-				struct perf_session *s)
+				struct machine *machine)
 {
-	struct thread *thread = perf_session__findnew(s, sample->tid);
+	struct thread *thread = machine__findnew_thread(machine, sample->tid);
 
 	if (thread == NULL) {
 		pr_debug("problem processing %d event, skipping it.\n",
@@ -863,7 +865,7 @@ static int process_sample_event(union perf_event *event,
 	return 0;
 }
 
-static struct perf_event_ops eops = {
+static struct perf_tool eops = {
 	.sample			= process_sample_event,
 	.comm			= perf_event__process_comm,
 	.ordered_samples	= true,
@@ -942,10 +944,10 @@ static const char *record_args[] = {
 	"-f",
 	"-m", "1024",
 	"-c", "1",
-	"-e", "lock:lock_acquire:r",
-	"-e", "lock:lock_acquired:r",
-	"-e", "lock:lock_contended:r",
-	"-e", "lock:lock_release:r",
+	"-e", "lock:lock_acquire",
+	"-e", "lock:lock_acquired",
+	"-e", "lock:lock_contended",
+	"-e", "lock:lock_release",
 };
 
 static int __cmd_record(int argc, const char **argv)

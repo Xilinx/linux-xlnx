@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
+#include <linux/export.h>
 
 #include <lantiq_soc.h>
 #include <xway_dma.h>
@@ -221,17 +222,17 @@ ltq_dma_init(void)
 
 	/* insert and request the memory region */
 	if (insert_resource(&iomem_resource, &ltq_dma_resource) < 0)
-		panic("Failed to insert dma memory\n");
+		panic("Failed to insert dma memory");
 
 	if (request_mem_region(ltq_dma_resource.start,
 			resource_size(&ltq_dma_resource), "dma") < 0)
-		panic("Failed to request dma memory\n");
+		panic("Failed to request dma memory");
 
 	/* remap dma register range */
 	ltq_dma_membase = ioremap_nocache(ltq_dma_resource.start,
 				resource_size(&ltq_dma_resource));
 	if (!ltq_dma_membase)
-		panic("Failed to remap dma memory\n");
+		panic("Failed to remap dma memory");
 
 	/* power up and reset the dma engine */
 	ltq_pmu_enable(PMU_DMA);

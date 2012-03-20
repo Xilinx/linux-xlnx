@@ -38,6 +38,7 @@ enum nfs4_callback_opnum {
 struct cb_process_state {
 	__be32			drc_status;
 	struct nfs_client	*clp;
+	int			slotid;
 };
 
 struct cb_compound_hdr_arg {
@@ -161,12 +162,11 @@ struct cb_layoutrecallargs {
 	};
 };
 
-extern unsigned nfs4_callback_layoutrecall(
+extern __be32 nfs4_callback_layoutrecall(
 	struct cb_layoutrecallargs *args,
 	void *dummy, struct cb_process_state *cps);
 
 extern void nfs4_check_drain_bc_complete(struct nfs4_session *ses);
-extern void nfs4_cb_take_slot(struct nfs_client *clp);
 
 struct cb_devicenotifyitem {
 	uint32_t		cbd_notify_type;

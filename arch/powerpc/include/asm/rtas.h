@@ -245,14 +245,22 @@ extern int early_init_dt_scan_rtas(unsigned long node,
 
 extern void pSeries_log_error(char *buf, unsigned int err_type, int fatal);
 
+#ifdef CONFIG_PPC_RTAS_DAEMON
+extern void rtas_cancel_event_scan(void);
+#else
+static inline void rtas_cancel_event_scan(void) { }
+#endif
+
 /* Error types logged.  */
 #define ERR_FLAG_ALREADY_LOGGED	0x0
 #define ERR_FLAG_BOOT		0x1 	/* log was pulled from NVRAM on boot */
 #define ERR_TYPE_RTAS_LOG	0x2	/* from rtas event-scan */
-#define ERR_TYPE_KERNEL_PANIC	0x4	/* from panic() */
+#define ERR_TYPE_KERNEL_PANIC	0x4	/* from die()/panic() */
+#define ERR_TYPE_KERNEL_PANIC_GZ 0x8	/* ditto, compressed */
 
 /* All the types and not flags */
-#define ERR_TYPE_MASK	(ERR_TYPE_RTAS_LOG | ERR_TYPE_KERNEL_PANIC)
+#define ERR_TYPE_MASK \
+	(ERR_TYPE_RTAS_LOG | ERR_TYPE_KERNEL_PANIC | ERR_TYPE_KERNEL_PANIC_GZ)
 
 #define RTAS_DEBUG KERN_DEBUG "RTAS: "
  
@@ -304,6 +312,18 @@ static inline u32 rtas_config_addr(int busno, int devfn, int reg)
 
 extern void __cpuinit rtas_give_timebase(void);
 extern void __cpuinit rtas_take_timebase(void);
+
+#ifdef CONFIG_PPC_RTAS
+static inline int page_is_rtas_user_buf(unsigned long pfn)
+{
+	unsigned long paddr = (pfn << PAGE_SHIFT);
+	if (paddr >= rtas_rmo_buf && paddr < (rtas_rmo_buf + RTAS_RMOBUF_MAX))
+		return 1;
+	return 0;
+}
+#else
+static inline int page_is_rtas_user_buf(unsigned long pfn) { return 0;}
+#endif
 
 #endif /* __KERNEL__ */
 #endif /* _POWERPC_RTAS_H */

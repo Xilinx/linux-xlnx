@@ -466,8 +466,13 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		goto out;
 
 	if (addr->sin_family != AF_INET) {
+		/* Compatibility games : accept AF_UNSPEC (mapped to AF_INET)
+		 * only if s_addr is INADDR_ANY.
+		 */
 		err = -EAFNOSUPPORT;
-		goto out;
+		if (addr->sin_family != AF_UNSPEC ||
+		    addr->sin_addr.s_addr != htonl(INADDR_ANY))
+			goto out;
 	}
 
 	chk_addr_ret = inet_addr_type(sock_net(sk), addr->sin_addr.s_addr);
@@ -888,7 +893,7 @@ int inet_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 EXPORT_SYMBOL(inet_ioctl);
 
 #ifdef CONFIG_COMPAT
-int inet_compat_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
+static int inet_compat_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
 	struct sock *sk = sock->sk;
 	int err = -ENOIOCTLCMD;
@@ -1245,7 +1250,8 @@ out:
 	return err;
 }
 
-static struct sk_buff *inet_gso_segment(struct sk_buff *skb, u32 features)
+static struct sk_buff *inet_gso_segment(struct sk_buff *skb,
+	netdev_features_t features)
 {
 	struct sk_buff *segs = ERR_PTR(-EINVAL);
 	struct iphdr *iph;
@@ -1440,11 +1446,11 @@ EXPORT_SYMBOL_GPL(inet_ctl_sock_create);
 unsigned long snmp_fold_field(void __percpu *mib[], int offt)
 {
 	unsigned long res = 0;
-	int i;
+	int i, j;
 
 	for_each_possible_cpu(i) {
-		res += *(((unsigned long *) per_cpu_ptr(mib[0], i)) + offt);
-		res += *(((unsigned long *) per_cpu_ptr(mib[1], i)) + offt);
+		for (j = 0; j < SNMP_ARRAY_SZ; j++)
+			res += *(((unsigned long *) per_cpu_ptr(mib[j], i)) + offt);
 	}
 	return res;
 }
@@ -1458,28 +1464,19 @@ u64 snmp_fold_field64(void __percpu *mib[], int offt, size_t syncp_offset)
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
-		void *bhptr, *userptr;
+		void *bhptr;
 		struct u64_stats_sync *syncp;
-		u64 v_bh, v_user;
+		u64 v;
 		unsigned int start;
 
-		/* first mib used by softirq context, we must use _bh() accessors */
-		bhptr = per_cpu_ptr(SNMP_STAT_BHPTR(mib), cpu);
+		bhptr = per_cpu_ptr(mib[0], cpu);
 		syncp = (struct u64_stats_sync *)(bhptr + syncp_offset);
 		do {
 			start = u64_stats_fetch_begin_bh(syncp);
-			v_bh = *(((u64 *) bhptr) + offt);
+			v = *(((u64 *) bhptr) + offt);
 		} while (u64_stats_fetch_retry_bh(syncp, start));
 
-		/* second mib used in USER context */
-		userptr = per_cpu_ptr(SNMP_STAT_USRPTR(mib), cpu);
-		syncp = (struct u64_stats_sync *)(userptr + syncp_offset);
-		do {
-			start = u64_stats_fetch_begin(syncp);
-			v_user = *(((u64 *) userptr) + offt);
-		} while (u64_stats_fetch_retry(syncp, start));
-
-		res += v_bh + v_user;
+		res += v;
 	}
 	return res;
 }
@@ -1491,25 +1488,28 @@ int snmp_mib_init(void __percpu *ptr[2], size_t mibsize, size_t align)
 	BUG_ON(ptr == NULL);
 	ptr[0] = __alloc_percpu(mibsize, align);
 	if (!ptr[0])
-		goto err0;
+		return -ENOMEM;
+#if SNMP_ARRAY_SZ == 2
 	ptr[1] = __alloc_percpu(mibsize, align);
-	if (!ptr[1])
-		goto err1;
+	if (!ptr[1]) {
+		free_percpu(ptr[0]);
+		ptr[0] = NULL;
+		return -ENOMEM;
+	}
+#endif
 	return 0;
-err1:
-	free_percpu(ptr[0]);
-	ptr[0] = NULL;
-err0:
-	return -ENOMEM;
 }
 EXPORT_SYMBOL_GPL(snmp_mib_init);
 
-void snmp_mib_free(void __percpu *ptr[2])
+void snmp_mib_free(void __percpu *ptr[SNMP_ARRAY_SZ])
 {
+	int i;
+
 	BUG_ON(ptr == NULL);
-	free_percpu(ptr[0]);
-	free_percpu(ptr[1]);
-	ptr[0] = ptr[1] = NULL;
+	for (i = 0; i < SNMP_ARRAY_SZ; i++) {
+		free_percpu(ptr[i]);
+		ptr[i] = NULL;
+	}
 }
 EXPORT_SYMBOL_GPL(snmp_mib_free);
 
@@ -1573,9 +1573,9 @@ static __net_init int ipv4_mib_init_net(struct net *net)
 			  sizeof(struct icmp_mib),
 			  __alignof__(struct icmp_mib)) < 0)
 		goto err_icmp_mib;
-	if (snmp_mib_init((void __percpu **)net->mib.icmpmsg_statistics,
-			  sizeof(struct icmpmsg_mib),
-			  __alignof__(struct icmpmsg_mib)) < 0)
+	net->mib.icmpmsg_statistics = kzalloc(sizeof(struct icmpmsg_mib),
+					      GFP_KERNEL);
+	if (!net->mib.icmpmsg_statistics)
 		goto err_icmpmsg_mib;
 
 	tcp_mib_init(net);
@@ -1599,7 +1599,7 @@ err_tcp_mib:
 
 static __net_exit void ipv4_mib_exit_net(struct net *net)
 {
-	snmp_mib_free((void __percpu **)net->mib.icmpmsg_statistics);
+	kfree(net->mib.icmpmsg_statistics);
 	snmp_mib_free((void __percpu **)net->mib.icmp_statistics);
 	snmp_mib_free((void __percpu **)net->mib.udplite_statistics);
 	snmp_mib_free((void __percpu **)net->mib.udp_statistics);
@@ -1671,6 +1671,8 @@ static int __init inet_init(void)
 #ifdef CONFIG_SYSCTL
 	ip_static_sysctl_init();
 #endif
+
+	tcp_prot.sysctl_mem = init_net.ipv4.sysctl_tcp_mem;
 
 	/*
 	 *	Add all the base protocols.

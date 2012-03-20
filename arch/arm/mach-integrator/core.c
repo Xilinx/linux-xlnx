@@ -29,6 +29,7 @@
 #include <mach/cm.h>
 #include <asm/system.h>
 #include <asm/leds.h>
+#include <asm/mach-types.h>
 #include <asm/mach/time.h>
 #include <asm/pgtable.h>
 
@@ -44,7 +45,6 @@ static struct amba_device rtc_device = {
 		.flags	= IORESOURCE_MEM,
 	},
 	.irq		= { IRQ_RTCINT, NO_IRQ },
-	.periphid	= 0x00041030,
 };
 
 static struct amba_device uart0_device = {
@@ -58,7 +58,6 @@ static struct amba_device uart0_device = {
 		.flags	= IORESOURCE_MEM,
 	},
 	.irq		= { IRQ_UARTINT0, NO_IRQ },
-	.periphid	= 0x0041010,
 };
 
 static struct amba_device uart1_device = {
@@ -72,7 +71,6 @@ static struct amba_device uart1_device = {
 		.flags	= IORESOURCE_MEM,
 	},
 	.irq		= { IRQ_UARTINT1, NO_IRQ },
-	.periphid	= 0x0041010,
 };
 
 static struct amba_device kmi0_device = {
@@ -85,7 +83,6 @@ static struct amba_device kmi0_device = {
 		.flags	= IORESOURCE_MEM,
 	},
 	.irq		= { IRQ_KMIINT0, NO_IRQ },
-	.periphid	= 0x00041050,
 };
 
 static struct amba_device kmi1_device = {
@@ -98,7 +95,6 @@ static struct amba_device kmi1_device = {
 		.flags	= IORESOURCE_MEM,
 	},
 	.irq		= { IRQ_KMIINT1, NO_IRQ },
-	.periphid	= 0x00041050,
 };
 
 static struct amba_device *amba_devs[] __initdata = {
@@ -126,6 +122,10 @@ static struct clk_lookup lookups[] = {
 	{	/* Bus clock */
 		.con_id		= "apb_pclk",
 		.clk		= &dummy_apb_pclk,
+	}, {
+		/* Integrator/AP timer frequency */
+		.dev_id		= "ap_timer",
+		.clk		= &clk24mhz,
 	}, {	/* UART0 */
 		.dev_id		= "mb:16",
 		.clk		= &uartclk,
@@ -152,6 +152,19 @@ void __init integrator_init_early(void)
 static int __init integrator_init(void)
 {
 	int i;
+
+	/*
+	 * The Integrator/AP lacks necessary AMBA PrimeCell IDs, so we need to
+	 * hard-code them. The Integator/CP and forward have proper cell IDs.
+	 * Else we leave them undefined to the bus driver can autoprobe them.
+	 */
+	if (machine_is_integrator()) {
+		rtc_device.periphid	= 0x00041030;
+		uart0_device.periphid	= 0x00041010;
+		uart1_device.periphid	= 0x00041010;
+		kmi0_device.periphid	= 0x00041050;
+		kmi1_device.periphid	= 0x00041050;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(amba_devs); i++) {
 		struct amba_device *d = amba_devs[i];
@@ -205,7 +218,7 @@ static struct amba_pl010_data integrator_uart_data = {
 
 #define CM_CTRL	IO_ADDRESS(INTEGRATOR_HDR_CTRL)
 
-static DEFINE_SPINLOCK(cm_lock);
+static DEFINE_RAW_SPINLOCK(cm_lock);
 
 /**
  * cm_control - update the CM_CTRL register.
@@ -217,10 +230,10 @@ void cm_control(u32 mask, u32 set)
 	unsigned long flags;
 	u32 val;
 
-	spin_lock_irqsave(&cm_lock, flags);
+	raw_spin_lock_irqsave(&cm_lock, flags);
 	val = readl(CM_CTRL) & ~mask;
 	writel(val | set, CM_CTRL);
-	spin_unlock_irqrestore(&cm_lock, flags);
+	raw_spin_unlock_irqrestore(&cm_lock, flags);
 }
 
 EXPORT_SYMBOL(cm_control);
@@ -233,4 +246,12 @@ EXPORT_SYMBOL(cm_control);
 void __init integrator_reserve(void)
 {
 	memblock_reserve(PHYS_OFFSET, __pa(swapper_pg_dir) - PHYS_OFFSET);
+}
+
+/*
+ * To reset, we hit the on-board reset register in the system FPGA
+ */
+void integrator_restart(char mode, const char *cmd)
+{
+	cm_control(CM_CTRL_RESET, CM_CTRL_RESET);
 }

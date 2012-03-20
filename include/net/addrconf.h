@@ -8,7 +8,7 @@
 
 #define TEMP_VALID_LIFETIME		(7*86400)
 #define TEMP_PREFERRED_LIFETIME		(86400)
-#define REGEN_MAX_RETRY			(5)
+#define REGEN_MAX_RETRY			(3)
 #define MAX_DESYNC_FACTOR		(600)
 
 #define ADDR_CHECK_FREQUENCY		(120*HZ)
@@ -151,7 +151,8 @@ extern int ipv6_chk_mcast_addr(struct net_device *dev,
 			       const struct in6_addr *src_addr);
 extern int ipv6_is_mld(struct sk_buff *skb, int nexthdr);
 
-extern void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len);
+extern void addrconf_prefix_rcv(struct net_device *dev,
+				u8 *opt, int len, bool sllao);
 
 /*
  *	anycast prototypes (anycast.c)

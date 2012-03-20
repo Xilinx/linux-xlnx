@@ -11,13 +11,39 @@
 #include <linux/types.h>
 #include <linux/mount.h>
 
+#include <linux/nfs.h>
+#include <linux/nfs2.h>
+#include <linux/nfs3.h>
+#include <linux/nfs4.h>
+#include <linux/sunrpc/msg_prot.h>
+
 #include <linux/nfsd/debug.h>
 #include <linux/nfsd/export.h>
 #include <linux/nfsd/stats.h>
+
 /*
  * nfsd version
  */
 #define NFSD_SUPPORTED_MINOR_VERSION	1
+/*
+ * Maximum blocksizes supported by daemon under various circumstances.
+ */
+#define NFSSVC_MAXBLKSIZE       RPCSVC_MAXPAYLOAD
+/* NFSv2 is limited by the protocol specification, see RFC 1094 */
+#define NFSSVC_MAXBLKSIZE_V2    (8*1024)
+
+
+/*
+ * Largest number of bytes we need to allocate for an NFS
+ * call or reply.  Used to control buffer sizes.  We use
+ * the length of v3 WRITE, READDIR and READDIR replies
+ * which are an RPC header, up to 26 XDR units of reply
+ * data, and some page data.
+ *
+ * Note that accuracy here doesn't matter too much as the
+ * size is rounded up to a page size when allocating space.
+ */
+#define NFSD_BUFSIZE            ((RPC_MAX_HEADER_WITH_AUTH+26)*XDR_UNIT + NFSSVC_MAXBLKSIZE)
 
 struct readdir_cd {
 	__be32			err;	/* 0, nfserr, or nfserr_eof */
@@ -78,14 +104,16 @@ static inline int nfsd_v4client(struct svc_rqst *rq)
  */
 #ifdef CONFIG_NFSD_V4
 extern unsigned int max_delegations;
-int nfs4_state_init(void);
+void nfs4_state_init(void);
+int nfsd4_init_slabs(void);
 void nfsd4_free_slabs(void);
 int nfs4_state_start(void);
 void nfs4_state_shutdown(void);
 void nfs4_reset_lease(time_t leasetime);
 int nfs4_reset_recoverydir(char *recdir);
 #else
-static inline int nfs4_state_init(void) { return 0; }
+static inline void nfs4_state_init(void) { }
+static inline int nfsd4_init_slabs(void) { return 0; }
 static inline void nfsd4_free_slabs(void) { }
 static inline int nfs4_state_start(void) { return 0; }
 static inline void nfs4_state_shutdown(void) { }
@@ -312,15 +340,15 @@ static inline u32 nfsd_suppattrs2(u32 minorversion)
 }
 
 /* These will return ERR_INVAL if specified in GETATTR or READDIR. */
-#define NFSD_WRITEONLY_ATTRS_WORD1							    \
-(FATTR4_WORD1_TIME_ACCESS_SET   | FATTR4_WORD1_TIME_MODIFY_SET)
+#define NFSD_WRITEONLY_ATTRS_WORD1 \
+	(FATTR4_WORD1_TIME_ACCESS_SET   | FATTR4_WORD1_TIME_MODIFY_SET)
 
 /* These are the only attrs allowed in CREATE/OPEN/SETATTR. */
-#define NFSD_WRITEABLE_ATTRS_WORD0                                                          \
-(FATTR4_WORD0_SIZE              | FATTR4_WORD0_ACL                                         )
-#define NFSD_WRITEABLE_ATTRS_WORD1                                                          \
-(FATTR4_WORD1_MODE              | FATTR4_WORD1_OWNER         | FATTR4_WORD1_OWNER_GROUP     \
- | FATTR4_WORD1_TIME_ACCESS_SET | FATTR4_WORD1_TIME_MODIFY_SET)
+#define NFSD_WRITEABLE_ATTRS_WORD0 \
+	(FATTR4_WORD0_SIZE | FATTR4_WORD0_ACL)
+#define NFSD_WRITEABLE_ATTRS_WORD1 \
+	(FATTR4_WORD1_MODE | FATTR4_WORD1_OWNER | FATTR4_WORD1_OWNER_GROUP \
+	| FATTR4_WORD1_TIME_ACCESS_SET | FATTR4_WORD1_TIME_MODIFY_SET)
 #define NFSD_WRITEABLE_ATTRS_WORD2 0
 
 #define NFSD_SUPPATTR_EXCLCREAT_WORD0 \
@@ -334,6 +362,13 @@ static inline u32 nfsd_suppattrs2(u32 minorversion)
 	 ~(FATTR4_WORD1_TIME_ACCESS_SET | FATTR4_WORD1_TIME_MODIFY_SET))
 #define NFSD_SUPPATTR_EXCLCREAT_WORD2 \
 	NFSD_WRITEABLE_ATTRS_WORD2
+
+extern int nfsd4_is_junction(struct dentry *dentry);
+#else
+static inline int nfsd4_is_junction(struct dentry *dentry)
+{
+	return 0;
+}
 
 #endif /* CONFIG_NFSD_V4 */
 

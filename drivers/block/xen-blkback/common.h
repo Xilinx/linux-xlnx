@@ -27,7 +27,6 @@
 #ifndef __XEN_BLKIF__BACKEND__COMMON_H__
 #define __XEN_BLKIF__BACKEND__COMMON_H__
 
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
@@ -46,7 +45,7 @@
 
 #define DRV_PFX "xen-blkback:"
 #define DPRINTK(fmt, args...)				\
-	pr_debug(DRV_PFX "(%s:%d) " fmt ".\n",	\
+	pr_debug(DRV_PFX "(%s:%d) " fmt ".\n",		\
 		 __func__, __LINE__, ##args)
 
 
@@ -61,32 +60,66 @@ struct blkif_common_response {
 	char dummy;
 };
 
-/* i386 protocol version */
-#pragma pack(push, 4)
-struct blkif_x86_32_request {
-	uint8_t        operation;    /* BLKIF_OP_???                         */
+struct blkif_x86_32_request_rw {
 	uint8_t        nr_segments;  /* number of segments                   */
 	blkif_vdev_t   handle;       /* only for read/write requests         */
 	uint64_t       id;           /* private guest value, echoed in resp  */
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
 	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
-};
+} __attribute__((__packed__));
+
+struct blkif_x86_32_request_discard {
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
+	blkif_vdev_t   _pad1;        /* was "handle" for read/write requests */
+	uint64_t       id;           /* private guest value, echoed in resp  */
+	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
+	uint64_t       nr_sectors;
+} __attribute__((__packed__));
+
+struct blkif_x86_32_request {
+	uint8_t        operation;    /* BLKIF_OP_???                         */
+	union {
+		struct blkif_x86_32_request_rw rw;
+		struct blkif_x86_32_request_discard discard;
+	} u;
+} __attribute__((__packed__));
+
+/* i386 protocol version */
+#pragma pack(push, 4)
 struct blkif_x86_32_response {
 	uint64_t        id;              /* copied from request */
 	uint8_t         operation;       /* copied from request */
 	int16_t         status;          /* BLKIF_RSP_???       */
 };
 #pragma pack(pop)
-
 /* x86_64 protocol version */
-struct blkif_x86_64_request {
-	uint8_t        operation;    /* BLKIF_OP_???                         */
+
+struct blkif_x86_64_request_rw {
 	uint8_t        nr_segments;  /* number of segments                   */
 	blkif_vdev_t   handle;       /* only for read/write requests         */
-	uint64_t       __attribute__((__aligned__(8))) id;
+	uint32_t       _pad1;        /* offsetof(blkif_reqest..,u.rw.id)==8  */
+	uint64_t       id;
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
 	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
-};
+} __attribute__((__packed__));
+
+struct blkif_x86_64_request_discard {
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
+	blkif_vdev_t   _pad1;        /* was "handle" for read/write requests */
+        uint32_t       _pad2;        /* offsetof(blkif_..,u.discard.id)==8   */
+	uint64_t       id;
+	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
+	uint64_t       nr_sectors;
+} __attribute__((__packed__));
+
+struct blkif_x86_64_request {
+	uint8_t        operation;    /* BLKIF_OP_???                         */
+	union {
+		struct blkif_x86_64_request_rw rw;
+		struct blkif_x86_64_request_discard discard;
+	} u;
+} __attribute__((__packed__));
+
 struct blkif_x86_64_response {
 	uint64_t       __attribute__((__aligned__(8))) id;
 	uint8_t         operation;       /* copied from request */
@@ -113,6 +146,11 @@ enum blkif_protocol {
 	BLKIF_PROTOCOL_X86_64 = 3,
 };
 
+enum blkif_backend_type {
+	BLKIF_BACKEND_PHY  = 1,
+	BLKIF_BACKEND_FILE = 2,
+};
+
 struct xen_vbd {
 	/* What the domain refers to this vbd as. */
 	blkif_vdev_t		handle;
@@ -126,6 +164,7 @@ struct xen_vbd {
 	/* Cached size parameter. */
 	sector_t		size;
 	bool			flush_support;
+	bool			discard_secure;
 };
 
 struct backend_info;
@@ -138,8 +177,9 @@ struct xen_blkif {
 	unsigned int		irq;
 	/* Comms information. */
 	enum blkif_protocol	blk_protocol;
+	enum blkif_backend_type blk_backend_type;
 	union blkif_back_rings	blk_rings;
-	struct vm_struct	*blk_ring_area;
+	void			*blk_ring;
 	/* The VBD attached to this interface. */
 	struct xen_vbd		vbd;
 	/* Back pointer to the backend_info. */
@@ -149,6 +189,9 @@ struct xen_blkif {
 	atomic_t		refcnt;
 
 	wait_queue_head_t	wq;
+	/* for barrier (drain) requests */
+	struct completion	drain_complete;
+	atomic_t		drain;
 	/* One thread per one blkif. */
 	struct task_struct	*xenblkd;
 	unsigned int		waiting_reqs;
@@ -159,13 +202,11 @@ struct xen_blkif {
 	int			st_wr_req;
 	int			st_oo_req;
 	int			st_f_req;
+	int			st_ds_req;
 	int			st_rd_sect;
 	int			st_wr_sect;
 
 	wait_queue_head_t	waiting_to_free;
-
-	grant_handle_t		shmem_handle;
-	grant_ref_t		shmem_ref;
 };
 
 
@@ -182,7 +223,7 @@ struct xen_blkif {
 
 struct phys_req {
 	unsigned short		dev;
-	unsigned short		nr_sects;
+	blkif_sector_t		nr_sects;
 	struct block_device	*bdev;
 	blkif_sector_t		sector_number;
 };
@@ -196,6 +237,8 @@ int xen_blkif_schedule(void *arg);
 int xen_blkbk_flush_diskcache(struct xenbus_transaction xbt,
 			      struct backend_info *be, int state);
 
+int xen_blkbk_barrier(struct xenbus_transaction xbt,
+		      struct backend_info *be, int state);
 struct xenbus_device *xen_blkbk_xenbus(struct backend_info *be);
 
 static inline void blkif_get_x86_32_req(struct blkif_request *dst,
@@ -203,15 +246,29 @@ static inline void blkif_get_x86_32_req(struct blkif_request *dst,
 {
 	int i, n = BLKIF_MAX_SEGMENTS_PER_REQUEST;
 	dst->operation = src->operation;
-	dst->nr_segments = src->nr_segments;
-	dst->handle = src->handle;
-	dst->id = src->id;
-	dst->u.rw.sector_number = src->sector_number;
-	barrier();
-	if (n > dst->nr_segments)
-		n = dst->nr_segments;
-	for (i = 0; i < n; i++)
-		dst->u.rw.seg[i] = src->seg[i];
+	switch (src->operation) {
+	case BLKIF_OP_READ:
+	case BLKIF_OP_WRITE:
+	case BLKIF_OP_WRITE_BARRIER:
+	case BLKIF_OP_FLUSH_DISKCACHE:
+		dst->u.rw.nr_segments = src->u.rw.nr_segments;
+		dst->u.rw.handle = src->u.rw.handle;
+		dst->u.rw.id = src->u.rw.id;
+		dst->u.rw.sector_number = src->u.rw.sector_number;
+		barrier();
+		if (n > dst->u.rw.nr_segments)
+			n = dst->u.rw.nr_segments;
+		for (i = 0; i < n; i++)
+			dst->u.rw.seg[i] = src->u.rw.seg[i];
+		break;
+	case BLKIF_OP_DISCARD:
+		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.sector_number = src->u.discard.sector_number;
+		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
+		break;
+	default:
+		break;
+	}
 }
 
 static inline void blkif_get_x86_64_req(struct blkif_request *dst,
@@ -219,15 +276,29 @@ static inline void blkif_get_x86_64_req(struct blkif_request *dst,
 {
 	int i, n = BLKIF_MAX_SEGMENTS_PER_REQUEST;
 	dst->operation = src->operation;
-	dst->nr_segments = src->nr_segments;
-	dst->handle = src->handle;
-	dst->id = src->id;
-	dst->u.rw.sector_number = src->sector_number;
-	barrier();
-	if (n > dst->nr_segments)
-		n = dst->nr_segments;
-	for (i = 0; i < n; i++)
-		dst->u.rw.seg[i] = src->seg[i];
+	switch (src->operation) {
+	case BLKIF_OP_READ:
+	case BLKIF_OP_WRITE:
+	case BLKIF_OP_WRITE_BARRIER:
+	case BLKIF_OP_FLUSH_DISKCACHE:
+		dst->u.rw.nr_segments = src->u.rw.nr_segments;
+		dst->u.rw.handle = src->u.rw.handle;
+		dst->u.rw.id = src->u.rw.id;
+		dst->u.rw.sector_number = src->u.rw.sector_number;
+		barrier();
+		if (n > dst->u.rw.nr_segments)
+			n = dst->u.rw.nr_segments;
+		for (i = 0; i < n; i++)
+			dst->u.rw.seg[i] = src->u.rw.seg[i];
+		break;
+	case BLKIF_OP_DISCARD:
+		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.sector_number = src->u.discard.sector_number;
+		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
+		break;
+	default:
+		break;
+	}
 }
 
 #endif /* __XEN_BLKIF__BACKEND__COMMON_H__ */

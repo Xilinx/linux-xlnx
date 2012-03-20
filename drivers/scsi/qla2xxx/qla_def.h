@@ -44,6 +44,7 @@
  * ISP2100 HBAs.
  */
 #define MAILBOX_REGISTER_COUNT_2100	8
+#define MAILBOX_REGISTER_COUNT_2200	24
 #define MAILBOX_REGISTER_COUNT		32
 
 #define QLA2200A_RISC_ROM_VER	4
@@ -271,6 +272,7 @@ struct srb_iocb {
 struct srb_ctx {
 	uint16_t type;
 	char *name;
+	int iocbs;
 	union {
 		struct srb_iocb *iocb_cmd;
 		struct fc_bsg_job *bsg_job;
@@ -2244,6 +2246,7 @@ struct isp_operations {
 	int (*get_flash_version) (struct scsi_qla_host *, void *);
 	int (*start_scsi) (srb_t *);
 	int (*abort_isp) (struct scsi_qla_host *);
+	int (*iospace_config)(struct qla_hw_data*);
 };
 
 /* MSI-X Support *************************************************************/
@@ -2438,7 +2441,8 @@ struct qla_hw_data {
 		uint32_t	quiesce_owner:1;
 		uint32_t	thermal_supported:1;
 		uint32_t	isp82xx_reset_hdlr_active:1;
-		/* 26 bits */
+		uint32_t	isp82xx_reset_owner:1;
+		/* 28 bits */
 	} flags;
 
 	/* This spinlock is used to protect "io transactions", you must
@@ -2529,6 +2533,7 @@ struct qla_hw_data {
 #define DT_ISP8021			BIT_14
 #define DT_ISP_LAST			(DT_ISP8021 << 1)
 
+#define DT_T10_PI                       BIT_25
 #define DT_IIDMA                        BIT_26
 #define DT_FWI2                         BIT_27
 #define DT_ZIO_SUPPORTED                BIT_28
@@ -2572,6 +2577,7 @@ struct qla_hw_data {
 #define IS_NOCACHE_VPD_TYPE(ha)	(IS_QLA81XX(ha))
 #define IS_ALOGIO_CAPABLE(ha)	(IS_QLA23XX(ha) || IS_FWI2_CAPABLE(ha))
 
+#define IS_T10_PI_CAPABLE(ha)   ((ha)->device_type & DT_T10_PI)
 #define IS_IIDMA_CAPABLE(ha)    ((ha)->device_type & DT_IIDMA)
 #define IS_FWI2_CAPABLE(ha)     ((ha)->device_type & DT_FWI2)
 #define IS_ZIO_SUPPORTED(ha)    ((ha)->device_type & DT_ZIO_SUPPORTED)
@@ -2820,6 +2826,12 @@ struct qla_hw_data {
 
 	uint8_t fw_type;
 	__le32 file_prd_off;	/* File firmware product offset */
+
+	uint32_t	md_template_size;
+	void		*md_tmplt_hdr;
+	dma_addr_t      md_tmplt_hdr_dma;
+	void            *md_dump;
+	uint32_t	md_dump_size;
 };
 
 /*
@@ -2968,10 +2980,6 @@ typedef struct scsi_qla_host {
 #define QLA_VHA_MARK_NOT_BUSY(__vha) do {		     \
 	atomic_dec(&__vha->vref_count);			     \
 } while (0)
-
-
-#define qla_printk(level, ha, format, arg...) \
-	dev_printk(level , &((ha)->pdev->dev) , format , ## arg)
 
 /*
  * qla2x00 local function return status codes

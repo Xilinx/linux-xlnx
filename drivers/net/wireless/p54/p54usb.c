@@ -20,6 +20,7 @@
 #include <linux/etherdevice.h>
 #include <linux/delay.h>
 #include <linux/crc32.h>
+#include <linux/module.h>
 #include <net/mac80211.h>
 
 #include "p54.h"
@@ -1082,15 +1083,4 @@ static struct usb_driver p54u_driver = {
 	.soft_unbind = 1,
 };
 
-static int __init p54u_init(void)
-{
-	return usb_register(&p54u_driver);
-}
-
-static void __exit p54u_exit(void)
-{
-	usb_deregister(&p54u_driver);
-}
-
-module_init(p54u_init);
-module_exit(p54u_exit);
+module_usb_driver(p54u_driver);

@@ -32,7 +32,7 @@
  * an examples of 1D barcode types are EAN, UPC, Code39, IATA etc.. */
 #define DRIVER_DESC	"Opticon USB barcode to serial driver (1D)"
 
-static int debug;
+static bool debug;
 
 static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x065a, 0x0009) },
@@ -384,7 +384,6 @@ static void opticon_unthrottle(struct tty_struct *tty)
 	priv->actually_throttled = false;
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	priv->bulk_read_urb->dev = port->serial->dev;
 	if (was_throttled) {
 		result = usb_submit_urb(priv->bulk_read_urb, GFP_ATOMIC);
 		if (result)
@@ -523,7 +522,7 @@ static int opticon_startup(struct usb_serial *serial)
 			goto error;
 		}
 
-		priv->buffer_size = le16_to_cpu(endpoint->wMaxPacketSize) * 2;
+		priv->buffer_size = usb_endpoint_maxp(endpoint) * 2;
 		priv->bulk_in_buffer = kmalloc(priv->buffer_size, GFP_KERNEL);
 		if (!priv->bulk_in_buffer) {
 			dev_err(&priv->udev->dev, "out of memory\n");

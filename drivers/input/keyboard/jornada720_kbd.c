@@ -129,7 +129,7 @@ static int __devinit jornada720_kbd_probe(struct platform_device *pdev)
 
 	err = request_irq(IRQ_GPIO0,
 			  jornada720_kbd_interrupt,
-			  IRQF_DISABLED | IRQF_TRIGGER_FALLING,
+			  IRQF_TRIGGER_FALLING,
 			  "jornadakbd", pdev);
 	if (err) {
 		printk(KERN_INFO "jornadakbd720_kbd: Unable to grab IRQ\n");
@@ -174,16 +174,4 @@ static struct platform_driver jornada720_kbd_driver = {
 	.probe   = jornada720_kbd_probe,
 	.remove  = __devexit_p(jornada720_kbd_remove),
 };
-
-static int __init jornada720_kbd_init(void)
-{
-	return platform_driver_register(&jornada720_kbd_driver);
-}
-
-static void __exit jornada720_kbd_exit(void)
-{
-	platform_driver_unregister(&jornada720_kbd_driver);
-}
-
-module_init(jornada720_kbd_init);
-module_exit(jornada720_kbd_exit);
+module_platform_driver(jornada720_kbd_driver);

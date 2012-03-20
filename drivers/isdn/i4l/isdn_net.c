@@ -1901,7 +1901,7 @@ static int isdn_net_header(struct sk_buff *skb, struct net_device *dev,
 {
 	isdn_net_local *lp = netdev_priv(dev);
 	unsigned char *p;
-	ushort len = 0;
+	int len = 0;
 
 	switch (lp->p_encap) {
 		case ISDN_NET_ENCAP_ETHER:
@@ -1983,13 +1983,14 @@ isdn_net_rebuild_header(struct sk_buff *skb)
 	return ret;
 }
 
-static int isdn_header_cache(const struct neighbour *neigh, struct hh_cache *hh)
+static int isdn_header_cache(const struct neighbour *neigh, struct hh_cache *hh,
+			     __be16 type)
 {
 	const struct net_device *dev = neigh->dev;
 	isdn_net_local *lp = netdev_priv(dev);
 
 	if (lp->p_encap == ISDN_NET_ENCAP_ETHER)
-		return eth_header_cache(neigh, hh);
+		return eth_header_cache(neigh, hh, type);
 	return -1;
 }
 
@@ -2531,6 +2532,9 @@ static void _isdn_setup(struct net_device *dev)
 
 	/* Setup the generic properties */
 	dev->flags = IFF_NOARP|IFF_POINTOPOINT;
+
+	/* isdn prepends a header in the tx path, can't share skbs */
+	dev->priv_flags &= ~IFF_TX_SKB_SHARING;
 	dev->header_ops = NULL;
 	dev->netdev_ops = &isdn_netdev_ops;
 
@@ -2752,6 +2756,9 @@ isdn_net_setcfg(isdn_net_ioctl_cfg * cfg)
 			char *c,
 			*e;
 
+			if (strnlen(cfg->drvid, sizeof(cfg->drvid)) ==
+					sizeof(cfg->drvid))
+				return -EINVAL;
 			drvidx = -1;
 			chidx = -1;
 			strcpy(drvid, cfg->drvid);

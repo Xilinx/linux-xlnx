@@ -175,28 +175,6 @@ static int ohci_quirk_amd700(struct usb_hcd *hcd)
 	return 0;
 }
 
-/* nVidia controllers continue to drive Reset signalling on the bus
- * even after system shutdown, wasting power.  This flag tells the
- * shutdown routine to leave the controller OPERATIONAL instead of RESET.
- */
-static int ohci_quirk_nvidia_shutdown(struct usb_hcd *hcd)
-{
-	struct pci_dev *pdev = to_pci_dev(hcd->self.controller);
-	struct ohci_hcd	*ohci = hcd_to_ohci(hcd);
-
-	/* Evidently nVidia fixed their later hardware; this is a guess at
-	 * the changeover point.
-	 */
-#define PCI_DEVICE_ID_NVIDIA_NFORCE_MCP51_USB		0x026d
-
-	if (pdev->device < PCI_DEVICE_ID_NVIDIA_NFORCE_MCP51_USB) {
-		ohci->flags |= OHCI_QUIRK_SHUTDOWN;
-		ohci_dbg(ohci, "enabled nVidia shutdown quirk\n");
-	}
-
-	return 0;
-}
-
 static void sb800_prefetch(struct ohci_hcd *ohci, int on)
 {
 	struct pci_dev *pdev;
@@ -259,10 +237,6 @@ static const struct pci_device_id ohci_pci_quirks[] = {
 	{
 		PCI_DEVICE(PCI_VENDOR_ID_ATI, 0x4399),
 		.driver_data = (unsigned long)ohci_quirk_amd700,
-	},
-	{
-		PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID),
-		.driver_data = (unsigned long) ohci_quirk_nvidia_shutdown,
 	},
 
 	/* FIXME for some of the early AMD 760 southbridges, OHCI
@@ -334,12 +308,9 @@ static int ohci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	 * mark HW unaccessible, bail out if RH has been resumed. Use
 	 * the spinlock to properly synchronize with possible pending
 	 * RH suspend or resume activity.
-	 *
-	 * This is still racy as hcd->state is manipulated outside of
-	 * any locks =P But that will be a different fix.
 	 */
 	spin_lock_irqsave (&ohci->lock, flags);
-	if (hcd->state != HC_STATE_SUSPENDED) {
+	if (ohci->rh_state != OHCI_RH_SUSPENDED) {
 		rc = -EINVAL;
 		goto bail;
 	}
@@ -425,6 +396,10 @@ static const struct hc_driver ohci_pci_hc_driver = {
 static const struct pci_device_id pci_ids [] = { {
 	/* handle any USB OHCI controller */
 	PCI_DEVICE_CLASS(PCI_CLASS_SERIAL_USB_OHCI, ~0),
+	.driver_data =	(unsigned long) &ohci_pci_hc_driver,
+	}, {
+	/* The device in the ConneXT I/O hub has no class reg */
+	PCI_VDEVICE(STMICRO, PCI_DEVICE_ID_STMICRO_USB_OHCI),
 	.driver_data =	(unsigned long) &ohci_pci_hc_driver,
 	}, { /* end: all zeroes */ }
 };

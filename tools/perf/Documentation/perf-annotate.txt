@@ -22,7 +22,7 @@ OPTIONS
 -------
 -i::
 --input=::
-        Input file name. (default: perf.data)
+        Input file name. (default: perf.data unless stdin is a fifo)
 
 -d::
 --dsos=<dso[,dso...]>::
@@ -65,6 +65,25 @@ OPTIONS
 	present, as when piping to other commands, the stdio interface is
 	used. This interfaces starts by centering on the line with more
 	samples, TAB/UNTAB cycles through the lines with more samples.
+
+-C::
+--cpu:: Only report samples for the list of CPUs provided. Multiple CPUs can
+	be provided as a comma-separated list with no space: 0,1. Ranges of
+	CPUs are specified with -: 0-2. Default is to report samples on all
+	CPUs.
+
+--asm-raw::
+	Show raw instruction encoding of assembly instructions.
+
+--source::
+	Interleave source code with assembly code. Enabled by default,
+	disable with --no-source.
+
+--symfs=<directory>::
+        Look for files with symbols relative to this directory.
+
+-M::
+--disassembler-style=:: Set disassembler style for objdump.
 
 SEE ALSO
 --------

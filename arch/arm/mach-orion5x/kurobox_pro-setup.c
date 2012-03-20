@@ -7,7 +7,7 @@
  * License version 2.  This program is licensed "as is" without any
  * warranty of any kind, whether express or implied.
  */
-
+#include <linux/gpio.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -21,7 +21,6 @@
 #include <linux/serial_reg.h>
 #include <linux/ata_platform.h>
 #include <asm/mach-types.h>
-#include <asm/gpio.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/pci.h>
 #include <mach/orion5x.h>
@@ -119,7 +118,8 @@ static struct platform_device kurobox_pro_nor_flash = {
  * PCI
  ****************************************************************************/
 
-static int __init kurobox_pro_pci_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+static int __init kurobox_pro_pci_map_irq(const struct pci_dev *dev, u8 slot,
+	u8 pin)
 {
 	int irq;
 
@@ -379,25 +379,27 @@ static void __init kurobox_pro_init(void)
 #ifdef CONFIG_MACH_KUROBOX_PRO
 MACHINE_START(KUROBOX_PRO, "Buffalo/Revogear Kurobox Pro")
 	/* Maintainer: Ronen Shitrit <rshitrit@marvell.com> */
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= kurobox_pro_init,
 	.map_io		= orion5x_map_io,
 	.init_early	= orion5x_init_early,
 	.init_irq	= orion5x_init_irq,
 	.timer		= &orion5x_timer,
 	.fixup		= tag_fixup_mem32,
+	.restart	= orion5x_restart,
 MACHINE_END
 #endif
 
 #ifdef CONFIG_MACH_LINKSTATION_PRO
 MACHINE_START(LINKSTATION_PRO, "Buffalo Linkstation Pro/Live")
 	/* Maintainer: Byron Bradley <byron.bbradley@gmail.com> */
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= kurobox_pro_init,
 	.map_io		= orion5x_map_io,
 	.init_early	= orion5x_init_early,
 	.init_irq	= orion5x_init_irq,
 	.timer		= &orion5x_timer,
 	.fixup		= tag_fixup_mem32,
+	.restart	= orion5x_restart,
 MACHINE_END
 #endif

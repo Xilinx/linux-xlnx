@@ -30,6 +30,7 @@
 #include <net/bluetooth/bluetooth.h>
 
 #define VERSION "1.0"
+#define ATH3K_FIRMWARE	"ath3k-1.fw"
 
 #define ATH3K_DNLOAD				0x01
 #define ATH3K_GETSTATE				0x05
@@ -63,6 +64,7 @@ static struct usb_device_id ath3k_table[] = {
 	/* Atheros AR3011 with sflash firmware*/
 	{ USB_DEVICE(0x0CF3, 0x3002) },
 	{ USB_DEVICE(0x13d3, 0x3304) },
+	{ USB_DEVICE(0x0930, 0x0215) },
 
 	/* Atheros AR9285 Malbec with sflash firmware */
 	{ USB_DEVICE(0x03F0, 0x311D) },
@@ -104,7 +106,7 @@ static int ath3k_load_firmware(struct usb_device *udev,
 
 	pipe = usb_sndctrlpipe(udev, 0);
 
-	send_buf = kmalloc(BULK_SIZE, GFP_ATOMIC);
+	send_buf = kmalloc(BULK_SIZE, GFP_KERNEL);
 	if (!send_buf) {
 		BT_ERR("Can't allocate memory chunk for firmware");
 		return -ENOMEM;
@@ -175,7 +177,7 @@ static int ath3k_load_fwfile(struct usb_device *udev,
 
 	count = firmware->size;
 
-	send_buf = kmalloc(BULK_SIZE, GFP_ATOMIC);
+	send_buf = kmalloc(BULK_SIZE, GFP_KERNEL);
 	if (!send_buf) {
 		BT_ERR("Can't allocate memory chunk for firmware");
 		return -ENOMEM;
@@ -375,6 +377,11 @@ static int ath3k_probe(struct usb_interface *intf,
 
 	/* load patch and sysconfig files for AR3012 */
 	if (id->driver_info & BTUSB_ATH3012) {
+
+		/* New firmware with patch and sysconfig files already loaded */
+		if (le16_to_cpu(udev->descriptor.bcdDevice) > 0x0001)
+			return -ENODEV;
+
 		ret = ath3k_load_patch(udev);
 		if (ret < 0) {
 			BT_ERR("Loading patch file failed");
@@ -394,9 +401,15 @@ static int ath3k_probe(struct usb_interface *intf,
 		return 0;
 	}
 
-	if (request_firmware(&firmware, "ath3k-1.fw", &udev->dev) < 0) {
-		BT_ERR("Error loading firmware");
-		return -EIO;
+	ret = request_firmware(&firmware, ATH3K_FIRMWARE, &udev->dev);
+	if (ret < 0) {
+		if (ret == -ENOENT)
+			BT_ERR("Firmware file \"%s\" not found",
+							ATH3K_FIRMWARE);
+		else
+			BT_ERR("Firmware file \"%s\" request failed (err=%d)",
+							ATH3K_FIRMWARE, ret);
+		return ret;
 	}
 
 	ret = ath3k_load_firmware(udev, firmware);
@@ -417,22 +430,10 @@ static struct usb_driver ath3k_driver = {
 	.id_table	= ath3k_table,
 };
 
-static int __init ath3k_init(void)
-{
-	BT_INFO("Atheros AR30xx firmware driver ver %s", VERSION);
-	return usb_register(&ath3k_driver);
-}
-
-static void __exit ath3k_exit(void)
-{
-	usb_deregister(&ath3k_driver);
-}
-
-module_init(ath3k_init);
-module_exit(ath3k_exit);
+module_usb_driver(ath3k_driver);
 
 MODULE_AUTHOR("Atheros Communications");
 MODULE_DESCRIPTION("Atheros AR30xx firmware driver");
 MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL");
-MODULE_FIRMWARE("ath3k-1.fw");
+MODULE_FIRMWARE(ATH3K_FIRMWARE);

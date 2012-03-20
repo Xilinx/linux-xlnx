@@ -8,6 +8,7 @@
 
 struct list_head;
 struct perf_evsel;
+struct perf_evlist;
 
 struct option;
 
@@ -24,7 +25,10 @@ const char *event_type(int type);
 const char *event_name(struct perf_evsel *event);
 extern const char *__event_name(int type, u64 config);
 
-extern int parse_events(const struct option *opt, const char *str, int unset);
+extern int parse_events_option(const struct option *opt, const char *str,
+			       int unset);
+extern int parse_events(struct perf_evlist *evlist, const char *str,
+			int unset);
 extern int parse_filter(const struct option *opt, const char *str, int unset);
 
 #define EVENTS_HELP_MAX (128*1024)
@@ -35,7 +39,6 @@ void print_tracepoint_events(const char *subsys_glob, const char *event_glob);
 int print_hwcache_events(const char *event_glob);
 extern int is_valid_tracepoint(const char *event_string);
 
-extern char debugfs_path[];
 extern int valid_debugfs_mount(const char *debugfs);
 
 #endif /* __PERF_PARSE_EVENTS_H */

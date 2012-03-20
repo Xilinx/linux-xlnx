@@ -20,6 +20,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #define MODULE_NAME "spca561"
 
 #include <linux/input.h>
@@ -315,7 +317,7 @@ static void reg_w_val(struct usb_device *dev, __u16 index, __u8 value)
 			      value, index, NULL, 0, 500);
 	PDEBUG(D_USBO, "reg write: 0x%02x:0x%02x", index, value);
 	if (ret < 0)
-		err("reg write: error %d", ret);
+		pr_err("reg write: error %d\n", ret);
 }
 
 static void write_vector(struct gspca_dev *gspca_dev,
@@ -449,7 +451,7 @@ static int sd_config(struct gspca_dev *gspca_dev,
 	}
 
 	cam = &gspca_dev->cam;
-	gspca_dev->nbalt = 7 + 1;	/* choose alternate 7 first */
+	cam->needs_full_bandwidth = 1;
 
 	sd->chip_revision = id->driver_info;
 	if (sd->chip_revision == Rev012A) {
@@ -1104,15 +1106,4 @@ static struct usb_driver sd_driver = {
 #endif
 };
 
-/* -- module insert / remove -- */
-static int __init sd_mod_init(void)
-{
-	return usb_register(&sd_driver);
-}
-static void __exit sd_mod_exit(void)
-{
-	usb_deregister(&sd_driver);
-}
-
-module_init(sd_mod_init);
-module_exit(sd_mod_exit);
+module_usb_driver(sd_driver);

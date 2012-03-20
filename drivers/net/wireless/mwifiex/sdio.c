@@ -31,9 +31,26 @@
 
 #define SDIO_VERSION	"1.0"
 
+/* The mwifiex_sdio_remove() callback function is called when
+ * user removes this module from kernel space or ejects
+ * the card from the slot. The driver handles these 2 cases
+ * differently.
+ * If the user is removing the module, the few commands (FUNC_SHUTDOWN,
+ * HS_CANCEL etc.) are sent to the firmware.
+ * If the card is removed, there is no need to send these command.
+ *
+ * The variable 'user_rmmod' is used to distinguish these two
+ * scenarios. This flag is initialized as FALSE in case the card
+ * is removed, and will be set to TRUE for module removal when
+ * module_exit function is called.
+ */
+static u8 user_rmmod;
+
 static struct mwifiex_if_ops sdio_ops;
 
 static struct semaphore add_remove_card_sem;
+
+static int mwifiex_sdio_resume(struct device *dev);
 
 /*
  * SDIO probe.
@@ -72,7 +89,8 @@ mwifiex_sdio_probe(struct sdio_func *func, const struct sdio_device_id *id)
 		return -EIO;
 	}
 
-	if (mwifiex_add_card(card, &add_remove_card_sem, &sdio_ops)) {
+	if (mwifiex_add_card(card, &add_remove_card_sem, &sdio_ops,
+			     MWIFIEX_SDIO)) {
 		pr_err("%s: add card failed\n", __func__);
 		kfree(card);
 		sdio_claim_host(func);
@@ -93,17 +111,39 @@ static void
 mwifiex_sdio_remove(struct sdio_func *func)
 {
 	struct sdio_mmc_card *card;
+	struct mwifiex_adapter *adapter;
+	int i;
 
 	pr_debug("info: SDIO func num=%d\n", func->num);
 
-	if (func) {
-		card = sdio_get_drvdata(func);
-		if (card) {
-			mwifiex_remove_card(card->adapter,
-					&add_remove_card_sem);
-			kfree(card);
-		}
+	card = sdio_get_drvdata(func);
+	if (!card)
+		return;
+
+	adapter = card->adapter;
+	if (!adapter || !adapter->priv_num)
+		return;
+
+	if (user_rmmod) {
+		if (adapter->is_suspended)
+			mwifiex_sdio_resume(adapter->dev);
+
+		for (i = 0; i < adapter->priv_num; i++)
+			if ((GET_BSS_ROLE(adapter->priv[i]) ==
+						MWIFIEX_BSS_ROLE_STA) &&
+					adapter->priv[i]->media_connected)
+				mwifiex_deauthenticate(adapter->priv[i], NULL);
+
+		mwifiex_disable_auto_ds(mwifiex_get_priv(adapter,
+							 MWIFIEX_BSS_ROLE_ANY));
+
+		mwifiex_init_shutdown_fw(mwifiex_get_priv(adapter,
+						MWIFIEX_BSS_ROLE_ANY),
+					 MWIFIEX_FUNC_SHUTDOWN);
 	}
+
+	mwifiex_remove_card(card->adapter, &add_remove_card_sem);
+	kfree(card);
 }
 
 /*
@@ -216,10 +256,13 @@ static int mwifiex_sdio_resume(struct device *dev)
 
 /* Device ID for SD8787 */
 #define SDIO_DEVICE_ID_MARVELL_8787   (0x9119)
+/* Device ID for SD8797 */
+#define SDIO_DEVICE_ID_MARVELL_8797   (0x9129)
 
 /* WLAN IDs */
 static const struct sdio_device_id mwifiex_ids[] = {
 	{SDIO_DEVICE(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_8787)},
+	{SDIO_DEVICE(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_8797)},
 	{},
 };
 
@@ -791,7 +834,7 @@ done:
  * The winner interface is also determined by this function.
  */
 static int mwifiex_check_fw_status(struct mwifiex_adapter *adapter,
-				   u32 poll_num, int *winner)
+				   u32 poll_num)
 {
 	int ret = 0;
 	u16 firmware_stat;
@@ -803,7 +846,7 @@ static int mwifiex_check_fw_status(struct mwifiex_adapter *adapter,
 		ret = mwifiex_sdio_read_fw_status(adapter, &firmware_stat);
 		if (ret)
 			continue;
-		if (firmware_stat == FIRMWARE_READY) {
+		if (firmware_stat == FIRMWARE_READY_SDIO) {
 			ret = 0;
 			break;
 		} else {
@@ -812,15 +855,15 @@ static int mwifiex_check_fw_status(struct mwifiex_adapter *adapter,
 		}
 	}
 
-	if (winner && ret) {
+	if (ret) {
 		if (mwifiex_read_reg
 		    (adapter, CARD_FW_STATUS0_REG, &winner_status))
 			winner_status = 0;
 
 		if (winner_status)
-			*winner = 0;
+			adapter->winner = 0;
 		else
-			*winner = 1;
+			adapter->winner = 1;
 	}
 	return ret;
 }
@@ -1044,7 +1087,7 @@ static int mwifiex_sdio_card_to_host_mp_aggr(struct mwifiex_adapter *adapter,
 					   (adapter->ioport | 0x1000 |
 					    (card->mpa_rx.ports << 4)) +
 					   card->mpa_rx.start_port, 1))
-			return -1;
+			goto error;
 
 		curr_ptr = card->mpa_rx.buf;
 
@@ -1087,12 +1130,29 @@ rx_curr_single:
 		if (mwifiex_sdio_card_to_host(adapter, &pkt_type,
 					      skb->data, skb->len,
 					      adapter->ioport + port))
-			return -1;
+			goto error;
 
 		mwifiex_decode_rx_packet(adapter, skb, pkt_type);
 	}
 
 	return 0;
+
+error:
+	if (MP_RX_AGGR_IN_PROGRESS(card)) {
+		/* Multiport-aggregation transfer failed - cleanup */
+		for (pind = 0; pind < card->mpa_rx.pkt_cnt; pind++) {
+			/* copy pkt to deaggr buf */
+			skb_deaggr = card->mpa_rx.skb_arr[pind];
+			dev_kfree_skb_any(skb_deaggr);
+		}
+		MP_RX_AGGR_BUF_RESET(card);
+	}
+
+	if (f_do_rx_cur)
+		/* Single transfer pending. Free curr buff also */
+		dev_kfree_skb_any(skb);
+
+	return -1;
 }
 
 /*
@@ -1228,7 +1288,6 @@ static int mwifiex_process_int_status(struct mwifiex_adapter *adapter)
 
 				dev_dbg(adapter->dev,
 						"info: CFG reg val =%x\n", cr);
-				dev_kfree_skb_any(skb);
 				return -1;
 			}
 		}
@@ -1283,7 +1342,7 @@ static int mwifiex_host_to_card_mp_aggr(struct mwifiex_adapter *adapter,
 				if (!(card->mp_wr_bitmap &
 						(1 << card->curr_wr_port))
 						|| !MP_TX_AGGR_BUF_HAS_ROOM(
-							card, next_pkt_len))
+						card, pkt_len + next_pkt_len))
 					f_send_aggr_buf = 1;
 			} else {
 				/* No room in Aggr buf, send it */
@@ -1374,7 +1433,7 @@ tx_curr_single:
  * the type. The firmware handles the packets based upon this set type.
  */
 static int mwifiex_sdio_host_to_card(struct mwifiex_adapter *adapter,
-				     u8 type, u8 *payload, u32 pkt_len,
+				     u8 type, struct sk_buff *skb,
 				     struct mwifiex_tx_param *tx_param)
 {
 	struct sdio_mmc_card *card = adapter->card;
@@ -1382,6 +1441,8 @@ static int mwifiex_sdio_host_to_card(struct mwifiex_adapter *adapter,
 	u32 buf_block_len;
 	u32 blk_size;
 	u8 port = CTRL_PORT;
+	u8 *payload = (u8 *)skb->data;
+	u32 pkt_len = skb->len;
 
 	/* Allocate buffer and copy payload */
 	blk_size = MWIFIEX_SDIO_BLOCK_SIZE;
@@ -1532,6 +1593,16 @@ static int mwifiex_register_dev(struct mwifiex_adapter *adapter)
 
 	adapter->dev = &func->dev;
 
+	switch (func->device) {
+	case SDIO_DEVICE_ID_MARVELL_8797:
+		strcpy(adapter->fw_name, SD8797_DEFAULT_FW_NAME);
+		break;
+	case SDIO_DEVICE_ID_MARVELL_8787:
+	default:
+		strcpy(adapter->fw_name, SD8787_DEFAULT_FW_NAME);
+		break;
+	}
+
 	return 0;
 
 release_irq:
@@ -1552,7 +1623,6 @@ disable_func:
  *        the first interrupt got from bootloader
  *      - Disable host interrupt mask register
  *      - Get SDIO port
- *      - Get revision ID
  *      - Initialize SDIO variables in card
  *      - Allocate MP registers
  *      - Allocate MPA Tx and Rx buffers
@@ -1576,10 +1646,6 @@ static int mwifiex_init_sdio(struct mwifiex_adapter *adapter)
 	/* Get SDIO ioport */
 	mwifiex_init_sdio_ioport(adapter);
 
-	/* Get revision ID */
-#define REV_ID_REG	0x5c
-	mwifiex_read_reg(adapter, REV_ID_REG, &adapter->revision_id);
-
 	/* Initialize SDIO variables in card */
 	card->mp_rd_bitmap = 0;
 	card->mp_wr_bitmap = 0;
@@ -1592,14 +1658,14 @@ static int mwifiex_init_sdio(struct mwifiex_adapter *adapter)
 	card->mpa_tx.pkt_cnt = 0;
 	card->mpa_tx.start_port = 0;
 
-	card->mpa_tx.enabled = 0;
+	card->mpa_tx.enabled = 1;
 	card->mpa_tx.pkt_aggr_limit = SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
 	card->mpa_rx.buf_len = 0;
 	card->mpa_rx.pkt_cnt = 0;
 	card->mpa_rx.start_port = 0;
 
-	card->mpa_rx.enabled = 0;
+	card->mpa_rx.enabled = 1;
 	card->mpa_rx.pkt_aggr_limit = SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
 	/* Allocate buffers for SDIO MP-A */
@@ -1687,6 +1753,8 @@ static struct mwifiex_if_ops sdio_ops = {
 	/* SDIO specific */
 	.update_mp_end_port = mwifiex_update_mp_end_port,
 	.cleanup_mpa_buf = mwifiex_cleanup_mpa_buf,
+	.cmdrsp_complete = mwifiex_sdio_cmdrsp_complete,
+	.event_complete = mwifiex_sdio_event_complete,
 };
 
 /*
@@ -1699,6 +1767,9 @@ static int
 mwifiex_sdio_init_module(void)
 {
 	sema_init(&add_remove_card_sem, 1);
+
+	/* Clear the flag in case user removes the card. */
+	user_rmmod = 0;
 
 	return sdio_register_driver(&mwifiex_sdio);
 }
@@ -1715,32 +1786,12 @@ mwifiex_sdio_init_module(void)
 static void
 mwifiex_sdio_cleanup_module(void)
 {
-	struct mwifiex_adapter *adapter = g_adapter;
-	int i;
+	if (!down_interruptible(&add_remove_card_sem))
+		up(&add_remove_card_sem);
 
-	if (down_interruptible(&add_remove_card_sem))
-		goto exit_sem_err;
+	/* Set the flag as user is removing this module. */
+	user_rmmod = 1;
 
-	if (!adapter || !adapter->priv_num)
-		goto exit;
-
-	if (adapter->is_suspended)
-		mwifiex_sdio_resume(adapter->dev);
-
-	for (i = 0; i < adapter->priv_num; i++)
-		if ((GET_BSS_ROLE(adapter->priv[i]) == MWIFIEX_BSS_ROLE_STA) &&
-		    adapter->priv[i]->media_connected)
-			mwifiex_deauthenticate(adapter->priv[i], NULL);
-
-	if (!adapter->surprise_removed)
-		mwifiex_init_shutdown_fw(mwifiex_get_priv(adapter,
-							  MWIFIEX_BSS_ROLE_ANY),
-					 MWIFIEX_FUNC_SHUTDOWN);
-
-exit:
-	up(&add_remove_card_sem);
-
-exit_sem_err:
 	sdio_unregister_driver(&mwifiex_sdio);
 }
 
@@ -1751,4 +1802,5 @@ MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION("Marvell WiFi-Ex SDIO Driver version " SDIO_VERSION);
 MODULE_VERSION(SDIO_VERSION);
 MODULE_LICENSE("GPL v2");
-MODULE_FIRMWARE("sd8787.bin");
+MODULE_FIRMWARE(SD8787_DEFAULT_FW_NAME);
+MODULE_FIRMWARE(SD8797_DEFAULT_FW_NAME);

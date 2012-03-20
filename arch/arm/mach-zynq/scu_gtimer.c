@@ -24,6 +24,7 @@
  * 02139, USA.
  */
 
+#include <linux/export.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
 
@@ -321,7 +322,3 @@ static void __exit xscugtimer_exit(void)
 /* This driver is assumed to be in the BSP and started up all the time. */
 
 device_initcall(xscugtimer_init);
-
-MODULE_AUTHOR("Xilinx, Inc");
-MODULE_DESCRIPTION("Xilinx SCU Global Timer Driver");
-MODULE_LICENSE("GPL");

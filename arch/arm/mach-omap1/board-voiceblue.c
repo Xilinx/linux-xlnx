@@ -13,6 +13,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -24,16 +25,15 @@
 #include <linux/serial_8250.h>
 #include <linux/serial_reg.h>
 #include <linux/smc91x.h>
+#include <linux/export.h>
 
 #include <mach/hardware.h>
-#include <mach/system.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
 #include <plat/board-voiceblue.h>
-#include <plat/common.h>
-#include <mach/gpio.h>
+#include "common.h"
 #include <plat/flash.h>
 #include <plat/mux.h>
 #include <plat/tc.h>
@@ -159,17 +159,6 @@ static struct omap_usb_config voiceblue_usb_config __initdata = {
 static struct omap_board_config_kernel voiceblue_config[] = {
 };
 
-static void __init voiceblue_init_irq(void)
-{
-	omap1_init_common_hw();
-	omap_init_irq();
-}
-
-static void __init voiceblue_map_io(void)
-{
-	omap1_map_common_io();
-}
-
 #define MACHINE_PANICED		1
 #define MACHINE_REBOOTING	2
 #define MACHINE_REBOOT		4
@@ -231,7 +220,7 @@ void voiceblue_wdt_ping(void)
 	gpio_set_value(0, wdt_gpio_state);
 }
 
-static void voiceblue_reset(char mode, const char *cmd)
+static void voiceblue_restart(char mode, const char *cmd)
 {
 	/*
 	 * Workaround for 5912/1611b bug mentioned in sprz209d.pdf p. 28
@@ -295,16 +284,16 @@ static void __init voiceblue_init(void)
 	 * (it is connected through invertor) */
 	omap_writeb(0x00, OMAP_LPG1_LCR);
 	omap_writeb(0x00, OMAP_LPG1_PMR);	/* Disable clock */
-
-	arch_reset = voiceblue_reset;
 }
 
 MACHINE_START(VOICEBLUE, "VoiceBlue OMAP5910")
 	/* Maintainer: Ladislav Michl <michl@2n.cz> */
-	.boot_params	= 0x10000100,
-	.map_io		= voiceblue_map_io,
+	.atag_offset	= 0x100,
+	.map_io		= omap15xx_map_io,
+	.init_early     = omap1_init_early,
 	.reserve	= omap_reserve,
-	.init_irq	= voiceblue_init_irq,
+	.init_irq	= omap1_init_irq,
 	.init_machine	= voiceblue_init,
-	.timer		= &omap_timer,
+	.timer		= &omap1_timer,
+	.restart	= voiceblue_restart,
 MACHINE_END

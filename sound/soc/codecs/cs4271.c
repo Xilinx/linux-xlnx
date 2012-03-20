@@ -156,7 +156,6 @@ static const u8 cs4271_dflt_reg[CS4271_NR_REGS] = {
 struct cs4271_private {
 	/* SND_SOC_I2C or SND_SOC_SPI */
 	enum snd_soc_control_type	bus_type;
-	void				*control_data;
 	unsigned int			mclk;
 	bool				master;
 	bool				deemph;
@@ -403,7 +402,7 @@ static const struct snd_kcontrol_new cs4271_snd_controls[] = {
 		7, 1, 1),
 };
 
-static struct snd_soc_dai_ops cs4271_dai_ops = {
+static const struct snd_soc_dai_ops cs4271_dai_ops = {
 	.hw_params	= cs4271_hw_params,
 	.set_sysclk	= cs4271_set_dai_sysclk,
 	.set_fmt	= cs4271_set_dai_fmt,
@@ -431,11 +430,12 @@ static struct snd_soc_dai_driver cs4271_dai = {
 };
 
 #ifdef CONFIG_PM
-static int cs4271_soc_suspend(struct snd_soc_codec *codec, pm_message_t mesg)
+static int cs4271_soc_suspend(struct snd_soc_codec *codec)
 {
 	int ret;
 	/* Set power-down bit */
-	ret = snd_soc_update_bits(codec, CS4271_MODE2, 0, CS4271_MODE2_PDN);
+	ret = snd_soc_update_bits(codec, CS4271_MODE2, CS4271_MODE2_PDN,
+				  CS4271_MODE2_PDN);
 	if (ret < 0)
 		return ret;
 	return 0;
@@ -465,8 +465,6 @@ static int cs4271_probe(struct snd_soc_codec *codec)
 	struct cs4271_platform_data *cs4271plat = codec->dev->platform_data;
 	int ret;
 	int gpio_nreset = -EINVAL;
-
-	codec->control_data = cs4271->control_data;
 
 	if (cs4271plat && gpio_is_valid(cs4271plat->gpio_nreset))
 		gpio_nreset = cs4271plat->gpio_nreset;
@@ -504,8 +502,9 @@ static int cs4271_probe(struct snd_soc_codec *codec)
 		return ret;
 	}
 
-	ret = snd_soc_update_bits(codec, CS4271_MODE2, 0,
-		CS4271_MODE2_PDN | CS4271_MODE2_CPEN);
+	ret = snd_soc_update_bits(codec, CS4271_MODE2,
+				  CS4271_MODE2_PDN | CS4271_MODE2_CPEN,
+				  CS4271_MODE2_PDN | CS4271_MODE2_CPEN);
 	if (ret < 0)
 		return ret;
 	ret = snd_soc_update_bits(codec, CS4271_MODE2, CS4271_MODE2_PDN, 0);
@@ -555,7 +554,6 @@ static int __devinit cs4271_spi_probe(struct spi_device *spi)
 		return -ENOMEM;
 
 	spi_set_drvdata(spi, cs4271);
-	cs4271->control_data = spi;
 	cs4271->bus_type = SND_SOC_SPI;
 
 	return snd_soc_register_codec(&spi->dev, &soc_codec_dev_cs4271,
@@ -595,7 +593,6 @@ static int __devinit cs4271_i2c_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	i2c_set_clientdata(client, cs4271);
-	cs4271->control_data = client;
 	cs4271->bus_type = SND_SOC_I2C;
 
 	return snd_soc_register_codec(&client->dev, &soc_codec_dev_cs4271,

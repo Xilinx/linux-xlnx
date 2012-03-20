@@ -28,6 +28,7 @@
 #include <asm/mach-types.h>
 
 #include <mach/nanoengine.h>
+#include <mach/hardware.h>
 
 static DEFINE_SPINLOCK(nano_lock);
 
@@ -122,14 +123,16 @@ static struct pci_ops pci_nano_ops = {
 	.write	= nanoengine_write_config,
 };
 
-static int __init pci_nanoengine_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+static int __init pci_nanoengine_map_irq(const struct pci_dev *dev, u8 slot,
+	u8 pin)
 {
 	return NANOENGINE_IRQ_GPIO_PCI;
 }
 
 struct pci_bus * __init pci_nanoengine_scan_bus(int nr, struct pci_sys_data *sys)
 {
-	return pci_scan_bus(sys->busnr, &pci_nano_ops, sys);
+	return pci_scan_root_bus(NULL, sys->busnr, &pci_nano_ops, sys,
+				 &sys->resources);
 }
 
 static struct resource pci_io_ports = {
@@ -224,7 +227,7 @@ static struct resource pci_prefetchable_memory = {
 	.flags	= IORESOURCE_MEM  | IORESOURCE_PREFETCH,
 };
 
-static int __init pci_nanoengine_setup_resources(struct resource **resource)
+static int __init pci_nanoengine_setup_resources(struct pci_sys_data *sys)
 {
 	if (request_resource(&ioport_resource, &pci_io_ports)) {
 		printk(KERN_ERR "PCI: unable to allocate io port region\n");
@@ -241,9 +244,9 @@ static int __init pci_nanoengine_setup_resources(struct resource **resource)
 		printk(KERN_ERR "PCI: unable to allocate prefetchable\n");
 		return -EBUSY;
 	}
-	resource[0] = &pci_io_ports;
-	resource[1] = &pci_non_prefetchable_memory;
-	resource[2] = &pci_prefetchable_memory;
+	pci_add_resource(&sys->resources, &pci_io_ports);
+	pci_add_resource(&sys->resources, &pci_non_prefetchable_memory);
+	pci_add_resource(&sys->resources, &pci_prefetchable_memory);
 
 	return 1;
 }
@@ -252,10 +255,13 @@ int __init pci_nanoengine_setup(int nr, struct pci_sys_data *sys)
 {
 	int ret = 0;
 
+	pcibios_min_io = 0;
+	pcibios_min_mem = 0;
+
 	if (nr == 0) {
 		sys->mem_offset = NANO_PCI_MEM_RW_PHYS;
 		sys->io_offset = 0x400;
-		ret = pci_nanoengine_setup_resources(sys->resource);
+		ret = pci_nanoengine_setup_resources(sys);
 		/* Enable alternate memory bus master mode, see
 		 * "Intel StrongARM SA1110 Developer's Manual",
 		 * section 10.8, "Alternate Memory Bus Master Mode". */

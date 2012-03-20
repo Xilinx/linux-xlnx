@@ -26,6 +26,7 @@
 #include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
@@ -1145,7 +1146,7 @@ static __devinit int max8997_pmic_probe(struct platform_device *pdev)
 			regulators[id].n_voltages = 16;
 
 		rdev[i] = regulator_register(&regulators[id], max8997->dev,
-				pdata->regulators[i].initdata, max8997);
+				pdata->regulators[i].initdata, max8997, NULL);
 		if (IS_ERR(rdev[i])) {
 			ret = PTR_ERR(rdev[i]);
 			dev_err(max8997->dev, "regulator init failed for %d\n",

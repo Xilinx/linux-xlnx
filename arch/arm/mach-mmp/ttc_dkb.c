@@ -15,6 +15,8 @@
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/onenand.h>
 #include <linux/interrupt.h>
+#include <linux/i2c/pca953x.h>
+#include <linux/gpio.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -22,10 +24,21 @@
 #include <mach/addr-map.h>
 #include <mach/mfp-pxa910.h>
 #include <mach/pxa910.h>
+#include <mach/irqs.h>
 
 #include "common.h"
 
-#define TTCDKB_NR_IRQS		(IRQ_BOARD_START + 24)
+#define TTCDKB_GPIO_EXT0(x)	(MMP_NR_BUILTIN_GPIO + ((x < 0) ? 0 :	\
+				((x < 16) ? x : 15)))
+#define TTCDKB_GPIO_EXT1(x)	(MMP_NR_BUILTIN_GPIO + 16 + ((x < 0) ? 0 : \
+				((x < 16) ? x : 15)))
+
+/*
+ * 16 board interrupts -- MAX7312 GPIO expander
+ * 16 board interrupts -- PCA9575 GPIO expander
+ * 24 board interrupts -- 88PM860x PMIC
+ */
+#define TTCDKB_NR_IRQS		(IRQ_BOARD_START + 16 + 16 + 24)
 
 static unsigned long ttc_dkb_pin_config[] __initdata = {
 	/* UART2 */
@@ -81,7 +94,7 @@ static struct mtd_partition ttc_dkb_onenand_partitions[] = {
 	}, {
 		.name		= "filesystem",
 		.offset		= MTDPART_OFS_APPEND,
-		.size		= SZ_48M,
+		.size		= SZ_32M + SZ_16M,
 		.mask_flags	= 0,
 	}
 };
@@ -110,7 +123,24 @@ static struct platform_device ttc_dkb_device_onenand = {
 };
 
 static struct platform_device *ttc_dkb_devices[] = {
+	&pxa910_device_gpio,
 	&ttc_dkb_device_onenand,
+};
+
+static struct pca953x_platform_data max7312_data[] = {
+	{
+		.gpio_base	= TTCDKB_GPIO_EXT0(0),
+		.irq_base	= IRQ_BOARD_START,
+	},
+};
+
+static struct i2c_board_info ttc_dkb_i2c_info[] = {
+	{
+		.type		= "max7312",
+		.addr		= 0x23,
+		.irq		= MMP_GPIO_TO_IRQ(80),
+		.platform_data	= &max7312_data,
+	},
 };
 
 static void __init ttc_dkb_init(void)
@@ -121,6 +151,7 @@ static void __init ttc_dkb_init(void)
 	pxa910_add_uart(1);
 
 	/* off-chip devices */
+	pxa910_add_twsi(0, NULL, ARRAY_AND_SIZE(ttc_dkb_i2c_info));
 	platform_add_devices(ARRAY_AND_SIZE(ttc_dkb_devices));
 }
 
@@ -130,4 +161,5 @@ MACHINE_START(TTC_DKB, "PXA910-based TTC_DKB Development Platform")
 	.init_irq       = pxa910_init_irq,
 	.timer          = &pxa910_timer,
 	.init_machine   = ttc_dkb_init,
+	.restart	= mmp_restart,
 MACHINE_END

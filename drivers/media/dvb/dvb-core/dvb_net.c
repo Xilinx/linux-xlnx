@@ -1230,7 +1230,7 @@ static const struct net_device_ops dvb_netdev_ops = {
 	.ndo_open		= dvb_net_open,
 	.ndo_stop		= dvb_net_stop,
 	.ndo_start_xmit		= dvb_net_tx,
-	.ndo_set_multicast_list = dvb_net_set_multicast_list,
+	.ndo_set_rx_mode	= dvb_net_set_multicast_list,
 	.ndo_set_mac_address    = dvb_net_set_mac,
 	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -1510,9 +1510,7 @@ int dvb_net_init (struct dvb_adapter *adap, struct dvb_net *dvbnet,
 	for (i=0; i<DVB_NET_DEVICES_MAX; i++)
 		dvbnet->state[i] = 0;
 
-	dvb_register_device (adap, &dvbnet->dvbdev, &dvbdev_net,
+	return dvb_register_device(adap, &dvbnet->dvbdev, &dvbdev_net,
 			     dvbnet, DVB_DEVICE_NET);
-
-	return 0;
 }
 EXPORT_SYMBOL(dvb_net_init);

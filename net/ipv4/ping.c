@@ -39,6 +39,7 @@
 #include <net/protocol.h>
 #include <linux/skbuff.h>
 #include <linux/proc_fs.h>
+#include <linux/export.h>
 #include <net/sock.h>
 #include <net/ping.h>
 #include <net/udp.h>
@@ -139,13 +140,14 @@ static void ping_v4_unhash(struct sock *sk)
 		write_lock_bh(&ping_table.lock);
 		hlist_nulls_del(&sk->sk_nulls_node);
 		sock_put(sk);
-		isk->inet_num = isk->inet_sport = 0;
+		isk->inet_num = 0;
+		isk->inet_sport = 0;
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 		write_unlock_bh(&ping_table.lock);
 	}
 }
 
-static struct sock *ping_v4_lookup(struct net *net, u32 saddr, u32 daddr,
+static struct sock *ping_v4_lookup(struct net *net, __be32 saddr, __be32 daddr,
 				   u16 ident, int dif)
 {
 	struct hlist_nulls_head *hslot = ping_hashslot(&ping_table, net, ident);
@@ -153,15 +155,15 @@ static struct sock *ping_v4_lookup(struct net *net, u32 saddr, u32 daddr,
 	struct inet_sock *isk;
 	struct hlist_nulls_node *hnode;
 
-	pr_debug("try to find: num = %d, daddr = %ld, dif = %d\n",
-			 (int)ident, (unsigned long)daddr, dif);
+	pr_debug("try to find: num = %d, daddr = %pI4, dif = %d\n",
+			 (int)ident, &daddr, dif);
 	read_lock_bh(&ping_table.lock);
 
 	ping_portaddr_for_each_entry(sk, hnode, hslot) {
 		isk = inet_sk(sk);
 
-		pr_debug("found: %p: num = %d, daddr = %ld, dif = %d\n", sk,
-			 (int)isk->inet_num, (unsigned long)isk->inet_rcv_saddr,
+		pr_debug("found: %p: num = %d, daddr = %pI4, dif = %d\n", sk,
+			 (int)isk->inet_num, &isk->inet_rcv_saddr,
 			 sk->sk_bound_dev_if);
 
 		pr_debug("iterate\n");
@@ -253,7 +255,7 @@ static int ping_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		sk, addr->sin_addr.s_addr, ntohs(addr->sin_port));
 
 	chk_addr_ret = inet_addr_type(sock_net(sk), addr->sin_addr.s_addr);
-	if (addr->sin_addr.s_addr == INADDR_ANY)
+	if (addr->sin_addr.s_addr == htonl(INADDR_ANY))
 		chk_addr_ret = RTN_LOCAL;
 
 	if ((sysctl_ip_nonlocal_bind == 0 &&
@@ -277,9 +279,9 @@ static int ping_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		goto out;
 	}
 
-	pr_debug("after bind(): num = %d, daddr = %ld, dif = %d\n",
+	pr_debug("after bind(): num = %d, daddr = %pI4, dif = %d\n",
 		(int)isk->inet_num,
-		(unsigned long) isk->inet_rcv_saddr,
+		&isk->inet_rcv_saddr,
 		(int)sk->sk_bound_dev_if);
 
 	err = 0;
@@ -338,7 +340,6 @@ void ping_err(struct sk_buff *skb, u32 info)
 	sk = ping_v4_lookup(net, iph->daddr, iph->saddr,
 			    ntohs(icmph->un.echo.id), skb->dev->ifindex);
 	if (sk == NULL) {
-		ICMP_INC_STATS_BH(net, ICMP_MIB_INERRORS);
 		pr_debug("no socket, dropping\n");
 		return;	/* No socket for error */
 	}
@@ -407,7 +408,7 @@ out:
 struct pingfakehdr {
 	struct icmphdr icmph;
 	struct iovec *iov;
-	u32 wcheck;
+	__wsum wcheck;
 };
 
 static int ping_getfrag(void *from, char * to,
@@ -459,7 +460,7 @@ static int ping_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	struct rtable *rt = NULL;
 	struct ip_options_data opt_copy;
 	int free = 0;
-	u32 saddr, daddr, faddr;
+	__be32 saddr, daddr, faddr;
 	u8  tos;
 	int err;
 
@@ -629,6 +630,7 @@ static int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	pr_debug("ping_recvmsg(sk=%p,sk->num=%u)\n", isk, isk->inet_num);
 
+	err = -EOPNOTSUPP;
 	if (flags & MSG_OOB)
 		goto out;
 
@@ -678,7 +680,6 @@ static int ping_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	pr_debug("ping_queue_rcv_skb(sk=%p,sk->num=%d,skb=%p)\n",
 		inet_sk(sk), inet_sk(sk)->inet_num, skb);
 	if (sock_queue_rcv_skb(sk, skb) < 0) {
-		ICMP_INC_STATS_BH(sock_net(sk), ICMP_MIB_INERRORS);
 		kfree_skb(skb);
 		pr_debug("ping_queue_rcv_skb -> failed\n");
 		return -1;
@@ -697,8 +698,8 @@ void ping_rcv(struct sk_buff *skb)
 	struct net *net = dev_net(skb->dev);
 	struct iphdr *iph = ip_hdr(skb);
 	struct icmphdr *icmph = icmp_hdr(skb);
-	u32 saddr = iph->saddr;
-	u32 daddr = iph->daddr;
+	__be32 saddr = iph->saddr;
+	__be32 daddr = iph->daddr;
 
 	/* We assume the packet has already been checked by icmp_rcv */
 

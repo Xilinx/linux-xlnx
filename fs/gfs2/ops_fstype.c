@@ -14,6 +14,7 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/kthread.h>
+#include <linux/export.h>
 #include <linux/namei.h>
 #include <linux/mount.h>
 #include <linux/gfs2_ondisk.h>
@@ -77,8 +78,7 @@ static struct gfs2_sbd *init_sbd(struct super_block *sb)
 
 	spin_lock_init(&sdp->sd_rindex_spin);
 	mutex_init(&sdp->sd_rindex_mutex);
-	INIT_LIST_HEAD(&sdp->sd_rindex_list);
-	INIT_LIST_HEAD(&sdp->sd_rindex_mru_list);
+	sdp->sd_rindex_tree.rb_node = NULL;
 
 	INIT_LIST_HEAD(&sdp->sd_jindex_list);
 	spin_lock_init(&sdp->sd_jindex_spin);
@@ -562,8 +562,12 @@ static void gfs2_others_may_mount(struct gfs2_sbd *sdp)
 {
 	char *message = "FIRSTMOUNT=Done";
 	char *envp[] = { message, NULL };
-	struct lm_lockstruct *ls = &sdp->sd_lockstruct;
-	ls->ls_first_done = 1;
+
+	fs_info(sdp, "first mount done, others may mount\n");
+
+	if (sdp->sd_lockstruct.ls_ops->lm_first_done)
+		sdp->sd_lockstruct.ls_ops->lm_first_done(sdp);
+
 	kobject_uevent_env(&sdp->sd_kobj, KOBJ_CHANGE, envp);
 }
 
@@ -652,7 +656,6 @@ static int init_journal(struct gfs2_sbd *sdp, int undo)
 		fs_err(sdp, "can't lookup journal index: %d\n", error);
 		return PTR_ERR(sdp->sd_jindex);
 	}
-	ip = GFS2_I(sdp->sd_jindex);
 
 	/* Load in the journal index special file */
 
@@ -764,7 +767,6 @@ fail:
 static int init_inodes(struct gfs2_sbd *sdp, int undo)
 {
 	int error = 0;
-	struct gfs2_inode *ip;
 	struct inode *master = sdp->sd_master_dir->d_inode;
 
 	if (undo)
@@ -789,7 +791,6 @@ static int init_inodes(struct gfs2_sbd *sdp, int undo)
 		fs_err(sdp, "can't get resource index inode: %d\n", error);
 		goto fail_statfs;
 	}
-	ip = GFS2_I(sdp->sd_rindex);
 	sdp->sd_rindex_uptodate = 0;
 
 	/* Read in the quota inode */
@@ -799,6 +800,11 @@ static int init_inodes(struct gfs2_sbd *sdp, int undo)
 		fs_err(sdp, "can't get quota file inode: %d\n", error);
 		goto fail_rindex;
 	}
+
+	error = gfs2_rindex_update(sdp);
+	if (error)
+		goto fail_qinode;
+
 	return 0;
 
 fail_qinode:
@@ -947,7 +953,6 @@ static int gfs2_lm_mount(struct gfs2_sbd *sdp, int silent)
 	struct gfs2_args *args = &sdp->sd_args;
 	const char *proto = sdp->sd_proto_name;
 	const char *table = sdp->sd_table_name;
-	const char *fsname;
 	char *o, *options;
 	int ret;
 
@@ -1007,24 +1012,15 @@ hostdata_error:
 		}
 	}
 
-	if (sdp->sd_args.ar_spectator)
-		snprintf(sdp->sd_fsname, GFS2_FSNAME_LEN, "%s.s", table);
-	else
-		snprintf(sdp->sd_fsname, GFS2_FSNAME_LEN, "%s.%u", table,
-			 sdp->sd_lockstruct.ls_jid);
-
-	fsname = strchr(table, ':');
-	if (fsname)
-		fsname++;
 	if (lm->lm_mount == NULL) {
 		fs_info(sdp, "Now mounting FS...\n");
-		complete(&sdp->sd_locking_init);
+		complete_all(&sdp->sd_locking_init);
 		return 0;
 	}
-	ret = lm->lm_mount(sdp, fsname);
+	ret = lm->lm_mount(sdp, table);
 	if (ret == 0)
 		fs_info(sdp, "Joined cluster. Now mounting FS...\n");
-	complete(&sdp->sd_locking_init);
+	complete_all(&sdp->sd_locking_init);
 	return ret;
 }
 
@@ -1087,13 +1083,14 @@ static int fill_super(struct super_block *sb, struct gfs2_args *args, int silent
 
 	if (sdp->sd_args.ar_spectator) {
                 sb->s_flags |= MS_RDONLY;
-		set_bit(SDF_NORECOVERY, &sdp->sd_flags);
+		set_bit(SDF_RORECOVERY, &sdp->sd_flags);
 	}
 	if (sdp->sd_args.ar_posix_acl)
 		sb->s_flags |= MS_POSIXACL;
 	if (sdp->sd_args.ar_nobarrier)
 		set_bit(SDF_NOBARRIERS, &sdp->sd_flags);
 
+	sb->s_flags |= MS_NOSEC;
 	sb->s_magic = GFS2_MAGIC;
 	sb->s_op = &gfs2_super_ops;
 	sb->s_d_op = &gfs2_dops;
@@ -1125,6 +1122,8 @@ static int fill_super(struct super_block *sb, struct gfs2_args *args, int silent
 	error = init_names(sdp, silent);
 	if (error)
 		goto fail;
+
+	snprintf(sdp->sd_fsname, GFS2_FSNAME_LEN, "%s", sdp->sd_table_name);
 
 	gfs2_create_debugfs_file(sdp);
 
@@ -1161,6 +1160,13 @@ static int fill_super(struct super_block *sb, struct gfs2_args *args, int silent
 		sdp->sd_lockstruct.ls_jid = 0;
 		goto fail_sb;
 	}
+
+	if (sdp->sd_args.ar_spectator)
+		snprintf(sdp->sd_fsname, GFS2_FSNAME_LEN, "%s.s",
+			 sdp->sd_table_name);
+	else
+		snprintf(sdp->sd_fsname, GFS2_FSNAME_LEN, "%s.%u",
+			 sdp->sd_table_name, sdp->sd_lockstruct.ls_jid);
 
 	error = init_inodes(sdp, DO);
 	if (error)

@@ -64,7 +64,7 @@
 static unsigned long eurwdt_is_open;
 static int eurwdt_timeout;
 static char eur_expect_close;
-static spinlock_t eurwdt_lock;
+static DEFINE_SPINLOCK(eurwdt_lock);
 
 /*
  * You must set these - there is no sane way to probe for this board.
@@ -427,7 +427,7 @@ static int __init eurwdt_init(void)
 {
 	int ret;
 
-	ret = request_irq(irq, eurwdt_interrupt, IRQF_DISABLED, "eurwdt", NULL);
+	ret = request_irq(irq, eurwdt_interrupt, 0, "eurwdt", NULL);
 	if (ret) {
 		printk(KERN_ERR "eurwdt: IRQ %d is not free.\n", irq);
 		goto out;
@@ -445,8 +445,6 @@ static int __init eurwdt_init(void)
 		    "eurwdt: can't register reboot notifier (err=%d)\n", ret);
 		goto outreg;
 	}
-
-	spin_lock_init(&eurwdt_lock);
 
 	ret = misc_register(&eurwdt_miscdev);
 	if (ret) {

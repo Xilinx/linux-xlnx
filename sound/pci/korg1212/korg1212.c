@@ -25,7 +25,7 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/firmware.h>
 
@@ -408,7 +408,7 @@ MODULE_FIRMWARE("korg/k1212.dsp");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;     /* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	   /* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE; /* Enable this card */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE; /* Enable this card */
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for Korg 1212 soundcard.");
@@ -2241,7 +2241,7 @@ static int __devinit snd_korg1212_create(struct snd_card *card, struct pci_dev *
 
         err = request_irq(pci->irq, snd_korg1212_interrupt,
                           IRQF_SHARED,
-                          "korg1212", korg1212);
+                          KBUILD_MODNAME, korg1212);
 
         if (err) {
 		snd_printk(KERN_ERR "korg1212: unable to grab IRQ %d\n", pci->irq);
@@ -2477,7 +2477,7 @@ static void __devexit snd_korg1212_remove(struct pci_dev *pci)
 }
 
 static struct pci_driver driver = {
-	.name = "korg1212",
+	.name = KBUILD_MODNAME,
 	.id_table = snd_korg1212_ids,
 	.probe = snd_korg1212_probe,
 	.remove = __devexit_p(snd_korg1212_remove),

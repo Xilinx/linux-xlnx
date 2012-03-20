@@ -16,6 +16,7 @@
 #include <linux/kdev_t.h>
 #include <linux/gfp.h>
 #include <linux/err.h>
+#include <linux/export.h>
 
 #include "drm_sysfs.h"
 #include "drm_core.h"
@@ -71,7 +72,7 @@ static int drm_class_resume(struct device *dev)
 	return 0;
 }
 
-static char *drm_devnode(struct device *dev, mode_t *mode)
+static char *drm_devnode(struct device *dev, umode_t *mode)
 {
 	return kasprintf(GFP_KERNEL, "dri/%s", dev_name(dev));
 }

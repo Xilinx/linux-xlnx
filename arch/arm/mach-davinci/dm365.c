@@ -17,7 +17,6 @@
 #include <linux/serial_8250.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
-#include <linux/gpio.h>
 #include <linux/spi/spi.h>
 
 #include <asm/mach/map.h>
@@ -34,7 +33,7 @@
 #include <mach/asp.h>
 #include <mach/keyscan.h>
 #include <mach/spi.h>
-
+#include <mach/gpio-davinci.h>
 
 #include "clock.h"
 #include "mux.h"
@@ -1084,7 +1083,6 @@ static struct davinci_soc_info davinci_soc_info_dm365 = {
 	.emac_pdata		= &dm365_emac_pdata,
 	.sram_dma		= 0x00010000,
 	.sram_len		= SZ_32K,
-	.reset_device		= &davinci_wdt_device,
 };
 
 void __init dm365_init_asp(struct snd_platform_data *pdata)

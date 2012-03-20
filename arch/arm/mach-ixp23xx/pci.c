@@ -143,7 +143,8 @@ struct pci_ops ixp23xx_pci_ops = {
 
 struct pci_bus *ixp23xx_pci_scan_bus(int nr, struct pci_sys_data *sysdata)
 {
-	return pci_scan_bus(sysdata->busnr, &ixp23xx_pci_ops, sysdata);
+	return pci_scan_root_bus(NULL, sysdata->busnr, &ixp23xx_pci_ops,
+				 sysdata, &sysdata->resources);
 }
 
 int ixp23xx_pci_abort_handler(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
@@ -227,6 +228,11 @@ static void __init ixp23xx_pci_common_init(void)
 
 void __init ixp23xx_pci_preinit(void)
 {
+	pcibios_min_io = 0;
+	pcibios_min_mem = 0xe0000000;
+
+	pci_set_flags(0);
+
 	ixp23xx_pci_common_init();
 
 	hook_fault_code(16+6, ixp23xx_pci_abort_handler, SIGBUS, 0,
@@ -275,9 +281,8 @@ int ixp23xx_pci_setup(int nr, struct pci_sys_data *sys)
 	if (nr >= 1)
 		return 0;
 
-	sys->resource[0] = &ixp23xx_pci_io_space;
-	sys->resource[1] = &ixp23xx_pci_mem_space;
-	sys->resource[2] = NULL;
+	pci_add_resource(&sys->resources, &ixp23xx_pci_io_space);
+	pci_add_resource(&sys->resources, &ixp23xx_pci_mem_space);
 
 	return 1;
 }

@@ -85,7 +85,7 @@ static int validate_inode(struct ubifs_info *c, const struct inode *inode)
 	if (ui->data_len < 0 || ui->data_len > UBIFS_MAX_INO_DATA)
 		return 4;
 
-	if (ui->xattr && (inode->i_mode & S_IFMT) != S_IFREG)
+	if (ui->xattr && !S_ISREG(inode->i_mode))
 		return 5;
 
 	if (!ubifs_compr_present(ui->compr_type)) {
@@ -94,7 +94,7 @@ static int validate_inode(struct ubifs_info *c, const struct inode *inode)
 			   ubifs_compr_name(ui->compr_type));
 	}
 
-	err = dbg_check_dir_size(c, inode);
+	err = dbg_check_dir(c, inode);
 	return err;
 }
 
@@ -129,7 +129,7 @@ struct inode *ubifs_iget(struct super_block *sb, unsigned long inum)
 		goto out_ino;
 
 	inode->i_flags |= (S_NOCMTIME | S_NOATIME);
-	inode->i_nlink = le32_to_cpu(ino->nlink);
+	set_nlink(inode, le32_to_cpu(ino->nlink));
 	inode->i_uid   = le32_to_cpu(ino->uid);
 	inode->i_gid   = le32_to_cpu(ino->gid);
 	inode->i_atime.tv_sec  = (int64_t)le64_to_cpu(ino->atime_sec);
@@ -276,7 +276,6 @@ static void ubifs_i_callback(struct rcu_head *head)
 {
 	struct inode *inode = container_of(head, struct inode, i_rcu);
 	struct ubifs_inode *ui = ubifs_inode(inode);
-	INIT_LIST_HEAD(&inode->i_dentry);
 	kmem_cache_free(ubifs_inode_slab, ui);
 }
 
@@ -420,9 +419,9 @@ static int ubifs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	return 0;
 }
 
-static int ubifs_show_options(struct seq_file *s, struct vfsmount *mnt)
+static int ubifs_show_options(struct seq_file *s, struct dentry *root)
 {
-	struct ubifs_info *c = mnt->mnt_sb->s_fs_info;
+	struct ubifs_info *c = root->d_sb->s_fs_info;
 
 	if (c->mount_opts.unmount_mode == 2)
 		seq_printf(s, ",fast_unmount");
@@ -914,7 +913,7 @@ static int check_volume_empty(struct ubifs_info *c)
 
 	c->empty = 1;
 	for (lnum = 0; lnum < c->leb_cnt; lnum++) {
-		err = ubi_is_mapped(c->ubi, lnum);
+		err = ubifs_is_mapped(c, lnum);
 		if (unlikely(err < 0))
 			return err;
 		if (err == 1) {
@@ -2264,19 +2263,12 @@ static int __init ubifs_init(void)
 		return -EINVAL;
 	}
 
-	err = register_filesystem(&ubifs_fs_type);
-	if (err) {
-		ubifs_err("cannot register file system, error %d", err);
-		return err;
-	}
-
-	err = -ENOMEM;
 	ubifs_inode_slab = kmem_cache_create("ubifs_inode_slab",
 				sizeof(struct ubifs_inode), 0,
 				SLAB_MEM_SPREAD | SLAB_RECLAIM_ACCOUNT,
 				&inode_slab_ctor);
 	if (!ubifs_inode_slab)
-		goto out_reg;
+		return -ENOMEM;
 
 	register_shrinker(&ubifs_shrinker_info);
 
@@ -2288,15 +2280,20 @@ static int __init ubifs_init(void)
 	if (err)
 		goto out_compr;
 
+	err = register_filesystem(&ubifs_fs_type);
+	if (err) {
+		ubifs_err("cannot register file system, error %d", err);
+		goto out_dbg;
+	}
 	return 0;
 
+out_dbg:
+	dbg_debugfs_exit();
 out_compr:
 	ubifs_compressors_exit();
 out_shrinker:
 	unregister_shrinker(&ubifs_shrinker_info);
 	kmem_cache_destroy(ubifs_inode_slab);
-out_reg:
-	unregister_filesystem(&ubifs_fs_type);
 	return err;
 }
 /* late_initcall to let compressors initialize first */

@@ -90,13 +90,19 @@ extern char initial_stab[];
 
 #define HPTE_R_PP0		ASM_CONST(0x8000000000000000)
 #define HPTE_R_TS		ASM_CONST(0x4000000000000000)
+#define HPTE_R_KEY_HI		ASM_CONST(0x3000000000000000)
 #define HPTE_R_RPN_SHIFT	12
-#define HPTE_R_RPN		ASM_CONST(0x3ffffffffffff000)
-#define HPTE_R_FLAGS		ASM_CONST(0x00000000000003ff)
+#define HPTE_R_RPN		ASM_CONST(0x0ffffffffffff000)
 #define HPTE_R_PP		ASM_CONST(0x0000000000000003)
 #define HPTE_R_N		ASM_CONST(0x0000000000000004)
+#define HPTE_R_G		ASM_CONST(0x0000000000000008)
+#define HPTE_R_M		ASM_CONST(0x0000000000000010)
+#define HPTE_R_I		ASM_CONST(0x0000000000000020)
+#define HPTE_R_W		ASM_CONST(0x0000000000000040)
+#define HPTE_R_WIMG		ASM_CONST(0x0000000000000078)
 #define HPTE_R_C		ASM_CONST(0x0000000000000080)
 #define HPTE_R_R		ASM_CONST(0x0000000000000100)
+#define HPTE_R_KEY_LO		ASM_CONST(0x0000000000000e00)
 
 #define HPTE_V_1TB_SEG		ASM_CONST(0x4000000000000000)
 #define HPTE_V_VRMA_MASK	ASM_CONST(0x4001ffffff000000)
@@ -256,8 +262,7 @@ extern void hash_failure_debug(unsigned long ea, unsigned long access,
 extern int htab_bolt_mapping(unsigned long vstart, unsigned long vend,
 			     unsigned long pstart, unsigned long prot,
 			     int psize, int ssize);
-extern void add_gpage(unsigned long addr, unsigned long page_size,
-			  unsigned long number_of_pages);
+extern void add_gpage(u64 addr, u64 page_size, unsigned long number_of_pages);
 extern void demote_segment_4k(struct mm_struct *mm, unsigned long addr);
 
 extern void hpte_init_native(void);
@@ -307,10 +312,9 @@ extern void slb_set_size(u16 size);
  * (i.e. everything above 0xC000000000000000), except the very top
  * segment, which simplifies several things.
  *
- * 	- We allow for 15 significant bits of ESID and 20 bits of
- * context for user addresses.  i.e. 8T (43 bits) of address space for
- * up to 1M contexts (although the page table structure and context
- * allocation will need changes to take advantage of this).
+ *	- We allow for 16 significant bits of ESID and 19 bits of
+ * context for user addresses.  i.e. 16T (44 bits) of address space for
+ * up to half a million contexts.
  *
  * 	- The scramble function gives robust scattering in the hash
  * table (at least based on some initial results).  The previous

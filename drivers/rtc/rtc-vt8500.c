@@ -74,6 +74,8 @@
 #define VT8500_RTC_CR_SM_SEC	(1 << 3)	/* 0: 1Hz/60, 1: 1Hz */
 #define VT8500_RTC_CR_CALIB	(1 << 4)	/* Enable calibration */
 
+#define VT8500_RTC_IS_ALARM	(1 << 0)	/* Alarm interrupt status */
+
 struct vt8500_rtc {
 	void __iomem		*regbase;
 	struct resource		*res;
@@ -96,7 +98,7 @@ static irqreturn_t vt8500_rtc_irq(int irq, void *dev_id)
 
 	spin_unlock(&vt8500_rtc->lock);
 
-	if (isr & 1)
+	if (isr & VT8500_RTC_IS_ALARM)
 		events |= RTC_AF | RTC_IRQF;
 
 	rtc_update_irq(vt8500_rtc->rtc, 1, events);
@@ -161,8 +163,8 @@ static int vt8500_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	alrm->time.tm_sec = bcd2bin((alarm & TIME_SEC_MASK));
 
 	alrm->enabled = (alarm & ALARM_ENABLE_MASK) ? 1 : 0;
+	alrm->pending = (isr & VT8500_RTC_IS_ALARM) ? 1 : 0;
 
-	alrm->pending = (isr & 1) ? 1 : 0;
 	return rtc_valid_tm(&alrm->time);
 }
 
@@ -309,17 +311,7 @@ static struct platform_driver vt8500_rtc_driver = {
 	},
 };
 
-static int __init vt8500_rtc_init(void)
-{
-	return platform_driver_register(&vt8500_rtc_driver);
-}
-module_init(vt8500_rtc_init);
-
-static void __exit vt8500_rtc_exit(void)
-{
-	platform_driver_unregister(&vt8500_rtc_driver);
-}
-module_exit(vt8500_rtc_exit);
+module_platform_driver(vt8500_rtc_driver);
 
 MODULE_AUTHOR("Alexey Charkov <alchark@gmail.com>");
 MODULE_DESCRIPTION("VIA VT8500 SoC Realtime Clock Driver (RTC)");

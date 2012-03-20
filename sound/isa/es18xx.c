@@ -82,7 +82,7 @@
 #include <linux/isa.h>
 #include <linux/pnp.h>
 #include <linux/isapnp.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 #include <linux/delay.h>
 
 #include <asm/io.h>
@@ -1805,7 +1805,7 @@ static int __devinit snd_es18xx_new_device(struct snd_card *card,
 		return -EBUSY;
 	}
 
-	if (request_irq(irq, snd_es18xx_interrupt, IRQF_DISABLED, "ES18xx",
+	if (request_irq(irq, snd_es18xx_interrupt, 0, "ES18xx",
 			(void *) card)) {
 		snd_es18xx_free(card);
 		snd_printk(KERN_ERR PFX "unable to grap IRQ %d\n", irq);
@@ -1964,9 +1964,9 @@ MODULE_SUPPORTED_DEVICE("{{ESS,ES1868 PnP AudioDrive},"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_ISAPNP; /* Enable this card */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_ISAPNP; /* Enable this card */
 #ifdef CONFIG_PNP
-static int isapnp[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_ISAPNP;
+static bool isapnp[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_ISAPNP;
 #endif
 static long port[SNDRV_CARDS] = SNDRV_DEFAULT_PORT;	/* 0x220,0x240,0x260,0x280 */
 #ifndef CONFIG_PNP
@@ -2160,8 +2160,8 @@ static int __devinit snd_audiodrive_probe(struct snd_card *card, int dev)
 
 	if (mpu_port[dev] > 0 && mpu_port[dev] != SNDRV_AUTO_PORT) {
 		err = snd_mpu401_uart_new(card, 0, MPU401_HW_ES18XX,
-					  mpu_port[dev], 0,
-					  irq[dev], 0, &chip->rmidi);
+					  mpu_port[dev], MPU401_INFO_IRQ_HOOK,
+					  -1, &chip->rmidi);
 		if (err < 0)
 			return err;
 	}

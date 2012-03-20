@@ -28,6 +28,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #define MODULE_NAME "konica"
 
 #include <linux/input.h>
@@ -200,7 +202,7 @@ static void reg_w(struct gspca_dev *gspca_dev, u16 value, u16 index)
 			0,
 			1000);
 	if (ret < 0) {
-		err("reg_w err %d", ret);
+		pr_err("reg_w err %d\n", ret);
 		gspca_dev->usb_err = ret;
 	}
 }
@@ -221,7 +223,7 @@ static void reg_r(struct gspca_dev *gspca_dev, u16 value, u16 index)
 			2,
 			1000);
 	if (ret < 0) {
-		err("reg_w err %d", ret);
+		pr_err("reg_w err %d\n", ret);
 		gspca_dev->usb_err = ret;
 	}
 }
@@ -245,9 +247,6 @@ static int sd_config(struct gspca_dev *gspca_dev,
 	gspca_dev->cam.cam_mode = vga_mode;
 	gspca_dev->cam.nmodes = ARRAY_SIZE(vga_mode);
 	gspca_dev->cam.no_urb_create = 1;
-	/* The highest alt setting has an isoc packetsize of 0, so we
-	   don't want to use it */
-	gspca_dev->nbalt--;
 
 	sd->brightness  = BRIGHTNESS_DEFAULT;
 	sd->contrast    = CONTRAST_DEFAULT;
@@ -284,7 +283,7 @@ static int sd_start(struct gspca_dev *gspca_dev)
 	intf = usb_ifnum_to_if(sd->gspca_dev.dev, sd->gspca_dev.iface);
 	alt = usb_altnum_to_altsetting(intf, sd->gspca_dev.alt);
 	if (!alt) {
-		err("Couldn't get altsetting");
+		pr_err("Couldn't get altsetting\n");
 		return -EIO;
 	}
 
@@ -315,7 +314,7 @@ static int sd_start(struct gspca_dev *gspca_dev)
 			le16_to_cpu(alt->endpoint[i].desc.wMaxPacketSize);
 		urb = usb_alloc_urb(SD_NPKT, GFP_KERNEL);
 		if (!urb) {
-			err("usb_alloc_urb failed");
+			pr_err("usb_alloc_urb failed\n");
 			return -ENOMEM;
 		}
 		gspca_dev->urb[n] = urb;
@@ -324,7 +323,7 @@ static int sd_start(struct gspca_dev *gspca_dev)
 						GFP_KERNEL,
 						&urb->transfer_dma);
 		if (urb->transfer_buffer == NULL) {
-			err("usb_buffer_alloc failed");
+			pr_err("usb_buffer_alloc failed\n");
 			return -ENOMEM;
 		}
 
@@ -386,7 +385,7 @@ static void sd_isoc_irq(struct urb *urb)
 		PDEBUG(D_ERR, "urb status: %d", urb->status);
 		st = usb_submit_urb(urb, GFP_ATOMIC);
 		if (st < 0)
-			err("resubmit urb error %d", st);
+			pr_err("resubmit urb error %d\n", st);
 		return;
 	}
 
@@ -477,7 +476,7 @@ resubmit:
 	}
 	st = usb_submit_urb(status_urb, GFP_ATOMIC);
 	if (st < 0)
-		err("usb_submit_urb(status_urb) ret %d", st);
+		pr_err("usb_submit_urb(status_urb) ret %d\n", st);
 }
 
 static int sd_setbrightness(struct gspca_dev *gspca_dev, __s32 val)
@@ -632,15 +631,4 @@ static struct usb_driver sd_driver = {
 #endif
 };
 
-/* -- module insert / remove -- */
-static int __init sd_mod_init(void)
-{
-	return usb_register(&sd_driver);
-}
-static void __exit sd_mod_exit(void)
-{
-	usb_deregister(&sd_driver);
-}
-
-module_init(sd_mod_init);
-module_exit(sd_mod_exit);
+module_usb_driver(sd_driver);

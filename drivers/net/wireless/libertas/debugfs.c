@@ -1,9 +1,11 @@
 #include <linux/dcache.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
+#include <linux/hardirq.h>
 #include <linux/mm.h>
 #include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/export.h>
 
 #include "decl.h"
 #include "cmd.h"
@@ -702,7 +704,7 @@ out_unlock:
 
 struct lbs_debugfs_files {
 	const char *name;
-	int perm;
+	umode_t perm;
 	struct file_operations fops;
 };
 

@@ -27,9 +27,9 @@
 #include <asm/mach/irq.h>
 
 #include <mach/hardware.h>
-#include <mach/regs-fb.h>
 #include <mach/map.h>
 
+#include <asm/hardware/vic.h>
 #include <asm/irq.h>
 #include <asm/mach-types.h>
 
@@ -38,10 +38,12 @@
 #include <plat/fb.h>
 #include <plat/nand.h>
 
-#include <mach/s3c6410.h>
 #include <plat/clock.h>
 #include <plat/devs.h>
 #include <plat/cpu.h>
+#include <plat/regs-fb-v4.h>
+
+#include "common.h"
 
 #define UCON S3C2410_UCON_DEFAULT
 #define ULCON (S3C2410_LCON_CS8 | S3C2410_LCON_PNONE)
@@ -265,9 +267,11 @@ static void __init hmt_machine_init(void)
 
 MACHINE_START(HMT, "Airgoo-HMT")
 	/* Maintainer: Peter Korsgaard <jacmet@sunsite.dk> */
-	.boot_params	= S3C64XX_PA_SDRAM + 0x100,
+	.atag_offset	= 0x100,
 	.init_irq	= s3c6410_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.map_io		= hmt_map_io,
 	.init_machine	= hmt_machine_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c64xx_restart,
 MACHINE_END

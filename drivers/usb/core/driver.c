@@ -24,6 +24,7 @@
 
 #include <linux/device.h>
 #include <linux/slab.h>
+#include <linux/export.h>
 #include <linux/usb.h>
 #include <linux/usb/quirks.h>
 #include <linux/usb/hcd.h>
@@ -44,10 +45,12 @@ ssize_t usb_store_new_id(struct usb_dynids *dynids,
 	struct usb_dynid *dynid;
 	u32 idVendor = 0;
 	u32 idProduct = 0;
+	unsigned int bInterfaceClass = 0;
 	int fields = 0;
 	int retval = 0;
 
-	fields = sscanf(buf, "%x %x", &idVendor, &idProduct);
+	fields = sscanf(buf, "%x %x %x", &idVendor, &idProduct,
+					&bInterfaceClass);
 	if (fields < 2)
 		return -EINVAL;
 
@@ -59,6 +62,10 @@ ssize_t usb_store_new_id(struct usb_dynids *dynids,
 	dynid->id.idVendor = idVendor;
 	dynid->id.idProduct = idProduct;
 	dynid->id.match_flags = USB_DEVICE_ID_MATCH_DEVICE;
+	if (fields == 3) {
+		dynid->id.bInterfaceClass = (u8)bInterfaceClass;
+		dynid->id.match_flags |= USB_DEVICE_ID_MATCH_INT_CLASS;
+	}
 
 	spin_lock(&dynids->lock);
 	list_add_tail(&dynid->node, &dynids->list);
@@ -1046,8 +1053,7 @@ static int usb_resume_device(struct usb_device *udev, pm_message_t msg)
 	/* Non-root devices on a full/low-speed bus must wait for their
 	 * companion high-speed root hub, in case a handoff is needed.
 	 */
-	if (!(msg.event & PM_EVENT_AUTO) && udev->parent &&
-			udev->bus->hs_companion)
+	if (!PMSG_IS_AUTO(msg) && udev->parent && udev->bus->hs_companion)
 		device_pm_wait_for_dev(&udev->dev,
 				&udev->bus->hs_companion->root_hub->dev);
 
@@ -1073,17 +1079,10 @@ static int usb_suspend_interface(struct usb_device *udev,
 		goto done;
 	driver = to_usb_driver(intf->dev.driver);
 
-	if (driver->suspend) {
-		status = driver->suspend(intf, msg);
-		if (status && !(msg.event & PM_EVENT_AUTO))
-			dev_err(&intf->dev, "%s error %d\n",
-					"suspend", status);
-	} else {
-		/* Later we will unbind the driver and reprobe */
-		intf->needs_binding = 1;
-		dev_warn(&intf->dev, "no %s for driver %s?\n",
-				"suspend", driver->name);
-	}
+	/* at this time we know the driver supports suspend */
+	status = driver->suspend(intf, msg);
+	if (status && !PMSG_IS_AUTO(msg))
+		dev_err(&intf->dev, "suspend error %d\n", status);
 
  done:
 	dev_vdbg(&intf->dev, "%s: status %d\n", __func__, status);
@@ -1132,16 +1131,9 @@ static int usb_resume_interface(struct usb_device *udev,
 					"reset_resume", driver->name);
 		}
 	} else {
-		if (driver->resume) {
-			status = driver->resume(intf);
-			if (status)
-				dev_err(&intf->dev, "%s error %d\n",
-						"resume", status);
-		} else {
-			intf->needs_binding = 1;
-			dev_warn(&intf->dev, "no %s for driver %s?\n",
-					"resume", driver->name);
-		}
+		status = driver->resume(intf);
+		if (status)
+			dev_err(&intf->dev, "resume error %d\n", status);
 	}
 
 done:
@@ -1189,7 +1181,7 @@ static int usb_suspend_both(struct usb_device *udev, pm_message_t msg)
 			status = usb_suspend_interface(udev, intf, msg);
 
 			/* Ignore errors during system sleep transitions */
-			if (!(msg.event & PM_EVENT_AUTO))
+			if (!PMSG_IS_AUTO(msg))
 				status = 0;
 			if (status != 0)
 				break;
@@ -1199,7 +1191,7 @@ static int usb_suspend_both(struct usb_device *udev, pm_message_t msg)
 		status = usb_suspend_device(udev, msg);
 
 		/* Again, ignore errors during system sleep transitions */
-		if (!(msg.event & PM_EVENT_AUTO))
+		if (!PMSG_IS_AUTO(msg))
 			status = 0;
 	}
 
@@ -1583,7 +1575,7 @@ int usb_autopm_get_interface_async(struct usb_interface *intf)
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
 			status);
-	if (status > 0)
+	if (status > 0 || status == -EINPROGRESS)
 		status = 0;
 	return status;
 }
@@ -1668,6 +1660,11 @@ int usb_runtime_suspend(struct device *dev)
 		return -EAGAIN;
 
 	status = usb_suspend_both(udev, PMSG_AUTO_SUSPEND);
+
+	/* Allow a retry if autosuspend failed temporarily */
+	if (status == -EAGAIN || status == -EBUSY)
+		usb_mark_last_busy(udev);
+
 	/* The PM core reacts badly unless the return code is 0,
 	 * -EAGAIN, or -EBUSY, so always return -EBUSY on an error.
 	 */
@@ -1698,6 +1695,20 @@ int usb_runtime_idle(struct device *dev)
 	if (autosuspend_check(udev) == 0)
 		pm_runtime_autosuspend(dev);
 	return 0;
+}
+
+int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+	int ret = -EPERM;
+
+	if (hcd->driver->set_usb2_hw_lpm) {
+		ret = hcd->driver->set_usb2_hw_lpm(hcd, udev, enable);
+		if (!ret)
+			udev->usb2_hw_lpm_enabled = enable;
+	}
+
+	return ret;
 }
 
 #endif /* CONFIG_USB_SUSPEND */

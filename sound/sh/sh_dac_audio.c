@@ -27,6 +27,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/pcm.h>
@@ -440,15 +441,4 @@ static struct platform_driver driver = {
 	},
 };
 
-static int __init sh_dac_init(void)
-{
-	return platform_driver_register(&driver);
-}
-
-static void __exit sh_dac_exit(void)
-{
-	platform_driver_unregister(&driver);
-}
-
-module_init(sh_dac_init);
-module_exit(sh_dac_exit);
+module_platform_driver(driver);

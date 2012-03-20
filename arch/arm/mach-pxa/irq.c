@@ -11,7 +11,6 @@
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
  */
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -19,13 +18,14 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 
+#include <asm/exception.h>
+
 #include <mach/hardware.h>
 #include <mach/irqs.h>
-#include <mach/gpio.h>
 
 #include "generic.h"
 
-#define IRQ_BASE		(void __iomem *)io_p2v(0x40d00000)
+#define IRQ_BASE		io_p2v(0x40d00000)
 
 #define ICIP			(0x000)
 #define ICMR			(0x004)
@@ -37,6 +37,8 @@
 #define IPR(i)			(((i) < 32) ? (0x01c + ((i) << 2)) :		\
 				((i) < 64) ? (0x0b0 + (((i) - 32) << 2)) :	\
 				      (0x144 + (((i) - 64) << 2)))
+#define ICHP_VAL_IRQ		(1 << 31)
+#define ICHP_IRQ(i)		(((i) >> 16) & 0x7fff)
 #define IPR_VALID		(1 << 31)
 #define IRQ_BIT(n)		(((n) - PXA_IRQ(0)) & 0x1f)
 
@@ -61,10 +63,10 @@ static inline void __iomem *irq_base(int i)
 		0x40d00130,
 	};
 
-	return (void __iomem *)io_p2v(phys_base[i]);
+	return io_p2v(phys_base[i]);
 }
 
-static void pxa_mask_irq(struct irq_data *d)
+void pxa_mask_irq(struct irq_data *d)
 {
 	void __iomem *base = irq_data_get_irq_chip_data(d);
 	uint32_t icmr = __raw_readl(base + ICMR);
@@ -73,7 +75,7 @@ static void pxa_mask_irq(struct irq_data *d)
 	__raw_writel(icmr, base + ICMR);
 }
 
-static void pxa_unmask_irq(struct irq_data *d)
+void pxa_unmask_irq(struct irq_data *d)
 {
 	void __iomem *base = irq_data_get_irq_chip_data(d);
 	uint32_t icmr = __raw_readl(base + ICMR);
@@ -89,64 +91,37 @@ static struct irq_chip pxa_internal_irq_chip = {
 	.irq_unmask	= pxa_unmask_irq,
 };
 
-/*
- * GPIO IRQs for GPIO 0 and 1
- */
-static int pxa_set_low_gpio_type(struct irq_data *d, unsigned int type)
+asmlinkage void __exception_irq_entry icip_handle_irq(struct pt_regs *regs)
 {
-	int gpio = d->irq - IRQ_GPIO0;
+	uint32_t icip, icmr, mask;
 
-	if (__gpio_is_occupied(gpio)) {
-		pr_err("%s failed: GPIO is configured\n", __func__);
-		return -EINVAL;
-	}
+	do {
+		icip = __raw_readl(IRQ_BASE + ICIP);
+		icmr = __raw_readl(IRQ_BASE + ICMR);
+		mask = icip & icmr;
 
-	if (type & IRQ_TYPE_EDGE_RISING)
-		GRER0 |= GPIO_bit(gpio);
-	else
-		GRER0 &= ~GPIO_bit(gpio);
+		if (mask == 0)
+			break;
 
-	if (type & IRQ_TYPE_EDGE_FALLING)
-		GFER0 |= GPIO_bit(gpio);
-	else
-		GFER0 &= ~GPIO_bit(gpio);
-
-	return 0;
+		handle_IRQ(PXA_IRQ(fls(mask) - 1), regs);
+	} while (1);
 }
 
-static void pxa_ack_low_gpio(struct irq_data *d)
+asmlinkage void __exception_irq_entry ichp_handle_irq(struct pt_regs *regs)
 {
-	GEDR0 = (1 << (d->irq - IRQ_GPIO0));
+	uint32_t ichp;
+
+	do {
+		__asm__ __volatile__("mrc p6, 0, %0, c5, c0, 0\n": "=r"(ichp));
+
+		if ((ichp & ICHP_VAL_IRQ) == 0)
+			break;
+
+		handle_IRQ(PXA_IRQ(ICHP_IRQ(ichp)), regs);
+	} while (1);
 }
 
-static struct irq_chip pxa_low_gpio_chip = {
-	.name		= "GPIO-l",
-	.irq_ack	= pxa_ack_low_gpio,
-	.irq_mask	= pxa_mask_irq,
-	.irq_unmask	= pxa_unmask_irq,
-	.irq_set_type	= pxa_set_low_gpio_type,
-};
-
-static void __init pxa_init_low_gpio_irq(set_wake_t fn)
-{
-	int irq;
-
-	/* clear edge detection on GPIO 0 and 1 */
-	GFER0 &= ~0x3;
-	GRER0 &= ~0x3;
-	GEDR0 = 0x3;
-
-	for (irq = IRQ_GPIO0; irq <= IRQ_GPIO1; irq++) {
-		irq_set_chip_and_handler(irq, &pxa_low_gpio_chip,
-					 handle_edge_irq);
-		irq_set_chip_data(irq, irq_base(0));
-		set_irq_flags(irq, IRQF_VALID);
-	}
-
-	pxa_low_gpio_chip.irq_set_wake = fn;
-}
-
-void __init pxa_init_irq(int irq_nr, set_wake_t fn)
+void __init pxa_init_irq(int irq_nr, int (*fn)(struct irq_data *, unsigned int))
 {
 	int irq, i, n;
 
@@ -176,7 +151,6 @@ void __init pxa_init_irq(int irq_nr, set_wake_t fn)
 	__raw_writel(1, irq_base(0) + ICCR);
 
 	pxa_internal_irq_chip.irq_set_wake = fn;
-	pxa_init_low_gpio_irq(fn);
 }
 
 #ifdef CONFIG_PM

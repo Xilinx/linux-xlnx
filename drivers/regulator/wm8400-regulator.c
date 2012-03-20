@@ -15,6 +15,7 @@
 #include <linux/bug.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/regulator/driver.h>
 #include <linux/mfd/wm8400-private.h>
 
@@ -325,7 +326,7 @@ static int __devinit wm8400_regulator_probe(struct platform_device *pdev)
 	struct regulator_dev *rdev;
 
 	rdev = regulator_register(&regulators[pdev->id], &pdev->dev,
-				  pdev->dev.platform_data, wm8400);
+				  pdev->dev.platform_data, wm8400, NULL);
 
 	if (IS_ERR(rdev))
 		return PTR_ERR(rdev);

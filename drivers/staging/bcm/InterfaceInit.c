@@ -68,7 +68,7 @@ static void InterfaceAdapterFree(PS_INTERFACE_ADAPTER psIntfAdapter)
 static void ConfigureEndPointTypesThroughEEPROM(PMINI_ADAPTER Adapter)
 {
 	unsigned long ulReg = 0;
-	int ret;
+	int bytes;
 
 	/* Program EP2 MAX_PKT_SIZE */
 	ulReg = ntohl(EP2_MPS_REG);
@@ -94,8 +94,8 @@ static void ConfigureEndPointTypesThroughEEPROM(PMINI_ADAPTER Adapter)
 	BeceemEEPROMBulkWrite(Adapter, (PUCHAR)&ulReg, 0x140, 4, TRUE);
 
 	/* Program TX EP as interrupt(Alternate Setting) */
-	ret = rdmalt(Adapter, 0x0F0110F8, (u32 *)&ulReg, sizeof(u32));
-	if (ret) {
+	bytes = rdmalt(Adapter, 0x0F0110F8, (u32 *)&ulReg, sizeof(u32));
+	if (bytes < 0) {
 		BCM_DEBUG_PRINT(Adapter, DBG_TYPE_INITEXIT, DRV_ENTRY, DBG_LVL_ALL,
 			"reading of Tx EP failed\n");
 		return;
@@ -139,8 +139,7 @@ static void ConfigureEndPointTypesThroughEEPROM(PMINI_ADAPTER Adapter)
 	BeceemEEPROMBulkWrite(Adapter, (PUCHAR)&ulReg, 0x1C2, 4, TRUE);
 }
 
-static int
-usbbcm_device_probe(struct usb_interface *intf, const struct usb_device_id *id)
+static int usbbcm_device_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
 	struct usb_device *udev = interface_to_usbdev(intf);
 	int retval;
@@ -281,8 +280,9 @@ static int AllocUsbCb(PS_INTERFACE_ADAPTER psIntfAdapter)
 	int i = 0;
 
 	for (i = 0; i < MAXIMUM_USB_TCB; i++) {
-		if ((psIntfAdapter->asUsbTcb[i].urb =
-				usb_alloc_urb(0, GFP_KERNEL)) == NULL) {
+		psIntfAdapter->asUsbTcb[i].urb = usb_alloc_urb(0, GFP_KERNEL);
+
+		if (psIntfAdapter->asUsbTcb[i].urb == NULL) {
 			BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_PRINTK, 0, 0,
 				"Can't allocate Tx urb for index %d\n", i);
 			return -ENOMEM;
@@ -290,14 +290,17 @@ static int AllocUsbCb(PS_INTERFACE_ADAPTER psIntfAdapter)
 	}
 
 	for (i = 0; i < MAXIMUM_USB_RCB; i++) {
-		if ((psIntfAdapter->asUsbRcb[i].urb =
-				usb_alloc_urb(0, GFP_KERNEL)) == NULL) {
+		psIntfAdapter->asUsbRcb[i].urb = usb_alloc_urb(0, GFP_KERNEL);
+
+		if (psIntfAdapter->asUsbRcb[i].urb == NULL) {
 			BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_PRINTK, 0, 0,
 				"Can't allocate Rx urb for index %d\n", i);
 			return -ENOMEM;
 		}
-		if ((psIntfAdapter->asUsbRcb[i].urb->transfer_buffer =
-			kmalloc(MAX_DATA_BUFFER_SIZE, GFP_KERNEL)) == NULL) {
+
+		psIntfAdapter->asUsbRcb[i].urb->transfer_buffer = kmalloc(MAX_DATA_BUFFER_SIZE, GFP_KERNEL);
+
+		if (psIntfAdapter->asUsbRcb[i].urb->transfer_buffer == NULL) {
 			BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_PRINTK, 0, 0,
 				"Can't allocate Rx buffer for index %d\n", i);
 			return -ENOMEM;
@@ -389,32 +392,32 @@ static inline int bcm_usb_endpoint_xfer_isoc(const struct usb_endpoint_descripto
 
 static inline int bcm_usb_endpoint_is_bulk_in(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_bulk(epd) && bcm_usb_endpoint_dir_in(epd));
+	return bcm_usb_endpoint_xfer_bulk(epd) && bcm_usb_endpoint_dir_in(epd);
 }
 
 static inline int bcm_usb_endpoint_is_bulk_out(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_bulk(epd) && bcm_usb_endpoint_dir_out(epd));
+	return bcm_usb_endpoint_xfer_bulk(epd) && bcm_usb_endpoint_dir_out(epd);
 }
 
 static inline int bcm_usb_endpoint_is_int_in(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_int(epd) && bcm_usb_endpoint_dir_in(epd));
+	return bcm_usb_endpoint_xfer_int(epd) && bcm_usb_endpoint_dir_in(epd);
 }
 
 static inline int bcm_usb_endpoint_is_int_out(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_int(epd) && bcm_usb_endpoint_dir_out(epd));
+	return bcm_usb_endpoint_xfer_int(epd) && bcm_usb_endpoint_dir_out(epd);
 }
 
 static inline int bcm_usb_endpoint_is_isoc_in(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_isoc(epd) && bcm_usb_endpoint_dir_in(epd));
+	return bcm_usb_endpoint_xfer_isoc(epd) && bcm_usb_endpoint_dir_in(epd);
 }
 
 static inline int bcm_usb_endpoint_is_isoc_out(const struct usb_endpoint_descriptor *epd)
 {
-	return (bcm_usb_endpoint_xfer_isoc(epd) && bcm_usb_endpoint_dir_out(epd));
+	return bcm_usb_endpoint_xfer_isoc(epd) && bcm_usb_endpoint_dir_out(epd);
 }
 
 static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
@@ -427,6 +430,7 @@ static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
 	int usedIntOutForBulkTransfer = 0 ;
 	BOOLEAN bBcm16 = FALSE;
 	UINT uiData = 0;
+	int bytes;
 
 	/* Store the usb dev into interface adapter */
 	psIntfAdapter->udev = usb_get_dev(interface_to_usbdev(psIntfAdapter->interface));
@@ -435,9 +439,10 @@ static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
 	psIntfAdapter->psAdapter->interface_rdm = BcmRDM;
 	psIntfAdapter->psAdapter->interface_wrm = BcmWRM;
 
-	retval = rdmalt(psIntfAdapter->psAdapter, CHIP_ID_REG,
+	bytes = rdmalt(psIntfAdapter->psAdapter, CHIP_ID_REG,
 			(u32 *)&(psIntfAdapter->psAdapter->chip_id), sizeof(u32));
-	if (retval) {
+	if (bytes < 0) {
+		retval = bytes;
 		BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_PRINTK, 0, 0, "CHIP ID Read Failed\n");
 		return retval;
 	}
@@ -462,7 +467,7 @@ static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
 		if (bBcm16 == TRUE) {
 			/* selecting alternate setting one as a default setting for High Speed  modem. */
 			if (psIntfAdapter->bHighSpeedDevice)
-				retval= usb_set_interface(psIntfAdapter->udev, DEFAULT_SETTING_0, ALTERNATE_SETTING_1);
+				retval = usb_set_interface(psIntfAdapter->udev, DEFAULT_SETTING_0, ALTERNATE_SETTING_1);
 			BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_INITEXIT, DRV_ENTRY, DBG_LVL_ALL,
 				"BCM16 is applicable on this dongle\n");
 			if (retval || (psIntfAdapter->bHighSpeedDevice == FALSE)) {
@@ -497,7 +502,7 @@ static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
 				if ((psIntfAdapter->bHighSpeedDevice == FALSE) && bcm_usb_endpoint_is_bulk_out(endpoint)) {
 					/* Once BULK is selected in FS mode. Revert it back to INT. Else USB_IF will fail. */
 					UINT _uiData = ntohl(EP2_CFG_INT);
-					BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_INITEXIT, DRV_ENTRY, DBG_LVL_ALL, 
+					BCM_DEBUG_PRINT(psIntfAdapter->psAdapter, DBG_TYPE_INITEXIT, DRV_ENTRY, DBG_LVL_ALL,
 						"Reverting Bulk to INT as it is in Full Speed mode.\n");
 					BeceemEEPROMBulkWrite(psIntfAdapter->psAdapter, (PUCHAR)&_uiData, 0x136, 4, TRUE);
 				}
@@ -579,7 +584,7 @@ static int InterfaceAdapterInit(PS_INTERFACE_ADAPTER psIntfAdapter)
 				psIntfAdapter->sIntrOut.int_out_size = buffer_size;
 				psIntfAdapter->sIntrOut.int_out_endpointAddr = endpoint->bEndpointAddress;
 				psIntfAdapter->sIntrOut.int_out_interval = endpoint->bInterval;
-				psIntfAdapter->sIntrOut.int_out_buffer= kmalloc(buffer_size, GFP_KERNEL);
+				psIntfAdapter->sIntrOut.int_out_buffer = kmalloc(buffer_size, GFP_KERNEL);
 				if (!psIntfAdapter->sIntrOut.int_out_buffer) {
 					dev_err(&psIntfAdapter->udev->dev,
 						"could not allocate interrupt_out_buffer\n");
@@ -641,8 +646,8 @@ static int InterfaceSuspend(struct usb_interface *intf, pm_message_t message)
 static int InterfaceResume(struct usb_interface *intf)
 {
 	PS_INTERFACE_ADAPTER  psIntfAdapter = usb_get_intfdata(intf);
-	mdelay(100);
 
+	mdelay(100);
 	psIntfAdapter->bSuspended = FALSE;
 
 	StartInterruptUrb(psIntfAdapter);

@@ -20,6 +20,11 @@
  *******************************************************************/
 
 #include <scsi/scsi_host.h>
+
+#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SCSI_LPFC_DEBUG_FS)
+#define CONFIG_SCSI_LPFC_DEBUG_FS
+#endif
+
 struct lpfc_sli2_slim;
 
 #define LPFC_PCI_DEV_LP		0x1
@@ -242,18 +247,6 @@ struct lpfc_stats {
 	uint32_t fcpLocalErr;
 };
 
-enum sysfs_mbox_state {
-	SMBOX_IDLE,
-	SMBOX_WRITING,
-	SMBOX_READING
-};
-
-struct lpfc_sysfs_mbox {
-	enum sysfs_mbox_state state;
-	size_t                offset;
-	struct lpfcMboxq *    mbox;
-};
-
 struct lpfc_hba;
 
 
@@ -465,9 +458,10 @@ enum intr_type_t {
 struct unsol_rcv_ct_ctx {
 	uint32_t ctxt_id;
 	uint32_t SID;
-	uint32_t oxid;
 	uint32_t flags;
 #define UNSOL_VALID	0x00000001
+	uint16_t oxid;
+	uint16_t rxid;
 };
 
 #define LPFC_USER_LINK_SPEED_AUTO	0	/* auto select (default)*/
@@ -674,6 +668,9 @@ struct lpfc_hba {
 	uint32_t cfg_enable_rrq;
 	uint32_t cfg_topology;
 	uint32_t cfg_link_speed;
+#define LPFC_FCF_FOV 1		/* Fast fcf failover */
+#define LPFC_FCF_PRIORITY 2	/* Priority fcf failover */
+	uint32_t cfg_fcf_failover_policy;
 	uint32_t cfg_cr_delay;
 	uint32_t cfg_cr_count;
 	uint32_t cfg_multi_ring_support;
@@ -774,8 +771,6 @@ struct lpfc_hba {
 	uint64_t bg_apptag_err_cnt;
 	uint64_t bg_reftag_err_cnt;
 
-	struct lpfc_sysfs_mbox sysfs_mbox;
-
 	/* fastpath list. */
 	spinlock_t scsi_buf_list_lock;
 	struct list_head lpfc_scsi_buf_list;
@@ -837,17 +832,37 @@ struct lpfc_hba {
 	struct dentry *debug_hbqinfo;
 	struct dentry *debug_dumpHostSlim;
 	struct dentry *debug_dumpHBASlim;
-	struct dentry *debug_dumpData;   /* BlockGuard BPL*/
-	struct dentry *debug_dumpDif;    /* BlockGuard BPL*/
+	struct dentry *debug_dumpData;   /* BlockGuard BPL */
+	struct dentry *debug_dumpDif;    /* BlockGuard BPL */
+	struct dentry *debug_InjErrLBA;  /* LBA to inject errors at */
+	struct dentry *debug_writeGuard; /* inject write guard_tag errors */
+	struct dentry *debug_writeApp;   /* inject write app_tag errors */
+	struct dentry *debug_writeRef;   /* inject write ref_tag errors */
+	struct dentry *debug_readApp;    /* inject read app_tag errors */
+	struct dentry *debug_readRef;    /* inject read ref_tag errors */
+
+	/* T10 DIF error injection */
+	uint32_t lpfc_injerr_wgrd_cnt;
+	uint32_t lpfc_injerr_wapp_cnt;
+	uint32_t lpfc_injerr_wref_cnt;
+	uint32_t lpfc_injerr_rapp_cnt;
+	uint32_t lpfc_injerr_rref_cnt;
+	sector_t lpfc_injerr_lba;
+#define LPFC_INJERR_LBA_OFF	(sector_t)0xffffffffffffffff
+
 	struct dentry *debug_slow_ring_trc;
 	struct lpfc_debugfs_trc *slow_ring_trc;
 	atomic_t slow_ring_trc_cnt;
 	/* iDiag debugfs sub-directory */
 	struct dentry *idiag_root;
 	struct dentry *idiag_pci_cfg;
+	struct dentry *idiag_bar_acc;
 	struct dentry *idiag_que_info;
 	struct dentry *idiag_que_acc;
 	struct dentry *idiag_drb_acc;
+	struct dentry *idiag_ctl_acc;
+	struct dentry *idiag_mbx_acc;
+	struct dentry *idiag_ext_acc;
 #endif
 
 	/* Used for deferred freeing of ELS data buffers */

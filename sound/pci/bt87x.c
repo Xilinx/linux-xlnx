@@ -25,7 +25,7 @@
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 #include <linux/bitops.h>
 #include <asm/io.h>
 #include <sound/core.h>
@@ -42,9 +42,9 @@ MODULE_SUPPORTED_DEVICE("{{Brooktree,Bt878},"
 
 static int index[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS - 1)] = -2}; /* Exclude the first card */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
 static int digital_rate[SNDRV_CARDS];	/* digital input rate */
-static int load_all;	/* allow to load the non-whitelisted cards */
+static bool load_all;	/* allow to load the non-whitelisted cards */
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for Bt87x soundcard");
@@ -760,7 +760,7 @@ static int __devinit snd_bt87x_create(struct snd_card *card,
 	snd_bt87x_writel(chip, REG_INT_STAT, MY_INTERRUPTS);
 
 	err = request_irq(pci->irq, snd_bt87x_interrupt, IRQF_SHARED,
-			  "Bt87x audio", chip);
+			  KBUILD_MODNAME, chip);
 	if (err < 0) {
 		snd_printk(KERN_ERR "cannot grab irq %d\n", pci->irq);
 		goto fail;
@@ -965,7 +965,7 @@ static DEFINE_PCI_DEVICE_TABLE(snd_bt87x_default_ids) = {
 };
 
 static struct pci_driver driver = {
-	.name = "Bt87x",
+	.name = KBUILD_MODNAME,
 	.id_table = snd_bt87x_ids,
 	.probe = snd_bt87x_probe,
 	.remove = __devexit_p(snd_bt87x_remove),

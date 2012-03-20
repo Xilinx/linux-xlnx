@@ -43,12 +43,6 @@ extern unsigned long ia64_max_iommu_merge_mask;
 #define PCI_DMA_BUS_IS_PHYS	(ia64_max_iommu_merge_mask == ~0UL)
 
 static inline void
-pcibios_set_master (struct pci_dev *dev)
-{
-	/* No special bus mastering setup handling */
-}
-
-static inline void
 pcibios_penalize_isa_irq (int irq, int active)
 {
 	/* We don't do dynamic PCI IRQ allocation */
@@ -139,7 +133,7 @@ static inline int pci_get_legacy_ide_irq(struct pci_dev *dev, int channel)
 	return channel ? isa_irq_to_vector(15) : isa_irq_to_vector(14);
 }
 
-#ifdef CONFIG_DMAR
+#ifdef CONFIG_INTEL_IOMMU
 extern void pci_iommu_alloc(void);
 #endif
 #endif /* _ASM_IA64_PCI_H */

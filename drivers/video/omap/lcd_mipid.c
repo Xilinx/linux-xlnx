@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <linux/spi/spi.h>
+#include <linux/module.h>
 
 #include <plat/lcd_mipid.h>
 
@@ -602,7 +603,6 @@ static int mipid_spi_remove(struct spi_device *spi)
 static struct spi_driver mipid_spi_driver = {
 	.driver = {
 		.name	= MIPID_MODULE_NAME,
-		.bus	= &spi_bus_type,
 		.owner	= THIS_MODULE,
 	},
 	.probe	= mipid_spi_probe,

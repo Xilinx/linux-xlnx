@@ -30,7 +30,6 @@
 #include <asm/mach/arch.h>
 
 #include <mach/smc.h>
-#include <mach/hardware.h>
 #include <mach/uart.h>
 
 #include "common.h"

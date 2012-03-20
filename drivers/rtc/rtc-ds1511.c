@@ -23,6 +23,7 @@
 #include <linux/rtc.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/module.h>
 
 #define DRV_VERSION "0.6"
 
@@ -490,7 +491,7 @@ ds1511_rtc_probe(struct platform_device *pdev)
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
-	pdata->size = res->end - res->start + 1;
+	pdata->size = resource_size(res);
 	if (!devm_request_mem_region(&pdev->dev, res->start, pdata->size,
 			pdev->name))
 		return -EBUSY;
@@ -579,20 +580,7 @@ static struct platform_driver ds1511_rtc_driver = {
 	},
 };
 
- static int __init
-ds1511_rtc_init(void)
-{
-	return platform_driver_register(&ds1511_rtc_driver);
-}
-
- static void __exit
-ds1511_rtc_exit(void)
-{
-	platform_driver_unregister(&ds1511_rtc_driver);
-}
-
-module_init(ds1511_rtc_init);
-module_exit(ds1511_rtc_exit);
+module_platform_driver(ds1511_rtc_driver);
 
 MODULE_AUTHOR("Andrew Sharp <andy.sharp@lsi.com>");
 MODULE_DESCRIPTION("Dallas DS1511 RTC driver");

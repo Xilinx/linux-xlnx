@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/elf.h>
 #include <linux/smp.h>
 #include <linux/ptrace.h>
 #include <linux/user.h>
@@ -22,6 +23,7 @@
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/regset.h>
+#include <linux/audit.h>
 
 #include <asm/pgtable.h>
 #include <asm/system.h>
@@ -228,34 +230,12 @@ static struct undef_hook thumb_break_hook = {
 	.fn		= break_trap,
 };
 
-static int thumb2_break_trap(struct pt_regs *regs, unsigned int instr)
-{
-	unsigned int instr2;
-	void __user *pc;
-
-	/* Check the second half of the instruction.  */
-	pc = (void __user *)(instruction_pointer(regs) + 2);
-
-	if (processor_mode(regs) == SVC_MODE) {
-		instr2 = *(u16 *) pc;
-	} else {
-		get_user(instr2, (u16 __user *)pc);
-	}
-
-	if (instr2 == 0xa000) {
-		ptrace_break(current, regs);
-		return 0;
-	} else {
-		return 1;
-	}
-}
-
 static struct undef_hook thumb2_break_hook = {
-	.instr_mask	= 0xffff,
-	.instr_val	= 0xf7f0,
+	.instr_mask	= 0xffffffff,
+	.instr_val	= 0xf7f0a000,
 	.cpsr_mask	= PSR_T_BIT,
 	.cpsr_val	= PSR_T_BIT,
-	.fn		= thumb2_break_trap,
+	.fn		= break_trap,
 };
 
 static int __init ptrace_break_init(void)
@@ -396,7 +376,7 @@ static long ptrace_hbp_idx_to_num(int idx)
 /*
  * Handle hitting a HW-breakpoint.
  */
-static void ptrace_hbptriggered(struct perf_event *bp, int unused,
+static void ptrace_hbptriggered(struct perf_event *bp,
 				     struct perf_sample_data *data,
 				     struct pt_regs *regs)
 {
@@ -479,7 +459,8 @@ static struct perf_event *ptrace_hbp_create(struct task_struct *tsk, int type)
 	attr.bp_type	= type;
 	attr.disabled	= 1;
 
-	return register_user_hw_breakpoint(&attr, ptrace_hbptriggered, tsk);
+	return register_user_hw_breakpoint(&attr, ptrace_hbptriggered, NULL,
+					   tsk);
 }
 
 static int ptrace_gethbpregs(struct task_struct *tsk, long num,
@@ -719,9 +700,12 @@ static int vfp_set(struct task_struct *target,
 {
 	int ret;
 	struct thread_info *thread = task_thread_info(target);
-	struct vfp_hard_struct new_vfp = thread->vfpstate.hard;
+	struct vfp_hard_struct new_vfp;
 	const size_t user_fpregs_offset = offsetof(struct user_vfp, fpregs);
 	const size_t user_fpscr_offset = offsetof(struct user_vfp, fpscr);
+
+	vfp_sync_hwstate(thread);
+	new_vfp = thread->vfpstate.hard;
 
 	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				  &new_vfp.fpregs,
@@ -743,9 +727,8 @@ static int vfp_set(struct task_struct *target,
 	if (ret)
 		return ret;
 
-	vfp_sync_hwstate(thread);
-	thread->vfpstate.hard = new_vfp;
 	vfp_flush_hwstate(thread);
+	thread->vfpstate.hard = new_vfp;
 
 	return 0;
 }
@@ -922,14 +905,15 @@ long arch_ptrace(struct task_struct *child, long request,
 	return ret;
 }
 
+#ifdef __ARMEB__
+#define AUDIT_ARCH_NR AUDIT_ARCH_ARMEB
+#else
+#define AUDIT_ARCH_NR AUDIT_ARCH_ARM
+#endif
+
 asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 {
 	unsigned long ip;
-
-	if (!test_thread_flag(TIF_SYSCALL_TRACE))
-		return scno;
-	if (!(current->ptrace & PT_PTRACED))
-		return scno;
 
 	/*
 	 * Save IP.  IP is used to denote syscall entry/exit:
@@ -937,6 +921,17 @@ asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 	 */
 	ip = regs->ARM_ip;
 	regs->ARM_ip = why;
+
+	if (!ip)
+		audit_syscall_exit(regs);
+	else
+		audit_syscall_entry(AUDIT_ARCH_NR, scno, regs->ARM_r0,
+				    regs->ARM_r1, regs->ARM_r2, regs->ARM_r3);
+
+	if (!test_thread_flag(TIF_SYSCALL_TRACE))
+		return scno;
+	if (!(current->ptrace & PT_PTRACED))
+		return scno;
 
 	current_thread_info()->syscall = scno;
 

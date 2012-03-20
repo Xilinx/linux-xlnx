@@ -36,6 +36,7 @@
 #include <linux/resource.h>
 #include <linux/notifier.h>
 #include <linux/suspend.h>
+#include <linux/rwsem.h>
 #include <asm/uaccess.h>
 
 #include <trace/events/module.h>
@@ -50,6 +51,7 @@ static struct workqueue_struct *khelper_wq;
 static kernel_cap_t usermodehelper_bset = CAP_FULL_SET;
 static kernel_cap_t usermodehelper_inheritable = CAP_FULL_SET;
 static DEFINE_SPINLOCK(umh_sysctl_lock);
+static DECLARE_RWSEM(umhelper_sem);
 
 #ifdef CONFIG_MODULES
 
@@ -114,10 +116,12 @@ int __request_module(bool wait, const char *fmt, ...)
 	atomic_inc(&kmod_concurrent);
 	if (atomic_read(&kmod_concurrent) > max_modprobes) {
 		/* We may be blaming an innocent here, but unlikely */
-		if (kmod_loop_msg++ < 5)
+		if (kmod_loop_msg < 5) {
 			printk(KERN_ERR
 			       "request_module: runaway loop modprobe %s\n",
 			       module_name);
+			kmod_loop_msg++;
+		}
 		atomic_dec(&kmod_concurrent);
 		return -ENOMEM;
 	}
@@ -273,23 +277,36 @@ static void __call_usermodehelper(struct work_struct *work)
  * If set, call_usermodehelper_exec() will exit immediately returning -EBUSY
  * (used for preventing user land processes from being created after the user
  * land has been frozen during a system-wide hibernation or suspend operation).
+ * Should always be manipulated under umhelper_sem acquired for write.
  */
-static int usermodehelper_disabled;
+static int usermodehelper_disabled = 1;
 
 /* Number of helpers running */
 static atomic_t running_helpers = ATOMIC_INIT(0);
 
 /*
- * Wait queue head used by usermodehelper_pm_callback() to wait for all running
+ * Wait queue head used by usermodehelper_disable() to wait for all running
  * helpers to finish.
  */
 static DECLARE_WAIT_QUEUE_HEAD(running_helpers_waitq);
 
 /*
  * Time to wait for running_helpers to become zero before the setting of
- * usermodehelper_disabled in usermodehelper_pm_callback() fails
+ * usermodehelper_disabled in usermodehelper_disable() fails
  */
 #define RUNNING_HELPERS_TIMEOUT	(5 * HZ)
+
+void read_lock_usermodehelper(void)
+{
+	down_read(&umhelper_sem);
+}
+EXPORT_SYMBOL_GPL(read_lock_usermodehelper);
+
+void read_unlock_usermodehelper(void)
+{
+	up_read(&umhelper_sem);
+}
+EXPORT_SYMBOL_GPL(read_unlock_usermodehelper);
 
 /**
  * usermodehelper_disable - prevent new helpers from being started
@@ -298,8 +315,10 @@ int usermodehelper_disable(void)
 {
 	long retval;
 
+	down_write(&umhelper_sem);
 	usermodehelper_disabled = 1;
-	smp_mb();
+	up_write(&umhelper_sem);
+
 	/*
 	 * From now on call_usermodehelper_exec() won't start any new
 	 * helpers, so it is sufficient if running_helpers turns out to
@@ -312,7 +331,9 @@ int usermodehelper_disable(void)
 	if (retval)
 		return 0;
 
+	down_write(&umhelper_sem);
 	usermodehelper_disabled = 0;
+	up_write(&umhelper_sem);
 	return -EAGAIN;
 }
 
@@ -321,7 +342,9 @@ int usermodehelper_disable(void)
  */
 void usermodehelper_enable(void)
 {
+	down_write(&umhelper_sem);
 	usermodehelper_disabled = 0;
+	up_write(&umhelper_sem);
 }
 
 /**

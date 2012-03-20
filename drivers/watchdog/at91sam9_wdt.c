@@ -31,9 +31,14 @@
 #include <linux/bitops.h>
 #include <linux/uaccess.h>
 
-#include <mach/at91_wdt.h>
+#include "at91sam9_wdt.h"
 
 #define DRV_NAME "AT91SAM9 Watchdog"
+
+#define wdt_read(field) \
+	__raw_readl(at91wdt_private.base + field)
+#define wdt_write(field, val) \
+	__raw_writel((val), at91wdt_private.base + field)
 
 /* AT91SAM9 watchdog runs a 12bit counter @ 256Hz,
  * use this to convert a watchdog
@@ -63,6 +68,7 @@ MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started "
 static void at91_ping(unsigned long data);
 
 static struct {
+	void __iomem *base;
 	unsigned long next_heartbeat;	/* the next_heartbeat for the timer */
 	unsigned long open;
 	char expect_close;
@@ -77,7 +83,7 @@ static struct {
  */
 static inline void at91_wdt_reset(void)
 {
-	at91_sys_write(AT91_WDT_CR, AT91_WDT_KEY | AT91_WDT_WDRSTT);
+	wdt_write(AT91_WDT_CR, AT91_WDT_KEY | AT91_WDT_WDRSTT);
 }
 
 /*
@@ -132,7 +138,7 @@ static int at91_wdt_settimeout(unsigned int timeout)
 	unsigned int mr;
 
 	/* Check if disabled */
-	mr = at91_sys_read(AT91_WDT_MR);
+	mr = wdt_read(AT91_WDT_MR);
 	if (mr & AT91_WDT_WDDIS) {
 		printk(KERN_ERR DRV_NAME": sorry, watchdog is disabled\n");
 		return -EIO;
@@ -149,7 +155,7 @@ static int at91_wdt_settimeout(unsigned int timeout)
 		| AT91_WDT_WDDBGHLT	/* disabled in debug mode */
 		| AT91_WDT_WDD		/* restart at any time */
 		| (timeout & AT91_WDT_WDV);  /* timer value */
-	at91_sys_write(AT91_WDT_MR, reg);
+	wdt_write(AT91_WDT_MR, reg);
 
 	return 0;
 }
@@ -248,11 +254,21 @@ static struct miscdevice at91wdt_miscdev = {
 
 static int __init at91wdt_probe(struct platform_device *pdev)
 {
+	struct resource	*r;
 	int res;
 
 	if (at91wdt_miscdev.parent)
 		return -EBUSY;
 	at91wdt_miscdev.parent = &pdev->dev;
+
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!r)
+		return -ENODEV;
+	at91wdt_private.base = ioremap(r->start, resource_size(r));
+	if (!at91wdt_private.base) {
+		dev_err(&pdev->dev, "failed to map registers, aborting.\n");
+		return -ENOMEM;
+	}
 
 	/* Set watchdog */
 	res = at91_wdt_settimeout(ms_to_ticks(WDT_HW_TIMEOUT * 1000));
@@ -284,27 +300,8 @@ static int __exit at91wdt_remove(struct platform_device *pdev)
 	return res;
 }
 
-#ifdef CONFIG_PM
-
-static int at91wdt_suspend(struct platform_device *pdev, pm_message_t message)
-{
-	return 0;
-}
-
-static int at91wdt_resume(struct platform_device *pdev)
-{
-	return 0;
-}
-
-#else
-#define at91wdt_suspend	NULL
-#define at91wdt_resume	NULL
-#endif
-
 static struct platform_driver at91wdt_driver = {
 	.remove		= __exit_p(at91wdt_remove),
-	.suspend	= at91wdt_suspend,
-	.resume		= at91wdt_resume,
 	.driver		= {
 		.name	= "at91_wdt",
 		.owner	= THIS_MODULE,

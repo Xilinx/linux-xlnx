@@ -39,6 +39,7 @@
 #include <linux/interrupt.h>
 #include <linux/compiler.h>
 #include <linux/delay.h>
+#include <linux/module.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -65,7 +66,7 @@ static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
 module_param_array(id, charp, NULL, 0444);
 MODULE_PARM_DESC(id, "ID string for the AD1889 soundcard.");
 
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 module_param_array(enable, bool, NULL, 0444);
 MODULE_PARM_DESC(enable, "Enable AD1889 soundcard.");
 
@@ -944,7 +945,7 @@ snd_ad1889_create(struct snd_card *card,
 	spin_lock_init(&chip->lock);	/* only now can we call ad1889_free */
 
 	if (request_irq(pci->irq, snd_ad1889_interrupt,
-			IRQF_SHARED, card->driver, chip)) {
+			IRQF_SHARED, KBUILD_MODNAME, chip)) {
 		printk(KERN_ERR PFX "cannot obtain IRQ %d\n", pci->irq);
 		snd_ad1889_free(chip);
 		return -EBUSY;
@@ -1055,7 +1056,7 @@ static DEFINE_PCI_DEVICE_TABLE(snd_ad1889_ids) = {
 MODULE_DEVICE_TABLE(pci, snd_ad1889_ids);
 
 static struct pci_driver ad1889_pci_driver = {
-	.name = "AD1889 Audio",
+	.name = KBUILD_MODNAME,
 	.id_table = snd_ad1889_ids,
 	.probe = snd_ad1889_probe,
 	.remove = __devexit_p(snd_ad1889_remove),

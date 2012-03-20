@@ -53,6 +53,24 @@ static void radeon_pm_set_clocks(struct radeon_device *rdev);
 
 #define ACPI_AC_CLASS           "ac_adapter"
 
+int radeon_pm_get_type_index(struct radeon_device *rdev,
+			     enum radeon_pm_state_type ps_type,
+			     int instance)
+{
+	int i;
+	int found_instance = -1;
+
+	for (i = 0; i < rdev->pm.num_power_states; i++) {
+		if (rdev->pm.power_state[i].type == ps_type) {
+			found_instance++;
+			if (found_instance == instance)
+				return i;
+		}
+	}
+	/* return default if no match */
+	return rdev->pm.default_power_state_index;
+}
+
 #ifdef CONFIG_ACPI
 static int radeon_acpi_event(struct notifier_block *nb,
 			     unsigned long val,
@@ -234,7 +252,10 @@ static void radeon_pm_set_clocks(struct radeon_device *rdev)
 
 	mutex_lock(&rdev->ddev->struct_mutex);
 	mutex_lock(&rdev->vram_mutex);
-	mutex_lock(&rdev->cp.mutex);
+	for (i = 0; i < RADEON_NUM_RINGS; ++i) {
+		if (rdev->ring[i].ring_obj)
+			mutex_lock(&rdev->ring[i].mutex);
+	}
 
 	/* gui idle int has issues on older chips it seems */
 	if (rdev->family >= CHIP_R600) {
@@ -250,12 +271,13 @@ static void radeon_pm_set_clocks(struct radeon_device *rdev)
 			radeon_irq_set(rdev);
 		}
 	} else {
-		if (rdev->cp.ready) {
+		struct radeon_ring *ring = &rdev->ring[RADEON_RING_TYPE_GFX_INDEX];
+		if (ring->ready) {
 			struct radeon_fence *fence;
-			radeon_ring_alloc(rdev, 64);
-			radeon_fence_create(rdev, &fence);
+			radeon_ring_alloc(rdev, ring, 64);
+			radeon_fence_create(rdev, &fence, radeon_ring_index(rdev, ring));
 			radeon_fence_emit(rdev, fence);
-			radeon_ring_commit(rdev);
+			radeon_ring_commit(rdev, ring);
 			radeon_fence_wait(fence, false);
 			radeon_fence_unref(&fence);
 		}
@@ -289,7 +311,10 @@ static void radeon_pm_set_clocks(struct radeon_device *rdev)
 
 	rdev->pm.dynpm_planned_action = DYNPM_ACTION_NONE;
 
-	mutex_unlock(&rdev->cp.mutex);
+	for (i = 0; i < RADEON_NUM_RINGS; ++i) {
+		if (rdev->ring[i].ring_obj)
+			mutex_unlock(&rdev->ring[i].mutex);
+	}
 	mutex_unlock(&rdev->vram_mutex);
 	mutex_unlock(&rdev->ddev->struct_mutex);
 }
@@ -594,6 +619,9 @@ int radeon_pm_init(struct radeon_device *rdev)
 			if (rdev->pm.default_vddc)
 				radeon_atom_set_voltage(rdev, rdev->pm.default_vddc,
 							SET_VOLTAGE_TYPE_ASIC_VDDC);
+			if (rdev->pm.default_vddci)
+				radeon_atom_set_voltage(rdev, rdev->pm.default_vddci,
+							SET_VOLTAGE_TYPE_ASIC_VDDCI);
 			if (rdev->pm.default_sclk)
 				radeon_set_engine_clock(rdev, rdev->pm.default_sclk);
 			if (rdev->pm.default_mclk)
@@ -774,19 +802,14 @@ static void radeon_dynpm_idle_work_handler(struct work_struct *work)
 	resched = ttm_bo_lock_delayed_workqueue(&rdev->mman.bdev);
 	mutex_lock(&rdev->pm.mutex);
 	if (rdev->pm.dynpm_state == DYNPM_STATE_ACTIVE) {
-		unsigned long irq_flags;
 		int not_processed = 0;
+		int i;
 
-		read_lock_irqsave(&rdev->fence_drv.lock, irq_flags);
-		if (!list_empty(&rdev->fence_drv.emited)) {
-			struct list_head *ptr;
-			list_for_each(ptr, &rdev->fence_drv.emited) {
-				/* count up to 3, that's enought info */
-				if (++not_processed >= 3)
-					break;
-			}
+		for (i = 0; i < RADEON_NUM_RINGS; ++i) {
+			not_processed += radeon_fence_count_emitted(rdev, i);
+			if (not_processed >= 3)
+				break;
 		}
-		read_unlock_irqrestore(&rdev->fence_drv.lock, irq_flags);
 
 		if (not_processed >= 3) { /* should upclock */
 			if (rdev->pm.dynpm_planned_action == DYNPM_ACTION_DOWNCLOCK) {

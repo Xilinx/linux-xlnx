@@ -35,14 +35,16 @@
 #include <rdma/ib_mad.h>
 #include <rdma/ib_user_verbs.h>
 #include <linux/io.h>
+#include <linux/module.h>
 #include <linux/utsname.h>
 #include <linux/rculist.h>
 #include <linux/mm.h>
+#include <linux/random.h>
 
 #include "qib.h"
 #include "qib_common.h"
 
-static unsigned int ib_qib_qp_table_size = 251;
+static unsigned int ib_qib_qp_table_size = 256;
 module_param_named(qp_table_size, ib_qib_qp_table_size, uint, S_IRUGO);
 MODULE_PARM_DESC(qp_table_size, "QP table size");
 
@@ -659,17 +661,25 @@ void qib_ib_rcv(struct qib_ctxtdata *rcd, void *rhdr, void *data, u32 tlen)
 		if (atomic_dec_return(&mcast->refcount) <= 1)
 			wake_up(&mcast->wait);
 	} else {
-		qp = qib_lookup_qpn(ibp, qp_num);
-		if (!qp)
-			goto drop;
+		if (rcd->lookaside_qp) {
+			if (rcd->lookaside_qpn != qp_num) {
+				if (atomic_dec_and_test(
+					&rcd->lookaside_qp->refcount))
+					wake_up(
+					 &rcd->lookaside_qp->wait);
+					rcd->lookaside_qp = NULL;
+				}
+		}
+		if (!rcd->lookaside_qp) {
+			qp = qib_lookup_qpn(ibp, qp_num);
+			if (!qp)
+				goto drop;
+			rcd->lookaside_qp = qp;
+			rcd->lookaside_qpn = qp_num;
+		} else
+			qp = rcd->lookaside_qp;
 		ibp->n_unicast_rcv++;
 		qib_qp_rcv(rcd, hdr, lnh == QIB_LRH_GRH, data, tlen, qp);
-		/*
-		 * Notify qib_destroy_qp() if it is waiting
-		 * for us to finish.
-		 */
-		if (atomic_dec_and_test(&qp->refcount))
-			wake_up(&qp->wait);
 	}
 	return;
 
@@ -903,8 +913,8 @@ static void copy_io(u32 __iomem *piobuf, struct qib_sge_state *ss,
 		__raw_writel(last, piobuf);
 }
 
-static struct qib_verbs_txreq *get_txreq(struct qib_ibdev *dev,
-					 struct qib_qp *qp, int *retp)
+static noinline struct qib_verbs_txreq *__get_txreq(struct qib_ibdev *dev,
+					   struct qib_qp *qp)
 {
 	struct qib_verbs_txreq *tx;
 	unsigned long flags;
@@ -916,8 +926,9 @@ static struct qib_verbs_txreq *get_txreq(struct qib_ibdev *dev,
 		struct list_head *l = dev->txreq_free.next;
 
 		list_del(l);
+		spin_unlock(&dev->pending_lock);
+		spin_unlock_irqrestore(&qp->s_lock, flags);
 		tx = list_entry(l, struct qib_verbs_txreq, txreq.list);
-		*retp = 0;
 	} else {
 		if (ib_qib_state_ops[qp->state] & QIB_PROCESS_RECV_OK &&
 		    list_empty(&qp->iowait)) {
@@ -925,14 +936,33 @@ static struct qib_verbs_txreq *get_txreq(struct qib_ibdev *dev,
 			qp->s_flags |= QIB_S_WAIT_TX;
 			list_add_tail(&qp->iowait, &dev->txwait);
 		}
-		tx = NULL;
 		qp->s_flags &= ~QIB_S_BUSY;
-		*retp = -EBUSY;
+		spin_unlock(&dev->pending_lock);
+		spin_unlock_irqrestore(&qp->s_lock, flags);
+		tx = ERR_PTR(-EBUSY);
 	}
+	return tx;
+}
 
-	spin_unlock(&dev->pending_lock);
-	spin_unlock_irqrestore(&qp->s_lock, flags);
+static inline struct qib_verbs_txreq *get_txreq(struct qib_ibdev *dev,
+					 struct qib_qp *qp)
+{
+	struct qib_verbs_txreq *tx;
+	unsigned long flags;
 
+	spin_lock_irqsave(&dev->pending_lock, flags);
+	/* assume the list non empty */
+	if (likely(!list_empty(&dev->txreq_free))) {
+		struct list_head *l = dev->txreq_free.next;
+
+		list_del(l);
+		spin_unlock_irqrestore(&dev->pending_lock, flags);
+		tx = list_entry(l, struct qib_verbs_txreq, txreq.list);
+	} else {
+		/* call slow path to get the extra lock */
+		spin_unlock_irqrestore(&dev->pending_lock, flags);
+		tx =  __get_txreq(dev, qp);
+	}
 	return tx;
 }
 
@@ -1112,9 +1142,9 @@ static int qib_verbs_send_dma(struct qib_qp *qp, struct qib_ib_header *hdr,
 		goto bail;
 	}
 
-	tx = get_txreq(dev, qp, &ret);
-	if (!tx)
-		goto bail;
+	tx = get_txreq(dev, qp);
+	if (IS_ERR(tx))
+		goto bail_tx;
 
 	control = dd->f_setpbc_control(ppd, plen, qp->s_srate,
 				       be16_to_cpu(hdr->lrh[0]) >> 12);
@@ -1185,6 +1215,9 @@ unaligned:
 	ibp->n_unaligned++;
 bail:
 	return ret;
+bail_tx:
+	ret = PTR_ERR(tx);
+	goto bail;
 }
 
 /*
@@ -1974,6 +2007,8 @@ static void init_ibport(struct qib_pportdata *ppd)
 	ibp->z_excessive_buffer_overrun_errors =
 		cntrs.excessive_buffer_overrun_errors;
 	ibp->z_vl15_dropped = cntrs.vl15_dropped;
+	RCU_INIT_POINTER(ibp->qp0, NULL);
+	RCU_INIT_POINTER(ibp->qp1, NULL);
 }
 
 /**
@@ -1990,12 +2025,15 @@ int qib_register_ib_device(struct qib_devdata *dd)
 	int ret;
 
 	dev->qp_table_size = ib_qib_qp_table_size;
-	dev->qp_table = kzalloc(dev->qp_table_size * sizeof *dev->qp_table,
+	get_random_bytes(&dev->qp_rnd, sizeof(dev->qp_rnd));
+	dev->qp_table = kmalloc(dev->qp_table_size * sizeof *dev->qp_table,
 				GFP_KERNEL);
 	if (!dev->qp_table) {
 		ret = -ENOMEM;
 		goto err_qpt;
 	}
+	for (i = 0; i < dev->qp_table_size; i++)
+		RCU_INIT_POINTER(dev->qp_table[i], NULL);
 
 	for (i = 0; i < dd->num_pports; i++)
 		init_ibport(ppd + i);

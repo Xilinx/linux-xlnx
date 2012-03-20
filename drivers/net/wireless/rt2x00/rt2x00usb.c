@@ -262,23 +262,20 @@ static void rt2x00usb_interrupt_txdone(struct urb *urb)
 	struct queue_entry *entry = (struct queue_entry *)urb->context;
 	struct rt2x00_dev *rt2x00dev = entry->queue->rt2x00dev;
 
-	if (!test_and_clear_bit(ENTRY_OWNER_DEVICE_DATA, &entry->flags))
+	if (!test_bit(ENTRY_OWNER_DEVICE_DATA, &entry->flags))
 		return;
-
-	if (rt2x00dev->ops->lib->tx_dma_done)
-		rt2x00dev->ops->lib->tx_dma_done(entry);
-
-	/*
-	 * Report the frame as DMA done
-	 */
-	rt2x00lib_dmadone(entry);
-
 	/*
 	 * Check if the frame was correctly uploaded
 	 */
 	if (urb->status)
 		set_bit(ENTRY_DATA_IO_FAILED, &entry->flags);
+	/*
+	 * Report the frame as DMA done
+	 */
+	rt2x00lib_dmadone(entry);
 
+	if (rt2x00dev->ops->lib->tx_dma_done)
+		rt2x00dev->ops->lib->tx_dma_done(entry);
 	/*
 	 * Schedule the delayed work for reading the TX status
 	 * from the device.
@@ -301,11 +298,21 @@ static bool rt2x00usb_kick_tx_entry(struct queue_entry *entry, void* data)
 		return false;
 
 	/*
-	 * USB devices cannot blindly pass the skb->len as the
-	 * length of the data to usb_fill_bulk_urb. Pass the skb
-	 * to the driver to determine what the length should be.
+	 * USB devices require certain padding at the end of each frame
+	 * and urb. Those paddings are not included in skbs. Pass entry
+	 * to the driver to determine what the overall length should be.
 	 */
 	length = rt2x00dev->ops->lib->get_tx_data_len(entry);
+
+	status = skb_padto(entry->skb, length);
+	if (unlikely(status)) {
+		/* TODO: report something more appropriate than IO_FAILED. */
+		WARNING(rt2x00dev, "TX SKB padding error, out of memory\n");
+		set_bit(ENTRY_DATA_IO_FAILED, &entry->flags);
+		rt2x00lib_dmadone(entry);
+
+		return false;
+	}
 
 	usb_fill_bulk_urb(entry_priv->urb, usb_dev,
 			  usb_sndbulkpipe(usb_dev, entry->queue->usb_endpoint),
@@ -802,6 +809,7 @@ int rt2x00usb_probe(struct usb_interface *usb_intf,
 	int retval;
 
 	usb_dev = usb_get_dev(usb_dev);
+	usb_reset_device(usb_dev);
 
 	hw = ieee80211_alloc_hw(sizeof(struct rt2x00_dev), ops->hw);
 	if (!hw) {
@@ -873,18 +881,8 @@ int rt2x00usb_suspend(struct usb_interface *usb_intf, pm_message_t state)
 {
 	struct ieee80211_hw *hw = usb_get_intfdata(usb_intf);
 	struct rt2x00_dev *rt2x00dev = hw->priv;
-	int retval;
 
-	retval = rt2x00lib_suspend(rt2x00dev, state);
-	if (retval)
-		return retval;
-
-	/*
-	 * Decrease usbdev refcount.
-	 */
-	usb_put_dev(interface_to_usbdev(usb_intf));
-
-	return 0;
+	return rt2x00lib_suspend(rt2x00dev, state);
 }
 EXPORT_SYMBOL_GPL(rt2x00usb_suspend);
 
@@ -892,8 +890,6 @@ int rt2x00usb_resume(struct usb_interface *usb_intf)
 {
 	struct ieee80211_hw *hw = usb_get_intfdata(usb_intf);
 	struct rt2x00_dev *rt2x00dev = hw->priv;
-
-	usb_get_dev(interface_to_usbdev(usb_intf));
 
 	return rt2x00lib_resume(rt2x00dev);
 }

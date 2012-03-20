@@ -14,8 +14,7 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
-
-#include <asm/mach-types.h>
+#include <linux/export.h>
 
 #include "soc_common.h"
 
@@ -23,12 +22,12 @@
 #define GPIO_PCMCIA_S0_RDYINT	(82)
 #define GPIO_PCMCIA_RESET	(53)
 
-#define PCMCIA_S0_CD_VALID	IRQ_GPIO(GPIO_PCMCIA_S0_CD_VALID)
-#define PCMCIA_S0_RDYINT	IRQ_GPIO(GPIO_PCMCIA_S0_RDYINT)
+#define PCMCIA_S0_CD_VALID	gpio_to_irq(GPIO_PCMCIA_S0_CD_VALID)
+#define PCMCIA_S0_RDYINT	gpio_to_irq(GPIO_PCMCIA_S0_RDYINT)
 
 
 static struct pcmcia_irqs irqs[] = {
-	{ 0, PCMCIA_S0_CD_VALID, "PCMCIA0 CD" },
+	{ .sock = 0, .str = "PCMCIA0 CD" },
 };
 
 static int cmx270_pcmcia_hw_init(struct soc_pcmcia_socket *skt)
@@ -39,6 +38,7 @@ static int cmx270_pcmcia_hw_init(struct soc_pcmcia_socket *skt)
 	gpio_direction_output(GPIO_PCMCIA_RESET, 0);
 
 	skt->socket.pci_irq = PCMCIA_S0_RDYINT;
+	irqs[0].irq = PCMCIA_S0_CD_VALID;
 	ret = soc_pcmcia_request_irqs(skt, irqs, ARRAY_SIZE(irqs));
 	if (!ret)
 		gpio_free(GPIO_PCMCIA_RESET);
@@ -82,23 +82,12 @@ static int cmx270_pcmcia_configure_socket(struct soc_pcmcia_socket *skt,
 	return 0;
 }
 
-static void cmx270_pcmcia_socket_init(struct soc_pcmcia_socket *skt)
-{
-}
-
-static void cmx270_pcmcia_socket_suspend(struct soc_pcmcia_socket *skt)
-{
-}
-
-
 static struct pcmcia_low_level cmx270_pcmcia_ops __initdata = {
 	.owner			= THIS_MODULE,
 	.hw_init		= cmx270_pcmcia_hw_init,
 	.hw_shutdown		= cmx270_pcmcia_shutdown,
 	.socket_state		= cmx270_pcmcia_socket_state,
 	.configure_socket	= cmx270_pcmcia_configure_socket,
-	.socket_init		= cmx270_pcmcia_socket_init,
-	.socket_suspend		= cmx270_pcmcia_socket_suspend,
 	.nr			= 1,
 };
 

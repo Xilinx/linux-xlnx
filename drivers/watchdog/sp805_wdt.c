@@ -134,6 +134,8 @@ static void wdt_enable(void)
 	writel(INT_ENABLE | RESET_ENABLE, wdt->base + WDTCONTROL);
 	writel(LOCK, wdt->base + WDTLOCK);
 
+	/* Flush posted writes. */
+	readl(wdt->base + WDTLOCK);
 	spin_unlock(&wdt->lock);
 }
 
@@ -144,9 +146,10 @@ static void wdt_disable(void)
 
 	writel(UNLOCK, wdt->base + WDTLOCK);
 	writel(0, wdt->base + WDTCONTROL);
-	writel(0, wdt->base + WDTLOAD);
 	writel(LOCK, wdt->base + WDTLOCK);
 
+	/* Flush posted writes. */
+	readl(wdt->base + WDTLOCK);
 	spin_unlock(&wdt->lock);
 }
 
@@ -348,13 +351,15 @@ static int __devexit sp805_wdt_remove(struct amba_device *adev)
 	return 0;
 }
 
-static struct amba_id sp805_wdt_ids[] __initdata = {
+static struct amba_id sp805_wdt_ids[] = {
 	{
 		.id	= 0x00141805,
 		.mask	= 0x00ffffff,
 	},
 	{ 0, 0 },
 };
+
+MODULE_DEVICE_TABLE(amba, sp805_wdt_ids);
 
 static struct amba_driver sp805_wdt_driver = {
 	.drv = {

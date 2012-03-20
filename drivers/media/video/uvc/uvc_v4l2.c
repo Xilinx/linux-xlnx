@@ -21,7 +21,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 #include <linux/wait.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
@@ -32,7 +32,7 @@
  * UVC ioctls
  */
 static int uvc_ioctl_ctrl_map(struct uvc_video_chain *chain,
-	struct uvc_xu_control_mapping *xmap, int old)
+	struct uvc_xu_control_mapping *xmap)
 {
 	struct uvc_control_mapping *map;
 	unsigned int size;
@@ -58,9 +58,11 @@ static int uvc_ioctl_ctrl_map(struct uvc_video_chain *chain,
 		break;
 
 	case V4L2_CTRL_TYPE_MENU:
-		if (old) {
-			uvc_trace(UVC_TRACE_CONTROL, "V4L2_CTRL_TYPE_MENU not "
-				  "supported for UVCIOC_CTRL_MAP_OLD.\n");
+		/* Prevent excessive memory consumption, as well as integer
+		 * overflows.
+		 */
+		if (xmap->menu_count == 0 ||
+		    xmap->menu_count > UVC_MAX_CONTROL_MENU_ENTRIES) {
 			ret = -EINVAL;
 			goto done;
 		}
@@ -83,7 +85,7 @@ static int uvc_ioctl_ctrl_map(struct uvc_video_chain *chain,
 	default:
 		uvc_trace(UVC_TRACE_CONTROL, "Unsupported V4L2 control type "
 			  "%u.\n", xmap->v4l2_type);
-		ret = -EINVAL;
+		ret = -ENOTTY;
 		goto done;
 	}
 
@@ -520,10 +522,7 @@ static int uvc_v4l2_release(struct file *file)
 	/* Only free resources if this is a privileged handle. */
 	if (uvc_has_privileges(handle)) {
 		uvc_video_enable(stream, 0);
-
-		if (uvc_free_buffers(&stream->queue) < 0)
-			uvc_printk(KERN_ERR, "uvc_v4l2_release: Unable to "
-					"free buffers.\n");
+		uvc_free_buffers(&stream->queue);
 	}
 
 	/* Release the file handle. */
@@ -536,20 +535,6 @@ static int uvc_v4l2_release(struct file *file)
 
 	usb_autopm_put_interface(stream->dev->intf);
 	return 0;
-}
-
-static void uvc_v4l2_ioctl_warn(void)
-{
-	static int warned;
-
-	if (warned)
-		return;
-
-	uvc_printk(KERN_INFO, "Deprecated UVCIOC_CTRL_{ADD,MAP_OLD,GET,SET} "
-		   "ioctls will be removed in 2.6.42.\n");
-	uvc_printk(KERN_INFO, "See http://www.ideasonboard.org/uvc/upgrade/ "
-		   "for upgrade instructions.\n");
-	warned = 1;
 }
 
 static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
@@ -571,7 +556,7 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		strlcpy(cap->card, vdev->name, sizeof cap->card);
 		usb_make_path(stream->dev->udev,
 			      cap->bus_info, sizeof(cap->bus_info));
-		cap->version = DRIVER_VERSION_NUMBER;
+		cap->version = LINUX_VERSION_CODE;
 		if (stream->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
 			cap->capabilities = V4L2_CAP_VIDEO_CAPTURE
 					  | V4L2_CAP_STREAMING;
@@ -935,19 +920,11 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 
 	/* Buffers & streaming */
 	case VIDIOC_REQBUFS:
-	{
-		struct v4l2_requestbuffers *rb = arg;
-
-		if (rb->type != stream->type ||
-		    rb->memory != V4L2_MEMORY_MMAP)
-			return -EINVAL;
-
 		if ((ret = uvc_acquire_privileges(handle)) < 0)
 			return ret;
 
 		mutex_lock(&stream->mutex);
-		ret = uvc_alloc_buffers(&stream->queue, rb->count,
-					stream->ctrl.dwMaxVideoFrameSize);
+		ret = uvc_alloc_buffers(&stream->queue, arg);
 		mutex_unlock(&stream->mutex);
 		if (ret < 0)
 			return ret;
@@ -955,17 +932,12 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		if (ret == 0)
 			uvc_dismiss_privileges(handle);
 
-		rb->count = ret;
 		ret = 0;
 		break;
-	}
 
 	case VIDIOC_QUERYBUF:
 	{
 		struct v4l2_buffer *buf = arg;
-
-		if (buf->type != stream->type)
-			return -EINVAL;
 
 		if (!uvc_has_privileges(handle))
 			return -EBUSY;
@@ -1032,37 +1004,8 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		uvc_trace(UVC_TRACE_IOCTL, "Unsupported ioctl 0x%08x\n", cmd);
 		return -EINVAL;
 
-	/* Dynamic controls. UVCIOC_CTRL_ADD, UVCIOC_CTRL_MAP_OLD,
-	 * UVCIOC_CTRL_GET and UVCIOC_CTRL_SET are deprecated and scheduled for
-	 * removal in 2.6.42.
-	 */
-	case __UVCIOC_CTRL_ADD:
-		uvc_v4l2_ioctl_warn();
-		return -EEXIST;
-
-	case __UVCIOC_CTRL_MAP_OLD:
-		uvc_v4l2_ioctl_warn();
-	case __UVCIOC_CTRL_MAP:
 	case UVCIOC_CTRL_MAP:
-		return uvc_ioctl_ctrl_map(chain, arg,
-					  cmd == __UVCIOC_CTRL_MAP_OLD);
-
-	case __UVCIOC_CTRL_GET:
-	case __UVCIOC_CTRL_SET:
-	{
-		struct uvc_xu_control *xctrl = arg;
-		struct uvc_xu_control_query xqry = {
-			.unit		= xctrl->unit,
-			.selector	= xctrl->selector,
-			.query		= cmd == __UVCIOC_CTRL_GET
-					? UVC_GET_CUR : UVC_SET_CUR,
-			.size		= xctrl->size,
-			.data		= xctrl->data,
-		};
-
-		uvc_v4l2_ioctl_warn();
-		return uvc_xu_ctrl_query(chain, &xqry);
-	}
+		return uvc_ioctl_ctrl_map(chain, arg);
 
 	case UVCIOC_CTRL_QUERY:
 		return uvc_xu_ctrl_query(chain, arg);

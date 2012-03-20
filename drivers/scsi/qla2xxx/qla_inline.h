@@ -94,11 +94,53 @@ qla2x00_set_fcport_state(fc_port_t *fcport, int state)
 
 	/* Don't print state transitions during initial allocation of fcport */
 	if (old_state && old_state != state) {
-		DEBUG(qla_printk(KERN_WARNING, fcport->vha->hw,
-		    "scsi(%ld): FCPort state transitioned from %s to %s - "
-		    "portid=%02x%02x%02x.\n", fcport->vha->host_no,
+		ql_dbg(ql_dbg_disc, fcport->vha, 0x207d,
+		    "FCPort state transitioned from %s to %s - "
+		    "portid=%02x%02x%02x.\n",
 		    port_state_str[old_state], port_state_str[state],
 		    fcport->d_id.b.domain, fcport->d_id.b.area,
-		    fcport->d_id.b.al_pa));
+		    fcport->d_id.b.al_pa);
 	}
+}
+
+static inline int
+qla2x00_hba_err_chk_enabled(srb_t *sp)
+{
+	/*
+	 * Uncomment when corresponding SCSI changes are done.
+	 *
+	if (!sp->cmd->prot_chk)
+		return 0;
+	 *
+	 */
+
+	switch (scsi_get_prot_op(sp->cmd)) {
+	case SCSI_PROT_READ_STRIP:
+	case SCSI_PROT_WRITE_INSERT:
+		if (ql2xenablehba_err_chk >= 1)
+			return 1;
+		break;
+	case SCSI_PROT_READ_PASS:
+	case SCSI_PROT_WRITE_PASS:
+		if (ql2xenablehba_err_chk >= 2)
+			return 1;
+		break;
+	case SCSI_PROT_READ_INSERT:
+	case SCSI_PROT_WRITE_STRIP:
+		return 1;
+	}
+	return 0;
+}
+
+static inline int
+qla2x00_reset_active(scsi_qla_host_t *vha)
+{
+	scsi_qla_host_t *base_vha = pci_get_drvdata(vha->hw->pdev);
+
+	/* Test appropriate base-vha and vha flags. */
+	return test_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags) ||
+	    test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags) ||
+	    test_bit(ISP_ABORT_RETRY, &base_vha->dpc_flags) ||
+	    test_bit(ISP_ABORT_NEEDED, &vha->dpc_flags) ||
+	    test_bit(ABORT_ISP_ACTIVE, &vha->dpc_flags);
 }
