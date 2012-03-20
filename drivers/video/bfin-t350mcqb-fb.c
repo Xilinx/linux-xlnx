@@ -4,7 +4,7 @@
  * Author:       Michael Hennerich <hennerich@blackfin.uclinux.org>
  *
  * Created:
- * Description:  Blackfin LCD Framebufer driver
+ * Description:  Blackfin LCD Framebuffer driver
  *
  *
  * Modified:
@@ -529,7 +529,7 @@ static int __devinit bfin_t350mcqb_probe(struct platform_device *pdev)
 		goto out7;
 	}
 
-	ret = request_irq(info->irq, bfin_t350mcqb_irq_error, IRQF_DISABLED,
+	ret = request_irq(info->irq, bfin_t350mcqb_irq_error, 0,
 			"PPI ERROR", info);
 	if (ret < 0) {
 		printk(KERN_ERR DRIVER_NAME

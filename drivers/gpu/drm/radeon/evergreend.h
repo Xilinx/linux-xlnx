@@ -108,6 +108,7 @@
 #define	CP_RB_WPTR_ADDR_HI				0xC11C
 #define	CP_RB_WPTR_DELAY				0x8704
 #define	CP_SEM_WAIT_TIMER				0x85BC
+#define	CP_SEM_INCOMPLETE_TIMER_CNTL			0x85C8
 #define	CP_DEBUG					0xC1FC
 
 
@@ -242,6 +243,7 @@
 #define	PA_CL_ENHANCE					0x8A14
 #define		CLIP_VTX_REORDER_ENA				(1 << 0)
 #define		NUM_CLIP_SEQ(x)					((x) << 1)
+#define	PA_SC_ENHANCE					0x8BF0
 #define PA_SC_AA_CONFIG					0x28C04
 #define         MSAA_NUM_SAMPLES_SHIFT                  0
 #define         MSAA_NUM_SAMPLES_MASK                   0x3
@@ -319,6 +321,8 @@
 #define	SQ_GPR_RESOURCE_MGMT_3				0x8C0C
 #define		NUM_HS_GPRS(x)					((x) << 0)
 #define		NUM_LS_GPRS(x)					((x) << 16)
+#define	SQ_GLOBAL_GPR_RESOURCE_MGMT_1			0x8C10
+#define	SQ_GLOBAL_GPR_RESOURCE_MGMT_2			0x8C14
 #define	SQ_THREAD_RESOURCE_MGMT				0x8C18
 #define		NUM_PS_THREADS(x)				((x) << 0)
 #define		NUM_VS_THREADS(x)				((x) << 8)
@@ -337,6 +341,10 @@
 #define		NUM_HS_STACK_ENTRIES(x)				((x) << 0)
 #define		NUM_LS_STACK_ENTRIES(x)				((x) << 16)
 #define	SQ_DYN_GPR_CNTL_PS_FLUSH_REQ    		0x8D8C
+#define	SQ_DYN_GPR_SIMD_LOCK_EN    			0x8D94
+#define	SQ_STATIC_THREAD_MGMT_1    			0x8E20
+#define	SQ_STATIC_THREAD_MGMT_2    			0x8E24
+#define	SQ_STATIC_THREAD_MGMT_3    			0x8E28
 #define	SQ_LDS_RESOURCE_MGMT    			0x8E2C
 
 #define	SQ_MS_FIFO_SIZES				0x8CF0
@@ -351,6 +359,7 @@
 #define		COLOR_BUFFER_SIZE(x)				((x) << 0)
 #define		POSITION_BUFFER_SIZE(x)				((x) << 8)
 #define		SMX_BUFFER_SIZE(x)				((x) << 16)
+#define	SX_MEMORY_EXPORT_BASE				0x9010
 #define	SX_MISC						0x28350
 
 #define CB_PERF_CTR0_SEL_0				0x9A20
@@ -690,6 +699,7 @@
 #define	PACKET3_DRAW_INDEX_MULTI_ELEMENT		0x36
 #define	PACKET3_MEM_SEMAPHORE				0x39
 #define	PACKET3_MPEG_INDEX				0x3A
+#define	PACKET3_COPY_DW					0x3B
 #define	PACKET3_WAIT_REG_MEM				0x3C
 #define	PACKET3_MEM_WRITE				0x3D
 #define	PACKET3_INDIRECT_BUFFER				0x32
@@ -766,6 +776,8 @@
 #define			SQ_TEX_VTX_INVALID_BUFFER			0x1
 #define			SQ_TEX_VTX_VALID_TEXTURE			0x2
 #define			SQ_TEX_VTX_VALID_BUFFER				0x3
+
+#define VGT_VTX_VECT_EJECT_REG				0x88b0
 
 #define SQ_CONST_MEM_BASE				0x8df8
 
@@ -891,13 +903,36 @@
 #define PA_SC_SCREEN_SCISSOR_TL                         0x28030
 #define PA_SC_GENERIC_SCISSOR_TL                        0x28240
 #define PA_SC_WINDOW_SCISSOR_TL                         0x28204
-#define VGT_PRIMITIVE_TYPE                              0x8958
 
+#define VGT_PRIMITIVE_TYPE                              0x8958
+#define VGT_INDEX_TYPE                                  0x895C
+
+#define VGT_NUM_INDICES                                 0x8970
+
+#define VGT_COMPUTE_DIM_X                               0x8990
+#define VGT_COMPUTE_DIM_Y                               0x8994
+#define VGT_COMPUTE_DIM_Z                               0x8998
+#define VGT_COMPUTE_START_X                             0x899C
+#define VGT_COMPUTE_START_Y                             0x89A0
+#define VGT_COMPUTE_START_Z                             0x89A4
+#define VGT_COMPUTE_INDEX                               0x89A8
+#define VGT_COMPUTE_THREAD_GROUP_SIZE                   0x89AC
+#define VGT_HS_OFFCHIP_PARAM                            0x89B0
+
+#define DB_DEBUG					0x9830
+#define DB_DEBUG2					0x9834
+#define DB_DEBUG3					0x9838
+#define DB_DEBUG4					0x983C
+#define DB_WATERMARKS					0x9854
 #define DB_DEPTH_CONTROL				0x28800
 #define DB_DEPTH_VIEW					0x28008
 #define DB_HTILE_DATA_BASE				0x28014
 #define DB_Z_INFO					0x28040
 #       define Z_ARRAY_MODE(x)                          ((x) << 4)
+#       define DB_TILE_SPLIT(x)                         (((x) & 0x7) << 8)
+#       define DB_NUM_BANKS(x)                          (((x) & 0x3) << 12)
+#       define DB_BANK_WIDTH(x)                         (((x) & 0x3) << 16)
+#       define DB_BANK_HEIGHT(x)                        (((x) & 0x3) << 20)
 #define DB_STENCIL_INFO					0x28044
 #define DB_Z_READ_BASE					0x28048
 #define DB_STENCIL_READ_BASE				0x2804c
@@ -940,12 +975,39 @@
 #define	CB_COLOR0_SLICE					0x28c68
 #define	CB_COLOR0_VIEW					0x28c6c
 #define	CB_COLOR0_INFO					0x28c70
+#	define CB_FORMAT(x)				((x) << 2)
 #       define CB_ARRAY_MODE(x)                         ((x) << 8)
 #       define ARRAY_LINEAR_GENERAL                     0
 #       define ARRAY_LINEAR_ALIGNED                     1
 #       define ARRAY_1D_TILED_THIN1                     2
 #       define ARRAY_2D_TILED_THIN1                     4
+#	define CB_SOURCE_FORMAT(x)			((x) << 24)
+#	define CB_SF_EXPORT_FULL			0
+#	define CB_SF_EXPORT_NORM			1
 #define	CB_COLOR0_ATTRIB				0x28c74
+#       define CB_TILE_SPLIT(x)                         (((x) & 0x7) << 5)
+#       define ADDR_SURF_TILE_SPLIT_64B                 0
+#       define ADDR_SURF_TILE_SPLIT_128B                1
+#       define ADDR_SURF_TILE_SPLIT_256B                2
+#       define ADDR_SURF_TILE_SPLIT_512B                3
+#       define ADDR_SURF_TILE_SPLIT_1KB                 4
+#       define ADDR_SURF_TILE_SPLIT_2KB                 5
+#       define ADDR_SURF_TILE_SPLIT_4KB                 6
+#       define CB_NUM_BANKS(x)                          (((x) & 0x3) << 10)
+#       define ADDR_SURF_2_BANK                         0
+#       define ADDR_SURF_4_BANK                         1
+#       define ADDR_SURF_8_BANK                         2
+#       define ADDR_SURF_16_BANK                        3
+#       define CB_BANK_WIDTH(x)                         (((x) & 0x3) << 13)
+#       define ADDR_SURF_BANK_WIDTH_1                   0
+#       define ADDR_SURF_BANK_WIDTH_2                   1
+#       define ADDR_SURF_BANK_WIDTH_4                   2
+#       define ADDR_SURF_BANK_WIDTH_8                   3
+#       define CB_BANK_HEIGHT(x)                        (((x) & 0x3) << 16)
+#       define ADDR_SURF_BANK_HEIGHT_1                  0
+#       define ADDR_SURF_BANK_HEIGHT_2                  1
+#       define ADDR_SURF_BANK_HEIGHT_4                  2
+#       define ADDR_SURF_BANK_HEIGHT_8                  3
 #define	CB_COLOR0_DIM					0x28c78
 /* only CB0-7 blocks have these regs */
 #define	CB_COLOR0_CMASK					0x28c7c
@@ -1106,22 +1168,97 @@
 #define	CB_COLOR7_CLEAR_WORD3				0x28e3c
 
 #define SQ_TEX_RESOURCE_WORD0_0                         0x30000
+#	define TEX_DIM(x)				((x) << 0)
+#	define SQ_TEX_DIM_1D				0
+#	define SQ_TEX_DIM_2D				1
+#	define SQ_TEX_DIM_3D				2
+#	define SQ_TEX_DIM_CUBEMAP			3
+#	define SQ_TEX_DIM_1D_ARRAY			4
+#	define SQ_TEX_DIM_2D_ARRAY			5
+#	define SQ_TEX_DIM_2D_MSAA			6
+#	define SQ_TEX_DIM_2D_ARRAY_MSAA			7
 #define SQ_TEX_RESOURCE_WORD1_0                         0x30004
 #       define TEX_ARRAY_MODE(x)                        ((x) << 28)
 #define SQ_TEX_RESOURCE_WORD2_0                         0x30008
 #define SQ_TEX_RESOURCE_WORD3_0                         0x3000C
 #define SQ_TEX_RESOURCE_WORD4_0                         0x30010
+#	define TEX_DST_SEL_X(x)				((x) << 16)
+#	define TEX_DST_SEL_Y(x)				((x) << 19)
+#	define TEX_DST_SEL_Z(x)				((x) << 22)
+#	define TEX_DST_SEL_W(x)				((x) << 25)
+#	define SQ_SEL_X					0
+#	define SQ_SEL_Y					1
+#	define SQ_SEL_Z					2
+#	define SQ_SEL_W					3
+#	define SQ_SEL_0					4
+#	define SQ_SEL_1					5
 #define SQ_TEX_RESOURCE_WORD5_0                         0x30014
 #define SQ_TEX_RESOURCE_WORD6_0                         0x30018
+#       define TEX_TILE_SPLIT(x)                        (((x) & 0x7) << 29)
 #define SQ_TEX_RESOURCE_WORD7_0                         0x3001c
+#       define TEX_BANK_WIDTH(x)                        (((x) & 0x3) << 8)
+#       define TEX_BANK_HEIGHT(x)                       (((x) & 0x3) << 10)
+#       define TEX_NUM_BANKS(x)                         (((x) & 0x3) << 16)
+
+#define SQ_VTX_CONSTANT_WORD0_0				0x30000
+#define SQ_VTX_CONSTANT_WORD1_0				0x30004
+#define SQ_VTX_CONSTANT_WORD2_0				0x30008
+#	define SQ_VTXC_BASE_ADDR_HI(x)			((x) << 0)
+#	define SQ_VTXC_STRIDE(x)			((x) << 8)
+#	define SQ_VTXC_ENDIAN_SWAP(x)			((x) << 30)
+#	define SQ_ENDIAN_NONE				0
+#	define SQ_ENDIAN_8IN16				1
+#	define SQ_ENDIAN_8IN32				2
+#define SQ_VTX_CONSTANT_WORD3_0				0x3000C
+#	define SQ_VTCX_SEL_X(x)				((x) << 3)
+#	define SQ_VTCX_SEL_Y(x)				((x) << 6)
+#	define SQ_VTCX_SEL_Z(x)				((x) << 9)
+#	define SQ_VTCX_SEL_W(x)				((x) << 12)
+#define SQ_VTX_CONSTANT_WORD4_0				0x30010
+#define SQ_VTX_CONSTANT_WORD5_0                         0x30014
+#define SQ_VTX_CONSTANT_WORD6_0                         0x30018
+#define SQ_VTX_CONSTANT_WORD7_0                         0x3001c
+
+#define TD_PS_BORDER_COLOR_INDEX                        0xA400
+#define TD_PS_BORDER_COLOR_RED                          0xA404
+#define TD_PS_BORDER_COLOR_GREEN                        0xA408
+#define TD_PS_BORDER_COLOR_BLUE                         0xA40C
+#define TD_PS_BORDER_COLOR_ALPHA                        0xA410
+#define TD_VS_BORDER_COLOR_INDEX                        0xA414
+#define TD_VS_BORDER_COLOR_RED                          0xA418
+#define TD_VS_BORDER_COLOR_GREEN                        0xA41C
+#define TD_VS_BORDER_COLOR_BLUE                         0xA420
+#define TD_VS_BORDER_COLOR_ALPHA                        0xA424
+#define TD_GS_BORDER_COLOR_INDEX                        0xA428
+#define TD_GS_BORDER_COLOR_RED                          0xA42C
+#define TD_GS_BORDER_COLOR_GREEN                        0xA430
+#define TD_GS_BORDER_COLOR_BLUE                         0xA434
+#define TD_GS_BORDER_COLOR_ALPHA                        0xA438
+#define TD_HS_BORDER_COLOR_INDEX                        0xA43C
+#define TD_HS_BORDER_COLOR_RED                          0xA440
+#define TD_HS_BORDER_COLOR_GREEN                        0xA444
+#define TD_HS_BORDER_COLOR_BLUE                         0xA448
+#define TD_HS_BORDER_COLOR_ALPHA                        0xA44C
+#define TD_LS_BORDER_COLOR_INDEX                        0xA450
+#define TD_LS_BORDER_COLOR_RED                          0xA454
+#define TD_LS_BORDER_COLOR_GREEN                        0xA458
+#define TD_LS_BORDER_COLOR_BLUE                         0xA45C
+#define TD_LS_BORDER_COLOR_ALPHA                        0xA460
+#define TD_CS_BORDER_COLOR_INDEX                        0xA464
+#define TD_CS_BORDER_COLOR_RED                          0xA468
+#define TD_CS_BORDER_COLOR_GREEN                        0xA46C
+#define TD_CS_BORDER_COLOR_BLUE                         0xA470
+#define TD_CS_BORDER_COLOR_ALPHA                        0xA474
 
 /* cayman 3D regs */
-#define CAYMAN_VGT_OFFCHIP_LDS_BASE			0x89B0
+#define CAYMAN_VGT_OFFCHIP_LDS_BASE			0x89B4
+#define CAYMAN_SQ_EX_ALLOC_TABLE_SLOTS			0x8E48
 #define CAYMAN_DB_EQAA					0x28804
 #define CAYMAN_DB_DEPTH_INFO				0x2803C
 #define CAYMAN_PA_SC_AA_CONFIG				0x28BE0
 #define         CAYMAN_MSAA_NUM_SAMPLES_SHIFT           0
 #define         CAYMAN_MSAA_NUM_SAMPLES_MASK            0x7
+#define CAYMAN_SX_SCATTER_EXPORT_BASE			0x28358
 /* cayman packet3 addition */
 #define	CAYMAN_PACKET3_DEALLOC_STATE			0x14
 

@@ -11,6 +11,7 @@
  */
 
 #include <linux/platform_device.h>
+#include <linux/module.h>
 #include <sound/sh_fsi.h>
 
 static int fsi_da7210_init(struct snd_soc_pcm_runtime *rtd)
@@ -43,6 +44,7 @@ static struct snd_soc_dai_link fsi_da7210_dai = {
 
 static struct snd_soc_card fsi_soc_card = {
 	.name		= "FSI-DA7210",
+	.owner		= THIS_MODULE,
 	.dai_link	= &fsi_da7210_dai,
 	.num_links	= 1,
 };

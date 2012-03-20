@@ -45,6 +45,7 @@
 #include <mach/hx4700.h>
 #include <mach/irda.h>
 
+#include <sound/ak4641.h>
 #include <video/platform_lcd.h>
 #include <video/w100fb.h>
 
@@ -134,42 +135,6 @@ static unsigned long hx4700_pin_config[] __initdata = {
 	GPIO58_GPIO,	/* TSC2046_nPENIRQ */
 	GPIO66_GPIO,	/* nSDIO_IRQ */
 };
-
-#define HX4700_GPIO_IN(num, _desc) \
-	{ .gpio = (num), .dir = 0, .desc = (_desc) }
-#define HX4700_GPIO_OUT(num, _init, _desc) \
-	{ .gpio = (num), .dir = 1, .init = (_init), .desc = (_desc) }
-struct gpio_ress {
-	unsigned gpio : 8;
-	unsigned dir : 1;
-	unsigned init : 1;
-	char *desc;
-};
-
-static int hx4700_gpio_request(struct gpio_ress *gpios, int size)
-{
-	int i, rc = 0;
-	int gpio;
-	int dir;
-
-	for (i = 0; (!rc) && (i < size); i++) {
-		gpio = gpios[i].gpio;
-		dir = gpios[i].dir;
-		rc = gpio_request(gpio, gpios[i].desc);
-		if (rc) {
-			pr_err("Error requesting GPIO %d(%s) : %d\n",
-			       gpio, gpios[i].desc, rc);
-			continue;
-		}
-		if (dir)
-			gpio_direction_output(gpio, gpios[i].init);
-		else
-			gpio_direction_input(gpio);
-	}
-	while ((rc) && (--i >= 0))
-		gpio_free(gpios[i].gpio);
-	return rc;
-}
 
 /*
  * IRDA
@@ -288,8 +253,8 @@ static struct resource asic3_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start	= gpio_to_irq(GPIO12_HX4700_ASIC3_IRQ),
-		.end	= gpio_to_irq(GPIO12_HX4700_ASIC3_IRQ),
+		.start	= PXA_GPIO_TO_IRQ(GPIO12_HX4700_ASIC3_IRQ),
+		.end	= PXA_GPIO_TO_IRQ(GPIO12_HX4700_ASIC3_IRQ),
 		.flags	= IORESOURCE_IRQ,
 	},
 	/* SD part */
@@ -299,8 +264,8 @@ static struct resource asic3_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	[3] = {
-		.start	= gpio_to_irq(GPIO66_HX4700_ASIC3_nSDIO_IRQ),
-		.end	= gpio_to_irq(GPIO66_HX4700_ASIC3_nSDIO_IRQ),
+		.start	= PXA_GPIO_TO_IRQ(GPIO66_HX4700_ASIC3_nSDIO_IRQ),
+		.end	= PXA_GPIO_TO_IRQ(GPIO66_HX4700_ASIC3_nSDIO_IRQ),
 		.flags	= IORESOURCE_IRQ,
 	},
 };
@@ -623,7 +588,7 @@ static struct spi_board_info tsc2046_board_info[] __initdata = {
 		.modalias        = "ads7846",
 		.bus_num         = 2,
 		.max_speed_hz    = 2600000, /* 100 kHz sample rate */
-		.irq             = gpio_to_irq(GPIO58_HX4700_TSC2046_nPENIRQ),
+		.irq             = PXA_GPIO_TO_IRQ(GPIO58_HX4700_TSC2046_nPENIRQ),
 		.platform_data   = &tsc2046_info,
 		.controller_data = &tsc2046_chip,
 	},
@@ -671,15 +636,15 @@ static struct resource power_supply_resources[] = {
 		.name  = "ac",
 		.flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE |
 		         IORESOURCE_IRQ_LOWEDGE,
-		.start = gpio_to_irq(GPIOD9_nAC_IN),
-		.end   = gpio_to_irq(GPIOD9_nAC_IN),
+		.start = PXA_GPIO_TO_IRQ(GPIOD9_nAC_IN),
+		.end   = PXA_GPIO_TO_IRQ(GPIOD9_nAC_IN),
 	},
 	[1] = {
 		.name  = "usb",
 		.flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE |
 		         IORESOURCE_IRQ_LOWEDGE,
-		.start = gpio_to_irq(GPIOD14_nUSBC_DETECT),
-		.end   = gpio_to_irq(GPIOD14_nUSBC_DETECT),
+		.start = PXA_GPIO_TO_IRQ(GPIOD14_nUSBC_DETECT),
+		.end   = PXA_GPIO_TO_IRQ(GPIOD14_nUSBC_DETECT),
 	},
 };
 
@@ -801,6 +766,28 @@ static struct i2c_board_info __initdata pi2c_board_info[] = {
 };
 
 /*
+ * Asahi Kasei AK4641 on I2C
+ */
+
+static struct ak4641_platform_data ak4641_info = {
+	.gpio_power = GPIO27_HX4700_CODEC_ON,
+	.gpio_npdn  = GPIO109_HX4700_CODEC_nPDN,
+};
+
+static struct i2c_board_info i2c_board_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("ak4641", 0x12),
+		.platform_data = &ak4641_info,
+	},
+};
+
+static struct platform_device audio = {
+	.name	= "hx4700-audio",
+	.id	= -1,
+};
+
+
+/*
  * PCMCIA
  */
 
@@ -826,29 +813,34 @@ static struct platform_device *devices[] __initdata = {
 	&gpio_vbus,
 	&power_supply,
 	&strataflash,
+	&audio,
 	&pcmcia,
 };
 
-static struct gpio_ress global_gpios[] = {
-	HX4700_GPIO_IN(GPIO12_HX4700_ASIC3_IRQ, "ASIC3_IRQ"),
-	HX4700_GPIO_IN(GPIO13_HX4700_W3220_IRQ, "W3220_IRQ"),
-	HX4700_GPIO_IN(GPIO14_HX4700_nWLAN_IRQ, "WLAN_IRQ"),
-	HX4700_GPIO_OUT(GPIO59_HX4700_LCD_PC1,          1, "LCD_PC1"),
-	HX4700_GPIO_OUT(GPIO62_HX4700_LCD_nRESET,       1, "LCD_RESET"),
-	HX4700_GPIO_OUT(GPIO70_HX4700_LCD_SLIN1,        1, "LCD_SLIN1"),
-	HX4700_GPIO_OUT(GPIO84_HX4700_LCD_SQN,          1, "LCD_SQN"),
-	HX4700_GPIO_OUT(GPIO110_HX4700_LCD_LVDD_3V3_ON, 1, "LCD_LVDD"),
-	HX4700_GPIO_OUT(GPIO111_HX4700_LCD_AVDD_3V3_ON, 1, "LCD_AVDD"),
-	HX4700_GPIO_OUT(GPIO32_HX4700_RS232_ON,         1, "RS232_ON"),
-	HX4700_GPIO_OUT(GPIO71_HX4700_ASIC3_nRESET,     1, "ASIC3_nRESET"),
-	HX4700_GPIO_OUT(GPIO82_HX4700_EUART_RESET,      1, "EUART_RESET"),
-	HX4700_GPIO_OUT(GPIO105_HX4700_nIR_ON,          1, "nIR_EN"),
+static struct gpio global_gpios[] = {
+	{ GPIO12_HX4700_ASIC3_IRQ, GPIOF_IN, "ASIC3_IRQ" },
+	{ GPIO13_HX4700_W3220_IRQ, GPIOF_IN, "W3220_IRQ" },
+	{ GPIO14_HX4700_nWLAN_IRQ, GPIOF_IN, "WLAN_IRQ" },
+	{ GPIO59_HX4700_LCD_PC1,          GPIOF_OUT_INIT_HIGH, "LCD_PC1" },
+	{ GPIO62_HX4700_LCD_nRESET,       GPIOF_OUT_INIT_HIGH, "LCD_RESET" },
+	{ GPIO70_HX4700_LCD_SLIN1,        GPIOF_OUT_INIT_HIGH, "LCD_SLIN1" },
+	{ GPIO84_HX4700_LCD_SQN,          GPIOF_OUT_INIT_HIGH, "LCD_SQN" },
+	{ GPIO110_HX4700_LCD_LVDD_3V3_ON, GPIOF_OUT_INIT_HIGH, "LCD_LVDD" },
+	{ GPIO111_HX4700_LCD_AVDD_3V3_ON, GPIOF_OUT_INIT_HIGH, "LCD_AVDD" },
+	{ GPIO32_HX4700_RS232_ON,         GPIOF_OUT_INIT_HIGH, "RS232_ON" },
+	{ GPIO71_HX4700_ASIC3_nRESET,     GPIOF_OUT_INIT_HIGH, "ASIC3_nRESET" },
+	{ GPIO82_HX4700_EUART_RESET,      GPIOF_OUT_INIT_HIGH, "EUART_RESET" },
+	{ GPIO105_HX4700_nIR_ON,          GPIOF_OUT_INIT_HIGH, "nIR_EN" },
 };
 
 static void __init hx4700_init(void)
 {
+	int ret;
+
 	pxa2xx_mfp_config(ARRAY_AND_SIZE(hx4700_pin_config));
-	hx4700_gpio_request(ARRAY_AND_SIZE(global_gpios));
+	ret = gpio_request_array(ARRAY_AND_SIZE(global_gpios));
+	if (ret)
+		pr_err ("hx4700: Failed to request GPIOs.\n");
 
 	pxa_set_ffuart_info(NULL);
 	pxa_set_btuart_info(NULL);
@@ -859,6 +851,7 @@ static void __init hx4700_init(void)
 	pxa_set_ficp_info(&ficp_info);
 	pxa27x_set_i2c_power_info(NULL);
 	pxa_set_i2c_info(NULL);
+	i2c_register_board_info(0, ARRAY_AND_SIZE(i2c_board_info));
 	i2c_register_board_info(1, ARRAY_AND_SIZE(pi2c_board_info));
 	pxa2xx_set_spi_info(2, &pxa_ssp2_master_info);
 	spi_register_board_info(ARRAY_AND_SIZE(tsc2046_board_info));
@@ -870,10 +863,12 @@ static void __init hx4700_init(void)
 }
 
 MACHINE_START(H4700, "HP iPAQ HX4700")
-	.boot_params  = 0xa0000100,
+	.atag_offset  = 0x100,
 	.map_io       = pxa27x_map_io,
 	.nr_irqs      = HX4700_NR_IRQS,
 	.init_irq     = pxa27x_init_irq,
+	.handle_irq     = pxa27x_handle_irq,
 	.init_machine = hx4700_init,
 	.timer        = &pxa_timer,
+	.restart	= pxa_restart,
 MACHINE_END

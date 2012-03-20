@@ -165,6 +165,7 @@ struct ip_reply_arg {
 	int	    csumoffset; /* u16 offset of csum in iov[0].iov_base */
 				/* -1 if not needed */ 
 	int	    bound_dev_if;
+	u8  	    tos;
 }; 
 
 #define IP_REPLY_ARG_NOSRCCHECK 1
@@ -175,7 +176,7 @@ static inline __u8 ip_reply_arg_flowi_flags(const struct ip_reply_arg *arg)
 }
 
 void ip_send_reply(struct sock *sk, struct sk_buff *skb, __be32 daddr,
-		   struct ip_reply_arg *arg, unsigned int len);
+		   const struct ip_reply_arg *arg, unsigned int len);
 
 struct ipv4_config {
 	int	log_martians;
@@ -228,8 +229,6 @@ extern struct ctl_path net_ipv4_ctl_path[];
 extern int inet_peer_threshold;
 extern int inet_peer_minttl;
 extern int inet_peer_maxttl;
-extern int inet_peer_gc_mintime;
-extern int inet_peer_gc_maxtime;
 
 /* From ip_output.c */
 extern int sysctl_ip_dynaddr;
@@ -237,6 +236,11 @@ extern int sysctl_ip_dynaddr;
 extern void ipfrag_init(void);
 
 extern void ip_static_sysctl_init(void);
+
+static inline bool ip_is_fragment(const struct iphdr *iph)
+{
+	return (iph->frag_off & htons(IP_MF | IP_OFFSET)) != 0;
+}
 
 #ifdef CONFIG_INET
 #include <net/dst.h>
@@ -349,14 +353,14 @@ static inline void ip_ipgre_mc_map(__be32 naddr, const unsigned char *broadcast,
 		memcpy(buf, &naddr, sizeof(naddr));
 }
 
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#if IS_ENABLED(CONFIG_IPV6)
 #include <linux/ipv6.h>
 #endif
 
 static __inline__ void inet_reset_saddr(struct sock *sk)
 {
 	inet_sk(sk)->inet_rcv_saddr = inet_sk(sk)->inet_saddr = 0;
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#if IS_ENABLED(CONFIG_IPV6)
 	if (sk->sk_family == PF_INET6) {
 		struct ipv6_pinfo *np = inet6_sk(sk);
 
@@ -375,7 +379,7 @@ static inline int sk_mc_loop(struct sock *sk)
 	switch (sk->sk_family) {
 	case AF_INET:
 		return inet_sk(sk)->mc_loop;
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#if IS_ENABLED(CONFIG_IPV6)
 	case AF_INET6:
 		return inet6_sk(sk)->mc_loop;
 #endif
@@ -401,10 +405,20 @@ enum ip_defrag_users {
 	__IP_DEFRAG_CONNTRACK_BRIDGE_IN = IP_DEFRAG_CONNTRACK_BRIDGE_IN + USHRT_MAX,
 	IP_DEFRAG_VS_IN,
 	IP_DEFRAG_VS_OUT,
-	IP_DEFRAG_VS_FWD
+	IP_DEFRAG_VS_FWD,
+	IP_DEFRAG_AF_PACKET,
+	IP_DEFRAG_MACVLAN,
 };
 
 int ip_defrag(struct sk_buff *skb, u32 user);
+#ifdef CONFIG_INET
+struct sk_buff *ip_check_defrag(struct sk_buff *skb, u32 user);
+#else
+static inline struct sk_buff *ip_check_defrag(struct sk_buff *skb, u32 user)
+{
+	return skb;
+}
+#endif
 int ip_frag_mem(struct net *net);
 int ip_frag_nqueues(struct net *net);
 
@@ -436,7 +450,7 @@ extern int ip_options_rcv_srr(struct sk_buff *skb);
  *	Functions provided by ip_sockglue.c
  */
 
-extern int	ip_queue_rcv_skb(struct sock *sk, struct sk_buff *skb);
+extern void	ipv4_pktinfo_prepare(struct sk_buff *skb);
 extern void	ip_cmsg_recv(struct msghdr *msg, struct sk_buff *skb);
 extern int	ip_cmsg_send(struct net *net,
 			     struct msghdr *msg, struct ipcm_cookie *ipc);

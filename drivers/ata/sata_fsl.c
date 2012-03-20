@@ -140,6 +140,7 @@ enum {
 	 */
 	HCONTROL_ONLINE_PHY_RST = (1 << 31),
 	HCONTROL_FORCE_OFFLINE = (1 << 30),
+	HCONTROL_LEGACY = (1 << 28),
 	HCONTROL_PARITY_PROT_MOD = (1 << 14),
 	HCONTROL_DPATH_PARITY = (1 << 12),
 	HCONTROL_SNOOP_ENABLE = (1 << 10),
@@ -346,12 +347,11 @@ static unsigned int sata_fsl_fill_sg(struct ata_queued_cmd *qc, void *cmd_desc,
 
 		/* warn if each s/g element is not dword aligned */
 		if (sg_addr & 0x03)
-			ata_port_printk(qc->ap, KERN_ERR,
-					"s/g addr unaligned : 0x%llx\n",
-					(unsigned long long)sg_addr);
+			ata_port_err(qc->ap, "s/g addr unaligned : 0x%llx\n",
+				     (unsigned long long)sg_addr);
 		if (sg_len & 0x03)
-			ata_port_printk(qc->ap, KERN_ERR,
-					"s/g len unaligned : 0x%x\n", sg_len);
+			ata_port_err(qc->ap, "s/g len unaligned : 0x%x\n",
+				     sg_len);
 
 		if (num_prde == (SATA_FSL_MAX_PRD_DIRECT - 1) &&
 		    sg_next(sg) != NULL) {
@@ -661,8 +661,7 @@ static int sata_fsl_port_start(struct ata_port *ap)
 	sata_fsl_scr_write(&ap->link, SCR_CONTROL, temp);
 
 	sata_fsl_scr_read(&ap->link, SCR_CONTROL, &temp);
-	dev_printk(KERN_WARNING, dev, "scr_control, speed limited to %x\n",
-			temp);
+	dev_warn(dev, "scr_control, speed limited to %x\n", temp);
 #endif
 
 	return 0;
@@ -740,8 +739,7 @@ try_offline_again:
 				 1, 500);
 
 	if (temp & ONLINE) {
-		ata_port_printk(ap, KERN_ERR,
-				"Hardreset failed, not off-lined %d\n", i);
+		ata_port_err(ap, "Hardreset failed, not off-lined %d\n", i);
 
 		/*
 		 * Try to offline controller atleast twice
@@ -777,8 +775,7 @@ try_offline_again:
 	temp = ata_wait_register(ap, hcr_base + HSTATUS, ONLINE, 0, 1, 500);
 
 	if (!(temp & ONLINE)) {
-		ata_port_printk(ap, KERN_ERR,
-				"Hardreset failed, not on-lined\n");
+		ata_port_err(ap, "Hardreset failed, not on-lined\n");
 		goto err;
 	}
 
@@ -794,9 +791,8 @@ try_offline_again:
 
 	temp = ata_wait_register(ap, hcr_base + HSTATUS, 0xFF, 0, 1, 500);
 	if ((!(temp & 0x10)) || ata_link_offline(link)) {
-		ata_port_printk(ap, KERN_WARNING,
-				"No Device OR PHYRDY change,Hstatus = 0x%x\n",
-				ioread32(hcr_base + HSTATUS));
+		ata_port_warn(ap, "No Device OR PHYRDY change,Hstatus = 0x%x\n",
+			      ioread32(hcr_base + HSTATUS));
 		*class = ATA_DEV_NONE;
 		return 0;
 	}
@@ -809,13 +805,12 @@ try_offline_again:
 			500, jiffies_to_msecs(deadline - start_jiffies));
 
 	if ((temp & 0xFF) != 0x18) {
-		ata_port_printk(ap, KERN_WARNING, "No Signature Update\n");
+		ata_port_warn(ap, "No Signature Update\n");
 		*class = ATA_DEV_NONE;
 		goto do_followup_srst;
 	} else {
-		ata_port_printk(ap, KERN_INFO,
-				"Signature Update detected @ %d msecs\n",
-				jiffies_to_msecs(jiffies - start_jiffies));
+		ata_port_info(ap, "Signature Update detected @ %d msecs\n",
+			      jiffies_to_msecs(jiffies - start_jiffies));
 		*class = sata_fsl_dev_classify(ap);
 		return 0;
 	}
@@ -890,7 +885,7 @@ static int sata_fsl_softreset(struct ata_link *link, unsigned int *class,
 
 	temp = ata_wait_register(ap, CQ + hcr_base, 0x1, 0x1, 1, 5000);
 	if (temp & 0x1) {
-		ata_port_printk(ap, KERN_WARNING, "ATA_SRST issue failed\n");
+		ata_port_warn(ap, "ATA_SRST issue failed\n");
 
 		DPRINTK("Softreset@5000,CQ=0x%x,CA=0x%x,CC=0x%x\n",
 			ioread32(CQ + hcr_base),
@@ -1202,8 +1197,7 @@ static irqreturn_t sata_fsl_interrupt(int irq, void *dev_instance)
 	if (ap) {
 		sata_fsl_host_intr(ap);
 	} else {
-		dev_printk(KERN_WARNING, host->dev,
-			   "interrupt on disabled port 0\n");
+		dev_warn(host->dev, "interrupt on disabled port 0\n");
 	}
 
 	iowrite32(interrupt_enables, hcr_base + HSTATUS);
@@ -1229,6 +1223,10 @@ static int sata_fsl_init_controller(struct ata_host *host)
 	 * the CHBA, hence main controller initialization is done as
 	 * part of the port_start() callback
 	 */
+
+	/* sata controller to operate in enterprise mode */
+	temp = ioread32(hcr_base + HCONTROL);
+	iowrite32(temp & ~HCONTROL_LEGACY, hcr_base + HCONTROL);
 
 	/* ack. any pending IRQs for this controller/port */
 	temp = ioread32(hcr_base + HSTATUS);
@@ -1317,8 +1315,7 @@ static int sata_fsl_probe(struct platform_device *ofdev)
 	struct ata_port_info pi = sata_fsl_port_info[0];
 	const struct ata_port_info *ppi[] = { &pi, NULL };
 
-	dev_printk(KERN_INFO, &ofdev->dev,
-		   "Sata FSL Platform/CSB Driver init\n");
+	dev_info(&ofdev->dev, "Sata FSL Platform/CSB Driver init\n");
 
 	hcr_base = of_iomap(ofdev->dev.of_node, 0);
 	if (!hcr_base)
@@ -1347,7 +1344,7 @@ static int sata_fsl_probe(struct platform_device *ofdev)
 
 	irq = irq_of_parse_and_map(ofdev->dev.of_node, 0);
 	if (irq < 0) {
-		dev_printk(KERN_ERR, &ofdev->dev, "invalid irq from platform\n");
+		dev_err(&ofdev->dev, "invalid irq from platform\n");
 		goto error_exit_with_cleanup;
 	}
 	host_priv->irq = irq;
@@ -1422,13 +1419,18 @@ static int sata_fsl_resume(struct platform_device *op)
 
 	ret = sata_fsl_init_controller(host);
 	if (ret) {
-		dev_printk(KERN_ERR, &op->dev,
-			"Error initialize hardware\n");
+		dev_err(&op->dev, "Error initializing hardware\n");
 		return ret;
 	}
 
 	/* Recovery the CHBA register in host controller cmd register set */
 	iowrite32(pp->cmdslot_paddr & 0xffffffff, hcr_base + CHBA);
+
+	iowrite32((ioread32(hcr_base + HCONTROL)
+				| HCONTROL_ONLINE_PHY_RST
+				| HCONTROL_SNOOP_ENABLE
+				| HCONTROL_PMP_ATTACHED),
+			hcr_base + HCONTROL);
 
 	ata_host_resume(host);
 	return 0;
@@ -1461,21 +1463,9 @@ static struct platform_driver fsl_sata_driver = {
 #endif
 };
 
-static int __init sata_fsl_init(void)
-{
-	platform_driver_register(&fsl_sata_driver);
-	return 0;
-}
-
-static void __exit sata_fsl_exit(void)
-{
-	platform_driver_unregister(&fsl_sata_driver);
-}
+module_platform_driver(fsl_sata_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ashish Kalra, Freescale Semiconductor");
 MODULE_DESCRIPTION("Freescale 3.0Gbps SATA controller low level driver");
 MODULE_VERSION("1.10");
-
-module_init(sata_fsl_init);
-module_exit(sata_fsl_exit);

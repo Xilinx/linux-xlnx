@@ -99,7 +99,7 @@ static int i2c_clock_period[IVTV_MAX_CARDS] = { -1, -1, -1, -1, -1, -1, -1, -1,
 
 static unsigned int cardtype_c = 1;
 static unsigned int tuner_c = 1;
-static unsigned int radio_c = 1;
+static bool radio_c = 1;
 static unsigned int i2c_clock_period_c = 1;
 static char pal[] = "---";
 static char secam[] = "--";
@@ -731,9 +731,6 @@ static int __devinit ivtv_init_struct1(struct ivtv *itv)
 
 	init_kthread_work(&itv->irq_work, ivtv_irq_work_handler);
 
-	/* start counting open_id at 1 */
-	itv->open_id = 1;
-
 	/* Initial settings */
 	itv->cxhdl.port = CX2341X_PORT_MEMORY;
 	itv->cxhdl.capabilities = CX2341X_CAP_HAS_SLICED_VBI;
@@ -1180,6 +1177,8 @@ static int __devinit ivtv_probe(struct pci_dev *pdev,
 		setup.addr = ADDR_UNSET;
 		setup.type = itv->options.tuner;
 		setup.mode_mask = T_ANALOG_TV;  /* matches TV tuners */
+		if (itv->options.radio > 0)
+			setup.mode_mask |= T_RADIO;
 		setup.tuner_callback = (setup.type == TUNER_XC2028) ?
 			ivtv_reset_tuner_gpio : NULL;
 		ivtv_call_all(itv, tuner, s_type_addr, &setup);

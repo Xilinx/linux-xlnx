@@ -9,7 +9,6 @@
  *	      Dan Morrison, IBM Corporation <dmorriso@cse.buffalo.edu>
  */
 
-#include <linux/kernel_stat.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kdev_t.h>
@@ -88,6 +87,7 @@ struct raw3215_info {
 	struct tty_struct *tty;	      /* pointer to tty structure if present */
 	struct raw3215_req *queued_read; /* pointer to queued read requests */
 	struct raw3215_req *queued_write;/* pointer to queued write requests */
+	struct tasklet_struct tlet;   /* tasklet to invoke tty_wakeup */
 	wait_queue_head_t empty_wait; /* wait queue for flushing */
 	struct timer_list timer;      /* timer for delayed output */
 	int line_pos;		      /* position on the line (for tabs) */
@@ -335,19 +335,23 @@ static inline void raw3215_try_io(struct raw3215_info *raw)
 }
 
 /*
+ * Call tty_wakeup from tasklet context
+ */
+static void raw3215_wakeup(unsigned long data)
+{
+	struct raw3215_info *raw = (struct raw3215_info *) data;
+	tty_wakeup(raw->tty);
+}
+
+/*
  * Try to start the next IO and wake up processes waiting on the tty.
  */
 static void raw3215_next_io(struct raw3215_info *raw)
 {
-	struct tty_struct *tty;
-
 	raw3215_mk_write_req(raw);
 	raw3215_try_io(raw);
-	tty = raw->tty;
-	if (tty != NULL &&
-	    RAW3215_BUFFER_SIZE - raw->count >= RAW3215_MIN_SPACE) {
-	    	tty_wakeup(tty);
-	}
+	if (raw->tty && RAW3215_BUFFER_SIZE - raw->count >= RAW3215_MIN_SPACE)
+		tasklet_schedule(&raw->tlet);
 }
 
 /*
@@ -362,7 +366,6 @@ static void raw3215_irq(struct ccw_device *cdev, unsigned long intparm,
 	int cstat, dstat;
 	int count;
 
-	kstat_cpu(smp_processor_id()).irqs[IOINT_C15]++;
 	raw = dev_get_drvdata(&cdev->dev);
 	req = (struct raw3215_req *) intparm;
 	cstat = irb->scsw.cmd.cstat;
@@ -684,6 +687,7 @@ static int raw3215_probe (struct ccw_device *cdev)
 		return -ENOMEM;
 	}
 	init_waitqueue_head(&raw->empty_wait);
+	tasklet_init(&raw->tlet, raw3215_wakeup, (unsigned long) raw);
 
 	dev_set_drvdata(&cdev->dev, raw);
 	cdev->handler = raw3215_irq;
@@ -776,6 +780,7 @@ static struct ccw_driver raw3215_ccw_driver = {
 	.freeze		= &raw3215_pm_stop,
 	.thaw		= &raw3215_pm_start,
 	.restore	= &raw3215_pm_start,
+	.int_class	= IOINT_C15,
 };
 
 #ifdef CONFIG_TN3215_CONSOLE
@@ -902,6 +907,7 @@ static int __init con3215_init(void)
 
 	raw->flags |= RAW3215_FIXED;
 	init_waitqueue_head(&raw->empty_wait);
+	tasklet_init(&raw->tlet, raw3215_wakeup, (unsigned long) raw);
 
 	/* Request the console irq */
 	if (raw3215_startup(raw) != 0) {
@@ -967,6 +973,7 @@ static void tty3215_close(struct tty_struct *tty, struct file * filp)
 	tty->closing = 1;
 	/* Shutdown the terminal */
 	raw3215_shutdown(raw);
+	tasklet_kill(&raw->tlet);
 	tty->closing = 0;
 	raw->tty = NULL;
 }

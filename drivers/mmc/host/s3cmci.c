@@ -247,7 +247,7 @@ static void s3cmci_check_sdio_irq(struct s3cmci_host *host)
 {
 	if (host->sdio_irqen) {
 		if (gpio_get_value(S3C2410_GPE(8)) == 0) {
-			printk(KERN_DEBUG "%s: signalling irq\n", __func__);
+			pr_debug("%s: signalling irq\n", __func__);
 			mmc_signal_sdio_irq(host->mmc);
 		}
 	}
@@ -344,7 +344,7 @@ static void s3cmci_disable_irq(struct s3cmci_host *host, bool transfer)
 
 	local_irq_save(flags);
 
-	//printk(KERN_DEBUG "%s: transfer %d\n", __func__, transfer);
+	/* pr_debug("%s: transfer %d\n", __func__, transfer); */
 
 	host->irq_disabled = transfer;
 
@@ -913,9 +913,9 @@ request_done:
 }
 
 static void s3cmci_dma_setup(struct s3cmci_host *host,
-			     enum s3c2410_dmasrc source)
+			     enum dma_data_direction source)
 {
-	static enum s3c2410_dmasrc last_source = -1;
+	static enum dma_data_direction last_source = -1;
 	static int setup_ok;
 
 	if (last_source == source)
@@ -1087,7 +1087,7 @@ static int s3cmci_prepare_dma(struct s3cmci_host *host, struct mmc_data *data)
 
 	BUG_ON((data->flags & BOTH_DIR) == BOTH_DIR);
 
-	s3cmci_dma_setup(host, rw ? S3C2410_DMASRC_MEM : S3C2410_DMASRC_HW);
+	s3cmci_dma_setup(host, rw ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 	s3c2410_dma_ctrl(host->dma, S3C2410_DMAOP_FLUSH);
 
 	dma_len = dma_map_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
@@ -1914,18 +1914,7 @@ static struct platform_driver s3cmci_driver = {
 	.shutdown	= s3cmci_shutdown,
 };
 
-static int __init s3cmci_init(void)
-{
-	return platform_driver_register(&s3cmci_driver);
-}
-
-static void __exit s3cmci_exit(void)
-{
-	platform_driver_unregister(&s3cmci_driver);
-}
-
-module_init(s3cmci_init);
-module_exit(s3cmci_exit);
+module_platform_driver(s3cmci_driver);
 
 MODULE_DESCRIPTION("Samsung S3C MMC/SD Card Interface driver");
 MODULE_LICENSE("GPL v2");

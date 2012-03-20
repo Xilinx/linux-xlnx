@@ -46,13 +46,10 @@ struct cflayer *cfrfml_create(u8 channel_id, struct dev_info *dev_info,
 					int mtu_size)
 {
 	int tmp;
-	struct cfrfml *this =
-		kzalloc(sizeof(struct cfrfml), GFP_ATOMIC);
+	struct cfrfml *this = kzalloc(sizeof(struct cfrfml), GFP_ATOMIC);
 
-	if (!this) {
-		pr_warn("Out of memory\n");
+	if (!this)
 		return NULL;
-	}
 
 	cfsrvl_init(&this->serv, channel_id, dev_info, false);
 	this->serv.release = cfrfml_release;
@@ -193,7 +190,7 @@ out:
 
 static int cfrfml_transmit_segment(struct cfrfml *rfml, struct cfpkt *pkt)
 {
-	caif_assert(cfpkt_getlen(pkt) < rfml->fragment_size);
+	caif_assert(cfpkt_getlen(pkt) < rfml->fragment_size + RFM_HEAD_SIZE);
 
 	/* Add info for MUX-layer to route the packet out. */
 	cfpkt_info(pkt)->channel_id = rfml->serv.layer.id;

@@ -90,12 +90,6 @@ static const u16 LDO2_VSEL_table[] = {
 	3000, 3100, 3200, 3300,
 };
 
-static unsigned int num_voltages[] = {ARRAY_SIZE(VDCDCx_VSEL_table),
-				ARRAY_SIZE(VDCDCx_VSEL_table),
-				ARRAY_SIZE(VDCDCx_VSEL_table),
-				ARRAY_SIZE(LDO1_VSEL_table),
-				ARRAY_SIZE(LDO2_VSEL_table)};
-
 struct tps_info {
 	const char *name;
 	unsigned min_uV;
@@ -598,14 +592,14 @@ int tps6507x_pmic_probe(struct platform_device *pdev)
 
 		tps->desc[i].name = info->name;
 		tps->desc[i].id = i;
-		tps->desc[i].n_voltages = num_voltages[i];
+		tps->desc[i].n_voltages = info->table_len;
 		tps->desc[i].ops = (i > TPS6507X_DCDC_3 ?
 		&tps6507x_pmic_ldo_ops : &tps6507x_pmic_dcdc_ops);
 		tps->desc[i].type = REGULATOR_VOLTAGE;
 		tps->desc[i].owner = THIS_MODULE;
 
 		rdev = regulator_register(&tps->desc[i],
-					tps6507x_dev->dev, init_data, tps);
+					tps6507x_dev->dev, init_data, tps, NULL);
 		if (IS_ERR(rdev)) {
 			dev_err(tps6507x_dev->dev,
 				"failed to register %s regulator\n",

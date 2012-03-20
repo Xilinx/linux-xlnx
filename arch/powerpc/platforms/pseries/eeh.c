@@ -22,6 +22,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/sched.h>	/* for init_mm */
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/pci.h>
@@ -29,9 +30,10 @@
 #include <linux/rbtree.h>
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
+#include <linux/export.h>
 #include <linux/of.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <asm/eeh.h>
 #include <asm/eeh_event.h>
 #include <asm/io.h>
@@ -549,9 +551,9 @@ int eeh_dn_check_failure(struct device_node *dn, struct pci_dev *dev)
 			printk (KERN_ERR "EEH: %d reads ignored for recovering device at "
 				"location=%s driver=%s pci addr=%s\n",
 				pdn->eeh_check_count, location,
-				dev->driver->name, eeh_pci_name(dev));
+				eeh_driver_name(dev), eeh_pci_name(dev));
 			printk (KERN_ERR "EEH: Might be infinite loop in %s driver\n",
-				dev->driver->name);
+				eeh_driver_name(dev));
 			dump_stack();
 		}
 		goto dn_unlock;
@@ -1338,7 +1340,7 @@ static const struct file_operations proc_eeh_operations = {
 static int __init eeh_init_proc(void)
 {
 	if (machine_is(pseries))
-		proc_create("ppc64/eeh", 0, NULL, &proc_eeh_operations);
+		proc_create("powerpc/eeh", 0, NULL, &proc_eeh_operations);
 	return 0;
 }
 __initcall(eeh_init_proc);

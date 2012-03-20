@@ -68,6 +68,8 @@
 
 #ifdef CONFIG_BLOCK
 #include <linux/loop.h>
+#include <linux/cdrom.h>
+#include <linux/fd.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_ioctl.h>
 #include <scsi/sg.h>
@@ -103,6 +105,7 @@
 
 #include <linux/hiddev.h>
 
+#define __DVB_CORE__
 #include <linux/dvb/audio.h>
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/frontend.h>
@@ -944,6 +947,9 @@ COMPATIBLE_IOCTL(FIOQSIZE)
 IGNORE_IOCTL(LOOP_CLR_FD)
 /* md calls this on random blockdevs */
 IGNORE_IOCTL(RAID_VERSION)
+/* qemu/qemu-img might call these two on plain files for probing */
+IGNORE_IOCTL(CDROM_DRIVE_STATUS)
+IGNORE_IOCTL(FDGETPRM32)
 /* SG stuff */
 COMPATIBLE_IOCTL(SG_SET_TIMEOUT)
 COMPATIBLE_IOCTL(SG_GET_TIMEOUT)
@@ -998,6 +1004,7 @@ COMPATIBLE_IOCTL(PPPIOCCONNECT)
 COMPATIBLE_IOCTL(PPPIOCDISCONN)
 COMPATIBLE_IOCTL(PPPIOCATTCHAN)
 COMPATIBLE_IOCTL(PPPIOCGCHAN)
+COMPATIBLE_IOCTL(PPPIOCGL2TPSTATS)
 /* PPPOX */
 COMPATIBLE_IOCTL(PPPOEIOCSFWD)
 COMPATIBLE_IOCTL(PPPOEIOCDFWD)
@@ -1500,35 +1507,6 @@ static long do_ioctl_trans(int fd, unsigned int cmd,
 	return -ENOIOCTLCMD;
 }
 
-static void compat_ioctl_error(struct file *filp, unsigned int fd,
-		unsigned int cmd, unsigned long arg)
-{
-	char buf[10];
-	char *fn = "?";
-	char *path;
-
-	/* find the name of the device. */
-	path = (char *)__get_free_page(GFP_KERNEL);
-	if (path) {
-		fn = d_path(&filp->f_path, path, PAGE_SIZE);
-		if (IS_ERR(fn))
-			fn = "?";
-	}
-
-	 sprintf(buf,"'%c'", (cmd>>_IOC_TYPESHIFT) & _IOC_TYPEMASK);
-	if (!isprint(buf[1]))
-		sprintf(buf, "%02x", buf[1]);
-	compat_printk("ioctl32(%s:%d): Unknown cmd fd(%d) "
-			"cmd(%08x){t:%s;sz:%u} arg(%08x) on %s\n",
-			current->comm, current->pid,
-			(int)fd, (unsigned int)cmd, buf,
-			(cmd >> _IOC_SIZESHIFT) & _IOC_SIZEMASK,
-			(unsigned int)arg, fn);
-
-	if (path)
-		free_page((unsigned long)path);
-}
-
 static int compat_ioctl_check_table(unsigned int xcmd)
 {
 	int i;
@@ -1615,13 +1593,8 @@ asmlinkage long compat_sys_ioctl(unsigned int fd, unsigned int cmd,
 		goto found_handler;
 
 	error = do_ioctl_trans(fd, cmd, arg, filp);
-	if (error == -ENOIOCTLCMD) {
-		static int count;
-
-		if (++count <= 50)
-			compat_ioctl_error(filp, fd, cmd, arg);
-		error = -EINVAL;
-	}
+	if (error == -ENOIOCTLCMD)
+		error = -ENOTTY;
 
 	goto out_fput;
 

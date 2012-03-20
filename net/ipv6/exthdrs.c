@@ -30,6 +30,7 @@
 #include <linux/in6.h>
 #include <linux/icmpv6.h>
 #include <linux/slab.h>
+#include <linux/export.h>
 
 #include <net/dst.h>
 #include <net/sock.h>
@@ -242,9 +243,9 @@ static int ipv6_dest_hao(struct sk_buff *skb, int optoff)
 	if (skb->ip_summed == CHECKSUM_COMPLETE)
 		skb->ip_summed = CHECKSUM_NONE;
 
-	ipv6_addr_copy(&tmp_addr, &ipv6h->saddr);
-	ipv6_addr_copy(&ipv6h->saddr, &hao->addr);
-	ipv6_addr_copy(&hao->addr, &tmp_addr);
+	tmp_addr = ipv6h->saddr;
+	ipv6h->saddr = hao->addr;
+	hao->addr = tmp_addr;
 
 	if (skb->tstamp.tv64 == 0)
 		__net_timestamp(skb);
@@ -273,12 +274,12 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
 #if defined(CONFIG_IPV6_MIP6) || defined(CONFIG_IPV6_MIP6_MODULE)
 	__u16 dstbuf;
 #endif
-	struct dst_entry *dst;
+	struct dst_entry *dst = skb_dst(skb);
 
 	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
 	    !pskb_may_pull(skb, (skb_transport_offset(skb) +
 				 ((skb_transport_header(skb)[1] + 1) << 3)))) {
-		IP6_INC_STATS_BH(dev_net(skb_dst(skb)->dev), ip6_dst_idev(skb_dst(skb)),
+		IP6_INC_STATS_BH(dev_net(dst->dev), ip6_dst_idev(dst),
 				 IPSTATS_MIB_INHDRERRORS);
 		kfree_skb(skb);
 		return -1;
@@ -289,9 +290,7 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
 	dstbuf = opt->dst1;
 #endif
 
-	dst = dst_clone(skb_dst(skb));
 	if (ip6_parse_tlv(tlvprocdestopt_lst, skb)) {
-		dst_release(dst);
 		skb->transport_header += (skb_transport_header(skb)[1] + 1) << 3;
 		opt = IP6CB(skb);
 #if defined(CONFIG_IPV6_MIP6) || defined(CONFIG_IPV6_MIP6_MODULE)
@@ -304,7 +303,6 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
 
 	IP6_INC_STATS_BH(dev_net(dst->dev),
 			 ip6_dst_idev(dst), IPSTATS_MIB_INHDRERRORS);
-	dst_release(dst);
 	return -1;
 }
 
@@ -463,9 +461,9 @@ looped_back:
 		return -1;
 	}
 
-	ipv6_addr_copy(&daddr, addr);
-	ipv6_addr_copy(addr, &ipv6_hdr(skb)->daddr);
-	ipv6_addr_copy(&ipv6_hdr(skb)->daddr, &daddr);
+	daddr = *addr;
+	*addr = ipv6_hdr(skb)->daddr;
+	ipv6_hdr(skb)->daddr = daddr;
 
 	skb_dst_drop(skb);
 	ip6_route_input(skb);
@@ -692,7 +690,7 @@ static void ipv6_push_rthdr(struct sk_buff *skb, u8 *proto,
 		memcpy(phdr->addr, ihdr->addr + 1,
 		       (hops - 1) * sizeof(struct in6_addr));
 
-	ipv6_addr_copy(phdr->addr + (hops - 1), *addr_p);
+	phdr->addr[hops - 1] = **addr_p;
 	*addr_p = ihdr->addr;
 
 	phdr->rt_hdr.nexthdr = *proto;
@@ -890,8 +888,8 @@ struct in6_addr *fl6_update_dst(struct flowi6 *fl6,
 	if (!opt || !opt->srcrt)
 		return NULL;
 
-	ipv6_addr_copy(orig, &fl6->daddr);
-	ipv6_addr_copy(&fl6->daddr, ((struct rt0_hdr *)opt->srcrt)->addr);
+	*orig = fl6->daddr;
+	fl6->daddr = *((struct rt0_hdr *)opt->srcrt)->addr;
 	return orig;
 }
 

@@ -44,6 +44,8 @@
 #include <asm/siginfo.h>
 #include <mm/mmu_decl.h>
 
+#include "icswx.h"
+
 #ifdef CONFIG_KPROBES
 static inline int notify_page_fault(struct pt_regs *regs)
 {
@@ -143,6 +145,21 @@ int __kprobes do_page_fault(struct pt_regs *regs, unsigned long address,
 	is_write = error_code & ESR_DST;
 #endif /* CONFIG_4xx || CONFIG_BOOKE */
 
+#ifdef CONFIG_PPC_ICSWX
+	/*
+	 * we need to do this early because this "data storage
+	 * interrupt" does not update the DAR/DEAR so we don't want to
+	 * look at it
+	 */
+	if (error_code & ICSWX_DSI_UCT) {
+		int ret;
+
+		ret = acop_handle_fault(regs, address, error_code);
+		if (ret)
+			return ret;
+	}
+#endif
+
 	if (notify_page_fault(regs))
 		return 0;
 
@@ -174,7 +191,7 @@ int __kprobes do_page_fault(struct pt_regs *regs, unsigned long address,
 		die("Weird page fault", regs, SIGSEGV);
 	}
 
-	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, 0, regs, address);
+	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 
 	/* When running in the kernel we expect faults to occur only to
 	 * addresses in user space.  All other faults represent errors in the
@@ -320,7 +337,7 @@ good_area:
 	}
 	if (ret & VM_FAULT_MAJOR) {
 		current->maj_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, 0,
+		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1,
 				     regs, address);
 #ifdef CONFIG_PPC_SMLPAR
 		if (firmware_has_feature(FW_FEATURE_CMO)) {
@@ -331,7 +348,7 @@ good_area:
 #endif
 	} else {
 		current->min_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1, 0,
+		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1,
 				     regs, address);
 	}
 	up_read(&mm->mmap_sem);

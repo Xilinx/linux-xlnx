@@ -12,7 +12,6 @@
 
 #include <linux/init.h>
 #include <linux/input.h>
-#include <linux/version.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -184,7 +183,7 @@ static int __devinit pxa930_trkball_probe(struct platform_device *pdev)
 	/* held the module in reset, will be enabled in open() */
 	pxa930_trkball_disable(trkball);
 
-	error = request_irq(irq, pxa930_trkball_interrupt, IRQF_DISABLED,
+	error = request_irq(irq, pxa930_trkball_interrupt, 0,
 			    pdev->name, trkball);
 	if (error) {
 		dev_err(&pdev->dev, "failed to request irq: %d\n", error);
@@ -251,19 +250,7 @@ static struct platform_driver pxa930_trkball_driver = {
 	.probe		= pxa930_trkball_probe,
 	.remove		= __devexit_p(pxa930_trkball_remove),
 };
-
-static int __init pxa930_trkball_init(void)
-{
-	return platform_driver_register(&pxa930_trkball_driver);
-}
-
-static void __exit pxa930_trkball_exit(void)
-{
-	platform_driver_unregister(&pxa930_trkball_driver);
-}
-
-module_init(pxa930_trkball_init);
-module_exit(pxa930_trkball_exit);
+module_platform_driver(pxa930_trkball_driver);
 
 MODULE_AUTHOR("Yong Yao <yaoyong@marvell.com>");
 MODULE_DESCRIPTION("PXA930 Trackball Mouse Driver");

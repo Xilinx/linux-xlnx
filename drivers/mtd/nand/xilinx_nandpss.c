@@ -1216,6 +1216,10 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
+#if 0
+
+/* will not compile in 3.3 kernel */
+
 #ifdef CONFIG_MTD_CMDLINE_PARTS
 	/* Get the partition information from command line argument */
 	nr_parts = parse_mtd_partitions(mtd, part_probe_types,
@@ -1239,6 +1243,25 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 */
 	}
 #endif
+
+#if 0
+
+/* Something like this for 3.3 is needed, but not in since NAND not working */
+
+	{
+        	struct mtd_part_parser_data ppdata = {};
+		int ret; 
+
+	       	ppdata.of_node = pdev->dev.of_node;
+	        ret = mtd_device_parse_register(mtd, NULL, &ppdata,
+                                        xnand->parts,
+                                        nr_parts);
+        	if (ret)
+	      	        goto err_wp;
+
+	}
+#endif
+
 	if (pdata->parts) {
 		dev_info(&pdev->dev, "found %d partitions in platform data",
 				pdata->nr_parts);
@@ -1249,6 +1272,8 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 */
 	}
 #endif
+#endif
+
 /*	err = add_mtd_device(mtd); */
 	if (!err) {
 		dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n",
@@ -1307,7 +1332,7 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct xnand_platform_data xnandpss_config = {
-	.options = NAND_NO_AUTOINCR | NAND_USE_FLASH_BBT,
+	.options = NAND_NO_AUTOINCR | NAND_BBT_USE_FLASH,
 };
 
 /* Match table for device tree binding */

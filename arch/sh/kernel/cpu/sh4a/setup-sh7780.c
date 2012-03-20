@@ -14,7 +14,6 @@
 #include <linux/serial_sci.h>
 #include <linux/sh_dma.h>
 #include <linux/sh_timer.h>
-
 #include <cpu/dma-register.h>
 
 static struct plat_sci_port scif0_platform_data = {
@@ -24,6 +23,7 @@ static struct plat_sci_port scif0_platform_data = {
 	.scbrr_algo_id	= SCBRR_ALGO_1,
 	.type		= PORT_SCIF,
 	.irqs		= { 40, 40, 40, 40 },
+	.regtype	= SCIx_SH4_SCIF_FIFODATA_REGTYPE,
 };
 
 static struct platform_device scif0_device = {
@@ -41,6 +41,7 @@ static struct plat_sci_port scif1_platform_data = {
 	.scbrr_algo_id	= SCBRR_ALGO_1,
 	.type		= PORT_SCIF,
 	.irqs		= { 76, 76, 76, 76 },
+	.regtype	= SCIx_SH4_SCIF_FIFODATA_REGTYPE,
 };
 
 static struct platform_device scif1_device = {
@@ -321,6 +322,7 @@ static struct resource sh7780_dmae0_resources[] = {
 	},
 	{
 		/* Real DMA error IRQ is 38, and channel IRQs are 34-37, 44-45 */
+		.name	= "error_irq",
 		.start	= 34,
 		.end	= 34,
 		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_SHAREABLE,
@@ -337,6 +339,7 @@ static struct resource sh7780_dmae1_resources[] = {
 	/* DMAC1 has no DMARS */
 	{
 		/* Real DMA error IRQ is 38, and channel IRQs are 46-47, 92-95 */
+		.name	= "error_irq",
 		.start	= 46,
 		.end	= 46,
 		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_SHAREABLE,

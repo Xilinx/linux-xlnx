@@ -354,7 +354,7 @@ static void clk_cgr_disable(struct clk *clk)
 	}
 
 DEFINE_CLOCK(asrc_clk,   0, CCM_CGR0,  0, NULL, NULL);
-DEFINE_CLOCK(ata_clk,    0, CCM_CGR0,  2, get_rate_ipg, NULL);
+DEFINE_CLOCK(pata_clk,    0, CCM_CGR0,  2, get_rate_ipg, NULL);
 /* DEFINE_CLOCK(audmux_clk, 0, CCM_CGR0,  4, NULL, NULL); */
 DEFINE_CLOCK(can1_clk,   0, CCM_CGR0,  6, get_rate_ipg, NULL);
 DEFINE_CLOCK(can2_clk,   1, CCM_CGR0,  8, get_rate_ipg, NULL);
@@ -447,7 +447,7 @@ static struct clk nfc_clk = {
 
 static struct clk_lookup lookups[] = {
 	_REGISTER_CLOCK(NULL, "asrc", asrc_clk)
-	_REGISTER_CLOCK(NULL, "ata", ata_clk)
+	_REGISTER_CLOCK("pata_imx", NULL, pata_clk)
 	_REGISTER_CLOCK("flexcan.0", NULL, can1_clk)
 	_REGISTER_CLOCK("flexcan.1", NULL, can2_clk)
 	_REGISTER_CLOCK("imx35-cspi.0", NULL, cspi1_clk)
@@ -458,10 +458,11 @@ static struct clk_lookup lookups[] = {
 	_REGISTER_CLOCK("imx-epit.0", NULL, epit1_clk)
 	_REGISTER_CLOCK("imx-epit.1", NULL, epit2_clk)
 	_REGISTER_CLOCK(NULL, "esai", esai_clk)
-	_REGISTER_CLOCK("sdhci-esdhc-imx.0", NULL, esdhc1_clk)
-	_REGISTER_CLOCK("sdhci-esdhc-imx.1", NULL, esdhc2_clk)
-	_REGISTER_CLOCK("sdhci-esdhc-imx.2", NULL, esdhc3_clk)
-	_REGISTER_CLOCK("fec.0", NULL, fec_clk)
+	_REGISTER_CLOCK("sdhci-esdhc-imx35.0", NULL, esdhc1_clk)
+	_REGISTER_CLOCK("sdhci-esdhc-imx35.1", NULL, esdhc2_clk)
+	_REGISTER_CLOCK("sdhci-esdhc-imx35.2", NULL, esdhc3_clk)
+	/* i.mx35 has the i.mx27 type fec */
+	_REGISTER_CLOCK("imx27-fec.0", NULL, fec_clk)
 	_REGISTER_CLOCK(NULL, "gpio", gpio1_clk)
 	_REGISTER_CLOCK(NULL, "gpio", gpio2_clk)
 	_REGISTER_CLOCK(NULL, "gpio", gpio3_clk)
@@ -481,14 +482,15 @@ static struct clk_lookup lookups[] = {
 	_REGISTER_CLOCK(NULL, "rtc", rtc_clk)
 	_REGISTER_CLOCK(NULL, "rtic", rtic_clk)
 	_REGISTER_CLOCK(NULL, "scc", scc_clk)
-	_REGISTER_CLOCK("imx-sdma", NULL, sdma_clk)
+	_REGISTER_CLOCK("imx35-sdma", NULL, sdma_clk)
 	_REGISTER_CLOCK(NULL, "spba", spba_clk)
 	_REGISTER_CLOCK(NULL, "spdif", spdif_clk)
 	_REGISTER_CLOCK("imx-ssi.0", NULL, ssi1_clk)
 	_REGISTER_CLOCK("imx-ssi.1", NULL, ssi2_clk)
-	_REGISTER_CLOCK("imx-uart.0", NULL, uart1_clk)
-	_REGISTER_CLOCK("imx-uart.1", NULL, uart2_clk)
-	_REGISTER_CLOCK("imx-uart.2", NULL, uart3_clk)
+	/* i.mx35 has the i.mx21 type uart */
+	_REGISTER_CLOCK("imx21-uart.0", NULL, uart1_clk)
+	_REGISTER_CLOCK("imx21-uart.1", NULL, uart2_clk)
+	_REGISTER_CLOCK("imx21-uart.2", NULL, uart3_clk)
 	_REGISTER_CLOCK("mxc-ehci.0", "usb", usbotg_clk)
 	_REGISTER_CLOCK("mxc-ehci.1", "usb", usbotg_clk)
 	_REGISTER_CLOCK("mxc-ehci.2", "usb", usbotg_clk)
@@ -505,7 +507,7 @@ static struct clk_lookup lookups[] = {
 
 int __init mx35_clocks_init()
 {
-	unsigned int cgr2 = 3 << 26, cgr3 = 0;
+	unsigned int cgr2 = 3 << 26;
 
 #if defined(CONFIG_DEBUG_LL) && !defined(CONFIG_DEBUG_ICEDCC)
 	cgr2 |= 3 << 16;
@@ -519,6 +521,12 @@ int __init mx35_clocks_init()
 	__raw_writel((3 << 18), CCM_BASE + CCM_CGR0);
 	__raw_writel((3 << 2) | (3 << 4) | (3 << 6) | (3 << 8) | (3 << 16),
 			CCM_BASE + CCM_CGR1);
+	__raw_writel(cgr2, CCM_BASE + CCM_CGR2);
+	__raw_writel(0, CCM_BASE + CCM_CGR3);
+
+	clk_enable(&iim_clk);
+	imx_print_silicon_rev("i.MX35", mx35_revision());
+	clk_disable(&iim_clk);
 
 	/*
 	 * Check if we came up in internal boot mode. If yes, we need some
@@ -527,15 +535,10 @@ int __init mx35_clocks_init()
 	 */
 	if (!(__raw_readl(CCM_BASE + CCM_RCSR) & (3 << 10))) {
 		/* Additionally turn on UART1, SCC, and IIM clocks */
-		cgr2 |= 3 << 16 | 3 << 4;
-		cgr3 |= 3 << 2;
+		clk_enable(&iim_clk);
+		clk_enable(&uart1_clk);
+		clk_enable(&scc_clk);
 	}
-
-	__raw_writel(cgr2, CCM_BASE + CCM_CGR2);
-	__raw_writel(cgr3, CCM_BASE + CCM_CGR3);
-
-	clk_enable(&iim_clk);
-	mx35_read_cpu_rev();
 
 #ifdef CONFIG_MXC_USE_EPIT
 	epit_timer_init(&epit1_clk,

@@ -65,12 +65,13 @@ void radeon_driver_irq_preinstall_kms(struct drm_device *dev)
 	unsigned i;
 
 	/* Disable *all* interrupts */
-	rdev->irq.sw_int = false;
+	for (i = 0; i < RADEON_NUM_RINGS; i++)
+		rdev->irq.sw_int[i] = false;
 	rdev->irq.gui_idle = false;
-	for (i = 0; i < rdev->num_crtc; i++)
-		rdev->irq.crtc_vblank_int[i] = false;
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < RADEON_MAX_HPD_PINS; i++)
 		rdev->irq.hpd[i] = false;
+	for (i = 0; i < RADEON_MAX_CRTCS; i++) {
+		rdev->irq.crtc_vblank_int[i] = false;
 		rdev->irq.pflip[i] = false;
 	}
 	radeon_irq_set(rdev);
@@ -81,9 +82,11 @@ void radeon_driver_irq_preinstall_kms(struct drm_device *dev)
 int radeon_driver_irq_postinstall_kms(struct drm_device *dev)
 {
 	struct radeon_device *rdev = dev->dev_private;
+	unsigned i;
 
 	dev->max_vblank_count = 0x001fffff;
-	rdev->irq.sw_int = true;
+	for (i = 0; i < RADEON_NUM_RINGS; i++)
+		rdev->irq.sw_int[i] = true;
 	radeon_irq_set(rdev);
 	return 0;
 }
@@ -97,15 +100,62 @@ void radeon_driver_irq_uninstall_kms(struct drm_device *dev)
 		return;
 	}
 	/* Disable *all* interrupts */
-	rdev->irq.sw_int = false;
+	for (i = 0; i < RADEON_NUM_RINGS; i++)
+		rdev->irq.sw_int[i] = false;
 	rdev->irq.gui_idle = false;
-	for (i = 0; i < rdev->num_crtc; i++)
-		rdev->irq.crtc_vblank_int[i] = false;
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < RADEON_MAX_HPD_PINS; i++)
 		rdev->irq.hpd[i] = false;
+	for (i = 0; i < RADEON_MAX_CRTCS; i++) {
+		rdev->irq.crtc_vblank_int[i] = false;
 		rdev->irq.pflip[i] = false;
 	}
 	radeon_irq_set(rdev);
+}
+
+static bool radeon_msi_ok(struct radeon_device *rdev)
+{
+	/* RV370/RV380 was first asic with MSI support */
+	if (rdev->family < CHIP_RV380)
+		return false;
+
+	/* MSIs don't work on AGP */
+	if (rdev->flags & RADEON_IS_AGP)
+		return false;
+
+	/* force MSI on */
+	if (radeon_msi == 1)
+		return true;
+	else if (radeon_msi == 0)
+		return false;
+
+	/* Quirks */
+	/* HP RS690 only seems to work with MSIs. */
+	if ((rdev->pdev->device == 0x791f) &&
+	    (rdev->pdev->subsystem_vendor == 0x103c) &&
+	    (rdev->pdev->subsystem_device == 0x30c2))
+		return true;
+
+	/* Dell RS690 only seems to work with MSIs. */
+	if ((rdev->pdev->device == 0x791f) &&
+	    (rdev->pdev->subsystem_vendor == 0x1028) &&
+	    (rdev->pdev->subsystem_device == 0x01fc))
+		return true;
+
+	/* Dell RS690 only seems to work with MSIs. */
+	if ((rdev->pdev->device == 0x791f) &&
+	    (rdev->pdev->subsystem_vendor == 0x1028) &&
+	    (rdev->pdev->subsystem_device == 0x01fd))
+		return true;
+
+	if (rdev->flags & RADEON_IS_IGP) {
+		/* APUs work fine with MSIs */
+		if (rdev->family >= CHIP_PALM)
+			return true;
+		/* lots of IGPs have problems with MSIs */
+		return false;
+	}
+
+	return true;
 }
 
 int radeon_irq_kms_init(struct radeon_device *rdev)
@@ -124,12 +174,8 @@ int radeon_irq_kms_init(struct radeon_device *rdev)
 	}
 	/* enable msi */
 	rdev->msi_enabled = 0;
-	/* MSIs don't seem to work reliably on all IGP
-	 * chips.  Disable MSI on them for now.
-	 */
-	if ((rdev->family >= CHIP_RV380) &&
-	    ((!(rdev->flags & RADEON_IS_IGP)) || (rdev->family >= CHIP_PALM)) &&
-	    (!(rdev->flags & RADEON_IS_AGP))) {
+
+	if (radeon_msi_ok(rdev)) {
 		int ret = pci_enable_msi(rdev->pdev);
 		if (!ret) {
 			rdev->msi_enabled = 1;
@@ -158,26 +204,26 @@ void radeon_irq_kms_fini(struct radeon_device *rdev)
 	flush_work_sync(&rdev->hotplug_work);
 }
 
-void radeon_irq_kms_sw_irq_get(struct radeon_device *rdev)
+void radeon_irq_kms_sw_irq_get(struct radeon_device *rdev, int ring)
 {
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&rdev->irq.sw_lock, irqflags);
-	if (rdev->ddev->irq_enabled && (++rdev->irq.sw_refcount == 1)) {
-		rdev->irq.sw_int = true;
+	if (rdev->ddev->irq_enabled && (++rdev->irq.sw_refcount[ring] == 1)) {
+		rdev->irq.sw_int[ring] = true;
 		radeon_irq_set(rdev);
 	}
 	spin_unlock_irqrestore(&rdev->irq.sw_lock, irqflags);
 }
 
-void radeon_irq_kms_sw_irq_put(struct radeon_device *rdev)
+void radeon_irq_kms_sw_irq_put(struct radeon_device *rdev, int ring)
 {
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&rdev->irq.sw_lock, irqflags);
-	BUG_ON(rdev->ddev->irq_enabled && rdev->irq.sw_refcount <= 0);
-	if (rdev->ddev->irq_enabled && (--rdev->irq.sw_refcount == 0)) {
-		rdev->irq.sw_int = false;
+	BUG_ON(rdev->ddev->irq_enabled && rdev->irq.sw_refcount[ring] <= 0);
+	if (rdev->ddev->irq_enabled && (--rdev->irq.sw_refcount[ring] == 0)) {
+		rdev->irq.sw_int[ring] = false;
 		radeon_irq_set(rdev);
 	}
 	spin_unlock_irqrestore(&rdev->irq.sw_lock, irqflags);

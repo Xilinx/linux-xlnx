@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h> /* printk() */
 #include <linux/fs.h> /* everything... */
+#include <linux/scatterlist.h>
 #include <linux/slab.h> /* kmalloc() */
 #include <linux/dmaengine.h>
 #include <linux/platform_device.h>
@@ -38,8 +39,10 @@ struct coh901318_desc {
 	struct scatterlist *sg;
 	unsigned int sg_len;
 	struct coh901318_lli *lli;
-	enum dma_data_direction dir;
+	enum dma_transfer_direction dir;
 	unsigned long flags;
+	u32 head_config;
+	u32 head_ctrl;
 };
 
 struct coh901318_base {
@@ -660,6 +663,9 @@ static struct coh901318_desc *coh901318_queue_start(struct coh901318_chan *cohc)
 
 		coh901318_desc_submit(cohc, cohd);
 
+		/* Program the transaction head */
+		coh901318_set_conf(cohc, cohd->head_config);
+		coh901318_set_ctrl(cohc, cohd->head_ctrl);
 		coh901318_prep_linked_list(cohc, cohd->lli);
 
 		/* start dma job on this channel */
@@ -1028,7 +1034,7 @@ coh901318_prep_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 
 static struct dma_async_tx_descriptor *
 coh901318_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
-			unsigned int sg_len, enum dma_data_direction direction,
+			unsigned int sg_len, enum dma_transfer_direction direction,
 			unsigned long flags)
 {
 	struct coh901318_chan *cohc = to_coh901318_chan(chan);
@@ -1071,7 +1077,7 @@ coh901318_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 	ctrl_last |= cohc->runtime_ctrl;
 	ctrl |= cohc->runtime_ctrl;
 
-	if (direction == DMA_TO_DEVICE) {
+	if (direction == DMA_MEM_TO_DEV) {
 		u32 tx_flags = COH901318_CX_CTRL_PRDD_SOURCE |
 			COH901318_CX_CTRL_SRC_ADDR_INC_ENABLE;
 
@@ -1079,7 +1085,7 @@ coh901318_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 		ctrl_chained |= tx_flags;
 		ctrl_last |= tx_flags;
 		ctrl |= tx_flags;
-	} else if (direction == DMA_FROM_DEVICE) {
+	} else if (direction == DMA_DEV_TO_MEM) {
 		u32 rx_flags = COH901318_CX_CTRL_PRDD_DEST |
 			COH901318_CX_CTRL_DST_ADDR_INC_ENABLE;
 
@@ -1089,8 +1095,6 @@ coh901318_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 		ctrl |= rx_flags;
 	} else
 		goto err_direction;
-
-	coh901318_set_conf(cohc, config);
 
 	/* The dma only supports transmitting packages up to
 	 * MAX_DMA_PACKET_SIZE. Calculate to total number of
@@ -1128,16 +1132,18 @@ coh901318_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 	if (ret)
 		goto err_lli_fill;
 
-	/*
-	 * Set the default ctrl for the channel to the one from the lli,
-	 * things may have changed due to odd buffer alignment etc.
-	 */
-	coh901318_set_ctrl(cohc, lli->control);
 
 	COH_DBG(coh901318_list_print(cohc, lli));
 
 	/* Pick a descriptor to handle this transfer */
 	cohd = coh901318_desc_get(cohc);
+	cohd->head_config = config;
+	/*
+	 * Set the default head ctrl for the channel to the one from the
+	 * lli, things may have changed due to odd buffer alignment
+	 * etc.
+	 */
+	cohd->head_ctrl = lli->control;
 	cohd->dir = direction;
 	cohd->flags = flags;
 	cohd->desc.tx_submit = coh901318_tx_submit;
@@ -1268,11 +1274,11 @@ static void coh901318_dma_set_runtimeconfig(struct dma_chan *chan,
 	int i = 0;
 
 	/* We only support mem to per or per to mem transfers */
-	if (config->direction == DMA_FROM_DEVICE) {
+	if (config->direction == DMA_DEV_TO_MEM) {
 		addr = config->src_addr;
 		addr_width = config->src_addr_width;
 		maxburst = config->src_maxburst;
-	} else if (config->direction == DMA_TO_DEVICE) {
+	} else if (config->direction == DMA_MEM_TO_DEV) {
 		addr = config->dst_addr;
 		addr_width = config->dst_addr_width;
 		maxburst = config->dst_maxburst;

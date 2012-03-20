@@ -217,9 +217,15 @@ static void __init ct_ca9x4_init(void)
 }
 
 #ifdef CONFIG_SMP
-static void ct_ca9x4_init_cpu_map(void)
+static void __init ct_ca9x4_init_cpu_map(void)
 {
 	int i, ncores = scu_get_core_count(MMIO_P2V(A9_MPCORE_SCU));
+
+	if (ncores > nr_cpu_ids) {
+		pr_warn("SMP: %u cores greater than maximum (%u), clipping\n",
+			ncores, nr_cpu_ids);
+		ncores = nr_cpu_ids;
+	}
 
 	for (i = 0; i < ncores; ++i)
 		set_cpu_possible(i, true);
@@ -227,12 +233,8 @@ static void ct_ca9x4_init_cpu_map(void)
 	set_smp_cross_call(gic_raise_softirq);
 }
 
-static void ct_ca9x4_smp_enable(unsigned int max_cpus)
+static void __init ct_ca9x4_smp_enable(unsigned int max_cpus)
 {
-	int i;
-	for (i = 0; i < max_cpus; i++)
-		set_cpu_present(i, true);
-
 	scu_enable(MMIO_P2V(A9_MPCORE_SCU));
 }
 #endif

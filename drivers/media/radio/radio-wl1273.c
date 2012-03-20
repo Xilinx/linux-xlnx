@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/mfd/wl1273-core.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -1382,7 +1383,7 @@ static int wl1273_fm_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case  V4L2_CID_TUNE_ANTENNA_CAPACITOR:
-		ctrl->cur.val = wl1273_fm_get_tx_ctune(radio);
+		ctrl->val = wl1273_fm_get_tx_ctune(radio);
 		break;
 
 	default:
@@ -2109,7 +2110,7 @@ static int __devinit wl1273_fm_radio_probe(struct platform_device *pdev)
 				 V4L2_CID_TUNE_ANTENNA_CAPACITOR,
 				 0, 255, 1, 255);
 	if (ctrl)
-		ctrl->is_volatile = 1;
+		ctrl->flags |= V4L2_CTRL_FLAG_VOLATILE;
 
 	if (radio->ctrl_handler.error) {
 		r = radio->ctrl_handler.error;
@@ -2147,8 +2148,6 @@ pdata_err:
 	return r;
 }
 
-MODULE_ALIAS("platform:wl1273_fm_radio");
-
 static struct platform_driver wl1273_fm_radio_driver = {
 	.probe		= wl1273_fm_radio_probe,
 	.remove		= __devexit_p(wl1273_fm_radio_remove),
@@ -2158,20 +2157,9 @@ static struct platform_driver wl1273_fm_radio_driver = {
 	},
 };
 
-static int __init wl1273_fm_module_init(void)
-{
-	pr_info("%s\n", __func__);
-	return platform_driver_register(&wl1273_fm_radio_driver);
-}
-module_init(wl1273_fm_module_init);
-
-static void __exit wl1273_fm_module_exit(void)
-{
-	platform_driver_unregister(&wl1273_fm_radio_driver);
-	pr_info(DRIVER_DESC ", Exiting.\n");
-}
-module_exit(wl1273_fm_module_exit);
+module_platform_driver(wl1273_fm_radio_driver);
 
 MODULE_AUTHOR("Matti Aaltonen <matti.j.aaltonen@nokia.com>");
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:wl1273_fm_radio");

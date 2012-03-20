@@ -42,7 +42,6 @@ struct ndfc_controller {
 	struct nand_chip chip;
 	int chip_select;
 	struct nand_hw_control ndfc_control;
-	struct mtd_partition *parts;
 };
 
 static struct ndfc_controller ndfc_ctrl[NDFC_MAX_CS];
@@ -159,13 +158,9 @@ static int ndfc_verify_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 static int ndfc_chip_init(struct ndfc_controller *ndfc,
 			  struct device_node *node)
 {
-#ifdef CONFIG_MTD_CMDLINE_PARTS
-	static const char *part_types[] = { "cmdlinepart", NULL };
-#else
-	static const char *part_types[] = { NULL };
-#endif
 	struct device_node *flash_np;
 	struct nand_chip *chip = &ndfc->chip;
+	struct mtd_part_parser_data ppdata;
 	int ret;
 
 	chip->IO_ADDR_R = ndfc->ndfcbase + NDFC_DATA;
@@ -193,6 +188,7 @@ static int ndfc_chip_init(struct ndfc_controller *ndfc,
 	if (!flash_np)
 		return -ENODEV;
 
+	ppdata.of_node = flash_np;
 	ndfc->mtd.name = kasprintf(GFP_KERNEL, "%s.%s",
 			dev_name(&ndfc->ofdev->dev), flash_np->name);
 	if (!ndfc->mtd.name) {
@@ -204,18 +200,7 @@ static int ndfc_chip_init(struct ndfc_controller *ndfc,
 	if (ret)
 		goto err;
 
-	ret = parse_mtd_partitions(&ndfc->mtd, part_types, &ndfc->parts, 0);
-	if (ret < 0)
-		goto err;
-
-	if (ret == 0) {
-		ret = of_mtd_parse_partitions(&ndfc->ofdev->dev, flash_np,
-					      &ndfc->parts);
-		if (ret < 0)
-			goto err;
-	}
-
-	ret = mtd_device_register(&ndfc->mtd, ndfc->parts, ret);
+	ret = mtd_device_parse_register(&ndfc->mtd, NULL, &ppdata, NULL, 0);
 
 err:
 	of_node_put(flash_np);
@@ -288,6 +273,7 @@ static int __devexit ndfc_remove(struct platform_device *ofdev)
 	struct ndfc_controller *ndfc = dev_get_drvdata(&ofdev->dev);
 
 	nand_release(&ndfc->mtd);
+	kfree(ndfc->mtd.name);
 
 	return 0;
 }
@@ -308,18 +294,7 @@ static struct platform_driver ndfc_driver = {
 	.remove = __devexit_p(ndfc_remove),
 };
 
-static int __init ndfc_nand_init(void)
-{
-	return platform_driver_register(&ndfc_driver);
-}
-
-static void __exit ndfc_nand_exit(void)
-{
-	platform_driver_unregister(&ndfc_driver);
-}
-
-module_init(ndfc_nand_init);
-module_exit(ndfc_nand_exit);
+module_platform_driver(ndfc_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Thomas Gleixner <tglx@linutronix.de>");

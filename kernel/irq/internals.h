@@ -15,7 +15,7 @@
 
 #define istate core_internal_state__do_not_mess_with_it
 
-extern int noirqdebug;
+extern bool noirqdebug;
 
 /*
  * Bits used by threaded handlers:
@@ -67,10 +67,12 @@ extern int __irq_set_trigger(struct irq_desc *desc, unsigned int irq,
 extern void __disable_irq(struct irq_desc *desc, unsigned int irq, bool susp);
 extern void __enable_irq(struct irq_desc *desc, unsigned int irq, bool resume);
 
-extern int irq_startup(struct irq_desc *desc);
+extern int irq_startup(struct irq_desc *desc, bool resend);
 extern void irq_shutdown(struct irq_desc *desc);
 extern void irq_enable(struct irq_desc *desc);
 extern void irq_disable(struct irq_desc *desc);
+extern void irq_percpu_enable(struct irq_desc *desc, unsigned int cpu);
+extern void irq_percpu_disable(struct irq_desc *desc, unsigned int cpu);
 extern void mask_irq(struct irq_desc *desc);
 extern void unmask_irq(struct irq_desc *desc);
 
@@ -114,14 +116,21 @@ static inline void chip_bus_sync_unlock(struct irq_desc *desc)
 		desc->irq_data.chip->irq_bus_sync_unlock(&desc->irq_data);
 }
 
+#define _IRQ_DESC_CHECK		(1 << 0)
+#define _IRQ_DESC_PERCPU	(1 << 1)
+
+#define IRQ_GET_DESC_CHECK_GLOBAL	(_IRQ_DESC_CHECK)
+#define IRQ_GET_DESC_CHECK_PERCPU	(_IRQ_DESC_CHECK | _IRQ_DESC_PERCPU)
+
 struct irq_desc *
-__irq_get_desc_lock(unsigned int irq, unsigned long *flags, bool bus);
+__irq_get_desc_lock(unsigned int irq, unsigned long *flags, bool bus,
+		    unsigned int check);
 void __irq_put_desc_unlock(struct irq_desc *desc, unsigned long flags, bool bus);
 
 static inline struct irq_desc *
-irq_get_desc_buslock(unsigned int irq, unsigned long *flags)
+irq_get_desc_buslock(unsigned int irq, unsigned long *flags, unsigned int check)
 {
-	return __irq_get_desc_lock(irq, flags, true);
+	return __irq_get_desc_lock(irq, flags, true, check);
 }
 
 static inline void
@@ -131,9 +140,9 @@ irq_put_desc_busunlock(struct irq_desc *desc, unsigned long flags)
 }
 
 static inline struct irq_desc *
-irq_get_desc_lock(unsigned int irq, unsigned long *flags)
+irq_get_desc_lock(unsigned int irq, unsigned long *flags, unsigned int check)
 {
-	return __irq_get_desc_lock(irq, flags, false);
+	return __irq_get_desc_lock(irq, flags, false, check);
 }
 
 static inline void

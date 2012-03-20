@@ -92,8 +92,7 @@ static struct platform_device *smdk2413_devices[] __initdata = {
 	&s3c_device_usbgadget,
 };
 
-static void __init smdk2413_fixup(struct machine_desc *desc,
-				  struct tag *tags, char **cmdline,
+static void __init smdk2413_fixup(struct tag *tags, char **cmdline,
 				  struct meminfo *mi)
 {
 	if (tags != phys_to_virt(S3C2410_SDRAM_PA + 0x100)) {
@@ -128,33 +127,36 @@ static void __init smdk2413_machine_init(void)
 
 MACHINE_START(S3C2413, "S3C2413")
 	/* Maintainer: Ben Dooks <ben-linux@fluff.org> */
-	.boot_params	= S3C2410_SDRAM_PA + 0x100,
+	.atag_offset	= 0x100,
 
 	.fixup		= smdk2413_fixup,
 	.init_irq	= s3c24xx_init_irq,
 	.map_io		= smdk2413_map_io,
 	.init_machine	= smdk2413_machine_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c2412_restart,
 MACHINE_END
 
 MACHINE_START(SMDK2412, "SMDK2412")
 	/* Maintainer: Ben Dooks <ben-linux@fluff.org> */
-	.boot_params	= S3C2410_SDRAM_PA + 0x100,
+	.atag_offset	= 0x100,
 
 	.fixup		= smdk2413_fixup,
 	.init_irq	= s3c24xx_init_irq,
 	.map_io		= smdk2413_map_io,
 	.init_machine	= smdk2413_machine_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c2412_restart,
 MACHINE_END
 
 MACHINE_START(SMDK2413, "SMDK2413")
 	/* Maintainer: Ben Dooks <ben-linux@fluff.org> */
-	.boot_params	= S3C2410_SDRAM_PA + 0x100,
+	.atag_offset	= 0x100,
 
 	.fixup		= smdk2413_fixup,
 	.init_irq	= s3c24xx_init_irq,
 	.map_io		= smdk2413_map_io,
 	.init_machine	= smdk2413_machine_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c2412_restart,
 MACHINE_END

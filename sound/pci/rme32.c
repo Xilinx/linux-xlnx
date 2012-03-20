@@ -74,7 +74,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 
 #include <sound/core.h>
 #include <sound/info.h>
@@ -89,8 +89,8 @@
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
-static int fullduplex[SNDRV_CARDS]; // = {[0 ... (SNDRV_CARDS - 1)] = 1};
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
+static bool fullduplex[SNDRV_CARDS]; // = {[0 ... (SNDRV_CARDS - 1)] = 1};
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for RME Digi32 soundcard.");
@@ -1355,7 +1355,7 @@ static int __devinit snd_rme32_create(struct rme32 * rme32)
 	}
 
 	if (request_irq(pci->irq, snd_rme32_interrupt, IRQF_SHARED,
-			"RME32", rme32)) {
+			KBUILD_MODNAME, rme32)) {
 		snd_printk(KERN_ERR "unable to grab IRQ %d\n", pci->irq);
 		return -EBUSY;
 	}
@@ -1985,7 +1985,7 @@ static void __devexit snd_rme32_remove(struct pci_dev *pci)
 }
 
 static struct pci_driver driver = {
-	.name =		"RME Digi32",
+	.name =		KBUILD_MODNAME,
 	.id_table =	snd_rme32_ids,
 	.probe =	snd_rme32_probe,
 	.remove =	__devexit_p(snd_rme32_remove),

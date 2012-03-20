@@ -25,7 +25,11 @@
 
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
+#include <asm/udbg.h>
 #include <asm/fsl_guts.h>
+#include "smp.h"
+
+#include "mpc85xx.h"
 
 #if defined(CONFIG_FB_FSL_DIU) || defined(CONFIG_FB_FSL_DIU_MODULE)
 
@@ -93,8 +97,8 @@
  * The Area Descriptor is a 32-bit value that determine which bits in each
  * pixel are to be used for each color.
  */
-static unsigned int p1022ds_get_pixel_format(unsigned int bits_per_pixel,
-	int monitor_port)
+static u32 p1022ds_get_pixel_format(enum fsl_diu_monitor_port port,
+				    unsigned int bits_per_pixel)
 {
 	switch (bits_per_pixel) {
 	case 32:
@@ -118,7 +122,8 @@ static unsigned int p1022ds_get_pixel_format(unsigned int bits_per_pixel,
  * On some boards, the gamma table for some ports may need to be modified.
  * This is not the case on the P1022DS, so we do nothing.
 */
-static void p1022ds_set_gamma_table(int monitor_port, char *gamma_table_base)
+static void p1022ds_set_gamma_table(enum fsl_diu_monitor_port port,
+				    char *gamma_table_base)
 {
 }
 
@@ -126,38 +131,46 @@ static void p1022ds_set_gamma_table(int monitor_port, char *gamma_table_base)
  * p1022ds_set_monitor_port: switch the output to a different monitor port
  *
  */
-static void p1022ds_set_monitor_port(int monitor_port)
+static void p1022ds_set_monitor_port(enum fsl_diu_monitor_port port)
 {
-	struct device_node *pixis_node;
+	struct device_node *np;
+	void __iomem *pixis;
 	u8 __iomem *brdcfg1;
 
-	pixis_node = of_find_compatible_node(NULL, NULL, "fsl,p1022ds-pixis");
-	if (!pixis_node) {
+	np = of_find_compatible_node(NULL, NULL, "fsl,p1022ds-fpga");
+	if (!np)
+		/* older device trees used "fsl,p1022ds-pixis" */
+		np = of_find_compatible_node(NULL, NULL, "fsl,p1022ds-pixis");
+	if (!np) {
 		pr_err("p1022ds: missing ngPIXIS node\n");
 		return;
 	}
 
-	brdcfg1 = of_iomap(pixis_node, 0);
-	if (!brdcfg1) {
+	pixis = of_iomap(np, 0);
+	if (!pixis) {
 		pr_err("p1022ds: could not map ngPIXIS registers\n");
 		return;
 	}
-	brdcfg1 += 9;	/* BRDCFG1 is at offset 9 in the ngPIXIS */
+	brdcfg1 = pixis + 9;	/* BRDCFG1 is at offset 9 in the ngPIXIS */
 
-	switch (monitor_port) {
-	case 0: /* DVI */
+	switch (port) {
+	case FSL_DIU_PORT_DVI:
+		printk(KERN_INFO "%s:%u\n", __func__, __LINE__);
 		/* Enable the DVI port, disable the DFP and the backlight */
 		clrsetbits_8(brdcfg1, PX_BRDCFG1_DFPEN | PX_BRDCFG1_BACKLIGHT,
 			     PX_BRDCFG1_DVIEN);
 		break;
-	case 1: /* Single link LVDS */
+	case FSL_DIU_PORT_LVDS:
+		printk(KERN_INFO "%s:%u\n", __func__, __LINE__);
 		/* Enable the DFP port, disable the DVI and the backlight */
 		clrsetbits_8(brdcfg1, PX_BRDCFG1_DVIEN | PX_BRDCFG1_BACKLIGHT,
 			     PX_BRDCFG1_DFPEN);
 		break;
 	default:
-		pr_err("p1022ds: unsupported monitor port %i\n", monitor_port);
+		pr_err("p1022ds: unsupported monitor port %i\n", port);
 	}
+
+	iounmap(pixis);
 }
 
 /**
@@ -192,8 +205,13 @@ void p1022ds_set_pixel_clock(unsigned int pixclock)
 	do_div(temp, pixclock);
 	freq = temp;
 
-	/* pixclk is the ratio of the platform clock to the pixel clock */
+	/*
+	 * 'pxclk' is the ratio of the platform clock to the pixel clock.
+	 * This number is programmed into the CLKDVDR register, and the valid
+	 * range of values is 2-255.
+	 */
 	pxclk = DIV_ROUND_CLOSEST(fsl_get_sys_freq(), freq);
+	pxclk = clamp_t(u32, pxclk, 2, 255);
 
 	/* Disable the pixel clock, and set it to non-inverted and no delay */
 	clrbits32(&guts->clkdvdr,
@@ -201,63 +219,37 @@ void p1022ds_set_pixel_clock(unsigned int pixclock)
 
 	/* Enable the clock and set the pxclk */
 	setbits32(&guts->clkdvdr, CLKDVDR_PXCKEN | (pxclk << 16));
+
+	iounmap(guts);
 }
 
 /**
- * p1022ds_show_monitor_port: show the current monitor
- *
- * This function returns a string indicating whether the current monitor is
- * set to DVI or LVDS.
+ * p1022ds_valid_monitor_port: set the monitor port for sysfs
  */
-ssize_t p1022ds_show_monitor_port(int monitor_port, char *buf)
+enum fsl_diu_monitor_port
+p1022ds_valid_monitor_port(enum fsl_diu_monitor_port port)
 {
-	return sprintf(buf, "%c0 - DVI\n%c1 - Single link LVDS\n",
-		monitor_port == 0 ? '*' : ' ', monitor_port == 1 ? '*' : ' ');
-}
-
-/**
- * p1022ds_set_sysfs_monitor_port: set the monitor port for sysfs
- */
-int p1022ds_set_sysfs_monitor_port(int val)
-{
-	return val < 2 ? val : 0;
+	switch (port) {
+	case FSL_DIU_PORT_DVI:
+	case FSL_DIU_PORT_LVDS:
+		return port;
+	default:
+		return FSL_DIU_PORT_DVI; /* Dual-link LVDS is not supported */
+	}
 }
 
 #endif
 
 void __init p1022_ds_pic_init(void)
 {
-	struct mpic *mpic;
-	struct resource r;
-	struct device_node *np;
-
-	np = of_find_node_by_type(NULL, "open-pic");
-	if (!np) {
-		pr_err("Could not find open-pic node\n");
-		return;
-	}
-
-	if (of_address_to_resource(np, 0, &r)) {
-		pr_err("Failed to map mpic register space\n");
-		of_node_put(np);
-		return;
-	}
-
-	mpic = mpic_alloc(np, r.start,
-		MPIC_PRIMARY | MPIC_WANTS_RESET |
+	struct mpic *mpic = mpic_alloc(NULL, 0,
+		MPIC_WANTS_RESET |
 		MPIC_BIG_ENDIAN | MPIC_BROKEN_FRR_NIRQS |
 		MPIC_SINGLE_DEST_CPU,
 		0, 256, " OpenPIC  ");
-
 	BUG_ON(mpic == NULL);
-	of_node_put(np);
-
 	mpic_init(mpic);
 }
-
-#ifdef CONFIG_SMP
-void __init mpc85xx_smp_init(void);
-#endif
 
 /*
  * Setup the architecture
@@ -295,13 +287,10 @@ static void __init p1022_ds_setup_arch(void)
 	diu_ops.set_gamma_table		= p1022ds_set_gamma_table;
 	diu_ops.set_monitor_port	= p1022ds_set_monitor_port;
 	diu_ops.set_pixel_clock		= p1022ds_set_pixel_clock;
-	diu_ops.show_monitor_port	= p1022ds_show_monitor_port;
-	diu_ops.set_sysfs_monitor_port	= p1022ds_set_sysfs_monitor_port;
+	diu_ops.valid_monitor_port	= p1022ds_valid_monitor_port;
 #endif
 
-#ifdef CONFIG_SMP
 	mpc85xx_smp_init();
-#endif
 
 #ifdef CONFIG_SWIOTLB
 	if (memblock_end_of_DRAM() > max) {
@@ -315,10 +304,6 @@ static void __init p1022_ds_setup_arch(void)
 }
 
 static struct of_device_id __initdata p1022_ds_ids[] = {
-	{ .type = "soc", },
-	{ .compatible = "soc", },
-	{ .compatible = "simple-bus", },
-	{ .compatible = "gianfar", },
 	/* So that the DMA channel nodes can be probed individually: */
 	{ .compatible = "fsl,eloplus-dma", },
 	{},
@@ -326,6 +311,7 @@ static struct of_device_id __initdata p1022_ds_ids[] = {
 
 static int __init p1022_ds_publish_devices(void)
 {
+	mpc85xx_common_publish_devices();
 	return of_platform_bus_probe(NULL, p1022_ds_ids, NULL);
 }
 machine_device_initcall(p1022_ds, p1022_ds_publish_devices);

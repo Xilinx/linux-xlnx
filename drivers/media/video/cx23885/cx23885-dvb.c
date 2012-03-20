@@ -37,6 +37,7 @@
 #include "tda8290.h"
 #include "tda18271.h"
 #include "lgdt330x.h"
+#include "xc4000.h"
 #include "xc5000.h"
 #include "max2165.h"
 #include "tda10048.h"
@@ -60,6 +61,8 @@
 #include "cx23885-f300.h"
 #include "altera-ci.h"
 #include "stv0367.h"
+#include "drxk.h"
+#include "mt2063.h"
 
 static unsigned int debug;
 
@@ -110,6 +113,8 @@ static void dvb_buf_release(struct videobuf_queue *q,
 	cx23885_free_buffer(q, (struct cx23885_buffer *)vb);
 }
 
+static int cx23885_dvb_set_frontend(struct dvb_frontend *fe);
+
 static void cx23885_dvb_gate_ctrl(struct cx23885_tsport  *port, int open)
 {
 	struct videobuf_dvb_frontends *f;
@@ -124,6 +129,12 @@ static void cx23885_dvb_gate_ctrl(struct cx23885_tsport  *port, int open)
 
 	if (fe && fe->dvb.frontend && fe->dvb.frontend->ops.i2c_gate_ctrl)
 		fe->dvb.frontend->ops.i2c_gate_ctrl(fe->dvb.frontend, open);
+
+	/*
+	 * FIXME: Improve this path to avoid calling the
+	 * cx23885_dvb_set_frontend() every time it passes here.
+	 */
+	cx23885_dvb_set_frontend(fe->dvb.frontend);
 }
 
 static struct videobuf_queue_ops dvb_qops = {
@@ -478,15 +489,15 @@ static struct xc5000_config mygica_x8506_xc5000_config = {
 	.if_khz = 5380,
 };
 
-static int cx23885_dvb_set_frontend(struct dvb_frontend *fe,
-				    struct dvb_frontend_parameters *param)
+static int cx23885_dvb_set_frontend(struct dvb_frontend *fe)
 {
+	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 	struct cx23885_tsport *port = fe->dvb->priv;
 	struct cx23885_dev *dev = port->dev;
 
 	switch (dev->board) {
 	case CX23885_BOARD_HAUPPAUGE_HVR1275:
-		switch (param->u.vsb.modulation) {
+		switch (p->modulation) {
 		case VSB_8:
 			cx23885_gpio_clear(dev, GPIO_5);
 			break;
@@ -505,31 +516,6 @@ static int cx23885_dvb_set_frontend(struct dvb_frontend *fe,
 	}
 	return 0;
 }
-
-static int cx23885_dvb_fe_ioctl_override(struct dvb_frontend *fe,
-					 unsigned int cmd, void *parg,
-					 unsigned int stage)
-{
-	int err = 0;
-
-	switch (stage) {
-	case DVB_FE_IOCTL_PRE:
-
-		switch (cmd) {
-		case FE_SET_FRONTEND:
-			err = cx23885_dvb_set_frontend(fe,
-				(struct dvb_frontend_parameters *) parg);
-			break;
-		}
-		break;
-
-	case DVB_FE_IOCTL_POST:
-		/* no post-ioctl handling required */
-		break;
-	}
-	return err;
-};
-
 
 static struct lgs8gxx_config magicpro_prohdtve2_lgs8g75_config = {
 	.prod = LGS8GXX_PROD_LGS8G75,
@@ -613,6 +599,24 @@ static struct xc5000_config netup_xc5000_config[] = {
 	}, {
 		.i2c_address = 0x64,
 		.if_khz = 4500,
+	},
+};
+
+static struct drxk_config terratec_drxk_config[] = {
+	{
+		.adr = 0x29,
+		.no_i2c_bridge = 1,
+	}, {
+		.adr = 0x2a,
+		.no_i2c_bridge = 1,
+	},
+};
+
+static struct mt2063_config terratec_mt2063_config[] = {
+	{
+		.tuner_address = 0x60,
+	}, {
+		.tuner_address = 0x67,
 	},
 };
 
@@ -843,7 +847,7 @@ static int dvb_register(struct cx23885_tsport *port)
 			static struct xc2028_ctrl ctl = {
 				.fname   = XC3028L_DEFAULT_FIRMWARE,
 				.max_len = 64,
-				.demod   = 5000,
+				.demod   = XC3028_FE_DIBCOM52,
 				/* This is true for all demods with
 					v36 firmware? */
 				.type    = XC2028_D2633,
@@ -919,6 +923,31 @@ static int dvb_register(struct cx23885_tsport *port)
 				&cfg);
 			if (fe != NULL && fe->ops.tuner_ops.set_config != NULL)
 				fe->ops.tuner_ops.set_config(fe, &ctl);
+		}
+		break;
+	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000:
+		i2c_bus = &dev->i2c_bus[0];
+
+		fe0->dvb.frontend = dvb_attach(zl10353_attach,
+					       &dvico_fusionhdtv_xc3028,
+					       &i2c_bus->i2c_adap);
+		if (fe0->dvb.frontend != NULL) {
+			struct dvb_frontend	*fe;
+			struct xc4000_config	cfg = {
+				.i2c_address	  = 0x61,
+				.default_pm	  = 0,
+				.dvb_amplitude	  = 134,
+				.set_smoothedcvbs = 1,
+				.if_khz		  = 4560
+			};
+
+			fe = dvb_attach(xc4000_attach, fe0->dvb.frontend,
+					&dev->i2c_bus[1].i2c_adap, &cfg);
+			if (!fe) {
+				printk(KERN_ERR "%s/2: xc4000 attach failed\n",
+				       dev->name);
+				goto frontend_detach;
+			}
 		}
 		break;
 	case CX23885_BOARD_TBS_6920:
@@ -1022,6 +1051,20 @@ static int dvb_register(struct cx23885_tsport *port)
 		}
 		break;
 	case CX23885_BOARD_HAUPPAUGE_HVR1850:
+		i2c_bus = &dev->i2c_bus[0];
+		fe0->dvb.frontend = dvb_attach(s5h1411_attach,
+			&hcw_s5h1411_config,
+			&i2c_bus->i2c_adap);
+		if (fe0->dvb.frontend != NULL)
+			dvb_attach(tda18271_attach, fe0->dvb.frontend,
+				0x60, &dev->i2c_bus[0].i2c_adap,
+				&hauppauge_tda18271_config);
+
+		tda18271_attach(&dev->ts1.analog_fe,
+			0x60, &dev->i2c_bus[1].i2c_adap,
+			&hauppauge_tda18271_config);
+
+		break;
 	case CX23885_BOARD_HAUPPAUGE_HVR1290:
 		i2c_bus = &dev->i2c_bus[0];
 		fe0->dvb.frontend = dvb_attach(s5h1411_attach,
@@ -1097,6 +1140,39 @@ static int dvb_register(struct cx23885_tsport *port)
 				goto frontend_detach;
 		}
 		break;
+	case CX23885_BOARD_TERRATEC_CINERGY_T_PCIE_DUAL:
+		i2c_bus = &dev->i2c_bus[0];
+		i2c_bus2 = &dev->i2c_bus[1];
+
+		switch (port->nr) {
+		/* port b */
+		case 1:
+			fe0->dvb.frontend = dvb_attach(drxk_attach,
+					&terratec_drxk_config[0],
+					&i2c_bus->i2c_adap);
+			if (fe0->dvb.frontend != NULL) {
+				if (!dvb_attach(mt2063_attach,
+						fe0->dvb.frontend,
+						&terratec_mt2063_config[0],
+						&i2c_bus2->i2c_adap))
+					goto frontend_detach;
+			}
+			break;
+		/* port c */
+		case 2:
+			fe0->dvb.frontend = dvb_attach(drxk_attach,
+					&terratec_drxk_config[1],
+					&i2c_bus->i2c_adap);
+			if (fe0->dvb.frontend != NULL) {
+				if (!dvb_attach(mt2063_attach,
+						fe0->dvb.frontend,
+						&terratec_mt2063_config[1],
+						&i2c_bus2->i2c_adap))
+					goto frontend_detach;
+			}
+			break;
+		}
+		break;
 	default:
 		printk(KERN_INFO "%s: The frontend of your DVB/ATSC card "
 			" isn't supported yet\n",
@@ -1130,7 +1206,7 @@ static int dvb_register(struct cx23885_tsport *port)
 	/* register everything */
 	ret = videobuf_dvb_register_bus(&port->frontends, THIS_MODULE, port,
 					&dev->pci->dev, adapter_nr, mfe_shared,
-					cx23885_dvb_fe_ioctl_override);
+					NULL);
 	if (ret)
 		goto frontend_detach;
 
@@ -1249,7 +1325,7 @@ int cx23885_dvb_unregister(struct cx23885_tsport *port)
 	 * implement MFE support.
 	 */
 	fe0 = videobuf_dvb_get_frontend(&port->frontends, 1);
-	if (fe0->dvb.frontend)
+	if (fe0 && fe0->dvb.frontend)
 		videobuf_dvb_unregister_bus(&port->frontends);
 
 	switch (port->dev->board) {

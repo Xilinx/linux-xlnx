@@ -120,7 +120,7 @@ int tps65910_clear_bits(struct tps65910 *tps65910, u8 reg, u8 mask)
 		goto out;
 	}
 
-	data &= mask;
+	data &= ~mask;
 	err = tps65910_i2c_write(tps65910, reg, 1, &data);
 	if (err)
 		dev_err(tps65910->dev, "write to reg %x failed\n", reg);
@@ -147,12 +147,11 @@ static int tps65910_i2c_probe(struct i2c_client *i2c,
 	if (init_data == NULL)
 		return -ENOMEM;
 
-	init_data->irq = pmic_plat_data->irq;
-	init_data->irq_base = pmic_plat_data->irq;
-
 	tps65910 = kzalloc(sizeof(struct tps65910), GFP_KERNEL);
-	if (tps65910 == NULL)
+	if (tps65910 == NULL) {
+		kfree(init_data);
 		return -ENOMEM;
+	}
 
 	i2c_set_clientdata(i2c, tps65910);
 	tps65910->dev = &i2c->dev;
@@ -168,17 +167,19 @@ static int tps65910_i2c_probe(struct i2c_client *i2c,
 	if (ret < 0)
 		goto err;
 
+	init_data->irq = pmic_plat_data->irq;
+	init_data->irq_base = pmic_plat_data->irq_base;
+
 	tps65910_gpio_init(tps65910, pmic_plat_data->gpio_base);
 
-	ret = tps65910_irq_init(tps65910, init_data->irq, init_data);
-	if (ret < 0)
-		goto err;
+	tps65910_irq_init(tps65910, init_data->irq, init_data);
 
+	kfree(init_data);
 	return ret;
 
 err:
-	mfd_remove_devices(tps65910->dev);
 	kfree(tps65910);
+	kfree(init_data);
 	return ret;
 }
 
@@ -186,6 +187,7 @@ static int tps65910_i2c_remove(struct i2c_client *i2c)
 {
 	struct tps65910 *tps65910 = i2c_get_clientdata(i2c);
 
+	tps65910_irq_exit(tps65910);
 	mfd_remove_devices(tps65910->dev);
 	kfree(tps65910);
 

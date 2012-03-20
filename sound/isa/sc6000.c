@@ -48,7 +48,7 @@ MODULE_SUPPORTED_DEVICE("{{Gallant, SC-6000},"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE;	/* Enable this card */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE;	/* Enable this card */
 static long port[SNDRV_CARDS] = SNDRV_DEFAULT_PORT;	/* 0x220, 0x240 */
 static int irq[SNDRV_CARDS] = SNDRV_DEFAULT_IRQ;	/* 5, 7, 9, 10, 11 */
 static long mss_port[SNDRV_CARDS] = SNDRV_DEFAULT_PORT;	/* 0x530, 0xe80 */
@@ -658,8 +658,7 @@ static int __devinit snd_sc6000_probe(struct device *devptr, unsigned int dev)
 		if (snd_mpu401_uart_new(card, 0,
 					MPU401_HW_MPU401,
 					mpu_port[dev], 0,
-					mpu_irq[dev], IRQF_DISABLED,
-					NULL) < 0)
+					mpu_irq[dev], NULL) < 0)
 			snd_printk(KERN_ERR "no MPU-401 device at 0x%lx ?\n",
 					mpu_port[dev]);
 	}

@@ -41,7 +41,6 @@
 #endif /* CONFIG_P54_SPI_DEFAULT_EEPROM */
 
 MODULE_FIRMWARE("3826.arm");
-MODULE_ALIAS("stlc45xx");
 
 /*
  * gpios should be handled in board files and provided via platform data,
@@ -582,14 +581,8 @@ static void p54spi_op_stop(struct ieee80211_hw *dev)
 	struct p54s_priv *priv = dev->priv;
 	unsigned long flags;
 
-	if (mutex_lock_interruptible(&priv->mutex)) {
-		/* FIXME: how to handle this error? */
-		return;
-	}
-
+	mutex_lock(&priv->mutex);
 	WARN_ON(priv->fw_state != FW_STATE_READY);
-
-	cancel_work_sync(&priv->work);
 
 	p54spi_power_off(priv);
 	spin_lock_irqsave(&priv->tx_lock, flags);
@@ -598,6 +591,8 @@ static void p54spi_op_stop(struct ieee80211_hw *dev)
 
 	priv->fw_state = FW_STATE_OFF;
 	mutex_unlock(&priv->mutex);
+
+	cancel_work_sync(&priv->work);
 }
 
 static int __devinit p54spi_probe(struct spi_device *spi)
@@ -657,6 +652,7 @@ static int __devinit p54spi_probe(struct spi_device *spi)
 	init_completion(&priv->fw_comp);
 	INIT_LIST_HEAD(&priv->tx_pending);
 	mutex_init(&priv->mutex);
+	spin_lock_init(&priv->tx_lock);
 	SET_IEEE80211_DEV(hw, &spi->dev);
 	priv->common.open = p54spi_op_start;
 	priv->common.stop = p54spi_op_stop;
@@ -704,7 +700,6 @@ static int __devexit p54spi_remove(struct spi_device *spi)
 static struct spi_driver p54spi_driver = {
 	.driver = {
 		.name		= "p54spi",
-		.bus		= &spi_bus_type,
 		.owner		= THIS_MODULE,
 	},
 
@@ -738,3 +733,4 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Christian Lamparter <chunkeey@web.de>");
 MODULE_ALIAS("spi:cx3110x");
 MODULE_ALIAS("spi:p54spi");
+MODULE_ALIAS("spi:stlc45xx");

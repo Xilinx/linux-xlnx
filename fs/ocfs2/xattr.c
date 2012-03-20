@@ -623,7 +623,7 @@ int ocfs2_calc_security_init(struct inode *dir,
 
 int ocfs2_calc_xattr_init(struct inode *dir,
 			  struct buffer_head *dir_bh,
-			  int mode,
+			  umode_t mode,
 			  struct ocfs2_security_xattr_info *si,
 			  int *want_clusters,
 			  int *xattr_credits,
@@ -2376,16 +2376,18 @@ static int ocfs2_remove_value_outside(struct inode*inode,
 		}
 
 		ret = ocfs2_xattr_value_truncate(inode, vb, 0, &ctxt);
-		if (ret < 0) {
-			mlog_errno(ret);
-			break;
-		}
 
 		ocfs2_commit_trans(osb, ctxt.handle);
 		if (ctxt.meta_ac) {
 			ocfs2_free_alloc_context(ctxt.meta_ac);
 			ctxt.meta_ac = NULL;
 		}
+
+		if (ret < 0) {
+			mlog_errno(ret);
+			break;
+		}
+
 	}
 
 	if (ctxt.meta_ac)
@@ -7185,20 +7187,9 @@ int ocfs2_init_security_and_acl(struct inode *dir,
 {
 	int ret = 0;
 	struct buffer_head *dir_bh = NULL;
-	struct ocfs2_security_xattr_info si = {
-		.enable = 1,
-	};
 
-	ret = ocfs2_init_security_get(inode, dir, qstr, &si);
+	ret = ocfs2_init_security_get(inode, dir, qstr, NULL);
 	if (!ret) {
-		ret = ocfs2_xattr_set(inode, OCFS2_XATTR_INDEX_SECURITY,
-				      si.name, si.value, si.value_len,
-				      XATTR_CREATE);
-		if (ret) {
-			mlog_errno(ret);
-			goto leave;
-		}
-	} else if (ret != -EOPNOTSUPP) {
 		mlog_errno(ret);
 		goto leave;
 	}
@@ -7255,6 +7246,22 @@ static int ocfs2_xattr_security_set(struct dentry *dentry, const char *name,
 			       name, value, size, flags);
 }
 
+int ocfs2_initxattrs(struct inode *inode, const struct xattr *xattr_array,
+		     void *fs_info)
+{
+	const struct xattr *xattr;
+	int err = 0;
+
+	for (xattr = xattr_array; xattr->name != NULL; xattr++) {
+		err = ocfs2_xattr_set(inode, OCFS2_XATTR_INDEX_SECURITY,
+				      xattr->name, xattr->value,
+				      xattr->value_len, XATTR_CREATE);
+		if (err)
+			break;
+	}
+	return err;
+}
+
 int ocfs2_init_security_get(struct inode *inode,
 			    struct inode *dir,
 			    const struct qstr *qstr,
@@ -7263,8 +7270,13 @@ int ocfs2_init_security_get(struct inode *inode,
 	/* check whether ocfs2 support feature xattr */
 	if (!ocfs2_supports_xattr(OCFS2_SB(dir->i_sb)))
 		return -EOPNOTSUPP;
-	return security_inode_init_security(inode, dir, qstr, &si->name,
-					    &si->value, &si->value_len);
+	if (si)
+		return security_old_inode_init_security(inode, dir, qstr,
+							&si->name, &si->value,
+							&si->value_len);
+
+	return security_inode_init_security(inode, dir, qstr,
+					    &ocfs2_initxattrs, NULL);
 }
 
 int ocfs2_init_security_set(handle_t *handle,

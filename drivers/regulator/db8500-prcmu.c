@@ -13,10 +13,11 @@
 #include <linux/err.h>
 #include <linux/spinlock.h>
 #include <linux/platform_device.h>
-#include <linux/mfd/db8500-prcmu.h>
+#include <linux/mfd/dbx500-prcmu.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/db8500-prcmu.h>
+#include <linux/module.h>
 
 /*
  * power state reference count
@@ -485,7 +486,7 @@ static int __devinit db8500_regulator_probe(struct platform_device *pdev)
 
 		/* register with the regulator framework */
 		info->rdev = regulator_register(&info->desc, &pdev->dev,
-				init_data, info);
+				init_data, info, NULL);
 		if (IS_ERR(info->rdev)) {
 			err = PTR_ERR(info->rdev);
 			dev_err(&pdev->dev, "failed to register %s: err %i\n",

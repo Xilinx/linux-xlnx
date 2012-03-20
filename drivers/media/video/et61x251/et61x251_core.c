@@ -18,6 +18,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.               *
  ***************************************************************************/
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
+#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -48,8 +51,7 @@
 #define ET61X251_MODULE_AUTHOR  "(C) 2006-2007 Luca Risolia"
 #define ET61X251_AUTHOR_EMAIL   "<luca.risolia@studio.unibo.it>"
 #define ET61X251_MODULE_LICENSE "GPL"
-#define ET61X251_MODULE_VERSION "1:1.09"
-#define ET61X251_MODULE_VERSION_CODE  KERNEL_VERSION(1, 1, 9)
+#define ET61X251_MODULE_VERSION "1.1.10"
 
 /*****************************************************************************/
 
@@ -74,8 +76,8 @@ MODULE_PARM_DESC(video_nr,
 		 "\none and for every other camera."
 		 "\n");
 
-static short force_munmap[] = {[0 ... ET61X251_MAX_DEVICES-1] =
-			       ET61X251_FORCE_MUNMAP};
+static bool force_munmap[] = {[0 ... ET61X251_MAX_DEVICES-1] =
+			      ET61X251_FORCE_MUNMAP};
 module_param_array(force_munmap, bool, NULL, 0444);
 MODULE_PARM_DESC(force_munmap,
 		 "\n<0|1[,...]> Force the application to unmap previously"
@@ -1579,7 +1581,7 @@ et61x251_vidioc_querycap(struct et61x251_device* cam, void __user * arg)
 {
 	struct v4l2_capability cap = {
 		.driver = "et61x251",
-		.version = ET61X251_MODULE_VERSION_CODE,
+		.version = LINUX_VERSION_CODE,
 		.capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_READWRITE |
 				V4L2_CAP_STREAMING,
 	};
@@ -2480,16 +2482,8 @@ static long et61x251_ioctl_v4l2(struct file *filp,
 	case VIDIOC_S_PARM:
 		return et61x251_vidioc_s_parm(cam, arg);
 
-	case VIDIOC_G_STD:
-	case VIDIOC_S_STD:
-	case VIDIOC_QUERYSTD:
-	case VIDIOC_ENUMSTD:
-	case VIDIOC_QUERYMENU:
-	case VIDIOC_ENUM_FRAMEINTERVALS:
-		return -EINVAL;
-
 	default:
-		return -EINVAL;
+		return -ENOTTY;
 
 	}
 }
@@ -2686,27 +2680,4 @@ static struct usb_driver et61x251_usb_driver = {
 	.disconnect = et61x251_usb_disconnect,
 };
 
-/*****************************************************************************/
-
-static int __init et61x251_module_init(void)
-{
-	int err = 0;
-
-	KDBG(2, ET61X251_MODULE_NAME " v" ET61X251_MODULE_VERSION);
-	KDBG(3, ET61X251_MODULE_AUTHOR);
-
-	if ((err = usb_register(&et61x251_usb_driver)))
-		KDBG(1, "usb_register() failed");
-
-	return err;
-}
-
-
-static void __exit et61x251_module_exit(void)
-{
-	usb_deregister(&et61x251_usb_driver);
-}
-
-
-module_init(et61x251_module_init);
-module_exit(et61x251_module_exit);
+module_usb_driver(et61x251_usb_driver);

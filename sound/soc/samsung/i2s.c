@@ -14,6 +14,8 @@
 #include <linux/slab.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/module.h>
+#include <linux/pm_runtime.h>
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
@@ -21,110 +23,9 @@
 #include <plat/audio.h>
 
 #include "dma.h"
+#include "idma.h"
 #include "i2s.h"
-
-#define I2SCON		0x0
-#define I2SMOD		0x4
-#define I2SFIC		0x8
-#define I2SPSR		0xc
-#define I2STXD		0x10
-#define I2SRXD		0x14
-#define I2SFICS		0x18
-#define I2STXDS		0x1c
-
-#define CON_RSTCLR		(1 << 31)
-#define CON_FRXOFSTATUS		(1 << 26)
-#define CON_FRXORINTEN		(1 << 25)
-#define CON_FTXSURSTAT		(1 << 24)
-#define CON_FTXSURINTEN		(1 << 23)
-#define CON_TXSDMA_PAUSE	(1 << 20)
-#define CON_TXSDMA_ACTIVE	(1 << 18)
-
-#define CON_FTXURSTATUS		(1 << 17)
-#define CON_FTXURINTEN		(1 << 16)
-#define CON_TXFIFO2_EMPTY	(1 << 15)
-#define CON_TXFIFO1_EMPTY	(1 << 14)
-#define CON_TXFIFO2_FULL	(1 << 13)
-#define CON_TXFIFO1_FULL	(1 << 12)
-
-#define CON_LRINDEX		(1 << 11)
-#define CON_TXFIFO_EMPTY	(1 << 10)
-#define CON_RXFIFO_EMPTY	(1 << 9)
-#define CON_TXFIFO_FULL		(1 << 8)
-#define CON_RXFIFO_FULL		(1 << 7)
-#define CON_TXDMA_PAUSE		(1 << 6)
-#define CON_RXDMA_PAUSE		(1 << 5)
-#define CON_TXCH_PAUSE		(1 << 4)
-#define CON_RXCH_PAUSE		(1 << 3)
-#define CON_TXDMA_ACTIVE	(1 << 2)
-#define CON_RXDMA_ACTIVE	(1 << 1)
-#define CON_ACTIVE		(1 << 0)
-
-#define MOD_OPCLK_CDCLK_OUT	(0 << 30)
-#define MOD_OPCLK_CDCLK_IN	(1 << 30)
-#define MOD_OPCLK_BCLK_OUT	(2 << 30)
-#define MOD_OPCLK_PCLK		(3 << 30)
-#define MOD_OPCLK_MASK		(3 << 30)
-#define MOD_TXS_IDMA		(1 << 28) /* Sec_TXFIFO use I-DMA */
-
-#define MOD_BLCS_SHIFT	26
-#define MOD_BLCS_16BIT	(0 << MOD_BLCS_SHIFT)
-#define MOD_BLCS_8BIT	(1 << MOD_BLCS_SHIFT)
-#define MOD_BLCS_24BIT	(2 << MOD_BLCS_SHIFT)
-#define MOD_BLCS_MASK	(3 << MOD_BLCS_SHIFT)
-#define MOD_BLCP_SHIFT	24
-#define MOD_BLCP_16BIT	(0 << MOD_BLCP_SHIFT)
-#define MOD_BLCP_8BIT	(1 << MOD_BLCP_SHIFT)
-#define MOD_BLCP_24BIT	(2 << MOD_BLCP_SHIFT)
-#define MOD_BLCP_MASK	(3 << MOD_BLCP_SHIFT)
-
-#define MOD_C2DD_HHALF		(1 << 21) /* Discard Higher-half */
-#define MOD_C2DD_LHALF		(1 << 20) /* Discard Lower-half */
-#define MOD_C1DD_HHALF		(1 << 19)
-#define MOD_C1DD_LHALF		(1 << 18)
-#define MOD_DC2_EN		(1 << 17)
-#define MOD_DC1_EN		(1 << 16)
-#define MOD_BLC_16BIT		(0 << 13)
-#define MOD_BLC_8BIT		(1 << 13)
-#define MOD_BLC_24BIT		(2 << 13)
-#define MOD_BLC_MASK		(3 << 13)
-
-#define MOD_IMS_SYSMUX		(1 << 10)
-#define MOD_SLAVE		(1 << 11)
-#define MOD_TXONLY		(0 << 8)
-#define MOD_RXONLY		(1 << 8)
-#define MOD_TXRX		(2 << 8)
-#define MOD_MASK		(3 << 8)
-#define MOD_LR_LLOW		(0 << 7)
-#define MOD_LR_RLOW		(1 << 7)
-#define MOD_SDF_IIS		(0 << 5)
-#define MOD_SDF_MSB		(1 << 5)
-#define MOD_SDF_LSB		(2 << 5)
-#define MOD_SDF_MASK		(3 << 5)
-#define MOD_RCLK_256FS		(0 << 3)
-#define MOD_RCLK_512FS		(1 << 3)
-#define MOD_RCLK_384FS		(2 << 3)
-#define MOD_RCLK_768FS		(3 << 3)
-#define MOD_RCLK_MASK		(3 << 3)
-#define MOD_BCLK_32FS		(0 << 1)
-#define MOD_BCLK_48FS		(1 << 1)
-#define MOD_BCLK_16FS		(2 << 1)
-#define MOD_BCLK_24FS		(3 << 1)
-#define MOD_BCLK_MASK		(3 << 1)
-#define MOD_8BIT		(1 << 0)
-
-#define MOD_CDCLKCON		(1 << 12)
-
-#define PSR_PSREN		(1 << 15)
-
-#define FIC_TX2COUNT(x)		(((x) >>  24) & 0xf)
-#define FIC_TX1COUNT(x)		(((x) >>  16) & 0xf)
-
-#define FIC_TXFLUSH		(1 << 15)
-#define FIC_RXFLUSH		(1 << 7)
-#define FIC_TXCOUNT(x)		(((x) >>  8) & 0xf)
-#define FIC_RXCOUNT(x)		(((x) >>  0) & 0xf)
-#define FICS_TXCOUNT(x)		(((x) >>  8) & 0x7f)
+#include "i2s-regs.h"
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
@@ -162,6 +63,7 @@ struct i2s_dai {
 	/* DMA parameters */
 	struct s3c_dma_params dma_playback;
 	struct s3c_dma_params dma_capture;
+	struct s3c_dma_params idma_playback;
 	u32	quirks;
 	u32	suspend_i2smod;
 	u32	suspend_i2scon;
@@ -979,6 +881,10 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 	if (i2s->quirks & QUIRK_NEED_RSTCLR)
 		writel(CON_RSTCLR, i2s->addr + I2SCON);
 
+	if (i2s->quirks & QUIRK_SEC_DAI)
+		idma_reg_addr_init(i2s->addr,
+					i2s->sec_dai->idma_playback.dma_addr);
+
 probe_exit:
 	/* Reset any constraint on RFS and BFS */
 	i2s->rfs = 0;
@@ -1018,7 +924,7 @@ static int samsung_i2s_dai_remove(struct snd_soc_dai *dai)
 	return 0;
 }
 
-static struct snd_soc_dai_ops samsung_i2s_dai_ops = {
+static const struct snd_soc_dai_ops samsung_i2s_dai_ops = {
 	.trigger = i2s_trigger,
 	.hw_params = i2s_hw_params,
 	.set_fmt = i2s_set_fmt,
@@ -1040,7 +946,7 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 {
 	struct i2s_dai *i2s;
 
-	i2s = kzalloc(sizeof(struct i2s_dai), GFP_KERNEL);
+	i2s = devm_kzalloc(&pdev->dev, sizeof(struct i2s_dai), GFP_KERNEL);
 	if (i2s == NULL)
 		return NULL;
 
@@ -1067,10 +973,8 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 		i2s->pdev = platform_device_register_resndata(NULL,
 				pdev->name, pdev->id + SAMSUNG_I2S_SECOFF,
 				NULL, 0, NULL, 0);
-		if (IS_ERR(i2s->pdev)) {
-			kfree(i2s);
+		if (IS_ERR(i2s->pdev))
 			return NULL;
-		}
 	}
 
 	/* Pre-assign snd_soc_dai_set_drvdata */
@@ -1143,7 +1047,7 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 	if (!pri_dai) {
 		dev_err(&pdev->dev, "Unable to alloc I2S_pri\n");
 		ret = -ENOMEM;
-		goto err1;
+		goto err;
 	}
 
 	pri_dai->dma_playback.dma_addr = regs_base + I2STXD;
@@ -1168,7 +1072,7 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		if (!sec_dai) {
 			dev_err(&pdev->dev, "Unable to alloc I2S_sec\n");
 			ret = -ENOMEM;
-			goto err2;
+			goto err;
 		}
 		sec_dai->dma_playback.dma_addr = regs_base + I2STXDS;
 		sec_dai->dma_playback.client =
@@ -1179,6 +1083,7 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		sec_dai->dma_playback.dma_size = 4;
 		sec_dai->base = regs_base;
 		sec_dai->quirks = quirks;
+		sec_dai->idma_playback.dma_addr = i2s_cfg->idma_addr;
 		sec_dai->pri_dai = pri_dai;
 		pri_dai->sec_dai = sec_dai;
 	}
@@ -1186,17 +1091,15 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 	if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev)) {
 		dev_err(&pdev->dev, "Unable to configure gpio\n");
 		ret = -EINVAL;
-		goto err3;
+		goto err;
 	}
 
 	snd_soc_register_dai(&pri_dai->pdev->dev, &pri_dai->i2s_dai_drv);
 
+	pm_runtime_enable(&pdev->dev);
+
 	return 0;
-err3:
-	kfree(sec_dai);
-err2:
-	kfree(pri_dai);
-err1:
+err:
 	release_mem_region(regs_base, resource_size(res));
 
 	return ret;
@@ -1205,6 +1108,7 @@ err1:
 static __devexit int samsung_i2s_remove(struct platform_device *pdev)
 {
 	struct i2s_dai *i2s, *other;
+	struct resource *res;
 
 	i2s = dev_get_drvdata(&pdev->dev);
 	other = i2s->pri_dai ? : i2s->sec_dai;
@@ -1213,7 +1117,7 @@ static __devexit int samsung_i2s_remove(struct platform_device *pdev)
 		other->pri_dai = NULL;
 		other->sec_dai = NULL;
 	} else {
-		struct resource *res;
+		pm_runtime_disable(&pdev->dev);
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		if (res)
 			release_mem_region(res->start, resource_size(res));
@@ -1222,8 +1126,6 @@ static __devexit int samsung_i2s_remove(struct platform_device *pdev)
 	i2s->pri_dai = NULL;
 	i2s->sec_dai = NULL;
 
-	kfree(i2s);
-
 	snd_soc_unregister_dai(&pdev->dev);
 
 	return 0;
@@ -1231,24 +1133,14 @@ static __devexit int samsung_i2s_remove(struct platform_device *pdev)
 
 static struct platform_driver samsung_i2s_driver = {
 	.probe  = samsung_i2s_probe,
-	.remove = samsung_i2s_remove,
+	.remove = __devexit_p(samsung_i2s_remove),
 	.driver = {
 		.name = "samsung-i2s",
 		.owner = THIS_MODULE,
 	},
 };
 
-static int __init samsung_i2s_init(void)
-{
-	return platform_driver_register(&samsung_i2s_driver);
-}
-module_init(samsung_i2s_init);
-
-static void __exit samsung_i2s_exit(void)
-{
-	platform_driver_unregister(&samsung_i2s_driver);
-}
-module_exit(samsung_i2s_exit);
+module_platform_driver(samsung_i2s_driver);
 
 /* Module information */
 MODULE_AUTHOR("Jaswinder Singh, <jassi.brar@samsung.com>");

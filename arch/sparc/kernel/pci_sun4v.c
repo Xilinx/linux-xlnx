@@ -12,6 +12,7 @@
 #include <linux/percpu.h>
 #include <linux/irq.h>
 #include <linux/msi.h>
+#include <linux/export.h>
 #include <linux/log2.h>
 #include <linux/of_device.h>
 
@@ -848,9 +849,9 @@ static int pci_sun4v_msiq_build_irq(struct pci_pbm_info *pbm,
 	if (!irq)
 		return -ENOMEM;
 
-	if (pci_sun4v_msiq_setstate(pbm->devhandle, msiqid, HV_MSIQSTATE_IDLE))
-		return -EINVAL;
 	if (pci_sun4v_msiq_setvalid(pbm->devhandle, msiqid, HV_MSIQ_VALID))
+		return -EINVAL;
+	if (pci_sun4v_msiq_setstate(pbm->devhandle, msiqid, HV_MSIQSTATE_IDLE))
 		return -EINVAL;
 
 	return irq;

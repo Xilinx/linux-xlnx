@@ -54,6 +54,8 @@
 
 #include <plat/common-smdk.h>
 
+#include "common.h"
+
 static struct map_desc smdk2410_iodesc[] __initdata = {
   /* nothing here yet */
 };
@@ -111,11 +113,10 @@ static void __init smdk2410_init(void)
 MACHINE_START(SMDK2410, "SMDK2410") /* @TODO: request a new identifier and switch
 				    * to SMDK2410 */
 	/* Maintainer: Jonas Dietsche */
-	.boot_params	= S3C2410_SDRAM_PA + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= smdk2410_map_io,
 	.init_irq	= s3c24xx_init_irq,
 	.init_machine	= smdk2410_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c2410_restart,
 MACHINE_END
-
-

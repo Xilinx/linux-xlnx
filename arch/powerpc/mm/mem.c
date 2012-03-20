@@ -17,7 +17,7 @@
  *
  */
 
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -34,6 +34,7 @@
 #include <linux/suspend.h>
 #include <linux/memblock.h>
 #include <linux/hugetlb.h>
+#include <linux/slab.h>
 
 #include <asm/pgalloc.h>
 #include <asm/prom.h>
@@ -50,6 +51,7 @@
 #include <asm/vdso.h>
 #include <asm/fixmap.h>
 #include <asm/swiotlb.h>
+#include <asm/rtas.h>
 
 #include "mmu_decl.h"
 
@@ -123,7 +125,8 @@ int arch_add_memory(int nid, u64 start, u64 size)
 	pgdata = NODE_DATA(nid);
 
 	start = (unsigned long)__va(start);
-	create_section_mapping(start, start + size);
+	if (create_section_mapping(start, start + size))
+		return -EINVAL;
 
 	/* this should work for most non-highmem platforms */
 	zone = pgdata->node_zones;
@@ -197,7 +200,7 @@ void __init do_init_bootmem(void)
 		unsigned long start_pfn, end_pfn;
 		start_pfn = memblock_region_memory_base_pfn(reg);
 		end_pfn = memblock_region_memory_end_pfn(reg);
-		add_active_range(0, start_pfn, end_pfn);
+		memblock_set_node(0, (phys_addr_t)ULLONG_MAX, 0);
 	}
 
 	/* Add all physical memory to the bootmem map, mark each area
@@ -249,7 +252,7 @@ static int __init mark_nonram_nosave(void)
  */
 void __init paging_init(void)
 {
-	unsigned long total_ram = memblock_phys_mem_size();
+	unsigned long long total_ram = memblock_phys_mem_size();
 	phys_addr_t top_of_ram = memblock_end_of_DRAM();
 	unsigned long max_zone_pfns[MAX_NR_ZONES];
 
@@ -269,7 +272,7 @@ void __init paging_init(void)
 	kmap_prot = PAGE_KERNEL;
 #endif /* CONFIG_HIGHMEM */
 
-	printk(KERN_DEBUG "Top of RAM: 0x%llx, Total RAM: 0x%lx\n",
+	printk(KERN_DEBUG "Top of RAM: 0x%llx, Total RAM: 0x%llx\n",
 	       (unsigned long long)top_of_ram, total_ram);
 	printk(KERN_DEBUG "Memory hole size: %ldMB\n",
 	       (long int)((top_of_ram - total_ram) >> 20));
@@ -337,8 +340,9 @@ void __init mem_init(void)
 
 		highmem_mapnr = lowmem_end_addr >> PAGE_SHIFT;
 		for (pfn = highmem_mapnr; pfn < max_mapnr; ++pfn) {
+			phys_addr_t paddr = (phys_addr_t)pfn << PAGE_SHIFT;
 			struct page *page = pfn_to_page(pfn);
-			if (memblock_is_reserved(pfn << PAGE_SHIFT))
+			if (memblock_is_reserved(paddr))
 				continue;
 			ClearPageReserved(page);
 			init_page_count(page);
@@ -351,6 +355,15 @@ void __init mem_init(void)
 		       totalhigh_pages << (PAGE_SHIFT-10));
 	}
 #endif /* CONFIG_HIGHMEM */
+
+#if defined(CONFIG_PPC_FSL_BOOK3E) && !defined(CONFIG_SMP)
+	/*
+	 * If smp is enabled, next_tlbcam_idx is initialized in the cpu up
+	 * functions.... do it here for the non-smp case.
+	 */
+	per_cpu(next_tlbcam_idx, smp_processor_id()) =
+		(mfspr(SPRN_TLB1CFG) & TLBnCFG_N_ENTRY) - 1;
+#endif
 
 	printk(KERN_INFO "Memory: %luk/%luk available (%luk kernel code, "
 	       "%luk reserved, %luk data, %luk bss, %luk init)\n",
@@ -380,6 +393,25 @@ void __init mem_init(void)
 #endif /* CONFIG_PPC32 */
 
 	mem_init_done = 1;
+}
+
+void free_initmem(void)
+{
+	unsigned long addr;
+
+	ppc_md.progress = ppc_printk_progress;
+
+	addr = (unsigned long)__init_begin;
+	for (; addr < (unsigned long)__init_end; addr += PAGE_SIZE) {
+		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
+		ClearPageReserved(virt_to_page(addr));
+		init_page_count(virt_to_page(addr));
+		free_page(addr);
+		totalram_pages++;
+	}
+	pr_info("Freeing unused kernel memory: %luk freed\n",
+		((unsigned long)__init_end -
+		(unsigned long)__init_begin) >> 10);
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -519,4 +551,58 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 		return;
 	hash_preload(vma->vm_mm, address, access, trap);
 #endif /* CONFIG_PPC_STD_MMU */
+#if (defined(CONFIG_PPC_BOOK3E_64) || defined(CONFIG_PPC_FSL_BOOK3E)) \
+	&& defined(CONFIG_HUGETLB_PAGE)
+	if (is_vm_hugetlb_page(vma))
+		book3e_hugetlb_preload(vma, address, *ptep);
+#endif
 }
+
+/*
+ * System memory should not be in /proc/iomem but various tools expect it
+ * (eg kdump).
+ */
+static int add_system_ram_resources(void)
+{
+	struct memblock_region *reg;
+
+	for_each_memblock(memory, reg) {
+		struct resource *res;
+		unsigned long base = reg->base;
+		unsigned long size = reg->size;
+
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+		WARN_ON(!res);
+
+		if (res) {
+			res->name = "System RAM";
+			res->start = base;
+			res->end = base + size - 1;
+			res->flags = IORESOURCE_MEM;
+			WARN_ON(request_resource(&iomem_resource, res) < 0);
+		}
+	}
+
+	return 0;
+}
+subsys_initcall(add_system_ram_resources);
+
+#ifdef CONFIG_STRICT_DEVMEM
+/*
+ * devmem_is_allowed(): check to see if /dev/mem access to a certain address
+ * is valid. The argument is a physical page number.
+ *
+ * Access has to be given to non-kernel-ram areas as well, these contain the
+ * PCI mmio resources as well as potential bios/acpi data regions.
+ */
+int devmem_is_allowed(unsigned long pfn)
+{
+	if (iomem_is_exclusive(pfn << PAGE_SHIFT))
+		return 0;
+	if (!page_is_ram(pfn))
+		return 1;
+	if (page_is_rtas_user_buf(pfn))
+		return 1;
+	return 0;
+}
+#endif /* CONFIG_STRICT_DEVMEM */

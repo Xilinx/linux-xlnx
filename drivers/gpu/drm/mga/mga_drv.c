@@ -29,6 +29,8 @@
  *    Gareth Hughes <gareth@valinux.com>
  */
 
+#include <linux/module.h>
+
 #include "drmP.h"
 #include "drm.h"
 #include "mga_drm.h"
@@ -40,6 +42,20 @@ static int mga_driver_device_is_agp(struct drm_device *dev);
 
 static struct pci_device_id pciidlist[] = {
 	mga_PCI_IDS
+};
+
+static const struct file_operations mga_driver_fops = {
+	.owner = THIS_MODULE,
+	.open = drm_open,
+	.release = drm_release,
+	.unlocked_ioctl = drm_ioctl,
+	.mmap = drm_mmap,
+	.poll = drm_poll,
+	.fasync = drm_fasync,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = mga_compat_ioctl,
+#endif
+	.llseek = noop_llseek,
 };
 
 static struct drm_driver driver = {
@@ -62,20 +78,7 @@ static struct drm_driver driver = {
 	.reclaim_buffers = drm_core_reclaim_buffers,
 	.ioctls = mga_ioctls,
 	.dma_ioctl = mga_dma_buffers,
-	.fops = {
-		.owner = THIS_MODULE,
-		.open = drm_open,
-		.release = drm_release,
-		.unlocked_ioctl = drm_ioctl,
-		.mmap = drm_mmap,
-		.poll = drm_poll,
-		.fasync = drm_fasync,
-#ifdef CONFIG_COMPAT
-		.compat_ioctl = mga_compat_ioctl,
-#endif
-		.llseek = noop_llseek,
-	},
-
+	.fops = &mga_driver_fops,
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,
 	.date = DRIVER_DATE,

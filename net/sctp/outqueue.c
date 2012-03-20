@@ -411,8 +411,7 @@ void sctp_retransmit_mark(struct sctp_outq *q,
 					chunk->transport->flight_size -=
 							sctp_data_size(chunk);
 				q->outstanding_bytes -= sctp_data_size(chunk);
-				q->asoc->peer.rwnd += (sctp_data_size(chunk) +
-							sizeof(struct sk_buff));
+				q->asoc->peer.rwnd += sctp_data_size(chunk);
 			}
 			continue;
 		}
@@ -432,8 +431,7 @@ void sctp_retransmit_mark(struct sctp_outq *q,
 			 * (Section 7.2.4)), add the data size of those
 			 * chunks to the rwnd.
 			 */
-			q->asoc->peer.rwnd += (sctp_data_size(chunk) +
-						sizeof(struct sk_buff));
+			q->asoc->peer.rwnd += sctp_data_size(chunk);
 			q->outstanding_bytes -= sctp_data_size(chunk);
 			if (chunk->transport)
 				transport->flight_size -= sctp_data_size(chunk);
@@ -754,6 +752,16 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 	 */
 
 	list_for_each_entry_safe(chunk, tmp, &q->control_chunk_list, list) {
+		/* RFC 5061, 5.3
+		 * F1) This means that until such time as the ASCONF
+		 * containing the add is acknowledged, the sender MUST
+		 * NOT use the new IP address as a source for ANY SCTP
+		 * packet except on carrying an ASCONF Chunk.
+		 */
+		if (asoc->src_out_of_asoc_ok &&
+		    chunk->chunk_hdr->type != SCTP_CID_ASCONF)
+			continue;
+
 		list_del_init(&chunk->list);
 
 		/* Pick the right transport to use. */
@@ -881,6 +889,9 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 		}
 	}
 
+	if (q->asoc->src_out_of_asoc_ok)
+		goto sctp_flush_out;
+
 	/* Is it OK to send data chunks?  */
 	switch (asoc->state) {
 	case SCTP_STATE_COOKIE_ECHOED:
@@ -904,6 +915,8 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 		 * current cwnd).
 		 */
 		if (!list_empty(&q->retransmit)) {
+			if (asoc->peer.retran_path->state == SCTP_UNCONFIRMED)
+				goto sctp_flush_out;
 			if (transport == asoc->peer.retran_path)
 				goto retran;
 
@@ -976,6 +989,8 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			    ((new_transport->state == SCTP_INACTIVE) ||
 			     (new_transport->state == SCTP_UNCONFIRMED)))
 				new_transport = asoc->peer.active_path;
+			if (new_transport->state == SCTP_UNCONFIRMED)
+				continue;
 
 			/* Change packets if necessary.  */
 			if (new_transport != transport) {

@@ -82,9 +82,10 @@ static void __init shannon_map_io(void)
 }
 
 MACHINE_START(SHANNON, "Shannon (AKA: Tuxscreen)")
-	.boot_params	= 0xc0000100,
+	.atag_offset	= 0x100,
 	.map_io		= shannon_map_io,
 	.init_irq	= sa1100_init_irq,
 	.timer		= &sa1100_timer,
 	.init_machine	= shannon_init,
+	.restart	= sa11x0_restart,
 MACHINE_END

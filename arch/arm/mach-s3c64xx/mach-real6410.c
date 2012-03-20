@@ -25,16 +25,15 @@
 #include <linux/serial_core.h>
 #include <linux/types.h>
 
+#include <asm/hardware/vic.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
 #include <mach/map.h>
-#include <mach/regs-fb.h>
 #include <mach/regs-gpio.h>
 #include <mach/regs-modem.h>
 #include <mach/regs-srom.h>
-#include <mach/s3c6410.h>
 
 #include <plat/adc.h>
 #include <plat/cpu.h>
@@ -43,8 +42,11 @@
 #include <plat/nand.h>
 #include <plat/regs-serial.h>
 #include <plat/ts.h>
+#include <plat/regs-fb-v4.h>
 
 #include <video/platform_lcd.h>
+
+#include "common.h"
 
 #define UCON S3C2410_UCON_DEFAULT
 #define ULCON (S3C2410_LCON_CS8 | S3C2410_LCON_PNONE | S3C2410_LCON_STOPB)
@@ -198,12 +200,6 @@ static struct platform_device *real6410_devices[] __initdata = {
 	&s3c_device_ohci,
 };
 
-static struct s3c2410_ts_mach_info s3c_ts_platform __initdata = {
-	.delay			= 10000,
-	.presc			= 49,
-	.oversampling_shift	= 2,
-};
-
 static void __init real6410_map_io(void)
 {
 	u32 tmp;
@@ -300,7 +296,7 @@ static void __init real6410_machine_init(void)
 
 	s3c_fb_set_platdata(&real6410_lcd_pdata);
 	s3c_nand_set_platdata(&real6410_nand_info);
-	s3c24xx_ts_set_platdata(&s3c_ts_platform);
+	s3c24xx_ts_set_platdata(NULL);
 
 	/* configure nCS1 width to 16 bits */
 
@@ -329,10 +325,12 @@ static void __init real6410_machine_init(void)
 
 MACHINE_START(REAL6410, "REAL6410")
 	/* Maintainer: Darius Augulis <augulis.darius@gmail.com> */
-	.boot_params	= S3C64XX_PA_SDRAM + 0x100,
+	.atag_offset	= 0x100,
 
 	.init_irq	= s3c6410_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.map_io		= real6410_map_io,
 	.init_machine	= real6410_machine_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c64xx_restart,
 MACHINE_END

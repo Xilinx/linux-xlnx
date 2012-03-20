@@ -1,4 +1,5 @@
 #include <linux/ieee80211.h>
+#include <linux/export.h>
 #include <net/cfg80211.h>
 #include "nl80211.h"
 #include "core.h"
@@ -12,12 +13,14 @@
 #define MESH_HOLD_T 		100
 
 #define MESH_PATH_TIMEOUT	5000
+#define MESH_RANN_INTERVAL      5000
 
 /*
  * Minimum interval between two consecutive PREQs originated by the same
  * interface
  */
 #define MESH_PREQ_MIN_INT	10
+#define MESH_PERR_MIN_INT	100
 #define MESH_DIAM_TRAVERSAL_TIME 50
 
 /*
@@ -45,10 +48,13 @@ const struct mesh_config default_mesh_config = {
 	.dot11MeshMaxPeerLinks = MESH_MAX_ESTAB_PLINKS,
 	.dot11MeshHWMPactivePathTimeout = MESH_PATH_TIMEOUT,
 	.dot11MeshHWMPpreqMinInterval = MESH_PREQ_MIN_INT,
+	.dot11MeshHWMPperrMinInterval = MESH_PERR_MIN_INT,
 	.dot11MeshHWMPnetDiameterTraversalTime = MESH_DIAM_TRAVERSAL_TIME,
 	.dot11MeshHWMPmaxPREQretries = MESH_MAX_PREQ_RETRIES,
 	.path_refresh_time = MESH_PATH_REFRESH_TIME,
 	.min_discovery_timeout = MESH_MIN_DISCOVERY_TIMEOUT,
+	.dot11MeshHWMPRannInterval = MESH_RANN_INTERVAL,
+	.dot11MeshGateAnnouncementProtocol = false,
 };
 
 const struct mesh_setup default_mesh_setup = {

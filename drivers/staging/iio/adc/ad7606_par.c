@@ -106,7 +106,7 @@ static int __devexit ad7606_par_remove(struct platform_device *pdev)
 	struct resource *res;
 	struct ad7606_state *st = iio_priv(indio_dev);
 
-	ad7606_remove(indio_dev);
+	ad7606_remove(indio_dev, platform_get_irq(pdev, 0));
 
 	iounmap(st->base_address);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -189,4 +189,3 @@ module_exit(ad7606_cleanup);
 MODULE_AUTHOR("Michael Hennerich <hennerich@blackfin.uclinux.org>");
 MODULE_DESCRIPTION("Analog Devices AD7606 ADC");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:ad7606_par");

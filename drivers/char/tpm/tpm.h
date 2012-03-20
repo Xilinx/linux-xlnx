@@ -38,6 +38,11 @@ enum tpm_addr {
 	TPM_ADDR = 0x4E,
 };
 
+#define TPM_WARN_DOING_SELFTEST 0x802
+#define TPM_ERR_DEACTIVATED     0x6
+#define TPM_ERR_DISABLED        0x7
+
+#define TPM_HEADER_SIZE		10
 extern ssize_t tpm_show_pubek(struct device *, struct device_attribute *attr,
 				char *);
 extern ssize_t tpm_show_pcrs(struct device *, struct device_attribute *attr,
@@ -56,6 +61,10 @@ extern ssize_t tpm_show_owned(struct device *, struct device_attribute *attr,
 				char *);
 extern ssize_t tpm_show_temp_deactivated(struct device *,
 					 struct device_attribute *attr, char *);
+extern ssize_t tpm_show_durations(struct device *,
+				  struct device_attribute *attr, char *);
+extern ssize_t tpm_show_timeouts(struct device *,
+				 struct device_attribute *attr, char *);
 
 struct tpm_chip;
 
@@ -67,6 +76,7 @@ struct tpm_vendor_specific {
 	unsigned long base;		/* TPM base address */
 
 	int irq;
+	int probed_irq;
 
 	int region_size;
 	int have_region;
@@ -81,7 +91,9 @@ struct tpm_vendor_specific {
 	struct list_head list;
 	int locality;
 	unsigned long timeout_a, timeout_b, timeout_c, timeout_d; /* jiffies */
+	bool timeout_adjusted;
 	unsigned long duration[3]; /* jiffies */
+	bool duration_adjusted;
 
 	wait_queue_head_t read_queue;
 	wait_queue_head_t int_queue;
@@ -272,9 +284,9 @@ struct tpm_cmd_t {
 
 ssize_t	tpm_getcap(struct device *, __be32, cap_t *, const char *);
 
-extern void tpm_get_timeouts(struct tpm_chip *);
+extern int tpm_get_timeouts(struct tpm_chip *);
 extern void tpm_gen_interrupt(struct tpm_chip *);
-extern void tpm_continue_selftest(struct tpm_chip *);
+extern int tpm_do_selftest(struct tpm_chip *);
 extern unsigned long tpm_calc_ordinal_duration(struct tpm_chip *, u32);
 extern struct tpm_chip* tpm_register_hardware(struct device *,
 				 const struct tpm_vendor_specific *);
@@ -287,7 +299,8 @@ extern ssize_t tpm_read(struct file *, char __user *, size_t, loff_t *);
 extern void tpm_remove_hardware(struct device *);
 extern int tpm_pm_suspend(struct device *, pm_message_t);
 extern int tpm_pm_resume(struct device *);
-
+extern int wait_for_tpm_stat(struct tpm_chip *, u8, unsigned long,
+			     wait_queue_head_t *);
 #ifdef CONFIG_ACPI
 extern struct dentry ** tpm_bios_log_setup(char *);
 extern void tpm_bios_log_teardown(struct dentry **);

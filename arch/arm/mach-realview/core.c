@@ -21,7 +21,7 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
-#include <linux/sysdev.h>
+#include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
@@ -517,8 +517,7 @@ void __init realview_timer_init(unsigned int timer_irq)
 /*
  * Setup the memory banks.
  */
-void realview_fixup(struct machine_desc *mdesc, struct tag *tags, char **from,
-		    struct meminfo *meminfo)
+void realview_fixup(struct tag *tags, char **from, struct meminfo *meminfo)
 {
 	/*
 	 * Most RealView platforms have 512MB contiguous RAM at 0x70000000.

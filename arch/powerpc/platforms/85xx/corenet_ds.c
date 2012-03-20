@@ -3,7 +3,7 @@
  *
  * Maintained by Kumar Gala (see MAINTAINERS for contact information)
  *
- * Copyright 2009 Freescale Semiconductor Inc.
+ * Copyright 2009-2011 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -22,6 +22,7 @@
 #include <asm/time.h>
 #include <asm/machdep.h>
 #include <asm/pci-bridge.h>
+#include <asm/ppc-pci.h>
 #include <mm/mmu_decl.h>
 #include <asm/prom.h>
 #include <asm/udbg.h>
@@ -30,48 +31,26 @@
 #include <linux/of_platform.h>
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
+#include "smp.h"
 
 void __init corenet_ds_pic_init(void)
 {
 	struct mpic *mpic;
-	struct resource r;
-	struct device_node *np = NULL;
-	unsigned int flags = MPIC_PRIMARY | MPIC_BIG_ENDIAN |
+	unsigned int flags = MPIC_BIG_ENDIAN |
 				MPIC_BROKEN_FRR_NIRQS | MPIC_SINGLE_DEST_CPU;
-
-	np = of_find_node_by_type(np, "open-pic");
-
-	if (np == NULL) {
-		printk(KERN_ERR "Could not find open-pic node\n");
-		return;
-	}
-
-	if (of_address_to_resource(np, 0, &r)) {
-		printk(KERN_ERR "Failed to map mpic register space\n");
-		of_node_put(np);
-		return;
-	}
 
 	if (ppc_md.get_irq == mpic_get_coreint_irq)
 		flags |= MPIC_ENABLE_COREINT;
 
-	mpic = mpic_alloc(np, r.start, flags, 0, 256, " OpenPIC  ");
+	mpic = mpic_alloc(NULL, 0, flags, 0, 256, " OpenPIC  ");
 	BUG_ON(mpic == NULL);
 
 	mpic_init(mpic);
 }
 
-#ifdef CONFIG_PCI
-static int primary_phb_addr;
-#endif
-
 /*
  * Setup the architecture
  */
-#ifdef CONFIG_SMP
-void __init mpc85xx_smp_init(void);
-#endif
-
 void __init corenet_ds_setup_arch(void)
 {
 #ifdef CONFIG_PCI
@@ -80,23 +59,22 @@ void __init corenet_ds_setup_arch(void)
 #endif
 	dma_addr_t max = 0xffffffff;
 
-#ifdef CONFIG_SMP
 	mpc85xx_smp_init();
-#endif
 
 #ifdef CONFIG_PCI
-	for_each_compatible_node(np, "pci", "fsl,p4080-pcie") {
-		struct resource rsrc;
-		of_address_to_resource(np, 0, &rsrc);
-		if ((rsrc.start & 0xfffff) == primary_phb_addr)
-			fsl_add_bridge(np, 1);
-		else
+	for_each_node_by_type(np, "pci") {
+		if (of_device_is_compatible(np, "fsl,p4080-pcie") ||
+		    of_device_is_compatible(np, "fsl,qoriq-pcie-v2.2")) {
 			fsl_add_bridge(np, 0);
-
-		hose = pci_find_hose_for_OF_device(np);
-		max = min(max, hose->dma_window_base_cur +
-				hose->dma_window_size);
+			hose = pci_find_hose_for_OF_device(np);
+			max = min(max, hose->dma_window_base_cur +
+					hose->dma_window_size);
+		}
 	}
+
+#ifdef CONFIG_PPC64
+	pci_devs_phb_init();
+#endif
 #endif
 
 #ifdef CONFIG_SWIOTLB
@@ -114,7 +92,20 @@ static const struct of_device_id of_device_ids[] __devinitconst = {
 		.compatible	= "simple-bus"
 	},
 	{
-		.compatible	= "fsl,rapidio-delta",
+		.compatible	= "fsl,srio",
+	},
+	{
+		.compatible	= "fsl,p4080-pcie",
+	},
+	{
+		.compatible	= "fsl,qoriq-pcie-v2.2",
+	},
+	/* The following two are for the Freescale hypervisor */
+	{
+		.name		= "hypervisor",
+	},
+	{
+		.name		= "handles",
 	},
 	{}
 };

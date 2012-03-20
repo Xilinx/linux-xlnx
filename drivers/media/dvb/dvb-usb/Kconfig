@@ -81,6 +81,7 @@ config DVB_USB_DIB0700
 	select MEDIA_TUNER_MT2266 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_XC2028 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_XC5000 if !MEDIA_TUNER_CUSTOMISE
+	select MEDIA_TUNER_XC4000 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_MXL5007T if !MEDIA_TUNER_CUSTOMISE
 	help
 	  Support for USB2.0/1.1 DVB receivers based on the DiB0700 USB bridge. The
@@ -257,6 +258,19 @@ config DVB_USB_AF9005_REMOTE
 	  Say Y here to support the default remote control decoding for the
 	  Afatech AF9005 based receiver.
 
+config DVB_USB_PCTV452E
+	tristate "Pinnacle PCTV HDTV Pro USB device/TT Connect S2-3600"
+	depends on DVB_USB
+	select TTPCI_EEPROM
+	select DVB_LNBP22 if !DVB_FE_CUSTOMISE
+	select DVB_STB0899 if !DVB_FE_CUSTOMISE
+	select DVB_STB6100 if !DVB_FE_CUSTOMISE
+	help
+	  Support for external USB adapter designed by Pinnacle,
+	  shipped under the brand name 'PCTV HDTV Pro USB'.
+	  Also supports TT Connect S2-3600/3650 cards.
+	  Say Y if you own such a device and want to use it.
+
 config DVB_USB_DW2102
 	tristate "DvbWorld & TeVii DVB-S/S2 USB2.0 support"
 	depends on DVB_USB
@@ -297,6 +311,7 @@ config DVB_USB_ANYSEE
 	select DVB_STV0900 if !DVB_FE_CUSTOMISE
 	select DVB_STV6110 if !DVB_FE_CUSTOMISE
 	select DVB_ISL6423 if !DVB_FE_CUSTOMISE
+	select DVB_CXD2820R if !DVB_FE_CUSTOMISE
 	help
 	  Say Y here to support the Anysee E30, Anysee E30 Plus or
 	  Anysee E30 C Plus DVB USB2.0 receiver.
@@ -326,7 +341,7 @@ config DVB_USB_AF9015
 
 config DVB_USB_CE6230
 	tristate "Intel CE6230 DVB-T USB2.0 support"
-	depends on DVB_USB && EXPERIMENTAL
+	depends on DVB_USB
 	select DVB_ZL10353
 	select MEDIA_TUNER_MXL5005S if !MEDIA_TUNER_CUSTOMISE
 	help
@@ -340,7 +355,7 @@ config DVB_USB_FRIIO
 
 config DVB_USB_EC168
 	tristate "E3C EC168 DVB-T USB2.0 support"
-	depends on DVB_USB && EXPERIMENTAL
+	depends on DVB_USB
 	select DVB_EC100
 	select MEDIA_TUNER_MXL5005S if !MEDIA_TUNER_CUSTOMISE
 	help
@@ -373,3 +388,18 @@ config DVB_USB_TECHNISAT_USB2
 	select DVB_STV6110x if !DVB_FE_CUSTOMISE
 	help
 	  Say Y here to support the Technisat USB2 DVB-S/S2 device
+
+config DVB_USB_IT913X
+	tristate "it913x driver"
+	depends on DVB_USB
+	select DVB_IT913X_FE
+	help
+	  Say Y here to support the it913x device
+
+config DVB_USB_MXL111SF
+	tristate "MxL111SF DTV USB2.0 support"
+	depends on DVB_USB
+	select DVB_LGDT3305 if !DVB_FE_CUSTOMISE
+	select VIDEO_TVEEPROM
+	help
+	  Say Y here to support the MxL111SF USB2.0 DTV receiver.

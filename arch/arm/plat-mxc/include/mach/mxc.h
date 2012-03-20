@@ -50,25 +50,11 @@
 #define IMX_CHIP_REVISION_3_3		0x33
 #define IMX_CHIP_REVISION_UNKNOWN	0xff
 
-#define IMX_CHIP_REVISION_1_0_STRING		"1.0"
-#define IMX_CHIP_REVISION_1_1_STRING		"1.1"
-#define IMX_CHIP_REVISION_1_2_STRING		"1.2"
-#define IMX_CHIP_REVISION_1_3_STRING		"1.3"
-#define IMX_CHIP_REVISION_2_0_STRING		"2.0"
-#define IMX_CHIP_REVISION_2_1_STRING		"2.1"
-#define IMX_CHIP_REVISION_2_2_STRING		"2.2"
-#define IMX_CHIP_REVISION_2_3_STRING		"2.3"
-#define IMX_CHIP_REVISION_3_0_STRING		"3.0"
-#define IMX_CHIP_REVISION_3_1_STRING		"3.1"
-#define IMX_CHIP_REVISION_3_2_STRING		"3.2"
-#define IMX_CHIP_REVISION_3_3_STRING		"3.3"
-#define IMX_CHIP_REVISION_UNKNOWN_STRING	"unknown"
-
 #ifndef __ASSEMBLY__
 extern unsigned int __mxc_cpu_type;
 #endif
 
-#ifdef CONFIG_ARCH_MX1
+#ifdef CONFIG_SOC_IMX1
 # ifdef mxc_cpu_type
 #  undef mxc_cpu_type
 #  define mxc_cpu_type __mxc_cpu_type
@@ -80,7 +66,7 @@ extern unsigned int __mxc_cpu_type;
 # define cpu_is_mx1()		(0)
 #endif
 
-#ifdef CONFIG_MACH_MX21
+#ifdef CONFIG_SOC_IMX21
 # ifdef mxc_cpu_type
 #  undef mxc_cpu_type
 #  define mxc_cpu_type __mxc_cpu_type
@@ -92,7 +78,7 @@ extern unsigned int __mxc_cpu_type;
 # define cpu_is_mx21()		(0)
 #endif
 
-#ifdef CONFIG_ARCH_MX25
+#ifdef CONFIG_SOC_IMX25
 # ifdef mxc_cpu_type
 #  undef mxc_cpu_type
 #  define mxc_cpu_type __mxc_cpu_type
@@ -104,7 +90,7 @@ extern unsigned int __mxc_cpu_type;
 # define cpu_is_mx25()		(0)
 #endif
 
-#ifdef CONFIG_MACH_MX27
+#ifdef CONFIG_SOC_IMX27
 # ifdef mxc_cpu_type
 #  undef mxc_cpu_type
 #  define mxc_cpu_type __mxc_cpu_type
@@ -182,14 +168,7 @@ struct cpu_op {
 	u32 cpu_rate;
 };
 
-int tzic_enable_wake(int is_idle);
-enum mxc_cpu_pwr_mode {
-	WAIT_CLOCKED,		/* wfi only */
-	WAIT_UNCLOCKED,		/* WAIT */
-	WAIT_UNCLOCKED_POWER_OFF,	/* WAIT + SRPG */
-	STOP_POWER_ON,		/* just STOP */
-	STOP_POWER_OFF,		/* STOP + SRPG */
-};
+int tzic_enable_wake(void);
 
 extern struct cpu_op *(*get_cpu_op)(int *op);
 #endif

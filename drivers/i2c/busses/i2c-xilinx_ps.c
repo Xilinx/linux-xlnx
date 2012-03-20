@@ -37,6 +37,8 @@
  *
  */
 
+#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/i2c.h>
 #include <linux/delay.h>

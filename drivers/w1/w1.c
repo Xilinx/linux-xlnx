@@ -1,7 +1,7 @@
 /*
  *	w1.c
  *
- * Copyright (c) 2004 Evgeniy Polyakov <johnpol@2ka.mipt.ru>
+ * Copyright (c) 2004 Evgeniy Polyakov <zbr@ioremap.net>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -33,7 +33,7 @@
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include "w1.h"
 #include "w1_log.h"
@@ -42,7 +42,7 @@
 #include "w1_netlink.h"
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Evgeniy Polyakov <johnpol@2ka.mipt.ru>");
+MODULE_AUTHOR("Evgeniy Polyakov <zbr@ioremap.net>");
 MODULE_DESCRIPTION("Driver for 1-wire Dallas network protocol.");
 
 static int w1_timeout = 10;
@@ -889,6 +889,16 @@ void w1_search(struct w1_master *dev, u8 search_type, w1_slave_found_callback cb
 		 */
 		if (w1_reset_bus(dev)) {
 			dev_dbg(&dev->dev, "No devices present on the wire.\n");
+			break;
+		}
+
+		/* Do fast search on single slave bus */
+		if (dev->max_slave_count == 1) {
+			w1_write_8(dev, W1_READ_ROM);
+
+			if (w1_read_block(dev, (u8 *)&rn, 8) == 8 && rn)
+				cb(dev, rn);
+
 			break;
 		}
 

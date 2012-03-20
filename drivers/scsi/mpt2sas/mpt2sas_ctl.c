@@ -42,7 +42,6 @@
  * USA.
  */
 
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -819,6 +818,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc,
 	_ctl_display_some_debug(ioc, smid, "ctl_request", NULL);
 #endif
 
+	init_completion(&ioc->ctl_cmds.done);
 	switch (mpi_request->Function) {
 	case MPI2_FUNCTION_SCSI_IO_REQUEST:
 	case MPI2_FUNCTION_RAID_SCSI_IO_PASSTHROUGH:
@@ -904,7 +904,6 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc,
 		timeout = MPT2_IOCTL_DEFAULT_TIMEOUT;
 	else
 		timeout = karg.timeout;
-	init_completion(&ioc->ctl_cmds.done);
 	timeleft = wait_for_completion_timeout(&ioc->ctl_cmds.done,
 	    timeout*HZ);
 	if (mpi_request->Function == MPI2_FUNCTION_SCSI_TASK_MGMT) {
@@ -994,7 +993,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc,
 			mpt2sas_scsih_issue_tm(ioc,
 			    le16_to_cpu(mpi_request->FunctionDependent1), 0, 0,
 			    0, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, 0, 10,
-			    NULL);
+			    0, TM_MUTEX_ON);
 			ioc->tm_cmds.status = MPT2_CMD_NOT_USED;
 		} else
 			mpt2sas_base_hard_reset_handler(ioc, CAN_SLEEP,
@@ -1208,6 +1207,9 @@ _ctl_do_reset(void __user *arg)
 	if (_ctl_verify_adapter(karg.hdr.ioc_number, &ioc) == -1 || !ioc)
 		return -ENODEV;
 
+	if (ioc->shost_recovery || ioc->pci_error_recovery ||
+		ioc->is_driver_loading)
+		return -EAGAIN;
 	dctlprintk(ioc, printk(MPT2SAS_INFO_FMT "%s: enter\n", ioc->name,
 	    __func__));
 
@@ -1475,8 +1477,8 @@ _ctl_diag_register_2(struct MPT2SAS_ADAPTER *ioc,
 		mpi_request->ProductSpecific[i] =
 			cpu_to_le32(ioc->product_specific[buffer_type][i]);
 
-	mpt2sas_base_put_smid_default(ioc, smid);
 	init_completion(&ioc->ctl_cmds.done);
+	mpt2sas_base_put_smid_default(ioc, smid);
 	timeleft = wait_for_completion_timeout(&ioc->ctl_cmds.done,
 	    MPT2_IOCTL_DEFAULT_TIMEOUT*HZ);
 
@@ -1819,8 +1821,8 @@ _ctl_send_release(struct MPT2SAS_ADAPTER *ioc, u8 buffer_type, u8 *issue_reset)
 	mpi_request->VF_ID = 0; /* TODO */
 	mpi_request->VP_ID = 0;
 
-	mpt2sas_base_put_smid_default(ioc, smid);
 	init_completion(&ioc->ctl_cmds.done);
+	mpt2sas_base_put_smid_default(ioc, smid);
 	timeleft = wait_for_completion_timeout(&ioc->ctl_cmds.done,
 	    MPT2_IOCTL_DEFAULT_TIMEOUT*HZ);
 
@@ -2093,8 +2095,8 @@ _ctl_diag_read_buffer(void __user *arg, enum block_state state)
 	mpi_request->VF_ID = 0; /* TODO */
 	mpi_request->VP_ID = 0;
 
-	mpt2sas_base_put_smid_default(ioc, smid);
 	init_completion(&ioc->ctl_cmds.done);
+	mpt2sas_base_put_smid_default(ioc, smid);
 	timeleft = wait_for_completion_timeout(&ioc->ctl_cmds.done,
 	    MPT2_IOCTL_DEFAULT_TIMEOUT*HZ);
 
@@ -2179,7 +2181,8 @@ _ctl_ioctl_main(struct file *file, unsigned int cmd, void __user *arg)
 		    !ioc)
 			return -ENODEV;
 
-		if (ioc->shost_recovery || ioc->pci_error_recovery)
+		if (ioc->shost_recovery || ioc->pci_error_recovery ||
+				ioc->is_driver_loading)
 			return -EAGAIN;
 
 		if (_IOC_SIZE(cmd) == sizeof(struct mpt2_ioctl_command)) {
@@ -2298,7 +2301,8 @@ _ctl_compat_mpt_command(struct file *file, unsigned cmd, unsigned long arg)
 	if (_ctl_verify_adapter(karg32.hdr.ioc_number, &ioc) == -1 || !ioc)
 		return -ENODEV;
 
-	if (ioc->shost_recovery || ioc->pci_error_recovery)
+	if (ioc->shost_recovery || ioc->pci_error_recovery ||
+			ioc->is_driver_loading)
 		return -EAGAIN;
 
 	memset(&karg, 0, sizeof(struct mpt2_ioctl_command));
@@ -2705,14 +2709,41 @@ _ctl_ioc_reset_count_show(struct device *cdev, struct device_attribute *attr,
 static DEVICE_ATTR(ioc_reset_count, S_IRUGO,
     _ctl_ioc_reset_count_show, NULL);
 
+/**
+ * _ctl_ioc_reply_queue_count_show - number of reply queues
+ * @cdev - pointer to embedded class device
+ * @buf - the buffer returned
+ *
+ * This is number of reply queues
+ *
+ * A sysfs 'read-only' shost attribute.
+ */
+static ssize_t
+_ctl_ioc_reply_queue_count_show(struct device *cdev,
+	 struct device_attribute *attr, char *buf)
+{
+	u8 reply_queue_count;
+	struct Scsi_Host *shost = class_to_shost(cdev);
+	struct MPT2SAS_ADAPTER *ioc = shost_priv(shost);
+
+	if ((ioc->facts.IOCCapabilities &
+	    MPI2_IOCFACTS_CAPABILITY_MSI_X_INDEX) && ioc->msix_enable)
+		reply_queue_count = ioc->reply_queue_count;
+	else
+		reply_queue_count = 1;
+	return snprintf(buf, PAGE_SIZE, "%d\n", reply_queue_count);
+}
+static DEVICE_ATTR(reply_queue_count, S_IRUGO,
+	 _ctl_ioc_reply_queue_count_show, NULL);
+
 struct DIAG_BUFFER_START {
-	u32 Size;
-	u32 DiagVersion;
+	__le32 Size;
+	__le32 DiagVersion;
 	u8 BufferType;
 	u8 Reserved[3];
-	u32 Reserved1;
-	u32 Reserved2;
-	u32 Reserved3;
+	__le32 Reserved1;
+	__le32 Reserved2;
+	__le32 Reserved3;
 };
 /**
  * _ctl_host_trace_buffer_size_show - host buffer size (trace only)
@@ -2915,6 +2946,7 @@ struct device_attribute *mpt2sas_host_attrs[] = {
 	&dev_attr_host_trace_buffer_size,
 	&dev_attr_host_trace_buffer,
 	&dev_attr_host_trace_buffer_enable,
+	&dev_attr_reply_queue_count,
 	NULL,
 };
 

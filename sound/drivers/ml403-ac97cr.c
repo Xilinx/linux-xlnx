@@ -34,7 +34,7 @@
  */
 
 #include <linux/init.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 
 #include <linux/platform_device.h>
 
@@ -73,7 +73,7 @@ MODULE_SUPPORTED_DEVICE("{{Xilinx,ML403 AC97 Controller Reference}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE;
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE;
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for ML403 AC97 Controller Reference.");
@@ -1153,7 +1153,7 @@ snd_ml403_ac97cr_create(struct snd_card *card, struct platform_device *pfdev,
 		   "0x%x done\n", (unsigned int)ml403_ac97cr->port);
 	/* get irq */
 	irq = platform_get_irq(pfdev, 0);
-	if (request_irq(irq, snd_ml403_ac97cr_irq, IRQF_DISABLED,
+	if (request_irq(irq, snd_ml403_ac97cr_irq, 0,
 			dev_name(&pfdev->dev), (void *)ml403_ac97cr)) {
 		snd_printk(KERN_ERR SND_ML403_AC97CR_DRIVER ": "
 			   "unable to grab IRQ %d\n",
@@ -1166,7 +1166,7 @@ snd_ml403_ac97cr_create(struct snd_card *card, struct platform_device *pfdev,
 		   "request (playback) irq %d done\n",
 		   ml403_ac97cr->irq);
 	irq = platform_get_irq(pfdev, 1);
-	if (request_irq(irq, snd_ml403_ac97cr_irq, IRQF_DISABLED,
+	if (request_irq(irq, snd_ml403_ac97cr_irq, 0,
 			dev_name(&pfdev->dev), (void *)ml403_ac97cr)) {
 		snd_printk(KERN_ERR SND_ML403_AC97CR_DRIVER ": "
 			   "unable to grab IRQ %d\n",
@@ -1341,15 +1341,4 @@ static struct platform_driver snd_ml403_ac97cr_driver = {
 	},
 };
 
-static int __init alsa_card_ml403_ac97cr_init(void)
-{
-	return platform_driver_register(&snd_ml403_ac97cr_driver);
-}
-
-static void __exit alsa_card_ml403_ac97cr_exit(void)
-{
-	platform_driver_unregister(&snd_ml403_ac97cr_driver);
-}
-
-module_init(alsa_card_ml403_ac97cr_init)
-module_exit(alsa_card_ml403_ac97cr_exit)
+module_platform_driver(snd_ml403_ac97cr_driver);

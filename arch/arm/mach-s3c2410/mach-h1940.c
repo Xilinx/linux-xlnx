@@ -18,7 +18,7 @@
 #include <linux/memblock.h>
 #include <linux/timer.h>
 #include <linux/init.h>
-#include <linux/sysdev.h>
+#include <linux/device.h>
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
@@ -35,6 +35,7 @@
 #include <video/platform_lcd.h>
 
 #include <linux/mmc/host.h>
+#include <linux/export.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -68,6 +69,8 @@
 #include <plat/ts.h>
 
 #include <sound/uda1380.h>
+
+#include "common.h"
 
 #define H1940_LATCH		((void __force __iomem *)0xF8000000)
 
@@ -696,9 +699,9 @@ static void __init h1940_init(void)
 			      S3C2410_MISCCR_USBSUSPND0 |
 			      S3C2410_MISCCR_USBSUSPND1, 0x0);
 
-	tmp =   (0x78 << S3C24XX_PLLCON_MDIVSHIFT)
-	      | (0x02 << S3C24XX_PLLCON_PDIVSHIFT)
-	      | (0x03 << S3C24XX_PLLCON_SDIVSHIFT);
+	tmp =   (0x78 << S3C24XX_PLL_MDIV_SHIFT)
+	      | (0x02 << S3C24XX_PLL_PDIV_SHIFT)
+	      | (0x03 << S3C24XX_PLL_SDIV_SHIFT);
 	writel(tmp, S3C2410_UPLLCON);
 
 	gpio_request(S3C2410_GPC(0), "LCD power");
@@ -744,10 +747,11 @@ static void __init h1940_init(void)
 
 MACHINE_START(H1940, "IPAQ-H1940")
 	/* Maintainer: Ben Dooks <ben-linux@fluff.org> */
-	.boot_params	= S3C2410_SDRAM_PA + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= h1940_map_io,
 	.reserve	= h1940_reserve,
 	.init_irq	= h1940_init_irq,
 	.init_machine	= h1940_init,
 	.timer		= &s3c24xx_timer,
+	.restart	= s3c2410_restart,
 MACHINE_END

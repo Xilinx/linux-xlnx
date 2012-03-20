@@ -88,10 +88,12 @@ void cpu_idle(void)
 #endif
 		if (!idle)
 			idle = default_idle;
-		tick_nohz_stop_sched_tick(1);
+		tick_nohz_idle_enter();
+		rcu_idle_enter();
 		while (!need_resched())
 			idle();
-		tick_nohz_restart_sched_tick();
+		rcu_idle_exit();
+		tick_nohz_idle_exit();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
@@ -140,7 +142,6 @@ EXPORT_SYMBOL(kernel_thread);
  */
 void start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 {
-	set_fs(USER_DS);
 	regs->pc = new_ip;
 	if (current->mm)
 		regs->p5 = current->mm->start_data;

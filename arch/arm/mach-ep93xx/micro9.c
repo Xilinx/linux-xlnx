@@ -18,6 +18,7 @@
 
 #include <mach/hardware.h>
 
+#include <asm/hardware/vic.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
@@ -77,43 +78,51 @@ static void __init micro9_init_machine(void)
 #ifdef CONFIG_MACH_MICRO9H
 MACHINE_START(MICRO9, "Contec Micro9-High")
 	/* Maintainer: Hubert Feurstein <hubert.feurstein@contec.at> */
-	.boot_params	= EP93XX_SDCE3_PHYS_BASE_SYNC + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= ep93xx_map_io,
 	.init_irq	= ep93xx_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.timer		= &ep93xx_timer,
 	.init_machine	= micro9_init_machine,
+	.restart	= ep93xx_restart,
 MACHINE_END
 #endif
 
 #ifdef CONFIG_MACH_MICRO9M
 MACHINE_START(MICRO9M, "Contec Micro9-Mid")
 	/* Maintainer: Hubert Feurstein <hubert.feurstein@contec.at> */
-	.boot_params	= EP93XX_SDCE3_PHYS_BASE_ASYNC + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= ep93xx_map_io,
 	.init_irq	= ep93xx_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.timer		= &ep93xx_timer,
 	.init_machine	= micro9_init_machine,
+	.restart	= ep93xx_restart,
 MACHINE_END
 #endif
 
 #ifdef CONFIG_MACH_MICRO9L
 MACHINE_START(MICRO9L, "Contec Micro9-Lite")
 	/* Maintainer: Hubert Feurstein <hubert.feurstein@contec.at> */
-	.boot_params	= EP93XX_SDCE3_PHYS_BASE_SYNC + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= ep93xx_map_io,
 	.init_irq	= ep93xx_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.timer		= &ep93xx_timer,
 	.init_machine	= micro9_init_machine,
+	.restart	= ep93xx_restart,
 MACHINE_END
 #endif
 
 #ifdef CONFIG_MACH_MICRO9S
 MACHINE_START(MICRO9S, "Contec Micro9-Slim")
 	/* Maintainer: Hubert Feurstein <hubert.feurstein@contec.at> */
-	.boot_params	= EP93XX_SDCE3_PHYS_BASE_ASYNC + 0x100,
+	.atag_offset	= 0x100,
 	.map_io		= ep93xx_map_io,
 	.init_irq	= ep93xx_init_irq,
+	.handle_irq	= vic_handle_irq,
 	.timer		= &ep93xx_timer,
 	.init_machine	= micro9_init_machine,
+	.restart	= ep93xx_restart,
 MACHINE_END
 #endif

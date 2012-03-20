@@ -462,7 +462,7 @@ struct __large_struct { unsigned long buf[100]; };
 	barrier();
 
 #define uaccess_catch(err)						\
-	(err) |= current_thread_info()->uaccess_err;			\
+	(err) |= (current_thread_info()->uaccess_err ? -EFAULT : 0);	\
 	current_thread_info()->uaccess_err = prev_err;			\
 } while (0)
 
@@ -554,6 +554,9 @@ struct __large_struct { unsigned long buf[100]; };
 } while (0)
 
 #endif /* CONFIG_X86_WP_WORKS_OK */
+
+extern unsigned long
+copy_from_user_nmi(void *to, const void __user *from, unsigned long n);
 
 /*
  * movsl can be slow when source and dest are not both 8-byte aligned

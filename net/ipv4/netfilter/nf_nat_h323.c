@@ -398,7 +398,7 @@ static int nat_h245(struct sk_buff *skb, struct nf_conn *ct,
 static void ip_nat_q931_expect(struct nf_conn *new,
 			       struct nf_conntrack_expect *this)
 {
-	struct nf_nat_range range;
+	struct nf_nat_ipv4_range range;
 
 	if (this->tuple.src.u3.ip != 0) {	/* Only accept calls from GK */
 		nf_nat_follow_master(new, this);
@@ -409,16 +409,16 @@ static void ip_nat_q931_expect(struct nf_conn *new,
 	BUG_ON(new->status & IPS_NAT_DONE_MASK);
 
 	/* Change src to where master sends to */
-	range.flags = IP_NAT_RANGE_MAP_IPS;
+	range.flags = NF_NAT_RANGE_MAP_IPS;
 	range.min_ip = range.max_ip = new->tuplehash[!this->dir].tuple.src.u3.ip;
-	nf_nat_setup_info(new, &range, IP_NAT_MANIP_SRC);
+	nf_nat_setup_info(new, &range, NF_NAT_MANIP_SRC);
 
 	/* For DST manip, map port here to where it's expected. */
-	range.flags = (IP_NAT_RANGE_MAP_IPS | IP_NAT_RANGE_PROTO_SPECIFIED);
+	range.flags = (NF_NAT_RANGE_MAP_IPS | NF_NAT_RANGE_PROTO_SPECIFIED);
 	range.min = range.max = this->saved_proto;
 	range.min_ip = range.max_ip =
 	    new->master->tuplehash[!this->dir].tuple.src.u3.ip;
-	nf_nat_setup_info(new, &range, IP_NAT_MANIP_DST);
+	nf_nat_setup_info(new, &range, NF_NAT_MANIP_DST);
 }
 
 /****************************************************************************/
@@ -496,21 +496,21 @@ static int nat_q931(struct sk_buff *skb, struct nf_conn *ct,
 static void ip_nat_callforwarding_expect(struct nf_conn *new,
 					 struct nf_conntrack_expect *this)
 {
-	struct nf_nat_range range;
+	struct nf_nat_ipv4_range range;
 
 	/* This must be a fresh one. */
 	BUG_ON(new->status & IPS_NAT_DONE_MASK);
 
 	/* Change src to where master sends to */
-	range.flags = IP_NAT_RANGE_MAP_IPS;
+	range.flags = NF_NAT_RANGE_MAP_IPS;
 	range.min_ip = range.max_ip = new->tuplehash[!this->dir].tuple.src.u3.ip;
-	nf_nat_setup_info(new, &range, IP_NAT_MANIP_SRC);
+	nf_nat_setup_info(new, &range, NF_NAT_MANIP_SRC);
 
 	/* For DST manip, map port here to where it's expected. */
-	range.flags = (IP_NAT_RANGE_MAP_IPS | IP_NAT_RANGE_PROTO_SPECIFIED);
+	range.flags = (NF_NAT_RANGE_MAP_IPS | NF_NAT_RANGE_PROTO_SPECIFIED);
 	range.min = range.max = this->saved_proto;
 	range.min_ip = range.max_ip = this->saved_ip;
-	nf_nat_setup_info(new, &range, IP_NAT_MANIP_DST);
+	nf_nat_setup_info(new, &range, NF_NAT_MANIP_DST);
 }
 
 /****************************************************************************/
@@ -581,30 +581,30 @@ static int __init init(void)
 	BUG_ON(nat_callforwarding_hook != NULL);
 	BUG_ON(nat_q931_hook != NULL);
 
-	rcu_assign_pointer(set_h245_addr_hook, set_h245_addr);
-	rcu_assign_pointer(set_h225_addr_hook, set_h225_addr);
-	rcu_assign_pointer(set_sig_addr_hook, set_sig_addr);
-	rcu_assign_pointer(set_ras_addr_hook, set_ras_addr);
-	rcu_assign_pointer(nat_rtp_rtcp_hook, nat_rtp_rtcp);
-	rcu_assign_pointer(nat_t120_hook, nat_t120);
-	rcu_assign_pointer(nat_h245_hook, nat_h245);
-	rcu_assign_pointer(nat_callforwarding_hook, nat_callforwarding);
-	rcu_assign_pointer(nat_q931_hook, nat_q931);
+	RCU_INIT_POINTER(set_h245_addr_hook, set_h245_addr);
+	RCU_INIT_POINTER(set_h225_addr_hook, set_h225_addr);
+	RCU_INIT_POINTER(set_sig_addr_hook, set_sig_addr);
+	RCU_INIT_POINTER(set_ras_addr_hook, set_ras_addr);
+	RCU_INIT_POINTER(nat_rtp_rtcp_hook, nat_rtp_rtcp);
+	RCU_INIT_POINTER(nat_t120_hook, nat_t120);
+	RCU_INIT_POINTER(nat_h245_hook, nat_h245);
+	RCU_INIT_POINTER(nat_callforwarding_hook, nat_callforwarding);
+	RCU_INIT_POINTER(nat_q931_hook, nat_q931);
 	return 0;
 }
 
 /****************************************************************************/
 static void __exit fini(void)
 {
-	rcu_assign_pointer(set_h245_addr_hook, NULL);
-	rcu_assign_pointer(set_h225_addr_hook, NULL);
-	rcu_assign_pointer(set_sig_addr_hook, NULL);
-	rcu_assign_pointer(set_ras_addr_hook, NULL);
-	rcu_assign_pointer(nat_rtp_rtcp_hook, NULL);
-	rcu_assign_pointer(nat_t120_hook, NULL);
-	rcu_assign_pointer(nat_h245_hook, NULL);
-	rcu_assign_pointer(nat_callforwarding_hook, NULL);
-	rcu_assign_pointer(nat_q931_hook, NULL);
+	RCU_INIT_POINTER(set_h245_addr_hook, NULL);
+	RCU_INIT_POINTER(set_h225_addr_hook, NULL);
+	RCU_INIT_POINTER(set_sig_addr_hook, NULL);
+	RCU_INIT_POINTER(set_ras_addr_hook, NULL);
+	RCU_INIT_POINTER(nat_rtp_rtcp_hook, NULL);
+	RCU_INIT_POINTER(nat_t120_hook, NULL);
+	RCU_INIT_POINTER(nat_h245_hook, NULL);
+	RCU_INIT_POINTER(nat_callforwarding_hook, NULL);
+	RCU_INIT_POINTER(nat_q931_hook, NULL);
 	synchronize_rcu();
 }
 

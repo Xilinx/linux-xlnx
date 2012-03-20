@@ -29,8 +29,6 @@ struct pager_config {
 	int val;
 };
 
-static char debugfs_mntpt[MAXPATHLEN];
-
 static int pager_command_config(const char *var, const char *value, void *data)
 {
 	struct pager_config *c = data;
@@ -79,15 +77,6 @@ static void commit_pager_choice(void)
 	default:
 		break;
 	}
-}
-
-static void set_debugfs_path(void)
-{
-	char *path;
-
-	path = getenv(PERF_DEBUGFS_ENVIRONMENT);
-	snprintf(debugfs_path, MAXPATHLEN, "%s/%s", path ?: debugfs_mntpt,
-		 "tracing/events");
 }
 
 static int handle_options(const char ***argv, int *argc, int *envchanged)
@@ -161,15 +150,14 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 				fprintf(stderr, "No directory given for --debugfs-dir.\n");
 				usage(perf_usage_string);
 			}
-			strncpy(debugfs_mntpt, (*argv)[1], MAXPATHLEN);
-			debugfs_mntpt[MAXPATHLEN - 1] = '\0';
+			debugfs_set_path((*argv)[1]);
 			if (envchanged)
 				*envchanged = 1;
 			(*argv)++;
 			(*argc)--;
 		} else if (!prefixcmp(cmd, CMD_DEBUGFS_DIR)) {
-			strncpy(debugfs_mntpt, cmd + strlen(CMD_DEBUGFS_DIR), MAXPATHLEN);
-			debugfs_mntpt[MAXPATHLEN - 1] = '\0';
+			debugfs_set_path(cmd + strlen(CMD_DEBUGFS_DIR));
+			fprintf(stderr, "dir: %s\n", debugfs_mountpoint);
 			if (envchanged)
 				*envchanged = 1;
 		} else {
@@ -281,7 +269,6 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 	if (use_pager == -1 && p->option & USE_PAGER)
 		use_pager = 1;
 	commit_pager_choice();
-	set_debugfs_path();
 
 	status = p->fn(argc, argv, prefix);
 	exit_browser(status);
@@ -416,15 +403,22 @@ static int run_argv(int *argcp, const char ***argv)
 	return done_alias;
 }
 
-/* mini /proc/mounts parser: searching for "^blah /mount/point debugfs" */
-static void get_debugfs_mntpt(void)
+static void pthread__block_sigwinch(void)
 {
-	const char *path = debugfs_mount(NULL);
+	sigset_t set;
 
-	if (path)
-		strncpy(debugfs_mntpt, path, sizeof(debugfs_mntpt));
-	else
-		debugfs_mntpt[0] = '\0';
+	sigemptyset(&set);
+	sigaddset(&set, SIGWINCH);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+}
+
+void pthread__unblock_sigwinch(void)
+{
+	sigset_t set;
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGWINCH);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 }
 
 int main(int argc, const char **argv)
@@ -435,7 +429,7 @@ int main(int argc, const char **argv)
 	if (!cmd)
 		cmd = "perf-help";
 	/* get debugfs mount point from /proc/mounts */
-	get_debugfs_mntpt();
+	debugfs_mount(NULL);
 	/*
 	 * "perf-xxxx" is the same as "perf xxxx", but we obviously:
 	 *
@@ -458,7 +452,6 @@ int main(int argc, const char **argv)
 	argc--;
 	handle_options(&argv, &argc, NULL);
 	commit_pager_choice();
-	set_debugfs_path();
 	set_buildid_dir();
 
 	if (argc > 0) {
@@ -480,6 +473,12 @@ int main(int argc, const char **argv)
 	 * time.
 	 */
 	setup_path();
+	/*
+	 * Block SIGWINCH notifications so that the thread that wants it can
+	 * unblock and get syscalls like select interrupted instead of waiting
+	 * forever while the signal goes to some other non interested thread.
+	 */
+	pthread__block_sigwinch();
 
 	while (1) {
 		static int done_help;

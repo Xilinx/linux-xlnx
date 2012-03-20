@@ -31,20 +31,7 @@
 #include <asm/div64.h>
 #include <asm/sections.h>	/* for dereference_function_descriptor() */
 
-/* Works only for digits and letters, but small and fast */
-#define TOLOWER(x) ((x) | 0x20)
-
-static unsigned int simple_guess_base(const char *cp)
-{
-	if (cp[0] == '0') {
-		if (TOLOWER(cp[1]) == 'x' && isxdigit(cp[2]))
-			return 16;
-		else
-			return 8;
-	} else {
-		return 10;
-	}
-}
+#include "kstrtox.h"
 
 /**
  * simple_strtoull - convert a string to an unsigned long long
@@ -54,23 +41,14 @@ static unsigned int simple_guess_base(const char *cp)
  */
 unsigned long long simple_strtoull(const char *cp, char **endp, unsigned int base)
 {
-	unsigned long long result = 0;
+	unsigned long long result;
+	unsigned int rv;
 
-	if (!base)
-		base = simple_guess_base(cp);
+	cp = _parse_integer_fixup_radix(cp, &base);
+	rv = _parse_integer(cp, base, &result);
+	/* FIXME */
+	cp += (rv & ~KSTRTOX_OVERFLOW);
 
-	if (base == 16 && cp[0] == '0' && TOLOWER(cp[1]) == 'x')
-		cp += 2;
-
-	while (isxdigit(*cp)) {
-		unsigned int value;
-
-		value = isdigit(*cp) ? *cp - '0' : TOLOWER(*cp) - 'a' + 10;
-		if (value >= base)
-			break;
-		result = result * base + value;
-		cp++;
-	}
 	if (endp)
 		*endp = (char *)cp;
 
@@ -569,7 +547,7 @@ char *mac_address_string(char *buf, char *end, u8 *addr,
 	}
 
 	for (i = 0; i < 6; i++) {
-		p = pack_hex_byte(p, addr[i]);
+		p = hex_byte_pack(p, addr[i]);
 		if (fmt[0] == 'M' && i != 5)
 			*p++ = separator;
 	}
@@ -689,13 +667,13 @@ char *ip6_compressed_string(char *p, const char *addr)
 		lo = word & 0xff;
 		if (hi) {
 			if (hi > 0x0f)
-				p = pack_hex_byte(p, hi);
+				p = hex_byte_pack(p, hi);
 			else
 				*p++ = hex_asc_lo(hi);
-			p = pack_hex_byte(p, lo);
+			p = hex_byte_pack(p, lo);
 		}
 		else if (lo > 0x0f)
-			p = pack_hex_byte(p, lo);
+			p = hex_byte_pack(p, lo);
 		else
 			*p++ = hex_asc_lo(lo);
 		needcolon = true;
@@ -717,8 +695,8 @@ char *ip6_string(char *p, const char *addr, const char *fmt)
 	int i;
 
 	for (i = 0; i < 8; i++) {
-		p = pack_hex_byte(p, *addr++);
-		p = pack_hex_byte(p, *addr++);
+		p = hex_byte_pack(p, *addr++);
+		p = hex_byte_pack(p, *addr++);
 		if (fmt[0] == 'I' && i != 7)
 			*p++ = ':';
 	}
@@ -776,7 +754,7 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
 	}
 
 	for (i = 0; i < 16; i++) {
-		p = pack_hex_byte(p, addr[index[i]]);
+		p = hex_byte_pack(p, addr[index[i]]);
 		switch (i) {
 		case 3:
 		case 5:
@@ -797,6 +775,18 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
 	}
 
 	return string(buf, end, uuid, spec);
+}
+
+static
+char *netdev_feature_string(char *buf, char *end, const u8 *addr,
+		      struct printf_spec spec)
+{
+	spec.flags |= SPECIAL | SMALL | ZEROPAD;
+	if (spec.field_width == -1)
+		spec.field_width = 2 + 2 * sizeof(netdev_features_t);
+	spec.base = 16;
+
+	return number(buf, end, *(const netdev_features_t *)addr, spec);
 }
 
 int kptr_restrict __read_mostly;
@@ -846,6 +836,7 @@ int kptr_restrict __read_mostly;
  *       Do not use this feature without some mechanism to verify the
  *       correctness of the format string and va_list arguments.
  * - 'K' For a kernel pointer that should be hidden from unprivileged users
+ * - 'NF' For a netdev_features_t
  *
  * Note: The difference between 'S' and 'F' is that on ia64 and ppc64
  * function pointers are really function descriptors, which contain a
@@ -900,9 +891,15 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 	case 'U':
 		return uuid_string(buf, end, ptr, spec, fmt);
 	case 'V':
-		return buf + vsnprintf(buf, end > buf ? end - buf : 0,
-				       ((struct va_format *)ptr)->fmt,
-				       *(((struct va_format *)ptr)->va));
+		{
+			va_list va;
+
+			va_copy(va, *((struct va_format *)ptr)->va);
+			buf += vsnprintf(buf, end > buf ? end - buf : 0,
+					 ((struct va_format *)ptr)->fmt, va);
+			va_end(va);
+			return buf;
+		}
 	case 'K':
 		/*
 		 * %pK cannot be used in IRQ context because its test
@@ -917,6 +914,12 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 		      (kptr_restrict == 1 &&
 		       has_capability_noaudit(current, CAP_SYSLOG))))
 			ptr = NULL;
+		break;
+	case 'N':
+		switch (fmt[1]) {
+		case 'F':
+			return netdev_feature_string(buf, end, ptr, spec);
+		}
 		break;
 	}
 	spec.flags |= SMALL;
@@ -1036,8 +1039,8 @@ precision:
 qualifier:
 	/* get the conversion qualifier */
 	spec->qualifier = -1;
-	if (*fmt == 'h' || TOLOWER(*fmt) == 'l' ||
-	    TOLOWER(*fmt) == 'z' || *fmt == 't') {
+	if (*fmt == 'h' || _tolower(*fmt) == 'l' ||
+	    _tolower(*fmt) == 'z' || *fmt == 't') {
 		spec->qualifier = *fmt++;
 		if (unlikely(spec->qualifier == *fmt)) {
 			if (spec->qualifier == 'l') {
@@ -1104,7 +1107,7 @@ qualifier:
 			spec->type = FORMAT_TYPE_LONG;
 		else
 			spec->type = FORMAT_TYPE_ULONG;
-	} else if (TOLOWER(spec->qualifier) == 'z') {
+	} else if (_tolower(spec->qualifier) == 'z') {
 		spec->type = FORMAT_TYPE_SIZE_T;
 	} else if (spec->qualifier == 't') {
 		spec->type = FORMAT_TYPE_PTRDIFF;
@@ -1149,8 +1152,7 @@ qualifier:
  * %pi4 print an IPv4 address with leading zeros
  * %pI6 print an IPv6 address with colons
  * %pi6 print an IPv6 address without colons
- * %pI6c print an IPv6 address as specified by
- *   http://tools.ietf.org/html/draft-ietf-6man-text-addr-representation-00
+ * %pI6c print an IPv6 address as specified by RFC 5952
  * %pU[bBlL] print a UUID/GUID in big or little endian using lower or upper
  *   case.
  * %n is ignored
@@ -1263,7 +1265,7 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			if (qualifier == 'l') {
 				long *ip = va_arg(args, long *);
 				*ip = (str - buf);
-			} else if (TOLOWER(qualifier) == 'z') {
+			} else if (_tolower(qualifier) == 'z') {
 				size_t *ip = va_arg(args, size_t *);
 				*ip = (str - buf);
 			} else {
@@ -1550,7 +1552,7 @@ do {									\
 			void *skip_arg;
 			if (qualifier == 'l')
 				skip_arg = va_arg(args, long *);
-			else if (TOLOWER(qualifier) == 'z')
+			else if (_tolower(qualifier) == 'z')
 				skip_arg = va_arg(args, size_t *);
 			else
 				skip_arg = va_arg(args, int *);
@@ -1856,8 +1858,8 @@ int vsscanf(const char *buf, const char *fmt, va_list args)
 
 		/* get conversion qualifier */
 		qualifier = -1;
-		if (*fmt == 'h' || TOLOWER(*fmt) == 'l' ||
-		    TOLOWER(*fmt) == 'z') {
+		if (*fmt == 'h' || _tolower(*fmt) == 'l' ||
+		    _tolower(*fmt) == 'z') {
 			qualifier = *fmt++;
 			if (unlikely(qualifier == *fmt)) {
 				if (qualifier == 'h') {

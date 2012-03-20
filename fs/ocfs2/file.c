@@ -171,7 +171,8 @@ static int ocfs2_dir_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int ocfs2_sync_file(struct file *file, int datasync)
+static int ocfs2_sync_file(struct file *file, loff_t start, loff_t end,
+			   int datasync)
 {
 	int err = 0;
 	journal_t *journal;
@@ -184,6 +185,16 @@ static int ocfs2_sync_file(struct file *file, int datasync)
 			      file->f_path.dentry->d_name.name,
 			      (unsigned long long)datasync);
 
+	err = filemap_write_and_wait_range(inode->i_mapping, start, end);
+	if (err)
+		return err;
+
+	/*
+	 * Probably don't need the i_mutex at all in here, just putting it here
+	 * to be consistent with how fsync used to be called, someone more
+	 * familiar with the fs could possibly remove it.
+	 */
+	mutex_lock(&inode->i_mutex);
 	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC)) {
 		/*
 		 * We still have to flush drive's caches to get data to the
@@ -200,6 +211,7 @@ static int ocfs2_sync_file(struct file *file, int datasync)
 bail:
 	if (err)
 		mlog_errno(err);
+	mutex_unlock(&inode->i_mutex);
 
 	return (err < 0) ? -EIO : 0;
 }
@@ -1142,6 +1154,8 @@ int ocfs2_setattr(struct dentry *dentry, struct iattr *attr)
 		if (status)
 			goto bail_unlock;
 
+		inode_dio_wait(inode);
+
 		if (i_size_read(inode) > attr->ia_size) {
 			if (ocfs2_should_order_data(inode)) {
 				status = ocfs2_begin_ordered_truncate(inode,
@@ -1279,11 +1293,11 @@ bail:
 	return err;
 }
 
-int ocfs2_permission(struct inode *inode, int mask, unsigned int flags)
+int ocfs2_permission(struct inode *inode, int mask)
 {
 	int ret;
 
-	if (flags & IPERM_FLAG_RCU)
+	if (mask & MAY_NOT_BLOCK)
 		return -ECHILD;
 
 	ret = ocfs2_inode_lock(inode, NULL, 0);
@@ -1293,7 +1307,7 @@ int ocfs2_permission(struct inode *inode, int mask, unsigned int flags)
 		goto out;
 	}
 
-	ret = generic_permission(inode, mask, flags, ocfs2_check_acl);
+	ret = generic_permission(inode, mask);
 
 	ocfs2_inode_unlock(inode, 0);
 out:
@@ -1936,6 +1950,9 @@ static int __ocfs2_change_file_space(struct file *file, struct inode *inode,
 	if (ret < 0)
 		mlog_errno(ret);
 
+	if (file->f_flags & O_SYNC)
+		handle->h_sync = 1;
+
 	ocfs2_commit_trans(osb, handle);
 
 out_inode_unlock:
@@ -2038,6 +2055,23 @@ out:
 	return ret;
 }
 
+static void ocfs2_aiodio_wait(struct inode *inode)
+{
+	wait_queue_head_t *wq = ocfs2_ioend_wq(inode);
+
+	wait_event(*wq, (atomic_read(&OCFS2_I(inode)->ip_unaligned_aio) == 0));
+}
+
+static int ocfs2_is_io_unaligned(struct inode *inode, size_t count, loff_t pos)
+{
+	int blockmask = inode->i_sb->s_blocksize - 1;
+	loff_t final_size = pos + count;
+
+	if ((pos & blockmask) || (final_size & blockmask))
+		return 1;
+	return 0;
+}
+
 static int ocfs2_prepare_inode_for_refcount(struct inode *inode,
 					    struct file *file,
 					    loff_t pos, size_t count,
@@ -2094,7 +2128,7 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 		 * remove_suid() calls ->setattr without any hint that
 		 * we may have already done our cluster locking. Since
 		 * ocfs2_setattr() *must* take cluster locks to
-		 * proceeed, this will lead us to recursively lock the
+		 * proceed, this will lead us to recursively lock the
 		 * inode. There's also the dinode i_size state which
 		 * can be lost via setattr during extending writes (we
 		 * set inode->i_size at the end of a write. */
@@ -2216,6 +2250,7 @@ static ssize_t ocfs2_file_aio_write(struct kiocb *iocb,
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
 	int full_coherency = !(osb->s_mount_opt &
 			       OCFS2_MOUNT_COHERENCY_BUFFERED);
+	int unaligned_dio = 0;
 
 	trace_ocfs2_file_aio_write(inode, file, file->f_path.dentry,
 		(unsigned long long)OCFS2_I(inode)->ip_blkno,
@@ -2236,9 +2271,8 @@ static ssize_t ocfs2_file_aio_write(struct kiocb *iocb,
 	ocfs2_iocb_clear_sem_locked(iocb);
 
 relock:
-	/* to match setattr's i_mutex -> i_alloc_sem -> rw_lock ordering */
+	/* to match setattr's i_mutex -> rw_lock ordering */
 	if (direct_io) {
-		down_read(&inode->i_alloc_sem);
 		have_alloc_sem = 1;
 		/* communicate with ocfs2_dio_end_io */
 		ocfs2_iocb_set_sem_locked(iocb);
@@ -2284,19 +2318,34 @@ relock:
 		goto out;
 	}
 
+	if (direct_io && !is_sync_kiocb(iocb))
+		unaligned_dio = ocfs2_is_io_unaligned(inode, iocb->ki_left,
+						      *ppos);
+
 	/*
 	 * We can't complete the direct I/O as requested, fall back to
 	 * buffered I/O.
 	 */
 	if (direct_io && !can_do_direct) {
 		ocfs2_rw_unlock(inode, rw_level);
-		up_read(&inode->i_alloc_sem);
 
 		have_alloc_sem = 0;
 		rw_level = -1;
 
 		direct_io = 0;
 		goto relock;
+	}
+
+	if (unaligned_dio) {
+		/*
+		 * Wait on previous unaligned aio to complete before
+		 * proceeding.
+		 */
+		ocfs2_aiodio_wait(inode);
+
+		/* Mark the iocb as needing a decrement in ocfs2_dio_end_io */
+		atomic_inc(&OCFS2_I(inode)->ip_unaligned_aio);
+		ocfs2_iocb_set_unaligned_aio(iocb);
 	}
 
 	/*
@@ -2361,8 +2410,7 @@ out_dio:
 	/*
 	 * deep in g_f_a_w_n()->ocfs2_direct_IO we pass in a ocfs2_dio_end_io
 	 * function pointer which is called when o_direct io completes so that
-	 * it can unlock our rw lock.  (it's the clustered equivalent of
-	 * i_alloc_sem; protects truncate from racing with pending ios).
+	 * it can unlock our rw lock.
 	 * Unfortunately there are error cases which call end_io and others
 	 * that don't.  so we don't have to unlock the rw_lock if either an
 	 * async dio is going to do it in the future or an end_io after an
@@ -2371,17 +2419,19 @@ out_dio:
 	if ((ret == -EIOCBQUEUED) || (!ocfs2_iocb_is_rw_locked(iocb))) {
 		rw_level = -1;
 		have_alloc_sem = 0;
+		unaligned_dio = 0;
 	}
+
+	if (unaligned_dio)
+		atomic_dec(&OCFS2_I(inode)->ip_unaligned_aio);
 
 out:
 	if (rw_level != -1)
 		ocfs2_rw_unlock(inode, rw_level);
 
 out_sems:
-	if (have_alloc_sem) {
-		up_read(&inode->i_alloc_sem);
+	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
-	}
 
 	mutex_unlock(&inode->i_mutex);
 
@@ -2531,7 +2581,6 @@ static ssize_t ocfs2_file_aio_read(struct kiocb *iocb,
 	 * need locks to protect pending reads from racing with truncate.
 	 */
 	if (filp->f_flags & O_DIRECT) {
-		down_read(&inode->i_alloc_sem);
 		have_alloc_sem = 1;
 		ocfs2_iocb_set_sem_locked(iocb);
 
@@ -2574,14 +2623,64 @@ static ssize_t ocfs2_file_aio_read(struct kiocb *iocb,
 	}
 
 bail:
-	if (have_alloc_sem) {
-		up_read(&inode->i_alloc_sem);
+	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
-	}
+
 	if (rw_level != -1)
 		ocfs2_rw_unlock(inode, rw_level);
 
 	return ret;
+}
+
+/* Refer generic_file_llseek_unlocked() */
+static loff_t ocfs2_file_llseek(struct file *file, loff_t offset, int origin)
+{
+	struct inode *inode = file->f_mapping->host;
+	int ret = 0;
+
+	mutex_lock(&inode->i_mutex);
+
+	switch (origin) {
+	case SEEK_SET:
+		break;
+	case SEEK_END:
+		offset += inode->i_size;
+		break;
+	case SEEK_CUR:
+		if (offset == 0) {
+			offset = file->f_pos;
+			goto out;
+		}
+		offset += file->f_pos;
+		break;
+	case SEEK_DATA:
+	case SEEK_HOLE:
+		ret = ocfs2_seek_data_hole_offset(file, &offset, origin);
+		if (ret)
+			goto out;
+		break;
+	default:
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (offset < 0 && !(file->f_mode & FMODE_UNSIGNED_OFFSET))
+		ret = -EINVAL;
+	if (!ret && offset > inode->i_sb->s_maxbytes)
+		ret = -EINVAL;
+	if (ret)
+		goto out;
+
+	if (offset != file->f_pos) {
+		file->f_pos = offset;
+		file->f_version = 0;
+	}
+
+out:
+	mutex_unlock(&inode->i_mutex);
+	if (ret)
+		return ret;
+	return offset;
 }
 
 const struct inode_operations ocfs2_file_iops = {
@@ -2593,12 +2692,14 @@ const struct inode_operations ocfs2_file_iops = {
 	.listxattr	= ocfs2_listxattr,
 	.removexattr	= generic_removexattr,
 	.fiemap		= ocfs2_fiemap,
+	.get_acl	= ocfs2_iop_get_acl,
 };
 
 const struct inode_operations ocfs2_special_file_iops = {
 	.setattr	= ocfs2_setattr,
 	.getattr	= ocfs2_getattr,
 	.permission	= ocfs2_permission,
+	.get_acl	= ocfs2_iop_get_acl,
 };
 
 /*
@@ -2606,7 +2707,7 @@ const struct inode_operations ocfs2_special_file_iops = {
  * ocfs2_fops_no_plocks and ocfs2_dops_no_plocks!
  */
 const struct file_operations ocfs2_fops = {
-	.llseek		= generic_file_llseek,
+	.llseek		= ocfs2_file_llseek,
 	.read		= do_sync_read,
 	.write		= do_sync_write,
 	.mmap		= ocfs2_mmap,
@@ -2654,7 +2755,7 @@ const struct file_operations ocfs2_dops = {
  * the cluster.
  */
 const struct file_operations ocfs2_fops_no_plocks = {
-	.llseek		= generic_file_llseek,
+	.llseek		= ocfs2_file_llseek,
 	.read		= do_sync_read,
 	.write		= do_sync_write,
 	.mmap		= ocfs2_mmap,

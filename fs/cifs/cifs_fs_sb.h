@@ -43,6 +43,8 @@
 #define CIFS_MOUNT_STRICT_IO	0x40000 /* strict cache mode */
 #define CIFS_MOUNT_RWPIDFORWARD	0x80000 /* use pid forwarding for rw */
 #define CIFS_MOUNT_POSIXACL	0x100000 /* mirror of MS_POSIXACL in mnt_cifs_flags */
+#define CIFS_MOUNT_CIFS_BACKUPUID 0x200000 /* backup intent bit for a user */
+#define CIFS_MOUNT_CIFS_BACKUPGID 0x400000 /* backup intent bit for a group */
 
 struct cifs_sb_info {
 	struct rb_root tlink_tree;
@@ -55,8 +57,10 @@ struct cifs_sb_info {
 	atomic_t active;
 	uid_t	mnt_uid;
 	gid_t	mnt_gid;
-	mode_t	mnt_file_mode;
-	mode_t	mnt_dir_mode;
+	uid_t	mnt_backupuid;
+	gid_t	mnt_backupgid;
+	umode_t	mnt_file_mode;
+	umode_t	mnt_dir_mode;
 	unsigned int mnt_cifs_flags;
 	char   *mountdata; /* options received at mount time or via DFS refs */
 	struct backing_dev_info bdi;

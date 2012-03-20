@@ -16,6 +16,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
+#include <linux/of_device.h>
 #include <linux/spi/spi.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -541,7 +542,7 @@ static int wm8804_set_bias_level(struct snd_soc_codec *codec,
 }
 
 #ifdef CONFIG_PM
-static int wm8804_suspend(struct snd_soc_codec *codec, pm_message_t state)
+static int wm8804_suspend(struct snd_soc_codec *codec)
 {
 	wm8804_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	return 0;
@@ -658,8 +659,6 @@ static int wm8804_probe(struct snd_soc_codec *codec)
 
 	wm8804_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
 
-	snd_soc_add_controls(codec, wm8804_snd_controls,
-			     ARRAY_SIZE(wm8804_snd_controls));
 	return 0;
 
 err_reg_enable:
@@ -669,7 +668,7 @@ err_reg_get:
 	return ret;
 }
 
-static struct snd_soc_dai_ops wm8804_dai_ops = {
+static const struct snd_soc_dai_ops wm8804_dai_ops = {
 	.hw_params = wm8804_hw_params,
 	.set_fmt = wm8804_set_fmt,
 	.set_sysclk = wm8804_set_sysclk,
@@ -714,8 +713,17 @@ static struct snd_soc_codec_driver soc_codec_dev_wm8804 = {
 	.reg_cache_size = ARRAY_SIZE(wm8804_reg_defs),
 	.reg_word_size = sizeof(u8),
 	.reg_cache_default = wm8804_reg_defs,
-	.volatile_register = wm8804_volatile
+	.volatile_register = wm8804_volatile,
+
+	.controls = wm8804_snd_controls,
+	.num_controls = ARRAY_SIZE(wm8804_snd_controls),
 };
+
+static const struct of_device_id wm8804_of_match[] = {
+	{ .compatible = "wlf,wm8804", },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, wm8804_of_match);
 
 #if defined(CONFIG_SPI_MASTER)
 static int __devinit wm8804_spi_probe(struct spi_device *spi)
@@ -748,6 +756,7 @@ static struct spi_driver wm8804_spi_driver = {
 	.driver = {
 		.name = "wm8804",
 		.owner = THIS_MODULE,
+		.of_match_table = wm8804_of_match,
 	},
 	.probe = wm8804_spi_probe,
 	.remove = __devexit_p(wm8804_spi_remove)
@@ -792,6 +801,7 @@ static struct i2c_driver wm8804_i2c_driver = {
 	.driver = {
 		.name = "wm8804",
 		.owner = THIS_MODULE,
+		.of_match_table = wm8804_of_match,
 	},
 	.probe = wm8804_i2c_probe,
 	.remove = __devexit_p(wm8804_i2c_remove),

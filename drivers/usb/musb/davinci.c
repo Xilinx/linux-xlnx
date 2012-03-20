@@ -33,9 +33,6 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 
-#include <mach/hardware.h>
-#include <mach/memory.h>
-#include <mach/gpio.h>
 #include <mach/cputype.h>
 
 #include <asm/mach-types.h>
@@ -143,12 +140,7 @@ static void davinci_musb_disable(struct musb *musb)
 }
 
 
-#ifdef CONFIG_USB_MUSB_HDRC_HCD
 #define	portstate(stmt)		stmt
-#else
-#define	portstate(stmt)
-#endif
-
 
 /*
  * VBUS SWITCHING IS BOARD-SPECIFIC ... at least for the DM6446 EVM,

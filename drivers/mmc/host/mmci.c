@@ -29,6 +29,7 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <linux/amba/mmci.h>
+#include <linux/pm_runtime.h>
 
 #include <asm/div64.h>
 #include <asm/io.h>
@@ -170,6 +171,7 @@ mmci_request_end(struct mmci_host *host, struct mmc_request *mrq)
 	 * back into the driver...
 	 */
 	spin_unlock(&host->lock);
+	pm_runtime_put(mmc_dev(host->mmc));
 	mmc_request_done(host->mmc, mrq);
 	spin_lock(&host->lock);
 }
@@ -225,6 +227,9 @@ static void __devinit mmci_dma_setup(struct mmci_host *host)
 		dev_info(mmc_dev(host->mmc), "no DMA platform data\n");
 		return;
 	}
+
+	/* initialize pre request cookie */
+	host->next_data.cookie = 1;
 
 	/* Try to acquire a generic DMA engine slave channel */
 	dma_cap_zero(mask);
@@ -335,7 +340,8 @@ static void mmci_dma_unmap(struct mmci_host *host, struct mmc_data *data)
 		dir = DMA_FROM_DEVICE;
 	}
 
-	dma_unmap_sg(chan->device->dev, data->sg, data->sg_len, dir);
+	if (!data->host_cookie)
+		dma_unmap_sg(chan->device->dev, data->sg, data->sg_len, dir);
 
 	/*
 	 * Use of DMA with scatter-gather is impossible.
@@ -353,7 +359,8 @@ static void mmci_dma_data_error(struct mmci_host *host)
 	dmaengine_terminate_all(host->dma_current);
 }
 
-static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
+static int mmci_dma_prep_data(struct mmci_host *host, struct mmc_data *data,
+			      struct mmci_host_next *next)
 {
 	struct variant_data *variant = host->variant;
 	struct dma_slave_config conf = {
@@ -364,19 +371,29 @@ static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
 		.src_maxburst = variant->fifohalfsize >> 2, /* # of words */
 		.dst_maxburst = variant->fifohalfsize >> 2, /* # of words */
 	};
-	struct mmc_data *data = host->data;
 	struct dma_chan *chan;
 	struct dma_device *device;
 	struct dma_async_tx_descriptor *desc;
+	enum dma_data_direction buffer_dirn;
 	int nr_sg;
 
-	host->dma_current = NULL;
+	/* Check if next job is already prepared */
+	if (data->host_cookie && !next &&
+	    host->dma_current && host->dma_desc_current)
+		return 0;
+
+	if (!next) {
+		host->dma_current = NULL;
+		host->dma_desc_current = NULL;
+	}
 
 	if (data->flags & MMC_DATA_READ) {
-		conf.direction = DMA_FROM_DEVICE;
+		conf.direction = DMA_DEV_TO_MEM;
+		buffer_dirn = DMA_FROM_DEVICE;
 		chan = host->dma_rx_channel;
 	} else {
-		conf.direction = DMA_TO_DEVICE;
+		conf.direction = DMA_MEM_TO_DEV;
+		buffer_dirn = DMA_TO_DEVICE;
 		chan = host->dma_tx_channel;
 	}
 
@@ -385,11 +402,11 @@ static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
 		return -EINVAL;
 
 	/* If less than or equal to the fifo size, don't bother with DMA */
-	if (host->size <= variant->fifosize)
+	if (data->blksz * data->blocks <= variant->fifosize)
 		return -EINVAL;
 
 	device = chan->device;
-	nr_sg = dma_map_sg(device->dev, data->sg, data->sg_len, conf.direction);
+	nr_sg = dma_map_sg(device->dev, data->sg, data->sg_len, buffer_dirn);
 	if (nr_sg == 0)
 		return -EINVAL;
 
@@ -399,14 +416,38 @@ static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
 	if (!desc)
 		goto unmap_exit;
 
-	/* Okay, go for it. */
-	host->dma_current = chan;
+	if (next) {
+		next->dma_chan = chan;
+		next->dma_desc = desc;
+	} else {
+		host->dma_current = chan;
+		host->dma_desc_current = desc;
+	}
 
+	return 0;
+
+ unmap_exit:
+	if (!next)
+		dmaengine_terminate_all(chan);
+	dma_unmap_sg(device->dev, data->sg, data->sg_len, buffer_dirn);
+	return -ENOMEM;
+}
+
+static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
+{
+	int ret;
+	struct mmc_data *data = host->data;
+
+	ret = mmci_dma_prep_data(host, host->data, NULL);
+	if (ret)
+		return ret;
+
+	/* Okay, go for it. */
 	dev_vdbg(mmc_dev(host->mmc),
 		 "Submit MMCI DMA job, sglen %d blksz %04x blks %04x flags %08x\n",
 		 data->sg_len, data->blksz, data->blocks, data->flags);
-	dmaengine_submit(desc);
-	dma_async_issue_pending(chan);
+	dmaengine_submit(host->dma_desc_current);
+	dma_async_issue_pending(host->dma_current);
 
 	datactrl |= MCI_DPSM_DMAENABLE;
 
@@ -421,14 +462,90 @@ static int mmci_dma_start_data(struct mmci_host *host, unsigned int datactrl)
 	writel(readl(host->base + MMCIMASK0) | MCI_DATAENDMASK,
 	       host->base + MMCIMASK0);
 	return 0;
-
-unmap_exit:
-	dmaengine_terminate_all(chan);
-	dma_unmap_sg(device->dev, data->sg, data->sg_len, conf.direction);
-	return -ENOMEM;
 }
+
+static void mmci_get_next_data(struct mmci_host *host, struct mmc_data *data)
+{
+	struct mmci_host_next *next = &host->next_data;
+
+	if (data->host_cookie && data->host_cookie != next->cookie) {
+		pr_warning("[%s] invalid cookie: data->host_cookie %d"
+		       " host->next_data.cookie %d\n",
+		       __func__, data->host_cookie, host->next_data.cookie);
+		data->host_cookie = 0;
+	}
+
+	if (!data->host_cookie)
+		return;
+
+	host->dma_desc_current = next->dma_desc;
+	host->dma_current = next->dma_chan;
+
+	next->dma_desc = NULL;
+	next->dma_chan = NULL;
+}
+
+static void mmci_pre_request(struct mmc_host *mmc, struct mmc_request *mrq,
+			     bool is_first_req)
+{
+	struct mmci_host *host = mmc_priv(mmc);
+	struct mmc_data *data = mrq->data;
+	struct mmci_host_next *nd = &host->next_data;
+
+	if (!data)
+		return;
+
+	if (data->host_cookie) {
+		data->host_cookie = 0;
+		return;
+	}
+
+	/* if config for dma */
+	if (((data->flags & MMC_DATA_WRITE) && host->dma_tx_channel) ||
+	    ((data->flags & MMC_DATA_READ) && host->dma_rx_channel)) {
+		if (mmci_dma_prep_data(host, data, nd))
+			data->host_cookie = 0;
+		else
+			data->host_cookie = ++nd->cookie < 0 ? 1 : nd->cookie;
+	}
+}
+
+static void mmci_post_request(struct mmc_host *mmc, struct mmc_request *mrq,
+			      int err)
+{
+	struct mmci_host *host = mmc_priv(mmc);
+	struct mmc_data *data = mrq->data;
+	struct dma_chan *chan;
+	enum dma_data_direction dir;
+
+	if (!data)
+		return;
+
+	if (data->flags & MMC_DATA_READ) {
+		dir = DMA_FROM_DEVICE;
+		chan = host->dma_rx_channel;
+	} else {
+		dir = DMA_TO_DEVICE;
+		chan = host->dma_tx_channel;
+	}
+
+
+	/* if config for dma */
+	if (chan) {
+		if (err)
+			dmaengine_terminate_all(chan);
+		if (data->host_cookie)
+			dma_unmap_sg(mmc_dev(host->mmc), data->sg,
+				     data->sg_len, dir);
+		mrq->data->host_cookie = 0;
+	}
+}
+
 #else
 /* Blank functions if the DMA engine is not available */
+static void mmci_get_next_data(struct mmci_host *host, struct mmc_data *data)
+{
+}
 static inline void mmci_dma_setup(struct mmci_host *host)
 {
 }
@@ -449,6 +566,10 @@ static inline int mmci_dma_start_data(struct mmci_host *host, unsigned int datac
 {
 	return -ENOSYS;
 }
+
+#define mmci_pre_request NULL
+#define mmci_post_request NULL
+
 #endif
 
 static void mmci_start_data(struct mmci_host *host, struct mmc_data *data)
@@ -557,7 +678,8 @@ mmci_data_irq(struct mmci_host *host, struct mmc_data *data,
 	      unsigned int status)
 {
 	/* First check for errors */
-	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|MCI_RXOVERRUN)) {
+	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_STARTBITERR|
+		      MCI_TXUNDERRUN|MCI_RXOVERRUN)) {
 		u32 remain, success;
 
 		/* Terminate the DMA transfer */
@@ -636,8 +758,12 @@ mmci_cmd_irq(struct mmci_host *host, struct mmc_command *cmd,
 	}
 
 	if (!cmd->data || cmd->error) {
-		if (host->data)
+		if (host->data) {
+			/* Terminate the DMA transfer */
+			if (dma_inprogress(host))
+				mmci_dma_data_error(host);
 			mmci_stop_data(host);
+		}
 		mmci_request_end(host, cmd->mrq);
 	} else if (!(cmd->data->flags & MMC_DATA_READ)) {
 		mmci_start_data(host, cmd->data);
@@ -837,8 +963,9 @@ static irqreturn_t mmci_irq(int irq, void *dev_id)
 		dev_dbg(mmc_dev(host->mmc), "irq0 (data+cmd) %08x\n", status);
 
 		data = host->data;
-		if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
-			      MCI_RXOVERRUN|MCI_DATAEND|MCI_DATABLOCKEND) && data)
+		if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_STARTBITERR|
+			      MCI_TXUNDERRUN|MCI_RXOVERRUN|MCI_DATAEND|
+			      MCI_DATABLOCKEND) && data)
 			mmci_data_irq(host, data, status);
 
 		cmd = host->cmd;
@@ -868,9 +995,14 @@ static void mmci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		return;
 	}
 
+	pm_runtime_get_sync(mmc_dev(mmc));
+
 	spin_lock_irqsave(&host->lock, flags);
 
 	host->mrq = mrq;
+
+	if (mrq->data)
+		mmci_get_next_data(host, mrq->data);
 
 	if (mrq->data && mrq->data->flags & MMC_DATA_READ)
 		mmci_start_data(host, mrq->data);
@@ -986,6 +1118,8 @@ static irqreturn_t mmci_cd_irq(int irq, void *dev_id)
 
 static const struct mmc_host_ops mmci_ops = {
 	.request	= mmci_request,
+	.pre_req	= mmci_pre_request,
+	.post_req	= mmci_post_request,
 	.set_ios	= mmci_set_ios,
 	.get_ro		= mmci_get_ro,
 	.get_cd		= mmci_get_cd,
@@ -1035,9 +1169,13 @@ static int __devinit mmci_probe(struct amba_device *dev,
 		goto host_free;
 	}
 
-	ret = clk_enable(host->clk);
+	ret = clk_prepare(host->clk);
 	if (ret)
 		goto clk_free;
+
+	ret = clk_enable(host->clk);
+	if (ret)
+		goto clk_unprep;
 
 	host->plat = plat;
 	host->variant = variant;
@@ -1063,7 +1201,15 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	}
 
 	mmc->ops = &mmci_ops;
-	mmc->f_min = (host->mclk + 511) / 512;
+	/*
+	 * The ARM and ST versions of the block have slightly different
+	 * clock divider equations which means that the minimum divider
+	 * differs too.
+	 */
+	if (variant->st_clkdiv)
+		mmc->f_min = DIV_ROUND_UP(host->mclk, 257);
+	else
+		mmc->f_min = DIV_ROUND_UP(host->mclk, 512);
 	/*
 	 * If the platform data supplies a maximum operating
 	 * frequency, this takes precedence. Else, we fall back
@@ -1102,6 +1248,7 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	if (host->vcc == NULL)
 		mmc->ocr_avail = plat->ocr_mask;
 	mmc->caps = plat->capabilities;
+	mmc->caps2 = plat->capabilities2;
 
 	/*
 	 * We can do SGIO
@@ -1124,12 +1271,13 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	/*
 	 * Block size can be up to 2048 bytes, but must be a power of two.
 	 */
-	mmc->max_blk_size = 2048;
+	mmc->max_blk_size = 1 << 11;
 
 	/*
-	 * No limit on the number of blocks transferred.
+	 * Limit the number of blocks transferred so that we don't overflow
+	 * the maximum request size.
 	 */
-	mmc->max_blk_count = mmc->max_req_size;
+	mmc->max_blk_count = mmc->max_req_size >> 11;
 
 	spin_lock_init(&host->lock);
 
@@ -1198,6 +1346,8 @@ static int __devinit mmci_probe(struct amba_device *dev,
 
 	mmci_dma_setup(host);
 
+	pm_runtime_put(&dev->dev);
+
 	mmc_add_host(mmc);
 
 	return 0;
@@ -1216,6 +1366,8 @@ static int __devinit mmci_probe(struct amba_device *dev,
 	iounmap(host->base);
  clk_disable:
 	clk_disable(host->clk);
+ clk_unprep:
+	clk_unprepare(host->clk);
  clk_free:
 	clk_put(host->clk);
  host_free:
@@ -1234,6 +1386,12 @@ static int __devexit mmci_remove(struct amba_device *dev)
 
 	if (mmc) {
 		struct mmci_host *host = mmc_priv(mmc);
+
+		/*
+		 * Undo pm_runtime_put() in probe.  We use the _sync
+		 * version here so that we can access the primecell.
+		 */
+		pm_runtime_get_sync(&dev->dev);
 
 		mmc_remove_host(mmc);
 
@@ -1257,6 +1415,7 @@ static int __devexit mmci_remove(struct amba_device *dev)
 
 		iounmap(host->base);
 		clk_disable(host->clk);
+		clk_unprepare(host->clk);
 		clk_put(host->clk);
 
 		if (host->vcc)
@@ -1347,6 +1506,8 @@ static struct amba_id mmci_ids[] = {
 	},
 	{ 0, 0 },
 };
+
+MODULE_DEVICE_TABLE(amba, mmci_ids);
 
 static struct amba_driver mmci_driver = {
 	.drv		= {

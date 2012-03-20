@@ -32,6 +32,8 @@ struct work_struct;
 struct bfin_serial_port {
 	struct uart_port port;
 	unsigned int old_status;
+	int tx_irq;
+	int rx_irq;
 	int status_irq;
 #ifndef BFIN_UART_BF54X_STYLE
 	unsigned int lsr;
@@ -48,9 +50,6 @@ struct bfin_serial_port {
 	struct work_struct tx_dma_workqueue;
 #elif ANOMALY_05000363
 	unsigned int anomaly_threshold;
-#endif
-#ifdef CONFIG_SERIAL_BFIN_HARD_CTSRTS
-	int scts;
 #endif
 #if defined(CONFIG_SERIAL_BFIN_CTSRTS) || \
 	defined(CONFIG_SERIAL_BFIN_HARD_CTSRTS)

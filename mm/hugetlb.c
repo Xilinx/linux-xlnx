@@ -24,7 +24,7 @@
 
 #include <asm/page.h>
 #include <asm/pgtable.h>
-#include <asm/io.h>
+#include <linux/io.h>
 
 #include <linux/hugetlb.h>
 #include <linux/node.h>
@@ -62,10 +62,10 @@ static DEFINE_SPINLOCK(hugetlb_lock);
  * must either hold the mmap_sem for write, or the mmap_sem for read and
  * the hugetlb_instantiation mutex:
  *
- * 	down_write(&mm->mmap_sem);
+ *	down_write(&mm->mmap_sem);
  * or
- * 	down_read(&mm->mmap_sem);
- * 	mutex_lock(&hugetlb_instantiation_mutex);
+ *	down_read(&mm->mmap_sem);
+ *	mutex_lock(&hugetlb_instantiation_mutex);
  */
 struct file_region {
 	struct list_head link;
@@ -503,9 +503,10 @@ static void update_and_free_page(struct hstate *h, struct page *page)
 	h->nr_huge_pages--;
 	h->nr_huge_pages_node[page_to_nid(page)]--;
 	for (i = 0; i < pages_per_huge_page(h); i++) {
-		page[i].flags &= ~(1 << PG_locked | 1 << PG_error | 1 << PG_referenced |
-				1 << PG_dirty | 1 << PG_active | 1 << PG_reserved |
-				1 << PG_private | 1<< PG_writeback);
+		page[i].flags &= ~(1 << PG_locked | 1 << PG_error |
+				1 << PG_referenced | 1 << PG_dirty |
+				1 << PG_active | 1 << PG_reserved |
+				1 << PG_private | 1 << PG_writeback);
 	}
 	set_compound_page_dtor(page, NULL);
 	set_page_refcounted(page);
@@ -575,6 +576,7 @@ static void prep_compound_gigantic_page(struct page *page, unsigned long order)
 	__SetPageHead(page);
 	for (i = 1; i < nr_pages; i++, p = mem_map_next(p, page, i)) {
 		__SetPageTail(p);
+		set_page_count(p, 0);
 		p->first_page = page;
 	}
 }
@@ -591,7 +593,6 @@ int PageHuge(struct page *page)
 
 	return dtor == free_huge_page;
 }
-
 EXPORT_SYMBOL_GPL(PageHuge);
 
 static struct page *alloc_fresh_huge_page_node(struct hstate *h, int nid)
@@ -799,7 +800,7 @@ static struct page *alloc_buddy_huge_page(struct hstate *h, int nid)
 
 	if (page && arch_prepare_hugepage(page)) {
 		__free_pages(page, huge_page_order(h));
-		return NULL;
+		page = NULL;
 	}
 
 	spin_lock(&hugetlb_lock);
@@ -900,7 +901,6 @@ retry:
 	h->resv_huge_pages += delta;
 	ret = 0;
 
-	spin_unlock(&hugetlb_lock);
 	/* Free the needed pages to the hugetlb pool */
 	list_for_each_entry_safe(page, tmp, &surplus_list, lru) {
 		if ((--needed) < 0)
@@ -914,6 +914,7 @@ retry:
 		VM_BUG_ON(page_count(page));
 		enqueue_huge_page(h, page);
 	}
+	spin_unlock(&hugetlb_lock);
 
 	/* Free unnecessary surplus pages to the buddy allocator */
 free:
@@ -1105,8 +1106,16 @@ static void __init gather_bootmem_prealloc(void)
 	struct huge_bootmem_page *m;
 
 	list_for_each_entry(m, &huge_boot_pages, list) {
-		struct page *page = virt_to_page(m);
 		struct hstate *h = m->hstate;
+		struct page *page;
+
+#ifdef CONFIG_HIGHMEM
+		page = pfn_to_page(m->phys >> PAGE_SHIFT);
+		free_bootmem_late((unsigned long)m,
+				  sizeof(struct huge_bootmem_page));
+#else
+		page = virt_to_page(m);
+#endif
 		__ClearPageReserved(page);
 		WARN_ON(page_count(page) != 1);
 		prep_compound_huge_page(page, h->order);
@@ -1583,9 +1592,9 @@ static void __init hugetlb_sysfs_init(void)
 
 /*
  * node_hstate/s - associate per node hstate attributes, via their kobjects,
- * with node sysdevs in node_devices[] using a parallel array.  The array
- * index of a node sysdev or _hstate == node id.
- * This is here to avoid any static dependency of the node sysdev driver, in
+ * with node devices in node_devices[] using a parallel array.  The array
+ * index of a node device or _hstate == node id.
+ * This is here to avoid any static dependency of the node device driver, in
  * the base kernel, on the hugetlb module.
  */
 struct node_hstate {
@@ -1595,7 +1604,7 @@ struct node_hstate {
 struct node_hstate node_hstates[MAX_NUMNODES];
 
 /*
- * A subset of global hstate attributes for node sysdevs
+ * A subset of global hstate attributes for node devices
  */
 static struct attribute *per_node_hstate_attrs[] = {
 	&nr_hugepages_attr.attr,
@@ -1609,7 +1618,7 @@ static struct attribute_group per_node_hstate_attr_group = {
 };
 
 /*
- * kobj_to_node_hstate - lookup global hstate for node sysdev hstate attr kobj.
+ * kobj_to_node_hstate - lookup global hstate for node device hstate attr kobj.
  * Returns node id via non-NULL nidp.
  */
 static struct hstate *kobj_to_node_hstate(struct kobject *kobj, int *nidp)
@@ -1632,13 +1641,13 @@ static struct hstate *kobj_to_node_hstate(struct kobject *kobj, int *nidp)
 }
 
 /*
- * Unregister hstate attributes from a single node sysdev.
+ * Unregister hstate attributes from a single node device.
  * No-op if no hstate attributes attached.
  */
 void hugetlb_unregister_node(struct node *node)
 {
 	struct hstate *h;
-	struct node_hstate *nhs = &node_hstates[node->sysdev.id];
+	struct node_hstate *nhs = &node_hstates[node->dev.id];
 
 	if (!nhs->hugepages_kobj)
 		return;		/* no hstate attributes */
@@ -1654,7 +1663,7 @@ void hugetlb_unregister_node(struct node *node)
 }
 
 /*
- * hugetlb module exit:  unregister hstate attributes from node sysdevs
+ * hugetlb module exit:  unregister hstate attributes from node devices
  * that have them.
  */
 static void hugetlb_unregister_all_nodes(void)
@@ -1662,7 +1671,7 @@ static void hugetlb_unregister_all_nodes(void)
 	int nid;
 
 	/*
-	 * disable node sysdev registrations.
+	 * disable node device registrations.
 	 */
 	register_hugetlbfs_with_node(NULL, NULL);
 
@@ -1674,20 +1683,20 @@ static void hugetlb_unregister_all_nodes(void)
 }
 
 /*
- * Register hstate attributes for a single node sysdev.
+ * Register hstate attributes for a single node device.
  * No-op if attributes already registered.
  */
 void hugetlb_register_node(struct node *node)
 {
 	struct hstate *h;
-	struct node_hstate *nhs = &node_hstates[node->sysdev.id];
+	struct node_hstate *nhs = &node_hstates[node->dev.id];
 	int err;
 
 	if (nhs->hugepages_kobj)
 		return;		/* already allocated */
 
 	nhs->hugepages_kobj = kobject_create_and_add("hugepages",
-							&node->sysdev.kobj);
+							&node->dev.kobj);
 	if (!nhs->hugepages_kobj)
 		return;
 
@@ -1698,7 +1707,7 @@ void hugetlb_register_node(struct node *node)
 		if (err) {
 			printk(KERN_ERR "Hugetlb: Unable to add hstate %s"
 					" for node %d\n",
-						h->name, node->sysdev.id);
+						h->name, node->dev.id);
 			hugetlb_unregister_node(node);
 			break;
 		}
@@ -1707,8 +1716,8 @@ void hugetlb_register_node(struct node *node)
 
 /*
  * hugetlb init time:  register hstate attributes for all registered node
- * sysdevs of nodes that have memory.  All on-line nodes should have
- * registered their associated sysdev by this time.
+ * devices of nodes that have memory.  All on-line nodes should have
+ * registered their associated device by this time.
  */
 static void hugetlb_register_all_nodes(void)
 {
@@ -1716,12 +1725,12 @@ static void hugetlb_register_all_nodes(void)
 
 	for_each_node_state(nid, N_HIGH_MEMORY) {
 		struct node *node = &node_devices[nid];
-		if (node->sysdev.id == nid)
+		if (node->dev.id == nid)
 			hugetlb_register_node(node);
 	}
 
 	/*
-	 * Let the node sysdev driver know we're here so it can
+	 * Let the node device driver know we're here so it can
 	 * [un]register hstate attributes on node hotplug.
 	 */
 	register_hugetlbfs_with_node(hugetlb_register_node,
@@ -2124,9 +2133,8 @@ static void set_huge_ptep_writable(struct vm_area_struct *vma,
 	pte_t entry;
 
 	entry = pte_mkwrite(pte_mkdirty(huge_ptep_get(ptep)));
-	if (huge_ptep_set_access_flags(vma, address, ptep, entry, 1)) {
+	if (huge_ptep_set_access_flags(vma, address, ptep, entry, 1))
 		update_mmu_cache(vma, address, ptep);
-	}
 }
 
 
@@ -2181,9 +2189,9 @@ static int is_hugetlb_entry_migration(pte_t pte)
 	if (huge_pte_none(pte) || pte_present(pte))
 		return 0;
 	swp = pte_to_swp_entry(pte);
-	if (non_swap_entry(swp) && is_migration_entry(swp)) {
+	if (non_swap_entry(swp) && is_migration_entry(swp))
 		return 1;
-	} else
+	else
 		return 0;
 }
 
@@ -2194,9 +2202,9 @@ static int is_hugetlb_entry_hwpoisoned(pte_t pte)
 	if (huge_pte_none(pte) || pte_present(pte))
 		return 0;
 	swp = pte_to_swp_entry(pte);
-	if (non_swap_entry(swp) && is_hwpoison_entry(swp)) {
+	if (non_swap_entry(swp) && is_hwpoison_entry(swp))
 		return 1;
-	} else
+	else
 		return 0;
 }
 
@@ -2269,8 +2277,8 @@ void __unmap_hugepage_range(struct vm_area_struct *vma, unsigned long start,
 			set_page_dirty(page);
 		list_add(&page->lru, &page_list);
 	}
-	spin_unlock(&mm->page_table_lock);
 	flush_tlb_range(vma, start, end);
+	spin_unlock(&mm->page_table_lock);
 	mmu_notifier_invalidate_range_end(mm, start, end);
 	list_for_each_entry_safe(page, tmp, &page_list, lru) {
 		page_remove_rmap(page);
@@ -2307,8 +2315,7 @@ static int unmap_ref_private(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * from page cache lookup which is in HPAGE_SIZE units.
 	 */
 	address = address & huge_page_mask(h);
-	pgoff = ((address - vma->vm_start) >> PAGE_SHIFT)
-		+ (vma->vm_pgoff >> PAGE_SHIFT);
+	pgoff = vma_hugecache_offset(h, vma, address);
 	mapping = (struct address_space *)page_private(page);
 
 	/*
@@ -2341,6 +2348,9 @@ static int unmap_ref_private(struct mm_struct *mm, struct vm_area_struct *vma,
 
 /*
  * Hugetlb_cow() should be called with page lock of the original hugepage held.
+ * Called with hugetlb_instantiation_mutex held and pte_page locked so we
+ * cannot race with other handlers or page migration.
+ * Keep the pte_same checks anyway to make transition from the mutex easier.
  */
 static int hugetlb_cow(struct mm_struct *mm, struct vm_area_struct *vma,
 			unsigned long address, pte_t *ptep, pte_t pte,
@@ -2400,7 +2410,14 @@ retry_avoidcopy:
 				BUG_ON(page_count(old_page) != 1);
 				BUG_ON(huge_pte_none(pte));
 				spin_lock(&mm->page_table_lock);
-				goto retry_avoidcopy;
+				ptep = huge_pte_offset(mm, address & huge_page_mask(h));
+				if (likely(pte_same(huge_ptep_get(ptep), pte)))
+					goto retry_avoidcopy;
+				/*
+				 * race occurs while re-acquiring page_table_lock, and
+				 * our job is done.
+				 */
+				return 0;
 			}
 			WARN_ON_ONCE(1);
 		}
@@ -2415,6 +2432,8 @@ retry_avoidcopy:
 	 * anon_vma prepared.
 	 */
 	if (unlikely(anon_vma_prepare(vma))) {
+		page_cache_release(new_page);
+		page_cache_release(old_page);
 		/* Caller expects lock to be held */
 		spin_lock(&mm->page_table_lock);
 		return VM_FAULT_OOM;
@@ -2489,6 +2508,7 @@ static int hugetlb_no_page(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	struct hstate *h = hstate_vma(vma);
 	int ret = VM_FAULT_SIGBUS;
+	int anon_rmap = 0;
 	pgoff_t idx;
 	unsigned long size;
 	struct page *page;
@@ -2543,14 +2563,13 @@ retry:
 			spin_lock(&inode->i_lock);
 			inode->i_blocks += blocks_per_huge_page(h);
 			spin_unlock(&inode->i_lock);
-			page_dup_rmap(page);
 		} else {
 			lock_page(page);
 			if (unlikely(anon_vma_prepare(vma))) {
 				ret = VM_FAULT_OOM;
 				goto backout_unlocked;
 			}
-			hugepage_add_new_anon_rmap(page, vma, address);
+			anon_rmap = 1;
 		}
 	} else {
 		/*
@@ -2559,11 +2578,10 @@ retry:
 		 * So we need to block hugepage fault by PG_hwpoison bit check.
 		 */
 		if (unlikely(PageHWPoison(page))) {
-			ret = VM_FAULT_HWPOISON | 
+			ret = VM_FAULT_HWPOISON |
 			      VM_FAULT_SET_HINDEX(h - hstates);
 			goto backout_unlocked;
 		}
-		page_dup_rmap(page);
 	}
 
 	/*
@@ -2587,6 +2605,10 @@ retry:
 	if (!huge_pte_none(huge_ptep_get(ptep)))
 		goto backout;
 
+	if (anon_rmap)
+		hugepage_add_new_anon_rmap(page, vma, address);
+	else
+		page_dup_rmap(page);
 	new_pte = make_huge_pte(vma, page, ((vma->vm_flags & VM_WRITE)
 				&& (vma->vm_flags & VM_SHARED)));
 	set_huge_pte_at(mm, address, ptep, new_pte);
@@ -2620,6 +2642,8 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	static DEFINE_MUTEX(hugetlb_instantiation_mutex);
 	struct hstate *h = hstate_vma(vma);
 
+	address &= huge_page_mask(h);
+
 	ptep = huge_pte_offset(mm, address);
 	if (ptep) {
 		entry = huge_ptep_get(ptep);
@@ -2627,7 +2651,7 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 			migration_entry_wait(mm, (pmd_t *)ptep, address);
 			return 0;
 		} else if (unlikely(is_hugetlb_entry_hwpoisoned(entry)))
-			return VM_FAULT_HWPOISON_LARGE | 
+			return VM_FAULT_HWPOISON_LARGE |
 			       VM_FAULT_SET_HINDEX(h - hstates);
 	}
 
