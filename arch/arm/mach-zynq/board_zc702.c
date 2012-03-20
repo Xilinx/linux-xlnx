@@ -258,11 +258,11 @@ static void __init board_zc702_init(void)
 	i2c_register_board_info(5, rtc8564_board_info,
 				ARRAY_SIZE(rtc8564_board_info));
 #endif
-#if 	defined(CONFIG_GPIO_PCA953X)
+#if	defined(CONFIG_GPIO_PCA953X)
 	i2c_register_board_info(4, tca6416_board_info,
 				ARRAY_SIZE(tca6416_board_info));
-#endif 
-	
+#endif
+
 #endif
 }
 
