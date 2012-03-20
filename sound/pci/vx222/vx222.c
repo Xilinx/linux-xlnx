@@ -22,7 +22,7 @@
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
@@ -37,8 +37,8 @@ MODULE_SUPPORTED_DEVICE("{{Digigram," CARD_NAME "}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
-static int mic[SNDRV_CARDS]; /* microphone */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;	/* Enable this card */
+static bool mic[SNDRV_CARDS]; /* microphone */
 static int ibl[SNDRV_CARDS]; /* microphone */
 
 module_param_array(index, int, NULL, 0444);
@@ -169,7 +169,7 @@ static int __devinit snd_vx222_create(struct snd_card *card, struct pci_dev *pci
 		vx->port[i] = pci_resource_start(pci, i + 1);
 
 	if (request_irq(pci->irq, snd_vx_irq_handler, IRQF_SHARED,
-			CARD_NAME, chip)) {
+			KBUILD_MODNAME, chip)) {
 		snd_printk(KERN_ERR "unable to grab IRQ %d\n", pci->irq);
 		snd_vx222_free(chip);
 		return -EBUSY;
@@ -290,7 +290,7 @@ static int snd_vx222_resume(struct pci_dev *pci)
 #endif
 
 static struct pci_driver driver = {
-	.name = "Digigram VX222",
+	.name = KBUILD_MODNAME,
 	.id_table = snd_vx222_ids,
 	.probe = snd_vx222_probe,
 	.remove = __devexit_p(snd_vx222_remove),

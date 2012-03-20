@@ -92,7 +92,7 @@
 #include <linux/spinlock.h>
 #include <linux/srcu.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include <linux/fsnotify_backend.h>
 #include "fsnotify.h"
@@ -134,9 +134,6 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark)
 	}
 
 	mark->flags &= ~FSNOTIFY_MARK_FLAG_ALIVE;
-
-	/* 1 from caller and 1 for being on i_list/g_list */
-	BUG_ON(atomic_read(&mark->refcnt) < 2);
 
 	spin_lock(&group->mark_lock);
 
@@ -180,6 +177,11 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark)
 
 	if (inode && (mark->flags & FSNOTIFY_MARK_FLAG_OBJECT_PINNED))
 		iput(inode);
+
+	/*
+	 * We don't necessarily have a ref on mark from caller so the above iput
+	 * may have already destroyed it.  Don't touch from now on.
+	 */
 
 	/*
 	 * it's possible that this group tried to destroy itself, but this

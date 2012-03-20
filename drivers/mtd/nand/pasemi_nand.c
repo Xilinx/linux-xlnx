@@ -155,7 +155,8 @@ static int __devinit pasemi_nand_probe(struct platform_device *ofdev)
 	chip->ecc.mode = NAND_ECC_SOFT;
 
 	/* Enable the following for a flash based bad block table */
-	chip->options = NAND_USE_FLASH_BBT | NAND_NO_AUTOINCR;
+	chip->options = NAND_NO_AUTOINCR;
+	chip->bbt_options = NAND_BBT_USE_FLASH;
 
 	/* Scan to find existence of the device */
 	if (nand_scan(pasemi_nand_mtd, 1)) {
@@ -229,17 +230,7 @@ static struct platform_driver pasemi_nand_driver =
 	.remove		= pasemi_nand_remove,
 };
 
-static int __init pasemi_nand_init(void)
-{
-	return platform_driver_register(&pasemi_nand_driver);
-}
-module_init(pasemi_nand_init);
-
-static void __exit pasemi_nand_exit(void)
-{
-	platform_driver_unregister(&pasemi_nand_driver);
-}
-module_exit(pasemi_nand_exit);
+module_platform_driver(pasemi_nand_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Egor Martovetsky <egor@pasemi.com>");

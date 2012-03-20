@@ -30,7 +30,7 @@
 
 #define PRINT_PREF KERN_INFO "mtd_pagetest: "
 
-static int dev;
+static int dev = -EINVAL;
 module_param(dev, int, S_IRUGO);
 MODULE_PARM_DESC(dev, "MTD device number to use");
 
@@ -77,7 +77,7 @@ static int erase_eraseblock(int ebnum)
 	ei.addr = addr;
 	ei.len  = mtd->erasesize;
 
-	err = mtd->erase(mtd, &ei);
+	err = mtd_erase(mtd, &ei);
 	if (err) {
 		printk(PRINT_PREF "error %d while erasing EB %d\n", err, ebnum);
 		return err;
@@ -95,12 +95,12 @@ static int erase_eraseblock(int ebnum)
 static int write_eraseblock(int ebnum)
 {
 	int err = 0;
-	size_t written = 0;
+	size_t written;
 	loff_t addr = ebnum * mtd->erasesize;
 
 	set_random_data(writebuf, mtd->erasesize);
 	cond_resched();
-	err = mtd->write(mtd, addr, mtd->erasesize, &written, writebuf);
+	err = mtd_write(mtd, addr, mtd->erasesize, &written, writebuf);
 	if (err || written != mtd->erasesize)
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr);
@@ -111,7 +111,7 @@ static int write_eraseblock(int ebnum)
 static int verify_eraseblock(int ebnum)
 {
 	uint32_t j;
-	size_t read = 0;
+	size_t read;
 	int err = 0, i;
 	loff_t addr0, addrn;
 	loff_t addr = ebnum * mtd->erasesize;
@@ -127,16 +127,16 @@ static int verify_eraseblock(int ebnum)
 	set_random_data(writebuf, mtd->erasesize);
 	for (j = 0; j < pgcnt - 1; ++j, addr += pgsize) {
 		/* Do a read to set the internal dataRAMs to different data */
-		err = mtd->read(mtd, addr0, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addr0, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
 			       (long long)addr0);
 			return err;
 		}
-		err = mtd->read(mtd, addrn - bufsize, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addrn - bufsize, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -144,9 +144,8 @@ static int verify_eraseblock(int ebnum)
 			return err;
 		}
 		memset(twopages, 0, bufsize);
-		read = 0;
-		err = mtd->read(mtd, addr, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addr, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -163,16 +162,16 @@ static int verify_eraseblock(int ebnum)
 	if (addr <= addrn - pgsize - pgsize && !bbt[ebnum + 1]) {
 		unsigned long oldnext = next;
 		/* Do a read to set the internal dataRAMs to different data */
-		err = mtd->read(mtd, addr0, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addr0, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
 			       (long long)addr0);
 			return err;
 		}
-		err = mtd->read(mtd, addrn - bufsize, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addrn - bufsize, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -180,9 +179,8 @@ static int verify_eraseblock(int ebnum)
 			return err;
 		}
 		memset(twopages, 0, bufsize);
-		read = 0;
-		err = mtd->read(mtd, addr, bufsize, &read, twopages);
-		if (err == -EUCLEAN)
+		err = mtd_read(mtd, addr, bufsize, &read, twopages);
+		if (mtd_is_bitflip(err))
 			err = 0;
 		if (err || read != bufsize) {
 			printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -203,7 +201,7 @@ static int verify_eraseblock(int ebnum)
 
 static int crosstest(void)
 {
-	size_t read = 0;
+	size_t read;
 	int err = 0, i;
 	loff_t addr, addr0, addrn;
 	unsigned char *pp1, *pp2, *pp3, *pp4;
@@ -228,10 +226,9 @@ static int crosstest(void)
 		addrn -= mtd->erasesize;
 
 	/* Read 2nd-to-last page to pp1 */
-	read = 0;
 	addr = addrn - pgsize - pgsize;
-	err = mtd->read(mtd, addr, pgsize, &read, pp1);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr, pgsize, &read, pp1);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -241,10 +238,9 @@ static int crosstest(void)
 	}
 
 	/* Read 3rd-to-last page to pp1 */
-	read = 0;
 	addr = addrn - pgsize - pgsize - pgsize;
-	err = mtd->read(mtd, addr, pgsize, &read, pp1);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr, pgsize, &read, pp1);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -254,11 +250,10 @@ static int crosstest(void)
 	}
 
 	/* Read first page to pp2 */
-	read = 0;
 	addr = addr0;
 	printk(PRINT_PREF "reading page at %#llx\n", (long long)addr);
-	err = mtd->read(mtd, addr, pgsize, &read, pp2);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr, pgsize, &read, pp2);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -268,11 +263,10 @@ static int crosstest(void)
 	}
 
 	/* Read last page to pp3 */
-	read = 0;
 	addr = addrn - pgsize;
 	printk(PRINT_PREF "reading page at %#llx\n", (long long)addr);
-	err = mtd->read(mtd, addr, pgsize, &read, pp3);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr, pgsize, &read, pp3);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -282,11 +276,10 @@ static int crosstest(void)
 	}
 
 	/* Read first page again to pp4 */
-	read = 0;
 	addr = addr0;
 	printk(PRINT_PREF "reading page at %#llx\n", (long long)addr);
-	err = mtd->read(mtd, addr, pgsize, &read, pp4);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr, pgsize, &read, pp4);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -309,7 +302,7 @@ static int crosstest(void)
 
 static int erasecrosstest(void)
 {
-	size_t read = 0, written = 0;
+	size_t read, written;
 	int err = 0, i, ebnum, ebnum2;
 	loff_t addr0;
 	char *readbuf = twopages;
@@ -335,7 +328,7 @@ static int erasecrosstest(void)
 	printk(PRINT_PREF "writing 1st page of block %d\n", ebnum);
 	set_random_data(writebuf, pgsize);
 	strcpy(writebuf, "There is no data like this!");
-	err = mtd->write(mtd, addr0, pgsize, &written, writebuf);
+	err = mtd_write(mtd, addr0, pgsize, &written, writebuf);
 	if (err || written != pgsize) {
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr0);
@@ -344,8 +337,8 @@ static int erasecrosstest(void)
 
 	printk(PRINT_PREF "reading 1st page of block %d\n", ebnum);
 	memset(readbuf, 0, pgsize);
-	err = mtd->read(mtd, addr0, pgsize, &read, readbuf);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr0, pgsize, &read, readbuf);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -368,7 +361,7 @@ static int erasecrosstest(void)
 	printk(PRINT_PREF "writing 1st page of block %d\n", ebnum);
 	set_random_data(writebuf, pgsize);
 	strcpy(writebuf, "There is no data like this!");
-	err = mtd->write(mtd, addr0, pgsize, &written, writebuf);
+	err = mtd_write(mtd, addr0, pgsize, &written, writebuf);
 	if (err || written != pgsize) {
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr0);
@@ -382,8 +375,8 @@ static int erasecrosstest(void)
 
 	printk(PRINT_PREF "reading 1st page of block %d\n", ebnum);
 	memset(readbuf, 0, pgsize);
-	err = mtd->read(mtd, addr0, pgsize, &read, readbuf);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr0, pgsize, &read, readbuf);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -405,7 +398,7 @@ static int erasecrosstest(void)
 
 static int erasetest(void)
 {
-	size_t read = 0, written = 0;
+	size_t read, written;
 	int err = 0, i, ebnum, ok = 1;
 	loff_t addr0;
 
@@ -425,7 +418,7 @@ static int erasetest(void)
 
 	printk(PRINT_PREF "writing 1st page of block %d\n", ebnum);
 	set_random_data(writebuf, pgsize);
-	err = mtd->write(mtd, addr0, pgsize, &written, writebuf);
+	err = mtd_write(mtd, addr0, pgsize, &written, writebuf);
 	if (err || written != pgsize) {
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr0);
@@ -438,8 +431,8 @@ static int erasetest(void)
 		return err;
 
 	printk(PRINT_PREF "reading 1st page of block %d\n", ebnum);
-	err = mtd->read(mtd, addr0, pgsize, &read, twopages);
-	if (err == -EUCLEAN)
+	err = mtd_read(mtd, addr0, pgsize, &read, twopages);
+	if (mtd_is_bitflip(err))
 		err = 0;
 	if (err || read != pgsize) {
 		printk(PRINT_PREF "error: read failed at %#llx\n",
@@ -469,7 +462,7 @@ static int is_block_bad(int ebnum)
 	loff_t addr = ebnum * mtd->erasesize;
 	int ret;
 
-	ret = mtd->block_isbad(mtd, addr);
+	ret = mtd_block_isbad(mtd, addr);
 	if (ret)
 		printk(PRINT_PREF "block %d is bad\n", ebnum);
 	return ret;
@@ -504,6 +497,13 @@ static int __init mtd_pagetest_init(void)
 
 	printk(KERN_INFO "\n");
 	printk(KERN_INFO "=================================================\n");
+
+	if (dev < 0) {
+		printk(PRINT_PREF "Please specify a valid mtd-device via module paramter\n");
+		printk(KERN_CRIT "CAREFUL: This test wipes all data on the specified MTD device!\n");
+		return -EINVAL;
+	}
+
 	printk(PRINT_PREF "MTD device: %d\n", dev);
 
 	mtd = get_mtd_device(NULL, dev);

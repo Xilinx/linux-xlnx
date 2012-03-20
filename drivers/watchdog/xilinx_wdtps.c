@@ -14,6 +14,8 @@
  * 02139, USA.
  */
 
+#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/init.h>

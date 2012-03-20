@@ -85,7 +85,8 @@ struct compressed_bio {
 static inline int compressed_bio_size(struct btrfs_root *root,
 				      unsigned long disk_size)
 {
-	u16 csum_size = btrfs_super_csum_size(&root->fs_info->super_copy);
+	u16 csum_size = btrfs_super_csum_size(root->fs_info->super_copy);
+
 	return sizeof(struct compressed_bio) +
 		((disk_size + root->sectorsize - 1) / root->sectorsize) *
 		csum_size;
@@ -338,6 +339,7 @@ int btrfs_submit_compressed_write(struct inode *inode, u64 start,
 	u64 first_byte = disk_start;
 	struct block_device *bdev;
 	int ret;
+	int skip_sum = BTRFS_I(inode)->flags & BTRFS_INODE_NODATASUM;
 
 	WARN_ON(start & ((u64)PAGE_CACHE_SIZE - 1));
 	cb = kmalloc(compressed_bio_size(root, compressed_len), GFP_NOFS);
@@ -392,8 +394,11 @@ int btrfs_submit_compressed_write(struct inode *inode, u64 start,
 			ret = btrfs_bio_wq_end_io(root->fs_info, bio, 0);
 			BUG_ON(ret);
 
-			ret = btrfs_csum_one_bio(root, inode, bio, start, 1);
-			BUG_ON(ret);
+			if (!skip_sum) {
+				ret = btrfs_csum_one_bio(root, inode, bio,
+							 start, 1);
+				BUG_ON(ret);
+			}
 
 			ret = btrfs_map_bio(root, WRITE, bio, 0, 1);
 			BUG_ON(ret);
@@ -418,8 +423,10 @@ int btrfs_submit_compressed_write(struct inode *inode, u64 start,
 	ret = btrfs_bio_wq_end_io(root->fs_info, bio, 0);
 	BUG_ON(ret);
 
-	ret = btrfs_csum_one_bio(root, inode, bio, start, 1);
-	BUG_ON(ret);
+	if (!skip_sum) {
+		ret = btrfs_csum_one_bio(root, inode, bio, start, 1);
+		BUG_ON(ret);
+	}
 
 	ret = btrfs_map_bio(root, WRITE, bio, 0, 1);
 	BUG_ON(ret);
@@ -581,6 +588,8 @@ int btrfs_submit_compressed_read(struct inode *inode, struct bio *bio,
 				   page_offset(bio->bi_io_vec->bv_page),
 				   PAGE_CACHE_SIZE);
 	read_unlock(&em_tree->lock);
+	if (!em)
+		return -EIO;
 
 	compressed_len = em->block_len;
 	cb = kmalloc(compressed_bio_size(root, compressed_len), GFP_NOFS);

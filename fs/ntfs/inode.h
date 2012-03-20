@@ -24,7 +24,7 @@
 #ifndef _LINUX_NTFS_INODE_H
 #define _LINUX_NTFS_INODE_H
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include <linux/fs.h>
 #include <linux/list.h>
@@ -298,7 +298,7 @@ extern void ntfs_clear_extent_inode(ntfs_inode *ni);
 
 extern int ntfs_read_inode_mount(struct inode *vi);
 
-extern int ntfs_show_options(struct seq_file *sf, struct vfsmount *mnt);
+extern int ntfs_show_options(struct seq_file *sf, struct dentry *root);
 
 #ifdef NTFS_RW
 

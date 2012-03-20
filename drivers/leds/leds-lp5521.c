@@ -97,6 +97,9 @@
 /* Status */
 #define LP5521_EXT_CLK_USED		0x08
 
+/* default R channel current register value */
+#define LP5521_REG_R_CURR_DEFAULT	0xAF
+
 struct lp5521_engine {
 	int		id;
 	u8		mode;
@@ -175,14 +178,14 @@ static int lp5521_set_engine_mode(struct lp5521_engine *engine, u8 mode)
 		mode = LP5521_CMD_DIRECT;
 
 	ret = lp5521_read(client, LP5521_REG_OP_MODE, &engine_state);
+	if (ret < 0)
+		return ret;
 
 	/* set mode only for this engine */
 	engine_state &= ~(engine->engine_mask);
 	mode &= engine->engine_mask;
 	engine_state |= mode;
-	ret |= lp5521_write(client, LP5521_REG_OP_MODE, engine_state);
-
-	return ret;
+	return lp5521_write(client, LP5521_REG_OP_MODE, engine_state);
 }
 
 static int lp5521_load_program(struct lp5521_engine *eng, const u8 *pattern)
@@ -643,6 +646,7 @@ static int __devinit lp5521_probe(struct i2c_client *client,
 	struct lp5521_chip		*chip;
 	struct lp5521_platform_data	*pdata;
 	int ret, i, led;
+	u8 buf;
 
 	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -681,6 +685,20 @@ static int __devinit lp5521_probe(struct i2c_client *client,
 				     * Exact value is not available. 10 - 20ms
 				     * appears to be enough for reset.
 				     */
+
+	/*
+	 * Make sure that the chip is reset by reading back the r channel
+	 * current reg. This is dummy read is required on some platforms -
+	 * otherwise further access to the R G B channels in the
+	 * LP5521_REG_ENABLE register will not have any effect - strange!
+	 */
+	lp5521_read(client, LP5521_REG_R_CURRENT, &buf);
+	if (buf != LP5521_REG_R_CURR_DEFAULT) {
+		dev_err(&client->dev, "error in reseting chip\n");
+		goto fail2;
+	}
+	usleep_range(10000, 20000);
+
 	ret = lp5521_detect(client);
 
 	if (ret) {
@@ -744,7 +762,7 @@ fail1:
 	return ret;
 }
 
-static int lp5521_remove(struct i2c_client *client)
+static int __devexit lp5521_remove(struct i2c_client *client)
 {
 	struct lp5521_chip *chip = i2c_get_clientdata(client);
 	int i;
@@ -775,29 +793,11 @@ static struct i2c_driver lp5521_driver = {
 		.name	= "lp5521",
 	},
 	.probe		= lp5521_probe,
-	.remove		= lp5521_remove,
+	.remove		= __devexit_p(lp5521_remove),
 	.id_table	= lp5521_id,
 };
 
-static int __init lp5521_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&lp5521_driver);
-
-	if (ret < 0)
-		printk(KERN_ALERT "Adding lp5521 driver failed\n");
-
-	return ret;
-}
-
-static void __exit lp5521_exit(void)
-{
-	i2c_del_driver(&lp5521_driver);
-}
-
-module_init(lp5521_init);
-module_exit(lp5521_exit);
+module_i2c_driver(lp5521_driver);
 
 MODULE_AUTHOR("Mathias Nyman, Yuri Zaporozhets, Samu Onkalo");
 MODULE_DESCRIPTION("LP5521 LED engine");

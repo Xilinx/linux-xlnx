@@ -23,6 +23,7 @@
 #include <linux/rtc.h>
 #include <linux/workqueue.h>
 #include <linux/spi/spi.h>
+#include <linux/module.h>
 
 #define DRV_VERSION "0.2"
 
@@ -228,7 +229,6 @@ static int __devexit rs5c348_remove(struct spi_device *spi)
 static struct spi_driver rs5c348_driver = {
 	.driver = {
 		.name	= "rtc-rs5c348",
-		.bus	= &spi_bus_type,
 		.owner	= THIS_MODULE,
 	},
 	.probe	= rs5c348_probe,

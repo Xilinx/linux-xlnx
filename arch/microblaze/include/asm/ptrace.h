@@ -61,7 +61,10 @@ struct pt_regs {
 #define instruction_pointer(regs)	((regs)->pc)
 #define profile_pc(regs)		instruction_pointer(regs)
 
-void show_regs(struct pt_regs *);
+static inline long regs_return_value(struct pt_regs *regs)
+{
+	return regs->r3;
+}
 
 #else /* __KERNEL__ */
 

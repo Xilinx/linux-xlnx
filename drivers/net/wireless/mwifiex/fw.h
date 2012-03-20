@@ -57,12 +57,6 @@ struct tx_packet_hdr {
 #define GET_FW_DEFAULT_BANDS(adapter)  \
 	((adapter->fw_cap_info >> 8) & ALL_802_11_BANDS)
 
-extern u8 supported_rates_b[B_SUPPORTED_RATES];
-extern u8 supported_rates_g[G_SUPPORTED_RATES];
-extern u8 supported_rates_bg[BG_SUPPORTED_RATES];
-extern u8 supported_rates_a[A_SUPPORTED_RATES];
-extern u8 supported_rates_n[N_SUPPORTED_RATES];
-
 #define HostCmd_WEP_KEY_INDEX_MASK              0x3fff
 
 #define KEY_INFO_ENABLED        0x01
@@ -84,7 +78,8 @@ enum KEY_TYPE_ID {
 
 #define MAX_FIRMWARE_POLL_TRIES			100
 
-#define FIRMWARE_READY				0xfedc
+#define FIRMWARE_READY_SDIO				0xfedc
+#define FIRMWARE_READY_PCIE				0xfedcba00
 
 enum MWIFIEX_802_11_PRIVACY_FILTER {
 	MWIFIEX_802_11_PRIV_FILTER_ACCEPT_ALL,
@@ -157,8 +152,20 @@ enum MWIFIEX_802_11_WEP_STATUS {
 #define ISSUPP_RXSTBC(Dot11nDevCap) (Dot11nDevCap & BIT(26))
 #define ISSUPP_GREENFIELD(Dot11nDevCap) (Dot11nDevCap & BIT(29))
 
+/* httxcfg bitmap
+ * 0		reserved
+ * 1		20/40 Mhz enable(1)/disable(0)
+ * 2-3		reserved
+ * 4		green field enable(1)/disable(0)
+ * 5		short GI in 20 Mhz enable(1)/disable(0)
+ * 6		short GI in 40 Mhz enable(1)/disable(0)
+ * 7-15		reserved
+ */
+#define MWIFIEX_FW_DEF_HTTXCFG (BIT(1) | BIT(4) | BIT(5) | BIT(6))
+
 #define GET_RXMCSSUPP(DevMCSSupported) (DevMCSSupported & 0x0f)
 #define SETHT_MCS32(x) (x[4] |= 1)
+#define HT_STREAM_2X2	0x22
 
 #define SET_SECONDARYCHAN(RadioType, SECCHAN) (RadioType |= (SECCHAN << 4))
 
@@ -210,7 +217,7 @@ enum MWIFIEX_802_11_WEP_STATUS {
 #define HostCmd_CMD_802_11_HS_CFG_ENH                 0x00e5
 #define HostCmd_CMD_CAU_REG_ACCESS                    0x00ed
 #define HostCmd_CMD_SET_BSS_MODE                      0x00f7
-
+#define HostCmd_CMD_PCIE_DESC_DETAILS                 0x00fa
 
 enum ENH_PS_MODES {
 	EN_PS = 1,
@@ -369,8 +376,6 @@ enum mwifiex_chan_scan_mode_bitmasks {
 	MWIFIEX_DISABLE_CHAN_FILT = BIT(1),
 };
 
-#define SECOND_CHANNEL_BELOW    0x30
-#define SECOND_CHANNEL_ABOVE    0x10
 struct mwifiex_chan_scan_param_set {
 	u8 radio_type;
 	u8 chan_number;
@@ -667,7 +672,7 @@ struct host_cmd_ds_802_11_ad_hoc_start {
 	union ieee_types_phy_param_set phy_param_set;
 	u16 reserved1;
 	__le16 cap_info_bitmap;
-	u8 DataRate[HOSTCMD_SUPPORTED_RATES];
+	u8 data_rate[HOSTCMD_SUPPORTED_RATES];
 } __packed;
 
 struct host_cmd_ds_802_11_ad_hoc_result {
@@ -810,6 +815,14 @@ struct host_cmd_ds_txpwr_cfg {
 	__le32 mode;
 } __packed;
 
+struct mwifiex_bcn_param {
+	u8 bssid[ETH_ALEN];
+	u8 rssi;
+	__le32 timestamp[2];
+	__le16 beacon_period;
+	__le16 cap_info_bitmap;
+} __packed;
+
 #define MWIFIEX_USER_SCAN_CHAN_MAX             50
 
 #define MWIFIEX_MAX_SSID_LIST_LENGTH         10
@@ -850,13 +863,6 @@ struct mwifiex_user_scan_ssid {
 } __packed;
 
 struct mwifiex_user_scan_cfg {
-	/*
-	 *  Flag set to keep the previous scan table intact
-	 *
-	 *  If set, the scan results will accumulate, replacing any previous
-	 *   matched entries for a BSS with the new scan data
-	 */
-	u8 keep_previous_scan;
 	/*
 	 *  BSS mode to be sent in the firmware command
 	 */
@@ -1125,6 +1131,30 @@ struct host_cmd_ds_set_bss_mode {
 	u8 con_type;
 } __packed;
 
+struct host_cmd_ds_pcie_details {
+	/* TX buffer descriptor ring address */
+	u32 txbd_addr_lo;
+	u32 txbd_addr_hi;
+	/* TX buffer descriptor ring count */
+	u32 txbd_count;
+
+	/* RX buffer descriptor ring address */
+	u32 rxbd_addr_lo;
+	u32 rxbd_addr_hi;
+	/* RX buffer descriptor ring count */
+	u32 rxbd_count;
+
+	/* Event buffer descriptor ring address */
+	u32 evtbd_addr_lo;
+	u32 evtbd_addr_hi;
+	/* Event buffer descriptor ring count */
+	u32 evtbd_count;
+
+	/* Sleep cookie buffer physical address */
+	u32 sleep_cookie_addr_lo;
+	u32 sleep_cookie_addr_hi;
+} __packed;
+
 struct host_cmd_ds_command {
 	__le16 command;
 	__le16 size;
@@ -1172,6 +1202,7 @@ struct host_cmd_ds_command {
 		struct host_cmd_ds_rf_reg_access rf_reg;
 		struct host_cmd_ds_pmic_reg_access pmic_reg;
 		struct host_cmd_ds_set_bss_mode bss_mode;
+		struct host_cmd_ds_pcie_details pcie_host_spec;
 		struct host_cmd_ds_802_11_eeprom_access eeprom;
 	} params;
 } __packed;

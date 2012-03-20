@@ -61,15 +61,14 @@ static int _DoC_WaitReady(void __iomem * docptr)
 {
 	unsigned int c = 0xffff;
 
-	DEBUG(MTD_DEBUG_LEVEL3,
-	      "_DoC_WaitReady called for out-of-line wait\n");
+	pr_debug("_DoC_WaitReady called for out-of-line wait\n");
 
 	/* Out-of-line routine to wait for chip response */
 	while (((ReadDOC(docptr, Mplus_FlashControl) & CDSN_CTRL_FR_B_MASK) != CDSN_CTRL_FR_B_MASK) && --c)
 		;
 
 	if (c == 0)
-		DEBUG(MTD_DEBUG_LEVEL2, "_DoC_WaitReady timed out.\n");
+		pr_debug("_DoC_WaitReady timed out.\n");
 
 	return (c == 0);
 }
@@ -468,23 +467,14 @@ void DoCMilPlus_init(struct mtd_info *mtd)
 
 	mtd->type = MTD_NANDFLASH;
 	mtd->flags = MTD_CAP_NANDFLASH;
-	mtd->size = 0;
-
-	mtd->erasesize = 0;
 	mtd->writesize = 512;
 	mtd->oobsize = 16;
 	mtd->owner = THIS_MODULE;
 	mtd->erase = doc_erase;
-	mtd->point = NULL;
-	mtd->unpoint = NULL;
 	mtd->read = doc_read;
 	mtd->write = doc_write;
 	mtd->read_oob = doc_read_oob;
 	mtd->write_oob = doc_write_oob;
-	mtd->sync = NULL;
-
-	this->totlen = 0;
-	this->numchips = 0;
 	this->curfloor = -1;
 	this->curchip = -1;
 
@@ -655,7 +645,7 @@ static int doc_read(struct mtd_info *mtd, loff_t from, size_t len,
 #ifdef ECC_DEBUG
 		printk("DiskOnChip ECC Error: Read at %lx\n", (long)from);
 #endif
-		/* Read the ECC syndrom through the DiskOnChip ECC logic.
+		/* Read the ECC syndrome through the DiskOnChip ECC logic.
 		   These syndrome will be all ZERO when there is no error */
 		for (i = 0; i < 6; i++)
 			syndrome[i] = ReadDOC(docptr, Mplus_ECCSyndrome0 + i);
@@ -835,7 +825,7 @@ static int doc_read_oob(struct mtd_info *mtd, loff_t ofs,
 	uint8_t *buf = ops->oobbuf;
 	size_t len = ops->len;
 
-	BUG_ON(ops->mode != MTD_OOB_PLACE);
+	BUG_ON(ops->mode != MTD_OPS_PLACE_OOB);
 
 	ofs += ops->ooboffs;
 
@@ -920,7 +910,7 @@ static int doc_write_oob(struct mtd_info *mtd, loff_t ofs,
 	uint8_t *buf = ops->oobbuf;
 	size_t len = ops->len;
 
-	BUG_ON(ops->mode != MTD_OOB_PLACE);
+	BUG_ON(ops->mode != MTD_OPS_PLACE_OOB);
 
 	ofs += ops->ooboffs;
 

@@ -39,6 +39,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/time.h>
 #include <asm/mach/map.h>
+#include <asm/memblock.h>
 #include <mach/common.h>
 #include <mach/hardware.h>
 #include <mach/iomux-mx3.h>
@@ -576,6 +577,8 @@ static void __init pcm037_init(void)
 {
 	int ret;
 
+	imx31_soc_init();
+
 	mxc_iomux_set_gpr(MUX_PGP_UH2, 1);
 
 	mxc_iomux_setup_multiple_pins(pcm037_pins, ARRAY_SIZE(pcm037_pins),
@@ -678,19 +681,19 @@ struct sys_timer pcm037_timer = {
 static void __init pcm037_reserve(void)
 {
 	/* reserve 4 MiB for mx3-camera */
-	mx3_camera_base = memblock_alloc(MX3_CAMERA_BUF_SIZE,
+	mx3_camera_base = arm_memblock_steal(MX3_CAMERA_BUF_SIZE,
 			MX3_CAMERA_BUF_SIZE);
-	memblock_free(mx3_camera_base, MX3_CAMERA_BUF_SIZE);
-	memblock_remove(mx3_camera_base, MX3_CAMERA_BUF_SIZE);
 }
 
 MACHINE_START(PCM037, "Phytec Phycore pcm037")
 	/* Maintainer: Pengutronix */
-	.boot_params = MX3x_PHYS_OFFSET + 0x100,
+	.atag_offset = 0x100,
 	.reserve = pcm037_reserve,
 	.map_io = mx31_map_io,
 	.init_early = imx31_init_early,
 	.init_irq = mx31_init_irq,
+	.handle_irq = imx31_handle_irq,
 	.timer = &pcm037_timer,
 	.init_machine = pcm037_init,
+	.restart	= mxc_restart,
 MACHINE_END

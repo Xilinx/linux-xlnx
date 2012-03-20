@@ -52,8 +52,8 @@
 #define OMAP343X_CONTROL_PADCONFS_WKUP	0xa00
 #define OMAP343X_CONTROL_GENERAL_WKUP	0xa60
 
-/* TI816X spefic control submodules */
-#define TI816X_CONTROL_DEVCONF		0x600
+/* TI81XX spefic control submodules */
+#define TI81XX_CONTROL_DEVCONF		0x600
 
 /* Control register offsets - read/write with omap_ctrl_{read,write}{bwl}() */
 
@@ -244,8 +244,8 @@
 #define OMAP3_PADCONF_SAD2D_MSTANDBY   0x250
 #define OMAP3_PADCONF_SAD2D_IDLEACK    0x254
 
-/* TI816X CONTROL_DEVCONF register offsets */
-#define TI816X_CONTROL_DEVICE_ID	(TI816X_CONTROL_DEVCONF + 0x000)
+/* TI81XX CONTROL_DEVCONF register offsets */
+#define TI81XX_CONTROL_DEVICE_ID	(TI81XX_CONTROL_DEVCONF + 0x000)
 
 /*
  * REVISIT: This list of registers is not comprehensive - there are more
@@ -386,9 +386,9 @@ extern void omap4_ctrl_pad_writel(u32 val, u16 offset);
 
 extern void omap3_save_scratchpad_contents(void);
 extern void omap3_clear_scratchpad_contents(void);
-extern u32 *get_restore_pointer(void);
-extern u32 *get_es3_restore_pointer(void);
-extern u32 *get_omap3630_restore_pointer(void);
+extern void omap3_restore(void);
+extern void omap3_restore_es3(void);
+extern void omap3_restore_3630(void);
 extern u32 omap3_arm_context[128];
 extern void omap3_control_save_context(void);
 extern void omap3_control_restore_context(void);

@@ -24,6 +24,8 @@
 #include <linux/clockchips.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
@@ -290,18 +292,16 @@ static void __init xttcpss_timer_init(void)
 	 */
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
-		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
-		irq = be32_to_cpup(of_get_property(timer, "interrupts", NULL)) + 1;
+		timer_baseaddr = (u32)of_iomap(timer, 0);
+	        WARN_ON(!timer_baseaddr);
+	        irq = irq_of_parse_and_map(timer, 0) + 1;
 		prop = (void *)of_get_property(timer, "clock-frequency", NULL);
 	} else {
 		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
-		timer_baseaddr = (u32)TTC0_BASE;
+		timer_baseaddr = (u32)ioremap(0xF8F02000, SZ_4K);
 		irq = IRQ_TIMERCOUNTER0 + 1;
 	}
 
-	/* Map the memory so it's accessible in the page table */
-
-	timer_baseaddr = (u32)ioremap(timer_baseaddr, PAGE_SIZE);
 	timers[XTTCPSS_CLOCKSOURCE].base_addr = (void __iomem *)timer_baseaddr;
 	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
 

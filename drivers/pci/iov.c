@@ -11,6 +11,7 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
+#include <linux/export.h>
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <linux/pci-ats.h>
@@ -282,6 +283,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	struct resource *res;
 	struct pci_dev *pdev;
 	struct pci_sriov *iov = dev->sriov;
+	int bars = 0;
 
 	if (!nr_virtfn)
 		return 0;
@@ -306,6 +308,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 
 	nres = 0;
 	for (i = 0; i < PCI_SRIOV_NUM_BARS; i++) {
+		bars |= (1 << (i + PCI_IOV_RESOURCES));
 		res = dev->resource + PCI_IOV_RESOURCES + i;
 		if (res->parent)
 			nres++;
@@ -320,6 +323,11 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 
 	if (virtfn_bus(dev, nr_virtfn - 1) > dev->bus->subordinate) {
 		dev_err(&dev->dev, "SR-IOV: bus number out of range\n");
+		return -ENOMEM;
+	}
+
+	if (pci_enable_resources(dev, bars)) {
+		dev_err(&dev->dev, "SR-IOV: IOV BARS not allocated\n");
 		return -ENOMEM;
 	}
 
@@ -340,10 +348,10 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	}
 
 	iov->ctrl |= PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE;
-	pci_block_user_cfg_access(dev);
+	pci_cfg_access_lock(dev);
 	pci_write_config_word(dev, iov->pos + PCI_SRIOV_CTRL, iov->ctrl);
 	msleep(100);
-	pci_unblock_user_cfg_access(dev);
+	pci_cfg_access_unlock(dev);
 
 	iov->initial = initial;
 	if (nr_virtfn < initial)
@@ -371,10 +379,10 @@ failed:
 		virtfn_remove(dev, j, 0);
 
 	iov->ctrl &= ~(PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE);
-	pci_block_user_cfg_access(dev);
+	pci_cfg_access_lock(dev);
 	pci_write_config_word(dev, iov->pos + PCI_SRIOV_CTRL, iov->ctrl);
 	ssleep(1);
-	pci_unblock_user_cfg_access(dev);
+	pci_cfg_access_unlock(dev);
 
 	if (iov->link != dev->devfn)
 		sysfs_remove_link(&dev->dev.kobj, "dep_link");
@@ -397,10 +405,10 @@ static void sriov_disable(struct pci_dev *dev)
 		virtfn_remove(dev, i, 0);
 
 	iov->ctrl &= ~(PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE);
-	pci_block_user_cfg_access(dev);
+	pci_cfg_access_lock(dev);
 	pci_write_config_word(dev, iov->pos + PCI_SRIOV_CTRL, iov->ctrl);
 	ssleep(1);
-	pci_unblock_user_cfg_access(dev);
+	pci_cfg_access_unlock(dev);
 
 	if (iov->link != dev->devfn)
 		sysfs_remove_link(&dev->dev.kobj, "dep_link");
@@ -444,7 +452,6 @@ static int sriov_init(struct pci_dev *dev, int pos)
 
 found:
 	pci_write_config_word(dev, pos + PCI_SRIOV_CTRL, ctrl);
-	pci_write_config_word(dev, pos + PCI_SRIOV_NUM_VF, total);
 	pci_read_config_word(dev, pos + PCI_SRIOV_VF_OFFSET, &offset);
 	pci_read_config_word(dev, pos + PCI_SRIOV_VF_STRIDE, &stride);
 	if (!offset || (total > 1 && !stride))
@@ -722,145 +729,3 @@ int pci_num_vf(struct pci_dev *dev)
 		return dev->sriov->nr_virtfn;
 }
 EXPORT_SYMBOL_GPL(pci_num_vf);
-
-static int ats_alloc_one(struct pci_dev *dev, int ps)
-{
-	int pos;
-	u16 cap;
-	struct pci_ats *ats;
-
-	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ATS);
-	if (!pos)
-		return -ENODEV;
-
-	ats = kzalloc(sizeof(*ats), GFP_KERNEL);
-	if (!ats)
-		return -ENOMEM;
-
-	ats->pos = pos;
-	ats->stu = ps;
-	pci_read_config_word(dev, pos + PCI_ATS_CAP, &cap);
-	ats->qdep = PCI_ATS_CAP_QDEP(cap) ? PCI_ATS_CAP_QDEP(cap) :
-					    PCI_ATS_MAX_QDEP;
-	dev->ats = ats;
-
-	return 0;
-}
-
-static void ats_free_one(struct pci_dev *dev)
-{
-	kfree(dev->ats);
-	dev->ats = NULL;
-}
-
-/**
- * pci_enable_ats - enable the ATS capability
- * @dev: the PCI device
- * @ps: the IOMMU page shift
- *
- * Returns 0 on success, or negative on failure.
- */
-int pci_enable_ats(struct pci_dev *dev, int ps)
-{
-	int rc;
-	u16 ctrl;
-
-	BUG_ON(dev->ats && dev->ats->is_enabled);
-
-	if (ps < PCI_ATS_MIN_STU)
-		return -EINVAL;
-
-	if (dev->is_physfn || dev->is_virtfn) {
-		struct pci_dev *pdev = dev->is_physfn ? dev : dev->physfn;
-
-		mutex_lock(&pdev->sriov->lock);
-		if (pdev->ats)
-			rc = pdev->ats->stu == ps ? 0 : -EINVAL;
-		else
-			rc = ats_alloc_one(pdev, ps);
-
-		if (!rc)
-			pdev->ats->ref_cnt++;
-		mutex_unlock(&pdev->sriov->lock);
-		if (rc)
-			return rc;
-	}
-
-	if (!dev->is_physfn) {
-		rc = ats_alloc_one(dev, ps);
-		if (rc)
-			return rc;
-	}
-
-	ctrl = PCI_ATS_CTRL_ENABLE;
-	if (!dev->is_virtfn)
-		ctrl |= PCI_ATS_CTRL_STU(ps - PCI_ATS_MIN_STU);
-	pci_write_config_word(dev, dev->ats->pos + PCI_ATS_CTRL, ctrl);
-
-	dev->ats->is_enabled = 1;
-
-	return 0;
-}
-
-/**
- * pci_disable_ats - disable the ATS capability
- * @dev: the PCI device
- */
-void pci_disable_ats(struct pci_dev *dev)
-{
-	u16 ctrl;
-
-	BUG_ON(!dev->ats || !dev->ats->is_enabled);
-
-	pci_read_config_word(dev, dev->ats->pos + PCI_ATS_CTRL, &ctrl);
-	ctrl &= ~PCI_ATS_CTRL_ENABLE;
-	pci_write_config_word(dev, dev->ats->pos + PCI_ATS_CTRL, ctrl);
-
-	dev->ats->is_enabled = 0;
-
-	if (dev->is_physfn || dev->is_virtfn) {
-		struct pci_dev *pdev = dev->is_physfn ? dev : dev->physfn;
-
-		mutex_lock(&pdev->sriov->lock);
-		pdev->ats->ref_cnt--;
-		if (!pdev->ats->ref_cnt)
-			ats_free_one(pdev);
-		mutex_unlock(&pdev->sriov->lock);
-	}
-
-	if (!dev->is_physfn)
-		ats_free_one(dev);
-}
-
-/**
- * pci_ats_queue_depth - query the ATS Invalidate Queue Depth
- * @dev: the PCI device
- *
- * Returns the queue depth on success, or negative on failure.
- *
- * The ATS spec uses 0 in the Invalidate Queue Depth field to
- * indicate that the function can accept 32 Invalidate Request.
- * But here we use the `real' values (i.e. 1~32) for the Queue
- * Depth; and 0 indicates the function shares the Queue with
- * other functions (doesn't exclusively own a Queue).
- */
-int pci_ats_queue_depth(struct pci_dev *dev)
-{
-	int pos;
-	u16 cap;
-
-	if (dev->is_virtfn)
-		return 0;
-
-	if (dev->ats)
-		return dev->ats->qdep;
-
-	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ATS);
-	if (!pos)
-		return -ENODEV;
-
-	pci_read_config_word(dev, pos + PCI_ATS_CAP, &cap);
-
-	return PCI_ATS_CAP_QDEP(cap) ? PCI_ATS_CAP_QDEP(cap) :
-				       PCI_ATS_MAX_QDEP;
-}

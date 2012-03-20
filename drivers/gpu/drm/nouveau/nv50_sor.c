@@ -60,6 +60,8 @@ nv50_sor_disconnect(struct drm_encoder *encoder)
 	BEGIN_RING(evo, 0, NV50_EVO_UPDATE, 1);
 	OUT_RING  (evo, 0);
 
+	nouveau_hdmi_mode_set(encoder, NULL);
+
 	nv_encoder->crtc = NULL;
 	nv_encoder->last_dpms = DRM_MODE_DPMS_OFF;
 }
@@ -124,7 +126,7 @@ nv50_sor_dpms(struct drm_encoder *encoder, int mode)
 		if (mode == DRM_MODE_DPMS_ON) {
 			u8 status = DP_SET_POWER_D0;
 			nouveau_dp_auxch(auxch, 8, DP_SET_POWER, &status, 1);
-			nouveau_dp_link_train(encoder);
+			nouveau_dp_link_train(encoder, nv_encoder->dp.datarate);
 		} else {
 			u8 status = DP_SET_POWER_D3;
 			nouveau_dp_auxch(auxch, 8, DP_SET_POWER, &status, 1);
@@ -172,6 +174,12 @@ nv50_sor_mode_fixup(struct drm_encoder *encoder, struct drm_display_mode *mode,
 static void
 nv50_sor_prepare(struct drm_encoder *encoder)
 {
+	struct nouveau_encoder *nv_encoder = nouveau_encoder(encoder);
+	nv50_sor_disconnect(encoder);
+	if (nv_encoder->dcb->type == OUTPUT_DP) {
+		/* avoid race between link training and supervisor intr */
+		nv50_display_sync(encoder->dev);
+	}
 }
 
 static void
@@ -180,33 +188,43 @@ nv50_sor_commit(struct drm_encoder *encoder)
 }
 
 static void
-nv50_sor_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
-		  struct drm_display_mode *adjusted_mode)
+nv50_sor_mode_set(struct drm_encoder *encoder, struct drm_display_mode *umode,
+		  struct drm_display_mode *mode)
 {
 	struct nouveau_channel *evo = nv50_display(encoder->dev)->master;
 	struct nouveau_encoder *nv_encoder = nouveau_encoder(encoder);
 	struct drm_device *dev = encoder->dev;
 	struct nouveau_crtc *crtc = nouveau_crtc(encoder->crtc);
+	struct nouveau_connector *nv_connector;
 	uint32_t mode_ctl = 0;
 	int ret;
 
 	NV_DEBUG_KMS(dev, "or %d type %d -> crtc %d\n",
 		     nv_encoder->or, nv_encoder->dcb->type, crtc->index);
-
-	nv50_sor_dpms(encoder, DRM_MODE_DPMS_ON);
+	nv_encoder->crtc = encoder->crtc;
 
 	switch (nv_encoder->dcb->type) {
 	case OUTPUT_TMDS:
 		if (nv_encoder->dcb->sorconf.link & 1) {
-			if (adjusted_mode->clock < 165000)
+			if (mode->clock < 165000)
 				mode_ctl = 0x0100;
 			else
 				mode_ctl = 0x0500;
 		} else
 			mode_ctl = 0x0200;
+
+		nouveau_hdmi_mode_set(encoder, mode);
 		break;
 	case OUTPUT_DP:
-		mode_ctl |= (nv_encoder->dp.mc_unknown << 16);
+		nv_connector = nouveau_encoder_connector_get(nv_encoder);
+		if (nv_connector && nv_connector->base.display_info.bpc == 6) {
+			nv_encoder->dp.datarate = mode->clock * 18 / 8;
+			mode_ctl |= 0x00020000;
+		} else {
+			nv_encoder->dp.datarate = mode->clock * 24 / 8;
+			mode_ctl |= 0x00050000;
+		}
+
 		if (nv_encoder->dcb->sorconf.link & 1)
 			mode_ctl |= 0x00000800;
 		else
@@ -221,21 +239,22 @@ nv50_sor_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	else
 		mode_ctl |= NV50_EVO_SOR_MODE_CTRL_CRTC0;
 
-	if (adjusted_mode->flags & DRM_MODE_FLAG_NHSYNC)
+	if (mode->flags & DRM_MODE_FLAG_NHSYNC)
 		mode_ctl |= NV50_EVO_SOR_MODE_CTRL_NHSYNC;
 
-	if (adjusted_mode->flags & DRM_MODE_FLAG_NVSYNC)
+	if (mode->flags & DRM_MODE_FLAG_NVSYNC)
 		mode_ctl |= NV50_EVO_SOR_MODE_CTRL_NVSYNC;
+
+	nv50_sor_dpms(encoder, DRM_MODE_DPMS_ON);
 
 	ret = RING_SPACE(evo, 2);
 	if (ret) {
 		NV_ERROR(dev, "no space while connecting SOR\n");
+		nv_encoder->crtc = NULL;
 		return;
 	}
 	BEGIN_RING(evo, 0, NV50_EVO_SOR(nv_encoder->or, MODE_CTRL), 1);
 	OUT_RING(evo, mode_ctl);
-
-	nv_encoder->crtc = encoder->crtc;
 }
 
 static struct drm_crtc *
@@ -312,29 +331,6 @@ nv50_sor_create(struct drm_connector *connector, struct dcb_entry *entry)
 
 	encoder->possible_crtcs = entry->heads;
 	encoder->possible_clones = 0;
-
-	if (nv_encoder->dcb->type == OUTPUT_DP) {
-		int or = nv_encoder->or, link = !(entry->dpconf.sor.link & 1);
-		uint32_t tmp;
-
-		tmp = nv_rd32(dev, 0x61c700 + (or * 0x800));
-
-		switch ((tmp & 0x00000f00) >> 8) {
-		case 8:
-		case 9:
-			nv_encoder->dp.mc_unknown = (tmp & 0x000f0000) >> 16;
-			tmp = nv_rd32(dev, NV50_SOR_DP_CTRL(or, link));
-			nv_encoder->dp.unk0 = tmp & 0x000001fc;
-			tmp = nv_rd32(dev, NV50_SOR_DP_UNK128(or, link));
-			nv_encoder->dp.unk1 = tmp & 0x010f7f3f;
-			break;
-		default:
-			break;
-		}
-
-		if (!nv_encoder->dp.mc_unknown)
-			nv_encoder->dp.mc_unknown = 5;
-	}
 
 	drm_mode_connector_attach_encoder(connector, encoder);
 	return 0;

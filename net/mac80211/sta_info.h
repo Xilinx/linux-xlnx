@@ -19,7 +19,8 @@
 /**
  * enum ieee80211_sta_info_flags - Stations flags
  *
- * These flags are used with &struct sta_info's @flags member.
+ * These flags are used with &struct sta_info's @flags member, but
+ * only indirectly with set_sta_flag() and friends.
  *
  * @WLAN_STA_AUTH: Station is authenticated.
  * @WLAN_STA_ASSOC: Station is associated.
@@ -29,7 +30,6 @@
  *	when virtual port control is not in use.
  * @WLAN_STA_SHORT_PREAMBLE: Station is capable of receiving short-preamble
  *	frames.
- * @WLAN_STA_ASSOC_AP: We're associated to that station, it is an AP.
  * @WLAN_STA_WME: Station is a QoS-STA.
  * @WLAN_STA_WDS: Station is one of our WDS peers.
  * @WLAN_STA_CLEAR_PS_FILT: Clear PS filter in hardware (using the
@@ -43,29 +43,51 @@
  *	be in the queues
  * @WLAN_STA_PSPOLL: Station sent PS-poll while driver was keeping
  *	station in power-save mode, reply when the driver unblocks.
- * @WLAN_STA_PS_DRIVER_BUF: Station has frames pending in driver internal
- *	buffers. Automatically cleared on station wake-up.
+ * @WLAN_STA_TDLS_PEER: Station is a TDLS peer.
+ * @WLAN_STA_TDLS_PEER_AUTH: This TDLS peer is authorized to send direct
+ *	packets. This means the link is enabled.
+ * @WLAN_STA_UAPSD: Station requested unscheduled SP while driver was
+ *	keeping station in power-save mode, reply when the driver
+ *	unblocks the station.
+ * @WLAN_STA_SP: Station is in a service period, so don't try to
+ *	reply to other uAPSD trigger frames or PS-Poll.
+ * @WLAN_STA_4ADDR_EVENT: 4-addr event was already sent for this frame.
+ * @WLAN_STA_RATE_CONTROL: rate control was initialized for this station.
  */
 enum ieee80211_sta_info_flags {
-	WLAN_STA_AUTH		= 1<<0,
-	WLAN_STA_ASSOC		= 1<<1,
-	WLAN_STA_PS_STA		= 1<<2,
-	WLAN_STA_AUTHORIZED	= 1<<3,
-	WLAN_STA_SHORT_PREAMBLE	= 1<<4,
-	WLAN_STA_ASSOC_AP	= 1<<5,
-	WLAN_STA_WME		= 1<<6,
-	WLAN_STA_WDS		= 1<<7,
-	WLAN_STA_CLEAR_PS_FILT	= 1<<9,
-	WLAN_STA_MFP		= 1<<10,
-	WLAN_STA_BLOCK_BA	= 1<<11,
-	WLAN_STA_PS_DRIVER	= 1<<12,
-	WLAN_STA_PSPOLL		= 1<<13,
-	WLAN_STA_PS_DRIVER_BUF	= 1<<14,
+	WLAN_STA_AUTH,
+	WLAN_STA_ASSOC,
+	WLAN_STA_PS_STA,
+	WLAN_STA_AUTHORIZED,
+	WLAN_STA_SHORT_PREAMBLE,
+	WLAN_STA_WME,
+	WLAN_STA_WDS,
+	WLAN_STA_CLEAR_PS_FILT,
+	WLAN_STA_MFP,
+	WLAN_STA_BLOCK_BA,
+	WLAN_STA_PS_DRIVER,
+	WLAN_STA_PSPOLL,
+	WLAN_STA_TDLS_PEER,
+	WLAN_STA_TDLS_PEER_AUTH,
+	WLAN_STA_UAPSD,
+	WLAN_STA_SP,
+	WLAN_STA_4ADDR_EVENT,
+	WLAN_STA_RATE_CONTROL,
+};
+
+enum ieee80211_sta_state {
+	/* NOTE: These need to be ordered correctly! */
+	IEEE80211_STA_NONE,
+	IEEE80211_STA_AUTH,
+	IEEE80211_STA_ASSOC,
+	IEEE80211_STA_AUTHORIZED,
 };
 
 #define STA_TID_NUM 16
 #define ADDBA_RESP_INTERVAL HZ
-#define HT_AGG_MAX_RETRIES		0x3
+#define HT_AGG_MAX_RETRIES		15
+#define HT_AGG_BURST_RETRIES		3
+#define HT_AGG_RETRIES_PERIOD		(15 * HZ)
 
 #define HT_AGG_STATE_DRV_READY		0
 #define HT_AGG_STATE_RESPONSE_RECEIVED	1
@@ -78,6 +100,7 @@ enum ieee80211_sta_info_flags {
  * struct tid_ampdu_tx - TID aggregation information (Tx).
  *
  * @rcu_head: rcu head for freeing structure
+ * @session_timer: check if we keep Tx-ing on the TID (by timeout value)
  * @addba_resp_timer: timer for peer's response to addba request
  * @pending: pending frames queue -- use sta's spinlock to protect
  * @dialog_token: dialog token for aggregation session
@@ -86,6 +109,8 @@ enum ieee80211_sta_info_flags {
  * @stop_initiator: initiator of a session stop
  * @tx_stop: TX DelBA frame when stopping
  * @buf_size: reorder buffer size at receiver
+ * @failed_bar_ssn: ssn of the last failed BAR tx attempt
+ * @bar_pending: BAR needs to be re-sent
  *
  * This structure's lifetime is managed by RCU, assignments to
  * the array holding it must hold the aggregation mutex.
@@ -98,6 +123,7 @@ enum ieee80211_sta_info_flags {
  */
 struct tid_ampdu_tx {
 	struct rcu_head rcu_head;
+	struct timer_list session_timer;
 	struct timer_list addba_resp_timer;
 	struct sk_buff_head pending;
 	unsigned long state;
@@ -106,6 +132,9 @@ struct tid_ampdu_tx {
 	u8 stop_initiator;
 	bool tx_stop;
 	u8 buf_size;
+
+	u16 failed_bar_ssn;
+	bool bar_pending;
 };
 
 /**
@@ -154,10 +183,13 @@ struct tid_ampdu_rx {
  * @tid_tx: aggregation info for Tx per TID
  * @tid_start_tx: sessions where start was requested
  * @addba_req_num: number of times addBA request has been sent.
+ * @last_addba_req_time: timestamp of the last addBA request.
  * @dialog_token_allocator: dialog token enumerator for each new session;
  * @work: work struct for starting/stopping aggregation
  * @tid_rx_timer_expired: bitmap indicating on which TIDs the
  *	RX timer expired until the work for it runs
+ * @tid_rx_stop_requested:  bitmap indicating which BA sessions per TID the
+ *	driver requested to close until the work for it runs
  * @mtx: mutex to protect all TX data (except non-NULL assignments
  *	to tid_tx[idx], which are protected by the sta spinlock)
  */
@@ -166,10 +198,12 @@ struct sta_ampdu_mlme {
 	/* rx */
 	struct tid_ampdu_rx __rcu *tid_rx[STA_TID_NUM];
 	unsigned long tid_rx_timer_expired[BITS_TO_LONGS(STA_TID_NUM)];
+	unsigned long tid_rx_stop_requested[BITS_TO_LONGS(STA_TID_NUM)];
 	/* tx */
 	struct work_struct work;
 	struct tid_ampdu_tx __rcu *tid_tx[STA_TID_NUM];
 	struct tid_ampdu_tx *tid_start_tx[STA_TID_NUM];
+	unsigned long last_addba_req_time[STA_TID_NUM];
 	u8 addba_req_num[STA_TID_NUM];
 	u8 dialog_token_allocator;
 };
@@ -195,15 +229,16 @@ struct sta_ampdu_mlme {
  * @last_rx_rate_flag: rx status flag of the last data packet
  * @lock: used for locking all fields that require locking, see comments
  *	in the header file.
- * @flaglock: spinlock for flags accesses
  * @drv_unblock_wk: used for driver PS unblocking
  * @listen_interval: listen interval of this station, when we're acting as AP
- * @flags: STA flags, see &enum ieee80211_sta_info_flags
- * @ps_tx_buf: buffer of frames to transmit to this station
- *	when it leaves power saving state
- * @tx_filtered: buffer of frames we already tried to transmit
- *	but were filtered by hardware due to STA having entered
- *	power saving state
+ * @_flags: STA flags, see &enum ieee80211_sta_info_flags, do not use directly
+ * @ps_tx_buf: buffers (per AC) of frames to transmit to this station
+ *	when it leaves power saving state or polls
+ * @tx_filtered: buffers (per AC) of frames we already tried to
+ *	transmit but were filtered by hardware due to STA having
+ *	entered power saving state, these are also delivered to
+ *	the station when it leaves powersave or polls for frames
+ * @driver_buffered_tids: bitmap of TIDs the driver has data buffered on
  * @rx_packets: Number of MSDUs received from this STA
  * @rx_bytes: Number of bytes received from this STA
  * @wep_weak_iv_count: number of weak WEP IVs received from this station
@@ -235,10 +270,14 @@ struct sta_ampdu_mlme {
  * @plink_timer: peer link watch timer
  * @plink_timer_was_running: used by suspend/resume to restore timers
  * @debugfs: debug filesystem info
- * @sta: station information we share with the driver
  * @dead: set to true when sta is unlinked
  * @uploaded: set to true when sta is uploaded to the driver
  * @lost_packets: number of consecutive lost packets
+ * @dummy: indicate a dummy station created for receiving
+ *	EAP frames before association
+ * @sta: station information we share with the driver
+ * @sta_state: duplicates information about station state (for debug)
+ * @beacon_loss_count: number of times beacon loss has triggered
  */
 struct sta_info {
 	/* General information, mostly static */
@@ -251,7 +290,6 @@ struct sta_info {
 	struct rate_control_ref *rate_ctrl;
 	void *rate_ctrl_priv;
 	spinlock_t lock;
-	spinlock_t flaglock;
 
 	struct work_struct drv_unblock_wk;
 
@@ -261,18 +299,18 @@ struct sta_info {
 
 	bool uploaded;
 
-	/*
-	 * frequently updated, locked with own spinlock (flaglock),
-	 * use the accessors defined below
-	 */
-	u32 flags;
+	enum ieee80211_sta_state sta_state;
+
+	/* use the accessors defined below */
+	unsigned long _flags;
 
 	/*
 	 * STA powersave frame queues, no more than the internal
 	 * locking required.
 	 */
-	struct sk_buff_head ps_tx_buf;
-	struct sk_buff_head tx_filtered;
+	struct sk_buff_head ps_tx_buf[IEEE80211_NUM_ACS];
+	struct sk_buff_head tx_filtered[IEEE80211_NUM_ACS];
+	unsigned long driver_buffered_tids;
 
 	/* Updated from RX path only, no locking requirements */
 	unsigned long rx_packets, rx_bytes;
@@ -284,7 +322,8 @@ struct sta_info {
 	unsigned long rx_dropped;
 	int last_signal;
 	struct ewma avg_signal;
-	__le16 last_seq_ctrl[NUM_RX_DATA_QUEUES];
+	/* Plus 1 for non-QoS frames */
+	__le16 last_seq_ctrl[NUM_RX_DATA_QUEUES + 1];
 
 	/* Updated from TX status path only, no locking requirements */
 	unsigned long tx_filtered_count;
@@ -331,6 +370,10 @@ struct sta_info {
 #endif
 
 	unsigned int lost_packets;
+	unsigned int beacon_loss_count;
+
+	/* should be right in front of sta to be in the same cache line */
+	bool dummy;
 
 	/* keep last! */
 	struct ieee80211_sta sta;
@@ -344,61 +387,58 @@ static inline enum nl80211_plink_state sta_plink_state(struct sta_info *sta)
 	return NL80211_PLINK_LISTEN;
 }
 
-static inline void set_sta_flags(struct sta_info *sta, const u32 flags)
+static inline void set_sta_flag(struct sta_info *sta,
+				enum ieee80211_sta_info_flags flag)
 {
-	unsigned long irqfl;
-
-	spin_lock_irqsave(&sta->flaglock, irqfl);
-	sta->flags |= flags;
-	spin_unlock_irqrestore(&sta->flaglock, irqfl);
+	WARN_ON(flag == WLAN_STA_AUTH ||
+		flag == WLAN_STA_ASSOC ||
+		flag == WLAN_STA_AUTHORIZED);
+	set_bit(flag, &sta->_flags);
 }
 
-static inline void clear_sta_flags(struct sta_info *sta, const u32 flags)
+static inline void clear_sta_flag(struct sta_info *sta,
+				  enum ieee80211_sta_info_flags flag)
 {
-	unsigned long irqfl;
-
-	spin_lock_irqsave(&sta->flaglock, irqfl);
-	sta->flags &= ~flags;
-	spin_unlock_irqrestore(&sta->flaglock, irqfl);
+	WARN_ON(flag == WLAN_STA_AUTH ||
+		flag == WLAN_STA_ASSOC ||
+		flag == WLAN_STA_AUTHORIZED);
+	clear_bit(flag, &sta->_flags);
 }
 
-static inline u32 test_sta_flags(struct sta_info *sta, const u32 flags)
+static inline int test_sta_flag(struct sta_info *sta,
+				enum ieee80211_sta_info_flags flag)
 {
-	u32 ret;
-	unsigned long irqfl;
-
-	spin_lock_irqsave(&sta->flaglock, irqfl);
-	ret = sta->flags & flags;
-	spin_unlock_irqrestore(&sta->flaglock, irqfl);
-
-	return ret;
+	return test_bit(flag, &sta->_flags);
 }
 
-static inline u32 test_and_clear_sta_flags(struct sta_info *sta,
-					   const u32 flags)
+static inline int test_and_clear_sta_flag(struct sta_info *sta,
+					  enum ieee80211_sta_info_flags flag)
 {
-	u32 ret;
-	unsigned long irqfl;
-
-	spin_lock_irqsave(&sta->flaglock, irqfl);
-	ret = sta->flags & flags;
-	sta->flags &= ~flags;
-	spin_unlock_irqrestore(&sta->flaglock, irqfl);
-
-	return ret;
+	WARN_ON(flag == WLAN_STA_AUTH ||
+		flag == WLAN_STA_ASSOC ||
+		flag == WLAN_STA_AUTHORIZED);
+	return test_and_clear_bit(flag, &sta->_flags);
 }
 
-static inline u32 get_sta_flags(struct sta_info *sta)
+static inline int test_and_set_sta_flag(struct sta_info *sta,
+					enum ieee80211_sta_info_flags flag)
 {
-	u32 ret;
-	unsigned long irqfl;
-
-	spin_lock_irqsave(&sta->flaglock, irqfl);
-	ret = sta->flags;
-	spin_unlock_irqrestore(&sta->flaglock, irqfl);
-
-	return ret;
+	WARN_ON(flag == WLAN_STA_AUTH ||
+		flag == WLAN_STA_ASSOC ||
+		flag == WLAN_STA_AUTHORIZED);
+	return test_and_set_bit(flag, &sta->_flags);
 }
+
+int sta_info_move_state_checked(struct sta_info *sta,
+				enum ieee80211_sta_state new_state);
+
+static inline void sta_info_move_state(struct sta_info *sta,
+				       enum ieee80211_sta_state new_state)
+{
+	int ret = sta_info_move_state_checked(sta, new_state);
+	WARN_ON_ONCE(ret);
+}
+
 
 void ieee80211_assign_tid_tx(struct sta_info *sta, int tid,
 			     struct tid_ampdu_tx *tid_tx);
@@ -415,8 +455,8 @@ rcu_dereference_protected_tid_tx(struct sta_info *sta, int tid)
 #define STA_HASH(sta) (sta[5])
 
 
-/* Maximum number of frames to buffer per power saving station */
-#define STA_MAX_TX_BUFFER 128
+/* Maximum number of frames to buffer per power saving station per AC */
+#define STA_MAX_TX_BUFFER	64
 
 /* Minimum buffered frame expiry time. If STA uses listen interval that is
  * smaller than this value, the minimum value here is used instead. */
@@ -432,7 +472,13 @@ rcu_dereference_protected_tid_tx(struct sta_info *sta, int tid)
 struct sta_info *sta_info_get(struct ieee80211_sub_if_data *sdata,
 			      const u8 *addr);
 
+struct sta_info *sta_info_get_rx(struct ieee80211_sub_if_data *sdata,
+			      const u8 *addr);
+
 struct sta_info *sta_info_get_bss(struct ieee80211_sub_if_data *sdata,
+				  const u8 *addr);
+
+struct sta_info *sta_info_get_bss_rx(struct ieee80211_sub_if_data *sdata,
 				  const u8 *addr);
 
 static inline
@@ -444,6 +490,22 @@ void for_each_sta_info_type_check(struct ieee80211_local *local,
 }
 
 #define for_each_sta_info(local, _addr, _sta, nxt) 			\
+	for (	/* initialise loop */					\
+		_sta = rcu_dereference(local->sta_hash[STA_HASH(_addr)]),\
+		nxt = _sta ? rcu_dereference(_sta->hnext) : NULL;	\
+		/* typecheck */						\
+		for_each_sta_info_type_check(local, (_addr), _sta, nxt),\
+		/* continue condition */				\
+		_sta;							\
+		/* advance loop */					\
+		_sta = nxt,						\
+		nxt = _sta ? rcu_dereference(_sta->hnext) : NULL	\
+	     )								\
+	/* run code only if address matches and it's not a dummy sta */	\
+	if (memcmp(_sta->sta.addr, (_addr), ETH_ALEN) == 0 &&		\
+		!_sta->dummy)
+
+#define for_each_sta_info_rx(local, _addr, _sta, nxt)			\
 	for (	/* initialise loop */					\
 		_sta = rcu_dereference(local->sta_hash[STA_HASH(_addr)]),\
 		nxt = _sta ? rcu_dereference(_sta->hnext) : NULL;	\
@@ -468,7 +530,10 @@ struct sta_info *sta_info_get_by_idx(struct ieee80211_sub_if_data *sdata,
  * until sta_info_insert().
  */
 struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
-				u8 *addr, gfp_t gfp);
+				const u8 *addr, gfp_t gfp);
+
+void sta_info_free(struct ieee80211_local *local, struct sta_info *sta);
+
 /*
  * Insert STA info into hash table/list, returns zero or a
  * -EEXIST if (if the same MAC address is already present).
@@ -479,15 +544,14 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
  */
 int sta_info_insert(struct sta_info *sta);
 int sta_info_insert_rcu(struct sta_info *sta) __acquires(RCU);
-int sta_info_insert_atomic(struct sta_info *sta);
+int sta_info_reinsert(struct sta_info *sta);
 
 int sta_info_destroy_addr(struct ieee80211_sub_if_data *sdata,
 			  const u8 *addr);
 int sta_info_destroy_addr_bss(struct ieee80211_sub_if_data *sdata,
 			      const u8 *addr);
 
-void sta_info_set_tim_bit(struct sta_info *sta);
-void sta_info_clear_tim_bit(struct sta_info *sta);
+void sta_info_recalc_tim(struct sta_info *sta);
 
 void sta_info_init(struct ieee80211_local *local);
 void sta_info_stop(struct ieee80211_local *local);
@@ -498,5 +562,6 @@ void ieee80211_sta_expire(struct ieee80211_sub_if_data *sdata,
 
 void ieee80211_sta_ps_deliver_wakeup(struct sta_info *sta);
 void ieee80211_sta_ps_deliver_poll_response(struct sta_info *sta);
+void ieee80211_sta_ps_deliver_uapsd(struct sta_info *sta);
 
 #endif /* STA_INFO_H */

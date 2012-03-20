@@ -662,7 +662,7 @@ static int __devinit pxa168fb_probe(struct platform_device *pdev)
 	info->fix.ypanstep = 0;
 	info->fix.ywrapstep = 0;
 	info->fix.mmio_start = res->start;
-	info->fix.mmio_len = res->end - res->start + 1;
+	info->fix.mmio_len = resource_size(res);
 	info->fix.accel = FB_ACCEL_NONE;
 	info->fbops = &pxa168fb_ops;
 	info->pseudo_palette = fbi->pseudo_palette;
@@ -832,17 +832,7 @@ static struct platform_driver pxa168fb_driver = {
 	.remove		= __devexit_p(pxa168fb_remove),
 };
 
-static int __init pxa168fb_init(void)
-{
-	return platform_driver_register(&pxa168fb_driver);
-}
-module_init(pxa168fb_init);
-
-static void __exit pxa168fb_exit(void)
-{
-	platform_driver_unregister(&pxa168fb_driver);
-}
-module_exit(pxa168fb_exit);
+module_platform_driver(pxa168fb_driver);
 
 MODULE_AUTHOR("Lennert Buytenhek <buytenh@marvell.com> "
 	      "Green Wan <gwan@marvell.com>");

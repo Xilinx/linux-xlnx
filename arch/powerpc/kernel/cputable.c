@@ -14,7 +14,7 @@
 #include <linux/sched.h>
 #include <linux/threads.h>
 #include <linux/init.h>
-#include <linux/module.h>
+#include <linux/export.h>
 
 #include <asm/oprofile_impl.h>
 #include <asm/cputable.h>
@@ -1505,6 +1505,19 @@ static struct cpu_spec __initdata cpu_specs[] = {
 		.machine_check		= machine_check_4xx,
 		.platform		= "ppc405",
 	},
+	{	/* APM8018X */
+		.pvr_mask		= 0xffff0000,
+		.pvr_value		= 0x7ff11432,
+		.cpu_name		= "APM8018X",
+		.cpu_features		= CPU_FTRS_40X,
+		.cpu_user_features	= PPC_FEATURE_32 |
+			PPC_FEATURE_HAS_MMU | PPC_FEATURE_HAS_4xxMAC,
+		.mmu_features		= MMU_FTR_TYPE_40x,
+		.icache_bsize		= 32,
+		.dcache_bsize		= 32,
+		.machine_check		= machine_check_4xx,
+		.platform		= "ppc405",
+	},
 	{	/* default match */
 		.pvr_mask		= 0x00000000,
 		.pvr_value		= 0x00000000,
@@ -1830,6 +1843,20 @@ static struct cpu_spec __initdata cpu_specs[] = {
 		.machine_check		= machine_check_47x,
 		.platform		= "ppc470",
 	},
+	{ /* 476fpe */
+		.pvr_mask		= 0xffff0000,
+		.pvr_value		= 0x7ff50000,
+		.cpu_name		= "476fpe",
+		.cpu_features		= CPU_FTRS_47X | CPU_FTR_476_DD2,
+		.cpu_user_features	= COMMON_USER_BOOKE |
+			PPC_FEATURE_HAS_FPU,
+		.mmu_features		= MMU_FTR_TYPE_47x |
+			MMU_FTR_USE_TLBIVAX_BCAST | MMU_FTR_LOCK_BCAST_INVAL,
+		.icache_bsize		= 32,
+		.dcache_bsize		= 128,
+		.machine_check		= machine_check_47x,
+		.platform		= "ppc470",
+	},
 	{ /* 476 iss */
 		.pvr_mask		= 0xffff0000,
 		.pvr_value		= 0x00050000,
@@ -2051,7 +2078,8 @@ static struct cpu_spec __initdata cpu_specs[] = {
 
 static struct cpu_spec the_cpu_spec;
 
-static void __init setup_cpu_spec(unsigned long offset, struct cpu_spec *s)
+static struct cpu_spec * __init setup_cpu_spec(unsigned long offset,
+					       struct cpu_spec *s)
 {
 	struct cpu_spec *t = &the_cpu_spec;
 	struct cpu_spec old;
@@ -2114,6 +2142,8 @@ static void __init setup_cpu_spec(unsigned long offset, struct cpu_spec *s)
 		t->cpu_setup(offset, t);
 	}
 #endif /* CONFIG_PPC64 || CONFIG_BOOKE */
+
+	return t;
 }
 
 struct cpu_spec * __init identify_cpu(unsigned long offset, unsigned int pvr)
@@ -2124,10 +2154,8 @@ struct cpu_spec * __init identify_cpu(unsigned long offset, unsigned int pvr)
 	s = PTRRELOC(s);
 
 	for (i = 0; i < ARRAY_SIZE(cpu_specs); i++,s++) {
-		if ((pvr & s->pvr_mask) == s->pvr_value) {
-			setup_cpu_spec(offset, s);
-			return s;
-		}
+		if ((pvr & s->pvr_mask) == s->pvr_value)
+			return setup_cpu_spec(offset, s);
 	}
 
 	BUG();

@@ -9,13 +9,13 @@
 #include <linux/kprobes.h>
 #include <linux/init.h>
 #include <linux/kernel_stat.h>
-#include <linux/sysdev.h>
+#include <linux/device.h>
 #include <linux/bitops.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
 #include <linux/delay.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <asm/system.h>
 #include <asm/timer.h>
 #include <asm/hw_irq.h>
@@ -271,9 +271,6 @@ static void __init apic_intr_init(void)
 #endif
 #ifdef CONFIG_X86_MCE_THRESHOLD
 	alloc_intr_gate(THRESHOLD_APIC_VECTOR, threshold_interrupt);
-#endif
-#if defined(CONFIG_X86_MCE) && defined(CONFIG_X86_LOCAL_APIC)
-	alloc_intr_gate(MCE_SELF_VECTOR, mce_self_interrupt);
 #endif
 
 #if defined(CONFIG_X86_64) || defined(CONFIG_X86_LOCAL_APIC)

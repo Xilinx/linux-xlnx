@@ -25,6 +25,9 @@
 #include <linux/io.h>
 #include <linux/of_platform.h>
 #include <linux/clk.h>
+#include <linux/string.h>
+#include <linux/export.h>
+#include <linux/module.h>
 
 static u64 dma_mask = 0xFFFFFFF0;
 

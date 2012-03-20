@@ -180,7 +180,7 @@ enum {
 #include <linux/dqblk_v1.h>
 #include <linux/dqblk_v2.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 typedef __kernel_uid32_t qid_t; /* Type in which we store ids in memory */
 typedef long long qsize_t;	/* Type in which we store sizes */
@@ -230,7 +230,11 @@ struct mem_dqinfo {
 struct super_block;
 
 #define DQF_MASK 0xffff		/* Mask for format specific flags */
-#define DQF_INFO_DIRTY_B 16
+#define DQF_GETINFO_MASK 0x1ffff	/* Mask for flags passed to userspace */
+#define DQF_SETINFO_MASK 0xffff		/* Mask for flags modifiable from userspace */
+#define DQF_SYS_FILE_B		16
+#define DQF_SYS_FILE (1 << DQF_SYS_FILE_B)	/* Quota file stored as system file */
+#define DQF_INFO_DIRTY_B	31
 #define DQF_INFO_DIRTY (1 << DQF_INFO_DIRTY_B)	/* Is info dirty? */
 
 extern void mark_info_dirty(struct super_block *sb, int type);
@@ -414,14 +418,6 @@ struct quota_module_name {
 	{QFMT_VFS_OLD, "quota_v1"},\
 	{QFMT_VFS_V0, "quota_v2"},\
 	{0, NULL}}
-
-#else
-
-# /* nodep */ include <sys/cdefs.h>
-
-__BEGIN_DECLS
-long quotactl __P ((unsigned int, const char *, int, caddr_t));
-__END_DECLS
 
 #endif /* __KERNEL__ */
 #endif /* _QUOTA_ */

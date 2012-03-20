@@ -18,10 +18,7 @@
 
 /* Registers */
 #define AD5504_ADDR_NOOP		0
-#define AD5504_ADDR_DAC0		1
-#define AD5504_ADDR_DAC1		2
-#define AD5504_ADDR_DAC2		3
-#define AD5504_ADDR_DAC3		4
+#define AD5504_ADDR_DAC(x)		((x) + 1)
 #define AD5504_ADDR_ALL_DAC		5
 #define AD5504_ADDR_CTRL		7
 
@@ -41,7 +38,6 @@ struct ad5504_platform_data {
 
 /**
  * struct ad5446_state - driver instance specific data
- * @indio_dev:		the industrial I/O device
  * @us:			spi_device
  * @reg:		supply regulator
  * @vref_mv:		actual reference voltage used
@@ -50,7 +46,6 @@ struct ad5504_platform_data {
  */
 
 struct ad5504_state {
-	struct iio_dev			*indio_dev;
 	struct spi_device		*spi;
 	struct regulator		*reg;
 	unsigned short			vref_mv;

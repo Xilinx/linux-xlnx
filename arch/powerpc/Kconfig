@@ -87,6 +87,10 @@ config ARCH_HAS_ILOG2_U64
 	bool
 	default y if 64BIT
 
+config ARCH_HAS_CPU_IDLE_WAIT
+	bool
+	default y
+
 config GENERIC_HWEIGHT
 	bool
 	default y
@@ -117,6 +121,7 @@ config PPC
 	select HAVE_KRETPROBES
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_MEMBLOCK
+	select HAVE_MEMBLOCK_NODE_MAP
 	select HAVE_DMA_ATTRS
 	select HAVE_DMA_API_DEBUG
 	select USE_GENERIC_SMP_HELPERS if SMP
@@ -132,8 +137,12 @@ config PPC
 	select IRQ_PER_CPU
 	select GENERIC_IRQ_SHOW
 	select GENERIC_IRQ_SHOW_LEVEL
+	select IRQ_FORCED_THREADING
 	select HAVE_RCU_TABLE_FREE if SMP
 	select HAVE_SYSCALL_TRACEPOINTS
+	select HAVE_BPF_JIT if (PPC64 && NET)
+	select HAVE_ARCH_JUMP_LABEL
+	select ARCH_HAVE_NMI_SAFE_CMPXCHG
 
 config EARLY_PRINTK
 	bool
@@ -320,7 +329,7 @@ config SWIOTLB
 
 config HOTPLUG_CPU
 	bool "Support for enabling/disabling CPUs"
-	depends on SMP && HOTPLUG && EXPERIMENTAL && (PPC_PSERIES || PPC_PMAC)
+	depends on SMP && HOTPLUG && EXPERIMENTAL && (PPC_PSERIES || PPC_PMAC || PPC_POWERNV)
 	---help---
 	  Say Y here to be able to disable and re-enable individual
 	  CPUs at runtime on SMP machines.
@@ -342,7 +351,7 @@ config ARCH_ENABLE_MEMORY_HOTREMOVE
 
 config KEXEC
 	bool "kexec system call (EXPERIMENTAL)"
-	depends on (PPC_BOOK3S || FSL_BOOKE) && EXPERIMENTAL
+	depends on (PPC_BOOK3S || FSL_BOOKE || (44x && !SMP && !PPC_47x)) && EXPERIMENTAL
 	help
 	  kexec is a system call that implements the ability to shutdown your
 	  current kernel, and to start another kernel.  It is like a reboot
@@ -359,8 +368,9 @@ config KEXEC
 
 config CRASH_DUMP
 	bool "Build a kdump crash kernel"
-	depends on PPC64 || 6xx || FSL_BOOKE
-	select RELOCATABLE if PPC64 || FSL_BOOKE
+	depends on PPC64 || 6xx || FSL_BOOKE || (44x && !SMP && !PPC_47x)
+	select RELOCATABLE if PPC64 || 44x
+	select DYNAMIC_MEMSTART if FSL_BOOKE
 	help
 	  Build a kernel suitable for use as a kdump capture kernel.
 	  The same kernel binary can be used as production kernel and dump
@@ -375,10 +385,6 @@ config PHYP_DUMP
 	  hypervisor assistance.
 
 	  If unsure, say "N"
-
-config PPCBUG_NVRAM
-	bool "Enable reading PPCBUG NVRAM during boot" if PPLUS || LOPEC
-	default y if PPC_PREP
 
 config IRQ_ALL_CPUS
 	bool "Distribute interrupts on all CPUs by default"
@@ -422,12 +428,8 @@ config ARCH_SPARSEMEM_DEFAULT
 	def_bool y
 	depends on (SMP && PPC_PSERIES) || PPC_PS3
 
-config ARCH_POPULATES_NODE_MAP
-	def_bool y
-
 config SYS_SUPPORTS_HUGETLBFS
-       def_bool y
-       depends on PPC_BOOK3S_64
+	bool
 
 source "mm/Kconfig"
 
@@ -691,6 +693,8 @@ config SBUS
 
 config FSL_SOC
 	bool
+	select HAVE_CAN_FLEXCAN if NET && CAN
+	select PPC_CLOCK if CAN_FLEXCAN
 
 config FSL_PCI
  	bool
@@ -725,6 +729,10 @@ config FSL_LBC
 	  controller.  Also contains some common code used by
 	  drivers for specific local bus peripherals.
 
+config FSL_IFC
+	bool
+        depends on FSL_SOC
+
 config FSL_GTM
 	bool
 	depends on PPC_83xx || QUICC_ENGINE || CPM2
@@ -748,6 +756,7 @@ config PCI
 	default PCI_PERMEDIA if !4xx && !CPM2 && !8xx
 	default PCI_QSPAN if !4xx && !CPM2 && 8xx
 	select ARCH_SUPPORTS_MSI
+	select GENERIC_PCI_IOMAP
 	help
 	  Find out whether your system includes a PCI bus. PCI is the name of
 	  a bus system, i.e. the way the CPU talks to the other stuff inside
@@ -779,24 +788,6 @@ config 8260_PCI9
 	depends on PCI_8260 && !8272
 	default y
 
-choice
-	prompt "IDMA channel for PCI 9 workaround"
-	depends on 8260_PCI9
-
-config 8260_PCI9_IDMA1
-	bool "IDMA1"
-
-config 8260_PCI9_IDMA2
-	bool "IDMA2"
-
-config 8260_PCI9_IDMA3
-	bool "IDMA3"
-
-config 8260_PCI9_IDMA4
-	bool "IDMA4"
-
-endchoice
-
 source "drivers/pci/pcie/Kconfig"
 
 source "drivers/pci/Kconfig"
@@ -827,6 +818,10 @@ config FSL_RIO
 source "drivers/rapidio/Kconfig"
 
 endmenu
+
+config NONSTATIC_KERNEL
+	bool
+	default n
 
 menu "Advanced setup"
 	depends on PPC32
@@ -877,13 +872,32 @@ config LOWMEM_CAM_NUM
 	int "Number of CAMs to use to map low memory" if LOWMEM_CAM_NUM_BOOL
 	default 3
 
+config DYNAMIC_MEMSTART
+	bool "Enable page aligned dynamic load address for kernel (EXPERIMENTAL)"
+	depends on EXPERIMENTAL && ADVANCED_OPTIONS && FLATMEM && (FSL_BOOKE || 44x)
+	select NONSTATIC_KERNEL
+	help
+	  This option enables the kernel to be loaded at any page aligned
+	  physical address. The kernel creates a mapping from KERNELBASE to 
+	  the address where the kernel is loaded. The page size here implies
+	  the TLB page size of the mapping for kernel on the particular platform.
+	  Please refer to the init code for finding the TLB page size.
+
+	  DYNAMIC_MEMSTART is an easy way of implementing pseudo-RELOCATABLE
+	  kernel image, where the only restriction is the page aligned kernel
+	  load address. When this option is enabled, the compile time physical 
+	  address CONFIG_PHYSICAL_START is ignored.
+
+	  This option is overridden by CONFIG_RELOCATABLE
+
 config RELOCATABLE
 	bool "Build a relocatable kernel (EXPERIMENTAL)"
-	depends on EXPERIMENTAL && ADVANCED_OPTIONS && FLATMEM && FSL_BOOKE
+	depends on EXPERIMENTAL && ADVANCED_OPTIONS && FLATMEM && 44x
+	select NONSTATIC_KERNEL
 	help
 	  This builds a kernel image that is capable of running at the
-	  location the kernel is loaded at (some alignment restrictions may
-	  exist).
+	  location the kernel is loaded at, without any alignment restrictions.
+	  This feature is a superset of DYNAMIC_MEMSTART and hence overrides it.
 
 	  One use is for the kexec on panic case where the recovery kernel
 	  must live at a different physical address than the primary
@@ -893,7 +907,11 @@ config RELOCATABLE
 	  it has been loaded at and the compile time physical addresses
 	  CONFIG_PHYSICAL_START is ignored.  However CONFIG_PHYSICAL_START
 	  setting can still be useful to bootwrappers that need to know the
-	  load location of the kernel (eg. u-boot/mkimage).
+	  load address of the kernel (eg. u-boot/mkimage).
+
+config RELOCATABLE_PPC32
+	def_bool y
+	depends on PPC32 && RELOCATABLE
 
 config PAGE_OFFSET_BOOL
 	bool "Set custom page offset address"
@@ -923,7 +941,7 @@ config KERNEL_START_BOOL
 config KERNEL_START
 	hex "Virtual address of kernel base" if KERNEL_START_BOOL
 	default PAGE_OFFSET if PAGE_OFFSET_BOOL
-	default "0xc2000000" if CRASH_DUMP && !RELOCATABLE
+	default "0xc2000000" if CRASH_DUMP && !NONSTATIC_KERNEL
 	default "0xc0000000"
 
 config PHYSICAL_START_BOOL
@@ -936,7 +954,7 @@ config PHYSICAL_START_BOOL
 
 config PHYSICAL_START
 	hex "Physical address where the kernel is loaded" if PHYSICAL_START_BOOL
-	default "0x02000000" if PPC_STD_MMU && CRASH_DUMP && !RELOCATABLE
+	default "0x02000000" if PPC_STD_MMU && CRASH_DUMP && !NONSTATIC_KERNEL
 	default "0x00000000"
 
 config PHYSICAL_ALIGN
@@ -982,6 +1000,7 @@ endmenu
 if PPC64
 config RELOCATABLE
 	bool "Build a relocatable kernel"
+	select NONSTATIC_KERNEL
 	help
 	  This builds a kernel image that is capable of running anywhere
 	  in the RMA (real memory area) at any 16k-aligned base address.

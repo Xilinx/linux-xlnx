@@ -27,6 +27,7 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
+#include <linux/mutex.h>
 
 #include "dvb_frontend.h"
 
@@ -78,10 +79,18 @@ struct dib0070_state {
 	struct i2c_msg msg[2];
 	u8 i2c_write_buffer[3];
 	u8 i2c_read_buffer[2];
+	struct mutex i2c_buffer_lock;
 };
 
-static uint16_t dib0070_read_reg(struct dib0070_state *state, u8 reg)
+static u16 dib0070_read_reg(struct dib0070_state *state, u8 reg)
 {
+	u16 ret;
+
+	if (mutex_lock_interruptible(&state->i2c_buffer_lock) < 0) {
+		dprintk("could not acquire lock");
+		return 0;
+	}
+
 	state->i2c_write_buffer[0] = reg;
 
 	memset(state->msg, 0, 2 * sizeof(struct i2c_msg));
@@ -96,13 +105,23 @@ static uint16_t dib0070_read_reg(struct dib0070_state *state, u8 reg)
 
 	if (i2c_transfer(state->i2c, state->msg, 2) != 2) {
 		printk(KERN_WARNING "DiB0070 I2C read failed\n");
-		return 0;
-	}
-	return (state->i2c_read_buffer[0] << 8) | state->i2c_read_buffer[1];
+		ret = 0;
+	} else
+		ret = (state->i2c_read_buffer[0] << 8)
+			| state->i2c_read_buffer[1];
+
+	mutex_unlock(&state->i2c_buffer_lock);
+	return ret;
 }
 
 static int dib0070_write_reg(struct dib0070_state *state, u8 reg, u16 val)
 {
+	int ret;
+
+	if (mutex_lock_interruptible(&state->i2c_buffer_lock) < 0) {
+		dprintk("could not acquire lock");
+		return -EINVAL;
+	}
 	state->i2c_write_buffer[0] = reg;
 	state->i2c_write_buffer[1] = val >> 8;
 	state->i2c_write_buffer[2] = val & 0xff;
@@ -115,9 +134,12 @@ static int dib0070_write_reg(struct dib0070_state *state, u8 reg, u16 val)
 
 	if (i2c_transfer(state->i2c, state->msg, 1) != 1) {
 		printk(KERN_WARNING "DiB0070 I2C write failed\n");
-		return -EREMOTEIO;
-	}
-	return 0;
+		ret = -EREMOTEIO;
+	} else
+		ret = 0;
+
+	mutex_unlock(&state->i2c_buffer_lock);
+	return ret;
 }
 
 #define HARD_RESET(state) do { \
@@ -128,7 +150,7 @@ static int dib0070_write_reg(struct dib0070_state *state, u8 reg, u16 val)
     } \
 } while (0)
 
-static int dib0070_set_bandwidth(struct dvb_frontend *fe, struct dvb_frontend_parameters *ch)
+static int dib0070_set_bandwidth(struct dvb_frontend *fe)
 {
     struct dib0070_state *state = fe->tuner_priv;
     u16 tmp = dib0070_read_reg(state, 0x02) & 0x3fff;
@@ -313,7 +335,7 @@ static const struct dib0070_lna_match dib0070_lna[] = {
 };
 
 #define LPF	100
-static int dib0070_tune_digital(struct dvb_frontend *fe, struct dvb_frontend_parameters *ch)
+static int dib0070_tune_digital(struct dvb_frontend *fe)
 {
     struct dib0070_state *state = fe->tuner_priv;
 
@@ -485,7 +507,7 @@ static int dib0070_tune_digital(struct dvb_frontend *fe, struct dvb_frontend_par
 
 	*tune_state = CT_TUNER_STEP_5;
     } else if (*tune_state == CT_TUNER_STEP_5) {
-	dib0070_set_bandwidth(fe, ch);
+	dib0070_set_bandwidth(fe);
 	*tune_state = CT_TUNER_STOP;
     } else {
 	ret = FE_CALLBACK_TIME_NEVER; /* tuner finished, time to call again infinite */
@@ -494,7 +516,7 @@ static int dib0070_tune_digital(struct dvb_frontend *fe, struct dvb_frontend_par
 }
 
 
-static int dib0070_tune(struct dvb_frontend *fe, struct dvb_frontend_parameters *p)
+static int dib0070_tune(struct dvb_frontend *fe)
 {
     struct dib0070_state *state = fe->tuner_priv;
     uint32_t ret;
@@ -502,7 +524,7 @@ static int dib0070_tune(struct dvb_frontend *fe, struct dvb_frontend_parameters 
     state->tune_state = CT_TUNER_START;
 
     do {
-	ret = dib0070_tune_digital(fe, p);
+	ret = dib0070_tune_digital(fe);
 	if (ret != FE_CALLBACK_TIME_NEVER)
 		msleep(ret/10);
 	else
@@ -734,6 +756,7 @@ struct dvb_frontend *dib0070_attach(struct dvb_frontend *fe, struct i2c_adapter 
 	state->cfg = cfg;
 	state->i2c = i2c;
 	state->fe  = fe;
+	mutex_init(&state->i2c_buffer_lock);
 	fe->tuner_priv = state;
 
 	if (dib0070_reset(fe) != 0)

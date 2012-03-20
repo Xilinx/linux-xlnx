@@ -511,6 +511,11 @@ static void __init read_obp_translations(void)
 		for (i = 0; i < prom_trans_ents; i++)
 			prom_trans[i].data &= ~0x0003fe0000000000UL;
 	}
+
+	/* Force execute bit on.  */
+	for (i = 0; i < prom_trans_ents; i++)
+		prom_trans[i].data |= (tlb_type == hypervisor ?
+				       _PAGE_EXEC_4V : _PAGE_EXEC_4U);
 }
 
 static void __init hypervisor_tlb_lock(unsigned long vaddr,
@@ -785,7 +790,7 @@ static int find_node(unsigned long addr)
 	return -1;
 }
 
-u64 memblock_nid_range(u64 start, u64 end, int *nid)
+static u64 memblock_nid_range(u64 start, u64 end, int *nid)
 {
 	*nid = find_node(start);
 	start += PAGE_SIZE;
@@ -803,7 +808,7 @@ u64 memblock_nid_range(u64 start, u64 end, int *nid)
 	return start;
 }
 #else
-u64 memblock_nid_range(u64 start, u64 end, int *nid)
+static u64 memblock_nid_range(u64 start, u64 end, int *nid)
 {
 	*nid = 0;
 	return end;
@@ -811,7 +816,7 @@ u64 memblock_nid_range(u64 start, u64 end, int *nid)
 #endif
 
 /* This must be invoked after performing all of the necessary
- * add_active_range() calls for 'nid'.  We need to be able to get
+ * memblock_set_node() calls for 'nid'.  We need to be able to get
  * correct data from get_pfn_range_for_nid().
  */
 static void __init allocate_node_data(int nid)
@@ -982,14 +987,11 @@ static void __init add_node_ranges(void)
 
 			this_end = memblock_nid_range(start, end, &nid);
 
-			numadbg("Adding active range nid[%d] "
+			numadbg("Setting memblock NUMA node nid[%d] "
 				"start[%lx] end[%lx]\n",
 				nid, start, this_end);
 
-			add_active_range(nid,
-					 start >> PAGE_SHIFT,
-					 this_end >> PAGE_SHIFT);
-
+			memblock_set_node(start, this_end - start, nid);
 			start = this_end;
 		}
 	}
@@ -1277,7 +1279,6 @@ static void __init bootmem_init_nonnuma(void)
 {
 	unsigned long top_of_ram = memblock_end_of_DRAM();
 	unsigned long total_ram = memblock_phys_mem_size();
-	struct memblock_region *reg;
 
 	numadbg("bootmem_init_nonnuma()\n");
 
@@ -1287,20 +1288,8 @@ static void __init bootmem_init_nonnuma(void)
 	       (top_of_ram - total_ram) >> 20);
 
 	init_node_masks_nonnuma();
-
-	for_each_memblock(memory, reg) {
-		unsigned long start_pfn, end_pfn;
-
-		if (!reg->size)
-			continue;
-
-		start_pfn = memblock_region_memory_base_pfn(reg);
-		end_pfn = memblock_region_memory_end_pfn(reg);
-		add_active_range(0, start_pfn, end_pfn);
-	}
-
+	memblock_set_node(0, (phys_addr_t)ULLONG_MAX, 0);
 	allocate_node_data(0);
-
 	node_set_online(0);
 }
 
@@ -1597,6 +1586,44 @@ static void __init tsb_phys_patch(void)
 static struct hv_tsb_descr ktsb_descr[NUM_KTSB_DESCR];
 extern struct tsb swapper_tsb[KERNEL_TSB_NENTRIES];
 
+static void patch_one_ktsb_phys(unsigned int *start, unsigned int *end, unsigned long pa)
+{
+	pa >>= KTSB_PHYS_SHIFT;
+
+	while (start < end) {
+		unsigned int *ia = (unsigned int *)(unsigned long)*start;
+
+		ia[0] = (ia[0] & ~0x3fffff) | (pa >> 10);
+		__asm__ __volatile__("flush	%0" : : "r" (ia));
+
+		ia[1] = (ia[1] & ~0x3ff) | (pa & 0x3ff);
+		__asm__ __volatile__("flush	%0" : : "r" (ia + 1));
+
+		start++;
+	}
+}
+
+static void ktsb_phys_patch(void)
+{
+	extern unsigned int __swapper_tsb_phys_patch;
+	extern unsigned int __swapper_tsb_phys_patch_end;
+	unsigned long ktsb_pa;
+
+	ktsb_pa = kern_base + ((unsigned long)&swapper_tsb[0] - KERNBASE);
+	patch_one_ktsb_phys(&__swapper_tsb_phys_patch,
+			    &__swapper_tsb_phys_patch_end, ktsb_pa);
+#ifndef CONFIG_DEBUG_PAGEALLOC
+	{
+	extern unsigned int __swapper_4m_tsb_phys_patch;
+	extern unsigned int __swapper_4m_tsb_phys_patch_end;
+	ktsb_pa = (kern_base +
+		   ((unsigned long)&swapper_4m_tsb[0] - KERNBASE));
+	patch_one_ktsb_phys(&__swapper_4m_tsb_phys_patch,
+			    &__swapper_4m_tsb_phys_patch_end, ktsb_pa);
+	}
+#endif
+}
+
 static void __init sun4v_ktsb_init(void)
 {
 	unsigned long ktsb_pa;
@@ -1716,15 +1743,15 @@ void __init paging_init(void)
 		sun4u_pgprot_init();
 
 	if (tlb_type == cheetah_plus ||
-	    tlb_type == hypervisor)
+	    tlb_type == hypervisor) {
 		tsb_phys_patch();
+		ktsb_phys_patch();
+	}
 
 	if (tlb_type == hypervisor) {
 		sun4v_patch_tlb_handlers();
 		sun4v_ktsb_init();
 	}
-
-	memblock_init();
 
 	/* Find available physical memory...
 	 *
@@ -1751,7 +1778,7 @@ void __init paging_init(void)
 
 	memblock_enforce_memory_limit(cmdline_memory_size);
 
-	memblock_analyze();
+	memblock_allow_resize();
 	memblock_dump_all();
 
 	set_bit(0, mmu_context_bmap);

@@ -133,7 +133,7 @@ static int atmel_abdac_prepare_dma(struct atmel_abdac *dac,
 	period_len = frames_to_bytes(runtime, runtime->period_size);
 
 	cdesc = dw_dma_cyclic_prep(chan, runtime->dma_addr, buffer_len,
-			period_len, DMA_TO_DEVICE);
+			period_len, DMA_MEM_TO_DEV);
 	if (IS_ERR(cdesc)) {
 		dev_dbg(&dac->pdev->dev, "could not prepare cyclic DMA\n");
 		return PTR_ERR(cdesc);
@@ -448,7 +448,7 @@ static int __devinit atmel_abdac_probe(struct platform_device *pdev)
 		goto out_free_card;
 	}
 
-	dac->regs = ioremap(regs->start, regs->end - regs->start + 1);
+	dac->regs = ioremap(regs->start, resource_size(regs));
 	if (!dac->regs) {
 		dev_dbg(&pdev->dev, "could not remap register memory\n");
 		goto out_free_card;

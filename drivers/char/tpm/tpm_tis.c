@@ -26,9 +26,8 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/acpi.h>
+#include <linux/freezer.h>
 #include "tpm.h"
-
-#define TPM_HEADER_SIZE 10
 
 enum tis_access {
 	TPM_ACCESS_VALID = 0x80,
@@ -79,7 +78,7 @@ enum tis_defaults {
 static LIST_HEAD(tis_chips);
 static DEFINE_SPINLOCK(tis_lock);
 
-#ifdef CONFIG_ACPI
+#if defined(CONFIG_PNP) && defined(CONFIG_ACPI)
 static int is_itpm(struct pnp_dev *dev)
 {
 	struct acpi_device *acpi = pnp_acpi_device(dev);
@@ -93,7 +92,7 @@ static int is_itpm(struct pnp_dev *dev)
 	return 0;
 }
 #else
-static int is_itpm(struct pnp_dev *dev)
+static inline int is_itpm(struct pnp_dev *dev)
 {
 	return 0;
 }
@@ -120,7 +119,7 @@ static void release_locality(struct tpm_chip *chip, int l, int force)
 
 static int request_locality(struct tpm_chip *chip, int l)
 {
-	unsigned long stop;
+	unsigned long stop, timeout;
 	long rc;
 
 	if (check_locality(chip, l) >= 0)
@@ -129,17 +128,25 @@ static int request_locality(struct tpm_chip *chip, int l)
 	iowrite8(TPM_ACCESS_REQUEST_USE,
 		 chip->vendor.iobase + TPM_ACCESS(l));
 
+	stop = jiffies + chip->vendor.timeout_a;
+
 	if (chip->vendor.irq) {
+again:
+		timeout = stop - jiffies;
+		if ((long)timeout <= 0)
+			return -1;
 		rc = wait_event_interruptible_timeout(chip->vendor.int_queue,
 						      (check_locality
 						       (chip, l) >= 0),
-						      chip->vendor.timeout_a);
+						      timeout);
 		if (rc > 0)
 			return l;
-
+		if (rc == -ERESTARTSYS && freezing(current)) {
+			clear_thread_flag(TIF_SIGPENDING);
+			goto again;
+		}
 	} else {
 		/* wait for burstcount */
-		stop = jiffies + chip->vendor.timeout_a;
 		do {
 			if (check_locality(chip, l) >= 0)
 				return l;
@@ -184,45 +191,14 @@ static int get_burstcount(struct tpm_chip *chip)
 	return -EBUSY;
 }
 
-static int wait_for_stat(struct tpm_chip *chip, u8 mask, unsigned long timeout,
-			 wait_queue_head_t *queue)
-{
-	unsigned long stop;
-	long rc;
-	u8 status;
-
-	/* check current status */
-	status = tpm_tis_status(chip);
-	if ((status & mask) == mask)
-		return 0;
-
-	if (chip->vendor.irq) {
-		rc = wait_event_interruptible_timeout(*queue,
-						      ((tpm_tis_status
-							(chip) & mask) ==
-						       mask), timeout);
-		if (rc > 0)
-			return 0;
-	} else {
-		stop = jiffies + timeout;
-		do {
-			msleep(TPM_TIMEOUT);
-			status = tpm_tis_status(chip);
-			if ((status & mask) == mask)
-				return 0;
-		} while (time_before(jiffies, stop));
-	}
-	return -ETIME;
-}
-
 static int recv_data(struct tpm_chip *chip, u8 *buf, size_t count)
 {
 	int size = 0, burstcnt;
 	while (size < count &&
-	       wait_for_stat(chip,
-			     TPM_STS_DATA_AVAIL | TPM_STS_VALID,
-			     chip->vendor.timeout_c,
-			     &chip->vendor.read_queue)
+	       wait_for_tpm_stat(chip,
+				 TPM_STS_DATA_AVAIL | TPM_STS_VALID,
+				 chip->vendor.timeout_c,
+				 &chip->vendor.read_queue)
 	       == 0) {
 		burstcnt = get_burstcount(chip);
 		for (; burstcnt > 0 && size < count; burstcnt--)
@@ -264,8 +240,8 @@ static int tpm_tis_recv(struct tpm_chip *chip, u8 *buf, size_t count)
 		goto out;
 	}
 
-	wait_for_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
-		      &chip->vendor.int_queue);
+	wait_for_tpm_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
+			  &chip->vendor.int_queue);
 	status = tpm_tis_status(chip);
 	if (status & TPM_STS_DATA_AVAIL) {	/* retry? */
 		dev_err(chip->dev, "Error left over data\n");
@@ -279,7 +255,7 @@ out:
 	return size;
 }
 
-static int itpm;
+static bool itpm;
 module_param(itpm, bool, 0444);
 MODULE_PARM_DESC(itpm, "Force iTPM workarounds (found on some Lenovo laptops)");
 
@@ -288,11 +264,10 @@ MODULE_PARM_DESC(itpm, "Force iTPM workarounds (found on some Lenovo laptops)");
  * tpm.c can skip polling for the data to be available as the interrupt is
  * waited for here
  */
-static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
+static int tpm_tis_send_data(struct tpm_chip *chip, u8 *buf, size_t len)
 {
 	int rc, status, burstcnt;
 	size_t count = 0;
-	u32 ordinal;
 
 	if (request_locality(chip, 0) < 0)
 		return -EBUSY;
@@ -300,7 +275,7 @@ static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
 	status = tpm_tis_status(chip);
 	if ((status & TPM_STS_COMMAND_READY) == 0) {
 		tpm_tis_ready(chip);
-		if (wait_for_stat
+		if (wait_for_tpm_stat
 		    (chip, TPM_STS_COMMAND_READY, chip->vendor.timeout_b,
 		     &chip->vendor.int_queue) < 0) {
 			rc = -ETIME;
@@ -316,8 +291,8 @@ static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
 			count++;
 		}
 
-		wait_for_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
-			      &chip->vendor.int_queue);
+		wait_for_tpm_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
+				  &chip->vendor.int_queue);
 		status = tpm_tis_status(chip);
 		if (!itpm && (status & TPM_STS_DATA_EXPECT) == 0) {
 			rc = -EIO;
@@ -327,15 +302,36 @@ static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
 
 	/* write last byte */
 	iowrite8(buf[count],
-		 chip->vendor.iobase +
-		 TPM_DATA_FIFO(chip->vendor.locality));
-	wait_for_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
-		      &chip->vendor.int_queue);
+		 chip->vendor.iobase + TPM_DATA_FIFO(chip->vendor.locality));
+	wait_for_tpm_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c,
+			  &chip->vendor.int_queue);
 	status = tpm_tis_status(chip);
 	if ((status & TPM_STS_DATA_EXPECT) != 0) {
 		rc = -EIO;
 		goto out_err;
 	}
+
+	return 0;
+
+out_err:
+	tpm_tis_ready(chip);
+	release_locality(chip, chip->vendor.locality, 0);
+	return rc;
+}
+
+/*
+ * If interrupts are used (signaled by an irq set in the vendor structure)
+ * tpm.c can skip polling for the data to be available as the interrupt is
+ * waited for here
+ */
+static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
+{
+	int rc;
+	u32 ordinal;
+
+	rc = tpm_tis_send_data(chip, buf, len);
+	if (rc < 0)
+		return rc;
 
 	/* go and do it */
 	iowrite8(TPM_STS_GO,
@@ -343,7 +339,7 @@ static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
 
 	if (chip->vendor.irq) {
 		ordinal = be32_to_cpu(*((__be32 *) (buf + 6)));
-		if (wait_for_stat
+		if (wait_for_tpm_stat
 		    (chip, TPM_STS_DATA_AVAIL | TPM_STS_VALID,
 		     tpm_calc_ordinal_duration(chip, ordinal),
 		     &chip->vendor.read_queue) < 0) {
@@ -355,6 +351,50 @@ static int tpm_tis_send(struct tpm_chip *chip, u8 *buf, size_t len)
 out_err:
 	tpm_tis_ready(chip);
 	release_locality(chip, chip->vendor.locality, 0);
+	return rc;
+}
+
+/*
+ * Early probing for iTPM with STS_DATA_EXPECT flaw.
+ * Try sending command without itpm flag set and if that
+ * fails, repeat with itpm flag set.
+ */
+static int probe_itpm(struct tpm_chip *chip)
+{
+	int rc = 0;
+	u8 cmd_getticks[] = {
+		0x00, 0xc1, 0x00, 0x00, 0x00, 0x0a,
+		0x00, 0x00, 0x00, 0xf1
+	};
+	size_t len = sizeof(cmd_getticks);
+	int rem_itpm = itpm;
+
+	itpm = 0;
+
+	rc = tpm_tis_send_data(chip, cmd_getticks, len);
+	if (rc == 0)
+		goto out;
+
+	tpm_tis_ready(chip);
+	release_locality(chip, chip->vendor.locality, 0);
+
+	itpm = 1;
+
+	rc = tpm_tis_send_data(chip, cmd_getticks, len);
+	if (rc == 0) {
+		dev_info(chip->dev, "Detected an iTPM.\n");
+		rc = 1;
+	} else
+		rc = -EFAULT;
+
+out:
+	itpm = rem_itpm;
+	tpm_tis_ready(chip);
+	/* some TPMs need a break here otherwise they will not work
+	 * correctly on the immediately subsequent command */
+	msleep(chip->vendor.timeout_b);
+	release_locality(chip, chip->vendor.locality, 0);
+
 	return rc;
 }
 
@@ -376,6 +416,8 @@ static DEVICE_ATTR(temp_deactivated, S_IRUGO, tpm_show_temp_deactivated,
 		   NULL);
 static DEVICE_ATTR(caps, S_IRUGO, tpm_show_caps_1_2, NULL);
 static DEVICE_ATTR(cancel, S_IWUSR | S_IWGRP, NULL, tpm_store_cancel);
+static DEVICE_ATTR(durations, S_IRUGO, tpm_show_durations, NULL);
+static DEVICE_ATTR(timeouts, S_IRUGO, tpm_show_timeouts, NULL);
 
 static struct attribute *tis_attrs[] = {
 	&dev_attr_pubek.attr,
@@ -385,7 +427,9 @@ static struct attribute *tis_attrs[] = {
 	&dev_attr_owned.attr,
 	&dev_attr_temp_deactivated.attr,
 	&dev_attr_caps.attr,
-	&dev_attr_cancel.attr, NULL,
+	&dev_attr_cancel.attr,
+	&dev_attr_durations.attr,
+	&dev_attr_timeouts.attr, NULL,
 };
 
 static struct attribute_group tis_attr_grp = {
@@ -416,7 +460,7 @@ static irqreturn_t tis_int_probe(int irq, void *dev_id)
 	if (interrupt == 0)
 		return IRQ_NONE;
 
-	chip->vendor.irq = irq;
+	chip->vendor.probed_irq = irq;
 
 	/* Clear interrupts handled with TPM_EOI */
 	iowrite32(interrupt,
@@ -456,7 +500,7 @@ static irqreturn_t tis_int_handler(int dummy, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int interrupts = 1;
+static bool interrupts = 1;
 module_param(interrupts, bool, 0444);
 MODULE_PARM_DESC(interrupts, "Enable interrupts");
 
@@ -464,7 +508,7 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 			resource_size_t len, unsigned int irq)
 {
 	u32 vendor, intfcaps, intmask;
-	int rc, i;
+	int rc, i, irq_s, irq_e;
 	struct tpm_chip *chip;
 
 	if (!(chip = tpm_register_hardware(dev, &tpm_tis)))
@@ -492,6 +536,14 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 	dev_info(dev,
 		 "1.2 TPM (device-id 0x%X, rev-id %d)\n",
 		 vendor >> 16, ioread8(chip->vendor.iobase + TPM_RID(0)));
+
+	if (!itpm) {
+		itpm = probe_itpm(chip);
+		if (itpm < 0) {
+			rc = -ENODEV;
+			goto out_err;
+		}
+	}
 
 	if (itpm)
 		dev_info(dev, "Intel iTPM workaround enabled\n");
@@ -522,6 +574,19 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 	if (intfcaps & TPM_INTF_DATA_AVAIL_INT)
 		dev_dbg(dev, "\tData Avail Int Support\n");
 
+	/* get the timeouts before testing for irqs */
+	if (tpm_get_timeouts(chip)) {
+		dev_err(dev, "Could not get TPM timeouts and durations\n");
+		rc = -ENODEV;
+		goto out_err;
+	}
+
+	if (tpm_do_selftest(chip)) {
+		dev_err(dev, "TPM self test failed\n");
+		rc = -ENODEV;
+		goto out_err;
+	}
+
 	/* INTERRUPT Setup */
 	init_waitqueue_head(&chip->vendor.read_queue);
 	init_waitqueue_head(&chip->vendor.int_queue);
@@ -540,13 +605,19 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 	if (interrupts)
 		chip->vendor.irq = irq;
 	if (interrupts && !chip->vendor.irq) {
-		chip->vendor.irq =
+		irq_s =
 		    ioread8(chip->vendor.iobase +
 			    TPM_INT_VECTOR(chip->vendor.locality));
+		if (irq_s) {
+			irq_e = irq_s;
+		} else {
+			irq_s = 3;
+			irq_e = 15;
+		}
 
-		for (i = 3; i < 16 && chip->vendor.irq == 0; i++) {
+		for (i = irq_s; i <= irq_e && chip->vendor.irq == 0; i++) {
 			iowrite8(i, chip->vendor.iobase +
-				    TPM_INT_VECTOR(chip->vendor.locality));
+				 TPM_INT_VECTOR(chip->vendor.locality));
 			if (request_irq
 			    (i, tis_int_probe, IRQF_SHARED,
 			     chip->vendor.miscdev.name, chip) != 0) {
@@ -568,8 +639,21 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 				  chip->vendor.iobase +
 				  TPM_INT_ENABLE(chip->vendor.locality));
 
+			chip->vendor.probed_irq = 0;
+
 			/* Generate Interrupts */
 			tpm_gen_interrupt(chip);
+
+			chip->vendor.irq = chip->vendor.probed_irq;
+
+			/* free_irq will call into tis_int_probe;
+			   clear all irqs we haven't seen while doing
+			   tpm_gen_interrupt */
+			iowrite32(ioread32
+				  (chip->vendor.iobase +
+				   TPM_INT_STATUS(chip->vendor.locality)),
+				  chip->vendor.iobase +
+				  TPM_INT_STATUS(chip->vendor.locality));
 
 			/* Turn off */
 			iowrite32(intmask,
@@ -609,8 +693,6 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 	list_add(&chip->vendor.list, &tis_chips);
 	spin_unlock(&tis_lock);
 
-	tpm_get_timeouts(chip);
-	tpm_continue_selftest(chip);
 
 	return 0;
 out_err:
@@ -619,6 +701,29 @@ out_err:
 	tpm_remove_hardware(chip->dev);
 	return rc;
 }
+
+static void tpm_tis_reenable_interrupts(struct tpm_chip *chip)
+{
+	u32 intmask;
+
+	/* reenable interrupts that device may have lost or
+	   BIOS/firmware may have disabled */
+	iowrite8(chip->vendor.irq, chip->vendor.iobase +
+		 TPM_INT_VECTOR(chip->vendor.locality));
+
+	intmask =
+	    ioread32(chip->vendor.iobase +
+		     TPM_INT_ENABLE(chip->vendor.locality));
+
+	intmask |= TPM_INTF_CMD_READY_INT
+	    | TPM_INTF_LOCALITY_CHANGE_INT | TPM_INTF_DATA_AVAIL_INT
+	    | TPM_INTF_STS_VALID_INT | TPM_GLOBAL_INT_ENABLE;
+
+	iowrite32(intmask,
+		  chip->vendor.iobase + TPM_INT_ENABLE(chip->vendor.locality));
+}
+
+
 #ifdef CONFIG_PNP
 static int __devinit tpm_tis_pnp_init(struct pnp_dev *pnp_dev,
 				      const struct pnp_device_id *pnp_id)
@@ -650,9 +755,12 @@ static int tpm_tis_pnp_resume(struct pnp_dev *dev)
 	struct tpm_chip *chip = pnp_get_drvdata(dev);
 	int ret;
 
+	if (chip->vendor.irq)
+		tpm_tis_reenable_interrupts(chip);
+
 	ret = tpm_pm_resume(&dev->dev);
 	if (!ret)
-		tpm_continue_selftest(chip);
+		tpm_do_selftest(chip);
 
 	return ret;
 }
@@ -702,6 +810,11 @@ static int tpm_tis_suspend(struct platform_device *dev, pm_message_t msg)
 
 static int tpm_tis_resume(struct platform_device *dev)
 {
+	struct tpm_chip *chip = dev_get_drvdata(&dev->dev);
+
+	if (chip->vendor.irq)
+		tpm_tis_reenable_interrupts(chip);
+
 	return tpm_pm_resume(&dev->dev);
 }
 static struct platform_driver tis_drv = {
@@ -715,7 +828,7 @@ static struct platform_driver tis_drv = {
 
 static struct platform_device *pdev;
 
-static int force;
+static bool force;
 module_param(force, bool, 0444);
 MODULE_PARM_DESC(force, "Force device probe rather than using ACPI entry");
 static int __init init_tis(void)

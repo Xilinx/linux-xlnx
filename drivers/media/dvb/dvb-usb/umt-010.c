@@ -60,14 +60,14 @@ static int umt_mt352_frontend_attach(struct dvb_usb_adapter *adap)
 	umt_config.demod_init = umt_mt352_demod_init;
 	umt_config.demod_address = 0xf;
 
-	adap->fe = dvb_attach(mt352_attach, &umt_config, &adap->dev->i2c_adap);
+	adap->fe_adap[0].fe = dvb_attach(mt352_attach, &umt_config, &adap->dev->i2c_adap);
 
 	return 0;
 }
 
 static int umt_tuner_attach (struct dvb_usb_adapter *adap)
 {
-	dvb_attach(dvb_pll_attach, adap->fe, 0x61, NULL, DVB_PLL_TUA6034);
+	dvb_attach(dvb_pll_attach, adap->fe_adap[0].fe, 0x61, NULL, DVB_PLL_TUA6034);
 	return 0;
 }
 
@@ -100,6 +100,8 @@ static struct dvb_usb_device_properties umt_properties = {
 	.num_adapters = 1,
 	.adapter = {
 		{
+		.num_frontends = 1,
+		.fe = {{
 			.streaming_ctrl   = dibusb2_0_streaming_ctrl,
 			.frontend_attach  = umt_mt352_frontend_attach,
 			.tuner_attach     = umt_tuner_attach,
@@ -115,7 +117,7 @@ static struct dvb_usb_device_properties umt_properties = {
 					}
 				}
 			},
-
+		}},
 			.size_of_priv     = sizeof(struct dibusb_state),
 		}
 	},
@@ -141,26 +143,7 @@ static struct usb_driver umt_driver = {
 	.id_table	= umt_table,
 };
 
-/* module stuff */
-static int __init umt_module_init(void)
-{
-	int result;
-	if ((result = usb_register(&umt_driver))) {
-		err("usb_register failed. Error number %d",result);
-		return result;
-	}
-
-	return 0;
-}
-
-static void __exit umt_module_exit(void)
-{
-	/* deregister this driver from the USB subsystem */
-	usb_deregister(&umt_driver);
-}
-
-module_init (umt_module_init);
-module_exit (umt_module_exit);
+module_usb_driver(umt_driver);
 
 MODULE_AUTHOR("Patrick Boettcher <patrick.boettcher@desy.de>");
 MODULE_DESCRIPTION("Driver for HanfTek UMT 010 USB2.0 DVB-T device");

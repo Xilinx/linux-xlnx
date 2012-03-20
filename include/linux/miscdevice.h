@@ -1,7 +1,8 @@
 #ifndef _LINUX_MISCDEVICE_H
 #define _LINUX_MISCDEVICE_H
-#include <linux/module.h>
 #include <linux/major.h>
+#include <linux/list.h>
+#include <linux/types.h>
 
 /*
  *	These allocations are managed by device@lanana.org. If you use an
@@ -40,6 +41,8 @@
 #define BTRFS_MINOR		234
 #define AUTOFS_MINOR		235
 #define MAPPER_CTRL_MINOR	236
+#define LOOP_CTRL_MINOR		237
+#define VHOST_NET_MINOR		238
 #define MISC_DYNAMIC_MINOR	255
 
 struct device;
@@ -52,7 +55,7 @@ struct miscdevice  {
 	struct device *parent;
 	struct device *this_device;
 	const char *nodename;
-	mode_t mode;
+	umode_t mode;
 };
 
 extern int misc_register(struct miscdevice * misc);

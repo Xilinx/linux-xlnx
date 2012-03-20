@@ -245,7 +245,7 @@ static int cop1Emulate(struct pt_regs *xcp, struct mips_fpu_struct *ctx,
 		 */
 		emulpc = xcp->cp0_epc + 4;	/* Snapshot emulation target */
 
-		if (__compute_return_epc(xcp)) {
+		if (__compute_return_epc(xcp) < 0) {
 #ifdef CP1DBG
 			printk("failed to emulate branch at %p\n",
 				(void *) (xcp->cp0_epc));
@@ -272,8 +272,7 @@ static int cop1Emulate(struct pt_regs *xcp, struct mips_fpu_struct *ctx,
 	}
 
       emul:
-	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS,
-			1, 0, xcp, 0);
+	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, xcp, 0);
 	MIPS_FPU_EMU_INC_STATS(emulated);
 	switch (MIPSInst_OPCODE(ir)) {
 	case ldc1_op:{

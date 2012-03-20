@@ -164,7 +164,7 @@ static int puv3_rtc_open(struct device *dev)
 	int ret;
 
 	ret = request_irq(puv3_rtc_alarmno, puv3_rtc_alarmirq,
-			  IRQF_DISABLED,  "pkunity-rtc alarm", rtc_dev);
+			0, "pkunity-rtc alarm", rtc_dev);
 
 	if (ret) {
 		dev_err(dev, "IRQ%d error %d\n", puv3_rtc_alarmno, ret);
@@ -172,7 +172,7 @@ static int puv3_rtc_open(struct device *dev)
 	}
 
 	ret = request_irq(puv3_rtc_tickno, puv3_rtc_tickirq,
-			  IRQF_DISABLED,  "pkunity-rtc tick", rtc_dev);
+			0, "pkunity-rtc tick", rtc_dev);
 
 	if (ret) {
 		dev_err(dev, "IRQ%d error %d\n", puv3_rtc_tickno, ret);
@@ -220,7 +220,7 @@ static void puv3_rtc_enable(struct platform_device *pdev, int en)
 	}
 }
 
-static int puv3_rtc_remove(struct platform_device *dev)
+static int __devexit puv3_rtc_remove(struct platform_device *dev)
 {
 	struct rtc_device *rtc = platform_get_drvdata(dev);
 
@@ -236,7 +236,7 @@ static int puv3_rtc_remove(struct platform_device *dev)
 	return 0;
 }
 
-static int puv3_rtc_probe(struct platform_device *pdev)
+static int __devinit puv3_rtc_probe(struct platform_device *pdev)
 {
 	struct rtc_device *rtc;
 	struct resource *res;
@@ -267,9 +267,8 @@ static int puv3_rtc_probe(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
-	puv3_rtc_mem = request_mem_region(res->start,
-					 res->end-res->start+1,
-					 pdev->name);
+	puv3_rtc_mem = request_mem_region(res->start, resource_size(res),
+					  pdev->name);
 
 	if (puv3_rtc_mem == NULL) {
 		dev_err(&pdev->dev, "failed to reserve memory region\n");
@@ -327,7 +326,7 @@ static int puv3_rtc_resume(struct platform_device *pdev)
 #define puv3_rtc_resume  NULL
 #endif
 
-static struct platform_driver puv3_rtcdrv = {
+static struct platform_driver puv3_rtc_driver = {
 	.probe		= puv3_rtc_probe,
 	.remove		= __devexit_p(puv3_rtc_remove),
 	.suspend	= puv3_rtc_suspend,
@@ -338,21 +337,7 @@ static struct platform_driver puv3_rtcdrv = {
 	}
 };
 
-static char __initdata banner[] = "PKUnity-v3 RTC, (c) 2009 PKUnity Co.\n";
-
-static int __init puv3_rtc_init(void)
-{
-	printk(banner);
-	return platform_driver_register(&puv3_rtcdrv);
-}
-
-static void __exit puv3_rtc_exit(void)
-{
-	platform_driver_unregister(&puv3_rtcdrv);
-}
-
-module_init(puv3_rtc_init);
-module_exit(puv3_rtc_exit);
+module_platform_driver(puv3_rtc_driver);
 
 MODULE_DESCRIPTION("RTC Driver for the PKUnity v3 chip");
 MODULE_AUTHOR("Hu Dongliang");

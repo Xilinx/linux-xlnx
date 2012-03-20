@@ -137,6 +137,8 @@ void st_send_frame(unsigned char chnl_id, struct st_data_s *st_gdata)
  * st_reg_complete -
  * to call registration complete callbacks
  * of all protocol stack drivers
+ * This function is being called with spin lock held, protocol drivers are
+ * only expected to complete their waits and do nothing more than that.
  */
 void st_reg_complete(struct st_data_s *st_gdata, char err)
 {
@@ -338,6 +340,12 @@ void st_int_recv(void *disc_data,
 			/* Unknow packet? */
 		default:
 			type = *ptr;
+			if (st_gdata->list[type] == NULL) {
+				pr_err("chip/interface misbehavior dropping"
+					" frame starting with 0x%02x", type);
+				goto done;
+
+			}
 			st_gdata->rx_skb = alloc_skb(
 					st_gdata->list[type]->max_frame_size,
 					GFP_ATOMIC);
@@ -354,6 +362,7 @@ void st_int_recv(void *disc_data,
 		ptr++;
 		count--;
 	}
+done:
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
 	pr_debug("done %s", __func__);
 	return;
@@ -531,11 +540,12 @@ long st_register(struct st_proto_s *new_proto)
 		set_bit(ST_REG_IN_PROGRESS, &st_gdata->st_state);
 		st_recv = st_kim_recv;
 
+		/* enable the ST LL - to set default chip state */
+		st_ll_enable(st_gdata);
+
 		/* release lock previously held - re-locked below */
 		spin_unlock_irqrestore(&st_gdata->lock, flags);
 
-		/* enable the ST LL - to set default chip state */
-		st_ll_enable(st_gdata);
 		/* this may take a while to complete
 		 * since it involves BT fw download
 		 */
@@ -546,9 +556,12 @@ long st_register(struct st_proto_s *new_proto)
 			    (test_bit(ST_REG_PENDING, &st_gdata->st_state))) {
 				pr_err(" KIM failure complete callback ");
 				st_reg_complete(st_gdata, err);
+				clear_bit(ST_REG_PENDING, &st_gdata->st_state);
 			}
 			return -EINVAL;
 		}
+
+		spin_lock_irqsave(&st_gdata->lock, flags);
 
 		clear_bit(ST_REG_IN_PROGRESS, &st_gdata->st_state);
 		st_recv = st_int_recv;
@@ -569,10 +582,10 @@ long st_register(struct st_proto_s *new_proto)
 		if (st_gdata->is_registered[new_proto->chnl_id] == true) {
 			pr_err(" proto %d already registered ",
 				   new_proto->chnl_id);
+			spin_unlock_irqrestore(&st_gdata->lock, flags);
 			return -EALREADY;
 		}
 
-		spin_lock_irqsave(&st_gdata->lock, flags);
 		add_channel_to_table(st_gdata, new_proto);
 		st_gdata->protos_registered++;
 		new_proto->write = st_write;
@@ -612,7 +625,7 @@ long st_unregister(struct st_proto_s *proto)
 
 	spin_lock_irqsave(&st_gdata->lock, flags);
 
-	if (st_gdata->list[proto->chnl_id] == NULL) {
+	if (st_gdata->is_registered[proto->chnl_id] == false) {
 		pr_err(" chnl_id %d not registered", proto->chnl_id);
 		spin_unlock_irqrestore(&st_gdata->lock, flags);
 		return -EPROTONOSUPPORT;
@@ -621,6 +634,10 @@ long st_unregister(struct st_proto_s *proto)
 	st_gdata->protos_registered--;
 	remove_channel_from_table(st_gdata, proto);
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
+
+	/* paranoid check */
+	if (st_gdata->protos_registered < ST_EMPTY)
+		st_gdata->protos_registered = ST_EMPTY;
 
 	if ((st_gdata->protos_registered == ST_EMPTY) &&
 	    (!test_bit(ST_REG_PENDING, &st_gdata->st_state))) {
@@ -717,9 +734,10 @@ static void st_tty_close(struct tty_struct *tty)
 	 */
 	spin_lock_irqsave(&st_gdata->lock, flags);
 	for (i = ST_BT; i < ST_MAX_CHANNELS; i++) {
-		if (st_gdata->list[i] != NULL)
+		if (st_gdata->is_registered[i] == true)
 			pr_err("%d not un-registered", i);
 		st_gdata->list[i] = NULL;
+		st_gdata->is_registered[i] = false;
 	}
 	st_gdata->protos_registered = 0;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);

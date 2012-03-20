@@ -20,6 +20,8 @@
 #include <linux/jiffies.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/smp.h>
+
 #include <asm/cacheflush.h>
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>

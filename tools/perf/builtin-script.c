@@ -7,12 +7,14 @@
 #include "util/header.h"
 #include "util/parse-options.h"
 #include "util/session.h"
+#include "util/tool.h"
 #include "util/symbol.h"
 #include "util/thread.h"
 #include "util/trace-event.h"
 #include "util/util.h"
 #include "util/evlist.h"
 #include "util/evsel.h"
+#include <linux/bitmap.h>
 
 static char const		*script_name;
 static char const		*generate_script_lang;
@@ -21,6 +23,10 @@ static u64			last_timestamp;
 static u64			nr_unordered;
 extern const struct option	record_options[];
 static bool			no_callchain;
+static bool			show_full_info;
+static bool			system_wide;
+static const char		*cpu_list;
+static DECLARE_BITMAP(cpu_bitmap, MAX_NR_CPUS);
 
 enum perf_output_field {
 	PERF_OUTPUT_COMM            = 1U << 0,
@@ -30,7 +36,10 @@ enum perf_output_field {
 	PERF_OUTPUT_CPU             = 1U << 4,
 	PERF_OUTPUT_EVNAME          = 1U << 5,
 	PERF_OUTPUT_TRACE           = 1U << 6,
-	PERF_OUTPUT_SYM             = 1U << 7,
+	PERF_OUTPUT_IP              = 1U << 7,
+	PERF_OUTPUT_SYM             = 1U << 8,
+	PERF_OUTPUT_DSO             = 1U << 9,
+	PERF_OUTPUT_ADDR            = 1U << 10,
 };
 
 struct output_option {
@@ -44,7 +53,10 @@ struct output_option {
 	{.str = "cpu",   .field = PERF_OUTPUT_CPU},
 	{.str = "event", .field = PERF_OUTPUT_EVNAME},
 	{.str = "trace", .field = PERF_OUTPUT_TRACE},
+	{.str = "ip",    .field = PERF_OUTPUT_IP},
 	{.str = "sym",   .field = PERF_OUTPUT_SYM},
+	{.str = "dso",   .field = PERF_OUTPUT_DSO},
+	{.str = "addr",  .field = PERF_OUTPUT_ADDR},
 };
 
 /* default set to maintain compatibility with current format */
@@ -60,7 +72,8 @@ static struct {
 
 		.fields = PERF_OUTPUT_COMM | PERF_OUTPUT_TID |
 			      PERF_OUTPUT_CPU | PERF_OUTPUT_TIME |
-			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_SYM,
+			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_IP |
+				  PERF_OUTPUT_SYM | PERF_OUTPUT_DSO,
 
 		.invalid_fields = PERF_OUTPUT_TRACE,
 	},
@@ -70,7 +83,8 @@ static struct {
 
 		.fields = PERF_OUTPUT_COMM | PERF_OUTPUT_TID |
 			      PERF_OUTPUT_CPU | PERF_OUTPUT_TIME |
-			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_SYM,
+			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_IP |
+				  PERF_OUTPUT_SYM | PERF_OUTPUT_DSO,
 
 		.invalid_fields = PERF_OUTPUT_TRACE,
 	},
@@ -88,7 +102,8 @@ static struct {
 
 		.fields = PERF_OUTPUT_COMM | PERF_OUTPUT_TID |
 			      PERF_OUTPUT_CPU | PERF_OUTPUT_TIME |
-			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_SYM,
+			      PERF_OUTPUT_EVNAME | PERF_OUTPUT_IP |
+				  PERF_OUTPUT_SYM | PERF_OUTPUT_DSO,
 
 		.invalid_fields = PERF_OUTPUT_TRACE,
 	},
@@ -157,14 +172,32 @@ static int perf_evsel__check_attr(struct perf_evsel *evsel,
 		!perf_session__has_traces(session, "record -R"))
 		return -EINVAL;
 
-	if (PRINT_FIELD(SYM)) {
+	if (PRINT_FIELD(IP)) {
 		if (perf_event_attr__check_stype(attr, PERF_SAMPLE_IP, "IP",
-					   PERF_OUTPUT_SYM))
+					   PERF_OUTPUT_IP))
 			return -EINVAL;
 
 		if (!no_callchain &&
 		    !(attr->sample_type & PERF_SAMPLE_CALLCHAIN))
 			symbol_conf.use_callchain = false;
+	}
+
+	if (PRINT_FIELD(ADDR) &&
+		perf_event_attr__check_stype(attr, PERF_SAMPLE_ADDR, "ADDR",
+				       PERF_OUTPUT_ADDR))
+		return -EINVAL;
+
+	if (PRINT_FIELD(SYM) && !PRINT_FIELD(IP) && !PRINT_FIELD(ADDR)) {
+		pr_err("Display of symbols requested but neither sample IP nor "
+			   "sample address\nis selected. Hence, no addresses to convert "
+		       "to symbols.\n");
+		return -EINVAL;
+	}
+	if (PRINT_FIELD(DSO) && !PRINT_FIELD(IP) && !PRINT_FIELD(ADDR)) {
+		pr_err("Display of DSO requested but neither sample IP nor "
+			   "sample address\nis selected. Hence, no addresses to convert "
+		       "to DSO.\n");
+		return -EINVAL;
 	}
 
 	if ((PRINT_FIELD(PID) || PRINT_FIELD(TID)) &&
@@ -230,7 +263,7 @@ static void print_sample_start(struct perf_sample *sample,
 	if (PRINT_FIELD(COMM)) {
 		if (latency_format)
 			printf("%8.8s ", thread->comm);
-		else if (PRINT_FIELD(SYM) && symbol_conf.use_callchain)
+		else if (PRINT_FIELD(IP) && symbol_conf.use_callchain)
 			printf("%s ", thread->comm);
 		else
 			printf("%16s ", thread->comm);
@@ -271,10 +304,67 @@ static void print_sample_start(struct perf_sample *sample,
 	}
 }
 
+static bool sample_addr_correlates_sym(struct perf_event_attr *attr)
+{
+	if ((attr->type == PERF_TYPE_SOFTWARE) &&
+	    ((attr->config == PERF_COUNT_SW_PAGE_FAULTS) ||
+	     (attr->config == PERF_COUNT_SW_PAGE_FAULTS_MIN) ||
+	     (attr->config == PERF_COUNT_SW_PAGE_FAULTS_MAJ)))
+		return true;
+
+	return false;
+}
+
+static void print_sample_addr(union perf_event *event,
+			  struct perf_sample *sample,
+			  struct machine *machine,
+			  struct thread *thread,
+			  struct perf_event_attr *attr)
+{
+	struct addr_location al;
+	u8 cpumode = event->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
+	const char *symname, *dsoname;
+
+	printf("%16" PRIx64, sample->addr);
+
+	if (!sample_addr_correlates_sym(attr))
+		return;
+
+	thread__find_addr_map(thread, machine, cpumode, MAP__FUNCTION,
+			      sample->addr, &al);
+	if (!al.map)
+		thread__find_addr_map(thread, machine, cpumode, MAP__VARIABLE,
+				      sample->addr, &al);
+
+	al.cpu = sample->cpu;
+	al.sym = NULL;
+
+	if (al.map)
+		al.sym = map__find_symbol(al.map, al.addr, NULL);
+
+	if (PRINT_FIELD(SYM)) {
+		if (al.sym && al.sym->name)
+			symname = al.sym->name;
+		else
+			symname = "";
+
+		printf(" %16s", symname);
+	}
+
+	if (PRINT_FIELD(DSO)) {
+		if (al.map && al.map->dso && al.map->dso->name)
+			dsoname = al.map->dso->name;
+		else
+			dsoname = "";
+
+		printf(" (%s)", dsoname);
+	}
+}
+
 static void process_event(union perf_event *event __unused,
 			  struct perf_sample *sample,
 			  struct perf_evsel *evsel,
-			  struct perf_session *session,
+			  struct machine *machine,
 			  struct thread *thread)
 {
 	struct perf_event_attr *attr = &evsel->attr;
@@ -288,12 +378,16 @@ static void process_event(union perf_event *event __unused,
 		print_trace_event(sample->cpu, sample->raw_data,
 				  sample->raw_size);
 
-	if (PRINT_FIELD(SYM)) {
+	if (PRINT_FIELD(ADDR))
+		print_sample_addr(event, sample, machine, thread, attr);
+
+	if (PRINT_FIELD(IP)) {
 		if (!symbol_conf.use_callchain)
 			printf(" ");
 		else
 			printf("\n");
-		perf_session__print_symbols(event, sample, session);
+		perf_event__print_ip(event, sample, machine, evsel,
+				     PRINT_FIELD(SYM), PRINT_FIELD(DSO));
 	}
 
 	printf("\n");
@@ -340,14 +434,16 @@ static int cleanup_scripting(void)
 	return scripting_ops->stop_script();
 }
 
-static char const		*input_name = "perf.data";
+static const char *input_name;
 
-static int process_sample_event(union perf_event *event,
+static int process_sample_event(struct perf_tool *tool __used,
+				union perf_event *event,
 				struct perf_sample *sample,
 				struct perf_evsel *evsel,
-				struct perf_session *session)
+				struct machine *machine)
 {
-	struct thread *thread = perf_session__findnew(session, event->ip.pid);
+	struct addr_location al;
+	struct thread *thread = machine__findnew_thread(machine, event->ip.tid);
 
 	if (thread == NULL) {
 		pr_debug("problem processing %d event, skipping it.\n",
@@ -365,13 +461,26 @@ static int process_sample_event(union perf_event *event,
 		last_timestamp = sample->time;
 		return 0;
 	}
-	scripting_ops->process_event(event, sample, evsel, session, thread);
 
-	session->hists.stats.total_period += sample->period;
+	if (perf_event__preprocess_sample(event, machine, &al, sample, 0) < 0) {
+		pr_err("problem processing %d event, skipping it.\n",
+		       event->header.type);
+		return -1;
+	}
+
+	if (al.filtered)
+		return 0;
+
+	if (cpu_list && !test_bit(sample->cpu, cpu_bitmap))
+		return 0;
+
+	scripting_ops->process_event(event, sample, evsel, machine, thread);
+
+	evsel->hists.stats.total_period += sample->period;
 	return 0;
 }
 
-static struct perf_event_ops event_ops = {
+static struct perf_tool perf_script = {
 	.sample		 = process_sample_event,
 	.mmap		 = perf_event__process_mmap,
 	.comm		 = perf_event__process_comm,
@@ -398,7 +507,7 @@ static int __cmd_script(struct perf_session *session)
 
 	signal(SIGINT, sig_handler);
 
-	ret = perf_session__process_events(session, &event_ops);
+	ret = perf_session__process_events(session, &perf_script);
 
 	if (debug_mode)
 		pr_err("Misordered timestamps: %" PRIu64 "\n", nr_unordered);
@@ -427,12 +536,6 @@ static struct script_spec *script_spec__new(const char *spec,
 	return s;
 }
 
-static void script_spec__delete(struct script_spec *s)
-{
-	free(s->spec);
-	free(s);
-}
-
 static void script_spec__add(struct script_spec *s)
 {
 	list_add_tail(&s->node, &script_specs);
@@ -458,16 +561,11 @@ static struct script_spec *script_spec__findnew(const char *spec,
 
 	s = script_spec__new(spec, ops);
 	if (!s)
-		goto out_delete_spec;
+		return NULL;
 
 	script_spec__add(s);
 
 	return s;
-
-out_delete_spec:
-	script_spec__delete(s);
-
-	return NULL;
 }
 
 int script_spec_register(const char *spec, struct scripting_ops *ops)
@@ -585,7 +683,8 @@ static int parse_output_fields(const struct option *opt __used,
 			type = PERF_TYPE_RAW;
 		else {
 			fprintf(stderr, "Invalid event type in field string.\n");
-			return -EINVAL;
+			rc = -EINVAL;
+			goto out;
 		}
 
 		if (output[type].user_set)
@@ -827,6 +926,24 @@ static int read_script_info(struct script_desc *desc, const char *filename)
 	return 0;
 }
 
+static char *get_script_root(struct dirent *script_dirent, const char *suffix)
+{
+	char *script_root, *str;
+
+	script_root = strdup(script_dirent->d_name);
+	if (!script_root)
+		return NULL;
+
+	str = (char *)ends_with(script_root, suffix);
+	if (!str) {
+		free(script_root);
+		return NULL;
+	}
+
+	*str = '\0';
+	return script_root;
+}
+
 static int list_available_scripts(const struct option *opt __used,
 				  const char *s __used, int unset __used)
 {
@@ -838,7 +955,6 @@ static int list_available_scripts(const struct option *opt __used,
 	struct script_desc *desc;
 	char first_half[BUFSIZ];
 	char *script_root;
-	char *str;
 
 	snprintf(scripts_path, MAXPATHLEN, "%s/scripts", perf_exec_path());
 
@@ -854,16 +970,14 @@ static int list_available_scripts(const struct option *opt __used,
 			continue;
 
 		for_each_script(lang_path, lang_dir, script_dirent, script_next) {
-			script_root = strdup(script_dirent.d_name);
-			str = (char *)ends_with(script_root, REPORT_SUFFIX);
-			if (str) {
-				*str = '\0';
+			script_root = get_script_root(&script_dirent, REPORT_SUFFIX);
+			if (script_root) {
 				desc = script_desc__findnew(script_root);
 				snprintf(script_path, MAXPATHLEN, "%s/%s",
 					 lang_path, script_dirent.d_name);
 				read_script_info(desc, script_path);
+				free(script_root);
 			}
-			free(script_root);
 		}
 	}
 
@@ -885,8 +999,7 @@ static char *get_script_path(const char *script_root, const char *suffix)
 	char script_path[MAXPATHLEN];
 	DIR *scripts_dir, *lang_dir;
 	char lang_path[MAXPATHLEN];
-	char *str, *__script_root;
-	char *path = NULL;
+	char *__script_root;
 
 	snprintf(scripts_path, MAXPATHLEN, "%s/scripts", perf_exec_path());
 
@@ -902,23 +1015,22 @@ static char *get_script_path(const char *script_root, const char *suffix)
 			continue;
 
 		for_each_script(lang_path, lang_dir, script_dirent, script_next) {
-			__script_root = strdup(script_dirent.d_name);
-			str = (char *)ends_with(__script_root, suffix);
-			if (str) {
-				*str = '\0';
-				if (strcmp(__script_root, script_root))
-					continue;
+			__script_root = get_script_root(&script_dirent, suffix);
+			if (__script_root && !strcmp(script_root, __script_root)) {
+				free(__script_root);
+				closedir(lang_dir);
+				closedir(scripts_dir);
 				snprintf(script_path, MAXPATHLEN, "%s/%s",
 					 lang_path, script_dirent.d_name);
-				path = strdup(script_path);
-				free(__script_root);
-				break;
+				return strdup(script_path);
 			}
 			free(__script_root);
 		}
+		closedir(lang_dir);
 	}
+	closedir(scripts_dir);
 
-	return path;
+	return NULL;
 }
 
 static bool is_top_script(const char *script_path)
@@ -985,9 +1097,15 @@ static const struct option options[] = {
 	OPT_STRING(0, "symfs", &symbol_conf.symfs, "directory",
 		    "Look for files with symbols relative to this directory"),
 	OPT_CALLBACK('f', "fields", NULL, "str",
-		     "comma separated output fields prepend with 'type:'. Valid types: hw,sw,trace,raw. Fields: comm,tid,pid,time,cpu,event,trace,sym",
+		     "comma separated output fields prepend with 'type:'. Valid types: hw,sw,trace,raw. Fields: comm,tid,pid,time,cpu,event,trace,ip,sym,dso,addr",
 		     parse_output_fields),
-
+	OPT_BOOLEAN('a', "all-cpus", &system_wide,
+		     "system-wide collection from all CPUs"),
+	OPT_STRING('C', "cpu", &cpu_list, "cpu", "list of cpus to profile"),
+	OPT_STRING('c', "comms", &symbol_conf.comm_list_str, "comm[,comm...]",
+		   "only display events for these comms"),
+	OPT_BOOLEAN('I', "show-info", &show_full_info,
+		    "display extended information from perf.data file"),
 	OPT_END()
 };
 
@@ -1012,7 +1130,6 @@ int cmd_script(int argc, const char **argv, const char *prefix __used)
 	struct perf_session *session;
 	char *script_path = NULL;
 	const char **__argv;
-	bool system_wide;
 	int i, j, err;
 
 	setup_scripting();
@@ -1080,15 +1197,17 @@ int cmd_script(int argc, const char **argv, const char *prefix __used)
 		}
 
 		if (!pid) {
-			system_wide = true;
 			j = 0;
 
 			dup2(live_pipe[1], 1);
 			close(live_pipe[0]);
 
-			if (!is_top_script(argv[0]))
+			if (is_top_script(argv[0])) {
+				system_wide = true;
+			} else if (!system_wide) {
 				system_wide = !have_cmd(argc - rep_args,
 							&argv[rep_args]);
+			}
 
 			__argv = malloc((argc + 6) * sizeof(const char *));
 			if (!__argv)
@@ -1136,10 +1255,11 @@ int cmd_script(int argc, const char **argv, const char *prefix __used)
 		script_path = rep_script_path;
 
 	if (script_path) {
-		system_wide = false;
 		j = 0;
 
-		if (rec_script_path)
+		if (!rec_script_path)
+			system_wide = false;
+		else if (!system_wide)
 			system_wide = !have_cmd(argc - 1, &argv[1]);
 
 		__argv = malloc((argc + 2) * sizeof(const char *));
@@ -1163,9 +1283,16 @@ int cmd_script(int argc, const char **argv, const char *prefix __used)
 	if (!script_name)
 		setup_pager();
 
-	session = perf_session__new(input_name, O_RDONLY, 0, false, &event_ops);
+	session = perf_session__new(input_name, O_RDONLY, 0, false, &perf_script);
 	if (session == NULL)
 		return -ENOMEM;
+
+	if (cpu_list) {
+		if (perf_session__cpu_bitmap(session, cpu_list, cpu_bitmap))
+			return -1;
+	}
+
+	perf_session__fprintf_info(session, stdout, show_full_info);
 
 	if (!no_callchain)
 		symbol_conf.use_callchain = true;
@@ -1182,7 +1309,7 @@ int cmd_script(int argc, const char **argv, const char *prefix __used)
 			return -1;
 		}
 
-		input = open(input_name, O_RDONLY);
+		input = open(session->filename, O_RDONLY);	/* input_name */
 		if (input < 0) {
 			perror("failed to open file");
 			exit(-1);

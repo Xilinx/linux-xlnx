@@ -32,7 +32,7 @@
 #include <linux/sht15.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 /* Commands */
 #define SHT15_MEASURE_TEMP		0x03
@@ -671,7 +671,7 @@ static ssize_t sht15_show_status(struct device *dev,
  * @buf:	sysfs buffer to read the new heater state from.
  * @count:	length of the data.
  *
- * Will be called on read access to heater_enable sysfs attribute.
+ * Will be called on write access to heater_enable sysfs attribute.
  * Returns number of bytes actually decoded, negative errno on error.
  */
 static ssize_t sht15_store_heater(struct device *dev,
@@ -683,7 +683,7 @@ static ssize_t sht15_store_heater(struct device *dev,
 	long value;
 	u8 status;
 
-	if (strict_strtol(buf, 10, &value))
+	if (kstrtol(buf, 10, &value))
 		return -EINVAL;
 
 	mutex_lock(&data->read_lock);
@@ -883,7 +883,7 @@ static int sht15_invalidate_voltage(struct notifier_block *nb,
 
 static int __devinit sht15_probe(struct platform_device *pdev)
 {
-	int ret = 0;
+	int ret;
 	struct sht15_data *data = kzalloc(sizeof(*data), GFP_KERNEL);
 	u8 status = 0;
 
@@ -901,6 +901,7 @@ static int __devinit sht15_probe(struct platform_device *pdev)
 	init_waitqueue_head(&data->wait_queue);
 
 	if (pdev->dev.platform_data == NULL) {
+		ret = -EINVAL;
 		dev_err(&pdev->dev, "no platform data supplied\n");
 		goto err_free_data;
 	}

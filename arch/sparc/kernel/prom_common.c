@@ -15,7 +15,7 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/errno.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -58,11 +58,9 @@ int of_set_property(struct device_node *dp, const char *name, void *val, int len
 	void *new_val;
 	int err;
 
-	new_val = kmalloc(len, GFP_KERNEL);
+	new_val = kmemdup(val, len, GFP_KERNEL);
 	if (!new_val)
 		return -ENOMEM;
-
-	memcpy(new_val, val, len);
 
 	err = -ENODEV;
 

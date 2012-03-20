@@ -2,7 +2,7 @@
  * snappercl15.c -- SoC audio for Bluewater Systems Snapper CL15 module
  *
  * Copyright (C) 2008 Bluewater Systems Ltd
- * Author: Ryan Mallon <ryan@bluewatersys.com>
+ * Author: Ryan Mallon
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
@@ -12,6 +12,7 @@
  */
 
 #include <linux/platform_device.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
@@ -31,16 +32,6 @@ static int snappercl15_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	int err;
-
-	err = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
-				  SND_SOC_DAIFMT_NB_IF |
-				  SND_SOC_DAIFMT_CBS_CFS);
-
-	err = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_I2S | 
-				  SND_SOC_DAIFMT_NB_IF |		  
-				  SND_SOC_DAIFMT_CBS_CFS);
-	if (err)
-		return err;
 
 	err = snd_soc_dai_set_sysclk(codec_dai, 0, CODEC_CLOCK, 
 				     SND_SOC_CLOCK_IN);
@@ -95,23 +86,22 @@ static struct snd_soc_dai_link snappercl15_dai = {
 	.codec_name	= "tlv320aic23-codec.0-001a",
 	.platform_name	=  "ep93xx-pcm-audio",
 	.init		= snappercl15_tlv320aic23_init,
+	.dai_fmt	= SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_IF |
+			  SND_SOC_DAIFMT_CBS_CFS,
 	.ops		= &snappercl15_ops,
 };
 
 static struct snd_soc_card snd_soc_snappercl15 = {
 	.name		= "Snapper CL15",
+	.owner		= THIS_MODULE,
 	.dai_link	= &snappercl15_dai,
 	.num_links	= 1,
 };
 
-static struct platform_device *snappercl15_snd_device;
-
-static int __init snappercl15_init(void)
+static int __devinit snappercl15_probe(struct platform_device *pdev)
 {
+	struct snd_soc_card *card = &snd_soc_snappercl15;
 	int ret;
-
-	if (!machine_is_snapper_cl15())
-		return -ENODEV;
 
 	ret = ep93xx_i2s_acquire(EP93XX_SYSCON_DEVCFG_I2SONAC97,
 				 EP93XX_SYSCON_I2SCLKDIV_ORIDE |
@@ -119,28 +109,40 @@ static int __init snappercl15_init(void)
 	if (ret)
 		return ret;
 
-	snappercl15_snd_device = platform_device_alloc("soc-audio", -1);
-	if (!snappercl15_snd_device)
-		return -ENOMEM;
-	
-	platform_set_drvdata(snappercl15_snd_device, &snd_soc_snappercl15);
-	ret = platform_device_add(snappercl15_snd_device);
-	if (ret)
-		platform_device_put(snappercl15_snd_device);
+	card->dev = &pdev->dev;
+
+	ret = snd_soc_register_card(card);
+	if (ret) {
+		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
+			ret);
+		ep93xx_i2s_release();
+	}
 
 	return ret;
 }
 
-static void __exit snappercl15_exit(void)
+static int __devexit snappercl15_remove(struct platform_device *pdev)
 {
-	platform_device_unregister(snappercl15_snd_device);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
+	snd_soc_unregister_card(card);
 	ep93xx_i2s_release();
+
+	return 0;
 }
 
-module_init(snappercl15_init);
-module_exit(snappercl15_exit);
+static struct platform_driver snappercl15_driver = {
+	.driver		= {
+		.name	= "snappercl15-audio",
+		.owner	= THIS_MODULE,
+	},
+	.probe		= snappercl15_probe,
+	.remove		= __devexit_p(snappercl15_remove),
+};
 
-MODULE_AUTHOR("Ryan Mallon <ryan@bluewatersys.com>");
+module_platform_driver(snappercl15_driver);
+
+MODULE_AUTHOR("Ryan Mallon");
 MODULE_DESCRIPTION("ALSA SoC Snapper CL15");
 MODULE_LICENSE("GPL");
-
+MODULE_ALIAS("platform:snappercl15-audio");

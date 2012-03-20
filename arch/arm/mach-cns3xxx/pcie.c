@@ -49,7 +49,7 @@ static struct cns3xxx_pcie *sysdata_to_cnspci(void *sysdata)
 	return &cns3xxx_pcie[root->domain];
 }
 
-static struct cns3xxx_pcie *pdev_to_cnspci(struct pci_dev *dev)
+static struct cns3xxx_pcie *pdev_to_cnspci(const struct pci_dev *dev)
 {
 	return sysdata_to_cnspci(dev->sysdata);
 }
@@ -151,13 +151,12 @@ static int cns3xxx_pci_setup(int nr, struct pci_sys_data *sys)
 	struct cns3xxx_pcie *cnspci = sysdata_to_cnspci(sys);
 	struct resource *res_io = &cnspci->res_io;
 	struct resource *res_mem = &cnspci->res_mem;
-	struct resource **sysres = sys->resource;
 
 	BUG_ON(request_resource(&iomem_resource, res_io) ||
 	       request_resource(&iomem_resource, res_mem));
 
-	sysres[0] = res_io;
-	sysres[1] = res_mem;
+	pci_add_resource(&sys->resources, res_io);
+	pci_add_resource(&sys->resources, res_mem);
 
 	return 1;
 }
@@ -169,10 +168,11 @@ static struct pci_ops cns3xxx_pcie_ops = {
 
 static struct pci_bus *cns3xxx_pci_scan_bus(int nr, struct pci_sys_data *sys)
 {
-	return pci_scan_bus(sys->busnr, &cns3xxx_pcie_ops, sys);
+	return pci_scan_root_bus(NULL, sys->busnr, &cns3xxx_pcie_ops, sys,
+				 &sys->resources);
 }
 
-static int cns3xxx_pcie_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+static int cns3xxx_pcie_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	struct cns3xxx_pcie *cnspci = pdev_to_cnspci(dev);
 	int irq = cnspci->irqs[slot];
@@ -368,6 +368,9 @@ static int cns3xxx_pcie_abort_handler(unsigned long addr, unsigned int fsr,
 static int __init cns3xxx_pcie_init(void)
 {
 	int i;
+
+	pcibios_min_io = 0;
+	pcibios_min_mem = 0;
 
 	hook_fault_code(16 + 6, cns3xxx_pcie_abort_handler, SIGBUS, 0,
 			"imprecise external abort");

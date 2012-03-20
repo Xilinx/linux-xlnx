@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/err.h>
+#include <linux/module.h>
 #include <linux/gpio.h>
 #include <linux/regulator/bq24022.h>
 #include <linux/regulator/driver.h>
@@ -106,7 +107,7 @@ static int __init bq24022_probe(struct platform_device *pdev)
 	ret = gpio_direction_output(pdata->gpio_nce, 1);
 
 	bq24022 = regulator_register(&bq24022_desc, &pdev->dev,
-				     pdata->init_data, pdata);
+				     pdata->init_data, pdata, NULL);
 	if (IS_ERR(bq24022)) {
 		dev_dbg(&pdev->dev, "couldn't register regulator\n");
 		ret = PTR_ERR(bq24022);

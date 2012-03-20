@@ -1,7 +1,7 @@
 /******************************************************************************
 
     AudioScience HPI driver
-    Copyright (C) 1997-2010  AudioScience Inc. <support@audioscience.com>
+    Copyright (C) 1997-2011  AudioScience Inc. <support@audioscience.com>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of version 2 of the GNU General Public License as
@@ -37,10 +37,6 @@ void hpios_delay_micro_seconds(u32 num_micro_sec)
 	else
 		mdelay(num_micro_sec / 1000);
 
-}
-
-void hpios_locked_mem_init(void)
-{
 }
 
 /** Allocated an area of locked memory for bus master DMA operations.
@@ -84,8 +80,4 @@ u16 hpios_locked_mem_free(struct consistent_dma_area *p_mem_area)
 	} else {
 		return 1;
 	}
-}
-
-void hpios_locked_mem_free_all(void)
-{
 }

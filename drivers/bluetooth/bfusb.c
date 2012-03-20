@@ -568,21 +568,22 @@ static int bfusb_load_firmware(struct bfusb_data *data,
 
 	BT_INFO("BlueFRITZ! USB loading firmware");
 
+	buf = kmalloc(BFUSB_MAX_BLOCK_SIZE + 3, GFP_KERNEL);
+	if (!buf) {
+		BT_ERR("Can't allocate memory chunk for firmware");
+		return -ENOMEM;
+	}
+
 	pipe = usb_sndctrlpipe(data->udev, 0);
 
 	if (usb_control_msg(data->udev, pipe, USB_REQ_SET_CONFIGURATION,
 				0, 1, 0, NULL, 0, USB_CTRL_SET_TIMEOUT) < 0) {
 		BT_ERR("Can't change to loading configuration");
+		kfree(buf);
 		return -EBUSY;
 	}
 
 	data->udev->toggle[0] = data->udev->toggle[1] = 0;
-
-	buf = kmalloc(BFUSB_MAX_BLOCK_SIZE + 3, GFP_ATOMIC);
-	if (!buf) {
-		BT_ERR("Can't allocate memory chunk for firmware");
-		return -ENOMEM;
-	}
 
 	pipe = usb_sndbulkpipe(data->udev, data->bulk_out_ep);
 
@@ -750,9 +751,7 @@ static void bfusb_disconnect(struct usb_interface *intf)
 
 	bfusb_close(hdev);
 
-	if (hci_unregister_dev(hdev) < 0)
-		BT_ERR("Can't unregister HCI device %s", hdev->name);
-
+	hci_unregister_dev(hdev);
 	hci_free_dev(hdev);
 }
 
@@ -763,26 +762,7 @@ static struct usb_driver bfusb_driver = {
 	.id_table	= bfusb_table,
 };
 
-static int __init bfusb_init(void)
-{
-	int err;
-
-	BT_INFO("BlueFRITZ! USB driver ver %s", VERSION);
-
-	err = usb_register(&bfusb_driver);
-	if (err < 0)
-		BT_ERR("Failed to register BlueFRITZ! USB driver");
-
-	return err;
-}
-
-static void __exit bfusb_exit(void)
-{
-	usb_deregister(&bfusb_driver);
-}
-
-module_init(bfusb_init);
-module_exit(bfusb_exit);
+module_usb_driver(bfusb_driver);
 
 MODULE_AUTHOR("Marcel Holtmann <marcel@holtmann.org>");
 MODULE_DESCRIPTION("BlueFRITZ! USB driver ver " VERSION);

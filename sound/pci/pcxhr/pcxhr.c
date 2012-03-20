@@ -27,7 +27,7 @@
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
-#include <linux/moduleparam.h>
+#include <linux/module.h>
 #include <linux/mutex.h>
 
 #include <sound/core.h>
@@ -52,8 +52,8 @@ MODULE_SUPPORTED_DEVICE("{{Digigram," DRIVER_NAME "}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;/* Enable this card */
-static int mono[SNDRV_CARDS];				/* capture  mono only */
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;/* Enable this card */
+static bool mono[SNDRV_CARDS];				/* capture  mono only */
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for Digigram " DRIVER_NAME " soundcard");
@@ -1501,7 +1501,7 @@ static int __devinit pcxhr_probe(struct pci_dev *pci,
 	mgr->irq = -1;
 
 	if (request_irq(pci->irq, pcxhr_interrupt, IRQF_SHARED,
-			card_name, mgr)) {
+			KBUILD_MODNAME, mgr)) {
 		snd_printk(KERN_ERR "unable to grab IRQ %d\n", pci->irq);
 		pcxhr_free(mgr);
 		return -EBUSY;
@@ -1608,7 +1608,7 @@ static void __devexit pcxhr_remove(struct pci_dev *pci)
 }
 
 static struct pci_driver driver = {
-	.name = "Digigram pcxhr",
+	.name = KBUILD_MODNAME,
 	.id_table = pcxhr_ids,
 	.probe = pcxhr_probe,
 	.remove = __devexit_p(pcxhr_remove),

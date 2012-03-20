@@ -23,9 +23,10 @@ config MEDIA_TUNER
 	depends on VIDEO_MEDIA && I2C
 	select MEDIA_TUNER_XC2028 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_XC5000 if !MEDIA_TUNER_CUSTOMISE
+	select MEDIA_TUNER_XC4000 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_MT20XX if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_TDA8290 if !MEDIA_TUNER_CUSTOMISE
-	select MEDIA_TUNER_TEA5761 if !MEDIA_TUNER_CUSTOMISE
+	select MEDIA_TUNER_TEA5761 if !MEDIA_TUNER_CUSTOMISE && EXPERIMENTAL
 	select MEDIA_TUNER_TEA5767 if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_SIMPLE if !MEDIA_TUNER_CUSTOMISE
 	select MEDIA_TUNER_TDA9887 if !MEDIA_TUNER_CUSTOMISE
@@ -115,6 +116,13 @@ config MEDIA_TUNER_MT2060
 	help
 	  A driver for the silicon IF tuner MT2060 from Microtune.
 
+config MEDIA_TUNER_MT2063
+	tristate "Microtune MT2063 silicon IF tuner"
+	depends on VIDEO_MEDIA && I2C
+	default m if MEDIA_TUNER_CUSTOMISE
+	help
+	  A driver for the silicon IF tuner MT2063 from Microtune.
+
 config MEDIA_TUNER_MT2266
 	tristate "Microtune MT2266 silicon tuner"
 	depends on VIDEO_MEDIA && I2C
@@ -149,6 +157,15 @@ config MEDIA_TUNER_XC5000
 	default m if MEDIA_TUNER_CUSTOMISE
 	help
 	  A driver for the silicon tuner XC5000 from Xceive.
+	  This device is only used inside a SiP called together with a
+	  demodulator for now.
+
+config MEDIA_TUNER_XC4000
+	tristate "Xceive XC4000 silicon tuner"
+	depends on VIDEO_MEDIA && I2C
+	default m if MEDIA_TUNER_CUSTOMISE
+	help
+	  A driver for the silicon tuner XC4000 from Xceive.
 	  This device is only used inside a SiP called together with a
 	  demodulator for now.
 

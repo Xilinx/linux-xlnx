@@ -77,6 +77,8 @@ unsigned long pci_cardbus_mem_size = DEFAULT_CARDBUS_MEM_SIZE;
 unsigned long pci_hotplug_io_size  = DEFAULT_HOTPLUG_IO_SIZE;
 unsigned long pci_hotplug_mem_size = DEFAULT_HOTPLUG_MEM_SIZE;
 
+enum pcie_bus_config_types pcie_bus_config = PCIE_BUS_TUNE_OFF;
+
 /*
  * The default CLS is used if arch didn't set CLS explicitly and not
  * all pci devices agree on the same value.  Arch can override either
@@ -85,6 +87,12 @@ unsigned long pci_hotplug_mem_size = DEFAULT_HOTPLUG_MEM_SIZE;
  */
 u8 pci_dfl_cache_line_size __devinitdata = L1_CACHE_BYTES >> 2;
 u8 pci_cache_line_size;
+
+/*
+ * If we set up a device for bus mastering, we need to check the latency
+ * timer as certain BIOSes forget to set it properly.
+ */
+unsigned int pcibios_max_latency = 255;
 
 /**
  * pci_bus_max_busnr - returns maximum PCI bus number of given bus' children
@@ -662,6 +670,9 @@ static int pci_platform_power_transition(struct pci_dev *dev, pci_power_t state)
 		error = platform_pci_set_power_state(dev, state);
 		if (!error)
 			pci_update_current_state(dev, state);
+		/* Fall back to PCI_D0 if native PM is not supported */
+		if (!dev->pm_cap)
+			dev->current_state = PCI_D0;
 	} else {
 		error = -ENODEV;
 		/* Fall back to PCI_D0 if native PM is not supported */
@@ -954,6 +965,7 @@ void pci_restore_state(struct pci_dev *dev)
 
 	/* PCI Express register must be restored first */
 	pci_restore_pcie_state(dev);
+	pci_restore_ats_state(dev);
 
 	/*
 	 * The Base Address register should be programmed before the command
@@ -962,7 +974,7 @@ void pci_restore_state(struct pci_dev *dev)
 	for (i = 15; i >= 0; i--) {
 		pci_read_config_dword(dev, i * 4, &val);
 		if (val != dev->saved_config_space[i]) {
-			dev_printk(KERN_DEBUG, &dev->dev, "restoring config "
+			dev_dbg(&dev->dev, "restoring config "
 				"space at offset %#x (was %#x, writing %#x)\n",
 				i, val, (int)dev->saved_config_space[i]);
 			pci_write_config_dword(dev,i * 4,
@@ -1124,7 +1136,11 @@ static int __pci_enable_device_flags(struct pci_dev *dev,
 	if (atomic_add_return(1, &dev->enable_cnt) > 1)
 		return 0;		/* already enabled */
 
-	for (i = 0; i < DEVICE_COUNT_RESOURCE; i++)
+	/* only skip sriov related */
+	for (i = 0; i <= PCI_ROM_RESOURCE; i++)
+		if (dev->resource[i].flags & flags)
+			bars |= (1 << i);
+	for (i = PCI_BRIDGE_RESOURCES; i < DEVICE_COUNT_RESOURCE; i++)
 		if (dev->resource[i].flags & flags)
 			bars |= (1 << i);
 
@@ -1405,13 +1421,16 @@ bool pci_check_pme_status(struct pci_dev *dev)
 /**
  * pci_pme_wakeup - Wake up a PCI device if its PME Status bit is set.
  * @dev: Device to handle.
- * @ign: Ignored.
+ * @pme_poll_reset: Whether or not to reset the device's pme_poll flag.
  *
  * Check if @dev has generated PME and queue a resume request for it in that
  * case.
  */
-static int pci_pme_wakeup(struct pci_dev *dev, void *ign)
+static int pci_pme_wakeup(struct pci_dev *dev, void *pme_poll_reset)
 {
+	if (pme_poll_reset && dev->pme_poll)
+		dev->pme_poll = false;
+
 	if (pci_check_pme_status(dev)) {
 		pci_wakeup_event(dev);
 		pm_request_resume(&dev->dev);
@@ -1426,7 +1445,7 @@ static int pci_pme_wakeup(struct pci_dev *dev, void *ign)
 void pci_pme_wakeup_bus(struct pci_bus *bus)
 {
 	if (bus)
-		pci_walk_bus(bus, pci_pme_wakeup, NULL);
+		pci_walk_bus(bus, pci_pme_wakeup, (void *)true);
 }
 
 /**
@@ -1444,28 +1463,23 @@ bool pci_pme_capable(struct pci_dev *dev, pci_power_t state)
 
 static void pci_pme_list_scan(struct work_struct *work)
 {
-	struct pci_pme_device *pme_dev;
+	struct pci_pme_device *pme_dev, *n;
 
 	mutex_lock(&pci_pme_list_mutex);
 	if (!list_empty(&pci_pme_list)) {
-		list_for_each_entry(pme_dev, &pci_pme_list, list)
-			pci_pme_wakeup(pme_dev->dev, NULL);
-		schedule_delayed_work(&pci_pme_work, msecs_to_jiffies(PME_TIMEOUT));
+		list_for_each_entry_safe(pme_dev, n, &pci_pme_list, list) {
+			if (pme_dev->dev->pme_poll) {
+				pci_pme_wakeup(pme_dev->dev, NULL);
+			} else {
+				list_del(&pme_dev->list);
+				kfree(pme_dev);
+			}
+		}
+		if (!list_empty(&pci_pme_list))
+			schedule_delayed_work(&pci_pme_work,
+					      msecs_to_jiffies(PME_TIMEOUT));
 	}
 	mutex_unlock(&pci_pme_list_mutex);
-}
-
-/**
- * pci_external_pme - is a device an external PCI PME source?
- * @dev: PCI device to check
- *
- */
-
-static bool pci_external_pme(struct pci_dev *dev)
-{
-	if (pci_is_pcie(dev) || dev->bus->number == 0)
-		return false;
-	return true;
 }
 
 /**
@@ -1501,7 +1515,7 @@ void pci_pme_active(struct pci_dev *dev, bool enable)
 	   hit, and the power savings from the devices will still be a
 	   win. */
 
-	if (pci_external_pme(dev)) {
+	if (dev->pme_poll) {
 		struct pci_pme_device *pme_dev;
 		if (enable) {
 			pme_dev = kmalloc(sizeof(struct pci_pme_device),
@@ -1529,8 +1543,7 @@ void pci_pme_active(struct pci_dev *dev, bool enable)
 	}
 
 out:
-	dev_printk(KERN_DEBUG, &dev->dev, "PME# %s\n",
-			enable ? "enabled" : "disabled");
+	dev_dbg(&dev->dev, "PME# %s\n", enable ? "enabled" : "disabled");
 }
 
 /**
@@ -1819,6 +1832,7 @@ void pci_pm_init(struct pci_dev *dev)
 			 (pmc & PCI_PM_CAP_PME_D3) ? " D3hot" : "",
 			 (pmc & PCI_PM_CAP_PME_D3cold) ? " D3cold" : "");
 		dev->pme_support = pmc >> PCI_PM_CAP_PME_SHIFT;
+		dev->pme_poll = true;
 		/*
 		 * Make device's PM flags reflect the wake-up capability, but
 		 * let the user space enable it to wake up the system as needed.
@@ -1905,7 +1919,7 @@ void pci_enable_ari(struct pci_dev *dev)
 {
 	int pos;
 	u32 cap;
-	u16 ctrl;
+	u16 flags, ctrl;
 	struct pci_dev *bridge;
 
 	if (!pci_is_pcie(dev) || dev->devfn)
@@ -1921,6 +1935,11 @@ void pci_enable_ari(struct pci_dev *dev)
 
 	pos = pci_pcie_cap(bridge);
 	if (!pos)
+		return;
+
+	/* ARI is a PCIe v2 feature */
+	pci_read_config_word(bridge, pos + PCI_EXP_FLAGS, &flags);
+	if ((flags & PCI_EXP_FLAGS_VERS) < 2)
 		return;
 
 	pci_read_config_dword(bridge, pos + PCI_EXP_DEVCAP2, &cap);
@@ -2583,6 +2602,33 @@ static void __pci_set_master(struct pci_dev *dev, bool enable)
 }
 
 /**
+ * pcibios_set_master - enable PCI bus-mastering for device dev
+ * @dev: the PCI device to enable
+ *
+ * Enables PCI bus-mastering for the device.  This is the default
+ * implementation.  Architecture specific implementations can override
+ * this if necessary.
+ */
+void __weak pcibios_set_master(struct pci_dev *dev)
+{
+	u8 lat;
+
+	/* The latency timer doesn't apply to PCIe (either Type 0 or Type 1) */
+	if (pci_is_pcie(dev))
+		return;
+
+	pci_read_config_byte(dev, PCI_LATENCY_TIMER, &lat);
+	if (lat < 16)
+		lat = (64 <= pcibios_max_latency) ? 64 : pcibios_max_latency;
+	else if (lat > pcibios_max_latency)
+		lat = pcibios_max_latency;
+	else
+		return;
+	dev_printk(KERN_DEBUG, &dev->dev, "setting latency timer to %d\n", lat);
+	pci_write_config_byte(dev, PCI_LATENCY_TIMER, lat);
+}
+
+/**
  * pci_set_master - enables bus-mastering for device dev
  * @dev: the PCI device to enable
  *
@@ -2753,6 +2799,116 @@ pci_intx(struct pci_dev *pdev, int enable)
 		}
 	}
 }
+
+/**
+ * pci_intx_mask_supported - probe for INTx masking support
+ * @dev: the PCI device to operate on
+ *
+ * Check if the device dev support INTx masking via the config space
+ * command word.
+ */
+bool pci_intx_mask_supported(struct pci_dev *dev)
+{
+	bool mask_supported = false;
+	u16 orig, new;
+
+	pci_cfg_access_lock(dev);
+
+	pci_read_config_word(dev, PCI_COMMAND, &orig);
+	pci_write_config_word(dev, PCI_COMMAND,
+			      orig ^ PCI_COMMAND_INTX_DISABLE);
+	pci_read_config_word(dev, PCI_COMMAND, &new);
+
+	/*
+	 * There's no way to protect against hardware bugs or detect them
+	 * reliably, but as long as we know what the value should be, let's
+	 * go ahead and check it.
+	 */
+	if ((new ^ orig) & ~PCI_COMMAND_INTX_DISABLE) {
+		dev_err(&dev->dev, "Command register changed from "
+			"0x%x to 0x%x: driver or hardware bug?\n", orig, new);
+	} else if ((new ^ orig) & PCI_COMMAND_INTX_DISABLE) {
+		mask_supported = true;
+		pci_write_config_word(dev, PCI_COMMAND, orig);
+	}
+
+	pci_cfg_access_unlock(dev);
+	return mask_supported;
+}
+EXPORT_SYMBOL_GPL(pci_intx_mask_supported);
+
+static bool pci_check_and_set_intx_mask(struct pci_dev *dev, bool mask)
+{
+	struct pci_bus *bus = dev->bus;
+	bool mask_updated = true;
+	u32 cmd_status_dword;
+	u16 origcmd, newcmd;
+	unsigned long flags;
+	bool irq_pending;
+
+	/*
+	 * We do a single dword read to retrieve both command and status.
+	 * Document assumptions that make this possible.
+	 */
+	BUILD_BUG_ON(PCI_COMMAND % 4);
+	BUILD_BUG_ON(PCI_COMMAND + 2 != PCI_STATUS);
+
+	raw_spin_lock_irqsave(&pci_lock, flags);
+
+	bus->ops->read(bus, dev->devfn, PCI_COMMAND, 4, &cmd_status_dword);
+
+	irq_pending = (cmd_status_dword >> 16) & PCI_STATUS_INTERRUPT;
+
+	/*
+	 * Check interrupt status register to see whether our device
+	 * triggered the interrupt (when masking) or the next IRQ is
+	 * already pending (when unmasking).
+	 */
+	if (mask != irq_pending) {
+		mask_updated = false;
+		goto done;
+	}
+
+	origcmd = cmd_status_dword;
+	newcmd = origcmd & ~PCI_COMMAND_INTX_DISABLE;
+	if (mask)
+		newcmd |= PCI_COMMAND_INTX_DISABLE;
+	if (newcmd != origcmd)
+		bus->ops->write(bus, dev->devfn, PCI_COMMAND, 2, newcmd);
+
+done:
+	raw_spin_unlock_irqrestore(&pci_lock, flags);
+
+	return mask_updated;
+}
+
+/**
+ * pci_check_and_mask_intx - mask INTx on pending interrupt
+ * @dev: the PCI device to operate on
+ *
+ * Check if the device dev has its INTx line asserted, mask it and
+ * return true in that case. False is returned if not interrupt was
+ * pending.
+ */
+bool pci_check_and_mask_intx(struct pci_dev *dev)
+{
+	return pci_check_and_set_intx_mask(dev, true);
+}
+EXPORT_SYMBOL_GPL(pci_check_and_mask_intx);
+
+/**
+ * pci_check_and_mask_intx - unmask INTx of no interrupt is pending
+ * @dev: the PCI device to operate on
+ *
+ * Check if the device dev has its INTx line asserted, unmask it if not
+ * and return true. False is returned and the mask remains active if
+ * there was still an interrupt pending.
+ */
+bool pci_check_and_unmask_intx(struct pci_dev *dev)
+{
+	return pci_check_and_set_intx_mask(dev, false);
+}
+EXPORT_SYMBOL_GPL(pci_check_and_unmask_intx);
 
 /**
  * pci_msi_off - disables any msi or msix capabilities
@@ -2952,7 +3108,7 @@ static int pci_dev_reset(struct pci_dev *dev, int probe)
 	might_sleep();
 
 	if (!probe) {
-		pci_block_user_cfg_access(dev);
+		pci_cfg_access_lock(dev);
 		/* block PM suspend, driver probe, etc. */
 		device_lock(&dev->dev);
 	}
@@ -2977,7 +3133,7 @@ static int pci_dev_reset(struct pci_dev *dev, int probe)
 done:
 	if (!probe) {
 		device_unlock(&dev->dev);
-		pci_unblock_user_cfg_access(dev);
+		pci_cfg_access_unlock(dev);
 	}
 
 	return rc;
@@ -3186,7 +3342,7 @@ EXPORT_SYMBOL(pcie_get_readrq);
  * @rq: maximum memory read count in bytes
  *    valid values are 128, 256, 512, 1024, 2048, 4096
  *
- * If possible sets maximum read byte count
+ * If possible sets maximum memory read request in bytes
  */
 int pcie_set_readrq(struct pci_dev *dev, int rq)
 {
@@ -3196,7 +3352,84 @@ int pcie_set_readrq(struct pci_dev *dev, int rq)
 	if (rq < 128 || rq > 4096 || !is_power_of_2(rq))
 		goto out;
 
+	cap = pci_pcie_cap(dev);
+	if (!cap)
+		goto out;
+
+	err = pci_read_config_word(dev, cap + PCI_EXP_DEVCTL, &ctl);
+	if (err)
+		goto out;
+	/*
+	 * If using the "performance" PCIe config, we clamp the
+	 * read rq size to the max packet size to prevent the
+	 * host bridge generating requests larger than we can
+	 * cope with
+	 */
+	if (pcie_bus_config == PCIE_BUS_PERFORMANCE) {
+		int mps = pcie_get_mps(dev);
+
+		if (mps < 0)
+			return mps;
+		if (mps < rq)
+			rq = mps;
+	}
+
 	v = (ffs(rq) - 8) << 12;
+
+	if ((ctl & PCI_EXP_DEVCTL_READRQ) != v) {
+		ctl &= ~PCI_EXP_DEVCTL_READRQ;
+		ctl |= v;
+		err = pci_write_config_word(dev, cap + PCI_EXP_DEVCTL, ctl);
+	}
+
+out:
+	return err;
+}
+EXPORT_SYMBOL(pcie_set_readrq);
+
+/**
+ * pcie_get_mps - get PCI Express maximum payload size
+ * @dev: PCI device to query
+ *
+ * Returns maximum payload size in bytes
+ *    or appropriate error value.
+ */
+int pcie_get_mps(struct pci_dev *dev)
+{
+	int ret, cap;
+	u16 ctl;
+
+	cap = pci_pcie_cap(dev);
+	if (!cap)
+		return -EINVAL;
+
+	ret = pci_read_config_word(dev, cap + PCI_EXP_DEVCTL, &ctl);
+	if (!ret)
+		ret = 128 << ((ctl & PCI_EXP_DEVCTL_PAYLOAD) >> 5);
+
+	return ret;
+}
+
+/**
+ * pcie_set_mps - set PCI Express maximum payload size
+ * @dev: PCI device to query
+ * @mps: maximum payload size in bytes
+ *    valid values are 128, 256, 512, 1024, 2048, 4096
+ *
+ * If possible sets maximum payload size
+ */
+int pcie_set_mps(struct pci_dev *dev, int mps)
+{
+	int cap, err = -EINVAL;
+	u16 ctl, v;
+
+	if (mps < 128 || mps > 4096 || !is_power_of_2(mps))
+		goto out;
+
+	v = ffs(mps) - 8;
+	if (v > dev->pcie_mpss) 
+		goto out;
+	v <<= 5;
 
 	cap = pci_pcie_cap(dev);
 	if (!cap)
@@ -3206,16 +3439,14 @@ int pcie_set_readrq(struct pci_dev *dev, int rq)
 	if (err)
 		goto out;
 
-	if ((ctl & PCI_EXP_DEVCTL_READRQ) != v) {
-		ctl &= ~PCI_EXP_DEVCTL_READRQ;
+	if ((ctl & PCI_EXP_DEVCTL_PAYLOAD) != v) {
+		ctl &= ~PCI_EXP_DEVCTL_PAYLOAD;
 		ctl |= v;
-		err = pci_write_config_dword(dev, cap + PCI_EXP_DEVCTL, ctl);
+		err = pci_write_config_word(dev, cap + PCI_EXP_DEVCTL, ctl);
 	}
-
 out:
 	return err;
 }
-EXPORT_SYMBOL(pcie_set_readrq);
 
 /**
  * pci_select_bars - Make BAR mask from the type of resource
@@ -3500,6 +3731,14 @@ static int __init pci_setup(char *str)
 				pci_hotplug_io_size = memparse(str + 9, &str);
 			} else if (!strncmp(str, "hpmemsize=", 10)) {
 				pci_hotplug_mem_size = memparse(str + 10, &str);
+			} else if (!strncmp(str, "pcie_bus_tune_off", 17)) {
+				pcie_bus_config = PCIE_BUS_TUNE_OFF;
+			} else if (!strncmp(str, "pcie_bus_safe", 13)) {
+				pcie_bus_config = PCIE_BUS_SAFE;
+			} else if (!strncmp(str, "pcie_bus_perf", 13)) {
+				pcie_bus_config = PCIE_BUS_PERFORMANCE;
+			} else if (!strncmp(str, "pcie_bus_peer2peer", 18)) {
+				pcie_bus_config = PCIE_BUS_PEER2PEER;
 			} else {
 				printk(KERN_ERR "PCI: Unknown option `%s'\n",
 						str);

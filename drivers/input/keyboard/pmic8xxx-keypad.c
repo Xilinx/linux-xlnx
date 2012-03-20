@@ -700,9 +700,9 @@ static int __devinit pmic8xxx_kp_probe(struct platform_device *pdev)
 	return 0;
 
 err_pmic_reg_read:
-	free_irq(kp->key_stuck_irq, NULL);
+	free_irq(kp->key_stuck_irq, kp);
 err_req_stuck_irq:
-	free_irq(kp->key_sense_irq, NULL);
+	free_irq(kp->key_sense_irq, kp);
 err_gpio_config:
 err_get_irq:
 	input_free_device(kp->input);
@@ -717,8 +717,8 @@ static int __devexit pmic8xxx_kp_remove(struct platform_device *pdev)
 	struct pmic8xxx_kp *kp = platform_get_drvdata(pdev);
 
 	device_init_wakeup(&pdev->dev, 0);
-	free_irq(kp->key_stuck_irq, NULL);
-	free_irq(kp->key_sense_irq, NULL);
+	free_irq(kp->key_stuck_irq, kp);
+	free_irq(kp->key_sense_irq, kp);
 	input_unregister_device(kp->input);
 	kfree(kp);
 
@@ -780,18 +780,7 @@ static struct platform_driver pmic8xxx_kp_driver = {
 		.pm = &pm8xxx_kp_pm_ops,
 	},
 };
-
-static int __init pmic8xxx_kp_init(void)
-{
-	return platform_driver_register(&pmic8xxx_kp_driver);
-}
-module_init(pmic8xxx_kp_init);
-
-static void __exit pmic8xxx_kp_exit(void)
-{
-	platform_driver_unregister(&pmic8xxx_kp_driver);
-}
-module_exit(pmic8xxx_kp_exit);
+module_platform_driver(pmic8xxx_kp_driver);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("PMIC8XXX keypad driver");

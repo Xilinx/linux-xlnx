@@ -51,6 +51,7 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/pci.h>
+#include <linux/module.h>
 #include <sound/ac97_codec.h>
 #include <sound/control.h>
 #include <sound/core.h>
@@ -73,7 +74,7 @@ MODULE_SUPPORTED_DEVICE("{{C-Media,CMI8786}"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
-static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
+static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "card index");
@@ -859,7 +860,7 @@ static int __devinit generic_oxygen_probe(struct pci_dev *pci,
 }
 
 static struct pci_driver oxygen_driver = {
-	.name = "CMI8788",
+	.name = KBUILD_MODNAME,
 	.id_table = oxygen_ids,
 	.probe = generic_oxygen_probe,
 	.remove = __devexit_p(oxygen_pci_remove),

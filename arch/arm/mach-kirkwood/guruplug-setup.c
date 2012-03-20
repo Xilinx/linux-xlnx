@@ -121,10 +121,11 @@ static void __init guruplug_init(void)
 
 MACHINE_START(GURUPLUG, "Marvell GuruPlug Reference Board")
 	/* Maintainer: Siddarth Gore <gores@marvell.com> */
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= guruplug_init,
 	.map_io		= kirkwood_map_io,
 	.init_early	= kirkwood_init_early,
 	.init_irq	= kirkwood_init_irq,
 	.timer		= &kirkwood_timer,
+	.restart	= kirkwood_restart,
 MACHINE_END
