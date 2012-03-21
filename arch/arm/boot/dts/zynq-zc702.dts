@@ -82,7 +82,7 @@
 		};
 
 		sdhci@e0100000 {
-			compatible = "generic-sdhci";
+			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xe0100000 0x1000>;
 			interrupts = <0 24 0>;
 			interrupt-parent = <&gic>;
