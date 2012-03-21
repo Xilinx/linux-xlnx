@@ -15,7 +15,7 @@
 #ifndef __MACH_IRQS_H
 #define __MACH_IRQS_H
 
-#define NR_IRQS		(93)
+#define NR_IRQS		128
 
 #define IRQ_LOCALTIMER	29
 
