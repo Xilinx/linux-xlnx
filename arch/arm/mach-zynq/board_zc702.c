@@ -30,7 +30,6 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
-#include <mach/hardware.h>
 #include "common.h"
 
 #define IRQ_QSPI0		51
