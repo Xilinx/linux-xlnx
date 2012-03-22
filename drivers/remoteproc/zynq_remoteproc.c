@@ -30,6 +30,7 @@
 #include <linux/of_irq.h>
 #include <linux/smp.h>
 #include <asm/hardware/gic.h>
+#include <asm/outercache.h>
 #include <mach/system.h>
 #include <linux/slab.h>
 
@@ -48,30 +49,41 @@ struct zynq_rproc_pdata {
 	u32 ipino;
 	u32 vring0;
 	u32 vring1;
+	u32 mem_start;
+	u32 mem_end;
 };
 
 /* Store rproc for IPI handler */
-static struct rproc *oproc_irq;
+struct platform_device *remoteprocdev;
 static struct work_struct workqueue;
 
 static void handle_event(struct work_struct *work)
 {
-	if (rproc_vq_interrupt(oproc_irq, 0) == IRQ_NONE)
-		dev_dbg(oproc_irq->dev, "no message found in vqid 0\n");
+	struct zynq_rproc_pdata *local = platform_get_drvdata(remoteprocdev);
+
+	outer_flush_range(local->mem_start, local->mem_end);
+
+	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
+		dev_dbg(&remoteprocdev->dev, "no message found in vqid 0\n");
 }
 
 static void ipi_kick(void)
 {
-	dev_dbg(oproc_irq->dev, "KICK Linus because of pending message\n");
+	dev_dbg(&remoteprocdev->dev, "KICK Linux because of pending message\n");
 	schedule_work(&workqueue);
 }
 
 static int zynq_rproc_start(struct rproc *rproc)
 {
+	struct platform_device *pdev = to_platform_device(rproc->dev);
+	struct zynq_rproc_pdata *local = platform_get_drvdata(pdev);
+
 	dev_dbg(rproc->dev, "%s\n", __func__);
 	INIT_WORK(&workqueue, handle_event);
 
-	oproc_irq = rproc;
+	outer_flush_range(local->mem_start, local->mem_end);
+
+	remoteprocdev = pdev;
 	zynq_cpu1_start(0, 0);
 
 	return 0;
@@ -138,7 +150,7 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	int ret = 0;
 	struct irq_list *tmp;
-	int count =  of_irq_count(pdev->dev.of_node);
+	int count;
 
 	struct zynq_rproc_pdata *local = kzalloc(
 				sizeof(struct zynq_rproc_pdata), GFP_KERNEL);
@@ -156,9 +168,13 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
+	local->mem_start = res->start;
+	local->mem_end = res->end;
+
 	/* Alloc phys addr from 0 to max_addr for firmware */
-	ret = dma_declare_coherent_memory(&pdev->dev, res->start,
-		res->start, res->end - res->start + 11, DMA_MEMORY_IO);
+	ret = dma_declare_coherent_memory(&pdev->dev, local->mem_start,
+		local->mem_start, local->mem_end - local->mem_start + 1,
+		DMA_MEMORY_IO);
 	if (!ret) {
 		dev_err(&pdev->dev, "dma_declare_coherent_memory failed\n");
 		return ret;
@@ -173,6 +189,7 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 	/* Init list for IRQs - it can be long list */
 	INIT_LIST_HEAD(&local->mylist.list);
 
+	count = of_irq_count(pdev->dev.of_node);
 	/* Alloc IRQ based on DTS to be sure that other driver will use it */
 	while (count--) {
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
