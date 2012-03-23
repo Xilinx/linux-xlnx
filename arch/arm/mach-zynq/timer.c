@@ -288,17 +288,18 @@ static void __init xttcpss_timer_init(void)
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
 	 * transition, note that the event timer uses the interrupt and it's the
-	 * 2nd TTC hence the +1 for the interrupt
+	 * 2nd TTC hence the +1 for the interrupt and the irq_of_parse_and_map(,1)
 	 */
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
 		timer_baseaddr = (u32)of_iomap(timer, 0);
 	        WARN_ON(!timer_baseaddr);
-	        irq = irq_of_parse_and_map(timer, 0) + 1;
+	        irq = irq_of_parse_and_map(timer, 1);
+	        WARN_ON(!irq);
 		prop = (void *)of_get_property(timer, "clock-frequency", NULL);
 	} else {
 		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
-		timer_baseaddr = (u32)ioremap(0xF8F02000, SZ_4K);
+		timer_baseaddr = (u32)ioremap(0xF8001000, SZ_4K);
 		irq = IRQ_TIMERCOUNTER0 + 1;
 	}
 
