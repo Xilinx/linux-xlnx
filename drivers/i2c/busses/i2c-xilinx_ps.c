@@ -285,8 +285,10 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg |= (XI2CPS_CR_RW_MASK | XI2CPS_CR_CLR_FIFO_MASK);
 
-	if (id->recv_count > XI2CPS_FIFO_DEPTH)
+	if (id->recv_count > XI2CPS_FIFO_DEPTH || id->bus_hold_flag)
 		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
+	else
+		ctrl_reg &= ~XI2CPS_CR_HOLD_BUS_MASK;
 
 	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
 	xi2cps_writereg((id->p_msg->addr & XI2CPS_ADDR_MASK),
@@ -331,8 +333,10 @@ static void xi2cps_msend(struct xi2cps *id)
 	ctrl_reg &= ~XI2CPS_CR_RW_MASK;
 	ctrl_reg |= XI2CPS_CR_CLR_FIFO_MASK;
 
-	if ((id->send_count) > XI2CPS_FIFO_DEPTH)
+	if ((id->send_count) > XI2CPS_FIFO_DEPTH || id->bus_hold_flag)
 		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
+	else
+		ctrl_reg &= ~XI2CPS_CR_HOLD_BUS_MASK;
 	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
 
 	/*
@@ -398,13 +402,13 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	}
 
 	/*
-	 * Set the flag to zero when multiple messages are to be
+	 * Set the flag to one when multiple messages are to be
 	 * processed with a repeated start.
 	 */
 	if (num > 1)
-		id->bus_hold_flag = 0;
-	else
 		id->bus_hold_flag = 1;
+	else
+		id->bus_hold_flag = 0;
 
 	/* Process the msg one by one */
 	for (count = 0; count < num; count++, msgs++) {
