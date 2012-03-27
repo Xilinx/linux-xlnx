@@ -118,6 +118,19 @@ config MMC_SDHCI_OF_HLWD
 
 	  If unsure, say N.
 
+config MMC_SDHCI_OF_ZYNQ
+	tristate "SDHCI OF support for the Xilinx Zynq SDHCI controllers"
+	depends on MMC_SDHCI_PLTFM
+	depends on OF
+	depends on ARCH_ZYNQ || ARCH_XILINX
+	help
+	  This selects the Secure Digital Host Controller Interface (SDHCI)
+	  found in the Xilinx Zynq EPP.
+
+	  If you have a controller with this interface, say Y or M here.
+
+	  If unsure, say N.
+
 config MMC_SDHCI_XILINX_PS
 	tristate "SDHCI OF support for the Xilinx Zynq PS SDHCI controller"
 	depends on ARCH_ZYNQ
