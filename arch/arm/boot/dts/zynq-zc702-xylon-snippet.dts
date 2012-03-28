@@ -1,0 +1,191 @@
+/* The following kernel command line can be used to boot Ubuntu from an SD card, the same
+ * kernel command line with a ramdisk for the root device is used for the Sobel filter TPD
+ */
+
+bootargs = "console=ttyPS0,115200 console=tty0 root=/dev/mmcblk0p2 rw rootwait ip=:::::eth0:dhcp, earlyprintk mem=768M memmap=128M$0x30000000 vmalloc=256M";
+
+/*
+ * This is an instance of the device tree entry for
+ * xylon's logicvc.  User must take care to edit this
+ * snippet to match the configuration of their hardware
+ * as found in the corresponding mhs file.
+ *
+ * The snippet below is configured specifically for the
+ * Zynq Sobel filter TPD for the zc702 board or for booting
+ * Ubuntu at 1080p.
+ */
+
+logicvc0: logicvc@40030000 {
+	compatible = "xylon,logicvc-2.01.d", "xylon,logicvc-2.04.a";
+	reg = <0x40030000 0x10000>;
+	interrupts = <60 0>;
+	buffer-0-offset = <1080>;
+	buffer-1-offset = <1080>;
+	buffer-2-offset = <1080>;
+	buffer-3-offset = <1080>;
+	buffer-4-offset = <1080>;
+	display-interface = <0>;
+	e-data-width = <24>;
+	e-layer = <0>;
+	family = "virtex6";
+	interconnect-m-axi-arb-priority = <0xf>;
+	interconnect-s-axi-masters = "microblaze_0.M_AXI_DP";
+	ip-license-type = <0>;
+	ip-major-revision = <2>;
+	ip-minor-revision = <1>;
+	ip-patch-level = <0>;
+	layer-0-alpha-mode = <1>;
+	layer-0-data-width = <24>;
+	layer-0-offset = <0x0>;
+	layer-1-alpha-mode = <1>;
+	layer-1-data-width = <24>;
+	layer-1-offset = <3240>;
+	layer-2-alpha-mode = <0>;
+	layer-2-data-width = <24>;
+	layer-2-offset = <6480>;
+	layer-3-alpha-mode = <0>;
+	layer-3-data-width = <24>;
+	layer-3-offset = <9720>;
+	layer-4-alpha-mode = <0>;
+	layer-4-data-width = <24>;
+	layer-4-offset = <12960>;
+	little-endian = <1>;
+	lvds-data-width = <4>;
+	mem-burst = <4>;
+	mplb-awidth = <32>;
+	mplb-dwidth = <64>;
+	mplb-native-dwidth = <32>;
+	mplb-num-masters = <8>;
+	mplb-p2p = <0>;
+	mplb-priority = <3>;
+	mplb-smallest-slave = <32>;
+	mplb-support-bursts = <1>;
+	num-of-layers = <5>;
+	pixel-data-width = <24>;
+	readable-regs = <1>;
+	regs-interface = <2>;
+	regs-little-endian = <0>;
+	row-stride = < 2048 >;
+	use-background = < 1 >;
+	use-e-rgb-input = <0>;
+	use-e-vclk-bufgmux = <1>;
+	use-io-hw-serializer = <0>;
+	use-multiplier = <2>;
+	use-serialized-blender = <0>;
+	use-size-position = < 1 >;
+	use-xtreme-dsp = <2>;
+	vmem-baseaddr = <0x30000000>;
+	vmem-highaddr = <0x37ffffff>;
+	vmem-data-bus-width = <64>;
+	vmem-interface = <2>;
+};
+xylon-videomode-params {
+	default-active-layer-idx = <2>;
+	default-videomode-idx = <6>;
+	videomode@0 {
+		mode-name = "VGA";
+		refresh = <60>;
+		xres = <640>;
+		yres = <480>;
+		pixclock-khz = <25152>;
+		left-margin = <48>;
+		right-margin = <16>;
+		upper-margin = <31>;
+		lower-margin = <11>;
+		hsync-len = <96>;
+		vsync-len = <2>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@1 {
+		mode-name = "SVGA";
+		refresh = <60>;
+		xres = <800>;
+		yres = <600>;
+		pixclock-khz = <39790>;
+		left-margin = <88>;
+		right-margin = <40>;
+		upper-margin = <23>;
+		lower-margin = <1>;
+		hsync-len = <128>;
+		vsync-len = <4>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@2 {
+		mode-name = "XGA";
+		refresh = <60>;
+		xres = <1024>;
+		yres = <768>;
+		pixclock-khz = <65076>;
+		left-margin = <160>;
+		right-margin = <24>;
+		upper-margin = <29>;
+		lower-margin = <3>;
+		hsync-len = <136>;
+		vsync-len = <6>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@3 {
+		mode-name = "SXGA";
+		refresh = <60>;
+		xres = <1280>;
+		yres = <1024>;
+		pixclock-khz = <107964>;
+		left-margin = <248>;
+		right-margin = <48>;
+		upper-margin = <38>;
+		lower-margin = <1>;
+		hsync-len = <112>;
+		vsync-len = <3>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@4 {
+		mode-name = "HD720";
+		refresh = <60>;
+		xres = <1280>;
+		yres = <720>;
+		pixclock-khz = <74250>;
+		left-margin = <220>;
+		right-margin = <110>;
+		upper-margin = <20>;
+		lower-margin = <5>;
+		hsync-len = <40>;
+		vsync-len = <5>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@5 {
+		mode-name = "WSXGA+";
+		refresh = <60>;
+		xres = <1680>;
+		yres = <1050>;
+		pixclock-khz = <146361>;
+		left-margin = <280>;
+		right-margin = <104>;
+		upper-margin = <30>;
+		lower-margin = <3>;
+		hsync-len = <176>;
+		vsync-len = <6>;
+		sync = <0>;
+		vmode = <0>;
+	};
+	videomode@6 {
+		mode-name = "HD1080";
+		refresh = <60>;
+		xres = <1920>;
+		yres = <1080>;
+		pixclock-khz = <148500>;
+		left-margin = <148>;
+		right-margin = <88>;
+		upper-margin = <36>;
+		lower-margin = <4>;
+		hsync-len = <44>;
+		vsync-len = <5>;
+		sync = <0>;
+		vmode = <0>;
+	};
+};
+
