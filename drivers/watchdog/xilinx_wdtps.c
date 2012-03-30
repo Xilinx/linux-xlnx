@@ -28,13 +28,17 @@
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 
-#define XWDTPS_CLOCK		2500000
 #define XWDTPS_DEFAULT_TIMEOUT	10
 #define XWDTPS_MAX_TIMEOUT	400	/* Supports 1 - 400 sec */
 
 static int wdt_timeout = XWDTPS_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
+/* Set in xwdtps_open() */
+static unsigned long wdt_clock;
+static unsigned short wdt_prescalar;
+static unsigned short wdt_ctrl_clksel;
 
 module_param(wdt_timeout, int, 0);
 MODULE_PARM_DESC(wdt_timeout,
@@ -62,6 +66,7 @@ struct xwdtps {
 	unsigned long		busy;		/* Device Status */
 	struct miscdevice	miscdev;	/* Device structure */
 	spinlock_t		io_lock;
+	int ep107;
 };
 static struct xwdtps *wdt;
 
@@ -131,16 +136,14 @@ static void xwdtps_reload(void)
 /**
  * xwdtps_start -  Enable and start the watchdog.
  *
- * The clock to the WDT is 2.5 MHz, the prescalar is set to divide
- * the clock by 4096 and the counter value is calculated according to
- * the formula:
+ * The counter value is calculated according to the formula:
  *		calculated count = (timeout * clock) / prescalar + 1.
  * The calculated count is divided by 0x1000 to obtain the field value
  * to write to counter control register.
  * Clears the contents of prescalar and counter reset value. Sets the
  * prescalar to 4096 and the calculated count and access key
  * to write to CCR Register.
- * Sets the WDT (WDEN bit) and Reset signal(RSTEN bit) with length as 2 pclk
+ * Sets the WDT (WDEN bit) and Reset signal(RSTEN bit) with a specified
  * cycles and the access key to write to ZMR Register.
  **/
 static void xwdtps_start(void)
@@ -149,14 +152,10 @@ static void xwdtps_start(void)
 	int count;
 
 	/*
-	 * 64		- Prescalar divide value.
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
-	 * 2500000	- Input clock value.
-	 * This code needs to be modified when the clock value increases
-	 * in H/W.
 	 */
-	count = (wdt_timeout * XWDTPS_CLOCK) / (64 * 0x1000) + 1;
+	count = (wdt_timeout * wdt_clock) / (wdt_prescalar * 0x1000) + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -169,10 +168,9 @@ static void xwdtps_start(void)
 	count = (count << 2) & XWDTPS_CCR_CRV_MASK;
 
 	/*
-	 * 0x00000001 - Bit value to set 64 prescalar divide.
 	 * 0x00920000 - Counter register key value.
 	 */
-	data = (count | 0x00920000 | 0x00000001);
+	data = (count | 0x00920000 | wdt_ctrl_clksel);
 	xwdtps_writereg(data, XWDTPS_CCR_OFFSET);
 
 	data = (XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTEN_MASK | \
@@ -216,6 +214,20 @@ static int xwdtps_open(struct inode *inode, struct file *file)
 {
 	if (test_and_set_bit(0, &(wdt->busy)))
 		return -EBUSY;
+
+	/* Determine the input frequency and the prescalar based on which board is seen
+	 * in the device tree. wdt->ep107 is set in xwdtps_probe()
+	 */
+	if (wdt->ep107) {
+		wdt_clock = 2500000;
+		wdt_prescalar = 64;
+		wdt_ctrl_clksel = 1;
+	} else {
+		wdt_clock = 133000000;
+		wdt_prescalar = 4096;
+		wdt_ctrl_clksel = 3;
+	}
+
 	xwdtps_start();
 	return nonseekable_open(inode, file);
 }
@@ -377,6 +389,9 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int res;
+	struct device_node *np;
+	const void *prop;
+	int size;
 
 printk(KERN_ERR "WDT OF probe\n");
 	/* Check whether WDT is in use, just for safety */
@@ -419,6 +434,21 @@ printk(KERN_ERR "WDT OF probe\n");
 	wdt->miscdev.minor	= WATCHDOG_MINOR,
 	wdt->miscdev.name	= "watchdog",
 	wdt->miscdev.fops	= &xwdtps_fops,
+
+	/* Figure out from the device tree if this is running on the EP107 emulation
+	 * platform as it doesn't match the silicon exactly and the driver needs
+	 * to work accordingly.
+	 */
+	np = of_get_next_parent(pdev->dev.of_node);
+	np = of_get_next_parent(np);
+	prop = of_get_property(np, "compatible", &size);
+
+	if (prop != NULL) {
+		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
+			wdt->ep107 = 1;
+		else
+			wdt->ep107 = 0;
+	}
 
 	/* Initialize the busy flag to zero */
 	clear_bit(0, &wdt->busy);
