@@ -191,7 +191,7 @@ static int xgpiops_get_value(struct gpio_chip *chip, unsigned int pin)
  *
  * This function calculates the register offset (i.e to lower 16 bits or
  * upper 16 bits) based on the given pin number and sets the state of a
- * gpio pin to the specified value. The state is either 0 or 1.
+ * gpio pin to the specified value. The state is either 0 or non-zero.
  */
 static void xgpiops_set_value(struct gpio_chip *chip, unsigned int pin,
 			       int state)
@@ -213,7 +213,8 @@ static void xgpiops_set_value(struct gpio_chip *chip, unsigned int pin,
 	 * get the 32 bit value to be written to the mask/data register where
 	 * the upper 16 bits is the mask and lower 16 bits is the data
 	 */
-	state &= 0x01;
+	if (state)
+		state = 1;
 	state = ~(1 << (bank_pin_num + 16)) & ((state << bank_pin_num) |
 					       0xFFFF0000);
 
