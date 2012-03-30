@@ -29,7 +29,7 @@
 #include <linux/of.h>
 
 #define XWDTPS_DEFAULT_TIMEOUT	10
-#define XWDTPS_MAX_TIMEOUT	400	/* Supports 1 - 400 sec */
+#define XWDTPS_MAX_TIMEOUT	516	/* Supports 1 - 516 sec */
 
 static int wdt_timeout = XWDTPS_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
@@ -95,7 +95,7 @@ static struct watchdog_info xwdtps_info = {
  */
 #define XWDTPS_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
 #define XWDTPS_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
-#define XWDTPS_ZMR_RSTLEN_2	0x00000000 /* Reset pulse of 2 pclk cycles */
+#define XWDTPS_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
 #define XWDTPS_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
 /*
  * Counter Control register - This register controls how fast the timer runs
@@ -147,13 +147,13 @@ static void xwdtps_reload(void)
 static void xwdtps_start(void)
 {
 	unsigned int data = 0;
-	int count;
+	unsigned short count;
 
 	/*
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = (wdt_timeout * wdt_clock) / (wdt_prescalar * 0x1000) + 1;
+	count = ( wdt_timeout * (wdt_clock / wdt_prescalar) ) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -172,7 +172,7 @@ static void xwdtps_start(void)
 	xwdtps_writereg(data, XWDTPS_CCR_OFFSET);
 
 	data = (XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTEN_MASK | \
-		XWDTPS_ZMR_RSTLEN_2 | XWDTPS_ZMR_ZKEY_VAL);
+		XWDTPS_ZMR_RSTLEN_16 | XWDTPS_ZMR_ZKEY_VAL);
 	xwdtps_writereg(data, XWDTPS_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	xwdtps_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
