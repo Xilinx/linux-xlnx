@@ -89,6 +89,8 @@
 #define XSLCR_MIO_L2_SHIFT		3
 #define XSLCR_MIO_L3_SHIFT		5
 
+#define XSLCR_MIO_LMASK			0x000000FE
+
 #define XSLCR_MIO_PIN_XX_TRI_ENABLE	0x00000001
 
 /* The following constants define L0 Mux Peripheral Enables */
@@ -129,8 +131,9 @@
 #define XSLCR_MIO_NUM_SMC_CS_PINS	01
 #define XSLCR_MIO_NUM_NAND_CS_PINS	01
 #define XSLCR_MIO_NUM_SRAM_NOR_PINS	38
-#define XSLCR_MIO_NUM_QSPI_PINS		12
+#define XSLCR_MIO_NUM_QSPI_PINS		05
 #define XSLCR_MIO_NUM_QSPI_SEL_PINS	01
+#define XSLCR_MIO_NUM_QSPI_FOC_PINS	01
 #define XSLCR_MIO_NUM_GPIO0_PINS	32
 #define XSLCR_MIO_NUM_GPIO1_PINS	22
 #define XSLCR_MIO_NUM_CAN_PINS		02
@@ -203,8 +206,11 @@ struct xslcr_periph_reset {
 static const char * mio_periph_name[] = {
 	"emac0",
 	"emac1",
-	"qspi",
-	"qspi_sel",
+	"qspi0",
+	"qspi0_sel",
+	"qspi1",
+	"qspi1_sel",
+	"qspi_foc",
 	"trace_data2",
 	"trace_data4",
 	"trace_data8",
@@ -258,12 +264,24 @@ static const int emac1_pins[] = {
 	28, 40
 };
 
-static const int qspi_pins[] = {
+static const int qspi0_pins[] = {
 	2
 };
 
-static const int qspi_sel_pins[] = {
-	1, 0
+static const int qspi0_sel_pins[] = {
+	1
+};
+
+static const int qspi1_pins[] = {
+	9
+};
+
+static const int qspi1_sel_pins[] = {
+	0
+};
+
+static const int qspi_foc_pins[] = {
+	8
 };
 
 static const int trace_data2_pins[] = {
@@ -405,8 +423,8 @@ static const struct xslcr_mio mio_periphs[] = {
 		0x01,
 	},
 	{
-		qspi_pins,
-		ARRAY_SIZE(qspi_pins),
+		qspi0_pins,
+		ARRAY_SIZE(qspi0_pins),
 		XSLCR_MIO_NUM_QSPI_PINS,
 		XSLCR_MIO_PIN_QSPI_ENABLE,
 		XSLCR_APER_CLK_CTRL_QSPI_MASK,
@@ -414,9 +432,35 @@ static const struct xslcr_mio mio_periphs[] = {
 		0x01,
 	},
 	{
-		qspi_sel_pins,
-		ARRAY_SIZE(qspi_sel_pins),
+		qspi0_sel_pins,
+		ARRAY_SIZE(qspi0_sel_pins),
 		XSLCR_MIO_NUM_QSPI_SEL_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		0x00,
+		0x00,
+		0x00,
+	},
+	{
+		qspi1_pins,
+		ARRAY_SIZE(qspi1_pins),
+		XSLCR_MIO_NUM_QSPI_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		XSLCR_APER_CLK_CTRL_QSPI_MASK,
+		XSLCR_QSPI_CLK_CTRL_OFFSET,
+		0x01,
+	},
+	{
+		qspi1_sel_pins,
+		ARRAY_SIZE(qspi1_sel_pins),
+		XSLCR_MIO_NUM_QSPI_SEL_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		0x00,
+		0x00,
+		0x00,
+	},
+	{	qspi_foc_pins,
+		ARRAY_SIZE(qspi_foc_pins),
+		XSLCR_MIO_NUM_QSPI_FOC_PINS,
 		XSLCR_MIO_PIN_QSPI_ENABLE,
 		0x00,
 		0x00,
@@ -927,10 +971,10 @@ static int xslcr_mio_isavailable(u32 pin)
 	u32 reg;
 
 	reg = xslcr_readreg(slcr->regs + XSLCR_MIO_PIN_00_OFFSET + (pin * 4));
-	if (reg != XSLCR_MIO_PIN_XX_TRI_ENABLE)
-		return -EBUSY;
+	if (reg & XSLCR_MIO_PIN_XX_TRI_ENABLE)
+		return 0;
 
-	return 0;	/* pin is available */
+	return -EBUSY;	/* pin is assigned */
 }
 
 /**
@@ -1104,6 +1148,7 @@ static int xslcr_disable_mio_peripheral(int mio)
 		 * to make sure the pins are not being released accidentally*/
 		reg = xslcr_readreg(slcr->regs + XSLCR_MIO_PIN_00_OFFSET +
 				    (pin * 4));
+		reg &= XSLCR_MIO_LMASK;
 		if (reg != mio_ptr->enable_val) {
 			pr_err("%s: One or more pins in pinset %d are busy\n",
 				mio_periph_name[mio], pin_set);
@@ -1115,9 +1160,11 @@ static int xslcr_disable_mio_peripheral(int mio)
 	/* release all pins in the set */
 	for (i = 0; i < mio_ptr->numpins; i++) {
 
-		/* update MIO register, clear everything and set tri-state */
+		/* update MIO register, set tri-state */
 		xslcr_writereg((slcr->regs + ((pin + i) * 4) +
 				XSLCR_MIO_PIN_00_OFFSET),
+				xslcr_readreg((slcr->regs + ((pin + i) * 4) +
+					XSLCR_MIO_PIN_00_OFFSET)) |
 				XSLCR_MIO_PIN_XX_TRI_ENABLE);
 	}
 
@@ -1401,7 +1448,7 @@ static ssize_t show_mio_pin_status(struct device *dev,
 		/* read the MIO control register to determine if its free */
 		reg = xslcr_readreg((slcr->regs + (i * 4) +
 				    XSLCR_MIO_PIN_00_OFFSET));
-		if (reg != XSLCR_MIO_PIN_XX_TRI_ENABLE)
+		if (!(reg & XSLCR_MIO_PIN_XX_TRI_ENABLE))
 			xslcr_set_bit((u32 *)&pin_status, i);
 	}
 	status = sprintf(buf, "0x%016Lx\n", pin_status);
@@ -1541,35 +1588,26 @@ static void xslcr_remove_devices(struct class *xslcr_class,
  * Read all the MIO control registers and determine which MIO peripherals are
  * enabled and initialize the global array .
  **/
+
 static void xslcr_get_mio_status(void)
 {
-	int i;
-
-	/* Currently on PEEP and Palladium, the MIO control registers have some
-	 * junk values. As of now, write reset values to these registers */
-	for (i = 0; i < XSLCR_MIO_MAX_PIN; i++) {
-		xslcr_writereg((slcr->regs + (i * 4) + XSLCR_MIO_PIN_00_OFFSET),
-				XSLCR_MIO_PIN_XX_TRI_ENABLE);
-	}
-
-#if 0
 	const struct xslcr_mio *mio_ptr;
 	u32 mio_reg;
 	int i, j, k;
 
 	/* num pins */
-	for (i = 0; i < XSLCR_MIO_MAX_PIN; /*i++*/) {
+	for (i = 0; i < XSLCR_MIO_MAX_PIN;) {
 		mio_reg = xslcr_readreg(slcr->regs + (i * 4) +
 					XSLCR_MIO_PIN_00_OFFSET);
-		if (i == XSLCR_MIO_PIN_XX_TRI_ENABLE) {
+		if (mio_reg & XSLCR_MIO_PIN_XX_TRI_ENABLE) {
 			i++;
 			continue;
 		}
-
+		mio_reg &= XSLCR_MIO_LMASK;
 		/* num periphs */
 		for (j = 0; j < ARRAY_SIZE(mio_periphs); j++) {
 			if (mio_reg == mio_periphs[j].enable_val) {
-				mio_ptr = &miperiph_statuso_periphs[j];
+				mio_ptr = &mio_periphs[j];
 				for (k = 0; k < mio_ptr->max_sets; k++) {
 					if (i == mio_ptr->set_pins[k]) {
 						/* mark the periph as enabled */
@@ -1581,10 +1619,16 @@ static void xslcr_get_mio_status(void)
 				}
 			}
 		}
+		/*Noone claims this pin*/
+		printk(KERN_INFO "MIO pin %2d not assigned(%08x)\n",
+			i,
+			xslcr_readreg(slcr->regs + (i * 4) +
+				XSLCR_MIO_PIN_00_OFFSET)
+			);
+		i++;
 next_periph:
 		continue;
 	}
-#endif
 }
 
 /************************Platform Operations*****************************/
