@@ -277,6 +277,8 @@ static int __devexit zynq_remoteproc_remove(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
+	dma_release_declared_memory(&pdev->dev);
+
 	clear_ipi_handler(local->ipino);
 	clear_irq(pdev);
 
