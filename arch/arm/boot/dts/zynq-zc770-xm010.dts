@@ -58,6 +58,13 @@
 			reg = <0xe000b000 0x1000>;
 			interrupts = <0x36 0x0>;
 			phy-handle = <&phy0>;
+			xlnx,ptp-enet-clock = <133000000>;
+			xlnx,slcr-div0-1000Mbps = <8>;
+			xlnx,slcr-div0-100Mbps = <8>;
+			xlnx,slcr-div0-10Mbps = <8>;
+			xlnx,slcr-div1-1000Mbps = <1>;
+			xlnx,slcr-div1-100Mbps = <5>;
+			xlnx,slcr-div1-10Mbps = <50>;
 			#address-cells = <0x1>;
 			#size-cells = <0x0>;
 
