@@ -120,6 +120,19 @@ SECTIONS
 
 	RO_DATA(PAGE_SIZE)
 
+
+#ifdef CONFIG_ARCH_ZYNQ
+	. = ALIGN (4) ;
+	__fdt_blob : AT(ADDR(__fdt_blob) - LOAD_OFFSET) {
+		_fdt_start = . ;		/* place for fdt blob */
+		*(__fdt_blob) ;			/* Any link-placed DTB */
+	        . = _fdt_start + 0x8000;	/* Pad up to 16kbyte */
+		_fdt_end = . ;
+	}
+#endif
+
+
+
 #ifdef CONFIG_ARM_UNWIND
 	/*
 	 * Stack unwinding tables
@@ -191,16 +204,6 @@ SECTIONS
 
 #ifdef CONFIG_SMP
 	PERCPU_SECTION(L1_CACHE_BYTES)
-#endif
-
-#ifdef CONFIG_ARCH_ZYNQ
-	. = ALIGN (4) ;
-	__fdt_blob : AT(ADDR(__fdt_blob) - LOAD_OFFSET) {
-		_fdt_start = . ;		/* place for fdt blob */
-		*(__fdt_blob) ;			/* Any link-placed DTB */
-	        . = _fdt_start + 0x8000;	/* Pad up to 16kbyte */
-		_fdt_end = . ;
-	}
 #endif
 
 #ifdef CONFIG_XIP_KERNEL
