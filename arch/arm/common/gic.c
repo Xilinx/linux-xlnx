@@ -258,14 +258,14 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	return IRQ_SET_MASK_OK;
 }
 
-void __init gic_set_cpu(unsigned int cpu, unsigned int irq)
+void gic_set_cpu(unsigned int cpu, unsigned int irq)
 {
 	struct irq_data *d = irq_get_irq_data(irq);
 	struct cpumask mask;
 
 	cpumask_clear(&mask);
 	cpumask_set_cpu(cpu, &mask);
-        gic_set_affinity (d, &mask, true);
+	gic_set_affinity(d, &mask, true);
 }
 EXPORT_SYMBOL(gic_set_cpu);
 #endif
