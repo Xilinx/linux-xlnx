@@ -24,7 +24,7 @@
 #include <linux/clockchips.h>
 #include <linux/io.h>
 #include <linux/of.h>
-
+#include <linux/of_irq.h>
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
 
@@ -41,9 +41,9 @@
  * The input frequency to the timer module for emulation is 2.5MHz which is
  * common to all the timer channels (T1, T2, and T3). With a pre-scaler of 32,
  * the timers are clocked at 78.125KHz (12.8 us resolution).
- *
- * The input frequency to the timer module in silicon will be 200MHz. With the
- * pre-scaler of 32, the timers are clocked at 6.25MHz (160ns resolution).
+
+ * The input frequency to the timer module in silicon is configurable and
+ * obtained from device tree. The pre-scaler of 32 is used.
  */
 #define XTTCPSS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
 #define XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
@@ -272,7 +272,8 @@ static void __init xttcpss_timer_init(void)
 {
 	u32 irq;
 	struct device_node *timer = NULL;
-	void *prop = NULL;
+	void *prop1 = NULL;
+	void *prop2 = NULL;
 	u32 timer_baseaddr;
 	const char * const timer_list[] = {
 		"xlnx,ps7-ttc-1.00.a",
@@ -291,8 +292,9 @@ static void __init xttcpss_timer_init(void)
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
 		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
-		irq = be32_to_cpup(of_get_property(timer, "interrupts", NULL)) + 1;
-		prop = (void *)of_get_property(timer, "clock-frequency", NULL);
+		irq = irq_of_parse_and_map(timer, 1);
+		prop1 = (void *)of_get_property(timer, "clock-frequency-timer0", NULL);
+		prop2 = (void *)of_get_property(timer, "clock-frequency-timer1", NULL);
 	} else {
 		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
 		timer_baseaddr = (u32)TTC0_BASE;
@@ -318,16 +320,22 @@ static void __init xttcpss_timer_init(void)
 	 * that may not be the right timing, but might boot the kernel, the event 
 	 * timer is the only one that needs the frequency, but make them match
 	 */
-	if (prop)
-		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop) 
+	if (prop1)
+		timers[XTTCPSS_CLOCKSOURCE].frequency = be32_to_cpup(prop1)
+								/ PRESCALE;
+	else {
+		printk(KERN_ERR "Error, no clock-frequency specified for timer\n");
+		timers[XTTCPSS_CLOCKSOURCE].frequency = PERIPHERAL_CLOCK_RATE
+								 / PRESCALE;
+	}
+	if (prop2)
+		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop2)
 								/ PRESCALE;
 	else {
 		printk(KERN_ERR "Error, no clock-frequency specified for timer\n");
 		timers[XTTCPSS_CLOCKEVENT].frequency = PERIPHERAL_CLOCK_RATE
 							 / PRESCALE;
 	}
-	timers[XTTCPSS_CLOCKSOURCE].frequency = 
-				timers[XTTCPSS_CLOCKEVENT].frequency;
 
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss,

@@ -39,10 +39,12 @@
 		};
 
 		timer@0xf8001000 {
+			clock-frequency-timer0 = <133000000>;
+			clock-frequency-timer1 = <133000000>;
+			clock-frequency-timer2 = <133000000>;
 			compatible = "xlnx,ps7-ttc-1.00.a";
-			reg = <0xf8001000 0x1000>;
-			interrupts = <0x2a 0x0>;
-			clock-frequency = <133000000>;
+			interrupts = < 42 0 43 0 44 0 >;
+			reg = < 0xf8001000 0x1000 >;
 		};
 
 		swdt@f8005000 {
