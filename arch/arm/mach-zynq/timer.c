@@ -293,6 +293,15 @@ static void __init xttcpss_timer_init(void)
 	if (timer) {
 		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
 		irq = irq_of_parse_and_map(timer, 1);
+
+		/* For now, let's play nice and not crash the kernel if the device
+		   tree was not updated to have all the timer irqs, this can be 
+		   removed at a later date when old device trees are gone.
+		*/
+		if (irq == NO_IRQ) {
+			printk(KERN_ERR "Xilinx, timer irq missing, using default\n");
+			irq = irq_of_parse_and_map(timer, 0) + 1;
+		}
 		prop1 = (void *)of_get_property(timer, "clock-frequency-timer0", NULL);
 		prop2 = (void *)of_get_property(timer, "clock-frequency-timer1", NULL);
 	} else {
