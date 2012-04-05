@@ -37,6 +37,7 @@
 #include <linux/platform_device.h>
 #include <linux/of_address.h>
 #include <linux/amba/xilinx_dma.h>
+#include <linux/of_irq.h>
 
 /* Hw specific definitions
  */
@@ -1693,8 +1694,7 @@ out_return:
 	return err;
 }
 
-static int __devinit xilinx_dma_of_probe(struct platform_device *op,
-			const struct of_device_id *match)
+static int __devinit xilinx_dma_of_probe(struct platform_device *op)
 {
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
