@@ -120,6 +120,10 @@
 #define XILINX_DMA_RESET_LOOP            1000000
 #define XILINX_DMA_HALT_LOOP             1000000
 
+/* Device Id in the private structure
+ */
+#define XILINX_DMA_DEVICE_ID_SHIFT     28
+
 /* IO accessors
  */
 #define DMA_OUT(addr, val)  (iowrite32(val, addr))
@@ -1519,7 +1523,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	struct xilinx_dma_chan *chan;
 	int err;
 	int *value;
-	u32 width = 0;
+	u32 width = 0, device_id = 0;
 
 	/* alloc channel */
 	chan = kzalloc(sizeof(*chan), GFP_KERNEL);
@@ -1561,6 +1565,10 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		chan->feature |= width - 1;
 	}
+
+	value = (int *)of_get_property(node, "xlnx,device-id", NULL);
+	if (value)
+		device_id = be32_to_cpup(value);
 
 	if (feature & XILINX_DMA_IP_CDMA) {
 		chan->direction = DMA_BIDIRECTIONAL;
@@ -1646,7 +1654,8 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	 * Can change it to be a structure to have more matching information
 	 */
 	chan->private = (chan->direction & 0xFF) |
-		(chan->feature & XILINX_DMA_IP_MASK);
+		(chan->feature & XILINX_DMA_IP_MASK) |
+		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_DRE)
