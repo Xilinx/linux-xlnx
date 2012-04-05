@@ -66,6 +66,7 @@ struct xilinx_dma_config {
 	int coalesc;                       /* Interrupt coalescing threshold */
 	int delay;                         /* Delay counter */
 	int disable_intr;                  /* Whether use interrupts */
+	int reset;			   /* Reset Channel */
 };
 
 /* Platform data definition until ARM supports device tree */

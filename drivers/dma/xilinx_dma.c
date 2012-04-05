@@ -1410,7 +1410,12 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		return 0;
 	} else if (cmd == DMA_SLAVE_CONFIG) {
 		struct xilinx_dma_config *cfg = (struct xilinx_dma_config *)arg;
-		u32 reg = DMA_IN(&chan->regs->cr);
+		u32 reg;
+
+		if (cfg->reset)
+			dma_init(chan);
+
+		reg = DMA_IN(&chan->regs->cr);
 
 		/* If vsize is -1, it is park-related operations */
 		if (cfg->vsize == -1) {
