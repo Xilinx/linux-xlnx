@@ -98,6 +98,8 @@
 #define XILINX_VDMA_DIRECT_REG_OFFSET     0x50
 #define XILINX_VDMA_CHAN_DIRECT_REG_SIZE  0x50
 
+#define XILINX_VDMA_PARK_REG_OFFSET      0x28
+
 /* BD definitions for Axi Dma and Axi Cdma
  */
 #define XILINX_DMA_BD_STS_COMPL_MASK 0x80000000
@@ -630,6 +632,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	struct xilinx_dma_desc_sw *desch, *desct = NULL;
 	struct xilinx_dma_config *config;
 	u32 reg;
+	u8 *chan_base;
 
 	if (chan->err)
 		return;
@@ -649,8 +652,6 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	/* If hardware is idle, then all descriptors on the running lists are
 	 * done, start new transfers
 	 */
-	dma_halt(chan);
-
 	if (chan->err)
 		goto out_unlock;
 
@@ -678,14 +679,21 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	if ((chan->has_SG) || (!config->park))
 		reg |= XILINX_VDMA_CIRC_EN;
 
+	if (config->park)
+		reg &= ~XILINX_VDMA_CIRC_EN;
+
 	DMA_OUT(&chan->regs->cr, reg);
 
 	if ((config->park_frm >= 0) && (config->park_frm < chan->num_frms)) {
 		if (config->direction == DMA_TO_DEVICE) {
-			DMA_OUT(&chan->regs->btt_ref,
-			    config->park_frm << XILINX_VDMA_WR_REF_SHIFT);
+			chan_base = (char *)chan->regs;
+			DMA_OUT((chan_base + XILINX_VDMA_PARK_REG_OFFSET),
+					config->park_frm);
 		} else {
-			DMA_OUT(&chan->regs->btt_ref, config->park_frm);
+			chan_base = ((char *)chan->regs -
+					XILINX_DMA_RX_CHANNEL_OFFSET);
+			DMA_OUT((chan_base + XILINX_VDMA_PARK_REG_OFFSET),
+				config->park_frm << XILINX_VDMA_WR_REF_SHIFT);
 		}
 	}
 
