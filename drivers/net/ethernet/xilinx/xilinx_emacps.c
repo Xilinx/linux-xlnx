@@ -464,13 +464,22 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 
 
 #define XSLCR_EMAC0_CLK_CTRL_OFFSET	0x140 /* EMAC0 Reference Clk Control */
-
+#define XSLCR_EMAC1_CLK_CTRL_OFFSET	0x144 /* EMAC1 Reference Clk Control */
 #define BOARD_TYPE_ZYNQ			0x01
 #define BOARD_TYPE_PEEP			0x02
 
-#define SLCR_ZYNQ_GEM_10M_CLK_CTRL_VALUE     0x00803201
-#define SLCR_ZYNQ_GEM_100M_CLK_CTRL_VALUE    0x00800501
-#define SLCR_ZYNQ_GEM_1G_CLK_CTRL_VALUE      0x00800101
+#define XEMACPS_DFLT_SLCR_DIV0_1000	8
+#define XEMACPS_DFLT_SLCR_DIV1_1000	1
+#define XEMACPS_DFLT_SLCR_DIV0_100	8
+#define XEMACPS_DFLT_SLCR_DIV1_100	5
+#define XEMACPS_DFLT_SLCR_DIV0_10	8
+#define XEMACPS_DFLT_SLCR_DIV1_10	50
+#define XEMACPS_SLCR_DIV_MASK		0xFC0FC0FF
+
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+#define NS_PER_SEC 	1000000000ULL	/* Nanoseconds per second */
+#define PEEP_TSU_CLK  	50000000ULL	/* PTP TSU CLOCK */
+#endif
 
 #define xemacps_read(base, reg)	\
 	__raw_readl((u32)(base) + (u32)(reg))
@@ -587,7 +596,17 @@ struct net_local {
 	/* RX ip/tcp/udp checksum */
 	unsigned               ip_summed;
 #ifdef CONFIG_OF
-	unsigned int board_type;
+	unsigned int	       enetnum;
+	unsigned int 	       board_type;
+	unsigned int 	       slcr_div0_1000Mbps;
+	unsigned int 	       slcr_div1_1000Mbps;
+	unsigned int 	       slcr_div0_100Mbps;
+	unsigned int 	       slcr_div1_100Mbps;
+	unsigned int 	       slcr_div0_10Mbps;
+	unsigned int 	       slcr_div1_10Mbps;
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+	unsigned int 	       ptpenetclk;
+#endif
 #endif
 };
 
@@ -726,8 +745,19 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	unsigned long flags;
 	int status_change = 0;
 	u32 regval;
+	u32 regval1;
+	u32 slcroffset;
 
 	spin_lock_irqsave(&lp->lock, flags);
+	if (lp->enetnum == 0) {
+		regval1 = xslcr_read(XSLCR_EMAC0_CLK_CTRL_OFFSET);
+		regval1 &= XEMACPS_SLCR_DIV_MASK;
+		slcroffset = XSLCR_EMAC0_CLK_CTRL_OFFSET;
+	} else {
+		regval1 = xslcr_read(XSLCR_EMAC1_CLK_CTRL_OFFSET);
+		regval1 &= XEMACPS_SLCR_DIV_MASK;
+		slcroffset = XSLCR_EMAC1_CLK_CTRL_OFFSET;
+	}
 
 	if (phydev->link) {
 		if ((lp->speed != phydev->speed) ||
@@ -741,21 +771,25 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
-				xslcr_write(XSLCR_EMAC0_CLK_CTRL_OFFSET,
-					SLCR_ZYNQ_GEM_1G_CLK_CTRL_VALUE);
+				regval1 |= ((lp->slcr_div1_1000Mbps) << 20);
+				regval1 |= ((lp->slcr_div0_1000Mbps) << 8);
+				xslcr_write(slcroffset, regval1);
 			} else
 				regval &= ~XEMACPS_NWCFG_1000_MASK;
 
 			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
-				xslcr_write(XSLCR_EMAC0_CLK_CTRL_OFFSET,
-					SLCR_ZYNQ_GEM_100M_CLK_CTRL_VALUE);
+				regval1 |= ((lp->slcr_div1_100Mbps) << 20);
+				regval1 |= ((lp->slcr_div0_100Mbps) << 8);
+				xslcr_write(slcroffset, regval1);
 			} else
 				regval &= ~XEMACPS_NWCFG_100_MASK;
 
-			if (phydev->speed == SPEED_10)
-				xslcr_write(XSLCR_EMAC0_CLK_CTRL_OFFSET,
-					SLCR_ZYNQ_GEM_10M_CLK_CTRL_VALUE);
+			if (phydev->speed == SPEED_10) {
+				regval1 |= ((lp->slcr_div1_10Mbps) << 20);
+				regval1 |= ((lp->slcr_div0_10Mbps) << 8);
+				xslcr_write(slcroffset, regval1);
+			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
 				regval);
@@ -936,10 +970,7 @@ static void __init xemacps_update_hwaddr(struct net_local *lp)
 	addr[3] = (regvall >> 24) & 0xFF;
 	addr[4] = regvalh & 0xFF;
 	addr[5] = (regvalh >> 8) & 0xFF;
-#ifdef DEBUG
-	printk(KERN_INFO "GEM: MAC addr %02x:%02x:%02x:%02x:%02x:%02x\n",
-		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-#endif
+
 	if (is_valid_ether_addr(addr)) {
 		memcpy(lp->ndev->dev_addr, addr, sizeof(addr));
 	} else {
@@ -1964,61 +1995,10 @@ static int xemacps_setup_ring(struct net_local *lp)
 }
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-
-#define NS_PER_SEC 1000000000ULL      /* Nanoseconds per second */
-#define FP_MULT    100000000ULL       /* Defined Fixed Point */
-#define FP_ROUNDUP (FP_MULT / 200000) /* Value used to round up fractionals */
-#define FRAC_MIN   (FP_MULT / 1000)   /* Expect at lest four digits of '0' */
-
-/*
- * Calculate clock configuration register values for indicated input clock
- */
-static unsigned xemacps_tsu_calc_clk(u32 freq)
-{
-	u64 period_ns_XFP;
-	u64 nn;
-	u64 acc;
-	u64 iacc;
-	u64 int1, int2;
-	u64 frac_part;
-	unsigned retval;
-
-	retval = 0;
-	period_ns_XFP = (NS_PER_SEC * FP_MULT)/freq;
-
-	nn = 1;
-	while (nn <= 256) {
-		acc = (nn * period_ns_XFP) + FP_ROUNDUP;
-		iacc = acc/FP_MULT;
-		frac_part = acc - ((acc/FP_MULT) * FP_MULT);
-
-		if (frac_part <= (FP_MULT/FRAC_MIN))
-			break;
-		else
-			nn += 1;
-	}
-
-	if (nn > 256)
-		printk(KERN_ERR "GEM: failed to calculate TSU input clock config.\n");
-	else {
-		int1 = period_ns_XFP / FP_MULT;
-		int2 = iacc - (nn-1)*int1;
-		retval =  ((nn - 1) << 16) | (int2 << 8) | int1;
-#ifdef DEBUG
-		printk(KERN_INFO "GEM: TSU: %lld x %lld = %lld.%08lld\n",
-				int1, nn, iacc, frac_part);
-		printk(KERN_INFO "GEM: TSU:  solution: %lld of %lld, then 1 of %lld\n",
-				nn-1, int1, int2);
-#endif
-	}
-
-	return retval;
-}
-
 /*
  * Initialize the GEM Time Stamp Unit
  */
-static void xemacps_init_tsu(struct net_local *lp, u32 tsu_clock_hz)
+static void xemacps_init_tsu(struct net_local *lp)
 {
 
 	memset(&lp->cycles, 0, sizeof(lp->cycles));
@@ -2038,7 +2018,7 @@ static void xemacps_init_tsu(struct net_local *lp, u32 tsu_clock_hz)
 	 * frequency 50MHz
 	 */
 	xemacps_write(lp->baseaddr, XEMACPS_1588INC_OFFSET,
-			xemacps_tsu_calc_clk(tsu_clock_hz));
+			(NS_PER_SEC/lp->ptpenetclk));
 
 	timecounter_init(&lp->clock, &lp->cycles,
 				ktime_to_ns(ktime_get_real()));
@@ -2119,7 +2099,7 @@ static void xemacps_init_hw(struct net_local *lp)
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	/* Initialize the Time Stamp Unit */
-	xemacps_init_tsu(lp, 50000000);
+	xemacps_init_tsu(lp);
 #endif
 
 	/* Enable interrupts */
@@ -2476,11 +2456,6 @@ static void xemacps_set_hashtable(struct net_device *ndev)
 		if (!curr)	/* end of list */
 			break;
 		mc_addr = curr->addr;
-#ifdef DEBUG
-		printk(KERN_INFO "GEM: mc addr 0x%x:0x%x:0x%x:0x%x:0x%x:0x%x\n",
-		mc_addr[0], mc_addr[1], mc_addr[2],
-		mc_addr[3], mc_addr[4], mc_addr[5]);
-#endif
 		hash_index = calc_mac_hash(mc_addr);
 
 		if (hash_index >= XEMACPS_MAX_HASH_BITS) {
@@ -3007,7 +2982,6 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	struct device_node *np;
 	const void *prop;
 	u32 regval = 0;
-	int size;
 	int rc = -ENXIO;
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -3073,9 +3047,14 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_OF
+	if (ndev->irq == 54) {
+		lp->enetnum = 0;
+	} else
+		lp->enetnum = 1;
+
 	np = of_get_next_parent(lp->pdev->dev.of_node);
 	np = of_get_next_parent(np);
-	prop = of_get_property(np, "compatible", &size);
+	prop = of_get_property(np, "compatible", NULL);
 
 	if (prop != NULL) {
 		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
@@ -3084,6 +3063,62 @@ static int __init xemacps_probe(struct platform_device *pdev)
 			lp->board_type = BOARD_TYPE_ZYNQ;
 	} else
 		lp->board_type = BOARD_TYPE_ZYNQ;
+	if (lp->board_type == BOARD_TYPE_ZYNQ) {
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div0-1000Mbps", NULL);
+		if (prop) {
+			lp->slcr_div0_1000Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div0_1000Mbps = XEMACPS_DFLT_SLCR_DIV0_1000;
+		}
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div1-1000Mbps", NULL);
+		if (prop) {
+			lp->slcr_div1_1000Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div1_1000Mbps = XEMACPS_DFLT_SLCR_DIV1_1000;
+		}
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div0-100Mbps", NULL);
+		if (prop) {
+			lp->slcr_div0_100Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div0_100Mbps = XEMACPS_DFLT_SLCR_DIV0_100;
+		}
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div1-100Mbps", NULL);
+		if (prop) {
+			lp->slcr_div1_100Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div1_100Mbps = XEMACPS_DFLT_SLCR_DIV1_100;
+		}
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div0-10Mbps", NULL);
+		if (prop) {
+			lp->slcr_div0_10Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div0_10Mbps = XEMACPS_DFLT_SLCR_DIV0_10;
+		}
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,slcr-div1-10Mbps", NULL);
+		if (prop) {
+			lp->slcr_div1_10Mbps = (u32)be32_to_cpup(prop);
+		} else {
+			lp->slcr_div1_10Mbps = XEMACPS_DFLT_SLCR_DIV1_10;
+		}
+	}
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+	if (lp->board_type == BOARD_TYPE_ZYNQ) {
+		prop = of_get_property(lp->pdev->dev.of_node,
+					"xlnx,ptp-enet-clock", NULL);
+		if (prop) {
+			lp->ptpenetclk = (u32)be32_to_cpup(prop);
+		} else {
+			lp->ptpenetclk = 133333328;
+		}
+	} else
+		lp->ptpenetclk = PEEP_TSU_CLK;
+#endif
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
