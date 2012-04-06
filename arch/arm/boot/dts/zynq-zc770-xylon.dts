@@ -55,7 +55,9 @@
 			reg = <0xF8001000 0x1000>;
 			interrupts = <42 0>;
 /*			clock-frequency = <36110750>; */
-			clock-frequency = <72220000>;
+			clock-frequency-timer0 = <72220000>;
+			clock-frequency-timer1 = <72220000>;
+			clock-frequency-timer2 = <72220000>;
 		};
 
 		eth0: eth@e000b000 {
