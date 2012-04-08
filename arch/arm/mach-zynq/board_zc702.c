@@ -26,6 +26,7 @@
 #include <linux/xilinx_devices.h>
 #include <linux/i2c/pca954x.h>
 #include <linux/i2c/pca953x.h>
+#include <linux/i2c/si570.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -198,9 +199,26 @@ static struct i2c_board_info __initdata tca6416_board_info[] = {
 };
 
 #endif /* CONFIG_GPIO_PCF8563 */
+
+#if defined(CONFIG_SI570)
+
+/* Initial FOUT is set per the ADV7511 video clocking requirement */
+static struct si570_platform_data si570_0 = {
+	.factory_fout = 156250000LL,
+	.initial_fout = 148500000,
+};
+
+static struct i2c_board_info __initdata si570_board_info[] = {
+	{
+		I2C_BOARD_INFO("si570", 0x5d),
+		.platform_data = &si570_0,
+	}
+};
+
+#endif /* CONFIG_SI570 */
 	
 
-#endif
+#endif /* CONFIG_I2C_XILINX_PS && CONFIG_I2C_MUX_PCA954x */
 
 #if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
 
@@ -261,6 +279,10 @@ static void __init board_zc702_init(void)
 #if	defined(CONFIG_GPIO_PCA953X)
 	i2c_register_board_info(4, tca6416_board_info,
 				ARRAY_SIZE(tca6416_board_info));
+#endif
+#if	defined(CONFIG_SI570)
+	i2c_register_board_info(1, si570_board_info,
+				ARRAY_SIZE(si570_board_info));
 #endif
 
 #endif
