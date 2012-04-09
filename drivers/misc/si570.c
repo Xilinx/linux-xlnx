@@ -209,7 +209,6 @@ static int si570_set_frequency(struct i2c_client *client,
 {
 	int i, n1, hs_div;
 	u64 fdco, best_fdco = ULLONG_MAX;
-	u8 dco_reg;
 
 	for (i = 0; i < ARRAY_SIZE(si570_hs_div_values); i++) {
 		hs_div = si570_hs_div_values[i];
