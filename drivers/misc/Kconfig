@@ -484,7 +484,6 @@ config PCH_PHUB
 config USB_SWITCH_FSA9480
 	tristate "FSA9480 USB Switch"
 	depends on I2C
-	help
 	  The FSA9480 is a USB port accessory detector and switch.
 	  The FSA9480 is fully controlled using I2C and enables USB data,
 	  stereo and mono audio, video, microphone and UART data to use
@@ -497,6 +496,15 @@ config MAX8997_MUIC
 	  If you say yes here you get support for the MUIC device of
 	  Maxim MAX8997 PMIC.
 	  The MAX8997 MUIC is a USB port accessory detector and switch.
+
+config SI570
+	tristate "Silicon Labs Si570 Clock Generator"
+	depends on I2C && SYSFS
+	  If you say yes here you get support for the Silicon Labs Si570
+	  digital clock generator.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called si570
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
