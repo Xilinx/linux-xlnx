@@ -205,7 +205,7 @@ static void xgpiops_set_value(struct gpio_chip *chip, unsigned int pin,
 
 	xgpiops_get_bank_pin(pin, &bank_num, &bank_pin_num);
 
-	if (bank_pin_num > 16) {
+	if (bank_pin_num >= 16) {
 		bank_pin_num -= 16; /* only 16 data bits in bit maskable reg */
 		reg_offset = XGPIOPS_DATA_MSW_OFFSET(bank_num);
 	} else
