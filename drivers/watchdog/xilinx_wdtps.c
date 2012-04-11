@@ -33,10 +33,6 @@
 
 static int wdt_timeout = XWDTPS_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
-/* Set in xwdtps_open() */
-static unsigned long wdt_clock;
-static unsigned short wdt_prescalar;
-static unsigned short wdt_ctrl_clksel;
 
 module_param(wdt_timeout, int, 0);
 MODULE_PARM_DESC(wdt_timeout,
@@ -63,6 +59,9 @@ struct xwdtps {
 	void __iomem		*regs;		/* Base address */
 	unsigned long		busy;		/* Device Status */
 	struct miscdevice	miscdev;	/* Device structure */
+	u32 			clock;
+	u32 			prescalar;
+	u32 			ctrl_clksel;
 	spinlock_t		io_lock;
 	int ep107;
 };
@@ -153,7 +152,7 @@ static void xwdtps_start(void)
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = ( wdt_timeout * (wdt_clock / wdt_prescalar) ) / 0x1000 + 1;
+	count = ( wdt_timeout * ((wdt->clock) / (wdt->prescalar)) ) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -168,7 +167,7 @@ static void xwdtps_start(void)
 	/*
 	 * 0x00920000 - Counter register key value.
 	 */
-	data = (count | 0x00920000 | wdt_ctrl_clksel);
+	data = (count | 0x00920000 | (wdt->ctrl_clksel));
 	xwdtps_writereg(data, XWDTPS_CCR_OFFSET);
 
 	data = (XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTEN_MASK | \
@@ -212,19 +211,6 @@ static int xwdtps_open(struct inode *inode, struct file *file)
 {
 	if (test_and_set_bit(0, &(wdt->busy)))
 		return -EBUSY;
-
-	/* Determine the input frequency and the prescalar based on which board is seen
-	 * in the device tree. wdt->ep107 is set in xwdtps_probe()
-	 */
-	if (wdt->ep107) {
-		wdt_clock = 2500000;
-		wdt_prescalar = 64;
-		wdt_ctrl_clksel = 1;
-	} else {
-		wdt_clock = 133000000;
-		wdt_prescalar = 4096;
-		wdt_ctrl_clksel = 3;
-	}
 
 	xwdtps_start();
 	return nonseekable_open(inode, file);
@@ -387,11 +373,9 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int res;
-	struct device_node *np;
 	const void *prop;
-	int size;
 
-printk(KERN_ERR "WDT OF probe\n");
+	printk(KERN_ERR "WDT OF probe\n");
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
 		dev_err(&pdev->dev, "Device Busy, only 1 xwdtps instance \
@@ -433,19 +417,20 @@ printk(KERN_ERR "WDT OF probe\n");
 	wdt->miscdev.name	= "watchdog",
 	wdt->miscdev.fops	= &xwdtps_fops,
 
-	/* Figure out from the device tree if this is running on the EP107 emulation
-	 * platform as it doesn't match the silicon exactly and the driver needs
-	 * to work accordingly.
-	 */
-	np = of_get_next_parent(pdev->dev.of_node);
-	np = of_get_next_parent(np);
-	prop = of_get_property(np, "compatible", &size);
-
+	prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
 	if (prop != NULL) {
-		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
-			wdt->ep107 = 1;
-		else
-			wdt->ep107 = 0;
+		wdt->clock = (u32)be32_to_cpup(prop);
+	}
+
+	if (wdt->clock <= 10000000) {/* For PEEP */
+		wdt->prescalar = 64;
+		wdt->ctrl_clksel = 1;
+	} else if (wdt->clock <= 75000000) {
+		wdt->prescalar = 256;
+		wdt->ctrl_clksel = 2;
+	} else { /* For Zynq */
+		wdt->prescalar = 4096;
+		wdt->ctrl_clksel = 3;
 	}
 
 	/* Initialize the busy flag to zero */

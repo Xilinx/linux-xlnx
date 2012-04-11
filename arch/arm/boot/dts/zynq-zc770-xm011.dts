@@ -52,6 +52,7 @@
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
 			reg = <0xf8005000 0x100>;
+			clock-frequency = <0x7ed6b40>;
 		};
 
 		spi: spi@e0006000 {
