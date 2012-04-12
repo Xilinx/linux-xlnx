@@ -291,6 +291,7 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	 * Set the slave address in address register.
 	 * Check for the message size against FIFO depth and set the
 	 * HOLD bus bit if it is more than FIFO depth.
+	 * Clear the interrupts in interrupt status register.
 	 */
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg |= (XI2CPS_CR_RW_MASK | XI2CPS_CR_CLR_FIFO_MASK);
@@ -343,6 +344,7 @@ static void xi2cps_msend(struct xi2cps *id)
 	unsigned int avail_bytes;
 	unsigned int bytes_to_send;
 	unsigned int ctrl_reg;
+	unsigned int isr_status;
 
 	id->p_recv_buf = NULL;
 	id->p_send_buf = id->p_msg->buf;
@@ -353,16 +355,18 @@ static void xi2cps_msend(struct xi2cps *id)
 	 * Set the slave address in address register.
 	 * Check for the message size against FIFO depth and set the
 	 * HOLD bus bit if it is more than FIFO depth.
+	 * Clear the interrupts in interrupt status register.
 	 */
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg &= ~XI2CPS_CR_RW_MASK;
 	ctrl_reg |= XI2CPS_CR_CLR_FIFO_MASK;
 
-	if ((id->send_count) > XI2CPS_FIFO_DEPTH || id->bus_hold_flag)
+	if ((id->send_count) > XI2CPS_FIFO_DEPTH)
 		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
-	else
-		ctrl_reg &= ~XI2CPS_CR_HOLD_BUS_MASK;
 	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
+
+	isr_status = xi2cps_readreg(XI2CPS_ISR_OFFSET);
+	xi2cps_writereg(isr_status, XI2CPS_ISR_OFFSET);
 
 	/*
 	 * Calculate the space available in FIFO. Check the message length
