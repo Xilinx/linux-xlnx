@@ -33,7 +33,7 @@
  *	instead of FIFO depth. This generated the second DATA interrupt as there
  *	are still outstanding bytes to be received.
  *
- *	This driver has no support for Repeated start.
+ *	The bus hold flag logic provides support for repeated start.
  *
  */
 
@@ -243,6 +243,17 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 				}
 			}
 		} else {
+			if (id->bus_hold_flag == 0) {
+				/* Clear the hold bus bit */
+				ctrl_reg =
+				xi2cps_readreg(XI2CPS_CR_OFFSET);
+				if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
+					== XI2CPS_CR_HOLD_BUS_MASK)
+					xi2cps_writereg(
+					(ctrl_reg &
+					(~XI2CPS_CR_HOLD_BUS_MASK)),
+					XI2CPS_CR_OFFSET);
+			}
 		/*
 		 * If the device is receiving data, then signal the completion
 		 * of transaction and read the data present in the FIFO.
@@ -272,6 +283,7 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 static void xi2cps_mrecv(struct xi2cps *id)
 {
 	unsigned int ctrl_reg;
+	unsigned int isr_status;
 
 	id->p_recv_buf = id->p_msg->buf;
 	id->recv_count = id->p_msg->len;
@@ -285,12 +297,14 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg |= (XI2CPS_CR_RW_MASK | XI2CPS_CR_CLR_FIFO_MASK);
 
-	if (id->recv_count > XI2CPS_FIFO_DEPTH || id->bus_hold_flag)
+	if (id->recv_count > XI2CPS_FIFO_DEPTH)
 		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
-	else
-		ctrl_reg &= ~XI2CPS_CR_HOLD_BUS_MASK;
 
 	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
+
+	isr_status = xi2cps_readreg(XI2CPS_ISR_OFFSET);
+	xi2cps_writereg(isr_status, XI2CPS_ISR_OFFSET);
+
 	xi2cps_writereg((id->p_msg->addr & XI2CPS_ADDR_MASK),
 						XI2CPS_ADDR_OFFSET);
 	/*
@@ -302,9 +316,22 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	if (id->recv_count > XI2CPS_FIFO_DEPTH)
 		xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
 				XI2CPS_XFER_SIZE_OFFSET);
-	else
+	else {
 		xi2cps_writereg(id->recv_count, XI2CPS_XFER_SIZE_OFFSET);
 
+	/*
+	 * Clear the bus hold flag if bytes to receive is less than FIFO size.
+	 */
+		if (id->bus_hold_flag == 0) {
+			/* Clear the hold bus bit */
+			ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
+			if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
+				== XI2CPS_CR_HOLD_BUS_MASK)
+				xi2cps_writereg(
+				(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
+				XI2CPS_CR_OFFSET);
+		}
+	}
 	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
 
@@ -360,6 +387,19 @@ static void xi2cps_msend(struct xi2cps *id)
 	xi2cps_writereg((id->p_msg->addr & XI2CPS_ADDR_MASK),
 						XI2CPS_ADDR_OFFSET);
 
+	/*
+	 * Clear the bus hold flag if there is no more data
+	 * and if it is the last message.
+	 */
+	if (id->bus_hold_flag == 0 && id->send_count == 0) {
+		/* Clear the hold bus bit */
+		ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
+		if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
+			== XI2CPS_CR_HOLD_BUS_MASK)
+			xi2cps_writereg(
+			(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
+			XI2CPS_CR_OFFSET);
+	}
 	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
 
@@ -405,9 +445,11 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	 * Set the flag to one when multiple messages are to be
 	 * processed with a repeated start.
 	 */
-	if (num > 1)
+	if (num > 1) {
 		id->bus_hold_flag = 1;
-	else
+		xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) |
+				XI2CPS_CR_HOLD_BUS_MASK), XI2CPS_CR_OFFSET);
+	} else
 		id->bus_hold_flag = 0;
 
 	/* Process the msg one by one */
