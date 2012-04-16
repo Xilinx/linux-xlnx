@@ -3,5 +3,5 @@
 #
 
 # Common support
-obj-y				:= common.o timer.o
+obj-y				:= common.o timer.o slcr.o
 obj-$(CONFIG_SMP)               += platsmp.o
