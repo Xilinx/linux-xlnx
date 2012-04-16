@@ -48,8 +48,6 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	/* Indicate to the primary core that the secondary is up and running.
 	 * Let the write buffer drain.
 	 */
-	__raw_writel(BOOT_STATUS_CPU1_UP, OCM_HIGH_BASE + BOOT_STATUS_OFFSET);
-	wmb();
 
 	/*
 	 * Synchronise with the boot thread.
@@ -58,27 +56,75 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	spin_unlock(&boot_lock);
 }
 
-void zynq_cpu1_start(u32 status, u32 addr)
+/* Store pointer to ioremap area which points to address 0x0 */
+static u8 *zero;
+
+/*
+ * Store pointer to SLCR registers. SLCR driver can't be used because
+ * it is not initialized yet and this code is used for bootup the second CPU
+ */
+#define SLCR_UNLOCK	0xDF0D
+#define SLCR_LOCK	0x767B
+
+static u8 *slcr;
+
+int zynq_cpu1_start(u32 address)
 {
-	/* Initialize the boot status and give the secondary core
-	 * the start address of the kernel, let the write buffer drain
-	 */
-	__raw_writel(status, OCM_HIGH_BASE + BOOT_STATUS_OFFSET);
+	if (!slcr) {
+		printk(KERN_INFO "Map SLCR registers\n");
+		/* Remap the SLCR registers to be able to work with cpu1 */
+		slcr = ioremap(0xF8000000, PAGE_SIZE);
+		if (!slcr) {
+			printk(KERN_WARNING
+				"!!!! SLCR jump vectors can't be used !!!!\n");
+			return -1;
+		}
+	}
 
-	__raw_writel(addr, OCM_HIGH_BASE + BOOT_ADDR_OFFSET);
+	/* MS: Expectation that SLCR are directly map and accessible */
+	/* Not possible to jump to non aligned address */
+	if (!(address & 3) && (!address || (address >= 0xC))) {
+		__raw_writel(SLCR_UNLOCK, slcr + 0x8); /* UNLOCK SLCR */
+		__raw_writel(0x22, slcr + 0x244); /* stop CLK and reset CPU1 */
+	
+		/*
+		 * This is elegant way how to jump to any address
+		 * 0x0: Load address at 0x8 to r0
+		 * 0x4: Jump by mov instruction
+		 * 0x8: Jumping address
+		 */
+		if (address && address >= 0xC) {
+			if (!zero) {
+				printk(KERN_WARNING
+					"BOOTUP jump vectors is not mapped!\n");
+				return -1;
+			}
+			__raw_writel(0xe59f0000, zero + 0x0);/* 0:ldr r0, [8] */
+			__raw_writel(0xe1a0f000, zero + 0x4);/* 4:mov pc, r0 */
+			__raw_writel(address, zero + 0x8);/* 8:.word address */
+		}
+	
+		flush_cache_all();
+		outer_flush_all();
+		wmb();
+	
+		__raw_writel(0x20, slcr + 0x244); /* enable CPU1 */
+		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPU1 */
+		__raw_writel(SLCR_LOCK, slcr + 0x4); /* LOCK SLCR */
 
-	wmb();
+		return 0;
+	}
 
-	/*
-	 * Send an event to wake the secondary core from WFE state.
-	 */
-	sev();
+	printk(KERN_WARNING "Can't start CPU1: Wrong starting address %x\n",
+								address);
+
+	return -1;
 }
 EXPORT_SYMBOL(zynq_cpu1_start);
 
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
-	unsigned long timeout;
+	int ret;
 
 	/*
 	 * set synchronisation state between this boot processor
@@ -86,16 +132,9 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
-	zynq_cpu1_start(0, virt_to_phys(secondary_startup));
-
-	/*
-	 * Wait for the other CPU to boot, but timeout if it doesn't
-	 */
-	timeout = jiffies + (1 * HZ);
-	while ((__raw_readl(OCM_HIGH_BASE + BOOT_STATUS_OFFSET) !=
-				BOOT_STATUS_CPU1_UP) &&
-				(time_before(jiffies, timeout)))
-		rmb();
+	ret = zynq_cpu1_start(virt_to_phys(secondary_startup));
+	if (ret)
+		return -1;
 
 	/*
 	 * now the secondary core is starting up let it run its
@@ -127,6 +166,15 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	int i;
 
 	/*
+	 * Remap the first three addresses at zero which are used
+	 * for 32bit long jump for SMP. Look at zynq_cpu1_start()
+	 */
+	zero = ioremap(0, 12);
+	if (!zero)
+		printk(KERN_WARNING
+			"!!!! BOOTUP jump vectors can't be used !!!!\n");
+
+	/*
 	 * Initialise the present map, which describes the set of CPUs
 	 * actually populated at the present time.
 	 */
@@ -139,7 +187,9 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 /* hotplug part */
 int platform_cpu_kill(unsigned int cpu)
 {
-        return 1;
+	printk(KERN_DEBUG "%s cpu %d %d\n", __func__, cpu, smp_processor_id());
+
+	return 1;
 }
 
 /*
@@ -150,15 +200,18 @@ void platform_cpu_die(unsigned int cpu)
 {
 	flush_cache_all();
 
+	printk(KERN_DEBUG "%s cpu %d %d\n", __func__, cpu, smp_processor_id());
+
 	while(1);
 }
 
 int platform_cpu_disable(unsigned int cpu)
 {
+	printk(KERN_DEBUG "%s cpu %d %d\n", __func__, cpu, smp_processor_id());
+
         /*
          * we don't allow CPU 0 to be shutdown (it is still too special
          * e.g. clock tick interrupts)
          */
         return cpu == 0 ? -EPERM : 0;
 }
-

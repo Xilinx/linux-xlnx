@@ -20,6 +20,6 @@ static inline void arch_idle(void)
 	cpu_do_idle();
 }
 
-extern void zynq_cpu1_start(u32 status, u32 addr);
+extern int zynq_cpu1_start(u32 address);
 
 #endif

@@ -44,6 +44,7 @@ config ZYNQ_REMOTEPROC
 	select REMOTEPROC
 	select RPMSG
 	select SMP
+	select HOTPLUG_CPU
 	default m
 	help
 	  Say y here to support Xilinx ZynQ remote processors (the second
