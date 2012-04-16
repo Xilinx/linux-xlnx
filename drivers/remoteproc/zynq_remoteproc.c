@@ -36,6 +36,9 @@
 
 #include "remoteproc_internal.h"
 
+/* Module parameter */
+static char *firmware;
+
 /* Structure for storing IRQs */
 struct irq_list {
 	int irq;
@@ -240,7 +243,12 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 		goto ipi_fault;
 	}
 
-	prop = of_get_property(pdev->dev.of_node, "firmware", NULL);
+	/* Module param firmware first */
+	if (firmware)
+		prop = firmware;
+	else
+		prop = of_get_property(pdev->dev.of_node, "firmware", NULL);
+
 	if (prop) {
 		dev_dbg(&pdev->dev, "Using firmware: %s\n", prop);
 		local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
@@ -305,6 +313,9 @@ static struct platform_driver zynq_remoteproc_driver = {
 	},
 };
 module_platform_driver(zynq_remoteproc_driver);
+
+module_param(firmware, charp, 0);
+MODULE_PARM_DESC(firmware, "Override the firmware image name. Default value in DTS.");
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Zynq remote processor control driver");
