@@ -165,8 +165,14 @@
 
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
-			reg = <0xf8007000 0x1000>;
+			reg = <0xf8007000 0x100>;
 			interrupts = <0 8 0>;
+			interrupt-parent = <&gic>;
+		};
+		xadc@f8007100 {
+			compatible = "xlnx,ps7-xadc-1.00.a";
+			reg = <0xf8007100 0x20>;
+			interrupts = <0 7 0>;
 			interrupt-parent = <&gic>;
 		};
 	};
