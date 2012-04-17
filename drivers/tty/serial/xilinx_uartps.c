@@ -26,7 +26,7 @@
 #define XUARTPS_NAME		"xuartps"
 #define XUARTPS_MAJOR		0	/* use dynamic node allocation */
 #define XUARTPS_MINOR		0	/* works best with devtmpfs */
-#define XUARTPS_NR_PORTS	2
+#define XUARTPS_NR_PORTS	10
 #define XUARTPS_FIFO_SIZE	16	/* FIFO size */
 #define XUARTPS_REGISTER_SPACE	0xFFF
 
@@ -766,15 +766,17 @@ static struct uart_port xuartps_port[2];
  *
  * Returns a pointer to a uart_port or NULL for failure
  **/
-static struct uart_port *xuartps_get_port(void)
+static struct uart_port *xuartps_get_port(int id)
 {
 	struct uart_port *port;
-	int id;
 
-	/* Find the next unused port */
-	for (id = 0; id < XUARTPS_NR_PORTS; id++)
-		if (xuartps_port[id].mapbase == 0)
-			break;
+	/* try the given port id if failed use default method */
+	if (xuartps_port[id].mapbase != 0) {
+		/* Find the next unused port */
+		for (id = 0; id < XUARTPS_NR_PORTS; id++)
+			if (xuartps_port[id].mapbase == 0)
+				break;
+	}
 
 	if (id >= XUARTPS_NR_PORTS)
 		return NULL;
@@ -945,6 +947,7 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 	struct uart_port *port;
 	struct resource *res, *res2;
 	int clk = 0;
+	int id = 0;
 
 #ifdef CONFIG_OF
 	const unsigned int *prop;
@@ -956,6 +959,13 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
 		if (prop)
 			clk = be32_to_cpup(prop);
+	}
+
+	/* Look for a serialN alias */
+	id = of_alias_get_id(pdev->dev.of_node, "serial");
+	if (id < 0) {
+		dev_warn(&pdev->dev, "failed to get alias id, errno %d\n", id);
+		id = 0;
 	}
 #else
 	clk = *((unsigned int *)(pdev->dev.platform_data));
@@ -974,7 +984,7 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	/* Initialize the port structure */
-	port = xuartps_get_port();
+	port = xuartps_get_port(id);
 
 	if (!port) {
 		dev_err(&pdev->dev, "Cannot get uart_port structure\n");
