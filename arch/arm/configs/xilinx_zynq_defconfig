@@ -714,6 +714,7 @@ CONFIG_MISC_DEVICES=y
 # CONFIG_DS1682 is not set
 # CONFIG_TI_DAC7512 is not set
 # CONFIG_BMP085 is not set
+CONFIG_SI570=y
 # CONFIG_C2PORT is not set
 
 #
