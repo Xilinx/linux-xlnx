@@ -2,7 +2,7 @@
 
 / {
 	model = "Xilinx Zynq ZC770 - V&C dt1 - minimum)";
-	compatible = "xlnx,zynq-zc770";
+	compatible = "xlnx,zynq-zc770-xm013";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;
@@ -47,5 +47,13 @@
 			reg = < 0xf8001000 0x1000 >;
 		};
 
+		spi0: spi@e0006000 {
+			compatible = "xlnx,ps7-spi-1.00.a";
+			reg = <0xE0006000 0x1000>;
+			interrupts = <58 0>;
+			speed-hz = <166666700>;
+			bus-num = <0>;
+			num-chip-select = <4>;
+		};
 	};
 };
