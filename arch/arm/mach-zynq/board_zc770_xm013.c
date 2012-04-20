@@ -23,6 +23,8 @@
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
 #include <linux/xilinx_devices.h>
+#include <linux/i2c.h>
+#include <linux/i2c/si570.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -62,6 +64,22 @@ static struct spi_board_info spi_devs[] __initdata = {
 
 #endif
 
+#if defined(CONFIG_SI570)
+
+static struct si570_platform_data si570_0 = {
+	.factory_fout = 10000000LL,
+	.initial_fout = 133000000,
+};
+
+static struct i2c_board_info __initdata si570_board_info[] = {
+	{
+		I2C_BOARD_INFO("si570", 0x55),
+		.platform_data = &si570_0,
+	}
+};
+
+#endif /* CONFIG_SI570 */
+	
 extern struct sys_timer xttcpss_sys_timer;
 
 static void __init board_zc770_xm013_init(void)
@@ -76,6 +94,11 @@ static void __init board_zc770_xm013_init(void)
 #ifndef CONFIG_SPI_SPIDEV
 	spi_register_board_info(&spi_devs[0], 
 		ARRAY_SIZE(spi_devs));
+#endif
+
+#if defined(CONFIG_SI570)
+	i2c_register_board_info(0, si570_board_info,
+				ARRAY_SIZE(si570_board_info));
 #endif
 }
 

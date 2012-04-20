@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-	model = "Xilinx Zynq ZC770 - V&C dt1 - minimum)";
+	model = "Xilinx Zynq ZC770 XM013 (DC4)";
 	compatible = "xlnx,zynq-zc770-xm013";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
@@ -54,6 +54,15 @@
 			speed-hz = <166666700>;
 			bus-num = <0>;
 			num-chip-select = <4>;
+		};
+
+		i2c1: i2c@e0005000 {
+			compatible = "xlnx,ps7-i2c-1.00.a";
+			reg = <0xE0005000 0x1000>;
+			interrupts = <80 0>;
+			bus-id = <0>;
+			input-clk = <133000000>;
+			i2c-clk = <100000>;
 		};
 	};
 };
