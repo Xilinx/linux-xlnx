@@ -260,8 +260,11 @@ rproc_load_segments(struct rproc *rproc, const u8 *elf_data, size_t len)
 		}
 
 		/* put the segment where the remote processor expects it */
-		if (phdr->p_filesz)
+		if (phdr->p_filesz) {
+			dev_dbg(dev, "memcpy %x %x, size %x\n",
+					ptr, elf_data + phdr->p_offset, filesz);
 			memcpy(ptr, elf_data + phdr->p_offset, filesz);
+		}
 
 		/*
 		 * Zero out remaining memory for this segment.
@@ -270,8 +273,11 @@ rproc_load_segments(struct rproc *rproc, const u8 *elf_data, size_t len)
 		 * did this for us. albeit harmless, we may consider removing
 		 * this.
 		 */
-		if (memsz > filesz)
+		if (memsz > filesz) {
+			dev_dbg(dev, "memset %x size %x\n",
+						ptr + filesz, memsz - filesz);
 			memset(ptr + filesz, 0, memsz - filesz);
+		}
 	}
 
 	return ret;
