@@ -813,12 +813,13 @@ static int xuartps_poll_get_char(struct uart_port *port)
 	imr = xuartps_readl(XUARTPS_IMR_OFFSET);
 	xuartps_writel(imr, XUARTPS_IDR_OFFSET);
 
-	/*Wait until FIFO is not empty*/
-	while(xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_SR_RXEMPTY)
-		cpu_relax();
-
+	/*Check if  FIFO is empty*/
+	if
+	(xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_SR_RXEMPTY)
+		c = NO_POLL_CHAR;
+		else
 	/*Read a character*/
-	c = (unsigned char) xuartps_readl(XUARTPS_FIFO_OFFSET);
+		c = (unsigned char) xuartps_readl(XUARTPS_FIFO_OFFSET);
 
 	/*Enable interrupts*/
 	xuartps_writel(imr, XUARTPS_IER_OFFSET);
