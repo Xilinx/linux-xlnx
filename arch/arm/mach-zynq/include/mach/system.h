@@ -15,11 +15,14 @@
 #ifndef __MACH_SYSTEM_H__
 #define __MACH_SYSTEM_H__
 
+#include <asm/proc-fns.h>
+
 static inline void arch_idle(void)
 {
 	cpu_do_idle();
 }
 
+extern void xslcr_system_reset(void);
 extern int zynq_cpu1_start(u32 address);
 
 #endif

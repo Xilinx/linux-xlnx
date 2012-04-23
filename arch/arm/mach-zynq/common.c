@@ -32,6 +32,7 @@
 
 #include <mach/zynq_soc.h>
 #include <mach/clkdev.h>
+#include <mach/system.h>
 #include "common.h"
 
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
@@ -112,6 +113,12 @@ static void __init xilinx_map_io(void)
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
 }
 
+static void xilinx_restart(char mode, const char *cmd)
+{
+	/* Add architecture specific reset processing here */
+	xslcr_system_reset();
+}
+
 static const char *xilinx_dt_match[] = {
 	"xlnx,zynq-zc770",
 	NULL
@@ -124,4 +131,5 @@ MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.init_machine	= xilinx_init_machine,
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
+	.restart        = xilinx_restart,
 MACHINE_END
