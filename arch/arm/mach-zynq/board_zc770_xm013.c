@@ -80,6 +80,84 @@ static struct i2c_board_info __initdata si570_board_info[] = {
 
 #endif /* CONFIG_SI570 */
 	
+#ifdef CONFIG_MTD_M25P80
+
+static struct mtd_partition qspi_flash_partitions[] = {
+	{
+		.name		= "qspi-fsbl",
+		.size		= 0x80000,
+		.offset		= 0,
+	},
+	{
+		.name		= "qspi-u-boot",
+		.size		= 0x80000,
+		.offset		= 0x80000,
+	},
+	{
+		.name		= "qspi-linux",
+		.size		= 0x500000,
+		.offset		= 0x100000,
+	},
+	{
+		.name		= "qspi-device-tree",
+		.size		= 0x20000,
+		.offset		= 0x600000,
+	},
+	{
+		.name		= "qspi-user",
+		.size		= 0xE0000,
+		.offset		= 0x620000,
+	},
+	{
+		.name		= "qspi-scratch",
+		.size		= 0x100000,
+		.offset		= 0x700000,
+	},
+	{
+		.name		= "qspi-rootfs",
+#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
+		.size		= 0x1800000,
+#else
+		.size		= 0x800000,
+#endif
+		.offset		= 0x800000,
+	},
+};
+
+static struct flash_platform_data qspi_flash_pdata = {
+	.name			= "serial_flash",
+	.parts			= qspi_flash_partitions,
+	.nr_parts		= ARRAY_SIZE(qspi_flash_partitions),
+#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
+	.type			= "s25fl129p1x2"	/* dual flash devices */
+#else
+	.type			= "s25fl129p1"	/* single flash device */
+#endif
+};
+
+#endif
+
+#if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
+
+static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
+	{
+#ifdef CONFIG_SPI_SPIDEV
+		.modalias		= "spidev",
+		.platform_data		= &xqspi_0_pdata,
+#else
+		.modalias		= "m25p80",
+		.platform_data		= &qspi_flash_pdata,
+#endif
+		.irq			= IRQ_QSPI0,
+		.max_speed_hz		= 50000000, /* max sample rate at 3V */
+		.bus_num		= 1,
+		.chip_select		= 0,
+	},
+	
+};
+
+#endif
+
 extern struct sys_timer xttcpss_sys_timer;
 
 static void __init board_zc770_xm013_init(void)
@@ -100,6 +178,13 @@ static void __init board_zc770_xm013_init(void)
 	i2c_register_board_info(0, si570_board_info,
 				ARRAY_SIZE(si570_board_info));
 #endif
+
+#if 	defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
+	spi_register_board_info(&xilinx_spipss_0_boardinfo[0], 
+		ARRAY_SIZE(xilinx_spipss_0_boardinfo));
+#endif
+
+
 }
 
 static const char *xilinx_dt_match[] = {
