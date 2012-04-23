@@ -688,6 +688,8 @@ rproc_handle_boot_rsc(struct rproc *rproc, struct fw_resource *rsc, int len)
 		case RSC_VRING:
 			ret = rproc_handle_vring(rproc, rsc);
 			break;
+		case RSC_MMU:
+			break;
 		case RSC_VIRTIO_DEV:
 			/* this one is handled early upon registration */
 			break;
