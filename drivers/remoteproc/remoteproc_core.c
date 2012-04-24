@@ -261,8 +261,8 @@ rproc_load_segments(struct rproc *rproc, const u8 *elf_data, size_t len)
 
 		/* put the segment where the remote processor expects it */
 		if (phdr->p_filesz) {
-			dev_dbg(dev, "memcpy %x %x, size %x\n",
-					ptr, elf_data + phdr->p_offset, filesz);
+			dev_dbg(dev, "memcpy %x %x, size %x\n", (u32)ptr,
+				(u32)elf_data + phdr->p_offset, filesz);
 			memcpy(ptr, elf_data + phdr->p_offset, filesz);
 		}
 
@@ -275,7 +275,7 @@ rproc_load_segments(struct rproc *rproc, const u8 *elf_data, size_t len)
 		 */
 		if (memsz > filesz) {
 			dev_dbg(dev, "memset %x size %x\n",
-						ptr + filesz, memsz - filesz);
+					(u32)ptr + filesz, memsz - filesz);
 			memset(ptr + filesz, 0, memsz - filesz);
 		}
 	}
