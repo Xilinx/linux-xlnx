@@ -169,10 +169,18 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	 * Remap the first three addresses at zero which are used
 	 * for 32bit long jump for SMP. Look at zynq_cpu1_start()
 	 */
+#if CONFIG_PHYS_OFFSET
 	zero = ioremap(0, 12);
-	if (!zero)
+	if (!zero) {
 		printk(KERN_WARNING
 			"!!!! BOOTUP jump vectors can't be used !!!!\n");
+		while (1)
+			;
+	}
+#else
+	/* The first three addresses at zero are already mapped */
+	zero = (u8 *)CONFIG_PAGE_OFFSET;
+#endif
 
 	/*
 	 * Initialise the present map, which describes the set of CPUs
