@@ -72,7 +72,7 @@
 			speed-hz = <200000000>;
 			bus-num = <1>;
 			num-chip-select = <1>;
-			is-dual = <1>;
+			is-dual = <0>;
 		};
 
 		eth@e000b000 {
