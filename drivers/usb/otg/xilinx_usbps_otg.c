@@ -202,20 +202,39 @@ static int xusbps_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 	return 0;
 }
 
-/* charge vbus or discharge vbus through a resistor to ground */
+/* Charge vbus for VBUS pulsing in SRP */
 static void xusbps_otg_chrg_vbus(int on)
 {
 	struct xusbps_otg	*xotg = the_transceiver;
 	u32	val;
 
-	val = readl(xotg->base + CI_OTGSC);
+	val = readl(xotg->base + CI_OTGSC) & ~OTGSC_INTSTS_MASK;
 
 	if (on)
-		writel((val & ~OTGSC_INTSTS_MASK) | OTGSC_VC,
-				xotg->base + CI_OTGSC);
+		/* stop discharging, start charging */
+		val = (val & ~OTGSC_VD) | OTGSC_VC;
 	else
-		writel((val & ~OTGSC_INTSTS_MASK) | OTGSC_VD,
-				xotg->base + CI_OTGSC);
+		/* stop charging */
+		val &= ~OTGSC_VC;
+
+	writel(val, xotg->base + CI_OTGSC);
+}
+
+/* Discharge vbus through a resistor to ground */
+static void xusbps_otg_dischrg_vbus(int on)
+{
+	struct xusbps_otg	*xotg = the_transceiver;
+	u32	val;
+
+	val = readl(xotg->base + CI_OTGSC) & ~OTGSC_INTSTS_MASK;
+
+	if (on)
+		/* stop charging, start discharging */
+		val = (val & ~OTGSC_VC) | OTGSC_VD;
+	else
+		val &= ~OTGSC_VD;
+
+	writel(val, xotg->base + CI_OTGSC);
 }
 
 /* Start SRP */
@@ -237,6 +256,42 @@ static int xusbps_otg_start_srp(struct otg_transceiver *otg)
 	val = readl(xotg->base + CI_OTGSC);
 	if (val & (OTGSC_HADP | OTGSC_DP))
 		dev_dbg(xotg->dev, "DataLine SRP Error\n");
+
+	/* If Vbus is valid, then update the hsm */
+	if (val & OTGSC_BSV) {
+		dev_dbg(xotg->dev, "no b_sess_vld interrupt\n");
+
+		xotg->hsm.b_sess_vld = 1;
+		xusbps_update_transceiver();
+		return 0;
+	}
+
+	dev_warn(xotg->dev, "Starting VBUS Pulsing...\n");
+
+	/* Disable interrupt - b_sess_vld */
+	val = readl(xotg->base + CI_OTGSC);
+	val &= (~(OTGSC_BSVIE | OTGSC_BSEIE));
+	writel(val, xotg->base + CI_OTGSC);
+
+	/* Start VBus SRP, drive vbus to generate VBus pulse */
+	xusbps_otg_chrg_vbus(1);
+	msleep(15);
+	xusbps_otg_chrg_vbus(0);
+
+	/* Enable interrupt - b_sess_vld*/
+	val = readl(xotg->base + CI_OTGSC);
+	dev_dbg(xotg->dev, "after VBUS pulse otgsc = %x\n", val);
+
+	val |= (OTGSC_BSVIE | OTGSC_BSEIE);
+	writel(val, xotg->base + CI_OTGSC);
+
+	/* If Vbus is valid, then update the hsm */
+	if (val & OTGSC_BSV) {
+		dev_dbg(xotg->dev, "no b_sess_vld interrupt\n");
+
+		xotg->hsm.b_sess_vld = 1;
+		xusbps_update_transceiver();
+	}
 
 	dev_dbg(xotg->dev, "%s <---\n", __func__);
 	return 0;
@@ -958,9 +1013,6 @@ static void xusbps_otg_work(struct work_struct *work)
 					xotg->otg.gadget->b_hnp_enable &&
 					xotg->hsm.a_bus_suspend) {
 			dev_warn(xotg->dev, "HNP detected\n");
-			/* Let the A-device set HABA and wait for B-disconnect
-			 * in loopback testing mode */
-			msleep(50);
 
 			if (xotg->stop_peripheral)
 				xotg->stop_peripheral(&xotg->otg);
@@ -1092,6 +1144,10 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->hsm.b_bus_req = 0;
 			xusbps_otg_loc_sof(0);
 
+			/* Fix: The kernel crash in usb_port_suspend
+				during HNP */
+			msleep(20);
+
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
 			else
@@ -1099,11 +1155,6 @@ static void xusbps_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			xotg->hsm.a_bus_suspend = 0;
-			/* Wait for A-device to become host for seeing device
-			 * connection. There is some issue with device connect
-			 * detection in loopback mode. */
-			msleep(20);
-
 			xotg->otg.state = OTG_STATE_B_PERIPHERAL;
 			if (xotg->start_peripheral)
 				xotg->start_peripheral(&xotg->otg);
@@ -1390,11 +1441,6 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			xotg->hsm.b_bus_suspend = 0;
 			xotg->hsm.b_bus_suspend_vld = 0;
-
-			/* Wait for B-device to become host for seeing device
-			 * connection. There is some issue with device connect
-			 * detection in loopback mode */
-			msleep(20);
 
 			xotg->otg.state = OTG_STATE_A_PERIPHERAL;
 			/* msleep(200); */
@@ -2232,7 +2278,7 @@ static int __init xusbps_otg_init(void)
 {
 	return platform_driver_register(&xusbps_otg_driver);
 }
-module_init(xusbps_otg_init);
+subsys_initcall(xusbps_otg_init);
 
 static void __exit xusbps_otg_cleanup(void)
 {
