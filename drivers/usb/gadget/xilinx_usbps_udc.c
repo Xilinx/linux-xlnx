@@ -1986,9 +1986,10 @@ int xusbps_stop(struct usb_gadget_driver *driver)
 	/* report disconnect; the controller is already quiesced */
 	driver->disconnect(&udc_controller->gadget);
 
+#ifdef CONFIG_USB_XUSBPS_OTG
 	udc_controller->xotg->start_peripheral = NULL;
 	udc_controller->xotg->stop_peripheral = NULL;
-
+#endif
 	/* unbind gadget and unhook driver. */
 	driver->unbind(&udc_controller->gadget);
 	udc_controller->gadget.dev.driver = NULL;
