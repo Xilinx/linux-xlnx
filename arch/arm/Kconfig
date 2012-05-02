@@ -976,6 +976,7 @@ config ARCH_ZYNQ
 	select CPU_V7
 	select GENERIC_CLOCKEVENTS
 	select CLKDEV_LOOKUP
+	select ARCH_WANT_OPTIONAL_GPIOLIB
 	select ARM_GIC
 	select ARM_AMBA
 	select ICST
