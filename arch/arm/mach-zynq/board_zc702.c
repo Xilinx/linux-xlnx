@@ -217,6 +217,15 @@ static struct i2c_board_info __initdata si570_board_info[] = {
 
 #endif /* CONFIG_SI570 */
 	
+#if defined(CONFIG_EEPROM_AT24)
+
+static struct i2c_board_info __initdata m24c08_board_info[] = {
+	{
+		I2C_BOARD_INFO("24c08", 0x54),
+	},
+};
+
+#endif /* CONFIG_EEPROM_AT24 */
 
 #endif /* CONFIG_I2C_XILINX_PS && CONFIG_I2C_MUX_PCA954x */
 
@@ -272,18 +281,27 @@ static void __init board_zc702_init(void)
 #if	defined(CONFIG_I2C_XILINX_PS) && defined(CONFIG_I2C_MUX_PCA954x)
 	i2c_register_board_info(0, pca954x_i2c_devices,
 				ARRAY_SIZE(pca954x_i2c_devices));
-#if	defined(CONFIG_RTC_DRV_PCF8563)
-	i2c_register_board_info(5, rtc8564_board_info,
-				ARRAY_SIZE(rtc8564_board_info));
-#endif
-#if	defined(CONFIG_GPIO_PCA953X)
-	i2c_register_board_info(4, tca6416_board_info,
-				ARRAY_SIZE(tca6416_board_info));
-#endif
+
 #if	defined(CONFIG_SI570)
 	i2c_register_board_info(1, si570_board_info,
 				ARRAY_SIZE(si570_board_info));
 #endif
+
+#if	defined(CONFIG_EEPROM_AT24)
+	i2c_register_board_info(3, m24c08_board_info,
+				ARRAY_SIZE(m24c08_board_info));
+#endif
+
+#if	defined(CONFIG_GPIO_PCA953X)
+	i2c_register_board_info(4, tca6416_board_info,
+				ARRAY_SIZE(tca6416_board_info));
+#endif
+
+#if	defined(CONFIG_RTC_DRV_PCF8563)
+	i2c_register_board_info(5, rtc8564_board_info,
+				ARRAY_SIZE(rtc8564_board_info));
+#endif
+
 
 #endif
 }
