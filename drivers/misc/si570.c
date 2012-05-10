@@ -76,6 +76,10 @@ struct si570_data {
 	u64 frequency;
 };
 
+
+static struct i2c_client *client_i2c;
+
+
 static int si570_get_defaults(struct i2c_client *client)
 {
 	struct si570_data *data = i2c_get_clientdata(client);
@@ -266,7 +270,7 @@ static int si570_reset(struct i2c_client *client, struct si570_data *data)
 	return si570_set_frequency(client, data, data->frequency);
 }
 
-static ssize_t show_frequency(struct device *dev,
+static ssize_t show_frequency_attr(struct device *dev,
 			      struct device_attribute *devattr,
 			      char *buf)
 {
@@ -276,7 +280,22 @@ static ssize_t show_frequency(struct device *dev,
 	return sprintf(buf, "%llu\n", data->frequency);
 }
 
-static ssize_t set_frequency(struct device *dev,
+int get_frequency_si570(struct device *dev, unsigned long *freq)
+{
+	int err;
+	char buf[10+1];
+
+	show_frequency_attr(dev, NULL, buf);
+
+	err = strict_strtoul(buf, 10, freq);
+	if (err)
+		return err;
+
+	return 0;
+}
+EXPORT_SYMBOL(get_frequency_si570);
+
+static ssize_t set_frequency_attr(struct device *dev,
 			     struct device_attribute *attr,
 			     const char *buf, size_t count)
 {
@@ -315,14 +334,25 @@ static ssize_t set_frequency(struct device *dev,
 
 	return count;
 }
-static ssize_t show_reset(struct device *dev,
+
+int set_frequency_si570(struct device *dev, unsigned long freq)
+{
+	char buf[10+1];
+
+	sprintf(buf, "%lu", freq);
+
+	return set_frequency_attr(dev, NULL, buf,  0);
+}
+EXPORT_SYMBOL(set_frequency_si570);
+
+static ssize_t show_reset_attr(struct device *dev,
 			  struct device_attribute *devattr,
 			  char *buf)
 {
 	return sprintf(buf, "%d\n", 0);
 }
 
-static ssize_t set_reset(struct device *dev,
+static ssize_t set_reset_attr(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
@@ -346,8 +376,23 @@ done:
 	return count;
 }
 
-static DEVICE_ATTR(frequency, S_IWUSR | S_IRUGO, show_frequency, set_frequency);
-static DEVICE_ATTR(reset, S_IWUSR | S_IRUGO, show_reset, set_reset);
+void reset_si570(struct device *dev, int id)
+{
+	char buf[4];
+
+	sprintf(buf, "%lu", (unsigned long)id);
+	set_reset_attr(dev, NULL, buf, 0);
+}
+EXPORT_SYMBOL(reset_si570);
+
+struct i2c_client *get_i2c_client_si570(void)
+{
+	return client_i2c;
+}
+EXPORT_SYMBOL(get_i2c_client_si570);
+
+static DEVICE_ATTR(frequency, S_IWUSR | S_IRUGO, show_frequency_attr, set_frequency_attr);
+static DEVICE_ATTR(reset, S_IWUSR | S_IRUGO, show_reset_attr, set_reset_attr);
 
 static struct attribute *si570_attr[] = {
 	&dev_attr_frequency.attr,
@@ -436,6 +481,8 @@ static int si570_probe(struct i2c_client *client,
 			"set initial output frequency %lu Hz\n",
 			pdata->initial_fout);
 	}
+
+	client_i2c = client;
 
 	return 0;
 
