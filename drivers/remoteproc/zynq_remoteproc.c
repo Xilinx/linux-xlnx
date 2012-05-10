@@ -1,7 +1,7 @@
 /*
  * Zynq Remote Processor driver
  *
- * Copyright (C) 2012 Michal Simek <monstr@monst.eu>
+ * Copyright (C) 2012 Michal Simek <monstr@monstr.eu>
  * Copyright (C) 2012 PetaLogix
  *
  * Based on origin OMAP Remote Processor driver
@@ -34,6 +34,7 @@
 #include <asm/cacheflush.h>
 #include <mach/system.h>
 #include <linux/slab.h>
+#include <linux/cpu.h>
 
 #include "remoteproc_internal.h"
 
@@ -279,6 +280,11 @@ ipi_fault:
 irq_fault:
 	clear_irq(pdev);
 
+	/* Cpu can't be power on - for example in nosmp mode */
+	ret = cpu_up(1);
+	if (ret)
+		dev_err(&pdev->dev, "Can't power on cpu1 %d\n", ret);
+
 	return ret;
 }
 
@@ -320,5 +326,6 @@ module_platform_driver(zynq_remoteproc_driver);
 module_param(firmware, charp, 0);
 MODULE_PARM_DESC(firmware, "Override the firmware image name. Default value in DTS.");
 
+MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Zynq remote processor control driver");
