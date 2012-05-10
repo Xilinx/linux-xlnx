@@ -1,0 +1,1 @@
+source "drivers/video/xylon/xylonfb/Kconfig"
