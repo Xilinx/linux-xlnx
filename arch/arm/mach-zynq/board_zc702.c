@@ -28,10 +28,12 @@
 #include <linux/i2c/pca953x.h>
 #include <linux/i2c/si570.h>
 
+#include <mach/slcr.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
-
 #include <asm/hardware/gic.h>
+
 #include "common.h"
 
 #define IRQ_SPI1		81
@@ -244,4 +246,5 @@ MACHINE_START(XILINX, "Xilinx Zynq Platform")
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
 	.reserve	= xilinx_memory_init,
+	.restart	= xilinx_system_reset,
 MACHINE_END
