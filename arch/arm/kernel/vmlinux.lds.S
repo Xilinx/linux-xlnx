@@ -3,11 +3,11 @@
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
  */
 
+#include <asm/page.h>
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
 #include <asm/memory.h>
-#include <asm/page.h>
 	
 #define PROC_INFO							\
 	. = ALIGN(4);							\
