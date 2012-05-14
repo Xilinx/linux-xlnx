@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/log2.h>
 #include <linux/slab.h>
+#include <linux/of_i2c.h>
 #include <linux/i2c/si570.h>
 
 /* Si570 registers */
@@ -415,6 +416,7 @@ static int si570_probe(struct i2c_client *client,
 	struct si570_platform_data *pdata = client->dev.platform_data;
 	struct si570_data *data;
 	int err;
+	unsigned long initial_fout;
 
 	data = kzalloc(sizeof(struct si570_data), GFP_KERNEL);
 	if (!data) {
@@ -432,6 +434,13 @@ static int si570_probe(struct i2c_client *client,
 
 	if (pdata && pdata->factory_fout)
 		data->fout = pdata->factory_fout;
+
+	if (client->dev.of_node &&
+		(of_property_read_u64(client->dev.of_node, "factory-fout",
+			&data->fout) < 0)) {
+		dev_warn(&client->dev,
+			"DTS does not contain factory-fout, using default\n");
+	}
 
 	i2c_set_clientdata(client, data);
 	err = si570_get_defaults(client);
@@ -451,35 +460,54 @@ static int si570_probe(struct i2c_client *client,
 		"registered %s with default frequency %llu Hz\n",
 		id->name, data->fout);
 
+	/* Read the requested initial fout from either platform data or the
+	 * device tree
+	 */
+	initial_fout = 0;
 	if (pdata && pdata->initial_fout) {
-		if (pdata->initial_fout < SI570_MIN_FREQ ||
-			pdata->initial_fout > data->max_freq) {
+		initial_fout = pdata->initial_fout;
+	}
+	if (client->dev.of_node) {
+		of_property_read_u32(client->dev.of_node, "initial-fout",
+			(u32 *)&initial_fout);
+		if (pdata && pdata->initial_fout &&
+			(pdata->initial_fout != initial_fout)) {
+			dev_warn(&client->dev,
+				"OF initial fout %lu overrides platform data fout %lu\n",
+				initial_fout,
+				pdata->initial_fout);
+		}
+	}
+
+	if (initial_fout != 0) {
+		if (initial_fout < SI570_MIN_FREQ ||
+			initial_fout > data->max_freq) {
 			dev_err(&client->dev,
 				"requested initial frequency %lu is out of range, using default\n",
-				pdata->initial_fout);
+				initial_fout);
 			return 0;
 		}
 
 		mutex_lock(&data->lock);
 
-		if (div64_u64(abs(pdata->initial_fout - data->frequency) *
+		if (div64_u64(abs(initial_fout - data->frequency) *
 			10000LL, data->frequency) < 35)
 			err = si570_set_frequency_small(client, data,
-				pdata->initial_fout);
+				initial_fout);
 		else
 			err = si570_set_frequency(client, data,
-				pdata->initial_fout);
+				initial_fout);
 		mutex_unlock(&data->lock);
 		if (err) {
 			dev_warn(&client->dev,
 				"unable to set initial output frequency %lu: %d\n",
-				pdata->initial_fout, err);
+				initial_fout, err);
 			return err;
 		}
 
 		dev_info(&client->dev,
 			"set initial output frequency %lu Hz\n",
-			pdata->initial_fout);
+			initial_fout);
 	}
 
 	client_i2c = client;
@@ -501,9 +529,18 @@ static int si570_remove(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id i2c_si570_of_match[] = {
+	{ .compatible = "si570" },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, i2c_si570_of_match);
+#endif
+
 static struct i2c_driver si570_driver = {
 	.driver = {
 		.name	= "si570",
+		.of_match_table = of_match_ptr(i2c_si570_of_match),
 	},
 	.probe		= si570_probe,
 	.remove		= si570_remove,
