@@ -654,6 +654,7 @@ static int __devinit xspips_probe(struct platform_device *dev)
 		return -ENOMEM;
 
 	xspi = spi_master_get_devdata(master);
+	master->dev.of_node = dev->dev.of_node;
 	platform_set_drvdata(dev, master);
 
 #ifndef CONFIG_OF
