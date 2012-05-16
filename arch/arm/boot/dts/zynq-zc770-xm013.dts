@@ -12,7 +12,7 @@
 		reg = <0x00000000 0x40000000>; 
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 init=/autotest/test_all.sh root=/dev/ram rw initrd=0x800000,8M";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M";
 		linux,stdout-path = "/amba@0/uart@E0000000";
 	};
 
@@ -76,7 +76,7 @@
 			speed-hz = <200000000>;
 			bus-num = <1>;
 			num-chip-select = <1>;
-			is-dual = <1>;
+			is-dual = <0>;
 		};
 	};
 };
