@@ -17,8 +17,6 @@
 #ifndef __MACH_CLKDEV_H__
 #define __MACH_CLKDEV_H__
 
-#include <plat/clock.h>
-
 struct clk {
 	unsigned long		rate;
 	const struct clk_ops	*ops;
