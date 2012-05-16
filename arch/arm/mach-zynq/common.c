@@ -96,9 +96,9 @@ struct map_desc io_desc[] __initdata = {
 
 #ifdef CONFIG_DEBUG_LL
 	{
-		.virtual	= UART1_VIRT,
-		.pfn		= __phys_to_pfn(UART1_PHYS),
-		.length		= SZ_4K,
+		.virtual	= UART0_VIRT,
+		.pfn		= __phys_to_pfn(UART0_PHYS),
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	},
 #endif

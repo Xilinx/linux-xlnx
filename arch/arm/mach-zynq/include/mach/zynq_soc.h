@@ -22,8 +22,8 @@
 #define UART0_PHYS			0xE0000000
 #define UART0_VIRT			0xFE000000
 
-#define UART1_PHYS			0xE0001000
-#define UART1_VIRT			0xFE001000
+//#define UART1_PHYS			0xE0001000
+//#define UART1_VIRT			0xFE001000
 
 #define SCU_PERIPH_PHYS			0xF8F00000
 #define SCU_PERIPH_VIRT			0xFE00C000
@@ -60,8 +60,8 @@
  * Mandatory for CONFIG_LL_DEBUG, UART is mapped virtual = physical
  */
 #if defined(CONFIG_ZYNQ_EARLY_UART1)
-	#define LL_UART_PADDR	UART1_PHYS
-	#define LL_UART_VADDR	UART1_VIRT
+	#define LL_UART_PADDR	(UART0_PHYS+0x1000)
+	#define LL_UART_VADDR	(UART0_VIRT+0x1000)
 #else
 	#define LL_UART_PADDR	UART0_PHYS
 	#define LL_UART_VADDR	UART0_VIRT
