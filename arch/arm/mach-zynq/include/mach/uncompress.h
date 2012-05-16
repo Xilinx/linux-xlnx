@@ -27,6 +27,14 @@ void arch_decomp_setup(void)
 
 static inline void flush(void)
 {
+
+	/* don't wait for the FIFO to empty for now as it's causing
+	   a problem when the kernel is setup for the wrong early
+	   uart in that it gets locked up here
+	*/
+
+	return;
+
 	/*
 	 * Wait while the FIFO is not empty
 	 */
