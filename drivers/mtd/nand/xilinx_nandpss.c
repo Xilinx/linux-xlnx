@@ -964,11 +964,9 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	int ez_nand_supported = 0;
 	unsigned long ecc_cfg;
 	struct xnand_platform_data	*pdata = NULL;
-	int  nr_parts;
-	static const char *part_probe_types[] = {"cmdlinepart", NULL};
+	struct mtd_part_parser_data ppdata;
 #ifdef CONFIG_OF
 	const struct of_device_id *match;
-	struct device_node *parts = pdev->dev.of_node;
 #endif
 
 #ifdef CONFIG_OF
@@ -1216,72 +1214,18 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-#if 0
-
-/* will not compile in 3.3 kernel */
-
-#ifdef CONFIG_MTD_CMDLINE_PARTS
-	/* Get the partition information from command line argument */
-	nr_parts = parse_mtd_partitions(mtd, part_probe_types,
-					&xnand->parts, 0);
-	if (nr_parts > 0) {
-		dev_info(&pdev->dev, "found %d partitions in command line",
-				nr_parts);
-		err = mtd_device_register(&xnand->mtd, xnand->parts, nr_parts);
-/*		mtd_add_partition(mtd, xnand->parts, nr_parts);
-		return 0;
-*/
-	}
-#ifdef CONFIG_MTD_OF_PARTS
-	nr_parts = of_mtd_parse_partitions(&pdev->dev, parts, &xnand->parts);
-	if (nr_parts > 0) {
-		dev_info(&pdev->dev, "found %d partitions in device tree",
-				nr_parts);
-		err = mtd_device_register(&xnand->mtd, xnand->parts, nr_parts);
-/*		mtd_add_partition(mtd, xnand->parts, nr_parts);
-		return 0;
-*/
-	}
+#ifdef CONFIG_OF
+	ppdata.of_node = pdev->dev.of_node;
 #endif
+	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata,
+			NULL, 0);
 
-#if 0
-
-/* Something like this for 3.3 is needed, but not in since NAND not working */
-
-	{
-        	struct mtd_part_parser_data ppdata = {};
-		int ret; 
-
-	       	ppdata.of_node = pdev->dev.of_node;
-	        ret = mtd_device_parse_register(mtd, NULL, &ppdata,
-                                        xnand->parts,
-                                        nr_parts);
-        	if (ret)
-	      	        goto err_wp;
-
-	}
-#endif
-
-	if (pdata->parts) {
-		dev_info(&pdev->dev, "found %d partitions in platform data",
-				pdata->nr_parts);
-		err = mtd_device_register(&xnand->mtd, pdata->parts,
-							pdata->nr_parts);
-/*		mtd_add_partition(&xnand->mtd, pdata->parts,
-							pdata->nr_parts);
-*/
-	}
-#endif
-#endif
-
-/*	err = add_mtd_device(mtd); */
 	if (!err) {
 		dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n",
 				smc_res->start, (u32 __force) xnand->nand_base);
 		return 0;
 	}
 
-	nand_release(mtd);
 
 out_unmap_all_mem:
 	platform_set_drvdata(pdev, NULL);
@@ -1332,7 +1276,7 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct xnand_platform_data xnandpss_config = {
-	.options = NAND_NO_AUTOINCR | NAND_BBT_USE_FLASH,
+	.options = NAND_NO_AUTOINCR,
 };
 
 /* Match table for device tree binding */
