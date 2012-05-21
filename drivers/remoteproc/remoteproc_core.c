@@ -648,10 +648,11 @@ free_mapping:
  * enum fw_resource_type.
  */
 static rproc_handle_resource_t rproc_handle_rsc[] = {
-	[RSC_CARVEOUT] = (rproc_handle_resource_t)rproc_handle_carveout,
+	[RSC_CARVEOUT] = NULL,
 	[RSC_DEVMEM] = (rproc_handle_resource_t)rproc_handle_devmem,
 	[RSC_TRACE] = (rproc_handle_resource_t)rproc_handle_trace,
 	[RSC_VDEV] = NULL, /* VDEVs were handled upon registrarion */
+	[RSC_MMU] = NULL, /* For firmware purpose */
 };
 
 /* handle firmware resource entries before booting the remote processor */
@@ -686,6 +687,40 @@ rproc_handle_boot_rsc(struct rproc *rproc, struct resource_table *table, int len
 			continue;
 
 		ret = handler(rproc, rsc, avail);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+/* handle carveout firmware resource entries while registering the remote processor */
+static int
+rproc_handle_carveout_rsc(struct rproc *rproc, struct resource_table *table, int len)
+{
+	struct device *dev = &rproc->dev;
+	int ret = 0, i;
+
+	for (i = 0; i < table->num; i++) {
+		int offset = table->offset[i];
+		struct fw_rsc_hdr *hdr = (void *)table + offset;
+		int avail = len - offset - sizeof(*hdr);
+		struct fw_rsc_carveout *crsc;
+
+		/* make sure table isn't truncated */
+		if (avail < 0) {
+			dev_err(dev, "rsc table is truncated\n");
+			return -EINVAL;
+		}
+
+		dev_dbg(dev, "%s: rsc type %d\n", __func__, hdr->type);
+
+		if (hdr->type != RSC_CARVEOUT)
+			continue;
+
+		crsc = (struct fw_rsc_carveout *)hdr->data;
+
+		ret = rproc_handle_carveout(rproc, crsc, avail);
 		if (ret)
 			break;
 	}
@@ -858,6 +893,11 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	/* look for the resource table */
 	table = rproc_find_rsc_table(rproc, fw,  &tablesz);
 	if (!table)
+		goto out;
+
+	/* look for carveout areas and register them first */
+	ret = rproc_handle_carveout_rsc(rproc, table, tablesz);
+	if (ret)
 		goto out;
 
 	/* look for virtio devices and register them */
