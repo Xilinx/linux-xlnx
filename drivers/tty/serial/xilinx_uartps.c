@@ -453,7 +453,7 @@ static unsigned int xuartps_tx_empty(struct uart_port *port)
 {
 	unsigned int status;
 
-	status = xuartps_readl(XUARTPS_ISR_OFFSET) & XUARTPS_IXR_TXEMPTY;
+	status = xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_IXR_TXEMPTY;
 	return status ? TIOCSER_TEMT : 0;
 }
 
