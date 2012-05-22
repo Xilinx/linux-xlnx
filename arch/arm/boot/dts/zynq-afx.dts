@@ -1,0 +1,52 @@
+/dts-v1/;
+
+/ {
+	model = "Xilinx Zynq - AFX - minimum)";
+	compatible = "xlnx,zynq-zc770";
+	#address-cells = <0x1>;
+	#size-cells = <0x1>;
+	interrupt-parent = <0x1>;
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x10000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk ip=:::::eth0:dhcp";
+		linux,stdout-path = "/amba@0/uart@E0001000";
+	};
+
+	amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,gic";
+			reg = <0xf8f01000 0x1000>;
+			#interrupt-cells = <0x2>;
+			linux,phandle = <0x1>;
+			phandle = <0x1>;
+		};
+
+		uart@e0001000 {
+                        compatible = "xlnx,ps7-uart-1.00.a";
+                        reg = <0xE0001000 0x1000>;
+                        interrupts = <82 0>;
+                        clock = <50000000>;
+                };
+
+		timer@0xf8001000 {
+			clock-frequency-timer0 = <133000000>;
+			clock-frequency-timer1 = <133000000>;
+			clock-frequency-timer2 = <133000000>;
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			interrupts = < 42 0 43 0 44 0 >;
+			reg = < 0xf8001000 0x1000 >;
+		};
+
+	};
+};
