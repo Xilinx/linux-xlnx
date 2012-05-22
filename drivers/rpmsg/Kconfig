@@ -24,6 +24,13 @@ config RPMSG_OMX
 
 	  If unsure, say N.
 
+config RPMSG_FREERTOS_STAT
+	tristate "An FreeRTOS statistic"
+	depends on RPMSG
+	---help---
+	  This is just a sample to get statistic from FreeRTOS.
+	  Say either Y or M. You know you want to.
+
 source "drivers/rpmsg/host/Kconfig"
 
 endmenu
