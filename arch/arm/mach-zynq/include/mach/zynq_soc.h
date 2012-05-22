@@ -23,10 +23,10 @@
 /* Virtual address must be inside vmalloc area - this is weird - better
  * to create virtual mapping on the fly */
 #define UART0_PHYS			0xE0000000
-#define UART0_VIRT			UART0_PHYS + 0x10000000
+#define UART0_VIRT			UART0_PHYS + 0x1E000000
 
 #define UART1_PHYS			0xE0001000
-#define UART1_VIRT			UART1_PHYS + 0x10000000
+#define UART1_VIRT			UART1_PHYS + 0x1E000000
 
 #define TTC0_PHYS			0xF8001000
 #define TTC0_VIRT			TTC0_PHYS
