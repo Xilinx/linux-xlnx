@@ -133,7 +133,22 @@ static irqreturn_t zynq_remoteproc_interrupt(int irq, void *dev_id)
 {
 	struct device *dev = dev_id;
 
-	dev_err(dev, "GIC IRQ is not forwarded correctly\n");
+	dev_err(dev, "GIC IRQ %d is not forwarded correctly\n", irq);
+
+	/*
+	 *  MS: Calling this function doesn't need to be BUG 
+	 * especially for cases where firmware doesn't disable
+	 * interrupts. In next probing can be som interrupts pending.
+	 * The next scenario is for cases when you want to monitor
+	 * non frequent interrupt through Linux kernel. Interrupt happen
+	 * and it is forwarded to Linux which update own statistic 
+	 * in (/proc/interrupt) and forward it to firmware.
+	 * 
+	 * gic_set_cpu(1, irq);	- setup cpu1 as destination cpu
+	 * gic_raise_softirq(cpumask_of(1), irq); - forward irq to firmware
+	 */
+	
+	gic_set_cpu(1, irq);
 	return IRQ_HANDLED;
 }
 
@@ -221,6 +236,13 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 								tmp->irq);
 			goto irq_fault;
 		}
+		
+		/* 
+		 * MS: Here is place for detecting problem with firmware
+		 * which doesn't work correctly with interrupts
+		 * 
+		 * MS: Comment if you want to count IRQs on Linux 
+		 */
 		gic_set_cpu(1, tmp->irq);
 		list_add(&(tmp->list), &(local->mylist.list));
 	}
