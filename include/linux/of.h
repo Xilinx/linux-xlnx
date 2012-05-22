@@ -17,11 +17,13 @@
  */
 #include <linux/types.h>
 #include <linux/bitops.h>
+#include <linux/errno.h>
 #include <linux/kref.h>
 #include <linux/mod_devicetable.h>
 #include <linux/spinlock.h>
 
 #include <asm/byteorder.h>
+#include <asm/errno.h>
 
 typedef u32 phandle;
 typedef u32 ihandle;
@@ -63,11 +65,33 @@ struct device_node {
 #endif
 };
 
+#define MAX_PHANDLE_ARGS 8
+struct of_phandle_args {
+	struct device_node *np;
+	int args_count;
+	uint32_t args[MAX_PHANDLE_ARGS];
+};
+
+#if defined(CONFIG_SPARC) || !defined(CONFIG_OF)
+/* Dummy ref counting routines - to be implemented later */
+static inline struct device_node *of_node_get(struct device_node *node)
+{
+	return node;
+}
+static inline void of_node_put(struct device_node *node)
+{
+}
+#else
+extern struct device_node *of_node_get(struct device_node *node);
+extern void of_node_put(struct device_node *node);
+#endif
+
 #ifdef CONFIG_OF
 
 /* Pointer for first entry in chain of all nodes. */
 extern struct device_node *allnodes;
 extern struct device_node *of_chosen;
+extern struct device_node *of_aliases;
 extern rwlock_t devtree_lock;
 
 static inline bool of_have_populated_dt(void)
@@ -91,21 +115,6 @@ static inline void of_node_set_flag(struct device_node *n, unsigned long flag)
 }
 
 extern struct device_node *of_find_all_nodes(struct device_node *prev);
-
-#if defined(CONFIG_SPARC)
-/* Dummy ref counting routines - to be implemented later */
-static inline struct device_node *of_node_get(struct device_node *node)
-{
-	return node;
-}
-static inline void of_node_put(struct device_node *node)
-{
-}
-
-#else
-extern struct device_node *of_node_get(struct device_node *node);
-extern void of_node_put(struct device_node *node);
-#endif
 
 /*
  * OF address retrieval & translation
@@ -195,12 +204,30 @@ extern struct device_node *of_find_node_with_property(
 extern struct property *of_find_property(const struct device_node *np,
 					 const char *name,
 					 int *lenp);
+extern int of_property_read_u32_array(const struct device_node *np,
+				      const char *propname,
+				      u32 *out_values,
+				      size_t sz);
+extern int of_property_read_u64(const struct device_node *np,
+				const char *propname, u64 *out_value);
+
+extern int of_property_read_string(struct device_node *np,
+				   const char *propname,
+				   const char **out_string);
+extern int of_property_read_string_index(struct device_node *np,
+					 const char *propname,
+					 int index, const char **output);
+extern int of_property_count_strings(struct device_node *np,
+				     const char *propname);
 extern int of_device_is_compatible(const struct device_node *device,
 				   const char *);
 extern int of_device_is_available(const struct device_node *device);
 extern const void *of_get_property(const struct device_node *node,
 				const char *name,
 				int *lenp);
+#define for_each_property_of_node(dn, pp) \
+	for (pp = dn->properties; pp != NULL; pp = pp->next)
+
 extern int of_n_addr_cells(struct device_node *np);
 extern int of_n_size_cells(struct device_node *np);
 extern const struct of_device_id *of_match_node(
@@ -209,9 +236,12 @@ extern int of_modalias_node(struct device_node *node, char *modalias, int len);
 extern struct device_node *of_parse_phandle(struct device_node *np,
 					    const char *phandle_name,
 					    int index);
-extern int of_parse_phandles_with_args(struct device_node *np,
+extern int of_parse_phandle_with_args(struct device_node *np,
 	const char *list_name, const char *cells_name, int index,
-	struct device_node **out_node, const void **out_args);
+	struct of_phandle_args *out_args);
+
+extern void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align));
+extern int of_alias_get_id(struct device_node *np, const char *stem);
 
 extern int of_machine_is_compatible(const char *compat);
 
@@ -227,12 +257,104 @@ extern void of_attach_node(struct device_node *);
 extern void of_detach_node(struct device_node *);
 #endif
 
-#else
+#define of_match_ptr(_ptr)	(_ptr)
+#else /* CONFIG_OF */
 
 static inline bool of_have_populated_dt(void)
 {
 	return false;
 }
 
+#define for_each_child_of_node(parent, child) \
+	while (0)
+
+static inline int of_device_is_compatible(const struct device_node *device,
+					  const char *name)
+{
+	return 0;
+}
+
+static inline struct property *of_find_property(const struct device_node *np,
+						const char *name,
+						int *lenp)
+{
+	return NULL;
+}
+
+static inline struct device_node *of_find_compatible_node(
+						struct device_node *from,
+						const char *type,
+						const char *compat)
+{
+	return NULL;
+}
+
+static inline int of_property_read_u32_array(const struct device_node *np,
+					     const char *propname,
+					     u32 *out_values, size_t sz)
+{
+	return -ENOSYS;
+}
+
+static inline int of_property_read_string(struct device_node *np,
+					  const char *propname,
+					  const char **out_string)
+{
+	return -ENOSYS;
+}
+
+static inline int of_property_read_string_index(struct device_node *np,
+						const char *propname, int index,
+						const char **out_string)
+{
+	return -ENOSYS;
+}
+
+static inline int of_property_count_strings(struct device_node *np,
+					    const char *propname)
+{
+	return -ENOSYS;
+}
+
+static inline const void *of_get_property(const struct device_node *node,
+				const char *name,
+				int *lenp)
+{
+	return NULL;
+}
+
+static inline int of_property_read_u64(const struct device_node *np,
+				       const char *propname, u64 *out_value)
+{
+	return -ENOSYS;
+}
+
+static inline struct device_node *of_parse_phandle(struct device_node *np,
+						   const char *phandle_name,
+						   int index)
+{
+	return NULL;
+}
+
+static inline int of_alias_get_id(struct device_node *np, const char *stem)
+{
+	return -ENOSYS;
+}
+
+static inline int of_machine_is_compatible(const char *compat)
+{
+	return 0;
+}
+
+#define of_match_ptr(_ptr)	NULL
+#define of_match_node(_matches, _node)	NULL
 #endif /* CONFIG_OF */
+
+static inline int of_property_read_u32(const struct device_node *np,
+				       const char *propname,
+				       u32 *out_value)
+{
+	return of_property_read_u32_array(np, propname, out_value, 1);
+}
+
 #endif /* _LINUX_OF_H */

@@ -44,8 +44,6 @@ enum pci_bf_sort_state {
 
 /* pci-i386.c */
 
-extern unsigned int pcibios_max_latency;
-
 void pcibios_resource_survey(void);
 void pcibios_set_cache_line_size(void);
 
@@ -99,10 +97,10 @@ struct pci_raw_ops {
 						int reg, int len, u32 val);
 };
 
-extern struct pci_raw_ops *raw_pci_ops;
-extern struct pci_raw_ops *raw_pci_ext_ops;
+extern const struct pci_raw_ops *raw_pci_ops;
+extern const struct pci_raw_ops *raw_pci_ext_ops;
 
-extern struct pci_raw_ops pci_direct_conf1;
+extern const struct pci_raw_ops pci_direct_conf1;
 extern bool port_cf9_safe;
 
 /* arch_initcall level */

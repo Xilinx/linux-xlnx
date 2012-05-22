@@ -77,6 +77,8 @@
 #include <asm/processor.h>
 #include "intel_ips.h"
 
+#include <asm-generic/io-64-nonatomic-lo-hi.h>
+
 #define PCI_DEVICE_ID_INTEL_THERMAL_SENSOR 0x3b32
 
 /*
@@ -344,19 +346,6 @@ struct ips_driver {
 static bool
 ips_gpu_turbo_enabled(struct ips_driver *ips);
 
-#ifndef readq
-static inline __u64 readq(const volatile void __iomem *addr)
-{
-	const volatile u32 __iomem *p = addr;
-	u32 low, high;
-
-	low = readl(p);
-	high = readl(p + 1);
-
-	return low + ((u64)high << 32);
-}
-#endif
-
 /**
  * ips_cpu_busy - is CPU busy?
  * @ips: IPS driver struct
@@ -403,7 +392,7 @@ static void ips_cpu_raise(struct ips_driver *ips)
 
 	thm_writew(THM_MPCPC, (new_tdp_limit * 10) / 8);
 
-	turbo_override |= TURBO_TDC_OVR_EN | TURBO_TDC_OVR_EN;
+	turbo_override |= TURBO_TDC_OVR_EN | TURBO_TDP_OVR_EN;
 	wrmsrl(TURBO_POWER_CURRENT_LIMIT, turbo_override);
 
 	turbo_override &= ~TURBO_TDP_MASK;
@@ -438,7 +427,7 @@ static void ips_cpu_lower(struct ips_driver *ips)
 
 	thm_writew(THM_MPCPC, (new_limit * 10) / 8);
 
-	turbo_override |= TURBO_TDC_OVR_EN | TURBO_TDC_OVR_EN;
+	turbo_override |= TURBO_TDC_OVR_EN | TURBO_TDP_OVR_EN;
 	wrmsrl(TURBO_POWER_CURRENT_LIMIT, turbo_override);
 
 	turbo_override &= ~TURBO_TDP_MASK;

@@ -741,7 +741,6 @@ static int __devinit mpc_dma_probe(struct platform_device *op)
 		mchan = &mdma->channels[i];
 
 		mchan->chan.device = dma;
-		mchan->chan.chan_id = i;
 		mchan->chan.cookie = 1;
 		mchan->completed_cookie = mchan->chan.cookie;
 
@@ -836,17 +835,7 @@ static struct platform_driver mpc_dma_driver = {
 	},
 };
 
-static int __init mpc_dma_init(void)
-{
-	return platform_driver_register(&mpc_dma_driver);
-}
-module_init(mpc_dma_init);
-
-static void __exit mpc_dma_exit(void)
-{
-	platform_driver_unregister(&mpc_dma_driver);
-}
-module_exit(mpc_dma_exit);
+module_platform_driver(mpc_dma_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Piotr Ziecik <kosmo@semihalf.com>");

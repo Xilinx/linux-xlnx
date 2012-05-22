@@ -8,7 +8,7 @@
  * with minor modifications, see there for credits.
  */
 
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/sched.h>
@@ -230,7 +230,8 @@ static void pci_parse_of_addrs(struct platform_device *op,
 			res = &dev->resource[(i - PCI_BASE_ADDRESS_0) >> 2];
 		} else if (i == dev->rom_base_reg) {
 			res = &dev->resource[PCI_ROM_RESOURCE];
-			flags |= IORESOURCE_READONLY | IORESOURCE_CACHEABLE;
+			flags |= IORESOURCE_READONLY | IORESOURCE_CACHEABLE
+			      | IORESOURCE_SIZEALIGN;
 		} else {
 			printk(KERN_ERR "PCI: bad cfg reg num 0x%x\n", i);
 			continue;
@@ -284,7 +285,7 @@ static struct pci_dev *of_create_pci_dev(struct pci_pbm_info *pbm,
 	dev->sysdata = node;
 	dev->dev.parent = bus->bridge;
 	dev->dev.bus = &pci_bus_type;
-	dev->dev.of_node = node;
+	dev->dev.of_node = of_node_get(node);
 	dev->devfn = devfn;
 	dev->multifunction = 0;		/* maybe a lie? */
 	set_pcie_port_type(dev);
@@ -684,22 +685,24 @@ static void __devinit pci_bus_register_of_sysfs(struct pci_bus *bus)
 struct pci_bus * __devinit pci_scan_one_pbm(struct pci_pbm_info *pbm,
 					    struct device *parent)
 {
+	LIST_HEAD(resources);
 	struct device_node *node = pbm->op->dev.of_node;
 	struct pci_bus *bus;
 
 	printk("PCI: Scanning PBM %s\n", node->full_name);
 
-	bus = pci_create_bus(parent, pbm->pci_first_busno, pbm->pci_ops, pbm);
+	pci_add_resource(&resources, &pbm->io_space);
+	pci_add_resource(&resources, &pbm->mem_space);
+	bus = pci_create_root_bus(parent, pbm->pci_first_busno, pbm->pci_ops,
+				  pbm, &resources);
 	if (!bus) {
 		printk(KERN_ERR "Failed to create bus for %s\n",
 		       node->full_name);
+		pci_free_resource_list(&resources);
 		return NULL;
 	}
 	bus->secondary = pbm->pci_first_busno;
 	bus->subordinate = pbm->pci_last_busno;
-
-	bus->resource[0] = &pbm->io_space;
-	bus->resource[1] = &pbm->mem_space;
 
 	pci_of_scan_bus(pbm, node, bus);
 	pci_bus_add_devices(bus);
@@ -710,13 +713,6 @@ struct pci_bus * __devinit pci_scan_one_pbm(struct pci_pbm_info *pbm,
 
 void __devinit pcibios_fixup_bus(struct pci_bus *pbus)
 {
-	struct pci_pbm_info *pbm = pbus->sysdata;
-
-	/* Generic PCI bus probing sets these to point at
-	 * &io{port,mem}_resouce which is wrong for us.
-	 */
-	pbus->resource[0] = &pbm->io_space;
-	pbus->resource[1] = &pbm->mem_space;
 }
 
 void pcibios_update_irq(struct pci_dev *pdev, int irq)
@@ -820,11 +816,9 @@ static int __pci_mmap_make_offset_bus(struct pci_dev *pdev, struct vm_area_struc
 	unsigned long space_size, user_offset, user_size;
 
 	if (mmap_state == pci_mmap_io) {
-		space_size = (pbm->io_space.end -
-			      pbm->io_space.start) + 1;
+		space_size = resource_size(&pbm->io_space);
 	} else {
-		space_size = (pbm->mem_space.end -
-			      pbm->mem_space.start) + 1;
+		space_size = resource_size(&pbm->mem_space);
 	}
 
 	/* Make sure the request is in range. */
@@ -1021,12 +1015,6 @@ void arch_teardown_msi_irq(unsigned int irq)
 }
 #endif /* !(CONFIG_PCI_MSI) */
 
-struct device_node *pci_device_to_OF_node(struct pci_dev *pdev)
-{
-	return pdev->dev.of_node;
-}
-EXPORT_SYMBOL(pci_device_to_OF_node);
-
 static void ali_sound_dma_hack(struct pci_dev *pdev, int set_bit)
 {
 	struct pci_dev *ali_isa_bridge;
@@ -1088,6 +1076,11 @@ void pci_resource_to_user(const struct pci_dev *pdev, int bar,
 
 	*start = rp->start - offset;
 	*end = rp->end - offset;
+}
+
+void pcibios_set_master(struct pci_dev *dev)
+{
+	/* No special bus mastering setup handling */
 }
 
 static int __init pcibios_init(void)

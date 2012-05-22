@@ -7,7 +7,7 @@
  * to support Xilinx PS USB controller.
  *
  * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
+ * under the terms of the GNU General Public License version 2 as published bydrive
  * the Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  *
@@ -1118,6 +1118,10 @@ static int xusbps_pullup(struct usb_gadget *gadget, int is_on)
 	return 0;
 }
 
+static int xusbps_start(struct usb_gadget_driver *driver,
+		int (*bind)(struct usb_gadget *));
+static int xusbps_stop(struct usb_gadget_driver *driver);
+
 /* defined in gadget.h */
 static struct usb_gadget_ops xusbps_gadget_ops = {
 	.get_frame = xusbps_get_frame,
@@ -1126,6 +1130,8 @@ static struct usb_gadget_ops xusbps_gadget_ops = {
 	.vbus_session = xusbps_vbus_session,
 	.vbus_draw = xusbps_vbus_draw,
 	.pullup = xusbps_pullup,
+	.start = xusbps_start,
+	.stop = xusbps_stop,
 };
 
 /* Set protocol stall on ep0, protocol stall will automatically be cleared
@@ -1856,7 +1862,7 @@ static int xusbps_udc_stop_peripheral(struct otg_transceiver  *otg)
  * Hook to gadget drivers
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
+int xusbps_start(struct usb_gadget_driver *driver,
 		int (*bind)(struct usb_gadget *))
 {
 	int retval = -ENODEV;
@@ -1865,8 +1871,8 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	if (!udc_controller)
 		return -ENODEV;
 
-	if (!driver || (driver->speed != USB_SPEED_FULL
-				&& driver->speed != USB_SPEED_HIGH)
+	if (!driver || (driver->max_speed != USB_SPEED_FULL
+				&& driver->max_speed != USB_SPEED_HIGH)
 			|| !bind || !driver->disconnect || !driver->setup)
 		return -EINVAL;
 
@@ -1943,10 +1949,10 @@ out:
 		       retval);
 	return retval;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+EXPORT_SYMBOL(xusbps_start);
 
 /* Disconnect from gadget driver */
-int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
+int xusbps_stop(struct usb_gadget_driver *driver)
 {
 	struct xusbps_ep *loop_ep;
 	unsigned long flags;
@@ -1993,7 +1999,7 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	       driver->driver.name);
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_unregister_driver);
+EXPORT_SYMBOL(xusbps_stop);
 
 /*-------------------------------------------------------------------------
 		PROC File System Support
@@ -2448,10 +2454,9 @@ static int __init xusbps_udc_probe(struct platform_device *pdev)
 
 	/* Setup gadget structure */
 	udc_controller->gadget.ops = &xusbps_gadget_ops;
-	udc_controller->gadget.is_dualspeed = 1;
+	udc_controller->gadget.max_speed = USB_SPEED_HIGH;
 	udc_controller->gadget.ep0 = &udc_controller->eps[0].ep;
 	INIT_LIST_HEAD(&udc_controller->gadget.ep_list);
-	udc_controller->gadget.speed = USB_SPEED_UNKNOWN;
 	udc_controller->gadget.name = driver_name;
 #ifdef CONFIG_USB_XUSBPS_OTG
 	udc_controller->gadget.is_otg = (pdata->otg != 0);
@@ -2495,9 +2500,16 @@ static int __init xusbps_udc_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_unregister;
 	}
+
+	ret = usb_add_gadget_udc(&pdev->dev, &udc_controller->gadget);
+	if (ret)
+		goto err_del_udc;
+
 	create_proc_file();
 	return 0;
 
+err_del_udc:
+	dma_pool_destroy(udc_controller->td_pool);
 err_unregister:
 	device_unregister(&udc_controller->gadget.dev);
 err_free_irq:
@@ -2519,6 +2531,8 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
 
 	if (!udc_controller)
 		return -ENODEV;
+
+	usb_del_gadget_udc(&udc_controller->gadget);
 	udc_controller->done = &done;
 
 	xusbps_udc_clk_release();

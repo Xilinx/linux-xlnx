@@ -12,7 +12,7 @@
 		reg = <0x00000000 0x40000000>; 
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk"; 
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M";
 		linux,stdout-path = "/amba@0/uart@E0000000";
 	};
 
@@ -22,35 +22,37 @@
 		#size-cells = <0x1>;
 		ranges;
 
-		intc@f8f01000 {
+		gic: intc@f8f01000 {
 			interrupt-controller;
-			compatible = "arm,gic";
-			reg = <0xf8f01000 0x1000>;
-			#interrupt-cells = <0x2>;
-			linux,phandle = <0x1>;
-			phandle = <0x1>;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = < 0xf8f01000 0x1000 >,
+			      < 0xf8f00100 0x0100 >;
 		};
 
 		uart@e0000000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0000000 0x1000>;
-			interrupts = <59 0>;
+			interrupts = < 0 27 0 >;
+			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
 
 		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <133000000>;
 			clock-frequency-timer1 = <133000000>;
 			clock-frequency-timer2 = <133000000>;
-			compatible = "xlnx,ps7-ttc-1.00.a";
-			interrupts = < 42 0 43 0 44 0 >;
-			reg = < 0xf8001000 0x1000 >;
 		};
 
 		spi0: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xE0006000 0x1000>;
-			interrupts = <58 0>;
+			interrupts = <0 26 0>;
+			interrupt-parent = <&gic>;
 			speed-hz = <166666700>;
 			bus-num = <0>;
 			num-chip-select = <4>;
@@ -59,7 +61,8 @@
 		i2c1: i2c@e0005000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xE0005000 0x1000>;
-			interrupts = <80 0>;
+			interrupts = < 0 48 0 >;
+			interrupt-parent = <&gic>;
 			bus-id = <0>;
 			input-clk = <133000000>;
 			i2c-clk = <100000>;
@@ -68,33 +71,12 @@
 		qspi0: spi@e000d000 {
 			compatible = "xlnx,ps7-qspi-1.00.a";
 			reg = <0xE000D000 0x1000>;
-			interrupts = <51 0>;
+			interrupts = < 0 19 0 >;
+			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
 			bus-num = <1>;
 			num-chip-select = <1>;
 			is-dual = <0>;
-		};
-
-		eth@e000b000 {
-			compatible = "xlnx,ps7-ethernet-1.00.a";
-			reg = <0xe000c000 0x1000>;
-			interrupts = <77 0>;
-			phy-handle = <&phy0>;
-			xlnx,ptp-enet-clock = <133000000>;
-			xlnx,slcr-div0-1000Mbps = <8>;
-			xlnx,slcr-div0-100Mbps = <8>;
-			xlnx,slcr-div0-10Mbps = <8>;
-			xlnx,slcr-div1-1000Mbps = <1>;
-			xlnx,slcr-div1-100Mbps = <5>;
-			xlnx,slcr-div1-10Mbps = <50>;
-			#address-cells = <0x1>;
-			#size-cells = <0x0>;
-
-			phy0: phy@7 {
-				compatible = "vitesse,vsc8211";
-				device_type = "ethernet-phy";
-				reg = <0x7>;
-			};
 		};
 	};
 };

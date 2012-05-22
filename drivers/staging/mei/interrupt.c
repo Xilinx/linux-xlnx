@@ -94,7 +94,7 @@ static void _mei_cmpl_iamthif(struct mei_device *dev, struct mei_cl_cb *cb_pos)
 		dev_dbg(&dev->pdev->dev, "dev->iamthif_timer = %ld\n",
 				dev->iamthif_timer);
 	} else {
-		run_next_iamthif_cmd(dev);
+		mei_run_next_iamthif_cmd(dev);
 	}
 
 	dev_dbg(&dev->pdev->dev, "completing amthi call back.\n");
@@ -195,11 +195,10 @@ static int mei_irq_thread_read_client_message(struct mei_io_list *complete_list,
 {
 	struct mei_cl *cl;
 	struct mei_cl_cb *cb_pos = NULL, *cb_next = NULL;
-	unsigned char *buffer;
+	unsigned char *buffer = NULL;
 
 	dev_dbg(&dev->pdev->dev, "start client msg\n");
-	if (!(dev->read_list.status == 0 &&
-	      !list_empty(&dev->read_list.mei_cb.cb_list)))
+	if (list_empty(&dev->read_list.mei_cb.cb_list))
 		goto quit;
 
 	list_for_each_entry_safe(cb_pos, cb_next,
@@ -210,9 +209,6 @@ static int mei_irq_thread_read_client_message(struct mei_io_list *complete_list,
 			buffer = (unsigned char *)
 				(cb_pos->response_buffer.data +
 				cb_pos->information);
-			BUG_ON(cb_pos->response_buffer.size <
-					mei_hdr->length +
-					cb_pos->information);
 
 			if (cb_pos->response_buffer.size <
 					mei_hdr->length + cb_pos->information) {
@@ -280,7 +276,7 @@ static int _mei_irq_thread_iamthif_read(struct mei_device *dev, s32 *slots)
 		} else {
 			dev_dbg(&dev->pdev->dev, "iamthif flow control success\n");
 			dev->iamthif_state = MEI_IAMTHIF_READING;
-			dev->iamthif_flow_control_pending = 0;
+			dev->iamthif_flow_control_pending = false;
 			dev->iamthif_msg_buf_index = 0;
 			dev->iamthif_msg_buf_size = 0;
 			dev->iamthif_stall_timer = IAMTHIF_STALL_TIMER;
@@ -390,13 +386,11 @@ static void mei_client_connect_response(struct mei_device *dev,
 	/* if WD or iamthif client treat specially */
 
 	if (is_treat_specially_client(&(dev->wd_cl), rs)) {
-		dev_dbg(&dev->pdev->dev, "dev->wd_timeout =%d.\n",
-				dev->wd_timeout);
-
-		dev->wd_due_counter = (dev->wd_timeout) ? 1 : 0;
-
 		dev_dbg(&dev->pdev->dev, "successfully connected to WD client.\n");
-		host_init_iamthif(dev);
+		mei_watchdog_register(dev);
+
+		/* next step in the state maching */
+		mei_host_init_iamthif(dev);
 		return;
 	}
 
@@ -404,22 +398,20 @@ static void mei_client_connect_response(struct mei_device *dev,
 		dev->iamthif_state = MEI_IAMTHIF_IDLE;
 		return;
 	}
-	if (!dev->ctrl_rd_list.status &&
-	    !list_empty(&dev->ctrl_rd_list.mei_cb.cb_list)) {
-		list_for_each_entry_safe(cb_pos, cb_next,
-			&dev->ctrl_rd_list.mei_cb.cb_list, cb_list) {
-			cl = (struct mei_cl *)cb_pos->file_private;
-			if (!cl) {
+	list_for_each_entry_safe(cb_pos, cb_next,
+				&dev->ctrl_rd_list.mei_cb.cb_list, cb_list) {
+
+		cl = (struct mei_cl *)cb_pos->file_private;
+		if (!cl) {
+			list_del(&cb_pos->cb_list);
+			return;
+		}
+		if (MEI_IOCTL == cb_pos->major_file_operations) {
+			if (is_treat_specially_client(cl, rs)) {
 				list_del(&cb_pos->cb_list);
-				return;
-			}
-			if (MEI_IOCTL == cb_pos->major_file_operations) {
-				if (is_treat_specially_client(cl, rs)) {
-					list_del(&cb_pos->cb_list);
-					cl->status = 0;
-					cl->timer_count = 0;
-					break;
-				}
+				cl->status = 0;
+				cl->timer_count = 0;
+				break;
 			}
 		}
 	}
@@ -446,29 +438,26 @@ static void mei_client_disconnect_response(struct mei_device *dev,
 			rs->host_addr,
 			rs->status);
 
-	if (!dev->ctrl_rd_list.status &&
-	    !list_empty(&dev->ctrl_rd_list.mei_cb.cb_list)) {
-		list_for_each_entry_safe(cb_pos, cb_next,
-				&dev->ctrl_rd_list.mei_cb.cb_list, cb_list) {
-			cl = (struct mei_cl *)cb_pos->file_private;
+	list_for_each_entry_safe(cb_pos, cb_next,
+			&dev->ctrl_rd_list.mei_cb.cb_list, cb_list) {
+		cl = (struct mei_cl *)cb_pos->file_private;
 
-			if (!cl) {
-				list_del(&cb_pos->cb_list);
-				return;
-			}
+		if (!cl) {
+			list_del(&cb_pos->cb_list);
+			return;
+		}
 
-			dev_dbg(&dev->pdev->dev, "list_for_each_entry_safe in ctrl_rd_list.\n");
-			if (cl->host_client_id == rs->host_addr &&
-			    cl->me_client_id == rs->me_addr) {
+		dev_dbg(&dev->pdev->dev, "list_for_each_entry_safe in ctrl_rd_list.\n");
+		if (cl->host_client_id == rs->host_addr &&
+		    cl->me_client_id == rs->me_addr) {
 
-				list_del(&cb_pos->cb_list);
-				if (!rs->status)
-					cl->state = MEI_FILE_DISCONNECTED;
+			list_del(&cb_pos->cb_list);
+			if (!rs->status)
+				cl->state = MEI_FILE_DISCONNECTED;
 
-				cl->status = 0;
-				cl->timer_count = 0;
-				break;
-			}
+			cl->status = 0;
+			cl->timer_count = 0;
+			break;
 		}
 	}
 }
@@ -499,7 +488,7 @@ static void add_single_flow_creds(struct mei_device *dev,
 	struct mei_me_client *client;
 	int i;
 
-	for (i = 0; i < dev->num_mei_me_clients; i++) {
+	for (i = 0; i < dev->me_clients_num; i++) {
 		client = &dev->me_clients[i];
 		if (client && flow->me_addr == client->client_id) {
 			if (client->props.single_recv_buf) {
@@ -593,7 +582,7 @@ static void mei_client_disconnect_request(struct mei_device *dev,
 			cl_pos->timer_count = 0;
 			if (cl_pos == &dev->wd_cl) {
 				dev->wd_due_counter = 0;
-				dev->wd_pending = 0;
+				dev->wd_pending = false;
 			} else if (cl_pos == &dev->iamthif_cl)
 				dev->iamthif_timer = 0;
 
@@ -641,6 +630,7 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 	struct hbm_host_enum_response *enum_res;
 	struct hbm_client_disconnect_request *disconnect_req;
 	struct hbm_host_stop_request *host_stop_req;
+	int res;
 
 	unsigned char *buffer;
 
@@ -659,9 +649,9 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 			if (dev->mei_state == MEI_INIT_CLIENTS &&
 			    dev->init_clients_state == MEI_START_MESSAGE) {
 				dev->init_clients_timer = 0;
-				host_enum_clients_message(dev);
+				mei_host_enum_clients_message(dev);
 			} else {
-				dev->recvd_msg = 0;
+				dev->recvd_msg = false;
 				dev_dbg(&dev->pdev->dev, "IMEI reset due to received host start response bus message.\n");
 				mei_reset(dev, 1);
 				return;
@@ -690,7 +680,7 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 			return;
 		}
 
-		dev->recvd_msg = 1;
+		dev->recvd_msg = true;
 		dev_dbg(&dev->pdev->dev, "host start response message received.\n");
 		break;
 
@@ -705,7 +695,7 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 	case CLIENT_DISCONNECT_RES_CMD:
 		disconnect_res =
 			(struct hbm_client_connect_response *) mei_msg;
-		mei_client_disconnect_response(dev,	 disconnect_res);
+		mei_client_disconnect_response(dev, disconnect_res);
 		dev_dbg(&dev->pdev->dev, "client disconnect response message received.\n");
 		wake_up(&dev->wait_recvd_msg);
 		break;
@@ -723,7 +713,7 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 			mei_reset(dev, 1);
 			return;
 		}
-	       if (dev->me_clients[dev->me_client_presentation_num]
+		if (dev->me_clients[dev->me_client_presentation_num]
 					.client_id == props_res->address) {
 
 			dev->me_clients[dev->me_client_presentation_num].props
@@ -734,7 +724,38 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 					MEI_CLIENT_PROPERTIES_MESSAGE) {
 				dev->me_client_index++;
 				dev->me_client_presentation_num++;
-				host_client_properties(dev);
+
+				/** Send Client Propeties request **/
+				res = mei_host_client_properties(dev);
+				if (res < 0) {
+					dev_dbg(&dev->pdev->dev, "mei_host_client_properties() failed");
+					return;
+				} else if (!res) {
+					/*
+					 * No more clients to send to.
+					 * Clear Map for indicating now ME clients
+					 * with associated host client
+					 */
+					bitmap_zero(dev->host_clients_map, MEI_CLIENTS_MAX);
+					dev->open_handle_count = 0;
+
+					/*
+					 * Reserving the first three client IDs
+					 * Client Id 0 - Reserved for MEI Bus Message communications
+					 * Client Id 1 - Reserved for Watchdog
+					 * Client ID 2 - Reserved for AMTHI
+					 */
+					bitmap_set(dev->host_clients_map, 0, 3);
+					dev->mei_state = MEI_ENABLED;
+
+					/* if wd initialization fails, initialization the AMTHI client,
+					 * otherwise the AMTHI client will be initialized after the WD client connect response
+					 * will be received
+					 */
+					if (mei_wd_host_init(dev))
+						mei_host_init_iamthif(dev);
+				}
+
 			} else {
 				dev_dbg(&dev->pdev->dev, "reset due to received host client properties response bus message");
 				mei_reset(dev, 1);
@@ -755,10 +776,10 @@ static void mei_irq_thread_read_bus_message(struct mei_device *dev,
 				dev->init_clients_timer = 0;
 				dev->me_client_presentation_num = 0;
 				dev->me_client_index = 0;
-				allocate_me_clients_storage(dev);
+				mei_allocate_me_clients_storage(dev);
 				dev->init_clients_state =
 					MEI_CLIENT_PROPERTIES_MESSAGE;
-				host_client_properties(dev);
+				mei_host_client_properties(dev);
 		} else {
 			dev_dbg(&dev->pdev->dev, "reset due to received host enumeration clients response bus message.\n");
 			mei_reset(dev, 1);
@@ -1028,7 +1049,7 @@ static int _mei_irq_thread_cmpl_iamthif(struct mei_device *dev, s32 *slots,
 			cb_pos->information = dev->iamthif_msg_buf_index;
 			cl->status = 0;
 			dev->iamthif_state = MEI_IAMTHIF_FLOW_CONTROL;
-			dev->iamthif_flow_control_pending = 1;
+			dev->iamthif_flow_control_pending = true;
 			/* save iamthif cb sent to amthi client */
 			dev->iamthif_current_cb = cb_pos;
 			list_move_tail(&cb_pos->cb_list,
@@ -1184,7 +1205,7 @@ static int mei_irq_thread_write_handler(struct mei_io_list *cmpl_list,
 {
 
 	struct mei_cl *cl;
-	struct mei_cl_cb *cb_pos = NULL, *cb_next = NULL;
+	struct mei_cl_cb *pos = NULL, *next = NULL;
 	struct mei_io_list *list;
 	int ret;
 
@@ -1192,47 +1213,41 @@ static int mei_irq_thread_write_handler(struct mei_io_list *cmpl_list,
 		dev_dbg(&dev->pdev->dev, "host buffer is not empty.\n");
 		return 0;
 	}
-	dev->write_hang = -1;
 	*slots = mei_count_empty_write_slots(dev);
 	/* complete all waiting for write CB */
 	dev_dbg(&dev->pdev->dev, "complete all waiting for write cb.\n");
 
 	list = &dev->write_waiting_list;
-	if (!list->status && !list_empty(&list->mei_cb.cb_list)) {
-		list_for_each_entry_safe(cb_pos, cb_next,
-				&list->mei_cb.cb_list, cb_list) {
-			cl = (struct mei_cl *)cb_pos->file_private;
-			if (cl) {
-				cl->status = 0;
-				list_del(&cb_pos->cb_list);
-				if (MEI_WRITING == cl->writing_state &&
-				   (cb_pos->major_file_operations ==
-						MEI_WRITE) &&
-				   (cl != &dev->iamthif_cl)) {
-					dev_dbg(&dev->pdev->dev,
-						"MEI WRITE COMPLETE\n");
-					cl->writing_state =
-							MEI_WRITE_COMPLETE;
-					list_add_tail(&cb_pos->cb_list,
-						&cmpl_list->mei_cb.cb_list);
-				}
-				if (cl == &dev->iamthif_cl) {
-					dev_dbg(&dev->pdev->dev, "check iamthif flow control.\n");
-					if (dev->iamthif_flow_control_pending) {
-						ret =
-						_mei_irq_thread_iamthif_read(
-								dev, slots);
-						if (ret)
-							return ret;
-					}
-				}
-			}
+	list_for_each_entry_safe(pos, next,
+			&list->mei_cb.cb_list, cb_list) {
+		cl = (struct mei_cl *)pos->file_private;
+		if (cl == NULL)
+			continue;
 
+		cl->status = 0;
+		list_del(&pos->cb_list);
+		if (MEI_WRITING == cl->writing_state &&
+		   (pos->major_file_operations == MEI_WRITE) &&
+		   (cl != &dev->iamthif_cl)) {
+			dev_dbg(&dev->pdev->dev,
+				"MEI WRITE COMPLETE\n");
+			cl->writing_state = MEI_WRITE_COMPLETE;
+			list_add_tail(&pos->cb_list,
+				&cmpl_list->mei_cb.cb_list);
+		}
+		if (cl == &dev->iamthif_cl) {
+			dev_dbg(&dev->pdev->dev, "check iamthif flow control.\n");
+			if (dev->iamthif_flow_control_pending) {
+				ret = _mei_irq_thread_iamthif_read(
+						dev, slots);
+				if (ret)
+					return ret;
+			}
 		}
 	}
 
 	if (dev->stop && !dev->wd_pending) {
-		dev->wd_stopped = 1;
+		dev->wd_stopped = true;
 		wake_up_interruptible(&dev->wait_stop_wd);
 		return 0;
 	}
@@ -1256,7 +1271,7 @@ static int mei_irq_thread_write_handler(struct mei_io_list *cmpl_list,
 				if (mei_flow_ctrl_reduce(dev, &dev->wd_cl))
 					return -ENODEV;
 
-			dev->wd_pending = 0;
+			dev->wd_pending = false;
 
 			if (dev->wd_timeout) {
 				*slots -= (sizeof(struct mei_msg_hdr) +
@@ -1274,101 +1289,88 @@ static int mei_irq_thread_write_handler(struct mei_io_list *cmpl_list,
 		return ~ENODEV;
 
 	/* complete control write list CB */
-	if (!dev->ctrl_wr_list.status) {
-		/* complete control write list CB */
-		dev_dbg(&dev->pdev->dev, "complete control write list cb.\n");
-		list_for_each_entry_safe(cb_pos, cb_next,
+	dev_dbg(&dev->pdev->dev, "complete control write list cb.\n");
+	list_for_each_entry_safe(pos, next,
 				&dev->ctrl_wr_list.mei_cb.cb_list, cb_list) {
-			cl = (struct mei_cl *)
-				cb_pos->file_private;
-			if (!cl) {
-				list_del(&cb_pos->cb_list);
-				return -ENODEV;
-			}
-			switch (cb_pos->major_file_operations) {
-			case MEI_CLOSE:
-				/* send disconnect message */
-				ret = _mei_irq_thread_close(dev, slots,
-						     cb_pos, cl, cmpl_list);
-				if (ret)
-					return ret;
-
-				break;
-			case MEI_READ:
-				/* send flow control message */
-				ret = _mei_irq_thread_read(dev, slots,
-						    cb_pos, cl, cmpl_list);
-				if (ret)
-					return ret;
-
-				break;
-			case MEI_IOCTL:
-				/* connect message */
-				if (!mei_other_client_is_connecting(dev,
-						cl))
-					continue;
-				ret = _mei_irq_thread_ioctl(dev, slots,
-						     cb_pos, cl, cmpl_list);
-				if (ret)
-					return ret;
-
-				break;
-
-			default:
-				BUG();
-			}
-
+		cl = (struct mei_cl *) pos->file_private;
+		if (!cl) {
+			list_del(&pos->cb_list);
+			return -ENODEV;
 		}
+		switch (pos->major_file_operations) {
+		case MEI_CLOSE:
+			/* send disconnect message */
+			ret = _mei_irq_thread_close(dev, slots, pos, cl, cmpl_list);
+			if (ret)
+				return ret;
+
+			break;
+		case MEI_READ:
+			/* send flow control message */
+			ret = _mei_irq_thread_read(dev, slots, pos, cl, cmpl_list);
+			if (ret)
+				return ret;
+
+			break;
+		case MEI_IOCTL:
+			/* connect message */
+			if (mei_other_client_is_connecting(dev, cl))
+				continue;
+			ret = _mei_irq_thread_ioctl(dev, slots, pos, cl, cmpl_list);
+			if (ret)
+				return ret;
+
+			break;
+
+		default:
+			BUG();
+		}
+
 	}
 	/* complete  write list CB */
-	if (!dev->write_list.status &&
-	    !list_empty(&dev->write_list.mei_cb.cb_list)) {
-		dev_dbg(&dev->pdev->dev, "complete write list cb.\n");
-		list_for_each_entry_safe(cb_pos, cb_next,
-				&dev->write_list.mei_cb.cb_list, cb_list) {
-			cl = (struct mei_cl *)cb_pos->file_private;
+	dev_dbg(&dev->pdev->dev, "complete write list cb.\n");
+	list_for_each_entry_safe(pos, next,
+			&dev->write_list.mei_cb.cb_list, cb_list) {
+		cl = (struct mei_cl *)pos->file_private;
+		if (cl == NULL)
+			continue;
 
-			if (cl) {
-				if (cl != &dev->iamthif_cl) {
-					if (!mei_flow_ctrl_creds(dev,
-						cl)) {
-						dev_dbg(&dev->pdev->dev,
-							"No flow control"
-						    " credentials for client"
-						    " %d, not sending.\n",
-						    cl->host_client_id);
-						continue;
-					}
-					ret = _mei_irq_thread_cmpl(dev, slots,
-							    cb_pos,
-							    cl, cmpl_list);
-					if (ret)
-						return ret;
-
-				} else if (cl == &dev->iamthif_cl) {
-					/* IAMTHIF IOCTL */
-					dev_dbg(&dev->pdev->dev, "complete amthi write cb.\n");
-					if (!mei_flow_ctrl_creds(dev,
-							cl)) {
-						dev_dbg(&dev->pdev->dev,
-							"No flow control"
-						    " credentials for amthi"
-						    " client %d.\n",
-						    cl->host_client_id);
-						continue;
-					}
-					ret = _mei_irq_thread_cmpl_iamthif(dev,
-								slots,
-								cb_pos,
-								cl,
-								cmpl_list);
-					if (ret)
-						return ret;
-
-				}
+		if (cl != &dev->iamthif_cl) {
+			if (!mei_flow_ctrl_creds(dev, cl)) {
+				dev_dbg(&dev->pdev->dev,
+					"No flow control"
+				    " credentials for client"
+				    " %d, not sending.\n",
+				    cl->host_client_id);
+				continue;
 			}
+			ret = _mei_irq_thread_cmpl(dev, slots,
+					    pos,
+					    cl, cmpl_list);
+			if (ret)
+				return ret;
+
+		} else if (cl == &dev->iamthif_cl) {
+			/* IAMTHIF IOCTL */
+			dev_dbg(&dev->pdev->dev, "complete amthi write cb.\n");
+			if (!mei_flow_ctrl_creds(dev, cl)) {
+				dev_dbg(&dev->pdev->dev,
+					"No flow control"
+				    " credentials for amthi"
+				    " client %d.\n",
+				    cl->host_client_id);
+				continue;
+			}
+			ret = _mei_irq_thread_cmpl_iamthif(dev,
+						slots,
+						pos,
+						cl,
+						cmpl_list);
+			if (ret)
+				return ret;
 
 		}
+
 	}
 	return 0;
 }
@@ -1382,7 +1384,7 @@ static int mei_irq_thread_write_handler(struct mei_io_list *cmpl_list,
  *
  * NOTE: This function is called by timer interrupt work
  */
-void mei_wd_timer(struct work_struct *work)
+void mei_timer(struct work_struct *work)
 {
 	unsigned long timeout;
 	struct mei_cl *cl_pos = NULL;
@@ -1392,7 +1394,7 @@ void mei_wd_timer(struct work_struct *work)
 	struct mei_cl_cb  *cb_next = NULL;
 
 	struct mei_device *dev = container_of(work,
-					struct mei_device, wd_work.work);
+					struct mei_device, timer_work.work);
 
 
 	mutex_lock(&dev->device_lock);
@@ -1419,41 +1421,14 @@ void mei_wd_timer(struct work_struct *work)
 		}
 	}
 
-	if (dev->wd_cl.state != MEI_FILE_CONNECTED)
-		goto out;
-
-	/* Watchdog */
-	if (dev->wd_due_counter && !dev->wd_bypass) {
-		if (--dev->wd_due_counter == 0) {
-			if (dev->mei_host_buffer_is_empty &&
-			    mei_flow_ctrl_creds(dev, &dev->wd_cl) > 0) {
-				dev->mei_host_buffer_is_empty = 0;
-				dev_dbg(&dev->pdev->dev, "send watchdog.\n");
-
-				if (mei_wd_send(dev))
-					dev_dbg(&dev->pdev->dev, "wd send failed.\n");
-				else
-					if (mei_flow_ctrl_reduce(dev, &dev->wd_cl))
-						goto out;
-
-				if (dev->wd_timeout)
-					dev->wd_due_counter = 2;
-				else
-					dev->wd_due_counter = 0;
-
-			} else
-				dev->wd_pending = 1;
-
-		}
-	}
 	if (dev->iamthif_stall_timer) {
 		if (--dev->iamthif_stall_timer == 0) {
 			dev_dbg(&dev->pdev->dev, "reseting because of hang to amthi.\n");
 			mei_reset(dev, 1);
 			dev->iamthif_msg_buf_size = 0;
 			dev->iamthif_msg_buf_index = 0;
-			dev->iamthif_canceled = 0;
-			dev->iamthif_ioctl = 1;
+			dev->iamthif_canceled = false;
+			dev->iamthif_ioctl = true;
 			dev->iamthif_state = MEI_IAMTHIF_IDLE;
 			dev->iamthif_timer = 0;
 
@@ -1462,7 +1437,7 @@ void mei_wd_timer(struct work_struct *work)
 
 			dev->iamthif_file_object = NULL;
 			dev->iamthif_current_cb = NULL;
-			run_next_iamthif_cmd(dev);
+			mei_run_next_iamthif_cmd(dev);
 		}
 	}
 
@@ -1486,18 +1461,13 @@ void mei_wd_timer(struct work_struct *work)
 			amthi_complete_list = &dev->amthi_read_complete_list.
 					mei_cb.cb_list;
 
-			if (!list_empty(amthi_complete_list)) {
+			list_for_each_entry_safe(cb_pos, cb_next, amthi_complete_list, cb_list) {
 
-				list_for_each_entry_safe(cb_pos, cb_next,
-							amthi_complete_list,
-							cb_list) {
+				cl_pos = cb_pos->file_object->private_data;
 
-					cl_pos = cb_pos->file_object->private_data;
-
-					/* Finding the AMTHI entry. */
-					if (cl_pos ==	&dev->iamthif_cl)
-						list_del(&cb_pos->cb_list);
-				}
+				/* Finding the AMTHI entry. */
+				if (cl_pos == &dev->iamthif_cl)
+					list_del(&cb_pos->cb_list);
 			}
 			if (dev->iamthif_current_cb)
 				mei_free_cb_private(dev->iamthif_current_cb);
@@ -1506,13 +1476,13 @@ void mei_wd_timer(struct work_struct *work)
 			dev->iamthif_file_object = NULL;
 			dev->iamthif_current_cb = NULL;
 			dev->iamthif_timer = 0;
-			run_next_iamthif_cmd(dev);
+			mei_run_next_iamthif_cmd(dev);
 
 		}
 	}
 out:
-	 schedule_delayed_work(&dev->wd_work, 2 * HZ);
-	 mutex_unlock(&dev->device_lock);
+	schedule_delayed_work(&dev->timer_work, 2 * HZ);
+	mutex_unlock(&dev->device_lock);
 }
 
 /**
@@ -1539,8 +1509,14 @@ irqreturn_t mei_interrupt_thread_handler(int irq, void *dev_id)
 	dev_dbg(&dev->pdev->dev, "function called after ISR to handle the interrupt processing.\n");
 	/* initialize our complete list */
 	mutex_lock(&dev->device_lock);
-	mei_initialize_list(&complete_list, dev);
+	mei_io_list_init(&complete_list);
 	dev->host_hw_state = mei_hcsr_read(dev);
+
+	/* Ack the interrupt here
+	 * In case of MSI we don't go throuhg the quick handler */
+	if (pci_dev_msi_enabled(dev->pdev))
+		mei_reg_write(dev, H_CSR, dev->host_hw_state);
+
 	dev->me_hw_state = mei_mecsr_read(dev);
 
 	/* check if ME wants a reset */
@@ -1564,7 +1540,7 @@ irqreturn_t mei_interrupt_thread_handler(int irq, void *dev_id)
 			/* link is established
 			 * start sending messages.
 			 */
-			host_start_message(dev);
+			mei_host_start_message(dev);
 			mutex_unlock(&dev->device_lock);
 			return IRQ_HANDLED;
 		} else {
@@ -1602,7 +1578,7 @@ end:
 		wake_up_interruptible(&dev->wait_recvd_msg);
 		bus_message_received = false;
 	}
-	if (complete_list.status || list_empty(&complete_list.mei_cb.cb_list))
+	if (list_empty(&complete_list.mei_cb.cb_list))
 		return IRQ_HANDLED;
 
 

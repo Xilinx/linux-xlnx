@@ -195,6 +195,7 @@ struct acpi_processor_flags {
 	u8 has_cst:1;
 	u8 power_setup_done:1;
 	u8 bm_rld_set:1;
+	u8 need_hotplug_init:1;
 };
 
 struct acpi_processor {
@@ -329,6 +330,7 @@ extern void acpi_processor_throttling_init(void);
 int acpi_processor_power_init(struct acpi_processor *pr,
 			      struct acpi_device *device);
 int acpi_processor_cst_has_changed(struct acpi_processor *pr);
+int acpi_processor_hotplug(struct acpi_processor *pr);
 int acpi_processor_power_exit(struct acpi_processor *pr,
 			      struct acpi_device *device);
 int acpi_processor_suspend(struct acpi_device * device, pm_message_t state);
@@ -337,7 +339,7 @@ extern struct cpuidle_driver acpi_idle_driver;
 
 /* in processor_thermal.c */
 int acpi_processor_get_limit_info(struct acpi_processor *pr);
-extern struct thermal_cooling_device_ops processor_cooling_ops;
+extern const struct thermal_cooling_device_ops processor_cooling_ops;
 #ifdef CONFIG_CPU_FREQ
 void acpi_thermal_cpufreq_init(void);
 void acpi_thermal_cpufreq_exit(void);

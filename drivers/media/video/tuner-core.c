@@ -39,6 +39,7 @@
 #include "tda9887.h"
 #include "xc5000.h"
 #include "tda18271.h"
+#include "xc4000.h"
 
 #define UNSET (-1U)
 
@@ -325,6 +326,7 @@ static void set_type(struct i2c_client *c, unsigned int type,
 		t->mode_mask = T_RADIO;
 		break;
 	case TUNER_PHILIPS_FMD1216ME_MK3:
+	case TUNER_PHILIPS_FMD1216MEX_MK3:
 		buffer[0] = 0x0b;
 		buffer[1] = 0xdc;
 		buffer[2] = 0x9c;
@@ -387,6 +389,23 @@ static void set_type(struct i2c_client *c, unsigned int type,
 
 		if (!dvb_attach(tda18271_attach, &t->fe, t->i2c->addr,
 				t->i2c->adapter, &cfg))
+			goto attach_failed;
+		tune_now = 0;
+		break;
+	}
+	case TUNER_XC4000:
+	{
+		struct xc4000_config xc4000_cfg = {
+			.i2c_address	  = t->i2c->addr,
+			/* FIXME: the correct parameters will be set */
+			/* only when the digital dvb_attach() occurs */
+			.default_pm	  = 0,
+			.dvb_amplitude	  = 0,
+			.set_smoothedcvbs = 0,
+			.if_khz		  = 0
+		};
+		if (!dvb_attach(xc4000_attach,
+				&t->fe, t->i2c->adapter, &xc4000_cfg))
 			goto attach_failed;
 		tune_now = 0;
 		break;

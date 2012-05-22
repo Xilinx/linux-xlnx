@@ -1250,7 +1250,7 @@ static int __devinit mv_xor_probe(struct platform_device *pdev)
 
 static void
 mv_xor_conf_mbus_windows(struct mv_xor_shared_private *msp,
-			 struct mbus_dram_target_info *dram)
+			 const struct mbus_dram_target_info *dram)
 {
 	void __iomem *base = msp->xor_base;
 	u32 win_enable = 0;
@@ -1264,7 +1264,7 @@ mv_xor_conf_mbus_windows(struct mv_xor_shared_private *msp,
 	}
 
 	for (i = 0; i < dram->num_cs; i++) {
-		struct mbus_dram_window *cs = dram->cs + i;
+		const struct mbus_dram_window *cs = dram->cs + i;
 
 		writel((cs->base & 0xffff0000) |
 		       (cs->mbus_attr << 8) |
@@ -1290,7 +1290,7 @@ static struct platform_driver mv_xor_driver = {
 
 static int mv_xor_shared_probe(struct platform_device *pdev)
 {
-	struct mv_xor_platform_shared_data *msd = pdev->dev.platform_data;
+	const struct mbus_dram_target_info *dram;
 	struct mv_xor_shared_private *msp;
 	struct resource *res;
 
@@ -1305,7 +1305,7 @@ static int mv_xor_shared_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	msp->xor_base = devm_ioremap(&pdev->dev, res->start,
-				     res->end - res->start + 1);
+				     resource_size(res));
 	if (!msp->xor_base)
 		return -EBUSY;
 
@@ -1314,7 +1314,7 @@ static int mv_xor_shared_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	msp->xor_high_base = devm_ioremap(&pdev->dev, res->start,
-					  res->end - res->start + 1);
+					  resource_size(res));
 	if (!msp->xor_high_base)
 		return -EBUSY;
 
@@ -1323,8 +1323,9 @@ static int mv_xor_shared_probe(struct platform_device *pdev)
 	/*
 	 * (Re-)program MBUS remapping windows if we are asked to.
 	 */
-	if (msd != NULL && msd->dram != NULL)
-		mv_xor_conf_mbus_windows(msp, msd->dram);
+	dram = mv_mbus_dram_info();
+	if (dram)
+		mv_xor_conf_mbus_windows(msp, dram);
 
 	return 0;
 }

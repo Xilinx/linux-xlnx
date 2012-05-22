@@ -38,7 +38,6 @@
 struct ixp2000_flash_info {
 	struct		mtd_info *mtd;
 	struct		map_info map;
-	struct		mtd_partition *partitions;
 	struct		resource *res;
 };
 
@@ -125,8 +124,6 @@ static int ixp2000_flash_remove(struct platform_device *dev)
 	if (info->map.map_priv_1)
 		iounmap((void *) info->map.map_priv_1);
 
-	kfree(info->partitions);
-
 	if (info->res) {
 		release_resource(info->res);
 		kfree(info->res);
@@ -155,7 +152,7 @@ static int ixp2000_flash_probe(struct platform_device *dev)
 	if (!plat)
 		return -ENODEV;
 
-	window_size = dev->resource->end - dev->resource->start + 1;
+	window_size = resource_size(dev->resource);
 	dev_info(&dev->dev, "Probe of IXP2000 flash(%d banks x %dMiB)\n",
 		 ixp_data->nr_banks, ((u32)window_size >> 20));
 
@@ -194,16 +191,17 @@ static int ixp2000_flash_probe(struct platform_device *dev)
 	info->map.copy_to = ixp2000_flash_copy_to;
 
 	info->res = request_mem_region(dev->resource->start,
-			dev->resource->end - dev->resource->start + 1,
-			dev_name(&dev->dev));
+				       resource_size(dev->resource),
+				       dev_name(&dev->dev));
 	if (!info->res) {
 		dev_err(&dev->dev, "Could not reserve memory region\n");
 		err = -ENOMEM;
 		goto Error;
 	}
 
-	info->map.map_priv_1 = (unsigned long) ioremap(dev->resource->start,
-			    	dev->resource->end - dev->resource->start + 1);
+	info->map.map_priv_1 =
+		(unsigned long)ioremap(dev->resource->start,
+				       resource_size(dev->resource));
 	if (!info->map.map_priv_1) {
 		dev_err(&dev->dev, "Failed to ioremap flash region\n");
 		err = -EIO;
@@ -228,13 +226,7 @@ static int ixp2000_flash_probe(struct platform_device *dev)
 	}
 	info->mtd->owner = THIS_MODULE;
 
-	err = parse_mtd_partitions(info->mtd, probes, &info->partitions, 0);
-	if (err > 0) {
-		err = mtd_device_register(info->mtd, info->partitions, err);
-		if(err)
-			dev_err(&dev->dev, "Could not parse partitions\n");
-	}
-
+	err = mtd_device_parse_register(info->mtd, probes, 0, NULL, 0);
 	if (err)
 		goto Error;
 
@@ -254,18 +246,8 @@ static struct platform_driver ixp2000_flash_driver = {
 	},
 };
 
-static int __init ixp2000_flash_init(void)
-{
-	return platform_driver_register(&ixp2000_flash_driver);
-}
+module_platform_driver(ixp2000_flash_driver);
 
-static void __exit ixp2000_flash_exit(void)
-{
-	platform_driver_unregister(&ixp2000_flash_driver);
-}
-
-module_init(ixp2000_flash_init);
-module_exit(ixp2000_flash_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Deepak Saxena <dsaxena@plexity.net>");
 MODULE_ALIAS("platform:IXP2000-Flash");

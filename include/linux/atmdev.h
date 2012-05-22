@@ -220,7 +220,7 @@ struct atm_cirange {
 #include <linux/skbuff.h> /* struct sk_buff */
 #include <linux/uio.h>
 #include <net/sock.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
@@ -444,16 +444,6 @@ void atm_dev_signal_change(struct atm_dev *dev, char signal);
 void vcc_insert_socket(struct sock *sk);
 
 void atm_dev_release_vccs(struct atm_dev *dev);
-
-/*
- * This is approximately the algorithm used by alloc_skb.
- *
- */
-
-static inline int atm_guess_pdu2truesize(int size)
-{
-	return SKB_DATA_ALIGN(size) + sizeof(struct skb_shared_info);
-}
 
 
 static inline void atm_force_charge(struct atm_vcc *vcc,int truesize)

@@ -1,7 +1,7 @@
 /*
  * Sonics Silicon Backplane PCI-Hostbus related functions.
  *
- * Copyright (C) 2005-2006 Michael Buesch <mb@bu3sch.de>
+ * Copyright (C) 2005-2006 Michael Buesch <m@bues.ch>
  * Copyright (C) 2005 Martin Langer <martin-langer@gmx.de>
  * Copyright (C) 2005 Stefano Brivio <st3@riseup.net>
  * Copyright (C) 2005 Danny van Dyk <kugelfang@gentoo.org>
@@ -607,6 +607,29 @@ static void sprom_extract_r8(struct ssb_sprom *out, const u16 *in)
 	memcpy(&out->antenna_gain.ghz5, &out->antenna_gain.ghz24,
 	       sizeof(out->antenna_gain.ghz5));
 
+	/* Extract FEM info */
+	SPEX(fem.ghz2.tssipos, SSB_SPROM8_FEM2G,
+		SSB_SROM8_FEM_TSSIPOS, SSB_SROM8_FEM_TSSIPOS_SHIFT);
+	SPEX(fem.ghz2.extpa_gain, SSB_SPROM8_FEM2G,
+		SSB_SROM8_FEM_EXTPA_GAIN, SSB_SROM8_FEM_EXTPA_GAIN_SHIFT);
+	SPEX(fem.ghz2.pdet_range, SSB_SPROM8_FEM2G,
+		SSB_SROM8_FEM_PDET_RANGE, SSB_SROM8_FEM_PDET_RANGE_SHIFT);
+	SPEX(fem.ghz2.tr_iso, SSB_SPROM8_FEM2G,
+		SSB_SROM8_FEM_TR_ISO, SSB_SROM8_FEM_TR_ISO_SHIFT);
+	SPEX(fem.ghz2.antswlut, SSB_SPROM8_FEM2G,
+		SSB_SROM8_FEM_ANTSWLUT, SSB_SROM8_FEM_ANTSWLUT_SHIFT);
+
+	SPEX(fem.ghz5.tssipos, SSB_SPROM8_FEM5G,
+		SSB_SROM8_FEM_TSSIPOS, SSB_SROM8_FEM_TSSIPOS_SHIFT);
+	SPEX(fem.ghz5.extpa_gain, SSB_SPROM8_FEM5G,
+		SSB_SROM8_FEM_EXTPA_GAIN, SSB_SROM8_FEM_EXTPA_GAIN_SHIFT);
+	SPEX(fem.ghz5.pdet_range, SSB_SPROM8_FEM5G,
+		SSB_SROM8_FEM_PDET_RANGE, SSB_SROM8_FEM_PDET_RANGE_SHIFT);
+	SPEX(fem.ghz5.tr_iso, SSB_SPROM8_FEM5G,
+		SSB_SROM8_FEM_TR_ISO, SSB_SROM8_FEM_TR_ISO_SHIFT);
+	SPEX(fem.ghz5.antswlut, SSB_SPROM8_FEM5G,
+		SSB_SROM8_FEM_ANTSWLUT, SSB_SROM8_FEM_ANTSWLUT_SHIFT);
+
 	sprom_extract_r458(out, in);
 
 	/* TODO - get remaining rev 8 stuff needed */
@@ -734,12 +757,9 @@ out_free:
 static void ssb_pci_get_boardinfo(struct ssb_bus *bus,
 				  struct ssb_boardinfo *bi)
 {
-	pci_read_config_word(bus->host_pci, PCI_SUBSYSTEM_VENDOR_ID,
-			     &bi->vendor);
-	pci_read_config_word(bus->host_pci, PCI_SUBSYSTEM_ID,
-			     &bi->type);
-	pci_read_config_word(bus->host_pci, PCI_REVISION_ID,
-			     &bi->rev);
+	bi->vendor = bus->host_pci->subsystem_vendor;
+	bi->type = bus->host_pci->subsystem_device;
+	bi->rev = bus->host_pci->revision;
 }
 
 int ssb_pci_get_invariants(struct ssb_bus *bus,

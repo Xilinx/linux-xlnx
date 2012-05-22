@@ -23,10 +23,13 @@
 #include <linux/pci.h>
 #include <linux/interrupt.h>
 #include <linux/serial_core.h>
+#include <linux/tty.h>
+#include <linux/tty_flip.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/ioport.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 
 #include "timbuart.h"
 
@@ -510,20 +513,7 @@ static struct platform_driver timbuart_platform_driver = {
 	.remove		= __devexit_p(timbuart_remove),
 };
 
-/*--------------------------------------------------------------------------*/
-
-static int __init timbuart_init(void)
-{
-	return platform_driver_register(&timbuart_platform_driver);
-}
-
-static void __exit timbuart_exit(void)
-{
-	platform_driver_unregister(&timbuart_platform_driver);
-}
-
-module_init(timbuart_init);
-module_exit(timbuart_exit);
+module_platform_driver(timbuart_platform_driver);
 
 MODULE_DESCRIPTION("Timberdale UART driver");
 MODULE_LICENSE("GPL v2");

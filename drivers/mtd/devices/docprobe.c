@@ -50,11 +50,6 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/doc2000.h>
 
-/* Where to look for the devices? */
-#ifndef CONFIG_MTD_DOCPROBE_ADDRESS
-#define CONFIG_MTD_DOCPROBE_ADDRESS 0
-#endif
-
 
 static unsigned long doc_config_location = CONFIG_MTD_DOCPROBE_ADDRESS;
 module_param(doc_config_location, ulong, 0);
@@ -246,8 +241,7 @@ static void __init DoC_Probe(unsigned long physadr)
 			return;
 		}
 		docfound = 1;
-		mtd = kmalloc(sizeof(struct DiskOnChip) + sizeof(struct mtd_info), GFP_KERNEL);
-
+		mtd = kzalloc(sizeof(struct DiskOnChip) + sizeof(struct mtd_info), GFP_KERNEL);
 		if (!mtd) {
 			printk(KERN_WARNING "Cannot allocate memory for data structures. Dropping.\n");
 			iounmap(docptr);
@@ -255,10 +249,6 @@ static void __init DoC_Probe(unsigned long physadr)
 		}
 
 		this = (struct DiskOnChip *)(&mtd[1]);
-
-		memset((char *)mtd,0, sizeof(struct mtd_info));
-		memset((char *)this, 0, sizeof(struct DiskOnChip));
-
 		mtd->priv = this;
 		this->virtadr = docptr;
 		this->physadr = physadr;

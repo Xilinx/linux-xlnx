@@ -14,11 +14,13 @@
  * 02139, USA.
  */
 
+#include <linux/export.h>
 #include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -87,6 +89,8 @@
 #define XSLCR_MIO_L2_SHIFT		3
 #define XSLCR_MIO_L3_SHIFT		5
 
+#define XSLCR_MIO_LMASK			0x000000FE
+
 #define XSLCR_MIO_PIN_XX_TRI_ENABLE	0x00000001
 
 /* The following constants define L0 Mux Peripheral Enables */
@@ -127,10 +131,10 @@
 #define XSLCR_MIO_NUM_SMC_CS_PINS	01
 #define XSLCR_MIO_NUM_NAND_CS_PINS	01
 #define XSLCR_MIO_NUM_SRAM_NOR_PINS	38
-#define XSLCR_MIO_NUM_QSPI_PINS		12
+#define XSLCR_MIO_NUM_QSPI_PINS		05
 #define XSLCR_MIO_NUM_QSPI_SEL_PINS	01
-#define XSLCR_MIO_NUM_GPIO0_PINS	32
-#define XSLCR_MIO_NUM_GPIO1_PINS	22
+#define XSLCR_MIO_NUM_QSPI_FOC_PINS	01
+#define XSLCR_MIO_NUM_GPIO_PINS		01
 #define XSLCR_MIO_NUM_CAN_PINS		02
 #define XSLCR_MIO_NUM_IIC_PINS		02
 #define XSLCR_MIO_NUM_JTAG_PINS		04
@@ -201,8 +205,11 @@ struct xslcr_periph_reset {
 static const char * mio_periph_name[] = {
 	"emac0",
 	"emac1",
-	"qspi",
-	"qspi_sel",
+	"qspi0",
+	"qspi0_sel",
+	"qspi1",
+	"qspi1_sel",
+	"qspi_foc",
 	"trace_data2",
 	"trace_data4",
 	"trace_data8",
@@ -214,8 +221,60 @@ static const char * mio_periph_name[] = {
 	"sram_nor",
 	"nand",
 	"nand_cs",
-	"gpio0",
-	"gpio1",
+	"gpio00",
+	"gpio01",
+	"gpio02",
+	"gpio03",
+	"gpio04",
+	"gpio05",
+	"gpio06",
+	"gpio07",
+	"gpio08",
+	"gpio09",
+	"gpio10",
+	"gpio11",
+	"gpio12",
+	"gpio13",
+	"gpio14",
+	"gpio15",
+	"gpio16",
+	"gpio17",
+	"gpio18",
+	"gpio19",
+	"gpio20",
+	"gpio21",
+	"gpio22",
+	"gpio23",
+	"gpio24",
+	"gpio25",
+	"gpio26",
+	"gpio27",
+	"gpio28",
+	"gpio29",
+	"gpio30",
+	"gpio31",
+	"gpio32",
+	"gpio33",
+	"gpio34",
+	"gpio35",
+	"gpio36",
+	"gpio37",
+	"gpio38",
+	"gpio39",
+	"gpio40",
+	"gpio41",
+	"gpio42",
+	"gpio43",
+	"gpio44",
+	"gpio45",
+	"gpio46",
+	"gpio47",
+	"gpio48",
+	"gpio49",
+	"gpio50",
+	"gpio51",
+	"gpio52",
+	"gpio53",
 	"can0",
 	"can1",
 	"iic0",
@@ -256,12 +315,24 @@ static const int emac1_pins[] = {
 	28, 40
 };
 
-static const int qspi_pins[] = {
+static const int qspi0_pins[] = {
 	2
 };
 
-static const int qspi_sel_pins[] = {
-	1, 0
+static const int qspi0_sel_pins[] = {
+	1
+};
+
+static const int qspi1_pins[] = {
+	9
+};
+
+static const int qspi1_sel_pins[] = {
+	0
+};
+
+static const int qspi_foc_pins[] = {
+	8
 };
 
 static const int trace_data2_pins[] = {
@@ -308,12 +379,229 @@ static const int nand_cs_pins[] = {
 	0
 };
 
-static const int gpio0_pins[] = {
+static const int gpio00_pins[] = {
 	0
 };
 
-static const int gpio1_pins[] = {
+static const int gpio01_pins[] = {
+	1
+};
+
+
+static const int gpio02_pins[] = {
+	2
+};
+
+static const int gpio03_pins[] = {
+	3
+};
+
+static const int gpio04_pins[] = {
+	4
+};
+
+static const int gpio05_pins[] = {
+	5
+};
+
+static const int gpio06_pins[] = {
+	6
+};
+
+static const int gpio07_pins[] = {
+	7
+};
+
+
+static const int gpio08_pins[] = {
+	8
+};
+
+static const int gpio09_pins[] = {
+	9
+};
+
+
+static const int gpio10_pins[] = {
+	10
+};
+
+static const int gpio11_pins[] = {
+	11
+};
+
+static const int gpio12_pins[] = {
+	12
+};
+
+static const int gpio13_pins[] = {
+	13
+};
+
+static const int gpio14_pins[] = {
+	14
+};
+
+
+static const int gpio15_pins[] = {
+	15
+};
+
+static const int gpio16_pins[] = {
+	16
+};
+
+static const int gpio17_pins[] = {
+	17
+};
+
+static const int gpio18_pins[] = {
+	18
+};
+
+static const int gpio19_pins[] = {
+	19
+};
+
+static const int gpio20_pins[] = {
+	20
+};
+
+static const int gpio21_pins[] = {
+	21
+};
+
+
+static const int gpio22_pins[] = {
+	22
+};
+
+static const int gpio23_pins[] = {
+	23
+};
+
+static const int gpio24_pins[] = {
+	24
+};
+
+static const int gpio25_pins[] = {
+	25
+};
+
+static const int gpio26_pins[] = {
+	26
+};
+
+static const int gpio27_pins[] = {
+	27
+};
+
+
+static const int gpio28_pins[] = {
+	28
+};
+
+static const int gpio29_pins[] = {
+	29
+};
+
+
+static const int gpio30_pins[] = {
+	30
+};
+
+static const int gpio31_pins[] = {
+	31
+};
+
+static const int gpio32_pins[] = {
 	32
+};
+
+static const int gpio33_pins[] = {
+	33
+};
+
+static const int gpio34_pins[] = {
+	34
+};
+
+
+static const int gpio35_pins[] = {
+	35
+};
+
+static const int gpio36_pins[] = {
+	36
+};
+
+static const int gpio37_pins[] = {
+	37
+};
+
+static const int gpio38_pins[] = {
+	38
+};
+
+static const int gpio39_pins[] = {
+	39
+};
+
+static const int gpio40_pins[] = {
+	40
+};
+
+static const int gpio41_pins[] = {
+	41
+};
+
+static const int gpio42_pins[] = {
+	42
+};
+
+static const int gpio43_pins[] = {
+	43
+};
+
+static const int gpio44_pins[] = {
+	44
+};
+
+
+static const int gpio45_pins[] = {
+	45
+};
+
+static const int gpio46_pins[] = {
+	46
+};
+
+static const int gpio47_pins[] = {
+	47
+};
+
+static const int gpio48_pins[] = {
+	48
+};
+
+static const int gpio49_pins[] = {
+	49
+};
+
+static const int gpio50_pins[] = {
+	50
+};
+
+static const int gpio51_pins[] = {
+	51
+};
+
+static const int gpio52_pins[] = {
+	52
+};
+
+static const int gpio53_pins[] = {
+	53
 };
 
 static const int can0_pins[] = {
@@ -403,8 +691,8 @@ static const struct xslcr_mio mio_periphs[] = {
 		0x01,
 	},
 	{
-		qspi_pins,
-		ARRAY_SIZE(qspi_pins),
+		qspi0_pins,
+		ARRAY_SIZE(qspi0_pins),
 		XSLCR_MIO_NUM_QSPI_PINS,
 		XSLCR_MIO_PIN_QSPI_ENABLE,
 		XSLCR_APER_CLK_CTRL_QSPI_MASK,
@@ -412,9 +700,35 @@ static const struct xslcr_mio mio_periphs[] = {
 		0x01,
 	},
 	{
-		qspi_sel_pins,
-		ARRAY_SIZE(qspi_sel_pins),
+		qspi0_sel_pins,
+		ARRAY_SIZE(qspi0_sel_pins),
 		XSLCR_MIO_NUM_QSPI_SEL_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		0x00,
+		0x00,
+		0x00,
+	},
+	{
+		qspi1_pins,
+		ARRAY_SIZE(qspi1_pins),
+		XSLCR_MIO_NUM_QSPI_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		XSLCR_APER_CLK_CTRL_QSPI_MASK,
+		XSLCR_QSPI_CLK_CTRL_OFFSET,
+		0x01,
+	},
+	{
+		qspi1_sel_pins,
+		ARRAY_SIZE(qspi1_sel_pins),
+		XSLCR_MIO_NUM_QSPI_SEL_PINS,
+		XSLCR_MIO_PIN_QSPI_ENABLE,
+		0x00,
+		0x00,
+		0x00,
+	},
+	{	qspi_foc_pins,
+		ARRAY_SIZE(qspi_foc_pins),
+		XSLCR_MIO_NUM_QSPI_FOC_PINS,
 		XSLCR_MIO_PIN_QSPI_ENABLE,
 		0x00,
 		0x00,
@@ -520,18 +834,486 @@ static const struct xslcr_mio mio_periphs[] = {
 		0x00,
 	},
 	{
-		gpio0_pins,
-		ARRAY_SIZE(gpio0_pins),
-		XSLCR_MIO_NUM_GPIO0_PINS,
+		gpio00_pins,
+		ARRAY_SIZE(gpio00_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
 		XSLCR_MIO_PIN_GPIO_ENABLE,
 		XSLCR_APER_CLK_CTRL_GPIO_MASK,
 		0x00,
 		0x00,
 	},
 	{
-		gpio1_pins,
-		ARRAY_SIZE(gpio1_pins),
-		XSLCR_MIO_NUM_GPIO1_PINS,
+		gpio01_pins,
+		ARRAY_SIZE(gpio01_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio02_pins,
+		ARRAY_SIZE(gpio02_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio03_pins,
+		ARRAY_SIZE(gpio03_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio04_pins,
+		ARRAY_SIZE(gpio04_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio05_pins,
+		ARRAY_SIZE(gpio05_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio06_pins,
+		ARRAY_SIZE(gpio06_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio07_pins,
+		ARRAY_SIZE(gpio07_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio08_pins,
+		ARRAY_SIZE(gpio08_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio09_pins,
+		ARRAY_SIZE(gpio09_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio10_pins,
+		ARRAY_SIZE(gpio10_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio11_pins,
+		ARRAY_SIZE(gpio11_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio12_pins,
+		ARRAY_SIZE(gpio12_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio13_pins,
+		ARRAY_SIZE(gpio13_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio14_pins,
+		ARRAY_SIZE(gpio14_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio15_pins,
+		ARRAY_SIZE(gpio15_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio16_pins,
+		ARRAY_SIZE(gpio16_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio17_pins,
+		ARRAY_SIZE(gpio17_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio18_pins,
+		ARRAY_SIZE(gpio18_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio19_pins,
+		ARRAY_SIZE(gpio19_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio20_pins,
+		ARRAY_SIZE(gpio20_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio21_pins,
+		ARRAY_SIZE(gpio21_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio22_pins,
+		ARRAY_SIZE(gpio22_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio23_pins,
+		ARRAY_SIZE(gpio23_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio24_pins,
+		ARRAY_SIZE(gpio24_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio25_pins,
+		ARRAY_SIZE(gpio25_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio26_pins,
+		ARRAY_SIZE(gpio26_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio27_pins,
+		ARRAY_SIZE(gpio27_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio28_pins,
+		ARRAY_SIZE(gpio28_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio29_pins,
+		ARRAY_SIZE(gpio29_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio30_pins,
+		ARRAY_SIZE(gpio30_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio31_pins,
+		ARRAY_SIZE(gpio31_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio32_pins,
+		ARRAY_SIZE(gpio32_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio33_pins,
+		ARRAY_SIZE(gpio33_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio34_pins,
+		ARRAY_SIZE(gpio34_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio35_pins,
+		ARRAY_SIZE(gpio35_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio36_pins,
+		ARRAY_SIZE(gpio36_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio37_pins,
+		ARRAY_SIZE(gpio37_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio38_pins,
+		ARRAY_SIZE(gpio38_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio39_pins,
+		ARRAY_SIZE(gpio39_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio40_pins,
+		ARRAY_SIZE(gpio40_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio41_pins,
+		ARRAY_SIZE(gpio41_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio42_pins,
+		ARRAY_SIZE(gpio42_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio43_pins,
+		ARRAY_SIZE(gpio43_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio44_pins,
+		ARRAY_SIZE(gpio44_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio45_pins,
+		ARRAY_SIZE(gpio45_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio46_pins,
+		ARRAY_SIZE(gpio46_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio47_pins,
+		ARRAY_SIZE(gpio47_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio48_pins,
+		ARRAY_SIZE(gpio48_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio49_pins,
+		ARRAY_SIZE(gpio49_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio50_pins,
+		ARRAY_SIZE(gpio50_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio51_pins,
+		ARRAY_SIZE(gpio51_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio52_pins,
+		ARRAY_SIZE(gpio52_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
+		XSLCR_MIO_PIN_GPIO_ENABLE,
+		XSLCR_APER_CLK_CTRL_GPIO_MASK,
+		0x00,
+		0x00,
+	},
+	{
+		gpio53_pins,
+		ARRAY_SIZE(gpio53_pins),
+		XSLCR_MIO_NUM_GPIO_PINS,
 		XSLCR_MIO_PIN_GPIO_ENABLE,
 		XSLCR_APER_CLK_CTRL_GPIO_MASK,
 		0x00,
@@ -925,10 +1707,10 @@ static int xslcr_mio_isavailable(u32 pin)
 	u32 reg;
 
 	reg = xslcr_readreg(slcr->regs + XSLCR_MIO_PIN_00_OFFSET + (pin * 4));
-	if (reg != XSLCR_MIO_PIN_XX_TRI_ENABLE)
-		return -EBUSY;
+	if (reg & XSLCR_MIO_PIN_XX_TRI_ENABLE)
+		return 0;
 
-	return 0;	/* pin is available */
+	return -EBUSY;	/* pin is assigned */
 }
 
 /**
@@ -1102,6 +1884,7 @@ static int xslcr_disable_mio_peripheral(int mio)
 		 * to make sure the pins are not being released accidentally*/
 		reg = xslcr_readreg(slcr->regs + XSLCR_MIO_PIN_00_OFFSET +
 				    (pin * 4));
+		reg &= XSLCR_MIO_LMASK;
 		if (reg != mio_ptr->enable_val) {
 			pr_err("%s: One or more pins in pinset %d are busy\n",
 				mio_periph_name[mio], pin_set);
@@ -1113,9 +1896,11 @@ static int xslcr_disable_mio_peripheral(int mio)
 	/* release all pins in the set */
 	for (i = 0; i < mio_ptr->numpins; i++) {
 
-		/* update MIO register, clear everything and set tri-state */
+		/* update MIO register, set tri-state */
 		xslcr_writereg((slcr->regs + ((pin + i) * 4) +
 				XSLCR_MIO_PIN_00_OFFSET),
+				xslcr_readreg((slcr->regs + ((pin + i) * 4) +
+					XSLCR_MIO_PIN_00_OFFSET)) |
 				XSLCR_MIO_PIN_XX_TRI_ENABLE);
 	}
 
@@ -1399,7 +2184,7 @@ static ssize_t show_mio_pin_status(struct device *dev,
 		/* read the MIO control register to determine if its free */
 		reg = xslcr_readreg((slcr->regs + (i * 4) +
 				    XSLCR_MIO_PIN_00_OFFSET));
-		if (reg != XSLCR_MIO_PIN_XX_TRI_ENABLE)
+		if (!(reg & XSLCR_MIO_PIN_XX_TRI_ENABLE))
 			xslcr_set_bit((u32 *)&pin_status, i);
 	}
 	status = sprintf(buf, "0x%016Lx\n", pin_status);
@@ -1539,35 +2324,26 @@ static void xslcr_remove_devices(struct class *xslcr_class,
  * Read all the MIO control registers and determine which MIO peripherals are
  * enabled and initialize the global array .
  **/
+
 static void xslcr_get_mio_status(void)
 {
-	int i;
-
-	/* Currently on PEEP and Palladium, the MIO control registers have some
-	 * junk values. As of now, write reset values to these registers */
-	for (i = 0; i < XSLCR_MIO_MAX_PIN; i++) {
-		xslcr_writereg((slcr->regs + (i * 4) + XSLCR_MIO_PIN_00_OFFSET),
-				XSLCR_MIO_PIN_XX_TRI_ENABLE);
-	}
-
-#if 0
 	const struct xslcr_mio *mio_ptr;
 	u32 mio_reg;
 	int i, j, k;
 
 	/* num pins */
-	for (i = 0; i < XSLCR_MIO_MAX_PIN; /*i++*/) {
+	for (i = 0; i < XSLCR_MIO_MAX_PIN;) {
 		mio_reg = xslcr_readreg(slcr->regs + (i * 4) +
 					XSLCR_MIO_PIN_00_OFFSET);
-		if (i == XSLCR_MIO_PIN_XX_TRI_ENABLE) {
+		if (mio_reg & XSLCR_MIO_PIN_XX_TRI_ENABLE) {
 			i++;
 			continue;
 		}
-
+		mio_reg &= XSLCR_MIO_LMASK;
 		/* num periphs */
 		for (j = 0; j < ARRAY_SIZE(mio_periphs); j++) {
 			if (mio_reg == mio_periphs[j].enable_val) {
-				mio_ptr = &miperiph_statuso_periphs[j];
+				mio_ptr = &mio_periphs[j];
 				for (k = 0; k < mio_ptr->max_sets; k++) {
 					if (i == mio_ptr->set_pins[k]) {
 						/* mark the periph as enabled */
@@ -1579,10 +2355,16 @@ static void xslcr_get_mio_status(void)
 				}
 			}
 		}
+		/*Noone claims this pin*/
+		printk(KERN_INFO "MIO pin %2d not assigned(%08x)\n",
+			i,
+			xslcr_readreg(slcr->regs + (i * 4) +
+				XSLCR_MIO_PIN_00_OFFSET)
+			);
+		i++;
 next_periph:
 		continue;
 	}
-#endif
 }
 
 /************************Platform Operations*****************************/
@@ -1759,7 +2541,4 @@ static void __exit xslcr_exit(void)
 	platform_driver_unregister(&xslcr_driver);
 }
 
-MODULE_AUTHOR("Xilinx Inc.");
-MODULE_DESCRIPTION("Driver for Xilinx SLCR Block");
-MODULE_LICENSE("GPL");
 

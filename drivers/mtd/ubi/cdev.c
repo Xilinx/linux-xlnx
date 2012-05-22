@@ -189,12 +189,16 @@ static loff_t vol_cdev_llseek(struct file *file, loff_t offset, int origin)
 	return new_offset;
 }
 
-static int vol_cdev_fsync(struct file *file, int datasync)
+static int vol_cdev_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	struct ubi_volume_desc *desc = file->private_data;
 	struct ubi_device *ubi = desc->vol->ubi;
-
-	return ubi_sync(ubi->ubi_num);
+	struct inode *inode = file->f_path.dentry->d_inode;
+	int err;
+	mutex_lock(&inode->i_mutex);
+	err = ubi_sync(ubi->ubi_num);
+	mutex_unlock(&inode->i_mutex);
+	return err;
 }
 
 
@@ -626,6 +630,9 @@ static int verify_mkvol_req(const struct ubi_device *ubi,
 
 	n = req->alignment & (ubi->min_io_size - 1);
 	if (req->alignment != 1 && n)
+		goto bad;
+
+	if (!req->name[0] || !req->name_len)
 		goto bad;
 
 	if (req->name_len > UBI_VOL_NAME_MAX) {

@@ -20,6 +20,7 @@
  */
 
 #include <linux/types.h>
+#include <linux/gpio.h>
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -44,7 +45,6 @@
 
 #include <mach/hardware.h>
 #include <mach/board.h>
-#include <mach/gpio.h>
 #include <mach/at91sam9_smc.h>
 #include <mach/at91_shdwc.h>
 #include <mach/system_rev.h>
@@ -56,7 +56,7 @@
 static void __init ek_init_early(void)
 {
 	/* Initialize processor: 16.367 MHz crystal */
-	at91sam9263_initialize(16367660);
+	at91_initialize(16367660);
 
 	/* DBGU on ttyS0. (Rx & Tx only) */
 	at91_register_uart(0, 0, 0);
@@ -68,18 +68,13 @@ static void __init ek_init_early(void)
 	at91_set_serial_console(0);
 }
 
-static void __init ek_init_irq(void)
-{
-	at91sam9263_init_interrupts(NULL);
-}
-
-
 /*
  * USB Host port
  */
 static struct at91_usbh_data __initdata ek_usbh_data = {
 	.ports		= 2,
 	.vbus_pin	= { AT91_PIN_PA24, AT91_PIN_PA21 },
+	.overcurrent_pin= {-EINVAL, -EINVAL},
 };
 
 /*
@@ -87,7 +82,7 @@ static struct at91_usbh_data __initdata ek_usbh_data = {
  */
 static struct at91_udc_data __initdata ek_udc_data = {
 	.vbus_pin	= AT91_PIN_PA25,
-	.pullup_pin	= 0,		/* pull-up driven by UDC */
+	.pullup_pin	= -EINVAL,		/* pull-up driven by UDC */
 };
 
 
@@ -157,14 +152,14 @@ static struct at91_mmc_data __initdata ek_mmc_data = {
 	.wire4		= 1,
 	.det_pin	= AT91_PIN_PE18,
 	.wp_pin		= AT91_PIN_PE19,
-//	.vcc_pin	= ... not connected
+	.vcc_pin	= -EINVAL,
 };
 
 
 /*
  * MACB Ethernet device
  */
-static struct at91_eth_data __initdata ek_macb_data = {
+static struct macb_platform_data __initdata ek_macb_data = {
 	.phy_irq_pin	= AT91_PIN_PE31,
 	.is_rmii	= 1,
 };
@@ -186,19 +181,14 @@ static struct mtd_partition __initdata ek_nand_partition[] = {
 	},
 };
 
-static struct mtd_partition * __init nand_partitions(int size, int *num_partitions)
-{
-	*num_partitions = ARRAY_SIZE(ek_nand_partition);
-	return ek_nand_partition;
-}
-
 static struct atmel_nand_data __initdata ek_nand_data = {
 	.ale		= 21,
 	.cle		= 22,
-//	.det_pin	= ... not connected
+	.det_pin	= -EINVAL,
 	.rdy_pin	= AT91_PIN_PA22,
 	.enable_pin	= AT91_PIN_PD15,
-	.partition_info	= nand_partitions,
+	.parts		= ek_nand_partition,
+	.num_parts	= ARRAY_SIZE(ek_nand_partition),
 };
 
 static struct sam9_smc_config __initdata ek_nand_smc_config = {
@@ -229,7 +219,7 @@ static void __init ek_add_device_nand(void)
 		ek_nand_smc_config.mode |= AT91_SMC_DBW_8;
 
 	/* configure chip-select 3 (NAND) */
-	sam9_smc_configure(3, &ek_nand_smc_config);
+	sam9_smc_configure(0, 3, &ek_nand_smc_config);
 
 	at91_add_device_nand(&ek_nand_data);
 }
@@ -364,6 +354,7 @@ static void __init ek_add_device_buttons(void) {}
  * reset_pin is not connected: NRST
  */
 static struct ac97c_platform_data ek_ac97_data = {
+	.reset_pin	= -EINVAL,
 };
 
 
@@ -452,8 +443,8 @@ static void __init ek_board_init(void)
 MACHINE_START(AT91SAM9263EK, "Atmel AT91SAM9263-EK")
 	/* Maintainer: Atmel */
 	.timer		= &at91sam926x_timer,
-	.map_io		= at91sam9263_map_io,
+	.map_io		= at91_map_io,
 	.init_early	= ek_init_early,
-	.init_irq	= ek_init_irq,
+	.init_irq	= at91_init_irq_default,
 	.init_machine	= ek_board_init,
 MACHINE_END

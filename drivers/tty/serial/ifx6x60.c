@@ -36,6 +36,7 @@
  *	you need to use this driver for another platform.
  *
  *****************************************************************************/
+#include <linux/dma-mapping.h>
 #include <linux/module.h>
 #include <linux/termios.h>
 #include <linux/tty.h>
@@ -1333,7 +1334,6 @@ MODULE_DEVICE_TABLE(spi, ifx_id_table);
 static const struct spi_driver ifx_spi_driver = {
 	.driver = {
 		.name = DRVNAME,
-		.bus = &spi_bus_type,
 		.pm = &ifx_spi_pm,
 		.owner = THIS_MODULE},
 	.probe = ifx_spi_spi_probe,

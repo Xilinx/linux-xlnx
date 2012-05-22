@@ -9,6 +9,7 @@
 #ifndef _LINUX_SUNRPC_CLNT_H
 #define _LINUX_SUNRPC_CLNT_H
 
+#include <linux/types.h>
 #include <linux/socket.h>
 #include <linux/in.h>
 #include <linux/in6.h>
@@ -135,6 +136,8 @@ void		rpc_shutdown_client(struct rpc_clnt *);
 void		rpc_release_client(struct rpc_clnt *);
 void		rpc_task_release_client(struct rpc_task *);
 
+int		rpcb_create_local(void);
+void		rpcb_put_local(void);
 int		rpcb_register(u32, u32, int, unsigned short);
 int		rpcb_v4_register(const u32 program, const u32 version,
 				 const struct sockaddr *address,
@@ -161,7 +164,7 @@ const char	*rpc_peeraddr2str(struct rpc_clnt *, enum rpc_display_format_t);
 size_t		rpc_ntop(const struct sockaddr *, char *, const size_t);
 size_t		rpc_pton(const char *, const size_t,
 			 struct sockaddr *, const size_t);
-char *		rpc_sockaddr2uaddr(const struct sockaddr *);
+char *		rpc_sockaddr2uaddr(const struct sockaddr *, gfp_t);
 size_t		rpc_uaddr2sockaddr(const char *, const size_t,
 				   struct sockaddr *, const size_t);
 
@@ -212,13 +215,19 @@ static inline bool __rpc_copy_addr4(struct sockaddr *dst,
 	return true;
 }
 
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#if IS_ENABLED(CONFIG_IPV6)
 static inline bool __rpc_cmp_addr6(const struct sockaddr *sap1,
 				   const struct sockaddr *sap2)
 {
 	const struct sockaddr_in6 *sin1 = (const struct sockaddr_in6 *)sap1;
 	const struct sockaddr_in6 *sin2 = (const struct sockaddr_in6 *)sap2;
-	return ipv6_addr_equal(&sin1->sin6_addr, &sin2->sin6_addr);
+
+	if (!ipv6_addr_equal(&sin1->sin6_addr, &sin2->sin6_addr))
+		return false;
+	else if (ipv6_addr_type(&sin1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
+		return sin1->sin6_scope_id == sin2->sin6_scope_id;
+
+	return true;
 }
 
 static inline bool __rpc_copy_addr6(struct sockaddr *dst,
@@ -228,10 +237,10 @@ static inline bool __rpc_copy_addr6(struct sockaddr *dst,
 	struct sockaddr_in6 *dsin6 = (struct sockaddr_in6 *) dst;
 
 	dsin6->sin6_family = ssin6->sin6_family;
-	ipv6_addr_copy(&dsin6->sin6_addr, &ssin6->sin6_addr);
+	dsin6->sin6_addr = ssin6->sin6_addr;
 	return true;
 }
-#else	/* !(CONFIG_IPV6 || CONFIG_IPV6_MODULE) */
+#else	/* !(IS_ENABLED(CONFIG_IPV6) */
 static inline bool __rpc_cmp_addr6(const struct sockaddr *sap1,
 				   const struct sockaddr *sap2)
 {
@@ -243,7 +252,7 @@ static inline bool __rpc_copy_addr6(struct sockaddr *dst,
 {
 	return false;
 }
-#endif	/* !(CONFIG_IPV6 || CONFIG_IPV6_MODULE) */
+#endif	/* !(IS_ENABLED(CONFIG_IPV6) */
 
 /**
  * rpc_cmp_addr - compare the address portion of two sockaddrs.

@@ -6,7 +6,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/version.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -265,18 +264,7 @@ static struct platform_driver bfin_rotary_device_driver = {
 #endif
 	},
 };
-
-static int __init bfin_rotary_init(void)
-{
-	return platform_driver_register(&bfin_rotary_device_driver);
-}
-module_init(bfin_rotary_init);
-
-static void __exit bfin_rotary_exit(void)
-{
-	platform_driver_unregister(&bfin_rotary_device_driver);
-}
-module_exit(bfin_rotary_exit);
+module_platform_driver(bfin_rotary_device_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Michael Hennerich <hennerich@blackfin.uclinux.org>");

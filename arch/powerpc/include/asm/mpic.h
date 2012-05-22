@@ -251,6 +251,9 @@ struct mpic_irq_save {
 /* The instance data of a given MPIC */
 struct mpic
 {
+	/* The OpenFirmware dt node for this MPIC */
+	struct device_node *node;
+
 	/* The remapper for this MPIC */
 	struct irq_host		*irqhost;
 
@@ -273,8 +276,6 @@ struct mpic
 	unsigned int		irq_count;
 	/* Number of sources */
 	unsigned int		num_sources;
-	/* Number of CPUs */
-	unsigned int		num_cpus;
 	/* default senses array */
 	unsigned char		*senses;
 	unsigned int		senses_count;
@@ -294,6 +295,9 @@ struct mpic
 
 	/* Register access method */
 	enum mpic_reg_type	reg_type;
+
+	/* The physical base address of the MPIC */
+	phys_addr_t paddr;
 
 	/* The various ioremap'ed bases */
 	struct mpic_reg_bank	gregs;
@@ -333,11 +337,11 @@ struct mpic
  * Note setting any ID (leaving those bits to 0) means standard MPIC
  */
 
-/* This is the primary controller, only that one has IPIs and
- * has afinity control. A non-primary MPIC always uses CPU0
- * registers only
+/*
+ * This is a secondary ("chained") controller; it only uses the CPU0
+ * registers.  Primary controllers have IPIs and affinity control.
  */
-#define MPIC_PRIMARY			0x00000001
+#define MPIC_SECONDARY			0x00000001
 
 /* Set this for a big-endian MPIC */
 #define MPIC_BIG_ENDIAN			0x00000002

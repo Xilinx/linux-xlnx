@@ -309,7 +309,6 @@ static u16 MXL_ControlWrite_Group(struct dvb_frontend *fe, u16 controlNum,
 static u16 MXL_SetGPIO(struct dvb_frontend *fe, u8 GPIO_Num, u8 GPIO_Val);
 static u16 MXL_GetInitRegister(struct dvb_frontend *fe, u8 *RegNum,
 	u8 *RegVal, int *count);
-static u32 MXL_GetXtalInt(u32 Xtal_Freq);
 static u16 MXL_TuneRF(struct dvb_frontend *fe, u32 RF_Freq);
 static void MXL_SynthIFLO_Calc(struct dvb_frontend *fe);
 static void MXL_SynthRFTGLO_Calc(struct dvb_frontend *fe);
@@ -2307,14 +2306,6 @@ static u16 MXL_IFSynthInit(struct dvb_frontend *fe)
 	return status ;
 }
 
-static u32 MXL_GetXtalInt(u32 Xtal_Freq)
-{
-	if ((Xtal_Freq % 1000000) == 0)
-		return (Xtal_Freq / 10000);
-	else
-		return (((Xtal_Freq / 1000000) + 1)*100);
-}
-
 static u16 MXL_TuneRF(struct dvb_frontend *fe, u32 RF_Freq)
 {
 	struct mxl5005s_state *state = fe->tuner_priv;
@@ -2324,12 +2315,9 @@ static u16 MXL_TuneRF(struct dvb_frontend *fe, u32 RF_Freq)
 	u32 Kdbl_RF = 2;
 	u32 tg_divval;
 	u32 tg_lo;
-	u32 Xtal_Int;
 
 	u32 Fref_TG;
 	u32 Fvco;
-
-	Xtal_Int = MXL_GetXtalInt(state->Fxtal);
 
 	state->RF_IN = RF_Freq;
 
@@ -2779,6 +2767,16 @@ static u16 MXL_TuneRF(struct dvb_frontend *fe, u32 RF_Freq)
 	tg_lo = (((Fmax/10 - Fvco)/100)*32) / ((Fmax-Fmin)/1000)+8;
 
 	/* below equation is same as above but much harder to debug.
+	 *
+	 * static u32 MXL_GetXtalInt(u32 Xtal_Freq)
+	 * {
+	 *	if ((Xtal_Freq % 1000000) == 0)
+	 *		return (Xtal_Freq / 10000);
+	 *	else
+	 *		return (((Xtal_Freq / 1000000) + 1)*100);
+	 * }
+	 *
+	 * u32 Xtal_Int = MXL_GetXtalInt(state->Fxtal);
 	 * tg_lo = ( ((Fmax/10000 * Xtal_Int)/100) -
 	 * ((state->TG_LO/10000)*divider_val *
 	 * (state->Fxtal/10000)/100) )*32/((Fmax-Fmin)/10000 *
@@ -3981,54 +3979,47 @@ static int mxl5005s_AssignTunerMode(struct dvb_frontend *fe, u32 mod_type,
 	return 0;
 }
 
-static int mxl5005s_set_params(struct dvb_frontend *fe,
-			       struct dvb_frontend_parameters *params)
+static int mxl5005s_set_params(struct dvb_frontend *fe)
 {
 	struct mxl5005s_state *state = fe->tuner_priv;
+	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
+	u32 delsys = c->delivery_system;
+	u32 bw = c->bandwidth_hz;
 	u32 req_mode, req_bw = 0;
 	int ret;
 
 	dprintk(1, "%s()\n", __func__);
 
-	if (fe->ops.info.type == FE_ATSC) {
-		switch (params->u.vsb.modulation) {
-		case VSB_8:
-			req_mode = MXL_ATSC; break;
-		default:
-		case QAM_64:
-		case QAM_256:
-		case QAM_AUTO:
-			req_mode = MXL_QAM; break;
-		}
-	} else
+	switch (delsys) {
+	case SYS_ATSC:
+		req_mode = MXL_ATSC;
+		req_bw  = MXL5005S_BANDWIDTH_6MHZ;
+		break;
+	case SYS_DVBC_ANNEX_B:
+		req_mode = MXL_QAM;
+		req_bw  = MXL5005S_BANDWIDTH_6MHZ;
+		break;
+	default:	/* Assume DVB-T */
 		req_mode = MXL_DVBT;
+		switch (bw) {
+		case 6000000:
+			req_bw = MXL5005S_BANDWIDTH_6MHZ;
+			break;
+		case 7000000:
+			req_bw = MXL5005S_BANDWIDTH_7MHZ;
+			break;
+		case 8000000:
+		case 0:
+			req_bw = MXL5005S_BANDWIDTH_8MHZ;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
 
 	/* Change tuner for new modulation type if reqd */
-	if (req_mode != state->current_mode) {
-		switch (req_mode) {
-		case MXL_ATSC:
-		case MXL_QAM:
-			req_bw  = MXL5005S_BANDWIDTH_6MHZ;
-			break;
-		case MXL_DVBT:
-		default:
-			/* Assume DVB-T */
-			switch (params->u.ofdm.bandwidth) {
-			case BANDWIDTH_6_MHZ:
-				req_bw  = MXL5005S_BANDWIDTH_6MHZ;
-				break;
-			case BANDWIDTH_7_MHZ:
-				req_bw  = MXL5005S_BANDWIDTH_7MHZ;
-				break;
-			case BANDWIDTH_AUTO:
-			case BANDWIDTH_8_MHZ:
-				req_bw  = MXL5005S_BANDWIDTH_8MHZ;
-				break;
-			default:
-				return -EINVAL;
-			}
-		}
-
+	if (req_mode != state->current_mode ||
+	    req_bw != state->Chan_Bandwidth) {
 		state->current_mode = req_mode;
 		ret = mxl5005s_reconfigure(fe, req_mode, req_bw);
 
@@ -4036,8 +4027,8 @@ static int mxl5005s_set_params(struct dvb_frontend *fe,
 		ret = 0;
 
 	if (ret == 0) {
-		dprintk(1, "%s() freq=%d\n", __func__, params->frequency);
-		ret = mxl5005s_SetRfFreqHz(fe, params->frequency);
+		dprintk(1, "%s() freq=%d\n", __func__, c->frequency);
+		ret = mxl5005s_SetRfFreqHz(fe, c->frequency);
 	}
 
 	return ret;

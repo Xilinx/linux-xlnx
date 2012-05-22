@@ -76,7 +76,7 @@ enum ap_peer {
 	SET_BITS_TO_LE_2BYTE(_hdr, 8, 1, _val)
 
 #define SET_80211_PS_POLL_AID(_hdr, _val)		\
-	(*(u16 *)((u8 *)(_hdr) + 2) = le16_to_cpu(_val))
+	(*(u16 *)((u8 *)(_hdr) + 2) = _val)
 #define SET_80211_PS_POLL_BSSID(_hdr, _val)		\
 	memcpy(((u8 *)(_hdr)) + 4, (u8 *)(_val), ETH_ALEN)
 #define SET_80211_PS_POLL_TA(_hdr, _val)		\
@@ -140,4 +140,6 @@ u8 *rtl_find_ie(u8 *data, unsigned int len, u8 ie);
 void rtl_recognize_peer(struct ieee80211_hw *hw, u8 *data, unsigned int len);
 u8 rtl_tid_to_ac(struct ieee80211_hw *hw, u8 tid);
 extern struct attribute_group rtl_attribute_group;
+int rtlwifi_rate_mapping(struct ieee80211_hw *hw,
+			 bool isht, u8 desc_rate, bool first_ampdu);
 #endif

@@ -17,11 +17,12 @@
 #include <linux/highmem.h>
 #include <linux/scatterlist.h>
 #include <linux/log2.h>
+#include <linux/module.h>
 #include <asm/io.h>
 
 #define DRIVER_NAME "tifm_ms"
 
-static int no_dma;
+static bool no_dma;
 module_param(no_dma, bool, 0644);
 
 /*

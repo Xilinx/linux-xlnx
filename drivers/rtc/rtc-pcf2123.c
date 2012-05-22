@@ -42,6 +42,7 @@
 #include <linux/slab.h>
 #include <linux/rtc.h>
 #include <linux/spi/spi.h>
+#include <linux/module.h>
 
 #define DRV_VERSION "0.6"
 
@@ -339,7 +340,6 @@ static int __devexit pcf2123_remove(struct spi_device *spi)
 static struct spi_driver pcf2123_driver = {
 	.driver	= {
 			.name	= "rtc-pcf2123",
-			.bus	= &spi_bus_type,
 			.owner	= THIS_MODULE,
 	},
 	.probe	= pcf2123_probe,

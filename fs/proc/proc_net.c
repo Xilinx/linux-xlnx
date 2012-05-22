@@ -179,7 +179,7 @@ const struct file_operations proc_net_operations = {
 
 
 struct proc_dir_entry *proc_net_fops_create(struct net *net,
-	const char *name, mode_t mode, const struct file_operations *fops)
+	const char *name, umode_t mode, const struct file_operations *fops)
 {
 	return proc_create(name, mode, net->proc_net, fops);
 }
@@ -197,15 +197,15 @@ static __net_init int proc_net_ns_init(struct net *net)
 	int err;
 
 	err = -ENOMEM;
-	netd = kzalloc(sizeof(*netd), GFP_KERNEL);
+	netd = kzalloc(sizeof(*netd) + 4, GFP_KERNEL);
 	if (!netd)
 		goto out;
 
 	netd->data = net;
 	netd->nlink = 2;
-	netd->name = "net";
 	netd->namelen = 3;
 	netd->parent = &proc_root;
+	memcpy(netd->name, "net", 4);
 
 	err = -EEXIST;
 	net_statd = proc_net_mkdir(net, "stat", netd);

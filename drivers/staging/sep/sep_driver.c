@@ -50,7 +50,6 @@
 #include <linux/interrupt.h>
 #include <linux/pagemap.h>
 #include <asm/cacheflush.h>
-#include <linux/sched.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/rar_register.h>
@@ -201,7 +200,7 @@ static int sep_singleton_release(struct inode *inode, struct file *filp)
 }
 
 /**
- *	sep_request_daemonopen - request daemon open method
+ *	sep_request_daemon_open - request daemon open method
  *	@inode: inode of SEP device
  *	@filp: file handle to SEP device
  *
@@ -1102,9 +1101,9 @@ static int sep_lock_user_pages(struct sep_device *sep,
 			"lli_array[%x].bus_address is "
 			"%08lx, lli_array[%x].block_size is %x\n",
 			num_pages - 1,
-			(unsigned long)lli_array[num_pages -1].bus_address,
+			(unsigned long)lli_array[num_pages - 1].bus_address,
 			num_pages - 1,
-			lli_array[num_pages -1].block_size);
+			lli_array[num_pages - 1].block_size);
 	}
 
 	/* Set output params according to the in_out flag */
@@ -1236,7 +1235,7 @@ static void sep_build_lli_table(struct sep_device *sep,
 	/* Counter of lli array entry */
 	u32 array_counter;
 
-	/* Init currrent table data size and lli array entry counter */
+	/* Init current table data size and lli array entry counter */
 	curr_table_data_size = 0;
 	array_counter = 0;
 	*num_table_entries_ptr = 1;
@@ -2121,6 +2120,8 @@ static int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 			}
 		}
 		if (tail_size) {
+			if (tail_size > sizeof(dcb_table_ptr->tail_data))
+				return -EINVAL;
 			if (is_kva == true) {
 				memcpy(dcb_table_ptr->tail_data,
 					(void *)(app_in_address + data_in_size -
@@ -2421,10 +2422,11 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				(sep->pid_doing_transaction != 0)) {
 		dev_dbg(&sep->pdev->dev, "ioctl pid is not owner\n");
 		error = -EACCES;
-		goto end_function;
 	}
-
 	mutex_unlock(&sep->sep_mutex);
+
+	if (error)
+		return error;
 
 	if (_IOC_TYPE(cmd) != SEP_IOC_MAGIC_NUMBER)
 		return -ENOTTY;
@@ -2462,7 +2464,6 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-end_function:
 	mutex_unlock(&sep->ioctl_mutex);
 	return error;
 }

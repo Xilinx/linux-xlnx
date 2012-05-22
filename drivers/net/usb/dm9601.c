@@ -428,7 +428,7 @@ static const struct net_device_ops dm9601_netdev_ops = {
 	.ndo_change_mtu		= usbnet_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_do_ioctl 		= dm9601_ioctl,
-	.ndo_set_multicast_list = dm9601_set_multicast,
+	.ndo_set_rx_mode	= dm9601_set_multicast,
 	.ndo_set_mac_address	= dm9601_set_mac_address,
 };
 
@@ -672,18 +672,7 @@ static struct usb_driver dm9601_driver = {
 	.resume = usbnet_resume,
 };
 
-static int __init dm9601_init(void)
-{
-	return usb_register(&dm9601_driver);
-}
-
-static void __exit dm9601_exit(void)
-{
-	usb_deregister(&dm9601_driver);
-}
-
-module_init(dm9601_init);
-module_exit(dm9601_exit);
+module_usb_driver(dm9601_driver);
 
 MODULE_AUTHOR("Peter Korsgaard <jacmet@sunsite.dk>");
 MODULE_DESCRIPTION("Davicom DM9601 USB 1.1 ethernet devices");

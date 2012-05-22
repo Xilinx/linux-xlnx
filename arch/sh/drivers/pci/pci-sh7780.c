@@ -74,7 +74,7 @@ struct pci_errors {
 	{ SH4_PCIINT_MLCK,	"master lock error" },
 	{ SH4_PCIINT_TABT,	"target-target abort" },
 	{ SH4_PCIINT_TRET,	"target retry time out" },
-	{ SH4_PCIINT_MFDE,	"master function disable erorr" },
+	{ SH4_PCIINT_MFDE,	"master function disable error" },
 	{ SH4_PCIINT_PRTY,	"address parity error" },
 	{ SH4_PCIINT_SERR,	"SERR" },
 	{ SH4_PCIINT_TWDP,	"data parity error for target write" },
@@ -172,7 +172,7 @@ static int __init sh7780_pci_setup_irqs(struct pci_channel *hose)
 		     PCI_STATUS_SIG_TARGET_ABORT | \
 		     PCI_STATUS_PARITY, hose->reg_base + PCI_STATUS);
 
-	ret = request_irq(hose->serr_irq, sh7780_pci_serr_irq, IRQF_DISABLED,
+	ret = request_irq(hose->serr_irq, sh7780_pci_serr_irq, 0,
 			  "PCI SERR interrupt", hose);
 	if (unlikely(ret)) {
 		printk(KERN_ERR "PCI: Failed hooking SERR IRQ\n");

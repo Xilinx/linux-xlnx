@@ -9,6 +9,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+#include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -24,7 +25,6 @@
 #include <asm/mach/map.h>
 #include <asm/mach/flash.h>
 #include <asm/irq.h>
-#include <asm/gpio.h>
 
 #include "generic.h"
 
@@ -124,6 +124,17 @@ static void sa1100_power_off(void)
 	PSPR = 0;
 	/* enter sleep mode */
 	PMCR = PMCR_SF;
+}
+
+void sa11x0_restart(char mode, const char *cmd)
+{
+	if (mode == 's') {
+		/* Jump into ROM at address 0 */
+		soft_restart(0);
+	} else {
+		/* Use on-chip reset capability */
+		RSRR = RSRR_SWR;
+	}
 }
 
 static void sa11x0_register_device(struct platform_device *dev, void *data)

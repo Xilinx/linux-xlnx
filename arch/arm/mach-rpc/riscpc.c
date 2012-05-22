@@ -24,6 +24,7 @@
 #include <asm/elf.h>
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
+#include <asm/hardware/iomd.h>
 #include <asm/page.h>
 #include <asm/domain.h>
 #include <asm/setup.h>
@@ -74,7 +75,7 @@ static struct map_desc rpc_io_desc[] __initdata = {
 		.length		= 	IO_SIZE	 ,
 		.type		= MT_DEVICE
 	}, {	/* EASI space	*/
-		.virtual	= EASI_BASE,
+		.virtual	= (unsigned long)EASI_BASE,
 		.pfn		= __phys_to_pfn(EASI_START),
 		.length		= EASI_SIZE,
 		.type		= MT_DEVICE
@@ -214,14 +215,25 @@ static int __init rpc_init(void)
 
 arch_initcall(rpc_init);
 
+static void rpc_restart(char mode, const char *cmd)
+{
+	iomd_writeb(0, IOMD_ROMCR0);
+
+	/*
+	 * Jump into the ROM
+	 */
+	soft_restart(0);
+}
+
 extern struct sys_timer ioc_timer;
 
 MACHINE_START(RISCPC, "Acorn-RiscPC")
 	/* Maintainer: Russell King */
-	.boot_params	= 0x10000100,
+	.atag_offset	= 0x100,
 	.reserve_lp0	= 1,
 	.reserve_lp1	= 1,
 	.map_io		= rpc_map_io,
 	.init_irq	= rpc_init_irq,
 	.timer		= &ioc_timer,
+	.restart	= rpc_restart,
 MACHINE_END

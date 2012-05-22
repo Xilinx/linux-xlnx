@@ -41,6 +41,7 @@
 #include "or51132.h"
 #include "lgdt330x.h"
 #include "s5h1409.h"
+#include "xc4000.h"
 #include "xc5000.h"
 #include "nxt200x.h"
 #include "cx24123.h"
@@ -63,6 +64,7 @@ MODULE_DESCRIPTION("driver for cx2388x based DVB cards");
 MODULE_AUTHOR("Chris Pascoe <c.pascoe@itee.uq.edu.au>");
 MODULE_AUTHOR("Gerd Knorr <kraxel@bytesex.org> [SuSE Labs]");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(CX88_VERSION);
 
 static unsigned int debug;
 module_param(debug, int, 0644);
@@ -605,6 +607,39 @@ static int attach_xc3028(u8 addr, struct cx8802_dev *dev)
 	return 0;
 }
 
+static int attach_xc4000(struct cx8802_dev *dev, struct xc4000_config *cfg)
+{
+	struct dvb_frontend *fe;
+	struct videobuf_dvb_frontend *fe0 = NULL;
+
+	/* Get the first frontend */
+	fe0 = videobuf_dvb_get_frontend(&dev->frontends, 1);
+	if (!fe0)
+		return -EINVAL;
+
+	if (!fe0->dvb.frontend) {
+		printk(KERN_ERR "%s/2: dvb frontend not attached. "
+				"Can't attach xc4000\n",
+		       dev->core->name);
+		return -EINVAL;
+	}
+
+	fe = dvb_attach(xc4000_attach, fe0->dvb.frontend, &dev->core->i2c_adap,
+			cfg);
+	if (!fe) {
+		printk(KERN_ERR "%s/2: xc4000 attach failed\n",
+		       dev->core->name);
+		dvb_frontend_detach(fe0->dvb.frontend);
+		dvb_unregister_frontend(fe0->dvb.frontend);
+		fe0->dvb.frontend = NULL;
+		return -EINVAL;
+	}
+
+	printk(KERN_INFO "%s/2: xc4000 attached\n", dev->core->name);
+
+	return 0;
+}
+
 static int cx24116_set_ts_param(struct dvb_frontend *fe,
 	int is_punctured)
 {
@@ -780,9 +815,9 @@ static const u8 samsung_smt_7020_inittab[] = {
 };
 
 
-static int samsung_smt_7020_tuner_set_params(struct dvb_frontend *fe,
-	struct dvb_frontend_parameters *params)
+static int samsung_smt_7020_tuner_set_params(struct dvb_frontend *fe)
 {
+	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
 	struct cx8802_dev *dev = fe->dvb->priv;
 	u8 buf[4];
 	u32 div;
@@ -792,14 +827,14 @@ static int samsung_smt_7020_tuner_set_params(struct dvb_frontend *fe,
 		.buf = buf,
 		.len = sizeof(buf) };
 
-	div = params->frequency / 125;
+	div = c->frequency / 125;
 
 	buf[0] = (div >> 8) & 0x7f;
 	buf[1] = div & 0xff;
 	buf[2] = 0x84;  /* 0xC4 */
 	buf[3] = 0x00;
 
-	if (params->frequency < 1500000)
+	if (c->frequency < 1500000)
 		buf[3] |= 0x10;
 
 	if (fe->ops.i2c_gate_ctrl)
@@ -919,6 +954,7 @@ static int dvb_register(struct cx8802_dev *dev)
 	struct cx88_core *core = dev->core;
 	struct videobuf_dvb_frontend *fe0, *fe1 = NULL;
 	int mfe_shared = 0; /* bus not shared by default */
+	int res = -EINVAL;
 
 	if (0 != core->i2c_rc) {
 		printk(KERN_ERR "%s/2: no i2c-bus available, cannot attach dvb drivers\n", core->name);
@@ -964,7 +1000,6 @@ static int dvb_register(struct cx8802_dev *dev)
 		}
 		break;
 	case CX88_BOARD_WINFAST_DTV2000H:
-	case CX88_BOARD_WINFAST_DTV2000H_J:
 	case CX88_BOARD_HAUPPAUGE_HVR1100:
 	case CX88_BOARD_HAUPPAUGE_HVR1100LP:
 	case CX88_BOARD_HAUPPAUGE_HVR1300:
@@ -975,6 +1010,17 @@ static int dvb_register(struct cx8802_dev *dev)
 			if (!dvb_attach(simple_tuner_attach, fe0->dvb.frontend,
 				   &core->i2c_adap, 0x61,
 				   TUNER_PHILIPS_FMD1216ME_MK3))
+				goto frontend_detach;
+		}
+		break;
+	case CX88_BOARD_WINFAST_DTV2000H_J:
+		fe0->dvb.frontend = dvb_attach(cx22702_attach,
+					       &hauppauge_hvr_config,
+					       &core->i2c_adap);
+		if (fe0->dvb.frontend != NULL) {
+			if (!dvb_attach(simple_tuner_attach, fe0->dvb.frontend,
+				   &core->i2c_adap, 0x61,
+				   TUNER_PHILIPS_FMD1216MEX_MK3))
 				goto frontend_detach;
 		}
 		break;
@@ -1294,7 +1340,25 @@ static int dvb_register(struct cx8802_dev *dev)
 				goto frontend_detach;
 		}
 		break;
-	 case CX88_BOARD_GENIATECH_X8000_MT:
+	case CX88_BOARD_WINFAST_DTV1800H_XC4000:
+	case CX88_BOARD_WINFAST_DTV2000H_PLUS:
+		fe0->dvb.frontend = dvb_attach(zl10353_attach,
+					       &cx88_pinnacle_hybrid_pctv,
+					       &core->i2c_adap);
+		if (fe0->dvb.frontend) {
+			struct xc4000_config cfg = {
+				.i2c_address	  = 0x61,
+				.default_pm	  = 0,
+				.dvb_amplitude	  = 134,
+				.set_smoothedcvbs = 1,
+				.if_khz		  = 4560
+			};
+			fe0->dvb.frontend->ops.i2c_gate_ctrl = NULL;
+			if (attach_xc4000(dev, &cfg) < 0)
+				goto frontend_detach;
+		}
+		break;
+	case CX88_BOARD_GENIATECH_X8000_MT:
 		dev->ts_gen_cntrl = 0x00;
 
 		fe0->dvb.frontend = dvb_attach(zl10353_attach,
@@ -1513,13 +1577,16 @@ static int dvb_register(struct cx8802_dev *dev)
 	call_all(core, core, s_power, 0);
 
 	/* register everything */
-	return videobuf_dvb_register_bus(&dev->frontends, THIS_MODULE, dev,
-					 &dev->pci->dev, adapter_nr, mfe_shared, NULL);
+	res = videobuf_dvb_register_bus(&dev->frontends, THIS_MODULE, dev,
+		&dev->pci->dev, adapter_nr, mfe_shared, NULL);
+	if (res)
+		goto frontend_detach;
+	return res;
 
 frontend_detach:
 	core->gate_ctrl = NULL;
 	videobuf_dvb_dealloc_frontends(&dev->frontends);
-	return -EINVAL;
+	return res;
 }
 
 /* ----------------------------------------------------------- */
@@ -1575,6 +1642,11 @@ static int cx8802_dvb_advise_acquire(struct cx8802_driver *drv)
 			break;
 		}
 		udelay(1000);
+		break;
+
+	case CX88_BOARD_WINFAST_DTV2000H_PLUS:
+		/* set RF input to AIR for DVB-T (GPIO 16) */
+		cx_write(MO_GP2_IO, 0x0101);
 		break;
 
 	default:
@@ -1692,14 +1764,8 @@ static struct cx8802_driver cx8802_dvb_driver = {
 
 static int __init dvb_init(void)
 {
-	printk(KERN_INFO "cx88/2: cx2388x dvb driver version %d.%d.%d loaded\n",
-	       (CX88_VERSION_CODE >> 16) & 0xff,
-	       (CX88_VERSION_CODE >>  8) & 0xff,
-	       CX88_VERSION_CODE & 0xff);
-#ifdef SNAPSHOT
-	printk(KERN_INFO "cx2388x: snapshot date %04d-%02d-%02d\n",
-	       SNAPSHOT/10000, (SNAPSHOT/100)%100, SNAPSHOT%100);
-#endif
+	printk(KERN_INFO "cx88/2: cx2388x dvb driver version %s loaded\n",
+	       CX88_VERSION);
 	return cx8802_register_driver(&cx8802_dvb_driver);
 }
 
@@ -1710,10 +1776,3 @@ static void __exit dvb_fini(void)
 
 module_init(dvb_init);
 module_exit(dvb_fini);
-
-/*
- * Local variables:
- * c-basic-offset: 8
- * compile-command: "make DVB=1"
- * End:
- */

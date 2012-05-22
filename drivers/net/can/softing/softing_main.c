@@ -17,10 +17,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <asm/io.h>
 
 #include "softing.h"
 
@@ -799,7 +799,7 @@ static __devinit int softing_pdev_probe(struct platform_device *pdev)
 	if (!pres)
 		goto platform_resource_failed;
 	card->dpram_phys = pres->start;
-	card->dpram_size = pres->end - pres->start + 1;
+	card->dpram_size = resource_size(pres);
 	card->dpram = ioremap_nocache(card->dpram_phys, card->dpram_size);
 	if (!card->dpram) {
 		dev_alert(&card->pdev->dev, "dpram ioremap failed\n");
@@ -874,21 +874,9 @@ static struct platform_driver softing_driver = {
 	.remove = __devexit_p(softing_pdev_remove),
 };
 
+module_platform_driver(softing_driver);
+
 MODULE_ALIAS("platform:softing");
-
-static int __init softing_start(void)
-{
-	return platform_driver_register(&softing_driver);
-}
-
-static void __exit softing_stop(void)
-{
-	platform_driver_unregister(&softing_driver);
-}
-
-module_init(softing_start);
-module_exit(softing_stop);
-
 MODULE_DESCRIPTION("Softing DPRAM CAN driver");
 MODULE_AUTHOR("Kurt Van Dijck <kurt.van.dijck@eia.be>");
 MODULE_LICENSE("GPL v2");

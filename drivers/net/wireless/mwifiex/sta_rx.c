@@ -126,6 +126,9 @@ int mwifiex_process_sta_rx_packet(struct mwifiex_adapter *adapter,
 	u16 rx_pkt_type;
 	struct mwifiex_private *priv = adapter->priv[rx_info->bss_index];
 
+	if (!priv)
+		return -1;
+
 	local_rx_pd = (struct rxpd *) (skb->data);
 	rx_pkt_type = local_rx_pd->rx_pkt_type;
 
@@ -187,14 +190,13 @@ int mwifiex_process_sta_rx_packet(struct mwifiex_adapter *adapter,
 	ret = mwifiex_11n_rx_reorder_pkt(priv, local_rx_pd->seq_num,
 					     local_rx_pd->priority, ta,
 					     (u8) local_rx_pd->rx_pkt_type,
-						(void *) skb);
+					     skb);
 
-	if (ret || (rx_pkt_type == PKT_TYPE_BAR)) {
-		if (priv && (ret == -1))
-			priv->stats.rx_dropped++;
-
+	if (ret || (rx_pkt_type == PKT_TYPE_BAR))
 		dev_kfree_skb_any(skb);
-	}
+
+	if (ret)
+		priv->stats.rx_dropped++;
 
 	return ret;
 }

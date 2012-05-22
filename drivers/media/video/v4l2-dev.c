@@ -146,10 +146,9 @@ static void v4l2_device_release(struct device *cd)
 	struct v4l2_device *v4l2_dev = vdev->v4l2_dev;
 
 	mutex_lock(&videodev_lock);
-	if (video_device[vdev->minor] != vdev) {
-		mutex_unlock(&videodev_lock);
+	if (WARN_ON(video_device[vdev->minor] != vdev)) {
 		/* should not happen */
-		WARN_ON(1);
+		mutex_unlock(&videodev_lock);
 		return;
 	}
 
@@ -168,10 +167,21 @@ static void v4l2_device_release(struct device *cd)
 	mutex_unlock(&videodev_lock);
 
 #if defined(CONFIG_MEDIA_CONTROLLER)
-	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
+	if (v4l2_dev && v4l2_dev->mdev &&
 	    vdev->vfl_type != VFL_TYPE_SUBDEV)
 		media_device_unregister_entity(&vdev->entity);
 #endif
+
+	/* Do not call v4l2_device_put if there is no release callback set.
+	 * Drivers that have no v4l2_device release callback might free the
+	 * v4l2_dev instance in the video_device release callback below, so we
+	 * must perform this check here.
+	 *
+	 * TODO: In the long run all drivers that use v4l2_device should use the
+	 * v4l2_device release callback. This check will then be unnecessary.
+	 */
+	if (v4l2_dev && v4l2_dev->release == NULL)
+		v4l2_dev = NULL;
 
 	/* Release video_device and perform other
 	   cleanups as needed. */
@@ -545,8 +555,7 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 	vdev->minor = -1;
 
 	/* the release callback MUST be present */
-	WARN_ON(!vdev->release);
-	if (!vdev->release)
+	if (WARN_ON(!vdev->release))
 		return -EINVAL;
 
 	/* v4l2_fh support */
@@ -692,8 +701,8 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 	    vdev->vfl_type != VFL_TYPE_SUBDEV) {
 		vdev->entity.type = MEDIA_ENT_T_DEVNODE_V4L;
 		vdev->entity.name = vdev->name;
-		vdev->entity.v4l.major = VIDEO_MAJOR;
-		vdev->entity.v4l.minor = vdev->minor;
+		vdev->entity.info.v4l.major = VIDEO_MAJOR;
+		vdev->entity.info.v4l.minor = vdev->minor;
 		ret = media_device_register_entity(vdev->v4l2_dev->mdev,
 			&vdev->entity);
 		if (ret < 0)

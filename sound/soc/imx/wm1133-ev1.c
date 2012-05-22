@@ -14,6 +14,7 @@
 
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/jack.h>
 #include <sound/pcm.h>
@@ -254,6 +255,7 @@ static struct snd_soc_dai_link wm1133_ev1_dai = {
 
 static struct snd_soc_card wm1133_ev1 = {
 	.name = "WM1133-EV1",
+	.owner = THIS_MODULE,
 	.dai_link = &wm1133_ev1_dai,
 	.num_links = 1,
 };

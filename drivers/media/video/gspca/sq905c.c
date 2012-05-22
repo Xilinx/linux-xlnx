@@ -27,6 +27,8 @@
  * and may contain code fragments from it.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #define MODULE_NAME "sq905c"
 
 #include <linux/workqueue.h>
@@ -95,8 +97,7 @@ static int sq905c_command(struct gspca_dev *gspca_dev, u16 command, u16 index)
 			      command, index, NULL, 0,
 			      SQ905C_CMD_TIMEOUT);
 	if (ret < 0) {
-		err("%s: usb_control_msg failed (%d)",
-			__func__, ret);
+		pr_err("%s: usb_control_msg failed (%d)\n", __func__, ret);
 		return ret;
 	}
 
@@ -115,8 +116,7 @@ static int sq905c_read(struct gspca_dev *gspca_dev, u16 command, u16 index,
 			      command, index, gspca_dev->usb_buf, size,
 			      SQ905C_CMD_TIMEOUT);
 	if (ret < 0) {
-		err("%s: usb_control_msg failed (%d)",
-		       __func__, ret);
+		pr_err("%s: usb_control_msg failed (%d)\n", __func__, ret);
 		return ret;
 	}
 
@@ -146,7 +146,7 @@ static void sq905c_dostream(struct work_struct *work)
 
 	buffer = kmalloc(SQ905C_MAX_TRANSFER, GFP_KERNEL | GFP_DMA);
 	if (!buffer) {
-		err("Couldn't allocate USB buffer");
+		pr_err("Couldn't allocate USB buffer\n");
 		goto quit_stream;
 	}
 
@@ -339,16 +339,4 @@ static struct usb_driver sd_driver = {
 #endif
 };
 
-/* -- module insert / remove -- */
-static int __init sd_mod_init(void)
-{
-	return usb_register(&sd_driver);
-}
-
-static void __exit sd_mod_exit(void)
-{
-	usb_deregister(&sd_driver);
-}
-
-module_init(sd_mod_init);
-module_exit(sd_mod_exit);
+module_usb_driver(sd_driver);

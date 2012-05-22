@@ -26,6 +26,7 @@
 #include <net/timewait_sock.h>
 #include <net/tcp_states.h>
 #include <net/xfrm.h>
+#include <net/secure_seq.h>
 
 #include "ackvec.h"
 #include "ccid.h"
@@ -110,6 +111,7 @@ int dccp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	rt = ip_route_newports(fl4, rt, orig_sport, orig_dport,
 			       inet->inet_sport, inet->inet_dport, sk);
 	if (IS_ERR(rt)) {
+		err = PTR_ERR(rt);
 		rt = NULL;
 		goto failure;
 	}
@@ -432,6 +434,7 @@ exit:
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENDROPS);
 	return NULL;
 put_and_exit:
+	bh_unlock_sock(newsk);
 	sock_put(newsk);
 	goto exit;
 }
@@ -471,10 +474,11 @@ static struct dst_entry* dccp_v4_route_skb(struct net *net, struct sock *sk,
 					   struct sk_buff *skb)
 {
 	struct rtable *rt;
+	const struct iphdr *iph = ip_hdr(skb);
 	struct flowi4 fl4 = {
 		.flowi4_oif = skb_rtable(skb)->rt_iif,
-		.daddr = ip_hdr(skb)->saddr,
-		.saddr = ip_hdr(skb)->daddr,
+		.daddr = iph->saddr,
+		.saddr = iph->daddr,
 		.flowi4_tos = RT_CONN_FLAGS(sk),
 		.flowi4_proto = sk->sk_protocol,
 		.fl4_sport = dccp_hdr(skb)->dccph_dport,

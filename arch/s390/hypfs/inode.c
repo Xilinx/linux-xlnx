@@ -97,7 +97,7 @@ static void hypfs_delete_tree(struct dentry *root)
 	}
 }
 
-static struct inode *hypfs_make_inode(struct super_block *sb, int mode)
+static struct inode *hypfs_make_inode(struct super_block *sb, umode_t mode)
 {
 	struct inode *ret = new_inode(sb);
 
@@ -107,10 +107,8 @@ static struct inode *hypfs_make_inode(struct super_block *sb, int mode)
 		ret->i_uid = hypfs_info->uid;
 		ret->i_gid = hypfs_info->gid;
 		ret->i_atime = ret->i_mtime = ret->i_ctime = CURRENT_TIME;
-		if (mode & S_IFDIR)
-			ret->i_nlink = 2;
-		else
-			ret->i_nlink = 1;
+		if (S_ISDIR(mode))
+			set_nlink(ret, 2);
 	}
 	return ret;
 }
@@ -261,9 +259,9 @@ static int hypfs_parse_options(char *options, struct super_block *sb)
 	return 0;
 }
 
-static int hypfs_show_options(struct seq_file *s, struct vfsmount *mnt)
+static int hypfs_show_options(struct seq_file *s, struct dentry *root)
 {
-	struct hypfs_sb_info *hypfs_info = mnt->mnt_sb->s_fs_info;
+	struct hypfs_sb_info *hypfs_info = root->d_sb->s_fs_info;
 
 	seq_printf(s, ",uid=%u", hypfs_info->uid);
 	seq_printf(s, ",gid=%u", hypfs_info->gid);
@@ -335,7 +333,7 @@ static void hypfs_kill_super(struct super_block *sb)
 
 static struct dentry *hypfs_create_file(struct super_block *sb,
 					struct dentry *parent, const char *name,
-					char *data, mode_t mode)
+					char *data, umode_t mode)
 {
 	struct dentry *dentry;
 	struct inode *inode;
@@ -352,16 +350,16 @@ static struct dentry *hypfs_create_file(struct super_block *sb,
 		dentry = ERR_PTR(-ENOMEM);
 		goto fail;
 	}
-	if (mode & S_IFREG) {
+	if (S_ISREG(mode)) {
 		inode->i_fop = &hypfs_file_ops;
 		if (data)
 			inode->i_size = strlen(data);
 		else
 			inode->i_size = 0;
-	} else if (mode & S_IFDIR) {
+	} else if (S_ISDIR(mode)) {
 		inode->i_op = &simple_dir_inode_operations;
 		inode->i_fop = &simple_dir_operations;
-		parent->d_inode->i_nlink++;
+		inc_nlink(parent->d_inode);
 	} else
 		BUG();
 	inode->i_private = data;

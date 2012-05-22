@@ -117,7 +117,7 @@ static int mvsd_setup_data(struct mvsd_host *host, struct mmc_data *data)
 		host->pio_size = data->blocks * data->blksz;
 		host->pio_ptr = sg_virt(data->sg);
 		if (!nodma)
-			printk(KERN_DEBUG "%s: fallback to PIO for data "
+			pr_debug("%s: fallback to PIO for data "
 					  "at 0x%p size %d\n",
 					  mmc_hostname(host->mmc),
 					  host->pio_ptr, host->pio_size);
@@ -471,7 +471,7 @@ static irqreturn_t mvsd_irq(int irq, void *dev)
 		if (mrq->data)
 			err_status = mvsd_finish_data(host, mrq->data, err_status);
 		if (err_status) {
-			printk(KERN_ERR "%s: unhandled error status %#04x\n",
+			pr_err("%s: unhandled error status %#04x\n",
 					mmc_hostname(host->mmc), err_status);
 			cmd->error = -ENOMSG;
 		}
@@ -489,7 +489,7 @@ static irqreturn_t mvsd_irq(int irq, void *dev)
 	if (irq_handled)
 		return IRQ_HANDLED;
 
-	printk(KERN_ERR "%s: unhandled interrupt status=0x%04x en=0x%04x "
+	pr_err("%s: unhandled interrupt status=0x%04x en=0x%04x "
 			"pio=%d\n", mmc_hostname(host->mmc), intr_status,
 			host->intr_en, host->pio_size);
 	return IRQ_NONE;
@@ -505,9 +505,9 @@ static void mvsd_timeout_timer(unsigned long data)
 	spin_lock_irqsave(&host->lock, flags);
 	mrq = host->mrq;
 	if (mrq) {
-		printk(KERN_ERR "%s: Timeout waiting for hardware interrupt.\n",
+		pr_err("%s: Timeout waiting for hardware interrupt.\n",
 				mmc_hostname(host->mmc));
-		printk(KERN_ERR "%s: hw_state=0x%04x, intr_status=0x%04x "
+		pr_err("%s: hw_state=0x%04x, intr_status=0x%04x "
 				"intr_en=0x%04x\n", mmc_hostname(host->mmc),
 				mvsd_read(MVSD_HW_STATE),
 				mvsd_read(MVSD_NOR_INTR_STATUS),
@@ -679,8 +679,9 @@ static const struct mmc_host_ops mvsd_ops = {
 	.enable_sdio_irq	= mvsd_enable_sdio_irq,
 };
 
-static void __init mv_conf_mbus_windows(struct mvsd_host *host,
-					struct mbus_dram_target_info *dram)
+static void __init
+mv_conf_mbus_windows(struct mvsd_host *host,
+		     const struct mbus_dram_target_info *dram)
 {
 	void __iomem *iobase = host->base;
 	int i;
@@ -691,7 +692,7 @@ static void __init mv_conf_mbus_windows(struct mvsd_host *host,
 	}
 
 	for (i = 0; i < dram->num_cs; i++) {
-		struct mbus_dram_window *cs = dram->cs + i;
+		const struct mbus_dram_window *cs = dram->cs + i;
 		writel(((cs->size - 1) & 0xffff0000) |
 		       (cs->mbus_attr << 8) |
 		       (dram->mbus_dram_target_id << 4) | 1,
@@ -705,6 +706,7 @@ static int __init mvsd_probe(struct platform_device *pdev)
 	struct mmc_host *mmc = NULL;
 	struct mvsd_host *host = NULL;
 	const struct mvsdio_platform_data *mvsd_data;
+	const struct mbus_dram_target_info *dram;
 	struct resource *r;
 	int ret, irq;
 
@@ -755,14 +757,15 @@ static int __init mvsd_probe(struct platform_device *pdev)
 	}
 
 	/* (Re-)program MBUS remapping windows if we are asked to. */
-	if (mvsd_data->dram != NULL)
-		mv_conf_mbus_windows(host, mvsd_data->dram);
+	dram = mv_mbus_dram_info();
+	if (dram)
+		mv_conf_mbus_windows(host, dram);
 
 	mvsd_power_down(host);
 
 	ret = request_irq(irq, mvsd_irq, 0, DRIVER_NAME, host);
 	if (ret) {
-		printk(KERN_ERR "%s: cannot assign irq %d\n", DRIVER_NAME, irq);
+		pr_err("%s: cannot assign irq %d\n", DRIVER_NAME, irq);
 		goto out;
 	} else
 		host->irq = irq;
@@ -802,7 +805,7 @@ static int __init mvsd_probe(struct platform_device *pdev)
 	if (ret)
 		goto out;
 
-	printk(KERN_NOTICE "%s: %s driver initialized, ",
+	pr_notice("%s: %s driver initialized, ",
 			   mmc_hostname(mmc), DRIVER_NAME);
 	if (host->gpio_card_detect)
 		printk("using GPIO %d for card detection\n",

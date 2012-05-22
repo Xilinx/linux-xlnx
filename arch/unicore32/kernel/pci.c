@@ -102,7 +102,7 @@ void pci_puv3_preinit(void)
 	writel(readl(PCIBRI_CMD) | PCIBRI_CMD_IO | PCIBRI_CMD_MEM, PCIBRI_CMD);
 }
 
-static int __init pci_puv3_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+static int __init pci_puv3_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	if (dev->bus->number == 0) {
 #ifdef CONFIG_ARCH_FPGA /* 4 pci slots */
@@ -307,6 +307,11 @@ char * __devinit pcibios_setup(char *str)
 		return NULL;
 	}
 	return str;
+}
+
+void pcibios_set_master(struct pci_dev *dev)
+{
+	/* No special bus mastering setup handling */
 }
 
 /*

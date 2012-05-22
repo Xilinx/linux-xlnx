@@ -39,6 +39,8 @@
 MODULE_DESCRIPTION("v4l2 driver module for saa7130/34 based TV cards");
 MODULE_AUTHOR("Gerd Knorr <kraxel@bytesex.org> [SuSE Labs]");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(SAA7134_VERSION);
+
 
 /* ------------------------------------------------------------------ */
 
@@ -1261,7 +1263,6 @@ static int saa7134_resume(struct pci_dev *pci_dev)
 	saa7134_tvaudio_setmute(dev);
 	saa7134_tvaudio_setvolume(dev, dev->ctl_volume);
 	saa7134_tvaudio_init(dev);
-	saa7134_tvaudio_do_scan(dev);
 	saa7134_enable_i2s(dev);
 	saa7134_hw_enable2(dev);
 
@@ -1332,14 +1333,8 @@ static struct pci_driver saa7134_pci_driver = {
 static int __init saa7134_init(void)
 {
 	INIT_LIST_HEAD(&saa7134_devlist);
-	printk(KERN_INFO "saa7130/34: v4l2 driver version %d.%d.%d loaded\n",
-	       (SAA7134_VERSION_CODE >> 16) & 0xff,
-	       (SAA7134_VERSION_CODE >>  8) & 0xff,
-	       SAA7134_VERSION_CODE & 0xff);
-#ifdef SNAPSHOT
-	printk(KERN_INFO "saa7130/34: snapshot date %04d-%02d-%02d\n",
-	       SNAPSHOT/10000, (SNAPSHOT/100)%100, SNAPSHOT%100);
-#endif
+	printk(KERN_INFO "saa7130/34: v4l2 driver version %s loaded\n",
+	       SAA7134_VERSION);
 	return pci_register_driver(&saa7134_pci_driver);
 }
 

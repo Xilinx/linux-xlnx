@@ -29,7 +29,7 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
-#include <mach/hardware.h>
+#include <asm/hardware/gic.h>
 #include "common.h"
 
 #define IRQ_QSPI0		51
@@ -195,6 +195,7 @@ static const char *xilinx_dt_match[] = {
 MACHINE_START(XILINX, "Xilinx Zynq Platform")
 	.map_io		= xilinx_map_io,
 	.init_irq	= xilinx_irq_init,
+	.handle_irq	= gic_handle_irq,
 	.init_machine	= board_zc770_xm013_init,
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,

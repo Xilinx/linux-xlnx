@@ -128,7 +128,7 @@ static int snd_ad73311_configure(void)
 	return 0;
 }
 
-static int bf5xx_probe(struct platform_device *pdev)
+static int bf5xx_probe(struct snd_soc_card *card)
 {
 	int err;
 	if (gpio_request(GPIO_SE, "AD73311_SE")) {
@@ -192,6 +192,7 @@ static struct snd_soc_dai_link bf5xx_ad73311_dai[] = {
 
 static struct snd_soc_card bf5xx_ad73311 = {
 	.name = "bfin-ad73311",
+	.owner = THIS_MODULE,
 	.probe = bf5xx_probe,
 	.dai_link = &bf5xx_ad73311_dai[CONFIG_SND_BF5XX_SPORT_NUM],
 	.num_links = 1,

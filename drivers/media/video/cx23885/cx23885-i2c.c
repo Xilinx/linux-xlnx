@@ -287,6 +287,7 @@ static char *i2c_devs[128] = {
 	[0x32 >> 1] = "cx24227",
 	[0x88 >> 1] = "cx25837",
 	[0x84 >> 1] = "tda8295",
+	[0x98 >> 1] = "flatiron",
 	[0xa0 >> 1] = "eeprom",
 	[0xc0 >> 1] = "tuner/mt2131/tda8275",
 	[0xc2 >> 1] = "tuner/mt2131/tda8275/xc5000/xc3028",
@@ -308,7 +309,7 @@ static void do_i2c_scan(char *name, struct i2c_client *c)
 	}
 }
 
-/* init + register i2c algo-bit adapter */
+/* init + register i2c adapter */
 int cx23885_i2c_register(struct cx23885_i2c *bus)
 {
 	struct cx23885_dev *dev = bus->dev;

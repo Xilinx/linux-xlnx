@@ -25,7 +25,7 @@ struct hw_pci {
 	void		(*preinit)(void);
 	void		(*postinit)(void);
 	u8		(*swizzle)(struct pci_dev *dev, u8 *pin);
-	int		(*map_irq)(struct pci_dev *dev, u8 slot, u8 pin);
+	int		(*map_irq)(const struct pci_dev *dev, u8 slot, u8 pin);
 };
 
 /*
@@ -40,11 +40,11 @@ struct pci_sys_data {
 	u64		mem_offset;	/* bus->cpu memory mapping offset	*/
 	unsigned long	io_offset;	/* bus->cpu IO mapping offset		*/
 	struct pci_bus	*bus;		/* PCI bus				*/
-	struct resource *resource[3];	/* Primary PCI bus resources		*/
+	struct list_head resources;	/* root bus resources (apertures)       */
 					/* Bridge swizzling			*/
 	u8		(*swizzle)(struct pci_dev *, u8 *);
 					/* IRQ mapping				*/
-	int		(*map_irq)(struct pci_dev *, u8, u8);
+	int		(*map_irq)(const struct pci_dev *, u8, u8);
 	struct hw_pci	*hw;
 	void		*private_data;	/* platform controller private data	*/
 };

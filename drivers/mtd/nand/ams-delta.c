@@ -26,7 +26,7 @@
 #include <asm/io.h>
 #include <mach/hardware.h>
 #include <asm/sizes.h>
-#include <mach/gpio.h>
+#include <asm/gpio.h>
 #include <plat/board-ams-delta.h>
 
 /*
@@ -280,17 +280,7 @@ static struct platform_driver ams_delta_nand_driver = {
 	},
 };
 
-static int __init ams_delta_nand_init(void)
-{
-	return platform_driver_register(&ams_delta_nand_driver);
-}
-module_init(ams_delta_nand_init);
-
-static void __exit ams_delta_nand_exit(void)
-{
-	platform_driver_unregister(&ams_delta_nand_driver);
-}
-module_exit(ams_delta_nand_exit);
+module_platform_driver(ams_delta_nand_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jonathan McDowell <noodles@earth.li>");

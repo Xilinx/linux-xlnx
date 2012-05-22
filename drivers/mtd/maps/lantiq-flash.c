@@ -107,16 +107,12 @@ ltq_copy_to(struct map_info *map, unsigned long to,
 	spin_unlock_irqrestore(&ebu_lock, flags);
 }
 
-static const char const *part_probe_types[] = { "cmdlinepart", NULL };
-
 static int __init
 ltq_mtd_probe(struct platform_device *pdev)
 {
 	struct physmap_flash_data *ltq_mtd_data = dev_get_platdata(&pdev->dev);
 	struct ltq_mtd *ltq_mtd;
-	struct mtd_partition *parts;
 	struct resource *res;
-	int nr_parts = 0;
 	struct cfi_private *cfi;
 	int err;
 
@@ -163,7 +159,7 @@ ltq_mtd_probe(struct platform_device *pdev)
 	if (!ltq_mtd->mtd) {
 		dev_err(&pdev->dev, "probing failed\n");
 		err = -ENXIO;
-		goto err_unmap;
+		goto err_free;
 	}
 
 	ltq_mtd->mtd->owner = THIS_MODULE;
@@ -172,17 +168,8 @@ ltq_mtd_probe(struct platform_device *pdev)
 	cfi->addr_unlock1 ^= 1;
 	cfi->addr_unlock2 ^= 1;
 
-	nr_parts = parse_mtd_partitions(ltq_mtd->mtd,
-				part_probe_types, &parts, 0);
-	if (nr_parts > 0) {
-		dev_info(&pdev->dev,
-			"using %d partitions from cmdline", nr_parts);
-	} else {
-		nr_parts = ltq_mtd_data->nr_parts;
-		parts = ltq_mtd_data->parts;
-	}
-
-	err = add_mtd_partitions(ltq_mtd->mtd, parts, nr_parts);
+	err = mtd_device_parse_register(ltq_mtd->mtd, NULL, 0,
+			ltq_mtd_data->parts, ltq_mtd_data->nr_parts);
 	if (err) {
 		dev_err(&pdev->dev, "failed to add partitions\n");
 		goto err_destroy;
@@ -192,8 +179,6 @@ ltq_mtd_probe(struct platform_device *pdev)
 
 err_destroy:
 	map_destroy(ltq_mtd->mtd);
-err_unmap:
-	iounmap(ltq_mtd->map->virt);
 err_free:
 	kfree(ltq_mtd->map);
 err_out:
@@ -208,11 +193,9 @@ ltq_mtd_remove(struct platform_device *pdev)
 
 	if (ltq_mtd) {
 		if (ltq_mtd->mtd) {
-			del_mtd_partitions(ltq_mtd->mtd);
+			mtd_device_unregister(ltq_mtd->mtd);
 			map_destroy(ltq_mtd->mtd);
 		}
-		if (ltq_mtd->map->virt)
-			iounmap(ltq_mtd->map->virt);
 		kfree(ltq_mtd->map);
 		kfree(ltq_mtd);
 	}

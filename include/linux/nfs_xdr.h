@@ -18,6 +18,11 @@
 /* Forward declaration for NFS v3 */
 struct nfs4_secinfo_flavors;
 
+struct nfs4_string {
+	unsigned int len;
+	char *data;
+};
+
 struct nfs_fsid {
 	uint64_t		major;
 	uint64_t		minor;
@@ -61,6 +66,8 @@ struct nfs_fattr {
 	struct timespec		pre_ctime;	/* pre_op_attr.ctime	  */
 	unsigned long		time_start;
 	unsigned long		gencount;
+	struct nfs4_string	*owner_name;
+	struct nfs4_string	*group_name;
 };
 
 #define NFS_ATTR_FATTR_TYPE		(1U << 0)
@@ -85,6 +92,8 @@ struct nfs_fattr {
 #define NFS_ATTR_FATTR_V4_REFERRAL	(1U << 19)	/* NFSv4 referral */
 #define NFS_ATTR_FATTR_MOUNTPOINT	(1U << 20)	/* Treat as mountpoint */
 #define NFS_ATTR_FATTR_MOUNTED_ON_FILEID		(1U << 21)
+#define NFS_ATTR_FATTR_OWNER_NAME	(1U << 22)
+#define NFS_ATTR_FATTR_GROUP_NAME	(1U << 23)
 
 #define NFS_ATTR_FATTR (NFS_ATTR_FATTR_TYPE \
 		| NFS_ATTR_FATTR_MODE \
@@ -122,6 +131,7 @@ struct nfs_fsinfo {
 	struct timespec		time_delta; /* server time granularity */
 	__u32			lease_time; /* in seconds */
 	__u32			layouttype; /* supported pnfs layout driver */
+	__u32			blksize; /* preferred pnfs io block size */
 };
 
 struct nfs_fsstat {
@@ -235,6 +245,17 @@ struct nfs4_layoutget {
 	gfp_t gfp_flags;
 };
 
+struct nfs4_getdevicelist_args {
+	const struct nfs_fh *fh;
+	u32 layoutclass;
+	struct nfs4_sequence_args seq_args;
+};
+
+struct nfs4_getdevicelist_res {
+	struct pnfs_devicelist *devlist;
+	struct nfs4_sequence_res seq_res;
+};
+
 struct nfs4_getdeviceinfo_args {
 	struct pnfs_device *pdev;
 	struct nfs4_sequence_args seq_args;
@@ -257,21 +278,23 @@ struct nfs4_layoutcommit_res {
 	struct nfs_fattr *fattr;
 	const struct nfs_server *server;
 	struct nfs4_sequence_res seq_res;
+	int status;
 };
 
 struct nfs4_layoutcommit_data {
 	struct rpc_task task;
 	struct nfs_fattr fattr;
-	struct pnfs_layout_segment *lseg;
+	struct list_head lseg_list;
 	struct rpc_cred *cred;
 	struct nfs4_layoutcommit_args args;
 	struct nfs4_layoutcommit_res res;
 };
 
 struct nfs4_layoutreturn_args {
-	__u32   layout_type;
+	struct pnfs_layout_hdr *layout;
 	struct inode *inode;
 	nfs4_stateid stateid;
+	__u32   layout_type;
 	struct nfs4_sequence_args seq_args;
 };
 
@@ -310,6 +333,7 @@ struct nfs_openargs {
 	const struct qstr *	name;
 	const struct nfs_server *server;	 /* Needed for ID mapping */
 	const u32 *		bitmask;
+	const u32 *		dir_bitmask;
 	__u32			claim;
 	struct nfs4_sequence_args	seq_args;
 };
@@ -328,6 +352,8 @@ struct nfs_openres {
 	__u32			do_recall;
 	__u64			maxsize;
 	__u32			attrset[NFS4_BITMAP_SIZE];
+	struct nfs4_string	*owner;
+	struct nfs4_string	*group_owner;
 	struct nfs4_sequence_res	seq_res;
 };
 
@@ -591,8 +617,13 @@ struct nfs_getaclargs {
 	struct nfs4_sequence_args 	seq_args;
 };
 
+/* getxattr ACL interface flags */
+#define NFS4_ACL_LEN_REQUEST	0x0001	/* zero length getxattr buffer */
 struct nfs_getaclres {
 	size_t				acl_len;
+	size_t				acl_data_offset;
+	int				acl_flags;
+	struct page *			acl_scratch;
 	struct nfs4_sequence_res	seq_res;
 };
 
@@ -942,16 +973,11 @@ struct nfs4_server_caps_arg {
 };
 
 struct nfs4_server_caps_res {
-	u32				attr_bitmask[2];
+	u32				attr_bitmask[3];
 	u32				acl_bitmask;
 	u32				has_links;
 	u32				has_symlinks;
 	struct nfs4_sequence_res	seq_res;
-};
-
-struct nfs4_string {
-	unsigned int len;
-	char *data;
 };
 
 #define NFS4_PATHNAME_MAXCOMPONENTS 512
@@ -1060,6 +1086,7 @@ struct server_scope {
 struct nfs41_exchange_id_res {
 	struct nfs_client		*client;
 	u32				flags;
+	struct server_scope		*server_scope;
 };
 
 struct nfs41_create_session_args {
@@ -1083,6 +1110,34 @@ struct nfs41_reclaim_complete_args {
 struct nfs41_reclaim_complete_res {
 	struct nfs4_sequence_res	seq_res;
 };
+
+#define SECINFO_STYLE_CURRENT_FH 0
+#define SECINFO_STYLE_PARENT 1
+struct nfs41_secinfo_no_name_args {
+	int				style;
+	struct nfs4_sequence_args	seq_args;
+};
+
+struct nfs41_test_stateid_args {
+	nfs4_stateid			*stateid;
+	struct nfs4_sequence_args	seq_args;
+};
+
+struct nfs41_test_stateid_res {
+	unsigned int			status;
+	struct nfs4_sequence_res	seq_res;
+};
+
+struct nfs41_free_stateid_args {
+	nfs4_stateid			*stateid;
+	struct nfs4_sequence_args	seq_args;
+};
+
+struct nfs41_free_stateid_res {
+	unsigned int			status;
+	struct nfs4_sequence_res	seq_res;
+};
+
 #endif /* CONFIG_NFS_V4_1 */
 
 struct nfs_page;
@@ -1090,12 +1145,12 @@ struct nfs_page;
 #define NFS_PAGEVEC_SIZE	(8U)
 
 struct nfs_read_data {
-	int			flags;
 	struct rpc_task		task;
 	struct inode		*inode;
 	struct rpc_cred		*cred;
 	struct nfs_fattr	fattr;	/* fattr storage */
 	struct list_head	pages;	/* Coalesced read requests */
+	struct list_head	list;	/* lists of struct nfs_read_data */
 	struct nfs_page		*req;	/* multi ops per nfs_page */
 	struct page		**pagevec;
 	unsigned int		npages;	/* Max length of pagevec */
@@ -1112,13 +1167,13 @@ struct nfs_read_data {
 };
 
 struct nfs_write_data {
-	int			flags;
 	struct rpc_task		task;
 	struct inode		*inode;
 	struct rpc_cred		*cred;
 	struct nfs_fattr	fattr;
 	struct nfs_writeverf	verf;
 	struct list_head	pages;		/* Coalesced requests we wish to flush */
+	struct list_head	list;		/* lists of struct nfs_write_data */
 	struct nfs_page		*req;		/* multi ops per nfs_page */
 	struct page		**pagevec;
 	unsigned int		npages;		/* Max length of pagevec */
@@ -1149,12 +1204,10 @@ struct nfs_rpc_ops {
 	const struct dentry_operations *dentry_ops;
 	const struct inode_operations *dir_inode_ops;
 	const struct inode_operations *file_inode_ops;
+	const struct file_operations *file_ops;
 
 	int	(*getroot) (struct nfs_server *, struct nfs_fh *,
 			    struct nfs_fsinfo *);
-	int	(*lookupfh)(struct nfs_server *, struct nfs_fh *,
-			    struct qstr *, struct nfs_fh *,
-			    struct nfs_fattr *);
 	int	(*getattr) (struct nfs_server *, struct nfs_fh *,
 			    struct nfs_fattr *);
 	int	(*setattr) (struct dentry *, struct nfs_fattr *,

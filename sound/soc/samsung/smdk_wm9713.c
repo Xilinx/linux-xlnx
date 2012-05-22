@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/module.h>
 #include <sound/soc.h>
 
 static struct snd_soc_card smdk;
@@ -49,6 +50,7 @@ static struct snd_soc_dai_link smdk_dai = {
 
 static struct snd_soc_card smdk = {
 	.name = "SMDK WM9713",
+	.owner = THIS_MODULE,
 	.dai_link = &smdk_dai,
 	.num_links = 1,
 };

@@ -504,7 +504,7 @@ N: Dominik Brodowski
 E: linux@brodo.de
 W: http://www.brodo.de/
 P: 1024D/725B37C6  190F 3E77 9C89 3B6D BECD  46EE 67C3 0308 725B 37C6
-D: parts of CPUFreq code, ACPI bugfixes
+D: parts of CPUFreq code, ACPI bugfixes, PCMCIA rewrite, cpufrequtils
 S: Tuebingen, Germany
 
 N: Andries Brouwer
@@ -513,6 +513,11 @@ D: random Linux hacker
 S: Bessemerstraat 21
 S: Amsterdam
 S: The Netherlands
+
+N: NeilBrown
+E: neil@brown.name
+P: 4096R/566281B9 1BC6 29EB D390 D870 7B5F  497A 39EC 9EDD 5662 81B9
+D: NFSD Maintainer 2000-2007
 
 N: Zach Brown
 E: zab@zabbo.net
@@ -688,10 +693,13 @@ S: Oxfordshire, UK.
 
 N: Kees Cook
 E: kees@outflux.net
-W: http://outflux.net/
-P: 1024D/17063E6D 9FA3 C49C 23C9 D1BC 2E30  1975 1FFF 4BA9 1706 3E6D
-D: Minor updates to SCSI types, added /proc/pid/maps protection
+E: kees@ubuntu.com
+E: keescook@chromium.org
+W: http://outflux.net/blog/
+P: 4096R/DC6DC026 A5C3 F68F 229D D60F 723E  6E13 8972 F4DF DC6D C026
+D: Various security things, bug fixes, and documentation.
 S: (ask for current address)
+S: Portland, Oregon
 S: USA
 
 N: Robin Cornelius
@@ -856,6 +864,10 @@ S: Dell Inc.
 S: One Dell Way
 S: Round Rock, TX  78682
 S: USA
+
+N: Mattia Dongili
+E: malattia@gmail.com
+D: cpufrequtils (precursor to cpupowerutils)
 
 N: Ben Dooks
 E: ben-linux@fluff.org
@@ -1882,6 +1894,11 @@ S: X/OS Experts in Open Systems BV
 S: Kruislaan 419
 S: 1098 VA Amsterdam 
 S: The Netherlands
+
+N: Goran Koruga
+E: korugag@siol.net
+D: cpufrequtils (precursor to cpupowerutils)
+S: Slovenia
 
 N: Jiri Kosina
 E: jikos@jikos.cz
@@ -2914,6 +2931,12 @@ D: Modularization of some filesystems
 D: /proc/sound, minor fixes
 S: Schlossbergring 9
 S: 79098 Freiburg
+S: Germany
+
+N: Thomas Renninger
+E: trenn@suse.de
+D: cpupowerutils
+S: SUSE Linux GmbH
 S: Germany
 
 N: Joerg Reuter

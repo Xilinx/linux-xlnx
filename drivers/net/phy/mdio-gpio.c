@@ -95,6 +95,7 @@ static struct mii_bus * __devinit mdio_gpio_bus_init(struct device *dev,
 		goto out;
 
 	bitbang->ctrl.ops = &mdio_gpio_ops;
+	bitbang->ctrl.reset = pdata->reset;
 	bitbang->mdc = pdata->mdc;
 	bitbang->mdio = pdata->mdio;
 
@@ -115,7 +116,7 @@ static struct mii_bus * __devinit mdio_gpio_bus_init(struct device *dev,
 		if (!new_bus->irq[i])
 			new_bus->irq[i] = PHY_POLL;
 
-	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%x", bus_id);
+	snprintf(new_bus->id, MII_BUS_ID_SIZE, "gpio-%x", bus_id);
 
 	if (gpio_request(bitbang->mdc, "mdc"))
 		goto out_free_bus;
@@ -241,7 +242,7 @@ MODULE_DEVICE_TABLE(of, mdio_ofgpio_match);
 
 static struct platform_driver mdio_ofgpio_driver = {
 	.driver = {
-		.name = "mdio-gpio",
+		.name = "mdio-ofgpio",
 		.owner = THIS_MODULE,
 		.of_match_table = mdio_ofgpio_match,
 	},

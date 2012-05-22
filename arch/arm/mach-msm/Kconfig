@@ -11,8 +11,8 @@ config ARCH_MSM7X00A
 	select MSM_SMD
 	select MSM_SMD_PKG3
 	select CPU_V6
+	select GPIO_MSM_V1
 	select MSM_PROC_COMM
-	select HAS_MSM_DEBUG_UART_PHYS
 
 config ARCH_MSM7X30
 	bool "MSM7x30"
@@ -22,8 +22,8 @@ config ARCH_MSM7X30
 	select MSM_VIC
 	select CPU_V7
 	select MSM_GPIOMUX
+	select GPIO_MSM_V1
 	select MSM_PROC_COMM
-	select HAS_MSM_DEBUG_UART_PHYS
 
 config ARCH_QSD8X50
 	bool "QSD8X50"
@@ -33,8 +33,8 @@ config ARCH_QSD8X50
 	select MSM_VIC
 	select CPU_V7
 	select MSM_GPIOMUX
+	select GPIO_MSM_V1
 	select MSM_PROC_COMM
-	select HAS_MSM_DEBUG_UART_PHYS
 
 config ARCH_MSM8X60
 	bool "MSM8X60"
@@ -44,6 +44,7 @@ config ARCH_MSM8X60
 	select ARM_GIC
 	select CPU_V7
 	select MSM_V2_TLMM
+	select GPIO_MSM_V2
 	select MSM_GPIOMUX
 	select MSM_SCM if SMP
 
@@ -59,17 +60,18 @@ config ARCH_MSM8960
 
 endchoice
 
+config MSM_HAS_DEBUG_UART_HS
+	bool
+
 config MSM_SOC_REV_A
 	bool
 config  ARCH_MSM_SCORPIONMP
 	bool
+	select HAVE_SMP
 
 config  ARCH_MSM_ARM11
 	bool
 config  ARCH_MSM_SCORPION
-	bool
-
-config HAS_MSM_DEBUG_UART_PHYS
 	bool
 
 config  MSM_VIC
@@ -148,48 +150,6 @@ config MACH_MSM8960_RUMI3
 
 endmenu
 
-config MSM_IOMMU
-	bool "MSM IOMMU Support"
-	depends on ARCH_MSM8X60 || ARCH_MSM8960
-	select IOMMU_API
-	default n
-	help
-	  Support for the IOMMUs found on certain Qualcomm SOCs.
-	  These IOMMUs allow virtualization of the address space used by most
-	  cores within the multimedia subsystem.
-
-	  If unsure, say N here.
-
-config IOMMU_PGTABLES_L2
-	def_bool y
-	depends on MSM_IOMMU && MMU && SMP && CPU_DCACHE_DISABLE=n
-
-config MSM_DEBUG_UART
-	int
-	default 1 if MSM_DEBUG_UART1
-	default 2 if MSM_DEBUG_UART2
-	default 3 if MSM_DEBUG_UART3
-
-if HAS_MSM_DEBUG_UART_PHYS
-choice
-	prompt "Debug UART"
-
-	default MSM_DEBUG_UART_NONE
-
-	config MSM_DEBUG_UART_NONE
-		bool "None"
-
-	config MSM_DEBUG_UART1
-		bool "UART1"
-
-	config MSM_DEBUG_UART2
-		bool "UART2"
-
-	config MSM_DEBUG_UART3
-		bool "UART3"
-endchoice
-endif
-
 config MSM_SMD_PKG3
 	bool
 
@@ -203,9 +163,6 @@ config MSM_GPIOMUX
 	bool
 
 config MSM_V2_TLMM
-	bool
-
-config IOMMU_API
 	bool
 
 config MSM_SCM

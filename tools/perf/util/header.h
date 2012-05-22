@@ -10,12 +10,26 @@
 #include <linux/bitmap.h>
 
 enum {
-	HEADER_TRACE_INFO = 1,
+	HEADER_RESERVED		= 0,	/* always cleared */
+	HEADER_TRACE_INFO	= 1,
 	HEADER_BUILD_ID,
-	HEADER_LAST_FEATURE,
-};
 
-#define HEADER_FEAT_BITS			256
+	HEADER_HOSTNAME,
+	HEADER_OSRELEASE,
+	HEADER_VERSION,
+	HEADER_ARCH,
+	HEADER_NRCPUS,
+	HEADER_CPUDESC,
+	HEADER_CPUID,
+	HEADER_TOTAL_MEM,
+	HEADER_CMDLINE,
+	HEADER_EVENT_DESC,
+	HEADER_CPU_TOPOLOGY,
+	HEADER_NUMA_TOPOLOGY,
+
+	HEADER_LAST_FEATURE,
+	HEADER_FEAT_BITS	= 256,
+};
 
 struct perf_file_section {
 	u64 offset;
@@ -54,6 +68,7 @@ struct perf_header {
 };
 
 struct perf_evlist;
+struct perf_session;
 
 int perf_session__read_header(struct perf_session *session, int fd);
 int perf_session__write_header(struct perf_session *session,
@@ -68,40 +83,55 @@ void perf_header__set_feat(struct perf_header *header, int feat);
 void perf_header__clear_feat(struct perf_header *header, int feat);
 bool perf_header__has_feat(const struct perf_header *header, int feat);
 
+int perf_header__set_cmdline(int argc, const char **argv);
+
 int perf_header__process_sections(struct perf_header *header, int fd,
+				  void *data,
 				  int (*process)(struct perf_file_section *section,
-						 struct perf_header *ph,
-						 int feat, int fd));
+				  struct perf_header *ph,
+				  int feat, int fd, void *data));
+
+int perf_header__fprintf_info(struct perf_session *s, FILE *fp, bool full);
 
 int build_id_cache__add_s(const char *sbuild_id, const char *debugdir,
 			  const char *name, bool is_kallsyms);
 int build_id_cache__remove_s(const char *sbuild_id, const char *debugdir);
 
-int perf_event__synthesize_attr(struct perf_event_attr *attr, u16 ids, u64 *id,
-				perf_event__handler_t process,
-				struct perf_session *session);
-int perf_session__synthesize_attrs(struct perf_session *session,
-				   perf_event__handler_t process);
-int perf_event__process_attr(union perf_event *event, struct perf_session *session);
+int perf_event__synthesize_attr(struct perf_tool *tool,
+				struct perf_event_attr *attr, u16 ids, u64 *id,
+				perf_event__handler_t process);
+int perf_event__synthesize_attrs(struct perf_tool *tool,
+				 struct perf_session *session,
+				 perf_event__handler_t process);
+int perf_event__process_attr(union perf_event *event, struct perf_evlist **pevlist);
 
-int perf_event__synthesize_event_type(u64 event_id, char *name,
+int perf_event__synthesize_event_type(struct perf_tool *tool,
+				      u64 event_id, char *name,
 				      perf_event__handler_t process,
-				      struct perf_session *session);
-int perf_event__synthesize_event_types(perf_event__handler_t process,
-				       struct perf_session *session);
-int perf_event__process_event_type(union perf_event *event,
-				   struct perf_session *session);
+				      struct machine *machine);
+int perf_event__synthesize_event_types(struct perf_tool *tool,
+				       perf_event__handler_t process,
+				       struct machine *machine);
+int perf_event__process_event_type(struct perf_tool *tool,
+				   union perf_event *event);
 
-int perf_event__synthesize_tracing_data(int fd, struct perf_evlist *evlist,
-					perf_event__handler_t process,
-					struct perf_session *session);
+int perf_event__synthesize_tracing_data(struct perf_tool *tool,
+					int fd, struct perf_evlist *evlist,
+					perf_event__handler_t process);
 int perf_event__process_tracing_data(union perf_event *event,
 				     struct perf_session *session);
 
-int perf_event__synthesize_build_id(struct dso *pos, u16 misc,
+int perf_event__synthesize_build_id(struct perf_tool *tool,
+				    struct dso *pos, u16 misc,
 				    perf_event__handler_t process,
-				    struct machine *machine,
-				    struct perf_session *session);
-int perf_event__process_build_id(union perf_event *event,
+				    struct machine *machine);
+int perf_event__process_build_id(struct perf_tool *tool,
+				 union perf_event *event,
 				 struct perf_session *session);
+
+/*
+ * arch specific callback
+ */
+int get_cpuid(char *buffer, size_t sz);
+
 #endif /* __PERF_HEADER_H */

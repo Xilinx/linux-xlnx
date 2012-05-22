@@ -117,8 +117,6 @@ static int afeb9260_tlv320aic23_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_enable_pin(dapm, "Line In");
 	snd_soc_dapm_enable_pin(dapm, "Mic Jack");
 
-	snd_soc_dapm_sync(dapm);
-
 	return 0;
 }
 
@@ -137,6 +135,7 @@ static struct snd_soc_dai_link afeb9260_dai = {
 /* Audio machine driver */
 static struct snd_soc_card snd_soc_machine_afeb9260 = {
 	.name = "AFEB9260",
+	.owner = THIS_MODULE,
 	.dai_link = &afeb9260_dai,
 	.num_links = 1,
 };

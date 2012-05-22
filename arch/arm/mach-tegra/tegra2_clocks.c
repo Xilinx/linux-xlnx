@@ -166,15 +166,15 @@ static DEFINE_SPINLOCK(clock_register_lock);
 static int tegra_periph_clk_enable_refcount[3 * 32];
 
 #define clk_writel(value, reg) \
-	__raw_writel(value, (u32)reg_clk_base + (reg))
+	__raw_writel(value, reg_clk_base + (reg))
 #define clk_readl(reg) \
-	__raw_readl((u32)reg_clk_base + (reg))
+	__raw_readl(reg_clk_base + (reg))
 #define pmc_writel(value, reg) \
-	__raw_writel(value, (u32)reg_pmc_base + (reg))
+	__raw_writel(value, reg_pmc_base + (reg))
 #define pmc_readl(reg) \
-	__raw_readl((u32)reg_pmc_base + (reg))
+	__raw_readl(reg_pmc_base + (reg))
 
-unsigned long clk_measure_input_freq(void)
+static unsigned long clk_measure_input_freq(void)
 {
 	u32 clock_autodetect;
 	clk_writel(OSC_FREQ_DET_TRIG | 1, OSC_FREQ_DET);
@@ -277,18 +277,6 @@ static struct clk_ops tegra_clk_m_ops = {
 	.enable		= tegra2_clk_m_enable,
 	.disable	= tegra2_clk_m_disable,
 };
-
-void tegra2_periph_reset_assert(struct clk *c)
-{
-	BUG_ON(!c->ops->reset);
-	c->ops->reset(c, true);
-}
-
-void tegra2_periph_reset_deassert(struct clk *c)
-{
-	BUG_ON(!c->ops->reset);
-	c->ops->reset(c, false);
-}
 
 /* super clock functions */
 /* "super clocks" on tegra have two-stage muxes and a clock skipping
@@ -918,7 +906,7 @@ static struct clk_ops tegra_pll_div_ops = {
 static void tegra2_periph_clk_init(struct clk *c)
 {
 	u32 val = clk_readl(c->reg);
-	const struct clk_mux_sel *mux = 0;
+	const struct clk_mux_sel *mux = NULL;
 	const struct clk_mux_sel *sel;
 	if (c->flags & MUX) {
 		for (sel = c->inputs; sel->input != NULL; sel++) {
@@ -1132,6 +1120,9 @@ static struct clk_ops tegra_periph_clk_ops = {
 void tegra2_sdmmc_tap_delay(struct clk *c, int delay)
 {
 	u32 reg;
+	unsigned long flags;
+
+	spin_lock_irqsave(&c->spinlock, flags);
 
 	delay = clamp(delay, 0, 15);
 	reg = clk_readl(c->reg);
@@ -1139,6 +1130,8 @@ void tegra2_sdmmc_tap_delay(struct clk *c, int delay)
 	reg |= SDMMC_CLK_INT_FB_SEL;
 	reg |= delay << SDMMC_CLK_INT_FB_DLY_SHIFT;
 	clk_writel(reg, c->reg);
+
+	spin_unlock_irqrestore(&c->spinlock, flags);
 }
 
 /* External memory controller clock ops */
@@ -1459,7 +1452,7 @@ static struct clk tegra_pll_s = {
 static struct clk_mux_sel tegra_clk_m_sel[] = {
 	{ .input = &tegra_clk_32k, .value = 0},
 	{ .input = &tegra_pll_s,  .value = 1},
-	{ 0, 0},
+	{ NULL , 0},
 };
 
 static struct clk tegra_clk_m = {
@@ -1861,7 +1854,7 @@ static const struct audio_sources {
 	{ .name = "ext_audio_clk1", .value = 6 },
 	{ .name = "ext_vimclk", .value = 7 },
 #endif
-	{ 0, 0 }
+	{ NULL, 0 }
 };
 
 static struct clk tegra_clk_audio = {
@@ -1885,7 +1878,7 @@ static struct clk tegra_clk_audio_2x = {
 	},
 };
 
-struct clk_lookup tegra_audio_clk_lookups[] = {
+static struct clk_lookup tegra_audio_clk_lookups[] = {
 	{ .con_id = "audio", .clk = &tegra_clk_audio },
 	{ .con_id = "audio_2x", .clk = &tegra_clk_audio_2x }
 };
@@ -1926,7 +1919,7 @@ static struct clk_mux_sel mux_cclk[] = {
 	{ .input = &tegra_pll_p_out3,	.value = 6},
 	{ .input = &tegra_clk_d,	.value = 7},
 	{ .input = &tegra_pll_x,	.value = 8},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_sclk[] = {
@@ -1938,7 +1931,7 @@ static struct clk_mux_sel mux_sclk[] = {
 	{ .input = &tegra_clk_d,	.value = 5},
 	{ .input = &tegra_clk_32k,	.value = 6},
 	{ .input = &tegra_pll_m_out1,	.value = 7},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk tegra_clk_cclk = {
@@ -2009,7 +2002,7 @@ static struct clk_mux_sel mux_pllm_pllc_pllp_plla[] = {
 	{ .input = &tegra_pll_c, .value = 1},
 	{ .input = &tegra_pll_p, .value = 2},
 	{ .input = &tegra_pll_a_out0, .value = 3},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllm_pllc_pllp_clkm[] = {
@@ -2017,7 +2010,7 @@ static struct clk_mux_sel mux_pllm_pllc_pllp_clkm[] = {
 	{ .input = &tegra_pll_c, .value = 1},
 	{ .input = &tegra_pll_p, .value = 2},
 	{ .input = &tegra_clk_m, .value = 3},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllp_pllc_pllm_clkm[] = {
@@ -2025,7 +2018,7 @@ static struct clk_mux_sel mux_pllp_pllc_pllm_clkm[] = {
 	{ .input = &tegra_pll_c, .value = 1},
 	{ .input = &tegra_pll_m, .value = 2},
 	{ .input = &tegra_clk_m, .value = 3},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllaout0_audio2x_pllp_clkm[] = {
@@ -2033,7 +2026,7 @@ static struct clk_mux_sel mux_pllaout0_audio2x_pllp_clkm[] = {
 	{.input = &tegra_clk_audio_2x, .value = 1},
 	{.input = &tegra_pll_p, .value = 2},
 	{.input = &tegra_clk_m, .value = 3},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllp_plld_pllc_clkm[] = {
@@ -2041,7 +2034,7 @@ static struct clk_mux_sel mux_pllp_plld_pllc_clkm[] = {
 	{.input = &tegra_pll_d_out0, .value = 1},
 	{.input = &tegra_pll_c, .value = 2},
 	{.input = &tegra_clk_m, .value = 3},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllp_pllc_audio_clkm_clk32[] = {
@@ -2050,39 +2043,39 @@ static struct clk_mux_sel mux_pllp_pllc_audio_clkm_clk32[] = {
 	{.input = &tegra_clk_audio,     .value = 2},
 	{.input = &tegra_clk_m,     .value = 3},
 	{.input = &tegra_clk_32k,   .value = 4},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllp_pllc_pllm[] = {
 	{.input = &tegra_pll_p,     .value = 0},
 	{.input = &tegra_pll_c,     .value = 1},
 	{.input = &tegra_pll_m,     .value = 2},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_clk_m[] = {
 	{ .input = &tegra_clk_m, .value = 0},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pllp_out3[] = {
 	{ .input = &tegra_pll_p_out3, .value = 0},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_plld[] = {
 	{ .input = &tegra_pll_d, .value = 0},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_clk_32k[] = {
 	{ .input = &tegra_clk_32k, .value = 0},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk_mux_sel mux_pclk[] = {
 	{ .input = &tegra_clk_pclk, .value = 0},
-	{ 0, 0},
+	{ NULL, 0},
 };
 
 static struct clk tegra_clk_emc = {
@@ -2125,7 +2118,7 @@ static struct clk tegra_clk_emc = {
 		.parent = _parent,			\
 	}
 
-struct clk tegra_list_clks[] = {
+static struct clk tegra_list_clks[] = {
 	PERIPH_CLK("apbdma",	"tegra-dma",		NULL,	34,	0,	108000000, mux_pclk,			0),
 	PERIPH_CLK("rtc",	"rtc-tegra",		NULL,	4,	0,	32768,     mux_clk_32k,			PERIPH_NO_RESET),
 	PERIPH_CLK("timer",	"timer",		NULL,	5,	0,	26000000,  mux_clk_m,			0),
@@ -2182,8 +2175,8 @@ struct clk tegra_list_clks[] = {
 	PERIPH_CLK("tvo",	"tvo",			NULL,	49,	0x188,	250000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* requires min voltage */
 	PERIPH_CLK("hdmi",	"hdmi",			NULL,	51,	0x18c,	600000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* requires min voltage */
 	PERIPH_CLK("tvdac",	"tvdac",		NULL,	53,	0x194,	250000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* requires min voltage */
-	PERIPH_CLK("disp1",	"tegradc.0",		NULL,	27,	0x138,	600000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* scales with voltage and process_id */
-	PERIPH_CLK("disp2",	"tegradc.1",		NULL,	26,	0x13c,	600000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* scales with voltage and process_id */
+	PERIPH_CLK("disp1",	"tegradc.0",		NULL,	27,	0x138,	600000000, mux_pllp_plld_pllc_clkm,	MUX), /* scales with voltage and process_id */
+	PERIPH_CLK("disp2",	"tegradc.1",		NULL,	26,	0x13c,	600000000, mux_pllp_plld_pllc_clkm,	MUX), /* scales with voltage and process_id */
 	PERIPH_CLK("usbd",	"fsl-tegra-udc",	NULL,	22,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
 	PERIPH_CLK("usb2",	"tegra-ehci.1",		NULL,	58,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
 	PERIPH_CLK("usb3",	"tegra-ehci.2",		NULL,	59,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
@@ -2221,7 +2214,7 @@ struct clk tegra_list_clks[] = {
  * configuration.  List those here to register them twice in the clock lookup
  * table under two names.
  */
-struct clk_duplicate tegra_clk_duplicates[] = {
+static struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("uarta",	"tegra_uart.0",	NULL),
 	CLK_DUPLICATE("uartb",	"tegra_uart.1",	NULL),
 	CLK_DUPLICATE("uartc",	"tegra_uart.2",	NULL),
@@ -2252,7 +2245,7 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 		.clk = ck,	\
 	}
 
-struct clk *tegra_ptr_clks[] = {
+static struct clk *tegra_ptr_clks[] = {
 	&tegra_clk_32k,
 	&tegra_pll_s,
 	&tegra_clk_m,

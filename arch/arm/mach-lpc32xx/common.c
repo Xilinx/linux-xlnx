@@ -95,6 +95,48 @@ struct platform_device lpc32xx_i2c2_device = {
 	},
 };
 
+/* TSC (Touch Screen Controller) */
+
+static struct resource lpc32xx_tsc_resources[] = {
+	{
+		.start = LPC32XX_ADC_BASE,
+		.end = LPC32XX_ADC_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_LPC32XX_TS_IRQ,
+		.end = IRQ_LPC32XX_TS_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device lpc32xx_tsc_device = {
+	.name =  "ts-lpc32xx",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(lpc32xx_tsc_resources),
+	.resource = lpc32xx_tsc_resources,
+};
+
+/* RTC */
+
+static struct resource lpc32xx_rtc_resources[] = {
+	{
+		.start = LPC32XX_RTC_BASE,
+		.end = LPC32XX_RTC_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},{
+		.start = IRQ_LPC32XX_RTC,
+		.end = IRQ_LPC32XX_RTC,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device lpc32xx_rtc_device = {
+	.name =  "rtc-lpc32xx",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(lpc32xx_rtc_resources),
+	.resource = lpc32xx_rtc_resources,
+};
+
 /*
  * Returns the unique ID for the device
  */
@@ -122,7 +164,7 @@ int clk_is_sysclk_mainosc(void)
 /*
  * System reset via the watchdog timer
  */
-void lpc32xx_watchdog_reset(void)
+static void lpc32xx_watchdog_reset(void)
 {
 	/* Make sure WDT clocks are enabled */
 	__raw_writel(LPC32XX_CLKPWR_PWMCLK_WDOG_EN,
@@ -268,4 +310,22 @@ static struct map_desc lpc32xx_io_desc[] __initdata = {
 void __init lpc32xx_map_io(void)
 {
 	iotable_init(lpc32xx_io_desc, ARRAY_SIZE(lpc32xx_io_desc));
+}
+
+void lpc23xx_restart(char mode, const char *cmd)
+{
+	switch (mode) {
+	case 's':
+	case 'h':
+		lpc32xx_watchdog_reset();
+		break;
+
+	default:
+		/* Do nothing */
+		break;
+	}
+
+	/* Wait for watchdog to reset system */
+	while (1)
+		;
 }

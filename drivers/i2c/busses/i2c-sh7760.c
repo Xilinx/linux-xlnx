@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/module.h>
 
 #include <asm/clock.h>
 #include <asm/i2c-sh7760.h>
@@ -502,7 +503,7 @@ static int __devinit sh7760_i2c_probe(struct platform_device *pdev)
 	}
 	OUT32(id, I2CCCR, ret);
 
-	if (request_irq(id->irq, sh7760_i2c_irq, IRQF_DISABLED,
+	if (request_irq(id->irq, sh7760_i2c_irq, 0,
 			SH7760_I2C_DEVNAME, id)) {
 		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
 		ret = -EBUSY;
@@ -559,18 +560,7 @@ static struct platform_driver sh7760_i2c_drv = {
 	.remove		= __devexit_p(sh7760_i2c_remove),
 };
 
-static int __init sh7760_i2c_init(void)
-{
-	return platform_driver_register(&sh7760_i2c_drv);
-}
-
-static void __exit sh7760_i2c_exit(void)
-{
-	platform_driver_unregister(&sh7760_i2c_drv);
-}
-
-module_init(sh7760_i2c_init);
-module_exit(sh7760_i2c_exit);
+module_platform_driver(sh7760_i2c_drv);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("SH7760 I2C bus driver");

@@ -8,11 +8,11 @@
  * is licensed "as is" without any warranty of any kind, whether express
  * or implied.
  */
+#include <linux/dma-mapping.h>
 #include <linux/init.h>
 #include <linux/clk.h>
 #include <linux/serial_8250.h>
 #include <linux/platform_device.h>
-#include <linux/gpio.h>
 
 #include <asm/mach/map.h>
 
@@ -26,6 +26,7 @@
 #include <mach/serial.h>
 #include <mach/common.h>
 #include <mach/asp.h>
+#include <mach/gpio-davinci.h>
 
 #include "clock.h"
 #include "mux.h"
@@ -42,6 +43,7 @@
 /*
  * Device specific clocks
  */
+#define DM646X_REF_FREQ		27000000
 #define DM646X_AUX_FREQ		24000000
 
 static struct pll_data pll1_data = {
@@ -56,6 +58,8 @@ static struct pll_data pll2_data = {
 
 static struct clk ref_clk = {
 	.name = "ref_clk",
+	.rate = DM646X_REF_FREQ,
+	.set_rate = davinci_simple_set_rate,
 };
 
 static struct clk aux_clkin = {
@@ -157,7 +161,6 @@ static struct clk dsp_clk = {
 	.name = "dsp",
 	.parent = &pll1_sysclk1,
 	.lpsc = DM646X_LPSC_C64X_CPU,
-	.flags = PSC_DSP,
 	.usecount = 1,			/* REVISIT how to disable? */
 };
 
@@ -551,6 +554,7 @@ static struct edma_soc_info edma_cc0_info = {
 	.n_cc			= 1,
 	.queue_tc_mapping	= dm646x_queue_tc_mapping,
 	.queue_priority_mapping	= dm646x_queue_priority_mapping,
+	.default_queue		= EVENTQ_1,
 };
 
 static struct edma_soc_info *dm646x_edma_info[EDMA_MAX_CC] = {
@@ -850,7 +854,6 @@ static struct davinci_soc_info davinci_soc_info_dm646x = {
 	.emac_pdata		= &dm646x_emac_pdata,
 	.sram_dma		= 0x10010000,
 	.sram_len		= SZ_32K,
-	.reset_device		= &davinci_wdt_device,
 };
 
 void __init dm646x_init_mcasp0(struct snd_platform_data *pdata)
@@ -901,7 +904,6 @@ int __init dm646x_init_edma(struct edma_rsv_info *rsv)
 
 void __init dm646x_init(void)
 {
-	dm646x_board_setup_refclk(&ref_clk);
 	davinci_common_init(&davinci_soc_info_dm646x);
 }
 

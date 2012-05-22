@@ -23,6 +23,7 @@
 #include <linux/kernel.h>
 #include <linux/firmware.h>
 #include <linux/crc32.h>
+#include <linux/module.h>
 #include "carl9170.h"
 #include "fwcmd.h"
 #include "version.h"
@@ -145,13 +146,15 @@ static bool valid_cpu_addr(const u32 address)
 	return false;
 }
 
-static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
+static int carl9170_fw_checksum(struct ar9170 *ar, const __u8 *data,
+				size_t len)
 {
 	const struct carl9170fw_otus_desc *otus_desc;
-	const struct carl9170fw_chk_desc *chk_desc;
 	const struct carl9170fw_last_desc *last_desc;
-	const struct carl9170fw_txsq_desc *txsq_desc;
-	u16 if_comb_types;
+	const struct carl9170fw_chk_desc *chk_desc;
+	unsigned long fin, diff;
+	unsigned int dsc_len;
+	u32 crc32;
 
 	last_desc = carl9170_fw_find_desc(ar, LAST_MAGIC,
 		sizeof(*last_desc), CARL9170FW_LAST_DESC_CUR_VER);
@@ -169,36 +172,68 @@ static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
 	chk_desc = carl9170_fw_find_desc(ar, CHK_MAGIC,
 		sizeof(*chk_desc), CARL9170FW_CHK_DESC_CUR_VER);
 
-	if (chk_desc) {
-		unsigned long fin, diff;
-		unsigned int dsc_len;
-		u32 crc32;
+	if (!chk_desc) {
+		dev_warn(&ar->udev->dev, "Unprotected firmware image.\n");
+		return 0;
+	}
 
-		dsc_len = min_t(unsigned int, len,
+	dsc_len = min_t(unsigned int, len,
 			(unsigned long)chk_desc - (unsigned long)otus_desc);
 
-		fin = (unsigned long) last_desc + sizeof(*last_desc);
-		diff = fin - (unsigned long) otus_desc;
+	fin = (unsigned long) last_desc + sizeof(*last_desc);
+	diff = fin - (unsigned long) otus_desc;
 
-		if (diff < len)
-			len -= diff;
+	if (diff < len)
+		len -= diff;
 
-		if (len < 256)
-			return -EIO;
+	if (len < 256)
+		return -EIO;
 
-		crc32 = crc32_le(~0, data, len);
-		if (cpu_to_le32(crc32) != chk_desc->fw_crc32) {
-			dev_err(&ar->udev->dev, "fw checksum test failed.\n");
-			return -ENOEXEC;
-		}
+	crc32 = crc32_le(~0, data, len);
+	if (cpu_to_le32(crc32) != chk_desc->fw_crc32) {
+		dev_err(&ar->udev->dev, "fw checksum test failed.\n");
+		return -ENOEXEC;
+	}
 
-		crc32 = crc32_le(crc32, (void *)otus_desc, dsc_len);
-		if (cpu_to_le32(crc32) != chk_desc->hdr_crc32) {
-			dev_err(&ar->udev->dev, "descriptor check failed.\n");
+	crc32 = crc32_le(crc32, (void *)otus_desc, dsc_len);
+	if (cpu_to_le32(crc32) != chk_desc->hdr_crc32) {
+		dev_err(&ar->udev->dev, "descriptor check failed.\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int carl9170_fw_tx_sequence(struct ar9170 *ar)
+{
+	const struct carl9170fw_txsq_desc *txsq_desc;
+
+	txsq_desc = carl9170_fw_find_desc(ar, TXSQ_MAGIC, sizeof(*txsq_desc),
+					  CARL9170FW_TXSQ_DESC_CUR_VER);
+	if (txsq_desc) {
+		ar->fw.tx_seq_table = le32_to_cpu(txsq_desc->seq_table_addr);
+		if (!valid_cpu_addr(ar->fw.tx_seq_table))
 			return -EINVAL;
-		}
 	} else {
-		dev_warn(&ar->udev->dev, "Unprotected firmware image.\n");
+		ar->fw.tx_seq_table = 0;
+	}
+
+	return 0;
+}
+
+static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
+{
+	const struct carl9170fw_otus_desc *otus_desc;
+	int err;
+	u16 if_comb_types;
+
+	err = carl9170_fw_checksum(ar, data, len);
+	if (err)
+		return err;
+
+	otus_desc = carl9170_fw_find_desc(ar, OTUS_MAGIC,
+		sizeof(*otus_desc), CARL9170FW_OTUS_DESC_CUR_VER);
+	if (!otus_desc) {
+		return -ENODATA;
 	}
 
 #define SUPP(feat)						\
@@ -237,7 +272,7 @@ static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
 		ar->disable_offload = true;
 	}
 
-	if (SUPP(CARL9170FW_PSM))
+	if (SUPP(CARL9170FW_PSM) && SUPP(CARL9170FW_FIXED_5GHZ_PSM))
 		ar->hw->flags |= IEEE80211_HW_SUPPORTS_PS;
 
 	if (!SUPP(CARL9170FW_USB_INIT_FIRMWARE)) {
@@ -265,6 +300,9 @@ static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
 			FIF_CONTROL | FIF_PSPOLL | FIF_OTHER_BSS |
 			FIF_PROMISC_IN_BSS;
 	}
+
+	if (SUPP(CARL9170FW_HW_COUNTERS))
+		ar->fw.hw_counters = true;
 
 	if (SUPP(CARL9170FW_WOL))
 		device_set_wakeup_enable(&ar->udev->dev, true);
@@ -317,19 +355,8 @@ static int carl9170_fw(struct ar9170 *ar, const __u8 *data, size_t len)
 
 	ar->hw->wiphy->interface_modes |= if_comb_types;
 
-	txsq_desc = carl9170_fw_find_desc(ar, TXSQ_MAGIC,
-		sizeof(*txsq_desc), CARL9170FW_TXSQ_DESC_CUR_VER);
-
-	if (txsq_desc) {
-		ar->fw.tx_seq_table = le32_to_cpu(txsq_desc->seq_table_addr);
-		if (!valid_cpu_addr(ar->fw.tx_seq_table))
-			return -EINVAL;
-	} else {
-		ar->fw.tx_seq_table = 0;
-	}
-
 #undef SUPPORTED
-	return 0;
+	return carl9170_fw_tx_sequence(ar);
 }
 
 static struct carl9170fw_desc_head *

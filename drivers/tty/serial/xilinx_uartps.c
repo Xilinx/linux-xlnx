@@ -11,14 +11,23 @@
  *
  */
 
+#if defined(CONFIG_SERIAL_XILINX_PS_UART_CONSOLE)
+#if defined(CONFIG_MAGIC_SYSRQ)
+#define SUPPORT_SYSRQ
+#endif
+#endif
+
 #include <linux/platform_device.h>
-#include <linux/serial_core.h>
-#include <linux/console.h>
 #include <linux/serial.h>
+#include <linux/console.h>
+#include <linux/serial_core.h>
+#include <linux/tty.h>
+#include <linux/tty_flip.h>
 #include <linux/irq.h>
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/moduleparam.h>
+#include <linux/module.h>
 
 #define XUARTPS_TTY_NAME	"ttyPS"
 #define XUARTPS_NAME		"xuartps"
@@ -135,6 +144,9 @@ MODULE_PARM_DESC (rx_timeout, "Rx timeout, 1-255");
 #define XUARTPS_IXR_RXEMPTY	0x00000002 /* RX FIFO empty interrupt. */
 #define XUARTPS_IXR_MASK	0x00001FFF /* Valid bit mask */
 
+/* Goes in read_status_mask for break detection as the HW doesn't do it*/
+#define XUARTPS_IXR_BRK		0x80000000
+
 /** Channel Status Register
  *
  * The channel status register (CSR) is provided to enable the control logic
@@ -172,6 +184,24 @@ static irqreturn_t xuartps_isr(int irq, void *dev_id)
 	 */
 	isrstatus = xuartps_readl(XUARTPS_ISR_OFFSET);
 
+	/* There is no hardware break detection, so we interpret framing
+	 * error with all-zeros data as a break sequence. Most of the time,
+	 * there's another non-zero byte at the end of the sequence.
+	 *
+	 */
+
+	if (isrstatus & XUARTPS_IXR_FRAMING) {
+		while(!(xuartps_readl(XUARTPS_SR_OFFSET) & \
+			XUARTPS_SR_RXEMPTY)) {
+			if(!xuartps_readl(XUARTPS_FIFO_OFFSET)) {
+				port->read_status_mask |= XUARTPS_IXR_BRK;
+				isrstatus &=~ XUARTPS_IXR_FRAMING;
+			}
+		}
+		xuartps_writel(XUARTPS_IXR_FRAMING,
+				XUARTPS_ISR_OFFSET);
+	}
+
 	/* drop byte with parity error if IGNPAR specified */
 	if (isrstatus & port->ignore_status_mask & XUARTPS_IXR_PARITY)
 		isrstatus &= ~(XUARTPS_IXR_RXTRIG | XUARTPS_IXR_TOUT);
@@ -185,6 +215,30 @@ static irqreturn_t xuartps_isr(int irq, void *dev_id)
 		while ((xuartps_readl(XUARTPS_SR_OFFSET) &
 			XUARTPS_SR_RXEMPTY) != XUARTPS_SR_RXEMPTY) {
 			data = xuartps_readl(XUARTPS_FIFO_OFFSET);
+
+			/*Non-NULL byte after BREAK is garbage (99%)*/
+			if(data && (port->read_status_mask &
+				XUARTPS_IXR_BRK)) {
+				port->read_status_mask&=~XUARTPS_IXR_BRK;
+				port->icount.brk++;
+				if (uart_handle_break(port))
+					continue;
+			}
+
+
+			/*uart_handle_sysrq_char() doesn't work if
+			 *spinlocked, for some reason
+			 */
+			 if (port->sysrq) {
+				spin_unlock(&port->lock);
+				if(uart_handle_sysrq_char(port, \
+					(unsigned char)data)) {
+					spin_lock(&port->lock);
+					continue;
+				}
+				spin_lock(&port->lock);
+			}
+
 			port->icount.rx++;
 
 			if (isrstatus & XUARTPS_IXR_PARITY) {
@@ -399,7 +453,7 @@ static unsigned int xuartps_tx_empty(struct uart_port *port)
 {
 	unsigned int status;
 
-	status = xuartps_readl(XUARTPS_ISR_OFFSET) & XUARTPS_IXR_TXEMPTY;
+	status = xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_IXR_TXEMPTY;
 	return status ? TIOCSER_TEMT : 0;
 }
 
@@ -749,6 +803,56 @@ static void xuartps_enable_ms(struct uart_port *port)
 	/* N/A */
 }
 
+#if defined(CONFIG_CONSOLE_POLL)
+static int xuartps_poll_get_char(struct uart_port *port)
+{
+	u32 imr;
+	int c;
+
+	/*Disable all interrupts*/
+	imr = xuartps_readl(XUARTPS_IMR_OFFSET);
+	xuartps_writel(imr, XUARTPS_IDR_OFFSET);
+
+	/*Check if  FIFO is empty*/
+	if
+	(xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_SR_RXEMPTY)
+		c = NO_POLL_CHAR;
+		else
+	/*Read a character*/
+		c = (unsigned char) xuartps_readl(XUARTPS_FIFO_OFFSET);
+
+	/*Enable interrupts*/
+	xuartps_writel(imr, XUARTPS_IER_OFFSET);
+
+	return c;
+}
+
+static void xuartps_poll_put_char(struct uart_port *port, unsigned char c)
+{
+	u32 imr;
+
+	/*Disable all interrupts*/
+	imr = xuartps_readl(XUARTPS_IMR_OFFSET);
+	xuartps_writel(imr, XUARTPS_IDR_OFFSET);
+
+	/*Wait until FIFO is empty*/
+	while (!(xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_SR_TXEMPTY))
+		cpu_relax();
+
+	/*Write a character*/
+	xuartps_writel(c, XUARTPS_FIFO_OFFSET);
+
+	/*Wait until FIFO is empty*/
+	while (!(xuartps_readl(XUARTPS_SR_OFFSET) & XUARTPS_SR_TXEMPTY))
+		cpu_relax();
+
+	/*Enable interrupts*/
+	xuartps_writel(imr, XUARTPS_IER_OFFSET);
+
+	return;
+}
+#endif
+
 /** The UART operations structure
  */
 static struct uart_ops xuartps_ops = {
@@ -781,6 +885,10 @@ static struct uart_ops xuartps_ops = {
 	.config_port	= xuartps_config_port,	/* Configure when driver
 						 * adds a xuartps port
 						 */
+#ifdef CONFIG_CONSOLE_POLL
+	.poll_get_char	= xuartps_poll_get_char,
+	.poll_put_char	= xuartps_poll_put_char,
+#endif
 };
 
 static struct uart_port xuartps_port[2];

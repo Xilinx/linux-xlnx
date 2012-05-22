@@ -4,9 +4,38 @@
  *
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
+
+/*
+ * Table for showing the current message id in use for particular level
+ * Change this table for addition of log/debug messages.
+ * ----------------------------------------------------------------------
+ * |             Level            |   Last Value Used  |     Holes	|
+ * ----------------------------------------------------------------------
+ * | Module Init and Probe        |       0x0116       | 0xfa           |
+ * | Mailbox commands             |       0x112b       |		|
+ * | Device Discovery             |       0x2084       |		|
+ * | Queue Command and IO tracing |       0x302f       | 0x3008,0x302d, |
+ * |                              |                    | 0x302e         |
+ * | DPC Thread                   |       0x401c       |		|
+ * | Async Events                 |       0x5057       | 0x5052		|
+ * | Timer Routines               |       0x6011       | 0x600e,0x600f  |
+ * | User Space Interactions      |       0x709e       | 0x7018,0x702e  |
+ * |                              |                    | 0x7039,0x7045  |
+ * | Task Management              |       0x803c       | 0x8025-0x8026  |
+ * |                              |                    | 0x800b,0x8039  |
+ * | AER/EEH                      |       0x900f       |		|
+ * | Virtual Port                 |       0xa007       |		|
+ * | ISP82XX Specific             |       0xb052       |    		|
+ * | MultiQ                       |       0xc00b       |		|
+ * | Misc                         |       0xd00b       |		|
+ * ----------------------------------------------------------------------
+ */
+
 #include "qla_def.h"
 
 #include <linux/delay.h>
+
+static uint32_t ql_dbg_offset = 0x800;
 
 static inline void
 qla2xxx_prep_dump(struct qla_hw_data *ha, struct qla2xxx_fw_dump *fw_dump)
@@ -342,7 +371,7 @@ qla25xx_copy_fce(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 
 	memcpy(iter_reg, ha->fce, ntohl(fcec->size));
 
-	return iter_reg;
+	return (char *)iter_reg + ntohl(fcec->size);
 }
 
 static inline void *
@@ -377,17 +406,17 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 	return ptr + sizeof(struct qla2xxx_mq_chain);
 }
 
-static void
+void
 qla2xxx_dump_post_process(scsi_qla_host_t *vha, int rval)
 {
 	struct qla_hw_data *ha = vha->hw;
 
 	if (rval != QLA_SUCCESS) {
-		qla_printk(KERN_WARNING, ha,
-		    "Failed to dump firmware (%x)!!!\n", rval);
+		ql_log(ql_log_warn, vha, 0xd000,
+		    "Failed to dump firmware (%x).\n", rval);
 		ha->fw_dumped = 0;
 	} else {
-		qla_printk(KERN_INFO, ha,
+		ql_log(ql_log_info, vha, 0xd001,
 		    "Firmware dump saved to temp buffer (%ld/%p).\n",
 		    vha->host_no, ha->fw_dump);
 		ha->fw_dumped = 1;
@@ -419,15 +448,16 @@ qla2300_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (!ha->fw_dump) {
-		qla_printk(KERN_WARNING, ha,
-		    "No buffer available for dump!!!\n");
+		ql_log(ql_log_warn, vha, 0xd002,
+		    "No buffer available for dump.\n");
 		goto qla2300_fw_dump_failed;
 	}
 
 	if (ha->fw_dumped) {
-		qla_printk(KERN_WARNING, ha,
-		    "Firmware has been previously dumped (%p) -- ignoring "
-		    "request...\n", ha->fw_dump);
+		ql_log(ql_log_warn, vha, 0xd003,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n",
+		    ha->fw_dump);
 		goto qla2300_fw_dump_failed;
 	}
 	fw = &ha->fw_dump->isp.isp23;
@@ -582,15 +612,16 @@ qla2100_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (!ha->fw_dump) {
-		qla_printk(KERN_WARNING, ha,
-		    "No buffer available for dump!!!\n");
+		ql_log(ql_log_warn, vha, 0xd004,
+		    "No buffer available for dump.\n");
 		goto qla2100_fw_dump_failed;
 	}
 
 	if (ha->fw_dumped) {
-		qla_printk(KERN_WARNING, ha,
-		    "Firmware has been previously dumped (%p) -- ignoring "
-		    "request...\n", ha->fw_dump);
+		ql_log(ql_log_warn, vha, 0xd005,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n",
+		    ha->fw_dump);
 		goto qla2100_fw_dump_failed;
 	}
 	fw = &ha->fw_dump->isp.isp21;
@@ -779,15 +810,16 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (!ha->fw_dump) {
-		qla_printk(KERN_WARNING, ha,
-		    "No buffer available for dump!!!\n");
+		ql_log(ql_log_warn, vha, 0xd006,
+		    "No buffer available for dump.\n");
 		goto qla24xx_fw_dump_failed;
 	}
 
 	if (ha->fw_dumped) {
-		qla_printk(KERN_WARNING, ha,
-		    "Firmware has been previously dumped (%p) -- ignoring "
-		    "request...\n", ha->fw_dump);
+		ql_log(ql_log_warn, vha, 0xd007,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n",
+		    ha->fw_dump);
 		goto qla24xx_fw_dump_failed;
 	}
 	fw = &ha->fw_dump->isp.isp24;
@@ -1017,15 +1049,16 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (!ha->fw_dump) {
-		qla_printk(KERN_WARNING, ha,
-		    "No buffer available for dump!!!\n");
+		ql_log(ql_log_warn, vha, 0xd008,
+		    "No buffer available for dump.\n");
 		goto qla25xx_fw_dump_failed;
 	}
 
 	if (ha->fw_dumped) {
-		qla_printk(KERN_WARNING, ha,
-		    "Firmware has been previously dumped (%p) -- ignoring "
-		    "request...\n", ha->fw_dump);
+		ql_log(ql_log_warn, vha, 0xd009,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n",
+		    ha->fw_dump);
 		goto qla25xx_fw_dump_failed;
 	}
 	fw = &ha->fw_dump->isp.isp25;
@@ -1328,15 +1361,16 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 
 	if (!ha->fw_dump) {
-		qla_printk(KERN_WARNING, ha,
-		    "No buffer available for dump!!!\n");
+		ql_log(ql_log_warn, vha, 0xd00a,
+		    "No buffer available for dump.\n");
 		goto qla81xx_fw_dump_failed;
 	}
 
 	if (ha->fw_dumped) {
-		qla_printk(KERN_WARNING, ha,
-		    "Firmware has been previously dumped (%p) -- ignoring "
-		    "request...\n", ha->fw_dump);
+		ql_log(ql_log_warn, vha, 0xd00b,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n",
+		    ha->fw_dump);
 		goto qla81xx_fw_dump_failed;
 	}
 	fw = &ha->fw_dump->isp.isp81;
@@ -1620,39 +1654,252 @@ qla81xx_fw_dump_failed:
 /*                         Driver Debug Functions.                          */
 /****************************************************************************/
 
+static inline int
+ql_mask_match(uint32_t level)
+{
+	if (ql2xextended_error_logging == 1)
+		ql2xextended_error_logging = QL_DBG_DEFAULT1_MASK;
+	return (level & ql2xextended_error_logging) == level;
+}
+
+/*
+ * This function is for formatting and logging debug information.
+ * It is to be used when vha is available. It formats the message
+ * and logs it to the messages file.
+ * parameters:
+ * level: The level of the debug messages to be printed.
+ *        If ql2xextended_error_logging value is correctly set,
+ *        this message will appear in the messages file.
+ * vha:   Pointer to the scsi_qla_host_t.
+ * id:    This is a unique identifier for the level. It identifies the
+ *        part of the code from where the message originated.
+ * msg:   The message to be displayed.
+ */
 void
-qla2x00_dump_regs(scsi_qla_host_t *vha)
+ql_dbg(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
+{
+	va_list va;
+	struct va_format vaf;
+
+	if (!ql_mask_match(level))
+		return;
+
+	va_start(va, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &va;
+
+	if (vha != NULL) {
+		const struct pci_dev *pdev = vha->hw->pdev;
+		/* <module-name> <pci-name> <msg-id>:<host> Message */
+		pr_warn("%s [%s]-%04x:%ld: %pV",
+			QL_MSGHDR, dev_name(&(pdev->dev)), id + ql_dbg_offset,
+			vha->host_no, &vaf);
+	} else {
+		pr_warn("%s [%s]-%04x: : %pV",
+			QL_MSGHDR, "0000:00:00.0", id + ql_dbg_offset, &vaf);
+	}
+
+	va_end(va);
+
+}
+
+/*
+ * This function is for formatting and logging debug information.
+ * It is to be used when vha is not available and pci is availble,
+ * i.e., before host allocation. It formats the message and logs it
+ * to the messages file.
+ * parameters:
+ * level: The level of the debug messages to be printed.
+ *        If ql2xextended_error_logging value is correctly set,
+ *        this message will appear in the messages file.
+ * pdev:  Pointer to the struct pci_dev.
+ * id:    This is a unique id for the level. It identifies the part
+ *        of the code from where the message originated.
+ * msg:   The message to be displayed.
+ */
+void
+ql_dbg_pci(uint32_t level, struct pci_dev *pdev, int32_t id,
+	   const char *fmt, ...)
+{
+	va_list va;
+	struct va_format vaf;
+
+	if (pdev == NULL)
+		return;
+	if (!ql_mask_match(level))
+		return;
+
+	va_start(va, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &va;
+
+	/* <module-name> <dev-name>:<msg-id> Message */
+	pr_warn("%s [%s]-%04x: : %pV",
+		QL_MSGHDR, dev_name(&(pdev->dev)), id + ql_dbg_offset, &vaf);
+
+	va_end(va);
+}
+
+/*
+ * This function is for formatting and logging log messages.
+ * It is to be used when vha is available. It formats the message
+ * and logs it to the messages file. All the messages will be logged
+ * irrespective of value of ql2xextended_error_logging.
+ * parameters:
+ * level: The level of the log messages to be printed in the
+ *        messages file.
+ * vha:   Pointer to the scsi_qla_host_t
+ * id:    This is a unique id for the level. It identifies the
+ *        part of the code from where the message originated.
+ * msg:   The message to be displayed.
+ */
+void
+ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
+{
+	va_list va;
+	struct va_format vaf;
+	char pbuf[128];
+
+	if (level > ql_errlev)
+		return;
+
+	if (vha != NULL) {
+		const struct pci_dev *pdev = vha->hw->pdev;
+		/* <module-name> <msg-id>:<host> Message */
+		snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x:%ld: ",
+			QL_MSGHDR, dev_name(&(pdev->dev)), id, vha->host_no);
+	} else {
+		snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: : ",
+			QL_MSGHDR, "0000:00:00.0", id);
+	}
+	pbuf[sizeof(pbuf) - 1] = 0;
+
+	va_start(va, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &va;
+
+	switch (level) {
+	case 0: /* FATAL LOG */
+		pr_crit("%s%pV", pbuf, &vaf);
+		break;
+	case 1:
+		pr_err("%s%pV", pbuf, &vaf);
+		break;
+	case 2:
+		pr_warn("%s%pV", pbuf, &vaf);
+		break;
+	default:
+		pr_info("%s%pV", pbuf, &vaf);
+		break;
+	}
+
+	va_end(va);
+}
+
+/*
+ * This function is for formatting and logging log messages.
+ * It is to be used when vha is not available and pci is availble,
+ * i.e., before host allocation. It formats the message and logs
+ * it to the messages file. All the messages are logged irrespective
+ * of the value of ql2xextended_error_logging.
+ * parameters:
+ * level: The level of the log messages to be printed in the
+ *        messages file.
+ * pdev:  Pointer to the struct pci_dev.
+ * id:    This is a unique id for the level. It identifies the
+ *        part of the code from where the message originated.
+ * msg:   The message to be displayed.
+ */
+void
+ql_log_pci(uint32_t level, struct pci_dev *pdev, int32_t id,
+	   const char *fmt, ...)
+{
+	va_list va;
+	struct va_format vaf;
+	char pbuf[128];
+
+	if (pdev == NULL)
+		return;
+	if (level > ql_errlev)
+		return;
+
+	/* <module-name> <dev-name>:<msg-id> Message */
+	snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: : ",
+		 QL_MSGHDR, dev_name(&(pdev->dev)), id);
+	pbuf[sizeof(pbuf) - 1] = 0;
+
+	va_start(va, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &va;
+
+	switch (level) {
+	case 0: /* FATAL LOG */
+		pr_crit("%s%pV", pbuf, &vaf);
+		break;
+	case 1:
+		pr_err("%s%pV", pbuf, &vaf);
+		break;
+	case 2:
+		pr_warn("%s%pV", pbuf, &vaf);
+		break;
+	default:
+		pr_info("%s%pV", pbuf, &vaf);
+		break;
+	}
+
+	va_end(va);
+}
+
+void
+ql_dump_regs(uint32_t level, scsi_qla_host_t *vha, int32_t id)
 {
 	int i;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_2xxx __iomem *reg = &ha->iobase->isp;
 	struct device_reg_24xx __iomem *reg24 = &ha->iobase->isp24;
+	struct device_reg_82xx __iomem *reg82 = &ha->iobase->isp82;
 	uint16_t __iomem *mbx_reg;
 
-	mbx_reg = IS_FWI2_CAPABLE(ha) ? &reg24->mailbox0:
-	    MAILBOX_REG(ha, reg, 0);
+	if (!ql_mask_match(level))
+		return;
 
-	printk("Mailbox registers:\n");
+	if (IS_QLA82XX(ha))
+		mbx_reg = &reg82->mailbox_in[0];
+	else if (IS_FWI2_CAPABLE(ha))
+		mbx_reg = &reg24->mailbox0;
+	else
+		mbx_reg = MAILBOX_REG(ha, reg, 0);
+
+	ql_dbg(level, vha, id, "Mailbox registers:\n");
 	for (i = 0; i < 6; i++)
-		printk("scsi(%ld): mbox %d 0x%04x \n", vha->host_no, i,
-		    RD_REG_WORD(mbx_reg++));
+		ql_dbg(level, vha, id,
+		    "mbox[%d] 0x%04x\n", i, RD_REG_WORD(mbx_reg++));
 }
 
 
 void
-qla2x00_dump_buffer(uint8_t * b, uint32_t size)
+ql_dump_buffer(uint32_t level, scsi_qla_host_t *vha, int32_t id,
+	uint8_t *b, uint32_t size)
 {
 	uint32_t cnt;
 	uint8_t c;
 
-	printk(" 0   1   2   3   4   5   6   7   8   9  "
-	    "Ah  Bh  Ch  Dh  Eh  Fh\n");
-	printk("----------------------------------------"
-	    "----------------------\n");
+	if (!ql_mask_match(level))
+		return;
 
+	ql_dbg(level, vha, id, " 0   1   2   3   4   5   6   7   8   "
+	    "9  Ah  Bh  Ch  Dh  Eh  Fh\n");
+	ql_dbg(level, vha, id, "----------------------------------"
+	    "----------------------------\n");
+
+	ql_dbg(level, vha, id, " ");
 	for (cnt = 0; cnt < size;) {
 		c = *b++;
-		printk("%02x",(uint32_t) c);
+		printk("%02x", (uint32_t) c);
 		cnt++;
 		if (!(cnt % 16))
 			printk("\n");
@@ -1660,65 +1907,5 @@ qla2x00_dump_buffer(uint8_t * b, uint32_t size)
 			printk("  ");
 	}
 	if (cnt % 16)
-		printk("\n");
-}
-
-void
-qla2x00_dump_buffer_zipped(uint8_t *b, uint32_t size)
-{
-	uint32_t cnt;
-	uint8_t c;
-	uint8_t  last16[16], cur16[16];
-	uint32_t lc = 0, num_same16 = 0, j;
-
-	printk(KERN_DEBUG " 0   1   2   3   4   5   6   7   8   9  "
-	    "Ah  Bh  Ch  Dh  Eh  Fh\n");
-	printk(KERN_DEBUG "----------------------------------------"
-	    "----------------------\n");
-
-	for (cnt = 0; cnt < size;) {
-		c = *b++;
-
-		cur16[lc++] = c;
-
-		cnt++;
-		if (cnt % 16)
-			continue;
-
-		/* We have 16 now */
-		lc = 0;
-		if (num_same16 == 0) {
-			memcpy(last16, cur16, 16);
-			num_same16++;
-			continue;
-		}
-		if (memcmp(cur16, last16, 16) == 0) {
-			num_same16++;
-			continue;
-		}
-		for (j = 0; j < 16; j++)
-			printk(KERN_DEBUG "%02x  ", (uint32_t)last16[j]);
-		printk(KERN_DEBUG "\n");
-
-		if (num_same16 > 1)
-			printk(KERN_DEBUG "> prev pattern repeats (%u)"
-			    "more times\n", num_same16-1);
-		memcpy(last16, cur16, 16);
-		num_same16 = 1;
-	}
-
-	if (num_same16) {
-		for (j = 0; j < 16; j++)
-			printk(KERN_DEBUG "%02x  ", (uint32_t)last16[j]);
-		printk(KERN_DEBUG "\n");
-
-		if (num_same16 > 1)
-			printk(KERN_DEBUG "> prev pattern repeats (%u)"
-			    "more times\n", num_same16-1);
-	}
-	if (lc) {
-		for (j = 0; j < lc; j++)
-			printk(KERN_DEBUG "%02x  ", (uint32_t)cur16[j]);
-		printk(KERN_DEBUG "\n");
-	}
+		ql_dbg(level, vha, id, "\n");
 }

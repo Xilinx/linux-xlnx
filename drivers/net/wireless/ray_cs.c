@@ -273,7 +273,7 @@ static const struct net_device_ops ray_netdev_ops = {
 	.ndo_start_xmit		= ray_dev_start_xmit,
 	.ndo_set_config		= ray_dev_config,
 	.ndo_get_stats		= ray_get_stats,
-	.ndo_set_multicast_list = set_multicast_list,
+	.ndo_set_rx_mode	= set_multicast_list,
 	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -2426,7 +2426,7 @@ static void rx_authenticate(ray_dev_t *local, struct rcs __iomem *prcs,
 			    unsigned int pkt_addr, int rx_len)
 {
 	UCHAR buff[256];
-	struct rx_msg *msg = (struct rx_msg *)buff;
+	struct ray_rx_msg *msg = (struct ray_rx_msg *) buff;
 
 	del_timer(&local->timer);
 
@@ -2513,7 +2513,7 @@ static void rx_deauthenticate(ray_dev_t *local, struct rcs __iomem *prcs,
 			      unsigned int pkt_addr, int rx_len)
 {
 /*  UCHAR buff[256];
-    struct rx_msg *msg = (struct rx_msg *)buff;
+    struct ray_rx_msg *msg = (struct ray_rx_msg *) buff;
 */
 	pr_debug("Deauthentication frame received\n");
 	local->authentication_state = UNAUTHENTICATED;

@@ -59,9 +59,18 @@
 #include <linux/firmware.h>
 #include <linux/efi.h>
 #include <asm/string.h>
+#include <scsi/scsi_host.h>
 #include "isci.h"
 #include "task.h"
 #include "probe_roms.h"
+
+#define MAJ 1
+#define MIN 1
+#define BUILD 0
+#define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." \
+	__stringify(BUILD)
+
+MODULE_VERSION(DRV_VERSION);
 
 static struct scsi_transport_template *isci_transport_template;
 
@@ -85,7 +94,7 @@ MODULE_DEVICE_TABLE(pci, isci_id_table);
 
 /* linux isci specific settings */
 
-unsigned char no_outbound_task_to = 20;
+unsigned char no_outbound_task_to = 2;
 module_param(no_outbound_task_to, byte, 0);
 MODULE_PARM_DESC(no_outbound_task_to, "No Outbound Task Timeout (1us incr)");
 
@@ -105,13 +114,37 @@ u16 stp_inactive_to = 5;
 module_param(stp_inactive_to, ushort, 0);
 MODULE_PARM_DESC(stp_inactive_to, "STP inactivity timeout (100us incr)");
 
-unsigned char phy_gen = 3;
+unsigned char phy_gen = SCIC_SDS_PARM_GEN2_SPEED;
 module_param(phy_gen, byte, 0);
 MODULE_PARM_DESC(phy_gen, "PHY generation (1: 1.5Gbps 2: 3.0Gbps 3: 6.0Gbps)");
 
-unsigned char max_concurr_spinup = 1;
+unsigned char max_concurr_spinup;
 module_param(max_concurr_spinup, byte, 0);
 MODULE_PARM_DESC(max_concurr_spinup, "Max concurrent device spinup");
+
+uint cable_selection_override = CABLE_OVERRIDE_DISABLED;
+module_param(cable_selection_override, uint, 0);
+
+MODULE_PARM_DESC(cable_selection_override,
+		 "This field indicates length of the SAS/SATA cable between "
+		 "host and device. If any bits > 15 are set (default) "
+		 "indicates \"use platform defaults\"");
+
+static ssize_t isci_show_id(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct Scsi_Host *shost = container_of(dev, typeof(*shost), shost_dev);
+	struct sas_ha_struct *sas_ha = SHOST_TO_SAS_HA(shost);
+	struct isci_host *ihost = container_of(sas_ha, typeof(*ihost), sas_ha);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", ihost->id);
+}
+
+static DEVICE_ATTR(isci_id, S_IRUGO, isci_show_id, NULL);
+
+struct device_attribute *isci_host_attrs[] = {
+	&dev_attr_isci_id,
+	NULL
+};
 
 static struct scsi_host_template isci_sht = {
 
@@ -138,6 +171,7 @@ static struct scsi_host_template isci_sht = {
 	.slave_alloc			= sas_slave_alloc,
 	.target_destroy			= sas_target_destroy,
 	.ioctl				= sas_ioctl,
+	.shost_attrs			= isci_host_attrs,
 };
 
 static struct sas_domain_function_template isci_transport_ops  = {
@@ -166,6 +200,9 @@ static struct sas_domain_function_template isci_transport_ops  = {
 
 	/* Phy management */
 	.lldd_control_phy	= isci_phy_control,
+
+	/* GPIO support */
+	.lldd_write_gpio	= isci_gpio_write,
 };
 
 
@@ -232,17 +269,6 @@ static int isci_register_sas_ha(struct isci_host *isci_host)
 	return 0;
 }
 
-static ssize_t isci_show_id(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct Scsi_Host *shost = container_of(dev, typeof(*shost), shost_dev);
-	struct sas_ha_struct *sas_ha = SHOST_TO_SAS_HA(shost);
-	struct isci_host *ihost = container_of(sas_ha, typeof(*ihost), sas_ha);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", ihost->id);
-}
-
-static DEVICE_ATTR(isci_id, S_IRUGO, isci_show_id, NULL);
-
 static void isci_unregister(struct isci_host *isci_host)
 {
 	struct Scsi_Host *shost;
@@ -251,7 +277,6 @@ static void isci_unregister(struct isci_host *isci_host)
 		return;
 
 	shost = isci_host->shost;
-	device_remove_file(&shost->shost_dev, &dev_attr_isci_id);
 
 	sas_unregister_ha(&isci_host->sas_ha);
 
@@ -395,6 +420,14 @@ static struct isci_host *isci_host_alloc(struct pci_dev *pdev, int id)
 		return NULL;
 	isci_host->shost = shost;
 
+	dev_info(&pdev->dev, "%sSCU controller %d: phy 3-0 cables: "
+		 "{%s, %s, %s, %s}\n",
+		 (is_cable_select_overridden() ? "* " : ""), isci_host->id,
+		 lookup_cable_names(decode_cable_selection(isci_host, 3)),
+		 lookup_cable_names(decode_cable_selection(isci_host, 2)),
+		 lookup_cable_names(decode_cable_selection(isci_host, 1)),
+		 lookup_cable_names(decode_cable_selection(isci_host, 0)));
+
 	err = isci_host_init(isci_host);
 	if (err)
 		goto err_shost;
@@ -415,14 +448,8 @@ static struct isci_host *isci_host_alloc(struct pci_dev *pdev, int id)
 	if (err)
 		goto err_shost_remove;
 
-	err = device_create_file(&shost->shost_dev, &dev_attr_isci_id);
-	if (err)
-		goto err_unregister_ha;
-
 	return isci_host;
 
- err_unregister_ha:
-	sas_unregister_ha(&(isci_host->sas_ha));
  err_shost_remove:
 	scsi_remove_host(shost);
  err_shost:
@@ -455,7 +482,8 @@ static int __devinit isci_pci_probe(struct pci_dev *pdev, const struct pci_devic
 		orom = isci_request_oprom(pdev);
 
 	for (i = 0; orom && i < ARRAY_SIZE(orom->ctrl); i++) {
-		if (sci_oem_parameters_validate(&orom->ctrl[i])) {
+		if (sci_oem_parameters_validate(&orom->ctrl[i],
+						orom->hdr.version)) {
 			dev_warn(&pdev->dev,
 				 "[%d]: invalid oem parameters detected, falling back to firmware\n", i);
 			devm_kfree(&pdev->dev, orom);
@@ -540,7 +568,8 @@ static __init int isci_init(void)
 {
 	int err;
 
-	pr_info("%s: Intel(R) C600 SAS Controller Driver\n", DRV_NAME);
+	pr_info("%s: Intel(R) C600 SAS Controller Driver - version %s\n",
+		DRV_NAME, DRV_VERSION);
 
 	isci_transport_template = sas_domain_attach_transport(&isci_transport_ops);
 	if (!isci_transport_template)

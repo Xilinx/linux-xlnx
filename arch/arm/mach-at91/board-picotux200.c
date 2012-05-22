@@ -20,6 +20,7 @@
  */
 
 #include <linux/types.h>
+#include <linux/gpio.h>
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -37,7 +38,6 @@
 #include <asm/mach/irq.h>
 
 #include <mach/board.h>
-#include <mach/gpio.h>
 #include <mach/at91rm9200_mc.h>
 
 #include "generic.h"
@@ -46,7 +46,7 @@
 static void __init picotux200_init_early(void)
 {
 	/* Initialize processor: 18.432 MHz crystal */
-	at91rm9200_initialize(18432000);
+	at91_initialize(18432000);
 
 	/* DBGU on ttyS0. (Rx & Tx only) */
 	at91_register_uart(0, 0, 0);
@@ -60,18 +60,15 @@ static void __init picotux200_init_early(void)
 	at91_set_serial_console(0);
 }
 
-static void __init picotux200_init_irq(void)
-{
-	at91rm9200_init_interrupts(NULL);
-}
-
-static struct at91_eth_data __initdata picotux200_eth_data = {
+static struct macb_platform_data __initdata picotux200_eth_data = {
 	.phy_irq_pin	= AT91_PIN_PC4,
 	.is_rmii	= 1,
 };
 
 static struct at91_usbh_data __initdata picotux200_usbh_data = {
 	.ports		= 1,
+	.vbus_pin	= {-EINVAL, -EINVAL},
+	.overcurrent_pin= {-EINVAL, -EINVAL},
 };
 
 static struct at91_mmc_data __initdata picotux200_mmc_data = {
@@ -79,6 +76,7 @@ static struct at91_mmc_data __initdata picotux200_mmc_data = {
 	.slot_b		= 0,
 	.wire4		= 1,
 	.wp_pin		= AT91_PIN_PA17,
+	.vcc_pin	= -EINVAL,
 };
 
 #define PICOTUX200_FLASH_BASE	AT91_CHIPSELECT_0
@@ -124,8 +122,8 @@ static void __init picotux200_board_init(void)
 MACHINE_START(PICOTUX2XX, "picotux 200")
 	/* Maintainer: Kleinhenz Elektronik GmbH */
 	.timer		= &at91rm9200_timer,
-	.map_io		= at91rm9200_map_io,
+	.map_io		= at91_map_io,
 	.init_early	= picotux200_init_early,
-	.init_irq	= picotux200_init_irq,
+	.init_irq	= at91_init_irq_default,
 	.init_machine	= picotux200_board_init,
 MACHINE_END

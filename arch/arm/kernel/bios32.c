@@ -5,7 +5,7 @@
  *
  *  Bits taken from various places.
  */
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
@@ -316,21 +316,6 @@ pdev_fixup_device_resources(struct pci_sys_data *root, struct pci_dev *dev)
 	}
 }
 
-static void __devinit
-pbus_assign_bus_resources(struct pci_bus *bus, struct pci_sys_data *root)
-{
-	struct pci_dev *dev = bus->self;
-	int i;
-
-	if (!dev) {
-		/*
-		 * Assign root bus resources.
-		 */
-		for (i = 0; i < 3; i++)
-			bus->resource[i] = root->resource[i];
-	}
-}
-
 /*
  * pcibios_fixup_bus - Called after each bus is probed,
  * but before its children are examined.
@@ -340,8 +325,6 @@ void pcibios_fixup_bus(struct pci_bus *bus)
 	struct pci_sys_data *root = bus->sysdata;
 	struct pci_dev *dev;
 	u16 features = PCI_COMMAND_SERR | PCI_COMMAND_PARITY | PCI_COMMAND_FAST_BACK;
-
-	pbus_assign_bus_resources(bus, root);
 
 	/*
 	 * Walk the devices on this bus, working out what we can
@@ -412,6 +395,9 @@ void pcibios_fixup_bus(struct pci_bus *bus)
 	printk(KERN_INFO "PCI: bus%d: Fast back to back transfers %sabled\n",
 		bus->number, (features & PCI_COMMAND_FAST_BACK) ? "en" : "dis");
 }
+#ifdef CONFIG_HOTPLUG
+EXPORT_SYMBOL(pcibios_fixup_bus);
+#endif
 
 /*
  * Convert from Linux-centric to bus-centric addresses for bridge devices.
@@ -431,6 +417,7 @@ pcibios_resource_to_bus(struct pci_dev *dev, struct pci_bus_region *region,
 	region->start = res->start - offset;
 	region->end   = res->end - offset;
 }
+EXPORT_SYMBOL(pcibios_resource_to_bus);
 
 void __devinit
 pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
@@ -447,12 +434,7 @@ pcibios_bus_to_resource(struct pci_dev *dev, struct resource *res,
 	res->start = region->start + offset;
 	res->end   = region->end + offset;
 }
-
-#ifdef CONFIG_HOTPLUG
-EXPORT_SYMBOL(pcibios_fixup_bus);
-EXPORT_SYMBOL(pcibios_resource_to_bus);
 EXPORT_SYMBOL(pcibios_bus_to_resource);
-#endif
 
 /*
  * Swizzle the device pin each time we cross a bridge.
@@ -476,7 +458,7 @@ static u8 __devinit pcibios_swizzle(struct pci_dev *dev, u8 *pin)
 /*
  * Map a slot/pin to an IRQ.
  */
-static int pcibios_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
+static int pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	struct pci_sys_data *sys = dev->sysdata;
 	int irq = -1;
@@ -509,12 +491,18 @@ static void __init pcibios_init_hw(struct hw_pci *hw)
 		sys->busnr   = busnr;
 		sys->swizzle = hw->swizzle;
 		sys->map_irq = hw->map_irq;
-		sys->resource[0] = &ioport_resource;
-		sys->resource[1] = &iomem_resource;
+		INIT_LIST_HEAD(&sys->resources);
 
 		ret = hw->setup(nr, sys);
 
 		if (ret > 0) {
+			if (list_empty(&sys->resources)) {
+				pci_add_resource(&sys->resources,
+						 &ioport_resource);
+				pci_add_resource(&sys->resources,
+						 &iomem_resource);
+			}
+
 			sys->bus = hw->scan(nr, sys);
 
 			if (!sys->bus)
@@ -571,6 +559,13 @@ void __init pci_common_init(struct hw_pci *hw)
 		pci_bus_add_devices(bus);
 	}
 }
+
+#ifndef CONFIG_PCI_HOST_ITE8152
+void pcibios_set_master(struct pci_dev *dev)
+{
+	/* No special bus mastering setup handling */
+}
+#endif
 
 char * __init pcibios_setup(char *str)
 {

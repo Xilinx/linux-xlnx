@@ -29,7 +29,7 @@
 
 #define PRINT_PREF KERN_INFO "mtd_subpagetest: "
 
-static int dev;
+static int dev = -EINVAL;
 module_param(dev, int, S_IRUGO);
 MODULE_PARM_DESC(dev, "MTD device number to use");
 
@@ -80,7 +80,7 @@ static int erase_eraseblock(int ebnum)
 	ei.addr = addr;
 	ei.len  = mtd->erasesize;
 
-	err = mtd->erase(mtd, &ei);
+	err = mtd_erase(mtd, &ei);
 	if (err) {
 		printk(PRINT_PREF "error %d while erasing EB %d\n", err, ebnum);
 		return err;
@@ -115,12 +115,12 @@ static int erase_whole_device(void)
 
 static int write_eraseblock(int ebnum)
 {
-	size_t written = 0;
+	size_t written;
 	int err = 0;
 	loff_t addr = ebnum * mtd->erasesize;
 
 	set_random_data(writebuf, subpgsize);
-	err = mtd->write(mtd, addr, subpgsize, &written, writebuf);
+	err = mtd_write(mtd, addr, subpgsize, &written, writebuf);
 	if (unlikely(err || written != subpgsize)) {
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr);
@@ -134,7 +134,7 @@ static int write_eraseblock(int ebnum)
 	addr += subpgsize;
 
 	set_random_data(writebuf, subpgsize);
-	err = mtd->write(mtd, addr, subpgsize, &written, writebuf);
+	err = mtd_write(mtd, addr, subpgsize, &written, writebuf);
 	if (unlikely(err || written != subpgsize)) {
 		printk(PRINT_PREF "error: write failed at %#llx\n",
 		       (long long)addr);
@@ -150,7 +150,7 @@ static int write_eraseblock(int ebnum)
 
 static int write_eraseblock2(int ebnum)
 {
-	size_t written = 0;
+	size_t written;
 	int err = 0, k;
 	loff_t addr = ebnum * mtd->erasesize;
 
@@ -158,7 +158,7 @@ static int write_eraseblock2(int ebnum)
 		if (addr + (subpgsize * k) > (ebnum + 1) * mtd->erasesize)
 			break;
 		set_random_data(writebuf, subpgsize * k);
-		err = mtd->write(mtd, addr, subpgsize * k, &written, writebuf);
+		err = mtd_write(mtd, addr, subpgsize * k, &written, writebuf);
 		if (unlikely(err || written != subpgsize * k)) {
 			printk(PRINT_PREF "error: write failed at %#llx\n",
 			       (long long)addr);
@@ -189,16 +189,15 @@ static void print_subpage(unsigned char *p)
 
 static int verify_eraseblock(int ebnum)
 {
-	size_t read = 0;
+	size_t read;
 	int err = 0;
 	loff_t addr = ebnum * mtd->erasesize;
 
 	set_random_data(writebuf, subpgsize);
 	clear_data(readbuf, subpgsize);
-	read = 0;
-	err = mtd->read(mtd, addr, subpgsize, &read, readbuf);
+	err = mtd_read(mtd, addr, subpgsize, &read, readbuf);
 	if (unlikely(err || read != subpgsize)) {
-		if (err == -EUCLEAN && read == subpgsize) {
+		if (mtd_is_bitflip(err) && read == subpgsize) {
 			printk(PRINT_PREF "ECC correction at %#llx\n",
 			       (long long)addr);
 			err = 0;
@@ -223,10 +222,9 @@ static int verify_eraseblock(int ebnum)
 
 	set_random_data(writebuf, subpgsize);
 	clear_data(readbuf, subpgsize);
-	read = 0;
-	err = mtd->read(mtd, addr, subpgsize, &read, readbuf);
+	err = mtd_read(mtd, addr, subpgsize, &read, readbuf);
 	if (unlikely(err || read != subpgsize)) {
-		if (err == -EUCLEAN && read == subpgsize) {
+		if (mtd_is_bitflip(err) && read == subpgsize) {
 			printk(PRINT_PREF "ECC correction at %#llx\n",
 			       (long long)addr);
 			err = 0;
@@ -252,7 +250,7 @@ static int verify_eraseblock(int ebnum)
 
 static int verify_eraseblock2(int ebnum)
 {
-	size_t read = 0;
+	size_t read;
 	int err = 0, k;
 	loff_t addr = ebnum * mtd->erasesize;
 
@@ -261,10 +259,9 @@ static int verify_eraseblock2(int ebnum)
 			break;
 		set_random_data(writebuf, subpgsize * k);
 		clear_data(readbuf, subpgsize * k);
-		read = 0;
-		err = mtd->read(mtd, addr, subpgsize * k, &read, readbuf);
+		err = mtd_read(mtd, addr, subpgsize * k, &read, readbuf);
 		if (unlikely(err || read != subpgsize * k)) {
-			if (err == -EUCLEAN && read == subpgsize * k) {
+			if (mtd_is_bitflip(err) && read == subpgsize * k) {
 				printk(PRINT_PREF "ECC correction at %#llx\n",
 				       (long long)addr);
 				err = 0;
@@ -288,17 +285,16 @@ static int verify_eraseblock2(int ebnum)
 static int verify_eraseblock_ff(int ebnum)
 {
 	uint32_t j;
-	size_t read = 0;
+	size_t read;
 	int err = 0;
 	loff_t addr = ebnum * mtd->erasesize;
 
 	memset(writebuf, 0xff, subpgsize);
 	for (j = 0; j < mtd->erasesize / subpgsize; ++j) {
 		clear_data(readbuf, subpgsize);
-		read = 0;
-		err = mtd->read(mtd, addr, subpgsize, &read, readbuf);
+		err = mtd_read(mtd, addr, subpgsize, &read, readbuf);
 		if (unlikely(err || read != subpgsize)) {
-			if (err == -EUCLEAN && read == subpgsize) {
+			if (mtd_is_bitflip(err) && read == subpgsize) {
 				printk(PRINT_PREF "ECC correction at %#llx\n",
 				       (long long)addr);
 				err = 0;
@@ -344,7 +340,7 @@ static int is_block_bad(int ebnum)
 	loff_t addr = ebnum * mtd->erasesize;
 	int ret;
 
-	ret = mtd->block_isbad(mtd, addr);
+	ret = mtd_block_isbad(mtd, addr);
 	if (ret)
 		printk(PRINT_PREF "block %d is bad\n", ebnum);
 	return ret;
@@ -379,6 +375,13 @@ static int __init mtd_subpagetest_init(void)
 
 	printk(KERN_INFO "\n");
 	printk(KERN_INFO "=================================================\n");
+
+	if (dev < 0) {
+		printk(PRINT_PREF "Please specify a valid mtd-device via module paramter\n");
+		printk(KERN_CRIT "CAREFUL: This test wipes all data on the specified MTD device!\n");
+		return -EINVAL;
+	}
+
 	printk(PRINT_PREF "MTD device: %d\n", dev);
 
 	mtd = get_mtd_device(NULL, dev);

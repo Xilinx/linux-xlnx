@@ -18,6 +18,7 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 
+#include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
 #ifdef CONFIG_PPC
 #include <asm/machdep.h>
 #endif /* CONFIG_PPC */
@@ -107,7 +108,7 @@ int of_fdt_is_compatible(struct boot_param_header *blob,
  * of_fdt_match - Return true if node matches a list of compatible values
  */
 int of_fdt_match(struct boot_param_header *blob, unsigned long node,
-                 const char **compat)
+                 const char *const *compat)
 {
 	unsigned int tmp, score = 0;
 
@@ -541,7 +542,7 @@ int __init of_flat_dt_is_compatible(unsigned long node, const char *compat)
 /**
  * of_flat_dt_match - Return true if node matches a list of compatible values
  */
-int __init of_flat_dt_match(unsigned long node, const char **compat)
+int __init of_flat_dt_match(unsigned long node, const char *const *compat)
 {
 	return of_fdt_match(initial_boot_params, node, compat);
 }
@@ -681,9 +682,14 @@ int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
 	if (p != NULL && l > 0)
 		strlcpy(data, p, min((int)l, COMMAND_LINE_SIZE));
 
+	/*
+	 * CONFIG_CMDLINE is meant to be a default in case nothing else
+	 * managed to set the command line, unless CONFIG_CMDLINE_FORCE
+	 * is set in which case we override whatever was found earlier.
+	 */
 #ifdef CONFIG_CMDLINE
 #ifndef CONFIG_CMDLINE_FORCE
-	if (p == NULL || l == 0 || (l == 1 && (*p) == 0))
+	if (!((char *)data)[0])
 #endif
 		strlcpy(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 #endif /* CONFIG_CMDLINE */
@@ -707,10 +713,8 @@ void __init unflatten_device_tree(void)
 	__unflatten_device_tree(initial_boot_params, &allnodes,
 				early_init_dt_alloc_memory_arch);
 
-	/* Get pointer to OF "/chosen" node for use everywhere */
-	of_chosen = of_find_node_by_path("/chosen");
-	if (of_chosen == NULL)
-		of_chosen = of_find_node_by_path("/chosen@0");
+	/* Get pointer to "/chosen" and "/aliasas" nodes for use everywhere */
+	of_alias_scan(early_init_dt_alloc_memory_arch);
 }
 
 #endif /* CONFIG_OF_EARLY_FLATTREE */

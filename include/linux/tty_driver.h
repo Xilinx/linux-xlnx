@@ -47,6 +47,9 @@
  *
  * 	This routine is called synchronously when a particular tty device
  *	is closed for the last time freeing up the resources.
+ *	Note that tty_shutdown() is not called if ops->shutdown is defined.
+ *	This means one is responsible to take care of calling ops->remove (e.g.
+ *	via tty_driver_remove_tty) and releasing tty->termios.
  *
  *
  * void (*cleanup)(struct tty_struct * tty);
@@ -309,7 +312,6 @@ struct tty_driver {
 	 */
 	struct tty_struct **ttys;
 	struct ktermios **termios;
-	struct ktermios **termios_locked;
 	void *driver_state;
 
 	/*

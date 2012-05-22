@@ -1951,30 +1951,26 @@ static void s3c_hsotg_irq_enumdone(struct s3c_hsotg *hsotg)
 	case S3C_DSTS_EnumSpd_FS:
 	case S3C_DSTS_EnumSpd_FS48:
 		hsotg->gadget.speed = USB_SPEED_FULL;
-		dev_info(hsotg->dev, "new device is full-speed\n");
-
 		ep0_mps = EP0_MPS_LIMIT;
 		ep_mps = 64;
 		break;
 
 	case S3C_DSTS_EnumSpd_HS:
-		dev_info(hsotg->dev, "new device is high-speed\n");
 		hsotg->gadget.speed = USB_SPEED_HIGH;
-
 		ep0_mps = EP0_MPS_LIMIT;
 		ep_mps = 512;
 		break;
 
 	case S3C_DSTS_EnumSpd_LS:
 		hsotg->gadget.speed = USB_SPEED_LOW;
-		dev_info(hsotg->dev, "new device is low-speed\n");
-
 		/* note, we don't actually support LS in this driver at the
 		 * moment, and the documentation seems to imply that it isn't
 		 * supported by the PHYs on some of the devices.
 		 */
 		break;
 	}
+	dev_info(hsotg->dev, "new device is %s\n",
+		 usb_speed_string(hsotg->gadget.speed));
 
 	/* we should now know the maximum packet size for an
 	 * endpoint, so set the endpoints to a default value. */
@@ -2297,7 +2293,7 @@ static int s3c_hsotg_ep_enable(struct usb_ep *ep,
 		return -EINVAL;
 	}
 
-	mps = le16_to_cpu(desc->wMaxPacketSize);
+	mps = usb_endpoint_maxp(desc);
 
 	/* note, we handle this here instead of s3c_hsotg_set_ep_maxpacket */
 
@@ -2574,7 +2570,7 @@ static int s3c_hsotg_corereset(struct s3c_hsotg *hsotg)
 	return 0;
 }
 
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
+static int s3c_hsotg_start(struct usb_gadget_driver *driver,
 		int (*bind)(struct usb_gadget *))
 {
 	struct s3c_hsotg *hsotg = our_hsotg;
@@ -2590,10 +2586,8 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		return -EINVAL;
 	}
 
-	if (driver->speed != USB_SPEED_HIGH &&
-	    driver->speed != USB_SPEED_FULL) {
+	if (driver->max_speed < USB_SPEED_FULL)
 		dev_err(hsotg->dev, "%s: bad speed\n", __func__);
-	}
 
 	if (!bind || !driver->setup) {
 		dev_err(hsotg->dev, "%s: missing entry points\n", __func__);
@@ -2745,9 +2739,8 @@ err:
 	hsotg->gadget.dev.driver = NULL;
 	return ret;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
 
-int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
+static int s3c_hsotg_stop(struct usb_gadget_driver *driver)
 {
 	struct s3c_hsotg *hsotg = our_hsotg;
 	int ep;
@@ -2775,7 +2768,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_unregister_driver);
 
 static int s3c_hsotg_gadget_getframe(struct usb_gadget *gadget)
 {
@@ -2784,6 +2776,8 @@ static int s3c_hsotg_gadget_getframe(struct usb_gadget *gadget)
 
 static struct usb_gadget_ops s3c_hsotg_gadget_ops = {
 	.get_frame	= s3c_hsotg_gadget_getframe,
+	.start		= s3c_hsotg_start,
+	.stop		= s3c_hsotg_stop,
 };
 
 /**
@@ -3368,7 +3362,7 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 
 	dev_set_name(&hsotg->gadget.dev, "gadget");
 
-	hsotg->gadget.is_dualspeed = 1;
+	hsotg->gadget.max_speed = USB_SPEED_HIGH;
 	hsotg->gadget.ops = &s3c_hsotg_gadget_ops;
 	hsotg->gadget.name = dev_name(dev);
 
@@ -3403,12 +3397,21 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 	for (epnum = 0; epnum < S3C_HSOTG_EPS; epnum++)
 		s3c_hsotg_initep(hsotg, &hsotg->eps[epnum], epnum);
 
+	ret = usb_add_gadget_udc(&pdev->dev, &hsotg->gadget);
+	if (ret)
+		goto err_add_udc;
+
 	s3c_hsotg_create_debug(hsotg);
 
 	s3c_hsotg_dump(hsotg);
 
 	our_hsotg = hsotg;
 	return 0;
+
+err_add_udc:
+	s3c_hsotg_gate(pdev, false);
+	clk_disable(hsotg->clk);
+	clk_put(hsotg->clk);
 
 err_regs:
 	iounmap(hsotg->regs);
@@ -3426,6 +3429,8 @@ err_mem:
 static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 {
 	struct s3c_hsotg *hsotg = platform_get_drvdata(pdev);
+
+	usb_del_gadget_udc(&hsotg->gadget);
 
 	s3c_hsotg_delete_debug(hsotg);
 
@@ -3462,18 +3467,7 @@ static struct platform_driver s3c_hsotg_driver = {
 	.resume		= s3c_hsotg_resume,
 };
 
-static int __init s3c_hsotg_modinit(void)
-{
-	return platform_driver_register(&s3c_hsotg_driver);
-}
-
-static void __exit s3c_hsotg_modexit(void)
-{
-	platform_driver_unregister(&s3c_hsotg_driver);
-}
-
-module_init(s3c_hsotg_modinit);
-module_exit(s3c_hsotg_modexit);
+module_platform_driver(s3c_hsotg_driver);
 
 MODULE_DESCRIPTION("Samsung S3C USB High-speed/OtG device");
 MODULE_AUTHOR("Ben Dooks <ben@simtec.co.uk>");

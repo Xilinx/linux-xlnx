@@ -12,6 +12,7 @@
 #include <linux/bug.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/lp3972.h>
@@ -554,7 +555,7 @@ static int __devinit setup_regulators(struct lp3972 *lp3972,
 	for (i = 0; i < pdata->num_regulators; i++) {
 		struct lp3972_regulator_subdev *reg = &pdata->regulators[i];
 		lp3972->rdev[i] = regulator_register(&regulators[reg->id],
-					lp3972->dev, reg->initdata, lp3972);
+				lp3972->dev, reg->initdata, lp3972, NULL);
 
 		if (IS_ERR(lp3972->rdev[i])) {
 			err = PTR_ERR(lp3972->rdev[i]);

@@ -19,6 +19,7 @@
 #include <linux/sched.h>
 #include <linux/pci.h>
 #include <linux/stat.h>
+#include <linux/export.h>
 #include <linux/topology.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
@@ -431,7 +432,7 @@ pci_read_config(struct file *filp, struct kobject *kobj,
 	u8 *data = (u8*) buf;
 
 	/* Several chips lock up trying to read undefined config space */
-	if (security_capable(&init_user_ns, filp->f_cred, CAP_SYS_ADMIN) == 0) {
+	if (security_capable(filp->f_cred, &init_user_ns, CAP_SYS_ADMIN) == 0) {
 		size = dev->cfg_size;
 	} else if (dev->hdr_type == PCI_HEADER_TYPE_CARDBUS) {
 		size = 128;

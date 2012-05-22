@@ -27,6 +27,8 @@
  *
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #define MODULE_NAME "stv0680"
 
 #include "gspca.h"
@@ -79,7 +81,7 @@ static int stv_sndctrl(struct gspca_dev *gspca_dev, int set, u8 req, u16 val,
 			      val, 0, gspca_dev->usb_buf, size, 500);
 
 	if ((ret < 0) && (req != 0x0a))
-		err("usb_control_msg error %i, request = 0x%x, error = %i",
+		pr_err("usb_control_msg error %i, request = 0x%x, error = %i\n",
 		       set, req, ret);
 
 	return ret;
@@ -236,7 +238,7 @@ static int sd_config(struct gspca_dev *gspca_dev,
 
 	if (stv_sndctrl(gspca_dev, 2, 0x06, 0x0100, 0x12) != 0x12 ||
 	    gspca_dev->usb_buf[8] != 0x53 || gspca_dev->usb_buf[9] != 0x05) {
-		err("Could not get descriptor 0100.");
+		pr_err("Could not get descriptor 0100\n");
 		return stv0680_handle_error(gspca_dev, -EIO);
 	}
 
@@ -353,15 +355,4 @@ static struct usb_driver sd_driver = {
 #endif
 };
 
-/* -- module insert / remove -- */
-static int __init sd_mod_init(void)
-{
-	return usb_register(&sd_driver);
-}
-static void __exit sd_mod_exit(void)
-{
-	usb_deregister(&sd_driver);
-}
-
-module_init(sd_mod_init);
-module_exit(sd_mod_exit);
+module_usb_driver(sd_driver);

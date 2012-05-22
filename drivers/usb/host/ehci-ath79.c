@@ -33,6 +33,10 @@ static const struct platform_device_id ehci_ath79_id_table[] = {
 		.driver_data	= EHCI_ATH79_IP_V2,
 	},
 	{
+		.name		= "ar933x-ehci",
+		.driver_data	= EHCI_ATH79_IP_V2,
+	},
+	{
 		/* terminating entry */
 	},
 };
@@ -148,7 +152,7 @@ static int ehci_ath79_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	hcd->rsrc_start	= res->start;
-	hcd->rsrc_len	= res->end - res->start + 1;
+	hcd->rsrc_len	= resource_size(res);
 
 	if (!request_mem_region(hcd->rsrc_start, hcd->rsrc_len, hcd_name)) {
 		dev_dbg(&pdev->dev, "controller already in use\n");
@@ -163,7 +167,7 @@ static int ehci_ath79_probe(struct platform_device *pdev)
 		goto err_release_region;
 	}
 
-	ret = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
 		goto err_iounmap;
 

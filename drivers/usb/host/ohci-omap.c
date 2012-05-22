@@ -14,7 +14,7 @@
  * This file is licenced under the GPL.
  */
 
-#include <linux/signal.h>	/* IRQF_DISABLED */
+#include <linux/signal.h>
 #include <linux/jiffies.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
@@ -363,7 +363,7 @@ static int usb_hcd_omap_probe (const struct hc_driver *driver,
 		retval = -ENXIO;
 		goto err3;
 	}
-	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED);
+	retval = usb_add_hcd(hcd, irq, 0);
 	if (retval)
 		goto err3;
 
@@ -516,7 +516,6 @@ static int ohci_omap_suspend(struct platform_device *dev, pm_message_t message)
 	ohci->next_statechange = jiffies;
 
 	omap_ohci_clock_power(0);
-	ohci_to_hcd(ohci)->state = HC_STATE_SUSPENDED;
 	return 0;
 }
 

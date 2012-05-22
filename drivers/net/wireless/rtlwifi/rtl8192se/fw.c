@@ -196,6 +196,8 @@ static bool _rtl92s_firmware_downloadcode(struct ieee80211_hw *hw,
 		/* Allocate skb buffer to contain firmware */
 		/* info and tx descriptor info. */
 		skb = dev_alloc_skb(frag_length);
+		if (!skb)
+			return false;
 		skb_reserve(skb, extra_descoffset);
 		seg_ptr = (u8 *)skb_put(skb, (u32)(frag_length -
 					extra_descoffset));
@@ -358,7 +360,6 @@ int rtl92s_download_fw(struct ieee80211_hw *hw)
 	struct fw_priv *pfw_priv = NULL;
 	u8 *puc_mappedfile = NULL;
 	u32 ul_filelength = 0;
-	u32 file_length = 0;
 	u8 fwhdr_size = RT_8192S_FIRMWARE_HDR_SIZE;
 	u8 fwstatus = FW_STATUS_INIT;
 	bool rtstatus = true;
@@ -370,7 +371,6 @@ int rtl92s_download_fw(struct ieee80211_hw *hw)
 	firmware->fwstatus = FW_STATUS_INIT;
 
 	puc_mappedfile = firmware->sz_fw_tmpbuffer;
-	file_length = firmware->sz_fw_tmpbufferlen;
 
 	/* 1. Retrieve FW header. */
 	firmware->pfwheader = (struct fw_hdr *) puc_mappedfile;
@@ -575,6 +575,8 @@ static bool _rtl92s_firmware_set_h2c_cmd(struct ieee80211_hw *hw, u8 h2c_cmd,
 
 	len = _rtl92s_get_h2c_cmdlen(MAX_TRANSMIT_BUFFER_SIZE, 1, &cmd_len);
 	skb = dev_alloc_skb(len);
+	if (!skb)
+		return false;
 	cb_desc = (struct rtl_tcb_desc *)(skb->cb);
 	cb_desc->queue_index = TXCMD_QUEUE;
 	cb_desc->cmd_or_init = DESC_PACKET_TYPE_NORMAL;

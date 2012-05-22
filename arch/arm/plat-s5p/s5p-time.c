@@ -10,7 +10,6 @@
  * published by the Free Software Foundation.
 */
 
-#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/err.h>
@@ -314,13 +313,6 @@ static void __iomem *s5p_timer_reg(void)
 	return S3C_TIMERREG(offset);
 }
 
-static cycle_t s5p_timer_read(struct clocksource *cs)
-{
-	void __iomem *reg = s5p_timer_reg();
-
-	return (cycle_t) (reg ? ~__raw_readl(reg) : 0);
-}
-
 /*
  * Override the global weak sched_clock symbol with this
  * local implementation which uses the clocksource to get some
@@ -328,35 +320,15 @@ static cycle_t s5p_timer_read(struct clocksource *cs)
  * this wraps around for now, since it is just a relative time
  * stamp. (Inspired by U300 implementation.)
  */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
+static u32 notrace s5p_read_sched_clock(void)
 {
 	void __iomem *reg = s5p_timer_reg();
 
 	if (!reg)
 		return 0;
 
-	return cyc_to_sched_clock(&cd, ~__raw_readl(reg), (u32)~0);
+	return ~__raw_readl(reg);
 }
-
-static void notrace s5p_update_sched_clock(void)
-{
-	void __iomem *reg = s5p_timer_reg();
-
-	if (!reg)
-		return;
-
-	update_sched_clock(&cd, ~__raw_readl(reg), (u32)~0);
-}
-
-struct clocksource time_clocksource = {
-	.name		= "s5p_clocksource_timer",
-	.rating		= 250,
-	.read		= s5p_timer_read,
-	.mask		= CLOCKSOURCE_MASK(32),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
-};
 
 static void __init s5p_clocksource_init(void)
 {
@@ -373,10 +345,11 @@ static void __init s5p_clocksource_init(void)
 	s5p_time_setup(timer_source.source_id, TCNT_MAX);
 	s5p_time_start(timer_source.source_id, PERIODIC);
 
-	init_sched_clock(&cd, s5p_update_sched_clock, 32, clock_rate);
+	setup_sched_clock(s5p_read_sched_clock, 32, clock_rate);
 
-	if (clocksource_register_hz(&time_clocksource, clock_rate))
-		panic("%s: can't register clocksource\n", time_clocksource.name);
+	if (clocksource_mmio_init(s5p_timer_reg(), "s5p_clocksource_timer",
+			clock_rate, 250, 32, clocksource_mmio_readl_down))
+		panic("s5p_clocksource_timer: can't register clocksource\n");
 }
 
 static void __init s5p_timer_resources(void)
@@ -384,12 +357,17 @@ static void __init s5p_timer_resources(void)
 
 	unsigned long event_id = timer_source.event_id;
 	unsigned long source_id = timer_source.source_id;
+	char devname[15];
 
 	timerclk = clk_get(NULL, "timers");
 	if (IS_ERR(timerclk))
 		panic("failed to get timers clock for timer");
 
 	clk_enable(timerclk);
+
+	sprintf(devname, "s3c24xx-pwm.%lu", event_id);
+	s3c_device_timer[event_id].id = event_id;
+	s3c_device_timer[event_id].dev.init_name = devname;
 
 	tin_event = clk_get(&s3c_device_timer[event_id].dev, "pwm-tin");
 	if (IS_ERR(tin_event))
@@ -400,6 +378,10 @@ static void __init s5p_timer_resources(void)
 		panic("failed to get pwm-tdiv clock for event timer");
 
 	clk_enable(tin_event);
+
+	sprintf(devname, "s3c24xx-pwm.%lu", source_id);
+	s3c_device_timer[source_id].id = source_id;
+	s3c_device_timer[source_id].dev.init_name = devname;
 
 	tin_source = clk_get(&s3c_device_timer[source_id].dev, "pwm-tin");
 	if (IS_ERR(tin_source))

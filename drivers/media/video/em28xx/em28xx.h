@@ -38,6 +38,7 @@
 #include <media/videobuf-dvb.h>
 #endif
 #include "tuner-xc2028.h"
+#include "xc5000.h"
 #include "em28xx-reg.h"
 
 /* Boards supported by driver */
@@ -117,9 +118,13 @@
 #define EM2800_BOARD_VC211A			  74
 #define EM2882_BOARD_DIKOM_DK300		  75
 #define EM2870_BOARD_KWORLD_A340		  76
-#define EM2874_LEADERSHIP_ISDBT			  77
+#define EM2874_BOARD_LEADERSHIP_ISDBT		  77
 #define EM28174_BOARD_PCTV_290E                   78
-
+#define EM2884_BOARD_TERRATEC_H5		  79
+#define EM28174_BOARD_PCTV_460E                   80
+#define EM2884_BOARD_HAUPPAUGE_WINTV_HVR_930C	  81
+#define EM2884_BOARD_CINERGY_HTC_STICK		  82
+#define EM2860_BOARD_HT_VIDBOX_NW03 		  83
 
 /* Limits minimum and default number of buffers */
 #define EM28XX_MIN_BUF 4
@@ -487,6 +492,8 @@ struct em28xx {
 	int devno;		/* marks the number of this device */
 	enum em28xx_chip_id chip_id;
 
+	int audio_ifnum;
+
 	struct v4l2_device v4l2_dev;
 	struct em28xx_board board;
 
@@ -503,6 +510,7 @@ struct em28xx {
 
 	unsigned int has_audio_class:1;
 	unsigned int has_alsa_audio:1;
+	unsigned int is_audio_only:1;
 
 	/* Controls audio streaming */
 	struct work_struct wq_trigger;              /* Trigger to start/stop audio for alsa module */
@@ -590,6 +598,8 @@ struct em28xx {
 	int max_pkt_size;	/* max packet size of isoc transaction */
 	int num_alt;		/* Number of alternative settings */
 	unsigned int *alt_max_pkt_size;	/* array of wMaxPacketSize */
+	int dvb_alt;				/* alternate for DVB */
+	unsigned int dvb_max_pkt_size;		/* wMaxPacketSize for DVB */
 	struct urb *urb[EM28XX_NUM_BUFS];	/* urb for isoc transfers */
 	char *transfer_buffer[EM28XX_NUM_BUFS];	/* transfer buffers for isoc
 						   transfer */
@@ -674,8 +684,6 @@ int em28xx_isoc_dvb_max_packetsize(struct em28xx *dev);
 int em28xx_set_mode(struct em28xx *dev, enum em28xx_mode set_mode);
 int em28xx_gpio_set(struct em28xx *dev, struct em28xx_reg_seq *gpio);
 void em28xx_wake_i2c(struct em28xx *dev);
-void em28xx_remove_from_devlist(struct em28xx *dev);
-void em28xx_add_into_devlist(struct em28xx *dev);
 int em28xx_register_extension(struct em28xx_ops *dev);
 void em28xx_unregister_extension(struct em28xx_ops *dev);
 void em28xx_init_extension(struct em28xx *dev);
@@ -697,6 +705,9 @@ int em28xx_tuner_callback(void *ptr, int component, int command, int arg);
 void em28xx_release_resources(struct em28xx *dev);
 
 /* Provided by em28xx-input.c */
+
+#ifdef CONFIG_VIDEO_EM28XX_RC
+
 int em28xx_get_key_terratec(struct IR_i2c *ir, u32 *ir_key, u32 *ir_raw);
 int em28xx_get_key_em_haup(struct IR_i2c *ir, u32 *ir_key, u32 *ir_raw);
 int em28xx_get_key_pinnacle_usb_grey(struct IR_i2c *ir, u32 *ir_key,
@@ -708,6 +719,20 @@ void em28xx_deregister_snapshot_button(struct em28xx *dev);
 
 int em28xx_ir_init(struct em28xx *dev);
 int em28xx_ir_fini(struct em28xx *dev);
+
+#else
+
+#define em28xx_get_key_terratec			NULL
+#define em28xx_get_key_em_haup			NULL
+#define em28xx_get_key_pinnacle_usb_grey	NULL
+#define em28xx_get_key_winfast_usbii_deluxe	NULL
+
+static inline void em28xx_register_snapshot_button(struct em28xx *dev) {}
+static inline void em28xx_deregister_snapshot_button(struct em28xx *dev) {}
+static inline int em28xx_ir_init(struct em28xx *dev) { return 0; }
+static inline int em28xx_ir_fini(struct em28xx *dev) { return 0; }
+
+#endif
 
 /* Provided by em28xx-vbi.c */
 extern struct videobuf_queue_ops em28xx_vbi_qops;
@@ -806,7 +831,7 @@ static inline unsigned int norm_maxw(struct em28xx *dev)
 	if (dev->board.is_webcam)
 		return dev->sensor_xres;
 
-	if (dev->board.max_range_640_480 || dev->board.is_em2800)
+	if (dev->board.max_range_640_480)
 		return 640;
 
 	return 720;

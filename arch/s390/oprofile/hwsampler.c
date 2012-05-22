@@ -22,6 +22,7 @@
 #include <asm/irq.h>
 
 #include "hwsampler.h"
+#include "op_counter.h"
 
 #define MAX_NUM_SDB 511
 #define MIN_NUM_SDB 1
@@ -896,6 +897,8 @@ static void add_samples_to_oprofile(unsigned int cpu, unsigned long *sdbt,
 		if (sample_data_ptr->P == 1) {
 			/* userspace sample */
 			unsigned int pid = sample_data_ptr->prim_asn;
+			if (!counter_config.user)
+				goto skip_sample;
 			rcu_read_lock();
 			tsk = pid_task(find_vpid(pid), PIDTYPE_PID);
 			if (tsk)
@@ -903,6 +906,8 @@ static void add_samples_to_oprofile(unsigned int cpu, unsigned long *sdbt,
 			rcu_read_unlock();
 		} else {
 			/* kernelspace sample */
+			if (!counter_config.kernel)
+				goto skip_sample;
 			regs = task_pt_regs(current);
 		}
 
@@ -910,7 +915,7 @@ static void add_samples_to_oprofile(unsigned int cpu, unsigned long *sdbt,
 		oprofile_add_ext_hw_sample(sample_data_ptr->ia, regs, 0,
 				!sample_data_ptr->P, tsk);
 		mutex_unlock(&hws_sem);
-
+	skip_sample:
 		sample_data_ptr++;
 	}
 }
@@ -994,7 +999,7 @@ allocate_error:
  *
  * Returns 0 on success, !0 on failure.
  */
-int hwsampler_deallocate()
+int hwsampler_deallocate(void)
 {
 	int rc;
 
@@ -1035,7 +1040,7 @@ unsigned long hwsampler_get_sample_overflow_count(unsigned int cpu)
 	return cb->sample_overflow;
 }
 
-int hwsampler_setup()
+int hwsampler_setup(void)
 {
 	int rc;
 	int cpu;
@@ -1102,7 +1107,7 @@ setup_exit:
 	return rc;
 }
 
-int hwsampler_shutdown()
+int hwsampler_shutdown(void)
 {
 	int rc;
 
@@ -1203,7 +1208,7 @@ start_all_exit:
  *
  * Returns 0 on success, !0 on failure.
  */
-int hwsampler_stop_all()
+int hwsampler_stop_all(void)
 {
 	int tmp_rc, rc, cpu;
 	struct hws_cpu_buffer *cb;

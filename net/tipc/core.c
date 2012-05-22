@@ -34,6 +34,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <linux/module.h>
+
 #include "core.h"
 #include "ref.h"
 #include "name_table.h"
@@ -97,8 +99,8 @@ struct sk_buff *tipc_buf_acquire(u32 size)
 
 static void tipc_core_stop_net(void)
 {
-	tipc_eth_media_stop();
 	tipc_net_stop();
+	tipc_eth_media_stop();
 }
 
 /**

@@ -2,7 +2,7 @@
  * linux/sound/soc/ep93xx-i2s.c
  * EP93xx I2S driver
  *
- * Copyright (C) 2010 Ryan Mallon <ryan@bluewatersys.com>
+ * Copyright (C) 2010 Ryan Mallon
  *
  * Based on the original driver by:
  *   Copyright (C) 2007 Chase Douglas <chasedouglas@gmail>
@@ -70,11 +70,11 @@ struct ep93xx_i2s_info {
 struct ep93xx_pcm_dma_params ep93xx_i2s_dma_params[] = {
 	[SNDRV_PCM_STREAM_PLAYBACK] = {
 		.name		= "i2s-pcm-out",
-		.dma_port	= EP93XX_DMA_M2P_PORT_I2S1,
+		.dma_port	= EP93XX_DMA_I2S1,
 	},
 	[SNDRV_PCM_STREAM_CAPTURE] = {
 		.name		= "i2s-pcm-in",
-		.dma_port	= EP93XX_DMA_M2P_PORT_I2S1,
+		.dma_port	= EP93XX_DMA_I2S1,
 	},
 };
 
@@ -338,7 +338,7 @@ static int ep93xx_i2s_resume(struct snd_soc_dai *dai)
 #define ep93xx_i2s_resume	NULL
 #endif
 
-static struct snd_soc_dai_ops ep93xx_i2s_dai_ops = {
+static const struct snd_soc_dai_ops ep93xx_i2s_dai_ops = {
 	.startup	= ep93xx_i2s_startup,
 	.shutdown	= ep93xx_i2s_shutdown,
 	.hw_params	= ep93xx_i2s_hw_params,
@@ -385,14 +385,14 @@ static int ep93xx_i2s_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		err = -ENODEV;
-		goto fail;
+		goto fail_free_info;
 	}
 
 	info->mem = request_mem_region(res->start, resource_size(res),
 				       pdev->name);
 	if (!info->mem) {
 		err = -EBUSY;
-		goto fail;
+		goto fail_free_info;
 	}
 
 	info->regs = ioremap(info->mem->start, resource_size(info->mem));
@@ -435,6 +435,7 @@ fail_unmap_mem:
 	iounmap(info->regs);
 fail_release_mem:
 	release_mem_region(info->mem->start, resource_size(info->mem));
+fail_free_info:
 	kfree(info);
 fail:
 	return err;
@@ -463,20 +464,9 @@ static struct platform_driver ep93xx_i2s_driver = {
 	},
 };
 
-static int __init ep93xx_i2s_init(void)
-{
-	return platform_driver_register(&ep93xx_i2s_driver);
-}
-
-static void __exit ep93xx_i2s_exit(void)
-{
-	platform_driver_unregister(&ep93xx_i2s_driver);
-}
-
-module_init(ep93xx_i2s_init);
-module_exit(ep93xx_i2s_exit);
+module_platform_driver(ep93xx_i2s_driver);
 
 MODULE_ALIAS("platform:ep93xx-i2s");
-MODULE_AUTHOR("Ryan Mallon <ryan@bluewatersys.com>");
+MODULE_AUTHOR("Ryan Mallon");
 MODULE_DESCRIPTION("EP93XX I2S driver");
 MODULE_LICENSE("GPL");

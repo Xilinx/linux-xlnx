@@ -112,6 +112,7 @@ struct tipc_node *tipc_node_create(u32 addr)
 			break;
 	}
 	list_add_tail(&n_ptr->list, &temp_node->list);
+	n_ptr->block_setup = WAIT_PEER_DOWN;
 
 	tipc_num_nodes++;
 
@@ -135,9 +136,9 @@ void tipc_node_delete(struct tipc_node *n_ptr)
  * Link becomes active (alone or shared) or standby, depending on its priority.
  */
 
-void tipc_node_link_up(struct tipc_node *n_ptr, struct link *l_ptr)
+void tipc_node_link_up(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
-	struct link **active = &n_ptr->active_links[0];
+	struct tipc_link **active = &n_ptr->active_links[0];
 
 	n_ptr->working_links++;
 
@@ -170,14 +171,14 @@ void tipc_node_link_up(struct tipc_node *n_ptr, struct link *l_ptr)
 
 static void node_select_active_links(struct tipc_node *n_ptr)
 {
-	struct link **active = &n_ptr->active_links[0];
+	struct tipc_link **active = &n_ptr->active_links[0];
 	u32 i;
 	u32 highest_prio = 0;
 
 	active[0] = active[1] = NULL;
 
 	for (i = 0; i < MAX_BEARERS; i++) {
-		struct link *l_ptr = n_ptr->links[i];
+		struct tipc_link *l_ptr = n_ptr->links[i];
 
 		if (!l_ptr || !tipc_link_is_up(l_ptr) ||
 		    (l_ptr->priority < highest_prio))
@@ -196,9 +197,9 @@ static void node_select_active_links(struct tipc_node *n_ptr)
  * tipc_node_link_down - handle loss of link
  */
 
-void tipc_node_link_down(struct tipc_node *n_ptr, struct link *l_ptr)
+void tipc_node_link_down(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
-	struct link **active;
+	struct tipc_link **active;
 
 	n_ptr->working_links--;
 
@@ -238,14 +239,14 @@ int tipc_node_is_up(struct tipc_node *n_ptr)
 	return tipc_node_active_links(n_ptr);
 }
 
-void tipc_node_attach_link(struct tipc_node *n_ptr, struct link *l_ptr)
+void tipc_node_attach_link(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
 	n_ptr->links[l_ptr->b_ptr->identity] = l_ptr;
 	atomic_inc(&tipc_num_links);
 	n_ptr->link_cnt++;
 }
 
-void tipc_node_detach_link(struct tipc_node *n_ptr, struct link *l_ptr)
+void tipc_node_detach_link(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
 	n_ptr->links[l_ptr->b_ptr->identity] = NULL;
 	atomic_dec(&tipc_num_links);
@@ -306,13 +307,13 @@ static void node_established_contact(struct tipc_node *n_ptr)
 	n_ptr->bclink.acked = tipc_bclink_get_last_sent();
 
 	if (n_ptr->bclink.supported) {
-		tipc_nmap_add(&tipc_bcast_nmap, n_ptr->addr);
+		tipc_bclink_add_node(n_ptr->addr);
 		if (n_ptr->addr < tipc_own_addr)
 			tipc_own_tag++;
 	}
 }
 
-static void node_cleanup_finished(unsigned long node_addr)
+static void node_name_purge_complete(unsigned long node_addr)
 {
 	struct tipc_node *n_ptr;
 
@@ -320,7 +321,7 @@ static void node_cleanup_finished(unsigned long node_addr)
 	n_ptr = tipc_node_find(node_addr);
 	if (n_ptr) {
 		tipc_node_lock(n_ptr);
-		n_ptr->cleanup_required = 0;
+		n_ptr->block_setup &= ~WAIT_NAMES_GONE;
 		tipc_node_unlock(n_ptr);
 	}
 	read_unlock_bh(&tipc_net_lock);
@@ -331,32 +332,35 @@ static void node_lost_contact(struct tipc_node *n_ptr)
 	char addr_string[16];
 	u32 i;
 
-	/* Clean up broadcast reception remains */
-	n_ptr->bclink.gap_after = n_ptr->bclink.gap_to = 0;
-	while (n_ptr->bclink.deferred_head) {
-		struct sk_buff *buf = n_ptr->bclink.deferred_head;
-		n_ptr->bclink.deferred_head = buf->next;
-		buf_discard(buf);
-	}
-	if (n_ptr->bclink.defragm) {
-		buf_discard(n_ptr->bclink.defragm);
-		n_ptr->bclink.defragm = NULL;
-	}
-
-	if (n_ptr->bclink.supported) {
-		tipc_bclink_acknowledge(n_ptr,
-					mod(n_ptr->bclink.acked + 10000));
-		tipc_nmap_remove(&tipc_bcast_nmap, n_ptr->addr);
-		if (n_ptr->addr < tipc_own_addr)
-			tipc_own_tag--;
-	}
-
 	info("Lost contact with %s\n",
 	     tipc_addr_string_fill(addr_string, n_ptr->addr));
 
+	/* Flush broadcast link info associated with lost node */
+
+	if (n_ptr->bclink.supported) {
+		n_ptr->bclink.gap_after = n_ptr->bclink.gap_to = 0;
+		while (n_ptr->bclink.deferred_head) {
+			struct sk_buff *buf = n_ptr->bclink.deferred_head;
+			n_ptr->bclink.deferred_head = buf->next;
+			buf_discard(buf);
+		}
+
+		if (n_ptr->bclink.defragm) {
+			buf_discard(n_ptr->bclink.defragm);
+			n_ptr->bclink.defragm = NULL;
+		}
+
+		tipc_bclink_remove_node(n_ptr->addr);
+		tipc_bclink_acknowledge(n_ptr, INVALID_LINK_SEQ);
+		if (n_ptr->addr < tipc_own_addr)
+			tipc_own_tag--;
+
+		n_ptr->bclink.supported = 0;
+	}
+
 	/* Abort link changeover */
 	for (i = 0; i < MAX_BEARERS; i++) {
-		struct link *l_ptr = n_ptr->links[i];
+		struct tipc_link *l_ptr = n_ptr->links[i];
 		if (!l_ptr)
 			continue;
 		l_ptr->reset_checkpoint = l_ptr->next_in_no;
@@ -367,10 +371,10 @@ static void node_lost_contact(struct tipc_node *n_ptr)
 	/* Notify subscribers */
 	tipc_nodesub_notify(n_ptr);
 
-	/* Prevent re-contact with node until all cleanup is done */
+	/* Prevent re-contact with node until cleanup is done */
 
-	n_ptr->cleanup_required = 1;
-	tipc_k_signal((Handler)node_cleanup_finished, n_ptr->addr);
+	n_ptr->block_setup = WAIT_PEER_DOWN | WAIT_NAMES_GONE;
+	tipc_k_signal((Handler)node_name_purge_complete, n_ptr->addr);
 }
 
 struct sk_buff *tipc_node_get_nodes(const void *req_tlv_area, int req_tlv_space)

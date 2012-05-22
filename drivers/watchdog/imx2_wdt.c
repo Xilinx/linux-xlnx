@@ -247,7 +247,6 @@ static struct miscdevice imx2_wdt_miscdev = {
 static int __init imx2_wdt_probe(struct platform_device *pdev)
 {
 	int ret;
-	int res_size;
 	struct resource *res;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -256,15 +255,7 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	res_size = resource_size(res);
-	if (!devm_request_mem_region(&pdev->dev, res->start, res_size,
-		res->name)) {
-		dev_err(&pdev->dev, "can't allocate %d bytes at %d address\n",
-			res_size, res->start);
-		return -ENOMEM;
-	}
-
-	imx2_wdt.base = devm_ioremap_nocache(&pdev->dev, res->start, res_size);
+	imx2_wdt.base = devm_request_and_ioremap(&pdev->dev, res);
 	if (!imx2_wdt.base) {
 		dev_err(&pdev->dev, "ioremap failed\n");
 		return -ENOMEM;
@@ -329,12 +320,18 @@ static void imx2_wdt_shutdown(struct platform_device *pdev)
 	}
 }
 
+static const struct of_device_id imx2_wdt_dt_ids[] = {
+	{ .compatible = "fsl,imx21-wdt", },
+	{ /* sentinel */ }
+};
+
 static struct platform_driver imx2_wdt_driver = {
 	.remove		= __exit_p(imx2_wdt_remove),
 	.shutdown	= imx2_wdt_shutdown,
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
+		.of_match_table = imx2_wdt_dt_ids,
 	},
 };
 

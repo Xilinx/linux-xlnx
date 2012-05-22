@@ -865,6 +865,7 @@ static void power_pmu_start(struct perf_event *event, int ef_flags)
 {
 	unsigned long flags;
 	s64 left;
+	unsigned long val;
 
 	if (!event->hw.idx || !event->hw.sample_period)
 		return;
@@ -880,7 +881,12 @@ static void power_pmu_start(struct perf_event *event, int ef_flags)
 
 	event->hw.state = 0;
 	left = local64_read(&event->hw.period_left);
-	write_pmc(event->hw.idx, left);
+
+	val = 0;
+	if (left < 0x80000000L)
+		val = 0x80000000L - left;
+
+	write_pmc(event->hw.idx, val);
 
 	perf_event_update_userpage(event);
 	perf_pmu_enable(event->pmu);
@@ -1207,7 +1213,7 @@ struct pmu power_pmu = {
  * here so there is no possibility of being interrupted.
  */
 static void record_and_restart(struct perf_event *event, unsigned long val,
-			       struct pt_regs *regs, int nmi)
+			       struct pt_regs *regs)
 {
 	u64 period = event->hw.sample_period;
 	s64 prev, delta, left;
@@ -1258,7 +1264,7 @@ static void record_and_restart(struct perf_event *event, unsigned long val,
 		if (event->attr.sample_type & PERF_SAMPLE_ADDR)
 			perf_get_data_addr(regs, &data.addr);
 
-		if (perf_event_overflow(event, nmi, &data, regs))
+		if (perf_event_overflow(event, &data, regs))
 			power_pmu_stop(event, 0);
 	}
 }
@@ -1346,7 +1352,7 @@ static void perf_event_interrupt(struct pt_regs *regs)
 		if ((int)val < 0) {
 			/* event has overflowed */
 			found = 1;
-			record_and_restart(event, val, regs, nmi);
+			record_and_restart(event, val, regs);
 		}
 	}
 
@@ -1408,7 +1414,7 @@ power_pmu_notifier(struct notifier_block *self, unsigned long action, void *hcpu
 	return NOTIFY_OK;
 }
 
-int register_power_pmu(struct power_pmu *pmu)
+int __cpuinit register_power_pmu(struct power_pmu *pmu)
 {
 	if (ppmu)
 		return -EBUSY;		/* something's already registered */

@@ -246,9 +246,9 @@ static int devpts_remount(struct super_block *sb, int *flags, char *data)
 	return err;
 }
 
-static int devpts_show_options(struct seq_file *seq, struct vfsmount *vfs)
+static int devpts_show_options(struct seq_file *seq, struct dentry *root)
 {
-	struct pts_fs_info *fsi = DEVPTS_SB(vfs->mnt_sb);
+	struct pts_fs_info *fsi = DEVPTS_SB(root->d_sb);
 	struct pts_mount_opts *opts = &fsi->mount_opts;
 
 	if (opts->setuid)
@@ -301,13 +301,13 @@ devpts_fill_super(struct super_block *s, void *data, int silent)
 
 	inode = new_inode(s);
 	if (!inode)
-		goto free_fsi;
+		goto fail;
 	inode->i_ino = 1;
 	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
 	inode->i_mode = S_IFDIR | S_IRUGO | S_IXUGO | S_IWUSR;
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &simple_dir_operations;
-	inode->i_nlink = 2;
+	set_nlink(inode, 2);
 
 	s->s_root = d_alloc_root(inode);
 	if (s->s_root)
@@ -316,8 +316,6 @@ devpts_fill_super(struct super_block *s, void *data, int silent)
 	printk(KERN_ERR "devpts: get root dentry failed\n");
 	iput(inode);
 
-free_fsi:
-	kfree(s->s_fs_info);
 fail:
 	return -ENOMEM;
 }
@@ -549,7 +547,7 @@ void devpts_pty_kill(struct tty_struct *tty)
 
 	dentry = d_find_alias(inode);
 
-	inode->i_nlink--;
+	drop_nlink(inode);
 	d_delete(dentry);
 	dput(dentry);	/* d_alloc_name() in devpts_pty_new() */
 	dput(dentry);		/* d_find_alias above */

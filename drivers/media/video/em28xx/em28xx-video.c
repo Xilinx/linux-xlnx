@@ -32,7 +32,6 @@
 #include <linux/bitmap.h>
 #include <linux/usb.h>
 #include <linux/i2c.h>
-#include <linux/version.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -50,7 +49,8 @@
 		      "Sascha Sommer <saschasommer@freenet.de>"
 
 #define DRIVER_DESC         "Empia em28xx based USB video device driver"
-#define EM28XX_VERSION_CODE  KERNEL_VERSION(0, 1, 2)
+
+#define EM28XX_VERSION "0.1.3"
 
 #define em28xx_videodbg(fmt, arg...) do {\
 	if (video_debug) \
@@ -72,6 +72,7 @@ do {\
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL");
+MODULE_VERSION(EM28XX_VERSION);
 
 static unsigned int video_nr[] = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
 static unsigned int vbi_nr[]   = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
@@ -1069,6 +1070,10 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		/* the em2800 can only scale down to 50% */
 		height = height > (3 * maxh / 4) ? maxh : maxh / 2;
 		width = width > (3 * maxw / 4) ? maxw : maxw / 2;
+                /* MaxPacketSize for em2800 is too small to capture at full resolution
+                 * use half of maxw as the scaler can only scale to 50% */
+		if (width == maxw && height == maxh)
+			width /= 2;
 	} else {
 		/* width must even because of the YUYV format
 		   height must be even because of interlacing */
@@ -1151,6 +1156,21 @@ static int vidioc_g_std(struct file *file, void *priv, v4l2_std_id *norm)
 		return rc;
 
 	*norm = dev->norm;
+
+	return 0;
+}
+
+static int vidioc_querystd(struct file *file, void *priv, v4l2_std_id *norm)
+{
+	struct em28xx_fh   *fh  = priv;
+	struct em28xx      *dev = fh->dev;
+	int                rc;
+
+	rc = check_dev(dev);
+	if (rc < 0)
+		return rc;
+
+	v4l2_device_call_all(&dev->v4l2_dev, 0, video, querystd, norm);
 
 	return 0;
 }
@@ -1757,8 +1777,6 @@ static int vidioc_querycap(struct file *file, void  *priv,
 	strlcpy(cap->card, em28xx_boards[dev->model].name, sizeof(cap->card));
 	usb_make_path(dev->udev, cap->bus_info, sizeof(cap->bus_info));
 
-	cap->version = EM28XX_VERSION_CODE;
-
 	cap->capabilities =
 			V4L2_CAP_SLICED_VBI_CAPTURE |
 			V4L2_CAP_VIDEO_CAPTURE |
@@ -1785,6 +1803,45 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void  *priv,
 	strlcpy(f->description, format[f->index].name, sizeof(f->description));
 	f->pixelformat = format[f->index].fourcc;
 
+	return 0;
+}
+
+static int vidioc_enum_framesizes(struct file *file, void *priv,
+				  struct v4l2_frmsizeenum *fsize)
+{
+	struct em28xx_fh      *fh  = priv;
+	struct em28xx         *dev = fh->dev;
+	struct em28xx_fmt     *fmt;
+	unsigned int	      maxw = norm_maxw(dev);
+	unsigned int	      maxh = norm_maxh(dev);
+
+	fmt = format_by_fourcc(fsize->pixel_format);
+	if (!fmt) {
+		em28xx_videodbg("Fourcc format (%08x) invalid.\n",
+				fsize->pixel_format);
+		return -EINVAL;
+	}
+
+	if (dev->board.is_em2800) {
+		if (fsize->index > 1)
+			return -EINVAL;
+		fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
+		fsize->discrete.width = maxw / (1 + fsize->index);
+		fsize->discrete.height = maxh / (1 + fsize->index);
+		return 0;
+	}
+
+	if (fsize->index != 0)
+		return -EINVAL;
+
+	/* Report a continuous range */
+	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+	fsize->stepwise.min_width = 48;
+	fsize->stepwise.min_height = 32;
+	fsize->stepwise.max_width = maxw;
+	fsize->stepwise.max_height = maxh;
+	fsize->stepwise.step_width = 1;
+	fsize->stepwise.step_height = 1;
 	return 0;
 }
 
@@ -1976,7 +2033,6 @@ static int radio_querycap(struct file *file, void  *priv,
 	strlcpy(cap->card, em28xx_boards[dev->model].name, sizeof(cap->card));
 	usb_make_path(dev->udev, cap->bus_info, sizeof(cap->bus_info));
 
-	cap->version = EM28XX_VERSION_CODE;
 	cap->capabilities = V4L2_CAP_TUNER;
 	return 0;
 }
@@ -2202,6 +2258,7 @@ static int em28xx_v4l2_close(struct file *filp)
 		   free the remaining resources */
 		if (dev->state & DEV_DISCONNECTED) {
 			em28xx_release_resources(dev);
+			kfree(dev->alt_max_pkt_size);
 			kfree(dev);
 			return 0;
 		}
@@ -2342,10 +2399,10 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 	.vidioc_s_fmt_vid_cap       = vidioc_s_fmt_vid_cap,
 	.vidioc_g_fmt_vbi_cap       = vidioc_g_fmt_vbi_cap,
 	.vidioc_s_fmt_vbi_cap       = vidioc_s_fmt_vbi_cap,
+	.vidioc_enum_framesizes     = vidioc_enum_framesizes,
 	.vidioc_g_audio             = vidioc_g_audio,
 	.vidioc_s_audio             = vidioc_s_audio,
 	.vidioc_cropcap             = vidioc_cropcap,
-
 	.vidioc_g_fmt_sliced_vbi_cap   = vidioc_g_fmt_sliced_vbi_cap,
 	.vidioc_try_fmt_sliced_vbi_cap = vidioc_try_set_sliced_vbi_cap,
 	.vidioc_s_fmt_sliced_vbi_cap   = vidioc_try_set_sliced_vbi_cap,
@@ -2355,6 +2412,7 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 	.vidioc_qbuf                = vidioc_qbuf,
 	.vidioc_dqbuf               = vidioc_dqbuf,
 	.vidioc_g_std               = vidioc_g_std,
+	.vidioc_querystd            = vidioc_querystd,
 	.vidioc_s_std               = vidioc_s_std,
 	.vidioc_g_parm		    = vidioc_g_parm,
 	.vidioc_s_parm		    = vidioc_s_parm,
@@ -2449,11 +2507,10 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 {
       u8 val;
 	int ret;
+	unsigned int maxw;
 
-	printk(KERN_INFO "%s: v4l2 driver version %d.%d.%d\n",
-		dev->name,
-		(EM28XX_VERSION_CODE >> 16) & 0xff,
-		(EM28XX_VERSION_CODE >> 8) & 0xff, EM28XX_VERSION_CODE & 0xff);
+	printk(KERN_INFO "%s: v4l2 driver version %s\n",
+		dev->name, EM28XX_VERSION);
 
 	/* set default norm */
 	dev->norm = em28xx_video_template.current_norm;
@@ -2463,8 +2520,15 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 
 	/* Analog specific initialization */
 	dev->format = &format[0];
+
+	maxw = norm_maxw(dev);
+        /* MaxPacketSize for em2800 is too small to capture at full resolution
+         * use half of maxw as the scaler can only scale to 50% */
+        if (dev->board.is_em2800)
+            maxw /= 2;
+
 	em28xx_set_video_format(dev, format[0].fourcc,
-				norm_maxw(dev), norm_maxh(dev));
+				maxw, norm_maxh(dev));
 
 	video_mux(dev, dev->ctl_input);
 

@@ -12,7 +12,6 @@
 #include <linux/clk.h>
 #include <linux/serial_8250.h>
 #include <linux/platform_device.h>
-#include <linux/gpio.h>
 
 #include <asm/mach/map.h>
 
@@ -26,6 +25,7 @@
 #include <mach/serial.h>
 #include <mach/common.h>
 #include <mach/asp.h>
+#include <mach/gpio-davinci.h>
 
 #include "clock.h"
 #include "mux.h"
@@ -130,7 +130,7 @@ static struct clk dsp_clk = {
 	.name = "dsp",
 	.parent = &pll1_sysclk1,
 	.lpsc = DAVINCI_LPSC_GEM,
-	.flags = PSC_DSP,
+	.domain = DAVINCI_GPSC_DSPDOMAIN,
 	.usecount = 1,			/* REVISIT how to disable? */
 };
 
@@ -145,7 +145,7 @@ static struct clk vicp_clk = {
 	.name = "vicp",
 	.parent = &pll1_sysclk2,
 	.lpsc = DAVINCI_LPSC_IMCOP,
-	.flags = PSC_DSP,
+	.domain = DAVINCI_GPSC_DSPDOMAIN,
 	.usecount = 1,			/* REVISIT how to disable? */
 };
 
@@ -514,6 +514,7 @@ static struct edma_soc_info edma_cc0_info = {
 	.n_cc			= 1,
 	.queue_tc_mapping	= queue_tc_mapping,
 	.queue_priority_mapping	= queue_priority_mapping,
+	.default_queue		= EVENTQ_1,
 };
 
 static struct edma_soc_info *dm644x_edma_info[EDMA_MAX_CC] = {
@@ -766,7 +767,6 @@ static struct davinci_soc_info davinci_soc_info_dm644x = {
 	.emac_pdata		= &dm644x_emac_pdata,
 	.sram_dma		= 0x00008000,
 	.sram_len		= SZ_16K,
-	.reset_device		= &davinci_wdt_device,
 };
 
 void __init dm644x_init_asp(struct snd_platform_data *pdata)

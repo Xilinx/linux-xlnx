@@ -142,7 +142,7 @@
 
 /*
  * The ibm,sdram-4xx-ddr2 Device Control Registers (DCRs) are
- * indirectly acccessed and have a base and length defined by the
+ * indirectly accessed and have a base and length defined by the
  * device tree. The base can be anything; however, we expect the
  * length to be precisely two registers, the first for the address
  * window and the second for the data window.
@@ -205,7 +205,7 @@ static struct platform_driver ppc4xx_edac_driver = {
 	.remove			= ppc4xx_edac_remove,
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = PPC4XX_EDAC_MODULE_NAME
+		.name = PPC4XX_EDAC_MODULE_NAME,
 		.of_match_table = ppc4xx_edac_match,
 	},
 };

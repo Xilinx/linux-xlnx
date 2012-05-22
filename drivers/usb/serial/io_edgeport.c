@@ -191,7 +191,7 @@ static const struct divisor_table_entry divisor_table[] = {
 };
 
 /* local variables */
-static int debug;
+static bool debug;
 
 static atomic_t CmdUrbs;	/* Number of outstanding Command Write Urbs */
 
@@ -610,7 +610,6 @@ static void edge_interrupt_callback(struct urb *urb)
 
 					/* we have pending bytes on the
 					   bulk in pipe, send a request */
-					edge_serial->read_urb->dev = edge_serial->serial->dev;
 					result = usb_submit_urb(edge_serial->read_urb, GFP_ATOMIC);
 					if (result) {
 						dev_err(&edge_serial->serial->dev->dev, "%s - usb_submit_urb(read bulk) failed with result = %d\n", __func__, result);
@@ -711,7 +710,6 @@ static void edge_bulk_in_callback(struct urb *urb)
 	/* check to see if there's any more data for us to read */
 	if (edge_serial->rxBytesAvail > 0) {
 		dbg("%s - posting a read", __func__);
-		edge_serial->read_urb->dev = edge_serial->serial->dev;
 		retval = usb_submit_urb(edge_serial->read_urb, GFP_ATOMIC);
 		if (retval) {
 			dev_err(&urb->dev->dev,
@@ -1330,7 +1328,6 @@ static void send_more_port_data(struct edgeport_serial *edge_serial,
 	edge_port->txCredits -= count;
 	edge_port->icount.tx += count;
 
-	urb->dev = edge_serial->serial->dev;
 	status = usb_submit_urb(urb, GFP_ATOMIC);
 	if (status) {
 		/* something went wrong */
@@ -3042,7 +3039,7 @@ static int edge_startup(struct usb_serial *serial)
 
 			endpoint = &serial->interface->altsetting[0].
 							endpoint[i].desc;
-			buffer_size = le16_to_cpu(endpoint->wMaxPacketSize);
+			buffer_size = usb_endpoint_maxp(endpoint);
 			if (!interrupt_in_found &&
 			    (usb_endpoint_is_int_in(endpoint))) {
 				/* we found a interrupt in endpoint */
@@ -3107,7 +3104,7 @@ static int edge_startup(struct usb_serial *serial)
 					usb_rcvbulkpipe(dev,
 						endpoint->bEndpointAddress),
 					edge_serial->bulk_in_buffer,
-					le16_to_cpu(endpoint->wMaxPacketSize),
+					usb_endpoint_maxp(endpoint),
 					edge_bulk_in_callback,
 					edge_serial);
 				bulk_in_found = true;

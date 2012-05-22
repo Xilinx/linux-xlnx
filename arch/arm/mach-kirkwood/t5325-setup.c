@@ -201,10 +201,11 @@ subsys_initcall(hp_t5325_pci_init);
 
 MACHINE_START(T5325, "HP t5325 Thin Client")
 	/* Maintainer: Martin Michlmayr <tbm@cyrius.com> */
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= hp_t5325_init,
 	.map_io		= kirkwood_map_io,
 	.init_early	= kirkwood_init_early,
 	.init_irq	= kirkwood_init_irq,
 	.timer		= &kirkwood_timer,
+	.restart	= kirkwood_restart,
 MACHINE_END

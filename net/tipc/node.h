@@ -42,6 +42,12 @@
 #include "net.h"
 #include "bearer.h"
 
+/* Flags used to block (re)establishment of contact with a neighboring node */
+
+#define WAIT_PEER_DOWN	0x0001	/* wait to see that peer's links are down */
+#define WAIT_NAMES_GONE	0x0002	/* wait for peer's publications to be purged */
+#define WAIT_NODE_DOWN	0x0004	/* wait until peer node is declared down */
+
 /**
  * struct tipc_node - TIPC node structure
  * @addr: network address of node
@@ -52,7 +58,7 @@
  * @active_links: pointers to active links to node
  * @links: pointers to all links to node
  * @working_links: number of working links to node (both active and standby)
- * @cleanup_required: non-zero if cleaning up after a prior loss of contact
+ * @block_setup: bit mask of conditions preventing link establishment to node
  * @link_cnt: number of links to node
  * @permit_changeover: non-zero if node has redundant links to this system
  * @bclink: broadcast-related info
@@ -73,11 +79,11 @@ struct tipc_node {
 	struct hlist_node hash;
 	struct list_head list;
 	struct list_head nsub;
-	struct link *active_links[2];
-	struct link *links[MAX_BEARERS];
+	struct tipc_link *active_links[2];
+	struct tipc_link *links[MAX_BEARERS];
 	int link_cnt;
 	int working_links;
-	int cleanup_required;
+	int block_setup;
 	int permit_changeover;
 	struct {
 		int supported;
@@ -111,10 +117,10 @@ extern u32 tipc_own_tag;
 struct tipc_node *tipc_node_find(u32 addr);
 struct tipc_node *tipc_node_create(u32 addr);
 void tipc_node_delete(struct tipc_node *n_ptr);
-void tipc_node_attach_link(struct tipc_node *n_ptr, struct link *l_ptr);
-void tipc_node_detach_link(struct tipc_node *n_ptr, struct link *l_ptr);
-void tipc_node_link_down(struct tipc_node *n_ptr, struct link *l_ptr);
-void tipc_node_link_up(struct tipc_node *n_ptr, struct link *l_ptr);
+void tipc_node_attach_link(struct tipc_node *n_ptr, struct tipc_link *l_ptr);
+void tipc_node_detach_link(struct tipc_node *n_ptr, struct tipc_link *l_ptr);
+void tipc_node_link_down(struct tipc_node *n_ptr, struct tipc_link *l_ptr);
+void tipc_node_link_up(struct tipc_node *n_ptr, struct tipc_link *l_ptr);
 int tipc_node_active_links(struct tipc_node *n_ptr);
 int tipc_node_redundant_links(struct tipc_node *n_ptr);
 int tipc_node_is_up(struct tipc_node *n_ptr);

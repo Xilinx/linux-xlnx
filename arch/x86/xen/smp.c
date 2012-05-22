@@ -32,6 +32,7 @@
 #include <xen/page.h>
 #include <xen/events.h>
 
+#include <xen/hvc-console.h>
 #include "xen-ops.h"
 #include "mmu.h"
 
@@ -207,6 +208,15 @@ static void __init xen_smp_prepare_cpus(unsigned int max_cpus)
 	unsigned cpu;
 	unsigned int i;
 
+	if (skip_ioapic_setup) {
+		char *m = (max_cpus == 0) ?
+			"The nosmp parameter is incompatible with Xen; " \
+			"use Xen dom0_max_vcpus=1 parameter" :
+			"The noapic parameter is incompatible with Xen";
+
+		xen_raw_printk(m);
+		panic(m);
+	}
 	xen_init_lock_cpu(0);
 
 	smp_store_cpu_info(0);
@@ -399,6 +409,13 @@ static void __cpuinit xen_play_dead(void) /* used only with HOTPLUG_CPU */
 	play_dead_common();
 	HYPERVISOR_vcpu_op(VCPUOP_down, smp_processor_id(), NULL);
 	cpu_bringup();
+	/*
+	 * Balance out the preempt calls - as we are running in cpu_idle
+	 * loop which has been called at bootup from cpu_bringup_and_idle.
+	 * The cpucpu_bringup_and_idle called cpu_bringup which made a
+	 * preempt_disable() So this preempt_enable will balance it out.
+	 */
+	preempt_enable();
 }
 
 #else /* !CONFIG_HOTPLUG_CPU */
@@ -521,10 +538,7 @@ static void __init xen_hvm_smp_prepare_cpus(unsigned int max_cpus)
 	native_smp_prepare_cpus(max_cpus);
 	WARN_ON(xen_smp_intr_init(0));
 
-	if (!xen_have_vector_callback)
-		return;
 	xen_init_lock_cpu(0);
-	xen_init_spinlocks();
 }
 
 static int __cpuinit xen_hvm_cpu_up(unsigned int cpu)
@@ -546,6 +560,8 @@ static void xen_hvm_cpu_die(unsigned int cpu)
 
 void __init xen_hvm_smp_init(void)
 {
+	if (!xen_have_vector_callback)
+		return;
 	smp_ops.smp_prepare_cpus = xen_hvm_smp_prepare_cpus;
 	smp_ops.smp_send_reschedule = xen_smp_send_reschedule;
 	smp_ops.cpu_up = xen_hvm_cpu_up;

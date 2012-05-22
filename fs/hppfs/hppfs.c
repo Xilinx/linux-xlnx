@@ -16,6 +16,7 @@
 #include <linux/statfs.h>
 #include <linux/types.h>
 #include <linux/pid_namespace.h>
+#include <linux/namei.h>
 #include <asm/uaccess.h>
 #include "os.h"
 
@@ -573,9 +574,10 @@ static int hppfs_readdir(struct file *file, void *ent, filldir_t filldir)
 	return err;
 }
 
-static int hppfs_fsync(struct file *file, int datasync)
+static int hppfs_fsync(struct file *file, loff_t start, loff_t end,
+		       int datasync)
 {
-	return 0;
+	return filemap_write_and_wait_range(file->f_mapping, start, end);
 }
 
 static const struct file_operations hppfs_dir_fops = {
@@ -620,7 +622,6 @@ void hppfs_evict_inode(struct inode *ino)
 static void hppfs_i_callback(struct rcu_head *head)
 {
 	struct inode *inode = container_of(head, struct inode, i_rcu);
-	INIT_LIST_HEAD(&inode->i_dentry);
 	kfree(HPPFS_I(inode));
 }
 
@@ -700,7 +701,7 @@ static struct inode *get_inode(struct super_block *sb, struct dentry *dentry)
 	inode->i_ctime = proc_ino->i_ctime;
 	inode->i_ino = proc_ino->i_ino;
 	inode->i_mode = proc_ino->i_mode;
-	inode->i_nlink = proc_ino->i_nlink;
+	set_nlink(inode, proc_ino->i_nlink);
 	inode->i_size = proc_ino->i_size;
 	inode->i_blocks = proc_ino->i_blocks;
 
@@ -724,7 +725,7 @@ static int hppfs_fill_super(struct super_block *sb, void *d, int silent)
 	sb->s_fs_info = proc_mnt;
 
 	err = -ENOMEM;
-	root_inode = get_inode(sb, dget(proc_mnt->mnt_sb->s_root));
+	root_inode = get_inode(sb, dget(proc_mnt->mnt_root));
 	if (!root_inode)
 		goto out_mntput;
 

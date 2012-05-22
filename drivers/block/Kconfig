@@ -116,6 +116,8 @@ config PARIDE
 
 source "drivers/block/paride/Kconfig"
 
+source "drivers/block/mtip32xx/Kconfig"
+
 config BLK_CPQ_DA
 	tristate "Compaq SMART2 support"
 	depends on PCI && VIRT_TO_BUS
@@ -256,6 +258,21 @@ config BLK_DEV_LOOP
 
 	  Most users will answer N here.
 
+config BLK_DEV_LOOP_MIN_COUNT
+	int "Number of loop devices to pre-create at init time"
+	depends on BLK_DEV_LOOP
+	default 8
+	help
+	  Static number of loop devices to be unconditionally pre-created
+	  at init time.
+
+	  This default value can be overwritten on the kernel command
+	  line or with module-parameter loop.max_loop.
+
+	  The historic default is 8. If a late 2011 version of losetup(8)
+	  is used, it can be set to 0, since needed loop devices can be
+	  dynamically allocated with the /dev/loop-control interface.
+
 config BLK_DEV_CRYPTOLOOP
 	tristate "Cryptoloop Support"
 	select CRYPTO
@@ -299,6 +316,17 @@ config BLK_DEV_NBD
 	  module will be called nbd.
 
 	  If unsure, say N.
+
+config BLK_DEV_NVME
+	tristate "NVM Express block device"
+	depends on PCI
+	---help---
+	  The NVM Express driver is for solid state drives directly
+	  connected to the PCI or PCI Express bus.  If you know you
+	  don't have one of these, it is safe to answer N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called nvme.
 
 config BLK_DEV_OSD
 	tristate "OSD object-as-blkdev support"
@@ -471,7 +499,7 @@ config XEN_BLKDEV_FRONTEND
 	  in another domain which drives the actual block device.
 
 config XEN_BLKDEV_BACKEND
-	tristate "Block-device backend driver"
+	tristate "Xen block-device backend driver"
 	depends on XEN_BACKEND
 	help
 	  The block-device backend driver allows the kernel to export its

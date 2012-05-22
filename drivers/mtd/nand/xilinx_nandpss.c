@@ -62,13 +62,13 @@
 				(0x1 << 6))	/* Disable ECC interrupt */
 
 /* Assuming 50MHz clock (20ns cycle time) and 3V operation */
-#define XNANDPSS_SET_CYCLES	((0x4 << 20) |	/* t_rr from nand_cycles */ \
-				(0x2 << 17)  |	/* t_ar from nand_cycles */ \
-				(0x2 << 14)  |	/* t_clr from nand_cycles */ \
-				(0x2 << 11)  |	/* t_wp from nand_cycles */ \
+#define XNANDPSS_SET_CYCLES	((0x1 << 20) |	/* t_rr from nand_cycles */ \
+				(0x1 << 17)  |	/* t_ar from nand_cycles */ \
+				(0x1 << 14)  |	/* t_clr from nand_cycles */ \
+				(0x1 << 11)  |	/* t_wp from nand_cycles */ \
 				(0x1 << 8)   |	/* t_rea from nand_cycles */ \
-				(0x4 << 4)   |	/* t_wc from nand_cycles */ \
-				(0x4 << 0))	/* t_rc from nand_cycles */
+				(0x2 << 4)   |	/* t_wc from nand_cycles */ \
+				(0x2 << 0))	/* t_rc from nand_cycles */
 
 #define XNANDPSS_SET_OPMODE	0x0
 
@@ -173,7 +173,6 @@ static struct xnandpss_command_format xnandpss_commands[] __devinitdata = {
 	{NAND_CMD_RNDIN, NAND_CMD_NONE, 2, NAND_CMD_NONE},
 	{NAND_CMD_ERASE1, NAND_CMD_ERASE2, 3, XNANDPSS_CMD_PHASE},
 	{NAND_CMD_RESET, NAND_CMD_NONE, 0, NAND_CMD_NONE},
-	{NAND_CMD_PARAM, NAND_CMD_NONE, 1, NAND_CMD_NONE},
 	{NAND_CMD_GET_FEATURES, NAND_CMD_NONE, 1, NAND_CMD_NONE},
 	{NAND_CMD_SET_FEATURES, NAND_CMD_NONE, 1, NAND_CMD_NONE},
 	{NAND_CMD_NONE, NAND_CMD_NONE, 0, 0},
@@ -772,7 +771,6 @@ static void xnandpss_cmd_function(struct mtd_info *mtd, unsigned int command,
 		if (command == xnandpss_commands[i].start_cmd)
 			curr_cmd = &xnandpss_commands[i];
 	}
-
 	if (curr_cmd == NULL)
 		return;
 
@@ -833,11 +831,7 @@ static void xnandpss_cmd_function(struct mtd_info *mtd, unsigned int command,
 	/* Change read/write column, read id etc */
 	else if (column != -1) {
 		/* Adjust columns for 16 bit bus width */
-		if ((chip->options & NAND_BUSWIDTH_16) &&
-			((command == NAND_CMD_READ0) ||
-			(command == NAND_CMD_SEQIN) ||
-			(command == NAND_CMD_RNDOUT) ||
-			(command == NAND_CMD_RNDIN)))
+		if (chip->options & NAND_BUSWIDTH_16)
 			column >>= 1;
 		cmd_data = column;
 	} else
@@ -852,12 +846,7 @@ static void xnandpss_cmd_function(struct mtd_info *mtd, unsigned int command,
 
 	ndelay(100);
 
-	if ((command == NAND_CMD_READ0) ||
-		(command == NAND_CMD_ERASE1) ||
-		(command == NAND_CMD_RESET) ||
-		(command == NAND_CMD_PARAM) ||
-		(command == NAND_CMD_GET_FEATURES)) {
-
+	if (command == NAND_CMD_READ0) {
 		while (!chip->dev_ready(mtd))
 			;
 		return;
@@ -952,7 +941,6 @@ static int xnandpss_device_ready(struct mtd_info *mtd)
 #ifdef CONFIG_OF
 static const struct of_device_id __devinitconst xnandpss_of_match[];
 #endif
-
 /**
  * xnandpss_probe - Probe method for the NAND driver
  * @pdev:	Pointer to the platform_device structure
@@ -969,18 +957,16 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	struct resource *nand_res, *smc_res;
 	unsigned long ecc_page_size;
 	int err = 0;
-	u8 maf_id, dev_id, i;
+	u8 maf_id, dev_id;
 	u8 get_feature;
 	u8 set_feature[4] = {0x08, 0x00, 0x00, 0x00};
 	int ondie_ecc_enabled = 0;
 	int ez_nand_supported = 0;
 	unsigned long ecc_cfg;
 	struct xnand_platform_data	*pdata = NULL;
-	int  nr_parts;
-	static const char *part_probe_types[] = {"cmdlinepart", NULL};
+	struct mtd_part_parser_data ppdata;
 #ifdef CONFIG_OF
 	const struct of_device_id *match;
-	struct device_node *parts = pdev->dev.of_node;
 #endif
 
 #ifdef CONFIG_OF
@@ -1086,10 +1072,6 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-	/* Make sure to restore the options cleared by nand_flash_detect_onfi */
-	if (pdata->options & NAND_USE_FLASH_BBT)
-		nand_chip->options |= NAND_USE_FLASH_BBT;
-
 	/* Check if On-Die ECC flash or Clear NAND flash */
 	nand_chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
 	nand_chip->cmdfunc(mtd, NAND_CMD_READID, 0x00, -1);
@@ -1110,6 +1092,7 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 
 		nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
 						ONDIE_ECC_FEATURE_ADDR, -1);
+		ndelay(1000);
 		get_feature = nand_chip->read_byte(mtd);
 
 		if (get_feature & 0x08) {
@@ -1117,13 +1100,12 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		} else {
 			nand_chip->cmdfunc(mtd, NAND_CMD_SET_FEATURES,
 						ONDIE_ECC_FEATURE_ADDR, -1);
-			for (i = 0; i < 4; i++)
-				writeb(set_feature[i], nand_chip->IO_ADDR_W);
-
 			ndelay(1000);
+			nand_chip->write_buf(mtd, set_feature, 4);
 
 			nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
 						ONDIE_ECC_FEATURE_ADDR, -1);
+			ndelay(1000);
 			get_feature = nand_chip->read_byte(mtd);
 
 			if (get_feature & 0x08)
@@ -1232,47 +1214,18 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-#ifdef CONFIG_MTD_CMDLINE_PARTS
-	/* Get the partition information from command line argument */
-	nr_parts = parse_mtd_partitions(mtd, part_probe_types,
-					&xnand->parts, 0);
-	if (nr_parts > 0) {
-		dev_info(&pdev->dev, "found %d partitions in command line",
-				nr_parts);
-		err = mtd_device_register(&xnand->mtd, xnand->parts, nr_parts);
-/*		mtd_add_partition(mtd, xnand->parts, nr_parts);
-		return 0;
-*/
-	}
-#ifdef CONFIG_MTD_OF_PARTS
-	nr_parts = of_mtd_parse_partitions(&pdev->dev, parts, &xnand->parts);
-	if (nr_parts > 0) {
-		dev_info(&pdev->dev, "found %d partitions in device tree",
-				nr_parts);
-		err = mtd_device_register(&xnand->mtd, xnand->parts, nr_parts);
-/*		mtd_add_partition(mtd, xnand->parts, nr_parts);
-		return 0;
-*/
-	}
+#ifdef CONFIG_OF
+	ppdata.of_node = pdev->dev.of_node;
 #endif
-	if (pdata->parts) {
-		dev_info(&pdev->dev, "found %d partitions in platform data",
-				pdata->nr_parts);
-		err = mtd_device_register(&xnand->mtd, pdata->parts,
-							pdata->nr_parts);
-/*		mtd_add_partition(&xnand->mtd, pdata->parts,
-							pdata->nr_parts);
-*/
-	}
-#endif
-/*	err = add_mtd_device(mtd); */
+	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata,
+			NULL, 0);
+
 	if (!err) {
 		dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X\n",
 				smc_res->start, (u32 __force) xnand->nand_base);
 		return 0;
 	}
 
-	nand_release(mtd);
 
 out_unmap_all_mem:
 	platform_set_drvdata(pdev, NULL);
@@ -1323,7 +1276,7 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_OF
 static struct xnand_platform_data xnandpss_config = {
-	.options = NAND_NO_AUTOINCR | NAND_USE_FLASH_BBT,
+	.options = NAND_NO_AUTOINCR,
 };
 
 /* Match table for device tree binding */

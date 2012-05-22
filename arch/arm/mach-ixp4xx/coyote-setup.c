@@ -112,8 +112,12 @@ MACHINE_START(ADI_COYOTE, "ADI Engineering Coyote")
 	.map_io		= ixp4xx_map_io,
 	.init_irq	= ixp4xx_init_irq,
 	.timer		= &ixp4xx_timer,
-	.boot_params	= 0x0100,
+	.atag_offset	= 0x100,
 	.init_machine	= coyote_init,
+#if defined(CONFIG_PCI)
+	.dma_zone_size	= SZ_64M,
+#endif
+	.restart	= ixp4xx_restart,
 MACHINE_END
 #endif
 
@@ -127,8 +131,9 @@ MACHINE_START(IXDPG425, "Intel IXDPG425")
 	.map_io		= ixp4xx_map_io,
 	.init_irq	= ixp4xx_init_irq,
 	.timer		= &ixp4xx_timer,
-	.boot_params	= 0x0100,
+	.atag_offset	= 0x100,
 	.init_machine	= coyote_init,
+	.restart	= ixp4xx_restart,
 MACHINE_END
 #endif
 

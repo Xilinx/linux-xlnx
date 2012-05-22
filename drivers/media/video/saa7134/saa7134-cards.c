@@ -4951,8 +4951,9 @@ struct saa7134_board saa7134_boards[] = {
 		.audio_clock    = 0x00187de7,
 		.tuner_type     = TUNER_XC2028,
 		.radio_type     = UNSET,
-		.tuner_addr	= ADDR_UNSET,
+		.tuner_addr	= 0x61,
 		.radio_addr	= ADDR_UNSET,
+		.mpeg           = SAA7134_MPEG_DVB,
 		.inputs = {{
 			.name   = name_tv,
 			.vmux   = 3,
@@ -5689,6 +5690,27 @@ struct saa7134_board saa7134_boards[] = {
 			.name = name_mute,
 			.amux = LINE1,
 		},
+	},
+	[SAA7134_BOARD_SENSORAY811_911] = {
+		.name		= "Sensoray 811/911",
+		.audio_clock	= 0x00200000,
+		.tuner_type	= TUNER_ABSENT,
+		.radio_type	= UNSET,
+		.tuner_addr	= ADDR_UNSET,
+		.radio_addr	= ADDR_UNSET,
+		.inputs		= {{
+			.name   = name_comp1,
+			.vmux   = 0,
+			.amux   = LINE1,
+		}, {
+			.name   = name_comp3,
+			.vmux   = 2,
+			.amux   = LINE1,
+		}, {
+			.name   = name_svideo,
+			.vmux   = 8,
+			.amux   = LINE1,
+		} },
 	},
 
 };
@@ -6913,6 +6935,18 @@ struct pci_device_id saa7134_pci_tbl[] = {
 		.subdevice    = 0xd136,
 		.driver_data  = SAA7134_BOARD_MAGICPRO_PROHDTV_PRO2,
 	}, {
+		.vendor       = PCI_VENDOR_ID_PHILIPS,
+		.device       = PCI_DEVICE_ID_PHILIPS_SAA7133,
+		.subvendor    = 0x6000,
+		.subdevice    = 0x0811,
+		.driver_data  = SAA7134_BOARD_SENSORAY811_911,
+	}, {
+		.vendor       = PCI_VENDOR_ID_PHILIPS,
+		.device       = PCI_DEVICE_ID_PHILIPS_SAA7133,
+		.subvendor    = 0x6000,
+		.subdevice    = 0x0911,
+		.driver_data  = SAA7134_BOARD_SENSORAY811_911,
+	}, {
 		/* --- boards without eeprom + subsystem ID --- */
 		.vendor       = PCI_VENDOR_ID_PHILIPS,
 		.device       = PCI_DEVICE_ID_PHILIPS_SAA7134,
@@ -6991,6 +7025,11 @@ static int saa7134_xc2028_callback(struct saa7134_dev *dev,
 			saa7134_set_gpio(dev, 18, 0);
 			msleep(10);
 			saa7134_set_gpio(dev, 18, 1);
+		break;
+		case SAA7134_BOARD_VIDEOMATE_T750:
+			saa7134_set_gpio(dev, 20, 0);
+			msleep(10);
+			saa7134_set_gpio(dev, 20, 1);
 		break;
 		}
 	return 0;
@@ -7450,6 +7489,11 @@ int saa7134_board_init1(struct saa7134_dev *dev)
 		/* enable LGS-8G75 */
 		saa_andorl(SAA7134_GPIO_GPMODE0 >> 2,   0x0e050000, 0x0c050000);
 		saa_andorl(SAA7134_GPIO_GPSTATUS0 >> 2, 0x0e050000, 0x0c050000);
+		break;
+	case SAA7134_BOARD_VIDEOMATE_T750:
+		/* enable the analog tuner */
+		saa_andorl(SAA7134_GPIO_GPMODE0 >> 2,   0x00008000, 0x00008000);
+		saa_andorl(SAA7134_GPIO_GPSTATUS0 >> 2, 0x00008000, 0x00008000);
 		break;
 	}
 	return 0;

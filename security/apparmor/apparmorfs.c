@@ -165,7 +165,7 @@ static void __init aafs_remove(const char *name)
  *
  * Used aafs_remove to remove entries created with this fn.
  */
-static int __init aafs_create(const char *name, int mask,
+static int __init aafs_create(const char *name, umode_t mask,
 			      const struct file_operations *fops)
 {
 	struct dentry *dentry;
@@ -200,7 +200,7 @@ void __init aa_destroy_aafs(void)
  *
  * Returns: error on failure
  */
-int __init aa_create_aafs(void)
+static int __init aa_create_aafs(void)
 {
 	int error;
 

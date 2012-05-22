@@ -7,7 +7,7 @@
  * published by the Free Software Foundation; either version 2 of the
  * License, or (at your option) any later version.
  */
-
+#include <linux/gpio.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -20,7 +20,6 @@
 #include <linux/i2c.h>
 #include <linux/ata_platform.h>
 #include <asm/mach-types.h>
-#include <asm/gpio.h>
 #include <asm/mach/arch.h>
 #include <mach/orion5x.h>
 #include "common.h"
@@ -229,11 +228,12 @@ static void __init mv2120_init(void)
 /* Warning: HP uses a wrong mach-type (=526) in their bootloader */
 MACHINE_START(MV2120, "HP Media Vault mv2120")
 	/* Maintainer: Martin Michlmayr <tbm@cyrius.com> */
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= mv2120_init,
 	.map_io		= orion5x_map_io,
 	.init_early	= orion5x_init_early,
 	.init_irq	= orion5x_init_irq,
 	.timer		= &orion5x_timer,
-	.fixup		= tag_fixup_mem32
+	.fixup		= tag_fixup_mem32,
+	.restart	= orion5x_restart,
 MACHINE_END

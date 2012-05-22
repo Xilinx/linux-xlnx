@@ -422,9 +422,9 @@ asmlinkage long compat_sys_getdents64(unsigned int fd,
 asmlinkage long compat_sys_vmsplice(int fd, const struct compat_iovec __user *,
 				    unsigned int nr_segs, unsigned int flags);
 asmlinkage long compat_sys_open(const char __user *filename, int flags,
-				int mode);
+				umode_t mode);
 asmlinkage long compat_sys_openat(unsigned int dfd, const char __user *filename,
-				  int flags, int mode);
+				  int flags, umode_t mode);
 asmlinkage long compat_sys_open_by_handle_at(int mountdirfd,
 					     struct file_handle __user *handle,
 					     int flags);
@@ -438,16 +438,6 @@ asmlinkage long compat_sys_ppoll(struct pollfd __user *ufds,
 				 struct compat_timespec __user *tsp,
 				 const compat_sigset_t __user *sigmask,
 				 compat_size_t sigsetsize);
-#if (defined(CONFIG_NFSD) || defined(CONFIG_NFSD_MODULE)) && \
-	!defined(CONFIG_NFSD_DEPRECATED)
-union compat_nfsctl_res;
-struct compat_nfsctl_arg;
-asmlinkage long compat_sys_nfsservctl(int cmd,
-				      struct compat_nfsctl_arg __user *arg,
-				      union compat_nfsctl_res __user *res);
-#else
-asmlinkage long compat_sys_nfsservctl(int cmd, void *notused, void *notused2);
-#endif
 asmlinkage long compat_sys_signalfd4(int ufd,
 				     const compat_sigset_t __user *sigmask,
 				     compat_size_t sigsetsize, int flags);
@@ -557,9 +547,23 @@ extern ssize_t compat_rw_copy_check_uvector(int type,
 		const struct compat_iovec __user *uvector,
 		unsigned long nr_segs,
 		unsigned long fast_segs, struct iovec *fast_pointer,
-		struct iovec **ret_pointer);
+		struct iovec **ret_pointer,
+		int check_access);
 
 extern void __user *compat_alloc_user_space(unsigned long len);
+
+asmlinkage ssize_t compat_sys_process_vm_readv(compat_pid_t pid,
+		const struct compat_iovec __user *lvec,
+		unsigned long liovcnt, const struct compat_iovec __user *rvec,
+		unsigned long riovcnt, unsigned long flags);
+asmlinkage ssize_t compat_sys_process_vm_writev(compat_pid_t pid,
+		const struct compat_iovec __user *lvec,
+		unsigned long liovcnt, const struct compat_iovec __user *rvec,
+		unsigned long riovcnt, unsigned long flags);
+
+#else
+
+#define is_compat_task() (0)
 
 #endif /* CONFIG_COMPAT */
 #endif /* _LINUX_COMPAT_H */

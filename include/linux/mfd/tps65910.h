@@ -243,7 +243,8 @@
 
 
 /*Registers VDD1, VDD2 voltage values definitions */
-#define VDD1_2_NUM_VOLTS				73
+#define VDD1_2_NUM_VOLT_FINE				73
+#define VDD1_2_NUM_VOLT_COARSE				3
 #define VDD1_2_MIN_VOLT					6000
 #define VDD1_2_OFFSET					125
 
@@ -269,7 +270,7 @@
 #define LDO1_SEL_MASK					0xFC
 #define LDO3_SEL_MASK					0x7C
 #define LDO_MIN_VOLT					1000
-#define LDO_MAX_VOLT					3300;
+#define LDO_MAX_VOLT					3300
 
 
 /*Register VDIG1  (0x80) register.RegisterDescription */
@@ -739,6 +740,34 @@
 #define TPS65910_GPIO_STS				BIT(1)
 #define TPS65910_GPIO_SET				BIT(0)
 
+/* Regulator Index Definitions */
+#define TPS65910_REG_VRTC				0
+#define TPS65910_REG_VIO				1
+#define TPS65910_REG_VDD1				2
+#define TPS65910_REG_VDD2				3
+#define TPS65910_REG_VDD3				4
+#define TPS65910_REG_VDIG1				5
+#define TPS65910_REG_VDIG2				6
+#define TPS65910_REG_VPLL				7
+#define TPS65910_REG_VDAC				8
+#define TPS65910_REG_VAUX1				9
+#define TPS65910_REG_VAUX2				10
+#define TPS65910_REG_VAUX33				11
+#define TPS65910_REG_VMMC				12
+
+#define TPS65911_REG_VDDCTRL				4
+#define TPS65911_REG_LDO1				5
+#define TPS65911_REG_LDO2				6
+#define TPS65911_REG_LDO3				7
+#define TPS65911_REG_LDO4				8
+#define TPS65911_REG_LDO5				9
+#define TPS65911_REG_LDO6				10
+#define TPS65911_REG_LDO7				11
+#define TPS65911_REG_LDO8				12
+
+/* Max number of TPS65910/11 regulators */
+#define TPS65910_NUM_REGS				13
+
 /**
  * struct tps65910_board
  * Board platform data may be used to initialize regulators.
@@ -750,7 +779,7 @@ struct tps65910_board {
 	int irq_base;
 	int vmbch_threshold;
 	int vmbch2_threshold;
-	struct regulator_init_data *tps65910_pmic_init_data;
+	struct regulator_init_data *tps65910_pmic_init_data[TPS65910_NUM_REGS];
 };
 
 /**
@@ -791,6 +820,7 @@ int tps65910_clear_bits(struct tps65910 *tps65910, u8 reg, u8 mask);
 void tps65910_gpio_init(struct tps65910 *tps65910, int gpio_base);
 int tps65910_irq_init(struct tps65910 *tps65910, int irq,
 		struct tps65910_platform_data *pdata);
+int tps65910_irq_exit(struct tps65910 *tps65910);
 
 static inline int tps65910_chip_id(struct tps65910 *tps65910)
 {

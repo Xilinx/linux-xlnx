@@ -56,7 +56,7 @@ static int carl9170_debugfs_open(struct inode *inode, struct file *file)
 
 struct carl9170_debugfs_fops {
 	unsigned int read_bufsize;
-	mode_t attr;
+	umode_t attr;
 	char *(*read)(struct ar9170 *ar, char *buf, size_t bufsize,
 		      ssize_t *len);
 	ssize_t (*write)(struct ar9170 *aru, const char *buf, size_t size);
@@ -695,7 +695,7 @@ static char *carl9170_debugfs_bug_read(struct ar9170 *ar, char *buf,
 }
 __DEBUGFS_DECLARE_RW_FILE(bug, 400, CARL9170_STOPPED);
 
-static const char *erp_modes[] = {
+static const char *const erp_modes[] = {
 	[CARL9170_ERP_INVALID] = "INVALID",
 	[CARL9170_ERP_AUTO] = "Automatic",
 	[CARL9170_ERP_MAC80211] = "Set by MAC80211",

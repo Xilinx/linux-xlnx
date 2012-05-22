@@ -22,7 +22,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
-#include <mach/gpio.h>
+#include <asm/gpio.h>
 #include "omapfb.h"
 
 #define MODULE_NAME	"omapfb-lcd_h3"
@@ -122,7 +122,7 @@ static int innovator1610_panel_resume(struct platform_device *pdev)
 	return 0;
 }
 
-struct platform_driver innovator1610_panel_driver = {
+static struct platform_driver innovator1610_panel_driver = {
 	.probe		= innovator1610_panel_probe,
 	.remove		= innovator1610_panel_remove,
 	.suspend	= innovator1610_panel_suspend,
@@ -133,16 +133,4 @@ struct platform_driver innovator1610_panel_driver = {
 	},
 };
 
-static int __init innovator1610_panel_drv_init(void)
-{
-	return platform_driver_register(&innovator1610_panel_driver);
-}
-
-static void __exit innovator1610_panel_drv_cleanup(void)
-{
-	platform_driver_unregister(&innovator1610_panel_driver);
-}
-
-module_init(innovator1610_panel_drv_init);
-module_exit(innovator1610_panel_drv_cleanup);
-
+module_platform_driver(innovator1610_panel_driver);

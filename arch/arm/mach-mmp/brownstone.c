@@ -14,7 +14,6 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
-#include <linux/gpio.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/max8649.h>
 #include <linux/regulator/fixed.h>
@@ -177,7 +176,23 @@ static struct i2c_board_info brownstone_twsi1_info[] = {
 };
 
 static struct sdhci_pxa_platdata mmp2_sdh_platdata_mmc0 = {
-	.max_speed	= 25000000,
+	.clk_delay_cycles = 0x1f,
+};
+
+static struct sdhci_pxa_platdata mmp2_sdh_platdata_mmc2 = {
+	.clk_delay_cycles = 0x1f,
+	.flags = PXA_FLAG_CARD_PERMANENT
+		| PXA_FLAG_SD_8_BIT_CAPABLE_SLOT,
+};
+
+static struct sram_platdata mmp2_asram_platdata = {
+	.pool_name	= "asram",
+	.granularity	= SRAM_GRANULARITY,
+};
+
+static struct sram_platdata mmp2_isram_platdata = {
+	.pool_name	= "isram",
+	.granularity	= SRAM_GRANULARITY,
 };
 
 static void __init brownstone_init(void)
@@ -187,8 +202,12 @@ static void __init brownstone_init(void)
 	/* on-chip devices */
 	mmp2_add_uart(1);
 	mmp2_add_uart(3);
+	platform_device_register(&mmp2_device_gpio);
 	mmp2_add_twsi(1, NULL, ARRAY_AND_SIZE(brownstone_twsi1_info));
 	mmp2_add_sdhost(0, &mmp2_sdh_platdata_mmc0); /* SD/MMC */
+	mmp2_add_sdhost(2, &mmp2_sdh_platdata_mmc2); /* eMMC */
+	mmp2_add_asram(&mmp2_asram_platdata);
+	mmp2_add_isram(&mmp2_isram_platdata);
 
 	/* enable 5v regulator */
 	platform_device_register(&brownstone_v_5vp_device);
@@ -201,4 +220,5 @@ MACHINE_START(BROWNSTONE, "Brownstone Development Platform")
 	.init_irq	= mmp2_init_irq,
 	.timer		= &mmp2_timer,
 	.init_machine	= brownstone_init,
+	.restart	= mmp_restart,
 MACHINE_END

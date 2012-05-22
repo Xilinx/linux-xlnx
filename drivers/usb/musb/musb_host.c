@@ -774,6 +774,10 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 			if (musb->double_buffer_not_ok)
 				musb_writew(epio, MUSB_TXMAXP,
 						hw_ep->max_packet_sz_tx);
+			else if (can_bulk_split(musb, qh->type))
+				musb_writew(epio, MUSB_TXMAXP, packet_sz
+					| ((hw_ep->max_packet_sz_tx /
+						packet_sz) - 1) << 11);
 			else
 				musb_writew(epio, MUSB_TXMAXP,
 						qh->maxpacket |
@@ -1932,7 +1936,7 @@ static int musb_urb_enqueue(
 	INIT_LIST_HEAD(&qh->ring);
 	qh->is_ready = 1;
 
-	qh->maxpacket = le16_to_cpu(epd->wMaxPacketSize);
+	qh->maxpacket = usb_endpoint_maxp(epd);
 	qh->type = usb_endpoint_type(epd);
 
 	/* Bits 11 & 12 of wMaxPacketSize encode high bandwidth multiplier.

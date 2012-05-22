@@ -30,6 +30,7 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 
 #include <asm/ip32/ip32_ints.h>
 #include <asm/ip32/mace.h>
@@ -975,15 +976,4 @@ static struct platform_driver sgio2audio_driver = {
 	}
 };
 
-static int __init alsa_card_sgio2audio_init(void)
-{
-	return platform_driver_register(&sgio2audio_driver);
-}
-
-static void __exit alsa_card_sgio2audio_exit(void)
-{
-	platform_driver_unregister(&sgio2audio_driver);
-}
-
-module_init(alsa_card_sgio2audio_init)
-module_exit(alsa_card_sgio2audio_exit)
+module_platform_driver(sgio2audio_driver);

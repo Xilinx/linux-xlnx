@@ -128,6 +128,8 @@ extern int genl_register_mc_group(struct genl_family *family,
 				  struct genl_multicast_group *grp);
 extern void genl_unregister_mc_group(struct genl_family *family,
 				     struct genl_multicast_group *grp);
+extern void genl_notify(struct sk_buff *skb, struct net *net, u32 pid,
+			u32 group, struct nlmsghdr *nlh, gfp_t flags);
 
 /**
  * genlmsg_put - Add generic netlink header to netlink message
@@ -157,6 +159,38 @@ static inline void *genlmsg_put(struct sk_buff *skb, u32 pid, u32 seq,
 	hdr->reserved = 0;
 
 	return (char *) hdr + GENL_HDRLEN;
+}
+
+/**
+ * genlmsg_nlhdr - Obtain netlink header from user specified header
+ * @user_hdr: user header as returned from genlmsg_put()
+ * @family: generic netlink family
+ *
+ * Returns pointer to netlink header.
+ */
+static inline struct nlmsghdr *genlmsg_nlhdr(void *user_hdr,
+					     struct genl_family *family)
+{
+	return (struct nlmsghdr *)((char *)user_hdr -
+				   family->hdrsize -
+				   GENL_HDRLEN -
+				   NLMSG_HDRLEN);
+}
+
+/**
+ * genl_dump_check_consistent - check if sequence is consistent and advertise if not
+ * @cb: netlink callback structure that stores the sequence number
+ * @user_hdr: user header as returned from genlmsg_put()
+ * @family: generic netlink family
+ *
+ * Cf. nl_dump_check_consistent(), this just provides a wrapper to make it
+ * simpler to use with generic netlink.
+ */
+static inline void genl_dump_check_consistent(struct netlink_callback *cb,
+					      void *user_hdr,
+					      struct genl_family *family)
+{
+	nl_dump_check_consistent(cb, genlmsg_nlhdr(user_hdr, family));
 }
 
 /**

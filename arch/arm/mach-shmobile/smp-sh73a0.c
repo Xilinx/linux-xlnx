@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/io.h>
 #include <mach/common.h>
+#include <asm/smp_plat.h>
 #include <asm/smp_scu.h>
 #include <asm/smp_twd.h>
 #include <asm/hardware/gic.h>
@@ -74,10 +75,12 @@ void __cpuinit sh73a0_secondary_init(unsigned int cpu)
 
 int __cpuinit sh73a0_boot_secondary(unsigned int cpu)
 {
+	cpu = cpu_logical_map(cpu);
+
 	/* enable cache coherency */
 	modify_scu_cpu_psr(0, 3 << (cpu * 8));
 
-	if (((__raw_readw(__io(PSTR)) >> (4 * cpu)) & 3) == 3)
+	if (((__raw_readl(__io(PSTR)) >> (4 * cpu)) & 3) == 3)
 		__raw_writel(1 << cpu, __io(WUPCR));	/* wake up */
 	else
 		__raw_writel(1 << cpu, __io(SRESCR));	/* reset */
@@ -87,6 +90,8 @@ int __cpuinit sh73a0_boot_secondary(unsigned int cpu)
 
 void __init sh73a0_smp_prepare_cpus(void)
 {
+	int cpu = cpu_logical_map(0);
+
 	scu_enable(scu_base_addr());
 
 	/* Map the reset vector (in headsmp.S) */
@@ -94,5 +99,5 @@ void __init sh73a0_smp_prepare_cpus(void)
 	__raw_writel(__pa(shmobile_secondary_vector), __io(SBAR));
 
 	/* enable cache coherency on CPU0 */
-	modify_scu_cpu_psr(0, 3 << (0 * 8));
+	modify_scu_cpu_psr(0, 3 << (cpu * 8));
 }

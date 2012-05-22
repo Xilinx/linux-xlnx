@@ -53,15 +53,10 @@ struct ad7298_state {
 	unsigned short			tx_buf[2];
 };
 
-#ifdef CONFIG_IIO_RING_BUFFER
-int ad7298_scan_from_ring(struct iio_dev *indio_dev, long ch);
+#ifdef CONFIG_IIO_BUFFER
 int ad7298_register_ring_funcs_and_init(struct iio_dev *indio_dev);
 void ad7298_ring_cleanup(struct iio_dev *indio_dev);
-#else /* CONFIG_IIO_RING_BUFFER */
-static inline int ad7298_scan_from_ring(struct iio_dev *indio_dev, long ch)
-{
-	return 0;
-}
+#else /* CONFIG_IIO_BUFFER */
 
 static inline int
 ad7298_register_ring_funcs_and_init(struct iio_dev *indio_dev)
@@ -72,5 +67,5 @@ ad7298_register_ring_funcs_and_init(struct iio_dev *indio_dev)
 static inline void ad7298_ring_cleanup(struct iio_dev *indio_dev)
 {
 }
-#endif /* CONFIG_IIO_RING_BUFFER */
+#endif /* CONFIG_IIO_BUFFER */
 #endif /* IIO_ADC_AD7298_H_ */

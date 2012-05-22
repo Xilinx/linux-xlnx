@@ -193,7 +193,7 @@ static const struct net_device_ops int51x1_netdev_ops = {
 	.ndo_change_mtu		= usbnet_change_mtu,
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
-	.ndo_set_multicast_list	= int51x1_set_multicast,
+	.ndo_set_rx_mode	= int51x1_set_multicast,
 };
 
 static int int51x1_bind(struct usbnet *dev, struct usb_interface *intf)
@@ -238,17 +238,7 @@ static struct usb_driver int51x1_driver = {
 	.resume     = usbnet_resume,
 };
 
-static int __init int51x1_init(void)
-{
-	return usb_register(&int51x1_driver);
-}
-module_init(int51x1_init);
-
-static void __exit int51x1_exit(void)
-{
-	usb_deregister(&int51x1_driver);
-}
-module_exit(int51x1_exit);
+module_usb_driver(int51x1_driver);
 
 MODULE_AUTHOR("Peter Holik");
 MODULE_DESCRIPTION("Intellon usb powerline adapter");

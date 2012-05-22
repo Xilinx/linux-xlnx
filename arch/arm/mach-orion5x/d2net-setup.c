@@ -336,25 +336,27 @@ static void __init d2net_init(void)
 
 #ifdef CONFIG_MACH_D2NET
 MACHINE_START(D2NET, "LaCie d2 Network")
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= d2net_init,
 	.map_io		= orion5x_map_io,
 	.init_early	= orion5x_init_early,
 	.init_irq	= orion5x_init_irq,
 	.timer		= &orion5x_timer,
 	.fixup		= tag_fixup_mem32,
+	.restart	= orion5x_restart,
 MACHINE_END
 #endif
 
 #ifdef CONFIG_MACH_BIGDISK
 MACHINE_START(BIGDISK, "LaCie Big Disk Network")
-	.boot_params	= 0x00000100,
+	.atag_offset	= 0x100,
 	.init_machine	= d2net_init,
 	.map_io		= orion5x_map_io,
 	.init_early	= orion5x_init_early,
 	.init_irq	= orion5x_init_irq,
 	.timer		= &orion5x_timer,
 	.fixup		= tag_fixup_mem32,
+	.restart	= orion5x_restart,
 MACHINE_END
 #endif
 

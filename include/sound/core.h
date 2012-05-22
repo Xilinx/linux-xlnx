@@ -22,7 +22,6 @@
  *
  */
 
-#include <linux/module.h>
 #include <linux/sched.h>		/* wake_up() */
 #include <linux/mutex.h>		/* struct mutex */
 #include <linux/rwsem.h>		/* struct rw_semaphore */
@@ -43,6 +42,7 @@
 #ifdef CONFIG_PCI
 struct pci_dev;
 #endif
+struct module;
 
 /* device allocation stuff */
 
@@ -62,6 +62,7 @@ typedef int __bitwise snd_device_type_t;
 #define	SNDRV_DEV_BUS		((__force snd_device_type_t) 0x1007)
 #define	SNDRV_DEV_CODEC		((__force snd_device_type_t) 0x1008)
 #define	SNDRV_DEV_JACK          ((__force snd_device_type_t) 0x1009)
+#define	SNDRV_DEV_COMPRESS	((__force snd_device_type_t) 0x100A)
 #define	SNDRV_DEV_LOWLEVEL	((__force snd_device_type_t) 0x2000)
 
 typedef int __bitwise snd_device_state_t;
@@ -326,9 +327,9 @@ void release_and_free_resource(struct resource *res);
 /* --- */
 
 #if defined(CONFIG_SND_DEBUG) || defined(CONFIG_SND_VERBOSE_PRINTK)
+__printf(4, 5)
 void __snd_printk(unsigned int level, const char *file, int line,
-		  const char *format, ...)
-     __attribute__ ((format (printf, 4, 5)));
+		  const char *format, ...);
 #else
 #define __snd_printk(level, file, line, format, args...) \
 	printk(format, ##args)
@@ -416,6 +417,7 @@ static inline int __snd_bug_on(int cond)
 #define gameport_get_port_data(gp) (gp)->port_data
 #endif
 
+#ifdef CONFIG_PCI
 /* PCI quirk list helper */
 struct snd_pci_quirk {
 	unsigned short subvendor;	/* PCI subvendor ID */
@@ -455,5 +457,6 @@ snd_pci_quirk_lookup(struct pci_dev *pci, const struct snd_pci_quirk *list);
 const struct snd_pci_quirk *
 snd_pci_quirk_lookup_id(u16 vendor, u16 device,
 			const struct snd_pci_quirk *list);
+#endif
 
 #endif /* __SOUND_CORE_H */

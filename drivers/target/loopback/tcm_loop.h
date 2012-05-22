@@ -1,26 +1,11 @@
 #define TCM_LOOP_VERSION		"v2.1-rc1"
 #define TL_WWN_ADDR_LEN			256
 #define TL_TPGS_PER_HBA			32
-/*
- * Defaults for struct scsi_host_template tcm_loop_driver_template
- *
- * We use large can_queue and cmd_per_lun here and let TCM enforce
- * the underlying se_device_t->queue_depth.
- */
-#define TL_SCSI_CAN_QUEUE		1024
-#define TL_SCSI_CMD_PER_LUN		1024
-#define TL_SCSI_MAX_SECTORS		1024
-#define TL_SCSI_SG_TABLESIZE		256
+
 /*
  * Used in tcm_loop_driver_probe() for struct Scsi_Host->max_cmd_len
  */
 #define TL_SCSI_MAX_CMD_LEN		32
-
-#ifdef CONFIG_LOOPBACK_TARGET_CDB_DEBUG
-# define TL_CDB_DEBUG(x...)		printk(KERN_INFO x)
-#else
-# define TL_CDB_DEBUG(x...)
-#endif
 
 struct tcm_loop_cmd {
 	/* State of Linux/SCSI CDB+Data descriptor */

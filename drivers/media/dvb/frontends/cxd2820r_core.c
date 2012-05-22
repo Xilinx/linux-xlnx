@@ -240,418 +240,239 @@ error:
 	return ret;
 }
 
-/* lock FE */
-static int cxd2820r_lock(struct cxd2820r_priv *priv, int active_fe)
-{
-	int ret = 0;
-	dbg("%s: active_fe=%d", __func__, active_fe);
-
-	mutex_lock(&priv->fe_lock);
-
-	/* -1=NONE, 0=DVB-T/T2, 1=DVB-C */
-	if (priv->active_fe == active_fe)
-		;
-	else if (priv->active_fe == -1)
-		priv->active_fe = active_fe;
-	else
-		ret = -EBUSY;
-
-	mutex_unlock(&priv->fe_lock);
-
-	return ret;
-}
-
-/* unlock FE */
-static void cxd2820r_unlock(struct cxd2820r_priv *priv, int active_fe)
-{
-	dbg("%s: active_fe=%d", __func__, active_fe);
-
-	mutex_lock(&priv->fe_lock);
-
-	/* -1=NONE, 0=DVB-T/T2, 1=DVB-C */
-	if (priv->active_fe == active_fe)
-		priv->active_fe = -1;
-
-	mutex_unlock(&priv->fe_lock);
-
-	return;
-}
-
 /* 64 bit div with round closest, like DIV_ROUND_CLOSEST but 64 bit */
 u32 cxd2820r_div_u64_round_closest(u64 dividend, u32 divisor)
 {
 	return div_u64(dividend + (divisor / 2), divisor);
 }
 
-static int cxd2820r_set_frontend(struct dvb_frontend *fe,
-	struct dvb_frontend_parameters *p)
+static int cxd2820r_set_frontend(struct dvb_frontend *fe)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (priv->delivery_system) {
-		case SYS_UNDEFINED:
-			if (c->delivery_system == SYS_DVBT) {
-				/* SLEEP => DVB-T */
-				ret = cxd2820r_set_frontend_t(fe, p);
-			} else {
-				/* SLEEP => DVB-T2 */
-				ret = cxd2820r_set_frontend_t2(fe, p);
-			}
-			break;
-		case SYS_DVBT:
-			if (c->delivery_system == SYS_DVBT) {
-				/* DVB-T => DVB-T */
-				ret = cxd2820r_set_frontend_t(fe, p);
-			} else if (c->delivery_system == SYS_DVBT2) {
-				/* DVB-T => DVB-T2 */
-				ret = cxd2820r_sleep_t(fe);
-				ret = cxd2820r_set_frontend_t2(fe, p);
-			}
-			break;
-		case SYS_DVBT2:
-			if (c->delivery_system == SYS_DVBT2) {
-				/* DVB-T2 => DVB-T2 */
-				ret = cxd2820r_set_frontend_t2(fe, p);
-			} else if (c->delivery_system == SYS_DVBT) {
-				/* DVB-T2 => DVB-T */
-				ret = cxd2820r_sleep_t2(fe);
-				ret = cxd2820r_set_frontend_t(fe, p);
-			}
-			break;
-		default:
-			dbg("%s: error state=%d", __func__,
-				priv->delivery_system);
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
-		ret = cxd2820r_set_frontend_c(fe, p);
+	switch (c->delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_init_t(fe);
+		if (ret < 0)
+			goto err;
+		ret = cxd2820r_set_frontend_t(fe);
+		if (ret < 0)
+			goto err;
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_init_t(fe);
+		if (ret < 0)
+			goto err;
+		ret = cxd2820r_set_frontend_t2(fe);
+		if (ret < 0)
+			goto err;
+		break;
+	case SYS_DVBC_ANNEX_A:
+		ret = cxd2820r_init_c(fe);
+		if (ret < 0)
+			goto err;
+		ret = cxd2820r_set_frontend_c(fe);
+		if (ret < 0)
+			goto err;
+		break;
+	default:
+		dbg("%s: error state=%d", __func__, fe->dtv_property_cache.delivery_system);
+		ret = -EINVAL;
+		break;
 	}
-
+err:
 	return ret;
 }
-
 static int cxd2820r_read_status(struct dvb_frontend *fe, fe_status_t *status)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_read_status_t(fe, status);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_read_status_t2(fe, status);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_read_status_t(fe, status);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_read_status_t2(fe, status);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_read_status_c(fe, status);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
-static int cxd2820r_get_frontend(struct dvb_frontend *fe,
-	struct dvb_frontend_parameters *p)
+static int cxd2820r_get_frontend(struct dvb_frontend *fe)
 {
 	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
 
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
+	if (priv->delivery_system == SYS_UNDEFINED)
+		return 0;
 
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_get_frontend_t(fe, p);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_get_frontend_t2(fe, p);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
-		ret = cxd2820r_get_frontend_c(fe, p);
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_get_frontend_t(fe);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_get_frontend_t2(fe);
+		break;
+	case SYS_DVBC_ANNEX_A:
+		ret = cxd2820r_get_frontend_c(fe);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_read_ber(struct dvb_frontend *fe, u32 *ber)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_read_ber_t(fe, ber);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_read_ber_t2(fe, ber);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_read_ber_t(fe, ber);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_read_ber_t2(fe, ber);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_read_ber_c(fe, ber);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_read_signal_strength_t(fe, strength);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_read_signal_strength_t2(fe, strength);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_read_signal_strength_t(fe, strength);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_read_signal_strength_t2(fe, strength);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_read_signal_strength_c(fe, strength);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_read_snr(struct dvb_frontend *fe, u16 *snr)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_read_snr_t(fe, snr);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_read_snr_t2(fe, snr);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_read_snr_t(fe, snr);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_read_snr_t2(fe, snr);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_read_snr_c(fe, snr);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_read_ucblocks_t(fe, ucblocks);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_read_ucblocks_t2(fe, ucblocks);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_read_ucblocks_t(fe, ucblocks);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_read_ucblocks_t2(fe, ucblocks);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_read_ucblocks_c(fe, ucblocks);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_init(struct dvb_frontend *fe)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
-	int ret;
-	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	priv->delivery_system = SYS_UNDEFINED;
-	/* delivery system is unknown at that (init) phase */
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		ret = cxd2820r_init_t(fe);
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
-		ret = cxd2820r_init_c(fe);
-	}
-
-	return ret;
+	return 0;
 }
 
 static int cxd2820r_sleep(struct dvb_frontend *fe)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_sleep_t(fe);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_sleep_t2(fe);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-
-		cxd2820r_unlock(priv, 0);
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_sleep_t(fe);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_sleep_t2(fe);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_sleep_c(fe);
-
-		cxd2820r_unlock(priv, 1);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
 static int cxd2820r_get_tune_settings(struct dvb_frontend *fe,
-	struct dvb_frontend_tune_settings *s)
+				      struct dvb_frontend_tune_settings *s)
 {
-	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	int ret;
+
 	dbg("%s: delsys=%d", __func__, fe->dtv_property_cache.delivery_system);
-
-	if (fe->ops.info.type == FE_OFDM) {
-		/* DVB-T/T2 */
-		ret = cxd2820r_lock(priv, 0);
-		if (ret)
-			return ret;
-
-		switch (fe->dtv_property_cache.delivery_system) {
-		case SYS_DVBT:
-			ret = cxd2820r_get_tune_settings_t(fe, s);
-			break;
-		case SYS_DVBT2:
-			ret = cxd2820r_get_tune_settings_t2(fe, s);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-	} else {
-		/* DVB-C */
-		ret = cxd2820r_lock(priv, 1);
-		if (ret)
-			return ret;
-
+	switch (fe->dtv_property_cache.delivery_system) {
+	case SYS_DVBT:
+		ret = cxd2820r_get_tune_settings_t(fe, s);
+		break;
+	case SYS_DVBT2:
+		ret = cxd2820r_get_tune_settings_t2(fe, s);
+		break;
+	case SYS_DVBC_ANNEX_A:
 		ret = cxd2820r_get_tune_settings_c(fe, s);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
-
 	return ret;
 }
 
-static enum dvbfe_search cxd2820r_search(struct dvb_frontend *fe,
-	struct dvb_frontend_parameters *p)
+static enum dvbfe_search cxd2820r_search(struct dvb_frontend *fe)
 {
 	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
@@ -661,14 +482,23 @@ static enum dvbfe_search cxd2820r_search(struct dvb_frontend *fe,
 
 	/* switch between DVB-T and DVB-T2 when tune fails */
 	if (priv->last_tune_failed) {
-		if (priv->delivery_system == SYS_DVBT)
+		if (priv->delivery_system == SYS_DVBT) {
+			ret = cxd2820r_sleep_t(fe);
+			if (ret)
+				goto error;
+
 			c->delivery_system = SYS_DVBT2;
-		else
+		} else if (priv->delivery_system == SYS_DVBT2) {
+			ret = cxd2820r_sleep_t2(fe);
+			if (ret)
+				goto error;
+
 			c->delivery_system = SYS_DVBT;
+		}
 	}
 
 	/* set frontend */
-	ret = cxd2820r_set_frontend(fe, p);
+	ret = cxd2820r_set_frontend(fe);
 	if (ret)
 		goto error;
 
@@ -676,6 +506,7 @@ static enum dvbfe_search cxd2820r_search(struct dvb_frontend *fe,
 	/* frontend lock wait loop count */
 	switch (priv->delivery_system) {
 	case SYS_DVBT:
+	case SYS_DVBC_ANNEX_A:
 		i = 20;
 		break;
 	case SYS_DVBT2:
@@ -723,192 +554,92 @@ static void cxd2820r_release(struct dvb_frontend *fe)
 	struct cxd2820r_priv *priv = fe->demodulator_priv;
 	dbg("%s", __func__);
 
-	if (fe->ops.info.type == FE_OFDM) {
-		i2c_del_adapter(&priv->tuner_i2c_adapter);
-		kfree(priv);
-	}
-
+	kfree(priv);
 	return;
 }
 
-static u32 cxd2820r_tuner_i2c_func(struct i2c_adapter *adapter)
-{
-	return I2C_FUNC_I2C;
-}
-
-static int cxd2820r_tuner_i2c_xfer(struct i2c_adapter *i2c_adap,
-	struct i2c_msg msg[], int num)
-{
-	struct cxd2820r_priv *priv = i2c_get_adapdata(i2c_adap);
-	u8 obuf[msg[0].len + 2];
-	struct i2c_msg msg2[2] = {
-		{
-			.addr = priv->cfg.i2c_address,
-			.flags = 0,
-			.len = sizeof(obuf),
-			.buf = obuf,
-		}, {
-			.addr = priv->cfg.i2c_address,
-			.flags = I2C_M_RD,
-			.len = msg[1].len,
-			.buf = msg[1].buf,
-		}
-	};
-
-	obuf[0] = 0x09;
-	obuf[1] = (msg[0].addr << 1);
-	if (num == 2) { /* I2C read */
-		obuf[1] = (msg[0].addr << 1) | I2C_M_RD; /* I2C RD flag */
-		msg2[0].len = sizeof(obuf) - 1; /* maybe HW bug ? */
-	}
-	memcpy(&obuf[2], msg[0].buf, msg[0].len);
-
-	return i2c_transfer(priv->i2c, msg2, num);
-}
-
-static struct i2c_algorithm cxd2820r_tuner_i2c_algo = {
-	.master_xfer   = cxd2820r_tuner_i2c_xfer,
-	.functionality = cxd2820r_tuner_i2c_func,
-};
-
-struct i2c_adapter *cxd2820r_get_tuner_i2c_adapter(struct dvb_frontend *fe)
+static int cxd2820r_i2c_gate_ctrl(struct dvb_frontend *fe, int enable)
 {
 	struct cxd2820r_priv *priv = fe->demodulator_priv;
-	return &priv->tuner_i2c_adapter;
-}
-EXPORT_SYMBOL(cxd2820r_get_tuner_i2c_adapter);
+	dbg("%s: %d", __func__, enable);
 
-static struct dvb_frontend_ops cxd2820r_ops[2];
+	/* Bit 0 of reg 0xdb in bank 0x00 controls I2C repeater */
+	return cxd2820r_wr_reg_mask(priv, 0xdb, enable ? 1 : 0, 0x1);
+}
+
+static const struct dvb_frontend_ops cxd2820r_ops = {
+	.delsys = { SYS_DVBT, SYS_DVBT2, SYS_DVBC_ANNEX_A },
+	/* default: DVB-T/T2 */
+	.info = {
+		.name = "Sony CXD2820R",
+
+		.caps =	FE_CAN_FEC_1_2			|
+			FE_CAN_FEC_2_3			|
+			FE_CAN_FEC_3_4			|
+			FE_CAN_FEC_5_6			|
+			FE_CAN_FEC_7_8			|
+			FE_CAN_FEC_AUTO			|
+			FE_CAN_QPSK			|
+			FE_CAN_QAM_16			|
+			FE_CAN_QAM_32			|
+			FE_CAN_QAM_64			|
+			FE_CAN_QAM_128			|
+			FE_CAN_QAM_256			|
+			FE_CAN_QAM_AUTO			|
+			FE_CAN_TRANSMISSION_MODE_AUTO	|
+			FE_CAN_GUARD_INTERVAL_AUTO	|
+			FE_CAN_HIERARCHY_AUTO		|
+			FE_CAN_MUTE_TS			|
+			FE_CAN_2G_MODULATION
+		},
+
+	.release		= cxd2820r_release,
+	.init			= cxd2820r_init,
+	.sleep			= cxd2820r_sleep,
+
+	.get_tune_settings	= cxd2820r_get_tune_settings,
+	.i2c_gate_ctrl		= cxd2820r_i2c_gate_ctrl,
+
+	.get_frontend		= cxd2820r_get_frontend,
+
+	.get_frontend_algo	= cxd2820r_get_frontend_algo,
+	.search			= cxd2820r_search,
+
+	.read_status		= cxd2820r_read_status,
+	.read_snr		= cxd2820r_read_snr,
+	.read_ber		= cxd2820r_read_ber,
+	.read_ucblocks		= cxd2820r_read_ucblocks,
+	.read_signal_strength	= cxd2820r_read_signal_strength,
+};
 
 struct dvb_frontend *cxd2820r_attach(const struct cxd2820r_config *cfg,
-	struct i2c_adapter *i2c, struct dvb_frontend *fe)
+		struct i2c_adapter *i2c)
 {
-	int ret;
 	struct cxd2820r_priv *priv = NULL;
+	int ret;
 	u8 tmp;
 
-	if (fe == NULL) {
-		/* FE0 */
-		/* allocate memory for the internal priv */
-		priv = kzalloc(sizeof(struct cxd2820r_priv), GFP_KERNEL);
-		if (priv == NULL)
-			goto error;
+	priv = kzalloc(sizeof (struct cxd2820r_priv), GFP_KERNEL);
+	if (!priv)
+		goto error;
 
-		/* setup the priv */
-		priv->i2c = i2c;
-		memcpy(&priv->cfg, cfg, sizeof(struct cxd2820r_config));
-		mutex_init(&priv->fe_lock);
+	priv->i2c = i2c;
+	memcpy(&priv->cfg, cfg, sizeof (struct cxd2820r_config));
 
-		priv->active_fe = -1; /* NONE */
+	priv->bank[0] = priv->bank[1] = 0xff;
+	ret = cxd2820r_rd_reg(priv, 0x000fd, &tmp);
+	dbg("%s: chip id=%02x", __func__, tmp);
+	if (ret || tmp != 0xe1)
+		goto error;
 
-		/* check if the demod is there */
-		priv->bank[0] = priv->bank[1] = 0xff;
-		ret = cxd2820r_rd_reg(priv, 0x000fd, &tmp);
-		dbg("%s: chip id=%02x", __func__, tmp);
-		if (ret || tmp != 0xe1)
-			goto error;
-
-		/* create frontends */
-		memcpy(&priv->fe[0].ops, &cxd2820r_ops[0],
-			sizeof(struct dvb_frontend_ops));
-		memcpy(&priv->fe[1].ops, &cxd2820r_ops[1],
-			sizeof(struct dvb_frontend_ops));
-
-		priv->fe[0].demodulator_priv = priv;
-		priv->fe[1].demodulator_priv = priv;
-
-		/* create tuner i2c adapter */
-		strlcpy(priv->tuner_i2c_adapter.name,
-			"CXD2820R tuner I2C adapter",
-			sizeof(priv->tuner_i2c_adapter.name));
-		priv->tuner_i2c_adapter.algo = &cxd2820r_tuner_i2c_algo;
-		priv->tuner_i2c_adapter.algo_data = NULL;
-		i2c_set_adapdata(&priv->tuner_i2c_adapter, priv);
-		if (i2c_add_adapter(&priv->tuner_i2c_adapter) < 0) {
-			err("tuner I2C bus could not be initialized");
-			goto error;
-		}
-
-		return &priv->fe[0];
-
-	} else {
-		/* FE1: FE0 given as pointer, just return FE1 we have
-		 * already created */
-		priv = fe->demodulator_priv;
-		return &priv->fe[1];
-	}
-
+	memcpy(&priv->fe.ops, &cxd2820r_ops, sizeof (struct dvb_frontend_ops));
+	priv->fe.demodulator_priv = priv;
+	return &priv->fe;
 error:
 	kfree(priv);
 	return NULL;
 }
 EXPORT_SYMBOL(cxd2820r_attach);
-
-static struct dvb_frontend_ops cxd2820r_ops[2] = {
-	{
-		/* DVB-T/T2 */
-		.info = {
-			.name = "Sony CXD2820R (DVB-T/T2)",
-			.type = FE_OFDM,
-			.caps =
-				FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 |
-				FE_CAN_FEC_3_4 | FE_CAN_FEC_5_6 |
-				FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
-				FE_CAN_QPSK | FE_CAN_QAM_16 |
-				FE_CAN_QAM_64 | FE_CAN_QAM_256 |
-				FE_CAN_QAM_AUTO |
-				FE_CAN_TRANSMISSION_MODE_AUTO |
-				FE_CAN_GUARD_INTERVAL_AUTO |
-				FE_CAN_HIERARCHY_AUTO |
-				FE_CAN_MUTE_TS |
-				FE_CAN_2G_MODULATION
-		},
-
-		.release = cxd2820r_release,
-		.init = cxd2820r_init,
-		.sleep = cxd2820r_sleep,
-
-		.get_tune_settings = cxd2820r_get_tune_settings,
-
-		.get_frontend = cxd2820r_get_frontend,
-
-		.get_frontend_algo = cxd2820r_get_frontend_algo,
-		.search = cxd2820r_search,
-
-		.read_status = cxd2820r_read_status,
-		.read_snr = cxd2820r_read_snr,
-		.read_ber = cxd2820r_read_ber,
-		.read_ucblocks = cxd2820r_read_ucblocks,
-		.read_signal_strength = cxd2820r_read_signal_strength,
-	},
-	{
-		/* DVB-C */
-		.info = {
-			.name = "Sony CXD2820R (DVB-C)",
-			.type = FE_QAM,
-			.caps =
-				FE_CAN_QAM_16 | FE_CAN_QAM_32 | FE_CAN_QAM_64 |
-				FE_CAN_QAM_128 | FE_CAN_QAM_256 |
-				FE_CAN_FEC_AUTO
-		},
-
-		.release = cxd2820r_release,
-		.init = cxd2820r_init,
-		.sleep = cxd2820r_sleep,
-
-		.get_tune_settings = cxd2820r_get_tune_settings,
-
-		.set_frontend = cxd2820r_set_frontend,
-		.get_frontend = cxd2820r_get_frontend,
-
-		.read_status = cxd2820r_read_status,
-		.read_snr = cxd2820r_read_snr,
-		.read_ber = cxd2820r_read_ber,
-		.read_ucblocks = cxd2820r_read_ucblocks,
-		.read_signal_strength = cxd2820r_read_signal_strength,
-	},
-};
-
 
 MODULE_AUTHOR("Antti Palosaari <crope@iki.fi>");
 MODULE_DESCRIPTION("Sony CXD2820R demodulator driver");

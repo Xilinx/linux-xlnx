@@ -41,6 +41,7 @@
 #include <linux/usb/ulpi.h>
 #include <plat/usb.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pm_runtime.h>
 
 /* EHCI Register Set */
 #define EHCI_INSNREG04					(0xA0)
@@ -98,6 +99,18 @@ static void omap_ehci_soft_phy_reset(struct platform_device *pdev, u8 port)
 	}
 }
 
+static void disable_put_regulator(
+		struct ehci_hcd_omap_platform_data *pdata)
+{
+	int i;
+
+	for (i = 0 ; i < OMAP3_HS_USB_PORTS ; i++) {
+		if (pdata->regulator[i]) {
+			regulator_disable(pdata->regulator[i]);
+			regulator_put(pdata->regulator[i]);
+		}
+	}
+}
 
 /* configure so an HC device and id are always provided */
 /* always called with process context; sleeping is OK */
@@ -178,11 +191,8 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = omap_usbhs_enable(dev);
-	if (ret) {
-		dev_err(dev, "failed to start usbhs with err %d\n", ret);
-		goto err_enable;
-	}
+	pm_runtime_enable(dev);
+	pm_runtime_get_sync(dev);
 
 	/*
 	 * An undocumented "feature" in the OMAP3 EHCI controller,
@@ -216,7 +226,9 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 	/* cache this readonly data; minimize chip reads */
 	omap_ehci->hcs_params = readl(&omap_ehci->caps->hcs_params);
 
-	ret = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	ehci_reset(omap_ehci);
+
+	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret) {
 		dev_err(dev, "failed to add hcd with err %d\n", ret);
 		goto err_add_hcd;
@@ -228,12 +240,11 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 	return 0;
 
 err_add_hcd:
-	omap_usbhs_disable(dev);
-
-err_enable:
-	usb_put_hcd(hcd);
+	disable_put_regulator(pdata);
+	pm_runtime_put_sync(dev);
 
 err_io:
+	iounmap(regs);
 	return ret;
 }
 
@@ -252,8 +263,12 @@ static int ehci_hcd_omap_remove(struct platform_device *pdev)
 	struct usb_hcd *hcd	= dev_get_drvdata(dev);
 
 	usb_remove_hcd(hcd);
-	omap_usbhs_disable(dev);
+	disable_put_regulator(dev->platform_data);
+	iounmap(hcd->regs);
 	usb_put_hcd(hcd);
+	pm_runtime_put_sync(dev);
+	pm_runtime_disable(dev);
+
 	return 0;
 }
 

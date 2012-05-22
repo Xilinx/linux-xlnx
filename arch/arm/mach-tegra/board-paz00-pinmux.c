@@ -16,10 +16,14 @@
 
 #include <linux/kernel.h>
 #include <linux/gpio.h>
+#include <linux/of.h>
+
 #include <mach/pinmux.h>
+#include <mach/pinmux-tegra20.h>
 
 #include "gpio-names.h"
 #include "board-paz00.h"
+#include "board-pinmux.h"
 
 static struct tegra_pingroup_config paz00_pinmux[] = {
 	{TEGRA_PINGROUP_ATA,   TEGRA_MUX_GMI,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
@@ -27,7 +31,7 @@ static struct tegra_pingroup_config paz00_pinmux[] = {
 	{TEGRA_PINGROUP_ATC,   TEGRA_MUX_GMI,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_ATD,   TEGRA_MUX_GMI,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_ATE,   TEGRA_MUX_GMI,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
-	{TEGRA_PINGROUP_CDEV1, TEGRA_MUX_PLLA_OUT,      TEGRA_PUPD_PULL_DOWN, TEGRA_TRI_TRISTATE},
+	{TEGRA_PINGROUP_CDEV1, TEGRA_MUX_PLLA_OUT,      TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_CDEV2, TEGRA_MUX_PLLP_OUT4,     TEGRA_PUPD_PULL_DOWN, TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_CRTP,  TEGRA_MUX_CRT,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_TRISTATE},
 	{TEGRA_PINGROUP_CSUS,  TEGRA_MUX_PLLC_OUT1,     TEGRA_PUPD_PULL_DOWN, TEGRA_TRI_TRISTATE},
@@ -141,17 +145,23 @@ static struct tegra_pingroup_config paz00_pinmux[] = {
 };
 
 static struct tegra_gpio_table gpio_table[] = {
-	{ .gpio = TEGRA_GPIO_SD1_CD,	.enable = true	},
-	{ .gpio = TEGRA_GPIO_SD1_WP,	.enable = true	},
-	{ .gpio = TEGRA_GPIO_SD1_POWER,	.enable = true	},
-	{ .gpio = TEGRA_GPIO_SD4_CD,	.enable = true	},
-	{ .gpio = TEGRA_GPIO_SD4_WP,	.enable = true	},
-	{ .gpio = TEGRA_GPIO_SD4_POWER,	.enable = true	},
+	{ .gpio = TEGRA_GPIO_SD1_CD,	.enable = true },
+	{ .gpio = TEGRA_GPIO_SD1_WP,	.enable = true },
+	{ .gpio = TEGRA_GPIO_SD1_POWER,	.enable = true },
+	{ .gpio = TEGRA_ULPI_RST,	.enable = true },
+	{ .gpio = TEGRA_WIFI_PWRN,	.enable = true },
+	{ .gpio = TEGRA_WIFI_RST,	.enable = true },
+	{ .gpio = TEGRA_WIFI_LED,	.enable = true },
+};
+
+static struct tegra_board_pinmux_conf conf = {
+	.pgs = paz00_pinmux,
+	.pg_count = ARRAY_SIZE(paz00_pinmux),
+	.gpios = gpio_table,
+	.gpio_count = ARRAY_SIZE(gpio_table),
 };
 
 void paz00_pinmux_init(void)
 {
-	tegra_pinmux_config_table(paz00_pinmux, ARRAY_SIZE(paz00_pinmux));
-
-	tegra_gpio_config(gpio_table, ARRAY_SIZE(gpio_table));
+	tegra_board_pinmux_init(&conf, NULL);
 }

@@ -12,6 +12,11 @@
 #define EM_GPO_2   (1 << 2)
 #define EM_GPO_3   (1 << 3)
 
+/* em28xx endpoints */
+#define EM28XX_EP_ANALOG	0x82
+#define EM28XX_EP_AUDIO		0x83
+#define EM28XX_EP_DIGITAL	0x84
+
 /* em2800 registers */
 #define EM2800_R08_AUDIOSRC 0x08
 
@@ -201,6 +206,7 @@ enum em28xx_chip_id {
 	CHIP_ID_EM2870 = 35,
 	CHIP_ID_EM2883 = 36,
 	CHIP_ID_EM2874 = 65,
+	CHIP_ID_EM2884 = 68,
 	CHIP_ID_EM28174 = 113,
 };
 

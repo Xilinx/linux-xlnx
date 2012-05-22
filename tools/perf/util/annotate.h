@@ -72,7 +72,7 @@ static inline struct annotation *symbol__annotation(struct symbol *sym)
 
 int symbol__inc_addr_samples(struct symbol *sym, struct map *map,
 			     int evidx, u64 addr);
-int symbol__alloc_hist(struct symbol *sym, int nevents);
+int symbol__alloc_hist(struct symbol *sym);
 void symbol__annotate_zero_histograms(struct symbol *sym);
 
 int symbol__annotate(struct symbol *sym, struct map *map, size_t privsize);
@@ -91,13 +91,17 @@ int symbol__tty_annotate(struct symbol *sym, struct map *map, int evidx,
 #ifdef NO_NEWT_SUPPORT
 static inline int symbol__tui_annotate(struct symbol *sym __used,
 				       struct map *map __used,
-				       int evidx __used, int refresh __used)
+				       int evidx __used,
+				       void(*timer)(void *arg) __used,
+				       void *arg __used, int delay_secs __used)
 {
 	return 0;
 }
 #else
 int symbol__tui_annotate(struct symbol *sym, struct map *map, int evidx,
-			 int refresh);
+			 void(*timer)(void *arg), void *arg, int delay_secs);
 #endif
+
+extern const char	*disassembler_style;
 
 #endif	/* __PERF_ANNOTATE_H */

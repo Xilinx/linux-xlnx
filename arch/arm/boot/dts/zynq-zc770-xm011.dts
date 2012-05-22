@@ -23,29 +23,30 @@
 		#size-cells = <0x1>;
 		ranges;
 
-		intc@f8f01000 {
+		gic: intc@f8f01000 {
 			interrupt-controller;
-			compatible = "arm,gic";
-			reg = <0xf8f01000 0x1000>;
-			#interrupt-cells = <0x2>;
-			linux,phandle = <0x1>;
-			phandle = <0x1>;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = < 0xf8f01000 0x1000 >,
+			      < 0xf8f00100 0x0100 >;
 		};
 
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0001000 0x1000>;
-			interrupts = <0x52 0x0>;
+			interrupts = < 0 50 0 >;
+			interrupt-parent = <&gic>;
 			clock = <0x2faf080>;
 		};
 
 		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>; 
+			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <0x7ed6b40>;
 			clock-frequency-timer1 = <0x7ed6b40>;
 			clock-frequency-timer2 = <0x7ed6b40>;
-			compatible = "xlnx,ps7-ttc-1.00.a";
-			interrupts = < 42 0 43 0 44 0 >;
-			reg = < 0xf8001000 0x1000 >;
 		};
 
 		swdt@f8005000 {
@@ -58,7 +59,8 @@
 		spi: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xe0006000 0x1000>;
-			interrupts = <58 0>;
+			interrupts = <0 26 0>;
+			interrupt-parent = <&gic>;
 			speed-hz = <50000000>;
 			bus-num = <0>;
 			num-chip-select = <4>;
@@ -99,7 +101,8 @@
 		i2c: i2c@e0005000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xe0005000 0x1000>;
-			interrupts = <80 0>;
+			interrupts = <0 48 0>;
+			interrupt-parent = <&gic>;
 			bus-id = <1>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
@@ -115,7 +118,8 @@
 		usb@e0003000 {
 			compatible = "xlnx,ps7-usb-1.00.a";
 			reg = <0xe0003000 0x1000>;
-			interrupts = <0x4C 0x0>;
+			interrupts = <0 44 0x0>;
+			interrupt-parent = <&gic>;
 			dr_mode = "host";
 			phy_type = "ulpi";
 		};
@@ -123,7 +127,8 @@
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;
-			interrupts = <0x28 0x0>;
+			interrupts = <0 8 0>;
+			interrupt-parent = <&gic>;
 		};
 	};
 };

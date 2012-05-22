@@ -22,19 +22,19 @@
 		#size-cells = <0x1>;
 		ranges;
 
-		intc@f8f01000 {
+		gic: intc@f8f01000 {
 			interrupt-controller;
-			compatible = "arm,gic";
-			reg = <0xf8f01000 0x1000>;
-			#interrupt-cells = <0x2>;
-			linux,phandle = <0x1>;
-			phandle = <0x1>;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = < 0xf8f01000 0x1000 >,
+			      < 0xf8f00100 0x0100 >;
 		};
 
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0001000 0x1000>;
-			interrupts = <0x52 0x0>;
+			interrupts = < 0 50 0 >;
+			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
 
@@ -43,8 +43,17 @@
 			clock-frequency-timer1 = <111111111>;
 			clock-frequency-timer2 = <111111111>;
 			compatible = "xlnx,ps7-ttc-1.00.a";
+<<<<<<< HEAD:arch/arm/boot/dts/zynq-zc702.dts
 			interrupts = < 42 0 43 0 44 0 >;
 			reg = < 0xf8001000 0x1000 >;
+=======
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>; 
+			interrupt-parent = <&gic>;
+			clock-frequency-timer0 = <111111111>;
+			clock-frequency-timer1 = <111111111>;
+			clock-frequency-timer2 = <111111111>;
+>>>>>>> master-3.3:arch/arm/boot/dts/zynq-zc702.dts
 		};
 
 		swdt@f8005000 {
@@ -57,7 +66,8 @@
 		eth@e000b000 {
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xe000b000 0x1000>;
-			interrupts = <0x36 0x0>;
+			interrupts = <0 22 0>;
+			interrupt-parent = <&gic>;
 			phy-handle = <&phy0>;
 			xlnx,ptp-enet-clock = <111111111>;
 			xlnx,slcr-div0-1000Mbps = <8>;
@@ -79,7 +89,8 @@
 		i2c0: i2c@e0004000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xE0004000 0x1000>;
-			interrupts = <57 0>;
+			interrupts = <0 25 0>;
+			interrupt-parent = <&gic>;
 			bus-id = <0>;
 			input-clk = <111111111>;
 			i2c-clk = <100000>;
@@ -89,16 +100,18 @@
 		};
 
 		sdhci@e0100000 {
-			compatible = "generic-sdhci";
+			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xe0100000 0x1000>;
-			interrupts = <0x38 0x0>;
+			interrupts = <0 24 0>;
+			interrupt-parent = <&gic>;
 			clock-frequency = <33333000>;
 		};
 
 		usb@e0002000 {
 			compatible = "xlnx,ps7-usb-1.00.a";
 			reg = <0xe0002000 0x1000>;
-			interrupts = <0x35 0x0>;
+			interrupts = <0 21 0>;
+			interrupt-parent = <&gic>;
 			dr_mode = "host";
 			phy_type = "ulpi";
 		};
@@ -106,23 +119,69 @@
 		gpio@e000a000 {
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
-			interrupts = <0x34 0x0>;
+			interrupts = <0 20 0>;
+			interrupt-parent = <&gic>;
 		};
 
 		qspi0: spi@e000d000 {
 			compatible = "xlnx,ps7-qspi-1.00.a";
 			reg = <0xE000D000 0x1000>;
-			interrupts = <51 0>;
+			interrupts = <0 19 0>;
+			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
 			bus-num = <1>;
 			num-chip-select = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 			is-dual = <0>;
+			flash@0 {
+			compatible = "n25q128";
+			reg = <0x0>;
+			spi-max-frequency = <50000000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@qspi-fsbl {
+				label = "qspi-fsbl";
+				reg = <0x0 0x80000>;
+				};
+			partition@qspi-u-boot {
+				label = "qspi-u-boot";
+				reg = <0x80000 0x80000>;
+				};
+			partition@qspi-linux {
+				label = "qspi-linux";
+				reg = <0x100000 0x500000>;
+				};
+			partition@qspi-device-tree {
+				label = "qspi-device-tree";
+				reg = <0x600000 0x20000>;
+				};
+			partition@qspi-user {
+				label = "qspi-user";
+				reg = <0x620000 0xE0000>;
+				};
+			partition@qspi-scratch {
+				label = "qspi-scratch";
+				reg = <0x700000 0x100000>;
+				};
+			partition@qspi-rootfs {
+				label = "qspi-rootfs";
+				reg = <0x800000 0x800000>;
+				};
+			};
 		};
 
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
-			reg = <0xf8007000 0x1000>;
-			interrupts = <0x28 0x0>;
+			reg = <0xf8007000 0x100>;
+			interrupts = <0 8 0>;
+			interrupt-parent = <&gic>;
+		};
+		xadc@f8007100 {
+			compatible = "xlnx,ps7-xadc-1.00.a";
+			reg = <0xf8007100 0x20>;
+			interrupts = <0 7 0>;
+			interrupt-parent = <&gic>;
 		};
 	};
 };

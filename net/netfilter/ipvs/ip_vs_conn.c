@@ -616,7 +616,7 @@ struct ip_vs_dest *ip_vs_try_bind_dest(struct ip_vs_conn *cp)
 	if ((cp) && (!cp->dest)) {
 		dest = ip_vs_find_dest(ip_vs_conn_net(cp), cp->af, &cp->daddr,
 				       cp->dport, &cp->vaddr, cp->vport,
-				       cp->protocol, cp->fwmark);
+				       cp->protocol, cp->fwmark, cp->flags);
 		ip_vs_bind_dest(cp, dest);
 		return dest;
 	} else
@@ -1255,7 +1255,7 @@ flush_again:
 /*
  * per netns init and exit
  */
-int __net_init __ip_vs_conn_init(struct net *net)
+int __net_init ip_vs_conn_net_init(struct net *net)
 {
 	struct netns_ipvs *ipvs = net_ipvs(net);
 
@@ -1266,7 +1266,7 @@ int __net_init __ip_vs_conn_init(struct net *net)
 	return 0;
 }
 
-void __net_exit __ip_vs_conn_cleanup(struct net *net)
+void __net_exit ip_vs_conn_net_cleanup(struct net *net)
 {
 	/* flush all the connection entries first */
 	ip_vs_conn_flush(net);

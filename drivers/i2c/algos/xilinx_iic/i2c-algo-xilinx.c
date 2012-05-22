@@ -590,7 +590,7 @@ static int __devinit xilinx_iic_of_probe(struct platform_device *ofdev, const st
 
 	/* Get IRQ for the device */
 	rc = of_irq_to_resource(ofdev->dev.of_node, 0, r_irq);
-	if(rc == NO_IRQ) {
+	if(!rc) {
 		dev_warn(&ofdev->dev, "no IRQ found.\n");
 		return rc;
 	}

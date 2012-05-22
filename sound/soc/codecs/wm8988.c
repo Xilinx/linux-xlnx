@@ -18,7 +18,6 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/spi/spi.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -54,7 +53,6 @@ struct wm8988_priv {
 	enum snd_soc_control_type control_type;
 	struct snd_pcm_hw_constraint_list *sysclk_constraints;
 };
-
 
 #define wm8988_reset(c)	snd_soc_write(c, WM8988_RESET, 0)
 
@@ -268,7 +266,7 @@ static const struct snd_kcontrol_new wm8988_monomux_controls =
 	SOC_DAPM_ENUM("Route", monomux);
 
 static const struct snd_soc_dapm_widget wm8988_dapm_widgets[] = {
-	SND_SOC_DAPM_MICBIAS("Mic Bias", WM8988_PWR1, 1, 0),
+	SND_SOC_DAPM_SUPPLY("Mic Bias", WM8988_PWR1, 1, 0, NULL, 0),
 
 	SND_SOC_DAPM_MUX("Differential Mux", SND_SOC_NOPM, 0, 0,
 		&wm8988_diffmux_controls),
@@ -676,6 +674,8 @@ static int wm8988_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+			snd_soc_cache_sync(codec);
+
 			/* VREF, VMID=2x5k */
 			snd_soc_write(codec, WM8988_PWR1, pwr_reg | 0x1c1);
 
@@ -700,7 +700,7 @@ static int wm8988_set_bias_level(struct snd_soc_codec *codec,
 #define WM8988_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE |\
 	SNDRV_PCM_FMTBIT_S24_LE)
 
-static struct snd_soc_dai_ops wm8988_ops = {
+static const struct snd_soc_dai_ops wm8988_ops = {
 	.startup = wm8988_pcm_startup,
 	.hw_params = wm8988_pcm_hw_params,
 	.set_fmt = wm8988_set_dai_fmt,
@@ -728,7 +728,7 @@ static struct snd_soc_dai_driver wm8988_dai = {
 	.symmetric_rates = 1,
 };
 
-static int wm8988_suspend(struct snd_soc_codec *codec, pm_message_t state)
+static int wm8988_suspend(struct snd_soc_codec *codec)
 {
 	wm8988_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	return 0;
@@ -736,21 +736,7 @@ static int wm8988_suspend(struct snd_soc_codec *codec, pm_message_t state)
 
 static int wm8988_resume(struct snd_soc_codec *codec)
 {
-	int i;
-	u8 data[2];
-	u16 *cache = codec->reg_cache;
-
-	/* Sync reg_cache with the hardware */
-	for (i = 0; i < WM8988_NUM_REG; i++) {
-		if (i == WM8988_RESET)
-			continue;
-		data[0] = (i << 1) | ((cache[i] >> 8) & 0x0001);
-		data[1] = cache[i] & 0x00ff;
-		codec->hw_write(codec->control_data, data, 2);
-	}
-
 	wm8988_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
-
 	return 0;
 }
 
@@ -759,7 +745,6 @@ static int wm8988_probe(struct snd_soc_codec *codec)
 	struct wm8988_priv *wm8988 = snd_soc_codec_get_drvdata(codec);
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int ret = 0;
-	u16 reg;
 
 	ret = snd_soc_codec_set_cache_io(codec, 7, 9, wm8988->control_type);
 	if (ret < 0) {
@@ -774,16 +759,11 @@ static int wm8988_probe(struct snd_soc_codec *codec)
 	}
 
 	/* set the update bits (we always update left then right) */
-	reg = snd_soc_read(codec, WM8988_RADC);
-	snd_soc_write(codec, WM8988_RADC, reg | 0x100);
-	reg = snd_soc_read(codec, WM8988_RDAC);
-	snd_soc_write(codec, WM8988_RDAC, reg | 0x0100);
-	reg = snd_soc_read(codec, WM8988_ROUT1V);
-	snd_soc_write(codec, WM8988_ROUT1V, reg | 0x0100);
-	reg = snd_soc_read(codec, WM8988_ROUT2V);
-	snd_soc_write(codec, WM8988_ROUT2V, reg | 0x0100);
-	reg = snd_soc_read(codec, WM8988_RINVOL);
-	snd_soc_write(codec, WM8988_RINVOL, reg | 0x0100);
+	snd_soc_update_bits(codec, WM8988_RADC, 0x0100, 0x0100);
+	snd_soc_update_bits(codec, WM8988_RDAC, 0x0100, 0x0100);
+	snd_soc_update_bits(codec, WM8988_ROUT1V, 0x0100, 0x0100);
+	snd_soc_update_bits(codec, WM8988_ROUT2V, 0x0100, 0x0100);
+	snd_soc_update_bits(codec, WM8988_RINVOL, 0x0100, 0x0100);
 
 	wm8988_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
 
@@ -842,7 +822,7 @@ static int __devexit wm8988_spi_remove(struct spi_device *spi)
 
 static struct spi_driver wm8988_spi_driver = {
 	.driver = {
-		.name	= "wm8988-codec",
+		.name	= "wm8988",
 		.owner	= THIS_MODULE,
 	},
 	.probe		= wm8988_spi_probe,

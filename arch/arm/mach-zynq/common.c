@@ -35,13 +35,6 @@
 #include <mach/clkdev.h>
 #include "common.h"
 
-#define IRQ_TIMERCOUNTER1	69
-#define IRQ_ETH1                77
-#define SDIO1_IRQ		79
-#define IRQ_I2C1		80
-#define IRQ_SPI1		81
-#define IRQ_UART1		82
-
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
 	{}
@@ -57,7 +50,7 @@ void __init xilinx_init_machine(void)
 	void *l2cache_base;
 
 	/* Static mapping, never released */
-	l2cache_base = ioremap((int)PL310_L2CC_BASE, SZ_4K);
+	l2cache_base = ioremap(0xF8F02000, SZ_4K);
 	BUG_ON(!l2cache_base);
 
 	__raw_writel(0x121, l2cache_base + L2X0_TAG_LATENCY_CTRL);
@@ -72,55 +65,34 @@ void __init xilinx_init_machine(void)
 	l2x0_init(l2cache_base, 0x72060000, 0xF0F0FFFF);
 #endif
 #endif
-
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 
 	platform_device_init();
 }
+
+static const struct of_device_id xilinx_dt_irq_match[] __initconst = {
+	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
+	{ }
+};
 
 /**
  * xilinx_irq_init() - Interrupt controller initialization for the GIC.
  */
 void __init xilinx_irq_init(void)
 {
-	gic_init(0, 29, SCU_GIC_DIST_BASE, SCU_GIC_CPU_BASE);
-
-	/* when running in AMP mode on CPU0, allocate unused interrupts to the 
-	 * other CPU so another OS can run on it, or if just running Linux on 
-	 * the 2nd CPU as a test, do the same
-	 */
-#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER)	|| \
-	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)	|| \
-	defined(CONFIG_XILINX_CPU1_TEST)
-
-	pr_info("Xilinx AMP: Setting IRQs to CPU1\n");
-	gic_set_cpu(1, IRQ_TIMERCOUNTER1);
-	gic_set_cpu(1, IRQ_TIMERCOUNTER1 + 1);
-	gic_set_cpu(1, IRQ_UART1);
-	gic_set_cpu(1, IRQ_I2C1);
-	gic_set_cpu(1, IRQ_ETH1);
-	gic_set_cpu(1, IRQ_SPI1);
-	gic_set_cpu(1, SDIO1_IRQ);
-#endif
-
+	of_irq_init(xilinx_dt_irq_match);
 }
 
 /* The minimum devices needed to be mapped before the VM system is up and
  * running include the GIC, UART and Timer Counter.
  */
-
-static struct map_desc io_desc[] __initdata = {
+struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= SCU_PERIPH_VIRT,
 		.pfn		= __phys_to_pfn(SCU_PERIPH_PHYS),
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
-	}, {
-		.virtual	= PL310_L2CC_VIRT,
-		.pfn		= __phys_to_pfn(PL310_L2CC_PHYS),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	},
+	}, 
 
 #ifdef CONFIG_DEBUG_LL
 	{
@@ -130,6 +102,7 @@ static struct map_desc io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 #endif
+
 	/* create a mapping for the OCM  (256K) leaving a hole for the
 	 * interrupt vectors which are handled in the kernel
 	 */
@@ -146,6 +119,7 @@ static struct map_desc io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 };
+
 
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.

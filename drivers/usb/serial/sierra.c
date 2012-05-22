@@ -46,8 +46,8 @@
    allocations > PAGE_SIZE and the number of packets in a page
    is an integer 512 is the largest possible packet on EHCI */
 
-static int debug;
-static int nmea;
+static bool debug;
+static bool nmea;
 
 /* Used in interface blacklisting */
 struct sierra_iface_info {
@@ -681,7 +681,6 @@ static void sierra_instat_callback(struct urb *urb)
 	/* Resubmit urb so we continue receiving IRQ data */
 	if (status != -ESHUTDOWN && status != -ENOENT) {
 		usb_mark_last_busy(serial->dev);
-		urb->dev = serial->dev;
 		err = usb_submit_urb(urb, GFP_ATOMIC);
 		if (err && err != -EPERM)
 			dev_err(&port->dev, "%s: resubmit intr urb "
@@ -1009,7 +1008,7 @@ static int sierra_suspend(struct usb_serial *serial, pm_message_t message)
 	struct sierra_intf_private *intfdata;
 	int b;
 
-	if (message.event & PM_EVENT_AUTO) {
+	if (PMSG_IS_AUTO(message)) {
 		intfdata = serial->private;
 		spin_lock_irq(&intfdata->susp_lock);
 		b = intfdata->in_flight;

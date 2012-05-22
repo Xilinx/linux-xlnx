@@ -27,7 +27,6 @@
 static int tmio_mmc_suspend(struct platform_device *dev, pm_message_t state)
 {
 	const struct mfd_cell *cell = mfd_get_cell(dev);
-	struct mmc_host *mmc = platform_get_drvdata(dev);
 	int ret;
 
 	ret = tmio_mmc_host_suspend(&dev->dev);
@@ -42,7 +41,6 @@ static int tmio_mmc_suspend(struct platform_device *dev, pm_message_t state)
 static int tmio_mmc_resume(struct platform_device *dev)
 {
 	const struct mfd_cell *cell = mfd_get_cell(dev);
-	struct mmc_host *mmc = platform_get_drvdata(dev);
 	int ret = 0;
 
 	/* Tell the MFD core we are ready to be enabled */
@@ -90,8 +88,8 @@ static int __devinit tmio_mmc_probe(struct platform_device *pdev)
 	if (ret)
 		goto cell_disable;
 
-	ret = request_irq(irq, tmio_mmc_irq, IRQF_DISABLED |
-			  IRQF_TRIGGER_FALLING, dev_name(&pdev->dev), host);
+	ret = request_irq(irq, tmio_mmc_irq, IRQF_TRIGGER_FALLING,
+				dev_name(&pdev->dev), host);
 	if (ret)
 		goto host_remove;
 
@@ -140,19 +138,7 @@ static struct platform_driver tmio_mmc_driver = {
 	.resume = tmio_mmc_resume,
 };
 
-
-static int __init tmio_mmc_init(void)
-{
-	return platform_driver_register(&tmio_mmc_driver);
-}
-
-static void __exit tmio_mmc_exit(void)
-{
-	platform_driver_unregister(&tmio_mmc_driver);
-}
-
-module_init(tmio_mmc_init);
-module_exit(tmio_mmc_exit);
+module_platform_driver(tmio_mmc_driver);
 
 MODULE_DESCRIPTION("Toshiba TMIO SD/MMC driver");
 MODULE_AUTHOR("Ian Molton <spyro@f2s.com>");

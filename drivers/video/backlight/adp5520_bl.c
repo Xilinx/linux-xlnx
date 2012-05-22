@@ -13,6 +13,7 @@
 #include <linux/backlight.h>
 #include <linux/mfd/adp5520.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 
 struct adp5520_bl {
 	struct device *master;
@@ -383,17 +384,7 @@ static struct platform_driver adp5520_bl_driver = {
 	.resume		= adp5520_bl_resume,
 };
 
-static int __init adp5520_bl_init(void)
-{
-	return platform_driver_register(&adp5520_bl_driver);
-}
-module_init(adp5520_bl_init);
-
-static void __exit adp5520_bl_exit(void)
-{
-	platform_driver_unregister(&adp5520_bl_driver);
-}
-module_exit(adp5520_bl_exit);
+module_platform_driver(adp5520_bl_driver);
 
 MODULE_AUTHOR("Michael Hennerich <hennerich@blackfin.uclinux.org>");
 MODULE_DESCRIPTION("ADP5520(01) Backlight Driver");

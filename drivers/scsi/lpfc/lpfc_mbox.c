@@ -1293,6 +1293,10 @@ lpfc_config_port(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
 		phba->sli_rev = LPFC_SLI_REV2;
 	mb->un.varCfgPort.sli_mode = phba->sli_rev;
 
+	/* If this is an SLI3 port, configure async status notification. */
+	if (phba->sli_rev == LPFC_SLI_REV3)
+		mb->un.varCfgPort.casabt = 1;
+
 	/* Now setup pcb */
 	phba->pcb->type = TYPE_NATIVE_SLI2;
 	phba->pcb->feature = FEATURE_INITIAL_SLI2;
@@ -1598,9 +1602,12 @@ lpfc_mbox_dev_check(struct lpfc_hba *phba)
  *    Timeout value to be used for the given mailbox command
  **/
 int
-lpfc_mbox_tmo_val(struct lpfc_hba *phba, int cmd)
+lpfc_mbox_tmo_val(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 {
-	switch (cmd) {
+	MAILBOX_t *mbox = &mboxq->u.mb;
+	uint8_t subsys, opcode;
+
+	switch (mbox->mbxCommand) {
 	case MBX_WRITE_NV:	/* 0x03 */
 	case MBX_UPDATE_CFG:	/* 0x1B */
 	case MBX_DOWN_LOAD:	/* 0x1C */
@@ -1610,6 +1617,28 @@ lpfc_mbox_tmo_val(struct lpfc_hba *phba, int cmd)
 	case MBX_LOAD_EXP_ROM:	/* 0x9C */
 		return LPFC_MBOX_TMO_FLASH_CMD;
 	case MBX_SLI4_CONFIG:	/* 0x9b */
+		subsys = lpfc_sli_config_mbox_subsys_get(phba, mboxq);
+		opcode = lpfc_sli_config_mbox_opcode_get(phba, mboxq);
+		if (subsys == LPFC_MBOX_SUBSYSTEM_COMMON) {
+			switch (opcode) {
+			case LPFC_MBOX_OPCODE_READ_OBJECT:
+			case LPFC_MBOX_OPCODE_WRITE_OBJECT:
+			case LPFC_MBOX_OPCODE_READ_OBJECT_LIST:
+			case LPFC_MBOX_OPCODE_DELETE_OBJECT:
+			case LPFC_MBOX_OPCODE_GET_FUNCTION_CONFIG:
+			case LPFC_MBOX_OPCODE_GET_PROFILE_LIST:
+			case LPFC_MBOX_OPCODE_SET_ACT_PROFILE:
+			case LPFC_MBOX_OPCODE_SET_PROFILE_CONFIG:
+			case LPFC_MBOX_OPCODE_GET_FACTORY_PROFILE_CONFIG:
+				return LPFC_MBOX_SLI4_CONFIG_EXTENDED_TMO;
+			}
+		}
+		if (subsys == LPFC_MBOX_SUBSYSTEM_FCOE) {
+			switch (opcode) {
+			case LPFC_MBOX_OPCODE_FCOE_SET_FCLINK_SETTINGS:
+				return LPFC_MBOX_SLI4_CONFIG_EXTENDED_TMO;
+			}
+		}
 		return LPFC_MBOX_SLI4_CONFIG_TMO;
 	}
 	return LPFC_MBOX_TMO;
@@ -1859,7 +1888,7 @@ lpfc_sli4_mbox_rsrc_extent(struct lpfc_hba *phba, struct lpfcMboxq *mbox,
 	}
 
 	/* Complete the initialization for the particular Opcode. */
-	opcode = lpfc_sli4_mbox_opcode_get(phba, mbox);
+	opcode = lpfc_sli_config_mbox_opcode_get(phba, mbox);
 	switch (opcode) {
 	case LPFC_MBOX_OPCODE_ALLOC_RSRC_EXTENT:
 		if (emb == LPFC_SLI4_MBX_EMBED)
@@ -1886,23 +1915,56 @@ lpfc_sli4_mbox_rsrc_extent(struct lpfc_hba *phba, struct lpfcMboxq *mbox,
 }
 
 /**
- * lpfc_sli4_mbox_opcode_get - Get the opcode from a sli4 mailbox command
+ * lpfc_sli_config_mbox_subsys_get - Get subsystem from a sli_config mbox cmd
  * @phba: pointer to lpfc hba data structure.
- * @mbox: pointer to lpfc mbox command.
+ * @mbox: pointer to lpfc mbox command queue entry.
  *
- * This routine gets the opcode from a SLI4 specific mailbox command for
- * sending IOCTL command. If the mailbox command is not MBX_SLI4_CONFIG
- * (0x9B) or if the IOCTL sub-header is not present, opcode 0x0 shall be
- * returned.
+ * This routine gets the subsystem from a SLI4 specific SLI_CONFIG mailbox
+ * command. If the mailbox command is not MBX_SLI4_CONFIG (0x9B) or if the
+ * sub-header is not present, subsystem LPFC_MBOX_SUBSYSTEM_NA (0x0) shall
+ * be returned.
  **/
 uint8_t
-lpfc_sli4_mbox_opcode_get(struct lpfc_hba *phba, struct lpfcMboxq *mbox)
+lpfc_sli_config_mbox_subsys_get(struct lpfc_hba *phba, LPFC_MBOXQ_t *mbox)
 {
 	struct lpfc_mbx_sli4_config *sli4_cfg;
 	union lpfc_sli4_cfg_shdr *cfg_shdr;
 
 	if (mbox->u.mb.mbxCommand != MBX_SLI4_CONFIG)
-		return 0;
+		return LPFC_MBOX_SUBSYSTEM_NA;
+	sli4_cfg = &mbox->u.mqe.un.sli4_config;
+
+	/* For embedded mbox command, get opcode from embedded sub-header*/
+	if (bf_get(lpfc_mbox_hdr_emb, &sli4_cfg->header.cfg_mhdr)) {
+		cfg_shdr = &mbox->u.mqe.un.sli4_config.header.cfg_shdr;
+		return bf_get(lpfc_mbox_hdr_subsystem, &cfg_shdr->request);
+	}
+
+	/* For non-embedded mbox command, get opcode from first dma page */
+	if (unlikely(!mbox->sge_array))
+		return LPFC_MBOX_SUBSYSTEM_NA;
+	cfg_shdr = (union lpfc_sli4_cfg_shdr *)mbox->sge_array->addr[0];
+	return bf_get(lpfc_mbox_hdr_subsystem, &cfg_shdr->request);
+}
+
+/**
+ * lpfc_sli_config_mbox_opcode_get - Get opcode from a sli_config mbox cmd
+ * @phba: pointer to lpfc hba data structure.
+ * @mbox: pointer to lpfc mbox command queue entry.
+ *
+ * This routine gets the opcode from a SLI4 specific SLI_CONFIG mailbox
+ * command. If the mailbox command is not MBX_SLI4_CONFIG (0x9B) or if
+ * the sub-header is not present, opcode LPFC_MBOX_OPCODE_NA (0x0) be
+ * returned.
+ **/
+uint8_t
+lpfc_sli_config_mbox_opcode_get(struct lpfc_hba *phba, LPFC_MBOXQ_t *mbox)
+{
+	struct lpfc_mbx_sli4_config *sli4_cfg;
+	union lpfc_sli4_cfg_shdr *cfg_shdr;
+
+	if (mbox->u.mb.mbxCommand != MBX_SLI4_CONFIG)
+		return LPFC_MBOX_OPCODE_NA;
 	sli4_cfg = &mbox->u.mqe.un.sli4_config;
 
 	/* For embedded mbox command, get opcode from embedded sub-header*/
@@ -1913,7 +1975,7 @@ lpfc_sli4_mbox_opcode_get(struct lpfc_hba *phba, struct lpfcMboxq *mbox)
 
 	/* For non-embedded mbox command, get opcode from first dma page */
 	if (unlikely(!mbox->sge_array))
-		return 0;
+		return LPFC_MBOX_OPCODE_NA;
 	cfg_shdr = (union lpfc_sli4_cfg_shdr *)mbox->sge_array->addr[0];
 	return bf_get(lpfc_mbox_hdr_opcode, &cfg_shdr->request);
 }
@@ -2031,7 +2093,7 @@ lpfc_init_vfi(struct lpfcMboxq *mbox, struct lpfc_vport *vport)
 	bf_set(lpfc_init_vfi_vp, init_vfi, 1);
 	bf_set(lpfc_init_vfi_vfi, init_vfi,
 	       vport->phba->sli4_hba.vfi_ids[vport->vfi]);
-	bf_set(lpfc_init_vpi_vpi, init_vfi,
+	bf_set(lpfc_init_vfi_vpi, init_vfi,
 	       vport->phba->vpi_ids[vport->vpi]);
 	bf_set(lpfc_init_vfi_fcfi, init_vfi,
 	       vport->phba->fcf.fcfi);
@@ -2071,6 +2133,14 @@ lpfc_reg_vfi(struct lpfcMboxq *mbox, struct lpfc_vport *vport, dma_addr_t phys)
 	reg_vfi->bde.tus.f.bdeSize = sizeof(vport->fc_sparam);
 	reg_vfi->bde.tus.f.bdeFlags = BUFF_TYPE_BDE_64;
 	bf_set(lpfc_reg_vfi_nport_id, reg_vfi, vport->fc_myDID);
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_MBOX,
+			"3134 Register VFI, mydid:x%x, fcfi:%d, "
+			" vfi:%d, vpi:%d, fc_pname:%x%x\n",
+			vport->fc_myDID,
+			vport->phba->fcf.fcfi,
+			vport->phba->sli4_hba.vfi_ids[vport->vfi],
+			vport->phba->vpi_ids[vport->vpi],
+			reg_vfi->wwn[0], reg_vfi->wwn[1]);
 }
 
 /**
@@ -2117,16 +2187,15 @@ lpfc_unreg_vfi(struct lpfcMboxq *mbox, struct lpfc_vport *vport)
 }
 
 /**
- * lpfc_dump_fcoe_param - Dump config region 23 to get FCoe parameters.
+ * lpfc_sli4_dump_cfg_rg23 - Dump sli4 port config region 23
  * @phba: pointer to the hba structure containing.
  * @mbox: pointer to lpfc mbox command to initialize.
  *
- * This function create a SLI4 dump mailbox command to dump FCoE
- * parameters stored in region 23.
+ * This function create a SLI4 dump mailbox command to dump configure
+ * region 23.
  **/
 int
-lpfc_dump_fcoe_param(struct lpfc_hba *phba,
-		struct lpfcMboxq *mbox)
+lpfc_sli4_dump_cfg_rg23(struct lpfc_hba *phba, struct lpfcMboxq *mbox)
 {
 	struct lpfc_dmabuf *mp = NULL;
 	MAILBOX_t *mb;
@@ -2140,9 +2209,9 @@ lpfc_dump_fcoe_param(struct lpfc_hba *phba,
 
 	if (!mp || !mp->virt) {
 		kfree(mp);
-		/* dump_fcoe_param failed to allocate memory */
+		/* dump config region 23 failed to allocate memory */
 		lpfc_printf_log(phba, KERN_WARNING, LOG_MBOX,
-			"2569 lpfc_dump_fcoe_param: memory"
+			"2569 lpfc dump config region 23: memory"
 			" allocation failed\n");
 		return 1;
 	}

@@ -257,9 +257,12 @@ static void
 __flush_batch(journal_t *journal, int *batch_count)
 {
 	int i;
+	struct blk_plug plug;
 
+	blk_start_plug(&plug);
 	for (i = 0; i < *batch_count; i++)
-		write_dirty_buffer(journal->j_chkpt_bhs[i], WRITE);
+		write_dirty_buffer(journal->j_chkpt_bhs[i], WRITE_SYNC);
+	blk_finish_plug(&plug);
 
 	for (i = 0; i < *batch_count; i++) {
 		struct buffer_head *bh = journal->j_chkpt_bhs[i];
@@ -562,7 +565,7 @@ int jbd2_cleanup_journal_tail(journal_t *journal)
  *
  * Called with the journal locked.
  * Called with j_list_lock held.
- * Returns number of bufers reaped (for debug)
+ * Returns number of buffers reaped (for debug)
  */
 
 static int journal_clean_one_cp_list(struct journal_head *jh, int *released)

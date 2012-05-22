@@ -131,7 +131,7 @@ static int siu_pcm_wr_set(struct siu_port *port_info,
 	sg_dma_address(&sg) = buff;
 
 	desc = siu_stream->chan->device->device_prep_slave_sg(siu_stream->chan,
-		&sg, 1, DMA_TO_DEVICE, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		&sg, 1, DMA_MEM_TO_DEV, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 	if (!desc) {
 		dev_err(dev, "Failed to allocate a dma descriptor\n");
 		return -ENOMEM;
@@ -181,7 +181,7 @@ static int siu_pcm_rd_set(struct siu_port *port_info,
 	sg_dma_address(&sg) = buff;
 
 	desc = siu_stream->chan->device->device_prep_slave_sg(siu_stream->chan,
-		&sg, 1, DMA_FROM_DEVICE, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		&sg, 1, DMA_DEV_TO_MEM, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 	if (!desc) {
 		dev_err(dev, "Failed to allocate dma descriptor\n");
 		return -ENOMEM;
@@ -527,10 +527,11 @@ static snd_pcm_uframes_t siu_pcm_pointer_dma(struct snd_pcm_substream *ss)
 	return bytes_to_frames(ss->runtime, ptr);
 }
 
-static int siu_pcm_new(struct snd_card *card, struct snd_soc_dai *dai,
-		       struct snd_pcm *pcm)
+static int siu_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	/* card->dev == socdev->dev, see snd_soc_new_pcms() */
+	struct snd_card *card = rtd->card->snd_card;
+	struct snd_pcm *pcm = rtd->pcm;
 	struct siu_info *info = siu_i2s_data;
 	struct platform_device *pdev = to_platform_device(card->dev);
 	int ret;

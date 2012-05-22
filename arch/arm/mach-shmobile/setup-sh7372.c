@@ -30,6 +30,7 @@
 #include <linux/sh_dma.h>
 #include <linux/sh_intc.h>
 #include <linux/sh_timer.h>
+#include <linux/pm_domain.h>
 #include <mach/hardware.h>
 #include <mach/sh7372.h>
 #include <asm/mach-types.h>
@@ -169,35 +170,35 @@ static struct platform_device scif6_device = {
 };
 
 /* CMT */
-static struct sh_timer_config cmt10_platform_data = {
-	.name = "CMT10",
-	.channel_offset = 0x10,
-	.timer_bit = 0,
+static struct sh_timer_config cmt2_platform_data = {
+	.name = "CMT2",
+	.channel_offset = 0x40,
+	.timer_bit = 5,
 	.clockevent_rating = 125,
 	.clocksource_rating = 125,
 };
 
-static struct resource cmt10_resources[] = {
+static struct resource cmt2_resources[] = {
 	[0] = {
-		.name	= "CMT10",
-		.start	= 0xe6138010,
-		.end	= 0xe613801b,
+		.name	= "CMT2",
+		.start	= 0xe6130040,
+		.end	= 0xe613004b,
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start	= evt2irq(0x0b00), /* CMT1_CMT10 */
+		.start	= evt2irq(0x0b80), /* CMT2 */
 		.flags	= IORESOURCE_IRQ,
 	},
 };
 
-static struct platform_device cmt10_device = {
+static struct platform_device cmt2_device = {
 	.name		= "sh_cmt",
-	.id		= 10,
+	.id		= 2,
 	.dev = {
-		.platform_data	= &cmt10_platform_data,
+		.platform_data	= &cmt2_platform_data,
 	},
-	.resource	= cmt10_resources,
-	.num_resources	= ARRAY_SIZE(cmt10_resources),
+	.resource	= cmt2_resources,
+	.num_resources	= ARRAY_SIZE(cmt2_resources),
 };
 
 /* TMU */
@@ -444,31 +445,39 @@ static const struct sh_dmae_slave_config sh7372_dmae_slaves[] = {
 	},
 };
 
+#define SH7372_CHCLR 0x220
+
 static const struct sh_dmae_channel sh7372_dmae_channels[] = {
 	{
 		.offset = 0,
 		.dmars = 0,
 		.dmars_bit = 0,
+		.chclr_offset = SH7372_CHCLR + 0,
 	}, {
 		.offset = 0x10,
 		.dmars = 0,
 		.dmars_bit = 8,
+		.chclr_offset = SH7372_CHCLR + 0x10,
 	}, {
 		.offset = 0x20,
 		.dmars = 4,
 		.dmars_bit = 0,
+		.chclr_offset = SH7372_CHCLR + 0x20,
 	}, {
 		.offset = 0x30,
 		.dmars = 4,
 		.dmars_bit = 8,
+		.chclr_offset = SH7372_CHCLR + 0x30,
 	}, {
 		.offset = 0x50,
 		.dmars = 8,
 		.dmars_bit = 0,
+		.chclr_offset = SH7372_CHCLR + 0x50,
 	}, {
 		.offset = 0x60,
 		.dmars = 8,
 		.dmars_bit = 8,
+		.chclr_offset = SH7372_CHCLR + 0x60,
 	}
 };
 
@@ -486,6 +495,7 @@ static struct sh_dmae_pdata dma_platform_data = {
 	.ts_shift	= ts_shift,
 	.ts_shift_num	= ARRAY_SIZE(ts_shift),
 	.dmaor_init	= DMAOR_DME,
+	.chclr_present	= 1,
 };
 
 /* Resource order important! */
@@ -493,7 +503,7 @@ static struct resource sh7372_dmae0_resources[] = {
 	{
 		/* Channel registers and DMAOR */
 		.start	= 0xfe008020,
-		.end	= 0xfe00808f,
+		.end	= 0xfe00828f,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -503,7 +513,7 @@ static struct resource sh7372_dmae0_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	{
-		/* DMA error IRQ */
+		.name	= "error_irq",
 		.start	= evt2irq(0x20c0),
 		.end	= evt2irq(0x20c0),
 		.flags	= IORESOURCE_IRQ,
@@ -521,7 +531,7 @@ static struct resource sh7372_dmae1_resources[] = {
 	{
 		/* Channel registers and DMAOR */
 		.start	= 0xfe018020,
-		.end	= 0xfe01808f,
+		.end	= 0xfe01828f,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -531,7 +541,7 @@ static struct resource sh7372_dmae1_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	{
-		/* DMA error IRQ */
+		.name	= "error_irq",
 		.start	= evt2irq(0x21c0),
 		.end	= evt2irq(0x21c0),
 		.flags	= IORESOURCE_IRQ,
@@ -549,7 +559,7 @@ static struct resource sh7372_dmae2_resources[] = {
 	{
 		/* Channel registers and DMAOR */
 		.start	= 0xfe028020,
-		.end	= 0xfe02808f,
+		.end	= 0xfe02828f,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -559,7 +569,7 @@ static struct resource sh7372_dmae2_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	{
-		/* DMA error IRQ */
+		.name	= "error_irq",
 		.start	= evt2irq(0x22c0),
 		.end	= evt2irq(0x22c0),
 		.flags	= IORESOURCE_IRQ,
@@ -599,6 +609,152 @@ static struct platform_device dma2_device = {
 	.num_resources	= ARRAY_SIZE(sh7372_dmae2_resources),
 	.dev		= {
 		.platform_data	= &dma_platform_data,
+	},
+};
+
+/*
+ * USB-DMAC
+ */
+
+unsigned int usbts_shift[] = {3, 4, 5};
+
+enum {
+	XMIT_SZ_8BYTE		= 0,
+	XMIT_SZ_16BYTE		= 1,
+	XMIT_SZ_32BYTE		= 2,
+};
+
+#define USBTS_INDEX2VAL(i) (((i) & 3) << 6)
+
+static const struct sh_dmae_channel sh7372_usb_dmae_channels[] = {
+	{
+		.offset = 0,
+	}, {
+		.offset = 0x20,
+	},
+};
+
+/* USB DMAC0 */
+static const struct sh_dmae_slave_config sh7372_usb_dmae0_slaves[] = {
+	{
+		.slave_id	= SHDMA_SLAVE_USB0_TX,
+		.chcr		= USBTS_INDEX2VAL(XMIT_SZ_8BYTE),
+	}, {
+		.slave_id	= SHDMA_SLAVE_USB0_RX,
+		.chcr		= USBTS_INDEX2VAL(XMIT_SZ_8BYTE),
+	},
+};
+
+static struct sh_dmae_pdata usb_dma0_platform_data = {
+	.slave		= sh7372_usb_dmae0_slaves,
+	.slave_num	= ARRAY_SIZE(sh7372_usb_dmae0_slaves),
+	.channel	= sh7372_usb_dmae_channels,
+	.channel_num	= ARRAY_SIZE(sh7372_usb_dmae_channels),
+	.ts_low_shift	= 6,
+	.ts_low_mask	= 0xc0,
+	.ts_high_shift	= 0,
+	.ts_high_mask	= 0,
+	.ts_shift	= usbts_shift,
+	.ts_shift_num	= ARRAY_SIZE(usbts_shift),
+	.dmaor_init	= DMAOR_DME,
+	.chcr_offset	= 0x14,
+	.chcr_ie_bit	= 1 << 5,
+	.dmaor_is_32bit	= 1,
+	.needs_tend_set	= 1,
+	.no_dmars	= 1,
+	.slave_only	= 1,
+};
+
+static struct resource sh7372_usb_dmae0_resources[] = {
+	{
+		/* Channel registers and DMAOR */
+		.start	= 0xe68a0020,
+		.end	= 0xe68a0064 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		/* VCR/SWR/DMICR */
+		.start	= 0xe68a0000,
+		.end	= 0xe68a0014 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		/* IRQ for channels */
+		.start	= evt2irq(0x0a00),
+		.end	= evt2irq(0x0a00),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device usb_dma0_device = {
+	.name		= "sh-dma-engine",
+	.id		= 3,
+	.resource	= sh7372_usb_dmae0_resources,
+	.num_resources	= ARRAY_SIZE(sh7372_usb_dmae0_resources),
+	.dev		= {
+		.platform_data	= &usb_dma0_platform_data,
+	},
+};
+
+/* USB DMAC1 */
+static const struct sh_dmae_slave_config sh7372_usb_dmae1_slaves[] = {
+	{
+		.slave_id	= SHDMA_SLAVE_USB1_TX,
+		.chcr		= USBTS_INDEX2VAL(XMIT_SZ_8BYTE),
+	}, {
+		.slave_id	= SHDMA_SLAVE_USB1_RX,
+		.chcr		= USBTS_INDEX2VAL(XMIT_SZ_8BYTE),
+	},
+};
+
+static struct sh_dmae_pdata usb_dma1_platform_data = {
+	.slave		= sh7372_usb_dmae1_slaves,
+	.slave_num	= ARRAY_SIZE(sh7372_usb_dmae1_slaves),
+	.channel	= sh7372_usb_dmae_channels,
+	.channel_num	= ARRAY_SIZE(sh7372_usb_dmae_channels),
+	.ts_low_shift	= 6,
+	.ts_low_mask	= 0xc0,
+	.ts_high_shift	= 0,
+	.ts_high_mask	= 0,
+	.ts_shift	= usbts_shift,
+	.ts_shift_num	= ARRAY_SIZE(usbts_shift),
+	.dmaor_init	= DMAOR_DME,
+	.chcr_offset	= 0x14,
+	.chcr_ie_bit	= 1 << 5,
+	.dmaor_is_32bit	= 1,
+	.needs_tend_set	= 1,
+	.no_dmars	= 1,
+	.slave_only	= 1,
+};
+
+static struct resource sh7372_usb_dmae1_resources[] = {
+	{
+		/* Channel registers and DMAOR */
+		.start	= 0xe68c0020,
+		.end	= 0xe68c0064 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		/* VCR/SWR/DMICR */
+		.start	= 0xe68c0000,
+		.end	= 0xe68c0014 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		/* IRQ for channels */
+		.start	= evt2irq(0x1d00),
+		.end	= evt2irq(0x1d00),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device usb_dma1_device = {
+	.name		= "sh-dma-engine",
+	.id		= 4,
+	.resource	= sh7372_usb_dmae1_resources,
+	.num_resources	= ARRAY_SIZE(sh7372_usb_dmae1_resources),
+	.dev		= {
+		.platform_data	= &usb_dma1_platform_data,
 	},
 };
 
@@ -818,7 +974,7 @@ static struct platform_device *sh7372_early_devices[] __initdata = {
 	&scif4_device,
 	&scif5_device,
 	&scif6_device,
-	&cmt10_device,
+	&cmt2_device,
 	&tmu00_device,
 	&tmu01_device,
 };
@@ -829,6 +985,8 @@ static struct platform_device *sh7372_late_devices[] __initdata = {
 	&dma0_device,
 	&dma1_device,
 	&dma2_device,
+	&usb_dma0_device,
+	&usb_dma1_device,
 	&vpu_device,
 	&veu0_device,
 	&veu1_device,
@@ -841,11 +999,50 @@ static struct platform_device *sh7372_late_devices[] __initdata = {
 
 void __init sh7372_add_standard_devices(void)
 {
+	sh7372_init_pm_domain(&sh7372_a4lc);
+	sh7372_init_pm_domain(&sh7372_a4mp);
+	sh7372_init_pm_domain(&sh7372_d4);
+	sh7372_init_pm_domain(&sh7372_a4r);
+	sh7372_init_pm_domain(&sh7372_a3rv);
+	sh7372_init_pm_domain(&sh7372_a3ri);
+	sh7372_init_pm_domain(&sh7372_a4s);
+	sh7372_init_pm_domain(&sh7372_a3sp);
+	sh7372_init_pm_domain(&sh7372_a3sg);
+
+	sh7372_pm_add_subdomain(&sh7372_a4lc, &sh7372_a3rv);
+	sh7372_pm_add_subdomain(&sh7372_a4r, &sh7372_a4lc);
+
+	sh7372_pm_add_subdomain(&sh7372_a4s, &sh7372_a3sg);
+	sh7372_pm_add_subdomain(&sh7372_a4s, &sh7372_a3sp);
+
 	platform_add_devices(sh7372_early_devices,
 			    ARRAY_SIZE(sh7372_early_devices));
 
 	platform_add_devices(sh7372_late_devices,
 			    ARRAY_SIZE(sh7372_late_devices));
+
+	sh7372_add_device_to_domain(&sh7372_a3rv, &vpu_device);
+	sh7372_add_device_to_domain(&sh7372_a4mp, &spu0_device);
+	sh7372_add_device_to_domain(&sh7372_a4mp, &spu1_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif0_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif1_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif2_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif3_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif4_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif5_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &scif6_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &iic1_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &dma0_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &dma1_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &dma2_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &usb_dma0_device);
+	sh7372_add_device_to_domain(&sh7372_a3sp, &usb_dma1_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &iic0_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &veu0_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &veu1_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &veu2_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &veu3_device);
+	sh7372_add_device_to_domain(&sh7372_a4r, &jpu_device);
 }
 
 void __init sh7372_add_early_devices(void)

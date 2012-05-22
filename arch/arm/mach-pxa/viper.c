@@ -422,8 +422,8 @@ static struct resource smc91x_resources[] = {
 		.flags  = IORESOURCE_MEM,
 	},
 	[1] = {
-		.start  = gpio_to_irq(VIPER_ETH_GPIO),
-		.end    = gpio_to_irq(VIPER_ETH_GPIO),
+		.start  = PXA_GPIO_TO_IRQ(VIPER_ETH_GPIO),
+		.end    = PXA_GPIO_TO_IRQ(VIPER_ETH_GPIO),
 		.flags  = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
 	},
 	[2] = {
@@ -546,7 +546,7 @@ static struct plat_serial8250_port serial_platform_data[] = {
 	/* External UARTs */
 	{
 		.mapbase	= VIPER_UARTA_PHYS,
-		.irq		= gpio_to_irq(VIPER_UARTA_GPIO),
+		.irq		= PXA_GPIO_TO_IRQ(VIPER_UARTA_GPIO),
 		.irqflags	= IRQF_TRIGGER_RISING,
 		.uartclk	= 1843200,
 		.regshift	= 1,
@@ -556,7 +556,7 @@ static struct plat_serial8250_port serial_platform_data[] = {
 	},
 	{
 		.mapbase	= VIPER_UARTB_PHYS,
-		.irq		= gpio_to_irq(VIPER_UARTB_GPIO),
+		.irq		= PXA_GPIO_TO_IRQ(VIPER_UARTB_GPIO),
 		.irqflags	= IRQF_TRIGGER_RISING,
 		.uartclk	= 1843200,
 		.regshift	= 1,
@@ -596,8 +596,8 @@ static struct resource isp116x_resources[] = {
 		.flags  = IORESOURCE_MEM,
 	},
 	[2] = {
-		.start  = gpio_to_irq(VIPER_USB_GPIO),
-		.end    = gpio_to_irq(VIPER_USB_GPIO),
+		.start  = PXA_GPIO_TO_IRQ(VIPER_USB_GPIO),
+		.end    = PXA_GPIO_TO_IRQ(VIPER_USB_GPIO),
 		.flags  = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
 	},
 };
@@ -992,9 +992,11 @@ static void __init viper_map_io(void)
 
 MACHINE_START(VIPER, "Arcom/Eurotech VIPER SBC")
 	/* Maintainer: Marc Zyngier <maz@misterjones.org> */
-	.boot_params	= 0xa0000100,
+	.atag_offset	= 0x100,
 	.map_io		= viper_map_io,
 	.init_irq	= viper_init_irq,
+	.handle_irq	= pxa25x_handle_irq,
 	.timer          = &pxa_timer,
 	.init_machine	= viper_init,
+	.restart	= pxa_restart,
 MACHINE_END

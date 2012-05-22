@@ -14,6 +14,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  */
 #include <linux/init.h>
+#include <linux/module.h>
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/interrupt.h>
@@ -23,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/dmaengine.h>
+#include <linux/module.h>
 
 #include <asm/irq.h>
 #include <mach/dma-v1.h>
@@ -105,7 +107,7 @@ static int imxdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		imx_dma_disable(imxdmac->imxdma_channel);
 		return 0;
 	case DMA_SLAVE_CONFIG:
-		if (dmaengine_cfg->direction == DMA_FROM_DEVICE) {
+		if (dmaengine_cfg->direction == DMA_DEV_TO_MEM) {
 			imxdmac->per_address = dmaengine_cfg->src_addr;
 			imxdmac->watermark_level = dmaengine_cfg->src_maxburst;
 			imxdmac->word_size = dmaengine_cfg->src_addr_width;
@@ -135,7 +137,8 @@ static int imxdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		if (ret)
 			return ret;
 
-		imx_dma_config_burstlen(imxdmac->imxdma_channel, imxdmac->watermark_level);
+		imx_dma_config_burstlen(imxdmac->imxdma_channel,
+				imxdmac->watermark_level * imxdmac->word_size);
 
 		return 0;
 	default:
@@ -221,7 +224,7 @@ static void imxdma_free_chan_resources(struct dma_chan *chan)
 
 static struct dma_async_tx_descriptor *imxdma_prep_slave_sg(
 		struct dma_chan *chan, struct scatterlist *sgl,
-		unsigned int sg_len, enum dma_data_direction direction,
+		unsigned int sg_len, enum dma_transfer_direction direction,
 		unsigned long flags)
 {
 	struct imxdma_channel *imxdmac = to_imxdma_chan(chan);
@@ -238,7 +241,7 @@ static struct dma_async_tx_descriptor *imxdma_prep_slave_sg(
 		dma_length += sg->length;
 	}
 
-	if (direction == DMA_FROM_DEVICE)
+	if (direction == DMA_DEV_TO_MEM)
 		dmamode = DMA_MODE_READ;
 	else
 		dmamode = DMA_MODE_WRITE;
@@ -268,7 +271,7 @@ static struct dma_async_tx_descriptor *imxdma_prep_slave_sg(
 
 static struct dma_async_tx_descriptor *imxdma_prep_dma_cyclic(
 		struct dma_chan *chan, dma_addr_t dma_addr, size_t buf_len,
-		size_t period_len, enum dma_data_direction direction)
+		size_t period_len, enum dma_transfer_direction direction)
 {
 	struct imxdma_channel *imxdmac = to_imxdma_chan(chan);
 	struct imxdma_engine *imxdma = imxdmac->imxdma;
@@ -314,7 +317,7 @@ static struct dma_async_tx_descriptor *imxdma_prep_dma_cyclic(
 	imxdmac->sg_list[periods].page_link =
 		((unsigned long)imxdmac->sg_list | 0x01) & ~0x02;
 
-	if (direction == DMA_FROM_DEVICE)
+	if (direction == DMA_DEV_TO_MEM)
 		dmamode = DMA_MODE_READ;
 	else
 		dmamode = DMA_MODE_WRITE;

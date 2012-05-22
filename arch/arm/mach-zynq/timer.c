@@ -24,7 +24,9 @@
 #include <linux/clockchips.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_irq.h>
+
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
 
@@ -287,12 +289,14 @@ static void __init xttcpss_timer_init(void)
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
 	 * transition, note that the event timer uses the interrupt and it's the
-	 * 2nd TTC hence the +1 for the interrupt
+	 * 2nd TTC hence the +1 for the interrupt and the irq_of_parse_and_map(,1)
 	 */
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
-		timer_baseaddr = be32_to_cpup(of_get_property(timer, "reg", NULL));
-		irq = irq_of_parse_and_map(timer, 1);
+		timer_baseaddr = (u32)of_iomap(timer, 0);
+	        WARN_ON(!timer_baseaddr);
+	        irq = irq_of_parse_and_map(timer, 1);
+	        WARN_ON(!irq);
 
 		/* For now, let's play nice and not crash the kernel if the device
 		   tree was not updated to have all the timer irqs, this can be 
@@ -306,13 +310,10 @@ static void __init xttcpss_timer_init(void)
 		prop2 = (void *)of_get_property(timer, "clock-frequency-timer1", NULL);
 	} else {
 		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
-		timer_baseaddr = (u32)TTC0_BASE;
+		timer_baseaddr = (u32)ioremap(0xF8001000, SZ_4K);
 		irq = IRQ_TIMERCOUNTER0 + 1;
 	}
 
-	/* Map the memory so it's accessible in the page table */
-
-	timer_baseaddr = (u32)ioremap(timer_baseaddr, PAGE_SIZE);
 	timers[XTTCPSS_CLOCKSOURCE].base_addr = (void __iomem *)timer_baseaddr;
 	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
 

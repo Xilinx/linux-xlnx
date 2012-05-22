@@ -77,7 +77,7 @@ struct wl12xx_ie_header {
 
 struct wl12xx_ie_ssid {
 	struct wl12xx_ie_header header;
-	char ssid[IW_ESSID_MAX_SIZE];
+	char ssid[IEEE80211_MAX_SSID_LEN];
 } __packed;
 
 struct wl12xx_ie_rates {
@@ -105,18 +105,6 @@ struct wl12xx_ie_country {
 
 /* Templates */
 
-struct wl12xx_beacon_template {
-	struct ieee80211_header header;
-	__le32 time_stamp[2];
-	__le16 beacon_interval;
-	__le16 capability;
-	struct wl12xx_ie_ssid ssid;
-	struct wl12xx_ie_rates rates;
-	struct wl12xx_ie_rates ext_rates;
-	struct wl12xx_ie_ds_params ds_params;
-	struct wl12xx_ie_country country;
-} __packed;
-
 struct wl12xx_null_data_template {
 	struct ieee80211_header header;
 } __packed;
@@ -126,11 +114,6 @@ struct wl12xx_ps_poll_template {
 	__le16 aid;
 	u8 bssid[ETH_ALEN];
 	u8 ta[ETH_ALEN];
-} __packed;
-
-struct wl12xx_qos_null_data_template {
-	struct ieee80211_header header;
-	__le16 qos_ctl;
 } __packed;
 
 struct wl12xx_arp_rsp_template {
@@ -144,19 +127,6 @@ struct wl12xx_arp_rsp_template {
 	__be32 sender_ip;
 	u8 target_hw[ETH_ALEN];
 	__be32 target_ip;
-} __packed;
-
-
-struct wl12xx_probe_resp_template {
-	struct ieee80211_header header;
-	__le32 time_stamp[2];
-	__le16 beacon_interval;
-	__le16 capability;
-	struct wl12xx_ie_ssid ssid;
-	struct wl12xx_ie_rates rates;
-	struct wl12xx_ie_rates ext_rates;
-	struct wl12xx_ie_ds_params ds_params;
-	struct wl12xx_ie_country country;
 } __packed;
 
 struct wl12xx_disconn_template {

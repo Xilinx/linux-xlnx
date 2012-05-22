@@ -18,7 +18,7 @@ bootargs = "console=ttyPS0,115200 console=tty0 root=/dev/mmcblk0p2 rw rootwait i
 logicvc0: logicvc@40030000 {
 	compatible = "xylon,logicvc-2.01.d", "xylon,logicvc-2.04.a";
 	reg = <0x40030000 0x10000>;
-	interrupts = <60 0>;
+	interrupts = <0 60 0>;
 	buffer-0-offset = <1080>;
 	buffer-1-offset = <1080>;
 	buffer-2-offset = <1080>;

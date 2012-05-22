@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/spinlock.h>
+#include <linux/sched.h>	/* for show_stack */
 #include <linux/string.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
@@ -51,13 +52,42 @@
 #include "plpar_wrappers.h"
 
 
+static void tce_invalidate_pSeries_sw(struct iommu_table *tbl,
+				      u64 *startp, u64 *endp)
+{
+	u64 __iomem *invalidate = (u64 __iomem *)tbl->it_index;
+	unsigned long start, end, inc;
+
+	start = __pa(startp);
+	end = __pa(endp);
+	inc = L1_CACHE_BYTES; /* invalidate a cacheline of TCEs at a time */
+
+	/* If this is non-zero, change the format.  We shift the
+	 * address and or in the magic from the device tree. */
+	if (tbl->it_busno) {
+		start <<= 12;
+		end <<= 12;
+		inc <<= 12;
+		start |= tbl->it_busno;
+		end |= tbl->it_busno;
+	}
+
+	end |= inc - 1; /* round up end to be different than start */
+
+	mb(); /* Make sure TCEs in memory are written */
+	while (start <= end) {
+		out_be64(invalidate, start);
+		start += inc;
+	}
+}
+
 static int tce_build_pSeries(struct iommu_table *tbl, long index,
 			      long npages, unsigned long uaddr,
 			      enum dma_data_direction direction,
 			      struct dma_attrs *attrs)
 {
 	u64 proto_tce;
-	u64 *tcep;
+	u64 *tcep, *tces;
 	u64 rpn;
 
 	proto_tce = TCE_PCI_READ; // Read allowed
@@ -65,7 +95,7 @@ static int tce_build_pSeries(struct iommu_table *tbl, long index,
 	if (direction != DMA_TO_DEVICE)
 		proto_tce |= TCE_PCI_WRITE;
 
-	tcep = ((u64 *)tbl->it_base) + index;
+	tces = tcep = ((u64 *)tbl->it_base) + index;
 
 	while (npages--) {
 		/* can't move this out since we might cross MEMBLOCK boundary */
@@ -75,18 +105,24 @@ static int tce_build_pSeries(struct iommu_table *tbl, long index,
 		uaddr += TCE_PAGE_SIZE;
 		tcep++;
 	}
+
+	if (tbl->it_type == TCE_PCI_SWINV_CREATE)
+		tce_invalidate_pSeries_sw(tbl, tces, tcep - 1);
 	return 0;
 }
 
 
 static void tce_free_pSeries(struct iommu_table *tbl, long index, long npages)
 {
-	u64 *tcep;
+	u64 *tcep, *tces;
 
-	tcep = ((u64 *)tbl->it_base) + index;
+	tces = tcep = ((u64 *)tbl->it_base) + index;
 
 	while (npages--)
 		*(tcep++) = 0;
+
+	if (tbl->it_type == TCE_PCI_SWINV_FREE)
+		tce_invalidate_pSeries_sw(tbl, tces, tcep - 1);
 }
 
 static unsigned long tce_get_pseries(struct iommu_table *tbl, long index)
@@ -424,7 +460,7 @@ static void iommu_table_setparms(struct pci_controller *phb,
 				 struct iommu_table *tbl)
 {
 	struct device_node *node;
-	const unsigned long *basep;
+	const unsigned long *basep, *sw_inval;
 	const u32 *sizep;
 
 	node = phb->dn;
@@ -461,6 +497,22 @@ static void iommu_table_setparms(struct pci_controller *phb,
 	tbl->it_index = 0;
 	tbl->it_blocksize = 16;
 	tbl->it_type = TCE_PCI;
+
+	sw_inval = of_get_property(node, "linux,tce-sw-invalidate-info", NULL);
+	if (sw_inval) {
+		/*
+		 * This property contains information on how to
+		 * invalidate the TCE entry.  The first property is
+		 * the base MMIO address used to invalidate entries.
+		 * The second property tells us the format of the TCE
+		 * invalidate (whether it needs to be shifted) and
+		 * some magic routing info to add to our invalidate
+		 * command.
+		 */
+		tbl->it_index = (unsigned long) ioremap(sw_inval[0], 8);
+		tbl->it_busno = sw_inval[1]; /* overload this with magic */
+		tbl->it_type = TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE;
+	}
 }
 
 /*
@@ -939,14 +991,14 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	if (ret) {
 		dev_info(&dev->dev, "failed to map direct window for %s: %d\n",
 			 dn->full_name, ret);
-		goto out_clear_window;
+		goto out_free_window;
 	}
 
 	ret = prom_add_property(pdn, win64);
 	if (ret) {
 		dev_err(&dev->dev, "unable to add dma window property for %s: %d",
 			 pdn->full_name, ret);
-		goto out_clear_window;
+		goto out_free_window;
 	}
 
 	window->device = pdn;
@@ -957,6 +1009,9 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 
 	dma_addr = of_read_number(&create.addr_hi, 2);
 	goto out_unlock;
+
+out_free_window:
+	kfree(window);
 
 out_clear_window:
 	remove_ddw(pdn);
@@ -1077,12 +1132,38 @@ check_mask:
 	return 0;
 }
 
+static u64 dma_get_required_mask_pSeriesLP(struct device *dev)
+{
+	if (!dev->dma_mask)
+		return 0;
+
+	if (!disable_ddw && dev_is_pci(dev)) {
+		struct pci_dev *pdev = to_pci_dev(dev);
+		struct device_node *dn;
+
+		dn = pci_device_to_OF_node(pdev);
+
+		/* search upwards for ibm,dma-window */
+		for (; dn && PCI_DN(dn) && !PCI_DN(dn)->iommu_table;
+				dn = dn->parent)
+			if (of_get_property(dn, "ibm,dma-window", NULL))
+				break;
+		/* if there is a ibm,ddw-applicable property require 64 bits */
+		if (dn && PCI_DN(dn) &&
+				of_get_property(dn, "ibm,ddw-applicable", NULL))
+			return DMA_BIT_MASK(64);
+	}
+
+	return dma_iommu_ops.get_required_mask(dev);
+}
+
 #else  /* CONFIG_PCI */
 #define pci_dma_bus_setup_pSeries	NULL
 #define pci_dma_dev_setup_pSeries	NULL
 #define pci_dma_bus_setup_pSeriesLP	NULL
 #define pci_dma_dev_setup_pSeriesLP	NULL
 #define dma_set_mask_pSeriesLP		NULL
+#define dma_get_required_mask_pSeriesLP	NULL
 #endif /* !CONFIG_PCI */
 
 static int iommu_mem_notifier(struct notifier_block *nb, unsigned long action,
@@ -1186,6 +1267,7 @@ void iommu_init_early_pSeries(void)
 		ppc_md.pci_dma_bus_setup = pci_dma_bus_setup_pSeriesLP;
 		ppc_md.pci_dma_dev_setup = pci_dma_dev_setup_pSeriesLP;
 		ppc_md.dma_set_mask = dma_set_mask_pSeriesLP;
+		ppc_md.dma_get_required_mask = dma_get_required_mask_pSeriesLP;
 	} else {
 		ppc_md.tce_build = tce_build_pSeries;
 		ppc_md.tce_free  = tce_free_pSeries;

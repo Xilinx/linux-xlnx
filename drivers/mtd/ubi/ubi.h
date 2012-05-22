@@ -44,7 +44,6 @@
 
 #include "ubi-media.h"
 #include "scan.h"
-#include "debug.h"
 
 /* Maximum number of supported UBI devices */
 #define UBI_MAX_DEVICES 32
@@ -121,6 +120,7 @@ enum {
  *                     PEB
  * MOVE_CANCEL_BITFLIPS: canceled because a bit-flip was detected in the
  *                       target PEB
+ * MOVE_RETRY: retry scrubbing the PEB
  */
 enum {
 	MOVE_CANCEL_RACE = 1,
@@ -128,6 +128,7 @@ enum {
 	MOVE_TARGET_RD_ERR,
 	MOVE_TARGET_WR_ERR,
 	MOVE_CANCEL_BITFLIPS,
+	MOVE_RETRY,
 };
 
 /**
@@ -390,6 +391,8 @@ struct ubi_wl_entry;
  * @peb_buf2: another buffer of PEB size used for different purposes
  * @buf_mutex: protects @peb_buf1 and @peb_buf2
  * @ckvol_mutex: serializes static volume checking when opening
+ *
+ * @dbg: debugging information for this UBI device
  */
 struct ubi_device {
 	struct cdev cdev;
@@ -472,7 +475,11 @@ struct ubi_device {
 	void *peb_buf2;
 	struct mutex buf_mutex;
 	struct mutex ckvol_mutex;
+
+	struct ubi_debug_info *dbg;
 };
+
+#include "debug.h"
 
 extern struct kmem_cache *ubi_wl_entry_slab;
 extern const struct file_operations ubi_ctrl_cdev_operations;
@@ -662,6 +669,7 @@ static inline void ubi_ro_mode(struct ubi_device *ubi)
 	if (!ubi->ro_mode) {
 		ubi->ro_mode = 1;
 		ubi_warn("switch to read-only mode");
+		ubi_dbg_dump_stack();
 	}
 }
 

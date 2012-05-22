@@ -737,7 +737,7 @@ static int parse_badblocks(struct nandsim *ns, struct mtd_info *mtd)
 			return -EINVAL;
 		}
 		offset = erase_block_no * ns->geom.secsz;
-		if (mtd->block_markbad(mtd, offset)) {
+		if (mtd_block_markbad(mtd, offset)) {
 			NS_ERR("invalid badblocks.\n");
 			return -EINVAL;
 		}
@@ -2273,9 +2273,9 @@ static int __init ns_init_module(void)
 
 	switch (bbt) {
 	case 2:
-		 chip->options |= NAND_USE_FLASH_BBT_NO_OOB;
+		 chip->bbt_options |= NAND_BBT_NO_OOB;
 	case 1:
-		 chip->options |= NAND_USE_FLASH_BBT;
+		 chip->bbt_options |= NAND_BBT_USE_FLASH;
 	case 0:
 		break;
 	default:

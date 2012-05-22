@@ -18,6 +18,8 @@
  * this warranty disclaimer.
  **/
 
+#include <linux/module.h>
+
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
@@ -472,8 +474,6 @@ static int btmrvl_service_main_thread(void *data)
 	ulong flags;
 
 	init_waitqueue_entry(&wait, current);
-
-	current->flags |= PF_NOFREEZE;
 
 	for (;;) {
 		add_wait_queue(&thread->wait_q, &wait);

@@ -18,6 +18,7 @@
 #define __MACH_ZYNQ_COMMON_H__
 
 #include <asm/mach/time.h>
+#include <mach/slcr.h>
 
 void secondary_startup(void);
 
@@ -29,5 +30,11 @@ void xilinx_init_machine(void);
 void xilinx_irq_init(void);
 void xilinx_map_io(void);
 void xilinx_memory_init(void);
+
+
+static inline void xilinx_system_reset(char mode, const char *cmd)
+{
+	xslcr_system_reset();
+}
 
 #endif

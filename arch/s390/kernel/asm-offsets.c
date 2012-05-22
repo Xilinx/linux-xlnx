@@ -10,6 +10,7 @@
 #include <linux/sched.h>
 #include <asm/vdso.h>
 #include <asm/sigp.h>
+#include <asm/pgtable.h>
 
 /*
  * Make sure that the compiler is new enough. We want a compiler that
@@ -27,12 +28,9 @@ int main(void)
 	BLANK();
 	DEFINE(__TASK_pid, offsetof(struct task_struct, pid));
 	BLANK();
-	DEFINE(__THREAD_per_cause,
-	       offsetof(struct task_struct, thread.per_event.cause));
-	DEFINE(__THREAD_per_address,
-	       offsetof(struct task_struct, thread.per_event.address));
-	DEFINE(__THREAD_per_paid,
-	       offsetof(struct task_struct, thread.per_event.paid));
+	DEFINE(__THREAD_per_cause, offsetof(struct task_struct, thread.per_event.cause));
+	DEFINE(__THREAD_per_address, offsetof(struct task_struct, thread.per_event.address));
+	DEFINE(__THREAD_per_paid, offsetof(struct task_struct, thread.per_event.paid));
 	BLANK();
 	DEFINE(__TI_task, offsetof(struct thread_info, task));
 	DEFINE(__TI_domain, offsetof(struct thread_info, exec_domain));
@@ -47,8 +45,8 @@ int main(void)
 	DEFINE(__PT_PSW, offsetof(struct pt_regs, psw));
 	DEFINE(__PT_GPRS, offsetof(struct pt_regs, gprs));
 	DEFINE(__PT_ORIG_GPR2, offsetof(struct pt_regs, orig_gpr2));
-	DEFINE(__PT_ILC, offsetof(struct pt_regs, ilc));
-	DEFINE(__PT_SVCNR, offsetof(struct pt_regs, svcnr));
+	DEFINE(__PT_INT_CODE, offsetof(struct pt_regs, int_code));
+	DEFINE(__PT_INT_PARM_LONG, offsetof(struct pt_regs, int_parm_long));
 	DEFINE(__PT_SIZE, sizeof(struct pt_regs));
 	BLANK();
 	DEFINE(__SF_BACKCHAIN, offsetof(struct stack_frame, back_chain));
@@ -111,7 +109,9 @@ int main(void)
 	DEFINE(__LC_PGM_NEW_PSW, offsetof(struct _lowcore, program_new_psw));
 	DEFINE(__LC_MCK_NEW_PSW, offsetof(struct _lowcore, mcck_new_psw));
 	DEFINE(__LC_IO_NEW_PSW, offsetof(struct _lowcore, io_new_psw));
-	DEFINE(__LC_SAVE_AREA, offsetof(struct _lowcore, save_area));
+	DEFINE(__LC_SAVE_AREA_SYNC, offsetof(struct _lowcore, save_area_sync));
+	DEFINE(__LC_SAVE_AREA_ASYNC, offsetof(struct _lowcore, save_area_async));
+	DEFINE(__LC_SAVE_AREA_RESTART, offsetof(struct _lowcore, save_area_restart));
 	DEFINE(__LC_RETURN_PSW, offsetof(struct _lowcore, return_psw));
 	DEFINE(__LC_RETURN_MCCK_PSW, offsetof(struct _lowcore, return_mcck_psw));
 	DEFINE(__LC_SYNC_ENTER_TIMER, offsetof(struct _lowcore, sync_enter_timer));
@@ -129,6 +129,7 @@ int main(void)
 	DEFINE(__LC_KERNEL_STACK, offsetof(struct _lowcore, kernel_stack));
 	DEFINE(__LC_ASYNC_STACK, offsetof(struct _lowcore, async_stack));
 	DEFINE(__LC_PANIC_STACK, offsetof(struct _lowcore, panic_stack));
+	DEFINE(__LC_USER_ASCE, offsetof(struct _lowcore, user_asce));
 	DEFINE(__LC_INT_CLOCK, offsetof(struct _lowcore, int_clock));
 	DEFINE(__LC_MCCK_CLOCK, offsetof(struct _lowcore, mcck_clock));
 	DEFINE(__LC_MACHINE_FLAGS, offsetof(struct _lowcore, machine_flags));
@@ -151,8 +152,8 @@ int main(void)
 	DEFINE(__LC_FP_CREG_SAVE_AREA, offsetof(struct _lowcore, fpt_creg_save_area));
 	DEFINE(__LC_LAST_BREAK, offsetof(struct _lowcore, breaking_event_addr));
 	DEFINE(__LC_VDSO_PER_CPU, offsetof(struct _lowcore, vdso_per_cpu_data));
-	DEFINE(__LC_SIE_HOOK, offsetof(struct _lowcore, sie_hook));
-	DEFINE(__LC_CMF_HPP, offsetof(struct _lowcore, cmf_hpp));
+	DEFINE(__LC_GMAP, offsetof(struct _lowcore, gmap));
+	DEFINE(__GMAP_ASCE, offsetof(struct gmap, asce));
 #endif /* CONFIG_32BIT */
 	return 0;
 }

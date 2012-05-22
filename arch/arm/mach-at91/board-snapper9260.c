@@ -4,7 +4,7 @@
  *  Copyright (C) 2010 Bluewater System Ltd
  *
  * Author: Andre Renaud <andre@bluewatersys.com>
- * Author: Ryan Mallon  <ryan@bluewatersys.com>
+ * Author: Ryan Mallon
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@
 
 static void __init snapper9260_init_early(void)
 {
-	at91sam9260_initialize(18432000);
+	at91_initialize(18432000);
 
 	/* Debug on ttyS0 */
 	at91_register_uart(0, 0, 0);
@@ -55,22 +55,21 @@ static void __init snapper9260_init_early(void)
 	at91_register_uart(AT91SAM9260_ID_US2, 3, 0);
 }
 
-static void __init snapper9260_init_irq(void)
-{
-	at91sam9260_init_interrupts(NULL);
-}
-
 static struct at91_usbh_data __initdata snapper9260_usbh_data = {
 	.ports		= 2,
+	.vbus_pin	= {-EINVAL, -EINVAL},
+	.overcurrent_pin= {-EINVAL, -EINVAL},
 };
 
 static struct at91_udc_data __initdata snapper9260_udc_data = {
 	.vbus_pin		= SNAPPER9260_IO_EXP_GPIO(5),
 	.vbus_active_low	= 1,
 	.vbus_polled		= 1,
+	.pullup_pin		= -EINVAL,
 };
 
-static struct at91_eth_data snapper9260_macb_data = {
+static struct macb_platform_data snapper9260_macb_data = {
+	.phy_irq_pin	= -EINVAL,
 	.is_rmii	= 1,
 };
 
@@ -102,19 +101,15 @@ static struct mtd_partition __initdata snapper9260_nand_partitions[] = {
 	},
 };
 
-static struct mtd_partition * __init
-snapper9260_nand_partition_info(int size, int *num_partitions)
-{
-	*num_partitions = ARRAY_SIZE(snapper9260_nand_partitions);
-	return snapper9260_nand_partitions;
-}
-
 static struct atmel_nand_data __initdata snapper9260_nand_data = {
 	.ale		= 21,
 	.cle		= 22,
 	.rdy_pin	= AT91_PIN_PC13,
-	.partition_info	= snapper9260_nand_partition_info,
+	.parts		= snapper9260_nand_partitions,
+	.num_parts	= ARRAY_SIZE(snapper9260_nand_partitions),
 	.bus_width_16	= 0,
+	.enable_pin	= -EINVAL,
+	.det_pin	= -EINVAL,
 };
 
 static struct sam9_smc_config __initdata snapper9260_nand_smc_config = {
@@ -160,7 +155,7 @@ static struct i2c_board_info __initdata snapper9260_i2c_devices[] = {
 static void __init snapper9260_add_device_nand(void)
 {
 	at91_set_A_periph(AT91_PIN_PC14, 0);
-	sam9_smc_configure(3, &snapper9260_nand_smc_config);
+	sam9_smc_configure(0, 3, &snapper9260_nand_smc_config);
 	at91_add_device_nand(&snapper9260_nand_data);
 }
 
@@ -179,9 +174,9 @@ static void __init snapper9260_board_init(void)
 
 MACHINE_START(SNAPPER_9260, "Bluewater Systems Snapper 9260/9G20 module")
 	.timer		= &at91sam926x_timer,
-	.map_io		= at91sam9260_map_io,
+	.map_io		= at91_map_io,
 	.init_early	= snapper9260_init_early,
-	.init_irq	= snapper9260_init_irq,
+	.init_irq	= at91_init_irq_default,
 	.init_machine	= snapper9260_board_init,
 MACHINE_END
 

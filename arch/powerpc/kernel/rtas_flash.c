@@ -17,6 +17,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
+#include <linux/reboot.h>
 #include <asm/delay.h>
 #include <asm/uaccess.h>
 #include <asm/rtas.h>
@@ -565,6 +566,12 @@ static void rtas_flash_firmware(int reboot_type)
 		printk(KERN_ALERT "FLASH: firmware will not be flashed\n");
 		return;
 	}
+
+	/*
+	 * Just before starting the firmware flash, cancel the event scan work
+	 * to avoid any soft lockup issues.
+	 */
+	rtas_cancel_event_scan();
 
 	/*
 	 * NOTE: the "first" block must be under 4GB, so we create

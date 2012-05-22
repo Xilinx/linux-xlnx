@@ -30,9 +30,9 @@
 #include <asm/mach/arch.h>
 
 #include <mach/smc.h>
-#include <mach/hardware.h>
 #include <mach/uart.h>
 
+#include <asm/hardware/gic.h>
 #include "common.h"
 
 #define SMC_BASE		(0xE000E000)
@@ -256,6 +256,7 @@ static const char *xilinx_dt_match[] = {
 MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.map_io		= xilinx_map_io,
 	.init_irq	= xilinx_irq_init,
+	.handle_irq	= gic_handle_irq,
 	.init_machine	= board_ep107_init,
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,

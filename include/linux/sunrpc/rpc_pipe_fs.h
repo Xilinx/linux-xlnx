@@ -44,6 +44,8 @@ RPC_I(struct inode *inode)
 	return container_of(inode, struct rpc_inode, vfs_inode);
 }
 
+extern ssize_t rpc_pipe_generic_upcall(struct file *, struct rpc_pipe_msg *,
+				       char __user *, size_t);
 extern int rpc_queue_upcall(struct inode *, struct rpc_pipe_msg *);
 
 struct rpc_clnt;
@@ -53,7 +55,7 @@ extern int rpc_remove_client_dir(struct dentry *);
 struct cache_detail;
 extern struct dentry *rpc_create_cache_dir(struct dentry *,
 					   struct qstr *,
-					   mode_t umode,
+					   umode_t umode,
 					   struct cache_detail *);
 extern void rpc_remove_cache_dir(struct dentry *);
 

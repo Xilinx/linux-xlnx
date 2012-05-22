@@ -23,7 +23,6 @@
  * caches is sufficient.
  */
 
-#include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/pagemap.h>
 #include <linux/highmem.h>
@@ -53,7 +52,7 @@ static struct backing_dev_info ramfs_backing_dev_info = {
 };
 
 struct inode *ramfs_get_inode(struct super_block *sb,
-				const struct inode *dir, int mode, dev_t dev)
+				const struct inode *dir, umode_t mode, dev_t dev)
 {
 	struct inode * inode = new_inode(sb);
 
@@ -93,7 +92,7 @@ struct inode *ramfs_get_inode(struct super_block *sb,
  */
 /* SMP-safe */
 static int
-ramfs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t dev)
+ramfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct inode * inode = ramfs_get_inode(dir->i_sb, dir, mode, dev);
 	int error = -ENOSPC;
@@ -107,7 +106,7 @@ ramfs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t dev)
 	return error;
 }
 
-static int ramfs_mkdir(struct inode * dir, struct dentry * dentry, int mode)
+static int ramfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
 {
 	int retval = ramfs_mknod(dir, dentry, mode | S_IFDIR, 0);
 	if (!retval)
@@ -115,7 +114,7 @@ static int ramfs_mkdir(struct inode * dir, struct dentry * dentry, int mode)
 	return retval;
 }
 
-static int ramfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
+static int ramfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, struct nameidata *nd)
 {
 	return ramfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
@@ -288,14 +287,7 @@ static int __init init_ramfs_fs(void)
 {
 	return register_filesystem(&ramfs_fs_type);
 }
-
-static void __exit exit_ramfs_fs(void)
-{
-	unregister_filesystem(&ramfs_fs_type);
-}
-
 module_init(init_ramfs_fs)
-module_exit(exit_ramfs_fs)
 
 int __init init_rootfs(void)
 {
@@ -311,5 +303,3 @@ int __init init_rootfs(void)
 
 	return err;
 }
-
-MODULE_LICENSE("GPL");

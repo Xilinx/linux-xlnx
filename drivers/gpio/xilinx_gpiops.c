@@ -13,6 +13,8 @@
  * Ave, Cambridge, MA 02139, USA.
  */
 
+#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/gpio.h>

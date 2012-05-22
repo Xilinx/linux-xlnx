@@ -14,7 +14,7 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/sysdev.h>
+#include <linux/device.h>
 #include <linux/serial_core.h>
 #include <linux/io.h>
 
@@ -50,64 +50,46 @@ static struct s3c24xx_dma_map __initdata s3c2412_dma_mappings[] = {
 		.name		= "sdi",
 		.channels	= MAP(S3C2412_DMAREQSEL_SDI),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_SDI),
-		.hw_addr.to	= S3C2410_PA_SDI + S3C2410_SDIDATA,
-		.hw_addr.from	= S3C2410_PA_SDI + S3C2410_SDIDATA,
 	},
 	[DMACH_SPI0] = {
 		.name		= "spi0",
 		.channels	= MAP(S3C2412_DMAREQSEL_SPI0TX),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_SPI0RX),
-		.hw_addr.to	= S3C2410_PA_SPI + S3C2410_SPTDAT,
-		.hw_addr.from	= S3C2410_PA_SPI + S3C2410_SPRDAT,
 	},
 	[DMACH_SPI1] = {
 		.name		= "spi1",
 		.channels	= MAP(S3C2412_DMAREQSEL_SPI1TX),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_SPI1RX),
-		.hw_addr.to	= S3C2410_PA_SPI + S3C2412_SPI1 + S3C2410_SPTDAT,
-		.hw_addr.from	= S3C2410_PA_SPI + S3C2412_SPI1  + S3C2410_SPRDAT,
 	},
 	[DMACH_UART0] = {
 		.name		= "uart0",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART0_0),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART0_0),
-		.hw_addr.to	= S3C2410_PA_UART0 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART0 + S3C2410_URXH,
 	},
 	[DMACH_UART1] = {
 		.name		= "uart1",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART1_0),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART1_0),
-		.hw_addr.to	= S3C2410_PA_UART1 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART1 + S3C2410_URXH,
 	},
       	[DMACH_UART2] = {
 		.name		= "uart2",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART2_0),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART2_0),
-		.hw_addr.to	= S3C2410_PA_UART2 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART2 + S3C2410_URXH,
 	},
 	[DMACH_UART0_SRC2] = {
 		.name		= "uart0",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART0_1),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART0_1),
-		.hw_addr.to	= S3C2410_PA_UART0 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART0 + S3C2410_URXH,
 	},
 	[DMACH_UART1_SRC2] = {
 		.name		= "uart1",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART1_1),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART1_1),
-		.hw_addr.to	= S3C2410_PA_UART1 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART1 + S3C2410_URXH,
 	},
       	[DMACH_UART2_SRC2] = {
 		.name		= "uart2",
 		.channels	= MAP(S3C2412_DMAREQSEL_UART2_1),
 		.channels_rx	= MAP(S3C2412_DMAREQSEL_UART2_1),
-		.hw_addr.to	= S3C2410_PA_UART2 + S3C2410_UTXH,
-		.hw_addr.from	= S3C2410_PA_UART2 + S3C2410_URXH,
 	},
 	[DMACH_TIMER] = {
 		.name		= "timer",
@@ -148,11 +130,11 @@ static struct s3c24xx_dma_map __initdata s3c2412_dma_mappings[] = {
 
 static void s3c2412_dma_direction(struct s3c2410_dma_chan *chan,
 				  struct s3c24xx_dma_map *map,
-				  enum s3c2410_dmasrc dir)
+				  enum dma_data_direction dir)
 {
 	unsigned long chsel;
 
-	if (dir == S3C2410_DMASRC_HW)
+	if (dir == DMA_FROM_DEVICE)
 		chsel = map->channels_rx[0];
 	else
 		chsel = map->channels[0];
@@ -177,19 +159,22 @@ static struct s3c24xx_dma_selection __initdata s3c2412_dma_sel = {
 	.map_size	= ARRAY_SIZE(s3c2412_dma_mappings),
 };
 
-static int __init s3c2412_dma_add(struct sys_device *sysdev)
+static int __init s3c2412_dma_add(struct device *dev,
+				  struct subsys_interface *sif)
 {
 	s3c2410_dma_init();
 	return s3c24xx_dma_init_map(&s3c2412_dma_sel);
 }
 
-static struct sysdev_driver s3c2412_dma_driver = {
-	.add	= s3c2412_dma_add,
+static struct subsys_interface s3c2412_dma_interface = {
+	.name		= "s3c2412_dma",
+	.subsys		= &s3c2412_subsys,
+	.add_dev	= s3c2412_dma_add,
 };
 
 static int __init s3c2412_dma_init(void)
 {
-	return sysdev_driver_register(&s3c2412_sysclass, &s3c2412_dma_driver);
+	return subsys_interface_register(&s3c2412_dma_interface);
 }
 
 arch_initcall(s3c2412_dma_init);

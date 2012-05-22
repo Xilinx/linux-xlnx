@@ -19,6 +19,8 @@
 #include <asm-generic/iomap.h>
 #endif
 
+#include <asm-generic/pci_iomap.h>
+
 #ifndef mmiowb
 #define mmiowb() do {} while (0)
 #endif
@@ -283,9 +285,7 @@ static inline void writesb(const void __iomem *addr, const void *buf, int len)
 #define __io_virt(x) ((void __force *) (x))
 
 #ifndef CONFIG_GENERIC_IOMAP
-/* Create a virtual mapping cookie for a PCI BAR (memory or IO) */
 struct pci_dev;
-extern void __iomem *pci_iomap(struct pci_dev *dev, int bar, unsigned long max);
 static inline void pci_iounmap(struct pci_dev *dev, void __iomem *p)
 {
 }
@@ -307,7 +307,11 @@ static inline void *phys_to_virt(unsigned long address)
 
 /*
  * Change "struct page" to physical address.
+ *
+ * This implementation is for the no-MMU case only... if you have an MMU
+ * you'll need to provide your own definitions.
  */
+#ifndef CONFIG_MMU
 static inline void __iomem *ioremap(phys_addr_t offset, unsigned long size)
 {
 	return (void __iomem*) (unsigned long)offset;
@@ -323,10 +327,12 @@ static inline void __iomem *ioremap(phys_addr_t offset, unsigned long size)
 #define ioremap_wc ioremap_nocache
 #endif
 
-static inline void iounmap(void *addr)
+static inline void iounmap(void __iomem *addr)
 {
 }
+#endif /* CONFIG_MMU */
 
+#ifdef CONFIG_HAS_IOPORT
 #ifndef CONFIG_GENERIC_IOMAP
 static inline void __iomem *ioport_map(unsigned long port, unsigned int nr)
 {
@@ -340,9 +346,10 @@ static inline void ioport_unmap(void __iomem *p)
 extern void __iomem *ioport_map(unsigned long port, unsigned int nr);
 extern void ioport_unmap(void __iomem *p);
 #endif /* CONFIG_GENERIC_IOMAP */
+#endif /* CONFIG_HAS_IOPORT */
 
 #define xlate_dev_kmem_ptr(p)	p
-#define xlate_dev_mem_ptr(p)	((void *) (p))
+#define xlate_dev_mem_ptr(p)	__va(p)
 
 #ifndef virt_to_bus
 static inline unsigned long virt_to_bus(volatile void *address)

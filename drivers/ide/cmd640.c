@@ -105,12 +105,13 @@
 #include <linux/delay.h>
 #include <linux/ide.h>
 #include <linux/init.h>
+#include <linux/module.h>
 
 #include <asm/io.h>
 
 #define DRV_NAME "cmd640"
 
-static int cmd640_vlb;
+static bool cmd640_vlb;
 
 /*
  * CMD640 specific registers definition.

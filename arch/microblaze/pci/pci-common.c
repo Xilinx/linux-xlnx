@@ -30,6 +30,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_pci.h>
+#include <linux/export.h>
 
 #include <asm/processor.h>
 #include <asm/io.h>
@@ -49,6 +50,11 @@ resource_size_t isa_mem_base;
 unsigned int pci_flags;
 
 static struct dma_map_ops *pci_dma_ops = &dma_direct_ops;
+
+unsigned long isa_io_base;
+unsigned long pci_dram_offset;
+static int pci_bus_count;
+
 
 void set_pci_dma_ops(struct dma_map_ops *dma_ops)
 {
@@ -89,7 +95,7 @@ void pcibios_free_controller(struct pci_controller *phb)
 
 static resource_size_t pcibios_io_size(const struct pci_controller *hose)
 {
-	return hose->io_resource.end - hose->io_resource.start + 1;
+	return resource_size(&hose->io_resource);
 }
 
 int pcibios_vaddr_is_ioport(void __iomem *address)
@@ -184,6 +190,11 @@ int pcibios_add_platform_entries(struct pci_dev *pdev)
 	return device_create_file(&pdev->dev, &dev_attr_devspec);
 }
 
+void pcibios_set_master(struct pci_dev *dev)
+{
+	/* No special bus mastering setup handling */
+}
+
 char __devinit *pcibios_setup(char *str)
 {
 	return str;
@@ -236,7 +247,7 @@ int pci_read_irq_line(struct pci_dev *pci_dev)
 			 line, pin);
 
 		virq = irq_create_mapping(NULL, line);
-		if (virq != NO_IRQ)
+		if (virq)
 			irq_set_irq_type(virq, IRQ_TYPE_LEVEL_LOW);
 	} else {
 		pr_debug(" Got one, spec %d cells (0x%08x 0x%08x...) on %s\n",
@@ -247,7 +258,7 @@ int pci_read_irq_line(struct pci_dev *pci_dev)
 		virq = irq_create_of_mapping(oirq.controller, oirq.specifier,
 					     oirq.size);
 	}
-	if (virq == NO_IRQ) {
+	if (!virq) {
 		pr_debug(" Failed to map !\n");
 		return -1;
 	}
@@ -1013,7 +1024,6 @@ static void __devinit pcibios_fixup_bridge(struct pci_bus *bus)
 	struct pci_dev *dev = bus->self;
 
 	pci_bus_for_each_resource(bus, res, i) {
-		res = bus->resource[i];
 		if (!res)
 			continue;
 		if (!res->flags)
@@ -1213,7 +1223,6 @@ void pcibios_allocate_bus_resources(struct pci_bus *bus)
 		 pci_domain_nr(bus), bus->number);
 
 	pci_bus_for_each_resource(bus, res, i) {
-		res = bus->resource[i];
 		if (!res || !res->flags
 		    || res->start > res->end || res->parent)
 			continue;
@@ -1504,14 +1513,18 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
 	return pci_enable_resources(dev, mask);
 }
 
-void __devinit pcibios_setup_phb_resources(struct pci_controller *hose)
+static void __devinit pcibios_setup_phb_resources(struct pci_controller *hose, struct list_head *resources)
 {
-	struct pci_bus *bus = hose->bus;
 	struct resource *res;
 	int i;
 
 	/* Hookup PHB IO resource */
-	bus->resource[0] = res = &hose->io_resource;
+	res = &hose->io_resource;
+
+	/* Fixup IO space offset */
+	io_offset = (unsigned long)hose->io_base_virt - isa_io_base;
+	res->start = (res->start + io_offset) & 0xffffffffu;
+	res->end = (res->end + io_offset) & 0xffffffffu;
 
 	if (!res->flags) {
 		printk(KERN_WARNING "PCI: I/O resource not set for host"
@@ -1522,6 +1535,7 @@ void __devinit pcibios_setup_phb_resources(struct pci_controller *hose)
 		res->end = res->start + IO_SPACE_LIMIT;
 		res->flags = IORESOURCE_IO;
 	}
+	pci_add_resource(resources, res);
 
 	pr_debug("PCI: PHB IO resource    = %016llx-%016llx [%lx]\n",
 		 (unsigned long long)res->start,
@@ -1544,7 +1558,7 @@ void __devinit pcibios_setup_phb_resources(struct pci_controller *hose)
 			res->flags = IORESOURCE_MEM;
 
 		}
-		bus->resource[i+1] = res;
+		pci_add_resource(resources, res);
 
 		pr_debug("PCI: PHB MEM resource %d = %016llx-%016llx [%lx]\n",
 			i, (unsigned long long)res->start,
@@ -1556,6 +1570,103 @@ void __devinit pcibios_setup_phb_resources(struct pci_controller *hose)
 		 (unsigned long long)hose->pci_mem_offset);
 	pr_debug("PCI: PHB IO  offset     = %08lx\n",
 		 (unsigned long)hose->io_base_virt - _IO_BASE);
+}
+
+struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
+{
+	struct pci_controller *hose = bus->sysdata;
+
+	return of_node_get(hose->dn);
+}
+
+static void __devinit pcibios_scan_phb(struct pci_controller *hose)
+{
+	LIST_HEAD(resources);
+	struct pci_bus *bus;
+	struct device_node *node = hose->dn;
+
+	pr_debug("PCI: Scanning PHB %s\n",
+		 node ? node->full_name : "<NO NAME>");
+
+	pcibios_setup_phb_resources(hose, &resources);
+
+	bus = pci_scan_root_bus(hose->parent, hose->first_busno,
+				hose->ops, hose, &resources);
+	if (bus == NULL) {
+		printk(KERN_ERR "Failed to create bus for PCI domain %04x\n",
+		       hose->global_number);
+		pci_free_resource_list(&resources);
+		return;
+	}
+	bus->secondary = hose->first_busno;
+	hose->bus = bus;
+
+	hose->last_busno = bus->subordinate;
+}
+
+static int __init pcibios_init(void)
+{
+	struct pci_controller *hose, *tmp;
+	int next_busno = 0;
+
+	printk(KERN_INFO "PCI: Probing PCI hardware\n");
+
+	/* Scan all of the recorded PCI controllers.  */
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
+		hose->last_busno = 0xff;
+		pcibios_scan_phb(hose);
+		if (next_busno <= hose->last_busno)
+			next_busno = hose->last_busno + 1;
+	}
+	pci_bus_count = next_busno;
+
+	/* Call common code to handle resource allocation */
+	pcibios_resource_survey();
+
+	return 0;
+}
+
+subsys_initcall(pcibios_init);
+
+static struct pci_controller *pci_bus_to_hose(int bus)
+{
+	struct pci_controller *hose, *tmp;
+
+	list_for_each_entry_safe(hose, tmp, &hose_list, list_node)
+		if (bus >= hose->first_busno && bus <= hose->last_busno)
+			return hose;
+	return NULL;
+}
+
+/* Provide information on locations of various I/O regions in physical
+ * memory.  Do this on a per-card basis so that we choose the right
+ * root bridge.
+ * Note that the returned IO or memory base is a physical address
+ */
+
+long sys_pciconfig_iobase(long which, unsigned long bus, unsigned long devfn)
+{
+	struct pci_controller *hose;
+	long result = -EOPNOTSUPP;
+
+	hose = pci_bus_to_hose(bus);
+	if (!hose)
+		return -ENODEV;
+
+	switch (which) {
+	case IOBASE_BRIDGE_NUMBER:
+		return (long)hose->first_busno;
+	case IOBASE_MEMORY:
+		return (long)hose->pci_mem_offset;
+	case IOBASE_IO:
+		return (long)hose->io_base_phys;
+	case IOBASE_ISA_IO:
+		return (long)isa_io_base;
+	case IOBASE_ISA_MEM:
+		return (long)isa_mem_base;
+	}
+
+	return result;
 }
 
 /*
@@ -1626,3 +1737,4 @@ int early_find_capability(struct pci_controller *hose, int bus, int devfn,
 {
 	return pci_bus_find_capability(fake_pci_bus(hose, bus), devfn, cap);
 }
+
