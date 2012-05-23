@@ -3,7 +3,6 @@
 #include <linux/moduleparam.h>
 
 #include <linux/platform_device.h>
-#include <linux/sysdev.h>
 
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
