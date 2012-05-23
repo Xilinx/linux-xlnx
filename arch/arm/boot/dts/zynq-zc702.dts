@@ -39,21 +39,13 @@
 		};
 
 		timer@0xf8001000 {
-			clock-frequency-timer0 = <111111111>;
-			clock-frequency-timer1 = <111111111>;
-			clock-frequency-timer2 = <111111111>;
 			compatible = "xlnx,ps7-ttc-1.00.a";
-<<<<<<< HEAD:arch/arm/boot/dts/zynq-zc702.dts
-			interrupts = < 42 0 43 0 44 0 >;
-			reg = < 0xf8001000 0x1000 >;
-=======
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0 10 0>,<0 11 0>,<0 12 0>; 
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <111111111>;
 			clock-frequency-timer1 = <111111111>;
 			clock-frequency-timer2 = <111111111>;
->>>>>>> master-3.3:arch/arm/boot/dts/zynq-zc702.dts
 		};
 
 		swdt@f8005000 {
