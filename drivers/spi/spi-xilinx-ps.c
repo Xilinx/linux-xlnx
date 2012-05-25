@@ -329,7 +329,6 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
 {
 	struct xspips *xspi = dev_id;
 	u32 intr_status;
-	u8 fifo_count = 128; /* fifo depth */
 
 	intr_status = xspips_read(xspi->regs + XSPIPS_ISR_OFFSET);
 	xspips_write(xspi->regs + XSPIPS_ISR_OFFSET, intr_status);
@@ -349,15 +348,17 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
 			u8 data;
 
 			data = xspips_read(xspi->regs + XSPIPS_RXD_OFFSET);
-			if ((xspi->rxbuf) && (fifo_count))
+			if (xspi->rxbuf)
 				*xspi->rxbuf++ = data;
 
-			/* Fixing the loop count to fifo depth as
-			 * there is issue with h/w where the status register
-			 * is not updated quick enough.
-			 * Need to revisit after h/w fix.
+			/* Data memory barrier is placed here to ensure that
+			 * data read operation is completed before the status
+			 * read is initiated. Without dmb, there are chances
+			 * that data and status reads will appear at the SPI
+			 * peripheral back-to-back which results in an
+			 * incorrect status read.
 			 */
-			--fifo_count;
+			dmb();
 		}
 
 		if (xspi->remaining_bytes) {
