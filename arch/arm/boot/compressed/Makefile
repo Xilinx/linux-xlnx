@@ -34,6 +34,8 @@ ifeq ($(CONFIG_ARM_VIRT_EXT),y)
 OBJS		+= hyp-stub.o
 endif
 
+GCOV_PROFILE		:= n
+
 #
 # Architecture dependencies
 #
