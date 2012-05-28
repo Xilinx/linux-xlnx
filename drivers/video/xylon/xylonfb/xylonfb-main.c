@@ -850,7 +850,7 @@ static int xylonfb_parse_vram_info(struct platform_device *pdev,
 	dbg("%s\n", __func__);
 
 	prop =
-		of_get_property(pdev->dev.of_node, "vmem-baseaddr", &size);
+		of_get_property(pdev->dev.of_node, "xlnx,vmem-baseaddr", &size);
 	if (!prop) {
 		printk(KERN_ERR "Error xylonfb getting VRAM address begin\n");
 		return -EINVAL;
@@ -858,7 +858,7 @@ static int xylonfb_parse_vram_info(struct platform_device *pdev,
 	*vmem_base_addr = be32_to_cpup(prop);
 
 	prop =
-		of_get_property(pdev->dev.of_node, "vmem-highaddr", &size);
+		of_get_property(pdev->dev.of_node, "xlnx,vmem-highaddr", &size);
 	if (!prop) {
 		printk(KERN_ERR "Error xylonfb getting VRAM address end\n");
 		return -EINVAL;
@@ -876,14 +876,14 @@ static int xylonfb_parse_layer_info(struct platform_device *pdev,
 
 	dbg("%s\n", __func__);
 
-	prop = of_get_property(pdev->dev.of_node, "num-of-layers", &size);
+	prop = of_get_property(pdev->dev.of_node, "xlnx,num-of-layers", &size);
 	if (!prop) {
 		printk(KERN_ERR "Error getting number of layers\n");
 		return -EINVAL;
 	}
 	*layers = be32_to_cpup(prop);
 
-	prop = of_get_property(pdev->dev.of_node, "use-background", &size);
+	prop = of_get_property(pdev->dev.of_node, "xlnx,use-background", &size);
 	if (!prop) {
 		printk(KERN_ERR "Error getting use background\n");
 		return -EINVAL;
@@ -1038,7 +1038,7 @@ static int xylonfb_parse_layer_params(struct platform_device *pdev,
 
 	dbg("%s\n", __func__);
 
-	sprintf(layer_property_name, "layer-%d-offset", id);
+	sprintf(layer_property_name, "xlnx,layer-%d-offset", id);
 	prop = of_get_property(pdev->dev.of_node, layer_property_name, &size);
 	if (!prop) {
 		printk(KERN_ERR "Error getting layer offset\n");
@@ -1047,13 +1047,13 @@ static int xylonfb_parse_layer_params(struct platform_device *pdev,
 		lfdata->offset = be32_to_cpup(prop);
 	}
 
-	prop = of_get_property(pdev->dev.of_node, "row-stride", &size);
+	prop = of_get_property(pdev->dev.of_node, "xlnx,row-stride", &size);
 	if (!prop)
 		lfdata->width = 1024;
 	else
 		lfdata->width = be32_to_cpup(prop);
 
-	sprintf(layer_property_name, "layer-%d-alpha-mode", id);
+	sprintf(layer_property_name, "xlnx,layer-%d-alpha-mode", id);
 	prop = of_get_property(pdev->dev.of_node, layer_property_name, &size);
 	if (!prop) {
 		printk(KERN_ERR "Error getting layer alpha mode\n");
@@ -1062,7 +1062,7 @@ static int xylonfb_parse_layer_params(struct platform_device *pdev,
 		lfdata->alpha_mode = be32_to_cpup(prop);
 	}
 
-	sprintf(layer_property_name, "layer-%d-data-width", id);
+	sprintf(layer_property_name, "xlnx,layer-%d-data-width", id);
 	prop = of_get_property(pdev->dev.of_node, layer_property_name, &size);
 	if (!prop)
 		lfdata->bpp = 16;
@@ -1857,6 +1857,7 @@ static int xylonfb_remove(struct platform_device *pdev)
 static struct of_device_id xylonfb_of_match[] __devinitdata = {
 	{ .compatible = "xylon,logicvc-2.04.a" },
 	{ .compatible = "xylon,logicvc-2.05.b" },
+	{ .compatible = "xlnx,logicvc-2.05.c" },
 	{/* end of table */},
 };
 MODULE_DEVICE_TABLE(of, xylonfb_of_match);
