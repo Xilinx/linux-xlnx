@@ -20,6 +20,12 @@ config CONSTRUCTORS
 	bool
 	depends on !UML
 
+config CONSTRUCTORS_NAME
+	string
+	depends on CONSTRUCTORS
+	default ".init_array" if ARM && AEABI
+	default ".ctors"
+
 config IRQ_WORK
 	bool
 

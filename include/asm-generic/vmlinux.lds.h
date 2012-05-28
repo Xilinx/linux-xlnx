@@ -498,9 +498,9 @@
 	}
 
 #ifdef CONFIG_CONSTRUCTORS
-#define KERNEL_CTORS()	. = ALIGN(8);			   \
-			VMLINUX_SYMBOL(__ctors_start) = .; \
-			*(.ctors)			   \
+#define KERNEL_CTORS()	. = ALIGN(8);					\
+			VMLINUX_SYMBOL(__ctors_start) = .;		\
+			*(CONFIG_CONSTRUCTORS_NAME)			\
 			VMLINUX_SYMBOL(__ctors_end) = .;
 #else
 #define KERNEL_CTORS()
