@@ -63,7 +63,11 @@ static void gpio_system_reset(void)
 	gpio_set_value(handle, 1 - reset_val);
 }
 #else
-#define gpio_system_reset() do {} while (0)
+static void gpio_system_reset(void)
+{
+	printk(KERN_NOTICE "No reset GPIO present - halting!\n");
+}
+
 void of_platform_reset_gpio_probe(void)
 {
 	return;
@@ -74,7 +78,6 @@ void machine_restart(char *cmd)
 {
 	printk(KERN_NOTICE "Machine restart...\n");
 	gpio_system_reset();
-	dump_stack();
 	while (1)
 		;
 }
