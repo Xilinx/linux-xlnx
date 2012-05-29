@@ -1693,6 +1693,8 @@ static int xylonfb_probe(struct platform_device *pdev)
 		layer_data = fbi->par;
 		layer_data->xylonfb_cd = common_data;
 
+		spin_lock_init(&layer_data->layer_lock);
+
 		xylonfb_set_yvirt(lfdata, vmem_base_addr, vmem_high_addr, layers, i);
 
 		layer_data->layer_fix = lfdata[i];
@@ -1707,7 +1709,7 @@ static int xylonfb_probe(struct platform_device *pdev)
 		if (rc)
 			goto err_fb;
 
-		spin_lock_init(&layer_data->layer_lock);
+
 
 		/* register following layers in HW configuration order */
 		if (active_layer > 0) {

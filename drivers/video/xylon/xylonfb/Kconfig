@@ -1,5 +1,5 @@
 menuconfig FB_XYLON
-	bool "Xylon logiCVC frame buffer support"
+	tristate "Xylon logiCVC frame buffer support"
 	depends on FB
 	default n
 	select FB_CFB_FILLRECT
