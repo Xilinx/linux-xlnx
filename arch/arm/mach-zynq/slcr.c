@@ -62,6 +62,7 @@
 #define XSLCR_DEVC_RST_CTRL_OFFSET	0x23C /* Dev Cfg SW Reset Control */
 #define XSLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define XSLCR_A9_CPU_RST_CTRL		0x244 /* CPU Software Reset Control */
+#define XSLCR_REBOOT_STATUS		0x258 /* PS Reboot Status */
 #define XSLCR_MIO_PIN_00_OFFSET		0x700 /* MIO PIN0 control register */
 #define XSLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
@@ -1597,6 +1598,12 @@ void xslcr_system_reset(void)
 	 * functions or there's a lockup?
 	 */
 	xslcr_writereg(slcr->regs + XSLCR_UNLOCK, 0xDF0D);
+
+	/* Clear 0x0F000000 bits of reboot status register to workaround
+	 * the FSBL not loading the bitstream after soft-reboot
+	 * This is a temporary solution until we know more.
+	 */
+	xslcr_writereg(slcr->regs + XSLCR_REBOOT_STATUS, xslcr_read(slcr->regs + XSLCR_REBOOT_STATUS) & 0xF0FFFFFF);
 	xslcr_writereg(slcr->regs + XSLCR_PSS_RST_CTRL_OFFSET, 1);
 }
 
