@@ -1028,12 +1028,14 @@ static int temac_of_probe(struct platform_device *op)
 	/* Setup checksum offload, but default to off if not specified */
 	lp->temac_features = 0;
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,txcsum", NULL);
+	dev_info(&op->dev, "TX_CSUM %d\n", be32_to_cpup(p));
 	if (p && be32_to_cpu(*p)) {
 		lp->temac_features |= TEMAC_FEATURE_TX_CSUM;
 		/* Can checksum TCP/UDP over IPv4. */
 		ndev->features |= NETIF_F_IP_CSUM;
 	}
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,rxcsum", NULL);
+	dev_info(&op->dev, "RX_CSUM %d\n", be32_to_cpup(p));
 	if (p && be32_to_cpu(*p))
 		lp->temac_features |= TEMAC_FEATURE_RX_CSUM;
 
