@@ -5,9 +5,11 @@ menuconfig FB_XYLON
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT
+	select PROC_DEVICETREE
 	help
 	  Choose this option if you want to use the Xylon logiCVC as frame
-	  buffer device. Without the support of PCI & AGP.
+	  buffer device. Without the support of PCI & AGP. Device-tree
+	  dependency is directfb requirement.
 
 config FB_XYLON_PLATFORM
 	bool "Xylon logiCVC frame buffer platform driver"
