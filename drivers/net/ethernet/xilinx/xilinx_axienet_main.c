@@ -1532,6 +1532,7 @@ static int __devinit axienet_of_probe(struct platform_device *op)
 	lp->features = 0;
 
 	p = (__be32 *) of_get_property(op->dev.of_node, "xlnx,txcsum", NULL);
+	dev_info(&op->dev, "TX_CSUM %d\n", be32_to_cpup(p));
 	if (p) {
 		switch (be32_to_cpup(p)) {
 		case 1:
@@ -1553,6 +1554,7 @@ static int __devinit axienet_of_probe(struct platform_device *op)
 		}
 	}
 	p = (__be32 *) of_get_property(op->dev.of_node, "xlnx,rxcsum", NULL);
+	dev_info(&op->dev, "RX_CSUM %d\n", be32_to_cpup(p));
 	if (p) {
 		switch (be32_to_cpup(p)) {
 		case 1:
