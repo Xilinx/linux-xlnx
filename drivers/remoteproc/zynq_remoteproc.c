@@ -303,7 +303,7 @@ irq_fault:
 	clear_irq(pdev);
 
 	/* Cpu can't be power on - for example in nosmp mode */
-	ret = cpu_up(1);
+	ret |= cpu_up(1);
 	if (ret)
 		dev_err(&pdev->dev, "Can't power on cpu1 %d\n", ret);
 
