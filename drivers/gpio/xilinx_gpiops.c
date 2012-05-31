@@ -34,8 +34,6 @@
 								Data -WO */
 #define XGPIOPS_DATA_OFFSET(BANK)	(0x040 + (4 * BANK)) /* Data Register
 								-RW */
-#define XGPIOPS_BYPM_OFFSET(BANK)	(0x200 + (0x40 * BANK)) /* Bypass mode
-								reg -RW */
 #define XGPIOPS_DIRM_OFFSET(BANK)	(0x204 + (0x40 * BANK)) /* Direction
 								mode reg-RW */
 #define XGPIOPS_OUTEN_OFFSET(BANK)	(0x208 + (0x40 * BANK)) /* Output
@@ -109,61 +107,6 @@ static inline void xgpiops_get_bank_pin(unsigned int pin_num,
 		*bank_pin_num = pin_num %
 					(xgpiops_pin_table[*bank_num - 1] + 1);
 }
-
-/**
- * xgpiops_set_bypass_mode - Set the GPIO pin in bypass mode
- * @chip:	gpio_chip instance to be worked on
- * @pin:	gpio pin number within the device
- *
- * This function sets the specified pin of the GPIO device in bypass mode.
- */
-void xgpiops_set_bypass_mode(struct gpio_chip *chip, unsigned int pin)
-{
-	unsigned long flags;
-	unsigned int bypm_reg, bank_num, bank_pin_num;
-	struct xgpiops *gpio = container_of(chip, struct xgpiops, chip);
-
-	xgpiops_get_bank_pin(pin, &bank_num, &bank_pin_num);
-
-	spin_lock_irqsave(&gpio->gpio_lock, flags);
-
-	bypm_reg = xgpiops_readreg(gpio->base_addr +
-				    XGPIOPS_BYPM_OFFSET(bank_num));
-	bypm_reg |= 1 << bank_pin_num;
-	xgpiops_writereg(bypm_reg,
-			  gpio->base_addr + XGPIOPS_BYPM_OFFSET(bank_num));
-
-	spin_unlock_irqrestore(&gpio->gpio_lock, flags);
-}
-EXPORT_SYMBOL(xgpiops_set_bypass_mode);
-
-/**
- * xgpiops_set_normal_mode - Set the GPIO pin in normal mode
- * @chip:	gpio_chip instance to be worked on
- * @pin:	gpio pin number within the device
- *
- * This function sets the specified pin of the GPIO device in normal (i,e)
- * software controlled mode.
- */
-void xgpiops_set_normal_mode(struct gpio_chip *chip, unsigned int pin)
-{
-	unsigned long flags;
-	unsigned int bypm_reg, bank_num, bank_pin_num;
-	struct xgpiops *gpio = container_of(chip, struct xgpiops, chip);
-
-	xgpiops_get_bank_pin(pin, &bank_num, &bank_pin_num);
-
-	spin_lock_irqsave(&gpio->gpio_lock, flags);
-
-	bypm_reg = xgpiops_readreg(gpio->base_addr +
-				    XGPIOPS_BYPM_OFFSET(bank_num));
-	bypm_reg &= ~(1 << bank_pin_num);
-	xgpiops_writereg(bypm_reg,
-			  gpio->base_addr + XGPIOPS_BYPM_OFFSET(bank_num));
-
-	spin_unlock_irqrestore(&gpio->gpio_lock, flags);
-}
-EXPORT_SYMBOL(xgpiops_set_normal_mode);
 
 /**
  * xgpiops_get_value - Get the state of the specified pin of GPIO device
