@@ -1735,8 +1735,9 @@ static int xylonfb_probe(struct platform_device *pdev)
 	}
 
 	common_data->xylonfb_irq = irq_res->start;
-	if (request_irq(common_data->xylonfb_irq, xylonfb_isr,
-			IRQF_TRIGGER_HIGH, PLATFORM_DRIVER_NAME, afbi)) {
+	rc = request_irq(common_data->xylonfb_irq, xylonfb_isr,
+			IRQF_TRIGGER_HIGH, PLATFORM_DRIVER_NAME, afbi);
+	if (rc) {
 		common_data->xylonfb_irq = 0;
 		goto err_fb;
 	}
