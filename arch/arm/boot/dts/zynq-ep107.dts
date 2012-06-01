@@ -165,7 +165,7 @@
 		};
 
 		sdhci0: sdhci@e0100000 {
-			compatible = "generic-sdhci";
+			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xE0100000 0x1000>;
 			interrupts = <0 24 0>;
 			interrupt-parent = <&gic>;
@@ -173,7 +173,7 @@
 		};
 
 		sdhci1: sdhci@e0101000 {
-			compatible = "generic-sdhci";
+			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xE0101000 0x1000>;
 			interrupts = <0 47 0>;
 			interrupt-parent = <&gic>;
