@@ -884,7 +884,7 @@ CONFIG_MARVELL_PHY=y
 # CONFIG_QSEMI_PHY is not set
 # CONFIG_LXT_PHY is not set
 # CONFIG_CICADA_PHY is not set
-# CONFIG_VITESSE_PHY is not set
+CONFIG_VITESSE_PHY=y
 # CONFIG_SMSC_PHY is not set
 # CONFIG_BROADCOM_PHY is not set
 # CONFIG_ICPLUS_PHY is not set
