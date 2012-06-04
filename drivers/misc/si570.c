@@ -74,6 +74,7 @@ struct si570_data {
 	unsigned int hs_div;
 	u64 rfreq;
 	u64 frequency;
+	unsigned long initial_fout;
 };
 
 
@@ -433,6 +434,18 @@ static int si570_probe(struct i2c_client *client,
 	if (pdata && pdata->factory_fout)
 		data->fout = pdata->factory_fout;
 
+	if (pdata && pdata->initial_fout) {
+		data->initial_fout = pdata->initial_fout;
+	} else {
+		const __be32 *val;
+		struct device_node *node = client->dev.of_node;
+		if (node) {
+			val = of_get_property(node, "initial_fout", NULL);
+			if (val)
+				data->initial_fout = be32_to_cpup(val);
+		}
+	}
+		
 	i2c_set_clientdata(client, data);
 	err = si570_get_defaults(client);
 	if (err < 0)
@@ -451,36 +464,34 @@ static int si570_probe(struct i2c_client *client,
 		"registered %s with default frequency %llu Hz\n",
 		id->name, data->fout);
 
-	if (pdata && pdata->initial_fout) {
-		if (pdata->initial_fout < SI570_MIN_FREQ ||
-			pdata->initial_fout > data->max_freq) {
-			dev_err(&client->dev,
-				"requested initial frequency %lu is out of range, using default\n",
-				pdata->initial_fout);
-			return 0;
-		}
-
-		mutex_lock(&data->lock);
-
-		if (div64_u64(abs(pdata->initial_fout - data->frequency) *
-			10000LL, data->frequency) < 35)
-			err = si570_set_frequency_small(client, data,
-				pdata->initial_fout);
-		else
-			err = si570_set_frequency(client, data,
-				pdata->initial_fout);
-		mutex_unlock(&data->lock);
-		if (err) {
-			dev_warn(&client->dev,
-				"unable to set initial output frequency %lu: %d\n",
-				pdata->initial_fout, err);
-			return err;
-		}
-
-		dev_info(&client->dev,
-			"set initial output frequency %lu Hz\n",
+	if (data->initial_fout < SI570_MIN_FREQ ||
+		data->initial_fout > data->max_freq) {
+		dev_err(&client->dev,
+			"requested initial frequency %lu is out of range, using default\n",
 			pdata->initial_fout);
+		return 0;
 	}
+
+	mutex_lock(&data->lock);
+
+	if (div64_u64(abs(data->initial_fout - data->frequency) *
+		10000LL, data->frequency) < 35)
+		err = si570_set_frequency_small(client, data,
+			data->initial_fout);
+	else
+		err = si570_set_frequency(client, data,
+			data->initial_fout);
+	mutex_unlock(&data->lock);
+	if (err) {
+		dev_warn(&client->dev,
+			"unable to set initial output frequency %lu: %d\n",
+			data->initial_fout, err);
+		return err;
+	}
+
+	dev_info(&client->dev,
+		"set initial output frequency %lu Hz\n",
+		data->initial_fout);
 
 	client_i2c = client;
 
