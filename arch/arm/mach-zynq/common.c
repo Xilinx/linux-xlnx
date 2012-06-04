@@ -46,26 +46,18 @@ static struct of_device_id zynq_of_bus_ids[] __initdata = {
  */
 void __init xilinx_init_machine(void)
 {
+	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
+
 #ifdef CONFIG_CACHE_L2X0
-	void *l2cache_base;
-
-	/* Static mapping, never released */
-	l2cache_base = ioremap(0xF8F02000, SZ_4K);
-	BUG_ON(!l2cache_base);
-
-	__raw_writel(0x121, l2cache_base + L2X0_TAG_LATENCY_CTRL);
-	__raw_writel(0x121, l2cache_base + L2X0_DATA_LATENCY_CTRL);
-
 	/*
 	 * 64KB way size, 8-way associativity, parity disabled, prefetching option
 	 */
 #ifndef	CONFIG_XILINX_L2_PREFETCH
-	l2x0_init(l2cache_base, 0x02060000, 0xF0F0FFFF);
+	l2x0_of_init(0x02060000, 0xF0F0FFFF);
 #else
-	l2x0_init(l2cache_base, 0x72060000, 0xF0F0FFFF);
+	l2x0_of_init(0x72060000, 0xF0F0FFFF);
 #endif
 #endif
-	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 
 	platform_device_init();
 }
