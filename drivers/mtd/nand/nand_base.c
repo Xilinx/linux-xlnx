@@ -2867,6 +2867,12 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 	int i;
 	int val;
 
+#ifdef CONFIG_MTD_NAND_XILINX_PSS
+	uint8_t *buf;
+	unsigned int options;
+	int j;
+#endif
+
 	/* Try ONFI for unknown chip or LP */
 	chip->cmdfunc(mtd, NAND_CMD_READID, 0x20, -1);
 	if (chip->read_byte(mtd) != 'O' || chip->read_byte(mtd) != 'N' ||
@@ -2875,7 +2881,13 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 
 	chip->cmdfunc(mtd, NAND_CMD_PARAM, 0, -1);
 	for (i = 0; i < 3; i++) {
+#ifdef CONFIG_MTD_NAND_XILINX_PSS
+		buf = (uint8_t *)p;
+		for(j = 0;j < 256;j++)
+			buf[j] = chip->read_byte(mtd);
+#else
 		chip->read_buf(mtd, (uint8_t *)p, sizeof(*p));
+#endif
 		if (onfi_crc16(ONFI_CRC_BASE, (uint8_t *)p, 254) ==
 				le16_to_cpu(p->crc)) {
 			pr_info("ONFI param page %d valid\n", i);
@@ -2919,10 +2931,19 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 	if (le16_to_cpu(p->features) & 1)
 		*busw = NAND_BUSWIDTH_16;
 
+#ifdef CONFIG_MTD_NAND_XILINX_PSS
+	/* Read the chip options before clearing the bits */
+	options = chip->options;
+#endif
 	chip->options &= ~NAND_CHIPOPTIONS_MSK;
 	chip->options |= NAND_NO_READRDY & NAND_CHIPOPTIONS_MSK;
 
 	pr_info("ONFI flash detected\n");
+#ifdef CONFIG_MTD_NAND_XILINX_PSS
+	/* set the bus width option */
+	if (options & NAND_BUSWIDTH_16)
+		chip->options |= NAND_BUSWIDTH_16;
+#endif
 	return 1;
 }
 
