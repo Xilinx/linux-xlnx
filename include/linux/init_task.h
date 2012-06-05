@@ -29,6 +29,13 @@ extern struct fs_struct init_fs;
 #define INIT_GROUP_RWSEM(sig)
 #endif
 
+#ifdef CONFIG_CPUSETS
+#define INIT_CPUSET_SEQ							\
+	.mems_allowed_seq = SEQCNT_ZERO,
+#else
+#define INIT_CPUSET_SEQ
+#endif
+
 #define INIT_SIGNALS(sig) {						\
 	.nr_threads	= 1,						\
 	.wait_chldexit	= __WAIT_QUEUE_HEAD_INITIALIZER(sig.wait_chldexit),\
@@ -142,6 +149,7 @@ extern struct cred init_cred;
 	.normal_prio	= MAX_PRIO-20,					\
 	.policy		= SCHED_NORMAL,					\
 	.cpus_allowed	= CPU_MASK_ALL,					\
+	.nr_cpus_allowed= NR_CPUS,					\
 	.mm		= NULL,						\
 	.active_mm	= &init_mm,					\
 	.se		= {						\
@@ -149,8 +157,7 @@ extern struct cred init_cred;
 	},								\
 	.rt		= {						\
 		.run_list	= LIST_HEAD_INIT(tsk.rt.run_list),	\
-		.time_slice	= HZ, 					\
-		.nr_cpus_allowed = NR_CPUS,				\
+		.time_slice	= RR_TIMESLICE,				\
 	},								\
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\
@@ -192,6 +199,7 @@ extern struct cred init_cred;
 	INIT_FTRACE_GRAPH						\
 	INIT_TRACE_RECURSION						\
 	INIT_TASK_RCU_PREEMPT(tsk)					\
+	INIT_CPUSET_SEQ							\
 }
 
 

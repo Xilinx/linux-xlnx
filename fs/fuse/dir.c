@@ -387,9 +387,6 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	if (fc->no_create)
 		return -ENOSYS;
 
-	if (flags & O_DIRECT)
-		return -EINVAL;
-
 	forget = fuse_alloc_forget();
 	if (!forget)
 		return -ENOMEM;
@@ -644,13 +641,12 @@ static int fuse_unlink(struct inode *dir, struct dentry *entry)
 	fuse_put_request(fc, req);
 	if (!err) {
 		struct inode *inode = entry->d_inode;
+		struct fuse_inode *fi = get_fuse_inode(inode);
 
-		/*
-		 * Set nlink to zero so the inode can be cleared, if the inode
-		 * does have more links this will be discovered at the next
-		 * lookup/getattr.
-		 */
-		clear_nlink(inode);
+		spin_lock(&fc->lock);
+		fi->attr_version = ++fc->attr_version;
+		drop_nlink(inode);
+		spin_unlock(&fc->lock);
 		fuse_invalidate_attr(inode);
 		fuse_invalidate_attr(dir);
 		fuse_invalidate_entry_cache(entry);
@@ -762,14 +758,25 @@ static int fuse_link(struct dentry *entry, struct inode *newdir,
 	   will reflect changes in the backing inode (link count,
 	   etc.)
 	*/
-	if (!err || err == -EINTR)
+	if (!err) {
+		struct fuse_inode *fi = get_fuse_inode(inode);
+
+		spin_lock(&fc->lock);
+		fi->attr_version = ++fc->attr_version;
+		inc_nlink(inode);
+		spin_unlock(&fc->lock);
 		fuse_invalidate_attr(inode);
+	} else if (err == -EINTR) {
+		fuse_invalidate_attr(inode);
+	}
 	return err;
 }
 
 static void fuse_fillattr(struct inode *inode, struct fuse_attr *attr,
 			  struct kstat *stat)
 {
+	unsigned int blkbits;
+
 	stat->dev = inode->i_sb->s_dev;
 	stat->ino = attr->ino;
 	stat->mode = (inode->i_mode & S_IFMT) | (attr->mode & 07777);
@@ -785,7 +792,13 @@ static void fuse_fillattr(struct inode *inode, struct fuse_attr *attr,
 	stat->ctime.tv_nsec = attr->ctimensec;
 	stat->size = attr->size;
 	stat->blocks = attr->blocks;
-	stat->blksize = (1 << inode->i_blkbits);
+
+	if (attr->blksize != 0)
+		blkbits = ilog2(attr->blksize);
+	else
+		blkbits = inode->i_sb->s_blocksize_bits;
+
+	stat->blksize = 1 << blkbits;
 }
 
 static int fuse_do_getattr(struct inode *inode, struct kstat *stat,
@@ -858,6 +871,7 @@ int fuse_update_attributes(struct inode *inode, struct kstat *stat,
 		if (stat) {
 			generic_fillattr(inode, stat);
 			stat->mode = fi->orig_i_mode;
+			stat->ino = fi->orig_ino;
 		}
 	}
 

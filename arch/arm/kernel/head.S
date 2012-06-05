@@ -15,13 +15,12 @@
 #include <linux/init.h>
 
 #include <asm/assembler.h>
+#include <asm/cp15.h>
 #include <asm/domain.h>
 #include <asm/ptrace.h>
 #include <asm/asm-offsets.h>
 #include <asm/memory.h>
 #include <asm/thread_info.h>
-#include <asm/system.h>
-#include <asm/mach-types.h>
 #include <asm/pgtable.h>
 
 #ifdef CONFIG_DEBUG_LL
@@ -100,14 +99,10 @@ ENTRY(stext)
  THUMB( it	eq )		@ force fixup-able long branch encoding
 	beq	__error_p			@ yes, error 'p'
 
-	/* the machine has no way to get setup when we're using a pod so setup it
-	 * up for now this way, if the device tree is expected at the fixed address
+	/* 
+	 * if the device tree is expected at the fixed address
 	 * then load R2 to find the device tree at that address
 	 */
-#ifdef CONFIG_ARCH_XILINX
-	mov	r0,#0x0
-	ldr	r1,=MACH_TYPE_XILINX
-#endif
 #ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
 	mov	r2,#0x1000000
 #endif
@@ -277,7 +272,7 @@ __create_page_tables:
 	str	r6, [r3]
 
 #ifdef CONFIG_DEBUG_LL
-#ifndef CONFIG_DEBUG_ICEDCC
+#if !defined(CONFIG_DEBUG_ICEDCC) && !defined(CONFIG_DEBUG_SEMIHOSTING)
 	/*
 	 * Map in IO space for serial debugging.
 	 * This allows debug messages to be output
@@ -289,10 +284,6 @@ __create_page_tables:
 	mov	r3, r3, lsl #PMD_ORDER
 
 	add	r0, r4, r3
-	rsb	r3, r3, #0x4000			@ PTRS_PER_PGD*sizeof(long)
-	cmp	r3, #0x0800			@ limit to 512MB
-	movhi	r3, #0x0800
-	add	r6, r0, r3
 	mov	r3, r7, lsr #SECTION_SHIFT
 	ldr	r7, [r10, #PROCINFO_IO_MMUFLAGS] @ io_mmuflags
 	orr	r3, r7, r3, lsl #SECTION_SHIFT
@@ -301,18 +292,15 @@ __create_page_tables:
 #else
 	orr	r3, r3, #PMD_SECT_XN
 #endif
-1:	str	r3, [r0], #4
+	str	r3, [r0], #4
 #ifdef CONFIG_ARM_LPAE
 	str	r7, [r0], #4
 #endif
-	add	r3, r3, #1 << SECTION_SHIFT
-	cmp	r0, r6
-	blo	1b
 
-#else /* CONFIG_DEBUG_ICEDCC */
-	/* we don't need any serial debugging mappings for ICEDCC */
+#else /* CONFIG_DEBUG_ICEDCC || CONFIG_DEBUG_SEMIHOSTING */
+	/* we don't need any serial debugging mappings */
 	ldr	r7, [r10, #PROCINFO_IO_MMUFLAGS] @ io_mmuflags
-#endif /* !CONFIG_DEBUG_ICEDCC */
+#endif
 
 #if defined(CONFIG_ARCH_NETWINDER) || defined(CONFIG_ARCH_CATS)
 	/*

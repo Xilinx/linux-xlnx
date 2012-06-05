@@ -264,6 +264,22 @@ static struct clock_event_device xttcpss_clockevent = {
 	.rating		= 200,
 };
 
+#ifdef CONFIG_HAVE_ARM_TWD
+static DEFINE_TWD_LOCAL_TIMER(twd_local_timer,
+                              	(int)SCU_CPU_TIMER_BASE,
+				IRQ_LOCALTIMER);
+
+static void __init zynq_twd_init(void)
+{
+        int err = twd_local_timer_register(&twd_local_timer);
+        if (err)
+                pr_err("twd_local_timer_register failed %d\n", err);
+}
+#else
+#define zynq_twd_init()        do {} while(0)
+#endif
+
+
 /**
  * xttcpss_timer_init - Initialize the timer
  *
@@ -281,10 +297,6 @@ static void __init xttcpss_timer_init(void)
 		"xlnx,ps7-ttc-1.00.a",
 		NULL
 	};
-
-#ifdef CONFIG_HAVE_ARM_TWD
-	twd_base = SCU_CPU_TIMER_BASE;
-#endif
 
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
@@ -366,6 +378,8 @@ static void __init xttcpss_timer_init(void)
 
 	xttcpss_clockevent.cpumask = cpumask_of(0);
 	clockevents_register_device(&xttcpss_clockevent);
+
+	zynq_twd_init();
 }
 
 /*
