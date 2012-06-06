@@ -982,6 +982,7 @@ config ARCH_ZYNQ
 	select CACHE_L2X0
 	select ISA_DMA_API
 	select ARCH_REQUIRE_GPIOLIB
+	select COMMON_CLK
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 endchoice
