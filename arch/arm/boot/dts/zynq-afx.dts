@@ -23,39 +23,40 @@
 		#size-cells = <0x1>;
 		ranges;
 
-		intc@f8f01000 {
+		gic: intc@f8f01000 {
 			interrupt-controller;
-			compatible = "arm,gic";
-			reg = <0xf8f01000 0x1000>;
-			#interrupt-cells = <0x2>;
-			linux,phandle = <0x1>;
-			phandle = <0x1>;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = < 0xf8f01000 0x1000 >,
+			      < 0xf8f00100 0x0100 >;
 		};
 
 		pl310@f8f02000 {
-			compatible = "arm,pl310-cache";
-			cache-unified;
-			cache-level = <2>;
-			reg = <0xf8f02000 0x1000>;
-			arm,data-latency = <3 2 2>;
-			arm,tag-latency = <3 2 2>;
-			interrupts = <0 34 4>;
-		};
-
-		uart@e0001000 {
-                        compatible = "xlnx,ps7-uart-1.00.a";
-                        reg = <0xE0001000 0x1000>;
-                        interrupts = <82 0>;
-                        clock = <50000000>;
+                        compatible = "arm,pl310-cache";
+                        cache-unified;
+                        cache-level = <2>;
+                        reg = <0xf8f02000 0x1000>;
+                        arm,data-latency = <3 2 2>;
+                        arm,tag-latency = <3 2 2>;
+                        interrupts = <0 34 4>;
                 };
 
+		uart@e0001000 {
+			compatible = "xlnx,ps7-uart-1.00.a";
+			reg = <0xE0001000 0x1000>;
+			interrupts = <0 50 0>;
+			interrupt-parent = <&gic>;
+			clock = <50000000>;
+		};
+
 		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <133000000>;
 			clock-frequency-timer1 = <133000000>;
 			clock-frequency-timer2 = <133000000>;
-			compatible = "xlnx,ps7-ttc-1.00.a";
-			interrupts = < 42 0 43 0 44 0 >;
-			reg = < 0xf8001000 0x1000 >;
 		};
 
 	};
