@@ -36,7 +36,8 @@ static struct sdhci_ops sdhci_zynq_ops = {
 };
 
 static struct sdhci_pltfm_data sdhci_zynq_pdata = {
-	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
+	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | \
+			SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
 	.ops = &sdhci_zynq_ops,
 };
 
