@@ -18,6 +18,7 @@
  * your option) any later version.
  */
 
+#include <linux/of.h>
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -43,7 +44,25 @@ static struct sdhci_pltfm_data sdhci_zynq_pdata = {
 
 static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
 {
-	return sdhci_pltfm_register(pdev, &sdhci_zynq_pdata);
+	int ret;
+	const void *prop = NULL;
+	struct device_node *np = pdev->dev.of_node;
+	struct sdhci_host *host = NULL;
+
+	ret = sdhci_pltfm_register(pdev, &sdhci_zynq_pdata);
+	if (ret == 0) {
+		prop = of_get_property(np, "xlnx,has-cd", NULL);
+		if (prop == NULL) {
+			host = platform_get_drvdata(pdev);
+			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
+		} else if (!(u32) be32_to_cpup(prop))  {
+			host = platform_get_drvdata(pdev);
+			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
+		}
+	} else
+		printk("sdhci platform registration failed\n");
+
+	return ret;
 }
 
 static int __devexit sdhci_zynq_remove(struct platform_device *pdev)

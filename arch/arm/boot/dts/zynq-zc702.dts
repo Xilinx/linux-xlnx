@@ -104,6 +104,7 @@
 		sdhci@e0100000 {
 			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xe0100000 0x1000>;
+			xlnx,has-cd = <0x1>;
 			interrupts = <0 24 0>;
 			interrupt-parent = <&gic>;
 			clock-frequency = <33333000>;
