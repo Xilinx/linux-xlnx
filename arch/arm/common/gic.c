@@ -366,9 +366,8 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	/*
 	 * Set all global interrupts to this CPU only.
 	 */
-	for (i = 32; i < gic_irqs; i += 4) {
+	for (i = 32; i < gic_irqs; i += 4)
 		writel_relaxed(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
-	}
 
 	/*
 	 * Set priority on all global interrupts.
@@ -782,23 +781,4 @@ int __init gic_of_init(struct device_node *node, struct device_node *parent)
 	gic_cnt++;
 	return 0;
 }
-
-void __init gic_set_cpu(unsigned int cpu, unsigned int irq)
-{
-	struct irq_data *d = irq_get_irq_data(irq);
-	void __iomem *reg = gic_dist_base(d) + GIC_DIST_TARGET + (gic_irq(d) & ~3);
-	unsigned int shift = (d->irq % 4) * 8;
-	u32 val, mask, bit;
-
-	mask = 0xff << shift;
-	bit = 1 << (cpu + shift);	/* cpu = 0 based, 0 or 1 for Xilinx */
-
-	spin_lock(&irq_controller_lock);
-	val = readl(reg) & ~mask;
-	writel(val | bit, reg);
-	spin_unlock(&irq_controller_lock);
-}
-EXPORT_SYMBOL(gic_set_cpu);
-
 #endif
-
