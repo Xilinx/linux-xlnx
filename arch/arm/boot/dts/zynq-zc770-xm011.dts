@@ -79,6 +79,7 @@
 		nand@e1000000 {
 			compatible = "xlnx,ps7-nand-1.00.a";
 			reg = <0xe1000000 0x1000000 0xe000e000 0x1000>;
+			xlnx,nand-width = <8>;
 			#address-cells = <0x1>;
 			#size-cells = <0x1>;
 

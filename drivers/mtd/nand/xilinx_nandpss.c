@@ -978,6 +978,7 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	struct mtd_part_parser_data ppdata;
 #ifdef CONFIG_OF
 	const struct of_device_id *match;
+	const unsigned int *prop;
 #endif
 
 #ifdef CONFIG_OF
@@ -1040,7 +1041,23 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "ioremap for cont failed\n");
 		goto out_release_smc_mem_region;
 	}
-
+	/* Get x8 or x16 mode from device tree */
+#ifdef CONFIG_OF
+	prop = of_get_property(pdev->dev.of_node, "xlnx,nand-width", NULL);
+	if (prop) {
+		if (be32_to_cpup(prop) == 16) {
+			pdata->options |= NAND_BUSWIDTH_16;
+		} else if (be32_to_cpup(prop) == 8) {
+			pdata->options &= ~NAND_BUSWIDTH_16;
+		} else {
+			dev_info(&pdev->dev, "xlnx,nand-width not valid, using 8");
+			pdata->options &= ~NAND_BUSWIDTH_16;
+		}
+	} else {
+		dev_info(&pdev->dev, "xlnx,nand-width not in device tree, using 8");
+		pdata->options &= ~NAND_BUSWIDTH_16;
+	}
+#endif
 	xnand->pdev = pdev;
 	/* Link the private data with the MTD structure */
 	mtd = &xnand->mtd;
