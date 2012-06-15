@@ -118,5 +118,19 @@
 				reg = <0x7>;
 			};
 		};
+
+		devcfg@f8007000 {
+			compatible = "xlnx,ps7-dev-cfg-1.00.a";
+			reg = <0xf8007000 0x1000>;
+			interrupts = <0 8 0>;
+			interrupt-parent = <&gic>;
+		};
+
+		gpio@e000a000 {
+			compatible = "xlnx,ps7-gpio-1.00.a";
+			reg = <0xe000a000 0x1000>;
+			interrupts = <0 20 0>;
+			interrupt-parent = <&gic>;
+		};
 	};
 };
