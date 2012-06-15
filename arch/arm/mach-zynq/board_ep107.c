@@ -20,7 +20,6 @@
 #include <linux/spi/eeprom.h>
 #include <linux/platform_device.h>
 #include <linux/device.h>
-#include <linux/spi/spi.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
 #include <linux/xilinx_devices.h>
