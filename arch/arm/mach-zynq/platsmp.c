@@ -105,7 +105,7 @@ int zynq_cpu1_start(u32 address)
 		 * 0x4: Jump by mov instruction
 		 * 0x8: Jumping address
 		 */
-		if (address && address >= 0xC) {
+		if (address) {
 			if (!zero) {
 				printk(KERN_WARNING
 					"BOOTUP jump vectors is not mapped!\n");
