@@ -314,6 +314,19 @@ config NUC900_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called nuc900_wdt.
 
+config XILINX_PS_WATCHDOG
+	tristate "Xilinx PS Watchdog Timer"
+	help
+	  Say Y here if you want to include support for the watchdog
+	  timer in the Xilinx PS.
+
+config XILINX_SCU_WATCHDOG
+	tristate "Xilinx SCU Watchdog Timer"
+	depends on MPCORE_WATCHDOG=n
+	help
+	  Say Y here if you want to include support for the cortex a9 scu
+	  watchdog timer in the Xilinx PS.
+
 config TS72XX_WATCHDOG
 	tristate "TS-72XX SBC Watchdog"
 	depends on MACH_TS72XX
