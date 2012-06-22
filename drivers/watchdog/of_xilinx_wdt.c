@@ -263,6 +263,9 @@ static long xwdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		xwdt_keepalive();
 		return 0;
 
+	case WDIOC_SETTIMEOUT:
+		printk(KERN_INFO "This feature is not implemented yet!\n");
+
 	case WDIOC_GETTIMEOUT:
 		if (no_timeout)
 			return -ENOTTY;
