@@ -398,19 +398,15 @@ int xnandpss_correct_data(struct mtd_info *mtd, unsigned char *buf,
  * @mtd:	mtd info structure
  * @chip:	nand chip info structure
  * @page:	page number to read
- * @sndcmd:	flag whether to issue read command or not
  */
 static int xnandpss_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
-			int page, int sndcmd)
+			int page)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
 	uint8_t *p;
 
-	if (sndcmd) {
-		chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
-		sndcmd = 0;
-	}
+	chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
 
 	p = chip->oob_poi;
 	chip->read_buf(mtd, p, (mtd->oobsize - data_width));
@@ -421,7 +417,7 @@ static int xnandpss_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
 	chip->read_buf(mtd, p, data_width);
 
-	return sndcmd;
+	return 0;
 }
 
 /**
@@ -465,7 +461,7 @@ static int xnandpss_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
  *
  */
 static int xnandpss_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
-			      uint8_t *buf, int page)
+			      uint8_t *buf, int oob_required, int page)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -493,7 +489,7 @@ static int xnandpss_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  *
  */
 static void xnandpss_write_page_raw(struct mtd_info *mtd,
-			struct nand_chip *chip, const uint8_t *buf)
+			struct nand_chip *chip, const uint8_t *buf, int oob_required)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -522,7 +518,7 @@ static void xnandpss_write_page_raw(struct mtd_info *mtd,
  * This functions writes data and hardware generated ECC values in to the page.
  */
 void xnandpss_write_page_hwecc(struct mtd_info *mtd,
-				struct nand_chip *chip, const uint8_t *buf)
+				struct nand_chip *chip, const uint8_t *buf,  int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
@@ -577,7 +573,7 @@ void xnandpss_write_page_hwecc(struct mtd_info *mtd,
  * @buf:	data buffer
  */
 static void xnandpss_write_page_swecc(struct mtd_info *mtd,
-			struct nand_chip *chip, const uint8_t *buf)
+			struct nand_chip *chip, const uint8_t *buf,  int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -593,7 +589,7 @@ static void xnandpss_write_page_swecc(struct mtd_info *mtd,
 	for (i = 0; i < chip->ecc.total; i++)
 		chip->oob_poi[eccpos[i]] = ecc_calc[i];
 
-	chip->ecc.write_page_raw(mtd, chip, buf);
+	chip->ecc.write_page_raw(mtd, chip, buf, 1);
 }
 
 /**
@@ -609,7 +605,7 @@ static void xnandpss_write_page_swecc(struct mtd_info *mtd,
  * returns:	0 always and updates ECC operation status in to MTD structure
  */
 int xnandpss_read_page_hwecc(struct mtd_info *mtd,
-				struct nand_chip *chip, uint8_t *buf, int page)
+				struct nand_chip *chip, uint8_t *buf, int oob_required, int page)
 {
 	int i, stat, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -681,7 +677,7 @@ int xnandpss_read_page_hwecc(struct mtd_info *mtd,
  * @page:	page number to read
  */
 static int xnandpss_read_page_swecc(struct mtd_info *mtd,
-		struct nand_chip *chip, uint8_t *buf, int page)
+		struct nand_chip *chip, uint8_t *buf,  int oob_required, int page)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -691,7 +687,7 @@ static int xnandpss_read_page_swecc(struct mtd_info *mtd,
 	uint8_t *ecc_code = chip->buffers->ecccode;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
 
-	chip->ecc.read_page_raw(mtd, chip, buf, page);
+	chip->ecc.read_page_raw(mtd, chip, buf, page, 1);
 
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
 		chip->ecc.calculate(mtd, p, &ecc_calc[i]);
@@ -1304,9 +1300,7 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_OF
-static struct xnand_platform_data xnandpss_config = {
-	.options = NAND_NO_AUTOINCR,
-};
+static struct xnand_platform_data xnandpss_config; 
 
 /* Match table for device tree binding */
 static const struct of_device_id __devinitconst xnandpss_of_match[] = {
