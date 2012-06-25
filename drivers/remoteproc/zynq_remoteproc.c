@@ -171,6 +171,7 @@ static void clear_irq(struct platform_device *pdev)
 static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 {
 	const unsigned char *prop;
+	const void *of_prop;
 	struct resource *res; /* IO mem resources */
 	int ret = 0;
 	struct irq_list *tmp;
@@ -248,26 +249,34 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	/* Allocate free IPI number */
-	local->ipino = be32_to_cpup(of_get_property(pdev->dev.of_node,
-								"ipino", NULL));
-	if (local->ipino) {
-		ret = set_ipi_handler(local->ipino, ipi_kick, "Firmware kick");
-		if (ret) {
-			dev_err(&pdev->dev, "IPI handler already registered\n");
-			goto ipi_fault;
-		}
-	} else
-		goto ipi_fault;
-
-
-	local->vring0 = be32_to_cpup(of_get_property(pdev->dev.of_node,
-							"vring0", NULL));
-	local->vring1 = be32_to_cpup(of_get_property(pdev->dev.of_node,
-							"vring1", NULL));
-	if (!local->vring0 || !local->vring1) {
-		dev_err(&pdev->dev, "Please setup RX/TX swirq to firmware\n");
+	of_prop = of_get_property(pdev->dev.of_node, "ipino", NULL);
+	if (!of_prop) {
+		dev_err(&pdev->dev, "Please specify ipino node property\n");
 		goto ipi_fault;
 	}
+
+	local->ipino = be32_to_cpup(of_prop);
+	ret = set_ipi_handler(local->ipino, ipi_kick, "Firmware kick");
+	if (ret) {
+		dev_err(&pdev->dev, "IPI handler already registered\n");
+		goto ipi_fault;
+	}
+
+	/* Read vring0 ipi number */
+	of_prop = of_get_property(pdev->dev.of_node, "vring0", NULL);
+	if (!of_prop) {
+		dev_err(&pdev->dev, "Please specify vring0 node property\n");
+		goto ipi_fault;
+	}
+	local->vring0 = be32_to_cpup(of_prop);
+
+	/* Read vring1 ipi number */
+	of_prop = of_get_property(pdev->dev.of_node, "vring1", NULL);
+	if (!of_prop) {
+		dev_err(&pdev->dev, "Please specify vring1 node property\n");
+		goto ipi_fault;
+	}
+	local->vring1 = be32_to_cpup(of_prop);
 
 	/* Module param firmware first */
 	if (firmware)
