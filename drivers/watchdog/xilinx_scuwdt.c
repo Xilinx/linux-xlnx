@@ -14,6 +14,7 @@
  * 02139, USA.
  */
 
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/interrupt.h>
@@ -25,12 +26,11 @@
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 
 /* These are temporary values. Need to finalize when we have a fixed clock */
-#define XSCUWDT_CLOCK		5000000
 #define XSCUWDT_MAX_TIMEOUT	600
 #define XSCUWDT_DEFAULT_TIMEOUT	10
-#define XSCUWDT_PRESCALER	00
 
 static int wdt_timeout = XSCUWDT_DEFAULT_TIMEOUT;
 static u32 wdt_count;
@@ -62,6 +62,8 @@ struct xscuwdt {
 	void __iomem		*regs;
 	unsigned long		busy;
 	struct miscdevice	miscdev;
+	u32 			clock;
+	u32 			prescalar;
 	spinlock_t		io_lock;
 };
 
@@ -85,6 +87,7 @@ static struct watchdog_info xscuwdt_info = {
 
 /* Register Offsets for the WDT */
 #define XSCUWDT_LOAD_OFFSET		0x00 /* Watchdog Load Register */
+#define XSCUWDT_COUNTER_OFFSET		0x04 /* Watchdog Counter Register */
 #define XSCUWDT_CONTROL_OFFSET		0x08 /* Watchdog Control Register */
 #define XSCUWDT_DISABLE_OFFSET		0x14 /* Watchdog Disable Register */
 
@@ -96,15 +99,15 @@ static struct watchdog_info xscuwdt_info = {
  *	load count = ((timeout * clock) / (prescalar + 1)) - 1.
  * This needs to be re-visited when the PERIPHCLK clock changes in HW.
  *
- **/
+ */
 static void xscuwdt_start(void)
 {
-	wdt_count = ((wdt_timeout * XSCUWDT_CLOCK) / (XSCUWDT_PRESCALER + 1)) - 1;
+	wdt_count = ((wdt_timeout * wdt->clock) / (wdt->prescalar));
 
 	spin_lock(&wdt->io_lock);
 	xscuwdt_writereg(wdt_count, XSCUWDT_LOAD_OFFSET);
 
-	xscuwdt_writereg(0x09 | (XSCUWDT_PRESCALER << 8), XSCUWDT_CONTROL_OFFSET);
+	xscuwdt_writereg(0x09 | (wdt->prescalar << 8), XSCUWDT_CONTROL_OFFSET);
 	spin_unlock(&wdt->io_lock);
 }
 
@@ -113,7 +116,7 @@ static void xscuwdt_start(void)
  *
  * Read the contents of the Watchdog Control register, and clear the
  * watchdog enable bit in the register.
- **/
+ */
 static void xscuwdt_stop(void)
 {
 	spin_lock(&wdt->io_lock);
@@ -127,7 +130,7 @@ static void xscuwdt_stop(void)
  * xscuwdt_reload -  Reload the watchdog timer.
  *
  * Write the wdt_count to the Watchdog Load register.
- **/
+ */
 static void xscuwdt_reload(void)
 {
 	spin_lock(&wdt->io_lock);
@@ -145,7 +148,7 @@ static void xscuwdt_reload(void)
  * value which is used when xscuwdt_start is called.
  * Returns -ENOTSUPP, if timeout value is out-of-range.
  * Returns 0 on success.
- **/
+ */
 static int xscuwdt_settimeout(int new_time)
 {
 	if ((new_time <= 0) || (new_time > XSCUWDT_MAX_TIMEOUT))
@@ -164,11 +167,12 @@ static int xscuwdt_settimeout(int new_time)
  *
  * Check whether the device is already in use and then only start the watchdog
  * timer. Returns 0 on success, otherwise -EBUSY.
- **/
+ */
 static int xscuwdt_open(struct inode *inode, struct file *file)
 {
 	if (test_and_set_bit(0, &(wdt->busy)))
 		return -EBUSY;
+
 	xscuwdt_start();
 	return nonseekable_open(inode, file);
 }
@@ -181,7 +185,7 @@ static int xscuwdt_open(struct inode *inode, struct file *file)
  *
  * Stops the watchdog and clears the busy flag.
  * Returns 0 on success, -ENOTSUPP when the nowayout is enabled.
- **/
+ */
 static int xscuwdt_close(struct inode *inode, struct file *file)
 {
 	if (!nowayout) {
@@ -206,7 +210,7 @@ static int xscuwdt_close(struct inode *inode, struct file *file)
  * the following IOCTL's - WDIOC_KEEPALIVE, WDIOC_GETSUPPORT,
  * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
  * Returns 0 on success, negative error otherwise.
- **/
+ */
 static long xscuwdt_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
@@ -272,7 +276,7 @@ static long xscuwdt_ioctl(struct file *file,
  *
  * A write to watchdog device is similar to keepalive signal.
  * Returns the value of len.
- **/
+ */
 static ssize_t xscuwdt_write(struct file *file, const char __user *data,
 			    size_t len, loff_t *ppos)
 {
@@ -291,7 +295,7 @@ static ssize_t xscuwdt_write(struct file *file, const char __user *data,
  * because we need to disable the WDT before system goes down as WDT might
  * reset on the next boot.
  * Returns NOTIFY_DONE.
- **/
+ */
 static int xscuwdt_notify_sys(struct notifier_block *this, unsigned long code,
 			     void *unused)
 {
@@ -325,11 +329,12 @@ static struct notifier_block xscuwdt_notifier = {
  *
  * It does all the memory allocation and registration for the device.
  * Returns 0 on success, negative error otherwise.
- **/
+ */
 static int __init xscuwdt_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int ret;
+	const void *prop;
 
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
@@ -358,6 +363,13 @@ static int __init xscuwdt_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Could not map I/O memory\n");
 		goto err_free;
 	}
+
+	prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+	if (prop != NULL) {
+		wdt->clock = (u32)be32_to_cpup(prop);
+	}
+
+	wdt->prescalar = 1; /* Just default value */
 
 	/* Switch to Watchdog mode */
 	xscuwdt_writereg(0x08, XSCUWDT_CONTROL_OFFSET);
@@ -413,7 +425,7 @@ err_free:
  * Unregister the device after releasing the resources.
  * Stop is allowed only when nowayout is disabled.
  * Returns 0 on success, otherwise negative error.
- **/
+ */
 static int __exit xscuwdt_remove(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -440,7 +452,7 @@ static int __exit xscuwdt_remove(struct platform_device *pdev)
  *
  * @pdev:	handle to the platform structure.
  *
- **/
+ */
 static void xscuwdt_shutdown(struct platform_device *pdev)
 {
 	/* Stop the device */
@@ -455,7 +467,7 @@ static void xscuwdt_shutdown(struct platform_device *pdev)
  * @message:	message to the device.
  *
  * Returns 0, always.
- **/
+ */
 static int xscuwdt_suspend(struct platform_device *pdev, pm_message_t message)
 {
 	/* Stop the device */
@@ -469,7 +481,7 @@ static int xscuwdt_suspend(struct platform_device *pdev, pm_message_t message)
  * @pdev:	handle to the platform structure.
  *
  * Returns 0, always.
- **/
+ */
 static int xscuwdt_resume(struct platform_device *pdev)
 {
 	/* Start the device */
