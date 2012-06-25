@@ -29,6 +29,10 @@
 #include <linux/moduleparam.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#ifdef CONFIG_COMMON_CLK
+#include <linux/slab.h>
+#include <linux/clk.h>
+#endif
 
 #define XUARTPS_TTY_NAME	"ttyPS"
 #define XUARTPS_NAME		"xuartps"
@@ -158,6 +162,19 @@ MODULE_PARM_DESC (rx_timeout, "Rx timeout, 1-255");
 #define XUARTPS_SR_TXEMPTY	0x00000008 /* TX FIFO empty */
 #define XUARTPS_SR_TXFULL	0x00000010 /* TX FIFO full */
 #define XUARTPS_SR_RXTRIG	0x00000001 /* Rx Trigger */
+
+#ifdef CONFIG_COMMON_CLK
+struct xuartps {
+	int			uartnum;
+	struct uart_port	*port;
+	unsigned int		baud;
+	struct clk		*devclk;
+	struct clk		*aperclk;
+	struct notifier_block	clk_rate_change_nb;
+};
+#define to_xuartps(_nb) container_of(_nb, struct xuartps, clk_rate_change_nb);
+
+#endif
 
 /**
  * xuartps_isr - Interrupt handler
@@ -398,6 +415,91 @@ static unsigned int xuartps_set_baud_rate(struct uart_port *port,
 
 	return calc_baud;
 }
+
+#ifdef CONFIG_COMMON_CLK
+/*
+ * no clue yet how to implement this. i think we need access to the port
+ * structure in this function to do the required changes. but i don't know how
+ * to get it in here.
+ *
+ * Think I got it. port must have a notifier_block* member from where we then
+ * can get to the outer port structure with a container_of() call.
+ *
+ * Not sure when to stop UART. probably it's enough to stop, reconfigure, start
+ * in POST_RATE_CHANGE
+ */
+static int xuartps_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+	struct uart_port *port;
+	struct xuartps *xuartps = to_xuartps(nb);
+
+	port = xuartps->port;
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+	{
+		u32 bdiv;
+		u32 cd;
+		int div8;
+
+		/* Find out if current baud-rate can be achieved with new clock
+		 * frequency. */
+		if (!xuartps_calc_baud_divs(ndata->new_rate, xuartps->baud,
+					&bdiv, &cd, &div8))
+			return NOTIFY_BAD;
+		return NOTIFY_OK;
+	}
+	case POST_RATE_CHANGE:
+		/* Set clk dividers to generate correct baud with new clock
+		 * frequency. */
+	{
+		u32 ctrl_reg;
+		unsigned long flags = 0;
+
+		spin_lock_irqsave(&xuartps->port->lock, flags);
+
+		port->uartclk = ndata->new_rate;
+		/* Empty the receive FIFO 1st before making changes */
+		while ((xuartps_readl(XUARTPS_SR_OFFSET) &
+			 XUARTPS_SR_RXEMPTY) != XUARTPS_SR_RXEMPTY)
+			xuartps_readl(XUARTPS_FIFO_OFFSET);
+
+		/* Disable the TX and RX to set baud rate */
+		xuartps_writel(xuartps_readl(XUARTPS_CR_OFFSET) |
+				(XUARTPS_CR_TX_DIS | XUARTPS_CR_RX_DIS),
+				XUARTPS_CR_OFFSET);
+
+		xuartps->baud = xuartps_set_baud_rate(xuartps->port,
+				xuartps->baud);
+
+		/* Set TX/RX Reset */
+		xuartps_writel(xuartps_readl(XUARTPS_CR_OFFSET) |
+				(XUARTPS_CR_TXRST | XUARTPS_CR_RXRST),
+				XUARTPS_CR_OFFSET);
+
+		/*
+		 * Clear the RX disable and TX disable bits and then set the TX
+		 * enable bit and RX enable bit to enable the transmitter and
+		 * receiver.
+		 */
+		ctrl_reg = xuartps_readl(XUARTPS_CR_OFFSET);
+		xuartps_writel(
+			(ctrl_reg & ~(XUARTPS_CR_TX_DIS | XUARTPS_CR_RX_DIS)) |
+			(XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN),
+			XUARTPS_CR_OFFSET);
+
+		spin_unlock_irqrestore(&xuartps->port->lock, flags);
+		return NOTIFY_OK;
+	}
+	case ABORT_RATE_CHANGE:
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
+}
+#endif
 
 /*----------------------Uart Operations---------------------------*/
 
@@ -690,12 +792,12 @@ static int xuartps_startup(struct uart_port *port)
 		 XUARTPS_MR_OFFSET);
 
 	/* Set the RX FIFO Trigger level to use most of the FIFO, but it
-	 * can be tuned with a module parameter 
+	 * can be tuned with a module parameter
 	 */
 	xuartps_writel(rx_trigger_level, XUARTPS_RXWM_OFFSET);
 
  	/* Receive Timeout register is enabled but it
-	 * can be tuned with a module parameter 
+	 * can be tuned with a module parameter
 	 */
 	xuartps_writel(rx_timeout, XUARTPS_RXTOUT_OFFSET);
 
@@ -1115,14 +1217,18 @@ static struct uart_driver xuartps_uart_driver = {
  * @pdev: Pointer to the platform device structure
  *
  * Returns 0 on success, negative error otherwise
- **/
+ */
 static int __devinit xuartps_probe(struct platform_device *pdev)
 {
 	int rc;
 	struct uart_port *port;
 	struct resource *res, *res2;
-	int clk = 0;
+	unsigned int clk = 0;
+	int ret = 0;
 
+#ifdef CONFIG_COMMON_CLK
+	struct xuartps *xuartps;
+#else
 #ifdef CONFIG_OF
 	const unsigned int *prop;
 
@@ -1136,6 +1242,7 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no clock specified\n");
 		return -ENODEV;
 	}
+#endif
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1145,12 +1252,50 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 	if (!res2)
 		return -ENODEV;
 
-	/* Initialize the port structure */
 	port = xuartps_get_port();
+#ifdef CONFIG_COMMON_CLK
+	xuartps = kmalloc(sizeof(*xuartps), GFP_KERNEL);
+	if (res2->start == 59)
+		xuartps->uartnum = 0;
+	else
+		xuartps->uartnum = 1;
+	if (xuartps->uartnum) {
+		xuartps->devclk = clk_get_sys("UART1", NULL);
+		xuartps->aperclk = clk_get_sys("UART1_APER", NULL);
+	} else {
+		xuartps->devclk = clk_get_sys("UART0", NULL);
+		xuartps->aperclk = clk_get_sys("UART0_APER", NULL);
+	}
 
+	if (IS_ERR(xuartps->devclk)) {
+		pr_err("Xilinx UARTPS device clock not found.\n");
+		ret = -ENODEV;
+		goto err_out;
+	}
+	if (IS_ERR(xuartps->aperclk)) {
+		pr_err("Xilinx UARTPS APER clock not found.\n");
+		ret = -ENODEV;
+		goto err_out;
+	}
+
+	clk_prepare(xuartps->aperclk);
+	clk_enable(xuartps->aperclk);
+	clk_prepare(xuartps->devclk);
+	clk_enable(xuartps->devclk);
+
+	clk = (unsigned int)clk_get_rate(xuartps->devclk);
+	xuartps->clk_rate_change_nb.notifier_call = xuartps_clk_notifier_cb;
+	xuartps->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(xuartps->devclk,
+				&xuartps->clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
+#endif
+
+	/* Initialize the port structure */
 	if (!port) {
 		dev_err(&pdev->dev, "Cannot get uart_port structure\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto err_out2;
 	} else {
 		/* Register the port.
 		 * This function also registers this device with the tty layer
@@ -1160,16 +1305,40 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		port->irq = res2->start;
 		port->dev = &pdev->dev;
 		port->uartclk = clk;
+#ifdef CONFIG_COMMON_CLK
+		port->private_data = xuartps;
+		xuartps->port = port;
+#endif
 		dev_set_drvdata(&pdev->dev, port);
 		rc = uart_add_one_port(&xuartps_uart_driver, port);
 		if (rc) {
 			dev_err(&pdev->dev,
 				"uart_add_one_port() failed; err=%i\n", rc);
 			dev_set_drvdata(&pdev->dev, NULL);
-			return rc;
+			port->private_data = NULL;
+#ifdef CONFIG_COMMON_CLK
+			xuartps->port = NULL;
+			ret = rc;
+#endif
+			goto err_out2;
 		}
 		return 0;
 	}
+err_out2:
+#ifdef CONFIG_COMMON_CLK
+	clk_unprepare(xuartps->devclk);
+	clk_disable(xuartps->devclk);
+	clk_put(xuartps->devclk);
+	clk_unprepare(xuartps->aperclk);
+	clk_disable(xuartps->aperclk);
+	clk_put(xuartps->aperclk);
+#endif
+#ifdef CONFIG_COMMON_CLK
+err_out:
+	kfree(xuartps);
+#endif
+
+	return ret;
 }
 
 /**
@@ -1177,17 +1346,36 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
  * @pdev: Pointer to the platform device structure
  *
  * Returns 0 on success, negative error otherwise
- **/
+ */
 static int __devexit xuartps_remove(struct platform_device *pdev)
 {
 	struct uart_port *port = dev_get_drvdata(&pdev->dev);
 	int rc = 0;
+#ifdef CONFIG_COMMON_CLK
+	struct xuartps *xuartps;
+#endif
 
 	/* Remove the xuartps port from the serial core */
 	if (port) {
+#ifdef CONFIG_COMMON_CLK
+		xuartps = port->private_data;
+		clk_notifier_unregister(xuartps->devclk,
+				&xuartps->clk_rate_change_nb);
+		xuartps->port = NULL;
+		port->private_data = NULL;
+#endif
 		rc = uart_remove_one_port(&xuartps_uart_driver, port);
 		dev_set_drvdata(&pdev->dev, NULL);
 		port->mapbase = 0;
+#ifdef CONFIG_COMMON_CLK
+		clk_disable(xuartps->devclk);
+		clk_unprepare(xuartps->devclk);
+		clk_put(xuartps->devclk);
+		clk_disable(xuartps->aperclk);
+		clk_unprepare(xuartps->aperclk);
+		clk_put(xuartps->aperclk);
+		kfree(xuartps);
+#endif
 	}
 	return rc;
 }
@@ -1198,13 +1386,22 @@ static int __devexit xuartps_remove(struct platform_device *pdev)
  * @state: State of the device
  *
  * Returns 0
- **/
+ */
 static int xuartps_suspend(struct platform_device *pdev, pm_message_t state)
 {
-	/* Call the API provided in serial_core.c file which handles
+#ifdef CONFIG_COMMON_CLK
+	struct uart_port *port = dev_get_drvdata(&pdev->dev);
+	struct xuartps *xuartps = port->private_data;
+#endif
+	/*
+	 * Call the API provided in serial_core.c file which handles
 	 * the suspend.
 	 */
 	uart_suspend_port(&xuartps_uart_driver, &xuartps_port[pdev->id]);
+#ifdef CONFIG_COMMON_CLK
+	clk_disable(xuartps->devclk);
+	clk_disable(xuartps->aperclk);
+#endif
 	return 0;
 }
 
@@ -1213,9 +1410,16 @@ static int xuartps_suspend(struct platform_device *pdev, pm_message_t state)
  * @pdev: Pointer to the platform device structure
  *
  * Returns 0
- **/
+ */
 static int xuartps_resume(struct platform_device *pdev)
 {
+#ifdef CONFIG_COMMON_CLK
+	struct uart_port *port = dev_get_drvdata(&pdev->dev);
+	struct xuartps *xuartps = port->private_data;
+
+	clk_enable(xuartps->aperclk);
+	clk_enable(xuartps->devclk);
+#endif
 	uart_resume_port(&xuartps_uart_driver, &xuartps_port[pdev->id]);
 	return 0;
 }

@@ -261,14 +261,10 @@ void __init zynq_clock_init(void)
 	clk = clk_register_gate(NULL, "UART0_CLK", "UART_MASTER_CLK",
 			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_UART_CLK_CTRL,
 			0, 0, &uartclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "UART0", clk);
 	clk = clk_register_gate(NULL, "UART1_CLK", "UART_MASTER_CLK",
 			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_UART_CLK_CTRL,
 			1, 0, &uartclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "UART1", clk);
 
 	clk = clk_register_gate(NULL, "SPI0_CLK", "SPI_MASTER_CLK",
@@ -368,15 +364,11 @@ void __init zynq_clock_init(void)
 	clk = clk_register_gate(NULL, "UART0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 20, 0,
 			&aperclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "UART0_APER", clk);
 	clk = clk_register_gate(NULL, "UART1_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 21, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "UART1_APER", clk);
-	clk_prepare(clk);
-	clk_enable(clk);
 	clk = clk_register_gate(NULL, "GPIO_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 22, 0,
 			&aperclk_lock);
