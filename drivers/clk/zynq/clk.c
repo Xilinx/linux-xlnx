@@ -181,14 +181,10 @@ void __init zynq_clock_init(void)
 	clk = clk_register_zynq_gd2m("GEM0_CLK",
 			(void __iomem *)SLCR_GEM0_CLK_CTRL, gem_parents, 8,
 			&gem0clk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "GEM0", clk);
 	clk = clk_register_zynq_gd2m("GEM1_CLK",
 			(void __iomem *)SLCR_GEM1_CLK_CTRL, gem_parents, 8,
 			&gem1clk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "GEM1", clk);
 
 	clk = clk_register_zynq_d2m("FPGA0_CLK",
@@ -313,13 +309,9 @@ void __init zynq_clock_init(void)
 			(void __iomem *)SLCR_APER_CLK_CTRL, 6, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "GEM0_APER", clk);
-	clk_prepare(clk);
-	clk_enable(clk);
 	clk = clk_register_gate(NULL, "GEM1_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 7, 0,
 			&aperclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
 	zynq_clkdev_add(NULL, "GEM1_APER", clk);
 	clk = clk_register_gate(NULL, "SDI0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 10, 0,

@@ -45,6 +45,9 @@
 #include <linux/clocksource.h>
 #include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
+#ifdef CONFIG_COMMON_CLK
+#include <linux/clk.h>
+#endif
 #ifdef CONFIG_OF
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
@@ -553,6 +556,10 @@ struct xemacps_bdring {
 /* Our private device data. */
 struct net_local {
 	void   __iomem         *baseaddr;
+#ifdef CONFIG_COMMON_CLK
+	struct clk		*devclk;
+	struct clk		*aperclk;
+#endif
 	struct xemacps_bdring tx_ring;
 	struct xemacps_bdring rx_ring;
 #ifdef CONFIG_OF
@@ -591,12 +598,14 @@ struct net_local {
 #ifdef CONFIG_OF
 	unsigned int	       enetnum;
 	unsigned int 	       board_type;
+#ifndef CONFIG_COMMON_CLK
 	unsigned int 	       slcr_div0_1000Mbps;
 	unsigned int 	       slcr_div1_1000Mbps;
 	unsigned int 	       slcr_div0_100Mbps;
 	unsigned int 	       slcr_div1_100Mbps;
 	unsigned int 	       slcr_div0_10Mbps;
 	unsigned int 	       slcr_div1_10Mbps;
+#endif
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int 	       ptpenetclk;
 #endif
@@ -738,10 +747,15 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	unsigned long flags;
 	int status_change = 0;
 	u32 regval;
+#ifdef CONFIG_COMMON_CLK
+	long rate;
+#else
 	u32 regval1;
 	u32 slcroffset;
+#endif
 
 	spin_lock_irqsave(&lp->lock, flags);
+#ifndef CONFIG_COMMON_CLK
 	if (lp->enetnum == 0) {
 		regval1 = xslcr_read(XSLCR_EMAC0_CLK_CTRL_OFFSET);
 		regval1 &= XEMACPS_SLCR_DIV_MASK;
@@ -751,6 +765,7 @@ static void xemacps_adjust_link(struct net_device *ndev)
 		regval1 &= XEMACPS_SLCR_DIV_MASK;
 		slcroffset = XSLCR_EMAC1_CLK_CTRL_OFFSET;
 	}
+#endif
 
 	if (phydev->link) {
 		if ((lp->speed != phydev->speed) ||
@@ -764,24 +779,59 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
+#ifdef CONFIG_COMMON_CLK
+				/* Needs real error handling and check that rate
+				 * is in legal boundary */
+				pr_info("Set GEM clk to 125 MHz\n");
+				rate = clk_round_rate(lp->devclk, 125000000);
+				if (rate < 0)
+					pr_err("Cannot adjust link.\n");
+				if (clk_set_rate(lp->devclk, rate))
+					pr_err("Unable to set new clock rate.\n");
+#else
 				regval1 |= ((lp->slcr_div1_1000Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_1000Mbps) << 8);
 				xslcr_write(slcroffset, regval1);
-			} else
+#endif
+			} else {
 				regval &= ~XEMACPS_NWCFG_1000_MASK;
+			}
 
 			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
+#ifdef CONFIG_COMMON_CLK
+				/* Needs real error handling and check that rate
+				 * is in legal boundary */
+				pr_info("Set GEM clk to 25 MHz\n");
+				rate = clk_round_rate(lp->devclk, 25000000);
+				if (rate < 0)
+					pr_err("Cannot adjust link.\n");
+				if (clk_set_rate(lp->devclk, rate))
+					pr_err("Unable to set new clock rate.\n");
+#else
 				regval1 |= ((lp->slcr_div1_100Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_100Mbps) << 8);
 				xslcr_write(slcroffset, regval1);
-			} else
+#endif
+			} else {
 				regval &= ~XEMACPS_NWCFG_100_MASK;
+			}
 
 			if (phydev->speed == SPEED_10) {
+#ifdef CONFIG_COMMON_CLK
+				/* Needs real error handling and check that rate
+				 * is in legal boundary */
+				pr_info("Set GEM clk to 2.5 MHz\n");
+				rate = clk_round_rate(lp->devclk, 2500000);
+				if (rate < 0)
+					pr_err("Cannot adjust link.\n");
+				if (clk_set_rate(lp->devclk, rate))
+					pr_err("Unable to set new clock rate.\n");
+#else
 				regval1 |= ((lp->slcr_div1_10Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_10Mbps) << 8);
 				xslcr_write(slcroffset, regval1);
+#endif
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
@@ -2917,7 +2967,7 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  * @pdev: Pointer to platform device structure
  *
  * Return 0 on success, negative value if error
- **/
+ */
 static int __init xemacps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
@@ -2992,9 +3042,9 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_OF
-	if (ndev->irq == 54) {
+	if (ndev->irq == 54)
 		lp->enetnum = 0;
-	} else
+	else
 		lp->enetnum = 1;
 
 	np = of_get_next_parent(lp->pdev->dev.of_node);
@@ -3004,65 +3054,85 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	if (prop != NULL) {
 		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
 			lp->board_type = BOARD_TYPE_PEEP;
-		 else
+		else
 			lp->board_type = BOARD_TYPE_ZYNQ;
-	} else
+	} else {
 		lp->board_type = BOARD_TYPE_ZYNQ;
+	}
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
+#ifdef CONFIG_COMMON_CLK
+		/* Clock prototyping */
+		/* Hard coded clock names == ugly hack */
+		if (lp->enetnum == 0) {
+			lp->devclk = clk_get_sys("GEM0", NULL);
+			lp->aperclk = clk_get_sys("GEM0_APER", NULL);
+		} else {
+			lp->devclk = clk_get_sys("GEM1", NULL);
+			lp->aperclk = clk_get_sys("GEM1_APER", NULL);
+		}
+
+		if (IS_ERR(lp->devclk)) {
+			pr_err("Xilinx EMACPS device clock not found.\n");
+			goto err_out_unregister_netdev;
+		}
+		if (IS_ERR(lp->aperclk)) {
+			pr_err("Xilinx EMACPS APER clock not found.\n");
+			goto err_out_unregister_netdev;
+		}
+		clk_prepare(lp->aperclk);
+		clk_enable(lp->aperclk);
+		clk_prepare(lp->devclk);
+		clk_enable(lp->devclk);
+#else
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div0-1000Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div0_1000Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div0_1000Mbps = XEMACPS_DFLT_SLCR_DIV0_1000;
-		}
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div1-1000Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div1_1000Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div1_1000Mbps = XEMACPS_DFLT_SLCR_DIV1_1000;
-		}
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div0-100Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div0_100Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div0_100Mbps = XEMACPS_DFLT_SLCR_DIV0_100;
-		}
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div1-100Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div1_100Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div1_100Mbps = XEMACPS_DFLT_SLCR_DIV1_100;
-		}
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div0-10Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div0_10Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div0_10Mbps = XEMACPS_DFLT_SLCR_DIV0_10;
-		}
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div1-10Mbps", NULL);
-		if (prop) {
+		if (prop)
 			lp->slcr_div1_10Mbps = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->slcr_div1_10Mbps = XEMACPS_DFLT_SLCR_DIV1_10;
-		}
+#endif
 	}
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,ptp-enet-clock", NULL);
-		if (prop) {
+		if (prop)
 			lp->ptpenetclk = (u32)be32_to_cpup(prop);
-		} else {
+		else
 			lp->ptpenetclk = 133333328;
-		}
-	} else
+	} else {
 		lp->ptpenetclk = PEEP_TSU_CLK;
+	}
 #endif
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
@@ -3110,7 +3180,7 @@ err_out:
  * @pdev: Pointer to the platform device structure
  *
  * return: 0 on success
- **/
+ */
 static int __exit xemacps_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
@@ -3129,6 +3199,16 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 		iounmap(lp->baseaddr);
 		free_netdev(ndev);
 		platform_set_drvdata(pdev, NULL);
+
+#ifdef CONFIG_COMMON_CLK
+		/* clock prototyping */
+		clk_disable(lp->devclk);
+		clk_unprepare(lp->devclk);
+		clk_put(lp->devclk);
+		clk_disable(lp->aperclk);
+		clk_unprepare(lp->aperclk);
+		clk_put(lp->aperclk);
+#endif
 	}
 
 	return 0;
@@ -3140,12 +3220,21 @@ static int __exit xemacps_remove(struct platform_device *pdev)
  * @state: State of the device
  *
  * Return 0
- **/
+ */
 static int xemacps_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
+#ifdef CONFIG_COMMON_CLK
+	struct net_local *lp = netdev_priv(ndev);
+#endif
 
 	netif_device_detach(ndev);
+
+#ifdef CONFIG_COMMON_CLK
+	clk_disable(lp->devclk);
+	clk_disable(lp->aperclk);
+#endif
+
 	return 0;
 }
 
@@ -3154,11 +3243,16 @@ static int xemacps_suspend(struct platform_device *pdev, pm_message_t state)
  * @pdev: Pointer to platform device structure
  *
  * Return 0
- **/
+ */
 static int xemacps_resume(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
+#ifdef CONFIG_COMMON_CLK
+	struct net_local *lp = netdev_priv(ndev);
 
+	clk_enable(lp->aperclk);
+	clk_enable(lp->devclk);
+#endif
 	netif_device_attach(ndev);
 	return 0;
 }
@@ -3202,8 +3296,8 @@ static struct platform_driver xemacps_driver = {
 /**
  * xemacps_init - Initial driver registration call
  *
- * Retunrs whether the driver registration was successful or not.
- **/
+ * Returns whether the driver registration was successful or not.
+ */
 static int __init xemacps_init(void)
 {
     /*
