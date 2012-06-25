@@ -381,8 +381,6 @@ void __init zynq_clock_init(void)
 			(void __iomem *)SLCR_APER_CLK_CTRL, 22, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "GPIO_APER", clk);
-	clk_prepare(clk);
-	clk_enable(clk);
 	clk = clk_register_gate(NULL, "LQSPI_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 23, 0,
 			&aperclk_lock);

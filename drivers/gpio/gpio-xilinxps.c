@@ -23,6 +23,10 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#ifdef CONFIG_COMMON_CLK
+#include <linux/err.h>
+#include <linux/clk.h>
+#endif
 
 #define DRIVER_NAME "xgpiops"
 
@@ -79,6 +83,9 @@ static unsigned int xgpiops_pin_table[] = {
 struct xgpiops {
 	struct gpio_chip chip;
 	void __iomem *base_addr;
+#ifdef CONFIG_COMMON_CLK
+	struct clk *clk;
+#endif
 	spinlock_t gpio_lock;
 };
 
@@ -496,10 +503,22 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "gpio chip registration failed\n");
 		goto err_iounmap;
-	} else
+	} else {
 		dev_info(&pdev->dev, "gpio at 0x%08lx mapped to 0x%08lx\n",
 			 (unsigned long)mem_res->start,
 			 (unsigned long)gpio->base_addr);
+	}
+
+#ifdef CONFIG_COMMON_CLK
+	/* Enable GPIO clock */
+	gpio->clk = clk_get_sys("GPIO_APER", NULL);
+	if (IS_ERR(gpio->clk)) {
+		pr_err("Xilinx GPIOPS clock not found.\n");
+		goto err_chip_remove;
+	}
+	clk_prepare(gpio->clk);
+	clk_enable(gpio->clk);
+#endif
 
 	/* disable interrupts for all banks */
 	for (bank_num = 0; bank_num < 4; bank_num++) {
@@ -524,6 +543,10 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 
 	return 0;
 
+#ifdef CONFIG_COMMON_CLK
+err_chip_remove:
+	gpiochip_remove(chip);
+#endif
 err_iounmap:
 	iounmap(gpio->base_addr);
 err_release_region:
@@ -533,6 +556,37 @@ err_free_gpio:
 	kfree(gpio);
 
 	return ret;
+}
+
+static int xgpiops_remove(struct platform_device *pdev)
+{
+#ifdef CONFIG_COMMON_CLK
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+	clk_unprepare(gpio->clk);
+	clk_put(gpio->clk);
+#endif
+	return 0;
+}
+static int xgpiops_suspend(struct platform_device *pdev, pm_message_t state)
+{
+#ifdef CONFIG_COMMON_CLK
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+#endif
+	return 0;
+}
+static int xgpiops_resume(struct platform_device *pdev)
+{
+#ifdef CONFIG_COMMON_CLK
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	return clk_enable(gpio->clk);
+#else
+	return 0;
+#endif
 }
 
 #ifdef CONFIG_OF
@@ -552,6 +606,9 @@ static struct platform_driver xgpiops_driver = {
 #endif
 	},
 	.probe		= xgpiops_probe,
+	.remove		= xgpiops_remove,
+	.suspend	= xgpiops_suspend,
+	.resume		= xgpiops_resume,
 };
 
 /**
