@@ -111,7 +111,7 @@ static struct watchdog_info xwdtps_info = {
  *
  * Read the contents of the ZMR register, clear the WDEN bit
  * in the register and set the access key for successful write.
- **/
+ */
 static void xwdtps_stop(void)
 {
 	spin_lock(&wdt->io_lock);
@@ -124,7 +124,7 @@ static void xwdtps_stop(void)
  * xwdtps_reload -  Reload the watchdog timer (i.e. pat the watchdog).
  *
  * Write the restart key value (0x00001999) to the restart register.
- **/
+ */
 static void xwdtps_reload(void)
 {
 	spin_lock(&wdt->io_lock);
@@ -144,7 +144,7 @@ static void xwdtps_reload(void)
  * to write to CCR Register.
  * Sets the WDT (WDEN bit) and Reset signal(RSTEN bit) with a specified
  * cycles and the access key to write to ZMR Register.
- **/
+ */
 static void xwdtps_start(void)
 {
 	unsigned int data = 0;
@@ -189,7 +189,7 @@ static void xwdtps_start(void)
  * value which is used when xwdtps_start is called.
  * Returns -ENOTSUPP, if timeout value is out-of-range.
  * Returns 0 on success.
- **/
+ */
 static int xwdtps_settimeout(int new_time)
 {
 	if ((new_time <= 0) || (new_time > XWDTPS_MAX_TIMEOUT))
@@ -208,7 +208,7 @@ static int xwdtps_settimeout(int new_time)
  *
  * Check whether the device is already in use and then only start the watchdog
  * timer. Returns 0 on success, otherwise -EBUSY.
- **/
+ */
 static int xwdtps_open(struct inode *inode, struct file *file)
 {
 	if (test_and_set_bit(0, &(wdt->busy)))
@@ -226,7 +226,7 @@ static int xwdtps_open(struct inode *inode, struct file *file)
  *
  * Stops the watchdog and clears the busy flag.
  * Returns 0 on success, -ENOTSUPP when the nowayout is enabled.
- **/
+ */
 static int xwdtps_close(struct inode *inode, struct file *file)
 {
 	if (!nowayout) {
@@ -251,7 +251,7 @@ static int xwdtps_close(struct inode *inode, struct file *file)
  * the following IOCTL's - WDIOC_KEEPALIVE, WDIOC_GETSUPPORT,
  * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
  * Returns 0 on success, negative error otherwise.
- **/
+ */
 static long xwdtps_ioctl(struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
@@ -317,7 +317,7 @@ static long xwdtps_ioctl(struct file *file,
  *
  * A write to watchdog device is similar to keepalive signal.
  * Returns the len value.
- **/
+ */
 static ssize_t xwdtps_write(struct file *file, const char __user *data,
 			     size_t len, loff_t *ppos)
 {
@@ -336,7 +336,7 @@ static ssize_t xwdtps_write(struct file *file, const char __user *data,
  * because we need to disable the WDT before system goes down as WDT might
  * reset on the next boot.
  * Returns NOTIFY_DONE.
- **/
+ */
 static int xwdtps_notify_sys(struct notifier_block *this, unsigned long code,
 			      void *unused)
 {
@@ -370,14 +370,13 @@ static struct notifier_block xwdtps_notifier = {
  *
  * It does all the memory allocation and registration for the device.
  * Returns 0 on success, negative error otherwise.
- **/
+ */
 static int __init xwdtps_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int res;
 	const void *prop;
 
-	printk(KERN_ERR "WDT OF probe\n");
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
 		dev_err(&pdev->dev, "Device Busy, only 1 xwdtps instance \
@@ -472,7 +471,7 @@ err_free:
  * Unregister the device after releasing the resources.
  * Stop is allowed only when nowayout is disabled.
  * Returns 0 on success, otherwise negative error.
- **/
+ */
 static int __exit xwdtps_remove(struct platform_device *pdev)
 {
 	int res = 0;
@@ -499,7 +498,7 @@ static int __exit xwdtps_remove(struct platform_device *pdev)
  *
  * @pdev: handle to the platform structure.
  *
- **/
+ */
 static void xwdtps_shutdown(struct platform_device *pdev)
 {
 	/* Stop the device */
@@ -514,7 +513,7 @@ static void xwdtps_shutdown(struct platform_device *pdev)
  * @message: message to the device.
  *
  * Returns 0 always.
- **/
+ */
 static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
 {
 	/* Stop the device */
@@ -528,7 +527,7 @@ static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
  * @pdev: handle to the platform structure.
  *
  * Returns 0 always.
- **/
+ */
 static int xwdtps_resume(struct platform_device *pdev)
 {
 	/* Start the device */
