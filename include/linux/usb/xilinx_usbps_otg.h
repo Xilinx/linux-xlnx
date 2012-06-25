@@ -165,7 +165,7 @@ struct otg_hsm {
 };
 
 struct xusbps_otg {
-	struct otg_transceiver	otg;
+	struct usb_phy		otg;
 
 	struct otg_hsm		hsm;
 
@@ -179,12 +179,12 @@ struct xusbps_otg {
 	struct atomic_notifier_head	otg_notifier;
 
 	/* start/stop USB Host function */
-	int	(*start_host)(struct otg_transceiver *otg);
-	int	(*stop_host)(struct otg_transceiver *otg);
+	int	(*start_host)(struct usb_phy *otg);
+	int	(*stop_host)(struct usb_phy *otg);
 
 	/* start/stop USB Peripheral function */
-	int	(*start_peripheral)(struct otg_transceiver *otg);
-	int	(*stop_peripheral)(struct otg_transceiver *otg);
+	int	(*start_peripheral)(struct usb_phy *otg);
+	int	(*stop_peripheral)(struct usb_phy *otg);
 
 	struct device			*dev;
 
@@ -201,7 +201,7 @@ struct xusbps_otg {
 };
 
 static inline
-struct xusbps_otg *xceiv_to_xotg(struct otg_transceiver *otg)
+struct xusbps_otg *xceiv_to_xotg(struct usb_phy *otg)
 {
 	return container_of(otg, struct xusbps_otg, otg);
 }

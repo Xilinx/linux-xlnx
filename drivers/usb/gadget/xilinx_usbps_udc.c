@@ -1318,7 +1318,7 @@ static void setup_received_irq(struct xusbps_udc *udc,
 			else if (setup->bRequest == USB_DEVICE_B_HNP_ENABLE) {
 				udc->gadget.b_hnp_enable = 1;
 #ifdef	CONFIG_USB_XUSBPS_OTG
-				if (!udc->xotg->otg.default_a)
+				if (!udc->xotg->otg.otg->default_a)
 					udc->xotg->hsm.b_hnp_enable = 1;
 #endif
 			} else if (setup->bRequest == USB_DEVICE_A_HNP_SUPPORT)
@@ -1601,7 +1601,7 @@ static void suspend_irq(struct xusbps_udc *udc)
 
 #ifdef	CONFIG_USB_XUSBPS_OTG
 	if (gadget_is_otg(&udc->gadget)) {
-		if (udc->xotg->otg.default_a) {
+		if (udc->xotg->otg.otg->default_a) {
 			udc->xotg->hsm.b_bus_suspend = 1;
 			/* notify transceiver the state changes */
 			if (spin_trylock(&udc->xotg->wq_lock)) {
@@ -1720,7 +1720,7 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 #ifdef CONFIG_USB_XUSBPS_OTG
 	if (gadget_is_otg(&udc->gadget)) {
 		/* A-device */
-		if (udc->transceiver->default_a &&
+		if (udc->transceiver->otg->default_a &&
 			(udc->transceiver->state != OTG_STATE_A_PERIPHERAL))
 			return IRQ_NONE;
 		/* B-device */
@@ -1811,9 +1811,9 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 /*----------------------------------------------------------------
  * OTG Related changes
  *--------------------------------------------------------------*/
-static int xusbps_udc_start_peripheral(struct otg_transceiver  *otg)
+static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
 {
-	struct usb_gadget	*gadget = otg->gadget;
+	struct usb_gadget	*gadget = otg->otg->gadget;
 	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
 						gadget);
 	unsigned long flags = 0;
@@ -1821,7 +1821,7 @@ static int xusbps_udc_start_peripheral(struct otg_transceiver  *otg)
 
 	spin_lock_irqsave(&udc->lock, flags);
 
-	if (!otg->default_a) {
+	if (!otg->otg->default_a) {
 		dr_controller_setup(udc);
 		reset_queues(udc);
 	} else {
@@ -1842,16 +1842,16 @@ static int xusbps_udc_start_peripheral(struct otg_transceiver  *otg)
 	return 0;
 }
 
-static int xusbps_udc_stop_peripheral(struct otg_transceiver  *otg)
+static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
 {
-	struct usb_gadget	*gadget = otg->gadget;
+	struct usb_gadget	*gadget = otg->otg->gadget;
 	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
 						gadget);
 
 	dr_controller_stop(udc);
 
 	/* refer to USB OTG 6.6.2.3 b_hnp_en is cleared */
-	if (!udc->xotg->otg.default_a)
+	if (!udc->xotg->otg.otg->default_a)
 		udc->xotg->hsm.b_hnp_enable = 0;
 
 	return 0;
@@ -1898,7 +1898,7 @@ int xusbps_start(struct usb_gadget_driver *driver,
 	}
 #ifdef CONFIG_USB_XUSBPS_OTG
 	if (gadget_is_otg(&udc_controller->gadget)) {
-		retval = otg_set_peripheral(udc_controller->transceiver,
+		retval = otg_set_peripheral(udc_controller->transceiver->otg,
 				&udc_controller->gadget);
 		if (retval < 0) {
 			VDBG("can't bind to otg transceiver\n");
@@ -1913,7 +1913,7 @@ int xusbps_start(struct usb_gadget_driver *driver,
 		udc_controller->xotg->stop_peripheral =
 					xusbps_udc_stop_peripheral;
 
-		if (!udc_controller->transceiver->default_a &&
+		if (!udc_controller->transceiver->otg->default_a &&
 					udc_controller->stopped &&
 				udc_controller->xotg->hsm.b_sess_vld) {
 			dr_controller_setup(udc_controller);
@@ -1964,7 +1964,7 @@ int xusbps_stop(struct usb_gadget_driver *driver)
 		return -EINVAL;
 
 	if (udc_controller->transceiver)
-		otg_set_peripheral(udc_controller->transceiver, NULL);
+		otg_set_peripheral(udc_controller->transceiver->otg, NULL);
 
 	/* stop DR, disable intr */
 	dr_controller_stop(udc_controller);

@@ -47,7 +47,7 @@ static int ehci_xusbps_update_device(struct usb_hcd *hcd, struct usb_device
 		/* HNP test device */
 		if ((le16_to_cpu(udev->descriptor.idVendor) == 0x1a0a &&
 			le16_to_cpu(udev->descriptor.idProduct) == 0xbadd)) {
-			if (xotg->otg.default_a == 1)
+			if (xotg->otg.otg->default_a == 1)
 				xotg->hsm.b_conn = 1;
 			else
 				xotg->hsm.a_conn = 1;
@@ -69,12 +69,12 @@ static void ehci_xusbps_start_hnp(struct ehci_hcd *ehci)
 	ehci_writel(ehci, portsc, &ehci->regs->port_status[port]);
 	local_irq_restore(flags);
 
-	otg_start_hnp(ehci->transceiver);
+	otg_start_hnp(ehci->transceiver->otg);
 }
 
-static int ehci_xusbps_otg_start_host(struct otg_transceiver  *otg)
+static int ehci_xusbps_otg_start_host(struct usb_phy *otg)
 {
-	struct usb_hcd		*hcd = bus_to_hcd(otg->host);
+	struct usb_hcd		*hcd = bus_to_hcd(otg->otg->host);
 	struct xusbps_otg *xotg =
 			xceiv_to_xotg(hcd_to_ehci(hcd)->transceiver);
 
@@ -82,9 +82,9 @@ static int ehci_xusbps_otg_start_host(struct otg_transceiver  *otg)
 	return 0;
 }
 
-static int ehci_xusbps_otg_stop_host(struct otg_transceiver  *otg)
+static int ehci_xusbps_otg_stop_host(struct usb_phy *otg)
 {
-	struct usb_hcd		*hcd = bus_to_hcd(otg->host);
+	struct usb_hcd		*hcd = bus_to_hcd(otg->otg->host);
 
 	usb_remove_hcd(hcd);
 	return 0;
@@ -166,7 +166,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	ehci = hcd_to_ehci(hcd);
 	if (pdata->otg) {
 		ehci->transceiver = pdata->otg;
-		retval = otg_set_host(ehci->transceiver,
+		retval = otg_set_host(ehci->transceiver->otg,
 				&ehci_to_hcd(ehci)->self);
 		if (retval)
 			return retval;

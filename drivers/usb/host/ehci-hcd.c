@@ -875,13 +875,13 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 #ifdef CONFIG_USB_XUSBPS_OTG
 	if(ehci->transceiver) {
 		/* A device */
-		if (ehci->transceiver->default_a &&
+		if (ehci->transceiver->otg->default_a &&
 			(ehci->transceiver->state == OTG_STATE_A_PERIPHERAL)) {
 			spin_unlock(&ehci->lock);
 			return IRQ_NONE;
 		}
 		/* B device */
-		if (!ehci->transceiver->default_a &&
+		if (!ehci->transceiver->otg->default_a &&
 			((ehci->transceiver->state != OTG_STATE_B_WAIT_ACON) &&
 			(ehci->transceiver->state != OTG_STATE_B_HOST))) {
 			spin_unlock(&ehci->lock);
