@@ -38,4 +38,14 @@ config ZYNQ_REMOTEPROC
 	  Say y here to support Xilinx ZynQ remote processors (the second
 	  ARM CORTEX-A9 cpu) via the remote processor framework.
 
+config MB_REMOTEPROC
+	tristate "mb remoteproc support"
+	depends on ARCH_ZYNQ
+	select REMOTEPROC
+	select RPMSG
+	default m
+	help
+	  Say y here to support Xilinx Microblaze remote processors
+	  on the Xilinx Zynq.
+
 endmenu

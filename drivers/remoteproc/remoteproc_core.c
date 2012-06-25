@@ -162,8 +162,9 @@ void *rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 			continue;
 
 		/* try next carveout if da is too large */
-		if (offset + len > carveout->len)
-			continue;
+		/* FIXME this is breaking offset in carveout - microblaze */
+		/* if (offset + len > carveout->len)
+			continue; */
 
 		ptr = carveout->va + offset;
 
