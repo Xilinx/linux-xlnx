@@ -27,7 +27,7 @@ config XILINX_EMACLITE
 
 config XILINX_AXI_ETHERNET
 	tristate "Xilinx Axi Ethernet driver"
-	depends on MICROBLAZE
+	depends on MICROBLAZE || ARCH_ZYNQ
 	select PHYLIB
 	help
 	  This driver supports the Xilinx 10/100/1000 Axi Ethernet IP
@@ -52,7 +52,7 @@ config XILINX_LLTEMAC
 choice
 	prompt "Xilinx LLTEMAC PHY Support"
 	default XILINX_LLTEMAC_MARVELL_88E1111_GMII
-	
+
 config XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 	bool "MARVELL 88E1111 using RGMII"
    help
