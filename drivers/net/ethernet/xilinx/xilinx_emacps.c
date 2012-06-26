@@ -559,6 +559,7 @@ struct net_local {
 #ifdef CONFIG_COMMON_CLK
 	struct clk		*devclk;
 	struct clk		*aperclk;
+	struct notifier_block	clk_rate_change_nb;
 #endif
 	struct xemacps_bdring tx_ring;
 	struct xemacps_bdring rx_ring;
@@ -611,6 +612,10 @@ struct net_local {
 #endif
 #endif
 };
+#ifdef CONFIG_COMMON_CLK
+#define to_net_local(_nb)	container_of(_nb, struct net_local,\
+		clk_rate_change_nb)
+#endif
 
 static struct net_device_ops netdev_ops;
 
@@ -861,6 +866,36 @@ static void xemacps_adjust_link(struct net_device *ndev)
 		}
 	}
 }
+
+#ifdef CONFIG_COMMON_CLK
+static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
+		event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+	struct net_local *nl = to_net_local(nb);
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers.
+		 * I don't see how this can be done using the current fmwk!?
+		 * For now we always allow the rate change. Otherwise we would
+		 * even prevent ourself to change the rate.
+		 */
+		return NOTIFY_OK;
+	case POST_RATE_CHANGE:
+		/* not sure this will work. actually i'm sure it does not. this
+		 * callback is not allowed to call back into COMMON_CLK, what
+		 * adjust_link() does...*/
+		/*xemacps_adjust_link(nl->ndev); would likely lock up kernel */
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+#endif
 
 /**
  * xemacps_mii_probe - probe mii bus, find the right bus_id to register
@@ -3079,6 +3114,11 @@ static int __init xemacps_probe(struct platform_device *pdev)
 			pr_err("Xilinx EMACPS APER clock not found.\n");
 			goto err_out_unregister_netdev;
 		}
+
+		lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
+		lp->clk_rate_change_nb.next = NULL;
+		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
+			pr_warn("Unable to register clock notifier.\n");
 		clk_prepare(lp->aperclk);
 		clk_enable(lp->aperclk);
 		clk_prepare(lp->devclk);
@@ -3202,6 +3242,7 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_COMMON_CLK
 		/* clock prototyping */
+		clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
 		clk_disable(lp->devclk);
 		clk_unprepare(lp->devclk);
 		clk_put(lp->devclk);
