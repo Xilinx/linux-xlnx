@@ -1161,6 +1161,7 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		nand_chip->ecc.write_oob = xnandpss_write_oob;
 		nand_chip->ecc.size = mtd->writesize;
 		nand_chip->ecc.bytes = 0;
+		nand_chip->ecc.strength = 1;
 
 		/* On-Die ECC spare bytes offset 8 is used for ECC codes */
 		if (ondie_ecc_enabled) {
@@ -1183,7 +1184,8 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		nand_chip->ecc.write_page_raw = xnandpss_write_page_raw;
 		nand_chip->ecc.read_oob = xnandpss_read_oob;
 		nand_chip->ecc.write_oob = xnandpss_write_oob;
-
+		nand_chip->ecc.strength = 1;
+	
 		switch (mtd->writesize) {
 		case 512:
 			ecc_page_size = 0x1;
