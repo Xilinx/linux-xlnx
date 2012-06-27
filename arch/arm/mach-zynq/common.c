@@ -18,6 +18,8 @@
 #include <linux/kernel.h>
 #include <linux/cpumask.h>
 #include <linux/platform_device.h>
+#include <linux/clk.h>
+#include <linux/opp.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of.h>
@@ -32,6 +34,7 @@
 
 #include <mach/zynq_soc.h>
 #include <mach/clk.h>
+#include <mach/pdev.h>
 #include "common.h"
 
 
@@ -123,6 +126,72 @@ void __init xilinx_memory_init()
 #endif
 }
 
+#ifdef CONFIG_CPU_FREQ
+/**
+ * xilinx_opp_init() - Register OPPs
+ *
+ * Registering frequency/voltage operating points for voltage and frequency
+ * scaling. Currently we only support frequency scaling.
+ */
+static void __init xilinx_opp_init(void)
+{
+	struct platform_device *pdev = xilinx_get_pdev_by_name("zynq-dvfs");
+	struct device *dev;
+	int ret = 0;
+	long freq;
+	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
+
+	if (IS_ERR(pdev)) {
+		pr_warn("Xilinx OOP init: No device. DVFS not available.");
+		return;
+	}
+	dev = &pdev->dev;
+
+	if (IS_ERR(cpuclk)) {
+		pr_warn("Xilinx OOP init: CPU clock not found. DVFS not available.");
+		return;
+	}
+
+	/* frequency/voltage operating points. For now use f only */
+	/* We need some conditionals to enable the max frequencies for the right
+	 * parts only. */
+	/* -3E(?) max f = 1GHz */
+	freq = clk_round_rate(cpuclk, 1000000000);
+	if (abs(1000000000 - freq) < 50000000)
+		ret |= opp_add(dev, freq, 0);
+	/* -3 parts max f = 800 MHz */
+	freq = clk_round_rate(cpuclk, 800000000);
+	if (abs(800000000 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 666666667);
+	if (abs(666666667 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 555555556);
+	if (abs(555555556 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 444444444);
+	if (abs(444444444 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 333333333);
+	if (abs(333333333 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 222222222);
+	if (abs(222222222 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 111111111);
+	if (abs(111111111 - freq) < 10000000)
+		ret |= opp_add(dev, freq, 0);
+	freq = clk_round_rate(cpuclk, 50000000);
+	if (abs(50000000 - freq) < 5000000)
+		ret |= opp_add(dev, freq, 0);
+
+	if (ret)
+		pr_warn("Error adding OPPs.");
+}
+#else
+static void __init xilinx_opp_init(void) {}
+#endif
+
 #ifdef CONFIG_CACHE_L2X0
 static int __init xilinx_l2c_init(void)
 {
@@ -146,4 +215,5 @@ void __init xilinx_init_machine(void)
 	zynq_clock_init();
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 	platform_device_init();
+	xilinx_opp_init();
 }

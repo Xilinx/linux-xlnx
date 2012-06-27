@@ -76,3 +76,11 @@ config ARM_EXYNOS5250_CPUFREQ
 	help
 	  This adds the CPUFreq driver for Samsung EXYNOS5250
 	  SoC.
+
+config ARM_ZYNQ_CPUFREQ
+	bool "Xilinx Zynq"
+	depends on ARCH_ZYNQ
+	default n
+	select CPU_FREQ_TABLE
+	help
+	  This adds the CPUFreq driver for Xilinx Zynq SoCs.

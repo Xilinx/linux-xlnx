@@ -983,6 +983,8 @@ config ARCH_ZYNQ
 	select ISA_DMA_API
 	select ARCH_REQUIRE_GPIOLIB
 	select COMMON_CLK
+	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_OPP
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 endchoice
