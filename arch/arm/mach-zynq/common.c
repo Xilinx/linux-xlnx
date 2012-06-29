@@ -40,28 +40,6 @@ static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{}
 };
 
-/**
- * xilinx_init_machine() - System specific initialization, intended to be
- *			   called from board specific initialization.
- */
-void __init xilinx_init_machine(void)
-{
-	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
-
-#ifdef CONFIG_CACHE_L2X0
-	/*
-	 * 64KB way size, 8-way associativity, parity disabled, prefetching option
-	 */
-#ifndef	CONFIG_XILINX_L2_PREFETCH
-	l2x0_of_init(0x02060000, 0xF0F0FFFF);
-#else
-	l2x0_of_init(0x72060000, 0xF0F0FFFF);
-#endif
-#endif
-
-	platform_device_init();
-}
-
 static const struct of_device_id xilinx_dt_irq_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
 	{ }
@@ -135,4 +113,28 @@ void __init xilinx_memory_init()
 	 */ 
 	memblock_reserve(0, 0x4000);
 #endif
+}
+
+#ifdef CONFIG_CACHE_L2X0
+static int __init xilinx_l2c_init(void)
+{
+	/* 64KB way size, 8-way associativity, parity disabled,
+	 * prefetching option */
+#ifndef	CONFIG_XILINX_L2_PREFETCH
+	return l2x0_of_init(0x02060000, 0xF0F0FFFF);
+#else
+	return l2x0_of_init(0x72060000, 0xF0F0FFFF);
+#endif
+}
+early_initcall(xilinx_l2c_init);
+#endif
+
+/**
+ * xilinx_init_machine() - System specific initialization, intended to be
+ *			   called from board specific initialization.
+ */
+void __init xilinx_init_machine(void)
+{
+	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
+	platform_device_init();
 }
