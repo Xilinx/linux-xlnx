@@ -28,7 +28,7 @@ config OMAP_REMOTEPROC
 	  offloading or just want a bare minimum kernel.
 
 config ZYNQ_REMOTEPROC
-	tristate "ZYNQ remoteproc support"
+	tristate "Support ZYNQ remoteproc"
 	depends on ARCH_ZYNQ && SMP
 	select REMOTEPROC
 	select RPMSG
@@ -39,7 +39,7 @@ config ZYNQ_REMOTEPROC
 	  ARM CORTEX-A9 cpu) via the remote processor framework.
 
 config MB_REMOTEPROC
-	tristate "mb remoteproc support"
+	tristate "Support Microblaze remoteproc"
 	depends on ARCH_ZYNQ
 	select REMOTEPROC
 	select RPMSG

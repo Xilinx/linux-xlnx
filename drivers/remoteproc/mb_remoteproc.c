@@ -53,8 +53,8 @@ struct mb_rproc_pdata {
 	struct rproc *rproc;
 	u32 mem_start;
 	u32 mem_end;
-	u32 *gpio_addr;
-	u32 cpunr;
+	u32 *gpio_reset_addr;
+	u32 reset_gpio_pin;
 };
 
 static int mb_rproc_start(struct rproc *rproc)
@@ -68,7 +68,7 @@ static int mb_rproc_start(struct rproc *rproc)
 	flush_cache_all();
 	outer_flush_range(local->mem_start, local->mem_end);
 
-	*local->gpio_addr &= ~(1 << local->cpunr);
+	*local->gpio_reset_addr &= ~(1 << local->reset_gpio_pin);
 
 	return 0;
 }
@@ -91,7 +91,7 @@ static int mb_rproc_stop(struct rproc *rproc)
 
 	dev_info(dev, "%s\n", __func__);
 
-	*local->gpio_addr |= 1 << local->cpunr;
+	*local->gpio_reset_addr |= 1 << local->reset_gpio_pin;
 
 	return 0;
 }
@@ -175,7 +175,7 @@ static int __devinit mb_remoteproc_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&local->mylist.list);
 
 	count = of_irq_count(pdev->dev.of_node);
-	/* Alloc IRQ based on DTS to be sure that other driver will use it */
+	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
 	while (count--) {
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
 		if (!tmp) {
@@ -202,27 +202,27 @@ static int __devinit mb_remoteproc_probe(struct platform_device *pdev)
 	}
 
 
-	of_prop = of_get_property(pdev->dev.of_node, "gpio", NULL);
+	of_prop = of_get_property(pdev->dev.of_node, "reset-gpio", NULL);
 	if (!of_prop) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
 		goto irq_fault;
 	}
 
-	local->gpio_addr = ioremap(be32_to_cpup(of_prop), 0x1000);
-	if (!local->gpio_addr) {
+	local->gpio_reset_addr = ioremap(be32_to_cpup(of_prop), 0x1000);
+	if (!local->gpio_reset_addr) {
 		dev_err(&pdev->dev, "Reset GPIO ioremap failed\n");
 		goto irq_fault;
 	}
 
-	of_prop = of_get_property(pdev->dev.of_node, "cpu", NULL);
+	of_prop = of_get_property(pdev->dev.of_node, "reset-gpio-pin", NULL);
 	if (!of_prop) {
 		dev_err(&pdev->dev, "Please specify cpu number\n");
 		goto irq_fault;
 	}
-	local->cpunr = be32_to_cpup(of_prop);
+	local->reset_gpio_pin = be32_to_cpup(of_prop);
 
 	/* Keep mb in reset */
-	*local->gpio_addr |= 1 << local->cpunr;
+	*local->gpio_reset_addr |= 1 << local->reset_gpio_pin;
 
 	/* Module param firmware first */
 	if (firmware)
@@ -276,7 +276,7 @@ static int __devexit mb_remoteproc_remove(struct platform_device *pdev)
 
 /* Match table for OF platform binding */
 static struct of_device_id mb_remoteproc_match[] __devinitdata = {
-	{ .compatible = "mb_remoteproc", },
+	{ .compatible = "xlnx,mb_remoteproc", },
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, mb_remoteproc_match);

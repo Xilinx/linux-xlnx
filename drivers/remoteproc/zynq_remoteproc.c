@@ -215,7 +215,7 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&local->mylist.list);
 
 	count = of_irq_count(pdev->dev.of_node);
-	/* Alloc IRQ based on DTS to be sure that other driver will use it */
+	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
 	while (count--) {
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
 		if (!tmp) {
@@ -338,7 +338,7 @@ static int __devexit zynq_remoteproc_remove(struct platform_device *pdev)
 
 /* Match table for OF platform binding */
 static struct of_device_id zynq_remoteproc_match[] __devinitdata = {
-	{ .compatible = "zynq_remoteproc", },
+	{ .compatible = "xlnx,zynq_remoteproc", },
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, zynq_remoteproc_match);
