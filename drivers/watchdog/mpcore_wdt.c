@@ -35,6 +35,7 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #include <asm/smp_twd.h>
 
@@ -45,6 +46,7 @@ struct mpcore_wdt {
 	int		irq;
 	unsigned int	perturb;
 	char		expect_close;
+	unsigned int	clk;
 };
 
 static struct platform_device *mpcore_wdt_pdev;
@@ -98,17 +100,11 @@ static irqreturn_t mpcore_wdt_fire(int irq, void *arg)
  */
 static void mpcore_wdt_keepalive(struct mpcore_wdt *wdt)
 {
-	unsigned long count;
+	u64 dividend = (u64) mpcore_margin * wdt->clk;
+	unsigned long wdt_count = (u32) div64_u64(dividend, 256 + 1) - 1;
 
 	spin_lock(&wdt_lock);
-	/* Assume prescale is set to 256 */
-	count =  __raw_readl(wdt->base + TWD_WDOG_COUNTER);
-	count = (0xFFFFFFFFU - count) * (HZ / 5);
-	count = (count / 256) * mpcore_margin;
-
-	/* Reload the counter */
-	writel(count + wdt->perturb, wdt->base + TWD_WDOG_LOAD);
-	wdt->perturb = wdt->perturb ? 0 : 1;
+	writel(wdt_count, wdt->base + TWD_WDOG_LOAD);
 	spin_unlock(&wdt_lock);
 }
 
@@ -332,6 +328,9 @@ static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
 	struct mpcore_wdt *wdt;
 	struct resource *res;
 	int ret;
+#ifdef CONFIG_OF
+	const void *prop;
+#endif
 
 	/* We only accept one device, and it must have an id of -1 */
 	if (pdev->id != -1)
@@ -357,6 +356,20 @@ static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
 			return ret;
 		}
 	}
+
+#ifdef CONFIG_OF
+	/* Subtract 0x20 from the register starting address to allow
+	 * device trees to specify the WDT start address, not the local
+	 * timer start address. This does not break previous uses of
+	 * platform_data. */
+	res->start -= 0x20;
+
+	/* Get clock speed from device tree */
+	prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+	wdt->clk = prop ? (u32)be32_to_cpup(prop) : HZ;
+#else
+	wdt->clk = HZ;
+#endif
 
 	wdt->base = devm_ioremap(wdt->dev, res->start, resource_size(res));
 	if (!wdt->base)
@@ -410,6 +423,14 @@ static int mpcore_wdt_resume(struct platform_device *pdev)
 #define mpcore_wdt_resume	NULL
 #endif
 
+#ifdef CONFIG_OF
+static struct of_device_id mpcore_wdt_of_match[] __devinitdata = {
+	{ .compatible = "arm,mpcore_wdt", },
+	{ /* end of table */}
+};
+MODULE_DEVICE_TABLE(of, mpcore_wdt_of_match);
+#endif
+
 /* work with hotplug and coldplug */
 MODULE_ALIAS("platform:mpcore_wdt");
 
@@ -422,6 +443,9 @@ static struct platform_driver mpcore_wdt_driver = {
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= "mpcore_wdt",
+#ifdef CONFIG_OF
+		.of_match_table = mpcore_wdt_of_match,
+#endif
 	},
 };
 
@@ -439,7 +463,6 @@ static int __init mpcore_wdt_init(void)
 
 	pr_info("MPcore Watchdog Timer: 0.1. mpcore_noboot=%d mpcore_margin=%d sec (nowayout= %d)\n",
 		mpcore_noboot, mpcore_margin, nowayout);
-
 	return platform_driver_register(&mpcore_wdt_driver);
 }
 
