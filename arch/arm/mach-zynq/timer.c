@@ -26,6 +26,10 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
+#ifdef CONFIG_COMMON_CLK
+#include <linux/clk.h>
+#include <linux/err.h>
+#endif
 
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
@@ -79,10 +83,14 @@
  * struct xttcpss_timer - This definition defines local timer structure
  *
  * @base_addr:	Base address of timer
- **/
+ */
 struct xttcpss_timer {
 	void __iomem *base_addr;
 	int frequency;
+#ifdef CONFIG_COMMON_CLK
+	struct clk *clk;
+	struct notifier_block clk_rate_change_nb;
+#endif
 };
 
 static struct xttcpss_timer timers[2];
@@ -146,12 +154,12 @@ static struct irqaction event_timer_irq = {
  *
  * Initialize the hardware to start the clock source, get the clock
  * event timer ready to use, and hook up the interrupt.
- **/
+ */
 static void __init xttcpss_timer_hardware_init(void)
 {
 	/* Setup the clock source counter to be an incrementing counter
 	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
-	   it by 32 also. Let it start running now.
+	 * it by 32 also. Let it start running now.
 	 */
 	__raw_writel(0x0, timers[XTTCPSS_CLOCKSOURCE].base_addr +
 				XTTCPSS_IER_OFFSET);
@@ -165,7 +173,6 @@ static void __init xttcpss_timer_hardware_init(void)
 	 * is prescaled by 32 using the interval interrupt. Leave it
 	 * disabled for now.
 	 */
-
 	__raw_writel(0x23, timers[XTTCPSS_CLOCKEVENT].base_addr +
 			XTTCPSS_CNT_CNTRL_OFFSET);
 	__raw_writel(CLK_CNTRL_PRESCALE, 
@@ -199,7 +206,6 @@ static struct clocksource clocksource_xttcpss = {
 	.mask		= CLOCKSOURCE_MASK(16),
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 };
-
 
 /**
  * xttcpss_set_next_event - Sets the time interval for next event
@@ -264,12 +270,68 @@ static struct clock_event_device xttcpss_clockevent = {
 	.rating		= 200,
 };
 
+#ifdef CONFIG_COMMON_CLK
+static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+
+	switch (event) {
+	case POST_RATE_CHANGE:
+	{
+		unsigned long flags;
+
+		timers[XTTCPSS_CLOCKSOURCE].frequency =
+			ndata->new_rate / PRESCALE;
+		timers[XTTCPSS_CLOCKEVENT].frequency =
+			ndata->new_rate / PRESCALE;
+
+		/* Do whatever is necessare to maintain a proper time base */
+		/*
+		 * I cannot find a way to adjust the currently used clocksource
+		 * to the new frequency. __clocksource_updatefreq_hz() sounds
+		 * good, but does not work. Not sure what's that missing.
+		 *
+		 * This approach works, but triggers two clocksource switches.
+		 * The first after unregister to clocksource jiffies. And
+		 * another one after the register to the newly registered timer.
+		 *
+		 * Alternatively we could 'waste' another HW timer to ping pong
+		 * between clock sources. That would also use one register and
+		 * one unregister call, but only trigger one clocksource switch
+		 * for the cost of another HW timer used by the OS.
+		 */
+		clocksource_unregister(&clocksource_xttcpss);
+		clocksource_register_hz(&clocksource_xttcpss,
+				ndata->new_rate / PRESCALE);
+
+		/*
+		 * clockevents_update_freq should be called with IRQ disabled on
+		 * the CPU the timer provides events for. The timer we use is
+		 * common to both CPUs, not sure if we need to run on both
+		 * cores.
+		 */
+		local_irq_save(flags);
+		clockevents_update_freq(&xttcpss_clockevent,
+				timers[XTTCPSS_CLOCKEVENT].frequency);
+		local_irq_restore(flags);
+
+		/* fall through */
+	}
+	case PRE_RATE_CHANGE:
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+#endif
+
 /**
  * xttcpss_timer_init - Initialize the timer
  *
  * Initializes the timer hardware and register the clock source and clock event
  * timers with Linux kernal timer framework
- **/
+ */
 static void __init xttcpss_timer_init(void)
 {
 	u32 irq;
@@ -281,6 +343,9 @@ static void __init xttcpss_timer_init(void)
 		"xlnx,ps7-ttc-1.00.a",
 		NULL
 	};
+#ifdef CONFIG_COMMON_CLK
+	struct clk *clk;
+#endif
 
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
@@ -314,7 +379,7 @@ static void __init xttcpss_timer_init(void)
 	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
 
 	/* Setup the interrupt realizing that the 2nd timer in the TTC
-	   (used for the event sournce) interrupt number is +1 from the 1st timer
+	   (used for the event source) interrupt number is +1 from the 1st timer
 	 */
 	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
 	setup_irq(irq, &event_timer_irq);
@@ -322,46 +387,60 @@ static void __init xttcpss_timer_init(void)
 	printk(KERN_INFO "%s #0 at 0x%08x, irq=%d\n",
 		timer_list[0], timer_baseaddr, irq);
 
-	/* If there is clock-frequency property than use it, otherwise use a default
-	 * that may not be the right timing, but might boot the kernel, the event 
-	 * timer is the only one that needs the frequency, but make them match
+	/*
+	 * If there is clock-frequency property then use it, otherwise use a
+	 * default * that may not be the right timing, but might boot the
+	 * kernel, the event * timer is the only one that needs the frequency,
+	 * but make them match
 	 */
-	if (prop1)
-		timers[XTTCPSS_CLOCKSOURCE].frequency = be32_to_cpup(prop1)
-								/ PRESCALE;
-	else {
-		printk(KERN_ERR "Error, no clock-frequency specified for timer\n");
-		timers[XTTCPSS_CLOCKSOURCE].frequency = PERIPHERAL_CLOCK_RATE
-								 / PRESCALE;
+#ifdef CONFIG_COMMON_CLK
+	clk = clk_get_sys("CPU_1X_CLK", NULL);
+	if (IS_ERR(clk)) {
+		pr_warn("Xilinx: timer: Clock not found.");
+		return;
 	}
-	if (prop2)
-		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop2)
-								/ PRESCALE;
-	else {
-		printk(KERN_ERR "Error, no clock-frequency specified for timer\n");
-		timers[XTTCPSS_CLOCKEVENT].frequency = PERIPHERAL_CLOCK_RATE
-							 / PRESCALE;
+	clk_prepare(clk);
+	clk_enable(clk);
+	timers[XTTCPSS_CLOCKSOURCE].clk = clk;
+	timers[XTTCPSS_CLOCKEVENT].clk = clk;
+	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
+		xttcpss_timer_rate_change_cb;
+	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
+		xttcpss_timer_rate_change_cb;
+	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
+	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
+	timers[XTTCPSS_CLOCKSOURCE].frequency = clk_get_rate(clk) / PRESCALE;
+	timers[XTTCPSS_CLOCKEVENT].frequency = clk_get_rate(clk) / PRESCALE;
+	if (clk_notifier_register(clk,
+			&timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
+#else
+	if (prop1) {
+		timers[XTTCPSS_CLOCKSOURCE].frequency = be32_to_cpup(prop1) /
+			PRESCALE;
+	} else {
+		pr_err("Error, no clock-frequency specified for timer\n");
+		timers[XTTCPSS_CLOCKSOURCE].frequency = PERIPHERAL_CLOCK_RATE /
+			PRESCALE;
 	}
+	if (prop2) {
+		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop2) /
+			PRESCALE;
+	} else {
+		pr_err("Error, no clock-frequency specified for timer\n");
+		timers[XTTCPSS_CLOCKEVENT].frequency = PERIPHERAL_CLOCK_RATE /
+			PRESCALE;
+	}
+#endif
 
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss,
 				timers[XTTCPSS_CLOCKSOURCE].frequency);
 
-	/* Calculate the parameters to allow the clockevent to operate using
-	   integer math
-	*/
-	clockevents_calc_mult_shift(&xttcpss_clockevent, 
-				timers[XTTCPSS_CLOCKEVENT].frequency, 4);
-
-	xttcpss_clockevent.max_delta_ns =
-		clockevent_delta2ns(0xfffe, &xttcpss_clockevent);
-	xttcpss_clockevent.min_delta_ns =
-		clockevent_delta2ns(1, &xttcpss_clockevent);
-
 	/* Indicate that clock event is on 1st CPU as SMP boot needs it */
-
 	xttcpss_clockevent.cpumask = cpumask_of(0);
-	clockevents_register_device(&xttcpss_clockevent);
+	clockevents_config_and_register(&xttcpss_clockevent,
+			timers[XTTCPSS_CLOCKEVENT].frequency, 1, 0xfffe);
 
 #ifdef CONFIG_HAVE_ARM_TWD
 	twd_local_timer_of_register();

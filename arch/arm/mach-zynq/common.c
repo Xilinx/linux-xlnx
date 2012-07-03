@@ -48,14 +48,6 @@ static const struct of_device_id xilinx_dt_irq_match[] __initconst = {
 	{ }
 };
 
-/**
- * xilinx_irq_init() - Interrupt controller initialization for the GIC.
- */
-void __init xilinx_irq_init(void)
-{
-	of_irq_init(xilinx_dt_irq_match);
-}
-
 /* The minimum devices needed to be mapped before the VM system is up and
  * running include the GIC, UART and Timer Counter.
  */
@@ -207,12 +199,24 @@ early_initcall(xilinx_l2c_init);
 #endif
 
 /**
+ * xilinx_irq_init() - Interrupt controller initialization for the GIC.
+ */
+void __init xilinx_irq_init(void)
+{
+	of_irq_init(xilinx_dt_irq_match);
+	/* This is probably the ugliest hack possible but this is why:
+	 * Clock init needs to be done before timer init, so the timer can use
+	 * COMMON_CLK. All __initcall types are called after time_init().
+	 * Putting it in here is ugly but works. */
+	zynq_clock_init();
+}
+
+/**
  * xilinx_init_machine() - System specific initialization, intended to be
  *			   called from board specific initialization.
  */
 void __init xilinx_init_machine(void)
 {
-	zynq_clock_init();
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 	platform_device_init();
 	xilinx_opp_init();
