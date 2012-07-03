@@ -44,12 +44,10 @@ MODULE_PARM_DESC(wdt_timeout,
 		 "Watchdog time in seconds. (default="
 		 __MODULE_STRING(XWDTPS_DEFAULT_TIMEOUT) ")");
 
-#ifdef CONFIG_WATCHDOG_NOWAYOUT
 module_param(nowayout, int, 0);
 MODULE_PARM_DESC(nowayout,
 		 "Watchdog cannot be stopped once started (default="
 		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
-#endif
 
 /**
  * struct xwdtps - Watchdog device structure.
@@ -64,7 +62,7 @@ struct xwdtps {
 	int				rst;			/* Reset flag */
 	u32 			clock;
 	u32 			prescalar;
-	u32 			ctrl_clksel;
+	u32				ctrl_clksel;
 	spinlock_t		io_lock;
 };
 static struct xwdtps *wdt;
@@ -75,7 +73,9 @@ static struct xwdtps *wdt;
  */
 static struct watchdog_info xwdtps_info = {
 	.identity	= "xwdtps watchdog",
-	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
+	.options	= WDIOF_SETTIMEOUT |
+					WDIOF_KEEPALIVEPING |
+					WDIOF_MAGICCLOSE,
 };
 
 /* Write access to Registers */
@@ -497,11 +497,17 @@ static struct platform_driver xwdtps_driver = {
 /**
  * xwdtps_init -  Register the WDT.
  *
+ * If using noway out, the use count will be incremented.
+ * This will prevent unloading the module. An attempt to
+ * unload the module will result in a warning from the kernel.
  * Returns 0 on success, otherwise negative error.
  */
 static int __init xwdtps_init(void)
 {
-	return platform_driver_register(&xwdtps_driver);
+	int res = platform_driver_register(&xwdtps_driver);
+	if (!res && nowayout)
+		try_module_get(THIS_MODULE);
+	return res;
 }
 
 /**
