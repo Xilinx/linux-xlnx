@@ -32,7 +32,9 @@
 #include <linux/of.h>
 
 #define XWDTPS_DEFAULT_TIMEOUT	10
-#define XWDTPS_MAX_TIMEOUT	516	/* Supports 1 - 516 sec */
+/* Supports 1 - 516 sec */
+#define XWDTPS_MIN_TIMEOUT	1
+#define XWDTPS_MAX_TIMEOUT	516
 
 static int wdt_timeout = XWDTPS_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
@@ -53,21 +55,17 @@ MODULE_PARM_DESC(nowayout,
  * struct xwdtps - Watchdog device structure.
  * @regs: baseaddress of device.
  * @busy: flag for the device.
- * @miscdev: miscdev structure.
  *
- * Structure containing the standard miscellaneous device 'miscdev'
- * structure along with the parameters specific to ps watchdog.
+ * Structure containing parameters specific to ps watchdog.
  */
 struct xwdtps {
 	void __iomem		*regs;		/* Base address */
 	unsigned long		busy;		/* Device Status */
-	struct miscdevice	miscdev;	/* Device structure */
 	int				rst;			/* Reset flag */
 	u32 			clock;
 	u32 			prescalar;
 	u32 			ctrl_clksel;
 	spinlock_t		io_lock;
-	int ep107;
 };
 static struct xwdtps *wdt;
 
@@ -115,12 +113,13 @@ static struct watchdog_info xwdtps_info = {
  * Read the contents of the ZMR register, clear the WDEN bit
  * in the register and set the access key for successful write.
  **/
-static void xwdtps_stop(void)
+static int xwdtps_stop(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
 	xwdtps_writereg((XWDTPS_ZMR_ZKEY_VAL & (~XWDTPS_ZMR_WDEN_MASK)),
 			 XWDTPS_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
+	return 0;
 }
 
 /**
@@ -128,11 +127,12 @@ static void xwdtps_stop(void)
  *
  * Write the restart key value (0x00001999) to the restart register.
  **/
-static void xwdtps_reload(void)
+static int xwdtps_reload(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
 	xwdtps_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
 	spin_unlock(&wdt->io_lock);
+	return 0;
 }
 
 /**
@@ -145,10 +145,11 @@ static void xwdtps_reload(void)
  * Clears the contents of prescalar and counter reset value. Sets the
  * prescalar to 4096 and the calculated count and access key
  * to write to CCR Register.
- * Sets the WDT (WDEN bit) and Reset signal(RSTEN bit) with a specified
- * cycles and the access key to write to ZMR Register.
+ * Sets the WDT (WDEN bit) and either the Reset signal(RSTEN bit)
+ * or Interrupt signal(IRQEN) with a specified cycles and the access
+ * key to write to ZMR Register.
  **/
-static void xwdtps_start(void)
+static int xwdtps_start(struct watchdog_device *wdd)
 {
 	unsigned int data = 0;
 	unsigned short count;
@@ -157,7 +158,7 @@ static void xwdtps_start(void)
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = ( wdt_timeout * ((wdt->clock) / (wdt->prescalar)) ) / 0x1000 + 1;
+	count = (wdd->timeout * ((wdt->clock) / (wdt->prescalar))) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -188,6 +189,7 @@ static void xwdtps_start(void)
 	xwdtps_writereg(data, XWDTPS_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	xwdtps_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
+	return 0;
 }
 
 /**
@@ -195,145 +197,14 @@ static void xwdtps_start(void)
  *
  * @new_time: new timeout value that needs to be set.
  *
- * Check whether the timeout is in the valid range. If not, don't update the
- * timeout value, otherwise update the global variable wdt_timeout with new
- * value which is used when xwdtps_start is called.
- * Returns -ENOTSUPP, if timeout value is out-of-range.
+ * Update the watchdog_device timeout with new value which is used when
+ * xwdtps_start is called.
  * Returns 0 on success.
  **/
-static int xwdtps_settimeout(int new_time)
+static int xwdtps_settimeout(struct watchdog_device *wdd, unsigned int new_time)
 {
-	if ((new_time <= 0) || (new_time > XWDTPS_MAX_TIMEOUT))
-		return -ENOTSUPP;
-	wdt_timeout = new_time;
-	return 0;
-}
-
-/*************************WDT Device Operations****************************/
-
-/**
- * xwdtps_open -  Open the watchdog device.
- *
- * @inode: inode of device.
- * @file: file handle to device.
- *
- * Check whether the device is already in use and then only start the watchdog
- * timer. Returns 0 on success, otherwise -EBUSY.
- **/
-static int xwdtps_open(struct inode *inode, struct file *file)
-{
-	if (test_and_set_bit(0, &(wdt->busy)))
-		return -EBUSY;
-
-	xwdtps_start();
-	return nonseekable_open(inode, file);
-}
-
-/**
- * xwdtps_close -  Close the watchdog device only when nowayout is disabled.
- *
- * @inode: inode of device.
- * @file: file handle to device.
- *
- * Stops the watchdog and clears the busy flag.
- * Returns 0 on success, -ENOTSUPP when the nowayout is enabled.
- **/
-static int xwdtps_close(struct inode *inode, struct file *file)
-{
-	if (!nowayout) {
-		/* Disable the watchdog */
-		xwdtps_stop();
-		clear_bit(0, &(wdt->busy));
-		return 0;
-	}
-	return -ENOTSUPP;
-}
-
-/**
- * xwdtps_ioctl -  Handle IOCTL operations on the device.
- *
- * @file: file handle to the device.
- * @cmd: watchdog command.
- * @arg: argument pointer.
- *
- * The watchdog API defines a common set of functions for all
- * watchdogs according to available features. The IOCTL's are defined in
- * watchdog.h header file, based on the features of device, we support
- * the following IOCTL's - WDIOC_KEEPALIVE, WDIOC_GETSUPPORT,
- * WDIOC_SETTIMEOUT, WDIOC_GETTIMEOUT, WDIOC_SETOPTIONS.
- * Returns 0 on success, negative error otherwise.
- **/
-static long xwdtps_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-{
-	void __user *argp = (void __user *)arg;
-	int __user *p = argp;
-	int new_value;
-
-	switch (cmd) {
-	case WDIOC_KEEPALIVE:
-		/* pat the watchdog */
-		xwdtps_reload();
-		return 0;
-
-	case WDIOC_GETSUPPORT:
-		/*
-		 * Indicate the features supported to the user through the
-		 * instance of watchdog_info structure.
-		 */
-		return copy_to_user(argp, &xwdtps_info,
-				    sizeof(xwdtps_info)) ? -EFAULT : 0;
-
-	case WDIOC_SETTIMEOUT:
-		if (get_user(new_value, p))
-			return -EFAULT;
-
-		/* Check for the validity */
-		if (xwdtps_settimeout(new_value))
-			return -EINVAL;
-		xwdtps_start();
-		/* Return current value */
-		return put_user(wdt_timeout, p);
-
-	case WDIOC_GETTIMEOUT:
-		/* Return the current timeout */
-		return put_user(wdt_timeout, p);
-
-	case WDIOC_GETSTATUS:
-	case WDIOC_GETBOOTSTATUS:
-		return put_user(0, p);
-
-	case WDIOC_SETOPTIONS:
-		if (get_user(new_value, p))
-			return -EFAULT;
-		/* Based on the flag, enable or disable the watchdog */
-		if (new_value & WDIOS_DISABLECARD)
-			xwdtps_stop();
-		if (new_value & WDIOS_ENABLECARD)
-			xwdtps_start();
-		return 0;
-
-	default:
-		return -ENOIOCTLCMD;
-	}
-}
-
-/**
- * xwdtps_write -  Pats the watchdog, i.e. reload the counter.
- *
- * @file: file handle to the device.
- * @data: value is ignored.
- * @len:  count of bytes to be processed.
- * @ppos: value is ignored.
- *
- * A write to watchdog device is similar to keepalive signal.
- * Returns the len value.
- **/
-static ssize_t xwdtps_write(struct file *file, const char __user *data,
-			     size_t len, loff_t *ppos)
-{
-	xwdtps_reload();		/* pat the watchdog */
-	return len;
+	wdd->timeout = new_time;
+	return xwdtps_start(wdd);
 }
 
 /**
@@ -353,6 +224,23 @@ static irqreturn_t xwdtps_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/* Watchdog Core Ops */
+static struct watchdog_ops xwdtps_ops = {
+	.owner = THIS_MODULE,
+	.start = xwdtps_start,
+	.stop = xwdtps_stop,
+	.ping = xwdtps_reload,
+	.set_timeout = xwdtps_settimeout,
+};
+
+/* Watchdog Core Device */
+static struct watchdog_device xwdtps_device = {
+	.info = &xwdtps_info,
+	.ops = &xwdtps_ops,
+	.timeout = XWDTPS_DEFAULT_TIMEOUT,
+	.min_timeout = XWDTPS_MIN_TIMEOUT,
+	.max_timeout = XWDTPS_MAX_TIMEOUT,
+};
 
 /**
  * xwdtps_notify_sys -  Notifier for reboot or shutdown.
@@ -371,20 +259,10 @@ static int xwdtps_notify_sys(struct notifier_block *this, unsigned long code,
 {
 	if (code == SYS_DOWN || code == SYS_HALT) {
 		/* Stop the watchdog */
-		xwdtps_stop();
+		xwdtps_stop(&xwdtps_device);
 	}
 	return NOTIFY_DONE;
 }
-
-/* File operations structure */
-static const struct file_operations xwdtps_fops = {
-	.owner		= THIS_MODULE,
-	.llseek		= no_llseek,
-	.unlocked_ioctl	= xwdtps_ioctl,
-	.open		= xwdtps_open,
-	.release	= xwdtps_close,
-	.write		= xwdtps_write,
-};
 
 /* Notifier Structure */
 static struct notifier_block xwdtps_notifier = {
@@ -407,7 +285,6 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 	const void *prop;
 	int irq;
 
-	printk(KERN_ERR "WDT OF probe\n");
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
 		dev_err(&pdev->dev, "Device Busy, only 1 xwdtps instance \
@@ -458,10 +335,18 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize the members of xwdtps structure */
-	wdt->miscdev.minor	= WATCHDOG_MINOR,
-	wdt->miscdev.name	= "watchdog",
-	wdt->miscdev.fops	= &xwdtps_fops,
+	xwdtps_device.parent = &pdev->dev;
+	if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
+			wdt_timeout > XWDTPS_MIN_TIMEOUT) {
+		xwdtps_device.timeout = wdt_timeout;
+	} else {
+		pr_info("xwdtps: timeout value limited to 1 - %d sec, using default=%d\n",
+			XWDTPS_MAX_TIMEOUT, XWDTPS_DEFAULT_TIMEOUT);
+		xwdtps_device.timeout = XWDTPS_DEFAULT_TIMEOUT;
+	}
 
+	watchdog_set_nowayout(&xwdtps_device, nowayout);
+	watchdog_set_drvdata(&xwdtps_device, &wdt);
 	prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
 	if (prop != NULL) {
 		wdt->clock = (u32)be32_to_cpup(prop);
@@ -483,17 +368,15 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 	spin_lock_init(&wdt->io_lock);
 
 	/* Register the WDT */
-	res = misc_register(&wdt->miscdev);
+	res = watchdog_register_device(&xwdtps_device);
 	if (res) {
-		dev_err(&pdev->dev, "Failed to register wdt miscdev\n");
+		dev_err(&pdev->dev, "Failed to register wdt device\n");
 		goto err_notifier;
 	}
 	platform_set_drvdata(pdev, wdt);
-	wdt->miscdev.parent = &pdev->dev;
 
-	dev_info(&pdev->dev, "Xilinx Watchdog Timer at 0x%p with timeout "
-		 "%d seconds%s\n", wdt->regs, wdt_timeout,
-		 nowayout ? ", nowayout" : "");
+	dev_info(&pdev->dev, "Xilinx Watchdog Timer at 0x%p with timeout %ds%s\n",
+		wdt->regs, xwdtps_device.timeout, nowayout ? ", nowayout" : "");
 
 	return 0;
 
@@ -503,7 +386,7 @@ err_iounmap:
 	iounmap(wdt->regs);
 err_irq:
 	irq = platform_get_irq(pdev, 0);
-	free_irq(irq, &pdev);
+	free_irq(irq, pdev);
 err_free:
 	kfree(wdt);
 	wdt = NULL;
@@ -522,13 +405,14 @@ err_free:
 static int __exit xwdtps_remove(struct platform_device *pdev)
 {
 	int res = 0;
+	int irq;
 
 	if (wdt && !nowayout) {
-		xwdtps_stop();
-		res = misc_deregister(&wdt->miscdev);
-		if (!res)
-			wdt->miscdev.parent = NULL;
+		xwdtps_stop(&xwdtps_device);
+		watchdog_unregister_device(&xwdtps_device);
 		unregister_reboot_notifier(&xwdtps_notifier);
+		irq = platform_get_irq(pdev, 0);
+		free_irq(irq, pdev);
 		iounmap(wdt->regs);
 		kfree(wdt);
 		wdt = NULL;
@@ -549,7 +433,7 @@ static int __exit xwdtps_remove(struct platform_device *pdev)
 static void xwdtps_shutdown(struct platform_device *pdev)
 {
 	/* Stop the device */
-	xwdtps_stop();
+	xwdtps_stop(&xwdtps_device);
 }
 
 #ifdef CONFIG_PM
@@ -564,7 +448,7 @@ static void xwdtps_shutdown(struct platform_device *pdev)
 static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
 {
 	/* Stop the device */
-	xwdtps_stop();
+	xwdtps_stop(&xwdtps_device);
 	return 0;
 }
 
@@ -578,7 +462,7 @@ static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
 static int xwdtps_resume(struct platform_device *pdev)
 {
 	/* Start the device */
-	xwdtps_start();
+	xwdtps_start(&xwdtps_device);
 	return 0;
 }
 #else
@@ -617,16 +501,6 @@ static struct platform_driver xwdtps_driver = {
  */
 static int __init xwdtps_init(void)
 {
-	/*
-	 * Check that the timeout value is within range. If not, reset to the
-	 * default.
-	 */
-	if (xwdtps_settimeout(wdt_timeout)) {
-		xwdtps_settimeout(XWDTPS_DEFAULT_TIMEOUT);
-		pr_info("xwdtps: wdt_timeout value limited to 1 - %d sec, "
-			"using default timeout of %dsec\n",
-			XWDTPS_MAX_TIMEOUT, XWDTPS_DEFAULT_TIMEOUT);
-	}
 	return platform_driver_register(&xwdtps_driver);
 }
 
@@ -644,5 +518,4 @@ module_exit(xwdtps_exit);
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Watchdog driver for PS WDT");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS_MISCDEV(WATCHDOG_MINOR);
 MODULE_ALIAS("platform: xwdtps");
