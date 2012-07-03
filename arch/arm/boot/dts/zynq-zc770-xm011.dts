@@ -62,8 +62,11 @@
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
+			interrupts = <0 9 0>;
+			interrupt-parent = <&gic>;
 			reg = <0xf8005000 0x100>;
 			clock-frequency = <0x7ed6b40>;
+			reset = <0>;
 		};
 
 		spi: spi@e0006000 {

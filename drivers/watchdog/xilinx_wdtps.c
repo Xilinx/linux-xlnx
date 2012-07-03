@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
@@ -61,6 +62,7 @@ struct xwdtps {
 	void __iomem		*regs;		/* Base address */
 	unsigned long		busy;		/* Device Status */
 	struct miscdevice	miscdev;	/* Device structure */
+	int				rst;			/* Reset flag */
 	u32 			clock;
 	u32 			prescalar;
 	u32 			ctrl_clksel;
@@ -96,6 +98,7 @@ static struct watchdog_info xwdtps_info = {
  */
 #define XWDTPS_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
 #define XWDTPS_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
+#define XWDTPS_ZMR_IRQEN_MASK	0x00000004 /* Enable IRQ output */
 #define XWDTPS_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
 #define XWDTPS_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
 /*
@@ -171,9 +174,17 @@ static void xwdtps_start(void)
 	 */
 	data = (count | 0x00920000 | (wdt->ctrl_clksel));
 	xwdtps_writereg(data, XWDTPS_CCR_OFFSET);
+	data = XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTLEN_16 | \
+			XWDTPS_ZMR_ZKEY_VAL;
 
-	data = (XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTEN_MASK | \
-		XWDTPS_ZMR_RSTLEN_16 | XWDTPS_ZMR_ZKEY_VAL);
+	/* Reset on timeout if specified in device tree. */
+	if (wdt->rst) {
+		data |= XWDTPS_ZMR_RSTEN_MASK;
+		data &= ~XWDTPS_ZMR_IRQEN_MASK;
+	} else {
+		data &= ~XWDTPS_ZMR_RSTEN_MASK;
+		data |= XWDTPS_ZMR_IRQEN_MASK;
+	}
 	xwdtps_writereg(data, XWDTPS_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	xwdtps_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
@@ -326,6 +337,24 @@ static ssize_t xwdtps_write(struct file *file, const char __user *data,
 }
 
 /**
+ * xwdtps_irq_handler - Notifies of watchdog timeout.
+ *
+ * @irq: interrupt number
+ * @dev_id: pointer to a platform device structure
+ *
+ * The handler is invoked when the watchdog times out and a
+ * reset on timeout has not been enabled.
+ * Returns IRQ_HANDLED
+ **/
+static irqreturn_t xwdtps_irq_handler(int irq, void *dev_id)
+{
+	struct platform_device *pdev = dev_id;
+	dev_info(&pdev->dev, "Watchdog timed out.\n");
+	return IRQ_HANDLED;
+}
+
+
+/**
  * xwdtps_notify_sys -  Notifier for reboot or shutdown.
  *
  * @this: handle to notifier block.
@@ -376,6 +405,7 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 	struct resource *regs;
 	int res;
 	const void *prop;
+	int irq;
 
 	printk(KERN_ERR "WDT OF probe\n");
 	/* Check whether WDT is in use, just for safety */
@@ -412,6 +442,19 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
 			res);
 		goto err_iounmap;
+	}
+
+	/* Register the interrupt */
+	prop = of_get_property(pdev->dev.of_node, "reset", NULL);
+	wdt->rst = prop ? be32_to_cpup(prop) : 0;
+	if (!wdt->rst) {
+		irq = platform_get_irq(pdev, 0);
+		res = request_irq(irq, xwdtps_irq_handler, 0, pdev->name, pdev);
+		if (res != 0) {
+			dev_err(&pdev->dev, "cannot register interrupt handler err=%d\n",
+				res);
+			goto err_irq;
+		}
 	}
 
 	/* Initialize the members of xwdtps structure */
@@ -458,6 +501,9 @@ err_notifier:
 	unregister_reboot_notifier(&xwdtps_notifier);
 err_iounmap:
 	iounmap(wdt->regs);
+err_irq:
+	irq = platform_get_irq(pdev, 0);
+	free_irq(irq, &pdev);
 err_free:
 	kfree(wdt);
 	wdt = NULL;
