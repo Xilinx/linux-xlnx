@@ -68,6 +68,7 @@
 #define XILINX_DMA_XR_DELAY_MASK    0xFF000000 /* Delay timeout counter */
 #define XILINX_DMA_XR_COALESCE_MASK 0x00FF0000 /* Coalesce counter */
 
+#define XILINX_DMA_IRQ_SHIFT      12
 #define XILINX_DMA_DELAY_SHIFT    24
 #define XILINX_DMA_COALESCE_SHIFT 16
 
@@ -711,6 +712,10 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	if (!chan->config.disable_intr) {
 		DMA_OUT(&chan->regs->cr,
 		   DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
+	} else {
+		DMA_OUT(&chan->regs->cr,
+		   DMA_IN(&chan->regs->cr) |
+			chan->config.disable_intr << XILINX_DMA_IRQ_SHIFT);
 	}
 
 	/* Start the transfer
@@ -830,6 +835,10 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	/* Ack the interrupts
 	 */
 	DMA_OUT(&chan->regs->sr, XILINX_DMA_XR_IRQ_ALL_MASK);
+
+	/* Check for only the interrupts which are enabled
+         */
+	stat &= (DMA_IN(&chan->regs->cr) & XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	if (stat & XILINX_DMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev, "Channel %x has errors %x, cdr %x tdr %x\n",
