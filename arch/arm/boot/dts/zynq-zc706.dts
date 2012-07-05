@@ -1,0 +1,190 @@
+/dts-v1/;
+
+/ {
+	model = "Xilinx Zynq ZC706";
+	compatible = "xlnx,zynq-zc706";
+	#address-cells = <0x1>;
+	#size-cells = <0x1>;
+	interrupt-parent = <0x1>;
+
+	memory {
+		device_type = "memory";
+		reg = <0x00000000 0x10000000>;
+	};
+	chosen {
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M ip=:::::eth0:dhcp earlyprintk";
+		linux,stdout-path = "/amba@0/uart@E0001000";
+	};
+
+	amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		gic: intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = <0xf8f01000 0x1000>,
+			      <0xf8f00100 0x0100>;
+		};
+
+		pl310@f8f02000 {
+			compatible = "arm,pl310-cache";
+			cache-unified;
+			cache-level = <2>;
+			reg = <0xf8f02000 0x1000>;
+			arm,data-latency = <3 2 2>;
+			arm,tag-latency = <2 2 2>;
+			interrupts = <0 34 4>;
+		};
+
+		uart@e0001000 {
+			compatible = "xlnx,ps7-uart-1.00.a";
+			reg = <0xe0001000 0x1000>;
+			interrupts = <0 50 0>;
+			interrupt-parent = <&gic>;
+			clock = <50000000>;
+		};
+
+		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupt-parent = <&gic>;
+			clock-frequency-timer0 = <133000000>;
+            clock-frequency-timer1 = <133000000>;
+            clock-frequency-timer2 = <133000000>;
+		};
+
+		swdt@f8005000 {
+			device_type = "watchdog";
+			compatible = "xlnx,ps7-wdt-1.00.a";
+			reg = <0xf8005000 0x100>;
+			clock-frequency = <133000000>;
+		};
+
+		eth@e000b000 {
+			compatible = "xlnx,ps7-ethernet-1.00.a";
+			reg = <0xe000b000 0x1000>;
+			interrupts = <0 22 0>;
+			interrupt-parent = <&gic>;
+			phy-handle = <&phy0>;
+			xlnx,ptp-enet-clock = <133000000>;
+			xlnx,slcr-div0-1000Mbps = <8>;
+			xlnx,slcr-div0-100Mbps = <8>;
+			xlnx,slcr-div0-10Mbps = <8>;
+			xlnx,slcr-div1-1000Mbps = <1>;
+			xlnx,slcr-div1-100Mbps = <5>;
+			xlnx,slcr-div1-10Mbps = <50>;
+			#address-cells = <0x1>;
+			#size-cells = <0x0>;
+
+			phy0: phy@7 {
+				compatible = "marvell,88e1116r";
+				device_type = "ethernet-phy";
+				reg = <0x7>;
+			};
+		};
+
+		i2c0: i2c@e0004000 {
+			compatible = "xlnx,ps7-i2c-1.00.a";
+			reg = <0xE0004000 0x1000>;
+			interrupts = <0 25 0>;
+			interrupt-parent = <&gic>;
+			bus-id = <0>;
+			input-clk = <133000000>;
+			i2c-clk = <100000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		sdhci@e0100000 {
+			compatible = "xlnx,ps7-sdhci-1.00.a";
+			reg = <0xe0100000 0x1000>;
+			xlnx,has-cd = <0x1>;
+			interrupts = <0 24 0>;
+			interrupt-parent = <&gic>;
+			clock-frequency = <33333000>;
+		};
+
+		usb@e0002000 {
+			compatible = "xlnx,ps7-usb-1.00.a";
+			reg = <0xe0002000 0x1000>;
+			interrupts = <0 21 0>;
+			interrupt-parent = <&gic>;
+			dr_mode = "host";
+			phy_type = "ulpi";
+		};
+
+		gpio@e000a000 {
+			compatible = "xlnx,ps7-gpio-1.00.a";
+			reg = <0xe000a000 0x1000>;
+			interrupts = <0 20 0>;
+			interrupt-parent = <&gic>;
+		};
+
+		qspi0: spi@e000d000 {
+			compatible = "xlnx,ps7-qspi-1.00.a";
+			reg = <0xE000D000 0x1000>;
+			interrupts = <0 19 0>;
+			interrupt-parent = <&gic>;
+			speed-hz = <200000000>;
+			bus-num = <1>;
+			num-chip-select = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			is-dual = <1>;
+			flash@0 {
+			compatible = "n25q128x2";
+			reg = <0x0>;
+			spi-max-frequency = <30000000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@qspi-fsbl {
+				label = "qspi-fsbl";
+				reg = <0x0 0x80000>;
+				};
+			partition@qspi-u-boot {
+				label = "qspi-u-boot";
+				reg = <0x80000 0x80000>;
+				};
+			partition@qspi-linux {
+				label = "qspi-linux";
+				reg = <0x100000 0x500000>;
+				};
+			partition@qspi-device-tree {
+				label = "qspi-device-tree";
+				reg = <0x600000 0x20000>;
+				};
+			partition@qspi-user {
+				label = "qspi-user";
+				reg = <0x620000 0xE0000>;
+				};
+			partition@qspi-scratch {
+				label = "qspi-scratch";
+				reg = <0x700000 0x100000>;
+				};
+			partition@qspi-rootfs {
+				label = "qspi-rootfs";
+				reg = <0x800000 0x800000>;
+				};
+			};
+		};
+
+		devcfg@f8007000 {
+			compatible = "xlnx,ps7-dev-cfg-1.00.a";
+			reg = <0xf8007000 0x100>;
+			interrupts = <0 8 0>;
+			interrupt-parent = <&gic>;
+		};
+		xadc@f8007100 {
+			compatible = "xlnx,ps7-xadc-1.00.a";
+			reg = <0xf8007100 0x20>;
+			interrupts = <0 7 0>;
+			interrupt-parent = <&gic>;
+		};
+	};
+};
