@@ -235,6 +235,7 @@ static void __init board_zc702_init(void)
 
 static const char *xilinx_dt_match[] = {
 	"xlnx,zynq-zc702",
+	"xlnx,zynq-zc706",
 	NULL
 };
 
