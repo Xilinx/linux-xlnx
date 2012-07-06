@@ -98,7 +98,7 @@ int zynq_cpu1_start(u32 address)
 	if (!(address & 3) && (!address || (address >= 0xC))) {
 		__raw_writel(SLCR_UNLOCK, slcr + 0x8); /* UNLOCK SLCR */
 		__raw_writel(0x22, slcr + 0x244); /* stop CLK and reset CPU1 */
-	
+
 		/*
 		 * This is elegant way how to jump to any address
 		 * 0x0: Load address at 0x8 to r0
@@ -119,11 +119,11 @@ int zynq_cpu1_start(u32 address)
 			__raw_writel(0xe1a0f000, zero + 0x4);/* 4:mov pc, r0 */
 			__raw_writel(address, zero + 0x8);/* 8:.word address */
 		}
-	
+
 		flush_cache_all();
 		outer_flush_all();
 		wmb();
-	
+
 		__raw_writel(0x20, slcr + 0x244); /* enable CPU1 */
 		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPU1 */
 
