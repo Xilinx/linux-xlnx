@@ -329,13 +329,6 @@ config XILINX_PS_WATCHDOG
 	  Say Y here if you want to include support for the watchdog
 	  timer in the Xilinx PS.
 
-config XILINX_SCU_WATCHDOG
-	tristate "Xilinx SCU Watchdog Timer"
-	depends on (ARCH_XILINX || ARCH_ZYNQ) && MPCORE_WATCHDOG=n
-	help
-	  Say Y here if you want to include support for the cortex a9 scu
-	  watchdog timer in the Xilinx PS.
-
 config TS72XX_WATCHDOG
 	tristate "TS-72XX SBC Watchdog"
 	depends on MACH_TS72XX
