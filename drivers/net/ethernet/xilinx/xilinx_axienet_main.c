@@ -28,11 +28,15 @@
 #include <linux/of_mdio.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/phy.h>
 #include <linux/mii.h>
-#include <linux/ethtool.h>
+#include <linux/dma-mapping.h>
+#include <linux/io.h>
+#include <linux/interrupt.h>
 
 #include "xilinx_axienet.h"
 
@@ -703,10 +707,10 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
 		cur_p->phys = dma_map_single(ndev->dev.parent,
-					     skb_frag_address(frag),
-					     skb_frag_size(frag),
-					     DMA_TO_DEVICE);
-		cur_p->cntrl = skb_frag_size(frag);
+			skb_frag_address(frag),
+			frag->size,
+			DMA_TO_DEVICE);
+		cur_p->cntrl = frag->size;
 	}
 
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
@@ -1053,6 +1057,20 @@ static void axienet_poll_controller(struct net_device *ndev)
 }
 #endif
 
+/* Ioctl MII Interface */
+static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+{
+	struct axienet_local *priv = netdev_priv(dev);
+
+	if (!netif_running(dev))
+		return -EINVAL;
+
+	if (!priv->phy_dev)
+		return -ENODEV;
+
+	return phy_mii_ioctl(priv->phy_dev, rq, cmd);
+}
+
 static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_open = axienet_open,
 	.ndo_stop = axienet_stop,
@@ -1061,6 +1079,7 @@ static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_validate_addr = eth_validate_addr,
 	.ndo_set_rx_mode = axienet_set_multicast_list,
+	.ndo_do_ioctl = axienet_ioctl,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
@@ -1328,7 +1347,7 @@ static struct ethtool_ops axienet_ethtool_ops = {
 	.get_drvinfo    = axienet_ethtools_get_drvinfo,
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
-	.get_link       = ethtool_op_get_link,
+	.get_link       = ethtool_op_get_link,       /* ethtool default */
 	.get_pauseparam = axienet_ethtools_get_pauseparam,
 	.set_pauseparam = axienet_ethtools_set_pauseparam,
 	.get_coalesce   = axienet_ethtools_get_coalesce,
@@ -1583,8 +1602,10 @@ static int __devinit axienet_of_probe(struct platform_device *op)
 	}
 	lp->rx_irq = irq_of_parse_and_map(np, 1);
 	lp->tx_irq = irq_of_parse_and_map(np, 0);
-	of_node_put(np);
-	if ((lp->rx_irq == NO_IRQ) || (lp->tx_irq == NO_IRQ)) {
+
+	of_node_put(np); /* Finished with the DMA node; drop the reference */
+
+	if ((!lp->rx_irq) || (!lp->tx_irq)) {
 		dev_err(&op->dev, "could not determine irqs\n");
 		ret = -ENOMEM;
 		goto err_iounmap_2;
@@ -1603,9 +1624,13 @@ static int __devinit axienet_of_probe(struct platform_device *op)
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 
 	lp->phy_node = of_parse_phandle(op->dev.of_node, "phy-handle", 0);
-	ret = axienet_mdio_setup(lp, op->dev.of_node);
-	if (ret)
-		dev_warn(&op->dev, "error registering MDIO bus\n");
+	if (lp->phy_node) {
+		dev_dbg(lp->dev, "using PHY node %s (%p)\n", np->full_name, np);
+
+		rc = axienet_mdio_setup(lp, op->dev.of_node);
+		if (rc)
+			dev_warn(&op->dev, "error registering MDIO bus\n");
+	}
 
 	ret = register_netdev(lp->ndev);
 	if (ret) {
