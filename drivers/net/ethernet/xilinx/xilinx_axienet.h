@@ -10,6 +10,7 @@
 
 #include <linux/netdevice.h>
 #include <linux/spinlock.h>
+#include <linux/interrupt.h>
 
 
 /* packet size info */

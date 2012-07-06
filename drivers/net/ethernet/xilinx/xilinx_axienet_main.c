@@ -26,10 +26,15 @@
 #include <linux/of_mdio.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/phy.h>
 #include <linux/mii.h>
+#include <linux/dma-mapping.h>
+#include <linux/io.h>
+#include <linux/interrupt.h>
 
 #include "xilinx_axienet.h"
 
@@ -792,7 +797,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
 		cur_p->phys = dma_map_single(ndev->dev.parent,
-			(void *)page_address(frag->page) + frag->page_offset,
+			skb_frag_address(frag),
 			frag->size,
 			DMA_TO_DEVICE);
 		cur_p->cntrl = frag->size;
@@ -1176,6 +1181,20 @@ static void axienet_poll_controller(struct net_device *ndev)
 }
 #endif
 
+/* Ioctl MII Interface */
+static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+{
+	struct axienet_local *priv = netdev_priv(dev);
+
+	if (!netif_running(dev))
+		return -EINVAL;
+
+	if (!priv->phy_dev)
+		return -ENODEV;
+
+	return phy_mii_ioctl(priv->phy_dev, rq, cmd);
+}
+
 static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_open = axienet_open,
 	.ndo_stop = axienet_stop,
@@ -1183,7 +1202,8 @@ static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_change_mtu	= axienet_change_mtu,
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_validate_addr = eth_validate_addr,
-	.ndo_set_multicast_list = axienet_set_multicast_list,
+	.ndo_set_rx_mode = axienet_set_multicast_list,
+	.ndo_do_ioctl = axienet_ioctl,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
@@ -1316,106 +1336,6 @@ static void axienet_ethtools_get_regs(struct net_device *ndev,
 	data[29] = axienet_ior(lp, XAE_FMI_OFFSET);
 	data[30] = axienet_ior(lp, XAE_AF0_OFFSET);
 	data[31] = axienet_ior(lp, XAE_AF1_OFFSET);
-}
-
-/**
- * axienet_ethtools_get_rx_csum - Get the checksum offload setting on Rx path.
- * @ndev:	Pointer to net_device structure
- *
- * This implements ethtool command for getting the Axi Ethernet checksum
- * offload setting on Rx path. If the core supports either partial or full
- * checksum offload, the function returns a non-zero value.
- * Issue "ethtool -k ethX" under linux prompt to execute this function.
- **/
-static u32 axienet_ethtools_get_rx_csum(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if ((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) ||
-			(lp->features & XAE_FEATURE_FULL_RX_CSUM))
-		return XAE_FEATURE_PARTIAL_RX_CSUM;
-
-	else
-		return XAE_NO_CSUM_OFFLOAD;
-}
-
-/**
- * axienet_ethtools_set_rx_csum - Enable checksum offloading on Rx path.
- * @ndev:	Pointer to net_device structure
- * @flag:	unsigned long, used to enable/disable checksum offloading.
- *
- * This implements ethtool command for enabling Axi Ethernet checksum
- * offloading. If the core supports full checksum offloading, this function
- * enables/disables full checksum offloading. Similarly it can enable/disable
- * partial checksum offloading.
- * Issue "ethtool -K ethX rx on|off" under linux prompt to execute this
- * function.
- **/
-static int axienet_ethtools_set_rx_csum(struct net_device *ndev, u32 flag)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (lp->csum_offload_on_rx_path & XAE_FEATURE_PARTIAL_RX_CSUM) {
-		if (flag)
-			lp->features |= XAE_FEATURE_PARTIAL_RX_CSUM;
-		else
-			lp->features &= ~XAE_FEATURE_PARTIAL_RX_CSUM;
-	} else if (lp->csum_offload_on_rx_path & XAE_FEATURE_FULL_RX_CSUM) {
-		if (flag)
-			lp->features |= XAE_FEATURE_FULL_RX_CSUM;
-		else
-			lp->features &= ~XAE_FEATURE_FULL_RX_CSUM;
-	}
-
-	return 0;
-}
-
-/**
- * axienet_ethtools_get_tx_csum - Get checksum offloading on Tx path.
- * @ndev:	Pointer to net_device structure
- *
- * This implements ethtool command for getting the Axi Ethernet checksum
- * offload setting on Tx path.
- * Issue "ethtool -k ethX" under linux prompt to execute this function.
- **/
-static u32 axienet_ethtools_get_tx_csum(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (lp->features & XAE_FEATURE_PARTIAL_TX_CSUM)
-		return ndev->features & NETIF_F_IP_CSUM;
-	else if (lp->features & XAE_FEATURE_FULL_TX_CSUM)
-		return ndev->features & NETIF_F_HW_CSUM;
-	return 0;
-}
-
-/**
- * axienet_ethtools_set_tx_csum - Enable checksum offloading on Tx path.
- * @ndev:	Pointer to net_device structure
- * @flag:	unsigned long, used to enable/disable checksum offloading.
- *
- * This implements ethtool command for setting the Axi Ethernet checksum
- * offload on Tx path.
- * Issue "ethtool -K ethX tx on|off" under linux prompt to execute this
- * function.
- **/
-static int axienet_ethtools_set_tx_csum(struct net_device *ndev, u32 flag)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	if (lp->csum_offload_on_tx_path & XAE_FEATURE_PARTIAL_TX_CSUM) {
-		if (flag)
-			ndev->features |= NETIF_F_IP_CSUM;
-		else
-			ndev->features &= ~NETIF_F_IP_CSUM;
-	} else if (lp->csum_offload_on_tx_path & XAE_FEATURE_FULL_TX_CSUM) {
-		if (flag)
-			ndev->features |= NETIF_F_HW_CSUM;
-		else
-			ndev->features &= ~NETIF_F_HW_CSUM;
-	}
-
-	return 0;
 }
 
 /**
@@ -1565,11 +1485,6 @@ static struct ethtool_ops axienet_ethtool_ops = {
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
 	.get_link       = ethtool_op_get_link,       /* ethtool default */
-	.get_rx_csum    = axienet_ethtools_get_rx_csum,
-	.set_rx_csum    = axienet_ethtools_set_rx_csum,
-	.get_tx_csum    = axienet_ethtools_get_tx_csum,
-	.set_tx_csum    = axienet_ethtools_set_tx_csum,
-	.get_sg         = ethtool_op_get_sg,         /* ethtool default */
 	.get_pauseparam = axienet_ethtools_get_pauseparam,
 	.set_pauseparam = axienet_ethtools_set_pauseparam,
 	.get_coalesce   = axienet_ethtools_get_coalesce,
@@ -1892,7 +1807,7 @@ axienet_of_probe(struct platform_device *op)
 
 	of_node_put(np); /* Finished with the DMA node; drop the reference */
 
-	if ((lp->rx_irq == NO_IRQ) || (lp->tx_irq == NO_IRQ)) {
+	if ((!lp->rx_irq) || (!lp->tx_irq)) {
 		dev_err(&op->dev, "could not determine irqs\n");
 		rc = -ENOMEM;
 		goto err_iounmap_2;
@@ -1912,9 +1827,13 @@ axienet_of_probe(struct platform_device *op)
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
 
 	lp->phy_node = of_parse_phandle(op->dev.of_node, "phy-handle", 0);
-	rc = axienet_mdio_setup(lp, op->dev.of_node);
-	if (rc)
-		dev_warn(&op->dev, "error registering MDIO bus\n");
+	if (lp->phy_node) {
+		dev_dbg(lp->dev, "using PHY node %s (%p)\n", np->full_name, np);
+
+		rc = axienet_mdio_setup(lp, op->dev.of_node);
+		if (rc)
+			dev_warn(&op->dev, "error registering MDIO bus\n");
+	}
 
 	rc = register_netdev(lp->ndev);
 	if (rc) {
@@ -1966,7 +1885,7 @@ static int __devexit axienet_of_remove(struct platform_device *op)
 	return 0;
 }
 
-static struct of_platform_driver axienet_of_driver = {
+static struct platform_driver axienet_of_driver = {
 	.probe = axienet_of_probe,
 	.remove = __devexit_p(axienet_of_remove),
 	.driver = {
