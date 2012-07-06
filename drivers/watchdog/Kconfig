@@ -212,6 +212,7 @@ config DW_WATCHDOG
 config MPCORE_WATCHDOG
 	tristate "MPcore watchdog"
 	depends on HAVE_ARM_TWD
+	select WATCHDOG_CORE
 	help
 	  Watchdog timer embedded into the MPcore system.
 
