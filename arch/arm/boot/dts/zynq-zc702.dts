@@ -58,6 +58,13 @@
 			clock-frequency-timer2 = <111111111>;
 		};
 
+		timer@f8f00600 {
+			compatible = "arm,cortex-a9-twd-timer";
+			reg = <0xf8f00600 0x20>;
+			interrupts = <1 13 0x0100>;
+			interrupt-parent = <&gic>;
+		};
+
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";

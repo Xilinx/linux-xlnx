@@ -17,6 +17,4 @@
 
 #define NR_IRQS		128
 
-#define IRQ_LOCALTIMER	29
-
 #endif
