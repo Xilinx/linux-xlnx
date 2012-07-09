@@ -667,7 +667,12 @@ void __devinit pci_process_bridge_OF_ranges(struct pci_controller *hose,
 {
 	const u32 *ranges;
 	int rlen;
+#ifdef CONFIG_XILINX_AXIPCIE
+	/* The address cells of PCIe node */
+	int pna = be32_to_cpup(of_get_property(dev, "#address-cells", NULL));
+#else
 	int pna = of_n_addr_cells(dev);
+#endif
 	int np = pna + 5;
 	int memno = 0, isa_hole = -1;
 	u32 pci_space;
@@ -992,7 +997,12 @@ void __devinit pcibios_setup_bus_devices(struct pci_bus *bus)
 
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		/* Setup OF node pointer in archdata */
+#ifdef CONFIG_XILINX_AXIPCIE
+		/* Get the root complex node */
+		dev->dev.of_node = pcibios_get_phb_of_node(dev->bus);
+#else
 		dev->dev.of_node = pci_device_to_OF_node(dev);
+#endif
 
 		/* Fixup NUMA node as it may not be setup yet by the generic
 		 * code and is needed by the DMA init
@@ -1425,6 +1435,7 @@ static void __devinit pcibios_setup_phb_resources(struct pci_controller *hose, s
 	unsigned long io_offset;
 	struct resource *res;
 	int i;
+	unsigned long io_offset;
 
 	/* Hookup PHB IO resource */
 	res = &hose->io_resource;
