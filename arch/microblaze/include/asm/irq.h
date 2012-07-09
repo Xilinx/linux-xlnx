@@ -9,7 +9,21 @@
 #ifndef _ASM_MICROBLAZE_IRQ_H
 #define _ASM_MICROBLAZE_IRQ_H
 
-#define NR_IRQS		(32 + 1)
+/*
+ * Linux IRQ# is currently offset by one to map to the hardware
+ * irq number. So hardware IRQ0 maps to Linux irq 1.
+ */
+#define NO_IRQ_OFFSET	1
+#define IRQ_OFFSET	NO_IRQ_OFFSET
+/* AXI PCIe MSI support */
+#if defined(CONFIG_XILINX_AXIPCIE) && defined(CONFIG_PCI_MSI)
+#define IRQ_XILINX_MSI_0	128
+#define XILINX_NUM_MSI_IRQS	32
+#define NR_IRQS		(32 + IRQ_XILINX_MSI_0 + IRQ_OFFSET)
+#else
+#define NR_IRQS		(32 + IRQ_OFFSET)
+#endif
+
 #include <asm-generic/irq.h>
 
 struct pt_regs;
