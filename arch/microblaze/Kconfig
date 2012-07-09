@@ -282,6 +282,11 @@ config PCI_XILINX
 	bool "Xilinx PCI host bridge support"
 	depends on PCI
 
+config XILINX_AXIPCIE
+	bool "Xilinx AXI PCIe host bridge support"
+	depends on PCI
+	select ARCH_SUPPORTS_MSI
+
 source "drivers/pci/Kconfig"
 
 endmenu
