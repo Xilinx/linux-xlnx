@@ -13,7 +13,7 @@
  * #2 wait-for-interrupt and RAM self refresh
  *
  * Note that this code is only intended as a prototype and is not tested
- * well yet, or tuned for the Xilinx Cortex A9. Also note that for a 
+ * well yet, or tuned for the Xilinx Cortex A9. Also note that for a
  * tickless kernel, high res timers must not be turned on. The cpuidle
  * framework must also be turned on in the kernel.
  */
@@ -22,46 +22,50 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/cpuidle.h>
-#include <asm/proc-fns.h>
 #include <linux/io.h>
 #include <linux/export.h>
+#include <linux/clockchips.h>
+#include <linux/cpu_pm.h>
+#include <linux/clk.h>
+#include <linux/err.h>
+#include <asm/proc-fns.h>
 
 #define XILINX_MAX_STATES	2
 
 static DEFINE_PER_CPU(struct cpuidle_device, xilinx_cpuidle_device);
 
-static struct cpuidle_driver xilinx_idle_driver = {
-	.name = "xilinx_idle",
-	.owner = THIS_MODULE,
-};
-
 /* Actual code that puts the SoC in different idle states */
 static int xilinx_enter_idle(struct cpuidle_device *dev,
-			struct cpuidle_driver *drv,
-			       int index)
+		struct cpuidle_driver *drv, int index)
 {
 	struct timeval before, after;
 	int idle_time;
 
 	local_irq_disable();
 	do_gettimeofday(&before);
-	
+
 	if (index == 0)
 		/* Wait for interrupt state */
 		cpu_do_idle();
 
 	else if (index == 1) {
+		unsigned int cpu_id = smp_processor_id();
 
-		/* verify this is right for A9? */
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu_id);
 
-		asm("b 1f; .align 5; 1:");
-		asm("mcr p15, 0, r0, c7, c10, 4");	/* drain write buffer */
+		/* Devices must be stopped here */
+		cpu_pm_enter();
 
 		/* Add code for DDR self refresh start */
 
 		cpu_do_idle();
+		/*cpu_suspend(foo, bar);*/
 
 		/* Add code for DDR self refresh stop */
+
+		cpu_pm_exit();
+
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu_id);
 	}
 
 	do_gettimeofday(&after);
@@ -73,41 +77,55 @@ static int xilinx_enter_idle(struct cpuidle_device *dev,
 	return index;
 }
 
+static struct cpuidle_driver xilinx_idle_driver = {
+	.name = "xilinx_idle",
+	.owner = THIS_MODULE,
+	.state_count = XILINX_MAX_STATES,
+	/* Wait for interrupt state */
+	.states[0] = {
+		.enter = xilinx_enter_idle,
+		.exit_latency = 1,
+		.target_residency = 10000,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.name = "WFI",
+		.desc = "Wait for interrupt",
+	},
+	/* Wait for interrupt and RAM self refresh state */
+	.states[1] = {
+		.enter = xilinx_enter_idle,
+		.exit_latency = 10,
+		.target_residency = 10000,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.name = "RAM_SR",
+		.desc = "WFI and RAM Self Refresh",
+	},
+};
+
 /* Initialize CPU idle by registering the idle states */
 static int xilinx_init_cpuidle(void)
 {
+	unsigned int cpu;
 	struct cpuidle_device *device;
-	struct cpuidle_driver *driver = &xilinx_idle_driver;
+	int ret;
 
-	device = &per_cpu(xilinx_cpuidle_device, smp_processor_id());
-	device->state_count = XILINX_MAX_STATES;
-	driver->state_count = XILINX_MAX_STATES;
+	ret = cpuidle_register_driver(&xilinx_idle_driver);
+	if (ret) {
+		pr_err("Registering Xilinx CpuIdle Driver failed.\n");
+		return ret;
+	}
 
-	/* Wait for interrupt state */
-	driver->states[0].enter = xilinx_enter_idle;
-	driver->states[0].exit_latency = 1;
-	driver->states[0].target_residency = 10000;
-	driver->states[0].flags = CPUIDLE_FLAG_TIME_VALID;
-	strcpy(driver->states[0].name, "WFI");
-	strcpy(driver->states[0].desc, "Wait for interrupt");
-
-	/* Wait for interrupt and RAM self refresh state */
-	driver->states[1].enter = xilinx_enter_idle;
-	driver->states[1].exit_latency = 10;
-	driver->states[1].target_residency = 10000;
-	driver->states[1].flags = CPUIDLE_FLAG_TIME_VALID;
-	strcpy(driver->states[1].name, "RAM_SR");
-	strcpy(driver->states[1].desc, "WFI and RAM Self Refresh");
-
-	cpuidle_register_driver(&xilinx_idle_driver);
-
-	if (cpuidle_register_device(device)) {
-		printk(KERN_ERR "xilinx_init_cpuidle: Failed registering\n");
-		return -EIO;
+	for_each_possible_cpu(cpu) {
+		device = &per_cpu(xilinx_cpuidle_device, cpu);
+		device->state_count = XILINX_MAX_STATES;
+		device->cpu = cpu;
+		ret = cpuidle_register_device(device);
+		if (ret) {
+			pr_err("xilinx_init_cpuidle: Failed registering\n");
+			return ret;
+		}
 	}
 
 	pr_info("Xilinx CpuIdle Driver started\n");
 	return 0;
 }
-
 device_initcall(xilinx_init_cpuidle);
