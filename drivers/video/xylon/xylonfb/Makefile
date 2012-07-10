@@ -1,2 +1,2 @@
-obj-$(CONFIG_FB_XYLON) += xylonfb.o
-xylonfb-y := xylonfb-main.o xylonfb-vmode.o xylonfb-pixclk.o
+obj-$(CONFIG_FB_XYLON_OF) += of/
+obj-$(CONFIG_FB_XYLON_PLATFORM) += platform/
