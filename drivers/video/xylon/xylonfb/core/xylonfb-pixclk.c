@@ -18,54 +18,47 @@
  */
 
 
-#include <linux/fb.h>
-
-
 #define HW_PIXEL_CLOCK_CHANGE_SUPPORTED 1
 
 
-#if defined(CONFIG_FB_XYLON_TEST)
+#if defined(CONFIG_FB_XYLON_EXT_PIXCLK)
 
+#if defined (HW_PIXEL_CLOCK_CHANGE_SUPPORTED)
+#undef HW_PIXEL_CLOCK_CHANGE_SUPPORTED
+#endif
 #define HW_PIXEL_CLOCK_CHANGE_SUPPORTED 0
-int pixclk_set(struct fb_info *fbi)
+int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 {
-	printk(KERN_INFO
-		"Changing of pixel clock for %s on platform TEST not supported\n",
-		fbi->fix.id);
-
-	return -EPERM;
+	pr_info("Pixel clock change not supported\n");
+	return 0;
 }
 
 #elif defined(CONFIG_FB_XYLON_ZYNQ_PS_PIXCLK)
 
-int pixclk_set(struct fb_info *fbi)
+int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 {
-	unsigned long pllclk, sysclk, pixclk;
+	unsigned long pllclk, sysclk;
 	unsigned long div, delta, delta_dec, delta_inc;
 	void *slcr_regs, *clk_regs, *rst_reg;
 
 	/* all clock values are in kHz */
 	pllclk = 1000000;
 	sysclk = 100000;
-	pixclk = PICOS2KHZ(fbi->var.pixclock);
 
 	slcr_regs = ioremap_nocache(0xF8000004, 8);
 	if (!slcr_regs) {
-		printk(KERN_ERR
-			"Error mapping SLCR\n");
+		pr_err("Error mapping SLCR\n");
 		return -EBUSY;
 	}
 	clk_regs = ioremap_nocache(0xF8000170, 32);
 	if (!clk_regs) {
-		printk(KERN_ERR
-			"Error setting xylonfb pixelclock\n");
+		pr_err("Error setting xylonfb pixelclock\n");
 		iounmap(slcr_regs);
 		return -EBUSY;
 	}
 	rst_reg = ioremap_nocache(0xF8000240, 4);
 	if (!rst_reg) {
-		printk(KERN_ERR
-			"Error setting xylonfb pixelclock\n");
+		pr_err("Error setting xylonfb pixelclock\n");
 		iounmap(clk_regs);
 		iounmap(slcr_regs);
 		return -EBUSY;
@@ -73,18 +66,18 @@ int pixclk_set(struct fb_info *fbi)
 
 	/* unlock register access */
 	writel(0xDF0D, (slcr_regs+4));
-//	/* calculate system clock divisor */
+	/* calculate system clock divisor */
 //	div = pllclk / sysclk;
-//	/* prepare for register writting */
+	/* prepare for register writting */
 //	div = (div + 0x1000) << 8;
-//	/* set system clock */
+	/* set system clock */
 //	writel(div, clk_regs);
 	/* calculate video clock divisor */
-	div = pllclk / pixclk;
-	delta = (pllclk / div) - pixclk;
+	div = pllclk / pixclk_khz;
+	delta = (pllclk / div) - pixclk_khz;
 	if (delta != 0) {
-		delta_inc = pixclk - (pllclk / (div+1));
-		delta_dec = (pllclk / (div-1)) - pixclk;
+		delta_inc = pixclk_khz - (pllclk / (div+1));
+		delta_dec = (pllclk / (div-1)) - pixclk_khz;
 		if (delta < delta_inc) {
 			if (delta > delta_dec)
 				div--;
@@ -105,7 +98,7 @@ int pixclk_set(struct fb_info *fbi)
 	div = (div + 0x1000) << 8;
 	/* set video clock */
 	writel(div, (clk_regs+0x10));
-//	/* reset FPGA */
+	/* reset FPGA */
 //	writel(0, rst_reg);
 //	writel(0x1, rst_reg);
 //	writel(0, rst_reg);
@@ -123,42 +116,21 @@ int pixclk_set(struct fb_info *fbi)
 
 #include <linux/i2c/si570.h>
 
-int pixclk_set(struct fb_info *fbi)
+int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 {
 	struct i2c_client *si570_client;
-	unsigned long pixclk;
-
-	pixclk = PICOS2KHZ(fbi->var.pixclock) * 1000;
 
 	si570_client = get_i2c_client_si570();
 	if (si570_client)
-		return set_frequency_si570(&si570_client->dev, pixclk);
+		return set_frequency_si570(&si570_client->dev, (pixclk_khz * 1000));
 	else
 		return -EPERM;
 }
 
-#else
-
-#if defined (HW_PIXEL_CLOCK_CHANGE_SUPPORTED)
-#undef HW_PIXEL_CLOCK_CHANGE_SUPPORTED
 #endif
-#define HW_PIXEL_CLOCK_CHANGE_SUPPORTED 0
-int pixclk_set(struct fb_info *fbi)
+
+
+bool xylonfb_hw_pixclk_change(void)
 {
-	printk(KERN_INFO "Changing of pixel clock for %s not supported\n",
-		fbi->fix.id);
-
-	return -EPERM;
-}
-
-#endif
-
-
-inline int pixclk_change(struct fb_info *fbi)
-{
-#if HW_PIXEL_CLOCK_CHANGE_SUPPORTED == 0
-	return 0;
-#elif HW_PIXEL_CLOCK_CHANGE_SUPPORTED == 1
-	return 1;
-#endif
+	return HW_PIXEL_CLOCK_CHANGE_SUPPORTED;
 }

@@ -1,5 +1,5 @@
 menuconfig FB_XYLON
-	bool "Xylon logiCVC frame buffer support"
+	tristate "Xylon logiCVC frame buffer support"
 	depends on FB
 	default n
 	select FB_CFB_FILLRECT
@@ -9,41 +9,47 @@ menuconfig FB_XYLON
 	  Choose this option if you want to use the Xylon logiCVC as frame
 	  buffer device. Without the support of PCI & AGP.
 
+choice
+	prompt "Xylon frame buffer driver type"
+	depends on FB_XYLON
+	default FB_XYLON_PLATFORM
+
 config FB_XYLON_PLATFORM
 	bool "Xylon logiCVC frame buffer platform driver"
-	default n
-	depends on FB_XYLON
 	help
 	  Choose this option if you want to use the Xylon frame buffer driver
-	  as platform driver type, regardless on Open Firmware (OF) support in
-	  kernel.
+	  as platform driver type. This is selected by default.
 
-config FB_XYLON_NUM_FBS
-	int "Number of framebuffers"
-	range 0 4
-	default 0
-	depends on FB_XYLON
+config FB_XYLON_OF
+	bool "Xylon logiCVC frame buffer Open Firmware driver"
 	help
-	  Select the number of framebuffers created. Xylon logiCVC has minimum 1
-	  and maximum 5 physical layers. If set to 0, number of frame buffers will
-	  be determined from Device Tree Script or platform parameters. If set to
-	  other valid value, this value will limit number of frame buffer devices
-	  created.
+	  Choose this option if you want to use the Xylon frame buffer driver
+	  as Open Firmware driver type.
+endchoice
+
+choice
+	prompt "Xylon logiCVC pixel clock source"
+	depends on FB_XYLON
+	default FB_XYLON_ZYNQ_PS_PIXCLK
+
+config FB_XYLON_EXT_PIXCLK
+	bool "External pixel clock"
+	help
+	  Pixel clock is generated from external clock generator which is not
+	  controllable by Xylon framebuffer driver.
 
 config FB_XYLON_ZYNQ_PS_PIXCLK
 	bool "Zynq PS pixel clock"
-	depends on FB_XYLON
-	default n
 	help
 	  Support for pixel clock generation from Zynq PS internal clock generator.
 
 config FB_XYLON_ZC702_PIXCLK
 	bool "ZC702 board pixel clock"
-	depends on FB_XYLON
-	default n
-	select I2C
 	select SYSFS
+	select I2C
 	select MISC_DEVICES
 	select SI570
+	select ADV7511
 	help
-	  Support for pixel clock generation from ZC702 external clock generator.
+	  Support for pixel clock generation from ZC702 SI570 clock generator.
+endchoice
