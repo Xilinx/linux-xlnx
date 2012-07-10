@@ -78,7 +78,7 @@ struct si570_data {
 };
 
 
-static struct i2c_client *client_i2c;
+static struct i2c_client *si570_client;
 
 
 static int si570_get_defaults(struct i2c_client *client)
@@ -286,6 +286,9 @@ int get_frequency_si570(struct device *dev, unsigned long *freq)
 	int err;
 	char buf[10+1];
 
+	if ((!dev) || (to_i2c_client(dev) != si570_client))
+		return -EINVAL;
+
 	show_frequency_attr(dev, NULL, buf);
 
 	err = strict_strtoul(buf, 10, freq);
@@ -340,6 +343,9 @@ int set_frequency_si570(struct device *dev, unsigned long freq)
 {
 	char buf[10+1];
 
+	if ((!dev) || (to_i2c_client(dev) != si570_client))
+		return -EINVAL;
+
 	sprintf(buf, "%lu", freq);
 
 	return set_frequency_attr(dev, NULL, buf,  0);
@@ -377,18 +383,21 @@ done:
 	return count;
 }
 
-void reset_si570(struct device *dev, int id)
+int reset_si570(struct device *dev, int id)
 {
 	char buf[4];
 
+	if ((!dev) || (to_i2c_client(dev) != si570_client))
+		return -EINVAL;
+
 	sprintf(buf, "%lu", (unsigned long)id);
-	set_reset_attr(dev, NULL, buf, 0);
+	return set_reset_attr(dev, NULL, buf, 0);
 }
 EXPORT_SYMBOL(reset_si570);
 
 struct i2c_client *get_i2c_client_si570(void)
 {
-	return client_i2c;
+	return si570_client;
 }
 EXPORT_SYMBOL(get_i2c_client_si570);
 
@@ -510,7 +519,7 @@ static int si570_probe(struct i2c_client *client,
 			initial_fout);
 	}
 
-	client_i2c = client;
+	si570_client = client;
 
 	return 0;
 
