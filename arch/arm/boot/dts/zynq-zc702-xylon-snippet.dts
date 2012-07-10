@@ -16,9 +16,10 @@ bootargs = "console=ttyPS0,115200 console=tty0 root=/dev/mmcblk0p2 rw rootwait i
  */
 
 logicvc0: logicvc@40030000 {
-	compatible = "xylon,logicvc-2.01.d", "xylon,logicvc-2.04.a";
-	reg = <0x40030000 0x10000>;
-	interrupts = <0 60 0>;
+	compatible = "xylon,logicvc-2.05.b", "xylon,logicvc-2.05.c";
+	reg = <0x40030000 0x6000>;
+	interrupt-parent = <&gic>;
+	interrupts = < 0 59 0 >;
 	buffer-0-offset = <1080>;
 	buffer-1-offset = <1080>;
 	buffer-2-offset = <1080>;
@@ -27,17 +28,15 @@ logicvc0: logicvc@40030000 {
 	display-interface = <0>;
 	e-data-width = <24>;
 	e-layer = <0>;
-	family = "virtex6";
 	interconnect-m-axi-arb-priority = <0xf>;
-	interconnect-s-axi-masters = "microblaze_0.M_AXI_DP";
 	ip-license-type = <0>;
 	ip-major-revision = <2>;
-	ip-minor-revision = <1>;
+	ip-minor-revision = <5>;
 	ip-patch-level = <0>;
-	layer-0-alpha-mode = <1>;
-	layer-0-data-width = <24>;
+	layer-0-alpha-mode = <0>;
+	layer-0-data-width = <16>;
 	layer-0-offset = <0x0>;
-	layer-1-alpha-mode = <1>;
+	layer-1-alpha-mode = <0>;
 	layer-1-data-width = <24>;
 	layer-1-offset = <3240>;
 	layer-2-alpha-mode = <0>;
@@ -60,13 +59,13 @@ logicvc0: logicvc@40030000 {
 	mplb-priority = <3>;
 	mplb-smallest-slave = <32>;
 	mplb-support-bursts = <1>;
-	num-of-layers = <5>;
+	num-of-layers = <3>;
 	pixel-data-width = <24>;
 	readable-regs = <1>;
 	regs-interface = <2>;
-	regs-little-endian = <0>;
+	regs-little-endian = <1>;
 	row-stride = < 2048 >;
-	use-background = < 1 >;
+	use-background = <0>;
 	use-e-rgb-input = <0>;
 	use-e-vclk-bufgmux = <1>;
 	use-io-hw-serializer = <0>;
@@ -79,11 +78,16 @@ logicvc0: logicvc@40030000 {
 	vmem-data-bus-width = <64>;
 	vmem-interface = <2>;
 };
-xylon-videomode-params {
-	default-active-layer-idx = <2>;
-	default-videomode-idx = <6>;
-	videomode@0 {
-		mode-name = "VGA";
+
+xylon-video-params {
+	pixel-data-invert = <0>;
+	pixel-clock-active-high = <1>;
+	pixel-component-format = "ARGB";
+	pixel-component-layer = <0>,<1>;
+	active-layer = <1>;
+	videomode = "1920x1080";
+	640x480 {
+		name = "640x480";
 		refresh = <60>;
 		xres = <640>;
 		yres = <480>;
@@ -97,53 +101,23 @@ xylon-videomode-params {
 		sync = <0>;
 		vmode = <0>;
 	};
-	videomode@1 {
-		mode-name = "SVGA";
+	800x480 {
+		name = "800x480";
 		refresh = <60>;
 		xres = <800>;
-		yres = <600>;
-		pixclock-khz = <39790>;
-		left-margin = <88>;
+		yres = <480>;
+		pixclock-khz = <30000>;
+		left-margin = <40>;
 		right-margin = <40>;
-		upper-margin = <23>;
-		lower-margin = <1>;
-		hsync-len = <128>;
-		vsync-len = <4>;
-		sync = <0>;
-		vmode = <0>;
-	};
-	videomode@2 {
-		mode-name = "XGA";
-		refresh = <60>;
-		xres = <1024>;
-		yres = <768>;
-		pixclock-khz = <65076>;
-		left-margin = <160>;
-		right-margin = <24>;
 		upper-margin = <29>;
-		lower-margin = <3>;
-		hsync-len = <136>;
-		vsync-len = <6>;
-		sync = <0>;
-		vmode = <0>;
-	};
-	videomode@3 {
-		mode-name = "SXGA";
-		refresh = <60>;
-		xres = <1280>;
-		yres = <1024>;
-		pixclock-khz = <107964>;
-		left-margin = <248>;
-		right-margin = <48>;
-		upper-margin = <38>;
-		lower-margin = <1>;
-		hsync-len = <112>;
+		lower-margin = <13>;
+		hsync-len = <48>;
 		vsync-len = <3>;
 		sync = <0>;
 		vmode = <0>;
 	};
-	videomode@4 {
-		mode-name = "HD720";
+	1280x720 {
+		name = "1280x720";
 		refresh = <60>;
 		xres = <1280>;
 		yres = <720>;
@@ -157,23 +131,23 @@ xylon-videomode-params {
 		sync = <0>;
 		vmode = <0>;
 	};
-	videomode@5 {
-		mode-name = "WSXGA+";
+	1680x1050 {
+		name = "1680x1050";
 		refresh = <60>;
 		xres = <1680>;
 		yres = <1050>;
-		pixclock-khz = <146361>;
-		left-margin = <280>;
-		right-margin = <104>;
-		upper-margin = <30>;
+		pixclock-khz = <119000>;
+		left-margin = <80>;
+		right-margin = <48>;
+		upper-margin = <21>;
 		lower-margin = <3>;
-		hsync-len = <176>;
+		hsync-len = <32>;
 		vsync-len = <6>;
 		sync = <0>;
 		vmode = <0>;
 	};
-	videomode@6 {
-		mode-name = "HD1080";
+	1920x1080 {
+		name = "1920x1080";
 		refresh = <60>;
 		xres = <1920>;
 		yres = <1080>;
@@ -188,4 +162,3 @@ xylon-videomode-params {
 		vmode = <0>;
 	};
 };
-
