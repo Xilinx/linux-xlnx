@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 #ifdef CONFIG_COMMON_CLK
 #include <linux/err.h>
 #include <linux/clk.h>
@@ -431,6 +432,58 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 	chip->irq_unmask(irq_data);
 }
 
+#if defined(CONFIG_PM) && defined(CONFIG_COMMON_CLK)
+static int xgpiops_suspend(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+	return 0;
+}
+
+static int xgpiops_resume(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	return clk_enable(gpio->clk);
+}
+
+#ifdef CONFIG_PM_RUNTIME
+static int xgpiops_idle(struct device *dev)
+{
+	return pm_schedule_suspend(dev, 1);
+}
+
+static int xgpiops_request(struct gpio_chip *chip, unsigned offset)
+{
+	return pm_runtime_get(chip->dev);
+}
+
+static void xgpiops_free(struct gpio_chip *chip, unsigned offset)
+{
+	pm_runtime_put(chip->dev);
+}
+
+static UNIVERSAL_DEV_PM_OPS(xgpiops_dev_pm_ops, xgpiops_suspend, xgpiops_resume,
+		xgpiops_idle);
+#else /* ! CONFIG_PM_RUNTIME */
+static SIMPLE_DEV_PM_OPS(xgpiops_dev_pm_ops, xgpiops_suspend, xgpiops_resume);
+#define xgpiops_request	NULL
+#define xgpiops_free	NULL
+#endif /* ! CONFIG_PM_RUNTIME */
+
+#define XGPIOPS_PM	(&xgpiops_dev_pm_ops)
+
+#else /*! CONFIG_PM && ! CONFIG_COMMON_CLK */
+#define XGPIOPS_PM	NULL
+#define xgpiops_request	NULL
+#define xgpiops_free	NULL
+#endif /*! CONFIG_PM && ! CONFIG_COMMON_CLK */
+
 /**
  * xgpiops_probe - Initialization method for a xgpiops device
  * @pdev:	platform device instance
@@ -491,6 +544,8 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	chip->dev = &pdev->dev;
 	chip->get = xgpiops_get_value;
 	chip->set = xgpiops_set_value;
+	chip->request = xgpiops_request;
+	chip->free = xgpiops_free;
 	chip->direction_input = xgpiops_dir_in;
 	chip->direction_output = xgpiops_dir_out;
 	chip->dbg_show = NULL;
@@ -541,6 +596,9 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	irq_set_handler_data(irq_num, (void *)(XGPIOPS_IRQBASE));
 	irq_set_chained_handler(irq_num, xgpiops_irqhandler);
 
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
 	return 0;
 
 #ifdef CONFIG_COMMON_CLK
@@ -569,25 +627,6 @@ static int xgpiops_remove(struct platform_device *pdev)
 #endif
 	return 0;
 }
-static int xgpiops_suspend(struct platform_device *pdev, pm_message_t state)
-{
-#ifdef CONFIG_COMMON_CLK
-	struct xgpiops *gpio = platform_get_drvdata(pdev);
-
-	clk_disable(gpio->clk);
-#endif
-	return 0;
-}
-static int xgpiops_resume(struct platform_device *pdev)
-{
-#ifdef CONFIG_COMMON_CLK
-	struct xgpiops *gpio = platform_get_drvdata(pdev);
-
-	return clk_enable(gpio->clk);
-#else
-	return 0;
-#endif
-}
 
 #ifdef CONFIG_OF
 static struct of_device_id xgpiops_of_match[] __devinitdata = {
@@ -601,14 +640,13 @@ static struct platform_driver xgpiops_driver = {
 	.driver	= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
+		.pm	= XGPIOPS_PM,
 #ifdef CONFIG_OF
 		.of_match_table = xgpiops_of_match,
 #endif
 	},
 	.probe		= xgpiops_probe,
 	.remove		= xgpiops_remove,
-	.suspend	= xgpiops_suspend,
-	.resume		= xgpiops_resume,
 };
 
 /**
