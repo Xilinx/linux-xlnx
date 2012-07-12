@@ -3255,15 +3255,17 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 /**
  * xemacps_suspend - Suspend event
- * @pdev: Pointer to platform device structure
- * @state: State of the device
+ * @device: Pointer to device structure
  *
  * Return 0
  */
-static int xemacps_suspend(struct platform_device *pdev, pm_message_t state)
+static int xemacps_suspend(struct device *device)
 {
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
 #ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
@@ -3285,8 +3287,10 @@ static int xemacps_suspend(struct platform_device *pdev, pm_message_t state)
  *
  * Return 0
  */
-static int xemacps_resume(struct platform_device *pdev)
+static int xemacps_resume(struct device *device)
 {
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
 #ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
@@ -3297,6 +3301,11 @@ static int xemacps_resume(struct platform_device *pdev)
 	netif_device_attach(ndev);
 	return 0;
 }
+static SIMPLE_DEV_PM_OPS(xemacps_dev_pm_ops, xemacps_suspend, xemacps_resume);
+#define XEMACPS_PM	(&xemacps_dev_pm_ops)
+#else /* ! CONFIG_PM_SLEEP */
+#define XEMACPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
 
 static struct net_device_ops netdev_ops = {
 	.ndo_open		= xemacps_open,
@@ -3325,12 +3334,11 @@ MODULE_DEVICE_TABLE(of, xemacps_of_match);
 static struct platform_driver xemacps_driver = {
 	.probe   = xemacps_probe,
 	.remove  = __exit_p(xemacps_remove),
-	.suspend = xemacps_suspend,
-	.resume  = xemacps_resume,
 	.driver  = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xemacps_of_match,
+		.pm = XEMACPS_PM,
 	},
 };
 
