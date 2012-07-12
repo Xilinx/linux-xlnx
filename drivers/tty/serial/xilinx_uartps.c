@@ -1380,17 +1380,19 @@ static int __devexit xuartps_remove(struct platform_device *pdev)
 	return rc;
 }
 
+#ifdef CONFIG_PM_SLEEP
 /**
  * xuartps_suspend - suspend event
- * @pdev: Pointer to the platform device structure
- * @state: State of the device
+ * @device: Pointer to the device structure
  *
  * Returns 0
  */
-static int xuartps_suspend(struct platform_device *pdev, pm_message_t state)
+static int xuartps_suspend(struct device *device)
 {
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
 #ifdef CONFIG_COMMON_CLK
-	struct uart_port *port = dev_get_drvdata(&pdev->dev);
+	struct uart_port *port = dev_get_drvdata(device);
 	struct xuartps *xuartps = port->private_data;
 #endif
 	/*
@@ -1407,14 +1409,16 @@ static int xuartps_suspend(struct platform_device *pdev, pm_message_t state)
 
 /**
  * xuartps_resume - Resume after a previous suspend
- * @pdev: Pointer to the platform device structure
+ * @device: Pointer to the device structure
  *
  * Returns 0
  */
-static int xuartps_resume(struct platform_device *pdev)
+static int xuartps_resume(struct device *device)
 {
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
 #ifdef CONFIG_COMMON_CLK
-	struct uart_port *port = dev_get_drvdata(&pdev->dev);
+	struct uart_port *port = dev_get_drvdata(device);
 	struct xuartps *xuartps = port->private_data;
 
 	clk_enable(xuartps->aperclk);
@@ -1424,8 +1428,13 @@ static int xuartps_resume(struct platform_device *pdev)
 	return 0;
 }
 
-/* Match table for of_platform binding */
+static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
+#define XUARTPS_PM	(&xuartps_dev_pm_ops)
+#else /* ! CONFIG_PM_SLEEP */
+#define XUARTPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
 
+/* Match table for of_platform binding */
 #ifdef CONFIG_OF
 static struct of_device_id xuartps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-uart-1.00.a", },
@@ -1439,12 +1448,11 @@ MODULE_DEVICE_TABLE(of, xuartps_of_match);
 static struct platform_driver xuartps_platform_driver = {
 	.probe   = xuartps_probe,		/* Probe method */
 	.remove  = __exit_p(xuartps_remove),	/* Detach method */
-	.suspend = xuartps_suspend,		/* Suspend */
-	.resume  = xuartps_resume,		/* Resume after a suspend */
 	.driver  = {
 		.owner = THIS_MODULE,
 		.name = XUARTPS_NAME,		/* Driver name */
 		.of_match_table = xuartps_of_match,
+		.pm = XUARTPS_PM,
 		},
 };
 
