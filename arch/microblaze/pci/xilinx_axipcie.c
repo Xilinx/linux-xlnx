@@ -599,9 +599,6 @@ static irqreturn_t xilinx_axipcie_intr_handler(int irq, void *data)
 	if (!status)
 		return IRQ_NONE;
 
-	/* Clear the Interrupt Decode register */
-	out_le32((((u8 *)port->base_addr_remap) + AXIPCIE_REG_IDR), status);
-
 	if (status & AXIPCIE_INTR_LINK_DOWN)
 		printk(KERN_ERR "Link Down\n");
 
@@ -667,6 +664,7 @@ static irqreturn_t xilinx_axipcie_intr_handler(int irq, void *data)
 			else
 				DBG("INTx deassert\n");
 		}
+
 		/* Clear interrupt FIFO register 1 */
 		out_le32((((u8 *)port->base_addr_remap) + AXIPCIE_REG_RPIFR1),
 								0xFFFFFFFF);
@@ -680,8 +678,6 @@ static irqreturn_t xilinx_axipcie_intr_handler(int irq, void *data)
 			printk(KERN_WARNING "RP Intr FIFO1 read error\n");
 			return IRQ_HANDLED;
 		}
-
-		DBG("%s: MSI received\n", __func__);
 
 		if (val & (1 << 30)) {
 			msi_addr = (val >> 16) & 0x7FF;
@@ -727,6 +723,9 @@ static irqreturn_t xilinx_axipcie_intr_handler(int irq, void *data)
 
 	if (status & AXIPCIE_INTR_MST_ERRP)
 		printk(KERN_WARNING "Master error poison\n");
+
+	/* Clear the Interrupt Decode register */
+	out_le32((((u8 *)port->base_addr_remap) + AXIPCIE_REG_IDR), status);
 
 	return IRQ_HANDLED;
 }
