@@ -45,6 +45,7 @@
 #include <linux/clocksource.h>
 #include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
+#include <linux/pm_runtime.h>
 #ifdef CONFIG_COMMON_CLK
 #include <linux/clk.h>
 #endif
@@ -2226,6 +2227,9 @@ static int xemacps_open(struct net_device *ndev)
 		ndev->name, rc);
 		return rc;
 	}
+
+	pm_runtime_get(&lp->pdev->dev);
+
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
 	rc = xemacps_mii_probe(ndev);
@@ -2236,6 +2240,7 @@ static int xemacps_open(struct net_device *ndev)
 			kfree(lp->mii_bus->irq);
 			mdiobus_free(lp->mii_bus);
 		}
+		pm_runtime_put(&lp->pdev->dev);
 		return -ENXIO;
 	}
 
@@ -2270,6 +2275,8 @@ static int xemacps_close(struct net_device *ndev)
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
 	xemacps_descriptor_free(lp);
+
+	pm_runtime_put(&lp->pdev->dev);
 
 	return 0;
 }
@@ -3196,6 +3203,8 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	xemacps_update_hwaddr(lp);
 
 	platform_set_drvdata(pdev, ndev);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
 		ndev->name, pdev->id, ndev->base_addr, ndev->irq);
@@ -3255,6 +3264,7 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
 #ifdef CONFIG_PM_SLEEP
 /**
  * xemacps_suspend - Suspend event
@@ -3270,14 +3280,11 @@ static int xemacps_suspend(struct device *device)
 #ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
 #endif
-
 	netif_device_detach(ndev);
-
 #ifdef CONFIG_COMMON_CLK
 	clk_disable(lp->devclk);
 	clk_disable(lp->aperclk);
 #endif
-
 	return 0;
 }
 
@@ -3301,11 +3308,48 @@ static int xemacps_resume(struct device *device)
 	netif_device_attach(ndev);
 	return 0;
 }
-static SIMPLE_DEV_PM_OPS(xemacps_dev_pm_ops, xemacps_suspend, xemacps_resume);
-#define XEMACPS_PM	(&xemacps_dev_pm_ops)
-#else /* ! CONFIG_PM_SLEEP */
-#define XEMACPS_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
+
+#if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_COMMON_CLK)
+static int xemacps_runtime_idle(struct device *dev)
+{
+	return pm_schedule_suspend(dev, 1);
+}
+
+static int xemacps_runtime_resume(struct device *device)
+{
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
+	struct net_device *ndev = platform_get_drvdata(pdev);
+	struct net_local *lp = netdev_priv(ndev);
+
+	clk_enable(lp->aperclk);
+	clk_enable(lp->devclk);
+	return 0;
+}
+
+static int xemacps_runtime_suspend(struct device *device)
+{
+	struct platform_device *pdev = container_of(device,
+			struct platform_device, dev);
+	struct net_device *ndev = platform_get_drvdata(pdev);
+	struct net_local *lp = netdev_priv(ndev);
+
+	clk_disable(lp->devclk);
+	clk_disable(lp->aperclk);
+	return 0;
+}
+#endif /* ! CONFIG_COMMON_CLK && ! CONFIG_PM_RUNTIME */
+
+static const struct dev_pm_ops xemacps_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xemacps_suspend, xemacps_resume)
+	SET_RUNTIME_PM_OPS(xemacps_runtime_suspend, xemacps_runtime_resume,
+			xemacps_runtime_idle)
+};
+#define XEMACPS_PM	(&xemacps_dev_pm_ops)
+#else /* ! CONFIG_PM */
+#define XEMACPS_PM	NULL
+#endif /* ! CONFIG_PM */
 
 static struct net_device_ops netdev_ops = {
 	.ndo_open		= xemacps_open,
@@ -3319,7 +3363,6 @@ static struct net_device_ops netdev_ops = {
 	.ndo_get_stats		= xemacps_get_stats,
 };
 
-
 #ifdef CONFIG_OF
 static struct of_device_id xemacps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-ethernet-1.00.a", },
@@ -3329,7 +3372,6 @@ MODULE_DEVICE_TABLE(of, xemacps_of_match);
 #else
 #define xemacps_of_match NULL
 #endif /* CONFIG_OF */
-
 
 static struct platform_driver xemacps_driver = {
 	.probe   = xemacps_probe,
