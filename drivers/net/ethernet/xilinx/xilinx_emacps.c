@@ -834,6 +834,10 @@ static int xemacps_mii_probe(struct net_device *ndev)
 					0,
 					PHY_INTERFACE_MODE_RGMII_ID);
 	}
+	if (!phydev) {
+		printk(KERN_ERR "%s: no PHY found\n", ndev->name);
+		return -1;
+	}
 #else
 	for (phy_addr = 0; phy_addr < PHY_MAX_ADDR; phy_addr++) {
 		if (lp->mii_bus->phy_map[phy_addr]) {
@@ -852,17 +856,15 @@ static int xemacps_mii_probe(struct net_device *ndev)
 
 	if (IS_ERR(phydev)) {
 		printk(KERN_ERR "%s: can not connect phy\n", ndev->name);
-		return -1;
+		return -2;
 	}
 #endif
 #ifdef DEBUG
 	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
 #endif
-	phydev->supported |= PHY_GBIT_FEATURES;
-	phydev->supported |= SUPPORTED_Pause;
-	phydev->supported |= SUPPORTED_Asym_Pause;
-
+	phydev->supported &= (PHY_GBIT_FEATURES | SUPPORTED_Pause |
+							SUPPORTED_Asym_Pause);
 	phydev->advertising = phydev->supported;
 
 	lp->link    = 0;
@@ -2139,11 +2141,14 @@ static int xemacps_open(struct net_device *ndev)
 	}
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
-	if (xemacps_mii_probe(ndev) != 0) {
+	rc = xemacps_mii_probe(ndev);
+	if (rc != 0) {
 		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
-		mdiobus_unregister(lp->mii_bus);
-		kfree(lp->mii_bus->irq);
-		mdiobus_free(lp->mii_bus);
+		if (rc == (-2)) {
+			mdiobus_unregister(lp->mii_bus);
+			kfree(lp->mii_bus->irq);
+			mdiobus_free(lp->mii_bus);
+		}
 		return -ENXIO;
 	}
 
