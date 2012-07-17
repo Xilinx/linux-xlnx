@@ -1196,10 +1196,12 @@ u32 xemacps_bdringfromhwtx(struct xemacps_bdring *ringptr, unsigned bdlimit,
 		/* Read the status */
 		bdstr = xemacps_read(curbdptr, XEMACPS_BD_STAT_OFFSET);
 
-		if ((sop == 0) && (bdstr & XEMACPS_TXBUF_USED_MASK))
-			sop = 1;
-		else
-			break;
+		if (sop == 0) {
+				if (bdstr & XEMACPS_TXBUF_USED_MASK)
+					sop = 1;
+				else
+					break;
+		}
 
 		if (sop == 1) {
 			bdcount++;
@@ -1626,13 +1628,13 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 }
 
 /**
- * xemacps_tx_poll - tasklet poll routine
+ * xemacps_tx_poll - tx isr handler routine
  * @data: pointer to network interface device structure
  **/
 static void xemacps_tx_poll(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
-	u32 regval, len = 0;
+	u32 regval, bdlen = 0;
 	struct xemacps_bd *bdptr, *bdptrfree;
 	struct ring_info *rp;
 	struct sk_buff *skb;
@@ -1667,18 +1669,16 @@ static void xemacps_tx_poll(struct net_device *ndev)
 	bdptrfree = bdptr;
 
 	while (numbd) {
-		rmb();
 		regval  = xemacps_read(bdptr, XEMACPS_BD_STAT_OFFSET);
+		rmb();
+		bdlen = regval & XEMACPS_TXBUF_LEN_MASK;
 		bdidx = XEMACPS_BD_TO_INDEX(&lp->tx_ring, bdptr);
 		rp = &lp->tx_skb[bdidx];
 		skb = rp->skb;
 
 		BUG_ON(skb == NULL);
 
-		len += skb->len;
-		rmb();
-
-		#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.tx_type == HWTSTAMP_TX_ON) &&
 			(ntohs(skb->protocol) == 0x800)) {
 			unsigned ip_proto, dest_port, msg_type;
@@ -1695,7 +1695,7 @@ static void xemacps_tx_poll(struct net_device *ndev)
 				xemacps_tx_hwtstamp(lp, skb, msg_type & 0x2);
 			}
 		}
-		#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
+#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 		dma_unmap_single(&lp->pdev->dev, rp->mapping, skb->len,
 			DMA_TO_DEVICE);
@@ -1711,11 +1711,10 @@ static void xemacps_tx_poll(struct net_device *ndev)
 		if (regval & XEMACPS_TXBUF_LAST_MASK) {
 			if (!(regval & XEMACPS_TXBUF_ERR_MASK)) {
 				lp->stats.tx_packets++;
-				lp->stats.tx_bytes += len;
+				lp->stats.tx_bytes += bdlen;
 			} else {
 				lp->stats.tx_errors++;
 			}
-			len = 0;
 		}
 
 		/* Preserve used and wrap bits; clear everything else. */
