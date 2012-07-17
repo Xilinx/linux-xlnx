@@ -1750,6 +1750,7 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	spin_lock(&lp->lock);
 
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
+	rmb();
 
 	if (unlikely(!regisr)) {
 		spin_unlock(&lp->lock);
@@ -1757,8 +1758,6 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	}
 
 	while (regisr) {
-		/* acknowledge interrupt and clear it */
-		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 
 		/* Log errors here. ISR status is cleared;
 		 * this must be recorded here.
@@ -1788,7 +1787,11 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 		(XEMACPS_IXR_TXCOMPL_MASK | XEMACPS_IXR_TX_ERR_MASK))
 			xemacps_tx_poll(ndev);
 
+		/* acknowledge interrupt and clear it */
+		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
+		wmb();
 		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
+		rmb();
 	}
 	spin_unlock(&lp->lock);
 
