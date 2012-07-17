@@ -20,11 +20,7 @@
  *    it is fixed. The speed cannot be changed to 10 Mbps or 1000 Mbps. However
  *    for Zynq there is no such issue and it can work at all 3 speeds after
  *    autonegotiation.
- * 3. The SLCR clock divisors are hard coded for Zynq board for the time being.
- *    The assumption is IO PLL output is 1000 MHz. However, this will not
- *    be the case always. Ideally the divisors need to be calculated at
- *    runtime depending upon the IO PLL output frequency. Hence this
- *    needs to be revsited.
+ * 3. The SLCR clock divisors are hard coded for PEEP board.
  */
 
 #include <linux/module.h>
@@ -2607,77 +2603,6 @@ xemacps_get_ringparam(struct net_device *ndev, struct ethtool_ringparam *erp)
 	erp->rx_pending = lp->rx_ring.hwcnt;
 	erp->tx_pending = lp->tx_ring.hwcnt;
 }
-
-#if 0
-
-/**
- * xemacps_get_rx_csum - get device rxcsum status
- * Usage: Issue "ethtool -k ethX" under linux prompt
- * @ndev: network device
- * return 0 csum off, else csum on
- **/
-static u32
-xemacps_get_rx_csum(struct net_device *ndev)
-{
-	struct net_local *lp = netdev_priv(ndev);
-
-	return (lp->ip_summed & CHECKSUM_UNNECESSARY) != 0;
-}
-
-/**
- * xemacps_set_rx_csum - set device rx csum enable/disable
- * Usage: Issue "ethtool -K ethX rx on|off" under linux prompt
- * @ndev: network device
- * @data: 0 to disable, other to enable
- * return 0 on success, negative value if error
- * note : If there is no need to turn on/off checksum engine e.g always on,
- * xemacps_set_rx_csum can be removed.
- **/
-static int
-xemacps_set_rx_csum(struct net_device *ndev, u32 data)
-{
-	struct net_local *lp = netdev_priv(ndev);
-
-	if (data)
-		lp->ip_summed = CHECKSUM_UNNECESSARY;
-	else
-		lp->ip_summed = CHECKSUM_NONE;
-
-	return 0;
-}
-
-/**
- * xemacps_get_tx_csum - get device txcsum status
- * Usage: Issue "ethtool -k ethX" under linux prompt
- * @ndev: network device
- * return 0 csum off, 1 csum on
- **/
-static u32
-xemacps_get_tx_csum(struct net_device *ndev)
-{
-	return (ndev->features & NETIF_F_IP_CSUM) != 0;
-}
-
-/**
- * xemacps_set_tx_csum - set device tx csum enable/disable
- * Usage: Issue "ethtool -K ethX tx on|off" under linux prompt
- * @ndev: network device
- * @data: 0 to disable, other to enable
- * return 0 on success, negative value if error
- * note : If there is no need to turn on/off checksum engine e.g always on,
- * xemacps_set_tx_csum can be removed.
- **/
-static int
-xemacps_set_tx_csum(struct net_device *ndev, u32 data)
-{
-	if (data)
-		ndev->features |= NETIF_F_IP_CSUM;
-	else
-		ndev->features &= ~NETIF_F_IP_CSUM;
-	return 0;
-}
-
-#endif
 
 /**
  * xemacps_get_wol - get device wake on lan status
