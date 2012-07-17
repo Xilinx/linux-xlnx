@@ -1650,8 +1650,8 @@ static void xemacps_tx_poll(struct net_device *ndev)
 	 */
 	if (regval & (XEMACPS_TXSR_URUN_MASK | XEMACPS_TXSR_RXOVR_MASK |
 		XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_COL1000_MASK |
-		XEMACPS_TXSR_BUFEXH_MASK | XEMACPS_TXSR_COL100_MASK)) {
-		printk(KERN_ERR "%s: TX error 0x%x, resetting buffers?\n",
+		XEMACPS_TXSR_BUFEXH_MASK)) {
+		printk(KERN_ERR "%s: TX ERROR 0x%x\n",
 			ndev->name, regval);
 		lp->stats.tx_errors++;
 	}
