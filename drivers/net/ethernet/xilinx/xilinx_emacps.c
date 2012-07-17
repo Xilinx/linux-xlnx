@@ -2189,30 +2189,45 @@ static int xemacps_close(struct net_device *ndev)
  **/
 static void xemacps_tx_timeout(struct net_device *ndev)
 {
-	unsigned long flags;
 	struct net_local *lp = netdev_priv(ndev);
 	int rc;
 
 	printk(KERN_ERR "%s transmit timeout %lu ms, reseting...\n",
 		ndev->name, TX_TIMEOUT * 1000UL / HZ);
-	lp->stats.tx_errors++;
-
-	spin_lock_irqsave(&lp->lock, flags);
-
 	netif_stop_queue(ndev);
+
+	spin_lock(&lp->lock);
 	napi_disable(&lp->napi);
 	xemacps_reset_hw(lp);
-	xemacps_clean_rings(lp);
-	rc  = xemacps_setup_ring(lp);
-	if (rc)
-		printk(KERN_ERR "%s Unable to setup BD or rings, rc %d\n",
+	xemacps_descriptor_free(lp);
+	if (lp->phy_dev)
+		phy_stop(lp->phy_dev);
+	rc = xemacps_descriptor_init(lp);
+	if (rc) {
+		printk(KERN_ERR "%s Unable to allocate DMA memory, rc %d\n",
 		ndev->name, rc);
-	xemacps_init_hw(lp);
-	ndev->trans_start = jiffies;
-	napi_enable(&lp->napi);
-	netif_wake_queue(ndev);
+		spin_unlock(&lp->lock);
+		return;
+	}
 
-	spin_unlock_irqrestore(&lp->lock, flags);
+	rc = xemacps_setup_ring(lp);
+	if (rc) {
+		printk(KERN_ERR "%s Unable to setup BD rings, rc %d\n",
+		ndev->name, rc);
+		spin_unlock(&lp->lock);
+		return;
+	}
+	xemacps_init_hw(lp);
+
+	lp->link    = 0;
+	lp->speed   = 0;
+	lp->duplex  = -1;
+	if (lp->phy_dev)
+		phy_start(lp->phy_dev);
+	napi_enable(&lp->napi);
+
+	spin_unlock(&lp->lock);
+	netif_start_queue(ndev);
 }
 
 /**
