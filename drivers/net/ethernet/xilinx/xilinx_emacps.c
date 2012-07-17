@@ -282,8 +282,6 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_NWCFG_1000_MASK        0x00000400 /* Gigbit mode */
 #define XEMACPS_NWCFG_EXTADDRMATCHEN_MASK 0x00000200
 /* External address match enable */
-#define XEMACPS_NWCFG_1536RXEN_MASK    0x00000100 /* Enable 1536 byte
-						frames reception */
 #define XEMACPS_NWCFG_UCASTHASHEN_MASK 0x00000080 /* Receive unicast hash
 						frames */
 #define XEMACPS_NWCFG_MCASTHASHEN_MASK 0x00000040 /* Receive multicast hash
@@ -420,7 +418,6 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_TXBUF_USED_MASK  0x80000000 /* Used bit. */
 #define XEMACPS_TXBUF_WRAP_MASK  0x40000000 /* Wrap bit, last descriptor */
 #define XEMACPS_TXBUF_RETRY_MASK 0x20000000 /* Retry limit exceeded */
-#define XEMACPS_TXBUF_URUN_MASK  0x10000000 /* Transmit underrun occurred */
 #define XEMACPS_TXBUF_EXH_MASK   0x08000000 /* Buffers exhausted */
 #define XEMACPS_TXBUF_LAC_MASK   0x04000000 /* Late collision. */
 #define XEMACPS_TXBUF_NOCRC_MASK 0x00010000 /* No CRC */
@@ -2053,7 +2050,8 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCFG_FCSREM_MASK;
 	regval |= XEMACPS_NWCFG_PAUSEEN_MASK;
 	regval |= XEMACPS_NWCFG_100_MASK;
-	regval |= XEMACPS_NWCFG_1536RXEN_MASK;
+	regval |= XEMACPS_NWCFG_HDRXEN_MASK;
+
 #ifdef CONFIG_OF
 	if (lp->board_type == BOARD_TYPE_ZYNQ)
 		regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
