@@ -129,13 +129,10 @@ void __init xilinx_map_io(void)
  */
 void __init xilinx_memory_init()
 {
+#if (CONFIG_PHYS_OFFSET == 0)
 	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
 	 * which can't be used for DMA
 	 */ 
 	memblock_reserve(0, 0x4000);
-
-	/* the video frame buffer is in DDR and shouldn't be used by the kernel
-	 * as it will be ioremapped by the frame buffer driver
-	 */
-	memblock_remove(0xF000000, 0x1000000);
+#endif
 }
