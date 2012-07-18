@@ -8,6 +8,7 @@
 #include <linux/atomic.h>
 #include <asm/pgtable.h>
 #include <asm/mmu.h>
+#include <linux/export.h>
 
 #ifndef INIT_MM_CONTEXT
 #define INIT_MM_CONTEXT(name)
@@ -23,3 +24,4 @@ struct mm_struct init_mm = {
 	.mmlist		= LIST_HEAD_INIT(init_mm.mmlist),
 	INIT_MM_CONTEXT(init_mm)
 };
+EXPORT_SYMBOL(init_mm);
