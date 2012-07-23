@@ -128,5 +128,12 @@
 				reg = <0x1000000 0x1000000>; /* 16MB */
 			};
 		};
+
+		gpio@e000a000 {
+			compatible = "xlnx,ps7-gpio-1.00.a";
+			reg = <0xe000a000 0x1000>;
+			interrupts = <0 20 0>;
+			interrupt-parent = <&gic>;
+		};
 	};
 };
