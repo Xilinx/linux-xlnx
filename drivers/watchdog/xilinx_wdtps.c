@@ -324,8 +324,8 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 	/* Register the interrupt */
 	prop = of_get_property(pdev->dev.of_node, "reset", NULL);
 	wdt->rst = prop ? be32_to_cpup(prop) : 0;
-	if (!wdt->rst) {
-		irq = platform_get_irq(pdev, 0);
+	irq = platform_get_irq(pdev, 0);
+	if (!wdt->rst && irq >= 0) {
 		res = request_irq(irq, xwdtps_irq_handler, 0, pdev->name, pdev);
 		if (res != 0) {
 			dev_err(&pdev->dev, "cannot register interrupt handler err=%d\n",
