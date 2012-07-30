@@ -25,7 +25,6 @@
  *
  */
 
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -100,6 +99,27 @@
 #define XILINX_VDMA_CHAN_DIRECT_REG_SIZE  0x50
 
 #define XILINX_VDMA_PARK_REG_OFFSET      0x28
+
+/* Axi VDMA Specific Error bits
+ */
+#define XILINX_VDMA_SR_ERR_FSIZE_LESS_MASK    0x00000080 /* FSize Less
+							Mismatch err */
+#define XILINX_VDMA_SR_ERR_LSIZE_LESS_MASK    0x00000100 /* LSize Less
+							Mismatch err */
+#define XILINX_VDMA_SR_ERR_FSIZE_MORE_MASK    0x00000800 /* FSize
+							more err */
+/* Recoverable errors are DMA Internal error, FSize Less, LSize Less
+ * and FSize More mismatch errors.  These are only recoverable only
+ * when C_FLUSH_ON_FSYNC is enabled in the hardware system.
+ */
+#define XILINX_VDMA_SR_ERR_RECOVER_MASK       0x00000990 /* Recoverable
+							errs */
+
+/* Axi VDMA Flush on Fsync bits
+ */
+#define XILINX_VDMA_FLUSH_S2MM	3
+#define XILINX_VDMA_FLUSH_MM2S	2
+#define XILINX_VDMA_FLUSH_BOTH	1
 
 /* BD definitions for Axi Dma and Axi Cdma
  */
@@ -211,6 +231,7 @@ struct xilinx_dma_chan {
 	u32    private;                   /* Match info for channel request */
 	void   (*start_transfer)(struct xilinx_dma_chan *chan);
 	struct xilinx_dma_config config;  /* Device configuration info */
+	u32    flush_fsync;		  /* Flush on Fsync */
 };
 
 struct xilinx_dma_device {
@@ -821,12 +842,14 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	struct xilinx_dma_chan *chan = data;
 	int update_cookie = 0;
 	int to_transfer = 0;
-	u32 stat;
+	u32 stat, reg;
+
+	reg = DMA_IN(&chan->regs->cr);
 
 	/* Disable intr
 	 */
 	DMA_OUT(&chan->regs->cr,
-	   DMA_IN(&chan->regs->cr) & ~XILINX_DMA_XR_IRQ_ALL_MASK);
+	   reg & ~XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	stat = DMA_IN(&chan->regs->sr);
 	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK))
@@ -838,14 +861,27 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 
 	/* Check for only the interrupts which are enabled
          */
-	stat &= (DMA_IN(&chan->regs->cr) & XILINX_DMA_XR_IRQ_ALL_MASK);
+	stat &= (reg & XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	if (stat & XILINX_DMA_XR_IRQ_ERROR_MASK) {
-		dev_err(chan->dev, "Channel %x has errors %x, cdr %x tdr %x\n",
-		    (unsigned int)chan, (unsigned int)stat,
-		    (unsigned int)DMA_IN(&chan->regs->cdr),
-		    (unsigned int)DMA_IN(&chan->regs->tdr));
-		chan->err = 1;
+		if ((chan->feature & XILINX_DMA_IP_VDMA)
+			&& chan->flush_fsync) {
+			/* VDMA Recoverable Errors, only when
+			   C_FLUSH_ON_FSYNC is enabled */
+			u32 error = DMA_IN(&chan->regs->sr) &
+				XILINX_VDMA_SR_ERR_RECOVER_MASK;
+			if (error)
+				DMA_OUT(&chan->regs->sr, error);
+			else
+				chan->err = 1;
+		} else {
+			dev_err(chan->dev, "Channel %x has errors %x,\
+					cdr %x tdr %x\n",
+			(unsigned int)chan, (unsigned int)stat,
+			(unsigned int)DMA_IN(&chan->regs->cdr),
+			(unsigned int)DMA_IN(&chan->regs->tdr));
+			chan->err = 1;
+		}
 	}
 
 	/* Device takes too long to do the transfer when user requires
@@ -1546,7 +1582,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	struct xilinx_dma_chan *chan;
 	int err;
 	int *value;
-	u32 width = 0, device_id = 0;
+	u32 width = 0, device_id = 0, flush_fsync = 0;
 
 	/* alloc channel */
 	chan = kzalloc(sizeof(*chan), GFP_KERNEL);
@@ -1592,6 +1628,10 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	value = (int *)of_get_property(node, "xlnx,device-id", NULL);
 	if (value)
 		device_id = be32_to_cpup(value);
+
+	value = (int *)of_get_property(node, "xlnx,flush-fsync", NULL);
+	if (value)
+		flush_fsync = be32_to_cpup(value);
 
 	if (feature & XILINX_DMA_IP_CDMA) {
 		chan->direction = DMA_BIDIRECTIONAL;
@@ -1650,6 +1690,9 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 				    ((u32)xdev->regs +
 					 XILINX_VDMA_DIRECT_REG_OFFSET);
 			}
+			if (flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
+				flush_fsync == XILINX_VDMA_FLUSH_MM2S)
+				chan->flush_fsync = 1;
 		}
 
 		if (of_device_is_compatible(node,
@@ -1661,6 +1704,9 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 					XILINX_VDMA_DIRECT_REG_OFFSET +
 					XILINX_VDMA_CHAN_DIRECT_REG_SIZE);
 			}
+			if (flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
+				flush_fsync == XILINX_VDMA_FLUSH_S2MM)
+				chan->flush_fsync = 1;
 		}
 	}
 
