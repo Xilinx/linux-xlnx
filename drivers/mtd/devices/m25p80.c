@@ -683,11 +683,7 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64, 0) },
 	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256, 0) },
 	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, 0) },
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-	{ "s25fl129p1x2", INFO(0x012018, 0x4d01,  128 * 1024, 256, 0) },
-#else
 	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, 0) },
-#endif
 	{ "s25fl016k",  INFO(0xef4015,      0,  64 * 1024,  32, SECT_4K) },
 	{ "s25fl064k",  INFO(0xef4017,      0,  64 * 1024, 128, SECT_4K) },
 
@@ -714,11 +710,7 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "m25p128", INFO(0x202018,  0, 256 * 1024,  64, 0) },
 
 	/* Numonyx flash n25q128 */
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-	{ "n25q128x2", INFO(0x20bb18,  0, 128 * 1024, 256, 0) },
-#else
 	{ "n25q128",   INFO(0x20bb18,  0,  64 * 1024, 256, 0) },
-#endif
 
 	{ "m25p05-nonjedec",  INFO(0, 0,  32 * 1024,   2, 0) },
 	{ "m25p10-nonjedec",  INFO(0, 0,  32 * 1024,   4, 0) },
@@ -907,6 +899,25 @@ static int __devinit m25p_probe(struct spi_device *spi)
 	flash->mtd.writesize = 1;
 	flash->mtd.flags = MTD_CAP_NORFLASH;
 	flash->mtd.size = info->sector_size * info->n_sectors;
+
+#ifdef CONFIG_SPI_XILINX_PS_QSPI
+	{	
+		const unsigned int *prop;
+		const struct device_node *np;
+
+		/* for Zynq, two devices (dual) QSPI (seperate bus) is supported 
+		 * in which there can be two devices that appear as one to s/w
+		 * the only way to tell this mode is from the qspi controller
+		 * and if it's used, then the memory is x2 the amount
+		 */
+		np = of_get_next_parent(spi->dev.of_node);
+		prop = of_get_property(np, "is-dual", NULL);
+		if (prop) {
+			if (be32_to_cpup(prop)) 
+				flash->mtd.size *= 2;	
+		}
+	}
+#endif
 	flash->mtd._erase = m25p80_erase;
 	flash->mtd._read = m25p80_read;
 
