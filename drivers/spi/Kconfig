@@ -401,16 +401,6 @@ config SPI_XILINX_PS_QSPI
 	help
 	  This selects the PS Quad SPI controller master driver from the Xilinx.
 
-config XILINX_PS_QSPI_USE_DUAL_FLASH
-	bool "Use dual flash memories with seperate QSPI buses"
-	depends on SPI_XILINX_PS_QSPI
-	default y
-	help
-	  This option enables two SPI flash memories operating in parallel mode.
-	  This increases the maximum addressable QSPI flash memory from 16 MB
-	  (24-bit addressing) to 32 MB (25-bit addressing), and the throughput
-	  by a factor of 2.
-
 config SPI_XILINX_PS_SPI
 	tristate "Xilinx PS SPI controller"
 	depends on SPI_MASTER && EXPERIMENTAL
