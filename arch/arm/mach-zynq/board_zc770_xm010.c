@@ -41,12 +41,6 @@ static struct xspi_platform_data spi_0_pdata = {
 	.num_chipselect = 1
 };
 
-static struct xspi_platform_data xqspi_0_pdata = {
-	.speed_hz = 50000000,
-	.bus_num = 1,
-	.num_chipselect = 1
-};
-
 #endif
 
 #ifdef CONFIG_MTD_M25P80
@@ -64,52 +58,6 @@ static struct flash_platform_data spi_flash_pdata = {
 	.parts			= spi_flash_partitions,
 	.nr_parts		= ARRAY_SIZE(spi_flash_partitions),
 	.type			= "sst25wf080"	
-};
-
-
-static struct mtd_partition qspi_flash_partitions[] = {
-	{
-		.name		= "qspi-fsbl",
-		.size		= 0x80000,
-		.offset		= 0,
-	},
-	{
-		.name		= "qspi-u-boot",
-		.size		= 0x80000,
-		.offset		= 0x80000,
-	},
-	{
-		.name		= "qspi-linux",
-		.size		= 0x500000,
-		.offset		= 0x100000,
-	},
-	{
-		.name		= "qspi-device-tree",
-		.size		= 0x20000,
-		.offset		= 0x600000,
-	},
-	{
-		.name		= "qspi-user",
-		.size		= 0xE0000,
-		.offset		= 0x620000,
-	},
-	{
-		.name		= "qspi-scratch",
-		.size		= 0x100000,
-		.offset		= 0x700000,
-	},
-	{
-		.name		= "qspi-rootfs",
-		.size		= 0x800000,
-		.offset		= 0x800000,
-	},
-};
-
-static struct flash_platform_data qspi_flash_pdata = {
-	.name			= "serial_flash",
-	.parts			= qspi_flash_partitions,
-	.nr_parts		= ARRAY_SIZE(qspi_flash_partitions),
-	.type			= "n25q128"	/* single flash device */
 };
 
 #endif
@@ -130,20 +78,6 @@ static struct spi_board_info __initdata xilinx_spipss_0_boardinfo[] = {
 		.bus_num		= 0,
 		.chip_select		= 1,
 	},
-	{	
-#ifdef CONFIG_SPI_SPIDEV
-		.modalias		= "spidev",
-		.platform_data		= &xqspi_0_pdata,
-#else
-		.modalias		= "m25p80",
-		.platform_data		= &qspi_flash_pdata,
-#endif
-		.irq			= IRQ_QSPI0,
-		.max_speed_hz		= 50000000, /* max sample rate at 3V */
-		.bus_num		= 1,
-		.chip_select		= 0,
-	},
-	
 };
 
 #endif
