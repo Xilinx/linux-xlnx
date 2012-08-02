@@ -12,7 +12,7 @@
 		reg = <0x00000000 0x40000000>; 
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw";
 		linux,stdout-path = "/amba@0/uart@E0000000";
 	};
 
