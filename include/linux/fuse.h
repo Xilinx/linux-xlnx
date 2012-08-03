@@ -54,6 +54,9 @@
  * 7.18
  *  - add FUSE_IOCTL_DIR flag
  *  - add FUSE_NOTIFY_DELETE
+ *
+ * 7.19
+ *  - add FUSE_FALLOCATE
  */
 
 #ifndef _LINUX_FUSE_H
@@ -85,7 +88,7 @@
 #define FUSE_KERNEL_VERSION 7
 
 /** Minor version number of this interface */
-#define FUSE_KERNEL_MINOR_VERSION 18
+#define FUSE_KERNEL_MINOR_VERSION 19
 
 /** The node ID of the root inode */
 #define FUSE_ROOT_ID 1
@@ -278,6 +281,7 @@ enum fuse_opcode {
 	FUSE_POLL          = 40,
 	FUSE_NOTIFY_REPLY  = 41,
 	FUSE_BATCH_FORGET  = 42,
+	FUSE_FALLOCATE     = 43,
 
 	/* CUSE specific operations */
 	CUSE_INIT          = 4096,
@@ -571,6 +575,14 @@ struct fuse_notify_poll_wakeup_out {
 	__u64	kh;
 };
 
+struct fuse_fallocate_in {
+	__u64	fh;
+	__u64	offset;
+	__u64	length;
+	__u32	mode;
+	__u32	padding;
+};
+
 struct fuse_in_header {
 	__u32	len;
 	__u32	opcode;
@@ -593,7 +605,7 @@ struct fuse_dirent {
 	__u64	off;
 	__u32	namelen;
 	__u32	type;
-	char name[0];
+	char name[];
 };
 
 #define FUSE_NAME_OFFSET offsetof(struct fuse_dirent, name)

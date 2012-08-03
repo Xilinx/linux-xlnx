@@ -27,6 +27,7 @@
 #include <asm/cacheflush.h>
 #include <asm/smp_plat.h>
 #include <asm/smp_scu.h>
+#include <asm/smp_twd.h>
 #include <asm/hardware/arm_timer.h>
 #include <asm/hardware/timer-sp.h>
 #include <asm/hardware/gic.h>
@@ -34,7 +35,6 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
-#include <mach/irqs.h>
 
 #include "core.h"
 #include "sysregs.h"
@@ -85,10 +85,24 @@ const static struct of_device_id irq_match[] = {
 	{}
 };
 
+#ifdef CONFIG_CACHE_L2X0
+static void highbank_l2x0_disable(void)
+{
+	/* Disable PL310 L2 Cache controller */
+	highbank_smc1(0x102, 0x0);
+}
+#endif
+
 static void __init highbank_init_irq(void)
 {
 	of_irq_init(irq_match);
+
+#ifdef CONFIG_CACHE_L2X0
+	/* Enable PL310 L2 Cache controller */
+	highbank_smc1(0x102, 0x1);
 	l2x0_of_init(0, ~0UL);
+	outer_cache.disable = highbank_l2x0_disable;
+#endif
 }
 
 static void __init highbank_timer_init(void)
@@ -109,8 +123,10 @@ static void __init highbank_timer_init(void)
 
 	highbank_clocks_init();
 
-	sp804_clocksource_init(timer_base + 0x20, "timer1");
+	sp804_clocksource_and_sched_clock_init(timer_base + 0x20, "timer1");
 	sp804_clockevents_init(timer_base, irq, "timer0");
+
+	twd_local_timer_of_register();
 }
 
 static struct sys_timer highbank_timer = {

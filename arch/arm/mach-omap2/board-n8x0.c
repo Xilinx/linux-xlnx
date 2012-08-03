@@ -36,10 +36,6 @@
 
 #include "mux.h"
 
-static int slot1_cover_open;
-static int slot2_cover_open;
-static struct device *mmc_device;
-
 #define TUSB6010_ASYNC_CS	1
 #define TUSB6010_SYNC_CS	4
 #define TUSB6010_GPIO_INT	58
@@ -87,11 +83,9 @@ static struct musb_hdrc_config musb_config = {
 };
 
 static struct musb_hdrc_platform_data tusb_data = {
-#if defined(CONFIG_USB_MUSB_OTG)
+#ifdef CONFIG_USB_GADGET_MUSB_HDRC
 	.mode		= MUSB_OTG,
-#elif defined(CONFIG_USB_MUSB_PERIPHERAL)
-	.mode		= MUSB_PERIPHERAL,
-#else /* defined(CONFIG_USB_MUSB_HOST) */
+#else
 	.mode		= MUSB_HOST,
 #endif
 	.set_power	= tusb_set_power,
@@ -137,7 +131,6 @@ static void __init n8x0_usb_init(void) {}
 
 static struct omap2_mcspi_device_config p54spi_mcspi_config = {
 	.turbo_mode	= 0,
-	.single_channel = 1,
 };
 
 static struct spi_board_info n800_spi_board_info[] __initdata = {
@@ -210,6 +203,10 @@ static struct omap_onenand_platform_data board_onenand_data[] = {
 #define N8X0_SLOT_SWITCH_GPIO	96
 #define N810_EMMC_VSD_GPIO	23
 #define N810_EMMC_VIO_GPIO	9
+
+static int slot1_cover_open;
+static int slot2_cover_open;
+static struct device *mmc_device;
 
 static int n8x0_mmc_switch_slot(struct device *dev, int slot)
 {
@@ -695,6 +692,7 @@ MACHINE_START(NOKIA_N800, "Nokia N800")
 	.init_irq	= omap2_init_irq,
 	.handle_irq	= omap2_intc_handle_irq,
 	.init_machine	= n8x0_init_machine,
+	.init_late	= omap2420_init_late,
 	.timer		= &omap2_timer,
 	.restart	= omap_prcm_restart,
 MACHINE_END
@@ -707,6 +705,7 @@ MACHINE_START(NOKIA_N810, "Nokia N810")
 	.init_irq	= omap2_init_irq,
 	.handle_irq	= omap2_intc_handle_irq,
 	.init_machine	= n8x0_init_machine,
+	.init_late	= omap2420_init_late,
 	.timer		= &omap2_timer,
 	.restart	= omap_prcm_restart,
 MACHINE_END
@@ -719,6 +718,7 @@ MACHINE_START(NOKIA_N810_WIMAX, "Nokia N810 WiMAX")
 	.init_irq	= omap2_init_irq,
 	.handle_irq	= omap2_intc_handle_irq,
 	.init_machine	= n8x0_init_machine,
+	.init_late	= omap2420_init_late,
 	.timer		= &omap2_timer,
 	.restart	= omap_prcm_restart,
 MACHINE_END

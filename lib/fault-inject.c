@@ -5,7 +5,7 @@
 #include <linux/stat.h>
 #include <linux/types.h>
 #include <linux/fs.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/interrupt.h>
 #include <linux/stacktrace.h>
 #include <linux/fault-inject.h>
@@ -101,6 +101,10 @@ static inline bool fail_stacktrace(struct fault_attr *attr)
 
 bool should_fail(struct fault_attr *attr, ssize_t size)
 {
+	/* No need to check any other properties if the probability is 0 */
+	if (attr->probability == 0)
+		return false;
+
 	if (attr->task_filter && !fail_task(attr, current))
 		return false;
 

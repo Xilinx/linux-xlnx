@@ -24,11 +24,11 @@
 #include <linux/node.h>
 #include <asm/sparsemem.h>
 #include <asm/prom.h>
-#include <asm/system.h>
 #include <asm/smp.h>
 #include <asm/firmware.h>
 #include <asm/paca.h>
 #include <asm/hvcall.h>
+#include <asm/setup.h>
 
 static int numa_enabled = 1;
 
@@ -635,11 +635,11 @@ static inline int __init read_usm_ranges(const u32 **usm)
  */
 static void __init parse_drconf_memory(struct device_node *memory)
 {
-	const u32 *dm, *usm;
+	const u32 *uninitialized_var(dm), *usm;
 	unsigned int n, rc, ranges, is_kexec_kdump = 0;
 	unsigned long lmb_size, base, size, sz;
 	int nid;
-	struct assoc_arrays aa;
+	struct assoc_arrays aa = { .arrays = NULL };
 
 	n = of_get_drconf_memory(memory, &dm);
 	if (!n)

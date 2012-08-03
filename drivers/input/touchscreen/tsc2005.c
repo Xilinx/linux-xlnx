@@ -650,7 +650,8 @@ static int __devinit tsc2005_probe(struct spi_device *spi)
 	tsc2005_stop_scan(ts);
 
 	error = request_threaded_irq(spi->irq, NULL, tsc2005_irq_thread,
-				     IRQF_TRIGGER_RISING, "tsc2005", ts);
+				     IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				     "tsc2005", ts);
 	if (error) {
 		dev_err(&spi->dev, "Failed to request irq, err: %d\n", error);
 		goto err_free_mem;
@@ -747,17 +748,7 @@ static struct spi_driver tsc2005_driver = {
 	.remove	= __devexit_p(tsc2005_remove),
 };
 
-static int __init tsc2005_init(void)
-{
-	return spi_register_driver(&tsc2005_driver);
-}
-module_init(tsc2005_init);
-
-static void __exit tsc2005_exit(void)
-{
-	spi_unregister_driver(&tsc2005_driver);
-}
-module_exit(tsc2005_exit);
+module_spi_driver(tsc2005_driver);
 
 MODULE_AUTHOR("Lauri Leukkunen <lauri.leukkunen@nokia.com>");
 MODULE_DESCRIPTION("TSC2005 Touchscreen Driver");

@@ -16,7 +16,6 @@
 #include <linux/string.h>
 #include <linux/device.h>
 #include <linux/async.h>
-#include <linux/kmod.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/mount.h>
@@ -26,7 +25,8 @@
 #include <linux/freezer.h>
 #include <linux/gfp.h>
 #include <linux/syscore_ops.h>
-#include <scsi/scsi_scan.h>
+#include <linux/ctype.h>
+#include <linux/genhd.h>
 
 #include "power.h"
 
@@ -245,8 +245,8 @@ void swsusp_show_speed(struct timeval *start, struct timeval *stop,
  * create_image - Create a hibernation image.
  * @platform_mode: Whether or not to use the platform driver.
  *
- * Execute device drivers' .freeze_noirq() callbacks, create a hibernation image
- * and execute the drivers' .thaw_noirq() callbacks.
+ * Execute device drivers' "late" and "noirq" freeze callbacks, create a
+ * hibernation image and run the drivers' "noirq" and "early" thaw callbacks.
  *
  * Control reappears in this routine after the subsequent restore.
  */
@@ -254,7 +254,7 @@ static int create_image(int platform_mode)
 {
 	int error;
 
-	error = dpm_suspend_noirq(PMSG_FREEZE);
+	error = dpm_suspend_end(PMSG_FREEZE);
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to power down, "
 			"aborting hibernation\n");
@@ -306,7 +306,7 @@ static int create_image(int platform_mode)
  Platform_finish:
 	platform_finish(platform_mode);
 
-	dpm_resume_noirq(in_suspend ?
+	dpm_resume_start(in_suspend ?
 		(error ? PMSG_RECOVER : PMSG_THAW) : PMSG_RESTORE);
 
 	return error;
@@ -343,13 +343,13 @@ int hibernation_snapshot(int platform_mode)
 		 * successful freezer test.
 		 */
 		freezer_test_done = true;
-		goto Cleanup;
+		goto Thaw;
 	}
 
 	error = dpm_prepare(PMSG_FREEZE);
 	if (error) {
 		dpm_complete(PMSG_RECOVER);
-		goto Cleanup;
+		goto Thaw;
 	}
 
 	suspend_console();
@@ -385,6 +385,8 @@ int hibernation_snapshot(int platform_mode)
 	platform_end(platform_mode);
 	return error;
 
+ Thaw:
+	thaw_kernel_threads();
  Cleanup:
 	swsusp_free();
 	goto Close;
@@ -394,16 +396,16 @@ int hibernation_snapshot(int platform_mode)
  * resume_target_kernel - Restore system state from a hibernation image.
  * @platform_mode: Whether or not to use the platform driver.
  *
- * Execute device drivers' .freeze_noirq() callbacks, restore the contents of
- * highmem that have not been restored yet from the image and run the low-level
- * code that will restore the remaining contents of memory and switch to the
- * just restored target kernel.
+ * Execute device drivers' "noirq" and "late" freeze callbacks, restore the
+ * contents of highmem that have not been restored yet from the image and run
+ * the low-level code that will restore the remaining contents of memory and
+ * switch to the just restored target kernel.
  */
 static int resume_target_kernel(bool platform_mode)
 {
 	int error;
 
-	error = dpm_suspend_noirq(PMSG_QUIESCE);
+	error = dpm_suspend_end(PMSG_QUIESCE);
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to power down, "
 			"aborting resume\n");
@@ -460,7 +462,7 @@ static int resume_target_kernel(bool platform_mode)
  Cleanup:
 	platform_restore_cleanup(platform_mode);
 
-	dpm_resume_noirq(PMSG_RECOVER);
+	dpm_resume_start(PMSG_RECOVER);
 
 	return error;
 }
@@ -518,7 +520,7 @@ int hibernation_platform_enter(void)
 		goto Resume_devices;
 	}
 
-	error = dpm_suspend_noirq(PMSG_HIBERNATE);
+	error = dpm_suspend_end(PMSG_HIBERNATE);
 	if (error)
 		goto Resume_devices;
 
@@ -549,7 +551,7 @@ int hibernation_platform_enter(void)
  Platform_finish:
 	hibernation_ops->finish();
 
-	dpm_resume_noirq(PMSG_RESTORE);
+	dpm_resume_start(PMSG_RESTORE);
 
  Resume_devices:
 	entering_platform_hibernation = false;
@@ -609,10 +611,6 @@ int hibernate(void)
 	if (error)
 		goto Exit;
 
-	error = usermodehelper_disable();
-	if (error)
-		goto Exit;
-
 	/* Allocate memory management structures */
 	error = create_basic_memory_bitmaps();
 	if (error)
@@ -624,15 +622,11 @@ int hibernate(void)
 
 	error = freeze_processes();
 	if (error)
-		goto Finish;
+		goto Free_bitmaps;
 
 	error = hibernation_snapshot(hibernation_mode == HIBERNATION_PLATFORM);
-	if (error)
+	if (error || freezer_test_done)
 		goto Thaw;
-	if (freezer_test_done) {
-		freezer_test_done = false;
-		goto Thaw;
-	}
 
 	if (in_suspend) {
 		unsigned int flags = 0;
@@ -657,9 +651,12 @@ int hibernate(void)
 
  Thaw:
 	thaw_processes();
- Finish:
+
+	/* Don't bother checking whether freezer_test_done is true */
+	freezer_test_done = false;
+
+ Free_bitmaps:
 	free_basic_memory_bitmaps();
-	usermodehelper_enable();
  Exit:
 	pm_notifier_call_chain(PM_POST_HIBERNATION);
 	pm_restore_console();
@@ -726,6 +723,17 @@ static int software_resume(void)
 
 	/* Check if the device is there */
 	swsusp_resume_device = name_to_dev_t(resume_file);
+
+	/*
+	 * name_to_dev_t is ineffective to verify parition if resume_file is in
+	 * integer format. (e.g. major:minor)
+	 */
+	if (isdigit(resume_file[0]) && resume_wait) {
+		int partno;
+		while (!get_gendisk(swsusp_resume_device, &partno))
+			msleep(10);
+	}
+
 	if (!swsusp_resume_device) {
 		/*
 		 * Some device discovery might still be in progress; we need
@@ -738,13 +746,6 @@ static int software_resume(void)
 				msleep(10);
 			async_synchronize_full();
 		}
-
-		/*
-		 * We can't depend on SCSI devices being available after loading
-		 * one of their modules until scsi_complete_async_scans() is
-		 * called and the resume device usually is a SCSI one.
-		 */
-		scsi_complete_async_scans();
 
 		swsusp_resume_device = name_to_dev_t(resume_file);
 		if (!swsusp_resume_device) {
@@ -774,15 +775,9 @@ static int software_resume(void)
 	if (error)
 		goto close_finish;
 
-	error = usermodehelper_disable();
+	error = create_basic_memory_bitmaps();
 	if (error)
 		goto close_finish;
-
-	error = create_basic_memory_bitmaps();
-	if (error) {
-		usermodehelper_enable();
-		goto close_finish;
-	}
 
 	pr_debug("PM: Preparing processes for restore.\n");
 	error = freeze_processes();
@@ -803,7 +798,6 @@ static int software_resume(void)
 	thaw_processes();
  Done:
 	free_basic_memory_bitmaps();
-	usermodehelper_enable();
  Finish:
 	pm_notifier_call_chain(PM_POST_RESTORE);
 	pm_restore_console();

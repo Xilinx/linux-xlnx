@@ -988,8 +988,6 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 	}
-#elif defined CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-	xqspi->is_dual = 1;
 #endif
 
 	/* QSPI controller initializations */

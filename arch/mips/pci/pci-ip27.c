@@ -50,7 +50,7 @@ int __cpuinit bridge_probe(nasid_t nasid, int widget_id, int masterwid)
 	bridge_t *bridge;
 	int slot;
 
-	pci_probe_only = 1;
+	pci_set_flags(PCI_PROBE_ONLY);
 
 	printk("a bridge\n");
 
@@ -212,7 +212,7 @@ static inline void pci_enable_swapping(struct pci_dev *dev)
 	bridge->b_widget.w_tflush;	/* Flush */
 }
 
-static void __init pci_fixup_ioc3(struct pci_dev *d)
+static void __devinit pci_fixup_ioc3(struct pci_dev *d)
 {
 	pci_disable_swapping(d);
 }

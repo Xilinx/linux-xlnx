@@ -38,6 +38,7 @@ void map__init(struct map *self, enum map_type type,
 	RB_CLEAR_NODE(&self->rb_node);
 	self->groups   = NULL;
 	self->referenced = false;
+	self->erange_warned = false;
 }
 
 struct map *map__new(struct list_head *dsos__list, u64 start, u64 len,
@@ -210,6 +211,21 @@ size_t map__fprintf(struct map *self, FILE *fp)
 {
 	return fprintf(fp, " %" PRIx64 "-%" PRIx64 " %" PRIx64 " %s\n",
 		       self->start, self->end, self->pgoff, self->dso->name);
+}
+
+size_t map__fprintf_dsoname(struct map *map, FILE *fp)
+{
+	const char *dsoname;
+
+	if (map && map->dso && (map->dso->name || map->dso->long_name)) {
+		if (symbol_conf.show_kernel_path && map->dso->long_name)
+			dsoname = map->dso->long_name;
+		else if (map->dso->name)
+			dsoname = map->dso->name;
+	} else
+		dsoname = "[unknown]";
+
+	return fprintf(fp, "%s", dsoname);
 }
 
 /*
@@ -653,24 +669,25 @@ struct machine *machines__find(struct rb_root *self, pid_t pid)
 struct machine *machines__findnew(struct rb_root *self, pid_t pid)
 {
 	char path[PATH_MAX];
-	const char *root_dir;
+	const char *root_dir = "";
 	struct machine *machine = machines__find(self, pid);
 
-	if (!machine || machine->pid != pid) {
-		if (pid == HOST_KERNEL_ID || pid == DEFAULT_GUEST_KERNEL_ID)
-			root_dir = "";
-		else {
-			if (!symbol_conf.guestmount)
-				goto out;
-			sprintf(path, "%s/%d", symbol_conf.guestmount, pid);
-			if (access(path, R_OK)) {
-				pr_err("Can't access file %s\n", path);
-				goto out;
-			}
-			root_dir = path;
+	if (machine && (machine->pid == pid))
+		goto out;
+
+	if ((pid != HOST_KERNEL_ID) &&
+	    (pid != DEFAULT_GUEST_KERNEL_ID) &&
+	    (symbol_conf.guestmount)) {
+		sprintf(path, "%s/%d", symbol_conf.guestmount, pid);
+		if (access(path, R_OK)) {
+			pr_err("Can't access file %s\n", path);
+			machine = NULL;
+			goto out;
 		}
-		machine = machines__add(self, pid, root_dir);
+		root_dir = path;
 	}
+
+	machine = machines__add(self, pid, root_dir);
 
 out:
 	return machine;

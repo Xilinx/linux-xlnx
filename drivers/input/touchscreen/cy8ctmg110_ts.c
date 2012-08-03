@@ -251,7 +251,8 @@ static int __devinit cy8ctmg110_probe(struct i2c_client *client,
 	}
 
 	err = request_threaded_irq(client->irq, NULL, cy8ctmg110_irq_thread,
-				   IRQF_TRIGGER_RISING, "touch_reset_key", ts);
+				   IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				   "touch_reset_key", ts);
 	if (err < 0) {
 		dev_err(&client->dev,
 			"irq %d busy? error %d\n", client->irq, err);
@@ -350,18 +351,7 @@ static struct i2c_driver cy8ctmg110_driver = {
 	.remove		= __devexit_p(cy8ctmg110_remove),
 };
 
-static int __init cy8ctmg110_init(void)
-{
-	return i2c_add_driver(&cy8ctmg110_driver);
-}
-
-static void __exit cy8ctmg110_exit(void)
-{
-	i2c_del_driver(&cy8ctmg110_driver);
-}
-
-module_init(cy8ctmg110_init);
-module_exit(cy8ctmg110_exit);
+module_i2c_driver(cy8ctmg110_driver);
 
 MODULE_AUTHOR("Samuli Konttila <samuli.konttila@aavamobile.com>");
 MODULE_DESCRIPTION("cy8ctmg110 TouchScreen Driver");

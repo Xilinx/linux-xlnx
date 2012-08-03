@@ -146,11 +146,6 @@ enum blkif_protocol {
 	BLKIF_PROTOCOL_X86_64 = 3,
 };
 
-enum blkif_backend_type {
-	BLKIF_BACKEND_PHY  = 1,
-	BLKIF_BACKEND_FILE = 2,
-};
-
 struct xen_vbd {
 	/* What the domain refers to this vbd as. */
 	blkif_vdev_t		handle;
@@ -177,7 +172,6 @@ struct xen_blkif {
 	unsigned int		irq;
 	/* Comms information. */
 	enum blkif_protocol	blk_protocol;
-	enum blkif_backend_type blk_backend_type;
 	union blkif_back_rings	blk_rings;
 	void			*blk_ring;
 	/* The VBD attached to this interface. */
@@ -263,6 +257,7 @@ static inline void blkif_get_x86_32_req(struct blkif_request *dst,
 		break;
 	case BLKIF_OP_DISCARD:
 		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.id = src->u.discard.id;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;
@@ -293,6 +288,7 @@ static inline void blkif_get_x86_64_req(struct blkif_request *dst,
 		break;
 	case BLKIF_OP_DISCARD:
 		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.id = src->u.discard.id;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;

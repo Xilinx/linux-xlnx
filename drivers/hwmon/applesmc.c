@@ -8,7 +8,7 @@
  *
  * Based on hdaps.c driver:
  * Copyright (C) 2005 Robert Love <rml@novell.com>
- * Copyright (C) 2005 Jesper Juhl <jesper.juhl@gmail.com>
+ * Copyright (C) 2005 Jesper Juhl <jj@chaosbits.net>
  *
  * Fan control based on smcFanControl:
  * Copyright (C) 2006 Hendrik Holtmann <holtmann@mac.com>
@@ -215,7 +215,7 @@ static int read_smc(u8 cmd, const char *key, u8 *buffer, u8 len)
 	int i;
 
 	if (send_command(cmd) || send_argument(key)) {
-		pr_warn("%s: read arg fail\n", key);
+		pr_warn("%.4s: read arg fail\n", key);
 		return -EIO;
 	}
 
@@ -223,7 +223,7 @@ static int read_smc(u8 cmd, const char *key, u8 *buffer, u8 len)
 
 	for (i = 0; i < len; i++) {
 		if (__wait_status(0x05)) {
-			pr_warn("%s: read data fail\n", key);
+			pr_warn("%.4s: read data fail\n", key);
 			return -EIO;
 		}
 		buffer[i] = inb(APPLESMC_DATA_PORT);
@@ -344,8 +344,10 @@ static int applesmc_get_lower_bound(unsigned int *lo, const char *key)
 	while (begin != end) {
 		int middle = begin + (end - begin) / 2;
 		entry = applesmc_get_entry_by_index(middle);
-		if (IS_ERR(entry))
+		if (IS_ERR(entry)) {
+			*lo = 0;
 			return PTR_ERR(entry);
+		}
 		if (strcmp(entry->key, key) < 0)
 			begin = middle + 1;
 		else
@@ -364,8 +366,10 @@ static int applesmc_get_upper_bound(unsigned int *hi, const char *key)
 	while (begin != end) {
 		int middle = begin + (end - begin) / 2;
 		entry = applesmc_get_entry_by_index(middle);
-		if (IS_ERR(entry))
+		if (IS_ERR(entry)) {
+			*hi = smcreg.key_count;
 			return PTR_ERR(entry);
+		}
 		if (strcmp(key, entry->key) < 0)
 			end = middle;
 		else
@@ -1189,8 +1193,10 @@ static int applesmc_dmi_match(const struct dmi_system_id *id)
 	return 1;
 }
 
-/* Note that DMI_MATCH(...,"MacBook") will match "MacBookPro1,1".
- * So we need to put "Apple MacBook Pro" before "Apple MacBook". */
+/*
+ * Note that DMI_MATCH(...,"MacBook") will match "MacBookPro1,1".
+ * So we need to put "Apple MacBook Pro" before "Apple MacBook".
+ */
 static __initdata struct dmi_system_id applesmc_whitelist[] = {
 	{ applesmc_dmi_match, "Apple MacBook Air", {
 	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple"),

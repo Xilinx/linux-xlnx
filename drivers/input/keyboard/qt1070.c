@@ -201,7 +201,8 @@ static int __devinit qt1070_probe(struct i2c_client *client,
 	msleep(QT1070_RESET_TIME);
 
 	err = request_threaded_irq(client->irq, NULL, qt1070_interrupt,
-		IRQF_TRIGGER_NONE, client->dev.driver->name, data);
+				   IRQF_TRIGGER_NONE | IRQF_ONESHOT,
+				   client->dev.driver->name, data);
 	if (err) {
 		dev_err(&client->dev, "fail to request irq\n");
 		goto err_free_mem;
@@ -258,17 +259,7 @@ static struct i2c_driver qt1070_driver = {
 	.remove		= __devexit_p(qt1070_remove),
 };
 
-static int __init qt1070_init(void)
-{
-	return i2c_add_driver(&qt1070_driver);
-}
-module_init(qt1070_init);
-
-static void __exit qt1070_exit(void)
-{
-	i2c_del_driver(&qt1070_driver);
-}
-module_exit(qt1070_exit);
+module_i2c_driver(qt1070_driver);
 
 MODULE_AUTHOR("Bo Shen <voice.shen@atmel.com>");
 MODULE_DESCRIPTION("Driver for AT42QT1070 QTouch sensor");

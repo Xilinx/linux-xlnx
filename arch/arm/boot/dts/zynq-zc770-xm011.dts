@@ -13,7 +13,7 @@
 	};
 
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x800000,8M earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
 		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
@@ -59,11 +59,21 @@
 			clock-frequency-timer2 = <0x7ed6b40>;
 		};
 
+		timer@f8f00600 {
+			compatible = "arm,cortex-a9-twd-timer";
+			reg = <0xf8f00600 0x20>;
+			interrupts = <1 13 0x0100>;
+			interrupt-parent = <&gic>;
+		};
+
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
+			interrupts = <0 9 0>;
+			interrupt-parent = <&gic>;
 			reg = <0xf8005000 0x100>;
 			clock-frequency = <0x7ed6b40>;
+			reset = <0>;
 		};
 
 		spi: spi@e0006000 {

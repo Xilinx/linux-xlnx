@@ -43,6 +43,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/scatterlist.h>
+#include <linux/bitmap.h>
 
 #include <xen/xen.h>
 #include <xen/xenbus.h>
@@ -81,6 +82,7 @@ static const struct block_device_operations xlvbd_block_fops;
  */
 struct blkfront_info
 {
+	spinlock_t io_lock;
 	struct mutex mutex;
 	struct xenbus_device *xbdev;
 	struct gendisk *gd;
@@ -104,8 +106,6 @@ struct blkfront_info
 	unsigned int discard_alignment;
 	int is_ready;
 };
-
-static DEFINE_SPINLOCK(blkif_io_lock);
 
 static unsigned int nr_minors;
 static unsigned long *minors;
@@ -141,14 +141,36 @@ static int get_id_from_freelist(struct blkfront_info *info)
 	return free;
 }
 
-static void add_id_to_freelist(struct blkfront_info *info,
+static int add_id_to_freelist(struct blkfront_info *info,
 			       unsigned long id)
 {
+	if (info->shadow[id].req.u.rw.id != id)
+		return -EINVAL;
+	if (info->shadow[id].request == NULL)
+		return -EINVAL;
 	info->shadow[id].req.u.rw.id  = info->shadow_free;
 	info->shadow[id].request = NULL;
 	info->shadow_free = id;
+	return 0;
 }
 
+static const char *op_name(int op)
+{
+	static const char *const names[] = {
+		[BLKIF_OP_READ] = "read",
+		[BLKIF_OP_WRITE] = "write",
+		[BLKIF_OP_WRITE_BARRIER] = "barrier",
+		[BLKIF_OP_FLUSH_DISKCACHE] = "flush",
+		[BLKIF_OP_DISCARD] = "discard" };
+
+	if (op < 0 || op >= ARRAY_SIZE(names))
+		return "unknown";
+
+	if (!names[op])
+		return "reserved";
+
+	return names[op];
+}
 static int xlbd_reserve_minors(unsigned int minor, unsigned int nr)
 {
 	unsigned int end = minor + nr;
@@ -177,8 +199,7 @@ static int xlbd_reserve_minors(unsigned int minor, unsigned int nr)
 
 	spin_lock(&minor_lock);
 	if (find_next_bit(minors, end, minor) >= end) {
-		for (; minor < end; ++minor)
-			__set_bit(minor, minors);
+		bitmap_set(minors, minor, nr);
 		rc = 0;
 	} else
 		rc = -EBUSY;
@@ -193,8 +214,7 @@ static void xlbd_release_minors(unsigned int minor, unsigned int nr)
 
 	BUG_ON(end > nr_minors);
 	spin_lock(&minor_lock);
-	for (; minor < end; ++minor)
-		__clear_bit(minor, minors);
+	bitmap_clear(minors,  minor, nr);
 	spin_unlock(&minor_lock);
 }
 
@@ -419,7 +439,7 @@ static int xlvbd_init_blk_queue(struct gendisk *gd, u16 sector_size)
 	struct request_queue *rq;
 	struct blkfront_info *info = gd->private_data;
 
-	rq = blk_init_queue(do_blkif_request, &blkif_io_lock);
+	rq = blk_init_queue(do_blkif_request, &info->io_lock);
 	if (rq == NULL)
 		return -1;
 
@@ -528,6 +548,14 @@ static int xen_translate_vdev(int vdevice, int *minor, unsigned int *offset)
 	return 0;
 }
 
+static char *encode_disk_name(char *ptr, unsigned int n)
+{
+	if (n >= 26)
+		ptr = encode_disk_name(ptr, n / 26 - 1);
+	*ptr = 'a' + n % 26;
+	return ptr + 1;
+}
+
 static int xlvbd_alloc_gendisk(blkif_sector_t capacity,
 			       struct blkfront_info *info,
 			       u16 vdisk_info, u16 sector_size)
@@ -538,6 +566,7 @@ static int xlvbd_alloc_gendisk(blkif_sector_t capacity,
 	unsigned int offset;
 	int minor;
 	int nr_parts;
+	char *ptr;
 
 	BUG_ON(info->gd != NULL);
 	BUG_ON(info->rq != NULL);
@@ -562,7 +591,11 @@ static int xlvbd_alloc_gendisk(blkif_sector_t capacity,
 					"emulated IDE disks,\n\t choose an xvd device name"
 					"from xvde on\n", info->vdevice);
 	}
-	err = -ENODEV;
+	if (minor >> MINORBITS) {
+		pr_warn("blkfront: %#x's minor (%#x) out of range; ignoring\n",
+			info->vdevice, minor);
+		return -ENODEV;
+	}
 
 	if ((minor % nr_parts) == 0)
 		nr_minors = nr_parts;
@@ -576,23 +609,14 @@ static int xlvbd_alloc_gendisk(blkif_sector_t capacity,
 	if (gd == NULL)
 		goto release;
 
-	if (nr_minors > 1) {
-		if (offset < 26)
-			sprintf(gd->disk_name, "%s%c", DEV_NAME, 'a' + offset);
-		else
-			sprintf(gd->disk_name, "%s%c%c", DEV_NAME,
-				'a' + ((offset / 26)-1), 'a' + (offset % 26));
-	} else {
-		if (offset < 26)
-			sprintf(gd->disk_name, "%s%c%d", DEV_NAME,
-				'a' + offset,
-				minor & (nr_parts - 1));
-		else
-			sprintf(gd->disk_name, "%s%c%c%d", DEV_NAME,
-				'a' + ((offset / 26) - 1),
-				'a' + (offset % 26),
-				minor & (nr_parts - 1));
-	}
+	strcpy(gd->disk_name, DEV_NAME);
+	ptr = encode_disk_name(gd->disk_name + sizeof(DEV_NAME) - 1, offset);
+	BUG_ON(ptr >= gd->disk_name + DISK_NAME_LEN);
+	if (nr_minors > 1)
+		*ptr = 0;
+	else
+		snprintf(ptr, gd->disk_name + DISK_NAME_LEN - ptr,
+			 "%d", minor & (nr_parts - 1));
 
 	gd->major = XENVBD_MAJOR;
 	gd->first_minor = minor;
@@ -636,14 +660,14 @@ static void xlvbd_release_gendisk(struct blkfront_info *info)
 	if (info->rq == NULL)
 		return;
 
-	spin_lock_irqsave(&blkif_io_lock, flags);
+	spin_lock_irqsave(&info->io_lock, flags);
 
 	/* No more blkif_request(). */
 	blk_stop_queue(info->rq);
 
 	/* No more gnttab callback work. */
 	gnttab_cancel_free_callback(&info->callback);
-	spin_unlock_irqrestore(&blkif_io_lock, flags);
+	spin_unlock_irqrestore(&info->io_lock, flags);
 
 	/* Flush gnttab callback work. Must be done with no locks held. */
 	flush_work_sync(&info->work);
@@ -675,16 +699,16 @@ static void blkif_restart_queue(struct work_struct *work)
 {
 	struct blkfront_info *info = container_of(work, struct blkfront_info, work);
 
-	spin_lock_irq(&blkif_io_lock);
+	spin_lock_irq(&info->io_lock);
 	if (info->connected == BLKIF_STATE_CONNECTED)
 		kick_pending_request_queues(info);
-	spin_unlock_irq(&blkif_io_lock);
+	spin_unlock_irq(&info->io_lock);
 }
 
 static void blkif_free(struct blkfront_info *info, int suspend)
 {
 	/* Prevent new requests being issued until we fix things up. */
-	spin_lock_irq(&blkif_io_lock);
+	spin_lock_irq(&info->io_lock);
 	info->connected = suspend ?
 		BLKIF_STATE_SUSPENDED : BLKIF_STATE_DISCONNECTED;
 	/* No more blkif_request(). */
@@ -692,7 +716,7 @@ static void blkif_free(struct blkfront_info *info, int suspend)
 		blk_stop_queue(info->rq);
 	/* No more gnttab callback work. */
 	gnttab_cancel_free_callback(&info->callback);
-	spin_unlock_irq(&blkif_io_lock);
+	spin_unlock_irq(&info->io_lock);
 
 	/* Flush gnttab callback work. Must be done with no locks held. */
 	flush_work_sync(&info->work);
@@ -728,10 +752,10 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 	struct blkfront_info *info = (struct blkfront_info *)dev_id;
 	int error;
 
-	spin_lock_irqsave(&blkif_io_lock, flags);
+	spin_lock_irqsave(&info->io_lock, flags);
 
 	if (unlikely(info->connected != BLKIF_STATE_CONNECTED)) {
-		spin_unlock_irqrestore(&blkif_io_lock, flags);
+		spin_unlock_irqrestore(&info->io_lock, flags);
 		return IRQ_HANDLED;
 	}
 
@@ -744,20 +768,36 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 
 		bret = RING_GET_RESPONSE(&info->ring, i);
 		id   = bret->id;
+		/*
+		 * The backend has messed up and given us an id that we would
+		 * never have given to it (we stamp it up to BLK_RING_SIZE -
+		 * look in get_id_from_freelist.
+		 */
+		if (id >= BLK_RING_SIZE) {
+			WARN(1, "%s: response to %s has incorrect id (%ld)\n",
+			     info->gd->disk_name, op_name(bret->operation), id);
+			/* We can't safely get the 'struct request' as
+			 * the id is busted. */
+			continue;
+		}
 		req  = info->shadow[id].request;
 
 		if (bret->operation != BLKIF_OP_DISCARD)
 			blkif_completion(&info->shadow[id]);
 
-		add_id_to_freelist(info, id);
+		if (add_id_to_freelist(info, id)) {
+			WARN(1, "%s: response to %s (id %ld) couldn't be recycled!\n",
+			     info->gd->disk_name, op_name(bret->operation), id);
+			continue;
+		}
 
 		error = (bret->status == BLKIF_RSP_OKAY) ? 0 : -EIO;
 		switch (bret->operation) {
 		case BLKIF_OP_DISCARD:
 			if (unlikely(bret->status == BLKIF_RSP_EOPNOTSUPP)) {
 				struct request_queue *rq = info->rq;
-				printk(KERN_WARNING "blkfront: %s: discard op failed\n",
-					   info->gd->disk_name);
+				printk(KERN_WARNING "blkfront: %s: %s op failed\n",
+					   info->gd->disk_name, op_name(bret->operation));
 				error = -EOPNOTSUPP;
 				info->feature_discard = 0;
 				info->feature_secdiscard = 0;
@@ -769,18 +809,14 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 		case BLKIF_OP_FLUSH_DISKCACHE:
 		case BLKIF_OP_WRITE_BARRIER:
 			if (unlikely(bret->status == BLKIF_RSP_EOPNOTSUPP)) {
-				printk(KERN_WARNING "blkfront: %s: write %s op failed\n",
-				       info->flush_op == BLKIF_OP_WRITE_BARRIER ?
-				       "barrier" :  "flush disk cache",
-				       info->gd->disk_name);
+				printk(KERN_WARNING "blkfront: %s: %s op failed\n",
+				       info->gd->disk_name, op_name(bret->operation));
 				error = -EOPNOTSUPP;
 			}
 			if (unlikely(bret->status == BLKIF_RSP_ERROR &&
 				     info->shadow[id].req.u.rw.nr_segments == 0)) {
-				printk(KERN_WARNING "blkfront: %s: empty write %s op failed\n",
-				       info->flush_op == BLKIF_OP_WRITE_BARRIER ?
-				       "barrier" :  "flush disk cache",
-				       info->gd->disk_name);
+				printk(KERN_WARNING "blkfront: %s: empty %s op failed\n",
+				       info->gd->disk_name, op_name(bret->operation));
 				error = -EOPNOTSUPP;
 			}
 			if (unlikely(error)) {
@@ -816,7 +852,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 
 	kick_pending_request_queues(info);
 
-	spin_unlock_irqrestore(&blkif_io_lock, flags);
+	spin_unlock_irqrestore(&info->io_lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -991,6 +1027,7 @@ static int blkfront_probe(struct xenbus_device *dev,
 	}
 
 	mutex_init(&info->mutex);
+	spin_lock_init(&info->io_lock);
 	info->xbdev = dev;
 	info->vdevice = vdevice;
 	info->connected = BLKIF_STATE_DISCONNECTED;
@@ -1068,7 +1105,7 @@ static int blkif_recover(struct blkfront_info *info)
 
 	xenbus_switch_state(info->xbdev, XenbusStateConnected);
 
-	spin_lock_irq(&blkif_io_lock);
+	spin_lock_irq(&info->io_lock);
 
 	/* Now safe for us to use the shared ring */
 	info->connected = BLKIF_STATE_CONNECTED;
@@ -1079,7 +1116,7 @@ static int blkif_recover(struct blkfront_info *info)
 	/* Kick any other new requests queued since we resumed */
 	kick_pending_request_queues(info);
 
-	spin_unlock_irq(&blkif_io_lock);
+	spin_unlock_irq(&info->io_lock);
 
 	return 0;
 }
@@ -1277,10 +1314,10 @@ static void blkfront_connect(struct blkfront_info *info)
 	xenbus_switch_state(info->xbdev, XenbusStateConnected);
 
 	/* Kick pending requests. */
-	spin_lock_irq(&blkif_io_lock);
+	spin_lock_irq(&info->io_lock);
 	info->connected = BLKIF_STATE_CONNECTED;
 	kick_pending_request_queues(info);
-	spin_unlock_irq(&blkif_io_lock);
+	spin_unlock_irq(&info->io_lock);
 
 	add_disk(info->gd);
 
@@ -1410,7 +1447,6 @@ static int blkif_release(struct gendisk *disk, fmode_t mode)
 	mutex_lock(&blkfront_mutex);
 
 	bdev = bdget_disk(disk, 0);
-	bdput(bdev);
 
 	if (bdev->bd_openers)
 		goto out;
@@ -1441,6 +1477,7 @@ static int blkif_release(struct gendisk *disk, fmode_t mode)
 	}
 
 out:
+	bdput(bdev);
 	mutex_unlock(&blkfront_mutex);
 	return 0;
 }
@@ -1475,6 +1512,9 @@ static int __init xlblk_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 
+	if (xen_hvm_domain() && !xen_platform_pci_unplug)
+		return -ENODEV;
+
 	if (register_blkdev(XENVBD_MAJOR, DEV_NAME)) {
 		printk(KERN_WARNING "xen_blk: can't get major %d with name %s\n",
 		       XENVBD_MAJOR, DEV_NAME);
@@ -1494,7 +1534,9 @@ module_init(xlblk_init);
 
 static void __exit xlblk_exit(void)
 {
-	return xenbus_unregister_driver(&blkfront_driver);
+	xenbus_unregister_driver(&blkfront_driver);
+	unregister_blkdev(XENVBD_MAJOR, DEV_NAME);
+	kfree(minors);
 }
 module_exit(xlblk_exit);
 

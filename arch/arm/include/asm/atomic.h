@@ -13,7 +13,9 @@
 
 #include <linux/compiler.h>
 #include <linux/types.h>
-#include <asm/system.h>
+#include <linux/irqflags.h>
+#include <asm/barrier.h>
+#include <asm/cmpxchg.h>
 
 #define ATOMIC_INIT(i)	{ (i) }
 
@@ -241,7 +243,7 @@ typedef struct {
 
 #define ATOMIC64_INIT(i) { (i) }
 
-static inline u64 atomic64_read(atomic64_t *v)
+static inline u64 atomic64_read(const atomic64_t *v)
 {
 	u64 result;
 

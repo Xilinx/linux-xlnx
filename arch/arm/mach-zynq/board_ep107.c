@@ -161,11 +161,7 @@ static struct mtd_partition qspi_flash_partitions[] = {
 	},
 	{
 		.name		= "qspi-rootfs",
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-		.size		= 0x1800000,
-#else
 		.size		= 0x800000,
-#endif
 		.offset		= 0x800000,
 	},
 };
@@ -174,11 +170,7 @@ static struct flash_platform_data qspi_flash_pdata = {
 	.name			= "serial_flash",
 	.parts			= qspi_flash_partitions,
 	.nr_parts		= ARRAY_SIZE(qspi_flash_partitions),
-#ifdef CONFIG_XILINX_PS_QSPI_USE_DUAL_FLASH
-	.type			= "n25q128x2"	/* dual flash devices */
-#else
 	.type			= "n25q128"	/* single flash device */
-#endif
 };
 
 static struct spi_board_info __initdata xilinx_qspipss_0_boardinfo = {

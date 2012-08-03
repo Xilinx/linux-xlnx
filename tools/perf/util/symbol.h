@@ -5,9 +5,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "map.h"
+#include "../perf.h"
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include <stdio.h>
+#include <byteswap.h>
 
 #ifdef HAVE_CPLUS_DEMANGLE
 extern char *cplus_demangle(const char *, int);
@@ -64,12 +66,18 @@ struct symbol {
 
 void symbol__delete(struct symbol *sym);
 
+static inline size_t symbol__size(const struct symbol *sym)
+{
+	return sym->end - sym->start + 1;
+}
+
 struct strlist;
 
 struct symbol_conf {
 	unsigned short	priv_size;
 	unsigned short	nr_events;
 	bool		try_vmlinux_path,
+			show_kernel_path,
 			use_modules,
 			sort_by_name,
 			show_nr_samples,
@@ -95,7 +103,11 @@ struct symbol_conf {
 			*col_width_list_str;
        struct strlist	*dso_list,
 			*comm_list,
-			*sym_list;
+			*sym_list,
+			*dso_from_list,
+			*dso_to_list,
+			*sym_from_list,
+			*sym_to_list;
 	const char	*symfs;
 };
 
@@ -119,6 +131,19 @@ struct map_symbol {
 	bool	      has_children;
 };
 
+struct addr_map_symbol {
+	struct map    *map;
+	struct symbol *sym;
+	u64	      addr;
+	u64	      al_addr;
+};
+
+struct branch_info {
+	struct addr_map_symbol from;
+	struct addr_map_symbol to;
+	struct branch_flags flags;
+};
+
 struct addr_location {
 	struct thread *thread;
 	struct map    *map;
@@ -136,11 +161,18 @@ enum dso_kernel_type {
 	DSO_TYPE_GUEST_KERNEL
 };
 
+enum dso_swap_type {
+	DSO_SWAP__UNSET,
+	DSO_SWAP__NO,
+	DSO_SWAP__YES,
+};
+
 struct dso {
 	struct list_head node;
 	struct rb_root	 symbols[MAP__NR_TYPES];
 	struct rb_root	 symbol_names[MAP__NR_TYPES];
 	enum dso_kernel_type	kernel;
+	enum dso_swap_type	needs_swap;
 	u8		 adjust_symbols:1;
 	u8		 has_build_id:1;
 	u8		 hit:1;
@@ -157,6 +189,28 @@ struct dso {
 	u16		 short_name_len;
 	char		 name[0];
 };
+
+#define DSO__SWAP(dso, type, val)			\
+({							\
+	type ____r = val;				\
+	BUG_ON(dso->needs_swap == DSO_SWAP__UNSET);	\
+	if (dso->needs_swap == DSO_SWAP__YES) {		\
+		switch (sizeof(____r)) {		\
+		case 2:					\
+			____r = bswap_16(val);		\
+			break;				\
+		case 4:					\
+			____r = bswap_32(val);		\
+			break;				\
+		case 8:					\
+			____r = bswap_64(val);		\
+			break;				\
+		default:				\
+			BUG_ON(1);			\
+		}					\
+	}						\
+	____r;						\
+})
 
 struct dso *dso__new(const char *name);
 void dso__delete(struct dso *dso);
@@ -218,6 +272,7 @@ void dso__set_long_name(struct dso *dso, char *name);
 void dso__set_build_id(struct dso *dso, void *build_id);
 void dso__read_running_kernel_build_id(struct dso *dso,
 				       struct machine *machine);
+struct map *dso__new_map(const char *name);
 struct symbol *dso__find_symbol(struct dso *dso, enum map_type type,
 				u64 addr);
 struct symbol *dso__find_symbol_by_name(struct dso *dso, enum map_type type,
@@ -241,6 +296,9 @@ void machines__destroy_guest_kernel_maps(struct rb_root *machines);
 
 int symbol__init(void);
 void symbol__exit(void);
+size_t symbol__fprintf_symname_offs(const struct symbol *sym,
+				    const struct addr_location *al, FILE *fp);
+size_t symbol__fprintf_symname(const struct symbol *sym, FILE *fp);
 bool symbol_type__is_a(char symbol_type, enum map_type map_type);
 
 size_t machine__fprintf_vmlinux_path(struct machine *machine, FILE *fp);

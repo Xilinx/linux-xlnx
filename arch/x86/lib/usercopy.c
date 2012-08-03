@@ -7,6 +7,9 @@
 #include <linux/highmem.h>
 #include <linux/module.h>
 
+#include <asm/word-at-a-time.h>
+#include <linux/sched.h>
+
 /*
  * best effort, GUP based copy_from_user() that is NMI-safe
  */
@@ -18,6 +21,9 @@ copy_from_user_nmi(void *to, const void __user *from, unsigned long n)
 	struct page *page;
 	void *map;
 	int ret;
+
+	if (__range_not_ok(from, n, TASK_SIZE))
+		return len;
 
 	do {
 		ret = __get_user_pages_fast(addr, 1, 0, &page);

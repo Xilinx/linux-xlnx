@@ -85,6 +85,9 @@ struct hwicap_driver_config {
 	void (*reset)(struct hwicap_drvdata *drvdata);
 };
 
+/* Number of times to poll the done regsiter */
+#define XHI_MAX_RETRIES     5000
+
 /************ Constant Definitions *************/
 
 #define XHI_PAD_FRAMES              0x1

@@ -17,6 +17,7 @@
 #include <linux/fs.h>
 #include <linux/vmalloc.h>
 
+#include <asm/cp15.h>
 #include <asm/cputype.h>
 #include <asm/sections.h>
 #include <asm/cachetype.h>
@@ -25,6 +26,7 @@
 #include <asm/smp_plat.h>
 #include <asm/tlb.h>
 #include <asm/highmem.h>
+#include <asm/system_info.h>
 #include <asm/traps.h>
 
 #include <asm/mach/arch.h>
@@ -286,6 +288,11 @@ static struct mem_type mem_types[] = {
 				PMD_SECT_UNCACHED | PMD_SECT_XN,
 		.domain    = DOMAIN_KERNEL,
 	},
+	[MT_MEMORY_DMA_READY] = {
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY,
+		.prot_l1   = PMD_TYPE_TABLE,
+		.domain    = DOMAIN_KERNEL,
+	},
 };
 
 const struct mem_type *get_mem_type(unsigned int type)
@@ -427,6 +434,7 @@ static void __init build_mem_type_table(void)
 	if (arch_is_coherent() && cpu_is_xsc3()) {
 		mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
 		mem_types[MT_MEMORY].prot_pte |= L_PTE_SHARED;
+		mem_types[MT_MEMORY_DMA_READY].prot_pte |= L_PTE_SHARED;
 		mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
 		mem_types[MT_MEMORY_NONCACHED].prot_pte |= L_PTE_SHARED;
 	}
@@ -458,6 +466,7 @@ static void __init build_mem_type_table(void)
 			mem_types[MT_DEVICE_CACHED].prot_pte |= L_PTE_SHARED;
 			mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
 			mem_types[MT_MEMORY].prot_pte |= L_PTE_SHARED;
+			mem_types[MT_MEMORY_DMA_READY].prot_pte |= L_PTE_SHARED;
 			mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
 			mem_types[MT_MEMORY_NONCACHED].prot_pte |= L_PTE_SHARED;
 		}
@@ -487,7 +496,8 @@ static void __init build_mem_type_table(void)
 	 */
 	for (i = 0; i < ARRAY_SIZE(mem_types); i++) {
 		mem_types[i].prot_pte |= PTE_EXT_AF;
-		mem_types[i].prot_sect |= PMD_SECT_AF;
+		if (mem_types[i].prot_sect)
+			mem_types[i].prot_sect |= PMD_SECT_AF;
 	}
 	kern_pgprot |= PTE_EXT_AF;
 	vecs_pgprot |= PTE_EXT_AF;
@@ -509,6 +519,7 @@ static void __init build_mem_type_table(void)
 	mem_types[MT_HIGH_VECTORS].prot_l1 |= ecc_mask;
 	mem_types[MT_MEMORY].prot_sect |= ecc_mask | cp->pmd;
 	mem_types[MT_MEMORY].prot_pte |= kern_pgprot;
+	mem_types[MT_MEMORY_DMA_READY].prot_pte |= kern_pgprot;
 	mem_types[MT_MEMORY_NONCACHED].prot_sect |= ecc_mask;
 	mem_types[MT_ROM].prot_sect |= cp->pmd;
 
@@ -593,7 +604,7 @@ static void __init alloc_init_section(pud_t *pud, unsigned long addr,
 	 * L1 entries, whereas PGDs refer to a group of L1 entries making
 	 * up one logical pointer to an L2 table.
 	 */
-	if (((addr | end | phys) & ~SECTION_MASK) == 0) {
+	if (type->prot_sect && ((addr | end | phys) & ~SECTION_MASK) == 0) {
 		pmd_t *p = pmd;
 
 #ifndef CONFIG_ARM_LPAE
@@ -616,8 +627,8 @@ static void __init alloc_init_section(pud_t *pud, unsigned long addr,
 	}
 }
 
-static void alloc_init_pud(pgd_t *pgd, unsigned long addr, unsigned long end,
-	unsigned long phys, const struct mem_type *type)
+static void __init alloc_init_pud(pgd_t *pgd, unsigned long addr,
+	unsigned long end, unsigned long phys, const struct mem_type *type)
 {
 	pud_t *pud = pud_offset(pgd, addr);
 	unsigned long next;
@@ -780,6 +791,79 @@ void __init iotable_init(struct map_desc *io_desc, int nr)
 	}
 }
 
+#ifndef CONFIG_ARM_LPAE
+
+/*
+ * The Linux PMD is made of two consecutive section entries covering 2MB
+ * (see definition in include/asm/pgtable-2level.h).  However a call to
+ * create_mapping() may optimize static mappings by using individual
+ * 1MB section mappings.  This leaves the actual PMD potentially half
+ * initialized if the top or bottom section entry isn't used, leaving it
+ * open to problems if a subsequent ioremap() or vmalloc() tries to use
+ * the virtual space left free by that unused section entry.
+ *
+ * Let's avoid the issue by inserting dummy vm entries covering the unused
+ * PMD halves once the static mappings are in place.
+ */
+
+static void __init pmd_empty_section_gap(unsigned long addr)
+{
+	struct vm_struct *vm;
+
+	vm = early_alloc_aligned(sizeof(*vm), __alignof__(*vm));
+	vm->addr = (void *)addr;
+	vm->size = SECTION_SIZE;
+	vm->flags = VM_IOREMAP | VM_ARM_STATIC_MAPPING;
+	vm->caller = pmd_empty_section_gap;
+	vm_area_add_early(vm);
+}
+
+static void __init fill_pmd_gaps(void)
+{
+	struct vm_struct *vm;
+	unsigned long addr, next = 0;
+	pmd_t *pmd;
+
+	/* we're still single threaded hence no lock needed here */
+	for (vm = vmlist; vm; vm = vm->next) {
+		if (!(vm->flags & VM_ARM_STATIC_MAPPING))
+			continue;
+		addr = (unsigned long)vm->addr;
+		if (addr < next)
+			continue;
+
+		/*
+		 * Check if this vm starts on an odd section boundary.
+		 * If so and the first section entry for this PMD is free
+		 * then we block the corresponding virtual address.
+		 */
+		if ((addr & ~PMD_MASK) == SECTION_SIZE) {
+			pmd = pmd_off_k(addr);
+			if (pmd_none(*pmd))
+				pmd_empty_section_gap(addr & PMD_MASK);
+		}
+
+		/*
+		 * Then check if this vm ends on an odd section boundary.
+		 * If so and the second section entry for this PMD is empty
+		 * then we block the corresponding virtual address.
+		 */
+		addr += vm->size;
+		if ((addr & ~PMD_MASK) == SECTION_SIZE) {
+			pmd = pmd_off_k(addr) + 1;
+			if (pmd_none(*pmd))
+				pmd_empty_section_gap(addr);
+		}
+
+		/* no need to look at any vm entry until we hit the next PMD */
+		next = (addr + PMD_SIZE - 1) & PMD_MASK;
+	}
+}
+
+#else
+#define fill_pmd_gaps() do { } while (0)
+#endif
+
 static void * __initdata vmalloc_min =
 	(void *)(VMALLOC_END - (240 << 20) - VMALLOC_OFFSET);
 
@@ -811,7 +895,7 @@ static int __init early_vmalloc(char *arg)
 }
 early_param("vmalloc", early_vmalloc);
 
-static phys_addr_t lowmem_limit __initdata = 0;
+phys_addr_t arm_lowmem_limit __initdata = 0;
 
 void __init sanity_check_meminfo(void)
 {
@@ -894,8 +978,8 @@ void __init sanity_check_meminfo(void)
 			bank->size = newsize;
 		}
 #endif
-		if (!bank->highmem && bank->start + bank->size > lowmem_limit)
-			lowmem_limit = bank->start + bank->size;
+		if (!bank->highmem && bank->start + bank->size > arm_lowmem_limit)
+			arm_lowmem_limit = bank->start + bank->size;
 
 		j++;
 	}
@@ -920,8 +1004,8 @@ void __init sanity_check_meminfo(void)
 	}
 #endif
 	meminfo.nr_banks = j;
-	high_memory = __va(lowmem_limit - 1) + 1;
-	memblock_set_current_limit(lowmem_limit);
+	high_memory = __va(arm_lowmem_limit - 1) + 1;
+	memblock_set_current_limit(arm_lowmem_limit);
 }
 
 static inline void prepare_page_table(void)
@@ -946,8 +1030,8 @@ static inline void prepare_page_table(void)
 	 * Find the end of the first block of lowmem.
 	 */
 	end = memblock.memory.regions[0].base + memblock.memory.regions[0].size;
-	if (end >= lowmem_limit)
-		end = lowmem_limit;
+	if (end >= arm_lowmem_limit)
+		end = arm_lowmem_limit;
 
 	/*
 	 * Clear out all the kernel space mappings, except for the first
@@ -997,11 +1081,14 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 {
 	struct map_desc map;
 	unsigned long addr;
+	void *vectors;
 
 	/*
 	 * Allocate the vector page early.
 	 */
-	vectors_page = early_alloc(PAGE_SIZE);
+	vectors = early_alloc(PAGE_SIZE);
+
+	early_trap_init(vectors);
 
 	for (addr = VMALLOC_START; addr; addr += PMD_SIZE)
 		pmd_clear(pmd_off_k(addr));
@@ -1041,7 +1128,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	 * location (0xffff0000).  If we aren't using high-vectors, also
 	 * create a mapping at the low-vectors virtual address.
 	 */
-	map.pfn = __phys_to_pfn(virt_to_phys(vectors_page));
+	map.pfn = __phys_to_pfn(virt_to_phys(vectors));
 	map.virtual = 0xffff0000;
 	map.length = PAGE_SIZE;
 	map.type = MT_HIGH_VECTORS;
@@ -1058,6 +1145,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	 */
 	if (mdesc->map_io)
 		mdesc->map_io();
+	fill_pmd_gaps();
 
 	/*
 	 * Finally flush the caches and tlb to ensure that we're in a
@@ -1087,8 +1175,8 @@ static void __init map_lowmem(void)
 		phys_addr_t end = start + reg->size;
 		struct map_desc map;
 
-		if (end > lowmem_limit)
-			end = lowmem_limit;
+		if (end > arm_lowmem_limit)
+			end = arm_lowmem_limit;
 		if (start >= end)
 			break;
 
@@ -1109,11 +1197,12 @@ void __init paging_init(struct machine_desc *mdesc)
 {
 	void *zero_page;
 
-	memblock_set_current_limit(lowmem_limit);
+	memblock_set_current_limit(arm_lowmem_limit);
 
 	build_mem_type_table();
 	prepare_page_table();
 	map_lowmem();
+	dma_contiguous_remap();
 	devicemaps_init(mdesc);
 	kmap_init();
 

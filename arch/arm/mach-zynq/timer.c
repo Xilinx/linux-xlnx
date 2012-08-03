@@ -282,10 +282,6 @@ static void __init xttcpss_timer_init(void)
 		NULL
 	};
 
-#ifdef CONFIG_HAVE_ARM_TWD
-	twd_base = SCU_CPU_TIMER_BASE;
-#endif
-
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
 	 * transition, note that the event timer uses the interrupt and it's the
@@ -366,6 +362,10 @@ static void __init xttcpss_timer_init(void)
 
 	xttcpss_clockevent.cpumask = cpumask_of(0);
 	clockevents_register_device(&xttcpss_clockevent);
+
+#ifdef CONFIG_HAVE_ARM_TWD
+	twd_local_timer_of_register();
+#endif
 }
 
 /*

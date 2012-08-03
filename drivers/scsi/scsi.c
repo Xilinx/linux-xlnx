@@ -90,6 +90,10 @@ unsigned int scsi_logging_level;
 EXPORT_SYMBOL(scsi_logging_level);
 #endif
 
+/* sd, scsi core and power management need to coordinate flushing async actions */
+LIST_HEAD(scsi_sd_probe_domain);
+EXPORT_SYMBOL(scsi_sd_probe_domain);
+
 /* NB: These are exposed through /proc/scsi/scsi and form part of the ABI.
  * You may not alter any existing entry (although adding new ones is
  * encouraged once assigned by ANSI/INCITS T10
@@ -780,12 +784,6 @@ static void scsi_done(struct scsi_cmnd *cmd)
 {
 	trace_scsi_dispatch_cmd_done(cmd);
 	blk_complete_request(cmd->request);
-}
-
-/* Move this to a header if it becomes more generally useful */
-static struct scsi_driver *scsi_cmd_to_driver(struct scsi_cmnd *cmd)
-{
-	return *(struct scsi_driver **)cmd->request->rq_disk->private_data;
 }
 
 /**

@@ -503,7 +503,7 @@ __hw_perf_event_init(struct perf_event *event)
 	     event_requires_mode_exclusion(&event->attr)) {
 		pr_debug("ARM performance counters do not support "
 			 "mode exclusion\n");
-		return -EPERM;
+		return -EOPNOTSUPP;
 	}
 
 	/*
@@ -538,6 +538,10 @@ static int armpmu_event_init(struct perf_event *event)
 	struct arm_pmu *armpmu = to_arm_pmu(event->pmu);
 	int err = 0;
 	atomic_t *active_events = &armpmu->active_events;
+
+	/* does not support taken branch sampling */
+	if (has_branch_stack(event))
+		return -EOPNOTSUPP;
 
 	if (armpmu->map_event(event) == -ENOENT)
 		return -ENOENT;
@@ -733,6 +737,9 @@ init_hw_perf_events(void)
 			break;
 		case 0xC0F0:	/* Cortex-A15 */
 			cpu_pmu = armv7_a15_pmu_init();
+			break;
+		case 0xC070:	/* Cortex-A7 */
+			cpu_pmu = armv7_a7_pmu_init();
 			break;
 		}
 	/* Intel CPUs [xscale]. */

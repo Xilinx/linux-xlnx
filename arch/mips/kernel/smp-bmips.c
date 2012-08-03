@@ -15,7 +15,6 @@
 #include <linux/smp.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
-#include <linux/init.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/reboot.h>
@@ -28,7 +27,6 @@
 #include <asm/time.h>
 #include <asm/pgtable.h>
 #include <asm/processor.h>
-#include <asm/system.h>
 #include <asm/bootinfo.h>
 #include <asm/pmon.h>
 #include <asm/cacheflush.h>
@@ -198,13 +196,6 @@ static void bmips_init_secondary(void)
 
 	write_c0_brcm_action(ACTION_CLR_IPI(smp_processor_id(), 0));
 #endif
-
-	/* make sure there won't be a timer interrupt for a little while */
-	write_c0_compare(read_c0_count() + mips_hpt_frequency / HZ);
-
-	irq_enable_hazard();
-	set_c0_status(IE_SW0 | IE_SW1 | IE_IRQ1 | IE_IRQ5 | ST0_IE);
-	irq_enable_hazard();
 }
 
 /*
@@ -213,6 +204,13 @@ static void bmips_init_secondary(void)
 static void bmips_smp_finish(void)
 {
 	pr_info("SMP: CPU%d is running\n", smp_processor_id());
+
+	/* make sure there won't be a timer interrupt for a little while */
+	write_c0_compare(read_c0_count() + mips_hpt_frequency / HZ);
+
+	irq_enable_hazard();
+	set_c0_status(IE_SW0 | IE_SW1 | IE_IRQ1 | IE_IRQ5 | ST0_IE);
+	irq_enable_hazard();
 }
 
 /*
@@ -318,7 +316,7 @@ static int bmips_cpu_disable(void)
 
 	pr_info("SMP: CPU%d is offline\n", cpu);
 
-	cpu_clear(cpu, cpu_online_map);
+	set_cpu_online(cpu, false);
 	cpu_clear(cpu, cpu_callin_map);
 
 	local_flush_tlb_all();

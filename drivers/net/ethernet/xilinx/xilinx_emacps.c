@@ -1747,15 +1747,13 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regisr;
 
-	spin_lock(&lp->lock);
-
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
 	rmb();
 
-	if (unlikely(!regisr)) {
-		spin_unlock(&lp->lock);
+	if (unlikely(!regisr))
 		return IRQ_NONE;
-	}
+
+	spin_lock(&lp->lock);
 
 	while (regisr) {
 
@@ -2125,20 +2123,15 @@ static int xemacps_open(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
 	int rc;
-	unsigned long flags;
 
-	spin_lock_irqsave(&lp->lock, flags);
 	dev_dbg(&lp->pdev->dev, "open\n");
-	if (!is_valid_ether_addr(ndev->dev_addr)) {
-		spin_unlock_irqrestore(&lp->lock, flags);
+	if (!is_valid_ether_addr(ndev->dev_addr))
 		return  -EADDRNOTAVAIL;
-	}
 
 	rc = xemacps_descriptor_init(lp);
 	if (rc) {
 		printk(KERN_ERR "%s Unable to allocate DMA memory, rc %d\n",
 		ndev->name, rc);
-		spin_unlock_irqrestore(&lp->lock, flags);
 		return rc;
 	}
 
@@ -2146,7 +2139,6 @@ static int xemacps_open(struct net_device *ndev)
 	if (rc) {
 		printk(KERN_ERR "%s Unable to setup BD rings, rc %d\n",
 		ndev->name, rc);
-		spin_unlock_irqrestore(&lp->lock, flags);
 		return rc;
 	}
 	xemacps_init_hw(lp);
@@ -2159,11 +2151,9 @@ static int xemacps_open(struct net_device *ndev)
 			kfree(lp->mii_bus->irq);
 			mdiobus_free(lp->mii_bus);
 		}
-		spin_unlock_irqrestore(&lp->lock, flags);
 		return -ENXIO;
 	}
 
-	spin_unlock_irqrestore(&lp->lock, flags);
 	netif_carrier_on(ndev);
 
 	netif_start_queue(ndev);
@@ -2290,7 +2280,6 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct xemacps_bd *bdptr, *bdptrs;
 	void       *virt_addr;
 	skb_frag_t *frag;
-	unsigned long flags;
 
 #ifdef DEBUG_VERBOSE_TX
 	printk(KERN_INFO "%s: TX data:", __func__);
@@ -2302,19 +2291,19 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	printk("\n");
 #endif
 
-	spin_lock_irqsave(&lp->lock, flags);
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
+	spin_lock_irq(&lp->lock);
 
 	if (nr_frags < lp->tx_ring.freecnt) {
 		rc = xemacps_bdringalloc(&lp->tx_ring, nr_frags, &bdptr);
 		if (rc) {
 			netif_stop_queue(ndev); /* stop send queue */
-			spin_unlock_irqrestore(&lp->lock, flags);
+			spin_unlock_irq(&lp->lock);
 			return rc;
 		}
 	} else {
 		netif_stop_queue(ndev); /* stop send queue */
-		spin_unlock_irqrestore(&lp->lock, flags);
+		spin_unlock_irq(&lp->lock);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -2377,15 +2366,16 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		xemacps_bdringunalloc(&lp->tx_ring, nr_frags, bdptrs);
 		printk(KERN_ERR "%s can not send, commit TX buffer desc\n",
 			ndev->name);
-		spin_unlock_irqrestore(&lp->lock, flags);
+		spin_unlock_irq(&lp->lock);
 		return rc;
 	} else {
 		regval = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET,
 			(regval | XEMACPS_NWCTRL_STARTTX_MASK));
 	}
+
+	spin_unlock_irq(&lp->lock);
 	ndev->trans_start = jiffies;
-	spin_unlock_irqrestore(&lp->lock, flags);
 
 	return rc;
 }

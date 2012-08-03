@@ -22,8 +22,6 @@
 
 #include "signal.h"
 
-#define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
-
 /*
  * For ARM syscalls, we encode the syscall number into the instruction.
  */
@@ -66,17 +64,9 @@ const unsigned long syscall_restart_code[2] = {
  */
 asmlinkage int sys_sigsuspend(int restart, unsigned long oldmask, old_sigset_t mask)
 {
-	mask &= _BLOCKABLE;
-	spin_lock_irq(&current->sighand->siglock);
-	current->saved_sigmask = current->blocked;
-	siginitset(&current->blocked, mask);
-	recalc_sigpending();
-	spin_unlock_irq(&current->sighand->siglock);
-
-	current->state = TASK_INTERRUPTIBLE;
-	schedule();
-	set_restore_sigmask();
-	return -ERESTARTNOHAND;
+	sigset_t blocked;
+	siginitset(&blocked, mask);
+	return sigsuspend(&blocked);
 }
 
 asmlinkage int 
@@ -90,10 +80,10 @@ sys_sigaction(int sig, const struct old_sigaction __user *act,
 		old_sigset_t mask;
 		if (!access_ok(VERIFY_READ, act, sizeof(*act)) ||
 		    __get_user(new_ka.sa.sa_handler, &act->sa_handler) ||
-		    __get_user(new_ka.sa.sa_restorer, &act->sa_restorer))
+		    __get_user(new_ka.sa.sa_restorer, &act->sa_restorer) ||
+		    __get_user(new_ka.sa.sa_flags, &act->sa_flags) ||
+		    __get_user(mask, &act->sa_mask))
 			return -EFAULT;
-		__get_user(new_ka.sa.sa_flags, &act->sa_flags);
-		__get_user(mask, &act->sa_mask);
 		siginitset(&new_ka.sa.sa_mask, mask);
 	}
 
@@ -102,10 +92,10 @@ sys_sigaction(int sig, const struct old_sigaction __user *act,
 	if (!ret && oact) {
 		if (!access_ok(VERIFY_WRITE, oact, sizeof(*oact)) ||
 		    __put_user(old_ka.sa.sa_handler, &oact->sa_handler) ||
-		    __put_user(old_ka.sa.sa_restorer, &oact->sa_restorer))
+		    __put_user(old_ka.sa.sa_restorer, &oact->sa_restorer) ||
+		    __put_user(old_ka.sa.sa_flags, &oact->sa_flags) ||
+		    __put_user(old_ka.sa.sa_mask.sig[0], &oact->sa_mask))
 			return -EFAULT;
-		__put_user(old_ka.sa.sa_flags, &oact->sa_flags);
-		__put_user(old_ka.sa.sa_mask.sig[0], &oact->sa_mask);
 	}
 
 	return ret;
@@ -179,44 +169,23 @@ static int restore_iwmmxt_context(struct iwmmxt_sigframe *frame)
 
 static int preserve_vfp_context(struct vfp_sigframe __user *frame)
 {
-	struct thread_info *thread = current_thread_info();
-	struct vfp_hard_struct *h = &thread->vfpstate.hard;
 	const unsigned long magic = VFP_MAGIC;
 	const unsigned long size = VFP_STORAGE_SIZE;
 	int err = 0;
 
-	vfp_sync_hwstate(thread);
 	__put_user_error(magic, &frame->magic, err);
 	__put_user_error(size, &frame->size, err);
 
-	/*
-	 * Copy the floating point registers. There can be unused
-	 * registers see asm/hwcap.h for details.
-	 */
-	err |= __copy_to_user(&frame->ufp.fpregs, &h->fpregs,
-			      sizeof(h->fpregs));
-	/*
-	 * Copy the status and control register.
-	 */
-	__put_user_error(h->fpscr, &frame->ufp.fpscr, err);
+	if (err)
+		return -EFAULT;
 
-	/*
-	 * Copy the exception registers.
-	 */
-	__put_user_error(h->fpexc, &frame->ufp_exc.fpexc, err);
-	__put_user_error(h->fpinst, &frame->ufp_exc.fpinst, err);
-	__put_user_error(h->fpinst2, &frame->ufp_exc.fpinst2, err);
-
-	return err ? -EFAULT : 0;
+	return vfp_preserve_user_clear_hwstate(&frame->ufp, &frame->ufp_exc);
 }
 
 static int restore_vfp_context(struct vfp_sigframe __user *frame)
 {
-	struct thread_info *thread = current_thread_info();
-	struct vfp_hard_struct *h = &thread->vfpstate.hard;
 	unsigned long magic;
 	unsigned long size;
-	unsigned long fpexc;
 	int err = 0;
 
 	__get_user_error(magic, &frame->magic, err);
@@ -227,33 +196,7 @@ static int restore_vfp_context(struct vfp_sigframe __user *frame)
 	if (magic != VFP_MAGIC || size != VFP_STORAGE_SIZE)
 		return -EINVAL;
 
-	vfp_flush_hwstate(thread);
-
-	/*
-	 * Copy the floating point registers. There can be unused
-	 * registers see asm/hwcap.h for details.
-	 */
-	err |= __copy_from_user(&h->fpregs, &frame->ufp.fpregs,
-				sizeof(h->fpregs));
-	/*
-	 * Copy the status and control register.
-	 */
-	__get_user_error(h->fpscr, &frame->ufp.fpscr, err);
-
-	/*
-	 * Sanitise and restore the exception registers.
-	 */
-	__get_user_error(fpexc, &frame->ufp_exc.fpexc, err);
-	/* Ensure the VFP is enabled. */
-	fpexc |= FPEXC_EN;
-	/* Ensure FPINST2 is invalid and the exception flag is cleared. */
-	fpexc &= ~(FPEXC_EX | FPEXC_FP2V);
-	h->fpexc = fpexc;
-
-	__get_user_error(h->fpinst, &frame->ufp_exc.fpinst, err);
-	__get_user_error(h->fpinst2, &frame->ufp_exc.fpinst2, err);
-
-	return err ? -EFAULT : 0;
+	return vfp_restore_user_hwstate(&frame->ufp, &frame->ufp_exc);
 }
 
 #endif
@@ -278,13 +221,8 @@ static int restore_sigframe(struct pt_regs *regs, struct sigframe __user *sf)
 	int err;
 
 	err = __copy_from_user(&set, &sf->uc.uc_sigmask, sizeof(set));
-	if (err == 0) {
-		sigdelsetmask(&set, ~_BLOCKABLE);
-		spin_lock_irq(&current->sighand->siglock);
-		current->blocked = set;
-		recalc_sigpending();
-		spin_unlock_irq(&current->sighand->siglock);
-	}
+	if (err == 0)
+		set_current_blocked(&set);
 
 	__get_user_error(regs->ARM_r0, &sf->uc.uc_mcontext.arm_r0, err);
 	__get_user_error(regs->ARM_r1, &sf->uc.uc_mcontext.arm_r1, err);
@@ -599,13 +537,13 @@ setup_rt_frame(int usig, struct k_sigaction *ka, siginfo_t *info,
 /*
  * OK, we're invoking a handler
  */	
-static int
+static void
 handle_signal(unsigned long sig, struct k_sigaction *ka,
-	      siginfo_t *info, sigset_t *oldset,
-	      struct pt_regs * regs)
+	      siginfo_t *info, struct pt_regs *regs)
 {
 	struct thread_info *thread = current_thread_info();
 	struct task_struct *tsk = current;
+	sigset_t *oldset = sigmask_to_save();
 	int usig = sig;
 	int ret;
 
@@ -630,21 +568,9 @@ handle_signal(unsigned long sig, struct k_sigaction *ka,
 
 	if (ret != 0) {
 		force_sigsegv(sig, tsk);
-		return ret;
+		return;
 	}
-
-	/*
-	 * Block the signal if we were successful.
-	 */
-	spin_lock_irq(&tsk->sighand->siglock);
-	sigorsets(&tsk->blocked, &tsk->blocked,
-		  &ka->sa.sa_mask);
-	if (!(ka->sa.sa_flags & SA_NODEFER))
-		sigaddset(&tsk->blocked, sig);
-	recalc_sigpending();
-	spin_unlock_irq(&tsk->sighand->siglock);
-
-	return 0;
+	signal_delivered(sig, info, ka, regs, 0);
 }
 
 /*
@@ -662,15 +588,6 @@ static void do_signal(struct pt_regs *regs, int syscall)
 	struct k_sigaction ka;
 	siginfo_t info;
 	int signr;
-
-	/*
-	 * We want the common case to go fast, which
-	 * is why we may in certain cases get here from
-	 * kernel mode. Just return without doing anything
-	 * if so.
-	 */
-	if (!user_mode(regs))
-		return;
 
 	/*
 	 * If we were from a system call, check for system call restarting...
@@ -697,17 +614,12 @@ static void do_signal(struct pt_regs *regs, int syscall)
 		}
 	}
 
-	if (try_to_freeze())
-		goto no_signal;
-
 	/*
 	 * Get the signal to deliver.  When running under ptrace, at this
 	 * point the debugger may change all our registers ...
 	 */
 	signr = get_signal_to_deliver(&info, &ka, regs, NULL);
 	if (signr > 0) {
-		sigset_t *oldset;
-
 		/*
 		 * Depending on the signal settings we may need to revert the
 		 * decision to restart the system call.  But skip this if a
@@ -722,24 +634,10 @@ static void do_signal(struct pt_regs *regs, int syscall)
 			}
 		}
 
-		if (test_thread_flag(TIF_RESTORE_SIGMASK))
-			oldset = &current->saved_sigmask;
-		else
-			oldset = &current->blocked;
-		if (handle_signal(signr, &ka, &info, oldset, regs) == 0) {
-			/*
-			 * A signal was successfully delivered; the saved
-			 * sigmask will have been stored in the signal frame,
-			 * and will be restored by sigreturn, so we can simply
-			 * clear the TIF_RESTORE_SIGMASK flag.
-			 */
-			if (test_thread_flag(TIF_RESTORE_SIGMASK))
-				clear_thread_flag(TIF_RESTORE_SIGMASK);
-		}
+		handle_signal(signr, &ka, &info, regs);
 		return;
 	}
 
- no_signal:
 	if (syscall) {
 		/*
 		 * Handle restarting a different system call.  As above,
@@ -770,15 +668,9 @@ static void do_signal(struct pt_regs *regs, int syscall)
 #endif
 			}
 		}
-
-		/* If there's no signal to deliver, we just put the saved sigmask
-		 * back.
-		 */
-		if (test_thread_flag(TIF_RESTORE_SIGMASK)) {
-			clear_thread_flag(TIF_RESTORE_SIGMASK);
-			sigprocmask(SIG_SETMASK, &current->saved_sigmask, NULL);
-		}
 	}
+
+	restore_saved_sigmask();
 }
 
 asmlinkage void
@@ -790,7 +682,5 @@ do_notify_resume(struct pt_regs *regs, unsigned int thread_flags, int syscall)
 	if (thread_flags & _TIF_NOTIFY_RESUME) {
 		clear_thread_flag(TIF_NOTIFY_RESUME);
 		tracehook_notify_resume(regs);
-		if (current->replacement_session_keyring)
-			key_replace_session_keyring();
 	}
 }

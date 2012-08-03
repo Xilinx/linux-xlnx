@@ -4,7 +4,7 @@
  * Arasan Compact Flash host controller source file
  *
  * Copyright (C) 2011 ST Microelectronics
- * Viresh Kumar <viresh.kumar@st.com>
+ * Viresh Kumar <viresh.linux@gmail.com>
  *
  * This file is licensed under the terms of the GNU General Public
  * License version 2. This program is licensed "as is" without any
@@ -925,11 +925,10 @@ static int arasan_cf_suspend(struct device *dev)
 	struct ata_host *host = dev_get_drvdata(dev);
 	struct arasan_cf_dev *acdev = host->ports[0]->private_data;
 
-	if (acdev->dma_chan) {
+	if (acdev->dma_chan)
 		acdev->dma_chan->device->device_control(acdev->dma_chan,
 				DMA_TERMINATE_ALL, 0);
-		dma_release_channel(acdev->dma_chan);
-	}
+
 	cf_exit(acdev);
 	return ata_host_suspend(host, PMSG_SUSPEND);
 }
@@ -944,12 +943,9 @@ static int arasan_cf_resume(struct device *dev)
 
 	return 0;
 }
-
-static const struct dev_pm_ops arasan_cf_pm_ops = {
-	.suspend	= arasan_cf_suspend,
-	.resume		= arasan_cf_resume,
-};
 #endif
+
+static SIMPLE_DEV_PM_OPS(arasan_cf_pm_ops, arasan_cf_suspend, arasan_cf_resume);
 
 static struct platform_driver arasan_cf_driver = {
 	.probe		= arasan_cf_probe,
@@ -957,15 +953,13 @@ static struct platform_driver arasan_cf_driver = {
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_PM
-		.pm		= &arasan_cf_pm_ops,
-#endif
+		.pm	= &arasan_cf_pm_ops,
 	},
 };
 
 module_platform_driver(arasan_cf_driver);
 
-MODULE_AUTHOR("Viresh Kumar <viresh.kumar@st.com>");
+MODULE_AUTHOR("Viresh Kumar <viresh.linux@gmail.com>");
 MODULE_DESCRIPTION("Arasan ATA Compact Flash driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRIVER_NAME);
