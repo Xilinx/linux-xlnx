@@ -146,8 +146,23 @@
 			speed-hz = <166666700>;
 			bus-num = <0>;
 			num-chip-select = <4>;
-		};
 
+			#address-cells = <1>;
+			#size-cells = <0>;
+			flash@0 {
+				compatible = "sst25wf080";
+				reg = <1>;
+				spi-max-frequency = <1000000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				partition@test {
+					label = "spi-test";
+					reg = <0x0 0x100000>;
+				};
+			};
+
+
+		};
 		qspi0: spi@e000d000 {
 			compatible = "xlnx,ps7-qspi-1.00.a";
 			reg = <0xE000D000 0x1000>;
@@ -195,7 +210,6 @@
 				};
 			};
 		};
-
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;
