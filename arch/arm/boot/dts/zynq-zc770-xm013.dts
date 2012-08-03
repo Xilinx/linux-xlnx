@@ -179,42 +179,5 @@
 			interrupts = <0 20 0>;
 			interrupt-parent = <&gic>;
 		};
-
-		eth@e000b000 {
-			compatible = "xlnx,ps7-ethernet-1.00.a";
-			reg = <0xe000c000 0x1000>;
-			interrupts = <0 45 0>;
-			interrupt-parent = <&gic>;
-			phy-handle = <&phy0>;
-			xlnx,ptp-enet-clock = <133000000>;
-			xlnx,slcr-div0-1000Mbps = <8>;
-			xlnx,slcr-div0-100Mbps = <8>;
-			xlnx,slcr-div0-10Mbps = <8>;
-			xlnx,slcr-div1-1000Mbps = <1>;
-			xlnx,slcr-div1-100Mbps = <5>;
-			xlnx,slcr-div1-10Mbps = <50>;
-			#address-cells = <0x1>;
-			#size-cells = <0x0>;
-
-			phy0: phy@7 {
-				compatible = "vitesse,vsc8211";
-				device_type = "ethernet-phy";
-				reg = <0x7>;
-			};
-		};
-
-		devcfg@f8007000 {
-			compatible = "xlnx,ps7-dev-cfg-1.00.a";
-			reg = <0xf8007000 0x1000>;
-			interrupts = <0 8 0>;
-			interrupt-parent = <&gic>;
-		};
-
-		gpio@e000a000 {
-			compatible = "xlnx,ps7-gpio-1.00.a";
-			reg = <0xe000a000 0x1000>;
-			interrupts = <0 20 0>;
-			interrupt-parent = <&gic>;
-		};
 	};
 };
