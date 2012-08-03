@@ -156,7 +156,7 @@
 				#address-cells = <1>;
 				#size-cells = <1>;
 				partition@test {
-					label = "spi-test";
+					label = "spi-flash";
 					reg = <0x0 0x100000>;
 				};
 			};
