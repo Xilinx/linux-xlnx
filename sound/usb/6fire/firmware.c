@@ -5,7 +5,6 @@
  *
  * Author:	Torsten Schenk <torsten.schenk@zoho.com>
  * Created:	Jan 01, 2011
- * Version:	0.3.0
  * Copyright:	(C) Torsten Schenk
  *
  * This program is free software; you can redistribute it and/or modify
@@ -210,7 +209,7 @@ static int usb6fire_fw_ezusb_upload(
 	int ret;
 	u8 data;
 	struct usb_device *device = interface_to_usbdev(intf);
-	const struct firmware *fw = 0;
+	const struct firmware *fw = NULL;
 	struct ihex_record *rec = kmalloc(sizeof(struct ihex_record),
 			GFP_KERNEL);
 

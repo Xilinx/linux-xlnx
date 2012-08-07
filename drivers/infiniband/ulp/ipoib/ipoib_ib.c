@@ -123,7 +123,7 @@ static void ipoib_ud_skb_put_frags(struct ipoib_dev_priv *priv,
 
 		skb_frag_size_set(frag, size);
 		skb->data_len += size;
-		skb->truesize += size;
+		skb->truesize += PAGE_SIZE;
 	} else
 		skb_put(skb, length);
 
@@ -156,14 +156,18 @@ static struct sk_buff *ipoib_alloc_rx_skb(struct net_device *dev, int id)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct sk_buff *skb;
 	int buf_size;
+	int tailroom;
 	u64 *mapping;
 
-	if (ipoib_ud_need_sg(priv->max_ib_mtu))
+	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
 		buf_size = IPOIB_UD_HEAD_SIZE;
-	else
+		tailroom = 128; /* reserve some tailroom for IP/TCP headers */
+	} else {
 		buf_size = IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
+		tailroom = 0;
+	}
 
-	skb = dev_alloc_skb(buf_size + 4);
+	skb = dev_alloc_skb(buf_size + tailroom + 4);
 	if (unlikely(!skb))
 		return NULL;
 
@@ -296,7 +300,8 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	dev->stats.rx_bytes += skb->len;
 
 	skb->dev = dev;
-	if ((dev->features & NETIF_F_RXCSUM) && likely(wc->csum_ok))
+	if ((dev->features & NETIF_F_RXCSUM) &&
+			likely(wc->wc_flags & IB_WC_IP_CSUM_OK))
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
 	napi_gro_receive(&priv->napi, skb);

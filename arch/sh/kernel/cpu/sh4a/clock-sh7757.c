@@ -33,7 +33,7 @@ static unsigned long pll_recalc(struct clk *clk)
 	return clk->parent->rate * multiplier;
 }
 
-static struct clk_ops pll_clk_ops = {
+static struct sh_clk_ops pll_clk_ops = {
 	.recalc		= pll_recalc,
 };
 
@@ -113,7 +113,7 @@ static struct clk_lookup lookups[] = {
 	CLKDEV_CON_ID("cpu_clk", &div4_clks[DIV4_I]),
 
 	/* MSTP32 clocks */
-	CLKDEV_CON_ID("sdhi0", &mstp_clks[MSTP004]),
+	CLKDEV_DEV_ID("sh_mobile_sdhi.0", &mstp_clks[MSTP004]),
 	CLKDEV_CON_ID("riic0", &mstp_clks[MSTP000]),
 	CLKDEV_CON_ID("riic1", &mstp_clks[MSTP000]),
 	CLKDEV_CON_ID("riic2", &mstp_clks[MSTP000]),
@@ -148,7 +148,7 @@ int __init arch_clk_init(void)
 		ret = sh_clk_div4_register(div4_clks, ARRAY_SIZE(div4_clks),
 					   &div4_table);
 	if (!ret)
-		ret = sh_clk_mstp32_register(mstp_clks, MSTP_NR);
+		ret = sh_clk_mstp_register(mstp_clks, MSTP_NR);
 
 	return ret;
 }

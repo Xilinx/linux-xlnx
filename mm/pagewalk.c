@@ -59,7 +59,7 @@ again:
 			continue;
 
 		split_huge_page_pmd(walk->mm, pmd);
-		if (pmd_none_or_clear_bad(pmd))
+		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
 			goto again;
 		err = walk_pte_range(pmd, addr, next, walk);
 		if (err)
@@ -162,7 +162,6 @@ static int walk_hugetlb_range(struct vm_area_struct *vma,
 
 /**
  * walk_page_range - walk a memory map's page tables with a callback
- * @mm: memory map to walk
  * @addr: starting address
  * @end: ending address
  * @walk: set of callbacks to invoke for each level of the tree

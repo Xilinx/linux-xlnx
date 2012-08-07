@@ -61,7 +61,7 @@ static unsigned long dll_recalc(struct clk *clk)
 	return clk->parent->rate * mult;
 }
 
-static struct clk_ops dll_clk_ops = {
+static struct sh_clk_ops dll_clk_ops = {
 	.recalc		= dll_recalc,
 };
 
@@ -81,7 +81,7 @@ static unsigned long pll_recalc(struct clk *clk)
 	return clk->parent->rate * mult;
 }
 
-static struct clk_ops pll_clk_ops = {
+static struct sh_clk_ops pll_clk_ops = {
 	.recalc		= pll_recalc,
 };
 
@@ -283,7 +283,7 @@ int __init arch_clk_init(void)
 		ret = sh_clk_div6_register(div6_clks, DIV6_NR);
 
 	if (!ret)
-		ret = sh_clk_mstp32_register(mstp_clks, MSTP_NR);
+		ret = sh_clk_mstp_register(mstp_clks, MSTP_NR);
 
 	return ret;
 }

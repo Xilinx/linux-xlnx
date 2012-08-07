@@ -31,6 +31,7 @@
 #include <linux/sh_timer.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/pm_domain.h>
 
 struct sh_mtu2_priv {
 	void __iomem *mapbase;
@@ -42,7 +43,7 @@ struct sh_mtu2_priv {
 	struct clock_event_device ced;
 };
 
-static DEFINE_SPINLOCK(sh_mtu2_lock);
+static DEFINE_RAW_SPINLOCK(sh_mtu2_lock);
 
 #define TSTR -1 /* shared register */
 #define TCR  0 /* channel register */
@@ -106,7 +107,7 @@ static void sh_mtu2_start_stop_ch(struct sh_mtu2_priv *p, int start)
 	unsigned long flags, value;
 
 	/* start stop register shared by multiple timer channels */
-	spin_lock_irqsave(&sh_mtu2_lock, flags);
+	raw_spin_lock_irqsave(&sh_mtu2_lock, flags);
 	value = sh_mtu2_read(p, TSTR);
 
 	if (start)
@@ -115,7 +116,7 @@ static void sh_mtu2_start_stop_ch(struct sh_mtu2_priv *p, int start)
 		value &= ~(1 << cfg->timer_bit);
 
 	sh_mtu2_write(p, TSTR, value);
-	spin_unlock_irqrestore(&sh_mtu2_lock, flags);
+	raw_spin_unlock_irqrestore(&sh_mtu2_lock, flags);
 }
 
 static int sh_mtu2_enable(struct sh_mtu2_priv *p)
@@ -305,6 +306,9 @@ static int __devinit sh_mtu2_probe(struct platform_device *pdev)
 {
 	struct sh_mtu2_priv *p = platform_get_drvdata(pdev);
 	int ret;
+
+	if (!is_early_platform_device(pdev))
+		pm_genpd_dev_always_on(&pdev->dev, true);
 
 	if (p) {
 		dev_info(&pdev->dev, "kept as earlytimer\n");

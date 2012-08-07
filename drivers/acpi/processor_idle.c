@@ -224,6 +224,7 @@ static void lapic_timer_state_broadcast(struct acpi_processor *pr,
 /*
  * Suspend / resume control
  */
+static int acpi_idle_suspend;
 static u32 saved_bm_rld;
 
 static void acpi_idle_bm_rld_save(void)
@@ -242,13 +243,21 @@ static void acpi_idle_bm_rld_restore(void)
 
 int acpi_processor_suspend(struct acpi_device * device, pm_message_t state)
 {
+	if (acpi_idle_suspend == 1)
+		return 0;
+
 	acpi_idle_bm_rld_save();
+	acpi_idle_suspend = 1;
 	return 0;
 }
 
 int acpi_processor_resume(struct acpi_device * device)
 {
+	if (acpi_idle_suspend == 0)
+		return 0;
+
 	acpi_idle_bm_rld_restore();
+	acpi_idle_suspend = 0;
 	return 0;
 }
 
@@ -754,6 +763,12 @@ static int acpi_idle_enter_c1(struct cpuidle_device *dev,
 
 	local_irq_disable();
 
+	if (acpi_idle_suspend) {
+		local_irq_enable();
+		cpu_relax();
+		return -EBUSY;
+	}
+
 	lapic_timer_state_broadcast(pr, cx, 1);
 	kt1 = ktime_get_real();
 	acpi_idle_do_entry(cx);
@@ -768,6 +783,35 @@ static int acpi_idle_enter_c1(struct cpuidle_device *dev,
 	lapic_timer_state_broadcast(pr, cx, 0);
 
 	return index;
+}
+
+
+/**
+ * acpi_idle_play_dead - enters an ACPI state for long-term idle (i.e. off-lining)
+ * @dev: the target CPU
+ * @index: the index of suggested state
+ */
+static int acpi_idle_play_dead(struct cpuidle_device *dev, int index)
+{
+	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
+	struct acpi_processor_cx *cx = cpuidle_get_statedata(state_usage);
+
+	ACPI_FLUSH_CPU_CACHE();
+
+	while (1) {
+
+		if (cx->entry_method == ACPI_CSTATE_HALT)
+			safe_halt();
+		else if (cx->entry_method == ACPI_CSTATE_SYSTEMIO) {
+			inb(cx->address);
+			/* See comment in acpi_idle_do_entry() */
+			inl(acpi_gbl_FADT.xpm_timer_block.address);
+		} else
+			return -ENODEV;
+	}
+
+	/* Never reached */
+	return 0;
 }
 
 /**
@@ -793,6 +837,12 @@ static int acpi_idle_enter_simple(struct cpuidle_device *dev,
 		return -EINVAL;
 
 	local_irq_disable();
+
+	if (acpi_idle_suspend) {
+		local_irq_enable();
+		cpu_relax();
+		return -EBUSY;
+	}
 
 	if (cx->entry_method != ACPI_CSTATE_FFH) {
 		current_thread_info()->status &= ~TS_POLLING;
@@ -878,13 +928,20 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 						drv, drv->safe_state_index);
 		} else {
 			local_irq_disable();
-			acpi_safe_halt();
+			if (!acpi_idle_suspend)
+				acpi_safe_halt();
 			local_irq_enable();
-			return -EINVAL;
+			return -EBUSY;
 		}
 	}
 
 	local_irq_disable();
+
+	if (acpi_idle_suspend) {
+		local_irq_enable();
+		cpu_relax();
+		return -EBUSY;
+	}
 
 	if (cx->entry_method != ACPI_CSTATE_FFH) {
 		current_thread_info()->status &= ~TS_POLLING;
@@ -1077,12 +1134,14 @@ static int acpi_processor_setup_cpuidle_states(struct acpi_processor *pr)
 				state->flags |= CPUIDLE_FLAG_TIME_VALID;
 
 			state->enter = acpi_idle_enter_c1;
+			state->enter_dead = acpi_idle_play_dead;
 			drv->safe_state_index = count;
 			break;
 
 			case ACPI_STATE_C2:
 			state->flags |= CPUIDLE_FLAG_TIME_VALID;
 			state->enter = acpi_idle_enter_simple;
+			state->enter_dead = acpi_idle_play_dead;
 			drv->safe_state_index = count;
 			break;
 
@@ -1159,8 +1218,7 @@ int acpi_processor_cst_has_changed(struct acpi_processor *pr)
 	 * to make the code that updates C-States be called once.
 	 */
 
-	if (smp_processor_id() == 0 &&
-			cpuidle_get_driver() == &acpi_idle_driver) {
+	if (pr->id == 0 && cpuidle_get_driver() == &acpi_idle_driver) {
 
 		cpuidle_pause_and_lock();
 		/* Protect against cpu-hotplug */

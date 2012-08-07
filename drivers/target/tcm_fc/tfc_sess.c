@@ -58,7 +58,8 @@ static struct ft_tport *ft_tport_create(struct fc_lport *lport)
 	struct ft_tport *tport;
 	int i;
 
-	tport = rcu_dereference(lport->prov[FC_TYPE_FCP]);
+	tport = rcu_dereference_protected(lport->prov[FC_TYPE_FCP],
+					  lockdep_is_held(&ft_lport_lock));
 	if (tport && tport->tpg)
 		return tport;
 
@@ -86,16 +87,6 @@ static struct ft_tport *ft_tport_create(struct fc_lport *lport)
 }
 
 /*
- * Free tport via RCU.
- */
-static void ft_tport_rcu_free(struct rcu_head *rcu)
-{
-	struct ft_tport *tport = container_of(rcu, struct ft_tport, rcu);
-
-	kfree(tport);
-}
-
-/*
  * Delete a target local port.
  * Caller holds ft_lport_lock.
  */
@@ -114,7 +105,7 @@ static void ft_tport_delete(struct ft_tport *tport)
 		tpg->tport = NULL;
 		tport->tpg = NULL;
 	}
-	call_rcu(&tport->rcu, ft_tport_rcu_free);
+	kfree_rcu(tport, rcu);
 }
 
 /*
@@ -319,11 +310,9 @@ int ft_sess_shutdown(struct se_session *se_sess)
 void ft_sess_close(struct se_session *se_sess)
 {
 	struct ft_sess *sess = se_sess->fabric_sess_ptr;
-	struct fc_lport *lport;
 	u32 port_id;
 
 	mutex_lock(&ft_lport_lock);
-	lport = sess->tport->lport;
 	port_id = sess->port_id;
 	if (port_id == -1) {
 		mutex_unlock(&ft_lport_lock);
@@ -336,20 +325,6 @@ void ft_sess_close(struct se_session *se_sess)
 	ft_sess_put(sess);
 	/* XXX Send LOGO or PRLO */
 	synchronize_rcu();		/* let transport deregister happen */
-}
-
-void ft_sess_stop(struct se_session *se_sess, int sess_sleep, int conn_sleep)
-{
-	struct ft_sess *sess = se_sess->fabric_sess_ptr;
-
-	pr_debug("port_id %x\n", sess->port_id);
-}
-
-int ft_sess_logged_in(struct se_session *se_sess)
-{
-	struct ft_sess *sess = se_sess->fabric_sess_ptr;
-
-	return sess->port_id != -1;
 }
 
 u32 ft_sess_get_index(struct se_session *se_sess)
@@ -365,11 +340,6 @@ u32 ft_sess_get_port_name(struct se_session *se_sess,
 	struct ft_sess *sess = se_sess->fabric_sess_ptr;
 
 	return ft_format_wwn(buf, len, sess->port_name);
-}
-
-void ft_sess_set_erl0(struct se_session *se_sess)
-{
-	/* XXX TBD called when out of memory */
 }
 
 /*

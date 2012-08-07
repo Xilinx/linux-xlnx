@@ -343,10 +343,10 @@ static int igbvf_get_coalesce(struct net_device *netdev,
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 
-	if (adapter->itr_setting <= 3)
-		ec->rx_coalesce_usecs = adapter->itr_setting;
+	if (adapter->requested_itr <= 3)
+		ec->rx_coalesce_usecs = adapter->requested_itr;
 	else
-		ec->rx_coalesce_usecs = adapter->itr_setting >> 2;
+		ec->rx_coalesce_usecs = adapter->current_itr >> 2;
 
 	return 0;
 }
@@ -357,23 +357,31 @@ static int igbvf_set_coalesce(struct net_device *netdev,
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
 
-	if ((ec->rx_coalesce_usecs > IGBVF_MAX_ITR_USECS) ||
-	    ((ec->rx_coalesce_usecs > 3) &&
-	     (ec->rx_coalesce_usecs < IGBVF_MIN_ITR_USECS)) ||
-	    (ec->rx_coalesce_usecs == 2))
+	if ((ec->rx_coalesce_usecs >= IGBVF_MIN_ITR_USECS) &&
+	     (ec->rx_coalesce_usecs <= IGBVF_MAX_ITR_USECS)) {
+		adapter->current_itr = ec->rx_coalesce_usecs << 2;
+		adapter->requested_itr = 1000000000 /
+					(adapter->current_itr * 256);
+	} else if ((ec->rx_coalesce_usecs == 3) ||
+		   (ec->rx_coalesce_usecs == 2)) {
+		adapter->current_itr = IGBVF_START_ITR;
+		adapter->requested_itr = ec->rx_coalesce_usecs;
+	} else if (ec->rx_coalesce_usecs == 0) {
+		/*
+		 * The user's desire is to turn off interrupt throttling
+		 * altogether, but due to HW limitations, we can't do that.
+		 * Instead we set a very small value in EITR, which would
+		 * allow ~967k interrupts per second, but allow the adapter's
+		 * internal clocking to still function properly.
+		 */
+		adapter->current_itr = 4;
+		adapter->requested_itr = 1000000000 /
+					(adapter->current_itr * 256);
+	} else
 		return -EINVAL;
 
-	/* convert to rate of irq's per second */
-	if (ec->rx_coalesce_usecs && ec->rx_coalesce_usecs <= 3) {
-		adapter->itr = IGBVF_START_ITR;
-		adapter->itr_setting = ec->rx_coalesce_usecs;
-	} else {
-		adapter->itr = ec->rx_coalesce_usecs << 2;
-		adapter->itr_setting = adapter->itr;
-	}
-
-	writel(adapter->itr,
-	       hw->hw_addr + adapter->rx_ring[0].itr_register);
+	writel(adapter->current_itr,
+	       hw->hw_addr + adapter->rx_ring->itr_register);
 
 	return 0;
 }

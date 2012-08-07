@@ -178,7 +178,8 @@ static int __devinit mcs_touchkey_probe(struct i2c_client *client,
 	}
 
 	error = request_threaded_irq(client->irq, NULL, mcs_touchkey_interrupt,
-			IRQF_TRIGGER_FALLING, client->dev.driver->name, data);
+				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				     client->dev.driver->name, data);
 	if (error) {
 		dev_err(&client->dev, "Failed to register interrupt\n");
 		goto err_free_mem;
@@ -274,18 +275,7 @@ static struct i2c_driver mcs_touchkey_driver = {
 	.id_table	= mcs_touchkey_id,
 };
 
-static int __init mcs_touchkey_init(void)
-{
-	return i2c_add_driver(&mcs_touchkey_driver);
-}
-
-static void __exit mcs_touchkey_exit(void)
-{
-	i2c_del_driver(&mcs_touchkey_driver);
-}
-
-module_init(mcs_touchkey_init);
-module_exit(mcs_touchkey_exit);
+module_i2c_driver(mcs_touchkey_driver);
 
 /* Module information */
 MODULE_AUTHOR("Joonyoung Shim <jy0922.shim@samsung.com>");

@@ -14,9 +14,9 @@
 
 #include <asm/paca.h>
 #include <asm/reg.h>
-#include <asm/system.h>
 #include <asm/machdep.h>
 #include <asm/firmware.h>
+#include <asm/runlatch.h>
 
 #include "plpar_wrappers.h"
 #include "pseries.h"
@@ -96,6 +96,23 @@ out:
 	return index;
 }
 
+static void check_and_cede_processor(void)
+{
+	/*
+	 * Ensure our interrupt state is properly tracked,
+	 * also checks if no interrupt has occurred while we
+	 * were soft-disabled
+	 */
+	if (prep_irq_for_idle()) {
+		cede_processor();
+#ifdef CONFIG_TRACE_IRQFLAGS
+		/* Ensure that H_CEDE returns with IRQs on */
+		if (WARN_ON(!(mfmsr() & MSR_EE)))
+			__hard_irq_enable();
+#endif
+	}
+}
+
 static int dedicated_cede_loop(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
@@ -108,7 +125,7 @@ static int dedicated_cede_loop(struct cpuidle_device *dev,
 
 	ppc64_runlatch_off();
 	HMT_medium();
-	cede_processor();
+	check_and_cede_processor();
 
 	get_lppaca()->donate_dedicated_cpu = 0;
 	dev->last_residency =
@@ -132,7 +149,7 @@ static int shared_cede_loop(struct cpuidle_device *dev,
 	 * processor. When returning here, external interrupts
 	 * are enabled.
 	 */
-	cede_processor();
+	check_and_cede_processor();
 
 	dev->last_residency =
 		(int)idle_loop_epilog(in_purr, kt_before);

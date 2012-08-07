@@ -4,8 +4,7 @@
  * Author:	Sjur Brendeland/sjur.brandeland@stericsson.com
  * License terms: GNU General Public License (GPL) version 2
  *
- * Borrowed heavily from file: pn_dev.c. Thanks to
- *  Remi Denis-Courmont <remi.denis-courmont@nokia.com>
+ * Borrowed heavily from file: pn_dev.c. Thanks to Remi Denis-Courmont
  *  and Sakari Ailus <sakari.ailus@nokia.com>
  */
 
@@ -162,7 +161,6 @@ void caif_flow_cb(struct sk_buff *skb)
 static int transmit(struct cflayer *layer, struct cfpkt *pkt)
 {
 	int err, high = 0, qlen = 0;
-	struct caif_dev_common *caifdev;
 	struct caif_device_entry *caifd =
 	    container_of(layer, struct caif_device_entry, layer);
 	struct sk_buff *skb;
@@ -174,7 +172,6 @@ static int transmit(struct cflayer *layer, struct cfpkt *pkt)
 	skb->dev = caifd->netdev;
 	skb_reset_network_header(skb);
 	skb->protocol = htons(ETH_P_CAIF);
-	caifdev = netdev_priv(caifd->netdev);
 
 	/* Check if we need to handle xoff */
 	if (likely(caifd->netdev->tx_queue_len == 0))
@@ -564,9 +561,9 @@ static int __init caif_device_init(void)
 
 static void __exit caif_device_exit(void)
 {
-	unregister_pernet_subsys(&caif_net_ops);
 	unregister_netdevice_notifier(&caif_device_notifier);
 	dev_remove_pack(&caif_packet_type);
+	unregister_pernet_subsys(&caif_net_ops);
 }
 
 module_init(caif_device_init);

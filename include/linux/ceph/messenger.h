@@ -14,8 +14,6 @@
 struct ceph_msg;
 struct ceph_connection;
 
-extern struct workqueue_struct *ceph_msgr_wq;       /* receive work queue */
-
 /*
  * Ceph defines these callbacks for handling connection events.
  */
@@ -27,9 +25,9 @@ struct ceph_connection_operations {
 	void (*dispatch) (struct ceph_connection *con, struct ceph_msg *m);
 
 	/* authorize an outgoing connection */
-	int (*get_authorizer) (struct ceph_connection *con,
-			       void **buf, int *len, int *proto,
-			       void **reply_buf, int *reply_len, int force_new);
+	struct ceph_auth_handshake *(*get_authorizer) (
+				struct ceph_connection *con,
+			       int *proto, int force_new);
 	int (*verify_authorizer_reply) (struct ceph_connection *con, int len);
 	int (*invalidate_authorizer)(struct ceph_connection *con);
 
@@ -54,7 +52,6 @@ struct ceph_connection_operations {
 struct ceph_messenger {
 	struct ceph_entity_inst inst;    /* my name+address */
 	struct ceph_entity_addr my_enc_addr;
-	struct page *zero_page;          /* used in certain error cases */
 
 	bool nocrc;
 
@@ -101,7 +98,7 @@ struct ceph_msg {
 struct ceph_msg_pos {
 	int page, page_pos;  /* which page; offset in page */
 	int data_pos;        /* offset in data payload */
-	int did_page_crc;    /* true if we've calculated crc for current page */
+	bool did_page_crc;   /* true if we've calculated crc for current page */
 };
 
 /* ceph connection fault delay defaults, for exponential backoff */
@@ -166,16 +163,8 @@ struct ceph_connection {
 
 	/* connection negotiation temps */
 	char in_banner[CEPH_BANNER_MAX_LEN];
-	union {
-		struct {  /* outgoing connection */
-			struct ceph_msg_connect out_connect;
-			struct ceph_msg_connect_reply in_reply;
-		};
-		struct {  /* incoming */
-			struct ceph_msg_connect in_connect;
-			struct ceph_msg_connect_reply out_reply;
-		};
-	};
+	struct ceph_msg_connect out_connect;
+	struct ceph_msg_connect_reply in_reply;
 	struct ceph_entity_addr actual_peer_addr;
 
 	/* message out temps */

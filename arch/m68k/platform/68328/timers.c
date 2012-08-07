@@ -20,8 +20,8 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/clocksource.h>
+#include <linux/rtc.h>
 #include <asm/setup.h>
-#include <asm/system.h>
 #include <asm/pgtable.h>
 #include <asm/machdep.h>
 #include <asm/MC68VZ328.h>
@@ -53,6 +53,7 @@
 #endif
 
 static u32 m68328_tick_cnt;
+static irq_handler_t timer_interrupt;
 
 /***************************************************************************/
 
@@ -62,7 +63,7 @@ static irqreturn_t hw_tick(int irq, void *dummy)
 	TSTAT &= 0;
 
 	m68328_tick_cnt += TICKS_PER_JIFFY;
-	return arch_timer_interrupt(irq, dummy);
+	return timer_interrupt(irq, dummy);
 }
 
 /***************************************************************************/
@@ -99,7 +100,7 @@ static struct clocksource m68328_clk = {
 
 /***************************************************************************/
 
-void hw_timer_init(void)
+void hw_timer_init(irq_handler_t handler)
 {
 	/* disable timer 1 */
 	TCTL = 0;
@@ -115,18 +116,22 @@ void hw_timer_init(void)
 	/* Enable timer 1 */
 	TCTL |= TCTL_TEN;
 	clocksource_register_hz(&m68328_clk, TICKS_PER_JIFFY*HZ);
+	timer_interrupt = handler;
 }
 
 /***************************************************************************/
 
-void m68328_timer_gettod(int *year, int *mon, int *day, int *hour, int *min, int *sec)
+int m68328_hwclk(int set, struct rtc_time *t)
 {
-	long now = RTCTIME;
+	if (!set) {
+		long now = RTCTIME;
+		t->tm_year = t->tm_mon = t->tm_mday = 1;
+		t->tm_hour = (now >> 24) % 24;
+		t->tm_min = (now >> 16) % 60;
+		t->tm_sec = now % 60;
+	}
 
-	*year = *mon = *day = 1;
-	*hour = (now >> 24) % 24;
-	*min = (now >> 16) % 60;
-	*sec = now % 60;
+	return 0;
 }
 
 /***************************************************************************/

@@ -28,6 +28,13 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 
+/*
+ * Balloon device works in 4K page units.  So each page is pointed to by
+ * multiple balloon pages.  All memory counters in this driver are in balloon
+ * page units.
+ */
+#define VIRTIO_BALLOON_PAGES_PER_PAGE (PAGE_SIZE >> VIRTIO_BALLOON_PFN_SHIFT)
+
 struct virtio_balloon
 {
 	struct virtio_device *vdev;
@@ -40,10 +47,15 @@ struct virtio_balloon
 	struct task_struct *thread;
 
 	/* Waiting for host to ack the pages we released. */
-	struct completion acked;
+	wait_queue_head_t acked;
 
-	/* The pages we've told the Host we're not using. */
+	/* Number of balloon pages we've told the Host we're not using. */
 	unsigned int num_pages;
+	/*
+	 * The pages we've told the Host we're not using.
+	 * Each page on this list adds VIRTIO_BALLOON_PAGES_PER_PAGE
+	 * to num_pages above.
+	 */
 	struct list_head pages;
 
 	/* The array of pfns we tell the Host about. */
@@ -66,26 +78,28 @@ static u32 page_to_balloon_pfn(struct page *page)
 
 	BUILD_BUG_ON(PAGE_SHIFT < VIRTIO_BALLOON_PFN_SHIFT);
 	/* Convert pfn from Linux page size to balloon page size. */
-	return pfn >> (PAGE_SHIFT - VIRTIO_BALLOON_PFN_SHIFT);
+	return pfn * VIRTIO_BALLOON_PAGES_PER_PAGE;
+}
+
+static struct page *balloon_pfn_to_page(u32 pfn)
+{
+	BUG_ON(pfn % VIRTIO_BALLOON_PAGES_PER_PAGE);
+	return pfn_to_page(pfn / VIRTIO_BALLOON_PAGES_PER_PAGE);
 }
 
 static void balloon_ack(struct virtqueue *vq)
 {
-	struct virtio_balloon *vb;
-	unsigned int len;
+	struct virtio_balloon *vb = vq->vdev->priv;
 
-	vb = virtqueue_get_buf(vq, &len);
-	if (vb)
-		complete(&vb->acked);
+	wake_up(&vb->acked);
 }
 
 static void tell_host(struct virtio_balloon *vb, struct virtqueue *vq)
 {
 	struct scatterlist sg;
+	unsigned int len;
 
 	sg_init_one(&sg, vb->pfns, sizeof(vb->pfns[0]) * vb->num_pfns);
-
-	init_completion(&vb->acked);
 
 	/* We should always be able to add one buffer to an empty queue. */
 	if (virtqueue_add_buf(vq, &sg, 1, 0, vb, GFP_KERNEL) < 0)
@@ -93,7 +107,17 @@ static void tell_host(struct virtio_balloon *vb, struct virtqueue *vq)
 	virtqueue_kick(vq);
 
 	/* When host has read buffer, this completes via balloon_ack */
-	wait_for_completion(&vb->acked);
+	wait_event(vb->acked, virtqueue_get_buf(vq, &len));
+}
+
+static void set_page_pfns(u32 pfns[], struct page *page)
+{
+	unsigned int i;
+
+	/* Set balloon pfns pointing at this page.
+	 * Note that the first pfn points at start of the page. */
+	for (i = 0; i < VIRTIO_BALLOON_PAGES_PER_PAGE; i++)
+		pfns[i] = page_to_balloon_pfn(page) + i;
 }
 
 static void fill_balloon(struct virtio_balloon *vb, size_t num)
@@ -101,7 +125,8 @@ static void fill_balloon(struct virtio_balloon *vb, size_t num)
 	/* We can only do one array worth at a time. */
 	num = min(num, ARRAY_SIZE(vb->pfns));
 
-	for (vb->num_pfns = 0; vb->num_pfns < num; vb->num_pfns++) {
+	for (vb->num_pfns = 0; vb->num_pfns < num;
+	     vb->num_pfns += VIRTIO_BALLOON_PAGES_PER_PAGE) {
 		struct page *page = alloc_page(GFP_HIGHUSER | __GFP_NORETRY |
 					__GFP_NOMEMALLOC | __GFP_NOWARN);
 		if (!page) {
@@ -113,9 +138,9 @@ static void fill_balloon(struct virtio_balloon *vb, size_t num)
 			msleep(200);
 			break;
 		}
-		vb->pfns[vb->num_pfns] = page_to_balloon_pfn(page);
+		set_page_pfns(vb->pfns + vb->num_pfns, page);
+		vb->num_pages += VIRTIO_BALLOON_PAGES_PER_PAGE;
 		totalram_pages--;
-		vb->num_pages++;
 		list_add(&page->lru, &vb->pages);
 	}
 
@@ -130,8 +155,9 @@ static void release_pages_by_pfn(const u32 pfns[], unsigned int num)
 {
 	unsigned int i;
 
-	for (i = 0; i < num; i++) {
-		__free_page(pfn_to_page(pfns[i]));
+	/* Find pfns pointing at start of each page, get pages and free them. */
+	for (i = 0; i < num; i += VIRTIO_BALLOON_PAGES_PER_PAGE) {
+		__free_page(balloon_pfn_to_page(pfns[i]));
 		totalram_pages++;
 	}
 }
@@ -143,11 +169,12 @@ static void leak_balloon(struct virtio_balloon *vb, size_t num)
 	/* We can only do one array worth at a time. */
 	num = min(num, ARRAY_SIZE(vb->pfns));
 
-	for (vb->num_pfns = 0; vb->num_pfns < num; vb->num_pfns++) {
+	for (vb->num_pfns = 0; vb->num_pfns < num;
+	     vb->num_pfns += VIRTIO_BALLOON_PAGES_PER_PAGE) {
 		page = list_first_entry(&vb->pages, struct page, lru);
 		list_del(&page->lru);
-		vb->pfns[vb->num_pfns] = page_to_balloon_pfn(page);
-		vb->num_pages--;
+		set_page_pfns(vb->pfns + vb->num_pfns, page);
+		vb->num_pages -= VIRTIO_BALLOON_PAGES_PER_PAGE;
 	}
 
 	/*
@@ -200,12 +227,8 @@ static void update_balloon_stats(struct virtio_balloon *vb)
  */
 static void stats_request(struct virtqueue *vq)
 {
-	struct virtio_balloon *vb;
-	unsigned int len;
+	struct virtio_balloon *vb = vq->vdev->priv;
 
-	vb = virtqueue_get_buf(vq, &len);
-	if (!vb)
-		return;
 	vb->need_stats_update = 1;
 	wake_up(&vb->config_change);
 }
@@ -214,11 +237,14 @@ static void stats_handle_request(struct virtio_balloon *vb)
 {
 	struct virtqueue *vq;
 	struct scatterlist sg;
+	unsigned int len;
 
 	vb->need_stats_update = 0;
 	update_balloon_stats(vb);
 
 	vq = vb->stats_vq;
+	if (!virtqueue_get_buf(vq, &len))
+		return;
 	sg_init_one(&sg, vb->stats, sizeof(vb->stats));
 	if (virtqueue_add_buf(vq, &sg, 1, 0, vb, GFP_KERNEL) < 0)
 		BUG();
@@ -234,11 +260,14 @@ static void virtballoon_changed(struct virtio_device *vdev)
 
 static inline s64 towards_target(struct virtio_balloon *vb)
 {
-	u32 v;
+	__le32 v;
+	s64 target;
+
 	vb->vdev->config->get(vb->vdev,
 			      offsetof(struct virtio_balloon_config, num_pages),
 			      &v, sizeof(v));
-	return (s64)v - vb->num_pages;
+	target = le32_to_cpu(v);
+	return target - vb->num_pages;
 }
 
 static void update_balloon_size(struct virtio_balloon *vb)
@@ -324,6 +353,7 @@ static int virtballoon_probe(struct virtio_device *vdev)
 	INIT_LIST_HEAD(&vb->pages);
 	vb->num_pages = 0;
 	init_waitqueue_head(&vb->config_change);
+	init_waitqueue_head(&vb->acked);
 	vb->vdev = vdev;
 	vb->need_stats_update = 0;
 
@@ -347,20 +377,25 @@ out:
 	return err;
 }
 
+static void remove_common(struct virtio_balloon *vb)
+{
+	/* There might be pages left in the balloon: free them. */
+	while (vb->num_pages)
+		leak_balloon(vb, vb->num_pages);
+	update_balloon_size(vb);
+
+	/* Now we reset the device so we can clean up the queues. */
+	vb->vdev->config->reset(vb->vdev);
+
+	vb->vdev->config->del_vqs(vb->vdev);
+}
+
 static void __devexit virtballoon_remove(struct virtio_device *vdev)
 {
 	struct virtio_balloon *vb = vdev->priv;
 
 	kthread_stop(vb->thread);
-
-	/* There might be pages left in the balloon: free them. */
-	while (vb->num_pages)
-		leak_balloon(vb, vb->num_pages);
-
-	/* Now we reset the device so we can clean up the queues. */
-	vdev->config->reset(vdev);
-
-	vdev->config->del_vqs(vdev);
+	remove_common(vb);
 	kfree(vb);
 }
 
@@ -374,17 +409,11 @@ static int virtballoon_freeze(struct virtio_device *vdev)
 	 * function is called.
 	 */
 
-	while (vb->num_pages)
-		leak_balloon(vb, vb->num_pages);
-	update_balloon_size(vb);
-
-	/* Ensure we don't get any more requests from the host */
-	vdev->config->reset(vdev);
-	vdev->config->del_vqs(vdev);
+	remove_common(vb);
 	return 0;
 }
 
-static int restore_common(struct virtio_device *vdev)
+static int virtballoon_restore(struct virtio_device *vdev)
 {
 	struct virtio_balloon *vb = vdev->priv;
 	int ret;
@@ -396,24 +425,6 @@ static int restore_common(struct virtio_device *vdev)
 	fill_balloon(vb, towards_target(vb));
 	update_balloon_size(vb);
 	return 0;
-}
-
-static int virtballoon_thaw(struct virtio_device *vdev)
-{
-	return restore_common(vdev);
-}
-
-static int virtballoon_restore(struct virtio_device *vdev)
-{
-	struct virtio_balloon *vb = vdev->priv;
-
-	/*
-	 * If a request wasn't complete at the time of freezing, this
-	 * could have been set.
-	 */
-	vb->need_stats_update = 0;
-
-	return restore_common(vdev);
 }
 #endif
 
@@ -434,7 +445,6 @@ static struct virtio_driver virtio_balloon_driver = {
 #ifdef CONFIG_PM
 	.freeze	=	virtballoon_freeze,
 	.restore =	virtballoon_restore,
-	.thaw =		virtballoon_thaw,
 #endif
 };
 

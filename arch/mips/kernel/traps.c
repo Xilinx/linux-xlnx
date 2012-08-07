@@ -15,6 +15,7 @@
 #include <linux/compiler.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/smp.h>
@@ -45,7 +46,6 @@
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
 #include <asm/sections.h>
-#include <asm/system.h>
 #include <asm/tlbdebug.h>
 #include <asm/traps.h>
 #include <asm/uaccess.h>
@@ -92,7 +92,7 @@ void (*board_nmi_handler_setup)(void);
 void (*board_ejtag_handler_setup)(void);
 void (*board_bind_eic_interrupt)(int irq, int regset);
 void (*board_ebase_setup)(void);
-
+void __cpuinitdata(*board_cache_error_setup)(void);
 
 static void show_raw_backtrace(unsigned long reg29)
 {
@@ -131,6 +131,9 @@ static void show_backtrace(struct task_struct *task, const struct pt_regs *regs)
 	unsigned long sp = regs->regs[29];
 	unsigned long ra = regs->regs[31];
 	unsigned long pc = regs->cp0_epc;
+
+	if (!task)
+		task = current;
 
 	if (raw_show_trace || !__kernel_text_address(pc)) {
 		show_raw_backtrace(sp);
@@ -1249,6 +1252,7 @@ static inline void parity_protection_init(void)
 		break;
 
 	case CPU_5KC:
+	case CPU_5KE:
 		write_c0_ecc(0x80000000);
 		back_to_back_c0_hazard();
 		/* Set the PE bit (bit 31) in the c0_errctl register. */
@@ -1491,7 +1495,6 @@ void *set_vi_handler(int n, vi_handler_t addr)
 	return set_vi_srs_handler(n, addr, 0);
 }
 
-extern void cpu_cache_init(void);
 extern void tlb_init(void);
 extern void flush_tlb_handlers(void);
 
@@ -1499,6 +1502,7 @@ extern void flush_tlb_handlers(void);
  * Timer interrupt
  */
 int cp0_compare_irq;
+EXPORT_SYMBOL_GPL(cp0_compare_irq);
 int cp0_compare_irq_shift;
 
 /*
@@ -1518,7 +1522,7 @@ static int __init ulri_disable(char *s)
 }
 __setup("noulri", ulri_disable);
 
-void __cpuinit per_cpu_trap_init(void)
+void __cpuinit per_cpu_trap_init(bool is_boot_cpu)
 {
 	unsigned int cpu = smp_processor_id();
 	unsigned int status_set = ST0_CU0;
@@ -1598,7 +1602,7 @@ void __cpuinit per_cpu_trap_init(void)
 			cp0_perfcount_irq = -1;
 	} else {
 		cp0_compare_irq = CP0_LEGACY_COMPARE_IRQ;
-		cp0_compare_irq_shift = cp0_compare_irq;
+		cp0_compare_irq_shift = CP0_LEGACY_PERFCNT_IRQ;
 		cp0_perfcount_irq = -1;
 	}
 
@@ -1617,7 +1621,9 @@ void __cpuinit per_cpu_trap_init(void)
 #ifdef CONFIG_MIPS_MT_SMTC
 	if (bootTC) {
 #endif /* CONFIG_MIPS_MT_SMTC */
-		cpu_cache_init();
+		/* Boot CPU's cache setup in setup_arch(). */
+		if (!is_boot_cpu)
+			cpu_cache_init();
 		tlb_init();
 #ifdef CONFIG_MIPS_MT_SMTC
 	} else if (!secondaryTC) {
@@ -1633,7 +1639,7 @@ void __cpuinit per_cpu_trap_init(void)
 }
 
 /* Install CPU exception handler */
-void __init set_handler(unsigned long offset, void *addr, unsigned long size)
+void __cpuinit set_handler(unsigned long offset, void *addr, unsigned long size)
 {
 	memcpy((void *)(ebase + offset), addr, size);
 	local_flush_icache_range(ebase + offset, ebase + offset + size);
@@ -1694,7 +1700,7 @@ void __init trap_init(void)
 
 	if (board_ebase_setup)
 		board_ebase_setup();
-	per_cpu_trap_init();
+	per_cpu_trap_init(true);
 
 	/*
 	 * Copy the generic exception handlers to their final destination.
@@ -1797,6 +1803,9 @@ void __init trap_init(void)
 		set_except_vector(25, handle_mt);
 
 	set_except_vector(26, handle_dsp);
+
+	if (board_cache_error_setup)
+		board_cache_error_setup();
 
 	if (cpu_has_vce)
 		/* Special exception: R4[04]00 uses also the divec space. */

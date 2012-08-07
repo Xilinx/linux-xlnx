@@ -39,6 +39,7 @@
 #include <linux/serial.h>
 #include <linux/tty_driver.h>
 #include <linux/tty_flip.h>
+#include <linux/serial.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/uaccess.h>
@@ -508,16 +509,11 @@ static int acm_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 	if (!acm)
 		return -ENODEV;
 
-	retval = tty_init_termios(tty);
+	retval = tty_standard_install(driver, tty);
 	if (retval)
 		goto error_init_termios;
 
 	tty->driver_data = acm;
-
-	/* Final install (we use the default method) */
-	tty_driver_kref_get(driver);
-	tty->count++;
-	driver->ttys[tty->index] = tty;
 
 	return 0;
 
@@ -570,6 +566,14 @@ static int acm_port_activate(struct tty_port *port, struct tty_struct *tty)
 		goto error_set_control;
 
 	usb_autopm_put_interface(acm->control);
+
+	/*
+	 * Unthrottle device in case the TTY was closed while throttled.
+	 */
+	spin_lock_irq(&acm->read_lock);
+	acm->throttled = 0;
+	acm->throttle_req = 0;
+	spin_unlock_irq(&acm->read_lock);
 
 	if (acm_submit_read_urbs(acm, GFP_KERNEL))
 		goto error_submit_read_urbs;
@@ -773,10 +777,37 @@ static int acm_tty_tiocmset(struct tty_struct *tty,
 	return acm_set_control(acm, acm->ctrlout = newctrl);
 }
 
+static int get_serial_info(struct acm *acm, struct serial_struct __user *info)
+{
+	struct serial_struct tmp;
+
+	if (!info)
+		return -EINVAL;
+
+	memset(&tmp, 0, sizeof(tmp));
+	tmp.flags = ASYNC_LOW_LATENCY;
+	tmp.xmit_fifo_size = acm->writesize;
+	tmp.baud_base = le32_to_cpu(acm->line.dwDTERate);
+
+	if (copy_to_user(info, &tmp, sizeof(tmp)))
+		return -EFAULT;
+	else
+		return 0;
+}
+
 static int acm_tty_ioctl(struct tty_struct *tty,
 					unsigned int cmd, unsigned long arg)
 {
-	return -ENOIOCTLCMD;
+	struct acm *acm = tty->driver_data;
+	int rv = -ENOIOCTLCMD;
+
+	switch (cmd) {
+	case TIOCGSERIAL: /* gets serial port data */
+		rv = get_serial_info(acm, (struct serial_struct __user *) arg);
+		break;
+	}
+
+	return rv;
 }
 
 static const __u32 acm_tty_speed[] = {
@@ -1641,6 +1672,7 @@ static struct usb_driver acm_driver = {
 #ifdef CONFIG_PM
 	.supports_autosuspend = 1,
 #endif
+	.disable_hub_initiated_lpm = 1,
 };
 
 /*
@@ -1675,7 +1707,6 @@ static int __init acm_init(void)
 	acm_tty_driver = alloc_tty_driver(ACM_TTY_MINORS);
 	if (!acm_tty_driver)
 		return -ENOMEM;
-	acm_tty_driver->owner = THIS_MODULE,
 	acm_tty_driver->driver_name = "acm",
 	acm_tty_driver->name = "ttyACM",
 	acm_tty_driver->major = ACM_TTY_MAJOR,

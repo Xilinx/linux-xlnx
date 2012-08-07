@@ -208,7 +208,7 @@ config ACPI_IPMI
 
 config ACPI_HOTPLUG_CPU
 	bool
-	depends on ACPI_PROCESSOR && HOTPLUG_CPU
+	depends on EXPERIMENTAL && ACPI_PROCESSOR && HOTPLUG_CPU
 	select ACPI_CONTAINER
 	default y
 
@@ -383,6 +383,15 @@ config ACPI_CUSTOM_METHOD
 	  to bypass certain security measures (e.g. if root is not allowed to
 	  load additional kernel modules after boot, this feature may be used
 	  to override that restriction).
+
+config ACPI_BGRT
+        tristate "Boottime Graphics Resource Table support"
+        default n
+        help
+	  This driver adds support for exposing the ACPI Boottime Graphics
+	  Resource Table, which allows the operating system to obtain
+	  data from the firmware boot splash. It will appear under
+	  /sys/firmware/acpi/bgrt/ .
 
 source "drivers/acpi/apei/Kconfig"
 

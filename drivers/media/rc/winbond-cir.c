@@ -232,7 +232,7 @@ MODULE_PARM_DESC(invert, "Invert the signal from the IR receiver");
 
 static bool txandrx; /* default = 0 */
 module_param(txandrx, bool, 0444);
-MODULE_PARM_DESC(invert, "Allow simultaneous TX and RX");
+MODULE_PARM_DESC(txandrx, "Allow simultaneous TX and RX");
 
 static unsigned int wake_sc = 0x800F040C;
 module_param(wake_sc, uint, 0644);
@@ -991,11 +991,55 @@ wbcir_probe(struct pnp_dev *device, const struct pnp_device_id *dev_id)
 		"(w: 0x%lX, e: 0x%lX, s: 0x%lX, i: %u)\n",
 		data->wbase, data->ebase, data->sbase, data->irq);
 
+	led_trigger_register_simple("cir-tx", &data->txtrigger);
+	if (!data->txtrigger) {
+		err = -ENOMEM;
+		goto exit_free_data;
+	}
+
+	led_trigger_register_simple("cir-rx", &data->rxtrigger);
+	if (!data->rxtrigger) {
+		err = -ENOMEM;
+		goto exit_unregister_txtrigger;
+	}
+
+	data->led.name = "cir::activity";
+	data->led.default_trigger = "cir-rx";
+	data->led.brightness_set = wbcir_led_brightness_set;
+	data->led.brightness_get = wbcir_led_brightness_get;
+	err = led_classdev_register(&device->dev, &data->led);
+	if (err)
+		goto exit_unregister_rxtrigger;
+
+	data->dev = rc_allocate_device();
+	if (!data->dev) {
+		err = -ENOMEM;
+		goto exit_unregister_led;
+	}
+
+	data->dev->driver_type = RC_DRIVER_IR_RAW;
+	data->dev->driver_name = WBCIR_NAME;
+	data->dev->input_name = WBCIR_NAME;
+	data->dev->input_phys = "wbcir/cir0";
+	data->dev->input_id.bustype = BUS_HOST;
+	data->dev->input_id.vendor = PCI_VENDOR_ID_WINBOND;
+	data->dev->input_id.product = WBCIR_ID_FAMILY;
+	data->dev->input_id.version = WBCIR_ID_CHIP;
+	data->dev->map_name = RC_MAP_RC6_MCE;
+	data->dev->s_idle = wbcir_idle_rx;
+	data->dev->s_tx_mask = wbcir_txmask;
+	data->dev->s_tx_carrier = wbcir_txcarrier;
+	data->dev->tx_ir = wbcir_tx;
+	data->dev->priv = data;
+	data->dev->dev.parent = &device->dev;
+	data->dev->timeout = MS_TO_NS(100);
+	data->dev->allowed_protos = RC_TYPE_ALL;
+
 	if (!request_region(data->wbase, WAKEUP_IOMEM_LEN, DRVNAME)) {
 		dev_err(dev, "Region 0x%lx-0x%lx already in use!\n",
 			data->wbase, data->wbase + WAKEUP_IOMEM_LEN - 1);
 		err = -EBUSY;
-		goto exit_free_data;
+		goto exit_free_rc;
 	}
 
 	if (!request_region(data->ebase, EHFUNC_IOMEM_LEN, DRVNAME)) {
@@ -1020,50 +1064,9 @@ wbcir_probe(struct pnp_dev *device, const struct pnp_device_id *dev_id)
 		goto exit_release_sbase;
 	}
 
-	led_trigger_register_simple("cir-tx", &data->txtrigger);
-	if (!data->txtrigger) {
-		err = -ENOMEM;
-		goto exit_free_irq;
-	}
-
-	led_trigger_register_simple("cir-rx", &data->rxtrigger);
-	if (!data->rxtrigger) {
-		err = -ENOMEM;
-		goto exit_unregister_txtrigger;
-	}
-
-	data->led.name = "cir::activity";
-	data->led.default_trigger = "cir-rx";
-	data->led.brightness_set = wbcir_led_brightness_set;
-	data->led.brightness_get = wbcir_led_brightness_get;
-	err = led_classdev_register(&device->dev, &data->led);
-	if (err)
-		goto exit_unregister_rxtrigger;
-
-	data->dev = rc_allocate_device();
-	if (!data->dev) {
-		err = -ENOMEM;
-		goto exit_unregister_led;
-	}
-
-	data->dev->driver_name = WBCIR_NAME;
-	data->dev->input_name = WBCIR_NAME;
-	data->dev->input_phys = "wbcir/cir0";
-	data->dev->input_id.bustype = BUS_HOST;
-	data->dev->input_id.vendor = PCI_VENDOR_ID_WINBOND;
-	data->dev->input_id.product = WBCIR_ID_FAMILY;
-	data->dev->input_id.version = WBCIR_ID_CHIP;
-	data->dev->map_name = RC_MAP_RC6_MCE;
-	data->dev->s_idle = wbcir_idle_rx;
-	data->dev->s_tx_mask = wbcir_txmask;
-	data->dev->s_tx_carrier = wbcir_txcarrier;
-	data->dev->tx_ir = wbcir_tx;
-	data->dev->priv = data;
-	data->dev->dev.parent = &device->dev;
-
 	err = rc_register_device(data->dev);
 	if (err)
-		goto exit_free_rc;
+		goto exit_free_irq;
 
 	device_init_wakeup(&device->dev, 1);
 
@@ -1071,14 +1074,6 @@ wbcir_probe(struct pnp_dev *device, const struct pnp_device_id *dev_id)
 
 	return 0;
 
-exit_free_rc:
-	rc_free_device(data->dev);
-exit_unregister_led:
-	led_classdev_unregister(&data->led);
-exit_unregister_rxtrigger:
-	led_trigger_unregister_simple(data->rxtrigger);
-exit_unregister_txtrigger:
-	led_trigger_unregister_simple(data->txtrigger);
 exit_free_irq:
 	free_irq(data->irq, device);
 exit_release_sbase:
@@ -1087,6 +1082,14 @@ exit_release_ebase:
 	release_region(data->ebase, EHFUNC_IOMEM_LEN);
 exit_release_wbase:
 	release_region(data->wbase, WAKEUP_IOMEM_LEN);
+exit_free_rc:
+	rc_free_device(data->dev);
+exit_unregister_led:
+	led_classdev_unregister(&data->led);
+exit_unregister_rxtrigger:
+	led_trigger_unregister_simple(data->rxtrigger);
+exit_unregister_txtrigger:
+	led_trigger_unregister_simple(data->txtrigger);
 exit_free_data:
 	kfree(data);
 	pnp_set_drvdata(device, NULL);
