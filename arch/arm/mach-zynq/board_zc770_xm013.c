@@ -38,7 +38,7 @@
 #ifdef CONFIG_SPI_SPIDEV
 
 static struct xspi_platform_data spi_0_pdata = {
-	.speed_hz = 40000000,
+	.speed_hz = 10000000,
 	.bus_num = 0,
 	.num_chipselect = 1
 };
@@ -55,7 +55,7 @@ static struct spi_eeprom at25640_0 = {
 static struct spi_board_info spi_devs[] __initdata = {
         {
                 .modalias = "at25",
-                .max_speed_hz = 40000000,
+                .max_speed_hz = 10000000,
                 .bus_num = 0,
                 .chip_select = 1,
                 .platform_data = &at25640_0,
