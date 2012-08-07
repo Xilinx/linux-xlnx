@@ -22,12 +22,12 @@ static inline void cpu_enter_lowpower(void)
 	flush_cache_all();
 	asm volatile(
 	"	mcr	p15, 0, %1, c7, c5, 0\n"
-	"	mcr	p15, 0, %1, c7, c10, 4\n"
+	"	dsb\n"
 	/*
 	 * Turn off coherency
 	 */
 	"	mrc	p15, 0, %0, c1, c0, 1\n"
-	"	bic	%0, %0, #0x20\n"
+	"	bic	%0, %0, #0x40\n"
 	"	mcr	p15, 0, %0, c1, c0, 1\n"
 	"	mrc	p15, 0, %0, c1, c0, 0\n"
 	"	bic	%0, %0, %2\n"
@@ -42,11 +42,11 @@ static inline void cpu_leave_lowpower(void)
 	unsigned int v;
 
 	asm volatile(
-	"mrc	p15, 0, %0, c1, c0, 0\n"
+	"	mrc	p15, 0, %0, c1, c0, 0\n"
 	"	orr	%0, %0, %1\n"
 	"	mcr	p15, 0, %0, c1, c0, 0\n"
 	"	mrc	p15, 0, %0, c1, c0, 1\n"
-	"	orr	%0, %0, #0x20\n"
+	"	orr	%0, %0, #0x40\n"
 	"	mcr	p15, 0, %0, c1, c0, 1\n"
 	  : "=&r" (v)
 	  : "Ir" (CR_C)
@@ -61,28 +61,8 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 	 * code will have already disabled interrupts
 	 */
 	for (;;) {
-		/*
-		 * here's the WFI
-		 */
-		asm(".word	0xe320f003\n"
-		    :
-		    :
-		    : "memory", "cc");
-
-		/*
-		 * The WFI is not working for some reason and it's not clear why
-		 * but it causes the CPU to crash, this while(1) is not efficient 
-		 * for power, but works for now
-		 */
-	
-		while (1);
-
-		/*if (pen_release == cpu) {*/
-			/*
-			 * OK, proper wakeup, we're done
-			 */
-			break;
-		/*}*/
+		dsb();
+		wfi();
 
 		/*
 		 * Getting here, means that we have come out of WFI without
