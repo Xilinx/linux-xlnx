@@ -583,9 +583,8 @@ static int __devinit ulite_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "failed to get alias id, errno %d\n", id);
 		/* Fall back to old port-number property */
 		prop = of_get_property(pdev->dev.of_node, "port-number", NULL);
-		if (prop < 0) {
-			dev_warn(&pdev->dev,
-				"failed to get port-number, errno %d\n", prop);
+		if (!prop) {
+			dev_warn(&pdev->dev, "failed to get port-number\n");
 			id = -1;
 		} else
 			id = be32_to_cpup(prop);
