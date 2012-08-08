@@ -75,6 +75,14 @@
 			reset = <0>;
 		};
 
+		scuwdt@f8f00620 {
+			device_type = "watchdog";
+			compatible = "arm,mpcore_wdt";
+			reg = <0xf8f00620 0x20>;
+			clock-frequency = <400000000>;
+			reset = <1>;
+		};
+
 		spi0: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xE0006000 0x1000>;
