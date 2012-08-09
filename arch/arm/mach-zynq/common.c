@@ -18,7 +18,6 @@
 #include <linux/kernel.h>
 #include <linux/cpumask.h>
 #include <linux/platform_device.h>
-#include <linux/clk.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of.h>
@@ -32,8 +31,9 @@
 #include <asm/hardware/cache-l2x0.h>
 
 #include <mach/zynq_soc.h>
-#include <mach/clkdev.h>
+#include <mach/clk.h>
 #include "common.h"
+
 
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
@@ -62,7 +62,7 @@ struct map_desc io_desc[] __initdata = {
 		.pfn		= __phys_to_pfn(SCU_PERIPH_PHYS),
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
-	}, 
+	},
 
 #ifdef CONFIG_DEBUG_LL
 	{
@@ -88,6 +88,14 @@ struct map_desc io_desc[] __initdata = {
 		.length		= (60 * SZ_1K),
 		.type		= MT_DEVICE,
 	},
+
+	/* SLCR space for clock stuff for now */
+	{
+		.virtual	= SLCR_BASE_VIRT,
+		.pfn		= __phys_to_pfn(SLCR_BASE_PHYS),
+		.length		= (3 * SZ_1K),
+		.type		= MT_DEVICE,
+	},
 };
 
 
@@ -100,8 +108,8 @@ void __init xilinx_map_io(void)
 }
 
 /**
- * xilinx_memory_init() - Initialize special memory 
- * 
+ * xilinx_memory_init() - Initialize special memory
+ *
  * We need to stop things allocating the low memory as DMA can't work in
  * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
  */
@@ -110,7 +118,7 @@ void __init xilinx_memory_init()
 #if (CONFIG_PHYS_OFFSET == 0)
 	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
 	 * which can't be used for DMA
-	 */ 
+	 */
 	memblock_reserve(0, 0x4000);
 #endif
 }
@@ -135,6 +143,7 @@ early_initcall(xilinx_l2c_init);
  */
 void __init xilinx_init_machine(void)
 {
+	zynq_clock_init();
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 	platform_device_init();
 }
