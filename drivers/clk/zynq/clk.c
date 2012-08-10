@@ -346,13 +346,11 @@ void __init zynq_clock_init(void)
 	clk = clk_register_gate(NULL, "I2C0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 18, 0,
 			&aperclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
+	zynq_clkdev_add(NULL, "I2C0_APER", clk);
 	clk = clk_register_gate(NULL, "I2C1_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 19, 0,
 			&aperclk_lock);
-	clk_prepare(clk);
-	clk_enable(clk);
+	zynq_clkdev_add(NULL, "I2C1_APER", clk);
 	clk = clk_register_gate(NULL, "UART0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 20, 0,
 			&aperclk_lock);

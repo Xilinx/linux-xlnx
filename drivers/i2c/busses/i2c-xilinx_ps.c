@@ -47,6 +47,10 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/of_i2c.h>
+#include <linux/err.h>
+#ifdef CONFIG_COMMON_CLK
+#include <linux/clk.h>
+#endif
 
 /*
  * Register Map
@@ -117,7 +121,10 @@
  * @irq:		IRQ number
  * @cur_timeout:	The current timeout value used by the device
  * @input_clk:		Input clock to I2C controller
+ * @i2c_clk:		Current I2C frequency
  * @bus_hold_flag:	Flag used in repeated start for clearing HOLD bit
+ * @clk			Pointer to struct clk
+ * @clk_rate_change_nb	Notifier block for clock rate changes
  */
 struct xi2cps {
 	void __iomem *membase;
@@ -132,8 +139,19 @@ struct xi2cps {
 	int irq;
 	int cur_timeout;
 	unsigned int input_clk;
+	unsigned int i2c_clk;
 	unsigned int bus_hold_flag;
+#ifdef CONFIG_COMMON_CLK
+	struct clk	*clk;
+	struct notifier_block	clk_rate_change_nb;
+#endif
 };
+
+#ifdef CONFIG_COMMON_CLK
+#define to_xi2cps(_nb)	container_of(_nb, struct xi2cps,\
+		clk_rate_change_nb)
+#define MAX_F_ERR 10000
+#endif
 
 /**
  * xi2cps_isr - Interrupt handler for the I2C device
@@ -532,7 +550,64 @@ static const struct i2c_algorithm xi2cps_algo = {
 	.functionality	= xi2cps_func,
 };
 
+/**
+ * xi2cps_calc_divs() - Calculate clock dividers
+ * @f:		I2C clock frequency
+ * @input_clk:	Input clock frequency
+ * @a:		First divider (return value)
+ * @b:		Second divider (return value)
+ * @err:	Frequency error
+ * Return 0 on success, negative errno otherwise.
+ *
+ * f is used as input and output variable. As input it is used as target I2C
+ * frequency. On function exit f holds the actually resulting I2C frequency.
+ */
+static int xi2cps_calc_divs(unsigned int *f, unsigned int input_clk,
+		unsigned int *a, unsigned int *b, unsigned int *err)
+{
+	unsigned int fscl = *f;
+	unsigned int div_a, div_b, calc_div_a = 0;
+	unsigned int best_div_a = 0, best_div_b = 0;
+	unsigned int last_error = 0, current_error = 0;
+	unsigned int best_fscl, actual_fscl, temp;
 
+	/* Assume div_a is 0 and calculate (divisor_a+1) x (divisor_b+1) */
+	temp = input_clk / (22 * fscl);
+
+	/*
+	 * If the calculated value is negative or 0, the fscl input is out of
+	 * range. Return error.
+	 */
+	if (temp == 0)
+		return -EINVAL;
+	last_error = fscl;
+	for (div_b = 0; div_b < 64; div_b++) {
+		calc_div_a = (temp / (div_b + 1));
+		if (calc_div_a == 0)
+			div_a = calc_div_a;
+		else
+			div_a = calc_div_a - 1;
+		actual_fscl = input_clk / (22 * (div_a + 1) * (div_b + 1));
+
+		if (div_a > 3)
+			continue;
+		current_error = ((actual_fscl > fscl) ? (actual_fscl - fscl) :
+							(fscl - actual_fscl));
+		if ((last_error > current_error) && (actual_fscl <= fscl)) {
+			best_div_a = div_a;
+			best_div_b = div_b;
+			last_error = current_error;
+			best_fscl = actual_fscl;
+		}
+	}
+
+	*a = best_div_a;
+	*b = best_div_b;
+	*f = best_fscl;
+	*err = last_error;
+
+	return 0;
+}
 /**
  * xi2cps_setclk - This function sets the serial clock rate for the I2C device
  * @fscl:	The clock frequency in Hz
@@ -549,51 +624,80 @@ static const struct i2c_algorithm xi2cps_algo = {
  * clock rate. The clock can not be faster than the input clock divide by 22.
  * The two most common clock rates are 100KHz and 400KHz.
  */
-static int xi2cps_setclk(int fscl, struct xi2cps *id)
+static int xi2cps_setclk(unsigned int fscl, struct xi2cps *id)
 {
-	unsigned int div_a, div_b, calc_div_a = 0;
-	unsigned int best_div_a = 0, best_div_b = 0;
-	unsigned int last_error = 0, current_error = 0;
-	unsigned int actual_fscl, temp;
+	unsigned int div_a, div_b;
 	unsigned int ctrl_reg;
+	unsigned int err;
+	int ret = 0;
 
-
-	/* Assume div_a is 0 and calculate (divisor_a+1) x (divisor_b+1) */
-	temp = id->input_clk / (22 * fscl);
-
-	/*
-	 * If the calculated value is negative or 0, the fscl input is out of
-	 * range. Return error.
-	 */
-	if (temp == 0)
-		return -EINVAL;
-	last_error = fscl;
-	for (div_b = 0; div_b < 64; div_b++) {
-		calc_div_a = (temp / (div_b + 1));
-		if (calc_div_a == 0)
-			div_a = calc_div_a;
-		else
-			div_a = calc_div_a - 1;
-		actual_fscl = id->input_clk / (22 * (div_a + 1) * (div_b + 1));
-
-		if (div_a > 3)
-			continue;
-		current_error = ((actual_fscl > fscl) ? (actual_fscl - fscl) :
-							(fscl - actual_fscl));
-		if ((last_error > current_error) && (actual_fscl <= fscl)) {
-			best_div_a = div_a;
-			best_div_b = div_b;
-			last_error = current_error;
-		}
-	}
+	ret = xi2cps_calc_divs(&fscl, id->input_clk, &div_a, &div_b, &err);
+	if (ret)
+		return ret;
 
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg &= ~(0x0000C000 | 0x00003F00);
-	ctrl_reg |= ((best_div_a << 14) | (best_div_b << 8));
+	ctrl_reg |= ((div_a << 14) | (div_b << 8));
 	xi2cps_writereg(ctrl_reg, XI2CPS_CR_OFFSET);
 
 	return 0;
 }
+
+#ifdef CONFIG_COMMON_CLK
+/**
+ * xi2cps_clk_notifier_cb - Clock rate change callback
+ * @nb:		Pointer to notifier block
+ * @event:	Notification reason
+ * @data:	Pointer to notification data object
+ * Returns NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
+ * otherwise.
+ *
+ * This function is called when the xi2cps input clock frequency changes. In the
+ * pre-rate change notification here it is determined if the rate change may be
+ * allowed or not.
+ * In th post-change case necessary adjustments are conducted.
+ */
+static int xi2cps_clk_notifier_cb(struct notifier_block *nb, unsigned long
+		event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+	struct xi2cps *id = to_xi2cps(nb);
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+	{
+		/*
+		 * if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers. Probably we could also define an acceptable
+		 * frequency range.
+		 */
+		unsigned int input_clk = (unsigned int)ndata->new_rate;
+		unsigned int fscl = id->i2c_clk;
+		unsigned int div_a, div_b;
+		unsigned int err = 0;
+		int ret;
+
+		ret = xi2cps_calc_divs(&fscl, input_clk, &div_a, &div_b, &err);
+		if (ret)
+			return NOTIFY_STOP;
+		if (err > MAX_F_ERR)
+			return NOTIFY_STOP;
+
+		return NOTIFY_OK;
+	}
+	case POST_RATE_CHANGE:
+		id->input_clk = ndata->new_rate;
+		/* We probably need to stop the HW before this and restart
+		 * afterwards */
+		xi2cps_setclk(id->i2c_clk, id);
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+#endif
 
 /************************/
 /* Platform bus binding */
@@ -613,8 +717,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct xi2cps *id;
-	unsigned int i2c_clk;
-	int ret;
+	int ret = 0;
 #ifdef CONFIG_OF
 	const unsigned int *prop;
 #else
@@ -627,12 +730,12 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	 * Get the irq resource from platform data.Initialize the adapter
 	 * structure members and also xi2cps structure.
 	 */
-	id = kzalloc(sizeof(struct xi2cps), GFP_KERNEL);
+	id = kzalloc(sizeof(*id), GFP_KERNEL);
 	if (!id) {
 		dev_err(&pdev->dev, "no mem for i2c private data\n");
 		return -ENOMEM;
 	}
-	memset((void *)id, 0, sizeof(struct xi2cps));
+	memset((void *)id, 0, sizeof(*id));
 	platform_set_drvdata(pdev, id);
 #ifndef CONFIG_OF
 	pdata = pdev->dev.platform_data;
@@ -683,26 +786,44 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 
 	id->cur_timeout = id->adap.timeout;
 #ifdef CONFIG_OF
+#ifdef CONFIG_COMMON_CLK
+	if (id->irq == 80)
+		id->clk = clk_get_sys("I2C1_APER", NULL);
+	else
+		id->clk = clk_get_sys("I2C0_APER", NULL);
+	if (IS_ERR(id->clk)) {
+		pr_err("Xilinx I2CPS clock not found.\n");
+		goto err_unmap;
+	}
+	id->clk_rate_change_nb.notifier_call = xi2cps_clk_notifier_cb;
+	id->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
+	clk_prepare(id->clk);
+	clk_enable(id->clk);
+	id->input_clk = (unsigned int)clk_get_rate(id->clk);
+#else /* ! CONFIG_COMMON_CLK */
 	prop = of_get_property(pdev->dev.of_node, "input-clk", NULL);
-	if (prop)
+	if (prop) {
 		id->input_clk = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine input-clk\n");
 		goto err_unmap ;
 	}
+#endif /* ! CONFIG_COMMON_CLK */
 
 	prop = of_get_property(pdev->dev.of_node, "i2c-clk", NULL);
-	if (prop)
-		i2c_clk = be32_to_cpup(prop);
-	else {
+	if (prop) {
+		id->i2c_clk = be32_to_cpup(prop);
+	} else {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
 		goto err_unmap;
 	}
 #else
 	id->input_clk = pdata->input_clk;
-	i2c_clk = pdata->i2c_clk;
+	id->i2c_clk = pdata->i2c_clk;
 #endif
 
 	/*
@@ -714,9 +835,9 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	xi2cps_writereg(0x0000000E, XI2CPS_CR_OFFSET);
 	xi2cps_writereg(id->adap.timeout, XI2CPS_TIME_OUT_OFFSET);
 
-	ret = xi2cps_setclk(i2c_clk, id);
+	ret = xi2cps_setclk(id->i2c_clk, id);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "invalid SCL clock: %dkHz\n", i2c_clk);
+		dev_err(&pdev->dev, "invalid SCL clock: %dkHz\n", id->i2c_clk);
 		ret = -EINVAL;
 		goto err_unmap;
 	}
@@ -739,7 +860,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 #endif
 
 	dev_info(&pdev->dev, "%d kHz mmio %08lx irq %d\n",
-		 i2c_clk/1000, (unsigned long)r_mem->start, id->irq);
+		 id->i2c_clk/1000, (unsigned long)r_mem->start, id->irq);
 
 	return 0;
 
@@ -767,6 +888,12 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 	i2c_del_adapter(&id->adap);
 	free_irq(id->irq, id);
 	iounmap(id->membase);
+#ifdef CONFIG_COMMON_CLK
+	clk_notifier_unregister(id->clk, &id->clk_rate_change_nb);
+	clk_disable(id->clk);
+	clk_unprepare(id->clk);
+	clk_put(id->clk);
+#endif
 	kfree(id);
 	platform_set_drvdata(pdev, NULL);
 
