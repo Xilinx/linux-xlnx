@@ -52,23 +52,23 @@
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
 			interrupt-parent = <&gic>;
-			clock-frequency-timer0 = <133000000>;
-            clock-frequency-timer1 = <133000000>;
-            clock-frequency-timer2 = <133000000>;
+			clock-frequency-timer0 = <111111111>;
+			clock-frequency-timer1 = <111111111>;
+			clock-frequency-timer2 = <111111111>;
 		};
 
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
 			reg = <0xf8005000 0x100>;
-			clock-frequency = <133000000>;
+			clock-frequency = <111111111>;
 		};
 
 		scuwdt@f8f00620 {
 			device_type = "watchdog";
 			compatible = "arm,mpcore_wdt";
 			reg = <0xf8f00620 0x20>;
-			clock-frequency = <400000000>;
+			clock-frequency = <333333333>;
 			reset = <1>;
 		};
 
@@ -78,7 +78,7 @@
 			interrupts = <0 22 0>;
 			interrupt-parent = <&gic>;
 			phy-handle = <&phy0>;
-			xlnx,ptp-enet-clock = <133000000>;
+			xlnx,ptp-enet-clock = <111111111>;
 			xlnx,slcr-div0-1000Mbps = <8>;
 			xlnx,slcr-div0-100Mbps = <8>;
 			xlnx,slcr-div0-10Mbps = <8>;
@@ -101,7 +101,7 @@
 			interrupts = <0 25 0>;
 			interrupt-parent = <&gic>;
 			bus-id = <0>;
-			input-clk = <133000000>;
+			input-clk = <111111111>;
 			i2c-clk = <100000>;
 
 			#address-cells = <1>;
