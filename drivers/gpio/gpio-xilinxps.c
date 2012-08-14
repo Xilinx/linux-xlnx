@@ -562,4 +562,4 @@ static int __init xgpiops_init(void)
 	return platform_driver_register(&xgpiops_driver);
 }
 
-subsys_initcall(xgpiops_init);
+postcore_initcall(xgpiops_init);
