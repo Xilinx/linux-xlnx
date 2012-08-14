@@ -1,4 +1,5 @@
 /dts-v1/;
+
 / {
 	model = "Xilinx Zynq ZC706";
 	compatible = "xlnx,zynq-zc706";
@@ -55,6 +56,13 @@
 			clock-frequency-timer0 = <111111111>;
 			clock-frequency-timer1 = <111111111>;
 			clock-frequency-timer2 = <111111111>;
+		};
+
+		timer@f8f00600 {
+			compatible = "arm,cortex-a9-twd-timer";
+			reg = <0xf8f00600 0x20>;
+			interrupts = <1 13 0x0100>;
+			interrupt-parent = <&gic>;
 		};
 
 		swdt@f8005000 {
