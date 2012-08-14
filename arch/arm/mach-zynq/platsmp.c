@@ -106,8 +106,14 @@ int zynq_cpu1_start(u32 address)
 	
 		__raw_writel(0x20, slcr + 0x244); /* enable CPU1 */
 		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPU1 */
-		__raw_writel(SLCR_LOCK, slcr + 0x4); /* LOCK SLCR */
 
+		/* the SLCR locking/unlocking needs to be re-done, for now
+		 * there is not centralized locking/unlocking so leave it
+		 * unlocked
+		 */ 
+#if 0
+		__raw_writel(SLCR_LOCK, slcr + 0x4); /* LOCK SLCR */
+#endif
 		return 0;
 	}
 
