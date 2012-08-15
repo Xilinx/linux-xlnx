@@ -25,6 +25,7 @@
 #include <linux/xilinx_devices.h>
 #include <linux/i2c.h>
 #include <linux/i2c/si570.h>
+#include <linux/gpio.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -34,6 +35,7 @@
 
 #define IRQ_QSPI0		51
 #define IRQ_SPI1		58
+#define ETH_RST_GPIO	7
 
 #ifdef CONFIG_SPI_SPIDEV
 
@@ -89,6 +91,20 @@ static void __init board_zc770_xm013_init(void)
 	 * specific
 	 */
 	xilinx_init_machine();
+
+	/* Reset Ethernet by toggling MIO7
+	 * Note that this is the exact same code
+	 * that resets the USB on zc70x and zc770 DC1.
+	 */
+	if (gpio_request(ETH_RST_GPIO, "Etherenet Reset"))
+		printk(KERN_ERR "ERROR requesting GPIO, Ethernet not reset!");
+
+	if (gpio_direction_output(ETH_RST_GPIO, 1))
+		printk(KERN_ERR "ERROR setting GPIO direction, Ethernet not reset!");
+
+	gpio_set_value(ETH_RST_GPIO, 1);
+	gpio_set_value(ETH_RST_GPIO, 0);
+	gpio_set_value(ETH_RST_GPIO, 1);
 
 #ifndef CONFIG_SPI_SPIDEV
 	spi_register_board_info(&spi_devs[0], 
