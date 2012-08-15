@@ -27,6 +27,7 @@
 #include <linux/i2c/pca954x.h>
 #include <linux/i2c/pca953x.h>
 #include <linux/i2c/si570.h>
+#include <linux/gpio.h>
 
 #include <mach/slcr.h>
 
@@ -37,6 +38,7 @@
 #include "common.h"
 
 #define IRQ_SPI1		81
+#define USB_RST_GPIO	7
 
 #ifdef CONFIG_SPI_SPIDEV
 
@@ -199,6 +201,17 @@ static void __init board_zc702_init(void)
 	 * specific
 	 */
 	xilinx_init_machine();
+
+	/* Reset USB by toggling MIO7 */
+	if (gpio_request(USB_RST_GPIO, "USB Reset"))
+		printk(KERN_ERR "ERROR requesting GPIO, USB not reset!");
+
+	if (gpio_direction_output(USB_RST_GPIO, 1))
+		printk(KERN_ERR "ERROR setting GPIO direction, USB not reset!");
+
+	gpio_set_value(USB_RST_GPIO, 1);
+	gpio_set_value(USB_RST_GPIO, 0);
+	gpio_set_value(USB_RST_GPIO, 1);
 
 #if 	defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
 	spi_register_board_info(&xilinx_spipss_0_boardinfo[0], 

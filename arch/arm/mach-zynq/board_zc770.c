@@ -14,6 +14,7 @@
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/of_platform.h>
+#include <linux/gpio.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -21,6 +22,7 @@
 #include <asm/hardware/gic.h>
 #include "common.h"
 
+#define USB_RST_GPIO	7
 
 extern struct sys_timer xttcpss_sys_timer;
 
@@ -31,6 +33,22 @@ static void __init board_zc770_init(void)
 	 * specific
 	 */
 	xilinx_init_machine();
+
+	/* Reset USB by toggling MIO7.
+	 * Only XM010 (DC1) daughter card resets USB this way,
+	 * the other daughter cards use MIO7 for other things.
+	 */
+	if (of_machine_is_compatible("xlnx,zynq-zc770-xm010")) {
+		if (gpio_request(USB_RST_GPIO, "USB Reset"))
+			printk(KERN_ERR "ERROR requesting GPIO, USB not reset!");
+
+		if (gpio_direction_output(USB_RST_GPIO, 1))
+			printk(KERN_ERR "ERROR setting GPIO direction, USB not reset!");
+
+		gpio_set_value(USB_RST_GPIO, 1);
+		gpio_set_value(USB_RST_GPIO, 0);
+		gpio_set_value(USB_RST_GPIO, 1);
+	}
 }
 
 static const char *xilinx_dt_match[] = {
