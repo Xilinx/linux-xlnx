@@ -125,6 +125,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
  * @sem: Instance for the mutex
  * @lock: Instance of spinlock
  * @base_address: The virtual device base address of the device registers
+ * @is_partial_bitstream: Status bit to indicate partial/full bitstream
  *
  */
 struct xdevcfg_drvdata {
@@ -139,6 +140,7 @@ struct xdevcfg_drvdata {
 	spinlock_t lock;
 	void __iomem *base_address;
 	int ep107;
+	bool is_partial_bitstream;
 };
 
 /*
@@ -447,13 +449,19 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 	file->private_data = drvdata;
 	drvdata->is_open = 1;
 
-	xslcr_init_preload_fpga();
+	/* If is_partial_bitstream is set, then PROG_B is not asserted
+	 * (xdevcfg_reset_pl function) and also xslcr_init_preload_fpga and
+	 * xslcr_init_postload_fpga functions are not invoked.
+	 */
+	if (!drvdata->is_partial_bitstream)
+		xslcr_init_preload_fpga();
 
 	/* Only do the reset of the PL for Zynq as it causes problems on the EP107
 	 * and the issue is not understood, but not worth investigating as the emulation
 	 * platform is very different than silicon and not a complete implementation
+	 * Also, do not reset if it is a partial bitstream.
 	 */
-	if (!drvdata->ep107)
+	if ( (!drvdata->ep107) && (!drvdata->is_partial_bitstream) )
 		xdevcfg_reset_pl((u32)drvdata->base_address);
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
@@ -476,7 +484,8 @@ static int xdevcfg_release(struct inode *inode, struct file *file)
 {
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 
-	xslcr_init_postload_fpga();
+	if (!drvdata->is_partial_bitstream)
+		xslcr_init_postload_fpga();
 
 	drvdata->is_open = 0;
 
@@ -1313,6 +1322,71 @@ static ssize_t xdevcfg_show_prog_done_status(struct device *dev,
 static DEVICE_ATTR(prog_done, 0644, xdevcfg_show_prog_done_status,
 				NULL);
 
+/**
+ * xdevcfg_set_is_partial_bitstream() - This function sets the
+ * is_partial_bitstream variable. If is_partial_bitstream is set,
+ * then PROG_B is not asserted (xdevcfg_reset_pl) and also
+ * xslcr_init_preload_fpga and xslcr_init_postload_fpga functions
+ * are not invoked.
+ * @dev:	Pointer to the device structure.
+ * @attr:	Pointer to the device attribute structure.
+ * @buf:	Pointer to the buffer location for the configuration
+ *		data.
+ * @size:	The number of bytes used from the buffer
+ * returns:	-EINVAL if invalid parameter is sent or size
+ *
+ **/
+static ssize_t xdevcfg_set_is_partial_bitstream(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t size)
+{
+	unsigned long mask_bit;
+	ssize_t status;
+	struct xdevcfg_drvdata *drvdata =
+		(struct xdevcfg_drvdata *)dev_get_drvdata(dev);
+
+	status = strict_strtoul(buf, 10, &mask_bit);
+
+	if (status)
+		return status;
+
+	if (mask_bit > 1)
+		return -EINVAL;
+
+	if (mask_bit)
+		drvdata->is_partial_bitstream = 1;
+	else
+		drvdata->is_partial_bitstream = 0;
+
+	return size;
+}
+
+/**
+ * xdevcfg_show_is_partial_bitstream_status() - The function returns the
+ * value of is_partial_bitstream variable.
+ * @dev:	Pointer to the device structure.
+ * @attr:	Pointer to the device attribute structure.
+ * @buf:	Pointer to the buffer location for the configuration
+ *		data.
+ * returns:	size of the buffer.
+ *
+ **/
+static ssize_t xdevcfg_show_is_partial_bitstream_status(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t status;
+	struct xdevcfg_drvdata *drvdata =
+		(struct xdevcfg_drvdata *)dev_get_drvdata(dev);
+
+	status = sprintf(buf, "%d\n", drvdata->is_partial_bitstream);
+
+	return status;
+}
+
+static DEVICE_ATTR(is_partial_bitstream, 0644,
+				xdevcfg_show_is_partial_bitstream_status,
+				xdevcfg_set_is_partial_bitstream);
+
 static const struct attribute *xdevcfg_attrs[] = {
 	&dev_attr_prog_done.attr, /* PCFG_DONE bit in Intr Status register */
 	&dev_attr_dbg_lock.attr, /* Debug lock bit in Lock register */
@@ -1325,6 +1399,7 @@ static const struct attribute *xdevcfg_attrs[] = {
 	&dev_attr_enable_dbg_nonin.attr, /* NIDEN bit in Control register */
 	&dev_attr_enable_dbg_in.attr, /* DBGEN bit in Control register */
 	&dev_attr_enable_dap.attr, /* DAP_EN bits in Control register */
+	&dev_attr_is_partial_bitstream.attr, /* Flag for partial bitstream */
 	NULL,
 };
 
@@ -1413,6 +1488,7 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	}
 	mutex_init(&drvdata->sem);
 	drvdata->is_open = 0;
+	drvdata->is_partial_bitstream = 0;
 	drvdata->dma_done = 0;
 	drvdata->error_status = 0;
 	dev_info(&pdev->dev, "ioremap %llx to %p with size %llx\n",
