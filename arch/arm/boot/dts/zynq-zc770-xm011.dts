@@ -44,7 +44,7 @@
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0001000 0x1000>;
-			interrupts = < 0 50 0 >;
+			interrupts = < 0 50 4 >;
 			interrupt-parent = <&gic>;
 			clock = <0x2faf080>;
 		};
@@ -52,7 +52,7 @@
 		timer@0xf8001000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8001000 0x1000>;
-			interrupts = <0 10 0>,<0 11 0>,<0 12 0>; 
+			interrupts = <0 10 4>,<0 11 4>,<0 12 4>; 
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <0x7ed6b40>;
 			clock-frequency-timer1 = <0x7ed6b40>;
@@ -62,14 +62,14 @@
 		timer@f8f00600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xf8f00600 0x20>;
-			interrupts = <1 13 0x0100>;
+			interrupts = <1 13 0x301>;
 			interrupt-parent = <&gic>;
 		};
 
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
-			interrupts = <0 9 0>;
+			interrupts = <0 9 4>;
 			interrupt-parent = <&gic>;
 			reg = <0xf8005000 0x100>;
 			clock-frequency = <0x7ed6b40>;
@@ -87,7 +87,7 @@
 		spi: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xe0006000 0x1000>;
-			interrupts = <0 26 0>;
+			interrupts = <0 26 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <50000000>;
 			bus-num = <0>;
@@ -130,7 +130,7 @@
 		i2c: i2c@e0005000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xe0005000 0x1000>;
-			interrupts = <0 48 0>;
+			interrupts = <0 48 4>;
 			interrupt-parent = <&gic>;
 			bus-id = <1>;
 			input-clk = <50000000>;
@@ -147,7 +147,7 @@
 		usb@e0003000 {
 			compatible = "xlnx,ps7-usb-1.00.a";
 			reg = <0xe0003000 0x1000>;
-			interrupts = <0 44 0x0>;
+			interrupts = <0 44 4>;
 			interrupt-parent = <&gic>;
 			dr_mode = "host";
 			phy_type = "ulpi";
@@ -156,14 +156,14 @@
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;
-			interrupts = <0 8 0>;
+			interrupts = <0 8 4>;
 			interrupt-parent = <&gic>;
 		};
 
 		gpio@e000a000 {
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
-			interrupts = <0 20 0>;
+			interrupts = <0 20 4>;
 			interrupt-parent = <&gic>;
 		};
 	};

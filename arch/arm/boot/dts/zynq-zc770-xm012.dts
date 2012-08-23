@@ -31,20 +31,21 @@
 				  < 0xf8f00100 0x0100 >;
 		};
 
-		pl310@f8f02000 {
-						compatible = "arm,pl310-cache";
-						cache-unified;
-						cache-level = <2>;
-						reg = <0xf8f02000 0x1000>;
-						arm,data-latency = <3 2 2>;
-						arm,tag-latency = <2 2 2>;
-						interrupts = <0 34 4>;
-				};
+		pl310@f8f02000 
+		{
+			compatible = "arm,pl310-cache";
+			cache-unified;
+			cache-level = <2>;
+			reg = <0xf8f02000 0x1000>;
+			arm,data-latency = <3 2 2>;
+			arm,tag-latency = <2 2 2>;
+			interrupts = <0 34 4>;
+		};
 
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0001000 0x1000>;
-			interrupts = <0 50 0>;
+			interrupts = <0 50 4>;
 			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
@@ -52,7 +53,7 @@
 		timer@0xf8001000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8001000 0x1000>;
-			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupts = <0 10 4>,<0 11 4>,<0 12 4>;
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <133000000>;
 			clock-frequency-timer1 = <133000000>;
@@ -64,7 +65,7 @@
 			compatible = "xlnx,ps7-wdt-1.00.a";
 			reg = <0xf8005000 0x100>;
 			clock-frequency = <133000000>;
-			interrupts = <0 9 0>;
+			interrupts = <0 9 4>;
 			interrupt-parent = <&gic>;
 			reset = <0>;
 		};
@@ -80,7 +81,7 @@
 		spi1: spi@e0007000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xE0007000 0x1000>;
-			interrupts = <0 49 0>;
+			interrupts = <0 49 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <166666700>;
 			bus-num = <0>;
@@ -90,7 +91,7 @@
 		i2c0: i2c@e0004000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xE0004000 0x1000>;
-			interrupts = <0 25 0>;
+			interrupts = <0 25 4>;
 			interrupt-parent = <&gic>;
 			bus-id = <0>;
 			input-clk = <133000000>;
@@ -143,14 +144,14 @@
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;
-			interrupts = <0 8 0>;
+			interrupts = <0 8 4>;
 			interrupt-parent = <&gic>;
 		};
 
 		gpio@e000a000 {
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
-			interrupts = <0 20 0>;
+			interrupts = <0 20 4>;
 			interrupt-parent = <&gic>;
 		};
 	};

@@ -43,7 +43,7 @@
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0001000 0x1000>;
-			interrupts = <0 50 0>;
+			interrupts = <0 50 4>;
 			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
@@ -51,7 +51,7 @@
 		timer@0xf8001000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8001000 0x1000>;
-			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupts = <0 10 4>,<0 11 4>,<0 12 4>;
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <111111111>;
 			clock-frequency-timer1 = <111111111>;
@@ -61,7 +61,7 @@
 		timer@f8f00600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xf8f00600 0x20>;
-			interrupts = <1 13 0x0100>;
+			interrupts = <1 13 0x301>;
 			interrupt-parent = <&gic>;
 		};
 
@@ -83,7 +83,7 @@
 		eth@e000b000 {
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xe000b000 0x1000>;
-			interrupts = <0 22 0>;
+			interrupts = <0 22 4>;
 			interrupt-parent = <&gic>;
 			phy-handle = <&phy0>;
 			xlnx,ptp-enet-clock = <111111111>;
@@ -106,7 +106,7 @@
 		i2c0: i2c@e0004000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xE0004000 0x1000>;
-			interrupts = <0 25 0>;
+			interrupts = <0 25 4>;
 			interrupt-parent = <&gic>;
 			bus-id = <0>;
 			input-clk = <111111111>;
@@ -120,7 +120,7 @@
 			compatible = "xlnx,ps7-sdhci-1.00.a";
 			reg = <0xe0100000 0x1000>;
 			xlnx,has-cd = <0x1>;
-			interrupts = <0 24 0>;
+			interrupts = <0 24 4>;
 			interrupt-parent = <&gic>;
 			clock-frequency = <33333000>;
 		};
@@ -128,7 +128,7 @@
 		usb@e0002000 {
 			compatible = "xlnx,ps7-usb-1.00.a";
 			reg = <0xe0002000 0x1000>;
-			interrupts = <0 21 0>;
+			interrupts = <0 21 4>;
 			interrupt-parent = <&gic>;
 			dr_mode = "host";
 			phy_type = "ulpi";
@@ -137,14 +137,14 @@
 		gpio@e000a000 {
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
-			interrupts = <0 20 0>;
+			interrupts = <0 20 4>;
 			interrupt-parent = <&gic>;
 		};
 
 		qspi0: spi@e000d000 {
 			compatible = "xlnx,ps7-qspi-1.00.a";
 			reg = <0xE000D000 0x1000>;
-			interrupts = <0 19 0>;
+			interrupts = <0 19 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
 			bus-num = <1>;
@@ -196,13 +196,14 @@
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x100>;
-			interrupts = <0 8 0>;
+			interrupts = <0 8 4>;
 			interrupt-parent = <&gic>;
 		};
+
 		xadc@f8007100 {
 			compatible = "xlnx,ps7-xadc-1.00.a";
 			reg = <0xf8007100 0x20>;
-			interrupts = <0 7 0>;
+			interrupts = <0 7 4>;
 			interrupt-parent = <&gic>;
 		};
 	};

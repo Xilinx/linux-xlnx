@@ -43,7 +43,7 @@
 		uart@e0000000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xe0000000 0x1000>;
-			interrupts = < 0 27 0 >;
+			interrupts = < 0 27 4 >;
 			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
@@ -51,7 +51,7 @@
 		timer@0xf8002000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8002000 0x1000>;
-			interrupts = <0 37 0>,<0 38 0>,<0 39 0>;
+			interrupts = <0 37 4>,<0 38 4>,<0 39 4>;
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <133000000>;
 			clock-frequency-timer1 = <133000000>;
@@ -61,14 +61,14 @@
 		timer@f8f00600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xf8f00600 0x20>;
-			interrupts = <1 13 0x0100>;
+			interrupts = <1 13 0x301>;
 			interrupt-parent = <&gic>;
 		};
 
 		swdt@f8005000 {
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
-			interrupts = <0 9 0>;
+			interrupts = <0 9 4>;
 			interrupt-parent = <&gic>;
 			reg = <0xf8005000 0x100>;
 			clock-frequency = <133000000>;
@@ -86,7 +86,7 @@
 		spi0: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xE0006000 0x1000>;
-			interrupts = <0 26 0>;
+			interrupts = <0 26 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <166666700>;
 			bus-num = <0>;
@@ -96,7 +96,7 @@
 		i2c1: i2c@e0005000 {
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			reg = <0xE0005000 0x1000>;
-			interrupts = < 0 48 0 >;
+			interrupts = < 0 48 4 >;
 			interrupt-parent = <&gic>;
 			bus-id = <0>;
 			input-clk = <133000000>;
@@ -106,7 +106,7 @@
 		qspi0: spi@e000d000 {
 			compatible = "xlnx,ps7-qspi-1.00.a";
 			reg = <0xE000D000 0x1000>;
-			interrupts = < 0 19 0 >;
+			interrupts = < 0 19 4 >;
 			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
 			bus-num = <1>;
@@ -154,7 +154,7 @@
 		eth@e000b000 {
 			compatible = "xlnx,ps7-ethernet-1.00.a";
 			reg = <0xe000c000 0x1000>;
-			interrupts = <0 45 0>;
+			interrupts = <0 45 4>;
 			interrupt-parent = <&gic>;
 			phy-handle = <&phy0>;
 			xlnx,ptp-enet-clock = <133000000>;
@@ -177,14 +177,14 @@
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			reg = <0xf8007000 0x1000>;
-			interrupts = <0 8 0>;
+			interrupts = <0 8 4>;
 			interrupt-parent = <&gic>;
 		};
 
 		gpio@e000a000 {
 			compatible = "xlnx,ps7-gpio-1.00.a";
 			reg = <0xe000a000 0x1000>;
-			interrupts = <0 20 0>;
+			interrupts = <0 20 4>;
 			interrupt-parent = <&gic>;
 		};
 	};
