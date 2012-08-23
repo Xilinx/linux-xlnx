@@ -74,12 +74,10 @@
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
  * bit definitions.
  */
-#define XQSPIPS_IXR_MODF_MASK		0x00000002 /* QSPI Mode Fault */
 #define XQSPIPS_IXR_TXNFULL_MASK	0x00000004 /* QSPI TX FIFO Overflow */
 #define XQSPIPS_IXR_TXFULL_MASK		0x00000008 /* QSPI TX FIFO is full */
 #define XQSPIPS_IXR_RXNEMTY_MASK	0x00000010 /* QSPI RX FIFO Not Empty */
-#define XQSPIPS_IXR_ALL_MASK		(XQSPIPS_IXR_TXNFULL_MASK | \
-					 XQSPIPS_IXR_MODF_MASK)
+#define XQSPIPS_IXR_ALL_MASK		(XQSPIPS_IXR_TXNFULL_MASK)
 
 /*
  * QSPI Enable Register bit Masks
@@ -501,12 +499,9 @@ static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xqspi structure
  *
- * This function handles TX empty and Mode Fault interrupts only.
+ * This function handles TX empty only.
  * On TX empty interrupt this function reads the received data from RX FIFO and
  * fills the TX FIFO if there is any data remaining to be transferred.
- * On Mode Fault interrupt this function indicates that transfer is completed,
- * the SPI subsystem will identify the error as the remaining bytes to be
- * transferred is non-zero.
  *
  * returns:	IRQ_HANDLED always
  **/
@@ -520,12 +515,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 	xqspips_write(xqspi->regs + XQSPIPS_IDIS_OFFSET,
 			XQSPIPS_IXR_ALL_MASK);
 
-	if (intr_status & XQSPIPS_IXR_MODF_MASK) {
-		/* Indicate that transfer is completed, the SPI subsystem will
-		 * identify the error as the remaining bytes to be
-		 * transferred is non-zero */
-		complete(&xqspi->done);
-	} else if ((intr_status & XQSPIPS_IXR_TXNFULL_MASK) ||
+	if ((intr_status & XQSPIPS_IXR_TXNFULL_MASK) ||
 		   (intr_status & XQSPIPS_IXR_RXNEMTY_MASK)) {
 		/* This bit is set when Tx FIFO has < THRESHOLD entries. We have
 		   the THRESHOLD value set to 1, so this bit indicates Tx FIFO
