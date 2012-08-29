@@ -26,10 +26,8 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#ifdef CONFIG_COMMON_CLK
 #include <linux/clk.h>
 #include <linux/err.h>
-#endif
 
 #include <asm/mach/time.h>
 #include <asm/smp_twd.h>
@@ -87,10 +85,8 @@
 struct xttcpss_timer {
 	void __iomem *base_addr;
 	int frequency;
-#ifdef CONFIG_COMMON_CLK
 	struct clk *clk;
 	struct notifier_block clk_rate_change_nb;
-#endif
 };
 
 static struct xttcpss_timer timers[2];
@@ -270,7 +266,6 @@ static struct clock_event_device xttcpss_clockevent = {
 	.rating		= 200,
 };
 
-#ifdef CONFIG_COMMON_CLK
 static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
@@ -324,7 +319,6 @@ static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 }
-#endif
 
 /**
  * xttcpss_timer_init - Initialize the timer
@@ -343,9 +337,7 @@ static void __init xttcpss_timer_init(void)
 		"xlnx,ps7-ttc-1.00.a",
 		NULL
 	};
-#ifdef CONFIG_COMMON_CLK
 	struct clk *clk;
-#endif
 
 	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
 	 * and use it, but if missing use some defaults for now to help the 
@@ -393,7 +385,6 @@ static void __init xttcpss_timer_init(void)
 	 * kernel, the event * timer is the only one that needs the frequency,
 	 * but make them match
 	 */
-#ifdef CONFIG_COMMON_CLK
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
 		pr_warn("Xilinx: timer: Clock not found.");
@@ -414,24 +405,6 @@ static void __init xttcpss_timer_init(void)
 	if (clk_notifier_register(clk,
 			&timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb))
 		pr_warn("Unable to register clock notifier.\n");
-#else
-	if (prop1) {
-		timers[XTTCPSS_CLOCKSOURCE].frequency = be32_to_cpup(prop1) /
-			PRESCALE;
-	} else {
-		pr_err("Error, no clock-frequency specified for timer\n");
-		timers[XTTCPSS_CLOCKSOURCE].frequency = PERIPHERAL_CLOCK_RATE /
-			PRESCALE;
-	}
-	if (prop2) {
-		timers[XTTCPSS_CLOCKEVENT].frequency = be32_to_cpup(prop2) /
-			PRESCALE;
-	} else {
-		pr_err("Error, no clock-frequency specified for timer\n");
-		timers[XTTCPSS_CLOCKEVENT].frequency = PERIPHERAL_CLOCK_RATE /
-			PRESCALE;
-	}
-#endif
 
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss,
