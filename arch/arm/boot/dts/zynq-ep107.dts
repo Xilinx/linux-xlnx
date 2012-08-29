@@ -29,6 +29,11 @@
 		linux,stdout-path = &uart0;
 	};
 
+	soc {
+		compatible = "xlnx,zynq";
+		clock-frequency = <1538462>;
+	};
+
 	amba {
 		compatible = "simple-bus";
 		#address-cells = <1>;

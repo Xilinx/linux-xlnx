@@ -17,6 +17,11 @@
 		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
+	soc {
+		compatible = "xlnx,zynq";
+		clock-frequency = <33333333>;
+	};
+
 	amba@0 {
 		compatible = "simple-bus";
 		#address-cells = <0x1>;
