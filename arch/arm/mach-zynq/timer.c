@@ -388,23 +388,42 @@ static void __init xttcpss_timer_init(void)
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
 		pr_warn("Xilinx: timer: Clock not found.");
-		return;
-	}
-	clk_prepare(clk);
-	clk_enable(clk);
-	timers[XTTCPSS_CLOCKSOURCE].clk = clk;
-	timers[XTTCPSS_CLOCKEVENT].clk = clk;
-	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
-		xttcpss_timer_rate_change_cb;
-	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
-		xttcpss_timer_rate_change_cb;
-	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
-	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
-	timers[XTTCPSS_CLOCKSOURCE].frequency = clk_get_rate(clk) / PRESCALE;
-	timers[XTTCPSS_CLOCKEVENT].frequency = clk_get_rate(clk) / PRESCALE;
-	if (clk_notifier_register(clk,
+		timers[XTTCPSS_CLOCKSOURCE].clk = NULL;
+		timers[XTTCPSS_CLOCKEVENT].clk = NULL;
+		if (prop1) {
+			timers[XTTCPSS_CLOCKSOURCE].frequency =
+				be32_to_cpup(prop1) / PRESCALE;
+		} else {
+			pr_err("Error, no clock-frequency specified for timer\n");
+			timers[XTTCPSS_CLOCKSOURCE].frequency =
+				PERIPHERAL_CLOCK_RATE / PRESCALE;
+		}
+		if (prop2) {
+			timers[XTTCPSS_CLOCKEVENT].frequency =
+				be32_to_cpup(prop2) / PRESCALE;
+		} else {
+			pr_err("Error, no clock-frequency specified for timer\n");
+			timers[XTTCPSS_CLOCKEVENT].frequency =
+				PERIPHERAL_CLOCK_RATE / PRESCALE;
+		}
+	} else {
+		clk_prepare_enable(clk);
+		timers[XTTCPSS_CLOCKSOURCE].clk = clk;
+		timers[XTTCPSS_CLOCKEVENT].clk = clk;
+		timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
+			xttcpss_timer_rate_change_cb;
+		timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
+			xttcpss_timer_rate_change_cb;
+		timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
+		timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
+		timers[XTTCPSS_CLOCKSOURCE].frequency =
+			clk_get_rate(clk) / PRESCALE;
+		timers[XTTCPSS_CLOCKEVENT].frequency =
+			clk_get_rate(clk) / PRESCALE;
+		if (clk_notifier_register(clk,
 			&timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb))
-		pr_warn("Unable to register clock notifier.\n");
+			pr_warn("Unable to register clock notifier.\n");
+	}
 
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss,
