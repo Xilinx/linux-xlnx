@@ -42,9 +42,7 @@ static struct xilinx_axipcie_port *xilinx_axipcie_ports;
 static unsigned int xilinx_axipcie_port_count;
 
 static struct of_device_id xilinx_axipcie_match[] __devinitdata = {
-	{ .compatible = "xlnx,axi-pcie-1.02.a" ,},
-	{ .compatible = "xlnx,axi-pcie-1.03.a" ,},
-	{ .compatible = "xlnx,axi-pcie-1.04.a" ,},
+	{ .compatible = "xlnx,axi-pcie-1.05.a" ,},
 	{}
 };
 
@@ -313,8 +311,6 @@ static int xilinx_axipcie_read_config(struct pci_bus *bus,
 	struct xilinx_axipcie_port *port =
 				&xilinx_axipcie_ports[hose->indirect_type];
 	void __iomem *addr;
-	int off_align, new_offset;
-	u32 cfgval;
 
 	if (xilinx_axipcie_verify_config(port, bus, devfn) != 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
@@ -326,36 +322,16 @@ static int xilinx_axipcie_read_config(struct pci_bus *bus,
 		return PCIBIOS_SUCCESSFUL;
 	}
 
-	/* Xilinx CR# 662845 */
-	off_align = (offset % 4);
-	new_offset = offset - off_align;
-
-	if (bus->number > 0) {
-		switch (len) {
-		case 1:
-			cfgval = xpcie_in_be32((u32 *)(addr + new_offset));
-			*val = (u8) (cfgval >> (off_align * 8));
-			break;
-		case 2:
-			cfgval = xpcie_in_be32((u32 *)(addr + new_offset));
-			*val = (u16) (cfgval >> (off_align * 8));
-			break;
-		default:
-			*val = xpcie_in_be32((u32 *)(addr + offset));
-			break;
-		}
-	} else {
-		switch (len) {
-		case 1:
-			*val = in_8((u8 *)(addr + offset));
-			break;
-		case 2:
-			*val = in_le16((u16 *)(addr + offset));
-			break;
-		default:
-			*val = in_le32((u32 *)(addr + offset));
-			break;
-		}
+	switch (len) {
+	case 1:
+		*val = in_8((u8 *)(addr + offset));
+		break;
+	case 2:
+		*val = in_le16((u16 *)(addr + offset));
+		break;
+	default:
+		*val = in_le32((u32 *)(addr + offset));
+		break;
 	}
 
 	return PCIBIOS_SUCCESSFUL;
@@ -394,30 +370,16 @@ static int xilinx_axipcie_write_config(struct pci_bus *bus,
 	if ((bus->number == 0) && devfn > 0)
 		return PCIBIOS_SUCCESSFUL;
 
-	if (bus->number > 0) {
-		switch (len) {
-		case 1:
-			out_8((u8 *)(addr + offset), val);
-			break;
-		case 2:
-			xpcie_out_be16((u16 *)(addr + offset), val);
-			break;
-		default:
-			xpcie_out_be32((u32 *)(addr + offset), val);
-			break;
-		}
-	} else {
-		switch (len) {
-		case 1:
-			out_8((u8 *)(addr + offset), val);
-			break;
-		case 2:
-			out_le16((u16 *)(addr + offset), val);
-			break;
-		default:
-			out_le32((u32 *)(addr + offset), val);
-			break;
-		}
+	switch (len) {
+	case 1:
+		out_8((u8 *)(addr + offset), val);
+		break;
+	case 2:
+		out_le16((u16 *)(addr + offset), val);
+		break;
+	default:
+		out_le32((u32 *)(addr + offset), val);
+		break;
 	}
 
 	wmb();
