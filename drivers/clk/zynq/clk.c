@@ -16,6 +16,7 @@
 
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
+#include <linux/of.h>
 #include <mach/zynq_soc.h>
 #include <mach/clk.h>
 
@@ -71,6 +72,11 @@ static void __init zynq_clkdev_add(const char *con_id, const char *dev_id,
 		pr_warn("Adding clkdev failed.");
 }
 
+static const struct of_device_id matches __initconst = {
+	.compatible = "xlnx,zynq",
+	.name = "soc",
+};
+
 /**
  * zynq_clock_init() - Clock initalization
  *
@@ -81,11 +87,22 @@ static void __init zynq_clkdev_add(const char *con_id, const char *dev_id,
 void __init zynq_clock_init(void)
 {
 	struct clk *clk;
+	struct device_node *np;
+	const void *prop;
+	unsigned int ps_clk_f = 33333333;
 
 	pr_info("Zynq clock init\n");
 
+	np = of_find_matching_node(NULL, &matches);
+	if (np) {
+		prop = of_get_property(np, "clock-frequency", NULL);
+		if (prop)
+			ps_clk_f = be32_to_cpup(prop);
+		of_node_put(np);
+	}
+
 	clk = clk_register_fixed_rate(NULL, "PS_CLK", NULL, CLK_IS_ROOT,
-			33333333);
+			ps_clk_f);
 	clk = clk_register_zynq_pll("ARMPLL",
 			(void __iomem *)SLCR_ARMPLL_CTRL,
 			(void __iomem *)SLCR_ARMPLL_CFG,
