@@ -786,12 +786,8 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
 #ifdef CONFIG_COMMON_CLK
-				/* Needs real error handling and check that rate
-				 * is in legal boundary */
-				pr_info("Set GEM clk to 125 MHz\n");
 				rate = clk_round_rate(lp->devclk, 125000000);
-				if (rate < 0)
-					pr_err("Cannot adjust link.\n");
+				pr_info("Set GEM clk to %ld Hz\n", rate);
 				if (clk_set_rate(lp->devclk, rate))
 					pr_err("Unable to set new clock rate.\n");
 #else
@@ -806,12 +802,8 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
 #ifdef CONFIG_COMMON_CLK
-				/* Needs real error handling and check that rate
-				 * is in legal boundary */
-				pr_info("Set GEM clk to 25 MHz\n");
 				rate = clk_round_rate(lp->devclk, 25000000);
-				if (rate < 0)
-					pr_err("Cannot adjust link.\n");
+				pr_info("Set GEM clk to %ld Hz\n", rate);
 				if (clk_set_rate(lp->devclk, rate))
 					pr_err("Unable to set new clock rate.\n");
 #else
@@ -825,12 +817,8 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (phydev->speed == SPEED_10) {
 #ifdef CONFIG_COMMON_CLK
-				/* Needs real error handling and check that rate
-				 * is in legal boundary */
-				pr_info("Set GEM clk to 2.5 MHz\n");
 				rate = clk_round_rate(lp->devclk, 2500000);
-				if (rate < 0)
-					pr_err("Cannot adjust link.\n");
+				pr_info("Set GEM clk to %ld Hz\n", rate);
 				if (clk_set_rate(lp->devclk, rate))
 					pr_err("Unable to set new clock rate.\n");
 #else
@@ -3114,33 +3102,40 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	}
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
 #ifdef CONFIG_COMMON_CLK
-		/* Clock prototyping */
-		/* Hard coded clock names == ugly hack */
-		if (lp->enetnum == 0) {
-			lp->devclk = clk_get_sys("GEM0", NULL);
+		if (lp->enetnum == 0)
 			lp->aperclk = clk_get_sys("GEM0_APER", NULL);
-		} else {
-			lp->devclk = clk_get_sys("GEM1", NULL);
+		else
 			lp->aperclk = clk_get_sys("GEM1_APER", NULL);
-		}
-
-		if (IS_ERR(lp->devclk)) {
-			pr_err("Xilinx EMACPS device clock not found.\n");
-			goto err_out_unregister_netdev;
-		}
 		if (IS_ERR(lp->aperclk)) {
 			pr_err("Xilinx EMACPS APER clock not found.\n");
+			rc = PTR_ERR(lp->aperclk);
 			goto err_out_unregister_netdev;
+		}
+		if (lp->enetnum == 0)
+			lp->devclk = clk_get_sys("GEM0", NULL);
+		else
+			lp->devclk = clk_get_sys("GEM1", NULL);
+		if (IS_ERR(lp->devclk)) {
+			pr_err("Xilinx EMACPS device clock not found.\n");
+			rc = PTR_ERR(lp->devclk);
+			goto err_out_clk_put_aper;
+		}
+
+		rc = clk_prepare_enable(lp->aperclk);
+		if (rc) {
+			pr_err("Unable to enable EMACPS APER clock.\n");
+			goto err_out_clk_put;
+		}
+		rc = clk_prepare_enable(lp->devclk);
+		if (rc) {
+			pr_err("Unable to enable EMACPS device clock.\n");
+			goto err_out_clk_dis_aper;
 		}
 
 		lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
 		lp->clk_rate_change_nb.next = NULL;
 		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
 			pr_warn("Unable to register clock notifier.\n");
-		clk_prepare(lp->aperclk);
-		clk_enable(lp->aperclk);
-		clk_prepare(lp->devclk);
-		clk_enable(lp->devclk);
 #else
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div0-1000Mbps", NULL);
@@ -3206,9 +3201,10 @@ static int __init xemacps_probe(struct platform_device *pdev)
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
 
-	if (xemacps_mii_init(lp) != 0) {
+	rc = xemacps_mii_init(lp);
+	if (rc) {
 		printk(KERN_ERR "%s: error in xemacps_mii_init\n", ndev->name);
-		goto err_out_unregister_netdev;
+		goto err_out_unregister_clk_notifier;
 	}
 
 	xemacps_update_hwaddr(lp);
@@ -3222,6 +3218,17 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_out_unregister_clk_notifier:
+#ifdef CONFIG_COMMON_CLK
+	clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
+	clk_disable_unprepare(lp->devclk);
+err_out_clk_dis_aper:
+	clk_disable_unprepare(lp->aperclk);
+err_out_clk_put:
+	clk_put(lp->devclk);
+err_out_clk_put_aper:
+	clk_put(lp->aperclk);
+#endif
 err_out_unregister_netdev:
 	unregister_netdev(ndev);
 err_out_free_irq:
@@ -3263,11 +3270,9 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 #ifdef CONFIG_COMMON_CLK
 		/* clock prototyping */
 		clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
-		clk_disable(lp->devclk);
-		clk_unprepare(lp->devclk);
+		clk_disable_unprepare(lp->devclk);
 		clk_put(lp->devclk);
-		clk_disable(lp->aperclk);
-		clk_unprepare(lp->aperclk);
+		clk_disable_unprepare(lp->aperclk);
 		clk_put(lp->aperclk);
 #endif
 	}
