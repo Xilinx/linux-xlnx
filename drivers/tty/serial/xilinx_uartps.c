@@ -1259,29 +1259,36 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		xuartps->uartnum = 0;
 	else
 		xuartps->uartnum = 1;
-	if (xuartps->uartnum) {
-		xuartps->devclk = clk_get_sys("UART1", NULL);
-		xuartps->aperclk = clk_get_sys("UART1_APER", NULL);
-	} else {
-		xuartps->devclk = clk_get_sys("UART0", NULL);
-		xuartps->aperclk = clk_get_sys("UART0_APER", NULL);
-	}
 
-	if (IS_ERR(xuartps->devclk)) {
-		pr_err("Xilinx UARTPS device clock not found.\n");
-		ret = -ENODEV;
-		goto err_out;
-	}
+	if (xuartps->uartnum)
+		xuartps->aperclk = clk_get_sys("UART1_APER", NULL);
+	else
+		xuartps->aperclk = clk_get_sys("UART0_APER", NULL);
 	if (IS_ERR(xuartps->aperclk)) {
 		pr_err("Xilinx UARTPS APER clock not found.\n");
-		ret = -ENODEV;
-		goto err_out;
+		ret = PTR_ERR(xuartps->aperclk);
+		goto err_out_free;
+	}
+	if (xuartps->uartnum)
+		xuartps->devclk = clk_get_sys("UART1", NULL);
+	else
+		xuartps->devclk = clk_get_sys("UART0", NULL);
+	if (IS_ERR(xuartps->devclk)) {
+		pr_err("Xilinx UARTPS device clock not found.\n");
+		ret = PTR_ERR(xuartps->devclk);
+		goto err_out_clk_put_aper;
 	}
 
-	clk_prepare(xuartps->aperclk);
-	clk_enable(xuartps->aperclk);
-	clk_prepare(xuartps->devclk);
-	clk_enable(xuartps->devclk);
+	ret = clk_prepare_enable(xuartps->aperclk);
+	if (ret) {
+		pr_err("Xilinx UARTPS unable to enable APER clock.\n");
+		goto err_out_clk_put;
+	}
+	ret = clk_prepare_enable(xuartps->devclk);
+	if (ret) {
+		pr_err("Xilinx UARTPS unable to enable device clock.\n");
+		goto err_out_clk_dis_aper;
+	}
 
 	clk = (unsigned int)clk_get_rate(xuartps->devclk);
 	xuartps->clk_rate_change_nb.notifier_call = xuartps_clk_notifier_cb;
@@ -1295,7 +1302,7 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 	if (!port) {
 		dev_err(&pdev->dev, "Cannot get uart_port structure\n");
 		ret = -ENODEV;
-		goto err_out2;
+		goto err_out_clk_dis;
 	} else {
 		/* Register the port.
 		 * This function also registers this device with the tty layer
@@ -1320,21 +1327,21 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 			xuartps->port = NULL;
 			ret = rc;
 #endif
-			goto err_out2;
+			goto err_out_clk_dis;
 		}
 		return 0;
 	}
-err_out2:
+err_out_clk_dis:
 #ifdef CONFIG_COMMON_CLK
-	clk_disable(xuartps->devclk);
-	clk_unprepare(xuartps->devclk);
+	clk_notifier_unregister(xuartps->devclk, &xuartps->clk_rate_change_nb);
+	clk_disable_unprepare(xuartps->devclk);
+err_out_clk_dis_aper:
+	clk_disable_unprepare(xuartps->aperclk);
+err_out_clk_put:
 	clk_put(xuartps->devclk);
-	clk_disable(xuartps->aperclk);
-	clk_unprepare(xuartps->aperclk);
+err_out_clk_put_aper:
 	clk_put(xuartps->aperclk);
-#endif
-#ifdef CONFIG_COMMON_CLK
-err_out:
+err_out_free:
 	kfree(xuartps);
 #endif
 
@@ -1368,11 +1375,9 @@ static int __devexit xuartps_remove(struct platform_device *pdev)
 		dev_set_drvdata(&pdev->dev, NULL);
 		port->mapbase = 0;
 #ifdef CONFIG_COMMON_CLK
-		clk_disable(xuartps->devclk);
-		clk_unprepare(xuartps->devclk);
+		clk_disable_unprepare(xuartps->devclk);
 		clk_put(xuartps->devclk);
-		clk_disable(xuartps->aperclk);
-		clk_unprepare(xuartps->aperclk);
+		clk_disable_unprepare(xuartps->aperclk);
 		clk_put(xuartps->aperclk);
 		kfree(xuartps);
 #endif
