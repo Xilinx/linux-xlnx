@@ -1326,11 +1326,11 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 	}
 err_out2:
 #ifdef CONFIG_COMMON_CLK
-	clk_unprepare(xuartps->devclk);
 	clk_disable(xuartps->devclk);
+	clk_unprepare(xuartps->devclk);
 	clk_put(xuartps->devclk);
-	clk_unprepare(xuartps->aperclk);
 	clk_disable(xuartps->aperclk);
+	clk_unprepare(xuartps->aperclk);
 	clk_put(xuartps->aperclk);
 #endif
 #ifdef CONFIG_COMMON_CLK
