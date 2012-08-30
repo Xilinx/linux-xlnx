@@ -569,10 +569,14 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	gpio->clk = clk_get_sys("GPIO_APER", NULL);
 	if (IS_ERR(gpio->clk)) {
 		pr_err("Xilinx GPIOPS clock not found.\n");
+		ret = PTR_ERR(gpio->clk);
 		goto err_chip_remove;
 	}
-	clk_prepare(gpio->clk);
-	clk_enable(gpio->clk);
+	ret = clk_prepare_enable(gpio->clk);
+	if (ret) {
+		pr_err("Xilinx GPIOPS unable to enable clock.\n");
+		goto err_clk_put;
+	}
 #endif
 
 	/* disable interrupts for all banks */
@@ -602,6 +606,8 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	return 0;
 
 #ifdef CONFIG_COMMON_CLK
+err_clk_put:
+	clk_put(gpio->clk);
 err_chip_remove:
 	gpiochip_remove(chip);
 #endif
@@ -621,8 +627,7 @@ static int xgpiops_remove(struct platform_device *pdev)
 #ifdef CONFIG_COMMON_CLK
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	clk_disable(gpio->clk);
-	clk_unprepare(gpio->clk);
+	clk_disable_unprepare(gpio->clk);
 	clk_put(gpio->clk);
 #endif
 	return 0;
