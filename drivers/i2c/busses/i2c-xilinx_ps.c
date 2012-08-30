@@ -316,6 +316,9 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 	ctrl_reg |= (XI2CPS_CR_RW_MASK | XI2CPS_CR_CLR_FIFO_MASK);
 
+	if ((id->p_msg->flags & I2C_M_RECV_LEN) == I2C_M_RECV_LEN)
+		id->recv_count = I2C_SMBUS_BLOCK_MAX + 1;
+
 	if (id->recv_count > XI2CPS_FIFO_DEPTH)
 		ctrl_reg |= XI2CPS_CR_HOLD_BUS_MASK;
 
@@ -341,7 +344,8 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	/*
 	 * Clear the bus hold flag if bytes to receive is less than FIFO size.
 	 */
-		if (id->bus_hold_flag == 0) {
+		if (id->bus_hold_flag == 0 &&
+		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN)) {
 			/* Clear the hold bus bit */
 			ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 			if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
@@ -542,7 +546,8 @@ retry:
 static u32 xi2cps_func(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | I2C_FUNC_10BIT_ADDR | \
-		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
+		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK) | \
+		I2C_FUNC_SMBUS_BLOCK_DATA;
 }
 
 static const struct i2c_algorithm xi2cps_algo = {
