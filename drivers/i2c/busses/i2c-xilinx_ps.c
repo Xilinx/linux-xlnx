@@ -825,14 +825,18 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		id->clk = clk_get_sys("I2C0_APER", NULL);
 	if (IS_ERR(id->clk)) {
 		pr_err("Xilinx I2CPS clock not found.\n");
+		ret = PTR_ERR(id->clk);
 		goto err_unmap;
+	}
+	ret = clk_prepare_enable(id->clk);
+	if (ret) {
+		pr_err("Xilinx I2CPS unable to enable clock.\n");
+		goto err_clk_put;
 	}
 	id->clk_rate_change_nb.notifier_call = xi2cps_clk_notifier_cb;
 	id->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
 		pr_warn("Unable to register clock notifier.\n");
-	clk_prepare(id->clk);
-	clk_enable(id->clk);
 	id->input_clk = (unsigned int)clk_get_rate(id->clk);
 #else /* ! CONFIG_COMMON_CLK */
 	prop = of_get_property(pdev->dev.of_node, "input-clk", NULL);
@@ -851,7 +855,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	} else {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
-		goto err_unmap;
+		goto err_clk_dis;
 	}
 #else
 	id->input_clk = pdata->input_clk;
@@ -871,13 +875,13 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "invalid SCL clock: %dkHz\n", id->i2c_clk);
 		ret = -EINVAL;
-		goto err_unmap;
+		goto err_clk_dis;
 	}
 
 	if (request_irq(id->irq, xi2cps_isr, 0, DRIVER_NAME, id)) {
 		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
 		ret = -EINVAL;
-		goto err_unmap;
+		goto err_clk_dis;
 	}
 
 	ret = i2c_add_numbered_adapter(&id->adap);
@@ -898,6 +902,12 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 
 err_free_irq:
 	free_irq(id->irq, id);
+err_clk_dis:
+#ifdef CONFIG_COMMON_CLK
+	clk_disable_unprepare(id->clk);
+err_clk_put:
+	clk_put(id->clk);
+#endif
 err_unmap:
 	iounmap(id->membase);
 err_free_mem:
@@ -922,8 +932,7 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 	iounmap(id->membase);
 #ifdef CONFIG_COMMON_CLK
 	clk_notifier_unregister(id->clk, &id->clk_rate_change_nb);
-	clk_disable(id->clk);
-	clk_unprepare(id->clk);
+	clk_disable_unprepare(id->clk);
 	clk_put(id->clk);
 #endif
 	kfree(id);
