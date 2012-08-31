@@ -1435,7 +1435,6 @@ static void __devinit pcibios_setup_phb_resources(struct pci_controller *hose, s
 	unsigned long io_offset;
 	struct resource *res;
 	int i;
-	unsigned long io_offset;
 
 	/* Hookup PHB IO resource */
 	res = &hose->io_resource;
