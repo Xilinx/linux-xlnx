@@ -2221,14 +2221,18 @@ static int xemacps_open(struct net_device *ndev)
 		return rc;
 	}
 
+	rc = pm_runtime_get(&lp->pdev->dev);
+	if (rc < 0) {
+		pr_err("%s pm_runtime_get() failed, rc %d\n", ndev->name, rc);
+		goto err_free_rings;
+	}
+
 	rc = xemacps_setup_ring(lp);
 	if (rc) {
 		printk(KERN_ERR "%s Unable to setup BD rings, rc %d\n",
 		ndev->name, rc);
-		return rc;
+		goto err_pm_put;
 	}
-
-	pm_runtime_get(&lp->pdev->dev);
 
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
@@ -2240,8 +2244,8 @@ static int xemacps_open(struct net_device *ndev)
 			kfree(lp->mii_bus->irq);
 			mdiobus_free(lp->mii_bus);
 		}
-		pm_runtime_put(&lp->pdev->dev);
-		return -ENXIO;
+		rc = -ENXIO;
+		goto err_pm_put;
 	}
 
 	netif_carrier_on(ndev);
@@ -2249,6 +2253,13 @@ static int xemacps_open(struct net_device *ndev)
 	netif_start_queue(ndev);
 
 	return 0;
+
+err_pm_put:
+	pm_runtime_put(&lp->pdev->dev);
+err_free_rings:
+	xemacps_descriptor_free(lp);
+
+	return rc;
 }
 
 /**
