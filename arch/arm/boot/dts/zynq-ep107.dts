@@ -31,7 +31,7 @@
 
 	soc {
 		compatible = "xlnx,zynq";
-		clock-frequency = <1538462>;
+		clock-frequency = <121154004>;
 	};
 
 	amba {
