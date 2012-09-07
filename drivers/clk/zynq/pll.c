@@ -57,6 +57,7 @@ struct zynq_pll {
 #define PLLCTRL_FBDIV_SHIFT	12
 #define PLLCTRL_BYPASS_MASK	0x10
 #define PLLCTRL_BYPASS_SHIFT	4
+#define PLLCTRL_BPQUAL_MASK	(1 << 3)
 #define PLLCTRL_PWRDWN_MASK	2
 #define PLLCTRL_PWRDWN_SHIFT	1
 #define PLLCTRL_RESET_MASK	1
@@ -380,6 +381,8 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 		void __iomem *pllcfg, void __iomem *pllstatus, u8 lockbit)
 {
 	struct zynq_pll *clk;
+	u32 reg;
+	unsigned long flags = 0;
 	const char *pnames[] = {"PS_CLK"};
 	spinlock_t *lock;
 	struct clk_init_data initd = {
@@ -416,6 +419,14 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 		clk->bypassed = 1;
 	else
 		clk->bypassed = 0;
+
+	spin_lock_irqsave(clk->lock, flags);
+
+	reg = readl(clk->pllctrl);
+	reg &= ~PLLCTRL_BPQUAL_MASK;
+	writel(reg, clk->pllctrl);
+
+	spin_unlock_irqrestore(clk->lock, flags);
 
 	return clk_register(NULL, &clk->hw);
 }
