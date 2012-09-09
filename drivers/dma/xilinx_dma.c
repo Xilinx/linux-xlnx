@@ -219,7 +219,7 @@ struct xilinx_dma_chan {
 	struct device *dev;               /* The dma device */
 	int    irq;                       /* Channel IRQ */
 	int    id;                        /* Channel ID */
-	enum dma_data_direction direction;/* Transfer direction */
+	enum dma_transfer_direction direction;/* Transfer direction */
 	int    max_len;                   /* Maximum data len per transfer */
 	int    is_lite;                   /* Whether is light build */
 	int    num_frms;                  /* Number of frames */
@@ -708,7 +708,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	DMA_OUT(&chan->regs->cr, reg);
 
 	if ((config->park_frm >= 0) && (config->park_frm < chan->num_frms)) {
-		if (config->direction == DMA_TO_DEVICE) {
+		if (config->direction == DMA_MEM_TO_DEV) {
 			chan_base = (char *)chan->regs;
 			DMA_OUT((chan_base + XILINX_VDMA_PARK_REG_OFFSET),
 					config->park_frm);
@@ -1136,7 +1136,8 @@ fail:
  */
 static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	struct dma_chan *dchan, struct scatterlist *sgl, unsigned int sg_len,
-	enum dma_data_direction direction, unsigned long flags)
+	enum dma_transfer_direction direction, unsigned long flags,
+	void *context)
 {
 	struct xilinx_dma_chan *chan;
 	struct xilinx_dma_desc_sw *first = NULL, *prev = NULL, *new = NULL;
@@ -1203,14 +1204,14 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 			 * If this is not the first descriptor, chain the
 			 * current descriptor after the previous descriptor
 			 *
-			 * For the first DMA_TO_DEVICE transfer, set SOP
+			 * For the first DMA_MEM_TO_DEV transfer, set SOP
 			 */
 			if (!first) {
 				first = new;
-				if (direction == DMA_TO_DEVICE) {
+				if (direction == DMA_MEM_TO_DEV) {
 					hw->control |= XILINX_DMA_BD_SOP;
 #ifdef TEST_DMA_WITH_LOOPBACK
-					hw->app_4 = copy;
+					hw->app_4 = total_len;
 #endif
 				}
 			} else {
@@ -1232,7 +1233,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	/* Link the last BD with the first BD */
 	hw->next_desc = first->async_tx.phys;
 
-	if (direction == DMA_TO_DEVICE)
+	if (direction == DMA_MEM_TO_DEV)
 		hw->control |= XILINX_DMA_BD_EOP;
 
 	/* All scatter gather list entries has length == 0 */
@@ -1273,7 +1274,8 @@ fail:
  */
 static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 	struct dma_chan *dchan, struct scatterlist *sgl, unsigned int sg_len,
-	enum dma_data_direction direction, unsigned long flags)
+	enum dma_transfer_direction direction, unsigned long flags,
+	void *context)
 {
 	struct xilinx_dma_chan *chan;
 	struct xilinx_dma_desc_sw *first = NULL, *prev = NULL, *new = NULL;
@@ -1638,7 +1640,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		flush_fsync = be32_to_cpup(value);
 
 	if (feature & XILINX_DMA_IP_CDMA) {
-		chan->direction = DMA_BIDIRECTIONAL;
+		chan->direction = DMA_MEM_TO_MEM;
 		chan->start_transfer = xilinx_cdma_start_transfer;
 
 		chan->has_SG = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
@@ -1672,11 +1674,11 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		if (of_device_is_compatible(node,
 			 "xlnx,axi-dma-mm2s-channel"))
-			chan->direction = DMA_TO_DEVICE;
+			chan->direction = DMA_MEM_TO_DEV;
 
 		if (of_device_is_compatible(node,
 				"xlnx,axi-dma-s2mm-channel"))
-			chan->direction = DMA_FROM_DEVICE;
+			chan->direction = DMA_DEV_TO_MEM;
 
 	}
 
@@ -1688,7 +1690,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		if (of_device_is_compatible(node,
 				"xlnx,axi-vdma-mm2s-channel")) {
-			chan->direction = DMA_TO_DEVICE;
+			chan->direction = DMA_MEM_TO_DEV;
 			if (!chan->has_SG) {
 				chan->addr_regs = (struct vdma_addr_regs *)
 				    ((u32)xdev->regs +
@@ -1701,7 +1703,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		if (of_device_is_compatible(node,
 				"xlnx,axi-vdma-s2mm-channel")) {
-			chan->direction = DMA_FROM_DEVICE;
+			chan->direction = DMA_DEV_TO_MEM;
 			if (!chan->has_SG) {
 				chan->addr_regs = (struct vdma_addr_regs *)
 				    ((u32)xdev->regs +
@@ -1717,7 +1719,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->regs = (struct xdma_regs *)xdev->regs;
 	chan->id = 0;
 
-	if (chan->direction == DMA_FROM_DEVICE) {
+	if (chan->direction == DMA_DEV_TO_MEM) {
 		chan->regs = (struct xdma_regs *)((u32)xdev->regs +
 					XILINX_DMA_RX_CHANNEL_OFFSET);
 		chan->id = 1;
@@ -1901,7 +1903,7 @@ out_return:
 	return err;
 }
 
-static int xilinx_dma_of_remove(struct platform_device *op)
+static int __devexit xilinx_dma_of_remove(struct platform_device *op)
 {
 	struct xilinx_dma_device *xdev;
 	int i;
@@ -1935,7 +1937,7 @@ static struct platform_driver xilinx_dma_of_driver = {
 		.of_match_table = xilinx_dma_of_ids,
 	},
 	.probe = xilinx_dma_of_probe,
-	.remove = xilinx_dma_of_remove,
+	.remove = __devexit_p(xilinx_dma_of_remove),
 };
 
 /*----------------------------------------------------------------------------*/
@@ -2024,7 +2026,7 @@ static int __devinit xilinx_dma_chan_probe(struct platform_device *pdev,
 
 	if (feature & XILINX_DMA_IP_CDMA) {
 
-		chan->direction = DMA_BIDIRECTIONAL;
+		chan->direction = DMA_MEM_TO_MEM;
 		chan->start_transfer = xilinx_cdma_start_transfer;
 
 		chan->has_SG = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
@@ -2041,10 +2043,10 @@ static int __devinit xilinx_dma_chan_probe(struct platform_device *pdev,
 		chan->start_transfer = xilinx_dma_start_transfer;
 
 		if (!strcmp(channel_config->type, "axi-dma-mm2s-channel"))
-			chan->direction = DMA_TO_DEVICE;
+			chan->direction = DMA_MEM_TO_DEV;
 
 		if (!strcmp(channel_config->type, "axi-dma-s2mm-channel"))
-			chan->direction = DMA_FROM_DEVICE;
+			chan->direction = DMA_DEV_TO_MEM;
 	}
 
 	if (feature & XILINX_DMA_IP_VDMA) {
@@ -2058,7 +2060,7 @@ static int __devinit xilinx_dma_chan_probe(struct platform_device *pdev,
 
 			printk(KERN_INFO, "axi-vdma-mm2s-channel found\n");
 
-			chan->direction = DMA_TO_DEVICE;
+			chan->direction = DMA_MEM_TO_DEV;
 			if (!chan->has_SG) {
 				chan->addr_regs = (struct vdma_addr_regs *)
 				((u32)xdev->regs +
@@ -2070,7 +2072,7 @@ static int __devinit xilinx_dma_chan_probe(struct platform_device *pdev,
 
 			printk(KERN_INFO, "axi-vdma-s2mm-channel found\n");
 
-			chan->direction = DMA_FROM_DEVICE;
+			chan->direction = DMA_DEV_TO_MEM;
 			if (!chan->has_SG) {
 				chan->addr_regs = (struct vdma_addr_regs *)
 				((u32)xdev->regs +
@@ -2083,7 +2085,7 @@ static int __devinit xilinx_dma_chan_probe(struct platform_device *pdev,
 	chan->regs = (struct xdma_regs *)xdev->regs;
 	chan->id = 0;
 
-	if (chan->direction == DMA_FROM_DEVICE) {
+	if (chan->direction == DMA_DEV_TO_MEM) {
 		chan->regs = (struct xdma_regs *)((u32)xdev->regs +
 					XILINX_DMA_RX_CHANNEL_OFFSET);
 		chan->id = 1;

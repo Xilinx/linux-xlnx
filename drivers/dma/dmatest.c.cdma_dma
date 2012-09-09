@@ -354,14 +354,14 @@ static int dmatest_func(void *data)
 			u8 *buf = thread->srcs[i] + src_off;
 
 			dma_srcs[i] = dma_map_single(dev->dev, buf, len,
-						     DMA_TO_DEVICE);
+						     DMA_MEM_TO_DEV);
 		}
-		/* map with DMA_BIDIRECTIONAL to force writeback/invalidate */
+		/* map with DMA_MEM_TO_MEM to force writeback/invalidate */
 		for (i = 0; i < dst_cnt; i++) {
 	
 			dma_dsts[i] = dma_map_single(dev->dev, thread->dsts[i],
 						     test_buf_size,
-						     DMA_BIDIRECTIONAL);
+						     DMA_MEM_TO_MEM);
 		}
 
 
@@ -396,11 +396,11 @@ static int dmatest_func(void *data)
 		if (!tx) {
 			for (i = 0; i < src_cnt; i++)
 				dma_unmap_single(dev->dev, dma_srcs[i], len,
-						 DMA_TO_DEVICE);
+						 DMA_MEM_TO_DEV);
 			for (i = 0; i < dst_cnt; i++)
 				dma_unmap_single(dev->dev, dma_dsts[i],
 						 test_buf_size,
-						 DMA_BIDIRECTIONAL);
+						 DMA_MEM_TO_MEM);
 			pr_warning("%s: #%u: prep error with src_off=0x%x "
 					"dst_off=0x%x len=0x%x\n",
 					thread_name, total_tests - 1,
@@ -448,7 +448,7 @@ static int dmatest_func(void *data)
 		/* Unmap by myself (see DMA_COMPL_SKIP_DEST_UNMAP above) */
 		for (i = 0; i < dst_cnt; i++)
 			dma_unmap_single(dev->dev, dma_dsts[i], test_buf_size,
-					 DMA_BIDIRECTIONAL);
+					 DMA_MEM_TO_MEM);
 
 		error_count = 0;
 
@@ -618,7 +618,7 @@ static int dmatest_slave_func(void *data)
 
 	
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
-						     DMA_TO_DEVICE);
+						     DMA_MEM_TO_DEV);
 
 		}
 
@@ -626,15 +626,15 @@ static int dmatest_slave_func(void *data)
 	
 			dma_dsts[i] = dma_map_single(rx_dev->dev, thread->dsts[i],
 						     test_buf_size,
-						     DMA_TO_DEVICE);
+						     DMA_MEM_TO_DEV);
 
 			dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						 test_buf_size,
-						 DMA_TO_DEVICE);
+						 DMA_MEM_TO_DEV);
 
 			dma_dsts[i] = dma_map_single(rx_dev->dev, thread->dsts[i],
 						     test_buf_size,
-						     DMA_FROM_DEVICE);
+						     DMA_DEV_TO_MEM);
 		}
 
 		sg_init_table(tx_sg, bd_cnt);
@@ -662,19 +662,19 @@ static int dmatest_slave_func(void *data)
 		             (unsigned long)&config);
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, bd_cnt,
-				DMA_FROM_DEVICE, flags);
+				DMA_DEV_TO_MEM, flags, NULL);
 
 		txd = tx_dev->device_prep_slave_sg(tx_chan, tx_sg, bd_cnt,
-				DMA_TO_DEVICE, flags);
+				DMA_MEM_TO_DEV, flags, NULL);
 
 		if (!rxd || !txd) {
 			for (i = 0; i < src_cnt; i++)
 				dma_unmap_single(tx_dev->dev, dma_srcs[i], len,
-						 DMA_TO_DEVICE);
+						 DMA_MEM_TO_DEV);
 			for (i = 0; i < dst_cnt; i++)
 				dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						 test_buf_size,
-						 DMA_FROM_DEVICE);
+						 DMA_DEV_TO_MEM);
 			pr_warning("%s: #%u: prep error with src_off=0x%x "
 					"dst_off=0x%x len=0x%x\n",
 					thread_name, total_tests - 1,
@@ -744,7 +744,7 @@ static int dmatest_slave_func(void *data)
 		/* Unmap by myself (see DMA_COMPL_SKIP_DEST_UNMAP above) */
 		for (i = 0; i < dst_cnt; i++)
 			dma_unmap_single(rx_dev->dev, dma_dsts[i], test_buf_size,
-					 DMA_FROM_DEVICE);
+					 DMA_DEV_TO_MEM);
 
 		error_count = 0;
 
@@ -1024,7 +1024,7 @@ static int __init dmatest_init(void)
 		dma_cap_zero(mask);
 		dma_cap_set(DMA_SLAVE | DMA_PRIVATE, mask);
 
-		direction = DMA_TO_DEVICE;
+		direction = DMA_MEM_TO_DEV;
 		match = (direction & 0xFF) | XILINX_DMA_IP_DMA;
 		pr_info("match is %x\n", match);
 
@@ -1036,7 +1036,7 @@ static int __init dmatest_init(void)
 			pr_info("Did not find tx device\n");
 		}
 		
-		direction = DMA_FROM_DEVICE;
+		direction = DMA_DEV_TO_MEM;
 		match = (direction & 0xFF) | XILINX_DMA_IP_DMA;
 		rx_chan = dma_request_channel(mask, xdma_filter, &match);
 

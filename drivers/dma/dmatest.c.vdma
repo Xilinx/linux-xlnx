@@ -356,14 +356,14 @@ static int dmatest_func(void *data)
 			u8 *buf = thread->srcs[i] + src_off;
 
 			dma_srcs[i] = dma_map_single(dev->dev, buf, len,
-						     DMA_TO_DEVICE);
+						     DMA_MEM_TO_DEV);
 		}
-		/* map with DMA_BIDIRECTIONAL to force writeback/invalidate */
+		/* map with DMA_MEM_TO_MEM to force writeback/invalidate */
 		for (i = 0; i < dst_cnt; i++) {
 	
 			dma_dsts[i] = dma_map_single(dev->dev, thread->dsts[i],
 						     test_buf_size,
-						     DMA_BIDIRECTIONAL);
+						     DMA_MEM_TO_MEM);
 		}
 
 
@@ -398,11 +398,11 @@ static int dmatest_func(void *data)
 		if (!tx) {
 			for (i = 0; i < src_cnt; i++)
 				dma_unmap_single(dev->dev, dma_srcs[i], len,
-						 DMA_TO_DEVICE);
+						 DMA_MEM_TO_DEV);
 			for (i = 0; i < dst_cnt; i++)
 				dma_unmap_single(dev->dev, dma_dsts[i],
 						 test_buf_size,
-						 DMA_BIDIRECTIONAL);
+						 DMA_MEM_TO_MEM);
 			pr_warning("%s: #%u: prep error with src_off=0x%x "
 					"dst_off=0x%x len=0x%x\n",
 					thread_name, total_tests - 1,
@@ -450,7 +450,7 @@ static int dmatest_func(void *data)
 		/* Unmap by myself (see DMA_COMPL_SKIP_DEST_UNMAP above) */
 		for (i = 0; i < dst_cnt; i++)
 			dma_unmap_single(dev->dev, dma_dsts[i], test_buf_size,
-					 DMA_BIDIRECTIONAL);
+					 DMA_MEM_TO_MEM);
 
 		error_count = 0;
 
@@ -615,7 +615,7 @@ static int dmatest_slave_func(void *data)
 			u8 *buf = thread->srcs[i];
 
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
-						     DMA_TO_DEVICE);
+						     DMA_MEM_TO_DEV);
 			pr_debug("src buf %x dma %x\n", (unsigned int)buf, dma_srcs[i]);
 			sg_dma_address(&tx_sg[i]) = dma_srcs[i];
 			sg_dma_len(&tx_sg[i]) = len;
@@ -625,14 +625,14 @@ static int dmatest_slave_func(void *data)
 	
 			dma_dsts[i] = dma_map_single(rx_dev->dev, thread->dsts[i],
 						     test_buf_size,
-						     DMA_FROM_DEVICE);
+						     DMA_DEV_TO_MEM);
 			pr_debug("dst %x dma %x\n", thread->dsts[i], dma_dsts[i]);
 			sg_dma_address(&rx_sg[i]) = dma_dsts[i];
 			sg_dma_len(&rx_sg[i]) = len;
 		}
 
 		/* Set up hardware configuration information */
-		config.direction = DMA_TO_DEVICE;
+		config.direction = DMA_MEM_TO_DEV;
 		config.vsize = vsize;
 		config.hsize = hsize;
 		config.stride = hsize;
@@ -648,24 +648,24 @@ static int dmatest_slave_func(void *data)
 		config.disable_intr = 0;
 		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG, (unsigned long)&config);
 
-		config.direction = DMA_FROM_DEVICE;
+		config.direction = DMA_DEV_TO_MEM;
 		config.park = 0;
 		rx_dev->device_control(rx_chan, DMA_SLAVE_CONFIG, (unsigned long)&config);
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, frm_cnt,
-				DMA_FROM_DEVICE, flags);
+				DMA_DEV_TO_MEM, flags, NULL);
 
 		txd = tx_dev->device_prep_slave_sg(tx_chan, tx_sg, frm_cnt,
-				DMA_TO_DEVICE, flags);
+				DMA_MEM_TO_DEV, flags, NULL);
 
 		if (!rxd || !txd) {
 			for (i = 0; i < frm_cnt; i++)
 				dma_unmap_single(tx_dev->dev, dma_srcs[i], len,
-						 DMA_TO_DEVICE);
+						 DMA_MEM_TO_DEV);
 			for (i = 0; i < frm_cnt; i++)
 				dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						 test_buf_size,
-						 DMA_FROM_DEVICE);
+						 DMA_DEV_TO_MEM);
 			pr_warning("%s: #%u: prep error with len=0x%x ",
 					thread_name, total_tests - 1, len);
 			msleep(100);
@@ -734,7 +734,7 @@ static int dmatest_slave_func(void *data)
 		/* Unmap by myself (see DMA_COMPL_SKIP_DEST_UNMAP above) */
 		for (i = 0; i < frm_cnt; i++)
 			dma_unmap_single(rx_dev->dev, dma_dsts[i], test_buf_size,
-					 DMA_FROM_DEVICE);
+					 DMA_DEV_TO_MEM);
 
 		error_count = 0;
 
@@ -1004,7 +1004,7 @@ static int __init dmatest_init(void)
 		dma_cap_zero(mask);
 		dma_cap_set(DMA_SLAVE | DMA_PRIVATE, mask);
 
-		direction = DMA_TO_DEVICE;
+		direction = DMA_MEM_TO_DEV;
 		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA;
 		pr_info("match is %x\n", match);
 
@@ -1016,7 +1016,7 @@ static int __init dmatest_init(void)
 			pr_info("Did not find tx device\n");
 		}
 		
-		direction = DMA_FROM_DEVICE;
+		direction = DMA_DEV_TO_MEM;
 		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA;
 		rx_chan = dma_request_channel(mask, xdma_filter, &match);
 
