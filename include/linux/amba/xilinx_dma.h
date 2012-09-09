@@ -67,6 +67,7 @@ struct xilinx_dma_config {
 	int delay;                         /* Delay counter */
 	int disable_intr;                  /* Whether use interrupts */
 	int reset;			   /* Reset Channel */
+	int ext_fsync;			   /* External Frame Sync */
 };
 
 /* Platform data definition until ARM supports device tree */

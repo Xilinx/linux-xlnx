@@ -90,6 +90,7 @@
 #define XILINX_VDMA_FRMCNT_EN       0x00000010  /* Frm Cnt enable mode */
 #define XILINX_VDMA_MSTR_MASK       0x00000F00  /* Master in control */
 
+#define XILINX_VDMA_EXTFSYNC_SHIFT  6
 #define XILINX_VDMA_MSTR_SHIFT      8
 #define XILINX_VDMA_WR_REF_SHIFT    8
 
@@ -1536,6 +1537,9 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		}
 
 		chan->config.disable_intr = cfg->disable_intr;
+
+		if (cfg->ext_fsync)
+			reg |= cfg->ext_fsync << XILINX_VDMA_EXTFSYNC_SHIFT;
 
 		DMA_OUT(&chan->regs->cr, reg);
 		return 0;
