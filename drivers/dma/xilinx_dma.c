@@ -861,7 +861,7 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	DMA_OUT(&chan->regs->sr, XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	/* Check for only the interrupts which are enabled
-         */
+	 */
 	stat &= (reg & XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	if (stat & XILINX_DMA_XR_IRQ_ERROR_MASK) {
@@ -876,12 +876,13 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 			else
 				chan->err = 1;
 		} else {
-			dev_err(chan->dev, "Channel %x has errors %x,\
-					cdr %x tdr %x\n",
-			(unsigned int)chan, (unsigned int)stat,
-			(unsigned int)DMA_IN(&chan->regs->cdr),
-			(unsigned int)DMA_IN(&chan->regs->tdr));
-			chan->err = 1;
+			dev_err(chan->dev,
+				"Channel %x has errors %x, cdr %x tdr %x\n",
+				(unsigned int)chan,
+				(unsigned int)DMA_IN(&chan->regs->sr),
+				(unsigned int)DMA_IN(&chan->regs->cdr),
+				(unsigned int)DMA_IN(&chan->regs->tdr));
+				chan->err = 1;
 		}
 	}
 
