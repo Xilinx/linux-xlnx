@@ -30,7 +30,7 @@
 #include <linux/err.h>
 #include <asm/proc-fns.h>
 
-#define XILINX_MAX_STATES	2
+#define XILINX_MAX_STATES	1
 
 static DEFINE_PER_CPU(struct cpuidle_device, xilinx_cpuidle_device);
 
