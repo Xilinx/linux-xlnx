@@ -73,6 +73,7 @@
 			interrupts = <0 9 4>;
 			interrupt-parent = <&gic>;
 			reset = <0>;
+			timeout = <10>;
 		};
 
 		scuwdt@f8f00620 {

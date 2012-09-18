@@ -336,7 +336,10 @@ static int __init xwdtps_probe(struct platform_device *pdev)
 
 	/* Initialize the members of xwdtps structure */
 	xwdtps_device.parent = &pdev->dev;
-	if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
+	prop = of_get_property(pdev->dev.of_node, "timeout", NULL);
+	if (prop)
+		xwdtps_device.timeout = be32_to_cpup(prop);
+	else if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
 			wdt_timeout > XWDTPS_MIN_TIMEOUT) {
 		xwdtps_device.timeout = wdt_timeout;
 	} else {
