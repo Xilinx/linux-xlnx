@@ -45,11 +45,6 @@
 
 #define	DRIVER_NAME	"xusbps-otg"
 
-MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS USB OTG driver");
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:" DRIVER_NAME);
-
 static const char driver_name[] = DRIVER_NAME;
 
 static int xusbps_otg_set_host(struct usb_otg *otg,
@@ -2273,3 +2268,8 @@ static struct platform_driver xusbps_otg_driver = {
 };
 
 module_platform_driver(xusbps_otg_driver);
+
+MODULE_AUTHOR("Xilinx, Inc.");
+MODULE_DESCRIPTION("Xilinx PS USB OTG driver");
+MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRIVER_NAME);
