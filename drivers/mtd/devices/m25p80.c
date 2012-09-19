@@ -913,8 +913,10 @@ static int __devinit m25p_probe(struct spi_device *spi)
 		np = of_get_next_parent(spi->dev.of_node);
 		prop = of_get_property(np, "is-dual", NULL);
 		if (prop) {
-			if (be32_to_cpup(prop)) 
-				flash->mtd.size *= 2;	
+			if (be32_to_cpup(prop)) {
+				info->sector_size *= 2; 
+				flash->mtd.size *= 2;
+			}	
 		}
 	}
 #endif
