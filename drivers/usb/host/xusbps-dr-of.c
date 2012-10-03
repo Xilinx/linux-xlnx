@@ -246,17 +246,7 @@ static struct platform_driver xusbps_dr_driver = {
 	.remove	= __devexit_p(xusbps_dr_of_remove),
 };
 
-static int __init xusbps_dr_init(void)
-{
-	return platform_driver_register(&xusbps_dr_driver);
-}
-module_init(xusbps_dr_init);
-
-static void __exit xusbps_dr_exit(void)
-{
-	platform_driver_unregister(&xusbps_dr_driver);
-}
-module_exit(xusbps_dr_exit);
+module_platform_driver(xusbps_dr_driver);
 
 MODULE_DESCRIPTION("XUSBPS DR OF devices driver");
 MODULE_AUTHOR("Xilinx");
