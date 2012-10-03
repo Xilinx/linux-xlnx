@@ -2586,6 +2586,7 @@ static int xusbps_udc_resume(struct platform_device *pdev)
 --------------------------------------------------------------------------*/
 
 static struct platform_driver udc_driver = {
+	.probe   = xusbps_udc_probe,
 	.remove  = __exit_p(xusbps_udc_remove),
 	/* these suspend and resume are not usb suspend and resume */
 	.suspend = xusbps_udc_suspend,
@@ -2596,21 +2597,7 @@ static struct platform_driver udc_driver = {
 	},
 };
 
-static int __init udc_init(void)
-{
-	printk(KERN_INFO "%s (%s)\n", driver_desc, DRIVER_VERSION);
-	return platform_driver_probe(&udc_driver, xusbps_udc_probe);
-}
-
-module_init(udc_init);
-
-static void __exit udc_exit(void)
-{
-	platform_driver_unregister(&udc_driver);
-	printk(KERN_WARNING "%s unregistered\n", driver_desc);
-}
-
-module_exit(udc_exit);
+module_platform_driver(udc_driver);
 
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR(DRIVER_AUTHOR);
