@@ -235,6 +235,7 @@ static const struct of_device_id xusbps_dr_of_match[] = {
 	{ .compatible = "xlnx,ps7-usb-1.00.a", .data = &xusbps_pdata, },
 	{},
 };
+MODULE_DEVICE_TABLE(of, xusbps_dr_of_match);
 
 static struct platform_driver xusbps_dr_driver = {
 	.driver = {
