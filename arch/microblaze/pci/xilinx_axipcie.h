@@ -128,6 +128,7 @@ struct xilinx_axipcie_node {
 	u32 reg_base;
 	u32 reg_len;
 	u32 pcie2axibar_0;
+	u32 pcie2axibar_1;
 };
 
 struct xilinx_axipcie_port {
@@ -149,6 +150,7 @@ struct xilinx_axipcie_port {
 	unsigned int __iomem	*header_remap;
 	unsigned int __iomem	*ecam_remap;
 	u32 pcie2axibar_0;
+	u32 pcie2axibar_1;
 };
 
 #endif /* XILINX_AXIPCIE_H_ */

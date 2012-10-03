@@ -113,6 +113,15 @@ int __devinit xilinx_get_axipcie_ip_config_info(struct device_node *dev,
 	else
 		return -ENODEV;
 
+	ip_setup_parameter = (u32 *) of_get_property(dev,
+					"xlnx,pciebar2axibar-1", &rlen);
+
+	if (ip_setup_parameter)
+		ip_config_info->pcie2axibar_1 =
+					be32_to_cpup(ip_setup_parameter);
+	else
+		ip_config_info->pcie2axibar_1 = 0x0;
+
 	return 0;
 }
 
@@ -460,9 +469,6 @@ void __devinit xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
 			/* out_le32((((u8 *)port->header_remap) + PCIE_CFG_MEM),
 								val); */
 
-			/* EP initiated memory access hack */
-			out_le32((((u8 *)port->header_remap) + PCIE_CFG_AD1),
-							port->pcie2axibar_0);
 			break;
 		case 3:		/* PCI 64 bits Memory space */
 			printk(KERN_INFO "%s:Setting resource in Prefetchable"
@@ -485,6 +491,12 @@ void __devinit xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
 			break;
 		}
 	}
+
+	/* EP initiated memory access */
+	out_le32((((u8 *)port->header_remap) + PCIE_CFG_AD1),
+						port->pcie2axibar_0);
+	out_le32((((u8 *)port->header_remap) + PCIE_CFG_AD2),
+						port->pcie2axibar_1);
 }
 
 /**
@@ -748,6 +760,7 @@ static int __init xilinx_probe_axipcie_node(struct device_node *np)
 	port->irq_num	= ip_setup_info.irq_num;
 	port->header_addr = port->reg_base + AXIPCIE_LOCAL_CNFG_BASE;
 	port->pcie2axibar_0 = ip_setup_info.pcie2axibar_0;
+	port->pcie2axibar_1 = ip_setup_info.pcie2axibar_1;
 
 	irq_set_chip_data(port->irq_num, port);
 
