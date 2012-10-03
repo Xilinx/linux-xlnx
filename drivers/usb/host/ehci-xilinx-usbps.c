@@ -169,7 +169,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	ehci = hcd_to_ehci(hcd);
 	if (pdata->otg) {
 #ifdef CONFIG_XILINX_ZED_USB_OTG
-		pr_info ("usb_hcd_xusbps_probe: Have OTG assigned.\n");
+		pr_info ("%s: Have OTG assigned.\n", __func__);
 
 		retval = otg_init(pdata->otg);
 		if (retval) {
@@ -190,7 +190,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		xusbps_update_transceiver();
 	} else {
 #ifdef CONFIG_XILINX_ZED_USB_OTG
-		pr_info ("usb_hcd_xusbps_probe: No OTG assigned!\n");
+		pr_info ("%s: No OTG assigned!\n", __func__);
 		if (!pdata->otg) {
 			pdata->otg = otg_ulpi_create (&ulpi_viewport_access_ops,
 				ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
@@ -199,7 +199,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 				ehci->ulpi = pdata->otg;
 			}
 		}
-		pr_info ("usb_hcd_xusbps_probe: OTG now assigned!\n");
+		pr_info ("%s: OTG now assigned!\n", __func__);
 #endif
 
 		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
