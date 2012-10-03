@@ -151,9 +151,6 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 	struct resource *res;
 	int i;
 
-	if (!of_device_is_available(np))
-		return -ENODEV;
-
 	match = of_match_device(xusbps_dr_of_match, &ofdev->dev);
 	if (!match)
 		return -ENODEV;
