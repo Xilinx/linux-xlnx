@@ -121,8 +121,10 @@ static int lis3l02dq_get_buffer_element(struct iio_dev *indio_dev,
 	if (rx_array == NULL)
 		return -ENOMEM;
 	ret = lis3l02dq_read_all(indio_dev, rx_array);
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(rx_array);
 		return ret;
+	}
 	for (i = 0; i < scan_count; i++)
 		data[i] = combine_8_to_16(rx_array[i*4+1],
 					rx_array[i*4+3]);
@@ -143,7 +145,7 @@ static irqreturn_t lis3l02dq_trigger_handler(int irq, void *p)
 	if (data == NULL) {
 		dev_err(indio_dev->dev.parent,
 			"memory alloc failed in buffer bh");
-		return -ENOMEM;
+		goto done;
 	}
 
 	if (!bitmap_empty(indio_dev->active_scan_mask, indio_dev->masklength))
@@ -151,13 +153,13 @@ static irqreturn_t lis3l02dq_trigger_handler(int irq, void *p)
 
 	  /* Guaranteed to be aligned with 8 byte boundary */
 	if (indio_dev->scan_timestamp)
-		*(s64 *)(((phys_addr_t)data + len
-				+ sizeof(s64) - 1) & ~(sizeof(s64) - 1))
+		*(s64 *)((u8 *)data + ALIGN(len, sizeof(s64)))
 			= pf->timestamp;
 	buffer->access->store_to(buffer, (u8 *)data, pf->timestamp);
 
-	iio_trigger_notify_done(indio_dev->trig);
 	kfree(data);
+done:
+	iio_trigger_notify_done(indio_dev->trig);
 	return IRQ_HANDLED;
 }
 

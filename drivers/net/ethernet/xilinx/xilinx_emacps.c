@@ -3056,7 +3056,7 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	ndev->irq = platform_get_irq(pdev, 0);
 
-	rc = request_irq(ndev->irq, xemacps_interrupt, IRQF_SAMPLE_RANDOM,
+	rc = request_irq(ndev->irq, xemacps_interrupt, 0,
 		ndev->name, ndev);
 	if (rc) {
 		printk(KERN_ERR "%s: Unable to request IRQ %p, error %d\n",

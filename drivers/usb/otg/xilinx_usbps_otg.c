@@ -2007,7 +2007,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	xotg->otg.otg->start_hnp = xusbps_otg_start_hnp;
 	xotg->otg.state = OTG_STATE_UNDEFINED;
 
-	if (usb_set_transceiver(&xotg->otg)) {
+	if (usb_add_phy(&xotg->otg, USB_PHY_TYPE_USB2)) {
 		dev_dbg(xotg->dev, "can't set transceiver\n");
 		retval = -EBUSY;
 		goto err;
@@ -2092,7 +2092,7 @@ static int xusbps_otg_remove(struct platform_device *pdev)
 	if (xotg->irq)
 		free_irq(xotg->irq, xotg);
 
-	usb_set_transceiver(NULL);
+	usb_remove_phy(&xotg->otg);
 	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
 	device_remove_file(&pdev->dev, &dev_attr_hsm);
 	device_remove_file(&pdev->dev, &dev_attr_registers);
