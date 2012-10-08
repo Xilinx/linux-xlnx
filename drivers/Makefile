@@ -142,3 +142,4 @@ obj-$(CONFIG_VME_BUS)		+= vme/
 
 obj-y				+= xilinx_common/
 
+obj-$(CONFIG_PMODS)		+= pmods/

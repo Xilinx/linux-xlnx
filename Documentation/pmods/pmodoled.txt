@@ -1,0 +1,137 @@
+PmodOLED
+========
+
+Copyright 2012, Digilent Inc.
+
+
+Description
+-----------
+
+The PmodOLED features an SPI-controlled monochrome OLED display,
+perfect for embedded applications requiring small, complex visual output.
+
+The PmodOLED uses a standard 12-pin connector to display output on
+a 128x32 pixel organic LED (OLED) panel. The graphic display panel uses
+the Solomon Systech SSD1306 display controller.
+
+An SPI interface is used to configure the display,
+as well as to send the bitmap data to the device.
+
+The PmodOLED displays the last image drawn on the screen until it is
+powered down or a new image is drawn to the display. Refreshing and
+updating is handled internally.
+
+The Reference Manual for PmodOLED display is available online at
+Digilent Inc. Website (www.digilentinc.com)
+
+For more information on the OLED display interface, see the
+UG-2832HSWEG04 datasheet available online or from Univisio.
+
+The OLED display uses a compatible command set from the SSD1306 device.
+For more information, see the SSD1306 datasheet available at
+www.solomon-systech.com.
+
+
+Interface
+---------
+
+Signal     Description
+
+CS         SPI Chip Select (Slave Select)
+SDIN       SPI Data In (MOSI)
+SCLK       SPI Clock
+D/C        Data/Command Control
+RES        Power Reset
+VBATC      VBAT Battery Voltage Control
+VDDC       VDD Logic Voltage Control
+
+
+Devicetree
+----------
+
+Required Properties:
+- compatible : Should be "dlgnt,pmodoled-gpio"
+- vbat-gpio :  Should specify the GPIO for VBATC, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- vdd-gpio :  Should specify the GPIO for VDDC, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- res-gpio :  Should specify the GPIO for RES, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- dc-gpio :  Should specify the GPIO for D/C, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- spi-bus-num :  Should specify the bus number for PmodOLED SPI controller.
+  This value cannot be shared by any other SPI controller present in the
+  device tree.
+- spi-sclk-gpio :  Should specify the GPIO for SCLK, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- spi-sdin-gpio :  Should specify the GPIO for SDIN, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Optional Properties:
+- spi-cs-gpio :  Should specify the GPIO for CS, see "gpios property" in
+  Documentation/devicetree/gpio.txt. If unspecified, CS is assumed to be
+  tied to ground.
+
+Examples:
+
+zed_oled {
+	compatible = "dglnt,pmodoled-gpio";
+	/* GPIO Pins */
+	vbat-gpio = <&gpiops 55 0>;
+	vdd-gpio = <&gpiops 56 0>;
+	res-gpio = <&gpiops 57 0>;
+	dc-gpio = <&gpiops 58 0>;
+	/* SPI-GPIOs */
+	spi-bus-num = <2>;
+	spi-sclk-gpio = <&gpiops 59 0>;
+	spi-sdin-gpio = <&gpiops 60 0>;
+};
+
+pmodoled_A {
+	compatible = "dglnt,pmodoled-gpio";
+	vbat-gpio = <&gpiops 88 0>;
+	vdd-gpio = <&gpiops 89 0>;
+	res-gpio = <&gpiops 87 0>;
+	dc-gpio = <&gpiops 86 0>;
+	spi-bus-num = <3>;
+	spi-sclk-gpio = <&gpiops 85 0>;
+	spi-sdin-gpio = <&gpiops 83 0>;
+	spi-cs-gpio = <&gpiops 82 0>;
+};
+
+
+Configuration
+-------------
+
+The PmodOLED is located in the kernel configuration menu at
+Device Drivers -> Pmods -> PmodOLED. The driver can be built into the kernel
+by selecting (*) for it, or loadable module by selecting (M) for it.
+
+
+Device Nodes
+------------
+
+A char device node will be created for each PmodOLED device automatically.
+The name of the node is default to the one declared in the device tree.
+
+
+Read/Writes
+-----------
+
+The driver provides a 512 Byte display buffer for the display of PmodOLED.
+The Whole screen is divided into four lines, each of them is 128 bits wide
+and 8 bits high, as shown in the figure below.
+
+    +--------------------------...----------------------------+
+    +                         Line 4                          +
+    +--------------------------...----------------------------+
+    +                         Line 3                          +
+    +--------------------------...----------------------------+
+    +                         Line 2                          +
+    +--------------------------...----------------------------+ MSB (bit 7)
+    +                         Line 1                          +
+    +--------------------------...----------------------------+ LSB (bit 0)
+byte 127                                                     byte 0
+
+Users can perform read and write functions to the device node to access the data
+inside the display buffer.

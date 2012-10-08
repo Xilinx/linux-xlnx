@@ -1,0 +1,20 @@
+menuconfig PMODS
+	bool "Pmod Support"
+	depends on HAS_IOMEM && OF
+	help
+		Digilent PMOD Support
+
+if PMODS
+
+config PMODS_DEBUG
+	bool "Enable Debug Message"
+
+config PMODOLED
+	tristate "PmodOLED1"
+	select SPI_BITBANG
+	select SPI_GPIO
+	help
+		The Digilent PmodOLED1, as well as ZED on-board OLED. Uses SPI over GPIO.
+		Configuration SPI_BITBANG and SPI_GPIO will be selected automatically.
+
+endif # PMODS
