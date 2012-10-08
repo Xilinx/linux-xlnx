@@ -122,10 +122,10 @@ config MMC_SDHCI_OF_XILINX_PS
 	tristate "SDHCI OF support for the Xilinx Zynq SDHCI controllers"
 	depends on MMC_SDHCI_PLTFM
 	depends on OF
-	depends on ARCH_ZYNQ || ARCH_XILINX
+	depends on ARCH_ZYNQ
 	help
 	  This selects the Secure Digital Host Controller Interface (SDHCI)
-	  found in the Xilinx Zynq EPP.
+	  found in the Xilinx Zynq.
 
 	  If you have a controller with this interface, say Y or M here.
 
