@@ -2391,7 +2391,7 @@ next_periph:
  *
  * Return: 0 on success, negative error otherwise.
  **/
-static int __init xslcr_probe(struct platform_device *pdev)
+static int __devinit xslcr_probe(struct platform_device *pdev)
 {
 	struct resource res;
 	int ret;
