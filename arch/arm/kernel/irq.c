@@ -54,41 +54,6 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	return 0;
 }
 
-#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
-	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
-
-static irq_handler_t IPI_handler;
-static void *IPI_callback_data;
-/*
- * set_ipi_handler:
- * Interface provided for a kernel module to specify an IPI handler
- * function.
- */
-void set_ipi_handler(irq_handler_t handler, void *callback_data)
-{
-	IPI_handler = handler;
-	IPI_callback_data = callback_data;
-}
-EXPORT_SYMBOL(set_ipi_handler);
-
-/*
- * do_IPI:
- * AMP Inter-Processor Interrupt handler (called from 
- * entry-armv.S).
- */
-asmlinkage void __exception do_amp_IPI(struct pt_regs *regs)
-{
-	struct pt_regs *old_regs = set_irq_regs(regs);
-
-	if (IPI_handler) {
-		(*IPI_handler)(1, IPI_callback_data);
-	}
-
-	set_irq_regs(old_regs);
-}
-
-#endif
-
 /*
  * handle_IRQ handles all hardware IRQ's.  Decoded IRQs should
  * not come via this function.  Instead, they should provide their
