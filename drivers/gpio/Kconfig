@@ -185,13 +185,13 @@ config GPIO_STA2X11
 
 config GPIO_XILINX
 	bool "Xilinx GPIO support"
-	depends on PPC_OF || MICROBLAZE || ARCH_XILINX || ARCH_ZYNQ
+	depends on PPC_OF || MICROBLAZE || ARCH_ZYNQ
 	help
 	  Say yes here to support the Xilinx AXI/XPS GPIO device
 
 config GPIO_XILINX_PS
 	tristate "Xilinx GPIO PS"
-	depends on ARCH_XILINX || ARCH_ZYNQ
+	depends on ARCH_ZYNQ
 	help
 	  Say yes here to support Xilinx GPIO PS controller
 
