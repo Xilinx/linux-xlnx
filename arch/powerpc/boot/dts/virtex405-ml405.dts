@@ -14,7 +14,7 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
-	compatible = "xlnx,virtex405";
+	compatible = "xlnx,virtex";
 	model = "testing";
 	DDR_SDRAM: memory@0 {
 		device_type = "memory";
