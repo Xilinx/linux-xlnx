@@ -205,7 +205,7 @@ static int buffer_icap_device_read(struct hwicap_drvdata *drvdata,
 	while (buffer_icap_busy(base_address)) {
 		retries++;
 		if (retries > XHI_MAX_RETRIES)
-			return -EIO;
+			return -EBUSY;
 	}
 	return 0;
 
@@ -239,7 +239,7 @@ static int buffer_icap_device_write(struct hwicap_drvdata *drvdata,
 	while (buffer_icap_busy(base_address)) {
 		retries++;
 		if (retries > XHI_MAX_RETRIES)
-			return -EIO;
+			return -EBUSY;
 	}
 	return 0;
 
