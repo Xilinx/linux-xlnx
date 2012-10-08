@@ -31,6 +31,12 @@ extern void secondary_startup(void);
 
 static DEFINE_SPINLOCK(boot_lock);
 
+/* Store pointer to ioremap area which points to address 0x0 */
+static u8 *zero;
+
+static u32 mem_backup[3];
+static u32 mem_backup_done;
+
 /* Secondary CPU kernel startup is a 2 step process. The primary CPU
  * starts the secondary CPU by giving it the address of the kernel and
  * then sending it an event to wake it up. The secondary CPU then
@@ -45,15 +51,24 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	 */
 	gic_secondary_init(0);
 
+	/* Indicate to the primary core that the secondary is up and running.
+	 * Let the write buffer drain.
+	 */
+
+	/* Restore memory content */
+	if (mem_backup_done) {
+		__raw_writel(mem_backup[0], zero + 0x0);
+		__raw_writel(mem_backup[1], zero + 0x4);
+		__raw_writel(mem_backup[2], zero + 0x8);
+	}
+
+
 	/*
 	 * Synchronise with the boot thread.
 	 */
 	spin_lock(&boot_lock);
 	spin_unlock(&boot_lock);
 }
-
-/* Store pointer to ioremap area which points to address 0x0 */
-static u8 *zero;
 
 /*
  * Store pointer to SLCR registers. SLCR driver can't be used because
@@ -76,6 +91,7 @@ int zynq_cpu1_start(u32 address)
 			return -1;
 		}
 	}
+	mem_backup_done = 0;
 
 	/* MS: Expectation that SLCR are directly map and accessible */
 	/* Not possible to jump to non aligned address */
@@ -95,6 +111,10 @@ int zynq_cpu1_start(u32 address)
 					"BOOTUP jump vectors is not mapped!\n");
 				return -1;
 			}
+			mem_backup[0] = __raw_readl(zero + 0x0);
+			mem_backup[1] = __raw_readl(zero + 0x4);
+			mem_backup[2] = __raw_readl(zero + 0x8);
+			mem_backup_done = 1;
 			__raw_writel(0xe59f0000, zero + 0x0);/* 0:ldr r0, [8] */
 			__raw_writel(0xe1a0f000, zero + 0x4);/* 4:mov pc, r0 */
 			__raw_writel(address, zero + 0x8);/* 8:.word address */
