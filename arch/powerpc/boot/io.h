@@ -99,11 +99,4 @@ static inline void barrier(void)
 	asm volatile("" : : : "memory");
 }
 
-static inline void disable_irq(void)
-{
-	int dummy;
-	asm volatile("mfmsr %0; rlwinm %0, %0, 0, ~(1<<15); mtmsr %0" :
-	             "=r" (dummy) : : "memory");
-}
-
 #endif /* _IO_H */
