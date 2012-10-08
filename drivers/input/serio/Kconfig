@@ -177,12 +177,6 @@ config SERIO_LIBPS2
 	  To compile this driver as a module, choose M here: the
 	  module will be called libps2.
 
-config SERIO_XILINX_XPS_PS2
-	tristate "Xilinx XPS PS/2 Controller Support"
-	depends on XILINX_DRIVERS && SERIO
-	help
-	  This driver supports XPS PS/2 IP from Xilinx EDK.
-
 config SERIO_RAW
 	tristate "Raw access to serio ports"
 	help
