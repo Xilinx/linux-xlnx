@@ -49,39 +49,6 @@ config XILINX_TEST
 	  Select if you want kernel tests to run on boot.  The tests may take
 	  several minutes on kernel boot.
 
-choice
-        prompt "Xilinx CPU AMP Kernels"
-	default ZXILINX_DEFAULT_KERNEL
-
-config ZYNQ_DEFAULT_KERNEL
-	bool "Run the kernel as normal"
-	help
-	  Select if you want a normal kernel.
-
-config ZYNQ_AMP_CPU0_MASTER
-	bool "Run the Kernel For AMP on CPU0"
-	help
-	  Select if you want to run the kernel on CPU0 while also running
-	  another kernel on CPU1 as a slave with respect to interrupt management.
-	  This causes the kernel to push the 2nd set of device interrupts
-	  to CPU1 so that it has it's own system.
-
-config ZYNQ_AMP_CPU1_SLAVE
-	bool "Run the Kernel For AMP on CPU1"
-	help
-	  Select if you want to run the kernel on CPU1 while also running
-	  another kernel on CPU0 as a master with respect to interrupt management.
-	  This causes the kernel to not touch the GIC distributor when it initializes
-	  as CPU0 takes care of it.
-
-config ZYNQ_CPU1_TEST
-	bool "Run the Kernel On CPU1 For Testing"
-	help
-	  Select if you want to run the kernel on CPU1 without running a kernel on
-	  CPU0 which is really only useful for testing purposes.  The really only
-	  causes interrupts in the GIC to be on CPU1 rather than CPU0.
-
-endchoice
 endmenu
 
 endif
