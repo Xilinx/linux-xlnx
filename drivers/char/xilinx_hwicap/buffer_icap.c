@@ -32,12 +32,6 @@
 
 #include "buffer_icap.h"
 
-/* Number of times to poll the done register.  This has to be large
-   enough to allow an entire configuration to complete. If an entire
-   page (4kb) is configured at once, that could take up to 4k cycles
-   with a byte-wide icap interface. */
-#define XHI_MAX_RETRIES     5000
-
 /* Indicates how many bytes will fit in a buffer. (1 BRAM) */
 #define XHI_MAX_BUFFER_BYTES        2048
 #define XHI_MAX_BUFFER_INTS         (XHI_MAX_BUFFER_BYTES >> 2)
