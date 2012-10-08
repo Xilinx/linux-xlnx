@@ -101,11 +101,6 @@ static void __init versatile_pb_init(void)
 	}
 }
 
-static const char *versatile_pb_match[] __initdata = {
-	"arm,versatile-pb",
-	NULL,
-};
-
 MACHINE_START(VERSATILE_PB, "ARM-Versatile PB")
 	/* Maintainer: ARM Ltd/Deep Blue Solutions Ltd */
 	.atag_offset	= 0x100,

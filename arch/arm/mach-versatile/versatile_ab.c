@@ -33,11 +33,6 @@
 
 #include "core.h"
 
-static const char *versatile_ab_match[] __initdata = {
-	"arm,versatile-ab",
-	NULL,
-};
-
 MACHINE_START(VERSATILE_AB, "ARM-Versatile AB")
 	/* Maintainer: ARM Ltd/Deep Blue Solutions Ltd */
 	.atag_offset	= 0x100,
