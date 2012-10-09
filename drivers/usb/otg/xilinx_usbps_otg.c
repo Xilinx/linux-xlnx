@@ -47,13 +47,6 @@
 
 static const char driver_name[] = DRIVER_NAME;
 
-static int xusbps_otg_set_host(struct usb_otg *otg,
-				struct usb_bus *host);
-static int xusbps_otg_set_peripheral(struct usb_otg *otg,
-				struct usb_gadget *gadget);
-static int xusbps_otg_start_srp(struct usb_otg *otg);
-static int xusbps_otg_start_hnp(struct usb_otg *otg);
-
 static const char *state_string(enum usb_otg_state state)
 {
 	switch (state) {
