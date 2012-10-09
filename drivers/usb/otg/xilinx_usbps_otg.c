@@ -2278,14 +2278,4 @@ error:
 	return ret;
 }
 
-static int __init xusbps_otg_init(void)
-{
-	return platform_driver_register(&xusbps_otg_driver);
-}
-subsys_initcall(xusbps_otg_init);
-
-static void __exit xusbps_otg_cleanup(void)
-{
-	platform_driver_unregister(&xusbps_otg_driver);
-}
-module_exit(xusbps_otg_cleanup);
+module_platform_driver(xusbps_otg_driver);
