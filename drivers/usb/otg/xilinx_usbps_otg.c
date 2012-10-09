@@ -52,29 +52,12 @@ MODULE_ALIAS("platform:" DRIVER_NAME);
 
 static const char driver_name[] = DRIVER_NAME;
 
-static int xusbps_otg_probe(struct platform_device *pdev);
-static int xusbps_otg_remove(struct platform_device *pdev);
-static int xusbps_otg_suspend(struct platform_device *pdev, pm_message_t
-		message);
-static int xusbps_otg_resume(struct platform_device *pdev);
-
 static int xusbps_otg_set_host(struct usb_otg *otg,
 				struct usb_bus *host);
 static int xusbps_otg_set_peripheral(struct usb_otg *otg,
 				struct usb_gadget *gadget);
 static int xusbps_otg_start_srp(struct usb_otg *otg);
 static int xusbps_otg_start_hnp(struct usb_otg *otg);
-
-static struct platform_driver xusbps_otg_driver = {
-	.probe		= xusbps_otg_probe,
-	.remove		= xusbps_otg_remove,
-	.driver		= {
-		.owner	= THIS_MODULE,
-		.name	= DRIVER_NAME,
-	},
-	.suspend =	xusbps_otg_suspend,
-	.resume =	xusbps_otg_resume,
-};
 
 static const char *state_string(enum usb_otg_state state)
 {
@@ -1956,6 +1939,32 @@ static struct attribute_group debug_dev_attr_group = {
 	.attrs = inputs_attrs,
 };
 
+static int xusbps_otg_remove(struct platform_device *pdev)
+{
+	struct xusbps_otg *xotg = the_transceiver;
+
+	if (xotg->qwork) {
+		flush_workqueue(xotg->qwork);
+		destroy_workqueue(xotg->qwork);
+	}
+	xusbps_otg_free_timers();
+
+	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
+	writel(0, xotg->base + CI_OTGSC);
+
+	if (xotg->irq)
+		free_irq(xotg->irq, xotg);
+
+	usb_remove_phy(&xotg->otg);
+	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
+	device_remove_file(&pdev->dev, &dev_attr_hsm);
+	device_remove_file(&pdev->dev, &dev_attr_registers);
+	kfree(xotg);
+	xotg = NULL;
+
+	return 0;
+}
+
 static int xusbps_otg_probe(struct platform_device *pdev)
 {
 	int			retval;
@@ -2074,32 +2083,6 @@ err:
 		xusbps_otg_remove(pdev);
 done:
 	return retval;
-}
-
-static int xusbps_otg_remove(struct platform_device *pdev)
-{
-	struct xusbps_otg *xotg = the_transceiver;
-
-	if (xotg->qwork) {
-		flush_workqueue(xotg->qwork);
-		destroy_workqueue(xotg->qwork);
-	}
-	xusbps_otg_free_timers();
-
-	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
-	writel(0, xotg->base + CI_OTGSC);
-
-	if (xotg->irq)
-		free_irq(xotg->irq, xotg);
-
-	usb_remove_phy(&xotg->otg);
-	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
-	device_remove_file(&pdev->dev, &dev_attr_hsm);
-	device_remove_file(&pdev->dev, &dev_attr_registers);
-	kfree(xotg);
-	xotg = NULL;
-
-	return 0;
 }
 
 static void transceiver_suspend(struct platform_device *pdev)
@@ -2277,5 +2260,16 @@ error:
 	transceiver_suspend(pdev);
 	return ret;
 }
+
+static struct platform_driver xusbps_otg_driver = {
+	.probe		= xusbps_otg_probe,
+	.remove		= xusbps_otg_remove,
+	.driver		= {
+		.owner	= THIS_MODULE,
+		.name	= DRIVER_NAME,
+	},
+	.suspend =	xusbps_otg_suspend,
+	.resume =	xusbps_otg_resume,
+};
 
 module_platform_driver(xusbps_otg_driver);
