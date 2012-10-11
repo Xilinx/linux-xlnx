@@ -1943,6 +1943,13 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	}
 	the_transceiver = xotg;
 
+	xotg->otg.otg = kzalloc(sizeof(struct usb_otg), GFP_KERNEL);
+	if (!xotg->otg.otg) {
+		kfree(xotg);
+		retval = -ENOMEM;
+		goto done;
+	}
+
 	xotg->base = pdata->regs;
 	xotg->irq = pdata->irq;
 	if (!xotg->base || !xotg->irq) {
