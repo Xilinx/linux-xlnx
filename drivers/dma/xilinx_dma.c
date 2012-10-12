@@ -1511,6 +1511,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		chan->config.stride = cfg->stride;
 		chan->config.frm_dly = cfg->frm_dly;
 		chan->config.park = cfg->park;
+		chan->config.direction = cfg->direction;
 
 		/* genlock settings */
 		chan->config.gen_lock = cfg->gen_lock;
@@ -1526,6 +1527,8 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		chan->config.frm_cnt_en = cfg->frm_cnt_en;
 		if (cfg->park)
 			chan->config.park_frm = cfg->park_frm;
+		else
+			chan->config.park_frm = -1;
 
 		chan->config.coalesc = cfg->coalesc;
 		chan->config.delay = cfg->delay;
