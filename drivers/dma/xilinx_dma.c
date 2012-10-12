@@ -738,11 +738,11 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	 * park/genlock testing does not use interrupts */
 	if (!chan->config.disable_intr) {
 		DMA_OUT(&chan->regs->cr,
-		   DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
+		DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
 	} else {
 		DMA_OUT(&chan->regs->cr,
-		   DMA_IN(&chan->regs->cr) |
-			chan->config.disable_intr << XILINX_DMA_IRQ_SHIFT);
+		(DMA_IN(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK) &
+		~((chan->config.disable_intr << XILINX_DMA_IRQ_SHIFT)));
 	}
 
 	/* Start the transfer
