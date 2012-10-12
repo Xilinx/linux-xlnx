@@ -140,6 +140,11 @@
 #define XILINX_DMA_FTR_HAS_SG_SHIFT    8          /* Has SG shift */
 #define XILINX_DMA_FTR_STSCNTRL_STRM   0x00010000 /* Optional feature for dma */
 
+/* Feature encodings for VDMA
+ */
+#define XILINX_VDMA_FTR_FLUSH_MASK     0x00000600 /* Flush-on-FSync Mask */
+#define XILINX_VDMA_FTR_FLUSH_SHIFT    9          /* Flush-on-FSync shift */
+
 /* Delay loop counter to prevent hardware failure
  */
 #define XILINX_DMA_RESET_LOOP            1000000
@@ -1639,9 +1644,8 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	if (value)
 		device_id = be32_to_cpup(value);
 
-	value = (int *)of_get_property(node, "xlnx,flush-fsync", NULL);
-	if (value)
-		flush_fsync = be32_to_cpup(value);
+	flush_fsync = (xdev->feature & XILINX_VDMA_FTR_FLUSH_MASK) >>
+				XILINX_VDMA_FTR_FLUSH_SHIFT;
 
 	if (feature & XILINX_DMA_IP_CDMA) {
 		chan->direction = DMA_MEM_TO_MEM;
@@ -1866,6 +1870,11 @@ static int __devinit xilinx_dma_of_probe(struct platform_device *op)
 			NULL);
 		if (value)
 			num_frames	= be32_to_cpup(value);
+
+		value = (int *)of_get_property(node, "xlnx,flush-fsync", NULL);
+		if (value)
+			xdev->feature |= be32_to_cpup(value) <<
+				XILINX_VDMA_FTR_FLUSH_SHIFT;
 
 		dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 		dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
