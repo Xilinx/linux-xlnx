@@ -1025,7 +1025,7 @@ err_out:
  * MAC address is not valid, reconfigure with a good one.
  * @lp: local device instance pointer
  **/
-static void __init xemacps_update_hwaddr(struct net_local *lp)
+static void __devinit xemacps_update_hwaddr(struct net_local *lp)
 {
 	u32 regvall;
 	u16 regvalh;
@@ -3009,7 +3009,7 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  *
  * Return 0 on success, negative value if error
  */
-static int __init xemacps_probe(struct platform_device *pdev)
+static int __devinit xemacps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct resource *r_irq = NULL;

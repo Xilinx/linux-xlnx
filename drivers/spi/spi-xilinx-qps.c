@@ -581,7 +581,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
  *
  * returns:	Number of bytes transferred in the last transfer
  **/
-static int xqspips_start_transfer(struct spi_device *qspi,
+static int __devinit xqspips_start_transfer(struct spi_device *qspi,
 			struct spi_transfer *transfer)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
@@ -680,7 +680,7 @@ xfer_data:
  * xqspips_work_queue - Get the request from queue to perform transfers
  * @work:	Pointer to the work_struct structure
  **/
-static void xqspips_work_queue(struct work_struct *work)
+static void __devinit xqspips_work_queue(struct work_struct *work)
 {
 	struct xqspips *xqspi = container_of(work, struct xqspips, work);
 	unsigned long flags;
