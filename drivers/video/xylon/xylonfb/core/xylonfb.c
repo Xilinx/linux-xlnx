@@ -208,10 +208,10 @@ static int xylonfb_set_par(struct fb_info *fbi)
 	if (common_data->xylonfb_flags & FB_VMODE_SET)
 		return 0;
 
-	if (xylonfb_hw_pixclk_change()) {
-		xylonfb_stop_logicvc(fbi);
-		xylonfb_logicvc_disp_ctrl(fbi, false);
+	xylonfb_stop_logicvc(fbi);
+	xylonfb_logicvc_disp_ctrl(fbi, false);
 
+	if (xylonfb_hw_pixclk_change()) {
 		if (!(common_data->xylonfb_flags & FB_VMODE_INIT)) {
 			sprintf(vmode_opt, "%dx%dM-%d@%d",
 				fbi->var.xres, fbi->var.yres,
@@ -232,10 +232,10 @@ static int xylonfb_set_par(struct fb_info *fbi)
 			pr_err("Error xylonfb changing pixel clock\n");
 			return rc;
 		}
-
-		xylonfb_start_logicvc(fbi);
-		xylonfb_logicvc_disp_ctrl(fbi, true);
 	}
+
+	xylonfb_start_logicvc(fbi);
+	xylonfb_logicvc_disp_ctrl(fbi, true);
 
 	pr_info("xylonfb video mode: %dx%d-%d@%d\n",
 		fbi->var.xres, fbi->var.yres, fbi->var.bits_per_pixel,

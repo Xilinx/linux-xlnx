@@ -24,7 +24,7 @@
 #define DRIVER_NAME "xylonfb"
 #define DEVICE_NAME "logicvc"
 #define DRIVER_DESCRIPTION "Xylon logiCVC frame buffer driver"
-#define DRIVER_VERSION "1.0"
+#define DRIVER_VERSION "1.1"
 
 /* FB driver flags */
 #define FB_DMA_BUFFER        0x01

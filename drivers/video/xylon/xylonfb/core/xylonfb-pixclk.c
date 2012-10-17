@@ -27,6 +27,9 @@
 #undef HW_PIXEL_CLOCK_CHANGE_SUPPORTED
 #endif
 #define HW_PIXEL_CLOCK_CHANGE_SUPPORTED 0
+
+#include <linux/kernel.h>
+
 int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 {
 	pr_info("Pixel clock change not supported\n");
@@ -34,6 +37,10 @@ int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 }
 
 #elif defined(CONFIG_FB_XYLON_ZYNQ_PS_PIXCLK)
+
+#include <asm/io.h>
+#include <linux/kernel.h>
+#include <linux/errno.h>
 
 int xylonfb_hw_pixclk_set(unsigned long pixclk_khz)
 {
