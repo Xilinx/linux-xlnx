@@ -84,6 +84,7 @@ static int zynq_rproc_start(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_rproc_pdata *local = platform_get_drvdata(pdev);
+	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
 	INIT_WORK(&workqueue, handle_event);
@@ -92,9 +93,9 @@ static int zynq_rproc_start(struct rproc *rproc)
 	outer_flush_range(local->mem_start, local->mem_end);
 
 	remoteprocdev = pdev;
-	zynq_cpu1_start(0);
+	ret = zynq_cpu1_start(0);
 
-	return 0;
+	return ret;
 }
 
 /* kick a firmware */
@@ -176,9 +177,16 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct irq_list *tmp;
 	int count;
+	struct zynq_rproc_pdata *local;
 
-	struct zynq_rproc_pdata *local = kzalloc(
-				sizeof(struct zynq_rproc_pdata), GFP_KERNEL);
+	ret = cpu_down(1);
+	/* EBUSY means CPU is already released */
+	if (ret && (ret != -EBUSY)) {
+		dev_err(&pdev->dev, "Can't release cpu1\n");
+		return -ENOMEM;
+	}
+
+	local = kzalloc(sizeof(struct zynq_rproc_pdata), GFP_KERNEL);
 	if (!local) {
 		dev_err(&pdev->dev, "Unable to alloc private data\n");
 		return -ENOMEM;
@@ -322,6 +330,7 @@ irq_fault:
 static int __devexit zynq_remoteproc_remove(struct platform_device *pdev)
 {
 	struct zynq_rproc_pdata *local = platform_get_drvdata(pdev);
+	u32 ret;
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
@@ -332,6 +341,11 @@ static int __devexit zynq_remoteproc_remove(struct platform_device *pdev)
 
 	rproc_del(local->rproc);
 	rproc_put(local->rproc);
+
+	/* Cpu can't be power on - for example in nosmp mode */
+	ret = cpu_up(1);
+	if (ret)
+		dev_err(&pdev->dev, "Can't power on cpu1 %d\n", ret);
 
 	return 0;
 }
