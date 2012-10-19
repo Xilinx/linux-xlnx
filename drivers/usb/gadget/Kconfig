@@ -188,6 +188,19 @@ config USB_GADGET_XUSBPS
 	   dynamically linked module called "xilinx_usbps_udc" and
 	   force all gadget drivers to also be dynamically linked.
 
+config XUSBPS_ERRATA_DT654401
+	bool "USB Errata: Adding a dTD to a Primed Endpoint May Not Get Recognized"
+	depends on USB_GADGET_XUSBPS
+	---help---
+	  There is an issue with the add dTD tripwire semaphore (ATDTW bit
+	  in USBCMD register) that can cause the controller to ignore a dTD
+	  that is added to a primed endpoint. When this happens, the software
+	  can read the tripwire bit and the status bit at '1' even though
+	  the endpoint is unprimed.
+
+	  This issue is only applicable for the Zynq silicon revisions < 3.0.
+	  For silicon versions 3.0 and higher, disable this option.
+
 config USB_XUSBPS
 	tristate
 	depends on USB_GADGET_XUSBPS
