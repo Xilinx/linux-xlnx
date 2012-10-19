@@ -1,7 +1,6 @@
 /*
- * drivers/mmc/host/sdhci-of-zynq.c
- *
- * Xilinx Zynq Host Controller Interface.
+ * Xilinx Zynq Secure Digital Host Controller Interface.
+ * Copyright (C) 2011 - 2012 Michal Simek <monstr@monstr.eu>
  * Copyright (c) 2012 Wind River Systems, Inc.
  *
  * Based on sdhci-of-esdhc.c
@@ -10,7 +9,7 @@
  * Copyright (c) 2009 MontaVista Software, Inc.
  *
  * Authors: Xiaobo Xie <X.Xie@freescale.com>
- *          Anton Vorontsov <avorontsov@ru.mvista.com>
+ *	    Anton Vorontsov <avorontsov@ru.mvista.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -71,8 +70,9 @@ static int __devexit sdhci_zynq_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id sdhci_zynq_of_match[] = {
-	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
-	{ }
+  	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
+	{ .compatible = "generic-sdhci" },
+	{},
 };
 MODULE_DEVICE_TABLE(of, sdhci_zynq_of_match);
 
@@ -87,18 +87,8 @@ static struct platform_driver sdhci_zynq_driver = {
 	.remove = __devexit_p(sdhci_zynq_remove),
 };
 
-static int __init sdhci_zynq_init(void)
-{
-	return platform_driver_register(&sdhci_zynq_driver);
-}
-module_init(sdhci_zynq_init);
+module_platform_driver(sdhci_zynq_driver);
 
-static void __exit sdhci_zynq_exit(void)
-{
-	platform_driver_unregister(&sdhci_zynq_driver);
-}
-module_exit(sdhci_zynq_exit);
-
-MODULE_DESCRIPTION("SDHCI OF driver for Xilinx Zynq");
-MODULE_AUTHOR("Vlad Lungu <vlad.lungu@windriver.com>");
+MODULE_DESCRIPTION("Secure Digital Host Controller Interface OF driver");
+MODULE_AUTHOR("Michal Simek <monstr@monstr.eu>, Vlad Lungu <vlad.lungu@windriver.com>");
 MODULE_LICENSE("GPL v2");
