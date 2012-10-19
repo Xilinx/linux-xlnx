@@ -71,7 +71,6 @@ extern const struct consw *conswitchp;
 
 extern const struct consw dummy_con;	/* dummy console buffer */
 extern const struct consw vga_con;	/* VGA text console */
-extern const struct consw xil_con;	/* XILINX text console */
 extern const struct consw newport_con;	/* SGI Newport console  */
 extern const struct consw prom_con;	/* SPARC PROM console */
 
