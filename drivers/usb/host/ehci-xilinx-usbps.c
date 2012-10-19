@@ -23,6 +23,9 @@
 #include <linux/platform_device.h>
 #include <linux/xilinx_devices.h>
 #include <linux/usb/otg.h>
+#ifdef CONFIG_XILINX_ZED_USB_OTG
+#include <linux/usb/ulpi.h>
+#endif
 #include <linux/usb/xilinx_usbps_otg.h>
 
 #include "ehci-xilinx-usbps.h"
@@ -165,6 +168,15 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 #ifdef CONFIG_USB_XUSBPS_OTG
 	ehci = hcd_to_ehci(hcd);
 	if (pdata->otg) {
+#ifdef CONFIG_XILINX_ZED_USB_OTG
+		pr_info ("usb_hcd_xusbps_probe: Have OTG assigned.\n");
+
+		retval = otg_init(pdata->otg);
+		if (retval) {
+			dev_err(&pdev->dev, "Unable to init transceiver, probably missing\n");
+			return ENODEV;
+		}
+#endif
 		hcd->phy = pdata->otg;
 		retval = otg_set_host(hcd->phy->otg,
 				&ehci_to_hcd(ehci)->self);
@@ -177,6 +189,19 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		/* inform otg driver about host driver */
 		xusbps_update_transceiver();
 	} else {
+#ifdef CONFIG_XILINX_ZED_USB_OTG
+		pr_info ("usb_hcd_xusbps_probe: No OTG assigned!\n");
+		if (!pdata->otg) {
+			pdata->otg = otg_ulpi_create (&ulpi_viewport_access_ops,
+				ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
+			if (pdata->otg) {
+				pdata->otg->io_priv = hcd->regs + XUSBPS_SOC_USB_ULPIVP;
+				ehci->ulpi = pdata->otg;
+			}
+		}
+		pr_info ("usb_hcd_xusbps_probe: OTG now assigned!\n");
+#endif
+
 		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 		if (retval != 0)
 			goto err2;
