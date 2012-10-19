@@ -328,7 +328,6 @@ static void ehci_silence_controller(struct ehci_hcd *ehci)
 
 	spin_lock_irq(&ehci->lock);
 	ehci->rh_state = EHCI_RH_HALTED;
-
 #ifdef CONFIG_USB_XUSBPS_OTG
 	/* turn off for non-otg port */
 	if(!hcd->phy)
@@ -672,6 +671,12 @@ static int ehci_run (struct usb_hcd *hcd)
 	/* Modifying FIFO Burst Threshold value from 2 to 8 */
 	temp = readl(non_ehci + 0x164);
 	ehci_writel(ehci, 0x00080000, non_ehci + 0x164);
+#if defined(CONFIG_XILINX_ZED_USB_OTG)
+	if (ehci->ulpi) {
+		struct otg_transceiver *otg = ehci->ulpi;
+		otg_set_vbus(otg, 1);
+	}
+#endif
 #endif
 	/* GRR this is run-once init(), being done every time the HC starts.
 	 * So long as they're part of class devices, we can't do it init()
