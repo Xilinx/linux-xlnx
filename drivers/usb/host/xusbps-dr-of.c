@@ -19,15 +19,14 @@
  * Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/xilinx_devices.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/of_platform.h>
-#include <linux/clk.h>
 #include <linux/string.h>
-#include <linux/export.h>
-#include <linux/module.h>
+#include <linux/clk.h>
 
 static u64 dma_mask = 0xFFFFFFF0;
 
