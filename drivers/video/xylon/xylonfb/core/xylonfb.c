@@ -1359,8 +1359,9 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 	driver_devel("BG layer %dbpp\n", init_data->bg_layer_bpp);
 
 	common_data->xylonfb_irq = irq_res->start;
-	if (request_irq(common_data->xylonfb_irq, xylonfb_isr,
-			IRQF_TRIGGER_HIGH, DEVICE_NAME, afbi)) {
+	rc = request_irq(common_data->xylonfb_irq, xylonfb_isr,
+			IRQF_TRIGGER_HIGH, DEVICE_NAME, afbi);
+	if (rc) {
 		common_data->xylonfb_irq = 0;
 		goto err_fb;
 	}
