@@ -481,7 +481,7 @@ struct xusbps_udc {
 #endif
 
 #if 0
-static void dump_msg(const char *label, const u8 * buf, unsigned int length)
+static void dump_msg(const char *label, const u8 *buf, unsigned int length)
 {
 	unsigned int start, num, i;
 	char line[52], *p;
