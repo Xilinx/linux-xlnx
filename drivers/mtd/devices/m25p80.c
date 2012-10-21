@@ -922,11 +922,11 @@ static int __devinit m25p_probe(struct spi_device *spi)
 	flash->mtd.size = info->sector_size * info->n_sectors;
 
 #ifdef CONFIG_SPI_XILINX_PS_QSPI
-	{	
+	{
 		const unsigned int *prop;
 		const struct device_node *np;
 
-		/* for Zynq, two devices (dual) QSPI (seperate bus) is supported 
+		/* for Zynq, two devices (dual) QSPI (seperate bus) is supported
 		 * in which there can be two devices that appear as one to s/w
 		 * the only way to tell this mode is from the qspi controller
 		 * and if it's used, then the memory is x2 the amount
@@ -935,9 +935,9 @@ static int __devinit m25p_probe(struct spi_device *spi)
 		prop = of_get_property(np, "is-dual", NULL);
 		if (prop) {
 			if (be32_to_cpup(prop)) {
-				info->sector_size *= 2; 
+				info->sector_size *= 2;
 				flash->mtd.size *= 2;
-			}	
+			}
 		}
 	}
 #endif
