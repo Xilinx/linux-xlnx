@@ -35,13 +35,6 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/flash.h>
 
-#define HACK_PAGE_SZ_128		/* temp hack to use 128 byte page */
-#ifdef HACK_PAGE_SZ_128
- #define MTD_PAGE_SIZE	128
-#else
- #define MTD_PAGE_SIZE	256
-#endif
-
 /* Flash opcodes. */
 #define	OPCODE_WREN		0x06	/* Write enable */
 #define	OPCODE_RDSR		0x05	/* Read status register */
