@@ -1,4 +1,3 @@
-XTRA_CFLAGS		+= -Idrivers/xilinx_common/
 #
 # USB peripheral controller drivers
 #
