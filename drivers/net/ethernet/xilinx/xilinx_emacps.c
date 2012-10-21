@@ -3432,5 +3432,5 @@ module_init(xemacps_init);
 module_exit(xemacps_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION(Xilinx Ethernet driver);
+MODULE_DESCRIPTION("Xilinx Ethernet driver");
 MODULE_LICENSE("GPL");
