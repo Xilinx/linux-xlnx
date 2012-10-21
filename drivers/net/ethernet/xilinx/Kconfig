@@ -42,20 +42,18 @@ config XILINX_LL_TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
 
 config XILINX_PS_EMAC
-        tristate "Xilinx PS tri-speed EMAC support"
+	tristate "Xilinx PS tri-speed EMAC support"
 	depends on ARCH_ZYNQ
 	select PHYLIB
-        help
-          This driver supports tri-speed EMAC.
-
-if XILINX_PS_EMAC
+	---help---
+	  This driver supports tri-speed EMAC.
 
 config XILINX_PS_EMAC_HWTSTAMP
 	bool "Generate hardware packet timestamps"
+	depends on XILINX_PS_EMAC
 	default n
 	---help---
 	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
-endif
 
 endif # NET_VENDOR_XILINX
