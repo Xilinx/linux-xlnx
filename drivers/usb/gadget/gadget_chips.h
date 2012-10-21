@@ -51,12 +51,7 @@
 #define gadget_is_s3c2410(g)		(!strcmp("s3c2410_udc", (g)->name))
 #define gadget_is_s3c_hsotg(g)		(!strcmp("s3c-hsotg", (g)->name))
 #define gadget_is_s3c_hsudc(g)		(!strcmp("s3c-hsudc", (g)->name))
-
-#ifdef CONFIG_USB_GADGET_XILINX
-#define gadget_is_xlnx(g)	!strcmp("xilinx_udc", (g)->name)
-#else
-#define gadget_is_xlnx(g)	0
-#endif
+#define gadget_is_xlnx(g)		(!strcmp("xilinx_udc", (g)->name))
 
 /**
  * usb_gadget_controller_number - support bcdDevice id convention
@@ -127,6 +122,8 @@ static inline int usb_gadget_controller_number(struct usb_gadget *gadget)
 		return 0x32;
 	else if (gadget_is_lpc32xx(gadget))
 		return 0x33;
+	else if (gadget_is_xlnx(gadget))
+		return 0x34;
 
 	return -ENOENT;
 }
