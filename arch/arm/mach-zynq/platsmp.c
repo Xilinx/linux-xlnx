@@ -191,7 +191,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	 * Remap the first three addresses at zero which are used
 	 * for 32bit long jump for SMP. Look at zynq_cpu1_start()
 	 */
-#if CONFIG_PHYS_OFFSET
+#ifdef CONFIG_PHYS_OFFSET
 	zero = ioremap(0, 12);
 	if (!zero) {
 		printk(KERN_WARNING
