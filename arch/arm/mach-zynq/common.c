@@ -51,7 +51,7 @@ static const struct of_device_id xilinx_dt_irq_match[] __initconst = {
 /* The minimum devices needed to be mapped before the VM system is up and
  * running include the GIC, UART and Timer Counter.
  */
-struct map_desc io_desc[] __initdata = {
+static struct map_desc io_desc[] __initdata = {
 	{
 		.virtual	= SCU_PERIPH_VIRT,
 		.pfn		= __phys_to_pfn(SCU_PERIPH_PHYS),
