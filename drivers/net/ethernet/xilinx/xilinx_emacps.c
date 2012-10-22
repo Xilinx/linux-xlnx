@@ -3215,6 +3215,12 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
 		ndev->name, pdev->id, ndev->base_addr, ndev->irq);
 
+	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
+		ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
+
+	printk(KERN_INFO "%s, attach [%s] phy driver\n", ndev->name,
+		lp->phy_dev->drv->name);
+
 	return 0;
 
 err_out_unregister_clk_notifier:
