@@ -511,6 +511,8 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	spin_lock_init(&gpio->gpio_lock);
+
 	platform_set_drvdata(pdev, gpio);
 
 	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
