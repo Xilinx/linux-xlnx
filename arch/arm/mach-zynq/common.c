@@ -67,22 +67,6 @@ static struct map_desc io_desc[] __initdata = {
 	},
 #endif
 
-	/* create a mapping for the OCM  (256K) leaving a hole for the
-	 * interrupt vectors which are handled in the kernel
-	 */
-	{
-		.virtual	= OCM_LOW_VIRT,
-		.pfn		= __phys_to_pfn(OCM_LOW_PHYS),
-		.length		= (192 * SZ_1K),
-		.type		= MT_DEVICE_CACHED,
-	},
-	{
-		.virtual	= OCM_HIGH_VIRT,
-		.pfn		= __phys_to_pfn(OCM_HIGH_PHYS),
-		.length		= (60 * SZ_1K),
-		.type		= MT_DEVICE,
-	},
-
 	/* SLCR space for clock stuff for now */
 	{
 		.virtual	= SLCR_BASE_VIRT,
