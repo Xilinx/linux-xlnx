@@ -17,11 +17,6 @@
 
 extern int zynq_cpu1_start(u32 address);
 
-static inline void arch_idle(void)
-{
-	cpu_do_idle();
-}
-
 static inline void arch_reset(char mode, const char *cmd)
 {
 	/* Add architecture specific reset processing here */
