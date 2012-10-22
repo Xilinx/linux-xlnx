@@ -2414,7 +2414,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			mapping = dma_map_single(&lp->pdev->dev, skb->data,
 				len, DMA_TO_DEVICE);
 		} else {
-			len = frag->size;
+			len = skb_frag_size(frag);
 			virt_addr = skb_frag_address(frag);
 			mapping = dma_map_single(&lp->pdev->dev, virt_addr,
 				len, DMA_TO_DEVICE);
