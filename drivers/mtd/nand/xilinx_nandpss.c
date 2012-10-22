@@ -968,7 +968,6 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 	u8 get_feature;
 	u8 set_feature[4] = {0x08, 0x00, 0x00, 0x00};
 	int ondie_ecc_enabled = 0;
-	int ez_nand_supported = 0;
 	unsigned long ecc_cfg;
 	struct xnand_platform_data	*pdata = NULL;
 	struct mtd_part_parser_data ppdata;
@@ -1097,7 +1096,7 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-	/* Check if On-Die ECC flash or Clear NAND flash */
+	/* Check if On-Die ECC flash */
 	nand_chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
 	nand_chip->cmdfunc(mtd, NAND_CMD_READID, 0x00, -1);
 
@@ -1136,12 +1135,9 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 			if (get_feature & 0x08)
 				ondie_ecc_enabled = 1;
 		}
-	} else if ((nand_chip->onfi_version == 23) &&
-				(nand_chip->onfi_params.features & (1 << 9))) {
-		ez_nand_supported = 1;
 	}
 
-	if (ondie_ecc_enabled || ez_nand_supported) {
+	if (ondie_ecc_enabled) {
 		/* bypass the controller ECC block */
 		ecc_cfg = xnandpss_read32(xnand->smc_regs +
 			XSMCPSS_ECC_MEMCFG_OFFSET(XSMCPSS_ECC_IF1_OFFSET));
@@ -1162,14 +1158,11 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		nand_chip->ecc.size = mtd->writesize;
 		nand_chip->ecc.bytes = 0;
 		nand_chip->ecc.strength = 1;
-
 		/* On-Die ECC spare bytes offset 8 is used for ECC codes */
-		if (ondie_ecc_enabled) {
-			nand_chip->ecc.layout = &ondie_nand_oob_64;
-			/* Use the BBT pattern descriptors */
-			nand_chip->bbt_td = &bbt_main_descr;
-			nand_chip->bbt_md = &bbt_mirror_descr;
-		}
+		nand_chip->ecc.layout = &ondie_nand_oob_64;
+		/* Use the BBT pattern descriptors */
+		nand_chip->bbt_td = &bbt_main_descr;
+		nand_chip->bbt_md = &bbt_mirror_descr;
 	} else {
 		/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
 		nand_chip->ecc.mode = NAND_ECC_HW;
