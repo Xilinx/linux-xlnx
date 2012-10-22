@@ -1185,7 +1185,7 @@ static int __devinit xnandpss_probe(struct platform_device *pdev)
 		nand_chip->ecc.read_oob = xnandpss_read_oob;
 		nand_chip->ecc.write_oob = xnandpss_write_oob;
 		nand_chip->ecc.strength = 1;
-	
+
 		switch (mtd->writesize) {
 		case 512:
 			ecc_page_size = 0x1;
@@ -1302,7 +1302,7 @@ static int __devexit xnandpss_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_OF
-static struct xnand_platform_data xnandpss_config; 
+static struct xnand_platform_data xnandpss_config;
 
 /* Match table for device tree binding */
 static const struct of_device_id __devinitconst xnandpss_of_match[] = {
