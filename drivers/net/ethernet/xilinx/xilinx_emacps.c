@@ -39,7 +39,6 @@
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/of.h>
-#include <mach/board.h>
 #include <mach/slcr.h>
 #include <linux/interrupt.h>
 #include <linux/clocksource.h>
@@ -50,6 +49,7 @@
 #include <linux/clk.h>
 #endif
 #ifdef CONFIG_OF
+#include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
 #endif
