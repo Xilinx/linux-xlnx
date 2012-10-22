@@ -19,7 +19,7 @@ config ZYNQ_EARLY_UART_EP107
 
 config XILINX_FIXED_DEVTREE_ADDR
 	tristate "Device Tree At Fixed Address"
-	default y
+	default n
 	depends on OF
 	help
 	  Select if you want the kernel to assume a device tree is located at a
