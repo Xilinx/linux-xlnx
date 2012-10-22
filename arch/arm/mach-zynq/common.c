@@ -37,7 +37,6 @@
 #include <mach/pdev.h>
 #include "common.h"
 
-
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
 	{ .compatible = "simple-bus", },
 	{}
@@ -92,7 +91,6 @@ static struct map_desc io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 };
-
 
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.
