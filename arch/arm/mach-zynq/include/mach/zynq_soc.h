@@ -26,7 +26,7 @@
 //#define UART1_VIRT			0xFE001000
 
 #define SCU_PERIPH_PHYS			0xF8F00000
-#define SCU_PERIPH_VIRT			0xFE00C000
+#define SCU_PERIPH_VIRT			SCU_PERIPH_PHYS
 
 /* The following are intended for the devices that are mapped early */
 
