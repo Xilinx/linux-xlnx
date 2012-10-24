@@ -1498,7 +1498,7 @@ static void axienet_dma_err_handler(unsigned long data)
 static int __devinit axienet_of_probe(struct platform_device *op)
 {
 	__be32 *p;
-	int size, ret = 0;
+	int size, ret = 0, rc;
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
