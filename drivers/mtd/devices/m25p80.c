@@ -930,6 +930,16 @@ static int __devinit m25p_probe(struct spi_device *spi)
 			if (be32_to_cpup(prop)) {
 				info->sector_size *= 2;
 				flash->mtd.size *= 2;
+				/* This hack bypass the 4 byte mode configuration for the
+				 * qspi flash chip. It sets mtd to 4 byte mode but leave
+				 * the qspi flash in 3 byte mode (or flash default mode).
+				 * This can be issue when two 32MB flash is configured as
+				 * dual mode, it will not work if the qspi flash chip
+				 * is configured in 3 byte mode as it require 4 byte
+				 * addressing to access the entire 32MB
+				 */
+				if (flash->mtd.size > 0x1000000)
+					info->addr_width = 4;
 			}
 		}
 	}
