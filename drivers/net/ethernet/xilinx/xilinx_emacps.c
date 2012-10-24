@@ -860,8 +860,10 @@ static void xemacps_adjust_link(struct net_device *ndev)
 static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		event, void *data)
 {
+/*
 	struct clk_notifier_data *ndata = data;
 	struct net_local *nl = to_net_local(nb);
+*/
 
 	switch (event) {
 	case PRE_RATE_CHANGE:
