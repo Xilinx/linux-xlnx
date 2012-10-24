@@ -70,7 +70,7 @@ static int __devexit sdhci_zynq_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id sdhci_zynq_of_match[] = {
-  	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
+	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
 	{ .compatible = "generic-sdhci" },
 	{},
 };
