@@ -9,10 +9,10 @@
 
 	memory {
 		device_type = "memory";
-		reg = <0x00000000 0x40000000>; 
+		reg = <0x00000000 0x40000000>;
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw ip=:::::eth0:dhcp earlyprintk"; 
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw ip=:::::eth0:dhcp earlyprintk";
 		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
@@ -56,7 +56,7 @@
 		timer@0xf8001000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xf8001000 0x1000>;
-			interrupts = <0 10 4>,<0 11 4>,<0 12 4>; 
+			interrupts = <0 10 4>,<0 11 4>,<0 12 4>;
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <111111111>;
 			clock-frequency-timer1 = <111111111>;
@@ -120,7 +120,7 @@
 			bus-id = <0>;
 			input-clk = <111111111>;
 			i2c-clk = <100000>;
-			
+
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};

@@ -61,7 +61,7 @@
 		timer0: timer@0xf8001000 {
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			reg = <0xF8001000 0x1000>;
-			interrupts = <0 10 0>,<0 11 0>,<0 12 0>; 
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
 			interrupt-parent = <&gic>;
 			clock-frequency-timer0 = <2500000>;
 			clock-frequency-timer1 = <2500000>;
@@ -87,7 +87,7 @@
 			compatible = "xlnx,ps7-scuwdt-1.00.a";
 			reg = <0xF8F00620 0x20>;
 		};
-	
+
 		uart0: uart@e0000000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0000000 0x1000>;
@@ -95,7 +95,7 @@
 			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
-	
+
 		uart1: uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0001000 0x1000>;
@@ -103,7 +103,7 @@
 			interrupt-parent = <&gic>;
 			clock = <50000000>;
 		};
-	
+
 		spi0: spi@e0006000 {
 			compatible = "xlnx,ps7-spi-1.00.a";
 			reg = <0xE0006000 0x1000>;
@@ -143,7 +143,7 @@
 			bus-id = <0>;
 			input-clk = <50000000>;
 			i2c-clk = <100000>;
-			
+
 			#address-cells = <1>;
 			#size-cells = <0>;
 			m24c02_eeprom@50 {
