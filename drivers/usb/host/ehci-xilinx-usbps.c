@@ -171,7 +171,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 #ifdef CONFIG_XILINX_ZED_USB_OTG
 		pr_info ("%s: Have OTG assigned.\n", __func__);
 
-		retval = otg_init(pdata->otg);
+		retval = usb_phy_init(pdata->otg);
 		if (retval) {
 			dev_err(&pdev->dev, "Unable to init transceiver, probably missing\n");
 			return ENODEV;
