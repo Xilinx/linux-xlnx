@@ -172,11 +172,14 @@
 			xlnx,slcr-div1-10Mbps = <50>;
 			#address-cells = <0x1>;
 			#size-cells = <0x0>;
-
-			phy0: phy@7 {
-				compatible = "vitesse,vsc8211";
-				device_type = "ethernet-phy";
-				reg = <0x7>;
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy0: phy@7 {
+					compatible = "vitesse,vsc8211";
+					device_type = "ethernet-phy";
+					reg = <7>;
+				};
 			};
 		};
 

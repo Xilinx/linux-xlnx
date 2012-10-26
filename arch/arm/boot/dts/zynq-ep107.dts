@@ -247,11 +247,15 @@
 			phy-handle = <&phy0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			phy0: phy@23 {
-				compatible = "marvell,88e1111";
-				device_type = "ethernet-phy";
-				reg = <23>;
-			} ;
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy0: phy@23 {
+					compatible = "marvell,88e1111";
+					device_type = "ethernet-phy";
+					reg = <23>;
+				};
+			};
 		};
 
 		eth1: eth@e000c000 {
@@ -262,11 +266,15 @@
 			phy-handle = <&phy1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			phy1: phy@16 {
-				compatible = "marvell,88e1111";
-				device_type = "ethernet-phy";
-				reg = <16>;
-			} ;
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy1: phy@16 {
+					compatible = "marvell,88e1111";
+					device_type = "ethernet-phy";
+					reg = <16>;
+				};
+			};
 		};
 
 		nand: nand@e1000000 {
