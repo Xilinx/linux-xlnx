@@ -1140,7 +1140,7 @@ static void xuartps_console_write(struct console *co, const char *s,
 	uart_console_write(port, s, count, xuartps_console_putchar);
 	xuartps_console_wait_tx(port);
 
-	xuartps_writel(XUARTPS_CR_OFFSET, ctrl);
+	xuartps_writel(ctrl, XUARTPS_CR_OFFSET);
 
 	/* restore interrupt state, it seems like there may be a h/w bug
 	 * in that the interrupt enable register should not need to be
