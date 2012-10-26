@@ -3082,6 +3082,9 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
+#ifdef CONFIG_OF
+	lp->board_type = BOARD_TYPE_ZYNQ;
+#endif
 
 	rc = register_netdev(ndev);
 	if (rc) {
