@@ -102,6 +102,14 @@
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
 #define BUFFER_ALIGN(adr) ((ALIGNMENT - ((u32) adr)) % ALIGNMENT)
 
+/* Read/Write access to the registers */
+#ifndef in_be32
+#ifdef CONFIG_ARCH_ZYNQ
+#define in_be32(offset)		__raw_readl(offset)
+#define out_be32(offset, val)	__raw_writel(val, offset)
+#endif
+#endif
+
 /**
  * struct net_local - Our private per device data
  * @ndev:		instance of the network device
