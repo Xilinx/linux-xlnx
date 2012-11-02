@@ -130,7 +130,7 @@ int zynq_cpu1_start(u32 address)
 		/* the SLCR locking/unlocking needs to be re-done, for now
 		 * there is not centralized locking/unlocking so leave it
 		 * unlocked
-		 */ 
+		 */
 #if 0
 		__raw_writel(SLCR_LOCK, slcr + 0x4); /* LOCK SLCR */
 #endif
