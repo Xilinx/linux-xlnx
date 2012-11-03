@@ -21,13 +21,13 @@
 #include <linux/gfp.h>
 #include <linux/memblock.h>
 #include <linux/dma-contiguous.h>
+#include <linux/sizes.h>
 
 #include <asm/mach-types.h>
 #include <asm/memblock.h>
 #include <asm/prom.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
-#include <asm/sizes.h>
 #include <asm/tlb.h>
 #include <asm/fixmap.h>
 
@@ -743,17 +743,11 @@ void free_initmem(void)
 				    "TCM link");
 #endif
 
-/* for Zynq, don't let the kernel free up this init memory as it will get
- * used for DMAs (lower 512K) which is not allowed, the ARCH_ZYNQ isn't
- * setup right to allow machine_is_zynq to work
- */
-//#ifndef CONFIG_ARCH_ZYNQ
 	poison_init_mem(__init_begin, __init_end - __init_begin);
 	if (!machine_is_integrator() && !machine_is_cintegrator())
 		totalram_pages += free_area(__phys_to_pfn(__pa(__init_begin)),
 					    __phys_to_pfn(__pa(__init_end)),
 					    "init");
-//#endif
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD

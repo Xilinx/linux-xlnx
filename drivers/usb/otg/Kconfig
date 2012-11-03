@@ -108,18 +108,6 @@ config AB8500_USB
 	  This transceiver supports high and full speed devices plus,
 	  in host mode, low speed.
 
-config USB_XUSBPS_OTG
-	tristate "Xilinx USB PS OTG dual-role support"
-	depends on USB && (ARCH_XILINX || ARCH_ZYNQ) && USB_EHCI_XUSBPS && USB_GADGET_XUSBPS && USB_OTG
-	select USB_OTG_UTILS
-	help
-	  Say Y here if you want to build Xilinx USB PS OTG
-	  driver in kernel. This driver implements role
-	  switch between EHCI host driver and USB gadget driver.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called xilinx_usbps_otg.
-
 config FSL_USB2_OTG
 	bool "Freescale USB OTG Transceiver Driver"
 	depends on USB_EHCI_FSL && USB_GADGET_FSL_USB2 && USB_SUSPEND
@@ -127,6 +115,16 @@ config FSL_USB2_OTG
 	select USB_OTG_UTILS
 	help
 	  Enable this to support Freescale USB OTG transceiver.
+
+config USB_MXS_PHY
+	tristate "Freescale MXS USB PHY support"
+	depends on ARCH_MXC || ARCH_MXS
+	select STMP_DEVICE
+	select USB_OTG_UTILS
+	help
+	  Enable this to support the Freescale MXS USB PHY.
+
+	  MXS Phy is used by some of the i.MX SoCs, for example imx23/28/6x.
 
 config USB_MV_OTG
 	tristate "Marvell USB OTG support"
@@ -139,5 +137,30 @@ config USB_MV_OTG
 	  implements role switch between EHCI host driver and gadget driver.
 
 	  To compile this driver as a module, choose M here.
+
+config USB_XUSBPS_OTG
+	tristate "Xilinx USB PS OTG dual-role support"
+	depends on USB && ARCH_ZYNQ && USB_EHCI_XUSBPS && USB_GADGET_XUSBPS && USB_OTG
+	select USB_OTG_UTILS
+	help
+	  Say Y here if you want to build Xilinx USB PS OTG
+	  driver in kernel. This driver implements role
+	  switch between EHCI host driver and USB gadget driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called xilinx_usbps_otg.
+
+config XILINX_ZED_USB_OTG
+	bool "Using USB OTG on the Digilent ZED board"
+	default n
+	depends on USB_SUPPORT
+	select USB_XUSBPS_OTG
+	select USB_ULPI if USB_SUPPORT
+	select USB_ULPI_VIEWPORT if USB_SUPPORT
+	help
+	  Select this option if using the USB OTG port on the Digilent ZED board
+	  as a USB on-the-go port. This option is necessary to properly
+	  initialize the TUSB1210 USB PHY used on the ZED board as an
+	  on-the-go USB port that can supply power to a USB slave device.
 
 endif # USB || OTG

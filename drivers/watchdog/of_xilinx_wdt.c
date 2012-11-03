@@ -263,6 +263,9 @@ static long xwdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		xwdt_keepalive();
 		return 0;
 
+	case WDIOC_SETTIMEOUT:
+		printk(KERN_INFO "This feature is not implemented yet!\n");
+
 	case WDIOC_GETTIMEOUT:
 		if (no_timeout)
 			return -ENOTTY;
@@ -297,7 +300,7 @@ static int __devinit xwdt_probe(struct platform_device *pdev)
 
 	no_timeout = 0;
 
-	pfreq = (u32 *)of_get_property(pdev->dev.of_node->parent,
+	pfreq = (u32 *)of_get_property(pdev->dev.of_node,
 					"clock-frequency", NULL);
 
 	if (pfreq == NULL) {
@@ -395,6 +398,7 @@ static int __devexit xwdt_remove(struct platform_device *dev)
 /* Match table for of_platform binding */
 static struct of_device_id __devinitdata xwdt_of_match[] = {
 	{ .compatible = "xlnx,xps-timebase-wdt-1.01.a", },
+	{ .compatible = "xlnx,xps-timebase-wdt-1.00.a", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, xwdt_of_match);

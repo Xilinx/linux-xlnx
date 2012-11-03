@@ -36,7 +36,7 @@
 				  < 0xf8f00100 0x0100 >;
 		};
 
-		pl310@f8f02000 
+		pl310@f8f02000
 		{
 			compatible = "arm,pl310-cache";
 			cache-unified;

@@ -28,13 +28,13 @@
 #define ULITE_NAME		"ttyUL"
 #define ULITE_MAJOR		204
 #define ULITE_MINOR		187
-#define ULITE_NR_UARTS		4
+#define ULITE_NR_UARTS		10
 
 /* ---------------------------------------------------------------------
  * Register definitions
  *
  * For register details see datasheet:
- * http://www.xilinx.com/support/documentation/ip_documentation/opb_uartlite.pdf 
+ * http://www.xilinx.com/support/documentation/ip_documentation/opb_uartlite.pdf
  */
 
 #define ULITE_RX		0x00
@@ -216,8 +216,7 @@ static int ulite_startup(struct uart_port *port)
 {
 	int ret;
 
-	ret = request_irq(port->irq, ulite_isr,
-			  IRQF_SHARED | IRQF_SAMPLE_RANDOM, "uartlite", port);
+	ret = request_irq(port->irq, ulite_isr, IRQF_SHARED, "uartlite", port);
 	if (ret)
 		return ret;
 
@@ -366,7 +365,7 @@ static void ulite_console_wait_tx(struct uart_port *port)
 	u8 val;
 
 	/* Spin waiting for TX fifo to have space available */
-	for (i = 0; i < 100000; i++) {
+	for (i = 0; i < 10000000; i++) {
 		val = ioread32be(port->membase + ULITE_STATUS);
 		if ((val & ULITE_STATUS_TXFULL) == 0)
 			break;
@@ -578,9 +577,26 @@ static int __devinit ulite_probe(struct platform_device *pdev)
 #ifdef CONFIG_OF
 	const __be32 *prop;
 
-	prop = of_get_property(pdev->dev.of_node, "port-number", NULL);
-	if (prop)
-		id = be32_to_cpup(prop);
+	/* Look for a serialN alias */
+	id = of_alias_get_id(pdev->dev.of_node, "serial");
+	if (id < 0) {
+		dev_warn(&pdev->dev, "failed to get alias id, errno %d\n", id);
+		/* Fall back to old port-number property */
+		prop = of_get_property(pdev->dev.of_node, "port-number", NULL);
+		if (!prop) {
+			dev_warn(&pdev->dev, "failed to get port-number\n");
+			id = -1;
+		} else
+			id = be32_to_cpup(prop);
+	}
+
+	/* we can't register ids which are greater than number of uartlites */
+	if (id >= ULITE_NR_UARTS) {
+		dev_warn(&pdev->dev,
+			"Extern number of allocated uartlite entries "
+			"ULITE_NR_UARTS, id %d\n", id);
+		return -ENODEV;
+	}
 #endif
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);

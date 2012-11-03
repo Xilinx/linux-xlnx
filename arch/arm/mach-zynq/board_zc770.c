@@ -24,8 +24,6 @@
 
 #define USB_RST_GPIO	7
 
-extern struct sys_timer xttcpss_sys_timer;
-
 static void __init board_zc770_init(void)
 {
 
@@ -65,4 +63,5 @@ MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
 	.reserve	= xilinx_memory_init,
+	.restart	= xilinx_system_reset,
 MACHINE_END

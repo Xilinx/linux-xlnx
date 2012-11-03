@@ -45,70 +45,7 @@
 
 #define	DRIVER_NAME	"xusbps-otg"
 
-MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS USB OTG driver");
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:" DRIVER_NAME);
-
 static const char driver_name[] = DRIVER_NAME;
-
-static int xusbps_otg_probe(struct platform_device *pdev);
-static int xusbps_otg_remove(struct platform_device *pdev);
-static int xusbps_otg_suspend(struct platform_device *pdev, pm_message_t
-		message);
-static int xusbps_otg_resume(struct platform_device *pdev);
-
-static int xusbps_otg_set_host(struct usb_otg *otg,
-				struct usb_bus *host);
-static int xusbps_otg_set_peripheral(struct usb_otg *otg,
-				struct usb_gadget *gadget);
-static int xusbps_otg_start_srp(struct usb_otg *otg);
-static int xusbps_otg_start_hnp(struct usb_otg *otg);
-
-static struct platform_driver xusbps_otg_driver = {
-	.probe		= xusbps_otg_probe,
-	.remove		= xusbps_otg_remove,
-	.driver		= {
-		.owner	= THIS_MODULE,
-		.name	= DRIVER_NAME,
-	},
-	.suspend =	xusbps_otg_suspend,
-	.resume =	xusbps_otg_resume,
-};
-
-static const char *state_string(enum usb_otg_state state)
-{
-	switch (state) {
-	case OTG_STATE_A_IDLE:
-		return "a_idle";
-	case OTG_STATE_A_WAIT_VRISE:
-		return "a_wait_vrise";
-	case OTG_STATE_A_WAIT_BCON:
-		return "a_wait_bcon";
-	case OTG_STATE_A_HOST:
-		return "a_host";
-	case OTG_STATE_A_SUSPEND:
-		return "a_suspend";
-	case OTG_STATE_A_PERIPHERAL:
-		return "a_peripheral";
-	case OTG_STATE_A_WAIT_VFALL:
-		return "a_wait_vfall";
-	case OTG_STATE_A_VBUS_ERR:
-		return "a_vbus_err";
-	case OTG_STATE_B_IDLE:
-		return "b_idle";
-	case OTG_STATE_B_SRP_INIT:
-		return "b_srp_init";
-	case OTG_STATE_B_PERIPHERAL:
-		return "b_peripheral";
-	case OTG_STATE_B_WAIT_ACON:
-		return "b_wait_acon";
-	case OTG_STATE_B_HOST:
-		return "b_host";
-	default:
-		return "UNDEFINED";
-	}
-}
 
 /* HSM timers */
 static inline struct xusbps_otg_timer *otg_timer_initializer
@@ -899,7 +836,7 @@ static void xusbps_otg_work(struct work_struct *work)
 	xotg = container_of(work, struct xusbps_otg, work);
 
 	dev_dbg(xotg->dev, "%s: old state = %s\n", __func__,
-			state_string(xotg->otg.state));
+			otg_state_string(xotg->otg.state));
 
 	switch (xotg->otg.state) {
 	case OTG_STATE_UNDEFINED:
@@ -1603,7 +1540,7 @@ static void xusbps_otg_work(struct work_struct *work)
 	}
 
 	dev_dbg(xotg->dev, "%s: new state = %s\n", __func__,
-			state_string(xotg->otg.state));
+			otg_state_string(xotg->otg.state));
 }
 
 static ssize_t
@@ -1686,7 +1623,7 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 		"b_bus_req = \t%d\n"
 		"b_bus_suspend_tmout = \t%d\n"
 		"b_bus_suspend_vld = \t%d\n",
-		state_string(xotg->otg.state),
+		otg_state_string(xotg->otg.state),
 		xotg->hsm.a_bus_resume,
 		xotg->hsm.a_bus_suspend,
 		xotg->hsm.a_conn,
@@ -1956,6 +1893,32 @@ static struct attribute_group debug_dev_attr_group = {
 	.attrs = inputs_attrs,
 };
 
+static int xusbps_otg_remove(struct platform_device *pdev)
+{
+	struct xusbps_otg *xotg = the_transceiver;
+
+	if (xotg->qwork) {
+		flush_workqueue(xotg->qwork);
+		destroy_workqueue(xotg->qwork);
+	}
+	xusbps_otg_free_timers();
+
+	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
+	writel(0, xotg->base + CI_OTGSC);
+
+	if (xotg->irq)
+		free_irq(xotg->irq, xotg);
+
+	usb_remove_phy(&xotg->otg);
+	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
+	device_remove_file(&pdev->dev, &dev_attr_hsm);
+	device_remove_file(&pdev->dev, &dev_attr_registers);
+	kfree(xotg);
+	xotg = NULL;
+
+	return 0;
+}
+
 static int xusbps_otg_probe(struct platform_device *pdev)
 {
 	int			retval;
@@ -2014,7 +1977,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	xotg->otg.otg->start_hnp = xusbps_otg_start_hnp;
 	xotg->otg.state = OTG_STATE_UNDEFINED;
 
-	if (usb_set_transceiver(&xotg->otg)) {
+	if (usb_add_phy(&xotg->otg, USB_PHY_TYPE_USB2)) {
 		dev_dbg(xotg->dev, "can't set transceiver\n");
 		retval = -EBUSY;
 		goto err;
@@ -2081,32 +2044,6 @@ err:
 		xusbps_otg_remove(pdev);
 done:
 	return retval;
-}
-
-static int xusbps_otg_remove(struct platform_device *pdev)
-{
-	struct xusbps_otg *xotg = the_transceiver;
-
-	if (xotg->qwork) {
-		flush_workqueue(xotg->qwork);
-		destroy_workqueue(xotg->qwork);
-	}
-	xusbps_otg_free_timers();
-
-	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
-	writel(0, xotg->base + CI_OTGSC);
-
-	if (xotg->irq)
-		free_irq(xotg->irq, xotg);
-
-	usb_set_transceiver(NULL);
-	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
-	device_remove_file(&pdev->dev, &dev_attr_hsm);
-	device_remove_file(&pdev->dev, &dev_attr_registers);
-	kfree(xotg);
-	xotg = NULL;
-
-	return 0;
 }
 
 static void transceiver_suspend(struct platform_device *pdev)
@@ -2285,14 +2222,20 @@ error:
 	return ret;
 }
 
-static int __init xusbps_otg_init(void)
-{
-	return platform_driver_register(&xusbps_otg_driver);
-}
-subsys_initcall(xusbps_otg_init);
+static struct platform_driver xusbps_otg_driver = {
+	.probe		= xusbps_otg_probe,
+	.remove		= xusbps_otg_remove,
+	.driver		= {
+		.owner	= THIS_MODULE,
+		.name	= DRIVER_NAME,
+	},
+	.suspend =	xusbps_otg_suspend,
+	.resume =	xusbps_otg_resume,
+};
 
-static void __exit xusbps_otg_cleanup(void)
-{
-	platform_driver_unregister(&xusbps_otg_driver);
-}
-module_exit(xusbps_otg_cleanup);
+module_platform_driver(xusbps_otg_driver);
+
+MODULE_AUTHOR("Xilinx, Inc.");
+MODULE_DESCRIPTION("Xilinx PS USB OTG driver");
+MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRIVER_NAME);

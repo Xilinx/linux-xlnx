@@ -40,7 +40,12 @@ DEFINE_PER_CPU(unsigned int, R11_SAVE);	/* Temp variable for entry */
 DEFINE_PER_CPU(unsigned int, CURRENT_SAVE);	/* Saved current pointer */
 
 unsigned int boot_cpuid;
-char cmd_line[COMMAND_LINE_SIZE];
+/*
+ * Placed cmd_line to .data section because can be initialized from
+ * ASM code. Default position is BSS section which is cleared
+ * in machine_early_init().
+ */
+char cmd_line[COMMAND_LINE_SIZE] __attribute__ ((section(".data")));
 
 void __init setup_arch(char **cmdline_p)
 {
@@ -64,7 +69,7 @@ void __init setup_arch(char **cmdline_p)
 	xilinx_pci_init();
 
 #if defined(CONFIG_SELFMOD_INTC) || defined(CONFIG_SELFMOD_TIMER)
-	printk(KERN_NOTICE "Self modified code enable\n");
+	pr_notice("Self modified code enable\n");
 #endif
 
 #ifdef CONFIG_VT
@@ -121,7 +126,7 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 
 	/* Move ROMFS out of BSS before clearing it */
 	if (romfs_size > 0) {
-		memmove(&_ebss, (int *)romfs_base, romfs_size);
+		memmove(&__bss_stop, (int *)romfs_base, romfs_size);
 		klimit += romfs_size;
 	}
 #endif
@@ -129,12 +134,6 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 /* clearing bss section */
 	memset(__bss_start, 0, __bss_stop-__bss_start);
 	memset(_ssbss, 0, _esbss-_ssbss);
-
-	/* Copy command line passed from bootloader */
-#ifndef CONFIG_CMDLINE_BOOL
-	if (cmdline && cmdline[0] != '\0')
-		strlcpy(cmd_line, cmdline, COMMAND_LINE_SIZE);
-#endif
 
 	lockdep_init();
 
@@ -165,7 +164,7 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 	BUG_ON(romfs_size < 0); /* What else can we do? */
 
 	printk("Moved 0x%08x bytes from 0x%08x to 0x%08x\n",
-			romfs_size, romfs_base, (unsigned)&_ebss);
+			romfs_size, romfs_base, (unsigned)&__bss_stop);
 
 	printk("New klimit: 0x%08x\n", (unsigned)klimit);
 #endif

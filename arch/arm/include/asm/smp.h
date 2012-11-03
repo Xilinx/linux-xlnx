@@ -93,4 +93,7 @@ extern void platform_cpu_enable(unsigned int cpu);
 extern void arch_send_call_function_single_ipi(int cpu);
 extern void arch_send_call_function_ipi_mask(const struct cpumask *mask);
 
+extern int set_ipi_handler(int ipinr, void *handler, char *desc);
+extern void clear_ipi_handler(int ipinr);
+
 #endif /* ifndef __ASM_ARM_SMP_H */

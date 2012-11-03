@@ -39,7 +39,6 @@
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/of.h>
-#include <mach/board.h>
 #include <mach/slcr.h>
 #include <linux/interrupt.h>
 #include <linux/clocksource.h>
@@ -50,6 +49,7 @@
 #include <linux/clk.h>
 #endif
 #ifdef CONFIG_OF
+#include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
 #endif
@@ -860,8 +860,10 @@ static void xemacps_adjust_link(struct net_device *ndev)
 static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		event, void *data)
 {
+/*
 	struct clk_notifier_data *ndata = data;
 	struct net_local *nl = to_net_local(nb);
+*/
 
 	switch (event) {
 	case PRE_RATE_CHANGE:
@@ -1010,8 +1012,16 @@ static int xemacps_mii_init(struct net_local *lp)
 	if (mdiobus_register(lp->mii_bus))
 		goto err_out_free_mdio_irq;
 #endif
+
+	if (xemacps_mii_probe(lp->ndev) != 0) {
+		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
+		goto err_out_unregister_bus;
+	}
+
 	return 0;
 
+err_out_unregister_bus:
+	mdiobus_unregister(lp->mii_bus);
 err_out_free_mdio_irq:
 	kfree(lp->mii_bus->irq);
 err_out_free_mdiobus:
@@ -1025,7 +1035,7 @@ err_out:
  * MAC address is not valid, reconfigure with a good one.
  * @lp: local device instance pointer
  **/
-static void __init xemacps_update_hwaddr(struct net_local *lp)
+static void __devinit xemacps_update_hwaddr(struct net_local *lp)
 {
 	u32 regvall;
 	u16 regvalh;
@@ -2224,7 +2234,7 @@ static int xemacps_open(struct net_device *ndev)
 
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
-	rc = xemacps_mii_probe(ndev);
+/*	rc = xemacps_mii_probe(ndev);
 	if (rc != 0) {
 		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
 		if (rc == (-2)) {
@@ -2234,7 +2244,7 @@ static int xemacps_open(struct net_device *ndev)
 		}
 		rc = -ENXIO;
 		goto err_pm_put;
-	}
+	} */
 
 	netif_carrier_on(ndev);
 
@@ -2412,7 +2422,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			mapping = dma_map_single(&lp->pdev->dev, skb->data,
 				len, DMA_TO_DEVICE);
 		} else {
-			len = frag->size;
+			len = skb_frag_size(frag);
 			virt_addr = skb_frag_address(frag);
 			mapping = dma_map_single(&lp->pdev->dev, virt_addr,
 				len, DMA_TO_DEVICE);
@@ -3009,7 +3019,7 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  *
  * Return 0 on success, negative value if error
  */
-static int __init xemacps_probe(struct platform_device *pdev)
+static int __devinit xemacps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct resource *r_irq = NULL;
@@ -3056,7 +3066,7 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	ndev->irq = platform_get_irq(pdev, 0);
 
-	rc = request_irq(ndev->irq, xemacps_interrupt, IRQF_SAMPLE_RANDOM,
+	rc = request_irq(ndev->irq, xemacps_interrupt, 0,
 		ndev->name, ndev);
 	if (rc) {
 		printk(KERN_ERR "%s: Unable to request IRQ %p, error %d\n",
@@ -3215,6 +3225,12 @@ static int __init xemacps_probe(struct platform_device *pdev)
 
 	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
 		ndev->name, pdev->id, ndev->base_addr, ndev->irq);
+
+	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
+		ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
+
+	printk(KERN_INFO "%s, attach [%s] phy driver\n", ndev->name,
+		lp->phy_dev->drv->name);
 
 	return 0;
 
@@ -3430,5 +3446,5 @@ module_init(xemacps_init);
 module_exit(xemacps_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION(Xilinx Ethernet driver);
+MODULE_DESCRIPTION("Xilinx Ethernet driver");
 MODULE_LICENSE("GPL");

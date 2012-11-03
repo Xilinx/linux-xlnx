@@ -20,8 +20,6 @@
 #include <asm/mach/time.h>
 #include <mach/slcr.h>
 
-void secondary_startup(void);
-
 extern struct sys_timer xttcpss_sys_timer;
 
 void platform_device_init(void);

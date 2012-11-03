@@ -282,6 +282,14 @@ static const struct serial8250_config uart_config[] = {
 		.fcr		= UART_FCR_ENABLE_FIFO | UART_FCR_R_TRIG_10,
 		.flags		= UART_CAP_FIFO | UART_CAP_AFE | UART_CAP_EFR,
 	},
+	[PORT_LPC3220] = {
+		.name		= "LPC3220",
+		.fifo_size	= 64,
+		.tx_loadsz	= 32,
+		.fcr		= UART_FCR_DMA_SELECT | UART_FCR_ENABLE_FIFO |
+				  UART_FCR_R_TRIG_00 | UART_FCR_T_TRIG_00,
+		.flags		= UART_CAP_FIFO,
+	},
 };
 
 /* Uart divisor latch read */
@@ -3089,6 +3097,13 @@ static struct uart_8250_port *serial8250_find_match_or_unused(struct uart_port *
 	for (i = 0; i < nr_uarts; i++)
 		if (uart_match_port(&serial8250_ports[i].port, port))
 			return &serial8250_ports[i];
+
+	/* Look at setup port->line port first. If is available, use it */
+	if (port->line >= 0 && port->line < nr_uarts)
+		if (serial8250_ports[port->line].port.type == PORT_UNKNOWN &&
+		    serial8250_ports[port->line].port.iobase == 0) {
+			return &serial8250_ports[port->line];
+		}
 
 	/*
 	 * We didn't find a matching entry, so look for the first

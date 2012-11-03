@@ -59,12 +59,6 @@ config MDA_CONSOLE
 
 	  If unsure, say N.
 
-config XILINX_CONSOLE
-	depends on SP3E && HAVE_XILINX_OPB_COLOR_VIDEO_CTRL
-	tristate "XILINX text console"
-	help
-	  Say Y here if you want to enable the XILINX text console.
-
 config SGI_NEWPORT_CONSOLE
         tristate "SGI Newport Console support"
         depends on SGI_IP22 

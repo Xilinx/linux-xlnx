@@ -64,6 +64,7 @@ config AB8500_PWM
 	bool "AB8500 PWM support"
 	depends on AB8500_CORE && ARCH_U8500
 	select HAVE_PWM
+	depends on !PWM
 	help
 	  This driver exports functions to enable/disble/config/free Pulse
 	  Width Modulation in the Analog Baseband Chip AB8500.
@@ -518,37 +519,12 @@ config SI570
 	  To compile this driver as a module, choose M here: the module
 	  will be called si570
 
-
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
-source "drivers/misc/iwmc3200top/Kconfig"
 source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
-
-#
-# Xilinx devices and common device driver infrastructure
-#
-
-config XILINX_DRIVERS
-	bool
-	depends on PPC32 || MICROBLAZE
-   default y
-	---help---
-	  This option is used to enable all of the Xilinx drivers on
-	  supported architectures.  This is often useful if you have a
-	  Xilinx FPGA in a system, either using embedded processors
-	  internal to the FPGA or external processors.
-
-config NEED_XILINX_DMAV3
-  bool
-
-config NEED_XILINX_LLDMA
-  bool
-
-config NEED_XILINX_IPIF
-  bool
 endmenu

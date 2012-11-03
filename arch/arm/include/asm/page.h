@@ -15,6 +15,10 @@
 #define PAGE_SIZE		(_AC(1,UL) << PAGE_SHIFT)
 #define PAGE_MASK		(~(PAGE_SIZE-1))
 
+#ifdef CONFIG_PHYS_OFFSET
+#define LOAD_OFFSET	(CONFIG_PAGE_OFFSET - CONFIG_PHYS_OFFSET)
+#endif
+
 #ifndef __ASSEMBLY__
 
 #ifndef CONFIG_MMU

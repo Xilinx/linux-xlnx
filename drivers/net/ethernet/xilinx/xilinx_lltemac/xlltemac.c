@@ -46,6 +46,7 @@
 
 /***************************** Include Files *********************************/
 
+#include <linux/dma-mapping.h>
 #include <linux/string.h>
 #include <linux/delay.h>
 

@@ -197,7 +197,7 @@ static int temac_dcr_setup(struct temac_local *lp, struct platform_device *op,
 #endif
 
 /**
- *  * temac_dma_bd_release - Release buffer descriptor rings
+ * temac_dma_bd_release - Release buffer descriptor rings
  */
 static void temac_dma_bd_release(struct net_device *ndev)
 {
@@ -686,15 +686,12 @@ static int temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skb_frag_t *frag;
 
 	num_frag = skb_shinfo(skb)->nr_frags;
-	frag = &skb_shinfo(skb)->frags[0];
 	start_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
 	cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 
 	if (temac_check_tx_bd_space(lp, num_frag)) {
-		if (!netif_queue_stopped(ndev)) {
+		if (!netif_queue_stopped(ndev))
 			netif_stop_queue(ndev);
-			return NETDEV_TX_BUSY;
-		}
 		return NETDEV_TX_BUSY;
 	}
 
@@ -710,11 +707,12 @@ static int temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	cur_p->app0 |= STS_CTRL_APP0_SOP;
 	cur_p->len = skb_headlen(skb);
-	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data, skb->len,
-				     DMA_TO_DEVICE);
+	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
+				skb_headlen(skb), DMA_TO_DEVICE);
 	cur_p->app4 = (unsigned long)skb;
 
 	for (ii = 0; ii < num_frag; ii++) {
+		frag = &skb_shinfo(skb)->frags[ii];
 		lp->tx_bd_tail++;
 		if (lp->tx_bd_tail >= TX_BD_NUM)
 			lp->tx_bd_tail = 0;
@@ -725,7 +723,6 @@ static int temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 					     skb_frag_size(frag), DMA_TO_DEVICE);
 		cur_p->len = skb_frag_size(frag);
 		cur_p->app0 = 0;
-		frag++;
 	}
 	cur_p->app0 |= STS_CTRL_APP0_EOP;
 
@@ -768,7 +765,6 @@ static void ll_temac_recv(struct net_device *ndev)
 				 DMA_FROM_DEVICE);
 
 		skb_put(skb, length);
-		skb->dev = ndev;
 		skb->protocol = eth_type_trans(skb, ndev);
 		skb_checksum_none_assert(skb);
 
@@ -1056,12 +1052,14 @@ static int __devinit temac_of_probe(struct platform_device *op)
 	/* Setup checksum offload, but default to off if not specified */
 	lp->temac_features = 0;
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,txcsum", NULL);
+	dev_info(&op->dev, "TX_CSUM %d\n", be32_to_cpup(p));
 	if (p && be32_to_cpu(*p)) {
 		lp->temac_features |= TEMAC_FEATURE_TX_CSUM;
 		/* Can checksum TCP/UDP over IPv4. */
 		ndev->features |= NETIF_F_IP_CSUM;
 	}
 	p = (__be32 *)of_get_property(op->dev.of_node, "xlnx,rxcsum", NULL);
+	dev_info(&op->dev, "RX_CSUM %d\n", be32_to_cpup(p));
 	if (p && be32_to_cpu(*p))
 		lp->temac_features |= TEMAC_FEATURE_RX_CSUM;
 
@@ -1109,13 +1107,14 @@ static int __devinit temac_of_probe(struct platform_device *op)
 	}
 	temac_set_mac_address(ndev, (void *)addr);
 
-	rc = temac_mdio_setup(lp, op->dev.of_node);
-	if (rc)
-		dev_warn(&op->dev, "error registering MDIO bus\n");
-
 	lp->phy_node = of_parse_phandle(op->dev.of_node, "phy-handle", 0);
-	if (lp->phy_node)
+	if (lp->phy_node) {
 		dev_dbg(lp->dev, "using PHY node %s (%p)\n", np->full_name, np);
+
+		rc = temac_mdio_setup(lp, op->dev.of_node);
+		if (rc)
+			dev_warn(&op->dev, "error registering MDIO bus\n");
+	}
 
 	/* Add the device attributes */
 	rc = sysfs_create_group(&lp->dev->kobj, &temac_attr_group);

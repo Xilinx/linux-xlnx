@@ -40,13 +40,6 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 
-/*
- * No architecture-specific irq_finish function defined in arm/arch/irqs.h.
- */
-#ifndef irq_finish
-#define irq_finish(irq) do { } while (0)
-#endif
-
 unsigned long irq_err_count;
 
 int arch_show_interrupts(struct seq_file *p, int prec)
@@ -60,41 +53,6 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	seq_printf(p, "%*s: %10lu\n", prec, "Err", irq_err_count);
 	return 0;
 }
-
-#if 	defined(CONFIG_XILINX_AMP_CPU0_MASTER) || \
-	defined(CONFIG_ZYNQ_AMP_CPU0_MASTER)
-
-static irq_handler_t IPI_handler;
-static void *IPI_callback_data;
-/*
- * set_ipi_handler:
- * Interface provided for a kernel module to specify an IPI handler
- * function.
- */
-void set_ipi_handler(irq_handler_t handler, void *callback_data)
-{
-	IPI_handler = handler;
-	IPI_callback_data = callback_data;
-}
-EXPORT_SYMBOL(set_ipi_handler);
-
-/*
- * do_IPI:
- * AMP Inter-Processor Interrupt handler (called from 
- * entry-armv.S).
- */
-asmlinkage void __exception do_amp_IPI(struct pt_regs *regs)
-{
-	struct pt_regs *old_regs = set_irq_regs(regs);
-
-	if (IPI_handler) {
-		(*IPI_handler)(1, IPI_callback_data);
-	}
-
-	set_irq_regs(old_regs);
-}
-
-#endif
 
 /*
  * handle_IRQ handles all hardware IRQ's.  Decoded IRQs should
@@ -119,9 +77,6 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 	} else {
 		generic_handle_irq(irq);
 	}
-
-	/* AT91 specific workaround */
-	irq_finish(irq);
 
 	irq_exit();
 	set_irq_regs(old_regs);

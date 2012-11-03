@@ -2,15 +2,6 @@
 # Configuration for initramfs
 #
 
-config INITRAMFS_NO_CHECK
-	depends on MICROBLAZE
-	bool "Assume a valid initramfs image exists. Don't check."
-	help
-	  Enabling this option will cause the kernel to assume a valid
-	  initramfs image exists in the kernel image. The kernel will skip the
-	  check for initramfs during the boot time which will substantially
-	  speed up the boot process on slow systems.
-
 config INITRAMFS_SOURCE
 	string "Initramfs source file(s)"
 	default ""

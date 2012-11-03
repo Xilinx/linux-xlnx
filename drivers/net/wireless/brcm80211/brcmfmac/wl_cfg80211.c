@@ -500,8 +500,10 @@ static void wl_iscan_prep(struct brcmf_scan_params_le *params_le,
 	params_le->active_time = cpu_to_le32(-1);
 	params_le->passive_time = cpu_to_le32(-1);
 	params_le->home_time = cpu_to_le32(-1);
-	if (ssid && ssid->SSID_len)
-		memcpy(&params_le->ssid_le, ssid, sizeof(struct brcmf_ssid));
+	if (ssid && ssid->SSID_len) {
+		params_le->ssid_le.SSID_len = cpu_to_le32(ssid->SSID_len);
+		memcpy(&params_le->ssid_le.SSID, ssid->SSID, ssid->SSID_len);
+	}
 }
 
 static s32
@@ -691,9 +693,10 @@ scan_out:
 }
 
 static s32
-brcmf_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
+brcmf_cfg80211_scan(struct wiphy *wiphy,
 		 struct cfg80211_scan_request *request)
 {
+	struct net_device *ndev = request->wdev->netdev;
 	s32 err = 0;
 
 	WL_TRACE("Enter\n");
@@ -919,9 +922,7 @@ brcmf_cfg80211_join_ibss(struct wiphy *wiphy, struct net_device *ndev,
 	set_bit(WL_STATUS_CONNECTING, &cfg_priv->status);
 
 	if (params->bssid)
-		WL_CONN("BSSID: %02X %02X %02X %02X %02X %02X\n",
-		params->bssid[0], params->bssid[1], params->bssid[2],
-		params->bssid[3], params->bssid[4], params->bssid[5]);
+		WL_CONN("BSSID: %pM\n", params->bssid);
 	else
 		WL_CONN("No BSSID specified\n");
 
@@ -1877,16 +1878,17 @@ brcmf_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev,
 	}
 
 	if (test_bit(WL_STATUS_CONNECTED, &cfg_priv->status)) {
-		scb_val.val = cpu_to_le32(0);
+		memset(&scb_val, 0, sizeof(scb_val));
 		err = brcmf_exec_dcmd(ndev, BRCMF_C_GET_RSSI, &scb_val,
 				      sizeof(struct brcmf_scb_val_le));
-		if (err)
+		if (err) {
 			WL_ERR("Could not get rssi (%d)\n", err);
-
-		rssi = le32_to_cpu(scb_val.val);
-		sinfo->filled |= STATION_INFO_SIGNAL;
-		sinfo->signal = rssi;
-		WL_CONN("RSSI %d dBm\n", rssi);
+		} else {
+			rssi = le32_to_cpu(scb_val.val);
+			sinfo->filled |= STATION_INFO_SIGNAL;
+			sinfo->signal = rssi;
+			WL_CONN("RSSI %d dBm\n", rssi);
+		}
 	}
 
 done:

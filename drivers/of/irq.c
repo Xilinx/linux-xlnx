@@ -255,7 +255,7 @@ int of_irq_map_raw(struct device_node *parent, const __be32 *intspec,
 
 	skiplevel:
 		/* Iterate again with new parent */
-		pr_debug(" -> new parent: %s\n", newpar ? newpar->full_name : "<>");
+		pr_debug(" -> new parent: %s\n", of_node_full_name(newpar));
 		of_node_put(ipar);
 		ipar = newpar;
 		newpar = NULL;
@@ -372,6 +372,7 @@ int of_irq_count(struct device_node *dev)
 
 	return nr;
 }
+EXPORT_SYMBOL_GPL(of_irq_count);
 
 /**
  * of_irq_to_resource_table - Fill in resource table with node's IRQ info

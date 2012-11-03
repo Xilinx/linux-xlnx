@@ -629,7 +629,7 @@ void rt2x00lib_rxdone(struct queue_entry *entry, gfp_t gfp)
 	 */
 	if (unlikely(rxdesc.size == 0 ||
 		     rxdesc.size > entry->queue->data_size)) {
-		WARNING(rt2x00dev, "Wrong frame size %d max %d.\n",
+		ERROR(rt2x00dev, "Wrong frame size %d max %d.\n",
 			rxdesc.size, entry->queue->data_size);
 		dev_kfree_skb(entry->skb);
 		goto renew_skb;
@@ -1160,6 +1160,8 @@ int rt2x00lib_probe_dev(struct rt2x00_dev *rt2x00dev)
 		    BIT(NL80211_IFTYPE_AP) |
 		    BIT(NL80211_IFTYPE_MESH_POINT) |
 		    BIT(NL80211_IFTYPE_WDS);
+
+	rt2x00dev->hw->wiphy->flags |= WIPHY_FLAG_IBSS_RSN;
 
 	/*
 	 * Initialize work.

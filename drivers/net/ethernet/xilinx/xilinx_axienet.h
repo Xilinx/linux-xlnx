@@ -9,6 +9,7 @@
 #define XILINX_AXIENET_H
 
 #include <linux/netdevice.h>
+#include <linux/of_irq.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 
@@ -336,6 +337,14 @@
 #define XAE_IP_TCP_CSUM_VALIDATED	0x00000002
 
 #define DELAY_OF_ONE_MILLISEC		1000
+
+/* Read/Write access to the registers */
+#ifndef out_be32
+#ifdef CONFIG_ARCH_ZYNQ
+#define in_be32(offset)		__raw_readl(offset)
+#define out_be32(offset, val)	__raw_writel(val, offset)
+#endif
+#endif
 
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout

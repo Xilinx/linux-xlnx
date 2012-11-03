@@ -32,15 +32,6 @@
 
 #include "fifo_icap.h"
 
-/* Number of times to poll the done register.  This has to be large
- * enough to allow an entire configuration to complete.  If an entire
- * page (4kb) is configured at once, that could take up to 4k cycles
- * with a byte-wide icap interface.  In most cases, this driver is
- * used with a much smaller fifo, but this should be sufficient in the
- * worst case.
- */
-#define XHI_MAX_RETRIES     5000
-
 /* Register offsets for the XHwIcap device. */
 #define XHI_GIER_OFFSET	0x1C  /* Device Global Interrupt Enable Reg */
 #define XHI_IPISR_OFFSET 0x20  /* Interrupt Status Register */

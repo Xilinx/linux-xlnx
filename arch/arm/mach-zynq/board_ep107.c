@@ -252,4 +252,5 @@ MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
 	.reserve	= xilinx_memory_init,
+	.restart	= xilinx_system_reset,
 MACHINE_END

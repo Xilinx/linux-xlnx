@@ -365,6 +365,9 @@ struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 	if (!master)
 		return NULL;
 
+	/* clear the dma_mask, to try to disable use of dma */
+	master->dev.dma_mask = 0;
+
 	/* the spi->mode bits understood by this driver: */
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 

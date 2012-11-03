@@ -19,15 +19,14 @@
  * Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/xilinx_devices.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/of_platform.h>
-#include <linux/clk.h>
 #include <linux/string.h>
-#include <linux/export.h>
-#include <linux/module.h>
+#include <linux/clk.h>
 
 static u64 dma_mask = 0xFFFFFFF0;
 
@@ -151,9 +150,6 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 	struct resource *res;
 	int i;
 
-	if (!of_device_is_available(np))
-		return -ENODEV;
-
 	match = of_match_device(xusbps_dr_of_match, &ofdev->dev);
 	if (!match)
 		return -ENODEV;
@@ -235,6 +231,7 @@ static const struct of_device_id xusbps_dr_of_match[] = {
 	{ .compatible = "xlnx,ps7-usb-1.00.a", .data = &xusbps_pdata, },
 	{},
 };
+MODULE_DEVICE_TABLE(of, xusbps_dr_of_match);
 
 static struct platform_driver xusbps_dr_driver = {
 	.driver = {
@@ -246,17 +243,7 @@ static struct platform_driver xusbps_dr_driver = {
 	.remove	= __devexit_p(xusbps_dr_of_remove),
 };
 
-static int __init xusbps_dr_init(void)
-{
-	return platform_driver_register(&xusbps_dr_driver);
-}
-module_init(xusbps_dr_init);
-
-static void __exit xusbps_dr_exit(void)
-{
-	platform_driver_unregister(&xusbps_dr_driver);
-}
-module_exit(xusbps_dr_exit);
+module_platform_driver(xusbps_dr_driver);
 
 MODULE_DESCRIPTION("XUSBPS DR OF devices driver");
 MODULE_AUTHOR("Xilinx");

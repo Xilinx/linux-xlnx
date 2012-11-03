@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2012 Nicira Networks.
+ * Copyright (c) 2007-2012 Nicira, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -263,14 +263,15 @@ err:
 static int queue_gso_packets(int dp_ifindex, struct sk_buff *skb,
 			     const struct dp_upcall_info *upcall_info)
 {
+	unsigned short gso_type = skb_shinfo(skb)->gso_type;
 	struct dp_upcall_info later_info;
 	struct sw_flow_key later_key;
 	struct sk_buff *segs, *nskb;
 	int err;
 
 	segs = skb_gso_segment(skb, NETIF_F_SG | NETIF_F_HW_CSUM);
-	if (IS_ERR(skb))
-		return PTR_ERR(skb);
+	if (IS_ERR(segs))
+		return PTR_ERR(segs);
 
 	/* Queue all of the segments. */
 	skb = segs;
@@ -279,7 +280,7 @@ static int queue_gso_packets(int dp_ifindex, struct sk_buff *skb,
 		if (err)
 			break;
 
-		if (skb == segs && skb_shinfo(skb)->gso_type & SKB_GSO_UDP) {
+		if (skb == segs && gso_type & SKB_GSO_UDP) {
 			/* The initial flow key extracted by ovs_flow_extract()
 			 * in this case is for a first fragment, so we need to
 			 * properly mark later fragments.
@@ -424,10 +425,10 @@ static int validate_sample(const struct nlattr *attr,
 static int validate_tp_port(const struct sw_flow_key *flow_key)
 {
 	if (flow_key->eth.type == htons(ETH_P_IP)) {
-		if (flow_key->ipv4.tp.src && flow_key->ipv4.tp.dst)
+		if (flow_key->ipv4.tp.src || flow_key->ipv4.tp.dst)
 			return 0;
 	} else if (flow_key->eth.type == htons(ETH_P_IPV6)) {
-		if (flow_key->ipv6.tp.src && flow_key->ipv6.tp.dst)
+		if (flow_key->ipv6.tp.src || flow_key->ipv6.tp.dst)
 			return 0;
 	}
 
@@ -459,7 +460,7 @@ static int validate_set(const struct nlattr *a,
 		if (flow_key->eth.type != htons(ETH_P_IP))
 			return -EINVAL;
 
-		if (!flow_key->ipv4.addr.src || !flow_key->ipv4.addr.dst)
+		if (!flow_key->ip.proto)
 			return -EINVAL;
 
 		ipv4_key = nla_data(ovs_key);
@@ -1649,7 +1650,9 @@ static int ovs_vport_cmd_set(struct sk_buff *skb, struct genl_info *info)
 
 	if (!err && a[OVS_VPORT_ATTR_OPTIONS])
 		err = ovs_vport_set_options(vport, a[OVS_VPORT_ATTR_OPTIONS]);
-	if (!err && a[OVS_VPORT_ATTR_UPCALL_PID])
+	if (err)
+		goto exit_unlock;
+	if (a[OVS_VPORT_ATTR_UPCALL_PID])
 		vport->upcall_pid = nla_get_u32(a[OVS_VPORT_ATTR_UPCALL_PID]);
 
 	reply = ovs_vport_cmd_build_info(vport, info->snd_pid, info->snd_seq,

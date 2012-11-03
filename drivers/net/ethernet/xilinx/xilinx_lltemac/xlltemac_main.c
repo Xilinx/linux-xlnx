@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/mm.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -31,11 +32,13 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 
-#include <linux/platform_device.h>
-#include <linux/of_platform.h>
-#include <linux/of_device.h>
+#ifdef CONFIG_OF
+// For open firmware.
 #include <linux/of_address.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/of_net.h>
+#endif
 
 #include "xbasic_types.h"
 #include "xlltemac.h"
@@ -88,6 +91,7 @@
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
 #define BUFFER_ALIGNSEND(adr) ((ALIGNMENT_SEND - ((u32) adr)) % ALIGNMENT_SEND)
 #define BUFFER_ALIGNSEND_PERF(adr) ((ALIGNMENT_SEND_PERF - ((u32) adr)) % 32)
+#define BUFFER_ALIGNRECV(adr) ((ALIGNMENT_RECV - ((u32) adr)) % 32)
 
 /* Default TX/RX Threshold and waitbound values for SGDMA mode */
 #define DFT_TX_THRESHOLD  24
@@ -204,9 +208,9 @@ u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 
 /* for exclusion of all program flows (processes, ISRs and BHs) */
-spinlock_t XTE_spinlock = __SPIN_LOCK_UNLOCKED(XTE_spinlock);
-spinlock_t XTE_tx_spinlock = __SPIN_LOCK_UNLOCKED(XTE_tx_spinlock);
-spinlock_t XTE_rx_spinlock = __SPIN_LOCK_UNLOCKED(XTE_rx_spinlock);
+spinlock_t XTE_spinlock; // = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_tx_spinlock; // = SPIN_LOCK_UNLOCKED;
+spinlock_t XTE_rx_spinlock; // = SPIN_LOCK_UNLOCKED;
 
 /*
  * ethtool has a status reporting feature where we can report any sort of
@@ -231,10 +235,10 @@ extern inline int status_requires_reset(int s)
 
 /* Queues with locks */
 static LIST_HEAD(receivedQueue);
-static spinlock_t receivedQueueSpin = __SPIN_LOCK_UNLOCKED(receivedQueueSpin);
+static spinlock_t receivedQueueSpin; // = SPIN_LOCK_UNLOCKED;
 
 static LIST_HEAD(sentQueue);
-static spinlock_t sentQueueSpin = __SPIN_LOCK_UNLOCKED(sentQueueSpin);
+static spinlock_t sentQueueSpin; // = SPIN_LOCK_UNLOCKED;
 
 
 /* from mii.h
@@ -454,21 +458,21 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
 #define MARVELL_88E1111_EXTENDED_PHY_STATUS_REG_OFFSET  27
 #endif
 
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+# define NATIONAL_DP83865_CONTROL_INIT		0x9200
+# define NATIONAL_DP83865_CONTROL		0
+# define NATIONAL_DP83865_STATUS		1
+# define NATIONAL_DP83865_STATUS_LINK		0x04
+# define NATIONAL_DP83865_STATUS_AUTONEGEND	0x20
+# define NATIONAL_DP83865_STATUS_AUTONEG	0x11
+# define NATIONAL_DP83865_LINKSPEED_1000M	0x10
+# define NATIONAL_DP83865_LINKSPEED_100M	0x8
+# define NATIONAL_DP83865_LINKSPEED_MASK	0x18
+# define NATIONAL_DP83865_RETRIES		5
+#endif
+
 #define DEBUG_ERROR KERN_ERR
 #define DEBUG_LOG(level, ...) printk(level __VA_ARGS__)
-
-#define NATIONAL_DP83865_CONTROL_INIT       0x9200
-#define NATIONAL_DP83865_CONTROL            0
-#define NATIONAL_DP83865_STATUS             1
-#define NATIONAL_DP83865_STATUS_LINK        0x04
-#define NATIONAL_DP83865_STATUS_AUTONEGEND  0x20
-#define NATIONAL_DP83865_STATUS_AUTONEG     0x11
-#define NATIONAL_DP83865_LINKSPEED_1000M    0x10
-#define NATIONAL_DP83865_LINKSPEED_100M     0x8
-#define NATIONAL_DP83865_LINKSPEED_MASK     0x18
-#define NATIONAL_DP83865_RETRIES            5
-
-
 
 /*
  * Perform any necessary special phy setup. In the gmii case, nothing needs to
@@ -476,25 +480,21 @@ static inline int _XLlTemac_GetRgmiiStatus(XLlTemac *InstancePtr,
  */
 static void phy_setup(struct net_local *lp)
 {
-    #ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+#ifdef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
+	u16 RegValue;
 
-    u16 RegValue;
+	printk(KERN_INFO "NATIONAL DP83865 PHY\n");
+	RegValue = NATIONAL_DP83865_CONTROL_INIT;
+	/*Do not reset phy*/
+	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_CONTROL, RegValue);
 
-    printk(KERN_INFO "NATIONAL DP83865 PHY\n");
-    RegValue = NATIONAL_DP83865_CONTROL_INIT;
-    /*Do not reset phy*/
-    _XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr,
-              NATIONAL_DP83865_CONTROL, RegValue);
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_STATUS, &RegValue);
 
-    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
-             NATIONAL_DP83865_STATUS, &RegValue);
-
-    _XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
-             NATIONAL_DP83865_STATUS, &RegValue);
+	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr,
+		NATIONAL_DP83865_STATUS, &RegValue);
 #endif
-
-
-
 #ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII
 	u16 Register;
 
@@ -543,6 +543,17 @@ static void phy_setup(struct net_local *lp)
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
 
 #endif /* CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_RGMII */
+
+#ifdef CONFIG_XILINX_LLTEMAC_XILINX_1000BASEX
+	u16 Register;
+
+	/*
+	 * Setup the PHY control register
+	 */
+	Register = BMCR_SPEED1000 | BMCR_FULLDPLX | BMCR_ANENABLE;
+	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, Register);
+
+#endif /* CONFIG_XILINX_LLTEMAC_XILINX_1000BASEX */
 }
 
 
@@ -604,11 +615,12 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_ADVERTISE, phy_reg4);
 	_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_EXADVERTISE, phy_reg9);
 
+#ifndef CONFIG_XILINX_LLTEMAC_NATIONAL_DP83865_GMII
 	while (retries--) {
 		/* initiate an autonegotiation of the speed */
 		_XLlTemac_PhyWrite(&lp->Emac, lp->gmii_addr, MII_BMCR, phy_reg0);
 
-		wait_count = 5;	/* so we don't loop forever */
+		wait_count = 10;	/* so we don't loop forever */
 		while (wait_count--) {
 			/* wait a bit for the negotiation to complete */
 			mdelay(500);
@@ -641,6 +653,12 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 	       "%s: XLlTemac: Not able to set the speed to %d\n", dev->name,
 	       speed);
 	return -1;
+#else
+	printk(KERN_INFO
+			       "%s: XLlTemac: We renegotiated the speed to: %d\n",
+			       dev->name, speed);
+	return 0;
+#endif
 }
 
 /*
@@ -687,10 +705,7 @@ void set_mac_speed(struct net_local *lp)
 
     return;
 
-
 #elif CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII
-
-/* #ifdef CONFIG_XILINX_LLTEMAC_MARVELL_88E1111_GMII */
 	/*
 	 * This function is specific to MARVELL 88E1111 PHY chip on
 	 * many Xilinx boards and assumes GMII interface is being used
@@ -739,6 +754,16 @@ void set_mac_speed(struct net_local *lp)
 		lp->cur_speed = 1000;
 		break;
 	}
+
+#elif defined CONFIG_XILINX_LLTEMAC_XILINX_1000BASEX
+	/*
+	 * This function is specific to Xilinx 1000Base-X PHY,
+	 * which only supports 1000Mbps, Full duplex links
+	 */
+
+	_XLlTemac_SetOperatingSpeed(&lp->Emac, 1000);
+	printk(KERN_INFO "%s: XLlTemac: speed set to 1000Mb/s\n", dev->name);
+	lp->cur_speed = 1000;
 
 #else	/* generic PHY, there have been issues with 10Mbit with this code */
 	int ret;
@@ -914,6 +939,7 @@ static int get_phy_status(struct net_device *dev, DUPLEX * duplex, int *linkup)
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &reg);
 	*linkup = (reg & BMSR_LSTATUS) != 0;
 #endif
+
 	return 0;
 }
 
@@ -1391,7 +1417,7 @@ static struct net_device_stats *xenet_get_stats(struct net_device *dev)
 static int descriptor_init(struct net_device *dev);
 static void free_descriptor_skb(struct net_device *dev);
 
-void xenet_set_multicast_list(struct net_device *dev)
+static void xenet_set_multicast_list(struct net_device *dev)
 {
 	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int i;
@@ -1443,6 +1469,12 @@ static int xenet_change_mtu(struct net_device *dev, int new_mtu)
 	int max_frame = new_mtu + head_size + XTE_TRL_SIZE;
 	int min_frame = 1 + head_size + XTE_TRL_SIZE;
 
+#ifdef CONFIG_PPC
+        if (netif_running(dev)) {
+		printk("STOP device first!!!\n");
+                return -1;
+	}
+#endif
 	if (max_frame < min_frame)
 		return -EINVAL;
 
@@ -1514,8 +1546,7 @@ static int xenet_FifoSend(struct sk_buff *skb, struct net_device *dev)
 
 	frag = &skb_shinfo(skb)->frags[0];
 	for (i = 1; i < total_frags; i++, frag++) {
-		virt_addr =
-			(void *) page_address(frag->page) + frag->page_offset;
+		virt_addr = skb_frag_address(frag);
 		XLlFifo_Write(&lp->Fifo, virt_addr, frag->size);
 	}
 
@@ -1570,8 +1601,7 @@ static void FifoSendHandler(struct net_device *dev)
 
 		frag = &skb_shinfo(skb)->frags[0];
 		for (i = 1; i < total_frags; i++, frag++) {
-			virt_addr =
-				(void *) page_address(frag->page) + frag->page_offset;
+			virt_addr = skb_frag_address(frag);
 			XLlFifo_Write(&lp->Fifo, virt_addr, frag->size);
 		}
 
@@ -1662,7 +1692,8 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 	len = skb_headlen(skb);
 
 	/* get the physical address of the header */
-	phy_addr = (u32) dma_map_single(dev->dev.parent, skb->data, len, DMA_TO_DEVICE);
+	phy_addr = (u32) dma_map_single(dev->dev.parent, skb->data, len,
+								DMA_TO_DEVICE);
 
 	/* get the header fragment, it's in the skb differently */
 	XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
@@ -1734,11 +1765,10 @@ static int xenet_DmaSend_internal(struct sk_buff *skb, struct net_device *dev)
 		bd_ptr = XLlDma_mBdRingNext(&lp->Dma.TxBdRing, bd_ptr);
 		last_bd_ptr = bd_ptr;
 
-		virt_addr =
-			(void *) page_address(frag->page) + frag->page_offset;
+		virt_addr = skb_frag_address(frag);
 		phy_addr =
-			(u32) dma_map_single(dev->dev.parent, virt_addr, frag->size,
-					     DMA_TO_DEVICE);
+			(u32) dma_map_single(dev->dev.parent, virt_addr,
+					frag->size, DMA_TO_DEVICE);
 
 		XLlDma_mBdSetBufAddr(bd_ptr, phy_addr);
 		XLlDma_mBdSetLength(bd_ptr, frag->size);
@@ -1831,8 +1861,8 @@ static void DmaSendHandlerBH(unsigned long p)
 			do {
 				len = XLlDma_mBdGetLength(BdCurPtr);
 				skb_dma_addr = (dma_addr_t) XLlDma_mBdGetBufAddr(BdCurPtr);
-				dma_unmap_single(dev->dev.parent, skb_dma_addr, len,
-						 DMA_TO_DEVICE);
+				dma_unmap_single(dev->dev.parent, skb_dma_addr,
+						len, DMA_TO_DEVICE);
 
 				/* get ptr to skb */
 				skb = (struct sk_buff *)
@@ -1984,11 +2014,19 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 	struct sk_buff *new_skb;
 	u32 new_skb_baddr;
 	XLlDma_Bd *BdPtr, *BdCurPtr;
+	u32 align;
 	int result;
+
+#if 0
+	int align_max = ALIGNMENT_RECV;
+#else
+	int align_max = 0;
+#endif
+
 
 	skb_queue_head_init(&sk_buff_list);
 	for (num_sk_buffs = 0; num_sk_buffs < free_bd_count; num_sk_buffs++) {
-		new_skb = netdev_alloc_skb_ip_align(dev, lp->frame_size);
+		new_skb = alloc_skb(lp->frame_size + align_max, GFP_ATOMIC);
 		if (new_skb == NULL) {
 			break;
 		}
@@ -2019,11 +2057,16 @@ static void _xenet_DmaSetupRecvBuffers(struct net_device *dev)
 
 	new_skb = skb_dequeue(&sk_buff_list);
 	while (new_skb) {
+		/* make sure we're long-word aligned */
+		align = BUFFER_ALIGNRECV(new_skb->data);
+		if (align) {
+			skb_reserve(new_skb, align);
+		}
+
 		/* Get dma handle of skb->data */
 		new_skb_baddr = (u32) dma_map_single(dev->dev.parent,
 					new_skb->data, lp->frame_size,
 						     DMA_FROM_DEVICE);
-
 		XLlDma_mBdSetBufAddr(BdCurPtr, new_skb_baddr);
 		XLlDma_mBdSetLength(BdCurPtr, lp->frame_size);
 		XLlDma_mBdSetId(BdCurPtr, new_skb);
@@ -2283,7 +2326,7 @@ static int descriptor_init(struct net_device *dev)
 
 	printk(KERN_INFO
 	       "XLlTemac: (buffer_descriptor_init) phy: 0x%x, virt: 0x%x, size: 0x%x\n",
-	       (unsigned int)lp->desc_space_handle, (unsigned int) lp->desc_space,
+	       lp->desc_space_handle, (unsigned int) lp->desc_space,
 	       lp->desc_space_size);
 
 	/* calc size of send and recv descriptor space */
@@ -2293,8 +2336,7 @@ static int descriptor_init(struct net_device *dev)
 	recvpoolptr = lp->desc_space;
 	sendpoolptr = (void *) ((u32) lp->desc_space + recvsize);
 
-	/* cast the handle to a u32 1st just to keep the compiler happy */
-	recvpoolphy = (void *) (u32)lp->desc_space_handle;
+	recvpoolphy = (void *) lp->desc_space_handle;
 	sendpoolphy = (void *) ((u32) lp->desc_space_handle + recvsize);
 
 	result = XLlDma_BdRingCreate(&lp->Dma.RxBdRing, (u32) recvpoolphy,
@@ -2603,7 +2645,7 @@ xenet_ethtool_get_pauseparam(struct net_device *dev,
 	_XLlTemac_PhyRead(&lp->Emac, lp->gmii_addr, MII_BMSR, &gmii_status);
 
 	/* I suspect that the expected value is that autonegotiation is
-	 * enabled,  not completed.  
+	 * enabled,  not completed.
 	 * As seen in xenet_do_ethtool_ioctl() */
         if (gmii_status & BMSR_ANEGCOMPLETE) {
                 epp->autoneg = AUTONEG_ENABLE;
@@ -2623,12 +2665,13 @@ xenet_ethtool_get_pauseparam(struct net_device *dev,
 	}
 }
 
+#if 0
 static u32
 xenet_ethtool_get_rx_csum(struct net_device *dev)
 {
 	struct net_local *lp = netdev_priv(dev);
 	u32 retval;
-   
+
  	retval = (lp->local_features & LOCAL_FEATURE_RX_CSUM) != 0;
 
  	return retval;
@@ -2706,7 +2749,7 @@ xenet_ethtool_set_sg(struct net_device *dev, u32 onoff)
 
 	return 0;
 }
-
+#endif
 static void
 xenet_ethtool_get_strings(struct net_device *dev, u32 stringset, u8 *strings)
 {
@@ -3254,6 +3297,16 @@ static int xtenet_remove(struct device *dev)
 /* Use MII register 1 (MII status register) to detect PHY */
 #define PHY_DETECT_REG  1
 
+#ifdef CONFIG_XILINX_LLTEMAC_XILINX_1000BASEX
+/* Mask used to verify certain PHY features (or register contents)
+ * in the register above:
+ *  0x0100: Extended register support
+ *  0x0180: Unidirectional support
+ *  0x0040: MF Preamble suppression support
+ *  0x0008: Auto-negotiation support
+ */
+#define PHY_DETECT_MASK 0x01C8
+#else
 /* Mask used to verify certain PHY features (or register contents)
  * in the register above:
  *  0x1000: 10Mbps full duplex support
@@ -3261,6 +3314,7 @@ static int xtenet_remove(struct device *dev)
  *  0x0008: Auto-negotiation support
  */
 #define PHY_DETECT_MASK 0x1808
+#endif
 
 static int detect_phy(struct net_local *lp, char *dev_name)
 {
@@ -3295,12 +3349,12 @@ static struct ethtool_ops ethtool_ops = {
 	.set_coalesce = xenet_ethtool_set_coalesce,
 	.get_ringparam  = xenet_ethtool_get_ringparam,
 	.get_pauseparam = xenet_ethtool_get_pauseparam,
-	.get_rx_csum  = xenet_ethtool_get_rx_csum,
+/*	.get_rx_csum  = xenet_ethtool_get_rx_csum,
 	.set_rx_csum  = xenet_ethtool_set_rx_csum,
 	.get_tx_csum  = xenet_ethtool_get_tx_csum,
 	.set_tx_csum  = xenet_ethtool_set_tx_csum,
 	.get_sg       = xenet_ethtool_get_sg,
-	.set_sg       = xenet_ethtool_set_sg,
+	.set_sg       = xenet_ethtool_set_sg, */
 	.get_strings  = xenet_ethtool_get_strings,
 	.get_ethtool_stats = xenet_ethtool_get_ethtool_stats,
 	.get_sset_count    = xenet_ethtool_get_sset_count,
@@ -3331,11 +3385,7 @@ static int xtenet_setup(
 	}
 	dev_set_drvdata(dev, ndev);
 
-	/* the following is needed starting in 2.6.30 as the dma_ops now require
-	   the device to be used in the dma calls 
-	*/
 	SET_NETDEV_DEV(ndev, dev);
-
 	ndev->irq = r_irq->start;
 
 	/* Initialize the private data used by XEmac_LookupConfig().
@@ -3406,6 +3456,7 @@ static int xtenet_setup(
 		if (pdata->dcr_host) {
 			printk("XLlTemac: DCR address: 0x%0x\n", pdata->ll_dev_baseaddress);
 			XLlDma_Initialize(&lp->Dma, pdata->ll_dev_baseaddress);
+			lp->virt_dma_addr = pdata->ll_dev_baseaddress;
 		} else {
 		        virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 			lp->virt_dma_addr = virt_baddr;
@@ -3535,46 +3586,47 @@ error:
 	return rc;
 }
 
-int xenet_set_mac_address(struct net_device *ndev, void* address) { 
-	struct net_local *lp; 
-	struct sockaddr *macaddr; 
+#if 0
+static int xtenet_probe(struct device *dev)
+{
+	struct resource *r_irq = NULL;	/* Interrupt resources */
+	struct resource *r_mem = NULL;	/* IO mem resources */
+	struct xlltemac_platform_data *pdata;
+	struct platform_device *pdev = to_platform_device(dev);
 
-	if (ndev->flags & IFF_UP) 
-		return -EBUSY; 
+	/* param check */
+	if (!pdev) {
+		dev_err(dev, "Probe called with NULL param.\n");
+		return -ENODEV;
+	}
 
-	lp = netdev_priv(ndev); 
+	pdata = (struct xlltemac_platform_data *) pdev->dev.platform_data;
+	if (!pdata) {
+		dev_err(dev, "Couldn't find platform data.\n");
 
-	macaddr = (struct sockaddr*)address; 
- 
-	if (!is_valid_ether_addr(macaddr->sa_data)) 
-		return -EADDRNOTAVAIL; 
- 
-	/* synchronized against open : rtnl_lock() held by caller */ 
-	memcpy(ndev->dev_addr, macaddr->sa_data, ETH_ALEN); 
- 
-	if (!is_valid_ether_addr(ndev->dev_addr)) 
-		return -EADDRNOTAVAIL; 
- 
-	if (_XLlTemac_SetMacAddress(&lp->Emac, ndev->dev_addr) != XST_SUCCESS) { 
-		/* should not fail right after an initialize */ 
-		dev_err(&ndev->dev, "XLlTemac: could not set MAC address.\n"); 
-		return -EIO; 
-	} 
-	dev_info(&ndev->dev, 
-		"MAC address is now %02x:%02x:%02x:%02x:%02x:%02x\n", 
-		ndev->dev_addr[0], ndev->dev_addr[1], 
-		ndev->dev_addr[2], ndev->dev_addr[3], 
-		ndev->dev_addr[4], ndev->dev_addr[5]); 
+		return -ENODEV;
+	}
 
-	return 0; 
-} 
+	/* Get iospace and an irq for the device */
+	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!r_irq || !r_mem) {
+		dev_err(dev, "IO resource(s) not found.\n");
+		return -ENODEV;
+	}
 
-static u32 get_u32(struct platform_device *ofdev, const char *s) {
-	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
+        return xtenet_setup(dev, r_mem, r_irq, pdata);
+}
+#endif
+
+
+#ifdef CONFIG_OF
+static u32 get_u32(struct platform_device *op, const char *s) {
+	u32 *p = (u32 *)of_get_property(op->dev.of_node, s, NULL);
 	if(p) {
 		return *p;
 	} else {
-		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false.\n", s);
+		dev_warn(&op->dev, "Parameter %s not found, defaulting to false.\n", s);
 		return FALSE;
 	}
 }
@@ -3587,8 +3639,9 @@ static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_change_mtu	= xenet_change_mtu,
 	.ndo_tx_timeout	= xenet_tx_timeout,
 	.ndo_get_stats	= xenet_get_stats,
-	.ndo_set_mac_address = xenet_set_mac_address,
-	.ndo_set_multicast_list	= xenet_set_multicast_list,
+	.ndo_set_mac_address	= eth_mac_addr,
+	.ndo_set_rx_mode	= xenet_set_multicast_list,
+	.ndo_validate_addr	= eth_validate_addr,
 };
 
 static struct of_device_id xtenet_fifo_of_match[] = {
@@ -3603,7 +3656,7 @@ static struct of_device_id xtenet_sdma_of_match[] = {
 	{ /* end of list */ },
 };
 
-static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct of_device_id *match)
+static int __devinit xtenet_of_probe(struct platform_device *op)
 {
 	struct resource r_irq_struct;
 	struct resource r_mem_struct;
@@ -3620,30 +3673,43 @@ static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct
 	struct device_node *llink_connected_node;
 	u32 *dcrreg_property;
 
+	/*
+	 * Make sure the locks are initialized
+	 */
+	spin_lock_init(&XTE_spinlock);
+	spin_lock_init(&XTE_tx_spinlock);
+	spin_lock_init(&XTE_rx_spinlock);
+
+	INIT_LIST_HEAD(&sentQueue);
+	INIT_LIST_HEAD(&receivedQueue);
+
+	spin_lock_init(&sentQueueSpin);
+	spin_lock_init(&receivedQueueSpin);
+
 	printk(KERN_INFO "Device Tree Probing \'%s\'\n",
-                        ofdev->dev.of_node->name); 
+                        op->dev.of_node->name);
 
 	/* Get iospace for the device */
-	rc = of_address_to_resource(ofdev->dev.of_node, 0, r_mem);
+	rc = of_address_to_resource(op->dev.of_node, 0, r_mem);
 	if(rc) {
-		dev_warn(&ofdev->dev, "invalid address\n");
+		dev_warn(&op->dev, "invalid address\n");
 		return rc;
 	}
 
 	/* Get IRQ for the device */
-	rc = of_irq_to_resource(ofdev->dev.of_node, 0, r_irq);
-	if(rc == NO_IRQ) {
-		dev_warn(&ofdev->dev, "no IRQ found.\n");
+	rc = of_irq_to_resource(op->dev.of_node, 0, r_irq);
+	if(!rc) {
+		dev_warn(&op->dev, "no IRQ found.\n");
 		return rc;
 	}
 
-	pdata_struct.tx_csum		= get_u32(ofdev, "xlnx,txcsum");
-	pdata_struct.rx_csum		= get_u32(ofdev, "xlnx,rxcsum");
-	pdata_struct.phy_type           = get_u32(ofdev, "xlnx,phy-type");
+	pdata_struct.tx_csum = get_u32(op, "xlnx,txcsum");
+	pdata_struct.rx_csum = get_u32(op, "xlnx,rxcsum");
+	pdata_struct.phy_type = get_u32(op, "xlnx,phy-type");
         llink_connected_handle =
-		of_get_property(ofdev->dev.of_node, "llink-connected", NULL);
+		of_get_property(op->dev.of_node, "llink-connected", NULL);
         if(!llink_connected_handle) {
-            dev_warn(&ofdev->dev, "no Locallink connection found.\n");
+            dev_warn(&op->dev, "no Locallink connection found.\n");
             return rc;
         }
 
@@ -3660,28 +3726,27 @@ static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct
 		/** Connected to a fifo. */
 
 		if(rc) {
-			dev_warn(&ofdev->dev, "invalid address\n");
+			dev_warn(&op->dev, "invalid address\n");
 			return rc;
 		}
 
 	        pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
 		pdata_struct.ll_dev_type = XPAR_LL_FIFO;
-		pdata_struct.ll_dev_dma_rx_irq	= NO_IRQ;
-		pdata_struct.ll_dev_dma_tx_irq	= NO_IRQ;
+		pdata_struct.ll_dev_dma_rx_irq	= 0;
+		pdata_struct.ll_dev_dma_tx_irq	= 0;
 
 		rc = of_irq_to_resource(
 				llink_connected_node,
 				0,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
-			dev_warn(&ofdev->dev, "no IRQ found.\n");
+		if(!rc) {
+			dev_warn(&op->dev, "no IRQ found.\n");
 			return rc;
 		}
 		pdata_struct.ll_dev_fifo_irq	= r_connected_irq_struct.start;
 		pdata_struct.dcr_host = 0x0;
         } else if(of_match_node(xtenet_sdma_of_match, llink_connected_node)) {
 		/** Connected to a dma port, default to 405 type dma */
-
 		pdata->dcr_host = 0;
 		if(rc) {
 			/* no address was found, might be 440, check for dcr reg */
@@ -3691,9 +3756,9 @@ static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct
 			        r_connected_mem_struct.start = *dcrreg_property;
 				pdata->dcr_host = 0xFF;
 			} else {
-				dev_warn(&ofdev->dev, "invalid address\n");
+				dev_warn(&op->dev, "invalid address\n");
 				return rc;
-			}			
+			}
 		}
 
         	pdata_struct.ll_dev_baseaddress	= r_connected_mem_struct.start;
@@ -3703,45 +3768,44 @@ static int __devinit xtenet_of_probe(struct platform_device *ofdev, const struct
 				llink_connected_node,
 				0,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
-			dev_warn(&ofdev->dev, "First IRQ not found.\n");
+		if(!rc) {
+			dev_warn(&op->dev, "First IRQ not found.\n");
 			return rc;
 		}
 		pdata_struct.ll_dev_dma_rx_irq	= r_connected_irq_struct.start;
-
 		rc = of_irq_to_resource(
 				llink_connected_node,
 				1,
 				&r_connected_irq_struct);
-		if(rc == NO_IRQ) {
-			dev_warn(&ofdev->dev, "Second IRQ not found.\n");
+		if(!rc) {
+			dev_warn(&op->dev, "Second IRQ not found.\n");
 			return rc;
 		}
 		pdata_struct.ll_dev_dma_tx_irq	= r_connected_irq_struct.start;
 
-		pdata_struct.ll_dev_fifo_irq	= NO_IRQ;
+		pdata_struct.ll_dev_fifo_irq	= 0;
         } else {
-		dev_warn(&ofdev->dev, "Locallink connection not matched.\n");
+		dev_warn(&op->dev, "Locallink connection not matched.\n");
 		return rc;
         }
 
 	of_node_put(llink_connected_node);
-        mac_address = of_get_mac_address(ofdev->dev.of_node);
+        mac_address = of_get_mac_address(op->dev.of_node);
         if(mac_address) {
             memcpy(pdata_struct.mac_addr, mac_address, 6);
         } else {
-            dev_warn(&ofdev->dev, "No MAC address found.\n");
+            dev_warn(&op->dev, "No MAC address found.\n");
         }
 
-        return xtenet_setup(&ofdev->dev, r_mem, r_irq, pdata);
+	return xtenet_setup(&op->dev, r_mem, r_irq, pdata);
 }
 
-static int __devexit xtenet_of_remove(struct platform_device *dev)
+static int __devexit xtenet_of_remove(struct platform_device *op)
 {
-	return xtenet_remove(&dev->dev);
+	return xtenet_remove(&op->dev);
 }
 
-static struct of_device_id xtenet_of_match[] = {
+static struct of_device_id xtenet_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,xps-ll-temac-1.00.a", },
 	{ .compatible = "xlnx,xps-ll-temac-1.00.b", },
 	{ .compatible = "xlnx,xps-ll-temac-1.01.a", },
@@ -3750,46 +3814,19 @@ static struct of_device_id xtenet_of_match[] = {
 };
 
 MODULE_DEVICE_TABLE(of, xtenet_of_match);
+#endif
 
 static struct platform_driver xtenet_of_driver = {
+	.probe		= xtenet_of_probe,
+	.remove		= __devexit_p(xtenet_of_remove),
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = xtenet_of_match,
+		.of_match_table = of_match_ptr(xtenet_of_match),
 	},
-	.probe		= xtenet_of_probe,
-	.remove		= __devexit_p(xtenet_of_remove),
 };
 
-static int __init xtenet_init(void)
-{
-	/*
-	 * Make sure the locks are initialized
-	 */
-	spin_lock_init(&XTE_spinlock);
-	spin_lock_init(&XTE_tx_spinlock);
-	spin_lock_init(&XTE_rx_spinlock);
-
-	INIT_LIST_HEAD(&sentQueue);
-	INIT_LIST_HEAD(&receivedQueue);
-
-	spin_lock_init(&sentQueueSpin);
-	spin_lock_init(&receivedQueueSpin);
-
-	/*
-	 * No kernel boot options used,
-	 * so we just need to register the driver
-	 */
-	return platform_driver_register(&xtenet_of_driver);
-}
-
-static void __exit xtenet_cleanup(void)
-{
-	platform_driver_unregister(&xtenet_of_driver);
-}
-
-module_init(xtenet_init);
-module_exit(xtenet_cleanup);
+module_platform_driver(xtenet_of_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION(DRIVER_DESCRIPTION);

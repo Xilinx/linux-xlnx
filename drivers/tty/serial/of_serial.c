@@ -124,6 +124,7 @@ static int __devinit of_platform_serial_probe(struct platform_device *ofdev)
 	struct uart_port port;
 	int port_type;
 	int ret;
+	int ids;
 
 	match = of_match_device(of_platform_serial_table, &ofdev->dev);
 	if (!match)
@@ -140,6 +141,20 @@ static int __devinit of_platform_serial_probe(struct platform_device *ofdev)
 	ret = of_platform_serial_setup(ofdev, port_type, &port);
 	if (ret)
 		goto out;
+
+	ids = of_alias_get_id(ofdev->dev.of_node, "serial");
+	if (ids < 0) {
+		dev_warn(&ofdev->dev, "FAILED to find out alias id\n");
+	} else {
+		if (ids < CONFIG_SERIAL_8250_RUNTIME_UARTS)
+			port.line = ids;
+		else {
+			dev_warn(&ofdev->dev,
+				"FAILED to register serial driver with id %d\n",
+									ids);
+			goto out;
+		}
+	}
 
 	switch (port_type) {
 #ifdef CONFIG_SERIAL_8250
@@ -208,6 +223,7 @@ static struct of_device_id __devinitdata of_platform_serial_table[] = {
 	{ .compatible = "ns16750",  .data = (void *)PORT_16750, },
 	{ .compatible = "ns16850",  .data = (void *)PORT_16850, },
 	{ .compatible = "nvidia,tegra20-uart", .data = (void *)PORT_TEGRA, },
+	{ .compatible = "nxp,lpc3220-uart", .data = (void *)PORT_LPC3220, },
 #ifdef CONFIG_SERIAL_OF_PLATFORM_NWPSERIAL
 	{ .compatible = "ibm,qpace-nwp-serial",
 		.data = (void *)PORT_NWPSERIAL, },

@@ -1162,8 +1162,7 @@ static int __devinit ace_probe(struct platform_device *dev)
 	dev_dbg(&dev->dev, "ace_probe(%p)\n", dev);
 
 	/* device id and bus width */
-	of_property_read_u32(dev->dev.of_node, "port-number", &id);
-	if (id < 0)
+	if (of_property_read_u32(dev->dev.of_node, "port-number", &id))
 		id = 0;
 	if (of_find_property(dev->dev.of_node, "8-bit", NULL))
 		bus_width = ACE_BUS_WIDTH_8;
@@ -1247,4 +1246,3 @@ static void __exit ace_exit(void)
 	unregister_blkdev(ace_major, "xsysace");
 }
 module_exit(ace_exit);
-

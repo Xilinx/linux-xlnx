@@ -15,10 +15,7 @@
 #ifndef __MACH_SYSTEM_H__
 #define __MACH_SYSTEM_H__
 
-static inline void arch_idle(void)
-{
-	cpu_do_idle();
-}
+extern int zynq_cpu1_start(u32 address);
 
 static inline void arch_reset(char mode, const char *cmd)
 {

@@ -39,6 +39,7 @@
 
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
+#include <linux/rbtree.h>
 #include <linux/timer.h>
 #include <linux/semaphore.h>
 #include <linux/workqueue.h>
@@ -52,6 +53,17 @@
 #define PFX		DRV_NAME ": "
 #define DRV_VERSION	"1.1"
 #define DRV_RELDATE	"Dec, 2011"
+
+#define MLX4_FS_UDP_UC_EN		(1 << 1)
+#define MLX4_FS_TCP_UC_EN		(1 << 2)
+#define MLX4_FS_NUM_OF_L2_ADDR		8
+#define MLX4_FS_MGM_LOG_ENTRY_SIZE	7
+#define MLX4_FS_NUM_MCG			(1 << 17)
+
+enum {
+	MLX4_FS_L2_HASH = 0,
+	MLX4_FS_L2_L3_L4_HASH,
+};
 
 #define MLX4_NUM_UP		8
 #define MLX4_NUM_TC		8
@@ -137,6 +149,7 @@ enum mlx4_resource {
 	RES_VLAN,
 	RES_EQ,
 	RES_COUNTER,
+	RES_FS_RULE,
 	MLX4_NUM_OF_RESOURCE_TYPE
 };
 
@@ -236,7 +249,7 @@ struct mlx4_bitmap {
 struct mlx4_buddy {
 	unsigned long	      **bits;
 	unsigned int	       *num_free;
-	int			max_order;
+	u32			max_order;
 	spinlock_t		lock;
 };
 
@@ -245,7 +258,7 @@ struct mlx4_icm;
 struct mlx4_icm_table {
 	u64			virt;
 	int			num_icm;
-	int			num_obj;
+	u32			num_obj;
 	int			obj_size;
 	int			lowmem;
 	int			coherent;
@@ -337,66 +350,6 @@ struct mlx4_srq_context {
 	u32			reserved5;
 	__be64			db_rec_addr;
 };
-
-struct mlx4_eqe {
-	u8			reserved1;
-	u8			type;
-	u8			reserved2;
-	u8			subtype;
-	union {
-		u32		raw[6];
-		struct {
-			__be32	cqn;
-		} __packed comp;
-		struct {
-			u16	reserved1;
-			__be16	token;
-			u32	reserved2;
-			u8	reserved3[3];
-			u8	status;
-			__be64	out_param;
-		} __packed cmd;
-		struct {
-			__be32	qpn;
-		} __packed qp;
-		struct {
-			__be32	srqn;
-		} __packed srq;
-		struct {
-			__be32	cqn;
-			u32	reserved1;
-			u8	reserved2[3];
-			u8	syndrome;
-		} __packed cq_err;
-		struct {
-			u32	reserved1[2];
-			__be32	port;
-		} __packed port_change;
-		struct {
-			#define COMM_CHANNEL_BIT_ARRAY_SIZE	4
-			u32 reserved;
-			u32 bit_vec[COMM_CHANNEL_BIT_ARRAY_SIZE];
-		} __packed comm_channel_arm;
-		struct {
-			u8	port;
-			u8	reserved[3];
-			__be64	mac;
-		} __packed mac_update;
-		struct {
-			u8	port;
-		} __packed sw_event;
-		struct {
-			__be32	slave_id;
-		} __packed flr_event;
-		struct {
-			__be16  current_temperature;
-			__be16  warning_threshold;
-		} __packed warming;
-	}			event;
-	u8			slave_id;
-	u8			reserved3[2];
-	u8			owner;
-} __packed;
 
 struct mlx4_eq {
 	struct mlx4_dev	       *dev;
@@ -509,7 +462,7 @@ struct slave_list {
 struct mlx4_resource_tracker {
 	spinlock_t lock;
 	/* tree for each resources */
-	struct radix_tree_root res_tree[MLX4_NUM_OF_RESOURCE_TYPE];
+	struct rb_root res_tree[MLX4_NUM_OF_RESOURCE_TYPE];
 	/* num_of_slave's lists, one per slave */
 	struct slave_list *slave_list;
 };
@@ -703,6 +656,7 @@ struct mlx4_set_port_rqp_calc_context {
 
 struct mlx4_mac_entry {
 	u64 mac;
+	u64 reg_id;
 };
 
 struct mlx4_port_info {
@@ -734,6 +688,82 @@ struct mlx4_msix_ctl {
 struct mlx4_steer {
 	struct list_head promisc_qps[MLX4_NUM_STEERS];
 	struct list_head steer_entries[MLX4_NUM_STEERS];
+};
+
+struct mlx4_net_trans_rule_hw_ctrl {
+	__be32 ctrl;
+	__be32 vf_vep_port;
+	__be32 qpn;
+	__be32 reserved;
+};
+
+struct mlx4_net_trans_rule_hw_ib {
+	u8 size;
+	u8 rsvd1;
+	__be16 id;
+	u32 rsvd2;
+	__be32 qpn;
+	__be32 qpn_mask;
+	u8 dst_gid[16];
+	u8 dst_gid_msk[16];
+} __packed;
+
+struct mlx4_net_trans_rule_hw_eth {
+	u8	size;
+	u8	rsvd;
+	__be16	id;
+	u8	rsvd1[6];
+	u8	dst_mac[6];
+	u16	rsvd2;
+	u8	dst_mac_msk[6];
+	u16	rsvd3;
+	u8	src_mac[6];
+	u16	rsvd4;
+	u8	src_mac_msk[6];
+	u8      rsvd5;
+	u8      ether_type_enable;
+	__be16  ether_type;
+	__be16  vlan_id_msk;
+	__be16  vlan_id;
+} __packed;
+
+struct mlx4_net_trans_rule_hw_tcp_udp {
+	u8	size;
+	u8	rsvd;
+	__be16	id;
+	__be16	rsvd1[3];
+	__be16	dst_port;
+	__be16	rsvd2;
+	__be16	dst_port_msk;
+	__be16	rsvd3;
+	__be16	src_port;
+	__be16	rsvd4;
+	__be16	src_port_msk;
+} __packed;
+
+struct mlx4_net_trans_rule_hw_ipv4 {
+	u8	size;
+	u8	rsvd;
+	__be16	id;
+	__be32	rsvd1;
+	__be32	dst_ip;
+	__be32	dst_ip_msk;
+	__be32	src_ip;
+	__be32	src_ip_msk;
+} __packed;
+
+struct _rule_hw {
+	union {
+		struct {
+			u8 size;
+			u8 rsvd;
+			__be16 id;
+		};
+		struct mlx4_net_trans_rule_hw_eth eth;
+		struct mlx4_net_trans_rule_hw_ib ib;
+		struct mlx4_net_trans_rule_hw_ipv4 ipv4;
+		struct mlx4_net_trans_rule_hw_tcp_udp tcp_udp;
+	};
 };
 
 struct mlx4_priv {
@@ -776,6 +806,7 @@ struct mlx4_priv {
 	struct mutex		bf_mutex;
 	struct io_mapping	*bf_mapping;
 	int			reserved_mtts;
+	int			fs_hash_mode;
 };
 
 static inline struct mlx4_priv *mlx4_priv(struct mlx4_dev *dev)
@@ -887,7 +918,8 @@ void mlx4_catas_init(void);
 int mlx4_restart_one(struct pci_dev *pdev);
 int mlx4_register_device(struct mlx4_dev *dev);
 void mlx4_unregister_device(struct mlx4_dev *dev);
-void mlx4_dispatch_event(struct mlx4_dev *dev, enum mlx4_dev_event type, int port);
+void mlx4_dispatch_event(struct mlx4_dev *dev, enum mlx4_dev_event type,
+			 unsigned long param);
 
 struct mlx4_dev_cap;
 struct mlx4_init_hca_param;
@@ -1028,11 +1060,11 @@ int mlx4_change_port_types(struct mlx4_dev *dev,
 void mlx4_init_mac_table(struct mlx4_dev *dev, struct mlx4_mac_table *table);
 void mlx4_init_vlan_table(struct mlx4_dev *dev, struct mlx4_vlan_table *table);
 
-int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port);
+int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port, int pkey_tbl_sz);
 /* resource tracker functions*/
 int mlx4_get_slave_from_resource_id(struct mlx4_dev *dev,
 				    enum mlx4_resource resource_type,
-				    int resource_id, int *slave);
+				    u64 resource_id, int *slave);
 void mlx4_delete_all_resources_for_slave(struct mlx4_dev *dev, int slave_id);
 int mlx4_init_resource_tracker(struct mlx4_dev *dev);
 
@@ -1071,6 +1103,8 @@ int mlx4_QUERY_PORT_wrapper(struct mlx4_dev *dev, int slave,
 			    struct mlx4_cmd_info *cmd);
 int mlx4_get_port_ib_caps(struct mlx4_dev *dev, u8 port, __be32 *caps);
 
+int mlx4_get_slave_pkey_gid_tbl_len(struct mlx4_dev *dev, u8 port,
+				    int *gid_tbl_len, int *pkey_tbl_len);
 
 int mlx4_QP_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 			   struct mlx4_vhcr *vhcr,
@@ -1117,6 +1151,16 @@ int mlx4_QUERY_IF_STAT_wrapper(struct mlx4_dev *dev, int slave,
 			       struct mlx4_cmd_mailbox *inbox,
 			       struct mlx4_cmd_mailbox *outbox,
 			       struct mlx4_cmd_info *cmd);
+int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
+					 struct mlx4_vhcr *vhcr,
+					 struct mlx4_cmd_mailbox *inbox,
+					 struct mlx4_cmd_mailbox *outbox,
+					 struct mlx4_cmd_info *cmd);
+int mlx4_QP_FLOW_STEERING_DETACH_wrapper(struct mlx4_dev *dev, int slave,
+					 struct mlx4_vhcr *vhcr,
+					 struct mlx4_cmd_mailbox *inbox,
+					 struct mlx4_cmd_mailbox *outbox,
+					 struct mlx4_cmd_info *cmd);
 
 int mlx4_get_mgm_entry_size(struct mlx4_dev *dev);
 int mlx4_get_qp_per_mgm(struct mlx4_dev *dev);

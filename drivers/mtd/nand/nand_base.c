@@ -875,7 +875,7 @@ static int nand_wait(struct mtd_info *mtd, struct nand_chip *chip)
 		timeo += (HZ * 400) / 1000;
 	else {
 		timeo += (HZ * 20) / 1000;
-#if (defined(CONFIG_ARCH_XILINX) || defined(ARCH_ZYNQ)) && (CONFIG_HZ == 20)
+#if defined(ARCH_ZYNQ) && (CONFIG_HZ == 20)
 		/* Xilinx PSS NAND work around for HZ=20 */
 		timeo += 1;
 #endif
