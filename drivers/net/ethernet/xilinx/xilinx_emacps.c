@@ -978,6 +978,7 @@ static int xemacps_mii_init(struct net_local *lp)
 #ifdef CONFIG_OF
 	struct resource res;
 	struct device_node *np = of_get_parent(lp->phy_node);
+	struct device_node *npp;
 #endif
 
 	lp->mii_bus = mdiobus_alloc();
@@ -1002,7 +1003,8 @@ static int xemacps_mii_init(struct net_local *lp)
 	for (i = 0; i < PHY_MAX_ADDR; i++)
 		lp->mii_bus->irq[i] = PHY_POLL;
 #ifdef CONFIG_OF
-	of_address_to_resource(np, 0, &res);
+	npp = of_get_parent(np);
+	of_address_to_resource(npp, 0, &res);
 	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
 	if (of_mdiobus_register(lp->mii_bus, np))
