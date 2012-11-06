@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-	model = "Xilinx Zynq - AFX - minimum)";
+	model = "Xilinx Zynq AFX (NOR Module)";
 	compatible = "xlnx,zynq-zc770";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
