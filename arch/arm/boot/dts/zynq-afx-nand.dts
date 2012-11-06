@@ -1,0 +1,101 @@
+/dts-v1/;
+
+/ {
+	model = "Xilinx Zynq - AFX (NAND Module)";
+	compatible = "xlnx,zynq-zc770";
+	#address-cells = <0x1>;
+	#size-cells = <0x1>;
+	interrupt-parent = <0x1>;
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x08000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
+		linux,stdout-path = "/amba@0/uart@E0001000";
+	};
+
+	soc {
+		compatible = "xlnx,zynq";
+		clock-frequency = <33333333>;
+	};
+
+	amba@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		gic: intc@f8f01000 {
+			interrupt-controller;
+			compatible = "arm,cortex-a9-gic";
+			#interrupt-cells = <3>;
+			reg = < 0xf8f01000 0x1000 >,
+			      < 0xf8f00100 0x0100 >;
+		};
+
+		pl310@f8f02000 {
+                        compatible = "arm,pl310-cache";
+                        cache-unified;
+                        cache-level = <2>;
+                        reg = <0xf8f02000 0x1000>;
+                        arm,data-latency = <3 2 2>;
+                        arm,tag-latency = <2 2 2>;
+                        interrupts = <0 34 4>;
+                };
+
+		uart@e0001000 {
+			compatible = "xlnx,ps7-uart-1.00.a";
+			reg = <0xE0001000 0x1000>;
+			interrupts = <0 50 0>;
+			interrupt-parent = <&gic>;
+			clock = <50000000>;
+		};
+
+		timer@0xf8001000 {
+			compatible = "xlnx,ps7-ttc-1.00.a";
+			reg = <0xf8001000 0x1000>;
+			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
+			interrupt-parent = <&gic>;
+			clock-frequency-timer0 = <133000000>;
+			clock-frequency-timer1 = <133000000>;
+			clock-frequency-timer2 = <133000000>;
+		};
+
+		nand@e1000000 {
+			compatible = "xlnx,ps7-nand-1.00.a";
+			reg = <0xe1000000 0x1000000 0xe000e000 0x1000>;
+			xlnx,nand-width = <16>;
+			#address-cells = <0x1>;
+			#size-cells = <0x1>;
+
+			partition@0 {
+				label = "nand-fsbl-uboot-bit";
+				reg = <0x0 0x500000>;
+				};
+
+			partition@1 {
+				label = "nand-linux";
+				reg = <0x500000 0x300000>;
+			};
+
+			partition@2 {
+				label = "nand-devicetree";
+				reg = <0x800000 0x100000>;
+			};
+
+			partition@3 {
+				label = "nand-ramdisk";
+				reg = <0x900000 0x400000>;
+			};
+
+			partition@4 {
+				label = "nand-scratch";
+				reg = <0xd00000 0x200000>;
+			};
+		};
+
+	};
+};
