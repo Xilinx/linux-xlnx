@@ -187,6 +187,10 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 		 * Calculate received bytes and update the receive count.
 		 */
 		if ((id->recv_count) > XI2CPS_FIFO_DEPTH) {
+			/* FIXME: snapshotting this value is a race condition as
+			 * the hardware is still recieving bytes at this time.
+			 * The number of bytes recieved (N) is read here ....
+			 */
 			bytes_to_recv = (XI2CPS_FIFO_DEPTH + 1) -
 				xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
 			id->recv_count -= bytes_to_recv;
@@ -196,10 +200,20 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 		 * count is less than FIFO size then clear hold bit if there
 		 * are no further messages to be processed
 		 */
+			/* ... but supposed one more byte is read by the
+			 * hardware by this time ....
+			 */
 			if (id->recv_count > XI2CPS_FIFO_DEPTH)
 				xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
 						XI2CPS_XFER_SIZE_OFFSET);
 			else {
+				/* Then the number bytes still to recv (M) is
+				 * updated based on old value of tx XFER_SIZE.
+				 * Hardware will recieve a total of N + M or
+				 * N + M + 1 bytes depending on whether or not
+				 * the hardware gets an extra byte between the
+				 * snapshot and here.
+				 */
 				xi2cps_writereg(id->recv_count,
 						XI2CPS_XFER_SIZE_OFFSET);
 				if (id->bus_hold_flag == 0)
