@@ -4,7 +4,7 @@
  * Author: Xilinx, Inc.
  *
  * 2010 (c) Xilinx, Inc. This file is licensed uner the terms of the GNU
- * General Public License version 2.1. This program is licensed "as is"
+ * General Public License version 2. This program is licensed "as is"
  * without any warranty of any kind, whether express or implied.
  *
  * This is a driver for xilinx processor sub-system (ps) ethernet device.
@@ -3449,4 +3449,4 @@ module_exit(xemacps_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx Ethernet driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
