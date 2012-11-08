@@ -132,8 +132,7 @@ static irqreturn_t xttcpss_clock_event_interrupt(int irq, void *dev_id)
 	struct xttcpss_timer *timer = dev_id;
 
 	/* Acknowledge the interrupt and call event handler */
-	__raw_writel(__raw_readl(timer->base_addr + XTTCPSS_ISR_OFFSET),
-			timer->base_addr + XTTCPSS_ISR_OFFSET);
+	__raw_readl(timer->base_addr + XTTCPSS_ISR_OFFSET);
 
 	evt->event_handler(evt);
 
