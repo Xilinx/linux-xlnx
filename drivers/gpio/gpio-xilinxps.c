@@ -439,7 +439,8 @@ static int xgpiops_suspend(struct device *_dev)
 			struct platform_device, dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	clk_disable(gpio->clk);
+	if (!pm_runtime_suspended(_dev))
+		clk_disable(gpio->clk);
 	return 0;
 }
 
@@ -449,7 +450,10 @@ static int xgpiops_resume(struct device *_dev)
 			struct platform_device, dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	return clk_enable(gpio->clk);
+	if (!pm_runtime_suspended(_dev))
+		return clk_enable(gpio->clk);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_RUNTIME
