@@ -432,7 +432,7 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 	chip->irq_unmask(irq_data);
 }
 
-#if defined(CONFIG_PM) && defined(CONFIG_COMMON_CLK)
+#if defined(CONFIG_PM_SLEEP) && defined(CONFIG_COMMON_CLK)
 static int xgpiops_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
@@ -455,8 +455,31 @@ static int xgpiops_resume(struct device *_dev)
 
 	return 0;
 }
+#endif
 
-#ifdef CONFIG_PM_RUNTIME
+#if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_COMMON_CLK)
+static int xgpiops_runtime_suspend(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+
+	return 0;
+}
+
+static int xgpiops_runtime_resume(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	return clk_enable(gpio->clk);
+
+	return 0;
+}
+
 static int xgpiops_idle(struct device *dev)
 {
 	return pm_schedule_suspend(dev, 1);
@@ -464,29 +487,31 @@ static int xgpiops_idle(struct device *dev)
 
 static int xgpiops_request(struct gpio_chip *chip, unsigned offset)
 {
-	return pm_runtime_get(chip->dev);
+	return pm_runtime_get_sync(chip->dev);
 }
 
 static void xgpiops_free(struct gpio_chip *chip, unsigned offset)
 {
-	pm_runtime_put(chip->dev);
+	pm_runtime_put_sync(chip->dev);
 }
 
-static UNIVERSAL_DEV_PM_OPS(xgpiops_dev_pm_ops, xgpiops_suspend, xgpiops_resume,
-		xgpiops_idle);
 #else /* ! CONFIG_PM_RUNTIME */
-static SIMPLE_DEV_PM_OPS(xgpiops_dev_pm_ops, xgpiops_suspend, xgpiops_resume);
 #define xgpiops_request	NULL
 #define xgpiops_free	NULL
 #endif /* ! CONFIG_PM_RUNTIME */
 
+#if (defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)) && \
+	defined(CONFIG_COMMON_CLK)
+static const struct dev_pm_ops xgpiops_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xgpiops_suspend, xgpiops_resume)
+	SET_RUNTIME_PM_OPS(xgpiops_runtime_suspend, xgpiops_runtime_resume,
+			xgpiops_idle)
+};
 #define XGPIOPS_PM	(&xgpiops_dev_pm_ops)
 
-#else /*! CONFIG_PM && ! CONFIG_COMMON_CLK */
+#else /*! CONFIG_PM_RUNTIME || ! CONFIG_PM_SLEEP */
 #define XGPIOPS_PM	NULL
-#define xgpiops_request	NULL
-#define xgpiops_free	NULL
-#endif /*! CONFIG_PM && ! CONFIG_COMMON_CLK */
+#endif /*! CONFIG_PM_RUNTIME || ! CONFIG_COMMON_SLEEP */
 
 /**
  * xgpiops_probe - Initialization method for a xgpiops device
@@ -606,7 +631,9 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	irq_set_handler_data(irq_num, (void *)(XGPIOPS_IRQBASE));
 	irq_set_chained_handler(irq_num, xgpiops_irqhandler);
 
-	pm_runtime_set_active(&pdev->dev);
+#ifdef CONFIG_COMMON_CLK
+	clk_disable(gpio->clk);
+#endif
 	pm_runtime_enable(&pdev->dev);
 
 	return 0;
