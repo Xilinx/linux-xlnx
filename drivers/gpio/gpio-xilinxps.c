@@ -666,22 +666,18 @@ static int xgpiops_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id xgpiops_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-gpio-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xgpiops_of_match);
-#endif
 
 static struct platform_driver xgpiops_driver = {
 	.driver	= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
 		.pm	= XGPIOPS_PM,
-#ifdef CONFIG_OF
 		.of_match_table = xgpiops_of_match,
-#endif
 	},
 	.probe		= xgpiops_probe,
 	.remove		= xgpiops_remove,
