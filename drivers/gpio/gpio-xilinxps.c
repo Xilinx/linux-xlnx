@@ -574,13 +574,13 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	/* Enable GPIO clock */
 	gpio->clk = clk_get_sys("GPIO_APER", NULL);
 	if (IS_ERR(gpio->clk)) {
-		pr_err("Xilinx GPIOPS clock not found.\n");
+		dev_err(&pdev->dev, "Clock not found.\n");
 		ret = PTR_ERR(gpio->clk);
 		goto err_chip_remove;
 	}
 	ret = clk_prepare_enable(gpio->clk);
 	if (ret) {
-		pr_err("Xilinx GPIOPS unable to enable clock.\n");
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
 		goto err_clk_put;
 	}
 #endif
