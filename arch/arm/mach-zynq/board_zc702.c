@@ -169,6 +169,20 @@ static struct i2c_board_info __initdata m24c08_board_info[] = {
 
 #endif /* CONFIG_EEPROM_AT24 */
 
+#if defined(CONFIG_SENSORS_UCD9200)
+static struct i2c_board_info ucd9248_board_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("ucd9248", 52),
+	},
+	{
+		I2C_BOARD_INFO("ucd9248", 53),
+	},
+	{
+		I2C_BOARD_INFO("ucd9248", 54),
+	}
+};
+#endif /* CONFIG_SENSORS_UCD9200 */
+
 #endif /* CONFIG_I2C_XILINX_PS && CONFIG_I2C_MUX_PCA954x */
 
 #if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
@@ -239,6 +253,10 @@ static void __init board_zc702_init(void)
 #if	defined(CONFIG_RTC_DRV_PCF8563)
 	i2c_register_board_info(5, rtc8564_board_info,
 				ARRAY_SIZE(rtc8564_board_info));
+#endif
+#if	defined(CONFIG_SENSORS_UCD9200)
+	i2c_register_board_info(8, ucd9248_board_info,
+				ARRAY_SIZE(ucd9248_board_info));
 #endif
 
 
