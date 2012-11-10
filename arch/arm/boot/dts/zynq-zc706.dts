@@ -124,6 +124,56 @@
 
 			#address-cells = <1>;
 			#size-cells = <0>;
+                        i2cswitch@74 {
+                                compatible = "nxp,pca9548";
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                reg = <0x74>;
+
+				i2c@0 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <0>;
+                                        osc@5d {
+                                                compatible = "si570";
+                                                reg = <0x5d>;
+						factory-fout = <156250000>;
+						initial-fout = <148500000>;
+                                        };
+				};
+
+				i2c@2 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <2>;
+                                        eeprom@54 {
+                                                compatible = "at,24c08";
+                                                reg = <0x54>;
+                                        };
+                                };
+
+				i2c@3 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <3>;
+                                        gpio@21 {
+                                                compatible = "ti,tca6416";
+                                                reg = <0x21>;
+						gpio-controller;
+						#gpio-cells = <2>;
+                                        };
+				};
+
+				i2c@4 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <4>;
+                                        rtc@54 {
+                                                compatible = "nxp,pcf8563";
+                                                reg = <0x51>;
+                                        };
+				};
+			};
 		};
 
 		sdhci@e0100000 {

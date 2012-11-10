@@ -15,7 +15,6 @@
 #include <linux/init.h>
 #include <linux/of_platform.h>
 
-#include <linux/i2c.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/eeprom.h>
 #include <linux/platform_device.h>
@@ -23,9 +22,6 @@
 #include <linux/mtd/physmap.h>
 #include <linux/spi/flash.h>
 #include <linux/xilinx_devices.h>
-#include <linux/i2c/pca954x.h>
-#include <linux/i2c/pca953x.h>
-#include <linux/i2c/si570.h>
 #include <linux/gpio.h>
 
 #include <mach/slcr.h>
@@ -67,123 +63,6 @@ static struct flash_platform_data spi_flash_pdata = {
 };
 
 #endif
-
-#if defined(CONFIG_I2C_XILINX_PS) && defined(CONFIG_I2C_MUX_PCA954x)
-
-static struct pca954x_platform_mode pca954x_platform_modes[] = {
-	{
-		.adap_id 		= 1,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 2,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 3,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 4,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 5,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 6,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 7,
-		.deselect_on_exit	= 0,
-	},
-	{
-		.adap_id 		= 8,
-		.deselect_on_exit	= 0,
-	},
-};
-
-static struct pca954x_platform_data pca954x_i2cmux_adap_data = {
-	.modes 		= pca954x_platform_modes,
-	.num_modes 	= 8,
-};
-
-static struct i2c_board_info __initdata pca954x_i2c_devices[] = {
-	{
-		I2C_BOARD_INFO("pca9548", 0x74),
-		.platform_data = &pca954x_i2cmux_adap_data,
-	},
-};
-
-#if defined(CONFIG_RTC_DRV_PCF8563)
-
-static struct i2c_board_info __initdata rtc8564_board_info[] = {
-	{
-		I2C_BOARD_INFO("rtc8564", 0x51),
-	},
-};
-
-#endif /*CONFIG_RTC_DRV_PCF8563 */
-
-#if defined(CONFIG_GPIO_PCA953X)
-
-static struct pca953x_platform_data tca6416_0 = {
-	.gpio_base = 256,
-};
-
-static struct i2c_board_info __initdata tca6416_board_info[] = {
-	{
-		I2C_BOARD_INFO("tca6416", 0x21),
-		.platform_data = &tca6416_0,
-	}
-};
-
-#endif /* CONFIG_GPIO_PCF8563 */
-
-#if defined(CONFIG_SI570)
-
-/* Initial FOUT is set per the ADV7511 video clocking requirement */
-static struct si570_platform_data si570_0 = {
-	.factory_fout = 156250000LL,
-	.initial_fout = 148500000,
-};
-
-static struct i2c_board_info __initdata si570_board_info[] = {
-	{
-		I2C_BOARD_INFO("si570", 0x5d),
-		.platform_data = &si570_0,
-	}
-};
-
-#endif /* CONFIG_SI570 */
-	
-#if defined(CONFIG_EEPROM_AT24)
-
-static struct i2c_board_info __initdata m24c08_board_info[] = {
-	{
-		I2C_BOARD_INFO("24c08", 0x54),
-	},
-};
-
-#endif /* CONFIG_EEPROM_AT24 */
-
-#if defined(CONFIG_SENSORS_UCD9200)
-static struct i2c_board_info ucd9248_board_info[] __initdata = {
-	{
-		I2C_BOARD_INFO("ucd9248", 52),
-	},
-	{
-		I2C_BOARD_INFO("ucd9248", 53),
-	},
-	{
-		I2C_BOARD_INFO("ucd9248", 54),
-	}
-};
-#endif /* CONFIG_SENSORS_UCD9200 */
-
-#endif /* CONFIG_I2C_XILINX_PS && CONFIG_I2C_MUX_PCA954x */
 
 #if defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
 
@@ -229,37 +108,6 @@ static void __init board_zc702_init(void)
 #if 	defined(CONFIG_SPI_SPIDEV) || defined(CONFIG_MTD_M25P80)
 	spi_register_board_info(&xilinx_spipss_0_boardinfo[0], 
 		ARRAY_SIZE(xilinx_spipss_0_boardinfo));
-#endif
-
-#if	defined(CONFIG_I2C_XILINX_PS) && defined(CONFIG_I2C_MUX_PCA954x)
-	i2c_register_board_info(0, pca954x_i2c_devices,
-				ARRAY_SIZE(pca954x_i2c_devices));
-
-#if	defined(CONFIG_SI570)
-	i2c_register_board_info(1, si570_board_info,
-				ARRAY_SIZE(si570_board_info));
-#endif
-
-#if	defined(CONFIG_EEPROM_AT24)
-	i2c_register_board_info(3, m24c08_board_info,
-				ARRAY_SIZE(m24c08_board_info));
-#endif
-
-#if	defined(CONFIG_GPIO_PCA953X)
-	i2c_register_board_info(4, tca6416_board_info,
-				ARRAY_SIZE(tca6416_board_info));
-#endif
-
-#if	defined(CONFIG_RTC_DRV_PCF8563)
-	i2c_register_board_info(5, rtc8564_board_info,
-				ARRAY_SIZE(rtc8564_board_info));
-#endif
-#if	defined(CONFIG_SENSORS_UCD9200)
-	i2c_register_board_info(8, ucd9248_board_info,
-				ARRAY_SIZE(ucd9248_board_info));
-#endif
-
-
 #endif
 }
 
