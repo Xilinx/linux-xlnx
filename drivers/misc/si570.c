@@ -426,6 +426,7 @@ static int si570_probe(struct i2c_client *client,
 	struct si570_data *data;
 	int err;
 	unsigned long initial_fout;
+	u32 tmp;
 
 	data = kzalloc(sizeof(struct si570_data), GFP_KERNEL);
 	if (!data) {
@@ -445,11 +446,12 @@ static int si570_probe(struct i2c_client *client,
 		data->fout = pdata->factory_fout;
 
 	if (client->dev.of_node &&
-		(of_property_read_u64(client->dev.of_node, "factory-fout",
-			&data->fout) < 0)) {
+		(of_property_read_u32(client->dev.of_node, "factory-fout",
+			&tmp) < 0))
 		dev_warn(&client->dev,
 			"DTS does not contain factory-fout, using default\n");
-	}
+	else
+		data->fout = tmp;
 
 	i2c_set_clientdata(client, data);
 	err = si570_get_defaults(client);
