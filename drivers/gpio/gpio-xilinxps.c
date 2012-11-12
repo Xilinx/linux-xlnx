@@ -306,7 +306,7 @@ static void xgpiops_irq_unmask(struct irq_data *irq_data)
 
 /**
  * xgpiops_set_irq_type - Set the irq type for a gpio pin
- * @irq_data:	irq data containing irq number of gpio pin 
+ * @irq_data:	irq data containing irq number of gpio pin
  * @type:	interrupt type that is to be set for the gpio pin
  *
  * This function gets the gpio pin number and its bank from the gpio pin number
@@ -426,7 +426,7 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 						      &irq_desc[gpio_irq]);
 		}
 		/* shift to first virtual irq of next bank */
-		gpio_irq = (int)irq_get_handler_data(irq) + 
+		gpio_irq = (int)irq_get_handler_data(irq) +
 				(xgpiops_pin_table[bank_num] + 1);
 	}
 	chip->irq_unmask(irq_data);
