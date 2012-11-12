@@ -787,9 +787,11 @@ static void xemacps_adjust_link(struct net_device *ndev)
 				regval |= XEMACPS_NWCFG_1000_MASK;
 #ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 125000000);
-				pr_info("Set GEM clk to %ld Hz\n", rate);
+				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
+						rate);
 				if (clk_set_rate(lp->devclk, rate))
-					pr_err("Unable to set new clock rate.\n");
+					dev_err(&lp->pdev->dev,
+					    "Setting new clock rate failed.\n");
 #else
 				regval1 |= ((lp->slcr_div1_1000Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_1000Mbps) << 8);
@@ -803,9 +805,11 @@ static void xemacps_adjust_link(struct net_device *ndev)
 				regval |= XEMACPS_NWCFG_100_MASK;
 #ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 25000000);
-				pr_info("Set GEM clk to %ld Hz\n", rate);
+				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
+						rate);
 				if (clk_set_rate(lp->devclk, rate))
-					pr_err("Unable to set new clock rate.\n");
+					dev_err(&lp->pdev->dev,
+					    "Setting new clock rate failed.\n");
 #else
 				regval1 |= ((lp->slcr_div1_100Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_100Mbps) << 8);
@@ -818,9 +822,11 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			if (phydev->speed == SPEED_10) {
 #ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 2500000);
-				pr_info("Set GEM clk to %ld Hz\n", rate);
+				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
+						rate);
 				if (clk_set_rate(lp->devclk, rate))
-					pr_err("Unable to set new clock rate.\n");
+					dev_err(&lp->pdev->dev,
+					    "Setting new clock rate failed.\n");
 #else
 				regval1 |= ((lp->slcr_div1_10Mbps) << 20);
 				regval1 |= ((lp->slcr_div0_10Mbps) << 8);
@@ -2223,7 +2229,7 @@ static int xemacps_open(struct net_device *ndev)
 
 	rc = pm_runtime_get(&lp->pdev->dev);
 	if (rc < 0) {
-		pr_err("%s pm_runtime_get() failed, rc %d\n", ndev->name, rc);
+		dev_err("%s pm_runtime_get() failed, rc %d\n", ndev->name, rc);
 		goto err_free_rings;
 	}
 
@@ -3119,7 +3125,7 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		else
 			lp->aperclk = clk_get_sys("GEM1_APER", NULL);
 		if (IS_ERR(lp->aperclk)) {
-			pr_err("Xilinx EMACPS APER clock not found.\n");
+			dev_err(&pdev->dev, "APER clock not found.\n");
 			rc = PTR_ERR(lp->aperclk);
 			goto err_out_unregister_netdev;
 		}
@@ -3128,26 +3134,27 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		else
 			lp->devclk = clk_get_sys("GEM1", NULL);
 		if (IS_ERR(lp->devclk)) {
-			pr_err("Xilinx EMACPS device clock not found.\n");
+			dev_err(&pdev->dev, "Device clock not found.\n");
 			rc = PTR_ERR(lp->devclk);
 			goto err_out_clk_put_aper;
 		}
 
 		rc = clk_prepare_enable(lp->aperclk);
 		if (rc) {
-			pr_err("Unable to enable EMACPS APER clock.\n");
+			dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 			goto err_out_clk_put;
 		}
 		rc = clk_prepare_enable(lp->devclk);
 		if (rc) {
-			pr_err("Unable to enable EMACPS device clock.\n");
+			dev_err(&pdev->dev, "Unable to enable device clock.\n");
 			goto err_out_clk_dis_aper;
 		}
 
 		lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
 		lp->clk_rate_change_nb.next = NULL;
 		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
-			pr_warn("Unable to register clock notifier.\n");
+			dev_warn(&pdev->dev,
+					"Unable to register clock notifier.\n");
 #else
 		prop = of_get_property(lp->pdev->dev.of_node,
 					"xlnx,slcr-div0-1000Mbps", NULL);
