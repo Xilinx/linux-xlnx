@@ -929,26 +929,7 @@ static struct platform_driver xi2cps_drv = {
 	.remove = __devexit_p(xi2cps_remove),
 };
 
-/**
- * xi2cps_init - Initial driver registration function
- *
- * Returns zero on success, otherwise negative error.
- */
-static int __init xi2cps_init(void)
-{
-	return platform_driver_register(&xi2cps_drv);
-}
-
-/**
- * xi2cps_exit - Driver Un-registration function
- */
-static void __exit xi2cps_exit(void)
-{
-	platform_driver_unregister(&xi2cps_drv);
-}
-
-module_init(xi2cps_init);
-module_exit(xi2cps_exit);
+module_platform_driver(xi2cps_drv);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx PS I2C bus driver");
