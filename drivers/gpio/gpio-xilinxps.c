@@ -518,7 +518,7 @@ static const struct dev_pm_ops xgpiops_dev_pm_ops = {
  * Note: Interrupts are disabled for all the banks during initialization.
  * Returns 0 on success, negative error otherwise.
  */
-static int __init xgpiops_probe(struct platform_device *pdev)
+static int __devinit xgpiops_probe(struct platform_device *pdev)
 {
 	int ret;
 	unsigned int irq_num;
