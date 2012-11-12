@@ -278,7 +278,7 @@ static struct notifier_block xwdtps_notifier = {
  * It does all the memory allocation and registration for the device.
  * Returns 0 on success, negative error otherwise.
  */
-static int __init xwdtps_probe(struct platform_device *pdev)
+static int __devinit xwdtps_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int res;
