@@ -764,11 +764,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	struct resource *r_mem = NULL;
 	struct xi2cps *id;
 	int ret = 0;
-#ifdef CONFIG_OF
 	const unsigned int *prop;
-#else
-	struct xi2cps_platform_data *pdata;
-#endif
 	/*
 	 * Allocate memory for xi2cps structure.
 	 * Initialize the structure to zero and set the platform data.
@@ -783,9 +779,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	}
 	memset((void *)id, 0, sizeof(*id));
 	platform_set_drvdata(pdev, id);
-#ifndef CONFIG_OF
-	pdata = pdev->dev.platform_data;
-#endif
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r_mem) {
@@ -809,7 +802,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		goto err_unmap;
 	}
 
-#ifdef CONFIG_OF
 	prop = of_get_property(pdev->dev.of_node, "bus-id", NULL);
 	if (prop)
 		id->adap.nr = be32_to_cpup(prop);
@@ -819,9 +811,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		goto err_unmap ;
 	}
 	id->adap.dev.of_node = pdev->dev.of_node;
-#else
-	id->adap.nr = pdev->id;
-#endif
 	id->adap.algo = (struct i2c_algorithm *) &xi2cps_algo;
 	id->adap.timeout = 0x1F;	/* Default timeout value */
 	id->adap.retries = 3;		/* Default retry value. */
@@ -831,7 +820,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
-#ifdef CONFIG_OF
 #ifdef CONFIG_COMMON_CLK
 	if (id->irq == 80)
 		id->clk = clk_get_sys("I2C1_APER", NULL);
@@ -871,10 +859,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
 		goto err_clk_dis;
 	}
-#else
-	id->input_clk = pdata->input_clk;
-	id->i2c_clk = pdata->i2c_clk;
-#endif
 
 	/*
 	 * Set Master Mode,Normal addressing mode (7 bit address),
@@ -904,10 +888,7 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		goto err_free_irq;
 	}
 
-
-#ifdef CONFIG_OF
 	of_i2c_register_devices(&id->adap);
-#endif
 
 	dev_info(&pdev->dev, "%d kHz mmio %08lx irq %d\n",
 		 id->i2c_clk/1000, (unsigned long)r_mem->start, id->irq);
@@ -955,21 +936,17 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id xi2cps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-i2c-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xi2cps_of_match);
-#endif
 
 static struct platform_driver xi2cps_drv = {
 	.driver = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table = xi2cps_of_match,
-#endif
 	},
 	.probe  = xi2cps_probe,
 	.remove = __devexit_p(xi2cps_remove),
