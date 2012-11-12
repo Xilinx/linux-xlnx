@@ -802,7 +802,7 @@ static const struct dev_pm_ops xi2cps_dev_pm_ops = {
  * device. User can modify the address mode to 10 bit address mode using the
  * ioctl call with option I2C_TENBIT.
  */
-static int __devinit xi2cps_probe(struct platform_device *pdev)
+static int xi2cps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct xi2cps *id;
@@ -948,7 +948,7 @@ err_free_mem:
  *
  * This function frees all the resources allocated to the device.
  */
-static int __devexit xi2cps_remove(struct platform_device *pdev)
+static int xi2cps_remove(struct platform_device *pdev)
 {
 	struct xi2cps *id = platform_get_drvdata(pdev);
 
@@ -964,7 +964,7 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xi2cps_of_match[] __devinitdata = {
+static const struct of_device_id xi2cps_of_match[] = {
 	{ .compatible = "xlnx,ps7-i2c-1.00.a", },
 	{ /* end of table */}
 };
