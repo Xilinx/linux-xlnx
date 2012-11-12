@@ -3316,8 +3316,10 @@ static int xemacps_suspend(struct device *device)
 #endif
 	netif_device_detach(ndev);
 #ifdef CONFIG_COMMON_CLK
-	clk_disable(lp->devclk);
-	clk_disable(lp->aperclk);
+	if (!pm_runtime_suspended(device)) {
+		clk_disable(lp->devclk);
+		clk_disable(lp->aperclk);
+	}
 #endif
 	return 0;
 }
@@ -3336,8 +3338,10 @@ static int xemacps_resume(struct device *device)
 #ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
 
-	clk_enable(lp->aperclk);
-	clk_enable(lp->devclk);
+	if (!pm_runtime_suspended(device)) {
+		clk_enable(lp->aperclk);
+		clk_enable(lp->devclk);
+	}
 #endif
 	netif_device_attach(ndev);
 	return 0;
