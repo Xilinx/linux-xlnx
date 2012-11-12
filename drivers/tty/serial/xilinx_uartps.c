@@ -1244,7 +1244,6 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 #ifdef CONFIG_COMMON_CLK
 	struct xuartps *xuartps;
 #else
-#ifdef CONFIG_OF
 	const unsigned int *prop;
 
 	prop = of_get_property(pdev->dev.of_node, "clock", NULL);
@@ -1255,9 +1254,7 @@ static int __devinit xuartps_probe(struct platform_device *pdev)
 		if (prop)
 			clk = be32_to_cpup(prop);
 	}
-#else
-	clk = *((unsigned int *)(pdev->dev.platform_data));
-#endif
+
 	if (!clk) {
 		dev_err(&pdev->dev, "no clock specified\n");
 		return -ENODEV;
@@ -1509,15 +1506,11 @@ static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
 #endif /* ! CONFIG_PM_SLEEP */
 
 /* Match table for of_platform binding */
-#ifdef CONFIG_OF
 static struct of_device_id xuartps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-uart-1.00.a", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, xuartps_of_match);
-#else
-#define xuartps_of_match NULL
-#endif
 
 static struct platform_driver xuartps_platform_driver = {
 	.probe   = xuartps_probe,		/* Probe method */
