@@ -48,9 +48,7 @@
 #include <linux/slab.h>
 #include <linux/of_i2c.h>
 #include <linux/err.h>
-#ifdef CONFIG_COMMON_CLK
 #include <linux/clk.h>
-#endif
 
 /*
  * Register Map
@@ -141,17 +139,13 @@ struct xi2cps {
 	unsigned int input_clk;
 	unsigned int i2c_clk;
 	unsigned int bus_hold_flag;
-#ifdef CONFIG_COMMON_CLK
 	struct clk	*clk;
 	struct notifier_block	clk_rate_change_nb;
-#endif
 };
 
-#ifdef CONFIG_COMMON_CLK
 #define to_xi2cps(_nb)	container_of(_nb, struct xi2cps,\
 		clk_rate_change_nb)
 #define MAX_F_ERR 10000
-#endif
 
 /**
  * xi2cps_isr - Interrupt handler for the I2C device
@@ -689,7 +683,6 @@ static int xi2cps_setclk(unsigned int fscl, struct xi2cps *id)
 	return 0;
 }
 
-#ifdef CONFIG_COMMON_CLK
 /**
  * xi2cps_clk_notifier_cb - Clock rate change callback
  * @nb:		Pointer to notifier block
@@ -743,7 +736,6 @@ static int xi2cps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		return NOTIFY_DONE;
 	}
 }
-#endif
 
 /************************/
 /* Platform bus binding */
@@ -820,7 +812,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
-#ifdef CONFIG_COMMON_CLK
 	if (id->irq == 80)
 		id->clk = clk_get_sys("I2C1_APER", NULL);
 	else
@@ -840,16 +831,6 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 	id->input_clk = (unsigned int)clk_get_rate(id->clk);
-#else /* ! CONFIG_COMMON_CLK */
-	prop = of_get_property(pdev->dev.of_node, "input-clk", NULL);
-	if (prop) {
-		id->input_clk = be32_to_cpup(prop);
-	} else {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "couldn't determine input-clk\n");
-		goto err_unmap ;
-	}
-#endif /* ! CONFIG_COMMON_CLK */
 
 	prop = of_get_property(pdev->dev.of_node, "i2c-clk", NULL);
 	if (prop) {
@@ -898,11 +879,9 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 err_free_irq:
 	free_irq(id->irq, id);
 err_clk_dis:
-#ifdef CONFIG_COMMON_CLK
 	clk_disable_unprepare(id->clk);
 err_clk_put:
 	clk_put(id->clk);
-#endif
 err_unmap:
 	iounmap(id->membase);
 err_free_mem:
@@ -925,11 +904,9 @@ static int __devexit xi2cps_remove(struct platform_device *pdev)
 	i2c_del_adapter(&id->adap);
 	free_irq(id->irq, id);
 	iounmap(id->membase);
-#ifdef CONFIG_COMMON_CLK
 	clk_notifier_unregister(id->clk, &id->clk_rate_change_nb);
 	clk_disable_unprepare(id->clk);
 	clk_put(id->clk);
-#endif
 	kfree(id);
 	platform_set_drvdata(pdev, NULL);
 
