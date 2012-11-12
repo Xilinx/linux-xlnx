@@ -48,11 +48,9 @@
 #ifdef CONFIG_COMMON_CLK
 #include <linux/clk.h>
 #endif
-#ifdef CONFIG_OF
 #include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
-#endif
 
 /************************** Constant Definitions *****************************/
 
@@ -564,9 +562,7 @@ struct net_local {
 #endif
 	struct xemacps_bdring tx_ring;
 	struct xemacps_bdring rx_ring;
-#ifdef CONFIG_OF
 	struct device_node *phy_node;
-#endif
 	struct ring_info       *tx_skb;
 	struct ring_info       *rx_skb;
 
@@ -597,7 +593,6 @@ struct net_local {
 	unsigned int           duplex;
 	/* RX ip/tcp/udp checksum */
 	unsigned               ip_summed;
-#ifdef CONFIG_OF
 	unsigned int	       enetnum;
 	unsigned int 	       board_type;
 #ifndef CONFIG_COMMON_CLK
@@ -610,7 +605,6 @@ struct net_local {
 #endif
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int 	       ptpenetclk;
-#endif
 #endif
 };
 #ifdef CONFIG_COMMON_CLK
@@ -904,11 +898,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
-#ifndef CONFIG_OF
-	int phy_addr;
-#endif
 
-#ifdef CONFIG_OF
 	if (lp->phy_node) {
 		phydev = of_phy_connect(lp->ndev,
 					lp->phy_node,
@@ -920,27 +910,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 		printk(KERN_ERR "%s: no PHY found\n", ndev->name);
 		return -1;
 	}
-#else
-	for (phy_addr = 0; phy_addr < PHY_MAX_ADDR; phy_addr++) {
-		if (lp->mii_bus->phy_map[phy_addr]) {
-			phydev = lp->mii_bus->phy_map[phy_addr];
-			break;
-		}
-	}
 
-	if (!phydev) {
-		printk(KERN_ERR "%s: no PHY found\n", ndev->name);
-		return -1;
-	}
-
-	phydev = phy_connect(ndev, dev_name(&phydev->dev),
-		&xemacps_adjust_link, 0, PHY_INTERFACE_MODE_RGMII_ID);
-
-	if (IS_ERR(phydev)) {
-		printk(KERN_ERR "%s: can not connect phy\n", ndev->name);
-		return -2;
-	}
-#endif
 #ifdef DEBUG
 	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
@@ -954,14 +924,11 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	lp->duplex  = -1;
 	lp->phy_dev = phydev;
 
-#ifdef CONFIG_OF
 	if (lp->board_type == BOARD_TYPE_ZYNQ)
 		phy_start(lp->phy_dev);
 	else
 		xemacps_phy_init(lp->ndev);
-#else
-	phy_start(lp->phy_dev);
-#endif
+
 #ifdef DEBUG
 	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
 			ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
@@ -981,11 +948,8 @@ static int xemacps_mii_probe(struct net_device *ndev)
 static int xemacps_mii_init(struct net_local *lp)
 {
 	int rc = -ENXIO, i;
-#ifdef CONFIG_OF
 	struct resource res;
 	struct device_node *np = of_get_parent(lp->phy_node);
-	struct device_node *npp;
-#endif
 
 	lp->mii_bus = mdiobus_alloc();
 	if (lp->mii_bus == NULL) {
@@ -1008,18 +972,11 @@ static int xemacps_mii_init(struct net_local *lp)
 
 	for (i = 0; i < PHY_MAX_ADDR; i++)
 		lp->mii_bus->irq[i] = PHY_POLL;
-#ifdef CONFIG_OF
-	npp = of_get_parent(np);
-	of_address_to_resource(npp, 0, &res);
+	of_address_to_resource(np, 0, &res);
 	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
 	if (of_mdiobus_register(lp->mii_bus, np))
 		goto err_out_free_mdio_irq;
-#else
-	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%x", lp->pdev->id);
-	if (mdiobus_register(lp->mii_bus))
-		goto err_out_free_mdio_irq;
-#endif
 
 	if (xemacps_mii_probe(lp->ndev) != 0) {
 		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
@@ -2148,10 +2105,8 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCFG_100_MASK;
 	regval |= XEMACPS_NWCFG_HDRXEN_MASK;
 
-#ifdef CONFIG_OF
 	if (lp->board_type == BOARD_TYPE_ZYNQ)
 		regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
-#endif
 	if (lp->ndev->flags & IFF_PROMISC)	/* copy all */
 		regval |= XEMACPS_NWCFG_COPYALLEN_MASK;
 	if (!(lp->ndev->flags & IFF_BROADCAST))	/* No broadcast */
@@ -3090,9 +3045,7 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
-#ifdef CONFIG_OF
 	lp->board_type = BOARD_TYPE_ZYNQ;
-#endif
 
 	rc = register_netdev(ndev);
 	if (rc) {
@@ -3100,7 +3053,6 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		goto err_out_free_irq;
 	}
 
-#ifdef CONFIG_OF
 	if (ndev->irq == 54)
 		lp->enetnum = 0;
 	else
@@ -3215,7 +3167,6 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 		xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
 	}
-#endif
 
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
@@ -3408,15 +3359,11 @@ static struct net_device_ops netdev_ops = {
 	.ndo_get_stats		= xemacps_get_stats,
 };
 
-#ifdef CONFIG_OF
 static struct of_device_id xemacps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-ethernet-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xemacps_of_match);
-#else
-#define xemacps_of_match NULL
-#endif /* CONFIG_OF */
 
 static struct platform_driver xemacps_driver = {
 	.probe   = xemacps_probe,
