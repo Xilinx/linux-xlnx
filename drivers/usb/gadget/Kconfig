@@ -270,6 +270,7 @@ config USB_R8A66597
 
 config USB_GADGET_XILINX
 	boolean "Xilinx USB Driver"
+	depends on (XILINX_VIRTEX || MICROBLAZE)
 	select USB_GADGET_DUALSPEED
 	help
 	   Sample USB gadget driver
