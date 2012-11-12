@@ -1421,20 +1421,32 @@ static int __devexit xuartps_remove(struct platform_device *pdev)
  */
 static int xuartps_suspend(struct device *device)
 {
-	struct platform_device *pdev = container_of(device,
-			struct platform_device, dev);
-#ifdef CONFIG_COMMON_CLK
 	struct uart_port *port = dev_get_drvdata(device);
-	struct xuartps *xuartps = port->private_data;
+#ifdef CONFIG_COMMON_CLK
+	struct tty_struct *tty;
+	struct device *tty_dev;
+	int may_wake = 0;
+
+	/* Get the tty which could be NULL so don't assume it's valid */
+	tty = tty_port_tty_get(&port->state->port);
+	if (tty) {
+		tty_dev = tty->dev;
+		may_wake = device_may_wakeup(tty_dev);
+		tty_kref_put(tty);
+	}
 #endif
 	/*
 	 * Call the API provided in serial_core.c file which handles
 	 * the suspend.
 	 */
-	uart_suspend_port(&xuartps_uart_driver, &xuartps_port[pdev->id]);
+	uart_suspend_port(&xuartps_uart_driver, port);
 #ifdef CONFIG_COMMON_CLK
-	clk_disable(xuartps->devclk);
-	clk_disable(xuartps->aperclk);
+	if (console_suspend_enabled && !may_wake) {
+		struct xuartps *xuartps = port->private_data;
+
+		clk_disable(xuartps->devclk);
+		clk_disable(xuartps->aperclk);
+	}
 #endif
 	return 0;
 }
@@ -1447,17 +1459,47 @@ static int xuartps_suspend(struct device *device)
  */
 static int xuartps_resume(struct device *device)
 {
-	struct platform_device *pdev = container_of(device,
-			struct platform_device, dev);
-#ifdef CONFIG_COMMON_CLK
 	struct uart_port *port = dev_get_drvdata(device);
-	struct xuartps *xuartps = port->private_data;
+	unsigned long flags = 0;
+	u32 ctrl_reg;
+	struct tty_struct *tty;
+	struct device *tty_dev;
+	int may_wake = 0;
 
-	clk_enable(xuartps->aperclk);
-	clk_enable(xuartps->devclk);
+	/* Get the tty which could be NULL so don't assume it's valid */
+	tty = tty_port_tty_get(&port->state->port);
+	if (tty) {
+		tty_dev = tty->dev;
+		may_wake = device_may_wakeup(tty_dev);
+		tty_kref_put(tty);
+	}
+
+	if (console_suspend_enabled && !may_wake) {
+#ifdef CONFIG_COMMON_CLK
+		struct xuartps *xuartps = port->private_data;
+
+		clk_enable(xuartps->aperclk);
+		clk_enable(xuartps->devclk);
 #endif
-	uart_resume_port(&xuartps_uart_driver, &xuartps_port[pdev->id]);
-	return 0;
+
+		spin_lock_irqsave(&port->lock, flags);
+
+		/* Set TX/RX Reset */
+		xuartps_writel(xuartps_readl(XUARTPS_CR_OFFSET) |
+				(XUARTPS_CR_TXRST | XUARTPS_CR_RXRST),
+				XUARTPS_CR_OFFSET);
+
+		/* Enable Tx/Rx */
+		ctrl_reg = xuartps_readl(XUARTPS_CR_OFFSET);
+		xuartps_writel(
+			(ctrl_reg & ~(XUARTPS_CR_TX_DIS | XUARTPS_CR_RX_DIS)) |
+			(XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN),
+			XUARTPS_CR_OFFSET);
+
+		spin_unlock_irqrestore(&port->lock, flags);
+	}
+
+	return uart_resume_port(&xuartps_uart_driver, port);
 }
 
 static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
