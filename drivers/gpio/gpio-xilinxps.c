@@ -24,10 +24,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
-#ifdef CONFIG_COMMON_CLK
 #include <linux/err.h>
 #include <linux/clk.h>
-#endif
 
 #define DRIVER_NAME "xgpiops"
 
@@ -84,9 +82,7 @@ static unsigned int xgpiops_pin_table[] = {
 struct xgpiops {
 	struct gpio_chip chip;
 	void __iomem *base_addr;
-#ifdef CONFIG_COMMON_CLK
 	struct clk *clk;
-#endif
 	spinlock_t gpio_lock;
 };
 
@@ -432,7 +428,7 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 	chip->irq_unmask(irq_data);
 }
 
-#if defined(CONFIG_PM_SLEEP) && defined(CONFIG_COMMON_CLK)
+#ifdef CONFIG_PM_SLEEP
 static int xgpiops_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
@@ -457,7 +453,7 @@ static int xgpiops_resume(struct device *_dev)
 }
 #endif
 
-#if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_COMMON_CLK)
+#ifdef CONFIG_PM_RUNTIME
 static int xgpiops_runtime_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
@@ -500,8 +496,7 @@ static void xgpiops_free(struct gpio_chip *chip, unsigned offset)
 #define xgpiops_free	NULL
 #endif /* ! CONFIG_PM_RUNTIME */
 
-#if (defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)) && \
-	defined(CONFIG_COMMON_CLK)
+#if defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)
 static const struct dev_pm_ops xgpiops_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xgpiops_suspend, xgpiops_resume)
 	SET_RUNTIME_PM_OPS(xgpiops_runtime_suspend, xgpiops_runtime_resume,
@@ -511,7 +506,7 @@ static const struct dev_pm_ops xgpiops_dev_pm_ops = {
 
 #else /*! CONFIG_PM_RUNTIME || ! CONFIG_PM_SLEEP */
 #define XGPIOPS_PM	NULL
-#endif /*! CONFIG_PM_RUNTIME || ! CONFIG_COMMON_SLEEP */
+#endif /*! CONFIG_PM_RUNTIME */
 
 /**
  * xgpiops_probe - Initialization method for a xgpiops device
@@ -595,7 +590,6 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 			 (unsigned long)gpio->base_addr);
 	}
 
-#ifdef CONFIG_COMMON_CLK
 	/* Enable GPIO clock */
 	gpio->clk = clk_get_sys("GPIO_APER", NULL);
 	if (IS_ERR(gpio->clk)) {
@@ -608,7 +602,6 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Unable to enable clock.\n");
 		goto err_clk_put;
 	}
-#endif
 
 	/* disable interrupts for all banks */
 	for (bank_num = 0; bank_num < 4; bank_num++) {
@@ -631,19 +624,15 @@ static int __init xgpiops_probe(struct platform_device *pdev)
 	irq_set_handler_data(irq_num, (void *)(XGPIOPS_IRQBASE));
 	irq_set_chained_handler(irq_num, xgpiops_irqhandler);
 
-#ifdef CONFIG_COMMON_CLK
 	clk_disable(gpio->clk);
-#endif
 	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 
-#ifdef CONFIG_COMMON_CLK
 err_clk_put:
 	clk_put(gpio->clk);
 err_chip_remove:
 	gpiochip_remove(chip);
-#endif
 err_iounmap:
 	iounmap(gpio->base_addr);
 err_release_region:
@@ -657,12 +646,10 @@ err_free_gpio:
 
 static int xgpiops_remove(struct platform_device *pdev)
 {
-#ifdef CONFIG_COMMON_CLK
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
 	clk_disable_unprepare(gpio->clk);
 	clk_put(gpio->clk);
-#endif
 	return 0;
 }
 
