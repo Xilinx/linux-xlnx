@@ -2289,7 +2289,7 @@ static void xusbps_udc_release(struct device *dev)
  * init resource for globle controller
  * Return the udc handle on success or NULL on failure
  ------------------------------------------------------------------*/
-static int __init struct_udc_setup(struct xusbps_udc *udc,
+static int __devinit struct_udc_setup(struct xusbps_udc *udc,
 		struct platform_device *pdev)
 {
 	struct xusbps_usb2_platform_data *pdata;
@@ -2344,8 +2344,8 @@ static int __init struct_udc_setup(struct xusbps_udc *udc,
  * ep0out is not used so do nothing here
  * ep0in should be taken care
  *--------------------------------------------------------------*/
-static int __init struct_ep_setup(struct xusbps_udc *udc, unsigned char index,
-		char *name, int link)
+static int __devinit struct_ep_setup(struct xusbps_udc *udc,
+				unsigned char index, char *name, int link)
 {
 	struct xusbps_ep *ep = &udc->eps[index];
 
@@ -2377,7 +2377,7 @@ static int __init struct_ep_setup(struct xusbps_udc *udc, unsigned char index,
  * all intialization operations implemented here except enabling usb_intr reg
  * board setup should have been done in the platform code
  */
-static int __init xusbps_udc_probe(struct platform_device *pdev)
+static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 	unsigned int i;
