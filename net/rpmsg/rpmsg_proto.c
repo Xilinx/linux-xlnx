@@ -514,7 +514,7 @@ static int rpmsg_proto_probe(struct rpmsg_channel *rpdev)
 	return ret;
 }
 
-static void __devexit rpmsg_proto_remove(struct rpmsg_channel *rpdev)
+static void rpmsg_proto_remove(struct rpmsg_channel *rpdev)
 {
 	struct device *dev = &rpdev->dev;
 	int id, dst = rpdev->dst;
@@ -552,7 +552,7 @@ static struct rpmsg_driver rpmsg_proto_drv = {
 	.id_table	= rpmsg_proto_id_table,
 	.probe		= rpmsg_proto_probe,
 	.callback	= rpmsg_proto_cb,
-	.remove		= __devexit_p(rpmsg_proto_remove),
+	.remove		= rpmsg_proto_remove,
 };
 
 int __init rpmsg_proto_init(void)
