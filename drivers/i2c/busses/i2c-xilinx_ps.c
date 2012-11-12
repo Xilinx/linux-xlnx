@@ -838,19 +838,19 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	else
 		id->clk = clk_get_sys("I2C0_APER", NULL);
 	if (IS_ERR(id->clk)) {
-		pr_err("Xilinx I2CPS clock not found.\n");
+		dev_err(&pdev->dev, "Clock not found.\n");
 		ret = PTR_ERR(id->clk);
 		goto err_unmap;
 	}
 	ret = clk_prepare_enable(id->clk);
 	if (ret) {
-		pr_err("Xilinx I2CPS unable to enable clock.\n");
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
 		goto err_clk_put;
 	}
 	id->clk_rate_change_nb.notifier_call = xi2cps_clk_notifier_cb;
 	id->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
-		pr_warn("Unable to register clock notifier.\n");
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 	id->input_clk = (unsigned int)clk_get_rate(id->clk);
 #else /* ! CONFIG_COMMON_CLK */
 	prop = of_get_property(pdev->dev.of_node, "input-clk", NULL);
