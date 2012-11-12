@@ -45,9 +45,7 @@
 #include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
 #include <linux/pm_runtime.h>
-#ifdef CONFIG_COMMON_CLK
 #include <linux/clk.h>
-#endif
 #include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
@@ -555,11 +553,10 @@ struct xemacps_bdring {
 /* Our private device data. */
 struct net_local {
 	void   __iomem         *baseaddr;
-#ifdef CONFIG_COMMON_CLK
 	struct clk		*devclk;
 	struct clk		*aperclk;
 	struct notifier_block	clk_rate_change_nb;
-#endif
+
 	struct xemacps_bdring tx_ring;
 	struct xemacps_bdring rx_ring;
 	struct device_node *phy_node;
@@ -595,22 +592,12 @@ struct net_local {
 	unsigned               ip_summed;
 	unsigned int	       enetnum;
 	unsigned int 	       board_type;
-#ifndef CONFIG_COMMON_CLK
-	unsigned int 	       slcr_div0_1000Mbps;
-	unsigned int 	       slcr_div1_1000Mbps;
-	unsigned int 	       slcr_div0_100Mbps;
-	unsigned int 	       slcr_div1_100Mbps;
-	unsigned int 	       slcr_div0_10Mbps;
-	unsigned int 	       slcr_div1_10Mbps;
-#endif
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int 	       ptpenetclk;
 #endif
 };
-#ifdef CONFIG_COMMON_CLK
 #define to_net_local(_nb)	container_of(_nb, struct net_local,\
 		clk_rate_change_nb)
-#endif
 
 static struct net_device_ops netdev_ops;
 
@@ -747,25 +734,9 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	unsigned long flags;
 	int status_change = 0;
 	u32 regval;
-#ifdef CONFIG_COMMON_CLK
 	long rate;
-#else
-	u32 regval1;
-	u32 slcroffset;
-#endif
 
 	spin_lock_irqsave(&lp->lock, flags);
-#ifndef CONFIG_COMMON_CLK
-	if (lp->enetnum == 0) {
-		regval1 = xslcr_read(XSLCR_EMAC0_CLK_CTRL_OFFSET);
-		regval1 &= XEMACPS_SLCR_DIV_MASK;
-		slcroffset = XSLCR_EMAC0_CLK_CTRL_OFFSET;
-	} else {
-		regval1 = xslcr_read(XSLCR_EMAC1_CLK_CTRL_OFFSET);
-		regval1 &= XEMACPS_SLCR_DIV_MASK;
-		slcroffset = XSLCR_EMAC1_CLK_CTRL_OFFSET;
-	}
-#endif
 
 	if (phydev->link) {
 		if ((lp->speed != phydev->speed) ||
@@ -779,53 +750,35 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
-#ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 125000000);
 				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
 						rate);
 				if (clk_set_rate(lp->devclk, rate))
 					dev_err(&lp->pdev->dev,
 					    "Setting new clock rate failed.\n");
-#else
-				regval1 |= ((lp->slcr_div1_1000Mbps) << 20);
-				regval1 |= ((lp->slcr_div0_1000Mbps) << 8);
-				xslcr_write(slcroffset, regval1);
-#endif
 			} else {
 				regval &= ~XEMACPS_NWCFG_1000_MASK;
 			}
 
 			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
-#ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 25000000);
 				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
 						rate);
 				if (clk_set_rate(lp->devclk, rate))
 					dev_err(&lp->pdev->dev,
 					    "Setting new clock rate failed.\n");
-#else
-				regval1 |= ((lp->slcr_div1_100Mbps) << 20);
-				regval1 |= ((lp->slcr_div0_100Mbps) << 8);
-				xslcr_write(slcroffset, regval1);
-#endif
 			} else {
 				regval &= ~XEMACPS_NWCFG_100_MASK;
 			}
 
 			if (phydev->speed == SPEED_10) {
-#ifdef CONFIG_COMMON_CLK
 				rate = clk_round_rate(lp->devclk, 2500000);
 				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
 						rate);
 				if (clk_set_rate(lp->devclk, rate))
 					dev_err(&lp->pdev->dev,
 					    "Setting new clock rate failed.\n");
-#else
-				regval1 |= ((lp->slcr_div1_10Mbps) << 20);
-				regval1 |= ((lp->slcr_div0_10Mbps) << 8);
-				xslcr_write(slcroffset, regval1);
-#endif
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
@@ -856,7 +809,6 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	}
 }
 
-#ifdef CONFIG_COMMON_CLK
 static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		event, void *data)
 {
@@ -886,7 +838,6 @@ static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		return NOTIFY_DONE;
 	}
 }
-#endif
 
 /**
  * xemacps_mii_probe - probe mii bus, find the right bus_id to register
@@ -3071,7 +3022,6 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		lp->board_type = BOARD_TYPE_ZYNQ;
 	}
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-#ifdef CONFIG_COMMON_CLK
 		if (lp->enetnum == 0)
 			lp->aperclk = clk_get_sys("GEM0_APER", NULL);
 		else
@@ -3107,45 +3057,8 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
 			dev_warn(&pdev->dev,
 					"Unable to register clock notifier.\n");
-#else
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div0-1000Mbps", NULL);
-		if (prop)
-			lp->slcr_div0_1000Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div0_1000Mbps = XEMACPS_DFLT_SLCR_DIV0_1000;
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div1-1000Mbps", NULL);
-		if (prop)
-			lp->slcr_div1_1000Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div1_1000Mbps = XEMACPS_DFLT_SLCR_DIV1_1000;
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div0-100Mbps", NULL);
-		if (prop)
-			lp->slcr_div0_100Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div0_100Mbps = XEMACPS_DFLT_SLCR_DIV0_100;
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div1-100Mbps", NULL);
-		if (prop)
-			lp->slcr_div1_100Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div1_100Mbps = XEMACPS_DFLT_SLCR_DIV1_100;
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div0-10Mbps", NULL);
-		if (prop)
-			lp->slcr_div0_10Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div0_10Mbps = XEMACPS_DFLT_SLCR_DIV0_10;
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,slcr-div1-10Mbps", NULL);
-		if (prop)
-			lp->slcr_div1_10Mbps = (u32)be32_to_cpup(prop);
-		else
-			lp->slcr_div1_10Mbps = XEMACPS_DFLT_SLCR_DIV1_10;
-#endif
 	}
+
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
 		prop = of_get_property(lp->pdev->dev.of_node,
@@ -3195,7 +3108,6 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	return 0;
 
 err_out_unregister_clk_notifier:
-#ifdef CONFIG_COMMON_CLK
 	clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
 	clk_disable_unprepare(lp->devclk);
 err_out_clk_dis_aper:
@@ -3204,7 +3116,6 @@ err_out_clk_put:
 	clk_put(lp->devclk);
 err_out_clk_put_aper:
 	clk_put(lp->aperclk);
-#endif
 err_out_unregister_netdev:
 	unregister_netdev(ndev);
 err_out_free_irq:
@@ -3243,14 +3154,11 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 		free_netdev(ndev);
 		platform_set_drvdata(pdev, NULL);
 
-#ifdef CONFIG_COMMON_CLK
-		/* clock prototyping */
 		clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
 		clk_disable_unprepare(lp->devclk);
 		clk_put(lp->devclk);
 		clk_disable_unprepare(lp->aperclk);
 		clk_put(lp->aperclk);
-#endif
 	}
 
 	return 0;
@@ -3269,16 +3177,13 @@ static int xemacps_suspend(struct device *device)
 	struct platform_device *pdev = container_of(device,
 			struct platform_device, dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
-#ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
-#endif
+
 	netif_device_detach(ndev);
-#ifdef CONFIG_COMMON_CLK
 	if (!pm_runtime_suspended(device)) {
 		clk_disable(lp->devclk);
 		clk_disable(lp->aperclk);
 	}
-#endif
 	return 0;
 }
 
@@ -3293,20 +3198,18 @@ static int xemacps_resume(struct device *device)
 	struct platform_device *pdev = container_of(device,
 			struct platform_device, dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
-#ifdef CONFIG_COMMON_CLK
 	struct net_local *lp = netdev_priv(ndev);
 
 	if (!pm_runtime_suspended(device)) {
 		clk_enable(lp->aperclk);
 		clk_enable(lp->devclk);
 	}
-#endif
 	netif_device_attach(ndev);
 	return 0;
 }
 #endif /* ! CONFIG_PM_SLEEP */
 
-#if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_COMMON_CLK)
+#ifdef CONFIG_PM_RUNTIME
 static int xemacps_runtime_idle(struct device *dev)
 {
 	return pm_schedule_suspend(dev, 1);
@@ -3335,7 +3238,7 @@ static int xemacps_runtime_suspend(struct device *device)
 	clk_disable(lp->aperclk);
 	return 0;
 }
-#endif /* ! CONFIG_COMMON_CLK && ! CONFIG_PM_RUNTIME */
+#endif /* CONFIG_PM_RUNTIME */
 
 static const struct dev_pm_ops xemacps_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xemacps_suspend, xemacps_resume)
