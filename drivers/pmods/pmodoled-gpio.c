@@ -231,7 +231,8 @@ struct file_operations gpio_pmodoled_cdev_fops = {
 	.release = gpio_pmodoled_close,
 };
 
-static int __init add_gpio_pmodoled_device_to_bus(struct gpio_pmodoled_device *dev)
+static int __devinit add_gpio_pmodoled_device_to_bus(
+					      struct gpio_pmodoled_device *dev)
 {
 	struct spi_master *spi_master;
 	struct spi_device *spi_device;
