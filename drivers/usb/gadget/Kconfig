@@ -178,7 +178,7 @@ config USB_FSL_USB2
 
 config USB_GADGET_XUSBPS
 	boolean "Xilinx PS Highspeed USB DR Peripheral Controller"
-	depends on ARCH_XILINX || ARCH_ZYNQ
+	depends on ARCH_ZYNQ
 	select USB_GADGET_DUALSPEED
 	select USB_XUSBPS_DR_OF if OF
 	help
