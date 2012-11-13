@@ -596,7 +596,7 @@ config MTD_NAND_NUC900
 
 config MTD_NAND_XILINX_PSS
 	tristate "Xilinx PSS NAND flash Driver"
-	depends on MTD_NAND && (ARCH_XILINX || ARCH_ZYNQ)
+	depends on MTD_NAND && ARCH_ZYNQ
 	help
 	  This enables access to the NAND flash device on Xilinx PSS.
 
