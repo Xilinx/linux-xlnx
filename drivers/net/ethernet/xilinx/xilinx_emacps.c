@@ -3280,34 +3280,7 @@ static struct platform_driver xemacps_driver = {
 	},
 };
 
-/**
- * xemacps_init - Initial driver registration call
- *
- * Returns whether the driver registration was successful or not.
- */
-static int __init xemacps_init(void)
-{
-    /*
-     * No kernel boot options used,
-     * so we just need to register the driver.
-     * If we are sure the device is non-hotpluggable, call
-     * platform_driver_probe(&xemacps_driver, xemacps_probe);
-     * to remove run-once probe from memory.
-     * Typical use for system-on-chip processor.
-     */
-	return platform_driver_probe(&xemacps_driver, xemacps_probe);
-}
-
-/**
- * xemacps_exit - Driver unregistration call
- **/
-static void __exit xemacps_exit(void)
-{
-	platform_driver_unregister(&xemacps_driver);
-}
-
-module_init(xemacps_init);
-module_exit(xemacps_exit);
+module_platform_driver(xemacps_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx Ethernet driver");
