@@ -2,7 +2,7 @@
 
 / {
 	model = "Xilinx Zynq ZC770 XM013 (DC4)";
-	compatible = "xlnx,zynq-zc770-xm013";
+	compatible = "xlnx,zynq-zc770";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;
@@ -97,6 +97,18 @@
 			speed-hz = <166666700>;
 			bus-num = <0>;
 			num-chip-select = <4>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+			eeprom: at25@0 {
+				at25,byte-len = <8192>;
+				at25,addr-mode = <2>;
+				at25,page-size = <32>;
+
+				compatible = "atmel,at25";
+				reg = <2>;
+				spi-max-frequency = <1000000>;
+			};
 		};
 
 		i2c1: i2c@e0005000 {
@@ -107,6 +119,15 @@
 			bus-id = <0>;
 			input-clk = <133000000>;
 			i2c-clk = <100000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+			osc@55 {
+				compatible = "si570";
+				reg = <0x55>;
+				factory-fout = <156250000>;
+				initial-fout = <148500000>;
+			};
 		};
 
 		qspi0: spi@e000d000 {
