@@ -138,29 +138,22 @@ static int zynq_pll_get_pll_params(unsigned int fbdiv, u32 *rpll_cp,
 	case 23:
 		lock_cnt = 425;
 		break;
-	case 24:
-	case 25:
+	case 24 ... 25:
 		lock_cnt = 400;
 		break;
 	case 26:
 		lock_cnt = 375;
 		break;
-	case 27:
-	case 28:
+	case 27 ... 28:
 		lock_cnt = 350;
 		break;
-	case 29:
-	case 30:
+	case 29 ... 30:
 		lock_cnt = 325;
 		break;
-	case 31:
-	case 32:
-	case 33:
+	case 31 ... 33:
 		lock_cnt = 300;
 		break;
-	case 34:
-	case 35:
-	case 36:
+	case 34 ... 36:
 		lock_cnt = 275;
 		break;
 	default:
