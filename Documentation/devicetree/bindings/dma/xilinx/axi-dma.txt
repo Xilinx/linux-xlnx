@@ -1,0 +1,28 @@
+Xilinx AXI DMA engine, it does transfers between memory and device. It can be
+configured to have one channel or two channels. If configured as two
+channels, one is to transmit to device and another is to receive from
+device.
+
+Required properties:
+- compatible: Should be "xlnx,axi-dma"
+- reg: Should contain DMA registers location and length.
+- interrupts: Should contain per channel DMA interrupts.
+- compatible (child node): It should be either "xlnx,axi-dma-mm2s-channel" or
+	"xlnx,axi-dma-s2mm-channel". It depends on the hardware design and it
+	can also have both channels.
+
+Example:
+++++++++
+
+axi_dma_0: axidma@40400000 {
+	compatible = "xlnx,axi-dma";
+	reg = < 0x40400000 0x10000 >;
+	dma-channel@40400000 {
+		compatible = "xlnx,axi-dma-mm2s-channel";
+		interrupts = < 0 59 4 >;
+	} ;
+	dma-channel@40030030 {
+		compatible = "xlnx,axi-dma-s2mm-channel";
+		interrupts = < 0 58 4 >;
+	} ;
+} ;

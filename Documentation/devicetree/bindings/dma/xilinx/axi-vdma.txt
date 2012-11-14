@@ -1,0 +1,28 @@
+Xilinx AXI VDMA engine, it does transfers between memory and video devices.
+It can be configured to have one channel or two channels. If configured
+as two channels, one is to transmit to the video device and another is
+to receive from the video device.
+
+Required properties:
+- compatible: Should be "xlnx,axi-vdma"
+- reg: Should contain VDMA registers location and length.
+- interrupts: Should contain per channel VDMA interrupts.
+- compatible (child node): It should be either "xlnx,axi-vdma-mm2s-channel" or
+	"xlnx,axi-vdma-s2mm-channel". It depends on the hardware design and it
+	can also have both channels.
+
+Example:
+++++++++
+
+axi_vdma_0: axivdma@40030000 {
+	compatible = "xlnx,axi-vdma";
+	reg = < 0x40030000 0x10000 >;
+	dma-channel@40030000 {
+		compatible = "xlnx,axi-vdma-mm2s-channel";
+		interrupts = < 0 54 4 >;
+	} ;
+	dma-channel@40030030 {
+		compatible = "xlnx,axi-vdma-s2mm-channel";
+		interrupts = < 0 53 4 >;
+	} ;
+} ;

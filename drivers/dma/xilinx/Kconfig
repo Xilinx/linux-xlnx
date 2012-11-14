@@ -1,0 +1,53 @@
+#
+# XILINX DMA Engines configuration
+#
+
+menuconfig XILINX_DMA_ENGINES
+	bool "Xilinx DMA Engines"
+	help
+	  Enable support for the Xilinx DMA controllers. It supports three DMA
+	  engines: Axi Central DMA (memory to memory transfer), Axi DMA (memory and
+	  device transfer), and Axi VDMA (memory and video device transfer).
+
+if XILINX_DMA_ENGINES
+
+config XILINX_AXIDMA
+	tristate "Xilinx AXI DMA Engine"
+	select DMA_ENGINE
+	help
+	  Enable support for Xilinx Axi DMA (memory and device transfer).
+
+config XILINX_DMATEST
+	tristate "DMA Test client for AXI DMA"
+	depends on XILINX_AXIDMA
+	help
+	  Simple DMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
+config XILINX_AXIVDMA
+	tristate "Xilinx AXI VDMA Engine"
+	select DMA_ENGINE
+	help
+	  Enable support for Xilinx Axi VDMA (memory and video device transfer).
+
+config XILINX_VDMATEST
+	tristate "DMA Test client for VDMA"
+	depends on XILINX_AXIVDMA
+	help
+	  Simple DMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
+config XILINX_AXICDMA
+	tristate "Xilinx AXI CDMA Engine"
+	select DMA_ENGINE
+	help
+	  Enable support for Xilinx Axi Central DMA (memory to memory transfer).
+
+config XILINX_CDMATEST
+	tristate "DMA Test client for CDMA"
+	depends on XILINX_AXICDMA
+	help
+	  Simple DMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
+endif # XILINX_DMA_ENGINES

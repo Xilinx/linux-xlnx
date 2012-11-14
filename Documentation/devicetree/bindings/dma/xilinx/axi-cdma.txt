@@ -1,0 +1,18 @@
+Xilinx AXI CDMA engine, it does transfers between memory and memory
+
+Required properties:
+- compatible: Should be "xlnx,axi-cdma"
+- reg: Should contain CDMA registers location and length.
+- interrupts: Should contain channel CDMA interrupts.
+
+Example:
+++++++++
+
+axi_cdma_0: axicdma@40030000 {
+	compatible = "xlnx,axi-cdma";
+	reg = < 0x40030000 0x10000 >;
+	dma-channel@40030000 {
+		interrupts = < 0 59 4 >;
+	} ;
+} ;
+
