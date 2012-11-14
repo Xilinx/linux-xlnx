@@ -688,8 +688,6 @@ static int ehci_run (struct usb_hcd *hcd)
 	return 0;
 }
 
-/* FIXME It it unused - this should be probably resolve somehow */
-#if 0
 static int ehci_setup(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
@@ -721,7 +719,6 @@ static int ehci_setup(struct usb_hcd *hcd)
 
 	return 0;
 }
-#endif
 
 /*-------------------------------------------------------------------------*/
 
