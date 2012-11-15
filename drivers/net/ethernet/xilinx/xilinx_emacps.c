@@ -710,14 +710,15 @@ static void xemacps_phy_init(struct net_device *ndev)
 	for (i = 0; i < 10; i++)
 		mdelay(500);
 #ifdef DEBUG_VERBOSE
-	printk(KERN_INFO "GEM: phy register dump, start from 0, four in a row.");
+	dev_dbg(&lp->pdev->dev,
+			"phy register dump, start from 0, four in a row.");
 	for (i = 0; i <= 30; i++) {
 		if (!(i%4))
-			printk("\n %02d:  ", i);
+			dev_dbg(&lp->pdev->dev, "\n %02d:  ", i);
 		regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, i);
-		printk(" 0x%08x", regval);
+		dev_dbg(&lp->pdev->dev, " 0x%08x", regval);
 	}
-	printk("\n");
+	dev_dbg(&lp->pdev->dev, "\n");
 #endif
 }
 
@@ -798,14 +799,13 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	spin_unlock_irqrestore(&lp->lock, flags);
 
 	if (status_change) {
-		if (phydev->link) {
-			printk(KERN_INFO "%s: link up (%d/%s)\n",
-				ndev->name, phydev->speed,
+		if (phydev->link)
+			dev_info(&lp->pdev->dev, "link up (%d/%s)\n",
+				phydev->speed,
 				DUPLEX_FULL == phydev->duplex ?
 				"FULL" : "HALF");
-		} else {
-			printk(KERN_INFO "%s: link down\n", ndev->name);
-		}
+		else
+			dev_info(&lp->pdev->dev, "link down\n");
 	}
 }
 
@@ -858,14 +858,14 @@ static int xemacps_mii_probe(struct net_device *ndev)
 					PHY_INTERFACE_MODE_RGMII_ID);
 	}
 	if (!phydev) {
-		printk(KERN_ERR "%s: no PHY found\n", ndev->name);
+		dev_err(&lp->pdev->dev, "%s: no PHY found\n", ndev->name);
 		return -1;
 	}
 
-#ifdef DEBUG
-	printk(KERN_INFO "GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
+	dev_dbg(&lp->pdev->dev,
+		"GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
 		phydev, phydev->phy_id, phydev->addr);
-#endif
+
 	phydev->supported &= (PHY_GBIT_FEATURES | SUPPORTED_Pause |
 							SUPPORTED_Asym_Pause);
 	phydev->advertising = phydev->supported;
@@ -880,13 +880,11 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	else
 		xemacps_phy_init(lp->ndev);
 
-#ifdef DEBUG
-	printk(KERN_INFO "%s, phy_addr 0x%x, phy_id 0x%08x\n",
-			ndev->name, lp->phy_dev->addr, lp->phy_dev->phy_id);
+	dev_dbg(&lp->pdev->dev, "phy_addr 0x%x, phy_id 0x%08x\n",
+			lp->phy_dev->addr, lp->phy_dev->phy_id);
 
-	printk(KERN_INFO "%s, attach [%s] phy driver\n", ndev->name,
+	dev_dbg(&lp->pdev->dev, "attach [%s] phy driver\n",
 			lp->phy_dev->drv->name);
-#endif
 
 	return 0;
 }
@@ -964,10 +962,11 @@ static void __devinit xemacps_update_hwaddr(struct net_local *lp)
 	} else {
 		dev_info(&lp->pdev->dev, "invalid address, use assigned\n");
 		random_ether_addr(lp->ndev->dev_addr);
-		printk(KERN_INFO "MAC updated %02x:%02x:%02x:%02x:%02x:%02x\n",
-			lp->ndev->dev_addr[0], lp->ndev->dev_addr[1],
-			lp->ndev->dev_addr[2], lp->ndev->dev_addr[3],
-			lp->ndev->dev_addr[4], lp->ndev->dev_addr[5]);
+		dev_info(&lp->pdev->dev,
+				"MAC updated %02x:%02x:%02x:%02x:%02x:%02x\n",
+				lp->ndev->dev_addr[0], lp->ndev->dev_addr[1],
+				lp->ndev->dev_addr[2], lp->ndev->dev_addr[3],
+				lp->ndev->dev_addr[4], lp->ndev->dev_addr[5]);
 	}
 }
 
@@ -994,7 +993,8 @@ static void xemacps_set_hwaddr(struct net_local *lp)
 #ifdef DEBUG
 	regvall = xemacps_read(lp->baseaddr, XEMACPS_LADDR1L_OFFSET);
 	regvalh = xemacps_read(lp->baseaddr, XEMACPS_LADDR1H_OFFSET);
-	printk(KERN_INFO "GEM: MAC 0x%08x, 0x%08x, %02x:%02x:%02x:%02x:%02x:%02x\n",
+	dev_dbg(&lp->pdev->dev,
+			"MAC 0x%08x, 0x%08x, %02x:%02x:%02x:%02x:%02x:%02x\n",
 		regvall, regvalh,
 		(regvall & 0xff), ((regvall >> 8) & 0xff),
 		((regvall >> 16) & 0xff), (regvall >> 24),
@@ -1082,20 +1082,19 @@ static void print_ring(struct xemacps_bdring *ring)
 	unsigned regval;
 	struct xemacps_bd *bd;
 
-	printk(KERN_INFO "freehead %p prehead %p hwhead %p \
-		hwtail %p posthead %p\n", ring->freehead, ring->prehead,
-		ring->hwhead, ring->hwtail, ring->posthead);
-	printk(KERN_INFO "freecnt %d hwcnt %d precnt %d \
-		postcnt %d allcnt %d\n",
-		ring->freecnt, ring->hwcnt, ring->precnt,
-		ring->postcnt, ring->allcnt);
+	pr_info("freehead %p prehead %p hwhead %p hwtail %p posthead %p\n",
+			ring->freehead, ring->prehead, ring->hwhead,
+			ring->hwtail, ring->posthead);
+	pr_info("freecnt %d hwcnt %d precnt %d postcnt %d allcnt %d\n",
+			ring->freecnt, ring->hwcnt, ring->precnt,
+			ring->postcnt, ring->allcnt);
 
 	bd = (struct xemacps_bd *)ring->firstbdaddr;
 	for (i = 0; i < XEMACPS_RECV_BD_CNT; i++) {
 		regval = xemacps_read(bd, XEMACPS_BD_ADDR_OFFSET);
-		printk(KERN_INFO "BD %p: ADDR: 0x%08x\n", bd, regval);
+		pr_info("BD %p: ADDR: 0x%08x\n", bd, regval);
 		regval = xemacps_read(bd, XEMACPS_BD_STAT_OFFSET);
-		printk(KERN_INFO "BD %p: STAT: 0x%08x\n", bd, regval);
+		pr_info("BD %p: STAT: 0x%08x\n", bd, regval);
 		bd++;
 	}
 }
@@ -1307,10 +1306,8 @@ int xemacps_bdringfree(struct xemacps_bdring *ringptr, unsigned numbd,
 		return 0;
 
 	/* Make sure we are in sync with xemacps_bdringfromhw() */
-	if ((ringptr->postcnt < numbd) || (ringptr->posthead != bdptr)) {
-		printk(KERN_ERR "GEM: Improper bdringfree()\n");
+	if ((ringptr->postcnt < numbd) || (ringptr->posthead != bdptr))
 		return -ENOSPC;
-	}
 
 	/* Update pointers and counters */
 	ringptr->freecnt += numbd;
@@ -1349,8 +1346,7 @@ static void xemacps_DmaSetupRecvBuffers(struct net_device *ndev)
 
 		result = xemacps_bdringalloc(rxringptr, 1, &bdptr);
 		if (result) {
-			printk(KERN_ERR "%s RX bdringalloc() error.\n",
-					 lp->ndev->name);
+			dev_err(&lp->pdev->dev, "RX bdringalloc() error.\n");
 			break;
 		}
 
@@ -1369,8 +1365,9 @@ static void xemacps_DmaSetupRecvBuffers(struct net_device *ndev)
 		 */
 		result = xemacps_bdringtohw(rxringptr, 1, bdptr);
 		if (result) {
-			printk(KERN_ERR "%s: bdringtohw unsuccessful (%d)\n",
-				ndev->name, result);
+			dev_err(&lp->pdev->dev,
+					"bdringtohw unsuccessful (%d)\n",
+					result);
 			break;
 		}
 	}
@@ -1492,8 +1489,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 	bdptrfree = bdptr;
 
 #ifdef DEBUG_VERBOSE
-	printk(KERN_INFO "GEM: %s: numbd %d\n",
-			__func__, numbd);
+	dev_dbg(&lp->pdev->dev, "%s: numbd %d\n", __func__, numbd);
 #endif
 
 	while (numbd) {
@@ -1501,14 +1497,16 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		regval = xemacps_read(bdptr, XEMACPS_BD_STAT_OFFSET);
 
 #ifdef DEBUG_VERBOSE
-		printk(KERN_INFO "GEM: %s: RX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
+		dev_dbg(&lp->pdev->dev,
+			"%s: RX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
 			__func__, bdidx, bdptr, regval);
 #endif
 
 		/* look for start of packet */
 		if (!(regval & XEMACPS_RXBUF_SOF_MASK) ||
 		    !(regval & XEMACPS_RXBUF_EOF_MASK)) {
-			printk(KERN_INFO "GEM: %s: SOF and EOF not set (0x%08x) BD %p\n",
+			dev_info(&lp->pdev->dev,
+				"%s: SOF and EOF not set (0x%08x) BD %p\n",
 				__func__, regval, bdptr);
 			return 0;
 		}
@@ -1570,7 +1568,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 	/* Make used BDs available */
 	rc = xemacps_bdringfree(&lp->rx_ring, numbdfree, bdptrfree);
 	if (rc)
-		printk(KERN_ERR "%s RX bdringfree() error.\n", lp->ndev->name);
+		dev_err(&lp->pdev->dev, "RX bdringfree() error.\n");
 
 	/* Refill RX buffers */
 	xemacps_DmaSetupRecvBuffers(lp->ndev);
@@ -1644,8 +1642,7 @@ static void xemacps_tx_poll(struct net_device *ndev)
 	if (regval & (XEMACPS_TXSR_URUN_MASK | XEMACPS_TXSR_RXOVR_MASK |
 		XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_COL1000_MASK |
 		XEMACPS_TXSR_BUFEXH_MASK)) {
-		printk(KERN_ERR "%s: TX ERROR 0x%x\n",
-			ndev->name, regval);
+		dev_err(&lp->pdev->dev, "TX ERROR 0x%x\n", regval);
 		lp->stats.tx_errors++;
 	}
 
@@ -1695,8 +1692,9 @@ static void xemacps_tx_poll(struct net_device *ndev)
 		rp->skb = NULL;
 		dev_kfree_skb_irq(skb);
 #ifdef DEBUG_VERBOSE_TX
-		printk(KERN_INFO "GEM: TX bd index %d BD_STAT 0x%08x after sent.\n",
-			bdidx, regval);
+		dev_dbg(&lp->pdev->dev,
+				"TX bd index %d BD_STAT 0x%08x after sent.\n",
+				bdidx, regval);
 #endif
 		/* log tx completed packets and bytes, errors logs
 		 * are in other error counters.
@@ -1721,7 +1719,7 @@ static void xemacps_tx_poll(struct net_device *ndev)
 
 	rc = xemacps_bdringfree(&lp->tx_ring, numbdfree, bdptrfree);
 	if (rc)
-		printk(KERN_ERR "%s TX bdringfree() error.\n", ndev->name);
+		dev_err(&lp->pdev->dev, "TX bdringfree() error.\n");
 
 tx_poll_out:
 	if (netif_queue_stopped(ndev))
@@ -1888,12 +1886,11 @@ static int xemacps_descriptor_init(struct net_local *lp)
 	dev_dbg(&lp->pdev->dev, "TX ring %d bytes at 0x%x mapped %p\n",
 			size, lp->tx_bd_dma, lp->tx_bd);
 
-#ifdef DEBUG
-	printk(KERN_INFO "GEM: lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
+	dev_dbg(&lp->pdev->dev, "lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
 		lp->tx_bd, (void *)lp->tx_bd_dma, lp->tx_skb);
-	printk(KERN_INFO "GEM: lp->rx_bd %p lp->rx_bd_dma %p lp->rx_skb %p\n",
+	dev_dbg(&lp->pdev->dev, "lp->rx_bd %p lp->rx_bd_dma %p lp->rx_skb %p\n",
 		lp->rx_bd, (void *)lp->rx_bd_dma, lp->rx_skb);
-#endif
+
 	return 0;
 
 err_out:
@@ -2121,22 +2118,21 @@ static int xemacps_open(struct net_device *ndev)
 
 	rc = xemacps_descriptor_init(lp);
 	if (rc) {
-		printk(KERN_ERR "%s Unable to allocate DMA memory, rc %d\n",
-		ndev->name, rc);
+		dev_err(&lp->pdev->dev,
+				"Unable to allocate DMA memory, rc %d\n", rc);
 		return rc;
 	}
 
 	rc = pm_runtime_get(&lp->pdev->dev);
 	if (rc < 0) {
-		dev_err(&lp->pdev->dev,
-			"%s pm_runtime_get() failed, rc %d\n", ndev->name, rc);
+		dev_err(&lp->pdev->dev, "pm_runtime_get() failed, rc %d\n", rc);
 		goto err_free_rings;
 	}
 
 	rc = xemacps_setup_ring(lp);
 	if (rc) {
-		printk(KERN_ERR "%s Unable to setup BD rings, rc %d\n",
-		ndev->name, rc);
+		dev_err(&lp->pdev->dev, "Unable to setup BD rings, rc %d\n",
+				rc);
 		goto err_pm_put;
 	}
 
@@ -2144,7 +2140,8 @@ static int xemacps_open(struct net_device *ndev)
 	napi_enable(&lp->napi);
 	rc = xemacps_mii_probe(ndev);
 	if (rc != 0) {
-		printk(KERN_ERR "%s mii_probe fail.\n", lp->mii_bus->name);
+		dev_err(&lp->pdev->dev, "%s mii_probe fail.\n",
+				lp->mii_bus->name);
 		if (rc == (-2)) {
 			mdiobus_unregister(lp->mii_bus);
 			kfree(lp->mii_bus->irq);
@@ -2208,8 +2205,8 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 	struct net_local *lp = netdev_priv(ndev);
 	int rc;
 
-	printk(KERN_ERR "%s transmit timeout %lu ms, reseting...\n",
-		ndev->name, TX_TIMEOUT * 1000UL / HZ);
+	dev_err(&lp->pdev->dev, "transmit timeout %lu ms, reseting...\n",
+		TX_TIMEOUT * 1000UL / HZ);
 	netif_stop_queue(ndev);
 
 	spin_lock(&lp->lock);
@@ -2220,16 +2217,16 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 		phy_stop(lp->phy_dev);
 	rc = xemacps_descriptor_init(lp);
 	if (rc) {
-		printk(KERN_ERR "%s Unable to allocate DMA memory, rc %d\n",
-		ndev->name, rc);
+		dev_err(&lp->pdev->dev,
+				"Unable to allocate DMA memory, rc %d\n", rc);
 		spin_unlock(&lp->lock);
 		return;
 	}
 
 	rc = xemacps_setup_ring(lp);
 	if (rc) {
-		printk(KERN_ERR "%s Unable to setup BD rings, rc %d\n",
-		ndev->name, rc);
+		dev_err(&lp->pdev->dev, "Unable to setup BD rings, rc %d\n",
+				rc);
 		spin_unlock(&lp->lock);
 		return;
 	}
@@ -2262,11 +2259,11 @@ static int xemacps_set_mac_address(struct net_device *ndev, void *addr)
 
 	if (!is_valid_ether_addr(hwaddr->sa_data))
 		return -EADDRNOTAVAIL;
-#ifdef DEBUG
-	printk(KERN_INFO "GEM: hwaddr 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+
+	dev_dbg(&lp->pdev->dev, "hwaddr 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
 		hwaddr->sa_data[0], hwaddr->sa_data[1], hwaddr->sa_data[2],
 		hwaddr->sa_data[3], hwaddr->sa_data[4], hwaddr->sa_data[5]);
-#endif
+
 	memcpy(ndev->dev_addr, hwaddr->sa_data, ndev->addr_len);
 
 	xemacps_set_hwaddr(lp);
@@ -2291,13 +2288,13 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skb_frag_t *frag;
 
 #ifdef DEBUG_VERBOSE_TX
-	printk(KERN_INFO "%s: TX data:", __func__);
+	dev_dbg(&lp->pdev->dev, "%s: TX data:", __func__);
 	for (i = 0; i < 48; i++) {
 		if (!(i % 16))
-			printk("\n");
-		printk(KERN_INFO " %02x", (unsigned int)skb->data[i]);
+			dev_dbg(&lp->pdev->dev, "\n");
+		dev_dbg(&lp->pdev->dev, " %02x", (unsigned int)skb->data[i]);
 	}
-	printk("\n");
+	dev_dbg(&lp->pdev->dev, "\n");
 #endif
 
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
@@ -2320,7 +2317,8 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	bdptrs = bdptr;
 
 #ifdef DEBUG_VERBOSE_TX
-	printk(KERN_INFO "GEM: TX nr_frags %d, skb->len 0x%x, skb_headlen(skb) 0x%x\n",
+	dev_dbg(&lp->pdev->dev,
+		"TX nr_frags %d, skb->len 0x%x, skb_headlen(skb) 0x%x\n",
 		nr_frags, skb->len, skb_headlen(skb));
 #endif
 
@@ -2359,8 +2357,9 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		xemacps_write(bdptr, XEMACPS_BD_STAT_OFFSET, regval);
 
 #ifdef DEBUG_VERBOSE_TX
-		printk(KERN_INFO "GEM: TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
-			bdidx, bdptr, regval);
+		dev_dbg(&lp->pdev->dev,
+				"TX BD index %d, BDptr %p, BD_STAT 0x%08x\n",
+				bdidx, bdptr, regval);
 #endif
 		bdptr = XEMACPS_BDRING_NEXT(&lp->tx_ring, bdptr);
 	}
@@ -2373,8 +2372,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		dev_kfree_skb(skb);
 		lp->stats.tx_dropped++;
 		xemacps_bdringunalloc(&lp->tx_ring, nr_frags, bdptrs);
-		printk(KERN_ERR "%s can not send, commit TX buffer desc\n",
-			ndev->name);
+		dev_err(&lp->pdev->dev, "cannot send, commit TX buffer desc\n");
 		spin_unlock_irq(&lp->lock);
 		return rc;
 	} else {
@@ -2484,8 +2482,9 @@ static void xemacps_set_hashtable(struct net_device *ndev)
 		hash_index = calc_mac_hash(mc_addr);
 
 		if (hash_index >= XEMACPS_MAX_HASH_BITS) {
-			printk(KERN_ERR "hash calculation out of range %d\n",
-				hash_index);
+			dev_err(&lp->pdev->dev,
+					"hash calculation out of range %d\n",
+					hash_index);
 			break;
 		}
 		if (hash_index < 32)
@@ -2743,9 +2742,8 @@ xemacps_set_pauseparam(struct net_device *ndev,
 	u32 regval;
 
 	if (netif_running(ndev)) {
-		printk(KERN_ERR
-			"%s: Please stop netif before apply configruation\n",
-			ndev->name);
+		dev_err(&lp->pdev->dev,
+			"Please stop netif before apply configruation\n");
 		return -EFAULT;
 	}
 
@@ -2915,7 +2913,7 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 		return xemacps_hwtstamp_ioctl(ndev, rq, cmd);
 #endif
 	default:
-		printk(KERN_INFO "GEM: ioctl %d not implemented.\n", cmd);
+		dev_info(&lp->pdev->dev, "ioctl %d not implemented.\n", cmd);
 		return -EOPNOTSUPP;
 	}
 
@@ -2967,18 +2965,17 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto err_out_free_netdev;
 	}
-#ifdef DEBUG
-	printk(KERN_INFO "GEM: BASEADDRESS hw: %p virt: %p\n",
+
+	dev_dbg(&lp->pdev->dev, "BASEADDRESS hw: %p virt: %p\n",
 			(void *)r_mem->start, lp->baseaddr);
-#endif
 
 	ndev->irq = platform_get_irq(pdev, 0);
 
 	rc = request_irq(ndev->irq, xemacps_interrupt, 0,
 		ndev->name, ndev);
 	if (rc) {
-		printk(KERN_ERR "%s: Unable to request IRQ %p, error %d\n",
-		ndev->name, r_irq, rc);
+		dev_err(&lp->pdev->dev, "Unable to request IRQ %p, error %d\n",
+				r_irq, rc);
 		goto err_out_iounmap;
 	}
 
@@ -3080,7 +3077,7 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 
 	rc = xemacps_mii_init(lp);
 	if (rc) {
-		printk(KERN_ERR "%s: error in xemacps_mii_init\n", ndev->name);
+		dev_err(&lp->pdev->dev, "error in xemacps_mii_init\n");
 		goto err_out_unregister_clk_notifier;
 	}
 
@@ -3090,8 +3087,8 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	printk(KERN_INFO "%s, pdev->id %d, baseaddr 0x%08lx, irq %d\n",
-		ndev->name, pdev->id, ndev->base_addr, ndev->irq);
+	dev_info(&lp->pdev->dev, "pdev->id %d, baseaddr 0x%08lx, irq %d\n",
+		pdev->id, ndev->base_addr, ndev->irq);
 
 	return 0;
 
