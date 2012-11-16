@@ -30,7 +30,6 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 
-#include <asm/mach/time.h>
 #include <asm/smp_twd.h>
 
 #include <mach/zynq_soc.h>
@@ -326,7 +325,7 @@ static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
  * Initializes the timer hardware and register the clock source and clock event
  * timers with Linux kernal timer framework
  */
-static void __init xttcpss_timer_init(void)
+void __init xttcpss_timer_init(void)
 {
 	u32 irq;
 	struct device_node *timer = NULL;
@@ -437,10 +436,3 @@ static void __init xttcpss_timer_init(void)
 	twd_local_timer_of_register();
 #endif
 }
-
-/*
- * Instantiate and initialize the system timer structure
- */
-struct sys_timer xttcpss_sys_timer = {
-	.init		= xttcpss_timer_init,
-};
