@@ -101,6 +101,11 @@ void __init xilinx_memory_init()
 }
 
 #ifdef CONFIG_CPU_FREQ
+#define CPUFREQ_MIN_FREQ_HZ	200000000
+static unsigned int freq_divs[] __initdata = {
+	2, 3
+};
+
 /**
  * xilinx_opp_init() - Register OPPs
  *
@@ -114,6 +119,7 @@ static void __init xilinx_opp_init(void)
 	int ret = 0;
 	long freq;
 	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
+	int i;
 
 	if (IS_ERR(pdev)) {
 		pr_warn("Xilinx OOP init: No device. DVFS not available.");
@@ -127,47 +133,16 @@ static void __init xilinx_opp_init(void)
 	}
 
 	/* frequency/voltage operating points. For now use f only */
-	/* We need some conditionals to enable the max frequencies for the right
-	 * parts only. */
-	/* -3E(?) max f = 1GHz */
 	freq = clk_get_rate(cpuclk);
 	ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 1000000000);
-	if (abs(1000000000 - freq) < 50000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	/* -3 parts max f = 800 MHz */
-	freq = clk_round_rate(cpuclk, 800000000);
-	if (abs(800000000 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 666666667);
-	if (abs(666666667 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 555555556);
-	if (abs(555555556 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 444444444);
-	if (abs(444444444 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 333333333);
-	if (abs(333333333 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 222222222);
-	if (abs(222222222 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 111111111);
-	if (abs(111111111 - freq) < 10000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
-		ret |= opp_add(dev, freq, 0);
-	freq = clk_round_rate(cpuclk, 50000000);
-	if (abs(50000000 - freq) < 5000000 &&
-			IS_ERR(opp_find_freq_exact(dev, freq, 1)))
+	for (i = 0; i < ARRAY_SIZE(freq_divs); i++) {
+		long tmp = clk_round_rate(cpuclk, freq / freq_divs[i]);
+		if (tmp >= CPUFREQ_MIN_FREQ_HZ)
+			ret |= opp_add(dev, tmp, 0);
+	}
+	freq = clk_round_rate(cpuclk, CPUFREQ_MIN_FREQ_HZ);
+	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(opp_find_freq_exact(dev, freq,
+				1)))
 		ret |= opp_add(dev, freq, 0);
 
 	if (ret)
