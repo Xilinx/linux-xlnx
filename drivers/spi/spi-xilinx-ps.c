@@ -17,6 +17,7 @@
  */
 
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -104,7 +105,8 @@
  * @queue:		Head of the queue
  * @queue_state:	Queue status
  * @regs:		Virtual address of the SPI controller registers
- * @input_clk_hz:	Input clock frequency of the SPI controller in Hz
+ * @devclk		Pointer to the peripheral clock
+ * @aperclk		Pointer to the APER clock
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
@@ -121,7 +123,9 @@ struct xspips {
 	struct list_head queue;
 	int queue_state;
 	void __iomem *regs;
-	u32 input_clk_hz;
+	struct clk *devclk;
+	struct clk *aperclk;
+	struct notifier_block clk_rate_change_nb;
 	u32 irq;
 	u32 speed_hz;
 	spinlock_t trans_queue_lock;
@@ -248,14 +252,15 @@ static int xspips_setup_transfer(struct spi_device *spi,
 	/* Set the clock frequency */
 	if (xspi->speed_hz != req_hz) {
 		baud_rate_val = 0;
-		while ((baud_rate_val < 8)  &&
-			(xspi->input_clk_hz / (2 << baud_rate_val)) > req_hz)
-				baud_rate_val++;
+		while ((baud_rate_val < 8) && (clk_get_rate(xspi->devclk) /
+					(2 << baud_rate_val)) > req_hz)
+			baud_rate_val++;
 
 		ctrl_reg &= 0xFFFFFFC7;
 		ctrl_reg |= (baud_rate_val << 3);
 
-		xspi->speed_hz = (xspi->input_clk_hz / (2 << baud_rate_val));
+		xspi->speed_hz =
+			(clk_get_rate(xspi->devclk) / (2 << baud_rate_val));
 	}
 
 	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
@@ -629,6 +634,25 @@ static inline int xspips_destroy_queue(struct xspips *xspi)
 	return 0;
 }
 
+static int xspips_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers. And we may have to suspend operation and return
+		 * after the rate change or its abort
+		 */
+		return NOTIFY_OK;
+	case POST_RATE_CHANGE:
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 /**
  * xspips_probe - Probe method for the SPI driver
  * @dev:	Pointer to the platform_device structure
@@ -688,6 +712,45 @@ static int __devinit xspips_probe(struct platform_device *dev)
 		goto unmap_io;
 	}
 
+	if (xspi->irq == 58)
+		xspi->aperclk = clk_get_sys("SPI0_APER", NULL);
+	else
+		xspi->aperclk = clk_get_sys("SPI1_APER", NULL);
+
+	if (IS_ERR(xspi->aperclk)) {
+		dev_err(&dev->dev, "APER clock not found.\n");
+		ret = PTR_ERR(xspi->aperclk);
+		goto free_irq;
+	}
+
+	if (xspi->irq == 58)
+		xspi->devclk = clk_get_sys("SPI0", NULL);
+	else
+		xspi->devclk = clk_get_sys("SPI1", NULL);
+
+	if (IS_ERR(xspi->devclk)) {
+		dev_err(&dev->dev, "Device clock not found.\n");
+		ret = PTR_ERR(xspi->devclk);
+		goto clk_put_aper;
+	}
+
+	ret = clk_prepare_enable(xspi->aperclk);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to enable APER clock.\n");
+		goto clk_put;
+	}
+
+	ret = clk_prepare_enable(xspi->devclk);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to enable device clock.\n");
+		goto clk_dis_aper;
+	}
+
+	xspi->clk_rate_change_nb.notifier_call = xspips_clk_notifier_cb;
+	xspi->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(xspi->devclk, &xspi->clk_rate_change_nb))
+		dev_warn(&dev->dev, "Unable to register clock notifier.\n");
+
 	/* SPI controller initializations */
 	xspips_init_hw(xspi->regs);
 
@@ -699,7 +762,7 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine bus-num\n");
-		goto free_irq;
+		goto clk_notif_unreg;
 	}
 
 	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
@@ -708,20 +771,12 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
-		goto free_irq;
+		goto clk_notif_unreg;
 	}
 	master->setup = xspips_setup;
 	master->transfer = xspips_transfer;
 
-	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
-	if (prop) {
-		xspi->input_clk_hz = be32_to_cpup(prop);
-		xspi->speed_hz = xspi->input_clk_hz / 2;
-	} else {
-		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine speed-hz\n");
-		goto free_irq;
-	}
+	xspi->speed_hz = clk_get_rate(xspi->devclk) / 2;
 
 	xspi->dev_busy = 0;
 
@@ -738,7 +793,7 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	if (!xspi->workqueue) {
 		ret = -ENOMEM;
 		dev_err(&dev->dev, "problem initializing queue\n");
-		goto free_irq;
+		goto clk_notif_unreg;
 	}
 
 	ret = xspips_start_queue(xspi);
@@ -760,6 +815,15 @@ static int __devinit xspips_probe(struct platform_device *dev)
 
 remove_queue:
 	(void)xspips_destroy_queue(xspi);
+clk_notif_unreg:
+	clk_notifier_unregister(xspi->devclk, &xspi->clk_rate_change_nb);
+	clk_disable_unprepare(xspi->devclk);
+clk_dis_aper:
+	clk_disable_unprepare(xspi->aperclk);
+clk_put:
+	clk_put(xspi->devclk);
+clk_put_aper:
+	clk_put(xspi->aperclk);
 free_irq:
 	free_irq(xspi->irq, xspi);
 unmap_io:
@@ -808,10 +872,17 @@ static int __devexit xspips_remove(struct platform_device *dev)
 
 	spi_unregister_master(master);
 	spi_master_put(master);
-	kfree(master);
 
 	/* Prevent double remove */
 	platform_set_drvdata(dev, NULL);
+
+	clk_notifier_unregister(xspi->devclk, &xspi->clk_rate_change_nb);
+	clk_disable_unprepare(xspi->devclk);
+	clk_disable_unprepare(xspi->aperclk);
+	clk_put(xspi->devclk);
+	clk_put(xspi->aperclk);
+
+	kfree(master);
 
 	dev_dbg(&dev->dev, "remove succeeded\n");
 	return 0;

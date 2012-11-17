@@ -272,15 +272,15 @@ void __init zynq_clock_init(void)
 			1, 0, &uartclk_lock);
 	zynq_clkdev_add(NULL, "UART1", clk);
 
+	clk = clk_register_gate(NULL, "SPI0_CLK", "SPI_MASTER_CLK",
+			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SPI_CLK_CTRL,
+			0, 0, &spiclk_lock);
+	zynq_clkdev_add(NULL, "SPI0", clk);
+	clk = clk_register_gate(NULL, "SPI1_CLK", "SPI_MASTER_CLK",
+			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SPI_CLK_CTRL,
+			1, 0, &spiclk_lock);
+	zynq_clkdev_add(NULL, "SPI1", clk);
 	/*
-	 * clk = clk_register_gate(NULL, "SPI0_CLK", "SPI_MASTER_CLK",
-	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SPI_CLK_CTRL,
-	 * 		0, 0, &spiclk_lock);
-	 * zynq_clkdev_add(NULL, "SPI0", clk);
-	 * clk = clk_register_gate(NULL, "SPI1_CLK", "SPI_MASTER_CLK",
-	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SPI_CLK_CTRL,
-	 * 		1, 0, &spiclk_lock);
-	 * zynq_clkdev_add(NULL, "SPI1", clk);
 	 * clk = clk_register_gate(NULL, "DBGTRC_CLK", "DBG_MASTER_CLK",
 	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_DBG_CLK_CTRL,
 	 * 		0, 0, &dbgclk_lock);
@@ -323,14 +323,16 @@ void __init zynq_clock_init(void)
 	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 11, 0,
 	 * 		&aperclk_lock);
 	 * zynq_clkdev_add(NULL, "SDIO1_APER", clk);
-	 * clk = clk_register_gate(NULL, "SPI0_CPU1X", "CPU_1X_CLK", 0,
-	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 14, 0,
-	 * 		&aperclk_lock);
-	 * zynq_clkdev_add(NULL, "SPI0_APER", clk);
-	 * clk = clk_register_gate(NULL, "SPI1_CPU1X", "CPU_1X_CLK", 0,
-	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 15, 0,
-	 * 		&aperclk_lock);
-	 * zynq_clkdev_add(NULL, "SPI1_APER", clk);
+	 */
+	clk = clk_register_gate(NULL, "SPI0_CPU1X", "CPU_1X_CLK", 0,
+			(void __iomem *)SLCR_APER_CLK_CTRL, 14, 0,
+			&aperclk_lock);
+	zynq_clkdev_add(NULL, "SPI0_APER", clk);
+	clk = clk_register_gate(NULL, "SPI1_CPU1X", "CPU_1X_CLK", 0,
+			(void __iomem *)SLCR_APER_CLK_CTRL, 15, 0,
+			&aperclk_lock);
+	zynq_clkdev_add(NULL, "SPI1_APER", clk);
+	/*
 	 * clk = clk_register_gate(NULL, "CAN0_CPU1X", "CPU_1X_CLK", 0,
 	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 16, 0,
 	 * 		&aperclk_lock);
