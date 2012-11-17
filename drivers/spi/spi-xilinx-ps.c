@@ -816,7 +816,7 @@ static int __devexit xspips_remove(struct platform_device *dev)
 
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 /**
  * xspips_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
@@ -826,9 +826,11 @@ static int __devexit xspips_remove(struct platform_device *dev)
  *
  * returns:	0 on success and error value on error
  **/
-static int xspips_suspend(struct platform_device *dev, pm_message_t msg)
+static int xspips_suspend(struct device *_dev)
 {
-	struct spi_master *master = platform_get_drvdata(dev);
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
@@ -838,7 +840,7 @@ static int xspips_suspend(struct platform_device *dev, pm_message_t msg)
 
 	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 
-	dev_dbg(&dev->dev, "suspend succeeded\n");
+	dev_dbg(&pdev->dev, "suspend succeeded\n");
 	return 0;
 }
 
@@ -850,9 +852,11 @@ static int xspips_suspend(struct platform_device *dev, pm_message_t msg)
  *
  * returns:	0 on success and error value on error
  **/
-static int xspips_resume(struct platform_device *dev)
+static int xspips_resume(struct device *_dev)
 {
-	struct spi_master *master = platform_get_drvdata(dev);
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
@@ -860,17 +864,23 @@ static int xspips_resume(struct platform_device *dev)
 
 	ret = xspips_start_queue(xspi);
 	if (ret != 0) {
-		dev_err(&dev->dev, "problem starting queue (%d)\n", ret);
+		dev_err(&pdev->dev, "problem starting queue (%d)\n", ret);
 		return ret;
 	}
 
-	dev_dbg(&dev->dev, "resume succeeded\n");
+	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
-#else
-#define xspips_suspend NULL
-#define xspips_resume  NULL
-#endif /* CONFIG_PM */
+
+static const struct dev_pm_ops xspips_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xspips_suspend, xspips_resume)
+};
+#define XSPIPS_PM	(&xspips_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XSPIPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" XSPIPS_NAME);
@@ -887,12 +897,11 @@ MODULE_DEVICE_TABLE(of, xspips_of_match);
 static struct platform_driver xspips_driver = {
 	.probe	= xspips_probe,
 	.remove	= __devexit_p(xspips_remove),
-	.suspend = xspips_suspend,
-	.resume = xspips_resume,
 	.driver = {
 		.name = XSPIPS_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xspips_of_match,
+		.pm = XSPIPS_PM,
 	},
 };
 
