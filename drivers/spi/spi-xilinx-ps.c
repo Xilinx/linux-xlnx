@@ -180,9 +180,10 @@ static void xspips_chipselect(struct spi_device *spi, int is_on)
 		ctrl_reg &= ~XSPIPS_CR_SSCTRL_MASK;
 		ctrl_reg |= (((~(0x0001 << spi->chip_select)) << 10) &
 				XSPIPS_CR_SSCTRL_MASK);
-	} else
+	} else {
 		/* Deselect the slave */
 		ctrl_reg |= XSPIPS_CR_SSCTRL_MASK;
+	}
 
 	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
 
@@ -248,9 +249,8 @@ static int xspips_setup_transfer(struct spi_device *spi,
 	if (xspi->speed_hz != req_hz) {
 		baud_rate_val = 0;
 		while ((baud_rate_val < 8)  &&
-			(xspi->input_clk_hz / (2 << baud_rate_val)) > req_hz) {
+			(xspi->input_clk_hz / (2 << baud_rate_val)) > req_hz)
 				baud_rate_val++;
-		}
 
 		ctrl_reg &= 0xFFFFFFC7;
 		ctrl_reg |= (baud_rate_val << 3);
@@ -694,18 +694,18 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	init_completion(&xspi->done);
 
 	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
-	if (prop)
+	if (prop) {
 		master->bus_num = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine bus-num\n");
 		goto free_irq;
 	}
 
 	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
-	if (prop)
+	if (prop) {
 		master->num_chipselect = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
 		goto free_irq;
