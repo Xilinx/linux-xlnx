@@ -644,11 +644,7 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	struct spi_master *master;
 	struct xspips *xspi;
 	struct resource *r;
-#ifdef CONFIG_OF
 	const unsigned int *prop;
-#else
-	struct xspi_platform_data *platform_info;
-#endif
 
 	master = spi_alloc_master(&dev->dev, sizeof(struct xspips));
 	if (master == NULL)
@@ -658,14 +654,6 @@ static int __devinit xspips_probe(struct platform_device *dev)
 	master->dev.of_node = dev->dev.of_node;
 	platform_set_drvdata(dev, master);
 
-#ifndef CONFIG_OF
-	platform_info = dev->dev.platform_data;
-	if (platform_info == NULL) {
-		ret = -ENODEV;
-		dev_err(&dev->dev, "platform data not available\n");
-		goto put_master;
-	}
-#endif
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		ret = -ENODEV;
@@ -706,7 +694,6 @@ static int __devinit xspips_probe(struct platform_device *dev)
 
 	init_completion(&xspi->done);
 
-#ifdef CONFIG_OF
 	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
 	if (prop)
 		master->bus_num = be32_to_cpup(prop);
@@ -724,14 +711,9 @@ static int __devinit xspips_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
 		goto free_irq;
 	}
-#else
-	master->bus_num = platform_info->bus_num;
-	master->num_chipselect = platform_info->num_chipselect;
-#endif
 	master->setup = xspips_setup;
 	master->transfer = xspips_transfer;
 
-#ifdef CONFIG_OF
 	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
 	if (prop) {
 		xspi->input_clk_hz = be32_to_cpup(prop);
@@ -741,10 +723,7 @@ static int __devinit xspips_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "couldn't determine speed-hz\n");
 		goto free_irq;
 	}
-#else
-	xspi->input_clk_hz = platform_info->speed_hz;
-	xspi->speed_hz = platform_info->speed_hz / 2;
-#endif
+
 	xspi->dev_busy = 0;
 
 	INIT_LIST_HEAD(&xspi->queue);
@@ -897,15 +876,11 @@ static int xspips_resume(struct platform_device *dev)
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" XSPIPS_NAME);
 
-#ifdef CONFIG_OF
 static struct of_device_id xspips_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-spi-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xspips_of_match);
-#else
-#define xspips_of_match NULL
-#endif /* CONFIG_OF */
 
 /*
  * xspips_driver - This structure defines the SPI subsystem platform driver
