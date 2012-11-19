@@ -150,17 +150,4 @@ config USB_XUSBPS_OTG
 	  To compile this driver as a module, choose M here: the
 	  module will be called xilinx_usbps_otg.
 
-config XILINX_ZED_USB_OTG
-	bool "Using USB OTG on the Digilent ZED board"
-	default n
-	depends on USB_SUPPORT
-	select USB_XUSBPS_OTG
-	select USB_ULPI if USB_SUPPORT
-	select USB_ULPI_VIEWPORT if USB_SUPPORT
-	help
-	  Select this option if using the USB OTG port on the Digilent ZED board
-	  as a USB on-the-go port. This option is necessary to properly
-	  initialize the TUSB1210 USB PHY used on the ZED board as an
-	  on-the-go USB port that can supply power to a USB slave device.
-
 endif # USB || OTG

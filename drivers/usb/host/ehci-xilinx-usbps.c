@@ -23,9 +23,6 @@
 #include <linux/platform_device.h>
 #include <linux/xilinx_devices.h>
 #include <linux/usb/otg.h>
-#ifdef CONFIG_XILINX_ZED_USB_OTG
-#include <linux/usb/ulpi.h>
-#endif
 #include <linux/usb/xilinx_usbps_otg.h>
 
 #include "ehci-xilinx-usbps.h"
@@ -168,15 +165,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 #ifdef CONFIG_USB_XUSBPS_OTG
 	ehci = hcd_to_ehci(hcd);
 	if (pdata->otg) {
-#ifdef CONFIG_XILINX_ZED_USB_OTG
-		pr_info ("%s: Have OTG assigned.\n", __func__);
-
-		retval = usb_phy_init(pdata->otg);
-		if (retval) {
-			dev_err(&pdev->dev, "Unable to init transceiver, probably missing\n");
-			return ENODEV;
-		}
-#endif
 		hcd->phy = pdata->otg;
 		retval = otg_set_host(hcd->phy->otg,
 				&ehci_to_hcd(ehci)->self);
@@ -195,20 +183,16 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 
 		usb_remove_hcd(hcd);
 	} else {
-#ifdef CONFIG_XILINX_ZED_USB_OTG
-		pr_info ("%s: No OTG assigned!\n", __func__);
-		pdata->otg = otg_ulpi_create(&ulpi_viewport_access_ops,
-			ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
-		if (pdata->otg) {
-			pdata->otg->io_priv = hcd->regs + XUSBPS_SOC_USB_ULPIVP;
-			ehci->ulpi = pdata->otg;
-		}
-		pr_info ("%s: OTG now assigned!\n", __func__);
-#endif
-
 		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 		if (retval != 0)
 			goto err2;
+
+		/*
+		 * Enable vbus on ULPI - zedboard requirement
+		 * to get host mode to work
+		 */
+		if (pdata->ulpi)
+			otg_set_vbus(pdata->ulpi->otg, 1);
 	}
 #else
 	/* Don't need to set host mode here. It will be done by tdi_reset() */
