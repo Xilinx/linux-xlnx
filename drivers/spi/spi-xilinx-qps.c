@@ -293,9 +293,8 @@ static void xqspips_copy_read_data(struct xqspips *xqspi, u32 data, u8 size)
 		}
 	}
 	xqspi->bytes_to_receive -= size;
-	if (xqspi->bytes_to_receive < 0) {
+	if (xqspi->bytes_to_receive < 0)
 		xqspi->bytes_to_receive = 0;
-	}
 }
 
 /**
@@ -334,13 +333,13 @@ static void xqspips_copy_write_data(struct xqspips *xqspi, u32 *data, u8 size)
 			/* This will never execute */
 			break;
 		}
-	} else
+	} else {
 		*data = 0;
+	}
 
 	xqspi->bytes_to_transfer -= size;
-	if (xqspi->bytes_to_transfer < 0) {
+	if (xqspi->bytes_to_transfer < 0)
 		xqspi->bytes_to_transfer = 0;
-	}
 }
 
 /**
@@ -363,9 +362,10 @@ static void xqspips_chipselect(struct spi_device *qspi, int is_on)
 		config_reg &= ~XQSPIPS_CONFIG_SSCTRL_MASK;
 		config_reg |= (((~(0x0001 << qspi->chip_select)) << 10) &
 				XQSPIPS_CONFIG_SSCTRL_MASK);
-	} else
+	} else {
 		/* Deselect the slave */
 		config_reg |= XQSPIPS_CONFIG_SSCTRL_MASK;
+	}
 
 	xqspips_write(xqspi->regs + XQSPIPS_CONFIG_OFFSET, config_reg);
 
@@ -410,9 +410,8 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 		return -EINVAL;
 	}
 
-	if (bits_per_word != 32) {
+	if (bits_per_word != 32)
 		bits_per_word = 32;
-	}
 
 	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
 
@@ -430,9 +429,8 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 	if (xqspi->speed_hz != req_hz) {
 		baud_rate_val = 0;
 		while ((baud_rate_val < 8)  &&
-			(xqspi->input_clk_hz / (2 << baud_rate_val)) > req_hz) {
+			(xqspi->input_clk_hz / (2 << baud_rate_val)) > req_hz)
 				baud_rate_val++;
-		}
 		config_reg &= 0xFFFFFFC7;
 		config_reg |= (baud_rate_val << 3);
 		xqspi->speed_hz = req_hz;
@@ -483,12 +481,11 @@ static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
 
 	while ((!(xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET) &
 		XQSPIPS_IXR_TXFULL_MASK)) && (xqspi->bytes_to_transfer > 0)) {
-		if (xqspi->bytes_to_transfer < 4) {
+		if (xqspi->bytes_to_transfer < 4)
 			xqspips_copy_write_data(xqspi, &data,
 				xqspi->bytes_to_transfer);
-		} else {
+		else
 			xqspips_copy_write_data(xqspi, &data, 4);
-		}
 
 		xqspips_write(xqspi->regs + XQSPIPS_TXD_00_00_OFFSET, data);
 	}
@@ -554,12 +551,12 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		} else {
 			/* If transfer and receive is completed then only send
 			 * complete signal */
-			if (xqspi->bytes_to_receive)
+			if (xqspi->bytes_to_receive) {
 				/* There is still some data to be received.
 				   Enable Rx not empty interrupt */
 				xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 						XQSPIPS_IXR_RXNEMTY_MASK);
-			else {
+			} else {
 				xqspips_write(xqspi->regs + XQSPIPS_IDIS_OFFSET,
 						XQSPIPS_IXR_RXNEMTY_MASK);
 				complete(&xqspi->done);
@@ -712,8 +709,7 @@ static void __devinit xqspips_work_queue(struct work_struct *work)
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 			if (transfer->bits_per_word || transfer->speed_hz) {
-				status =
-					xqspips_setup_transfer(qspi, transfer);
+				status = xqspips_setup_transfer(qspi, transfer);
 				if (status < 0)
 					break;
 			}
@@ -734,8 +730,7 @@ static void __devinit xqspips_work_queue(struct work_struct *work)
 
 			/* Request the transfer */
 			if (transfer->len) {
-				status =
-					xqspips_start_transfer(qspi, transfer);
+				status = xqspips_start_transfer(qspi, transfer);
 				xqspi->is_inst = 0;
 			}
 
@@ -929,8 +924,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		goto put_master;
 	}
 
-	if (!request_mem_region(r->start,
-			r->end - r->start + 1, dev->name)) {
+	if (!request_mem_region(r->start, r->end - r->start + 1, dev->name)) {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "request_mem_region failed\n");
 		goto put_master;
@@ -960,10 +954,9 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	prop = of_get_property(dev->dev.of_node, "is-dual", NULL);
 	if (prop)
 		xqspi->is_dual = be32_to_cpup(prop);
-	else {
+	else
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
-	}
 
 	/* QSPI controller initializations */
 	xqspips_init_hw(xqspi->regs, xqspi->is_dual);
@@ -971,18 +964,18 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	init_completion(&xqspi->done);
 
 	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
-	if (prop)
+	if (prop) {
 		master->bus_num = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine bus-num\n");
 		goto free_irq;
 	}
 
 	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
-	if (prop)
+	if (prop) {
 		master->num_chipselect = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
 		goto free_irq;
