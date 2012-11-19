@@ -17,18 +17,18 @@
  */
 
 
-#include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
-#include <linux/platform_device.h>
-#include <linux/spi/spi.h>
 #include <linux/io.h>
-#include <linux/spinlock.h>
-#include <linux/workqueue.h>
-#include <linux/delay.h>
-#include <linux/xilinx_devices.h>
+#include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/platform_device.h>
+#include <linux/spi/spi.h>
+#include <linux/spinlock.h>
+#include <linux/workqueue.h>
+#include <linux/xilinx_devices.h>
 
 /*
  * Name of this driver
