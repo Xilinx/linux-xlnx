@@ -1092,8 +1092,6 @@ MODULE_DEVICE_TABLE(of, xqspips_of_match);
 static struct platform_driver xqspips_driver = {
 	.probe	= xqspips_probe,
 	.remove	= __devexit_p(xqspips_remove),
-	.suspend = NULL,
-	.resume = NULL,
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
