@@ -899,7 +899,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	struct resource *r;
 	const unsigned int *prop;
 
-	master = spi_alloc_master(&dev->dev, sizeof(struct xqspips));
+	master = spi_alloc_master(&dev->dev, sizeof(*xqspi));
 	if (master == NULL)
 		return -ENOMEM;
 
@@ -1030,6 +1030,7 @@ release_mem:
 put_master:
 	platform_set_drvdata(dev, NULL);
 	spi_master_put(master);
+	kfree(master);
 	return ret;
 }
 
@@ -1069,6 +1070,7 @@ static int __devexit xqspips_remove(struct platform_device *dev)
 
 	spi_unregister_master(master);
 	spi_master_put(master);
+	kfree(master);
 
 	/* Prevent double remove */
 	platform_set_drvdata(dev, NULL);
