@@ -914,6 +914,9 @@ static int xspips_suspend(struct device *_dev)
 
 	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 
+	clk_disable(xspi->devclk);
+	clk_disable(xspi->aperclk);
+
 	dev_dbg(&pdev->dev, "suspend succeeded\n");
 	return 0;
 }
@@ -933,6 +936,19 @@ static int xspips_resume(struct device *_dev)
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
 	int ret = 0;
+
+	ret = clk_enable(xspi->aperclk);
+	if (ret) {
+		dev_err(_dev, "Cannot enable APER clock.\n");
+		return ret;
+	}
+
+	ret = clk_enable(xspi->devclk);
+	if (ret) {
+		dev_err(_dev, "Cannot enable device clock.\n");
+		clk_disable(xspi->aperclk);
+		return ret;
+	}
 
 	xspips_init_hw(xspi->regs);
 
