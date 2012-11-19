@@ -394,14 +394,11 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 		struct spi_transfer *transfer)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
-	u8 bits_per_word;
 	u32 config_reg;
 	u32 req_hz;
 	u32 baud_rate_val = 0;
 	unsigned long flags;
 
-	bits_per_word = (transfer) ?
-			transfer->bits_per_word : qspi->bits_per_word;
 	req_hz = (transfer) ? transfer->speed_hz : qspi->max_speed_hz;
 
 	if (qspi->mode & ~MODEBITS) {
@@ -409,9 +406,6 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 			__func__, qspi->mode & ~MODEBITS);
 		return -EINVAL;
 	}
-
-	if (bits_per_word != 32)
-		bits_per_word = 32;
 
 	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
 
@@ -791,10 +785,6 @@ xqspips_transfer(struct spi_device *qspi, struct spi_message *message)
 
 	/* Check each transfer's parameters */
 	list_for_each_entry(transfer, &message->transfers, transfer_list) {
-		u8 bits_per_word =
-			transfer->bits_per_word ? : qspi->bits_per_word;
-
-		bits_per_word = bits_per_word ? : 32;
 		if (!transfer->tx_buf && !transfer->rx_buf && transfer->len)
 			return -EINVAL;
 		/* QSPI controller supports only 32 bit transfers whereas higher
