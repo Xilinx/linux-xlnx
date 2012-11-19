@@ -673,8 +673,8 @@ static int ehci_run (struct usb_hcd *hcd)
 	ehci_writel(ehci, 0x00080000, non_ehci + 0x164);
 #if defined(CONFIG_XILINX_ZED_USB_OTG)
 	if (ehci->ulpi) {
-		struct otg_transceiver *otg = ehci->ulpi;
-		otg_set_vbus(otg, 1);
+		struct usb_phy *phy = ehci->ulpi;
+		otg_set_vbus(phy->otg, 1);
 	}
 #endif
 #endif
