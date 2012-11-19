@@ -413,6 +413,7 @@ config SPI_XILINX
 
 config SPI_XILINX_PS_QSPI
 	tristate "Xilinx PS QSPI controller"
+	depends on ARCH_ZYNQ
 	depends on SPI_MASTER && EXPERIMENTAL
 	help
 	  This selects the PS Quad SPI controller master driver from the Xilinx.

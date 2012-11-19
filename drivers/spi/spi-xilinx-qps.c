@@ -912,11 +912,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	struct spi_master *master;
 	struct xqspips *xqspi;
 	struct resource *r;
-#ifdef CONFIG_OF
 	const unsigned int *prop;
-#else
-	struct xspi_platform_data *platform_info;
-#endif
 
 	master = spi_alloc_master(&dev->dev, sizeof(struct xqspips));
 	if (master == NULL)
@@ -925,15 +921,6 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	xqspi = spi_master_get_devdata(master);
 	master->dev.of_node = dev->dev.of_node;
 	platform_set_drvdata(dev, master);
-
-#ifndef CONFIG_OF
-	platform_info = dev->dev.platform_data;
-	if (platform_info == NULL) {
-		ret = -ENODEV;
-		dev_err(&dev->dev, "platform data not available\n");
-		goto put_master;
-	}
-#endif
 
 	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
@@ -970,7 +957,6 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		goto unmap_io;
 	}
 
-#ifdef CONFIG_OF
 	prop = of_get_property(dev->dev.of_node, "is-dual", NULL);
 	if (prop)
 		xqspi->is_dual = be32_to_cpup(prop);
@@ -978,14 +964,12 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 	}
-#endif
 
 	/* QSPI controller initializations */
 	xqspips_init_hw(xqspi->regs, xqspi->is_dual);
 
 	init_completion(&xqspi->done);
 
-#ifdef CONFIG_OF
 	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
 	if (prop)
 		master->bus_num = be32_to_cpup(prop);
@@ -1003,15 +987,10 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
 		goto free_irq;
 	}
-#else
-	master->bus_num = platform_info->bus_num;
-	master->num_chipselect = platform_info->num_chipselect;
-#endif
 
 	master->setup = xqspips_setup;
 	master->transfer = xqspips_transfer;
 
-#ifdef CONFIG_OF
 	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
 	if (prop) {
 		xqspi->input_clk_hz = be32_to_cpup(prop);
@@ -1021,10 +1000,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "couldn't determine speed-hz\n");
 		goto free_irq;
 	}
-#else
-	xqspi->input_clk_hz = platform_info->speed_hz;
-	xqspi->speed_hz = platform_info->speed_hz / 2;
-#endif
+
 	xqspi->dev_busy = 0;
 
 	INIT_LIST_HEAD(&xqspi->queue);
@@ -1121,13 +1097,11 @@ static int __devexit xqspips_remove(struct platform_device *dev)
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" DRIVER_NAME);
 
-#ifdef CONFIG_OF
 static struct of_device_id xqspips_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-qspi-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xqspips_of_match);
-#endif
 
 /*
  * xqspips_driver - This structure defines the QSPI platform driver
@@ -1140,9 +1114,7 @@ static struct platform_driver xqspips_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table = xqspips_of_match,
-#endif
 	},
 };
 
