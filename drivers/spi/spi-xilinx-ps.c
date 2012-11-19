@@ -107,6 +107,7 @@
  * @regs:		Virtual address of the SPI controller registers
  * @devclk		Pointer to the peripheral clock
  * @aperclk		Pointer to the APER clock
+ * @clk_rate_change_nb	Notifier block for clock frequency change callback
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
