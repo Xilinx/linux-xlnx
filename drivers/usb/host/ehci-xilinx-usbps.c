@@ -191,13 +191,11 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	} else {
 #ifdef CONFIG_XILINX_ZED_USB_OTG
 		pr_info ("%s: No OTG assigned!\n", __func__);
-		if (!pdata->otg) {
-			pdata->otg = otg_ulpi_create (&ulpi_viewport_access_ops,
-				ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
-			if (pdata->otg) {
-				pdata->otg->io_priv = hcd->regs + XUSBPS_SOC_USB_ULPIVP;
-				ehci->ulpi = pdata->otg;
-			}
+		pdata->otg = otg_ulpi_create(&ulpi_viewport_access_ops,
+			ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
+		if (pdata->otg) {
+			pdata->otg->io_priv = hcd->regs + XUSBPS_SOC_USB_ULPIVP;
+			ehci->ulpi = pdata->otg;
 		}
 		pr_info ("%s: OTG now assigned!\n", __func__);
 #endif
