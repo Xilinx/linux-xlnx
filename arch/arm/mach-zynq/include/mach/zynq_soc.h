@@ -31,7 +31,6 @@
 /* The following are intended for the devices that are mapped early */
 
 #define SCU_PERIPH_BASE			IOMEM(SCU_PERIPH_VIRT)
-#define SCU_GLOBAL_TIMER_BASE		(SCU_PERIPH_BASE + 0x200)
 
 #define SLCR_BASE_VIRT			0xf8000000
 #define SLCR_BASE_PHYS			0xf8000000
