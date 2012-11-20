@@ -79,6 +79,8 @@ static struct map_desc io_desc[] __initdata = {
 
 static void __init xilinx_zynq_timer_init(void)
 {
+	zynq_clock_init();
+
 	xttcpss_timer_init();
 }
 
@@ -185,11 +187,6 @@ early_initcall(xilinx_l2c_init);
 void __init xilinx_irq_init(void)
 {
 	of_irq_init(zynq_dt_irq_match);
-	/* This is probably the ugliest hack possible but this is why:
-	 * Clock init needs to be done before timer init, so the timer can use
-	 * COMMON_CLK. All __initcall types are called after time_init().
-	 * Putting it in here is ugly but works. */
-	zynq_clock_init();
 }
 
 /**
