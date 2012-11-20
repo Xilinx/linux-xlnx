@@ -908,6 +908,86 @@ static int xqspips_clk_notifier_cb(struct notifier_block *nb,
 	}
 }
 
+#ifdef CONFIG_PM_SLEEP
+/**
+ * xqspips_suspend - Suspend method for the QSPI driver
+ * @_dev:	Address of the platform_device structure
+ *
+ * This function stops the QSPI driver queue and disables the QSPI controller
+ *
+ * returns:	0 on success and error value on error
+ **/
+static int xqspips_suspend(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct xqspips *xqspi = spi_master_get_devdata(master);
+	int ret = 0;
+
+	ret = xqspips_stop_queue(xqspi);
+	if (ret != 0)
+		return ret;
+
+	xqspips_write(xqspi->regs + XQSPIPS_ENABLE_OFFSET,
+			~XQSPIPS_ENABLE_ENABLE_MASK);
+
+	clk_disable(xqspi->devclk);
+	clk_disable(xqspi->aperclk);
+
+	dev_dbg(&pdev->dev, "suspend succeeded\n");
+	return 0;
+}
+
+/**
+ * xqspips_resume - Resume method for the QSPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * The function starts the QSPI driver queue and initializes the QSPI controller
+ *
+ * returns:	0 on success and error value on error
+ **/
+static int xqspips_resume(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct xqspips *xqspi = spi_master_get_devdata(master);
+	int ret = 0;
+
+	ret = clk_enable(xqspi->aperclk);
+	if (ret) {
+		dev_err(_dev, "Cannot enable APER clock.\n");
+		return ret;
+	}
+
+	ret = clk_enable(xqspi->devclk);
+	if (ret) {
+		dev_err(_dev, "Cannot enable device clock.\n");
+		clk_disable(xqspi->aperclk);
+		return ret;
+	}
+
+	xqspips_init_hw(xqspi->regs, xqspi->is_dual);
+
+	ret = xqspips_start_queue(xqspi);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "problem starting queue (%d)\n", ret);
+		return ret;
+	}
+
+	dev_dbg(&pdev->dev, "resume succeeded\n");
+	return 0;
+}
+static const struct dev_pm_ops xqspips_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xqspips_suspend, xqspips_resume)
+};
+#define XQSPIPS_PM	(&xqspips_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XQSPIPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 /**
  * xqspips_probe - Probe method for the QSPI driver
  * @dev:	Pointer to the platform_device structure
@@ -1163,6 +1243,7 @@ static struct platform_driver xqspips_driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xqspips_of_match,
+		.pm = XQSPIPS_PM,
 	},
 };
 
