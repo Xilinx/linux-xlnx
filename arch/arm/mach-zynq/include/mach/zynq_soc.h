@@ -19,14 +19,21 @@
 
 /* For now, all mappings are flat (physical = virtual)
  */
-
-/* Virtual address must be inside vmalloc area - this is weird - better
- * to create virtual mapping on the fly */
-#define UART0_PHYS			0xE0000000
-#define UART0_VIRT			0xFE000000
+#define UART0_PHYS		0xE0000000
+#define UART1_PHYS		0xE0001000
+#define UART_SIZE		SZ_4K
+#define UART_VIRT		0xF0001000
 
 #define SCU_PERIPH_PHYS			0xF8F00000
 #define SCU_PERIPH_VIRT			SCU_PERIPH_PHYS
+
+#if IS_ENABLED(CONFIG_DEBUG_ZYNQ_UART1)
+# define LL_UART_PADDR		UART1_PHYS
+#else
+# define LL_UART_PADDR		UART0_PHYS
+#endif
+
+#define LL_UART_VADDR		UART_VIRT
 
 /* The following are intended for the devices that are mapped early */
 
@@ -62,14 +69,4 @@
 #define SLCR_FPGA3_CLK_CTRL		(SLCR_BASE_VIRT | 0x1a0)
 #define SLCR_621_TRUE			(SLCR_BASE_VIRT | 0x1c4)
 
-/*
- * Mandatory for CONFIG_LL_DEBUG, UART is mapped virtual = physical
- */
-#if defined(CONFIG_ZYNQ_EARLY_UART1)
-	#define LL_UART_PADDR	(UART0_PHYS+0x1000)
-	#define LL_UART_VADDR	(UART0_VIRT+0x1000)
-#else
-	#define LL_UART_PADDR	UART0_PHYS
-	#define LL_UART_VADDR	UART0_VIRT
-#endif
 #endif
