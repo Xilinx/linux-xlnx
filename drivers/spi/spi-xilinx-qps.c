@@ -17,6 +17,7 @@
  */
 
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -133,7 +134,9 @@
  * @queue:		Head of the queue
  * @queue_state:	Queue status
  * @regs:		Virtual address of the QSPI controller registers
- * @input_clk_hz:	Input clock frequency of the QSPI controller in Hz
+ * @devclk		Pointer to the peripheral clock
+ * @aperclk		Pointer to the APER clock
+ * @clk_rate_change_nb	Notifier block for clock frequency change callback
  * @irq:		IRQ number
  * @speed_hz:		Current QSPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
@@ -153,7 +156,9 @@ struct xqspips {
 	struct list_head queue;
 	u8 queue_state;
 	void __iomem *regs;
-	u32 input_clk_hz;
+	struct clk *devclk;
+	struct clk *aperclk;
+	struct notifier_block clk_rate_change_nb;
 	u32 irq;
 	u32 speed_hz;
 	spinlock_t trans_queue_lock;
@@ -423,7 +428,8 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 	if (xqspi->speed_hz != req_hz) {
 		baud_rate_val = 0;
 		while ((baud_rate_val < 8)  &&
-			(xqspi->input_clk_hz / (2 << baud_rate_val)) > req_hz)
+			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
+			req_hz)
 				baud_rate_val++;
 		config_reg &= 0xFFFFFFC7;
 		config_reg |= (baud_rate_val << 3);
@@ -883,6 +889,25 @@ static inline int xqspips_destroy_queue(struct xqspips *xqspi)
 	return 0;
 }
 
+static int xqspips_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers. And we may have to suspend operation and return
+		 * after the rate change or its abort
+		 */
+		return NOTIFY_OK;
+	case POST_RATE_CHANGE:
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 /**
  * xqspips_probe - Probe method for the QSPI driver
  * @dev:	Pointer to the platform_device structure
@@ -948,6 +973,38 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 
+	xqspi->aperclk = clk_get_sys("LQSPI_APER", NULL);
+	if (IS_ERR(xqspi->aperclk)) {
+		dev_err(&dev->dev, "APER clock not found.\n");
+		ret = PTR_ERR(xqspi->aperclk);
+		goto free_irq;
+	}
+
+	xqspi->devclk = clk_get_sys("LQSPI", NULL);
+	if (IS_ERR(xqspi->devclk)) {
+		dev_err(&dev->dev, "Device clock not found.\n");
+		ret = PTR_ERR(xqspi->devclk);
+		goto clk_put_aper;
+	}
+
+	ret = clk_prepare_enable(xqspi->aperclk);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to enable APER clock.\n");
+		goto clk_put;
+	}
+
+	ret = clk_prepare_enable(xqspi->devclk);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to enable device clock.\n");
+		goto clk_dis_aper;
+	}
+
+	xqspi->clk_rate_change_nb.notifier_call = xqspips_clk_notifier_cb;
+	xqspi->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(xqspi->devclk, &xqspi->clk_rate_change_nb))
+		dev_warn(&dev->dev, "Unable to register clock notifier.\n");
+
+
 	/* QSPI controller initializations */
 	xqspips_init_hw(xqspi->regs, xqspi->is_dual);
 
@@ -959,7 +1016,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine bus-num\n");
-		goto free_irq;
+		goto clk_unreg_notif;
 	}
 
 	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
@@ -968,21 +1025,13 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	} else {
 		ret = -ENXIO;
 		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
-		goto free_irq;
+		goto clk_unreg_notif;
 	}
 
 	master->setup = xqspips_setup;
 	master->transfer = xqspips_transfer;
 
-	prop = of_get_property(dev->dev.of_node, "speed-hz", NULL);
-	if (prop) {
-		xqspi->input_clk_hz = be32_to_cpup(prop);
-		xqspi->speed_hz = xqspi->input_clk_hz / 2;
-	} else {
-		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine speed-hz\n");
-		goto free_irq;
-	}
+	xqspi->speed_hz = clk_get_rate(xqspi->devclk) / 2;
 
 	xqspi->dev_busy = 0;
 
@@ -999,7 +1048,7 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 	if (!xqspi->workqueue) {
 		ret = -ENOMEM;
 		dev_err(&dev->dev, "problem initializing queue\n");
-		goto free_irq;
+		goto clk_unreg_notif;
 	}
 
 	ret = xqspips_start_queue(xqspi);
@@ -1021,6 +1070,15 @@ static int __devinit xqspips_probe(struct platform_device *dev)
 
 remove_queue:
 	(void)xqspips_destroy_queue(xqspi);
+clk_unreg_notif:
+	clk_notifier_unregister(xqspi->devclk, &xqspi->clk_rate_change_nb);
+	clk_disable_unprepare(xqspi->devclk);
+clk_dis_aper:
+	clk_disable_unprepare(xqspi->aperclk);
+clk_put:
+	clk_put(xqspi->devclk);
+clk_put_aper:
+	clk_put(xqspi->aperclk);
 free_irq:
 	free_irq(xqspi->irq, xqspi);
 unmap_io:
@@ -1070,6 +1128,13 @@ static int __devexit xqspips_remove(struct platform_device *dev)
 
 	spi_unregister_master(master);
 	spi_master_put(master);
+
+	clk_notifier_unregister(xqspi->devclk, &xqspi->clk_rate_change_nb);
+	clk_disable_unprepare(xqspi->devclk);
+	clk_disable_unprepare(xqspi->aperclk);
+	clk_put(xqspi->devclk);
+	clk_put(xqspi->aperclk);
+
 	kfree(master);
 
 	/* Prevent double remove */

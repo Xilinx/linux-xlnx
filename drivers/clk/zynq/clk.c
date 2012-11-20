@@ -28,9 +28,9 @@ static DEFINE_SPINLOCK(ddrclk_lock);
 static DEFINE_SPINLOCK(dciclk_lock);
 /*
  * static DEFINE_SPINLOCK(smcclk_lock);
- * static DEFINE_SPINLOCK(lqspiclk_lock);
  * static DEFINE_SPINLOCK(pcapclk_lock);
  */
+static DEFINE_SPINLOCK(lqspiclk_lock);
 static DEFINE_SPINLOCK(gem0clk_lock);
 static DEFINE_SPINLOCK(gem1clk_lock);
 static DEFINE_SPINLOCK(fpga0clk_lock);
@@ -175,17 +175,18 @@ void __init zynq_clock_init(void)
 			&dciclk_lock);
 	clk_prepare(clk);
 	clk_enable(clk);
+
 	/* Peripheral clocks */
+	clk = clk_register_zynq_gd1m("LQSPI_CLK",
+			(void __iomem *)SLCR_LQSPI_CLK_CTRL, def_periph_parents,
+			&lqspiclk_lock);
+	zynq_clkdev_add(NULL, "LQSPI", clk);
+
 	/*
 	 * clk = clk_register_zynq_gd1m("SMC_CLK",
 	 * 		(void __iomem *)SLCR_SMC_CLK_CTRL, def_periph_parents,
 	 * 		&smcclk_lock);
 	 * zynq_clkdev_add(NULL, "SMC", clk);
-
-	 * clk = clk_register_zynq_gd1m("LQSPI_CLK",
-	 * 		(void __iomem *)SLCR_LQSPI_CLK_CTRL, def_periph_parents,
-	 * 		&lqspiclk_lock);
-	 * zynq_clkdev_add(NULL, "LQSPI", clk);
 
 	 * clk = clk_register_zynq_gd1m("PCAP_CLK",
 	 * 		(void __iomem *)SLCR_PCAP_CLK_CTRL, def_periph_parents,
@@ -362,11 +363,11 @@ void __init zynq_clock_init(void)
 			(void __iomem *)SLCR_APER_CLK_CTRL, 22, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "GPIO_APER", clk);
+	clk = clk_register_gate(NULL, "LQSPI_CPU1X", "CPU_1X_CLK", 0,
+			(void __iomem *)SLCR_APER_CLK_CTRL, 23, 0,
+			&aperclk_lock);
+	zynq_clkdev_add(NULL, "LQSPI_APER", clk);
 	/*
-	 * clk = clk_register_gate(NULL, "LQSPI_CPU1X", "CPU_1X_CLK", 0,
-	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 23, 0,
-	 * 		&aperclk_lock);
-	 * zynq_clkdev_add(NULL, "LQSPI_APER", clk);
 	 * clk = clk_register_gate(NULL, "SMC_CPU1X", "CPU_1X_CLK", 0,
 	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 24, 0,
 	 * 		&aperclk_lock);
