@@ -37,18 +37,18 @@
  *
  */
 
-#include <linux/export.h>
-#include <linux/module.h>
-#include <linux/io.h>
-#include <linux/i2c.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/err.h>
+#include <linux/export.h>
+#include <linux/i2c.h>
 #include <linux/interrupt.h>
-#include <linux/xilinx_devices.h>
+#include <linux/io.h>
+#include <linux/module.h>
+#include <linux/of_i2c.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <linux/of_i2c.h>
-#include <linux/err.h>
-#include <linux/clk.h>
+#include <linux/xilinx_devices.h>
 
 /*
  * Register Map
