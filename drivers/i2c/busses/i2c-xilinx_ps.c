@@ -197,10 +197,10 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 			/* ... but supposed one more byte is read by the
 			 * hardware by this time ....
 			 */
-			if (id->recv_count > XI2CPS_FIFO_DEPTH)
+			if (id->recv_count > XI2CPS_FIFO_DEPTH) {
 				xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
 						XI2CPS_XFER_SIZE_OFFSET);
-			else {
+			} else {
 				/* Then the number bytes still to recv (M) is
 				 * updated based on old value of tx XFER_SIZE.
 				 * Hardware will recieve a total of N + M or
@@ -213,9 +213,9 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 				if (id->bus_hold_flag == 0)
 					/* Clear the hold bus bit */
 					xi2cps_writereg(
-					(xi2cps_readreg(XI2CPS_CR_OFFSET) &
-					(~XI2CPS_CR_HOLD_BUS_MASK)),
-					XI2CPS_CR_OFFSET);
+					     (xi2cps_readreg(XI2CPS_CR_OFFSET) &
+					     (~XI2CPS_CR_HOLD_BUS_MASK)),
+					     XI2CPS_CR_OFFSET);
 			}
 			/* Process the data received */
 			while (bytes_to_recv) {
@@ -288,7 +288,7 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 			while (xi2cps_readreg(XI2CPS_SR_OFFSET)
 							& 0x00000020) {
 				*(id->p_recv_buf)++ =
-				xi2cps_readreg(XI2CPS_DATA_OFFSET);
+					xi2cps_readreg(XI2CPS_DATA_OFFSET);
 				id->recv_count--;
 			}
 			complete(&id->xfer_done);
@@ -343,10 +343,10 @@ static void xi2cps_mrecv(struct xi2cps *id)
 	 * receive if it is less than FIFO depth and FIFO depth + 1 if
 	 * it is more. Enable the interrupts.
 	 */
-	if (id->recv_count > XI2CPS_FIFO_DEPTH)
+	if (id->recv_count > XI2CPS_FIFO_DEPTH) {
 		xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
 				XI2CPS_XFER_SIZE_OFFSET);
-	else {
+	} else {
 		xi2cps_writereg(id->recv_count, XI2CPS_XFER_SIZE_OFFSET);
 
 	/*
@@ -356,11 +356,11 @@ static void xi2cps_mrecv(struct xi2cps *id)
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN)) {
 			/* Clear the hold bus bit */
 			ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
-			if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
-				== XI2CPS_CR_HOLD_BUS_MASK)
+			if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK) ==
+					XI2CPS_CR_HOLD_BUS_MASK)
 				xi2cps_writereg(
-				(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
-				XI2CPS_CR_OFFSET);
+					(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
+					XI2CPS_CR_OFFSET);
 		}
 	}
 	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
@@ -428,11 +428,11 @@ static void xi2cps_msend(struct xi2cps *id)
 	if (id->bus_hold_flag == 0 && id->send_count == 0) {
 		/* Clear the hold bus bit */
 		ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
-		if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK)
-			== XI2CPS_CR_HOLD_BUS_MASK)
+		if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK) ==
+				XI2CPS_CR_HOLD_BUS_MASK)
 			xi2cps_writereg(
-			(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
-			XI2CPS_CR_OFFSET);
+				(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
+				XI2CPS_CR_OFFSET);
 	}
 	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
@@ -483,8 +483,9 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		id->bus_hold_flag = 1;
 		xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) |
 				XI2CPS_CR_HOLD_BUS_MASK), XI2CPS_CR_OFFSET);
-	} else
+	} else {
 		id->bus_hold_flag = 0;
+	}
 
 	/* Process the msg one by one */
 	for (count = 0; count < num; count++, msgs++) {
@@ -498,10 +499,10 @@ retry:
 		init_completion(&id->xfer_done);
 
 		/* Check for the TEN Bit mode on each msg */
-		if (msgs->flags & I2C_M_TEN)
+		if (msgs->flags & I2C_M_TEN) {
 			xi2cps_writereg((xi2cps_readreg(XI2CPS_CR_OFFSET) &
 					(~0x00000004)), XI2CPS_CR_OFFSET);
-		else {
+		} else {
 			if ((xi2cps_readreg(XI2CPS_CR_OFFSET) & 0x00000004)
 								== 0)
 				xi2cps_writereg(
@@ -553,8 +554,8 @@ retry:
  */
 static u32 xi2cps_func(struct i2c_adapter *adap)
 {
-	return I2C_FUNC_I2C | I2C_FUNC_10BIT_ADDR | \
-		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK) | \
+	return I2C_FUNC_I2C | I2C_FUNC_10BIT_ADDR |
+		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK) |
 		I2C_FUNC_SMBUS_BLOCK_DATA;
 }
 
@@ -601,8 +602,7 @@ static int xi2cps_calc_divs(unsigned int *f, unsigned int input_clk,
 	templimit = (input_clk % (22 * fscl)) ? (temp + 1) : temp;
 	*err = fscl;
 
-	for ( ; temp < templimit+1; temp++)
-	{
+	for ( ; temp < templimit+1; temp++) {
 		last_error = fscl;
 		calc_div_a = 0;
 		calc_div_b = 0;
@@ -795,9 +795,9 @@ static int __devinit xi2cps_probe(struct platform_device *pdev)
 	}
 
 	prop = of_get_property(pdev->dev.of_node, "bus-id", NULL);
-	if (prop)
+	if (prop) {
 		id->adap.nr = be32_to_cpup(prop);
-	else {
+	} else {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine bus-id\n");
 		goto err_unmap ;
