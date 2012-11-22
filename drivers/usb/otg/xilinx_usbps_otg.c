@@ -1931,7 +1931,6 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	if (!pdata)
 		return -ENODEV;
 
-	retval = 0;
 	dev_dbg(&pdev->dev, "\notg controller is detected.\n");
 
 	xotg = kzalloc(sizeof *xotg, GFP_KERNEL);
