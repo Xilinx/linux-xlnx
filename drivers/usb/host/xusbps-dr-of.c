@@ -136,29 +136,19 @@ error:
 	return ERR_PTR(retval);
 }
 
-static const struct of_device_id xusbps_dr_of_match[];
-
 static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 {
 	struct device_node *np = ofdev->dev.of_node;
 	struct platform_device *usb_dev;
 	struct xusbps_usb2_platform_data data, *pdata;
 	struct xusbps_dev_data *dev_data;
-	const struct of_device_id *match;
 	const unsigned char *prop;
 	static unsigned int idx;
 	struct resource *res;
 	int i;
 
-	match = of_match_device(xusbps_dr_of_match, &ofdev->dev);
-	if (!match)
-		return -ENODEV;
-
 	pdata = &data;
-	if (match->data)
-		memcpy(pdata, match->data, sizeof(data));
-	else
-		memset(pdata, 0, sizeof(data));
+	memset(pdata, 0, sizeof(data));
 
 	res = platform_get_resource(ofdev, IORESOURCE_IRQ, 0);
 	if (!res) {
@@ -225,10 +215,8 @@ static int __devexit xusbps_dr_of_remove(struct platform_device *ofdev)
 	return 0;
 }
 
-static struct xusbps_usb2_platform_data xusbps_pdata;
-
 static const struct of_device_id xusbps_dr_of_match[] = {
-	{ .compatible = "xlnx,ps7-usb-1.00.a", .data = &xusbps_pdata, },
+	{ .compatible = "xlnx,ps7-usb-1.00.a" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, xusbps_dr_of_match);
