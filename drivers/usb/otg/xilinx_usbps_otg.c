@@ -1928,26 +1928,22 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	struct xusbps_usb2_platform_data *pdata;
 
 	pdata = pdev->dev.platform_data;
-	if (!pdata) {
-		retval = -ENODEV;
-		goto done;
-	}
+	if (!pdata)
+		return -ENODEV;
 
 	retval = 0;
 	dev_dbg(&pdev->dev, "\notg controller is detected.\n");
 
 	xotg = kzalloc(sizeof *xotg, GFP_KERNEL);
-	if (xotg == NULL) {
-		retval = -ENOMEM;
-		goto done;
-	}
+	if (xotg == NULL)
+		return -ENOMEM;
+
 	the_transceiver = xotg;
 
 	xotg->otg.otg = kzalloc(sizeof(struct usb_otg), GFP_KERNEL);
 	if (!xotg->otg.otg) {
 		kfree(xotg);
-		retval = -ENOMEM;
-		goto done;
+		return -ENOMEM;
 	}
 
 	xotg->base = pdata->regs;
@@ -2042,7 +2038,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 err:
 	if (the_transceiver)
 		xusbps_otg_remove(pdev);
-done:
+
 	return retval;
 }
 
