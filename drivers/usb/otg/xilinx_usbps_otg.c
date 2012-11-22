@@ -2036,8 +2036,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	return 0;
 
 err:
-	if (the_transceiver)
-		xusbps_otg_remove(pdev);
+	xusbps_otg_remove(pdev);
 
 	return retval;
 }
