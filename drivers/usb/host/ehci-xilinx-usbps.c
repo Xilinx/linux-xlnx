@@ -188,6 +188,12 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		xotg->stop_host = ehci_xusbps_otg_stop_host;
 		/* inform otg driver about host driver */
 		xusbps_update_transceiver();
+
+		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+		if (retval != 0)
+			goto err2;
+
+		usb_remove_hcd(hcd);
 	} else {
 #ifdef CONFIG_XILINX_ZED_USB_OTG
 		pr_info ("%s: No OTG assigned!\n", __func__);
