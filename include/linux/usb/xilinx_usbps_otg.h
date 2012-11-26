@@ -166,6 +166,7 @@ struct otg_hsm {
 
 struct xusbps_otg {
 	struct usb_phy		otg;
+	struct usb_phy		*ulpi;
 
 	struct otg_hsm		hsm;
 

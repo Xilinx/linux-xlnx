@@ -127,6 +127,10 @@ static int xusbps_otg_set_vbus(struct usb_otg *otg, bool enabled)
 
 	dev_dbg(xotg->dev, "%s <--- %s\n", __func__, enabled ? "on" : "off");
 
+	/* Enable ulpi VBUS if required */
+	if (xotg->ulpi)
+		otg_set_vbus(xotg->ulpi->otg, enabled);
+
 	val = readl(xotg->base + CI_PORTSC1);
 
 	if (enabled)
@@ -1938,6 +1942,9 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	the_transceiver = xotg;
+
+	/* Setup ulpi phy for OTG */
+	xotg->ulpi = pdata->ulpi;
 
 	xotg->otg.otg = kzalloc(sizeof(struct usb_otg), GFP_KERNEL);
 	if (!xotg->otg.otg) {
