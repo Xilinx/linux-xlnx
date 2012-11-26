@@ -737,6 +737,57 @@ static int xi2cps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 	}
 }
 
+#ifdef CONFIG_PM_SLEEP
+/**
+ * xi2cps_suspend - Suspend method for the driver
+ * @dev:	Address of the platform_device structure
+ * Returns 0 on success and error value on error
+ *
+ * Put the driver into low power mode.
+ */
+static int xi2cps_suspend(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xi2cps *xi2c = platform_get_drvdata(pdev);
+
+	clk_disable(xi2c->clk);
+
+	return 0;
+}
+
+/**
+ * xi2cps_resume - Resume from suspend
+ * @dev:	Address of the platform_device structure
+ * Returns 0 on success and error value on error
+ *
+ * Resume operation after suspend.
+ */
+static int xi2cps_resume(struct device *_dev)
+{
+	struct platform_device *pdev = container_of(_dev,
+			struct platform_device, dev);
+	struct xi2cps *xi2c = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = clk_enable(xi2c->clk);
+	if (ret) {
+		dev_err(_dev, "Cannot enable clock.\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops xi2cps_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xi2cps_suspend, xi2cps_resume)
+};
+#define XI2CPS_PM	(&xi2cps_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XI2CPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 /************************/
 /* Platform bus binding */
 /************************/
@@ -924,6 +975,7 @@ static struct platform_driver xi2cps_drv = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xi2cps_of_match,
+		.pm = XI2CPS_PM,
 	},
 	.probe  = xi2cps_probe,
 	.remove = __devexit_p(xi2cps_remove),
