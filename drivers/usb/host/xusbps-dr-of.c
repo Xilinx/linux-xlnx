@@ -27,6 +27,9 @@
 #include <linux/of_platform.h>
 #include <linux/string.h>
 #include <linux/clk.h>
+#include <linux/usb/ulpi.h>
+
+#include "ehci-xilinx-usbps.h"
 
 static u64 dma_mask = 0xFFFFFFF0;
 
@@ -145,7 +148,7 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 	const unsigned char *prop;
 	static unsigned int idx;
 	struct resource *res;
-	int i;
+	int i, phy_init;
 
 	pdata = &data;
 	memset(pdata, 0, sizeof(data));
@@ -183,6 +186,21 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 
 	prop = of_get_property(np, "phy_type", NULL);
 	pdata->phy_mode = determine_usb_phy(prop);
+
+	/* If ULPI phy type, set it up */
+	if (pdata->phy_mode == XUSBPS_USB2_PHY_ULPI) {
+		pdata->ulpi = otg_ulpi_create(&ulpi_viewport_access_ops,
+			ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
+		if (pdata->ulpi)
+			pdata->ulpi->io_priv = pdata->regs +
+							XUSBPS_SOC_USB_ULPIVP;
+
+		phy_init = usb_phy_init(pdata->ulpi);
+		if (phy_init) {
+			pr_info("Unable to init transceiver, missing?\n");
+			return -ENODEV;
+		}
+	}
 
 	for (i = 0; i < ARRAY_SIZE(dev_data->drivers); i++) {
 		if (!dev_data->drivers[i])

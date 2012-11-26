@@ -136,6 +136,7 @@ struct xusbps_usb2_platform_data {
 	void		(*exit)(struct platform_device *);
 	void __iomem	*regs;		/* ioremap'd register base */
 	struct usb_phy	*otg;
+	struct usb_phy	*ulpi;
 	int		irq;
 	struct clk	*clk;
 	unsigned	big_endian_mmio:1;
