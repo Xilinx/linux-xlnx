@@ -21,11 +21,6 @@
 #define ARCH_NR_GPIOS		512
 #define XGPIOPS_IRQBASE		128
 
-struct xgpio_platform_data {
-        unsigned int            state;
-        unsigned int            dir;
-	unsigned int            width;
-};
 
 extern int gpio_direction_input(unsigned gpio);
 extern int gpio_direction_output(unsigned gpio, int value);
