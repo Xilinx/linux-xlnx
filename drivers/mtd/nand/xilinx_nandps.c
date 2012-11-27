@@ -1324,26 +1324,7 @@ static struct platform_driver xnandps_driver = {
 	},
 };
 
-/**
- * xnandps_init - NAND driver module initialization function
- *
- * returns:	0 on success and error value on failure
- **/
-static int __init xnandps_init(void)
-{
-	return platform_driver_register(&xnandps_driver);
-}
-
-/**
- * xnandps_exit - NAND driver module exit function
- **/
-static void __exit xnandps_exit(void)
-{
-	platform_driver_unregister(&xnandps_driver);
-}
-
-module_init(xnandps_init);
-module_exit(xnandps_exit);
+module_platform_driver(xnandps_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_ALIAS("platform:" XNANDPS_DRIVER_NAME);
