@@ -59,7 +59,7 @@ static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
 			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
 		}
 	} else {
-		printk("sdhci platform registration failed\n");
+		dev_err(&pdev->dev, "Platform registration failed\n");
 	}
 
 	return ret;
