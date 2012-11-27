@@ -375,7 +375,8 @@ int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
 
 	if ((ecc_odd == 0) && (ecc_even == 0))
 		return 0;       /* no error */
-	else if (ecc_odd == (~ecc_even & 0xfff)) {
+
+	if (ecc_odd == (~ecc_even & 0xfff)) {
 		/* bits [11:3] of error code is byte offset */
 		byte_addr = (ecc_odd >> 3) & 0x1ff;
 		/* bits [2:0] of error code is bit offset */
@@ -817,14 +818,14 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 				xnandps_write32(cmd_addr, cmd_data);
 				cmd_data = (page_addr >> 16);
 			}
-		} else
+		} else {
 			cmd_data |= page_addr << 8;
-	}
-	/* Erase */
-	else if (page_addr != -1)
+		}
+	} else if (page_addr != -1) {
+		/* Erase */
 		cmd_data = page_addr;
-	/* Change read/write column, read id etc */
-	else if (column != -1) {
+	} else if (column != -1) {
+		/* Change read/write column, read id etc */
 		/* Adjust columns for 16 bit bus width */
 		if ((chip->options & NAND_BUSWIDTH_16) &&
 			((command == NAND_CMD_READ0) ||
@@ -833,8 +834,7 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 			(command == NAND_CMD_RNDIN)))
 				column >>= 1;
 		cmd_data = column;
-	} else
-		;
+	}
 
 	xnandps_write32(cmd_addr, cmd_data);
 
@@ -1220,8 +1220,6 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 			nand_chip->ecc.layout = &nand_oob_16;
 		else if (mtd->oobsize == 64)
 			nand_chip->ecc.layout = &nand_oob_64;
-		else
-			;
 	}
 
 	/* second phase scan */
