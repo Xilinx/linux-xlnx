@@ -17,25 +17,25 @@
  * This driver is based on plat_nand.c and mxc_nand.c drivers
  */
 
+#include <linux/delay.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
+#include <linux/io.h>
+#include <linux/ioport.h>
+#include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/init.h>
-#include <linux/ioport.h>
-#include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/io.h>
-#include <linux/slab.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
-#include <linux/mtd/partitions.h>
-#include <linux/delay.h>
 #include <linux/mtd/nand_ecc.h>
-#include <mach/smc.h>
-#include <mach/nand.h>
+#include <linux/mtd/partitions.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
+#include <mach/nand.h>
+#include <mach/smc.h>
 
 #define XNANDPS_DRIVER_NAME "xilinx_nandps"
 
