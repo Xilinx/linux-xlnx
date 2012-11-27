@@ -253,16 +253,16 @@ void __init zynq_clock_init(void)
 	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_CAN_CLK_CTRL,
 	 * 		1, 0, &canclk_lock);
 	 * zynq_clkdev_add(NULL, "CAN1", clk);
-
-	 * clk = clk_register_gate(NULL, "SDIO0_CLK", "SDIO_MASTER_CLK",
-	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SDIO_CLK_CTRL,
-	 * 		0, 0, &sdioclk_lock);
-	 * zynq_clkdev_add(NULL, "SDIO0", clk);
-	 * clk = clk_register_gate(NULL, "SDIO1_CLK", "SDIO_MASTER_CLK",
-	 * 		CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SDIO_CLK_CTRL,
-	 * 		1, 0, &sdioclk_lock);
-	 * zynq_clkdev_add(NULL, "SDIO1", clk);
 	 */
+
+	clk = clk_register_gate(NULL, "SDIO0_CLK", "SDIO_MASTER_CLK",
+			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SDIO_CLK_CTRL,
+			0, 0, &sdioclk_lock);
+	zynq_clkdev_add(NULL, "SDIO0", clk);
+	clk = clk_register_gate(NULL, "SDIO1_CLK", "SDIO_MASTER_CLK",
+			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_SDIO_CLK_CTRL,
+			1, 0, &sdioclk_lock);
+	zynq_clkdev_add(NULL, "SDIO1", clk);
 
 	clk = clk_register_gate(NULL, "UART0_CLK", "UART_MASTER_CLK",
 			CLK_SET_RATE_PARENT, (void __iomem *)SLCR_UART_CLK_CTRL,
@@ -315,16 +315,14 @@ void __init zynq_clock_init(void)
 			(void __iomem *)SLCR_APER_CLK_CTRL, 7, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "GEM1_APER", clk);
-	/*
-	 * clk = clk_register_gate(NULL, "SDI0_CPU1X", "CPU_1X_CLK", 0,
-	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 10, 0,
-	 * 		&aperclk_lock);
-	 * zynq_clkdev_add(NULL, "SDIO0_APER", clk);
-	 * clk = clk_register_gate(NULL, "SDI1_CPU1X", "CPU_1X_CLK", 0,
-	 * 		(void __iomem *)SLCR_APER_CLK_CTRL, 11, 0,
-	 * 		&aperclk_lock);
-	 * zynq_clkdev_add(NULL, "SDIO1_APER", clk);
-	 */
+	clk = clk_register_gate(NULL, "SDI0_CPU1X", "CPU_1X_CLK", 0,
+			(void __iomem *)SLCR_APER_CLK_CTRL, 10, 0,
+			&aperclk_lock);
+	zynq_clkdev_add(NULL, "SDIO0_APER", clk);
+	clk = clk_register_gate(NULL, "SDI1_CPU1X", "CPU_1X_CLK", 0,
+			(void __iomem *)SLCR_APER_CLK_CTRL, 11, 0,
+			&aperclk_lock);
+	zynq_clkdev_add(NULL, "SDIO1_APER", clk);
 	clk = clk_register_gate(NULL, "SPI0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 14, 0,
 			&aperclk_lock);

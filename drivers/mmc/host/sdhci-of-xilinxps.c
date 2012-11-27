@@ -17,12 +17,26 @@
  * your option) any later version.
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/mmc/host.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/slab.h>
 #include "sdhci-pltfm.h"
+
+/**
+ * struct xsdhcips
+ * @devclk		Pointer to the peripheral clock
+ * @aperclk		Pointer to the APER clock
+ * @clk_rate_change_nb	Notifier block for clock frequency change callback
+ */
+struct xsdhcips {
+	struct clk		*devclk;
+	struct clk		*aperclk;
+	struct notifier_block	clk_rate_change_nb;
+};
 
 static unsigned int zynq_of_get_max_clock(struct sdhci_host *host)
 {
@@ -41,32 +55,128 @@ static struct sdhci_pltfm_data sdhci_zynq_pdata = {
 	.ops = &sdhci_zynq_ops,
 };
 
+static int xsdhcips_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers. And we may have to suspend operation and return
+		 * after the rate change or its abort
+		 */
+		/* fall through */
+	case POST_RATE_CHANGE:
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
 {
 	int ret;
-	const void *prop = NULL;
+	int irq = platform_get_irq(pdev, 0);
+	const void *prop;
 	struct device_node *np = pdev->dev.of_node;
-	struct sdhci_host *host = NULL;
+	struct sdhci_host *host;
+	struct sdhci_pltfm_host *pltfm_host;
+	struct xsdhcips *xsdhcips;
+
+	xsdhcips = kmalloc(sizeof(*xsdhcips), GFP_KERNEL);
+	if (!xsdhcips) {
+		dev_err(&pdev->dev, "unable to allocate memory\n");
+		return -ENOMEM;
+	}
+
+	if (irq == 56)
+		xsdhcips->aperclk = clk_get_sys("SDIO0_APER", NULL);
+	else
+		xsdhcips->aperclk = clk_get_sys("SDIO1_APER", NULL);
+
+	if (IS_ERR(xsdhcips->aperclk)) {
+		dev_err(&pdev->dev, "APER clock not found.\n");
+		ret = PTR_ERR(xsdhcips->aperclk);
+		goto err_free;
+	}
+
+	if (irq == 56)
+		xsdhcips->devclk = clk_get_sys("SDIO0", NULL);
+	else
+		xsdhcips->devclk = clk_get_sys("SDIO1", NULL);
+
+	if (IS_ERR(xsdhcips->devclk)) {
+		dev_err(&pdev->dev, "Device clock not found.\n");
+		ret = PTR_ERR(xsdhcips->devclk);
+		goto clk_put_aper;
+	}
+
+	ret = clk_prepare_enable(xsdhcips->aperclk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		goto clk_put;
+	}
+
+	ret = clk_prepare_enable(xsdhcips->devclk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
+		goto clk_dis_aper;
+	}
+
+	xsdhcips->clk_rate_change_nb.notifier_call = xsdhcips_clk_notifier_cb;
+	xsdhcips->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(xsdhcips->devclk,
+				&xsdhcips->clk_rate_change_nb))
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
+
 
 	ret = sdhci_pltfm_register(pdev, &sdhci_zynq_pdata);
-	if (ret == 0) {
-		prop = of_get_property(np, "xlnx,has-cd", NULL);
-		if (prop == NULL) {
-			host = platform_get_drvdata(pdev);
-			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
-		} else if (!(u32) be32_to_cpup(prop))  {
-			host = platform_get_drvdata(pdev);
-			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
-		}
-	} else {
+	if (ret) {
 		dev_err(&pdev->dev, "Platform registration failed\n");
+		goto clk_notif_unreg;
 	}
+
+	host = platform_get_drvdata(pdev);
+	pltfm_host = sdhci_priv(host);
+	pltfm_host->priv = xsdhcips;
+
+	prop = of_get_property(np, "xlnx,has-cd", NULL);
+	if (prop == NULL || (!(u32) be32_to_cpup(prop)))
+		host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
+
+	return 0;
+
+clk_notif_unreg:
+	clk_notifier_unregister(xsdhcips->devclk,
+			&xsdhcips->clk_rate_change_nb);
+	clk_disable_unprepare(xsdhcips->devclk);
+clk_dis_aper:
+	clk_disable_unprepare(xsdhcips->aperclk);
+clk_put:
+	clk_put(xsdhcips->devclk);
+clk_put_aper:
+	clk_put(xsdhcips->aperclk);
+err_free:
+	kfree(xsdhcips);
 
 	return ret;
 }
 
 static int __devexit sdhci_zynq_remove(struct platform_device *pdev)
 {
+	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct xsdhcips *xsdhcips = pltfm_host->priv;
+
+	clk_notifier_unregister(xsdhcips->devclk,
+			&xsdhcips->clk_rate_change_nb);
+	clk_disable_unprepare(xsdhcips->devclk);
+	clk_disable_unprepare(xsdhcips->aperclk);
+	clk_put(xsdhcips->devclk);
+	clk_put(xsdhcips->aperclk);
+	kfree(xsdhcips);
+
 	return sdhci_pltfm_unregister(pdev);
 }
 
