@@ -150,8 +150,6 @@ struct xnandps_info {
 	struct nand_chip	chip;
 	struct mtd_info		mtd;
 	struct mtd_partition	*parts;
-	struct platform_device	*pdev;
-
 	void __iomem		*nand_base;
 	void __iomem		*smc_regs;
 	unsigned long		end_cmd_pending;
@@ -1050,7 +1048,6 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 		pdata->options &= ~NAND_BUSWIDTH_16;
 	}
 
-	xnand->pdev = pdev;
 	/* Link the private data with the MTD structure */
 	mtd = &xnand->mtd;
 	nand_chip = &xnand->chip;
