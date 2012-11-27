@@ -33,12 +33,9 @@
 #include <linux/mtd/nand_ecc.h>
 #include <mach/smc.h>
 #include <mach/nand.h>
-
-#ifdef CONFIG_OF
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#endif
 
 #define XNANDPS_DRIVER_NAME "xilinx_nandps"
 
@@ -945,9 +942,15 @@ static int xnandps_device_ready(struct mtd_info *mtd)
 	return status ? 1 : 0;
 }
 
-#ifdef CONFIG_OF
-static const struct of_device_id __devinitconst xnandps_of_match[];
-#endif
+static struct xnand_platform_data xnandps_config;
+
+/* Match table for device tree binding */
+static const struct of_device_id __devinitconst xnandps_of_match[] = {
+	{ .compatible = "xlnx,ps7-nand-1.00.a", .data = &xnandps_config},
+	{},
+};
+MODULE_DEVICE_TABLE(of, xnandps_of_match);
+
 /**
  * xnandps_probe - Probe method for the NAND driver
  * @pdev:	Pointer to the platform_device structure
@@ -971,18 +974,13 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 	unsigned long ecc_cfg;
 	struct xnand_platform_data	*pdata = NULL;
 	struct mtd_part_parser_data ppdata;
-#ifdef CONFIG_OF
 	const struct of_device_id *match;
 	const unsigned int *prop;
-#endif
 
-#ifdef CONFIG_OF
 	match = of_match_device(xnandps_of_match, &pdev->dev);
 	if (match)
 		pdata = match->data;
-#else
-	pdata = pdev->dev.platform_data;
-#endif
+
 	if (pdata == NULL) {
 		dev_err(&pdev->dev, "platform data missing\n");
 		return -ENODEV;
@@ -1037,7 +1035,6 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 		goto out_release_smc_mem_region;
 	}
 	/* Get x8 or x16 mode from device tree */
-#ifdef CONFIG_OF
 	prop = of_get_property(pdev->dev.of_node, "xlnx,nand-width", NULL);
 	if (prop) {
 		if (be32_to_cpup(prop) == 16) {
@@ -1052,7 +1049,7 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "xlnx,nand-width not in device tree, using 8");
 		pdata->options &= ~NAND_BUSWIDTH_16;
 	}
-#endif
+
 	xnand->pdev = pdev;
 	/* Link the private data with the MTD structure */
 	mtd = &xnand->mtd;
@@ -1234,9 +1231,8 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 		goto out_unmap_all_mem;
 	}
 
-#ifdef CONFIG_OF
 	ppdata.of_node = pdev->dev.of_node;
-#endif
+
 	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata,
 			NULL, 0);
 
@@ -1294,19 +1290,6 @@ static int __devexit xnandps_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static struct xnand_platform_data xnandps_config;
-
-/* Match table for device tree binding */
-static const struct of_device_id __devinitconst xnandps_of_match[] = {
-	{ .compatible = "xlnx,ps7-nand-1.00.a", .data = &xnandps_config},
-	{},
-};
-MODULE_DEVICE_TABLE(of, xnandps_of_match);
-#else
-#define xnandps_of_match NULL
-#endif
-
 /*
  * xnandps_driver - This structure defines the NAND subsystem platform driver
  */
@@ -1318,9 +1301,7 @@ static struct platform_driver xnandps_driver = {
 	.driver		= {
 		.name	= XNANDPS_DRIVER_NAME,
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table = xnandps_of_match,
-#endif
 	},
 };
 
