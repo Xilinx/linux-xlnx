@@ -55,7 +55,4 @@ static inline unsigned int irq_to_gpio(unsigned int irq)
 	return irq - XGPIOPS_IRQBASE;
 }
 
-void xgpiodf_set_bypass_mode(struct gpio_chip *chip, unsigned int pin);
-void xgpiodf_set_normal_mode(struct gpio_chip *chip, unsigned int pin);
-
 #endif /* __ASM_ARCH_GPIO_H */
