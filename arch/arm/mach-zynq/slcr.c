@@ -2154,13 +2154,13 @@ static ssize_t xslcr_reset_periph(struct device *dev,
 	/* reset the peripheral */
 	spin_lock_irqsave(&slcr->io_lock, flags);
 
-	/* read the register and modify only the specified bit */	
+	/* read the register and modify only the specified bit */
 	reg = xslcr_readreg(slcr->regs + reset_info[i].reg_offset);
 	if (!rst)
-		reg &= ~(reset_info[i].reset_mask);	
+		reg &= ~(reset_info[i].reset_mask);
 	else
 		reg |= reset_info[i].reset_mask;
-		
+
 	xslcr_writereg(slcr->regs + reset_info[i].reg_offset, reg);
 
 	spin_unlock_irqrestore(&slcr->io_lock, flags);
