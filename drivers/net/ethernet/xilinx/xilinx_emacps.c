@@ -1587,35 +1587,33 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 {
 	struct net_local *lp = container_of(napi, struct net_local, napi);
 	int work_done = 0;
+	int temp_work_done;
 	u32 regval;
 
 	regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
 
 	while (work_done < budget) {
-
-		dev_dbg(&lp->pdev->dev, "poll RX status 0x%x weight 0x%x\n",
-			regval, budget);
-
-		if (!(regval & XEMACPS_RXSR_FRAMERX_MASK)) {
-			dev_dbg(&lp->pdev->dev, "No RX complete status 0x%x\n",
-				regval);
-			napi_complete(napi);
-
-			/* We disable RX interrupts in interrupt service
-			 * routine, now it is time to enable it back.
-			 */
-			regval = (XEMACPS_IXR_FRAMERX_MASK |
-					 XEMACPS_IXR_RX_ERR_MASK);
-			xemacps_write(lp->baseaddr, XEMACPS_IER_OFFSET, regval);
-			break;
-		}
-
-		work_done += xemacps_rx(lp, budget - work_done);
-
+		if (regval & XEMACPS_RXSR_ERROR_MASK)
+			lp->stats.rx_errors++;
+		temp_work_done = xemacps_rx(lp, budget - work_done);
+		work_done += temp_work_done;
 		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
+		if (temp_work_done <= 0)
+			break;
 	}
+
+	if (work_done >= budget)
+		return work_done;
+
+	napi_complete(napi);
+	/* We disabled TX/RX interrupts in interrupt service
+	 * routine, now it is time to enable it back.
+	 */
+	xemacps_write(lp->baseaddr, XEMACPS_IER_OFFSET,
+					(XEMACPS_IXR_FRAMERX_MASK |
+					XEMACPS_IXR_RX_ERR_MASK));
 
 	return work_done;
 }
