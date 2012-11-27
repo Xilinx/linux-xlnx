@@ -36,8 +36,8 @@ static struct sdhci_ops sdhci_zynq_ops = {
 };
 
 static struct sdhci_pltfm_data sdhci_zynq_pdata = {
-	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | \
-			SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
+	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
+		SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
 	.ops = &sdhci_zynq_ops,
 };
 
@@ -58,8 +58,9 @@ static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
 			host = platform_get_drvdata(pdev);
 			host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
 		}
-	} else
+	} else {
 		printk("sdhci platform registration failed\n");
+	}
 
 	return ret;
 }
