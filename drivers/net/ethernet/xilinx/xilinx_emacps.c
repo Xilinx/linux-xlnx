@@ -1343,8 +1343,10 @@ static void xemacps_DmaSetupRecvBuffers(struct net_device *ndev)
 
 	for (num_sk_buffs = 0; num_sk_buffs < free_bd_count; num_sk_buffs++) {
 		new_skb = netdev_alloc_skb(ndev, XEMACPS_RX_BUF_SIZE);
-		if (new_skb == NULL)
+		if (new_skb == NULL) {
+			lp->stats.rx_dropped++;
 			break;
+		}
 
 		result = xemacps_bdringalloc(rxringptr, 1, &bdptr);
 		if (result) {
@@ -1510,6 +1512,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 			dev_info(&lp->pdev->dev,
 				"%s: SOF and EOF not set (0x%08x) BD %p\n",
 				__func__, regval, bdptr);
+			lp->stats.rx_dropped++;
 			return 0;
 		}
 
@@ -1594,7 +1597,8 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
 
 	while (work_done < budget) {
-		if (regval & XEMACPS_RXSR_ERROR_MASK)
+		if (regval & (XEMACPS_RXSR_HRESPNOK_MASK |
+					XEMACPS_RXSR_BUFFNA_MASK))
 			lp->stats.rx_errors++;
 		temp_work_done = xemacps_rx(lp, budget - work_done);
 		work_done += temp_work_done;
@@ -1639,12 +1643,9 @@ static void xemacps_tx_poll(struct net_device *ndev)
 	 * we can do to revive hardware other than reset hardware.
 	 * Or try to close this interface and reopen it.
 	 */
-	if (regval & (XEMACPS_TXSR_URUN_MASK | XEMACPS_TXSR_RXOVR_MASK |
-		XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_COL1000_MASK |
-		XEMACPS_TXSR_BUFEXH_MASK)) {
-		dev_err(&lp->pdev->dev, "TX ERROR 0x%x\n", regval);
+	if (regval & (XEMACPS_TXSR_RXOVR_MASK | XEMACPS_TXSR_HRESPNOK_MASK
+					| XEMACPS_TXSR_BUFEXH_MASK))
 		lp->stats.tx_errors++;
-	}
 
 	/* This may happen when a buffer becomes complete
 	 * between reading the ISR and scanning the descriptors.
@@ -1703,8 +1704,6 @@ static void xemacps_tx_poll(struct net_device *ndev)
 			if (!(regval & XEMACPS_TXBUF_ERR_MASK)) {
 				lp->stats.tx_packets++;
 				lp->stats.tx_bytes += bdlen;
-			} else {
-				lp->stats.tx_errors++;
 			}
 		}
 
@@ -2752,20 +2751,14 @@ static struct net_device_stats
 		xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
 		xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET) +
 		xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXSYMBCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXIPCCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXTCPCCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXUDPCCNT_OFFSET));
+		xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET));
 	nstat->rx_length_errors +=
 		(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
 		xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
 		xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
 		xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET));
 	nstat->rx_over_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET);
+		xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
 	nstat->rx_crc_errors +=
 		xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET);
 	nstat->rx_frame_errors +=
