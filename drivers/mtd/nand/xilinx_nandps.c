@@ -1294,8 +1294,6 @@ static int __devexit xnandps_remove(struct platform_device *pdev)
 static struct platform_driver xnandps_driver = {
 	.probe		= xnandps_probe,
 	.remove		= __devexit_p(xnandps_remove),
-	.suspend	= NULL,
-	.resume		= NULL,
 	.driver		= {
 		.name	= XNANDPS_DRIVER_NAME,
 		.owner	= THIS_MODULE,
