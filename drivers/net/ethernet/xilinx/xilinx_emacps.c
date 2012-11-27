@@ -1738,49 +1738,24 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regisr;
 
+	spin_lock(&lp->lock);
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
-	rmb();
-
 	if (unlikely(!regisr))
 		return IRQ_NONE;
-
-	spin_lock(&lp->lock);
+	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 
 	while (regisr) {
-
-		/* Log errors here. ISR status is cleared;
-		 * this must be recorded here.
-		 */
-		if (regisr & XEMACPS_IXR_RX_ERR_MASK)
-			lp->stats.rx_errors++;
-
-		/* RX interrupts */
-		if (regisr &
-		(XEMACPS_IXR_FRAMERX_MASK | XEMACPS_IXR_RX_ERR_MASK)) {
-
-			if (napi_schedule_prep(&lp->napi)) {
-				/* acknowledge RX interrupt and disable it,
-				 * napi will be the one processing it.  */
-				xemacps_write(lp->baseaddr,
-					XEMACPS_IDR_OFFSET,
-					(XEMACPS_IXR_FRAMERX_MASK |
-					 XEMACPS_IXR_RX_ERR_MASK));
-				dev_dbg(&lp->pdev->dev,
-					"schedule RX softirq\n");
-				__napi_schedule(&lp->napi);
-			}
-		}
-
-		/* TX interrupts */
-		if (regisr &
-		(XEMACPS_IXR_TXCOMPL_MASK | XEMACPS_IXR_TX_ERR_MASK))
+		if (regisr & (XEMACPS_IXR_TXCOMPL_MASK |
+				XEMACPS_IXR_TX_ERR_MASK)) {
 			xemacps_tx_poll(ndev);
-
-		/* acknowledge interrupt and clear it */
-		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
-		wmb();
+		} else {
+			xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET,
+					(XEMACPS_IXR_FRAMERX_MASK |
+					XEMACPS_IXR_RX_ERR_MASK));
+			napi_schedule(&lp->napi);
+		}
 		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
-		rmb();
+		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 	}
 	spin_unlock(&lp->lock);
 
