@@ -74,6 +74,72 @@ static int xsdhcips_clk_notifier_cb(struct notifier_block *nb,
 	}
 }
 
+#ifdef CONFIG_PM_SLEEP
+/**
+ * xsdhcips_suspend - Suspend method for the driver
+ * @dev:	Address of the device structure
+ * Returns 0 on success and error value on error
+ *
+ * Put the device in a low power state.
+ */
+static int xsdhcips_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct xsdhcips *xsdhcips = pltfm_host->priv;
+	int ret;
+
+	ret = sdhci_suspend_host(host);
+	if (ret)
+		return ret;
+
+	clk_disable(xsdhcips->devclk);
+	clk_disable(xsdhcips->aperclk);
+
+	return 0;
+}
+
+/**
+ * xsdhcips_resume - Resume method for the driver
+ * @dev:	Address of the device structure
+ * Returns 0 on success and error value on error
+ *
+ * Resume operation after suspend
+ */
+static int xsdhcips_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct xsdhcips *xsdhcips = pltfm_host->priv;
+	int ret;
+
+	ret = clk_enable(xsdhcips->aperclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable APER clock.\n");
+		return ret;
+	}
+
+	ret = clk_enable(xsdhcips->devclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable device clock.\n");
+		clk_disable(xsdhcips->aperclk);
+		return ret;
+	}
+
+	return sdhci_resume_host(host);
+}
+
+static const struct dev_pm_ops xsdhcips_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xsdhcips_suspend, xsdhcips_resume)
+};
+#define XSDHCIPS_PM	(&xsdhcips_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XSDHCIPS_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -192,7 +258,7 @@ static struct platform_driver sdhci_zynq_driver = {
 		.name = "sdhci-zynq",
 		.owner = THIS_MODULE,
 		.of_match_table = sdhci_zynq_of_match,
-		.pm = SDHCI_PLTFM_PMOPS,
+		.pm = XSDHCIPS_PM,
 	},
 	.probe = sdhci_zynq_probe,
 	.remove = __devexit_p(sdhci_zynq_remove),
