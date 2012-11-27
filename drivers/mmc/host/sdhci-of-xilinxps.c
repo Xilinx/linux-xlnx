@@ -17,11 +17,11 @@
  * your option) any later version.
  */
 
-#include <linux/of.h>
-#include <linux/io.h>
 #include <linux/delay.h>
-#include <linux/module.h>
+#include <linux/io.h>
 #include <linux/mmc/host.h>
+#include <linux/module.h>
+#include <linux/of.h>
 #include "sdhci-pltfm.h"
 
 static unsigned int zynq_of_get_max_clock(struct sdhci_host *host)
