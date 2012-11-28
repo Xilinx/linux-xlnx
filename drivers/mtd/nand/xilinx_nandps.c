@@ -941,13 +941,6 @@ static int xnandps_device_ready(struct mtd_info *mtd)
 	return status ? 1 : 0;
 }
 
-/* Match table for device tree binding */
-static const struct of_device_id __devinitconst xnandps_of_match[] = {
-	{ .compatible = "xlnx,ps7-nand-1.00.a" },
-	{},
-};
-MODULE_DEVICE_TABLE(of, xnandps_of_match);
-
 /**
  * xnandps_probe - Probe method for the NAND driver
  * @pdev:	Pointer to the platform_device structure
@@ -1273,6 +1266,13 @@ static int __devexit xnandps_remove(struct platform_device *pdev)
 	kfree(xnand);
 	return 0;
 }
+
+/* Match table for device tree binding */
+static const struct of_device_id __devinitconst xnandps_of_match[] = {
+	{ .compatible = "xlnx,ps7-nand-1.00.a" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, xnandps_of_match);
 
 /*
  * xnandps_driver - This structure defines the NAND subsystem platform driver
