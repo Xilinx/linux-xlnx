@@ -355,11 +355,12 @@ static const struct of_device_id xilinx_spi_of_match[] = {
 MODULE_DEVICE_TABLE(of, xilinx_spi_of_match);
 
 struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
-	u32 irq, s16 bus_num, int num_cs, int little_endian, int bits_per_word)
+	u32 irq, s16 bus_num, int num_cs, int bits_per_word)
 {
 	struct spi_master *master;
 	struct xilinx_spi *xspi;
 	int ret;
+	int num = 1;
 
 	master = spi_alloc_master(dev, sizeof(struct xilinx_spi));
 	if (!master)
@@ -395,13 +396,16 @@ struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 
 	xspi->mem = *mem;
 	xspi->irq = irq;
-	if (little_endian) {
+
+	/* Run time endian checking */
+	if (*(char *)&num == 1) {
 		xspi->read_fn = xspi_read32;
 		xspi->write_fn = xspi_write32;
 	} else {
 		xspi->read_fn = xspi_read32_be;
 		xspi->write_fn = xspi_write32_be;
 	}
+
 	xspi->bits_per_word = bits_per_word;
 	if (xspi->bits_per_word == 8) {
 		xspi->tx_fn = xspi_tx8;
@@ -465,14 +469,13 @@ static int __devinit xilinx_spi_probe(struct platform_device *dev)
 {
 	struct xspi_platform_data *pdata;
 	struct resource *r;
-	int irq, num_cs = 0, little_endian = 0, bits_per_word = 8;
+	int irq, num_cs = 0, bits_per_word = 8;
 	struct spi_master *master;
 	u8 i;
 
 	pdata = dev->dev.platform_data;
 	if (pdata) {
 		num_cs = pdata->num_chipselect;
-		little_endian = pdata->little_endian;
 		bits_per_word = pdata->bits_per_word;
 	}
 
@@ -504,7 +507,7 @@ static int __devinit xilinx_spi_probe(struct platform_device *dev)
 		return -ENXIO;
 
 	master = xilinx_spi_init(&dev->dev, r, irq, dev->id, num_cs,
-				 little_endian, bits_per_word);
+				 bits_per_word);
 	if (!master)
 		return -ENODEV;
 
