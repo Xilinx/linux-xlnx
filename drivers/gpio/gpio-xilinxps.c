@@ -478,8 +478,6 @@ static int xgpiops_runtime_resume(struct device *dev)
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
 	return clk_enable(gpio->clk);
-
-	return 0;
 }
 
 static int xgpiops_idle(struct device *dev)
