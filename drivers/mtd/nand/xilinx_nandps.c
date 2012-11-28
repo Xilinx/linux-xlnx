@@ -941,11 +941,9 @@ static int xnandps_device_ready(struct mtd_info *mtd)
 	return status ? 1 : 0;
 }
 
-static struct xnand_platform_data xnandps_config;
-
 /* Match table for device tree binding */
 static const struct of_device_id __devinitconst xnandps_of_match[] = {
-	{ .compatible = "xlnx,ps7-nand-1.00.a", .data = &xnandps_config},
+	{ .compatible = "xlnx,ps7-nand-1.00.a" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, xnandps_of_match);
@@ -971,19 +969,9 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 	u8 set_feature[4] = {0x08, 0x00, 0x00, 0x00};
 	int ondie_ecc_enabled = 0;
 	unsigned long ecc_cfg;
-	struct xnand_platform_data	*pdata = NULL;
 	struct mtd_part_parser_data ppdata;
-	const struct of_device_id *match;
 	const unsigned int *prop;
-
-	match = of_match_device(xnandps_of_match, &pdev->dev);
-	if (match)
-		pdata = match->data;
-
-	if (pdata == NULL) {
-		dev_err(&pdev->dev, "platform data missing\n");
-		return -ENODEV;
-	}
+	u32 options = 0;
 
 	xnand = kzalloc(sizeof(struct xnandps_info), GFP_KERNEL);
 	if (!xnand) {
@@ -1037,16 +1025,16 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 	prop = of_get_property(pdev->dev.of_node, "xlnx,nand-width", NULL);
 	if (prop) {
 		if (be32_to_cpup(prop) == 16) {
-			pdata->options |= NAND_BUSWIDTH_16;
+			options |= NAND_BUSWIDTH_16;
 		} else if (be32_to_cpup(prop) == 8) {
-			pdata->options &= ~NAND_BUSWIDTH_16;
+			options &= ~NAND_BUSWIDTH_16;
 		} else {
 			dev_info(&pdev->dev, "xlnx,nand-width not valid, using 8");
-			pdata->options &= ~NAND_BUSWIDTH_16;
+			options &= ~NAND_BUSWIDTH_16;
 		}
 	} else {
 		dev_info(&pdev->dev, "xlnx,nand-width not in device tree, using 8");
-		pdata->options &= ~NAND_BUSWIDTH_16;
+		options &= ~NAND_BUSWIDTH_16;
 	}
 
 	/* Link the private data with the MTD structure */
@@ -1076,7 +1064,7 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 	nand_chip->verify_buf = xnandps_verify_buf;
 
 	/* Set the device option and flash width */
-	nand_chip->options = pdata->options;
+	nand_chip->options = options;
 	nand_chip->bbt_options = NAND_BBT_USE_FLASH;
 
 	platform_set_drvdata(pdev, xnand);
