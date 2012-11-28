@@ -382,11 +382,12 @@ int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
 		/* Toggling error bit */
 		buf[byte_addr] ^= (1 << bit_addr);
 		return 1;
-	} else if (onehot(ecc_odd | ecc_even) == 1) {
-		return 1; /* one error in parity */
-	} else {
-		return -1; /* Uncorrectable error */
 	}
+
+	if (onehot(ecc_odd | ecc_even) == 1)
+		return 1; /* one error in parity */
+
+	return -1; /* Uncorrectable error */
 }
 
 /**
