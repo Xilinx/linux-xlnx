@@ -483,7 +483,15 @@ static int xgpiops_idle(struct device *dev)
 
 static int xgpiops_request(struct gpio_chip *chip, unsigned offset)
 {
-	return pm_runtime_get_sync(chip->dev);
+	int ret;
+
+	ret = pm_runtime_get_sync(chip->dev);
+
+	/*
+	 * If the device is already active pm_runtime_get() will return 1 on
+	 * success, but gpio_request still needs to return 0.
+	 */
+	return ret < 0 ? ret : 0;
 }
 
 static void xgpiops_free(struct gpio_chip *chip, unsigned offset)
