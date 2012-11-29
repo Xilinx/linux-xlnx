@@ -34,9 +34,27 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <mach/smc.h>
 
 #define XNANDPS_DRIVER_NAME "xilinx_nandps"
+
+/* Memory controller configuration register offset */
+#define XSMCPS_MC_STATUS		0x000	/* Controller status reg, RO */
+#define XSMCPS_MC_CLR_CONFIG		0x00C	/* Clear config reg, WO */
+#define XSMCPS_MC_DIRECT_CMD		0x010	/* Direct command reg, WO */
+#define XSMCPS_MC_SET_CYCLES		0x014	/* Set cycles register, WO */
+#define XSMCPS_MC_SET_OPMODE		0x018	/* Set opmode register, WO */
+
+/* Add ECC reg, nand_cycles, sram_cycles and opmode_x_n registers
+   There are multiple interfaces also we need to take care.*/
+
+/* Register definitions */
+/* ECC register offset */
+#define XSMCPS_ECC_IF1_OFFSET		0x400   /* Interface 1 ECC register */
+#define XSMCPS_ECC_STATUS_OFFSET(addr)	(0x000 + addr) /* ECC status register */
+#define XSMCPS_ECC_MEMCFG_OFFSET(addr)	(0x004 + addr) /* ECC mem config reg */
+#define XSMCPS_ECC_MEMCMD1_OFFSET(addr)(0x008 + addr) /*ECC mem cmd1 reg*/
+#define XSMCPS_ECC_MEMCMD2_OFFSET(addr)(0x00C + addr) /*ECC mem cmd2 reg*/
+#define XSMCPS_ECC_VALUE0_OFFSET(addr)	(0x018 + addr) /* ECC value 0 reg */
 
 /*
  * The NAND flash driver defines
