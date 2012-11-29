@@ -158,8 +158,9 @@ static void xgpiops_set_value(struct gpio_chip *chip, unsigned int pin,
 	if (bank_pin_num >= 16) {
 		bank_pin_num -= 16; /* only 16 data bits in bit maskable reg */
 		reg_offset = XGPIOPS_DATA_MSW_OFFSET(bank_num);
-	} else
+	} else {
 		reg_offset = XGPIOPS_DATA_LSW_OFFSET(bank_num);
+	}
 
 	/*
 	 * get the 32 bit value to be written to the mask/data register where
@@ -190,11 +191,9 @@ static int xgpiops_dir_in(struct gpio_chip *chip, unsigned int pin)
 
 	xgpiops_get_bank_pin(pin, &bank_num, &bank_pin_num);
 	/* clear the bit in direction mode reg to set the pin as input */
-	reg = xgpiops_readreg(gpio->base_addr +
-			       XGPIOPS_DIRM_OFFSET(bank_num));
+	reg = xgpiops_readreg(gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
 	reg &= ~(1 << bank_pin_num);
-	xgpiops_writereg(reg,
-			  gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
+	xgpiops_writereg(reg, gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
 
 	return 0;
 }
@@ -217,18 +216,14 @@ static int xgpiops_dir_out(struct gpio_chip *chip, unsigned int pin, int state)
 	xgpiops_get_bank_pin(pin, &bank_num, &bank_pin_num);
 
 	/* set the GPIO pin as output */
-	reg = xgpiops_readreg(gpio->base_addr +
-			       XGPIOPS_DIRM_OFFSET(bank_num));
+	reg = xgpiops_readreg(gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
 	reg |= 1 << bank_pin_num;
-	xgpiops_writereg(reg,
-			  gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
+	xgpiops_writereg(reg, gpio->base_addr + XGPIOPS_DIRM_OFFSET(bank_num));
 
 	/* configure the output enable reg for the pin */
-	reg = xgpiops_readreg(gpio->base_addr +
-			       XGPIOPS_OUTEN_OFFSET(bank_num));
+	reg = xgpiops_readreg(gpio->base_addr + XGPIOPS_OUTEN_OFFSET(bank_num));
 	reg |= 1 << bank_pin_num;
-	xgpiops_writereg(reg,
-			  gpio->base_addr + XGPIOPS_OUTEN_OFFSET(bank_num));
+	xgpiops_writereg(reg, gpio->base_addr + XGPIOPS_OUTEN_OFFSET(bank_num));
 
 	/* set the state of the pin */
 	xgpiops_set_value(chip, pin, state);
@@ -289,7 +284,7 @@ static void xgpiops_irq_mask(struct irq_data *irq_data)
  */
 static void xgpiops_irq_unmask(struct irq_data *irq_data)
 {
-	struct xgpiops *gpio = (struct xgpiops *)irq_data_get_irq_chip_data(irq_data);
+	struct xgpiops *gpio = irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 
 	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
@@ -314,7 +309,7 @@ static void xgpiops_irq_unmask(struct irq_data *irq_data)
  */
 static int xgpiops_set_irq_type(struct irq_data *irq_data, unsigned int type)
 {
-	struct xgpiops *gpio = (struct xgpiops *)irq_data_get_irq_chip_data(irq_data);
+	struct xgpiops *gpio = irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 	unsigned int int_type, int_pol, int_any;
 
@@ -549,8 +544,8 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 
 	gpio = kzalloc(sizeof(struct xgpiops), GFP_KERNEL);
 	if (!gpio) {
-		dev_err(&pdev->dev, "couldn't allocate memory for gpio private "
-			"data\n");
+		dev_err(&pdev->dev,
+			"couldn't allocate memory for gpio private data\n");
 		return -ENOMEM;
 	}
 
