@@ -24,10 +24,13 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_wakeup.h>
 #include <linux/err.h>
 #include <linux/clk.h>
+#include <asm/mach/irq.h>
 
 #define DRIVER_NAME "xgpiops"
+#define XGPIOPS_NR_GPIOS	118
 
 /* Register offsets for the GPIO device */
 
@@ -82,6 +85,7 @@ static unsigned int xgpiops_pin_table[] = {
 struct xgpiops {
 	struct gpio_chip chip;
 	void __iomem *base_addr;
+	unsigned int irq;
 	struct clk *clk;
 	spinlock_t gpio_lock;
 };
@@ -232,6 +236,13 @@ static int xgpiops_dir_out(struct gpio_chip *chip, unsigned int pin, int state)
 	return 0;
 }
 
+static int xgpiops_to_irq(struct gpio_chip *chip, unsigned offset)
+{
+	if (offset < XGPIOPS_NR_GPIOS)
+		return XGPIOPS_IRQBASE + offset;
+	return -ENODEV;
+}
+
 /**
  * xgpiops_irq_ack - Acknowledge the interrupt of a gpio pin
  * @irq_data:	irq data containing irq number of gpio pin for the interrupt to ack
@@ -243,15 +254,11 @@ static void xgpiops_irq_ack(struct irq_data *irq_data)
 {
 	struct xgpiops *gpio = (struct xgpiops *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
-	unsigned int irq_sts;
 
 	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiops_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	irq_sts = xgpiops_readreg(gpio->base_addr +
-				   XGPIOPS_INTSTS_OFFSET(bank_num)) |
-				   (1 << bank_pin_num);
-	xgpiops_writereg(irq_sts,
-			  gpio->base_addr + (XGPIOPS_INTSTS_OFFSET(bank_num)));
+	xgpiops_writereg(1 << bank_pin_num, gpio->base_addr +
+			(XGPIOPS_INTSTS_OFFSET(bank_num)));
 }
 
 /**
@@ -266,14 +273,10 @@ static void xgpiops_irq_mask(struct irq_data *irq_data)
 {
 	struct xgpiops *gpio = (struct xgpiops *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
-	unsigned int irq_dis;
 
 	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiops_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	irq_dis = xgpiops_readreg(gpio->base_addr +
-				   XGPIOPS_INTDIS_OFFSET(bank_num)) |
-				   (1 << bank_pin_num);
-	xgpiops_writereg(irq_dis,
+	xgpiops_writereg(1 << bank_pin_num,
 			  gpio->base_addr + XGPIOPS_INTDIS_OFFSET(bank_num));
 }
 
@@ -289,14 +292,10 @@ static void xgpiops_irq_unmask(struct irq_data *irq_data)
 {
 	struct xgpiops *gpio = (struct xgpiops *)irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
-	unsigned int irq_en;
 
 	device_pin_num = irq_to_gpio(irq_data->irq); /* get pin num within the device */
 	xgpiops_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	irq_en = xgpiops_readreg(gpio->base_addr +
-				  XGPIOPS_INTEN_OFFSET(bank_num)) |
-				  (1 << bank_pin_num);
-	xgpiops_writereg(irq_en,
+	xgpiops_writereg(1 << bank_pin_num,
 			  gpio->base_addr + XGPIOPS_INTEN_OFFSET(bank_num));
 }
 
@@ -370,6 +369,16 @@ static int xgpiops_set_irq_type(struct irq_data *irq_data, unsigned int type)
 	return 0;
 }
 
+static int xgpiops_set_wake(struct irq_data *data, unsigned int on)
+{
+	if (on)
+		xgpiops_irq_unmask(data);
+	else
+		xgpiops_irq_mask(data);
+
+	return 0;
+}
+
 /* irq chip descriptor */
 static struct irq_chip xgpiops_irqchip = {
 	.name		= DRIVER_NAME,
@@ -377,6 +386,7 @@ static struct irq_chip xgpiops_irqchip = {
 	.irq_mask	= xgpiops_irq_mask,
 	.irq_unmask	= xgpiops_irq_unmask,
 	.irq_set_type	= xgpiops_set_irq_type,
+	.irq_set_wake	= xgpiops_set_wake,
 };
 
 /**
@@ -397,35 +407,35 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 	unsigned int int_sts, int_enb, bank_num;
 	struct irq_desc *gpio_irq_desc;
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irq_data *irq_data = irq_get_chip_data(irq);
 
-	chip->irq_ack(irq_data);
+	chained_irq_enter(chip, desc);
+
 	for (bank_num = 0; bank_num < 4; bank_num++) {
 		int_sts = xgpiops_readreg(gpio->base_addr +
 					   XGPIOPS_INTSTS_OFFSET(bank_num));
 		int_enb = xgpiops_readreg(gpio->base_addr +
 					   XGPIOPS_INTMASK_OFFSET(bank_num));
-		/*
-		 * handle only the interrupts which are enabled in interrupt
-		 * mask register
-		 */
 		int_sts &= ~int_enb;
+
 		for (; int_sts != 0; int_sts >>= 1, gpio_irq++) {
 			if ((int_sts & 1) == 0)
 				continue;
-			BUG_ON(!(irq_desc[gpio_irq].handle_irq));
 			gpio_irq_desc = irq_to_desc(gpio_irq);
-			chip->irq_ack(irq_data);
+			BUG_ON(!gpio_irq_desc);
+			chip = irq_desc_get_chip(gpio_irq_desc);
+			BUG_ON(!chip);
+			chip->irq_ack(&gpio_irq_desc->irq_data);
 
 			/* call the pin specific handler */
-			irq_desc[gpio_irq].handle_irq(gpio_irq,
-						      &irq_desc[gpio_irq]);
+			generic_handle_irq(gpio_irq);
 		}
 		/* shift to first virtual irq of next bank */
 		gpio_irq = (int)irq_get_handler_data(irq) +
 				(xgpiops_pin_table[bank_num] + 1);
 	}
-	chip->irq_unmask(irq_data);
+
+	chip = irq_desc_get_chip(desc);
+	chained_irq_exit(chip, desc);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -435,8 +445,12 @@ static int xgpiops_suspend(struct device *_dev)
 			struct platform_device, dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	if (!pm_runtime_suspended(_dev))
-		clk_disable(gpio->clk);
+	if (!device_may_wakeup(_dev)) {
+		if (!pm_runtime_suspended(_dev))
+			clk_disable(gpio->clk);
+		return 0;
+	}
+
 	return 0;
 }
 
@@ -446,8 +460,10 @@ static int xgpiops_resume(struct device *_dev)
 			struct platform_device, dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	if (!pm_runtime_suspended(_dev))
-		return clk_enable(gpio->clk);
+	if (!device_may_wakeup(_dev)) {
+		if (!pm_runtime_suspended(_dev))
+			return clk_enable(gpio->clk);
+	}
 
 	return 0;
 }
@@ -570,6 +586,7 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 	}
 
 	irq_num = platform_get_irq(pdev, 0);
+	gpio->irq = irq_num;
 
 	/* configure the gpio chip */
 	chip = &gpio->chip;
@@ -582,9 +599,10 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 	chip->free = xgpiops_free;
 	chip->direction_input = xgpiops_dir_in;
 	chip->direction_output = xgpiops_dir_out;
+	chip->to_irq = xgpiops_to_irq;
 	chip->dbg_show = NULL;
 	chip->base = 0;		/* default pin base */
-	chip->ngpio = 246;
+	chip->ngpio = XGPIOPS_NR_GPIOS;
 	chip->can_sleep = 0;
 
 	/* report a bug if gpio chip registration fails */
@@ -622,11 +640,12 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 	 * each pin
 	 */
 	gpio_irq = XGPIOPS_IRQBASE;
-	for (pin_num = 0; pin_num < ARCH_NR_GPIOS; pin_num++, gpio_irq++) {
+	for (pin_num = 0; pin_num < XGPIOPS_NR_GPIOS; pin_num++, gpio_irq++) {
 		irq_set_chip(gpio_irq, &xgpiops_irqchip);
 		irq_set_chip_data(gpio_irq, (void *)gpio);
 		irq_set_handler(gpio_irq, handle_simple_irq);
 		irq_set_status_flags(gpio_irq, IRQF_VALID);
+		irq_clear_status_flags(gpio_irq, IRQ_NOREQUEST);
 	}
 
 	irq_set_handler_data(irq_num, (void *)(XGPIOPS_IRQBASE));
@@ -634,6 +653,8 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 
 	clk_disable(gpio->clk);
 	pm_runtime_enable(&pdev->dev);
+
+	device_set_wakeup_capable(&pdev->dev, 1);
 
 	return 0;
 
@@ -658,6 +679,7 @@ static int xgpiops_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(gpio->clk);
 	clk_put(gpio->clk);
+	device_set_wakeup_capable(&pdev->dev, 0);
 	return 0;
 }
 
