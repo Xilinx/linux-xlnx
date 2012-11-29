@@ -438,14 +438,13 @@ void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int xgpiops_suspend(struct device *_dev)
+static int xgpiops_suspend(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	if (!device_may_wakeup(_dev)) {
-		if (!pm_runtime_suspended(_dev))
+	if (!device_may_wakeup(dev)) {
+		if (!pm_runtime_suspended(dev))
 			clk_disable(gpio->clk);
 		return 0;
 	}
@@ -453,14 +452,13 @@ static int xgpiops_suspend(struct device *_dev)
 	return 0;
 }
 
-static int xgpiops_resume(struct device *_dev)
+static int xgpiops_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
-	if (!device_may_wakeup(_dev)) {
-		if (!pm_runtime_suspended(_dev))
+	if (!device_may_wakeup(dev)) {
+		if (!pm_runtime_suspended(dev))
 			return clk_enable(gpio->clk);
 	}
 
@@ -469,10 +467,9 @@ static int xgpiops_resume(struct device *_dev)
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
-static int xgpiops_runtime_suspend(struct device *_dev)
+static int xgpiops_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
 	clk_disable(gpio->clk);
@@ -480,10 +477,9 @@ static int xgpiops_runtime_suspend(struct device *_dev)
 	return 0;
 }
 
-static int xgpiops_runtime_resume(struct device *_dev)
+static int xgpiops_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xgpiops *gpio = platform_get_drvdata(pdev);
 
 	return clk_enable(gpio->clk);
