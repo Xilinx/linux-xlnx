@@ -1,7 +1,7 @@
 config ARM
 	bool
 	default y
-	select ARCH_HAVE_CUSTOM_GPIO_H
+	select ARCH_HAVE_CUSTOM_GPIO_H if (!ARCH_ZYNQ)
 	select HAVE_AOUT
 	select HAVE_DMA_API_DEBUG
 	select HAVE_IDE if PCI || ISA || PCMCIA
@@ -1012,6 +1012,7 @@ config ARCH_ZYNQ
 	bool "Xilinx Zynq ARM Cortex A9 Platform"
 	select CPU_V7
 	select GENERIC_TIME
+	select GENERIC_GPIO
 	select GENERIC_CLOCKEVENTS
 	select CLKDEV_LOOKUP
 	select ARM_GIC
@@ -1629,7 +1630,7 @@ config LOCAL_TIMERS
 
 config ARCH_NR_GPIO
 	int
-	default 1024 if ARCH_SHMOBILE || ARCH_TEGRA
+	default 1024 if ARCH_SHMOBILE || ARCH_TEGRA || ARCH_ZYNQ
 	default 355 if ARCH_U8500
 	default 264 if MACH_H4700
 	default 512 if SOC_OMAP5
