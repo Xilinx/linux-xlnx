@@ -34,7 +34,6 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <mach/nand.h>
 #include <mach/smc.h>
 
 #define XNANDPS_DRIVER_NAME "xilinx_nandps"
@@ -121,6 +120,12 @@
 #define xnandps_read32(addr)		__raw_readl(addr)
 #define xnandps_write32(addr, val)	__raw_writel((val), (addr))
 
+
+struct xnand_platform_data {
+	unsigned int            options;
+	struct mtd_partition    *parts;
+	int			nr_parts;
+};
 
 /**
  * struct xnandps_command_format - Defines NAND flash command format
