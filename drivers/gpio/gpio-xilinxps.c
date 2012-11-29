@@ -503,9 +503,18 @@ static void xgpiops_free(struct gpio_chip *chip, unsigned offset)
 	pm_runtime_put_sync(chip->dev);
 }
 
+static void xgpiops_pm_runtime_init(struct platform_device *pdev)
+{
+	struct xgpiops *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+	pm_runtime_enable(&pdev->dev);
+}
+
 #else /* ! CONFIG_PM_RUNTIME */
 #define xgpiops_request	NULL
 #define xgpiops_free	NULL
+static void xgpiops_pm_runtime_init(struct platform_device *pdev) {}
 #endif /* ! CONFIG_PM_RUNTIME */
 
 #if defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)
@@ -639,8 +648,7 @@ static int __devinit xgpiops_probe(struct platform_device *pdev)
 	irq_set_handler_data(irq_num, (void *)(XGPIOPS_IRQBASE));
 	irq_set_chained_handler(irq_num, xgpiops_irqhandler);
 
-	clk_disable(gpio->clk);
-	pm_runtime_enable(&pdev->dev);
+	xgpiops_pm_runtime_init(pdev);
 
 	device_set_wakeup_capable(&pdev->dev, 1);
 
