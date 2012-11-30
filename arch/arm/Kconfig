@@ -1025,6 +1025,7 @@ config ARCH_ZYNQ
 	select COMMON_CLK
 	select ARCH_HAS_CPUFREQ
 	select ARCH_HAS_OPP
+	select MIGHT_HAVE_PCI
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 endchoice

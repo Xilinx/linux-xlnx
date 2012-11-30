@@ -15,6 +15,14 @@
 #ifndef __MACH_IRQS_H
 #define __MACH_IRQS_H
 
-#define NR_IRQS		128
+/* AXI PCIe MSI support */
+#if defined(CONFIG_XILINX_AXIPCIE) && defined(CONFIG_PCI_MSI)
+#define IRQ_XILINX_MSI_0	128
+#define NR_XILINX_IRQS		(IRQ_XILINX_MSI_0 + 128)
+#else
+#define NR_XILINX_IRQS		128
+#endif
+
+#define NR_IRQS			NR_XILINX_IRQS
 
 #endif

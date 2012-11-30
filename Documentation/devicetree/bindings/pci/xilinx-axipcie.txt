@@ -1,0 +1,23 @@
+* Xilinx AXI PCIe Root Port Bridge
+
+Required properties:
+	compatible: Should be "xlnx,axi-pcie-1.05.a"
+	reg: Should contain AXI PCIe registers location and length.
+	interrupts: Should contain AXI PCIe interrupts.
+	ranges: These are the parameters for each PCIe bar implemented within the IP
+	xlnx, include-rc: Root Port (=1) or End Point(=0)
+	xlnx,axibar2pciebar-0: Translates address from AXI to PCIe
+	xlnx,pciebar2axibar-0: Translates address from PCIe to AXI
+
+Example:
+++++++++
+
+	pci_express: axi-pcie@50000000 {
+		compatible = "xlnx,axi-pcie-1.05.a";
+		interrupts = < 0 52 4 >;
+		ranges = < 0x00000002 0x00000000 0x60000000 0x60000000 0x00000000 0x00000000 0x10000000 >;
+		reg = < 0x50000000 0x10000000 >;
+		xlnx,include-rc = <0x1>;
+		xlnx,axibar2pciebar-0 = <0x60000000>;
+		xlnx,pciebar2axibar-0 = <0x0>;
+	};

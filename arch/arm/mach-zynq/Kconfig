@@ -49,6 +49,15 @@ config XILINX_TEST
 	  Select if you want kernel tests to run on boot.  The tests may take
 	  several minutes on kernel boot.
 
+config XILINX_AXIPCIE
+	bool "Xilinx AXI PCIe host bridge support"
+	select PCI
+	select ARCH_SUPPORTS_MSI
+	help
+	  Say 'Y' here if you want kernel to support the Xilinx AXI PCIe
+	  Host Bridge. This supports Message Signal Interrupts (MSI), if you
+	  want to use this feature select CONFIG_PCI_MSI from 'Bus Support ->'.
+
 endmenu
 
 endif
