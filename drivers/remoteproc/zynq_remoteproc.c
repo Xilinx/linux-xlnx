@@ -93,7 +93,7 @@ static int zynq_rproc_start(struct rproc *rproc)
 	outer_flush_range(local->mem_start, local->mem_end);
 
 	remoteprocdev = pdev;
-	ret = zynq_cpu1_start(0);
+	ret = zynq_cpun_start(0, 1);
 
 	return ret;
 }

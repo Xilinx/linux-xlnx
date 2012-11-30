@@ -15,7 +15,7 @@
 #ifndef __MACH_SYSTEM_H__
 #define __MACH_SYSTEM_H__
 
-extern int zynq_cpu1_start(u32 address);
+extern int zynq_cpun_start(u32 address, int cpu);
 
 static inline void arch_reset(char mode, const char *cmd)
 {

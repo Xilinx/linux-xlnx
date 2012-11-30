@@ -22,6 +22,8 @@
 void __init xttcpss_timer_init(void);
 void platform_device_init(void);
 
+int __cpuinit zynq_cpun_start(u32 address, int cpu);
+
 static inline void xilinx_system_reset(char mode, const char *cmd)
 {
 	xslcr_system_reset();

@@ -38,6 +38,13 @@ static u8 __iomem *zero;
 static unsigned int mem_backup[3];
 static unsigned int mem_backup_done;
 
+/*
+ * Store number of cores in the system
+ * Because of scu_get_core_count() must be in __init section and can't
+ * be called from zynq_cpun_start() because it is in __cpuinit section.
+ */
+static int ncores;
+
 /* Secondary CPU kernel startup is a 2 step process. The primary CPU
  * starts the secondary CPU by giving it the address of the kernel and
  * then sending it an event to wake it up. The secondary CPU then
@@ -80,11 +87,19 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 
 static u8 __iomem *slcr;
 
-int zynq_cpu1_start(u32 address)
+int __cpuinit zynq_cpun_start(u32 address, int cpu)
 {
+	if (cpu > ncores) {
+		pr_warn("CPU No. is not available in the system\n");
+		return -1;
+	}
+
 	if (!slcr) {
 		printk(KERN_INFO "Map SLCR registers\n");
-		/* Remap the SLCR registers to be able to work with cpu1 */
+		/*
+		 * Remap the SLCR registers to be able to work
+		 * with secondary CPUs
+		 */
 		slcr = ioremap(0xF8000000, PAGE_SIZE);
 		if (!slcr) {
 			printk(KERN_WARNING
@@ -98,7 +113,8 @@ int zynq_cpu1_start(u32 address)
 	/* Not possible to jump to non aligned address */
 	if (!(address & 3) && (!address || (address >= 0xC))) {
 		__raw_writel(SLCR_UNLOCK, slcr + 0x8); /* UNLOCK SLCR */
-		__raw_writel(0x22, slcr + 0x244); /* stop CLK and reset CPU1 */
+		/* stop CLK and reset CPUn */
+		__raw_writel(0x11 << cpu, slcr + 0x244);
 
 		/*
 		 * This is elegant way how to jump to any address
@@ -125,8 +141,8 @@ int zynq_cpu1_start(u32 address)
 		outer_flush_all();
 		wmb();
 
-		__raw_writel(0x20, slcr + 0x244); /* enable CPU1 */
-		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPU1 */
+		__raw_writel(0x10 << cpu, slcr + 0x244); /* enable CPUn */
+		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPUn */
 
 		/* the SLCR locking/unlocking needs to be re-done, for now
 		 * there is not centralized locking/unlocking so leave it
@@ -138,12 +154,11 @@ int zynq_cpu1_start(u32 address)
 		return 0;
 	}
 
-	printk(KERN_WARNING "Can't start CPU1: Wrong starting address %x\n",
-								address);
+	pr_warn("Can't start CPU%d: Wrong starting address %x\n", cpu, address);
 
 	return -1;
 }
-EXPORT_SYMBOL(zynq_cpu1_start);
+EXPORT_SYMBOL(zynq_cpun_start);
 
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
@@ -155,7 +170,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
-	ret = zynq_cpu1_start(virt_to_phys(secondary_startup));
+	ret = zynq_cpun_start(virt_to_phys(secondary_startup), cpu);
 	if (ret) {
 		spin_unlock(&boot_lock);
 		return -1;
@@ -176,11 +191,11 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
  */
 void __init smp_init_cpus(void)
 {
-	int i, ncores;
+	int i;
 
 	ncores = scu_get_core_count(SCU_PERIPH_BASE);
 
-	for (i = 0; i < ncores; i++)
+	for (i = 0; i < ncores && i < CONFIG_NR_CPUS; i++)
 		set_cpu_possible(i, true);
 
 	set_smp_cross_call(gic_raise_softirq);
@@ -192,7 +207,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 
 	/*
 	 * Remap the first three addresses at zero which are used
-	 * for 32bit long jump for SMP. Look at zynq_cpu1_start()
+	 * for 32bit long jump for SMP. Look at zynq_cpun_start()
 	 */
 #if defined(CONFIG_PHYS_OFFSET) && (CONFIG_PHYS_OFFSET != 0)
 	zero = ioremap(0, 12);
