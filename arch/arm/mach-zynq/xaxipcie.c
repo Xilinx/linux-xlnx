@@ -1055,6 +1055,7 @@ static struct hw_pci xaxi_pcie_hw __initdata = {
 static int __init xaxi_pcie_init(void)
 {
 	int err;
+	int init = 0;
 	struct device_node *node;
 
 	for_each_matching_node(node, xaxi_pcie_match) {
@@ -1065,9 +1066,11 @@ static int __init xaxi_pcie_init(void)
 			return err;
 		}
 		pr_info("AXI PCIe Root Port Probe Successful\n");
+		init++;
 	}
 
-	pci_common_init(&xaxi_pcie_hw);
+	if (init)
+		pci_common_init(&xaxi_pcie_hw);
 
 	return 0;
 }
