@@ -610,7 +610,7 @@ static struct pci_ops xaxi_pcie_ops = {
 	.write = xaxi_pcie_write_config,
 };
 
-static int xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
+static int __devinit xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
 {
 	u32 val;
 	struct xaxi_pcie_port *port = &xaxi_pcie_ports[nr];
