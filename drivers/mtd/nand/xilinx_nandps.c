@@ -345,7 +345,7 @@ xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
  * onehot is if and only if onebit is set.
  *
  **/
-int onehot(unsigned short value)
+static int onehot(unsigned short value)
 {
 	return ((value & (value-1)) == 0);
 }
@@ -363,7 +363,7 @@ int onehot(unsigned short value)
  *		1 if single bit error found and corrected.
  *		-1 if multiple ECC errors found.
  **/
-int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
+static int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
 			unsigned char *read_ecc, unsigned char *calc_ecc)
 {
 	unsigned char bit_addr;
@@ -524,8 +524,8 @@ static void xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  *
  * This functions writes data and hardware generated ECC values in to the page.
  */
-void xnandps_write_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
-		const uint8_t *buf,  int oob_required)
+static void xnandps_write_page_hwecc(struct mtd_info *mtd,
+		struct nand_chip *chip, const uint8_t *buf,  int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
@@ -600,7 +600,7 @@ static void xnandps_write_page_swecc(struct mtd_info *mtd,
 }
 
 /**
- * nand_read_page_hwecc - Hardware ECC based page read function
+ * xnandps_read_page_hwecc - Hardware ECC based page read function
  * @mtd:	Pointer to the mtd info structure
  * @chip:	Pointer to the NAND chip info structure
  * @buf:	Pointer to the buffer to store read data
@@ -611,7 +611,7 @@ static void xnandps_write_page_swecc(struct mtd_info *mtd,
  *
  * returns:	0 always and updates ECC operation status in to MTD structure
  */
-int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
+static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 		uint8_t *buf, int oob_required, int page)
 {
 	int i, stat, eccsize = chip->ecc.size;
@@ -873,7 +873,7 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
  * @len:        number of bytes to read
  *
  */
-void xnandps_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
+static void xnandps_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 {
 	int i;
 	struct nand_chip *chip = mtd->priv;
@@ -891,7 +891,7 @@ void xnandps_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
  * @len:        number of bytes to write
  *
  */
-void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
+static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 {
 	int i;
 	struct nand_chip *chip = mtd->priv;
