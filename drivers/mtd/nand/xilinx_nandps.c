@@ -121,7 +121,6 @@
  * ECC block registers bit position and bit mask
  */
 #define XNANDPS_ECC_BUSY	(1 << 6)	/* ECC block is busy */
-#define XNANDPS_ECC_MASK	0x00FFFFFF	/* ECC value mask */
 
 /*
  * ONFI Get/Set features command
