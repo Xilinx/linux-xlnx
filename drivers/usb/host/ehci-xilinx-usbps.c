@@ -176,12 +176,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		xotg->stop_host = ehci_xusbps_otg_stop_host;
 		/* inform otg driver about host driver */
 		xusbps_update_transceiver();
-
-		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
-		if (retval != 0)
-			goto err2;
-
-		usb_remove_hcd(hcd);
 	} else {
 		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 		if (retval != 0)
@@ -345,6 +339,14 @@ static int ehci_xusbps_setup(struct usb_hcd *hcd)
 	return retval;
 }
 
+void ehci_xusbps_shutdown(struct usb_hcd *hcd)
+{
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+
+	if (ehci->regs)
+		ehci_shutdown(hcd);
+}
+
 #ifdef CONFIG_PM
 
 static int ehci_xusbps_drv_suspend(struct device *dev)
@@ -408,7 +410,7 @@ static const struct hc_driver ehci_xusbps_hc_driver = {
 	.reset = ehci_xusbps_setup,
 	.start = ehci_run,
 	.stop = ehci_stop,
-	.shutdown = ehci_shutdown,
+	.shutdown = ehci_xusbps_shutdown,
 
 	/*
 	 * managing i/o requests and associated device resources
