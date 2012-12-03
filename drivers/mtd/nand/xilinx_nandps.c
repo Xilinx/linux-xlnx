@@ -174,7 +174,7 @@ struct xnandps_info {
 /*
  * The NAND flash operations command format
  */
-static struct xnandps_command_format xnandps_commands[] = {
+static const struct xnandps_command_format xnandps_commands[] = {
 	{NAND_CMD_READ0, NAND_CMD_READSTART, 5, XNANDPS_CMD_PHASE},
 	{NAND_CMD_RNDOUT, NAND_CMD_RNDOUTSTART, 2, XNANDPS_CMD_PHASE},
 	{NAND_CMD_READID, NAND_CMD_NONE, 1, NAND_CMD_NONE},
@@ -741,7 +741,7 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 			    int column, int page_addr)
 {
 	struct nand_chip *chip = mtd->priv;
-	struct xnandps_command_format *curr_cmd = NULL;
+	const struct xnandps_command_format *curr_cmd = NULL;
 	struct xnandps_info *xnand =
 		container_of(mtd, struct xnandps_info, mtd);
 	void __iomem *cmd_addr;
