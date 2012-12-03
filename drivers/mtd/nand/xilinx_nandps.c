@@ -137,12 +137,6 @@
 #define xnandps_write32(addr, val)	__raw_writel((val), (addr))
 
 
-struct xnand_platform_data {
-	unsigned int            options;
-	struct mtd_partition    *parts;
-	int			nr_parts;
-};
-
 /**
  * struct xnandps_command_format - Defines NAND flash command format
  * @start_cmd:		First cycle command (Start command)
