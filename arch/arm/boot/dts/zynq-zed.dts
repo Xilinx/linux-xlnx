@@ -207,7 +207,11 @@
 				};
 				partition@qspi-rootfs {
 					label = "qspi-rootfs";
-					reg = <0x620000 0x9D0000>;
+					reg = <0x620000 0x5E0000>;
+				};
+				partition@qspi-bitstream {
+					label = "qspi-bitstream";
+					reg = <0xC00000 0x400000>;
 				};
 			};
 		} ;

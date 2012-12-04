@@ -233,38 +233,30 @@
 			#size-cells = <0>;
 			is-dual = <0>;
 			flash@0 {
-			compatible = "n25q128";
-			reg = <0x0>;
-			spi-max-frequency = <50000000>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			partition@qspi-fsbl {
-				label = "qspi-fsbl";
-				reg = <0x0 0x80000>;
+				compatible = "n25q128";
+				reg = <0x0>;
+				spi-max-frequency = <50000000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				partition@qspi-fsbl-uboot {
+					label = "qspi-fsbl-uboot";
+					reg = <0x0 0x100000>;
 				};
-			partition@qspi-u-boot {
-				label = "qspi-u-boot";
-				reg = <0x80000 0x80000>;
+				partition@qspi-linux {
+					label = "qspi-linux";
+					reg = <0x100000 0x500000>;
 				};
-			partition@qspi-linux {
-				label = "qspi-linux";
-				reg = <0x100000 0x500000>;
+				partition@qspi-device-tree {
+					label = "qspi-device-tree";
+					reg = <0x600000 0x20000>;
 				};
-			partition@qspi-device-tree {
-				label = "qspi-device-tree";
-				reg = <0x600000 0x20000>;
+				partition@qspi-rootfs {
+					label = "qspi-rootfs";
+					reg = <0x620000 0x5E0000>;
 				};
-			partition@qspi-user {
-				label = "qspi-user";
-				reg = <0x620000 0xE0000>;
-				};
-			partition@qspi-scratch {
-				label = "qspi-scratch";
-				reg = <0x700000 0x100000>;
-				};
-			partition@qspi-rootfs {
-				label = "qspi-rootfs";
-				reg = <0x800000 0x800000>;
+				partition@qspi-bitstream {
+					label = "qspi-bitstream";
+					reg = <0xC00000 0x400000>;
 				};
 			};
 		};
