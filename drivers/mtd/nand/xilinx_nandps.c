@@ -182,7 +182,7 @@ struct xnandps_info {
 /*
  * The NAND flash operations command format
  */
-static struct xnandps_command_format xnandps_commands[] __devinitdata = {
+static struct xnandps_command_format xnandps_commands[] = {
 	{NAND_CMD_READ0, NAND_CMD_READSTART, 5, XNANDPS_CMD_PHASE},
 	{NAND_CMD_RNDOUT, NAND_CMD_RNDOUTSTART, 2, XNANDPS_CMD_PHASE},
 	{NAND_CMD_READID, NAND_CMD_NONE, 1, NAND_CMD_NONE},
