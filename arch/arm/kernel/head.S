@@ -91,13 +91,6 @@ ENTRY(stext)
  THUMB( it	eq )		@ force fixup-able long branch encoding
 	beq	__error_p			@ yes, error 'p'
 
-	/* 
-	 * if the device tree is expected at the fixed address
-	 * then load R2 to find the device tree at that address
-	 */
-#ifdef CONFIG_XILINX_FIXED_DEVTREE_ADDR
-	mov	r2,#0x1000000
-#endif
 #ifdef CONFIG_ARM_LPAE
 	mrc	p15, 0, r3, c0, c1, 4		@ read ID_MMFR0
 	and	r3, r3, #0xf			@ extract VMSA support

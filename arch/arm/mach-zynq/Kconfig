@@ -17,15 +17,6 @@ config ZYNQ_EARLY_UART_EP107
 	  the UART that is based on a 33.333 MHz clock divided down by 63.  Note that
 	  this only affects early printk.
 
-config XILINX_FIXED_DEVTREE_ADDR
-	bool "Device Tree At Fixed Address"
-	default n
-	depends on OF
-	help
-	  Select if you want the kernel to assume a device tree is located at a
-	  fixed address of 0x1000000 on kernel boot.  This allows the go command
-	  in u-boot to be used since the bootm command is slow in the EP107.
-
 config XILINX_L1_PREFETCH
 	bool "L1 Cache Prefetch"
 	default y
