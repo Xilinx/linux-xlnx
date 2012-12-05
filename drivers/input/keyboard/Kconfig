@@ -249,16 +249,6 @@ config KEYBOARD_MATRIX
 	  To compile this driver as a module, choose M here: the
 	  module will be called matrix_keypad.
 
-config KEYBOARD_XILINX_FSL_PS2_AT
-	tristate "AT keyboard connected to XILINX PS2 FSL"
-	depends on HAVE_XILINX_FSL_PS2
-	help
-	  Say Y here if you are running Linux on SPARTAN3E and have a keyboard
-	  attached.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called amikbd.
-
 config KEYBOARD_HIL_OLD
 	tristate "HP HIL keyboard support (simple driver)"
 	depends on GSC || HP300
