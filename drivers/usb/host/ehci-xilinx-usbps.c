@@ -130,10 +130,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	struct usb_hcd *hcd;
 	int irq;
 	int retval;
-#ifdef CONFIG_USB_XUSBPS_OTG
-	struct xusbps_otg *xotg;
-	struct ehci_hcd *ehci;
-#endif
 
 	pr_debug("initializing XUSBPS-SOC USB Controller\n");
 
@@ -172,9 +168,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		goto err2;
 	}
 
-	if (pdata->otg)
-		hcd->self.otg_port = 1;
-
 	if (pdata->irq == 53)
 		pdata->clk = clk_get_sys("USB0_APER", NULL);
 	else
@@ -206,8 +199,11 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	}
 
 #ifdef CONFIG_USB_XUSBPS_OTG
-	ehci = hcd_to_ehci(hcd);
 	if (pdata->otg) {
+		struct xusbps_otg *xotg;
+		struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+
+		hcd->self.otg_port = 1;
 		hcd->phy = pdata->otg;
 		retval = otg_set_host(hcd->phy->otg,
 				&ehci_to_hcd(ehci)->self);
