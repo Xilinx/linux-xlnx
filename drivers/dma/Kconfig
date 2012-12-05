@@ -35,14 +35,6 @@ comment "DMA Devices"
 
 source "drivers/dma/xilinx/Kconfig"
 
-#config XILINX_DMA
-#	tristate "Xilinx DMA engines support"
-#	select DMA_ENGINE
-#	---help---
-#	Enable support for the Xilinx DMA controllers. It supports three DMA
-#	engines: Axi Central DMA (memory to memory transfer), Axi DMA (memory and
-#	device transfer), and Axi VDMA (memory and video device transfer).
-
 config INTEL_MID_DMAC
 	tristate "Intel MID DMA support for Peripheral DMA controllers"
 	depends on PCI && X86
