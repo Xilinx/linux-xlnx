@@ -51,6 +51,7 @@ config XILINX_LLTEMAC
 
 choice
 	prompt "Xilinx LLTEMAC PHY Support"
+	depends on XILINX_LLTEMAC
 	default XILINX_LLTEMAC_MARVELL_88E1111_GMII
 
 config XILINX_LLTEMAC_MARVELL_88E1111_RGMII
@@ -80,8 +81,6 @@ config XILINX_LLTEMAC_XILINX_1000BASEX
 	  This PHY supports physical attachment via GT/GTP/GTX transceivers.
 
 endchoice
-
-
 
 config XILINX_PS_EMAC
 	tristate "Xilinx PS tri-speed EMAC support"
