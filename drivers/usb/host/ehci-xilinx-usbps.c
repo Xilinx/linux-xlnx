@@ -322,12 +322,12 @@ static int ehci_xusbps_setup(struct usb_hcd *hcd)
 
 	hcd->has_tt = 1;
 
-	retval = ehci_halt(ehci);
+	/* data structure init */
+	retval = ehci_init(hcd);
 	if (retval)
 		return retval;
 
-	/* data structure init */
-	retval = ehci_init(hcd);
+	retval = ehci_halt(ehci);
 	if (retval)
 		return retval;
 
