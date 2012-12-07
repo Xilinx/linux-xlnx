@@ -62,9 +62,6 @@
 #define XTTCPSS_CNT_CNTRL_OFFSET	0x0C /* Counter Control Reg, RW */
 #define XTTCPSS_COUNT_VAL_OFFSET	0x18 /* Counter Value Reg, RO */
 #define XTTCPSS_INTR_VAL_OFFSET		0x24 /* Interval Count Reg, RW */
-#define XTTCPSS_MATCH_1_OFFSET		0x30 /* Match 1 Value Reg, RW */
-#define XTTCPSS_MATCH_2_OFFSET		0x3C /* Match 2 Value Reg, RW */
-#define XTTCPSS_MATCH_3_OFFSET		0x48 /* Match 3 Value Reg, RW */
 #define XTTCPSS_ISR_OFFSET		0x54 /* Interrupt Status Reg, RO */
 #define XTTCPSS_IER_OFFSET		0x60 /* Interrupt Enable Reg, RW */
 
