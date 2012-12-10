@@ -15,24 +15,14 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/kernel.h>
-#include <linux/init.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/types.h>
-#include <linux/clocksource.h>
 #include <linux/clockchips.h>
-#include <linux/io.h>
-#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 
 #include <linux/clk.h>
-#include <linux/err.h>
 
 #include <asm/smp_twd.h>
-
-#include "common.h"
 
 /*
  * This driver configures the 2 16-bit count-up timers as follows:
