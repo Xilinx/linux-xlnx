@@ -2629,7 +2629,7 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
 
 	udc->eps = kzalloc(sizeof(struct xusbps_ep) * udc->max_ep, GFP_KERNEL);
 	if (!udc->eps) {
-		ERR("malloc xusbps_ep failed\n");
+		dev_err(&pdev->dev, "malloc xusbps_ep failed\n");
 		return -1;
 	}
 
@@ -2644,7 +2644,7 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
 	udc->ep_qh = dma_alloc_coherent(&pdev->dev, size,
 					&udc->ep_qh_dma, GFP_KERNEL);
 	if (!udc->ep_qh) {
-		ERR("malloc QHs for udc failed\n");
+		dev_err(&pdev->dev, "malloc QHs for udc failed\n");
 		kfree(udc->eps);
 		return -1;
 	}
@@ -2726,7 +2726,7 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 
 	udc_controller = kzalloc(sizeof(struct xusbps_udc), GFP_KERNEL);
 	if (udc_controller == NULL) {
-		ERR("malloc udc failed\n");
+		dev_err(&pdev->dev, "malloc udc failed\n");
 		return -ENOMEM;
 	}
 
@@ -2753,7 +2753,7 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 	/* Read Device Controller Capability Parameters register */
 	dccparams = xusbps_readl(&dr_regs->dccparams);
 	if (!(dccparams & DCCPARAMS_DC)) {
-		ERR("This SOC doesn't support device role\n");
+		dev_err(&pdev->dev, "This SOC doesn't support device role\n");
 		ret = -ENODEV;
 		goto err_iounmap;
 	}
@@ -2770,14 +2770,14 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 	ret = request_irq(udc_controller->irq, xusbps_udc_irq, IRQF_SHARED,
 			driver_name, udc_controller);
 	if (ret != 0) {
-		ERR("cannot request irq %d err %d\n",
+		dev_err(&pdev->dev, "cannot request irq %d err %d\n",
 				udc_controller->irq, ret);
 		goto err_iounmap;
 	}
 
 	/* Initialize the udc structure including QH member and other member */
 	if (struct_udc_setup(udc_controller, pdev)) {
-		ERR("Can't initialize udc data structure\n");
+		dev_err(&pdev->dev, "Can't initialize udc data structure\n");
 		ret = -ENOMEM;
 		goto err_free_irq;
 	}
