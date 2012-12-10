@@ -15,13 +15,11 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/interrupt.h>
+#include <linux/clk.h>
 #include <linux/clockchips.h>
+#include <linux/interrupt.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
-
-#include <linux/clk.h>
-
 #include <asm/smp_twd.h>
 
 /*
