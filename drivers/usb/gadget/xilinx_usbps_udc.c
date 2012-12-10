@@ -1458,9 +1458,219 @@ static int xusbps_pullup(struct usb_gadget *gadget, int is_on)
 	return 0;
 }
 
+static void udc_reset_ep_queue(struct xusbps_udc *udc, u8 pipe)
+{
+	struct xusbps_ep *ep = get_ep_by_pipe(udc, pipe);
+
+	if (ep->name)
+		nuke(ep, -ESHUTDOWN);
+}
+
+/* Clear up all ep queues */
+static int reset_queues(struct xusbps_udc *udc)
+{
+	u8 pipe;
+
+	for (pipe = 0; pipe < udc->max_pipes; pipe++)
+		udc_reset_ep_queue(udc, pipe);
+
+	/* report disconnect; the driver is already quiesced */
+	spin_unlock(&udc->lock);
+	udc->driver->disconnect(&udc->gadget);
+	spin_lock(&udc->lock);
+
+	return 0;
+}
+
+#ifdef CONFIG_USB_XUSBPS_OTG
+/*----------------------------------------------------------------
+ * OTG Related changes
+ *--------------------------------------------------------------*/
+static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
+{
+	struct usb_gadget	*gadget = otg->otg->gadget;
+	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
+						gadget);
+	unsigned long flags = 0;
+	unsigned int tmp;
+
+	spin_lock_irqsave(&udc->lock, flags);
+
+	if (!otg->otg->default_a) {
+		dr_controller_setup(udc);
+		reset_queues(udc);
+	} else {
+		/* A-device HABA resets the controller */
+		tmp = udc->ep_qh_dma;
+		tmp &= USB_EP_LIST_ADDRESS_MASK;
+		xusbps_writel(tmp, &dr_regs->endpointlistaddr);
+	}
+	ep0_setup(udc);
+	dr_controller_run(udc);
+
+	udc->usb_state = USB_STATE_ATTACHED;
+	udc->ep0_state = WAIT_FOR_SETUP;
+	udc->ep0_dir = 0;
+
+	spin_unlock_irqrestore(&udc->lock, flags);
+
+	return 0;
+}
+
+static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
+{
+	struct usb_gadget	*gadget = otg->otg->gadget;
+	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
+						gadget);
+
+	dr_controller_stop(udc);
+
+	/* refer to USB OTG 6.6.2.3 b_hnp_en is cleared */
+	if (!udc->xotg->otg.otg->default_a)
+		udc->xotg->hsm.b_hnp_enable = 0;
+
+	return 0;
+}
+#endif
+
+/*----------------------------------------------------------------*
+ * Hook to gadget drivers
+ * Called by initialization code of gadget drivers
+*----------------------------------------------------------------*/
 static int xusbps_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *));
-static int xusbps_stop(struct usb_gadget_driver *driver);
+		int (*bind)(struct usb_gadget *))
+{
+	int retval = -ENODEV;
+	unsigned long flags = 0;
+
+	if (!udc_controller)
+		return -ENODEV;
+
+	if (!driver || (driver->max_speed != USB_SPEED_FULL
+				&& driver->max_speed != USB_SPEED_HIGH)
+			|| !bind || !driver->disconnect || !driver->setup)
+		return -EINVAL;
+
+	if (udc_controller->driver)
+		return -EBUSY;
+
+	/* lock is needed but whether should use this lock or another */
+	spin_lock_irqsave(&udc_controller->lock, flags);
+
+	driver->driver.bus = NULL;
+	/* hook up the driver */
+	udc_controller->driver = driver;
+	udc_controller->gadget.dev.driver = &driver->driver;
+	spin_unlock_irqrestore(&udc_controller->lock, flags);
+
+	/* bind udc driver to gadget driver */
+	retval = bind(&udc_controller->gadget);
+	if (retval) {
+		VDBG("bind to %s --> %d", driver->driver.name, retval);
+		udc_controller->gadget.dev.driver = NULL;
+		udc_controller->driver = NULL;
+		goto out;
+	}
+#ifdef CONFIG_USB_XUSBPS_OTG
+	if (gadget_is_otg(&udc_controller->gadget)) {
+		retval = otg_set_peripheral(udc_controller->transceiver->otg,
+				&udc_controller->gadget);
+		if (retval < 0) {
+			VDBG("can't bind to otg transceiver\n");
+			driver->unbind(&udc_controller->gadget);
+			udc_controller->gadget.dev.driver = NULL;
+			udc_controller->driver = NULL;
+			goto out;
+		}
+		/* Exporting start and stop routines */
+		udc_controller->xotg->start_peripheral =
+					xusbps_udc_start_peripheral;
+		udc_controller->xotg->stop_peripheral =
+					xusbps_udc_stop_peripheral;
+
+		if (!udc_controller->transceiver->otg->default_a &&
+					udc_controller->stopped &&
+				udc_controller->xotg->hsm.b_sess_vld) {
+			dr_controller_setup(udc_controller);
+			ep0_setup(udc_controller);
+			/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
+			dr_controller_run(udc_controller);
+			udc_controller->usb_state = USB_STATE_ATTACHED;
+			udc_controller->ep0_state = WAIT_FOR_SETUP;
+			udc_controller->ep0_dir = 0;
+			xusbps_update_transceiver();
+		}
+	} else {
+		/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
+		dr_controller_run(udc_controller);
+		udc_controller->usb_state = USB_STATE_ATTACHED;
+		udc_controller->ep0_state = WAIT_FOR_SETUP;
+		udc_controller->ep0_dir = 0;
+	}
+#else
+	/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
+	dr_controller_run(udc_controller);
+	udc_controller->usb_state = USB_STATE_ATTACHED;
+	udc_controller->ep0_state = WAIT_FOR_SETUP;
+	udc_controller->ep0_dir = 0;
+#endif
+
+	pr_info("%s: bind to driver %s\n",
+			udc_controller->gadget.name, driver->driver.name);
+
+out:
+	if (retval)
+		pr_warn("gadget driver register failed %d\n", retval);
+	return retval;
+}
+
+/* Disconnect from gadget driver */
+static int xusbps_stop(struct usb_gadget_driver *driver)
+{
+	struct xusbps_ep *loop_ep;
+	unsigned long flags;
+
+	if (!udc_controller)
+		return -ENODEV;
+
+	if (!driver || driver != udc_controller->driver || !driver->unbind)
+		return -EINVAL;
+
+	if (udc_controller->transceiver)
+		otg_set_peripheral(udc_controller->transceiver->otg, NULL);
+
+	/* stop DR, disable intr */
+	dr_controller_stop(udc_controller);
+
+	/* in fact, no needed */
+	udc_controller->usb_state = USB_STATE_ATTACHED;
+	udc_controller->ep0_state = WAIT_FOR_SETUP;
+	udc_controller->ep0_dir = 0;
+
+	/* stand operation */
+	spin_lock_irqsave(&udc_controller->lock, flags);
+	udc_controller->gadget.speed = USB_SPEED_UNKNOWN;
+	nuke(&udc_controller->eps[0], -ESHUTDOWN);
+	list_for_each_entry(loop_ep, &udc_controller->gadget.ep_list,
+			ep.ep_list)
+		nuke(loop_ep, -ESHUTDOWN);
+	spin_unlock_irqrestore(&udc_controller->lock, flags);
+
+	/* report disconnect; the controller is already quiesced */
+	driver->disconnect(&udc_controller->gadget);
+
+#ifdef CONFIG_USB_XUSBPS_OTG
+	udc_controller->xotg->start_peripheral = NULL;
+	udc_controller->xotg->stop_peripheral = NULL;
+#endif
+	/* unbind gadget and unhook driver. */
+	driver->unbind(&udc_controller->gadget);
+	udc_controller->gadget.dev.driver = NULL;
+	udc_controller->driver = NULL;
+
+	pr_warn("unregistered gadget driver '%s'\n", driver->driver.name);
+	return 0;
+}
 
 /* defined in gadget.h */
 static struct usb_gadget_ops xusbps_gadget_ops = {
@@ -1517,14 +1727,6 @@ static int ep0_prime_status(struct xusbps_udc *udc, int direction)
 	list_add_tail(&req->queue, &ep->queue);
 
 	return 0;
-}
-
-static void udc_reset_ep_queue(struct xusbps_udc *udc, u8 pipe)
-{
-	struct xusbps_ep *ep = get_ep_by_pipe(udc, pipe);
-
-	if (ep->name)
-		nuke(ep, -ESHUTDOWN);
 }
 
 /*
@@ -1976,22 +2178,6 @@ static void bus_resume(struct xusbps_udc *udc)
 		udc->driver->resume(&udc->gadget);
 }
 
-/* Clear up all ep queues */
-static int reset_queues(struct xusbps_udc *udc)
-{
-	u8 pipe;
-
-	for (pipe = 0; pipe < udc->max_pipes; pipe++)
-		udc_reset_ep_queue(udc, pipe);
-
-	/* report disconnect; the driver is already quiesced */
-	spin_unlock(&udc->lock);
-	udc->driver->disconnect(&udc->gadget);
-	spin_lock(&udc->lock);
-
-	return 0;
-}
-
 /* Process reset interrupt */
 static void reset_irq(struct xusbps_udc *udc)
 {
@@ -2146,200 +2332,6 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	spin_unlock_irqrestore(&udc->lock, flags);
 	return status;
 }
-
-#ifdef CONFIG_USB_XUSBPS_OTG
-/*----------------------------------------------------------------
- * OTG Related changes
- *--------------------------------------------------------------*/
-static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
-{
-	struct usb_gadget	*gadget = otg->otg->gadget;
-	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
-						gadget);
-	unsigned long flags = 0;
-	unsigned int tmp;
-
-	spin_lock_irqsave(&udc->lock, flags);
-
-	if (!otg->otg->default_a) {
-		dr_controller_setup(udc);
-		reset_queues(udc);
-	} else {
-		/* A-device HABA resets the controller */
-		tmp = udc->ep_qh_dma;
-		tmp &= USB_EP_LIST_ADDRESS_MASK;
-		xusbps_writel(tmp, &dr_regs->endpointlistaddr);
-	}
-	ep0_setup(udc);
-	dr_controller_run(udc);
-
-	udc->usb_state = USB_STATE_ATTACHED;
-	udc->ep0_state = WAIT_FOR_SETUP;
-	udc->ep0_dir = 0;
-
-	spin_unlock_irqrestore(&udc->lock, flags);
-
-	return 0;
-}
-
-static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
-{
-	struct usb_gadget	*gadget = otg->otg->gadget;
-	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
-						gadget);
-
-	dr_controller_stop(udc);
-
-	/* refer to USB OTG 6.6.2.3 b_hnp_en is cleared */
-	if (!udc->xotg->otg.otg->default_a)
-		udc->xotg->hsm.b_hnp_enable = 0;
-
-	return 0;
-}
-#endif
-
-/*----------------------------------------------------------------*
- * Hook to gadget drivers
- * Called by initialization code of gadget drivers
-*----------------------------------------------------------------*/
-int xusbps_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
-{
-	int retval = -ENODEV;
-	unsigned long flags = 0;
-
-	if (!udc_controller)
-		return -ENODEV;
-
-	if (!driver || (driver->max_speed != USB_SPEED_FULL
-				&& driver->max_speed != USB_SPEED_HIGH)
-			|| !bind || !driver->disconnect || !driver->setup)
-		return -EINVAL;
-
-	if (udc_controller->driver)
-		return -EBUSY;
-
-	/* lock is needed but whether should use this lock or another */
-	spin_lock_irqsave(&udc_controller->lock, flags);
-
-	driver->driver.bus = NULL;
-	/* hook up the driver */
-	udc_controller->driver = driver;
-	udc_controller->gadget.dev.driver = &driver->driver;
-	spin_unlock_irqrestore(&udc_controller->lock, flags);
-
-	/* bind udc driver to gadget driver */
-	retval = bind(&udc_controller->gadget);
-	if (retval) {
-		VDBG("bind to %s --> %d", driver->driver.name, retval);
-		udc_controller->gadget.dev.driver = NULL;
-		udc_controller->driver = NULL;
-		goto out;
-	}
-#ifdef CONFIG_USB_XUSBPS_OTG
-	if (gadget_is_otg(&udc_controller->gadget)) {
-		retval = otg_set_peripheral(udc_controller->transceiver->otg,
-				&udc_controller->gadget);
-		if (retval < 0) {
-			VDBG("can't bind to otg transceiver\n");
-			driver->unbind(&udc_controller->gadget);
-			udc_controller->gadget.dev.driver = NULL;
-			udc_controller->driver = NULL;
-			goto out;
-		}
-		/* Exporting start and stop routines */
-		udc_controller->xotg->start_peripheral =
-					xusbps_udc_start_peripheral;
-		udc_controller->xotg->stop_peripheral =
-					xusbps_udc_stop_peripheral;
-
-		if (!udc_controller->transceiver->otg->default_a &&
-					udc_controller->stopped &&
-				udc_controller->xotg->hsm.b_sess_vld) {
-			dr_controller_setup(udc_controller);
-			ep0_setup(udc_controller);
-			/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
-			dr_controller_run(udc_controller);
-			udc_controller->usb_state = USB_STATE_ATTACHED;
-			udc_controller->ep0_state = WAIT_FOR_SETUP;
-			udc_controller->ep0_dir = 0;
-			xusbps_update_transceiver();
-		}
-	} else {
-		/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
-		dr_controller_run(udc_controller);
-		udc_controller->usb_state = USB_STATE_ATTACHED;
-		udc_controller->ep0_state = WAIT_FOR_SETUP;
-		udc_controller->ep0_dir = 0;
-	}
-#else
-	/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
-	dr_controller_run(udc_controller);
-	udc_controller->usb_state = USB_STATE_ATTACHED;
-	udc_controller->ep0_state = WAIT_FOR_SETUP;
-	udc_controller->ep0_dir = 0;
-#endif
-
-	printk(KERN_INFO "%s: bind to driver %s\n",
-			udc_controller->gadget.name, driver->driver.name);
-
-out:
-	if (retval)
-		printk(KERN_WARNING "gadget driver register failed %d\n",
-		       retval);
-	return retval;
-}
-EXPORT_SYMBOL(xusbps_start);
-
-/* Disconnect from gadget driver */
-int xusbps_stop(struct usb_gadget_driver *driver)
-{
-	struct xusbps_ep *loop_ep;
-	unsigned long flags;
-
-	if (!udc_controller)
-		return -ENODEV;
-
-	if (!driver || driver != udc_controller->driver || !driver->unbind)
-		return -EINVAL;
-
-	if (udc_controller->transceiver)
-		otg_set_peripheral(udc_controller->transceiver->otg, NULL);
-
-	/* stop DR, disable intr */
-	dr_controller_stop(udc_controller);
-
-	/* in fact, no needed */
-	udc_controller->usb_state = USB_STATE_ATTACHED;
-	udc_controller->ep0_state = WAIT_FOR_SETUP;
-	udc_controller->ep0_dir = 0;
-
-	/* stand operation */
-	spin_lock_irqsave(&udc_controller->lock, flags);
-	udc_controller->gadget.speed = USB_SPEED_UNKNOWN;
-	nuke(&udc_controller->eps[0], -ESHUTDOWN);
-	list_for_each_entry(loop_ep, &udc_controller->gadget.ep_list,
-			ep.ep_list)
-		nuke(loop_ep, -ESHUTDOWN);
-	spin_unlock_irqrestore(&udc_controller->lock, flags);
-
-	/* report disconnect; the controller is already quiesced */
-	driver->disconnect(&udc_controller->gadget);
-
-#ifdef CONFIG_USB_XUSBPS_OTG
-	udc_controller->xotg->start_peripheral = NULL;
-	udc_controller->xotg->stop_peripheral = NULL;
-#endif
-	/* unbind gadget and unhook driver. */
-	driver->unbind(&udc_controller->gadget);
-	udc_controller->gadget.dev.driver = NULL;
-	udc_controller->driver = NULL;
-
-	printk(KERN_WARNING "unregistered gadget driver '%s'\n",
-	       driver->driver.name);
-	return 0;
-}
-EXPORT_SYMBOL(xusbps_stop);
 
 /*-------------------------------------------------------------------------
 		PROC File System Support
