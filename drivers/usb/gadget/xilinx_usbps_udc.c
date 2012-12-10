@@ -18,6 +18,7 @@
 
 #undef VERBOSE
 
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/ioport.h>
@@ -372,15 +373,65 @@ struct xusbps_udc {
 #define get_pipe_by_windex(windex)	((windex & USB_ENDPOINT_NUMBER_MASK) \
 					* 2 + ((windex & USB_DIR_IN) ? 1 : 0))
 
+
+static int xusbps_udc_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers.
+		 */
+		/* fall through */
+	case POST_RATE_CHANGE:
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 static int xusbps_udc_clk_init(struct platform_device *pdev)
 {
+	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	int rc;
+
+	if (pdata->irq == 53)
+		pdata->clk = clk_get_sys("USB0_APER", NULL);
+	else
+		pdata->clk = clk_get_sys("USB1_APER", NULL);
+	if (IS_ERR(pdata->clk)) {
+		dev_err(&pdev->dev, "APER clock not found.\n");
+		return PTR_ERR(pdata->clk);
+	}
+
+	rc = clk_prepare_enable(pdata->clk);
+	if (rc) {
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		goto err_out_clk_put;
+	}
+
+	pdata->clk_rate_change_nb.notifier_call = xusbps_udc_clk_notifier_cb;
+	pdata->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
+
 	return 0;
+
+err_out_clk_put:
+	clk_put(pdata->clk);
+
+	return rc;
 }
-static void xusbps_udc_clk_finalize(struct platform_device *pdev)
+
+static void xusbps_udc_clk_release(struct platform_device *pdev)
 {
-}
-static void xusbps_udc_clk_release(void)
-{
+	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+
+	clk_disable_unprepare(pdata->clk);
+	clk_put(pdata->clk);
 }
 
 
@@ -2782,7 +2833,6 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 #else
 	dr_controller_setup(udc_controller);
 #endif
-	xusbps_udc_clk_finalize(pdev);
 
 	/* Setup gadget structure */
 	udc_controller->gadget.ops = &xusbps_gadget_ops;
@@ -2847,7 +2897,7 @@ err_unregister:
 err_free_irq:
 	free_irq(udc_controller->irq, udc_controller);
 err_iounmap:
-	xusbps_udc_clk_release();
+	xusbps_udc_clk_release(pdev);
 err_kfree:
 	kfree(udc_controller);
 	udc_controller = NULL;
@@ -2867,7 +2917,7 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
 	usb_del_gadget_udc(&udc_controller->gadget);
 	udc_controller->done = &done;
 
-	xusbps_udc_clk_release();
+	xusbps_udc_clk_release(pdev);
 
 	/* DR has been stopped in usb_gadget_unregister_driver() */
 	remove_proc_file();
@@ -2893,7 +2943,13 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
  -----------------------------------------------------------------*/
 static int xusbps_udc_suspend(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+
 	dr_controller_stop(udc_controller);
+
+	clk_disable(pdata->clk);
+
 	return 0;
 }
 
@@ -2903,6 +2959,16 @@ static int xusbps_udc_suspend(struct device *dev)
  *-----------------------------------------------------------------*/
 static int xusbps_udc_resume(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	int ret;
+
+	ret = clk_enable(pdata->clk);
+	if (ret) {
+		dev_err(dev, "Cannot enable APER clock.\n");
+		return ret;
+	}
+
 	/* Enable DR irq reg and set controller Run */
 	if (udc_controller->stopped) {
 		dr_controller_setup(udc_controller);
