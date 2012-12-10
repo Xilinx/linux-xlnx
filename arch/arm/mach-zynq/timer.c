@@ -51,8 +51,6 @@
 #define XTTCPSS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
 #define XTTCPSS_CLOCKEVENT	1	/* Timer 2 as a clock event */
 
-#define IRQ_TIMERCOUNTER0	42	/* default timer interrupt */
-
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
  * and use same offsets for Timer 2
@@ -323,7 +321,7 @@ static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
  */
 void __init xttcpss_timer_init(void)
 {
-	u32 irq;
+	unsigned int irq;
 	struct device_node *timer = NULL;
 	void __iomem *timer_baseaddr;
 	const char * const timer_list[] = {
@@ -332,38 +330,32 @@ void __init xttcpss_timer_init(void)
 	};
 	struct clk *clk;
 
-	/* Get the 1st Triple Timer Counter (TTC) block from the device tree
-	 * and use it, but if missing use some defaults for now to help the
-	 * transition, note that the event timer uses the interrupt and it's the
-	 * 2nd TTC hence the +1 for the interrupt and the irq_of_parse_and_map(,1)
+	/*
+	 * Get the 1st Triple Timer Counter (TTC) block from the device tree
+	 * and use it. Note that the event timer uses the interrupt and it's the
+	 * 2nd TTC hence the irq_of_parse_and_map(,1)
 	 */
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
-	if (timer) {
-		timer_baseaddr = of_iomap(timer, 0);
-	        WARN_ON(!timer_baseaddr);
-	        irq = irq_of_parse_and_map(timer, 1);
-	        WARN_ON(!irq);
+	if (!timer) {
+		pr_err("ERROR: no compatible timer found\n");
+		BUG();
+	}
 
-		/* For now, let's play nice and not crash the kernel if the device
-		   tree was not updated to have all the timer irqs, this can be
-		   removed at a later date when old device trees are gone.
-		*/
-		if (irq == NO_IRQ) {
-			pr_err("Xilinx, timer irq missing, using default\n");
-			irq = irq_of_parse_and_map(timer, 0) + 1;
-		}
-	} else {
-		pr_err("Xilinx, no compatible timer found, using default\n");
-		timer_baseaddr = ioremap(0xF8001000, SZ_4K);
-		irq = IRQ_TIMERCOUNTER0 + 1;
+	timer_baseaddr = of_iomap(timer, 0);
+	if (!timer_baseaddr) {
+		pr_err("ERROR: invalid timer base address\n");
+		BUG();
+	}
+
+	irq = irq_of_parse_and_map(timer, 1);
+	if (!irq || irq == NO_IRQ) {
+		pr_err("ERROR: invalid interrupt number\n");
+		BUG();
 	}
 
 	timers[XTTCPSS_CLOCKSOURCE].base_addr = timer_baseaddr;
 	timers[XTTCPSS_CLOCKEVENT].base_addr = timer_baseaddr + 4;
 
-	/* Setup the interrupt realizing that the 2nd timer in the TTC
-	   (used for the event source) interrupt number is +1 from the 1st timer
-	 */
 	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
 	setup_irq(irq, &event_timer_irq);
 
