@@ -347,8 +347,7 @@ void ehci_xusbps_shutdown(struct usb_hcd *hcd)
 		ehci_shutdown(hcd);
 }
 
-#ifdef CONFIG_PM
-
+#ifdef CONFIG_PM_SLEEP
 static int ehci_xusbps_drv_suspend(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
@@ -374,24 +373,15 @@ static int ehci_xusbps_drv_resume(struct device *dev)
 	return 0;
 }
 
-static int ehci_xusbps_drv_restore(struct device *dev)
-{
-	struct usb_hcd *hcd = dev_get_drvdata(dev);
-
-	usb_root_hub_lost_power(hcd->self.root_hub);
-	return 0;
-}
-
-static struct dev_pm_ops ehci_xusbps_pm_ops = {
-	.suspend = ehci_xusbps_drv_suspend,
-	.resume = ehci_xusbps_drv_resume,
-	.restore = ehci_xusbps_drv_restore,
+static const struct dev_pm_ops ehci_xusbps_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(ehci_xusbps_drv_suspend, ehci_xusbps_drv_resume)
 };
+#define EHCI_XUSBPS_PM_OPS	(&ehci_xusbps_pm_ops)
 
-#define EHCI_XUSBPS_PM_OPS		(&ehci_xusbps_pm_ops)
-#else
-#define EHCI_XUSBPS_PM_OPS		NULL
-#endif /* CONFIG_PM */
+#else /* ! CONFIG_PM_SLEEP */
+#define EHCI_XUSBPS_PM_OPS	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 
 static const struct hc_driver ehci_xusbps_hc_driver = {
 	.description = hcd_name,
