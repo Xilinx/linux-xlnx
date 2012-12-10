@@ -325,7 +325,7 @@ void __init xttcpss_timer_init(void)
 {
 	u32 irq;
 	struct device_node *timer = NULL;
-	u32 timer_baseaddr;
+	void __iomem *timer_baseaddr;
 	const char * const timer_list[] = {
 		"xlnx,ps7-ttc-1.00.a",
 		NULL
@@ -339,7 +339,7 @@ void __init xttcpss_timer_init(void)
 	 */
 	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
 	if (timer) {
-		timer_baseaddr = (u32)of_iomap(timer, 0);
+		timer_baseaddr = of_iomap(timer, 0);
 	        WARN_ON(!timer_baseaddr);
 	        irq = irq_of_parse_and_map(timer, 1);
 	        WARN_ON(!irq);
@@ -354,12 +354,12 @@ void __init xttcpss_timer_init(void)
 		}
 	} else {
 		pr_err("Xilinx, no compatible timer found, using default\n");
-		timer_baseaddr = (u32)ioremap(0xF8001000, SZ_4K);
+		timer_baseaddr = ioremap(0xF8001000, SZ_4K);
 		irq = IRQ_TIMERCOUNTER0 + 1;
 	}
 
-	timers[XTTCPSS_CLOCKSOURCE].base_addr = (void __iomem *)timer_baseaddr;
-	timers[XTTCPSS_CLOCKEVENT].base_addr = (void __iomem *)timer_baseaddr + 4;
+	timers[XTTCPSS_CLOCKSOURCE].base_addr = timer_baseaddr;
+	timers[XTTCPSS_CLOCKEVENT].base_addr = timer_baseaddr + 4;
 
 	/* Setup the interrupt realizing that the 2nd timer in the TTC
 	   (used for the event source) interrupt number is +1 from the 1st timer
@@ -367,9 +367,7 @@ void __init xttcpss_timer_init(void)
 	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
 	setup_irq(irq, &event_timer_irq);
 
-	pr_info("%s #0 at 0x%08x, irq=%d\n",
-		timer_list[0], timer_baseaddr, irq);
-
+	pr_info("%s #0 at %p, irq=%d\n", timer_list[0], timer_baseaddr, irq);
 
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
