@@ -2627,7 +2627,7 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
 	pdata = pdev->dev.platform_data;
 	udc->phy_mode = pdata->phy_mode;
 
-	udc->eps = kzalloc(sizeof(struct xusbps_ep) * udc->max_ep, GFP_KERNEL);
+	udc->eps = kzalloc(sizeof(*udc->eps) * udc->max_ep, GFP_KERNEL);
 	if (!udc->eps) {
 		dev_err(&pdev->dev, "malloc xusbps_ep failed\n");
 		return -1;
@@ -2724,7 +2724,7 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	udc_controller = kzalloc(sizeof(struct xusbps_udc), GFP_KERNEL);
+	udc_controller = kzalloc(sizeof(*udc_controller), GFP_KERNEL);
 	if (udc_controller == NULL) {
 		dev_err(&pdev->dev, "malloc udc failed\n");
 		return -ENOMEM;
