@@ -20,6 +20,7 @@
  * and peripheral. It works with EHCI driver and Xilinx client controller
  * driver together.
  */
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -1887,6 +1888,25 @@ do_hnp(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(do_hnp, S_IWUSR, NULL, do_hnp);
 
+static int xusbps_otg_clk_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		/* if a rate change is announced we need to check whether we can
+		 * maintain the current frequency by changing the clock
+		 * dividers.
+		 */
+		/* fall through */
+	case POST_RATE_CHANGE:
+		return NOTIFY_OK;
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 static struct attribute *inputs_attrs[] = {
 	&dev_attr_a_bus_req.attr,
 	&dev_attr_a_bus_drop.attr,
@@ -1921,8 +1941,10 @@ static int xusbps_otg_remove(struct platform_device *pdev)
 	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
 	device_remove_file(&pdev->dev, &dev_attr_hsm);
 	device_remove_file(&pdev->dev, &dev_attr_registers);
+	clk_notifier_unregister(xotg->clk, &xotg->clk_rate_change_nb);
+	clk_disable_unprepare(xotg->clk);
+	clk_put(xotg->clk);
 	kfree(xotg);
-	xotg = NULL;
 
 	return 0;
 }
@@ -1971,6 +1993,27 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&xotg->work, xusbps_otg_work);
 
+	if (xotg->irq == 53)
+		xotg->clk = clk_get_sys("USB0_APER", NULL);
+	else
+		xotg->clk = clk_get_sys("USB1_APER", NULL);
+	if (IS_ERR(xotg->clk)) {
+		dev_err(&pdev->dev, "APER clock not found.\n");
+		retval = PTR_ERR(xotg->clk);
+		goto err;
+	}
+
+	retval = clk_prepare_enable(xotg->clk);
+	if (retval) {
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		goto err_out_clk_put;
+	}
+
+	xotg->clk_rate_change_nb.notifier_call = xusbps_otg_clk_notifier_cb;
+	xotg->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(xotg->clk, &xotg->clk_rate_change_nb))
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
+
 	/* OTG common part */
 	xotg->dev = &pdev->dev;
 	xotg->otg.dev = xotg->dev;
@@ -1986,7 +2029,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	if (usb_add_phy(&xotg->otg, USB_PHY_TYPE_USB2)) {
 		dev_dbg(xotg->dev, "can't set transceiver\n");
 		retval = -EBUSY;
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	pdata->otg = &xotg->otg;
@@ -1999,7 +2042,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	retval = xusbps_otg_init_timers(&xotg->hsm);
 	if (retval) {
 		dev_dbg(&pdev->dev, "Failed to init timers\n");
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	init_timer(&xotg->hsm_timer);
@@ -2012,7 +2055,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 				driver_name, xotg) != 0) {
 		dev_dbg(xotg->dev, "request interrupt %d failed\n", xotg->irq);
 		retval = -EBUSY;
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	/* enable OTGSC int */
@@ -2024,20 +2067,20 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	if (retval < 0) {
 		dev_dbg(xotg->dev,
 			"Can't register sysfs attribute: %d\n", retval);
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	retval = device_create_file(&pdev->dev, &dev_attr_hsm);
 	if (retval < 0) {
 		dev_dbg(xotg->dev, "Can't hsm sysfs attribute: %d\n", retval);
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	retval = sysfs_create_group(&pdev->dev.kobj, &debug_dev_attr_group);
 	if (retval < 0) {
 		dev_dbg(xotg->dev,
 			"Can't register sysfs attr group: %d\n", retval);
-		goto err;
+		goto err_out_clk_disable;
 	}
 
 	if (xotg->otg.state == OTG_STATE_A_IDLE)
@@ -2045,6 +2088,11 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_out_clk_disable:
+	clk_notifier_unregister(xotg->clk, &xotg->clk_rate_change_nb);
+	clk_disable_unprepare(xotg->clk);
+err_out_clk_put:
+	clk_put(xotg->clk);
 err:
 	xusbps_otg_remove(pdev);
 
@@ -2186,6 +2234,8 @@ static int xusbps_otg_suspend(struct device *dev)
 		break;
 	}
 
+	if (!ret)
+		clk_disable(xotg->clk);
 	return ret;
 }
 
@@ -2199,6 +2249,12 @@ static int xusbps_otg_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct xusbps_otg	*xotg = the_transceiver;
 	int			ret = 0;
+
+	ret = clk_enable(xotg->clk);
+	if (ret) {
+		dev_err(&pdev->dev, "cannot enable clock. resume failed.\n");
+		return ret;
+	}
 
 	transceiver_resume(pdev);
 

@@ -176,6 +176,10 @@ struct xusbps_otg {
 	/* irq */
 	int			irq;
 
+	/* clk */
+	struct clk		*clk;
+	struct notifier_block	clk_rate_change_nb;
+
 	/* atomic notifier for interrupt context */
 	struct atomic_notifier_head	otg_notifier;
 
