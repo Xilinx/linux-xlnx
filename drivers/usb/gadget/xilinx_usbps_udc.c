@@ -2894,11 +2894,12 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 /*-----------------------------------------------------------------
  * Modify Power management attributes
  * Used by OTG statemachine to disable gadget temporarily
  -----------------------------------------------------------------*/
-static int xusbps_udc_suspend(struct platform_device *pdev, pm_message_t state)
+static int xusbps_udc_suspend(struct device *dev)
 {
 	dr_controller_stop(udc_controller);
 	return 0;
@@ -2908,7 +2909,7 @@ static int xusbps_udc_suspend(struct platform_device *pdev, pm_message_t state)
  * Invoked on USB resume. May be called in_interrupt.
  * Here we start the DR controller and enable the irq
  *-----------------------------------------------------------------*/
-static int xusbps_udc_resume(struct platform_device *pdev)
+static int xusbps_udc_resume(struct device *dev)
 {
 	/* Enable DR irq reg and set controller Run */
 	if (udc_controller->stopped) {
@@ -2921,6 +2922,15 @@ static int xusbps_udc_resume(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct dev_pm_ops xusbps_udc_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xusbps_udc_suspend, xusbps_udc_resume)
+};
+#define XUSBPS_UDC_PM	(&xusbps_udc_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XUSBPS_UDC_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 /*-------------------------------------------------------------------------
 	Register entry point for the peripheral controller driver
 --------------------------------------------------------------------------*/
@@ -2929,11 +2939,10 @@ static struct platform_driver udc_driver = {
 	.probe   = xusbps_udc_probe,
 	.remove  = __exit_p(xusbps_udc_remove),
 	/* these suspend and resume are not usb suspend and resume */
-	.suspend = xusbps_udc_suspend,
-	.resume  = xusbps_udc_resume,
 	.driver  = {
 		.name = (char *)driver_name,
 		.owner = THIS_MODULE,
+		.pm = XUSBPS_UDC_PM,
 	},
 };
 
