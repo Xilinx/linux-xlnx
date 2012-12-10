@@ -297,6 +297,7 @@ static void xusbps_otg_phy_low_power_wait(int on)
 	xusbps_otg_phy_low_power(on);
 }
 
+#ifdef CONFIG_PM_SLEEP
 /* Enable/Disable OTG interrupt */
 static void xusbps_otg_intr(int on)
 {
@@ -318,6 +319,7 @@ static void xusbps_otg_intr(int on)
 
 	dev_dbg(xotg->dev, "%s <---\n", __func__);
 }
+#endif
 
 /* set HAAR: Hardware Assist Auto-Reset */
 static void xusbps_otg_HAAR(int on)
@@ -648,6 +650,7 @@ static void init_hsm(void)
 	xusbps_otg_phy_low_power_wait(1);
 }
 
+#ifdef CONFIG_PM_SLEEP
 static void update_hsm(void)
 {
 	struct xusbps_otg		*xotg = the_transceiver;
@@ -665,6 +668,7 @@ static void update_hsm(void)
 		xotg->hsm.a_vbus_vld = !!(val32 & OTGSC_AVV);
 	}
 }
+#endif
 
 static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 {
@@ -2047,13 +2051,15 @@ err:
 	return retval;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static void transceiver_suspend(struct platform_device *pdev)
 {
 	xusbps_otg_phy_low_power(1);
 }
 
-static int xusbps_otg_suspend(struct platform_device *pdev, pm_message_t state)
+static int xusbps_otg_suspend(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xusbps_otg		*xotg = the_transceiver;
 	int				ret = 0;
 
@@ -2188,8 +2194,9 @@ static void transceiver_resume(struct platform_device *pdev)
 	/* Not used */
 }
 
-static int xusbps_otg_resume(struct platform_device *pdev)
+static int xusbps_otg_resume(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
 	struct xusbps_otg	*xotg = the_transceiver;
 	int			ret = 0;
 
@@ -2223,15 +2230,23 @@ error:
 	return ret;
 }
 
+static const struct dev_pm_ops xusbps_otg_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xusbps_otg_suspend, xusbps_otg_resume)
+};
+#define XUSBPS_OTG_PM	(&xusbps_otg_dev_pm_ops)
+
+#else /* ! CONFIG_PM_SLEEP */
+#define XUSBPS_OTG_PM	NULL
+#endif /* ! CONFIG_PM_SLEEP */
+
 static struct platform_driver xusbps_otg_driver = {
 	.probe		= xusbps_otg_probe,
 	.remove		= xusbps_otg_remove,
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= DRIVER_NAME,
+		.pm	= XUSBPS_OTG_PM,
 	},
-	.suspend =	xusbps_otg_suspend,
-	.resume =	xusbps_otg_resume,
 };
 
 module_platform_driver(xusbps_otg_driver);
