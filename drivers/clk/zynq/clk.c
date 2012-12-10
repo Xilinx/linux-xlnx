@@ -303,12 +303,10 @@ void __init zynq_clock_init(void)
 			(void __iomem *)SLCR_APER_CLK_CTRL, 2, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "USB0_APER", clk);
-	clk_prepare_enable(clk); /* remove once all USB drivers are ported */
 	clk = clk_register_gate(NULL, "USB1_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 3, 0,
 			&aperclk_lock);
 	zynq_clkdev_add(NULL, "USB1_APER", clk);
-	clk_prepare_enable(clk); /* remove once all USB drivers are ported */
 	clk = clk_register_gate(NULL, "GEM0_CPU1X", "CPU_1X_CLK", 0,
 			(void __iomem *)SLCR_APER_CLK_CTRL, 6, 0,
 			&aperclk_lock);
