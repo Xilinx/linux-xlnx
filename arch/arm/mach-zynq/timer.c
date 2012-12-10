@@ -352,13 +352,13 @@ void __init xttcpss_timer_init(void)
 		   removed at a later date when old device trees are gone.
 		*/
 		if (irq == NO_IRQ) {
-			printk(KERN_ERR "Xilinx, timer irq missing, using default\n");
+			pr_err("Xilinx, timer irq missing, using default\n");
 			irq = irq_of_parse_and_map(timer, 0) + 1;
 		}
 		prop1 = (void *)of_get_property(timer, "clock-frequency-timer0", NULL);
 		prop2 = (void *)of_get_property(timer, "clock-frequency-timer1", NULL);
 	} else {
-		printk(KERN_ERR "Xilinx, no compatible timer found, using default\n");
+		pr_err("Xilinx, no compatible timer found, using default\n");
 		timer_baseaddr = (u32)ioremap(0xF8001000, SZ_4K);
 		irq = IRQ_TIMERCOUNTER0 + 1;
 	}
@@ -372,7 +372,7 @@ void __init xttcpss_timer_init(void)
 	event_timer_irq.dev_id = &timers[XTTCPSS_CLOCKEVENT];
 	setup_irq(irq, &event_timer_irq);
 
-	printk(KERN_INFO "%s #0 at 0x%08x, irq=%d\n",
+	pr_info("%s #0 at 0x%08x, irq=%d\n",
 		timer_list[0], timer_baseaddr, irq);
 
 	/*
