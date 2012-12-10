@@ -63,9 +63,6 @@
 			reg = <0xF8001000 0x1000>;
 			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
 			interrupt-parent = <&gic>;
-			clock-frequency-timer0 = <2500000>;
-			clock-frequency-timer1 = <2500000>;
-			clock-frequency-timer2 = <2500000>;
 		};
 
 		slcr: slcr@f8000000 {

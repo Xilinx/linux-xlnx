@@ -59,9 +59,6 @@
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0 10 0>,<0 11 0>,<0 12 0>;
 			interrupt-parent = <&gic>;
-			clock-frequency-timer0 = <133000000>;
-			clock-frequency-timer1 = <133000000>;
-			clock-frequency-timer2 = <133000000>;
 		};
 
 		nor: nor@e2000000 {

@@ -15,8 +15,6 @@
 #ifndef __MACH_XILINX_SOC_H__
 #define __MACH_XILINX_SOC_H__
 
-#define PERIPHERAL_CLOCK_RATE		2500000
-
 /* For now, all mappings are flat (physical = virtual)
  */
 #define UART0_PHYS		0xE0000000

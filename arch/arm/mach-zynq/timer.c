@@ -32,7 +32,6 @@
 
 #include <asm/smp_twd.h>
 
-#include <mach/zynq_soc.h>
 #include "common.h"
 
 /*
@@ -326,8 +325,6 @@ void __init xttcpss_timer_init(void)
 {
 	u32 irq;
 	struct device_node *timer = NULL;
-	void *prop1 = NULL;
-	void *prop2 = NULL;
 	u32 timer_baseaddr;
 	const char * const timer_list[] = {
 		"xlnx,ps7-ttc-1.00.a",
@@ -355,8 +352,6 @@ void __init xttcpss_timer_init(void)
 			pr_err("Xilinx, timer irq missing, using default\n");
 			irq = irq_of_parse_and_map(timer, 0) + 1;
 		}
-		prop1 = (void *)of_get_property(timer, "clock-frequency-timer0", NULL);
-		prop2 = (void *)of_get_property(timer, "clock-frequency-timer1", NULL);
 	} else {
 		pr_err("Xilinx, no compatible timer found, using default\n");
 		timer_baseaddr = (u32)ioremap(0xF8001000, SZ_4K);
@@ -375,51 +370,29 @@ void __init xttcpss_timer_init(void)
 	pr_info("%s #0 at 0x%08x, irq=%d\n",
 		timer_list[0], timer_baseaddr, irq);
 
-	/*
-	 * If there is clock-frequency property then use it, otherwise use a
-	 * default * that may not be the right timing, but might boot the
-	 * kernel, the event * timer is the only one that needs the frequency,
-	 * but make them match
-	 */
+
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
-		pr_warn("Xilinx: timer: Clock not found.");
-		timers[XTTCPSS_CLOCKSOURCE].clk = NULL;
-		timers[XTTCPSS_CLOCKEVENT].clk = NULL;
-		if (prop1) {
-			timers[XTTCPSS_CLOCKSOURCE].frequency =
-				be32_to_cpup(prop1) / PRESCALE;
-		} else {
-			pr_err("Error, no clock-frequency specified for timer\n");
-			timers[XTTCPSS_CLOCKSOURCE].frequency =
-				PERIPHERAL_CLOCK_RATE / PRESCALE;
-		}
-		if (prop2) {
-			timers[XTTCPSS_CLOCKEVENT].frequency =
-				be32_to_cpup(prop2) / PRESCALE;
-		} else {
-			pr_err("Error, no clock-frequency specified for timer\n");
-			timers[XTTCPSS_CLOCKEVENT].frequency =
-				PERIPHERAL_CLOCK_RATE / PRESCALE;
-		}
-	} else {
-		clk_prepare_enable(clk);
-		timers[XTTCPSS_CLOCKSOURCE].clk = clk;
-		timers[XTTCPSS_CLOCKEVENT].clk = clk;
-		timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
-			xttcpss_timer_rate_change_cb;
-		timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
-			xttcpss_timer_rate_change_cb;
-		timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
-		timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
-		timers[XTTCPSS_CLOCKSOURCE].frequency =
-			clk_get_rate(clk) / PRESCALE;
-		timers[XTTCPSS_CLOCKEVENT].frequency =
-			clk_get_rate(clk) / PRESCALE;
-		if (clk_notifier_register(clk,
-			&timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb))
-			pr_warn("Unable to register clock notifier.\n");
+		pr_err("ERROR: timer input clock not found\n");
+		BUG();
 	}
+
+	clk_prepare_enable(clk);
+	timers[XTTCPSS_CLOCKSOURCE].clk = clk;
+	timers[XTTCPSS_CLOCKEVENT].clk = clk;
+	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
+		xttcpss_timer_rate_change_cb;
+	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
+		xttcpss_timer_rate_change_cb;
+	timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
+	timers[XTTCPSS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
+	timers[XTTCPSS_CLOCKSOURCE].frequency =
+		clk_get_rate(clk) / PRESCALE;
+	timers[XTTCPSS_CLOCKEVENT].frequency =
+		clk_get_rate(clk) / PRESCALE;
+	if (clk_notifier_register(clk,
+		&timers[XTTCPSS_CLOCKSOURCE].clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
 
 	xttcpss_timer_hardware_init();
 	clocksource_register_hz(&clocksource_xttcpss,

@@ -269,20 +269,10 @@
 			reg = < 0xf8000000 0x1000 >;
 		} ;
 		ps7_ttc_0: ps7-ttc@f8001000 {
-			clock-frequency = <111111115>;
-			clock-frequency-timer0 = <111111115>;
-			clock-frequency-timer1 = <111111115>;
-			clock-frequency-timer2 = <111111115>;
 			compatible = "xlnx,ps7-ttc-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = < 0 10 0 0 11 0 0 12 0 >;
 			reg = < 0xf8001000 0x1000 >;
-			xlnx,ttc-clk0-clksrc = <0x0>;
-			xlnx,ttc-clk0-freq-hz = <0x69f6bcb>;
-			xlnx,ttc-clk1-clksrc = <0x0>;
-			xlnx,ttc-clk1-freq-hz = <0x69f6bcb>;
-			xlnx,ttc-clk2-clksrc = <0x0>;
-			xlnx,ttc-clk2-freq-hz = <0x69f6bcb>;
 		} ;
 		ps7_uart_1: serial@e0001000 {
 			clock = <50000000>;
