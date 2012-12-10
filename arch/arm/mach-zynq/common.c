@@ -105,7 +105,7 @@ void __init xilinx_map_io(void)
  */
 void __init xilinx_memory_init()
 {
-#if (CONFIG_PHYS_OFFSET == 0)
+#if defined(CONFIG_PHYS_OFFSET) && (CONFIG_PHYS_OFFSET == 0)
 	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
 	 * which can't be used for DMA
 	 */
