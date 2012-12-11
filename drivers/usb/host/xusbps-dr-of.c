@@ -222,15 +222,20 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 	if (pdata->phy_mode == XUSBPS_USB2_PHY_ULPI) {
 		pdata->ulpi = otg_ulpi_create(&ulpi_viewport_access_ops,
 			ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
-		if (pdata->ulpi)
+		if (pdata->ulpi) {
 			pdata->ulpi->io_priv = pdata->regs +
 							XUSBPS_SOC_USB_ULPIVP;
 
-		phy_init = usb_phy_init(pdata->ulpi);
-		if (phy_init) {
-			pr_info("Unable to init transceiver, missing?\n");
-			ret = -ENODEV;
-			goto err_out_clk_disable;
+			phy_init = usb_phy_init(pdata->ulpi);
+			if (phy_init) {
+				dev_err(&ofdev->dev,
+					"Unable to init USB phy, missing?\n");
+				ret = -ENODEV;
+				goto err_out_clk_disable;
+			}
+		} else {
+			dev_err(&ofdev->dev,
+				"Unable to create ULPI transceiver\n");
 		}
 	}
 
