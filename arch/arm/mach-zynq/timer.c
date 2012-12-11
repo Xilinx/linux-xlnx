@@ -52,8 +52,9 @@
 
 #define XTTCPSS_CNT_CNTRL_DISABLE_MASK	0x1
 
-/* Setup the timers to use pre-scaling, using a fixed value for now that will work
- * across most input frequency, but it may need to be more dynamic
+/*
+ * Setup the timers to use pre-scaling, using a fixed value for now that will
+ * work across most input frequency, but it may need to be more dynamic
  */
 #define PRESCALE_EXPONENT 	11	/* 2 ^ PRESCALE_EXPONENT = PRESCALE */
 #define PRESCALE 		2048	/* The exponent must match this */
@@ -92,8 +93,10 @@ static void xttcpss_set_interval(struct xttcpss_timer *timer,
 
 	__raw_writel(cycles, timer->base_addr + XTTCPSS_INTR_VAL_OFFSET);
 
-	/* Reset the counter (0x10) so that it starts from 0, one-shot
-	   mode makes this needed for timing to be right. */
+	/*
+	 * Reset the counter (0x10) so that it starts from 0, one-shot
+	 * mode makes this needed for timing to be right.
+	 */
 	ctrl_reg |= 0x10;
 	ctrl_reg &= ~XTTCPSS_CNT_CNTRL_DISABLE_MASK;
 	__raw_writel(ctrl_reg, timer->base_addr + XTTCPSS_CNT_CNTRL_OFFSET);
@@ -134,7 +137,8 @@ static struct irqaction event_timer_irq = {
  */
 static void __init xttcpss_timer_hardware_init(void)
 {
-	/* Setup the clock source counter to be an incrementing counter
+	/*
+	 * Setup the clock source counter to be an incrementing counter
 	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
 	 * it by 32 also. Let it start running now.
 	 */
@@ -146,7 +150,8 @@ static void __init xttcpss_timer_hardware_init(void)
 	__raw_writel(0x10, timers[XTTCPSS_CLOCKSOURCE].base_addr +
 				XTTCPSS_CNT_CNTRL_OFFSET);
 
-	/* Setup the clock event timer to be an interval timer which
+	/*
+	 * Setup the clock event timer to be an interval timer which
 	 * is prescaled by 32 using the interval interrupt. Leave it
 	 * disabled for now.
 	 */
@@ -171,7 +176,6 @@ static cycle_t __raw_readl_cycles(struct clocksource *cs)
 	return (cycle_t)__raw_readl(timer->base_addr +
 				XTTCPSS_COUNT_VAL_OFFSET);
 }
-
 
 /*
  * Instantiate and initialize the clock source structure
@@ -262,8 +266,9 @@ static int xttcpss_timer_rate_change_cb(struct notifier_block *nb,
 		timers[XTTCPSS_CLOCKEVENT].frequency =
 			ndata->new_rate / PRESCALE;
 
-		/* Do whatever is necessare to maintain a proper time base */
 		/*
+		 * Do whatever is necessare to maintain a proper time base
+		 *
 		 * I cannot find a way to adjust the currently used clocksource
 		 * to the new frequency. __clocksource_updatefreq_hz() sounds
 		 * good, but does not work. Not sure what's that missing.
