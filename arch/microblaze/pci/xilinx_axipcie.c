@@ -413,9 +413,8 @@ void __devinit xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
 {
 	const u32 *ranges;
 	int rlen;
-	/* The address cells of PCIe node */
-	int pna = be32_to_cpup(of_get_property(port->node,
-					"#address-cells", NULL));
+	/* The address cells of PCIe parent node */
+	int pna = of_n_addr_cells(port->node);
 	int np = pna + 5;
 	u32 pci_space;
 	unsigned long long pci_addr, size;
@@ -433,7 +432,7 @@ void __devinit xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
 	}
 
 	while ((rlen -= np * 4) >= 0) {
-		pci_space = ranges[0];
+		pci_space = be32_to_cpup(ranges);
 		pci_addr = of_read_number(ranges + 1, 2);
 		size = of_read_number(ranges + pna + 3, 2);
 

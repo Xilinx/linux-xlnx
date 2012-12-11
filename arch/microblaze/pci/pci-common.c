@@ -661,12 +661,8 @@ void __devinit pci_process_bridge_OF_ranges(struct pci_controller *hose,
 {
 	const u32 *ranges;
 	int rlen;
-#ifdef CONFIG_XILINX_AXIPCIE
-	/* The address cells of PCIe node */
-	int pna = be32_to_cpup(of_get_property(dev, "#address-cells", NULL));
-#else
+	/* The address cells of PCIe parent node */
 	int pna = of_n_addr_cells(dev);
-#endif
 	int np = pna + 5;
 	int memno = 0, isa_hole = -1;
 	u32 pci_space;
@@ -686,7 +682,7 @@ void __devinit pci_process_bridge_OF_ranges(struct pci_controller *hose,
 	pr_debug("Parsing ranges property...\n");
 	while ((rlen -= np * 4) >= 0) {
 		/* Read next ranges element */
-		pci_space = ranges[0];
+		pci_space = be32_to_cpup(ranges);
 		pci_addr = of_read_number(ranges + 1, 2);
 		cpu_addr = of_translate_address(dev, ranges + 3);
 		size = of_read_number(ranges + pna + 3, 2);
@@ -708,7 +704,7 @@ void __devinit pci_process_bridge_OF_ranges(struct pci_controller *hose,
 		/* Now consume following elements while they are contiguous */
 		for (; rlen >= np * sizeof(u32);
 		     ranges += np, rlen -= np * 4) {
-			if (ranges[0] != pci_space)
+			if (be32_to_cpup(ranges) != pci_space)
 				break;
 			pci_next = of_read_number(ranges + 1, 2);
 			cpu_next = of_translate_address(dev, ranges + 3);

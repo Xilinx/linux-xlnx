@@ -372,7 +372,7 @@ void __devinit xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
 	u32 val = 0;
 
 	while ((rlen -= np * 4) >= 0) {
-		pci_space = ranges[0];
+		pci_space = be32_to_cpup(ranges);
 		pci_addr = of_read_number(ranges + 1, 2);
 		size = of_read_number(ranges + port->pna + 3, 2);
 
@@ -503,7 +503,7 @@ void __devinit xaxi_pcie_process_bridge_OF_ranges(
 	pr_debug("Parsing ranges property...\n");
 	while ((rlen -= np * 4) >= 0) {
 		/* Read next ranges element */
-		pci_space = ranges[0];
+		pci_space = be32_to_cpup(ranges);
 		pci_addr = of_read_number(ranges + 1, 2);
 		cpu_addr = of_translate_address(node, ranges + 3);
 		size = of_read_number(ranges + pna + 3, 2);
@@ -525,7 +525,7 @@ void __devinit xaxi_pcie_process_bridge_OF_ranges(
 		/* Now consume following elements while they are contiguous */
 		for (; rlen >= np * sizeof(u32);
 			ranges += np, rlen -= np * 4) {
-			if (ranges[0] != pci_space)
+			if (be32_to_cpup(ranges) != pci_space)
 				break;
 			pci_next = of_read_number(ranges + 1, 2);
 			cpu_next = of_translate_address(node, ranges + 3);
@@ -983,11 +983,7 @@ int __devinit xaxi_pcie_get_of_config(struct device_node *node,
 		return -ENODEV;
 
 	/* The address cells of PCIe node */
-	value = (u32 *) of_get_property(node, "#address-cells", NULL);
-	if (value)
-		info->address_cells = be32_to_cpup(value);
-	else
-		return -ENODEV;
+	info->address_cells = of_n_addr_cells(node);
 
 	/* Get ranges property */
 	value = (u32 *) of_get_property(node, "ranges", &rlen);
