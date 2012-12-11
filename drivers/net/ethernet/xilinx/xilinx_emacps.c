@@ -1753,14 +1753,18 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	}
 	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 
-	if (regisr & (XEMACPS_IXR_TXCOMPL_MASK |
-			XEMACPS_IXR_TX_ERR_MASK)) {
-		xemacps_tx_poll(ndev);
-	} else {
-		xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET,
-				(XEMACPS_IXR_FRAMERX_MASK |
-				XEMACPS_IXR_RX_ERR_MASK));
-		napi_schedule(&lp->napi);
+	while (regisr) {
+		if (regisr & (XEMACPS_IXR_TXCOMPL_MASK |
+				XEMACPS_IXR_TX_ERR_MASK)) {
+			xemacps_tx_poll(ndev);
+		} else {
+			xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET,
+					(XEMACPS_IXR_FRAMERX_MASK |
+					XEMACPS_IXR_RX_ERR_MASK));
+			napi_schedule(&lp->napi);
+		}
+		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
+		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 	}
 	spin_unlock(&lp->lock);
 
