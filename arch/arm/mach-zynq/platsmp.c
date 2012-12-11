@@ -32,10 +32,10 @@ extern void secondary_startup(void);
 static DEFINE_SPINLOCK(boot_lock);
 
 /* Store pointer to ioremap area which points to address 0x0 */
-static u8 *zero;
+static u8 __iomem *zero;
 
-static u32 mem_backup[3];
-static u32 mem_backup_done;
+static unsigned int mem_backup[3];
+static unsigned int mem_backup_done;
 
 /* Secondary CPU kernel startup is a 2 step process. The primary CPU
  * starts the secondary CPU by giving it the address of the kernel and
@@ -77,7 +77,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 #define SLCR_UNLOCK	0xDF0D
 #define SLCR_LOCK	0x767B
 
-static u8 *slcr;
+static u8 __iomem *slcr;
 
 int zynq_cpu1_start(u32 address)
 {
@@ -201,7 +201,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	}
 #else
 	/* The first three addresses at zero are already mapped */
-	zero = (u8 *)CONFIG_PAGE_OFFSET;
+	zero = (__force u8 __iomem *)CONFIG_PAGE_OFFSET;
 #endif
 
 	/*
