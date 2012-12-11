@@ -1044,7 +1044,7 @@ static void xemacps_reset_hw(struct net_local *lp)
  *         modification.
  * return 0 on success, negative value if not enough BDs.
  **/
-int xemacps_bdringalloc(struct xemacps_bdring *ringptr, unsigned numbd,
+static int xemacps_bdringalloc(struct xemacps_bdring *ringptr, unsigned numbd,
 		struct xemacps_bd **bdptr)
 {
 	/* Enough free BDs available for the request? */
@@ -1066,7 +1066,7 @@ int xemacps_bdringalloc(struct xemacps_bdring *ringptr, unsigned numbd,
  * @bdptr: points to the first of BDs to be unallocated.
  * return 0 on success, negative value if error.
  **/
-int xemacps_bdringunalloc(struct xemacps_bdring *ringptr, unsigned numbd,
+static int xemacps_bdringunalloc(struct xemacps_bdring *ringptr, unsigned numbd,
 		struct xemacps_bd *bdptr)
 {
 	/* Enough BDs in the free state for the request? */
@@ -1113,7 +1113,7 @@ static void print_ring(struct xemacps_bdring *ring)
  * @bdptr: points to the first of BDs to be processed.
  * return 0 on success, negative value if error.
  **/
-int xemacps_bdringtohw(struct xemacps_bdring *ringptr, unsigned numbd,
+static int xemacps_bdringtohw(struct xemacps_bdring *ringptr, unsigned numbd,
 		struct xemacps_bd *bdptr)
 {
 	struct xemacps_bd *curbdptr;
@@ -1165,8 +1165,8 @@ int xemacps_bdringtohw(struct xemacps_bdring *ringptr, unsigned numbd,
  *         examination.
  * return number of BDs processed by hardware.
  **/
-u32 xemacps_bdringfromhwtx(struct xemacps_bdring *ringptr, unsigned bdlimit,
-		struct xemacps_bd **bdptr)
+static u32 xemacps_bdringfromhwtx(struct xemacps_bdring *ringptr,
+		unsigned bdlimit, struct xemacps_bd **bdptr)
 {
 	struct xemacps_bd *curbdptr;
 	u32 bdstr = 0;
@@ -1244,7 +1244,7 @@ u32 xemacps_bdringfromhwtx(struct xemacps_bdring *ringptr, unsigned bdlimit,
  *         examination.
  * return number of BDs processed by hardware.
  **/
-u32 xemacps_bdringfromhwrx(struct xemacps_bdring *ringptr, int bdlimit,
+static u32 xemacps_bdringfromhwrx(struct xemacps_bdring *ringptr, int bdlimit,
 		struct xemacps_bd **bdptr)
 {
 	struct xemacps_bd *curbdptr;
@@ -1303,7 +1303,7 @@ u32 xemacps_bdringfromhwrx(struct xemacps_bdring *ringptr, int bdlimit,
  * @bdptr: the head of BD list returned by xemacps_bdringfromhw().
  * return 0 on success, negative value if error.
  **/
-int xemacps_bdringfree(struct xemacps_bdring *ringptr, unsigned numbd,
+static int xemacps_bdringfree(struct xemacps_bdring *ringptr, unsigned numbd,
 		struct xemacps_bd *bdptr)
 {
 	/* if no bds to free, simply return. */
