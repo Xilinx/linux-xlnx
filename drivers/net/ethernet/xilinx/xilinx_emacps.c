@@ -1747,8 +1747,10 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 
 	spin_lock(&lp->lock);
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
-	if (unlikely(!regisr))
+	if (unlikely(!regisr)) {
+		spin_unlock(&lp->lock);
 		return IRQ_NONE;
+	}
 	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 
 	while (regisr) {
