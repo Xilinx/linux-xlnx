@@ -202,7 +202,7 @@ static int si570_set_frequency_small(struct i2c_client *client,
 	return 0;
 }
 
-const uint8_t si570_hs_div_values[] = { 11, 9, 7, 6, 5, 4 };
+static const uint8_t si570_hs_div_values[] = { 11, 9, 7, 6, 5, 4 };
 
 /*
  * Set si570 frequency.
