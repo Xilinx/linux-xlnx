@@ -233,10 +233,8 @@ static struct pl330_driver_data driver_data;
  * read and write macros for register IO.
  */
 
-#define pl330_readreg(base, offset) \
-	__raw_readl((void __iomem *)((u32)(base) + (u32)(offset)))
-#define pl330_writereg(data, base, offset) \
-	__raw_writel(data, (void __iomem *)((u32)(base) + (u32)(offset)))
+#define pl330_readreg(base, offset) __raw_readl(base + offset)
+#define pl330_writereg(data, base, offset) __raw_writel(data, base + offset)
 
 
 /*
