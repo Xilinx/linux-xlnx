@@ -863,7 +863,7 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 {
 	struct xilinx_cdma_chan *chan;
 	int err;
-	int *value;
+	const __be32 *value;
 	u32 width = 0, device_id = 0;
 
 	/* alloc channel */
@@ -880,14 +880,11 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->has_SG = 0;
 	chan->max_len = XILINX_CDMA_MAX_TRANS_LEN;
 
-	value = (int *)of_get_property(node, "xlnx,include-dre",
-			NULL);
+	value = of_get_property(node, "xlnx,include-dre", NULL);
 	if (value)
 		chan->has_DRE = be32_to_cpup(value);
 
-	value = (int *)of_get_property(node,
-			"xlnx,datawidth",
-			NULL);
+	value = of_get_property(node, "xlnx,datawidth", NULL);
 	if (value) {
 		width = be32_to_cpup(value) >> 3; /* convert bits to bytes */
 
@@ -898,7 +895,7 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 		chan->feature |= width - 1;
 	}
 
-	value = (int *)of_get_property(node, "xlnx,device-id", NULL);
+	value = of_get_property(node, "xlnx,device-id", NULL);
 	if (value)
 		device_id = be32_to_cpup(value);
 
@@ -908,13 +905,12 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->has_SG = (xdev->feature & XILINX_CDMA_FTR_HAS_SG) >>
 			XILINX_CDMA_FTR_HAS_SG_SHIFT;
 
-	value = (int *)of_get_property(node,
-			"xlnx,lite-mode", NULL);
+	value = of_get_property(node, "xlnx,lite-mode", NULL);
 	if (value) {
 		if (be32_to_cpup(value) == 1) {
 			chan->is_lite = 1;
-			value = (int *)of_get_property(node,
-				"xlnx,max-burst-len", NULL);
+			value = of_get_property(node,
+					"xlnx,max-burst-len", NULL);
 			if (value) {
 				if (!width) {
 					dev_err(xdev->dev,

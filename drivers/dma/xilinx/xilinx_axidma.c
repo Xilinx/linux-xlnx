@@ -965,7 +965,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 {
 	struct xilinx_dma_chan *chan;
 	int err;
-	int *value;
+	const __be32 *value;
 	u32 width = 0, device_id = 0;
 
 	/* alloc channel */
@@ -982,14 +982,11 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->has_SG = 0;
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
 
-	value = (int *)of_get_property(node, "xlnx,include-dre",
-			NULL);
+	value = of_get_property(node, "xlnx,include-dre", NULL);
 	if (value)
 		chan->has_DRE = be32_to_cpup(value);
 
-	value = (int *)of_get_property(node,
-			"xlnx,datawidth",
-			NULL);
+	value = of_get_property(node, "xlnx,datawidth", NULL);
 	if (value) {
 		width = be32_to_cpup(value) >> 3; /* convert bits to bytes */
 
@@ -1000,7 +997,7 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		chan->feature |= width - 1;
 	}
 
-	value = (int *)of_get_property(node, "xlnx,device-id", NULL);
+	value = of_get_property(node, "xlnx,device-id", NULL);
 	if (value)
 		device_id = be32_to_cpup(value);
 
@@ -1087,7 +1084,7 @@ static int __devinit xilinx_dma_of_probe(struct platform_device *op)
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
 	int err;
-	int *value;
+	const __be32 *value;
 
 	dev_info(&op->dev, "Probing xilinx axi dma engine\n");
 
@@ -1118,7 +1115,7 @@ static int __devinit xilinx_dma_of_probe(struct platform_device *op)
 	if (of_device_is_compatible(node, "xlnx,axi-dma")) {
 
 		xdev->feature |= XILINX_DMA_IP_DMA;
-		value = (int *)of_get_property(node,
+		value = of_get_property(node,
 				"xlnx,sg-include-stscntrl-strm",
 				NULL);
 		if (value) {

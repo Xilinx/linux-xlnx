@@ -1196,7 +1196,7 @@ static int __devinit xilinx_vdma_of_probe(struct platform_device *op)
 	struct xilinx_vdma_device *xdev;
 	struct device_node *child, *node;
 	int err, i;
-	int *value;
+	const __be32 *value;
 	int num_frames = 0;
 
 	dev_info(&op->dev, "Probing xilinx axi vdma engine\n");
@@ -1226,19 +1226,17 @@ static int __devinit xilinx_vdma_of_probe(struct platform_device *op)
 	if (of_device_is_compatible(node, "xlnx,axi-vdma")) {
 		xdev->feature |= XILINX_DMA_IP_VDMA;
 
-		value = (int *)of_get_property(node, "xlnx,include-sg",
-				NULL);
+		value = of_get_property(node, "xlnx,include-sg", NULL);
 		if (value) {
 			if (be32_to_cpup(value) == 1)
 				xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
 		}
 
-		value = (int *)of_get_property(node, "xlnx,num-fstores",
-			NULL);
+		value = of_get_property(node, "xlnx,num-fstores", NULL);
 		if (value)
 			num_frames = be32_to_cpup(value);
 
-		value = (int *)of_get_property(node, "xlnx,flush-fsync", NULL);
+		value = of_get_property(node, "xlnx,flush-fsync", NULL);
 		if (value)
 			xdev->feature |= be32_to_cpup(value) <<
 				XILINX_VDMA_FTR_FLUSH_SHIFT;
