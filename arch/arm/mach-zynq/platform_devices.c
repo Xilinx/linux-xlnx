@@ -49,14 +49,14 @@ static struct resource dmac0[] = {
 	},
 };
 
-struct pl330_platform_config dmac_config0 = {
+static struct pl330_platform_config dmac_config0 = {
 	.channels = 8,
 	.starting_channel = 0,
 };
 
 static u64 dma_mask = 0xFFFFFFFFUL;
 
-struct platform_device dmac_device0 = {
+static struct platform_device dmac_device0 = {
 	.name = "pl330",
 	.id = 0,
 	.dev = {
@@ -105,7 +105,7 @@ static struct platform_device xilinx_dvfs_device = {
 /* add all platform devices to the following table so they
  * will be registered
  */
-struct platform_device *xilinx_pdevices[] __initdata = {
+static struct platform_device *xilinx_pdevices[] __initdata = {
 	&dmac_device0,
 	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
