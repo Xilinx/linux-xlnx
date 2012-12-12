@@ -378,7 +378,7 @@ static u8 zynq_periphclk_get_parent(struct clk_hw *hw)
  * Returns clk_register() return value or errpointer.
  */
 static struct clk *clk_register_zynq_common(const char *name,
-		void __iomem *clkctrl, struct clk_ops *ops,
+		void __iomem *clkctrl, const struct clk_ops *ops,
 		const char **pnames, u8 num_parents, spinlock_t *lock)
 {
 	struct clk *ret;
@@ -411,7 +411,7 @@ static struct clk *clk_register_zynq_common(const char *name,
 }
 
 /* Clock ops structs for the different peripheral clock types */
-static struct clk_ops zynq_periphclk_gd1m_ops = {
+static const struct clk_ops zynq_periphclk_gd1m_ops = {
 	.enable = zynq_periphclk_gate1_enable,
 	.disable = zynq_periphclk_gate1_disable,
 	.is_enabled = zynq_periphclk_gate1_is_enabled,
@@ -422,7 +422,7 @@ static struct clk_ops zynq_periphclk_gd1m_ops = {
 	.recalc_rate = zynq_periphclk_div1_recalc_rate
 };
 
-static struct clk_ops zynq_periphclk_gd2m_ops = {
+static const struct clk_ops zynq_periphclk_gd2m_ops = {
 	.enable = zynq_periphclk_gate1_enable,
 	.disable = zynq_periphclk_gate1_disable,
 	.is_enabled = zynq_periphclk_gate1_is_enabled,
@@ -433,7 +433,7 @@ static struct clk_ops zynq_periphclk_gd2m_ops = {
 	.recalc_rate = zynq_periphclk_div2_recalc_rate
 };
 
-static struct clk_ops zynq_periphclk_d2m_ops = {
+static const struct clk_ops zynq_periphclk_d2m_ops = {
 	.set_parent = zynq_periphclk_set_parent,
 	.get_parent = zynq_periphclk_get_parent,
 	.set_rate = zynq_periphclk_div2_set_rate,
@@ -441,7 +441,7 @@ static struct clk_ops zynq_periphclk_d2m_ops = {
 	.recalc_rate = zynq_periphclk_div2_recalc_rate
 };
 
-static struct clk_ops zynq_periphclk_d1m_ops = {
+static const struct clk_ops zynq_periphclk_d1m_ops = {
 	.set_parent = zynq_periphclk_set_parent,
 	.get_parent = zynq_periphclk_get_parent,
 	.set_rate = zynq_periphclk_div1_set_rate,

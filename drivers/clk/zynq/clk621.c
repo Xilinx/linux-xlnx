@@ -113,7 +113,7 @@ static int zynq_clk621_set_rate(struct clk_hw *hw, unsigned long rate,
 	return -EINVAL;
 }
 
-static struct clk_ops zynq_clk621_ops = {
+static const struct clk_ops zynq_clk621_ops = {
 	.set_rate = zynq_clk621_set_rate,
 	.round_rate = zynq_clk621_round_rate,
 	.recalc_rate = zynq_clk621_recalc_rate
