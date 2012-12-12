@@ -392,6 +392,7 @@ config XILINX_HWICAP
 
 config XILINX_DEVCFG
 	tristate "Xilinx Device Configuration"
+	depends on ARCH_ZYNQ
 	help
 	  This option enables support for the Xilinx device configuration driver.
 	  If unsure, say N
