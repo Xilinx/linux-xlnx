@@ -350,7 +350,7 @@ struct test_data_t {
 };
 
 static struct pl330_client_data suite_client_data;
-struct test_data_t suite_test_data = {
+static struct test_data_t suite_test_data = {
 	.count = 0,
 	.buf = 0,
 	.off = 0,
@@ -1540,13 +1540,14 @@ static int pl330_test_suite_5(void)
 	return status;
 }
 
+#ifdef PL330_TEST_DEBUG
 /**
  * print_buf - Prints the content of a buffer.
  * @buf:	Memory buffer
  * @len:	Buffer length in bytes
  * @buf_name:	Buffer name
  */
-void print_buf(void *buf, int len, char *buf_name)
+static void print_buf(void *buf, int len, char *buf_name)
 {
 	int i;
 	PINFO("content of %s\n", buf_name);
@@ -1554,6 +1555,7 @@ void print_buf(void *buf, int len, char *buf_name)
 	for (i = 0; i < len; i++)
 		PINFO("[%02x] %02x\n", i, *((u8 *)(buf + i)));
 }
+#endif /* PL330_TEST_DEBUG */
 
 /**
  * pl330_test_suite_6 - The suite 6 exercises small DMA size.
