@@ -723,7 +723,7 @@ inline unsigned pl330_to_burst_size_bits(unsigned burst_size)
  *
  * Returns the 32-bit CCR value.
  */
-u32 pl330_to_ccr_value(struct pl330_bus_des *src_bus_des,
+static u32 pl330_to_ccr_value(struct pl330_bus_des *src_bus_des,
 		       unsigned src_inc,
 		       struct pl330_bus_des *dst_bus_des,
 		       unsigned dst_inc,
@@ -798,7 +798,7 @@ u32 pl330_to_ccr_value(struct pl330_bus_des *src_bus_des,
  *	the loop counter.
  * Returns the number of bytes the loop has.
  */
-int pl330_construct_single_loop(char *dma_prog_start,
+static int pl330_construct_single_loop(char *dma_prog_start,
 				int cache_length,
 				char *dma_prog_loop_start,
 				int loop_count)
@@ -857,7 +857,7 @@ int pl330_construct_single_loop(char *dma_prog_start,
  * @loop_count_inner: The inner loop count. Loop count - 1 will be used to
  *	initialize the loop counter.
  */
-int pl330_construct_nested_loop(char *dma_prog_start,
+static int pl330_construct_nested_loop(char *dma_prog_start,
 				int cache_length,
 				char *dma_prog_loop_start,
 				unsigned int loop_count_outer,
@@ -1002,7 +1002,7 @@ int pl330_build_dma_prog(unsigned int channel,
  *	definition for details.
  * Returns the number of bytes for the program.
  */
-int pl330_build_dma_prog(struct prog_build_args *build_args)
+static int pl330_build_dma_prog(struct prog_build_args *build_args)
 {
 	/*
 	 * unpack arguments
@@ -1235,7 +1235,7 @@ int pl330_build_dma_prog(struct prog_build_args *build_args)
  *
  * Returns 0 on success, -1 on time out
  */
-int pl330_exec_dmakill(unsigned int dev_id,
+static int pl330_exec_dmakill(unsigned int dev_id,
 		       void __iomem *base,
 		       unsigned int dev_chan,
 		       unsigned int thread)
@@ -1276,7 +1276,7 @@ int pl330_exec_dmakill(unsigned int dev_id,
  *	struct.
  * @pdev_id: Device id.
  */
-void pl330_init_channel_static_data(unsigned int pdev_id)
+static void pl330_init_channel_static_data(unsigned int pdev_id)
 {
 	unsigned int i;
 	struct pl330_device_data *dev_data = driver_data.device_data + pdev_id;
@@ -1448,7 +1448,7 @@ static irqreturn_t pl330_fault_isr(int irq, void *dev)
  *
  * Returns 0 on success, otherwise on failure
  */
-int pl330_request_irq(unsigned int dev_id)
+static int pl330_request_irq(unsigned int dev_id)
 {
 	unsigned int irq;
 	unsigned int irq2;
@@ -1546,7 +1546,7 @@ int pl330_request_irq(unsigned int dev_id)
  * pl330_free_irq - Free the requested interrupt for the device
  * @dev_id: device id.
  */
-void pl330_free_irq(unsigned int dev_id)
+static void pl330_free_irq(unsigned int dev_id)
 {
 	unsigned int irq;
 	int i;
@@ -1583,7 +1583,7 @@ void pl330_free_irq(unsigned int dev_id)
  * @dev_id: Device id
  * @pdev: Instance of platform_device struct.
  */
-void pl330_init_device_data(unsigned int dev_id,
+static void pl330_init_device_data(unsigned int dev_id,
 			    struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1622,7 +1622,7 @@ void pl330_init_device_data(unsigned int dev_id,
 	device_data->base = ioremap(res->start, SZ_4K);
 	PDEBUG("pl330 dev %d ioremap to %#x\n",
 	       dev_id, (unsigned int)device_data->base);
-	if (device_data->base == 0) {
+	if (!device_data->base) {
 		printk(KERN_ERR "ioremap failure for base %#x\n",
 		       (unsigned int)res->start);
 		release_mem_region(res->start, SZ_4K);
@@ -1856,7 +1856,7 @@ static void print_pl330_bus_des(struct pl330_bus_des *bus_des)
  *
  * Returns 0 on success, -1 on time out
  */
-int pl330_exec_dmago(unsigned int dev_id,
+static int pl330_exec_dmago(unsigned int dev_id,
 		      void __iomem *base,
 		      unsigned int dev_chan,
 		      u32 dma_prog)
@@ -2172,7 +2172,7 @@ static struct dma_ops pl330_ops = {
 	.type        = "PL330",
 };
 
-void pl330_set_default_burst_size(unsigned int dev_id)
+static void pl330_set_default_burst_size(unsigned int dev_id)
 {
 #ifndef PL330_DEFAULT_BURST_SIZE
 	u32 crdn = pl330_readreg(driver_data.device_data[dev_id].base,
@@ -2352,7 +2352,7 @@ static void pl330_driver_init(void)
  * @user_bus_des: User bus descriptor
  * @default_bus_des: Default bus decriptor, this is the returned value
  */
-void setup_default_bus_des(unsigned int default_burst_size,
+static void setup_default_bus_des(unsigned int default_burst_size,
 			   struct pl330_bus_des *user_bus_des,
 			   struct pl330_bus_des *default_bus_des)
 {
