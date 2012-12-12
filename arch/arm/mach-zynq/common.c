@@ -94,7 +94,7 @@ static struct sys_timer xttcpss_sys_timer = {
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.
  */
-void __init xilinx_map_io(void)
+static void __init xilinx_map_io(void)
 {
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
 }
@@ -105,7 +105,7 @@ void __init xilinx_map_io(void)
  * We need to stop things allocating the low memory as DMA can't work in
  * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
  */
-void __init xilinx_memory_init()
+static void __init xilinx_memory_init(void)
 {
 #if defined(CONFIG_PHYS_OFFSET) && (CONFIG_PHYS_OFFSET == 0)
 	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
@@ -184,7 +184,7 @@ early_initcall(xilinx_l2c_init);
 /**
  * xilinx_irq_init() - Interrupt controller initialization for the GIC.
  */
-void __init xilinx_irq_init(void)
+static void __init xilinx_irq_init(void)
 {
 	of_irq_init(zynq_dt_irq_match);
 }
@@ -193,7 +193,7 @@ void __init xilinx_irq_init(void)
  * xilinx_init_machine() - System specific initialization, intended to be
  *			   called from board specific initialization.
  */
-void __init xilinx_init_machine(void)
+static void __init xilinx_init_machine(void)
 {
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 	platform_device_init();
