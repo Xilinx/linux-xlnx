@@ -535,11 +535,15 @@ static ssize_t xdevcfg_set_dap_en(struct device *dev,
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
-	if (status)
+	if (status) {
+		spin_unlock_irqrestore(&(drvdata->lock), flags);
 		return status;
+	}
 
-	if (mask_bit > 7)
+	if (mask_bit > 7) {
+		spin_unlock_irqrestore(&(drvdata->lock), flags);
 		return -EINVAL;
+	}
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
 				(ctrl_reg_status |
