@@ -39,7 +39,7 @@ struct xusbps_dev_data {
 	enum xusbps_usb2_operating_modes op_mode;	/* operating mode */
 };
 
-struct xusbps_dev_data dr_mode_data[] __devinitdata = {
+static struct xusbps_dev_data dr_mode_data[] __devinitdata = {
 	{
 		.dr_mode = "host",
 		.drivers = { "xusbps-ehci", NULL, NULL, },
@@ -56,8 +56,8 @@ struct xusbps_dev_data dr_mode_data[] __devinitdata = {
 		.op_mode = XUSBPS_USB2_DR_DEVICE,
 	},
 };
-
-struct xusbps_dev_data * __devinit get_dr_mode_data(struct device_node *np)
+static struct xusbps_dev_data * __devinit get_dr_mode_data(
+		struct device_node *np)
 {
 	const unsigned char *prop;
 	int i;
@@ -91,7 +91,7 @@ static enum xusbps_usb2_phy_modes __devinit determine_usb_phy(const char
 	return XUSBPS_USB2_PHY_NONE;
 }
 
-struct platform_device * __devinit xusbps_device_register(
+static struct platform_device * __devinit xusbps_device_register(
 					struct platform_device *ofdev,
 					struct xusbps_usb2_platform_data *pdata,
 					const char *name, int id)
