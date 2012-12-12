@@ -153,7 +153,8 @@ struct xdevcfg_drvdata {
  * xdevcfg_reset_pl() - Reset the programmable logic.
  * @base_address:	The base address of the device.
  */
-static void xdevcfg_reset_pl(u32 base_address) {
+static void xdevcfg_reset_pl(void __iomem *base_address)
+{
 
 	/*
 	 * Create a rising edge on PCFG_INIT. PCFG_INIT follows PCFG_PROG_B, so we need to
@@ -462,7 +463,7 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 	 * Also, do not reset if it is a partial bitstream.
 	 */
 	if ( (!drvdata->ep107) && (!drvdata->is_partial_bitstream) )
-		xdevcfg_reset_pl((u32)drvdata->base_address);
+		xdevcfg_reset_pl(drvdata->base_address);
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_STS_OFFSET, XDCFG_IXR_PCFG_DONE_MASK);
 
