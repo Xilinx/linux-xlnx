@@ -394,7 +394,7 @@ static struct irq_chip xgpiops_irqchip = {
  * application for that pin.
  * Note: A bug is reported if no handler is set for the gpio pin.
  */
-void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
+static void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 {
 	int gpio_irq = (int)irq_get_handler_data(irq);
 	struct xgpiops *gpio = (struct xgpiops *)irq_get_chip_data(gpio_irq);
