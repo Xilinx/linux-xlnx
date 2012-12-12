@@ -2527,7 +2527,7 @@ static struct platform_driver xslcr_driver = {
 	},
 };
 
-struct platform_device xslcr_device = {
+static struct platform_device xslcr_device = {
 	.name = "xslcr",
 	.dev.platform_data = NULL,
 };
