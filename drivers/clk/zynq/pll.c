@@ -350,7 +350,7 @@ static u8 zynq_pll_get_parent(struct clk_hw *hw)
 	return clk->bypassed;
 }
 
-const struct clk_ops zynq_pll_ops = {
+static const struct clk_ops zynq_pll_ops = {
 	.set_parent = zynq_pll_set_parent,
 	.get_parent = zynq_pll_get_parent,
 	.set_rate = zynq_pll_set_rate,
