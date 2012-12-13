@@ -1066,9 +1066,6 @@ static int __devinit xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	}
 
 	chan->feature = feature;
-	chan->is_lite = 0;
-	chan->has_DRE = 0;
-	chan->has_SG = 0;
 	chan->max_len = XILINX_VDMA_MAX_TRANS_LEN;
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
@@ -1131,7 +1128,6 @@ static int __devinit xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	}
 
 	chan->regs = (struct xvdma_regs *)xdev->regs;
-	chan->id = 0;
 
 	if (chan->direction == DMA_DEV_TO_MEM) {
 		chan->regs = (struct xvdma_regs *)((u32)xdev->regs +

@@ -875,9 +875,6 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	}
 
 	chan->feature = feature;
-	chan->is_lite = 0;
-	chan->has_DRE = 0;
-	chan->has_SG = 0;
 	chan->max_len = XILINX_CDMA_MAX_TRANS_LEN;
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
@@ -924,7 +921,6 @@ static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	}
 
 	chan->regs = (struct xcdma_regs *)xdev->regs;
-	chan->id = 0;
 
 	/*
 	 * Used by dmatest channel matching in slave transfers

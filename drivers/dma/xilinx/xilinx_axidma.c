@@ -977,9 +977,6 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	}
 
 	chan->feature = feature;
-	chan->is_lite = 0;
-	chan->has_DRE = 0;
-	chan->has_SG = 0;
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
@@ -1018,7 +1015,6 @@ static int __devinit xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	}
 
 	chan->regs = (struct xdma_regs *)xdev->regs;
-	chan->id = 0;
 
 	if (chan->direction == DMA_DEV_TO_MEM) {
 		chan->regs = (struct xdma_regs *)((u32)xdev->regs +
