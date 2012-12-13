@@ -189,6 +189,27 @@ static void __init xilinx_irq_init(void)
 	of_irq_init(zynq_dt_irq_match);
 }
 
+#ifdef CONFIG_XILINX_L1_PREFETCH
+static void __init xilinx_data_prefetch_enable(void *info)
+{
+	/*
+	 * Enable prefetching in aux control register. L2 prefetch must
+	 * only be enabled if the slave supports it (PL310 does)
+	 */
+	asm volatile ("mrc   p15, 0, r1, c1, c0, 1\n"
+		      "orr   r1, r1, #6\n"
+		      "mcr   p15, 0, r1, c1, c0, 1\n"
+		      : : : "r1");
+}
+
+static void __init xilinx_init_late(void)
+{
+	on_each_cpu(xilinx_data_prefetch_enable, NULL, 0);
+}
+#else
+#define xilinx_init_late	NULL
+#endif
+
 /**
  * xilinx_init_machine() - System specific initialization, intended to be
  *			   called from board specific initialization.
@@ -212,6 +233,7 @@ MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.init_irq	= xilinx_irq_init,
 	.handle_irq	= gic_handle_irq,
 	.init_machine	= xilinx_init_machine,
+	.init_late	= xilinx_init_late,
 	.timer		= &xttcpss_sys_timer,
 	.dt_compat	= xilinx_dt_match,
 	.reserve	= xilinx_memory_init,
