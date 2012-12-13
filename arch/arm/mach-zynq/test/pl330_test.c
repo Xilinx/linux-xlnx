@@ -62,14 +62,6 @@
  */
 
 #define DRIVER_NAME         "pl330_test"
-#define DRIVER_DESCRIPTION  "pl330 driver test"
-#define DRIVER_VERSION      "1.00a"
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION(DRIVER_DESCRIPTION);
-MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_VERSION(DRIVER_VERSION);
-
 
 /*
 #define PL330_TEST_DEBUG
@@ -1995,3 +1987,7 @@ module_init(pl330_test);
 
 module_exit(pl330_test_exit);
 
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("pl330 driver test");
+MODULE_AUTHOR("Xilinx, Inc.");
+MODULE_VERSION("1.00a");

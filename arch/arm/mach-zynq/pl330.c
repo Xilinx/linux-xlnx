@@ -97,8 +97,6 @@
 #include <mach/pl330.h>
 
 #define DRIVER_NAME         "pl330"
-#define DRIVER_DESCRIPTION  "pl330 driver"
-#define DRIVER_VERSION      "1.00a"
 
 #define PL330_OPTIMIZE_ICACHE
 #define PL330_DEFAULT_BURST_SIZE 4
@@ -2711,7 +2709,6 @@ module_exit(pl330_exit);
 
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION(DRIVER_DESCRIPTION);
+MODULE_DESCRIPTION("pl330 driver");
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_VERSION(DRIVER_VERSION);
-
+MODULE_VERSION("1.00a");
