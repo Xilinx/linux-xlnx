@@ -63,19 +63,6 @@
 
 #define DRIVER_NAME         "pl330_test"
 
-/*
-#define PL330_TEST_DEBUG
-*/
-#undef PDBG
-#ifdef PL330_TEST_DEBUG
-#	define PDBG(fmt, args...) printk(KERN_INFO fmt, ## args)
-#else
-#	define PDBG(fmt, args...)
-#endif
-
-#undef PINFO
-#define PINFO(fmt, args...) printk(KERN_INFO fmt, ## args)
-
 #define TEST_MAX_CHANNELS	8
 
 static const char *PASS = "PASS";
@@ -142,11 +129,10 @@ static void failed_tests_print(void)
 	if (!tests_count)
 		return;
 
-	printk(KERN_INFO "The following tests failed:\n");
+	pr_info("The following tests failed:\n");
 	for (i = 0; i < tests_count; i++) {
-		printk(KERN_INFO "  suite %d test %d\n",
-			failed_tests[i].test_suite,
-			failed_tests[i].test_case);
+		pr_info("  suite %d test %d\n", failed_tests[i].test_suite,
+						failed_tests[i].test_case);
 	}
 }
 
@@ -164,18 +150,18 @@ static int test_request_free_channels(void)
 	unsigned int i;
 	int st;
 
-	PDBG("inside test_request_free_channels\n");
+	pr_debug("inside test_request_free_channels\n");
 
 	for (i = 0; i < TEST_MAX_CHANNELS; i++) {
 		st = request_dma(i, DRIVER_NAME);
 		if (st == 0) {
-			PDBG("request_dma(%d) free = %d %s\n", i, st, PASS);
+			pr_debug("request_dma(%d) free = %d %s\n", i, st, PASS);
 		} else {
-			PDBG("request_dma(%d) free = %d %s\n", i, st, FAIL);
+			pr_debug("request_dma(%d) free = %d %s\n", i, st, FAIL);
 			status = -1;
 		}
 	}
-	PINFO("test_request_free_channels %s\n", (status ? FAIL : PASS));
+	pr_info("test_request_free_channels %s\n", (status ? FAIL : PASS));
 
 	return status;
 }
@@ -193,19 +179,19 @@ static int test_request_busy_channels(void)
 	unsigned int i;
 	int st;
 
-	PDBG("inside test_request_busy_channels\n");
+	pr_debug("inside test_request_busy_channels\n");
 
 	for (i = 0; i < TEST_MAX_CHANNELS; i++) {
 		st = request_dma(i, DRIVER_NAME);
 		if (st == -EBUSY) {
-			PDBG("request_dma(%d) busy = %d %s\n", i, st, PASS);
+			pr_debug("request_dma(%d) busy = %d %s\n", i, st, PASS);
 		} else {
-			PDBG("request_dma(%d) busy = %d %s\n", i, st, FAIL);
+			pr_debug("request_dma(%d) busy = %d %s\n", i, st, FAIL);
 			status = -1;
 		}
 	}
 
-	PINFO("test_request_busy_channels %s\n", (status ? FAIL : PASS));
+	pr_info("test_request_busy_channels %s\n", (status ? FAIL : PASS));
 
 	return status;
 }
@@ -233,22 +219,22 @@ static int test_request_invalid_channels(void)
 		MAX_DMA_CHANNELS * 10 + 3,
 	};
 
-	PDBG("inside test_request_invalid_channels\n");
+	pr_debug("inside test_request_invalid_channels\n");
 
 	for (i = 0; i < 8; i++) {
 		st = request_dma(chan2test[i], DRIVER_NAME);
 		if (st == -EINVAL) {
-			PDBG("request_dma(%d) invalid = %d %s\n",
+			pr_debug("request_dma(%d) invalid = %d %s\n",
 			     chan2test[i], st, PASS);
 		} else {
-			PDBG("request_dma(%d) invalid = %d %s\n",
+			pr_debug("request_dma(%d) invalid = %d %s\n",
 			     chan2test[i], st, FAIL);
 			status = -1;
 
 		}
 	}
 
-	PINFO("test_request_invalid_channels %s\n", (status ? FAIL : PASS));
+	pr_info("test_request_invalid_channels %s\n", (status ? FAIL : PASS));
 
 	return status;
 
@@ -261,11 +247,11 @@ static void free_all_channels(void)
 {
 	unsigned int i;
 
-	PDBG("inside free_channels\n");
+	pr_debug("inside free_channels\n");
 
 	for (i = 0; i < TEST_MAX_CHANNELS; i++)
 		free_dma(i);
-	PDBG("free_channels DONE\n");
+	pr_debug("free_channels DONE\n");
 
 	return;
 }
@@ -281,7 +267,7 @@ static int test1(void)
 {
 	int status = 0;
 
-	PDBG("inside pl330 test1\n");
+	pr_debug("inside pl330 test1\n");
 
 	status |= test_request_invalid_channels();
 
@@ -309,7 +295,7 @@ static int test1(void)
 
 	free_all_channels();
 
-	PINFO("PL330 test1 %s\n", (status ? FAIL : PASS));
+	pr_info("PL330 test1 %s\n", (status ? FAIL : PASS));
 
 	return status;
 }
@@ -374,7 +360,7 @@ static int init_memory(void *buf, int count, int off)
 	for (i = 0; i < count; i++)
 		*pt++ = index2char(i, off);
 
-	PDBG("pl330_test.init_memory: done\n");
+	pr_debug("pl330_test.init_memory: done\n");
 
 	return 0;
 }
@@ -421,8 +407,7 @@ static int init_device(void *dev_addr, int count, int off,
 					    dev_addr);
 				break;
 			default:
-				printk(KERN_ERR
-				       "error in test_data_t\n");
+				pr_err("error in test_data_t\n");
 				return -1;
 			}
 		}
@@ -434,7 +419,7 @@ static int init_device(void *dev_addr, int count, int off,
 	}
 
 
-	PDBG("pl330_test.init_device mem: done\n");
+	pr_debug("pl330_test.init_device mem: done\n");
 	return 0;
 }
 
@@ -459,10 +444,8 @@ static int verify_memory(void *buf, int count, int off)
 		got = *pt;
 		expecting = index2char(i, off);
 		if (expecting != got) {
-			printk(KERN_ERR
-			       "verify memory failed at address %x, "
-			       "expecting %x got %x\n",
-			       i, expecting, got);
+			pr_err("verify memory failed at address %x, ", i);
+			pr_cont("expecting %x got %x\n", expecting, got);
 			return -1;
 		}
 		pt++;
@@ -511,20 +494,17 @@ static int verify_device(void *dev_addr, int count, int off,
 				(*((u64 *)got_buf)) = dev_read64(dev_addr);
 				break;
 			default:
-				printk(KERN_ERR
-				       "verify_device error in test_data_t\n");
+				pr_err("verify_device error in test_data_t\n");
 				return -1;
 			}
 			/* now compare */
 
 			for (j = 0; j < burst_size; j++) {
 				if (expecting_buf[j] != got_buf[j]) {
-					printk(KERN_ERR
-					       "verify device failed at byte "
-					       "%x, expecting %x got %x\n",
-					       i,
-					       expecting_buf[j],
-					       got_buf[j]);
+					pr_err("verify device failed at byte ");
+					pr_cont("%x, expecting %x got %x\n",
+						i, expecting_buf[j],
+						got_buf[j]);
 					return -1;
 				}
 			}
@@ -538,11 +518,10 @@ static int verify_device(void *dev_addr, int count, int off,
 	for (i = 0; i < residue; i++) {
 		got_buf[i] = dev_read8(dev_addr);
 		if (expecting_buf[i] != got_buf[i]) {
-			printk(KERN_ERR
-			       "verify memory failed at byte %x, "
-			       "expecting %x got %x\n",
-			       count - (residue - i),
-			       expecting_buf[i], got_buf[i]);
+			pr_err("verify memory failed at byte %x, ",
+				count - (residue - i));
+			pr_cont("expecting %x got %x\n",
+				expecting_buf[i], got_buf[i]);
 			return -1;
 		}
 	}
@@ -565,7 +544,7 @@ static int init_source(struct test_data_t *test_data)
 	void *dev_addr = test_data->dev_virt_addr;
 	int st;
 
-	PDBG("pl330_test.init_source: entering\n");
+	pr_debug("pl330_test.init_source: entering\n");
 	if (test_data->dma_mode == DMA_MODE_READ) {
 		if (test_data->inc_dev_addr)
 			st = init_memory(dev_addr, count, off);
@@ -575,7 +554,7 @@ static int init_source(struct test_data_t *test_data)
 		st = init_memory(test_data->buf_virt_addr, count, off);
 	}
 
-	PDBG("pl330_test.init_source: done\n");
+	pr_debug("pl330_test.init_source: done\n");
 
 	return st;
 }
@@ -615,9 +594,9 @@ static void print_dma_prog(char *dma_prog, unsigned int len)
 {
 	int i;
 
-	PINFO("DMA Program is\n");
+	pr_info("DMA Program is\n");
 	for (i = 0; i < len; i++)
-		PINFO("[%02x]\t%02x\n", i, dma_prog[i]);
+		pr_info("[%02x]\t%02x\n", i, dma_prog[i]);
 }
 
 /**
@@ -644,17 +623,13 @@ static int verify_one_address(u32 start_addr,
 		expected = start_addr;
 
 	if (expected == end_addr) {
-		PDBG("%s matches, started at %#08x ended at %#08x\n",
-		     name,
-		     start_addr, end_addr);
+		pr_debug("%s matches, started at %#08x ended at %#08x\n",
+			name, start_addr, end_addr);
 		return 0;
 	} else {
-
-		printk(KERN_ERR
-		       "%s is not correct, expecting %#08x got %#08x "
-		       "diff %d\n",
-		       name,
-		       expected, end_addr, end_addr - expected);
+		pr_err("%s is not correct, expecting %#08x got %#08x ",
+			name, expected, end_addr);
+		pr_cont("diff %d\n", end_addr - expected);
 		return -1;
 	}
 }
@@ -729,7 +704,7 @@ static void dma_done_callback2(unsigned int channel, void *data)
 	unsigned int dma_prog_len;
 	int id = test_data->id;
 
-	PDBG("DMA channel %d done suite %d case %d\n",
+	pr_debug("DMA channel %d done suite %d case %d\n",
 	     channel, test_data->suite, id);
 
 	status = verify_destination(test_data);
@@ -777,39 +752,36 @@ static void dma_fault_callback2(unsigned int channel, unsigned int fault_type,
 	    && test_data->channel == channel) {
 		if (test_data->expected_fault_type
 		    &&	test_data->expected_fault_type != fault_type) {
-			PINFO("DMA channel %d fault type is not in "
-			      "expected way\n",
-			      channel);
-			PINFO("DMA fault expecting %#08x got %#08x\n",
-			      test_data->expected_fault_type,
-			      fault_type);
+			pr_info("DMA channel %d fault type is not in ",
+				channel);
+			pr_cont("expected way\n");
+			pr_info("DMA fault expecting %#08x got %#08x\n",
+				test_data->expected_fault_type,
+				fault_type);
 			st = -1;
 		}
 
 		if (test_data->expected_fault_pc
 		    &&	test_data->expected_fault_pc != fault_address) {
-			PINFO("DMA channel %d fault address is not in"
-			      "expected way\n",
-			      channel);
-			PINFO("DMA fault address expecting %#08x got %#08x\n",
-			      test_data->expected_fault_pc,
-			      fault_address);
+			pr_info("DMA channel %d fault address is not in",
+				channel);
+			pr_cont("expected way\n");
+			pr_info("DMA fault address expecting %#08x got %#08x\n",
+				test_data->expected_fault_pc, fault_address);
 			st = -1;
 		}
 	} else
 		st = -1;
 
 	if (st) {
-		PINFO("DMA fault: channel %d, "
-		      "type %#08x, pc %#08x, test_data.count %d\n",
-		      channel, fault_type, fault_address, test_data->count);
-		PINFO("suite %d, case %d,  count %d\n",
-		      test_data->suite,
-		      test_data->id,
-		      test_data->count);
-		PINFO("SA %#08x, DA %#08x\n",
-		      get_pl330_sa_reg(test_data->channel),
-		      get_pl330_da_reg(test_data->channel));
+		pr_info("DMA fault: channel %d, ", channel);
+		pr_cont("type %#08x, pc %#08x, test_data.count %d\n",
+			fault_type, fault_address, test_data->count);
+		pr_info("suite %d, case %d,  count %d\n",
+			test_data->suite, test_data->id, test_data->count);
+		pr_info("SA %#08x, DA %#08x\n",
+			get_pl330_sa_reg(test_data->channel),
+			get_pl330_da_reg(test_data->channel));
 
 		if (test_data->dma_prog) {
 			dma_prog = (char *)test_data->dma_prog_v_addr;
@@ -855,11 +827,10 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 
 	barrier();
 
-	PDBG("suite %d test_one_case: %d\n", suite, id);
+	pr_debug("suite %d test_one_case: %d\n", suite, id);
 
 	if (!test_data) {
-		printk(KERN_ERR
-		       "ERROR[pl330_test.test_one_case]: test_data is null\n");
+		pr_err("ERROR[pl330_test.test_one_case]: test_data is null\n");
 		failed_tests_add(suite, id);
 		return -1;
 
@@ -872,11 +843,11 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 	}
 
 	if (test_data->dma_mode == DMA_MODE_READ) {
-		PDBG("test_one_case: clearing buf %x\n",
+		pr_debug("test_one_case: clearing buf %x\n",
 		     (unsigned int)test_data->buf_virt_addr);
 		memset(test_data->buf_virt_addr, 0, test_data->count);
 	} else if (test_data->inc_dev_addr) {
-		PDBG("test_one_case: clearing devmem %x\n",
+		pr_debug("test_one_case: clearing devmem %x\n",
 		       (unsigned int)test_data->dev_virt_addr);
 		memset(test_data->dev_virt_addr, 0, test_data->count);
 	}
@@ -886,18 +857,18 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 	if (status != 0)
 		goto req_failed;
 
-	PDBG("test_one_case: channel %d requested\n", channel);
+	pr_debug("test_one_case: channel %d requested\n", channel);
 
 	if (test_data->dma_mode == DMA_MODE_READ)
-		PDBG("test_one_case: setting DMA mode DMA_MODE_READ\n");
+		pr_debug("test_one_case: setting DMA mode DMA_MODE_READ\n");
 	else if (test_data->dma_mode == DMA_MODE_WRITE)
-		PDBG("test_one_case: setting DMA mode DMA_MODE_WRITE\n");
+		pr_debug("test_one_case: setting DMA mode DMA_MODE_WRITE\n");
 	else
-		PDBG("test_one_case: setting DMA mode DMA_MODE_UNKNOWN\n");
+		pr_debug("test_one_case: setting DMA mode DMA_MODE_UNKNOWN\n");
 
 	set_dma_mode(channel, test_data->dma_mode);
 
-	PDBG("test_one_case: setting DMA addr %#08x\n",
+	pr_debug("test_one_case: setting DMA addr %#08x\n",
 	       (u32)test_data->buf);
 	set_dma_addr(channel, test_data->buf);
 
@@ -923,18 +894,18 @@ static int test_one_case(int suite, struct test_data_t *test_data)
 
 	if (test_results[id].status) {
 		failed_tests_add(suite, id);
-		PINFO("PL330 test suite %d case %d %s \n", suite, id, FAIL);
+		pr_info("PL330 test suite %d case %d %s\n", suite, id, FAIL);
 	} else {
-		PINFO("PL330 test suite %d case %d %s \n", suite, id, PASS);
+		pr_info("PL330 test suite %d case %d %s\n", suite, id, PASS);
 	}
-
 	if (!test_results[id].status)
 		tests_passed++;
 
 	return test_results[id].status;
 
  req_failed:
-	PINFO("PL330 test suite %d case %d reqeust_dma %s\n", suite, id, FAIL);
+	pr_info("PL330 test suite %d case %d reqeust_dma %s\n",
+		suite, id, FAIL);
 	failed_tests_add(suite, id);
 	return -1;
 }
@@ -954,15 +925,14 @@ static void print_test_suite_results(int suite)
 {
 	tests_failed = tests_run - tests_passed;
 
-	if (tests_failed)
-		PINFO("PL330 test suite %d %s: "
-		      "run %d, passed %d, failed %d\n",
-		      suite, FAIL,
-		      tests_run, tests_passed, tests_failed);
-	else
-		PINFO("PL330 test suite %d %s: "
-		      "run %d all passed\n",
-		      suite, PASS, tests_run);
+	if (tests_failed) {
+		pr_info("PL330 test suite %d %s: ", suite, FAIL);
+		pr_cont("run %d, passed %d, failed %d\n",
+			tests_run, tests_passed, tests_failed);
+	} else {
+		pr_info("PL330 test suite %d %s: ", suite, PASS);
+		pr_cont("run %d all passed\n", tests_run);
+	}
 }
 
 
@@ -992,32 +962,30 @@ static int pl330_test_suite_1(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_1: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_1: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
-	PDBG("pl330_test_suite_1: buf_v_addr %#08x, buf_dma_addr %#08x\n",
+	pr_debug("pl330_test_suite_1: buf_v_addr %#08x, buf_dma_addr %#08x\n",
 	     (u32)buf_v_addr, (u32)buf_d_addr);
-	PDBG("pl330_test_suite_1: virt_to_dma %#08x, dma_to_virt %#08x\n",
+	pr_debug("pl330_test_suite_1: virt_to_dma %#08x, dma_to_virt %#08x\n",
 	     (u32)virt_to_dma(test_device, buf_v_addr),
 	     (u32)dma_to_virt(test_device, buf_d_addr));
-	PDBG("pl330_test_suite_1: bus_to_virt %#08x, virt_to_bus %#08x\n",
+	pr_debug("pl330_test_suite_1: bus_to_virt %#08x, virt_to_bus %#08x\n",
 	     (u32)bus_to_virt(buf_d_addr),
 	     (u32)virt_to_bus(bus_to_virt(buf_d_addr)));
-	PDBG("pl330_test_suite_1: page_to_phys %#08x\n",
+	pr_debug("pl330_test_suite_1: page_to_phys %#08x\n",
 	     (u32)page_to_phys(virt_to_page(buf_v_addr)));
 
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_1: dma_alloc_coherent dev failed\n");
+		pr_err("test_suite_1: dma_alloc_coherent dev failed\n");
 		return -1;
 	}
 
 	memset(&suite_test_data, 0, sizeof(struct test_data_t));
 
-	PINFO("test suite 1 started\n");
+	pr_info("test suite 1 started\n");
 	status = 0;
 	for (mode_sel = 0; mode_sel < 2; mode_sel++) {
 		for (channel = 0; channel < TEST_MAX_CHANNELS; channel++) {
@@ -1044,7 +1012,7 @@ static int pl330_test_suite_1(void)
 				status = -1;
 		}
 	}
-	PDBG("PL330 test suite %d %s\n", suite, (status ? FAIL : PASS));
+	pr_debug("PL330 test suite %d %s\n", suite, (status ? FAIL : PASS));
 
 	print_test_suite_results(suite);
 
@@ -1082,20 +1050,18 @@ static int pl330_test_suite_2(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_2: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_2: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_2: dma_alloc_coherent dev failed\n");
+		pr_err("test_suite_2: dma_alloc_coherent dev failed\n");
 		return -1;
 	}
-	PDBG("test_suite_2: buf_v_addr %#08x, buf_d_addr %#08x\n",
+	pr_debug("test_suite_2: buf_v_addr %#08x, buf_d_addr %#08x\n",
 	     (u32)buf_v_addr, (u32)buf_d_addr);
-	PDBG("test_suite_2: dev_v_addr %#08x, dev_d_addr %#08x\n",
+	pr_debug("test_suite_2: dev_v_addr %#08x, dev_d_addr %#08x\n",
 	     (u32)dev_v_addr, (u32)dev_d_addr);
 
 	memset(&suite_test_data, 0, sizeof(struct test_data_t));
@@ -1145,7 +1111,7 @@ static int pl330_test_suite_2(void)
 		}
 	}
 
-	PINFO("PL330 test suite %d %s\n", suite, (status ? FAIL : PASS));
+	pr_info("PL330 test suite %d %s\n", suite, (status ? FAIL : PASS));
 
 	dma_free_coherent(test_device, SZ_4K, buf_v_addr, buf_d_addr);
 	dma_free_coherent(test_device, SZ_4K, dev_v_addr, dev_d_addr);
@@ -1184,15 +1150,13 @@ static int pl330_test_suite_3(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_3: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_3: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_3: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_3: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 
@@ -1290,15 +1254,13 @@ static int pl330_test_suite_4(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_4: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_4: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_4: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_4: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 
@@ -1423,22 +1385,19 @@ static int pl330_test_suite_5(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_5: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_5: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_5: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_5: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	prog_v_addr = dma_alloc_coherent(test_device, SZ_1K,
 					 &prog_d_addr, GFP_KERNEL);
 	if (!prog_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_5: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_5: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 
@@ -1537,10 +1496,10 @@ static int pl330_test_suite_5(void)
 static void print_buf(void *buf, int len, char *buf_name)
 {
 	int i;
-	PINFO("content of %s\n", buf_name);
+	pr_info("content of %s\n", buf_name);
 
 	for (i = 0; i < len; i++)
-		PINFO("[%02x] %02x\n", i, *((u8 *)(buf + i)));
+		pr_info("[%02x] %02x\n", i, *((u8 *)(buf + i)));
 }
 #endif /* PL330_TEST_DEBUG */
 
@@ -1571,20 +1530,18 @@ static int pl330_test_suite_6(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_6: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_6: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_6: dma_alloc_coherent dev failed\n");
+		pr_err("test_suite_6: dma_alloc_coherent dev failed\n");
 		return -1;
 	}
-	PDBG("test_suite_6: buf_v_addr %#08x, buf_d_addr %#08x\n",
+	pr_debug("test_suite_6: buf_v_addr %#08x, buf_d_addr %#08x\n",
 	     (u32)buf_v_addr, (u32)buf_d_addr);
-	PDBG("test_suite_6: dev_v_addr %#08x, dev_d_addr %#08x\n",
+	pr_debug("test_suite_6: dev_v_addr %#08x, dev_d_addr %#08x\n",
 	     (u32)dev_v_addr, (u32)dev_d_addr);
 	status = 0;
 	id = 0;
@@ -1627,15 +1584,15 @@ static int pl330_test_suite_6(void)
 
 			if (test_one_case(suite, &suite_test_data)) {
 				status = -1;
-				printk(KERN_INFO "First 16 bytes of buf\n");
+				pr_info("First 16 bytes of buf\n");
 				for (i = 0; i < 16; i++) {
-					printk(KERN_INFO "[%02x] %02x\n",
+					pr_info("[%02x] %02x\n",
 					       i, *((u8 *)(buf_v_addr + i)));
 				}
 
-				printk(KERN_INFO "First 16 bytes of dev\n");
+				pr_info("First 16 bytes of dev\n");
 				for (i = 0; i < 16; i++) {
-					printk(KERN_INFO "[%02x] %02x\n",
+					pr_info("[%02x] %02x\n",
 					       i, *((u8 *)(dev_v_addr + i)));
 				}
 			}
@@ -1680,20 +1637,18 @@ static int pl330_test_suite_7(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_128K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_7: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_7: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_128K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_7: dma_alloc_coherent dev failed\n");
+		pr_err("test_suite_7: dma_alloc_coherent dev failed\n");
 		return -1;
 	}
-	PDBG("test_suite_7: buf_v_addr %#08x, buf_d_addr %#08x\n",
+	pr_debug("test_suite_7: buf_v_addr %#08x, buf_d_addr %#08x\n",
 	     (u32)buf_v_addr, (u32)buf_d_addr);
-	PDBG("test_suite_7: dev_v_addr %#08x, dev_d_addr %#08x\n",
+	pr_debug("test_suite_7: dev_v_addr %#08x, dev_d_addr %#08x\n",
 	     (u32)dev_v_addr, (u32)dev_d_addr);
 
 	memset(&suite_test_data, 0, sizeof(struct test_data_t));
@@ -1804,22 +1759,19 @@ static int pl330_test_suite_8(void)
 	buf_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&buf_d_addr, GFP_KERNEL);
 	if (!buf_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_8: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_8: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	dev_v_addr = dma_alloc_coherent(test_device, SZ_4K,
 					&dev_d_addr, GFP_KERNEL);
 	if (!dev_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_8: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_8: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 	prog_v_addr = dma_alloc_coherent(test_device, SZ_1K,
 					 &prog_d_addr, GFP_KERNEL);
 	if (!prog_v_addr) {
-		printk(KERN_ERR
-		       "test_suite_8: dma_alloc_coherent buf failed\n");
+		pr_err("test_suite_8: dma_alloc_coherent buf failed\n");
 		return -1;
 	}
 
@@ -1902,7 +1854,7 @@ static int pl330_test_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	PDBG("pl330_test probing dev_id %d\n", pdev->id);
+	pr_debug("pl330_test probing dev_id %d\n", pdev->id);
 
 	pdev_id = 0;
 
@@ -1937,7 +1889,7 @@ static int pl330_test_probe(struct platform_device *pdev)
 	if (!st && (suite_num == 0 || suite_num == 8))
 		st |= pl330_test_suite_8();
 
-	printk(KERN_INFO "PL330 test %s\n", st ? FAIL : PASS);
+	pr_info("PL330 test %s\n", st ? FAIL : PASS);
 
 	failed_tests_print();
 
@@ -1966,12 +1918,11 @@ static int __init pl330_test(void)
 
 	st = platform_driver_register(&pl330_test_driver);
 	if (st) {
-		printk(KERN_ERR
-		       "platform_driver_register(pl330_test_device0) %s\n",
+		pr_err("platform_driver_register(pl330_test_device0) %s\n",
 		       FAIL);
 		return st;
 	} else {
-		PDBG("platform_driver_register(pl330_test_device0) done\n");
+		pr_debug("platform_driver_register(pl330_test_device0) done\n");
 
 	}
 
