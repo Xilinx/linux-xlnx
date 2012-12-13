@@ -96,10 +96,6 @@
 #include <asm/mach/dma.h>
 #include <mach/pl330.h>
 
-#ifndef NO_IRQ
-#define NO_IRQ ((unsigned int)(-1))
-#endif
-
 #define DRIVER_NAME         "pl330"
 #define DRIVER_DESCRIPTION  "pl330 driver"
 #define DRIVER_VERSION      "1.00a"

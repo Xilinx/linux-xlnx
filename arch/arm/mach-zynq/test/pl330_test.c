@@ -61,11 +61,6 @@
  *
  */
 
-
-#ifndef NO_IRQ
-#define NO_IRQ ((unsigned int)(-1))
-#endif
-
 #define DRIVER_NAME         "pl330_test"
 #define DRIVER_DESCRIPTION  "pl330 driver test"
 #define DRIVER_VERSION      "1.00a"
