@@ -22,7 +22,9 @@
 #include <linux/amba/xilinx_dma.h>
 #include <linux/xilinx_devices.h>
 #include <mach/dma.h>
+#include <mach/pdev.h>
 #include <asm/pmu.h>
+#include "common.h"
 
 #define DMAC0_BASE		(0xF8003000)
 #define IRQ_DMAC0_ABORT		45
