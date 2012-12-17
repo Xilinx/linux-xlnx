@@ -134,7 +134,7 @@ static void __init xilinx_opp_init(void)
 	int ret = 0;
 	long freq;
 	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
-	int i;
+	unsigned int i;
 
 	if (IS_ERR(pdev)) {
 		pr_warn("Xilinx OOP init: No device. DVFS not available.");
