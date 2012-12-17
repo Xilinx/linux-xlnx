@@ -24,6 +24,7 @@
 #include <asm/cacheflush.h>
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
+#include <mach/system.h>
 #include <mach/zynq_soc.h>
 #include "common.h"
 
