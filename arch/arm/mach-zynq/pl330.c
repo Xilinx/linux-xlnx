@@ -1294,7 +1294,7 @@ static irqreturn_t pl330_done_isr(int irq, void *dev)
 
 	struct pl330_device_data *device_data =
 		driver_data.device_data + dev_id;
-	struct dma_struct *dma_chan = driver_data.dma_chan + channel;
+	struct dma_struct *dma_info = driver_data.dma_chan + channel;
 	struct pl330_channel_data *channel_data =
 		driver_data.channel_data + channel;
 
@@ -1311,11 +1311,11 @@ static irqreturn_t pl330_done_isr(int irq, void *dev)
 	 * Clear the count and active flag, and invoke the done callback.
 	 */
 
-	dma_chan->count = 0;
+	dma_info->count = 0;
 
-	dma_chan->active = 0;
+	dma_info->active = 0;
 
-	if (dma_chan->lock && channel_data->done_callback) {
+	if (dma_info->lock && channel_data->done_callback) {
 		channel_data->done_callback(channel,
 					    channel_data->done_callback_data);
 	}
@@ -1339,7 +1339,7 @@ static irqreturn_t pl330_fault_isr(int irq, void *dev)
 		(struct pl330_device_data *)dev;
 	void __iomem *base = device_data->base;
 	struct pl330_channel_data *channel_data;
-	struct dma_struct *dma_chan;
+	struct dma_struct *dma_info;
 
 	unsigned int dev_id = device_data->dev_id;
 	unsigned int dev_chan;
@@ -1402,13 +1402,13 @@ static irqreturn_t pl330_fault_isr(int irq, void *dev)
 			 * fault callback.
 			 */
 			channel = device_data->starting_channel + dev_chan;
-			dma_chan = driver_data.dma_chan + channel;
+			dma_info = driver_data.dma_chan + channel;
 			channel_data = driver_data.channel_data + channel;
 
-			dma_chan->active = 0;
+			dma_info->active = 0;
 
 			data = channel_data->fault_callback_data;
-			if (dma_chan->lock && channel_data->fault_callback)
+			if (dma_info->lock && channel_data->fault_callback)
 				channel_data->fault_callback(channel,
 							     fault_type,
 							     pc,
