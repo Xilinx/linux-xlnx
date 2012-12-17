@@ -156,8 +156,10 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	spin_lock(&boot_lock);
 
 	ret = zynq_cpu1_start(virt_to_phys(secondary_startup));
-	if (ret)
+	if (ret) {
+		spin_unlock(&boot_lock);
 		return -1;
+	}
 
 	/*
 	 * now the secondary core is starting up let it run its
