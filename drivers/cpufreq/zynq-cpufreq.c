@@ -68,7 +68,6 @@ static int zynq_target(struct cpufreq_policy *policy,
 	unsigned int i;
 	int ret = 0;
 	struct cpufreq_freqs freqs;
-	unsigned long freq, volt = 0, volt_old = 0;
 
 	if (!freq_table) {
 		dev_err(mpu_dev, "%s: cpu%d: no freq table!\n", __func__,
@@ -102,11 +101,8 @@ static int zynq_target(struct cpufreq_policy *policy,
 		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 	}
 
-	freq = freqs.new * 1000;
-
-	dev_dbg(mpu_dev, "cpufreq-zynq: %u MHz, %ld mV --> %u MHz, %ld mV\n",
-		freqs.old / 1000, volt_old ? volt_old / 1000 : -1,
-		freqs.new / 1000, volt ? volt / 1000 : -1);
+	dev_dbg(mpu_dev, "cpufreq-zynq: %u MHz --> %u MHz\n",
+			freqs.old / 1000, freqs.new / 1000);
 
 	ret = clk_set_rate(cpuclk, freqs.new * 1000);
 
