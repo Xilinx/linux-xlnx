@@ -21,6 +21,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <asm/smp_twd.h>
+#include "common.h"
 
 /*
  * This driver configures the 2 16-bit count-up timers as follows:
