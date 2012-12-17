@@ -12,4 +12,4 @@ obj-$(CONFIG_XILINX_AXIPCIE)    += xaxipcie.o
 obj-$(CONFIG_PCI_MSI)           += xaxipcie-msi.o
 
 # Testing
-obj-$(CONFIG_XILINX_TEST)	+= test/pl330_test.o
+obj-$(CONFIG_XILINX_TEST)	+= pl330_test.o
