@@ -372,7 +372,7 @@ static struct pl330_driver_data driver_data;
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmaend(char *dma_prog)
+static inline int pl330_instr_dmaend(char *dma_prog)
 {
 	/*
 	 * DMAEND encoding:
@@ -401,7 +401,7 @@ inline int pl330_instr_dmaend(char *dma_prog)
  *
  * Returns the number of bytes for this instruction which is 6.
  */
-inline int pl330_instr_dmago(char *dma_prog, unsigned int cn,
+static inline int pl330_instr_dmago(char *dma_prog, unsigned int cn,
 			     u32 imm, unsigned int ns)
 {
 	pr_debug("entering pl330_instru_dmago(%#x, %d, %#x, %d)\n",
@@ -432,7 +432,7 @@ inline int pl330_instr_dmago(char *dma_prog, unsigned int cn,
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmald(char *dma_prog)
+static inline int pl330_instr_dmald(char *dma_prog)
 {
 	/*
 	 * DMALD encoding
@@ -457,7 +457,7 @@ inline int pl330_instr_dmald(char *dma_prog)
  *
  * Returns the number of bytes for this instruction which is 2.
  */
-inline int pl330_instr_dmalp(char *dma_prog, unsigned lc,
+static inline int pl330_instr_dmalp(char *dma_prog, unsigned lc,
 			     unsigned loop_iterations)
 {
 	/*
@@ -481,7 +481,8 @@ inline int pl330_instr_dmalp(char *dma_prog, unsigned lc,
  *
  * Returns the number of bytes for this instruction which is 2.
  */
-inline int pl330_instr_dmalpend(char *dma_prog, char *body_start, unsigned lc)
+static inline int pl330_instr_dmalpend(char *dma_prog, char *body_start,
+				       unsigned lc)
 {
 	/*
 	 * DMALPEND encoding
@@ -516,7 +517,7 @@ inline int pl330_instr_dmalpend(char *dma_prog, char *body_start, unsigned lc)
  *
  * Returns the number of bytes for this instruction which is 6.
  */
-inline int pl330_instr_dmamov(char *dma_prog, unsigned rd, u32 imm)
+static inline int pl330_instr_dmamov(char *dma_prog, unsigned rd, u32 imm)
 {
 	/*
 	 * DMAMOV encoding
@@ -543,7 +544,7 @@ inline int pl330_instr_dmamov(char *dma_prog, unsigned rd, u32 imm)
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmanop(char *dma_prog)
+static inline int pl330_instr_dmanop(char *dma_prog)
 {
 	/*
 	 * DMANOP encoding
@@ -562,7 +563,7 @@ inline int pl330_instr_dmanop(char *dma_prog)
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmarmb(char *dma_prog)
+static inline int pl330_instr_dmarmb(char *dma_prog)
 {
 	/*
 	 * DMARMB encoding
@@ -582,7 +583,7 @@ inline int pl330_instr_dmarmb(char *dma_prog)
  *
  * Returns the number of bytes for this instruction which is 2.
  */
-inline int pl330_instr_dmasev(char *dma_prog, unsigned event_number)
+static inline int pl330_instr_dmasev(char *dma_prog, unsigned event_number)
 {
 	/*
 	 * DMASEV encoding
@@ -604,7 +605,7 @@ inline int pl330_instr_dmasev(char *dma_prog, unsigned event_number)
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmast(char *dma_prog)
+static inline int pl330_instr_dmast(char *dma_prog)
 {
 	/*
 	 * DMAST encoding
@@ -626,7 +627,7 @@ inline int pl330_instr_dmast(char *dma_prog)
  *
  * Returns the number of bytes for this instruction which is 1.
  */
-inline int pl330_instr_dmawmb(char *dma_prog)
+static inline int pl330_instr_dmawmb(char *dma_prog)
 {
 	/*
 	 * DMAWMB encoding
@@ -645,7 +646,7 @@ inline int pl330_instr_dmawmb(char *dma_prog)
  *
  * Returns the endian swap size bit encoding for the CCR.
  */
-inline unsigned pl330_to_endian_swap_size_bits(unsigned endian_swap_size)
+static inline unsigned pl330_to_endian_swap_size_bits(unsigned endian_swap_size)
 {
 	switch (endian_swap_size) {
 	case 0:
@@ -674,7 +675,7 @@ inline unsigned pl330_to_endian_swap_size_bits(unsigned endian_swap_size)
  *
  * Returns the burst size bit encoding for the CCR.
  */
-inline unsigned pl330_to_burst_size_bits(unsigned burst_size)
+static inline unsigned pl330_to_burst_size_bits(unsigned burst_size)
 {
 	if (burst_size == 1)
 		return 0;
