@@ -1099,7 +1099,6 @@ static int pl330_build_dma_prog(struct prog_build_args *build_args)
 			pr_cont("DMA length or increase the burst size or ");
 			pr_cont("length");
 			BUG();
-			return 0;
 		}
 		loop_residue = loop_count % 256;
 
@@ -1950,7 +1949,6 @@ static void pl330_enable_dma(unsigned int channel,
 	if (!client_data) {
 		pr_err("client data is not set for DMA channel %d\n", channel);
 		BUG();
-		return;
 	}
 
 	/*
