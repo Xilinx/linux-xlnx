@@ -1639,10 +1639,12 @@ static void pl330_init_device_data(unsigned int dev_id,
 
 	/* The 1st IRQ resource is for fault irq */
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!res)
+	if (!res) {
 		dev_err(&pdev->dev,
 			    "get_resource for IRQ resource for dev %d failed\n",
 			    dev_id);
+		return;
+	}
 
 	if (res->start != res->end)
 		dev_err(&pdev->dev, "the first IRQ resource for dev %d should "
