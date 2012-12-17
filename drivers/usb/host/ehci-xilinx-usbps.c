@@ -390,7 +390,7 @@ static int ehci_xusbps_setup(struct usb_hcd *hcd)
 	return retval;
 }
 
-void ehci_xusbps_shutdown(struct usb_hcd *hcd)
+static void ehci_xusbps_shutdown(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 
