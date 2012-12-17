@@ -1552,8 +1552,6 @@ static void pl330_free_irq(unsigned int dev_id)
 
 	/* free the fault irq */
 	free_irq(irq, device_data);
-
-	return;
 }
 
 /**
@@ -1797,8 +1795,6 @@ static void pl330_free_dma(unsigned int channel, dma_t *indexed_dma_chan)
 		channel_data->dma_prog_buf = NULL;
 		channel_data->dma_prog_phy = 0;
 	}
-
-	return;
 }
 
 /**
@@ -1818,8 +1814,6 @@ static void print_pl330_bus_des(struct pl330_bus_des *bus_des)
 	pr_debug("  .burst_len = %d\n", bus_des->burst_len);
 	pr_debug("  .prot_ctrl = %d\n", bus_des->prot_ctrl);
 	pr_debug("  .cache_ctrl = %d\n", bus_des->cache_ctrl);
-
-	return;
 }
 #else
 #	define print_pl330_bus_des(bus_des)
@@ -2074,8 +2068,6 @@ static void pl330_enable_dma(unsigned int channel,
 			 dma_prog);
 
 	spin_unlock_irqrestore(&device_data->lock, spin_flags);
-
-	return;
 }
 
 /**
@@ -2120,8 +2112,6 @@ static void pl330_disable_dma(unsigned int channel,
 	spin_unlock_irqrestore(&device_data->lock, spin_flags);
 
 	dma->count = 0;
-
-	return;
 }
 
 /*
