@@ -1598,17 +1598,17 @@ static void pl330_init_device_data(unsigned int dev_id,
 
 	device_data->base = ioremap(res->start, SZ_4K);
 	pr_debug("pl330 dev %d ioremap to %#x\n", dev_id,
-			(unsigned int)device_data->base);
+			(__force u32)device_data->base);
 	if (!device_data->base) {
 		dev_err(&pdev->dev, "ioremap failure for base %#x\n",
 				(unsigned int)res->start);
 		release_mem_region(res->start, SZ_4K);
 		return;
 	}
-	pr_debug("virt_to_bus(base) is %#08x\n",
-			(u32)virt_to_bus(device_data->base));
+	pr_debug("virt_to_bus(base) is %#08lx\n",
+			virt_to_bus((__force void *)device_data->base));
 	pr_debug("page_to_phys(base) is %#08x\n",
-			(u32)page_to_phys(virt_to_page(device_data->base)));
+			page_to_phys(virt_to_page(device_data->base)));
 
 	for (pid = 0, i = 0; i < 4; i++)
 		pid |= (pl330_readreg(device_data->base, 0xFE0 + i * 4) & 0xFF)
@@ -1848,7 +1848,7 @@ static int pl330_exec_dmago(unsigned int dev_id,
 	dbginst1 = (u32)dma_prog;
 
 	pr_debug("inside pl330_exec_dmago: base %x, dev_chan %d, dma_prog %x\n",
-			(u32)base, dev_chan, dma_prog);
+			(__force u32)base, dev_chan, dma_prog);
 
 	/* wait while debug status is busy */
 	wait_count = 0;
