@@ -42,7 +42,6 @@
 			reg = <0xf8f02000 0x1000>;
 			arm,data-latency = <3 2 2>;
 			arm,tag-latency = <2 2 2>;
-			interrupts = <0 34 4>;
 		};
 
 		uart@e0001000 {
