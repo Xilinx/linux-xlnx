@@ -29,11 +29,6 @@
 		linux,stdout-path = &uart0;
 	};
 
-	soc {
-		compatible = "xlnx,zynq";
-		clock-frequency = <121154004>;
-	};
-
 	amba {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -65,8 +60,20 @@
 		};
 
 		slcr: slcr@f8000000 {
-			compatible = "xlnx,ps7-slcr-1.00.a";
+			compatible = "xlnx,zynq-slcr";
 			reg = <0xF8000000 0x1000>;
+
+			clocks {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				ps_clk: ps_clk {
+					#clock-cells = <0>;
+					compatible = "fixed-clock";
+					clock-frequency = <121154004>;
+					clock-output-names = "PS_CLK";
+				};
+			};
 		};
 
 		wdt0: swdt@f8005000 {
