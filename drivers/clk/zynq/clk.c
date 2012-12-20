@@ -111,7 +111,7 @@ void __init zynq_clock_init(void)
 			(__force void __iomem *)SLCR_ARM_CLK_CTRL,
 			cpu_parents, 4, &armclk_lock);
 	clk = clk_register_gate(NULL, "CPU_6OR4X_CLK", "CPU_MASTER_CLK",
-			CLK_SET_RATE_PARENT,
+			CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 			(__force void __iomem *)SLCR_ARM_CLK_CTRL,
 			24, 0, &armclk_lock);
 	zynq_clkdev_add(NULL, "CPU_6OR4X_CLK", clk);
@@ -119,7 +119,8 @@ void __init zynq_clock_init(void)
 	clk_enable(clk);
 	clk = clk_register_fixed_factor(NULL, "CPU_3OR2X_DIV_CLK",
 			"CPU_MASTER_CLK", 0, 1, 2);
-	clk = clk_register_gate(NULL, "CPU_3OR2X_CLK", "CPU_3OR2X_DIV_CLK", 0,
+	clk = clk_register_gate(NULL, "CPU_3OR2X_CLK", "CPU_3OR2X_DIV_CLK",
+			CLK_IGNORE_UNUSED,
 			(__force void __iomem *)SLCR_ARM_CLK_CTRL, 25, 0,
 			&armclk_lock);
 	zynq_clkdev_add(NULL, "smp_twd", clk);
@@ -133,12 +134,14 @@ void __init zynq_clock_init(void)
 		(__force void __iomem *)SLCR_ARM_CLK_CTRL,
 		(__force void __iomem *)SLCR_621_TRUE, 2, 1, clk621_parents, 1,
 		&armclk_lock);
-	clk = clk_register_gate(NULL, "CPU_2X_CLK", "CPU_2X_DIV_CLK", 0,
+	clk = clk_register_gate(NULL, "CPU_2X_CLK", "CPU_2X_DIV_CLK",
+			CLK_IGNORE_UNUSED,
 			(__force void __iomem *)SLCR_ARM_CLK_CTRL, 26, 0,
 			&armclk_lock);
 	clk_prepare(clk);
 	clk_enable(clk);
-	clk = clk_register_gate(NULL, "CPU_1X_CLK", "CPU_1X_DIV_CLK", 0,
+	clk = clk_register_gate(NULL, "CPU_1X_CLK", "CPU_1X_DIV_CLK",
+			CLK_IGNORE_UNUSED,
 			(__force void __iomem *)SLCR_ARM_CLK_CTRL, 27, 0,
 			&armclk_lock);
 	zynq_clkdev_add(NULL, "CPU_1X_CLK", clk);
