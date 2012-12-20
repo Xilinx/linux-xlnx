@@ -292,6 +292,8 @@ static int zynq_pll_enable(struct clk_hw *hw)
 	if (!clk->bypassed)
 		return 0;
 
+	pr_info("PLL: Enable\n");
+
 	/* Power up PLL and wait for lock before removing bypass */
 	spin_lock_irqsave(clk->lock, flags);
 
@@ -325,6 +327,8 @@ static void zynq_pll_disable(struct clk_hw *hw)
 
 	if (clk->bypassed)
 		return;
+
+	pr_info("PLL: Bypass\n");
 
 	/* Set bypass bit and shut down PLL */
 	spin_lock_irqsave(clk->lock, flags);
