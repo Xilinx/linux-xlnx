@@ -20,9 +20,6 @@
 #include <mach/zynq_soc.h>
 #include <mach/clk.h>
 
-static DEFINE_SPINLOCK(armpll_lock);
-static DEFINE_SPINLOCK(ddrpll_lock);
-static DEFINE_SPINLOCK(iopll_lock);
 static DEFINE_SPINLOCK(armclk_lock);
 static DEFINE_SPINLOCK(ddrclk_lock);
 static DEFINE_SPINLOCK(dciclk_lock);
@@ -93,18 +90,15 @@ void __init zynq_clock_init(void)
 	clk = clk_register_zynq_pll("ARMPLL",
 			(__force void __iomem *)SLCR_ARMPLL_CTRL,
 			(__force void __iomem *)SLCR_ARMPLL_CFG,
-			(__force void __iomem *)SLCR_PLL_STATUS,
-			0, &armpll_lock);
+			(__force void __iomem *)SLCR_PLL_STATUS, 0);
 	clk = clk_register_zynq_pll("DDRPLL",
 			(__force void __iomem *)SLCR_DDRPLL_CTRL,
 			(__force void __iomem *)SLCR_DDRPLL_CFG,
-			(__force void __iomem *)SLCR_PLL_STATUS,
-			1, &ddrpll_lock);
+			(__force void __iomem *)SLCR_PLL_STATUS, 1);
 	clk = clk_register_zynq_pll("IOPLL",
 			(__force void __iomem *)SLCR_IOPLL_CTRL,
 			(__force void __iomem *)SLCR_IOPLL_CFG,
-			(__force void __iomem *)SLCR_PLL_STATUS,
-			2, &iopll_lock);
+			(__force void __iomem *)SLCR_PLL_STATUS, 2);
 
 	/* CPU clocks */
 	clk = clk_register_zynq_d1m("CPU_MASTER_CLK",

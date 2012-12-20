@@ -374,15 +374,14 @@ static const struct clk_ops zynq_pll_ops = {
  * @pllstatus:	Pointer to PLL status register
  * @lockbit:	Indicates the associated PLL_LOCKED bit in the PLL status
  *		register.
- * @lock:	Register lock
  * Returns clk_register() return value or errpointer.
  */
 struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
-		void __iomem *pllcfg, void __iomem *pllstatus, u8 lockbit,
-		spinlock_t *lock)
+		void __iomem *pllcfg, void __iomem *pllstatus, u8 lockbit)
 {
 	struct zynq_pll *clk;
 	const char *pnames[] = {"PS_CLK"};
+	spinlock_t *lock;
 	struct clk_init_data initd = {
 		.name = name,
 		.ops = &zynq_pll_ops,
@@ -392,14 +391,21 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 	};
 
 	clk = kmalloc(sizeof(*clk), GFP_KERNEL);
-	clk->hw.init = &initd;
-
 	if (!clk) {
-		pr_err("%s: could not allocate Zynq PLL clk\n", __func__);
+		pr_err("%s: Could not allocate Zynq PLL clk.\n", __func__);
 		return ERR_PTR(-ENOMEM);
 	}
 
+	lock = kmalloc(sizeof(*lock), GFP_KERNEL);
+	if (!lock) {
+		pr_err("%s: Could not allocate lock.\n", __func__);
+		kfree(clk);
+		return ERR_PTR(-ENOMEM);
+	}
+	spin_lock_init(lock);
+
 	/* Populate the struct */
+	clk->hw.init = &initd;
 	clk->pllctrl = pllctrl;
 	clk->pllcfg = pllcfg;
 	clk->pllstatus = pllstatus;

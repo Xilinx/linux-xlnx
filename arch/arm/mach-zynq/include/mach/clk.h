@@ -29,8 +29,7 @@ struct clk *clk_register_zynq_d1m(const char *name,
 		spinlock_t *lock);
 
 struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
-		void __iomem *pllcfg, void __iomem *pllstatus, u8 lockbit,
-		spinlock_t *lock);
+		void __iomem *pllcfg, void __iomem *pllstatus, u8 lockbit);
 
 struct clk *clk_register_zynq_clk621(const char *name,
 		void __iomem *clkctrl, void __iomem *clk621,
