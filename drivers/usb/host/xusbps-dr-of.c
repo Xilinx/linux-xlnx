@@ -279,6 +279,34 @@ static int __devexit xusbps_dr_of_remove(struct platform_device *ofdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int xusbps_dr_of_suspend(struct device *dev)
+{
+	struct xusbps_host_data *hdata = dev_get_drvdata(dev);
+
+	clk_disable(hdata->clk);
+
+	return 0;
+}
+
+static int xusbps_dr_of_resume(struct device *dev)
+{
+	struct xusbps_host_data *hdata = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_enable(hdata->clk);
+	if (ret) {
+		dev_err(dev, "cannot enable clock. resume failed\n");
+		return ret;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(xusbps_pm_ops, xusbps_dr_of_suspend,
+		xusbps_dr_of_resume);
+
 static const struct of_device_id xusbps_dr_of_match[] = {
 	{ .compatible = "xlnx,ps7-usb-1.00.a" },
 	{},
@@ -290,6 +318,7 @@ static struct platform_driver xusbps_dr_driver = {
 		.name = "xusbps-dr",
 		.owner = THIS_MODULE,
 		.of_match_table = xusbps_dr_of_match,
+		.pm = &xusbps_pm_ops,
 	},
 	.probe	= xusbps_dr_of_probe,
 	.remove	= __devexit_p(xusbps_dr_of_remove),
