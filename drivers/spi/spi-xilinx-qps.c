@@ -419,6 +419,7 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 	u32 req_hz;
 	u32 baud_rate_val = 0;
 	unsigned long flags;
+	int update_baud = 0;
 
 	req_hz = (transfer) ? transfer->speed_hz : qspi->max_speed_hz;
 
@@ -426,6 +427,16 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 		dev_err(&qspi->dev, "%s, unsupported mode bits %x\n",
 			__func__, qspi->mode & ~MODEBITS);
 		return -EINVAL;
+	}
+
+	/* Set the clock frequency */
+	if (xqspi->speed_hz != req_hz) {
+		while ((baud_rate_val < 8)  &&
+			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
+			req_hz)
+				baud_rate_val++;
+		xqspi->speed_hz = req_hz;
+		update_baud = 1;
 	}
 
 	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
@@ -440,16 +451,9 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 	if (qspi->mode & SPI_CPOL)
 		config_reg |= XQSPIPS_CONFIG_CPOL_MASK;
 
-	/* Set the clock frequency */
-	if (xqspi->speed_hz != req_hz) {
-		baud_rate_val = 0;
-		while ((baud_rate_val < 8)  &&
-			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
-			req_hz)
-				baud_rate_val++;
+	if (update_baud) {
 		config_reg &= 0xFFFFFFC7;
 		config_reg |= (baud_rate_val << 3);
-		xqspi->speed_hz = req_hz;
 	}
 
 	xqspips_write(xqspi->regs + XQSPIPS_CONFIG_OFFSET, config_reg);
