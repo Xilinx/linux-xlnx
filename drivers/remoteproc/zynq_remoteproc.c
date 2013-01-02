@@ -59,7 +59,7 @@ struct zynq_rproc_pdata {
 };
 
 /* Store rproc for IPI handler */
-struct platform_device *remoteprocdev;
+static struct platform_device *remoteprocdev;
 static struct work_struct workqueue;
 
 static void handle_event(struct work_struct *work)
