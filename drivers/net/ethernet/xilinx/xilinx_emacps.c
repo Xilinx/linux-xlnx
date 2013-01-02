@@ -1750,7 +1750,9 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 		if (regisr & (XEMACPS_IXR_TXCOMPL_MASK |
 				XEMACPS_IXR_TX_ERR_MASK)) {
 			xemacps_tx_poll(ndev);
-		} else {
+		}
+		if (regisr & (XEMACPS_IXR_FRAMERX_MASK |
+			XEMACPS_IXR_RX_ERR_MASK)) {
 			xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET,
 					(XEMACPS_IXR_FRAMERX_MASK |
 					XEMACPS_IXR_RX_ERR_MASK));
