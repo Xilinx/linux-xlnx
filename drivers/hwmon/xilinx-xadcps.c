@@ -721,15 +721,11 @@ static int __devexit xadc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id xadcps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-xadc-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xadcps_of_match);
-#else
-#define xadcps_of_match NULL
-#endif /* CONFIG_OF */
 
 static struct platform_driver xadc_driver = {
 	.probe = xadc_probe,
