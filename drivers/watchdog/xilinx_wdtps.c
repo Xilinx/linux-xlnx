@@ -327,10 +327,10 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (!wdt->rst && irq >= 0) {
 		res = request_irq(irq, xwdtps_irq_handler, 0, pdev->name, pdev);
-		if (res != 0) {
+		if (res) {
 			dev_err(&pdev->dev, "cannot register interrupt handler err=%d\n",
 				res);
-			goto err_irq;
+			goto err_notifier;
 		}
 	}
 
@@ -374,7 +374,7 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 	res = watchdog_register_device(&xwdtps_device);
 	if (res) {
 		dev_err(&pdev->dev, "Failed to register wdt device\n");
-		goto err_notifier;
+		goto err_irq;
 	}
 	platform_set_drvdata(pdev, wdt);
 
@@ -383,13 +383,12 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_irq:
+	free_irq(irq, pdev);
 err_notifier:
 	unregister_reboot_notifier(&xwdtps_notifier);
 err_iounmap:
 	iounmap(wdt->regs);
-err_irq:
-	irq = platform_get_irq(pdev, 0);
-	free_irq(irq, pdev);
 err_free:
 	kfree(wdt);
 	wdt = NULL;
