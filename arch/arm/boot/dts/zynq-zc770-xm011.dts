@@ -73,7 +73,6 @@
 			interrupts = <0 9 4>;
 			interrupt-parent = <&gic>;
 			reg = <0xf8005000 0x100>;
-			clock-frequency = <0x7ed6b40>;
 			reset = <0>;
 			timeout = <10>;
 		};

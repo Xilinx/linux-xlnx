@@ -14,6 +14,7 @@
  * 02139, USA.
  */
 
+#include <linux/clk.h>
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -59,7 +60,7 @@ struct xwdtps {
 	void __iomem		*regs;		/* Base address */
 	unsigned long		busy;		/* Device Status */
 	int			rst;		/* Reset flag */
-	u32 			clock;
+	struct clk		*clk;
 	u32 			prescalar;
 	u32			ctrl_clksel;
 	spinlock_t		io_lock;
@@ -149,12 +150,13 @@ static int xwdtps_start(struct watchdog_device *wdd)
 {
 	unsigned int data = 0;
 	unsigned short count;
+	unsigned long clock_f = clk_get_rate(wdt->clk);
 
 	/*
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = (wdd->timeout * ((wdt->clock) / (wdt->prescalar))) / 0x1000 + 1;
+	count = (wdd->timeout * (clock_f / (wdt->prescalar))) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -277,6 +279,7 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 	int res;
 	const void *prop;
 	int irq;
+	unsigned long clock_f;
 
 	/* Check whether WDT is in use, just for safety */
 	if (wdt) {
@@ -345,15 +348,25 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 
 	watchdog_set_nowayout(&xwdtps_device, nowayout);
 	watchdog_set_drvdata(&xwdtps_device, &wdt);
-	prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
-	if (prop != NULL) {
-		wdt->clock = (u32)be32_to_cpup(prop);
+
+	wdt->clk = clk_get_sys("CPU_1X_CLK", NULL);
+	if (IS_ERR(wdt->clk)) {
+		dev_err(&pdev->dev, "input clock not found\n");
+		res = PTR_ERR(wdt->clk);
+		goto err_irq;
 	}
 
-	if (wdt->clock <= 10000000) {/* For PEEP */
+	res = clk_prepare_enable(wdt->clk);
+	if (res) {
+		dev_err(&pdev->dev, "unable to enable clock\n");
+		goto err_clk_put;
+	}
+
+	clock_f = clk_get_rate(wdt->clk);
+	if (clock_f <= 10000000) {/* For PEEP */
 		wdt->prescalar = 64;
 		wdt->ctrl_clksel = 1;
-	} else if (wdt->clock <= 75000000) {
+	} else if (clock_f <= 75000000) {
 		wdt->prescalar = 256;
 		wdt->ctrl_clksel = 2;
 	} else { /* For Zynq */
@@ -369,7 +382,7 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 	res = watchdog_register_device(&xwdtps_device);
 	if (res) {
 		dev_err(&pdev->dev, "Failed to register wdt device\n");
-		goto err_irq;
+		goto err_clk_disable;
 	}
 	platform_set_drvdata(pdev, wdt);
 
@@ -378,6 +391,10 @@ static int __devinit xwdtps_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_clk_disable:
+	clk_disable_unprepare(wdt->clk);
+err_clk_put:
+	clk_put(wdt->clk);
 err_irq:
 	free_irq(irq, pdev);
 err_notifier:
@@ -411,6 +428,8 @@ static int __exit xwdtps_remove(struct platform_device *pdev)
 		irq = platform_get_irq(pdev, 0);
 		free_irq(irq, pdev);
 		iounmap(wdt->regs);
+		clk_disable_unprepare(wdt->clk);
+		clk_put(wdt->clk);
 		kfree(wdt);
 		wdt = NULL;
 		platform_set_drvdata(pdev, NULL);
@@ -431,6 +450,8 @@ static void xwdtps_shutdown(struct platform_device *pdev)
 {
 	/* Stop the device */
 	xwdtps_stop(&xwdtps_device);
+	clk_disable_unprepare(wdt->clk);
+	clk_put(wdt->clk);
 }
 
 #ifdef CONFIG_PM
@@ -445,6 +466,7 @@ static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
 {
 	/* Stop the device */
 	xwdtps_stop(&xwdtps_device);
+	clk_disable(wdt->clk);
 	return 0;
 }
 
@@ -456,6 +478,13 @@ static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
  */
 static int xwdtps_resume(struct platform_device *pdev)
 {
+	int ret;
+
+	ret = clk_enable(wdt->clk);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to enable clock\n");
+		return ret;
+	}
 	/* Start the device */
 	xwdtps_start(&xwdtps_device);
 	return 0;

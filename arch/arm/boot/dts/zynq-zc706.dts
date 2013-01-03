@@ -70,7 +70,6 @@
 			device_type = "watchdog";
 			compatible = "xlnx,ps7-wdt-1.00.a";
 			reg = <0xf8005000 0x100>;
-			clock-frequency = <111111111>;
 			reset = <0>;
 			timeout = <10>;
 		};
