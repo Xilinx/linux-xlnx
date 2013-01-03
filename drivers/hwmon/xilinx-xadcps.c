@@ -151,7 +151,7 @@ struct xadc_batch {
 	int readptr;
 	struct list_head q;
 	struct completion comp;
-	struct xadc_op ops[];
+	struct xadc_op *ops;
 };
 
 
@@ -218,18 +218,26 @@ static void add_batch(struct xadc_t *xadc, struct xadc_batch *b)
 
 static inline u16 read_register(struct xadc_t *xadc, unsigned int reg)
 {
-	struct xadc_batch *b = kzalloc(sizeof(*b) +
-			2 * sizeof(struct xadc_op), GFP_KERNEL);
 	u16 ret;
+	struct xadc_op *ops;
+	struct xadc_batch *b = kzalloc(sizeof(*b), GFP_KERNEL);
 
-	if (NULL == b)
+	if (!b)
 		return 0;
+	ops = kzalloc(sizeof(*ops) * 2, GFP_KERNEL);
+	if (!ops) {
+		kfree(b);
+		return 0;
+	}
+
 	b->count = 2;
-	b->ops[0].cmd = READOP(reg);
-	b->ops[1].cmd = NOOP;
+	b->ops = ops;
+	ops[0].cmd = READOP(reg);
+	ops[1].cmd = NOOP;
 	add_batch(xadc, b);
 	wait_for_completion_interruptible(&b->comp);
 	ret = GETFIELD(XADC_FIFO, DATA, b->ops[1].res);
+	kfree(ops);
 	kfree(b);
 	return ret;
 }
@@ -237,15 +245,23 @@ static inline u16 read_register(struct xadc_t *xadc, unsigned int reg)
 static inline void write_register(struct xadc_t *xadc, unsigned int reg,
 		u16 val)
 {
-	struct xadc_batch *b = kzalloc(sizeof(*b) +
-			sizeof(struct xadc_op), GFP_KERNEL);
+	struct xadc_op *ops;
+	struct xadc_batch *b = kzalloc(sizeof(*b), GFP_KERNEL);
 
-	if (NULL == b)
+	if (!b)
 		return;
+	ops = kzalloc(sizeof(*ops), GFP_KERNEL);
+	if (!ops) {
+		kfree(b);
+		return;
+	}
+
 	b->count = 1;
-	b->ops[0].cmd = WRITEOP(reg, val);
+	b->ops = ops;
+	ops[0].cmd = WRITEOP(reg, val);
 	add_batch(xadc, b);
 	wait_for_completion_interruptible(&b->comp);
+	kfree(ops);
 	kfree(b);
 }
 
@@ -579,25 +595,25 @@ static irqreturn_t xadc_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct xadc_batch setup = {
-	.count = 11,
-	.ops = {
-		{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG |
-				REG_CFG1_CAL_ADCOG |
-				SETFIELD(REG_CFG1, SEQ, MODE_DEF)),},
-		{.cmd = READOP(REG_FLAG),}, /* read flags */
-		{.cmd = WRITEOP(REG_SEQ_SEL0, 0)},
-		{.cmd = WRITEOP(REG_SEQ_AVG0, 0)},
-		{.cmd = WRITEOP(REG_SEQ_BIP0, 0)},
-		{.cmd = WRITEOP(REG_SEQ_ACQ0, 0)},
-		{.cmd = WRITEOP(REG_SEQ_SEL1, 0)},
-		{.cmd = WRITEOP(REG_SEQ_AVG1, 0)},
-		{.cmd = WRITEOP(REG_SEQ_BIP1, 0)},
-		{.cmd = WRITEOP(REG_SEQ_ACQ1, 0)},
-		{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG |
-				REG_CFG1_CAL_ADCOG |
-				SETFIELD(REG_CFG1, SEQ, MODE_IND)),},
-	},
+static struct xadc_op xadc_ops[] __devinitdata = {
+	{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG |
+			REG_CFG1_CAL_ADCOG |
+			SETFIELD(REG_CFG1, SEQ, MODE_DEF)),},
+	{.cmd = READOP(REG_FLAG),}, /* read flags */
+	{.cmd = WRITEOP(REG_SEQ_SEL0, 0)},
+	{.cmd = WRITEOP(REG_SEQ_AVG0, 0)},
+	{.cmd = WRITEOP(REG_SEQ_BIP0, 0)},
+	{.cmd = WRITEOP(REG_SEQ_ACQ0, 0)},
+	{.cmd = WRITEOP(REG_SEQ_SEL1, 0)},
+	{.cmd = WRITEOP(REG_SEQ_AVG1, 0)},
+	{.cmd = WRITEOP(REG_SEQ_BIP1, 0)},
+	{.cmd = WRITEOP(REG_SEQ_ACQ1, 0)},
+	{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG | REG_CFG1_CAL_ADCOG |
+			SETFIELD(REG_CFG1, SEQ, MODE_IND)),},
+};
+static struct xadc_batch setup __devinitdata = {
+	.count = ARRAY_SIZE(xadc_ops),
+	.ops = xadc_ops,
 };
 
 static int __devinit xadc_probe(struct platform_device *pdev)
