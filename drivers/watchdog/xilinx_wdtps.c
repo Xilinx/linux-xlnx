@@ -473,13 +473,11 @@ static int xwdtps_resume(struct platform_device *pdev)
 #define xwdtps_resume	NULL
 #endif
 
-#ifdef CONFIG_OF
 static struct of_device_id xwdtps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-wdt-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xwdtps_of_match);
-#endif
 
 /* Driver Structure */
 static struct platform_driver xwdtps_driver = {
@@ -491,9 +489,7 @@ static struct platform_driver xwdtps_driver = {
 	.driver		= {
 		.name	= "xwdtps",
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table = xwdtps_of_match,
-#endif
 	},
 };
 
