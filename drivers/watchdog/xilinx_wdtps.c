@@ -15,21 +15,20 @@
  */
 
 #include <linux/export.h>
-#include <linux/module.h>
-#include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
+#include <linux/irq.h>
 #include <linux/kernel.h>
+#include <linux/miscdevice.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/reboot.h>
+#include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/watchdog.h>
-#include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/miscdevice.h>
-#include <linux/platform_device.h>
-#include <linux/slab.h>
-#include <linux/of.h>
 
 #define XWDTPS_DEFAULT_TIMEOUT	10
 /* Supports 1 - 516 sec */
