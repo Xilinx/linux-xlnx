@@ -454,15 +454,14 @@ static void xwdtps_shutdown(struct platform_device *pdev)
 	clk_put(wdt->clk);
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 /**
  * xwdtps_suspend -  Stop the device.
  *
- * @pdev: handle to the platform structure.
- * @message: message to the device.
+ * @dev: handle to the device structure.
  * Returns 0 always.
  */
-static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
+static int xwdtps_suspend(struct device *dev)
 {
 	/* Stop the device */
 	xwdtps_stop(&xwdtps_device);
@@ -473,26 +472,25 @@ static int xwdtps_suspend(struct platform_device *pdev, pm_message_t message)
 /**
  * xwdtps_resume -  Resume the device.
  *
- * @pdev: handle to the platform structure.
- * Returns 0 always.
+ * @dev: handle to the device structure.
+ * Returns 0 on success, errno otherwise.
  */
-static int xwdtps_resume(struct platform_device *pdev)
+static int xwdtps_resume(struct device *dev)
 {
 	int ret;
 
 	ret = clk_enable(wdt->clk);
 	if (ret) {
-		dev_err(&pdev->dev, "unable to enable clock\n");
+		dev_err(dev, "unable to enable clock\n");
 		return ret;
 	}
 	/* Start the device */
 	xwdtps_start(&xwdtps_device);
 	return 0;
 }
-#else
-#define xwdtps_suspend NULL
-#define xwdtps_resume	NULL
 #endif
+
+static SIMPLE_DEV_PM_OPS(xwdtps_pm_ops, xwdtps_suspend, xwdtps_resume);
 
 static struct of_device_id xwdtps_of_match[] __devinitdata = {
 	{ .compatible = "xlnx,ps7-wdt-1.00.a", },
@@ -505,12 +503,11 @@ static struct platform_driver xwdtps_driver = {
 	.probe		= xwdtps_probe,
 	.remove		= __exit_p(xwdtps_remove),
 	.shutdown	= xwdtps_shutdown,
-	.suspend	= xwdtps_suspend,
-	.resume		= xwdtps_resume,
 	.driver		= {
 		.name	= "xwdtps",
 		.owner	= THIS_MODULE,
 		.of_match_table = xwdtps_of_match,
+		.pm	= &xwdtps_pm_ops,
 	},
 };
 
