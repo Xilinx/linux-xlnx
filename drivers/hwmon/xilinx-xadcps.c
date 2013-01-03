@@ -53,26 +53,14 @@
 #define XADC_CONFIG_IGAP_MSK		0x1F
 #define XADC_CONFIG_IGAP_SHIFT		0
 
-#define TCKRATE_DIV2			0
-#define TCKRATE_DIV4			1
-#define TCKRATE_DIV8			2
 #define TCKRATE_DIV16			3
 
 #define XADC_INT_CFIFO_LTH		(1 << 9)
 #define XADC_INT_DFIFO_GTH		(1 << 8)
-#define XADC_INT_OT			(1 << 7)
 
 #define XADC_STATUS_CFIFO_LVL_MSK	0xF
 #define XADC_STATUS_CFIFO_LVL_SHIFT	16
-#define XADC_STATUS_DFIFO_LVL_MSK	0xF
-#define XADC_STATUS_DFIFO_LVL_SHIFT	12
-#define XADC_STATUS_CFIFO_FULL		(1 << 11)
-#define XADC_STATUS_CFIFO_EMPTY		(1 << 10)
-#define XADC_STATUS_DFIFO_FULL		(1 << 9)
 #define XADC_STATUS_DFIFO_EMPTY		(1 << 8)
-#define XADC_STATUS_OT			(1 << 7)
-
-#define XADC_CTL_RESET			(1 << 4)
 
 #define XADC_FIFO_CMD_MSK		0xF
 #define XADC_FIFO_CMD_SHIFT		26
@@ -91,11 +79,7 @@
 #define REG_VCCINT		0x01
 #define REG_VCCAUX		0x02
 #define REG_VPVN		0x03
-#define REG_VREFP		0x04
-#define REG_VREFN		0x05
 #define REG_VCCBRAM		0x06
-
-#define REG_VAUX0		0x10
 
 #define REG_MAX_TEMP		0x20
 #define REG_MAX_VCCINT		0x21
@@ -107,9 +91,7 @@
 #define REG_MIN_VCCBRAM		0x27
 
 #define REG_FLAG		0x3F
-#define REG_CFG0		0x40
 #define REG_CFG1		0x41
-#define REG_CFG2		0x42
 
 #define REG_SEQ_SEL0		0x48
 #define REG_SEQ_SEL1		0x49
@@ -121,37 +103,20 @@
 #define REG_SEQ_ACQ1		0x4F
 
 /* XADC register fields */
-#define REG_CFG1_CAL_ADCO	(1 << 4)	/* ADC offset */
 #define REG_CFG1_CAL_ADCOG	(1 << 5)	/* ADC offset & gain */
-#define REG_CFG1_CAL_SSO	(1 << 6)	/* Supply sensor offset */
 #define REG_CFG1_CAL_SSOG	(1 << 7)	/* supply sensor offset &gain */
-
 
 #define REG_CFG1_SEQ_MSK	0xF
 #define REG_CFG1_SEQ_SHIFT	12
 
 #define MODE_DEF		0	/* Internal sensors, no alarms */
-#define MODE_1PASS		1	/* Single pass */
-#define MODE_CONTINUOUS		2	/* Continuous */
-#define MODE_1CHAN		3	/* Single channel */
-#define MODE_SIM		4	/* Simultaneous AUX0/8, AUX1/9, ... */
 #define MODE_IND		8	/* Independent:ADC A -int, ADC B -ext */
 
 #define REG_FLAG_DIS		(1 << 8)
 #define REG_FLAG_REF		(1 << 9)
 
 /* Sequencer registers 0 */
-#define REG_SEQ_CAL		(1 << 0)
-#define REG_SEQ_TEMP		(1 << 8)
-#define REG_SEQ_VCCINT		(1 << 9)
-#define REG_SEQ_VCCAUX		(1 << 10)
 #define REG_SEQ_V		(1 << 11)
-#define REG_SEQ_VREFP		(1 << 12)
-#define REG_SEQ_VREFN		(1 << 13)
-#define REG_SEQ_VCCBRAM		(1 << 14)
-
-/* Sequencer registers 1 */
-#define REG_SEQ_VAUX(i)		(1 << i)
 
 #define READ(dev, reg) readl((dev->iobase + XADC_##reg))
 #define WRITE(dev, reg, value) writel(value, dev->iobase+XADC_##reg)
