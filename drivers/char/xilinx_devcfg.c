@@ -1631,27 +1631,7 @@ static struct platform_driver xdevcfg_platform_driver = {
 	},
 };
 
-/**
- * xdevcfg_module_init -  register the Device Configuration.
- *
- * Returns 0 on success, otherwise negative error.
- */
-static int __init xdevcfg_module_init(void)
-{
-	return platform_driver_register(&xdevcfg_platform_driver);
-}
-
-/**
- * xdevcfg_module_exit -  Unregister the Device Configuration.
- */
-static void __exit xdevcfg_module_exit(void)
-{
-	platform_driver_unregister(&xdevcfg_platform_driver);
-
-}
-
-module_init(xdevcfg_module_init);
-module_exit(xdevcfg_module_exit);
+module_platform_driver(xdevcfg_platform_driver);
 
 MODULE_AUTHOR("Xilinx, Inc");
 MODULE_DESCRIPTION("Xilinx Device Config Driver");
