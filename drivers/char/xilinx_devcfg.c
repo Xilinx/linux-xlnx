@@ -46,10 +46,8 @@
 static DEFINE_MUTEX(xdevcfg_mutex);
 
 /************ Constant Definitions *************/
-
 #define XDCFG_CTRL_OFFSET		0x00 /* Control Register */
 #define XDCFG_LOCK_OFFSET		0x04 /* Lock Register */
-#define XDCFG_CFG_OFFSET		0x08 /* Configuration Register */
 #define XDCFG_INT_STS_OFFSET		0x0C /* Interrupt Status Register */
 #define XDCFG_INT_MASK_OFFSET		0x10 /* Interrupt Mask Register */
 #define XDCFG_STATUS_OFFSET		0x14 /* Status Register */
@@ -57,26 +55,16 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_DMA_DEST_ADDR_OFFSET	0x1C /* DMA Destination Address Reg */
 #define XDCFG_DMA_SRC_LEN_OFFSET	0x20 /* DMA Source Transfer Length */
 #define XDCFG_DMA_DEST_LEN_OFFSET	0x24 /* DMA Destination Transfer */
-#define XDCFG_ROM_SHADOW_OFFSET		0x28 /* DMA ROM Shadow Register */
-#define XDCFG_MULTIBOOT_ADDR_OFFSET	0x2C /* Multi BootAddress Pointer */
-#define XDCFG_SW_ID_OFFSET		0x30 /* Software ID Register */
 #define XDCFG_UNLOCK_OFFSET		0x34 /* Unlock Register */
-#define XDCFG_MCTRL_OFFSET		0x80 /* Miscellaneous Control Reg */
 
 /* Control Register Bit definitions */
-
 #define XDCFG_CTRL_PCFG_PROG_B_MASK	0x40000000 /* Program signal to
 						    *  Reset FPGA */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
-#define XDCFG_CTRL_PCAP_RATE_EN_MASK	0x02000000 /* Enable PCAP send data
-						    *  to FPGA every 4 PCAP
-						    *  cycles */
 #define XDCFG_CTRL_USER_MODE_MASK	0x00008000 /* ROM/user mode selection */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
-#define XDCFG_CTRL_SEC_EN_MASK		0x00000080 /* Secure/Non Secure
-						    *  Status mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
 						    *  Debug Enable */
 #define XDCFG_CTRL_SPIDEN_MASK		0x00000020 /* Secure Invasive
@@ -91,15 +79,12 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 
 #define XDCFG_LOCK_AES_EN_MASK		0x00000008 /* Lock AES_EN update */
 #define XDCFG_LOCK_SEU_MASK		0x00000004 /* Lock SEU_En update */
-#define XDCFG_LOCK_SEC_MASK		0x00000002 /* Lock SEC_EN and
-						    *  USER_MODE */
 #define XDCFG_LOCK_DBG_MASK		0x00000001 /* This bit locks
 						    *  security config
 						    *  including: DAP_En,
 						    *  DBGEN,NIDEN, SPNIEN */
 
 /* Status register bit definitions */
-
 #define XDCFG_STATUS_PCFG_INIT_MASK	0x00000010 /* FPGA init status */
 
 /* Interrupt Status/Mask Register Bit definitions */
@@ -109,8 +94,6 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_IXR_ALL_MASK		0xF8F7F87F
 /* Miscellaneous constant values */
 #define XDCFG_DMA_INVALID_ADDRESS	0xFFFFFFFF  /* Invalid DMA address */
-
-#define BITSTREAM_SCAN_LIMIT		0xFFFFFFFF
 
 /**
  * struct xdevcfg_drvdata - Device Configuration driver structure
