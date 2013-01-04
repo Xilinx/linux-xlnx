@@ -15,6 +15,7 @@
  */
 
 #include <linux/cdev.h>
+#include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -102,6 +103,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
  * @dma_done: The dma_done status bit for the DMA command completion
  * @error_status: The error status captured during the DMA transfer
  * @irq: Interrupt number
+ * @clk: Peripheral clock for devcfg
  * @is_open: The status bit to indicate whether the device is opened
  * @sem: Instance for the mutex
  * @lock: Instance of spinlock
@@ -113,6 +115,7 @@ struct xdevcfg_drvdata {
 	struct cdev cdev;
 	dev_t devt;
 	int irq;
+	struct clk *clk;
 	volatile bool dma_done;
 	volatile int error_status;
 	bool is_open;
@@ -1371,6 +1374,19 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 		 drvdata->base_address,
 		 (unsigned long long) (regs_res->end - regs_res->start + 1));
 
+	drvdata->clk = clk_get_sys("PCAP", NULL);
+	if (IS_ERR(drvdata->clk)) {
+		dev_err(&pdev->dev, "input clock not found\n");
+		retval = PTR_ERR(drvdata->clk);
+		goto failed4;
+	}
+
+	retval = clk_prepare_enable(drvdata->clk);
+	if (retval) {
+		dev_err(&pdev->dev, "unable to enable clock\n");
+		goto failed5;
+	}
+
 	/*
 	 * Figure out from the device tree if this is running on the EP107
 	 * emulation platform as it doesn't match the silicon exactly and the
@@ -1413,8 +1429,7 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	retval = cdev_add(&drvdata->cdev, devt, 1);
 	if (retval) {
 		dev_err(&pdev->dev, "cdev_add() failed\n");
-		free_irq(irq_res->start, drvdata);
-		goto failed3;
+		goto failed6;
 	}
 
 	/* create sysfs files for the device */
@@ -1422,11 +1437,17 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 	if (retval) {
 		dev_err(&pdev->dev, "Failed to create sysfs attr group\n");
 		cdev_del(&drvdata->cdev);
-		goto failed3;
+		goto failed6;
 	}
 
 	return 0;		/* Success */
 
+failed6:
+	clk_disable_unprepare(drvdata->clk);
+failed5:
+	clk_put(drvdata->clk);
+failed4:
+	free_irq(irq_res->start, drvdata);
 failed3:
 	iounmap(drvdata->base_address);
 failed2:
@@ -1468,6 +1489,8 @@ static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
 	cdev_del(&drvdata->cdev);
 	iounmap(drvdata->base_address);
 	release_mem_region(res->start, res->end - res->start + 1);
+	clk_disable_unprepare(drvdata->clk);
+	clk_put(drvdata->clk);
 	kfree(drvdata);
 	dev_set_drvdata(&pdev->dev, NULL);
 

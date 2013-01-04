@@ -26,10 +26,8 @@ static DEFINE_SPINLOCK(iopll_lock);
 static DEFINE_SPINLOCK(armclk_lock);
 static DEFINE_SPINLOCK(ddrclk_lock);
 static DEFINE_SPINLOCK(dciclk_lock);
-/*
- * static DEFINE_SPINLOCK(smcclk_lock);
- * static DEFINE_SPINLOCK(pcapclk_lock);
- */
+/* static DEFINE_SPINLOCK(smcclk_lock); */
+static DEFINE_SPINLOCK(pcapclk_lock);
 static DEFINE_SPINLOCK(lqspiclk_lock);
 static DEFINE_SPINLOCK(gem0clk_lock);
 static DEFINE_SPINLOCK(gem1clk_lock);
@@ -191,12 +189,14 @@ void __init zynq_clock_init(void)
 	 *		(__force void __iomem *)SLCR_SMC_CLK_CTRL,
 	 *		def_periph_parents, &smcclk_lock);
 	 * zynq_clkdev_add(NULL, "SMC", clk);
-	 *
-	 * clk = clk_register_zynq_gd1m("PCAP_CLK",
-	 *		(__force void __iomem *)SLCR_PCAP_CLK_CTRL,
-	 *		def_periph_parents, &pcapclk_lock);
-	 * zynq_clkdev_add(NULL, "PCAP", clk);
 	 */
+	clk = clk_register_zynq_gd1m("PCAP_CLK",
+			(__force void __iomem *)SLCR_PCAP_CLK_CTRL,
+			def_periph_parents, &pcapclk_lock);
+	zynq_clkdev_add(NULL, "PCAP", clk);
+#ifdef CONFIG_SENSORS_XADCPS
+	clk_prepare_enable(clk);
+#endif
 
 	clk = clk_register_zynq_gd2m("GEM0_CLK",
 			(__force void __iomem *)SLCR_GEM0_CLK_CTRL,
