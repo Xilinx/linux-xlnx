@@ -316,8 +316,15 @@ static ssize_t xadc_read_temp(struct device *dev,
 	struct xadc_t *xadc = platform_get_drvdata(pdev);
 	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
 	unsigned int reg = attr->index;
+	u16 regval;
 
-	return sprintf(buf, "%u\n", reg2temp(read_register(xadc, reg)));
+	clk_enable(xadc->clk);
+
+	regval = read_register(xadc, reg);
+
+	clk_disable(xadc->clk);
+
+	return sprintf(buf, "%u\n", reg2temp(regval));
 }
 
 static ssize_t xadc_read_vcc(struct device *dev,
@@ -327,8 +334,15 @@ static ssize_t xadc_read_vcc(struct device *dev,
 	struct xadc_t *xadc = platform_get_drvdata(pdev);
 	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
 	unsigned int reg = attr->index;
+	u16 regval;
 
-	return sprintf(buf, "%u\n", reg2vcc(read_register(xadc, reg)));
+	clk_enable(xadc->clk);
+
+	regval = read_register(xadc, reg);
+
+	clk_disable(xadc->clk);
+
+	return sprintf(buf, "%u\n", reg2vcc(regval));
 }
 
 static ssize_t xadc_read_v(struct device *dev,
@@ -339,12 +353,21 @@ static ssize_t xadc_read_v(struct device *dev,
 	struct sensor_device_attribute_2 *attr = to_sensor_dev_attr_2(devattr);
 	unsigned int reg = attr->index;
 	unsigned int chan = attr->nr;
+	u16 regval;
 
 	if (!(xadc->chanmode[chan] & CHAN_ON))
 		return sprintf(buf, "%d\n", 0);
+
+	clk_enable(xadc->clk);
+
+	regval = read_register(xadc, reg);
+
+	clk_disable(xadc->clk);
+
 	if ((xadc->chanmode[chan] & CHAN_BIPOLAR))
-		return sprintf(buf, "%d\n", reg2bv(read_register(xadc, reg)));
-	return sprintf(buf, "%u\n", reg2v(read_register(xadc, reg)));
+		return sprintf(buf, "%d\n", reg2bv(regval));
+
+	return sprintf(buf, "%u\n", reg2v(regval));
 }
 
 #ifdef DEBUG
@@ -355,9 +378,14 @@ static ssize_t xadc_read_registers(struct device *dev,
 	struct xadc_t *xadc = platform_get_drvdata(pdev);
 	unsigned int i, count = 0;
 
+	clk_enable(xadc->clk);
+
 	for (i = 0; i < 0x60; i++)
 		count += sprintf(buf+count, "%02X %04x\n", i,
 				read_register(xadc, i));
+
+	clk_disable(xadc->clk);
+
 	return count;
 }
 #endif
@@ -367,8 +395,13 @@ static ssize_t xadc_read_flags(struct device *dev,
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct xadc_t *xadc = platform_get_drvdata(pdev);
+	u16 val;
 
-	u16 val = read_register(xadc, REG_FLAG);
+	clk_enable(xadc->clk);
+
+	val = read_register(xadc, REG_FLAG);
+
+	clk_disable(xadc->clk);
 
 	return sprintf(buf, "enabled:\t%s\nreference:\t%s\n",
 		val & REG_FLAG_DIS ? "no" : "yes",
@@ -414,6 +447,8 @@ static ssize_t xadc_write_vmode(struct device *dev,
 
 	xadc->chanmode[channel] = mode;
 
+	clk_enable(xadc->clk);
+
 	if (mode & CHAN_BIPOLAR) {
 		val = read_register(xadc, reg + REG_SEQ_BIP0);
 		if (0 == reg) /* only dedicated channel there */
@@ -446,13 +481,14 @@ static ssize_t xadc_write_vmode(struct device *dev,
 		write_register(xadc, reg + REG_SEQ_SEL0, val);
 	}
 
+	clk_disable(xadc->clk);
+
 	return count;
 }
 
 static ssize_t show_name(struct device *dev,
 		struct device_attribute *devattr, char *buf)
 {
-
 	return sprintf(buf, "%s\n","xadcps");
 }
 
@@ -717,6 +753,8 @@ static int __devinit xadc_probe(struct platform_device *pdev)
 		val & REG_FLAG_DIS ? "no" : "yes",
 		val & REG_FLAG_REF ? "internal" : "external");
 
+	clk_disable(xadc->clk);
+
 	return 0;
 
 err_group:
@@ -751,7 +789,7 @@ static int __devexit xadc_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
-	clk_disable_unprepare(xadc->clk);
+	clk_unprepare(xadc->clk);
 	clk_put(xadc->clk);
 
 	kfree(xadc);
