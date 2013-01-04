@@ -133,6 +133,8 @@ struct xdevcfg_drvdata {
 /**
  * xdevcfg_reset_pl() - Reset the programmable logic.
  * @base_address:	The base address of the device.
+ *
+ * Must be called with PCAP clock enabled
  */
 static void xdevcfg_reset_pl(void __iomem *base_address)
 {
@@ -215,15 +217,20 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	dma_addr_t dma_addr;
 	u32 transfer_length = 0;
 	struct xdevcfg_drvdata *drvdata = file->private_data;
+
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	status = mutex_lock_interruptible(&drvdata->sem);
 
 	if (status)
-		return status;
+		goto err_clk;
 
 	kbuf = dma_alloc_coherent(drvdata->dev, count, &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
-		return status;
+		goto err_unlock;
 	}
 
 	if (copy_from_user(kbuf, buf, count)) {
@@ -290,7 +297,10 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 
 error:
 	dma_free_coherent(drvdata->dev, count, kbuf, dma_addr);
+err_unlock:
 	mutex_unlock(&drvdata->sem);
+err_clk:
+	clk_disable(drvdata->clk);
 	return status;
 }
 
@@ -313,15 +323,19 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 	u32 intr_reg;
 
-	status = mutex_lock_interruptible(&drvdata->sem);
+	status = clk_enable(drvdata->clk);
 	if (status)
 		return status;
+
+	status = mutex_lock_interruptible(&drvdata->sem);
+	if (status)
+		goto err_clk;
 
 	/* Get new data from the ICAP, and return was requested. */
 	kbuf = dma_alloc_coherent(drvdata->dev, count, &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
-		return status;
+		goto err_unlock;
 	}
 
 	drvdata->dma_done = 0;
@@ -376,9 +390,12 @@ xdevcfg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	}
 
 	status = count;
- error:
+error:
 	dma_free_coherent(drvdata->dev, count, kbuf, dma_addr);
+err_unlock:
 	mutex_unlock(&drvdata->sem);
+err_clk:
+	clk_disable(drvdata->clk);
 
 	return status;
 }
@@ -396,9 +413,13 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 
 	drvdata = container_of(inode->i_cdev, struct xdevcfg_drvdata, cdev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	status = mutex_lock_interruptible(&drvdata->sem);
 	if (status)
-		goto out;
+		goto err_clk;
 
 	if (drvdata->is_open) {
 		status = -EBUSY;
@@ -431,7 +452,8 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 
 error:
 	mutex_unlock(&drvdata->sem);
-out:
+err_clk:
+	clk_disable(drvdata->clk);
 	return status;
 }
 
@@ -486,20 +508,22 @@ static ssize_t xdevcfg_set_dap_en(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 	spin_lock_irqsave(&drvdata->lock, flags);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
-	if (status) {
-		spin_unlock_irqrestore(&drvdata->lock, flags);
-		return status;
-	}
+	if (status)
+		goto err_unlock;
 
 	if (mask_bit > 7) {
-		spin_unlock_irqrestore(&drvdata->lock, flags);
-		return -EINVAL;
+		status = -EINVAL;
+		goto err_unlock;
 	}
 
 	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
@@ -508,7 +532,15 @@ static ssize_t xdevcfg_set_dap_en(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_unlock:
+	spin_unlock_irqrestore(&drvdata->lock, flags);
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -527,8 +559,14 @@ static ssize_t xdevcfg_show_dap_en_status(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	dap_en_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET) & XDCFG_CTRL_DAP_EN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", dap_en_status);
 
@@ -557,16 +595,22 @@ static ssize_t xdevcfg_set_dbgen(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -579,7 +623,14 @@ static ssize_t xdevcfg_set_dbgen(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -598,8 +649,14 @@ static ssize_t xdevcfg_show_dbgen_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	dbgen_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET) & XDCFG_CTRL_DBGEN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (dbgen_status >> 3));
 
@@ -628,16 +685,22 @@ static ssize_t xdevcfg_set_niden(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -650,7 +713,14 @@ static ssize_t xdevcfg_set_niden(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -669,8 +739,14 @@ static ssize_t xdevcfg_show_niden_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	niden_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET) & XDCFG_CTRL_NIDEN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (niden_status >> 4));
 
@@ -699,16 +775,22 @@ static ssize_t xdevcfg_set_spiden(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -722,7 +804,14 @@ static ssize_t xdevcfg_set_spiden(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -741,8 +830,14 @@ static ssize_t xdevcfg_show_spiden_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	spiden_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_CTRL_OFFSET) & XDCFG_CTRL_SPIDEN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (spiden_status >> 5));
 
@@ -771,15 +866,21 @@ static ssize_t xdevcfg_set_spniden(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -792,7 +893,14 @@ static ssize_t xdevcfg_set_spniden(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -811,8 +919,14 @@ static ssize_t xdevcfg_show_spniden_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	spniden_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_CTRL_OFFSET) & XDCFG_CTRL_SPNIDEN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (spniden_status >> 6));
 
@@ -841,16 +955,22 @@ static ssize_t xdevcfg_set_seu(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -863,7 +983,14 @@ static ssize_t xdevcfg_set_seu(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -882,8 +1009,14 @@ static ssize_t xdevcfg_show_seu_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	seu_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_CTRL_OFFSET) & XDCFG_CTRL_SEU_EN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (seu_status > 8));
 
@@ -914,16 +1047,22 @@ static ssize_t xdevcfg_set_aes(struct device *dev,
 	int status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status < 0)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 
 	spin_lock_irqsave(&drvdata->lock, flags);
@@ -939,7 +1078,14 @@ static ssize_t xdevcfg_set_aes(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -958,8 +1104,14 @@ static ssize_t xdevcfg_show_aes_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	aes_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_CTRL_OFFSET) & XDCFG_CTRL_PCFG_AES_EN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (aes_status >> 9));
 
@@ -987,16 +1139,22 @@ static ssize_t xdevcfg_set_aes_en_lock(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	aes_en_lock_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -1010,7 +1168,14 @@ static ssize_t xdevcfg_set_aes_en_lock(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -1029,8 +1194,14 @@ static ssize_t xdevcfg_show_aes_en_lock_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	aes_en_lock_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_LOCK_OFFSET) & XDCFG_LOCK_AES_EN_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (aes_en_lock_status >> 3));
 
@@ -1059,16 +1230,22 @@ static ssize_t xdevcfg_set_seu_lock(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	seu_lock_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
 
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -1081,7 +1258,14 @@ static ssize_t xdevcfg_set_seu_lock(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -1100,8 +1284,14 @@ static ssize_t xdevcfg_show_seu_lock_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	seu_lock_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_LOCK_OFFSET) & XDCFG_LOCK_SEU_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (seu_lock_status >> 2));
 
@@ -1130,15 +1320,21 @@ static ssize_t xdevcfg_set_dbg_lock(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	lock_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
 	status = strict_strtoul(buf, 10, &mask_bit);
 
 	if (status)
-		return status;
+		goto err_clk;
 
-	if (mask_bit > 1)
-		return -EINVAL;
+	if (mask_bit > 1) {
+		status = -EINVAL;
+		goto err_clk;
+	}
 
 	spin_lock_irqsave(&drvdata->lock, flags);
 
@@ -1151,7 +1347,14 @@ static ssize_t xdevcfg_set_dbg_lock(struct device *dev,
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
+	clk_disable(drvdata->clk);
+
 	return size;
+
+err_clk:
+	clk_disable(drvdata->clk);
+
+	return status;
 }
 
 /**
@@ -1170,8 +1373,14 @@ static ssize_t xdevcfg_show_dbg_lock_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	dbg_lock_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_LOCK_OFFSET) & XDCFG_LOCK_DBG_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", dbg_lock_status);
 
@@ -1197,8 +1406,14 @@ static ssize_t xdevcfg_show_prog_done_status(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
+	status = clk_enable(drvdata->clk);
+	if (status)
+		return status;
+
 	prog_done_status = xdevcfg_readreg(drvdata->base_address +
 			XDCFG_INT_STS_OFFSET) & XDCFG_IXR_PCFG_DONE_MASK;
+
+	clk_disable(drvdata->clk);
 
 	status = sprintf(buf, "%d\n", (prog_done_status >> 2));
 
@@ -1440,6 +1655,8 @@ static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
 		goto failed6;
 	}
 
+	clk_disable(drvdata->clk);
+
 	return 0;		/* Success */
 
 failed6:
@@ -1489,7 +1706,7 @@ static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
 	cdev_del(&drvdata->cdev);
 	iounmap(drvdata->base_address);
 	release_mem_region(res->start, res->end - res->start + 1);
-	clk_disable_unprepare(drvdata->clk);
+	clk_unprepare(drvdata->clk);
 	clk_put(drvdata->clk);
 	kfree(drvdata);
 	dev_set_drvdata(&pdev->dev, NULL);
