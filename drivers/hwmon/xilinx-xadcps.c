@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
  */
 
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
@@ -161,6 +162,7 @@ struct xadc_t {
 	struct resource *mem;
 	void __iomem *iobase;
 	int irq;
+	struct clk	*clk;
 	spinlock_t slock;
 	struct list_head runq;
 	struct xadc_batch *curr;
@@ -665,9 +667,22 @@ static int __devinit xadc_probe(struct platform_device *pdev)
 		goto err_io_remap;
 	}
 
+	xadc->clk = clk_get_sys("PCAP", NULL);
+	if (IS_ERR(xadc->clk)) {
+		dev_err(&pdev->dev, "input clock not found\n");
+		ret = PTR_ERR(xadc->clk);
+		goto err_irq;
+	}
+
+	ret = clk_prepare_enable(xadc->clk);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to enable clock\n");
+		goto err_clk_put;
+	}
+
 	ret = sysfs_create_group(&pdev->dev.kobj, &xadc_group);
 	if (ret)
-		goto err_irq;
+		goto err_clk_disable;
 
 	platform_set_drvdata(pdev, xadc);
 
@@ -706,6 +721,10 @@ static int __devinit xadc_probe(struct platform_device *pdev)
 
 err_group:
 	sysfs_remove_group(&pdev->dev.kobj, &xadc_group);
+err_clk_disable:
+	clk_disable_unprepare(xadc->clk);
+err_clk_put:
+	clk_put(xadc->clk);
 err_irq:
 	free_irq(xadc->irq, xadc);
 err_io_remap:
@@ -731,6 +750,9 @@ static int __devexit xadc_remove(struct platform_device *pdev)
 	release_mem_region(xadc->mem->start, resource_size(xadc->mem));
 
 	platform_set_drvdata(pdev, NULL);
+
+	clk_disable_unprepare(xadc->clk);
+	clk_put(xadc->clk);
 
 	kfree(xadc);
 

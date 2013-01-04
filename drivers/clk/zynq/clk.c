@@ -194,9 +194,6 @@ void __init zynq_clock_init(void)
 			(__force void __iomem *)SLCR_PCAP_CLK_CTRL,
 			def_periph_parents, &pcapclk_lock);
 	zynq_clkdev_add(NULL, "PCAP", clk);
-#ifdef CONFIG_SENSORS_XADCPS
-	clk_prepare_enable(clk);
-#endif
 
 	clk = clk_register_zynq_gd2m("GEM0_CLK",
 			(__force void __iomem *)SLCR_GEM0_CLK_CTRL,
