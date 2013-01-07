@@ -393,14 +393,13 @@ static struct clk *clk_register_zynq_common(const char *name,
 	};
 
 	clk = kmalloc(sizeof(*clk), GFP_KERNEL);
-	clk->hw.init = &initd;
-
 	if (!clk) {
 		pr_err("%s: could not allocate Zynq clock\n", __func__);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	/* Populate the struct */
+	clk->hw.init = &initd;
 	clk->clkctrl = clkctrl;
 	clk->lock = lock;
 

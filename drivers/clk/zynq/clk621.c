@@ -149,14 +149,13 @@ struct clk *clk_register_zynq_clk621(const char *name,
 	};
 
 	clk = kmalloc(sizeof(*clk), GFP_KERNEL);
-	clk->hw.init = &initd;
-
 	if (!clk) {
 		pr_err("%s: could not allocate Zynq clk\n", __func__);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	/* Populate the struct */
+	clk->hw.init = &initd;
 	clk->clkctrl = clkctrl;
 	clk->clk621 = clk621;
 	clk->basediv = basediv;
