@@ -3124,7 +3124,7 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_NOT_DEFINE
+#ifdef CONFIG_PM
 #ifdef CONFIG_PM_SLEEP
 /**
  * xemacps_suspend - Suspend event
