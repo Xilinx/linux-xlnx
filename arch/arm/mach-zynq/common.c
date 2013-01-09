@@ -16,6 +16,7 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
@@ -35,7 +36,6 @@
 
 #include <mach/zynq_soc.h>
 #include <mach/clk.h>
-#include <mach/pdev.h>
 #include "common.h"
 
 static struct of_device_id zynq_of_bus_ids[] __initdata = {
@@ -127,24 +127,23 @@ static unsigned int freq_divs[] __initdata = {
  * Registering frequency/voltage operating points for voltage and frequency
  * scaling. Currently we only support frequency scaling.
  */
-static void __init xilinx_opp_init(void)
+static int __init xilinx_opp_init(void)
 {
-	struct platform_device *pdev = xilinx_get_pdev_by_name("zynq-dvfs");
-	struct device *dev;
-	int ret = 0;
 	long freq;
-	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
 	unsigned int i;
+	struct device *dev = get_cpu_device(0);
+	int ret = 0;
+	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
 
-	if (IS_ERR(pdev)) {
-		pr_warn("Xilinx OOP init: No device. DVFS not available.");
-		return;
+	if (!dev) {
+		pr_warn("%s: no cpu device. DVFS not available.", __func__);
+		return -ENODEV;
 	}
-	dev = &pdev->dev;
 
 	if (IS_ERR(cpuclk)) {
-		pr_warn("Xilinx OOP init: CPU clock not found. DVFS not available.");
-		return;
+		pr_warn("%s: CPU clock not found. DVFS not available.",
+				__func__);
+		return PTR_ERR(cpuclk);
 	}
 
 	/* frequency/voltage operating points. For now use f only */
@@ -161,10 +160,11 @@ static void __init xilinx_opp_init(void)
 		ret |= opp_add(dev, freq, 0);
 
 	if (ret)
-		pr_warn("Error adding OPPs.");
+		pr_warn("%s: Error adding OPPs.", __func__);
+
+	return ret;
 }
-#else
-static void __init xilinx_opp_init(void) {}
+device_initcall(xilinx_opp_init);
 #endif
 
 #ifdef CONFIG_CACHE_L2X0
@@ -218,7 +218,6 @@ static void __init xilinx_init_machine(void)
 {
 	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
 	platform_device_init();
-	xilinx_opp_init();
 }
 
 static const char *xilinx_dt_match[] = {

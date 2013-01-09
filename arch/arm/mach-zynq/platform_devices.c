@@ -22,7 +22,6 @@
 #include <linux/amba/xilinx_dma.h>
 #include <linux/xilinx_devices.h>
 #include <mach/dma.h>
-#include <mach/pdev.h>
 #include <asm/pmu.h>
 #include "common.h"
 
@@ -100,10 +99,6 @@ static struct platform_device xilinx_pmu_device = {
 	.resource	= &xilinx_pmu_resource,
 };
 
-static struct platform_device xilinx_dvfs_device = {
-	.name = "zynq-dvfs"
-};
-
 /* add all platform devices to the following table so they
  * will be registered
  */
@@ -114,49 +109,7 @@ static struct platform_device *xilinx_pdevices[] __initdata = {
 	&xilinx_dma_test,
 #endif
 	&xilinx_pmu_device,
-	&xilinx_dvfs_device,
 };
-
-/* Maintain a list of platform devices */
-static LIST_HEAD(xilinx_pdevlist);
-struct xilinx_pdevlist_entry {
-	struct list_head lh;
-	struct platform_device *pdev;
-};
-
-/**
- * xilinx_add_pdevlist() - Add platform device to list
- * @pdev: The platform device to add to the list
- */
-static void xilinx_add_pdevlist(struct platform_device *pdev)
-{
-	struct xilinx_pdevlist_entry *entry = kmalloc(sizeof(*entry),
-			GFP_KERNEL);
-	if (!entry) {
-		pr_warn("Adding PDEV to list failed.");
-		return;
-	}
-	entry->pdev = pdev;
-	list_add_tail(&entry->lh, &xilinx_pdevlist);
-}
-
-/**
- * xilinx_get_pdev_by_name - Find a platform device by name
- * @nm: Name of the Platform device searched.
- * Returns a pointer to the found struct platform_device or error pointer if no
- * platform device is found.
- */
-struct platform_device *xilinx_get_pdev_by_name(const char *nm)
-{
-	struct xilinx_pdevlist_entry *tmp;
-
-	list_for_each_entry(tmp, &xilinx_pdevlist, lh) {
-		if (!strcmp(tmp->pdev->name, nm))
-			return tmp->pdev;
-	}
-	return ERR_PTR(-ENODEV);
-}
-EXPORT_SYMBOL(xilinx_get_pdev_by_name);
 
 /**
  * platform_device_init - Initialize all the platform devices.
@@ -183,8 +136,6 @@ void __init platform_device_init(void)
 		if (ret)
 			pr_info("Unable to register platform device '%s': %d\n",
 				(*devptr)->name, ret);
-		else
-			xilinx_add_pdevlist(*devptr);
 	}
 
 //#if defined CONFIG_SPI_SPIDEV || defined CONFIG_MTD_M25P80

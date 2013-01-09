@@ -26,7 +26,6 @@
 #include <linux/platform_device.h>
 #include <asm/smp_plat.h>
 #include <asm/cpu.h>
-#include <mach/pdev.h>
 
 #ifdef CONFIG_SMP
 struct lpj_info {
@@ -234,13 +233,13 @@ static struct cpufreq_driver zynq_cpufreq_driver = {
 
 static int __init zynq_cpufreq_init(void)
 {
-	struct platform_device *pdev = xilinx_get_pdev_by_name("zynq-dvfs");
+	struct device *dev = get_cpu_device(0);
 
-	if (IS_ERR(pdev)) {
-		pr_warn("Xilinx: cpufreq: Device not found.");
+	if (!dev) {
+		pr_warn("%s: Error: device not found.", __func__);
 		return -EINVAL;
 	}
-	mpu_dev = &pdev->dev;
+	mpu_dev = dev;
 	return cpufreq_register_driver(&zynq_cpufreq_driver);
 }
 
