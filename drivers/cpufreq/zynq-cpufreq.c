@@ -211,6 +211,7 @@ fail_ck:
 
 static int zynq_cpu_exit(struct cpufreq_policy *policy)
 {
+	freq_table_free();
 	clk_put(cpuclk);
 	return 0;
 }
