@@ -22,7 +22,6 @@
 #include <linux/amba/xilinx_dma.h>
 #include <linux/xilinx_devices.h>
 #include <mach/dma.h>
-#include <asm/pmu.h>
 #include "common.h"
 
 #define DMAC0_BASE		(0xF8003000)
@@ -86,19 +85,6 @@ static struct platform_device xilinx_dma_test = {
 
 #endif
 
-static struct resource xilinx_pmu_resource = {
-        .start  = 37,
-        .end    = 38,
-        .flags  = IORESOURCE_IRQ,
-};
-
-static struct platform_device xilinx_pmu_device = {
-        .name           = "arm-pmu",
-        .id             = ARM_PMU_DEVICE_CPU,
-        .num_resources  = 1,
-	.resource	= &xilinx_pmu_resource,
-};
-
 /* add all platform devices to the following table so they
  * will be registered
  */
@@ -108,7 +94,6 @@ static struct platform_device *xilinx_pdevices[] __initdata = {
 #ifdef CONFIG_XILINX_TEST
 	&xilinx_dma_test,
 #endif
-	&xilinx_pmu_device,
 };
 
 /**

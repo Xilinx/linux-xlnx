@@ -173,6 +173,11 @@
 			compatible = "xlnx,ps7-pl310-1.00.a", "arm,pl310-cache";
 			reg = < 0xf8f02000 0x1000 >;
 		} ;
+		pmu {
+			compatible = "arm,cortex-a9-pmu";
+			interrupts = <0 5 4>, <0 6 4>;
+			interrupt-parent = <&ps7_scugic_0>;
+		};
 		ps7_qspi_0: ps7-qspi@e000d000 {
 			bus-num = <0>;
 			compatible = "xlnx,ps7-qspi-1.00.a";

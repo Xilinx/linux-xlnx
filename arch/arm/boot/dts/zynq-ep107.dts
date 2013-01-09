@@ -29,6 +29,12 @@
 		linux,stdout-path = &uart0;
 	};
 
+	pmu {
+		compatible = "arm,cortex-a9-pmu";
+		interrupts = <0 5 4>, <0 6 4>;
+		interrupt-parent = <&gic>;
+	};
+
 	amba {
 		compatible = "simple-bus";
 		#address-cells = <1>;
