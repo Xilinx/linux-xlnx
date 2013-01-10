@@ -38,11 +38,6 @@
 #include <mach/clk.h>
 #include "common.h"
 
-static struct of_device_id zynq_of_bus_ids[] __initdata = {
-	{ .compatible = "simple-bus", },
-	{}
-};
-
 static const struct of_device_id zynq_dt_irq_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
 	{ }
@@ -216,7 +211,8 @@ static void __init xilinx_init_late(void)
  */
 static void __init xilinx_init_machine(void)
 {
-	of_platform_bus_probe(NULL, zynq_of_bus_ids, NULL);
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+
 	platform_device_init();
 }
 
