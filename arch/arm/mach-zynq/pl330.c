@@ -89,6 +89,10 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
 #include <linux/spinlock_types.h>
+#include <linux/of_address.h>
+#include <linux/of_device.h>
+#include <linux/of_irq.h>
+#include <linux/of_platform.h>
 
 #include <asm/atomic.h>
 #include <linux/io.h>
@@ -363,6 +367,47 @@ static struct pl330_driver_data driver_data;
 #define PL330_DBGINST0(b1, b0, ch, dbg_th) \
 	(((b1) << 24) | ((b0) << 16) | (((ch) & 0x7) << 8) | ((dbg_th & 0x1)))
 
+/* Structure for storing IRQs */
+struct irq_list {
+	int irq;
+	void *dev_id;
+	struct list_head list;
+};
+
+static struct irq_list mylist;
+
+#include <linux/slab.h>
+
+static void clear_irq(struct platform_device *pdev)
+{
+	struct list_head *pos, *q;
+	struct irq_list *tmp;
+
+	dev_info(&pdev->dev, "Deleting the irq_list\n");
+	list_for_each_safe(pos, q, &mylist.list) {
+		tmp = list_entry(pos, struct irq_list, list);
+		dev_info(&pdev->dev, "Deleting %d\n", tmp->irq);
+		free_irq(tmp->irq, tmp->dev_id);
+		list_del(pos);
+		kfree(tmp);
+	}
+}
+
+static int add_irq(struct platform_device *pdev, int irq, void *dev_id)
+{
+	struct irq_list *tmp;
+
+	tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
+	if (!tmp) {
+		dev_err(&pdev->dev, "Unable to alloc irq list\n");
+		return -1;
+	}
+	tmp->irq = irq;
+	tmp->dev_id = dev_id;
+
+	list_add(&(tmp->list), &(mylist.list));
+	return 0;
+}
 
 /**
  * pl330_instr_dmaend - Construction function for DMAEND instruction. This
@@ -1421,153 +1466,20 @@ static irqreturn_t pl330_fault_isr(int irq, void *dev)
 }
 
 /**
- * pl330_request_irq - set up the interrupt handler for the corresponding
- *	device. It sets up all the interrupt for all the channels of that
- *	device. It also sets the the fault interrupt handler for the device.
- * @dev_id: device id.
- *
- * Returns 0 on success, otherwise on failure
- */
-static int pl330_request_irq(unsigned int dev_id)
-{
-	unsigned int irq;
-	unsigned int irq2;
-
-	struct pl330_channel_static_data *channel_static_data;
-	struct pl330_device_data *device_data =
-		driver_data.device_data + dev_id;
-
-	int status;
-
-	pr_debug("PL330 requesting irq for device %d\n", dev_id);
-
-	channel_static_data = driver_data.channel_static_data
-		+ device_data->starting_channel;
-
-	irq = device_data->fault_irq;
-
-	/* set up the fault irq */
-	status = request_irq(irq, pl330_fault_isr,
-			     IRQF_DISABLED, DRIVER_NAME, device_data);
-
-	if (status) {
-		pr_err("PL330 request fault irq %d failed %d\n",
-				irq, status);
-		return -1;
-	} else {
-		pr_debug("PL330 request fault irq %d successful\n", irq);
-	}
-
-
-	for (irq = device_data->starting_irq;
-	     irq != 0 && irq <= device_data->ending_irq; irq++) {
-
-		/* set up the done irq */
-		status = request_irq(irq, pl330_done_isr,
-				     IRQF_DISABLED, DRIVER_NAME,
-				     channel_static_data);
-
-		if (status) {
-			pr_err("PL330 request done irq %d failed %d\n",
-					irq, status);
-			goto req_done_irq_failed;
-		} else {
-			channel_static_data->irq = irq;
-
-			pr_debug("PL330 request done irq %d successful\n", irq);
-		}
-
-		channel_static_data++;
-	}
-
-	for (irq = device_data->starting_irq1;
-	     irq != 0 && irq <= device_data->ending_irq1; irq++) {
-
-		/* set up the done irq */
-		status = request_irq(irq, pl330_done_isr,
-				     IRQF_DISABLED, DRIVER_NAME,
-				     channel_static_data);
-
-		if (status) {
-			pr_err("PL330 request done irq %d failed %d\n",
-					irq, status);
-			goto req_done_irq1_failed;
-		} else {
-			channel_static_data->irq = irq;
-
-			pr_debug("PL330 request done irq %d successful\n", irq);
-		}
-
-		channel_static_data++;
-	}
-
-	return 0;
-
- req_done_irq1_failed:
-	for (irq2 = device_data->starting_irq1;
-	     irq2 < irq; irq2++)
-		free_irq(irq2, channel_static_data);
-
-	irq = device_data->ending_irq + 1;
-
- req_done_irq_failed:
-	for (irq2 = device_data->starting_irq;
-	     irq2 < irq; irq2++)
-		free_irq(irq2, channel_static_data);
-
-	free_irq(device_data->fault_irq, channel_static_data);
-
-	return -1;
-}
-
-/**
- * pl330_free_irq - Free the requested interrupt for the device
- * @dev_id: device id.
- */
-static void pl330_free_irq(unsigned int dev_id)
-{
-	unsigned int irq;
-	int i;
-
-	struct pl330_channel_static_data *channel_static_data;
-	struct pl330_device_data *device_data =
-		driver_data.device_data + dev_id;
-
-	pr_debug("PL330 freeing irq for device %d\n", dev_id);
-
-	channel_static_data = driver_data.channel_static_data
-		+ device_data->starting_channel;
-
-	for (i = 0; i < device_data->channels; i++) {
-
-		irq = channel_static_data->irq;
-
-		/* free the done irq */
-		free_irq(irq, channel_static_data);
-
-		channel_static_data++;
-	}
-
-	irq = device_data->fault_irq;
-
-	/* free the fault irq */
-	free_irq(irq, device_data);
-}
-
-/**
  * pl330_init_device_data - Initialize pl330_device_data struct instance.
  * @dev_id: Device id
  * @pdev: Instance of platform_device struct.
  */
-static void pl330_init_device_data(unsigned int dev_id,
+static int pl330_init_device_data(unsigned int dev_id,
 			    struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct resource *res;
-	struct pl330_platform_config *pl330_config;
 
 	u32 cfg_reg;
 	u32 value;
+	int status, irq, count;
+	const __be32 *prop;
 
 	u32 pid;
 	u32 cid;
@@ -1577,12 +1489,14 @@ static void pl330_init_device_data(unsigned int dev_id,
 	struct pl330_device_data *device_data =
 		driver_data.device_data + dev_id;
 
+	struct pl330_channel_static_data *channel_static_data;
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(&pdev->dev,
 			    "get_resource for MEM resource for dev %d failed\n",
 			    dev_id);
-		return;
+		return -1;
 	} else {
 		pr_debug("pl330 device %d actual base is %x\n",
 				dev_id, (unsigned int)res->start);
@@ -1591,7 +1505,7 @@ static void pl330_init_device_data(unsigned int dev_id,
 	if (!request_mem_region(res->start, 0x1000, "pl330")) {
 		dev_err(&pdev->dev, "memory request failue for base %x\n",
 		       (unsigned int)res->start);
-		return;
+		return -1;
 	}
 
 	spin_lock_init(&device_data->lock);
@@ -1603,7 +1517,7 @@ static void pl330_init_device_data(unsigned int dev_id,
 		dev_err(&pdev->dev, "ioremap failure for base %#x\n",
 				(unsigned int)res->start);
 		release_mem_region(res->start, SZ_4K);
-		return;
+		return -1;
 	}
 	pr_debug("virt_to_bus(base) is %#08lx\n",
 			virt_to_bus((__force void *)device_data->base));
@@ -1629,62 +1543,67 @@ static void pl330_init_device_data(unsigned int dev_id,
 	device_data->dev = dev;
 
 	/* now set up the channel configurations */
-	pl330_config = (struct pl330_platform_config *)dev->platform_data;
-	device_data->channels = pl330_config->channels;
-	device_data->starting_channel = pl330_config->starting_channel;
+	device_data->channels = 8;
+	prop = of_get_property(pdev->dev.of_node, "xlnx,channels", NULL);
+	if (prop)
+		device_data->channels = be32_to_cpup(prop);
+
+	device_data->starting_channel = 0;
+	prop = of_get_property(pdev->dev.of_node,
+					"xlnx,starting_channel", NULL);
+	if (prop)
+		device_data->starting_channel = be32_to_cpup(prop);
+
+
 	pr_debug("pl330 device %d starting channel %d, channels %d\n", dev_id,
 			device_data->starting_channel, device_data->channels);
 
+	/* Init list for IRQs - it can be long list */
+	INIT_LIST_HEAD(&mylist.list);
+
 	/* now get the irq configurations */
-
-	/* The 1st IRQ resource is for fault irq */
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!res) {
-		dev_err(&pdev->dev,
-			    "get_resource for IRQ resource for dev %d failed\n",
-			    dev_id);
-		return;
+	irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+	status = request_irq(irq, pl330_fault_isr,
+			     IRQF_DISABLED, "pl330-fault", device_data);
+	if (status) {
+		pr_err("PL330 request fault irq %d failed %d\n", irq, status);
+		return -1;
+	}
+	status = add_irq(pdev, irq, device_data);
+	if (status) {
+		pr_err("PL330 irq allocation %d failed %d\n", irq, status);
+		return -1;
 	}
 
-	if (res->start != res->end)
-		dev_err(&pdev->dev, "the first IRQ resource for dev %d should "
-		       "be a single IRQ for FAULT\n", dev_id);
-	device_data->fault_irq = res->start;
 
-	/* The 2nd IRQ resource is for 1st half of channel IRQ */
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
-	if (!res) {
-		dev_err(&pdev->dev,
-			 "get_resource for IRQ resource %d for dev %d failed\n",
-			 1, dev_id);
+	channel_static_data = driver_data.channel_static_data +
+						device_data->starting_channel;
 
-		device_data->starting_irq = 0;
-		device_data->ending_irq = 0;
-	} else {
-		device_data->starting_irq = res->start;
-		device_data->ending_irq = res->end;
+	count = of_irq_count(pdev->dev.of_node);
+	for (i = 1; i < count; i++) {
+		irq = irq_of_parse_and_map(pdev->dev.of_node, i);
+
+		/* set up the done irq */
+		status = request_irq(irq, pl330_done_isr,
+				     IRQF_DISABLED, DRIVER_NAME,
+				     channel_static_data);
+		if (status) {
+			pr_err("PL330 request done irq %d failed %d\n",
+								irq, status);
+			return -1;
+		}
+		status = add_irq(pdev, irq, channel_static_data);
+		if (status) {
+			pr_err("PL330 irq allocation %d failed %d\n",
+								irq, status);
+			return -1;
+		}
+
+		channel_static_data->irq = irq;
+		pr_debug("PL330 request done irq %d successful\n", irq);
+
+		channel_static_data++;
 	}
-
-	pr_debug("pl330 device %d 1st half starting irq %d, ending irq %d\n",
-			dev_id, device_data->starting_irq,
-			device_data->ending_irq);
-
-	/* The 3rd IRQ resource is for 2nd half of channel IRQ */
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 2);
-	if (!res) {
-		dev_err(&pdev->dev,
-			 "get_resource for IRQ resource %d for dev %d failed\n",
-			 2, dev_id);
-		device_data->starting_irq1 = 0;
-		device_data->ending_irq1 = 0;
-	} else {
-		device_data->starting_irq1 = res->start;
-		device_data->ending_irq1 = res->end;
-	}
-
-	pr_debug("pl330 device %d 2nd half starting irq %d, ending irq %d\n",
-			dev_id, device_data->starting_irq1,
-			device_data->ending_irq1);
 
 #ifdef PL330_OPTIMIZE_ICACHE
 	/*
@@ -1703,6 +1622,7 @@ static void pl330_init_device_data(unsigned int dev_id,
 #else
 	device_data->i_cache_len = 0;
 #endif
+	return 0;
 }
 
 
@@ -2192,7 +2112,7 @@ static void pl330_release_io(struct platform_device *pdev, int dev_id)
  */
 static int __devinit pl330_platform_probe(struct platform_device *pdev)
 {
-	int pdev_id;
+	int pdev_id, ret;
 
 	if (!pdev) {
 		dev_err(&pdev->dev, "pl330 probe called with NULL param.\n");
@@ -2212,7 +2132,11 @@ static int __devinit pl330_platform_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	pl330_init_device_data(pdev_id, pdev);
+	ret = pl330_init_device_data(pdev_id, pdev);
+	if (ret) {
+		clear_irq(pdev);
+		return ret;
+	}
 
 	/* assume the init_device_data is invoked before this point */
 	pl330_init_channel_static_data(pdev_id);
@@ -2220,13 +2144,7 @@ static int __devinit pl330_platform_probe(struct platform_device *pdev)
 	/* setup the default burst size */
 	pl330_set_default_burst_size(pdev_id);
 
-	/* request irq */
-	if (pl330_request_irq(pdev_id)) {
-		pl330_release_io(pdev, pdev_id);
-		return -1;
-	}
-
-	dev_info(&pdev->dev, "pl330 dev %d probe success\n", pdev->id);
+	dev_info(&pdev->dev, "pl330 dev %d probe success\n", pdev_id);
 
 	return 0;
 }
@@ -2261,13 +2179,18 @@ static int pl330_platform_remove(struct platform_device *pdev)
 	}
 
 
-	pl330_free_irq(pdev_id);
+	clear_irq(pdev);
 
 	pl330_release_io(pdev, pdev_id);
 
 	return 0;
 }
 
+static struct of_device_id pl330_of_match[] __devinitdata = {
+	{ .compatible = "xlnx,ps7-dma-1.00.a", },
+	{ /* end of list */ },
+};
+MODULE_DEVICE_TABLE(of, pl330_of_match);
 
 static struct platform_driver pl330_platform_driver = {
 	.probe = pl330_platform_probe,
@@ -2275,6 +2198,7 @@ static struct platform_driver pl330_platform_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
+		.of_match_table = pl330_of_match,
 	},
 };
 

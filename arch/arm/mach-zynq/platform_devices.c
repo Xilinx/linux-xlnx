@@ -24,51 +24,6 @@
 #include <mach/dma.h>
 #include "common.h"
 
-#define DMAC0_BASE		(0xF8003000)
-#define IRQ_DMAC0_ABORT		45
-#define IRQ_DMAC0		46
-#define IRQ_DMAC3		72
-
-static struct resource dmac0[] = {
-	{
-		.start = DMAC0_BASE,
-		.end = DMAC0_BASE + 0xFFF,
-		.flags = IORESOURCE_MEM,
-	}, {
-		.start = IRQ_DMAC0_ABORT,
-		.end = IRQ_DMAC0_ABORT,
-		.flags = IORESOURCE_IRQ,
-	}, {
-		.start = IRQ_DMAC0,
-		.end = IRQ_DMAC0 + 3,
-		.flags = IORESOURCE_IRQ,
-	}, {
-		.start = IRQ_DMAC3,
-		.end = IRQ_DMAC3 + 3,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-
-static struct pl330_platform_config dmac_config0 = {
-	.channels = 8,
-	.starting_channel = 0,
-};
-
-static u64 dma_mask = 0xFFFFFFFFUL;
-
-static struct platform_device dmac_device0 = {
-	.name = "pl330",
-	.id = 0,
-	.dev = {
-		.platform_data = &dmac_config0,
-		.dma_mask = &dma_mask,
-		.coherent_dma_mask = 0xFFFFFFFF,
-	},
-	.resource = dmac0,
-	.num_resources = ARRAY_SIZE(dmac0),
-};
-
-
 #ifdef CONFIG_XILINX_TEST
 
 static struct platform_device xilinx_dma_test = {
@@ -89,8 +44,6 @@ static struct platform_device xilinx_dma_test = {
  * will be registered
  */
 static struct platform_device *xilinx_pdevices[] __initdata = {
-	&dmac_device0,
-	/* &dmac_device1, */
 #ifdef CONFIG_XILINX_TEST
 	&xilinx_dma_test,
 #endif

@@ -267,5 +267,11 @@
 			interrupts = <0 7 4>;
 			interrupt-parent = <&gic>;
 		};
+		ps7_dma_s: ps7-dma@f8003000 {
+			compatible = "xlnx,ps7-dma-1.00.a";
+			interrupt-parent = <&gic>;
+			interrupts = < 0 13 4 0 14 4 0 15 4 0 16 4  0 17 4 0 40 4 0 41 4 0 42 4 0 43 4 >;
+			reg = < 0xf8003000 0x1000 >;
+		} ;
 	};
 };
