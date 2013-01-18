@@ -734,6 +734,24 @@ static void xemacps_phy_init(struct net_device *ndev)
 #endif
 }
 
+/**
+ * xemacps_set_freq() - Set a clock to a new frequency
+ * @clk		Pointer to the clock to change
+ * @rate	New frequency in Hz
+ * @dev		Pointer to the struct device
+ */
+static void xemacps_set_freq(struct clk *clk, long rate, struct device *dev)
+{
+	rate = clk_round_rate(clk, rate);
+	if (rate < 0) {
+		dev_warn(dev, "round rate failed\n");
+		return;
+	}
+
+	dev_info(dev, "Set clk to %ld Hz\n", rate);
+	if (clk_set_rate(clk, rate))
+		dev_err(dev, "Setting new clock rate failed.\n");
+}
 
 /**
  * xemacps_adjust_link - handles link status changes, such as speed,
@@ -746,7 +764,6 @@ static void xemacps_adjust_link(struct net_device *ndev)
 	struct phy_device *phydev = lp->phy_dev;
 	int status_change = 0;
 	u32 regval;
-	long rate;
 
 	if (phydev->link) {
 		if ((lp->speed != phydev->speed) ||
@@ -760,35 +777,23 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
-				rate = clk_round_rate(lp->devclk, 125000000);
-				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
-						rate);
-				if (clk_set_rate(lp->devclk, rate))
-					dev_err(&lp->pdev->dev,
-					"Setting new clock rate failed.\n");
+				xemacps_set_freq(lp->devclk, 125000000,
+						&lp->pdev->dev);
 			} else {
 				regval &= ~XEMACPS_NWCFG_1000_MASK;
 			}
 
 			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
-				rate = clk_round_rate(lp->devclk, 25000000);
-				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
-						rate);
-				if (clk_set_rate(lp->devclk, rate))
-					dev_err(&lp->pdev->dev,
-					"Setting new clock rate failed.\n");
+				xemacps_set_freq(lp->devclk, 25000000,
+						&lp->pdev->dev);
 			} else {
 				regval &= ~XEMACPS_NWCFG_100_MASK;
 			}
 
 			if (phydev->speed == SPEED_10) {
-				rate = clk_round_rate(lp->devclk, 2500000);
-				dev_info(&lp->pdev->dev, "Set clk to %ld Hz\n",
-						rate);
-				if (clk_set_rate(lp->devclk, rate))
-					dev_err(&lp->pdev->dev,
-					"Setting new clock rate failed.\n");
+				xemacps_set_freq(lp->devclk, 2500000,
+						&lp->pdev->dev);
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
