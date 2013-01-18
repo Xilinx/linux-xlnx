@@ -39,6 +39,7 @@
 #include <linux/interrupt.h>
 #include <linux/percpu.h>
 #include <linux/slab.h>
+#include <linux/irqchip/chained_irq.h>
 
 #include <asm/irq.h>
 #include <asm/exception.h>

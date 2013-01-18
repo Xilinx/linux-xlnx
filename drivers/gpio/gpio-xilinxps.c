@@ -26,7 +26,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeup.h>
 #include <linux/slab.h>
-#include <asm/mach/irq.h>
+#include <linux/irqchip/chained_irq.h>
 #include <linux/irqdomain.h>
 
 #define DRIVER_NAME "xgpiops"
