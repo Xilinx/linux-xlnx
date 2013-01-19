@@ -49,6 +49,7 @@
 #include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
+#include <linux/timer.h>
 
 /************************** Constant Definitions *****************************/
 
@@ -462,6 +463,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_RXBUF_NEW_MASK		0x00000001 /* Used bit.. */
 #define XEMACPS_RXBUF_ADD_MASK		0xFFFFFFFC /* Mask for address */
 
+#define XEAMCPS_GEN_PURPOSE_TIMER_LOAD	100 /* timeout value is msecs */
 
 #define XSLCR_EMAC0_CLK_CTRL_OFFSET	0x140 /* EMAC0 Reference Clk Control */
 #define XSLCR_EMAC1_CLK_CTRL_OFFSET	0x144 /* EMAC1 Reference Clk Control */
@@ -584,6 +586,8 @@ struct net_local {
 
 	struct napi_struct napi; /* napi information for device */
 	struct net_device_stats stats; /* Statistics for this device */
+
+	struct timer_list gen_purpose_timer; /* Used for stats update */
 
 	/* Manage internal timer for packet timestamping */
 	struct cyclecounter cycles;
@@ -2075,6 +2079,88 @@ static void xemacps_init_hw(struct net_local *lp)
 }
 
 /**
+ * xemacps_update_stats - Update the statistic structure entries from
+ * the corresponding emacps hardware statistic registers
+ * @data: Used for net_local instance pointer
+ **/
+static void xemacps_update_stats(unsigned long data)
+{
+	struct net_local *lp = (struct net_local *)data;
+	struct net_device_stats *nstat = &lp->stats;
+
+	nstat->rx_errors +=
+			(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET));
+	nstat->rx_length_errors +=
+			(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
+			xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET));
+	nstat->rx_over_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
+	nstat->rx_crc_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET);
+	nstat->rx_frame_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET);
+	nstat->rx_fifo_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
+	nstat->tx_errors +=
+			(xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_SNGLCOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_MULTICOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_EXCESSCOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_LATECOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_CSENSECNT_OFFSET));
+	nstat->tx_aborted_errors +=
+			xemacps_read(lp->baseaddr,
+					XEMACPS_EXCESSCOLLCNT_OFFSET);
+	nstat->tx_carrier_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_CSENSECNT_OFFSET);
+	nstat->tx_fifo_errors +=
+			xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET);
+	nstat->collisions +=
+			(xemacps_read(lp->baseaddr,
+					XEMACPS_SNGLCOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_MULTICOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_EXCESSCOLLCNT_OFFSET) +
+			xemacps_read(lp->baseaddr,
+					XEMACPS_LATECOLLCNT_OFFSET));
+}
+
+/**
+ * xemacps_gen_purpose_timerhandler - Timer handler that is called at regular
+ * intervals upon expiry of the gen_purpose_timer defined in net_local struct.
+ * @data: Used for net_local instance pointer
+ *
+ * This timer handler is used to update the statistics by calling the API
+ * xemacps_update_stats. The statistics register can typically overflow pretty
+ * quickly under heavy load conditions. This timer is used to periodically
+ * read the stats registers and update the corresponding stats structure
+ * entries. The stats registers when read reset to 0.
+ **/
+static void xemacps_gen_purpose_timerhandler(unsigned long data)
+{
+	struct net_local *lp = (struct net_local *)data;
+
+	xemacps_update_stats(data);
+	mod_timer(&(lp->gen_purpose_timer),
+		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
+}
+
+/**
  * xemacps_open - Called when a network device is made active
  * @ndev: network interface device structure
  * return 0 on success, negative value if error
@@ -2132,8 +2218,12 @@ static int xemacps_open(struct net_device *ndev)
 		goto err_pm_put;
 	}
 
-	netif_carrier_on(ndev);
+	setup_timer(&(lp->gen_purpose_timer), xemacps_gen_purpose_timerhandler,
+							(unsigned long)lp);
+	mod_timer(&(lp->gen_purpose_timer),
+		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
 
+	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
 
 	return 0;
@@ -2161,6 +2251,7 @@ static int xemacps_close(struct net_device *ndev)
 	struct net_local *lp = netdev_priv(ndev);
 	unsigned long flags;
 
+	del_timer(&(lp->gen_purpose_timer));
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
 	spin_lock_irqsave(&lp->lock, flags);
@@ -2752,44 +2843,7 @@ static struct net_device_stats
 	struct net_local *lp = netdev_priv(ndev);
 	struct net_device_stats *nstat = &lp->stats;
 
-	nstat->rx_errors +=
-		(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET));
-	nstat->rx_length_errors +=
-		(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET));
-	nstat->rx_over_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
-	nstat->rx_crc_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET);
-	nstat->rx_frame_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET);
-	nstat->rx_fifo_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
-	nstat->tx_errors +=
-		(xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_SNGLCOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_MULTICOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_EXCESSCOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_LATECOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_CSENSECNT_OFFSET));
-	nstat->tx_aborted_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_EXCESSCOLLCNT_OFFSET);
-	nstat->tx_carrier_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_CSENSECNT_OFFSET);
-	nstat->tx_fifo_errors +=
-		xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET);
-	nstat->collisions +=
-		(xemacps_read(lp->baseaddr, XEMACPS_SNGLCOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_MULTICOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_EXCESSCOLLCNT_OFFSET) +
-		xemacps_read(lp->baseaddr, XEMACPS_LATECOLLCNT_OFFSET));
+	xemacps_update_stats((unsigned long)lp);
 	return nstat;
 }
 
