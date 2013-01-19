@@ -1604,9 +1604,6 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	while (work_done < budget) {
 		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
-		if (regval & (XEMACPS_RXSR_HRESPNOK_MASK |
-					XEMACPS_RXSR_BUFFNA_MASK))
-			lp->stats.rx_errors++;
 		temp_work_done = xemacps_rx(lp, budget - work_done);
 		work_done += temp_work_done;
 		if (temp_work_done <= 0)
@@ -1643,14 +1640,6 @@ static void xemacps_tx_poll(struct net_device *ndev)
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_TXSR_OFFSET, regval);
 	dev_dbg(&lp->pdev->dev, "TX status 0x%x\n", regval);
-
-	/* If this error is seen, it is in deep trouble and nothing
-	 * we can do to revive hardware other than reset hardware.
-	 * Or try to close this interface and reopen it.
-	 */
-	if (regval & (XEMACPS_TXSR_RXOVR_MASK | XEMACPS_TXSR_HRESPNOK_MASK
-					| XEMACPS_TXSR_BUFEXH_MASK))
-		lp->stats.tx_errors++;
 
 	/* This may happen when a buffer becomes complete
 	 * between reading the ISR and scanning the descriptors.
