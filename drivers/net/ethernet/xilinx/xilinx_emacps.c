@@ -242,6 +242,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 						Nanoseconds */
 
 /* network control register bit definitions */
+#define XEMACPS_NWCTRL_FLUSH_DPRAM_MASK	0x00040000
 #define XEMACPS_NWCTRL_RXTSTAMP_MASK	0x00008000 /* RX Timestamp in CRC */
 #define XEMACPS_NWCTRL_ZEROPAUSETX_MASK	0x00001000 /* Transmit zero quantum
 						pause frame */
@@ -604,6 +605,7 @@ struct net_local {
 	unsigned ip_summed;
 	unsigned int enetnum;
 	unsigned int board_type;
+	unsigned int lastrxfrmscntr;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int ptpenetclk;
 #endif
@@ -1623,8 +1625,7 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	 * routine, now it is time to enable it back.
 	 */
 	xemacps_write(lp->baseaddr, XEMACPS_IER_OFFSET,
-					(XEMACPS_IXR_FRAMERX_MASK |
-					XEMACPS_IXR_RX_ERR_MASK));
+					XEMACPS_IXR_FRAMERX_MASK);
 
 	return work_done;
 }
@@ -1735,6 +1736,7 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	struct net_device *ndev = dev_id;
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regisr;
+	u32 regctrl;
 
 	spin_lock(&lp->lock);
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
@@ -1749,11 +1751,18 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 				XEMACPS_IXR_TX_ERR_MASK)) {
 			xemacps_tx_poll(ndev);
 		}
-		if (regisr & (XEMACPS_IXR_FRAMERX_MASK |
-			XEMACPS_IXR_RX_ERR_MASK)) {
-			xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET,
-					(XEMACPS_IXR_FRAMERX_MASK |
-					XEMACPS_IXR_RX_ERR_MASK));
+
+		if (regisr & XEMACPS_IXR_RXUSED_MASK) {
+			regctrl = xemacps_read(lp->baseaddr,
+					XEMACPS_NWCTRL_OFFSET);
+			regctrl |= XEMACPS_NWCTRL_FLUSH_DPRAM_MASK;
+			xemacps_write(lp->baseaddr,
+					XEMACPS_NWCTRL_OFFSET, regctrl);
+		}
+
+		if (regisr & XEMACPS_IXR_FRAMERX_MASK) {
+			xemacps_write(lp->baseaddr,
+				XEMACPS_IDR_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
 			napi_schedule(&lp->napi);
 		}
 		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
@@ -2073,6 +2082,33 @@ static void xemacps_init_hw(struct net_local *lp)
 }
 
 /**
+ * xemacps_resetrx_for_no_rxdata - Resets the Rx if there is no data
+ * for a while (presently 100 msecs)
+ * @data: Used for net_local instance pointer
+ **/
+static void xemacps_resetrx_for_no_rxdata(unsigned long data)
+{
+	struct net_local *lp = (struct net_local *)data;
+	unsigned long regctrl;
+	unsigned long tempcntr;
+
+	spin_lock(&lp->lock);
+	tempcntr = xemacps_read(lp->baseaddr, XEMACPS_RXCNT_OFFSET);
+	if ((!tempcntr) && (!(lp->lastrxfrmscntr))) {
+		regctrl = xemacps_read(lp->baseaddr,
+				XEMACPS_NWCTRL_OFFSET);
+		regctrl &= (~XEMACPS_NWCTRL_RXEN_MASK);
+		xemacps_write(lp->baseaddr,
+				XEMACPS_NWCTRL_OFFSET, regctrl);
+		regctrl = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
+		regctrl |= (XEMACPS_NWCTRL_RXEN_MASK);
+		xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regctrl);
+	}
+	lp->lastrxfrmscntr = tempcntr;
+	spin_unlock(&lp->lock);
+}
+
+/**
  * xemacps_update_stats - Update the statistic structure entries from
  * the corresponding emacps hardware statistic registers
  * @data: Used for net_local instance pointer
@@ -2150,6 +2186,7 @@ static void xemacps_gen_purpose_timerhandler(unsigned long data)
 	struct net_local *lp = (struct net_local *)data;
 
 	xemacps_update_stats(data);
+	xemacps_resetrx_for_no_rxdata(data);
 	mod_timer(&(lp->gen_purpose_timer),
 		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
 }
