@@ -382,7 +382,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_IXR_RXUSED_MASK		0x00000004 /* Rx buffer used bit read */
 #define XEMACPS_IXR_FRAMERX_MASK	0x00000002 /* Frame received ok */
 #define XEMACPS_IXR_MGMNT_MASK		0x00000001 /* PHY management complete */
-#define XEMACPS_IXR_ALL_MASK		0x03FC7FFF /* Everything! */
+#define XEMACPS_IXR_ALL_MASK		0x03FC7FFE /* Everything except MDIO */
 
 #define XEMACPS_IXR_TX_ERR_MASK	(XEMACPS_IXR_TXEXH_MASK |		\
 					XEMACPS_IXR_RETRY_MASK |	\
