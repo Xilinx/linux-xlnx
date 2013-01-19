@@ -483,9 +483,9 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #endif
 
 #define xemacps_read(base, reg)						\
-	__raw_readl((u32)(base) + (u32)(reg))
+	__raw_readl((void __iomem *)((base) + (reg)))
 #define xemacps_write(base, reg, val)					\
-	__raw_writel((val), (u32)(base) + (u32)(reg))
+	__raw_writel((val), (void __iomem *)((base) + (reg)))
 
 #define XEMACPS_RING_SEEKAHEAD(ringptr, bdptr, numbd)			\
 {									\
