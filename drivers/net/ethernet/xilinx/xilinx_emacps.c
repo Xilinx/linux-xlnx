@@ -77,7 +77,7 @@ enum { MDC_DIV_8 = 0, MDC_DIV_16, MDC_DIV_32, MDC_DIV_48,
 MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 
 /* Specify the receive buffer size in bytes, 64, 128, 192, 10240 */
-#define XEMACPS_RX_BUF_SIZE		1600
+#define XEMACPS_RX_BUF_SIZE		1536
 
 /* Number of receive buffer bytes as a unit, this is HW setup */
 #define XEMACPS_RX_BUF_UNIT		64
