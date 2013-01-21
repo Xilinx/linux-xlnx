@@ -278,10 +278,6 @@ else
 KBUILD_IMAGE := zImage
 endif
 
-# With make 3.82 we cannot mix normal and wildcard targets
-BOOT_TARGETS1 := zImage Image xipImage bootpImage uImage
-BOOT_TARGETS2 := zImage% uImage.% dtbImage% simpleImage.%
-
 all:	$(KBUILD_IMAGE)
 
 boot := arch/arm/boot
@@ -292,8 +288,10 @@ archprepare:
 # Convert bzImage to zImage
 bzImage: zImage
 
-#zImage Image xipImage bootpImage uImage: vmlinux
-$(BOOT_TARGETS1) $(BOOT_TARGETS2) : vmlinux
+zImage Image xipImage bootpImage uImage: vmlinux
+	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
+
+zImage% uImage.% dtbImage% simpleImage.%: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
 
 zinstall uinstall install: vmlinux
