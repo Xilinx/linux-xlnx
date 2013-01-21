@@ -209,13 +209,13 @@ static int __devinit zynq_remoteproc_probe(struct platform_device *pdev)
 		DMA_MEMORY_IO);
 	if (!ret) {
 		dev_err(&pdev->dev, "dma_declare_coherent_memory failed\n");
-		return ret;
+		goto dma_fault;
 	}
 
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret) {
 		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
-		return ret;
+		goto dma_fault;
 	}
 
 	/* Init list for IRQs - it can be long list */
@@ -318,6 +318,7 @@ ipi_fault:
 irq_fault:
 	clear_irq(pdev);
 
+dma_fault:
 	/* Cpu can't be power on - for example in nosmp mode */
 	ret |= cpu_up(1);
 	if (ret)
