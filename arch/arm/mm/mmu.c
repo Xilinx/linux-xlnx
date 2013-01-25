@@ -892,6 +892,14 @@ void __init sanity_check_meminfo(void)
 			highmem = 1;
 
 #ifdef CONFIG_HIGHMEM
+		if (__va(bank->start + bank->size - 1) < (void *)PAGE_OFFSET) {
+			pr_notice("Ignoring RAM at %.8llx-%.8llx "
+				"(CONFIG_HIGHMEM).\n",
+				(unsigned long long)bank->start,
+				(unsigned long long)bank->start + bank->size - 1);
+			continue;
+		}
+
 		if (__va(bank->start) >= vmalloc_min ||
 		    __va(bank->start) < (void *)PAGE_OFFSET)
 			highmem = 1;
