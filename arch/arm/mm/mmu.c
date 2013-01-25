@@ -891,6 +891,17 @@ void __init sanity_check_meminfo(void)
 		if (bank->start > ULONG_MAX)
 			highmem = 1;
 
+		if (bank->start < __pa(PAGE_OFFSET) &&
+			__pa(PAGE_OFFSET) <= (bank->start + bank->size - 1)) {
+				int offset = __pa(PAGE_OFFSET) - bank->start;
+				bank->start += offset;
+				bank->size -= offset;
+				pr_crit("Change memory bank to %.8llx-%.8llx\n",
+					(unsigned long long)bank->start,
+					(unsigned long long)bank->start +
+								bank->size - 1);
+		}
+
 #ifdef CONFIG_HIGHMEM
 		if (__va(bank->start + bank->size - 1) < (void *)PAGE_OFFSET) {
 			pr_notice("Ignoring RAM at %.8llx-%.8llx "
