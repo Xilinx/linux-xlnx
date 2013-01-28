@@ -94,7 +94,7 @@
 #include <linux/io.h>
 #include <asm/dma.h>
 #include <asm/mach/dma.h>
-#include <mach/pl330.h>
+#include "xilinx_pl330.h"
 
 #define DRIVER_NAME         "pl330"
 
@@ -2184,6 +2184,66 @@ static void pl330_release_io(struct platform_device *pdev, int dev_id)
 
 }
 
+
+#define DMAC0_BASE		(0xF8003000)
+#define IRQ_DMAC0_ABORT		45
+#define IRQ_DMAC0		46
+#define IRQ_DMAC3		72
+
+static struct resource dmac0[] = {
+	{
+		.start = DMAC0_BASE,
+		.end = DMAC0_BASE + 0xFFF,
+		.flags = IORESOURCE_MEM,
+	}, {
+		.start = IRQ_DMAC0_ABORT,
+		.end = IRQ_DMAC0_ABORT,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_DMAC0,
+		.end = IRQ_DMAC0 + 3,
+		.flags = IORESOURCE_IRQ,
+	}, {
+		.start = IRQ_DMAC3,
+		.end = IRQ_DMAC3 + 3,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct pl330_platform_config dmac_config0 = {
+	.channels = 8,
+	.starting_channel = 0,
+};
+
+static u64 dma_mask = 0xFFFFFFFFUL;
+
+static struct platform_device dmac_device0 = {
+	.name = "pl330",
+	.id = 0,
+	.dev = {
+		.platform_data = &dmac_config0,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = dmac0,
+	.num_resources = ARRAY_SIZE(dmac0),
+};
+
+
+#ifdef CONFIG_XILINX_TEST
+static struct platform_device xilinx_dma_test = {
+	.name = "pl330_test",
+	.id = 0,
+	.dev = {
+		.platform_data = NULL,
+		.dma_mask = &dma_mask,
+		.coherent_dma_mask = 0xFFFFFFFF,
+	},
+	.resource = NULL,
+	.num_resources = 0,
+};
+#endif
+
 /**
  * pl330_platform_probe - Platform driver probe
  * @pdev: Pointer to the platform device structure
@@ -2193,6 +2253,7 @@ static void pl330_release_io(struct platform_device *pdev, int dev_id)
 static int __devinit pl330_platform_probe(struct platform_device *pdev)
 {
 	int pdev_id;
+	int ret = 0;
 
 	if (!pdev) {
 		dev_err(&pdev->dev, "pl330 probe called with NULL param.\n");
@@ -2228,7 +2289,14 @@ static int __devinit pl330_platform_probe(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "pl330 dev %d probe success\n", pdev->id);
 
-	return 0;
+#ifdef CONFIG_XILINX_TEST
+	ret = platform_device_register(&xilinx_dma_test);
+	if (ret)
+		pr_info("Unable to register platform device '%s': %d\n",
+			xilinx_dma_test.name, ret);
+#endif
+
+	return ret;
 }
 
 
@@ -2645,7 +2713,12 @@ EXPORT_SYMBOL(get_pl330_da_reg);
  */
 static int __init pl330_init(void)
 {
-	int status;
+	int status, ret;
+
+	ret = platform_device_register(&dmac_device0);
+	if (ret)
+		pr_info("Unable to register platform device '%s': %d\n",
+			dmac_device0.name, ret);
 
 	pl330_driver_init();
 

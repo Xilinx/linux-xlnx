@@ -212,8 +212,6 @@ static void __init xilinx_init_late(void)
 static void __init xilinx_init_machine(void)
 {
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
-
-	platform_device_init();
 }
 
 static const char *xilinx_dt_match[] = {

@@ -9,7 +9,7 @@
 #include <asm/sizes.h>
 
 #include <asm/dma.h>
-#include <mach/pl330.h>
+#include "xilinx_pl330.h"
 
 /*
  * This is a test module for pl330 linux driver.
