@@ -14,7 +14,7 @@
 #ifndef __MACH_CLK__H__
 #define __MACH_CLK__H__
 
-void zynq_clock_init(void);
+void zynq_clock_init(void __iomem *slcr_base);
 
 struct clk *clk_register_zynq_gd1m(const char *name,
 		void __iomem *clkctrl, const char **pnames,

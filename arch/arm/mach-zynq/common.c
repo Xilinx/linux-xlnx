@@ -35,7 +35,6 @@
 #include <asm/hardware/cache-l2x0.h>
 
 #include <mach/zynq_soc.h>
-#include <mach/clk.h>
 #include "common.h"
 
 static const struct of_device_id zynq_dt_irq_match[] __initconst = {
@@ -62,20 +61,11 @@ static struct map_desc io_desc[] __initdata = {
 		.type		= MT_DEVICE,
 	},
 #endif
-
-	/* SLCR space for clock stuff for now */
-	{
-		.virtual	= SLCR_BASE_VIRT,
-		.pfn		= __phys_to_pfn(SLCR_BASE_PHYS),
-		.length		= (3 * SZ_1K),
-		.type		= MT_DEVICE,
-	},
 };
 
 static void __init xilinx_zynq_timer_init(void)
 {
-	zynq_clock_init();
-
+	xslcr_init();
 	xttcpss_timer_init();
 }
 
