@@ -27,7 +27,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <mach/slcr.h>
-#include <mach/clk.h>
+#include <linux/clk/zynq.h>
 
 #define DRIVER_NAME "xslcr"
 

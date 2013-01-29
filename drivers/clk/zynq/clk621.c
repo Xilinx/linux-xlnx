@@ -20,7 +20,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include <mach/clk.h>
+#include <linux/clk/zynq.h>
 
 /**
  * struct zynq_clk621

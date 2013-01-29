@@ -17,7 +17,7 @@
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
 #include <linux/of.h>
-#include <mach/clk.h>
+#include <linux/clk/zynq.h>
 
 #define SLCR_ARMPLL_CTRL		(slcr_base + 0x100)
 #define SLCR_DDRPLL_CTRL		(slcr_base + 0x104)

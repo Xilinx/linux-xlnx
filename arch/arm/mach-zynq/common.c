@@ -36,6 +36,7 @@
 
 #include <mach/zynq_soc.h>
 #include "common.h"
+#include <linux/clk/zynq.h>
 
 static const struct of_device_id zynq_dt_irq_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
