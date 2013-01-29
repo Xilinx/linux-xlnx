@@ -26,7 +26,6 @@
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
 #include <mach/system.h>
-#include <mach/zynq_soc.h>
 #include "common.h"
 
 static DEFINE_SPINLOCK(boot_lock);
@@ -191,7 +190,7 @@ void __init smp_init_cpus(void)
 {
 	int i;
 
-	ncores = scu_get_core_count(SCU_PERIPH_BASE);
+	ncores = scu_get_core_count(scu_base);
 
 	for (i = 0; i < ncores && i < CONFIG_NR_CPUS; i++)
 		set_cpu_possible(i, true);
@@ -226,6 +225,6 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 0; i < max_cpus; i++)
 		set_cpu_present(i, true);
 
-	scu_enable(SCU_PERIPH_BASE);
+	scu_enable(scu_base);
 }
 

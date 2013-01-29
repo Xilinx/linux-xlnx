@@ -32,4 +32,6 @@ static inline void xilinx_system_reset(char mode, const char *cmd)
 /* multiplatform use core.h for this purpose */
 extern void secondary_startup(void);
 
+extern void __iomem *scu_base;
+
 #endif

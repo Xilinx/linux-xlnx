@@ -38,6 +38,8 @@
 #include "common.h"
 #include <linux/clk/zynq.h>
 
+void __iomem *scu_base;
+
 static const struct of_device_id zynq_dt_irq_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
 	{ }
@@ -47,13 +49,6 @@ static const struct of_device_id zynq_dt_irq_match[] __initconst = {
  * running include the GIC, UART and Timer Counter.
  */
 static struct map_desc io_desc[] __initdata = {
-	{
-		.virtual	= SCU_PERIPH_VIRT,
-		.pfn		= __phys_to_pfn(SCU_PERIPH_PHYS),
-		.length		= SZ_8K,
-		.type		= MT_DEVICE,
-	},
-
 #ifdef CONFIG_DEBUG_LL
 	{
 		.virtual	= LL_UART_VADDR,
@@ -63,6 +58,29 @@ static struct map_desc io_desc[] __initdata = {
 	},
 #endif
 };
+
+static struct map_desc zynq_cortex_a9_scu_map __initdata = {
+	.length	= SZ_256,
+	.type	= MT_DEVICE,
+};
+
+/* Solution ala vexpress platform */
+static int __init scu_init(void)
+{
+	unsigned long base;
+
+	/* FIXME will be replaced by scu_get_base(void) in 3.8 */
+	asm("mrc p15, 4, %0, c15, c0, 0" : "=r" (base));
+
+	zynq_cortex_a9_scu_map.pfn = __phys_to_pfn(base);
+	zynq_cortex_a9_scu_map.virtual = base;
+	iotable_init(&zynq_cortex_a9_scu_map, 1);
+	scu_base = ioremap(base, zynq_cortex_a9_scu_map.length);
+	if (WARN_ON(!scu_base))
+		return -EFAULT;
+
+	return 0;
+}
 
 static void __init xilinx_zynq_timer_init(void)
 {
@@ -83,6 +101,7 @@ static struct sys_timer xttcpss_sys_timer = {
 static void __init xilinx_map_io(void)
 {
 	iotable_init(io_desc, ARRAY_SIZE(io_desc));
+	scu_init();
 }
 
 /**

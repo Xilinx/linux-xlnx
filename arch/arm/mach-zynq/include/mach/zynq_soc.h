@@ -22,9 +22,6 @@
 #define UART_SIZE		SZ_4K
 #define UART_VIRT		0xF0001000
 
-#define SCU_PERIPH_PHYS			0xF8F00000
-#define SCU_PERIPH_VIRT			SCU_PERIPH_PHYS
-
 #if IS_ENABLED(CONFIG_DEBUG_ZYNQ_UART1)
 # define LL_UART_PADDR		UART1_PHYS
 #else
@@ -32,9 +29,5 @@
 #endif
 
 #define LL_UART_VADDR		UART_VIRT
-
-/* The following are intended for the devices that are mapped early */
-
-#define SCU_PERIPH_BASE			IOMEM(SCU_PERIPH_VIRT)
 
 #endif
