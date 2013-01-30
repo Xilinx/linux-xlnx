@@ -76,15 +76,6 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	spin_unlock(&boot_lock);
 }
 
-/*
- * Store pointer to SLCR registers. SLCR driver can't be used because
- * it is not initialized yet and this code is used for bootup the second CPU
- */
-#define SLCR_UNLOCK	0xDF0D
-#define SLCR_LOCK	0x767B
-
-static u8 __iomem *slcr;
-
 int __cpuinit zynq_cpun_start(u32 address, int cpu)
 {
 	if (cpu > ncores) {
@@ -92,27 +83,13 @@ int __cpuinit zynq_cpun_start(u32 address, int cpu)
 		return -1;
 	}
 
-	if (!slcr) {
-		printk(KERN_INFO "Map SLCR registers\n");
-		/*
-		 * Remap the SLCR registers to be able to work
-		 * with secondary CPUs
-		 */
-		slcr = ioremap(0xF8000000, PAGE_SIZE);
-		if (!slcr) {
-			printk(KERN_WARNING
-				"!!!! SLCR jump vectors can't be used !!!!\n");
-			return -1;
-		}
-	}
 	mem_backup_done = 0;
 
 	/* MS: Expectation that SLCR are directly map and accessible */
 	/* Not possible to jump to non aligned address */
 	if (!(address & 3) && (!address || (address >= 0xC))) {
-		__raw_writel(SLCR_UNLOCK, slcr + 0x8); /* UNLOCK SLCR */
 		/* stop CLK and reset CPUn */
-		__raw_writel(0x11 << cpu, slcr + 0x244);
+		xslcr_write(0x11 << cpu, 0x244);
 
 		/*
 		 * This is elegant way how to jump to any address
@@ -138,16 +115,9 @@ int __cpuinit zynq_cpun_start(u32 address, int cpu)
 		outer_flush_all();
 		wmb();
 
-		__raw_writel(0x10 << cpu, slcr + 0x244); /* enable CPUn */
-		__raw_writel(0x0, slcr + 0x244); /* enable CLK for CPUn */
+		xslcr_write(0x10 << cpu, 0x244); /* enable CPUn */
+		xslcr_write(0x0 << cpu, 0x244); /* enable CLK for CPUn */
 
-		/* the SLCR locking/unlocking needs to be re-done, for now
-		 * there is not centralized locking/unlocking so leave it
-		 * unlocked
-		 */
-#if 0
-		__raw_writel(SLCR_LOCK, slcr + 0x4); /* LOCK SLCR */
-#endif
 		return 0;
 	}
 
