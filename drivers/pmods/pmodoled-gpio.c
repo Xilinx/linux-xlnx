@@ -58,15 +58,15 @@
 #define OLED_SET_COM_DIR			0xC8
 #define OLED_SET_COM_PINS		0xDA
 
-dev_t gpio_pmodoled_dev_id;
+static dev_t gpio_pmodoled_dev_id;
 static unsigned int device_num;
 static unsigned int cur_minor;
 static unsigned int spi_drv_registered;
-struct mutex minor_mutex;
+/* struct mutex minor_mutex; */
 static struct class *gpio_pmodoled_class;
 
 struct gpio_pmodoled_device {
-	char *name;
+	const char *name;
 	/* R/W Mutex Lock */
 	struct mutex mutex;
 	/* Display Buffers */
@@ -171,7 +171,7 @@ static ssize_t gpio_pmodoled_write(struct file *fp, const char __user *buffer, s
 
 	if (buffer == NULL) {
 		dev_err(&dev->spi->dev, "oled_write: ERROR: invalid buffer address: 0x%08x\n",
-					(unsigned int) buffer);
+					(__force unsigned int) buffer);
 		retval = -EINVAL;
 		goto quit_write;
 	}
@@ -225,7 +225,7 @@ static ssize_t	gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t l
 
 	if (buffer == NULL) {
 		dev_err(&dev->spi->dev, "OLED_read: ERROR: invalid buffer "
-				"address: 0x%08X\n", (unsigned int)buffer);
+				"address: 0x%08X\n", (__force unsigned int)buffer);
 		retval = -EINVAL;
 		goto quit_read;
 	}
@@ -234,7 +234,7 @@ static ssize_t	gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t l
 		cnt = DISPLAY_BUF_SZ;
 	else
 		cnt = length;
-	retval = copy_to_user((void *)buffer, dev->disp_buf, cnt);
+	retval = copy_to_user((void __user *)buffer, dev->disp_buf, cnt);
 	if (!retval)
 		retval = cnt; /* copy success, return amount in buffer */
 
@@ -244,7 +244,7 @@ read_lock_err:
 	return retval;
 }
 
-struct file_operations gpio_pmodoled_cdev_fops = {
+static struct file_operations gpio_pmodoled_cdev_fops = {
 	.owner = THIS_MODULE,
 	.write = gpio_pmodoled_write,
 	.read = gpio_pmodoled_read,
