@@ -160,6 +160,8 @@
 #define xslcr_writereg(offset, val)	__raw_writel(val, offset)
 #define xslcr_readreg(offset)		__raw_readl(offset)
 
+void __iomem *zynq_slcr_base;
+
 /**
  * struct xslcr - slcr device data.
  * @regs:	baseaddress of device.
@@ -2494,6 +2496,8 @@ int __init xslcr_init(void)
 		pr_err("%s: Unable to map I/O memory\n", __func__);
 		BUG();
 	}
+
+	zynq_slcr_base = slcr->regs;
 
 	/* init periph_status based on the data from MIO control registers */
 	xslcr_get_mio_status();
