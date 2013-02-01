@@ -204,7 +204,7 @@ struct xslcr_periph_reset {
 };
 
 /* MIO peripheral names */
-static const char * mio_periph_name[] = {
+static const char * const mio_periph_name[] = {
 	"emac0",
 	"emac1",
 	"qspi0",
@@ -1468,7 +1468,7 @@ static const struct xslcr_mio mio_periphs[] = {
 };
 
 /* Peripherals that can be reset thru SLCR */
-static const char * reset_periph_name[] = {
+static const char * const reset_periph_name[] = {
 	"pss",
 	"ddr",
 	"sw_amba",
@@ -1638,7 +1638,8 @@ EXPORT_SYMBOL(xslcr_read);
 /**
  * xslcr_init_preload_fpga - Disable communication from the PL to PS.
  */
-void xslcr_init_preload_fpga(void) {
+void xslcr_init_preload_fpga(void)
+{
 
 	/* Assert FPGA top level output resets */
 	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0xF);
@@ -1654,7 +1655,8 @@ EXPORT_SYMBOL(xslcr_init_preload_fpga);
 /**
  * xslcr_init_postload_fpga - Re-enable communication from the PL to PS.
  */
-void xslcr_init_postload_fpga(void) {
+void xslcr_init_postload_fpga(void)
+{
 
 	/* Enable level shifters */
 	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xF);
@@ -1959,7 +1961,7 @@ static ssize_t xslcr_config_mio_peripheral(struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = strict_strtoul(buf, 10, &en);
+	ret = kstrtoul(buf, 10, &en);
 	if ((ret) || (en > 1)) {
 		dev_err(dev, "Invalid user argument\n");
 		return -EINVAL;
@@ -2009,7 +2011,7 @@ static ssize_t xslcr_store_pinset(struct device *dev,
 	}
 
 	/* get the pin set */
-	ret = strict_strtoul(buf, 10, &pin_set);
+	ret = kstrtoul(buf, 10, &pin_set);
 	if ((ret) || (pin_set >= mio_periphs[mio].max_sets)) {
 		dev_err(dev, "Invalid pinset\n");
 		return -EINVAL;
@@ -2056,7 +2058,7 @@ static ssize_t xslcr_config_mio_clock(struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = strict_strtoul(buf, 10, &en);
+	ret = kstrtoul(buf, 10, &en);
 	if ((ret) || (en > 1)) {
 		dev_err(dev, "Invalid user argument\n");
 		return -EINVAL;
@@ -2145,7 +2147,7 @@ static ssize_t xslcr_reset_periph(struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = strict_strtoul(buf, 10, &rst);
+	ret = kstrtoul(buf, 10, &rst);
 	if (ret) {
 		dev_err(dev, "Invalid user argument\n");
 		return -EINVAL;
@@ -2259,7 +2261,7 @@ static int match_dev(struct device *dev, void *data)
  **/
 static int xslcr_create_devices(struct platform_device *pdev,
 				struct class *xslcr_class,
-				const char **periph, int nr)
+				const char * const *periph, int nr)
 {
 	int i, ret;
 
@@ -2305,7 +2307,7 @@ static int xslcr_create_devices(struct platform_device *pdev,
  *		removed.
  **/
 static void xslcr_remove_devices(struct class *xslcr_class,
-				 const char **periph, int nr)
+				 const char * const *periph, int nr)
 {
 	int i;
 
@@ -2366,8 +2368,8 @@ static void xslcr_get_mio_status(void)
 				}
 			}
 		}
-		/*Noone claims this pin*/
-		printk(KERN_INFO "MIO pin %2d not assigned(%08x)\n",
+		/* Noone claims this pin */
+		pr_info("MIO pin %2d not assigned(%08x)\n",
 			i,
 			xslcr_readreg(slcr->regs + (i * 4) +
 				XSLCR_MIO_PIN_00_OFFSET)
