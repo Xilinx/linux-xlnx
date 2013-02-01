@@ -38,7 +38,7 @@
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
-#include <asm/sizes.h>
+#include <linux/sizes.h>
 
 #include <linux/pci.h>
 #include <asm/mach/pci.h>
