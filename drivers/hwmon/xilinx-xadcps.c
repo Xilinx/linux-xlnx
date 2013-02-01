@@ -267,7 +267,7 @@ static inline void write_register(struct xadc_t *xadc, unsigned int reg,
 	kfree(b);
 }
 
-static inline unsigned reg2temp (u16 reg)
+static inline unsigned reg2temp(u16 reg)
 {
 	unsigned val;
 
@@ -277,7 +277,7 @@ static inline unsigned reg2temp (u16 reg)
 	return val;
 }
 
-static inline unsigned reg2vcc (u16 reg)
+static inline unsigned reg2vcc(u16 reg)
 {
 	unsigned val;
 
@@ -287,7 +287,7 @@ static inline unsigned reg2vcc (u16 reg)
 	return val;
 }
 
-static inline unsigned reg2v (u16 reg)
+static inline unsigned reg2v(u16 reg)
 {
 	unsigned val;
 
@@ -297,7 +297,7 @@ static inline unsigned reg2v (u16 reg)
 	return val;
 }
 
-static inline int reg2bv (u16 reg)
+static inline int reg2bv(u16 reg)
 {
 	int val;
 
@@ -489,7 +489,7 @@ static ssize_t xadc_write_vmode(struct device *dev,
 static ssize_t show_name(struct device *dev,
 		struct device_attribute *devattr, char *buf)
 {
-	return sprintf(buf, "%s\n","xadcps");
+	return sprintf(buf, "%s\n", "xadcps");
 }
 
 static DEVICE_ATTR(name, S_IRUGO, show_name, NULL);
@@ -665,7 +665,7 @@ static int __devinit xadc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to allocate driver structure\n");
 		return -ENOMEM;
 	}
-	xadc->dev=&pdev->dev;
+	xadc->dev = &pdev->dev;
 
 	xadc->irq = platform_get_irq(pdev, 0);
 	if (xadc->irq < 0) {
