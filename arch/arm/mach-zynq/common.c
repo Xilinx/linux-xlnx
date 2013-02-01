@@ -214,7 +214,7 @@ static void __init xilinx_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
-static const char *xilinx_dt_match[] = {
+static const char * const xilinx_dt_match[] = {
 	"xlnx,zynq-zc702",
 	"xlnx,zynq-zc706",
 	"xlnx,zynq-zc770",
