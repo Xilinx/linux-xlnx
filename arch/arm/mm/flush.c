@@ -337,4 +337,3 @@ void __flush_anon_page(struct vm_area_struct *vma, struct page *page, unsigned l
 	 */
 	__cpuc_flush_dcache_area(page_address(page), PAGE_SIZE);
 }
-EXPORT_SYMBOL(__flush_anon_page);

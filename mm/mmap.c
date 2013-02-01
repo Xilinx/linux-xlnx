@@ -1870,7 +1870,7 @@ find_extend_vma(struct mm_struct * mm, unsigned long addr)
 	return vma;
 }
 #endif
-EXPORT_SYMBOL(find_extend_vma);
+
 /*
  * Ok - we have the memory areas we should free on the vma list,
  * so release them, and do the vma updates.
