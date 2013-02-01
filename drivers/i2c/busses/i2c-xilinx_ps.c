@@ -820,7 +820,6 @@ static int xi2cps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no mem for i2c private data\n");
 		return -ENOMEM;
 	}
-	memset((void *)id, 0, sizeof(*id));
 	platform_set_drvdata(pdev, id);
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
