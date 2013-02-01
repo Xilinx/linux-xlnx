@@ -46,7 +46,7 @@ struct zynq_pll {
 	void __iomem	*pll_ctrl;
 	void __iomem	*pll_cfg;
 	void __iomem	*pll_status;
-	spinlock_t	*lock;
+	spinlock_t	lock;
 	u8		lockbit;
 	u8		bypassed;
 };
@@ -198,7 +198,7 @@ static int zynq_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	if (zynq_pll_get_pll_params(fbdiv, &pll_cp, &pll_res, &lock_cnt))
 		return -EINVAL;
 
-	spin_lock_irqsave(clk->lock, flags);
+	spin_lock_irqsave(&clk->lock, flags);
 
 	/* Write new parameters */
 	reg = readl(clk->pll_ctrl);
@@ -226,7 +226,7 @@ static int zynq_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	reg &= ~PLLCTRL_BYPASS_MASK;
 	writel(reg, clk->pll_ctrl);
 
-	spin_unlock_irqrestore(clk->lock, flags);
+	spin_unlock_irqrestore(&clk->lock, flags);
 
 	return 0;
 }
@@ -296,7 +296,7 @@ static int zynq_pll_enable(struct clk_hw *hw)
 	pr_info("PLL: Enable\n");
 
 	/* Power up PLL and wait for lock before removing bypass */
-	spin_lock_irqsave(clk->lock, flags);
+	spin_lock_irqsave(&clk->lock, flags);
 
 	reg = readl(clk->pll_ctrl);
 	reg &= ~(PLLCTRL_RESET_MASK | PLLCTRL_PWRDWN_MASK);
@@ -308,7 +308,7 @@ static int zynq_pll_enable(struct clk_hw *hw)
 	reg &= ~PLLCTRL_BYPASS_MASK;
 	writel(reg, clk->pll_ctrl);
 
-	spin_unlock_irqrestore(clk->lock, flags);
+	spin_unlock_irqrestore(&clk->lock, flags);
 
 	clk->bypassed = 0;
 
@@ -332,7 +332,7 @@ static void zynq_pll_disable(struct clk_hw *hw)
 	pr_info("PLL: Bypass\n");
 
 	/* Set bypass bit and shut down PLL */
-	spin_lock_irqsave(clk->lock, flags);
+	spin_lock_irqsave(&clk->lock, flags);
 
 	reg = readl(clk->pll_ctrl);
 	reg |= PLLCTRL_BYPASS_MASK;
@@ -340,7 +340,7 @@ static void zynq_pll_disable(struct clk_hw *hw)
 	reg |= PLLCTRL_RESET_MASK | PLLCTRL_PWRDWN_MASK;
 	writel(reg, clk->pll_ctrl);
 
-	spin_unlock_irqrestore(clk->lock, flags);
+	spin_unlock_irqrestore(&clk->lock, flags);
 
 	clk->bypassed = 1;
 }
@@ -384,7 +384,6 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 	u32 reg;
 	unsigned long flags = 0;
 	const char *pnames[] = {"PS_CLK"};
-	spinlock_t *lock;
 	struct clk_init_data initd = {
 		.name = name,
 		.ops = &zynq_pll_ops,
@@ -399,34 +398,27 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 		return ERR_PTR(-ENOMEM);
 	}
 
-	lock = kmalloc(sizeof(*lock), GFP_KERNEL);
-	if (!lock) {
-		pr_err("%s: Could not allocate lock.\n", __func__);
-		kfree(clk);
-		return ERR_PTR(-ENOMEM);
-	}
-	spin_lock_init(lock);
 
 	/* Populate the struct */
 	clk->hw.init = &initd;
 	clk->pll_ctrl = pllctrl;
 	clk->pll_cfg = pllcfg;
 	clk->pll_status = pllstatus;
+	spin_lock_init(&clk->lock);
 	clk->lockbit = lockbit;
-	clk->lock = lock;
 
 	if (readl(clk->pll_ctrl) & PLLCTRL_BYPASS_MASK)
 		clk->bypassed = 1;
 	else
 		clk->bypassed = 0;
 
-	spin_lock_irqsave(clk->lock, flags);
+	spin_lock_irqsave(&clk->lock, flags);
 
 	reg = readl(clk->pll_ctrl);
 	reg &= ~PLLCTRL_BPQUAL_MASK;
 	writel(reg, clk->pll_ctrl);
 
-	spin_unlock_irqrestore(clk->lock, flags);
+	spin_unlock_irqrestore(&clk->lock, flags);
 
 	return clk_register(NULL, &clk->hw);
 }
