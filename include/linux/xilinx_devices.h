@@ -20,21 +20,6 @@
 #include <linux/version.h>
 #include <linux/platform_device.h>
 
-/* LLTEMAC platform data */
-struct xlltemac_platform_data {
-	u8 tx_csum;
-	u8 rx_csum;
-	u8 phy_type;
-	u8 dcr_host;
-	u8 ll_dev_type;
-	u32 ll_dev_baseaddress;
-	u32 ll_dev_dma_rx_irq;
-	u32 ll_dev_dma_tx_irq;
-	u32 ll_dev_fifo_irq;
-
-	u8 mac_addr[6];
-};
-
 /*- PS USB Controller IP -*/
 enum xusbps_usb2_operating_modes {
 	XUSBPS_USB2_MPH_HOST,
