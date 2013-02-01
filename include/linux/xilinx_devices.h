@@ -95,11 +95,6 @@ struct xlltemac_platform_data {
 	u8 mac_addr[6];
 };
 
-/*- GPIO -*/
-
-/* Flags related to XGPIO device features */
-#define XGPIO_IS_DUAL		0x00000001
-
 /*- PS USB Controller IP -*/
 enum xusbps_usb2_operating_modes {
 	XUSBPS_USB2_MPH_HOST,
