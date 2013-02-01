@@ -33,9 +33,9 @@
 /**
  * struct zynq_pll
  * @hw:		Handle between common and hardware-specific interfaces
- * @pllctrl:	PLL control register
- * @pllcfg:	PLL config register
- * @pllstatus:	PLL status register
+ * @pll_ctrl:	PLL control register
+ * @pll_cfg:	PLL config register
+ * @pll_status:	PLL status register
  * @lock:	Register lock
  * @lockbit:	Indicates the associated PLL_LOCKED bit in the PLL status
  *		register.
@@ -43,9 +43,9 @@
  */
 struct zynq_pll {
 	struct clk_hw	hw;
-	void __iomem	*pllctrl;
-	void __iomem	*pllcfg;
-	void __iomem	*pllstatus;
+	void __iomem	*pll_ctrl;
+	void __iomem	*pll_cfg;
+	void __iomem	*pll_status;
 	spinlock_t	*lock;
 	u8		lockbit;
 	u8		bypassed;
@@ -201,30 +201,30 @@ static int zynq_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	spin_lock_irqsave(clk->lock, flags);
 
 	/* Write new parameters */
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg &= ~PLLCTRL_FBDIV_MASK;
 	reg |= (fbdiv << PLLCTRL_FBDIV_SHIFT) & PLLCTRL_FBDIV_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 
 	reg = (pll_res << PLLCFG_PLLRES_SHIFT) & PLLCFG_PLLRES_MASK;
 	reg |= (pll_cp << PLLCFG_PLLCP_SHIFT) & PLLCFG_PLLCP_MASK;
 	reg |= (lock_cnt << PLLCFG_LOCKCNT_SHIFT) & PLLCFG_LOCKCNT_MASK;
-	writel(reg, clk->pllcfg);
+	writel(reg, clk->pll_cfg);
 
 	/* bypass PLL */
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg |= PLLCTRL_BYPASS_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 	/* reset PLL */
 	reg |= PLLCTRL_RESET_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 	reg &= ~PLLCTRL_RESET_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 	/* wait for PLL lock */
-	while (readl(clk->pllstatus) & (1 << clk->lockbit)) ;
+	while (readl(clk->pll_status) & (1 << clk->lockbit)) ;
 	/* remove bypass */
 	reg &= ~PLLCTRL_BYPASS_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 
 	spin_unlock_irqrestore(clk->lock, flags);
 
@@ -273,7 +273,7 @@ static unsigned long zynq_pll_recalc_rate(struct clk_hw *hw, unsigned long
 
 	/* makes probably sense to redundantly save fbdiv in the struct
 	 * zynq_pll to save the IO access. */
-	fbdiv = (readl(clk->pllctrl) & PLLCTRL_FBDIV_MASK) >>
+	fbdiv = (readl(clk->pll_ctrl) & PLLCTRL_FBDIV_MASK) >>
 		PLLCTRL_FBDIV_SHIFT;
 
 	return parent_rate * fbdiv;
@@ -298,15 +298,15 @@ static int zynq_pll_enable(struct clk_hw *hw)
 	/* Power up PLL and wait for lock before removing bypass */
 	spin_lock_irqsave(clk->lock, flags);
 
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg &= ~(PLLCTRL_RESET_MASK | PLLCTRL_PWRDWN_MASK);
-	writel(reg, clk->pllctrl);
-	while (readl(clk->pllstatus) & (1 << clk->lockbit))
+	writel(reg, clk->pll_ctrl);
+	while (readl(clk->pll_status) & (1 << clk->lockbit))
 		;
 
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg &= ~PLLCTRL_BYPASS_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 
 	spin_unlock_irqrestore(clk->lock, flags);
 
@@ -334,11 +334,11 @@ static void zynq_pll_disable(struct clk_hw *hw)
 	/* Set bypass bit and shut down PLL */
 	spin_lock_irqsave(clk->lock, flags);
 
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg |= PLLCTRL_BYPASS_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 	reg |= PLLCTRL_RESET_MASK | PLLCTRL_PWRDWN_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 
 	spin_unlock_irqrestore(clk->lock, flags);
 
@@ -409,22 +409,22 @@ struct clk *clk_register_zynq_pll(const char *name, void __iomem *pllctrl,
 
 	/* Populate the struct */
 	clk->hw.init = &initd;
-	clk->pllctrl = pllctrl;
-	clk->pllcfg = pllcfg;
-	clk->pllstatus = pllstatus;
+	clk->pll_ctrl = pllctrl;
+	clk->pll_cfg = pllcfg;
+	clk->pll_status = pllstatus;
 	clk->lockbit = lockbit;
 	clk->lock = lock;
 
-	if (readl(clk->pllctrl) & PLLCTRL_BYPASS_MASK)
+	if (readl(clk->pll_ctrl) & PLLCTRL_BYPASS_MASK)
 		clk->bypassed = 1;
 	else
 		clk->bypassed = 0;
 
 	spin_lock_irqsave(clk->lock, flags);
 
-	reg = readl(clk->pllctrl);
+	reg = readl(clk->pll_ctrl);
 	reg &= ~PLLCTRL_BPQUAL_MASK;
-	writel(reg, clk->pllctrl);
+	writel(reg, clk->pll_ctrl);
 
 	spin_unlock_irqrestore(clk->lock, flags);
 
