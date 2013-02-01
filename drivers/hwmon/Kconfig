@@ -1412,10 +1412,11 @@ config SENSORS_MC13783_ADC
           Support for the A/D converter on MC13783 and MC13892 PMIC.
 
 config SENSORS_XADCPS
-        tristate "Xilinx Zynq XADC"
-        depends on ARCH_ZYNQ
-        help
-          Support for the A/D converter on Xilinx Zynq.
+	tristate "Xilinx Zynq XADC"
+	depends on ARCH_ZYNQ
+	depends on SYSFS
+	help
+	  Support for the A/D converter on Xilinx Zynq.
 
 if ACPI
 
