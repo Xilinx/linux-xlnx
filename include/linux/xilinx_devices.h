@@ -20,59 +20,6 @@
 #include <linux/version.h>
 #include <linux/platform_device.h>
 
-/*- 10/100 Mb Ethernet Controller IP (XEMAC) -*/
-
-struct xemac_platform_data {
-	u32 device_flags;
-	u32 dma_mode;
-	u32 has_mii;
-	u32 has_err_cnt;
-	u32 has_cam;
-	u32 has_jumbo;
-	u32 tx_dre;
-	u32 rx_dre;
-	u32 tx_hw_csum;
-	u32 rx_hw_csum;
-	u8 mac_addr[6];
-};
-
-/* Flags related to XEMAC device features */
-#define XEMAC_HAS_ERR_COUNT	0x00000001
-#define XEMAC_HAS_MII		0x00000002
-#define XEMAC_HAS_CAM		0x00000004
-#define XEMAC_HAS_JUMBO		0x00000008
-
-/* Possible DMA modes supported by XEMAC */
-#define XEMAC_DMA_NONE		1
-#define XEMAC_DMA_SIMPLE	2	/* simple 2 channel DMA */
-#define XEMAC_DMA_SGDMA		3	/* scatter gather DMA */
-
-/*- 10/100/1000 Mb Ethernet Controller IP (XTEMAC) -*/
-
-struct xtemac_platform_data {
-#ifdef XPAR_TEMAC_0_INCLUDE_RX_CSUM
-	u8 tx_dre;
-	u8 rx_dre;
-	u8 tx_csum;
-	u8 rx_csum;
-	u8 phy_type;
-#endif
-	u8 dma_mode;
-	u32 rx_pkt_fifo_depth;
-	u32 tx_pkt_fifo_depth;
-	u16 mac_fifo_depth;
-	u8 dcr_host;
-	u8 dre;
-
-	u8 mac_addr[6];
-};
-
-/* Possible DMA modes supported by XTEMAC */
-#define XTEMAC_DMA_NONE		1
-#define XTEMAC_DMA_SIMPLE	2	/* simple 2 channel DMA */
-#define XTEMAC_DMA_SGDMA	3	/* scatter gather DMA */
-
-
 /* LLTEMAC platform data */
 struct xlltemac_platform_data {
 	u8 tx_csum;
