@@ -28,8 +28,6 @@
 #include <mach/zynq_soc.h>
 #include "common.h"
 
-extern void secondary_startup(void);
-
 static DEFINE_SPINLOCK(boot_lock);
 
 /* Store pointer to ioremap area which points to address 0x0 */
@@ -124,8 +122,7 @@ int __cpuinit zynq_cpun_start(u32 address, int cpu)
 		 */
 		if (address) {
 			if (!zero) {
-				printk(KERN_WARNING
-					"BOOTUP jump vectors is not mapped!\n");
+				pr_warn("BOOTUP jump vectors is not mapped!\n");
 				return -1;
 			}
 			mem_backup[0] = __raw_readl(zero + 0x0);
@@ -212,8 +209,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 #if defined(CONFIG_PHYS_OFFSET) && (CONFIG_PHYS_OFFSET != 0)
 	zero = ioremap(0, 12);
 	if (!zero) {
-		printk(KERN_WARNING
-			"!!!! BOOTUP jump vectors can't be used !!!!\n");
+		pr_warn("!!!! BOOTUP jump vectors can't be used !!!!\n");
 		while (1)
 			;
 	}

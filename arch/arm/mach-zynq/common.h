@@ -29,4 +29,7 @@ static inline void xilinx_system_reset(char mode, const char *cmd)
 	xslcr_system_reset();
 }
 
+/* multiplatform use core.h for this purpose */
+extern void secondary_startup(void);
+
 #endif
