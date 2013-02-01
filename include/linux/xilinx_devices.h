@@ -100,12 +100,6 @@ struct xlltemac_platform_data {
 /* Flags related to XGPIO device features */
 #define XGPIO_IS_DUAL		0x00000001
 
-/* PSS-I2C platform data */
-struct xi2cps_platform_data {
-	unsigned int input_clk;
-	unsigned int i2c_clk;
-};
-
 /*- PS USB Controller IP -*/
 enum xusbps_usb2_operating_modes {
 	XUSBPS_USB2_MPH_HOST,
