@@ -1616,7 +1616,7 @@ void xslcr_system_reset(void)
  * @offset:	Register offset in SLCR block
  * @val:	Value to write to the register
  **/
-void xslcr_write(u32 offset, u32 val)
+void xslcr_write(u32 val, u32 offset)
 {
 	xslcr_writereg(slcr->regs + offset, val);
 }
@@ -1642,13 +1642,13 @@ void xslcr_init_preload_fpga(void)
 {
 
 	/* Assert FPGA top level output resets */
-	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0xF);
+	xslcr_write(0xF, XSLCR_FPGA_RST_CTRL_OFFSET);
 
 	/* Disable level shifters */
-	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0x0);
+	xslcr_write(0, XSLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Enable output level shifters */
-	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xA);
+	xslcr_write(0xA, XSLCR_LVL_SHFTR_EN_OFFSET);
 }
 EXPORT_SYMBOL(xslcr_init_preload_fpga);
 
@@ -1659,10 +1659,10 @@ void xslcr_init_postload_fpga(void)
 {
 
 	/* Enable level shifters */
-	xslcr_write(XSLCR_LVL_SHFTR_EN_OFFSET, 0xF);
+	xslcr_write(0xf, XSLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Deassert AXI interface resets */
-	xslcr_write(XSLCR_FPGA_RST_CTRL_OFFSET, 0x0);
+	xslcr_write(0, XSLCR_FPGA_RST_CTRL_OFFSET);
 }
 EXPORT_SYMBOL(xslcr_init_postload_fpga);
 
