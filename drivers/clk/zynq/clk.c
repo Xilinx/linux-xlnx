@@ -49,8 +49,8 @@
 static DEFINE_SPINLOCK(armclk_lock);
 static DEFINE_SPINLOCK(ddrclk_lock);
 static DEFINE_SPINLOCK(dciclk_lock);
-/* static DEFINE_SPINLOCK(smcclk_lock); */
 static DEFINE_SPINLOCK(pcapclk_lock);
+static DEFINE_SPINLOCK(smcclk_lock);
 static DEFINE_SPINLOCK(lqspiclk_lock);
 static DEFINE_SPINLOCK(gem0clk_lock);
 static DEFINE_SPINLOCK(gem1clk_lock);
@@ -177,11 +177,10 @@ void __init zynq_clock_init(void __iomem *slcr_base)
 			def_periph_parents, &lqspiclk_lock);
 	zynq_clkdev_add(NULL, "LQSPI", clk);
 
-	/*
-	 * clk = clk_register_zynq_gd1m("SMC_CLK", SLCR_SMC_CLK_CTRL,
-	 *		def_periph_parents, &smcclk_lock);
-	 * zynq_clkdev_add(NULL, "SMC", clk);
-	 */
+	clk = clk_register_zynq_gd1m("SMC_CLK", SLCR_SMC_CLK_CTRL,
+			def_periph_parents, &smcclk_lock);
+	zynq_clkdev_add(NULL, "SMC", clk);
+
 	clk = clk_register_zynq_gd1m("PCAP_CLK", SLCR_PCAP_CLK_CTRL,
 			def_periph_parents, &pcapclk_lock);
 	zynq_clkdev_add(NULL, "PCAP", clk);
@@ -329,9 +328,7 @@ void __init zynq_clock_init(void __iomem *slcr_base)
 	clk = clk_register_gate(NULL, "LQSPI_CPU1X", "CPU_1X_CLK", 0,
 			SLCR_APER_CLK_CTRL, 23, 0, &aperclk_lock);
 	zynq_clkdev_add(NULL, "LQSPI_APER", clk);
-	/*
-	 * clk = clk_register_gate(NULL, "SMC_CPU1X", "CPU_1X_CLK", 0,
-	 *		SLCR_APER_CLK_CTRL, 24, 0, &aperclk_lock);
-	 * zynq_clkdev_add(NULL, "SMC_APER", clk);
-	 */
+	clk = clk_register_gate(NULL, "SMC_CPU1X", "CPU_1X_CLK", 0,
+			SLCR_APER_CLK_CTRL, 24, 0, &aperclk_lock);
+	zynq_clkdev_add(NULL, "SMC_APER", clk);
 }

@@ -113,31 +113,41 @@
 			num-chip-select = <4>;
 		};
 
-		nand@e1000000 {
-			compatible = "xlnx,ps7-nand-1.00.a";
-			reg = <0xe1000000 0x1000000 0xe000e000 0x1000>;
-			xlnx,nand-width = <8>;
-			#address-cells = <0x1>;
-			#size-cells = <0x1>;
-			partition@nand-fsbl-uboot {
-				label = "nand-fsbl-uboot";
-				reg = <0x0 0x100000>;
-			};
-			partition@nand-linux {
-				label = "nand-linux";
-				reg = <0x100000 0x500000>;
-			};
-			partition@nand-device-tree {
-				label = "nand-device-tree";
-				reg = <0x600000 0x20000>;
-			};
-			partition@nand-rootfs {
-				label = "nand-rootfs";
-				reg = <0x620000 0x5E0000>;
-			};
-			partition@nand-bitstream {
-				label = "nand-bitstream";
-				reg = <0xC00000 0x400000>;
+		smc@0xe000e000 {
+			compatible = "xlnx,ps7-smc";
+			reg = <0xe000e000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			nand@e1000000 {
+				compatible = "xlnx,ps7-nand-1.00.a";
+				reg = <0xe1000000 0x1000000>;
+				xlnx,nand-width = <8>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				partition@nand-fsbl-uboot {
+					label = "nand-fsbl-uboot";
+					reg = <0x0 0x100000>;
+				};
+				partition@nand-linux {
+					label = "nand-linux";
+					reg = <0x100000 0x500000>;
+				};
+				partition@nand-device-tree {
+					label = "nand-device-tree";
+					reg = <0x600000 0x20000>;
+				};
+				partition@nand-rootfs {
+					label = "nand-rootfs";
+					reg = <0x620000 0x5E0000>;
+				};
+				partition@nand-bitstream {
+					label = "nand-bitstream";
+					reg = <0xC00000 0x400000>;
+
+				};
 			};
 		};
 
