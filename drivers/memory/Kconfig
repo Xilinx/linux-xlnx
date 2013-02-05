@@ -118,6 +118,14 @@ config FSL_IFC
 	bool
 	depends on FSL_SOC || ARCH_LAYERSCAPE || SOC_LS1021A
 
+config PL35X_SMC
+	bool "ARM PL35X Static Memory Controller(SMC) driver"
+	default y
+	depends on ARM
+	help
+	  This driver is for the ARM PL351/PL353 Static Memory
+	  Controller(SMC) module.
+
 config JZ4780_NEMC
 	bool "Ingenic JZ4780 SoC NEMC driver"
 	default y
