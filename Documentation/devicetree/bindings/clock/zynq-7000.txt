@@ -1,0 +1,34 @@
+Device Tree Clock bindings for the Zynq 7000 EPP
+
+The Zynq EPP has several different clk providers, each with there own bindings.
+The purpose of this document is to document their usage.
+
+See clock_bindings.txt for more information on the generic clock bindings.
+See Chapter 25 of Zynq TRM for more information about Zynq clocks.
+
+== PLLs ==
+
+Used to describe the ARM_PLL, DDR_PLL, and IO_PLL.
+
+Required properties:
+- #clock-cells : shall be 0 (only one clock is output from this node)
+- compatible : "xlnx,zynq-pll"
+- reg : set of u32 values, which are the address offsets within the SLCR
+        of the relevant PLL_CTRL register, PLL_CFG and PLL_STATUS register
+	respectively
+- lockbit : the index of the PLL_LOCKED bit in the PLL_STATUS register for this
+  PLL
+- clocks : phandle for parent clock.  should be the phandle for ps_clk
+
+Optional properties:
+- clock-output-names : name of the output clock
+
+Example:
+	armpll: armpll {
+		#clock-cells = <0>;
+		compatible = "xlnx,zynq-pll";
+		clocks = <&ps_clk>;
+		reg = <0x100 0x110 0x10c>;
+		lockbit = <0>;
+		clock-output-names = "armpll";
+	};

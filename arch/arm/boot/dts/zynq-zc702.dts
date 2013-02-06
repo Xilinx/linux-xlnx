@@ -56,18 +56,40 @@
 		slcr: slcr@f8000000 {
 			compatible = "xlnx,zynq-slcr";
 			reg = <0xF8000000 0x1000>;
-
 			clocks {
 				#address-cells = <1>;
 				#size-cells = <0>;
-
+				armpll: armpll {
+					#clock-cells = <0>;
+					clock-output-names = "armpll";
+					clocks = <&ps_clk>;
+					compatible = "xlnx,zynq-pll";
+					lockbit = <0>;
+					reg = < 0x100 0x110 0x10c >;
+				} ;
+				ddrpll: ddrpll {
+					#clock-cells = <0>;
+					clock-output-names = "ddrpll";
+					clocks = <&ps_clk>;
+					compatible = "xlnx,zynq-pll";
+					lockbit = <1>;
+					reg = < 0x104 0x114 0x10c >;
+				} ;
+				iopll: iopll {
+					#clock-cells = <0>;
+					clock-output-names = "iopll";
+					clocks = <&ps_clk>;
+					compatible = "xlnx,zynq-pll";
+					lockbit = <2>;
+					reg = < 0x108 0x118 0x10c >;
+				} ;
 				ps_clk: ps_clk {
 					#clock-cells = <0>;
-					compatible = "fixed-clock";
 					clock-frequency = <33333333>;
-					clock-output-names = "PS_CLK";
-				};
-			};
+					clock-output-names = "ps_clk";
+					compatible = "fixed-clock";
+				} ;
+			} ;
 		};
 
 		timer@0xf8001000 {
