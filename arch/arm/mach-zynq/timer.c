@@ -432,9 +432,6 @@ static void __init xttcps_timer_init(struct device_node *timer)
 	zynq_ttc_setup_clocksource(clk, timer_baseaddr);
 	zynq_ttc_setup_clockevent(clk, timer_baseaddr + 4, irq);
 
-#ifdef CONFIG_HAVE_ARM_TWD
-	twd_local_timer_of_register();
-#endif
 	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
 }
 
