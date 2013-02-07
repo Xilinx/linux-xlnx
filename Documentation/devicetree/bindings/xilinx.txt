@@ -110,6 +110,7 @@
 
       Optional properties:
        - 8-bit (empty) : Set this property for SystemACE in 8 bit mode
+       - port-number = <port_number> : Set port number for particular device
 
       iii) Xilinx EMAC and Xilinx TEMAC
 
