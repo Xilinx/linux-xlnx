@@ -1018,6 +1018,7 @@ config ARCH_ZYNQ
 	select ARM_GIC
 	select ARM_AMBA
 	select ICST
+	select MEMORY
 	select USE_OF
 	select HAVE_SMP
 	select CACHE_L2X0

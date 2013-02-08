@@ -597,6 +597,7 @@ config MTD_NAND_NUC900
 config MTD_NAND_XILINX_PS
 	tristate "Xilinx Zynq NAND flash driver"
 	depends on MTD_NAND && ARCH_ZYNQ
+	select ZYNQ_SMC
 	help
 	  This enables access to the NAND flash device on Xilinx Zynq.
 
