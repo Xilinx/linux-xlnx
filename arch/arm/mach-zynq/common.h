@@ -19,7 +19,7 @@
 
 #include <mach/slcr.h>
 
-void __init xttcpss_timer_init(void);
+void __init xttcps_timer_init(void);
 void platform_device_init(void);
 
 int __cpuinit zynq_cpun_start(u32 address, int cpu);
