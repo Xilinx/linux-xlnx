@@ -222,7 +222,7 @@ static struct clock_event_device xttcps_clockevent = {
 	.rating		= 200,
 };
 
-static int xttcps_timer_rate_change_cb(struct notifier_block *nb,
+static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 	struct clk_notifier_data *ndata = data;
@@ -230,13 +230,8 @@ static int xttcps_timer_rate_change_cb(struct notifier_block *nb,
 	switch (event) {
 	case POST_RATE_CHANGE:
 	{
-		unsigned long flags;
-
 		timers[XTTCPS_CLOCKSOURCE].frequency =
 			ndata->new_rate / PRESCALE;
-		timers[XTTCPS_CLOCKEVENT].frequency =
-			ndata->new_rate / PRESCALE;
-
 		/*
 		 * Do whatever is necessare to maintain a proper time base
 		 *
@@ -256,18 +251,6 @@ static int xttcps_timer_rate_change_cb(struct notifier_block *nb,
 		clocksource_unregister(&clocksource_xttcps);
 		clocksource_register_hz(&clocksource_xttcps,
 				ndata->new_rate / PRESCALE);
-
-		/*
-		 * clockevents_update_freq should be called with IRQ disabled on
-		 * the CPU the timer provides events for. The timer we use is
-		 * common to both CPUs, not sure if we need to run on both
-		 * cores.
-		 */
-		local_irq_save(flags);
-		clockevents_update_freq(&xttcps_clockevent,
-				timers[XTTCPS_CLOCKEVENT].frequency);
-		local_irq_restore(flags);
-
 		/* fall through */
 	}
 	case PRE_RATE_CHANGE:
@@ -284,7 +267,7 @@ static void __init zynq_ttc_setup_clocksource(struct clk *clk,
 	clk_prepare_enable(clk);
 	timers[XTTCPS_CLOCKSOURCE].clk = clk;
 	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
-		xttcps_timer_rate_change_cb;
+		xttcps_rate_change_clocksource_cb;
 	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
 	timers[XTTCPS_CLOCKSOURCE].frequency = clk_get_rate(clk) / PRESCALE;
 	if (clk_notifier_register(clk,
@@ -307,6 +290,39 @@ static void __init zynq_ttc_setup_clocksource(struct clk *clk,
 				timers[XTTCPS_CLOCKSOURCE].frequency);
 }
 
+static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+
+	switch (event) {
+	case POST_RATE_CHANGE:
+	{
+		unsigned long flags;
+
+		timers[XTTCPS_CLOCKEVENT].frequency =
+			ndata->new_rate / PRESCALE;
+
+		/*
+		 * clockevents_update_freq should be called with IRQ disabled on
+		 * the CPU the timer provides events for. The timer we use is
+		 * common to both CPUs, not sure if we need to run on both
+		 * cores.
+		 */
+		local_irq_save(flags);
+		clockevents_update_freq(&xttcps_clockevent,
+				timers[XTTCPS_CLOCKEVENT].frequency);
+		local_irq_restore(flags);
+
+		/* fall through */
+	}
+	case PRE_RATE_CHANGE:
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 static void __init zynq_ttc_setup_clockevent(struct clk *clk,
 						void __iomem *base, u32 irq)
 {
@@ -318,7 +334,7 @@ static void __init zynq_ttc_setup_clockevent(struct clk *clk,
 
 
 	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
-		xttcps_timer_rate_change_cb;
+		xttcps_rate_change_clockevent_cb;
 	timers[XTTCPS_CLOCKEVENT].clk = clk;
 	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
 	timers[XTTCPS_CLOCKEVENT].frequency = clk_get_rate(clk) / PRESCALE;
