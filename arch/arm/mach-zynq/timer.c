@@ -171,11 +171,11 @@ static void __init xttcps_timer_hardware_init(void)
 }
 
 /**
- * __raw_readl_cycles - Reads the timer counter register
+ * __xttc_clocksource_read - Reads the timer counter register
  *
  * returns: Current timer counter register value
  **/
-static cycle_t __raw_readl_cycles(struct clocksource *cs)
+static cycle_t __xttc_clocksource_read(struct clocksource *cs)
 {
 	struct xttcps_timer *timer = &timers[XTTCPS_CLOCKSOURCE];
 
@@ -189,7 +189,7 @@ static cycle_t __raw_readl_cycles(struct clocksource *cs)
 static struct clocksource clocksource_xttcps = {
 	.name		= "xttcps_timer1",
 	.rating		= 200,			/* Reasonable clock source */
-	.read		= __raw_readl_cycles,
+	.read		= __xttc_clocksource_read,
 	.mask		= CLOCKSOURCE_MASK(16),
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 };
