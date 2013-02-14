@@ -59,7 +59,9 @@
  */
 #define PRESCALE_EXPONENT	11	/* 2 ^ PRESCALE_EXPONENT = PRESCALE */
 #define PRESCALE		2048	/* The exponent must match this */
-#define CLK_CNTRL_PRESCALE (((PRESCALE_EXPONENT - 1) << 1) | 0x1)
+#define CLK_CNTRL_PRESCALE_EN	1
+#define CLK_CNTRL_PRESCALE	(((PRESCALE_EXPONENT - 1) << 1) | \
+				CLK_CNTRL_PRESCALE_EN)
 #define CNT_CNTRL_RESET		(1 << 4)
 
 /**
