@@ -318,15 +318,10 @@ static int xttcps_timer_rate_change_cb(struct notifier_block *nb,
  * Initializes the timer hardware and register the clock source and clock event
  * timers with Linux kernal timer framework
  */
-void __init xttcps_timer_init(void)
+static void __init xttcps_timer_init(struct device_node *timer)
 {
 	unsigned int irq;
-	struct device_node *timer = NULL;
 	void __iomem *timer_baseaddr;
-	const char * const timer_list[] = {
-		"xlnx,ps7-ttc-1.00.a",
-		NULL
-	};
 	struct clk *clk;
 
 	/*
@@ -334,12 +329,6 @@ void __init xttcps_timer_init(void)
 	 * and use it. Note that the event timer uses the interrupt and it's the
 	 * 2nd TTC hence the irq_of_parse_and_map(,1)
 	 */
-	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
-	if (!timer) {
-		pr_err("ERROR: no compatible timer found\n");
-		BUG();
-	}
-
 	timer_baseaddr = of_iomap(timer, 0);
 	if (!timer_baseaddr) {
 		pr_err("ERROR: invalid timer base address\n");
@@ -358,7 +347,7 @@ void __init xttcps_timer_init(void)
 	event_timer_irq.dev_id = &timers[XTTCPS_CLOCKEVENT];
 	setup_irq(irq, &event_timer_irq);
 
-	pr_info("%s #0 at %p, irq=%d\n", timer_list[0], timer_baseaddr, irq);
+	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
 
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
@@ -394,4 +383,27 @@ void __init xttcps_timer_init(void)
 #ifdef CONFIG_HAVE_ARM_TWD
 	twd_local_timer_of_register();
 #endif
+}
+
+/*
+ * This will be replaced in v3.10 by
+ * CLOCKSOURCE_OF_DECLARE(zynq, "xlnx,ttc",xttcps_timer_init);
+ * or
+ * CLOCKSOURCE_OF_DECLARE(zynq, "xlnx,ps7-ttc-1.00.a",xttcps_timer_init);
+ */
+void __init xttcps_timer_init_old(void)
+{
+	const char * const timer_list[] = {
+		"xlnx,ps7-ttc-1.00.a",
+		NULL
+	};
+	struct device_node *timer;
+
+	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
+	if (!timer) {
+		pr_err("ERROR: no compatible timer found\n");
+		BUG();
+	}
+
+	xttcps_timer_init(timer);
 }

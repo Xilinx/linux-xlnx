@@ -85,7 +85,7 @@ static int __init scu_init(void)
 static void __init xilinx_zynq_timer_init(void)
 {
 	xslcr_init();
-	xttcps_timer_init();
+	xttcps_timer_init_old();
 }
 
 /*
