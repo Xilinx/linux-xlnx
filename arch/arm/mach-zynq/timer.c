@@ -68,6 +68,8 @@
  * struct xttcps_timer - This definition defines local timer structure
  *
  * @base_addr:	Base address of timer
+ * @clk:	Associated clock source
+ * @clk_rate_change_nb	Notifier block for clock rate changes
  */
 struct xttcps_timer {
 	void __iomem *base_addr;
