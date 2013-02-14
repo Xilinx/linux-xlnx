@@ -347,7 +347,7 @@ void __init xttcps_timer_init(void)
 	}
 
 	irq = irq_of_parse_and_map(timer, 1);
-	if (!irq || irq == NO_IRQ) {
+	if (irq <= 0) {
 		pr_err("ERROR: invalid interrupt number\n");
 		BUG();
 	}
