@@ -20,6 +20,7 @@
 #include <linux/interrupt.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/slab.h>
 #include <asm/smp_twd.h>
 #include "common.h"
 
@@ -37,8 +38,6 @@
  * The input frequency to the timer module in silicon is configurable and
  * obtained from device tree. The pre-scaler of 32 is used.
  */
-#define XTTCPS_CLOCKSOURCE	0	/* Timer 1 as a generic timekeeping */
-#define XTTCPS_CLOCKEVENT	1	/* Timer 2 as a clock event */
 
 /*
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
@@ -73,13 +72,28 @@
  */
 struct xttcps_timer {
 	void __iomem *base_addr;
-	int frequency;
 	struct clk *clk;
 	struct notifier_block clk_rate_change_nb;
 };
 
-static struct xttcps_timer timers[2];
-static struct clock_event_device xttcps_clockevent;
+#define to_xttcps_timer(x) \
+		container_of(x, struct xttcps_timer, clk_rate_change_nb)
+
+struct xttcps_timer_clocksource {
+	struct xttcps_timer	xttc;
+	struct clocksource	cs;
+};
+
+#define to_xttcps_timer_clksrc(x) \
+		container_of(x, struct xttcps_timer_clocksource, cs)
+
+struct xttcps_timer_clockevent {
+	struct xttcps_timer		xttc;
+	struct clock_event_device	ce;
+};
+
+#define to_xttcps_timer_clkevent(x) \
+		container_of(x, struct xttcps_timer_clockevent, ce)
 
 /**
  * xttcps_set_interval - Set the timer interval value
@@ -118,22 +132,16 @@ static void xttcps_set_interval(struct xttcps_timer *timer,
  **/
 static irqreturn_t xttcps_clock_event_interrupt(int irq, void *dev_id)
 {
-	struct clock_event_device *evt = &xttcps_clockevent;
-	struct xttcps_timer *timer = dev_id;
+	struct xttcps_timer_clockevent *xttce = dev_id;
+	struct xttcps_timer *timer = &xttce->xttc;
 
 	/* Acknowledge the interrupt and call event handler */
 	__raw_readl(timer->base_addr + XTTCPS_ISR_OFFSET);
 
-	evt->event_handler(evt);
+	xttce->ce.event_handler(&xttce->ce);
 
 	return IRQ_HANDLED;
 }
-
-static struct irqaction event_timer_irq = {
-	.name	= "xttcps clockevent",
-	.flags	= IRQF_DISABLED | IRQF_TIMER,
-	.handler = xttcps_clock_event_interrupt,
-};
 
 /**
  * __xttc_clocksource_read - Reads the timer counter register
@@ -142,22 +150,11 @@ static struct irqaction event_timer_irq = {
  **/
 static cycle_t __xttc_clocksource_read(struct clocksource *cs)
 {
-	struct xttcps_timer *timer = &timers[XTTCPS_CLOCKSOURCE];
+	struct xttcps_timer *timer = &to_xttcps_timer_clksrc(cs)->xttc;
 
 	return (cycle_t)__raw_readl(timer->base_addr +
 				XTTCPS_COUNT_VAL_OFFSET);
 }
-
-/*
- * Instantiate and initialize the clock source structure
- */
-static struct clocksource clocksource_xttcps = {
-	.name		= "xttcps_timer1",
-	.rating		= 200,			/* Reasonable clock source */
-	.read		= __xttc_clocksource_read,
-	.mask		= CLOCKSOURCE_MASK(16),
-	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
-};
 
 /**
  * xttcps_set_next_event - Sets the time interval for next event
@@ -170,7 +167,8 @@ static struct clocksource clocksource_xttcps = {
 static int xttcps_set_next_event(unsigned long cycles,
 					struct clock_event_device *evt)
 {
-	struct xttcps_timer *timer = &timers[XTTCPS_CLOCKEVENT];
+	struct xttcps_timer_clockevent *xttce = to_xttcps_timer_clkevent(evt);
+	struct xttcps_timer *timer = &xttce->xttc;
 
 	xttcps_set_interval(timer, cycles);
 	return 0;
@@ -185,12 +183,15 @@ static int xttcps_set_next_event(unsigned long cycles,
 static void xttcps_set_mode(enum clock_event_mode mode,
 					struct clock_event_device *evt)
 {
-	struct xttcps_timer *timer = &timers[XTTCPS_CLOCKEVENT];
+	struct xttcps_timer_clockevent *xttce = to_xttcps_timer_clkevent(evt);
+	struct xttcps_timer *timer = &xttce->xttc;
 	u32 ctrl_reg;
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		xttcps_set_interval(timer, timer->frequency / HZ);
+		xttcps_set_interval(timer,
+				DIV_ROUND_CLOSEST(clk_get_rate(xttce->xttc.clk),
+					PRESCALE * HZ));
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:
 	case CLOCK_EVT_MODE_UNUSED:
@@ -211,27 +212,16 @@ static void xttcps_set_mode(enum clock_event_mode mode,
 	}
 }
 
-/*
- * Instantiate and initialize the clock event structure
- */
-static struct clock_event_device xttcps_clockevent = {
-	.name		= "xttcps_timer2",
-	.features	= CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
-	.set_next_event	= xttcps_set_next_event,
-	.set_mode	= xttcps_set_mode,
-	.rating		= 200,
-};
-
 static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 	struct clk_notifier_data *ndata = data;
+	struct xttcps_timer *xttcps = to_xttcps_timer(nb);
+	struct xttcps_timer_clocksource *xttccs = container_of(xttcps,
+			struct xttcps_timer_clocksource, xttc);
 
 	switch (event) {
 	case POST_RATE_CHANGE:
-	{
-		timers[XTTCPS_CLOCKSOURCE].frequency =
-			ndata->new_rate / PRESCALE;
 		/*
 		 * Do whatever is necessare to maintain a proper time base
 		 *
@@ -248,11 +238,10 @@ static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 		 * one unregister call, but only trigger one clocksource switch
 		 * for the cost of another HW timer used by the OS.
 		 */
-		clocksource_unregister(&clocksource_xttcps);
-		clocksource_register_hz(&clocksource_xttcps,
+		clocksource_unregister(&xttccs->cs);
+		clocksource_register_hz(&xttccs->cs,
 				ndata->new_rate / PRESCALE);
 		/* fall through */
-	}
 	case PRE_RATE_CHANGE:
 	case ABORT_RATE_CHANGE:
 	default:
@@ -263,45 +252,63 @@ static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 static void __init zynq_ttc_setup_clocksource(struct clk *clk,
 							void __iomem *base)
 {
-	timers[XTTCPS_CLOCKSOURCE].base_addr = base;
-	clk_prepare_enable(clk);
-	timers[XTTCPS_CLOCKSOURCE].clk = clk;
-	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
+	struct xttcps_timer_clocksource *ttccs;
+	int err;
+
+	ttccs = kzalloc(sizeof(*ttccs), GFP_KERNEL);
+	if (WARN_ON(!ttccs))
+		return;
+
+	ttccs->xttc.clk = clk;
+
+	err = clk_prepare_enable(ttccs->xttc.clk);
+	if (WARN_ON(err))
+		return;
+
+	ttccs->xttc.clk_rate_change_nb.notifier_call =
 		xttcps_rate_change_clocksource_cb;
-	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
-	timers[XTTCPS_CLOCKSOURCE].frequency = clk_get_rate(clk) / PRESCALE;
-	if (clk_notifier_register(clk,
-		&timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb))
-			pr_warn("Unable to register clock notifier.\n");
+	ttccs->xttc.clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(ttccs->xttc.clk,
+				&ttccs->xttc.clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
+
+	ttccs->xttc.base_addr = base;
+	ttccs->cs.name = "xttcps_clocksource";
+	ttccs->cs.rating = 200;
+	ttccs->cs.read = __xttc_clocksource_read;
+	ttccs->cs.mask = CLOCKSOURCE_MASK(16);
+	ttccs->cs.flags = CLOCK_SOURCE_IS_CONTINUOUS;
+
 	/*
 	 * Setup the clock source counter to be an incrementing counter
 	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
 	 * it by 32 also. Let it start running now.
 	 */
-	__raw_writel(0x0, timers[XTTCPS_CLOCKSOURCE].base_addr +
-				XTTCPS_IER_OFFSET);
+	__raw_writel(0x0,  ttccs->xttc.base_addr + XTTCPS_IER_OFFSET);
 	__raw_writel(CLK_CNTRL_PRESCALE,
-			timers[XTTCPS_CLOCKSOURCE].base_addr +
-			XTTCPS_CLK_CNTRL_OFFSET);
-	__raw_writel(0x10, timers[XTTCPS_CLOCKSOURCE].base_addr +
-				XTTCPS_CNT_CNTRL_OFFSET);
+		     ttccs->xttc.base_addr + XTTCPS_CLK_CNTRL_OFFSET);
+	__raw_writel(CNT_CNTRL_RESET,
+		     ttccs->xttc.base_addr + XTTCPS_CNT_CNTRL_OFFSET);
 
-	clocksource_register_hz(&clocksource_xttcps,
-				timers[XTTCPS_CLOCKSOURCE].frequency);
+	err = clocksource_register_hz(&ttccs->cs,
+			clk_get_rate(ttccs->xttc.clk) / PRESCALE);
+	if (WARN_ON(err))
+		return;
+
 }
 
 static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 	struct clk_notifier_data *ndata = data;
+	struct xttcps_timer *xttcps = to_xttcps_timer(nb);
+	struct xttcps_timer_clockevent *xttcce = container_of(xttcps,
+			struct xttcps_timer_clockevent, xttc);
 
 	switch (event) {
 	case POST_RATE_CHANGE:
 	{
 		unsigned long flags;
-
-		timers[XTTCPS_CLOCKEVENT].frequency =
-			ndata->new_rate / PRESCALE;
 
 		/*
 		 * clockevents_update_freq should be called with IRQ disabled on
@@ -310,8 +317,8 @@ static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
 		 * cores.
 		 */
 		local_irq_save(flags);
-		clockevents_update_freq(&xttcps_clockevent,
-				timers[XTTCPS_CLOCKEVENT].frequency);
+		clockevents_update_freq(&xttcce->ce,
+				ndata->new_rate / PRESCALE);
 		local_irq_restore(flags);
 
 		/* fall through */
@@ -326,39 +333,53 @@ static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
 static void __init zynq_ttc_setup_clockevent(struct clk *clk,
 						void __iomem *base, u32 irq)
 {
-	timers[XTTCPS_CLOCKEVENT].base_addr = base;
+	struct xttcps_timer_clockevent *ttcce;
+	int err;
 
-	event_timer_irq.dev_id = &timers[XTTCPS_CLOCKEVENT];
-	setup_irq(irq, &event_timer_irq);
+	ttcce = kzalloc(sizeof(*ttcce), GFP_KERNEL);
+	if (WARN_ON(!ttcce))
+		return;
 
+	ttcce->xttc.clk = clk;
 
+	err = clk_prepare_enable(ttcce->xttc.clk);
+	if (WARN_ON(err))
+		return;
 
-	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
+	ttcce->xttc.clk_rate_change_nb.notifier_call =
 		xttcps_rate_change_clockevent_cb;
-	timers[XTTCPS_CLOCKEVENT].clk = clk;
-	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
-	timers[XTTCPS_CLOCKEVENT].frequency = clk_get_rate(clk) / PRESCALE;
-	if (clk_notifier_register(clk,
-		&timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb))
-			pr_warn("Unable to register clock notifier.\n");
+	ttcce->xttc.clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(ttcce->xttc.clk,
+				&ttcce->xttc.clk_rate_change_nb))
+		pr_warn("Unable to register clock notifier.\n");
+
+	ttcce->xttc.base_addr = base;
+	ttcce->ce.name = "xttcps_clockevent";
+	ttcce->ce.features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT;
+	ttcce->ce.set_next_event = xttcps_set_next_event;
+	ttcce->ce.set_mode = xttcps_set_mode;
+	ttcce->ce.rating = 200;
+	ttcce->ce.irq = irq;
+	ttcce->ce.cpumask = cpu_possible_mask;
 
 	/*
 	 * Setup the clock event timer to be an interval timer which
 	 * is prescaled by 32 using the interval interrupt. Leave it
 	 * disabled for now.
 	 */
-	__raw_writel(0x23, timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_CNT_CNTRL_OFFSET);
+	__raw_writel(0x23, ttcce->xttc.base_addr + XTTCPS_CNT_CNTRL_OFFSET);
 	__raw_writel(CLK_CNTRL_PRESCALE,
-			timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_CLK_CNTRL_OFFSET);
-	__raw_writel(0x1, timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_IER_OFFSET);
+		     ttcce->xttc.base_addr + XTTCPS_CLK_CNTRL_OFFSET);
+	__raw_writel(0x1,  ttcce->xttc.base_addr + XTTCPS_IER_OFFSET);
 
-	/* Indicate that clock event is on 1st CPU as SMP boot needs it */
-	xttcps_clockevent.cpumask = cpumask_of(0);
-	clockevents_config_and_register(&xttcps_clockevent,
-			timers[XTTCPS_CLOCKEVENT].frequency, 1, 0xfffe);
+	err = request_irq(irq, xttcps_clock_event_interrupt,
+			  IRQF_DISABLED | IRQF_TIMER,
+			  ttcce->ce.name, ttcce);
+	if (WARN_ON(err))
+		return;
+
+	clockevents_config_and_register(&ttcce->ce,
+			clk_get_rate(ttcce->xttc.clk) / PRESCALE, 1, 0xfffe);
 }
 
 /**
