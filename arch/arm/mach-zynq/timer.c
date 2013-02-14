@@ -60,6 +60,7 @@
 #define PRESCALE_EXPONENT	11	/* 2 ^ PRESCALE_EXPONENT = PRESCALE */
 #define PRESCALE		2048	/* The exponent must match this */
 #define CLK_CNTRL_PRESCALE (((PRESCALE_EXPONENT - 1) << 1) | 0x1)
+#define CNT_CNTRL_RESET		(1 << 4)
 
 /**
  * struct xttcps_timer - This definition defines local timer structure
@@ -98,7 +99,7 @@ static void xttcps_set_interval(struct xttcps_timer *timer,
 	 * Reset the counter (0x10) so that it starts from 0, one-shot
 	 * mode makes this needed for timing to be right.
 	 */
-	ctrl_reg |= 0x10;
+	ctrl_reg |= CNT_CNTRL_RESET;
 	ctrl_reg &= ~XTTCPS_CNT_CNTRL_DISABLE_MASK;
 	__raw_writel(ctrl_reg, timer->base_addr + XTTCPS_CNT_CNTRL_OFFSET);
 }
