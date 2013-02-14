@@ -136,41 +136,6 @@ static struct irqaction event_timer_irq = {
 };
 
 /**
- * xttcps_timer_hardware_init - Initialize the timer hardware
- *
- * Initialize the hardware to start the clock source, get the clock
- * event timer ready to use, and hook up the interrupt.
- */
-static void __init xttcps_timer_hardware_init(void)
-{
-	/*
-	 * Setup the clock source counter to be an incrementing counter
-	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
-	 * it by 32 also. Let it start running now.
-	 */
-	__raw_writel(0x0, timers[XTTCPS_CLOCKSOURCE].base_addr +
-				XTTCPS_IER_OFFSET);
-	__raw_writel(CLK_CNTRL_PRESCALE,
-			timers[XTTCPS_CLOCKSOURCE].base_addr +
-			XTTCPS_CLK_CNTRL_OFFSET);
-	__raw_writel(0x10, timers[XTTCPS_CLOCKSOURCE].base_addr +
-				XTTCPS_CNT_CNTRL_OFFSET);
-
-	/*
-	 * Setup the clock event timer to be an interval timer which
-	 * is prescaled by 32 using the interval interrupt. Leave it
-	 * disabled for now.
-	 */
-	__raw_writel(0x23, timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_CNT_CNTRL_OFFSET);
-	__raw_writel(CLK_CNTRL_PRESCALE,
-			timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_CLK_CNTRL_OFFSET);
-	__raw_writel(0x1, timers[XTTCPS_CLOCKEVENT].base_addr +
-			XTTCPS_IER_OFFSET);
-}
-
-/**
  * __xttc_clocksource_read - Reads the timer counter register
  *
  * returns: Current timer counter register value
@@ -312,6 +277,74 @@ static int xttcps_timer_rate_change_cb(struct notifier_block *nb,
 	}
 }
 
+static void __init zynq_ttc_setup_clocksource(struct clk *clk,
+							void __iomem *base)
+{
+	timers[XTTCPS_CLOCKSOURCE].base_addr = base;
+	clk_prepare_enable(clk);
+	timers[XTTCPS_CLOCKSOURCE].clk = clk;
+	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
+		xttcps_timer_rate_change_cb;
+	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
+	timers[XTTCPS_CLOCKSOURCE].frequency = clk_get_rate(clk) / PRESCALE;
+	if (clk_notifier_register(clk,
+		&timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb))
+			pr_warn("Unable to register clock notifier.\n");
+	/*
+	 * Setup the clock source counter to be an incrementing counter
+	 * with no interrupt and it rolls over at 0xFFFF. Pre-scale
+	 * it by 32 also. Let it start running now.
+	 */
+	__raw_writel(0x0, timers[XTTCPS_CLOCKSOURCE].base_addr +
+				XTTCPS_IER_OFFSET);
+	__raw_writel(CLK_CNTRL_PRESCALE,
+			timers[XTTCPS_CLOCKSOURCE].base_addr +
+			XTTCPS_CLK_CNTRL_OFFSET);
+	__raw_writel(0x10, timers[XTTCPS_CLOCKSOURCE].base_addr +
+				XTTCPS_CNT_CNTRL_OFFSET);
+
+	clocksource_register_hz(&clocksource_xttcps,
+				timers[XTTCPS_CLOCKSOURCE].frequency);
+}
+
+static void __init zynq_ttc_setup_clockevent(struct clk *clk,
+						void __iomem *base, u32 irq)
+{
+	timers[XTTCPS_CLOCKEVENT].base_addr = base;
+
+	event_timer_irq.dev_id = &timers[XTTCPS_CLOCKEVENT];
+	setup_irq(irq, &event_timer_irq);
+
+
+
+	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
+		xttcps_timer_rate_change_cb;
+	timers[XTTCPS_CLOCKEVENT].clk = clk;
+	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
+	timers[XTTCPS_CLOCKEVENT].frequency = clk_get_rate(clk) / PRESCALE;
+	if (clk_notifier_register(clk,
+		&timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb))
+			pr_warn("Unable to register clock notifier.\n");
+
+	/*
+	 * Setup the clock event timer to be an interval timer which
+	 * is prescaled by 32 using the interval interrupt. Leave it
+	 * disabled for now.
+	 */
+	__raw_writel(0x23, timers[XTTCPS_CLOCKEVENT].base_addr +
+			XTTCPS_CNT_CNTRL_OFFSET);
+	__raw_writel(CLK_CNTRL_PRESCALE,
+			timers[XTTCPS_CLOCKEVENT].base_addr +
+			XTTCPS_CLK_CNTRL_OFFSET);
+	__raw_writel(0x1, timers[XTTCPS_CLOCKEVENT].base_addr +
+			XTTCPS_IER_OFFSET);
+
+	/* Indicate that clock event is on 1st CPU as SMP boot needs it */
+	xttcps_clockevent.cpumask = cpumask_of(0);
+	clockevents_config_and_register(&xttcps_clockevent,
+			timers[XTTCPS_CLOCKEVENT].frequency, 1, 0xfffe);
+}
+
 /**
  * xttcps_timer_init - Initialize the timer
  *
@@ -341,48 +374,19 @@ static void __init xttcps_timer_init(struct device_node *timer)
 		BUG();
 	}
 
-	timers[XTTCPS_CLOCKSOURCE].base_addr = timer_baseaddr;
-	timers[XTTCPS_CLOCKEVENT].base_addr = timer_baseaddr + 4;
-
-	event_timer_irq.dev_id = &timers[XTTCPS_CLOCKEVENT];
-	setup_irq(irq, &event_timer_irq);
-
-	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
-
 	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
 		pr_err("ERROR: timer input clock not found\n");
 		BUG();
 	}
 
-	clk_prepare_enable(clk);
-	timers[XTTCPS_CLOCKSOURCE].clk = clk;
-	timers[XTTCPS_CLOCKEVENT].clk = clk;
-	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.notifier_call =
-		xttcps_timer_rate_change_cb;
-	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.notifier_call =
-		xttcps_timer_rate_change_cb;
-	timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb.next = NULL;
-	timers[XTTCPS_CLOCKEVENT].clk_rate_change_nb.next = NULL;
-	timers[XTTCPS_CLOCKSOURCE].frequency =
-		clk_get_rate(clk) / PRESCALE;
-	timers[XTTCPS_CLOCKEVENT].frequency =
-		clk_get_rate(clk) / PRESCALE;
-	if (clk_notifier_register(clk,
-		&timers[XTTCPS_CLOCKSOURCE].clk_rate_change_nb))
-		pr_warn("Unable to register clock notifier.\n");
+	zynq_ttc_setup_clocksource(clk, timer_baseaddr);
+	zynq_ttc_setup_clockevent(clk, timer_baseaddr + 4, irq);
 
-	xttcps_timer_hardware_init();
-	clocksource_register_hz(&clocksource_xttcps,
-				timers[XTTCPS_CLOCKSOURCE].frequency);
-
-	/* Indicate that clock event is on 1st CPU as SMP boot needs it */
-	xttcps_clockevent.cpumask = cpumask_of(0);
-	clockevents_config_and_register(&xttcps_clockevent,
-			timers[XTTCPS_CLOCKEVENT].frequency, 1, 0xfffe);
 #ifdef CONFIG_HAVE_ARM_TWD
 	twd_local_timer_of_register();
 #endif
+	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
 }
 
 /*
