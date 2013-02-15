@@ -113,33 +113,26 @@
 				reg = <0xE2000000 0x2000000>; /* 32MB */
 				#address-cells = <1>;
 				#size-cells = <1>;
-				partition@0 {
-					label = "nor-fsbl";
-					reg = <0x0 0x80000>; /* 512K */
+
+				partition@nor-fsbl-uboot {
+					label = "nor-fsbl-uboot";
+					reg = <0x0 0x100000>;
 				};
-				partition@1 {
-					label = "nor-u-boot";
-					reg = <0x80000 0x80000>; /* 512K */
-				};
-				partition@2 {
+				partition@nor-linux {
 					label = "nor-linux";
-					reg = <0x100000 0x500000>; /* 5MB */
+					reg = <0x100000 0x500000>;
 				};
-				partition@3 {
+				partition@nor-device-tree {
 					label = "nor-device-tree";
-					reg = <0x600000 0x20000>; /* 128K */
+					reg = <0x600000 0x20000>;
 				};
-				partition@4 {
-					label = "nor-user";
-					reg = <0x620000 0x8E0000>; /* 8875K */
-				};
-				partition@5 {
-					label = "nor-scratch";
-					reg = <0xF00000 0x100000>; /* 1MB */
-				};
-				partition@6 {
+				partition@nor-rootfs {
 					label = "nor-rootfs";
-					reg = <0x1000000 0x1000000>; /* 16MB */
+					reg = <0x620000 0x5E0000>;
+				};
+				partition@nor-bitstream {
+					label = "nor-bitstream";
+					reg = <0xC00000 0x400000>;
 				};
 			};
 		};
