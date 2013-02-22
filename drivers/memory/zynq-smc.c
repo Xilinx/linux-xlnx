@@ -581,6 +581,7 @@ static int __devexit xsmcps_remove(struct platform_device *pdev)
 /* Match table for device tree binding */
 static const struct of_device_id xsmcps_of_match[] __devinitconst = {
 	{.compatible = "xlnx,ps7-smc"},
+	{ },
 };
 MODULE_DEVICE_TABLE(of, xsmcps_of_match);
 
