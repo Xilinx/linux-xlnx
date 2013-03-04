@@ -2419,30 +2419,7 @@ static struct of_platform_driver usb_of_driver = {
 	.remove = __devexit_p(usb_of_remove),
 };
 
-/**
- * udc_init() - The device driver initialization function.
- *
- * returns: 0 for success and error value on failure
- *
- **/
-static int __init udc_init(void)
-{
-	return platform_driver_register(&usb_of_driver);
-}
-
-/**
- * udc_exit() - The device driver exit function.
- *
- * returns: 0 for success and error value on failure
- *
- **/
-static void __devexit udc_exit(void)
-{
-	platform_driver_unregister(&usb_of_driver);
-}
-
-module_init(udc_init);
-module_exit(udc_exit);
+module_platform_driver(usb_of_driver);
 
 MODULE_DESCRIPTION("Xilinx udc driver");
 MODULE_AUTHOR("Xilinx, Inc");
