@@ -103,8 +103,6 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
 	int i;
 
 	if (!uioinfo) {
-		int irq;
-
 		/* alloc uioinfo for one device */
 		uioinfo = kzalloc(sizeof(*uioinfo), GFP_KERNEL);
 		if (!uioinfo) {
@@ -114,13 +112,6 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
 		}
 		uioinfo->name = pdev->dev.of_node->name;
 		uioinfo->version = "devicetree";
-
-		/* Multiple IRQs are not supported */
-		irq = platform_get_irq(pdev, 0);
-		if (irq == -ENXIO)
-			uioinfo->irq = UIO_IRQ_NONE;
-		else
-			uioinfo->irq = irq;
 	}
 
 	if (!uioinfo || !uioinfo->name || !uioinfo->version) {
@@ -146,14 +137,6 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
 	priv->flags = 0; /* interrupt is enabled to begin with */
 	priv->pdev = pdev;
 
-	if (!uioinfo->irq) {
-		ret = platform_get_irq(pdev, 0);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "failed to get IRQ\n");
-			goto bad0;
-		}
-		uioinfo->irq = ret;
-	}
 	uiomem = &uioinfo->mem[0];
 
 	for (i = 0; i < pdev->num_resources; ++i) {
@@ -189,10 +172,15 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
 	 * Interrupt sharing is not supported.
 	 */
 
-	uioinfo->handler = uio_pdrv_genirq_handler;
-	uioinfo->irqcontrol = uio_pdrv_genirq_irqcontrol;
-	uioinfo->open = uio_pdrv_genirq_open;
-	uioinfo->release = uio_pdrv_genirq_release;
+	ret = platform_get_irq(pdev, 0);
+	if (ret >= 0) {
+		uioinfo->irq = ret;
+		uioinfo->handler = uio_pdrv_genirq_handler;
+		uioinfo->irqcontrol = uio_pdrv_genirq_irqcontrol;
+		uioinfo->open = uio_pdrv_genirq_open;
+		uioinfo->release = uio_pdrv_genirq_release;
+	}
+
 	uioinfo->priv = priv;
 
 	/* Enable Runtime PM for this device:
