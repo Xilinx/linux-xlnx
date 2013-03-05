@@ -32,6 +32,19 @@ static inline void xilinx_system_reset(char mode, const char *cmd)
 /* multiplatform use core.h for this purpose */
 extern void secondary_startup(void);
 
+extern void __iomem *zynq_slcr_base;
 extern void __iomem *scu_base;
+
+#ifdef CONFIG_SUSPEND
+int zynq_pm_late_init(void);
+#else
+static int zynq_pm_late_init(void)
+{
+	return 0;
+}
+#endif
+
+extern unsigned int zynq_sys_suspend_sz;
+int zynq_sys_suspend(void __iomem *ddrc_base, void __iomem *slcr_base);
 
 #endif

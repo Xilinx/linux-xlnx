@@ -20,6 +20,7 @@
 #include <linux/cpumask.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/clk/zynq.h>
 #include <linux/opp.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
@@ -36,7 +37,6 @@
 
 #include <mach/zynq_soc.h>
 #include "common.h"
-#include <linux/clk/zynq.h>
 
 void __iomem *scu_base;
 
@@ -206,14 +206,16 @@ static void __init xilinx_data_prefetch_enable(void *info)
 		      "mcr   p15, 0, r1, c1, c0, 1\n"
 		      : : : "r1");
 }
+#endif
 
 static void __init xilinx_init_late(void)
 {
+	zynq_pm_late_init();
+
+#ifdef CONFIG_XILINX_L1_PREFETCH
 	on_each_cpu(xilinx_data_prefetch_enable, NULL, 0);
-}
-#else
-#define xilinx_init_late	NULL
 #endif
+}
 
 /**
  * xilinx_init_machine() - System specific initialization, intended to be

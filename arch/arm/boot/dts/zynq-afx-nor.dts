@@ -46,6 +46,17 @@
                         arm,tag-latency = <2 2 2>;
                 };
 
+		ps7_ddrc_0: ps7-ddrc@f8006000 {
+			compatible = "xlnx,ps7-ddrc-1.00.a", "xlnx,ps7-ddrc";
+			reg = < 0xf8006000 0x1000 >;
+			xlnx,has-ecc = <0x0>;
+		} ;
+
+		ps7_ocm_0: ps7-ocm@0xfffc0000 {
+			compatible = "xlnx,ps7-ocm";
+			reg = <0xfffc0000 0x40000>; /* 256k */
+		};
+
 		uart@e0001000 {
 			compatible = "xlnx,ps7-uart-1.00.a";
 			reg = <0xE0001000 0x1000>;
