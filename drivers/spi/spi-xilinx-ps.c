@@ -229,6 +229,7 @@ static int xspips_setup_transfer(struct spi_device *spi,
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
+	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 	ctrl_reg = xspips_read(xspi->regs + XSPIPS_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
@@ -253,6 +254,7 @@ static int xspips_setup_transfer(struct spi_device *spi,
 	}
 
 	xspips_write(xspi->regs + XSPIPS_CR_OFFSET, ctrl_reg);
+	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, XSPIPS_ER_ENABLE_MASK);
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
