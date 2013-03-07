@@ -250,6 +250,7 @@
 			reg = < 0xf8f00620 0xe0 >;
 		} ;
 		ps7_sd_0: ps7-sdio@e0100000 {
+			clock-frequency = <50000000>;
 			compatible = "xlnx,ps7-sdio-1.00.a", "generic-sdhci";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = < 0 24 4 >;
@@ -323,8 +324,9 @@
 			reg = < 0xe0002000 0x1000 >;
 			xlnx,usb-reset = <0xffffffff>;
 		} ;
-		ps7_xadc: ps7_xadc@f8007100 {
+		ps7_xadc: ps7-xadc@f8007100 {
 			compatible = "xlnx,ps7-xadc-1.00.a";
+			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = < 0 7 4 >;
 			reg = < 0xf8007100 0x20 >;
 		} ;
