@@ -364,37 +364,48 @@ static void __devinit xsmcps_init_nand_interface(struct platform_device *pdev,
 				"xlnx,nand-width not in device tree, using 8");
 		bw = 8;
 	}
-	err = of_property_read_u32(nand_node, "t_rc", &t_rc);
+	/* nand-cycle-<X> property is refer to the NAND flash timing
+	 * mapping between dts and the NAND flash AC timing
+	 *  X  : AC timing name
+	 *  t0 : t_rc
+	 *  t1 : t_wc
+	 *  t2 : t_rea
+	 *  t3 : t_wp
+	 *  t4 : t_clr
+	 *  t5 : t_ar
+	 *  t6 : t_rr
+	 */
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t0", &t_rc);
 	if (err) {
 		dev_warn(&pdev->dev, "t_rc not in device tree, using 4");
 		t_rc = 4;
 	}
-	err = of_property_read_u32(nand_node, "t_wc", &t_wc);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t1", &t_wc);
 	if (err) {
 		dev_warn(&pdev->dev, "t_wc not in device tree, using 4");
 		t_wc = 4;
 	}
-	err = of_property_read_u32(nand_node, "t_rea", &t_rea);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t2", &t_rea);
 	if (err) {
 		dev_warn(&pdev->dev, "t_rea not in device tree, using 1");
 		t_rea = 1;
 	}
-	err = of_property_read_u32(nand_node, "t_wp", &t_wp);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t3", &t_wp);
 	if (err) {
 		dev_warn(&pdev->dev, "t_wp not in device tree, using 2");
 		t_wp = 2;
 	}
-	err = of_property_read_u32(nand_node, "t_clr", &t_clr);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t4", &t_clr);
 	if (err) {
 		dev_warn(&pdev->dev, "t_clr not in device tree, using 2");
 		t_clr = 2;
 	}
-	err = of_property_read_u32(nand_node, "t_ar", &t_ar);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t5", &t_ar);
 	if (err) {
 		dev_warn(&pdev->dev, "t_ar not in device tree, using 2");
 		t_ar = 2;
 	}
-	err = of_property_read_u32(nand_node, "t_rr", &t_rr);
+	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t6", &t_rr);
 	if (err) {
 		dev_warn(&pdev->dev, "t_rr not in device tree, using 4");
 		t_rr = 4;
