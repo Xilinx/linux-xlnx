@@ -118,6 +118,7 @@ static struct platform_device * __devinit xusbps_device_register(
 
 	pdev->dev.coherent_dma_mask = ofdev->dev.coherent_dma_mask;
 	pdev->dev.dma_mask = &dma_mask;
+	pdev->dev.of_node = ofdev->dev.of_node;
 
 	retval = platform_device_add_data(pdev, pdata, sizeof(*pdata));
 	if (retval)
