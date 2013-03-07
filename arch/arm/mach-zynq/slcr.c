@@ -28,6 +28,7 @@
 #include <linux/string.h>
 #include <mach/slcr.h>
 #include <linux/clk/zynq.h>
+#include "common.h"
 
 #define DRIVER_NAME "xslcr"
 
