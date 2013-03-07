@@ -669,26 +669,6 @@ static inline int vdp_write(struct v4l2_subdev *sd, u8 reg, u8 val)
 	return adv_smbus_write_byte_data(state->i2c_vdp, reg, val);
 }
 
-/* ----------------------------------------------------------------------- */
-
-#ifdef CONFIG_VIDEO_ADV_DEBUG
-static void adv7604_inv_register(struct v4l2_subdev *sd)
-{
-	v4l2_info(sd, "0x000-0x0ff: IO Map\n");
-	v4l2_info(sd, "0x100-0x1ff: AVLink Map\n");
-	v4l2_info(sd, "0x200-0x2ff: CEC Map\n");
-	v4l2_info(sd, "0x300-0x3ff: InfoFrame Map\n");
-	v4l2_info(sd, "0x400-0x4ff: ESDP Map\n");
-	v4l2_info(sd, "0x500-0x5ff: DPP Map\n");
-	v4l2_info(sd, "0x600-0x6ff: AFE Map\n");
-	v4l2_info(sd, "0x700-0x7ff: Repeater Map\n");
-	v4l2_info(sd, "0x800-0x8ff: EDID Map\n");
-	v4l2_info(sd, "0x900-0x9ff: HDMI Map\n");
-	v4l2_info(sd, "0xa00-0xaff: Test Map\n");
-	v4l2_info(sd, "0xb00-0xbff: CP Map\n");
-	v4l2_info(sd, "0xc00-0xcff: VDP Map\n");
-}
-
 enum {
 	ADV7604_PAGE_IO,
 	ADV7604_PAGE_AVLINK,
@@ -798,6 +778,26 @@ static void adv7604_write_reg_seq(struct v4l2_subdev *sd,
 
 	for (i = 0; i < reg_seq_size; i++)
 		adv7604_write_reg(sd, reg_seq[i].reg, reg_seq[i].val);
+}
+
+/* ----------------------------------------------------------------------- */
+
+#ifdef CONFIG_VIDEO_ADV_DEBUG
+static void adv7604_inv_register(struct v4l2_subdev *sd)
+{
+	v4l2_info(sd, "0x000-0x0ff: IO Map\n");
+	v4l2_info(sd, "0x100-0x1ff: AVLink Map\n");
+	v4l2_info(sd, "0x200-0x2ff: CEC Map\n");
+	v4l2_info(sd, "0x300-0x3ff: InfoFrame Map\n");
+	v4l2_info(sd, "0x400-0x4ff: ESDP Map\n");
+	v4l2_info(sd, "0x500-0x5ff: DPP Map\n");
+	v4l2_info(sd, "0x600-0x6ff: AFE Map\n");
+	v4l2_info(sd, "0x700-0x7ff: Repeater Map\n");
+	v4l2_info(sd, "0x800-0x8ff: EDID Map\n");
+	v4l2_info(sd, "0x900-0x9ff: HDMI Map\n");
+	v4l2_info(sd, "0xa00-0xaff: Test Map\n");
+	v4l2_info(sd, "0xb00-0xbff: CP Map\n");
+	v4l2_info(sd, "0xc00-0xcff: VDP Map\n");
 }
 
 static int adv7604_g_register(struct v4l2_subdev *sd,
