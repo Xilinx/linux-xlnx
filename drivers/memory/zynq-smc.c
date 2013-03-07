@@ -377,38 +377,51 @@ static void __devinit xsmcps_init_nand_interface(struct platform_device *pdev,
 	 */
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t0", &t_rc);
 	if (err) {
-		dev_warn(&pdev->dev, "t_rc not in device tree, using 4");
-		t_rc = 4;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t0 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t1", &t_wc);
 	if (err) {
-		dev_warn(&pdev->dev, "t_wc not in device tree, using 4");
-		t_wc = 4;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t1 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t2", &t_rea);
 	if (err) {
-		dev_warn(&pdev->dev, "t_rea not in device tree, using 1");
-		t_rea = 1;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t2 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t3", &t_wp);
 	if (err) {
-		dev_warn(&pdev->dev, "t_wp not in device tree, using 2");
-		t_wp = 2;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t3 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t4", &t_clr);
 	if (err) {
-		dev_warn(&pdev->dev, "t_clr not in device tree, using 2");
-		t_clr = 2;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t4 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t5", &t_ar);
 	if (err) {
-		dev_warn(&pdev->dev, "t_ar not in device tree, using 2");
-		t_ar = 2;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t5 not in device tree");
+		goto default_nand_timing;
 	}
 	err = of_property_read_u32(nand_node, "xlnx,nand-cycle-t6", &t_rr);
 	if (err) {
-		dev_warn(&pdev->dev, "t_rr not in device tree, using 4");
-		t_rr = 4;
+		dev_warn(&pdev->dev, "xlnx,nand-cycle-t6 not in device tree");
+		goto default_nand_timing;
+	}
+
+default_nand_timing:
+	if (err) {
+		/* set default NAND flash timing property */
+		dev_warn(&pdev->dev, "Using default timing for");
+		dev_warn(&pdev->dev, "2Gb Numonyx MT29F2G08ABAEAWP NAND flash");
+		dev_warn(&pdev->dev, "t_wp, t_clr, t_ar are set to 4");
+		dev_warn(&pdev->dev, "t_rc, t_wc, t_rr are set to 2");
+		dev_warn(&pdev->dev, "t_rea is set to 1");
+		t_rc = t_wc = t_rr = 4;
+		t_rea = 1;
+		t_wp = t_clr = t_ar = 2;
 	}
 
 	spin_lock_irqsave(&xsmcps_lock, flags);
