@@ -1064,7 +1064,7 @@ EXPORT_SYMBOL(pcibios_align_resource);
  * Reparent resource children of pr that conflict with res
  * under res, and make res replace those children.
  */
-static int __init reparent_resources(struct resource *parent,
+static int reparent_resources(struct resource *parent,
 				     struct resource *res)
 {
 	struct resource *p, **pp;
@@ -1359,7 +1359,7 @@ void __init pcibios_resource_survey(void)
  * rest of the code later, for now, keep it as-is as our main
  * resource allocation function doesn't deal with sub-trees yet.
  */
-void __devinit pcibios_claim_one_bus(struct pci_bus *bus)
+void pcibios_claim_one_bus(struct pci_bus *bus)
 {
 	struct pci_dev *dev;
 	struct pci_bus *child_bus;
@@ -1387,7 +1387,6 @@ void __devinit pcibios_claim_one_bus(struct pci_bus *bus)
 	list_for_each_entry(child_bus, &bus->children, node)
 		pcibios_claim_one_bus(child_bus);
 }
-EXPORT_SYMBOL_GPL(pcibios_claim_one_bus);
 
 
 /* pcibios_finish_adding_to_bus

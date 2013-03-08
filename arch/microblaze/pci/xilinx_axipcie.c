@@ -41,7 +41,7 @@
 static struct xilinx_axipcie_port *xilinx_axipcie_ports;
 static unsigned int xilinx_axipcie_port_count;
 
-static struct of_device_id xilinx_axipcie_match[] __devinitdata = {
+static const struct of_device_id xilinx_axipcie_match[] = {
 	{ .compatible = "xlnx,axi-pcie-1.05.a" ,},
 	{}
 };
@@ -824,7 +824,7 @@ void pcibios_set_master(struct pci_dev *dev)
 static int __init xilinx_find_axipcie_nodes(void)
 {
 	struct device_node *np;
-	struct of_device_id *matches = xilinx_axipcie_match;
+	const struct of_device_id *matches = xilinx_axipcie_match;
 	int error = 0;
 
 	printk(KERN_INFO "Initialising Xilinx PCI Express root"
