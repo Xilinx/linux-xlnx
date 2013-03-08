@@ -1,11 +1,10 @@
 /*
- * Xylon logiCVC frame buffer driver IOCTL functions
+ * Xylon logiCVC frame buffer driver IOCTL functionality
  *
  * Author: Xylon d.o.o.
  * e-mail: davor.joja@logicbricks.com
  *
- * This driver was based on skeletonfb.c and other fb video drivers.
- * 2012 Xylon d.o.o.
+ * 2013 Xylon d.o.o.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2.  This program is licensed "as is" without any warranty of any
@@ -14,7 +13,6 @@
 
 
 #include <linux/uaccess.h>
-#include <linux/xylonfb.h>
 #include "logicvc.h"
 #include "xylonfb.h"
 
@@ -35,23 +33,30 @@ static int xylonfb_wait_for_vsync(u32 crt, struct fb_info *fbi)
 
 	mutex_lock(&common_data->irq_mutex);
 
-	cnt = common_data->xylonfb_vsync.cnt;
+	cnt = common_data->vsync.cnt;
 
 	/* prepare LOGICVC V-sync interrupt */
-	imr = readl(layer_data->reg_base_virt + LOGICVC_INT_MASK_ROFF);
+	imr = common_data->reg_access.xylonfb_get_reg_val(
+		layer_data->reg_base_virt, LOGICVC_INT_MASK_ROFF,
+		layer_data);
 	imr &= (~LOGICVC_V_SYNC_INT);
 	/* clear LOGICVC V-sync interrupt */
-	writel(LOGICVC_V_SYNC_INT, layer_data->reg_base_virt + LOGICVC_INT_ROFF);
+	writel(LOGICVC_V_SYNC_INT,
+		layer_data->reg_base_virt + LOGICVC_INT_STAT_ROFF);
 	/* enable LOGICVC V-sync interrupt */
-	writel(imr, layer_data->reg_base_virt + LOGICVC_INT_MASK_ROFF);
+	common_data->reg_access.xylonfb_set_reg_val(imr,
+		layer_data->reg_base_virt, LOGICVC_INT_MASK_ROFF,
+		layer_data);
 
 	ret = wait_event_interruptible_timeout(
-			common_data->xylonfb_vsync.wait,
-			(cnt != common_data->xylonfb_vsync.cnt), HZ/10);
+			common_data->vsync.wait,
+			(cnt != common_data->vsync.cnt), HZ/10);
 
 	/* disable LOGICVC V-sync interrupt */
 	imr |= LOGICVC_V_SYNC_INT;
-	writel(imr, layer_data->reg_base_virt + LOGICVC_INT_MASK_ROFF);
+	common_data->reg_access.xylonfb_set_reg_val(imr,
+		layer_data->reg_base_virt, LOGICVC_INT_MASK_ROFF,
+		layer_data);
 
 	mutex_unlock(&common_data->irq_mutex);
 
@@ -75,28 +80,39 @@ static unsigned int alpha_normalized(unsigned int alpha,
 static int xylonfb_layer_alpha(struct xylonfb_layer_data *layer_data,
 	unsigned int *alpha, bool get)
 {
+	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
 	unsigned int used_bits;
 
 	if (layer_data->layer_fix.alpha_mode != LOGICVC_LAYER_ALPHA)
 		return -EPERM;
 
-	switch (layer_data->layer_fix.bpp_virt) {
-	case 8:
-		used_bits = 3;
-		break;
-	case 16:
-		used_bits = 6;
-		break;
-	case 32:
-		used_bits = 8;
-		break;
-	default:
-		return -EINVAL;
+	switch (layer_data->layer_fix.layer_type) {
+		case LOGICVC_YCbCr_LAYER:
+			used_bits =	8;
+			break;
+		case LOGICVC_RGB_LAYER:
+			switch (layer_data->layer_fix.bpp_virt)	{
+			case 8:
+				used_bits = 3;
+				break;
+			case 16:
+				used_bits = 6;
+				break;
+			case 32:
+				used_bits = 8;
+				break;
+			default:
+				return -EINVAL;
+			}
+			break;
+		default:
+			return -EINVAL;
 	}
 
 	if (get) {
-		*alpha =
-			readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_ALPHA_ROFF);
+		*alpha = common_data->reg_access.xylonfb_get_reg_val(
+				layer_data->layer_reg_base_virt, LOGICVC_LAYER_ALPHA_ROFF,
+				layer_data);
 		*alpha &= (0xFF >> (8-used_bits));
 	}
 
@@ -104,8 +120,9 @@ static int xylonfb_layer_alpha(struct xylonfb_layer_data *layer_data,
 	*alpha = alpha_normalized(*alpha, used_bits, get);
 
 	if (!get)
-		writel(*alpha,
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_ALPHA_ROFF);
+		common_data->reg_access.xylonfb_set_reg_val(*alpha,
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_ALPHA_ROFF,
+			layer_data);
 
 	return 0;
 }
@@ -113,6 +130,7 @@ static int xylonfb_layer_alpha(struct xylonfb_layer_data *layer_data,
 static int xylonfb_layer_color_rgb(struct xylonfb_layer_data *layer_data,
 	struct xylonfb_layer_color *layer_color, unsigned int reg_offset, bool get)
 {
+	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
 	void *base;
 	u32 raw_rgb, r, g, b;
 	int bpp, alpha_mode;
@@ -121,14 +139,15 @@ static int xylonfb_layer_color_rgb(struct xylonfb_layer_data *layer_data,
 		base = layer_data->layer_reg_base_virt;
 		bpp = layer_data->layer_fix.bpp_virt;
 		alpha_mode = layer_data->layer_fix.alpha_mode;
-	} else {
+	} else /* if (reg_offset == LOGICVC_BACKCOL_ROFF) */ {
 		base = layer_data->reg_base_virt;
-		bpp = layer_data->xylonfb_cd->bg_layer_bpp;
-		alpha_mode = layer_data->xylonfb_cd->bg_layer_alpha_mode;
+		bpp = layer_data->xylonfb_cd->xylonfb_bg_layer_bpp;
+		alpha_mode = layer_data->xylonfb_cd->xylonfb_bg_layer_alpha_mode;
 	}
 
 	if (get) {
-		raw_rgb = readl(base + reg_offset);
+		raw_rgb = common_data->reg_access.xylonfb_get_reg_val(
+			base, reg_offset, layer_data);
 check_bpp_get:
 		/* convert HW color format to RGB-888 */
 		switch (bpp) {
@@ -216,7 +235,8 @@ check_bpp_set:
 				raw_rgb = 0;
 			}
 		}
-		writel(raw_rgb, base + reg_offset);
+		common_data->reg_access.xylonfb_set_reg_val(
+			raw_rgb, base, reg_offset, layer_data);
 	}
 
 	return 0;
@@ -226,21 +246,28 @@ static int xylonfb_layer_pos_sz(struct fb_info *fbi,
 	struct xylonfb_layer_pos_size *layer_pos_sz, bool get)
 {
 	struct xylonfb_layer_data *layer_data = fbi->par;
+	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
 	u32 x, y, width, height, xres, yres;
 
 	xres = fbi->var.xres;
 	yres = fbi->var.yres;
 
 	if (get) {
-		x = readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_HOR_POS_ROFF);
+		x = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_HOR_POS_ROFF,
+			layer_data);
 		layer_pos_sz->x = xres - (x + 1);
-		y = readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_VER_POS_ROFF);
+		y = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_VER_POS_ROFF,
+			layer_data);
 		layer_pos_sz->y = yres - (y + 1);
-		layer_pos_sz->width =
-			readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_WIDTH_ROFF);
+		layer_pos_sz->width = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_WIDTH_ROFF,
+			layer_data);
 		layer_pos_sz->width += 1;
-		layer_pos_sz->height =
-			readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_HEIGHT_ROFF);
+		layer_pos_sz->height = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_HEIGHT_ROFF,
+			layer_data);
 		layer_pos_sz->height += 1;
 	} else {
 		x = layer_pos_sz->x;
@@ -251,6 +278,9 @@ static int xylonfb_layer_pos_sz(struct fb_info *fbi,
 		if ((x > xres) || (y > yres))
 			return -EINVAL;
 
+		if ((width == 0) || (height == 0))
+			return -EINVAL;
+
 		if ((x + width) > xres) {
 			width = xres - x;
 			layer_pos_sz->width = width;
@@ -259,15 +289,53 @@ static int xylonfb_layer_pos_sz(struct fb_info *fbi,
 			height = yres - y;
 			layer_pos_sz->height = height;
 		}
+		/* YCbCr 4:2:2 layer type can only have even layer width */
+		if (width > 2 &&
+			layer_data->layer_fix.layer_type == LOGICVC_YCbCr_LAYER &&
+			layer_data->layer_fix.bpp_virt == 16) {
+			width &= ~1;
+		}
 
-		writel((width - 1),
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_WIDTH_ROFF);
-		writel((height - 1),
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_HEIGHT_ROFF);
-		writel((xres - (x + 1)),
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_HOR_POS_ROFF);
-		writel((yres - (y + 1)),
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_VER_POS_ROFF);
+		common_data->reg_access.xylonfb_set_reg_val((width - 1),
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_WIDTH_ROFF,
+			layer_data);
+		common_data->reg_access.xylonfb_set_reg_val((height - 1),
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_HEIGHT_ROFF,
+			layer_data);
+		common_data->reg_access.xylonfb_set_reg_val((xres - (x + 1)),
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_HOR_POS_ROFF,
+			layer_data);
+		common_data->reg_access.xylonfb_set_reg_val((yres - (y + 1)),
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_VER_POS_ROFF,
+			layer_data);
+	}
+
+	return 0;
+}
+
+static int xylonfb_layer_reg_access(
+	struct xylonfb_layer_data *layer_data,
+	struct xylonfb_common_data *common_data,
+	struct xylonfb_hw_access *hw_access,
+	bool read)
+{
+	u32 rel_offset;
+
+	if ((hw_access->offset < LOGICVC_LAYER_BASE_OFFSET) ||
+		(hw_access->offset > LOGICVC_LAYER_BASE_END))
+		return -EPERM;
+
+	rel_offset = hw_access->offset -
+		((layer_data->layer_fix.layer_fix_info & 0x0F) * 0x80) -
+		LOGICVC_LAYER_BASE_OFFSET;
+
+	if (read) {
+		hw_access->value =
+			common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, rel_offset, layer_data);
+	} else {
+		common_data->reg_access.xylonfb_set_reg_val(hw_access->value,
+			layer_data->layer_reg_base_virt, rel_offset, layer_data);
 	}
 
 	return 0;
@@ -276,6 +344,7 @@ static int xylonfb_layer_pos_sz(struct fb_info *fbi,
 int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 {
 	struct xylonfb_layer_data *layer_data = fbi->par;
+	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
 	union {
 		struct fb_vblank vblank;
 		struct xylonfb_layer_color layer_color;
@@ -332,14 +401,16 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		if (get_user(val, (unsigned long __user *)arg))
 			return -EFAULT;
 		mutex_lock(&layer_data->layer_mutex);
-		var32 =
-			readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_CTRL_ROFF);
+		var32 = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_CTRL_ROFF,
+			layer_data);
 		if (val)
 			var32 |= (1 << 1); /* logiCVC layer transparency disabled */
 		else
 			var32 &= ~(1 << 1); /* logiCVC layer transparency enabled */
-		writel(var32,
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_CTRL_ROFF);
+		common_data->reg_access.xylonfb_set_reg_val(var32,
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_CTRL_ROFF,
+			layer_data);
 		mutex_unlock(&layer_data->layer_mutex);
 		break;
 
@@ -422,12 +493,11 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 
 	case XYLONFB_GET_LAYER_BUFFER_OFFSET:
 		driver_devel("XYLONFB_GET_LAYER_BUFFER_OFFSET\n");
-		layer_buffs = layer_data->layer_fix.layer_fix_info >> 4;
 		layer_id = layer_data->layer_fix.layer_fix_info & 0x0F;
 		var32 = readl(layer_data->reg_base_virt + LOGICVC_DOUBLE_VBUFF_ROFF);
 		var32 >>= ((layer_id << 1)); /* get buffer */
 		var32 &= 0x03;
-		val = layer_data->layer_fix.height / layer_buffs;
+		val = layer_data->layer_fix.buffer_offset;
 		val *= var32;
 		put_user(val, (unsigned long __user *)arg);
 		break;
@@ -440,7 +510,7 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 
 	case XYLONFB_GET_BACKGROUND_COLOR:
 		driver_devel("XYLONFB_GET_BACKGROUND_COLOR\n");
-		if (layer_data->xylonfb_cd->bg_layer_bpp == 0)
+		if (layer_data->xylonfb_cd->xylonfb_bg_layer_bpp == 0)
 			return -EPERM;
 		if (copy_from_user(&ioctl.layer_color, argp,
 			sizeof(ioctl.layer_color)))
@@ -455,7 +525,7 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 
 	case XYLONFB_SET_BACKGROUND_COLOR:
 		driver_devel("XYLONFB_SET_BACKGROUND_COLOR\n");
-		if (layer_data->xylonfb_cd->bg_layer_bpp == 0)
+		if (layer_data->xylonfb_cd->xylonfb_bg_layer_bpp == 0)
 			return -EPERM;
 		if (copy_from_user(&ioctl.layer_color, argp,
 			sizeof(ioctl.layer_color)))
@@ -471,14 +541,16 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		if (get_user(val, (unsigned long __user *)arg))
 			return -EFAULT;
 		mutex_lock(&layer_data->layer_mutex);
-		var32 =
-			readl(layer_data->layer_reg_base_virt + LOGICVC_LAYER_CTRL_ROFF);
+		var32 = common_data->reg_access.xylonfb_get_reg_val(
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_CTRL_ROFF,
+			layer_data);
 		if (val)
 			var32 |= (1 << 2);
 		else
 			var32 &= ~(1 << 2);
-		writel(var32,
-			layer_data->layer_reg_base_virt + LOGICVC_LAYER_CTRL_ROFF);
+		common_data->reg_access.xylonfb_set_reg_val(var32,
+			layer_data->layer_reg_base_virt, LOGICVC_LAYER_CTRL_ROFF,
+			layer_data);
 		mutex_unlock(&layer_data->layer_mutex);
 		break;
 
@@ -487,27 +559,54 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&ioctl.hw_access, argp,
 			sizeof(ioctl.hw_access)))
 			return -EFAULT;
-		ioctl.hw_access.value =
-			readl(layer_data->reg_base_virt + ioctl.hw_access.offset);
+		if (common_data->xylonfb_flags & LOGICVC_READABLE_REGS) {
+			ioctl.hw_access.value =
+				common_data->reg_access.xylonfb_get_reg_val(
+					layer_data->reg_base_virt, ioctl.hw_access.offset,
+					layer_data);
+		} else {
+			ret = xylonfb_layer_reg_access(layer_data, common_data,
+				&ioctl.hw_access, true);
+			if (ret)
+				break;
+		}
 		if (copy_to_user(argp, &ioctl.hw_access,
 			sizeof(ioctl.hw_access)))
 			ret = -EFAULT;
 		break;
 
 	case XYLONFB_WRITE_HW_REG:
-		driver_devel("XYLONFB_READ_HW_REG\n");
+		driver_devel("XYLONFB_WRITE_HW_REG\n");
 		if (copy_from_user(&ioctl.hw_access, argp,
 			sizeof(ioctl.hw_access)))
 			return -EFAULT;
-		writel(ioctl.hw_access.value,
-			layer_data->reg_base_virt + ioctl.hw_access.offset);
+		if (common_data->xylonfb_flags & LOGICVC_READABLE_REGS) {
+			common_data->reg_access.xylonfb_set_reg_val(ioctl.hw_access.value,
+				layer_data->reg_base_virt, ioctl.hw_access.offset,
+				layer_data);
+		} else {
+			ret = xylonfb_layer_reg_access(layer_data, common_data,
+				&ioctl.hw_access, false);
+			if (ret)
+				break;
+		}
 		if (copy_to_user(argp, &ioctl.hw_access,
 			sizeof(ioctl.hw_access)))
 			ret = -EFAULT;
 		break;
 
+	case XYLONFB_WAIT_EDID:
+		driver_devel("XYLONFB_WAIT_EDID\n");
+		if (get_user(val, (unsigned long __user *)arg))
+			return -EFAULT;
+		break;
+
+	case XYLONFB_GET_EDID:
+		driver_devel("XYLONFB_GET_EDID\n");
+		break;
+
 	default:
-		driver_devel("IOCTL_ERROR\n");
+		driver_devel("UNKNOWN_IOCTL\n");
 		ret = -EINVAL;
 	}
 
