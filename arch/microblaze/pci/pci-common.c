@@ -187,10 +187,12 @@ int pcibios_add_platform_entries(struct pci_dev *pdev)
 	return device_create_file(&pdev->dev, &dev_attr_devspec);
 }
 
+#ifndef CONFIG_XILINX_AXIPCIE
 void pcibios_set_master(struct pci_dev *dev)
 {
 	/* No special bus mastering setup handling */
 }
+#endif
 
 /*
  * Reads the interrupt pin to determine if interrupt is use by card.
