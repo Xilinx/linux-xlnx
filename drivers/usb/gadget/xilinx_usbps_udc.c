@@ -1889,6 +1889,7 @@ static void setup_received_irq(struct xusbps_udc *udc,
 	u16 wValue = le16_to_cpu(setup->wValue);
 	u16 wIndex = le16_to_cpu(setup->wIndex);
 	u16 wLength = le16_to_cpu(setup->wLength);
+	u16 testsel = 0;
 
 	udc_reset_ep_queue(udc, 0);
 
@@ -1939,6 +1940,13 @@ static void setup_received_irq(struct xusbps_udc *udc,
 		} else if ((setup->bRequestType & (USB_RECIP_MASK
 				| USB_TYPE_MASK)) == (USB_RECIP_DEVICE
 				| USB_TYPE_STANDARD)) {
+			/* TEST MODE feature */
+			if (wValue == USB_DEVICE_TEST_MODE) {
+				testsel = (wIndex >> 8) & 0xff;
+				rc = 0;
+				goto status_phase;
+			}
+
 			/* Note: The driver has not include OTG support yet.
 			 * This will be set when OTG support is added */
 			if (!gadget_is_otg(&udc->gadget))
@@ -1960,9 +1968,20 @@ static void setup_received_irq(struct xusbps_udc *udc,
 		} else
 			break;
 
+status_phase:
 		if (rc == 0) {
-			if (ep0_prime_status(udc, EP_DIR_IN))
+			if (ep0_prime_status(udc, EP_DIR_IN)) {
 				ep0stall(udc);
+			} else {
+				if (testsel) {
+					u32 tmp;
+					/* Wait for status phase to complete */
+					mdelay(1);
+					tmp = xusbps_readl(&dr_regs->portsc1);
+					tmp |= (testsel << 16);
+					xusbps_writel(tmp, &dr_regs->portsc1);
+				}
+			}
 		}
 		return;
 	}
