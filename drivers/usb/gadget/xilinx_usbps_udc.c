@@ -1767,6 +1767,10 @@ static int ep0_prime_status(struct xusbps_udc *udc, int direction)
 	req->req.actual = 0;
 	req->req.complete = NULL;
 	req->dtd_count = 0;
+	req->req.dma = dma_map_single(ep->udc->gadget.dev.parent,
+				req->req.buf, req->req.length,
+				ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+	req->mapped = 1;
 
 	if (xusbps_req_to_dtd(req) == 0)
 		xusbps_queue_td(ep, req);
@@ -1837,6 +1841,10 @@ static void ch9getstatus(struct xusbps_udc *udc, u8 request_type, u16 value,
 	req->req.actual = 0;
 	req->req.complete = NULL;
 	req->dtd_count = 0;
+	req->req.dma = dma_map_single(ep->udc->gadget.dev.parent,
+				req->req.buf, req->req.length,
+				ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+	req->mapped = 1;
 
 	/* prime the data phase */
 	if ((xusbps_req_to_dtd(req) == 0))
@@ -2698,7 +2706,6 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
 			struct xusbps_req, req);
 	/* allocate a small amount of memory to get valid address */
 	udc->status_req->req.buf = kmalloc(8, GFP_KERNEL);
-	udc->status_req->req.dma = virt_to_phys(udc->status_req->req.buf);
 
 	udc->resume_state = USB_STATE_NOTATTACHED;
 	udc->usb_state = USB_STATE_POWERED;
