@@ -293,6 +293,7 @@ struct xusbps_ep {
 
 	char name[14];
 	unsigned stopped:1;
+	unsigned int wedge;
 };
 
 #define EP_DIR_IN	1
@@ -874,6 +875,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 	ep->ep.maxpacket = max;
 	ep->desc = desc;
 	ep->stopped = 0;
+	ep->wedge = 0;
 
 	/* Controller related setup */
 	/* Init EPx Queue Head (Ep Capabilites field in QH
@@ -1341,6 +1343,8 @@ static int xusbps_ep_set_halt(struct usb_ep *_ep, int value)
 	ep_dir = ep_is_in(ep) ? USB_SEND : USB_RECV;
 	ep_num = (unsigned char)(ep_index(ep));
 	spin_lock_irqsave(&ep->udc->lock, flags);
+	if (!value)
+		ep->wedge = 0;
 	dr_ep_change_stall(ep_num, ep_dir, value);
 	spin_unlock_irqrestore(&ep->udc->lock, flags);
 
@@ -1353,6 +1357,23 @@ out:
 			value ?  "set" : "clear", status);
 
 	return status;
+}
+
+static int xusbps_ep_set_wedge(struct usb_ep *_ep)
+{
+	struct xusbps_ep *ep = NULL;
+	unsigned long flags = 0;
+
+	ep = container_of(_ep, struct xusbps_ep, ep);
+
+	if (!ep || !ep->ep.desc)
+		return -EINVAL;
+
+	spin_lock_irqsave(&ep->udc->lock, flags);
+	ep->wedge = 1;
+	spin_unlock_irqrestore(&ep->udc->lock, flags);
+
+	return usb_ep_set_halt(_ep);
 }
 
 static void xusbps_ep_fifo_flush(struct usb_ep *_ep)
@@ -1407,6 +1428,7 @@ static struct usb_ep_ops xusbps_ep_ops = {
 	.dequeue = xusbps_ep_dequeue,
 
 	.set_halt = xusbps_ep_set_halt,
+	.set_wedge = xusbps_ep_set_wedge,
 	.fifo_flush = xusbps_ep_fifo_flush,	/* flush fifo */
 };
 
@@ -1904,9 +1926,14 @@ static void setup_received_irq(struct xusbps_udc *udc,
 			ep = get_ep_by_pipe(udc, pipe);
 
 			spin_unlock(&udc->lock);
-			rc = xusbps_ep_set_halt(&ep->ep,
-					(setup->bRequest == USB_REQ_SET_FEATURE)
-						? 1 : 0);
+			if (setup->bRequest == USB_REQ_SET_FEATURE) {
+				 rc = xusbps_ep_set_halt(&ep->ep, 1);
+			} else {
+				if (!ep->wedge)
+					rc = xusbps_ep_set_halt(&ep->ep, 0);
+				else
+					rc = 0;
+			}
 			spin_lock(&udc->lock);
 
 		} else if ((setup->bRequestType & (USB_RECIP_MASK
