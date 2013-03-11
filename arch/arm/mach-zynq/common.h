@@ -38,7 +38,7 @@ extern void __iomem *scu_base;
 #ifdef CONFIG_SUSPEND
 int zynq_pm_late_init(void);
 #else
-static int zynq_pm_late_init(void)
+static inline int zynq_pm_late_init(void)
 {
 	return 0;
 }
