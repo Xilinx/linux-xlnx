@@ -33,7 +33,8 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 
-#include <mach/slcr.h>
+extern void xslcr_init_preload_fpga(void);
+extern void xslcr_init_postload_fpga(void);
 
 #define DRIVER_NAME "xdevcfg"
 

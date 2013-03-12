@@ -32,7 +32,6 @@
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/mach/map.h>
 #include <asm/suspend.h>
-#include <mach/slcr.h>
 #include "common.h"
 
 #define DDRC_CTRL_REG1_OFFS		0x60

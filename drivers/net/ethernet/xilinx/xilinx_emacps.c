@@ -39,7 +39,6 @@
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/of.h>
-#include <mach/slcr.h>
 #include <linux/interrupt.h>
 #include <linux/clocksource.h>
 #include <linux/timecompare.h>

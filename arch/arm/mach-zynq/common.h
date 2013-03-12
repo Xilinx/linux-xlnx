@@ -17,12 +17,19 @@
 #ifndef __MACH_ZYNQ_COMMON_H__
 #define __MACH_ZYNQ_COMMON_H__
 
-#include <mach/slcr.h>
-
 void __init xttcps_timer_init_old(void);
 void platform_device_init(void);
 
 int __cpuinit zynq_cpun_start(u32 address, int cpu);
+
+extern void xslcr_write(u32 val, u32 offset);
+extern u32 xslcr_read(u32 offset);
+
+extern int xslcr_init(void);
+extern void xslcr_system_reset(void);
+
+extern void xslcr_init_preload_fpga(void);
+extern void xslcr_init_postload_fpga(void);
 
 /* multiplatform use core.h for this purpose */
 extern void secondary_startup(void);
