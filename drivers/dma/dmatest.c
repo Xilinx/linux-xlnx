@@ -599,6 +599,8 @@ static int dmatest_func(void *data)
 			break;
 		}
 
+		align = 3;
+
 		if (params->norandom)
 			len = params->buf_size;
 		else
