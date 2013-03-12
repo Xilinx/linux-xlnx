@@ -588,6 +588,7 @@ struct dma_pl330_dmac {
 	struct dma_pl330_chan *peripherals; /* keep at end */
 
 	struct clk *clk;
+	u32 dma_channels;
 };
 
 struct dma_pl330_desc {
@@ -2903,11 +2904,17 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	clk_enable(pdmac->clk);
 #endif
 
-	irq = adev->irq[0];
-	ret = request_irq(irq, pl330_irq_handler, 0,
-			dev_name(&adev->dev), pi);
-	if (ret)
-		goto probe_err3;
+	of_property_read_u32(adev->dev.of_node,
+			     "#dma-channels", &pdmac->dma_channels);
+
+	/* irq 0 is abort IRQ */
+	for (i = 0; i <= pdmac->dma_channels ; i++) {
+		irq = adev->irq[i];
+		ret = request_irq(irq, pl330_irq_handler, 0,
+				dev_name(&adev->dev), pi);
+		if (ret)
+			goto probe_err3;
+	}
 
 	ret = pl330_add(pi);
 	if (ret)
@@ -2992,7 +2999,8 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 probe_err5:
 	pl330_del(pi);
 probe_err4:
-	free_irq(irq, pi);
+	for (i = 1; i <= pdmac->dma_channels ; i++)
+		free_irq(adev->irq[i], pi);
 probe_err3:
 #ifndef CONFIG_PM_RUNTIME
 	clk_disable(pdmac->clk);
@@ -3013,7 +3021,7 @@ static int __devexit pl330_remove(struct amba_device *adev)
 	struct dma_pl330_chan *pch, *_p;
 	struct pl330_info *pi;
 	struct resource *res;
-	int irq;
+	int i;
 
 	if (!pdmac)
 		return 0;
@@ -3036,8 +3044,8 @@ static int __devexit pl330_remove(struct amba_device *adev)
 
 	pl330_del(pi);
 
-	irq = adev->irq[0];
-	free_irq(irq, pi);
+	for (i = 1; i <= pdmac->dma_channels ; i++)
+		free_irq(adev->irq[i], pi);
 
 	iounmap(pi->base);
 
