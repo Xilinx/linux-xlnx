@@ -226,6 +226,11 @@ static void __init xilinx_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
+static void xilinx_system_reset(char mode, const char *cmd)
+{
+	xslcr_system_reset();
+}
+
 static const char * const xilinx_dt_match[] = {
 	"xlnx,zynq-zc702",
 	"xlnx,zynq-zc706",
