@@ -518,6 +518,8 @@ static int dmatest_func(void *data)
 			break;
 		}
 
+		align = 3;
+
 		if (params->noverify)
 			len = params->buf_size;
 		else
