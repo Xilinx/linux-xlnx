@@ -21,13 +21,6 @@ config XILINX_L2_PREFETCH
 config DMA_ENGINE
 	def_bool y
 
-config XILINX_TEST
-	bool "Testing On Kernel Boot"
-	default n
-	help
-	  Select if you want kernel tests to run on boot.  The tests may take
-	  several minutes on kernel boot.
-
 config XILINX_AXIPCIE
 	bool "Xilinx AXI PCIe host bridge support"
 	select PCI

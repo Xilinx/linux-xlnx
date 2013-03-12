@@ -1022,7 +1022,6 @@ config ARCH_ZYNQ
 	select USE_OF
 	select HAVE_SMP
 	select CACHE_L2X0
-	select ISA_DMA_API
 	select ARCH_REQUIRE_GPIOLIB
 	select COMMON_CLK
 	select ARCH_HAS_CPUFREQ
