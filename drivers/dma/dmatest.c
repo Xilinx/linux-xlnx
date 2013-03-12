@@ -335,6 +335,7 @@ static int dmatest_func(void *data)
 			break;
 		}
 
+		align = 3;
 		len = dmatest_random() % test_buf_size + 1;
 		len = (len >> align) << align;
 		if (!len)
