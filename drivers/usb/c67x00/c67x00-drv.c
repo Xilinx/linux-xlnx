@@ -42,11 +42,11 @@
 #include <linux/usb.h>
 #include <linux/usb/c67x00.h>
 
-#if defined(CONFIG_OF) 
+#if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#include <linux/of_address.h> 
-#endif 
+#include <linux/of_address.h>
+#endif
 
 #include "c67x00.h"
 #include "c67x00-hcd.h"
