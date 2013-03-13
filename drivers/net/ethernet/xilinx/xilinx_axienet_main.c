@@ -716,6 +716,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->app4 = (unsigned long)skb;
 
 	tail_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
+	wmb();
+
 	/* Start the transfer */
 	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 	++lp->tx_bd_tail;
@@ -744,6 +746,7 @@ static void axienet_recv(struct net_device *ndev)
 	struct sk_buff *skb, *new_skb;
 	struct axidma_bd *cur_p;
 
+	rmb();
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 
 	while ((cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
