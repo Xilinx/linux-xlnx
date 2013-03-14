@@ -41,6 +41,8 @@
 						/* Reset DMA engine */
 #define XILINX_VDMA_CR_RUNSTOP_MASK	0x00000001
 						/* Start/stop DMA engine */
+#define XILINX_VDMA_CR_FSYNC_SRC_MASK	0x00000060
+						/* FSYNC Source Mask */
 
 #define XILINX_VDMA_SR_HALTED_MASK	0x00000001
 						/* DMA channel halted */
@@ -92,7 +94,7 @@
 #define XILINX_VDMA_FRMCNT_EN	0x00000010	/* Frm Cnt enable mode */
 #define XILINX_VDMA_MSTR_MASK	0x00000F00	/* Master in control */
 
-#define XILINX_VDMA_EXTFSYNC_SHIFT	6
+#define XILINX_VDMA_EXTFSYNC_SHIFT	5
 #define XILINX_VDMA_MSTR_SHIFT		8
 #define XILINX_VDMA_WR_REF_SHIFT	8
 
@@ -1009,8 +1011,9 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 
 		chan->config.disable_intr = cfg->disable_intr;
 
-		if (cfg->ext_fsync)
-			reg |= cfg->ext_fsync << XILINX_VDMA_EXTFSYNC_SHIFT;
+		/* FSync Source selection */
+		reg &= ~XILINX_VDMA_CR_FSYNC_SRC_MASK;
+		reg |= cfg->ext_fsync << XILINX_VDMA_EXTFSYNC_SHIFT;
 
 		VDMA_OUT(&chan->regs->cr, reg);
 		return 0;
