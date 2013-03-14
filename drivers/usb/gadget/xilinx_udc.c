@@ -2409,7 +2409,7 @@ static int __devexit usb_of_remove(struct of_device *op)
 	return xudc_remove(pdev, op);
 }
 
-static struct of_platform_driver usb_of_driver = {
+static struct platform_driver usb_of_driver = {
 	.driver = {
 		.name = driver_name,
 		.owner = THIS_MODULE,
