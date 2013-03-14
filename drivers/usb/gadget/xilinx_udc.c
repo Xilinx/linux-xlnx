@@ -1289,9 +1289,16 @@ static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
 	return 0;
 }
 
+static int xudc_start(struct usb_gadget_driver *driver,
+				int (*bind)(struct usb_gadget *));
+static int xudc_stop(struct usb_gadget_driver *driver);
+static void xusb_release(struct device *dev);
+
 static const struct usb_gadget_ops xusb_udc_ops = {
 	.get_frame = xusb_get_frame,
 	.ioctl = xusb_ioctl,
+	.start = xudc_start,
+	.stop  = xudc_stop,
 };
 
 
@@ -1301,7 +1308,6 @@ static struct xusb_udc controller = {
 		.ops = &xusb_udc_ops,
 		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep,
 		.speed = USB_SPEED_HIGH,
-		.is_dualspeed = 1,
 		.is_otg = 0,
 		.is_a_peripheral = 0,
 		.b_hnp_enable = 0,
@@ -1310,6 +1316,7 @@ static struct xusb_udc controller = {
 		.name = driver_name,
 		.dev = {
 			.init_name = "xilinx_udc",
+			.release = xusb_release,
 			},
 		},
 	.ep[0] = {
@@ -2148,13 +2155,14 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 }
 
 /**
- * usb_gadget_register_driver() - Registers the driver.
+ * xudc_start() - Starts the device.
  * @driver:	Pointer to the usb gadget sturcutre.
- *
+ * @bind:	Function pointer to bind driver
  * returns: 0 for success and error value on failure
  *
  **/
-int usb_gadget_register_driver(struct usb_gadget_driver *driver)
+int xudc_start(struct usb_gadget_driver *driver,
+				int (*bind)(struct usb_gadget *))
 {
 	struct xusb_udc *udc = &controller;
 	int retval;
@@ -2165,8 +2173,8 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 	 * are created properly.
 	 */
 	if (!driver
-	    || driver->speed != USB_SPEED_HIGH ||
-		!driver->bind || !driver->unbind || !driver->setup) {
+	    || driver->max_speed != USB_SPEED_HIGH ||
+		!bind || !driver->unbind || !driver->setup) {
 		dev_dbg(&udc->gadget.dev, "bad parameter.\n");
 		return -EINVAL;
 	}
@@ -2182,8 +2190,7 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 
 	/* Add and bind the USB device to the device structure.*/
 	retval = device_add(&udc->gadget.dev);
-
-	retval = driver->bind(&udc->gadget);
+	retval = bind(&udc->gadget);
 	if (retval) {
 		dev_dbg(&udc->gadget.dev,
 			"driver->bind() returned %d\n", retval);
@@ -2199,22 +2206,21 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_register_driver);
 
 /**
- * usb_gadget_unregister_driver() - unregisters the driver.
+ * xudc_stop() - stops the device.
  * @driver:	Pointer to the usb gadget sturcutre.
  *
  * returns: 0 for success and error value on failure
  *
  */
-int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
+int xudc_stop(struct usb_gadget_driver *driver)
 {
 	struct xusb_udc *udc = &controller;
 	unsigned long flags;
 	u32 crtlreg;
 
-	if (!driver || driver != udc->driver)
+	if (!driver || driver != udc->driver || !driver->unbind)
 		return -EINVAL;
 
 	spin_lock_irqsave(&udc->lock, flags);
@@ -2223,6 +2229,9 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	spin_unlock_irqrestore(&udc->lock, flags);
 	driver->unbind(&udc->gadget);
 	device_del(&udc->gadget.dev);
+	udc->gadget.dev.driver = NULL;
+	udc->driver = NULL;
+
 	dev_dbg(&udc->gadget.dev,
 		"unbound from %s\n", driver->driver.name);
 
@@ -2234,7 +2243,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	out_be32((udc->base_address + XUSB_CONTROL_OFFSET), crtlreg);
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_unregister_driver);
 
 /**
  * xudc_init() - Initializes the USB device structures.
@@ -2354,6 +2362,14 @@ static int __devexit xudc_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;
+}
+
+static void xusb_release(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xusb_udc *udc = platform_get_drvdata(pdev);
+
+	kfree(udc);
 }
 
 /**
