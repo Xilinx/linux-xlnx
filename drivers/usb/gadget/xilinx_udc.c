@@ -25,13 +25,16 @@
 
 #include <linux/interrupt.h>
 #include <linux/device.h>
+#include <linux/module.h>
+#include <linux/prefetch.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/io.h>
-#include <linux/irq.h>
 #include <linux/seq_file.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/of_irq.h>
 #include <linux/dma-mapping.h>
 #include "gadget_chips.h"
 
@@ -2285,7 +2288,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 
 	/* Request UDC irqs */
 	if (request_irq
-	    (irq_res->start, xusb_udc_irq, SA_RESTART, driver_name, udc)) {
+	    (irq_res->start, xusb_udc_irq, IRQF_SHARED, driver_name, udc)) {
 		device_unregister(&udc->gadget.dev);
 		stop_activity(udc);
 		iounmap(udc->base_address);
