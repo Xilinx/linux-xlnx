@@ -224,36 +224,36 @@ static struct {
 	union {
 		u8 StandardDeviceRequest;
 		u8 bmRequestType;
-	} Byte0;
+	} byte0;
 	union {
 		u8 FbRequest;
 		u8 bRequest;
-	} Byte1;
+	} byte1;
 	union {
 		struct {
 			u8 bDescriptorType;
 			u8 bDescriptorIndex;
-		} Byte23;
+		} byte23;
 		u16 FwValue;
 		u16 wValue;
 		u16 wFeatureSelector;
-	} Word1;
+	} word1;
 	union {
 		struct {
-			u8 Byteh;
-			u8 Bytel;
-		} Byte45;
+			u8 byteh;
+			u8 bytel;
+		} byte45;
 		u16 wTargetSelector;
 		u16 FwIndex;
 		u16 wIndex;
-	} Word2;
+	} word2;
 	union {
 		struct {
-			u8 Byteh;
-			u8 Bytel;
-		} Byte67;
+			u8 byteh;
+			u8 bytel;
+		} byte67;
 		u16 wLength;
-	} Word3;
+	} word3;
 	u8 *contreadptr;
 	u8 *contwriteptr;
 	u32 contreadcount;
@@ -626,7 +626,7 @@ static int read_fifo(struct xusb_ep *ep, struct xusb_request *req)
 {
 	u8 *buf;
 	u32 is_short, count, bufferspace;
-	u8 Bufoffset;
+	u8 bufoffset;
 	u8 two_pkts = 0;
 	struct xusb_udc *udc = &controller;
 
@@ -637,11 +637,11 @@ static int read_fifo(struct xusb_ep *ep, struct xusb_request *req)
 	}
 top:
 	if (ep->curbufnum)
-		Bufoffset = 0xC;
+		bufoffset = 0xC;
 	else
-		Bufoffset = 0x08;
+		bufoffset = 0x08;
 		count = udc->read_fn(ep->udc->base_address +
-				ep->endpointoffset + Bufoffset);
+				ep->endpointoffset + bufoffset);
 	if (!ep->buffer0ready && !ep->buffer1ready)
 		two_pkts = 1;
 
@@ -1617,7 +1617,7 @@ static void set_configuration(struct xusb_udc *udc)
 {
 	u32 epcfgreg;
 
-	switch (ch9_cmdbuf.Word1.wValue) {
+	switch (ch9_cmdbuf.word1.wValue) {
 	case 0:
 		/*
 		 * This configuration value resets the device to the
@@ -1659,9 +1659,9 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 	u8 outinbit;
 	u32 epcfgreg;
 
-	switch (ch9_cmdbuf.Byte0.bmRequestType) {
+	switch (ch9_cmdbuf.byte0.bmRequestType) {
 	case STANDARD_OUT_DEVICE:
-		switch (ch9_cmdbuf.Word1.wValue) {
+		switch (ch9_cmdbuf.word1.wValue) {
 		case USB_DEVICE_REMOTE_WAKEUP:
 			/* User needs to add code here.*/
 			break;
@@ -1684,9 +1684,9 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 		break;
 
 	case STANDARD_OUT_ENDPOINT:
-		if (!ch9_cmdbuf.Word1.wValue) {
-			endpoint = ch9_cmdbuf.Word2.wIndex & 0xf;
-			outinbit = ch9_cmdbuf.Word2.wIndex & 0x80;
+		if (!ch9_cmdbuf.word1.wValue) {
+			endpoint = ch9_cmdbuf.word2.wIndex & 0xf;
+			outinbit = ch9_cmdbuf.word2.wIndex & 0x80;
 			outinbit = outinbit >> 7;
 
 			/* Make sure direction matches.*/
@@ -1764,10 +1764,10 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 static int execute_command(struct xusb_udc *udc)
 {
 
-	if ((ch9_cmdbuf.Byte0.bmRequestType & USB_TYPE_MASK) ==
+	if ((ch9_cmdbuf.byte0.bmRequestType & USB_TYPE_MASK) ==
 	    USB_TYPE_STANDARD) {
 		/* Process the chapter 9 command.*/
-		switch (ch9_cmdbuf.Byte1.bRequest) {
+		switch (ch9_cmdbuf.byte1.bRequest) {
 
 		case USB_REQ_CLEAR_FEATURE:
 			set_clear_feature(udc, 0);
@@ -1783,20 +1783,20 @@ static int execute_command(struct xusb_udc *udc)
 
 		case USB_REQ_SET_CONFIGURATION:
 			set_configuration(udc);
-			return ch9_cmdbuf.Byte1.bRequest;
+			return ch9_cmdbuf.byte1.bRequest;
 
 		default:
 			/*
 			 * Return the same request to application for
 			 * handling.
 			 */
-			return ch9_cmdbuf.Byte1.bRequest;
+			return ch9_cmdbuf.byte1.bRequest;
 		}
 
 	} else
-		if ((ch9_cmdbuf.Byte0.bmRequestType & USB_TYPE_MASK) ==
+		if ((ch9_cmdbuf.byte0.bmRequestType & USB_TYPE_MASK) ==
 					USB_TYPE_CLASS)
-			return ch9_cmdbuf.Byte1.bRequest;
+			return ch9_cmdbuf.byte1.bRequest;
 
 	return 0;
 }
@@ -1820,10 +1820,10 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 
 	/* Get the first 4 bytes of the setup packet */
 	usbmemdata.word = *ep0rambase;
-	ch9_cmdbuf.Byte0.bmRequestType = usbmemdata.byte.zero;
-	ch9_cmdbuf.Byte1.bRequest = usbmemdata.byte.one;
-	ch9_cmdbuf.Word1.Byte23.bDescriptorIndex = usbmemdata.byte.two;
-	ch9_cmdbuf.Word1.Byte23.bDescriptorType = usbmemdata.byte.three;
+	ch9_cmdbuf.byte0.bmRequestType = usbmemdata.byte.zero;
+	ch9_cmdbuf.byte1.bRequest = usbmemdata.byte.one;
+	ch9_cmdbuf.word1.byte23.bDescriptorIndex = usbmemdata.byte.two;
+	ch9_cmdbuf.word1.byte23.bDescriptorType = usbmemdata.byte.three;
 
 	/* Get the last 4 bytes of the setup packet.*/
 	ep0rambase += 1;
@@ -1833,20 +1833,20 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 	 * Byte swapping for next 4 bytes for BE machines is defined in
 	 * the different layout of BECB verses LECB.
 	 */
-	ch9_cmdbuf.Word2.Byte45.Bytel = usbmemdata.byte.zero;
-	ch9_cmdbuf.Word2.Byte45.Byteh = usbmemdata.byte.one;
-	ch9_cmdbuf.Word3.Byte67.Bytel = usbmemdata.byte.two;
-	ch9_cmdbuf.Word3.Byte67.Byteh = usbmemdata.byte.three;
-	ctrl->bRequestType = ch9_cmdbuf.Byte0.bmRequestType;
-	ctrl->bRequest = ch9_cmdbuf.Byte1.bRequest;
-	ctrl->wValue = cpu_to_le16(ch9_cmdbuf.Word1.wValue);
-	ctrl->wIndex = cpu_to_le16(ch9_cmdbuf.Word2.wIndex);
-	ctrl->wLength = cpu_to_le16(ch9_cmdbuf.Word3.wLength);
+	ch9_cmdbuf.word2.byte45.bytel = usbmemdata.byte.zero;
+	ch9_cmdbuf.word2.byte45.byteh = usbmemdata.byte.one;
+	ch9_cmdbuf.word3.byte67.bytel = usbmemdata.byte.two;
+	ch9_cmdbuf.word3.byte67.byteh = usbmemdata.byte.three;
+	ctrl->bRequestType = ch9_cmdbuf.byte0.bmRequestType;
+	ctrl->bRequest = ch9_cmdbuf.byte1.bRequest;
+	ctrl->wValue = cpu_to_le16(ch9_cmdbuf.word1.wValue);
+	ctrl->wIndex = cpu_to_le16(ch9_cmdbuf.word2.wIndex);
+	ctrl->wLength = cpu_to_le16(ch9_cmdbuf.word3.wLength);
 
 	/* Restore ReadPtr to data buffer.*/
 	ch9_cmdbuf.contreadptr = &ch9_cmdbuf.contreaddatabuffer[0];
 
-	if (ch9_cmdbuf.Byte0.bmRequestType & USB_DIR_IN) {
+	if (ch9_cmdbuf.byte0.bmRequestType & USB_DIR_IN) {
 		/* Execute the get command.*/
 		ch9_cmdbuf.setupseqrx = STATUS_PHASE;
 		ch9_cmdbuf.setupseqtx = DATA_PHASE;
@@ -1855,7 +1855,7 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 		/* Execute the put command.*/
 		ch9_cmdbuf.setupseqrx = DATA_PHASE;
 		ch9_cmdbuf.setupseqtx = STATUS_PHASE;
-		if (!ch9_cmdbuf.Word3.wLength)
+		if (!ch9_cmdbuf.word3.wLength)
 			return execute_command(udc);
 	}
 	/* Control should never come here.*/
@@ -1901,7 +1901,7 @@ static void ep0_out_token(struct xusb_udc *udc)
 						 XUSB_EP_BUF0COUNT_OFFSET));
 		udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
 
-		if (ch9_cmdbuf.Word3.wLength == ch9_cmdbuf.contreadcount)
+		if (ch9_cmdbuf.word3.wLength == ch9_cmdbuf.contreadcount)
 			execute_command(udc);
 		break;
 
@@ -1924,16 +1924,16 @@ static void ep0_in_token(struct xusb_udc *udc)
 
 	switch (ch9_cmdbuf.setupseqtx) {
 	case STATUS_PHASE:
-		if (ch9_cmdbuf.Byte1.bRequest == USB_REQ_SET_ADDRESS) {
+		if (ch9_cmdbuf.byte1.bRequest == USB_REQ_SET_ADDRESS) {
 			/* Set the address of the device.*/
-			udc->write_fn(ch9_cmdbuf.Word1.Byte23.bDescriptorIndex,
+			udc->write_fn(ch9_cmdbuf.word1.byte23.bDescriptorIndex,
 					(udc->base_address +
 					XUSB_ADDRESS_OFFSET));
 		} else
-			if (ch9_cmdbuf.Byte1.bRequest == USB_REQ_SET_FEATURE) {
-				if (ch9_cmdbuf.Byte0.bmRequestType ==
+			if (ch9_cmdbuf.byte1.bRequest == USB_REQ_SET_FEATURE) {
+				if (ch9_cmdbuf.byte0.bmRequestType ==
 					STANDARD_OUT_DEVICE) {
-					if (ch9_cmdbuf.Word1.wValue ==
+					if (ch9_cmdbuf.word1.wValue ==
 						USB_DEVICE_TEST_MODE)
 						udc->write_fn(TEST_J,
 							(udc->base_address +
