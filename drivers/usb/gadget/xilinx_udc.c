@@ -91,8 +91,15 @@ Hardware USB controller register map related constants
 #define XUSB_STATUS_SETUP_PACKET_MASK	0x00040000 /* Setup packet received */
 #define XUSB_STATUS_EP1_BUFF2_COMP_MASK	0x00000200 /* EP 1 Buff 2 Processed */
 #define XUSB_STATUS_EP1_BUFF1_COMP_MASK	0x00000002 /* EP 1 Buff 1 Processed */
+#define XUSB_STATUS_EP0_BUFF2_COMP_MASK	0x00000100 /* EP 0 Buff 2 Processed */
 #define XUSB_STATUS_EP0_BUFF1_COMP_MASK	0x00000001 /* EP 0 Buff 1 Processed */
-
+#define XUSB_STATUS_HIGH_SPEED_MASK	0x00010000 /* USB Speed Mask */
+/* Suspend,Reset and Disconnect Mask */
+#define XUSB_STATUS_INTR_EVENT_MASK	0x00E00000
+/* Buffers  completion Mask */
+#define XUSB_STATUS_INTR_BUFF_COMP_ALL_MASK	0x0000FEFF
+/* Mask for buffer 0 and buffer 1 completion for all Endpoints */
+#define XUSB_STATUS_INTR_BUFF_COMP_SHIFT_MASK	0x00000101
 #define XUSB_STATUS_EP_BUFF2_SHIFT	8	   /* EP buffer offset */
 
 /* Endpoint Configuration Status Register */
@@ -941,7 +948,7 @@ ok:	ep->eptype = eptype;
 	if (ep->epnumber)
 		udc->write_fn((udc->read_fn(ep->udc->base_address +
 				XUSB_IER_OFFSET) |
-				(0x00000101 <<
+				(XUSB_STATUS_INTR_BUFF_COMP_SHIFT_MASK <<
 				ep->epnumber)),
 				(ep->udc->base_address + XUSB_IER_OFFSET));
 	if ((ep->epnumber) && (!ep->is_in)) {
@@ -1515,7 +1522,7 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 
 	if (intrstatus & XUSB_STATUS_RESET_MASK) {
 		dev_dbg(&udc->gadget.dev, "Reset\n");
-		if (intrstatus & 0x00010000)
+		if (intrstatus & XUSB_STATUS_HIGH_SPEED_MASK)
 			udc->gadget.speed = USB_SPEED_HIGH;
 		else
 			udc->gadget.speed = USB_SPEED_FULL;
@@ -2057,10 +2064,9 @@ static void noncontrol_ep_intrhandler(void *callbackref, u8 epnum,
 	ep = &udc->ep[epnum];
 
 	/* Process the End point interrupts.*/
-	if (intrstatus & (0x00000001 << epnum))
+	if (intrstatus & (XUSB_STATUS_EP0_BUFF1_COMP_MASK << epnum))
 		ep->buffer0ready = 0;
-
-	if (intrstatus & (0x00000100 << epnum))
+	if (intrstatus & (XUSB_STATUS_EP0_BUFF2_COMP_MASK << epnum))
 		ep->buffer1ready = 0;
 
 	if (list_empty(&ep->queue))
@@ -2095,8 +2101,7 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 	/* Read the Interrupt Status Register.*/
 	intrstatus = udc->read_fn(udc->base_address + XUSB_STATUS_OFFSET);
 	/* Call the handler for the event interrupt.*/
-	if (intrstatus & 0x00E00000) {
-
+	if (intrstatus & XUSB_STATUS_INTR_EVENT_MASK) {
 		/*
 		 * Check if there is any action to be done for :
 		 * - USB Reset received {XUSB_STATUS_RESET_MASK}
@@ -2107,8 +2112,7 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 	}
 
 	/* Check the buffer completion interrupts */
-	if (intrstatus & 0x0000FEFF) {
-
+	if (intrstatus & XUSB_STATUS_INTR_BUFF_COMP_ALL_MASK) {
 		if (intrstatus & XUSB_STATUS_EP0_BUFF1_COMP_MASK)
 			control_ep_intrhandler(udc, intrstatus);
 
