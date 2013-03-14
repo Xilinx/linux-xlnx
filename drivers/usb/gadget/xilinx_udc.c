@@ -1442,11 +1442,11 @@ static struct xusb_udc controller = {
 };
 
 /**
- * udc_reinit() - Restores inital software state.
+ * xudc_reinit() - Restores inital software state.
  * @udc:	Pointer to the usb device controller structure.
  *
  **/
-static void udc_reinit(struct xusb_udc *udc)
+static void xudc_reinit(struct xusb_udc *udc)
 {
 	u32 ep_number;
 
@@ -1503,7 +1503,7 @@ static void stop_activity(struct xusb_udc *udc)
 		spin_lock(&udc->lock);
 	}
 
-	udc_reinit(udc);
+	xudc_reinit(udc);
 }
 
 /**
@@ -2266,7 +2266,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 
 	spin_lock_init(&udc->lock);
 
-	udc_reinit(udc);
+	xudc_reinit(udc);
 
 	/* Set device address to 0.*/
 	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
