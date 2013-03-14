@@ -62,8 +62,8 @@ Hardware USB controller register map related constants
 #define XUSB_ADDRESS_OFFSET		0x0100  /* Address Register */
 #define XUSB_CONTROL_OFFSET		0x0104  /* Control Register */
 #define XUSB_STATUS_OFFSET		0x0108  /* Status Register */
-#define XUSB_FRAMENUM_OFFSET 		0x010C	/* Frame Number Register */
-#define XUSB_IER_OFFSET 		0x0110	/* Interrupt Enable Register */
+#define XUSB_FRAMENUM_OFFSET		0x010C	/* Frame Number Register */
+#define XUSB_IER_OFFSET			0x0110	/* Interrupt Enable Register */
 #define XUSB_BUFFREADY_OFFSET		0x0114	/* Buffer Ready Register */
 #define XUSB_TESTMODE_OFFSET		0x0118	/* Test Mode Register */
 #define XUSB_DMA_RESET_OFFSET		0x0200  /* DMA Soft Reset Register */
@@ -79,7 +79,7 @@ Hardware USB controller register map related constants
 #define XUSB_EP_BUF1COUNT_OFFSET	0x0C	/* Buffer 1 Count */
 
 
-#define XUSB_CONTROL_USB_READY_MASK 	0x80000000 /* USB ready Mask */
+#define XUSB_CONTROL_USB_READY_MASK	0x80000000 /* USB ready Mask */
 
 /* Interrupt register related masks.*/
 #define XUSB_STATUS_GLOBAL_INTR_MASK	0x80000000 /* Global Intr Enable */
@@ -277,8 +277,7 @@ static const char driver_name[] = "xilinx_udc";
 static const char ep0name[] = "ep0";
 
 /* Control endpoint configuration.*/
-static struct usb_endpoint_descriptor
-  config_bulk_out_desc = {
+static struct usb_endpoint_descriptor config_bulk_out_desc = {
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
 	.bEndpointAddress = USB_DIR_OUT,
@@ -451,7 +450,8 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 				if (direction == EP_TRANSMIT) {
 					srcaddr = dma_map_single(
 						ep->udc->gadget.dev.parent,
-						bufferptr, bufferlen, DMA_TO_DEVICE);
+						bufferptr, bufferlen,
+						DMA_TO_DEVICE);
 					dstaddr = virt_to_phys(eprambase);
 					out_be32((ep->udc->base_address +
 							  ep->endpointoffset +
@@ -466,7 +466,8 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 					srcaddr = virt_to_phys(eprambase);
 					dstaddr = dma_map_single(
 						ep->udc->gadget.dev.parent,
-						bufferptr, bufferlen, DMA_FROM_DEVICE);
+						bufferptr,
+						bufferlen, DMA_FROM_DEVICE);
 					out_be32((ep->udc->base_address +
 						XUSB_DMA_CONTROL_OFFSET),
 							XUSB_DMA_BRR_CTRL |
@@ -637,7 +638,7 @@ top:
 		two_pkts = 1;
 
 	dev_dbg(&ep->udc->gadget.dev,
-		"curbufnum is %d  and buf0rdy is %d, buf1rdy is %d \n",
+		"curbufnum is %d  and buf0rdy is %d, buf1rdy is %d\n",
 		ep->curbufnum, ep->buffer0ready, ep->buffer1ready);
 
 	buf = req->req.buf + req->req.actual;
@@ -855,7 +856,7 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	 */
 	if (!_ep || !desc || ep->desc ||
 	    desc->bDescriptorType != USB_DT_ENDPOINT) {
-		dev_dbg(&ep->udc->gadget.dev, "first check fails \n");
+		dev_dbg(&ep->udc->gadget.dev, "first check fails\n");
 		return -EINVAL;
 	}
 
@@ -977,7 +978,7 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 	u32 epcfg;
 
 	if (ep == &ep->udc->ep[XUSB_EP_NUMBER_ZERO]) {
-		dev_dbg(&ep->udc->gadget.dev, "Ep0 disable called \n");
+		dev_dbg(&ep->udc->gadget.dev, "Ep0 disable called\n");
 		return -EINVAL;
 	}
 	spin_lock_irqsave(&ep->udc->lock, flags);
@@ -998,7 +999,7 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 	   control endpoints
 	   0 = OUT endpoint
 	   1 = IN endpoint */
-	dev_dbg(&ep->udc->gadget.dev, "USB Ep %d disable \n ", ep->epnumber);
+	dev_dbg(&ep->udc->gadget.dev, "USB Ep %d disable\n ", ep->epnumber);
 
 	/* Disable the endpoint.*/
 	epcfg = in_be32(ep->udc->base_address + ep->endpointoffset);
@@ -1515,7 +1516,7 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 	udc = (struct xusb_udc *) callbackref;
 
 	if (intrstatus & XUSB_STATUS_RESET_MASK) {
-		dev_dbg(&udc->gadget.dev, "Reset \n");
+		dev_dbg(&udc->gadget.dev, "Reset\n");
 		if (intrstatus & 0x00010000)
 			udc->gadget.speed = USB_SPEED_HIGH;
 		else
@@ -1552,7 +1553,7 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 			in_be32(udc->base_address + XUSB_IER_OFFSET);
 		intrreg &= ~XUSB_STATUS_DISCONNECT_MASK;
 		out_be32((udc->base_address + XUSB_IER_OFFSET), intrreg);
-		dev_dbg(&udc->gadget.dev, "Disconnect \n");
+		dev_dbg(&udc->gadget.dev, "Disconnect\n");
 		if (udc->status == 1) {
 			udc->status = 0;
 			/* Set device address to 0.*/
@@ -1573,7 +1574,7 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 	}
 
 	if (intrstatus & XUSB_STATUS_SUSPEND_MASK) {
-		dev_dbg(&udc->gadget.dev, "Suspend \n");
+		dev_dbg(&udc->gadget.dev, "Suspend\n");
 		/* Disable the Suspend interrupt.*/
 		intrreg = (in_be32(udc->base_address + XUSB_IER_OFFSET) &
 					~XUSB_STATUS_SUSPEND_MASK);
