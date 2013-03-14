@@ -2253,6 +2253,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 	void __iomem *v_addr;
 	resource_size_t remap_size;
 	struct platform_device *pdev = to_platform_device(dev);
+	int retval;
 
 	device_initialize(&udc->gadget.dev);
 
@@ -2296,6 +2297,13 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 		release_mem_region(regs_res->start, remap_size);
 		return -EBUSY;
 	}
+	retval = device_add(&udc->gadget.dev);
+	if (retval)
+		dev_dbg(dev, "device_add returned %d\n", retval);
+
+	retval = usb_add_gadget_udc(dev, &udc->gadget);
+	if (retval)
+		dev_dbg(dev, "usb_add_gadget_udc returned %d\n", retval);
 
 	/* Enable the interrupts.*/
 	out_be32((udc->base_address + XUSB_IER_OFFSET),
@@ -2320,33 +2328,26 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 /**
  * xudc_remove() - Releases the resources allocated during the initialization.
  * @pdev:	Pointer to the platform device structure.
- * @op:		Pointer to the device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit xudc_remove(struct platform_device *pdev,
-					struct of_device *op)
+static int __devexit xudc_remove(struct platform_device *pdev)
 {
 
 	struct xusb_udc *udc = platform_get_drvdata(pdev);
 	struct resource *irq_res;
 	struct resource *res; /* IO mem resources */
 	struct device *dev;
-	dev = &op->dev;
-
-	/* Map the control registers in */
-	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	dev = &pdev->dev;
 
 	dev_dbg(dev, "remove\n");
-
-	if (udc->driver != NULL)
-		usb_gadget_unregister_driver(udc->driver);
-
-	free_irq(irq_res->start, udc);
-
+	usb_del_gadget_udc(&udc->gadget);
+	if (udc->driver)
+		return -EBUSY;
 	iounmap(udc->base_address);
-
+	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	free_irq(irq_res->start, udc);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	release_mem_region(res->start, resource_size(res));
 
@@ -2357,21 +2358,20 @@ static int __devexit xudc_remove(struct platform_device *pdev,
 
 /**
  * usb_of_probe() - The device probe function for driver initialization.
- * @op:		Pointer to the OF device structure.
- * @match:	Pointer to the device id structure.
+ * @op:		Pointer to the platform device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
 static int __devinit
-usb_of_probe(struct of_device *op, const struct of_device_id *match)
+usb_of_probe(struct platform_device *op)
 {
 	struct device_node *np = op->dev.of_node;
 	struct resource res, irq_res;
 	int rc;
 	const u32 *dma;
 
-	dev_dbg(&op->dev, "%s(%p, %p)\n", __func__, op, match);
+	dev_dbg(&op->dev, "%s(%p)\n", __func__, op);
 
 	rc = of_address_to_resource(np, 0, &res);
 	if (rc) {
@@ -2401,16 +2401,14 @@ usb_of_probe(struct of_device *op, const struct of_device_id *match)
 
 /**
  * usb_of_remove() - The device driver remove function.
- * @op:		Pointer to the device structure.
+ * @pdev:		Pointer to the platform device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit usb_of_remove(struct of_device *op)
+static int __devexit usb_of_remove(struct platform_device *pdev)
 {
-	struct platform_device *pdev = to_platform_device(&op->dev);
-
-	return xudc_remove(pdev, op);
+	return xudc_remove(pdev);
 }
 
 static struct platform_driver usb_of_driver = {
