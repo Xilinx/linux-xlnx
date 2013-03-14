@@ -2376,7 +2376,7 @@ usb_of_probe(struct of_device *op, const struct of_device_id *match)
 	}
 
 	rc = of_irq_to_resource(np, 0, &irq_res);
-	if (rc == NO_IRQ) {
+	if (rc <= 0) {
 		dev_err(&op->dev, "No IRQ found\n");
 		return rc;
 	}
