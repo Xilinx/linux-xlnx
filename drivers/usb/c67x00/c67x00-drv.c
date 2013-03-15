@@ -122,7 +122,7 @@ static irqreturn_t c67x00_irq(int irq, void *__dev)
 
 /* ------------------------------------------------------------------------- */
 
-static int __devinit c67x00_drv_probe(struct platform_device *pdev)
+static int c67x00_drv_probe(struct platform_device *pdev)
 {
 	struct c67x00_device *c67x00;
 	struct c67x00_platform_data *pdata;
@@ -225,7 +225,7 @@ static int __devinit c67x00_drv_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int __devexit c67x00_drv_remove(struct platform_device *pdev)
+static int c67x00_drv_remove(struct platform_device *pdev)
 {
 	struct c67x00_device *c67x00 = platform_get_drvdata(pdev);
 	struct resource *res;
@@ -255,7 +255,7 @@ static int __devexit c67x00_drv_remove(struct platform_device *pdev)
 }
 
 /* Match table for OF platform binding - from xilinx_emaclite */
-static struct of_device_id c67x00_of_match[] __devinitdata = {
+static struct of_device_id c67x00_of_match[] = {
 	{ .compatible = "cypress,c67x00", },
 	{ /* end of list */ },
 };
@@ -263,7 +263,7 @@ static struct of_device_id c67x00_of_match[] __devinitdata = {
 
 static struct platform_driver c67x00_driver = {
 	.probe	= c67x00_drv_probe,
-	.remove	= __devexit_p(c67x00_drv_remove),
+	.remove	= c67x00_drv_remove,
 	.driver	= {
 		.owner = THIS_MODULE,
 		.name = "c67x00",

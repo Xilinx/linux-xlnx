@@ -79,11 +79,6 @@ int disable_mpa_crc = 0;
 module_param(disable_mpa_crc, int, 0644);
 MODULE_PARM_DESC(disable_mpa_crc, "Disable checking of MPA CRC");
 
-unsigned int send_first = 0;
-module_param(send_first, int, 0644);
-MODULE_PARM_DESC(send_first, "Send RDMA Message First on Active Connection");
-
-
 unsigned int nes_drv_opt = NES_DRV_OPT_DISABLE_INT_MOD | NES_DRV_OPT_ENABLE_PAU;
 module_param(nes_drv_opt, int, 0644);
 MODULE_PARM_DESC(nes_drv_opt, "Driver option parameters");
@@ -449,7 +444,7 @@ static irqreturn_t nes_interrupt(int irq, void *dev_id)
 /**
  * nes_probe - Device initialization
  */
-static int __devinit nes_probe(struct pci_dev *pcidev, const struct pci_device_id *ent)
+static int nes_probe(struct pci_dev *pcidev, const struct pci_device_id *ent)
 {
 	struct net_device *netdev = NULL;
 	struct nes_device *nesdev = NULL;
@@ -754,7 +749,7 @@ static int __devinit nes_probe(struct pci_dev *pcidev, const struct pci_device_i
 /**
  * nes_remove - unload from kernel
  */
-static void __devexit nes_remove(struct pci_dev *pcidev)
+static void nes_remove(struct pci_dev *pcidev)
 {
 	struct nes_device *nesdev = pci_get_drvdata(pcidev);
 	struct net_device *netdev;
@@ -815,7 +810,7 @@ static struct pci_driver nes_pci_driver = {
 	.name = DRV_NAME,
 	.id_table = nes_pci_table,
 	.probe = nes_probe,
-	.remove = __devexit_p(nes_remove),
+	.remove = nes_remove,
 };
 
 static ssize_t nes_show_adapter(struct device_driver *ddp, char *buf)

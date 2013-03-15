@@ -25,6 +25,7 @@
 
 #include <linux/msi.h>
 #include <linux/irq.h>
+#include "common.h"
 
 #define XILINX_NUM_MSI_IRQS	127
 

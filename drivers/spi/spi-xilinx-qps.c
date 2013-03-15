@@ -200,7 +200,7 @@ struct xqspips_inst_format {
 /*
  * List of all the QSPI instructions and its format
  */
-static struct xqspips_inst_format __devinitdata flash_inst[] = {
+static struct xqspips_inst_format flash_inst[] = {
 	{ XQSPIPS_FLASH_OPCODE_WREN, 1, XQSPIPS_TXD_00_01_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_WRDS, 1, XQSPIPS_TXD_00_01_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_RDSR1, 1, XQSPIPS_TXD_00_01_OFFSET },
@@ -597,7 +597,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
  *
  * returns:	Number of bytes transferred in the last transfer
  **/
-static int __devinit xqspips_start_transfer(struct spi_device *qspi,
+static int xqspips_start_transfer(struct spi_device *qspi,
 			struct spi_transfer *transfer)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
@@ -696,7 +696,7 @@ xfer_data:
  * xqspips_work_queue - Get the request from queue to perform transfers
  * @work:	Pointer to the work_struct structure
  **/
-static void __devinit xqspips_work_queue(struct work_struct *work)
+static void xqspips_work_queue(struct work_struct *work)
 {
 	struct xqspips *xqspi = container_of(work, struct xqspips, work);
 	unsigned long flags;
@@ -1015,7 +1015,7 @@ static const struct dev_pm_ops xqspips_dev_pm_ops = {
  *
  * returns:	0 on success and error value on failure
  **/
-static int __devinit xqspips_probe(struct platform_device *dev)
+static int xqspips_probe(struct platform_device *dev)
 {
 	int ret = 0;
 	struct spi_master *master;
@@ -1201,7 +1201,7 @@ put_master:
  *
  * returns:	0 on success and error value on failure
  **/
-static int __devexit xqspips_remove(struct platform_device *dev)
+static int xqspips_remove(struct platform_device *dev)
 {
 	struct spi_master *master = platform_get_drvdata(dev);
 	struct xqspips *xqspi = spi_master_get_devdata(master);
@@ -1246,7 +1246,7 @@ static int __devexit xqspips_remove(struct platform_device *dev)
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" DRIVER_NAME);
 
-static struct of_device_id xqspips_of_match[] __devinitdata = {
+static struct of_device_id xqspips_of_match[] = {
 	{ .compatible = "xlnx,ps7-qspi-1.00.a", },
 	{ /* end of table */}
 };
@@ -1257,7 +1257,7 @@ MODULE_DEVICE_TABLE(of, xqspips_of_match);
  */
 static struct platform_driver xqspips_driver = {
 	.probe	= xqspips_probe,
-	.remove	= __devexit_p(xqspips_remove),
+	.remove	= xqspips_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,

@@ -72,7 +72,7 @@ unsigned long msg_addr;
  *
  * @note: Read related info from device tree
  */
-int __devinit xilinx_get_axipcie_ip_config_info(struct device_node *dev,
+int xilinx_get_axipcie_ip_config_info(struct device_node *dev,
 		struct xilinx_axipcie_node *ip_config_info)
 {
 	u32 *ip_setup_parameter;
@@ -414,7 +414,7 @@ static struct pci_ops xlnx_pcie_pci_ops = {
  *
  * @note: None
  */
-void __devinit xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
+void xilinx_set_bridge_resource(struct xilinx_axipcie_port *port)
 {
 	const u32 *ranges;
 	int rlen;

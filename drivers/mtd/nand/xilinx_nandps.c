@@ -61,10 +61,6 @@
 #define XNANDPS_ECC_LAST	(1 << ECC_LAST_SHIFT)	/* Set ECC_Last */
 #define XNANDPS_CLEAR_CS	(1 << CLEAR_CS_SHIFT)	/* Clear chip select */
 
-/* ONFI Get/Set features command */
-#define NAND_CMD_GET_FEATURES	0xEE
-#define NAND_CMD_SET_FEATURES	0xEF
-
 #define ONDIE_ECC_FEATURE_ADDR	0x90
 
 /* Macros for the NAND controller register read/write */
@@ -392,7 +388,7 @@ static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  * @buf:        data buffer
  *
  */
-static void xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
+static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 		const uint8_t *buf, int oob_required)
 {
 	unsigned long data_width = 4;
@@ -411,6 +407,8 @@ static void xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
 
 	chip->write_buf(mtd, p, data_width);
+
+	return 0;
 }
 
 /**
@@ -421,8 +419,8 @@ static void xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  *
  * This functions writes data and hardware generated ECC values in to the page.
  */
-static void xnandps_write_page_hwecc(struct mtd_info *mtd,
-		struct nand_chip *chip, const uint8_t *buf,  int oob_required)
+static int xnandps_write_page_hwecc(struct mtd_info *mtd,
+		struct nand_chip *chip, const uint8_t *buf, int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
@@ -468,6 +466,8 @@ static void xnandps_write_page_hwecc(struct mtd_info *mtd,
 	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
 	oob_ptr += (mtd->oobsize - data_width);
 	chip->write_buf(mtd, oob_ptr, data_width);
+
+	return 0;
 }
 
 /**
@@ -476,8 +476,8 @@ static void xnandps_write_page_hwecc(struct mtd_info *mtd,
  * @chip:	nand chip info structure
  * @buf:	data buffer
  */
-static void xnandps_write_page_swecc(struct mtd_info *mtd,
-		struct nand_chip *chip, const uint8_t *buf,  int oob_required)
+static int xnandps_write_page_swecc(struct mtd_info *mtd,
+		struct nand_chip *chip, const uint8_t *buf, int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -494,6 +494,8 @@ static void xnandps_write_page_swecc(struct mtd_info *mtd,
 		chip->oob_poi[eccpos[i]] = ecc_calc[i];
 
 	chip->ecc.write_page_raw(mtd, chip, buf, 1);
+
+	return 0;
 }
 
 /**
@@ -800,34 +802,6 @@ static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 }
 
 /**
- * xnandps_verify_buf - Verify chip data against buffer
- * @mtd:        MTD device structure
- * @buf:        buffer containing the data to compare
- * @len:        number of bytes to compare
- *
- */
-static int xnandps_verify_buf(struct mtd_info *mtd, const uint8_t *buf,
-				int len)
-{
-	int i;
-	struct nand_chip *chip = mtd->priv;
-	unsigned long *ptr = (unsigned long *)buf;
-	unsigned long addr;
-
-	len >>= 2;
-	for (i = 0; i < (len - 1); i++) {
-		if (ptr[i] != readl(chip->IO_ADDR_R))
-			return -EFAULT;
-	}
-	addr = (unsigned long __force)chip->IO_ADDR_R;
-	addr |= XNANDPS_CLEAR_CS;
-	chip->IO_ADDR_R = (void __iomem *__force)addr;
-	if (ptr[i] != readl(chip->IO_ADDR_R))
-		return -EFAULT;
-	return 0;
-}
-
-/**
  * xnandps_device_ready - Check device ready/busy line
  * @mtd:	Pointer to the mtd_info structure
  *
@@ -850,7 +824,7 @@ static int xnandps_device_ready(struct mtd_info *mtd)
  *
  * returns:	0 on success or error value on failure
  **/
-static int __devinit xnandps_probe(struct platform_device *pdev)
+static int xnandps_probe(struct platform_device *pdev)
 {
 	struct xnandps_info *xnand;
 	struct mtd_info *mtd;
@@ -933,7 +907,6 @@ static int __devinit xnandps_probe(struct platform_device *pdev)
 	/* Buffer read/write routines */
 	nand_chip->read_buf = xnandps_read_buf;
 	nand_chip->write_buf = xnandps_write_buf;
-	nand_chip->verify_buf = xnandps_verify_buf;
 
 	/* Set the device option and flash width */
 	nand_chip->options = options;
@@ -1078,7 +1051,7 @@ out_free_data:
  *
  * returns:	0 on success or error value on failure
  **/
-static int __devexit xnandps_remove(struct platform_device *pdev)
+static int xnandps_remove(struct platform_device *pdev)
 {
 	struct xnandps_info *xnand = platform_get_drvdata(pdev);
 	struct resource *nand_res;
@@ -1099,7 +1072,7 @@ static int __devexit xnandps_remove(struct platform_device *pdev)
 }
 
 /* Match table for device tree binding */
-static const struct of_device_id __devinitconst xnandps_of_match[] = {
+static const struct of_device_id xnandps_of_match[] = {
 	{ .compatible = "xlnx,ps7-nand-1.00.a" },
 	{},
 };
@@ -1110,7 +1083,7 @@ MODULE_DEVICE_TABLE(of, xnandps_of_match);
  */
 static struct platform_driver xnandps_driver = {
 	.probe		= xnandps_probe,
-	.remove		= __devexit_p(xnandps_remove),
+	.remove		= xnandps_remove,
 	.driver		= {
 		.name	= XNANDPS_DRIVER_NAME,
 		.owner	= THIS_MODULE,

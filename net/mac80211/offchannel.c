@@ -102,10 +102,12 @@ static void ieee80211_offchannel_ps_disable(struct ieee80211_sub_if_data *sdata)
 	ieee80211_sta_reset_conn_monitor(sdata);
 }
 
-void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local,
-				    bool offchannel_ps_enable)
+void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local)
 {
 	struct ieee80211_sub_if_data *sdata;
+
+	if (WARN_ON(local->use_chanctx))
+		return;
 
 	/*
 	 * notify the AP about us leaving the channel and stop all
@@ -114,6 +116,9 @@ void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local,
 	mutex_lock(&local->iflist_mtx);
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (!ieee80211_sdata_running(sdata))
+			continue;
+
+		if (sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE)
 			continue;
 
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR)
@@ -128,8 +133,7 @@ void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local,
 
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR) {
 			netif_tx_stop_all_queues(sdata->dev);
-			if (offchannel_ps_enable &&
-			    (sdata->vif.type == NL80211_IFTYPE_STATION) &&
+			if (sdata->vif.type == NL80211_IFTYPE_STATION &&
 			    sdata->u.mgd.associated)
 				ieee80211_offchannel_ps_enable(sdata);
 		}
@@ -137,13 +141,18 @@ void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local,
 	mutex_unlock(&local->iflist_mtx);
 }
 
-void ieee80211_offchannel_return(struct ieee80211_local *local,
-				 bool offchannel_ps_disable)
+void ieee80211_offchannel_return(struct ieee80211_local *local)
 {
 	struct ieee80211_sub_if_data *sdata;
 
+	if (WARN_ON(local->use_chanctx))
+		return;
+
 	mutex_lock(&local->iflist_mtx);
 	list_for_each_entry(sdata, &local->interfaces, list) {
+		if (sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE)
+			continue;
+
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR)
 			clear_bit(SDATA_STATE_OFFCHANNEL, &sdata->state);
 
@@ -151,11 +160,9 @@ void ieee80211_offchannel_return(struct ieee80211_local *local,
 			continue;
 
 		/* Tell AP we're back */
-		if (offchannel_ps_disable &&
-		    sdata->vif.type == NL80211_IFTYPE_STATION) {
-			if (sdata->u.mgd.associated)
-				ieee80211_offchannel_ps_disable(sdata);
-		}
+		if (sdata->vif.type == NL80211_IFTYPE_STATION &&
+		    sdata->u.mgd.associated)
+			ieee80211_offchannel_ps_disable(sdata);
 
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR) {
 			/*
@@ -187,13 +194,14 @@ void ieee80211_handle_roc_started(struct ieee80211_roc_work *roc)
 
 	if (roc->mgmt_tx_cookie) {
 		if (!WARN_ON(!roc->frame)) {
-			ieee80211_tx_skb(roc->sdata, roc->frame);
+			ieee80211_tx_skb_tid_band(roc->sdata, roc->frame, 7,
+						  roc->chan->band);
 			roc->frame = NULL;
 		}
 	} else {
-		cfg80211_ready_on_channel(&roc->sdata->wdev, (unsigned long)roc,
-					  roc->chan, roc->chan_type,
-					  roc->req_duration, GFP_KERNEL);
+		cfg80211_ready_on_channel(&roc->sdata->wdev, roc->cookie,
+					  roc->chan, roc->req_duration,
+					  GFP_KERNEL);
 	}
 
 	roc->notified = true;
@@ -227,8 +235,7 @@ static void ieee80211_hw_roc_start(struct work_struct *work)
 			u32 dur = dep->duration;
 			dep->duration = dur - roc->duration;
 			roc->duration = dur;
-			list_del(&dep->list);
-			list_add(&dep->list, &roc->list);
+			list_move(&dep->list, &roc->list);
 		}
 	}
  out_unlock:
@@ -271,8 +278,7 @@ void ieee80211_start_next_roc(struct ieee80211_local *local)
 		if (!duration)
 			duration = 10;
 
-		ret = drv_remain_on_channel(local, roc->chan,
-					    roc->chan_type,
+		ret = drv_remain_on_channel(local, roc->sdata, roc->chan,
 					    duration);
 
 		roc->started = true;
@@ -308,8 +314,7 @@ void ieee80211_roc_notify_destroy(struct ieee80211_roc_work *roc)
 
 	if (!roc->mgmt_tx_cookie)
 		cfg80211_remain_on_channel_expired(&roc->sdata->wdev,
-						   (unsigned long)roc,
-						   roc->chan, roc->chan_type,
+						   roc->cookie, roc->chan,
 						   GFP_KERNEL);
 
 	list_for_each_entry_safe(dep, tmp, &roc->dependents, list)
@@ -348,7 +353,6 @@ void ieee80211_sw_roc_work(struct work_struct *work)
 		ieee80211_recalc_idle(local);
 
 		local->tmp_channel = roc->chan;
-		local->tmp_channel_type = roc->chan_type;
 		ieee80211_hw_config(local, 0);
 
 		/* tell userspace or send frame */
@@ -376,7 +380,7 @@ void ieee80211_sw_roc_work(struct work_struct *work)
 			local->tmp_channel = NULL;
 			ieee80211_hw_config(local, 0);
 
-			ieee80211_offchannel_return(local, true);
+			ieee80211_offchannel_return(local);
 		}
 
 		ieee80211_recalc_idle(local);
@@ -453,8 +457,6 @@ void ieee80211_roc_purge(struct ieee80211_sub_if_data *sdata)
 		list_move_tail(&roc->list, &tmp_list);
 		roc->abort = true;
 	}
-
-	ieee80211_start_next_roc(local);
 	mutex_unlock(&local->mtx);
 
 	list_for_each_entry_safe(roc, tmp, &tmp_list, list) {

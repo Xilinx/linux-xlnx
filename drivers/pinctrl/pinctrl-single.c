@@ -26,7 +26,8 @@
 #include "core.h"
 
 #define DRIVER_NAME			"pinctrl-single"
-#define PCS_MUX_NAME			"pinctrl-single,pins"
+#define PCS_MUX_PINS_NAME		"pinctrl-single,pins"
+#define PCS_MUX_BITS_NAME		"pinctrl-single,bits"
 #define PCS_REG_NAME_LEN		((sizeof(unsigned long) * 2) + 1)
 #define PCS_OFF_DISABLED		~0U
 
@@ -54,6 +55,7 @@ struct pcs_pingroup {
 struct pcs_func_vals {
 	void __iomem *reg;
 	unsigned val;
+	unsigned mask;
 };
 
 /**
@@ -139,6 +141,7 @@ struct pcs_device {
 	unsigned fshift;
 	unsigned foff;
 	unsigned fmax;
+	bool bits_per_mux;
 	struct pcs_name *names;
 	struct pcs_data pins;
 	struct radix_tree_root pgtree;
@@ -241,9 +244,17 @@ static int pcs_get_group_pins(struct pinctrl_dev *pctldev,
 
 static void pcs_pin_dbg_show(struct pinctrl_dev *pctldev,
 					struct seq_file *s,
-					unsigned offset)
+					unsigned pin)
 {
-	seq_printf(s, " " DRIVER_NAME);
+	struct pcs_device *pcs;
+	unsigned val, mux_bytes;
+
+	pcs = pinctrl_dev_get_drvdata(pctldev);
+
+	mux_bytes = pcs->width / BITS_PER_BYTE;
+	val = pcs->read(pcs->base + pin * mux_bytes);
+
+	seq_printf(s, "%08x %s " , val, DRIVER_NAME);
 }
 
 static void pcs_dt_free_map(struct pinctrl_dev *pctldev,
@@ -332,12 +343,17 @@ static int pcs_enable(struct pinctrl_dev *pctldev, unsigned fselector,
 
 	for (i = 0; i < func->nvals; i++) {
 		struct pcs_func_vals *vals;
-		unsigned val;
+		unsigned val, mask;
 
 		vals = &func->vals[i];
 		val = pcs->read(vals->reg);
-		val &= ~pcs->fmask;
-		val |= vals->val;
+		if (!vals->mask)
+			mask = pcs->fmask;
+		else
+			mask = pcs->fmask & vals->mask;
+
+		val &= ~mask;
+		val |= (vals->val & mask);
 		pcs->write(val, vals->reg);
 	}
 
@@ -449,7 +465,7 @@ static struct pinconf_ops pcs_pinconf_ops = {
  * @pcs: pcs driver instance
  * @offset: register offset from base
  */
-static int __devinit pcs_add_pin(struct pcs_device *pcs, unsigned offset)
+static int pcs_add_pin(struct pcs_device *pcs, unsigned offset)
 {
 	struct pinctrl_pin_desc *pin;
 	struct pcs_name *pn;
@@ -482,7 +498,7 @@ static int __devinit pcs_add_pin(struct pcs_device *pcs, unsigned offset)
  * If your hardware needs holes in the address space, then just set
  * up multiple driver instances.
  */
-static int __devinit pcs_allocate_pin_table(struct pcs_device *pcs)
+static int pcs_allocate_pin_table(struct pcs_device *pcs)
 {
 	int mux_bytes, nr_pins, i;
 
@@ -657,18 +673,29 @@ static int pcs_parse_one_pinctrl_entry(struct pcs_device *pcs,
 {
 	struct pcs_func_vals *vals;
 	const __be32 *mux;
-	int size, rows, *pins, index = 0, found = 0, res = -ENOMEM;
+	int size, params, rows, *pins, index = 0, found = 0, res = -ENOMEM;
 	struct pcs_function *function;
 
-	mux = of_get_property(np, PCS_MUX_NAME, &size);
-	if ((!mux) || (size < sizeof(*mux) * 2)) {
-		dev_err(pcs->dev, "bad data for mux %s\n",
-			np->name);
+	if (pcs->bits_per_mux) {
+		params = 3;
+		mux = of_get_property(np, PCS_MUX_BITS_NAME, &size);
+	} else {
+		params = 2;
+		mux = of_get_property(np, PCS_MUX_PINS_NAME, &size);
+	}
+
+	if (!mux) {
+		dev_err(pcs->dev, "no valid property for %s\n", np->name);
+		return -EINVAL;
+	}
+
+	if (size < (sizeof(*mux) * params)) {
+		dev_err(pcs->dev, "bad data for %s\n", np->name);
 		return -EINVAL;
 	}
 
 	size /= sizeof(*mux);	/* Number of elements in array */
-	rows = size / 2;	/* Each row is a key value pair */
+	rows = size / params;
 
 	vals = devm_kzalloc(pcs->dev, sizeof(*vals) * rows, GFP_KERNEL);
 	if (!vals)
@@ -686,6 +713,10 @@ static int pcs_parse_one_pinctrl_entry(struct pcs_device *pcs,
 		val = be32_to_cpup(mux + index++);
 		vals[found].reg = pcs->base + offset;
 		vals[found].val = val;
+		if (params == 3) {
+			val = be32_to_cpup(mux + index++);
+			vals[found].mask = val;
+		}
 
 		pin = pcs_get_pin_by_offset(pcs, offset);
 		if (pin < 0) {
@@ -741,7 +772,7 @@ static int pcs_dt_node_to_map(struct pinctrl_dev *pctldev,
 	pcs = pinctrl_dev_get_drvdata(pctldev);
 
 	*map = devm_kzalloc(pcs->dev, sizeof(**map), GFP_KERNEL);
-	if (!map)
+	if (!*map)
 		return -ENOMEM;
 
 	*num_maps = 0;
@@ -848,7 +879,7 @@ static void pcs_free_resources(struct pcs_device *pcs)
 
 static struct of_device_id pcs_of_match[];
 
-static int __devinit pcs_probe(struct platform_device *pdev)
+static int pcs_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	const struct of_device_id *match;
@@ -882,6 +913,9 @@ static int __devinit pcs_probe(struct platform_device *pdev)
 					&pcs->foff);
 	if (ret)
 		pcs->foff = PCS_OFF_DISABLED;
+
+	pcs->bits_per_mux = of_property_read_bool(np,
+						  "pinctrl-single,bit-per-mux");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -952,7 +986,7 @@ free:
 	return ret;
 }
 
-static int __devexit pcs_remove(struct platform_device *pdev)
+static int pcs_remove(struct platform_device *pdev)
 {
 	struct pcs_device *pcs = platform_get_drvdata(pdev);
 
@@ -964,7 +998,7 @@ static int __devexit pcs_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id pcs_of_match[] __devinitdata = {
+static struct of_device_id pcs_of_match[] = {
 	{ .compatible = DRIVER_NAME, },
 	{ },
 };
@@ -972,7 +1006,7 @@ MODULE_DEVICE_TABLE(of, pcs_of_match);
 
 static struct platform_driver pcs_driver = {
 	.probe		= pcs_probe,
-	.remove		= __devexit_p(pcs_remove),
+	.remove		= pcs_remove,
 	.driver = {
 		.owner		= THIS_MODULE,
 		.name		= DRIVER_NAME,

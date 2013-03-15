@@ -389,7 +389,7 @@ static const struct rtc_class_ops ab8500_rtc_ops = {
 	.alarm_irq_enable	= ab8500_rtc_irq_enable,
 };
 
-static int __devinit ab8500_rtc_probe(struct platform_device *pdev)
+static int ab8500_rtc_probe(struct platform_device *pdev)
 {
 	int err;
 	struct rtc_device *rtc;
@@ -448,7 +448,7 @@ static int __devinit ab8500_rtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit ab8500_rtc_remove(struct platform_device *pdev)
+static int ab8500_rtc_remove(struct platform_device *pdev)
 {
 	struct rtc_device *rtc = platform_get_drvdata(pdev);
 	int irq = platform_get_irq_byname(pdev, "ALARM");
@@ -462,19 +462,13 @@ static int __devexit ab8500_rtc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id ab8500_rtc_match[] = {
-	{ .compatible = "stericsson,ab8500-rtc", },
-	{}
-};
-
 static struct platform_driver ab8500_rtc_driver = {
 	.driver = {
 		.name = "ab8500-rtc",
 		.owner = THIS_MODULE,
-		.of_match_table = ab8500_rtc_match,
 	},
 	.probe	= ab8500_rtc_probe,
-	.remove = __devexit_p(ab8500_rtc_remove),
+	.remove = ab8500_rtc_remove,
 };
 
 module_platform_driver(ab8500_rtc_driver);

@@ -268,7 +268,7 @@ static void __init pci_fixup_umc_ide(struct pci_dev *d)
 		d->resource[i].flags |= PCI_BASE_ADDRESS_SPACE_IO;
 }
 
-static void __devinit pci_fixup_ide_bases(struct pci_dev *d)
+static void pci_fixup_ide_bases(struct pci_dev *d)
 {
 	int i;
 
@@ -287,7 +287,7 @@ static void __devinit pci_fixup_ide_bases(struct pci_dev *d)
 	}
 }
 
-static void __devinit pci_fixup_ide_trash(struct pci_dev *d)
+static void pci_fixup_ide_trash(struct pci_dev *d)
 {
 	int i;
 
@@ -300,7 +300,7 @@ static void __devinit pci_fixup_ide_trash(struct pci_dev *d)
 		d->resource[i].start = d->resource[i].end = d->resource[i].flags = 0;
 }
 
-static void __devinit  pci_fixup_latency(struct pci_dev *d)
+static void pci_fixup_latency(struct pci_dev *d)
 {
 	/*
 	 *  SiS 5597 and 5598 chipsets require latency timer set to
@@ -330,10 +330,8 @@ void __init pcibios_fixup_bus(struct pci_bus *bus)
 	pci_read_bridge_bases(bus);
 
 	if (bus->number == 0) {
-		struct list_head *ln;
 		struct pci_dev *dev;
-		for (ln=bus->devices.next; ln != &bus->devices; ln=ln->next) {
-			dev = pci_dev_b(ln);
+		list_for_each_entry(dev, &bus->devices, bus_list) {
 			if (dev->devfn == 0) {
 				dev->resource[0].start = 0;
 				dev->resource[0].end = 0;

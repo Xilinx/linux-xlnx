@@ -140,7 +140,7 @@ static const struct dev_pm_ops xsdhcips_dev_pm_ops = {
 #define XSDHCIPS_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
-static int __devinit sdhci_zynq_probe(struct platform_device *pdev)
+static int sdhci_zynq_probe(struct platform_device *pdev)
 {
 	int ret;
 	int irq = platform_get_irq(pdev, 0);
@@ -229,7 +229,7 @@ err_free:
 	return ret;
 }
 
-static int __devexit sdhci_zynq_remove(struct platform_device *pdev)
+static int sdhci_zynq_remove(struct platform_device *pdev)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -246,7 +246,7 @@ static int __devexit sdhci_zynq_remove(struct platform_device *pdev)
 	return sdhci_pltfm_unregister(pdev);
 }
 
-static const struct of_device_id sdhci_zynq_of_match[] __devinitconst = {
+static const struct of_device_id sdhci_zynq_of_match[] = {
 	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
 	{ .compatible = "generic-sdhci" },
 	{},
@@ -261,7 +261,7 @@ static struct platform_driver sdhci_zynq_driver = {
 		.pm = XSDHCIPS_PM,
 	},
 	.probe = sdhci_zynq_probe,
-	.remove = __devexit_p(sdhci_zynq_remove),
+	.remove = sdhci_zynq_remove,
 };
 
 module_platform_driver(sdhci_zynq_driver);

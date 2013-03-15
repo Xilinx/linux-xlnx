@@ -30,7 +30,7 @@
 #include <mach/irqs.h>
 #include <mach/pxa27x.h>
 #include <mach/reset.h>
-#include <mach/ohci.h>
+#include <linux/platform_data/usb-ohci-pxa27x.h>
 #include <mach/pm.h>
 #include <mach/dma.h>
 #include <mach/smemc.h>
@@ -47,9 +47,9 @@ void pxa27x_clear_otgph(void)
 EXPORT_SYMBOL(pxa27x_clear_otgph);
 
 static unsigned long ac97_reset_config[] = {
-	GPIO113_GPIO,
+	GPIO113_AC97_nRESET_GPIO_HIGH,
 	GPIO113_AC97_nRESET,
-	GPIO95_GPIO,
+	GPIO95_AC97_nRESET_GPIO_HIGH,
 	GPIO95_AC97_nRESET,
 };
 

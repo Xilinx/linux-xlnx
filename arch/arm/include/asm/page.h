@@ -23,7 +23,7 @@
 
 #ifndef CONFIG_MMU
 
-#include "page-nommu.h"
+#include <asm/page-nommu.h>
 
 #else
 

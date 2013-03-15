@@ -78,7 +78,7 @@ static DEFINE_SPINLOCK(xsmcps_lock);
  *
  * Must be called with xsmcps_lock held.
  */
-static int __devinit xsmcps_set_buswidth(unsigned int bw)
+static int xsmcps_set_buswidth(unsigned int bw)
 {
 	u32 reg;
 
@@ -108,7 +108,7 @@ static int __devinit xsmcps_set_buswidth(unsigned int bw)
  *
  * Must be called with xsmcps_lock held.
  */
-static void __devinit xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
+static void xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 		t4, u32 t5, u32 t6)
 {
 	t0 &= 0xf;
@@ -350,7 +350,7 @@ static SIMPLE_DEV_PM_OPS(xsmcps_dev_pm_ops, xsmcps_suspend, xsmcps_resume);
  * @pdev	Pointer to the platform_device struct
  * @nand_node	Pointer to the xnandps device_node struct
  */
-static void __devinit xsmcps_init_nand_interface(struct platform_device *pdev,
+static void xsmcps_init_nand_interface(struct platform_device *pdev,
 		struct device_node *nand_node)
 {
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
@@ -459,7 +459,7 @@ const struct of_device_id matches_nand[] = {
 	{}
 };
 
-static int __devinit xsmcps_probe(struct platform_device *pdev)
+static int xsmcps_probe(struct platform_device *pdev)
 {
 	struct xsmcps_data *xsmcps;
 	struct device_node *child;
@@ -585,7 +585,7 @@ out_free:
 	return err;
 }
 
-static int __devexit xsmcps_remove(struct platform_device *pdev)
+static int xsmcps_remove(struct platform_device *pdev)
 {
 	struct xsmcps_data *xsmcps = platform_get_drvdata(pdev);
 
@@ -603,7 +603,7 @@ static int __devexit xsmcps_remove(struct platform_device *pdev)
 }
 
 /* Match table for device tree binding */
-static const struct of_device_id xsmcps_of_match[] __devinitconst = {
+static const struct of_device_id xsmcps_of_match[] = {
 	{.compatible = "xlnx,ps7-smc"},
 	{ },
 };
@@ -611,7 +611,7 @@ MODULE_DEVICE_TABLE(of, xsmcps_of_match);
 
 static struct platform_driver xsmcps_driver = {
 	.probe		= xsmcps_probe,
-	.remove		= __devexit_p(xsmcps_remove),
+	.remove		= xsmcps_remove,
 	.driver		= {
 		.name	= "xsmcps",
 		.owner	= THIS_MODULE,

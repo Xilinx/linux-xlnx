@@ -858,7 +858,7 @@ static void xilinx_cdma_chan_remove(struct xilinx_cdma_chan *chan)
  * . Get channel features from the device tree entry
  * . Initialize special channel handling routines
  */
-static int __devinit xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
+static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	struct device_node *node, u32 feature)
 {
 	struct xilinx_cdma_chan *chan;
@@ -974,7 +974,7 @@ out_return:
 	return err;
 }
 
-static int __devinit xilinx_cdma_of_probe(struct platform_device *op)
+static int xilinx_cdma_of_probe(struct platform_device *op)
 {
 	struct xilinx_cdma_device *xdev;
 	struct device_node *child, *node;
@@ -1045,7 +1045,7 @@ out_return:
 	return err;
 }
 
-static int __devexit xilinx_cdma_of_remove(struct platform_device *op)
+static int xilinx_cdma_of_remove(struct platform_device *op)
 {
 	struct xilinx_cdma_device *xdev;
 	int i;
@@ -1077,7 +1077,7 @@ static struct platform_driver xilinx_cdma_of_driver = {
 		.of_match_table = xilinx_cdma_of_ids,
 	},
 	.probe = xilinx_cdma_of_probe,
-	.remove = __devexit_p(xilinx_cdma_of_remove),
+	.remove = xilinx_cdma_of_remove,
 };
 
 module_platform_driver(xilinx_cdma_of_driver);

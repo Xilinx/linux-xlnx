@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
 #include <linux/opp.h>
+#include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of.h>
@@ -32,10 +33,10 @@
 #include <asm/mach/time.h>
 #include <asm/mach-types.h>
 #include <asm/page.h>
+#include <asm/pgtable.h>
 #include <asm/hardware/gic.h>
 #include <asm/hardware/cache-l2x0.h>
 
-#include <mach/zynq_soc.h>
 #include "common.h"
 
 void __iomem *scu_base;
@@ -43,20 +44,6 @@ void __iomem *scu_base;
 static const struct of_device_id zynq_dt_irq_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
 	{ }
-};
-
-/* The minimum devices needed to be mapped before the VM system is up and
- * running include the GIC, UART and Timer Counter.
- */
-static struct map_desc io_desc[] __initdata = {
-#ifdef CONFIG_DEBUG_LL
-	{
-		.virtual	= LL_UART_VADDR,
-		.pfn		= __phys_to_pfn(LL_UART_PADDR),
-		.length		= UART_SIZE,
-		.type		= MT_DEVICE,
-	},
-#endif
 };
 
 static struct map_desc zynq_cortex_a9_scu_map __initdata = {
@@ -100,7 +87,7 @@ static struct sys_timer xttcps_sys_timer = {
  */
 static void __init xilinx_map_io(void)
 {
-	iotable_init(io_desc, ARRAY_SIZE(io_desc));
+	debug_ll_io_init();
 	scu_init();
 }
 
@@ -239,6 +226,7 @@ static const char * const xilinx_dt_match[] = {
 };
 
 MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
+	.smp		= smp_ops(zynq_smp_ops),
 	.map_io		= xilinx_map_io,
 	.init_irq	= xilinx_irq_init,
 	.handle_irq	= gic_handle_irq,

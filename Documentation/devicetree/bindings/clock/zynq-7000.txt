@@ -28,7 +28,31 @@ Example:
 		#clock-cells = <0>;
 		compatible = "xlnx,zynq-pll";
 		clocks = <&ps_clk>;
-		reg = <0x100 0x110 0x10c>;
-		lockbit = <0>;
+		reg = <0x100 0x110>;
 		clock-output-names = "armpll";
+	};
+
+== Peripheral clocks ==
+
+Describes clock node for the SDIO, SMC, SPI, QSPI, and UART clocks.
+
+Required properties:
+- #clock-cells : shall be 1
+- compatible : "xlnx,zynq-periph-clock"
+- reg : a single u32 value, describing the offset within the SLCR where
+        the CLK_CTRL register is found for this peripheral
+- clocks : phandle for parent clocks.  should hold phandles for
+           the IO_PLL, ARM_PLL, and DDR_PLL in order
+- clock-output-names : names of the output clock(s).  For peripherals that have
+                       two output clocks (for example, the UART), two clocks
+                       should be listed.
+
+Example:
+	uart_clk: uart_clk {
+		#clock-cells = <1>;
+		compatible = "xlnx,zynq-periph-clock";
+		clocks = <&iopll &armpll &ddrpll>;
+		reg = <0x154>;
+		clock-output-names = "uart0_ref_clk",
+				     "uart1_ref_clk";
 	};

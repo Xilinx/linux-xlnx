@@ -41,7 +41,6 @@
 #include <linux/of.h>
 #include <linux/interrupt.h>
 #include <linux/clocksource.h>
-#include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
@@ -539,7 +538,6 @@ struct net_local {
 	/* Manage internal timer for packet timestamping */
 	struct cyclecounter cycles;
 	struct timecounter clock;
-	struct timecompare compare;
 	struct hwtstamp_config hwtstamp_config;
 
 	struct mii_bus *mii_bus;
@@ -904,7 +902,7 @@ err_out:
  * MAC address is not valid, reconfigure with a good one.
  * @lp: local device instance pointer
  **/
-static void __devinit xemacps_update_hwaddr(struct net_local *lp)
+static void xemacps_update_hwaddr(struct net_local *lp)
 {
 	u32 regvall;
 	u16 regvalh;
@@ -2514,7 +2512,7 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  *
  * Return 0 on success, negative value if error
  */
-static int __devinit xemacps_probe(struct platform_device *pdev)
+static int xemacps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct resource *r_irq = NULL;
@@ -2854,7 +2852,7 @@ static struct net_device_ops netdev_ops = {
 	.ndo_get_stats		= xemacps_get_stats,
 };
 
-static struct of_device_id xemacps_of_match[] __devinitdata = {
+static struct of_device_id xemacps_of_match[] = {
 	{ .compatible = "xlnx,ps7-ethernet-1.00.a", },
 	{ /* end of table */}
 };
@@ -2862,7 +2860,7 @@ MODULE_DEVICE_TABLE(of, xemacps_of_match);
 
 static struct platform_driver xemacps_driver = {
 	.probe   = xemacps_probe,
-	.remove  = __exit_p(xemacps_remove),
+	.remove  = xemacps_remove,
 	.driver  = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,

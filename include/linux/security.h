@@ -694,6 +694,12 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	userspace to load a kernel module with the given name.
  *	@kmod_name name of the module requested by the kernel
  *	Return 0 if successful.
+ * @kernel_module_from_file:
+ *	Load a kernel module from userspace.
+ *	@file contains the file structure pointing to the file containing
+ *	the kernel module to load. If the module is being loaded from a blob,
+ *	this argument will be NULL.
+ *	Return 0 if permission is granted.
  * @task_fix_setuid:
  *	Update the module's state after setting one or more of the user
  *	identity attributes of the current process.  The @flags parameter
@@ -983,17 +989,29 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	tells the LSM to decrement the number of secmark labeling rules loaded
  * @req_classify_flow:
  *	Sets the flow's sid to the openreq sid.
+ * @tun_dev_alloc_security:
+ *	This hook allows a module to allocate a security structure for a TUN
+ *	device.
+ *	@security pointer to a security structure pointer.
+ *	Returns a zero on success, negative values on failure.
+ * @tun_dev_free_security:
+ *	This hook allows a module to free the security structure for a TUN
+ *	device.
+ *	@security pointer to the TUN device's security structure
  * @tun_dev_create:
  *	Check permissions prior to creating a new TUN device.
- * @tun_dev_post_create:
- *	This hook allows a module to update or allocate a per-socket security
- *	structure.
- *	@sk contains the newly created sock structure.
+ * @tun_dev_attach_queue:
+ *	Check permissions prior to attaching to a TUN device queue.
+ *	@security pointer to the TUN device's security structure.
  * @tun_dev_attach:
- *	Check permissions prior to attaching to a persistent TUN device.  This
- *	hook can also be used by the module to update any security state
+ *	This hook can be used by the module to update any security state
  *	associated with the TUN device's sock structure.
  *	@sk contains the existing sock structure.
+ *	@security pointer to the TUN device's security structure.
+ * @tun_dev_open:
+ *	This hook can be used by the module to update any security state
+ *	associated with the TUN device's security structure.
+ *	@security pointer to the TUN devices's security structure.
  *
  * Security hooks for XFRM operations.
  *
@@ -1411,8 +1429,8 @@ struct security_operations {
 	int (*sb_kern_mount) (struct super_block *sb, int flags, void *data);
 	int (*sb_show_options) (struct seq_file *m, struct super_block *sb);
 	int (*sb_statfs) (struct dentry *dentry);
-	int (*sb_mount) (char *dev_name, struct path *path,
-			 char *type, unsigned long flags, void *data);
+	int (*sb_mount) (const char *dev_name, struct path *path,
+			 const char *type, unsigned long flags, void *data);
 	int (*sb_umount) (struct vfsmount *mnt, int flags);
 	int (*sb_pivotroot) (struct path *old_path,
 			     struct path *new_path);
@@ -1436,7 +1454,7 @@ struct security_operations {
 	int (*path_rename) (struct path *old_dir, struct dentry *old_dentry,
 			    struct path *new_dir, struct dentry *new_dentry);
 	int (*path_chmod) (struct path *path, umode_t mode);
-	int (*path_chown) (struct path *path, uid_t uid, gid_t gid);
+	int (*path_chown) (struct path *path, kuid_t uid, kgid_t gid);
 	int (*path_chroot) (struct path *path);
 #endif
 
@@ -1508,6 +1526,7 @@ struct security_operations {
 	int (*kernel_act_as)(struct cred *new, u32 secid);
 	int (*kernel_create_files_as)(struct cred *new, struct inode *inode);
 	int (*kernel_module_request)(char *kmod_name);
+	int (*kernel_module_from_file)(struct file *file);
 	int (*task_fix_setuid) (struct cred *new, const struct cred *old,
 				int flags);
 	int (*task_setpgid) (struct task_struct *p, pid_t pgid);
@@ -1613,9 +1632,12 @@ struct security_operations {
 	void (*secmark_refcount_inc) (void);
 	void (*secmark_refcount_dec) (void);
 	void (*req_classify_flow) (const struct request_sock *req, struct flowi *fl);
-	int (*tun_dev_create)(void);
-	void (*tun_dev_post_create)(struct sock *sk);
-	int (*tun_dev_attach)(struct sock *sk);
+	int (*tun_dev_alloc_security) (void **security);
+	void (*tun_dev_free_security) (void *security);
+	int (*tun_dev_create) (void);
+	int (*tun_dev_attach_queue) (void *security);
+	int (*tun_dev_attach) (struct sock *sk, void *security);
+	int (*tun_dev_open) (void *security);
 #endif	/* CONFIG_SECURITY_NETWORK */
 
 #ifdef CONFIG_SECURITY_NETWORK_XFRM
@@ -1694,8 +1716,8 @@ int security_sb_remount(struct super_block *sb, void *data);
 int security_sb_kern_mount(struct super_block *sb, int flags, void *data);
 int security_sb_show_options(struct seq_file *m, struct super_block *sb);
 int security_sb_statfs(struct dentry *dentry);
-int security_sb_mount(char *dev_name, struct path *path,
-		      char *type, unsigned long flags, void *data);
+int security_sb_mount(const char *dev_name, struct path *path,
+		      const char *type, unsigned long flags, void *data);
 int security_sb_umount(struct vfsmount *mnt, int flags);
 int security_sb_pivotroot(struct path *old_path, struct path *new_path);
 int security_sb_set_mnt_opts(struct super_block *sb, struct security_mnt_opts *opts);
@@ -1765,6 +1787,7 @@ void security_transfer_creds(struct cred *new, const struct cred *old);
 int security_kernel_act_as(struct cred *new, u32 secid);
 int security_kernel_create_files_as(struct cred *new, struct inode *inode);
 int security_kernel_module_request(char *kmod_name);
+int security_kernel_module_from_file(struct file *file);
 int security_task_fix_setuid(struct cred *new, const struct cred *old,
 			     int flags);
 int security_task_setpgid(struct task_struct *p, pid_t pgid);
@@ -1964,8 +1987,8 @@ static inline int security_sb_statfs(struct dentry *dentry)
 	return 0;
 }
 
-static inline int security_sb_mount(char *dev_name, struct path *path,
-				    char *type, unsigned long flags,
+static inline int security_sb_mount(const char *dev_name, struct path *path,
+				    const char *type, unsigned long flags,
 				    void *data)
 {
 	return 0;
@@ -2278,6 +2301,11 @@ static inline int security_kernel_module_request(char *kmod_name)
 	return 0;
 }
 
+static inline int security_kernel_module_from_file(struct file *file)
+{
+	return 0;
+}
+
 static inline int security_task_fix_setuid(struct cred *new,
 					   const struct cred *old,
 					   int flags)
@@ -2553,9 +2581,12 @@ void security_inet_conn_established(struct sock *sk,
 int security_secmark_relabel_packet(u32 secid);
 void security_secmark_refcount_inc(void);
 void security_secmark_refcount_dec(void);
+int security_tun_dev_alloc_security(void **security);
+void security_tun_dev_free_security(void *security);
 int security_tun_dev_create(void);
-void security_tun_dev_post_create(struct sock *sk);
-int security_tun_dev_attach(struct sock *sk);
+int security_tun_dev_attach_queue(void *security);
+int security_tun_dev_attach(struct sock *sk, void *security);
+int security_tun_dev_open(void *security);
 
 #else	/* CONFIG_SECURITY_NETWORK */
 static inline int security_unix_stream_connect(struct sock *sock,
@@ -2720,16 +2751,31 @@ static inline void security_secmark_refcount_dec(void)
 {
 }
 
+static inline int security_tun_dev_alloc_security(void **security)
+{
+	return 0;
+}
+
+static inline void security_tun_dev_free_security(void *security)
+{
+}
+
 static inline int security_tun_dev_create(void)
 {
 	return 0;
 }
 
-static inline void security_tun_dev_post_create(struct sock *sk)
+static inline int security_tun_dev_attach_queue(void *security)
 {
+	return 0;
 }
 
-static inline int security_tun_dev_attach(struct sock *sk)
+static inline int security_tun_dev_attach(struct sock *sk, void *security)
+{
+	return 0;
+}
+
+static inline int security_tun_dev_open(void *security)
 {
 	return 0;
 }
@@ -2831,7 +2877,7 @@ int security_path_link(struct dentry *old_dentry, struct path *new_dir,
 int security_path_rename(struct path *old_dir, struct dentry *old_dentry,
 			 struct path *new_dir, struct dentry *new_dentry);
 int security_path_chmod(struct path *path, umode_t mode);
-int security_path_chown(struct path *path, uid_t uid, gid_t gid);
+int security_path_chown(struct path *path, kuid_t uid, kgid_t gid);
 int security_path_chroot(struct path *path);
 #else	/* CONFIG_SECURITY_PATH */
 static inline int security_path_unlink(struct path *dir, struct dentry *dentry)
@@ -2887,7 +2933,7 @@ static inline int security_path_chmod(struct path *path, umode_t mode)
 	return 0;
 }
 
-static inline int security_path_chown(struct path *path, uid_t uid, gid_t gid)
+static inline int security_path_chown(struct path *path, kuid_t uid, kgid_t gid)
 {
 	return 0;
 }
@@ -3021,6 +3067,37 @@ static inline char *alloc_secdata(void)
 static inline void free_secdata(void *secdata)
 { }
 #endif /* CONFIG_SECURITY */
+
+#ifdef CONFIG_SECURITY_YAMA
+extern int yama_ptrace_access_check(struct task_struct *child,
+				    unsigned int mode);
+extern int yama_ptrace_traceme(struct task_struct *parent);
+extern void yama_task_free(struct task_struct *task);
+extern int yama_task_prctl(int option, unsigned long arg2, unsigned long arg3,
+			   unsigned long arg4, unsigned long arg5);
+#else
+static inline int yama_ptrace_access_check(struct task_struct *child,
+					   unsigned int mode)
+{
+	return 0;
+}
+
+static inline int yama_ptrace_traceme(struct task_struct *parent)
+{
+	return 0;
+}
+
+static inline void yama_task_free(struct task_struct *task)
+{
+}
+
+static inline int yama_task_prctl(int option, unsigned long arg2,
+				  unsigned long arg3, unsigned long arg4,
+				  unsigned long arg5)
+{
+	return -ENOSYS;
+}
+#endif /* CONFIG_SECURITY_YAMA */
 
 #endif /* ! __LINUX_SECURITY_H */
 

@@ -54,8 +54,8 @@ struct smp_ops_t {
 
 extern void smp_send_debugger_break(void);
 extern void start_secondary_resume(void);
-extern void __devinit smp_generic_give_timebase(void);
-extern void __devinit smp_generic_take_timebase(void);
+extern void smp_generic_give_timebase(void);
+extern void smp_generic_take_timebase(void);
 
 DECLARE_PER_CPU(unsigned int, cpu_pvr);
 
@@ -65,7 +65,16 @@ int generic_cpu_disable(void);
 void generic_cpu_die(unsigned int cpu);
 void generic_mach_cpu_die(void);
 void generic_set_cpu_dead(unsigned int cpu);
+void generic_set_cpu_up(unsigned int cpu);
 int generic_check_cpu_restart(unsigned int cpu);
+
+extern void inhibit_secondary_onlining(void);
+extern void uninhibit_secondary_onlining(void);
+
+#else /* HOTPLUG_CPU */
+static inline void inhibit_secondary_onlining(void) {}
+static inline void uninhibit_secondary_onlining(void) {}
+
 #endif
 
 #ifdef CONFIG_PPC64
@@ -190,6 +199,7 @@ extern unsigned long __secondary_hold_spinloop;
 extern unsigned long __secondary_hold_acknowledge;
 extern char __secondary_hold;
 
+extern void __early_start(void);
 #endif /* __ASSEMBLY__ */
 
 #endif /* __KERNEL__ */

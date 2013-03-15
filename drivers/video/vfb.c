@@ -78,7 +78,7 @@ static void rvfree(void *mem, unsigned long size)
 	vfree(mem);
 }
 
-static struct fb_var_screeninfo vfb_default __devinitdata = {
+static struct fb_var_screeninfo vfb_default = {
 	.xres =		640,
 	.yres =		480,
 	.xres_virtual =	640,
@@ -100,7 +100,7 @@ static struct fb_var_screeninfo vfb_default __devinitdata = {
       	.vmode =	FB_VMODE_NONINTERLACED,
 };
 
-static struct fb_fix_screeninfo vfb_fix __devinitdata = {
+static struct fb_fix_screeninfo vfb_fix = {
 	.id =		"Virtual FB",
 	.type =		FB_TYPE_PACKED_PIXELS,
 	.visual =	FB_VISUAL_PSEUDOCOLOR,
@@ -439,7 +439,6 @@ static int vfb_mmap(struct fb_info *info,
 			size = 0;
 	}
 
-	vma->vm_flags |= VM_RESERVED;	/* avoid to swap out this VMA */
 	return 0;
 
 }
@@ -478,7 +477,7 @@ static int __init vfb_setup(char *options)
      *  Initialisation
      */
 
-static int __devinit vfb_probe(struct platform_device *dev)
+static int vfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	int retval = -ENOMEM;

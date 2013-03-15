@@ -256,7 +256,7 @@ static struct cn_dev cdev = {
 	.input   = cn_rx_skb,
 };
 
-static int __devinit cn_init(void)
+static int cn_init(void)
 {
 	struct cn_dev *dev = &cdev;
 	struct netlink_kernel_cfg cfg = {
@@ -264,8 +264,7 @@ static int __devinit cn_init(void)
 		.input	= dev->input,
 	};
 
-	dev->nls = netlink_kernel_create(&init_net, NETLINK_CONNECTOR,
-					 THIS_MODULE, &cfg);
+	dev->nls = netlink_kernel_create(&init_net, NETLINK_CONNECTOR, &cfg);
 	if (!dev->nls)
 		return -EIO;
 
@@ -282,7 +281,7 @@ static int __devinit cn_init(void)
 	return 0;
 }
 
-static void __devexit cn_fini(void)
+static void cn_fini(void)
 {
 	struct cn_dev *dev = &cdev;
 

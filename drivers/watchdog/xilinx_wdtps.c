@@ -273,7 +273,7 @@ static struct notifier_block xwdtps_notifier = {
  *
  * It does all the memory allocation and registration for the device.
  */
-static int __devinit xwdtps_probe(struct platform_device *pdev)
+static int xwdtps_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	int res;
@@ -492,7 +492,7 @@ static int xwdtps_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(xwdtps_pm_ops, xwdtps_suspend, xwdtps_resume);
 
-static struct of_device_id xwdtps_of_match[] __devinitdata = {
+static struct of_device_id xwdtps_of_match[] = {
 	{ .compatible = "xlnx,ps7-wdt-1.00.a", },
 	{ /* end of table */}
 };
@@ -501,7 +501,7 @@ MODULE_DEVICE_TABLE(of, xwdtps_of_match);
 /* Driver Structure */
 static struct platform_driver xwdtps_driver = {
 	.probe		= xwdtps_probe,
-	.remove		= __exit_p(xwdtps_remove),
+	.remove		= xwdtps_remove,
 	.shutdown	= xwdtps_shutdown,
 	.driver		= {
 		.name	= "xwdtps",

@@ -113,6 +113,8 @@ sys_rt_sigreturn(struct pt_regs *regs, int in_syscall)
 		(usp - sigframe_size);
 	DBG(2,"sys_rt_sigreturn: frame is %p\n", frame);
 
+	regs->orig_r28 = 1; /* no restarts for sigreturn */
+
 #ifdef CONFIG_64BIT
 	compat_frame = (struct compat_rt_sigframe __user *)frame;
 	
@@ -188,8 +190,10 @@ get_sigframe(struct k_sigaction *ka, unsigned long sp, size_t frame_size)
 	DBG(1,"get_sigframe: ka = %#lx, sp = %#lx, frame_size = %#lx\n",
 			(unsigned long)ka, sp, frame_size);
 	
+	/* Align alternate stack and reserve 64 bytes for the signal
+	   handler's frame marker.  */
 	if ((ka->sa.sa_flags & SA_ONSTACK) != 0 && ! sas_ss_flags(sp))
-		sp = current->sas_ss_sp; /* Stacks grow up! */
+		sp = (current->sas_ss_sp + 0x7f) & ~0x3f; /* Stacks grow up! */
 
 	DBG(1,"get_sigframe: Returning sp = %#lx\n", (unsigned long)sp);
 	return (void __user *) sp; /* Stacks grow up.  Fun. */
@@ -437,7 +441,7 @@ give_sigsegv:
  * OK, we're invoking a handler.
  */	
 
-static long
+static void
 handle_signal(unsigned long sig, siginfo_t *info, struct k_sigaction *ka,
 		struct pt_regs *regs, int in_syscall)
 {
@@ -447,7 +451,7 @@ handle_signal(unsigned long sig, siginfo_t *info, struct k_sigaction *ka,
 	
 	/* Set up the stack frame */
 	if (!setup_rt_frame(sig, ka, info, oldset, regs, in_syscall))
-		return 0;
+		return;
 
 	signal_delivered(sig, info, ka, regs, 
 		test_thread_flag(TIF_SINGLESTEP) ||
@@ -455,13 +459,14 @@ handle_signal(unsigned long sig, siginfo_t *info, struct k_sigaction *ka,
 
 	DBG(1,KERN_DEBUG "do_signal: Exit (success), regs->gr[28] = %ld\n",
 		regs->gr[28]);
-
-	return 1;
 }
 
 static inline void
 syscall_restart(struct pt_regs *regs, struct k_sigaction *ka)
 {
+	if (regs->orig_r28)
+		return;
+	regs->orig_r28 = 1; /* no more restarts */
 	/* Check the return code */
 	switch (regs->gr[28]) {
 	case -ERESTART_RESTARTBLOCK:
@@ -482,8 +487,6 @@ syscall_restart(struct pt_regs *regs, struct k_sigaction *ka)
 		 * we have to do is fiddle the return pointer.
 		 */
 		regs->gr[31] -= 8; /* delayed branching */
-		/* Preserve original r28. */
-		regs->gr[28] = regs->orig_r28;
 		break;
 	}
 }
@@ -491,6 +494,9 @@ syscall_restart(struct pt_regs *regs, struct k_sigaction *ka)
 static inline void
 insert_restart_trampoline(struct pt_regs *regs)
 {
+	if (regs->orig_r28)
+		return;
+	regs->orig_r28 = 1; /* no more restarts */
 	switch(regs->gr[28]) {
 	case -ERESTART_RESTARTBLOCK: {
 		/* Restart the system call - no handlers present */
@@ -525,9 +531,6 @@ insert_restart_trampoline(struct pt_regs *regs)
 		flush_user_icache_range(regs->gr[30], regs->gr[30] + 4);
 
 		regs->gr[31] = regs->gr[30] + 8;
-		/* Preserve original r28. */
-		regs->gr[28] = regs->orig_r28;
-
 		return;
 	}
 	case -ERESTARTNOHAND:
@@ -539,9 +542,6 @@ insert_restart_trampoline(struct pt_regs *regs)
 		 * slot of the branch external instruction.
 		 */
 		regs->gr[31] -= 8;
-		/* Preserve original r28. */
-		regs->gr[28] = regs->orig_r28;
-
 		return;
 	}
 	default:
@@ -570,30 +570,17 @@ do_signal(struct pt_regs *regs, long in_syscall)
 	DBG(1,"\ndo_signal: regs=0x%p, sr7 %#lx, in_syscall=%d\n",
 	       regs, regs->sr[7], in_syscall);
 
-	/* Everyone else checks to see if they are in kernel mode at
-	   this point and exits if that's the case.  I'm not sure why
-	   we would be called in that case, but for some reason we
-	   are. */
-
-	/* May need to force signal if handle_signal failed to deliver */
-	while (1) {
-		signr = get_signal_to_deliver(&info, &ka, regs, NULL);
-		DBG(3,"do_signal: signr = %d, regs->gr[28] = %ld\n", signr, regs->gr[28]); 
+	signr = get_signal_to_deliver(&info, &ka, regs, NULL);
+	DBG(3,"do_signal: signr = %d, regs->gr[28] = %ld\n", signr, regs->gr[28]); 
 	
-		if (signr <= 0)
-		  break;
-		
+	if (signr > 0) {
 		/* Restart a system call if necessary. */
 		if (in_syscall)
 			syscall_restart(regs, &ka);
 
-		/* Whee!  Actually deliver the signal.  If the
-		   delivery failed, we need to continue to iterate in
-		   this loop so we can deliver the SIGSEGV... */
-		if (handle_signal(signr, &info, &ka, regs, in_syscall))
-			return;
+		handle_signal(signr, &info, &ka, regs, in_syscall);
+		return;
 	}
-	/* end of while(1) looping forever if we can't force a signal */
 
 	/* Did we come from a system call? */
 	if (in_syscall)

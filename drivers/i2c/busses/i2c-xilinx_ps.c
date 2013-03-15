@@ -977,7 +977,7 @@ static struct platform_driver xi2cps_drv = {
 		.pm = XI2CPS_PM,
 	},
 	.probe  = xi2cps_probe,
-	.remove = __devexit_p(xi2cps_remove),
+	.remove = xi2cps_remove,
 };
 
 module_platform_driver(xi2cps_drv);

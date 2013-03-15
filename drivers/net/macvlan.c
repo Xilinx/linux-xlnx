@@ -546,9 +546,9 @@ static int macvlan_vlan_rx_kill_vid(struct net_device *dev,
 	return 0;
 }
 
-static int macvlan_fdb_add(struct ndmsg *ndm,
+static int macvlan_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 			   struct net_device *dev,
-			   unsigned char *addr,
+			   const unsigned char *addr,
 			   u16 flags)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
@@ -567,7 +567,7 @@ static int macvlan_fdb_add(struct ndmsg *ndm,
 
 static int macvlan_fdb_del(struct ndmsg *ndm,
 			   struct net_device *dev,
-			   unsigned char *addr)
+			   const unsigned char *addr)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
 	int err = -EINVAL;
@@ -822,7 +822,10 @@ static int macvlan_changelink(struct net_device *dev,
 
 static size_t macvlan_get_size(const struct net_device *dev)
 {
-	return nla_total_size(4);
+	return (0
+		+ nla_total_size(4) /* IFLA_MACVLAN_MODE */
+		+ nla_total_size(2) /* IFLA_MACVLAN_FLAGS */
+		);
 }
 
 static int macvlan_fill_info(struct sk_buff *skb,

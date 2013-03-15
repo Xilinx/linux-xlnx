@@ -541,7 +541,7 @@ static const struct dev_pm_ops xgpiops_dev_pm_ops = {
  * Note: Interrupts are disabled for all the banks during initialization.
  * Returns 0 on success, negative error otherwise.
  */
-static int __devinit xgpiops_probe(struct platform_device *pdev)
+static int xgpiops_probe(struct platform_device *pdev)
 {
 	int ret;
 	unsigned int irq_num;
@@ -693,7 +693,7 @@ static int xgpiops_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xgpiops_of_match[] __devinitdata = {
+static struct of_device_id xgpiops_of_match[] = {
 	{ .compatible = "xlnx,ps7-gpio-1.00.a", },
 	{ /* end of table */}
 };

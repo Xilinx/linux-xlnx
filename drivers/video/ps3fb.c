@@ -31,7 +31,6 @@
 #include <linux/fb.h>
 #include <linux/init.h>
 
-#include <asm/abs_addr.h>
 #include <asm/cell-regs.h>
 #include <asm/lv1call.h>
 #include <asm/ps3av.h>
@@ -260,7 +259,7 @@ static const struct fb_videomode ps3fb_modedb[] = {
 static int ps3fb_mode;
 module_param(ps3fb_mode, int, 0);
 
-static char *mode_option __devinitdata;
+static char *mode_option;
 
 static int ps3fb_cmp_mode(const struct fb_videomode *vmode,
 			  const struct fb_var_screeninfo *var)
@@ -966,7 +965,7 @@ static struct fb_fix_screeninfo ps3fb_fix __initdata = {
 	.accel =	FB_ACCEL_NONE,
 };
 
-static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
+static int ps3fb_probe(struct ps3_system_bus_device *dev)
 {
 	struct fb_info *info;
 	struct ps3fb_par *par;
@@ -1035,6 +1034,7 @@ static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
 	if (status) {
 		dev_err(&dev->core, "%s: lv1_gpu_memory_allocate failed: %d\n",
 			__func__, status);
+		retval = -ENOMEM;
 		goto err_close_device;
 	}
 	dev_dbg(&dev->core, "ddr:lpar:0x%llx\n", ddr_lpar);
@@ -1047,6 +1047,7 @@ static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
 		dev_err(&dev->core,
 			"%s: lv1_gpu_context_allocate failed: %d\n", __func__,
 			status);
+		retval = -ENOMEM;
 		goto err_gpu_memory_free;
 	}
 
@@ -1054,6 +1055,7 @@ static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
 	dinfo = (void __force *)ioremap(lpar_driver_info, 128 * 1024);
 	if (!dinfo) {
 		dev_err(&dev->core, "%s: ioremap failed\n", __func__);
+		retval = -ENOMEM;
 		goto err_gpu_context_free;
 	}
 
@@ -1122,8 +1124,10 @@ static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
 	}
 
 	info = framebuffer_alloc(sizeof(struct ps3fb_par), &dev->core);
-	if (!info)
+	if (!info) {
+		retval = -ENOMEM;
 		goto err_context_fb_close;
+	}
 
 	par = info->par;
 	par->mode_id = ~ps3fb_mode;	/* != ps3fb_mode, to trigger change */
@@ -1141,7 +1145,7 @@ static int __devinit ps3fb_probe(struct ps3_system_bus_device *dev)
 	 */
 	fb_start = ps3fb_videomemory.address + GPU_FB_START;
 	info->screen_base = (char __force __iomem *)fb_start;
-	info->fix.smem_start = virt_to_abs(fb_start);
+	info->fix.smem_start = __pa(fb_start);
 	info->fix.smem_len = ps3fb_videomemory.size - GPU_FB_START;
 
 	info->pseudo_palette = par->pseudo_palette;

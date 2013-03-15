@@ -120,6 +120,14 @@ SECTIONS
 
 	RO_DATA(PAGE_SIZE)
 
+	. = ALIGN(4);
+	__ex_table : AT(ADDR(__ex_table) - LOAD_OFFSET) {
+		__start___ex_table = .;
+#ifdef CONFIG_MMU
+		*(__ex_table)
+#endif
+		__stop___ex_table = .;
+	}
 
 #ifdef CONFIG_ARCH_ZYNQ
 	. = ALIGN (4) ;
@@ -130,8 +138,6 @@ SECTIONS
 		_fdt_end = . ;
 	}
 #endif
-
-
 
 #ifdef CONFIG_ARM_UNWIND
 	/*
@@ -149,6 +155,8 @@ SECTIONS
 		__stop_unwind_tab = .;
 	}
 #endif
+
+	NOTES
 
 	_etext = .;			/* End of text and rodata section */
 
@@ -239,16 +247,6 @@ SECTIONS
 		READ_MOSTLY_DATA(L1_CACHE_BYTES)
 
 		/*
-		 * The exception fixup table (might need resorting at runtime)
-		 */
-		. = ALIGN(4);
-		__start___ex_table = .;
-#ifdef CONFIG_MMU
-		*(__ex_table)
-#endif
-		__stop___ex_table = .;
-
-		/*
 		 * and the usual data section
 		 */
 		DATA_DATA
@@ -314,8 +312,6 @@ SECTIONS
 		__tcm_end = .;
 	}
 #endif
-
-	NOTES
 
 	BSS_SECTION(0, 0, 0)
 	_end = .;

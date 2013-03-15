@@ -269,7 +269,7 @@ free:
 	return ret;
 }
 
-static void __devexit rpmsg_sample_remove(struct rpmsg_channel *rpdev)
+static void rpmsg_sample_remove(struct rpmsg_channel *rpdev)
 {
 	struct rpmsg_service *service = dev_get_drvdata(&rpdev->dev);
 	int major = MAJOR(rpmsg_dev);
@@ -297,7 +297,7 @@ static struct rpmsg_driver rpmsg_sample_server = {
 	.id_table	= rpmsg_driver_sample_id_table,
 	.probe		= rpmsg_sample_probe,
 	.callback	= rpmsg_sample_cb,
-	.remove		= __devexit_p(rpmsg_sample_remove),
+	.remove		= rpmsg_sample_remove,
 };
 
 #define MAX_DEVICES	8

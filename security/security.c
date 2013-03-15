@@ -136,11 +136,23 @@ int __init register_security(struct security_operations *ops)
 
 int security_ptrace_access_check(struct task_struct *child, unsigned int mode)
 {
+#ifdef CONFIG_SECURITY_YAMA_STACKED
+	int rc;
+	rc = yama_ptrace_access_check(child, mode);
+	if (rc)
+		return rc;
+#endif
 	return security_ops->ptrace_access_check(child, mode);
 }
 
 int security_ptrace_traceme(struct task_struct *parent)
 {
+#ifdef CONFIG_SECURITY_YAMA_STACKED
+	int rc;
+	rc = yama_ptrace_traceme(parent);
+	if (rc)
+		return rc;
+#endif
 	return security_ops->ptrace_traceme(parent);
 }
 
@@ -264,8 +276,8 @@ int security_sb_statfs(struct dentry *dentry)
 	return security_ops->sb_statfs(dentry);
 }
 
-int security_sb_mount(char *dev_name, struct path *path,
-                       char *type, unsigned long flags, void *data)
+int security_sb_mount(const char *dev_name, struct path *path,
+                       const char *type, unsigned long flags, void *data)
 {
 	return security_ops->sb_mount(dev_name, path, type, flags, data);
 }
@@ -434,7 +446,7 @@ int security_path_chmod(struct path *path, umode_t mode)
 	return security_ops->path_chmod(path, mode);
 }
 
-int security_path_chown(struct path *path, uid_t uid, gid_t gid)
+int security_path_chown(struct path *path, kuid_t uid, kgid_t gid)
 {
 	if (unlikely(IS_PRIVATE(path->dentry->d_inode)))
 		return 0;
@@ -561,6 +573,9 @@ int security_inode_setxattr(struct dentry *dentry, const char *name,
 	ret = security_ops->inode_setxattr(dentry, name, value, size, flags);
 	if (ret)
 		return ret;
+	ret = ima_inode_setxattr(dentry, name, value, size);
+	if (ret)
+		return ret;
 	return evm_inode_setxattr(dentry, name, value, size);
 }
 
@@ -594,6 +609,9 @@ int security_inode_removexattr(struct dentry *dentry, const char *name)
 	if (unlikely(IS_PRIVATE(dentry->d_inode)))
 		return 0;
 	ret = security_ops->inode_removexattr(dentry, name);
+	if (ret)
+		return ret;
+	ret = ima_inode_removexattr(dentry, name);
 	if (ret)
 		return ret;
 	return evm_inode_removexattr(dentry, name);
@@ -761,6 +779,9 @@ int security_task_create(unsigned long clone_flags)
 
 void security_task_free(struct task_struct *task)
 {
+#ifdef CONFIG_SECURITY_YAMA_STACKED
+	yama_task_free(task);
+#endif
 	security_ops->task_free(task);
 }
 
@@ -797,6 +818,16 @@ int security_kernel_create_files_as(struct cred *new, struct inode *inode)
 int security_kernel_module_request(char *kmod_name)
 {
 	return security_ops->kernel_module_request(kmod_name);
+}
+
+int security_kernel_module_from_file(struct file *file)
+{
+	int ret;
+
+	ret = security_ops->kernel_module_from_file(file);
+	if (ret)
+		return ret;
+	return ima_module_check(file);
 }
 
 int security_task_fix_setuid(struct cred *new, const struct cred *old,
@@ -876,6 +907,12 @@ int security_task_wait(struct task_struct *p)
 int security_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 			 unsigned long arg4, unsigned long arg5)
 {
+#ifdef CONFIG_SECURITY_YAMA_STACKED
+	int rc;
+	rc = yama_task_prctl(option, arg2, arg3, arg4, arg5);
+	if (rc != -ENOSYS)
+		return rc;
+#endif
 	return security_ops->task_prctl(option, arg2, arg3, arg4, arg5);
 }
 
@@ -1217,23 +1254,41 @@ void security_secmark_refcount_dec(void)
 }
 EXPORT_SYMBOL(security_secmark_refcount_dec);
 
+int security_tun_dev_alloc_security(void **security)
+{
+	return security_ops->tun_dev_alloc_security(security);
+}
+EXPORT_SYMBOL(security_tun_dev_alloc_security);
+
+void security_tun_dev_free_security(void *security)
+{
+	security_ops->tun_dev_free_security(security);
+}
+EXPORT_SYMBOL(security_tun_dev_free_security);
+
 int security_tun_dev_create(void)
 {
 	return security_ops->tun_dev_create();
 }
 EXPORT_SYMBOL(security_tun_dev_create);
 
-void security_tun_dev_post_create(struct sock *sk)
+int security_tun_dev_attach_queue(void *security)
 {
-	return security_ops->tun_dev_post_create(sk);
+	return security_ops->tun_dev_attach_queue(security);
 }
-EXPORT_SYMBOL(security_tun_dev_post_create);
+EXPORT_SYMBOL(security_tun_dev_attach_queue);
 
-int security_tun_dev_attach(struct sock *sk)
+int security_tun_dev_attach(struct sock *sk, void *security)
 {
-	return security_ops->tun_dev_attach(sk);
+	return security_ops->tun_dev_attach(sk, security);
 }
 EXPORT_SYMBOL(security_tun_dev_attach);
+
+int security_tun_dev_open(void *security)
+{
+	return security_ops->tun_dev_open(security);
+}
+EXPORT_SYMBOL(security_tun_dev_open);
 
 #endif	/* CONFIG_SECURITY_NETWORK */
 

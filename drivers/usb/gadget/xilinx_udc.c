@@ -40,7 +40,7 @@
 
 
  /* Match table for of_platform binding */
-static const struct of_device_id usb_of_match[] __devinitdata = {
+static const struct of_device_id usb_of_match[] = {
 	{.compatible = "xlnx,xps-usb2-device-4.00.a",},
 	{ /* end of list */ },
 };
@@ -2314,7 +2314,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit xudc_remove(struct platform_device *pdev)
+static int xudc_remove(struct platform_device *pdev)
 {
 
 	struct xusb_udc *udc = platform_get_drvdata(pdev);
@@ -2353,7 +2353,7 @@ static void xusb_release(struct device *dev)
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devinit
+static int
 usb_of_probe(struct platform_device *op)
 {
 	struct device_node *np = op->dev.of_node;
@@ -2396,7 +2396,7 @@ usb_of_probe(struct platform_device *op)
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit usb_of_remove(struct platform_device *pdev)
+static int usb_of_remove(struct platform_device *pdev)
 {
 	return xudc_remove(pdev);
 }
@@ -2408,7 +2408,7 @@ static struct platform_driver usb_of_driver = {
 		.of_match_table = usb_of_match,
 	},
 	.probe = usb_of_probe,
-	.remove = __devexit_p(usb_of_remove),
+	.remove = usb_of_remove,
 };
 
 module_platform_driver(usb_of_driver);

@@ -454,7 +454,7 @@ free_omx:
 	return ret;
 }
 
-static void __devexit rpmsg_omx_remove(struct rpmsg_channel *rpdev)
+static void rpmsg_omx_remove(struct rpmsg_channel *rpdev)
 {
 	struct rpmsg_omx_service *omxserv = dev_get_drvdata(&rpdev->dev);
 	int major = MAJOR(rpmsg_omx_dev);
@@ -490,7 +490,7 @@ static struct rpmsg_driver rpmsg_omx_driver = {
 	.id_table	= rpmsg_omx_id_table,
 	.probe		= rpmsg_omx_probe,
 	.callback	= rpmsg_omx_driver_cb,
-	.remove		= __devexit_p(rpmsg_omx_remove),
+	.remove		= rpmsg_omx_remove,
 };
 
 static int __init init(void)

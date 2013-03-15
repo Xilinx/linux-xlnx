@@ -18,9 +18,10 @@
 #define __MACH_ZYNQ_COMMON_H__
 
 void __init xttcps_timer_init_old(void);
+void __init xttcpss_timer_init(void);
 void platform_device_init(void);
 
-int __cpuinit zynq_cpun_start(u32 address, int cpu);
+extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
 
 extern void xslcr_write(u32 val, u32 offset);
 extern u32 xslcr_read(u32 offset);
@@ -48,5 +49,10 @@ static inline int zynq_pm_late_init(void)
 
 extern unsigned int zynq_sys_suspend_sz;
 int zynq_sys_suspend(void __iomem *ddrc_base, void __iomem *slcr_base);
+
+extern void platform_cpu_die(unsigned int cpu);
+extern struct smp_operations zynq_smp_ops;
+
+#define IRQ_XILINX_MSI_0       128
 
 #endif

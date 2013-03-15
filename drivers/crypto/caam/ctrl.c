@@ -129,7 +129,7 @@ static int instantiate_rng(struct device *jrdev)
 
 /*
  * By default, the TRNG runs for 200 clocks per sample;
- * 800 clocks per sample generates better entropy.
+ * 1600 clocks per sample generates better entropy.
  */
 static void kick_trng(struct platform_device *pdev)
 {
@@ -144,9 +144,9 @@ static void kick_trng(struct platform_device *pdev)
 
 	/* put RNG4 into program mode */
 	setbits32(&r4tst->rtmctl, RTMCTL_PRGM);
-	/* 800 clocks per sample */
+	/* 1600 clocks per sample */
 	val = rd_reg32(&r4tst->rtsdctl);
-	val = (val & ~RTSDCTL_ENT_DLY_MASK) | (800 << RTSDCTL_ENT_DLY_SHIFT);
+	val = (val & ~RTSDCTL_ENT_DLY_MASK) | (1600 << RTSDCTL_ENT_DLY_SHIFT);
 	wr_reg32(&r4tst->rtsdctl, val);
 	/* min. freq. count */
 	wr_reg32(&r4tst->rtfrqmin, 400);
@@ -420,7 +420,7 @@ static struct platform_driver caam_driver = {
 		.of_match_table = caam_match,
 	},
 	.probe       = caam_probe,
-	.remove      = __devexit_p(caam_remove),
+	.remove      = caam_remove,
 };
 
 module_platform_driver(caam_driver);

@@ -57,7 +57,7 @@ static inline u32 mc_readl(struct tegra20_mc *mc, u32 offs)
 
 	if (offs < 0x24)
 		val = readl(mc->regs[0] + offs);
-	if (offs < 0x400)
+	else if (offs < 0x400)
 		val = readl(mc->regs[1] + offs - 0x3c);
 
 	return val;
@@ -65,14 +65,10 @@ static inline u32 mc_readl(struct tegra20_mc *mc, u32 offs)
 
 static inline void mc_writel(struct tegra20_mc *mc, u32 val, u32 offs)
 {
-	if (offs < 0x24) {
+	if (offs < 0x24)
 		writel(val, mc->regs[0] + offs);
-		return;
-	}
-	if (offs < 0x400) {
+	else if (offs < 0x400)
 		writel(val, mc->regs[1] + offs - 0x3c);
-		return;
-	}
 }
 
 static const char * const tegra20_mc_client[] = {
@@ -181,7 +177,7 @@ static void tegra20_mc_decode(struct tegra20_mc *mc, int n)
 			    "carveout" : "trustzone") : "");
 }
 
-static const struct of_device_id tegra20_mc_of_match[] __devinitconst = {
+static const struct of_device_id tegra20_mc_of_match[] = {
 	{ .compatible = "nvidia,tegra20-mc", },
 	{},
 };
@@ -202,7 +198,7 @@ static irqreturn_t tegra20_mc_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int __devinit tegra20_mc_probe(struct platform_device *pdev)
+static int tegra20_mc_probe(struct platform_device *pdev)
 {
 	struct resource *irq;
 	struct tegra20_mc *mc;

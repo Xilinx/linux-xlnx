@@ -376,7 +376,7 @@ static int xylonfb_of_remove(struct platform_device *pdev)
 }
 
 
-static struct of_device_id xylonfb_of_match[] __devinitdata = {
+static struct of_device_id xylonfb_of_match[] = {
 	{ .compatible = "xylon,logicvc-2.05.c" },
 	{ .compatible = "xlnx,logicvc-2.05.c" },
 	{/* end of table */},

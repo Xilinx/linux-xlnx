@@ -1225,8 +1225,8 @@ static struct uart_driver xuartps_uart_driver = {
  * @pdev: Pointer to the platform device structure
  *
  * Returns 0 on success, negative error otherwise
- */
-static int __devinit xuartps_probe(struct platform_device *pdev)
+ **/
+static int xuartps_probe(struct platform_device *pdev)
 {
 	int rc;
 	struct uart_port *port;
@@ -1345,8 +1345,8 @@ err_out_free:
  * @pdev: Pointer to the platform device structure
  *
  * Returns 0 on success, negative error otherwise
- */
-static int __devexit xuartps_remove(struct platform_device *pdev)
+ **/
+static int xuartps_remove(struct platform_device *pdev)
 {
 	struct uart_port *port = dev_get_drvdata(&pdev->dev);
 	int rc = 0;
@@ -1464,15 +1464,16 @@ static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
 #endif /* ! CONFIG_PM_SLEEP */
 
 /* Match table for of_platform binding */
-static struct of_device_id xuartps_of_match[] __devinitdata = {
+static struct of_device_id xuartps_of_match[] = {
 	{ .compatible = "xlnx,ps7-uart-1.00.a", },
+	{ .compatible = "xlnx,xuartps", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, xuartps_of_match);
 
 static struct platform_driver xuartps_platform_driver = {
 	.probe   = xuartps_probe,		/* Probe method */
-	.remove  = __exit_p(xuartps_remove),	/* Detach method */
+	.remove  = xuartps_remove,		/* Detach method */
 	.driver  = {
 		.owner = THIS_MODULE,
 		.name = XUARTPS_NAME,		/* Driver name */

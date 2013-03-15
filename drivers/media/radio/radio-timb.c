@@ -85,7 +85,7 @@ static int timbradio_vidioc_g_audio(struct file *file, void *priv,
 }
 
 static int timbradio_vidioc_s_audio(struct file *file, void *priv,
-	struct v4l2_audio *a)
+	const struct v4l2_audio *a)
 {
 	return a->index ? -EINVAL : 0;
 }
@@ -145,7 +145,7 @@ static const struct v4l2_file_operations timbradio_fops = {
 	.unlocked_ioctl	= video_ioctl2,
 };
 
-static int __devinit timbradio_probe(struct platform_device *pdev)
+static int timbradio_probe(struct platform_device *pdev)
 {
 	struct timb_radio_platform_data *pdata = pdev->dev.platform_data;
 	struct timbradio *tr;
@@ -157,7 +157,7 @@ static int __devinit timbradio_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	tr = kzalloc(sizeof(*tr), GFP_KERNEL);
+	tr = devm_kzalloc(&pdev->dev, sizeof(*tr), GFP_KERNEL);
 	if (!tr) {
 		err = -ENOMEM;
 		goto err;
@@ -177,7 +177,7 @@ static int __devinit timbradio_probe(struct platform_device *pdev)
 	strlcpy(tr->v4l2_dev.name, DRIVER_NAME, sizeof(tr->v4l2_dev.name));
 	err = v4l2_device_register(NULL, &tr->v4l2_dev);
 	if (err)
-		goto err_v4l2_dev;
+		goto err;
 
 	tr->video_dev.v4l2_dev = &tr->v4l2_dev;
 
@@ -195,15 +195,13 @@ static int __devinit timbradio_probe(struct platform_device *pdev)
 err_video_req:
 	video_device_release_empty(&tr->video_dev);
 	v4l2_device_unregister(&tr->v4l2_dev);
-err_v4l2_dev:
-	kfree(tr);
 err:
 	dev_err(&pdev->dev, "Failed to register: %d\n", err);
 
 	return err;
 }
 
-static int __devexit timbradio_remove(struct platform_device *pdev)
+static int timbradio_remove(struct platform_device *pdev)
 {
 	struct timbradio *tr = platform_get_drvdata(pdev);
 
@@ -211,8 +209,6 @@ static int __devexit timbradio_remove(struct platform_device *pdev)
 	video_device_release_empty(&tr->video_dev);
 
 	v4l2_device_unregister(&tr->v4l2_dev);
-
-	kfree(tr);
 
 	return 0;
 }
@@ -223,7 +219,7 @@ static struct platform_driver timbradio_platform_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe		= timbradio_probe,
-	.remove		= __devexit_p(timbradio_remove),
+	.remove		= timbradio_remove,
 };
 
 module_platform_driver(timbradio_platform_driver);

@@ -3670,7 +3670,7 @@ static struct of_device_id xtenet_sdma_of_match[] = {
 	{ /* end of list */ },
 };
 
-static int __devinit xtenet_of_probe(struct platform_device *op)
+static int xtenet_of_probe(struct platform_device *op)
 {
 	struct resource r_irq_struct;
 	struct resource r_mem_struct;
@@ -3814,12 +3814,12 @@ static int __devinit xtenet_of_probe(struct platform_device *op)
 	return xtenet_setup(&op->dev, r_mem, r_irq, pdata);
 }
 
-static int __devexit xtenet_of_remove(struct platform_device *op)
+static int xtenet_of_remove(struct platform_device *op)
 {
 	return xtenet_remove(&op->dev);
 }
 
-static struct of_device_id xtenet_of_match[] __devinitdata = {
+static struct of_device_id xtenet_of_match[] = {
 	{ .compatible = "xlnx,xps-ll-temac-1.00.a", },
 	{ .compatible = "xlnx,xps-ll-temac-1.00.b", },
 	{ .compatible = "xlnx,xps-ll-temac-1.01.a", },
@@ -3832,7 +3832,7 @@ MODULE_DEVICE_TABLE(of, xtenet_of_match);
 
 static struct platform_driver xtenet_of_driver = {
 	.probe		= xtenet_of_probe,
-	.remove		= __devexit_p(xtenet_of_remove),
+	.remove		= xtenet_of_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,

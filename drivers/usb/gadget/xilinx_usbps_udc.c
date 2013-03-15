@@ -841,7 +841,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 	if (!udc->driver || (udc->gadget.speed == USB_SPEED_UNKNOWN))
 		return -ESHUTDOWN;
 
-	max = le16_to_cpu(desc->wMaxPacketSize);
+	max = usb_endpoint_maxp(desc);
 
 	/* Disable automatic zlp generation.  Driver is reponsible to indicate
 	 * explicitly through req->req.zero.  This is needed to enable multi-td
@@ -939,6 +939,7 @@ static int xusbps_ep_disable(struct usb_ep *_ep)
 	nuke(ep, -ESHUTDOWN);
 
 	ep->desc = NULL;
+	ep->ep.desc = NULL;
 	ep->stopped = 1;
 	spin_unlock_irqrestore(&udc->lock, flags);
 
@@ -1609,7 +1610,7 @@ static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
 static int xusbps_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+		int (*bind)(struct usb_gadget *, struct usb_gadget_driver *))
 {
 	int retval = -ENODEV;
 	unsigned long flags = 0;
@@ -1617,8 +1618,7 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 	if (!udc_controller)
 		return -ENODEV;
 
-	if (!driver || (driver->max_speed != USB_SPEED_FULL
-				&& driver->max_speed != USB_SPEED_HIGH)
+	if (!driver || (driver->max_speed < USB_SPEED_HIGH)
 			|| !bind || !driver->disconnect || !driver->setup)
 		return -EINVAL;
 
@@ -1632,10 +1632,11 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 	/* hook up the driver */
 	udc_controller->driver = driver;
 	udc_controller->gadget.dev.driver = &driver->driver;
+	udc_controller->gadget.speed = driver->max_speed;
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
 	/* bind udc driver to gadget driver */
-	retval = bind(&udc_controller->gadget);
+	retval = bind(&udc_controller->gadget, driver);
 	if (retval) {
 		VDBG("bind to %s --> %d", driver->driver.name, retval);
 		udc_controller->gadget.dev.driver = NULL;
@@ -2715,7 +2716,7 @@ static void xusbps_udc_release(struct device *dev)
  * init resource for globle controller
  * Return the udc handle on success or NULL on failure
  ------------------------------------------------------------------*/
-static int __devinit struct_udc_setup(struct xusbps_udc *udc,
+static int struct_udc_setup(struct xusbps_udc *udc,
 		struct platform_device *pdev)
 {
 	struct xusbps_usb2_platform_data *pdata;
@@ -2769,7 +2770,7 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
  * ep0out is not used so do nothing here
  * ep0in should be taken care
  *--------------------------------------------------------------*/
-static int __devinit struct_ep_setup(struct xusbps_udc *udc,
+static int struct_ep_setup(struct xusbps_udc *udc,
 				unsigned char index, char *name, int link)
 {
 	struct xusbps_ep *ep = &udc->eps[index];
@@ -2802,7 +2803,7 @@ static int __devinit struct_ep_setup(struct xusbps_udc *udc,
  * all intialization operations implemented here except enabling usb_intr reg
  * board setup should have been done in the platform code
  */
-static int __devinit xusbps_udc_probe(struct platform_device *pdev)
+static int xusbps_udc_probe(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 	unsigned int i;
@@ -3048,7 +3049,7 @@ static const struct dev_pm_ops xusbps_udc_dev_pm_ops = {
 
 static struct platform_driver udc_driver = {
 	.probe   = xusbps_udc_probe,
-	.remove  = __exit_p(xusbps_udc_remove),
+	.remove  = xusbps_udc_remove,
 	/* these suspend and resume are not usb suspend and resume */
 	.driver  = {
 		.name = (char *)driver_name,

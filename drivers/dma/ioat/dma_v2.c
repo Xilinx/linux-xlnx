@@ -434,12 +434,11 @@ static struct ioat_ring_ent *ioat2_alloc_ring_ent(struct dma_chan *chan, gfp_t f
 		return NULL;
 	memset(hw, 0, sizeof(*hw));
 
-	desc = kmem_cache_alloc(ioat2_cache, flags);
+	desc = kmem_cache_zalloc(ioat2_cache, flags);
 	if (!desc) {
 		pci_pool_free(dma->dma_pool, hw, phys);
 		return NULL;
 	}
-	memset(desc, 0, sizeof(*desc));
 
 	dma_async_tx_descriptor_init(&desc->txd, chan);
 	desc->txd.tx_submit = ioat2_tx_submit_unlock;
@@ -863,7 +862,7 @@ struct kobj_type ioat2_ktype = {
 	.default_attrs = ioat2_attrs,
 };
 
-int __devinit ioat2_dma_probe(struct ioatdma_device *device, int dca)
+int ioat2_dma_probe(struct ioatdma_device *device, int dca)
 {
 	struct pci_dev *pdev = device->pdev;
 	struct dma_device *dma;

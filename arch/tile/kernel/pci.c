@@ -81,7 +81,7 @@ EXPORT_SYMBOL(pcibios_align_resource);
  * controller_id is the controller number, config type is 0 or 1 for
  * config0 or config1 operations.
  */
-static int __devinit tile_pcie_open(int controller_id, int config_type)
+static int tile_pcie_open(int controller_id, int config_type)
 {
 	char filename[32];
 	int fd;
@@ -97,8 +97,7 @@ static int __devinit tile_pcie_open(int controller_id, int config_type)
 /*
  * Get the IRQ numbers from the HV and set up the handlers for them.
  */
-static int __devinit tile_init_irqs(int controller_id,
-				 struct pci_controller *controller)
+static int tile_init_irqs(int controller_id, struct pci_controller *controller)
 {
 	char filename[32];
 	int fd;
@@ -237,7 +236,7 @@ static int tile_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 }
 
 
-static void __devinit fixup_read_and_payload_sizes(void)
+static void fixup_read_and_payload_sizes(void)
 {
 	struct pci_dev *dev = NULL;
 	int smallest_max_payload = 0x1; /* Tile maxes out at 256 bytes. */
@@ -245,17 +244,14 @@ static void __devinit fixup_read_and_payload_sizes(void)
 	u16 new_values;
 
 	/* Scan for the smallest maximum payload size. */
-	while ((dev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, dev)) != NULL) {
-		int pcie_caps_offset;
+	for_each_pci_dev(dev) {
 		u32 devcap;
 		int max_payload;
 
-		pcie_caps_offset = pci_find_capability(dev, PCI_CAP_ID_EXP);
-		if (pcie_caps_offset == 0)
+		if (!pci_is_pcie(dev))
 			continue;
 
-		pci_read_config_dword(dev, pcie_caps_offset + PCI_EXP_DEVCAP,
-				      &devcap);
+		pcie_capability_read_dword(dev, PCI_EXP_DEVCAP, &devcap);
 		max_payload = devcap & PCI_EXP_DEVCAP_PAYLOAD;
 		if (max_payload < smallest_max_payload)
 			smallest_max_payload = max_payload;
@@ -263,21 +259,10 @@ static void __devinit fixup_read_and_payload_sizes(void)
 
 	/* Now, set the max_payload_size for all devices to that value. */
 	new_values = (max_read_size << 12) | (smallest_max_payload << 5);
-	while ((dev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, dev)) != NULL) {
-		int pcie_caps_offset;
-		u16 devctl;
-
-		pcie_caps_offset = pci_find_capability(dev, PCI_CAP_ID_EXP);
-		if (pcie_caps_offset == 0)
-			continue;
-
-		pci_read_config_word(dev, pcie_caps_offset + PCI_EXP_DEVCTL,
-				     &devctl);
-		devctl &= ~(PCI_EXP_DEVCTL_PAYLOAD | PCI_EXP_DEVCTL_READRQ);
-		devctl |= new_values;
-		pci_write_config_word(dev, pcie_caps_offset + PCI_EXP_DEVCTL,
-				      devctl);
-	}
+	for_each_pci_dev(dev)
+		pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVCTL,
+				PCI_EXP_DEVCTL_PAYLOAD | PCI_EXP_DEVCTL_READRQ,
+				new_values);
 }
 
 
@@ -393,7 +378,7 @@ subsys_initcall(pcibios_init);
 /*
  * No bus fixups needed.
  */
-void __devinit pcibios_fixup_bus(struct pci_bus *bus)
+void pcibios_fixup_bus(struct pci_bus *bus)
 {
 	/* Nothing needs to be done. */
 }
@@ -401,14 +386,6 @@ void __devinit pcibios_fixup_bus(struct pci_bus *bus)
 void pcibios_set_master(struct pci_dev *dev)
 {
 	/* No special bus mastering setup handling. */
-}
-
-/*
- * This is called from the generic Linux layer.
- */
-void __devinit pcibios_update_irq(struct pci_dev *dev, int irq)
-{
-	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, irq);
 }
 
 /*
@@ -480,11 +457,8 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
  * specified bus & slot.
  */
 
-static int __devinit tile_cfg_read(struct pci_bus *bus,
-				   unsigned int devfn,
-				   int offset,
-				   int size,
-				   u32 *val)
+static int tile_cfg_read(struct pci_bus *bus, unsigned int devfn, int offset,
+			 int size, u32 *val)
 {
 	struct pci_controller *controller = bus->sysdata;
 	int busnum = bus->number & 0xff;
@@ -526,11 +500,8 @@ static int __devinit tile_cfg_read(struct pci_bus *bus,
  * See tile_cfg_read() for relevant comments.
  * Note that "val" is the value to write, not a pointer to that value.
  */
-static int __devinit tile_cfg_write(struct pci_bus *bus,
-				    unsigned int devfn,
-				    int offset,
-				    int size,
-				    u32 val)
+static int tile_cfg_write(struct pci_bus *bus, unsigned int devfn, int offset,
+			  int size, u32 val)
 {
 	struct pci_controller *controller = bus->sysdata;
 	int busnum = bus->number & 0xff;

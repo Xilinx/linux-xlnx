@@ -633,7 +633,7 @@ static irqreturn_t xadc_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct xadc_op xadc_ops[] __devinitdata = {
+static struct xadc_op xadc_ops[] = {
 	{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG |
 			REG_CFG1_CAL_ADCOG |
 			SETFIELD(REG_CFG1, SEQ, MODE_DEF)),},
@@ -649,12 +649,12 @@ static struct xadc_op xadc_ops[] __devinitdata = {
 	{.cmd = WRITEOP(REG_CFG1, REG_CFG1_CAL_SSOG | REG_CFG1_CAL_ADCOG |
 			SETFIELD(REG_CFG1, SEQ, MODE_IND)),},
 };
-static struct xadc_batch setup __devinitdata = {
+static struct xadc_batch setup = {
 	.count = ARRAY_SIZE(xadc_ops),
 	.ops = xadc_ops,
 };
 
-static int __devinit xadc_probe(struct platform_device *pdev)
+static int xadc_probe(struct platform_device *pdev)
 {
 	struct xadc_t *xadc;
 	u16 val;
@@ -774,7 +774,7 @@ err_free:
 	return ret;
 }
 
-static int __devexit xadc_remove(struct platform_device *pdev)
+static int xadc_remove(struct platform_device *pdev)
 {
 	struct xadc_t *xadc = platform_get_drvdata(pdev);
 
@@ -797,7 +797,7 @@ static int __devexit xadc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xadcps_of_match[] __devinitdata = {
+static struct of_device_id xadcps_of_match[] = {
 	{ .compatible = "xlnx,ps7-xadc-1.00.a", },
 	{ /* end of table */}
 };
@@ -805,7 +805,7 @@ MODULE_DEVICE_TABLE(of, xadcps_of_match);
 
 static struct platform_driver xadc_driver = {
 	.probe = xadc_probe,
-	.remove = __devexit_p(xadc_remove),
+	.remove = xadc_remove,
 	.driver = {
 		.name = "xadcps",
 		.owner = THIS_MODULE,

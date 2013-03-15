@@ -33,4 +33,7 @@ struct clk *clk_register_zynq_clk621(const char *name,
 		unsigned int basediv,
 		unsigned int divadd, const char **pnames, u8 num_parents,
 		spinlock_t *lock);
+
+//void __init xilinx_zynq_clocks_init(void __iomem *slcr);
+
 #endif

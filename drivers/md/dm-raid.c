@@ -295,9 +295,11 @@ static int validate_region_size(struct raid_set *rs, unsigned long region_size)
 		 * Choose a reasonable default.  All figures in sectors.
 		 */
 		if (min_region_size > (1 << 13)) {
+			/* If not a power of 2, make it the next power of 2 */
+			if (min_region_size & (min_region_size - 1))
+				region_size = 1 << fls(region_size);
 			DMINFO("Choosing default region size of %lu sectors",
 			       region_size);
-			region_size = min_region_size;
 		} else {
 			DMINFO("Choosing default region size of 4MiB");
 			region_size = 1 << 13; /* sectors */
@@ -338,6 +340,79 @@ static int validate_region_size(struct raid_set *rs, unsigned long region_size)
 }
 
 /*
+ * validate_raid_redundancy
+ * @rs
+ *
+ * Determine if there are enough devices in the array that haven't
+ * failed (or are being rebuilt) to form a usable array.
+ *
+ * Returns: 0 on success, -EINVAL on failure.
+ */
+static int validate_raid_redundancy(struct raid_set *rs)
+{
+	unsigned i, rebuild_cnt = 0;
+	unsigned rebuilds_per_group, copies, d;
+
+	for (i = 0; i < rs->md.raid_disks; i++)
+		if (!test_bit(In_sync, &rs->dev[i].rdev.flags) ||
+		    !rs->dev[i].rdev.sb_page)
+			rebuild_cnt++;
+
+	switch (rs->raid_type->level) {
+	case 1:
+		if (rebuild_cnt >= rs->md.raid_disks)
+			goto too_many;
+		break;
+	case 4:
+	case 5:
+	case 6:
+		if (rebuild_cnt > rs->raid_type->parity_devs)
+			goto too_many;
+		break;
+	case 10:
+		copies = raid10_md_layout_to_copies(rs->md.layout);
+		if (rebuild_cnt < copies)
+			break;
+
+		/*
+		 * It is possible to have a higher rebuild count for RAID10,
+		 * as long as the failed devices occur in different mirror
+		 * groups (i.e. different stripes).
+		 *
+		 * Right now, we only allow for "near" copies.  When other
+		 * formats are added, we will have to check those too.
+		 *
+		 * When checking "near" format, make sure no adjacent devices
+		 * have failed beyond what can be handled.  In addition to the
+		 * simple case where the number of devices is a multiple of the
+		 * number of copies, we must also handle cases where the number
+		 * of devices is not a multiple of the number of copies.
+		 * E.g.    dev1 dev2 dev3 dev4 dev5
+		 *          A    A    B    B    C
+		 *          C    D    D    E    E
+		 */
+		for (i = 0; i < rs->md.raid_disks * copies; i++) {
+			if (!(i % copies))
+				rebuilds_per_group = 0;
+			d = i % rs->md.raid_disks;
+			if ((!rs->dev[d].rdev.sb_page ||
+			     !test_bit(In_sync, &rs->dev[d].rdev.flags)) &&
+			    (++rebuilds_per_group >= copies))
+				goto too_many;
+		}
+		break;
+	default:
+		if (rebuild_cnt)
+			return -EINVAL;
+	}
+
+	return 0;
+
+too_many:
+	return -EINVAL;
+}
+
+/*
  * Possible arguments are...
  *	<chunk_size> [optional_args]
  *
@@ -365,7 +440,7 @@ static int parse_raid_params(struct raid_set *rs, char **argv,
 {
 	char *raid10_format = "near";
 	unsigned raid10_copies = 2;
-	unsigned i, rebuild_cnt = 0;
+	unsigned i;
 	unsigned long value, region_size = 0;
 	sector_t sectors_per_dev = rs->ti->len;
 	sector_t max_io_len;
@@ -461,31 +536,7 @@ static int parse_raid_params(struct raid_set *rs, char **argv,
 
 		/* Parameters that take a numeric value are checked here */
 		if (!strcasecmp(key, "rebuild")) {
-			rebuild_cnt++;
-
-			switch (rs->raid_type->level) {
-			case 1:
-				if (rebuild_cnt >= rs->md.raid_disks) {
-					rs->ti->error = "Too many rebuild devices specified";
-					return -EINVAL;
-				}
-				break;
-			case 4:
-			case 5:
-			case 6:
-				if (rebuild_cnt > rs->raid_type->parity_devs) {
-					rs->ti->error = "Too many rebuild devices specified for given RAID type";
-					return -EINVAL;
-				}
-				break;
-			case 10:
-			default:
-				DMERR("The rebuild parameter is not supported for %s", rs->raid_type->name);
-				rs->ti->error = "Rebuild not supported for this RAID type";
-				return -EINVAL;
-			}
-
-			if (value > rs->md.raid_disks) {
+			if (value >= rs->md.raid_disks) {
 				rs->ti->error = "Invalid rebuild index given";
 				return -EINVAL;
 			}
@@ -936,30 +987,25 @@ static int super_validate(struct mddev *mddev, struct md_rdev *rdev)
 static int analyse_superblocks(struct dm_target *ti, struct raid_set *rs)
 {
 	int ret;
-	unsigned redundancy = 0;
 	struct raid_dev *dev;
 	struct md_rdev *rdev, *tmp, *freshest;
 	struct mddev *mddev = &rs->md;
 
-	switch (rs->raid_type->level) {
-	case 1:
-		redundancy = rs->md.raid_disks - 1;
-		break;
-	case 4:
-	case 5:
-	case 6:
-		redundancy = rs->raid_type->parity_devs;
-		break;
-	case 10:
-		redundancy = raid10_md_layout_to_copies(mddev->layout) - 1;
-		break;
-	default:
-		ti->error = "Unknown RAID type";
-		return -EINVAL;
-	}
-
 	freshest = NULL;
 	rdev_for_each_safe(rdev, tmp, mddev) {
+		/*
+		 * Skipping super_load due to DMPF_SYNC will cause
+		 * the array to undergo initialization again as
+		 * though it were new.  This is the intended effect
+		 * of the "sync" directive.
+		 *
+		 * When reshaping capability is added, we must ensure
+		 * that the "sync" directive is disallowed during the
+		 * reshape.
+		 */
+		if (rs->print_flags & DMPF_SYNC)
+			continue;
+
 		if (!rdev->meta_bdev)
 			continue;
 
@@ -973,43 +1019,42 @@ static int analyse_superblocks(struct dm_target *ti, struct raid_set *rs)
 			break;
 		default:
 			dev = container_of(rdev, struct raid_dev, rdev);
-			if (redundancy--) {
-				if (dev->meta_dev)
-					dm_put_device(ti, dev->meta_dev);
+			if (dev->meta_dev)
+				dm_put_device(ti, dev->meta_dev);
 
-				dev->meta_dev = NULL;
-				rdev->meta_bdev = NULL;
+			dev->meta_dev = NULL;
+			rdev->meta_bdev = NULL;
 
-				if (rdev->sb_page)
-					put_page(rdev->sb_page);
+			if (rdev->sb_page)
+				put_page(rdev->sb_page);
 
-				rdev->sb_page = NULL;
+			rdev->sb_page = NULL;
 
-				rdev->sb_loaded = 0;
+			rdev->sb_loaded = 0;
 
-				/*
-				 * We might be able to salvage the data device
-				 * even though the meta device has failed.  For
-				 * now, we behave as though '- -' had been
-				 * set for this device in the table.
-				 */
-				if (dev->data_dev)
-					dm_put_device(ti, dev->data_dev);
+			/*
+			 * We might be able to salvage the data device
+			 * even though the meta device has failed.  For
+			 * now, we behave as though '- -' had been
+			 * set for this device in the table.
+			 */
+			if (dev->data_dev)
+				dm_put_device(ti, dev->data_dev);
 
-				dev->data_dev = NULL;
-				rdev->bdev = NULL;
+			dev->data_dev = NULL;
+			rdev->bdev = NULL;
 
-				list_del(&rdev->same_set);
-
-				continue;
-			}
-			ti->error = "Failed to load superblock";
-			return ret;
+			list_del(&rdev->same_set);
 		}
 	}
 
 	if (!freshest)
 		return 0;
+
+	if (validate_raid_redundancy(rs)) {
+		rs->ti->error = "Insufficient redundancy to activate array";
+		return -EINVAL;
+	}
 
 	/*
 	 * Validation of the freshest device provides the source of
@@ -1146,7 +1191,7 @@ static void raid_dtr(struct dm_target *ti)
 	context_free(rs);
 }
 
-static int raid_map(struct dm_target *ti, struct bio *bio, union map_info *map_context)
+static int raid_map(struct dm_target *ti, struct bio *bio)
 {
 	struct raid_set *rs = ti->private;
 	struct mddev *mddev = &rs->md;
@@ -1360,7 +1405,7 @@ static void raid_resume(struct dm_target *ti)
 
 static struct target_type raid_target = {
 	.name = "raid",
-	.version = {1, 3, 0},
+	.version = {1, 4, 1},
 	.module = THIS_MODULE,
 	.ctr = raid_ctr,
 	.dtr = raid_dtr,

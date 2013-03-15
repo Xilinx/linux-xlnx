@@ -682,11 +682,11 @@ void __init zynq_clock_init(void __iomem *slcr_base)
 	 */
 
 	/* One gated clock for all APER clocks. */
-	clk = clk_register_gate(NULL, "DMA_CPU2X", "CPU_2X_CLK", 0,
-			SLCR_APER_CLK_CTRL, 0, 0, &aperclk_lock);
-	clk_register_clkdev(clk, "dma", NULL);
-	/* pl330 driver fix for v3.6 - PM runtime is removed in v3.8 */
-	clk_prepare_enable(clk);
+	/*
+	 * clk = clk_register_gate(NULL, "DMA_CPU2X", "CPU_2X_CLK", 0,
+	 *		SLCR_APER_CLK_CTRL, 0, 0, &aperclk_lock);
+	 * zynq_clkdev_add(NULL, "DMA_APER", clk);
+	 */
 	clk = clk_register_gate(NULL, "USB0_CPU1X", "CPU_1X_CLK", 0,
 			SLCR_APER_CLK_CTRL, 2, 0, &aperclk_lock);
 	zynq_clkdev_add(NULL, "USB0_APER", clk);

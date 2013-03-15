@@ -69,7 +69,7 @@ static int adis16080_spi_read(struct iio_dev *indio_dev,
 	ret = spi_read(st->us, st->buf, 2);
 
 	if (ret == 0)
-		*val = ((st->buf[0] & 0xF) << 8) | st->buf[1];
+		*val = sign_extend32(((st->buf[0] & 0xF) << 8) | st->buf[1], 11);
 	mutex_unlock(&st->buf_lock);
 
 	return ret;
@@ -138,7 +138,7 @@ static const struct iio_info adis16080_info = {
 	.driver_module = THIS_MODULE,
 };
 
-static int __devinit adis16080_probe(struct spi_device *spi)
+static int adis16080_probe(struct spi_device *spi)
 {
 	int ret;
 	struct adis16080_state *st;
@@ -191,7 +191,7 @@ static struct spi_driver adis16080_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = adis16080_probe,
-	.remove = __devexit_p(adis16080_remove),
+	.remove = adis16080_remove,
 };
 module_spi_driver(adis16080_driver);
 
