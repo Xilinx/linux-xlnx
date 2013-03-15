@@ -202,7 +202,7 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 	cfi->id = cfi_read_query16(map, base + ofs_factor);
 
 	/* Get device ID cycle 1,2,3 for Numonyx/ST devices */
-	if ((cfi->mfr == CFI_MFR_NMX || cfi->mfr == CFI_MFR_ST)
+	if ((cfi->mfr == CFI_MFR_INTEL || cfi->mfr == CFI_MFR_ST)
 		&& ((cfi->id & 0xff) == 0x7e)
 		&& (le16_to_cpu(cfi->cfiq->P_ID) == 0x0002)) {
 		extendedId1 = cfi_read_query16(map, base + 0x1 * ofs_factor);
@@ -229,7 +229,7 @@ static int __xipram cfi_chip_setup(struct map_info *map,
 	cfi->cfiq->MaxBufWriteSize = le16_to_cpu(cfi->cfiq->MaxBufWriteSize);
 
    /* If the device is a M29EW used in 8-bit mode, adjust buffer size */
-	if ((cfi->cfiq->MaxBufWriteSize > 0x8) && (cfi->mfr == CFI_MFR_NMX ||
+	if ((cfi->cfiq->MaxBufWriteSize > 0x8) && (cfi->mfr == CFI_MFR_INTEL ||
 		 cfi->mfr == CFI_MFR_ST) && (extendedId1 == 0x7E) &&
 		 (extendedId2 == 0x22 || extendedId2 == 0x23 || extendedId2 == 0x28) &&
 		 (extendedId3 == 0x01)) {
