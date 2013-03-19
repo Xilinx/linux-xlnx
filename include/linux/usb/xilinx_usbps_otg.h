@@ -212,6 +212,5 @@ struct xusbps_otg *xceiv_to_xotg(struct usb_phy *otg)
 }
 
 void xusbps_update_transceiver(void);
-void xusbps1_update_transceiver(void);
 
 #endif /* __XILINX_XUSBPS_OTG_H__ */
