@@ -397,6 +397,7 @@ static unsigned int xuartps_set_baud_rate(struct uart_port *port,
 	u32 cd, bdiv;
 	u32 mreg;
 	int div8;
+	struct xuartps *xuartps = port->private_data;
 
 	calc_baud = xuartps_calc_baud_divs(port->uartclk, baud, &bdiv, &cd,
 			&div8);
@@ -410,6 +411,7 @@ static unsigned int xuartps_set_baud_rate(struct uart_port *port,
 	xuartps_writel(mreg, XUARTPS_MR_OFFSET);
 	xuartps_writel(cd, XUARTPS_BAUDGEN_OFFSET);
 	xuartps_writel(bdiv, XUARTPS_BAUDDIV_OFFSET);
+	xuartps->baud = baud;
 
 	return calc_baud;
 }
