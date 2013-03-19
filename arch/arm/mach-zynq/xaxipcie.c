@@ -132,8 +132,8 @@ struct xaxi_pcie_of_config {
 	u32 reg_len;
 	u32 pcie2axibar_0;
 	u32 pcie2axibar_1;
-	u32 *ranges;
-	u32 range_len;
+	const __be32 *ranges;
+	int range_len;
 	u32 address_cells;
 };
 
@@ -152,26 +152,22 @@ struct xaxi_pcie_port {
 	u8 link_up;
 	u8 bars_num;
 	u32 irq_num;
-	u32 *ranges;
-	u32 range_len;
+	const __be32 *ranges;
+	int range_len;
 	u32 pna;
-	unsigned int __iomem *base_addr_remap;
-	unsigned int __iomem *header_remap;
-	unsigned int __iomem *ecam_remap;
+	u8 __iomem *base_addr_remap;
+	u8 __iomem *header_remap;
+	u8 __iomem *ecam_remap;
 	u32 pcie2axibar_0;
 	u32 pcie2axibar_1;
 	u32 root_bus_nr;
 	u32 first_busno;
 	u32 last_busno;
-	void __iomem *io_base_virt;
-	resource_size_t io_base_phys;
 	resource_size_t isa_mem_phys;
 	resource_size_t isa_mem_size;
 	resource_size_t pci_mem_offset;
-	resource_size_t pci_io_size;
 	struct resource io_resource;
 	struct resource mem_resources[3];
-	char io_space_name[16];
 	char mem_space_name[16];
 };
 
@@ -180,8 +176,7 @@ static int xaxi_pcie_port_cnt;
 static int last_bus_on_record;
 
 /* ISA Memory physical address */
-resource_size_t isa_mem_base;
-unsigned long isa_io_base;
+static resource_size_t isa_mem_base;
 
 #ifdef CONFIG_PCI_MSI
 unsigned long xaxipcie_msg_addr;
@@ -235,6 +230,7 @@ static int xaxi_pcie_verify_config(struct xaxi_pcie_port *port,
  * @port: A pointer to a pcie port that needs to be handled
  * @bus: Bus structure of current bus
  * @devfun: Device/function
+ * @where: Offset from base
  *
  * @return: Base address of the configuration space needed to be
  *          accessed.
@@ -245,16 +241,13 @@ static int xaxi_pcie_verify_config(struct xaxi_pcie_port *port,
 static void __iomem *xaxi_pcie_get_config_base(
 				struct xaxi_pcie_port *port,
 				struct pci_bus *bus,
-				unsigned int devfn)
+				unsigned int devfn, int where)
 {
 	int relbus;
 
 	relbus = ((bus->number << BUS_LOC_SHIFT) | (devfn << DEV_LOC_SHIFT));
 
-	if (relbus == 0)
-		return (void __iomem *)port->header_remap;
-
-	return (void __iomem *)port->header_remap + relbus;
+	return port->header_remap + relbus + where;
 }
 
 /**
@@ -262,8 +255,8 @@ static void __iomem *xaxi_pcie_get_config_base(
  * @port: A pointer to a pcie port that needs to be handled
  * @bus: Bus structure of current bus
  * @devfun: Device/function
- * @offset: Offset from base
- * @len: Byte/word/dword
+ * @where: Offset from base
+ * @size: Byte/word/dword
  * @val: A pointer to value read
  *
  * @return: Error / no error
@@ -273,8 +266,8 @@ static void __iomem *xaxi_pcie_get_config_base(
  */
 static int xaxi_pcie_read_config(struct pci_bus *bus,
 				unsigned int devfn,
-				int offset,
-				int len,
+				int where,
+				int size,
 				u32 *val)
 {
 	struct pci_sys_data *sys = bus->sysdata;
@@ -284,22 +277,22 @@ static int xaxi_pcie_read_config(struct pci_bus *bus,
 	if (xaxi_pcie_verify_config(port, bus, devfn) != 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
-	addr = xaxi_pcie_get_config_base(port, bus, devfn);
+	addr = xaxi_pcie_get_config_base(port, bus, devfn, where);
 
 	if ((bus->number == 0) && devfn > 0) {
 		*val = 0xFFFFFFFF;
 		return PCIBIOS_SUCCESSFUL;
 	}
 
-	switch (len) {
+	switch (size) {
 	case XAXIPCIE_ACCESS8:
-		*val = readb((u8 *)(addr + offset));
+		*val = readb(addr);
 		break;
 	case XAXIPCIE_ACCESS16:
-		*val = readw((u16 *)(addr + offset));
+		*val = readw(addr);
 		break;
 	default:
-		*val = readl((u32 *)(addr + offset));
+		*val = readl(addr);
 		break;
 	}
 
@@ -311,8 +304,8 @@ static int xaxi_pcie_read_config(struct pci_bus *bus,
  * @port: A pointer to a pcie port that needs to be handled
  * @bus: Bus structure of current bus
  * @devfun: Device/function
- * @offset: Offset from base
- * @len: Byte/word/dword
+ * @where: Offset from base
+ * @size: Byte/word/dword
  * @val: Value to be written to device
  *
  * @return: Error / no error
@@ -322,31 +315,31 @@ static int xaxi_pcie_read_config(struct pci_bus *bus,
  */
 static int xaxi_pcie_write_config(struct pci_bus *bus,
 				unsigned int devfn,
-				int offset,
-				int len,
+				int where,
+				int size,
 				u32 val)
 {
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xaxi_pcie_port *port = sys->private_data;
-	void __iomem  *addr;
+	void __iomem *addr;
 
 	if (xaxi_pcie_verify_config(port, bus, devfn) != 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
-	addr = xaxi_pcie_get_config_base(port, bus, devfn);
+	addr = xaxi_pcie_get_config_base(port, bus, devfn, where);
 
 	if ((bus->number == 0) && devfn > 0)
 		return PCIBIOS_SUCCESSFUL;
 
-	switch (len) {
+	switch (size) {
 	case XAXIPCIE_ACCESS8:
-		writeb(val, (u8 *)(addr + offset));
+		writeb(val, addr);
 		break;
 	case XAXIPCIE_ACCESS16:
-		writew(val, (u16 *)(addr + offset));
+		writew(val, addr);
 		break;
 	default:
-		writel(val, (u32 *)(addr + offset));
+		writel(val, addr);
 		break;
 	}
 
@@ -363,9 +356,9 @@ static int xaxi_pcie_write_config(struct pci_bus *bus,
  *
  * @note: None
  */
-void xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
+static void xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
 {
-	const u32 *ranges = port->ranges;
+	const __be32 *ranges = port->ranges;
 	int rlen = port->range_len;
 	int np = port->pna + 5;
 	u32 pci_space;
@@ -387,10 +380,10 @@ void xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
 			pr_info("%s:Setting resource in Memory Space\n",
 								__func__);
 			writel(port->pcie2axibar_0,
-					(u8 *)port->header_remap +
+					port->header_remap +
 						PCIE_CFG_AD1);
 			writel(port->pcie2axibar_1,
-					(u8 *)port->header_remap +
+					port->header_remap +
 						PCIE_CFG_AD2);
 			break;
 		case XAXIPCIE_MEM_SPACE64:	/* PCI 64 bits Memory space */
@@ -400,15 +393,15 @@ void xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
 			val = ((pci_addr >> 16) & 0xfff0) |
 					((pci_addr + size - 1) & 0xfff00000);
 
-			writel(val, (u8 *)port->header_remap +
+			writel(val, port->header_remap +
 						PCIE_CFG_PREF_MEM);
 
 			val = ((pci_addr >> 32) & 0xffffffff);
-			writel(val, (u8 *)port->header_remap +
+			writel(val, port->header_remap +
 						PCIE_CFG_PREF_BASE_UPPER);
 
 			val = (((pci_addr + size - 1) >> 32) & 0xffffffff);
-			writel(val, (u8 *)port->header_remap +
+			writel(val, port->header_remap +
 						PCIE_CFG_PREF_LIMIT_UPPER);
 			break;
 		}
@@ -419,36 +412,7 @@ static int xaxi_pcie_hookup_resources(struct xaxi_pcie_port *port,
 					struct pci_sys_data *sys)
 {
 	struct resource *res;
-	resource_size_t io_offset;
 	int i;
-
-	/* Fixup IO space offset */
-	res = &port->io_resource;
-	io_offset = (unsigned long)port->io_base_virt - isa_io_base;
-	res->start = (res->start + io_offset) & 0xffffffffu;
-	res->end = (res->end + io_offset) & 0xffffffffu;
-	snprintf(port->io_space_name, sizeof(port->io_space_name),
-		"PCIe %d MEM", port->index);
-	port->io_space_name[sizeof(port->io_space_name) - 1] = 0;
-	res->name = port->io_space_name;
-
-	if (!res->flags) {
-		/* Workaround for lack of IO resource only on 32-bit */
-		res->start = (unsigned long)port->io_base_virt - isa_io_base;
-		res->end = res->start + IO_SPACE_LIMIT;
-		res->flags = IORESOURCE_IO;
-	}
-
-	if (request_resource(&ioport_resource, res))
-		panic("Request PCIe%d IO resource failed\n", port->index);
-
-	pci_add_resource_offset(&sys->resources, res,
-			(resource_size_t)(port->io_base_virt - 0x0));
-
-	pr_info("PCI: PHB IO resource    = %016llx-%016llx [%lx]\n",
-		(unsigned long long)res->start,
-		(unsigned long long)res->end,
-		(unsigned long)res->flags);
 
 	/* Hookup Memory resources */
 	for (i = 0; i < 3; ++i) {
@@ -481,7 +445,7 @@ static int xaxi_pcie_hookup_resources(struct xaxi_pcie_port *port,
 	return 0;
 }
 
-void xaxi_pcie_process_bridge_OF_ranges(struct xaxi_pcie_port *port,
+static void xaxi_pcie_process_bridge_OF_ranges(struct xaxi_pcie_port *port,
 					int primary)
 {
 	/* The address cells of PCIe node */
@@ -492,7 +456,7 @@ void xaxi_pcie_process_bridge_OF_ranges(struct xaxi_pcie_port *port,
 	unsigned long long pci_addr, cpu_addr, pci_next, cpu_next, size;
 	unsigned long long isa_mb = 0;
 	struct resource *res;
-	const u32 *ranges = port->ranges;
+	const __be32 *ranges = port->ranges;
 	int rlen = port->range_len;
 	struct device_node *node = port->node;
 
@@ -620,8 +584,8 @@ static int xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
 	/* Get bus range */
 	port->first_busno = last_bus_on_record;
 
-	val = readl((u8 *)port->base_addr_remap + XAXIPCIE_REG_PSCR);
-	val = readl((u8 *)port->header_remap + XAXIPCIE_REG_BIR);
+	val = readl(port->base_addr_remap + XAXIPCIE_REG_PSCR);
+	val = readl(port->header_remap + XAXIPCIE_REG_BIR);
 	val = (val >> 16) & 0x7;
 	port->last_busno = (((port->reg_base - port->reg_len - 1) >> 20)
 						& 0xFF) & val;
@@ -631,7 +595,7 @@ static int xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
 	val |= ((port->first_busno + 1) << 8);
 	val |= (port->last_busno << 16);
 
-	writel(val, ((u8 *)port->header_remap + PCIE_CFG_BUS));
+	writel(val, (port->header_remap + PCIE_CFG_BUS));
 	last_bus_on_record = port->last_busno + 1;
 
 	xaxi_pcie_set_bridge_resource(port);
@@ -676,8 +640,8 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 	u32 msi_data = 0;
 
 	/* Read interrupt decode and mask registers */
-	val = readl((u8 *)port->header_remap + XAXIPCIE_REG_IDR);
-	mask = readl((u8 *)port->header_remap + XAXIPCIE_REG_IMR);
+	val = readl(port->header_remap + XAXIPCIE_REG_IDR);
+	mask = readl(port->header_remap + XAXIPCIE_REG_IMR);
 
 	status = val & mask;
 	if (!status)
@@ -700,11 +664,11 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 	if (status & XAXIPCIE_INTR_CORRECTABLE) {
 		pr_warn("Correctable error message\n");
-		val = readl((u8 *)port->header_remap +
+		val = readl(port->header_remap +
 				XAXIPCIE_REG_RPEFR);
 		if (val & (1 << 18)) {
 			writel(0xFFFFFFFF,
-				(u8 *)port->base_addr_remap +
+				port->base_addr_remap +
 				XAXIPCIE_REG_RPEFR);
 			pr_debug("Requester ID %d\n", (val & 0xffff));
 		}
@@ -712,11 +676,11 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 	if (status & XAXIPCIE_INTR_NONFATAL) {
 		pr_warn("Non fatal error message\n");
-		val = readl(((u8 *)port->header_remap) +
+		val = readl((port->header_remap) +
 				XAXIPCIE_REG_RPEFR);
 		if (val & (1 << 18)) {
 			writel(0xFFFFFFFF,
-				(u8 *)port->base_addr_remap +
+				port->base_addr_remap +
 				XAXIPCIE_REG_RPEFR);
 			pr_debug("Requester ID %d\n", (val & 0xffff));
 		}
@@ -724,11 +688,11 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 	if (status & XAXIPCIE_INTR_FATAL) {
 		pr_warn("Fatal error message\n");
-		val = readl((u8 *)port->header_remap +
+		val = readl(port->header_remap +
 				XAXIPCIE_REG_RPEFR);
 		if (val & (1 << 18)) {
 			writel(0xFFFFFFFF,
-				(u8 *)port->base_addr_remap +
+				port->base_addr_remap +
 				XAXIPCIE_REG_RPEFR);
 			pr_debug("Requester ID %d\n", (val & 0xffff));
 		}
@@ -736,7 +700,7 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 	if (status & XAXIPCIE_INTR_INTX) {
 		/* INTx interrupt received */
-		val = readl((u8 *)port->header_remap + XAXIPCIE_REG_RPIFR1);
+		val = readl(port->header_remap + XAXIPCIE_REG_RPIFR1);
 
 		/* Check whether interrupt valid */
 		if (!(val & (1 << 31))) {
@@ -754,12 +718,12 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 		/* Clear interrupt FIFO register 1 */
 		writel(0xFFFFFFFF,
-			(u8 *)port->base_addr_remap + XAXIPCIE_REG_RPIFR1);
+			port->base_addr_remap + XAXIPCIE_REG_RPIFR1);
 	}
 
 	if (status & XAXIPCIE_INTR_MSI) {
 		/* MSI Interrupt */
-		val = readl((u8 *)port->header_remap + XAXIPCIE_REG_RPIFR1);
+		val = readl(port->header_remap + XAXIPCIE_REG_RPIFR1);
 
 		if (!(val & (1 << 31))) {
 			pr_warn("RP Intr FIFO1 read error\n");
@@ -768,7 +732,7 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 		if (val & (1 << 30)) {
 			msi_addr = (val >> 16) & 0x7FF;
-			msi_data = readl((u8 *)port->header_remap +
+			msi_data = readl(port->header_remap +
 					XAXIPCIE_REG_RPIFR2) & 0xFFFF;
 			pr_debug("%s: msi_addr %08x msi_data %08x\n",
 					__func__, msi_addr, msi_data);
@@ -776,7 +740,7 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 
 		/* Clear interrupt FIFO register 1 */
 		writel(0xFFFFFFFF,
-			(u8 *)port->base_addr_remap + XAXIPCIE_REG_RPIFR1);
+			port->base_addr_remap + XAXIPCIE_REG_RPIFR1);
 #ifdef CONFIG_PCI_MSI
 		/* Handle MSI Interrupt */
 		if (msi_data >= IRQ_XILINX_MSI_0)
@@ -812,7 +776,7 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 		pr_warn("Master error poison\n");
 
 	/* Clear the Interrupt Decode register */
-	writel(status, (u8 *)port->base_addr_remap + XAXIPCIE_REG_IDR);
+	writel(status, port->base_addr_remap + XAXIPCIE_REG_IDR);
 
 	return IRQ_HANDLED;
 }
@@ -841,20 +805,20 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 	if (port->type) {
 		port->header_remap = base_addr_remap;
 		writel(BUS_MASTER_ENABLE,
-			(u8 *)port->base_addr_remap + PCIE_CFG_CMD);
+			port->base_addr_remap + PCIE_CFG_CMD);
 	}
 
 #ifdef CONFIG_PCI_MSI
 	xaxipcie_msg_addr = port->reg_base & ~0xFFF;	/* 4KB aligned */
-	writel(0x0, (u8 *)port->base_addr_remap +
+	writel(0x0, port->base_addr_remap +
 				XAXIPCIE_REG_MSIBASE1);
 
-	writel(xaxipcie_msg_addr, (u8 *)port->base_addr_remap +
+	writel(xaxipcie_msg_addr, port->base_addr_remap +
 				XAXIPCIE_REG_MSIBASE2);
 #endif
 
 	/* make sure link is up */
-	val = readl((u8 *)port->base_addr_remap + XAXIPCIE_REG_PSCR);
+	val = readl(port->base_addr_remap + XAXIPCIE_REG_PSCR);
 
 	if (!(val & XAXIPCIE_REG_PSCR_LNKUP)) {
 		pr_err("%s: Link is Down\n", __func__);
@@ -866,24 +830,24 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 
 	/* Disable all interrupts*/
 	writel(~XAXIPCIE_REG_IDR_MASKALL,
-		(u8 *)port->base_addr_remap + XAXIPCIE_REG_IMR);
+		port->base_addr_remap + XAXIPCIE_REG_IMR);
 
 	/* Clear pending interrupts*/
-	writel(readl((u8 *)port->base_addr_remap + XAXIPCIE_REG_IDR) &
+	writel(readl(port->base_addr_remap + XAXIPCIE_REG_IDR) &
 			XAXIPCIE_REG_IMR_MASKALL,
-			(u8 *)port->base_addr_remap + XAXIPCIE_REG_IDR);
+			port->base_addr_remap + XAXIPCIE_REG_IDR);
 
 	/* Enable all interrupts*/
 	writel(XAXIPCIE_REG_IMR_MASKALL,
-			(u8 *)port->base_addr_remap + XAXIPCIE_REG_IMR);
+			port->base_addr_remap + XAXIPCIE_REG_IMR);
 
 	/*
 	 * Bridge enable must be done after enumeration,
 	 * but there is no callback defined
 	 */
-	val = readl((u8 *)port->base_addr_remap + XAXIPCIE_REG_RPSC);
+	val = readl(port->base_addr_remap + XAXIPCIE_REG_RPSC);
 	val |= XAXIPCIE_REG_RPSC_BEN;
-	writel(val, (u8 *)port->base_addr_remap + XAXIPCIE_REG_RPSC);
+	writel(val, port->base_addr_remap + XAXIPCIE_REG_RPSC);
 
 	/* Register Interrupt Handler */
 	err = request_irq(port->irq_num, xaxi_pcie_intr_handler,
@@ -896,7 +860,7 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 	return 0;
 }
 
-struct xaxi_pcie_port *
+static struct xaxi_pcie_port *
 xaxi_pcie_instantiate_port_info(struct xaxi_pcie_of_config *config,
 					struct device_node *node)
 {
@@ -932,25 +896,25 @@ xaxi_pcie_instantiate_port_info(struct xaxi_pcie_of_config *config,
  *
  * @note: Read related info from device tree
  */
-int xaxi_pcie_get_of_config(struct device_node *node,
+static int xaxi_pcie_get_of_config(struct device_node *node,
 		struct xaxi_pcie_of_config *info)
 {
-	u32 *value;
-	u32 rlen;
+	const __be32 *value;
+	int rlen;
 
 	info->num_instances = 1;
 
-	value = (u32 *) of_get_property(node, "xlnx,device-num", &rlen);
+	value = of_get_property(node, "xlnx,device-num", &rlen);
 
 	info->device_id = 0;
 
-	value = (u32 *) of_get_property(node, "xlnx,include-rc", &rlen);
+	value = of_get_property(node, "xlnx,include-rc", &rlen);
 	if (value)
 		info->device_type = be32_to_cpup(value);
 	else
 		return -ENODEV;
 
-	value = (u32 *) of_get_property(node, "reg", &rlen);
+	value = of_get_property(node, "reg", &rlen);
 	if (value) {
 		info->reg_base =
 			be32_to_cpup(value);
@@ -959,7 +923,7 @@ int xaxi_pcie_get_of_config(struct device_node *node,
 	} else
 		return -ENODEV;
 
-	value = (u32 *) of_get_property(node, "xlnx,pciebar-num", &rlen);
+	value = of_get_property(node, "xlnx,pciebar-num", &rlen);
 	if (value)
 		info->bars_num = be32_to_cpup(value);
 	else
@@ -968,14 +932,14 @@ int xaxi_pcie_get_of_config(struct device_node *node,
 	info->irq_num = irq_of_parse_and_map(node, 0);
 
 	/* Get address translation parameters */
-	value = (u32 *) of_get_property(node, "xlnx,pciebar2axibar-0", &rlen);
+	value = of_get_property(node, "xlnx,pciebar2axibar-0", &rlen);
 	if (value) {
 		info->pcie2axibar_0 =
 			be32_to_cpup(value);
 	} else
 		return -ENODEV;
 
-	value = (u32 *) of_get_property(node, "xlnx,pciebar2axibar-1", &rlen);
+	value = of_get_property(node, "xlnx,pciebar2axibar-1", &rlen);
 	if (value) {
 		info->pcie2axibar_1 =
 			be32_to_cpup(value);
@@ -986,7 +950,7 @@ int xaxi_pcie_get_of_config(struct device_node *node,
 	info->address_cells = of_n_addr_cells(node);
 
 	/* Get ranges property */
-	value = (u32 *) of_get_property(node, "ranges", &rlen);
+	value = of_get_property(node, "ranges", &rlen);
 	if (value) {
 		info->ranges = value;
 		info->range_len = rlen;
