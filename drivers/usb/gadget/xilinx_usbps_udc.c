@@ -47,9 +47,7 @@
 #include <asm/unaligned.h>
 #include <asm/dma.h>
 
-#ifdef	CONFIG_USB_XUSBPS_OTG
 #include <linux/usb/xilinx_usbps_otg.h>
-#endif
 
 #define	DRIVER_DESC	"Xilinx PS USB Device Controller driver"
 #define	DRIVER_AUTHOR	"Xilinx, Inc."
@@ -647,6 +645,17 @@ static void dr_controller_run(struct xusbps_udc *udc)
 #endif
 
 	xusbps_writel(temp, &dr_regs->usbintr);
+
+	/*
+	 * Enable disconnect notification using B session end interrupt.
+	 * This is a SW workaround for USB disconnect detection as mentioned
+	 * in AR# 47538
+	 */
+	if (!gadget_is_otg(&udc->gadget)) {
+		temp = xusbps_readl(&dr_regs->otgsc);
+		temp |= OTGSC_BSEIE;
+		xusbps_writel(temp, &dr_regs->otgsc);
+	}
 
 	/* Clear stopped bit */
 	udc->stopped = 0;
@@ -2339,7 +2348,7 @@ static void reset_irq(struct xusbps_udc *udc)
 static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 {
 	struct xusbps_udc *udc = _udc;
-	u32 irq_src;
+	u32 irq_src, otg_sts;
 	irqreturn_t status = IRQ_NONE;
 	unsigned long flags;
 #ifdef CONFIG_USB_XUSBPS_OTG
@@ -2367,6 +2376,20 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 
 	/* Clear notification bits */
 	xusbps_writel(irq_src, &dr_regs->usbsts);
+
+	/*
+	 * Check disconnect event from B session end interrupt.
+	 * This is a SW workaround for USB disconnect detection as mentioned
+	 * in AR# 47538
+	 */
+	if (!gadget_is_otg(&udc->gadget)) {
+		otg_sts = xusbps_readl(&dr_regs->otgsc);
+		if (otg_sts & OTGSC_BSEIS) {
+			xusbps_writel(otg_sts, &dr_regs->otgsc);
+			reset_queues(udc);
+			status = IRQ_HANDLED;
+		}
+	}
 
 	/* VDBG("irq_src [0x%8x]", irq_src); */
 
