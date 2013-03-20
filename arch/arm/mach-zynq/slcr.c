@@ -1,7 +1,7 @@
 /*
  * Xilinx SLCR driver
  *
- * Copyright (c) 2011 Xilinx Inc.
+ * Copyright (c) 2011-2013 Xilinx Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -159,6 +159,15 @@
 
 #define xslcr_writereg(offset, val)	__raw_writel(val, offset)
 #define xslcr_readreg(offset)		__raw_readl(offset)
+
+
+#define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
+
+#define SLCR_A9_CPU_CLKSTOP		0x10
+#define SLCR_A9_CPU_RST			0x1
+
+#define SLCR_A9_CPU_RST_CTRL		0x244 /* CPU Software Reset Control */
+#define SLCR_REBOOT_STATUS		0x258 /* PS Reboot Status */
 
 void __iomem *zynq_slcr_base;
 
@@ -2467,6 +2476,30 @@ static int __init xslcr_arch_init(void)
 	return platform_driver_register(&xslcr_driver);
 }
 module_init(xslcr_arch_init);
+
+/**
+ * zynq_slcr_cpu_start - Start cpu
+ * @cpu:	cpu number
+ */
+void zynq_slcr_cpu_start(int cpu)
+{
+	/* enable CPUn */
+	writel(SLCR_A9_CPU_CLKSTOP << cpu,
+	       zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+	/* enable CLK for CPUn */
+	writel(0x0 << cpu, zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+}
+
+/**
+ * zynq_slcr_cpu_stop - Stop cpu
+ * @cpu:	cpu number
+ */
+void zynq_slcr_cpu_stop(int cpu)
+{
+	/* stop CLK and reset CPUn */
+	writel((SLCR_A9_CPU_CLKSTOP | SLCR_A9_CPU_RST) << cpu,
+	       zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+}
 
 /**
  * zynq_slcr_init

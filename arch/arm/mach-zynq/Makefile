@@ -3,11 +3,11 @@
 #
 
 # Common support
-obj-y	:= common.o slcr.o
+obj-y				:= common.o slcr.o
 
 obj-$(CONFIG_CPU_IDLE) 		+= cpuidle.o
 obj-$(CONFIG_HOTPLUG_CPU)	+= hotplug.o
 obj-$(CONFIG_PCI_MSI)           += xaxipcie-msi.o
-obj-$(CONFIG_SMP)		+= platsmp.o
+obj-$(CONFIG_SMP)		+= headsmp.o platsmp.o
 obj-$(CONFIG_SUSPEND)		+= pm.o suspend.o
 obj-$(CONFIG_XILINX_AXIPCIE)    += xaxipcie.o

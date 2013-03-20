@@ -19,19 +19,25 @@
 
 void platform_device_init(void);
 
-extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
-
 extern void xslcr_write(u32 val, u32 offset);
 extern u32 xslcr_read(u32 offset);
 
 extern int zynq_slcr_init(void);
 extern void zynq_slcr_system_reset(void);
+extern void zynq_slcr_cpu_stop(int cpu);
+extern void zynq_slcr_cpu_start(int cpu);
+
+#ifdef CONFIG_SMP
+extern void secondary_startup(void);
+extern char zynq_secondary_trampoline;
+extern char zynq_secondary_trampoline_jump;
+extern char zynq_secondary_trampoline_end;
+extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
+extern struct smp_operations zynq_smp_ops __initdata;
+#endif
 
 extern void xslcr_init_preload_fpga(void);
 extern void xslcr_init_postload_fpga(void);
-
-/* multiplatform use core.h for this purpose */
-extern void secondary_startup(void);
 
 extern void __iomem *zynq_slcr_base;
 extern void __iomem *zynq_scu_base;
@@ -49,7 +55,6 @@ extern unsigned int zynq_sys_suspend_sz;
 int zynq_sys_suspend(void __iomem *ddrc_base, void __iomem *slcr_base);
 
 extern void platform_cpu_die(unsigned int cpu);
-extern struct smp_operations zynq_smp_ops;
 
 #define IRQ_XILINX_MSI_0       128
 
