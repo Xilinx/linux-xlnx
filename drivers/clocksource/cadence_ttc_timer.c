@@ -25,8 +25,6 @@
 
 #include <asm/sched_clock.h>
 
-#include "common.h"
-
 /*
  * This driver configures the 2 16-bit count-up timers as follows:
  *

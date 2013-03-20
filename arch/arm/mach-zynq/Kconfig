@@ -16,6 +16,7 @@ config ARCH_ZYNQ
 	select ARCH_HAS_CPUFREQ
 	select ARCH_HAS_OPP
 	select MIGHT_HAVE_PCI
+	select CADENCE_TTC_TIMER
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 

@@ -3,7 +3,7 @@
 #
 
 # Common support
-obj-y	:= common.o timer.o slcr.o
+obj-y	:= common.o slcr.o
 
 obj-$(CONFIG_CPU_IDLE) 		+= cpuidle.o
 obj-$(CONFIG_HOTPLUG_CPU)	+= hotplug.o
