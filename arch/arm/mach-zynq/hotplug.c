@@ -1,8 +1,10 @@
 /*
- *  linux/arch/arm/mach-realview/hotplug.c
+ * Copyright (C) 2012-2013 Xilinx
  *
- *  Copyright (C) 2002 ARM Ltd.
- *  All Rights Reserved
+ * based on linux/arch/arm/mach-realview/hotplug.c
+ *
+ * Copyright (C) 2002 ARM Ltd.
+ * All Rights Reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -14,8 +16,9 @@
 
 #include <asm/cacheflush.h>
 #include <asm/cp15.h>
+#include "common.h"
 
-static inline void cpu_enter_lowpower(void)
+static inline void zynq_cpu_enter_lowpower(void)
 {
 	unsigned int v;
 
@@ -37,7 +40,7 @@ static inline void cpu_enter_lowpower(void)
 	  : "cc");
 }
 
-static inline void cpu_leave_lowpower(void)
+static inline void zynq_cpu_leave_lowpower(void)
 {
 	unsigned int v;
 
@@ -53,7 +56,7 @@ static inline void cpu_leave_lowpower(void)
 	  : "cc");
 }
 
-static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
+static inline void zynq_platform_do_lowpower(unsigned int cpu, int *spurious)
 {
 	/*
 	 * there is no power-control hardware on this platform, so all
@@ -75,41 +78,27 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 	}
 }
 
-int platform_cpu_kill(unsigned int cpu)
-{
-	return 1;
-}
-
 /*
  * platform-specific code to shutdown a CPU
  *
  * Called with IRQs disabled
  */
-void platform_cpu_die(unsigned int cpu)
+void zynq_platform_cpu_die(unsigned int cpu)
 {
 	int spurious = 0;
 
 	/*
 	 * we're ready for shutdown now, so do it
 	 */
-	cpu_enter_lowpower();
-	platform_do_lowpower(cpu, &spurious);
+	zynq_cpu_enter_lowpower();
+	zynq_platform_do_lowpower(cpu, &spurious);
 
 	/*
 	 * bring this CPU back into the world of cache
 	 * coherency, and then restore interrupts
 	 */
-	cpu_leave_lowpower();
+	zynq_cpu_leave_lowpower();
 
 	if (spurious)
 		pr_warn("CPU%u: %u spurious wakeup calls\n", cpu, spurious);
-}
-
-int platform_cpu_disable(unsigned int cpu)
-{
-	/*
-	 * we don't allow CPU 0 to be shutdown (it is still too special
-	 * e.g. clock tick interrupts)
-	 */
-	return cpu == 0 ? -EPERM : 0;
 }
