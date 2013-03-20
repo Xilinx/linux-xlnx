@@ -34,7 +34,7 @@ extern void xslcr_init_postload_fpga(void);
 extern void secondary_startup(void);
 
 extern void __iomem *zynq_slcr_base;
-extern void __iomem *scu_base;
+extern void __iomem *zynq_scu_base;
 
 #ifdef CONFIG_SUSPEND
 int zynq_pm_late_init(void);

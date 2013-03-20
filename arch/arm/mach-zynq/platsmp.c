@@ -160,7 +160,7 @@ static void __init zynq_smp_init_cpus(void)
 {
 	int i;
 
-	ncores = scu_get_core_count(scu_base);
+	ncores = scu_get_core_count(zynq_scu_base);
 
 	for (i = 0; i < ncores && i < CONFIG_NR_CPUS; i++)
 		set_cpu_possible(i, true);
@@ -193,7 +193,7 @@ static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 0; i < max_cpus; i++)
 		set_cpu_present(i, true);
 
-	scu_enable(scu_base);
+	scu_enable(zynq_scu_base);
 }
 
 struct smp_operations zynq_smp_ops __initdata = {
