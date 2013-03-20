@@ -304,7 +304,7 @@
 			} ;
 		} ;
 		ps7_ttc_0: ps7-ttc@f8001000 {
-			compatible = "xlnx,ps7-ttc-1.00.a";
+			compatible = "xlnx,ps7-ttc-1.00.a", "cdns,ttc";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = < 0 10 4 0 11 4 0 12 4 >;
 			reg = < 0xf8001000 0x1000 >;

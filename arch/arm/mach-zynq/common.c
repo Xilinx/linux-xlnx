@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
 #include <linux/opp.h>
+#include <linux/clocksource.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
@@ -67,7 +68,7 @@ static int __init scu_init(void)
 static void __init xilinx_zynq_timer_init(void)
 {
 	xslcr_init();
-	xttcps_timer_init_old();
+	xttcps_timer_init();
 }
 
 /**

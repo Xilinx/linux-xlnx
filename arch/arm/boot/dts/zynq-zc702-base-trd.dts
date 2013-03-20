@@ -105,7 +105,7 @@
 		};
 
 		timer@0xf8001000 {
-			compatible = "xlnx,ps7-ttc-1.00.a";
+			compatible = "xlnx,ps7-ttc-1.00.a", "cdns,ttc";
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0 10 4>,<0 11 4>,<0 12 4>;
 			interrupt-parent = <&gic>;

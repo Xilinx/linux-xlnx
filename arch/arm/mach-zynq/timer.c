@@ -1,7 +1,7 @@
 /*
  * This file contains driver for the Xilinx PS Timer Counter IP.
  *
- *  Copyright (C) 2011 Xilinx
+ *  Copyright (C) 2011-2013 Xilinx
  *
  * based on arch/mips/kernel/time.c timer driver
  *
@@ -15,15 +15,16 @@
  * GNU General Public License for more details.
  */
 
-
 #include <linux/clk.h>
-#include <linux/clockchips.h>
 #include <linux/interrupt.h>
-#include <linux/of_irq.h>
+#include <linux/clockchips.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/slab.h>
+#include <linux/clk-provider.h>
+
 #include <asm/sched_clock.h>
-#include <asm/smp_twd.h>
+
 #include "common.h"
 
 /*
@@ -45,9 +46,9 @@
  * Timer Register Offset Definitions of Timer 1, Increment base address by 4
  * and use same offsets for Timer 2
  */
-#define XTTCPS_CLK_CNTRL_OFFSET	0x00 /* Clock Control Reg, RW */
-#define XTTCPS_CNT_CNTRL_OFFSET	0x0C /* Counter Control Reg, RW */
-#define XTTCPS_COUNT_VAL_OFFSET	0x18 /* Counter Value Reg, RO */
+#define XTTCPS_CLK_CNTRL_OFFSET		0x00 /* Clock Control Reg, RW */
+#define XTTCPS_CNT_CNTRL_OFFSET		0x0C /* Counter Control Reg, RW */
+#define XTTCPS_COUNT_VAL_OFFSET		0x18 /* Counter Value Reg, RO */
 #define XTTCPS_INTR_VAL_OFFSET		0x24 /* Interval Count Reg, RW */
 #define XTTCPS_ISR_OFFSET		0x54 /* Interrupt Status Reg, RO */
 #define XTTCPS_IER_OFFSET		0x60 /* Interrupt Enable Reg, RW */
@@ -60,9 +61,8 @@
  */
 #define PRESCALE_EXPONENT	11	/* 2 ^ PRESCALE_EXPONENT = PRESCALE */
 #define PRESCALE		2048	/* The exponent must match this */
+#define CLK_CNTRL_PRESCALE	((PRESCALE_EXPONENT - 1) << 1)
 #define CLK_CNTRL_PRESCALE_EN	1
-#define CLK_CNTRL_PRESCALE	(((PRESCALE_EXPONENT - 1) << 1) | \
-				CLK_CNTRL_PRESCALE_EN)
 #define CNT_CNTRL_RESET		(1 << 4)
 
 /**
@@ -232,7 +232,7 @@ static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 	switch (event) {
 	case POST_RATE_CHANGE:
 		/*
-		 * Do whatever is necessare to maintain a proper time base
+		 * Do whatever is necessary to maintain a proper time base
 		 *
 		 * I cannot find a way to adjust the currently used clocksource
 		 * to the new frequency. __clocksource_updatefreq_hz() sounds
@@ -258,8 +258,7 @@ static int xttcps_rate_change_clocksource_cb(struct notifier_block *nb,
 	}
 }
 
-static void __init zynq_ttc_setup_clocksource(struct clk *clk,
-							void __iomem *base)
+static void __init xttc_setup_clocksource(struct clk *clk, void __iomem *base)
 {
 	struct xttcps_timer_clocksource *ttccs;
 	int err;
@@ -294,7 +293,7 @@ static void __init zynq_ttc_setup_clocksource(struct clk *clk,
 	 * it by 32 also. Let it start running now.
 	 */
 	__raw_writel(0x0,  ttccs->xttc.base_addr + XTTCPS_IER_OFFSET);
-	__raw_writel(CLK_CNTRL_PRESCALE,
+	__raw_writel(CLK_CNTRL_PRESCALE | CLK_CNTRL_PRESCALE_EN,
 		     ttccs->xttc.base_addr + XTTCPS_CLK_CNTRL_OFFSET);
 	__raw_writel(CNT_CNTRL_RESET,
 		     ttccs->xttc.base_addr + XTTCPS_CNT_CNTRL_OFFSET);
@@ -342,7 +341,7 @@ static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
 	}
 }
 
-static void __init zynq_ttc_setup_clockevent(struct clk *clk,
+static void __init xttc_setup_clockevent(struct clk *clk,
 						void __iomem *base, u32 irq)
 {
 	struct xttcps_timer_clockevent *ttcce;
@@ -380,7 +379,7 @@ static void __init zynq_ttc_setup_clockevent(struct clk *clk,
 	 * disabled for now.
 	 */
 	__raw_writel(0x23, ttcce->xttc.base_addr + XTTCPS_CNT_CNTRL_OFFSET);
-	__raw_writel(CLK_CNTRL_PRESCALE,
+	__raw_writel(CLK_CNTRL_PRESCALE | CLK_CNTRL_PRESCALE_EN,
 		     ttcce->xttc.base_addr + XTTCPS_CLK_CNTRL_OFFSET);
 	__raw_writel(0x1,  ttcce->xttc.base_addr + XTTCPS_IER_OFFSET);
 
@@ -400,7 +399,7 @@ static void __init zynq_ttc_setup_clockevent(struct clk *clk,
  * Initializes the timer hardware and register the clock source and clock event
  * timers with Linux kernal timer framework
  */
-static void __init xttcps_timer_init(struct device_node *timer)
+static void __init xttcps_timer_init_of(struct device_node *timer)
 {
 	unsigned int irq;
 	void __iomem *timer_baseaddr;
@@ -423,28 +422,23 @@ static void __init xttcps_timer_init(struct device_node *timer)
 		BUG();
 	}
 
-	clk = clk_get_sys("CPU_1X_CLK", NULL);
+	clk = of_clk_get_by_name(timer, "cpu_1x");
 	if (IS_ERR(clk)) {
 		pr_err("ERROR: timer input clock not found\n");
 		BUG();
 	}
 
-	zynq_ttc_setup_clocksource(clk, timer_baseaddr);
-	zynq_ttc_setup_clockevent(clk, timer_baseaddr + 4, irq);
+	xttc_setup_clocksource(clk, timer_baseaddr);
+	xttc_setup_clockevent(clk, timer_baseaddr + 4, irq);
 
 	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
 }
 
-/*
- * This will be replaced in v3.10 by
- * CLOCKSOURCE_OF_DECLARE(zynq, "xlnx,ttc",xttcps_timer_init);
- * or
- * CLOCKSOURCE_OF_DECLARE(zynq, "xlnx,ps7-ttc-1.00.a",xttcps_timer_init);
- */
-void __init xttcps_timer_init_old(void)
+void __init xttcps_timer_init(void)
 {
 	const char * const timer_list[] = {
 		"xlnx,ps7-ttc-1.00.a",
+		"cdns,ttc",
 		NULL
 	};
 	struct device_node *timer;
@@ -455,5 +449,5 @@ void __init xttcps_timer_init_old(void)
 		BUG();
 	}
 
-	xttcps_timer_init(timer);
+	xttcps_timer_init_of(timer);
 }
