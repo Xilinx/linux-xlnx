@@ -26,12 +26,14 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/slab.h>
 #include <linux/suspend.h>
 #include <asm/cacheflush.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/mach/map.h>
 #include <asm/suspend.h>
+#include <linux/genalloc.h>
 #include "common.h"
 
 #define DDRC_CTRL_REG1_OFFS		0x60
@@ -45,23 +47,130 @@
 #define TOPSW_CLK_CTRL_DIS_MASK	BIT(0)
 
 static struct clk *cpupll;
-static void __iomem *ddrc_base;
-static void __iomem *ocm_base;
+
+/**
+ * zynq_pm_ioremap() - Create IO mappings
+ * @action	0: map, !0: unmap
+ * @comp	DT compatible string
+ * Returns a pointer to the mapped memory or NULL.
+ *
+ * Remap the memory region for a compatible DT node.
+ */
+static void __iomem *zynq_pm_ioremap(u32 action, const char *comp)
+{
+	static struct device_node *np;
+	static void __iomem *base;
+
+	if (!action) {
+		np = of_find_compatible_node(NULL, NULL, comp);
+		if (np) {
+			base = of_iomap(np, 0);
+			if (!base) {
+				pr_warn("PM: IOremap of %s failed\n", comp);
+				return NULL;
+			}
+			of_node_put(np);
+			pr_debug("PM: Map %s to %lx\n", comp,
+							(unsigned long)base);
+			return base;
+		}
+		pr_warn("PM: No compatible node found for '%s'\n", comp);
+		return NULL;
+	}
+
+	if (base) {
+		of_node_get(np);
+		pr_debug("PM: Unmap %s at %lx\n", comp, (unsigned long)base);
+		iounmap(base);
+	}
+	return NULL;
+}
+
+/**
+ * zynq_pm_remap_ocm() - Remap OCM
+ * @action	0: map, !0: unmap
+ * @comp	DT compatible string
+ * Returns a pointer to the mapped memory or NULL.
+ *
+ * Remap the OCM.
+ */
+static void __iomem *zynq_pm_remap_ocm(u32 action, const char *comp)
+{
+	struct device *dev;
+	unsigned long pool_addr;
+	static unsigned long pool_addr_virt;
+	static struct gen_pool *pool;
+	static struct device_node *np;
+	static void __iomem *base;
+
+	if (!action) {
+		np = of_find_compatible_node(NULL, NULL, comp);
+		if (!np) {
+			pr_warn("PM: Compatible node not found, %s\n", comp);
+			return NULL;
+		}
+		of_node_put(np);
+
+		dev = &(of_find_device_by_node(np)->dev);
+
+		/* Get OCM pool from device tree or platform data */
+		pool = dev_get_gen_pool(dev);
+		if (!pool) {
+			pr_warn("PM: OCM pool is not available\n");
+			return NULL;
+		}
+
+		pool_addr_virt = gen_pool_alloc(pool, zynq_sys_suspend_sz);
+		if (!pool_addr_virt) {
+			pr_warn("PM: Can't get OCM poll\n");
+			return NULL;
+		}
+		pool_addr = gen_pool_virt_to_phys(pool, pool_addr_virt);
+		if (!pool_addr) {
+			pr_warn("PM: Can't get physical address of OCM pool\n");
+			return NULL;
+		}
+		base = __arm_ioremap(pool_addr, zynq_sys_suspend_sz, MT_MEMORY);
+		if (!base) {
+			pr_warn("PM: IOremap OCM pool failed\n");
+			return NULL;
+		}
+		pr_debug("PM: Remap OCM %s from %lx to %lx\n", comp,
+					pool_addr_virt, (unsigned long)base);
+		return base;
+	}
+
+	if (base) {
+		of_node_get(np);
+		pr_debug("PM: Unmap %s at %lx and %lx\n", comp,
+					(unsigned long)base, pool_addr_virt);
+		__arm_iounmap(base);
+		gen_pool_free(pool, (unsigned long) pool_addr_virt,
+							zynq_sys_suspend_sz);
+	}
+
+	return 0;
+}
 
 static int zynq_pm_suspend(unsigned long arg)
 {
 	u32 reg;
-	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *);
-	void *ocm_swap_area;
-	int do_ddrpll_bypass = 1;
+	void __iomem *ddrc_base;
+	void __iomem *ocm_base;
+	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *) = NULL;
+
+	ddrc_base = zynq_pm_ioremap(0, "xlnx,ps7-ddrc");
+	if (!ddrc_base)
+		pr_warn("PM: Unable to map DDRC IO memory.\n");
+
+	ocm_base = zynq_pm_remap_ocm(0, "xlnx,ps7-ocm");
+	if (!ocm_base)
+		pr_warn("PM: Unable to map OCM.\n");
+
 
 	/* Allocate some space for temporary OCM storage */
-	ocm_swap_area = kmalloc(zynq_sys_suspend_sz, GFP_ATOMIC);
-	if (!ocm_swap_area)
-		do_ddrpll_bypass = 0;
-
-	/* Enable DDR self-refresh and clock stop */
 	if (ddrc_base) {
+		/* Enable DDR self-refresh and clock stop */
 		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
 		reg |= DDRC_SELFREFRESH_MASK;
 		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
@@ -93,12 +202,7 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : /* no inputs */
 		      : "r12");
 
-
-	if (ocm_swap_area && ocm_base) {
-		/* Backup a small area of OCM used for the suspend code */
-		memcpy(ocm_swap_area, (__force void *)ocm_base,
-			zynq_sys_suspend_sz);
-
+	if (ocm_base) {
 		/*
 		 * Copy code to suspend system into OCM. The suspend code
 		 * needs to run from OCM as DRAM may no longer be available
@@ -109,8 +213,6 @@ static int zynq_pm_suspend(unsigned long arg)
 		flush_icache_range((unsigned long)ocm_base,
 			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
 		zynq_suspend_ptr = (__force void *)ocm_base;
-	} else {
-		do_ddrpll_bypass = 0;
 	}
 
 	/*
@@ -131,7 +233,7 @@ static int zynq_pm_suspend(unsigned long arg)
 		clk_disable(cpupll);
 
 	/* Transfer to suspend code in OCM */
-	if (do_ddrpll_bypass) {
+	if (ocm_base) {
 		/*
 		 * Going this way will turn off DDR related clocks and the DDR
 		 * PLL. I.e. We might brake sub systems relying on any of this
@@ -140,21 +242,14 @@ static int zynq_pm_suspend(unsigned long arg)
 		 */
 		flush_cache_all();
 		if (zynq_suspend_ptr(ddrc_base, zynq_slcr_base))
-			pr_warn("DDR self refresh failed.\n");
+			pr_warn("PM: DDR self refresh failed.\n");
 	} else {
-		WARN_ONCE(1, "DRAM self-refresh not available\n");
+		WARN_ONCE(1, "PM: DRAM self-refresh not available\n");
 		wfi();
 	}
 
 	if (!IS_ERR(cpupll))
 		clk_enable(cpupll);
-
-	/* Restore original OCM contents */
-	if (do_ddrpll_bypass) {
-		memcpy((__force void *)ocm_base, ocm_swap_area,
-			zynq_sys_suspend_sz);
-		kfree(ocm_swap_area);
-	}
 
 	/* Topswitch clock stop disable */
 	reg = xslcr_read(SLCR_TOPSW_CLK_CTRL);
@@ -185,7 +280,11 @@ static int zynq_pm_suspend(unsigned long arg)
 		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
 		reg &= ~DDRC_CLOCKSTOP_MASK;
 		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
+		zynq_pm_ioremap(1, NULL);
 	}
+
+	if (ocm_base)
+		zynq_pm_remap_ocm(1, NULL);
 
 	return 0;
 }
@@ -195,6 +294,7 @@ static int zynq_pm_enter(suspend_state_t suspend_state)
 	switch (suspend_state) {
 	case PM_SUSPEND_STANDBY:
 	case PM_SUSPEND_MEM:
+		outer_flush_all();
 		outer_disable();
 		cpu_suspend(0, zynq_pm_suspend);
 		outer_resume();
@@ -211,59 +311,6 @@ static const struct platform_suspend_ops zynq_pm_ops = {
 	.valid		= suspend_valid_only_mem,
 };
 
-/**
- * zynq_pm_ioremap() - Create IO mappings
- * @comp	DT compatible string
- * Returns a pointer to the mapped memory or NULL.
- *
- * Remap the memory region for a compatible DT node.
- */
-static void __iomem *zynq_pm_ioremap(const char *comp)
-{
-	struct device_node *np;
-	void __iomem *base = NULL;
-
-	np = of_find_compatible_node(NULL, NULL, comp);
-	if (np) {
-		base = of_iomap(np, 0);
-		of_node_put(np);
-	} else {
-		pr_warn("%s: no compatible node found for '%s'\n", __func__,
-				comp);
-	}
-
-	return base;
-}
-
-/**
- * zynq_pm_remap_ocm() - Remap OCM
- * Returns a pointer to the mapped memory or NULL.
- *
- * Remap the OCM.
- */
-static void __iomem *zynq_pm_remap_ocm(void)
-{
-	struct device_node *np;
-	struct resource res;
-	const char *comp = "xlnx,ps7-ocm";
-	void __iomem *base = NULL;
-
-	np = of_find_compatible_node(NULL, NULL, comp);
-	if (np) {
-		if (of_address_to_resource(np, 0, &res))
-			return NULL;
-		WARN_ON(!request_mem_region(res.start, resource_size(&res),
-					"OCM"));
-		base = __arm_ioremap(res.start, resource_size(&res), MT_MEMORY);
-		of_node_put(np);
-	} else {
-		pr_warn("%s: no compatible node found for '%s'\n", __func__,
-				comp);
-	}
-
-	return base;
-}
-
 int __init zynq_pm_late_init(void)
 {
 	cpupll = clk_get_sys("CPU_6OR4X_CLK", NULL);
@@ -273,18 +320,7 @@ int __init zynq_pm_late_init(void)
 			cpupll = clk_get_parent(cpupll);
 	}
 	if (IS_ERR(cpupll))
-		pr_warn("%s: CPUPLL not found.\n", __func__);
-
-	ddrc_base = zynq_pm_ioremap("xlnx,ps7-ddrc");
-	if (!ddrc_base)
-		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
-
-	/*
-	 * FIXME: should be done by an ocm driver which then provides allocators
-	 */
-	ocm_base = zynq_pm_remap_ocm();
-	if (!ocm_base)
-		pr_warn("%s: Unable to map OCM.\n", __func__);
+		pr_warn("PM: CPUPLL not found.\n");
 
 	suspend_set_ops(&zynq_pm_ops);
 

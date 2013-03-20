@@ -228,7 +228,7 @@
 			xlnx,qspi-clk-freq-hz = <0xe4e1c0>;
 		} ;
 		ps7_ram_0: ps7-ram@0 {
-			compatible = "xlnx,ps7-ram-1.00.a", "xlnx,ps7-ocm";
+			compatible = "xlnx,ps7-ram-1.00.a", "xlnx,ps7-ocm", "mmio-sram";
 			reg = < 0xfffc0000 0x40000 >;
 		} ;
 		ps7_scugic_0: ps7-scugic@f8f01000 {

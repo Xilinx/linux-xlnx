@@ -54,7 +54,7 @@
 		} ;
 
 		ps7_ocm_0: ps7-ocm@0xfffc0000 {
-			compatible = "xlnx,ps7-ocm";
+			compatible = "xlnx,ps7-ocm", "mmio-sram";
 			reg = <0xfffc0000 0x40000>; /* 256k */
 		};
 
