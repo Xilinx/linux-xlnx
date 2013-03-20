@@ -57,11 +57,8 @@ static int zynq_pm_suspend(unsigned long arg)
 
 	/* Allocate some space for temporary OCM storage */
 	ocm_swap_area = kmalloc(zynq_sys_suspend_sz, GFP_ATOMIC);
-	if (!ocm_swap_area) {
-		pr_warn("%s: cannot allocate memory to save portion of OCM\n",
-				__func__);
+	if (!ocm_swap_area)
 		do_ddrpll_bypass = 0;
-	}
 
 	/* Enable DDR self-refresh and clock stop */
 	if (ddrc_base) {
@@ -72,6 +69,8 @@ static int zynq_pm_suspend(unsigned long arg)
 		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
 		reg |= DDRC_CLOCKSTOP_MASK;
 		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
+	} else {
+		do_ddrpll_bypass = 0;
 	}
 
 	/* SCU standby mode */
@@ -95,19 +94,24 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : "r12");
 
 
-	/* Backup a small area of OCM used for the suspend code */
-	memcpy(ocm_swap_area, (__force void *)ocm_base,
-		zynq_sys_suspend_sz);
+	if (ocm_swap_area && ocm_base) {
+		/* Backup a small area of OCM used for the suspend code */
+		memcpy(ocm_swap_area, (__force void *)ocm_base,
+			zynq_sys_suspend_sz);
 
-	/*
-	 * Copy code to suspend system into OCM. The suspend code
-	 * needs to run from OCM as DRAM may no longer be available
-	 * when the PLL is stopped.
-	 */
-	memcpy((__force void *)ocm_base, &zynq_sys_suspend,
-		zynq_sys_suspend_sz);
-	flush_icache_range((unsigned long)ocm_base,
-		(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
+		/*
+		 * Copy code to suspend system into OCM. The suspend code
+		 * needs to run from OCM as DRAM may no longer be available
+		 * when the PLL is stopped.
+		 */
+		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
+			zynq_sys_suspend_sz);
+		flush_icache_range((unsigned long)ocm_base,
+			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
+		zynq_suspend_ptr = (__force void *)ocm_base;
+	} else {
+		do_ddrpll_bypass = 0;
+	}
 
 	/*
 	 * at this point PLLs are supposed to be bypassed:
@@ -127,18 +131,18 @@ static int zynq_pm_suspend(unsigned long arg)
 		clk_disable(cpupll);
 
 	/* Transfer to suspend code in OCM */
-	zynq_suspend_ptr = (__force void *)ocm_base;
-	flush_cache_all();
-	if (ddrc_base && do_ddrpll_bypass) {
+	if (do_ddrpll_bypass) {
 		/*
 		 * Going this way will turn off DDR related clocks and the DDR
 		 * PLL. I.e. We might brake sub systems relying on any of this
 		 * clocks. And even worse: If there are any other masters in the
 		 * system (e.g. in the PL) accessing DDR they are screwed.
 		 */
+		flush_cache_all();
 		if (zynq_suspend_ptr(ddrc_base, zynq_slcr_base))
 			pr_warn("DDR self refresh failed.\n");
 	} else {
+		WARN_ONCE(1, "DRAM self-refresh not available\n");
 		wfi();
 	}
 
@@ -146,10 +150,11 @@ static int zynq_pm_suspend(unsigned long arg)
 		clk_enable(cpupll);
 
 	/* Restore original OCM contents */
-	memcpy((__force void *)ocm_base, ocm_swap_area,
-		zynq_sys_suspend_sz);
-
-	kfree(ocm_swap_area);
+	if (do_ddrpll_bypass) {
+		memcpy((__force void *)ocm_base, ocm_swap_area,
+			zynq_sys_suspend_sz);
+		kfree(ocm_swap_area);
+	}
 
 	/* Topswitch clock stop disable */
 	reg = xslcr_read(SLCR_TOPSW_CLK_CTRL);
