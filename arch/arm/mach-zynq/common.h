@@ -17,7 +17,6 @@
 #ifndef __MACH_ZYNQ_COMMON_H__
 #define __MACH_ZYNQ_COMMON_H__
 
-void __init xttcps_timer_init(void);
 void platform_device_init(void);
 
 extern int __cpuinit zynq_cpun_start(u32 address, int cpu);

@@ -270,8 +270,10 @@ static void __init xttc_setup_clocksource(struct clk *clk, void __iomem *base)
 	ttccs->xttc.clk = clk;
 
 	err = clk_prepare_enable(ttccs->xttc.clk);
-	if (WARN_ON(err))
+	if (WARN_ON(err)) {
+		kfree(ttccs);
 		return;
+	}
 
 	ttccs->xttc.clk_rate_change_nb.notifier_call =
 		xttcps_rate_change_clocksource_cb;
@@ -300,8 +302,10 @@ static void __init xttc_setup_clocksource(struct clk *clk, void __iomem *base)
 
 	err = clocksource_register_hz(&ttccs->cs,
 			clk_get_rate(ttccs->xttc.clk) / PRESCALE);
-	if (WARN_ON(err))
+	if (WARN_ON(err)) {
+		kfree(ttccs);
 		return;
+	}
 
 	sched_clock_val_reg = base + XTTCPS_COUNT_VAL_OFFSET;
 	setup_sched_clock(xttc_sched_clock_read , 16,
@@ -354,8 +358,10 @@ static void __init xttc_setup_clockevent(struct clk *clk,
 	ttcce->xttc.clk = clk;
 
 	err = clk_prepare_enable(ttcce->xttc.clk);
-	if (WARN_ON(err))
+	if (WARN_ON(err)) {
+		kfree(ttcce);
 		return;
+	}
 
 	ttcce->xttc.clk_rate_change_nb.notifier_call =
 		xttcps_rate_change_clockevent_cb;
@@ -386,8 +392,10 @@ static void __init xttc_setup_clockevent(struct clk *clk,
 	err = request_irq(irq, xttcps_clock_event_interrupt,
 			  IRQF_DISABLED | IRQF_TIMER,
 			  ttcce->ce.name, ttcce);
-	if (WARN_ON(err))
+	if (WARN_ON(err)) {
+		kfree(ttcce);
 		return;
+	}
 
 	clockevents_config_and_register(&ttcce->ce,
 			clk_get_rate(ttcce->xttc.clk) / PRESCALE, 1, 0xfffe);
@@ -399,11 +407,17 @@ static void __init xttc_setup_clockevent(struct clk *clk,
  * Initializes the timer hardware and register the clock source and clock event
  * timers with Linux kernal timer framework
  */
-static void __init xttcps_timer_init_of(struct device_node *timer)
+static void __init xttcps_timer_init(struct device_node *timer)
 {
 	unsigned int irq;
 	void __iomem *timer_baseaddr;
 	struct clk *clk;
+	static int initialized;
+
+	if (initialized)
+		return;
+
+	initialized = 1;
 
 	/*
 	 * Get the 1st Triple Timer Counter (TTC) block from the device tree
@@ -422,7 +436,7 @@ static void __init xttcps_timer_init_of(struct device_node *timer)
 		BUG();
 	}
 
-	clk = of_clk_get_by_name(timer, "cpu_1x");
+	clk = clk_get_sys("CPU_1X_CLK", NULL);
 	if (IS_ERR(clk)) {
 		pr_err("ERROR: timer input clock not found\n");
 		BUG();
@@ -434,20 +448,5 @@ static void __init xttcps_timer_init_of(struct device_node *timer)
 	pr_info("%s #0 at %p, irq=%d\n", timer->name, timer_baseaddr, irq);
 }
 
-void __init xttcps_timer_init(void)
-{
-	const char * const timer_list[] = {
-		"xlnx,ps7-ttc-1.00.a",
-		"cdns,ttc",
-		NULL
-	};
-	struct device_node *timer;
-
-	timer = of_find_compatible_node(NULL, NULL, timer_list[0]);
-	if (!timer) {
-		pr_err("ERROR: no compatible timer found\n");
-		BUG();
-	}
-
-	xttcps_timer_init_of(timer);
-}
+CLOCKSOURCE_OF_DECLARE(ttc, "cdns,ttc", xttcps_timer_init);
+CLOCKSOURCE_OF_DECLARE(ttc1, "xlnx,ps7-ttc-1.00.a", xttcps_timer_init);
