@@ -25,18 +25,16 @@ static void set_ctrl_reg(struct xylonfb_init_data *init_data,
 	u32 sync = init_data->vmode_data.fb_vmode.sync;
 	u32 ctrl = CTRL_REG_INIT;
 
-	if (sync & (1<<0)) {	//FB_SYNC_HOR_HIGH_ACT
+	/* FB_SYNC_HOR_HIGH_ACT */
+	if (sync & (1<<0))
 		ctrl &= (~(1<<1));
-	}
-	if (sync & (1<<1)) {	// FB_SYNC_VERT_HIGH_ACT
+	/* FB_SYNC_VERT_HIGH_ACT */
+	if (sync & (1<<1))
 		ctrl &= (~(1<<3));
-	}
-	if (pix_data_invert) {
+	if (pix_data_invert)
 		ctrl |= LOGICVC_PIX_DATA_INVERT;
-	}
-	if (pix_clk_act_high) {
+	if (pix_clk_act_high)
 		ctrl |= LOGICVC_PIX_ACT_HIGH;
-	}
 
 	init_data->vmode_data.ctrl_reg = ctrl;
 }
@@ -63,7 +61,7 @@ static int xylonfb_parse_hw_info(struct device_node *np,
 
 	prop = of_get_property(np, "xlnx,readable-regs", &size);
 	if (!prop) {
-		pr_warning("xylonfb registers not readable\n");
+		pr_warn("xylonfb registers not readable\n");
 	} else {
 		if (be32_to_cpup(prop))
 			init_data->flags |= LOGICVC_READABLE_REGS;
@@ -114,12 +112,13 @@ static int xylonfb_parse_layer_info(struct device_node *np,
 	bg_alpha_mode = 0;
 	prop = of_get_property(np, "xlnx,use-background", &size);
 	if (!prop) {
-		pr_warning("xylonfb no BG layer\n");
+		pr_warn("xylonfb no BG layer\n");
 	} else {
 		if (be32_to_cpup(prop) == 1) {
 			layers--;
 
-			sprintf(bg_layer_name, "xlnx,layer-%d-data-width", layers);
+			sprintf(bg_layer_name,
+				"xlnx,layer-%d-data-width", layers);
 			prop = of_get_property(np, bg_layer_name, &size);
 			if (!prop)
 				bg_bpp = 16;
@@ -128,13 +127,14 @@ static int xylonfb_parse_layer_info(struct device_node *np,
 			if (bg_bpp == 24)
 				bg_bpp = 32;
 
-			sprintf(bg_layer_name, "xlnx,layer-%d-alpha-mode", layers);
-			prop = of_get_property(np, bg_layer_name, &size);
-			if (!prop) {
+			sprintf(bg_layer_name,
+				"xlnx,layer-%d-alpha-mode", layers);
+			prop = of_get_property(
+				np, bg_layer_name, &size);
+			if (!prop)
 				bg_alpha_mode = LOGICVC_LAYER_ALPHA;
-			} else {
+			else
 				bg_alpha_mode = be32_to_cpup(prop);
-			}
 		} else {
 			pr_debug("xylonfb no BG layer\n");
 		}
@@ -185,11 +185,13 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 	prop = of_get_property(np, "pixel-component-format", &size);
 	if (prop) {
 		if (!strcmp("ABGR", (char *)prop)) {
-			prop = of_get_property(np, "pixel-component-layer", &size);
+			prop = of_get_property(np,
+				"pixel-component-layer", &size);
 			if (prop) {
-				while(size > 0) {
+				while (size > 0) {
 					tmp = be32_to_cpup(prop);
-					init_data->layer_ctrl_flags[tmp] = LOGICVC_SWAP_RB;
+					init_data->layer_ctrl_flags[tmp] =
+						LOGICVC_SWAP_RB;
 					prop++;
 					size -= sizeof(prop);
 				}
@@ -228,13 +230,15 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 			dn = NULL;
 			dn = of_find_node_by_name(NULL, "xylon-video-params");
 			if (dn) {
-				strcpy(init_data->vmode_data.fb_vmode_name, (char *)prop);
+				strcpy(init_data->vmode_data.fb_vmode_name,
+					(char *)prop);
 				vmode_np = of_find_node_by_name(dn,
 					init_data->vmode_data.fb_vmode_name);
 				c = strchr((char *)prop, '_');
 				if (c)
 					*c = 0;
-				strcpy(init_data->vmode_data.fb_vmode_name, (char *)prop);
+				strcpy(init_data->vmode_data.fb_vmode_name,
+					(char *)prop);
 			} else {
 				pr_err("Error getting video mode parameters\n");
 			}
@@ -246,19 +250,22 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 			if (!prop)
 				pr_err("Error getting refresh rate\n");
 			else
-				init_data->vmode_data.fb_vmode.refresh = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.refresh =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "xres", &size);
 			if (!prop)
 				pr_err("Error getting xres\n");
 			else
-				init_data->vmode_data.fb_vmode.xres = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.xres =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "yres", &size);
 			if (!prop)
 				pr_err("Error getting yres\n");
 			else
-				init_data->vmode_data.fb_vmode.yres = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.yres =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "pixclock-khz", &size);
 			if (!prop)
@@ -271,49 +278,57 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 			if (!prop)
 				pr_err("Error getting left-margin\n");
 			else
-				init_data->vmode_data.fb_vmode.left_margin = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.left_margin =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "right-margin", &size);
 			if (!prop)
 				pr_err("Error getting right-margin\n");
 			else
-				init_data->vmode_data.fb_vmode.right_margin = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.right_margin =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "upper-margin", &size);
 			if (!prop)
 				pr_err("Error getting upper-margin\n");
 			else
-				init_data->vmode_data.fb_vmode.upper_margin = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.upper_margin =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "lower-margin", &size);
 			if (!prop)
 				pr_err("Error getting lower-margin\n");
 			else
-				init_data->vmode_data.fb_vmode.lower_margin = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.lower_margin =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "hsync-len", &size);
 			if (!prop)
 				pr_err("Error getting hsync-len\n");
 			else
-				init_data->vmode_data.fb_vmode.hsync_len = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.hsync_len =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "vsync-len", &size);
 			if (!prop)
 				pr_err("Error getting vsync-len\n");
 			else
-				init_data->vmode_data.fb_vmode.vsync_len = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.vsync_len =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "sync", &size);
 			if (!prop)
 				pr_err("Error getting sync\n");
 			else
-				init_data->vmode_data.fb_vmode.sync = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.sync =
+					be32_to_cpup(prop);
 
 			prop = of_get_property(vmode_np, "vmode", &size);
 			if (!prop)
 				pr_err("Error getting vmode\n");
 			else
-				init_data->vmode_data.fb_vmode.vmode = be32_to_cpup(prop);
+				init_data->vmode_data.fb_vmode.vmode =
+					be32_to_cpup(prop);
 
 			init_data->vmode_params_set = true;
 		}
@@ -390,14 +405,14 @@ static int xylonfb_parse_layer_params(struct device_node *np,
 	lfdata->bpp_virt = lfdata->bpp;
 
 	switch (lfdata->bpp) {
-		case 8:
-			if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
-				lfdata->bpp = 16;
-			break;
-		case 16:
-			if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
-				lfdata->bpp = 32;
-			break;
+	case 8:
+		if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
+			lfdata->bpp = 16;
+		break;
+	case 16:
+		if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
+			lfdata->bpp = 32;
+		break;
 	}
 
 	lfdata->layer_fix_info = id;

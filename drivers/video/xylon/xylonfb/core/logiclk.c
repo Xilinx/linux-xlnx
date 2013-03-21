@@ -13,7 +13,7 @@
  */
 
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include "logiclk.h"
@@ -108,9 +108,9 @@ static long pll_phase(long divide, long phase)
 	phase_mux = get_bits(temp, FRAC_PRECISION-1, FRAC_PRECISION-3);
 	delay_time = get_bits(temp, FRAC_PRECISION+5, FRAC_PRECISION);
 
-	return (((delay_time & 0x3F) << 0) |
+	return ((delay_time & 0x3F) << 0) |
 			((phase_mux  & 0x07) << 6) |
-			((mx         & 0x03) << 9));
+			((mx         & 0x03) << 9);
 }
 
 static long long pll_lock_lookup(long divide)
@@ -357,8 +357,8 @@ static long calc_pll_mult(long osc_clk_freq, long out_clk_freq)
 	freq_err = (1 << 30) - 1;
 	freq_err_new = 0;
 
-	for(j = 1; j <= 64; j++) {
-		for(i = 1; i <= 52; i++) {
+	for (j = 1; j <= 64; j++) {
+		for (i = 1; i <= 52; i++) {
 			freq = (osc_clk_freq / 1000000 * i) / j;
 
 			if (((osc_clk_freq / 1000000 * i) < 800)
@@ -366,7 +366,8 @@ static long calc_pll_mult(long osc_clk_freq, long out_clk_freq)
 				((osc_clk_freq / 1000000 * i) > 1600))
 				freq_err_new = (1 << 30) - 1;
 			else
-				freq_err_new = abs((out_clk_freq * 10) - (freq * 1000000));
+				freq_err_new = abs(
+					(out_clk_freq * 10) - (freq * 1000000));
 
 			if (freq_err_new < freq_err) {
 				freq_err = freq_err_new;
@@ -390,7 +391,7 @@ static long calc_pll_div(long osc_clk_freq, long out_clk_freq, long mult_const)
 	freq_err_new = 0;
 	x1_divide_const = 0;
 
-	for(j = 1; j <= 64; j++) {
+	for (j = 1; j <= 64; j++) {
 		freq = (osc_clk_freq / 1000000 * mult_const) / j;
 		freq_err_new = abs((out_clk_freq * 1) - (freq * 1000000));
 
@@ -423,13 +424,13 @@ void logiclk_calc_regs(struct logiclk_freq_out *freq_out,
 	clkfbout_mult = calc_pll_mult(c_osc_clk_freq_hz,
 		(long)freq_out->freq_out_hz[0]);
 
-	for(i = 0; i < LOGICLK_OUTPUTS; i++)
-		clkout_divide[i] =
-			calc_pll_div(c_osc_clk_freq_hz, freq_out->freq_out_hz[i],
-				clkfbout_mult);
+	for (i = 0; i < LOGICLK_OUTPUTS; i++)
+		clkout_divide[i] = calc_pll_div(c_osc_clk_freq_hz,
+			freq_out->freq_out_hz[i], clkfbout_mult);
 
-	for(i = 0; i < LOGICLK_OUTPUTS; i++)
-		clkout[i] = pll_count_calc(clkout_divide[i], clkout_phase, clkout_duty);
+	for (i = 0; i < LOGICLK_OUTPUTS; i++)
+		clkout[i] = pll_count_calc(
+			clkout_divide[i], clkout_phase, clkout_duty);
 
 	divclk = pll_count_calc(divclk_divide, 0, 50000);
 	clkfbout = pll_count_calc(clkfbout_mult, clkfbout_phase, clkout_duty);
@@ -438,40 +439,40 @@ void logiclk_calc_regs(struct logiclk_freq_out *freq_out,
 	lock = pll_lock_lookup(clkfbout_mult);
 
 	regs_out[0] = 0xFFFF;
-	for(i = 0; i < LOGICLK_OUTPUTS; i++) {
+	for (i = 0; i < LOGICLK_OUTPUTS; i++) {
 		regs_out[1 + i*2 + 0] = get_bits(clkout[i], 15, 0);
 		regs_out[1 + i*2 + 1] = get_bits(clkout[i], 31, 16);
 	}
 
-	//DIVCLK[23:22] & DIVCLK[11:0]
+	/* DIVCLK[23:22] & DIVCLK[11:0] */
 	regs_out[13] = (get_bits(divclk, 23, 22) << 12) |
 					(get_bits(divclk, 11, 0) << 0);
-	//CLKFBOUT[15:0]
+	/* CLKFBOUT[15:0] */
 	regs_out[14] = get_bits(clkfbout, 15, 0);
-	//CLKFBOUT[31:16]
+	/* CLKFBOUT[31:16] */
 	regs_out[15] = get_bits(clkfbout, 31, 16);
-	//LOCK[29:20]
+	/* LOCK[29:20] */
 	regs_out[16] = get_bits(lock, 29, 20);
-	//LOCK[34:30] & LOCK[9:0]
+	/* LOCK[34:30] & LOCK[9:0] */
 	regs_out[17] = (get_bits(lock, 34, 30) << 10) |
 					get_bits(lock, 9, 0);
-	//LOCK[39:35] & S10_LOCK[19:10]
+	/* LOCK[39:35] & S10_LOCK[19:10] */
 	regs_out[18] = (get_bits(lock, 39, 35) << 10) |
 					get_bits(lock, 19, 10);
-	//DIGITAL_FILT[9] & 00 & DIGITAL_FILT[8:7] & 00 &
-	//DIGITAL_FILT[6] & 0000000
+	/* DIGITAL_FILT[9] & 00 & DIGITAL_FILT[8:7] & 00 &
+	   DIGITAL_FILT[6] & 0000000 */
 	regs_out[19] = (get_bits(digital_filt, 6, 6) << 8)  |
 				   (get_bits(digital_filt, 8, 7) << 11) |
 				   (get_bits(digital_filt, 9, 9) << 15);
-	//DIGITAL_FILT[5] & 00 & DIGITAL_FILT[4:3] & 00 &
-	//DIGITAL_FILT[2:1] & 00 & DIGITAL_FILT[0] & 0000
+	/* DIGITAL_FILT[5] & 00 & DIGITAL_FILT[4:3] & 00 &
+	   DIGITAL_FILT[2:1] & 00 & DIGITAL_FILT[0] & 0000  */
 	regs_out[20] = (get_bits(digital_filt, 0, 0) << 4)  |
 				   (get_bits(digital_filt, 2, 1) << 7)  |
 				   (get_bits(digital_filt, 4, 3) << 11) |
 				   (get_bits(digital_filt, 5, 5) << 15);
 
 #ifdef LOGICLK_DUMP_REGS
-	for(i = 0; i < LOGICLK_REGS; i++)
+	for (i = 0; i < LOGICLK_REGS; i++)
 		pr_info("reg[%d]=0x%lx\n", i, regs_out[i]);
 #endif
 }

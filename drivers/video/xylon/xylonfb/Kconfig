@@ -18,13 +18,17 @@ config FB_XYLON_PLATFORM
 	bool "Xylon logiCVC frame buffer platform driver"
 	help
 	  Choose this option if you want to use the Xylon frame buffer driver
-	  as platform driver type. This is selected by default.
+	  as platform driver type. This is usefull if OpenFirmware support is
+	  not compiled in the kernel.
+	  This is default selection.
 
 config FB_XYLON_OF
 	bool "Xylon logiCVC frame buffer Open Firmware driver"
 	help
 	  Choose this option if you want to use the Xylon frame buffer driver
-	  as Open Firmware driver type.
+	  as Open Firmware driver type. Driver reads hardware configuration
+	  from Device Tree Blob binary file which must be loaded to
+	  system memory.
 endchoice
 
 config FB_XYLON_PIXCLK
@@ -32,8 +36,9 @@ config FB_XYLON_PIXCLK
 	depends on FB_XYLON
 	default n
 	help
-	  logiCVC pixel clock from:
-	  - External generator (default)
+	  logiCVC pixel clock generated from:
+	  - External generator not controllable by Xylon framebuffer driver
+	    This is default selection.
 	  - Generators controllable by Xylon framebuffer driver
 
 config FB_XYLON_PIXCLK_ZYNQ_PS
@@ -41,15 +46,16 @@ config FB_XYLON_PIXCLK_ZYNQ_PS
 	depends on FB_XYLON && FB_XYLON_PIXCLK
 	default n
 	help
-	  Support for pixel clock generation from Zynq-PS internal PLL
-	  clock generator.
+	  Support for controlling pixel clock generation from
+	  Zynq-PS internal PLL clock generator.
 
 config FB_XYLON_PIXCLK_LOGICLK
 	bool "Xylon logiCLK pixel clock generator"
 	depends on FB_XYLON && FB_XYLON_PIXCLK
 	default n
 	help
-	  Support for pixel clock generation from Xylon logiCLK FGPA IP core.
+	  Support for controlling pixel clock generation from
+	  Xylon logiCLK FGPA IP core.
 
 config FB_XYLON_PIXCLK_SI570
 	bool "SI570 pixel clock generator"
@@ -60,19 +66,23 @@ config FB_XYLON_PIXCLK_SI570
 	select MISC_DEVICES
 	select SI570
 	help
-	  Support for pixel clock generation from SI570 clock generator.
+	  Support for controlling pixel clock generation from
+	  SI570 clock generator.
 
 menuconfig FB_XYLON_MISC
 	bool "Xylon logiCVC frame buffer miscellaneous support"
 	depends on FB_XYLON
 	default n
 	help
-	  Choose this option if you want to use the Xylon logiCVC with other
-	  miscellaneous devices for various improvements.
+	  Choose this option if you want to use the Xylon logiCVC with
+	  miscellaneous device functionality for various improvements.
+	  Currently supported:
+	  - ADV7511 HDMI transmitter
 
 config FB_XYLON_MISC_ADV7511
 	bool "Xylon logiCVC frame buffer ADV7511"
 	depends on FB_XYLON_MISC && VIDEO_ADV7511
+	select FB_MODE_HELPERS
 	default n
 	---help---
 	  Support for ADV7511 HDMI transmitter so that logiCVC can be configured

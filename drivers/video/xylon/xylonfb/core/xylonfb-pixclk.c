@@ -30,7 +30,7 @@ static bool xylonfb_hw_pixclk_init;
 
 #define XYLONFB_PIXCLK_ZYNQ_PS 1
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <linux/errno.h>
 
 int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
@@ -64,13 +64,15 @@ int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 
 	/* unlock register access */
 	writel(0xDF0D, (slcr_regs+4));
+#if 0
 	/* calculate system clock divisor */
-	//div = pllclk / sysclk;
+	div = pllclk / sysclk;
 	/* prepare for register writting */
-	//div = (div + 0x1000) << 8;
+	div = (div + 0x1000) << 8;
 	/* set system clock */
-	//writel(div, clk_regs);
+	writel(div, clk_regs);
 	/* calculate video clock divisor */
+#endif
 	div = pllclk / pixclk_khz;
 	delta = (pllclk / div) - pixclk_khz;
 	if (delta != 0) {
@@ -79,8 +81,10 @@ int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 		if (delta < delta_inc) {
 			if (delta > delta_dec)
 				div--;
-			//else
-			//	div = div;
+#if 0
+			else
+				div = div;
+#endif
 		} else {
 			if (delta > delta_dec) {
 				if (delta_inc > delta_dec)
@@ -112,7 +116,7 @@ int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 
 #define XYLONFB_PIXCLK_LOGICLK 2
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <linux/errno.h>
 #include <linux/delay.h>
 #ifdef CONFIG_OF
@@ -169,7 +173,7 @@ int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)
 	for (i = 0; i < LOGICLK_REGS; i++)
 		writel(logiclk[i], logiclk_regs+LOGICLK_PLL_MANUAL_REG_OFF+i);
 
-	while(1) {
+	while (1) {
 		if (readl(logiclk_regs+LOGICLK_PLL_REG_OFF) & LOGICLK_PLL_RDY) {
 			writel((LOGICLK_PLL_REG_EN | LOGICLK_PLL_EN),
 				logiclk_regs+LOGICLK_PLL_REG_OFF);
@@ -196,7 +200,8 @@ int xylonfb_hw_pixclk_set_si570(unsigned long pixclk_khz)
 
 	si570_client = get_i2c_client_si570();
 	if (si570_client)
-		return set_frequency_si570(&si570_client->dev, (pixclk_khz * 1000));
+		return set_frequency_si570(
+			&si570_client->dev, (pixclk_khz * 1000));
 	else
 		return -EPERM;
 }

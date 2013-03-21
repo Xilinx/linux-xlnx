@@ -193,8 +193,9 @@ static void xylonfb_adv7511_set_v4l2_timings(struct v4l2_subdev *sd,
 
 static int xylonfb_adv7511_update(struct fb_info *fbi)
 {
-	struct xylonfb_layer_data *layer_data = fbi->par;
-	struct xylonfb_misc_data *misc_data = layer_data->xylonfb_cd->xylonfb_misc;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_misc_data *misc_data =
+		ld->xylonfb_cd->xylonfb_misc;
 	int ret;
 
 	driver_devel("%s\n", __func__);
@@ -280,25 +281,32 @@ static void xylonfb_adv7511_notify(struct v4l2_subdev *sd,
 				sd_edid.start_block = 0;
 				sd_edid.blocks = 1;
 				sd_edid.edid = edid;
-				ret = xfb_adv7511->sd->ops->core->ioctl(
-					sd, VIDIOC_SUBDEV_G_EDID, (void *)&sd_edid);
+				ret = xfb_adv7511->sd->ops->core->ioctl(sd,
+					VIDIOC_SUBDEV_G_EDID,
+					(void *)&sd_edid);
 				if (ret) {
-					pr_warn("xylonfb ADV7511 IOCTL error %d\n", ret);
+					pr_warn("xylonfb ADV7511 IOCTL error %d\n",
+						ret);
 					break;
 				}
 
-				fb_parse_edid(edid, xfb_adv7511->var_screeninfo);
+				fb_parse_edid(edid,
+					xfb_adv7511->var_screeninfo);
 				xylonfb_adv7511_get_monspecs(edid,
-					xfb_adv7511->monspecs, xfb_adv7511->var_screeninfo);
-				xylonfb_adv7511_set_v4l2_timings(xfb_adv7511->sd,
+					xfb_adv7511->monspecs,
+					xfb_adv7511->var_screeninfo);
+				xylonfb_adv7511_set_v4l2_timings(
+					xfb_adv7511->sd,
 					xfb_adv7511->var_screeninfo);
 
-				*(xfb_adv7511->xfb_flags) |= XYLONFB_FLAG_EDID_RDY;
+				*(xfb_adv7511->xfb_flags) |=
+					XYLONFB_FLAG_EDID_RDY;
 
 				if (xfb_adv7511->flags & ADV7511_FLAG_INIT)
 					complete(&xfb_adv7511->edid_done);
 				else
-					xylonfb_adv7511_update(xfb_adv7511->fbi);
+					xylonfb_adv7511_update(
+						xfb_adv7511->fbi);
 			}
 		}
 		break;
@@ -312,9 +320,9 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 {
 	struct v4l2_subdev *sd;
 	struct i2c_client *client;
-	struct xylonfb_layer_data *layer_data = fbi->par;
-	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
-	struct xylonfb_misc_data *misc_data = common_data->xylonfb_misc;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_common_data *cd = ld->xylonfb_cd;
+	struct xylonfb_misc_data *misc_data = cd->xylonfb_misc;
 	int ret;
 
 	driver_devel("%s\n", __func__);
@@ -345,7 +353,7 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 		kzalloc(sizeof(struct fb_var_screeninfo), GFP_KERNEL);
 	xfb_adv7511->monspecs =
 		kzalloc(sizeof(struct fb_monspecs), GFP_KERNEL);
-	xfb_adv7511->xfb_flags = &common_data->xylonfb_flags;
+	xfb_adv7511->xfb_flags = &cd->xylonfb_flags;
 	xfb_adv7511->fbi = fbi;
 
 	misc_data->var_screeninfo = xfb_adv7511->var_screeninfo;
@@ -423,9 +431,9 @@ error_subdev:
 void xylonfb_adv7511_unregister(struct fb_info *fbi)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(xfb_adv7511->sd);
-	struct xylonfb_layer_data *layer_data = fbi->par;
-	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
-	struct xylonfb_misc_data *misc_data = common_data->xylonfb_misc;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_common_data *cd = ld->xylonfb_cd;
+	struct xylonfb_misc_data *misc_data = cd->xylonfb_misc;
 
 	driver_devel("%s\n", __func__);
 

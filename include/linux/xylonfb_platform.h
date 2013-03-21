@@ -19,8 +19,7 @@
 
 
 /* Framebuffer driver platform layer structure */
-struct xylonfb_platform_layer_params
-{
+struct xylonfb_platform_layer_params {
 	/* Layer memory offset in lines */
 	unsigned int offset;
 	/* Layer buffer memory offset in lines */
@@ -36,8 +35,7 @@ struct xylonfb_platform_layer_params
 };
 
 /* Framebuffer driver platform data structure */
-struct xylonfb_platform_data
-{
+struct xylonfb_platform_data {
 	struct xylonfb_platform_layer_params *layer_params;
 	/* logiCVC video mode */
 	char *vmode;
@@ -60,7 +58,8 @@ struct xylonfb_platform_data
 	/* Background layer alpha mode */
 	unsigned char bg_layer_alpha_mode;
 	/* Display interface and color space type */
-	/* higher 4 bits: display interface, lower 4 bits: display color space */
+	/* higher 4 bits: display interface
+	   lower 4 bits: display color space */
 	unsigned char display_interface_type;
 	/* logiCVC specific flags */
 	unsigned short flags;

@@ -39,18 +39,15 @@
 #define XYLONFB_FLAG_DEFAULT_VMODE_SET 0x80
 #define XYLONFB_FLAG_VMODE_SET         0x100
 /*
-    Following flags must be updated in xylonfb miscellaneous header files for
-    every functionality specifically
+	Following flags must be updated in xylonfb miscellaneous
+	header files for every functionality specifically
 */
 #define XYLONFB_FLAG_MISC_ADV7511 0x1000
 #define XYLONFB_FLAG_EDID_RDY     0x2000
 
 
 #ifdef DEBUG
-#define driver_devel(format, ...) \
-	do { \
-		printk(KERN_INFO format, ## __VA_ARGS__); \
-	} while (0)
+#define driver_devel(format, ...) pr_info(format, ## __VA_ARGS__);
 #else
 #define driver_devel(format, ...)
 #endif
@@ -65,6 +62,7 @@ struct xylonfb_vmode_data {
 };
 
 struct xylonfb_registers {
+	u32 ctrl_reg;
 	u32 dtype_reg;
 	u32 bg_reg;
 	u32 unused_reg[3];
@@ -133,7 +131,8 @@ struct xylonfb_common_data {
 	unsigned char xylonfb_console_layer;
 	unsigned char xylonfb_bg_layer_bpp;
 	unsigned char xylonfb_bg_layer_alpha_mode;
-	/* higher 4 bits: display interface, lower 4 bits: display color space */
+	/* higher 4 bits: display interface
+	   lower 4 bits: display color space */
 	unsigned char xylonfb_display_interface_type;
 #if defined(CONFIG_FB_XYLON_MISC)
 	struct xylonfb_misc_data *xylonfb_misc;
@@ -173,6 +172,10 @@ struct xylonfb_init_data {
 	bool vmode_params_set;
 };
 
+
+/* xylonfb core pixel clock interface functions */
+extern bool xylonfb_hw_pixclk_supported(int);
+extern int xylonfb_hw_pixclk_set(int, unsigned long);
 
 /* xylonfb core interface functions */
 extern int xylonfb_get_params(char *options);

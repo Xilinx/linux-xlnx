@@ -182,7 +182,7 @@
 
 enum xylonfb_layer_type {
 	LOGICVC_RGB_LAYER = 0,
-	LOGICVC_YCbCr_LAYER,
+	LOGICVC_YCBCR_LAYER,
 	LOGICVC_ALPHA_LAYER
 };
 

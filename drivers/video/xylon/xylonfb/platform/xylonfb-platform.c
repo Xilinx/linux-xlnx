@@ -34,14 +34,14 @@ static void xylonfb_get_platform_layer_params(
 		lfdata->alpha_mode = LOGICVC_LAYER_ALPHA;
 
 	switch (lfdata->bpp) {
-		case 8:
-			if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
-				lfdata->bpp = 16;
-			break;
-		case 16:
-			if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
-				lfdata->bpp = 32;
-			break;
+	case 8:
+		if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
+			lfdata->bpp = 16;
+		break;
+	case 16:
+		if (lfdata->alpha_mode == LOGICVC_PIXEL_ALPHA)
+			lfdata->bpp = 32;
+		break;
 	}
 
 	lfdata->layer_fix_info = id;
@@ -77,7 +77,8 @@ static int xylonfb_platform_probe(struct platform_device *pdev)
 			&pdata->layer_params[i],
 			&init_data.lfdata[i], i);
 		init_data.lfdata[i].width = pdata->row_stride;
-		init_data.layer_ctrl_flags[i] = pdata->layer_params[i].ctrl_flags;
+		init_data.layer_ctrl_flags[i] =
+			pdata->layer_params[i].ctrl_flags;
 	}
 
 	return xylonfb_init_driver(&init_data);
@@ -144,7 +145,8 @@ static struct xylonfb_platform_data logicvc_0_platform_data = {
 	.active_layer = 3,
 	.bg_layer_bpp = 32,
 	.bg_layer_alpha_mode = LOGICVC_LAYER_ALPHA,
-	.display_interface_type = (LOGICVC_DI_PARALLEL << 4) | (LOGICVC_DCS_YUV422),
+	.display_interface_type =
+		(LOGICVC_DI_PARALLEL << 4) | (LOGICVC_DCS_YUV422),
 	/*
 		Available flags:
 		LOGICVC_READABLE_REGS

@@ -20,23 +20,23 @@
 
 static void xylonfb_misc_adv7511(struct fb_info *fbi, bool init)
 {
-	struct xylonfb_layer_data *layer_data = fbi->par;
-	struct xylonfb_common_data *common_data = layer_data->xylonfb_cd;
-	struct xylonfb_misc_data *misc_data = common_data->xylonfb_misc;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_common_data *cd = ld->xylonfb_cd;
+	struct xylonfb_misc_data *misc_data = cd->xylonfb_misc;
 
 	driver_devel("%s\n", __func__);
 
 	if (init) {
-		if (common_data->xylonfb_flags & XYLONFB_FLAG_MISC_ADV7511)
+		if (cd->xylonfb_flags & XYLONFB_FLAG_MISC_ADV7511)
 			return;
 
 		if (!xylonfb_adv7511_register(fbi)) {
 			fbi->monspecs = *(misc_data->monspecs);
-			common_data->xylonfb_flags |= XYLONFB_FLAG_MISC_ADV7511;
+			cd->xylonfb_flags |= XYLONFB_FLAG_MISC_ADV7511;
 		}
 	} else {
 		xylonfb_adv7511_unregister(fbi);
-		common_data->xylonfb_flags &= ~XYLONFB_FLAG_MISC_ADV7511;
+		cd->xylonfb_flags &= ~XYLONFB_FLAG_MISC_ADV7511;
 	}
 }
 #endif
