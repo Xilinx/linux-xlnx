@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/clk.h>
+#include <linux/clk/zynq.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/module.h>
@@ -57,6 +58,11 @@ static int zynq_target(struct cpufreq_policy *policy,
 	unsigned int i;
 	int ret = 0;
 	struct cpufreq_freqs freqs;
+
+#ifdef CONFIG_SUSPEND
+	if (zynq_clk_suspended)
+		return -EPERM;
+#endif
 
 	if (!freq_table) {
 		dev_err(mpu_dev, "%s: cpu%d: no freq table!\n", __func__,
