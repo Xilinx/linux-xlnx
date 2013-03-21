@@ -114,6 +114,7 @@
  * @xfer_done:		Transfer complete status
  * @p_send_buf:		Pointer to transmit buffer
  * @p_recv_buf:		Pointer to receive buffer
+ * @suspended:		Flag holding the device's PM status
  * @send_count:		Number of bytes still expected to send
  * @recv_count:		Number of bytes still expected to receive
  * @irq:		IRQ number
@@ -132,6 +133,7 @@ struct xi2cps {
 	struct completion xfer_done;
 	unsigned char *p_send_buf;
 	unsigned char *p_recv_buf;
+	u8 suspended;
 	int send_count;
 	int recv_count;
 	int irq;
@@ -709,6 +711,9 @@ static int xi2cps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 	struct clk_notifier_data *ndata = data;
 	struct xi2cps *id = to_xi2cps(nb);
 
+	if (id->suspended)
+		return NOTIFY_OK;
+
 	switch (event) {
 	case PRE_RATE_CHANGE:
 	{
@@ -759,6 +764,7 @@ static int xi2cps_suspend(struct device *_dev)
 	struct xi2cps *xi2c = platform_get_drvdata(pdev);
 
 	clk_disable(xi2c->clk);
+	xi2c->suspended = 1;
 
 	return 0;
 }
@@ -782,6 +788,8 @@ static int xi2cps_resume(struct device *_dev)
 		dev_err(_dev, "Cannot enable clock.\n");
 		return ret;
 	}
+
+	xi2c->suspended = 0;
 
 	return 0;
 }
