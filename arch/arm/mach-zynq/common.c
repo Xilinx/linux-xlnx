@@ -179,6 +179,7 @@ early_initcall(xilinx_l2c_init);
 static void __init xilinx_irq_init(void)
 {
 	of_irq_init(zynq_dt_irq_match);
+	gic_arch_extn.flags = IRQCHIP_SKIP_SET_WAKE | IRQCHIP_MASK_ON_SUSPEND;
 }
 
 #ifdef CONFIG_XILINX_L1_PREFETCH
