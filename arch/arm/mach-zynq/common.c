@@ -113,6 +113,17 @@ static unsigned int freq_divs[] __initdata = {
 	2, 3
 };
 
+static long __init xilinx_calc_opp_freq(struct clk *clk, long rate)
+{
+	long rate_nearest = clk_round_rate_nearest(clk, rate);
+	long rate_round = clk_round_rate(clk, rate_nearest / 1000 * 1000);
+
+	if (rate_round != rate_nearest)
+		rate_nearest += 1000;
+
+	return rate_nearest;
+}
+
 /**
  * xilinx_opp_init() - Register OPPs
  *
@@ -140,13 +151,13 @@ static int __init xilinx_opp_init(void)
 
 	/* frequency/voltage operating points. For now use f only */
 	freq = clk_get_rate(cpuclk);
-	ret |= opp_add(dev, freq, 0);
+	ret |= opp_add(dev, xilinx_calc_opp_freq(cpuclk, freq), 0);
 	for (i = 0; i < ARRAY_SIZE(freq_divs); i++) {
-		long tmp = clk_round_rate(cpuclk, freq / freq_divs[i]);
+		long tmp = xilinx_calc_opp_freq(cpuclk, freq / freq_divs[i]);
 		if (tmp >= CPUFREQ_MIN_FREQ_HZ)
 			ret |= opp_add(dev, tmp, 0);
 	}
-	freq = clk_round_rate(cpuclk, CPUFREQ_MIN_FREQ_HZ);
+	freq = xilinx_calc_opp_freq(cpuclk, CPUFREQ_MIN_FREQ_HZ);
 	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(opp_find_freq_exact(dev, freq,
 				1)))
 		ret |= opp_add(dev, freq, 0);
