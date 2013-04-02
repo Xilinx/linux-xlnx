@@ -99,12 +99,12 @@ static void __init xilinx_map_io(void)
  */
 static void __init xilinx_memory_init(void)
 {
-#if defined(CONFIG_PHYS_OFFSET) && (CONFIG_PHYS_OFFSET == 0)
-	/* Reserve the 0-0x4000 addresses (before page tables and kernel)
+	/*
+	 * Reserve the 0-0x4000 addresses (before page tables and kernel)
 	 * which can't be used for DMA
 	 */
-	memblock_reserve(0, 0x4000);
-#endif
+	if (!__pa(PAGE_OFFSET))
+		memblock_reserve(0, 0x4000);
 }
 
 #ifdef CONFIG_CPU_FREQ
