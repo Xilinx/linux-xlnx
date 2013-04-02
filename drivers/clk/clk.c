@@ -599,8 +599,9 @@ unsigned long __clk_round_rate(struct clk *clk, unsigned long rate)
  * @rate: the rate which is to be rounded
  *
  * Takes in a rate as input and rounds it to a rate that the clk can actually
- * use which is then returned.  If clk doesn't support round_rate operation
- * then the parent rate is returned.
+ * use and does not exceed the requested frequency, which is then returned.
+ * If clk doesn't support round_rate operation then the parent rate
+ * is returned.
  */
 long clk_round_rate(struct clk *clk, unsigned long rate)
 {
@@ -613,6 +614,27 @@ long clk_round_rate(struct clk *clk, unsigned long rate)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(clk_round_rate);
+
+/**
+ * clk_round_rate_nearest - round the given rate for a clk
+ * @clk: the clk for which we are rounding a rate
+ * @rate: the rate which is to be rounded
+ *
+ * Takes in a rate as input and rounds it to the closest rate that the clk
+ * can actually use which is then returned. If clk doesn't support
+ * round_rate operation then the parent rate is returned.
+ */
+long clk_round_rate_nearest(struct clk *clk, unsigned long rate)
+{
+	long lower_limit = clk_round_rate(clk, rate);
+	long upper_limit = clk_round_rate(clk, rate + (rate - lower_limit));
+
+	if (rate - lower_limit < upper_limit - rate)
+		return lower_limit;
+	else
+		return upper_limit;
+}
+EXPORT_SYMBOL_GPL(clk_round_rate_nearest);
 
 /**
  * __clk_notify - call clk notifier chain
