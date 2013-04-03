@@ -2560,7 +2560,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	ndev->watchdog_timeo = TX_TIMEOUT;
 	ndev->ethtool_ops = &xemacps_ethtool_ops;
 	ndev->base_addr = r_mem->start;
-	ndev->features = NETIF_F_IP_CSUM;
+	ndev->features = NETIF_F_IP_CSUM | NETIF_F_FRAGLIST | NETIF_F_SG;
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
