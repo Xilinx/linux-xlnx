@@ -515,7 +515,8 @@ struct net_local {
 
 	u32 tx_bd_freecnt;
 
-	spinlock_t lock;
+	spinlock_t tx_lock;
+	spinlock_t rx_lock;
 
 	struct platform_device *pdev;
 	struct net_device *ndev; /* this device */
@@ -1191,7 +1192,7 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	int temp_work_done;
 	u32 regval;
 
-
+	spin_lock(&lp->rx_lock);
 	while (work_done < budget) {
 		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
@@ -1201,8 +1202,10 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 			break;
 	}
 
-	if (work_done >= budget)
+	if (work_done >= budget) {
+		spin_unlock(&lp->rx_lock);
 		return work_done;
+	}
 
 	napi_complete(napi);
 	/* We disabled RX interrupts in interrupt service
@@ -1210,7 +1213,7 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	 */
 	xemacps_write(lp->baseaddr,
 		XEMACPS_IER_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
-
+	spin_unlock(&lp->rx_lock);
 	return work_done;
 }
 
@@ -1233,6 +1236,7 @@ static void xemacps_tx_poll(unsigned long data)
 	struct ring_info *rp;
 	struct sk_buff *skb;
 
+	spin_lock(&lp->tx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_TXSR_OFFSET, regval);
 	dev_dbg(&lp->pdev->dev, "TX status 0x%x\n", regval);
@@ -1326,6 +1330,7 @@ static void xemacps_tx_poll(unsigned long data)
 tx_poll_out:
 	if (netif_queue_stopped(ndev))
 		netif_start_queue(ndev);
+	spin_unlock(&lp->tx_lock);
 }
 
 /**
@@ -1341,12 +1346,10 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	u32 regisr;
 	u32 regctrl;
 
-	spin_lock(&lp->lock);
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
-	if (unlikely(!regisr)) {
-		spin_unlock(&lp->lock);
+	if (unlikely(!regisr))
 		return IRQ_NONE;
-	}
+
 	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 
 	while (regisr) {
@@ -1371,7 +1374,6 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 	}
-	spin_unlock(&lp->lock);
 
 	return IRQ_HANDLED;
 }
@@ -1665,10 +1667,12 @@ static void xemacps_resetrx_for_no_rxdata(unsigned long data)
 	struct net_local *lp = (struct net_local *)data;
 	unsigned long regctrl;
 	unsigned long tempcntr;
+	unsigned long flags;
 
-	spin_lock(&lp->lock);
 	tempcntr = xemacps_read(lp->baseaddr, XEMACPS_RXCNT_OFFSET);
 	if ((!tempcntr) && (!(lp->lastrxfrmscntr))) {
+		spin_lock_bh(&lp->tx_lock);
+		spin_lock_irqsave(&lp->rx_lock, flags);
 		regctrl = xemacps_read(lp->baseaddr,
 				XEMACPS_NWCTRL_OFFSET);
 		regctrl &= (~XEMACPS_NWCTRL_RXEN_MASK);
@@ -1677,9 +1681,10 @@ static void xemacps_resetrx_for_no_rxdata(unsigned long data)
 		regctrl = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
 		regctrl |= (XEMACPS_NWCTRL_RXEN_MASK);
 		xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regctrl);
+		spin_unlock_irqrestore(&lp->rx_lock, flags);
+		spin_unlock_bh(&lp->tx_lock);
 	}
 	lp->lastrxfrmscntr = tempcntr;
-	spin_unlock(&lp->lock);
 }
 
 /**
@@ -1849,16 +1854,17 @@ err_free_rings:
 static int xemacps_close(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
-	unsigned long flags;
 
 	del_timer(&(lp->gen_purpose_timer));
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
-	spin_lock_irqsave(&lp->lock, flags);
+	spin_lock_bh(&lp->tx_lock);
+	spin_lock(&lp->rx_lock);
 	xemacps_reset_hw(lp);
 	netif_carrier_off(ndev);
-	spin_unlock_irqrestore(&lp->lock, flags);
+	spin_unlock(&lp->rx_lock);
+	spin_unlock_bh(&lp->tx_lock);
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
 	xemacps_descriptor_free(lp);
@@ -1882,7 +1888,7 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 		TX_TIMEOUT * 1000UL / HZ);
 	netif_stop_queue(ndev);
 
-	spin_lock(&lp->lock);
+	spin_lock_bh(&lp->tx_lock);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	xemacps_reset_hw(lp);
@@ -1893,7 +1899,7 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 	if (rc) {
 		dev_err(&lp->pdev->dev,
 			"Unable to allocate DMA memory, rc %d\n", rc);
-		spin_unlock(&lp->lock);
+		spin_unlock_bh(&lp->tx_lock);
 		return;
 	}
 
@@ -1907,7 +1913,7 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 
-	spin_unlock(&lp->lock);
+	spin_unlock_bh(&lp->tx_lock);
 	netif_start_queue(ndev);
 }
 
@@ -1956,12 +1962,12 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct xemacps_bd *cur_p;
 
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
-	spin_lock_irq(&lp->lock);
+	spin_lock_bh(&lp->tx_lock);
 
 	cur_p = &(lp->tx_bd[lp->tx_bd_tail]);
 	if (nr_frags >= lp->tx_bd_freecnt) {
 		netif_stop_queue(ndev); /* stop send queue */
-		spin_unlock_irq(&lp->lock);
+		spin_unlock_bh(&lp->tx_lock);
 		return NETDEV_TX_BUSY;
 	}
 	lp->tx_bd_freecnt -= nr_frags;
@@ -2009,7 +2015,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET,
 			(regval | XEMACPS_NWCTRL_STARTTX_MASK));
 
-	spin_unlock_irq(&lp->lock);
+	spin_unlock_bh(&lp->tx_lock);
 	ndev->trans_start = jiffies;
 	return 0;
 }
@@ -2272,7 +2278,8 @@ xemacps_get_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 	u32 regval;
 
 	ewol->supported = WAKE_MAGIC | WAKE_ARP | WAKE_UCAST | WAKE_MCAST;
-	spin_lock_irqsave(&lp->lock, flags);
+	spin_lock_irqsave(&lp->tx_lock, flags);
+	spin_lock(&lp->rx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_WOL_OFFSET);
 	if (regval | XEMACPS_WOL_MCAST_MASK)
 		ewol->wolopts |= WAKE_MCAST;
@@ -2282,7 +2289,8 @@ xemacps_get_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 		ewol->wolopts |= WAKE_UCAST;
 	if (regval | XEMACPS_WOL_MAGIC_MASK)
 		ewol->wolopts |= WAKE_MAGIC;
-	spin_unlock_irqrestore(&lp->lock, flags);
+	spin_unlock(&lp->rx_lock);
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 }
 
 /**
@@ -2305,7 +2313,8 @@ xemacps_set_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 	if (ewol->wolopts & ~(WAKE_MAGIC | WAKE_ARP | WAKE_UCAST | WAKE_MCAST))
 		return -EOPNOTSUPP;
 
-	spin_lock_irqsave(&lp->lock, flags);
+	spin_lock_irqsave(&lp->tx_lock, flags);
+	spin_lock(&lp->rx_lock);
 	regval  = xemacps_read(lp->baseaddr, XEMACPS_WOL_OFFSET);
 	regval &= ~(XEMACPS_WOL_MCAST_MASK | XEMACPS_WOL_ARP_MASK |
 		XEMACPS_WOL_SPEREG1_MASK | XEMACPS_WOL_MAGIC_MASK);
@@ -2320,7 +2329,8 @@ xemacps_set_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 		regval |= XEMACPS_WOL_MCAST_MASK;
 
 	xemacps_write(lp->baseaddr, XEMACPS_WOL_OFFSET, regval);
-	spin_unlock_irqrestore(&lp->lock, flags);
+	spin_unlock(&lp->rx_lock);
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
 	return 0;
 }
@@ -2344,10 +2354,12 @@ xemacps_get_pauseparam(struct net_device *ndev,
 	epauseparm->autoneg  = 0;
 	epauseparm->rx_pause = 0;
 
-	spin_lock_irqsave(&lp->lock, flags);
+	spin_lock_irqsave(&lp->tx_lock, flags);
+	spin_lock(&lp->rx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_NWCFG_OFFSET);
 	epauseparm->tx_pause = regval & XEMACPS_NWCFG_PAUSEEN_MASK;
-	spin_unlock_irqrestore(&lp->lock, flags);
+	spin_unlock(&lp->rx_lock);
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 }
 
 /**
@@ -2373,7 +2385,8 @@ xemacps_set_pauseparam(struct net_device *ndev,
 		return -EFAULT;
 	}
 
-	spin_lock_irqsave(&lp->lock, flags);
+	spin_lock_irqsave(&lp->tx_lock, flags);
+	spin_lock(&lp->rx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_NWCFG_OFFSET);
 
 	if (epauseparm->tx_pause)
@@ -2382,7 +2395,8 @@ xemacps_set_pauseparam(struct net_device *ndev,
 		regval &= ~XEMACPS_NWCFG_PAUSEEN_MASK;
 
 	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
-	spin_unlock_irqrestore(&lp->lock, flags);
+	spin_unlock(&lp->rx_lock);
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
 	return 0;
 }
@@ -2540,7 +2554,8 @@ static int xemacps_probe(struct platform_device *pdev)
 	lp->pdev = pdev;
 	lp->ndev = ndev;
 
-	spin_lock_init(&lp->lock);
+	spin_lock_init(&lp->tx_lock);
+	spin_lock_init(&lp->rx_lock);
 
 	lp->baseaddr = ioremap(r_mem->start, (r_mem->end - r_mem->start + 1));
 	if (!lp->baseaddr) {
