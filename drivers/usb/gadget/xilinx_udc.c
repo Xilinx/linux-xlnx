@@ -1252,7 +1252,8 @@ static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
 }
 
 static int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *));
+				int (*bind)(struct usb_gadget *,
+				struct usb_gadget_driver *driver));
 static int xudc_stop(struct usb_gadget_driver *driver);
 static void xusb_release(struct device *dev);
 
@@ -1270,6 +1271,7 @@ static struct xusb_udc controller = {
 		.ops = &xusb_udc_ops,
 		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep,
 		.speed = USB_SPEED_HIGH,
+		.max_speed = USB_SPEED_HIGH,
 		.is_otg = 0,
 		.is_a_peripheral = 0,
 		.b_hnp_enable = 0,
@@ -1299,7 +1301,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[1] = {
 		  .ep = {
-			 .name = "ep-1",
+			 .name = "ep1",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1314,7 +1316,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[2] = {
 		  .ep = {
-			 .name = "ep-2",
+			 .name = "ep2",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1329,7 +1331,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[3] = {
 		  .ep = {
-			 .name = "ep-3",
+			 .name = "ep3",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1344,7 +1346,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[4] = {
 		  .ep = {
-			 .name = "ep-4",
+			 .name = "ep4",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1359,7 +1361,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[5] = {
 		  .ep = {
-			 .name = "ep-5",
+			 .name = "ep5",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1374,7 +1376,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[6] = {
 		  .ep = {
-			 .name = "ep-6",
+			 .name = "ep6",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1389,7 +1391,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[7] = {
 		  .ep = {
-			 .name = "ep-7",
+			 .name = "ep7",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -2093,7 +2095,8 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
  *
  **/
 int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *))
+				int (*bind)(struct usb_gadget *,
+				struct usb_gadget_driver *driver))
 {
 	struct xusb_udc *udc = &controller;
 	int retval;
@@ -2104,7 +2107,7 @@ int xudc_start(struct usb_gadget_driver *driver,
 	 * are created properly.
 	 */
 	if (!driver
-	    || driver->max_speed != USB_SPEED_HIGH ||
+	    || driver->max_speed < USB_SPEED_FULL ||
 		!bind || !driver->unbind || !driver->setup) {
 		dev_dbg(&udc->gadget.dev, "bad parameter.\n");
 		return -EINVAL;
@@ -2118,10 +2121,11 @@ int xudc_start(struct usb_gadget_driver *driver,
 	}
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
+	udc->gadget.speed = driver->max_speed;
 
 	/* Add and bind the USB device to the device structure.*/
 	retval = device_add(&udc->gadget.dev);
-	retval = bind(&udc->gadget);
+	retval = bind(&udc->gadget, driver);
 	if (retval) {
 		dev_dbg(&udc->gadget.dev,
 			"driver->bind() returned %d\n", retval);
