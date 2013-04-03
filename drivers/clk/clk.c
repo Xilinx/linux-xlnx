@@ -744,16 +744,16 @@ static int __clk_speculate_rates(struct clk *clk, unsigned long parent_rate)
 	else
 		new_rate = parent_rate;
 
-	/* abort the rate change if a driver returns NOTIFY_BAD */
+	/* abort rate change if a driver returns NOTIFY_BAD or NOTIFY_STOP */
 	if (clk->notifier_count)
 		ret = __clk_notify(clk, PRE_RATE_CHANGE, clk->rate, new_rate);
 
-	if (ret == NOTIFY_BAD)
+	if (ret & NOTIFY_STOP_MASK)
 		goto out;
 
 	hlist_for_each_entry(child, tmp, &clk->children, child_node) {
 		ret = __clk_speculate_rates(child, new_rate);
-		if (ret == NOTIFY_BAD)
+		if (ret & NOTIFY_STOP_MASK)
 			break;
 	}
 
@@ -848,7 +848,7 @@ static struct clk *clk_propagate_rate_change(struct clk *clk, unsigned long even
 
 	if (clk->notifier_count) {
 		ret = __clk_notify(clk, event, clk->rate, clk->new_rate);
-		if (ret == NOTIFY_BAD)
+		if (ret & NOTIFY_STOP_MASK)
 			fail_clk = clk;
 	}
 
@@ -1170,7 +1170,7 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 		ret = __clk_speculate_rates(clk, parent->rate);
 
 	/* abort if a driver objects */
-	if (ret == NOTIFY_STOP)
+	if (ret & NOTIFY_STOP_MASK)
 		goto out;
 
 	/* only re-parent if the clock is not in use */
