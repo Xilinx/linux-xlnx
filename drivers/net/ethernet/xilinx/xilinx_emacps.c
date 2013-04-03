@@ -1870,8 +1870,10 @@ static int xemacps_close(struct net_device *ndev)
 	netif_carrier_off(ndev);
 	spin_unlock(&lp->rx_lock);
 	spin_unlock_bh(&lp->tx_lock);
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
+	if (lp->phy_dev) {
+		if (lp->board_type == BOARD_TYPE_ZYNQ)
+			phy_disconnect(lp->phy_dev);
+		}
 	xemacps_descriptor_free(lp);
 
 	pm_runtime_put(&lp->pdev->dev);
@@ -1915,8 +1917,10 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	lp->link    = 0;
 	lp->speed   = 0;
 	lp->duplex  = -1;
-	if (lp->phy_dev)
+	if (lp->phy_dev) {
+		if (lp->board_type == BOARD_TYPE_ZYNQ)
 			phy_start(lp->phy_dev);
+	}
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 	netif_start_queue(lp->ndev);
