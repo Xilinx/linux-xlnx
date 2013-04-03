@@ -520,6 +520,7 @@ struct net_local {
 
 	struct platform_device *pdev;
 	struct net_device *ndev; /* this device */
+	struct tasklet_struct tx_bdreclaim_tasklet;
 
 	struct napi_struct napi; /* napi information for device */
 	struct net_device_stats stats; /* Statistics for this device */
@@ -1216,11 +1217,12 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 }
 
 /**
- * xemacps_tx_poll - tx isr handler routine
+ * xemacps_tx_poll - tx bd reclaim tasklet handler
  * @data: pointer to network interface device structure
  **/
-static void xemacps_tx_poll(struct net_device *ndev)
+static void xemacps_tx_poll(unsigned long data)
 {
+	struct net_device *ndev = (struct net_device *)data;
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regval;
 	u32 len = 0;
@@ -1301,7 +1303,7 @@ static void xemacps_tx_poll(struct net_device *ndev)
 		dma_unmap_single(&lp->pdev->dev, rp->mapping, skb->len,
 			DMA_TO_DEVICE);
 		rp->skb = NULL;
-		dev_kfree_skb_irq(skb);
+		dev_kfree_skb(skb);
 		/* log tx completed packets and bytes, errors logs
 		 * are in other error counters.
 		 */
@@ -1352,7 +1354,7 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 	while (regisr) {
 		if (regisr & (XEMACPS_IXR_TXCOMPL_MASK |
 				XEMACPS_IXR_TX_ERR_MASK)) {
-			xemacps_tx_poll(ndev);
+			tasklet_schedule(&lp->tx_bdreclaim_tasklet);
 		}
 
 		if (regisr & XEMACPS_IXR_RXUSED_MASK) {
@@ -1824,6 +1826,7 @@ static int xemacps_open(struct net_device *ndev)
 
 	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
+	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 
 	return 0;
 
@@ -1853,6 +1856,7 @@ static int xemacps_close(struct net_device *ndev)
 	del_timer(&(lp->gen_purpose_timer));
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
+	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	spin_lock_irqsave(&lp->lock, flags);
 	xemacps_reset_hw(lp);
 	netif_carrier_off(ndev);
@@ -1882,6 +1886,7 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 
 	spin_lock(&lp->lock);
 	napi_disable(&lp->napi);
+	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	xemacps_reset_hw(lp);
 	xemacps_descriptor_free(lp);
 	if (lp->phy_dev)
@@ -1902,6 +1907,7 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 	if (lp->phy_dev)
 		phy_start(lp->phy_dev);
 	napi_enable(&lp->napi);
+	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 
 	spin_unlock(&lp->lock);
 	netif_start_queue(ndev);
@@ -2661,6 +2667,9 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	}
 
 	xemacps_update_hwaddr(lp);
+	tasklet_init(&lp->tx_bdreclaim_tasklet, xemacps_tx_poll,
+		     (unsigned long) ndev);
+	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 
 	platform_set_drvdata(pdev, ndev);
 	pm_runtime_set_active(&pdev->dev);
