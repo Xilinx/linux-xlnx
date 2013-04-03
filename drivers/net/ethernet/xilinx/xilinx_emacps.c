@@ -1297,10 +1297,12 @@ static void xemacps_tx_poll(unsigned long data)
 	cur_i = lp->tx_bd_ci;
 	cur_p = &lp->tx_bd[cur_i];
 	while (bdcount < XEMACPS_SEND_BD_CNT) {
-		if ((sop == 0) && (cur_p->ctrl & XEMACPS_TXBUF_USED_MASK))
-			sop = 1;
-		else
-			break;
+		if (sop == 0) {
+			if (cur_p->ctrl & XEMACPS_TXBUF_USED_MASK)
+				sop = 1;
+			else
+				break;
+		}
 
 		if (sop == 1) {
 			bdcount++;
