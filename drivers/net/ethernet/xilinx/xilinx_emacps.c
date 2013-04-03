@@ -521,6 +521,8 @@ struct net_local {
 	struct platform_device *pdev;
 	struct net_device *ndev; /* this device */
 	struct tasklet_struct tx_bdreclaim_tasklet;
+	struct workqueue_struct *txtimeout_handler_wq;
+	struct work_struct txtimeout_reinit;
 
 	struct napi_struct napi; /* napi information for device */
 	struct net_device_stats stats; /* Statistics for this device */
@@ -1806,7 +1808,6 @@ static int xemacps_open(struct net_device *ndev)
 		goto err_free_rings;
 	}
 
-
 	xemacps_init_hw(lp);
 	napi_enable(&lp->napi);
 	rc = xemacps_mii_probe(ndev);
@@ -1875,31 +1876,33 @@ static int xemacps_close(struct net_device *ndev)
 }
 
 /**
- * xemacps_tx_timeout - callback uses when the transmitter has not made
- * any progress for dev->watchdog ticks.
- * @ndev: network interface device structure
+ * xemacps_reinit_for_txtimeout - work queue scheduled for the tx timeout
+ * handling.
+ * @ndev: queue work structure
  **/
-static void xemacps_tx_timeout(struct net_device *ndev)
+static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 {
-	struct net_local *lp = netdev_priv(ndev);
+	struct net_local *lp = container_of(data, struct net_local,
+		txtimeout_reinit);
 	int rc;
 
-	dev_err(&lp->pdev->dev, "transmit timeout %lu ms, reseting...\n",
-		TX_TIMEOUT * 1000UL / HZ);
-	netif_stop_queue(ndev);
-
+	netif_stop_queue(lp->ndev);
 	spin_lock_bh(&lp->tx_lock);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	xemacps_reset_hw(lp);
+	spin_unlock_bh(&lp->tx_lock);
+
+	if (lp->phy_dev) {
+		if (lp->board_type == BOARD_TYPE_ZYNQ)
+			phy_stop(lp->phy_dev);
+	}
+
 	xemacps_descriptor_free(lp);
-	if (lp->phy_dev)
-		phy_stop(lp->phy_dev);
 	rc = xemacps_descriptor_init(lp);
 	if (rc) {
 		dev_err(&lp->pdev->dev,
 			"Unable to allocate DMA memory, rc %d\n", rc);
-		spin_unlock_bh(&lp->tx_lock);
 		return;
 	}
 
@@ -1909,12 +1912,24 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 	lp->speed   = 0;
 	lp->duplex  = -1;
 	if (lp->phy_dev)
-		phy_start(lp->phy_dev);
+			phy_start(lp->phy_dev);
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
+	netif_start_queue(lp->ndev);
+}
 
-	spin_unlock_bh(&lp->tx_lock);
-	netif_start_queue(ndev);
+/**
+ * xemacps_tx_timeout - callback used when the transmitter has not made
+ * any progress for dev->watchdog ticks.
+ * @ndev: network interface device structure
+ **/
+static void xemacps_tx_timeout(struct net_device *ndev)
+{
+	struct net_local *lp = netdev_priv(ndev);
+
+	dev_err(&lp->pdev->dev, "transmit timeout %lu ms, reseting...\n",
+		TX_TIMEOUT * 1000UL / HZ);
+	queue_work(lp->txtimeout_handler_wq, &lp->txtimeout_reinit);
 }
 
 /**
@@ -2683,6 +2698,9 @@ static int xemacps_probe(struct platform_device *pdev)
 	tasklet_init(&lp->tx_bdreclaim_tasklet, xemacps_tx_poll,
 		     (unsigned long) ndev);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
+
+	lp->txtimeout_handler_wq = create_singlethread_workqueue(DRIVER_NAME);
+	INIT_WORK(&lp->txtimeout_reinit, xemacps_reinit_for_txtimeout);
 
 	platform_set_drvdata(pdev, ndev);
 	pm_runtime_set_active(&pdev->dev);
