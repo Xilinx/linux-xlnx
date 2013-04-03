@@ -655,7 +655,7 @@ top:
 			} else {
 				dev_dbg(&ep->udc->gadget.dev,
 				"rcv fail..curbufnum is %d and buf0rdy is"
-				"%d, buf1rdy is %d\n", ep->curbufnum, \
+				"%d, buf1rdy is %d\n", ep->curbufnum,
 				ep->buffer0ready, ep->buffer1ready);
 				req->req.actual -= min(count, bufferspace);
 				return -EINVAL;
@@ -853,7 +853,6 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	ep->stopped = 0;
 	ep->desc = desc;
 	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-
 	spin_lock_irqsave(&ep->udc->lock, flags);
 	ep->ep.maxpacket = le16_to_cpu(desc->wMaxPacketSize);
 
@@ -992,11 +991,11 @@ static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
 {
 	struct xusb_request *req;
 
-	req = kmalloc(sizeof *req, gfp_flags);
+	req = kmalloc(sizeof(*req), gfp_flags);
 	if (!req)
 		return NULL;
 
-	memset(req, 0, sizeof *req);
+	memset(req, 0, sizeof(*req));
 	INIT_LIST_HEAD(&req->queue);
 	return &req->req;
 }
@@ -2122,7 +2121,6 @@ int xudc_start(struct usb_gadget_driver *driver,
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
 	udc->gadget.speed = driver->max_speed;
-
 	/* Add and bind the USB device to the device structure.*/
 	retval = device_add(&udc->gadget.dev);
 	retval = bind(&udc->gadget, driver);
