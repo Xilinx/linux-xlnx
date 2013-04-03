@@ -1273,6 +1273,7 @@ static void xemacps_tx_poll(unsigned long data)
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regval;
 	u32 len = 0;
+	u32 leninbd = 0;
 	unsigned int bdcount = 0;
 	unsigned int bdpartialcount = 0;
 	unsigned int sop = 0;
@@ -1328,8 +1329,8 @@ static void xemacps_tx_poll(unsigned long data)
 		rp = &lp->tx_skb[lp->tx_bd_ci];
 		skb = rp->skb;
 
-		BUG_ON(skb == NULL);
-		len += skb->len;
+		leninbd = cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK;
+		len += leninbd;
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.tx_type == HWTSTAMP_TX_ON) &&
@@ -1350,10 +1351,11 @@ static void xemacps_tx_poll(unsigned long data)
 		}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
-		dma_unmap_single(&lp->pdev->dev, rp->mapping, skb->len,
+		dma_unmap_single(&lp->pdev->dev, rp->mapping, leninbd,
 			DMA_TO_DEVICE);
+		if (skb != NULL)
+			dev_kfree_skb(skb);
 		rp->skb = NULL;
-		dev_kfree_skb(skb);
 		/* log tx completed packets and bytes, errors logs
 		 * are in other error counters.
 		 */
@@ -2054,9 +2056,11 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			frag++;
 		}
 
-		lp->tx_skb[lp->tx_bd_tail].skb = skb;
+		if (i == 0)
+			lp->tx_skb[lp->tx_bd_tail].skb = skb;
+		else
+			lp->tx_skb[lp->tx_bd_tail].skb = NULL;
 		lp->tx_skb[lp->tx_bd_tail].mapping = mapping;
-
 		cur_p->addr = mapping;
 
 		/* Preserve only critical status bits.  Packet is NOT to be
