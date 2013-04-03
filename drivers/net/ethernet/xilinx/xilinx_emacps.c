@@ -536,6 +536,7 @@ struct net_local {
 
 	struct mii_bus *mii_bus;
 	struct phy_device *phy_dev;
+	phy_interface_t phy_interface;
 	unsigned int link;
 	unsigned int speed;
 	unsigned int duplex;
@@ -807,11 +808,12 @@ static int xemacps_mii_probe(struct net_device *ndev)
 					lp->phy_node,
 					&xemacps_adjust_link,
 					0,
-					PHY_INTERFACE_MODE_RGMII_ID);
-	}
-	if (!phydev) {
-		dev_err(&lp->pdev->dev, "%s: no PHY found\n", ndev->name);
-		return -1;
+					lp->phy_interface);
+		if (!phydev) {
+			dev_err(&lp->pdev->dev, "%s: no PHY found\n",
+			ndev->name);
+			return -1;
+		}
 	}
 
 	dev_dbg(&lp->pdev->dev,
@@ -2678,6 +2680,13 @@ static int xemacps_probe(struct platform_device *pdev)
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
+	rc = of_get_phy_mode(lp->pdev->dev.of_node);
+	if (rc < 0) {
+		dev_err(&lp->pdev->dev, "error in getting phy i/f\n");
+		goto err_out_unregister_clk_notifier;
+	}
+
+	lp->phy_interface = rc;
 
 	if (lp->board_type == BOARD_TYPE_ZYNQ) {
 		/* Set MDIO clock divider */
