@@ -228,15 +228,15 @@
 					reg = <7>;
 					hwmon@52 {
 						compatible = "pmbus,ucd9248";
-						reg = <0x52>;
+						reg = <52>;
 					};
 					hwmon@53 {
 						compatible = "pmbus,ucd9248";
-						reg = <0x53>;
+						reg = <53>;
 					};
 					hwmon@54 {
 						compatible = "pmbus,ucd9248";
-						reg = <0x54>;
+						reg = <54>;
 					};
 				};
 			};
