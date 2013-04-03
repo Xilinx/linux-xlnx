@@ -132,6 +132,7 @@
 			interrupts = < 0 22 1 >;
 			local-mac-address = [ 00 0a 35 00 00 00 ];
 			phy-handle = <&phy0>;
+			phy-mode = "rgmii-id";
 			reg = < 0xe000b000 0x1000 >;
 			xlnx,enet-clk-freq-hz = <0x7735940>;
 			xlnx,enet-reset = <0xffffffff>;
