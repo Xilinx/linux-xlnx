@@ -464,6 +464,12 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_RXBUF_ADD_MASK		0xFFFFFFFC /* Mask for address */
 
 #define XEAMCPS_GEN_PURPOSE_TIMER_LOAD	100 /* timeout value is msecs */
+
+#define XEMACPS_GMII2RGMII_SPEED1000_FD		0x140
+#define XEMACPS_GMII2RGMII_SPEED100_FD		0x2100
+#define XEMACPS_GMII2RGMII_SPEED10_FD		0x100
+#define XEMACPS_GMII2RGMII_REG_NUM			0x10
+
 #define BOARD_TYPE_ZYNQ			0x01
 #define BOARD_TYPE_PEEP			0x02
 
@@ -501,6 +507,7 @@ struct net_local {
 	struct notifier_block clk_rate_change_nb;
 
 	struct device_node *phy_node;
+	struct device_node *gmii2rgmii_phy_node;
 	struct ring_info *tx_skb;
 	struct ring_info *rx_skb;
 
@@ -538,6 +545,7 @@ struct net_local {
 
 	struct mii_bus *mii_bus;
 	struct phy_device *phy_dev;
+	struct phy_device *gmii2rgmii_phy_dev;
 	phy_interface_t phy_interface;
 	unsigned int link;
 	unsigned int speed;
@@ -705,6 +713,7 @@ static void xemacps_adjust_link(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = lp->phy_dev;
+	struct phy_device *gmii2rgmii_phydev = lp->gmii2rgmii_phy_dev;
 	int status_change = 0;
 	u32 regval;
 
@@ -740,7 +749,24 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
-				regval);
+			regval);
+
+			if (regval & XEMACPS_NWCFG_1000_MASK) {
+				xemacps_mdio_write(lp->mii_bus,
+				gmii2rgmii_phydev->addr,
+				XEMACPS_GMII2RGMII_REG_NUM,
+				XEMACPS_GMII2RGMII_SPEED1000_FD);
+			} else if (regval & XEMACPS_NWCFG_100_MASK) {
+				xemacps_mdio_write(lp->mii_bus,
+				gmii2rgmii_phydev->addr,
+				XEMACPS_GMII2RGMII_REG_NUM,
+				XEMACPS_GMII2RGMII_SPEED100_FD);
+			} else {
+				xemacps_mdio_write(lp->mii_bus,
+				gmii2rgmii_phydev->addr,
+				XEMACPS_GMII2RGMII_REG_NUM,
+				XEMACPS_GMII2RGMII_SPEED10_FD);
+			}
 
 			lp->speed = phydev->speed;
 			lp->duplex = phydev->duplex;
@@ -841,6 +867,20 @@ static int xemacps_mii_probe(struct net_device *ndev)
 
 	dev_dbg(&lp->pdev->dev, "attach [%s] phy driver\n",
 			lp->phy_dev->drv->name);
+
+	if (lp->gmii2rgmii_phy_node) {
+		phydev = of_phy_connect(lp->ndev,
+					lp->gmii2rgmii_phy_node,
+					NULL,
+					0, 0);
+		if (!phydev) {
+			dev_err(&lp->pdev->dev, "%s: no gmii to rgmii converter found\n",
+			ndev->name);
+			return -1;
+		}
+	}
+
+	lp->gmii2rgmii_phy_dev = phydev;
 
 	return 0;
 }
@@ -1873,7 +1913,10 @@ static int xemacps_close(struct net_device *ndev)
 	if (lp->phy_dev) {
 		if (lp->board_type == BOARD_TYPE_ZYNQ)
 			phy_disconnect(lp->phy_dev);
-		}
+	}
+	if (lp->gmii2rgmii_phy_node)
+		phy_disconnect(lp->gmii2rgmii_phy_dev);
+
 	xemacps_descriptor_free(lp);
 
 	pm_runtime_put(&lp->pdev->dev);
@@ -2686,6 +2729,8 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
+	lp->gmii2rgmii_phy_node = of_parse_phandle(lp->pdev->dev.of_node,
+						"gmii2rgmii-phy-handle", 0);
 	rc = of_get_phy_mode(lp->pdev->dev.of_node);
 	if (rc < 0) {
 		dev_err(&lp->pdev->dev, "error in getting phy i/f\n");
