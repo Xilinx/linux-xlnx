@@ -1197,6 +1197,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
 		if (new_skb == NULL) {
 			dev_err(&lp->ndev->dev, "no memory for new sk_buff\n");
+			lp->rx_skb[lp->rx_bd_ci].skb = NULL;
 			return 0;
 		}
 		/* Get dma handle of skb->data */
@@ -1354,9 +1355,8 @@ static void xemacps_tx_poll(unsigned long data)
 
 		dma_unmap_single(&lp->pdev->dev, rp->mapping, rp->len,
 			DMA_TO_DEVICE);
-		if (skb != NULL)
-			dev_kfree_skb(skb);
 		rp->skb = NULL;
+		dev_kfree_skb(skb);
 		/* log tx completed packets and bytes, errors logs
 		 * are in other error counters.
 		 */
@@ -2054,12 +2054,10 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			mapping = dma_map_single(&lp->pdev->dev, virt_addr,
 				len, DMA_TO_DEVICE);
 			frag++;
+			skb_get(skb);
 		}
 
-		if (i == 0)
-			lp->tx_skb[lp->tx_bd_tail].skb = skb;
-		else
-			lp->tx_skb[lp->tx_bd_tail].skb = NULL;
+		lp->tx_skb[lp->tx_bd_tail].skb = skb;
 		lp->tx_skb[lp->tx_bd_tail].mapping = mapping;
 		lp->tx_skb[lp->tx_bd_tail].len = len;
 		cur_p->addr = mapping;
