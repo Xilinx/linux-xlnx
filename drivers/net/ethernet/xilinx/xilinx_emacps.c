@@ -1368,7 +1368,8 @@ static void xemacps_tx_poll(unsigned long data)
 			}
 		}
 
-		/* Preserve used and wrap bits; clear everything else. */
+		/* Set used bit, preserve wrap bit; clear everything else. */
+		cur_p->ctrl |= XEMACPS_TXBUF_USED_MASK;
 		cur_p->ctrl &= (XEMACPS_TXBUF_USED_MASK |
 					XEMACPS_TXBUF_WRAP_MASK);
 
