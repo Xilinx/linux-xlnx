@@ -490,6 +490,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 struct ring_info {
 	struct sk_buff *skb;
 	dma_addr_t mapping;
+	size_t len;
 };
 
 /* DMA buffer descriptor structure. Each BD is two words */
@@ -1156,7 +1157,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		skb = lp->rx_skb[lp->rx_bd_ci].skb;
 		dma_unmap_single(lp->ndev->dev.parent,
 				lp->rx_skb[lp->rx_bd_ci].mapping,
-				XEMACPS_RX_BUF_SIZE,
+				lp->rx_skb[lp->rx_bd_ci].len,
 				DMA_FROM_DEVICE);
 
 		/* setup received skb and send it upstream */
@@ -1207,6 +1208,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 					| (new_skb_baddr);
 		lp->rx_skb[lp->rx_bd_ci].skb = new_skb;
 		lp->rx_skb[lp->rx_bd_ci].mapping = new_skb_baddr;
+		lp->rx_skb[lp->rx_bd_ci].len = XEMACPS_RX_BUF_SIZE;
 
 		cur_p->ctrl = 0;
 		cur_p->addr &= (~XEMACPS_RXBUF_NEW_MASK);
@@ -1274,7 +1276,6 @@ static void xemacps_tx_poll(unsigned long data)
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regval;
 	u32 len = 0;
-	u32 leninbd = 0;
 	unsigned int bdcount = 0;
 	unsigned int bdpartialcount = 0;
 	unsigned int sop = 0;
@@ -1330,8 +1331,7 @@ static void xemacps_tx_poll(unsigned long data)
 		rp = &lp->tx_skb[lp->tx_bd_ci];
 		skb = rp->skb;
 
-		leninbd = cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK;
-		len += leninbd;
+		len += (cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK);
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.tx_type == HWTSTAMP_TX_ON) &&
@@ -1352,7 +1352,7 @@ static void xemacps_tx_poll(unsigned long data)
 		}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
-		dma_unmap_single(&lp->pdev->dev, rp->mapping, leninbd,
+		dma_unmap_single(&lp->pdev->dev, rp->mapping, rp->len,
 			DMA_TO_DEVICE);
 		if (skb != NULL)
 			dev_kfree_skb(skb);
@@ -1364,6 +1364,7 @@ static void xemacps_tx_poll(unsigned long data)
 			if (!(cur_p->ctrl & XEMACPS_TXBUF_ERR_MASK)) {
 				lp->stats.tx_packets++;
 				lp->stats.tx_bytes += len;
+				len = 0;
 			}
 		}
 
@@ -1442,7 +1443,7 @@ static void xemacps_clean_rings(struct net_local *lp)
 		if (lp->rx_skb && lp->rx_skb[i].skb) {
 			dma_unmap_single(lp->ndev->dev.parent,
 					 lp->rx_skb[i].mapping,
-					 XEMACPS_RX_BUF_SIZE,
+					 lp->rx_skb[i].len,
 					 DMA_FROM_DEVICE);
 
 			dev_kfree_skb(lp->rx_skb[i].skb);
@@ -1455,7 +1456,7 @@ static void xemacps_clean_rings(struct net_local *lp)
 		if (lp->tx_skb && lp->tx_skb[i].skb) {
 			dma_unmap_single(lp->ndev->dev.parent,
 					 lp->tx_skb[i].mapping,
-					 lp->tx_skb[i].skb->len,
+					 lp->tx_skb[i].len,
 					 DMA_TO_DEVICE);
 
 			dev_kfree_skb(lp->tx_skb[i].skb);
@@ -1550,6 +1551,7 @@ static int xemacps_descriptor_init(struct net_local *lp)
 					| (new_skb_baddr);
 		lp->rx_skb[i].skb = new_skb;
 		lp->rx_skb[i].mapping = new_skb_baddr;
+		lp->rx_skb[i].len = XEMACPS_RX_BUF_SIZE;
 		wmb();
 	}
 	cur_p = &lp->rx_bd[XEMACPS_RECV_BD_CNT - 1];
@@ -2059,6 +2061,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		else
 			lp->tx_skb[lp->tx_bd_tail].skb = NULL;
 		lp->tx_skb[lp->tx_bd_tail].mapping = mapping;
+		lp->tx_skb[lp->tx_bd_tail].len = len;
 		cur_p->addr = mapping;
 
 		/* Preserve only critical status bits.  Packet is NOT to be
