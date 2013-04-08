@@ -1748,57 +1748,64 @@ static void xemacps_update_stats(unsigned long data)
 {
 	struct net_local *lp = (struct net_local *)data;
 	struct net_device_stats *nstat = &lp->stats;
+	u32 cnt;
 
-	nstat->rx_errors +=
-			(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET));
-	nstat->rx_length_errors +=
-			(xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET) +
-			xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET));
-	nstat->rx_over_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
-	nstat->rx_crc_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET);
-	nstat->rx_frame_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET);
-	nstat->rx_fifo_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
-	nstat->tx_errors +=
-			(xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_SNGLCOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_MULTICOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_EXCESSCOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_LATECOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_CSENSECNT_OFFSET));
-	nstat->tx_aborted_errors +=
-			xemacps_read(lp->baseaddr,
-					XEMACPS_EXCESSCOLLCNT_OFFSET);
-	nstat->tx_carrier_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_CSENSECNT_OFFSET);
-	nstat->tx_fifo_errors +=
-			xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET);
-	nstat->collisions +=
-			(xemacps_read(lp->baseaddr,
-					XEMACPS_SNGLCOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_MULTICOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_EXCESSCOLLCNT_OFFSET) +
-			xemacps_read(lp->baseaddr,
-					XEMACPS_LATECOLLCNT_OFFSET));
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXUNDRCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_length_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXOVRCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_length_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXJABCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_length_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXFCSCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_crc_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXLENGTHCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_length_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXALIGNCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_frame_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET);
+	nstat->rx_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
+	nstat->rx_errors += cnt;
+	nstat->rx_over_errors += cnt;
+	nstat->rx_fifo_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->tx_fifo_errors += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_SNGLCOLLCNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->collisions += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_MULTICOLLCNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->collisions += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_EXCESSCOLLCNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->tx_aborted_errors += cnt;
+	nstat->collisions += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_LATECOLLCNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->collisions += cnt;
+
+	cnt = xemacps_read(lp->baseaddr, XEMACPS_CSENSECNT_OFFSET);
+	nstat->tx_errors += cnt;
+	nstat->tx_carrier_errors += cnt;
 }
 
 /**
