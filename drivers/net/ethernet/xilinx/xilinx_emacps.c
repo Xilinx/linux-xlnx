@@ -1246,6 +1246,8 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	while (work_done < budget) {
 		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
+		if (regval & XEMACPS_RXSR_HRESPNOK_MASK)
+			dev_err(&lp->pdev->dev, "RX error 0x%x\n", regval);
 		temp_work_done = xemacps_rx(lp, budget - work_done);
 		work_done += temp_work_done;
 		if (temp_work_done <= 0)
@@ -1290,6 +1292,8 @@ static void xemacps_tx_poll(unsigned long data)
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_TXSR_OFFSET, regval);
 	dev_dbg(&lp->pdev->dev, "TX status 0x%x\n", regval);
+	if (regval & (XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_BUFEXH_MASK))
+		dev_err(&lp->pdev->dev, "TX error 0x%x\n", regval);
 
 	/* This may happen when a buffer becomes complete
 	 * between reading the ISR and scanning the descriptors.
@@ -1361,11 +1365,9 @@ static void xemacps_tx_poll(unsigned long data)
 		 * are in other error counters.
 		 */
 		if (cur_p->ctrl & XEMACPS_TXBUF_LAST_MASK) {
-			if (!(cur_p->ctrl & XEMACPS_TXBUF_ERR_MASK)) {
-				lp->stats.tx_packets++;
-				lp->stats.tx_bytes += len;
-				len = 0;
-			}
+			lp->stats.tx_packets++;
+			lp->stats.tx_bytes += len;
+			len = 0;
 		}
 
 		/* Set used bit, preserve wrap bit; clear everything else. */
