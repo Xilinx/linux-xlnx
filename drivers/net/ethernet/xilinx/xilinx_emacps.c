@@ -1776,10 +1776,10 @@ static void xemacps_update_stats(unsigned long data)
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXRESERRCNT_OFFSET);
 	nstat->rx_errors += cnt;
+	nstat->rx_missed_errors += cnt;
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_RXORCNT_OFFSET);
 	nstat->rx_errors += cnt;
-	nstat->rx_over_errors += cnt;
 	nstat->rx_fifo_errors += cnt;
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_TXURUNCNT_OFFSET);
@@ -1787,11 +1787,9 @@ static void xemacps_update_stats(unsigned long data)
 	nstat->tx_fifo_errors += cnt;
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_SNGLCOLLCNT_OFFSET);
-	nstat->tx_errors += cnt;
 	nstat->collisions += cnt;
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_MULTICOLLCNT_OFFSET);
-	nstat->tx_errors += cnt;
 	nstat->collisions += cnt;
 
 	cnt = xemacps_read(lp->baseaddr, XEMACPS_EXCESSCOLLCNT_OFFSET);
