@@ -12,14 +12,6 @@
  * kind, whether express or implied.
  */
 
-/*
-	Usefull driver information:
-	- driver does not support multiple instances of logiCVC-ML
-	- logiCVC-ML background layer is recomended
-	- platform driver default resolution is set with defines
-	  in xylonfb-vmode.h
- */
-
 
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
@@ -257,13 +249,16 @@ static int xylonfb_check_var(struct fb_var_screeninfo *var,
 
 static int xylonfb_set_par(struct fb_info *fbi)
 {
+	struct fb_info **afbi = NULL;
 	struct xylonfb_layer_data *ld = fbi->par;
 	struct xylonfb_common_data *cd = ld->xylonfb_cd;
 	int rc = 0;
-	struct fb_info **afbi = NULL;
 	int i;
 	char vmode_opt[20+1];
-	char vmode_cvt[2+1];
+	char vmode_ct[] = "";
+	char vmode_cvt[] = "M";
+	char vmode_cvtrb[] = "MR";
+	char *vmode_tim;
 	bool resolution_change, layer_on[LOGICVC_MAX_LAYERS];
 
 	driver_devel("%s\n", __func__);
@@ -279,6 +274,15 @@ static int xylonfb_set_par(struct fb_info *fbi)
 		resolution_change = false;
 	} else {
 		resolution_change = true;
+	}
+
+	if (cd->xylonfb_flags & XYLONFB_FLAG_VMODE_INIT) {
+		vmode_tim = vmode_cvt;
+	} else {
+		if (cd->xylonfb_flags & XYLONFB_FLAG_EDID_VMODE)
+			vmode_tim = vmode_ct;
+		else
+			vmode_tim = vmode_cvtrb;
 	}
 
 	if (resolution_change ||
@@ -301,13 +305,9 @@ static int xylonfb_set_par(struct fb_info *fbi)
 		xylonfb_logicvc_disp_ctrl(fbi, false);
 
 		if (!(cd->xylonfb_flags & XYLONFB_FLAG_VMODE_INIT)) {
-			if (cd->xylonfb_flags & XYLONFB_FLAG_EDID_VMODE)
-				strcpy(vmode_cvt, "-");
-			else
-				strcpy(vmode_cvt, "M-");
-			sprintf(vmode_opt, "%dx%d%s%d@%d",
+			sprintf(vmode_opt, "%dx%d%s-%d@%d",
 				fbi->var.xres, fbi->var.yres,
-				vmode_cvt,
+				vmode_tim,
 				fbi->var.bits_per_pixel,
 				cd->vmode_data_current.fb_vmode.refresh);
 			if (!strcmp(cd->vmode_data.fb_vmode_name, vmode_opt)) {
@@ -328,9 +328,9 @@ static int xylonfb_set_par(struct fb_info *fbi)
 					pr_err("Error xylonfb changing pixel clock\n");
 			}
 			xylonfb_fbi_update(fbi);
-			pr_info("xylonfb video mode: %dx%d-%d@%d\n",
-				fbi->var.xres,
-				fbi->var.yres,
+			pr_info("xylonfb video mode: %dx%d%s-%d@%d\n",
+				fbi->var.xres, fbi->var.yres,
+				vmode_tim,
 				fbi->var.bits_per_pixel,
 				cd->vmode_data_current.fb_vmode.refresh);
 		}
@@ -1257,7 +1257,7 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 	switch (rc) {
 	case 0:
 		pr_err("Error xylonfb video mode\n"
-			"using driver default mode %dx%d-%d@%d\n",
+			"using driver default mode %dx%dM-%d@%d\n",
 			xylonfb_vmode.fb_vmode.xres,
 			xylonfb_vmode.fb_vmode.yres,
 			bpp,
@@ -1271,10 +1271,11 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 			xylonfb_mode_option);
 		break;
 	case 3:
-		pr_notice("xylonfb default video mode %dx%d-%d@%d\n",
+		pr_notice("xylonfb default video mode %dx%dM-%d@%d\n",
 			xylonfb_vmode.fb_vmode.xres,
 			xylonfb_vmode.fb_vmode.yres,
-			bpp, xylonfb_vmode.fb_vmode.refresh);
+			bpp,
+			xylonfb_vmode.fb_vmode.refresh);
 		break;
 	case 4:
 		pr_notice("xylonfb video mode fallback\n");
@@ -1297,14 +1298,17 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 	cd->vmode_data_current.fb_vmode.sync = fb_var.sync;
 	cd->vmode_data_current.fb_vmode.vmode = fb_var.vmode;
 	cd->vmode_data_current.fb_vmode.refresh =
-		(PICOS2KHZ(fb_var.pixclock) * 1000) /
-		((fb_var.xres + fb_var.left_margin + fb_var.right_margin +
-		  fb_var.hsync_len) *
-		 (fb_var.yres + fb_var.upper_margin + fb_var.lower_margin +
-		  fb_var.vsync_len));
+		DIV_ROUND_CLOSEST(
+			(PICOS2KHZ(fb_var.pixclock) * 1000),
+			((fb_var.xres + fb_var.left_margin +
+			fb_var.right_margin + fb_var.hsync_len)
+				*
+			(fb_var.yres + fb_var.upper_margin +
+			fb_var.lower_margin + fb_var.vsync_len)));
 	sprintf(cd->vmode_data_current.fb_vmode_name,
 		"%dx%dM-%d@%d",
-		fb_var.xres, fb_var.yres, fb_var.bits_per_pixel,
+		fb_var.xres, fb_var.yres,
+		fb_var.bits_per_pixel,
 		cd->vmode_data_current.fb_vmode.refresh);
 
 	if ((cd->xylonfb_flags & XYLONFB_FLAG_EDID_RDY) ||
