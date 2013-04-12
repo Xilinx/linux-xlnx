@@ -696,10 +696,8 @@ static void xemacps_phy_init(struct net_device *ndev)
 static void xemacps_set_freq(struct clk *clk, long rate, struct device *dev)
 {
 	rate = clk_round_rate(clk, rate);
-	if (rate < 0) {
-		dev_warn(dev, "round rate failed\n");
+	if (rate < 0)
 		return;
-	}
 
 	dev_info(dev, "Set clk to %ld Hz\n", rate);
 	if (clk_set_rate(clk, rate))
