@@ -144,4 +144,6 @@ source "drivers/staging/fwserial/Kconfig"
 
 source "drivers/staging/video/axivdma/Kconfig"
 
+source "drivers/staging/video/imageon/Kconfig"
+
 endif # STAGING
