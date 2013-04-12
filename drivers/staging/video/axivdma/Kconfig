@@ -1,0 +1,16 @@
+menuconfig XILINX_VIDEO_IP
+	tristate "Xilinx Video IP components"
+	---help---
+	  This adds support to include Xilinx Video IP components.
+	  Xilinx video IP need few additional drivers which are not currently in Xilinx
+	  main-stream kernel are added in this section.
+	  Example includes : AXI VDMA client driver.
+
+config XILINX_VDMA_WRAPPER
+	tristate "Video DMA Wrapper"
+	depends on XILINX_VIDEO_IP && XILINX_DMA_ENGINES
+	---help---
+	  Enables Video DMA IP component.Uses Slave-DMA API of the DMA engine.
+	  Provides user space application an interface to configure/control
+	  Xilinx VDMA IP.
+	  VDMA wrapper can be extened to supports other features exported by VDMA engine.
