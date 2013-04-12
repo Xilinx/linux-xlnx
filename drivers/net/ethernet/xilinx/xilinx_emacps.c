@@ -729,46 +729,36 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			else
 				regval &= ~XEMACPS_NWCFG_FDEN_MASK;
 
+
+			regval &= ~(XEMACPS_NWCFG_1000_MASK |
+					XEMACPS_NWCFG_100_MASK);
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
 				xemacps_set_freq(lp->devclk, 125000000,
 						&lp->pdev->dev);
-			} else {
-				regval &= ~XEMACPS_NWCFG_1000_MASK;
-			}
-
-			if (phydev->speed == SPEED_100) {
+				xemacps_mdio_write(lp->mii_bus,
+					gmii2rgmii_phydev->addr,
+					XEMACPS_GMII2RGMII_REG_NUM,
+					XEMACPS_GMII2RGMII_SPEED1000_FD);
+			} else if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
 				xemacps_set_freq(lp->devclk, 25000000,
 						&lp->pdev->dev);
-			} else {
-				regval &= ~XEMACPS_NWCFG_100_MASK;
-			}
-
-			if (phydev->speed == SPEED_10) {
+				xemacps_mdio_write(lp->mii_bus,
+						gmii2rgmii_phydev->addr,
+						XEMACPS_GMII2RGMII_REG_NUM,
+						XEMACPS_GMII2RGMII_SPEED100_FD);
+			} else if (phydev->speed == SPEED_10) {
 				xemacps_set_freq(lp->devclk, 2500000,
 						&lp->pdev->dev);
+				xemacps_mdio_write(lp->mii_bus,
+						gmii2rgmii_phydev->addr,
+						XEMACPS_GMII2RGMII_REG_NUM,
+						XEMACPS_GMII2RGMII_SPEED10_FD);
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
 			regval);
-
-			if (regval & XEMACPS_NWCFG_1000_MASK) {
-				xemacps_mdio_write(lp->mii_bus,
-				gmii2rgmii_phydev->addr,
-				XEMACPS_GMII2RGMII_REG_NUM,
-				XEMACPS_GMII2RGMII_SPEED1000_FD);
-			} else if (regval & XEMACPS_NWCFG_100_MASK) {
-				xemacps_mdio_write(lp->mii_bus,
-				gmii2rgmii_phydev->addr,
-				XEMACPS_GMII2RGMII_REG_NUM,
-				XEMACPS_GMII2RGMII_SPEED100_FD);
-			} else {
-				xemacps_mdio_write(lp->mii_bus,
-				gmii2rgmii_phydev->addr,
-				XEMACPS_GMII2RGMII_REG_NUM,
-				XEMACPS_GMII2RGMII_SPEED10_FD);
-			}
 
 			lp->speed = phydev->speed;
 			lp->duplex = phydev->duplex;
