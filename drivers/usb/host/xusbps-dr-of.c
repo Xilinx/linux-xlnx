@@ -202,12 +202,9 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 	}
 	platform_set_drvdata(ofdev, hdata);
 
-	if (pdata->irq == 53)
-		hdata->clk = clk_get_sys("USB0_APER", NULL);
-	else
-		hdata->clk = clk_get_sys("USB1_APER", NULL);
+	hdata->clk = clk_get(&ofdev->dev, NULL);
 	if (IS_ERR(hdata->clk)) {
-		dev_err(&ofdev->dev, "APER clock not found.\n");
+		dev_err(&ofdev->dev, "input clock not found.\n");
 		ret = PTR_ERR(hdata->clk);
 		goto err_free;
 	}

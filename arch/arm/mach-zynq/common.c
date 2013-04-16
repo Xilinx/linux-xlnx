@@ -77,7 +77,7 @@ static int __init zynq_opp_init(void)
 	unsigned int i;
 	struct device *dev = get_cpu_device(0);
 	int ret = 0;
-	struct clk *cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
+	struct clk *cpuclk = clk_get(NULL, "cpufreq_clk");
 
 	if (!dev) {
 		pr_warn("%s: no cpu device. DVFS not available.", __func__);

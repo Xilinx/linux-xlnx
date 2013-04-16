@@ -116,9 +116,9 @@ static int __cpuinit zynq_cpu_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
 
-	cpuclk = clk_get_sys("CPU_6OR4X_CLK", NULL);
+	cpuclk = clk_get(NULL, "cpufreq_clk");
 	if (IS_ERR(cpuclk)) {
-		pr_warn("Xilinx: cpufreq: Clock not found.");
+		pr_warn("Xilinx: cpufreq: cpufreq_clk clock not found.");
 		return PTR_ERR(cpuclk);
 	}
 

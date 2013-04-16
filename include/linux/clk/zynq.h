@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2012 Xilinx
+ *  Copyright (C) 2012 - 2013 Xilinx
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -14,26 +14,16 @@
 #ifndef __LINUX_CLK_ZYNQ_H_
 #define __LINUX_CLK_ZYNQ_H_
 
-void __init zynq_clock_init(void __iomem *slcr);
+#include <linux/spinlock.h>
 
-struct clk *clk_register_zynq_gd1m(const char *name,
-		void __iomem *clkctrl, const char **pnames,
-		spinlock_t *lock);
-struct clk *clk_register_zynq_gd2m(const char *name,
-		void __iomem *clkctrl, const char **pnames, u8 num_parents,
-		spinlock_t *lock);
-struct clk *clk_register_zynq_d2m(const char *name,
-		void __iomem *clkctrl, const char **pnames, spinlock_t *lock);
-struct clk *clk_register_zynq_d1m(const char *name,
-		void __iomem *clkctrl, const char **pnames, u8 num_parents,
-		spinlock_t *lock);
+extern unsigned int zynq_clk_suspended;
 
-struct clk *clk_register_zynq_clk621(const char *name,
-		void __iomem *clkctrl, void __iomem *clk621,
-		unsigned int basediv,
-		unsigned int divadd, const char **pnames, u8 num_parents,
-		spinlock_t *lock);
+void zynq_clock_init(void __iomem *slcr);
+int zynq_clk_suspend_early(void);
+void zynq_clk_resume_late(void);
 
-//void __init xilinx_zynq_clocks_init(void __iomem *slcr);
+struct clk *clk_register_zynq_pll(const char *name, const char *parent,
+		void __iomem *pll_ctrl, void __iomem *pll_status, u8 lock_index,
+		spinlock_t *lock);
 
 #endif

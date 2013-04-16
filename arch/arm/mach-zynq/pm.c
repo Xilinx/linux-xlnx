@@ -20,6 +20,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/clk/zynq.h>
 #include <linux/bitops.h>
 #include <linux/err.h>
 #include <linux/init.h>
@@ -44,9 +45,18 @@
 #define SCU_STBY_EN_MASK	BIT(5)
 #define TOPSW_CLK_CTRL_DIS_MASK	BIT(0)
 
-static struct clk *cpupll;
 static void __iomem *ddrc_base;
 static void __iomem *ocm_base;
+
+static int zynq_pm_prepare_late(void)
+{
+	return zynq_clk_suspend_early();
+}
+
+static void zynq_pm_wake(void)
+{
+	zynq_clk_resume_late();
+}
 
 static int zynq_pm_suspend(unsigned long arg)
 {
@@ -113,23 +123,6 @@ static int zynq_pm_suspend(unsigned long arg)
 		do_ddrpll_bypass = 0;
 	}
 
-	/*
-	 * at this point PLLs are supposed to be bypassed:
-	 *
-	 * DDRPLL: Is bypassed without further sanity checking in the suspend
-	 * routine which is called below and executed from OCM.
-	 *
-	 * IOPLL/ARMPLL: By now all clock consumers should have released their
-	 * clock resulting in the PLLs to be bypassed. To account for timers and
-	 * similar which run in the CPU clock domain we call a disable on the
-	 * CPU clock's PLL to bypass it.
-	 *
-	 * A wake up device would prevent its source PLL from
-	 * being bypassed, unless its the DDRPLL.
-	 */
-	if (!IS_ERR(cpupll))
-		clk_disable(cpupll);
-
 	/* Transfer to suspend code in OCM */
 	if (do_ddrpll_bypass) {
 		/*
@@ -145,9 +138,6 @@ static int zynq_pm_suspend(unsigned long arg)
 		WARN_ONCE(1, "DRAM self-refresh not available\n");
 		cpu_do_idle();
 	}
-
-	if (!IS_ERR(cpupll))
-		clk_enable(cpupll);
 
 	/* Restore original OCM contents */
 	if (do_ddrpll_bypass) {
@@ -207,7 +197,9 @@ static int zynq_pm_enter(suspend_state_t suspend_state)
 }
 
 static const struct platform_suspend_ops zynq_pm_ops = {
+	.prepare_late	= zynq_pm_prepare_late,
 	.enter		= zynq_pm_enter,
+	.wake		= zynq_pm_wake,
 	.valid		= suspend_valid_only_mem,
 };
 
@@ -266,15 +258,6 @@ static void __iomem *zynq_pm_remap_ocm(void)
 
 int __init zynq_pm_late_init(void)
 {
-	cpupll = clk_get_sys("CPU_6OR4X_CLK", NULL);
-	if (!IS_ERR(cpupll)) {
-		cpupll = clk_get_parent(cpupll);
-		if (!IS_ERR(cpupll))
-			cpupll = clk_get_parent(cpupll);
-	}
-	if (IS_ERR(cpupll))
-		pr_warn("%s: CPUPLL not found.\n", __func__);
-
 	ddrc_base = zynq_pm_ioremap("xlnx,ps7-ddrc");
 	if (!ddrc_base)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);

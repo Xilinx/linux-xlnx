@@ -349,7 +349,7 @@ static int xwdtps_probe(struct platform_device *pdev)
 	watchdog_set_nowayout(&xwdtps_device, nowayout);
 	watchdog_set_drvdata(&xwdtps_device, &wdt);
 
-	wdt->clk = clk_get_sys("CPU_1X_CLK", NULL);
+	wdt->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(wdt->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
 		res = PTR_ERR(wdt->clk);

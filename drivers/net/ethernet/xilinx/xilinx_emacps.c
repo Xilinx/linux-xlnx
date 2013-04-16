@@ -2621,21 +2621,15 @@ static int xemacps_probe(struct platform_device *pdev)
 	else
 		lp->enetnum = 1;
 
-	if (lp->enetnum == 0)
-		lp->aperclk = clk_get_sys("GEM0_APER", NULL);
-	else
-		lp->aperclk = clk_get_sys("GEM1_APER", NULL);
+	lp->aperclk = clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(lp->aperclk)) {
-		dev_err(&pdev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "aper_clk clock not found.\n");
 		rc = PTR_ERR(lp->aperclk);
 		goto err_out_unregister_netdev;
 	}
-	if (lp->enetnum == 0)
-		lp->devclk = clk_get_sys("GEM0", NULL);
-	else
-		lp->devclk = clk_get_sys("GEM1", NULL);
+	lp->devclk = clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(lp->devclk)) {
-		dev_err(&pdev->dev, "Device clock not found.\n");
+		dev_err(&pdev->dev, "ref_clk clock not found.\n");
 		rc = PTR_ERR(lp->devclk);
 		goto err_out_clk_put_aper;
 	}

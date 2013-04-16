@@ -877,12 +877,9 @@ static int xi2cps_probe(struct platform_device *pdev)
 		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
-	if (id->irq == 80)
-		id->clk = clk_get_sys("I2C1_APER", NULL);
-	else
-		id->clk = clk_get_sys("I2C0_APER", NULL);
+	id->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(id->clk)) {
-		dev_err(&pdev->dev, "Clock not found.\n");
+		dev_err(&pdev->dev, "input clock not found.\n");
 		ret = PTR_ERR(id->clk);
 		goto err_unmap;
 	}

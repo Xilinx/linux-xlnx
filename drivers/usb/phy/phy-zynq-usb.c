@@ -1996,12 +1996,9 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&xotg->work, xusbps_otg_work);
 
-	if (xotg->irq == 53)
-		xotg->clk = clk_get_sys("USB0_APER", NULL);
-	else
-		xotg->clk = clk_get_sys("USB1_APER", NULL);
+	xotg->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xotg->clk)) {
-		dev_err(&pdev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "input clock not found.\n");
 		retval = PTR_ERR(xotg->clk);
 		goto err;
 	}
