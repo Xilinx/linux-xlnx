@@ -1166,8 +1166,7 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 		goto out;
 
 	/* propagate PRE_RATE_CHANGE notifications */
-	if (clk->notifier_count)
-		ret = __clk_speculate_rates(clk, parent->rate);
+	ret = __clk_speculate_rates(clk, parent->rate);
 
 	/* abort if a driver objects */
 	if (ret & NOTIFY_STOP_MASK)
