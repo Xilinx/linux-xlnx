@@ -396,12 +396,9 @@ static int xusbps_udc_clk_init(struct platform_device *pdev)
 	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
 	int rc;
 
-	if (pdata->irq == 53)
-		pdata->clk = clk_get_sys("USB0_APER", NULL);
-	else
-		pdata->clk = clk_get_sys("USB1_APER", NULL);
+	pdata->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(pdata->clk)) {
-		dev_err(&pdev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "input clock not found.\n");
 		return PTR_ERR(pdata->clk);
 	}
 

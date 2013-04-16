@@ -700,24 +700,16 @@ static int xspips_probe(struct platform_device *dev)
 		goto unmap_io;
 	}
 
-	if (xspi->irq == 58)
-		xspi->aperclk = clk_get_sys("SPI0_APER", NULL);
-	else
-		xspi->aperclk = clk_get_sys("SPI1_APER", NULL);
-
+	xspi->aperclk = clk_get(&dev->dev, "aper_clk");
 	if (IS_ERR(xspi->aperclk)) {
-		dev_err(&dev->dev, "APER clock not found.\n");
+		dev_err(&dev->dev, "aper_clk clock not found.\n");
 		ret = PTR_ERR(xspi->aperclk);
 		goto free_irq;
 	}
 
-	if (xspi->irq == 58)
-		xspi->devclk = clk_get_sys("SPI0", NULL);
-	else
-		xspi->devclk = clk_get_sys("SPI1", NULL);
-
+	xspi->devclk = clk_get(&dev->dev, "ref_clk");
 	if (IS_ERR(xspi->devclk)) {
-		dev_err(&dev->dev, "Device clock not found.\n");
+		dev_err(&dev->dev, "ref_clk clock not found.\n");
 		ret = PTR_ERR(xspi->devclk);
 		goto clk_put_aper;
 	}

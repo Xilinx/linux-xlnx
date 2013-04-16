@@ -51,6 +51,7 @@
 #define XTTCPS_ISR_OFFSET		0x54 /* Interrupt Status Reg, RO */
 #define XTTCPS_IER_OFFSET		0x60 /* Interrupt Enable Reg, RW */
 
+#define XTTCPS_CLK_CNTRL_CSRC_MASK	(1 << 5)	/* clock source */
 #define XTTCPS_CNT_CNTRL_DISABLE_MASK	0x1
 
 /*
@@ -403,7 +404,9 @@ static void __init xttcps_timer_init(struct device_node *timer)
 {
 	unsigned int irq;
 	void __iomem *timer_baseaddr;
-	struct clk *clk;
+	struct clk *clk_cs;
+	struct clk *clk_ce;
+	int clksel;
 
 	/*
 	 * Get the 1st Triple Timer Counter (TTC) block from the device tree
@@ -422,14 +425,24 @@ static void __init xttcps_timer_init(struct device_node *timer)
 		BUG();
 	}
 
-	clk = clk_get_sys("CPU_1X_CLK", NULL);
-	if (IS_ERR(clk)) {
-		pr_err("ERROR: timer input clock not found\n");
+	clksel = __raw_readl(timer_baseaddr + XTTCPS_CLK_CNTRL_OFFSET);
+	clksel = !!(clksel & XTTCPS_CLK_CNTRL_CSRC_MASK);
+	clk_cs = of_clk_get(timer, clksel);
+	if (IS_ERR(clk_cs)) {
+		pr_err("ERROR: clock source input clock not found\n");
 		BUG();
 	}
 
-	zynq_ttc_setup_clocksource(clk, timer_baseaddr);
-	zynq_ttc_setup_clockevent(clk, timer_baseaddr + 4, irq);
+	clksel = __raw_readl(timer_baseaddr + XTTCPS_CLK_CNTRL_OFFSET + 4);
+	clksel = !!(clksel & XTTCPS_CLK_CNTRL_CSRC_MASK);
+	clk_ce = of_clk_get(timer, clksel);
+	if (IS_ERR(clk_ce)) {
+		pr_err("ERROR: clock event input clock not found\n");
+		BUG();
+	}
+
+	zynq_ttc_setup_clocksource(clk_cs, timer_baseaddr);
+	zynq_ttc_setup_clockevent(clk_ce, timer_baseaddr + 4, irq);
 
 #ifdef CONFIG_HAVE_ARM_TWD
 	twd_local_timer_of_register();

@@ -703,7 +703,7 @@ static int xadc_probe(struct platform_device *pdev)
 		goto err_io_remap;
 	}
 
-	xadc->clk = clk_get_sys("PCAP", NULL);
+	xadc->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xadc->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
 		ret = PTR_ERR(xadc->clk);

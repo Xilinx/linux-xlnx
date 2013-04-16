@@ -143,7 +143,6 @@ static const struct dev_pm_ops xsdhcips_dev_pm_ops = {
 static int sdhci_zynq_probe(struct platform_device *pdev)
 {
 	int ret;
-	int irq = platform_get_irq(pdev, 0);
 	const void *prop;
 	struct device_node *np = pdev->dev.of_node;
 	struct sdhci_host *host;
@@ -156,24 +155,16 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	if (irq == 56)
-		xsdhcips->aperclk = clk_get_sys("SDIO0_APER", NULL);
-	else
-		xsdhcips->aperclk = clk_get_sys("SDIO1_APER", NULL);
-
+	xsdhcips->aperclk = clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xsdhcips->aperclk)) {
-		dev_err(&pdev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "aper_clk clock not found.\n");
 		ret = PTR_ERR(xsdhcips->aperclk);
 		goto err_free;
 	}
 
-	if (irq == 56)
-		xsdhcips->devclk = clk_get_sys("SDIO0", NULL);
-	else
-		xsdhcips->devclk = clk_get_sys("SDIO1", NULL);
-
+	xsdhcips->devclk = clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(xsdhcips->devclk)) {
-		dev_err(&pdev->dev, "Device clock not found.\n");
+		dev_err(&pdev->dev, "ref_clk clock not found.\n");
 		ret = PTR_ERR(xsdhcips->devclk);
 		goto clk_put_aper;
 	}

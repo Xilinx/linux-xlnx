@@ -1590,7 +1590,7 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 		 drvdata->base_address,
 		 (unsigned long long) (regs_res->end - regs_res->start + 1));
 
-	drvdata->clk = clk_get_sys("PCAP", NULL);
+	drvdata->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(drvdata->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
 		retval = PTR_ERR(drvdata->clk);

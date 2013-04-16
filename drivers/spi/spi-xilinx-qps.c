@@ -1076,16 +1076,16 @@ static int xqspips_probe(struct platform_device *dev)
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 
-	xqspi->aperclk = clk_get_sys("LQSPI_APER", NULL);
+	xqspi->aperclk = clk_get(&dev->dev, "aper_clk");
 	if (IS_ERR(xqspi->aperclk)) {
-		dev_err(&dev->dev, "APER clock not found.\n");
+		dev_err(&dev->dev, "aper_clk clock not found.\n");
 		ret = PTR_ERR(xqspi->aperclk);
 		goto free_irq;
 	}
 
-	xqspi->devclk = clk_get_sys("LQSPI", NULL);
+	xqspi->devclk = clk_get(&dev->dev, "ref_clk");
 	if (IS_ERR(xqspi->devclk)) {
-		dev_err(&dev->dev, "Device clock not found.\n");
+		dev_err(&dev->dev, "ref_clk clock not found.\n");
 		ret = PTR_ERR(xqspi->devclk);
 		goto clk_put_aper;
 	}

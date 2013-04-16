@@ -627,9 +627,9 @@ static int xgpiops_probe(struct platform_device *pdev)
 	}
 
 	/* Enable GPIO clock */
-	gpio->clk = clk_get_sys("GPIO_APER", NULL);
+	gpio->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(gpio->clk)) {
-		dev_err(&pdev->dev, "Clock not found.\n");
+		dev_err(&pdev->dev, "input clock not found.\n");
 		ret = PTR_ERR(gpio->clk);
 		goto err_chip_remove;
 	}

@@ -1261,21 +1261,15 @@ static int xuartps_probe(struct platform_device *pdev)
 	else
 		xuartps->uartnum = 1;
 
-	if (xuartps->uartnum)
-		xuartps->aperclk = clk_get_sys("UART1_APER", NULL);
-	else
-		xuartps->aperclk = clk_get_sys("UART0_APER", NULL);
+	xuartps->aperclk = clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xuartps->aperclk)) {
-		dev_err(&pdev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "aper_clk clock not found.\n");
 		ret = PTR_ERR(xuartps->aperclk);
 		goto err_out_free;
 	}
-	if (xuartps->uartnum)
-		xuartps->devclk = clk_get_sys("UART1", NULL);
-	else
-		xuartps->devclk = clk_get_sys("UART0", NULL);
+	xuartps->devclk = clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(xuartps->devclk)) {
-		dev_err(&pdev->dev, "Device clock not found.\n");
+		dev_err(&pdev->dev, "ref_clk clock not found.\n");
 		ret = PTR_ERR(xuartps->devclk);
 		goto err_out_clk_put_aper;
 	}
