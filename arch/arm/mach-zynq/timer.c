@@ -21,6 +21,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/slab.h>
+#include <asm/sched_clock.h>
 #include <asm/smp_twd.h>
 #include "common.h"
 
@@ -95,6 +96,8 @@ struct xttcps_timer_clockevent {
 #define to_xttcps_timer_clkevent(x) \
 		container_of(x, struct xttcps_timer_clockevent, ce)
 
+static void __iomem *sched_clock_val_reg;
+
 /**
  * xttcps_set_interval - Set the timer interval value
  *
@@ -154,6 +157,11 @@ static cycle_t __xttc_clocksource_read(struct clocksource *cs)
 
 	return (cycle_t)__raw_readl(timer->base_addr +
 				XTTCPS_COUNT_VAL_OFFSET);
+}
+
+static u32 xttc_sched_clock_read(void)
+{
+	return __raw_readl(sched_clock_val_reg);
 }
 
 /**
@@ -295,6 +303,9 @@ static void __init zynq_ttc_setup_clocksource(struct clk *clk,
 	if (WARN_ON(err))
 		return;
 
+	sched_clock_val_reg = base + XTTCPS_COUNT_VAL_OFFSET;
+	setup_sched_clock(xttc_sched_clock_read , 16,
+			clk_get_rate(ttccs->xttc.clk) / PRESCALE);
 }
 
 static int xttcps_rate_change_clockevent_cb(struct notifier_block *nb,
