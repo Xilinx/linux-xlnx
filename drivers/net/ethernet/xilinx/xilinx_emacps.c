@@ -553,7 +553,6 @@ struct net_local {
 	/* RX ip/tcp/udp checksum */
 	unsigned ip_summed;
 	unsigned int enetnum;
-	unsigned int board_type;
 	unsigned int lastrxfrmscntr;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int ptpenetclk;
@@ -650,39 +649,6 @@ static int xemacps_mdio_write(struct mii_bus *bus, int mii_id, int phyreg,
 static int xemacps_mdio_reset(struct mii_bus *bus)
 {
 	return 0;
-}
-
-static void xemacps_phy_init(struct net_device *ndev)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	u16 regval;
-	int i = 0;
-
-	/* set RX delay */
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 20);
-	/* 0x0080 for 100Mbps, 0x0060 for 1Gbps. */
-	regval |= 0x0080;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 20, regval);
-
-	/* 0x2100 for 100Mbps, 0x0140 for 1Gbps. */
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, 0x2100);
-
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 0);
-	regval |= 0x8000;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, regval);
-	for (i = 0; i < 10; i++)
-		mdelay(500);
-#ifdef DEBUG_VERBOSE
-	dev_dbg(&lp->pdev->dev,
-			"phy register dump, start from 0, four in a row.");
-	for (i = 0; i <= 30; i++) {
-		if (!(i%4))
-			dev_dbg(&lp->pdev->dev, "\n %02d:  ", i);
-		regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, i);
-		dev_dbg(&lp->pdev->dev, " 0x%08x", regval);
-	}
-	dev_dbg(&lp->pdev->dev, "\n");
-#endif
 }
 
 /**
@@ -856,10 +822,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	lp->duplex  = -1;
 	lp->phy_dev = phydev;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ)
-		phy_start(lp->phy_dev);
-	else
-		xemacps_phy_init(lp->ndev);
+	phy_start(lp->phy_dev);
 
 	dev_dbg(&lp->pdev->dev, "phy_addr 0x%x, phy_id 0x%08x\n",
 			lp->phy_dev->addr, lp->phy_dev->phy_id);
@@ -1667,8 +1630,7 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCFG_100_MASK;
 	regval |= XEMACPS_NWCFG_HDRXEN_MASK;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ)
-		regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 	if (lp->ndev->flags & IFF_PROMISC)	/* copy all */
 		regval |= XEMACPS_NWCFG_COPYALLEN_MASK;
 	if (!(lp->ndev->flags & IFF_BROADCAST))	/* No broadcast */
@@ -1918,10 +1880,8 @@ static int xemacps_close(struct net_device *ndev)
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	netif_carrier_off(ndev);
 	xemacps_reset_hw(lp);
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_disconnect(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_disconnect(lp->phy_dev);
 	if (lp->gmii2rgmii_phy_node)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
 	mdelay(500);
@@ -1950,10 +1910,8 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	xemacps_reset_hw(lp);
 	spin_unlock_bh(&lp->tx_lock);
 
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_stop(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_stop(lp->phy_dev);
 
 	xemacps_descriptor_free(lp);
 	rc = xemacps_descriptor_init(lp);
@@ -1968,10 +1926,8 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	lp->link    = 0;
 	lp->speed   = 0;
 	lp->duplex  = -1;
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_start(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_start(lp->phy_dev);
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 	netif_start_queue(lp->ndev);
@@ -2620,8 +2576,6 @@ static int xemacps_probe(struct platform_device *pdev)
 	struct resource *r_irq = NULL;
 	struct net_device *ndev;
 	struct net_local *lp;
-	struct device_node *np;
-	const void *prop;
 	u32 regval = 0;
 	int rc = -ENXIO;
 
@@ -2678,7 +2632,6 @@ static int xemacps_probe(struct platform_device *pdev)
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
-	lp->board_type = BOARD_TYPE_ZYNQ;
 
 	rc = register_netdev(ndev);
 	if (rc) {
@@ -2691,67 +2644,49 @@ static int xemacps_probe(struct platform_device *pdev)
 	else
 		lp->enetnum = 1;
 
-	np = of_get_next_parent(lp->pdev->dev.of_node);
-	np = of_get_next_parent(np);
-	prop = of_get_property(np, "compatible", NULL);
-
-	if (prop != NULL) {
-		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
-			lp->board_type = BOARD_TYPE_PEEP;
-		else
-			lp->board_type = BOARD_TYPE_ZYNQ;
-	} else {
-		lp->board_type = BOARD_TYPE_ZYNQ;
+	if (lp->enetnum == 0)
+		lp->aperclk = clk_get_sys("GEM0_APER", NULL);
+	else
+		lp->aperclk = clk_get_sys("GEM1_APER", NULL);
+	if (IS_ERR(lp->aperclk)) {
+		dev_err(&pdev->dev, "APER clock not found.\n");
+		rc = PTR_ERR(lp->aperclk);
+		goto err_out_unregister_netdev;
 	}
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		if (lp->enetnum == 0)
-			lp->aperclk = clk_get_sys("GEM0_APER", NULL);
-		else
-			lp->aperclk = clk_get_sys("GEM1_APER", NULL);
-		if (IS_ERR(lp->aperclk)) {
-			dev_err(&pdev->dev, "APER clock not found.\n");
-			rc = PTR_ERR(lp->aperclk);
-			goto err_out_unregister_netdev;
-		}
-		if (lp->enetnum == 0)
-			lp->devclk = clk_get_sys("GEM0", NULL);
-		else
-			lp->devclk = clk_get_sys("GEM1", NULL);
-		if (IS_ERR(lp->devclk)) {
-			dev_err(&pdev->dev, "Device clock not found.\n");
-			rc = PTR_ERR(lp->devclk);
-			goto err_out_clk_put_aper;
-		}
-
-		rc = clk_prepare_enable(lp->aperclk);
-		if (rc) {
-			dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-			goto err_out_clk_put;
-		}
-		rc = clk_prepare_enable(lp->devclk);
-		if (rc) {
-			dev_err(&pdev->dev, "Unable to enable device clock.\n");
-			goto err_out_clk_dis_aper;
-		}
-
-		lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
-		lp->clk_rate_change_nb.next = NULL;
-		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
-			dev_warn(&pdev->dev,
-				"Unable to register clock notifier.\n");
+	if (lp->enetnum == 0)
+		lp->devclk = clk_get_sys("GEM0", NULL);
+	else
+		lp->devclk = clk_get_sys("GEM1", NULL);
+	if (IS_ERR(lp->devclk)) {
+		dev_err(&pdev->dev, "Device clock not found.\n");
+		rc = PTR_ERR(lp->devclk);
+		goto err_out_clk_put_aper;
 	}
+
+	rc = clk_prepare_enable(lp->aperclk);
+	if (rc) {
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		goto err_out_clk_put;
+	}
+	rc = clk_prepare_enable(lp->devclk);
+	if (rc) {
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
+		goto err_out_clk_dis_aper;
+	}
+
+	lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
+	lp->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
+		dev_warn(&pdev->dev,
+			"Unable to register clock notifier.\n");
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,ptp-enet-clock", NULL);
-		if (prop)
-			lp->ptpenetclk = (u32)be32_to_cpup(prop);
-		else
-			lp->ptpenetclk = 133333328;
-	} else {
-		lp->ptpenetclk = PEEP_TSU_CLK;
-	}
+	prop = of_get_property(lp->pdev->dev.of_node,
+				"xlnx,ptp-enet-clock", NULL);
+	if (prop)
+		lp->ptpenetclk = (u32)be32_to_cpup(prop);
+	else
+		lp->ptpenetclk = 133333328;
 #endif
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
@@ -2766,11 +2701,10 @@ static int xemacps_probe(struct platform_device *pdev)
 
 	lp->phy_interface = rc;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		/* Set MDIO clock divider */
-		regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
-		xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
-	}
+	/* Set MDIO clock divider */
+	regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
+
 
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
