@@ -2024,6 +2024,8 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skb_frag_t *frag;
 	struct xemacps_bd *cur_p;
 	unsigned long flags;
+	int bd_tail;
+	int temp_bd_index;
 
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
 	spin_lock_bh(&lp->tx_lock);
@@ -2036,7 +2038,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 	lp->tx_bd_freecnt -= nr_frags;
 	frag = &skb_shinfo(skb)->frags[0];
-
+	bd_tail = lp->tx_bd_tail;
 	for (i = 0; i < nr_frags; i++) {
 		if (i == 0) {
 			len = skb_headlen(skb);
@@ -2057,13 +2059,14 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->addr = mapping;
 
 		/* Preserve only critical status bits.  Packet is NOT to be
-		 * committed to hardware at this time.
+		 * committed to hardware at this time. This ensures that
+		 * the Used bit will still be set. The clearing of Used bits
+		 * happen in a loop after this loop.
 		 */
 		regval = cur_p->ctrl;
 		regval &= (XEMACPS_TXBUF_USED_MASK | XEMACPS_TXBUF_WRAP_MASK);
 		/* update length field */
 		regval |= ((regval & ~XEMACPS_TXBUF_LEN_MASK) | len);
-		regval &= ~XEMACPS_TXBUF_USED_MASK;
 		/* last fragment of this packet? */
 		if (i == (nr_frags - 1))
 			regval |= XEMACPS_TXBUF_LAST_MASK;
@@ -2074,6 +2077,37 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 		cur_p = &(lp->tx_bd[lp->tx_bd_tail]);
 	}
+
+	/* Remember the bd index for the first bd in the bd chain allocated
+	 * for the fragments. The Used bit for the 1st BD will need to be
+	 * updated last.
+	 */
+	temp_bd_index = bd_tail;
+	bd_tail++;
+	bd_tail = bd_tail % XEMACPS_SEND_BD_CNT;
+	cur_p = &(lp->tx_bd[bd_tail]);
+	/* Clear the used bits for the BDs for a packet that consists of
+	 *  multiple BDs. For single BD packets, this loop will not execute.
+	 *  For multiple BD packets, the Used bit updates will happen for
+	 * all BDs except the 1st BD in the BD chain allocated for the packet.
+	 */
+	for (i = 1; i < nr_frags; i++) {
+		regval = cur_p->ctrl;
+		regval &= ~XEMACPS_TXBUF_USED_MASK;
+		cur_p->ctrl = regval;
+		bd_tail++;
+		bd_tail = bd_tail % XEMACPS_SEND_BD_CNT;
+		cur_p = &(lp->tx_bd[bd_tail]);
+	}
+	/* Clear the Used bit. For single BD packets, the clearing of
+	 * Used bit happens here. For multi-BD packets, the clearing of
+	 * the Used bit of the 1st BD happens here.
+	 */
+	cur_p = &(lp->tx_bd[temp_bd_index]);
+	regval = cur_p->ctrl;
+	regval &= ~XEMACPS_TXBUF_USED_MASK;
+	cur_p->ctrl = regval;
+
 	wmb();
 	spin_lock_irqsave(&lp->nwctrlreg_lock, flags);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
