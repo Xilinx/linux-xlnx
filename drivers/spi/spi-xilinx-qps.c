@@ -428,6 +428,10 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 		return -EINVAL;
 	}
 
+	if (transfer && (transfer->speed_hz == 0)) {
+		req_hz = qspi->max_speed_hz;
+	}
+
 	/* Set the clock frequency */
 	if (xqspi->speed_hz != req_hz) {
 		while ((baud_rate_val < 8)  &&
