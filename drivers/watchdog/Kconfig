@@ -962,9 +962,6 @@ config XILINX_WATCHDOG
 	---help---
 	  Watchdog driver for the xps_timebase_wdt ip core.
 
-	  IMPORTANT: The xps_timebase_wdt parent must have the property
-	  "clock-frequency" at device tree.
-
 	  To compile this driver as a module, choose M here: the
 	  module will be called of_xilinx_wdt.
 
