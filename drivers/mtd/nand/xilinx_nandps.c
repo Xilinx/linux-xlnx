@@ -754,7 +754,6 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 	ndelay(100);
 
 	if ((command == NAND_CMD_READ0) ||
-		(command == NAND_CMD_ERASE1) ||
 		(command == NAND_CMD_RESET) ||
 		(command == NAND_CMD_PARAM) ||
 		(command == NAND_CMD_GET_FEATURES)) {
