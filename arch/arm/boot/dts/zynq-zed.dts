@@ -40,7 +40,7 @@
 		serial0 = &ps7_uart_1;
 	} ;
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw ip=:::::eth0:dhcp earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
 		linux,stdout-path = "/axi@0/serial@e0001000";
 	} ;
 	cpus {
