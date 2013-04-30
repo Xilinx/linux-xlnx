@@ -426,8 +426,7 @@ static void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 			generic_handle_irq(gpio_irq);
 		}
 		/* shift to first virtual irq of next bank */
-		gpio_irq = (int)irq_get_handler_data(irq) +
-				(xgpiops_pin_table[bank_num] + 1);
+		gpio_irq = gpio->irq_base + xgpiops_pin_table[bank_num] + 1;
 	}
 
 	chip = irq_desc_get_chip(desc);
