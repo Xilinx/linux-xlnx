@@ -806,12 +806,8 @@ static void ep0_setup(struct xusbps_udc *udc)
 {
 	/* the intialization of an ep includes: fields in QH, Regs,
 	 * xusbps_ep struct */
-	/*
-	 * For control OUT endpoint, don't need to wait for zlp from host
-	 * (see usb 2.0 spec, section 5.5.3)
-	 */
 	struct_ep_qh_setup(udc, 0, USB_RECV, USB_ENDPOINT_XFER_CONTROL,
-			USB_MAX_CTRL_PAYLOAD, 1, 0);
+			USB_MAX_CTRL_PAYLOAD, 0, 0);
 	struct_ep_qh_setup(udc, 0, USB_SEND, USB_ENDPOINT_XFER_CONTROL,
 			USB_MAX_CTRL_PAYLOAD, 0, 0);
 	dr_ep_setup(0, USB_RECV, USB_ENDPOINT_XFER_CONTROL);
@@ -1103,15 +1099,7 @@ static struct ep_td_struct *xusbps_build_dtd(struct xusbps_req *req, unsigned
 
 	/* zlp is needed if req->req.zero is set */
 	if (req->req.zero) {
-		/*
-		 * There is no need for a separate zlp dtd for control IN
-		 * endpoint. The ZLT bit in dQH takes care.
-		 */
-		if ((ep_index(req->ep) == 0) &&
-				(req->req.length == req->req.actual) &&
-				!(req->req.length % req->ep->ep.maxpacket))
-			*is_last = 1;
-		else if (*length == 0 || (*length % req->ep->ep.maxpacket) != 0)
+		if (*length == 0 || (*length % req->ep->ep.maxpacket) != 0)
 			*is_last = 1;
 		else
 			*is_last = 0;
