@@ -807,9 +807,9 @@ static void ep0_setup(struct xusbps_udc *udc)
 	/* the intialization of an ep includes: fields in QH, Regs,
 	 * xusbps_ep struct */
 	struct_ep_qh_setup(udc, 0, USB_RECV, USB_ENDPOINT_XFER_CONTROL,
-			USB_MAX_CTRL_PAYLOAD, 0, 0);
+			USB_MAX_CTRL_PAYLOAD, 1, 0);
 	struct_ep_qh_setup(udc, 0, USB_SEND, USB_ENDPOINT_XFER_CONTROL,
-			USB_MAX_CTRL_PAYLOAD, 0, 0);
+			USB_MAX_CTRL_PAYLOAD, 1, 0);
 	dr_ep_setup(0, USB_RECV, USB_ENDPOINT_XFER_CONTROL);
 	dr_ep_setup(0, USB_SEND, USB_ENDPOINT_XFER_CONTROL);
 
