@@ -236,17 +236,23 @@ void __init setup_memory(void)
 	paging_init();
 }
 
-void free_init_pages(char *what, unsigned long begin, unsigned long end)
+static void free_init_pages(char *what, unsigned long start, unsigned long end)
 {
-	unsigned long addr;
+	if (start >= end)
+		return;
 
-	for (addr = begin; addr < end; addr += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(addr));
-		init_page_count(virt_to_page(addr));
-		free_page(addr);
+	start = PAGE_DOWN(start);
+	end = PAGE_UP(end);
+
+	pr_info("Freeing %s: %ldk freed\n", what, (end - start) >> 10);
+
+	for (; start < end; start += PAGE_SIZE) {
+		struct page *page = virt_to_page(start);
+		ClearPageReserved(page);
+		init_page_count(page);
+		__free_page(page);
 		totalram_pages++;
 	}
-	printk(KERN_INFO "Freeing %s: %ldk freed\n", what, (end - begin) >> 10);
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
