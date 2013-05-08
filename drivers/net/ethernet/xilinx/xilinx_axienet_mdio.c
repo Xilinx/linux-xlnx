@@ -132,7 +132,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	struct mii_bus *bus;
 	struct resource res;
 	struct device_node *np1;
-	struct device_node *npp = 0; /* the ethernet controller device node */
+	/* the ethernet controller device node */
+	struct device_node *npp = NULL;
 
 	/* clk_div can be calculated by deriving it from the equation:
 	 * fMDIO = fHOST / ((1 + clk_div) * 2)
