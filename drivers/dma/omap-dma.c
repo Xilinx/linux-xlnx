@@ -276,12 +276,20 @@ static void omap_dma_issue_pending(struct dma_chan *chan)
 
 	spin_lock_irqsave(&c->vc.lock, flags);
 	if (vchan_issue_pending(&c->vc) && !c->desc) {
-		struct omap_dmadev *d = to_omap_dma_dev(chan->device);
-		spin_lock(&d->lock);
-		if (list_empty(&c->node))
-			list_add_tail(&c->node, &d->pending);
-		spin_unlock(&d->lock);
-		tasklet_schedule(&d->task);
+		/*
+		 * c->cyclic is used only by audio and in this case the DMA need
+		 * to be started without delay.
+		 */
+		if (!c->cyclic) {
+			struct omap_dmadev *d = to_omap_dma_dev(chan->device);
+			spin_lock(&d->lock);
+			if (list_empty(&c->node))
+				list_add_tail(&c->node, &d->pending);
+			spin_unlock(&d->lock);
+			tasklet_schedule(&d->task);
+		} else {
+			omap_dma_start_desc(c);
+		}
 	}
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 }
@@ -661,32 +669,14 @@ bool omap_dma_filter_fn(struct dma_chan *chan, void *param)
 }
 EXPORT_SYMBOL_GPL(omap_dma_filter_fn);
 
-static struct platform_device *pdev;
-
-static const struct platform_device_info omap_dma_dev_info = {
-	.name = "omap-dma-engine",
-	.id = -1,
-	.dma_mask = DMA_BIT_MASK(32),
-};
-
 static int omap_dma_init(void)
 {
-	int rc = platform_driver_register(&omap_dma_driver);
-
-	if (rc == 0) {
-		pdev = platform_device_register_full(&omap_dma_dev_info);
-		if (IS_ERR(pdev)) {
-			platform_driver_unregister(&omap_dma_driver);
-			rc = PTR_ERR(pdev);
-		}
-	}
-	return rc;
+	return platform_driver_register(&omap_dma_driver);
 }
 subsys_initcall(omap_dma_init);
 
 static void __exit omap_dma_exit(void)
 {
-	platform_device_unregister(pdev);
 	platform_driver_unregister(&omap_dma_driver);
 }
 module_exit(omap_dma_exit);

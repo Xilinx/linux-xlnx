@@ -962,8 +962,11 @@ cbq_dequeue(struct Qdisc *sch)
 		cbq_update(q);
 		if ((incr -= incr2) < 0)
 			incr = 0;
+		q->now += incr;
+	} else {
+		if (now > q->now)
+			q->now = now;
 	}
-	q->now += incr;
 	q->now_rt = now;
 
 	for (;;) {
@@ -1041,14 +1044,13 @@ static void cbq_adjust_levels(struct cbq_class *this)
 static void cbq_normalize_quanta(struct cbq_sched_data *q, int prio)
 {
 	struct cbq_class *cl;
-	struct hlist_node *n;
 	unsigned int h;
 
 	if (q->quanta[prio] == 0)
 		return;
 
 	for (h = 0; h < q->clhash.hashsize; h++) {
-		hlist_for_each_entry(cl, n, &q->clhash.hash[h], common.hnode) {
+		hlist_for_each_entry(cl, &q->clhash.hash[h], common.hnode) {
 			/* BUGGGG... Beware! This expression suffer of
 			 * arithmetic overflows!
 			 */
@@ -1087,10 +1089,9 @@ static void cbq_sync_defmap(struct cbq_class *cl)
 			continue;
 
 		for (h = 0; h < q->clhash.hashsize; h++) {
-			struct hlist_node *n;
 			struct cbq_class *c;
 
-			hlist_for_each_entry(c, n, &q->clhash.hash[h],
+			hlist_for_each_entry(c, &q->clhash.hash[h],
 					     common.hnode) {
 				if (c->split == split && c->level < level &&
 				    c->defmap & (1<<i)) {
@@ -1210,7 +1211,6 @@ cbq_reset(struct Qdisc *sch)
 {
 	struct cbq_sched_data *q = qdisc_priv(sch);
 	struct cbq_class *cl;
-	struct hlist_node *n;
 	int prio;
 	unsigned int h;
 
@@ -1228,7 +1228,7 @@ cbq_reset(struct Qdisc *sch)
 		q->active[prio] = NULL;
 
 	for (h = 0; h < q->clhash.hashsize; h++) {
-		hlist_for_each_entry(cl, n, &q->clhash.hash[h], common.hnode) {
+		hlist_for_each_entry(cl, &q->clhash.hash[h], common.hnode) {
 			qdisc_reset(cl->q);
 
 			cl->next_alive = NULL;
@@ -1697,7 +1697,7 @@ static void cbq_destroy_class(struct Qdisc *sch, struct cbq_class *cl)
 static void cbq_destroy(struct Qdisc *sch)
 {
 	struct cbq_sched_data *q = qdisc_priv(sch);
-	struct hlist_node *n, *next;
+	struct hlist_node *next;
 	struct cbq_class *cl;
 	unsigned int h;
 
@@ -1710,11 +1710,11 @@ static void cbq_destroy(struct Qdisc *sch)
 	 * be bound to classes which have been destroyed already. --TGR '04
 	 */
 	for (h = 0; h < q->clhash.hashsize; h++) {
-		hlist_for_each_entry(cl, n, &q->clhash.hash[h], common.hnode)
+		hlist_for_each_entry(cl, &q->clhash.hash[h], common.hnode)
 			tcf_destroy_chain(&cl->filter_list);
 	}
 	for (h = 0; h < q->clhash.hashsize; h++) {
-		hlist_for_each_entry_safe(cl, n, next, &q->clhash.hash[h],
+		hlist_for_each_entry_safe(cl, next, &q->clhash.hash[h],
 					  common.hnode)
 			cbq_destroy_class(sch, cl);
 	}
@@ -2013,14 +2013,13 @@ static void cbq_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 {
 	struct cbq_sched_data *q = qdisc_priv(sch);
 	struct cbq_class *cl;
-	struct hlist_node *n;
 	unsigned int h;
 
 	if (arg->stop)
 		return;
 
 	for (h = 0; h < q->clhash.hashsize; h++) {
-		hlist_for_each_entry(cl, n, &q->clhash.hash[h], common.hnode) {
+		hlist_for_each_entry(cl, &q->clhash.hash[h], common.hnode) {
 			if (arg->count < arg->skip) {
 				arg->count++;
 				continue;

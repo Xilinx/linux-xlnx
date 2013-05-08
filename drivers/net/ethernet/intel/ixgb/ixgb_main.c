@@ -500,9 +500,8 @@ ixgb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	ixgb_get_ee_mac_addr(&adapter->hw, netdev->dev_addr);
-	memcpy(netdev->perm_addr, netdev->dev_addr, netdev->addr_len);
 
-	if (!is_valid_ether_addr(netdev->perm_addr)) {
+	if (!is_valid_ether_addr(netdev->dev_addr)) {
 		netif_err(adapter, probe, adapter->netdev, "Invalid MAC Address\n");
 		err = -EIO;
 		goto err_eeprom;
@@ -709,11 +708,8 @@ ixgb_setup_tx_resources(struct ixgb_adapter *adapter)
 
 	size = sizeof(struct ixgb_buffer) * txdr->count;
 	txdr->buffer_info = vzalloc(size);
-	if (!txdr->buffer_info) {
-		netif_err(adapter, probe, adapter->netdev,
-			  "Unable to allocate transmit descriptor ring memory\n");
+	if (!txdr->buffer_info)
 		return -ENOMEM;
-	}
 
 	/* round up to nearest 4K */
 
@@ -798,11 +794,8 @@ ixgb_setup_rx_resources(struct ixgb_adapter *adapter)
 
 	size = sizeof(struct ixgb_buffer) * rxdr->count;
 	rxdr->buffer_info = vzalloc(size);
-	if (!rxdr->buffer_info) {
-		netif_err(adapter, probe, adapter->netdev,
-			  "Unable to allocate receive descriptor ring\n");
+	if (!rxdr->buffer_info)
 		return -ENOMEM;
-	}
 
 	/* Round up to nearest 4K */
 
@@ -2166,6 +2159,10 @@ map_skb:
 		                                  skb->data,
 		                                  adapter->rx_buffer_len,
 						  DMA_FROM_DEVICE);
+		if (dma_mapping_error(&pdev->dev, buffer_info->dma)) {
+			adapter->alloc_rx_buff_failed++;
+			break;
+		}
 
 		rx_desc = IXGB_RX_DESC(*rx_ring, i);
 		rx_desc->buff_addr = cpu_to_le64(buffer_info->dma);
@@ -2175,7 +2172,8 @@ map_skb:
 		rx_desc->status = 0;
 
 
-		if (++i == rx_ring->count) i = 0;
+		if (++i == rx_ring->count)
+			i = 0;
 		buffer_info = &rx_ring->buffer_info[i];
 	}
 

@@ -1250,17 +1250,17 @@ static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
 	return 0;
 }
 
-static int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *,
-				struct usb_gadget_driver *driver));
-static int xudc_stop(struct usb_gadget_driver *driver);
+static int xudc_start(struct usb_gadget *gadget,
+			struct usb_gadget_driver *driver);
+static int xudc_stop(struct usb_gadget *gadget,
+			struct usb_gadget_driver *driver);
 static void xusb_release(struct device *dev);
 
 static const struct usb_gadget_ops xusb_udc_ops = {
 	.get_frame = xusb_get_frame,
 	.ioctl = xusb_ioctl,
-	.start = xudc_start,
-	.stop  = xudc_stop,
+	.udc_start = xudc_start,
+	.udc_stop  = xudc_stop,
 };
 
 
@@ -1493,6 +1493,7 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 			udc->gadget.speed = USB_SPEED_HIGH;
 		else
 			udc->gadget.speed = USB_SPEED_FULL;
+
 		if (udc->status == 1) {
 			udc->status = 0;
 			/* Set device address to 0.*/
@@ -2093,48 +2094,24 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
  * returns: 0 for success and error value on failure
  *
  **/
-int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *,
-				struct usb_gadget_driver *driver))
+static int xudc_start(struct usb_gadget *gadget,
+			struct usb_gadget_driver *driver)
 {
 	struct xusb_udc *udc = &controller;
-	int retval;
 	const struct usb_endpoint_descriptor *d = &config_bulk_out_desc;
 
-	/*
-	 * Check whether the driver related structure parameters
-	 * are created properly.
-	 */
-	if (!driver
-	    || driver->max_speed < USB_SPEED_FULL ||
-		!bind || !driver->unbind || !driver->setup) {
-		dev_dbg(&udc->gadget.dev, "bad parameter.\n");
-		return -EINVAL;
-	}
-
-	/* Is the device already declared as a gadget driver.*/
-	if (udc->driver) {
-		dev_dbg(&udc->gadget.dev,
-			"UDC already has a gadget driver\n");
-		return -EBUSY;
-	}
+	driver->driver.bus = NULL;
+	/* hook up the driver */
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
 	udc->gadget.speed = driver->max_speed;
-	/* Add and bind the USB device to the device structure.*/
-	retval = device_add(&udc->gadget.dev);
-	retval = bind(&udc->gadget, driver);
-	if (retval) {
-		dev_dbg(&udc->gadget.dev,
-			"driver->bind() returned %d\n", retval);
-		udc->driver = NULL;
-		udc->gadget.dev.driver = NULL;
-		return retval;
-	}
-	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep, d);
+
 	/* Enable the USB device.*/
+	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep, d);
+	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
 	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
 		(udc->base_address + XUSB_CONTROL_OFFSET));
+
 	return 0;
 }
 
@@ -2145,30 +2122,25 @@ int xudc_start(struct usb_gadget_driver *driver,
  * returns: 0 for success and error value on failure
  *
  */
-int xudc_stop(struct usb_gadget_driver *driver)
+static int xudc_stop(struct usb_gadget *gadget,
+		struct usb_gadget_driver *driver)
 {
 	struct xusb_udc *udc = &controller;
 	unsigned long flags;
 	u32 crtlreg;
-
-	if (!driver || driver != udc->driver || !driver->unbind)
-		return -EINVAL;
 
 	/* Disable USB device.*/
 	crtlreg = udc->read_fn(udc->base_address + XUSB_CONTROL_OFFSET);
 	crtlreg &= ~XUSB_CONTROL_USB_READY_MASK;
 	udc->write_fn(crtlreg, (udc->base_address + XUSB_CONTROL_OFFSET));
 	spin_lock_irqsave(&udc->lock, flags);
-	/* Stop any further activity in the device.*/
+	udc->gadget.speed = USB_SPEED_UNKNOWN;
 	stop_activity(udc);
 	spin_unlock_irqrestore(&udc->lock, flags);
-	driver->unbind(&udc->gadget);
-	device_del(&udc->gadget.dev);
+
 	udc->gadget.dev.driver = NULL;
 	udc->driver = NULL;
 
-	dev_dbg(&udc->gadget.dev,
-		"unbound from %s\n", driver->driver.name);
 	return 0;
 }
 
@@ -2192,6 +2164,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 	int retval;
 
 	device_initialize(&udc->gadget.dev);
+	udc->gadget.dev.parent = &pdev->dev;
 
 	remap_size = regs_res->end - regs_res->start + 1;
 	if (!request_mem_region(regs_res->start, remap_size,
@@ -2260,8 +2233,6 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 		  (udc->base_address + XUSB_IER_OFFSET));
 	platform_set_drvdata(pdev, udc);
 
-	udc->gadget.dev.parent = &pdev->dev;
-
 	dev_info(dev, "%s version %s\n", driver_name, DRIVER_VERSION);
 	dev_info(dev, "%s #%d at 0x%08X mapped to 0x%08X\n",
 	     driver_name, 0, (u32)regs_res->start, (u32 __force) v_addr);
@@ -2295,6 +2266,7 @@ static int xudc_remove(struct platform_device *pdev)
 	release_mem_region(res->start, resource_size(res));
 
 	platform_set_drvdata(pdev, NULL);
+	device_unregister(&udc->gadget.dev);
 
 	return 0;
 }

@@ -3691,7 +3691,7 @@ unlock:
 
 static int perf_fasync(int fd, struct file *filp, int on)
 {
-	struct inode *inode = filp->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(filp);
 	struct perf_event *event = filp->private_data;
 	int retval;
 
@@ -4434,12 +4434,15 @@ static void perf_event_task_event(struct perf_task_event *task_event)
 			if (ctxn < 0)
 				goto next;
 			ctx = rcu_dereference(current->perf_event_ctxp[ctxn]);
+			if (ctx)
+				perf_event_task_ctx(ctx, task_event);
 		}
-		if (ctx)
-			perf_event_task_ctx(ctx, task_event);
 next:
 		put_cpu_ptr(pmu->pmu_cpu_context);
 	}
+	if (task_event->task_ctx)
+		perf_event_task_ctx(task_event->task_ctx, task_event);
+
 	rcu_read_unlock();
 }
 
@@ -4593,6 +4596,7 @@ void perf_event_comm(struct task_struct *task)
 	struct perf_event_context *ctx;
 	int ctxn;
 
+	rcu_read_lock();
 	for_each_task_context_nr(ctxn) {
 		ctx = task->perf_event_ctxp[ctxn];
 		if (!ctx)
@@ -4600,6 +4604,7 @@ void perf_event_comm(struct task_struct *task)
 
 		perf_event_enable_on_exec(ctx);
 	}
+	rcu_read_unlock();
 
 	if (!atomic_read(&nr_comm_events))
 		return;
@@ -4734,7 +4739,8 @@ static void perf_event_mmap_event(struct perf_mmap_event *mmap_event)
 	} else {
 		if (arch_vma_name(mmap_event->vma)) {
 			name = strncpy(tmp, arch_vma_name(mmap_event->vma),
-				       sizeof(tmp));
+				       sizeof(tmp) - 1);
+			tmp[sizeof(tmp) - 1] = '\0';
 			goto got_name;
 		}
 
@@ -5126,7 +5132,6 @@ static void do_perf_sw_event(enum perf_type_id type, u32 event_id,
 {
 	struct swevent_htable *swhash = &__get_cpu_var(swevent_htable);
 	struct perf_event *event;
-	struct hlist_node *node;
 	struct hlist_head *head;
 
 	rcu_read_lock();
@@ -5134,7 +5139,7 @@ static void do_perf_sw_event(enum perf_type_id type, u32 event_id,
 	if (!head)
 		goto end;
 
-	hlist_for_each_entry_rcu(event, node, head, hlist_entry) {
+	hlist_for_each_entry_rcu(event, head, hlist_entry) {
 		if (perf_swevent_match(event, type, event_id, data, regs))
 			perf_swevent_event(event, nr, data, regs);
 	}
@@ -5328,7 +5333,7 @@ static void sw_perf_event_destroy(struct perf_event *event)
 
 static int perf_swevent_init(struct perf_event *event)
 {
-	int event_id = event->attr.config;
+	u64 event_id = event->attr.config;
 
 	if (event->attr.type != PERF_TYPE_SOFTWARE)
 		return -ENOENT;
@@ -5419,7 +5424,6 @@ void perf_tp_event(u64 addr, u64 count, void *record, int entry_size,
 {
 	struct perf_sample_data data;
 	struct perf_event *event;
-	struct hlist_node *node;
 
 	struct perf_raw_record raw = {
 		.size = entry_size,
@@ -5429,7 +5433,7 @@ void perf_tp_event(u64 addr, u64 count, void *record, int entry_size,
 	perf_sample_data_init(&data, addr, 0);
 	data.raw = &raw;
 
-	hlist_for_each_entry_rcu(event, node, head, hlist_entry) {
+	hlist_for_each_entry_rcu(event, head, hlist_entry) {
 		if (perf_tp_event_match(event, &data, regs))
 			perf_swevent_event(event, count, &data, regs);
 	}
@@ -5649,6 +5653,7 @@ static void perf_swevent_init_hrtimer(struct perf_event *event)
 		event->attr.sample_period = NSEC_PER_SEC / freq;
 		hwc->sample_period = event->attr.sample_period;
 		local64_set(&hwc->period_left, hwc->sample_period);
+		hwc->last_period = hwc->sample_period;
 		event->attr.freq = 0;
 	}
 }
@@ -5965,13 +5970,9 @@ int perf_pmu_register(struct pmu *pmu, char *name, int type)
 	pmu->name = name;
 
 	if (type < 0) {
-		int err = idr_pre_get(&pmu_idr, GFP_KERNEL);
-		if (!err)
-			goto free_pdc;
-
-		err = idr_get_new_above(&pmu_idr, pmu, PERF_TYPE_MAX, &type);
-		if (err) {
-			ret = err;
+		type = idr_alloc(&pmu_idr, pmu, PERF_TYPE_MAX, 0, GFP_KERNEL);
+		if (type < 0) {
+			ret = type;
 			goto free_pdc;
 		}
 	}
@@ -5988,6 +5989,7 @@ skip_type:
 	if (pmu->pmu_cpu_context)
 		goto got_cpu_context;
 
+	ret = -ENOMEM;
 	pmu->pmu_cpu_context = alloc_percpu(struct perf_cpu_context);
 	if (!pmu->pmu_cpu_context)
 		goto free_dev;
@@ -6171,11 +6173,14 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 
 	if (task) {
 		event->attach_state = PERF_ATTACH_TASK;
+
+		if (attr->type == PERF_TYPE_TRACEPOINT)
+			event->hw.tp_target = task;
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 		/*
 		 * hw_breakpoint is a bit difficult here..
 		 */
-		if (attr->type == PERF_TYPE_BREAKPOINT)
+		else if (attr->type == PERF_TYPE_BREAKPOINT)
 			event->hw.bp_target = task;
 #endif
 	}

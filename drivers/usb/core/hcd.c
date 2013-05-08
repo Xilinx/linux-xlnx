@@ -620,6 +620,10 @@ nongeneric:
 		status = hcd->driver->hub_control (hcd,
 			typeReq, wValue, wIndex,
 			tbuf, wLength);
+
+		if (typeReq == GetHubDescriptor)
+			usb_hub_adjust_deviceremovable(hcd->self.root_hub,
+				(struct usb_hub_descriptor *)tbuf);
 		break;
 error:
 		/* "protocol stall" on error */
@@ -2408,6 +2412,14 @@ int usb_hcd_is_primary_hcd(struct usb_hcd *hcd)
 }
 EXPORT_SYMBOL_GPL(usb_hcd_is_primary_hcd);
 
+int usb_hcd_find_raw_port_number(struct usb_hcd *hcd, int port1)
+{
+	if (!hcd->driver->find_raw_port_number)
+		return port1;
+
+	return hcd->driver->find_raw_port_number(hcd, port1);
+}
+
 static int usb_hcd_request_irqs(struct usb_hcd *hcd,
 		unsigned int irqnum, unsigned long irqflags)
 {
@@ -2550,7 +2562,6 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	}
 
 	/* starting here, usbcore will pay attention to this root hub */
-	rhdev->bus_mA = min(500u, hcd->power_budget);
 	if ((retval = register_root_hub(hcd)) != 0)
 		goto err_register_root_hub;
 

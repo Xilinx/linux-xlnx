@@ -2242,7 +2242,7 @@ static struct class xslcr_reset_class = {
  * @dev:	Device to find.
  * @data:	Device private data used for finding the device.
  */
-static int match_dev(struct device *dev, void *data)
+static int match_dev(struct device *dev, const void *data)
 {
 	return dev_get_drvdata(dev) == data;
 }
@@ -2318,7 +2318,7 @@ static void xslcr_remove_devices(struct class *xslcr_class,
 	for (i = 0; i < nr; i++) {
 		struct device	*dev = NULL;
 
-		dev = class_find_device(xslcr_class, NULL, (void *)(periph[i]),
+		dev = class_find_device(xslcr_class, NULL, (const void *)(periph[i]),
 					match_dev);
 		if (dev) {
 			if (xslcr_class == &xslcr_mio_class) {

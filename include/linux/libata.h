@@ -398,6 +398,7 @@ enum {
 	ATA_HORKAGE_NOSETXFER	= (1 << 14),	/* skip SETXFER, SATA only */
 	ATA_HORKAGE_BROKEN_FPDMA_AA	= (1 << 15),	/* skip AA */
 	ATA_HORKAGE_DUMP_ID	= (1 << 16),	/* dump IDENTIFY data */
+	ATA_HORKAGE_MAX_SEC_LBA48 = (1 << 17),	/* Set max sects to 65535 */
 
 	 /* DMA mask for user DMA control: User visible values; DO NOT
 	    renumber */
@@ -619,6 +620,9 @@ struct ata_device {
 #ifdef CONFIG_ATA_ACPI
 	union acpi_object	*gtf_cache;
 	unsigned int		gtf_filter;
+#endif
+#ifdef CONFIG_SATA_ZPODD
+	void			*zpodd;
 #endif
 	struct device		tdev;
 	/* n_sector is CLEAR_BEGIN, read comment above CLEAR_BEGIN */

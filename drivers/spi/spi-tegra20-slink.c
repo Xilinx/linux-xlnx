@@ -35,7 +35,7 @@
 #include <linux/of_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-tegra.h>
-#include <mach/clk.h>
+#include <linux/clk/tegra.h>
 
 #define SLINK_COMMAND			0x000
 #define SLINK_BIT_LENGTH(x)		(((x) & 0x1f) << 0)
@@ -284,8 +284,7 @@ static unsigned tegra_slink_calculate_curr_xfer_param(
 	unsigned max_len;
 	unsigned total_fifo_words;
 
-	bits_per_word = t->bits_per_word ? t->bits_per_word :
-						spi->bits_per_word;
+	bits_per_word = t->bits_per_word;
 	tspi->bytes_per_word = (bits_per_word - 1) / 8 + 1;
 
 	if (bits_per_word == 8 || bits_per_word == 16) {
@@ -378,8 +377,7 @@ static unsigned int tegra_slink_read_rx_fifo_to_client_rxbuf(
 	} else {
 		unsigned int bits_per_word;
 
-		bits_per_word = t->bits_per_word ? t->bits_per_word :
-						tspi->cur_spi->bits_per_word;
+		bits_per_word = t->bits_per_word;
 		for (count = 0; count < rx_full_count; count++) {
 			x = tegra_slink_readl(tspi, SLINK_RX_FIFO);
 			for (i = 0; (i < tspi->bytes_per_word); i++)
@@ -444,8 +442,7 @@ static void tegra_slink_copy_spi_rxbuf_to_client_rxbuf(
 		unsigned int x;
 		unsigned int rx_mask, bits_per_word;
 
-		bits_per_word = t->bits_per_word ? t->bits_per_word :
-						tspi->cur_spi->bits_per_word;
+		bits_per_word = t->bits_per_word;
 		rx_mask = (1 << bits_per_word) - 1;
 		for (count = 0; count < tspi->curr_dma_words; count++) {
 			x = tspi->rx_dma_buf[count];
@@ -728,9 +725,7 @@ static int tegra_slink_start_transfer_one(struct spi_device *spi,
 	unsigned long command2;
 
 	bits_per_word = t->bits_per_word;
-	speed = t->speed_hz ? t->speed_hz : spi->max_speed_hz;
-	if (!speed)
-		speed = tspi->spi_max_frequency;
+	speed = t->speed_hz;
 	if (speed != tspi->cur_speed) {
 		clk_set_rate(tspi->clk, speed * 4);
 		tspi->cur_speed = speed;
@@ -841,6 +836,8 @@ static int tegra_slink_setup(struct spi_device *spi)
 
 	BUG_ON(spi->chip_select >= MAX_CHIP_SELECT);
 
+	/* Set speed to the spi max fequency if spi device has not set */
+	spi->max_speed_hz = spi->max_speed_hz ? : tspi->spi_max_frequency;
 	ret = pm_runtime_get_sync(tspi->dev);
 	if (ret < 0) {
 		dev_err(tspi->dev, "pm runtime failed, e = %d\n", ret);
@@ -861,21 +858,6 @@ static int tegra_slink_setup(struct spi_device *spi)
 	return 0;
 }
 
-static int tegra_slink_prepare_transfer(struct spi_master *master)
-{
-	struct tegra_slink_data *tspi = spi_master_get_devdata(master);
-
-	return pm_runtime_get_sync(tspi->dev);
-}
-
-static int tegra_slink_unprepare_transfer(struct spi_master *master)
-{
-	struct tegra_slink_data *tspi = spi_master_get_devdata(master);
-
-	pm_runtime_put(tspi->dev);
-	return 0;
-}
-
 static int tegra_slink_transfer_one_message(struct spi_master *master,
 			struct spi_message *msg)
 {
@@ -888,6 +870,12 @@ static int tegra_slink_transfer_one_message(struct spi_master *master,
 
 	msg->status = 0;
 	msg->actual_length = 0;
+	ret = pm_runtime_get_sync(tspi->dev);
+	if (ret < 0) {
+		dev_err(tspi->dev, "runtime get failed: %d\n", ret);
+		goto done;
+	}
+
 	single_xfer = list_is_singular(&msg->transfers);
 	list_for_each_entry(xfer, &msg->transfers, transfer_list) {
 		INIT_COMPLETION(tspi->xfer_completion);
@@ -924,6 +912,8 @@ static int tegra_slink_transfer_one_message(struct spi_master *master,
 exit:
 	tegra_slink_writel(tspi, tspi->def_command_reg, SLINK_COMMAND);
 	tegra_slink_writel(tspi, tspi->def_command2_reg, SLINK_COMMAND2);
+	pm_runtime_put(tspi->dev);
+done:
 	msg->status = ret;
 	spi_finalize_current_message(master);
 	return ret;
@@ -1151,9 +1141,7 @@ static int tegra_slink_probe(struct platform_device *pdev)
 	/* the spi->mode bits understood by this driver: */
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
 	master->setup = tegra_slink_setup;
-	master->prepare_transfer_hardware = tegra_slink_prepare_transfer;
 	master->transfer_one_message = tegra_slink_transfer_one_message;
-	master->unprepare_transfer_hardware = tegra_slink_unprepare_transfer;
 	master->num_chipselect = MAX_CHIP_SELECT;
 	master->bus_num = -1;
 
@@ -1172,11 +1160,9 @@ static int tegra_slink_probe(struct platform_device *pdev)
 		goto exit_free_master;
 	}
 	tspi->phys = r->start;
-	tspi->base = devm_request_and_ioremap(&pdev->dev, r);
-	if (!tspi->base) {
-		dev_err(&pdev->dev,
-			"Cannot request memregion/iomap dma address\n");
-		ret = -EADDRNOTAVAIL;
+	tspi->base = devm_ioremap_resource(&pdev->dev, r);
+	if (IS_ERR(tspi->base)) {
+		ret = PTR_ERR(tspi->base);
 		goto exit_free_master;
 	}
 
@@ -1191,7 +1177,7 @@ static int tegra_slink_probe(struct platform_device *pdev)
 		goto exit_free_master;
 	}
 
-	tspi->clk = devm_clk_get(&pdev->dev, "slink");
+	tspi->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(tspi->clk)) {
 		dev_err(&pdev->dev, "can not get clock\n");
 		ret = PTR_ERR(tspi->clk);

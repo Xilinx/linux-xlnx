@@ -230,14 +230,14 @@ int bt_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 	if (flags & (MSG_OOB))
 		return -EOPNOTSUPP;
 
+	msg->msg_namelen = 0;
+
 	skb = skb_recv_datagram(sk, flags, noblock, &err);
 	if (!skb) {
 		if (sk->sk_shutdown & RCV_SHUTDOWN)
 			return 0;
 		return err;
 	}
-
-	msg->msg_namelen = 0;
 
 	copied = skb->len;
 	if (len < copied) {
@@ -641,7 +641,7 @@ int bt_procfs_init(struct module* module, struct net *net, const char *name,
 	sk_list->fops.llseek    = seq_lseek;
 	sk_list->fops.release   = seq_release_private;
 
-	pde = proc_net_fops_create(net, name, 0, &sk_list->fops);
+	pde = proc_create(name, 0, net->proc_net, &sk_list->fops);
 	if (!pde)
 		return -ENOMEM;
 
@@ -652,7 +652,7 @@ int bt_procfs_init(struct module* module, struct net *net, const char *name,
 
 void bt_procfs_cleanup(struct net *net, const char *name)
 {
-	proc_net_remove(net, name);
+	remove_proc_entry(name, net->proc_net);
 }
 #else
 int bt_procfs_init(struct module* module, struct net *net, const char *name,

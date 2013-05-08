@@ -113,15 +113,14 @@ static void ehci_poll_ASS(struct ehci_hcd *ehci)
 
 	if (want != actual) {
 
-		/* Poll again later */
-		ehci_enable_event(ehci, EHCI_HRTIMER_POLL_ASS, true);
-		++ehci->ASS_poll_count;
-		return;
+		/* Poll again later, but give up after about 20 ms */
+		if (ehci->ASS_poll_count++ < 20) {
+			ehci_enable_event(ehci, EHCI_HRTIMER_POLL_ASS, true);
+			return;
+		}
+		ehci_dbg(ehci, "Waited too long for the async schedule status (%x/%x), giving up\n",
+				want, actual);
 	}
-
-	if (ehci->ASS_poll_count > 20)
-		ehci_dbg(ehci, "ASS poll count reached %d\n",
-				ehci->ASS_poll_count);
 	ehci->ASS_poll_count = 0;
 
 	/* The status is up-to-date; restart or stop the schedule as needed */
@@ -160,14 +159,14 @@ static void ehci_poll_PSS(struct ehci_hcd *ehci)
 
 	if (want != actual) {
 
-		/* Poll again later */
-		ehci_enable_event(ehci, EHCI_HRTIMER_POLL_PSS, true);
-		return;
+		/* Poll again later, but give up after about 20 ms */
+		if (ehci->PSS_poll_count++ < 20) {
+			ehci_enable_event(ehci, EHCI_HRTIMER_POLL_PSS, true);
+			return;
+		}
+		ehci_dbg(ehci, "Waited too long for the periodic schedule status (%x/%x), giving up\n",
+				want, actual);
 	}
-
-	if (ehci->PSS_poll_count > 20)
-		ehci_dbg(ehci, "PSS poll count reached %d\n",
-				ehci->PSS_poll_count);
 	ehci->PSS_poll_count = 0;
 
 	/* The status is up-to-date; restart or stop the schedule as needed */
@@ -305,7 +304,7 @@ static void ehci_iaa_watchdog(struct ehci_hcd *ehci)
 	 * (a) SMP races against real IAA firing and retriggering, and
 	 * (b) clean HC shutdown, when IAA watchdog was pending.
 	 */
-	if (ehci->async_iaa) {
+	if (1) {
 		u32 cmd, status;
 
 		/* If we get here, IAA is *REALLY* late.  It's barely

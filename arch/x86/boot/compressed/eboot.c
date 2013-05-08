@@ -19,23 +19,28 @@
 
 static efi_system_table_t *sys_table;
 
+static void efi_char16_printk(efi_char16_t *str)
+{
+	struct efi_simple_text_output_protocol *out;
+
+	out = (struct efi_simple_text_output_protocol *)sys_table->con_out;
+	efi_call_phys2(out->output_string, out, str);
+}
+
 static void efi_printk(char *str)
 {
 	char *s8;
 
 	for (s8 = str; *s8; s8++) {
-		struct efi_simple_text_output_protocol *out;
 		efi_char16_t ch[2] = { 0 };
 
 		ch[0] = *s8;
-		out = (struct efi_simple_text_output_protocol *)sys_table->con_out;
-
 		if (*s8 == '\n') {
 			efi_char16_t nl[2] = { '\r', 0 };
-			efi_call_phys2(out->output_string, out, nl);
+			efi_char16_printk(nl);
 		}
 
-		efi_call_phys2(out->output_string, out, ch);
+		efi_char16_printk(ch);
 	}
 }
 
@@ -244,6 +249,51 @@ static void find_bits(unsigned long mask, u8 *pos, u8 *size)
 
 	*pos = first;
 	*size = len;
+}
+
+static efi_status_t setup_efi_vars(struct boot_params *params)
+{
+	struct setup_data *data;
+	struct efi_var_bootdata *efidata;
+	u64 store_size, remaining_size, var_size;
+	efi_status_t status;
+
+	if (sys_table->runtime->hdr.revision < EFI_2_00_SYSTEM_TABLE_REVISION)
+		return EFI_UNSUPPORTED;
+
+	data = (struct setup_data *)(unsigned long)params->hdr.setup_data;
+
+	while (data && data->next)
+		data = (struct setup_data *)(unsigned long)data->next;
+
+	status = efi_call_phys4((void *)sys_table->runtime->query_variable_info,
+				EFI_VARIABLE_NON_VOLATILE |
+				EFI_VARIABLE_BOOTSERVICE_ACCESS |
+				EFI_VARIABLE_RUNTIME_ACCESS, &store_size,
+				&remaining_size, &var_size);
+
+	if (status != EFI_SUCCESS)
+		return status;
+
+	status = efi_call_phys3(sys_table->boottime->allocate_pool,
+				EFI_LOADER_DATA, sizeof(*efidata), &efidata);
+
+	if (status != EFI_SUCCESS)
+		return status;
+
+	efidata->data.type = SETUP_EFI_VARS;
+	efidata->data.len = sizeof(struct efi_var_bootdata) -
+		sizeof(struct setup_data);
+	efidata->data.next = 0;
+	efidata->store_size = store_size;
+	efidata->remaining_size = remaining_size;
+	efidata->max_var_size = var_size;
+
+	if (data)
+		data->next = (unsigned long)efidata;
+	else
+		params->hdr.setup_data = (unsigned long)efidata;
+
 }
 
 static efi_status_t setup_efi_pci(struct boot_params *params)
@@ -709,7 +759,12 @@ static efi_status_t handle_ramdisks(efi_loaded_image_t *image,
 			if ((u8 *)p >= (u8 *)filename_16 + sizeof(filename_16))
 				break;
 
-			*p++ = *str++;
+			if (*str == '/') {
+				*p++ = '\\';
+				*str++;
+			} else {
+				*p++ = *str++;
+			}
 		}
 
 		*p = '\0';
@@ -737,7 +792,9 @@ static efi_status_t handle_ramdisks(efi_loaded_image_t *image,
 		status = efi_call_phys5(fh->open, fh, &h, filename_16,
 					EFI_FILE_MODE_READ, (u64)0);
 		if (status != EFI_SUCCESS) {
-			efi_printk("Failed to open initrd file\n");
+			efi_printk("Failed to open initrd file: ");
+			efi_char16_printk(filename_16);
+			efi_printk("\n");
 			goto close_handles;
 		}
 
@@ -1144,6 +1201,8 @@ struct boot_params *efi_main(void *handle, efi_system_table_t *_table,
 		goto fail;
 
 	setup_graphics(boot_params);
+
+	setup_efi_vars(boot_params);
 
 	setup_efi_pci(boot_params);
 

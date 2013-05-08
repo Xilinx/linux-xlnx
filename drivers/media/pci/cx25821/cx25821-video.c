@@ -130,7 +130,7 @@ void cx25821_video_wakeup(struct cx25821_dev *dev, struct cx25821_dmaqueue *q,
 		if ((s16) (count - buf->count) < 0)
 			break;
 
-		do_gettimeofday(&buf->vb.ts);
+		v4l2_get_timestamp(&buf->vb.ts);
 		buf->vb.state = VIDEOBUF_DONE;
 		list_del(&buf->vb.queue);
 		wake_up(&buf->vb.done);
@@ -461,7 +461,7 @@ int cx25821_video_register(struct cx25821_dev *dev)
 
 	spin_lock_init(&dev->slock);
 
-	for (i = 0; i < MAX_VID_CHANNEL_NUM - 1; ++i) {
+	for (i = 0; i < VID_CHANNEL_NUM; ++i) {
 		cx25821_init_controls(dev, i);
 
 		cx25821_risc_stopper(dev->pci, &dev->channels[i].vidq.stopper,

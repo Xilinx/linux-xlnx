@@ -241,13 +241,11 @@ void netvsc_linkstatus_callback(struct hv_device *device_obj,
 
 	if (status == 1) {
 		netif_carrier_on(net);
-		netif_wake_queue(net);
 		ndev_ctx = netdev_priv(net);
 		schedule_delayed_work(&ndev_ctx->dwork, 0);
 		schedule_delayed_work(&ndev_ctx->dwork, msecs_to_jiffies(20));
 	} else {
 		netif_carrier_off(net);
-		netif_tx_disable(net);
 	}
 }
 
@@ -304,9 +302,9 @@ int netvsc_recv_callback(struct hv_device *device_obj,
 static void netvsc_get_drvinfo(struct net_device *net,
 			       struct ethtool_drvinfo *info)
 {
-	strcpy(info->driver, KBUILD_MODNAME);
-	strcpy(info->version, HV_DRV_VERSION);
-	strcpy(info->fw_version, "N/A");
+	strlcpy(info->driver, KBUILD_MODNAME, sizeof(info->driver));
+	strlcpy(info->version, HV_DRV_VERSION, sizeof(info->version));
+	strlcpy(info->fw_version, "N/A", sizeof(info->fw_version));
 }
 
 static int netvsc_change_mtu(struct net_device *ndev, int mtu)
@@ -498,8 +496,7 @@ static int netvsc_remove(struct hv_device *dev)
 
 static const struct hv_vmbus_device_id id_table[] = {
 	/* Network guid */
-	{ VMBUS_DEVICE(0x63, 0x51, 0x61, 0xF8, 0x3E, 0xDF, 0xc5, 0x46,
-		       0x91, 0x3F, 0xF2, 0xD2, 0xF9, 0x65, 0xED, 0x0E) },
+	{ HV_NIC_GUID, },
 	{ },
 };
 

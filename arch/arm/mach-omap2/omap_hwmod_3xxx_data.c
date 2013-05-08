@@ -1707,9 +1707,14 @@ static struct omap_hwmod omap3xxx_usbhsotg_hwmod = {
 	 * Erratum ID: i479  idle_req / idle_ack mechanism potentially
 	 * broken when autoidle is enabled
 	 * workaround is to disable the autoidle bit at module level.
+	 *
+	 * Enabling the device in any other MIDLEMODE setting but force-idle
+	 * causes core_pwrdm not enter idle states at least on OMAP3630.
+	 * Note that musb has OTG_FORCESTDBY register that controls MSTANDBY
+	 * signal when MIDLEMODE is set to force-idle.
 	 */
 	.flags		= HWMOD_NO_OCP_AUTOIDLE | HWMOD_SWSUP_SIDLE
-				| HWMOD_SWSUP_MSTANDBY,
+				| HWMOD_FORCE_MSTANDBY,
 };
 
 /* usb_otg_hs */
@@ -3493,7 +3498,12 @@ static struct omap_hwmod am35xx_emac_hwmod = {
 	.name		= "davinci_emac",
 	.mpu_irqs	= am35xx_emac_mpu_irqs,
 	.class		= &am35xx_emac_class,
-	.flags		= HWMOD_NO_IDLEST,
+	/*
+	 * According to Mark Greer, the MPU will not return from WFI
+	 * when the EMAC signals an interrupt.
+	 * http://www.spinics.net/lists/arm-kernel/msg174734.html
+	 */
+	.flags		= (HWMOD_NO_IDLEST | HWMOD_BLOCK_WFI),
 };
 
 /* l3_core -> davinci emac interface */

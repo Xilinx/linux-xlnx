@@ -18,6 +18,8 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/console.h>
+#include <linux/interrupt.h>
+#include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include "xylonfb.h"
 #if defined(CONFIG_FB_XYLON_MISC)

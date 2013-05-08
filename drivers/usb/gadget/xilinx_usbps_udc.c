@@ -1616,21 +1616,11 @@ static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
  * Hook to gadget drivers
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
-static int xusbps_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *, struct usb_gadget_driver *))
+static int xusbps_udc_start(struct usb_gadget *g,
+				struct usb_gadget_driver *driver)
 {
-	int retval = -ENODEV;
+	int retval = 0;
 	unsigned long flags = 0;
-
-	if (!udc_controller)
-		return -ENODEV;
-
-	if (!driver || (driver->max_speed < USB_SPEED_FULL)
-			|| !bind || !driver->disconnect || !driver->setup)
-		return -EINVAL;
-
-	if (udc_controller->driver)
-		return -EBUSY;
 
 	/* lock is needed but whether should use this lock or another */
 	spin_lock_irqsave(&udc_controller->lock, flags);
@@ -1639,17 +1629,8 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 	/* hook up the driver */
 	udc_controller->driver = driver;
 	udc_controller->gadget.dev.driver = &driver->driver;
-	udc_controller->gadget.speed = driver->max_speed;
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
-	/* bind udc driver to gadget driver */
-	retval = bind(&udc_controller->gadget, driver);
-	if (retval) {
-		VDBG("bind to %s --> %d", driver->driver.name, retval);
-		udc_controller->gadget.dev.driver = NULL;
-		udc_controller->driver = NULL;
-		goto out;
-	}
 #ifdef CONFIG_USB_XUSBPS_OTG
 	if (gadget_is_otg(&udc_controller->gadget)) {
 		retval = otg_set_peripheral(udc_controller->transceiver->otg,
@@ -1659,7 +1640,7 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 			driver->unbind(&udc_controller->gadget);
 			udc_controller->gadget.dev.driver = NULL;
 			udc_controller->driver = NULL;
-			goto out;
+			return retval;
 		}
 		/* Exporting start and stop routines */
 		udc_controller->xotg->start_peripheral =
@@ -1696,24 +1677,18 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 
 	pr_info("%s: bind to driver %s\n",
 			udc_controller->gadget.name, driver->driver.name);
-
-out:
 	if (retval)
 		pr_warn("gadget driver register failed %d\n", retval);
+
 	return retval;
 }
 
 /* Disconnect from gadget driver */
-static int xusbps_stop(struct usb_gadget_driver *driver)
+static int xusbps_udc_stop(struct usb_gadget *g,
+		struct usb_gadget_driver *driver)
 {
 	struct xusbps_ep *loop_ep;
 	unsigned long flags;
-
-	if (!udc_controller)
-		return -ENODEV;
-
-	if (!driver || driver != udc_controller->driver || !driver->unbind)
-		return -EINVAL;
 
 	if (udc_controller->transceiver)
 		otg_set_peripheral(udc_controller->transceiver->otg, NULL);
@@ -1735,21 +1710,15 @@ static int xusbps_stop(struct usb_gadget_driver *driver)
 		nuke(loop_ep, -ESHUTDOWN);
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
-	/* report disconnect; the controller is already quiesced */
-	driver->disconnect(&udc_controller->gadget);
-
 #ifdef CONFIG_USB_XUSBPS_OTG
 	if (gadget_is_otg(&udc_controller->gadget)) {
 		udc_controller->xotg->start_peripheral = NULL;
 		udc_controller->xotg->stop_peripheral = NULL;
 	}
 #endif
-	/* unbind gadget and unhook driver. */
-	driver->unbind(&udc_controller->gadget);
 	udc_controller->gadget.dev.driver = NULL;
 	udc_controller->driver = NULL;
 
-	pr_warn("unregistered gadget driver '%s'\n", driver->driver.name);
 	return 0;
 }
 
@@ -1761,8 +1730,8 @@ static struct usb_gadget_ops xusbps_gadget_ops = {
 	.vbus_session = xusbps_vbus_session,
 	.vbus_draw = xusbps_vbus_draw,
 	.pullup = xusbps_pullup,
-	.start = xusbps_start,
-	.stop = xusbps_stop,
+	.udc_start = xusbps_udc_start,
+	.udc_stop = xusbps_udc_stop,
 };
 
 /* Set protocol stall on ep0, protocol stall will automatically be cleared
@@ -2957,6 +2926,10 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_unregister;
 	}
+
+	/* TODO: Check if VBUS can be dynamically detected by VBUS session
+	 * interrupts using OTGSC register */
+	udc_controller->vbus_active = 1;
 
 	ret = usb_add_gadget_udc(&pdev->dev, &udc_controller->gadget);
 	if (ret)

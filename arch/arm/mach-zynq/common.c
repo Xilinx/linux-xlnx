@@ -27,6 +27,7 @@
 #include <linux/of_platform.h>
 #include <linux/of.h>
 #include <linux/memblock.h>
+#include <linux/irqchip.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -34,17 +35,11 @@
 #include <asm/mach-types.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
-#include <asm/hardware/gic.h>
 #include <asm/hardware/cache-l2x0.h>
 
 #include "common.h"
 
 void __iomem *scu_base;
-
-static const struct of_device_id zynq_dt_irq_match[] __initconst = {
-	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init },
-	{ }
-};
 
 static struct map_desc zynq_cortex_a9_scu_map __initdata = {
 	.length	= SZ_256,
@@ -74,13 +69,6 @@ static void __init xilinx_zynq_timer_init(void)
 	xslcr_init();
 	xttcps_timer_init_old();
 }
-
-/*
- * Instantiate and initialize the system timer structure
- */
-static struct sys_timer xttcps_sys_timer = {
-	.init		= xilinx_zynq_timer_init,
-};
 
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.
@@ -173,13 +161,6 @@ static int __init xilinx_l2c_init(void)
 early_initcall(xilinx_l2c_init);
 #endif
 
-/**
- * xilinx_irq_init() - Interrupt controller initialization for the GIC.
- */
-static void __init xilinx_irq_init(void)
-{
-	of_irq_init(zynq_dt_irq_match);
-}
 
 #ifdef CONFIG_XILINX_L1_PREFETCH
 static void __init xilinx_data_prefetch_enable(void *info)
@@ -229,11 +210,10 @@ static const char * const xilinx_dt_match[] = {
 MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.smp		= smp_ops(zynq_smp_ops),
 	.map_io		= xilinx_map_io,
-	.init_irq	= xilinx_irq_init,
-	.handle_irq	= gic_handle_irq,
+	.init_irq	= irqchip_init,
 	.init_machine	= xilinx_init_machine,
 	.init_late	= xilinx_init_late,
-	.timer		= &xttcps_sys_timer,
+	.init_time	= xilinx_zynq_timer_init,
 	.dt_compat	= xilinx_dt_match,
 	.reserve	= xilinx_memory_init,
 	.restart	= xilinx_system_reset,

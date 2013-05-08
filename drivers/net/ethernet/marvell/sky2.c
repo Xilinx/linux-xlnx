@@ -1067,7 +1067,7 @@ static void sky2_ramset(struct sky2_hw *hw, u16 q, u32 start, u32 space)
 		sky2_write32(hw, RB_ADDR(q, RB_RX_UTHP), tp);
 		sky2_write32(hw, RB_ADDR(q, RB_RX_LTHP), space/2);
 
-		tp = space - 2048/8;
+		tp = space - 8192/8;
 		sky2_write32(hw, RB_ADDR(q, RB_RX_UTPP), tp);
 		sky2_write32(hw, RB_ADDR(q, RB_RX_LTPP), space/4);
 	} else {
@@ -4801,7 +4801,6 @@ static struct net_device *sky2_init_netdev(struct sky2_hw *hw, unsigned port,
 
 	/* read the mac address */
 	memcpy_fromio(dev->dev_addr, hw->regs + B2_MAC_1 + port * 8, ETH_ALEN);
-	memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
 
 	return dev;
 }
@@ -4970,10 +4969,8 @@ static int sky2_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	hw = kzalloc(sizeof(*hw) + strlen(DRV_NAME "@pci:")
 		     + strlen(pci_name(pdev)) + 1, GFP_KERNEL);
-	if (!hw) {
-		dev_err(&pdev->dev, "cannot allocate hardware struct\n");
+	if (!hw)
 		goto err_out_free_regions;
-	}
 
 	hw->pdev = pdev;
 	sprintf(hw->irq_name, DRV_NAME "@pci:%s", pci_name(pdev));

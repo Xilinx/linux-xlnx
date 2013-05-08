@@ -406,9 +406,9 @@ static struct board_info __initdata board_FAST2404 = {
 	.expected_cpu_id		= 0x6348,
 
 	.has_uart0			= 1,
-        .has_enet0			= 1,
-        .has_enet1			= 1,
-        .has_pci			= 1,
+	.has_enet0			= 1,
+	.has_enet1			= 1,
+	.has_pci			= 1,
 
 	.enet0 = {
 		.has_phy		= 1,
@@ -591,22 +591,22 @@ static struct board_info __initdata board_96358vw2 = {
 };
 
 static struct board_info __initdata board_AGPFS0 = {
-	.name                           = "AGPF-S0",
-	.expected_cpu_id                = 0x6358,
+	.name				= "AGPF-S0",
+	.expected_cpu_id		= 0x6358,
 
 	.has_uart0			= 1,
-	.has_enet0                      = 1,
-	.has_enet1                      = 1,
-	.has_pci                        = 1,
+	.has_enet0			= 1,
+	.has_enet1			= 1,
+	.has_pci			= 1,
 
 	.enet0 = {
-		.has_phy                = 1,
-		.use_internal_phy       = 1,
+		.has_phy		= 1,
+		.use_internal_phy	= 1,
 	},
 
 	.enet1 = {
-		.force_speed_100        = 1,
-		.force_duplex_full      = 1,
+		.force_speed_100	= 1,
+		.force_duplex_full	= 1,
 	},
 
 	.has_ohci0 = 1,
@@ -677,7 +677,7 @@ static struct ssb_sprom bcm63xx_sprom = {
 	.revision		= 0x02,
 	.board_rev		= 0x17,
 	.country_code		= 0x0,
-	.ant_available_bg 	= 0x3,
+	.ant_available_bg	= 0x3,
 	.pa0b0			= 0x15ae,
 	.pa0b1			= 0xfa85,
 	.pa0b2			= 0xfe8d,
@@ -745,10 +745,7 @@ void __init board_prom_init(void)
 		strcpy(cfe_version, "unknown");
 	printk(KERN_INFO PFX "CFE version: %s\n", cfe_version);
 
-	if (bcm63xx_nvram_init(boot_addr + BCM963XX_NVRAM_OFFSET)) {
-		printk(KERN_ERR PFX "invalid nvram checksum\n");
-		return;
-	}
+	bcm63xx_nvram_init(boot_addr + BCM963XX_NVRAM_OFFSET);
 
 	board_name = bcm63xx_nvram_get_name();
 	/* find board by name */

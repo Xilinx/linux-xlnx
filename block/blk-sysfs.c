@@ -229,6 +229,8 @@ queue_store_##name(struct request_queue *q, const char *page, size_t count) \
 	unsigned long val;						\
 	ssize_t ret;							\
 	ret = queue_var_store(&val, page, count);			\
+	if (ret < 0)							\
+		 return ret;						\
 	if (neg)							\
 		val = !val;						\
 									\
@@ -497,6 +499,13 @@ queue_attr_store(struct kobject *kobj, struct attribute *attr,
 	return res;
 }
 
+static void blk_free_queue_rcu(struct rcu_head *rcu_head)
+{
+	struct request_queue *q = container_of(rcu_head, struct request_queue,
+					       rcu_head);
+	kmem_cache_free(blk_requestq_cachep, q);
+}
+
 /**
  * blk_release_queue: - release a &struct request_queue when it is no longer needed
  * @kobj:    the kobj belonging to the request queue to be released
@@ -538,7 +547,7 @@ static void blk_release_queue(struct kobject *kobj)
 	bdi_destroy(&q->backing_dev_info);
 
 	ida_simple_remove(&blk_queue_ida, q->id);
-	kmem_cache_free(blk_requestq_cachep, q);
+	call_rcu(&q->rcu_head, blk_free_queue_rcu);
 }
 
 static const struct sysfs_ops queue_sysfs_ops = {

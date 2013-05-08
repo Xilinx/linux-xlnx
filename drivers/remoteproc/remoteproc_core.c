@@ -200,11 +200,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/* actual size of vring (in bytes) */
 	size = PAGE_ALIGN(vring_size(rvring->len, rvring->align));
 
-	if (!idr_pre_get(&rproc->notifyids, GFP_KERNEL)) {
-		dev_err(dev, "idr_pre_get failed\n");
-		return -ENOMEM;
-	}
-
 	/*
 	 * Allocate non-cacheable memory for the vring. In the future
 	 * this call will also configure the IOMMU for us
@@ -222,12 +217,13 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	 * TODO: let the rproc know the notifyid of this vring
 	 * TODO: support predefined notifyids (via resource table)
 	 */
-	ret = idr_get_new(&rproc->notifyids, rvring, &notifyid);
-	if (ret) {
-		dev_err(dev, "idr_get_new failed: %d\n", ret);
+	ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
+	if (ret < 0) {
+		dev_err(dev, "idr_alloc failed: %d\n", ret);
 		dma_free_coherent(dev->parent, size, va, dma);
 		return ret;
 	}
+	notifyid = ret;
 
 	/* Store largest notifyid */
 	rproc->max_notifyid = max(rproc->max_notifyid, notifyid);
@@ -371,10 +367,12 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	/* it is now safe to add the virtio device */
 	ret = rproc_add_virtio_dev(rvdev, rsc->id);
 	if (ret)
-		goto free_rvdev;
+		goto remove_rvdev;
 
 	return 0;
 
+remove_rvdev:
+	list_del(&rvdev->node);
 free_rvdev:
 	kfree(rvdev);
 	return ret;
@@ -1221,7 +1219,6 @@ static void rproc_type_release(struct device *dev)
 
 	rproc_delete_debug_dir(rproc);
 
-	idr_remove_all(&rproc->notifyids);
 	idr_destroy(&rproc->notifyids);
 
 	if (rproc->index >= 0)

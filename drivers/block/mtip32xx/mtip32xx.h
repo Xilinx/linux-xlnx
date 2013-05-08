@@ -129,9 +129,9 @@ enum {
 	MTIP_PF_EH_ACTIVE_BIT       = 1, /* error handling */
 	MTIP_PF_SE_ACTIVE_BIT       = 2, /* secure erase */
 	MTIP_PF_DM_ACTIVE_BIT       = 3, /* download microcde */
-	MTIP_PF_PAUSE_IO      =	((1 << MTIP_PF_IC_ACTIVE_BIT) | \
-				(1 << MTIP_PF_EH_ACTIVE_BIT) | \
-				(1 << MTIP_PF_SE_ACTIVE_BIT) | \
+	MTIP_PF_PAUSE_IO      =	((1 << MTIP_PF_IC_ACTIVE_BIT) |
+				(1 << MTIP_PF_EH_ACTIVE_BIT) |
+				(1 << MTIP_PF_SE_ACTIVE_BIT) |
 				(1 << MTIP_PF_DM_ACTIVE_BIT)),
 
 	MTIP_PF_SVC_THD_ACTIVE_BIT  = 4,
@@ -144,9 +144,9 @@ enum {
 	MTIP_DDF_REMOVE_PENDING_BIT = 1,
 	MTIP_DDF_OVER_TEMP_BIT      = 2,
 	MTIP_DDF_WRITE_PROTECT_BIT  = 3,
-	MTIP_DDF_STOP_IO      = ((1 << MTIP_DDF_REMOVE_PENDING_BIT) | \
-				(1 << MTIP_DDF_SEC_LOCK_BIT) | \
-				(1 << MTIP_DDF_OVER_TEMP_BIT) | \
+	MTIP_DDF_STOP_IO      = ((1 << MTIP_DDF_REMOVE_PENDING_BIT) |
+				(1 << MTIP_DDF_SEC_LOCK_BIT) |
+				(1 << MTIP_DDF_OVER_TEMP_BIT) |
 				(1 << MTIP_DDF_WRITE_PROTECT_BIT)),
 
 	MTIP_DDF_CLEANUP_BIT        = 5,
@@ -162,6 +162,35 @@ struct smart_attr {
 	u8 worst;
 	u32 data;
 	u8 res[3];
+} __packed;
+
+struct mtip_work {
+	struct work_struct work;
+	void *port;
+	int cpu_binding;
+	u32 completed;
+} ____cacheline_aligned_in_smp;
+
+#define DEFINE_HANDLER(group)                                  \
+	void mtip_workq_sdbf##group(struct work_struct *work)       \
+	{                                                      \
+		struct mtip_work *w = (struct mtip_work *) work;         \
+		mtip_workq_sdbfx(w->port, group, w->completed);     \
+	}
+
+#define MTIP_TRIM_TIMEOUT_MS		240000
+#define MTIP_MAX_TRIM_ENTRIES		8
+#define MTIP_MAX_TRIM_ENTRY_LEN		0xfff8
+
+struct mtip_trim_entry {
+	u32 lba;   /* starting lba of region */
+	u16 rsvd;  /* unused */
+	u16 range; /* # of 512b blocks to trim */
+} __packed;
+
+struct mtip_trim {
+	/* Array of regions to trim */
+	struct mtip_trim_entry entry[MTIP_MAX_TRIM_ENTRIES];
 } __packed;
 
 /* Register Frame Information Structure (FIS), host to device. */
@@ -424,7 +453,7 @@ struct mtip_port {
 	 */
 	struct semaphore cmd_slot;
 	/* Spinlock for working around command-issue bug. */
-	spinlock_t cmd_issue_lock;
+	spinlock_t cmd_issue_lock[MTIP_MAX_SLOT_GROUPS];
 };
 
 /*
@@ -447,9 +476,6 @@ struct driver_data {
 
 	struct mtip_port *port; /* Pointer to the port data structure. */
 
-	/* Tasklet used to process the bottom half of the ISR. */
-	struct tasklet_struct tasklet;
-
 	unsigned product_type; /* magic value declaring the product type */
 
 	unsigned slot_groups; /* number of slot groups the product supports */
@@ -461,6 +487,24 @@ struct driver_data {
 	struct task_struct *mtip_svc_handler; /* task_struct of svc thd */
 
 	struct dentry *dfs_node;
+
+	bool trim_supp; /* flag indicating trim support */
+
+	int numa_node; /* NUMA support */
+
+	char workq_name[32];
+
+	struct workqueue_struct *isr_workq;
+
+	struct mtip_work work[MTIP_MAX_SLOT_GROUPS];
+
+	atomic_t irq_workers_active;
+
+	int isr_binding;
+
+	struct list_head online_list; /* linkage for online list */
+
+	struct list_head remove_list; /* linkage for removing list */
 };
 
 #endif

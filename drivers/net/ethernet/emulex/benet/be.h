@@ -34,7 +34,7 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"4.4.161.0u"
+#define DRV_VER			"4.6.62.0u"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"Emulex BladeEngine2"
 #define BE3_NAME		"Emulex BladeEngine3"
@@ -349,6 +349,7 @@ struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
 
+	u8 __iomem *csr;	/* CSR BAR used only for BE2/3 */
 	u8 __iomem *db;		/* Door Bell */
 
 	struct mutex mbox_lock; /* For serializing mbox cmds to BE card */

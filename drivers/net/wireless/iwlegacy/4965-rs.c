@@ -1183,8 +1183,7 @@ il4965_rs_switch_to_mimo2(struct il_priv *il, struct il_lq_sta *lq_sta,
 	if (!conf_is_ht(conf) || !sta->ht_cap.ht_supported)
 		return -1;
 
-	if (((sta->ht_cap.cap & IEEE80211_HT_CAP_SM_PS) >> 2) ==
-	    WLAN_HT_CAP_SM_PS_STATIC)
+	if (sta->smps_mode == IEEE80211_SMPS_STATIC)
 		return -1;
 
 	/* Need both Tx chains/antennas to support MIMO */
@@ -2153,7 +2152,7 @@ il4965_rs_initialize_lq(struct il_priv *il, struct ieee80211_conf *conf,
 	int rate_idx;
 	int i;
 	u32 rate;
-	u8 use_green = il4965_rs_use_green(il, sta);
+	u8 use_green;
 	u8 active_tbl = 0;
 	u8 valid_tx_ant;
 	struct il_station_priv *sta_priv;
@@ -2161,6 +2160,7 @@ il4965_rs_initialize_lq(struct il_priv *il, struct ieee80211_conf *conf,
 	if (!sta || !lq_sta)
 		return;
 
+	use_green = il4965_rs_use_green(il, sta);
 	sta_priv = (void *)sta->drv_priv;
 
 	i = lq_sta->last_txrate_idx;

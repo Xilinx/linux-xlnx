@@ -322,7 +322,7 @@ config CPUMASK_OFFSTACK
 
 config DISABLE_OBSOLETE_CPUMASK_FUNCTIONS
        bool "Disable obsolete cpumask functions" if DEBUG_PER_CPU_MAPS
-       depends on EXPERIMENTAL && BROKEN
+       depends on BROKEN
 
 config CPU_RMAP
 	bool
@@ -403,5 +403,8 @@ config OID_REGISTRY
 	tristate
 	help
 	  Enable fast lookup object identifier registry.
+
+config UCS2_STRING
+        tristate
 
 endmenu

@@ -891,18 +891,16 @@ static int sh_eth_ring_init(struct net_device *ndev)
 		mdp->rx_buf_sz += NET_IP_ALIGN;
 
 	/* Allocate RX and TX skb rings */
-	mdp->rx_skbuff = kmalloc(sizeof(*mdp->rx_skbuff) * mdp->num_rx_ring,
-				GFP_KERNEL);
+	mdp->rx_skbuff = kmalloc_array(mdp->num_rx_ring,
+				       sizeof(*mdp->rx_skbuff), GFP_KERNEL);
 	if (!mdp->rx_skbuff) {
-		dev_err(&ndev->dev, "Cannot allocate Rx skb\n");
 		ret = -ENOMEM;
 		return ret;
 	}
 
-	mdp->tx_skbuff = kmalloc(sizeof(*mdp->tx_skbuff) * mdp->num_tx_ring,
-				GFP_KERNEL);
+	mdp->tx_skbuff = kmalloc_array(mdp->num_tx_ring,
+				       sizeof(*mdp->tx_skbuff), GFP_KERNEL);
 	if (!mdp->tx_skbuff) {
-		dev_err(&ndev->dev, "Cannot allocate Tx skb\n");
 		ret = -ENOMEM;
 		goto skb_ring_free;
 	}
@@ -1218,10 +1216,7 @@ static void sh_eth_error(struct net_device *ndev, int intr_status)
 		if (felic_stat & ECSR_LCHNG) {
 			/* Link Changed */
 			if (mdp->cd->no_psr || mdp->no_ether_link) {
-				if (mdp->link == PHY_DOWN)
-					link_stat = 0;
-				else
-					link_stat = PHY_ST_LINK;
+				goto ignore_link;
 			} else {
 				link_stat = (sh_eth_read(ndev, PSR));
 				if (mdp->ether_link_active_low)
@@ -1244,6 +1239,7 @@ static void sh_eth_error(struct net_device *ndev, int intr_status)
 		}
 	}
 
+ignore_link:
 	if (intr_status & EESR_TWB) {
 		/* Write buck end. unused write back interrupt */
 		if (intr_status & EESR_TABT)	/* Transmit Abort int */
@@ -1328,12 +1324,18 @@ static irqreturn_t sh_eth_interrupt(int irq, void *netdev)
 	struct sh_eth_private *mdp = netdev_priv(ndev);
 	struct sh_eth_cpu_data *cd = mdp->cd;
 	irqreturn_t ret = IRQ_NONE;
-	u32 intr_status = 0;
+	unsigned long intr_status;
 
 	spin_lock(&mdp->lock);
 
-	/* Get interrpt stat */
+	/* Get interrupt status */
 	intr_status = sh_eth_read(ndev, EESR);
+	/* Mask it with the interrupt mask, forcing ECI interrupt to be always
+	 * enabled since it's the one that  comes thru regardless of the mask,
+	 * and we need to fully handle it in sh_eth_error() in order to quench
+	 * it as it doesn't get cleared by just writing 1 to the ECI bit...
+	 */
+	intr_status &= sh_eth_read(ndev, EESIPR) | DMAC_M_ECI;
 	/* Clear interrupt */
 	if (intr_status & (EESR_FRC | EESR_RMAF | EESR_RRF |
 			EESR_RTLF | EESR_RTSF | EESR_PRE | EESR_CERF |
@@ -1375,7 +1377,7 @@ static void sh_eth_adjust_link(struct net_device *ndev)
 	struct phy_device *phydev = mdp->phydev;
 	int new_state = 0;
 
-	if (phydev->link != PHY_DOWN) {
+	if (phydev->link) {
 		if (phydev->duplex != mdp->duplex) {
 			new_state = 1;
 			mdp->duplex = phydev->duplex;
@@ -1389,17 +1391,21 @@ static void sh_eth_adjust_link(struct net_device *ndev)
 			if (mdp->cd->set_rate)
 				mdp->cd->set_rate(ndev);
 		}
-		if (mdp->link == PHY_DOWN) {
+		if (!mdp->link) {
 			sh_eth_write(ndev,
 				(sh_eth_read(ndev, ECMR) & ~ECMR_TXF), ECMR);
 			new_state = 1;
 			mdp->link = phydev->link;
+			if (mdp->cd->no_psr || mdp->no_ether_link)
+				sh_eth_rcv_snd_enable(ndev);
 		}
 	} else if (mdp->link) {
 		new_state = 1;
-		mdp->link = PHY_DOWN;
+		mdp->link = 0;
 		mdp->speed = 0;
 		mdp->duplex = -1;
+		if (mdp->cd->no_psr || mdp->no_ether_link)
+			sh_eth_rcv_snd_disable(ndev);
 	}
 
 	if (new_state && netif_msg_link(mdp))
@@ -1416,13 +1422,13 @@ static int sh_eth_phy_init(struct net_device *ndev)
 	snprintf(phy_id, sizeof(phy_id), PHY_ID_FMT,
 		mdp->mii_bus->id , mdp->phy_id);
 
-	mdp->link = PHY_DOWN;
+	mdp->link = 0;
 	mdp->speed = 0;
 	mdp->duplex = -1;
 
 	/* Try connect to PHY */
 	phydev = phy_connect(ndev, phy_id, sh_eth_adjust_link,
-				0, mdp->phy_interface);
+			     mdp->phy_interface);
 	if (IS_ERR(phydev)) {
 		dev_err(&ndev->dev, "phy_connect failed\n");
 		return PTR_ERR(phydev);
@@ -2222,6 +2228,7 @@ static void sh_eth_tsu_init(struct sh_eth_private *mdp)
 /* MDIO bus release function */
 static int sh_mdio_release(struct net_device *ndev)
 {
+	struct sh_eth_private *mdp = netdev_priv(ndev);
 	struct mii_bus *bus = dev_get_drvdata(&ndev->dev);
 
 	/* unregister mdio bus */
@@ -2235,6 +2242,9 @@ static int sh_mdio_release(struct net_device *ndev)
 
 	/* free bitbang info */
 	free_mdio_bitbang(bus);
+
+	/* free bitbang memory */
+	kfree(mdp->bitbang);
 
 	return 0;
 }
@@ -2264,6 +2274,7 @@ static int sh_mdio_init(struct net_device *ndev, int id,
 	bitbang->ctrl.ops = &bb_ops;
 
 	/* MII controller setting */
+	mdp->bitbang = bitbang;
 	mdp->mii_bus = alloc_mdio_bitbang(&bitbang->ctrl);
 	if (!mdp->mii_bus) {
 		ret = -ENOMEM;
@@ -2443,6 +2454,11 @@ static int sh_eth_drv_probe(struct platform_device *pdev)
 		}
 		mdp->tsu_addr = ioremap(rtsu->start,
 					resource_size(rtsu));
+		if (mdp->tsu_addr == NULL) {
+			ret = -ENOMEM;
+			dev_err(&pdev->dev, "TSU ioremap failed.\n");
+			goto out_release;
+		}
 		mdp->port = devno % 2;
 		ndev->features = NETIF_F_HW_VLAN_FILTER;
 	}

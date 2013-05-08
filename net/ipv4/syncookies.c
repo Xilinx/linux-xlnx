@@ -232,7 +232,8 @@ static inline struct sock *get_cookie_sock(struct sock *sk, struct sk_buff *skb,
  *
  * return false if we decode an option that should not be.
  */
-bool cookie_check_timestamp(struct tcp_options_received *tcp_opt, bool *ecn_ok)
+bool cookie_check_timestamp(struct tcp_options_received *tcp_opt,
+			struct net *net, bool *ecn_ok)
 {
 	/* echoed timestamp, lowest bits contain options */
 	u32 options = tcp_opt->rcv_tsecr & TSMASK;
@@ -247,7 +248,7 @@ bool cookie_check_timestamp(struct tcp_options_received *tcp_opt, bool *ecn_ok)
 
 	tcp_opt->sack_ok = (options & (1 << 4)) ? TCP_SACK_SEEN : 0;
 	*ecn_ok = (options >> 5) & 1;
-	if (*ecn_ok && !sysctl_tcp_ecn)
+	if (*ecn_ok && !net->ipv4.sysctl_tcp_ecn)
 		return false;
 
 	if (tcp_opt->sack_ok && !sysctl_tcp_sack)
@@ -295,7 +296,7 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb,
 	memset(&tcp_opt, 0, sizeof(tcp_opt));
 	tcp_parse_options(skb, &tcp_opt, &hash_location, 0, NULL);
 
-	if (!cookie_check_timestamp(&tcp_opt, &ecn_ok))
+	if (!cookie_check_timestamp(&tcp_opt, sock_net(sk), &ecn_ok))
 		goto out;
 
 	ret = NULL;
@@ -348,8 +349,8 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb,
 	 * hasn't changed since we received the original syn, but I see
 	 * no easy way to do this.
 	 */
-	flowi4_init_output(&fl4, 0, sk->sk_mark, RT_CONN_FLAGS(sk),
-			   RT_SCOPE_UNIVERSE, IPPROTO_TCP,
+	flowi4_init_output(&fl4, sk->sk_bound_dev_if, sk->sk_mark,
+			   RT_CONN_FLAGS(sk), RT_SCOPE_UNIVERSE, IPPROTO_TCP,
 			   inet_sk_flowi_flags(sk),
 			   (opt && opt->srr) ? opt->faddr : ireq->rmt_addr,
 			   ireq->loc_addr, th->source, th->dest);

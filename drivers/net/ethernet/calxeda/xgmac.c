@@ -163,6 +163,7 @@
 #define XGMAC_FLOW_CTRL_FCB_BPA	0x00000001	/* Flow Control Busy ... */
 
 /* XGMAC_INT_STAT reg */
+#define XGMAC_INT_STAT_PMTIM	0x00800000	/* PMT Interrupt Mask */
 #define XGMAC_INT_STAT_PMT	0x0080		/* PMT Interrupt Status */
 #define XGMAC_INT_STAT_LPI	0x0040		/* LPI Interrupt Status */
 
@@ -960,6 +961,9 @@ static int xgmac_hw_init(struct net_device *dev)
 	writel(DMA_INTR_DEFAULT_MASK, ioaddr + XGMAC_DMA_STATUS);
 	writel(DMA_INTR_DEFAULT_MASK, ioaddr + XGMAC_DMA_INTR_ENA);
 
+	/* Mask power mgt interrupt */
+	writel(XGMAC_INT_STAT_PMTIM, ioaddr + XGMAC_INT_STAT);
+
 	/* XGMAC requires AXI bus init. This is a 'magic number' for now */
 	writel(0x0077000E, ioaddr + XGMAC_DMA_AXI_BUS);
 
@@ -1140,6 +1144,9 @@ static int xgmac_rx(struct xgmac_priv *priv, int limit)
 		int ip_checksum;
 		struct sk_buff *skb;
 		int frame_len;
+
+		if (!dma_ring_cnt(priv->rx_head, priv->rx_tail, DMA_RX_RING_SZ))
+			break;
 
 		entry = priv->rx_tail;
 		p = priv->dma_rx + entry;
@@ -1463,7 +1470,6 @@ static int xgmac_set_mac_address(struct net_device *dev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	dev->addr_assign_type &= ~NET_ADDR_RANDOM;
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 
 	xgmac_set_mac_addr(ioaddr, dev->dev_addr, 0);
@@ -1826,7 +1832,7 @@ static void xgmac_pmt(void __iomem *ioaddr, unsigned long mode)
 	unsigned int pmt = 0;
 
 	if (mode & WAKE_MAGIC)
-		pmt |= XGMAC_PMT_POWERDOWN | XGMAC_PMT_MAGIC_PKT;
+		pmt |= XGMAC_PMT_POWERDOWN | XGMAC_PMT_MAGIC_PKT_EN;
 	if (mode & WAKE_UCAST)
 		pmt |= XGMAC_PMT_POWERDOWN | XGMAC_PMT_GLBL_UNICAST;
 

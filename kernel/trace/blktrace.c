@@ -147,7 +147,7 @@ void __trace_note_message(struct blk_trace *bt, const char *fmt, ...)
 		return;
 
 	local_irq_save(flags);
-	buf = per_cpu_ptr(bt->msg_data, smp_processor_id());
+	buf = this_cpu_ptr(bt->msg_data);
 	va_start(args, fmt);
 	n = vscnprintf(buf, BLK_TN_MAX_MSG, fmt, args);
 	va_end(args);
@@ -783,6 +783,7 @@ static void blk_add_trace_bio_complete(void *ignore,
 
 static void blk_add_trace_bio_backmerge(void *ignore,
 					struct request_queue *q,
+					struct request *rq,
 					struct bio *bio)
 {
 	blk_add_trace_bio(q, bio, BLK_TA_BACKMERGE, 0);
@@ -790,6 +791,7 @@ static void blk_add_trace_bio_backmerge(void *ignore,
 
 static void blk_add_trace_bio_frontmerge(void *ignore,
 					 struct request_queue *q,
+					 struct request *rq,
 					 struct bio *bio)
 {
 	blk_add_trace_bio(q, bio, BLK_TA_FRONTMERGE, 0);

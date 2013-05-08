@@ -2,7 +2,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2008 - 2012 Intel Corporation. All rights reserved.
+ * Copyright(c) 2008 - 2013 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -1258,6 +1258,15 @@ int iwl_dvm_send_cmd(struct iwl_priv *priv, struct iwl_host_cmd *cmd)
 	if (test_bit(STATUS_FW_ERROR, &priv->status)) {
 		IWL_ERR(priv, "Command %s failed: FW Error\n",
 			iwl_dvm_get_cmd_string(cmd->id));
+		return -EIO;
+	}
+
+	/*
+	 * This can happen upon FW ASSERT: we clear the STATUS_FW_ERROR flag
+	 * in iwl_down but cancel the workers only later.
+	 */
+	if (!priv->ucode_loaded) {
+		IWL_ERR(priv, "Fw not loaded - dropping CMD: %x\n", cmd->id);
 		return -EIO;
 	}
 

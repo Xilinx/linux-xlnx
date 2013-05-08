@@ -44,6 +44,7 @@ struct crypto_rfc4543_ctx {
 
 struct crypto_rfc4543_req_ctx {
 	u8 auth_tag[16];
+	u8 assocbuf[32];
 	struct scatterlist cipher[1];
 	struct scatterlist payload[2];
 	struct scatterlist assoc[2];
@@ -701,9 +702,8 @@ static struct crypto_instance *crypto_gcm_alloc_common(struct rtattr **tb,
 	int err;
 
 	algt = crypto_get_attr_type(tb);
-	err = PTR_ERR(algt);
 	if (IS_ERR(algt))
-		return ERR_PTR(err);
+		return ERR_CAST(algt);
 
 	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
 		return ERR_PTR(-EINVAL);
@@ -711,9 +711,8 @@ static struct crypto_instance *crypto_gcm_alloc_common(struct rtattr **tb,
 	ghash_alg = crypto_find_alg(ghash_name, &crypto_ahash_type,
 				    CRYPTO_ALG_TYPE_HASH,
 				    CRYPTO_ALG_TYPE_AHASH_MASK);
-	err = PTR_ERR(ghash_alg);
 	if (IS_ERR(ghash_alg))
-		return ERR_PTR(err);
+		return ERR_CAST(ghash_alg);
 
 	err = -ENOMEM;
 	inst = kzalloc(sizeof(*inst) + sizeof(*ctx), GFP_KERNEL);
@@ -787,15 +786,13 @@ out_put_ghash:
 
 static struct crypto_instance *crypto_gcm_alloc(struct rtattr **tb)
 {
-	int err;
 	const char *cipher_name;
 	char ctr_name[CRYPTO_MAX_ALG_NAME];
 	char full_name[CRYPTO_MAX_ALG_NAME];
 
 	cipher_name = crypto_attr_alg_name(tb[1]);
-	err = PTR_ERR(cipher_name);
 	if (IS_ERR(cipher_name))
-		return ERR_PTR(err);
+		return ERR_CAST(cipher_name);
 
 	if (snprintf(ctr_name, CRYPTO_MAX_ALG_NAME, "ctr(%s)", cipher_name) >=
 	    CRYPTO_MAX_ALG_NAME)
@@ -826,20 +823,17 @@ static struct crypto_template crypto_gcm_tmpl = {
 
 static struct crypto_instance *crypto_gcm_base_alloc(struct rtattr **tb)
 {
-	int err;
 	const char *ctr_name;
 	const char *ghash_name;
 	char full_name[CRYPTO_MAX_ALG_NAME];
 
 	ctr_name = crypto_attr_alg_name(tb[1]);
-	err = PTR_ERR(ctr_name);
 	if (IS_ERR(ctr_name))
-		return ERR_PTR(err);
+		return ERR_CAST(ctr_name);
 
 	ghash_name = crypto_attr_alg_name(tb[2]);
-	err = PTR_ERR(ghash_name);
 	if (IS_ERR(ghash_name))
-		return ERR_PTR(err);
+		return ERR_CAST(ghash_name);
 
 	if (snprintf(full_name, CRYPTO_MAX_ALG_NAME, "gcm_base(%s,%s)",
 		     ctr_name, ghash_name) >= CRYPTO_MAX_ALG_NAME)
@@ -971,17 +965,15 @@ static struct crypto_instance *crypto_rfc4106_alloc(struct rtattr **tb)
 	int err;
 
 	algt = crypto_get_attr_type(tb);
-	err = PTR_ERR(algt);
 	if (IS_ERR(algt))
-		return ERR_PTR(err);
+		return ERR_CAST(algt);
 
 	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
 		return ERR_PTR(-EINVAL);
 
 	ccm_name = crypto_attr_alg_name(tb[1]);
-	err = PTR_ERR(ccm_name);
 	if (IS_ERR(ccm_name))
-		return ERR_PTR(err);
+		return ERR_CAST(ccm_name);
 
 	inst = kzalloc(sizeof(*inst) + sizeof(*spawn), GFP_KERNEL);
 	if (!inst)
@@ -1142,9 +1134,19 @@ static struct aead_request *crypto_rfc4543_crypt(struct aead_request *req,
 	scatterwalk_crypto_chain(payload, dst, vdst == req->iv + 8, 2);
 	assoclen += 8 + req->cryptlen - (enc ? 0 : authsize);
 
-	sg_init_table(assoc, 2);
-	sg_set_page(assoc, sg_page(req->assoc), req->assoc->length,
-		    req->assoc->offset);
+	if (req->assoc->length == req->assoclen) {
+		sg_init_table(assoc, 2);
+		sg_set_page(assoc, sg_page(req->assoc), req->assoc->length,
+			    req->assoc->offset);
+	} else {
+		BUG_ON(req->assoclen > sizeof(rctx->assocbuf));
+
+		scatterwalk_map_and_copy(rctx->assocbuf, req->assoc, 0,
+					 req->assoclen, 0);
+
+		sg_init_table(assoc, 2);
+		sg_set_buf(assoc, rctx->assocbuf, req->assoclen);
+	}
 	scatterwalk_crypto_chain(assoc, payload, 0, 2);
 
 	aead_request_set_tfm(subreq, ctx->child);
@@ -1222,17 +1224,15 @@ static struct crypto_instance *crypto_rfc4543_alloc(struct rtattr **tb)
 	int err;
 
 	algt = crypto_get_attr_type(tb);
-	err = PTR_ERR(algt);
 	if (IS_ERR(algt))
-		return ERR_PTR(err);
+		return ERR_CAST(algt);
 
 	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
 		return ERR_PTR(-EINVAL);
 
 	ccm_name = crypto_attr_alg_name(tb[1]);
-	err = PTR_ERR(ccm_name);
 	if (IS_ERR(ccm_name))
-		return ERR_PTR(err);
+		return ERR_CAST(ccm_name);
 
 	inst = kzalloc(sizeof(*inst) + sizeof(*spawn), GFP_KERNEL);
 	if (!inst)

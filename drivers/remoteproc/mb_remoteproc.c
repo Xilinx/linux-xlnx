@@ -29,7 +29,7 @@
 #include <linux/interrupt.h>
 #include <linux/of_irq.h>
 #include <linux/smp.h>
-#include <asm/hardware/gic.h>
+#include <linux/irqchip/arm-gic.h>
 #include <asm/outercache.h>
 #include <asm/cacheflush.h>
 #include <linux/slab.h>

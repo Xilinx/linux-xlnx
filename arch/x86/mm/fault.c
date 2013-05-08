@@ -378,10 +378,12 @@ static noinline __kprobes int vmalloc_fault(unsigned long address)
 	if (pgd_none(*pgd_ref))
 		return -1;
 
-	if (pgd_none(*pgd))
+	if (pgd_none(*pgd)) {
 		set_pgd(pgd, *pgd_ref);
-	else
+		arch_flush_lazy_mmu_mode();
+	} else {
 		BUG_ON(pgd_page_vaddr(*pgd) != pgd_page_vaddr(*pgd_ref));
+	}
 
 	/*
 	 * Below here mismatches are bugs because these lower tables
@@ -939,14 +941,8 @@ spurious_fault(unsigned long error_code, unsigned long address)
 	if (pmd_large(*pmd))
 		return spurious_fault_check(error_code, (pte_t *) pmd);
 
-	/*
-	 * Note: don't use pte_present() here, since it returns true
-	 * if the _PAGE_PROTNONE bit is set.  However, this aliases the
-	 * _PAGE_GLOBAL bit, which for kernel pages give false positives
-	 * when CONFIG_DEBUG_PAGEALLOC is used.
-	 */
 	pte = pte_offset_kernel(pmd, address);
-	if (!(pte_flags(*pte) & _PAGE_PRESENT))
+	if (!pte_present(*pte))
 		return 0;
 
 	ret = spurious_fault_check(error_code, pte);

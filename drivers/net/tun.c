@@ -197,9 +197,8 @@ static inline u32 tun_hashfn(u32 rxhash)
 static struct tun_flow_entry *tun_flow_find(struct hlist_head *head, u32 rxhash)
 {
 	struct tun_flow_entry *e;
-	struct hlist_node *n;
 
-	hlist_for_each_entry_rcu(e, n, head, hash_link) {
+	hlist_for_each_entry_rcu(e, head, hash_link) {
 		if (e->rxhash == rxhash)
 			return e;
 	}
@@ -241,9 +240,9 @@ static void tun_flow_flush(struct tun_struct *tun)
 	spin_lock_bh(&tun->lock);
 	for (i = 0; i < TUN_NUM_FLOW_ENTRIES; i++) {
 		struct tun_flow_entry *e;
-		struct hlist_node *h, *n;
+		struct hlist_node *n;
 
-		hlist_for_each_entry_safe(e, h, n, &tun->flows[i], hash_link)
+		hlist_for_each_entry_safe(e, n, &tun->flows[i], hash_link)
 			tun_flow_delete(tun, e);
 	}
 	spin_unlock_bh(&tun->lock);
@@ -256,9 +255,9 @@ static void tun_flow_delete_by_queue(struct tun_struct *tun, u16 queue_index)
 	spin_lock_bh(&tun->lock);
 	for (i = 0; i < TUN_NUM_FLOW_ENTRIES; i++) {
 		struct tun_flow_entry *e;
-		struct hlist_node *h, *n;
+		struct hlist_node *n;
 
-		hlist_for_each_entry_safe(e, h, n, &tun->flows[i], hash_link) {
+		hlist_for_each_entry_safe(e, n, &tun->flows[i], hash_link) {
 			if (e->queue_index == queue_index)
 				tun_flow_delete(tun, e);
 		}
@@ -279,9 +278,9 @@ static void tun_flow_cleanup(unsigned long data)
 	spin_lock_bh(&tun->lock);
 	for (i = 0; i < TUN_NUM_FLOW_ENTRIES; i++) {
 		struct tun_flow_entry *e;
-		struct hlist_node *h, *n;
+		struct hlist_node *n;
 
-		hlist_for_each_entry_safe(e, h, n, &tun->flows[i], hash_link) {
+		hlist_for_each_entry_safe(e, n, &tun->flows[i], hash_link) {
 			unsigned long this_timer;
 			count++;
 			this_timer = e->updated + delay;
@@ -748,6 +747,8 @@ static netdev_tx_t tun_net_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto drop;
 	skb_orphan(skb);
 
+	nf_reset(skb);
+
 	/* Enqueue packet */
 	skb_queue_tail(&tfile->socket.sk->sk_receive_queue, skb);
 
@@ -1200,6 +1201,7 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 	if (zerocopy) {
 		skb_shinfo(skb)->destructor_arg = msg_control;
 		skb_shinfo(skb)->tx_flags |= SKBTX_DEV_ZEROCOPY;
+		skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
 	}
 
 	skb_reset_network_header(skb);
@@ -1592,7 +1594,7 @@ static int tun_set_iff(struct net *net, struct file *file, struct ifreq *ifr)
 
 		if (tun->flags & TUN_TAP_MQ &&
 		    (tun->numqueues + tun->numdisabled > 1))
-			return err;
+			return -EBUSY;
 	}
 	else {
 		char *name;

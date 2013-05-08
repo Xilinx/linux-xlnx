@@ -45,12 +45,12 @@ static u32 notrace jiffy_sched_clock_read(void)
 
 static u32 __read_mostly (*read_sched_clock)(void) = jiffy_sched_clock_read;
 
-static inline u64 cyc_to_ns(u64 cyc, u32 mult, u32 shift)
+static inline u64 notrace cyc_to_ns(u64 cyc, u32 mult, u32 shift)
 {
 	return (cyc * mult) >> shift;
 }
 
-static unsigned long long cyc_to_sched_clock(u32 cyc, u32 mask)
+static unsigned long long notrace cyc_to_sched_clock(u32 cyc, u32 mask)
 {
 	u64 epoch_ns;
 	u32 epoch_cyc;
@@ -93,11 +93,11 @@ static void notrace update_sched_clock(void)
 	 * detectable in cyc_to_fixed_sched_clock().
 	 */
 	raw_local_irq_save(flags);
-	cd.epoch_cyc = cyc;
+	cd.epoch_cyc_copy = cyc;
 	smp_wmb();
 	cd.epoch_ns = ns;
 	smp_wmb();
-	cd.epoch_cyc_copy = cyc;
+	cd.epoch_cyc = cyc;
 	raw_local_irq_restore(flags);
 }
 

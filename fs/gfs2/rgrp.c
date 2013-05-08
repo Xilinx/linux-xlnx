@@ -576,7 +576,7 @@ int gfs2_rs_alloc(struct gfs2_inode *ip)
 	RB_CLEAR_NODE(&ip->i_res->rs_node);
 out:
 	up_write(&ip->i_rw_mutex);
-	return 0;
+	return error;
 }
 
 static void dump_rs(struct seq_file *seq, const struct gfs2_blkreserv *rs)
@@ -1181,12 +1181,9 @@ int gfs2_rgrp_send_discards(struct gfs2_sbd *sdp, u64 offset,
 			     const struct gfs2_bitmap *bi, unsigned minlen, u64 *ptrimmed)
 {
 	struct super_block *sb = sdp->sd_vfs;
-	struct block_device *bdev = sb->s_bdev;
-	const unsigned int sects_per_blk = sdp->sd_sb.sb_bsize /
-					   bdev_logical_block_size(sb->s_bdev);
 	u64 blk;
 	sector_t start = 0;
-	sector_t nr_sects = 0;
+	sector_t nr_blks = 0;
 	int rv;
 	unsigned int x;
 	u32 trimmed = 0;
@@ -1206,35 +1203,34 @@ int gfs2_rgrp_send_discards(struct gfs2_sbd *sdp, u64 offset,
 		if (diff == 0)
 			continue;
 		blk = offset + ((bi->bi_start + x) * GFS2_NBBY);
-		blk *= sects_per_blk; /* convert to sectors */
 		while(diff) {
 			if (diff & 1) {
-				if (nr_sects == 0)
+				if (nr_blks == 0)
 					goto start_new_extent;
-				if ((start + nr_sects) != blk) {
-					if (nr_sects >= minlen) {
-						rv = blkdev_issue_discard(bdev,
-							start, nr_sects,
+				if ((start + nr_blks) != blk) {
+					if (nr_blks >= minlen) {
+						rv = sb_issue_discard(sb,
+							start, nr_blks,
 							GFP_NOFS, 0);
 						if (rv)
 							goto fail;
-						trimmed += nr_sects;
+						trimmed += nr_blks;
 					}
-					nr_sects = 0;
+					nr_blks = 0;
 start_new_extent:
 					start = blk;
 				}
-				nr_sects += sects_per_blk;
+				nr_blks++;
 			}
 			diff >>= 2;
-			blk += sects_per_blk;
+			blk++;
 		}
 	}
-	if (nr_sects >= minlen) {
-		rv = blkdev_issue_discard(bdev, start, nr_sects, GFP_NOFS, 0);
+	if (nr_blks >= minlen) {
+		rv = sb_issue_discard(sb, start, nr_blks, GFP_NOFS, 0);
 		if (rv)
 			goto fail;
-		trimmed += nr_sects;
+		trimmed += nr_blks;
 	}
 	if (ptrimmed)
 		*ptrimmed = trimmed;
@@ -1257,7 +1253,7 @@ fail:
 
 int gfs2_fitrim(struct file *filp, void __user *argp)
 {
-	struct inode *inode = filp->f_dentry->d_inode;
+	struct inode *inode = file_inode(filp);
 	struct gfs2_sbd *sdp = GFS2_SB(inode);
 	struct request_queue *q = bdev_get_queue(sdp->sd_vfs->s_bdev);
 	struct buffer_head *bh;
@@ -1323,7 +1319,7 @@ int gfs2_fitrim(struct file *filp, void __user *argp)
 			if (ret == 0) {
 				bh = rgd->rd_bits[0].bi_bh;
 				rgd->rd_flags |= GFS2_RGF_TRIMMED;
-				gfs2_trans_add_bh(rgd->rd_gl, bh, 1);
+				gfs2_trans_add_meta(rgd->rd_gl, bh);
 				gfs2_rgrp_out(rgd, bh->b_data);
 				gfs2_rgrp_ondisk2lvb(rgd->rd_rgl, bh->b_data);
 				gfs2_trans_end(sdp);
@@ -1968,14 +1964,14 @@ static void gfs2_alloc_extent(const struct gfs2_rbm *rbm, bool dinode,
 
 	*n = 1;
 	block = gfs2_rbm_to_block(rbm);
-	gfs2_trans_add_bh(rbm->rgd->rd_gl, rbm->bi->bi_bh, 1);
+	gfs2_trans_add_meta(rbm->rgd->rd_gl, rbm->bi->bi_bh);
 	gfs2_setbit(rbm, true, dinode ? GFS2_BLKST_DINODE : GFS2_BLKST_USED);
 	block++;
 	while (*n < elen) {
 		ret = gfs2_rbm_from_block(&pos, block);
 		if (ret || gfs2_testbit(&pos) != GFS2_BLKST_FREE)
 			break;
-		gfs2_trans_add_bh(pos.rgd->rd_gl, pos.bi->bi_bh, 1);
+		gfs2_trans_add_meta(pos.rgd->rd_gl, pos.bi->bi_bh);
 		gfs2_setbit(&pos, true, GFS2_BLKST_USED);
 		(*n)++;
 		block++;
@@ -2014,7 +2010,7 @@ static struct gfs2_rgrpd *rgblk_free(struct gfs2_sbd *sdp, u64 bstart,
 			       rbm.bi->bi_bh->b_data + rbm.bi->bi_offset,
 			       rbm.bi->bi_len);
 		}
-		gfs2_trans_add_bh(rbm.rgd->rd_gl, rbm.bi->bi_bh, 1);
+		gfs2_trans_add_meta(rbm.rgd->rd_gl, rbm.bi->bi_bh);
 		gfs2_setbit(&rbm, false, new_state);
 	}
 
@@ -2157,7 +2153,7 @@ int gfs2_alloc_blocks(struct gfs2_inode *ip, u64 *bn, unsigned int *nblocks,
 		if (error == 0) {
 			struct gfs2_dinode *di =
 				(struct gfs2_dinode *)dibh->b_data;
-			gfs2_trans_add_bh(ip->i_gl, dibh, 1);
+			gfs2_trans_add_meta(ip->i_gl, dibh);
 			di->di_goal_meta = di->di_goal_data =
 				cpu_to_be64(ip->i_goal);
 			brelse(dibh);
@@ -2176,7 +2172,7 @@ int gfs2_alloc_blocks(struct gfs2_inode *ip, u64 *bn, unsigned int *nblocks,
 			*generation = rbm.rgd->rd_igeneration++;
 	}
 
-	gfs2_trans_add_bh(rbm.rgd->rd_gl, rbm.rgd->rd_bits[0].bi_bh, 1);
+	gfs2_trans_add_meta(rbm.rgd->rd_gl, rbm.rgd->rd_bits[0].bi_bh);
 	gfs2_rgrp_out(rbm.rgd, rbm.rgd->rd_bits[0].bi_bh->b_data);
 	gfs2_rgrp_ondisk2lvb(rbm.rgd->rd_rgl, rbm.rgd->rd_bits[0].bi_bh->b_data);
 
@@ -2223,7 +2219,7 @@ void __gfs2_free_blocks(struct gfs2_inode *ip, u64 bstart, u32 blen, int meta)
 	trace_gfs2_block_alloc(ip, rgd, bstart, blen, GFS2_BLKST_FREE);
 	rgd->rd_free += blen;
 	rgd->rd_flags &= ~GFS2_RGF_TRIMMED;
-	gfs2_trans_add_bh(rgd->rd_gl, rgd->rd_bits[0].bi_bh, 1);
+	gfs2_trans_add_meta(rgd->rd_gl, rgd->rd_bits[0].bi_bh);
 	gfs2_rgrp_out(rgd, rgd->rd_bits[0].bi_bh->b_data);
 	gfs2_rgrp_ondisk2lvb(rgd->rd_rgl, rgd->rd_bits[0].bi_bh->b_data);
 
@@ -2260,7 +2256,7 @@ void gfs2_unlink_di(struct inode *inode)
 	if (!rgd)
 		return;
 	trace_gfs2_block_alloc(ip, rgd, blkno, 1, GFS2_BLKST_UNLINKED);
-	gfs2_trans_add_bh(rgd->rd_gl, rgd->rd_bits[0].bi_bh, 1);
+	gfs2_trans_add_meta(rgd->rd_gl, rgd->rd_bits[0].bi_bh);
 	gfs2_rgrp_out(rgd, rgd->rd_bits[0].bi_bh->b_data);
 	gfs2_rgrp_ondisk2lvb(rgd->rd_rgl, rgd->rd_bits[0].bi_bh->b_data);
 	update_rgrp_lvb_unlinked(rgd, 1);
@@ -2281,7 +2277,7 @@ static void gfs2_free_uninit_di(struct gfs2_rgrpd *rgd, u64 blkno)
 	rgd->rd_dinodes--;
 	rgd->rd_free++;
 
-	gfs2_trans_add_bh(rgd->rd_gl, rgd->rd_bits[0].bi_bh, 1);
+	gfs2_trans_add_meta(rgd->rd_gl, rgd->rd_bits[0].bi_bh);
 	gfs2_rgrp_out(rgd, rgd->rd_bits[0].bi_bh->b_data);
 	gfs2_rgrp_ondisk2lvb(rgd->rd_rgl, rgd->rd_bits[0].bi_bh->b_data);
 	update_rgrp_lvb_unlinked(rgd, -1);

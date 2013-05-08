@@ -69,6 +69,7 @@ static struct mv_sata_platform_data rd88f6281_sata_data = {
 
 static struct mvsdio_platform_data rd88f6281_mvsdio_data = {
 	.gpio_card_detect = 28,
+	.gpio_write_protect = -1,
 };
 
 static unsigned int rd88f6281_mpp_config[] __initdata = {
@@ -120,6 +121,6 @@ MACHINE_START(RD88F6281, "Marvell RD-88F6281 Reference Board")
 	.map_io		= kirkwood_map_io,
 	.init_early	= kirkwood_init_early,
 	.init_irq	= kirkwood_init_irq,
-	.timer		= &kirkwood_timer,
+	.init_time	= kirkwood_timer_init,
 	.restart	= kirkwood_restart,
 MACHINE_END
