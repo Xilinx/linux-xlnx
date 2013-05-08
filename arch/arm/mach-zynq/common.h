@@ -17,8 +17,6 @@
 #ifndef __MACH_ZYNQ_COMMON_H__
 #define __MACH_ZYNQ_COMMON_H__
 
-void platform_device_init(void);
-
 extern void xslcr_write(u32 val, u32 offset);
 extern u32 xslcr_read(u32 offset);
 
