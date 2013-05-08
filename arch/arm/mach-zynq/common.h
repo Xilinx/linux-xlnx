@@ -24,8 +24,8 @@ extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
 extern void xslcr_write(u32 val, u32 offset);
 extern u32 xslcr_read(u32 offset);
 
-extern int xslcr_init(void);
-extern void xslcr_system_reset(void);
+extern int zynq_slcr_init(void);
+extern void zynq_slcr_system_reset(void);
 
 extern void xslcr_init_preload_fpga(void);
 extern void xslcr_init_postload_fpga(void);

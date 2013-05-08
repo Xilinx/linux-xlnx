@@ -1592,10 +1592,10 @@ static const struct xslcr_periph_reset reset_info[] = {
 };
 
 /**
- * xslcr_system_reset - Reset the entire system.
+ * zynq_slcr_system_reset - Reset the entire system.
  *
  **/
-void xslcr_system_reset(void)
+void zynq_slcr_system_reset(void)
 {
 	u32 reboot;
 
@@ -2469,12 +2469,12 @@ static int __init xslcr_arch_init(void)
 module_init(xslcr_arch_init);
 
 /**
- * xslcr_init()
+ * zynq_slcr_init
  * Returns 0 on success, negative errno otherwise.
  *
  * Called early during boot from platform code to remap SLCR area.
  */
-int __init xslcr_init(void)
+int __init zynq_slcr_init(void)
 {
 	struct device_node *np;
 
