@@ -1106,7 +1106,20 @@ static int xemacps_rx(struct net_local *lp, int budget)
 	cur_p = &lp->rx_bd[lp->rx_bd_ci];
 	regval = cur_p->addr;
 	rmb();
-	while (regval & XEMACPS_RXBUF_NEW_MASK) {
+	while (numbdfree < budget) {
+		if (!(regval & XEMACPS_RXBUF_NEW_MASK))
+			break;
+
+		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
+		if (new_skb == NULL) {
+			dev_err(&lp->ndev->dev, "no memory for new sk_buff\n");
+			break;
+		}
+		/* Get dma handle of skb->data */
+		new_skb_baddr = (u32) dma_map_single(lp->ndev->dev.parent,
+					new_skb->data,
+					XEMACPS_RX_BUF_SIZE,
+					DMA_FROM_DEVICE);
 
 		/* the packet length */
 		len = cur_p->ctrl & XEMACPS_RXBUF_LEN_MASK;
@@ -1151,17 +1164,6 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		packets++;
 		netif_receive_skb(skb);
 
-		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
-		if (new_skb == NULL) {
-			dev_err(&lp->ndev->dev, "no memory for new sk_buff\n");
-			lp->rx_skb[lp->rx_bd_ci].skb = NULL;
-			return 0;
-		}
-		/* Get dma handle of skb->data */
-		new_skb_baddr = (u32) dma_map_single(lp->ndev->dev.parent,
-					new_skb->data,
-					XEMACPS_RX_BUF_SIZE,
-					DMA_FROM_DEVICE);
 		cur_p->addr = (cur_p->addr & ~XEMACPS_RXBUF_ADD_MASK)
 					| (new_skb_baddr);
 		lp->rx_skb[lp->rx_bd_ci].skb = new_skb;
@@ -1178,8 +1180,6 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		regval = cur_p->addr;
 		rmb();
 		numbdfree++;
-		if (numbdfree == budget)
-			break;
 	}
 	wmb();
 	lp->stats.rx_packets += packets;
