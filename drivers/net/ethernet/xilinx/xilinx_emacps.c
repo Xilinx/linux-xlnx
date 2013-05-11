@@ -1270,15 +1270,14 @@ static void xemacps_tx_poll(unsigned long data)
 				break;
 		}
 
-		if (sop == 1) {
-			bdcount++;
-			bdpartialcount++;
-		}
+		bdcount++;
+		bdpartialcount++;
+
 		/* hardware has processed this BD so check the "last" bit.
 		 * If it is clear, then there are more BDs for the current
 		 * packet. Keep a count of these partial packet BDs.
 		 */
-		if ((sop == 1) && (cur_p->ctrl & XEMACPS_TXBUF_LAST_MASK)) {
+		if (cur_p->ctrl & XEMACPS_TXBUF_LAST_MASK) {
 			sop = 0;
 			bdpartialcount = 0;
 		}
