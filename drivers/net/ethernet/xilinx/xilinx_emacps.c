@@ -1251,6 +1251,7 @@ static void xemacps_tx_poll(unsigned long data)
 	u32 numbdsinhw;
 	struct ring_info *rp;
 	struct sk_buff *skb;
+	unsigned long flags;
 
 	spin_lock(&lp->tx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
@@ -1288,6 +1289,7 @@ static void xemacps_tx_poll(unsigned long data)
 	}
 	numbdstofree = bdcount - bdpartialcount;
 	lp->tx_bd_freecnt += numbdstofree;
+	numbdsinhw -= numbdstofree;
 	if (!numbdstofree)
 		goto tx_poll_out;
 
@@ -1342,8 +1344,15 @@ static void xemacps_tx_poll(unsigned long data)
 	}
 	wmb();
 
-	if (netif_queue_stopped(ndev))
-		netif_start_queue(ndev);
+	if (numbdsinhw) {
+		spin_lock_irqsave(&lp->nwctrlreg_lock, flags);
+		regval = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
+		regval |= XEMACPS_NWCTRL_STARTTX_MASK;
+		xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
+		spin_unlock_irqrestore(&lp->nwctrlreg_lock, flags);
+	}
+
+	netif_wake_queue(ndev);
 
 tx_poll_out:
 	spin_unlock(&lp->tx_lock);
