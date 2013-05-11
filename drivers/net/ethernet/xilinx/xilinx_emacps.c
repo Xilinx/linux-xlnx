@@ -1196,32 +1196,38 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 {
 	struct net_local *lp = container_of(napi, struct net_local, napi);
 	int work_done = 0;
-	int temp_work_done;
 	u32 regval;
 
 	spin_lock(&lp->rx_lock);
-	while (work_done < budget) {
+	while (1) {
 		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
 		if (regval & XEMACPS_RXSR_HRESPNOK_MASK)
 			dev_err(&lp->pdev->dev, "RX error 0x%x\n", regval);
-		temp_work_done = xemacps_rx(lp, budget - work_done);
-		work_done += temp_work_done;
-		if (temp_work_done <= 0)
+
+		work_done += xemacps_rx(lp, budget - work_done);
+		if (work_done >= budget)
 			break;
-	}
 
-	if (work_done >= budget) {
-		spin_unlock(&lp->rx_lock);
-		return work_done;
-	}
+		napi_complete(napi);
+		/* We disabled RX interrupts in interrupt service
+		 * routine, now it is time to enable it back.
+		 */
+		xemacps_write(lp->baseaddr,
+			XEMACPS_IER_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
 
-	napi_complete(napi);
-	/* We disabled RX interrupts in interrupt service
-	 * routine, now it is time to enable it back.
-	 */
-	xemacps_write(lp->baseaddr,
-		XEMACPS_IER_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
+		/* If a packet has come in between the last check of the BD
+		 * list and unmasking the interrupts, we may have missed the
+		 * interrupt, so reschedule here.
+		 */
+		if ((lp->rx_bd[lp->rx_bd_ci].addr & XEMACPS_RXBUF_NEW_MASK)
+		&&  napi_reschedule(napi)) {
+			xemacps_write(lp->baseaddr,
+				XEMACPS_IDR_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
+			continue;
+		}
+		break;
+	}
 	spin_unlock(&lp->rx_lock);
 	return work_done;
 }
