@@ -800,11 +800,10 @@ static int xemacps_mii_probe(struct net_device *ndev)
 					&xemacps_adjust_link,
 					0,
 					lp->phy_interface);
-		if (!phydev) {
-			dev_err(&lp->pdev->dev, "%s: no PHY found\n",
-			ndev->name);
-			return -1;
-		}
+	}
+	if (!phydev) {
+		dev_err(&lp->pdev->dev, "%s: no PHY found\n", ndev->name);
+		return -1;
 	}
 
 	dev_dbg(&lp->pdev->dev,
