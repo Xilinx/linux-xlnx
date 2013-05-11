@@ -1258,13 +1258,6 @@ static void xemacps_tx_poll(unsigned long data)
 	if (regval & (XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_BUFEXH_MASK))
 		dev_err(&lp->pdev->dev, "TX error 0x%x\n", regval);
 
-	/* This may happen when a buffer becomes complete
-	 * between reading the ISR and scanning the descriptors.
-	 * Nothing to worry about.
-	 */
-	if (!(regval & XEMACPS_TXSR_TXCOMPL_MASK))
-		goto tx_poll_out;
-
 	cur_i = lp->tx_bd_ci;
 	cur_p = &lp->tx_bd[cur_i];
 	while (bdcount < XEMACPS_SEND_BD_CNT) {
@@ -1294,6 +1287,9 @@ static void xemacps_tx_poll(unsigned long data)
 	}
 	numbdstofree = bdcount - bdpartialcount;
 	lp->tx_bd_freecnt += numbdstofree;
+	if (!numbdstofree)
+		goto tx_poll_out;
+
 	cur_p = &lp->tx_bd[lp->tx_bd_ci];
 	while (numbdstofree) {
 		rp = &lp->tx_skb[lp->tx_bd_ci];
@@ -1345,9 +1341,10 @@ static void xemacps_tx_poll(unsigned long data)
 	}
 	wmb();
 
-tx_poll_out:
 	if (netif_queue_stopped(ndev))
 		netif_start_queue(ndev);
+
+tx_poll_out:
 	spin_unlock(&lp->tx_lock);
 }
 
