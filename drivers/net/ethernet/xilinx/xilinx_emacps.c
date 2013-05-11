@@ -1914,9 +1914,9 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	int rc;
 
 	netif_stop_queue(lp->ndev);
-	spin_lock_bh(&lp->tx_lock);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
+	spin_lock_bh(&lp->tx_lock);
 	xemacps_reset_hw(lp);
 	spin_unlock_bh(&lp->tx_lock);
 
@@ -1936,11 +1936,14 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	lp->link    = 0;
 	lp->speed   = 0;
 	lp->duplex  = -1;
+
 	if (lp->phy_dev)
 		phy_start(lp->phy_dev);
+
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
-	netif_start_queue(lp->ndev);
+	lp->ndev->trans_start = jiffies;
+	netif_wake_queue(lp->ndev);
 }
 
 /**
