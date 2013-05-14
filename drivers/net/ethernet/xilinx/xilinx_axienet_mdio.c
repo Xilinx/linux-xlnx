@@ -174,8 +174,9 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 		property_p = (uint32_t *)of_get_property(npp,
 						"clock-frequency", NULL);
 		if (!property_p) {
-			dev_warn(lp->dev, "Could not find clock ethernet " \
-						      "controller property.");
+			dev_warn(lp->dev,
+				"Could not find clock ethernet "
+				"controller property.");
 			dev_warn(lp->dev,
 				 "Setting MDIO clock divisor to default %d\n",
 							DEFAULT_CLOCK_DIVISOR);
@@ -191,9 +192,10 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 			 * above 2.5 MHz */
 			if (host_clock % (MAX_MDIO_FREQ * 2))
 				clk_div++;
-			dev_dbg(lp->dev, "Setting MDIO clock divisor to %u " \
-						"based on %u Hz host clock.\n",
-						clk_div, host_clock);
+			dev_dbg(lp->dev,
+				"Setting MDIO clock divisor to %u "
+				"based on %u Hz host clock.\n",
+				clk_div, host_clock);
 		}
 	}
 

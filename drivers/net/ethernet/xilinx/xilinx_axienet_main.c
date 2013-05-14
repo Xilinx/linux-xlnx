@@ -206,8 +206,8 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 					 &lp->tx_bd_p,
 					 GFP_KERNEL);
 	if (!lp->tx_bd_v) {
-		dev_err(&ndev->dev, "unable to allocate DMA Tx buffer "
-			"descriptors");
+		dev_err(&ndev->dev,
+			"unable to allocate DMA Tx buffer descriptors");
 		goto out;
 	}
 
@@ -216,8 +216,8 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 					 &lp->rx_bd_p,
 					 GFP_KERNEL);
 	if (!lp->rx_bd_v) {
-		dev_err(&ndev->dev, "unable to allocate DMA Rx buffer "
-			"descriptors");
+		dev_err(&ndev->dev,
+			"unable to allocate DMA Rx buffer descriptors");
 		goto out;
 	}
 
@@ -456,8 +456,8 @@ static void __axienet_device_reset(struct axienet_local *lp,
 	while (axienet_dma_in32(lp, offset) & XAXIDMA_CR_RESET_MASK) {
 		udelay(1);
 		if (--timeout == 0) {
-			dev_err(dev, "axienet_device_reset DMA "
-				"reset timeout!\n");
+			dev_err(dev,
+				"axienet_device_reset DMA reset timeout!\n");
 			break;
 		}
 	}
@@ -496,7 +496,8 @@ static void axienet_device_reset(struct net_device *ndev)
 	}
 
 	if (axienet_dma_bd_init(ndev)) {
-		dev_err(&ndev->dev, "axienet_device_reset descriptor "
+		dev_err(&ndev->dev,
+			"axienet_device_reset descriptor "
 			"allocation failed\n");
 	}
 
@@ -563,7 +564,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 				emmc_reg |= XAE_EMMC_LINKSPD_10;
 				break;
 			default:
-				dev_err(&ndev->dev, "Speed other than 10, 100 "
+				dev_err(&ndev->dev,
+					"Speed other than 10, 100 "
 					"or 1Gbps is not supported\n");
 				break;
 			}
@@ -572,8 +574,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 			lp->last_link = link_state;
 			phy_print_status(phy);
 		} else {
-			dev_err(&ndev->dev, "Error setting Axi Ethernet "
-				"mac speed\n");
+			dev_err(&ndev->dev,
+				"Error setting Axi Ethernet mac speed\n");
 		}
 	}
 }
@@ -1269,8 +1271,9 @@ axienet_ethtools_set_pauseparam(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (netif_running(ndev)) {
-		printk(KERN_ERR	"%s: Please stop netif before applying "
-		       "configruation\n", ndev->name);
+		dev_err(&ndev->dev,
+			"%s: Please stop netif before applying configuration\n",
+			ndev->name);
 		return -EFAULT;
 	}
 
@@ -1326,8 +1329,9 @@ static int axienet_ethtools_set_coalesce(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (netif_running(ndev)) {
-		printk(KERN_ERR	"%s: Please stop netif before applying "
-		       "configruation\n", ndev->name);
+		dev_err(&ndev->dev,
+			"%s: Please stop netif before applying configuration\n",
+			ndev->name);
 		return -EFAULT;
 	}
 
