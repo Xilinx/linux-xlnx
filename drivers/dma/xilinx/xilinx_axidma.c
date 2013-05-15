@@ -178,8 +178,8 @@ struct xilinx_dma_chan {
 					/* Transfer direction */
 	int max_len;			/* Maximum data len per transfer */
 	int is_lite;			/* Whether is light build */
-	int has_SG;			/* Support scatter transfers */
-	int has_DRE;			/* Support unaligned transfers */
+	int has_sg;			/* Support scatter transfers */
+	int has_dre;			/* Support unaligned transfers */
 	int err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
 	u32 feature;			/* IP feature */
@@ -440,7 +440,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->err)
 		goto out_unlock;
 
-	if (chan->has_SG) {
+	if (chan->has_sg) {
 		desch = list_first_entry(&chan->pending_list,
 				struct xilinx_dma_desc_sw, node);
 
@@ -529,7 +529,7 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 
 	/* Get the last completed descriptor, update the cookie to that */
 	list_for_each_entry(desc, &chan->active_list, node) {
-		if (chan->has_SG) {
+		if (chan->has_sg) {
 			hw = &desc->hw;
 
 			/* If a BD has no status bits set, hw has it */
@@ -981,7 +981,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
 	if (value)
-		chan->has_DRE = be32_to_cpup(value);
+		chan->has_dre = be32_to_cpup(value);
 
 	value = of_get_property(node, "xlnx,datawidth", NULL);
 	if (value) {
@@ -989,7 +989,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
-			chan->has_DRE = 0;
+			chan->has_dre = 0;
 
 		chan->feature |= width - 1;
 	}
@@ -999,7 +999,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		device_id = be32_to_cpup(value);
 
 	if (feature & XILINX_DMA_IP_DMA) {
-		chan->has_SG = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
+		chan->has_sg = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
 					XILINX_DMA_FTR_HAS_SG_SHIFT;
 
 		chan->start_transfer = xilinx_dma_start_transfer;
@@ -1031,7 +1031,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
-	if (!chan->has_DRE)
+	if (!chan->has_dre)
 		xdev->common.copy_align = my_log(width);
 
 	chan->dev = xdev->dev;

@@ -199,8 +199,8 @@ struct xilinx_vdma_chan {
 	int max_len;				/* Max data len per transfer */
 	int is_lite;				/* Whether is light build */
 	int num_frms;				/* Number of frames */
-	int has_SG;				/* Support scatter transfers */
-	int has_DRE;				/* For unaligned transfers */
+	int has_sg;				/* Support scatter transfers */
+	int has_dre;				/* For unaligned transfers */
 	int genlock;				/* Support genlock mode */
 	int err;				/* Channel has errors */
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
@@ -450,7 +450,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		goto out_unlock;
 
 	/* If it is SG mode and hardware is busy, cannot submit */
-	if (chan->has_SG && dma_is_running(chan) && !dma_is_idle(chan)) {
+	if (chan->has_sg && dma_is_running(chan) && !dma_is_idle(chan)) {
 		dev_dbg(chan->dev, "DMA controller still busy\n");
 		goto out_unlock;
 	}
@@ -462,7 +462,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	if (chan->err)
 		goto out_unlock;
 
-	if (chan->has_SG) {
+	if (chan->has_sg) {
 		desch = list_first_entry(&chan->pending_list,
 				struct xilinx_vdma_desc_sw, node);
 
@@ -485,7 +485,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	 * With SG, start with circular mode, so that BDs can be fetched.
 	 * In direct register mode, if not parking, enable circular mode
 	 */
-	if ((chan->has_SG) || (!config->park))
+	if ((chan->has_sg) || (!config->park))
 		reg |= XILINX_VDMA_CIRC_EN;
 
 	if (config->park)
@@ -531,7 +531,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	}
 
 	/* Start the transfer */
-	if (chan->has_SG)
+	if (chan->has_sg)
 		VDMA_OUT(&chan->regs->tdr, desct->async_tx.phys);
 	else
 		VDMA_OUT(&chan->addr_regs->vsize, config->vsize);
@@ -816,7 +816,7 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 		return NULL;
 	}
 
-	if (!chan->has_SG) {
+	if (!chan->has_sg) {
 		VDMA_OUT(&chan->addr_regs->hsize, chan->config.hsize);
 		VDMA_OUT(&chan->addr_regs->frmdly_stride,
 			chan->config.frm_dly << XILINX_VDMA_FRMDLY_SHIFT |
@@ -840,7 +840,7 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 		hw = &(new->hw);
 
 		dma_src = sg_dma_address(sg);
-		if (chan->has_SG) {
+		if (chan->has_sg) {
 			hw->buf_addr = dma_src;
 
 			/* Fill in the descriptor */
@@ -1073,7 +1073,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
 	if (value)
-		chan->has_DRE = be32_to_cpup(value);
+		chan->has_dre = be32_to_cpup(value);
 
 	value = (int *)of_get_property(node, "xlnx,genlock-mode", NULL);
 	if (value)
@@ -1085,7 +1085,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
-			chan->has_DRE = 0;
+			chan->has_dre = 0;
 
 		chan->feature |= width - 1;
 	}
@@ -1099,13 +1099,13 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	chan->start_transfer = xilinx_vdma_start_transfer;
 
-	chan->has_SG = (xdev->feature & XILINX_VDMA_FTR_HAS_SG) >>
+	chan->has_sg = (xdev->feature & XILINX_VDMA_FTR_HAS_SG) >>
 		XILINX_VDMA_FTR_HAS_SG_SHIFT;
 
 	if (of_device_is_compatible(node,
 			"xlnx,axi-vdma-mm2s-channel")) {
 		chan->direction = DMA_MEM_TO_DEV;
-		if (!chan->has_SG) {
+		if (!chan->has_sg) {
 			chan->addr_regs = (struct vdma_addr_regs *)
 			    ((u32)xdev->regs +
 				 XILINX_VDMA_DIRECT_REG_OFFSET);
@@ -1118,7 +1118,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	if (of_device_is_compatible(node, "xlnx,axi-vdma-s2mm-channel")) {
 		chan->direction = DMA_DEV_TO_MEM;
-		if (!chan->has_SG) {
+		if (!chan->has_sg) {
 			chan->addr_regs = (struct vdma_addr_regs *)
 			    ((u32)xdev->regs +
 				XILINX_VDMA_DIRECT_REG_OFFSET +
@@ -1147,7 +1147,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		(device_id << XILINX_VDMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
-	if (!chan->has_DRE)
+	if (!chan->has_dre)
 		xdev->common.copy_align = my_log(width);
 
 	chan->dev = xdev->dev;
