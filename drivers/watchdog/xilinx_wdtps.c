@@ -61,7 +61,7 @@ struct xwdtps {
 	unsigned long		busy;		/* Device Status */
 	int			rst;		/* Reset flag */
 	struct clk		*clk;
-	u32 			prescalar;
+	u32			prescalar;
 	u32			ctrl_clksel;
 	spinlock_t		io_lock;
 };
@@ -171,7 +171,7 @@ static int xwdtps_start(struct watchdog_device *wdd)
 	/* 0x00920000 - Counter register key value. */
 	data = (count | 0x00920000 | (wdt->ctrl_clksel));
 	xwdtps_writereg(data, XWDTPS_CCR_OFFSET);
-	data = XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTLEN_16 | \
+	data = XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTLEN_16 |
 			XWDTPS_ZMR_ZKEY_VAL;
 
 	/* Reset on timeout if specified in device tree. */
