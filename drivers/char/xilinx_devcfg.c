@@ -37,9 +37,6 @@ extern void xslcr_init_preload_fpga(void);
 extern void xslcr_init_postload_fpga(void);
 
 #define DRIVER_NAME "xdevcfg"
-
-#define XDEVCFG_MAJOR 259
-#define XDEVCFG_MINOR 0
 #define XDEVCFG_DEVICES 1
 
 /* An array, which is set to true when the device is registered. */
@@ -101,6 +98,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
  * @dev: Pointer to the device structure
  * @cdev: Instance of the cdev structure
  * @devt: Pointer to the dev_t structure
+ * @class: Pointer to device class
  * @dma_done: The dma_done status bit for the DMA command completion
  * @error_status: The error status captured during the DMA transfer
  * @irq: Interrupt number
@@ -115,6 +113,7 @@ struct xdevcfg_drvdata {
 	struct device *dev;
 	struct cdev cdev;
 	dev_t devt;
+	struct class *class;
 	int irq;
 	struct clk *clk;
 	volatile bool dma_done;
@@ -1523,6 +1522,7 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	struct device_node *np;
 	const void *prop;
 	int size;
+	struct device *dev;
 
 	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs_res) {
@@ -1536,9 +1536,7 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	devt = MKDEV(XDEVCFG_MAJOR, XDEVCFG_MINOR);
-
-	retval = register_chrdev_region(devt, XDEVCFG_DEVICES, DRIVER_NAME);
+	retval = alloc_chrdev_region(&devt, 0, XDEVCFG_DEVICES, DRIVER_NAME);
 	if (retval < 0)
 		return retval;
 
@@ -1648,18 +1646,35 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 		goto failed6;
 	}
 
+	drvdata->class = class_create(THIS_MODULE, DRIVER_NAME);
+	if (IS_ERR(drvdata->class)) {
+		dev_err(&pdev->dev, "failed to create class\n");
+		goto failed6;
+	}
+
+	dev = device_create(drvdata->class, &pdev->dev, devt, drvdata,
+			DRIVER_NAME);
+	if (IS_ERR(dev)) {
+			dev_err(&pdev->dev, "unable to create device\n");
+			goto failed7;
+	}
+
 	/* create sysfs files for the device */
 	retval = sysfs_create_group(&(pdev->dev.kobj), &xdevcfg_attr_group);
 	if (retval) {
 		dev_err(&pdev->dev, "Failed to create sysfs attr group\n");
 		cdev_del(&drvdata->cdev);
-		goto failed6;
+		goto failed8;
 	}
 
 	clk_disable(drvdata->clk);
 
 	return 0;		/* Success */
 
+failed8:
+	device_destroy(drvdata->class, drvdata->devt);
+failed7:
+	class_destroy(drvdata->class);
 failed6:
 	clk_disable_unprepare(drvdata->clk);
 failed5:
@@ -1704,6 +1719,8 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 
 	free_irq(drvdata->irq, drvdata);
 
+	device_destroy(drvdata->class, drvdata->devt);
+	class_destroy(drvdata->class);
 	cdev_del(&drvdata->cdev);
 	iounmap(drvdata->base_address);
 	release_mem_region(res->start, res->end - res->start + 1);
