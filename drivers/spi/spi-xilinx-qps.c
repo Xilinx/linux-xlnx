@@ -153,7 +153,7 @@
  * @speed_hz:		Current QSPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
  * @config_reg_lock:	Lock used for accessing configuration register
- * @txbuf: 		Pointer	to the TX buffer
+ * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @bytes_to_transfer:	Number of bytes left to transfer
  * @bytes_to_receive:	Number of bytes left to receive
@@ -229,7 +229,7 @@ static struct xqspips_inst_format flash_inst[] = {
  * The default settings of the QSPI controller's configurable parameters on
  * reset are
  *	- Master mode
- * 	- Baud rate divisor is set to 2
+ *	- Baud rate divisor is set to 2
  *	- Threshold value for TX FIFO not full interrupt is set to 1
  *	- Flash memory interface mode enabled
  *	- Size of the word to be transferred as 8 bit
@@ -428,9 +428,8 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
 		return -EINVAL;
 	}
 
-	if (transfer && (transfer->speed_hz == 0)) {
+	if (transfer && (transfer->speed_hz == 0))
 		req_hz = qspi->max_speed_hz;
-	}
 
 	/* Set the clock frequency */
 	if (xqspi->speed_hz != req_hz) {
@@ -646,7 +645,7 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 		     (instruction == XQSPIPS_FLASH_OPCODE_DUAL_READ) ||
 		     (instruction == XQSPIPS_FLASH_OPCODE_QUAD_READ))) {
 
-			u8 *ptr = (u8*) (xqspi->txbuf);
+			u8 *ptr = (u8 *) (xqspi->txbuf);
 			data = ((u32) ptr[1] << 24) | ((u32) ptr[2] << 16) |
 				((u32) ptr[3] << 8) | ((u32) ptr[4]);
 			data = data >> 1;
