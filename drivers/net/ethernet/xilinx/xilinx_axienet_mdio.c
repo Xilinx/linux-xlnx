@@ -189,7 +189,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 			/* If there is any remainder from the division of
 			 * fHOST / (MAX_MDIO_FREQ * 2), then we need to add 1
 			 * to the clock divisor or we will surely be
-			 * above 2.5 MHz */
+			 * above 2.5 MHz
+			 */
 			if (host_clock % (MAX_MDIO_FREQ * 2))
 				clk_div++;
 			dev_dbg(lp->dev,
