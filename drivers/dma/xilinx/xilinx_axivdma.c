@@ -18,6 +18,7 @@
  *
  */
 
+#include <linux/dmaengine.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -26,6 +27,7 @@
 #include <linux/io.h>
 #include <linux/irqdomain.h>
 #include <linux/of.h>
+#include <linux/of_dma.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/of_address.h>
@@ -1016,7 +1018,6 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		return -ENXIO;
 }
 
-
 /*
  * Logarithm function to compute alignment shift
  * Only deals with value less than 4096.
@@ -1184,6 +1185,39 @@ out_return:
 	return err;
 }
 
+struct of_dma_filter_xilinx_args {
+	struct dma_device *dev;
+	unsigned int chan_id;
+};
+
+static bool xilinx_vdma_dt_filter(struct dma_chan *chan, void *param)
+{
+	struct of_dma_filter_xilinx_args *args = param;
+
+	return chan->device == args->dev && chan->chan_id == args->chan_id;
+}
+
+static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
+						struct of_dma *ofdma)
+{
+	struct of_dma_filter_xilinx_args args;
+	dma_cap_mask_t cap;
+
+	args.dev = ofdma->of_dma_data;
+	if (!args.dev)
+		return NULL;
+
+	if (dma_spec->args_count != 1)
+		return NULL;
+
+	dma_cap_zero(cap);
+	dma_cap_set(DMA_SLAVE, cap);
+
+	args.chan_id = dma_spec->args[0];
+
+	return dma_request_channel(cap, xilinx_vdma_dt_filter, &args);
+}
+
 static int xilinx_vdma_of_probe(struct platform_device *op)
 {
 	struct xilinx_vdma_device *xdev;
@@ -1261,6 +1295,11 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 
 	dma_async_device_register(&xdev->common);
 
+	err = of_dma_controller_register(node, of_dma_xilinx_xlate,
+					 &xdev->common);
+	if (err < 0)
+		dev_err(&op->dev, "Unable to register DMA to DT\n");
+
 	return 0;
 
 out_free_xdev:
@@ -1274,6 +1313,8 @@ static int xilinx_vdma_of_remove(struct platform_device *op)
 {
 	struct xilinx_vdma_device *xdev;
 	int i;
+
+	of_dma_controller_free(op->dev.of_node);
 
 	xdev = platform_get_drvdata(op);
 	dma_async_device_unregister(&xdev->common);
