@@ -1,0 +1,30 @@
+Xilinx Video Test Pattern Generator (TPG)
+-----------------------------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,axi-tpg".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- xlnx,axi-video-format, xlnx,axi-video-width: Video format and width, as
+  defined in video.txt.
+
+- port: Video port, using the DT bindings defined in ../video-interfaces.txt.
+  The TPG has a single output port numbered 0.
+
+Example:
+
+	axi_tpg_0: axi_tpg@40050000 {
+		compatible = "xlnx,axi-tpg";
+		reg = <0x40050000 0x10000>;
+
+		xlnx,axi-video-format = "yuv422";
+		xlnx,axi-video-width = <8>;
+
+		port {
+			tpg0_out: endpoint {
+				remote-endpoint = <&remap0_in>;
+			};
+		};
+	};
