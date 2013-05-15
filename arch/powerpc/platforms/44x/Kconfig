@@ -252,9 +252,10 @@ config PPC4xx_GPIO
 	help
 	  Enable gpiolib support for ppc440 based boards
 
-config PPC_FPU
+config XILINX_PPC_FPU
 	depends on XILINX_VIRTEX_5_FXT
 	bool "Enable Xilinx Soft FPU"
+	select PPC_FPU
 	default n
 	help
 	  This option enables the Xilinx Soft FPU attached to the APU
