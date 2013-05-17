@@ -74,10 +74,10 @@ static int zynq_pm_suspend(unsigned long arg)
 	}
 
 	/* SCU standby mode */
-	if (scu_base) {
-		reg = readl(scu_base + SCU_CTRL);
+	if (zynq_scu_base) {
+		reg = readl(zynq_scu_base + SCU_CTRL);
 		reg |= SCU_STBY_EN_MASK;
-		writel(reg, scu_base + SCU_CTRL);
+		writel(reg, zynq_scu_base + SCU_CTRL);
 	}
 
 	/* Topswitch clock stop disable */
@@ -162,10 +162,10 @@ static int zynq_pm_suspend(unsigned long arg)
 	xslcr_write(reg, SLCR_TOPSW_CLK_CTRL);
 
 	/* SCU standby mode */
-	if (scu_base) {
-		reg = readl(scu_base + SCU_CTRL);
+	if (zynq_scu_base) {
+		reg = readl(zynq_scu_base + SCU_CTRL);
 		reg &= ~SCU_STBY_EN_MASK;
-		writel(reg, scu_base + SCU_CTRL);
+		writel(reg, zynq_scu_base + SCU_CTRL);
 	}
 
 	/* A9 clock gating */
