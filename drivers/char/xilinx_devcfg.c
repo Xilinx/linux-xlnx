@@ -1,7 +1,7 @@
 /*
- * Xilinx Device Config driver
+ * Xilinx Zynq Device Config driver
  *
- * Copyright (c) 2011 Xilinx Inc.
+ * Copyright (c) 2011 - 2013 Xilinx Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
