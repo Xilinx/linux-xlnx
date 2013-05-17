@@ -438,7 +438,7 @@ static void xusbps_udc_clk_release(struct platform_device *pdev)
 static const char driver_name[] = "xusbps-udc";
 static const char driver_desc[] = DRIVER_DESC;
 
-static struct usb_dr_device *dr_regs;
+static struct usb_dr_device __iomem *dr_regs;
 
 /* it is initialized in probe()  */
 static struct xusbps_udc *udc_controller;
@@ -454,8 +454,15 @@ xusbps_ep0_desc = {
 
 static void xusbps_ep_fifo_flush(struct usb_ep *_ep);
 
-#define xusbps_readl(addr)		readl(addr)
-#define xusbps_writel(val32, addr) writel(val32, addr)
+static inline u32 xusbps_readl(const unsigned __iomem *addr)
+{
+	return readl(addr);
+}
+
+static inline void xusbps_writel(u32 val32, unsigned __iomem *addr)
+{
+	writel(val32, addr);
+}
 
 /********************************************************************
  *	Internal Used Function
@@ -1283,7 +1290,8 @@ static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 					xusbps_req, queue);
 
 			/* Point the QH to the first TD of next request */
-			xusbps_writel((u32) next_req->head, &qh->curr_dtd_ptr);
+			xusbps_writel((u32) next_req->head,
+				(void __force __iomem *)&qh->curr_dtd_ptr);
 		}
 
 		/* The request hasn't been processed, patch up the TD chain */
@@ -1292,8 +1300,9 @@ static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 
 		prev_req = list_entry(req->queue.prev, struct xusbps_req,
 				queue);
-		xusbps_writel(xusbps_readl(&req->tail->next_td_ptr),
-				&prev_req->tail->next_td_ptr);
+		xusbps_writel(
+		xusbps_readl((void __force __iomem *)&req->tail->next_td_ptr),
+			(void __force __iomem *)&prev_req->tail->next_td_ptr);
 
 	}
 
@@ -2820,7 +2829,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	spin_lock_init(&udc_controller->lock);
 	udc_controller->stopped = 1;
 
-	dr_regs = (struct usb_dr_device *)pdata->regs;
+	dr_regs = (struct usb_dr_device __iomem *)pdata->regs;
 	if (!dr_regs) {
 		ret = -ENOMEM;
 		goto err_kfree;
@@ -2885,7 +2894,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&udc_controller->gadget.ep_list);
 	udc_controller->gadget.name = driver_name;
 #ifdef CONFIG_USB_XUSBPS_OTG
-	udc_controller->gadget.is_otg = (pdata->otg != 0);
+	udc_controller->gadget.is_otg = (pdata->otg != NULL);
 #endif
 
 	/* Setup gadget.dev and register with kernel */
