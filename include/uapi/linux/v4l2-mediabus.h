@@ -53,7 +53,7 @@ enum v4l2_mbus_pixelcode {
 	V4L2_MBUS_FMT_RBG888_1X24 = 0x100d,
 	V4L2_MBUS_FMT_RGB888_1X32_PADHI = 0x100e,
 
-	/* YUV (including grey) - next is 0x2017 */
+	/* YUV (including grey) - next is 0x2019 */
 	V4L2_MBUS_FMT_Y8_1X8 = 0x2001,
 	V4L2_MBUS_FMT_UV8_1X8 = 0x2015,
 	V4L2_MBUS_FMT_UYVY8_1_5X8 = 0x2002,
@@ -76,6 +76,8 @@ enum v4l2_mbus_pixelcode {
 	V4L2_MBUS_FMT_YUYV10_1X20 = 0x200d,
 	V4L2_MBUS_FMT_YVYU10_1X20 = 0x200e,
 	V4L2_MBUS_FMT_YUV10_1X30 = 0x2016,
+	V4L2_MBUS_FMT_YUYV10_1X24_PADHI = 0x2017,
+	V4L2_MBUS_FMT_YUYV12_1X24 = 0x2018,
 
 	/* Bayer - next is 0x3019 */
 	V4L2_MBUS_FMT_SBGGR8_1X8 = 0x3001,
