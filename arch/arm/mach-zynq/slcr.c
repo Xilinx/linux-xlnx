@@ -269,11 +269,6 @@ static const char * const mio_periph_name[] = {
 	"uart1",
 };
 
-/* Each bit in this array is a flag that indicates whether a mio peripheral
- * is assigned. The order of bits in this array is same as the order of
- * peripheral names in the array mio_periph_name */
-static u32 periph_status[2] = {0, 0};
-
 /* Each element in the following array holds the active pinset of a MIO
  * peripheral. The order of peripherals in this array is same as the order of
  * peripheral names in the array mio_periph_name */
@@ -1176,6 +1171,13 @@ static const struct xslcr_mio mio_periphs[] = {
 		XSLCR_MIO_PIN_UART_ENABLE,
 	},
 };
+
+/*
+ * Each bit in this array is a flag that indicates whether a mio peripheral
+ * is assigned. The order of bits in this array is same as the order of
+ * peripheral names in the array mio_periph_name
+ */
+static u32 periph_status[DIV_ROUND_UP(ARRAY_SIZE(mio_periphs), 32)];
 
 /* Peripherals that can be reset thru SLCR */
 static const char * const reset_periph_name[] = {
