@@ -934,8 +934,10 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 				(struct xilinx_vdma_config *)arg;
 		u32 reg;
 
-		if (cfg->reset)
+		if (cfg->reset) {
 			vdma_init(chan);
+			return 0;
+		}
 
 		reg = VDMA_IN(&chan->regs->cr);
 
