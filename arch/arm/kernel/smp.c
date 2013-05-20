@@ -426,7 +426,6 @@ struct ipi {
 	void (*handler)(void);
 };
 
-static void ipi_timer(void);
 static void ipi_cpu_stop(void);
 
 static struct ipi ipi_types[NR_IPI] = {
