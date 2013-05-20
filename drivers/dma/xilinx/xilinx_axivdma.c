@@ -141,10 +141,6 @@
 #define XILINX_VDMA_RESET_LOOP	1000000
 #define XILINX_VDMA_HALT_LOOP	1000000
 
-/* IO accessors */
-#define VDMA_OUT(addr, val)	(iowrite32(val, addr))
-#define VDMA_IN(addr)		(ioread32(addr))
-
 /* Hardware descriptor */
 struct xilinx_vdma_desc_hw {
 	u32 next_desc;	/* 0x00 */
@@ -219,6 +215,30 @@ struct xilinx_vdma_device {
 
 #define to_xilinx_chan(chan) \
 			container_of(chan, struct xilinx_vdma_chan, common)
+
+/* IO accessors */
+static inline u32 vdma_read(struct xilinx_vdma_chan *chan, void __iomem *addr)
+{
+	return ioread32(addr);
+}
+
+static inline void vdma_write(struct xilinx_vdma_chan *chan, void __iomem *addr,
+			      u32 value)
+{
+	iowrite32(value, addr);
+}
+
+static inline void vdma_clr(struct xilinx_vdma_chan *chan, void __iomem *addr,
+			    u32 clr)
+{
+	vdma_write(chan, addr, vdma_read(chan, addr) & ~clr);
+}
+
+static inline void vdma_set(struct xilinx_vdma_chan *chan, void __iomem *addr,
+			    u32 set)
+{
+	vdma_write(chan, addr, vdma_read(chan, addr) | set);
+}
 
 /* Required functions */
 
@@ -351,13 +371,13 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 
 static int dma_is_running(struct xilinx_vdma_chan *chan)
 {
-	return !(VDMA_IN(&chan->regs->sr) & XILINX_VDMA_SR_HALTED_MASK) &&
-		(VDMA_IN(&chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK);
+	return !(vdma_read(chan, &chan->regs->sr) & XILINX_VDMA_SR_HALTED_MASK) &&
+		(vdma_read(chan, &chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK);
 }
 
 static int dma_is_idle(struct xilinx_vdma_chan *chan)
 {
-	return VDMA_IN(&chan->regs->sr) & XILINX_VDMA_SR_IDLE_MASK;
+	return vdma_read(chan, &chan->regs->sr) & XILINX_VDMA_SR_IDLE_MASK;
 }
 
 #define XILINX_VDMA_DRIVER_DEBUG	0
@@ -381,12 +401,11 @@ static void vdma_halt(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_HALT_LOOP;
 
-	VDMA_OUT(&chan->regs->cr,
-		VDMA_IN(&chan->regs->cr) & ~XILINX_VDMA_CR_RUNSTOP_MASK);
+	vdma_clr(chan, &chan->regs->cr, XILINX_VDMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to halt */
 	while (loop) {
-		if (!(VDMA_IN(&chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK))
+		if (!(vdma_read(chan, &chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK))
 			break;
 
 		loop -= 1;
@@ -395,7 +414,7 @@ static void vdma_halt(struct xilinx_vdma_chan *chan)
 	if (!loop) {
 		pr_debug("Cannot stop channel %x: %x\n",
 			(unsigned int)chan,
-			(unsigned int)VDMA_IN(&chan->regs->cr));
+			(unsigned int)vdma_read(chan, &chan->regs->cr));
 		chan->err = 1;
 	}
 
@@ -407,12 +426,11 @@ static void vdma_start(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_HALT_LOOP;
 
-	VDMA_OUT(&chan->regs->cr,
-		VDMA_IN(&chan->regs->cr) | XILINX_VDMA_CR_RUNSTOP_MASK);
+	vdma_set(chan, &chan->regs->cr, XILINX_VDMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to start */
 	while (loop) {
-		if (VDMA_IN(&chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK)
+		if (vdma_read(chan, &chan->regs->cr) & XILINX_VDMA_CR_RUNSTOP_MASK)
 			break;
 
 		loop -= 1;
@@ -421,7 +439,7 @@ static void vdma_start(struct xilinx_vdma_chan *chan)
 	if (!loop) {
 		pr_debug("Cannot start channel %x: %x\n",
 			(unsigned int)chan,
-			(unsigned int)VDMA_IN(&chan->regs->cr));
+			(unsigned int)vdma_read(chan, &chan->regs->cr));
 
 		chan->err = 1;
 	}
@@ -465,12 +483,12 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		desct = container_of(chan->pending_list.prev,
 				struct xilinx_vdma_desc_sw, node);
 
-		VDMA_OUT(&chan->regs->cdr, desch->async_tx.phys);
+		vdma_write(chan, &chan->regs->cdr, desch->async_tx.phys);
 	}
 
 	/* Configure the hardware using info in the config structure */
 	config = &(chan->config);
-	reg = VDMA_IN(&chan->regs->cr);
+	reg = vdma_read(chan, &chan->regs->cr);
 
 	if (config->frm_cnt_en)
 		reg |= XILINX_VDMA_FRMCNT_EN;
@@ -487,18 +505,18 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	if (config->park)
 		reg &= ~XILINX_VDMA_CIRC_EN;
 
-	VDMA_OUT(&chan->regs->cr, reg);
+	vdma_write(chan, &chan->regs->cr, reg);
 
 	if (config->park && (config->park_frm >= 0)
 			&& (config->park_frm < chan->num_frms)) {
 		if (config->direction == DMA_MEM_TO_DEV) {
 			chan_base = (char *)chan->regs;
-			VDMA_OUT((chan_base + XILINX_VDMA_PARK_REG_OFFSET),
+			vdma_write(chan, (chan_base + XILINX_VDMA_PARK_REG_OFFSET),
 					config->park_frm);
 		} else {
 			chan_base = ((char *)chan->regs -
 					XILINX_VDMA_RX_CHANNEL_OFFSET);
-			VDMA_OUT((chan_base + XILINX_VDMA_PARK_REG_OFFSET),
+			vdma_write(chan, (chan_base + XILINX_VDMA_PARK_REG_OFFSET),
 				config->park_frm << XILINX_VDMA_WR_REF_SHIFT);
 		}
 	}
@@ -514,15 +532,13 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	 * Enable interrupts
 	 * park/genlock testing does not use interrupts
 	 */
-	VDMA_OUT(&chan->regs->cr,
-		VDMA_IN(&chan->regs->cr) |
-			XILINX_VDMA_XR_IRQ_ALL_MASK);
+	vdma_set(chan, &chan->regs->cr, XILINX_VDMA_XR_IRQ_ALL_MASK);
 
 	/* Start the transfer */
 	if (chan->has_sg)
-		VDMA_OUT(&chan->regs->tdr, desct->async_tx.phys);
+		vdma_write(chan, &chan->regs->tdr, desct->async_tx.phys);
 	else
-		VDMA_OUT(&chan->addr_regs->vsize, config->vsize);
+		vdma_write(chan, &chan->addr_regs->vsize, config->vsize);
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -575,20 +591,19 @@ static int vdma_init(struct xilinx_vdma_chan *chan)
 	int loop = XILINX_VDMA_RESET_LOOP;
 	u32 tmp;
 
-	VDMA_OUT(&chan->regs->cr,
-		VDMA_IN(&chan->regs->cr) | XILINX_VDMA_CR_RESET_MASK);
+	vdma_set(chan, &chan->regs->cr, XILINX_VDMA_CR_RESET_MASK);
 
-	tmp = VDMA_IN(&chan->regs->cr) & XILINX_VDMA_CR_RESET_MASK;
+	tmp = vdma_read(chan, &chan->regs->cr) & XILINX_VDMA_CR_RESET_MASK;
 
 	/* Wait for the hardware to finish reset */
 	while (loop && tmp) {
-		tmp = VDMA_IN(&chan->regs->cr) & XILINX_VDMA_CR_RESET_MASK;
+		tmp = vdma_read(chan, &chan->regs->cr) & XILINX_VDMA_CR_RESET_MASK;
 		loop -= 1;
 	}
 
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
-			VDMA_IN(&chan->regs->cr), VDMA_IN(&chan->regs->sr));
+			vdma_read(chan, &chan->regs->cr), vdma_read(chan, &chan->regs->sr));
 		return 1;
 	}
 
@@ -603,18 +618,18 @@ static irqreturn_t vdma_intr_handler(int irq, void *data)
 	int to_transfer = 0;
 	u32 stat, reg;
 
-	reg = VDMA_IN(&chan->regs->cr);
+	reg = vdma_read(chan, &chan->regs->cr);
 
 	/* Disable intr */
-	VDMA_OUT(&chan->regs->cr,
+	vdma_write(chan, &chan->regs->cr,
 		reg & ~XILINX_VDMA_XR_IRQ_ALL_MASK);
 
-	stat = VDMA_IN(&chan->regs->sr);
+	stat = vdma_read(chan, &chan->regs->sr);
 	if (!(stat & XILINX_VDMA_XR_IRQ_ALL_MASK))
 		return IRQ_NONE;
 
 	/* Ack the interrupts */
-	VDMA_OUT(&chan->regs->sr, XILINX_VDMA_XR_IRQ_ALL_MASK);
+	vdma_write(chan, &chan->regs->sr, XILINX_VDMA_XR_IRQ_ALL_MASK);
 
 	/* Check for only the interrupts which are enabled */
 	stat &= (reg & XILINX_VDMA_XR_IRQ_ALL_MASK);
@@ -625,19 +640,19 @@ static irqreturn_t vdma_intr_handler(int irq, void *data)
 			 * VDMA Recoverable Errors, only when
 			 * C_FLUSH_ON_FSYNC is enabled
 			 */
-			u32 error = VDMA_IN(&chan->regs->sr) &
+			u32 error = vdma_read(chan, &chan->regs->sr) &
 				XILINX_VDMA_SR_ERR_RECOVER_MASK;
 			if (error)
-				VDMA_OUT(&chan->regs->sr, error);
+				vdma_write(chan, &chan->regs->sr, error);
 			else
 				chan->err = 1;
 		} else {
 			dev_err(chan->dev,
 				"Channel %x has errors %x, cdr %x tdr %x\n",
 				(unsigned int)chan,
-				(unsigned int)VDMA_IN(&chan->regs->sr),
-				(unsigned int)VDMA_IN(&chan->regs->cdr),
-				(unsigned int)VDMA_IN(&chan->regs->tdr));
+				(unsigned int)vdma_read(chan, &chan->regs->sr),
+				(unsigned int)vdma_read(chan, &chan->regs->cdr),
+				(unsigned int)vdma_read(chan, &chan->regs->tdr));
 			chan->err = 1;
 		}
 	}
@@ -805,8 +820,8 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 	}
 
 	if (!chan->has_sg) {
-		VDMA_OUT(&chan->addr_regs->hsize, chan->config.hsize);
-		VDMA_OUT(&chan->addr_regs->frmdly_stride,
+		vdma_write(chan, &chan->addr_regs->hsize, chan->config.hsize);
+		vdma_write(chan, &chan->addr_regs->frmdly_stride,
 			chan->config.frm_dly << XILINX_VDMA_FRMDLY_SHIFT |
 			chan->config.stride);
 	}
@@ -839,7 +854,7 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 					chan->config.stride;
 		} else {
 			/* Update the registers */
-			VDMA_OUT(&(chan->addr_regs->buf_addr[i]), dma_src);
+			vdma_write(chan, &(chan->addr_regs->buf_addr[i]), dma_src);
 		}
 
 		/*
@@ -930,7 +945,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 			return 0;
 		}
 
-		reg = VDMA_IN(&chan->regs->cr);
+		reg = vdma_read(chan, &chan->regs->cr);
 
 		/* If vsize is -1, it is park-related operations */
 		if (cfg->vsize == -1) {
@@ -939,7 +954,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 			else
 				reg |= XILINX_VDMA_CIRC_EN;
 
-			VDMA_OUT(&chan->regs->cr, reg);
+			vdma_write(chan, &chan->regs->cr, reg);
 			return 0;
 		}
 
@@ -958,7 +973,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 				chan->config.delay = cfg->delay;
 			}
 
-			VDMA_OUT(&chan->regs->cr, reg);
+			vdma_write(chan, &chan->regs->cr, reg);
 			return 0;
 		}
 
@@ -1003,7 +1018,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		reg &= ~XILINX_VDMA_CR_FSYNC_SRC_MASK;
 		reg |= cfg->ext_fsync << XILINX_VDMA_EXTFSYNC_SHIFT;
 
-		VDMA_OUT(&chan->regs->cr, reg);
+		vdma_write(chan, &chan->regs->cr, reg);
 		return 0;
 	} else
 		return -ENXIO;
