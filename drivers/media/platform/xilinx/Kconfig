@@ -12,6 +12,12 @@ config VIDEO_XILINX
 
 if VIDEO_XILINX
 
+config VIDEO_XILINX_REMAPPER
+	tristate "Xilinx Video Remapper"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for the Xilinx Video Remapper
+
 config VIDEO_XILINX_TPG
 	tristate "Xilinx Video Test Pattern Generator"
 	depends on VIDEO_XILINX
