@@ -306,7 +306,6 @@ static int vdmatest_slave_func(void *data)
 		config.gen_lock = 0;
 		config.master = 0;
 		config.park_frm = 0;
-		config.disable_intr = 0;
 		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG,
 					(unsigned long)&config);
 

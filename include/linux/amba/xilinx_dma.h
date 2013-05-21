@@ -63,7 +63,6 @@ struct xilinx_vdma_config {
 	int park_frm;			/* Frame to park on */
 	int coalesc;			/* Interrupt coalescing threshold */
 	int delay;			/* Delay counter */
-	int disable_intr;		/* Whether use interrupts */
 	int reset;			/* Reset Channel */
 	int ext_fsync;			/* External Frame Sync */
 };

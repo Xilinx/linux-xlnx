@@ -81,7 +81,6 @@
 #define XILINX_VDMA_XR_COALESCE_MASK	0x00FF0000
 						/* Coalesce counter */
 
-#define XILINX_VDMA_IRQ_SHIFT		12
 #define XILINX_VDMA_DELAY_SHIFT		24
 #define XILINX_VDMA_COALESCE_SHIFT	16
 
@@ -515,17 +514,9 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	 * Enable interrupts
 	 * park/genlock testing does not use interrupts
 	 */
-	if (!chan->config.disable_intr) {
-		VDMA_OUT(&chan->regs->cr,
-			VDMA_IN(&chan->regs->cr) |
-				XILINX_VDMA_XR_IRQ_ALL_MASK);
-	} else {
-		VDMA_OUT(&chan->regs->cr,
-			(VDMA_IN(&chan->regs->cr) |
-				XILINX_VDMA_XR_IRQ_ALL_MASK) &
-			~((chan->config.disable_intr <<
-				XILINX_VDMA_IRQ_SHIFT)));
-	}
+	VDMA_OUT(&chan->regs->cr,
+		VDMA_IN(&chan->regs->cr) |
+			XILINX_VDMA_XR_IRQ_ALL_MASK);
 
 	/* Start the transfer */
 	if (chan->has_sg)
@@ -1007,8 +998,6 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 			reg |= cfg->delay << XILINX_VDMA_DELAY_SHIFT;
 			chan->config.delay = cfg->delay;
 		}
-
-		chan->config.disable_intr = cfg->disable_intr;
 
 		/* FSync Source selection */
 		reg &= ~XILINX_VDMA_CR_FSYNC_SRC_MASK;
