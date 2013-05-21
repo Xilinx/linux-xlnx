@@ -1,0 +1,57 @@
+Xilinx Video Remapper
+---------------------
+
+The IP core remaps input pixel components to produce an output pixel with
+less, more or the same number of components as the input pixel.
+
+Required properties:
+
+- compatible: Must be "xlnx,axi-remapper".
+
+- xlnx,axi-video-width: Video pixel component width, as defined in video.txt.
+
+- #xlnx,axi-s-components: Number of components per pixel at the input port
+  (between 1 and 4 inclusive).
+
+- #xlnx,axi-m-components: Number of components per pixel at the output port
+  (between 1 and 4 inclusive).
+
+- xlnx,axi-component-maps: Remapping configuration represented as an array of
+  integers. The array contains one entry per output component, in the low to
+  high order. Each entry corresponds to the zero-based position of the
+  corresponding input component, or the value 4 to drive a constant value on
+  the output component. For example, to remap RGB to BGR use <2 1 0>, and to
+  remap RBG to xRGB use <1 0 2 4>.
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The remapper as an input port (0) and and output port (1).
+
+Example: RBG to xRGB remapper
+
+	axi_remapper_0: axi_remapper {
+		compatible = "xlnx,axi-remapper";
+
+		xlnx,axi-video-width = <8>;
+
+		#xlnx,axi-s-components = <3>;
+		#xlnx,axi-m-components = <4>;
+		xlnx,axi-component-maps = <1 0 2 4>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				remap0_in: endpoint {
+					remote-endpoint = <&tpg0_out>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+				remap0_out: endpoint {
+					remote-endpoint = <&sobel0_in>;
+				};
+			};
+		};
+	};
