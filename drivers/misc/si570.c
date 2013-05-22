@@ -426,7 +426,7 @@ static int si570_probe(struct i2c_client *client,
 	struct si570_data *data;
 	int err;
 	unsigned long initial_fout;
-	u32 tmp;
+	u32 tmp = SI570_FOUT_FACTORY_DFLT;
 
 	data = kzalloc(sizeof(struct si570_data), GFP_KERNEL);
 	if (!data) {
