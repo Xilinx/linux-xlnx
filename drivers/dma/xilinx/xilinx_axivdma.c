@@ -174,7 +174,7 @@ struct xilinx_vdma_chan {
 							channel request */
 	void (*start_transfer)(struct xilinx_vdma_chan *chan);
 	struct xilinx_vdma_config config;	/* Device configuration info */
-	u32 flush_fsync;			/* Flush on Fsync */
+	bool flush_fsync;			/* Flush on Fsync */
 };
 
 struct xilinx_vdma_device {
@@ -1089,7 +1089,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 		if (xdev->flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
 		    xdev->flush_fsync == XILINX_VDMA_FLUSH_MM2S)
-			chan->flush_fsync = 1;
+			chan->flush_fsync = true;
 	} else if (of_device_is_compatible(node, "xlnx,axi-vdma-s2mm-channel")) {
 		chan->direction = DMA_DEV_TO_MEM;
 		chan->id = 1;
@@ -1099,7 +1099,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 		if (xdev->flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
 		    xdev->flush_fsync == XILINX_VDMA_FLUSH_S2MM)
-			chan->flush_fsync = 1;
+			chan->flush_fsync = true;
 	}
 
 	/*
