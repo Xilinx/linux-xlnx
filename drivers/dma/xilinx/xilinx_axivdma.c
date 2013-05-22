@@ -1120,9 +1120,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	 * Used by dmatest channel matching in slave transfers
 	 * Can change it to be a structure to have more matching information
 	 */
-	chan->private = (chan->direction & 0xFF) |
-		(chan->feature & XILINX_DMA_IP_MASK) |
-		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
+	chan->private = (chan->direction & 0xff)
+		      | XILINX_DMA_IP_VDMA
+		      | (device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
@@ -1229,30 +1229,24 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 		return PTR_ERR(xdev->regs);
 
 	/* Axi VDMA only do slave transfers */
-	if (of_device_is_compatible(node, "xlnx,axi-vdma")) {
-		xdev->feature |= XILINX_DMA_IP_VDMA;
+	if (of_property_read_bool(node, "xlnx,include-sg"))
+		xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
 
-		if (of_property_read_bool(node, "xlnx,include-sg"))
-			xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
-
-		err = of_property_read_u32(node, "xlnx,num-fstores",
-					   &num_frames);
-		if (err < 0) {
-			dev_err(xdev->dev,
-				"missing xlnx,num-fstores property\n");
-			return err;
-		}
-
-		err = of_property_read_u32(node, "xlnx,flush-fsync", &value);
-		if (!err)
-			xdev->feature |= value << XILINX_VDMA_FTR_FLUSH_SHIFT;
-
-		dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
-		dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
-		xdev->common.device_prep_slave_sg = xilinx_vdma_prep_slave_sg;
-		xdev->common.device_control = xilinx_vdma_device_control;
-		xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
+	err = of_property_read_u32(node, "xlnx,num-fstores", &num_frames);
+	if (err < 0) {
+		dev_err(xdev->dev, "missing xlnx,num-fstores property\n");
+		return err;
 	}
+
+	err = of_property_read_u32(node, "xlnx,flush-fsync", &value);
+	if (!err)
+		xdev->feature |= value << XILINX_VDMA_FTR_FLUSH_SHIFT;
+
+	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
+	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
+	xdev->common.device_prep_slave_sg = xilinx_vdma_prep_slave_sg;
+	xdev->common.device_control = xilinx_vdma_device_control;
+	xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
 
 	xdev->common.device_alloc_chan_resources =
 				xilinx_vdma_alloc_chan_resources;
