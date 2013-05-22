@@ -2,6 +2,7 @@
  * machine_kexec.c - handle transition of Linux booting another kernel
  */
 
+#include <linux/cpu.h>
 #include <linux/mm.h>
 #include <linux/kexec.h>
 #include <linux/delay.h>
@@ -119,6 +120,7 @@ void machine_crash_shutdown(struct pt_regs *regs)
 	unsigned long msecs;
 
 	local_irq_disable();
+	disable_nonboot_cpus();
 
 	atomic_set(&waiting_for_crash_ipi, num_online_cpus() - 1);
 	smp_call_function(machine_crash_nonpanic_core, NULL, false);
