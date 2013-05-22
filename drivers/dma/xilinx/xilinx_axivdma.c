@@ -19,6 +19,7 @@
  */
 
 #include <linux/amba/xilinx_dma.h>
+#include <linux/bitops.h>
 #include <linux/dmaengine.h>
 #include <linux/dmapool.h>
 #include <linux/init.h>
@@ -1032,23 +1033,6 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		return -ENXIO;
 }
 
-/*
- * Logarithm function to compute alignment shift
- * Only deals with value less than 4096.
- */
-static int my_log(int value)
-{
-	int i = 0;
-	while ((1 << i) < value) {
-		i++;
-
-		if (i >= 12)
-			return 0;
-	}
-
-	return i;
-}
-
 static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
 {
 	irq_dispose_mapping(chan->irq);
@@ -1142,7 +1126,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
-		xdev->common.copy_align = my_log(width);
+		xdev->common.copy_align = fls(width - 1);
 
 	chan->dev = xdev->dev;
 
