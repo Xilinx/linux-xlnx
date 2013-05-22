@@ -882,6 +882,107 @@ fail:
 	return NULL;
 }
 
+static void xilinx_vdma_terminate_all(struct xilinx_vdma_chan *chan)
+{
+	unsigned long flags;
+
+	/* Halt the DMA engine */
+	xilinx_vdma_halt(chan);
+
+	spin_lock_irqsave(&chan->lock, flags);
+
+	/* Remove and free all of the descriptors in the lists */
+	xilinx_vdma_free_desc_list(chan, &chan->pending_list);
+	xilinx_vdma_free_desc_list(chan, &chan->active_list);
+
+	spin_unlock_irqrestore(&chan->lock, flags);
+}
+
+static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
+				    struct xilinx_vdma_config *cfg)
+{
+	u32 dmacr;
+
+	if (cfg->reset) {
+		xilinx_vdma_reset(chan);
+		return 0;
+	}
+
+	dmacr = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
+
+	/* If vsize is -1, it is park-related operations */
+	if (cfg->vsize == -1) {
+		if (cfg->park)
+			dmacr &= ~XILINX_VDMA_DMACR_CIRC_EN;
+		else
+			dmacr |= XILINX_VDMA_DMACR_CIRC_EN;
+
+		vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, dmacr);
+		return 0;
+	}
+
+	/* If hsize is -1, it is interrupt threshold settings */
+	if (cfg->hsize == -1) {
+		if (cfg->coalesc <= XILINX_VDMA_DMACR_FRAME_COUNT_MAX) {
+			dmacr &= ~XILINX_VDMA_DMACR_FRAME_COUNT_MASK;
+			dmacr |= cfg->coalesc <<
+				 XILINX_VDMA_DMACR_FRAME_COUNT_SHIFT;
+			chan->config.coalesc = cfg->coalesc;
+		}
+
+		if (cfg->delay <= XILINX_VDMA_DMACR_DELAY_MAX) {
+			dmacr &= ~XILINX_VDMA_DMACR_DELAY_MASK;
+			dmacr |= cfg->delay << XILINX_VDMA_DMACR_DELAY_SHIFT;
+			chan->config.delay = cfg->delay;
+		}
+
+		vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, dmacr);
+		return 0;
+	}
+
+	/* Transfer information */
+	chan->config.vsize = cfg->vsize;
+	chan->config.hsize = cfg->hsize;
+	chan->config.stride = cfg->stride;
+	chan->config.frm_dly = cfg->frm_dly;
+	chan->config.park = cfg->park;
+	chan->config.direction = cfg->direction;
+
+	/* genlock settings */
+	chan->config.gen_lock = cfg->gen_lock;
+	chan->config.master = cfg->master;
+
+	if (cfg->gen_lock && chan->genlock) {
+		dmacr |= XILINX_VDMA_DMACR_GENLOCK_EN;
+		dmacr |= cfg->master << XILINX_VDMA_DMACR_MASTER_SHIFT;
+	}
+
+	chan->config.frm_cnt_en = cfg->frm_cnt_en;
+	if (cfg->park)
+		chan->config.park_frm = cfg->park_frm;
+	else
+		chan->config.park_frm = -1;
+
+	chan->config.coalesc = cfg->coalesc;
+	chan->config.delay = cfg->delay;
+	if (cfg->coalesc <= XILINX_VDMA_DMACR_FRAME_COUNT_MAX) {
+		dmacr |= cfg->coalesc << XILINX_VDMA_DMACR_FRAME_COUNT_SHIFT;
+		chan->config.coalesc = cfg->coalesc;
+	}
+
+	if (cfg->delay <= XILINX_VDMA_DMACR_DELAY_MAX) {
+		dmacr |= cfg->delay << XILINX_VDMA_DMACR_DELAY_SHIFT;
+		chan->config.delay = cfg->delay;
+	}
+
+	/* FSync Source selection */
+	dmacr &= ~XILINX_VDMA_DMACR_FSYNCSRC_MASK;
+	dmacr |= cfg->ext_fsync << XILINX_VDMA_DMACR_FSYNCSRC_SHIFT;
+
+	vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, dmacr);
+	return 0;
+}
+
 /*
  * Run-time configuration for Axi VDMA, supports:
  * . halt the channel
@@ -891,110 +992,22 @@ fail:
  * . set transfer information using config struct
  */
 static int xilinx_vdma_device_control(struct dma_chan *dchan,
-				enum dma_ctrl_cmd cmd, unsigned long arg)
+				      enum dma_ctrl_cmd cmd, unsigned long arg)
 {
 	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
-	unsigned long flags;
 
-	if (cmd == DMA_TERMINATE_ALL) {
-		/* Halt the DMA engine */
-		xilinx_vdma_halt(chan);
-
-		spin_lock_irqsave(&chan->lock, flags);
-
-		/* Remove and free all of the descriptors in the lists */
-		xilinx_vdma_free_desc_list(chan, &chan->pending_list);
-		xilinx_vdma_free_desc_list(chan, &chan->active_list);
-
-		spin_unlock_irqrestore(&chan->lock, flags);
+	switch (cmd) {
+	case DMA_TERMINATE_ALL:
+		xilinx_vdma_terminate_all(chan);
 		return 0;
-	} else if (cmd == DMA_SLAVE_CONFIG) {
-		struct xilinx_vdma_config *cfg =
-				(struct xilinx_vdma_config *)arg;
-		u32 reg;
 
-		if (cfg->reset) {
-			xilinx_vdma_reset(chan);
-			return 0;
-		}
+	case DMA_SLAVE_CONFIG:
+		return xilinx_vdma_slave_config(chan,
+					(struct xilinx_vdma_config *)arg);
 
-		reg = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
-
-		/* If vsize is -1, it is park-related operations */
-		if (cfg->vsize == -1) {
-			if (cfg->park)
-				reg &= ~XILINX_VDMA_DMACR_CIRC_EN;
-			else
-				reg |= XILINX_VDMA_DMACR_CIRC_EN;
-
-			vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, reg);
-			return 0;
-		}
-
-		/* If hsize is -1, it is interrupt threshold settings */
-		if (cfg->hsize == -1) {
-			if (cfg->coalesc <= XILINX_VDMA_DMACR_FRAME_COUNT_MAX) {
-				reg &= ~XILINX_VDMA_DMACR_FRAME_COUNT_MASK;
-				reg |= cfg->coalesc <<
-					XILINX_VDMA_DMACR_FRAME_COUNT_SHIFT;
-				chan->config.coalesc = cfg->coalesc;
-			}
-
-			if (cfg->delay <= XILINX_VDMA_DMACR_DELAY_MAX) {
-				reg &= ~XILINX_VDMA_DMACR_DELAY_MASK;
-				reg |= cfg->delay << XILINX_VDMA_DMACR_DELAY_SHIFT;
-				chan->config.delay = cfg->delay;
-			}
-
-			vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, reg);
-			return 0;
-		}
-
-		/* Transfer information */
-		chan->config.vsize = cfg->vsize;
-		chan->config.hsize = cfg->hsize;
-		chan->config.stride = cfg->stride;
-		chan->config.frm_dly = cfg->frm_dly;
-		chan->config.park = cfg->park;
-		chan->config.direction = cfg->direction;
-
-		/* genlock settings */
-		chan->config.gen_lock = cfg->gen_lock;
-		chan->config.master = cfg->master;
-
-		if (cfg->gen_lock) {
-			if (chan->genlock) {
-				reg |= XILINX_VDMA_DMACR_GENLOCK_EN;
-				reg |= cfg->master << XILINX_VDMA_DMACR_MASTER_SHIFT;
-			}
-		}
-
-		chan->config.frm_cnt_en = cfg->frm_cnt_en;
-		if (cfg->park)
-			chan->config.park_frm = cfg->park_frm;
-		else
-			chan->config.park_frm = -1;
-
-		chan->config.coalesc = cfg->coalesc;
-		chan->config.delay = cfg->delay;
-		if (cfg->coalesc <= XILINX_VDMA_DMACR_FRAME_COUNT_MAX) {
-			reg |= cfg->coalesc << XILINX_VDMA_DMACR_FRAME_COUNT_SHIFT;
-			chan->config.coalesc = cfg->coalesc;
-		}
-
-		if (cfg->delay <= XILINX_VDMA_DMACR_DELAY_MAX) {
-			reg |= cfg->delay << XILINX_VDMA_DMACR_DELAY_SHIFT;
-			chan->config.delay = cfg->delay;
-		}
-
-		/* FSync Source selection */
-		reg &= ~XILINX_VDMA_DMACR_FSYNCSRC_MASK;
-		reg |= cfg->ext_fsync << XILINX_VDMA_DMACR_FSYNCSRC_SHIFT;
-
-		vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, reg);
-		return 0;
-	} else
+	default:
 		return -ENXIO;
+	}
 }
 
 /* -----------------------------------------------------------------------------
