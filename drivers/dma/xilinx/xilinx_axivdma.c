@@ -1022,6 +1022,10 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		return -ENXIO;
 }
 
+/* -----------------------------------------------------------------------------
+ * Probe and remove
+ */
+
 static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
 {
 	irq_dispose_mapping(chan->irq);
@@ -1043,15 +1047,24 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	u32 value;
 	int err;
 
-	/* Alloc channel */
+	/* Allocate and initialize the channel structure */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
 	if (!chan) {
 		dev_err(xdev->dev, "no free memory for DMA channels!\n");
 		return -ENOMEM;
 	}
 
+	chan->dev = xdev->dev;
 	chan->xdev = xdev;
+	chan->has_sg = xdev->has_sg;
 
+	spin_lock_init(&chan->lock);
+	INIT_LIST_HEAD(&chan->pending_list);
+	INIT_LIST_HEAD(&chan->active_list);
+
+	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
+
+	/* Retrieve the channel properties from the device tree */
 	if (of_property_read_bool(node, "xlnx,include-dre"))
 		has_dre = true;
 
@@ -1077,8 +1090,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	}
 
 	chan->start_transfer = xilinx_vdma_start_transfer;
-
-	chan->has_sg = xdev->has_sg;
 
 	if (of_device_is_compatible(node, "xlnx,axi-vdma-mm2s-channel")) {
 		chan->direction = DMA_MEM_TO_DEV;
@@ -1109,43 +1120,34 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->private = (chan->direction & 0xff)
 		      | XILINX_DMA_IP_VDMA
 		      | (device_id << XILINX_DMA_DEVICE_ID_SHIFT);
-	chan->common.private = (void *)&(chan->private);
 
-	chan->dev = xdev->dev;
-
-	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
-
-	/* Initialize the channel */
+	/* Reset the channel */
 	err = vdma_init(chan);
 	if (err < 0) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
 	}
 
-	spin_lock_init(&chan->lock);
-	INIT_LIST_HEAD(&chan->pending_list);
-	INIT_LIST_HEAD(&chan->active_list);
-
-	chan->common.device = &xdev->common;
-
-	/* Find the IRQ line, if it exists in the device tree */
+	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
 	err = devm_request_irq(xdev->dev, chan->irq, vdma_intr_handler,
 			       IRQF_SHARED, "xilinx-vdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
-		goto out_free_irq;
+		irq_dispose_mapping(chan->irq);
+		return err;
 	}
 
-	/* Add the channel to DMA device channel list */
+	/* Initialize the DMA channel and add it to the DMA engine channels
+	 * list.
+	 */
+	chan->common.device = &xdev->common;
+	chan->common.private = (void *)&(chan->private);
+
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
 	xdev->chan[chan->id] = chan;
 
 	return 0;
-
-out_free_irq:
-	irq_dispose_mapping(chan->irq);
-	return err;
 }
 
 struct of_dma_filter_xilinx_args {
@@ -1183,24 +1185,24 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 
 static int xilinx_vdma_of_probe(struct platform_device *op)
 {
+	struct device_node *node = op->dev.of_node;
 	struct xilinx_vdma_device *xdev;
-	struct device_node *child, *node;
+	struct device_node *child;
 	struct resource *io;
 	int num_frames;
-	int err, i;
+	unsigned int i;
+	int err;
 
 	dev_info(&op->dev, "Probing xilinx axi vdma engine\n");
 
+	/* Allocate and initialize the DMA engine structure */
 	xdev = devm_kzalloc(&op->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev) {
 		dev_err(&op->dev, "Not enough memory for device\n");
 		return -ENOMEM;
 	}
 
-	xdev->dev = &(op->dev);
-	INIT_LIST_HEAD(&xdev->common.channels);
-
-	node = op->dev.of_node;
+	xdev->dev = &op->dev;
 
 	/* Request and map I/O memory */
 	io = platform_get_resource(op, IORESOURCE_MEM, 0);
@@ -1208,7 +1210,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	if (IS_ERR(xdev->regs))
 		return PTR_ERR(xdev->regs);
 
-	/* Axi VDMA only do slave transfers */
+	/* Retrieve the DMA engine properties from the device tree */
 	if (of_property_read_bool(node, "xlnx,include-sg"))
 		xdev->has_sg = true;
 
@@ -1220,21 +1222,25 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 
 	of_property_read_u32(node, "xlnx,flush-fsync", &xdev->flush_fsync);
 
+	/* Initialize the DMA engine */
+	xdev->common.dev = &op->dev;
+
+	INIT_LIST_HEAD(&xdev->common.channels);
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
-	xdev->common.device_prep_slave_sg = xilinx_vdma_prep_slave_sg;
-	xdev->common.device_control = xilinx_vdma_device_control;
-	xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
 
 	xdev->common.device_alloc_chan_resources =
 				xilinx_vdma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
 				xilinx_vdma_free_chan_resources;
+	xdev->common.device_prep_slave_sg = xilinx_vdma_prep_slave_sg;
+	xdev->common.device_control = xilinx_vdma_device_control;
 	xdev->common.device_tx_status = xilinx_tx_status;
-	xdev->common.dev = &op->dev;
+	xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
 
 	platform_set_drvdata(op, xdev);
 
+	/* Initialize the channels */
 	for_each_child_of_node(node, child) {
 		err = xilinx_vdma_chan_probe(xdev, child);
 		if (err < 0)
@@ -1246,6 +1252,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 			xdev->chan[i]->num_frms = num_frames;
 	}
 
+	/* Register the DMA engine with the core */
 	dma_async_device_register(&xdev->common);
 
 	err = of_dma_controller_register(node, of_dma_xilinx_xlate,
