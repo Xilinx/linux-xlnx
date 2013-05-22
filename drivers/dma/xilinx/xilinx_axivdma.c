@@ -175,9 +175,9 @@ struct xilinx_vdma_chan {
 	int id;					/* Channel ID */
 	enum dma_transfer_direction direction;	/* Transfer direction */
 	int num_frms;				/* Number of frames */
-	int has_sg;				/* Support scatter transfers */
-	int has_dre;				/* For unaligned transfers */
-	int genlock;				/* Support genlock mode */
+	bool has_sg;				/* Support scatter transfers */
+	bool has_dre;				/* For unaligned transfers */
+	bool genlock;				/* Support genlock mode */
 	int err;				/* Channel has errors */
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
 	u32 feature;				/* IP feature */
@@ -1063,13 +1063,11 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->xdev = xdev;
 	chan->feature = feature;
 
-	value = of_get_property(node, "xlnx,include-dre", NULL);
-	if (value)
-		chan->has_dre = be32_to_cpup(value);
+	if (of_property_read_bool(node, "xlnx,include-dre"))
+		chan->has_dre = true;
 
-	value = (int *)of_get_property(node, "xlnx,genlock-mode", NULL);
-	if (value)
-		chan->genlock = be32_to_cpup(value);
+	if (of_property_read_bool(node, "xlnx,genlock-mode"))
+		chan->genlock = true;
 
 	value = (int *)of_get_property(node, "xlnx,datawidth", NULL);
 	if (value) {
@@ -1077,7 +1075,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
-			chan->has_dre = 0;
+			chan->has_dre = false;
 
 		chan->feature |= width - 1;
 	}
@@ -1232,11 +1230,8 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	if (of_device_is_compatible(node, "xlnx,axi-vdma")) {
 		xdev->feature |= XILINX_DMA_IP_VDMA;
 
-		value = of_get_property(node, "xlnx,include-sg", NULL);
-		if (value) {
-			if (be32_to_cpup(value) == 1)
-				xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
-		}
+		if (of_property_read_bool(node, "xlnx,include-sg"))
+			xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
 
 		value = of_get_property(node, "xlnx,num-fstores", NULL);
 		if (value)
