@@ -1050,8 +1050,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 {
 	struct xilinx_vdma_chan *chan;
 	int err;
-	const __be32 *value;
-	u32 width = 0, device_id = 0, flush_fsync = 0;
+	u32 width = 0, device_id, flush_fsync = 0;
+	u32 value;
 
 	/* Alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -1069,9 +1069,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	if (of_property_read_bool(node, "xlnx,genlock-mode"))
 		chan->genlock = true;
 
-	value = (int *)of_get_property(node, "xlnx,datawidth", NULL);
-	if (value) {
-		width = be32_to_cpup(value) >> 3; /* Convert bits to bytes */
+	err = of_property_read_u32(node, "xlnx,datawidth", &value);
+	if (!err) {
+		width = value >> 3; /* Convert bits to bytes */
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
@@ -1080,9 +1080,11 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		chan->feature |= width - 1;
 	}
 
-	value = (int *)of_get_property(node, "xlnx,device-id", NULL);
-	if (value)
-		device_id = be32_to_cpup(value);
+	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
+	if (err < 0) {
+		dev_err(xdev->dev, "missing xlnx,device-id property\n");
+		return err;
+	}
 
 	flush_fsync = (xdev->feature & XILINX_VDMA_FTR_FLUSH_MASK) >>
 			XILINX_VDMA_FTR_FLUSH_SHIFT;
@@ -1203,8 +1205,8 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	struct device_node *child, *node;
 	struct resource *io;
 	int err, i;
-	const __be32 *value;
-	int num_frames = 0;
+	int num_frames;
+	u32 value;
 
 	dev_info(&op->dev, "Probing xilinx axi vdma engine\n");
 
@@ -1233,14 +1235,17 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 		if (of_property_read_bool(node, "xlnx,include-sg"))
 			xdev->feature |= XILINX_VDMA_FTR_HAS_SG;
 
-		value = of_get_property(node, "xlnx,num-fstores", NULL);
-		if (value)
-			num_frames = be32_to_cpup(value);
+		err = of_property_read_u32(node, "xlnx,num-fstores",
+					   &num_frames);
+		if (err < 0) {
+			dev_err(xdev->dev,
+				"missing xlnx,num-fstores property\n");
+			return err;
+		}
 
-		value = of_get_property(node, "xlnx,flush-fsync", NULL);
-		if (value)
-			xdev->feature |= be32_to_cpup(value) <<
-				XILINX_VDMA_FTR_FLUSH_SHIFT;
+		err = of_property_read_u32(node, "xlnx,flush-fsync", &value);
+		if (!err)
+			xdev->feature |= value << XILINX_VDMA_FTR_FLUSH_SHIFT;
 
 		dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 		dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
