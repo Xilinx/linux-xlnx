@@ -18,6 +18,7 @@
 #include <linux/workqueue.h>
 #include <linux/completion.h>
 #include <linux/console.h>
+#include <linux/interrupt.h>
 #include <linux/notifier.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
