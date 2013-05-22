@@ -371,22 +371,6 @@ static int dma_is_idle(struct xilinx_vdma_chan *chan)
 	     & XILINX_VDMA_DMASR_IDLE;
 }
 
-#define XILINX_VDMA_DRIVER_DEBUG	0
-
-#if (XILINX_VDMA_DRIVER_DEBUG == 1)
-static void desc_dump(struct xilinx_vdma_desc_hw *hw)
-{
-	pr_info("hw desc %x:\n", (unsigned int)hw);
-	pr_info("\tnext_desc %x\n", hw->next_desc);
-	pr_info("\tbuf_addr %x\n", hw->buf_addr);
-	pr_info("\tvsize %x\n", hw->vsize);
-	pr_info("\thsize %x\n", hw->hsize);
-	pr_info("\tstride %x\n", hw->stride);
-	pr_info("\tstatus %x\n", hw->status);
-
-}
-#endif
-
 /* Stop the hardware, the ongoing transfer will be finished */
 static void vdma_halt(struct xilinx_vdma_chan *chan)
 {
