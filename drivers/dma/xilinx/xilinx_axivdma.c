@@ -561,7 +561,7 @@ out_unlock:
 }
 
 /* Reset hardware */
-static int vdma_init(struct xilinx_vdma_chan *chan)
+static int vdma_reset(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_RESET_LOOP;
 	u32 tmp;
@@ -708,7 +708,7 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!vdma_init(chan))
+		if (!vdma_reset(chan))
 			chan->err = 0;
 		else
 			return cookie;
@@ -923,7 +923,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		u32 reg;
 
 		if (cfg->reset) {
-			vdma_init(chan);
+			vdma_reset(chan);
 			return 0;
 		}
 
@@ -1106,7 +1106,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		      | (device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 
 	/* Reset the channel */
-	err = vdma_init(chan);
+	err = vdma_reset(chan);
 	if (err < 0) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
