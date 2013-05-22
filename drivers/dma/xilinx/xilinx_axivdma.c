@@ -166,7 +166,6 @@ struct xilinx_vdma_chan {
 	enum dma_transfer_direction direction;	/* Transfer direction */
 	int num_frms;				/* Number of frames */
 	bool has_sg;				/* Support scatter transfers */
-	bool has_dre;				/* For unaligned transfers */
 	bool genlock;				/* Support genlock mode */
 	int err;				/* Channel has errors */
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
@@ -1039,6 +1038,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 				  struct device_node *node)
 {
 	struct xilinx_vdma_chan *chan;
+	bool has_dre = false;
 	u32 device_id;
 	u32 value;
 	int err;
@@ -1053,7 +1053,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->xdev = xdev;
 
 	if (of_property_read_bool(node, "xlnx,include-dre"))
-		chan->has_dre = true;
+		has_dre = true;
 
 	if (of_property_read_bool(node, "xlnx,genlock-mode"))
 		chan->genlock = true;
@@ -1064,9 +1064,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
-			chan->has_dre = false;
+			has_dre = false;
 
-		if (!chan->has_dre)
+		if (!has_dre)
 			xdev->common.copy_align = fls(width - 1);
 	}
 
