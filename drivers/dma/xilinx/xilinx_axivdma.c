@@ -1220,6 +1220,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 {
 	struct xilinx_vdma_device *xdev;
 	struct device_node *child, *node;
+	struct resource *io;
 	int err, i;
 	const __be32 *value;
 	int num_frames = 0;
@@ -1238,12 +1239,11 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	node = op->dev.of_node;
 	xdev->feature = 0;
 
-	/* iomap registers */
-	xdev->regs = of_iomap(node, 0);
-	if (!xdev->regs) {
-		dev_err(&op->dev, "unable to iomap registers\n");
-		return -ENOMEM;
-	}
+	/* Request and map I/O memory */
+	io = platform_get_resource(op, IORESOURCE_MEM, 0);
+	xdev->regs = devm_ioremap_resource(&op->dev, io);
+	if (IS_ERR(xdev->regs))
+		return PTR_ERR(xdev->regs);
 
 	/* Axi VDMA only do slave transfers */
 	if (of_device_is_compatible(node, "xlnx,axi-vdma")) {
@@ -1313,8 +1313,6 @@ static int xilinx_vdma_of_remove(struct platform_device *op)
 		if (xdev->chan[i])
 			xilinx_vdma_chan_remove(xdev->chan[i]);
 	}
-
-	iounmap(xdev->regs);
 
 	return 0;
 }
