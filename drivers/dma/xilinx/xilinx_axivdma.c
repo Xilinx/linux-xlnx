@@ -774,17 +774,12 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 	enum dma_transfer_direction direction, unsigned long flags,
 	void *context)
 {
-	struct xilinx_vdma_chan *chan;
+	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
 	struct xilinx_vdma_desc_sw *first = NULL, *prev = NULL, *new = NULL;
 	struct xilinx_vdma_desc_hw *hw = NULL, *prev_hw = NULL;
-	int i;
 	struct scatterlist *sg;
 	dma_addr_t dma_src;
-
-	if (!dchan)
-		return NULL;
-
-	chan = to_xilinx_chan(dchan);
+	unsigned int i;
 
 	if (chan->direction != direction)
 		return NULL;
@@ -898,13 +893,8 @@ fail:
 static int xilinx_vdma_device_control(struct dma_chan *dchan,
 				enum dma_ctrl_cmd cmd, unsigned long arg)
 {
-	struct xilinx_vdma_chan *chan;
+	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
-
-	if (!dchan)
-		return -EINVAL;
-
-	chan = to_xilinx_chan(dchan);
 
 	if (cmd == DMA_TERMINATE_ALL) {
 		/* Halt the DMA engine */
