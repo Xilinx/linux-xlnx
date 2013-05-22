@@ -1140,7 +1140,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
 	xdev->chan[chan->id] = chan;
-	xdev->common.chancnt++;
 
 	return 0;
 
