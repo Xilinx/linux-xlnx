@@ -305,7 +305,7 @@ static enum dma_status xilinx_vdma_desc_status(struct xilinx_vdma_chan *chan,
 					chan->cookie);
 }
 
-static void xilinx_chan_desc_cleanup(struct xilinx_vdma_chan *chan)
+static void xilinx_vdma_chan_desc_cleanup(struct xilinx_vdma_chan *chan)
 {
 	struct xilinx_vdma_desc_sw *desc, *_desc;
 	unsigned long flags;
@@ -339,7 +339,7 @@ static void xilinx_chan_desc_cleanup(struct xilinx_vdma_chan *chan)
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
-static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
+static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
 					dma_cookie_t cookie,
 					struct dma_tx_state *txstate)
 {
@@ -347,7 +347,7 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 	dma_cookie_t last_used;
 	dma_cookie_t last_complete;
 
-	xilinx_chan_desc_cleanup(chan);
+	xilinx_vdma_chan_desc_cleanup(chan);
 
 	last_used = dchan->cookie;
 	last_complete = chan->completed_cookie;
@@ -357,7 +357,7 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 	return dma_async_is_complete(cookie, last_complete, last_used);
 }
 
-static int dma_is_running(struct xilinx_vdma_chan *chan)
+static int xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
 {
 	return !(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR)
 		 & XILINX_VDMA_DMASR_HALTED) &&
@@ -365,14 +365,14 @@ static int dma_is_running(struct xilinx_vdma_chan *chan)
 		 & XILINX_VDMA_DMACR_RUNSTOP);
 }
 
-static int dma_is_idle(struct xilinx_vdma_chan *chan)
+static int xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
 {
 	return vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR)
 	     & XILINX_VDMA_DMASR_IDLE;
 }
 
 /* Stop the hardware, the ongoing transfer will be finished */
-static void vdma_halt(struct xilinx_vdma_chan *chan)
+static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_HALT_LOOP;
 
@@ -398,7 +398,7 @@ static void vdma_halt(struct xilinx_vdma_chan *chan)
 }
 
 /* Start the hardware. Transfers are not started yet */
-static void vdma_start(struct xilinx_vdma_chan *chan)
+static void xilinx_vdma_start(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_HALT_LOOP;
 
@@ -440,7 +440,8 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		goto out_unlock;
 
 	/* If it is SG mode and hardware is busy, cannot submit */
-	if (chan->has_sg && dma_is_running(chan) && !dma_is_idle(chan)) {
+	if (chan->has_sg && xilinx_vdma_is_running(chan) &&
+	    !xilinx_vdma_is_idle(chan)) {
 		dev_dbg(chan->dev, "DMA controller still busy\n");
 		goto out_unlock;
 	}
@@ -495,7 +496,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	}
 
 	/* Start the hardware */
-	vdma_start(chan);
+	xilinx_vdma_start(chan);
 
 	if (chan->err)
 		goto out_unlock;
@@ -561,7 +562,7 @@ out_unlock:
 }
 
 /* Reset hardware */
-static int vdma_reset(struct xilinx_vdma_chan *chan)
+static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 {
 	int loop = XILINX_VDMA_RESET_LOOP;
 	u32 tmp;
@@ -588,7 +589,7 @@ static int vdma_reset(struct xilinx_vdma_chan *chan)
 	return 0;
 }
 
-static irqreturn_t vdma_intr_handler(int irq, void *data)
+static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 {
 	struct xilinx_vdma_chan *chan = data;
 	int update_cookie = 0;
@@ -657,16 +658,16 @@ static irqreturn_t vdma_intr_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void dma_do_tasklet(unsigned long data)
+static void xilinx_vdma_do_tasklet(unsigned long data)
 {
 	struct xilinx_vdma_chan *chan = (struct xilinx_vdma_chan *)data;
 
-	xilinx_chan_desc_cleanup(chan);
+	xilinx_vdma_chan_desc_cleanup(chan);
 }
 
 /* Append the descriptor list to the pending list */
-static void append_desc_queue(struct xilinx_vdma_chan *chan,
-			struct xilinx_vdma_desc_sw *desc)
+static void xilinx_vdma_append_desc_queue(struct xilinx_vdma_chan *chan,
+					  struct xilinx_vdma_desc_sw *desc)
 {
 	struct xilinx_vdma_desc_sw *tail = container_of(chan->pending_list.prev,
 					struct xilinx_vdma_desc_sw, node);
@@ -708,7 +709,7 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!vdma_reset(chan))
+		if (!xilinx_vdma_reset(chan))
 			chan->err = 0;
 		else
 			return cookie;
@@ -732,7 +733,7 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 	chan->cookie = cookie;
 
 	/* Put this transaction onto the tail of the pending queue */
-	append_desc_queue(chan, desc);
+	xilinx_vdma_append_desc_queue(chan, desc);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 
@@ -907,7 +908,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 
 	if (cmd == DMA_TERMINATE_ALL) {
 		/* Halt the DMA engine */
-		vdma_halt(chan);
+		xilinx_vdma_halt(chan);
 
 		spin_lock_irqsave(&chan->lock, flags);
 
@@ -923,7 +924,7 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 		u32 reg;
 
 		if (cfg->reset) {
-			vdma_reset(chan);
+			xilinx_vdma_reset(chan);
 			return 0;
 		}
 
@@ -1046,7 +1047,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->active_list);
 
-	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
+	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet, (unsigned long)chan);
 
 	/* Retrieve the channel properties from the device tree */
 	if (of_property_read_bool(node, "xlnx,include-dre"))
@@ -1106,7 +1107,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		      | (device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 
 	/* Reset the channel */
-	err = vdma_reset(chan);
+	err = xilinx_vdma_reset(chan);
 	if (err < 0) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
@@ -1114,7 +1115,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
-	err = devm_request_irq(xdev->dev, chan->irq, vdma_intr_handler,
+	err = devm_request_irq(xdev->dev, chan->irq, xilinx_vdma_irq_handler,
 			       IRQF_SHARED, "xilinx-vdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
@@ -1219,7 +1220,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 				xilinx_vdma_free_chan_resources;
 	xdev->common.device_prep_slave_sg = xilinx_vdma_prep_slave_sg;
 	xdev->common.device_control = xilinx_vdma_device_control;
-	xdev->common.device_tx_status = xilinx_tx_status;
+	xdev->common.device_tx_status = xilinx_vdma_tx_status;
 	xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
 
 	platform_set_drvdata(op, xdev);
