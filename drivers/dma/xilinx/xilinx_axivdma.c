@@ -171,7 +171,6 @@ struct xilinx_vdma_chan {
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
 	u32 private;				/* Match info for
 							channel request */
-	void (*start_transfer)(struct xilinx_vdma_chan *chan);
 	struct xilinx_vdma_config config;	/* Device configuration info */
 	bool flush_fsync;			/* Flush on Fsync */
 };
@@ -652,7 +651,7 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 		xilinx_vdma_update_completed_cookie(chan);
 
 	if (to_transfer)
-		chan->start_transfer(chan);
+		xilinx_vdma_start_transfer(chan);
 
 	tasklet_schedule(&chan->tasklet);
 	return IRQ_HANDLED;
@@ -1075,8 +1074,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		dev_err(xdev->dev, "missing xlnx,device-id property\n");
 		return err;
 	}
-
-	chan->start_transfer = xilinx_vdma_start_transfer;
 
 	if (of_device_is_compatible(node, "xlnx,axi-vdma-mm2s-channel")) {
 		chan->direction = DMA_MEM_TO_DEV;
