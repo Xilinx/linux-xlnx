@@ -509,11 +509,18 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
 	/* Start the transfer */
-	if (chan->has_sg)
+	if (chan->has_sg) {
 		vdma_ctrl_write(chan, XILINX_VDMA_REG_TAILDESC,
 				desct->async_tx.phys);
-	else
+	} else {
+		vdma_desc_write(chan, XILINX_VDMA_REG_HSIZE, config->hsize);
+		vdma_desc_write(chan, XILINX_VDMA_REG_FRMDLY_STRIDE,
+				(config->frm_dly <<
+				 XILINX_VDMA_FRMDLY_STRIDE_FRMDLY_SHIFT) |
+				(config->stride <<
+				 XILINX_VDMA_FRMDLY_STRIDE_STRIDE_SHIFT));
 		vdma_desc_write(chan, XILINX_VDMA_REG_VSIZE, config->vsize);
+	}
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -790,15 +797,6 @@ static struct dma_async_tx_descriptor *xilinx_vdma_prep_slave_sg(
 			sg_len, chan->num_frms);
 
 		return NULL;
-	}
-
-	if (!chan->has_sg) {
-		vdma_desc_write(chan, XILINX_VDMA_REG_HSIZE, chan->config.hsize);
-		vdma_desc_write(chan, XILINX_VDMA_REG_FRMDLY_STRIDE,
-				(chan->config.frm_dly <<
-				 XILINX_VDMA_FRMDLY_STRIDE_FRMDLY_SHIFT) |
-				(chan->config.stride <<
-				 XILINX_VDMA_FRMDLY_STRIDE_STRIDE_SHIFT));
 	}
 
 	/* Build transactions using information in the scatter gather list */
