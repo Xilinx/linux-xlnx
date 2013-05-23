@@ -193,7 +193,6 @@ struct xilinx_vdma_device {
 	struct dma_device common;
 	struct xilinx_vdma_chan *chan[XILINX_VDMA_MAX_CHANS_PER_DEVICE];
 	u32 feature;
-	int irq;
 };
 
 #define to_xilinx_chan(chan) \
@@ -614,7 +613,6 @@ static int vdma_init(struct xilinx_vdma_chan *chan)
 
 	return 0;
 }
-
 
 static irqreturn_t vdma_intr_handler(int irq, void *data)
 {
