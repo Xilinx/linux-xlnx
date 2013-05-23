@@ -604,8 +604,6 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 {
 	struct xilinx_vdma_chan *chan = data;
-	int update_cookie = 0;
-	int to_transfer = 0;
 	u32 stat, reg;
 
 	reg = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
@@ -656,15 +654,9 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	if (stat & XILINX_VDMA_DMASR_FRM_CNT_IRQ) {
-		update_cookie = 1;
-		to_transfer = 1;
-	}
-
-	if (update_cookie)
 		xilinx_vdma_update_completed_cookie(chan);
-
-	if (to_transfer)
 		xilinx_vdma_start_transfer(chan);
+	}
 
 	tasklet_schedule(&chan->tasklet);
 	return IRQ_HANDLED;
