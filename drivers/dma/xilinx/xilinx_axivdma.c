@@ -487,7 +487,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 
 	if (config->park && (config->park_frm >= 0)
 			&& (config->park_frm < chan->num_frms)) {
-		if (config->direction == DMA_MEM_TO_DEV)
+		if (chan->direction == DMA_MEM_TO_DEV)
 			vdma_write(chan, XILINX_VDMA_REG_PARK_PTR,
 				config->park_frm << XILINX_VDMA_PARK_PTR_RD_REF_SHIFT);
 		else
@@ -946,7 +946,6 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 	chan->config.stride = cfg->stride;
 	chan->config.frm_dly = cfg->frm_dly;
 	chan->config.park = cfg->park;
-	chan->config.direction = cfg->direction;
 
 	/* genlock settings */
 	chan->config.gen_lock = cfg->gen_lock;

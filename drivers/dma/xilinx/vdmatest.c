@@ -293,7 +293,6 @@ static int vdmatest_slave_func(void *data)
 		}
 
 		/* Set up hardware configuration information */
-		config.direction = DMA_MEM_TO_DEV;
 		config.vsize = vsize;
 		config.hsize = hsize;
 		config.stride = hsize;
@@ -309,7 +308,6 @@ static int vdmatest_slave_func(void *data)
 		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG,
 					(unsigned long)&config);
 
-		config.direction = DMA_DEV_TO_MEM;
 		config.park = 0;
 		rx_dev->device_control(rx_chan, DMA_SLAVE_CONFIG,
 					(unsigned long)&config);

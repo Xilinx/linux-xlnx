@@ -50,8 +50,7 @@
  * Xilinx VDMA, hsize must be -1
  */
 struct xilinx_vdma_config {
-	enum dma_transfer_direction direction;
-					/* Channel direction */
+	int reserved;			/* Not used */
 	int vsize;			/* Vertical size */
 	int hsize;			/* Horizontal size */
 	int stride;			/* Stride */
