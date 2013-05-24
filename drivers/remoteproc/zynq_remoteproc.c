@@ -260,14 +260,14 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	of_prop = of_get_property(pdev->dev.of_node, "ipino", NULL);
 	if (!of_prop) {
 		dev_err(&pdev->dev, "Please specify ipino node property\n");
-		goto ipi_fault;
+		goto irq_fault;
 	}
 
 	local->ipino = be32_to_cpup(of_prop);
 	ret = set_ipi_handler(local->ipino, ipi_kick, "Firmware kick");
 	if (ret) {
 		dev_err(&pdev->dev, "IPI handler already registered\n");
-		goto ipi_fault;
+		goto irq_fault;
 	}
 
 	/* Read vring0 ipi number */
