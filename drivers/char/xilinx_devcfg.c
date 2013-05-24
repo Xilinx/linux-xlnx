@@ -60,7 +60,6 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 						    *  Reset FPGA */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
-#define XDCFG_CTRL_USER_MODE_MASK	0x00008000 /* ROM/user mode selection */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
@@ -1951,7 +1950,6 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 				(XDCFG_CTRL_PCFG_PROG_B_MASK |
 				XDCFG_CTRL_PCAP_PR_MASK |
 				XDCFG_CTRL_PCAP_MODE_MASK |
-				XDCFG_CTRL_USER_MODE_MASK |
 				ctrlreg));
 
 	/* Ensure internal PCAP loopback is disabled */
