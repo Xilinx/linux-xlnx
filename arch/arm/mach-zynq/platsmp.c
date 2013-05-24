@@ -25,7 +25,6 @@
 #include <asm/cacheflush.h>
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
-#include <mach/system.h>
 #include "common.h"
 
 static DEFINE_SPINLOCK(boot_lock);
@@ -48,7 +47,7 @@ static int ncores;
  * then sending it an event to wake it up. The secondary CPU then
  * starts the kernel and tells the primary CPU it's up and running.
  */
-void __cpuinit platform_secondary_init(unsigned int cpu)
+static void __cpuinit zynq_secondary_init(unsigned int cpu)
 {
 	/*
 	 * if any interrupts are already enabled for the primary
@@ -127,7 +126,8 @@ int __cpuinit zynq_cpun_start(u32 address, int cpu)
 }
 EXPORT_SYMBOL(zynq_cpun_start);
 
-int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
+static int __cpuinit zynq_boot_secondary(unsigned int cpu,
+						struct task_struct *idle)
 {
 	int ret;
 
@@ -156,7 +156,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
  * Initialise the CPU possible map early - this describes the CPUs
  * which may be present or become present in the system.
  */
-void __init smp_init_cpus(void)
+static void __init zynq_smp_init_cpus(void)
 {
 	int i;
 
@@ -168,7 +168,7 @@ void __init smp_init_cpus(void)
 	set_smp_cross_call(gic_raise_softirq);
 }
 
-void __init platform_smp_prepare_cpus(unsigned int max_cpus)
+static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
 {
 	int i;
 
@@ -198,3 +198,12 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	scu_enable(scu_base);
 }
 
+struct smp_operations zynq_smp_ops __initdata = {
+	.smp_init_cpus		= zynq_smp_init_cpus,
+	.smp_prepare_cpus	= zynq_smp_prepare_cpus,
+	.smp_secondary_init	= zynq_secondary_init,
+	.smp_boot_secondary	= zynq_boot_secondary,
+#ifdef CONFIG_HOTPLUG_CPU
+	.cpu_die		= platform_cpu_die,
+#endif
+};

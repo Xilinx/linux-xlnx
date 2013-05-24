@@ -24,15 +24,10 @@
 #include <linux/platform_device.h>
 
 #include <linux/device.h>
-#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
-#include <linux/kernel.h>
-#include <linux/clk.h>
 #include <linux/irq.h>
-#include <linux/io.h>
-#include <linux/platform_device.h>
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
@@ -969,7 +964,7 @@ err_sha_algs:
 	return err;
 }
 
-static int __devinit atmel_sha_probe(struct platform_device *pdev)
+static int atmel_sha_probe(struct platform_device *pdev)
 {
 	struct atmel_sha_dev *sha_dd;
 	struct device *dev = &pdev->dev;
@@ -1068,7 +1063,7 @@ sha_dd_err:
 	return err;
 }
 
-static int __devexit atmel_sha_remove(struct platform_device *pdev)
+static int atmel_sha_remove(struct platform_device *pdev)
 {
 	static struct atmel_sha_dev *sha_dd;
 
@@ -1098,7 +1093,7 @@ static int __devexit atmel_sha_remove(struct platform_device *pdev)
 
 static struct platform_driver atmel_sha_driver = {
 	.probe		= atmel_sha_probe,
-	.remove		= __devexit_p(atmel_sha_remove),
+	.remove		= atmel_sha_remove,
 	.driver		= {
 		.name	= "atmel_sha",
 		.owner	= THIS_MODULE,

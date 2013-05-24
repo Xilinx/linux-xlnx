@@ -32,11 +32,12 @@
 #include <asm/hardware/gic.h>
 #include <asm/outercache.h>
 #include <asm/cacheflush.h>
-#include <mach/system.h>
 #include <linux/slab.h>
 #include <linux/cpu.h>
 
 #include "remoteproc_internal.h"
+
+extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
 
 /* Module parameter */
 static char *firmware;
@@ -127,7 +128,7 @@ static void clear_irq(struct platform_device *pdev)
 	}
 }
 
-static int __devinit mb_remoteproc_probe(struct platform_device *pdev)
+static int mb_remoteproc_probe(struct platform_device *pdev)
 {
 	const unsigned char *prop;
 	const void *of_prop;
@@ -258,7 +259,7 @@ irq_fault:
 	return ret;
 }
 
-static int __devexit mb_remoteproc_remove(struct platform_device *pdev)
+static int mb_remoteproc_remove(struct platform_device *pdev)
 {
 	struct mb_rproc_pdata *local = platform_get_drvdata(pdev);
 
@@ -275,7 +276,7 @@ static int __devexit mb_remoteproc_remove(struct platform_device *pdev)
 }
 
 /* Match table for OF platform binding */
-static struct of_device_id mb_remoteproc_match[] __devinitdata = {
+static struct of_device_id mb_remoteproc_match[] = {
 	{ .compatible = "xlnx,mb_remoteproc", },
 	{ /* end of list */ },
 };
@@ -283,7 +284,7 @@ MODULE_DEVICE_TABLE(of, mb_remoteproc_match);
 
 static struct platform_driver mb_remoteproc_driver = {
 	.probe = mb_remoteproc_probe,
-	.remove = __devexit_p(mb_remoteproc_remove),
+	.remove = mb_remoteproc_remove,
 	.driver = {
 		.name = "mb_remoteproc",
 		.owner = THIS_MODULE,

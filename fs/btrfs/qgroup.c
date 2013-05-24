@@ -379,6 +379,13 @@ next1:
 
 		ret = add_relation_rb(fs_info, found_key.objectid,
 				      found_key.offset);
+		if (ret == -ENOENT) {
+			printk(KERN_WARNING
+				"btrfs: orphan qgroup relation 0x%llx->0x%llx\n",
+				(unsigned long long)found_key.objectid,
+				(unsigned long long)found_key.offset);
+			ret = 0;	/* ignore the error */
+		}
 		if (ret)
 			goto out;
 next2:
@@ -790,8 +797,10 @@ int btrfs_quota_enable(struct btrfs_trans_handle *trans,
 	}
 
 	path = btrfs_alloc_path();
-	if (!path)
-		return -ENOMEM;
+	if (!path) {
+		ret = -ENOMEM;
+		goto out_free_root;
+	}
 
 	key.objectid = 0;
 	key.type = BTRFS_QGROUP_STATUS_KEY;
@@ -800,7 +809,7 @@ int btrfs_quota_enable(struct btrfs_trans_handle *trans,
 	ret = btrfs_insert_empty_item(trans, quota_root, path, &key,
 				      sizeof(*ptr));
 	if (ret)
-		goto out;
+		goto out_free_path;
 
 	leaf = path->nodes[0];
 	ptr = btrfs_item_ptr(leaf, path->slots[0],
@@ -818,8 +827,15 @@ int btrfs_quota_enable(struct btrfs_trans_handle *trans,
 	fs_info->quota_root = quota_root;
 	fs_info->pending_quota_state = 1;
 	spin_unlock(&fs_info->qgroup_lock);
-out:
+out_free_path:
 	btrfs_free_path(path);
+out_free_root:
+	if (ret) {
+		free_extent_buffer(quota_root->node);
+		free_extent_buffer(quota_root->commit_root);
+		kfree(quota_root);
+	}
+out:
 	return ret;
 }
 
@@ -947,17 +963,28 @@ int btrfs_remove_qgroup(struct btrfs_trans_handle *trans,
 			struct btrfs_fs_info *fs_info, u64 qgroupid)
 {
 	struct btrfs_root *quota_root;
+	struct btrfs_qgroup *qgroup;
 	int ret = 0;
 
 	quota_root = fs_info->quota_root;
 	if (!quota_root)
 		return -EINVAL;
 
+	/* check if there are no relations to this qgroup */
+	spin_lock(&fs_info->qgroup_lock);
+	qgroup = find_qgroup_rb(fs_info, qgroupid);
+	if (qgroup) {
+		if (!list_empty(&qgroup->groups) || !list_empty(&qgroup->members)) {
+			spin_unlock(&fs_info->qgroup_lock);
+			return -EBUSY;
+		}
+	}
+	spin_unlock(&fs_info->qgroup_lock);
+
 	ret = del_qgroup_item(trans, quota_root, qgroupid);
 
 	spin_lock(&fs_info->qgroup_lock);
 	del_qgroup_rb(quota_root->fs_info, qgroupid);
-
 	spin_unlock(&fs_info->qgroup_lock);
 
 	return ret;
@@ -1145,12 +1172,12 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 
 		ulist_reinit(tmp);
 						/* XXX id not needed */
-		ulist_add(tmp, qg->qgroupid, (unsigned long)qg, GFP_ATOMIC);
+		ulist_add(tmp, qg->qgroupid, (u64)(uintptr_t)qg, GFP_ATOMIC);
 		ULIST_ITER_INIT(&tmp_uiter);
 		while ((tmp_unode = ulist_next(tmp, &tmp_uiter))) {
 			struct btrfs_qgroup_list *glist;
 
-			qg = (struct btrfs_qgroup *)tmp_unode->aux;
+			qg = (struct btrfs_qgroup *)(uintptr_t)tmp_unode->aux;
 			if (qg->refcnt < seq)
 				qg->refcnt = seq + 1;
 			else
@@ -1158,7 +1185,7 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 
 			list_for_each_entry(glist, &qg->groups, next_group) {
 				ulist_add(tmp, glist->group->qgroupid,
-					  (unsigned long)glist->group,
+					  (u64)(uintptr_t)glist->group,
 					  GFP_ATOMIC);
 			}
 		}
@@ -1168,13 +1195,13 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 	 * step 2: walk from the new root
 	 */
 	ulist_reinit(tmp);
-	ulist_add(tmp, qgroup->qgroupid, (unsigned long)qgroup, GFP_ATOMIC);
+	ulist_add(tmp, qgroup->qgroupid, (uintptr_t)qgroup, GFP_ATOMIC);
 	ULIST_ITER_INIT(&uiter);
 	while ((unode = ulist_next(tmp, &uiter))) {
 		struct btrfs_qgroup *qg;
 		struct btrfs_qgroup_list *glist;
 
-		qg = (struct btrfs_qgroup *)unode->aux;
+		qg = (struct btrfs_qgroup *)(uintptr_t)unode->aux;
 		if (qg->refcnt < seq) {
 			/* not visited by step 1 */
 			qg->rfer += sgn * node->num_bytes;
@@ -1190,7 +1217,7 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 
 		list_for_each_entry(glist, &qg->groups, next_group) {
 			ulist_add(tmp, glist->group->qgroupid,
-				  (unsigned long)glist->group, GFP_ATOMIC);
+				  (uintptr_t)glist->group, GFP_ATOMIC);
 		}
 	}
 
@@ -1208,12 +1235,12 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 			continue;
 
 		ulist_reinit(tmp);
-		ulist_add(tmp, qg->qgroupid, (unsigned long)qg, GFP_ATOMIC);
+		ulist_add(tmp, qg->qgroupid, (uintptr_t)qg, GFP_ATOMIC);
 		ULIST_ITER_INIT(&tmp_uiter);
 		while ((tmp_unode = ulist_next(tmp, &tmp_uiter))) {
 			struct btrfs_qgroup_list *glist;
 
-			qg = (struct btrfs_qgroup *)tmp_unode->aux;
+			qg = (struct btrfs_qgroup *)(uintptr_t)tmp_unode->aux;
 			if (qg->tag == seq)
 				continue;
 
@@ -1225,7 +1252,7 @@ int btrfs_qgroup_account_ref(struct btrfs_trans_handle *trans,
 
 			list_for_each_entry(glist, &qg->groups, next_group) {
 				ulist_add(tmp, glist->group->qgroupid,
-					  (unsigned long)glist->group,
+					  (uintptr_t)glist->group,
 					  GFP_ATOMIC);
 			}
 		}
@@ -1469,13 +1496,17 @@ int btrfs_qgroup_reserve(struct btrfs_root *root, u64 num_bytes)
 	 * be exceeded
 	 */
 	ulist = ulist_alloc(GFP_ATOMIC);
-	ulist_add(ulist, qgroup->qgroupid, (unsigned long)qgroup, GFP_ATOMIC);
+	if (!ulist) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ulist_add(ulist, qgroup->qgroupid, (uintptr_t)qgroup, GFP_ATOMIC);
 	ULIST_ITER_INIT(&uiter);
 	while ((unode = ulist_next(ulist, &uiter))) {
 		struct btrfs_qgroup *qg;
 		struct btrfs_qgroup_list *glist;
 
-		qg = (struct btrfs_qgroup *)unode->aux;
+		qg = (struct btrfs_qgroup *)(uintptr_t)unode->aux;
 
 		if ((qg->lim_flags & BTRFS_QGROUP_LIMIT_MAX_RFER) &&
 		    qg->reserved + qg->rfer + num_bytes >
@@ -1489,7 +1520,7 @@ int btrfs_qgroup_reserve(struct btrfs_root *root, u64 num_bytes)
 
 		list_for_each_entry(glist, &qg->groups, next_group) {
 			ulist_add(ulist, glist->group->qgroupid,
-				  (unsigned long)glist->group, GFP_ATOMIC);
+				  (uintptr_t)glist->group, GFP_ATOMIC);
 		}
 	}
 	if (ret)
@@ -1502,7 +1533,7 @@ int btrfs_qgroup_reserve(struct btrfs_root *root, u64 num_bytes)
 	while ((unode = ulist_next(ulist, &uiter))) {
 		struct btrfs_qgroup *qg;
 
-		qg = (struct btrfs_qgroup *)unode->aux;
+		qg = (struct btrfs_qgroup *)(uintptr_t)unode->aux;
 
 		qg->reserved += num_bytes;
 	}
@@ -1541,19 +1572,23 @@ void btrfs_qgroup_free(struct btrfs_root *root, u64 num_bytes)
 		goto out;
 
 	ulist = ulist_alloc(GFP_ATOMIC);
-	ulist_add(ulist, qgroup->qgroupid, (unsigned long)qgroup, GFP_ATOMIC);
+	if (!ulist) {
+		btrfs_std_error(fs_info, -ENOMEM);
+		goto out;
+	}
+	ulist_add(ulist, qgroup->qgroupid, (uintptr_t)qgroup, GFP_ATOMIC);
 	ULIST_ITER_INIT(&uiter);
 	while ((unode = ulist_next(ulist, &uiter))) {
 		struct btrfs_qgroup *qg;
 		struct btrfs_qgroup_list *glist;
 
-		qg = (struct btrfs_qgroup *)unode->aux;
+		qg = (struct btrfs_qgroup *)(uintptr_t)unode->aux;
 
 		qg->reserved -= num_bytes;
 
 		list_for_each_entry(glist, &qg->groups, next_group) {
 			ulist_add(ulist, glist->group->qgroupid,
-				  (unsigned long)glist->group, GFP_ATOMIC);
+				  (uintptr_t)glist->group, GFP_ATOMIC);
 		}
 	}
 

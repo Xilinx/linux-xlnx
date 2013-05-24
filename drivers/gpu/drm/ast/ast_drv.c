@@ -28,9 +28,8 @@
 #include <linux/module.h>
 #include <linux/console.h>
 
-#include "drmP.h"
-#include "drm.h"
-#include "drm_crtc_helper.h"
+#include <drm/drmP.h>
+#include <drm/drm_crtc_helper.h>
 
 #include "ast_drv.h"
 
@@ -61,8 +60,7 @@ static DEFINE_PCI_DEVICE_TABLE(pciidlist) = {
 
 MODULE_DEVICE_TABLE(pci, pciidlist);
 
-static int __devinit
-ast_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+static int ast_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	return drm_get_pci_dev(pdev, ent, &driver);
 }

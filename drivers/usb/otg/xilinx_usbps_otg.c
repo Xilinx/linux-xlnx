@@ -809,7 +809,8 @@ static int xotg_usbdev_notify(struct notifier_block *self,
 	otg_port = otg->otg->host->otg_port;
 
 	if (otg->otg->host->root_hub)
-		udev_otg = otg->otg->host->root_hub->children[otg_port-1];
+		udev_otg = usb_hub_find_child(otg->otg->host->root_hub,
+								otg_port - 1);
 
 	/* Not otg device notification */
 	if (udev != udev_otg)
@@ -1841,8 +1842,10 @@ static int suspend_otg_device(struct usb_phy *otg)
 {
 	struct xusbps_otg		*xotg = the_transceiver;
 	unsigned long otg_port = otg->otg->host->otg_port;
-	struct usb_device *udev = otg->otg->host->root_hub->children[otg_port-1];
+	struct usb_device *udev;
 	int err;
+
+	udev = usb_hub_find_child(otg->otg->host->root_hub, otg_port - 1);
 
 	if (udev) {
 		err = usb_port_suspend(udev, PMSG_SUSPEND);

@@ -2561,7 +2561,7 @@ static void hifn_tasklet_callback(unsigned long data)
 		hifn_process_queue(dev);
 }
 
-static int __devinit hifn_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+static int hifn_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int err, i;
 	struct hifn_device *dev;
@@ -2611,14 +2611,17 @@ static int __devinit hifn_probe(struct pci_dev *pdev, const struct pci_device_id
 		size = pci_resource_len(pdev, i);
 
 		dev->bar[i] = ioremap_nocache(addr, size);
-		if (!dev->bar[i])
+		if (!dev->bar[i]) {
+			err = -ENOMEM;
 			goto err_out_unmap_bars;
+		}
 	}
 
 	dev->desc_virt = pci_alloc_consistent(pdev, sizeof(struct hifn_dma),
 			&dev->desc_dma);
 	if (!dev->desc_virt) {
 		dprintk("Failed to allocate descriptor rings.\n");
+		err = -ENOMEM;
 		goto err_out_unmap_bars;
 	}
 	memset(dev->desc_virt, 0, sizeof(struct hifn_dma));
@@ -2693,7 +2696,7 @@ err_out_disable_pci_device:
 	return err;
 }
 
-static void __devexit hifn_remove(struct pci_dev *pdev)
+static void hifn_remove(struct pci_dev *pdev)
 {
 	int i;
 	struct hifn_device *dev;
@@ -2737,7 +2740,7 @@ static struct pci_driver hifn_pci_driver = {
 	.name     = "hifn795x",
 	.id_table = hifn_pci_tbl,
 	.probe    = hifn_probe,
-	.remove   = __devexit_p(hifn_remove),
+	.remove   = hifn_remove,
 };
 
 static int __init hifn_init(void)

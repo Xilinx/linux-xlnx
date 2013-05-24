@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/sh_pfc.h>
 
 struct sh_pfc_chip {
 	struct sh_pfc		*pfc;
@@ -164,7 +165,7 @@ static int sh_pfc_gpio_match(struct gpio_chip *gc, void *data)
 	return !!strstr(gc->label, data);
 }
 
-static int __devinit sh_pfc_gpio_probe(struct platform_device *pdev)
+static int sh_pfc_gpio_probe(struct platform_device *pdev)
 {
 	struct sh_pfc_chip *chip;
 	struct gpio_chip *gc;
@@ -183,7 +184,7 @@ static int __devinit sh_pfc_gpio_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit sh_pfc_gpio_remove(struct platform_device *pdev)
+static int sh_pfc_gpio_remove(struct platform_device *pdev)
 {
 	struct sh_pfc_chip *chip = platform_get_drvdata(pdev);
 	int ret;
@@ -198,7 +199,7 @@ static int __devexit sh_pfc_gpio_remove(struct platform_device *pdev)
 
 static struct platform_driver sh_pfc_gpio_driver = {
 	.probe		= sh_pfc_gpio_probe,
-	.remove		= __devexit_p(sh_pfc_gpio_remove),
+	.remove		= sh_pfc_gpio_remove,
 	.driver		= {
 		.name	= KBUILD_MODNAME,
 		.owner	= THIS_MODULE,

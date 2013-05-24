@@ -99,7 +99,7 @@ unsigned int get_irq(void)
 	return irq;
 }
 
-int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
+static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	u32 intr_mask = (u32)d->host_data;
 
@@ -147,12 +147,12 @@ void __init init_IRQ(void)
 	intr_mask =
 		be32_to_cpup(of_get_property(intc, "xlnx,kind-of-intr", NULL));
 	if (intr_mask > (u32)((1ULL << nr_irq) - 1))
-		printk(KERN_INFO " ERROR: Mismatch in kind-of-intr param\n");
+		pr_info(" ERROR: Mismatch in kind-of-intr param\n");
 
 #ifdef CONFIG_SELFMOD_INTC
 	selfmod_function((int *) arr_func, intc_baseaddr);
 #endif
-	printk(KERN_INFO "%s #0 at 0x%08x, num_irq=%d, edge=0x%x\n",
+	pr_info("%s #0 at 0x%08x, num_irq=%d, edge=0x%x\n",
 		intc->name, intc_baseaddr, nr_irq, intr_mask);
 
 	/*

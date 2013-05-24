@@ -9,6 +9,7 @@
 #ifndef _ASM_PGTABLE_64_H
 #define _ASM_PGTABLE_64_H
 
+#include <linux/compiler.h>
 #include <linux/linkage.h>
 
 #include <asm/addrspace.h>
@@ -162,7 +163,6 @@ typedef struct { unsigned long pmd; } pmd_t;
 
 
 extern pmd_t invalid_pmd_table[PTRS_PER_PMD];
-extern pmd_t empty_bad_pmd_table[PTRS_PER_PMD];
 #endif
 
 /*
@@ -173,7 +173,19 @@ static inline int pmd_none(pmd_t pmd)
 	return pmd_val(pmd) == (unsigned long) invalid_pte_table;
 }
 
-#define pmd_bad(pmd)		(pmd_val(pmd) & ~PAGE_MASK)
+static inline int pmd_bad(pmd_t pmd)
+{
+#ifdef CONFIG_MIPS_HUGE_TLB_SUPPORT
+	/* pmd_huge(pmd) but inline */
+	if (unlikely(pmd_val(pmd) & _PAGE_HUGE))
+		return 0;
+#endif
+
+	if (unlikely(pmd_val(pmd) & ~PAGE_MASK))
+		return 1;
+
+	return 0;
+}
 
 static inline int pmd_present(pmd_t pmd)
 {
@@ -218,6 +230,7 @@ static inline void pud_clear(pud_t *pudp)
 #else
 #define pte_pfn(x)		((unsigned long)((x).pte >> _PFN_SHIFT))
 #define pfn_pte(pfn, prot)	__pte(((pfn) << _PFN_SHIFT) | pgprot_val(prot))
+#define pfn_pmd(pfn, prot)	__pmd(((pfn) << _PFN_SHIFT) | pgprot_val(prot))
 #endif
 
 #define __pgd_offset(address)	pgd_index(address)

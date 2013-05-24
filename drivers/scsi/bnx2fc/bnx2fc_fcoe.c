@@ -25,7 +25,7 @@ DEFINE_PER_CPU(struct bnx2fc_percpu_s, bnx2fc_percpu);
 #define DRV_MODULE_RELDATE	"Jun 04, 2012"
 
 
-static char version[] __devinitdata =
+static char version[] =
 		"Broadcom NetXtreme II FCoE Driver " DRV_MODULE_NAME \
 		" v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
@@ -908,7 +908,7 @@ static void bnx2fc_indicate_netevent(void *context, unsigned long event,
 		return;
 
 	default:
-		printk(KERN_ERR PFX "Unkonwn netevent %ld", event);
+		printk(KERN_ERR PFX "Unknown netevent %ld", event);
 		return;
 	}
 
@@ -1738,7 +1738,7 @@ static int bnx2fc_ulp_get_stats(void *handle)
 /**
  * bnx2fc_ulp_start - cnic callback to initialize & start adapter instance
  *
- * @handle:	transport handle pointing to adapter struture
+ * @handle:	transport handle pointing to adapter structure
  *
  * This function maps adapter structure to pcidev structure and initiates
  *	firmware handshake to enable/initialize on-chip FCoE components.

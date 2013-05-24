@@ -73,8 +73,7 @@ static irqreturn_t mpcore_wdt_fire(int irq, void *arg)
 
 	/* Check it really was our interrupt */
 	if (readl(wdt->base + TWD_WDOG_INTSTAT)) {
-		dev_printk(KERN_CRIT, wdd->dev,
-					"Triggered - Reboot ignored.\n");
+		dev_crit(wdd->dev, "Triggered - Reboot ignored\n");
 		/* Clear the interrupt on the watchdog */
 		writel(1, wdt->base + TWD_WDOG_INTSTAT);
 		return IRQ_HANDLED;
@@ -114,7 +113,7 @@ static int mpcore_wdt_stop(struct watchdog_device *wdd)
 static int mpcore_wdt_start(struct watchdog_device *wdd)
 {
 	struct mpcore_wdt *wdt = watchdog_get_drvdata(wdd);
-	dev_printk(KERN_INFO, wdd->dev, "enabling watchdog.\n");
+	dev_info(wdd->dev, "enabling watchdog\n");
 
 	/* This loads the count register but does NOT start the count yet */
 	mpcore_wdt_keepalive(wdd);
@@ -175,7 +174,7 @@ static void mpcore_wdt_shutdown(struct platform_device *pdev)
 /*
  *	Kernel Interfaces
  */
-static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
+static int mpcore_wdt_probe(struct platform_device *pdev)
 {
 	struct mpcore_wdt *wdt;
 	struct resource *res;
@@ -201,7 +200,7 @@ static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
 		ret = devm_request_irq(&pdev->dev, wdt->irq, mpcore_wdt_fire, 0,
 				"mpcore_wdt", wdt);
 		if (ret) {
-			dev_printk(KERN_ERR, &pdev->dev,
+			dev_err(&pdev->dev,
 					"cannot register IRQ%d for watchdog\n",
 					wdt->irq);
 			return ret;
@@ -229,7 +228,7 @@ static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
 	mpcore_dev.parent = &pdev->dev;
 	ret = watchdog_register_device(&mpcore_dev);
 	if (ret) {
-		dev_printk(KERN_ERR, &pdev->dev,
+		dev_err(&pdev->dev,
 			"cannot register watchdog device (err=%d)\n", ret);
 		return ret;
 	}
@@ -243,7 +242,7 @@ static int __devinit mpcore_wdt_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit mpcore_wdt_remove(struct platform_device *pdev)
+static int mpcore_wdt_remove(struct platform_device *pdev)
 {
 	struct watchdog_device *wdd = platform_get_drvdata(pdev);
 	platform_set_drvdata(pdev, NULL);
@@ -273,7 +272,7 @@ static int mpcore_wdt_resume(struct platform_device *pdev)
 #endif
 
 #ifdef CONFIG_OF
-static struct of_device_id mpcore_wdt_of_match[] __devinitdata = {
+static struct of_device_id mpcore_wdt_of_match[] = {
 	{ .compatible = "arm,mpcore_wdt", },
 	{ /* end of table */}
 };
@@ -285,7 +284,7 @@ MODULE_ALIAS("platform:mpcore_wdt");
 
 static struct platform_driver mpcore_wdt_driver = {
 	.probe		= mpcore_wdt_probe,
-	.remove		= __devexit_p(mpcore_wdt_remove),
+	.remove		= mpcore_wdt_remove,
 	.suspend	= mpcore_wdt_suspend,
 	.resume		= mpcore_wdt_resume,
 	.shutdown	= mpcore_wdt_shutdown,

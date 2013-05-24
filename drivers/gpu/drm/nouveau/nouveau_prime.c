@@ -22,14 +22,12 @@
  * Authors: Dave Airlie
  */
 
-#include "drmP.h"
-#include "drm.h"
-
-#include "nouveau_drv.h"
-#include "nouveau_drm.h"
-#include "nouveau_dma.h"
-
 #include <linux/dma-buf.h>
+
+#include <drm/drmP.h>
+
+#include "nouveau_drm.h"
+#include "nouveau_gem.h"
 
 static struct sg_table *nouveau_gem_map_dma_buf(struct dma_buf_attachment *attachment,
 					  enum dma_data_direction dir)
@@ -157,10 +155,6 @@ nouveau_prime_new(struct drm_device *dev,
 		return ret;
 	nvbo = *pnvbo;
 
-	/* we restrict allowed domains on nv50+ to only the types
-	 * that were requested at creation time.  not possibly on
-	 * earlier chips without busting the ABI.
-	 */
 	nvbo->valid_domains = NOUVEAU_GEM_DOMAIN_GART;
 	nvbo->gem = drm_gem_object_alloc(dev, nvbo->bo.mem.size);
 	if (!nvbo->gem) {
@@ -199,6 +193,7 @@ struct drm_gem_object *nouveau_gem_prime_import(struct drm_device *dev,
 		if (nvbo->gem) {
 			if (nvbo->gem->dev == dev) {
 				drm_gem_object_reference(nvbo->gem);
+				dma_buf_put(dma_buf);
 				return nvbo->gem;
 			}
 		}

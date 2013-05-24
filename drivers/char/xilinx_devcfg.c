@@ -1513,7 +1513,7 @@ static const struct attribute_group xdevcfg_attr_group = {
  *
  * It does all the memory allocation and registration for the device.
  */
-static int __devinit xdevcfg_drv_probe(struct platform_device *pdev)
+static int xdevcfg_drv_probe(struct platform_device *pdev)
 {
 	struct resource *regs_res, *irq_res;
 	struct xdevcfg_drvdata *drvdata;
@@ -1688,7 +1688,7 @@ failed0:
  *
  * Unregister the device after releasing the resources.
  */
-static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
+static int xdevcfg_drv_remove(struct platform_device *pdev)
 {
 	struct xdevcfg_drvdata *drvdata;
 	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1715,7 +1715,7 @@ static int __devexit xdevcfg_drv_remove(struct platform_device *pdev)
 	return 0;		/* Success */
 }
 
-static struct of_device_id xdevcfg_of_match[] __devinitdata = {
+static struct of_device_id xdevcfg_of_match[] = {
 	{ .compatible = "xlnx,ps7-dev-cfg-1.00.a", },
 	{ /* end of table */}
 };
@@ -1724,7 +1724,7 @@ MODULE_DEVICE_TABLE(of, xdevcfg_of_match);
 /* Driver Structure */
 static struct platform_driver xdevcfg_platform_driver = {
 	.probe = xdevcfg_drv_probe,
-	.remove = __devexit_p(xdevcfg_drv_remove),
+	.remove = xdevcfg_drv_remove,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,

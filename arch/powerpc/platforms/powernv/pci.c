@@ -30,7 +30,6 @@
 #include <asm/opal.h>
 #include <asm/iommu.h>
 #include <asm/tce.h>
-#include <asm/abs_addr.h>
 #include <asm/firmware.h>
 
 #include "powernv.h"
@@ -447,6 +446,11 @@ static void pnv_tce_free(struct iommu_table *tbl, long index, long npages)
 		pnv_tce_invalidate(tbl, tces, tcep - 1);
 }
 
+static unsigned long pnv_tce_get(struct iommu_table *tbl, long index)
+{
+	return ((u64 *)tbl->it_base)[index - tbl->it_offset];
+}
+
 void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 			       void *tce_mem, u64 tce_size,
 			       u64 dma_offset)
@@ -460,8 +464,7 @@ void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 	tbl->it_type = TCE_PCI;
 }
 
-static struct iommu_table * __devinit
-pnv_pci_setup_bml_iommu(struct pci_controller *hose)
+static struct iommu_table *pnv_pci_setup_bml_iommu(struct pci_controller *hose)
 {
 	struct iommu_table *tbl;
 	const __be64 *basep, *swinvp;
@@ -492,8 +495,8 @@ pnv_pci_setup_bml_iommu(struct pci_controller *hose)
 	return tbl;
 }
 
-static void __devinit pnv_pci_dma_fallback_setup(struct pci_controller *hose,
-						 struct pci_dev *pdev)
+static void pnv_pci_dma_fallback_setup(struct pci_controller *hose,
+				       struct pci_dev *pdev)
 {
 	struct device_node *np = pci_bus_to_OF_node(hose->bus);
 	struct pci_dn *pdn;
@@ -508,7 +511,7 @@ static void __devinit pnv_pci_dma_fallback_setup(struct pci_controller *hose,
 	set_iommu_table_base(&pdev->dev, pdn->iommu_table);
 }
 
-static void __devinit pnv_pci_dma_dev_setup(struct pci_dev *pdev)
+static void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 {
 	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -523,7 +526,7 @@ static void __devinit pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 }
 
 /* Fixup wrong class code in p7ioc root complex */
-static void __devinit pnv_p7ioc_rc_quirk(struct pci_dev *dev)
+static void pnv_p7ioc_rc_quirk(struct pci_dev *dev)
 {
 	dev->class = PCI_CLASS_BRIDGE_PCI << 8;
 }
@@ -597,6 +600,7 @@ void __init pnv_pci_init(void)
 	ppc_md.pci_dma_dev_setup = pnv_pci_dma_dev_setup;
 	ppc_md.tce_build = pnv_tce_build;
 	ppc_md.tce_free = pnv_tce_free;
+	ppc_md.tce_get = pnv_tce_get;
 	ppc_md.pci_probe_mode = pnv_pci_probe_mode;
 	set_pci_dma_ops(&dma_iommu_ops);
 

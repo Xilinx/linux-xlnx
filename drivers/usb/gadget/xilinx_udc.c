@@ -40,7 +40,7 @@
 
 
  /* Match table for of_platform binding */
-static const struct of_device_id usb_of_match[] __devinitdata = {
+static const struct of_device_id usb_of_match[] = {
 	{.compatible = "xlnx,xps-usb2-device-4.00.a",},
 	{ /* end of list */ },
 };
@@ -221,39 +221,7 @@ struct xusb_request {
  * as unions so that the parameters can be used in the request processing.
  */
 static struct {
-	union {
-		u8 StandardDeviceRequest;
-		u8 bmRequestType;
-	} byte0;
-	union {
-		u8 FbRequest;
-		u8 bRequest;
-	} byte1;
-	union {
-		struct {
-			u8 bDescriptorType;
-			u8 bDescriptorIndex;
-		} byte23;
-		u16 FwValue;
-		u16 wValue;
-		u16 wFeatureSelector;
-	} word1;
-	union {
-		struct {
-			u8 byteh;
-			u8 bytel;
-		} byte45;
-		u16 wTargetSelector;
-		u16 FwIndex;
-		u16 wIndex;
-	} word2;
-	union {
-		struct {
-			u8 byteh;
-			u8 bytel;
-		} byte67;
-		u16 wLength;
-	} word3;
+	struct usb_ctrlrequest setup;
 	u8 *contreadptr;
 	u8 *contwriteptr;
 	u32 contreadcount;
@@ -262,18 +230,6 @@ static struct {
 	u32 setupseqrx;
 	u8 contreaddatabuffer[64];
 } ch9_cmdbuf;
-
-
- /* union for 32 bit integer memory access to the Dual Port RAM.*/
-static union {
-	u32 word;
-	struct {
-		u8 zero;
-		u8 one;
-		u8 two;
-		u8 three;
-	} byte;
-} usbmemdata;
 
 /*
  * Initial Fixed locations provided for endpoint memory address
@@ -301,6 +257,16 @@ static inline struct xusb_udc *to_udc(struct usb_gadget *g)
 {
 
 	return container_of(g, struct xusb_udc, gadget);
+}
+
+static void xusb_write32(u32 val, void __iomem *addr)
+{
+	iowrite32(val, addr);
+}
+
+static unsigned int xusb_read32(void __iomem *addr)
+{
+	return ioread32(addr);
 }
 
 static void xusb_write32_be(u32 val, void __iomem *addr)
@@ -689,7 +655,7 @@ top:
 			} else {
 				dev_dbg(&ep->udc->gadget.dev,
 				"rcv fail..curbufnum is %d and buf0rdy is"
-				"%d, buf1rdy is %d\n", ep->curbufnum, \
+				"%d, buf1rdy is %d\n", ep->curbufnum,
 				ep->buffer0ready, ep->buffer1ready);
 				req->req.actual -= min(count, bufferspace);
 				return -EINVAL;
@@ -887,7 +853,6 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	ep->stopped = 0;
 	ep->desc = desc;
 	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-
 	spin_lock_irqsave(&ep->udc->lock, flags);
 	ep->ep.maxpacket = le16_to_cpu(desc->wMaxPacketSize);
 
@@ -1026,11 +991,11 @@ static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
 {
 	struct xusb_request *req;
 
-	req = kmalloc(sizeof *req, gfp_flags);
+	req = kmalloc(sizeof(*req), gfp_flags);
 	if (!req)
 		return NULL;
 
-	memset(req, 0, sizeof *req);
+	memset(req, 0, sizeof(*req));
 	INIT_LIST_HEAD(&req->queue);
 	return &req->req;
 }
@@ -1286,7 +1251,8 @@ static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
 }
 
 static int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *));
+				int (*bind)(struct usb_gadget *,
+				struct usb_gadget_driver *driver));
 static int xudc_stop(struct usb_gadget_driver *driver);
 static void xusb_release(struct device *dev);
 
@@ -1304,6 +1270,7 @@ static struct xusb_udc controller = {
 		.ops = &xusb_udc_ops,
 		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep,
 		.speed = USB_SPEED_HIGH,
+		.max_speed = USB_SPEED_HIGH,
 		.is_otg = 0,
 		.is_a_peripheral = 0,
 		.b_hnp_enable = 0,
@@ -1333,7 +1300,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[1] = {
 		  .ep = {
-			 .name = "ep-1",
+			 .name = "ep1",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1348,7 +1315,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[2] = {
 		  .ep = {
-			 .name = "ep-2",
+			 .name = "ep2",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1363,7 +1330,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[3] = {
 		  .ep = {
-			 .name = "ep-3",
+			 .name = "ep3",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1378,7 +1345,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[4] = {
 		  .ep = {
-			 .name = "ep-4",
+			 .name = "ep4",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1393,7 +1360,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[5] = {
 		  .ep = {
-			 .name = "ep-5",
+			 .name = "ep5",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1408,7 +1375,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[6] = {
 		  .ep = {
-			 .name = "ep-6",
+			 .name = "ep6",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1423,7 +1390,7 @@ static struct xusb_udc controller = {
 		},
 	.ep[7] = {
 		  .ep = {
-			 .name = "ep-7",
+			 .name = "ep7",
 			 .ops = &xusb_ep_ops,
 			 },
 		.udc = &controller,
@@ -1617,7 +1584,7 @@ static void set_configuration(struct xusb_udc *udc)
 {
 	u32 epcfgreg;
 
-	switch (ch9_cmdbuf.word1.wValue) {
+	switch (ch9_cmdbuf.setup.wValue) {
 	case 0:
 		/*
 		 * This configuration value resets the device to the
@@ -1659,9 +1626,9 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 	u8 outinbit;
 	u32 epcfgreg;
 
-	switch (ch9_cmdbuf.byte0.bmRequestType) {
+	switch (ch9_cmdbuf.setup.bRequestType) {
 	case STANDARD_OUT_DEVICE:
-		switch (ch9_cmdbuf.word1.wValue) {
+		switch (ch9_cmdbuf.setup.wValue) {
 		case USB_DEVICE_REMOTE_WAKEUP:
 			/* User needs to add code here.*/
 			break;
@@ -1684,9 +1651,9 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 		break;
 
 	case STANDARD_OUT_ENDPOINT:
-		if (!ch9_cmdbuf.word1.wValue) {
-			endpoint = ch9_cmdbuf.word2.wIndex & 0xf;
-			outinbit = ch9_cmdbuf.word2.wIndex & 0x80;
+		if (!ch9_cmdbuf.setup.wValue) {
+			endpoint = ch9_cmdbuf.setup.wIndex & 0xf;
+			outinbit = ch9_cmdbuf.setup.wIndex & 0x80;
 			outinbit = outinbit >> 7;
 
 			/* Make sure direction matches.*/
@@ -1764,10 +1731,10 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 static int execute_command(struct xusb_udc *udc)
 {
 
-	if ((ch9_cmdbuf.byte0.bmRequestType & USB_TYPE_MASK) ==
+	if ((ch9_cmdbuf.setup.bRequestType & USB_TYPE_MASK) ==
 	    USB_TYPE_STANDARD) {
 		/* Process the chapter 9 command.*/
-		switch (ch9_cmdbuf.byte1.bRequest) {
+		switch (ch9_cmdbuf.setup.bRequest) {
 
 		case USB_REQ_CLEAR_FEATURE:
 			set_clear_feature(udc, 0);
@@ -1783,21 +1750,20 @@ static int execute_command(struct xusb_udc *udc)
 
 		case USB_REQ_SET_CONFIGURATION:
 			set_configuration(udc);
-			return ch9_cmdbuf.byte1.bRequest;
+			return ch9_cmdbuf.setup.bRequest;
 
 		default:
 			/*
 			 * Return the same request to application for
 			 * handling.
 			 */
-			return ch9_cmdbuf.byte1.bRequest;
+			return ch9_cmdbuf.setup.bRequest;
 		}
 
 	} else
-		if ((ch9_cmdbuf.byte0.bmRequestType & USB_TYPE_MASK) ==
+		if ((ch9_cmdbuf.setup.bRequestType & USB_TYPE_MASK) ==
 					USB_TYPE_CLASS)
-			return ch9_cmdbuf.byte1.bRequest;
-
+			return ch9_cmdbuf.setup.bRequest;
 	return 0;
 }
 
@@ -1817,36 +1783,22 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 	/* Load up the chapter 9 command buffer.*/
 	ep0rambase = (u32 __force *) (udc->base_address +
 				  XUSB_SETUP_PKT_ADDR_OFFSET);
+	memcpy((void *)&ch9_cmdbuf.setup, (void *)ep0rambase, 8);
 
-	/* Get the first 4 bytes of the setup packet */
-	usbmemdata.word = *ep0rambase;
-	ch9_cmdbuf.byte0.bmRequestType = usbmemdata.byte.zero;
-	ch9_cmdbuf.byte1.bRequest = usbmemdata.byte.one;
-	ch9_cmdbuf.word1.byte23.bDescriptorIndex = usbmemdata.byte.two;
-	ch9_cmdbuf.word1.byte23.bDescriptorType = usbmemdata.byte.three;
+	ctrl->bRequestType = ch9_cmdbuf.setup.bRequestType;
+	ctrl->bRequest     = ch9_cmdbuf.setup.bRequest;
+	ctrl->wValue       = ch9_cmdbuf.setup.wValue;
+	ctrl->wIndex       = ch9_cmdbuf.setup.wIndex;
+	ctrl->wLength      = ch9_cmdbuf.setup.wLength;
 
-	/* Get the last 4 bytes of the setup packet.*/
-	ep0rambase += 1;
-	usbmemdata.word = *ep0rambase;
-
-	/*
-	 * Byte swapping for next 4 bytes for BE machines is defined in
-	 * the different layout of BECB verses LECB.
-	 */
-	ch9_cmdbuf.word2.byte45.bytel = usbmemdata.byte.zero;
-	ch9_cmdbuf.word2.byte45.byteh = usbmemdata.byte.one;
-	ch9_cmdbuf.word3.byte67.bytel = usbmemdata.byte.two;
-	ch9_cmdbuf.word3.byte67.byteh = usbmemdata.byte.three;
-	ctrl->bRequestType = ch9_cmdbuf.byte0.bmRequestType;
-	ctrl->bRequest = ch9_cmdbuf.byte1.bRequest;
-	ctrl->wValue = cpu_to_le16(ch9_cmdbuf.word1.wValue);
-	ctrl->wIndex = cpu_to_le16(ch9_cmdbuf.word2.wIndex);
-	ctrl->wLength = cpu_to_le16(ch9_cmdbuf.word3.wLength);
+	ch9_cmdbuf.setup.wValue = cpu_to_le16(ch9_cmdbuf.setup.wValue);
+	ch9_cmdbuf.setup.wIndex = cpu_to_le16(ch9_cmdbuf.setup.wIndex);
+	ch9_cmdbuf.setup.wLength = cpu_to_le16(ch9_cmdbuf.setup.wLength);
 
 	/* Restore ReadPtr to data buffer.*/
 	ch9_cmdbuf.contreadptr = &ch9_cmdbuf.contreaddatabuffer[0];
 
-	if (ch9_cmdbuf.byte0.bmRequestType & USB_DIR_IN) {
+	if (ch9_cmdbuf.setup.bRequestType & USB_DIR_IN) {
 		/* Execute the get command.*/
 		ch9_cmdbuf.setupseqrx = STATUS_PHASE;
 		ch9_cmdbuf.setupseqtx = DATA_PHASE;
@@ -1855,7 +1807,7 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 		/* Execute the put command.*/
 		ch9_cmdbuf.setupseqrx = DATA_PHASE;
 		ch9_cmdbuf.setupseqtx = STATUS_PHASE;
-		if (!ch9_cmdbuf.word3.wLength)
+		if (!ch9_cmdbuf.setup.wLength)
 			return execute_command(udc);
 	}
 	/* Control should never come here.*/
@@ -1901,7 +1853,7 @@ static void ep0_out_token(struct xusb_udc *udc)
 						 XUSB_EP_BUF0COUNT_OFFSET));
 		udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
 
-		if (ch9_cmdbuf.word3.wLength == ch9_cmdbuf.contreadcount)
+		if (ch9_cmdbuf.setup.wLength == ch9_cmdbuf.contreadcount)
 			execute_command(udc);
 		break;
 
@@ -1924,16 +1876,16 @@ static void ep0_in_token(struct xusb_udc *udc)
 
 	switch (ch9_cmdbuf.setupseqtx) {
 	case STATUS_PHASE:
-		if (ch9_cmdbuf.byte1.bRequest == USB_REQ_SET_ADDRESS) {
+		if (ch9_cmdbuf.setup.bRequest == USB_REQ_SET_ADDRESS) {
 			/* Set the address of the device.*/
-			udc->write_fn(ch9_cmdbuf.word1.byte23.bDescriptorIndex,
+			udc->write_fn(ch9_cmdbuf.setup.wValue,
 					(udc->base_address +
 					XUSB_ADDRESS_OFFSET));
 		} else
-			if (ch9_cmdbuf.byte1.bRequest == USB_REQ_SET_FEATURE) {
-				if (ch9_cmdbuf.byte0.bmRequestType ==
+			if (ch9_cmdbuf.setup.bRequest == USB_REQ_SET_FEATURE) {
+				if (ch9_cmdbuf.setup.bRequestType ==
 					STANDARD_OUT_DEVICE) {
-					if (ch9_cmdbuf.word1.wValue ==
+					if (ch9_cmdbuf.setup.wValue ==
 						USB_DEVICE_TEST_MODE)
 						udc->write_fn(TEST_J,
 							(udc->base_address +
@@ -2142,7 +2094,8 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
  *
  **/
 int xudc_start(struct usb_gadget_driver *driver,
-				int (*bind)(struct usb_gadget *))
+				int (*bind)(struct usb_gadget *,
+				struct usb_gadget_driver *driver))
 {
 	struct xusb_udc *udc = &controller;
 	int retval;
@@ -2153,7 +2106,7 @@ int xudc_start(struct usb_gadget_driver *driver,
 	 * are created properly.
 	 */
 	if (!driver
-	    || driver->max_speed != USB_SPEED_HIGH ||
+	    || driver->max_speed < USB_SPEED_FULL ||
 		!bind || !driver->unbind || !driver->setup) {
 		dev_dbg(&udc->gadget.dev, "bad parameter.\n");
 		return -EINVAL;
@@ -2167,10 +2120,10 @@ int xudc_start(struct usb_gadget_driver *driver,
 	}
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
-
+	udc->gadget.speed = driver->max_speed;
 	/* Add and bind the USB device to the device structure.*/
 	retval = device_add(&udc->gadget.dev);
-	retval = bind(&udc->gadget);
+	retval = bind(&udc->gadget, driver);
 	if (retval) {
 		dev_dbg(&udc->gadget.dev,
 			"driver->bind() returned %d\n", retval);
@@ -2266,6 +2219,14 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 
 	spin_lock_init(&udc->lock);
 
+	/* Check for IP endianness */
+	udc->write_fn(TEST_J, (udc->base_address + XUSB_TESTMODE_OFFSET));
+	if ((udc->read_fn(udc->base_address + XUSB_TESTMODE_OFFSET))
+			!= TEST_J) {
+		controller.write_fn = xusb_write32;
+		controller.read_fn = xusb_read32;
+	}
+	udc->write_fn(0, (udc->base_address + XUSB_TESTMODE_OFFSET));
 	xudc_reinit(udc);
 
 	/* Set device address to 0.*/
@@ -2314,7 +2275,7 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit xudc_remove(struct platform_device *pdev)
+static int xudc_remove(struct platform_device *pdev)
 {
 
 	struct xusb_udc *udc = platform_get_drvdata(pdev);
@@ -2353,7 +2314,7 @@ static void xusb_release(struct device *dev)
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devinit
+static int
 usb_of_probe(struct platform_device *op)
 {
 	struct device_node *np = op->dev.of_node;
@@ -2396,7 +2357,7 @@ usb_of_probe(struct platform_device *op)
  * returns: 0 for success and error value on failure
  *
  **/
-static int __devexit usb_of_remove(struct platform_device *pdev)
+static int usb_of_remove(struct platform_device *pdev)
 {
 	return xudc_remove(pdev);
 }
@@ -2408,7 +2369,7 @@ static struct platform_driver usb_of_driver = {
 		.of_match_table = usb_of_match,
 	},
 	.probe = usb_of_probe,
-	.remove = __devexit_p(usb_of_remove),
+	.remove = usb_of_remove,
 };
 
 module_platform_driver(usb_of_driver);

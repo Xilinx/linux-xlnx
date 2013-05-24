@@ -21,7 +21,7 @@
 
 #include "atl1c.h"
 
-#define ATL1C_DRV_VERSION "1.0.1.0-NAPI"
+#define ATL1C_DRV_VERSION "1.0.1.1-NAPI"
 char atl1c_driver_name[] = "atl1c";
 char atl1c_driver_version[] = ATL1C_DRV_VERSION;
 
@@ -149,7 +149,7 @@ static void atl1c_reset_pcie(struct atl1c_hw *hw, u32 flag)
 	data &= ~(PCI_ERR_UNC_DLP | PCI_ERR_UNC_FCP);
 	pci_write_config_dword(pdev, pos + PCI_ERR_UNCOR_SEVER, data);
 	/* clear error status */
-	pci_write_config_word(pdev, pci_pcie_cap(pdev) + PCI_EXP_DEVSTA,
+	pcie_capability_write_word(pdev, PCI_EXP_DEVSTA,
 			PCI_EXP_DEVSTA_NFED |
 			PCI_EXP_DEVSTA_FED |
 			PCI_EXP_DEVSTA_CED |
@@ -643,7 +643,7 @@ static int atl1c_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
  * @adapter: board private structure to initialize
  *
  */
-static int __devinit atl1c_alloc_queues(struct atl1c_adapter *adapter)
+static int atl1c_alloc_queues(struct atl1c_adapter *adapter)
 {
 	return 0;
 }
@@ -702,7 +702,7 @@ struct atl1c_platform_patch {
 	u32 patch_flag;
 #define ATL1C_LINK_PATCH	0x1
 };
-static const struct atl1c_platform_patch plats[] __devinitdata = {
+static const struct atl1c_platform_patch plats[] = {
 {0x2060, 0xC1, 0x1019, 0x8152, 0x1},
 {0x2060, 0xC1, 0x1019, 0x2060, 0x1},
 {0x2060, 0xC1, 0x1019, 0xE000, 0x1},
@@ -725,7 +725,7 @@ static const struct atl1c_platform_patch plats[] __devinitdata = {
 {0},
 };
 
-static void __devinit atl1c_patch_assign(struct atl1c_hw *hw)
+static void atl1c_patch_assign(struct atl1c_hw *hw)
 {
 	struct pci_dev	*pdev = hw->adapter->pdev;
 	u32 misc_ctrl;
@@ -764,7 +764,7 @@ static void __devinit atl1c_patch_assign(struct atl1c_hw *hw)
  * Fields are initialized based on PCI device information and
  * OS network device settings (MTU size).
  */
-static int __devinit atl1c_sw_init(struct atl1c_adapter *adapter)
+static int atl1c_sw_init(struct atl1c_adapter *adapter)
 {
 	struct atl1c_hw *hw   = &adapter->hw;
 	struct pci_dev	*pdev = adapter->pdev;
@@ -1652,6 +1652,7 @@ static int atl1c_alloc_rx_buffer(struct atl1c_adapter *adapter)
 	u16 num_alloc = 0;
 	u16 rfd_next_to_use, next_next;
 	struct atl1c_rx_free_desc *rfd_desc;
+	dma_addr_t mapping;
 
 	next_next = rfd_next_to_use = rfd_ring->next_to_use;
 	if (++next_next == rfd_ring->count)
@@ -1678,9 +1679,18 @@ static int atl1c_alloc_rx_buffer(struct atl1c_adapter *adapter)
 		ATL1C_SET_BUFFER_STATE(buffer_info, ATL1C_BUFFER_BUSY);
 		buffer_info->skb = skb;
 		buffer_info->length = adapter->rx_buffer_len;
-		buffer_info->dma = pci_map_single(pdev, vir_addr,
+		mapping = pci_map_single(pdev, vir_addr,
 						buffer_info->length,
 						PCI_DMA_FROMDEVICE);
+		if (unlikely(pci_dma_mapping_error(pdev, mapping))) {
+			dev_kfree_skb(skb);
+			buffer_info->skb = NULL;
+			buffer_info->length = 0;
+			ATL1C_SET_BUFFER_STATE(buffer_info, ATL1C_BUFFER_FREE);
+			netif_warn(adapter, rx_err, adapter->netdev, "RX pci_map_single failed");
+			break;
+		}
+		buffer_info->dma = mapping;
 		ATL1C_SET_PCIMAP_TYPE(buffer_info, ATL1C_PCIMAP_SINGLE,
 			ATL1C_PCIMAP_FROMDEVICE);
 		rfd_desc->buffer_addr = cpu_to_le64(buffer_info->dma);
@@ -2015,7 +2025,29 @@ check_sum:
 	return 0;
 }
 
-static void atl1c_tx_map(struct atl1c_adapter *adapter,
+static void atl1c_tx_rollback(struct atl1c_adapter *adpt,
+			      struct atl1c_tpd_desc *first_tpd,
+			      enum atl1c_trans_queue type)
+{
+	struct atl1c_tpd_ring *tpd_ring = &adpt->tpd_ring[type];
+	struct atl1c_buffer *buffer_info;
+	struct atl1c_tpd_desc *tpd;
+	u16 first_index, index;
+
+	first_index = first_tpd - (struct atl1c_tpd_desc *)tpd_ring->desc;
+	index = first_index;
+	while (index != tpd_ring->next_to_use) {
+		tpd = ATL1C_TPD_DESC(tpd_ring, index);
+		buffer_info = &tpd_ring->buffer_info[index];
+		atl1c_clean_buffer(adpt->pdev, buffer_info, 0);
+		memset(tpd, 0, sizeof(struct atl1c_tpd_desc));
+		if (++index == tpd_ring->count)
+			index = 0;
+	}
+	tpd_ring->next_to_use = first_index;
+}
+
+static int atl1c_tx_map(struct atl1c_adapter *adapter,
 		      struct sk_buff *skb, struct atl1c_tpd_desc *tpd,
 			enum atl1c_trans_queue type)
 {
@@ -2040,7 +2072,10 @@ static void atl1c_tx_map(struct atl1c_adapter *adapter,
 		buffer_info->length = map_len;
 		buffer_info->dma = pci_map_single(adapter->pdev,
 					skb->data, hdr_len, PCI_DMA_TODEVICE);
-		ATL1C_SET_BUFFER_STATE(buffer_info, ATL1C_BUFFER_BUSY);
+		if (unlikely(pci_dma_mapping_error(adapter->pdev,
+						   buffer_info->dma)))
+			goto err_dma;
+
 		ATL1C_SET_PCIMAP_TYPE(buffer_info, ATL1C_PCIMAP_SINGLE,
 			ATL1C_PCIMAP_TODEVICE);
 		mapped_len += map_len;
@@ -2062,6 +2097,10 @@ static void atl1c_tx_map(struct atl1c_adapter *adapter,
 		buffer_info->dma =
 			pci_map_single(adapter->pdev, skb->data + mapped_len,
 					buffer_info->length, PCI_DMA_TODEVICE);
+		if (unlikely(pci_dma_mapping_error(adapter->pdev,
+						   buffer_info->dma)))
+			goto err_dma;
+
 		ATL1C_SET_BUFFER_STATE(buffer_info, ATL1C_BUFFER_BUSY);
 		ATL1C_SET_PCIMAP_TYPE(buffer_info, ATL1C_PCIMAP_SINGLE,
 			ATL1C_PCIMAP_TODEVICE);
@@ -2083,6 +2122,9 @@ static void atl1c_tx_map(struct atl1c_adapter *adapter,
 						    frag, 0,
 						    buffer_info->length,
 						    DMA_TO_DEVICE);
+		if (dma_mapping_error(&adapter->pdev->dev, buffer_info->dma))
+			goto err_dma;
+
 		ATL1C_SET_BUFFER_STATE(buffer_info, ATL1C_BUFFER_BUSY);
 		ATL1C_SET_PCIMAP_TYPE(buffer_info, ATL1C_PCIMAP_PAGE,
 			ATL1C_PCIMAP_TODEVICE);
@@ -2095,6 +2137,13 @@ static void atl1c_tx_map(struct atl1c_adapter *adapter,
 	/* The last buffer info contain the skb address,
 	   so it will be free after unmap */
 	buffer_info->skb = skb;
+
+	return 0;
+
+err_dma:
+	buffer_info->dma = 0;
+	buffer_info->length = 0;
+	return -1;
 }
 
 static void atl1c_tx_queue(struct atl1c_adapter *adapter, struct sk_buff *skb,
@@ -2157,10 +2206,18 @@ static netdev_tx_t atl1c_xmit_frame(struct sk_buff *skb,
 	if (skb_network_offset(skb) != ETH_HLEN)
 		tpd->word1 |= 1 << TPD_ETH_TYPE_SHIFT; /* Ethernet frame */
 
-	atl1c_tx_map(adapter, skb, tpd, type);
-	atl1c_tx_queue(adapter, skb, tpd, type);
+	if (atl1c_tx_map(adapter, skb, tpd, type) < 0) {
+		netif_info(adapter, tx_done, adapter->netdev,
+			   "tx-skb droppted due to dma error\n");
+		/* roll back tpd/buffer */
+		atl1c_tx_rollback(adapter, tpd, type);
+		spin_unlock_irqrestore(&adapter->tx_lock, flags);
+		dev_kfree_skb(skb);
+	} else {
+		atl1c_tx_queue(adapter, skb, tpd, type);
+		spin_unlock_irqrestore(&adapter->tx_lock, flags);
+	}
 
-	spin_unlock_irqrestore(&adapter->tx_lock, flags);
 	return NETDEV_TX_OK;
 }
 
@@ -2442,8 +2499,7 @@ static int atl1c_init_netdev(struct net_device *netdev, struct pci_dev *pdev)
  * The OS initialization, configuring of the adapter private structure,
  * and a hardware reset occur.
  */
-static int __devinit atl1c_probe(struct pci_dev *pdev,
-				 const struct pci_device_id *ent)
+static int atl1c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct net_device *netdev;
 	struct atl1c_adapter *adapter;
@@ -2587,7 +2643,7 @@ err_dma:
  * Hot-Plug event, or because the driver is going to be removed from
  * memory.
  */
-static void __devexit atl1c_remove(struct pci_dev *pdev)
+static void atl1c_remove(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct atl1c_adapter *adapter = netdev_priv(netdev);
@@ -2685,7 +2741,7 @@ static void atl1c_io_resume(struct pci_dev *pdev)
 	netif_device_attach(netdev);
 }
 
-static struct pci_error_handlers atl1c_err_handler = {
+static const struct pci_error_handlers atl1c_err_handler = {
 	.error_detected = atl1c_io_error_detected,
 	.slot_reset = atl1c_io_slot_reset,
 	.resume = atl1c_io_resume,
@@ -2697,7 +2753,7 @@ static struct pci_driver atl1c_driver = {
 	.name     = atl1c_driver_name,
 	.id_table = atl1c_pci_tbl,
 	.probe    = atl1c_probe,
-	.remove   = __devexit_p(atl1c_remove),
+	.remove   = atl1c_remove,
 	.shutdown = atl1c_shutdown,
 	.err_handler = &atl1c_err_handler,
 	.driver.pm = &atl1c_pm_ops,

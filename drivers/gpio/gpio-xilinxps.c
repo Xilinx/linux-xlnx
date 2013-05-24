@@ -426,8 +426,7 @@ static void xgpiops_irqhandler(unsigned int irq, struct irq_desc *desc)
 			generic_handle_irq(gpio_irq);
 		}
 		/* shift to first virtual irq of next bank */
-		gpio_irq = (int)irq_get_handler_data(irq) +
-				(xgpiops_pin_table[bank_num] + 1);
+		gpio_irq = gpio->irq_base + xgpiops_pin_table[bank_num] + 1;
 	}
 
 	chip = irq_desc_get_chip(desc);
@@ -541,7 +540,7 @@ static const struct dev_pm_ops xgpiops_dev_pm_ops = {
  * Note: Interrupts are disabled for all the banks during initialization.
  * Returns 0 on success, negative error otherwise.
  */
-static int __devinit xgpiops_probe(struct platform_device *pdev)
+static int xgpiops_probe(struct platform_device *pdev)
 {
 	int ret;
 	unsigned int irq_num;
@@ -693,7 +692,7 @@ static int xgpiops_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xgpiops_of_match[] __devinitdata = {
+static struct of_device_id xgpiops_of_match[] = {
 	{ .compatible = "xlnx,ps7-gpio-1.00.a", },
 	{ /* end of table */}
 };

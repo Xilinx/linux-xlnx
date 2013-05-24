@@ -286,7 +286,6 @@ struct xusbps_ep {
 	struct list_head queue;
 	struct xusbps_udc *udc;
 	struct ep_queue_head *qh;
-	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
 
 	char name[14];
@@ -362,10 +361,10 @@ struct xusbps_udc {
 #define USB_SEND	1	/* IN EP */
 
 /* internal used help routines. */
-#define ep_index(EP)		((EP)->desc->bEndpointAddress&0xF)
+#define ep_index(EP)		((EP)->ep.desc->bEndpointAddress&0xF)
 #define ep_maxpacket(EP)	((EP)->ep.maxpacket)
 #define ep_is_in(EP)	((ep_index(EP) == 0) ? (EP->udc->ep0_dir == \
-			USB_DIR_IN) : ((EP)->desc->bEndpointAddress \
+			USB_DIR_IN) : ((EP)->ep.desc->bEndpointAddress \
 			& USB_DIR_IN) == USB_DIR_IN)
 #define get_ep_by_pipe(udc, pipe)	((pipe == 1) ? &udc->eps[0] : \
 					&udc->eps[pipe])
@@ -807,14 +806,10 @@ static void ep0_setup(struct xusbps_udc *udc)
 {
 	/* the intialization of an ep includes: fields in QH, Regs,
 	 * xusbps_ep struct */
-	/*
-	 * For control OUT endpoint, don't need to wait for zlp from host
-	 * (see usb 2.0 spec, section 5.5.3)
-	 */
 	struct_ep_qh_setup(udc, 0, USB_RECV, USB_ENDPOINT_XFER_CONTROL,
 			USB_MAX_CTRL_PAYLOAD, 1, 0);
 	struct_ep_qh_setup(udc, 0, USB_SEND, USB_ENDPOINT_XFER_CONTROL,
-			USB_MAX_CTRL_PAYLOAD, 0, 0);
+			USB_MAX_CTRL_PAYLOAD, 1, 0);
 	dr_ep_setup(0, USB_RECV, USB_ENDPOINT_XFER_CONTROL);
 	dr_ep_setup(0, USB_SEND, USB_ENDPOINT_XFER_CONTROL);
 
@@ -845,7 +840,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 	ep = container_of(_ep, struct xusbps_ep, ep);
 
 	/* catch various bogus parameters */
-	if (!_ep || !desc || ep->desc
+	if (!_ep || !desc
 			|| (desc->bDescriptorType != USB_DT_ENDPOINT))
 		return -EINVAL;
 
@@ -854,7 +849,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 	if (!udc->driver || (udc->gadget.speed == USB_SPEED_UNKNOWN))
 		return -ESHUTDOWN;
 
-	max = le16_to_cpu(desc->wMaxPacketSize);
+	max = usb_endpoint_maxp(desc);
 
 	/* Disable automatic zlp generation.  Driver is reponsible to indicate
 	 * explicitly through req->req.zero.  This is needed to enable multi-td
@@ -886,7 +881,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 
 	spin_lock_irqsave(&udc->lock, flags);
 	ep->ep.maxpacket = max;
-	ep->desc = desc;
+	ep->ep.desc = desc;
 	ep->stopped = 0;
 	ep->wedge = 0;
 
@@ -911,7 +906,7 @@ static int xusbps_ep_enable(struct usb_ep *_ep,
 	retval = 0;
 
 	VDBG("enabled %s (ep%d%s) maxpacket %d", ep->ep.name,
-			ep->desc->bEndpointAddress & 0x0f,
+			ep->ep.desc->bEndpointAddress & 0x0f,
 			(desc->bEndpointAddress & USB_DIR_IN)
 				? "in" : "out", max);
 en_done:
@@ -931,7 +926,7 @@ static int xusbps_ep_disable(struct usb_ep *_ep)
 	int ep_num;
 
 	ep = container_of(_ep, struct xusbps_ep, ep);
-	if (!_ep || !ep->desc) {
+	if (!_ep || !ep->ep.desc) {
 		VDBG("%s not enabled", _ep ? ep->ep.name : NULL);
 		return -EINVAL;
 	}
@@ -951,7 +946,7 @@ static int xusbps_ep_disable(struct usb_ep *_ep)
 	/* nuke all pending requests (does flush) */
 	nuke(ep, -ESHUTDOWN);
 
-	ep->desc = NULL;
+	ep->ep.desc = NULL;
 	ep->stopped = 1;
 	spin_unlock_irqrestore(&udc->lock, flags);
 
@@ -1104,15 +1099,7 @@ static struct ep_td_struct *xusbps_build_dtd(struct xusbps_req *req, unsigned
 
 	/* zlp is needed if req->req.zero is set */
 	if (req->req.zero) {
-		/*
-		 * There is no need for a separate zlp dtd for control IN
-		 * endpoint. The ZLT bit in dQH takes care.
-		 */
-		if ((ep_index(req->ep) == 0) &&
-				(req->req.length == req->req.actual) &&
-				!(req->req.length % req->ep->ep.maxpacket))
-			*is_last = 1;
-		else if (*length == 0 || (*length % req->ep->ep.maxpacket) != 0)
+		if (*length == 0 || (*length % req->ep->ep.maxpacket) != 0)
 			*is_last = 1;
 		else
 			*is_last = 0;
@@ -1188,11 +1175,11 @@ xusbps_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 		VDBG("%s, bad params", __func__);
 		return -EINVAL;
 	}
-	if (unlikely(!_ep || !ep->desc)) {
+	if (unlikely(!_ep || !ep->ep.desc)) {
 		VDBG("%s, bad ep", __func__);
 		return -EINVAL;
 	}
-	if (ep->desc->bmAttributes == USB_ENDPOINT_XFER_ISOC) {
+	if (usb_endpoint_xfer_isoc(ep->ep.desc)) {
 		if (req->req.length > ep->ep.maxpacket)
 			return -EMSGSIZE;
 	}
@@ -1343,12 +1330,12 @@ static int xusbps_ep_set_halt(struct usb_ep *_ep, int value)
 
 	ep = container_of(_ep, struct xusbps_ep, ep);
 	udc = ep->udc;
-	if (!_ep || !ep->desc) {
+	if (!_ep || !ep->ep.desc) {
 		status = -EINVAL;
 		goto out;
 	}
 
-	if (ep->desc->bmAttributes == USB_ENDPOINT_XFER_ISOC) {
+	if (usb_endpoint_xfer_isoc(ep->ep.desc)) {
 		status = -EOPNOTSUPP;
 		goto out;
 	}
@@ -1409,7 +1396,7 @@ static void xusbps_ep_fifo_flush(struct usb_ep *_ep)
 		return;
 	} else {
 		ep = container_of(_ep, struct xusbps_ep, ep);
-		if (!ep->desc)
+		if (!ep->ep.desc)
 			return;
 	}
 	ep_num = ep_index(ep);
@@ -1630,7 +1617,7 @@ static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
 static int xusbps_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+		int (*bind)(struct usb_gadget *, struct usb_gadget_driver *))
 {
 	int retval = -ENODEV;
 	unsigned long flags = 0;
@@ -1638,8 +1625,7 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 	if (!udc_controller)
 		return -ENODEV;
 
-	if (!driver || (driver->max_speed != USB_SPEED_FULL
-				&& driver->max_speed != USB_SPEED_HIGH)
+	if (!driver || (driver->max_speed < USB_SPEED_FULL)
 			|| !bind || !driver->disconnect || !driver->setup)
 		return -EINVAL;
 
@@ -1653,10 +1639,11 @@ static int xusbps_start(struct usb_gadget_driver *driver,
 	/* hook up the driver */
 	udc_controller->driver = driver;
 	udc_controller->gadget.dev.driver = &driver->driver;
+	udc_controller->gadget.speed = driver->max_speed;
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
 	/* bind udc driver to gadget driver */
-	retval = bind(&udc_controller->gadget);
+	retval = bind(&udc_controller->gadget, driver);
 	if (retval) {
 		VDBG("bind to %s --> %d", driver->driver.name, retval);
 		udc_controller->gadget.dev.driver = NULL;
@@ -1869,7 +1856,7 @@ static void ch9getstatus(struct xusbps_udc *udc, u8 request_type, u16 value,
 		target_ep = get_ep_by_pipe(udc, get_pipe_by_windex(index));
 
 		/* stall if endpoint doesn't exist */
-		if (!target_ep->desc)
+		if (!target_ep->ep.desc)
 			goto stall;
 		tmp = dr_ep_get_stall(ep_index(target_ep), ep_is_in(target_ep))
 				<< USB_ENDPOINT_HALT;
@@ -2686,7 +2673,7 @@ static int xusbps_proc_read(char *page, char **start, off_t off, int count,
 	}
 	/* other gadget->eplist ep */
 	list_for_each_entry(ep, &udc->gadget.ep_list, ep.ep_list) {
-		if (ep->desc) {
+		if (ep->ep.desc) {
 			t = scnprintf(next, size,
 					"\nFor %s Maxpkt is 0x%x "
 					"index is 0x%x\n",
@@ -2750,7 +2737,7 @@ static void xusbps_udc_release(struct device *dev)
  * init resource for globle controller
  * Return the udc handle on success or NULL on failure
  ------------------------------------------------------------------*/
-static int __devinit struct_udc_setup(struct xusbps_udc *udc,
+static int struct_udc_setup(struct xusbps_udc *udc,
 		struct platform_device *pdev)
 {
 	struct xusbps_usb2_platform_data *pdata;
@@ -2804,7 +2791,7 @@ static int __devinit struct_udc_setup(struct xusbps_udc *udc,
  * ep0out is not used so do nothing here
  * ep0in should be taken care
  *--------------------------------------------------------------*/
-static int __devinit struct_ep_setup(struct xusbps_udc *udc,
+static int struct_ep_setup(struct xusbps_udc *udc,
 				unsigned char index, char *name, int link)
 {
 	struct xusbps_ep *ep = &udc->eps[index];
@@ -2837,7 +2824,7 @@ static int __devinit struct_ep_setup(struct xusbps_udc *udc,
  * all intialization operations implemented here except enabling usb_intr reg
  * board setup should have been done in the platform code
  */
-static int __devinit xusbps_udc_probe(struct platform_device *pdev)
+static int xusbps_udc_probe(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 	unsigned int i;
@@ -2948,7 +2935,7 @@ static int __devinit xusbps_udc_probe(struct platform_device *pdev)
 	/* for ep0: the desc defined here;
 	 * for other eps, gadget layer called ep_enable with defined desc
 	 */
-	udc_controller->eps[0].desc = &xusbps_ep0_desc;
+	udc_controller->eps[0].ep.desc = &xusbps_ep0_desc;
 	udc_controller->eps[0].ep.maxpacket = USB_MAX_CTRL_PAYLOAD;
 
 	/* setup the udc->eps[] for non-control endpoints and link
@@ -3083,7 +3070,7 @@ static const struct dev_pm_ops xusbps_udc_dev_pm_ops = {
 
 static struct platform_driver udc_driver = {
 	.probe   = xusbps_udc_probe,
-	.remove  = __exit_p(xusbps_udc_remove),
+	.remove  = xusbps_udc_remove,
 	/* these suspend and resume are not usb suspend and resume */
 	.driver  = {
 		.name = (char *)driver_name,

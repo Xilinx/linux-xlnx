@@ -42,6 +42,7 @@
 
 #include <linux/pci.h>
 #include <asm/mach/pci.h>
+#include "common.h"
 
 /* Register definitions */
 #define PCIE_CFG_CMD			0x00000004
@@ -355,7 +356,7 @@ static int xaxi_pcie_write_config(struct pci_bus *bus,
  *
  * @note: None
  */
-static void __devinit xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
+static void xaxi_pcie_set_bridge_resource(struct xaxi_pcie_port *port)
 {
 	const __be32 *ranges = port->ranges;
 	int rlen = port->range_len;
@@ -444,8 +445,7 @@ static int xaxi_pcie_hookup_resources(struct xaxi_pcie_port *port,
 	return 0;
 }
 
-static void __devinit xaxi_pcie_process_bridge_OF_ranges(
-					struct xaxi_pcie_port *port,
+static void xaxi_pcie_process_bridge_OF_ranges(struct xaxi_pcie_port *port,
 					int primary)
 {
 	/* The address cells of PCIe node */
@@ -574,7 +574,7 @@ static struct pci_ops xaxi_pcie_ops = {
 	.write = xaxi_pcie_write_config,
 };
 
-static int __devinit xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
+static int xaxi_pcie_setup(int nr, struct pci_sys_data *sys)
 {
 	u32 val;
 	struct xaxi_pcie_port *port = &xaxi_pcie_ports[nr];
@@ -896,7 +896,7 @@ xaxi_pcie_instantiate_port_info(struct xaxi_pcie_of_config *config,
  *
  * @note: Read related info from device tree
  */
-static int __devinit xaxi_pcie_get_of_config(struct device_node *node,
+static int xaxi_pcie_get_of_config(struct device_node *node,
 		struct xaxi_pcie_of_config *info)
 {
 	const __be32 *value;
@@ -1000,7 +1000,7 @@ static int __init xaxi_pcie_of_probe(struct device_node *node)
 	return err;
 }
 
-static struct of_device_id xaxi_pcie_match[] __devinitdata = {
+static struct of_device_id xaxi_pcie_match[] = {
 	{ .compatible = "xlnx,axi-pcie-1.05.a" ,},
 	{}
 };

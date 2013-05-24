@@ -44,7 +44,7 @@ struct xusbps_host_data {
 	struct clk *clk;
 };
 
-static struct xusbps_dev_data dr_mode_data[] __devinitdata = {
+static struct xusbps_dev_data dr_mode_data[] = {
 	{
 		.dr_mode = "host",
 		.drivers = { "xusbps-ehci", NULL, NULL, },
@@ -62,7 +62,7 @@ static struct xusbps_dev_data dr_mode_data[] __devinitdata = {
 	},
 };
 
-static struct xusbps_dev_data * __devinit get_dr_mode_data(
+static struct xusbps_dev_data * get_dr_mode_data(
 		struct device_node *np)
 {
 	const unsigned char *prop;
@@ -80,8 +80,7 @@ static struct xusbps_dev_data * __devinit get_dr_mode_data(
 	return &dr_mode_data[0]; /* mode not specified, use host */
 }
 
-static enum xusbps_usb2_phy_modes __devinit determine_usb_phy(const char
-					*phy_type)
+static enum xusbps_usb2_phy_modes determine_usb_phy(const char *phy_type)
 {
 	if (!phy_type)
 		return XUSBPS_USB2_PHY_NONE;
@@ -97,7 +96,7 @@ static enum xusbps_usb2_phy_modes __devinit determine_usb_phy(const char
 	return XUSBPS_USB2_PHY_NONE;
 }
 
-static struct platform_device * __devinit xusbps_device_register(
+static struct platform_device * xusbps_device_register(
 					struct platform_device *ofdev,
 					struct xusbps_usb2_platform_data *pdata,
 					const char *name, int id)
@@ -146,7 +145,7 @@ error:
 	return ERR_PTR(retval);
 }
 
-static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
+static int xusbps_dr_of_probe(struct platform_device *ofdev)
 {
 	struct device_node *np = ofdev->dev.of_node;
 	struct platform_device *usb_dev;
@@ -179,7 +178,7 @@ static int __devinit xusbps_dr_of_probe(struct platform_device *ofdev)
 
 	if (!request_mem_region(res->start, res->end - res->start + 1,
 						ofdev->name)) {
-		dev_dbg(&ofdev->dev, "Controller already in use\n");
+		dev_err(&ofdev->dev, "Controller already in use\n");
 		return -EBUSY;
 	}
 
@@ -264,13 +263,13 @@ err_free:
 	return ret;
 }
 
-static int __devexit __unregister_subdev(struct device *dev, void *d)
+static int __unregister_subdev(struct device *dev, void *d)
 {
 	platform_device_unregister(to_platform_device(dev));
 	return 0;
 }
 
-static int __devexit xusbps_dr_of_remove(struct platform_device *ofdev)
+static int xusbps_dr_of_remove(struct platform_device *ofdev)
 {
 	struct resource *res;
 	struct xusbps_host_data *hdata = platform_get_drvdata(ofdev);
@@ -327,7 +326,7 @@ static struct platform_driver xusbps_dr_driver = {
 		.pm = &xusbps_pm_ops,
 	},
 	.probe	= xusbps_dr_of_probe,
-	.remove	= __devexit_p(xusbps_dr_of_remove),
+	.remove	= xusbps_dr_of_remove,
 };
 
 module_platform_driver(xusbps_dr_driver);

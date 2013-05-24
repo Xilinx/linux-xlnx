@@ -327,6 +327,28 @@ static void ehci_xusbps_usb_setup(struct ehci_hcd *ehci)
 	}
 }
 
+/*
+ * FIXME USB: EHCI: remove ehci_port_power() routine
+ *(sha1: c73cee717e7d5da0698acb720ad1219646fe4f46)
+ */
+static void ehci_port_power (struct ehci_hcd *ehci, int is_on)
+{
+	unsigned port;
+
+	if (!HCS_PPC (ehci->hcs_params))
+		return;
+
+	ehci_dbg (ehci, "...power%s ports...\n", is_on ? "up" : "down");
+	for (port = HCS_N_PORTS (ehci->hcs_params); port > 0; )
+		(void) ehci_hub_control(ehci_to_hcd(ehci),
+				is_on ? SetPortFeature : ClearPortFeature,
+				USB_PORT_FEAT_POWER,
+				port--, NULL, 0);
+	/* Flush those writes */
+	ehci_readl(ehci, &ehci->regs->command);
+	msleep(20);
+}
+
 /* called after powerup, by probe or system-pm "wakeup" */
 static int ehci_xusbps_reinit(struct ehci_hcd *ehci)
 {

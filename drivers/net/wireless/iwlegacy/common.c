@@ -1183,9 +1183,10 @@ EXPORT_SYMBOL(il_power_update_mode);
 void
 il_power_initialize(struct il_priv *il)
 {
-	u16 lctl = il_pcie_link_ctl(il);
+	u16 lctl;
 
-	il->power_data.pci_pm = !(lctl & PCI_CFG_LINK_CTRL_VAL_L0S_EN);
+	pcie_capability_read_word(il->pci_dev, PCI_EXP_LNKCTL, &lctl);
+	il->power_data.pci_pm = !(lctl & PCI_EXP_LNKCTL_ASPM_L0S);
 
 	il->power_data.debug_sleep_level_override = -1;
 
@@ -1586,9 +1587,9 @@ il_fill_probe_req(struct il_priv *il, struct ieee80211_mgmt *frame,
 		return 0;
 
 	frame->frame_control = cpu_to_le16(IEEE80211_STYPE_PROBE_REQ);
-	memcpy(frame->da, il_bcast_addr, ETH_ALEN);
+	eth_broadcast_addr(frame->da);
 	memcpy(frame->sa, ta, ETH_ALEN);
-	memcpy(frame->bssid, il_bcast_addr, ETH_ALEN);
+	eth_broadcast_addr(frame->bssid);
 	frame->seq_ctrl = 0;
 
 	len += 24;
@@ -3957,17 +3958,21 @@ il_connection_init_rx_config(struct il_priv *il)
 
 	memset(&il->staging, 0, sizeof(il->staging));
 
-	if (!il->vif) {
+	switch (il->iw_mode) {
+	case NL80211_IFTYPE_UNSPECIFIED:
 		il->staging.dev_type = RXON_DEV_TYPE_ESS;
-	} else if (il->vif->type == NL80211_IFTYPE_STATION) {
+		break;
+	case NL80211_IFTYPE_STATION:
 		il->staging.dev_type = RXON_DEV_TYPE_ESS;
 		il->staging.filter_flags = RXON_FILTER_ACCEPT_GRP_MSK;
-	} else if (il->vif->type == NL80211_IFTYPE_ADHOC) {
+		break;
+	case NL80211_IFTYPE_ADHOC:
 		il->staging.dev_type = RXON_DEV_TYPE_IBSS;
 		il->staging.flags = RXON_FLG_SHORT_PREAMBLE_MSK;
 		il->staging.filter_flags =
 		    RXON_FILTER_BCON_AWARE_MSK | RXON_FILTER_ACCEPT_GRP_MSK;
-	} else {
+		break;
+	default:
 		IL_ERR("Unsupported interface type %d\n", il->vif->type);
 		return;
 	}
@@ -4233,9 +4238,8 @@ il_apm_init(struct il_priv *il)
 	 *    power savings, even without L1.
 	 */
 	if (il->cfg->set_l0s) {
-		lctl = il_pcie_link_ctl(il);
-		if ((lctl & PCI_CFG_LINK_CTRL_VAL_L1_EN) ==
-		    PCI_CFG_LINK_CTRL_VAL_L1_EN) {
+		pcie_capability_read_word(il->pci_dev, PCI_EXP_LNKCTL, &lctl);
+		if (lctl & PCI_EXP_LNKCTL_ASPM_L1) {
 			/* L1-ASPM enabled; disable(!) L0S  */
 			il_set_bit(il, CSR_GIO_REG,
 				   CSR_GIO_REG_VAL_L0S_ENABLED);
@@ -4550,8 +4554,7 @@ out:
 EXPORT_SYMBOL(il_mac_add_interface);
 
 static void
-il_teardown_interface(struct il_priv *il, struct ieee80211_vif *vif,
-		      bool mode_change)
+il_teardown_interface(struct il_priv *il, struct ieee80211_vif *vif)
 {
 	lockdep_assert_held(&il->mutex);
 
@@ -4560,9 +4563,7 @@ il_teardown_interface(struct il_priv *il, struct ieee80211_vif *vif,
 		il_force_scan_end(il);
 	}
 
-	if (!mode_change)
-		il_set_mode(il);
-
+	il_set_mode(il);
 }
 
 void
@@ -4575,8 +4576,8 @@ il_mac_remove_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 
 	WARN_ON(il->vif != vif);
 	il->vif = NULL;
-
-	il_teardown_interface(il, vif, false);
+	il->iw_mode = NL80211_IFTYPE_UNSPECIFIED;
+	il_teardown_interface(il, vif);
 	memset(il->bssid, 0, ETH_ALEN);
 
 	D_MAC80211("leave\n");
@@ -4685,18 +4686,10 @@ il_mac_change_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	}
 
 	/* success */
-	il_teardown_interface(il, vif, true);
 	vif->type = newtype;
 	vif->p2p = false;
-	err = il_set_mode(il);
-	WARN_ON(err);
-	/*
-	 * We've switched internally, but submitting to the
-	 * device may have failed for some reason. Mask this
-	 * error, because otherwise mac80211 will not switch
-	 * (and set the interface type back) and we'll be
-	 * out of sync with it.
-	 */
+	il->iw_mode = newtype;
+	il_teardown_interface(il, vif);
 	err = 0;
 
 out:
@@ -4860,7 +4853,7 @@ EXPORT_SYMBOL(il_add_beacon_time);
 
 #ifdef CONFIG_PM
 
-int
+static int
 il_pci_suspend(struct device *device)
 {
 	struct pci_dev *pdev = to_pci_dev(device);
@@ -4877,9 +4870,8 @@ il_pci_suspend(struct device *device)
 
 	return 0;
 }
-EXPORT_SYMBOL(il_pci_suspend);
 
-int
+static int
 il_pci_resume(struct device *device)
 {
 	struct pci_dev *pdev = to_pci_dev(device);
@@ -4906,16 +4898,8 @@ il_pci_resume(struct device *device)
 
 	return 0;
 }
-EXPORT_SYMBOL(il_pci_resume);
 
-const struct dev_pm_ops il_pm_ops = {
-	.suspend = il_pci_suspend,
-	.resume = il_pci_resume,
-	.freeze = il_pci_suspend,
-	.thaw = il_pci_resume,
-	.poweroff = il_pci_suspend,
-	.restore = il_pci_resume,
-};
+SIMPLE_DEV_PM_OPS(il_pm_ops, il_pci_suspend, il_pci_resume);
 EXPORT_SYMBOL(il_pm_ops);
 
 #endif /* CONFIG_PM */

@@ -43,6 +43,9 @@ static const struct usb_device_id usb_quirk_list[] = {
 	/* Creative SB Audigy 2 NX */
 	{ USB_DEVICE(0x041e, 0x3020), .driver_info = USB_QUIRK_RESET_RESUME },
 
+	/* Microsoft LifeCam-VX700 v2.0 */
+	{ USB_DEVICE(0x045e, 0x0770), .driver_info = USB_QUIRK_RESET_RESUME },
+
 	/* Logitech Quickcam Fusion */
 	{ USB_DEVICE(0x046d, 0x08c1), .driver_info = USB_QUIRK_RESET_RESUME },
 
@@ -209,7 +212,7 @@ void usb_detect_quirks(struct usb_device *udev)
 	 * for all devices.  It will affect things like hub resets
 	 * and EMF-related port disables.
 	 */
-	if (!(udev->quirks & USB_QUIRK_RESET_MORPHS))
+	if (!(udev->quirks & USB_QUIRK_RESET))
 		udev->persist_enabled = 1;
 #endif	/* CONFIG_PM */
 }

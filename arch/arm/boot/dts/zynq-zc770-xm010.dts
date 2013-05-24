@@ -12,7 +12,7 @@
 		reg = <0x00000000 0x40000000>;
 	};
 	chosen {
-		bootargs = "console=ttyPS0,115200 root=/dev/ram rw ip=:::::eth0:dhcp earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
 		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
@@ -41,6 +41,7 @@
 			cache-unified;
 			cache-level = <2>;
 			reg = <0xf8f02000 0x1000>;
+			interrupts = <0 2 4>;
 			arm,data-latency = <3 2 2>;
 			arm,tag-latency = <2 2 2>;
 		};

@@ -220,8 +220,8 @@ int mvs_phy_control(struct asd_sas_phy *sas_phy, enum phy_func func,
 	return rc;
 }
 
-void __devinit mvs_set_sas_addr(struct mvs_info *mvi, int port_id,
-				u32 off_lo, u32 off_hi, u64 sas_addr)
+void mvs_set_sas_addr(struct mvs_info *mvi, int port_id, u32 off_lo,
+		      u32 off_hi, u64 sas_addr)
 {
 	u32 lo = (u32)sas_addr;
 	u32 hi = (u32)(sas_addr>>32);
@@ -1629,7 +1629,7 @@ int mvs_abort_task(struct sas_task *task)
 			mv_dprintk("mvs_abort_task() mvi=%p task=%p "
 				   "slot=%p slot_idx=x%x\n",
 				   mvi, task, slot, slot_idx);
-			mvs_tmf_timedout((unsigned long)task);
+			task->task_state_flags |= SAS_TASK_STATE_ABORTED;
 			mvs_slot_task_free(mvi, task, slot, slot_idx);
 			rc = TMF_RESP_FUNC_COMPLETE;
 			goto out;

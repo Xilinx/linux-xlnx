@@ -9,6 +9,9 @@ Required properties:
 - reg               : <registers mapping>
 
 Optional properties:
+- calxeda,port-phys: phandle-combophy and lane assignment, which maps each
+			SATA port to a combophy and a lane within that
+			combophy
 - dma-coherent      : Present if dma operations are coherent
 
 Example:
@@ -16,4 +19,7 @@ Example:
 		compatible = "calxeda,hb-ahci";
                 reg = <0xffe08000 0x1000>;
                 interrupts = <115>;
+		calxeda,port-phys = <&combophy5 0 &combophy0 0 &combophy0 1
+					&combophy0 2 &combophy0 3>;
+
         };

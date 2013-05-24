@@ -16,8 +16,10 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
+
 #include <plat/mailbox.h>
-#include <mach/irqs.h>
+
+#include "soc.h"
 
 #define MAILBOX_REVISION		0x000
 #define MAILBOX_MESSAGE(m)		(0x040 + 4 * (m))
@@ -340,7 +342,7 @@ struct omap_mbox mbox_2_info = {
 struct omap_mbox *omap4_mboxes[] = { &mbox_1_info, &mbox_2_info, NULL };
 #endif
 
-static int __devinit omap2_mbox_probe(struct platform_device *pdev)
+static int omap2_mbox_probe(struct platform_device *pdev)
 {
 	struct resource *mem;
 	int ret;
@@ -393,7 +395,7 @@ static int __devinit omap2_mbox_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit omap2_mbox_remove(struct platform_device *pdev)
+static int omap2_mbox_remove(struct platform_device *pdev)
 {
 	omap_mbox_unregister();
 	iounmap(mbox_base);
@@ -402,7 +404,7 @@ static int __devexit omap2_mbox_remove(struct platform_device *pdev)
 
 static struct platform_driver omap2_mbox_driver = {
 	.probe = omap2_mbox_probe,
-	.remove = __devexit_p(omap2_mbox_remove),
+	.remove = omap2_mbox_remove,
 	.driver = {
 		.name = "omap-mailbox",
 	},

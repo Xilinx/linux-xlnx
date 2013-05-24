@@ -6,28 +6,14 @@
  *	Joonyoung Shim <jy0922.shim@samsung.com>
  *	Seung-Woo Kim <sw0312.kim@samsung.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * VA LINUX SYSTEMS AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- * OTHER DEALINGS IN THE SOFTWARE.
+ * This program is free software; you can redistribute  it and/or modify it
+ * under  the terms of  the GNU General  Public License as published by the
+ * Free Software Foundation;  either version 2 of the  License, or (at your
+ * option) any later version.
  */
 
-#include "drmP.h"
-#include "drm_crtc_helper.h"
+#include <drm/drmP.h>
+#include <drm/drm_crtc_helper.h>
 
 #include "exynos_drm_drv.h"
 #include "exynos_drm_encoder.h"
@@ -66,7 +52,6 @@ struct exynos_drm_crtc {
 
 static void exynos_drm_crtc_dpms(struct drm_crtc *crtc, int mode)
 {
-	struct drm_device *dev = crtc->dev;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 
 	DRM_DEBUG_KMS("crtc[%d] mode[%d]\n", crtc->base.id, mode);
@@ -76,12 +61,8 @@ static void exynos_drm_crtc_dpms(struct drm_crtc *crtc, int mode)
 		return;
 	}
 
-	mutex_lock(&dev->struct_mutex);
-
 	exynos_drm_fn_encoder(crtc, &mode, exynos_drm_encoder_crtc_dpms);
 	exynos_crtc->dpms = mode;
-
-	mutex_unlock(&dev->struct_mutex);
 }
 
 static void exynos_drm_crtc_prepare(struct drm_crtc *crtc)
@@ -97,6 +78,7 @@ static void exynos_drm_crtc_commit(struct drm_crtc *crtc)
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	exynos_drm_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
 	exynos_plane_commit(exynos_crtc->plane);
 	exynos_plane_dpms(exynos_crtc->plane, DRM_MODE_DPMS_ON);
 }
@@ -125,8 +107,6 @@ exynos_drm_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
 	int ret;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	exynos_drm_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
 
 	/*
 	 * copy the mode data adjusted by mode_fixup() into crtc->mode
@@ -160,6 +140,12 @@ static int exynos_drm_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 	int ret;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	/* when framebuffer changing is requested, crtc's dpms should be on */
+	if (exynos_crtc->dpms > DRM_MODE_DPMS_ON) {
+		DRM_ERROR("failed framebuffer changing request.\n");
+		return -EPERM;
+	}
 
 	crtc_w = crtc->fb->width - x;
 	crtc_h = crtc->fb->height - y;
@@ -213,6 +199,12 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	/* when the page flip is requested, crtc's dpms should be on */
+	if (exynos_crtc->dpms > DRM_MODE_DPMS_ON) {
+		DRM_ERROR("failed page flip request.\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&dev->struct_mutex);
 
 	if (event) {
@@ -230,16 +222,21 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 			goto out;
 		}
 
+		spin_lock_irq(&dev->event_lock);
 		list_add_tail(&event->base.link,
 				&dev_priv->pageflip_event_list);
+		spin_unlock_irq(&dev->event_lock);
 
 		crtc->fb = fb;
 		ret = exynos_drm_crtc_mode_set_base(crtc, crtc->x, crtc->y,
 						    NULL);
 		if (ret) {
 			crtc->fb = old_fb;
+
+			spin_lock_irq(&dev->event_lock);
 			drm_vblank_put(dev, exynos_crtc->pipe);
 			list_del(&event->base.link);
+			spin_unlock_irq(&dev->event_lock);
 
 			goto out;
 		}
@@ -395,4 +392,34 @@ void exynos_drm_crtc_disable_vblank(struct drm_device *dev, int crtc)
 
 	exynos_drm_fn_encoder(private->crtc[crtc], &crtc,
 			exynos_drm_disable_vblank);
+}
+
+void exynos_drm_crtc_finish_pageflip(struct drm_device *dev, int crtc)
+{
+	struct exynos_drm_private *dev_priv = dev->dev_private;
+	struct drm_pending_vblank_event *e, *t;
+	struct timeval now;
+	unsigned long flags;
+
+	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+
+	list_for_each_entry_safe(e, t, &dev_priv->pageflip_event_list,
+			base.link) {
+		/* if event's pipe isn't same as crtc then ignore it. */
+		if (crtc != e->pipe)
+			continue;
+
+		do_gettimeofday(&now);
+		e->event.sequence = 0;
+		e->event.tv_sec = now.tv_sec;
+		e->event.tv_usec = now.tv_usec;
+
+		list_move_tail(&e->base.link, &e->base.file_priv->event_list);
+		wake_up_interruptible(&e->base.file_priv->event_wait);
+		drm_vblank_put(dev, crtc);
+	}
+
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 }

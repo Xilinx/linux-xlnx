@@ -18,38 +18,72 @@ config FB_XYLON_PLATFORM
 	bool "Xylon logiCVC frame buffer platform driver"
 	help
 	  Choose this option if you want to use the Xylon frame buffer driver
-	  as platform driver type. This is selected by default.
+	  as platform driver type. This is usefull if OpenFirmware support is
+	  not compiled in the kernel.
+	  This is default selection.
 
 config FB_XYLON_OF
 	bool "Xylon logiCVC frame buffer Open Firmware driver"
 	help
 	  Choose this option if you want to use the Xylon frame buffer driver
-	  as Open Firmware driver type.
+	  as Open Firmware driver type. Driver reads hardware configuration
+	  from Device Tree Blob binary file which must be loaded to
+	  system memory.
 endchoice
 
-choice
-	prompt "Xylon logiCVC pixel clock source"
+config FB_XYLON_PIXCLK
+	bool "Xylon logiCVC pixel clock"
 	depends on FB_XYLON
-	default FB_XYLON_ZYNQ_PS_PIXCLK
-
-config FB_XYLON_EXT_PIXCLK
-	bool "External pixel clock"
+	default n
 	help
-	  Pixel clock is generated from external clock generator which is not
-	  controllable by Xylon framebuffer driver.
+	  logiCVC pixel clock generated from:
+	  - External generator not controllable by Xylon framebuffer driver
+	    This is default selection.
+	  - Generators controllable by Xylon framebuffer driver
 
-config FB_XYLON_ZYNQ_PS_PIXCLK
-	bool "Zynq PS pixel clock"
+config FB_XYLON_PIXCLK_ZYNQ_PS
+	bool "Zynq PS PLL pixel clock generator"
+	depends on FB_XYLON && FB_XYLON_PIXCLK
+	default n
 	help
-	  Support for pixel clock generation from Zynq PS internal clock generator.
+	  Support for controlling pixel clock generation from
+	  Zynq-PS internal PLL clock generator.
 
-config FB_XYLON_ZC702_PIXCLK
-	bool "ZC702 board pixel clock"
+config FB_XYLON_PIXCLK_LOGICLK
+	bool "Xylon logiCLK pixel clock generator"
+	depends on FB_XYLON && FB_XYLON_PIXCLK
+	default n
+	help
+	  Support for controlling pixel clock generation from
+	  Xylon logiCLK FGPA IP core.
+
+config FB_XYLON_PIXCLK_SI570
+	bool "SI570 pixel clock generator"
+	depends on FB_XYLON && FB_XYLON_PIXCLK
+	default n
 	select SYSFS
 	select I2C
 	select MISC_DEVICES
 	select SI570
-	select ADV7511
 	help
-	  Support for pixel clock generation from ZC702 SI570 clock generator.
-endchoice
+	  Support for controlling pixel clock generation from
+	  SI570 clock generator.
+
+menuconfig FB_XYLON_MISC
+	bool "Xylon logiCVC frame buffer miscellaneous support"
+	depends on FB_XYLON
+	default n
+	help
+	  Choose this option if you want to use the Xylon logiCVC with
+	  miscellaneous device functionality for various improvements.
+	  Currently supported:
+	  - ADV7511 HDMI transmitter
+
+config FB_XYLON_MISC_ADV7511
+	bool "Xylon logiCVC frame buffer ADV7511"
+	depends on FB_XYLON_MISC && VIDEO_ADV7511
+	select FB_MODE_HELPERS
+	default n
+	---help---
+	  Support for ADV7511 HDMI transmitter so that logiCVC can be configured
+	  with parameters read from monitor EDID.

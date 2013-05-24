@@ -9,8 +9,8 @@
 #include <asm/siginfo.h>
 #include <asm/signal.h>
 #include <asm/unistd.h>
-#include "frame_kern.h"
-#include "kern_util.h"
+#include <frame_kern.h>
+#include <kern_util.h>
 
 EXPORT_SYMBOL(block_signals);
 EXPORT_SYMBOL(unblock_signals);
@@ -131,9 +131,4 @@ long sys_sigsuspend(int history0, int history1, old_sigset_t mask)
 	sigset_t blocked;
 	siginitset(&blocked, mask);
 	return sigsuspend(&blocked);
-}
-
-long sys_sigaltstack(const stack_t __user *uss, stack_t __user *uoss)
-{
-	return do_sigaltstack(uss, uoss, PT_REGS_SP(&current->thread.regs));
 }

@@ -252,8 +252,7 @@ static struct file_operations gpio_pmodoled_cdev_fops = {
 	.release = gpio_pmodoled_close,
 };
 
-static int __devinit add_gpio_pmodoled_device_to_bus(
-					      struct gpio_pmodoled_device *dev)
+static int add_gpio_pmodoled_device_to_bus(struct gpio_pmodoled_device *dev)
 {
 	struct spi_master *spi_master;
 	struct spi_device *spi_device;
@@ -526,7 +525,7 @@ spi_err:
 	return status;
 }
 
-static int __devexit gpio_pmodoled_spi_remove(struct spi_device *spi)
+static int gpio_pmodoled_spi_remove(struct spi_device *spi)
 {
 	int status;
 	struct gpio_pmodoled_device *dev;
@@ -595,10 +594,10 @@ static struct spi_driver gpio_pmodoled_spi_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = gpio_pmodoled_spi_probe,
-	.remove = __devexit_p(gpio_pmodoled_spi_remove),
+	.remove = gpio_pmodoled_spi_remove,
 };
 
-static const struct of_device_id gpio_pmodoled_of_match[] __devinitconst = {
+static const struct of_device_id gpio_pmodoled_of_match[] = {
 	{ .compatible = "dglnt,pmodoled-gpio", },
 	{},
 };
@@ -612,7 +611,7 @@ MODULE_DEVICE_TABLE(of, gpio_pmodoled_of_match);
  * OLED driver data structure. It returns 0, if the driver is bound to the OLED
  * device, or a negative value if there is an error.
  */
-static int __devinit gpio_pmodoled_of_probe(struct platform_device *pdev)
+static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 {
 	struct gpio_pmodoled_device *gpio_pmodoled_dev;
 	struct platform_device *gpio_pmodoled_pdev;
@@ -853,7 +852,7 @@ static struct platform_driver gpio_pmodoled_driver = {
 		.of_match_table = gpio_pmodoled_of_match,
 	},
 	.probe = gpio_pmodoled_of_probe,
-	.remove = __devexit_p(gpio_pmodoled_of_remove),
+	.remove = gpio_pmodoled_of_remove,
 };
 
 module_platform_driver(gpio_pmodoled_driver);

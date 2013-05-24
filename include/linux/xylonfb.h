@@ -4,7 +4,7 @@
  * Author: Xylon d.o.o.
  * e-mail: davor.joja@logicbricks.com
  *
- * 2012 (c) Xylon d.o.o.
+ * 2013 Xylon d.o.o.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2.  This program is licensed "as is" without any warranty of any
@@ -38,7 +38,10 @@ struct xylonfb_hw_access {
 	__u32 value;
 };
 
+/* XylonFB events */
+#define XYLONFB_EVENT_FBI_UPDATE 0x01
 
+/* XylonFB IOCTL's */
 #define XYLONFB_IOW(num, dtype)  _IOW('x', num, dtype)
 #define XYLONFB_IOR(num, dtype)  _IOR('x', num, dtype)
 #define XYLONFB_IOWR(num, dtype) _IOWR('x', num, dtype)
@@ -69,5 +72,7 @@ struct xylonfb_hw_access {
 	XYLONFB_IOR(44, struct xylonfb_hw_access)
 #define XYLONFB_WRITE_HW_REG \
 	XYLONFB_IOW(45, struct xylonfb_hw_access)
+#define XYLONFB_WAIT_EDID               XYLONFB_IOW(46, unsigned int)
+#define XYLONFB_GET_EDID                XYLONFB_IOR(47, char)
 
 #endif /* __XYLON_FB_H__ */

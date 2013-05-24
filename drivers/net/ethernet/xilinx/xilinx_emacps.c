@@ -41,7 +41,6 @@
 #include <linux/of.h>
 #include <linux/interrupt.h>
 #include <linux/clocksource.h>
-#include <linux/timecompare.h>
 #include <linux/net_tstamp.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
@@ -542,7 +541,6 @@ struct net_local {
 	/* Manage internal timer for packet timestamping */
 	struct cyclecounter cycles;
 	struct timecounter clock;
-	struct timecompare compare;
 	struct hwtstamp_config hwtstamp_config;
 
 	struct mii_bus *mii_bus;
@@ -555,7 +553,6 @@ struct net_local {
 	/* RX ip/tcp/udp checksum */
 	unsigned ip_summed;
 	unsigned int enetnum;
-	unsigned int board_type;
 	unsigned int lastrxfrmscntr;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	unsigned int ptpenetclk;
@@ -654,39 +651,6 @@ static int xemacps_mdio_reset(struct mii_bus *bus)
 	return 0;
 }
 
-static void xemacps_phy_init(struct net_device *ndev)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	u16 regval;
-	int i = 0;
-
-	/* set RX delay */
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 20);
-	/* 0x0080 for 100Mbps, 0x0060 for 1Gbps. */
-	regval |= 0x0080;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 20, regval);
-
-	/* 0x2100 for 100Mbps, 0x0140 for 1Gbps. */
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, 0x2100);
-
-	regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, 0);
-	regval |= 0x8000;
-	xemacps_mdio_write(lp->mii_bus, lp->phy_dev->addr, 0, regval);
-	for (i = 0; i < 10; i++)
-		mdelay(500);
-#ifdef DEBUG_VERBOSE
-	dev_dbg(&lp->pdev->dev,
-			"phy register dump, start from 0, four in a row.");
-	for (i = 0; i <= 30; i++) {
-		if (!(i%4))
-			dev_dbg(&lp->pdev->dev, "\n %02d:  ", i);
-		regval = xemacps_mdio_read(lp->mii_bus, lp->phy_dev->addr, i);
-		dev_dbg(&lp->pdev->dev, " 0x%08x", regval);
-	}
-	dev_dbg(&lp->pdev->dev, "\n");
-#endif
-}
-
 /**
  * xemacps_set_freq() - Set a clock to a new frequency
  * @clk		Pointer to the clock to change
@@ -727,37 +691,48 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			else
 				regval &= ~XEMACPS_NWCFG_FDEN_MASK;
 
-
-			regval &= ~(XEMACPS_NWCFG_1000_MASK |
-					XEMACPS_NWCFG_100_MASK);
 			if (phydev->speed == SPEED_1000) {
 				regval |= XEMACPS_NWCFG_1000_MASK;
 				xemacps_set_freq(lp->devclk, 125000000,
 						&lp->pdev->dev);
-				xemacps_mdio_write(lp->mii_bus,
-					gmii2rgmii_phydev->addr,
-					XEMACPS_GMII2RGMII_REG_NUM,
-					XEMACPS_GMII2RGMII_SPEED1000_FD);
-			} else if (phydev->speed == SPEED_100) {
+			} else {
+				regval &= ~XEMACPS_NWCFG_1000_MASK;
+			}
+
+			if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
 				xemacps_set_freq(lp->devclk, 25000000,
 						&lp->pdev->dev);
-				xemacps_mdio_write(lp->mii_bus,
-						gmii2rgmii_phydev->addr,
-						XEMACPS_GMII2RGMII_REG_NUM,
-						XEMACPS_GMII2RGMII_SPEED100_FD);
-			} else if (phydev->speed == SPEED_10) {
+			} else {
+				regval &= ~XEMACPS_NWCFG_100_MASK;
+			}
+
+			if (phydev->speed == SPEED_10) {
 				xemacps_set_freq(lp->devclk, 2500000,
 						&lp->pdev->dev);
-				xemacps_mdio_write(lp->mii_bus,
-						gmii2rgmii_phydev->addr,
-						XEMACPS_GMII2RGMII_REG_NUM,
-						XEMACPS_GMII2RGMII_SPEED10_FD);
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
 			regval);
 
+			if (gmii2rgmii_phydev != NULL) {
+				if (regval & XEMACPS_NWCFG_1000_MASK) {
+					xemacps_mdio_write(lp->mii_bus,
+					gmii2rgmii_phydev->addr,
+					XEMACPS_GMII2RGMII_REG_NUM,
+					XEMACPS_GMII2RGMII_SPEED1000_FD);
+				} else if (regval & XEMACPS_NWCFG_100_MASK) {
+					xemacps_mdio_write(lp->mii_bus,
+					gmii2rgmii_phydev->addr,
+					XEMACPS_GMII2RGMII_REG_NUM,
+					XEMACPS_GMII2RGMII_SPEED100_FD);
+				} else {
+					xemacps_mdio_write(lp->mii_bus,
+					gmii2rgmii_phydev->addr,
+					XEMACPS_GMII2RGMII_REG_NUM,
+					XEMACPS_GMII2RGMII_SPEED10_FD);
+				}
+			}
 			lp->speed = phydev->speed;
 			lp->duplex = phydev->duplex;
 			status_change = 1;
@@ -847,10 +822,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	lp->duplex  = -1;
 	lp->phy_dev = phydev;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ)
-		phy_start(lp->phy_dev);
-	else
-		xemacps_phy_init(lp->ndev);
+	phy_start(lp->phy_dev);
 
 	dev_dbg(&lp->pdev->dev, "phy_addr 0x%x, phy_id 0x%08x\n",
 			lp->phy_dev->addr, lp->phy_dev->phy_id);
@@ -868,9 +840,9 @@ static int xemacps_mii_probe(struct net_device *ndev)
 			ndev->name);
 			return -1;
 		}
-	}
-
-	lp->gmii2rgmii_phy_dev = phydev;
+		lp->gmii2rgmii_phy_dev = phydev;
+	} else
+		lp->gmii2rgmii_phy_dev = NULL;
 
 	return 0;
 }
@@ -930,7 +902,7 @@ err_out:
  * MAC address is not valid, reconfigure with a good one.
  * @lp: local device instance pointer
  **/
-static void __devinit xemacps_update_hwaddr(struct net_local *lp)
+static void xemacps_update_hwaddr(struct net_local *lp)
 {
 	u32 regvall;
 	u16 regvalh;
@@ -1658,8 +1630,7 @@ static void xemacps_init_hw(struct net_local *lp)
 	regval |= XEMACPS_NWCFG_100_MASK;
 	regval |= XEMACPS_NWCFG_HDRXEN_MASK;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ)
-		regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	regval |= (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 	if (lp->ndev->flags & IFF_PROMISC)	/* copy all */
 		regval |= XEMACPS_NWCFG_COPYALLEN_MASK;
 	if (!(lp->ndev->flags & IFF_BROADCAST))	/* No broadcast */
@@ -1909,10 +1880,8 @@ static int xemacps_close(struct net_device *ndev)
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	netif_carrier_off(ndev);
 	xemacps_reset_hw(lp);
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_disconnect(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_disconnect(lp->phy_dev);
 	if (lp->gmii2rgmii_phy_node)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
 	mdelay(500);
@@ -1941,10 +1910,8 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	xemacps_reset_hw(lp);
 	spin_unlock_bh(&lp->tx_lock);
 
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_stop(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_stop(lp->phy_dev);
 
 	xemacps_descriptor_free(lp);
 	rc = xemacps_descriptor_init(lp);
@@ -1959,10 +1926,8 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 	lp->link    = 0;
 	lp->speed   = 0;
 	lp->duplex  = -1;
-	if (lp->phy_dev) {
-		if (lp->board_type == BOARD_TYPE_ZYNQ)
-			phy_start(lp->phy_dev);
-	}
+	if (lp->phy_dev)
+		phy_start(lp->phy_dev);
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 	netif_start_queue(lp->ndev);
@@ -2026,6 +1991,8 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skb_frag_t *frag;
 	struct xemacps_bd *cur_p;
 	unsigned long flags;
+	int bd_tail;
+	int temp_bd_index;
 
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
 	spin_lock_bh(&lp->tx_lock);
@@ -2038,7 +2005,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 	lp->tx_bd_freecnt -= nr_frags;
 	frag = &skb_shinfo(skb)->frags[0];
-
+	bd_tail = lp->tx_bd_tail;
 	for (i = 0; i < nr_frags; i++) {
 		if (i == 0) {
 			len = skb_headlen(skb);
@@ -2059,13 +2026,14 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->addr = mapping;
 
 		/* Preserve only critical status bits.  Packet is NOT to be
-		 * committed to hardware at this time.
+		 * committed to hardware at this time. This ensures that
+		 * the Used bit will still be set. The clearing of Used bits
+		 * happen in a loop after this loop.
 		 */
 		regval = cur_p->ctrl;
 		regval &= (XEMACPS_TXBUF_USED_MASK | XEMACPS_TXBUF_WRAP_MASK);
 		/* update length field */
 		regval |= ((regval & ~XEMACPS_TXBUF_LEN_MASK) | len);
-		regval &= ~XEMACPS_TXBUF_USED_MASK;
 		/* last fragment of this packet? */
 		if (i == (nr_frags - 1))
 			regval |= XEMACPS_TXBUF_LAST_MASK;
@@ -2076,6 +2044,37 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 		cur_p = &(lp->tx_bd[lp->tx_bd_tail]);
 	}
+
+	/* Remember the bd index for the first bd in the bd chain allocated
+	 * for the fragments. The Used bit for the 1st BD will need to be
+	 * updated last.
+	 */
+	temp_bd_index = bd_tail;
+	bd_tail++;
+	bd_tail = bd_tail % XEMACPS_SEND_BD_CNT;
+	cur_p = &(lp->tx_bd[bd_tail]);
+	/* Clear the used bits for the BDs for a packet that consists of
+	 *  multiple BDs. For single BD packets, this loop will not execute.
+	 *  For multiple BD packets, the Used bit updates will happen for
+	 * all BDs except the 1st BD in the BD chain allocated for the packet.
+	 */
+	for (i = 1; i < nr_frags; i++) {
+		regval = cur_p->ctrl;
+		regval &= ~XEMACPS_TXBUF_USED_MASK;
+		cur_p->ctrl = regval;
+		bd_tail++;
+		bd_tail = bd_tail % XEMACPS_SEND_BD_CNT;
+		cur_p = &(lp->tx_bd[bd_tail]);
+	}
+	/* Clear the Used bit. For single BD packets, the clearing of
+	 * Used bit happens here. For multi-BD packets, the clearing of
+	 * the Used bit of the 1st BD happens here.
+	 */
+	cur_p = &(lp->tx_bd[temp_bd_index]);
+	regval = cur_p->ctrl;
+	regval &= ~XEMACPS_TXBUF_USED_MASK;
+	cur_p->ctrl = regval;
+
 	wmb();
 	spin_lock_irqsave(&lp->nwctrlreg_lock, flags);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
@@ -2571,14 +2570,12 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
  *
  * Return 0 on success, negative value if error
  */
-static int __devinit xemacps_probe(struct platform_device *pdev)
+static int xemacps_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct resource *r_irq = NULL;
 	struct net_device *ndev;
 	struct net_local *lp;
-	struct device_node *np;
-	const void *prop;
 	u32 regval = 0;
 	int rc = -ENXIO;
 
@@ -2635,7 +2632,6 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	netif_napi_add(ndev, &lp->napi, xemacps_rx_poll, XEMACPS_NAPI_WEIGHT);
 
 	lp->ip_summed = CHECKSUM_UNNECESSARY;
-	lp->board_type = BOARD_TYPE_ZYNQ;
 
 	rc = register_netdev(ndev);
 	if (rc) {
@@ -2648,67 +2644,49 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 	else
 		lp->enetnum = 1;
 
-	np = of_get_next_parent(lp->pdev->dev.of_node);
-	np = of_get_next_parent(np);
-	prop = of_get_property(np, "compatible", NULL);
-
-	if (prop != NULL) {
-		if ((strcmp((const char *)prop, "xlnx,zynq-ep107")) == 0)
-			lp->board_type = BOARD_TYPE_PEEP;
-		else
-			lp->board_type = BOARD_TYPE_ZYNQ;
-	} else {
-		lp->board_type = BOARD_TYPE_ZYNQ;
+	if (lp->enetnum == 0)
+		lp->aperclk = clk_get_sys("GEM0_APER", NULL);
+	else
+		lp->aperclk = clk_get_sys("GEM1_APER", NULL);
+	if (IS_ERR(lp->aperclk)) {
+		dev_err(&pdev->dev, "APER clock not found.\n");
+		rc = PTR_ERR(lp->aperclk);
+		goto err_out_unregister_netdev;
 	}
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		if (lp->enetnum == 0)
-			lp->aperclk = clk_get_sys("GEM0_APER", NULL);
-		else
-			lp->aperclk = clk_get_sys("GEM1_APER", NULL);
-		if (IS_ERR(lp->aperclk)) {
-			dev_err(&pdev->dev, "APER clock not found.\n");
-			rc = PTR_ERR(lp->aperclk);
-			goto err_out_unregister_netdev;
-		}
-		if (lp->enetnum == 0)
-			lp->devclk = clk_get_sys("GEM0", NULL);
-		else
-			lp->devclk = clk_get_sys("GEM1", NULL);
-		if (IS_ERR(lp->devclk)) {
-			dev_err(&pdev->dev, "Device clock not found.\n");
-			rc = PTR_ERR(lp->devclk);
-			goto err_out_clk_put_aper;
-		}
-
-		rc = clk_prepare_enable(lp->aperclk);
-		if (rc) {
-			dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-			goto err_out_clk_put;
-		}
-		rc = clk_prepare_enable(lp->devclk);
-		if (rc) {
-			dev_err(&pdev->dev, "Unable to enable device clock.\n");
-			goto err_out_clk_dis_aper;
-		}
-
-		lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
-		lp->clk_rate_change_nb.next = NULL;
-		if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
-			dev_warn(&pdev->dev,
-				"Unable to register clock notifier.\n");
+	if (lp->enetnum == 0)
+		lp->devclk = clk_get_sys("GEM0", NULL);
+	else
+		lp->devclk = clk_get_sys("GEM1", NULL);
+	if (IS_ERR(lp->devclk)) {
+		dev_err(&pdev->dev, "Device clock not found.\n");
+		rc = PTR_ERR(lp->devclk);
+		goto err_out_clk_put_aper;
 	}
+
+	rc = clk_prepare_enable(lp->aperclk);
+	if (rc) {
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		goto err_out_clk_put;
+	}
+	rc = clk_prepare_enable(lp->devclk);
+	if (rc) {
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
+		goto err_out_clk_dis_aper;
+	}
+
+	lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
+	lp->clk_rate_change_nb.next = NULL;
+	if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
+		dev_warn(&pdev->dev,
+			"Unable to register clock notifier.\n");
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		prop = of_get_property(lp->pdev->dev.of_node,
-					"xlnx,ptp-enet-clock", NULL);
-		if (prop)
-			lp->ptpenetclk = (u32)be32_to_cpup(prop);
-		else
-			lp->ptpenetclk = 133333328;
-	} else {
-		lp->ptpenetclk = PEEP_TSU_CLK;
-	}
+	prop = of_get_property(lp->pdev->dev.of_node,
+				"xlnx,ptp-enet-clock", NULL);
+	if (prop)
+		lp->ptpenetclk = (u32)be32_to_cpup(prop);
+	else
+		lp->ptpenetclk = 133333328;
 #endif
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
@@ -2723,11 +2701,10 @@ static int __devinit xemacps_probe(struct platform_device *pdev)
 
 	lp->phy_interface = rc;
 
-	if (lp->board_type == BOARD_TYPE_ZYNQ) {
-		/* Set MDIO clock divider */
-		regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
-		xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
-	}
+	/* Set MDIO clock divider */
+	regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
+	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
+
 
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
@@ -2812,7 +2789,7 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_NOT_DEFINE
+#ifdef CONFIG_PM
 #ifdef CONFIG_PM_SLEEP
 /**
  * xemacps_suspend - Suspend event
@@ -2928,7 +2905,7 @@ static struct net_device_ops netdev_ops = {
 	.ndo_get_stats		= xemacps_get_stats,
 };
 
-static struct of_device_id xemacps_of_match[] __devinitdata = {
+static struct of_device_id xemacps_of_match[] = {
 	{ .compatible = "xlnx,ps7-ethernet-1.00.a", },
 	{ /* end of table */}
 };
@@ -2936,7 +2913,7 @@ MODULE_DEVICE_TABLE(of, xemacps_of_match);
 
 static struct platform_driver xemacps_driver = {
 	.probe   = xemacps_probe,
-	.remove  = __exit_p(xemacps_remove),
+	.remove  = xemacps_remove,
 	.driver  = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,

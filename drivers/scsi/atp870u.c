@@ -1173,7 +1173,16 @@ wait_io1:
 	outw(val, tmport);
 	outb(2, 0x80);
 TCM_SYNC:
-	udelay(0x800);
+	/*
+	 * The funny division into multiple delays is to accomodate
+	 * arches like ARM where udelay() multiplies its argument by
+	 * a large number to initialize a loop counter.  To avoid
+	 * overflow, the maximum supported udelay is 2000 microseconds.
+	 *
+	 * XXX it would be more polite to find a way to use msleep()
+	 */
+	mdelay(2);
+	udelay(48);
 	if ((inb(tmport) & 0x80) == 0x00) {	/* bsy ? */
 		outw(0, tmport--);
 		outb(0, tmport);
@@ -3201,7 +3210,7 @@ static struct pci_driver atp870u_driver = {
 	.id_table	= atp870u_id_table,
 	.name		= "atp870u",
 	.probe		= atp870u_probe,
-	.remove		= __devexit_p(atp870u_remove),
+	.remove		= atp870u_remove,
 };
 
 static int __init atp870u_init(void)

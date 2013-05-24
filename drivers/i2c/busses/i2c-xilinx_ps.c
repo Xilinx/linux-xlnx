@@ -455,6 +455,7 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	struct xi2cps *id = adap->algo_data;
 	unsigned int count, retries;
 	unsigned long timeout;
+	int ret;
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
 	timeout = jiffies + XI2CPS_TIMEOUT;
@@ -517,7 +518,13 @@ retry:
 			xi2cps_msend(id);
 
 		/* Wait for the signal of completion */
-		wait_for_completion_interruptible(&id->xfer_done);
+		ret = wait_for_completion_interruptible_timeout(
+							&id->xfer_done, HZ);
+		if (ret == 0) {
+			dev_err(id->adap.dev.parent,
+				 "timeout waiting on completion\n");
+			return -ETIMEDOUT;
+		}
 		xi2cps_writereg(XI2CPS_IXR_ALL_INTR_MASK, XI2CPS_IDR_OFFSET);
 
 		/* If it is bus arbitration error, try again */
@@ -977,7 +984,7 @@ static struct platform_driver xi2cps_drv = {
 		.pm = XI2CPS_PM,
 	},
 	.probe  = xi2cps_probe,
-	.remove = __devexit_p(xi2cps_remove),
+	.remove = xi2cps_remove,
 };
 
 module_platform_driver(xi2cps_drv);
