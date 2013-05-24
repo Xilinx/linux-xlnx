@@ -53,6 +53,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_DMA_SRC_LEN_OFFSET	0x20 /* DMA Source Transfer Length */
 #define XDCFG_DMA_DEST_LEN_OFFSET	0x24 /* DMA Destination Transfer */
 #define XDCFG_UNLOCK_OFFSET		0x34 /* Unlock Register */
+#define XDCFG_MCTRL_OFFSET		0x80 /* Misc. Control Register */
 
 /* Control Register Bit definitions */
 #define XDCFG_CTRL_PCFG_PROG_B_MASK	0x40000000 /* Program signal to
@@ -80,6 +81,9 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 						    *  security config
 						    *  including: DAP_En,
 						    *  DBGEN,NIDEN, SPNIEN */
+
+/* Miscellaneous Control Register bit definitions */
+#define XDCFG_MCTRL_PCAP_LPBK_MASK	0x00000010 /* Internal PCAP loopback */
 
 /* Status register bit definitions */
 #define XDCFG_STATUS_PCFG_INIT_MASK	0x00000010 /* FPGA init status */
@@ -1950,6 +1954,11 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 				XDCFG_CTRL_USER_MODE_MASK |
 				ctrlreg));
 
+	/* Ensure internal PCAP loopback is disabled */
+	ctrlreg = xdevcfg_readreg(drvdata->base_address + XDCFG_MCTRL_OFFSET);
+	xdevcfg_writereg(drvdata->base_address + XDCFG_MCTRL_OFFSET,
+				(~XDCFG_MCTRL_PCAP_LPBK_MASK &
+				ctrlreg));
 
 	cdev_init(&drvdata->cdev, &xdevcfg_fops);
 	drvdata->cdev.owner = THIS_MODULE;
