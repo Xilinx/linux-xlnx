@@ -2765,8 +2765,6 @@ static int __exit xemacps_remove(struct platform_device *pdev)
 
 	if (ndev) {
 		lp = netdev_priv(ndev);
-		if (lp->phy_dev)
-			phy_disconnect(lp->phy_dev);
 
 		mdiobus_unregister(lp->mii_bus);
 		kfree(lp->mii_bus->irq);
