@@ -143,7 +143,7 @@ static int zynq_pm_suspend(unsigned long arg)
 			pr_warn("DDR self refresh failed.\n");
 	} else {
 		WARN_ONCE(1, "DRAM self-refresh not available\n");
-		wfi();
+		cpu_do_idle();
 	}
 
 	if (!IS_ERR(cpupll))
