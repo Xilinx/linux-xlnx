@@ -1,7 +1,7 @@
 /*
  * Xilinx gpio driver for xps/axi_gpio IP.
  *
- * Copyright 2008, 2011 Xilinx, Inc.
+ * Copyright 2008 - 2013 Xilinx, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -12,6 +12,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <linux/bitops.h>
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/module.h>
@@ -32,12 +33,20 @@
 #define xgpio_readreg(offset)		__raw_readl(offset)
 #define xgpio_writereg(offset, val)	__raw_writel(val, offset)
 
+/**
+ * struct xgpio_instance - Stores information about GPIO device
+ * struct of_mm_gpio_chip mmchip: OF GPIO chip for memory mapped banks
+ * gpio_state: GPIO state shadow register
+ * gpio_dir: GPIO direction shadow register
+ * offset: GPIO channel offset
+ * gpio_lock: Lock used for synchronization
+ */
 struct xgpio_instance {
 	struct of_mm_gpio_chip mmchip;
-	u32 gpio_state;		/* GPIO state shadow register */
-	u32 gpio_dir;		/* GPIO direction shadow register */
+	u32 gpio_state;
+	u32 gpio_dir;
 	u32 offset;
-	spinlock_t gpio_lock;	/* Lock used for synchronization */
+	spinlock_t gpio_lock;
 };
 
 /**
@@ -56,7 +65,7 @@ static int xgpio_get(struct gpio_chip *gc, unsigned int gpio)
 
 	void __iomem *regs = mm_gc->regs + chip->offset;
 
-	return (xgpio_readreg(regs + XGPIO_DATA_OFFSET) >> gpio) & 1;
+	return !!(xgpio_readreg(regs + XGPIO_DATA_OFFSET) & BIT(gpio));
 }
 
 /**
@@ -143,7 +152,8 @@ static int xgpio_dir_out(struct gpio_chip *gc, unsigned int gpio, int val)
 		chip->gpio_state |= 1 << gpio;
 	else
 		chip->gpio_state &= ~(1 << gpio);
-	xgpio_writereg(regs + chip->offset + XGPIO_DATA_OFFSET, chip->gpio_state);
+	xgpio_writereg(regs + chip->offset + XGPIO_DATA_OFFSET,
+		       chip->gpio_state);
 
 	/* Clear the GPIO bit in shadow register and set direction as output */
 	chip->gpio_dir &= (~(1 << gpio));
@@ -226,17 +236,6 @@ static int xgpio_of_probe(struct device_node *np)
 
 	tree_info = of_get_property(np, "xlnx,is-dual", NULL);
 	if (tree_info && be32_to_cpup(tree_info)) {
-		/* Distinguish dual gpio chip */
-		/* NOTE baseaddr ends with zero address XGPIO_CHANNEL_OFFSET */
-		/*
-		 * FIXME
-		 * drivers/gpio/gpio-xilinx.c: In function 'xgpio_of_probe':
-		 * drivers/gpio/gpio-xilinx.c:235:3: error: assignment of
-		 * read-only location '*(np->full_name + ((unsigned int)strlen
-		 * (np->full_name) + 0xffffffffffffffffffffffffffffffffu))'
-		 */
-		/* np->full_name[strlen(np->full_name) - 1] = '8'; */
-
 		chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 		if (!chip)
 			return -ENOMEM;
@@ -245,26 +244,21 @@ static int xgpio_of_probe(struct device_node *np)
 		chip->offset = XGPIO_CHANNEL_OFFSET;
 
 		/* Update GPIO state shadow register with default value */
-		tree_info = of_get_property(np, "xlnx,dout-default-2", NULL);
-		if (tree_info)
-			chip->gpio_state = be32_to_cpup(tree_info);
+		of_property_read_u32(np, "xlnx,dout-default-2",
+				     &chip->gpio_state);
 
-		/* Update GPIO direction shadow register with default value */
 		/* By default, all pins are inputs */
 		chip->gpio_dir = 0xFFFFFFFF;
-		tree_info = of_get_property(np, "xlnx,tri-default-2", NULL);
-		if (tree_info)
-			chip->gpio_dir = be32_to_cpup(tree_info);
 
-		/* Check device node and parent device node for device width */
+		/* Update GPIO direction shadow register with default value */
+		of_property_read_u32(np, "xlnx,tri-default-2", &chip->gpio_dir);
+
 		/* By default assume full GPIO controller */
 		chip->mmchip.gc.ngpio = 32;
-		tree_info = of_get_property(np, "xlnx,gpio2-width", NULL);
-		if (!tree_info)
-			tree_info = of_get_property(np->parent,
-						"xlnx,gpio2-width", NULL);
-		if (tree_info)
-			chip->mmchip.gc.ngpio = be32_to_cpup(tree_info);
+
+		/* Check device node and parent device node for device width */
+		of_property_read_u32(np, "xlnx,gpio2-width",
+				     (u32 *)&chip->mmchip.gc.ngpio);
 
 		spin_lock_init(&chip->gpio_lock);
 
