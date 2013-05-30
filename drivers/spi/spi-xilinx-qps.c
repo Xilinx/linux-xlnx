@@ -491,13 +491,8 @@ static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
 	u32 data = 0;
 
 	while ((!(xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET) &
-		XQSPIPS_IXR_TXFULL_MASK)) && (xqspi->bytes_to_transfer > 0)) {
-		if (xqspi->bytes_to_transfer < 4)
-			xqspips_copy_write_data(xqspi, &data,
-				xqspi->bytes_to_transfer);
-		else
-			xqspips_copy_write_data(xqspi, &data, 4);
-
+		XQSPIPS_IXR_TXFULL_MASK)) && (xqspi->bytes_to_transfer >= 4)) {
+		xqspips_copy_write_data(xqspi, &data, 4);
 		xqspips_write(xqspi->regs + XQSPIPS_TXD_00_00_OFFSET, data);
 	}
 }
@@ -517,6 +512,8 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 {
 	struct xqspips *xqspi = dev_id;
 	u32 intr_status;
+	u8 offset[3] =	{XQSPIPS_TXD_00_01_OFFSET, XQSPIPS_TXD_00_10_OFFSET,
+		XQSPIPS_TXD_00_11_OFFSET};
 
 	intr_status = xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET);
 	xqspips_write(xqspi->regs + XQSPIPS_STATUS_OFFSET , intr_status);
@@ -529,11 +526,11 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		   the THRESHOLD value set to 1, so this bit indicates Tx FIFO
 		   is empty */
 		u32 config_reg;
+		u32 data;
 
 		/* Read out the data from the RX FIFO */
 		while (xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET) &
 			XQSPIPS_IXR_RXNEMTY_MASK) {
-			u32 data;
 
 			data = xqspips_read(xqspi->regs + XQSPIPS_RXD_OFFSET);
 
@@ -545,9 +542,16 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		}
 
 		if (xqspi->bytes_to_transfer) {
-			/* There is more data to send */
-			xqspips_fill_tx_fifo(xqspi);
-
+			if (xqspi->bytes_to_transfer >= 4) {
+				/* There is more data to send */
+				xqspips_fill_tx_fifo(xqspi);
+			} else {
+				xqspips_copy_write_data(xqspi, &data,
+					xqspi->bytes_to_transfer);
+				xqspips_write(xqspi->regs +
+					offset[xqspi->bytes_to_transfer],
+					data);
+			}
 			xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 					XQSPIPS_IXR_ALL_MASK);
 
@@ -656,6 +660,7 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 		 * delayed if the user tries to write when write FIFO is full
 		 */
 		xqspips_write(xqspi->regs + curr_inst->offset, data);
+		goto xfer_start;
 	}
 
 xfer_data:
@@ -663,13 +668,14 @@ xfer_data:
 	/* In case of Fast, Dual and Quad reads, transmit the instruction first.
 	 * Address and dummy byte will be transmitted in interrupt handler,
 	 * after instruction is transmitted */
-	if (((xqspi->is_inst == 0) && (xqspi->bytes_to_transfer)) ||
-	     ((xqspi->bytes_to_transfer) &&
+	if (((xqspi->is_inst == 0) && (xqspi->bytes_to_transfer >= 4)) ||
+	     ((xqspi->bytes_to_transfer >= 4) &&
 	      (instruction != XQSPIPS_FLASH_OPCODE_FAST_READ) &&
 	      (instruction != XQSPIPS_FLASH_OPCODE_DUAL_READ) &&
 	      (instruction != XQSPIPS_FLASH_OPCODE_QUAD_READ)))
 		xqspips_fill_tx_fifo(xqspi);
 
+xfer_start:
 	xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 			XQSPIPS_IXR_ALL_MASK);
 	/* Start the transfer by enabling manual start bit */
