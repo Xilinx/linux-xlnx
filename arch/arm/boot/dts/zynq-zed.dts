@@ -112,7 +112,7 @@
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = < 0 8 4 >;
-			reg = < 0xf8007000 0x1000 >;
+			reg = < 0xf8007000 0x100 >;
 		} ;
 		ps7_dma_s: ps7-dma@f8003000 {
 			#dma-cells = <1>;
