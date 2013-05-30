@@ -295,33 +295,11 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
  **/
 static void xqspips_copy_read_data(struct xqspips *xqspi, u32 data, u8 size)
 {
-	u8 byte3;
-
 	if (xqspi->rxbuf) {
-		switch (size) {
-		case 1:
-			*((u8 *)xqspi->rxbuf) = data;
-			xqspi->rxbuf += 1;
-			break;
-		case 2:
-			*((u16 *)xqspi->rxbuf) = data;
-			xqspi->rxbuf += 2;
-			break;
-		case 3:
-			*((u16 *)xqspi->rxbuf) = data;
-			xqspi->rxbuf += 2;
-			byte3 = (u8)(data >> 16);
-			*((u8 *)xqspi->rxbuf) = byte3;
-			xqspi->rxbuf += 1;
-			break;
-		case 4:
-			(*(u32 *)xqspi->rxbuf) = data;
-			xqspi->rxbuf += 4;
-			break;
-		default:
-			/* This will never execute */
-			break;
-		}
+		data >>= (4 - size) * 8;
+		data = le32_to_cpu(data);
+		memcpy((u8 *)xqspi->rxbuf, &data, size);
+		xqspi->rxbuf += size;
 	}
 	xqspi->bytes_to_receive -= size;
 	if (xqspi->bytes_to_receive < 0)
