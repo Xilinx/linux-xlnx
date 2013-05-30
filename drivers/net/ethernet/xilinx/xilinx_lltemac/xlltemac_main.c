@@ -218,13 +218,13 @@ struct net_local {
 #endif
 };
 
-u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
-u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
+static u32 dma_rx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
+static u32 dma_tx_int_mask = XLLDMA_CR_IRQ_ALL_EN_MASK;
 
 /* for exclusion of all program flows (processes, ISRs and BHs) */
-spinlock_t XTE_spinlock; // = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_tx_spinlock; // = SPIN_LOCK_UNLOCKED;
-spinlock_t XTE_rx_spinlock; // = SPIN_LOCK_UNLOCKED;
+static spinlock_t XTE_spinlock; /* = SPIN_LOCK_UNLOCKED; */
+static spinlock_t XTE_tx_spinlock; /* = SPIN_LOCK_UNLOCKED; */
+static spinlock_t XTE_rx_spinlock; /* = SPIN_LOCK_UNLOCKED; */
 
 /*
  * ethtool has a status reporting feature where we can report any sort of
@@ -573,7 +573,7 @@ static void phy_setup(struct net_local *lp)
 
 typedef enum DUPLEX { UNKNOWN_DUPLEX, HALF_DUPLEX, FULL_DUPLEX } DUPLEX;
 
-int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
+static int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 {
 	struct net_local *lp = (struct net_local *) netdev_priv(dev);
 	int retries = 2;
@@ -678,7 +678,7 @@ int renegotiate_speed(struct net_device *dev, int speed, DUPLEX duplex)
 /*
  * This function sets up MAC's speed according to link speed of PHY
  */
-void set_mac_speed(struct net_local *lp)
+static void set_mac_speed(struct net_local *lp)
 {
 	u16 phylinkspeed;
 	struct net_device *dev = lp->ndev;
@@ -1045,7 +1045,7 @@ static irqreturn_t xenet_temac_interrupt(int irq, void *dev_id)
 static void FifoSendHandler(struct net_device *dev);
 static void FifoRecvHandler(unsigned long p /*struct net_device *dev*/);
 
-DECLARE_TASKLET(FifoRecvBH, FifoRecvHandler, 0);
+static DECLARE_TASKLET(FifoRecvBH, FifoRecvHandler, 0);
 
 static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 {
@@ -1108,8 +1108,8 @@ static irqreturn_t xenet_fifo_interrupt(int irq, void *dev_id)
 static void DmaSendHandlerBH(unsigned long p);
 static void DmaRecvHandlerBH(unsigned long p);
 
-DECLARE_TASKLET(DmaSendBH, DmaSendHandlerBH, 0);
-DECLARE_TASKLET(DmaRecvBH, DmaRecvHandlerBH, 0);
+static DECLARE_TASKLET(DmaSendBH, DmaSendHandlerBH, 0);
+static DECLARE_TASKLET(DmaRecvBH, DmaRecvHandlerBH, 0);
 
 static irqreturn_t xenet_dma_rx_interrupt(int irq, void *dev_id)
 {
@@ -2332,9 +2332,8 @@ static int descriptor_init(struct net_device *dev)
 	lp->desc_space_handle = BRAM_BASEADDR;
 	lp->desc_space = ioremap(lp->desc_space_handle, dftsize);
 #endif
-	if (lp->desc_space == 0) {
+	if (lp->desc_space == NULL)
 		return -1;
-	}
 
 	lp->desc_space_size = dftsize;
 
@@ -2534,7 +2533,8 @@ xenet_ethtool_get_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
 	return 0;
 }
 
-void disp_bd_ring(XLlDma_BdRing *bd_ring)
+#if 0
+static void disp_bd_ring(XLlDma_BdRing *bd_ring)
 {
 	int num_bds = bd_ring->AllCnt;
 	u32 *cur_bd_ptr = (u32 *) bd_ring->FirstBdAddr;
@@ -2594,6 +2594,7 @@ void disp_bd_ring(XLlDma_BdRing *bd_ring)
 	}
 	printk("--------------------------------------- Done ---------------------------------------\n");
 }
+#endif
 
 static int
 xenet_ethtool_set_coalesce(struct net_device *dev, struct ethtool_coalesce *ec)
@@ -2822,7 +2823,7 @@ struct mac_regsDump {
 	u16 data[EMAC_REGS_N];
 };
 
-int
+static int
 xenet_ethtool_get_regs_len(struct net_device *dev)
 {
 	return (sizeof(u16) * EMAC_REGS_N);
@@ -3053,7 +3054,7 @@ static int xenet_do_ethtool_ioctl(struct net_device *dev, struct ifreq *rq)
 		return -EOPNOTSUPP;	/* TODO: To support in next version */
 	case ETHTOOL_GSTRINGS:{
 			struct ethtool_gstrings gstrings = { ETHTOOL_GSTRINGS };
-			void *addr = rq->ifr_data;
+			void __user *addr = rq->ifr_data;
 			char *strings = NULL;
 
 			if (copy_from_user(&gstrings, addr, sizeof(gstrings))) {
@@ -3288,7 +3289,7 @@ static void xtenet_remove_ndev(struct net_device *ndev)
 		if (XLlTemac_IsDma(&lp->Emac) && (lp->desc_space))
 			free_descriptor_skb(ndev);
 
-		iounmap((void *) (lp->Emac.Config.BaseAddress));
+		iounmap((__force void __iomem *) (lp->Emac.Config.BaseAddress));
 		free_netdev(ndev);
 	}
 }
@@ -3426,7 +3427,8 @@ static int xtenet_setup(
 	Temac_Config.PhyType = pdata->phy_type;
 
 	/* Get the virtual base address for the device */
-	virt_baddr = (u32) ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
+	virt_baddr = (__force u32) ioremap(r_mem->start,
+					   r_mem->end - r_mem->start + 1);
 	if (0 == virt_baddr) {
 		dev_err(dev, "XLlTemac: Could not allocate iomem.\n");
 		rc = -EIO;
@@ -3472,10 +3474,10 @@ static int xtenet_setup(
 			XLlDma_Initialize(&lp->Dma, pdata->ll_dev_baseaddress);
 			lp->virt_dma_addr = pdata->ll_dev_baseaddress;
 		} else {
-		        virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
+			virt_baddr = (__force u32) ioremap(pdata->ll_dev_baseaddress, 4096);
 			lp->virt_dma_addr = virt_baddr;
 			if (0 == virt_baddr) {
-			        dev_err(dev,
+				dev_err(dev,
 					"XLlTemac: Could not allocate iomem for local link connected device.\n");
 				rc = -EIO;
 				goto error;
@@ -3523,7 +3525,8 @@ static int xtenet_setup(
 		dev_err(dev,
 		       "XLlTemac: using FIFO direct interrupt driven mode.\n");
 
-		virt_baddr = (u32) ioremap(pdata->ll_dev_baseaddress, 4096);
+		virt_baddr = (__force u32) ioremap(pdata->ll_dev_baseaddress,
+						   4096);
 		if (0 == virt_baddr) {
 			dev_err(dev,
 			       "XLlTemac: Could not allocate iomem for local link connected device.\n");
@@ -3648,7 +3651,7 @@ static u32 get_u32(struct platform_device *op, const char *s) {
 static struct net_device_ops xilinx_netdev_ops = {
 	.ndo_open 	= xenet_open,
 	.ndo_stop	= xenet_close,
-	.ndo_start_xmit	= 0,
+	.ndo_start_xmit	= NULL,
 	.ndo_do_ioctl	= xenet_ioctl,
 	.ndo_change_mtu	= xenet_change_mtu,
 	.ndo_tx_timeout	= xenet_tx_timeout,
