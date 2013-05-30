@@ -337,6 +337,10 @@ static int erase_sector(struct m25p *flash, u32 offset)
 	if (wait_till_ready(flash))
 		return 1;
 
+	/* update Extended Address Register */
+	if (write_ear(flash, offset))
+		return 1;
+
 	/* Send write enable, then erase commands. */
 	write_enable(flash);
 
@@ -443,14 +447,10 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	t[1].len = len;
 	spi_message_add_tail(&t[1], &m);
 
-	mutex_lock(&flash->lock);
-
 	/* Wait till previous write/erase is done. */
-	if (wait_till_ready(flash)) {
+	if (wait_till_ready(flash))
 		/* REVISIT status return?? */
-		mutex_unlock(&flash->lock);
 		return 1;
-	}
 
 	/* FIXME switch to OPCODE_FAST_READ.  It's required for higher
 	 * clocks; and at this writing, every chip this driver handles
@@ -467,8 +467,47 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	*retlen = m.actual_length - m25p_cmdsz(flash) -
 			(flash->fast_read ? 1 : 0);
 
-	mutex_unlock(&flash->lock);
+	return 0;
+}
 
+static int m25p80_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
+	size_t *retlen, u_char *buf)
+{
+	struct m25p *flash = mtd_to_m25p(mtd);
+	u32 addr = from;
+	u32 offset = from;
+	u32 read_len = 0;
+	u32 actual_len = 0;
+	u32 read_count = 0;
+	u32 rem_bank_len = 0;
+	u8 bank = 0;
+
+#define OFFSET_16_MB 0x1000000
+
+	mutex_lock(&flash->lock);
+
+	while (len) {
+		bank = addr/OFFSET_16_MB;
+		rem_bank_len = (OFFSET_16_MB * (bank + 1)) - addr;
+		offset = addr;
+
+		write_ear(flash, offset);
+		if (len < rem_bank_len)
+			read_len = len;
+		else
+			read_len = rem_bank_len;
+
+		m25p80_read(mtd, offset, read_len, &actual_len, buf);
+
+		addr += actual_len;
+		len -= actual_len;
+		buf += actual_len;
+		read_count += actual_len;
+	}
+
+	*retlen = read_count;
+
+	mutex_unlock(&flash->lock);
 	return 0;
 }
 
@@ -498,13 +537,9 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 	t[1].tx_buf = buf;
 	spi_message_add_tail(&t[1], &m);
 
-	mutex_lock(&flash->lock);
-
 	/* Wait until finished previous write command. */
-	if (wait_till_ready(flash)) {
-		mutex_unlock(&flash->lock);
+	if (wait_till_ready(flash))
 		return 1;
-	}
 
 	write_enable(flash);
 
@@ -544,7 +579,8 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 			t[1].tx_buf = buf + i;
 			t[1].len = page_size;
 
-			wait_till_ready(flash);
+			if (wait_till_ready(flash))
+				return 1;
 
 			write_enable(flash);
 
@@ -554,8 +590,46 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 		}
 	}
 
-	mutex_unlock(&flash->lock);
+	return 0;
+}
 
+static int m25p80_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
+	size_t *retlen, const u_char *buf)
+{
+	struct m25p *flash = mtd_to_m25p(mtd);
+	u32 addr = to;
+	u32 offset = to;
+	u32 write_len = 0;
+	u32 actual_len = 0;
+	u32 write_count = 0;
+	u32 rem_bank_len = 0;
+	u8 bank = 0;
+
+#define OFFSET_16_MB 0x1000000
+
+	mutex_lock(&flash->lock);
+	while (len) {
+		bank = addr/OFFSET_16_MB;
+		rem_bank_len =  (OFFSET_16_MB * (bank + 1)) - addr;
+		offset = addr;
+
+		write_ear(flash, offset);
+		if (len < rem_bank_len)
+			write_len = len;
+		else
+			write_len = rem_bank_len;
+
+		m25p80_write(mtd, offset, write_len, &actual_len, buf);
+
+		addr += actual_len;
+		len -= actual_len;
+		buf += actual_len;
+		write_count += actual_len;
+	}
+
+	*retlen = write_count;
+
+	mutex_unlock(&flash->lock);
 	return 0;
 }
 
@@ -1129,7 +1203,7 @@ static int m25p_probe(struct spi_device *spi)
 	}
 #endif
 	flash->mtd._erase = m25p80_erase;
-	flash->mtd._read = m25p80_read;
+	flash->mtd._read = m25p80_read_ext;
 
 	/* flash protection support for STmicro chips */
 	if (JEDEC_MFR(info->jedec_id) == CFI_MFR_ST) {
@@ -1141,7 +1215,7 @@ static int m25p_probe(struct spi_device *spi)
 	if (JEDEC_MFR(info->jedec_id) == CFI_MFR_SST)
 		flash->mtd._write = sst_write;
 	else
-		flash->mtd._write = m25p80_write;
+		flash->mtd._write = m25p80_write_ext;
 
 	/* prefer "small sector" erase if possible */
 	if (info->flags & SECT_4K) {
