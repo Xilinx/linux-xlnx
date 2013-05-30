@@ -71,7 +71,7 @@
 #define	SR_SRWD			0x80	/* SR write protect */
 
 /* Define max times to check status register before we give up. */
-#define	MAX_READY_WAIT_JIFFIES	(40 * HZ)	/* M25P16 specs 40s max chip erase */
+#define	MAX_READY_WAIT_JIFFIES	(480 * HZ) /* N25Q specs 480s max chip erase */
 #define	MAX_CMD_SIZE		5
 
 #define JEDEC_MFR(_jedec_id)	((_jedec_id) >> 16)
