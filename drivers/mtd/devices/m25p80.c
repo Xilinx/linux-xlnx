@@ -48,6 +48,7 @@
 #define	OPCODE_SE		0xd8	/* Sector erase (usually 64KiB) */
 #define	OPCODE_RDID		0x9f	/* Read JEDEC ID */
 #define OPCODE_RDFSR		0x70	/* Read Flag Status Register */
+#define OPCODE_WREAR		0xc5	/* Write Extended Address Register */
 
 /* Used for SST flashes only. */
 #define	OPCODE_BP		0x02	/* Byte program */
@@ -91,6 +92,7 @@ struct m25p {
 	u8			erase_opcode;
 	u8			*command;
 	bool			fast_read;
+	u16			curbank;
 	u32			jedec_id;
 	bool			check_fsr;
 };
@@ -240,6 +242,45 @@ static int wait_till_ready(struct m25p *flash)
 	} while (!time_after_eq(jiffies, deadline));
 
 	return 1;
+}
+
+/*
+ * Update Extended Address/bank selection Register.
+ * Call with flash->lock locked.
+ */
+static int write_ear(struct m25p *flash, u32 addr)
+{
+	u8 ear;
+	int ret;
+
+	/* Wait until finished previous write command. */
+	if (wait_till_ready(flash))
+		return 1;
+
+	if (flash->mtd.size <= 0x1000000)
+		return 0;
+
+	addr = addr % (u32) flash->mtd.size;
+	ear = addr >> 24;
+
+	if (ear == flash->curbank)
+		return 0;
+
+	if (JEDEC_MFR(flash->jedec_id) == 0x01)
+		flash->command[0] = OPCODE_BRWR;
+	if (JEDEC_MFR(flash->jedec_id) == 0x20) {
+		write_enable(flash);
+		flash->command[0] = OPCODE_WREAR;
+	}
+	flash->command[1] = ear;
+
+	ret = spi_write(flash->spi, flash->command, 2);
+	if (ret)
+		return ret;
+
+	flash->curbank = ear;
+
+	return 0;
 }
 
 /*
