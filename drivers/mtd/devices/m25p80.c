@@ -59,7 +59,7 @@
 
 /* Used for Spansion flashes only. */
 #define	OPCODE_BRWR		0x17	/* Bank register write */
-#define	OPCODE_BRRD		0x16	/* Bank register write */
+#define	OPCODE_BRRD		0x16	/* Bank register read */
 
 /* Status Register bits. */
 #define	SR_WIP			1	/* Write in progress */
@@ -178,8 +178,10 @@ static inline int set_4byte(struct m25p *flash, u32 jedec_id, int enable)
 		flash->command[0] = OPCODE_BRRD;
 		spi_write_then_read(flash->spi, flash->command, 1, &val, 1);
 		if (val != enable << 7) {
-			dev_warn(&flash->spi->dev, "fallback to 3-byte address mode\n");
-			dev_warn(&flash->spi->dev, "maximum accessible size is 16MB\n");
+			dev_warn(&flash->spi->dev,
+				 "fallback to 3-byte address mode\n");
+			dev_warn(&flash->spi->dev,
+				 "maximum accessible size is 16MB\n");
 			flash->addr_width = 3;
 		}
 		return ret;
