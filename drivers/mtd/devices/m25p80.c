@@ -87,6 +87,7 @@ struct m25p {
 	u8			erase_opcode;
 	u8			*command;
 	bool			fast_read;
+	u32			jedec_id;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -1087,6 +1088,7 @@ static int m25p_probe(struct spi_device *spi)
 	if (info->flags & M25P_NO_ERASE)
 		flash->mtd.flags |= MTD_NO_ERASE;
 
+	flash->jedec_id = info->jedec_id;
 	ppdata.of_node = spi->dev.of_node;
 	flash->mtd.dev.parent = &spi->dev;
 	flash->page_size = info->page_size;
