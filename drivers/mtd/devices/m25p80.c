@@ -92,6 +92,7 @@ struct m25p {
 	u8			*command;
 	bool			fast_read;
 	u32			jedec_id;
+	bool			check_fsr;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -218,15 +219,21 @@ static inline int set_4byte(struct m25p *flash, u32 jedec_id, int enable)
 static int wait_till_ready(struct m25p *flash)
 {
 	unsigned long deadline;
-	int sr;
+	int sr, fsr;
 
 	deadline = jiffies + MAX_READY_WAIT_JIFFIES;
 
 	do {
 		if ((sr = read_sr(flash)) < 0)
 			break;
-		else if (!(sr & SR_WIP))
+		else if (!(sr & SR_WIP)) {
+			if (flash->check_fsr) {
+				fsr = read_fsr(flash);
+				if (!(fsr & FSR_RDY))
+					return 1;
+			}
 			return 0;
+		}
 
 		cond_resched();
 
@@ -1109,6 +1116,9 @@ static int m25p_probe(struct spi_device *spi)
 
 	if (info->flags & M25P_NO_ERASE)
 		flash->mtd.flags |= MTD_NO_ERASE;
+
+	if (info->flags & E_FSR)
+		flash->check_fsr = 1;
 
 	flash->jedec_id = info->jedec_id;
 	ppdata.of_node = spi->dev.of_node;
