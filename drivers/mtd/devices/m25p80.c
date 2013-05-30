@@ -47,6 +47,7 @@
 #define	OPCODE_CHIP_ERASE	0xc7	/* Erase whole flash chip */
 #define	OPCODE_SE		0xd8	/* Sector erase (usually 64KiB) */
 #define	OPCODE_RDID		0x9f	/* Read JEDEC ID */
+#define OPCODE_RDFSR		0x70	/* Read Flag Status Register */
 
 /* Used for SST flashes only. */
 #define	OPCODE_BP		0x02	/* Byte program */
@@ -70,6 +71,9 @@
 #define	SR_BP2			0x10	/* Block protect 2 */
 #define	SR_SRWD			0x80	/* SR write protect */
 
+/* Flag Status Register bits. */
+#define FSR_RDY			0x80	/* Ready/Busy program erase
+					controller */
 /* Define max times to check status register before we give up. */
 #define	MAX_READY_WAIT_JIFFIES	(480 * HZ) /* N25Q specs 480s max chip erase */
 #define	MAX_CMD_SIZE		5
@@ -102,25 +106,43 @@ static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
  */
 
 /*
+ * Read register, returning its value in the location
+ * Returns negative if error occurred.
+ */
+static inline int read_spi_reg(struct m25p *flash, u8 code, const char *name)
+{
+	ssize_t retval;
+	u8 val;
+
+	retval = spi_write_then_read(flash->spi, &code, 1, &val, 1);
+
+	if (retval < 0) {
+		dev_err(&flash->spi->dev, "error %d reading %s\n",
+				(int) retval, name);
+		return retval;
+	}
+
+	return val;
+}
+
+/*
+ * Read flag status register, returning its value in the location
+ * Return flag status register value.
+ * Returns negative if error occurred.
+ */
+static int read_fsr(struct m25p *flash)
+{
+	return read_spi_reg(flash, OPCODE_RDFSR, "FSR");
+}
+
+/*
  * Read the status register, returning its value in the location
  * Return the status register value.
  * Returns negative if error occurred.
  */
 static int read_sr(struct m25p *flash)
 {
-	ssize_t retval;
-	u8 code = OPCODE_RDSR;
-	u8 val;
-
-	retval = spi_write_then_read(flash->spi, &code, 1, &val, 1);
-
-	if (retval < 0) {
-		dev_err(&flash->spi->dev, "error %d reading SR\n",
-				(int) retval);
-		return retval;
-	}
-
-	return val;
+	return read_spi_reg(flash, OPCODE_RDSR, "SR");
 }
 
 /*
