@@ -30,6 +30,7 @@
  */
 #define XSPI_CR_OFFSET		0x60	/* Control Register */
 
+#define XSPI_CR_LOOP		0x01
 #define XSPI_CR_ENABLE		0x02
 #define XSPI_CR_MASTER_MODE	0x04
 #define XSPI_CR_CPOL		0x08
@@ -360,7 +361,7 @@ struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 	struct spi_master *master;
 	struct xilinx_spi *xspi;
 	int ret;
-	int num = 1;
+	u32 tmp;
 
 	master = spi_alloc_master(dev, sizeof(struct xilinx_spi));
 	if (!master)
@@ -397,11 +398,20 @@ struct spi_master *xilinx_spi_init(struct device *dev, struct resource *mem,
 	xspi->mem = *mem;
 	xspi->irq = irq;
 
-	/* Run time endian checking */
-	if (*(char *)&num == 1) {
-		xspi->read_fn = xspi_read32;
-		xspi->write_fn = xspi_write32;
-	} else {
+	/*
+	 * Detect endianess on the IP via loop bit in CR. Detection
+	 * must be done before reset is sent because incorrect reset
+	 * value generates error interrupt.
+	 * Setup little endian helper functions first and try to use them
+	 * and check if bit was correctly setup or not.
+	 */
+	xspi->read_fn = xspi_read32;
+	xspi->write_fn = xspi_write32;
+
+	xspi->write_fn(XSPI_CR_LOOP, xspi->regs + XSPI_CR_OFFSET);
+	tmp = xspi->read_fn(xspi->regs + XSPI_CR_OFFSET);
+	tmp &= XSPI_CR_LOOP;
+	if (tmp != XSPI_CR_LOOP) {
 		xspi->read_fn = xspi_read32_be;
 		xspi->write_fn = xspi_write32_be;
 	}
