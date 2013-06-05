@@ -57,7 +57,7 @@
 		};
 
 		uart@e0001000 {
-			compatible = "xlnx,ps7-uart-1.00.a";
+			compatible = "xlnx,ps7-uart-1.00.a", "xlnx,xuartps";
 			reg = <0xe0001000 0x1000>;
 			interrupts = <0 50 4>;
 			interrupt-parent = <&gic>;
