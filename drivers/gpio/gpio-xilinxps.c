@@ -603,8 +603,7 @@ static int xgpiops_probe(struct platform_device *pdev)
 	chip->ngpio = XGPIOPS_NR_GPIOS;
 	chip->can_sleep = 0;
 
-	/* FIXME Setup 0 instead of 256 when PCIe is fixed */
-	gpio->irq_base = irq_alloc_descs(-1, 256, chip->ngpio, 0);
+	gpio->irq_base = irq_alloc_descs(-1, 0, chip->ngpio, 0);
 	if (gpio->irq_base < 0) {
 		dev_err(&pdev->dev, "Couldn't allocate IRQ numbers\n");
 		ret = -ENODEV;
