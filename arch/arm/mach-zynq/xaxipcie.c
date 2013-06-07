@@ -39,10 +39,9 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/sizes.h>
-
+#include <linux/irqdomain.h>
 #include <linux/pci.h>
 #include <asm/mach/pci.h>
-#include "common.h"
 
 /* Register definitions */
 #define PCIE_CFG_CMD			0x00000004
@@ -179,7 +178,10 @@ static int last_bus_on_record;
 static resource_size_t isa_mem_base;
 
 #ifdef CONFIG_PCI_MSI
-unsigned long xaxipcie_msg_addr;
+static int xaxipcie_msi_irq_base;
+
+int xaxipcie_alloc_msi_irqdescs(struct device_node *node,
+				unsigned long msg_addr);
 #endif
 
 /**
@@ -743,7 +745,7 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
 			port->base_addr_remap + XAXIPCIE_REG_RPIFR1);
 #ifdef CONFIG_PCI_MSI
 		/* Handle MSI Interrupt */
-		if (msi_data >= IRQ_XILINX_MSI_0)
+		if (msi_data >= xaxipcie_msi_irq_base)
 			generic_handle_irq(msi_data);
 #endif
 	}
@@ -794,6 +796,9 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 	u32 val = 0;
 	void __iomem *base_addr_remap = NULL;
 	int err = 0;
+#ifdef CONFIG_PCI_MSI
+	unsigned long xaxipcie_msg_addr;
+#endif
 
 	base_addr_remap = ioremap(port->reg_base, port->reg_len);
 	if (!base_addr_remap)
@@ -815,6 +820,14 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 
 	writel(xaxipcie_msg_addr, port->base_addr_remap +
 				XAXIPCIE_REG_MSIBASE2);
+
+	xaxipcie_msi_irq_base = xaxipcie_alloc_msi_irqdescs(port->node,
+					xaxipcie_msg_addr);
+	if (xaxipcie_msi_irq_base < 0) {
+		pr_err("%s: Couldn't allocate MSI IRQ numbers\n",
+					 __func__);
+		return -ENODEV;
+	}
 #endif
 
 	/* make sure link is up */

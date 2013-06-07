@@ -55,6 +55,4 @@ static inline int zynq_pm_late_init(void)
 extern unsigned int zynq_sys_suspend_sz;
 int zynq_sys_suspend(void __iomem *ddrc_base, void __iomem *slcr_base);
 
-#define IRQ_XILINX_MSI_0       128
-
 #endif
