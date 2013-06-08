@@ -984,6 +984,7 @@ static void xemacps_reset_hw(struct net_local *lp)
 
 	/* Disable all interrupts */
 	xemacps_write(lp->baseaddr, XEMACPS_IDR_OFFSET, ~0UL);
+	synchronize_irq(lp->ndev->irq);
 	regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 }
