@@ -1483,6 +1483,12 @@ static int xemacps_descriptor_init(struct net_local *lp)
 	u32 new_skb_baddr;
 	u32 i;
 	struct xemacps_bd *cur_p;
+	u32 regval;
+
+	lp->tx_skb = NULL;
+	lp->rx_skb = NULL;
+	lp->rx_bd = NULL;
+	lp->tx_bd = NULL;
 
 	/* Reset the indexes which are used for accessing the BDs */
 	lp->tx_bd_ci = 0;
@@ -1498,6 +1504,10 @@ static int xemacps_descriptor_init(struct net_local *lp)
 	if (!lp->rx_skb)
 		goto err_out;
 
+	/*
+	 * Set up RX buffer descriptors.
+	 */
+
 	size = XEMACPS_RECV_BD_CNT * sizeof(struct xemacps_bd);
 	lp->rx_bd = dma_alloc_coherent(&lp->pdev->dev, size,
 			&lp->rx_bd_dma, GFP_KERNEL);
@@ -1506,11 +1516,10 @@ static int xemacps_descriptor_init(struct net_local *lp)
 	dev_dbg(&lp->pdev->dev, "RX ring %d bytes at 0x%x mapped %p\n",
 			size, lp->rx_bd_dma, lp->rx_bd);
 
-	memset(lp->rx_bd, 0, sizeof(*lp->rx_bd) * XEMACPS_RECV_BD_CNT);
 	for (i = 0; i < XEMACPS_RECV_BD_CNT; i++) {
 		cur_p = &lp->rx_bd[i];
-		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
 
+		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
 		if (new_skb == NULL) {
 			dev_err(&lp->ndev->dev, "alloc_skb error %d\n", i);
 			goto err_out;
@@ -1521,17 +1530,23 @@ static int xemacps_descriptor_init(struct net_local *lp)
 							new_skb->data,
 							XEMACPS_RX_BUF_SIZE,
 							DMA_FROM_DEVICE);
-		cur_p->addr = (cur_p->addr & ~XEMACPS_RXBUF_ADD_MASK)
-					| (new_skb_baddr);
+
+		/* set wrap bit for last BD */
+		regval = (new_skb_baddr & XEMACPS_RXBUF_ADD_MASK);
+		if (i == XEMACPS_RECV_BD_CNT - 1)
+			regval |= XEMACPS_RXBUF_WRAP_MASK;
+		cur_p->addr = regval;
+		cur_p->ctrl = 0;
+		wmb();
+
 		lp->rx_skb[i].skb = new_skb;
 		lp->rx_skb[i].mapping = new_skb_baddr;
 		lp->rx_skb[i].len = XEMACPS_RX_BUF_SIZE;
-		wmb();
 	}
-	cur_p = &lp->rx_bd[XEMACPS_RECV_BD_CNT - 1];
-	/* wrap bit set for last BD, bdptr is moved to last here */
-	cur_p->ctrl = 0;
-	cur_p->addr |= XEMACPS_RXBUF_WRAP_MASK;
+
+	/*
+	 * Set up TX buffer descriptors.
+	 */
 
 	size = XEMACPS_SEND_BD_CNT * sizeof(struct xemacps_bd);
 	lp->tx_bd = dma_alloc_coherent(&lp->pdev->dev, size,
@@ -1541,24 +1556,18 @@ static int xemacps_descriptor_init(struct net_local *lp)
 	dev_dbg(&lp->pdev->dev, "TX ring %d bytes at 0x%x mapped %p\n",
 			size, lp->tx_bd_dma, lp->tx_bd);
 
-	memset(lp->tx_bd, 0, sizeof(*lp->tx_bd) * XEMACPS_SEND_BD_CNT);
 	for (i = 0; i < XEMACPS_SEND_BD_CNT; i++) {
 		cur_p = &lp->tx_bd[i];
-		cur_p->ctrl = XEMACPS_TXBUF_USED_MASK;
-	}
-	cur_p = &lp->tx_bd[XEMACPS_SEND_BD_CNT - 1];
-	/* wrap bit set for last BD, bdptr is moved to last here */
-	cur_p->ctrl = (XEMACPS_TXBUF_WRAP_MASK | XEMACPS_TXBUF_USED_MASK);
-	lp->tx_bd_freecnt = XEMACPS_SEND_BD_CNT;
-
-
-	for (i = 0; i < XEMACPS_RECV_BD_CNT; i++) {
-		cur_p = &lp->rx_bd[i];
-		cur_p->ctrl = 0;
-		/* Assign ownership back to hardware */
-		cur_p->addr &= (~XEMACPS_RXBUF_NEW_MASK);
+		/* set wrap bit for last BD */
+		cur_p->addr = 0;
+		regval = XEMACPS_TXBUF_USED_MASK;
+		if (i == XEMACPS_SEND_BD_CNT - 1)
+			regval |= XEMACPS_TXBUF_WRAP_MASK;
+		cur_p->ctrl = regval;
 	}
 	wmb();
+
+	lp->tx_bd_freecnt = XEMACPS_SEND_BD_CNT;
 
 	dev_dbg(&lp->pdev->dev,
 		"lp->tx_bd %p lp->tx_bd_dma %p lp->tx_skb %p\n",
@@ -1573,8 +1582,6 @@ err_out:
 	xemacps_descriptor_free(lp);
 	return -ENOMEM;
 }
-
-
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 /*
