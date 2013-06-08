@@ -1886,16 +1886,16 @@ static int xemacps_close(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
 
-	del_timer(&(lp->gen_purpose_timer));
+	del_timer_sync(&(lp->gen_purpose_timer));
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	netif_carrier_off(ndev);
-	xemacps_reset_hw(lp);
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
 	if (lp->gmii2rgmii_phy_node)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
+	xemacps_reset_hw(lp);
 	mdelay(500);
 	xemacps_descriptor_free(lp);
 
