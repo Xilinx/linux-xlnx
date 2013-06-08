@@ -2754,7 +2754,7 @@ err_out:
  *
  * return: 0 on success
  */
-static int __exit xemacps_remove(struct platform_device *pdev)
+static int xemacps_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct net_local *lp;
