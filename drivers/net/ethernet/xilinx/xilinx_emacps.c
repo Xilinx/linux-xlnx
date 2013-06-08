@@ -2012,7 +2012,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
 	spin_lock_bh(&lp->tx_lock);
 
-	if (nr_frags >= lp->tx_bd_freecnt) {
+	if (nr_frags > lp->tx_bd_freecnt) {
 		netif_stop_queue(ndev); /* stop send queue */
 		spin_unlock_bh(&lp->tx_lock);
 		return NETDEV_TX_BUSY;
