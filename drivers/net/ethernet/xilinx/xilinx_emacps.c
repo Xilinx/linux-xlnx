@@ -15,12 +15,6 @@
  * TODO:
  * 1. JUMBO frame is not enabled per EPs spec. Please update it if this
  *    support is added in and set MAX_MTU to 9000.
- * 2. For PEEP boards the Linux PHY driver state machine is not used. Hence
- *    no autonegotiation happens for PEEP. The speed of 100 Mbps is used and
- *    it is fixed. The speed cannot be changed to 10 Mbps or 1000 Mbps. However
- *    for Zynq there is no such issue and it can work at all 3 speeds after
- *    autonegotiation.
- * 3. The SLCR clock divisors are hard coded for PEEP board.
  */
 
 #include <linux/module.h>
@@ -469,14 +463,9 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_GMII2RGMII_SPEED100		BMCR_SPEED100
 #define XEMACPS_GMII2RGMII_REG_NUM			0x10
 
-#define BOARD_TYPE_ZYNQ			0x01
-#define BOARD_TYPE_PEEP			0x02
-
-
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 #define NS_PER_SEC			1000000000ULL /* Nanoseconds per
 							second */
-#define PEEP_TSU_CLK			50000000ULL /* PTP TSU CLOCK */
 #endif
 
 #define xemacps_read(base, reg)						\
