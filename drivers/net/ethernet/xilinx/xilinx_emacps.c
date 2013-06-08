@@ -1830,9 +1830,10 @@ static int xemacps_open(struct net_device *ndev)
 		return rc;
 	}
 
-	rc = pm_runtime_get(&lp->pdev->dev);
+	rc = pm_runtime_get_sync(&lp->pdev->dev);
 	if (rc < 0) {
-		dev_err(&lp->pdev->dev, "pm_runtime_get() failed, rc %d\n", rc);
+		dev_err(&lp->pdev->dev,
+			"pm_runtime_get_sync() failed, rc %d\n", rc);
 		goto err_free_rings;
 	}
 
