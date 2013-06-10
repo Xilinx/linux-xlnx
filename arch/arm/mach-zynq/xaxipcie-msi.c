@@ -39,13 +39,13 @@ static int xaxipcie_msi_irq_base;
 /* Dynamic irq allocate and deallocation */
 
 /**
-* create_irq- Dynamic irq allocate
-* void
-*
-* @return: Interrupt number allocated/ error
-*
-* @note: None
-*/
+ * create_irq- Dynamic irq allocate
+ * void
+ *
+ * @return: Interrupt number allocated/ error
+ *
+ * @note: None
+ */
 int create_irq(void)
 {
 	int irq, pos;
@@ -65,13 +65,13 @@ again:
 }
 
 /**
-* destroy_irq- Dynamic irq de-allocate
-* @irq: Interrupt number to de-allocate
-*
-* @return: None
-*
-* @note: None
-*/
+ * destroy_irq- Dynamic irq de-allocate
+ * @irq: Interrupt number to de-allocate
+ *
+ * @return: None
+ *
+ * @note: None
+ */
 void destroy_irq(unsigned int irq)
 {
 	int pos = irq - xaxipcie_msi_irq_base;
@@ -82,26 +82,26 @@ void destroy_irq(unsigned int irq)
 }
 
 /**
-* arch_teardown_msi_irq-Teardown the Interrupt
-* @irq: Interrupt number to teardown
-*
-* @return: None
-*
-* @note: This function  is called when pci_disable_msi is called
-*/
+ * arch_teardown_msi_irq-Teardown the Interrupt
+ * @irq: Interrupt number to teardown
+ *
+ * @return: None
+ *
+ * @note: This function  is called when pci_disable_msi is called
+ */
 void arch_teardown_msi_irq(unsigned int irq)
 {
 	destroy_irq(irq);
 }
 
 /**
-* xilinx_msi_nop-No operation handler
-* @irq: Interrupt number
-*
-* @return: None
-*
-* @note: None
-*/
+ * xilinx_msi_nop-No operation handler
+ * @irq: Interrupt number
+ *
+ * @return: None
+ *
+ * @note: None
+ */
 static void xilinx_msi_nop(struct irq_data *d)
 {
 	return;
@@ -117,14 +117,14 @@ static struct irq_chip xilinx_msi_chip = {
 };
 
 /**
-* arch_setup_msi_irq-Setup MSI interrupt
-* @pdev: Pointer to current pci device structure
-* @desc: Pointer to MSI description structure
-*
-* @return: Error/ no-error
-*
-* @note: This function  is called when pci_enable_msi is called
-*/
+ * arch_setup_msi_irq-Setup MSI interrupt
+ * @pdev: Pointer to current pci device structure
+ * @desc: Pointer to MSI description structure
+ *
+ * @return: Error/ no-error
+ *
+ * @note: This function  is called when pci_enable_msi is called
+ */
 int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
 	int irq = create_irq();
