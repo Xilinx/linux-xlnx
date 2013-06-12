@@ -326,6 +326,13 @@ config EDAC_TILE
 	  Support for error detection and correction on the
 	  Tilera memory controller.
 
+config EDAC_ZYNQ
+	tristate "ZYNQ DDR Memory Controller"
+	depends on EDAC_MM_EDAC && ARCH_ZYNQ
+	help
+	  This enables support for EDAC on the ECC memory used
+	  with the ZYNQ DDR memory controller.
+
 config EDAC_HIGHBANK_MC
 	tristate "Highbank Memory Controller"
 	depends on EDAC_MM_EDAC && ARCH_HIGHBANK
