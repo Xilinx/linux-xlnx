@@ -581,7 +581,7 @@
 			videomode = "1920x1080";
 			edid {
 				preffered-videomode = <1>;
-				display-data = <1>;
+				display-data = <0>;
 			};
 		};
 
