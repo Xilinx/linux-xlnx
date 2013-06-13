@@ -59,6 +59,8 @@ config MB_REMOTEPROC
 	depends on ARCH_ZYNQ
 	depends on EXPERIMENTAL
 	depends on HAS_DMA
+	select GPIO_XILINX
+	select REMOTEPROC
 	select RPMSG
 	default m
 	help
