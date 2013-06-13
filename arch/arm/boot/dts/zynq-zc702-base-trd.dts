@@ -574,7 +574,7 @@
 			//0-EXT; 1-ZynqPS; 2-logiCLK; 3-SI570
 			pixel-clock-source = <3>;
 			pixel-data-invert = <0>;
-			pixel-clock-active-high = <0>;
+			pixel-clock-active-high = <1>;
 			pixel-component-format = "ARGB";
 			pixel-component-layer = <0>,<1>,<2>;
 			active-layer = <0>;
