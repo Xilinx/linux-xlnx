@@ -223,9 +223,11 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&local->mylist.list);
 
 	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
-	do {
-		res = platform_get_resource(pdev, IORESOURCE_IRQ, count++);
-		if (!res)
+	while (1) {
+		int irq;
+
+		irq = platform_get_irq(pdev, count++);
+		if (irq == -ENXIO)
 			break;
 
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
@@ -235,7 +237,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 			goto irq_fault;
 		}
 
-		tmp->irq = res->start;
+		tmp->irq = irq;
 
 		dev_dbg(&pdev->dev, "%d: Alloc irq: %d\n", count, tmp->irq);
 
@@ -257,7 +259,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		 */
 		gic_set_cpu(1, tmp->irq);
 		list_add(&(tmp->list), &(local->mylist.list));
-	} while (res);
+	}
 
 	/* Allocate free IPI number */
 	of_prop = of_get_property(pdev->dev.of_node, "ipino", NULL);
