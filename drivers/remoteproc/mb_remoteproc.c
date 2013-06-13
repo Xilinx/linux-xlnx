@@ -40,15 +40,8 @@
 /* Module parameter */
 static char *firmware;
 
-/* Structure for storing IRQs */
-struct irq_list {
-	int irq;
-	struct list_head list;
-};
-
 /* Private data */
 struct mb_rproc_pdata {
-	struct irq_list mylist;
 	struct rproc *rproc;
 	u32 mem_start;
 	u32 mem_end;
@@ -111,33 +104,16 @@ static irqreturn_t mb_remoteproc_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void clear_irq(struct platform_device *pdev)
-{
-	struct list_head *pos, *q;
-	struct irq_list *tmp;
-	struct mb_rproc_pdata *local = platform_get_drvdata(pdev);
-
-	dev_info(&pdev->dev, "Deleting the irq_list\n");
-	list_for_each_safe(pos, q, &local->mylist.list) {
-		tmp = list_entry(pos, struct irq_list, list);
-		free_irq(tmp->irq, &pdev->dev);
-		list_del(pos);
-		kfree(tmp);
-	}
-}
-
 static int mb_remoteproc_probe(struct platform_device *pdev)
 {
 	const unsigned char *prop;
 	const void *of_prop;
 	struct resource *res; /* IO mem resources */
 	int ret = 0;
-	struct irq_list *tmp;
 	int count = 0;
 	struct mb_rproc_pdata *local;
 
-
-	local = kzalloc(sizeof(struct mb_rproc_pdata), GFP_KERNEL);
+	local = devm_kzalloc(&pdev->dev, sizeof(*local), GFP_KERNEL);
 	if (!local) {
 		dev_err(&pdev->dev, "Unable to alloc private data\n");
 		return -ENOMEM;
@@ -170,55 +146,40 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	/* Init list for IRQs - it can be long list */
-	INIT_LIST_HEAD(&local->mylist.list);
-
 	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
-	do {
-		res = platform_get_resource(pdev, IORESOURCE_IRQ, count++);
-		if (!res)
-			break;
-
-		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
-		if (!tmp) {
-			dev_err(&pdev->dev, "Unable to alloc irq list\n");
-			ret = -ENOMEM;
-			goto irq_fault;
-		}
-
-		tmp->irq = res->start;
-
-		dev_info(&pdev->dev, "%d: Alloc irq: %d\n", count, tmp->irq);
-
+	while (1) {
+		int irq;
 		/* Allocating shared IRQs will ensure that any module will
 		 * use these IRQs */
-		ret = request_irq(tmp->irq, mb_remoteproc_interrupt, 0,
-					dev_name(&pdev->dev), &pdev->dev);
+		irq = platform_get_irq(pdev, count++);
+		if (irq == -ENXIO)
+			break;
+		ret = devm_request_irq(&pdev->dev, irq, mb_remoteproc_interrupt,
+				       0, dev_name(&pdev->dev), &pdev->dev);
 		if (ret) {
-			dev_err(&pdev->dev, "IRQ %d already allocated\n",
-								tmp->irq);
-			goto irq_fault;
+			dev_err(&pdev->dev, "IRQ %d already allocated\n", irq);
+			return ret;
 		}
 
-		list_add(&(tmp->list), &(local->mylist.list));
-	} while (res);
+		dev_info(&pdev->dev, "%d: Alloc irq: %d\n", count, irq);
+	}
 
 	of_prop = of_get_property(pdev->dev.of_node, "reset-gpio", NULL);
 	if (!of_prop) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
-		goto irq_fault;
+		return of_prop;
 	}
 
 	local->gpio_reset_addr = ioremap(be32_to_cpup(of_prop), 0x1000);
 	if (!local->gpio_reset_addr) {
 		dev_err(&pdev->dev, "Reset GPIO ioremap failed\n");
-		goto irq_fault;
+		return local->gpio_reset_addr;
 	}
 
 	of_prop = of_get_property(pdev->dev.of_node, "reset-gpio-pin", NULL);
 	if (!of_prop) {
 		dev_err(&pdev->dev, "Please specify cpu number\n");
-		goto irq_fault;
+		return of_prop;
 	}
 	local->reset_gpio_pin = be32_to_cpup(of_prop);
 
@@ -253,10 +214,7 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 rproc_fault:
 	rproc_put(local->rproc);
 
-irq_fault:
-	clear_irq(pdev);
-
-	return ret;
+	return -ENODEV;
 }
 
 static int mb_remoteproc_remove(struct platform_device *pdev)
@@ -266,8 +224,6 @@ static int mb_remoteproc_remove(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s\n", __func__);
 
 	dma_release_declared_memory(&pdev->dev);
-
-	clear_irq(pdev);
 
 	rproc_del(local->rproc);
 	rproc_put(local->rproc);
