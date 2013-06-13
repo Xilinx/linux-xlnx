@@ -483,7 +483,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 58 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x0>;
 			};
@@ -504,7 +504,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 57 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x1>;
 			};
@@ -513,7 +513,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 56 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x1>;
 			};
