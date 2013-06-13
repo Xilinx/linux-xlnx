@@ -37,8 +37,6 @@
 
 #include "remoteproc_internal.h"
 
-extern int __cpuinit zynq_cpun_start(u32 address, int cpu);
-
 /* Module parameter */
 static char *firmware;
 
