@@ -316,7 +316,7 @@ static int zynq_pll_enable(struct clk_hw *hw)
 	reg = readl(clk->pll_ctrl);
 	reg &= ~(PLLCTRL_RESET_MASK | PLLCTRL_PWRDWN_MASK);
 	writel(reg, clk->pll_ctrl);
-	while (readl(clk->pll_status) & (1 << clk->lockbit))
+	while (!(readl(clk->pll_status) & (1 << clk->lockbit)))
 		;
 
 	reg = readl(clk->pll_ctrl);
