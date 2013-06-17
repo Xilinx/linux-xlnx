@@ -444,9 +444,8 @@ static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 	}
 
 	if (!loop) {
-		pr_debug("Cannot stop channel %x: %x\n",
-			(unsigned int)chan,
-			vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
+		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
+			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
 		chan->err = 1;
 	}
 
@@ -470,9 +469,8 @@ static void xilinx_vdma_start(struct xilinx_vdma_chan *chan)
 	}
 
 	if (!loop) {
-		pr_debug("Cannot start channel %x: %x\n",
-			(unsigned int)chan,
-			vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
+		dev_err(chan->dev, "Cannot start channel %p: %x\n",
+			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
 
 		chan->err = 1;
 	}
