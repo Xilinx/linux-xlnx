@@ -1864,7 +1864,7 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 		goto failed0;
 	}
 
-	dev_set_drvdata(&pdev->dev, drvdata);
+	platform_set_drvdata(pdev, drvdata);
 
 	if (!request_mem_region(regs_res->start,
 				regs_res->end - regs_res->start + 1,
@@ -2030,7 +2030,7 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 	struct xdevcfg_drvdata *drvdata;
 	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	drvdata = dev_get_drvdata(&pdev->dev);
+	drvdata = platform_get_drvdata(pdev);
 
 	if (!drvdata)
 		return -ENODEV;
@@ -2050,7 +2050,6 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 	clk_unprepare(drvdata->clk);
 	clk_put(drvdata->clk);
 	kfree(drvdata);
-	dev_set_drvdata(&pdev->dev, NULL);
 
 	return 0;		/* Success */
 }

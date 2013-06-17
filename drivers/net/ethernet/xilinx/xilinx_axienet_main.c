@@ -1531,7 +1531,7 @@ static int axienet_of_probe(struct platform_device *op)
 		return -ENOMEM;
 
 	ether_setup(ndev);
-	dev_set_drvdata(&op->dev, ndev);
+	platform_set_drvdata(op, ndev);
 
 	SET_NETDEV_DEV(ndev, &op->dev);
 	ndev->flags &= ~IFF_MULTICAST;  /* clear multicast */
@@ -1670,7 +1670,7 @@ nodev:
 
 static int axienet_of_remove(struct platform_device *op)
 {
-	struct net_device *ndev = dev_get_drvdata(&op->dev);
+	struct net_device *ndev = platform_get_drvdata(op);
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	axienet_mdio_teardown(lp);
@@ -1679,8 +1679,6 @@ static int axienet_of_remove(struct platform_device *op)
 	if (lp->phy_node)
 		of_node_put(lp->phy_node);
 	lp->phy_node = NULL;
-
-	dev_set_drvdata(&op->dev, NULL);
 
 	iounmap(lp->regs);
 	if (lp->dma_regs)

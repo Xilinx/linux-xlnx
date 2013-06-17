@@ -357,7 +357,6 @@ err_map:
 
 err_region:
 	kfree(drvdata);
-	dev_set_drvdata(dev, NULL);
 
 	return rc;
 }
@@ -394,7 +393,6 @@ static int xilinxfb_release(struct device *dev)
 #endif
 
 	kfree(drvdata);
-	dev_set_drvdata(dev, NULL);
 
 	return 0;
 }
@@ -477,7 +475,7 @@ static int xilinxfb_of_probe(struct platform_device *op)
 	if (of_find_property(op->dev.of_node, "rotate-display", NULL))
 		pdata.rotate_screen = 1;
 
-	dev_set_drvdata(&op->dev, drvdata);
+	platform_get_drvdata(op, drvdata);
 	return xilinxfb_assign(&op->dev, drvdata, res.start, &pdata);
 
  err:

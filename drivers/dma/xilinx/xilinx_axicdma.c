@@ -1028,7 +1028,7 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	xdev->common.device_tx_status = xilinx_tx_status;
 	xdev->common.dev = &op->dev;
 
-	dev_set_drvdata(&op->dev, xdev);
+	platform_set_drvdata(op, xdev);
 
 	for_each_child_of_node(node, child) {
 		xilinx_cdma_chan_probe(xdev, child, xdev->feature);
@@ -1050,7 +1050,7 @@ static int xilinx_cdma_of_remove(struct platform_device *op)
 	struct xilinx_cdma_device *xdev;
 	int i;
 
-	xdev = dev_get_drvdata(&op->dev);
+	xdev = platform_get_drvdata(op);
 	dma_async_device_unregister(&xdev->common);
 
 	for (i = 0; i < XILINX_CDMA_MAX_CHANS_PER_DEVICE; i++) {
@@ -1059,7 +1059,6 @@ static int xilinx_cdma_of_remove(struct platform_device *op)
 	}
 
 	iounmap(xdev->regs);
-	dev_set_drvdata(&op->dev, NULL);
 	kfree(xdev);
 
 	return 0;

@@ -1279,7 +1279,6 @@ static int xemaclite_of_remove(struct platform_device *of_dev)
 	release_mem_region(ndev->mem_start, ndev->mem_end-ndev->mem_start + 1);
 
 	xemaclite_remove_ndev(ndev);
-	dev_set_drvdata(dev, NULL);
 
 	return 0;
 }
