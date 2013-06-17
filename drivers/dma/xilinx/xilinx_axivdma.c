@@ -662,32 +662,27 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 {
 	struct xilinx_vdma_chan *chan = data;
-	u32 stat, reg;
+	u32 status;
 
-	reg = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
+	/* Disable all interrupts. */
+	vdma_ctrl_clr(chan, XILINX_VDMA_REG_DMACR,
+		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
-	/* Disable intr */
-	vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR,
-			reg & ~XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
-
-	stat = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR);
-	if (!(stat & XILINX_VDMA_DMAXR_ALL_IRQ_MASK))
+	/* Read the status and ack the interrupts. */
+	status = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR);
+	if (!(status & XILINX_VDMA_DMAXR_ALL_IRQ_MASK))
 		return IRQ_NONE;
 
-	/* Ack the interrupts */
 	vdma_ctrl_write(chan, XILINX_VDMA_REG_DMASR,
-			XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
+			status & XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
-	/* Check for only the interrupts which are enabled */
-	stat &= (reg & XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
-
-	if (stat & XILINX_VDMA_DMASR_ERR_IRQ) {
+	if (status & XILINX_VDMA_DMASR_ERR_IRQ) {
 		if (chan->flush_fsync) {
 			/*
 			 * VDMA Recoverable Errors, only when
 			 * C_FLUSH_ON_FSYNC is enabled
 			 */
-			u32 error = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR)
+			u32 error = status
 				  & XILINX_VDMA_DMAXR_ERR_RECOVER_MASK;
 			if (error)
 				vdma_ctrl_write(chan, XILINX_VDMA_REG_DMASR, error);
@@ -695,23 +690,23 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 				chan->err = 1;
 		} else {
 			dev_err(chan->dev,
-				"Channel %x has errors %x, cdr %x tdr %x\n",
-				(unsigned int)chan,
-				vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR),
+				"Channel %p has errors %x, cdr %x tdr %x\n",
+				chan, status,
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_CURDESC),
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_TAILDESC));
 			chan->err = 1;
 		}
 	}
 
-	/*
-	 * Device takes too long to do the transfer when user requires
-	 * responsiveness
-	 */
-	if (stat & XILINX_VDMA_DMASR_DLY_CNT_IRQ)
+	if (status & XILINX_VDMA_DMASR_DLY_CNT_IRQ) {
+		/*
+		 * Device takes too long to do the transfer when user requires
+		 * responsiveness.
+		 */
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
+	}
 
-	if (stat & XILINX_VDMA_DMASR_FRM_CNT_IRQ) {
+	if (status & XILINX_VDMA_DMASR_FRM_CNT_IRQ) {
 		xilinx_vdma_complete_descriptor(chan);
 		xilinx_vdma_start_transfer(chan);
 	}
