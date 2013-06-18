@@ -95,6 +95,9 @@ struct m25p {
 	u16			curbank;
 	u32			jedec_id;
 	bool			check_fsr;
+	bool			shift;
+	bool			isparallel;
+	bool			isstacked;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -257,13 +260,16 @@ static int write_ear(struct m25p *flash, u32 addr)
 	if (wait_till_ready(flash))
 		return 1;
 
-	if (flash->mtd.size <= 0x1000000)
+	if (flash->mtd.size <= (0x1000000) << flash->shift)
 		return 0;
 
 	addr = addr % (u32) flash->mtd.size;
 	ear = addr >> 24;
 
-	if (ear == flash->curbank)
+	if ((!flash->isstacked) && (ear == flash->curbank))
+		return 0;
+
+	if (flash->isstacked && (flash->mtd.size <= 0x2000000))
 		return 0;
 
 	if (JEDEC_MFR(flash->jedec_id) == 0x01)
@@ -297,6 +303,9 @@ static int erase_chip(struct m25p *flash)
 	if (wait_till_ready(flash))
 		return 1;
 
+	if (flash->isstacked)
+		flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+
 	/* Send write enable, then erase commands. */
 	write_enable(flash);
 
@@ -304,6 +313,22 @@ static int erase_chip(struct m25p *flash)
 	flash->command[0] = OPCODE_CHIP_ERASE;
 
 	spi_write(flash->spi, flash->command, 1);
+
+	if (flash->isstacked) {
+		/* Wait until finished previous write command. */
+		if (wait_till_ready(flash))
+			return 1;
+
+		flash->spi->master->flags |= SPI_MASTER_U_PAGE;
+
+		/* Send write enable, then erase commands. */
+		write_enable(flash);
+
+		/* Set up command buffer. */
+		flash->command[0] = OPCODE_CHIP_ERASE;
+
+		spi_write(flash->spi, flash->command, 1);
+	}
 
 	return 0;
 }
@@ -366,7 +391,7 @@ static int erase_sector(struct m25p *flash, u32 offset)
 static int m25p80_erase(struct mtd_info *mtd, struct erase_info *instr)
 {
 	struct m25p *flash = mtd_to_m25p(mtd);
-	u32 addr,len;
+	u32 addr, len, offset;
 	uint32_t rem;
 
 	pr_debug("%s: %s at 0x%llx, len %lld\n", dev_name(&flash->spi->dev),
@@ -398,7 +423,19 @@ static int m25p80_erase(struct mtd_info *mtd, struct erase_info *instr)
 	/* "sector"-at-a-time erase */
 	} else {
 		while (len) {
-			if (erase_sector(flash, addr)) {
+			offset = addr;
+			if (flash->isparallel == 1)
+				offset /= 2;
+			if (flash->isstacked == 1) {
+				if (offset >= (flash->mtd.size / 2)) {
+					offset = offset - (flash->mtd.size / 2);
+					flash->spi->master->flags |=
+							SPI_MASTER_U_PAGE;
+				} else
+					flash->spi->master->flags &=
+							~SPI_MASTER_U_PAGE;
+			}
+			if (erase_sector(flash, offset)) {
 				instr->state = MTD_ERASE_FAILED;
 				mutex_unlock(&flash->lock);
 				return -EIO;
@@ -487,10 +524,20 @@ static int m25p80_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	mutex_lock(&flash->lock);
 
 	while (len) {
-		bank = addr/OFFSET_16_MB;
-		rem_bank_len = (OFFSET_16_MB * (bank + 1)) - addr;
+		bank = addr / (OFFSET_16_MB << flash->shift);
+		rem_bank_len = ((OFFSET_16_MB << flash->shift) * (bank + 1)) -
+				addr;
 		offset = addr;
-
+		if (flash->isparallel == 1)
+			offset /= 2;
+		if (flash->isstacked == 1) {
+			if (offset >= (flash->mtd.size / 2)) {
+				offset = offset - (flash->mtd.size / 2);
+				flash->spi->master->flags |= SPI_MASTER_U_PAGE;
+			} else {
+				flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			}
+		}
 		write_ear(flash, offset);
 		if (len < rem_bank_len)
 			read_len = len;
@@ -574,7 +621,10 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 				page_size = flash->page_size;
 
 			/* write the next page to flash */
-			m25p_addr2cmd(flash, to + i, flash->command);
+			if (flash->isparallel)
+				m25p_addr2cmd(flash, to + i/2, flash->command);
+			else
+				m25p_addr2cmd(flash, to + i, flash->command);
 
 			t[1].tx_buf = buf + i;
 			t[1].len = page_size;
@@ -609,10 +659,21 @@ static int m25p80_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 
 	mutex_lock(&flash->lock);
 	while (len) {
-		bank = addr/OFFSET_16_MB;
-		rem_bank_len =  (OFFSET_16_MB * (bank + 1)) - addr;
+		bank = addr / (OFFSET_16_MB << flash->shift);
+		rem_bank_len = ((OFFSET_16_MB << flash->shift) * (bank + 1)) -
+				addr;
 		offset = addr;
 
+		if (flash->isparallel == 1)
+			offset /= 2;
+		if (flash->isstacked == 1) {
+			if (offset >= (flash->mtd.size / 2)) {
+				offset = offset - (flash->mtd.size / 2);
+				flash->spi->master->flags |= SPI_MASTER_U_PAGE;
+			} else {
+				flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			}
+		}
 		write_ear(flash, offset);
 		if (len < rem_bank_len)
 			write_len = len;
@@ -1172,36 +1233,45 @@ static int m25p_probe(struct spi_device *spi)
 	flash->mtd.flags = MTD_CAP_NORFLASH;
 	flash->mtd.size = info->sector_size * info->n_sectors;
 
-#ifdef CONFIG_SPI_XILINX_PS_QSPI
 	{
-		const unsigned int *prop;
-		const struct device_node *np;
-
-		/* for Zynq, two devices (dual) QSPI (seperate bus) is supported
-		 * in which there can be two devices that appear as one to s/w
-		 * the only way to tell this mode is from the qspi controller
-		 * and if it's used, then the memory is x2 the amount
-		 */
+		struct device_node *np;
+		const char *comp_str;
+		static int is_dual;
 		np = of_get_next_parent(spi->dev.of_node);
-		prop = of_get_property(np, "is-dual", NULL);
-		if (prop) {
-			if (be32_to_cpup(prop)) {
-				info->sector_size *= 2;
-				flash->mtd.size *= 2;
-				/* This hack bypass the 4 byte mode configuration for the
-				 * qspi flash chip. It sets mtd to 4 byte mode but leave
-				 * the qspi flash in 3 byte mode (or flash default mode).
-				 * This can be issue when two 32MB flash is configured as
-				 * dual mode, it will not work if the qspi flash chip
-				 * is configured in 3 byte mode as it require 4 byte
-				 * addressing to access the entire 32MB
-				 */
-				if (flash->mtd.size > 0x1000000)
-					info->addr_width = 4;
+		of_property_read_string(np, "compatible", &comp_str);
+		if (!strcmp(comp_str, "xlnx,ps7-qspi-1.00.a")) {
+			if (of_property_read_u32(np, "is-dual", &is_dual) < 0) {
+				/* Default to single if prop not defined */
+				flash->shift = 0;
+				flash->isstacked = 0;
+				flash->isparallel = 0;
+			} else {
+				if (is_dual == 1) {
+					/* dual parallel */
+					flash->shift = 1;
+					info->sector_size <<= flash->shift;
+					info->page_size <<= flash->shift;
+					flash->mtd.size <<= flash->shift;
+					flash->isparallel = 1;
+					flash->isstacked = 0;
+				} else {
+#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+					/* dual stacked */
+					flash->shift = 0;
+					flash->mtd.size <<= 1;
+					flash->isstacked = 1;
+					flash->isparallel = 0;
+#else
+					/* single */
+					flash->shift = 0;
+					flash->isstacked = 0;
+					flash->isparallel = 0;
+#endif
+				}
 			}
 		}
 	}
-#endif
+
 	flash->mtd._erase = m25p80_erase;
 	flash->mtd._read = m25p80_read_ext;
 
@@ -1220,10 +1290,10 @@ static int m25p_probe(struct spi_device *spi)
 	/* prefer "small sector" erase if possible */
 	if (info->flags & SECT_4K) {
 		flash->erase_opcode = OPCODE_BE_4K;
-		flash->mtd.erasesize = 4096;
+		flash->mtd.erasesize = 4096 << flash->shift;
 	} else if (info->flags & SECT_32K) {
 		flash->erase_opcode = OPCODE_BE_32K;
-		flash->mtd.erasesize = 32768;
+		flash->mtd.erasesize = 32768 << flash->shift;
 	} else {
 		flash->erase_opcode = OPCODE_SE;
 		flash->mtd.erasesize = info->sector_size;
