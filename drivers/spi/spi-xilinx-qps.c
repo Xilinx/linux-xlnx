@@ -188,7 +188,7 @@ struct xqspips {
 	u8 dev_busy;
 	struct completion done;
 	bool is_inst;
-	bool is_dual;
+	u32 is_dual;
 };
 
 /**
@@ -282,7 +282,13 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 			 XQSPIPS_LCFG_SEP_BUS_MASK |
 			 (1 << XQSPIPS_LCFG_DUMMY_SHIFT) |
 			 XQSPIPS_FAST_READ_QOUT_CODE));
-
+#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+	/* Enable two memories on shared bus */
+	xqspips_write(regs_base + XQSPIPS_LINEAR_CFG_OFFSET,
+		 (XQSPIPS_LCFG_TWO_MEM_MASK |
+		 (1 << XQSPIPS_LCFG_DUMMY_SHIFT) |
+		 XQSPIPS_FAST_READ_QOUT_CODE));
+#endif
 	xqspips_write(regs_base + XQSPIPS_ENABLE_OFFSET,
 			XQSPIPS_ENABLE_ENABLE_MASK);
 }
@@ -624,31 +630,6 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 
 		curr_inst = &flash_inst[index];
 
-		/* In case of dual memories, convert 25 bit address to 24 bit
-		 * address before transmitting to the 2 memories
-		 */
-		if ((xqspi->is_dual == 1) &&
-		    ((instruction == XQSPIPS_FLASH_OPCODE_PP) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_SE) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_BE_32K) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_BE_4K) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_BE) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_NORM_READ) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_FAST_READ) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_DUAL_READ) ||
-		     (instruction == XQSPIPS_FLASH_OPCODE_QUAD_READ))) {
-
-			u8 *ptr = (u8 *) (xqspi->txbuf);
-			data = ((u32) ptr[1] << 24) | ((u32) ptr[2] << 16) |
-				((u32) ptr[3] << 8) | ((u32) ptr[4]);
-			data = data >> 1;
-			ptr[1] = (u8) (data >> 16);
-			ptr[2] = (u8) (data >> 8);
-			ptr[3] = (u8) (data);
-			xqspi->bytes_to_transfer -= 1;
-			xqspi->bytes_to_receive -= 1;
-		}
-
 		/* Get the instruction */
 		data = 0;
 		xqspips_copy_write_data(xqspi, &data,
@@ -698,6 +679,9 @@ static void xqspips_work_queue(struct work_struct *work)
 {
 	struct xqspips *xqspi = container_of(work, struct xqspips, work);
 	unsigned long flags;
+#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+	u32 lqspi_cfg_reg;
+#endif
 
 	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
 	xqspi->dev_busy = 1;
@@ -723,6 +707,18 @@ static void xqspips_work_queue(struct work_struct *work)
 		list_del_init(&msg->queue);
 		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
 		qspi = msg->spi;
+
+#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+		lqspi_cfg_reg = xqspips_read(xqspi->regs +
+					XQSPIPS_LINEAR_CFG_OFFSET);
+		if (qspi->master->flags & SPI_MASTER_U_PAGE)
+			lqspi_cfg_reg |= XQSPIPS_LCFG_U_PAGE_MASK;
+		else {
+			lqspi_cfg_reg &= ~XQSPIPS_LCFG_U_PAGE_MASK;
+			xqspips_write(xqspi->regs + XQSPIPS_LINEAR_CFG_OFFSET,
+					lqspi_cfg_reg);
+		}
+#endif
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 			if (transfer->bits_per_word || transfer->speed_hz) {
@@ -1063,10 +1059,7 @@ static int xqspips_probe(struct platform_device *dev)
 		goto unmap_io;
 	}
 
-	prop = of_get_property(dev->dev.of_node, "is-dual", NULL);
-	if (prop)
-		xqspi->is_dual = be32_to_cpup(prop);
-	else
+	if (of_property_read_u32(dev->dev.of_node, "is-dual", &xqspi->is_dual))
 		dev_warn(&dev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 

@@ -460,6 +460,14 @@ config SPI_XILINX_PS_QSPI
 	help
 	  This selects the PS Quad SPI controller master driver from the Xilinx.
 
+config SPI_XILINX_PS_QSPI_DUAL_STACKED
+	bool "Xilinx PS QSPI Dual stacked configuration"
+	depends on SPI_XILINX_PS_QSPI
+	help
+	  This selects the PS Quad SPI controller in dual stacked mode.
+	  Enable this option if your hw design is using dual stacked
+	  configuration.
+
 config SPI_XILINX_PS_SPI
 	tristate "Xilinx PS SPI controller"
 	depends on ARCH_ZYNQ
