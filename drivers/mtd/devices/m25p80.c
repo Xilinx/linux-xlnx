@@ -1182,8 +1182,17 @@ static int m25p_probe(struct spi_device *spi)
 	else {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 		if (flash->mtd.size > 0x1000000) {
-			flash->addr_width = 4;
-			set_4byte(flash, info->jedec_id, 1);
+			struct device_node *np;
+			const char *comp_str;
+			np = of_get_next_parent(spi->dev.of_node);
+			of_property_read_string(np, "compatible", &comp_str);
+			if (!strcmp(comp_str, "xlnx,ps7-qspi-1.00.a")) {
+				flash->addr_width = 3;
+				set_4byte(flash, info->jedec_id, 0);
+			} else {
+				flash->addr_width = 4;
+				set_4byte(flash, info->jedec_id, 1);
+			}
 		} else
 			flash->addr_width = 3;
 	}
