@@ -667,6 +667,7 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 		return -ETIMEDOUT;
 	}
 
+	chan->err = 0;
 	return 0;
 }
 
@@ -753,8 +754,6 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 */
 		if (xilinx_vdma_reset(chan))
 			return -EBUSY;
-
-		chan->err = 0;
 	}
 
 	spin_lock_irqsave(&chan->lock, flags);
