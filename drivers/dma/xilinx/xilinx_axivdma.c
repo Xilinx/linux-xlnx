@@ -447,8 +447,8 @@ static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 
 	/* Wait for the hardware to halt */
 	while (loop) {
-		if (!(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR)
-		      & XILINX_VDMA_DMACR_RUNSTOP))
+		if (vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR)
+		    & XILINX_VDMA_DMASR_HALTED)
 			break;
 
 		loop -= 1;
@@ -456,7 +456,7 @@ static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 
 	if (!loop) {
 		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
-			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
+			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR));
 		chan->err = 1;
 	}
 
@@ -472,8 +472,8 @@ static void xilinx_vdma_start(struct xilinx_vdma_chan *chan)
 
 	/* Wait for the hardware to start */
 	while (loop) {
-		if (vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR)
-		    & XILINX_VDMA_DMACR_RUNSTOP)
+		if (!(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR)
+		      & XILINX_VDMA_DMASR_HALTED))
 			break;
 
 		loop -= 1;
@@ -481,7 +481,7 @@ static void xilinx_vdma_start(struct xilinx_vdma_chan *chan)
 
 	if (!loop) {
 		dev_err(chan->dev, "Cannot start channel %p: %x\n",
-			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR));
+			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR));
 
 		chan->err = 1;
 	}
