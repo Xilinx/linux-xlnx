@@ -310,11 +310,11 @@ static int erase_chip(struct m25p *flash)
 
 static void m25p_addr2cmd(struct m25p *flash, unsigned int addr, u8 *cmd)
 {
+	int i;
+
 	/* opcode is in cmd[0] */
-	cmd[1] = addr >> (flash->addr_width * 8 -  8);
-	cmd[2] = addr >> (flash->addr_width * 8 - 16);
-	cmd[3] = addr >> (flash->addr_width * 8 - 24);
-	cmd[4] = addr >> (flash->addr_width * 8 - 32);
+	for (i = 1; i <= flash->addr_width; i++)
+		cmd[i] = addr >> (flash->addr_width * 8 - i * 8);
 }
 
 static int m25p_cmdsz(struct m25p *flash)
