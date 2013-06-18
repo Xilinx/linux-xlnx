@@ -67,6 +67,7 @@
 #define XILINX_VDMA_DMASR_DELAY_SHIFT		24
 #define XILINX_VDMA_DMASR_FRAME_COUNT_MASK	(0xff << 16)
 #define XILINX_VDMA_DMASR_FRAME_COUNT_SHIFT	16
+#define XILINX_VDMA_DMASR_EOL_LATE_ERR		(1 << 15)
 #define XILINX_VDMA_DMASR_ERR_IRQ		(1 << 14)
 #define XILINX_VDMA_DMASR_DLY_CNT_IRQ		(1 << 13)
 #define XILINX_VDMA_DMASR_FRM_CNT_IRQ		(1 << 12)
@@ -111,12 +112,22 @@
 #define XILINX_VDMA_DMAXR_ALL_IRQ_MASK		(XILINX_VDMA_DMASR_FRM_CNT_IRQ | \
 						 XILINX_VDMA_DMASR_DLY_CNT_IRQ | \
 						 XILINX_VDMA_DMASR_ERR_IRQ)
+
+#define XILINX_VDMA_DMASR_ALL_ERR_MASK		(XILINX_VDMA_DMASR_EOL_LATE_ERR | \
+						 XILINX_VDMA_DMASR_SOF_LATE_ERR | \
+						 XILINX_VDMA_DMASR_SG_DEC_ERR | \
+						 XILINX_VDMA_DMASR_SG_SLV_ERR | \
+						 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
+						 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
+						 XILINX_VDMA_DMASR_DMA_DEC_ERR | \
+						 XILINX_VDMA_DMASR_DMA_SLAVE_ERR | \
+						 XILINX_VDMA_DMASR_DMA_INT_ERR)
 /*
  * Recoverable errors are DMA Internal error, SOF Early, EOF Early and SOF Late.
  * They are only recoverable only when C_FLUSH_ON_FSYNC is enabled in the
  * hardware system.
  */
-#define XILINX_VDMA_DMAXR_ERR_RECOVER_MASK	(XILINX_VDMA_DMASR_SOF_LATE_ERR | \
+#define XILINX_VDMA_DMASR_ERR_RECOVER_MASK	(XILINX_VDMA_DMASR_SOF_LATE_ERR | \
 						 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
 						 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
 						 XILINX_VDMA_DMASR_DMA_INT_ERR)
@@ -677,21 +688,22 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 			status & XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
 	if (status & XILINX_VDMA_DMASR_ERR_IRQ) {
-		if (chan->flush_fsync) {
-			/*
-			 * VDMA Recoverable Errors, only when
-			 * C_FLUSH_ON_FSYNC is enabled
-			 */
-			u32 error = status
-				  & XILINX_VDMA_DMAXR_ERR_RECOVER_MASK;
-			if (error)
-				vdma_ctrl_write(chan, XILINX_VDMA_REG_DMASR, error);
-			else
-				chan->err = 1;
-		} else {
+		/*
+		 * An error occurred. If C_FLUSH_ON_FSYNC is enabled and the
+		 * error is recoverable, ignore it. Otherwise flag the error.
+		 *
+		 * Only recoverable errors can be cleared in the DMASR register,
+		 * make sure not to write to other error bits to 1.
+		 */
+		u32 errors = status & XILINX_VDMA_DMASR_ALL_ERR_MASK;
+		vdma_ctrl_write(chan, XILINX_VDMA_REG_DMASR,
+				errors & XILINX_VDMA_DMASR_ERR_RECOVER_MASK);
+
+		if (!chan->flush_fsync ||
+		    (errors & ~XILINX_VDMA_DMASR_ERR_RECOVER_MASK)) {
 			dev_err(chan->dev,
 				"Channel %p has errors %x, cdr %x tdr %x\n",
-				chan, status,
+				chan, errors,
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_CURDESC),
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_TAILDESC));
 			chan->err = 1;
