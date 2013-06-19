@@ -698,6 +698,7 @@ struct flash_info {
 #define	SECT_4K		0x01		/* OPCODE_BE_4K works uniformly */
 #define	M25P_NO_ERASE	0x02		/* No erase command needed */
 #define	SECT_32K	0x04		/* OPCODE_BE_32K */
+#define E_FSR		0x08		/* Flag SR exists for flash */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -776,13 +777,13 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "n25q256a", INFO(0x20ba19, 0, 64 * 1024, 512, SECT_4K) },
 	/* Numonyx flash n25q128 - FIXME check the name */
 	{ "n25q128",   INFO(0x20bb18, 0, 64 * 1024, 256, 0) },
-	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, 0) },
-	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, 0) },
-	{ "n25q256a13", INFO(0x20ba19,  0, 64 * 1024,  512, SECT_4K) },
-	{ "n25q256a11", INFO(0x20bb19,  0, 64 * 1024,  512, SECT_4K) },
-	{ "n25q512a13", INFO(0x20ba20,  0, 64 * 1024,  1024, SECT_4K) },
-	{ "n25q512a11", INFO(0x20bb20,  0, 64 * 1024,  1024, SECT_4K) },
-	{ "n25q00aa13", INFO(0x20ba21,  0, 64 * 1024,  2048, SECT_4K) },
+	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, E_FSR) },
+	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, E_FSR) },
+	{ "n25q256a13", INFO(0x20ba19,  0, 64 * 1024,  512, SECT_4K | E_FSR) },
+	{ "n25q256a11", INFO(0x20bb19,  0, 64 * 1024,  512, SECT_4K | E_FSR) },
+	{ "n25q512a13", INFO(0x20ba20,  0, 64 * 1024,  1024, SECT_4K | E_FSR) },
+	{ "n25q512a11", INFO(0x20bb20,  0, 64 * 1024,  1024, SECT_4K | E_FSR) },
+	{ "n25q00aa13", INFO(0x20ba21,  0, 64 * 1024,  2048, SECT_4K | E_FSR) },
 
 	/* Spansion -- single (large) sector size only, at least
 	 * for the chips listed here (without boot sectors).
