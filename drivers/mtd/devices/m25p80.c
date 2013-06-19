@@ -1234,6 +1234,7 @@ static int m25p_probe(struct spi_device *spi)
 	flash->mtd.size = info->sector_size * info->n_sectors;
 
 	{
+#ifdef CONFIG_OF
 		struct device_node *np;
 		const char *comp_str;
 		static int is_dual;
@@ -1270,6 +1271,12 @@ static int m25p_probe(struct spi_device *spi)
 				}
 			}
 		}
+#else
+		/* Default to single */
+		flash->shift = 0;
+		flash->isstacked = 0;
+		flash->isparallel = 0;
+#endif
 	}
 
 	flash->mtd._erase = m25p80_erase;
