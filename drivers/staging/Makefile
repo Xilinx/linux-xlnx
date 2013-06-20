@@ -64,3 +64,4 @@ obj-$(CONFIG_GOLDFISH)		+= goldfish/
 obj-$(CONFIG_USB_DWC2)		+= dwc2/
 obj-$(CONFIG_XILINX_VIDEO_IP)	+= video/axivdma/
 obj-$(CONFIG_VIDEO_IMAGEON)	+= video/imageon/
+obj-$(CONFIG_XILINX_APF)	+= apf/
