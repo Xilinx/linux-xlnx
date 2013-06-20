@@ -1,0 +1,17 @@
+#
+# APF driver configuration
+#
+
+menuconfig XILINX_APF
+	tristate "Xilinx APF Accelerator driver"
+	depends on ARCH_ZYNQ || ARCH_ZYNQMP
+	default n
+	help
+	  Select if you want to include APF accelerator driver
+
+config XILINX_DMA_APF
+	bool "Xilinx APF DMA engines support"
+	depends on XILINX_APF
+	select DMA_ENGINE
+	help
+	  Enable support for the Xilinx APF DMA controllers.
