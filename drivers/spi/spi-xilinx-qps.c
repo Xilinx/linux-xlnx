@@ -540,7 +540,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 
 			data = xqspips_read(xqspi->regs + XQSPIPS_RXD_OFFSET);
 
-			if (xqspi->bytes_to_receive < 4)
+			if (xqspi->bytes_to_receive < 4 && !xqspi->is_dual)
 				xqspips_copy_read_data(xqspi, data,
 					xqspi->bytes_to_receive);
 			else
@@ -552,11 +552,16 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 				/* There is more data to send */
 				xqspips_fill_tx_fifo(xqspi);
 			} else {
+				int tmp;
+				tmp = xqspi->bytes_to_transfer;
 				xqspips_copy_write_data(xqspi, &data,
 					xqspi->bytes_to_transfer);
-				xqspips_write(xqspi->regs +
-					offset[xqspi->bytes_to_transfer],
-					data);
+				if (xqspi->is_dual)
+					xqspips_write(xqspi->regs +
+						XQSPIPS_TXD_00_00_OFFSET, data);
+				else
+					xqspips_write(xqspi->regs +
+						offset[tmp - 1], data);
 			}
 			xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 					XQSPIPS_IXR_ALL_MASK);
@@ -618,6 +623,7 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 	if (xqspi->txbuf)
 		instruction = *(u8 *)xqspi->txbuf;
 
+	INIT_COMPLETION(xqspi->done);
 	if (instruction && xqspi->is_inst) {
 		for (index = 0 ; index < ARRAY_SIZE(flash_inst); index++)
 			if (instruction == flash_inst[index].opcode)
@@ -645,7 +651,6 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 	}
 
 xfer_data:
-	INIT_COMPLETION(xqspi->done);
 	/* In case of Fast, Dual and Quad reads, transmit the instruction first.
 	 * Address and dummy byte will be transmitted in interrupt handler,
 	 * after instruction is transmitted */
