@@ -1333,6 +1333,7 @@ static int m25p_probe(struct spi_device *spi)
 	else {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 		if (flash->mtd.size > 0x1000000) {
+#ifdef CONFIG_OF
 			struct device_node *np;
 			const char *comp_str;
 			np = of_get_next_parent(spi->dev.of_node);
@@ -1341,9 +1342,12 @@ static int m25p_probe(struct spi_device *spi)
 				flash->addr_width = 3;
 				set_4byte(flash, info->jedec_id, 0);
 			} else {
+#endif
 				flash->addr_width = 4;
 				set_4byte(flash, info->jedec_id, 1);
+#ifdef CONFIG_OF
 			}
+#endif
 		} else
 			flash->addr_width = 3;
 	}
