@@ -1235,9 +1235,8 @@ static int m25p_probe(struct spi_device *spi)
 
 	{
 #ifdef CONFIG_OF
-		struct device_node *np;
 		const char *comp_str;
-		static int is_dual;
+		u32 is_dual;
 		np = of_get_next_parent(spi->dev.of_node);
 		of_property_read_string(np, "compatible", &comp_str);
 		if (!strcmp(comp_str, "xlnx,ps7-qspi-1.00.a")) {
@@ -1334,7 +1333,6 @@ static int m25p_probe(struct spi_device *spi)
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 		if (flash->mtd.size > 0x1000000) {
 #ifdef CONFIG_OF
-			struct device_node *np;
 			const char *comp_str;
 			np = of_get_next_parent(spi->dev.of_node);
 			of_property_read_string(np, "compatible", &comp_str);
