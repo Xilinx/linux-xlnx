@@ -2055,11 +2055,12 @@ module_init(xslcr_arch_init);
  */
 void zynq_slcr_cpu_start(int cpu)
 {
-	/* enable CPUn */
-	writel(SLCR_A9_CPU_CLKSTOP << cpu,
-	       zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
-	/* enable CLK for CPUn */
-	writel(0x0 << cpu, zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+	u32 reg = readl(zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+
+	reg &= ~(SLCR_A9_CPU_RST << cpu);
+	writel(reg, zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+	reg &= ~(SLCR_A9_CPU_CLKSTOP << cpu);
+	writel(reg, zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
 }
 
 /**
@@ -2068,9 +2069,9 @@ void zynq_slcr_cpu_start(int cpu)
  */
 void zynq_slcr_cpu_stop(int cpu)
 {
-	/* stop CLK and reset CPUn */
-	writel((SLCR_A9_CPU_CLKSTOP | SLCR_A9_CPU_RST) << cpu,
-	       zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+	u32 reg = readl(zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
+	reg |= (SLCR_A9_CPU_CLKSTOP | SLCR_A9_CPU_RST) << cpu;
+	writel(reg, zynq_slcr_base + SLCR_A9_CPU_RST_CTRL);
 }
 
 /**
