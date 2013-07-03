@@ -1154,7 +1154,7 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
 		dst_nents = sg_count(req->dst, req->cryptlen, &dst_chained);
 
 	sgc = dma_map_sg_chained(jrdev, req->assoc, assoc_nents ? : 1,
-				 DMA_BIDIRECTIONAL, assoc_chained);
+				 DMA_TO_DEVICE, assoc_chained);
 	if (likely(req->src == req->dst)) {
 		sgc = dma_map_sg_chained(jrdev, req->src, src_nents ? : 1,
 					 DMA_BIDIRECTIONAL, src_chained);
@@ -1336,7 +1336,7 @@ static struct aead_edesc *aead_giv_edesc_alloc(struct aead_givcrypt_request
 		dst_nents = sg_count(req->dst, req->cryptlen, &dst_chained);
 
 	sgc = dma_map_sg_chained(jrdev, req->assoc, assoc_nents ? : 1,
-				 DMA_BIDIRECTIONAL, assoc_chained);
+				 DMA_TO_DEVICE, assoc_chained);
 	if (likely(req->src == req->dst)) {
 		sgc = dma_map_sg_chained(jrdev, req->src, src_nents ? : 1,
 					 DMA_BIDIRECTIONAL, src_chained);
@@ -1693,6 +1693,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha224),cbc(aes))",
 		.driver_name = "authenc-hmac-sha224-cbc-aes-caam",
 		.blocksize = AES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,
@@ -1732,6 +1733,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha384),cbc(aes))",
 		.driver_name = "authenc-hmac-sha384-cbc-aes-caam",
 		.blocksize = AES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,
@@ -1810,6 +1812,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha224),cbc(des3_ede))",
 		.driver_name = "authenc-hmac-sha224-cbc-des3_ede-caam",
 		.blocksize = DES3_EDE_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,
@@ -1849,6 +1852,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha384),cbc(des3_ede))",
 		.driver_name = "authenc-hmac-sha384-cbc-des3_ede-caam",
 		.blocksize = DES3_EDE_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,
@@ -1926,6 +1930,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha224),cbc(des))",
 		.driver_name = "authenc-hmac-sha224-cbc-des-caam",
 		.blocksize = DES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,
@@ -1965,6 +1970,7 @@ static struct caam_alg_template driver_algs[] = {
 		.name = "authenc(hmac(sha384),cbc(des))",
 		.driver_name = "authenc-hmac-sha384-cbc-des-caam",
 		.blocksize = DES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_AEAD,
 		.template_aead = {
 			.setkey = aead_setkey,
 			.setauthsize = aead_setauthsize,

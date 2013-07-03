@@ -179,8 +179,6 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 
 		wait_for_completion_timeout(&ha->mbx_intr_comp, mcp->tov * HZ);
 
-		clear_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags);
-
 	} else {
 		ql_dbg(ql_dbg_mbx, vha, 0x1011,
 		    "Cmd=%x Polling Mode.\n", command);
@@ -4113,7 +4111,6 @@ qla2x00_loopback_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq,
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
-	uint32_t iter_cnt = 0x1;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x10f7,
 	    "Entered %s.\n", __func__);
@@ -4139,8 +4136,8 @@ qla2x00_loopback_test(scsi_qla_host_t *vha, struct msg_echo_lb *mreq,
 	mcp->mb[7] = MSW(MSD(mreq->rcv_dma));
 
 	/* Iteration count */
-	mcp->mb[18] = LSW(iter_cnt);
-	mcp->mb[19] = MSW(iter_cnt);
+	mcp->mb[18] = LSW(mreq->iteration_count);
+	mcp->mb[19] = MSW(mreq->iteration_count);
 
 	mcp->out_mb = MBX_21|MBX_20|MBX_19|MBX_18|MBX_17|MBX_16|MBX_15|
 	    MBX_14|MBX_13|MBX_12|MBX_11|MBX_10|MBX_7|MBX_6|MBX_1|MBX_0;
@@ -4518,7 +4515,8 @@ qla2x00_get_thermal_temp(scsi_qla_host_t *vha, uint16_t *temp)
 			goto done;
 
 		ql_log(ql_log_warn, vha, 0x10c9,
-		    "Thermal not supported by I2C.\n");
+		    "Thermal not supported through I2C bus, trying alternate "
+		    "method (ISP access).\n");
 		ha->thermal_support &= ~THERMAL_SUPPORT_I2C;
 	}
 
@@ -4528,7 +4526,7 @@ qla2x00_get_thermal_temp(scsi_qla_host_t *vha, uint16_t *temp)
 			goto done;
 
 		ql_log(ql_log_warn, vha, 0x1019,
-		    "Thermal not supported by ISP.\n");
+		    "Thermal not supported through ISP.\n");
 		ha->thermal_support &= ~THERMAL_SUPPORT_ISP;
 	}
 

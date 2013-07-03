@@ -121,8 +121,8 @@ static int psbfb_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	unsigned long address;
 	int ret;
 	unsigned long pfn;
-	/* FIXME: assumes fb at stolen base which may not be true */
-	unsigned long phys_addr = (unsigned long)dev_priv->stolen_base;
+	unsigned long phys_addr = (unsigned long)dev_priv->stolen_base +
+				  psbfb->gtt->offset;
 
 	page_num = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 	address = (unsigned long)vmf->virtual_address - (vmf->pgoff << PAGE_SHIFT);
@@ -431,7 +431,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	fbdev->psb_fb_helper.fbdev = info;
 
 	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
-	strcpy(info->fix.id, "psbfb");
+	strcpy(info->fix.id, "psbdrmfb");
 
 	info->flags = FBINFO_DEFAULT;
 	if (dev_priv->ops->accel_2d && pitch_lines > 8)	/* 2D engine */
@@ -772,8 +772,8 @@ void psb_modeset_init(struct drm_device *dev)
 	for (i = 0; i < dev_priv->num_pipe; i++)
 		psb_intel_crtc_init(dev, i, mode_dev);
 
-	dev->mode_config.max_width = 2048;
-	dev->mode_config.max_height = 2048;
+	dev->mode_config.max_width = 4096;
+	dev->mode_config.max_height = 4096;
 
 	psb_setup_outputs(dev);
 

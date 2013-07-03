@@ -631,7 +631,7 @@ static void dr_controller_run(struct xusbps_udc *udc)
 {
 	u32 temp;
 
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc->gadget)) {
 		/* Enable DR irq reg except suspend interrupt */
 		temp = USB_INTR_INT_EN | USB_INTR_ERR_INT_EN
@@ -1570,7 +1570,7 @@ static int reset_queues(struct xusbps_udc *udc)
 	return 0;
 }
 
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 /*----------------------------------------------------------------
  * OTG Related changes
  *--------------------------------------------------------------*/
@@ -1640,7 +1640,7 @@ static int xusbps_udc_start(struct usb_gadget *g,
 	udc_controller->gadget.dev.driver = &driver->driver;
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc_controller->gadget)) {
 		retval = otg_set_peripheral(udc_controller->transceiver->otg,
 				&udc_controller->gadget);
@@ -1719,7 +1719,7 @@ static int xusbps_udc_stop(struct usb_gadget *g,
 		nuke(loop_ep, -ESHUTDOWN);
 	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc_controller->gadget)) {
 		udc_controller->xotg->start_peripheral = NULL;
 		udc_controller->xotg->stop_peripheral = NULL;
@@ -1939,7 +1939,7 @@ static void setup_received_irq(struct xusbps_udc *udc,
 				break;
 			else if (setup->bRequest == USB_DEVICE_B_HNP_ENABLE) {
 				udc->gadget.b_hnp_enable = 1;
-#ifdef	CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 				if (!udc->xotg->otg.otg->default_a)
 					udc->xotg->hsm.b_hnp_enable = 1;
 #endif
@@ -2232,7 +2232,7 @@ static void suspend_irq(struct xusbps_udc *udc)
 	udc->resume_state = udc->usb_state;
 	udc->usb_state = USB_STATE_SUSPENDED;
 
-#ifdef	CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc->gadget)) {
 		if (udc->xotg->otg.otg->default_a) {
 			udc->xotg->hsm.b_bus_suspend = 1;
@@ -2327,14 +2327,14 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	u32 irq_src, otg_sts;
 	irqreturn_t status = IRQ_NONE;
 	unsigned long flags;
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	unsigned long temp;
 #endif
 
 	/* Disable ISR for OTG host mode */
 	if (udc->stopped)
 		return IRQ_NONE;
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc->gadget)) {
 		/* A-device */
 		if (udc->transceiver->otg->default_a &&
@@ -2407,7 +2407,7 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	/* Reset Received */
 	if (irq_src & USB_STS_RESET) {
 		reset_irq(udc);
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 		if (gadget_is_otg(&udc->gadget)) {
 			/* Clear any previous suspend status bit */
 			temp = xusbps_readl(&dr_regs->usbsts);
@@ -2834,7 +2834,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_kfree;
 	}
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (pdata->otg) {
 		udc_controller->transceiver = pdata->otg;
 		udc_controller->xotg =
@@ -2880,7 +2880,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 
 	/* initialize usb hw reg except for regs for EP,
 	 * leave usbintr reg untouched */
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	if (!pdata->otg)
 		dr_controller_setup(udc_controller);
 #else
@@ -2893,7 +2893,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	udc_controller->gadget.ep0 = &udc_controller->eps[0].ep;
 	INIT_LIST_HEAD(&udc_controller->gadget.ep_list);
 	udc_controller->gadget.name = driver_name;
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 	udc_controller->gadget.is_otg = (pdata->otg != NULL);
 #endif
 

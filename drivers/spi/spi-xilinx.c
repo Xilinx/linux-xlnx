@@ -290,10 +290,10 @@ static int xilinx_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 		xilinx_spi_fill_tx_fifo(xspi);
 
 		/* Start the transfer by not inhibiting the transmitter any
-		 *longer
+		 * longer
 		 */
 		cr = xspi->read_fn(xspi->regs + XSPI_CR_OFFSET) &
-			~XSPI_CR_TRANS_INHIBIT;
+							~XSPI_CR_TRANS_INHIBIT;
 		xspi->write_fn(cr, xspi->regs + XSPI_CR_OFFSET);
 
 		wait_for_completion(&xspi->done);
@@ -305,7 +305,7 @@ static int xilinx_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 		 */
 		cr = xspi->read_fn(xspi->regs + XSPI_CR_OFFSET);
 		xspi->write_fn(cr | XSPI_CR_TRANS_INHIBIT,
-			xspi->regs + XSPI_CR_OFFSET);
+			       xspi->regs + XSPI_CR_OFFSET);
 
 		/* Read out all the data from the Rx FIFO */
 		sr = xspi->read_fn(xspi->regs + XSPI_SR_OFFSET);

@@ -610,8 +610,6 @@ void ndisc_send_rs(struct net_device *dev, const struct in6_addr *saddr,
 		}
 	}
 #endif
-	if (!dev->addr_len)
-		send_sllao = 0;
 	if (send_sllao)
 		optlen += ndisc_opt_addr_space(dev);
 
@@ -1495,7 +1493,7 @@ void ndisc_send_redirect(struct sk_buff *skb, const struct in6_addr *target)
 	 */
 
 	if (ha)
-		ndisc_fill_addr_option(skb, ND_OPT_TARGET_LL_ADDR, ha);
+		ndisc_fill_addr_option(buff, ND_OPT_TARGET_LL_ADDR, ha);
 
 	/*
 	 *	build redirect option and copy skb over to the new packet.

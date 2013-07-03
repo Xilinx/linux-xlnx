@@ -781,6 +781,8 @@ finish_tlb_load_47x:
 	 */
 	DEBUG_CRIT_EXCEPTION
 
+interrupt_end:
+
 /*
  * Global functions
  */

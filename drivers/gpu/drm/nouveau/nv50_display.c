@@ -1554,7 +1554,9 @@ nv50_dac_detect(struct drm_encoder *encoder, struct drm_connector *connector)
 {
 	struct nv50_disp *disp = nv50_disp(encoder->dev);
 	int ret, or = nouveau_encoder(encoder)->or;
-	u32 load = 0;
+	u32 load = nouveau_drm(encoder->dev)->vbios.dactestval;
+	if (load == 0)
+		load = 340;
 
 	ret = nv_exec(disp->core, NV50_DISP_DAC_LOAD + or, &load, sizeof(load));
 	if (ret || load != 7)
@@ -2174,6 +2176,7 @@ int
 nv50_display_create(struct drm_device *dev)
 {
 	static const u16 oclass[] = {
+		NVF0_DISP_CLASS,
 		NVE0_DISP_CLASS,
 		NVD0_DISP_CLASS,
 		NVA3_DISP_CLASS,

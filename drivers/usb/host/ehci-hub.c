@@ -464,7 +464,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	while (i--) {
 		temp = ehci_readl(ehci, &ehci->regs->port_status [i]);
 		if (test_bit(i, &resume_needed)) {
-			temp &= ~(PORT_RWC_BITS | PORT_RESUME);
+			temp &= ~(PORT_RWC_BITS | PORT_SUSPEND | PORT_RESUME);
 			ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
 			ehci_vdbg (ehci, "resumed port %d\n", i + 1);
 		}
@@ -590,7 +590,7 @@ ehci_hub_status_data (struct usb_hcd *hcd, char *buf)
 	u32		mask;
 	int		ports, i, retval = 1;
 	unsigned long	flags;
-	u32		ppcd = 0;
+	u32		ppcd = ~0;
 
 	/* init status to no-changes */
 	buf [0] = 0;
@@ -628,9 +628,10 @@ ehci_hub_status_data (struct usb_hcd *hcd, char *buf)
 
 	for (i = 0; i < ports; i++) {
 		/* leverage per-port change bits feature */
-		if (ehci->has_ppcd && !(ppcd & (1 << i)))
-			continue;
-		temp = ehci_readl(ehci, &ehci->regs->port_status [i]);
+		if (ppcd & (1 << i))
+			temp = ehci_readl(ehci, &ehci->regs->port_status[i]);
+		else
+			temp = 0;
 
 		/*
 		 * Return status information even for ports with OWNER set.
@@ -839,7 +840,8 @@ static int ehci_hub_control (
 			 * power switching; they're allowed to just limit the
 			 * current.  khubd will turn the power back on.
 			 */
-			if ((temp & PORT_OC) && HCS_PPC(ehci->hcs_params)) {
+			if (((temp & PORT_OC) || (ehci->need_oc_pp_cycle))
+					&& HCS_PPC(ehci->hcs_params)) {
 				ehci_writel(ehci,
 					temp & ~(PORT_RWC_BITS | PORT_POWER),
 					status_reg);
@@ -870,10 +872,9 @@ static int ehci_hub_control (
 				usb_hcd_end_port_resume(&hcd->self, wIndex);
 
 				/* stop resume signaling */
-				temp = ehci_readl(ehci, status_reg);
-				ehci_writel(ehci,
-					temp & ~(PORT_RWC_BITS | PORT_RESUME),
-					status_reg);
+				temp &= ~(PORT_RWC_BITS |
+						PORT_SUSPEND | PORT_RESUME);
+				ehci_writel(ehci, temp, status_reg);
 				clear_bit(wIndex, &ehci->resuming_ports);
 				retval = handshake(ehci, status_reg,
 					   PORT_RESUME, 0, 2000 /* 2msec */);
@@ -883,7 +884,7 @@ static int ehci_hub_control (
 						wIndex + 1, retval);
 					goto error;
 				}
-				temp &= ~(PORT_SUSPEND|PORT_RESUME|(3<<10));
+				temp = ehci_readl(ehci, status_reg);
 			}
 		}
 
@@ -1016,7 +1017,7 @@ static int ehci_hub_control (
 			 * Set appropriate bit thus could put phy into low power
 			 * mode if we have hostpc feature
 			 */
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 			if (hcd->phy && (hcd->self.otg_port == (wIndex + 1))
 				&& (hcd->self.b_hnp_enable || hcd->self.is_b_host))
 				ehci->start_hnp(ehci);
@@ -1045,7 +1046,7 @@ static int ehci_hub_control (
 			set_bit(wIndex, &ehci->suspended_ports);
 			break;
 		case USB_PORT_FEAT_POWER:
-#ifdef CONFIG_USB_XUSBPS_OTG
+#ifdef CONFIG_USB_ZYNQ_PHY
 			/* Check if otg is enabled */
 			if(!hcd->phy) {
 				if (HCS_PPC (ehci->hcs_params))

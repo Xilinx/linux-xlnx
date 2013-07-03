@@ -34,6 +34,7 @@
 #include <linux/efi-bgrt.h>
 #include <linux/export.h>
 #include <linux/bootmem.h>
+#include <linux/slab.h>
 #include <linux/memblock.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
@@ -41,7 +42,6 @@
 #include <linux/io.h>
 #include <linux/reboot.h>
 #include <linux/bcd.h>
-#include <linux/ucs2_string.h>
 
 #include <asm/setup.h>
 #include <asm/efi.h>
@@ -49,15 +49,16 @@
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 #include <asm/x86_init.h>
+#include <asm/rtc.h>
 
 #define EFI_DEBUG	1
 
-/*
- * There's some additional metadata associated with each
- * variable. Intel's reference implementation is 60 bytes - bump that
- * to account for potential alignment constraints
- */
-#define VAR_METADATA_SIZE 64
+#define EFI_MIN_RESERVE 5120
+
+#define EFI_DUMMY_GUID \
+	EFI_GUID(0x4424ac57, 0xbe4b, 0x47dd, 0x9e, 0x97, 0xed, 0x50, 0xf0, 0x9f, 0x92, 0xa9)
+
+static efi_char16_t efi_dummy_name[6] = { 'D', 'U', 'M', 'M', 'Y', 0 };
 
 struct efi __read_mostly efi = {
 	.mps        = EFI_INVALID_TABLE_ADDR,
@@ -76,13 +77,6 @@ struct efi_memory_map memmap;
 
 static struct efi efi_phys __initdata;
 static efi_system_table_t efi_systab __initdata;
-
-static u64 efi_var_store_size;
-static u64 efi_var_remaining_size;
-static u64 efi_var_max_var_size;
-static u64 boot_used_size;
-static u64 boot_var_size;
-static u64 active_size;
 
 unsigned long x86_efi_facility;
 
@@ -186,53 +180,8 @@ static efi_status_t virt_efi_get_next_variable(unsigned long *name_size,
 					       efi_char16_t *name,
 					       efi_guid_t *vendor)
 {
-	efi_status_t status;
-	static bool finished = false;
-	static u64 var_size;
-
-	status = efi_call_virt3(get_next_variable,
-				name_size, name, vendor);
-
-	if (status == EFI_NOT_FOUND) {
-		finished = true;
-		if (var_size < boot_used_size) {
-			boot_var_size = boot_used_size - var_size;
-			active_size += boot_var_size;
-		} else {
-			printk(KERN_WARNING FW_BUG  "efi: Inconsistent initial sizes\n");
-		}
-	}
-
-	if (boot_used_size && !finished) {
-		unsigned long size;
-		u32 attr;
-		efi_status_t s;
-		void *tmp;
-
-		s = virt_efi_get_variable(name, vendor, &attr, &size, NULL);
-
-		if (s != EFI_BUFFER_TOO_SMALL || !size)
-			return status;
-
-		tmp = kmalloc(size, GFP_ATOMIC);
-
-		if (!tmp)
-			return status;
-
-		s = virt_efi_get_variable(name, vendor, &attr, &size, tmp);
-
-		if (s == EFI_SUCCESS && (attr & EFI_VARIABLE_NON_VOLATILE)) {
-			var_size += size;
-			var_size += ucs2_strsize(name, 1024);
-			active_size += size;
-			active_size += VAR_METADATA_SIZE;
-			active_size += ucs2_strsize(name, 1024);
-		}
-
-		kfree(tmp);
-	}
-
-	return status;
+	return efi_call_virt3(get_next_variable,
+			      name_size, name, vendor);
 }
 
 static efi_status_t virt_efi_set_variable(efi_char16_t *name,
@@ -241,34 +190,9 @@ static efi_status_t virt_efi_set_variable(efi_char16_t *name,
 					  unsigned long data_size,
 					  void *data)
 {
-	efi_status_t status;
-	u32 orig_attr = 0;
-	unsigned long orig_size = 0;
-
-	status = virt_efi_get_variable(name, vendor, &orig_attr, &orig_size,
-				       NULL);
-
-	if (status != EFI_BUFFER_TOO_SMALL)
-		orig_size = 0;
-
-	status = efi_call_virt5(set_variable,
-				name, vendor, attr,
-				data_size, data);
-
-	if (status == EFI_SUCCESS) {
-		if (orig_size) {
-			active_size -= orig_size;
-			active_size -= ucs2_strsize(name, 1024);
-			active_size -= VAR_METADATA_SIZE;
-		}
-		if (data_size) {
-			active_size += data_size;
-			active_size += ucs2_strsize(name, 1024);
-			active_size += VAR_METADATA_SIZE;
-		}
-	}
-
-	return status;
+	return efi_call_virt5(set_variable,
+			      name, vendor, attr,
+			      data_size, data);
 }
 
 static efi_status_t virt_efi_query_variable_info(u32 attr,
@@ -352,10 +276,10 @@ static efi_status_t __init phys_efi_get_time(efi_time_t *tm,
 
 int efi_set_rtc_mmss(unsigned long nowtime)
 {
-	int real_seconds, real_minutes;
 	efi_status_t 	status;
 	efi_time_t 	eft;
 	efi_time_cap_t 	cap;
+	struct rtc_time	tm;
 
 	status = efi.get_time(&eft, &cap);
 	if (status != EFI_SUCCESS) {
@@ -363,13 +287,20 @@ int efi_set_rtc_mmss(unsigned long nowtime)
 		return -1;
 	}
 
-	real_seconds = nowtime % 60;
-	real_minutes = nowtime / 60;
-	if (((abs(real_minutes - eft.minute) + 15)/30) & 1)
-		real_minutes += 30;
-	real_minutes %= 60;
-	eft.minute = real_minutes;
-	eft.second = real_seconds;
+	rtc_time_to_tm(nowtime, &tm);
+	if (!rtc_valid_tm(&tm)) {
+		eft.year = tm.tm_year + 1900;
+		eft.month = tm.tm_mon + 1;
+		eft.day = tm.tm_mday;
+		eft.minute = tm.tm_min;
+		eft.second = tm.tm_sec;
+		eft.nanosecond = 0;
+	} else {
+		printk(KERN_ERR
+		       "%s: Invalid EFI RTC value: write of %lx to EFI RTC failed\n",
+		       __FUNCTION__, nowtime);
+		return -1;
+	}
 
 	status = efi.set_time(&eft);
 	if (status != EFI_SUCCESS) {
@@ -445,24 +376,25 @@ static void __init do_add_efi_memmap(void)
 
 int __init efi_memblock_x86_reserve_range(void)
 {
+	struct efi_info *e = &boot_params.efi_info;
 	unsigned long pmap;
 
 #ifdef CONFIG_X86_32
 	/* Can't handle data above 4GB at this time */
-	if (boot_params.efi_info.efi_memmap_hi) {
+	if (e->efi_memmap_hi) {
 		pr_err("Memory map is above 4GB, disabling EFI.\n");
 		return -EINVAL;
 	}
-	pmap = boot_params.efi_info.efi_memmap;
+	pmap =  e->efi_memmap;
 #else
-	pmap = (boot_params.efi_info.efi_memmap |
-		((__u64)boot_params.efi_info.efi_memmap_hi<<32));
+	pmap = (e->efi_memmap |	((__u64)e->efi_memmap_hi << 32));
 #endif
-	memmap.phys_map = (void *)pmap;
-	memmap.nr_map = boot_params.efi_info.efi_memmap_size /
-		boot_params.efi_info.efi_memdesc_size;
-	memmap.desc_version = boot_params.efi_info.efi_memdesc_version;
-	memmap.desc_size = boot_params.efi_info.efi_memdesc_size;
+	memmap.phys_map		= (void *)pmap;
+	memmap.nr_map		= e->efi_memmap_size /
+				  e->efi_memdesc_size;
+	memmap.desc_size	= e->efi_memdesc_size;
+	memmap.desc_version	= e->efi_memdesc_version;
+
 	memblock_reserve(pmap, memmap.nr_map * memmap.desc_size);
 
 	return 0;
@@ -776,9 +708,6 @@ void __init efi_init(void)
 	char vendor[100] = "unknown";
 	int i = 0;
 	void *tmp;
-	struct setup_data *data;
-	struct efi_var_bootdata *efi_var_data;
-	u64 pa_data;
 
 #ifdef CONFIG_X86_32
 	if (boot_params.efi_info.efi_systab_hi ||
@@ -795,22 +724,6 @@ void __init efi_init(void)
 
 	if (efi_systab_init(efi_phys.systab))
 		return;
-
-	pa_data = boot_params.hdr.setup_data;
-	while (pa_data) {
-		data = early_ioremap(pa_data, sizeof(*efi_var_data));
-		if (data->type == SETUP_EFI_VARS) {
-			efi_var_data = (struct efi_var_bootdata *)data;
-
-			efi_var_store_size = efi_var_data->store_size;
-			efi_var_remaining_size = efi_var_data->remaining_size;
-			efi_var_max_var_size = efi_var_data->max_var_size;
-		}
-		pa_data = data->next;
-		early_iounmap(data, sizeof(*efi_var_data));
-	}
-
-	boot_used_size = efi_var_store_size - efi_var_remaining_size;
 
 	set_bit(EFI_SYSTEM_TABLES, &x86_efi_facility);
 
@@ -1075,6 +988,13 @@ void __init efi_enter_virtual_mode(void)
 		runtime_code_page_mkexec();
 
 	kfree(new_memmap);
+
+	/* clean DUMMY object */
+	efi.set_variable(efi_dummy_name, &EFI_DUMMY_GUID,
+			 EFI_VARIABLE_NON_VOLATILE |
+			 EFI_VARIABLE_BOOTSERVICE_ACCESS |
+			 EFI_VARIABLE_RUNTIME_ACCESS,
+			 0, NULL);
 }
 
 /*
@@ -1126,33 +1046,70 @@ efi_status_t efi_query_variable_store(u32 attributes, unsigned long size)
 	efi_status_t status;
 	u64 storage_size, remaining_size, max_size;
 
+	if (!(attributes & EFI_VARIABLE_NON_VOLATILE))
+		return 0;
+
 	status = efi.query_variable_info(attributes, &storage_size,
 					 &remaining_size, &max_size);
 	if (status != EFI_SUCCESS)
 		return status;
 
-	if (!max_size && remaining_size > size)
-		printk_once(KERN_ERR FW_BUG "Broken EFI implementation"
-			    " is returning MaxVariableSize=0\n");
 	/*
 	 * Some firmware implementations refuse to boot if there's insufficient
 	 * space in the variable store. We account for that by refusing the
 	 * write if permitting it would reduce the available space to under
-	 * 50%. However, some firmware won't reclaim variable space until
-	 * after the used (not merely the actively used) space drops below
-	 * a threshold. We can approximate that case with the value calculated
-	 * above. If both the firmware and our calculations indicate that the
-	 * available space would drop below 50%, refuse the write.
+	 * 5KB. This figure was provided by Samsung, so should be safe.
 	 */
+	if ((remaining_size - size < EFI_MIN_RESERVE) &&
+		!efi_no_storage_paranoia) {
 
-	if (!storage_size || size > remaining_size ||
-	    (max_size && size > max_size))
-		return EFI_OUT_OF_RESOURCES;
+		/*
+		 * Triggering garbage collection may require that the firmware
+		 * generate a real EFI_OUT_OF_RESOURCES error. We can force
+		 * that by attempting to use more space than is available.
+		 */
+		unsigned long dummy_size = remaining_size + 1024;
+		void *dummy = kzalloc(dummy_size, GFP_ATOMIC);
 
-	if (!efi_no_storage_paranoia &&
-	    ((active_size + size + VAR_METADATA_SIZE > storage_size / 2) &&
-	     (remaining_size - size < storage_size / 2)))
-		return EFI_OUT_OF_RESOURCES;
+		if (!dummy)
+			return EFI_OUT_OF_RESOURCES;
+
+		status = efi.set_variable(efi_dummy_name, &EFI_DUMMY_GUID,
+					  EFI_VARIABLE_NON_VOLATILE |
+					  EFI_VARIABLE_BOOTSERVICE_ACCESS |
+					  EFI_VARIABLE_RUNTIME_ACCESS,
+					  dummy_size, dummy);
+
+		if (status == EFI_SUCCESS) {
+			/*
+			 * This should have failed, so if it didn't make sure
+			 * that we delete it...
+			 */
+			efi.set_variable(efi_dummy_name, &EFI_DUMMY_GUID,
+					 EFI_VARIABLE_NON_VOLATILE |
+					 EFI_VARIABLE_BOOTSERVICE_ACCESS |
+					 EFI_VARIABLE_RUNTIME_ACCESS,
+					 0, dummy);
+		}
+
+		kfree(dummy);
+
+		/*
+		 * The runtime code may now have triggered a garbage collection
+		 * run, so check the variable info again
+		 */
+		status = efi.query_variable_info(attributes, &storage_size,
+						 &remaining_size, &max_size);
+
+		if (status != EFI_SUCCESS)
+			return status;
+
+		/*
+		 * There still isn't enough room, so return an error
+		 */
+		if (remaining_size - size < EFI_MIN_RESERVE)
+			return EFI_OUT_OF_RESOURCES;
+	}
 
 	return EFI_SUCCESS;
 }

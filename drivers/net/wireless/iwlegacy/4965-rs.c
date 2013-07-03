@@ -2268,7 +2268,7 @@ il4965_rs_get_rate(void *il_r, struct ieee80211_sta *sta, void *il_sta,
 		info->control.rates[0].flags = 0;
 	}
 	info->control.rates[0].idx = rate_idx;
-
+	info->control.rates[0].count = 1;
 }
 
 static void *
@@ -2300,7 +2300,7 @@ il4965_rs_rate_init(struct il_priv *il, struct ieee80211_sta *sta, u8 sta_id)
 
 	sta_priv = (struct il_station_priv *)sta->drv_priv;
 	lq_sta = &sta_priv->lq_sta;
-	sband = hw->wiphy->bands[conf->channel->band];
+	sband = hw->wiphy->bands[conf->chandef.chan->band];
 
 	lq_sta->lq.sta_id = sta_id;
 

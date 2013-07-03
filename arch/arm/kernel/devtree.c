@@ -82,7 +82,7 @@ void __init arm_dt_init_cpu_maps(void)
 	u32 i, j, cpuidx = 1;
 	u32 mpidr = is_smp() ? read_cpuid_mpidr() & MPIDR_HWID_BITMASK : 0;
 
-	u32 tmp_map[NR_CPUS] = { [0 ... NR_CPUS-1] = UINT_MAX };
+	u32 tmp_map[NR_CPUS] = { [0 ... NR_CPUS-1] = MPIDR_INVALID };
 	bool bootcpu_valid = false;
 	cpus = of_find_node_by_path("/cpus");
 
@@ -91,6 +91,9 @@ void __init arm_dt_init_cpu_maps(void)
 
 	for_each_child_of_node(cpus, cpu) {
 		u32 hwid;
+
+		if (of_node_cmp(cpu->type, "cpu"))
+			continue;
 
 		pr_debug(" * %s...\n", cpu->full_name);
 		/*
@@ -149,9 +152,10 @@ void __init arm_dt_init_cpu_maps(void)
 		tmp_map[i] = hwid;
 	}
 
-	if (WARN(!bootcpu_valid, "DT missing boot CPU MPIDR[23:0], "
-				 "fall back to default cpu_logical_map\n"))
+	if (!bootcpu_valid) {
+		pr_warn("DT missing boot CPU MPIDR[23:0], fall back to default cpu_logical_map\n");
 		return;
+	}
 
 	/*
 	 * Since the boot CPU node contains proper data, and all nodes have
@@ -179,6 +183,13 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
+
+#ifdef CONFIG_ARCH_MULTIPLATFORM
+	DT_MACHINE_START(GENERIC_DT, "Generic DT based system")
+	MACHINE_END
+
+	mdesc_best = (struct machine_desc *)&__mach_desc_GENERIC_DT;
+#endif
 
 	if (!dt_phys)
 		return NULL;

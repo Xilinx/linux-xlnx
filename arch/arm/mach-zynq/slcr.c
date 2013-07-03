@@ -29,6 +29,9 @@
 #include <linux/clk/zynq.h>
 #include "common.h"
 
+#define SLCR_UNLOCK_MAGIC		0xDF0D
+#define SLCR_UNLOCK			0x8   /* SCLR unlock register */
+
 #define DRIVER_NAME "xslcr"
 
 #define XSLCR_LOCK			0x4   /* SLCR lock register */
@@ -1301,25 +1304,26 @@ static const struct xslcr_periph_reset reset_info[] = {
 
 /**
  * zynq_slcr_system_reset - Reset the entire system.
- *
- **/
+ */
 void zynq_slcr_system_reset(void)
 {
 	u32 reboot;
 
-	/* Unlock the SLCR then reset the system.
+	/*
+	 * Unlock the SLCR then reset the system.
 	 * Note that this seems to require raw i/o
 	 * functions or there's a lockup?
 	 */
-	xslcr_writereg(slcr->regs + XSLCR_UNLOCK, 0xDF0D);
+	writel(SLCR_UNLOCK_MAGIC, zynq_slcr_base + SLCR_UNLOCK);
 
-	/* Clear 0x0F000000 bits of reboot status register to workaround
+	/*
+	 * Clear 0x0F000000 bits of reboot status register to workaround
 	 * the FSBL not loading the bitstream after soft-reboot
 	 * This is a temporary solution until we know more.
 	 */
-	reboot = xslcr_readreg(slcr->regs + XSLCR_REBOOT_STATUS);
-	xslcr_writereg(slcr->regs + XSLCR_REBOOT_STATUS, reboot & 0xF0FFFFFF);
-	xslcr_writereg(slcr->regs + XSLCR_PSS_RST_CTRL_OFFSET, 1);
+	reboot = readl(zynq_slcr_base + SLCR_REBOOT_STATUS);
+	writel(reboot & 0xF0FFFFFF, zynq_slcr_base + SLCR_REBOOT_STATUS);
+	writel(1, zynq_slcr_base + SLCR_PS_RST_CTRL_OFFSET);
 }
 
 /**
@@ -1612,7 +1616,7 @@ static ssize_t xslcr_config_mio_peripheral(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(enable_pinset, 0644, NULL, xslcr_config_mio_peripheral);
+static DEVICE_ATTR(enable_pinset, 0222, NULL, xslcr_config_mio_peripheral);
 
 /**
  * xslcr_store_pinset - Store a pinset for a MIO peripheral.
@@ -1661,7 +1665,7 @@ static ssize_t xslcr_store_pinset(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(pinset, 0644, NULL, xslcr_store_pinset);
+static DEVICE_ATTR(pinset, 222, NULL, xslcr_store_pinset);
 
 /**
  * xslcr_get_periph_status - Get the current status of a MIO peripheral.
@@ -1698,7 +1702,7 @@ static ssize_t xslcr_get_periph_status(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(status, 0644, xslcr_get_periph_status, NULL);
+static DEVICE_ATTR(status, 0444, xslcr_get_periph_status, NULL);
 
 /**
  * xslcr_reset_periph - Reset a peripheral within PS.
@@ -1755,7 +1759,7 @@ static ssize_t xslcr_reset_periph(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(reset, 0644, NULL, xslcr_reset_periph);
+static DEVICE_ATTR(reset, 0222, NULL, xslcr_reset_periph);
 
 /**
  * show_mio_pin_status - Get the status of all the MIO pins.
@@ -1791,7 +1795,7 @@ static ssize_t show_mio_pin_status(struct device *dev,
 	return status;
 }
 
-static DEVICE_ATTR(mio_pin_status, 0644, show_mio_pin_status, NULL);
+static DEVICE_ATTR(mio_pin_status, 0444, show_mio_pin_status, NULL);
 
 /* MIO attributes */
 static const struct attribute *xslcr_mio_attrs[] = {
@@ -2089,6 +2093,12 @@ int __init zynq_slcr_init(void)
 		BUG();
 	}
 
+	zynq_slcr_base = of_iomap(np, 0);
+	if (!zynq_slcr_base) {
+		pr_err("%s: Unable to map I/O memory\n", __func__);
+		BUG();
+	}
+
 	slcr = kzalloc(sizeof(*slcr), GFP_KERNEL);
 	if (!slcr) {
 		pr_err("%s: Unable to allocate memory for driver data\n",
@@ -2096,23 +2106,17 @@ int __init zynq_slcr_init(void)
 		BUG();
 	}
 
-	slcr->regs = of_iomap(np, 0);
-	if (!slcr->regs) {
-		pr_err("%s: Unable to map I/O memory\n", __func__);
-		BUG();
-	}
-
-	zynq_slcr_base = slcr->regs;
+	slcr->regs = zynq_slcr_base;
 
 	/* init periph_status based on the data from MIO control registers */
 	xslcr_get_mio_status();
 
 	/* unlock the SLCR so that registers can be changed */
-	xslcr_writereg(slcr->regs + XSLCR_UNLOCK, 0xDF0D);
+	writel(SLCR_UNLOCK_MAGIC, zynq_slcr_base + SLCR_UNLOCK);
 
-	pr_info("%s mapped to %p\n", DRIVER_NAME, slcr->regs);
+	pr_info("%s mapped to %p\n", np->name, zynq_slcr_base);
 
-	zynq_clock_init(slcr->regs);
+	zynq_clock_init(zynq_slcr_base);
 
 	of_node_put(np);
 

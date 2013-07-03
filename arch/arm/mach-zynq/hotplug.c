@@ -64,8 +64,8 @@ static inline void zynq_platform_do_lowpower(unsigned int cpu, int *spurious)
 	 * code will have already disabled interrupts
 	 */
 	for (;;) {
-		/* enter WFI mode */
-		cpu_do_idle();
+		dsb();
+		wfi();
 
 		/*
 		 * Getting here, means that we have come out of WFI without

@@ -592,7 +592,7 @@ static void dump_rs(struct seq_file *seq, const struct gfs2_blkreserv *rs)
  * @rs: The reservation to remove
  *
  */
-static void __rs_deltree(struct gfs2_inode *ip, struct gfs2_blkreserv *rs)
+static void __rs_deltree(struct gfs2_blkreserv *rs)
 {
 	struct gfs2_rgrpd *rgd;
 
@@ -605,7 +605,7 @@ static void __rs_deltree(struct gfs2_inode *ip, struct gfs2_blkreserv *rs)
 	RB_CLEAR_NODE(&rs->rs_node);
 
 	if (rs->rs_free) {
-		/* return reserved blocks to the rgrp and the ip */
+		/* return reserved blocks to the rgrp */
 		BUG_ON(rs->rs_rbm.rgd->rd_reserved < rs->rs_free);
 		rs->rs_rbm.rgd->rd_reserved -= rs->rs_free;
 		rs->rs_free = 0;
@@ -619,14 +619,14 @@ static void __rs_deltree(struct gfs2_inode *ip, struct gfs2_blkreserv *rs)
  * @rs: The reservation to remove
  *
  */
-void gfs2_rs_deltree(struct gfs2_inode *ip, struct gfs2_blkreserv *rs)
+void gfs2_rs_deltree(struct gfs2_blkreserv *rs)
 {
 	struct gfs2_rgrpd *rgd;
 
 	rgd = rs->rs_rbm.rgd;
 	if (rgd) {
 		spin_lock(&rgd->rd_rsspin);
-		__rs_deltree(ip, rs);
+		__rs_deltree(rs);
 		spin_unlock(&rgd->rd_rsspin);
 	}
 }
@@ -638,9 +638,11 @@ void gfs2_rs_deltree(struct gfs2_inode *ip, struct gfs2_blkreserv *rs)
  */
 void gfs2_rs_delete(struct gfs2_inode *ip)
 {
+	struct inode *inode = &ip->i_inode;
+
 	down_write(&ip->i_rw_mutex);
-	if (ip->i_res) {
-		gfs2_rs_deltree(ip, ip->i_res);
+	if (ip->i_res && atomic_read(&inode->i_writecount) <= 1) {
+		gfs2_rs_deltree(ip->i_res);
 		BUG_ON(ip->i_res->rs_free);
 		kmem_cache_free(gfs2_rsrv_cachep, ip->i_res);
 		ip->i_res = NULL;
@@ -664,7 +666,7 @@ static void return_all_reservations(struct gfs2_rgrpd *rgd)
 	spin_lock(&rgd->rd_rsspin);
 	while ((n = rb_first(&rgd->rd_rstree))) {
 		rs = rb_entry(n, struct gfs2_blkreserv, rs_node);
-		__rs_deltree(NULL, rs);
+		__rs_deltree(rs);
 	}
 	spin_unlock(&rgd->rd_rsspin);
 }
@@ -1401,9 +1403,14 @@ static void rg_mblk_search(struct gfs2_rgrpd *rgd, struct gfs2_inode *ip,
 	u32 extlen;
 	u32 free_blocks = rgd->rd_free_clone - rgd->rd_reserved;
 	int ret;
+	struct inode *inode = &ip->i_inode;
 
-	extlen = max_t(u32, atomic_read(&rs->rs_sizehint), requested);
-	extlen = clamp(extlen, RGRP_RSRV_MINBLKS, free_blocks);
+	if (S_ISDIR(inode->i_mode))
+		extlen = 1;
+	else {
+		extlen = max_t(u32, atomic_read(&rs->rs_sizehint), requested);
+		extlen = clamp(extlen, RGRP_RSRV_MINBLKS, free_blocks);
+	}
 	if ((rgd->rd_free_clone < rgd->rd_reserved) || (free_blocks < extlen))
 		return;
 
@@ -1874,7 +1881,7 @@ int gfs2_inplace_reserve(struct gfs2_inode *ip, u32 requested, u32 aflags)
 
 		/* Drop reservation, if we couldn't use reserved rgrp */
 		if (gfs2_rs_active(rs))
-			gfs2_rs_deltree(ip, rs);
+			gfs2_rs_deltree(rs);
 check_rgrp:
 		/* Check for unlinked inodes which can be reclaimed */
 		if (rs->rs_rbm.rgd->rd_flags & GFS2_RDF_CHECK)
@@ -2087,7 +2094,7 @@ static void gfs2_adjust_reservation(struct gfs2_inode *ip,
 			if (rs->rs_free && !ret)
 				goto out;
 		}
-		__rs_deltree(ip, rs);
+		__rs_deltree(rs);
 	}
 out:
 	spin_unlock(&rgd->rd_rsspin);
@@ -2180,13 +2187,7 @@ int gfs2_alloc_blocks(struct gfs2_inode *ip, u64 *bn, unsigned int *nblocks,
 	if (dinode)
 		gfs2_trans_add_unrevoke(sdp, block, 1);
 
-	/*
-	 * This needs reviewing to see why we cannot do the quota change
-	 * at this point in the dinode case.
-	 */
-	if (ndata)
-		gfs2_quota_change(ip, ndata, ip->i_inode.i_uid,
-				  ip->i_inode.i_gid);
+	gfs2_quota_change(ip, *nblocks, ip->i_inode.i_uid, ip->i_inode.i_gid);
 
 	rbm.rgd->rd_free_clone -= *nblocks;
 	trace_gfs2_block_alloc(ip, rbm.rgd, block, *nblocks,

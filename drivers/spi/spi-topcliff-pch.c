@@ -615,7 +615,7 @@ static void pch_spi_set_tx(struct pch_spi_data *data, int *bpw)
 	int size;
 	u32 n_writes;
 	int j;
-	struct spi_message *pmsg;
+	struct spi_message *pmsg, *tmp;
 	const u8 *tx_buf;
 	const u16 *tx_sbuf;
 
@@ -656,7 +656,7 @@ static void pch_spi_set_tx(struct pch_spi_data *data, int *bpw)
 	if (!data->pkt_rx_buff) {
 		/* flush queue and set status of all transfers to -ENOMEM */
 		dev_err(&data->master->dev, "%s :kzalloc failed\n", __func__);
-		list_for_each_entry(pmsg, data->queue.next, queue) {
+		list_for_each_entry_safe(pmsg, tmp, data->queue.next, queue) {
 			pmsg->status = -ENOMEM;
 
 			if (pmsg->complete != 0)
@@ -703,7 +703,7 @@ static void pch_spi_set_tx(struct pch_spi_data *data, int *bpw)
 
 static void pch_spi_nomore_transfer(struct pch_spi_data *data)
 {
-	struct spi_message *pmsg;
+	struct spi_message *pmsg, *tmp;
 	dev_dbg(&data->master->dev, "%s called\n", __func__);
 	/* Invoke complete callback
 	 * [To the spi core..indicating end of transfer] */
@@ -740,7 +740,7 @@ static void pch_spi_nomore_transfer(struct pch_spi_data *data)
 		dev_dbg(&data->master->dev,
 			"%s suspend/remove initiated, flushing queue\n",
 			__func__);
-		list_for_each_entry(pmsg, data->queue.next, queue) {
+		list_for_each_entry_safe(pmsg, tmp, data->queue.next, queue) {
 			pmsg->status = -EIO;
 
 			if (pmsg->complete)
@@ -1187,7 +1187,7 @@ static void pch_spi_handle_dma(struct pch_spi_data *data, int *bpw)
 
 static void pch_spi_process_messages(struct work_struct *pwork)
 {
-	struct spi_message *pmsg;
+	struct spi_message *pmsg, *tmp;
 	struct pch_spi_data *data;
 	int bpw;
 
@@ -1199,7 +1199,7 @@ static void pch_spi_process_messages(struct work_struct *pwork)
 	if (data->board_dat->suspend_sts || (data->status == STATUS_EXITING)) {
 		dev_dbg(&data->master->dev, "%s suspend/remove initiated,"
 			"flushing queue\n", __func__);
-		list_for_each_entry(pmsg, data->queue.next, queue) {
+		list_for_each_entry_safe(pmsg, tmp, data->queue.next, queue) {
 			pmsg->status = -EIO;
 
 			if (pmsg->complete != 0) {
@@ -1487,7 +1487,7 @@ static int pch_spi_pd_probe(struct platform_device *plat_dev)
 	return 0;
 
 err_spi_register_master:
-	free_irq(board_dat->pdev->irq, board_dat);
+	free_irq(board_dat->pdev->irq, data);
 err_request_irq:
 	pch_spi_free_resources(board_dat, data);
 err_spi_get_resources:
@@ -1667,6 +1667,7 @@ static int pch_spi_probe(struct pci_dev *pdev,
 		pd_dev = platform_device_alloc("pch-spi", i);
 		if (!pd_dev) {
 			dev_err(&pdev->dev, "platform_device_alloc failed\n");
+			retval = -ENOMEM;
 			goto err_platform_device;
 		}
 		pd_dev_save->pd_save[i] = pd_dev;
@@ -1789,8 +1790,10 @@ static int __init pch_spi_init(void)
 		return ret;
 
 	ret = pci_register_driver(&pch_spi_pcidev_driver);
-	if (ret)
+	if (ret) {
+		platform_driver_unregister(&pch_spi_pd_driver);
 		return ret;
+	}
 
 	return 0;
 }

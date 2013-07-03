@@ -649,7 +649,6 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 	 *	jobs, send them a SIGHUP and then a SIGCONT.  (POSIX 3.2.2.2)
 	 */
 	forget_original_parent(tsk);
-	exit_task_namespaces(tsk);
 
 	write_lock_irq(&tasklist_lock);
 	if (group_dead)
@@ -795,6 +794,7 @@ void do_exit(long code)
 	exit_shm(tsk);
 	exit_files(tsk);
 	exit_fs(tsk);
+	exit_task_namespaces(tsk);
 	exit_task_work(tsk);
 	check_stack_usage();
 	exit_thread();
@@ -847,7 +847,7 @@ void do_exit(long code)
 		exit_io_context(tsk);
 
 	if (tsk->splice_pipe)
-		__free_pipe_info(tsk->splice_pipe);
+		free_pipe_info(tsk->splice_pipe);
 
 	if (tsk->task_frag.page)
 		put_page(tsk->task_frag.page);
@@ -1629,9 +1629,6 @@ SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
 	}
 
 	put_pid(pid);
-
-	/* avoid REGPARM breakage on x86: */
-	asmlinkage_protect(5, ret, which, upid, infop, options, ru);
 	return ret;
 }
 
@@ -1669,8 +1666,6 @@ SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
 	ret = do_wait(&wo);
 	put_pid(pid);
 
-	/* avoid REGPARM breakage on x86: */
-	asmlinkage_protect(4, ret, upid, stat_addr, options, ru);
 	return ret;
 }
 

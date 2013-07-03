@@ -465,8 +465,9 @@ static struct sk_buff *br_ip6_multicast_alloc_query(struct net_bridge *br,
 	skb_set_transport_header(skb, skb->len);
 	mldq = (struct mld_msg *) icmp6_hdr(skb);
 
-	interval = ipv6_addr_any(group) ? br->multicast_last_member_interval :
-					  br->multicast_query_response_interval;
+	interval = ipv6_addr_any(group) ?
+			br->multicast_query_response_interval :
+			br->multicast_last_member_interval;
 
 	mldq->mld_type = ICMPV6_MGM_QUERY;
 	mldq->mld_code = 0;
@@ -1369,7 +1370,7 @@ static int br_multicast_ipv4_rcv(struct net_bridge *br,
 		return -EINVAL;
 
 	if (iph->protocol != IPPROTO_IGMP) {
-		if ((iph->daddr & IGMP_LOCAL_GROUP_MASK) != IGMP_LOCAL_GROUP)
+		if (!ipv4_is_local_multicast(iph->daddr))
 			BR_INPUT_SKB_CB(skb)->mrouters_only = 1;
 		return 0;
 	}

@@ -31,13 +31,13 @@
 #include <core/gpuobj.h>
 #include <core/class.h>
 
-#include <subdev/device.h>
+#include <engine/device.h>
+#include <engine/disp.h>
+#include <engine/fifo.h>
+
 #include <subdev/vm.h>
 
-#include <engine/disp.h>
-
 #include "nouveau_drm.h"
-#include "nouveau_irq.h"
 #include "nouveau_dma.h"
 #include "nouveau_ttm.h"
 #include "nouveau_gem.h"
@@ -165,7 +165,7 @@ nouveau_accel_init(struct nouveau_drm *drm)
 	u32 arg0, arg1;
 	int ret;
 
-	if (nouveau_noaccel)
+	if (nouveau_noaccel || !nouveau_fifo(device) /*XXX*/)
 		return;
 
 	/* initialise synchronisation routines */
@@ -365,10 +365,6 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 	if (ret)
 		goto fail_bios;
 
-	ret = nouveau_irq_init(dev);
-	if (ret)
-		goto fail_irq;
-
 	ret = nouveau_display_create(dev);
 	if (ret)
 		goto fail_dispctor;
@@ -388,8 +384,6 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 fail_dispinit:
 	nouveau_display_destroy(dev);
 fail_dispctor:
-	nouveau_irq_fini(dev);
-fail_irq:
 	nouveau_bios_takedown(dev);
 fail_bios:
 	nouveau_ttm_fini(drm);
@@ -415,7 +409,6 @@ nouveau_drm_unload(struct drm_device *dev)
 		nouveau_display_fini(dev);
 	nouveau_display_destroy(dev);
 
-	nouveau_irq_fini(dev);
 	nouveau_bios_takedown(dev);
 
 	nouveau_ttm_fini(drm);
@@ -460,18 +453,32 @@ nouveau_do_suspend(struct drm_device *dev)
 	NV_INFO(drm, "evicting buffers...\n");
 	ttm_bo_evict_mm(&drm->ttm.bdev, TTM_PL_VRAM);
 
+	NV_INFO(drm, "waiting for kernel channels to go idle...\n");
+	if (drm->cechan) {
+		ret = nouveau_channel_idle(drm->cechan);
+		if (ret)
+			return ret;
+	}
+
+	if (drm->channel) {
+		ret = nouveau_channel_idle(drm->channel);
+		if (ret)
+			return ret;
+	}
+
+	NV_INFO(drm, "suspending client object trees...\n");
 	if (drm->fence && nouveau_fence(drm)->suspend) {
 		if (!nouveau_fence(drm)->suspend(drm))
 			return -ENOMEM;
 	}
 
-	NV_INFO(drm, "suspending client object trees...\n");
 	list_for_each_entry(cli, &drm->clients, head) {
 		ret = nouveau_client_fini(&cli->base, true);
 		if (ret)
 			goto fail_client;
 	}
 
+	NV_INFO(drm, "suspending kernel object tree...\n");
 	ret = nouveau_client_fini(&drm->client.base, true);
 	if (ret)
 		goto fail_client;
@@ -521,19 +528,19 @@ nouveau_do_resume(struct drm_device *dev)
 
 	nouveau_agp_reset(drm);
 
-	NV_INFO(drm, "resuming client object trees...\n");
+	NV_INFO(drm, "resuming kernel object tree...\n");
 	nouveau_client_init(&drm->client.base);
 	nouveau_agp_init(drm);
+
+	NV_INFO(drm, "resuming client object trees...\n");
+	if (drm->fence && nouveau_fence(drm)->resume)
+		nouveau_fence(drm)->resume(drm);
 
 	list_for_each_entry(cli, &drm->clients, head) {
 		nouveau_client_init(&cli->base);
 	}
 
-	if (drm->fence && nouveau_fence(drm)->resume)
-		nouveau_fence(drm)->resume(drm);
-
 	nouveau_run_vbios_init(dev);
-	nouveau_irq_postinstall(dev);
 	nouveau_pm_resume(dev);
 
 	if (dev->mode_config.num_crtc) {
@@ -669,8 +676,7 @@ static struct drm_driver
 driver = {
 	.driver_features =
 		DRIVER_USE_AGP | DRIVER_PCI_DMA | DRIVER_SG |
-		DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED | DRIVER_GEM |
-		DRIVER_MODESET | DRIVER_PRIME,
+		DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME,
 
 	.load = nouveau_drm_load,
 	.unload = nouveau_drm_unload,
@@ -683,11 +689,6 @@ driver = {
 	.debugfs_init = nouveau_debugfs_init,
 	.debugfs_cleanup = nouveau_debugfs_takedown,
 #endif
-
-	.irq_preinstall = nouveau_irq_preinstall,
-	.irq_postinstall = nouveau_irq_postinstall,
-	.irq_uninstall = nouveau_irq_uninstall,
-	.irq_handler = nouveau_irq_handler,
 
 	.get_vblank_counter = drm_vblank_count,
 	.enable_vblank = nouveau_drm_vblank_enable,

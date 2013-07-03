@@ -29,6 +29,7 @@
 #include <linux/module.h>
 #include <linux/list.h>
 #include <linux/smp.h>
+#include <linux/cpu.h>
 #include <linux/cpu_pm.h>
 #include <linux/cpumask.h>
 #include <linux/io.h>
@@ -39,12 +40,12 @@
 #include <linux/interrupt.h>
 #include <linux/percpu.h>
 #include <linux/slab.h>
+#include <linux/irqchip/chained_irq.h>
 #include <linux/irqchip/arm-gic.h>
 
 #include <asm/irq.h>
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
-#include <asm/mach/irq.h>
 
 #include "irqchip.h"
 
@@ -128,7 +129,7 @@ static inline void gic_set_base_accessor(struct gic_chip_data *data,
 #else
 #define gic_data_dist_base(d)	((d)->dist_base.common_base)
 #define gic_data_cpu_base(d)	((d)->cpu_base.common_base)
-#define gic_set_base_accessor(d,f)
+#define gic_set_base_accessor(d, f)
 #endif
 
 static inline void __iomem *gic_dist_base(struct irq_data *d)
@@ -341,7 +342,7 @@ static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 
 	cascade_irq = irq_find_mapping(chip_data->domain, gic_irq);
 	if (unlikely(gic_irq < 32 || gic_irq > 1020))
-		do_bad_IRQ(cascade_irq, desc);
+		handle_bad_irq(cascade_irq, desc);
 	else
 		generic_handle_irq(cascade_irq);
 
@@ -718,6 +719,25 @@ static int gic_irq_domain_xlate(struct irq_domain *d,
 	return 0;
 }
 
+#ifdef CONFIG_SMP
+static int __cpuinit gic_secondary_init(struct notifier_block *nfb,
+					unsigned long action, void *hcpu)
+{
+	if (action == CPU_STARTING || action == CPU_STARTING_FROZEN)
+		gic_cpu_init(&gic_data[0]);
+	return NOTIFY_OK;
+}
+
+/*
+ * Notifier for enabling the GIC CPU interface. Set an arbitrarily high
+ * priority because the GIC needs to be up before the ARM generic timers.
+ */
+static struct notifier_block __cpuinitdata gic_cpu_notifier = {
+	.notifier_call = gic_secondary_init,
+	.priority = 100,
+};
+#endif
+
 const struct irq_domain_ops gic_irq_domain_ops = {
 	.map = gic_irq_domain_map,
 	.xlate = gic_irq_domain_xlate,
@@ -808,6 +828,7 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 
 #ifdef CONFIG_SMP
 	set_smp_cross_call(gic_raise_softirq);
+	register_cpu_notifier(&gic_cpu_notifier);
 #endif
 
 	set_handle_irq(gic_handle_irq);
@@ -818,15 +839,8 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 	gic_pm_init(gic);
 }
 
-void __cpuinit gic_secondary_init(unsigned int gic_nr)
-{
-	BUG_ON(gic_nr >= MAX_GIC_NR);
-
-	gic_cpu_init(&gic_data[gic_nr]);
-}
-
 #ifdef CONFIG_OF
-static int gic_cnt __initdata = 0;
+static int gic_cnt __initdata;
 
 int __init gic_of_init(struct device_node *node, struct device_node *parent)
 {

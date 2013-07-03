@@ -341,7 +341,7 @@ static void batadv_bla_send_claim(struct batadv_priv *bat_priv, uint8_t *mac,
 	}
 
 	if (vid != -1)
-		skb = vlan_insert_tag(skb, vid);
+		skb = vlan_insert_tag(skb, htons(ETH_P_8021Q), vid);
 
 	skb_reset_mac_header(skb);
 	skb->protocol = eth_type_trans(skb, soft_iface);
@@ -1066,6 +1066,10 @@ void batadv_bla_update_orig_address(struct batadv_priv *bat_priv,
 	/* reset bridge loop avoidance group id */
 	group = htons(crc16(0, primary_if->net_dev->dev_addr, ETH_ALEN));
 	bat_priv->bla.claim_dest.group = group;
+
+	/* purge everything when bridge loop avoidance is turned off */
+	if (!atomic_read(&bat_priv->bridge_loop_avoidance))
+		oldif = NULL;
 
 	if (!oldif) {
 		batadv_bla_purge_claims(bat_priv, NULL, 1);

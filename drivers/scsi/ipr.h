@@ -552,7 +552,7 @@ struct ipr_ioarcb_ata_regs {	/* 22 bytes */
 	u8 hob_lbam;
 	u8 hob_lbah;
 	u8 ctl;
-}__attribute__ ((packed, aligned(4)));
+}__attribute__ ((packed, aligned(2)));
 
 struct ipr_ioadl_desc {
 	__be32 flags_and_data_len;
@@ -1440,9 +1440,9 @@ struct ipr_ioa_cfg {
 	/*
 	 * Bitmaps for SIS64 generated target values
 	 */
-	unsigned long *target_ids;
-	unsigned long *array_ids;
-	unsigned long *vset_ids;
+	unsigned long target_ids[BITS_TO_LONGS(IPR_MAX_SIS64_DEVS)];
+	unsigned long array_ids[BITS_TO_LONGS(IPR_MAX_SIS64_DEVS)];
+	unsigned long vset_ids[BITS_TO_LONGS(IPR_MAX_SIS64_DEVS)];
 
 	u16 type; /* CCIN of the card */
 

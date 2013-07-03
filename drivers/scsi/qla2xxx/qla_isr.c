@@ -13,11 +13,7 @@
 #include <scsi/scsi_bsg_fc.h>
 #include <scsi/scsi_eh.h>
 
-#include "qla_target.h"
-
 static void qla2x00_mbx_completion(scsi_qla_host_t *, uint16_t);
-static void qla2x00_process_completed_request(struct scsi_qla_host *,
-	struct req_que *, uint32_t);
 static void qla2x00_status_entry(scsi_qla_host_t *, struct rsp_que *, void *);
 static void qla2x00_status_cont_entry(struct rsp_que *, sts_cont_entry_t *);
 static void qla2x00_error_entry(scsi_qla_host_t *, struct rsp_que *,
@@ -108,13 +104,8 @@ qla2100_intr_handler(int irq, void *dev_id)
 			RD_REG_WORD(&reg->hccr);
 		}
 	}
+	qla2x00_handle_mbx_completion(ha, status);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
-		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
-		complete(&ha->mbx_intr_comp);
-	}
 
 	return (IRQ_HANDLED);
 }
@@ -225,13 +216,8 @@ qla2300_intr_handler(int irq, void *dev_id)
 		WRT_REG_WORD(&reg->hccr, HCCR_CLR_RISC_INT);
 		RD_REG_WORD_RELAXED(&reg->hccr);
 	}
+	qla2x00_handle_mbx_completion(ha, status);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
-		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
-		complete(&ha->mbx_intr_comp);
-	}
 
 	return (IRQ_HANDLED);
 }
@@ -1065,9 +1051,9 @@ skip_rio:
  * @ha: SCSI driver HA context
  * @index: SRB index
  */
-static void
+void
 qla2x00_process_completed_request(struct scsi_qla_host *vha,
-				struct req_que *req, uint32_t index)
+				  struct req_que *req, uint32_t index)
 {
 	srb_t *sp;
 	struct qla_hw_data *ha = vha->hw;
@@ -1101,7 +1087,7 @@ qla2x00_process_completed_request(struct scsi_qla_host *vha,
 	}
 }
 
-static srb_t *
+srb_t *
 qla2x00_get_sp_from_handle(scsi_qla_host_t *vha, const char *func,
     struct req_que *req, void *iocb)
 {
@@ -1994,7 +1980,7 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		return;
 	}
 
-  	lscsi_status = scsi_status & STATUS_MASK;
+	lscsi_status = scsi_status & STATUS_MASK;
 
 	fcport = sp->fcport;
 
@@ -2617,13 +2603,8 @@ qla24xx_intr_handler(int irq, void *dev_id)
 		if (unlikely(IS_QLA83XX(ha) && (ha->pdev->revision == 1)))
 			ndelay(3500);
 	}
+	qla2x00_handle_mbx_completion(ha, status);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
-		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
-		complete(&ha->mbx_intr_comp);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -2767,13 +2748,9 @@ qla24xx_msix_default(int irq, void *dev_id)
 		}
 		WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_INT);
 	} while (0);
+	qla2x00_handle_mbx_completion(ha, status);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
-		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
-		complete(&ha->mbx_intr_comp);
-	}
 	return IRQ_HANDLED;
 }
 
@@ -2939,7 +2916,7 @@ qla2x00_request_irqs(struct qla_hw_data *ha, struct rsp_que *rsp)
 
 	/* If possible, enable MSI-X. */
 	if (!IS_QLA2432(ha) && !IS_QLA2532(ha) && !IS_QLA8432(ha) &&
-		!IS_CNA_CAPABLE(ha) && !IS_QLA2031(ha))
+		!IS_CNA_CAPABLE(ha) && !IS_QLA2031(ha) && !IS_QLAFX00(ha))
 		goto skip_msi;
 
 	if (ha->pdev->subsystem_vendor == PCI_VENDOR_ID_HP &&
@@ -2972,7 +2949,7 @@ qla2x00_request_irqs(struct qla_hw_data *ha, struct rsp_que *rsp)
 skip_msix:
 
 	if (!IS_QLA24XX(ha) && !IS_QLA2532(ha) && !IS_QLA8432(ha) &&
-	    !IS_QLA8001(ha) && !IS_QLA82XX(ha))
+	    !IS_QLA8001(ha) && !IS_QLA82XX(ha) && !IS_QLAFX00(ha))
 		goto skip_msi;
 
 	ret = pci_enable_msi(ha->pdev);
@@ -2998,9 +2975,11 @@ skip_msi:
 		    "Failed to reserve interrupt %d already in use.\n",
 		    ha->pdev->irq);
 		goto fail;
-	} else if (!ha->flags.msi_enabled)
+	} else if (!ha->flags.msi_enabled) {
 		ql_dbg(ql_dbg_init, vha, 0x0125,
 		    "INTa mode: Enabled.\n");
+		ha->flags.mr_intr_valid = 1;
+	}
 
 clear_risc_ints:
 

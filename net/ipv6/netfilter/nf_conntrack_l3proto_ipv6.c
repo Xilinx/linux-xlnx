@@ -204,7 +204,7 @@ static unsigned int __ipv6_conntrack_in(struct net *net,
 		if (ct != NULL && !nf_ct_is_untracked(ct)) {
 			help = nfct_help(ct);
 			if ((help && help->helper) || !nf_ct_is_confirmed(ct)) {
-				nf_conntrack_get_reasm(skb);
+				nf_conntrack_get_reasm(reasm);
 				NF_HOOK_THRESH(NFPROTO_IPV6, hooknum, reasm,
 					       (struct net_device *)in,
 					       (struct net_device *)out,
@@ -330,12 +330,8 @@ ipv6_getorigdst(struct sock *sk, int optval, void __user *user, int *len)
 					sizeof(sin6.sin6_addr));
 
 	nf_ct_put(ct);
-
-	if (ipv6_addr_type(&sin6.sin6_addr) & IPV6_ADDR_LINKLOCAL)
-		sin6.sin6_scope_id = sk->sk_bound_dev_if;
-	else
-		sin6.sin6_scope_id = 0;
-
+	sin6.sin6_scope_id = ipv6_iface_scope_id(&sin6.sin6_addr,
+						 sk->sk_bound_dev_if);
 	return copy_to_user(user, &sin6, sizeof(sin6)) ? -EFAULT : 0;
 }
 

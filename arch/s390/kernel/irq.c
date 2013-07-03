@@ -33,7 +33,7 @@ struct irq_class {
 };
 
 /*
- * The list of "main" irq classes on s390. This is the list of interrrupts
+ * The list of "main" irq classes on s390. This is the list of interrupts
  * that appear both in /proc/stat ("intr" line) and /proc/interrupts.
  * Historically only external and I/O interrupts have been part of /proc/stat.
  * We can't add the split external and I/O sub classes since the first field
@@ -162,10 +162,8 @@ asmlinkage void do_softirq(void)
 #ifdef CONFIG_PROC_FS
 void init_irq_proc(void)
 {
-	struct proc_dir_entry *root_irq_dir;
-
-	root_irq_dir = proc_mkdir("irq", NULL);
-	create_prof_cpu_mask(root_irq_dir);
+	if (proc_mkdir("irq", NULL))
+		create_prof_cpu_mask();
 }
 #endif
 
@@ -313,3 +311,69 @@ void measurement_alert_subclass_unregister(void)
 	spin_unlock(&ma_subclass_lock);
 }
 EXPORT_SYMBOL(measurement_alert_subclass_unregister);
+
+#ifdef CONFIG_SMP
+void synchronize_irq(unsigned int irq)
+{
+	/*
+	 * Not needed, the handler is protected by a lock and IRQs that occur
+	 * after the handler is deleted are just NOPs.
+	 */
+}
+EXPORT_SYMBOL_GPL(synchronize_irq);
+#endif
+
+#ifndef CONFIG_PCI
+
+/* Only PCI devices have dynamically-defined IRQ handlers */
+
+int request_irq(unsigned int irq, irq_handler_t handler,
+		unsigned long irqflags, const char *devname, void *dev_id)
+{
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(request_irq);
+
+void free_irq(unsigned int irq, void *dev_id)
+{
+	WARN_ON(1);
+}
+EXPORT_SYMBOL_GPL(free_irq);
+
+void enable_irq(unsigned int irq)
+{
+	WARN_ON(1);
+}
+EXPORT_SYMBOL_GPL(enable_irq);
+
+void disable_irq(unsigned int irq)
+{
+	WARN_ON(1);
+}
+EXPORT_SYMBOL_GPL(disable_irq);
+
+#endif /* !CONFIG_PCI */
+
+void disable_irq_nosync(unsigned int irq)
+{
+	disable_irq(irq);
+}
+EXPORT_SYMBOL_GPL(disable_irq_nosync);
+
+unsigned long probe_irq_on(void)
+{
+	return 0;
+}
+EXPORT_SYMBOL_GPL(probe_irq_on);
+
+int probe_irq_off(unsigned long val)
+{
+	return 0;
+}
+EXPORT_SYMBOL_GPL(probe_irq_off);
+
+unsigned int probe_irq_mask(unsigned long val)
+{
+	return val;
+}
+EXPORT_SYMBOL_GPL(probe_irq_mask);

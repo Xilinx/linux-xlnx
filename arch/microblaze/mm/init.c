@@ -82,13 +82,9 @@ static unsigned long highmem_setup(void)
 		/* FIXME not sure about */
 		if (memblock_is_reserved(pfn << PAGE_SHIFT))
 			continue;
-		ClearPageReserved(page);
-		init_page_count(page);
-		__free_page(page);
-		totalhigh_pages++;
+		free_highmem_page(page);
 		reservedpages++;
 	}
-	totalram_pages += totalhigh_pages;
 	pr_info("High memory: %luk\n",
 					totalhigh_pages << (PAGE_SHIFT-10));
 
@@ -236,37 +232,16 @@ void __init setup_memory(void)
 	paging_init();
 }
 
-static void free_init_pages(char *what, unsigned long start, unsigned long end)
-{
-	if (start >= end)
-		return;
-
-	start = PAGE_DOWN(start);
-	end = PAGE_UP(end);
-
-	pr_info("Freeing %s: %ldk freed\n", what, (end - start) >> 10);
-
-	for (; start < end; start += PAGE_SIZE) {
-		struct page *page = virt_to_page(start);
-		ClearPageReserved(page);
-		init_page_count(page);
-		__free_page(page);
-		totalram_pages++;
-	}
-}
-
 #ifdef CONFIG_BLK_DEV_INITRD
 void free_initrd_mem(unsigned long start, unsigned long end)
 {
-	free_init_pages("initrd memory", start, end);
+	free_reserved_area(start, end, 0, "initrd");
 }
 #endif
 
 void free_initmem(void)
 {
-	free_init_pages("unused kernel memory",
-			(unsigned long)(&__init_begin),
-			(unsigned long)(&__init_end));
+	free_initmem_default(0);
 }
 
 void __init mem_init(void)

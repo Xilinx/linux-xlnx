@@ -428,14 +428,15 @@ int bond_dev_queue_xmit(struct bonding *bond, struct sk_buff *skb,
  * @bond_dev: bonding net device that got called
  * @vid: vlan id being added
  */
-static int bond_vlan_rx_add_vid(struct net_device *bond_dev, uint16_t vid)
+static int bond_vlan_rx_add_vid(struct net_device *bond_dev,
+				__be16 proto, u16 vid)
 {
 	struct bonding *bond = netdev_priv(bond_dev);
 	struct slave *slave, *stop_at;
 	int i, res;
 
 	bond_for_each_slave(bond, slave, i) {
-		res = vlan_vid_add(slave->dev, vid);
+		res = vlan_vid_add(slave->dev, proto, vid);
 		if (res)
 			goto unwind;
 	}
@@ -453,7 +454,7 @@ unwind:
 	/* unwind from head to the slave that failed */
 	stop_at = slave;
 	bond_for_each_slave_from_to(bond, slave, i, bond->first_slave, stop_at)
-		vlan_vid_del(slave->dev, vid);
+		vlan_vid_del(slave->dev, proto, vid);
 
 	return res;
 }
@@ -463,14 +464,15 @@ unwind:
  * @bond_dev: bonding net device that got called
  * @vid: vlan id being removed
  */
-static int bond_vlan_rx_kill_vid(struct net_device *bond_dev, uint16_t vid)
+static int bond_vlan_rx_kill_vid(struct net_device *bond_dev,
+				 __be16 proto, u16 vid)
 {
 	struct bonding *bond = netdev_priv(bond_dev);
 	struct slave *slave;
 	int i, res;
 
 	bond_for_each_slave(bond, slave, i)
-		vlan_vid_del(slave->dev, vid);
+		vlan_vid_del(slave->dev, proto, vid);
 
 	res = bond_del_vlan(bond, vid);
 	if (res) {
@@ -488,7 +490,8 @@ static void bond_add_vlans_on_slave(struct bonding *bond, struct net_device *sla
 	int res;
 
 	list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
-		res = vlan_vid_add(slave_dev, vlan->vlan_id);
+		res = vlan_vid_add(slave_dev, htons(ETH_P_8021Q),
+				   vlan->vlan_id);
 		if (res)
 			pr_warning("%s: Failed to add vlan id %d to device %s\n",
 				   bond->dev->name, vlan->vlan_id,
@@ -504,7 +507,7 @@ static void bond_del_vlans_from_slave(struct bonding *bond,
 	list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
 		if (!vlan->vlan_id)
 			continue;
-		vlan_vid_del(slave_dev, vlan->vlan_id);
+		vlan_vid_del(slave_dev, htons(ETH_P_8021Q), vlan->vlan_id);
 	}
 }
 
@@ -761,8 +764,8 @@ static void bond_resend_igmp_join_requests(struct bonding *bond)
 	struct net_device *bond_dev, *vlan_dev, *upper_dev;
 	struct vlan_entry *vlan;
 
-	rcu_read_lock();
 	read_lock(&bond->lock);
+	rcu_read_lock();
 
 	bond_dev = bond->dev;
 
@@ -779,26 +782,32 @@ static void bond_resend_igmp_join_requests(struct bonding *bond)
 
 	/* rejoin all groups on vlan devices */
 	list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
-		vlan_dev = __vlan_find_dev_deep(bond_dev,
+		vlan_dev = __vlan_find_dev_deep(bond_dev, htons(ETH_P_8021Q),
 						vlan->vlan_id);
 		if (vlan_dev)
 			__bond_resend_igmp_join_requests(vlan_dev);
 	}
-
-	if (--bond->igmp_retrans > 0)
-		queue_delayed_work(bond->wq, &bond->mcast_work, HZ/5);
-
-	read_unlock(&bond->lock);
 	rcu_read_unlock();
+
+	/* We use curr_slave_lock to protect against concurrent access to
+	 * igmp_retrans from multiple running instances of this function and
+	 * bond_change_active_slave
+	 */
+	write_lock_bh(&bond->curr_slave_lock);
+	if (bond->igmp_retrans > 1) {
+		bond->igmp_retrans--;
+		queue_delayed_work(bond->wq, &bond->mcast_work, HZ/5);
+	}
+	write_unlock_bh(&bond->curr_slave_lock);
+	read_unlock(&bond->lock);
 }
 
 static void bond_resend_igmp_join_requests_delayed(struct work_struct *work)
 {
 	struct bonding *bond = container_of(work, struct bonding,
 					    mcast_work.work);
-	rcu_read_lock();
+
 	bond_resend_igmp_join_requests(bond);
-	rcu_read_unlock();
 }
 
 /*
@@ -1360,6 +1369,7 @@ static netdev_features_t bond_fix_features(struct net_device *dev,
 						     slave->dev->features,
 						     mask);
 	}
+	features = netdev_add_tso_features(features, mask);
 
 out:
 	read_unlock(&bond->lock);
@@ -1915,14 +1925,16 @@ err_detach:
 	bond_detach_slave(bond, new_slave);
 	if (bond->primary_slave == new_slave)
 		bond->primary_slave = NULL;
-	write_unlock_bh(&bond->lock);
 	if (bond->curr_active_slave == new_slave) {
+		bond_change_active_slave(bond, NULL);
+		write_unlock_bh(&bond->lock);
 		read_lock(&bond->lock);
 		write_lock_bh(&bond->curr_slave_lock);
-		bond_change_active_slave(bond, NULL);
 		bond_select_active_slave(bond);
 		write_unlock_bh(&bond->curr_slave_lock);
 		read_unlock(&bond->lock);
+	} else {
+		write_unlock_bh(&bond->lock);
 	}
 	slave_disable_netpoll(new_slave);
 
@@ -1952,6 +1964,10 @@ err_free:
 
 err_undo_flags:
 	bond_compute_features(bond);
+	/* Enslave of first slave has failed and we need to fix master's mac */
+	if (bond->slave_cnt == 0 &&
+	    ether_addr_equal(bond_dev->dev_addr, slave_dev->dev_addr))
+		eth_hw_addr_random(bond_dev);
 
 	return res;
 }
@@ -2397,7 +2413,8 @@ static void bond_miimon_commit(struct bonding *bond)
 
 			pr_info("%s: link status definitely up for interface %s, %u Mbps %s duplex.\n",
 				bond->dev->name, slave->dev->name,
-				slave->speed, slave->duplex ? "full" : "half");
+				slave->speed == SPEED_UNKNOWN ? 0 : slave->speed,
+				slave->duplex ? "full" : "half");
 
 			/* notify ad that the link status has changed */
 			if (bond->params.mode == BOND_MODE_8023AD)
@@ -2532,7 +2549,8 @@ static int bond_has_this_ip(struct bonding *bond, __be32 ip)
 
 	list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
 		rcu_read_lock();
-		vlan_dev = __vlan_find_dev_deep(bond->dev, vlan->vlan_id);
+		vlan_dev = __vlan_find_dev_deep(bond->dev, htons(ETH_P_8021Q),
+						vlan->vlan_id);
 		rcu_read_unlock();
 		if (vlan_dev && ip == bond_confirm_addr(vlan_dev, 0, ip))
 			return 1;
@@ -2550,8 +2568,8 @@ static void bond_arp_send(struct net_device *slave_dev, int arp_op, __be32 dest_
 {
 	struct sk_buff *skb;
 
-	pr_debug("arp %d on slave %s: dst %x src %x vid %d\n", arp_op,
-		 slave_dev->name, dest_ip, src_ip, vlan_id);
+	pr_debug("arp %d on slave %s: dst %pI4 src %pI4 vid %d\n", arp_op,
+		 slave_dev->name, &dest_ip, &src_ip, vlan_id);
 
 	skb = arp_create(arp_op, ETH_P_ARP, dest_ip, slave_dev, src_ip,
 			 NULL, slave_dev->dev_addr, NULL);
@@ -2561,7 +2579,7 @@ static void bond_arp_send(struct net_device *slave_dev, int arp_op, __be32 dest_
 		return;
 	}
 	if (vlan_id) {
-		skb = vlan_put_tag(skb, vlan_id);
+		skb = vlan_put_tag(skb, htons(ETH_P_8021Q), vlan_id);
 		if (!skb) {
 			pr_err("failed to insert VLAN tag\n");
 			return;
@@ -2583,7 +2601,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 		__be32 addr;
 		if (!targets[i])
 			break;
-		pr_debug("basa: target %x\n", targets[i]);
+		pr_debug("basa: target %pI4\n", &targets[i]);
 		if (!bond_vlan_used(bond)) {
 			pr_debug("basa: empty vlan: arp_send\n");
 			addr = bond_confirm_addr(bond->dev, targets[i], 0);
@@ -2623,6 +2641,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 		list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
 			rcu_read_lock();
 			vlan_dev = __vlan_find_dev_deep(bond->dev,
+							htons(ETH_P_8021Q),
 							vlan->vlan_id);
 			rcu_read_unlock();
 			if (vlan_dev == rt->dst.dev) {
@@ -4258,6 +4277,37 @@ void bond_set_mode_ops(struct bonding *bond, int mode)
 	}
 }
 
+static int bond_ethtool_get_settings(struct net_device *bond_dev,
+				     struct ethtool_cmd *ecmd)
+{
+	struct bonding *bond = netdev_priv(bond_dev);
+	struct slave *slave;
+	int i;
+	unsigned long speed = 0;
+
+	ecmd->duplex = DUPLEX_UNKNOWN;
+	ecmd->port = PORT_OTHER;
+
+	/* Since SLAVE_IS_OK returns false for all inactive or down slaves, we
+	 * do not need to check mode.  Though link speed might not represent
+	 * the true receive or transmit bandwidth (not all modes are symmetric)
+	 * this is an accurate maximum.
+	 */
+	read_lock(&bond->lock);
+	bond_for_each_slave(bond, slave, i) {
+		if (SLAVE_IS_OK(slave)) {
+			if (slave->speed != SPEED_UNKNOWN)
+				speed += slave->speed;
+			if (ecmd->duplex == DUPLEX_UNKNOWN &&
+			    slave->duplex != DUPLEX_UNKNOWN)
+				ecmd->duplex = slave->duplex;
+		}
+	}
+	ethtool_cmd_speed_set(ecmd, speed ? : SPEED_UNKNOWN);
+	read_unlock(&bond->lock);
+	return 0;
+}
+
 static void bond_ethtool_get_drvinfo(struct net_device *bond_dev,
 				     struct ethtool_drvinfo *drvinfo)
 {
@@ -4269,6 +4319,7 @@ static void bond_ethtool_get_drvinfo(struct net_device *bond_dev,
 
 static const struct ethtool_ops bond_ethtool_ops = {
 	.get_drvinfo		= bond_ethtool_get_drvinfo,
+	.get_settings		= bond_ethtool_get_settings,
 	.get_link		= ethtool_op_get_link,
 };
 
@@ -4359,9 +4410,9 @@ static void bond_setup(struct net_device *bond_dev)
 	 */
 
 	bond_dev->hw_features = BOND_VLAN_FEATURES |
-				NETIF_F_HW_VLAN_TX |
-				NETIF_F_HW_VLAN_RX |
-				NETIF_F_HW_VLAN_FILTER;
+				NETIF_F_HW_VLAN_CTAG_TX |
+				NETIF_F_HW_VLAN_CTAG_RX |
+				NETIF_F_HW_VLAN_CTAG_FILTER;
 
 	bond_dev->hw_features &= ~(NETIF_F_ALL_CSUM & ~NETIF_F_HW_CSUM);
 	bond_dev->features |= bond_dev->hw_features;
@@ -4432,7 +4483,7 @@ int bond_parse_parm(const char *buf, const struct bond_parm_tbl *tbl)
 
 static int bond_check_params(struct bond_params *params)
 {
-	int arp_validate_value, fail_over_mac_value, primary_reselect_value;
+	int arp_validate_value, fail_over_mac_value, primary_reselect_value, i;
 
 	/*
 	 * Convert string parameters.
@@ -4612,19 +4663,18 @@ static int bond_check_params(struct bond_params *params)
 		arp_interval = BOND_LINK_ARP_INTERV;
 	}
 
-	for (arp_ip_count = 0;
-	     (arp_ip_count < BOND_MAX_ARP_TARGETS) && arp_ip_target[arp_ip_count];
-	     arp_ip_count++) {
+	for (arp_ip_count = 0, i = 0;
+	     (arp_ip_count < BOND_MAX_ARP_TARGETS) && arp_ip_target[i]; i++) {
 		/* not complete check, but should be good enough to
 		   catch mistakes */
-		__be32 ip = in_aton(arp_ip_target[arp_ip_count]);
-		if (!isdigit(arp_ip_target[arp_ip_count][0]) ||
-		    ip == 0 || ip == htonl(INADDR_BROADCAST)) {
+		__be32 ip = in_aton(arp_ip_target[i]);
+		if (!isdigit(arp_ip_target[i][0]) || ip == 0 ||
+		    ip == htonl(INADDR_BROADCAST)) {
 			pr_warning("Warning: bad arp_ip_target module parameter (%s), ARP monitoring will not be performed\n",
-				   arp_ip_target[arp_ip_count]);
+				   arp_ip_target[i]);
 			arp_interval = 0;
 		} else {
-			arp_target[arp_ip_count] = ip;
+			arp_target[arp_ip_count++] = ip;
 		}
 	}
 
@@ -4658,8 +4708,6 @@ static int bond_check_params(struct bond_params *params)
 	if (miimon) {
 		pr_info("MII link monitoring set to %d ms\n", miimon);
 	} else if (arp_interval) {
-		int i;
-
 		pr_info("ARP monitoring set to %d ms, validate %s, with %d target(s):",
 			arp_interval,
 			arp_validate_tbl[arp_validate_value].modename,

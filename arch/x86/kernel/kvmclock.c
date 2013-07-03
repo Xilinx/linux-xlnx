@@ -160,8 +160,12 @@ int kvm_register_clock(char *txt)
 {
 	int cpu = smp_processor_id();
 	int low, high, ret;
-	struct pvclock_vcpu_time_info *src = &hv_clock[cpu].pvti;
+	struct pvclock_vcpu_time_info *src;
 
+	if (!hv_clock)
+		return 0;
+
+	src = &hv_clock[cpu].pvti;
 	low = (int)slow_virt_to_phys(src) | 1;
 	high = ((u64)slow_virt_to_phys(src) >> 32);
 	ret = native_write_msr_safe(msr_kvm_system_time, low, high);
@@ -238,6 +242,7 @@ void __init kvmclock_init(void)
 	if (!mem)
 		return;
 	hv_clock = __va(mem);
+	memset(hv_clock, 0, size);
 
 	if (kvm_register_clock("boot clock")) {
 		hv_clock = NULL;
@@ -275,6 +280,9 @@ int __init kvm_setup_vsyscall_timeinfo(void)
 	u8 flags;
 	struct pvclock_vcpu_time_info *vcpu_time;
 	unsigned int size;
+
+	if (!hv_clock)
+		return 0;
 
 	size = PAGE_ALIGN(sizeof(struct pvclock_vsyscall_time_info)*NR_CPUS);
 

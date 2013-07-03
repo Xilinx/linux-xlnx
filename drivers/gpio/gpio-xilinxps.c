@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <asm/mach/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/irqchip/chained_irq.h>
 
 #define DRIVER_NAME "xgpiops"
 #define XGPIOPS_NR_GPIOS	118
