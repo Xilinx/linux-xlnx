@@ -820,7 +820,6 @@ unmap_io:
 release_mem:
 	release_mem_region(r->start, r->end - r->start + 1);
 put_master:
-	platform_set_drvdata(dev, NULL);
 	spi_master_put(master);
 	kfree(master);
 	return ret;
@@ -861,9 +860,6 @@ static int xspips_remove(struct platform_device *pdev)
 
 	spi_unregister_master(master);
 	spi_master_put(master);
-
-	/* Prevent double remove */
-	platform_set_drvdata(pdev, NULL);
 
 	clk_notifier_unregister(xspi->devclk, &xspi->clk_rate_change_nb);
 	clk_disable_unprepare(xspi->devclk);
