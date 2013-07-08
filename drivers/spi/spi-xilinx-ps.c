@@ -99,9 +99,9 @@
  * @queue:		Head of the queue
  * @queue_state:	Queue status
  * @regs:		Virtual address of the SPI controller registers
- * @devclk		Pointer to the peripheral clock
- * @aperclk		Pointer to the APER clock
- * @clk_rate_change_nb	Notifier block for clock frequency change callback
+ * @devclk:		Pointer to the peripheral clock
+ * @aperclk:		Pointer to the APER clock
+ * @clk_rate_change_nb:	Notifier block for clock frequency change callback
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
@@ -111,7 +111,7 @@
  * @remaining_bytes:	Number of bytes left to transfer
  * @dev_busy:		Device busy flag
  * @done:		Transfer complete status
- **/
+ */
 struct xspips {
 	struct workqueue_struct *workqueue;
 	struct work_struct work;
@@ -143,7 +143,7 @@ struct xspips {
  * This function initializes the SPI controller to disable and clear all the
  * interrupts, enable manual slave select and manual start, deselect all the
  * chip select lines, and enable the SPI controller.
- **/
+ */
 static void xspips_init_hw(void __iomem *regs_base)
 {
 	xspips_write(regs_base + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
@@ -163,7 +163,7 @@ static void xspips_init_hw(void __iomem *regs_base)
  * xspips_chipselect - Select or deselect the chip select line
  * @spi:	Pointer to the spi_device structure
  * @is_on:	Select(1) or deselect (0) the chip select line
- **/
+ */
 static void xspips_chipselect(struct spi_device *spi, int is_on)
 {
 	struct xspips *xspi = spi_master_get_devdata(spi->master);
@@ -206,7 +206,7 @@ static void xspips_chipselect(struct spi_device *spi, int is_on)
  * the requested frequency is higher or lower than that is supported by the SPI
  * controller the driver will set the highest or lowest frequency supported by
  * controller.
- **/
+ */
 static int xspips_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
@@ -273,7 +273,7 @@ static int xspips_setup_transfer(struct spi_device *spi,
  * the baud rate and divisor value to setup the requested spi clock.
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_setup(struct spi_device *spi)
 {
 	if (!spi->max_speed_hz)
@@ -288,7 +288,7 @@ static int xspips_setup(struct spi_device *spi)
 /**
  * xspips_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
  * @xspi:	Pointer to the xspips structure
- **/
+ */
 static void xspips_fill_tx_fifo(struct xspips *xspi)
 {
 	while ((xspips_read(xspi->regs + XSPIPS_ISR_OFFSET) & 0x00000008) == 0
@@ -316,7 +316,7 @@ static void xspips_fill_tx_fifo(struct xspips *xspi)
  * transferred is non-zero.
  *
  * returns:	IRQ_HANDLED always
- **/
+ */
 static irqreturn_t xspips_irq(int irq, void *dev_id)
 {
 	struct xspips *xspi = dev_id;
@@ -386,7 +386,7 @@ static irqreturn_t xspips_irq(int irq, void *dev_id)
  * transfer to be completed.
  *
  * returns:	Number of bytes transferred in the last transfer
- **/
+ */
 static int xspips_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
 {
@@ -420,7 +420,7 @@ static int xspips_start_transfer(struct spi_device *spi,
 /**
  * xspips_work_queue - Get the transfer request from queue to perform transfers
  * @work:	Pointer to the work_struct structure
- **/
+ */
 static void xspips_work_queue(struct work_struct *work)
 {
 	struct xspips *xspi = container_of(work, struct xspips, work);
@@ -509,7 +509,7 @@ static void xspips_work_queue(struct work_struct *work)
  *		about next transfer parameters
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_transfer(struct spi_device *spi, struct spi_message *message)
 {
 	struct xspips *xspi = spi_master_get_devdata(spi->master);
@@ -548,7 +548,7 @@ static int xspips_transfer(struct spi_device *spi, struct spi_message *message)
  * @xspi:	Pointer to the xspips structure
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static inline int xspips_start_queue(struct xspips *xspi)
 {
 	unsigned long flags;
@@ -574,7 +574,7 @@ static inline int xspips_start_queue(struct xspips *xspi)
  * Maximum time out is set to 5 seconds.
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static inline int xspips_stop_queue(struct xspips *xspi)
 {
 	unsigned long flags;
@@ -608,7 +608,7 @@ static inline int xspips_stop_queue(struct xspips *xspi)
  * @xspi:	Pointer to the xspips structure
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static inline int xspips_destroy_queue(struct xspips *xspi)
 {
 	int ret;
@@ -648,7 +648,7 @@ static int xspips_clk_notifier_cb(struct notifier_block *nb,
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_probe(struct platform_device *dev)
 {
 	int ret = 0;
@@ -835,7 +835,7 @@ put_master:
  * the device.
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_remove(struct platform_device *dev)
 {
 	struct spi_master *master = platform_get_drvdata(dev);
@@ -882,12 +882,11 @@ static int xspips_remove(struct platform_device *dev)
 /**
  * xspips_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
- * @msg:	Power management event message
  *
  * This function stops the SPI driver queue and disables the SPI controller
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
@@ -916,7 +915,7 @@ static int xspips_suspend(struct device *_dev)
  * This function starts the SPI driver queue and initializes the SPI controller
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xspips_resume(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
