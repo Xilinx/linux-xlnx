@@ -794,8 +794,8 @@ static void xqspips_work_queue(struct work_struct *work)
  * returns:	0 on success, -EINVAL on invalid input parameter and
  *		-ESHUTDOWN if queue is stopped by module unload function
  */
-static int
-xqspips_transfer(struct spi_device *qspi, struct spi_message *message)
+static int xqspips_transfer(struct spi_device *qspi,
+			    struct spi_message *message)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
 	struct spi_transfer *transfer;
