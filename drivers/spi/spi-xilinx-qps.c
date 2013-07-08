@@ -1163,7 +1163,6 @@ clk_put:
 clk_put_aper:
 	clk_put(xqspi->aperclk);
 remove_master:
-	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 	kfree(master);
 	return ret;
@@ -1202,9 +1201,6 @@ static int xqspips_remove(struct platform_device *pdev)
 	clk_put(xqspi->aperclk);
 
 	kfree(master);
-
-	/* Prevent double remove */
-	platform_set_drvdata(pdev, NULL);
 
 	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
