@@ -509,9 +509,6 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 	struct resource *res;
 	void __iomem *baseaddr;
 
-	if (!devres_open_group(&pdev->dev, NULL, GFP_KERNEL))
-		return -ENOMEM;
-
 	/* Get the data from the platform device */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	baseaddr = devm_ioremap_resource(&pdev->dev, res);
@@ -522,9 +519,8 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 
 	/* Check for the ecc enable status */
 	if (zynq_edac_get_eccstate(baseaddr) == false) {
-		rc = -ENXIO;
 		dev_err(&pdev->dev, "ecc not enabled\n");
-		goto iounmap;
+		return -ENXIO;
 	}
 
 	/*
@@ -542,9 +538,8 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 	mci = edac_mc_alloc(pdev->id, ARRAY_SIZE(layers), layers,
 			    sizeof(struct zynq_edac_priv));
 	if (mci == NULL) {
-		rc = -ENOMEM;
 		pr_err("Failed memory allocation for mci instance!\n");
-		goto iounmap;
+		return -ENOMEM;
 	}
 
 	priv = mci->pvt_info;
@@ -565,16 +560,12 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 		goto del_edac_mc;
 	}
 
-	devres_close_group(&pdev->dev, NULL);
-
 	return rc;
 
 del_edac_mc:
 	edac_mc_del_mc(&pdev->dev);
 free_edac_mc:
 	edac_mc_free(mci);
-iounmap:
-	devres_release_group(&pdev->dev, NULL);
 
 	return rc;
 }
