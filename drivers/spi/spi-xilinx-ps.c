@@ -912,16 +912,9 @@ static int xspips_resume(struct device *dev)
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
-
-static const struct dev_pm_ops xspips_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xspips_suspend, xspips_resume)
-};
-#define XSPIPS_PM	(&xspips_dev_pm_ops)
-
-#else /* ! CONFIG_PM_SLEEP */
-#define XSPIPS_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
+static SIMPLE_DEV_PM_OPS(xspips_dev_pm_ops, xspips_suspend, xspips_resume);
 
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" XSPIPS_NAME);
@@ -942,7 +935,7 @@ static struct platform_driver xspips_driver = {
 		.name = XSPIPS_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xspips_of_match,
-		.pm = XSPIPS_PM,
+		.pm = &xspips_dev_pm_ops,
 	},
 };
 
