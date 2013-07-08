@@ -6,7 +6,9 @@
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;
-
+	aliases {
+		spi0 = &spi;
+	};
 	memory {
 		device_type = "memory";
 		reg = <0x0 0x40000000>;
@@ -142,7 +144,6 @@
 			interrupts = <0 26 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <50000000>;
-			bus-num = <0>;
 			num-chip-select = <4>;
 		};
 
