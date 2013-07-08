@@ -121,7 +121,7 @@ struct xspips {
 	struct clk *devclk;
 	struct clk *aperclk;
 	struct notifier_block clk_rate_change_nb;
-	u32 irq;
+	int irq;
 	u32 speed_hz;
 	spinlock_t trans_queue_lock;
 	spinlock_t ctrl_reg_lock;
@@ -654,7 +654,7 @@ static int xspips_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct spi_master *master;
 	struct xspips *xspi;
-	struct resource *r;
+	struct resource *res;
 	const unsigned int *prop;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
@@ -665,39 +665,27 @@ static int xspips_probe(struct platform_device *pdev)
 	master->dev.of_node = pdev->dev.of_node;
 	platform_set_drvdata(pdev, master);
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (r == NULL) {
-		ret = -ENODEV;
-		dev_err(&pdev->dev, "platform_get_resource failed\n");
-		goto put_master;
-	}
-
-	if (!request_mem_region(r->start,
-			r->end - r->start + 1, pdev->name)) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "request_mem_region failed\n");
-		goto put_master;
-	}
-
-	xspi->regs = ioremap(r->start, r->end - r->start + 1);
-	if (xspi->regs == NULL) {
-		ret = -ENOMEM;
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xspi->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(xspi->regs)) {
+		ret = PTR_ERR(xspi->regs);
 		dev_err(&pdev->dev, "ioremap failed\n");
-		goto release_mem;
+		goto remove_master;
 	}
 
 	xspi->irq = platform_get_irq(pdev, 0);
 	if (xspi->irq < 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "irq number is negative\n");
-		goto unmap_io;
+		goto remove_master;
 	}
 
-	ret = request_irq(xspi->irq, xspips_irq, 0, pdev->name, xspi);
+	ret = devm_request_irq(&pdev->dev, xspi->irq, xspips_irq,
+			       0, pdev->name, xspi);
 	if (ret != 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "request_irq failed\n");
-		goto unmap_io;
+		goto remove_master;
 	}
 
 	if (xspi->irq == 58)
@@ -708,7 +696,7 @@ static int xspips_probe(struct platform_device *pdev)
 	if (IS_ERR(xspi->aperclk)) {
 		dev_err(&pdev->dev, "APER clock not found.\n");
 		ret = PTR_ERR(xspi->aperclk);
-		goto free_irq;
+		goto remove_master;
 	}
 
 	if (xspi->irq == 58)
@@ -797,7 +785,7 @@ static int xspips_probe(struct platform_device *pdev)
 		goto remove_queue;
 	}
 
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", res->start,
 			(u32 __force)xspi->regs, xspi->irq);
 
 	return ret;
@@ -813,13 +801,7 @@ clk_put:
 	clk_put(xspi->devclk);
 clk_put_aper:
 	clk_put(xspi->aperclk);
-free_irq:
-	free_irq(xspi->irq, xspi);
-unmap_io:
-	iounmap(xspi->regs);
-release_mem:
-	release_mem_region(r->start, r->end - r->start + 1);
-put_master:
+remove_master:
 	spi_master_put(master);
 	kfree(master);
 	return ret;
@@ -839,24 +821,13 @@ static int xspips_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
-	struct resource *r;
 	int ret = 0;
-
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (r == NULL) {
-		dev_err(&pdev->dev, "platform_get_resource failed\n");
-		return -ENODEV;
-	}
 
 	ret = xspips_destroy_queue(xspi);
 	if (ret != 0)
 		return ret;
 
 	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
-
-	free_irq(xspi->irq, xspi);
-	iounmap(xspi->regs);
-	release_mem_region(r->start, r->end - r->start + 1);
 
 	spi_unregister_master(master);
 	spi_master_put(master);
