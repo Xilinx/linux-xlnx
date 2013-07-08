@@ -1093,15 +1093,6 @@ static int xqspips_probe(struct platform_device *pdev)
 
 	init_completion(&xqspi->done);
 
-	prop = of_get_property(pdev->dev.of_node, "bus-num", NULL);
-	if (prop) {
-		master->bus_num = be32_to_cpup(prop);
-	} else {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "couldn't determine bus-num\n");
-		goto clk_unreg_notif;
-	}
-
 	prop = of_get_property(pdev->dev.of_node, "num-chip-select", NULL);
 	if (prop) {
 		master->num_chipselect = be32_to_cpup(prop);

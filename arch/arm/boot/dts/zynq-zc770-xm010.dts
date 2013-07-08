@@ -8,6 +8,7 @@
 	interrupt-parent = <0x1>;
 	aliases {
 		spi0 = &spi1;
+		spi1 = &qspi0;
 	};
 	memory {
 		device_type = "memory";
@@ -234,7 +235,6 @@
 			interrupts = <0 19 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
-			bus-num = <1>;
 			num-chip-select = <1>;
 			is-dual = <0>;
 			#address-cells = <1>;
