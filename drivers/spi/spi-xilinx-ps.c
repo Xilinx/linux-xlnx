@@ -643,13 +643,13 @@ static int xspips_clk_notifier_cb(struct notifier_block *nb,
 
 /**
  * xspips_probe - Probe method for the SPI driver
- * @dev:	Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success and error value on error
  */
-static int xspips_probe(struct platform_device *dev)
+static int xspips_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct spi_master *master;
@@ -657,46 +657,46 @@ static int xspips_probe(struct platform_device *dev)
 	struct resource *r;
 	const unsigned int *prop;
 
-	master = spi_alloc_master(&dev->dev, sizeof(*xspi));
+	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
 	if (master == NULL)
 		return -ENOMEM;
 
 	xspi = spi_master_get_devdata(master);
-	master->dev.of_node = dev->dev.of_node;
-	platform_set_drvdata(dev, master);
+	master->dev.of_node = pdev->dev.of_node;
+	platform_set_drvdata(pdev, master);
 
-	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		ret = -ENODEV;
-		dev_err(&dev->dev, "platform_get_resource failed\n");
+		dev_err(&pdev->dev, "platform_get_resource failed\n");
 		goto put_master;
 	}
 
 	if (!request_mem_region(r->start,
-			r->end - r->start + 1, dev->name)) {
+			r->end - r->start + 1, pdev->name)) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "request_mem_region failed\n");
+		dev_err(&pdev->dev, "request_mem_region failed\n");
 		goto put_master;
 	}
 
 	xspi->regs = ioremap(r->start, r->end - r->start + 1);
 	if (xspi->regs == NULL) {
 		ret = -ENOMEM;
-		dev_err(&dev->dev, "ioremap failed\n");
+		dev_err(&pdev->dev, "ioremap failed\n");
 		goto release_mem;
 	}
 
-	xspi->irq = platform_get_irq(dev, 0);
+	xspi->irq = platform_get_irq(pdev, 0);
 	if (xspi->irq < 0) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "irq number is negative\n");
+		dev_err(&pdev->dev, "irq number is negative\n");
 		goto unmap_io;
 	}
 
-	ret = request_irq(xspi->irq, xspips_irq, 0, dev->name, xspi);
+	ret = request_irq(xspi->irq, xspips_irq, 0, pdev->name, xspi);
 	if (ret != 0) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "request_irq failed\n");
+		dev_err(&pdev->dev, "request_irq failed\n");
 		goto unmap_io;
 	}
 
@@ -706,7 +706,7 @@ static int xspips_probe(struct platform_device *dev)
 		xspi->aperclk = clk_get_sys("SPI1_APER", NULL);
 
 	if (IS_ERR(xspi->aperclk)) {
-		dev_err(&dev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "APER clock not found.\n");
 		ret = PTR_ERR(xspi->aperclk);
 		goto free_irq;
 	}
@@ -717,48 +717,48 @@ static int xspips_probe(struct platform_device *dev)
 		xspi->devclk = clk_get_sys("SPI1", NULL);
 
 	if (IS_ERR(xspi->devclk)) {
-		dev_err(&dev->dev, "Device clock not found.\n");
+		dev_err(&pdev->dev, "Device clock not found.\n");
 		ret = PTR_ERR(xspi->devclk);
 		goto clk_put_aper;
 	}
 
 	ret = clk_prepare_enable(xspi->aperclk);
 	if (ret) {
-		dev_err(&dev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 		goto clk_put;
 	}
 
 	ret = clk_prepare_enable(xspi->devclk);
 	if (ret) {
-		dev_err(&dev->dev, "Unable to enable device clock.\n");
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
 		goto clk_dis_aper;
 	}
 
 	xspi->clk_rate_change_nb.notifier_call = xspips_clk_notifier_cb;
 	xspi->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(xspi->devclk, &xspi->clk_rate_change_nb))
-		dev_warn(&dev->dev, "Unable to register clock notifier.\n");
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
 	/* SPI controller initializations */
 	xspips_init_hw(xspi->regs);
 
 	init_completion(&xspi->done);
 
-	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
+	prop = of_get_property(pdev->dev.of_node, "bus-num", NULL);
 	if (prop) {
 		master->bus_num = be32_to_cpup(prop);
 	} else {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine bus-num\n");
+		dev_err(&pdev->dev, "couldn't determine bus-num\n");
 		goto clk_notif_unreg;
 	}
 
-	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
+	prop = of_get_property(pdev->dev.of_node, "num-chip-select", NULL);
 	if (prop) {
 		master->num_chipselect = be32_to_cpup(prop);
 	} else {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
+		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_notif_unreg;
 	}
 	master->setup = xspips_setup;
@@ -778,26 +778,26 @@ static int xspips_probe(struct platform_device *dev)
 
 	INIT_WORK(&xspi->work, xspips_work_queue);
 	xspi->workqueue =
-		create_singlethread_workqueue(dev_name(&dev->dev));
+		create_singlethread_workqueue(dev_name(&pdev->dev));
 	if (!xspi->workqueue) {
 		ret = -ENOMEM;
-		dev_err(&dev->dev, "problem initializing queue\n");
+		dev_err(&pdev->dev, "problem initializing queue\n");
 		goto clk_notif_unreg;
 	}
 
 	ret = xspips_start_queue(xspi);
 	if (ret != 0) {
-		dev_err(&dev->dev, "problem starting queue\n");
+		dev_err(&pdev->dev, "problem starting queue\n");
 		goto remove_queue;
 	}
 
 	ret = spi_register_master(master);
 	if (ret) {
-		dev_err(&dev->dev, "spi_register_master failed\n");
+		dev_err(&pdev->dev, "spi_register_master failed\n");
 		goto remove_queue;
 	}
 
-	dev_info(&dev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
 			(u32 __force)xspi->regs, xspi->irq);
 
 	return ret;
@@ -828,7 +828,7 @@ put_master:
 
 /**
  * xspips_remove - Remove method for the SPI driver
- * @dev:	Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function is called if a device is physically removed from the system or
  * if the driver module is being unloaded. It frees all resources allocated to
@@ -836,16 +836,16 @@ put_master:
  *
  * returns:	0 on success and error value on error
  */
-static int xspips_remove(struct platform_device *dev)
+static int xspips_remove(struct platform_device *pdev)
 {
-	struct spi_master *master = platform_get_drvdata(dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
 	struct resource *r;
 	int ret = 0;
 
-	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
-		dev_err(&dev->dev, "platform_get_resource failed\n");
+		dev_err(&pdev->dev, "platform_get_resource failed\n");
 		return -ENODEV;
 	}
 
@@ -863,7 +863,7 @@ static int xspips_remove(struct platform_device *dev)
 	spi_master_put(master);
 
 	/* Prevent double remove */
-	platform_set_drvdata(dev, NULL);
+	platform_set_drvdata(pdev, NULL);
 
 	clk_notifier_unregister(xspi->devclk, &xspi->clk_rate_change_nb);
 	clk_disable_unprepare(xspi->devclk);
@@ -873,7 +873,7 @@ static int xspips_remove(struct platform_device *dev)
 
 	kfree(master);
 
-	dev_dbg(&dev->dev, "remove succeeded\n");
+	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
 
 }
@@ -887,9 +887,9 @@ static int xspips_remove(struct platform_device *dev)
  *
  * returns:	0 on success and error value on error
  */
-static int xspips_suspend(struct device *_dev)
+static int xspips_suspend(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
+	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
@@ -916,9 +916,9 @@ static int xspips_suspend(struct device *_dev)
  *
  * returns:	0 on success and error value on error
  */
-static int xspips_resume(struct device *_dev)
+static int xspips_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
+	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xspips *xspi = spi_master_get_devdata(master);
@@ -926,13 +926,13 @@ static int xspips_resume(struct device *_dev)
 
 	ret = clk_enable(xspi->aperclk);
 	if (ret) {
-		dev_err(_dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable APER clock.\n");
 		return ret;
 	}
 
 	ret = clk_enable(xspi->devclk);
 	if (ret) {
-		dev_err(_dev, "Cannot enable device clock.\n");
+		dev_err(dev, "Cannot enable device clock.\n");
 		clk_disable(xspi->aperclk);
 		return ret;
 	}
