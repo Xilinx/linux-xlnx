@@ -82,7 +82,7 @@ struct xilinx_spi {
 	struct completion done;
 	void __iomem	*regs;	/* virt. address of the control registers */
 
-	u32		irq;
+	int irq;
 
 	u8 *rx_ptr;		/* pointer in the Tx buffer */
 	const u8 *tx_ptr;	/* pointer in the Rx buffer */
@@ -359,7 +359,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	struct xilinx_spi *xspi;
 	struct xspi_platform_data *pdata;
 	struct resource *res;
-	int ret, irq, num_cs = 0, bits_per_word = 8;
+	int ret, num_cs = 0, bits_per_word = 8;
 	struct spi_master *master;
 	u32 tmp;
 	u8 i;
@@ -378,10 +378,6 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 			"Missing slave select configuration data\n");
 		return -EINVAL;
 	}
-
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return -ENXIO;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(struct xilinx_spi));
 	if (!master)
@@ -411,8 +407,6 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	master->bus_num = pdev->dev.id;
 	master->num_chipselect = num_cs;
 	master->dev.of_node = pdev->dev.of_node;
-
-	xspi->irq = irq;
 
 	/*
 	 * Detect endianess on the IP via loop bit in CR. Detection
@@ -447,19 +441,25 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		goto put_master;
 	}
 
-
 	/* SPI controller initializations */
 	xspi_init_hw(xspi);
 
+	xspi->irq = platform_get_irq(pdev, 0);
+	if (xspi->irq < 0) {
+		ret = xspi->irq;
+		goto put_master;
+	}
+
 	/* Register for SPI Interrupt */
-	ret = request_irq(xspi->irq, xilinx_spi_irq, 0, XILINX_SPI_NAME, xspi);
+	ret = devm_request_irq(&pdev->dev, xspi->irq, xilinx_spi_irq, 0,
+			       dev_name(&pdev->dev), xspi);
 	if (ret)
 		goto put_master;
 
 	ret = spi_bitbang_start(&xspi->bitbang);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_bitbang_start FAILED\n");
-		goto free_irq;
+		goto put_master;
 	}
 
 	dev_info(&pdev->dev, "at 0x%08llX mapped to 0x%p, irq=%d\n",
@@ -473,8 +473,6 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, master);
 	return 0;
 
-free_irq:
-	free_irq(xspi->irq, xspi);
 put_master:
 	spi_master_put(master);
 
@@ -485,9 +483,14 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	void __iomem *regs_base = xspi->regs;
 
 	spi_bitbang_stop(&xspi->bitbang);
-	free_irq(xspi->irq, xspi);
+
+	/* Disable all the interrupts just in case */
+	xspi->write_fn(0, regs_base + XIPIF_V123B_IIER_OFFSET);
+	/* Disable the global IPIF interrupt */
+	xspi->write_fn(0, regs_base + XIPIF_V123B_DGIER_OFFSET);
 
 	spi_master_put(xspi->bitbang.master);
 
