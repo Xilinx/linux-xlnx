@@ -177,7 +177,7 @@ struct xqspips {
 	struct clk *devclk;
 	struct clk *aperclk;
 	struct notifier_block clk_rate_change_nb;
-	u32 irq;
+	int irq;
 	u32 speed_hz;
 	spinlock_t trans_queue_lock;
 	spinlock_t config_reg_lock;
@@ -1019,7 +1019,7 @@ static int xqspips_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct spi_master *master;
 	struct xqspips *xqspi;
-	struct resource *r;
+	struct resource *res;
 	const unsigned int *prop;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
@@ -1030,38 +1030,26 @@ static int xqspips_probe(struct platform_device *pdev)
 	master->dev.of_node = pdev->dev.of_node;
 	platform_set_drvdata(pdev, master);
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (r == NULL) {
-		ret = -ENODEV;
-		dev_err(&pdev->dev, "platform_get_resource failed\n");
-		goto put_master;
-	}
-
-	if (!request_mem_region(r->start, r->end - r->start + 1, pdev->name)) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "request_mem_region failed\n");
-		goto put_master;
-	}
-
-	xqspi->regs = ioremap(r->start, r->end - r->start + 1);
-	if (xqspi->regs == NULL) {
-		ret = -ENOMEM;
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xqspi->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(xqspi->regs)) {
+		ret = PTR_ERR(xqspi->regs);
 		dev_err(&pdev->dev, "ioremap failed\n");
-		goto release_mem;
+		goto remove_master;
 	}
 
 	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq < 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "irq resource not found\n");
-		goto unmap_io;
+		goto remove_master;
 	}
-
-	ret = request_irq(xqspi->irq, xqspips_irq, 0, pdev->name, xqspi);
+	ret = devm_request_irq(&pdev->dev, xqspi->irq, xqspips_irq,
+			       0, pdev->name, xqspi);
 	if (ret != 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "request_irq failed\n");
-		goto unmap_io;
+		goto remove_master;
 	}
 
 	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
@@ -1072,7 +1060,7 @@ static int xqspips_probe(struct platform_device *pdev)
 	if (IS_ERR(xqspi->aperclk)) {
 		dev_err(&pdev->dev, "APER clock not found.\n");
 		ret = PTR_ERR(xqspi->aperclk);
-		goto free_irq;
+		goto remove_master;
 	}
 
 	xqspi->devclk = clk_get_sys("LQSPI", NULL);
@@ -1158,7 +1146,7 @@ static int xqspips_probe(struct platform_device *pdev)
 		goto remove_queue;
 	}
 
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", res->start,
 		 (u32 __force)xqspi->regs, xqspi->irq);
 
 	return ret;
@@ -1174,13 +1162,7 @@ clk_put:
 	clk_put(xqspi->devclk);
 clk_put_aper:
 	clk_put(xqspi->aperclk);
-free_irq:
-	free_irq(xqspi->irq, xqspi);
-unmap_io:
-	iounmap(xqspi->regs);
-release_mem:
-	release_mem_region(r->start, r->end - r->start + 1);
-put_master:
+remove_master:
 	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 	kfree(master);
@@ -1201,14 +1183,7 @@ static int xqspips_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xqspips *xqspi = spi_master_get_devdata(master);
-	struct resource *r;
 	int ret = 0;
-
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (r == NULL) {
-		dev_err(&pdev->dev, "platform_get_resource failed\n");
-		return -ENODEV;
-	}
 
 	ret = xqspips_destroy_queue(xqspi);
 	if (ret != 0)
@@ -1216,10 +1191,6 @@ static int xqspips_remove(struct platform_device *pdev)
 
 	xqspips_write(xqspi->regs + XQSPIPS_ENABLE_OFFSET,
 			~XQSPIPS_ENABLE_ENABLE_MASK);
-
-	free_irq(xqspi->irq, xqspi);
-	iounmap(xqspi->regs);
-	release_mem_region(r->start, r->end - r->start + 1);
 
 	spi_unregister_master(master);
 	spi_master_put(master);
