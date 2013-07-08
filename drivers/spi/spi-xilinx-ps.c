@@ -655,7 +655,6 @@ static int xspips_probe(struct platform_device *pdev)
 	struct spi_master *master;
 	struct xspips *xspi;
 	struct resource *res;
-	const unsigned int *prop;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
 	if (master == NULL)
@@ -732,11 +731,9 @@ static int xspips_probe(struct platform_device *pdev)
 
 	init_completion(&xspi->done);
 
-	prop = of_get_property(pdev->dev.of_node, "num-chip-select", NULL);
-	if (prop) {
-		master->num_chipselect = be32_to_cpup(prop);
-	} else {
-		ret = -ENXIO;
+	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
+				   (u32 *)&master->num_chipselect);
+	if (ret < 0) {
 		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_notif_unreg;
 	}
