@@ -997,14 +997,9 @@ static int xqspips_resume(struct device *dev)
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
-static const struct dev_pm_ops xqspips_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xqspips_suspend, xqspips_resume)
-};
-#define XQSPIPS_PM	(&xqspips_dev_pm_ops)
-
-#else /* ! CONFIG_PM_SLEEP */
-#define XQSPIPS_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(xqspips_dev_pm_ops, xqspips_suspend, xqspips_resume);
 
 /**
  * xqspips_probe - Probe method for the QSPI driver
@@ -1210,7 +1205,7 @@ static struct platform_driver xqspips_driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xqspips_of_match,
-		.pm = XQSPIPS_PM,
+		.pm = &xqspips_dev_pm_ops,
 	},
 };
 
