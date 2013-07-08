@@ -152,9 +152,9 @@
  * @queue:		Head of the queue
  * @queue_state:	Queue status
  * @regs:		Virtual address of the QSPI controller registers
- * @devclk		Pointer to the peripheral clock
- * @aperclk		Pointer to the APER clock
- * @clk_rate_change_nb	Notifier block for clock frequency change callback
+ * @devclk:		Pointer to the peripheral clock
+ * @aperclk:		Pointer to the APER clock
+ * @clk_rate_change_nb:	Notifier block for clock frequency change callback
  * @irq:		IRQ number
  * @speed_hz:		Current QSPI bus clock speed in Hz
  * @trans_queue_lock:	Lock used for accessing transfer queue
@@ -167,7 +167,7 @@
  * @done:		Transfer complete status
  * @is_inst:		Flag to indicate the first message in a Transfer request
  * @is_dual:		Flag to indicate whether dual flash memories are used
- **/
+ */
 struct xqspips {
 	struct workqueue_struct *workqueue;
 	struct work_struct work;
@@ -196,7 +196,7 @@ struct xqspips {
  * @opcode:		Operational code of instruction
  * @inst_size:		Size of the instruction including address bytes
  * @offset:		Register address where instruction has to be written
- **/
+ */
 struct xqspips_inst_format {
 	u8 opcode;
 	u8 inst_size;
@@ -252,7 +252,7 @@ static struct xqspips_inst_format flash_inst[] = {
  *	- Set the size of the word to be transferred as 32 bit
  *	- Set the little endian mode of TX FIFO and
  *	- Enable the QSPI controller
- **/
+ */
 static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 {
 	u32 config_reg;
@@ -298,7 +298,7 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
  * @xqspi:	Pointer to the xqspips structure
  * @data:	The 32 bit variable where data is stored
  * @size:	Number of bytes to be copied from data to RX buffer
- **/
+ */
 static void xqspips_copy_read_data(struct xqspips *xqspi, u32 data, u8 size)
 {
 	if (xqspi->rxbuf) {
@@ -317,7 +317,7 @@ static void xqspips_copy_read_data(struct xqspips *xqspi, u32 data, u8 size)
  * @xqspi:	Pointer to the xqspips structure
  * @data:	Pointer to the 32 bit variable where data is to be copied
  * @size:	Number of bytes to be copied from TX buffer to data
- **/
+ */
 static void xqspips_copy_write_data(struct xqspips *xqspi, u32 *data, u8 size)
 {
 
@@ -361,7 +361,7 @@ static void xqspips_copy_write_data(struct xqspips *xqspi, u32 *data, u8 size)
  * xqspips_chipselect - Select or deselect the chip select line
  * @qspi:	Pointer to the spi_device structure
  * @is_on:	Select(1) or deselect (0) the chip select line
- **/
+ */
 static void xqspips_chipselect(struct spi_device *qspi, int is_on)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
@@ -404,7 +404,7 @@ static void xqspips_chipselect(struct spi_device *qspi, int is_on)
  * the requested frequency is higher or lower than that is supported by the QSPI
  * controller the driver will set the highest or lowest frequency supported by
  * controller.
- **/
+ */
 static int xqspips_setup_transfer(struct spi_device *qspi,
 		struct spi_transfer *transfer)
 {
@@ -472,7 +472,7 @@ static int xqspips_setup_transfer(struct spi_device *qspi,
  * rate and divisor value to setup the requested qspi clock.
  *
  * returns:	0 on success and error value on failure
- **/
+ */
 static int xqspips_setup(struct spi_device *qspi)
 {
 
@@ -491,7 +491,7 @@ static int xqspips_setup(struct spi_device *qspi)
 /**
  * xqspips_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
  * @xqspi:	Pointer to the xqspips structure
- **/
+ */
 static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
 {
 	u32 data = 0;
@@ -513,7 +513,7 @@ static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
  * fills the TX FIFO if there is any data remaining to be transferred.
  *
  * returns:	IRQ_HANDLED always
- **/
+ */
 static irqreturn_t xqspips_irq(int irq, void *dev_id)
 {
 	struct xqspips *xqspi = dev_id;
@@ -603,7 +603,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
  * transfer to be completed.
  *
  * returns:	Number of bytes transferred in the last transfer
- **/
+ */
 static int xqspips_start_transfer(struct spi_device *qspi,
 			struct spi_transfer *transfer)
 {
@@ -679,7 +679,7 @@ xfer_start:
 /**
  * xqspips_work_queue - Get the request from queue to perform transfers
  * @work:	Pointer to the work_struct structure
- **/
+ */
 static void xqspips_work_queue(struct work_struct *work)
 {
 	struct xqspips *xqspi = container_of(work, struct xqspips, work);
@@ -793,7 +793,7 @@ static void xqspips_work_queue(struct work_struct *work)
  *
  * returns:	0 on success, -EINVAL on invalid input parameter and
  *		-ESHUTDOWN if queue is stopped by module unload function
- **/
+ */
 static int
 xqspips_transfer(struct spi_device *qspi, struct spi_message *message)
 {
@@ -833,7 +833,7 @@ xqspips_transfer(struct spi_device *qspi, struct spi_message *message)
  *
  * returns:	0 on success and -EBUSY if queue is already running or device is
  *		busy
- **/
+ */
 static inline int xqspips_start_queue(struct xqspips *xqspi)
 {
 	unsigned long flags;
@@ -859,7 +859,7 @@ static inline int xqspips_start_queue(struct xqspips *xqspi)
  * Maximum time out is set to 5 seconds.
  *
  * returns:	0 on success and -EBUSY if queue is not empty or device is busy
- **/
+ */
 static inline int xqspips_stop_queue(struct xqspips *xqspi)
 {
 	unsigned long flags;
@@ -893,7 +893,7 @@ static inline int xqspips_stop_queue(struct xqspips *xqspi)
  * @xqspi:	Pointer to the xqspips structure
  *
  * returns:	0 on success and error value on failure
- **/
+ */
 static inline int xqspips_destroy_queue(struct xqspips *xqspi)
 {
 	int ret;
@@ -934,7 +934,7 @@ static int xqspips_clk_notifier_cb(struct notifier_block *nb,
  * This function stops the QSPI driver queue and disables the QSPI controller
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xqspips_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
@@ -964,7 +964,7 @@ static int xqspips_suspend(struct device *_dev)
  * The function starts the QSPI driver queue and initializes the QSPI controller
  *
  * returns:	0 on success and error value on error
- **/
+ */
 static int xqspips_resume(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
@@ -1008,7 +1008,7 @@ static SIMPLE_DEV_PM_OPS(xqspips_dev_pm_ops, xqspips_suspend, xqspips_resume);
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success and error value on failure
- **/
+ */
 static int xqspips_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -1159,7 +1159,7 @@ remove_master:
  * the device.
  *
  * returns:	0 on success and error value on failure
- **/
+ */
 static int xqspips_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
