@@ -803,7 +803,6 @@ clk_put_aper:
 	clk_put(xspi->aperclk);
 remove_master:
 	spi_master_put(master);
-	kfree(master);
 	return ret;
 }
 
@@ -837,8 +836,6 @@ static int xspips_remove(struct platform_device *pdev)
 	clk_disable_unprepare(xspi->aperclk);
 	clk_put(xspi->devclk);
 	clk_put(xspi->aperclk);
-
-	kfree(master);
 
 	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
