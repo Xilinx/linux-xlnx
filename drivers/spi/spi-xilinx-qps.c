@@ -965,9 +965,9 @@ static int xqspips_suspend(struct device *_dev)
  *
  * returns:	0 on success and error value on error
  **/
-static int xqspips_resume(struct device *_dev)
+static int xqspips_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
+	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xqspips *xqspi = spi_master_get_devdata(master);
@@ -975,13 +975,13 @@ static int xqspips_resume(struct device *_dev)
 
 	ret = clk_enable(xqspi->aperclk);
 	if (ret) {
-		dev_err(_dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable APER clock.\n");
 		return ret;
 	}
 
 	ret = clk_enable(xqspi->devclk);
 	if (ret) {
-		dev_err(_dev, "Cannot enable device clock.\n");
+		dev_err(dev, "Cannot enable device clock.\n");
 		clk_disable(xqspi->aperclk);
 		return ret;
 	}
@@ -1008,13 +1008,13 @@ static const struct dev_pm_ops xqspips_dev_pm_ops = {
 
 /**
  * xqspips_probe - Probe method for the QSPI driver
- * @dev:	Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success and error value on failure
  **/
-static int xqspips_probe(struct platform_device *dev)
+static int xqspips_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct spi_master *master;
@@ -1022,82 +1022,82 @@ static int xqspips_probe(struct platform_device *dev)
 	struct resource *r;
 	const unsigned int *prop;
 
-	master = spi_alloc_master(&dev->dev, sizeof(*xqspi));
+	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
 	if (master == NULL)
 		return -ENOMEM;
 
 	xqspi = spi_master_get_devdata(master);
-	master->dev.of_node = dev->dev.of_node;
-	platform_set_drvdata(dev, master);
+	master->dev.of_node = pdev->dev.of_node;
+	platform_set_drvdata(pdev, master);
 
-	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		ret = -ENODEV;
-		dev_err(&dev->dev, "platform_get_resource failed\n");
+		dev_err(&pdev->dev, "platform_get_resource failed\n");
 		goto put_master;
 	}
 
-	if (!request_mem_region(r->start, r->end - r->start + 1, dev->name)) {
+	if (!request_mem_region(r->start, r->end - r->start + 1, pdev->name)) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "request_mem_region failed\n");
+		dev_err(&pdev->dev, "request_mem_region failed\n");
 		goto put_master;
 	}
 
 	xqspi->regs = ioremap(r->start, r->end - r->start + 1);
 	if (xqspi->regs == NULL) {
 		ret = -ENOMEM;
-		dev_err(&dev->dev, "ioremap failed\n");
+		dev_err(&pdev->dev, "ioremap failed\n");
 		goto release_mem;
 	}
 
-	xqspi->irq = platform_get_irq(dev, 0);
+	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq < 0) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "irq resource not found\n");
+		dev_err(&pdev->dev, "irq resource not found\n");
 		goto unmap_io;
 	}
 
-	ret = request_irq(xqspi->irq, xqspips_irq, 0, dev->name, xqspi);
+	ret = request_irq(xqspi->irq, xqspips_irq, 0, pdev->name, xqspi);
 	if (ret != 0) {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "request_irq failed\n");
+		dev_err(&pdev->dev, "request_irq failed\n");
 		goto unmap_io;
 	}
 
-	if (of_property_read_u32(dev->dev.of_node, "is-dual", &xqspi->is_dual))
-		dev_warn(&dev->dev, "couldn't determine configuration info "
+	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
+		dev_warn(&pdev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 
 	xqspi->aperclk = clk_get_sys("LQSPI_APER", NULL);
 	if (IS_ERR(xqspi->aperclk)) {
-		dev_err(&dev->dev, "APER clock not found.\n");
+		dev_err(&pdev->dev, "APER clock not found.\n");
 		ret = PTR_ERR(xqspi->aperclk);
 		goto free_irq;
 	}
 
 	xqspi->devclk = clk_get_sys("LQSPI", NULL);
 	if (IS_ERR(xqspi->devclk)) {
-		dev_err(&dev->dev, "Device clock not found.\n");
+		dev_err(&pdev->dev, "Device clock not found.\n");
 		ret = PTR_ERR(xqspi->devclk);
 		goto clk_put_aper;
 	}
 
 	ret = clk_prepare_enable(xqspi->aperclk);
 	if (ret) {
-		dev_err(&dev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 		goto clk_put;
 	}
 
 	ret = clk_prepare_enable(xqspi->devclk);
 	if (ret) {
-		dev_err(&dev->dev, "Unable to enable device clock.\n");
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
 		goto clk_dis_aper;
 	}
 
 	xqspi->clk_rate_change_nb.notifier_call = xqspips_clk_notifier_cb;
 	xqspi->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(xqspi->devclk, &xqspi->clk_rate_change_nb))
-		dev_warn(&dev->dev, "Unable to register clock notifier.\n");
+		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
 
 	/* QSPI controller initializations */
@@ -1105,21 +1105,21 @@ static int xqspips_probe(struct platform_device *dev)
 
 	init_completion(&xqspi->done);
 
-	prop = of_get_property(dev->dev.of_node, "bus-num", NULL);
+	prop = of_get_property(pdev->dev.of_node, "bus-num", NULL);
 	if (prop) {
 		master->bus_num = be32_to_cpup(prop);
 	} else {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine bus-num\n");
+		dev_err(&pdev->dev, "couldn't determine bus-num\n");
 		goto clk_unreg_notif;
 	}
 
-	prop = of_get_property(dev->dev.of_node, "num-chip-select", NULL);
+	prop = of_get_property(pdev->dev.of_node, "num-chip-select", NULL);
 	if (prop) {
 		master->num_chipselect = be32_to_cpup(prop);
 	} else {
 		ret = -ENXIO;
-		dev_err(&dev->dev, "couldn't determine num-chip-select\n");
+		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_unreg_notif;
 	}
 
@@ -1139,26 +1139,26 @@ static int xqspips_probe(struct platform_device *dev)
 
 	INIT_WORK(&xqspi->work, xqspips_work_queue);
 	xqspi->workqueue =
-		create_singlethread_workqueue(dev_name(&dev->dev));
+		create_singlethread_workqueue(dev_name(&pdev->dev));
 	if (!xqspi->workqueue) {
 		ret = -ENOMEM;
-		dev_err(&dev->dev, "problem initializing queue\n");
+		dev_err(&pdev->dev, "problem initializing queue\n");
 		goto clk_unreg_notif;
 	}
 
 	ret = xqspips_start_queue(xqspi);
 	if (ret != 0) {
-		dev_err(&dev->dev, "problem starting queue\n");
+		dev_err(&pdev->dev, "problem starting queue\n");
 		goto remove_queue;
 	}
 
 	ret = spi_register_master(master);
 	if (ret) {
-		dev_err(&dev->dev, "spi_register_master failed\n");
+		dev_err(&pdev->dev, "spi_register_master failed\n");
 		goto remove_queue;
 	}
 
-	dev_info(&dev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", r->start,
 		 (u32 __force)xqspi->regs, xqspi->irq);
 
 	return ret;
@@ -1181,7 +1181,7 @@ unmap_io:
 release_mem:
 	release_mem_region(r->start, r->end - r->start + 1);
 put_master:
-	platform_set_drvdata(dev, NULL);
+	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 	kfree(master);
 	return ret;
@@ -1189,7 +1189,7 @@ put_master:
 
 /**
  * xqspips_remove - Remove method for the QSPI driver
- * @dev:	Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function is called if a device is physically removed from the system or
  * if the driver module is being unloaded. It frees all resources allocated to
@@ -1197,16 +1197,16 @@ put_master:
  *
  * returns:	0 on success and error value on failure
  **/
-static int xqspips_remove(struct platform_device *dev)
+static int xqspips_remove(struct platform_device *pdev)
 {
-	struct spi_master *master = platform_get_drvdata(dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xqspips *xqspi = spi_master_get_devdata(master);
 	struct resource *r;
 	int ret = 0;
 
-	r = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
-		dev_err(&dev->dev, "platform_get_resource failed\n");
+		dev_err(&pdev->dev, "platform_get_resource failed\n");
 		return -ENODEV;
 	}
 
@@ -1233,9 +1233,9 @@ static int xqspips_remove(struct platform_device *dev)
 	kfree(master);
 
 	/* Prevent double remove */
-	platform_set_drvdata(dev, NULL);
+	platform_set_drvdata(pdev, NULL);
 
-	dev_dbg(&dev->dev, "remove succeeded\n");
+	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
 }
 
