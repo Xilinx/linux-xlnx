@@ -62,7 +62,6 @@
 			reg = <0xe0000000 0x1000>;
 			interrupts = < 0 27 4 >;
 			interrupt-parent = <&gic>;
-			clock = <50000000>;
 		};
 
 		slcr: slcr@f8000000 {
