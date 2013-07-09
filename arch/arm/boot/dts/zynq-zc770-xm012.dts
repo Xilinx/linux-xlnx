@@ -2,7 +2,7 @@
 
 / {
 	model = "Xilinx Zynq ZC770 XM012 (DC3)";
-	compatible = "xlnx,zynq-zc770";
+	compatible = "xlnx,zynq-zc770", "xlnx,zynq-7000";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;

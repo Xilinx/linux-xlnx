@@ -2,7 +2,7 @@
 
 / {
 	model = "Xilinx Zynq ZC706";
-	compatible = "xlnx,zynq-zc706";
+	compatible = "xlnx,zynq-zc706", "xlnx,zynq-7000";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;

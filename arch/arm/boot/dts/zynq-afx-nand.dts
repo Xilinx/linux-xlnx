@@ -2,7 +2,7 @@
 
 / {
 	model = "Xilinx Zynq - AFX (NAND Module)";
-	compatible = "xlnx,zynq-zc770";
+	compatible = "xlnx,zynq-zc770", "xlnx,zynq-7000";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;

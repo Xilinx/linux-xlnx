@@ -33,7 +33,7 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
-	compatible = "xlnx,zynq-zc770";
+	compatible = "xlnx,zynq-zc770", "xlnx,zynq-7000";
 	model = "Xilinx Zynq";
 	aliases {
 		ethernet0 = &ps7_ethernet_0;
