@@ -1,0 +1,21 @@
+* Xilinx AXI Traffic generator IP
+
+Required properties:
+- compatible: "xlnx,axi-traffic-gen"
+- interrupts: Should contain AXI Traffic Generator interrupts.
+- interrupt-parent: Must be core interrupt controller.
+- reg: Should contain AXI Traffic Generator registers location and length.
+- interrupt-names: Should contain both the intr names of device - error
+		   and completion.
+- xlnx,device-id: Device instance Id.
+
+Example:
+++++++++
+axi_traffic_gen_1: axi-traffic-gen@76000000 {
+	compatible = "xlnx,axi-traffic-gen-1.0", "xlnx,axi-traffic-gen";
+	interrupts = <0 2 2 2>;
+	interrupt-parent = <&axi_intc_1>;
+	interrupt-names = "err-out", "irq-out";
+	reg = <0x76000000 0x800000>;
+	xlnx,device-id = <0x0>;
+} ;
