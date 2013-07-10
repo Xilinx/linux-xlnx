@@ -101,12 +101,12 @@ static int zynq_rproc_start(struct rproc *rproc)
 /* kick a firmware */
 static void zynq_rproc_kick(struct rproc *rproc, int vqid)
 {
-  	struct device *dev = rproc->dev.parent;
+	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_rproc_pdata *local = platform_get_drvdata(pdev);
 
-	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n",
-									vqid);
+	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
+
 	/* Send swirq to firmware */
 	if (!vqid)
 		gic_raise_softirq(cpumask_of(1), local->vring0);
