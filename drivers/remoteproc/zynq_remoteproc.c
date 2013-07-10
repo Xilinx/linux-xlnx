@@ -172,7 +172,6 @@ static void clear_irq(struct platform_device *pdev)
 static int zynq_remoteproc_probe(struct platform_device *pdev)
 {
 	const unsigned char *prop;
-	const void *of_prop;
 	struct resource *res; /* IO mem resources */
 	int ret = 0;
 	struct irq_list *tmp;
@@ -263,13 +262,12 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	/* Allocate free IPI number */
-	of_prop = of_get_property(pdev->dev.of_node, "ipino", NULL);
-	if (!of_prop) {
-		dev_err(&pdev->dev, "Please specify ipino node property\n");
+	ret = of_property_read_u32(pdev->dev.of_node, "ipino", &local->ipino);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "unable to read property");
 		goto irq_fault;
 	}
 
-	local->ipino = be32_to_cpup(of_prop);
 	ret = set_ipi_handler(local->ipino, ipi_kick, "Firmware kick");
 	if (ret) {
 		dev_err(&pdev->dev, "IPI handler already registered\n");
@@ -277,20 +275,18 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	/* Read vring0 ipi number */
-	of_prop = of_get_property(pdev->dev.of_node, "vring0", NULL);
-	if (!of_prop) {
-		dev_err(&pdev->dev, "Please specify vring0 node property\n");
+	ret = of_property_read_u32(pdev->dev.of_node, "vring0", &local->vring0);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "unable to read property");
 		goto ipi_fault;
 	}
-	local->vring0 = be32_to_cpup(of_prop);
 
 	/* Read vring1 ipi number */
-	of_prop = of_get_property(pdev->dev.of_node, "vring1", NULL);
-	if (!of_prop) {
-		dev_err(&pdev->dev, "Please specify vring1 node property\n");
+	ret = of_property_read_u32(pdev->dev.of_node, "vring1", &local->vring1);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "unable to read property");
 		goto ipi_fault;
 	}
-	local->vring1 = be32_to_cpup(of_prop);
 
 	/* Module param firmware first */
 	if (firmware)
