@@ -1,7 +1,8 @@
 /*
  * Microblaze Remote Processor driver
  *
- * Copyright (C) 2012 Michal Simek <monstr@monstr.eu>
+ * Copyright (C) 2012 - 2013 Michal Simek <monstr@monstr.eu>
+ * Copyright (C) 2013 Xilinx, Inc.
  * Copyright (C) 2012 PetaLogix
  *
  * Based on origin OMAP Remote Processor driver
