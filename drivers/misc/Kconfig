@@ -537,6 +537,19 @@ config SRAM
 	  the genalloc API. It is supposed to be used for small on-chip SRAM
 	  areas found on many SoCs.
 
+config XILINX_TRAFGEN
+	tristate "Xilinx Traffic Generator"
+	depends on MICROBLAZE
+	help
+	  This option enables support for the Xilinx Traffic Generator driver.
+	  It is designed to generate AXI4 traffic which can be used to stress
+	  different modules/interconnect connected in the system. Different
+	  configurable options which are provided through sysfs entries allow
+	  allow the user to generate a wide variety of traffic based on their
+	  their requirements.
+
+	  If unsure, say N
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
