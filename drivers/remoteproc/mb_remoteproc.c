@@ -198,21 +198,17 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 				&mb_rproc_ops, prop, sizeof(struct rproc));
 		if (!local->rproc) {
 			dev_err(&pdev->dev, "rproc allocation failed\n");
-			goto rproc_fault;
+			return -ENOMEM;
 		}
 
 		ret = rproc_add(local->rproc);
 		if (ret) {
 			dev_err(&pdev->dev, "rproc registration failed\n");
-			goto rproc_fault;
+			rproc_put(local->rproc);
+			return ret;
 		}
-
-		return ret;
-	} else
-		ret = -ENODEV;
-
-rproc_fault:
-	rproc_put(local->rproc);
+		return 0;
+	}
 
 	return -ENODEV;
 }
