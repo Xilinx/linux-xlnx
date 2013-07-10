@@ -186,7 +186,8 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	local = kzalloc(sizeof(struct zynq_rproc_pdata), GFP_KERNEL);
+	local = devm_kzalloc(&pdev->dev, sizeof(struct zynq_rproc_pdata),
+			     GFP_KERNEL);
 	if (!local) {
 		dev_err(&pdev->dev, "Unable to alloc private data\n");
 		return -ENOMEM;
