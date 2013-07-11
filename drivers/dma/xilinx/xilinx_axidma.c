@@ -109,9 +109,6 @@
 #define XILINX_DMA_RESET_LOOP		1000000
 #define XILINX_DMA_HALT_LOOP		1000000
 
-/* Device Id in the private structure */
-#define XILINX_DMA_DEVICE_ID_SHIFT	28
-
 /* IO accessors */
 #define DMA_OUT(addr, val)	(iowrite32(val, addr))
 #define DMA_IN(addr)		(ioread32(addr))

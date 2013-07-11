@@ -39,6 +39,9 @@
 #define XILINX_DMA_IP_VDMA	0x00400000	/* A Video DMA IP */
 #define XILINX_DMA_IP_MASK	0x00700000	/* DMA IP MASK */
 
+/* Device Id in the private structure */
+#define XILINX_DMA_DEVICE_ID_SHIFT	28
+
 /*
  * Device configuration structure
  *
