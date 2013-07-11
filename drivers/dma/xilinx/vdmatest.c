@@ -1,5 +1,5 @@
 /*
- * XILIN VDMA Engine test module
+ * XILINX VDMA Engine test module
  *
  * Copyright (C) 2012 Xilinx, Inc. All rights reserved.
  *
@@ -561,38 +561,45 @@ static int __init vdmatest_init(void)
 	int err = 0;
 
 	enum dma_data_direction direction;
-	u32 match;
+	u32 match, device_id = 0;
 	struct dma_chan *rx_chan;
 
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE | DMA_PRIVATE, mask);
 
-	direction = DMA_MEM_TO_DEV;
-	match = (direction & 0xFF) | XILINX_DMA_IP_VDMA;
-	pr_debug("vdmatest: match is %x\n", match);
+	for (;;) {
+		direction = DMA_MEM_TO_DEV;
+		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA |
+				device_id << XILINX_DMA_DEVICE_ID_SHIFT;
+		pr_debug("vdmatest: match is %x\n", match);
 
-	chan = dma_request_channel(mask, xdma_filter, (void *)&match);
+		chan = dma_request_channel(mask, xdma_filter, (void *)&match);
 
-	if (chan)
-		pr_debug("vdmatest: Found tx device\n");
-	else
-		pr_info("vdmatest: Did not find tx device\n");
+		if (chan)
+			pr_debug("vdmatest: Found tx device\n");
+		else
+			pr_debug("vdmatest: No more tx channels available\n");
 
-	direction = DMA_DEV_TO_MEM;
-	match = (direction & 0xFF) | XILINX_DMA_IP_VDMA;
-	rx_chan = dma_request_channel(mask, xdma_filter, &match);
+		direction = DMA_DEV_TO_MEM;
+		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA |
+				device_id << XILINX_DMA_DEVICE_ID_SHIFT;
+		rx_chan = dma_request_channel(mask, xdma_filter, &match);
 
-	if (rx_chan)
-		pr_debug("vdmatest: Found rx device\n");
-	else
-		pr_info("vdmatest: Did not find rx device\n");
+		if (rx_chan)
+			pr_debug("vdmatest: Found rx device\n");
+		else
+			pr_debug("vdmatest: No more rx channels available\n");
 
-	if (chan && rx_chan) {
-		err = vdmatest_add_slave_channels(chan, rx_chan);
-		if (err) {
-			dma_release_channel(chan);
-			dma_release_channel(rx_chan);
-		}
+		if (chan && rx_chan) {
+			err = vdmatest_add_slave_channels(chan, rx_chan);
+			if (err) {
+				dma_release_channel(chan);
+				dma_release_channel(rx_chan);
+			}
+		} else
+			break;
+
+		device_id++;
 	}
 	return err;
 }

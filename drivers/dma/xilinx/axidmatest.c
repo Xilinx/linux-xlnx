@@ -590,37 +590,44 @@ static int __init dmatest_init(void)
 	/* JZ for slave transfer channels */
 	enum dma_data_direction direction;
 	struct dma_chan *rx_chan;
-	u32 match;
+	u32 match, device_id = 0;
 
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE | DMA_PRIVATE, mask);
 
-	direction = DMA_MEM_TO_DEV;
-	match = (direction & 0xFF) | XILINX_DMA_IP_DMA;
-	pr_debug("dmatest: match is %x\n", match);
+	for (;;) {
+		direction = DMA_MEM_TO_DEV;
+		match = (direction & 0xFF) | XILINX_DMA_IP_DMA |
+				(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
+		pr_debug("dmatest: match is %x\n", match);
 
-	chan = dma_request_channel(mask, xdma_filter, (void *)&match);
+		chan = dma_request_channel(mask, xdma_filter, (void *)&match);
 
-	if (chan)
-		pr_debug("dmatest: Found tx device\n");
-	else
-		pr_info("dmatest: Did not find tx device\n");
+		if (chan)
+			pr_debug("dmatest: Found tx device\n");
+		else
+			pr_debug("dmatest: No more tx channels available\n");
 
-	direction = DMA_DEV_TO_MEM;
-	match = (direction & 0xFF) | XILINX_DMA_IP_DMA;
-	rx_chan = dma_request_channel(mask, xdma_filter, &match);
+		direction = DMA_DEV_TO_MEM;
+		match = (direction & 0xFF) | XILINX_DMA_IP_DMA |
+				(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
+		rx_chan = dma_request_channel(mask, xdma_filter, &match);
 
-	if (rx_chan)
-		pr_debug("dmatest: Found rx device\n");
-	else
-		pr_info("dmatest: Did not find rx device\n");
+		if (rx_chan)
+			pr_debug("dmatest: Found rx device\n");
+		else
+			pr_debug("dmatest: No more rx channels available\n");
 
-	if (chan && rx_chan) {
-		err = dmatest_add_slave_channels(chan, rx_chan);
-		if (err) {
-			dma_release_channel(chan);
-			dma_release_channel(rx_chan);
-		}
+		if (chan && rx_chan) {
+			err = dmatest_add_slave_channels(chan, rx_chan);
+			if (err) {
+				dma_release_channel(chan);
+				dma_release_channel(rx_chan);
+			}
+		} else
+			break;
+
+		device_id++;
 	}
 
 	return err;
