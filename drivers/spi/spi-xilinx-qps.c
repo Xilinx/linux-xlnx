@@ -1173,14 +1173,16 @@ static int xqspips_remove(struct platform_device *pdev)
 	xqspips_write(xqspi->regs + XQSPIPS_ENABLE_OFFSET,
 			~XQSPIPS_ENABLE_ENABLE_MASK);
 
-	spi_unregister_master(master);
-	spi_master_put(master);
-
 	clk_notifier_unregister(xqspi->devclk, &xqspi->clk_rate_change_nb);
 	clk_disable_unprepare(xqspi->devclk);
 	clk_disable_unprepare(xqspi->aperclk);
 	clk_put(xqspi->devclk);
 	clk_put(xqspi->aperclk);
+
+
+	spi_unregister_master(master);
+	spi_master_put(master);
+
 
 	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;

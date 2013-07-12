@@ -816,14 +816,14 @@ static int xspips_remove(struct platform_device *pdev)
 
 	xspips_write(xspi->regs + XSPIPS_ER_OFFSET, ~XSPIPS_ER_ENABLE_MASK);
 
-	spi_unregister_master(master);
-	spi_master_put(master);
-
 	clk_notifier_unregister(xspi->devclk, &xspi->clk_rate_change_nb);
 	clk_disable_unprepare(xspi->devclk);
 	clk_disable_unprepare(xspi->aperclk);
 	clk_put(xspi->devclk);
 	clk_put(xspi->aperclk);
+
+	spi_unregister_master(master);
+	spi_master_put(master);
 
 	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
