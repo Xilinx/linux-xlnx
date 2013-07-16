@@ -21,6 +21,8 @@ void __init xttcps_timer_init_old(void);
 void __init xttcpss_timer_init(void);
 void platform_device_init(void);
 
+void zynq_secondary_startup(void);
+
 extern int zynq_slcr_init(void);
 extern void zynq_slcr_system_reset(void);
 extern void zynq_slcr_cpu_stop(int cpu);
