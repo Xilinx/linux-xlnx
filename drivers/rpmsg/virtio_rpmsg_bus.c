@@ -1114,6 +1114,16 @@ static void rpmsg_remove(struct virtio_device *vdev)
 
 	vdev->config->del_vqs(vrp->vdev);
 
+	/* FIXME del_vqs is calling rproc_shutdown which switch loaded resource
+	 * table back to cached table but without any synchronization.
+	 * That's why vdev->config->reset(vdev) above is called on loaded table
+	 * and this one is called on cached resource table which ensure
+	 * that WARN_ON_ONCE(dev->config->get_status(dev)); in
+	 * virtio_dev_remove() won't show bug because cached table wasn't
+	 * synchronized with loaded one.
+	 */
+	vdev->config->reset(vdev);
+
 	dma_free_coherent(vdev->dev.parent->parent, RPMSG_TOTAL_BUF_SPACE,
 					vrp->rbufs, vrp->bufs_dma);
 
