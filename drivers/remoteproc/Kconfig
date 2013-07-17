@@ -65,7 +65,7 @@ config DA8XX_REMOTEPROC
 
 config ZYNQ_REMOTEPROC
 	tristate "Support ZYNQ remoteproc"
-	depends on ARCH_ZYNQ && SMP
+	depends on ARCH_ZYNQ && SMP && !DEBUG_SG
 	select REMOTEPROC
 	select RPMSG
 	select HOTPLUG_CPU
