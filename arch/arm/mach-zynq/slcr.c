@@ -22,19 +22,18 @@
 #include <linux/clk/zynq.h>
 #include "common.h"
 
-#define SLCR_UNLOCK_MAGIC		0xDF0D
+/* register offsets */
 #define SLCR_UNLOCK_OFFSET		0x8   /* SCLR unlock register */
-
-#define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
-#define SLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
+#define SLCR_UNLOCK_MAGIC		0xDF0D
 
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
-
 #define SLCR_A9_CPU_CLKSTOP		0x10
 #define SLCR_A9_CPU_RST			0x1
 
+#define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define SLCR_A9_CPU_RST_CTRL_OFFSET	0x244 /* CPU Software Reset Control */
 #define SLCR_REBOOT_STATUS_OFFSET	0x258 /* PS Reboot Status */
+#define SLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
 void __iomem *zynq_slcr_base;
 
