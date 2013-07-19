@@ -9,7 +9,9 @@ Required properties:
 - compatible : Should be "xlnx,xps-gpio-1.00.a"
 - reg : Address and length of the register set for the device
 - #gpio-cells : Should be two. The first cell is the pin number and the
-  second cell is used to specify optional parameters (currently unused).
+  second cell is used to specify channel offset:
+		0 - first channel
+		8 - second channel
 - gpio-controller : Marks the device node as a GPIO controller.
 
 Optional properties:
