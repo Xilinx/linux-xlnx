@@ -25,8 +25,8 @@
 #define SLCR_UNLOCK_MAGIC		0xDF0D
 #define SLCR_UNLOCK			0x8   /* SCLR unlock register */
 
-#define XSLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
-#define XSLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
+#define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
+#define SLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
 
@@ -94,13 +94,13 @@ void xslcr_init_preload_fpga(void)
 {
 
 	/* Assert FPGA top level output resets */
-	xslcr_write(0xF, XSLCR_FPGA_RST_CTRL_OFFSET);
+	xslcr_write(0xF, SLCR_FPGA_RST_CTRL_OFFSET);
 
 	/* Disable level shifters */
-	xslcr_write(0, XSLCR_LVL_SHFTR_EN_OFFSET);
+	xslcr_write(0, SLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Enable output level shifters */
-	xslcr_write(0xA, XSLCR_LVL_SHFTR_EN_OFFSET);
+	xslcr_write(0xA, SLCR_LVL_SHFTR_EN_OFFSET);
 }
 EXPORT_SYMBOL(xslcr_init_preload_fpga);
 
@@ -111,10 +111,10 @@ void xslcr_init_postload_fpga(void)
 {
 
 	/* Enable level shifters */
-	xslcr_write(0xf, XSLCR_LVL_SHFTR_EN_OFFSET);
+	xslcr_write(0xf, SLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Deassert AXI interface resets */
-	xslcr_write(0, XSLCR_FPGA_RST_CTRL_OFFSET);
+	xslcr_write(0, SLCR_FPGA_RST_CTRL_OFFSET);
 }
 EXPORT_SYMBOL(xslcr_init_postload_fpga);
 
