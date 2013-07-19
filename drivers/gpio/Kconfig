@@ -241,6 +241,7 @@ config GPIO_XILINX
 config GPIO_XILINX_PS
 	tristate "Xilinx GPIO PS"
 	depends on ARCH_ZYNQ
+	select GENERIC_IRQ_CHIP
 	help
 	  Say yes here to support Xilinx GPIO PS controller
 
