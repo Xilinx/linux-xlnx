@@ -25,8 +25,6 @@
 #define SLCR_UNLOCK_MAGIC		0xDF0D
 #define SLCR_UNLOCK			0x8   /* SCLR unlock register */
 
-#define DRIVER_NAME "xslcr"
-
 #define XSLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define XSLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
@@ -39,19 +37,6 @@
 #define SLCR_REBOOT_STATUS		0x258 /* PS Reboot Status */
 
 void __iomem *zynq_slcr_base;
-
-/**
- * struct xslcr - slcr device data.
- * @regs:	baseaddress of device.
- * @io_lock:	spinlock used for synchronization.
- *
- */
-struct xslcr {
-	void __iomem	*regs;
-	spinlock_t	io_lock;
-};
-
-static struct xslcr *slcr;
 
 /**
  * zynq_slcr_system_reset - Reset the entire system.
@@ -133,54 +118,6 @@ void xslcr_init_postload_fpga(void)
 }
 EXPORT_SYMBOL(xslcr_init_postload_fpga);
 
-/************************Platform Operations*****************************/
-/**
- * xslcr_probe - Probe call for the device.
- *
- * @pdev:	handle to the platform device structure.
- *
- * This fucntion allocates resources for the SLCR device and creates sysfs
- * attributes for the functionality available in the SLCR block. User can
- * write to these sysfs files to enable/diable mio peripherals/cocks, reset
- * peripherals, etc.
- *
- * Return: 0 on success, negative error otherwise.
- **/
-static int xslcr_probe(struct platform_device *pdev)
-{
-	spin_lock_init(&slcr->io_lock);
-	platform_set_drvdata(pdev, slcr);
-
-	return 0;
-}
-
-static struct of_device_id slcr_of_match[] = {
-	{ .compatible = "xlnx,zynq-slcr", },
-	{ /* end of list */ },
-};
-MODULE_DEVICE_TABLE(of, slcr_of_match);
-
-/* Driver Structure */
-static struct platform_driver xslcr_driver = {
-	.probe		= xslcr_probe,
-	.driver		= {
-		.name	= DRIVER_NAME,
-		.owner	= THIS_MODULE,
-		.of_match_table = slcr_of_match,
-	},
-};
-
-/**
- * xslcr_arch_init -  Register the SLCR
- *
- * Returns 0 on success, otherwise negative error.
- */
-static int __init xslcr_arch_init(void)
-{
-	return platform_driver_register(&xslcr_driver);
-}
-module_init(xslcr_arch_init);
-
 /**
  * zynq_slcr_cpu_start - Start cpu
  * @cpu:	cpu number
@@ -227,15 +164,6 @@ int __init zynq_slcr_init(void)
 		pr_err("%s: Unable to map I/O memory\n", __func__);
 		BUG();
 	}
-
-	slcr = kzalloc(sizeof(*slcr), GFP_KERNEL);
-	if (!slcr) {
-		pr_err("%s: Unable to allocate memory for driver data\n",
-				__func__);
-		BUG();
-	}
-
-	slcr->regs = zynq_slcr_base;
 
 	/* unlock the SLCR so that registers can be changed */
 	writel(SLCR_UNLOCK_MAGIC, zynq_slcr_base + SLCR_UNLOCK);
