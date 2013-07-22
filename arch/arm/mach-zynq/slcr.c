@@ -30,9 +30,6 @@
 #define XSLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define XSLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
 
-#define xslcr_writereg(offset, val)	__raw_writel(val, offset)
-#define xslcr_readreg(offset)		__raw_readl(offset)
-
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
 
 #define SLCR_A9_CPU_CLKSTOP		0x10
@@ -88,7 +85,7 @@ void zynq_slcr_system_reset(void)
  **/
 void xslcr_write(u32 val, u32 offset)
 {
-	xslcr_writereg(slcr->regs + offset, val);
+	writel(val, zynq_slcr_base + offset);
 }
 EXPORT_SYMBOL(xslcr_write);
 
@@ -101,7 +98,7 @@ EXPORT_SYMBOL(xslcr_write);
  **/
 u32 xslcr_read(u32 offset)
 {
-	return xslcr_readreg(slcr->regs + offset);
+	return readl(zynq_slcr_base + offset);
 }
 EXPORT_SYMBOL(xslcr_read);
 
