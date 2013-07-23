@@ -128,6 +128,14 @@ config CAN_GRCAN
 	  endian syntheses of the cores would need some modifications on
 	  the hardware level to work.
 
+config CAN_XILINXCAN
+	tristate "Xilinx CAN"
+	depends on CAN && (ARCH_ZYNQ || MICROBLAZE)
+	default n
+	---help---
+	  Xilinx CAN driver. This driver supports both soft AXI CAN IP and
+	  Zynq CANPS IP.
+
 source "drivers/net/can/mscan/Kconfig"
 
 source "drivers/net/can/sja1000/Kconfig"
