@@ -233,6 +233,7 @@ static void __init zynq_clk_setup(struct device_node *np)
 	int ret;
 	struct clk *clk;
 	char *clk_name;
+	unsigned int fclk_enable;
 	const char *clk_output_name[clk_max];
 	const char *cpu_parents[4];
 	const char *periph_parents[4];
@@ -266,6 +267,10 @@ static void __init zynq_clk_setup(struct device_node *np)
 	}
 	ps_clk = clk_register_fixed_rate(NULL, "ps_clk", NULL, CLK_IS_ROOT,
 			tmp);
+
+	ret = of_property_read_u32(np, "fclk-enable", &fclk_enable);
+	if (ret)
+		fclk_enable = 0;
 
 	/* PLLs */
 	clk = clk_register_zynq_pll("armpll_int", "ps_clk", SLCR_ARMPLL_CTRL,
@@ -361,10 +366,17 @@ static void __init zynq_clk_setup(struct device_node *np)
 	clk_prepare_enable(clks[dci]);
 
 	/* Peripheral clocks */
-	for (i = fclk0; i <= fclk3; i++)
+	for (i = fclk0; i <= fclk3; i++) {
 		zynq_clk_register_fclk(i, clk_output_name[i],
 				SLCR_FPGA0_CLK_CTRL + 0x10 * (i - fclk0),
 				periph_parents);
+
+		if (fclk_enable & BIT(i - fclk0)) {
+			if (clk_prepare_enable(clks[i]))
+				pr_warn("%s: FCLK%u enable failed\n",
+					__func__, i - fclk0);
+		}
+	}
 
 	zynq_clk_register_periph_clk(lqspi, 0, clk_output_name[lqspi], NULL,
 			SLCR_LQSPI_CLK_CTRL, periph_parents, 0);
