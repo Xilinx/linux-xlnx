@@ -720,11 +720,10 @@ static void xqspips_work_queue(struct work_struct *work)
 					XQSPIPS_LINEAR_CFG_OFFSET);
 		if (qspi->master->flags & SPI_MASTER_U_PAGE)
 			lqspi_cfg_reg |= XQSPIPS_LCFG_U_PAGE_MASK;
-		else {
+		else
 			lqspi_cfg_reg &= ~XQSPIPS_LCFG_U_PAGE_MASK;
-			xqspips_write(xqspi->regs + XQSPIPS_LINEAR_CFG_OFFSET,
-					lqspi_cfg_reg);
-		}
+		xqspips_write(xqspi->regs + XQSPIPS_LINEAR_CFG_OFFSET,
+			      lqspi_cfg_reg);
 #endif
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
