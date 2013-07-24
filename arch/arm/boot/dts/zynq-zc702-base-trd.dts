@@ -2,11 +2,13 @@
 
 / {
 	model = "Xilinx Zynq ZC702";
-	compatible = "xlnx,zynq-zc702";
+	compatible = "xlnx,zynq-zc702", "xlnx,zynq-7000";
 	#address-cells = <0x1>;
 	#size-cells = <0x1>;
 	interrupt-parent = <0x1>;
-
+	aliases {
+		spi1 = &qspi0;
+	};
 	memory {
 		device_type = "memory";
 		reg = <0x00000000 0x40000000>;
@@ -58,7 +60,7 @@
 		};
 
 		uart@e0001000 {
-			compatible = "xlnx,ps7-uart-1.00.a";
+			compatible = "xlnx,ps7-uart-1.00.a", "xlnx,xuartps";
 			clocks = <&clkc 24>, <&clkc 41>;
 			clock-names = "ref_clk", "aper_clk";
 			reg = <0xe0001000 0x1000>;
@@ -93,7 +95,7 @@
 		};
 
 		timer@0xf8001000 {
-			compatible = "xlnx,ps7-ttc-1.00.a";
+			compatible = "xlnx,ps7-ttc-1.00.a", "cdns,ttc";
 			clocks = <&clkc 6>;
 			reg = <0xf8001000 0x1000>;
 			interrupts = <0 10 4>,<0 11 4>,<0 12 4>;
@@ -379,7 +381,6 @@
 			interrupts = <0 19 4>;
 			interrupt-parent = <&gic>;
 			speed-hz = <200000000>;
-			bus-num = <1>;
 			num-chip-select = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -415,7 +416,8 @@
 
 		devcfg@f8007000 {
 			compatible = "xlnx,ps7-dev-cfg-1.00.a";
-			clocks = <&clkc 12>;
+			clocks = <&clkc 12>, <&clkc 15>, <&clkc 16>, <&clkc 17>, <&clkc 18>;
+			clock-names = "ref_clk", "fclk0", "fclk1", "fclk2", "fclk3";
 			reg = <0xf8007000 0x100>;
 			interrupts = <0 8 4>;
 			interrupt-parent = <&gic>;
@@ -488,7 +490,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 58 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x0>;
 			};
@@ -509,7 +511,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 57 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x1>;
 			};
@@ -518,7 +520,7 @@
 				interrupt-parent = <&gic>;
 				interrupts = <0 56 4>;
 				xlnx,datawidth = <0x08>;
-				xlnx,genlock-mode = <0x0>;
+				xlnx,genlock-mode = <0x1>;
 				xlnx,include-dre = <0x1>;
 				xlnx,device-id = <0x1>;
 			};
@@ -579,14 +581,14 @@
 			//0-EXT; 1-ZynqPS; 2-logiCLK; 3-SI570
 			pixel-clock-source = <3>;
 			pixel-data-invert = <0>;
-			pixel-clock-active-high = <0>;
+			pixel-clock-active-high = <1>;
 			pixel-component-format = "ARGB";
 			pixel-component-layer = <0>,<1>,<2>;
 			active-layer = <0>;
 			videomode = "1920x1080";
 			edid {
 				preffered-videomode = <1>;
-				display-data = <1>;
+				display-data = <0>;
 			};
 		};
 
