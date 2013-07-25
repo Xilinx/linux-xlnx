@@ -39,7 +39,7 @@ int __cpuinit zynq_cpun_start(u32 address, int cpu)
 	u32 trampoline_code_size = &zynq_secondary_trampoline_end -
 						&zynq_secondary_trampoline;
 
-	if (cpu > ncores) {
+	if (cpu >= ncores) {
 		pr_warn("CPU No. is not available in the system\n");
 		return -1;
 	}
