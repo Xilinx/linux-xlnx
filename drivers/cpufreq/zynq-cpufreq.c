@@ -91,10 +91,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 		return ret;
 
 	/* notifiers */
-	for_each_cpu(i, policy->cpus) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
-	}
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
 	dev_dbg(mpu_dev, "cpufreq-zynq: %u MHz --> %u MHz\n",
 			freqs.old / 1000, freqs.new / 1000);
@@ -104,10 +101,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 	freqs.new = zynq_getspeed(policy->cpu);
 
 	/* notifiers */
-	for_each_cpu(i, policy->cpus) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
-	}
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 
 	return ret;
 }
