@@ -182,6 +182,16 @@ int xaxipcie_alloc_msi_irqdescs(struct device_node *node,
 				unsigned long msg_addr);
 #endif
 
+/* Macros */
+#define is_link_up(base_address)	\
+	((readl(base_address + XAXIPCIE_REG_PSCR) &	\
+	XAXIPCIE_REG_PSCR_LNKUP) ? 1 : 0)
+
+#define bridge_enable(base_address)	\
+	writel((readl(base_address + XAXIPCIE_REG_RPSC) |	\
+		XAXIPCIE_REG_RPSC_BEN), \
+		(base_address + XAXIPCIE_REG_RPSC))
+
 /**
  * xaxi_pcie_verify_config
  * @port: A pointer to a pcie port that needs to be handled
@@ -219,6 +229,9 @@ static int xaxi_pcie_verify_config(struct xaxi_pcie_port *port,
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
 	/* Check if we have a link */
+	if (!port->link_up)
+		port->link_up = is_link_up(port->base_addr_remap);
+
 	if ((bus->number != port->first_busno) && !port->link_up)
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
@@ -791,7 +804,6 @@ static irqreturn_t xaxi_pcie_intr_handler(int irq, void *data)
  */
 static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 {
-	u32 val = 0;
 	void __iomem *base_addr_remap = NULL;
 	int err = 0;
 #ifdef CONFIG_PCI_MSI
@@ -828,16 +840,11 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 	}
 #endif
 
-	/* make sure link is up */
-	val = readl(port->base_addr_remap + XAXIPCIE_REG_PSCR);
-
-	if (!(val & XAXIPCIE_REG_PSCR_LNKUP)) {
-		pr_err("%s: Link is Down\n", __func__);
-		iounmap(base_addr_remap);
-		return -ENODEV;
-	}
-
-	port->link_up = 1;
+	port->link_up = is_link_up(port->base_addr_remap);
+	if (!port->link_up)
+		pr_info("%s: LINK IS DOWN\n", __func__);
+	else
+		pr_info("%s: LINK IS UP\n", __func__);
 
 	/* Disable all interrupts*/
 	writel(~XAXIPCIE_REG_IDR_MASKALL,
@@ -856,9 +863,7 @@ static int xaxi_pcie_init_port(struct xaxi_pcie_port *port)
 	 * Bridge enable must be done after enumeration,
 	 * but there is no callback defined
 	 */
-	val = readl(port->base_addr_remap + XAXIPCIE_REG_RPSC);
-	val |= XAXIPCIE_REG_RPSC_BEN;
-	writel(val, port->base_addr_remap + XAXIPCIE_REG_RPSC);
+	bridge_enable(port->base_addr_remap);
 
 	/* Register Interrupt Handler */
 	err = request_irq(port->irq_num, xaxi_pcie_intr_handler,
