@@ -1251,26 +1251,7 @@ static struct platform_driver xdma_driver = {
 	},
 };
 
-/*----------------------------------------------------------------------------*/
-/* Module Init / Exit                                                         */
-/*----------------------------------------------------------------------------*/
-
-static __init int xdma_init(void)
-{
-	int status;
-
-	mutex_init(&dma_list_mutex);
-	status = platform_driver_register(&xdma_driver);
-	return status;
-}
-module_init(xdma_init);
-
-static void __exit xdma_exit(void)
-{
-	platform_driver_unregister(&xdma_driver);
-}
-
-module_exit(xdma_exit);
+module_platform_driver(xdma_driver);
 
 MODULE_DESCRIPTION("Xilinx DMA driver");
 MODULE_LICENSE("GPL");

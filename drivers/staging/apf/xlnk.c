@@ -93,8 +93,6 @@ static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
 static unsigned int  xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
 
 
-static int __init xlnk_init(void);  /* Initialize bridge */
-static void __exit xlnk_exit(void); /* Opposite of initialize */
 static int xlnk_open(struct inode *ip, struct file *filp);  /* Open */
 static int xlnk_release(struct inode *ip, struct file *filp);   /* Release */
 static long xlnk_ioctl(struct file *filp, unsigned int code,
@@ -395,26 +393,6 @@ static struct platform_device xlnk_device = {
 	.resource = NULL,
 	.num_resources = 0,
 };
-
-
-static int __init xlnk_init(void)
-{
-	pr_info("%s driver initializing\n", DRIVER_NAME);
-
-	xlnk_dev_buf = NULL;
-	xlnk_dev_size = 0;
-	xlnk_dev_vmas = 0;
-	xlnk_bufpool = NULL;
-
-	platform_device_register(&xlnk_device);
-
-	return platform_driver_register(&xlnk_driver);
-}
-
-static void __exit xlnk_exit(void)
-{
-	platform_driver_unregister(&xlnk_driver);
-}
 
 /*
  * This function is called when an application opens handle to the
@@ -1301,6 +1279,25 @@ static int xlnk_recover_resource(unsigned long buf)
 	xdma_release_all_channels();
 #endif
 	return 0;
+}
+
+static int __init xlnk_init(void)
+{
+	pr_info("%s driver initializing\n", DRIVER_NAME);
+
+	xlnk_dev_buf = NULL;
+	xlnk_dev_size = 0;
+	xlnk_dev_vmas = 0;
+	xlnk_bufpool = NULL;
+
+	platform_device_register(&xlnk_device);
+
+	return platform_driver_register(&xlnk_driver);
+}
+
+static void __exit xlnk_exit(void)
+{
+	platform_driver_unregister(&xlnk_driver);
 }
 
 /* APF driver initialization and de-initialization functions */
