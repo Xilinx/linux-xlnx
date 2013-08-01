@@ -123,68 +123,51 @@ static void xilinx_xlnk_free(struct xlnk_eng_device *xlnkdev)
 static int xlnk_eng_probe(struct platform_device *pdev)
 {
 	struct resource *res;
-	u32 reg_range;
 	struct xilinx_xlnk_eng_device *xdev;
 	struct uio_info *info;
 	char *devname;
-	int err = 0;
 
 	pr_info("xlnk_eng_probe ...\n");
-	xdev = kzalloc(sizeof(struct xilinx_xlnk_eng_device), GFP_KERNEL);
+	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev) {
 		dev_err(&pdev->dev, "Not enough memory for device\n");
-		err = -ENOMEM;
-		goto out_return;
+		return -ENOMEM;
 	}
 
 	/* more error handling */
-	info = kzalloc(sizeof(struct uio_info), GFP_KERNEL);
+	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info) {
 		dev_err(&pdev->dev, "Not enough memory for device\n");
-		err = -ENOMEM;
-		goto out_free_xdev;
+		return -ENOMEM;
 	}
 
-	devname = (char *) kzalloc(64, GFP_KERNEL);
+	devname = devm_kzalloc(&pdev->dev, 64, GFP_KERNEL);
 	if (!devname) {
 		dev_err(&pdev->dev, "Not enough memory for device\n");
-		err = -ENOMEM;
-		goto out_free_xdev;
+		return -ENOMEM;
 	}
 	sprintf(devname, "%s.%d", DRIVER_NAME, pdev->id);
 	pr_info("uio name %s\n", devname);
 	/* iomap registers */
+
+	/* Get the data from the platform device */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		pr_err("get_resource for MEM resource for dev %d failed\n",
-		       pdev->id);
-		err = -ENOMEM;
-		goto out_free_xdev;
-	}
-	reg_range = res->end - res->start + 1;
-	if (!request_mem_region(res->start, reg_range, "xilin-xlnk-eng")) {
-		pr_err("memory request failue for base %x\n",
-		       (unsigned int)res->start);
-		err = -ENOMEM;
-		goto out_free_xdev;
-	}
+	xdev->base = devm_ioremap_resource(&pdev->dev, res);
 
-	xdev->base = ioremap(res->start, reg_range);
-
-	pr_info("%s physical base : 0x%lx\n", DRIVER_NAME,
+	/* %pa types should be used here */
+	dev_info(&pdev->dev, "physical base : 0x%lx\n",
 		(unsigned long)res->start);
-	pr_info("%s register range : 0x%lx\n", DRIVER_NAME,
-		(unsigned long)reg_range);
-	pr_info("%s base remapped to: 0x%lx\n", DRIVER_NAME,
+	dev_info(&pdev->dev, "register range : 0x%lx\n",
+		(unsigned long)resource_size(res));
+	dev_info(&pdev->dev, "base remapped to: 0x%lx\n",
 		(unsigned long)xdev->base);
 	if (!xdev->base) {
 		dev_err(&pdev->dev, "unable to iomap registers\n");
-		err = -ENOMEM;
-		goto out_free_xdev;
+		return -ENOMEM;
 	}
 
 	info->mem[0].addr = res->start;
-	info->mem[0].size = reg_range;
+	info->mem[0].size = resource_size(res);
 	info->mem[0].memtype = UIO_MEM_PHYS;
 	info->mem[0].internal_addr = xdev->base;
 
@@ -209,40 +192,22 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 
 	if (uio_register_device(&pdev->dev, info)) {
 		dev_err(&pdev->dev, "uio_register_device failed\n");
-		err = -ENODEV;
-		goto out_unmap;
+		return -ENODEV;
 	}
-	pr_info("xilinx-xlnk-eng uio registered\n");
+	dev_info(&pdev->dev, "xilinx-xlnk-eng uio registered\n");
 
 	return 0;
-
-
-out_unmap:
-	iounmap(xdev->base);
-
-	kfree(info);
-
-out_free_xdev:
-	kfree(xdev);
-
-out_return:
-	return err;
 }
 
 static int xlnk_eng_remove(struct platform_device *pdev)
 {
+#if 0
 	struct xlnk_eng_device *xlnk_dev =
 		(struct xlnk_eng_device *)platform_get_drvdata(pdev);
 	struct xilinx_xlnk_eng_device *xdev = to_xilinx_xlnk(xlnk_dev);
 
-	/* xlnk_eng_device_unregister(&xdev); */
-
-	iounmap(xdev->base);
-
-	dev_set_drvdata(&pdev->dev, NULL);
-
-	kfree(xdev);
-
+	xlnk_eng_device_unregister(&xdev);
+#endif
 	return 0;
 }
 
