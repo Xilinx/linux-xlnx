@@ -255,24 +255,7 @@ static struct platform_driver xlnk_eng_driver = {
 	},
 };
 
-/*----------------------------------------------------------------------------*/
-/* Module Init / Exit                                                         */
-/*----------------------------------------------------------------------------*/
-
-static __init int xlnk_eng_init(void)
-{
-	int status;
-	status = platform_driver_register(&xlnk_eng_driver);
-	return status;
-}
-module_init(xlnk_eng_init);
-
-static void __exit xlnk_eng_exit(void)
-{
-	platform_driver_unregister(&xlnk_eng_driver);
-}
-
-module_exit(xlnk_eng_exit);
+module_platform_driver(xlnk_eng_driver);
 
 MODULE_DESCRIPTION("Xilinx xlnk engine generic driver");
 MODULE_LICENSE("GPL");
