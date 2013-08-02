@@ -1044,69 +1044,48 @@ static int xdma_probe(struct platform_device *pdev)
 {
 	struct xdma_device *xdev;
 	struct resource *res;
-	int err = 0;
+	int err, i, j;
 	struct xdma_chan *chan;
 	struct dma_device_config *dma_config;
 	int dma_chan_dir;
 	int dma_chan_reg_offset;
-	int i;
 
 	pr_info("%s: probe dma %x, nres %d, id %d\n", __func__,
 		 (unsigned int)&pdev->dev,
 		 pdev->num_resources, pdev->id);
 
-	xdev = kzalloc(sizeof(struct xdma_device), GFP_KERNEL);
+	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xdma_device), GFP_KERNEL);
 	if (!xdev) {
 		dev_err(&pdev->dev, "Not enough memory for device\n");
-		err = -ENOMEM;
-		goto out_return;
+		return -ENOMEM;
 	}
 	xdev->dev = &(pdev->dev);
 
 	dma_config = (struct dma_device_config *)xdev->dev->platform_data;
 	if (dma_config->channel_count < 1 || dma_config->channel_count > 2)
-		goto out_free_xdev;
+		return -EFAULT;
 
 	/* Get the memory resource */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		pr_err("get_resource for MEM resource for dev %d failed\n",
-		       pdev->id);
-		err = -ENODEV;
-		goto out_free_xdev;
-	} else {
-		dev_info(&pdev->dev,
-			"AXIDMA device %d physical base address=0x%08x\n",
-			 pdev->id, (unsigned int)res->start);
-	}
-
-	if (!request_mem_region(res->start, res->end - res->start + 1,
-						pdev->name)) {
-		pr_err("memory request failue for base %x\n",
-		       (unsigned int)res->start);
-		err = -EBUSY;
-		goto out_free_xdev;
-	}
-
-	/* ioremp */
-	xdev->regs = ioremap(res->start, res->end - res->start + 1);
+	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (!xdev->regs) {
 		dev_err(&pdev->dev, "unable to iomap registers\n");
-		err = -EFAULT;
-		goto out_release_mem;
+		return -EFAULT;
 	}
+
+	dev_info(&pdev->dev, "AXIDMA device %d physical base address=0x%08x\n",
+		 pdev->id, (unsigned int)res->start);
 	dev_info(&pdev->dev, "AXIDMA device %d remapped to 0x%08x\n",
-		       pdev->id, (unsigned int)xdev->regs);
+		 pdev->id, (unsigned int)xdev->regs);
 
 	/* Allocate the channels */
 
 	dev_info(&pdev->dev, "has %d channel(s)\n", dma_config->channel_count);
 	for (i = 0; i < dma_config->channel_count; i++) {
-		chan = kzalloc(sizeof(*chan), GFP_KERNEL);
+		chan = devm_kzalloc(&pdev->dev, sizeof(*chan), GFP_KERNEL);
 		if (!chan) {
 			dev_err(&pdev->dev, "no free memory for DMA channel\n");
-			err = -ENOMEM;
-			goto out_iounmap_regs;
+			return -ENOMEM;
 		}
 
 		dma_chan_dir = strcmp(dma_config->channel_config[i].type,
@@ -1140,11 +1119,10 @@ static int xdma_probe(struct platform_device *pdev)
 		if (chan->irq <= 0) {
 			pr_err("get_resource for IRQ for dev %d failed\n",
 				pdev->id);
-			err = -ENODEV;
-			goto out_free_chan1;
+			return -ENODEV;
 		}
 
-		err = request_irq(
+		err = devm_request_irq(&pdev->dev,
 			chan->irq,
 			dma_chan_dir == DMA_TO_DEVICE ?
 				xdma_tx_intr_handler : xdma_rx_intr_handler,
@@ -1153,7 +1131,7 @@ static int xdma_probe(struct platform_device *pdev)
 			chan);
 		if (err) {
 			dev_err(&pdev->dev, "unable to request IRQ\n");
-			goto out_free_chan1;
+			return err;
 		}
 		pr_info("  chan%d irq: %d\n", chan->id, chan->irq);
 
@@ -1165,8 +1143,7 @@ static int xdma_probe(struct platform_device *pdev)
 		err = xdma_alloc_chan_descriptors(xdev->chan[chan->id]);
 		if (err) {
 			dev_err(&pdev->dev, "unable to allocate BD's\n");
-			err = -ENOMEM;
-			goto out_free_chan1_irq;
+			return -ENOMEM;
 		}
 		pr_info("  chan%d bd ring @ 0x%08x (size: 0x%08x bytes)\n",
 				chan->id, chan->bd_phys_addr,
@@ -1175,8 +1152,10 @@ static int xdma_probe(struct platform_device *pdev)
 		err = dma_init(xdev->chan[chan->id]);
 		if (err) {
 			dev_err(&pdev->dev, "DMA init failed\n");
-			err = -EIO;
-			goto out_free_chan1_res;
+			/* FIXME Check this - unregister all chan resources */
+			for (j = 0; j <= i; j++)
+				xdma_free_chan_resources(xdev->chan[j]);
+			return -EIO;
 		}
 	}
 	xdev->channel_count = dma_config->channel_count;
@@ -1189,28 +1168,12 @@ static int xdma_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, xdev);
 
 	return 0;
-
-out_free_chan1_res:
-	xdma_free_chan_resources(xdev->chan[chan->id]);
-out_free_chan1_irq:
-	free_irq(xdev->chan[chan->id]->irq, xdev->chan[chan->id]);
-out_free_chan1:
-	kfree(xdev->chan[chan->id]);
-out_iounmap_regs:
-	iounmap(xdev->regs);
-out_release_mem:
-	release_mem_region(res->start, resource_size(res));
-out_free_xdev:
-	kfree(xdev);
-out_return:
-	return err;
 }
 
 static int xdma_remove(struct platform_device *pdev)
 {
 	int i;
 	struct xdma_device *xdev = platform_get_drvdata(pdev);
-	struct resource *res;
 
 	/* Remove the DMA device from the global list */
 	mutex_lock(&dma_list_mutex);
@@ -1221,13 +1184,6 @@ static int xdma_remove(struct platform_device *pdev)
 		if (xdev->chan[i])
 			xdma_chan_remove(xdev->chan[i]);
 	}
-
-	iounmap(xdev->regs);
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(res->start, resource_size(res));
-
-	dev_set_drvdata(&pdev->dev, NULL);
-	kfree(xdev);
 
 	return 0;
 }
