@@ -44,6 +44,8 @@ config STE_MODEM_RPROC
 config ZYNQ_REMOTEPROC
 	tristate "Support ZYNQ remoteproc"
 	depends on ARCH_ZYNQ && SMP
+	depends on EXPERIMENTAL
+	depends on HAS_DMA
 	select REMOTEPROC
 	select RPMSG
 	select HOTPLUG_CPU
@@ -55,7 +57,8 @@ config ZYNQ_REMOTEPROC
 config MB_REMOTEPROC
 	tristate "Support Microblaze remoteproc"
 	depends on ARCH_ZYNQ
-	select REMOTEPROC
+	depends on EXPERIMENTAL
+	depends on HAS_DMA
 	select RPMSG
 	default m
 	help
