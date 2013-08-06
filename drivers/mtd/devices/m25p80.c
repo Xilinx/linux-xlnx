@@ -41,7 +41,9 @@
 #define	OPCODE_WRSR		0x01	/* Write status register 1 byte */
 #define	OPCODE_NORM_READ	0x03	/* Read data bytes (low frequency) */
 #define	OPCODE_FAST_READ	0x0b	/* Read data bytes (high frequency) */
+#define OPCODE_QUAD_READ	0x6b	/* Quad read command */
 #define	OPCODE_PP		0x02	/* Page program (up to 256 bytes) */
+#define OPCODE_QPP		0x32	/* Quad page program */
 #define	OPCODE_BE_4K		0x20	/* Erase 4KiB block */
 #define	OPCODE_BE_32K		0x52	/* Erase 32KiB block */
 #define	OPCODE_CHIP_ERASE	0xc7	/* Erase whole flash chip */
@@ -98,6 +100,9 @@ struct m25p {
 	bool			shift;
 	bool			isparallel;
 	bool			isstacked;
+	u8			read_opcode;
+	u8			prog_opcode;
+	u8			dummycount;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -464,7 +469,6 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	struct m25p *flash = mtd_to_m25p(mtd);
 	struct spi_transfer t[2];
 	struct spi_message m;
-	uint8_t opcode;
 
 	pr_debug("%s: %s from 0x%08x, len %zd\n", dev_name(&flash->spi->dev),
 			__func__, (u32)from, len);
@@ -477,7 +481,7 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	 * Should add 1 byte DUMMY_BYTE.
 	 */
 	t[0].tx_buf = flash->command;
-	t[0].len = m25p_cmdsz(flash) + (flash->fast_read ? 1 : 0);
+	t[0].len = m25p_cmdsz(flash) + flash->dummycount;
 	spi_message_add_tail(&t[0], &m);
 
 	t[1].rx_buf = buf;
@@ -495,14 +499,13 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	 */
 
 	/* Set up the write data buffer. */
-	opcode = flash->fast_read ? OPCODE_FAST_READ : OPCODE_NORM_READ;
-	flash->command[0] = opcode;
+	flash->command[0] = flash->read_opcode;
 	m25p_addr2cmd(flash, from, flash->command);
 
 	spi_sync(flash->spi, &m);
 
 	*retlen = m.actual_length - m25p_cmdsz(flash) -
-			(flash->fast_read ? 1 : 0);
+			flash->dummycount;
 
 	return 0;
 }
@@ -591,7 +594,7 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 	write_enable(flash);
 
 	/* Set up the opcode in the write buffer. */
-	flash->command[0] = OPCODE_PP;
+	flash->command[0] = flash->prog_opcode;
 	m25p_addr2cmd(flash, to, flash->command);
 
 	page_offset = to & (flash->page_size - 1);
@@ -1311,6 +1314,10 @@ static int m25p_probe(struct spi_device *spi)
 		flash->mtd.erasesize = info->sector_size;
 	}
 
+	flash->read_opcode = OPCODE_NORM_READ;
+	flash->prog_opcode = OPCODE_PP;
+	flash->dummycount = 0;
+
 	if (info->flags & M25P_NO_ERASE)
 		flash->mtd.flags |= MTD_NO_ERASE;
 
@@ -1332,6 +1339,16 @@ static int m25p_probe(struct spi_device *spi)
 #ifdef CONFIG_M25PXX_USE_FAST_READ
 	flash->fast_read = true;
 #endif
+	if (flash->fast_read) {
+		flash->read_opcode = OPCODE_FAST_READ;
+		flash->dummycount = 1;
+	}
+
+	if (spi->master->flags & SPI_MASTER_QUAD_MODE) {
+		flash->read_opcode = OPCODE_QUAD_READ;
+		flash->prog_opcode = OPCODE_QPP;
+		flash->dummycount = 1;
+	}
 
 	if (info->addr_width)
 		flash->addr_width = info->addr_width;
