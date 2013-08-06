@@ -138,6 +138,7 @@
 #define	XQSPIPS_FLASH_OPCODE_RDID	0x9F	/* Read JEDEC ID */
 #define	XQSPIPS_FLASH_OPCODE_BE		0xC7	/* Erase whole flash block */
 #define	XQSPIPS_FLASH_OPCODE_SE		0xD8	/* Sector erase (usually 64KB)*/
+#define XQSPIPS_FLASH_OPCODE_QPP	0x32	/* Quad page program */
 
 /*
  * Macros for the QSPI controller read/write
@@ -229,6 +230,7 @@ static struct xqspips_inst_format flash_inst[] = {
 	{ XQSPIPS_FLASH_OPCODE_BRWR, 2, XQSPIPS_TXD_00_10_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_EXTADRD, 1, XQSPIPS_TXD_00_01_OFFSET },
 	{ XQSPIPS_FLASH_OPCODE_EXTADWR, 2, XQSPIPS_TXD_00_10_OFFSET },
+	{ XQSPIPS_FLASH_OPCODE_QPP, 4, XQSPIPS_TXD_00_00_OFFSET },
 	/* Add all the instructions supported by the flash device */
 };
 
@@ -1096,6 +1098,7 @@ static int xqspips_probe(struct platform_device *pdev)
 
 	master->setup = xqspips_setup;
 	master->transfer = xqspips_transfer;
+	master->flags = SPI_MASTER_QUAD_MODE;
 
 	xqspi->speed_hz = clk_get_rate(xqspi->devclk) / 2;
 
