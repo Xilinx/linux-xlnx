@@ -230,10 +230,10 @@ static int xgpio_xlate(struct gpio_chip *gc,
 }
 
 /**
- * xgpiops_irq_mask - Write the specified signal of the GPIO device.
+ * xgpio_irq_mask - Write the specified signal of the GPIO device.
  * @irq_data: per irq and chip data passed down to chip functions
  */
-static void xgpiops_irq_mask(struct irq_data *irq_data)
+static void xgpio_irq_mask(struct irq_data *irq_data)
 {
 	unsigned long flags;
 	struct xgpio_instance *chip = irq_data_get_irq_chip_data(irq_data);
@@ -265,10 +265,10 @@ static void xgpiops_irq_mask(struct irq_data *irq_data)
 }
 
 /**
- * xgpiops_irq_unmask - Write the specified signal of the GPIO device.
+ * xgpio_irq_unmask - Write the specified signal of the GPIO device.
  * @irq_data: per irq and chip data passed down to chip functions
  */
-static void xgpiops_irq_unmask(struct irq_data *irq_data)
+static void xgpio_irq_unmask(struct irq_data *irq_data)
 {
 	unsigned long flags;
 	struct xgpio_instance *chip = irq_data_get_irq_chip_data(irq_data);
@@ -301,14 +301,14 @@ static void xgpiops_irq_unmask(struct irq_data *irq_data)
 }
 
 /**
- * xgpiops_set_irq_type - Write the specified signal of the GPIO device.
+ * xgpio_set_irq_type - Write the specified signal of the GPIO device.
  * @irq_data: Per irq and chip data passed down to chip functions
  * @type: Interrupt type that is to be set for the gpio pin
  *
  * Return:
  * 0 if interrupt type is supported otherwise otherwise -EINVAL
  */
-static int xgpiops_set_irq_type(struct irq_data *irq_data, unsigned int type)
+static int xgpio_set_irq_type(struct irq_data *irq_data, unsigned int type)
 {
 	/* Only rising edge case is supported now */
 	if (type == IRQ_TYPE_EDGE_RISING)
@@ -320,20 +320,20 @@ static int xgpiops_set_irq_type(struct irq_data *irq_data, unsigned int type)
 /* irq chip descriptor */
 static struct irq_chip xgpio_irqchip = {
 	.name		= "xgpio",
-	.irq_mask	= xgpiops_irq_mask,
-	.irq_unmask	= xgpiops_irq_unmask,
-	.irq_set_type	= xgpiops_set_irq_type,
+	.irq_mask	= xgpio_irq_mask,
+	.irq_unmask	= xgpio_irq_unmask,
+	.irq_set_type	= xgpio_set_irq_type,
 };
 
 /**
- * xgpiops_to_irq - Find out gpio to Linux irq mapping
+ * xgpio_to_irq - Find out gpio to Linux irq mapping
  * @gc: Pointer to gpio_chip device structure.
  * @offset: Gpio pin offset
  *
  * Return:
  * irq number otherwise -EINVAL
  */
-static int xgpiops_to_irq(struct gpio_chip *gc, unsigned offset)
+static int xgpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
 	struct xgpio_instance *chip = container_of(mm_gc, struct xgpio_instance,
@@ -395,7 +395,7 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 
 	chip->mmchip.gc.of_xlate = xgpio_xlate;
 	chip->mmchip.gc.of_gpio_n_cells = 2;
-	chip->mmchip.gc.to_irq = xgpiops_to_irq;
+	chip->mmchip.gc.to_irq = xgpio_to_irq;
 
 	chip->irq_base = irq_alloc_descs(-1, 0, chip->mmchip.gc.ngpio, 0);
 	if (chip->irq_base < 0) {
