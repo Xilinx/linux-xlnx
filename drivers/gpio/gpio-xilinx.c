@@ -387,6 +387,12 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	u32 pin_num;
 	struct resource res;
 
+	int ret = of_irq_to_resource(np, 0, &res);
+	if (!ret) {
+		pr_info("GPIO IRQ not connected\n");
+		return 0;
+	}
+
 	chip->mmchip.gc.of_xlate = xgpio_xlate;
 	chip->mmchip.gc.of_gpio_n_cells = 2;
 	chip->mmchip.gc.to_irq = xgpiops_to_irq;
@@ -399,7 +405,6 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	chip->irq_domain = irq_domain_add_legacy(np, chip->mmchip.gc.ngpio,
 						 chip->irq_base, 0,
 						 &irq_domain_simple_ops, NULL);
-	of_irq_to_resource(np, 0, &res);
 
 	/*
 	 * set the irq chip, handler and irq chip data for callbacks for
@@ -469,19 +474,19 @@ static int xgpio_of_probe(struct device_node *np)
 
 	chip->mmchip.save_regs = xgpio_save_regs;
 
-	status = xgpio_irq_setup(np, chip);
-	if (status) {
-		kfree(chip);
-		pr_err("%s: GPIO IRQ initialization failed %d\n",
-		       np->full_name, status);
-		return status;
-	}
-
 	/* Call the OF gpio helper to setup and register the GPIO device */
 	status = of_mm_gpiochip_add(np, &chip->mmchip);
 	if (status) {
 		kfree(chip);
 		pr_err("%s: error in probe function with status %d\n",
+		       np->full_name, status);
+		return status;
+	}
+
+	status = xgpio_irq_setup(np, chip);
+	if (status) {
+		kfree(chip);
+		pr_err("%s: GPIO IRQ initialization failed %d\n",
 		       np->full_name, status);
 		return status;
 	}
