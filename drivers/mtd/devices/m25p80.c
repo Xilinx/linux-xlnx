@@ -595,7 +595,7 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 	/* Set up the opcode in the write buffer. */
 	flash->command[0] = flash->prog_opcode;
-	m25p_addr2cmd(flash, to, flash->command);
+	m25p_addr2cmd(flash, (to >> flash->shift), flash->command);
 
 	page_offset = to & (flash->page_size - 1);
 
@@ -624,10 +624,8 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 				page_size = flash->page_size;
 
 			/* write the next page to flash */
-			if (flash->isparallel)
-				m25p_addr2cmd(flash, to + i/2, flash->command);
-			else
-				m25p_addr2cmd(flash, to + i, flash->command);
+			m25p_addr2cmd(flash, ((to + i) >> flash->shift),
+					flash->command);
 
 			t[1].tx_buf = buf + i;
 			t[1].len = page_size;
@@ -667,8 +665,6 @@ static int m25p80_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 				addr;
 		offset = addr;
 
-		if (flash->isparallel == 1)
-			offset /= 2;
 		if (flash->isstacked == 1) {
 			if (offset >= (flash->mtd.size / 2)) {
 				offset = offset - (flash->mtd.size / 2);
@@ -677,7 +673,7 @@ static int m25p80_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 				flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 			}
 		}
-		write_ear(flash, offset);
+		write_ear(flash, (offset >> flash->shift));
 		if (len < rem_bank_len)
 			write_len = len;
 		else
