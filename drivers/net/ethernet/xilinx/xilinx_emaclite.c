@@ -1257,8 +1257,7 @@ error2:
  */
 static int xemaclite_of_remove(struct platform_device *of_dev)
 {
-	struct device *dev = &of_dev->dev;
-	struct net_device *ndev = dev_get_drvdata(dev);
+	struct net_device *ndev = platform_get_drvdata(of_dev);
 
 	struct net_local *lp = netdev_priv(ndev);
 
