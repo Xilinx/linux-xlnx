@@ -267,9 +267,9 @@ static inline void write_register(struct xadc_t *xadc, unsigned int reg,
 	kfree(b);
 }
 
-static inline unsigned reg2temp(u16 reg)
+static inline int reg2temp(u16 reg)
 {
-	unsigned val;
+	int val;
 
 	val = (reg >> 4) & 0xFFF; /* Use only 12 bits */
 	val = ((val * 503975) / 4096) - 273150; /* (X*503.975/4096) -273.15 */
@@ -324,7 +324,7 @@ static ssize_t xadc_read_temp(struct device *dev,
 
 	clk_disable(xadc->clk);
 
-	return sprintf(buf, "%u\n", reg2temp(regval));
+	return sprintf(buf, "%d\n", reg2temp(regval));
 }
 
 static ssize_t xadc_read_vcc(struct device *dev,
