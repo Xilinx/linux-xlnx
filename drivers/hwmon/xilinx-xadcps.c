@@ -159,7 +159,6 @@ struct xadc_batch {
 struct xadc_t {
 	struct device *dev;
 	struct device *hwmon;
-	struct resource *mem;
 	void __iomem *iobase;
 	int irq;
 	struct clk	*clk;
@@ -657,57 +656,36 @@ static struct xadc_batch setup = {
 static int xadc_probe(struct platform_device *pdev)
 {
 	struct xadc_t *xadc;
+	struct resource *res;
 	u16 val;
 	int ret;
 
-	xadc = kzalloc(sizeof(*xadc), GFP_KERNEL);
+	xadc = devm_kzalloc(&pdev->dev, sizeof(*xadc), GFP_KERNEL);
 	if (!xadc) {
 		dev_err(&pdev->dev, "Failed to allocate driver structure\n");
 		return -ENOMEM;
 	}
 	xadc->dev = &pdev->dev;
 
-	xadc->irq = platform_get_irq(pdev, 0);
-	if (xadc->irq < 0) {
-		ret = xadc->irq;
-		dev_err(xadc->dev, "Failed to get platform irq\n");
-		goto err_free;
-	}
-
-	xadc->mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!xadc->mem) {
-		ret = -ENOENT;
-		dev_err(xadc->dev, "Failed to get platform resource\n");
-		goto err_free;
-	}
-
-	xadc->mem = request_mem_region(xadc->mem->start,
-			resource_size(xadc->mem), pdev->name);
-
-	if (!xadc->mem) {
-		ret = -ENODEV;
-		dev_err(xadc->dev, "Failed to request memory region\n");
-		goto err_free;
-	}
-
-	xadc->iobase = ioremap(xadc->mem->start, resource_size(xadc->mem));
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xadc->iobase = devm_ioremap_resource(&pdev->dev, res);
 	if (!xadc->iobase) {
-		ret = -ENODEV;
 		dev_err(xadc->dev, "Failed to ioremap memory\n");
-		goto err_mem_region;
+		return -ENODEV;
 	}
 
-	ret = request_irq(xadc->irq, xadc_irq, IRQF_SHARED, "xadc", xadc);
+	xadc->irq = platform_get_irq(pdev, 0);
+	ret = devm_request_irq(&pdev->dev, xadc->irq, &xadc_irq, IRQF_SHARED,
+			       dev_name(&pdev->dev), xadc);
 	if (ret) {
 		dev_err(xadc->dev, "Failed to request irq: %d\n", xadc->irq);
-		goto err_io_remap;
+		return ret;
 	}
 
 	xadc->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xadc->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
-		ret = PTR_ERR(xadc->clk);
-		goto err_irq;
+		return PTR_ERR(xadc->clk);
 	}
 
 	ret = clk_prepare_enable(xadc->clk);
@@ -763,14 +741,7 @@ err_clk_disable:
 	clk_disable_unprepare(xadc->clk);
 err_clk_put:
 	clk_put(xadc->clk);
-err_irq:
-	free_irq(xadc->irq, xadc);
-err_io_remap:
-	iounmap(xadc->iobase);
-err_mem_region:
-	release_mem_region(xadc->mem->start, resource_size(xadc->mem));
-err_free:
-	kfree(xadc);
+
 	return ret;
 }
 
@@ -782,17 +753,8 @@ static int xadc_remove(struct platform_device *pdev)
 
 	sysfs_remove_group(&pdev->dev.kobj, &xadc_group);
 
-	free_irq(xadc->irq, xadc);
-
-	iounmap(xadc->iobase);
-	release_mem_region(xadc->mem->start, resource_size(xadc->mem));
-
-	platform_set_drvdata(pdev, NULL);
-
 	clk_unprepare(xadc->clk);
 	clk_put(xadc->clk);
-
-	kfree(xadc);
 
 	return 0;
 }
