@@ -34,9 +34,7 @@
 #include <linux/of_irq.h>
 #include <linux/init.h>
 #include <linux/bootmem.h>
-#include <linux/delay.h>
 #include <linux/io.h>
-#include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/sizes.h>
 #include <linux/irqdomain.h>

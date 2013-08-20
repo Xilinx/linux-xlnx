@@ -34,6 +34,16 @@
 #include <linux/completion.h>
 #include <linux/wait.h>
 
+#include <linux/device.h>
+#include <linux/init.h>
+#include <linux/cdev.h>
+
+#include <linux/sched.h>
+#include <linux/pagemap.h>
+#include <linux/errno.h>	/* error codes */
+#include <linux/dma-mapping.h>  /* dma */
+
+
 #include "xlnk-ioctl.h"
 #include "xlnk-event-tracer-type.h"
 #include "xlnk.h"
@@ -51,21 +61,6 @@ static void xdma_if_device_release(struct device *op)
 }
 
 #endif
-
-#ifdef MODULE
-#include <linux/module.h>
-#endif
-
-#include <linux/device.h>
-#include <linux/init.h>
-#include <linux/moduleparam.h>
-#include <linux/cdev.h>
-
-#include <linux/sched.h>
-#include <linux/mm.h>	   /* everything */
-#include <linux/pagemap.h>
-#include <linux/errno.h>	/* error codes */
-#include <linux/dma-mapping.h>  /* dma */
 
 #define DRIVER_NAME  "xlnk"
 #define DRIVER_VERSION  "0.2"
