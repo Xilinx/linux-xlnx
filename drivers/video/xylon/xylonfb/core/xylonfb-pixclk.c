@@ -17,9 +17,17 @@
  * generation on various HW platforms.
  */
 
-
+#include <linux/delay.h>
+#include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/errno.h>
 
+#ifdef CONFIG_OF
+/* For open firmware. */
+#include <linux/of_address.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#endif
 
 #define XYLONFB_PIXCLK_GEN_DEVS 8
 
@@ -29,9 +37,6 @@ static bool xylonfb_hw_pixclk_init;
 #if defined(CONFIG_FB_XYLON_PIXCLK_ZYNQ_PS)
 
 #define XYLONFB_PIXCLK_ZYNQ_PS 1
-
-#include <linux/io.h>
-#include <linux/errno.h>
 
 int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 {
@@ -116,15 +121,6 @@ int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 
 #define XYLONFB_PIXCLK_LOGICLK 2
 
-#include <linux/io.h>
-#include <linux/errno.h>
-#include <linux/delay.h>
-#ifdef CONFIG_OF
-/* For open firmware. */
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
-#endif
 #include "logiclk.h"
 
 int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)

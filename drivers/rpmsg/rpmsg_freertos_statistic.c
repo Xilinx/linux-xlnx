@@ -24,7 +24,6 @@
 #include <linux/fs.h>
 #include <linux/sched.h>
 #include <linux/scatterlist.h>
-#include <linux/slab.h>
 #include <linux/idr.h>
 #include <linux/poll.h>
 #include <linux/jiffies.h>
