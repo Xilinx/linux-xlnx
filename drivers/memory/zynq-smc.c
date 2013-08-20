@@ -170,7 +170,7 @@ u32 xsmcps_get_ecc_val(int ecc_reg)
 	unsigned long flags;
 
 	ecc_reg &= 3;
-	addr = XSMCPS_ECC_VALUE0_OFFS | (ecc_reg << 2);
+	addr = XSMCPS_ECC_VALUE0_OFFS + (ecc_reg << 2);
 
 	spin_lock_irqsave(&xsmcps_lock, flags);
 
