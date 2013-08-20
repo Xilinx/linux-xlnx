@@ -1887,7 +1887,7 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 
 	drvdata->irq = irq_res->start;
 
-	retval = request_irq(irq_res->start, xdevcfg_irq, IRQF_DISABLED,
+	retval = request_irq(irq_res->start, xdevcfg_irq, 0,
 					DRIVER_NAME, drvdata);
 	if (retval) {
 		dev_err(&pdev->dev, "No IRQ available");
