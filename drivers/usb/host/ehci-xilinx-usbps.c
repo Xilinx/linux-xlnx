@@ -79,7 +79,7 @@ static int ehci_xusbps_otg_start_host(struct usb_phy *otg)
 	struct xusbps_otg *xotg =
 			xceiv_to_xotg(hcd->phy);
 
-	usb_add_hcd(hcd, xotg->irq, IRQF_SHARED | IRQF_DISABLED);
+	usb_add_hcd(hcd, xotg->irq, IRQF_SHARED);
 	return 0;
 }
 
@@ -213,7 +213,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		/* inform otg driver about host driver */
 		xusbps_update_transceiver();
 	} else {
-		retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 		if (retval)
 			goto err_out_clk_unreg_notif;
 
@@ -226,7 +226,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	}
 #else
 	/* Don't need to set host mode here. It will be done by tdi_reset() */
-	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (retval)
 		goto err_out_clk_unreg_notif;
 #endif

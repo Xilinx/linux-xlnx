@@ -1280,7 +1280,7 @@ static int xenet_open(struct net_device *dev)
 
 	/* Just use interrupt driven methods - no polled mode */
 
-	irqval = request_irq(dev->irq, &xenet_temac_interrupt, IRQF_DISABLED, dev->name, dev);
+	irqval = request_irq(dev->irq, &xenet_temac_interrupt, 0, dev->name, dev);
 	if (irqval) {
 		printk(KERN_ERR
 		       "%s: XLlTemac: could not allocate interrupt %d.\n",
@@ -1318,7 +1318,7 @@ static int xenet_open(struct net_device *dev)
 		 * fast interrupt handler.
 		 */
 		irqval = request_irq(lp->fifo_irq,
-			&xenet_fifo_interrupt, IRQF_DISABLED, "xilinx_fifo_int", dev);
+			&xenet_fifo_interrupt, 0, "xilinx_fifo_int", dev);
 		if (irqval) {
 			printk(KERN_ERR
 			       "%s: XLlTemac: could not allocate interrupt %d.\n",
