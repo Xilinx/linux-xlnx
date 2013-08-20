@@ -396,12 +396,6 @@ static int xusbps_udc_clk_init(struct platform_device *pdev)
 	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
 	int rc;
 
-	pdata->clk = clk_get(&pdev->dev, NULL);
-	if (IS_ERR(pdata->clk)) {
-		dev_err(&pdev->dev, "input clock not found.\n");
-		return PTR_ERR(pdata->clk);
-	}
-
 	rc = clk_prepare_enable(pdata->clk);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
@@ -2898,9 +2892,6 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	dev_set_name(&udc_controller->gadget.dev, "gadget");
 	udc_controller->gadget.dev.release = xusbps_udc_release;
 	udc_controller->gadget.dev.parent = &pdev->dev;
-	ret = device_register(&udc_controller->gadget.dev);
-	if (ret < 0)
-		goto err_free_irq;
 
 	/* setup QH and epctrl for ep0 */
 	ep0_setup(udc_controller);

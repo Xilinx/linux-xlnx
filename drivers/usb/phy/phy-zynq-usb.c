@@ -1996,13 +1996,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&xotg->work, xusbps_otg_work);
 
-	xotg->clk = clk_get(&pdev->dev, NULL);
-	if (IS_ERR(xotg->clk)) {
-		dev_err(&pdev->dev, "input clock not found.\n");
-		retval = PTR_ERR(xotg->clk);
-		goto err;
-	}
-
+	xotg->clk = pdata->clk;
 	retval = clk_prepare_enable(xotg->clk);
 	if (retval) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
@@ -2295,7 +2289,11 @@ static const struct dev_pm_ops xusbps_otg_dev_pm_ops = {
 #define XUSBPS_OTG_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
+#ifndef CONFIG_USB_XUSBPS_DR_OF
 static struct platform_driver xusbps_otg_driver = {
+#else
+struct platform_driver xusbps_otg_driver = {
+#endif
 	.probe		= xusbps_otg_probe,
 	.remove		= xusbps_otg_remove,
 	.driver		= {
@@ -2305,7 +2303,9 @@ static struct platform_driver xusbps_otg_driver = {
 	},
 };
 
+#ifndef CONFIG_USB_XUSBPS_DR_OF
 module_platform_driver(xusbps_otg_driver);
+#endif
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx PS USB OTG driver");

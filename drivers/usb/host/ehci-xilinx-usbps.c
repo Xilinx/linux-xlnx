@@ -168,13 +168,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		goto err2;
 	}
 
-	pdata->clk = clk_get(&pdev->dev, NULL);
-	if (IS_ERR(pdata->clk)) {
-		dev_err(&pdev->dev, "input clock not found.\n");
-		retval = PTR_ERR(pdata->clk);
-		goto err2;
-	}
-
 	retval = clk_prepare_enable(pdata->clk);
 	if (retval) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");

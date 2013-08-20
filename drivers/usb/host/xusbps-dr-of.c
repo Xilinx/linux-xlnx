@@ -117,7 +117,6 @@ static struct platform_device * xusbps_device_register(
 
 	pdev->dev.coherent_dma_mask = ofdev->dev.coherent_dma_mask;
 	pdev->dev.dma_mask = &dma_mask;
-	pdev->dev.of_node = ofdev->dev.of_node;
 
 	retval = platform_device_add_data(pdev, pdata, sizeof(*pdata));
 	if (retval)
@@ -214,6 +213,8 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 		dev_err(&ofdev->dev, "Unable to enable APER clock.\n");
 		goto err_out_clk_put;
 	}
+
+	pdata->clk = hdata->clk;
 
 	/* If ULPI phy type, set it up */
 	if (pdata->phy_mode == XUSBPS_USB2_PHY_ULPI) {
@@ -326,7 +327,30 @@ static struct platform_driver xusbps_dr_driver = {
 	.remove	= xusbps_dr_of_remove,
 };
 
+#ifdef CONFIG_USB_ZYNQ_PHY
+extern struct platform_driver xusbps_otg_driver;
+
+static int __init xusbps_dr_init(void)
+{
+	int retval;
+
+	/* Register otg driver first */
+	retval = platform_driver_register(&xusbps_otg_driver);
+	if (retval != 0)
+		return retval;
+
+	return platform_driver_register(&xusbps_dr_driver);
+}
+module_init(xusbps_dr_init);
+
+static void __exit xusbps_dr_exit(void)
+{
+	platform_driver_unregister(&xusbps_dr_driver);
+}
+module_exit(xusbps_dr_exit);
+#else
 module_platform_driver(xusbps_dr_driver);
+#endif
 
 MODULE_DESCRIPTION("XUSBPS DR OF devices driver");
 MODULE_AUTHOR("Xilinx");
