@@ -125,6 +125,9 @@ struct xdevcfg_drvdata {
 	void __iomem *base_address;
 	int ep107;
 	bool is_partial_bitstream;
+	bool endian_swap;
+	char residue_buf[3];
+	int residue_len;
 };
 
 /* Register read/write access routines */
@@ -211,13 +214,15 @@ static ssize_t
 xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 		loff_t *ppos)
 {
-	u32 *kbuf;
+	char *kbuf;
 	int status;
 	unsigned long timeout;
 	u32 intr_reg;
 	dma_addr_t dma_addr;
 	u32 transfer_length = 0;
 	struct xdevcfg_drvdata *drvdata = file->private_data;
+	size_t user_count = count;
+	int i;
 
 	status = clk_enable(drvdata->clk);
 	if (status)
@@ -228,16 +233,60 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	if (status)
 		goto err_clk;
 
-	kbuf = dma_alloc_coherent(drvdata->dev, count, &dma_addr, GFP_KERNEL);
+	kbuf = dma_alloc_coherent(drvdata->dev, count + drvdata->residue_len,
+				  &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
 		goto err_unlock;
 	}
 
-	if (copy_from_user(kbuf, buf, count)) {
+	/* Collect stragglers from last time (0 to 3 bytes) */
+	memcpy(kbuf, drvdata->residue_buf, drvdata->residue_len);
+
+	/* Fetch user data, appending to stragglers */
+	if (copy_from_user(kbuf + drvdata->residue_len, buf, count)) {
 		status = -EFAULT;
 		goto error;
 	}
+
+	/* Include stragglers in total bytes to be handled */
+	count += drvdata->residue_len;
+
+	/* First block contains a header */
+	if (*ppos == 0 && count > 4) {
+		/* Look for sync word */
+		for (i = 0; i < count - 4; i++) {
+			if (memcmp(kbuf + i, "\x66\x55\x99\xAA", 4) == 0) {
+				printk("Found normal sync word\n");
+				drvdata->endian_swap = 0;
+				break;
+			}
+			if (memcmp(kbuf + i, "\xAA\x99\x55\x66", 4) == 0) {
+				printk("Found swapped sync word\n");
+				drvdata->endian_swap = 1;
+				break;
+			}
+		}
+		/* Remove the header, aligning the data on word boundary */
+		if (i != count - 4) {
+			count -= i;
+			memmove(kbuf, kbuf + i, count);
+		}
+	}
+
+	/* Save stragglers for next time */
+	drvdata->residue_len = count % 4;
+	count -= drvdata->residue_len;
+	memcpy(drvdata->residue_buf, kbuf + count, drvdata->residue_len);
+
+	/* Fixup endianess of the data */
+	if (drvdata->endian_swap) {
+		for (i = 0; i < count; i += 4) {
+			u32 *p = (u32 *)&kbuf[i];
+			*p = swab32(*p);
+		}
+	}
+
 	/* Enable DMA and error interrupts */
 	xdevcfg_writereg(drvdata->base_address + XDCFG_INT_STS_OFFSET,
 				XDCFG_IXR_ALL_MASK);
@@ -294,7 +343,8 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 		goto error;
 	}
 
-	status = count;
+	*ppos += user_count;
+	status = user_count;
 
 error:
 	dma_free_coherent(drvdata->dev, count, kbuf, dma_addr);
@@ -429,6 +479,8 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 
 	file->private_data = drvdata;
 	drvdata->is_open = 1;
+	drvdata->endian_swap = 0;
+	drvdata->residue_len= 0;
 
 	/*
 	 * If is_partial_bitstream is set, then PROG_B is not asserted
@@ -470,6 +522,10 @@ static int xdevcfg_release(struct inode *inode, struct file *file)
 
 	if (!drvdata->is_partial_bitstream)
 		xslcr_init_postload_fpga();
+
+	if (drvdata->residue_len)
+		printk("Did not transfer last %d bytes\n",
+			drvdata->residue_len);
 
 	drvdata->is_open = 0;
 
