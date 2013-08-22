@@ -220,6 +220,16 @@
 						reg = <0x51>;
 					};
 				};
+
+				i2c@7 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <7>;
+					ucd90120@65 {
+						compatible = "pmbus,ucd90120";
+						reg = <0x65>;
+					};
+				};
 			};
 
 		} ;
