@@ -215,7 +215,7 @@
 					#address-cells = <1>;
 					#size-cells = <0>;
 					reg = <4>;
-					rtc@54 {
+					rtc@51 {
 						compatible = "nxp,pcf8563";
 						reg = <0x51>;
 					};
