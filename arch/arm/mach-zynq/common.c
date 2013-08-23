@@ -52,7 +52,7 @@ static struct map_desc zynq_cortex_a9_scu_map __initdata = {
 };
 
 /* Solution ala vexpress platform */
-static int __init scu_init(void)
+static int __init zynq_scu_init(void)
 {
 	unsigned long base;
 
@@ -71,7 +71,7 @@ static int __init scu_init(void)
 
 static void __init xilinx_zynq_timer_init(void)
 {
-	xslcr_init();
+	zynq_slcr_init();
 	xttcps_timer_init_old();
 }
 
@@ -85,19 +85,19 @@ static struct sys_timer xttcps_sys_timer = {
 /**
  * xilinx_map_io() - Create memory mappings needed for early I/O.
  */
-static void __init xilinx_map_io(void)
+static void __init zynq_map_io(void)
 {
 	debug_ll_io_init();
-	scu_init();
+	zynq_scu_init();
 }
 
 /**
- * xilinx_memory_init() - Initialize special memory
+ * zynq_memory_init() - Initialize special memory
  *
  * We need to stop things allocating the low memory as DMA can't work in
  * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
  */
-static void __init xilinx_memory_init(void)
+static void __init zynq_memory_init(void)
 {
 	/*
 	 * Reserve the 0-0x4000 addresses (before page tables and kernel)
@@ -125,12 +125,12 @@ static long __init xilinx_calc_opp_freq(struct clk *clk, long rate)
 }
 
 /**
- * xilinx_opp_init() - Register OPPs
+ * zynq_opp_init() - Register OPPs
  *
  * Registering frequency/voltage operating points for voltage and frequency
  * scaling. Currently we only support frequency scaling.
  */
-static int __init xilinx_opp_init(void)
+static int __init zynq_opp_init(void)
 {
 	long freq;
 	unsigned int i;
@@ -167,11 +167,11 @@ static int __init xilinx_opp_init(void)
 
 	return ret;
 }
-device_initcall(xilinx_opp_init);
+device_initcall(zynq_opp_init);
 #endif
 
 #ifdef CONFIG_CACHE_L2X0
-static int __init xilinx_l2c_init(void)
+static int __init zynq_l2c_init(void)
 {
 	/* 64KB way size, 8-way associativity, parity disabled,
 	 * prefetching option */
@@ -181,20 +181,20 @@ static int __init xilinx_l2c_init(void)
 	return l2x0_of_init(0x72060000, 0xF0F0FFFF);
 #endif
 }
-early_initcall(xilinx_l2c_init);
+early_initcall(zynq_l2c_init);
 #endif
 
 /**
  * xilinx_irq_init() - Interrupt controller initialization for the GIC.
  */
-static void __init xilinx_irq_init(void)
+static void __init zynq_irq_init(void)
 {
 	of_irq_init(zynq_dt_irq_match);
 	gic_arch_extn.flags = IRQCHIP_SKIP_SET_WAKE | IRQCHIP_MASK_ON_SUSPEND;
 }
 
 #ifdef CONFIG_XILINX_L1_PREFETCH
-static void __init xilinx_data_prefetch_enable(void *info)
+static void __init zynq_data_prefetch_enable(void *info)
 {
 	/*
 	 * Enable prefetching in aux control register. L2 prefetch must
@@ -207,30 +207,30 @@ static void __init xilinx_data_prefetch_enable(void *info)
 }
 #endif
 
-static void __init xilinx_init_late(void)
+static void __init zynq_init_late(void)
 {
 	zynq_pm_late_init();
 
 #ifdef CONFIG_XILINX_L1_PREFETCH
-	on_each_cpu(xilinx_data_prefetch_enable, NULL, 0);
+	on_each_cpu(zynq_data_prefetch_enable, NULL, 0);
 #endif
 }
 
 /**
- * xilinx_init_machine() - System specific initialization, intended to be
- *			   called from board specific initialization.
+ * zynq_init_machine - System specific initialization, intended to be
+ *		       called from board specific initialization.
  */
-static void __init xilinx_init_machine(void)
+static void __init zynq_init_machine(void)
 {
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
-static void xilinx_system_reset(char mode, const char *cmd)
+static void zynq_system_reset(char mode, const char *cmd)
 {
-	xslcr_system_reset();
+	zynq_slcr_system_reset();
 }
 
-static const char * const xilinx_dt_match[] = {
+static const char * const zynq_dt_match[] = {
 	"xlnx,zynq-zc702",
 	"xlnx,zynq-zc706",
 	"xlnx,zynq-zc770",
@@ -240,13 +240,13 @@ static const char * const xilinx_dt_match[] = {
 
 MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.smp		= smp_ops(zynq_smp_ops),
-	.map_io		= xilinx_map_io,
-	.init_irq	= xilinx_irq_init,
+	.map_io		= zynq_map_io,
+	.init_irq	= zynq_irq_init,
 	.handle_irq	= gic_handle_irq,
-	.init_machine	= xilinx_init_machine,
-	.init_late	= xilinx_init_late,
+	.init_machine	= zynq_init_machine,
+	.init_late	= zynq_init_late,
 	.timer		= &xttcps_sys_timer,
-	.dt_compat	= xilinx_dt_match,
-	.reserve	= xilinx_memory_init,
-	.restart	= xilinx_system_reset,
+	.dt_compat	= zynq_dt_match,
+	.reserve	= zynq_memory_init,
+	.restart	= zynq_system_reset,
 MACHINE_END
