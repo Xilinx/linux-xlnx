@@ -46,29 +46,6 @@ static const struct of_device_id zynq_dt_irq_match[] __initconst = {
 	{ }
 };
 
-static struct map_desc zynq_cortex_a9_scu_map __initdata = {
-	.length	= SZ_256,
-	.type	= MT_DEVICE,
-};
-
-/* Solution ala vexpress platform */
-static int __init zynq_scu_init(void)
-{
-	unsigned long base;
-
-	/* FIXME will be replaced by scu_get_base(void) in 3.8 */
-	asm("mrc p15, 4, %0, c15, c0, 0" : "=r" (base));
-
-	zynq_cortex_a9_scu_map.pfn = __phys_to_pfn(base);
-	zynq_cortex_a9_scu_map.virtual = base;
-	iotable_init(&zynq_cortex_a9_scu_map, 1);
-	scu_base = ioremap(base, zynq_cortex_a9_scu_map.length);
-	if (WARN_ON(!scu_base))
-		return -EFAULT;
-
-	return 0;
-}
-
 static void __init xilinx_zynq_timer_init(void)
 {
 	zynq_slcr_init();
@@ -81,15 +58,6 @@ static void __init xilinx_zynq_timer_init(void)
 static struct sys_timer xttcps_sys_timer = {
 	.init		= xilinx_zynq_timer_init,
 };
-
-/**
- * xilinx_map_io() - Create memory mappings needed for early I/O.
- */
-static void __init zynq_map_io(void)
-{
-	debug_ll_io_init();
-	zynq_scu_init();
-}
 
 /**
  * zynq_memory_init() - Initialize special memory
@@ -223,6 +191,36 @@ static void __init zynq_init_late(void)
 static void __init zynq_init_machine(void)
 {
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+}
+
+
+static struct map_desc zynq_cortex_a9_scu_map __initdata = {
+	.length	= SZ_256,
+	.type	= MT_DEVICE,
+};
+
+static void __init zynq_scu_map_io(void)
+{
+	unsigned long base;
+
+	/* FIXME will be replaced by scu_get_base(void) in 3.8 */
+	asm("mrc p15, 4, %0, c15, c0, 0" : "=r" (base));
+
+	zynq_cortex_a9_scu_map.pfn = __phys_to_pfn(base);
+	/* Expected address is in vmalloc area that's why simple assign here */
+	zynq_cortex_a9_scu_map.virtual = base;
+	iotable_init(&zynq_cortex_a9_scu_map, 1);
+	scu_base = (void __iomem *)base;
+	BUG_ON(!scu_base);
+}
+
+/**
+ * zynq_map_io - Create memory mappings needed for early I/O.
+ */
+static void __init zynq_map_io(void)
+{
+	debug_ll_io_init();
+	zynq_scu_map_io();
 }
 
 static void zynq_system_reset(char mode, const char *cmd)
