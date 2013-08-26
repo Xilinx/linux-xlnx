@@ -201,13 +201,6 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 
 static int xlnk_eng_remove(struct platform_device *pdev)
 {
-#if 0
-	struct xlnk_eng_device *xlnk_dev =
-		(struct xlnk_eng_device *)platform_get_drvdata(pdev);
-	struct xilinx_xlnk_eng_device *xdev = to_xilinx_xlnk(xlnk_dev);
-
-	xlnk_eng_device_unregister(&xdev);
-#endif
 	return 0;
 }
 

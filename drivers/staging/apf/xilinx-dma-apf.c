@@ -20,7 +20,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-/* #include <linux/sysdev.h> */
 #include <linux/interrupt.h>
 #include <linux/dmapool.h>
 #include <linux/slab.h>
@@ -184,10 +183,7 @@ static void xilinx_chan_desc_cleanup(struct xdma_chan *chan)
 	spin_lock_irqsave(&chan->lock, flags);
 #define XDMA_BD_STS_RXEOF_MASK 0x04000000
 	desc = chan->bds[chan->bd_cur];
-	pr_debug("cleanup desc: %x\n", (u32)desc);
 	while ((desc->status & XDMA_BD_STS_ALL_MASK)) {
-		pr_debug("desc->status %x desc->dmahead %x\n",
-			desc->status, desc->dmahead);
 		if ((desc->status & XDMA_BD_STS_RXEOF_MASK) &&
 		    !(desc->dmahead)) {
 			pr_info("ERROR: premature EOF on DMA\n");
@@ -257,22 +253,6 @@ static void xdma_tasklet(unsigned long data)
 	xilinx_chan_desc_cleanup(chan);
 }
 
-#if 0
-static void xdma_tasklet_tx(unsigned long data)
-{
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_MM2S_HALF_BOTTOM_START); */
-	xdma_tasklet(data);
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_MM2S_HALF_BOTTOM_END); */
-}
-
-static void xdma_tasklet_rx(unsigned long data)
-{
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_S2MM_HALF_BOTTOM_START); */
-	xdma_tasklet(data);
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_S2MM_HALF_BOTTOM_END); */
-}
-#endif
-
 static void dump_cur_bd(struct xdma_chan *chan)
 {
 	u32 index;
@@ -292,11 +272,9 @@ static irqreturn_t xdma_rx_intr_handler(int irq, void *data)
 	struct xdma_chan *chan = data;
 	u32 stat;
 
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_S2MM_INTR); */
 	stat = chan->regs->sr;
 
 	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
-		/* dev_err(chan->dev, "no rx irq\n"); */
 		return IRQ_NONE;
 	}
 
@@ -327,11 +305,9 @@ static irqreturn_t xdma_tx_intr_handler(int irq, void *data)
 	struct xdma_chan *chan = data;
 	u32 stat;
 
-	/* xlnk_record_event(XLNK_ET_KERNEL_DMA_MM2S_INTR); */
 	stat = chan->regs->sr;
 
 	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
-		/* dev_err(chan->dev, "no tx irq\n"); */
 		return IRQ_NONE;
 	}
 
@@ -585,9 +561,6 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 	unsigned int sg_visited_cnt = 0, sg_merged_num = 0;
 	unsigned int dma_len = 0, i = 0;
 
-	pr_debug("\nsgl_merge: sg list length before merging = %u\n", sgl_len);
-	pr_debug("------------------------------------------------\n");
-
 	*sgl_merged = sglist_array;
 	sg_merged_head = *sgl_merged;
 	sghead = sgl;
@@ -598,9 +571,6 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 		sgend = sghead;
 		sg_visited_cnt++;
 		sgnext = sg_next(sgend);
-
-		pr_debug("%05u: dma_addr: 0x%08x, dma_len: 0x%08x\n", ++i,
-			    sg_dma_address(sgend), sg_dma_len(sgend));
 
 		while (sgnext && (sg_visited_cnt < sgl_len)) {
 
@@ -616,8 +586,6 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 			sg_visited_cnt++;
 			sgnext = sg_next(sgnext);
 
-			pr_debug("%05u: dma_addr: 0x%08x, dma_len: 0x%08x\n",
-				 ++i, sg_dma_address(sgend), sg_dma_len(sgend));
 		}
 
 		sg_merged_num++;
@@ -628,17 +596,9 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 
 		sg_dma_len(sg_merged_head) = dma_len;
 
-		pr_debug("after: dma_addr: 0x%08x, dma_len: 0x%08x\n",
-			sg_dma_address(sg_merged_head),
-			sg_dma_len(sg_merged_head));
-		pr_debug("------------------------------------------------\n");
-
 		sg_merged_head = sg_next(sg_merged_head);
 		sghead = sg_next(sgend);
 	}
-
-	pr_debug("sgl_merge: sg list length after merging = %u\n\n",
-			sg_merged_num);
 
 	return sg_merged_num;
 }
@@ -667,25 +627,14 @@ static int pin_user_pages(unsigned long uaddr,
 	first_page = uaddr / PAGE_SIZE;
 	last_page = (uaddr + ulen - 1) / PAGE_SIZE;
 	num_pages = last_page - first_page + 1;
-	pr_debug("%s: %x %x %x\n", __func__, first_page, last_page, num_pages);
 	xlnk_record_event(XLNK_ET_KERNEL_BEFORE_GET_USER_PAGES);
 	down_read(&mm->mmap_sem);
-	/* TODO: it would be safe to alloc mapped_pages	*/
 	status = get_user_pages(curr_task, mm, uaddr, num_pages, write, 1,
 				mapped_pages, NULL);
-#if 0
-	status = xilinx_get_user_pages(curr_task, mm, uaddr, num_pages,
-					  write, 1, mapped_pages, NULL,
-					  user_flags);
-#endif
-	pr_debug("%s: get_user_pages done\n", __func__);
 	up_read(&mm->mmap_sem);
 	xlnk_record_event(XLNK_ET_KERNEL_AFTER_GET_USER_PAGES);
 
 	if (status == num_pages) {
-		pr_debug("got %d user pages for %lx len %x\n",
-			 status, uaddr, ulen);
-
 		sglist = kcalloc(num_pages,
 				 sizeof(struct scatterlist),
 				 GFP_KERNEL);
@@ -694,17 +643,9 @@ static int pin_user_pages(unsigned long uaddr,
 			       __func__);
 			return -ENOMEM;
 		}
-		/* TODO: need to store this sglist into a list
-		   TODO: need to use an object pool to efficiently manage alloc
-		*/
 		sg_init_table(sglist, num_pages);
-		pr_debug("%s: sg_init_table done\n", __func__);
 		sublen = 0;
 		for (pgidx = 0; pgidx < status; pgidx++) {
-			pr_debug("page_address %lx count %d\n",
-			(unsigned long)page_address(mapped_pages[pgidx]),
-			page_count(mapped_pages[pgidx]));
-
 			if (pgidx == 0 && num_pages != 1) {
 				pgoff = uaddr & (~PAGE_MASK);
 				pglen = PAGE_SIZE - pgoff;
@@ -721,31 +662,20 @@ static int pin_user_pages(unsigned long uaddr,
 
 			sublen += pglen;
 
-			pr_debug("%s: pg %d off %x len %d\n", __func__,
-				 pgidx, pgoff, pglen);
 			sg_set_page(&sglist[pgidx],
 				    mapped_pages[pgidx],
 				    pglen, pgoff);
-			pr_debug("%s: after sg_set_page\n", __func__);
 
 			sg_dma_len(&sglist[pgidx]) = pglen;
-			pr_debug("%s: end of loop\n", __func__);
 		}
 
 		*scatterpp = sglist;
 		*cntp = num_pages;
 
-		pr_debug("pin_user_pages returning\n");
 		return 0;
 	} else {
-		pr_debug("get_user_pages return %d less than %d\n",
-			 status, num_pages);
 
 		for (pgidx = 0; pgidx < status; pgidx++) {
-			pr_debug("page_address %lx count %d\n",
-			(unsigned long)page_address(mapped_pages[pgidx]),
-			page_count(mapped_pages[pgidx]));
-
 			page_cache_release(mapped_pages[pgidx]);
 		}
 		return -ENOMEM;
@@ -763,8 +693,6 @@ static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 	for (i = 0; i < cnt; i++) {
 		pg = sg_page(sglist + i);
 		if (pg) {
-			pr_debug("page_cache_release %lx\n",
-				 (long unsigned)pg);
 			page_cache_release(pg);
 		}
 	}
@@ -845,11 +773,9 @@ int xdma_submit(struct xdma_chan *chan,
 	int status;
 	DEFINE_DMA_ATTRS(attrs);
 
-	pr_debug("%s: chan_name = %s\n", __func__, chan->name);
 
 	xlnk_record_event(XLNK_ET_KERNEL_ENTER_DMA_SUBMIT);
 	dmahead = kmalloc(sizeof(struct xdma_head), GFP_KERNEL);
-	pr_debug("dmahead %x\n", (u32)dmahead);
 	if (!dmahead)
 		return -ENOMEM;
 
@@ -862,9 +788,6 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->userflag = user_flags;
 	dmadir = chan->direction;
 	if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
-		pr_debug("buf phy addr = 0x%08x (len = 0x%08x)\n",
-			 (u32)userbuf, size);
-
 		/*
 		 * convert physically contiguous buffer into
 		 * minimal length sg list
@@ -876,8 +799,6 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist_dma = sglist;
 		sgcnt_dma = sgcnt;
 	} else {
-		/* TODO: error checking */
-		pr_debug("xdma_submit: pinning user pages\n");
 		/* pin user pages is monitored separately */
 		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_PIN_USER_PAGE);
 		status = pin_user_pages((unsigned long)userbuf, size,
@@ -888,25 +809,13 @@ int xdma_submit(struct xdma_chan *chan,
 			return status;
 		}
 		xlnk_record_event(XLNK_ET_KERNEL_AFTER_PIN_USER_PAGE);
-		pr_debug("xdma_submit: pinning user pages done\n");
-
-		pr_debug("dma_map_sg %lx %d\n", (long unsigned)sglist, sgcnt);
 		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_DMA_MAP_SG);
-/*
- * TODO: Change xilinx_dma_map_sg to get_dma_ops(chan->dev)->map_sg(...
- * replace user_flags with attrs set to ...SKIP_CPU_SYNC if connected to ACP
- */
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
 		status = get_dma_ops(chan->dev)->map_sg(chan->dev, sglist,
 							sgcnt, dmadir, &attrs);
-#if 0
-		status = xilinx_dma_map_sg(chan->dev, sglist, sgcnt,
-					   dmadir, user_flags);
-#endif
 		if (!status) {
-			/* TODO: error handling */
 			pr_err("dma_map_sg failed\n");
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
@@ -918,8 +827,6 @@ int xdma_submit(struct xdma_chan *chan,
 		if (!sgcnt_dma) {
 			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
 							 sgcnt, dmadir, &attrs);
-			/* xilinx_dma_unmap_sg(chan->dev, sglist, sgcnt,
-					       dmadir, user_flags); */
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
 		}
@@ -928,7 +835,6 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->sgcnt = sgcnt;
 
 	/* skipping config */
-	pr_debug("init_completion ...\n");
 	init_completion(&dmahead->cmp);
 
 	if (nappwords_i > XDMA_MAX_APPWORDS)
@@ -939,19 +845,15 @@ int xdma_submit(struct xdma_chan *chan,
 
 	dmahead->nappwords_o = nappwords_o;
 
-	pr_debug("setup hw desc...\n");
 	xlnk_record_event(XLNK_ET_KERNEL_BEFORE_DMA_SETUP_BD);
 	status = xdma_setup_hw_desc(chan, dmahead, sglist_dma, sgcnt_dma,
 				    dmadir, nappwords_i, appwords_i);
 	xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_SETUP_BD);
 	if (status) {
-		/* TODO: error handling */
 		pr_err("setup hw desc failed\n");
 		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
 			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
 							 sgcnt, dmadir, &attrs);
-			/* xilinx_dma_unmap_sg(chan->dev, sglist, sgcnt,
-					       dmadir, user_flags); */
 			unpin_user_pages(sglist, sgcnt);
 		}
 
@@ -959,8 +861,6 @@ int xdma_submit(struct xdma_chan *chan,
 	}
 
 	*dmaheadpp = dmahead;
-
-	pr_debug("xdma_submit returning\n");
 
 	xlnk_record_event(XLNK_ET_KERNEL_LEAVE_DMA_SUBMIT);
 	return 0;
@@ -971,20 +871,10 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
 	DEFINE_DMA_ATTRS(attrs);
-#if 0
-	if (dmahead->dmadir == DMA_TO_DEVICE)
-		/* do not wait on the send
-		 * this is a temp hack for debugging dpd
-		 */
-		return 0;
-#endif
 	xlnk_record_event(XLNK_ET_KERNEL_ENTER_DMA_WAIT);
 
 	if (chan->poll_mode) {
-#if 0
-		while (!(dmahead->cmp.done))
-#endif
-			xilinx_chan_desc_cleanup(chan);
+		xilinx_chan_desc_cleanup(chan);
 	} else
 		wait_for_completion(&dmahead->cmp);
 
@@ -996,9 +886,6 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 		get_dma_ops(chan->dev)->unmap_sg(chan->dev, dmahead->sglist,
 						 dmahead->sgcnt,
 						 dmahead->dmadir, &attrs);
-		/* xilinx_dma_unmap_sg(chan->dev, dmahead->sglist,
-				       dmahead->sgcnt, dmahead->dmadir,
-				       user_flags); */
 		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_UNMAP_SG);
 
 		unpin_user_pages(dmahead->sglist, dmahead->sgcnt);

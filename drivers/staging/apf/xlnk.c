@@ -308,10 +308,6 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 		return -ENOMEM;
 	}
 
-	pr_debug("%s: dma_alloc_coherent(%x) got %lx @ phy addr %lx\n",
-		 __func__, len, (unsigned long)xlnk_bufpool[id],
-		 (unsigned long)xlnk_phyaddr[id]);
-
 	return id;
 }
 
@@ -544,12 +540,6 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 
 	struct xlnk_device_pack *devpack;
 
-	pr_debug("name = %s\n", name);
-	pr_debug("id = %d\n", id);
-	pr_debug("chan_num = %d\n", chan_num);
-	pr_debug("base = 0x%08x\n", (unsigned int)base);
-	pr_debug("size = 0x%08x\n", size);
-
 	if (strcmp(name, "xilinx-axidma"))
 		return -EINVAL;
 
@@ -634,15 +624,6 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 #ifdef CONFIG_XILINX_MCDMA
 	struct xlnk_device_pack *devpack;
 
-	pr_debug("name = %s\n", name);
-	pr_debug("id = %d\n", id);
-	pr_debug("base = 0x%08x\n", (unsigned int)base);
-	pr_debug("size = 0x%08x\n", size);
-	pr_debug("mm2s_chan_num = %d\n", mm2s_chan_num);
-	pr_debug("mm2s_chan_irq = %d\n", mm2s_chan_irq);
-	pr_debug("s2mm_chan_num = %d\n", s2mm_chan_num);
-	pr_debug("s2mm_chan_irq = %d\n", s2mm_chan_irq);
-
 	if (strcmp(name, "xdma"))
 		return -EINVAL;
 
@@ -720,25 +701,17 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 	put_user(id, temp_args.allocbuf.idptr);
 	put_user((u32)(xlnk_phyaddr[id]), temp_args.allocbuf.phyaddrptr);
 
-	pr_debug("xlnk_allocbuf allocated buf #%d @ phy addr 0x%x\n",
-			id, (u32)(xlnk_phyaddr[id]));
-
 	return 0;
 }
 
 static int xlnk_freebuf(int id)
 {
-	pr_debug("xlnk_freebuf buf with id %x\n", id);
 
 	if (id <= 0 || id >= xlnk_bufpool_size)
 		return -ENOMEM;
 
 	if (!xlnk_bufpool[id])
 		return -ENOMEM;
-
-	pr_debug("xlnk_freebuf: kernel virt addr = %lx, phy = %lx\n",
-		 (unsigned long)xlnk_bufpool[id],
-		 (unsigned long)xlnk_phyaddr[id]);
 
 	dma_free_coherent(xlnk_dev, xlnk_buflen[id], xlnk_bufpool[id],
 			  xlnk_phyaddr[id]);
@@ -795,12 +768,9 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 	if (!temp_args.dmarequest.name[0])
 		return 0;
 
-	pr_debug("dma channel name: %s\n", temp_args.dmarequest.name);
-
 	chan = xdma_request_channel(temp_args.dmarequest.name);
 
 	if (!chan) {
-		pr_debug("dma channel request failed\n");
 		return -ENOMEM;
 	}
 
@@ -832,7 +802,6 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 	status = copy_from_user(&temp_args, (xlnk_args *)args,
 				sizeof(xlnk_args));
 
-	pr_debug("dmasubmit: copy_from_user done\n");
 	if (status)
 		return -ENOMEM;
 
@@ -847,15 +816,12 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 						temp_args.dmasubmit.nappwords_o,
 						temp_args.dmasubmit.flag,
 						&dmahead);
-	pr_debug("dmasubmit: xdma_submit done\n");
 
 	if (!status) {
 		temp_args.dmasubmit.dmahandle = (xlnk_handle_t)dmahead;
 		temp_args.dmasubmit.last_bd_index =
 					(xlnk_handle_t)dmahead->last_bd_index;
 		copy_to_user((void *)args, &temp_args, sizeof(xlnk_args));
-		pr_debug("dmasubmit: copy_to_user done\n");
-
 		return 0;
 	}
 #endif
@@ -1133,11 +1099,6 @@ static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 	int bufid;
 	int status;
 
-	pr_debug("vm_start %lx, len %lx, vm_pgoff %lx\n",
-		   vma->vm_start,
-		   vma->vm_end - vma->vm_start,
-		   vma->vm_pgoff);
-
 	bufid = vma->vm_pgoff >> (24 - PAGE_SHIFT);
 
 	if (bufid == 0)
@@ -1244,8 +1205,6 @@ static int xlnk_get_event_size(unsigned long args)
 
 static int xlnk_dump_events(unsigned long buf)
 {
-	pr_debug("xlnk: # of event captured = %lu", xlnk_et_index);
-
 	/* only dump the number of event traces reported thru
 	 * xlnk_get_event_size() and ignore the rest to avoid
 	 * buffer overflow issue
