@@ -798,7 +798,6 @@ static int xcan_close(struct net_device *ndev)
 	if (set_reset_mode(ndev) < 0)
 		netdev_err(ndev, "mode resetting failed failed!\n");
 
-	free_irq(ndev->irq, (void *)ndev);
 	close_candev(ndev);
 
 	priv->open_time = 0;
