@@ -872,9 +872,9 @@ static int xcan_suspend(struct device *_dev)
  */
 static int xcan_resume(struct device *dev)
 {
-	struct platformdevice *pdev = container_of(dev,
-			struct platformdevice, dev);
-	struct netdevice *ndev = platform_get_drvdata(pdev);
+	struct platform_device *pdev = container_of(dev,
+			struct platform_device, dev);
+	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
 
@@ -894,7 +894,7 @@ static int xcan_resume(struct device *dev)
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 
 	if (netif_running(ndev)) {
-		netifdevice_attach(ndev);
+		netif_device_attach(ndev);
 		netif_start_queue(ndev);
 	}
 
