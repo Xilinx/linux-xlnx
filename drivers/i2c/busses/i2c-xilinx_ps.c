@@ -590,73 +590,50 @@ static int xi2cps_calc_divs(unsigned int *f, unsigned int input_clk,
 {
 	unsigned int fscl = *f;
 	unsigned int div_a, div_b, calc_div_a = 0, calc_div_b = 0;
-	unsigned int best_div_a = 0, best_div_b = 0;
-	unsigned int last_error = 0, current_error = 0;
-	unsigned int best_fscl = *f, actual_fscl, temp, templimit;
+	unsigned int last_error, current_error;
+	unsigned int best_fscl = *f, actual_fscl, temp;
 
-	/* Assume div_a is 0 and calculate (divisor_a+1) x (divisor_b+1) */
+	/* calculate (divisor_a+1) x (divisor_b+1) */
 	temp = input_clk / (22 * fscl);
 
 	/*
 	 * If the calculated value is negative or 0, the fscl input is out of
 	 * range. Return error.
 	 */
-	if (temp == 0)
+	if (!temp)
 		return -EINVAL;
 
-	/*
-	 * tempLimit helps in iterating over the consecutive value of temp to
-	 * find the closest clock rate achievable with divisors.
-	 */
-	templimit = (input_clk % (22 * fscl)) ? (temp + 1) : temp;
-	*err = fscl;
+	last_error = -1;
+	for (div_b = 0; div_b < 64; div_b++) {
+		div_a = input_clk / (22 * fscl * (div_b + 1));
 
-	for ( ; temp < templimit+1; temp++) {
-		last_error = fscl;
-		calc_div_a = 0;
-		calc_div_b = 0;
-		current_error = 0;
+		if (div_a != 0)
+			div_a = div_a - 1;
 
-		for (div_b = 0; div_b < 64; div_b++) {
-			div_a = temp / (div_b + 1);
+		if (div_a > 3)
+			continue;
 
-			if (div_a != 0)
-				div_a = div_a - 1;
+		actual_fscl = input_clk / (22 * (div_a + 1) * (div_b + 1));
 
-			if (div_a > 3)
-				continue;
-
-			actual_fscl =
-				input_clk / (22 * (div_a + 1) * (div_b + 1));
-
-			current_error =
-				((actual_fscl > fscl) ? (actual_fscl - fscl) :
+		current_error = ((actual_fscl > fscl) ? (actual_fscl - fscl) :
 							(fscl - actual_fscl));
 
-			if (last_error > current_error) {
-				calc_div_a = div_a;
-				calc_div_b = div_b;
-				best_fscl = actual_fscl;
-				last_error = current_error;
-			}
-		}
-
-		/*
-		 * Used to capture the best divisors.
-		 */
-		if (last_error < *err) {
-			*err = last_error;
-			best_div_a = calc_div_a;
-			best_div_b = calc_div_b;
-			*f = best_fscl;
+		if (last_error > current_error) {
+			calc_div_a = div_a;
+			calc_div_b = div_b;
+			best_fscl = actual_fscl;
+			last_error = current_error;
 		}
 	}
 
-	*a = best_div_a;
-	*b = best_div_b;
+	*err = last_error;
+	*a = calc_div_a;
+	*b = calc_div_b;
+	*f = best_fscl;
 
 	return 0;
 }
+
 /**
  * xi2cps_setclk - This function sets the serial clock rate for the I2C device
  * @fscl:	The clock frequency in Hz
