@@ -64,7 +64,7 @@ struct xgpio_instance {
 	u32 gpio_state;
 	u32 gpio_dir;
 	u32 offset;
-	u32 irq_base;
+	int irq_base;
 	u32 irq_enable;
 	spinlock_t gpio_lock;
 	struct irq_domain *irq_domain;
