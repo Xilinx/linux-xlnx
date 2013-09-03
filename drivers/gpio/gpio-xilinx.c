@@ -542,7 +542,7 @@ static int xgpio_of_probe(struct device_node *np)
 		if (status) {
 			kfree(chip);
 			pr_err("%s: error in probe function with status %d\n",
-			np->full_name, status);
+			       np->full_name, status);
 			return status;
 		}
 		pr_info("XGpio: %s: dual channel registered, base is %d\n",
