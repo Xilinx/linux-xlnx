@@ -439,13 +439,14 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
  * It returns 0, if the driver is bound to the GPIO device, or
  * a negative value if there is an error.
  */
-static int xgpio_of_probe(struct device_node *np)
+static int xgpio_of_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	struct xgpio_instance *chip;
 	int status = 0;
 	const u32 *tree_info;
 
-	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
+	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
@@ -477,7 +478,6 @@ static int xgpio_of_probe(struct device_node *np)
 	/* Call the OF gpio helper to setup and register the GPIO device */
 	status = of_mm_gpiochip_add(np, &chip->mmchip);
 	if (status) {
-		kfree(chip);
 		pr_err("%s: error in probe function with status %d\n",
 		       np->full_name, status);
 		return status;
@@ -485,7 +485,6 @@ static int xgpio_of_probe(struct device_node *np)
 
 	status = xgpio_irq_setup(np, chip);
 	if (status) {
-		kfree(chip);
 		pr_err("%s: GPIO IRQ initialization failed %d\n",
 		       np->full_name, status);
 		return status;
@@ -496,7 +495,7 @@ static int xgpio_of_probe(struct device_node *np)
 
 	tree_info = of_get_property(np, "xlnx,is-dual", NULL);
 	if (tree_info && be32_to_cpup(tree_info)) {
-		chip = kzalloc(sizeof(*chip), GFP_KERNEL);
+		chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 		if (!chip)
 			return -ENOMEM;
 
@@ -531,7 +530,6 @@ static int xgpio_of_probe(struct device_node *np)
 
 		status = xgpio_irq_setup(np, chip);
 		if (status) {
-			kfree(chip);
 			pr_err("%s: GPIO IRQ initialization failed %d\n",
 			      np->full_name, status);
 			return status;
@@ -540,7 +538,6 @@ static int xgpio_of_probe(struct device_node *np)
 		/* Call the OF gpio helper to setup and register the GPIO dev */
 		status = of_mm_gpiochip_add(np, &chip->mmchip);
 		if (status) {
-			kfree(chip);
 			pr_err("%s: error in probe function with status %d\n",
 			       np->full_name, status);
 			return status;
@@ -556,15 +553,20 @@ static struct of_device_id xgpio_of_match[] = {
 	{ .compatible = "xlnx,xps-gpio-1.00.a", },
 	{ /* end of list */ },
 };
+MODULE_DEVICE_TABLE(of, xgpio_of_match);
+
+static struct platform_driver xilinx_gpio_driver = {
+	.probe = xgpio_of_probe,
+	.driver = {
+		.owner = THIS_MODULE,
+		.name = "xilinx-gpio",
+		.of_match_table = xgpio_of_match,
+	},
+};
 
 static int __init xgpio_init(void)
 {
-	struct device_node *np;
-
-	for_each_matching_node(np, xgpio_of_match)
-		xgpio_of_probe(np);
-
-	return 0;
+	return platform_driver_register(&xilinx_gpio_driver);
 }
 
 /* Make sure we get initialized before anyone else tries to use us */
