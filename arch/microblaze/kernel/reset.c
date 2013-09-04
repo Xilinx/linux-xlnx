@@ -69,7 +69,7 @@ static void gpio_system_reset(void)
 #else
 static void gpio_system_reset(void)
 {
-	printk(KERN_NOTICE "No reset GPIO present - halting!\n");
+	pr_notice("No reset GPIO present - halting!\n");
 }
 
 void of_platform_reset_gpio_probe(void)
