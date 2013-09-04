@@ -855,7 +855,7 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 	 * can't be found.
 	 */
 	if (!np) {
-		printk(KERN_WARNING "No mdio handler\n");
+		dev_err(dev, "Failed to register mdio bus.\n");
 		return -ENODEV;
 	}
 	npp = of_get_parent(np);
@@ -865,7 +865,8 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 		struct phy_device *phydev;
 		phydev = of_phy_find_device(lp->phy_node);
 		if (!phydev)
-			dev_info(dev, "MIDO of the phy is not registered yet\n");
+			dev_info(dev,
+				 "MDIO of the phy is not registered yet\n");
 		return 0;
 	}
 
@@ -877,7 +878,7 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 
 	bus = mdiobus_alloc();
 	if (!bus) {
-		printk(KERN_WARNING "Failed to allocal mdiobus\n");
+		dev_err(dev, "Failed to allocate mdiobus\n");
 		return -ENOMEM;
 	}
 
@@ -895,7 +896,7 @@ static int xemaclite_mdio_setup(struct net_local *lp, struct device *dev)
 
 	rc = of_mdiobus_register(bus, np);
 	if (rc) {
-		dev_err(&lp->ndev->dev, "Failed to register mdio bus.\n");
+		dev_err(dev, "Failed to register mdio bus.\n");
 		goto err_register;
 	}
 
