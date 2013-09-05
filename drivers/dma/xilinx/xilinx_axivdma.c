@@ -746,14 +746,16 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 	struct xilinx_vdma_tx_segment *segment;
 	dma_cookie_t cookie;
 	unsigned long flags;
+	int err;
 
 	if (chan->err) {
 		/*
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (xilinx_vdma_reset(chan))
-			return -EBUSY;
+		err = xilinx_vdma_reset(chan);
+		if (err < 0)
+			return err;
 	}
 
 	spin_lock_irqsave(&chan->lock, flags);
@@ -878,10 +880,8 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 {
 	u32 dmacr;
 
-	if (cfg->reset) {
-		xilinx_vdma_reset(chan);
-		return 0;
-	}
+	if (cfg->reset)
+		return xilinx_vdma_reset(chan);
 
 	dmacr = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
 
