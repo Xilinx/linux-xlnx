@@ -185,7 +185,6 @@ struct xilinx_vdma_chan {
 	dma_cookie_t completed_cookie;		/* Maximum cookie completed */
 	dma_cookie_t cookie;			/* The current cookie */
 	spinlock_t lock;			/* Descriptor operation lock */
-	bool sg_waiting;			/* SG transfer waiting */
 	struct list_head active_list;		/* Active descriptors */
 	struct list_head pending_list;		/* Descriptors waiting */
 	struct dma_chan common;			/* DMA common channel */
@@ -194,8 +193,6 @@ struct xilinx_vdma_chan {
 	int irq;				/* Channel IRQ */
 	int id;					/* Channel ID */
 	enum dma_transfer_direction direction;	/* Transfer direction */
-	int max_len;				/* Max data len per transfer */
-	int is_lite;				/* Whether is light build */
 	int num_frms;				/* Number of frames */
 	int has_sg;				/* Support scatter transfers */
 	int has_dre;				/* For unaligned transfers */
@@ -1067,7 +1064,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	}
 
 	chan->feature = feature;
-	chan->max_len = XILINX_VDMA_MAX_TRANS_LEN;
 
 	value = of_get_property(node, "xlnx,include-dre", NULL);
 	if (value)
