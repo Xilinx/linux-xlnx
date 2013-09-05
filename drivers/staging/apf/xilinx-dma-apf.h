@@ -126,21 +126,20 @@ struct xdma_desc_hw {
 } __aligned(64);
 
 /* shared by all Xilinx DMA engines */
-/* FIXME use proper readl/writel functions instead of volatile */
 struct xdma_regs {
-	volatile u32 cr;        /* 0x00 Control Register */
-	volatile u32 sr;        /* 0x04 Status Register */
-	volatile u32 cdr;       /* 0x08 Current Descriptor Register */
-	volatile u32 pad1;
-	volatile u32 tdr;       /* 0x10 Tail Descriptor Register */
-	volatile u32 pad2;
-	volatile u32 src;       /* 0x18 Source Address Register (cdma) */
-	volatile u32 pad3;
-	volatile u32 dst;       /* 0x20 Destination Address Register (cdma) */
-	volatile u32 pad4;
-	volatile u32 btt_ref;   /* 0x28 Bytes To Transfer (cdma) or
+	u32 cr;        /* 0x00 Control Register */
+	u32 sr;        /* 0x04 Status Register */
+	u32 cdr;       /* 0x08 Current Descriptor Register */
+	u32 pad1;
+	u32 tdr;       /* 0x10 Tail Descriptor Register */
+	u32 pad2;
+	u32 src;       /* 0x18 Source Address Register (cdma) */
+	u32 pad3;
+	u32 dst;       /* 0x20 Destination Address Register (cdma) */
+	u32 pad4;
+	u32 btt_ref;   /* 0x28 Bytes To Transfer (cdma) or
 					park_ref (vdma) */
-	volatile u32 version;   /* 0x2c version (vdma) */
+	u32 version;   /* 0x2c version (vdma) */
 };
 
 /* Per DMA specific operations should be embedded in the channel structure */
