@@ -189,37 +189,6 @@ struct xdma_head {
 	u32 last_bd_index;
 };
 
-typedef union {
-	struct {
-		char name[64];
-		unsigned long dmachan;
-	} dmarequest;
-	struct {
-		unsigned long dmachan;
-	} dmarelease;
-	struct {
-		void *buf;
-		unsigned int len;
-		unsigned long dmachan;
-		unsigned long dmahandle; /* return value */
-		unsigned int nappwords_i; /* n appwords passed to BD */
-		unsigned int appwords_i[XDMA_MAX_APPWORDS];
-		unsigned int nappwords_o; /* n appwords passed from BD */
-		unsigned int user_flags;
-	} dmasubmit;
-	struct {
-		unsigned long dmahandle;
-		unsigned int nappwords_o; /* n appwords read from BD */
-		unsigned int appwords_o[XDMA_MAX_APPWORDS];
-		unsigned int user_flags;
-	} dmawait;
-	struct {
-		unsigned long dmachan;
-		unsigned char irq_thresh;
-		unsigned char irq_delay;
-	} dmaconfig;
-} xdma_args;
-
 struct xdma_chan *xdma_request_channel(char *name);
 void xdma_release_channel(struct xdma_chan *chan);
 void xdma_release_all_channels(void);
