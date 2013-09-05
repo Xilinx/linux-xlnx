@@ -43,6 +43,9 @@
 
 static DEFINE_MUTEX(dma_list_mutex);
 static LIST_HEAD(dma_device_list);
+/* IO accessors */
+#define DMA_OUT(addr, val)      (iowrite32(val, addr))
+#define DMA_IN(addr)            (ioread32(addr))
 
 static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt);
 /* Driver functions */
@@ -62,35 +65,38 @@ static void xdma_clean_bd(struct xdma_desc_hw *bd)
 
 static int dma_is_running(struct xdma_chan *chan)
 {
-	return !(chan->regs->sr & XDMA_SR_HALTED_MASK) &&
-		(chan->regs->cr & XDMA_CR_RUNSTOP_MASK);
+	return !(DMA_IN(&chan->regs->sr) & XDMA_SR_HALTED_MASK) &&
+		(DMA_IN(&chan->regs->cr) & XDMA_CR_RUNSTOP_MASK);
 }
 
 static int dma_is_idle(struct xdma_chan *chan)
 {
-	return chan->regs->sr & XDMA_SR_IDLE_MASK;
+	return DMA_IN(&chan->regs->sr) & XDMA_SR_IDLE_MASK;
 }
 
 static void dma_halt(struct xdma_chan *chan)
 {
-	chan->regs->cr &= ~XDMA_CR_RUNSTOP_MASK;
+	DMA_OUT(&chan->regs->cr,
+		(DMA_IN(&chan->regs->cr)  & ~XDMA_CR_RUNSTOP_MASK));
 }
 
 static void dma_start(struct xdma_chan *chan)
 {
-	chan->regs->cr |= XDMA_CR_RUNSTOP_MASK;
+	DMA_OUT(&chan->regs->cr,
+		(DMA_IN(&chan->regs->cr) | XDMA_CR_RUNSTOP_MASK));
 }
 
 static int dma_init(struct xdma_chan *chan)
 {
 	int loop = XDMA_RESET_LOOP;
 
-	chan->regs->cr |= XDMA_CR_RESET_MASK;
+	DMA_OUT(&chan->regs->cr,
+		(DMA_IN(&chan->regs->cr) | XDMA_CR_RESET_MASK));
 
 	/* Wait for the hardware to finish reset
 	 */
 	while (loop) {
-		if (!(chan->regs->cr & XDMA_CR_RESET_MASK))
+		if (!(DMA_IN(&chan->regs->cr) & XDMA_CR_RESET_MASK))
 			break;
 
 		loop -= 1;
@@ -257,10 +263,10 @@ static void dump_cur_bd(struct xdma_chan *chan)
 {
 	u32 index;
 
-	index = (((u32)chan->regs->cdr) - chan->bd_phys_addr) /
+	index = (((u32)DMA_IN(&chan->regs->cdr)) - chan->bd_phys_addr) /
 			sizeof(struct xdma_desc_hw);
 
-	dev_err(chan->dev, "cur bd @ %08x\n",   (u32)chan->regs->cdr);
+	dev_err(chan->dev, "cur bd @ %08x\n",   (u32)DMA_IN(&chan->regs->cdr));
 	dev_err(chan->dev, "  buf  = 0x%08x\n", chan->bds[index]->src_addr);
 	dev_err(chan->dev, "  ctrl = 0x%08x\n", chan->bds[index]->control);
 	dev_err(chan->dev, "  sts  = 0x%08x\n", chan->bds[index]->status);
@@ -272,20 +278,20 @@ static irqreturn_t xdma_rx_intr_handler(int irq, void *data)
 	struct xdma_chan *chan = data;
 	u32 stat;
 
-	stat = chan->regs->sr;
+	stat = DMA_IN(&chan->regs->sr);
 
 	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
 		return IRQ_NONE;
 	}
 
 	/* Ack the interrupts */
-	chan->regs->sr = stat & XDMA_XR_IRQ_ALL_MASK;
+	DMA_OUT(&chan->regs->sr, (stat & XDMA_XR_IRQ_ALL_MASK));
 
 	if (stat & XDMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev, "Channel %s has errors %x, cdr %x tdr %x\n",
 			chan->name, (unsigned int)stat,
-			(unsigned int)chan->regs->cdr,
-			(unsigned int)chan->regs->tdr);
+			(unsigned int)DMA_IN(&chan->regs->cdr),
+			(unsigned int)DMA_IN(&chan->regs->tdr));
 
 		dump_cur_bd(chan);
 
@@ -305,20 +311,20 @@ static irqreturn_t xdma_tx_intr_handler(int irq, void *data)
 	struct xdma_chan *chan = data;
 	u32 stat;
 
-	stat = chan->regs->sr;
+	stat = DMA_IN(&chan->regs->sr);
 
 	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
 		return IRQ_NONE;
 	}
 
 	/* Ack the interrupts */
-	chan->regs->sr = stat & XDMA_XR_IRQ_ALL_MASK;
+	DMA_OUT(&chan->regs->sr, (stat & XDMA_XR_IRQ_ALL_MASK));
 
 	if (stat & XDMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev, "Channel %s has errors %x, cdr %x tdr %x\n",
 			chan->name, (unsigned int)stat,
-			(unsigned int)chan->regs->cdr,
-			(unsigned int)chan->regs->tdr);
+			(unsigned int)DMA_IN(&chan->regs->cdr),
+			(unsigned int)DMA_IN(&chan->regs->tdr));
 
 		dump_cur_bd(chan);
 
@@ -347,6 +353,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 {
 	dma_addr_t cur_phys;
 	dma_addr_t tail_phys;
+	u32 regval;
 
 	if (chan->err)
 		return;
@@ -358,21 +365,23 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 	/* If hardware is busy, move the tail & return */
 	if (dma_is_running(chan) || dma_is_idle(chan)) {
 		/* Update tail ptr register and start the transfer */
-		chan->regs->tdr = tail_phys;
+		DMA_OUT(&chan->regs->tdr, tail_phys);
 		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_KICKOFF);
 		return;
 	}
 
-	chan->regs->cdr = cur_phys;
+	DMA_OUT(&chan->regs->cdr, cur_phys);
 
 	dma_start(chan);
 
 	/* Enable interrupts */
-	chan->regs->cr |=
-		chan->poll_mode ? XDMA_XR_IRQ_ERROR_MASK : XDMA_XR_IRQ_ALL_MASK;
+	regval = DMA_IN(&chan->regs->cr);
+	regval |= (chan->poll_mode ? XDMA_XR_IRQ_ERROR_MASK
+					: XDMA_XR_IRQ_ALL_MASK);
+	DMA_OUT(&chan->regs->cr, regval);
 
 	/* Update tail ptr register and start the transfer */
-	chan->regs->tdr = tail_phys;
+	DMA_OUT(&chan->regs->tdr, tail_phys);
 	xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_KICKOFF);
 }
 
@@ -899,8 +908,8 @@ int xdma_getconfig(struct xdma_chan *chan,
 				unsigned char *irq_thresh,
 				unsigned char *irq_delay)
 {
-	*irq_thresh = (chan->regs->cr >> XDMA_COALESCE_SHIFT) & 0xff;
-	*irq_delay = (chan->regs->cr >> XDMA_DELAY_SHIFT) & 0xff;
+	*irq_thresh = (DMA_IN(&chan->regs->cr) >> XDMA_COALESCE_SHIFT) & 0xff;
+	*irq_delay = (DMA_IN(&chan->regs->cr) >> XDMA_DELAY_SHIFT) & 0xff;
 	return 0;
 }
 EXPORT_SYMBOL(xdma_getconfig);
@@ -914,13 +923,13 @@ int xdma_setconfig(struct xdma_chan *chan,
 	if (dma_is_running(chan))
 		return -EBUSY;
 
-	val = chan->regs->cr;
+	val = DMA_IN(&chan->regs->cr);
 	val &= ~((0xff << XDMA_COALESCE_SHIFT) |
 				(0xff << XDMA_DELAY_SHIFT));
 	val |= ((irq_thresh << XDMA_COALESCE_SHIFT) |
 				(irq_delay << XDMA_DELAY_SHIFT));
 
-	chan->regs->cr = val;
+	DMA_OUT(&chan->regs->cr, val);
 	return 0;
 }
 EXPORT_SYMBOL(xdma_setconfig);
