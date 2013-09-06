@@ -458,7 +458,7 @@ static int xlnk_release(struct inode *ip, struct file *filp)
 static int xlnk_devregister(char *name, unsigned int id,
 				unsigned long base, unsigned int size,
 				unsigned int *irqs,
-				xlnk_handle_t *handle)
+				u32 *handle)
 {
 	unsigned int nres;
 	unsigned int nirq;
@@ -469,7 +469,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 		return 0;
 	}
 	nirq = 0;
@@ -514,7 +514,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 	}
 	return status;
 }
@@ -532,7 +532,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 				unsigned int chan1_poll_mode,
 				unsigned int chan1_include_dre,
 				unsigned int chan1_data_width,
-				xlnk_handle_t *handle)
+				u32 *handle)
 {
 	int status = -1;
 
@@ -548,7 +548,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 		return 0;
 	}
 
@@ -604,7 +604,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 	}
 
 #endif
@@ -617,7 +617,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 			      unsigned int mm2s_chan_irq,
 			      unsigned int s2mm_chan_num,
 			      unsigned int s2mm_chan_irq,
-			      xlnk_handle_t *handle)
+			      u32 *handle)
 {
 	int status = -1;
 
@@ -630,7 +630,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 		return 0;
 	}
 
@@ -670,7 +670,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (xlnk_handle_t)devpack;
+		*handle = (u32)devpack;
 	}
 
 #endif
@@ -774,7 +774,7 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 		return -ENOMEM;
 	}
 
-	temp_args.dmarequest.dmachan = (xlnk_handle_t)chan;
+	temp_args.dmarequest.dmachan = (u32)chan;
 	temp_args.dmarequest.bd_space_phys_addr = chan->bd_phys_addr;
 	temp_args.dmarequest.bd_space_size = chan->bd_chain_size;
 
@@ -818,10 +818,11 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 						&dmahead);
 
 	if (!status) {
-		temp_args.dmasubmit.dmahandle = (xlnk_handle_t)dmahead;
+		temp_args.dmasubmit.dmahandle = (u32)dmahead;
 		temp_args.dmasubmit.last_bd_index =
-					(xlnk_handle_t)dmahead->last_bd_index;
+					(u32)dmahead->last_bd_index;
 		copy_to_user((void *)args, &temp_args, sizeof(xlnk_args));
+
 		return 0;
 	}
 #endif
@@ -886,7 +887,7 @@ static int xlnk_devregister_ioctl(struct file *filp, unsigned int code,
 {
 	xlnk_args temp_args;
 	int status;
-	xlnk_handle_t handle;
+	u32 handle;
 
 	status = copy_from_user(&temp_args, (xlnk_args *)args,
 				sizeof(xlnk_args));
@@ -909,7 +910,7 @@ static int xlnk_dmaregister_ioctl(struct file *filp, unsigned int code,
 {
 	xlnk_args temp_args;
 	int status;
-	xlnk_handle_t handle;
+	u32 handle;
 
 	status = copy_from_user(&temp_args, (xlnk_args *)args,
 				sizeof(xlnk_args));
@@ -942,7 +943,7 @@ static int xlnk_mcdmaregister_ioctl(struct file *filp, unsigned int code,
 {
 	xlnk_args temp_args;
 	int status;
-	xlnk_handle_t handle;
+	u32 handle;
 
 	status = copy_from_user(&temp_args, (xlnk_args *)args,
 				sizeof(xlnk_args));
