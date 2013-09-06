@@ -568,7 +568,7 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 {
 	struct scatterlist *sghead, *sgend, *sgnext, *sg_merged_head;
 	unsigned int sg_visited_cnt = 0, sg_merged_num = 0;
-	unsigned int dma_len = 0, i = 0;
+	unsigned int dma_len = 0;
 
 	*sgl_merged = sglist_array;
 	sg_merged_head = *sgl_merged;
