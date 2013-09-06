@@ -1,7 +1,7 @@
 #ifndef _XLNK_OS_H
 #define _XLNK_OS_H
 
-#include <stddef.h>
+#include <linux/stddef.h>
 
 #define XLNK_FLAG_COHERENT		0x00000001
 #define XLNK_FLAG_KERNEL_BUFFER		0x00000002

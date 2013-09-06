@@ -778,7 +778,7 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 	temp_args.dmarequest.bd_space_phys_addr = chan->bd_phys_addr;
 	temp_args.dmarequest.bd_space_size = chan->bd_chain_size;
 
-	copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
+	copy_to_user((void __user *)args, &temp_args, sizeof(union xlnk_args));
 
 	return 0;
 
@@ -821,7 +821,8 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		temp_args.dmasubmit.dmahandle = (u32)dmahead;
 		temp_args.dmasubmit.last_bd_index =
 					(u32)dmahead->last_bd_index;
-		copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
+		copy_to_user((void __user *)args, &temp_args,
+				sizeof(union xlnk_args));
 		return 0;
 	}
 #endif
@@ -851,7 +852,8 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 		memcpy(temp_args.dmawait.appwords, dmahead->appwords_o,
 			   dmahead->nappwords_o * sizeof(u32));
 
-		copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
+		copy_to_user((void __user *)args, &temp_args,
+				sizeof(union xlnk_args));
 	}
 	kfree(dmahead);
 
@@ -1156,8 +1158,6 @@ static const unsigned long bc_data_offset;
 static void xlnk_start_benchmark_counter(void)
 {
 	bc_virt = ioremap(bc_phyaddr, bc_csr_size);
-	pr_info("xlnk: benchmark counter mapped phy addr %x --> virt addr %x\n",
-			(u32)bc_phyaddr, (u32)bc_virt);
 	if (bc_virt) {
 		iowrite32(bc_ctr_start, bc_virt + bc_ctr_offset);
 		pr_info("xlnk: benchmark counter started\n");
@@ -1166,7 +1166,7 @@ static void xlnk_start_benchmark_counter(void)
 }
 
 #define XLNK_EVENT_TRACER_ENTRY_NUM 60000
-struct event_tracer {
+static struct event_tracer {
 	u32 event_id;
 	u32 event_time;
 } xlnk_et[XLNK_EVENT_TRACER_ENTRY_NUM];
@@ -1208,7 +1208,7 @@ static int xlnk_dump_events(unsigned long buf)
 	 * xlnk_get_event_size() and ignore the rest to avoid
 	 * buffer overflow issue
 	 */
-	copy_to_user((void *)buf, xlnk_et,
+	copy_to_user((void __user *)buf, xlnk_et,
 		xlnk_et_numbers_to_dump * sizeof(struct event_tracer));
 
 	/* clear up event pool so it's ready to use again */
