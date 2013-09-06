@@ -36,9 +36,9 @@ union xlnk_args {
 	} freebuf;
 	struct {
 		char name[64]; /* max length of 64 */
+		u32 dmachan; /* return value */
 		unsigned int bd_space_phys_addr;/*for bd chain used by dmachan*/
 		unsigned int bd_space_size; /* bd chain size in bytes */
-		u32 dmachan; /* return value */
 	} dmarequest;
 #define XLNK_MAX_APPWORDS 5
 	struct {
@@ -48,21 +48,21 @@ union xlnk_args {
 		unsigned int buf_offset; /* used on kernel allocated buffers */
 		unsigned int len;
 		unsigned int bufflag; /* zero all the time so far */
-		unsigned int sgcnt; /* ignored */
 		u32 sglist; /* ignored */
+		unsigned int sgcnt; /* ignored */
 		enum xlnk_dma_direction dmadir;
 		unsigned int nappwords_i; /* n appwords passed to BD */
 		unsigned int appwords_i[XLNK_MAX_APPWORDS];
 		unsigned int nappwords_o; /* n appwords passed from BD */
 		/* appwords array we only accept 5 max */
 		unsigned int flag;
-		unsigned int last_bd_index; /*index of last bd used by request*/
 		u32 dmahandle; /* return value */
+		unsigned int last_bd_index; /*index of last bd used by request*/
 	} dmasubmit;
 	struct {
+		u32 dmahandle;
 		unsigned int nappwords; /* n appwords read from BD */
 		unsigned int appwords[XLNK_MAX_APPWORDS];
-		u32 dmahandle;
 		/* appwords array we only accept 5 max */
 	} dmawait;
 	struct {
