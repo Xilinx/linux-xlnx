@@ -15,7 +15,6 @@
 
 extern void xlnk_record_event(u32 event_id);
 
-typedef unsigned long xlnk_handle_t;
 
 enum xlnk_dma_direction {
 	XLNK_DMA_BI = 0,
@@ -37,37 +36,37 @@ typedef union {
 	} freebuf;
 	struct {
 		char name[64]; /* max length of 64 */
-		xlnk_handle_t dmachan; /* return value */
 		unsigned int bd_space_phys_addr;/*for bd chain used by dmachan*/
 		unsigned int bd_space_size; /* bd chain size in bytes */
+		u32 dmachan; /* return value */
 	} dmarequest;
 #define XLNK_MAX_APPWORDS 5
 	struct {
-		xlnk_handle_t dmachan;
+		u32 dmachan;
 		void *buf;      /* buffer base address */
 		void *buf2;	/* used to point src_buf in cdma case */
 		unsigned int buf_offset; /* used on kernel allocated buffers */
 		unsigned int len;
 		unsigned int bufflag; /* zero all the time so far */
-		xlnk_handle_t sglist; /* ignored */
 		unsigned int sgcnt; /* ignored */
+		u32 sglist; /* ignored */
 		enum xlnk_dma_direction dmadir;
 		unsigned int nappwords_i; /* n appwords passed to BD */
 		unsigned int appwords_i[XLNK_MAX_APPWORDS];
 		unsigned int nappwords_o; /* n appwords passed from BD */
 		/* appwords array we only accept 5 max */
 		unsigned int flag;
-		xlnk_handle_t dmahandle; /* return value */
 		unsigned int last_bd_index; /*index of last bd used by request*/
+		u32 dmahandle; /* return value */
 	} dmasubmit;
 	struct {
-		xlnk_handle_t dmahandle;
 		unsigned int nappwords; /* n appwords read from BD */
 		unsigned int appwords[XLNK_MAX_APPWORDS];
+		u32 dmahandle;
 		/* appwords array we only accept 5 max */
 	} dmawait;
 	struct {
-		xlnk_handle_t dmachan;
+		u32 dmachan;
 	} dmarelease;
 	struct {
 		unsigned long base;
