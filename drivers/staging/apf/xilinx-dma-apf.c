@@ -969,10 +969,10 @@ static int xdma_probe(struct platform_device *pdev)
 		return -EFAULT;
 	}
 
-	dev_info(&pdev->dev, "AXIDMA device %d physical base address=0x%08x\n",
-		 pdev->id, (unsigned int)res->start);
-	dev_info(&pdev->dev, "AXIDMA device %d remapped to 0x%08x\n",
-		 pdev->id, (unsigned int)xdev->regs);
+	dev_info(&pdev->dev, "AXIDMA device %d physical base address=%pa\n",
+		 pdev->id, &res->start);
+	dev_info(&pdev->dev, "AXIDMA device %d remapped to %pa\n",
+		 pdev->id, &xdev->regs);
 
 	/* Allocate the channels */
 
@@ -991,8 +991,7 @@ static int xdma_probe(struct platform_device *pdev)
 
 		/* Initialize channel parameters */
 		chan->id = i;
-		chan->regs = (void __iomem *)
-				((u32)xdev->regs + dma_chan_reg_offset);
+		chan->regs = xdev->regs + dma_chan_reg_offset;
 		/* chan->regs = xdev->regs; */
 		chan->dev = xdev->dev;
 		chan->max_len = XDMA_MAX_TRANS_LEN;
