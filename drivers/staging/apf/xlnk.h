@@ -26,8 +26,8 @@ enum xlnk_dma_direction {
 union xlnk_args {
 	struct {
 		unsigned int len;
-		unsigned int *idptr;
-		unsigned int *phyaddrptr;
+		unsigned int __user *idptr;
+		unsigned int __user *phyaddrptr;
 		unsigned int cacheable;
 	} allocbuf;
 	struct {
