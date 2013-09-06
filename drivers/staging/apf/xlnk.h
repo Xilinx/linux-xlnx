@@ -23,7 +23,7 @@ enum xlnk_dma_direction {
 	XLNK_DMA_NONE = 3,
 };
 
-typedef union {
+union xlnk_args {
 	struct {
 		unsigned int len;
 		unsigned int *idptr;
@@ -110,7 +110,7 @@ typedef union {
 		int size;
 		int action;
 	} cachecontrol;
-} xlnk_args;
+};
 
 
 #endif

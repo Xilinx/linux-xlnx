@@ -682,12 +682,12 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 			unsigned long args)
 {
 
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	int id;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -735,12 +735,12 @@ static int xlnk_freebuf_ioctl(struct file *filp, unsigned int code,
 			unsigned long args)
 {
 
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	int id;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -755,12 +755,12 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 
 #ifdef CONFIG_XILINX_DMA_APF
 
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	struct xdma_chan *chan;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -778,7 +778,7 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 	temp_args.dmarequest.bd_space_phys_addr = chan->bd_phys_addr;
 	temp_args.dmarequest.bd_space_size = chan->bd_chain_size;
 
-	copy_to_user((void *)args, &temp_args, sizeof(xlnk_args));
+	copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
 
 	return 0;
 
@@ -795,12 +795,12 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 {
 
 #ifdef CONFIG_XILINX_DMA_APF
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	struct xdma_head *dmahead;
 	int status = -1;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -821,8 +821,7 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		temp_args.dmasubmit.dmahandle = (u32)dmahead;
 		temp_args.dmasubmit.last_bd_index =
 					(u32)dmahead->last_bd_index;
-		copy_to_user((void *)args, &temp_args, sizeof(xlnk_args));
-
+		copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
 		return 0;
 	}
 #endif
@@ -836,11 +835,11 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 	int status = -1;
 
 #ifdef CONFIG_XILINX_DMA_APF
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	struct xdma_head *dmahead;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -852,7 +851,7 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 		memcpy(temp_args.dmawait.appwords, dmahead->appwords_o,
 			   dmahead->nappwords_o * sizeof(u32));
 
-		copy_to_user((void *)args, &temp_args, sizeof(xlnk_args));
+		copy_to_user((void *)args, &temp_args, sizeof(union xlnk_args));
 	}
 	kfree(dmahead);
 
@@ -868,9 +867,9 @@ static int xlnk_dmarelease_ioctl(struct file *filp, unsigned int code,
 
 #ifdef CONFIG_XILINX_DMA_APF
 
-	xlnk_args temp_args;
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	union xlnk_args temp_args;
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -885,12 +884,12 @@ static int xlnk_dmarelease_ioctl(struct file *filp, unsigned int code,
 static int xlnk_devregister_ioctl(struct file *filp, unsigned int code,
 				  unsigned long args)
 {
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	u32 handle;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -908,12 +907,12 @@ static int xlnk_devregister_ioctl(struct file *filp, unsigned int code,
 static int xlnk_dmaregister_ioctl(struct file *filp, unsigned int code,
 				  unsigned long args)
 {
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	u32 handle;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -941,12 +940,12 @@ static int xlnk_dmaregister_ioctl(struct file *filp, unsigned int code,
 static int xlnk_mcdmaregister_ioctl(struct file *filp, unsigned int code,
 				  unsigned long args)
 {
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 	u32 handle;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -967,11 +966,11 @@ static int xlnk_mcdmaregister_ioctl(struct file *filp, unsigned int code,
 static int xlnk_devunregister_ioctl(struct file *filp, unsigned int code,
 					unsigned long args)
 {
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-				sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
@@ -984,12 +983,12 @@ static int xlnk_devunregister_ioctl(struct file *filp, unsigned int code,
 static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 				   unsigned long args)
 {
-	xlnk_args temp_args;
+	union xlnk_args temp_args;
 	int status, size;
 	void *paddr, *kaddr;
 
-	status = copy_from_user(&temp_args, (xlnk_args *)args,
-							sizeof(xlnk_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+						sizeof(union xlnk_args));
 
 	if (status) {
 		pr_err("Error in copy_from_user. status = %d\n", status);
