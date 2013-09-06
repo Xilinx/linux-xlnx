@@ -1142,8 +1142,7 @@ static void xlnk_vma_close(struct vm_area_struct *vma)
 /*
  * Xidane XLNK benchmark counter support
  */
-/* FIXME use readl/writel functions */
-static volatile u32 __iomem *bc_virt;
+static u32 __iomem *bc_virt;
 
 
 /* Zynq global counter */
@@ -1161,7 +1160,7 @@ static void xlnk_start_benchmark_counter(void)
 	pr_info("xlnk: benchmark counter mapped phy addr %x --> virt addr %x\n",
 			(u32)bc_phyaddr, (u32)bc_virt);
 	if (bc_virt) {
-		*(bc_virt + bc_ctr_offset) = bc_ctr_start;
+		iowrite32(bc_ctr_start, bc_virt + bc_ctr_offset);
 		pr_info("xlnk: benchmark counter started\n");
 		/* iounmap(bc_virt); */
 	}
@@ -1182,9 +1181,9 @@ void xlnk_record_event(u32 event_id)
 		return;
 
 	xlnk_et[xlnk_et_index].event_id = event_id;
-	xlnk_et[xlnk_et_index].event_time = (*(bc_virt + bc_data_offset)) <<
-								bc_to_cpu_shift;
-	/* rmb(); */
+	xlnk_et[xlnk_et_index].event_time = ioread32(bc_virt +
+						bc_data_offset) <<
+						bc_to_cpu_shift;
 	xlnk_et_index++;
 }
 EXPORT_SYMBOL(xlnk_record_event);
