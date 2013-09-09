@@ -1830,7 +1830,7 @@ static void xdevcfg_fclk_remove(struct device *dev)
  */
 static int xdevcfg_drv_probe(struct platform_device *pdev)
 {
-	struct resource *regs_res, *irq_res;
+	struct resource *res;
 	struct xdevcfg_drvdata *drvdata;
 	dev_t devt;
 	int retval;
@@ -1840,81 +1840,48 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	int size;
 	struct device *dev;
 
-	regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!regs_res) {
-		dev_err(&pdev->dev, "Invalid address\n");
-		return -ENODEV;
-	}
-	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-
-	if (!irq_res) {
-		dev_err(&pdev->dev, "No IRQ found\n\n");
-		return -ENODEV;
-	}
-
-	retval = alloc_chrdev_region(&devt, 0, XDEVCFG_DEVICES, DRIVER_NAME);
-	if (retval < 0)
-		return retval;
-
-	drvdata = kzalloc(sizeof(*drvdata), GFP_KERNEL);
+	drvdata = devm_kzalloc(&pdev->dev, sizeof(*drvdata), GFP_KERNEL);
 	if (!drvdata) {
 		dev_err(&pdev->dev,
 				"Couldn't allocate device private record\n");
-		retval = -ENOMEM;
-		goto failed0;
+		return -ENOMEM;
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	drvdata->base_address = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(drvdata->base_address)) {
+		dev_err(&pdev->dev, "ioremap() failed\n");
+		return PTR_ERR(drvdata->base_address);
+	}
+
+	drvdata->irq = platform_get_irq(pdev, 0);
+	retval = devm_request_irq(&pdev->dev, drvdata->irq, &xdevcfg_irq,
+				0, dev_name(&pdev->dev), drvdata);
+	if (retval) {
+		dev_err(&pdev->dev, "No IRQ available");
+		return retval;
 	}
 
 	platform_set_drvdata(pdev, drvdata);
-
-	if (!request_mem_region(regs_res->start,
-				regs_res->end - regs_res->start + 1,
-				DRIVER_NAME)) {
-		dev_err(&pdev->dev, "Couldn't lock memory region at %Lx\n",
-			(unsigned long long)regs_res->start);
-		retval = -EBUSY;
-		goto failed1;
-	}
-
-	drvdata->devt = devt;
-	drvdata->base_address = ioremap(regs_res->start,
-				(regs_res->end - regs_res->start + 1));
-	if (!drvdata->base_address) {
-		dev_err(&pdev->dev, "ioremap() failed\n");
-		goto failed2;
-	}
-
 	spin_lock_init(&drvdata->lock);
-
-	drvdata->irq = irq_res->start;
-
-	retval = request_irq(irq_res->start, xdevcfg_irq, 0,
-					DRIVER_NAME, drvdata);
-	if (retval) {
-		dev_err(&pdev->dev, "No IRQ available");
-		retval = -EBUSY;
-		goto failed3;
-	}
 	mutex_init(&drvdata->sem);
 	drvdata->is_open = 0;
 	drvdata->is_partial_bitstream = 0;
 	drvdata->dma_done = 0;
 	drvdata->error_status = 0;
-	dev_info(&pdev->dev, "ioremap %llx to %p with size %llx\n",
-		 (unsigned long long) regs_res->start,
-		 drvdata->base_address,
-		 (unsigned long long) (regs_res->end - regs_res->start + 1));
+	dev_info(&pdev->dev, "ioremap %pa to %p\n",
+		 &res->start, drvdata->base_address);
 
-	drvdata->clk = clk_get(&pdev->dev, "ref_clk");
+	drvdata->clk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(drvdata->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
-		retval = PTR_ERR(drvdata->clk);
-		goto failed4;
+		return PTR_ERR(drvdata->clk);
 	}
 
 	retval = clk_prepare_enable(drvdata->clk);
 	if (retval) {
 		dev_err(&pdev->dev, "unable to enable clock\n");
-		goto failed5;
+		return retval;
 	}
 
 	/*
@@ -1958,6 +1925,13 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 				(~XDCFG_MCTRL_PCAP_LPBK_MASK &
 				ctrlreg));
 
+
+	retval = alloc_chrdev_region(&devt, 0, XDEVCFG_DEVICES, DRIVER_NAME);
+	if (retval < 0)
+		goto failed5;
+
+	drvdata->devt = devt;
+
 	cdev_init(&drvdata->cdev, &xdevcfg_fops);
 	drvdata->cdev.owner = THIS_MODULE;
 	retval = cdev_add(&drvdata->cdev, devt, 1);
@@ -1998,21 +1972,10 @@ failed8:
 failed7:
 	class_destroy(drvdata->class);
 failed6:
-	clk_disable_unprepare(drvdata->clk);
-failed5:
-	clk_put(drvdata->clk);
-failed4:
-	free_irq(irq_res->start, drvdata);
-failed3:
-	iounmap(drvdata->base_address);
-failed2:
-	release_mem_region(regs_res->start,
-				regs_res->end - regs_res->start + 1);
-failed1:
-	kfree(drvdata);
-failed0:
 	/* Unregister char driver */
 	unregister_chrdev_region(devt, XDEVCFG_DEVICES);
+failed5:
+	clk_disable_unprepare(drvdata->clk);
 
 	return retval;
 }
@@ -2028,7 +1991,6 @@ failed0:
 static int xdevcfg_drv_remove(struct platform_device *pdev)
 {
 	struct xdevcfg_drvdata *drvdata;
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	drvdata = platform_get_drvdata(pdev);
 
@@ -2039,17 +2001,11 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 
 	sysfs_remove_group(&pdev->dev.kobj, &xdevcfg_attr_group);
 
-	free_irq(drvdata->irq, drvdata);
-
 	xdevcfg_fclk_remove(&pdev->dev);
 	device_destroy(drvdata->class, drvdata->devt);
 	class_destroy(drvdata->class);
 	cdev_del(&drvdata->cdev);
-	iounmap(drvdata->base_address);
-	release_mem_region(res->start, res->end - res->start + 1);
 	clk_unprepare(drvdata->clk);
-	clk_put(drvdata->clk);
-	kfree(drvdata);
 
 	return 0;		/* Success */
 }
