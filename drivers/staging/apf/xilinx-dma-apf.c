@@ -780,6 +780,7 @@ int xdma_submit(struct xdma_chan *chan,
 	unsigned int sgcnt, sgcnt_dma;
 	enum dma_data_direction dmadir;
 	int status;
+	void *kaddr;
 	DEFINE_DMA_ATTRS(attrs);
 
 
@@ -807,6 +808,12 @@ int xdma_submit(struct xdma_chan *chan,
 
 		sglist_dma = sglist;
 		sgcnt_dma = sgcnt;
+		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
+			kaddr = phys_to_virt((phys_addr_t)userbuf);
+			dmac_map_area(kaddr, size, DMA_TO_DEVICE);
+			outer_clean_range((phys_addr_t)userbuf,
+						(u32)userbuf + size);
+		}
 	} else {
 		/* pin user pages is monitored separately */
 		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_PIN_USER_PAGE);
@@ -879,6 +886,8 @@ EXPORT_SYMBOL(xdma_submit);
 int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
+	void *kaddr, *paddr;
+	int size;
 	DEFINE_DMA_ATTRS(attrs);
 	xlnk_record_event(XLNK_ET_KERNEL_ENTER_DMA_WAIT);
 
@@ -898,6 +907,14 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_UNMAP_SG);
 
 		unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
+	} else {
+		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
+			paddr = dmahead->userbuf;
+			size = dmahead->size;
+			kaddr = phys_to_virt((phys_addr_t)paddr);
+			outer_inv_range((phys_addr_t)paddr, (u32)paddr + size);
+			dmac_unmap_area(kaddr, size, DMA_FROM_DEVICE);
+		}
 	}
 	xlnk_record_event(XLNK_ET_KERNEL_LEAVE_DMA_WAIT);
 	return 0;
