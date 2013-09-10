@@ -130,15 +130,10 @@ static int xsdhcips_resume(struct device *dev)
 
 	return sdhci_resume_host(host);
 }
-
-static const struct dev_pm_ops xsdhcips_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xsdhcips_suspend, xsdhcips_resume)
-};
-#define XSDHCIPS_PM	(&xsdhcips_dev_pm_ops)
-
-#else /* ! CONFIG_PM_SLEEP */
-#define XSDHCIPS_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(xsdhcips_dev_pm_ops, xsdhcips_suspend,
+			 xsdhcips_resume);
 
 static int sdhci_zynq_probe(struct platform_device *pdev)
 {
@@ -232,7 +227,7 @@ static struct platform_driver sdhci_zynq_driver = {
 		.name = "sdhci-zynq",
 		.owner = THIS_MODULE,
 		.of_match_table = sdhci_zynq_of_match,
-		.pm = XSDHCIPS_PM,
+		.pm = &xsdhcips_dev_pm_ops,
 	},
 	.probe = sdhci_zynq_probe,
 	.remove = sdhci_zynq_remove,
