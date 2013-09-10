@@ -143,8 +143,6 @@ static const struct dev_pm_ops xsdhcips_dev_pm_ops = {
 static int sdhci_zynq_probe(struct platform_device *pdev)
 {
 	int ret;
-	const void *prop;
-	struct device_node *np = pdev->dev.of_node;
 	struct sdhci_host *host;
 	struct sdhci_pltfm_host *pltfm_host;
 	struct xsdhcips *xsdhcips;
@@ -197,10 +195,6 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 	host = platform_get_drvdata(pdev);
 	pltfm_host = sdhci_priv(host);
 	pltfm_host->priv = xsdhcips;
-
-	prop = of_get_property(np, "xlnx,has-cd", NULL);
-	if (prop == NULL || (!(u32) be32_to_cpup(prop)))
-		host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
 
 	return 0;
 
