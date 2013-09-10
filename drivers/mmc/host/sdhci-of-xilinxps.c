@@ -147,30 +147,28 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host;
 	struct xsdhcips *xsdhcips;
 
-	xsdhcips = kmalloc(sizeof(*xsdhcips), GFP_KERNEL);
+	xsdhcips = devm_kzalloc(&pdev->dev, sizeof(*xsdhcips), GFP_KERNEL);
 	if (!xsdhcips) {
 		dev_err(&pdev->dev, "unable to allocate memory\n");
 		return -ENOMEM;
 	}
 
-	xsdhcips->aperclk = clk_get(&pdev->dev, "aper_clk");
+	xsdhcips->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xsdhcips->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		ret = PTR_ERR(xsdhcips->aperclk);
-		goto err_free;
+		return PTR_ERR(xsdhcips->aperclk);
 	}
 
-	xsdhcips->devclk = clk_get(&pdev->dev, "ref_clk");
+	xsdhcips->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(xsdhcips->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		ret = PTR_ERR(xsdhcips->devclk);
-		goto clk_put_aper;
+		return PTR_ERR(xsdhcips->devclk);
 	}
 
 	ret = clk_prepare_enable(xsdhcips->aperclk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-		goto clk_put;
+		return ret;
 	}
 
 	ret = clk_prepare_enable(xsdhcips->devclk);
@@ -204,12 +202,6 @@ clk_notif_unreg:
 	clk_disable_unprepare(xsdhcips->devclk);
 clk_dis_aper:
 	clk_disable_unprepare(xsdhcips->aperclk);
-clk_put:
-	clk_put(xsdhcips->devclk);
-clk_put_aper:
-	clk_put(xsdhcips->aperclk);
-err_free:
-	kfree(xsdhcips);
 
 	return ret;
 }
@@ -224,9 +216,6 @@ static int sdhci_zynq_remove(struct platform_device *pdev)
 			&xsdhcips->clk_rate_change_nb);
 	clk_disable_unprepare(xsdhcips->devclk);
 	clk_disable_unprepare(xsdhcips->aperclk);
-	clk_put(xsdhcips->devclk);
-	clk_put(xsdhcips->aperclk);
-	kfree(xsdhcips);
 
 	return sdhci_pltfm_unregister(pdev);
 }
