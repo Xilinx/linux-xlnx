@@ -2116,15 +2116,4 @@ static struct i2c_driver adv7511_driver = {
 	.id_table = adv7511_id,
 };
 
-static int __init adv7511_init(void)
-{
-	return i2c_add_driver(&adv7511_driver);
-}
-
-static void __exit adv7511_exit(void)
-{
-	i2c_del_driver(&adv7511_driver);
-}
-
-module_init(adv7511_init);
-module_exit(adv7511_exit);
+module_i2c_driver(adv7511_driver);
