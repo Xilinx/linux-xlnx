@@ -35,6 +35,7 @@
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
 #include <linux/sched.h>
+#include <linux/io.h>
 
 #include "xilinx-dma-apf.h"
 
@@ -980,7 +981,11 @@ static int xdma_probe(struct platform_device *pdev)
 
 	/* Get the memory resource */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (!res) {
+		dev_err(&pdev->dev, "invalid resource\n");
+		return -EINVAL;
+	}
+	xdev->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	if (!xdev->regs) {
 		dev_err(&pdev->dev, "unable to iomap registers\n");
 		return -EFAULT;

@@ -16,7 +16,7 @@
 #include <linux/mutex.h>
 #include <linux/string.h>
 #include <linux/uio_driver.h>
-
+#include <linux/io.h>
 
 #include "xlnk-eng.h"
 
@@ -152,7 +152,11 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 
 	/* Get the data from the platform device */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xdev->base = devm_ioremap_resource(&pdev->dev, res);
+	if (!res) {
+		dev_err(&pdev->dev, "invalid resource\n");
+		return -EINVAL;
+	}
+	xdev->base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 
 	/* %pa types should be used here */
 	dev_info(&pdev->dev, "physical base : 0x%lx\n",
