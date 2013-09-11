@@ -1951,7 +1951,8 @@ static int adv7511_probe(struct i2c_client *client,
 	v4l2_dbg(1, debug, sd, "detecting adv7511 client on address 0x%x\n",
 			 client->addr << 1);
 
-	state = kzalloc(sizeof(struct adv7511_state), GFP_KERNEL);
+	state = devm_kzalloc(&client->dev, sizeof(struct adv7511_state),
+			     GFP_KERNEL);
 	if (!state)
 		return -ENOMEM;
 
@@ -1960,8 +1961,7 @@ static int adv7511_probe(struct i2c_client *client,
 #else
 	if (pdata == NULL) {
 		v4l_err(client, "No platform data!\n");
-		err = -ENODEV;
-		goto err_free;
+		return -ENODEV;
 	}
 	memcpy(&state->pdata, pdata, sizeof(state->pdata));
 #endif
@@ -2060,10 +2060,7 @@ err_entity:
 	media_entity_cleanup(&sd->entity);
 err_hdl:
 	v4l2_ctrl_handler_free(&state->hdl);
-#ifndef CONFIG_OF
-err_free:
-#endif
-	kfree(state);
+
 	return err;
 }
 
@@ -2086,7 +2083,6 @@ static int adv7511_remove(struct i2c_client *client)
 	v4l2_device_unregister_subdev(sd);
 	media_entity_cleanup(&sd->entity);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
-	kfree(get_adv7511_state(sd));
 
 	return 0;
 }
