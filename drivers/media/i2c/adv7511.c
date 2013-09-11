@@ -77,7 +77,6 @@ struct adv7511_state_edid {
 	unsigned read_retries;
 };
 
-#ifdef CONFIG_OF
 struct adv7511_in_params {
 	uint8_t input_id;
 	uint8_t input_style;
@@ -112,13 +111,10 @@ struct adv7511_out_params {
 	uint8_t csc_scaling_factor;
 	struct adv7511_csc_coeff csc_coeff;
 };
-#endif
 
 struct adv7511_config {
-#ifdef CONFIG_OF
 	struct adv7511_in_params in_params;
 	struct adv7511_out_params out_params;
-#endif
 	bool embedded_sync;
 	bool loaded;
 };
@@ -1765,7 +1761,6 @@ static void adv7511_init_setup(struct v4l2_subdev *sd)
 	adv7511_s_audio_stream(sd, false);
 }
 
-#ifdef CONFIG_OF
 static void adv7511_get_ofdt_config(struct i2c_client *client,
 	struct adv7511_state *state)
 {
@@ -1920,7 +1915,6 @@ static void adv7511_get_ofdt_config(struct i2c_client *client,
 	if (vin_loaded && vout_loaded)
 		config->loaded = true;
 }
-#endif
 
 struct v4l2_subdev *adv7511_subdev(struct v4l2_subdev *sd)
 {
@@ -1956,15 +1950,15 @@ static int adv7511_probe(struct i2c_client *client,
 	if (!state)
 		return -ENOMEM;
 
-#ifdef CONFIG_OF
-	adv7511_get_ofdt_config(client, state);
-#else
-	if (pdata == NULL) {
-		v4l_err(client, "No platform data!\n");
-		return -ENODEV;
+	if (client->dev.of_node) {
+		adv7511_get_ofdt_config(client, state);
+	} else {
+		if (pdata == NULL) {
+			v4l_err(client, "No platform data!\n");
+			return -ENODEV;
+		}
+		memcpy(&state->pdata, pdata, sizeof(state->pdata));
 	}
-	memcpy(&state->pdata, pdata, sizeof(state->pdata));
-#endif
 
 	sd = &state->sd;
 	v4l2_i2c_subdev_init(sd, client, &adv7511_ops);
@@ -2107,9 +2101,7 @@ static struct i2c_driver adv7511_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "adv7511",
-#ifdef CONFIG_OF
 		.of_match_table = of_match_ptr(i2c_adv7511_of_match),
-#endif
 	},
 	.probe = adv7511_probe,
 	.remove = adv7511_remove,
