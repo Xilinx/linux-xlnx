@@ -281,17 +281,23 @@ static void xilinx_vdma_free_desc_list_reverse(struct xilinx_vdma_chan *chan,
 	}
 }
 
-static void xilinx_vdma_free_chan_resources(struct dma_chan *dchan)
+static void xilinx_vdma_free_descriptors(struct xilinx_vdma_chan *chan)
 {
-	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
 
-	dev_dbg(chan->dev, "Free all channel resources.\n");
 	spin_lock_irqsave(&chan->lock, flags);
 	xilinx_vdma_free_desc_list(chan, &chan->active_list);
 	xilinx_vdma_free_desc_list(chan, &chan->pending_list);
 	spin_unlock_irqrestore(&chan->lock, flags);
+}
 
+static void xilinx_vdma_free_chan_resources(struct dma_chan *dchan)
+{
+	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
+
+	dev_dbg(chan->dev, "Free all channel resources.\n");
+
+	xilinx_vdma_free_descriptors(chan);
 	dma_pool_destroy(chan->desc_pool);
 	chan->desc_pool = NULL;
 }
@@ -881,18 +887,11 @@ fail:
 
 static void xilinx_vdma_terminate_all(struct xilinx_vdma_chan *chan)
 {
-	unsigned long flags;
-
 	/* Halt the DMA engine */
 	xilinx_vdma_halt(chan);
 
-	spin_lock_irqsave(&chan->lock, flags);
-
 	/* Remove and free all of the descriptors in the lists */
-	xilinx_vdma_free_desc_list(chan, &chan->pending_list);
-	xilinx_vdma_free_desc_list(chan, &chan->active_list);
-
-	spin_unlock_irqrestore(&chan->lock, flags);
+	xilinx_vdma_free_descriptors(chan);
 }
 
 static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
