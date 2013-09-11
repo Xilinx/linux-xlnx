@@ -1940,7 +1940,7 @@ static int adv7511_probe(struct i2c_client *client,
 	struct adv7511_state *state;
 	struct adv7511_platform_data *pdata = client->dev.platform_data;
 	struct v4l2_ctrl_handler *hdl;
-	struct v4l2_subdev *sd;
+	struct v4l2_subdev *sd = NULL;
 	u8 chip_id[2];
 	int err = -EIO;
 
