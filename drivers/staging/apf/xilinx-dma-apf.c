@@ -1100,19 +1100,9 @@ static int xdma_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static void xdma_shutdown(struct platform_device *pdev)
-{
-	int i;
-	struct xdma_device *xdev = platform_get_drvdata(pdev);
-
-	for (i = 0; i < XDMA_MAX_CHANS_PER_DEVICE; i++)
-		dma_halt(xdev->chan[i]);
-}
-
 static struct platform_driver xdma_driver = {
 	.probe = xdma_probe,
 	.remove = xdma_remove,
-	.shutdown = xdma_shutdown,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "xilinx-axidma",
