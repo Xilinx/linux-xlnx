@@ -121,4 +121,14 @@ config UIO_PRUSS
 	  To compile this driver as a module, choose M here: the module
 	  will be called uio_pruss.
 
+config UIO_XILINX_APM
+	tristate "Xilinx AXI Performance Monitor driver"
+	depends on MICROBLAZE || ARCH_ZYNQ
+	help
+	  This driver is developed for AXI Performance Monitor IP, designed to
+	  monitor AXI4 traffic for performance analysis of AXI bus in the
+	  system. Driver maps HW registers and parameters to userspace.
+
+	  To compile this driver as a module, choose M here; the module
+	  will be called uio_xilinx_apm.
 endif
