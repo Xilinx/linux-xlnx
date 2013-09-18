@@ -1080,11 +1080,15 @@ static int xilinx_dma_of_probe(struct platform_device *pdev)
 	}
 
 	/* Check if SG is enabled */
+	value = of_property_read_bool(node, "xlnx,include-sg");
+	if (value)
+		xdev->feature |= XILINX_DMA_FTR_HAS_SG;
+
+	/* Check if status control streams are enabled */
 	value = of_property_read_bool(node,
 			"xlnx,sg-include-stscntrl-strm");
 	if (value)
-		xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
-						XILINX_DMA_FTR_HAS_SG);
+		xdev->feature |= XILINX_DMA_FTR_STSCNTRL_STRM;
 
 	/*
 	 * Axi DMA only do slave transfers
