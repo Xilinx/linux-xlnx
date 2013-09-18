@@ -1008,7 +1008,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
-	xdev->common.chancnt++;
 
 	return 0;
 }
