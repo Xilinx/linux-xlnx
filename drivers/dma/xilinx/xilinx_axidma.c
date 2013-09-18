@@ -1050,7 +1050,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	return 0;
 }
 
-static int xilinx_dma_of_probe(struct platform_device *pdev)
+static int xilinx_dma_probe(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
@@ -1131,7 +1131,7 @@ free_chan_resources:
 	return ret;
 }
 
-static int xilinx_dma_of_remove(struct platform_device *pdev)
+static int xilinx_dma_remove(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 
@@ -1148,17 +1148,17 @@ static const struct of_device_id xilinx_dma_of_ids[] = {
 	{}
 };
 
-static struct platform_driver xilinx_dma_of_driver = {
+static struct platform_driver xilinx_dma_driver = {
 	.driver = {
 		.name = "xilinx-dma",
 		.owner = THIS_MODULE,
 		.of_match_table = xilinx_dma_of_ids,
 	},
-	.probe = xilinx_dma_of_probe,
-	.remove = xilinx_dma_of_remove,
+	.probe = xilinx_dma_probe,
+	.remove = xilinx_dma_remove,
 };
 
-module_platform_driver(xilinx_dma_of_driver);
+module_platform_driver(xilinx_dma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx DMA driver");
