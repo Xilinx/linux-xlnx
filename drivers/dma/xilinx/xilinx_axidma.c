@@ -152,7 +152,6 @@ struct xilinx_dma_chan {
 	enum dma_transfer_direction direction;
 					/* Transfer direction */
 	int max_len;			/* Maximum data len per transfer */
-	int is_lite;			/* Whether is light build */
 	bool has_sg;			/* Support scatter transfers */
 	bool has_dre;			/* Support unaligned transfers */
 	int err;			/* Channel has errors */
