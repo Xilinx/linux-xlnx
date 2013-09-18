@@ -980,21 +980,18 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	if (value)
 		device_id = be32_to_cpup(value);
 
-	if (feature & XILINX_DMA_IP_DMA) {
-		chan->has_sg = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
-					XILINX_DMA_FTR_HAS_SG_SHIFT;
+	chan->has_sg = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
+				XILINX_DMA_FTR_HAS_SG_SHIFT;
 
-		chan->start_transfer = xilinx_dma_start_transfer;
+	chan->start_transfer = xilinx_dma_start_transfer;
 
-		if (of_device_is_compatible(node,
-			 "xlnx,axi-dma-mm2s-channel"))
-			chan->direction = DMA_MEM_TO_DEV;
+	if (of_device_is_compatible(node,
+		 "xlnx,axi-dma-mm2s-channel"))
+		chan->direction = DMA_MEM_TO_DEV;
 
-		if (of_device_is_compatible(node,
-				"xlnx,axi-dma-s2mm-channel"))
-			chan->direction = DMA_DEV_TO_MEM;
-
-	}
+	if (of_device_is_compatible(node,
+			"xlnx,axi-dma-s2mm-channel"))
+		chan->direction = DMA_DEV_TO_MEM;
 
 	chan->regs = (struct xdma_regs *)xdev->regs;
 
@@ -1008,8 +1005,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	 * Used by dmatest channel matching in slave transfers
 	 * Can change it to be a structure to have more matching information
 	 */
-	chan->private = (chan->direction & 0xFF) |
-		(chan->feature & XILINX_DMA_IP_MASK) |
+	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_DMA |
 		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
@@ -1084,26 +1080,21 @@ static int xilinx_dma_of_probe(struct platform_device *pdev)
 	/*
 	 * Axi DMA only do slave transfers
 	 */
-	if (of_device_is_compatible(node, "xlnx,axi-dma")) {
-
-		xdev->feature |= XILINX_DMA_IP_DMA;
-		value = of_get_property(node,
-				"xlnx,sg-include-stscntrl-strm",
-				NULL);
-		if (value) {
-			if (be32_to_cpup(value) == 1) {
-				xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
-							XILINX_DMA_FTR_HAS_SG);
-			}
+	value = of_get_property(node,
+			"xlnx,sg-include-stscntrl-strm",
+			NULL);
+	if (value) {
+		if (be32_to_cpup(value) == 1) {
+			xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
+						XILINX_DMA_FTR_HAS_SG);
 		}
-
-		dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
-		dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
-		xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
-		xdev->common.device_control = xilinx_dma_device_control;
-		xdev->common.device_issue_pending = xilinx_dma_issue_pending;
 	}
 
+	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
+	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
+	xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
+	xdev->common.device_control = xilinx_dma_device_control;
+	xdev->common.device_issue_pending = xilinx_dma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
 				xilinx_dma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
