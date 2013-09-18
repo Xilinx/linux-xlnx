@@ -926,24 +926,6 @@ static int xilinx_dma_device_control(struct dma_chan *dchan,
 		return -ENXIO;
 }
 
-/*
- * Logarithm function to compute alignment shift
- *
- * Only deals with value less than 4096.
- */
-static int my_log(int value)
-{
-	int i = 0;
-	while ((1 << i) < value) {
-		i++;
-
-		if (i >= 12)
-			return 0;
-	}
-
-	return i;
-}
-
 static void xilinx_dma_free_channels(struct xilinx_dma_device *xdev)
 {
 	int i;
@@ -1032,7 +1014,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
-		xdev->common.copy_align = my_log(width);
+		xdev->common.copy_align = fls(width - 1);
 
 	chan->dev = xdev->dev;
 	xdev->chan[chan->id] = chan;
