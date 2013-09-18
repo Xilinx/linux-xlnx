@@ -513,7 +513,7 @@ out_unlock:
 }
 
 /* Reset hardware */
-static int dma_init(struct xilinx_dma_chan *chan)
+static int dma_reset(struct xilinx_dma_chan *chan)
 {
 	int loop = XILINX_DMA_RESET_LOOP;
 	u32 tmp;
@@ -646,7 +646,7 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!dma_init(chan))
+		if (!dma_reset(chan))
 			chan->err = 0;
 		else
 			return cookie;
@@ -980,7 +980,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	xdev->chan[chan->id] = chan;
 
 	/* Initialize the channel */
-	err = dma_init(chan);
+	err = dma_reset(chan);
 	if (err) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
