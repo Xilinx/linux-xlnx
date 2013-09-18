@@ -948,8 +948,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 {
 	struct xilinx_dma_chan *chan;
 	int err;
-	const __be32 *value;
-	u32 width = 0, device_id = 0;
+	u32 device_id, value, width = 0;
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -961,13 +960,14 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->feature = feature;
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
 
-	value = of_get_property(node, "xlnx,include-dre", NULL);
-	if (value)
-		chan->has_dre = be32_to_cpup(value);
+	chan->has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
-	value = of_get_property(node, "xlnx,datawidth", NULL);
-	if (value) {
-		width = be32_to_cpup(value) >> 3; /* convert bits to bytes */
+	err = of_property_read_u32(node, "xlnx,datawidth", &value);
+	if (err) {
+		dev_err(xdev->dev, "unable to read datawidth property");
+		return err;
+	} else {
+		width = value >> 3; /* convert bits to bytes */
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
@@ -976,9 +976,11 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		chan->feature |= width - 1;
 	}
 
-	value = of_get_property(node, "xlnx,device-id", NULL);
-	if (value)
-		device_id = be32_to_cpup(value);
+	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
+	if (err) {
+		dev_err(xdev->dev, "unable to read device id property");
+		return err;
+	}
 
 	chan->has_sg = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
 				XILINX_DMA_FTR_HAS_SG_SHIFT;
@@ -1052,9 +1054,9 @@ static int xilinx_dma_of_probe(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
-	const __be32 *value;
 	struct resource *res;
 	int ret;
+	u32 value;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_dma_device),
 				GFP_KERNEL);
@@ -1077,19 +1079,16 @@ static int xilinx_dma_of_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	/* Check if SG is enabled */
+	value = of_property_read_bool(node,
+			"xlnx,sg-include-stscntrl-strm");
+	if (value)
+		xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
+						XILINX_DMA_FTR_HAS_SG);
+
 	/*
 	 * Axi DMA only do slave transfers
 	 */
-	value = of_get_property(node,
-			"xlnx,sg-include-stscntrl-strm",
-			NULL);
-	if (value) {
-		if (be32_to_cpup(value) == 1) {
-			xdev->feature |= (XILINX_DMA_FTR_STSCNTRL_STRM |
-						XILINX_DMA_FTR_HAS_SG);
-		}
-	}
-
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
 	xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
