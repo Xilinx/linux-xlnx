@@ -113,8 +113,8 @@
 #define dma_write(addr, val)	(iowrite32(val, addr))
 #define dma_read(addr)		(ioread32(addr))
 
-#ifdef CONFIG_XILINX_DMATEST
-#define TEST_DMA_WITH_LOOPBACK
+#if defined(CONFIG_XILINX_DMATEST) || defined(CONFIG_XILINX_DMATEST_MODULE)
+# define TEST_DMA_WITH_LOOPBACK
 #endif
 
 /* Hardware descriptor */
