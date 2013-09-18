@@ -1072,32 +1072,32 @@ out_return:
 	return err;
 }
 
-static int xilinx_dma_of_probe(struct platform_device *op)
+static int xilinx_dma_of_probe(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
 	int err;
 	const __be32 *value;
 
-	dev_info(&op->dev, "Probing xilinx axi dma engine\n");
+	dev_info(&pdev->dev, "Probing xilinx axi dma engine\n");
 
 	xdev = kzalloc(sizeof(struct xilinx_dma_device), GFP_KERNEL);
 	if (!xdev) {
-		dev_err(&op->dev, "Not enough memory for device\n");
+		dev_err(&pdev->dev, "Not enough memory for device\n");
 		err = -ENOMEM;
 		goto out_return;
 	}
 
-	xdev->dev = &(op->dev);
+	xdev->dev = &(pdev->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);
 
-	node = op->dev.of_node;
+	node = pdev->dev.of_node;
 	xdev->feature = 0;
 
 	/* iomap registers */
 	xdev->regs = of_iomap(node, 0);
 	if (!xdev->regs) {
-		dev_err(&op->dev, "unable to iomap registers\n");
+		dev_err(&pdev->dev, "unable to iomap registers\n");
 		err = -ENOMEM;
 		goto out_free_xdev;
 	}
@@ -1130,9 +1130,9 @@ static int xilinx_dma_of_probe(struct platform_device *op)
 	xdev->common.device_free_chan_resources =
 				xilinx_dma_free_chan_resources;
 	xdev->common.device_tx_status = xilinx_tx_status;
-	xdev->common.dev = &op->dev;
+	xdev->common.dev = &pdev->dev;
 
-	platform_set_drvdata(op, xdev);
+	platform_set_drvdata(pdev, xdev);
 
 	for_each_child_of_node(node, child) {
 		xilinx_dma_chan_probe(xdev, child, xdev->feature);
@@ -1149,12 +1149,12 @@ out_return:
 	return err;
 }
 
-static int xilinx_dma_of_remove(struct platform_device *op)
+static int xilinx_dma_of_remove(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 	int i;
 
-	xdev = platform_get_drvdata(op);
+	xdev = platform_get_drvdata(pdev);
 	dma_async_device_unregister(&xdev->common);
 
 	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; i++) {
