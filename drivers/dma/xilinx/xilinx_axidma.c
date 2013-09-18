@@ -32,8 +32,8 @@
 #include <linux/slab.h>
 
 /* Hw specific definitions */
-#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2
-#define XILINX_DMA_MAX_TRANS_LEN	0x7FFFFF
+#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2	/* Max no of channels */
+#define XILINX_DMA_MAX_TRANS_LEN	0x7FFFFF /* Max transfer length */
 
 /* General register bits definitions */
 #define XILINX_DMA_CR_RESET_MASK	0x00000004
@@ -45,21 +45,6 @@
 						/* DMA channel halted */
 #define XILINX_DMA_SR_IDLE_MASK		0x00000002
 						/* DMA channel idle */
-
-#define XILINX_DMA_SR_ERR_INTERNAL_MASK	0x00000010
-						/* Datamover internal err */
-#define XILINX_DMA_SR_ERR_SLAVE_MASK	0x00000020
-						/* Datamover slave err */
-#define XILINX_DMA_SR_ERR_DECODE_MASK	0x00000040
-						/* Datamover decode err */
-#define XILINX_DMA_SR_ERR_SG_INT_MASK	0x00000100
-						/* SG internal err */
-#define XILINX_DMA_SR_ERR_SG_SLV_MASK	0x00000200
-						/* SG slave err */
-#define XILINX_DMA_SR_ERR_SG_DEC_MASK	0x00000400
-						/* SG decode err */
-#define XILINX_DMA_SR_ERR_ALL_MASK	0x00000770
-						/* All errors */
 
 #define XILINX_DMA_XR_IRQ_IOC_MASK	0x00001000
 						/* Completion interrupt */
@@ -75,29 +60,22 @@
 #define XILINX_DMA_XR_COALESCE_MASK	0x00FF0000
 						/* Coalesce counter */
 
-#define XILINX_DMA_IRQ_SHIFT		12
-#define XILINX_DMA_DELAY_SHIFT		24
-#define XILINX_DMA_COALESCE_SHIFT	16
+#define XILINX_DMA_DELAY_SHIFT		24 /* Delay timeout counter shift */
+#define XILINX_DMA_COALESCE_SHIFT	16 /* Coalesce counter shift */
 
 #define XILINX_DMA_DELAY_MAX		0xFF
 					/* Maximum delay counter value */
 #define XILINX_DMA_COALESCE_MAX		0xFF
 					/* Maximum coalescing counter value */
 
-#define XILINX_DMA_RX_CHANNEL_OFFSET	0x30
+#define XILINX_DMA_RX_CHANNEL_OFFSET	0x30 /* S2MM Channel Offset */
 
 /* BD definitions for AXI Dma */
-#define XILINX_DMA_BD_STS_COMPL_MASK	0x80000000
-#define XILINX_DMA_BD_STS_ERR_MASK	0x70000000
 #define XILINX_DMA_BD_STS_ALL_MASK	0xF0000000
-
-/* Axi DMA BD special bits definitions */
 #define XILINX_DMA_BD_SOP	0x08000000	/* Start of packet bit */
 #define XILINX_DMA_BD_EOP	0x04000000	/* End of packet bit */
 
 /* Feature encodings */
-#define XILINX_DMA_FTR_DATA_WIDTH_MASK	0x000000FF
-						/* Data width mask, 1024 */
 #define XILINX_DMA_FTR_HAS_SG		0x00000100
 						/* Has SG */
 #define XILINX_DMA_FTR_HAS_SG_SHIFT	8
