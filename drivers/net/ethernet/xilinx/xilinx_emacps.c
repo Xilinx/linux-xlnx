@@ -2568,15 +2568,13 @@ static int xemacps_probe(struct platform_device *pdev)
 	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!r_mem || !r_irq) {
 		dev_err(&pdev->dev, "no IO resource defined.\n");
-		rc = -ENXIO;
-		goto err_out;
+		return -ENXIO;
 	}
 
 	ndev = alloc_etherdev(sizeof(*lp));
 	if (!ndev) {
 		dev_err(&pdev->dev, "etherdev allocation failed.\n");
-		rc = -ENOMEM;
-		goto err_out;
+		return -ENOMEM;
 	}
 
 	SET_NETDEV_DEV(ndev, &pdev->dev);
@@ -2589,10 +2587,10 @@ static int xemacps_probe(struct platform_device *pdev)
 	spin_lock_init(&lp->rx_lock);
 	spin_lock_init(&lp->nwctrlreg_lock);
 
-	lp->baseaddr = ioremap(r_mem->start, (r_mem->end - r_mem->start + 1));
-	if (!lp->baseaddr) {
+	lp->baseaddr = devm_ioremap_resource(&pdev->dev, r_mem);
+	if (IS_ERR(lp->baseaddr)) {
 		dev_err(&pdev->dev, "failed to map baseaddress.\n");
-		rc = -ENOMEM;
+		rc = PTR_ERR(lp->baseaddr);
 		goto err_out_free_netdev;
 	}
 
@@ -2613,7 +2611,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	rc = register_netdev(ndev);
 	if (rc) {
 		dev_err(&pdev->dev, "Cannot register net device, aborting.\n");
-		goto err_out_iounmap;
+		goto err_out_free_netdev;
 	}
 
 	if (ndev->irq == 54)
@@ -2621,23 +2619,23 @@ static int xemacps_probe(struct platform_device *pdev)
 	else
 		lp->enetnum = 1;
 
-	lp->aperclk = clk_get(&pdev->dev, "aper_clk");
+	lp->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(lp->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
 		rc = PTR_ERR(lp->aperclk);
 		goto err_out_unregister_netdev;
 	}
-	lp->devclk = clk_get(&pdev->dev, "ref_clk");
+	lp->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(lp->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
 		rc = PTR_ERR(lp->devclk);
-		goto err_out_clk_put_aper;
+		goto err_out_unregister_netdev;
 	}
 
 	rc = clk_prepare_enable(lp->aperclk);
 	if (rc) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-		goto err_out_clk_put;
+		goto err_out_unregister_netdev;
 	}
 	rc = clk_prepare_enable(lp->devclk);
 	if (rc) {
@@ -2701,7 +2699,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	dev_info(&lp->pdev->dev, "pdev->id %d, baseaddr 0x%08lx, irq %d\n",
 		pdev->id, ndev->base_addr, ndev->irq);
 
-	rc = request_irq(ndev->irq, xemacps_interrupt, 0,
+	rc = devm_request_irq(&pdev->dev, ndev->irq, &xemacps_interrupt, 0,
 		ndev->name, ndev);
 	if (rc) {
 		dev_err(&lp->pdev->dev, "Unable to request IRQ %p, error %d\n",
@@ -2716,17 +2714,10 @@ err_out_unregister_clk_notifier:
 	clk_disable_unprepare(lp->devclk);
 err_out_clk_dis_aper:
 	clk_disable_unprepare(lp->aperclk);
-err_out_clk_put:
-	clk_put(lp->devclk);
-err_out_clk_put_aper:
-	clk_put(lp->aperclk);
 err_out_unregister_netdev:
 	unregister_netdev(ndev);
-err_out_iounmap:
-	iounmap(lp->baseaddr);
 err_out_free_netdev:
 	free_netdev(ndev);
-err_out:
 	platform_set_drvdata(pdev, NULL);
 	return rc;
 }
@@ -2749,8 +2740,6 @@ static int xemacps_remove(struct platform_device *pdev)
 		kfree(lp->mii_bus->irq);
 		mdiobus_free(lp->mii_bus);
 		unregister_netdev(ndev);
-		free_irq(ndev->irq, ndev);
-		iounmap(lp->baseaddr);
 
 		clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
 		if (!pm_runtime_suspended(&pdev->dev)) {
@@ -2760,8 +2749,6 @@ static int xemacps_remove(struct platform_device *pdev)
 			clk_unprepare(lp->devclk);
 			clk_unprepare(lp->aperclk);
 		}
-		clk_put(lp->devclk);
-		clk_put(lp->aperclk);
 
 		free_netdev(ndev);
 	}
