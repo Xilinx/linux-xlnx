@@ -171,7 +171,6 @@ struct xilinx_dma_device {
 	struct dma_device common;
 	struct xilinx_dma_chan *chan[XILINX_DMA_MAX_CHANS_PER_DEVICE];
 	u32 feature;
-	int irq;
 };
 
 #define to_xilinx_chan(chan) \
