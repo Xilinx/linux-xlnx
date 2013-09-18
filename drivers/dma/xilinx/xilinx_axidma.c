@@ -153,8 +153,8 @@ struct xilinx_dma_chan {
 					/* Transfer direction */
 	int max_len;			/* Maximum data len per transfer */
 	int is_lite;			/* Whether is light build */
-	int has_sg;			/* Support scatter transfers */
-	int has_dre;			/* Support unaligned transfers */
+	bool has_sg;			/* Support scatter transfers */
+	bool has_dre;			/* Support unaligned transfers */
 	int err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
 	u32 feature;			/* IP feature */
