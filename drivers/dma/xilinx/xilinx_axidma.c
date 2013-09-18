@@ -532,7 +532,7 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
 			dma_read(&chan->regs->cr), dma_read(&chan->regs->sr));
-		return 1;
+		return -EBUSY;
 	}
 
 	return 0;
