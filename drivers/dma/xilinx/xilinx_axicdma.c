@@ -426,7 +426,7 @@ out_unlock:
 }
 
 /* Reset hardware */
-static int cdma_init(struct xilinx_cdma_chan *chan)
+static int cdma_reset(struct xilinx_cdma_chan *chan)
 {
 	int loop = XILINX_CDMA_RESET_LOOP;
 	u32 tmp;
@@ -562,7 +562,7 @@ static dma_cookie_t xilinx_cdma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!cdma_init(chan))
+		if (!cdma_reset(chan))
 			chan->err = 0;
 		else
 			return cookie;
@@ -647,7 +647,7 @@ static struct dma_async_tx_descriptor *xilinx_cdma_prep_memcpy(
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!cdma_init(chan))
+		if (!cdma_reset(chan))
 			chan->err = 0;
 		else
 			return NULL;
@@ -878,7 +878,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	xdev->chan = chan;
 
 	/* Initialize the channel */
-	err = cdma_init(chan);
+	err = cdma_reset(chan);
 	if (err) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
