@@ -1,0 +1,19 @@
+Device-Tree bindings for Xilinx Video On Screen Display(OSD)
+
+Xilinx OSD provides the multiplane support. Some properties can be configured
+in IP synthesis.
+
+Required properties:
+ - compatible: value should be "xlnx,v-osd-5.01.a"
+ - reg: base address and size of the OSD IP
+ - xlnx,num-layers: the number of layers(up to 8) supported by OSD
+ - xlnx,screen-width: the maximum size(up to 4096) of screen pixel width by OSD
+
+Example:
+
+	v_osd_0: v-osd@40040000 {
+		compatible = "xlnx,v-osd-5.01.a";
+		reg = <0x40040000 0x10000>;
+		xlnx,num-layers = <2>;
+		xlnx,screen-width = <1920>;
+	};
