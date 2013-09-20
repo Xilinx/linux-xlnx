@@ -972,7 +972,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	return 0;
 }
 
-static int xilinx_cdma_of_probe(struct platform_device *op)
+static int xilinx_cdma_of_probe(struct platform_device *pdev)
 {
 	struct xilinx_cdma_device *xdev;
 	struct device_node *child, *node;
@@ -980,22 +980,22 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	struct resource *res;
 	int ret;
 
-	xdev = devm_kzalloc(&op->dev, sizeof(struct xilinx_cdma_device),
+	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_cdma_device),
 				GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
-	xdev->dev = &(op->dev);
+	xdev->dev = &(pdev->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);
 
-	node = op->dev.of_node;
+	node = pdev->dev.of_node;
 	xdev->feature = 0;
 
 	/* iomap registers */
-	res = platform_get_resource(op, IORESOURCE_MEM, 0);
-	xdev->regs = devm_ioremap_resource(&op->dev, res);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (!xdev->regs) {
-		dev_err(&op->dev, "unable to iomap registers\n");
+		dev_err(&pdev->dev, "unable to iomap registers\n");
 		return -ENOMEM;
 	}
 
@@ -1021,25 +1021,25 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	xdev->common.device_free_chan_resources =
 				xilinx_cdma_free_chan_resources;
 	xdev->common.device_tx_status = xilinx_tx_status;
-	xdev->common.dev = &op->dev;
+	xdev->common.dev = &pdev->dev;
 
-	platform_set_drvdata(op, xdev);
+	platform_set_drvdata(pdev, xdev);
 
 	for_each_child_of_node(node, child) {
 		ret = xilinx_cdma_chan_probe(xdev, child, xdev->feature);
 		if (ret) {
-			dev_err(&op->dev, "Probing channels failed\n");
+			dev_err(&pdev->dev, "Probing channels failed\n");
 			goto free_chan_resources;
 		}
 	}
 
 	ret = dma_async_device_register(&xdev->common);
 	if (ret) {
-		dev_err(&op->dev, "CDMA device registration failed\n");
+		dev_err(&pdev->dev, "CDMA device registration failed\n");
 		goto free_chan_resources;
 	}
 
-	dev_info(&op->dev, "Probing xilinx axi cdma engine...Successful\n");
+	dev_info(&pdev->dev, "Probing xilinx axi cdma engine...Successful\n");
 
 	return 0;
 
@@ -1049,11 +1049,11 @@ free_chan_resources:
 	return ret;
 }
 
-static int xilinx_cdma_of_remove(struct platform_device *op)
+static int xilinx_cdma_of_remove(struct platform_device *pdev)
 {
 	struct xilinx_cdma_device *xdev;
 
-	xdev = platform_get_drvdata(op);
+	xdev = platform_get_drvdata(pdev);
 	dma_async_device_unregister(&xdev->common);
 
 	xilinx_cdma_free_channels(xdev);
