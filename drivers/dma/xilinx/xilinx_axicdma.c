@@ -105,8 +105,8 @@
 #define XILINX_CDMA_DEVICE_ID_SHIFT	28
 
 /* IO accessors */
-#define CDMA_OUT(addr, val)	(iowrite32(val, addr))
-#define CDMA_IN(addr)		(ioread32(addr))
+#define cdma_write(addr, val)	(iowrite32(val, addr))
+#define cdma_read(addr)		(ioread32(addr))
 
 /* Hardware descriptor */
 struct xilinx_cdma_desc_hw {
@@ -314,17 +314,17 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 
 static int cdma_is_idle(struct xilinx_cdma_chan *chan)
 {
-	return CDMA_IN(&chan->regs->sr) & XILINX_CDMA_SR_IDLE_MASK;
+	return cdma_read(&chan->regs->sr) & XILINX_CDMA_SR_IDLE_MASK;
 }
 
 /* Only needed for Axi CDMA v2_00_a or earlier core */
 static void cdma_sg_toggle(struct xilinx_cdma_chan *chan)
 {
-	CDMA_OUT(&chan->regs->cr,
-		CDMA_IN(&chan->regs->cr) & ~XILINX_CDMA_CR_SGMODE_MASK);
+	cdma_write(&chan->regs->cr,
+		cdma_read(&chan->regs->cr) & ~XILINX_CDMA_CR_SGMODE_MASK);
 
-	CDMA_OUT(&chan->regs->cr,
-		CDMA_IN(&chan->regs->cr) | XILINX_CDMA_CR_SGMODE_MASK);
+	cdma_write(&chan->regs->cr,
+		cdma_read(&chan->regs->cr) | XILINX_CDMA_CR_SGMODE_MASK);
 }
 
 #define XILINX_CDMA_DRIVER_DEBUG	0
@@ -359,13 +359,13 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 	/* If hardware is busy, cannot submit */
 	if (!cdma_is_idle(chan)) {
 		dev_dbg(chan->dev, "DMA controller still busy %x\n",
-					CDMA_IN(&chan->regs->sr));
+					cdma_read(&chan->regs->sr));
 		goto out_unlock;
 	}
 
 	/* Enable interrupts */
-	CDMA_OUT(&chan->regs->cr,
-	    CDMA_IN(&chan->regs->cr) | XILINX_CDMA_XR_IRQ_ALL_MASK);
+	cdma_write(&chan->regs->cr,
+	    cdma_read(&chan->regs->cr) | XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	desch = list_first_entry(&chan->pending_list,
 			struct xilinx_cdma_desc_sw, node);
@@ -384,10 +384,10 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 		 */
 		cdma_sg_toggle(chan);
 
-		CDMA_OUT(&chan->regs->cdr, desch->async_tx.phys);
+		cdma_write(&chan->regs->cdr, desch->async_tx.phys);
 
 		/* Update tail ptr register and start the transfer */
-		CDMA_OUT(&chan->regs->tdr, desct->async_tx.phys);
+		cdma_write(&chan->regs->tdr, desct->async_tx.phys);
 		goto out_unlock;
 	}
 
@@ -397,11 +397,11 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 
 	hw = &desch->hw;
 
-	CDMA_OUT(&chan->regs->src, hw->src_addr);
-	CDMA_OUT(&chan->regs->dst, hw->dest_addr);
+	cdma_write(&chan->regs->src, hw->src_addr);
+	cdma_write(&chan->regs->dst, hw->dest_addr);
 
 	/* Start the transfer */
-	CDMA_OUT(&chan->regs->btt_ref,
+	cdma_write(&chan->regs->btt_ref,
 		hw->control & XILINX_CDMA_MAX_TRANS_LEN);
 
 out_unlock:
@@ -472,26 +472,26 @@ static int cdma_init(struct xilinx_cdma_chan *chan)
 	int loop = XILINX_CDMA_RESET_LOOP;
 	u32 tmp;
 
-	CDMA_OUT(&chan->regs->cr,
-		CDMA_IN(&chan->regs->cr) | XILINX_CDMA_CR_RESET_MASK);
+	cdma_write(&chan->regs->cr,
+		cdma_read(&chan->regs->cr) | XILINX_CDMA_CR_RESET_MASK);
 
-	tmp = CDMA_IN(&chan->regs->cr) & XILINX_CDMA_CR_RESET_MASK;
+	tmp = cdma_read(&chan->regs->cr) & XILINX_CDMA_CR_RESET_MASK;
 
 	/* Wait for the hardware to finish reset */
 	while (loop && tmp) {
-		tmp = CDMA_IN(&chan->regs->cr) & XILINX_CDMA_CR_RESET_MASK;
+		tmp = cdma_read(&chan->regs->cr) & XILINX_CDMA_CR_RESET_MASK;
 		loop -= 1;
 	}
 
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
-			CDMA_IN(&chan->regs->cr), CDMA_IN(&chan->regs->sr));
+			cdma_read(&chan->regs->cr), cdma_read(&chan->regs->sr));
 		return 1;
 	}
 
 	/* For Axi CDMA, always do sg transfers if sg mode is built in */
 	if (chan->has_sg)
-		CDMA_OUT(&chan->regs->cr, tmp | XILINX_CDMA_CR_SGMODE_MASK);
+		cdma_write(&chan->regs->cr, tmp | XILINX_CDMA_CR_SGMODE_MASK);
 
 	return 0;
 }
@@ -504,18 +504,18 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 	int to_transfer = 0;
 	u32 stat, reg;
 
-	reg = CDMA_IN(&chan->regs->cr);
+	reg = cdma_read(&chan->regs->cr);
 
 	/* Disable intr */
-	CDMA_OUT(&chan->regs->cr,
+	cdma_write(&chan->regs->cr,
 		reg & ~XILINX_CDMA_XR_IRQ_ALL_MASK);
 
-	stat = CDMA_IN(&chan->regs->sr);
+	stat = cdma_read(&chan->regs->sr);
 	if (!(stat & XILINX_CDMA_XR_IRQ_ALL_MASK))
 		return IRQ_NONE;
 
 	/* Ack the interrupts */
-	CDMA_OUT(&chan->regs->sr, XILINX_CDMA_XR_IRQ_ALL_MASK);
+	cdma_write(&chan->regs->sr, XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	/* Check for only the interrupts which are enabled */
 	stat &= (reg & XILINX_CDMA_XR_IRQ_ALL_MASK);
@@ -524,9 +524,9 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 		dev_err(chan->dev,
 			"Channel %x has errors %x, cdr %x tdr %x\n",
 			(unsigned int)chan,
-			(unsigned int)CDMA_IN(&chan->regs->sr),
-			(unsigned int)CDMA_IN(&chan->regs->cdr),
-			(unsigned int)CDMA_IN(&chan->regs->tdr));
+			(unsigned int)cdma_read(&chan->regs->sr),
+			(unsigned int)cdma_read(&chan->regs->cdr),
+			(unsigned int)cdma_read(&chan->regs->tdr));
 		chan->err = 1;
 	}
 
@@ -803,7 +803,7 @@ static int xilinx_cdma_device_control(struct dma_chan *dchan,
 		 */
 		struct xilinx_cdma_config *cfg =
 				(struct xilinx_cdma_config *)arg;
-		u32 reg = CDMA_IN(&chan->regs->cr);
+		u32 reg = cdma_read(&chan->regs->cr);
 
 		if (cfg->coalesc <= XILINX_CDMA_COALESCE_MAX) {
 			reg &= ~XILINX_CDMA_XR_COALESCE_MASK;
@@ -818,7 +818,7 @@ static int xilinx_cdma_device_control(struct dma_chan *dchan,
 			chan->config.delay = cfg->delay;
 		}
 
-		CDMA_OUT(&chan->regs->cr, reg);
+		cdma_write(&chan->regs->cr, reg);
 
 		return 0;
 	}
