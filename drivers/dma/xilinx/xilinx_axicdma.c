@@ -925,7 +925,6 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&xdev->common.channels);
 
 	node = pdev->dev.of_node;
-	xdev->feature = 0;
 
 	/* iomap registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
