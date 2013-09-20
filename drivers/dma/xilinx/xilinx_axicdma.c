@@ -1,7 +1,7 @@
 /*
  * Xilinx Central DMA Engine support
  *
- * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010 - 2013 Xilinx, Inc. All rights reserved.
  *
  * Based on the Freescale DMA driver.
  *
@@ -12,7 +12,6 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- *
  */
 
 #include <linux/amba/xilinx_dma.h>
@@ -146,7 +145,7 @@ struct xilinx_cdma_device {
 };
 
 #define to_xilinx_chan(chan) \
-			container_of(chan, struct xilinx_cdma_chan, common)
+	container_of(chan, struct xilinx_cdma_chan, common)
 
 /* IO accessors */
 static inline void
@@ -174,7 +173,8 @@ static int xilinx_cdma_alloc_chan_resources(struct dma_chan *dchan)
 	 * We need the descriptor to be aligned to 64bytes
 	 * for meeting Xilinx DMA specification requirement.
 	 */
-	chan->desc_pool = dma_pool_create("xilinx_cdma_desc_pool",
+	chan->desc_pool =
+		dma_pool_create("xilinx_cdma_desc_pool",
 				chan->dev,
 				sizeof(struct xilinx_cdma_desc_sw),
 				__alignof__(struct xilinx_cdma_desc_sw), 0);
@@ -193,7 +193,7 @@ static int xilinx_cdma_alloc_chan_resources(struct dma_chan *dchan)
 }
 
 static void xilinx_cdma_free_desc_list(struct xilinx_cdma_chan *chan,
-					struct list_head *list)
+				       struct list_head *list)
 {
 	struct xilinx_cdma_desc_sw *desc, *_desc;
 
@@ -204,7 +204,7 @@ static void xilinx_cdma_free_desc_list(struct xilinx_cdma_chan *chan,
 }
 
 static void xilinx_cdma_free_desc_list_reverse(struct xilinx_cdma_chan *chan,
-						struct list_head *list)
+					       struct list_head *list)
 {
 	struct xilinx_cdma_desc_sw *desc, *_desc;
 
@@ -230,11 +230,11 @@ static void xilinx_cdma_free_chan_resources(struct dma_chan *dchan)
 }
 
 static enum dma_status xilinx_cdma_desc_status(struct xilinx_cdma_chan *chan,
-					struct xilinx_cdma_desc_sw *desc)
+					       struct xilinx_cdma_desc_sw *desc)
 {
 	return dma_async_is_complete(desc->async_tx.cookie,
-					chan->completed_cookie,
-					chan->cookie);
+				     chan->completed_cookie,
+				     chan->cookie);
 }
 
 static void xilinx_cdma_chan_desc_cleanup(struct xilinx_cdma_chan *chan)
@@ -292,19 +292,19 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 static int cdma_is_idle(struct xilinx_cdma_chan *chan)
 {
 	return cdma_read(chan, XILINX_CDMA_STATUS_OFFSET) &
-			XILINX_CDMA_SR_IDLE_MASK;
+	       XILINX_CDMA_SR_IDLE_MASK;
 }
 
 /* Only needed for Axi CDMA v2_00_a or earlier core */
 static void cdma_sg_toggle(struct xilinx_cdma_chan *chan)
 {
 	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
-		~XILINX_CDMA_CR_SGMODE_MASK);
+		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
+		   ~XILINX_CDMA_CR_SGMODE_MASK);
 
 	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		XILINX_CDMA_CR_SGMODE_MASK);
+		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
+		   XILINX_CDMA_CR_SGMODE_MASK);
 }
 
 static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
@@ -330,17 +330,17 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 
 	/* Enable interrupts */
 	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		XILINX_CDMA_XR_IRQ_ALL_MASK);
+		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
+		   XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	desch = list_first_entry(&chan->pending_list,
-			struct xilinx_cdma_desc_sw, node);
+				 struct xilinx_cdma_desc_sw, node);
 
 	if (chan->has_sg) {
 
 		/* If hybrid mode, append pending list to active list */
 		desct = container_of(chan->pending_list.prev,
-				struct xilinx_cdma_desc_sw, node);
+				     struct xilinx_cdma_desc_sw, node);
 
 		list_splice_tail_init(&chan->pending_list, &chan->active_list);
 
@@ -351,11 +351,11 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 		cdma_sg_toggle(chan);
 
 		cdma_write(chan, XILINX_CDMA_CDESC_OFFSET,
-				desch->async_tx.phys);
+			   desch->async_tx.phys);
 
 		/* Update tail ptr register and start the transfer */
 		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET,
-				desch->async_tx.phys);
+			   desch->async_tx.phys);
 		goto out_unlock;
 	}
 
@@ -370,7 +370,7 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 
 	/* Start the transfer */
 	cdma_write(chan, XILINX_CDMA_BTT_OFFSET,
-		hw->control & XILINX_CDMA_MAX_TRANS_LEN);
+		   hw->control & XILINX_CDMA_MAX_TRANS_LEN);
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -441,16 +441,16 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 	u32 tmp;
 
 	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		XILINX_CDMA_CR_RESET_MASK);
+		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
+		   XILINX_CDMA_CR_RESET_MASK);
 
 	tmp = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
-			XILINX_CDMA_CR_RESET_MASK;
+	      XILINX_CDMA_CR_RESET_MASK;
 
 	/* Wait for the hardware to finish reset */
 	while (loop && tmp) {
 		tmp = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
-				XILINX_CDMA_CR_RESET_MASK;
+		      XILINX_CDMA_CR_RESET_MASK;
 		loop -= 1;
 	}
 
@@ -464,7 +464,7 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 	/* For Axi CDMA, always do sg transfers if sg mode is built in */
 	if (chan->has_sg)
 		cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-			tmp | XILINX_CDMA_CR_SGMODE_MASK);
+			   tmp | XILINX_CDMA_CR_SGMODE_MASK);
 
 	return 0;
 }
@@ -481,7 +481,7 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 
 	/* Disable intr */
 	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		reg & ~XILINX_CDMA_XR_IRQ_ALL_MASK);
+		   reg & ~XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	stat = cdma_read(chan, XILINX_CDMA_STATUS_OFFSET);
 	if (!(stat & XILINX_CDMA_XR_IRQ_ALL_MASK))
@@ -489,7 +489,7 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 
 	/* Ack the interrupts */
 	cdma_write(chan, XILINX_CDMA_STATUS_OFFSET,
-		XILINX_CDMA_XR_IRQ_ALL_MASK);
+		   XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	/* Check for only the interrupts which are enabled */
 	stat &= (reg & XILINX_CDMA_XR_IRQ_ALL_MASK);
@@ -535,10 +535,11 @@ static void cdma_do_tasklet(unsigned long data)
 
 /* Append the descriptor list to the pending list */
 static void append_desc_queue(struct xilinx_cdma_chan *chan,
-			struct xilinx_cdma_desc_sw *desc)
+			      struct xilinx_cdma_desc_sw *desc)
 {
-	struct xilinx_cdma_desc_sw *tail = container_of(chan->pending_list.prev,
-					struct xilinx_cdma_desc_sw, node);
+	struct xilinx_cdma_desc_sw *tail =
+		container_of(chan->pending_list.prev,
+			     struct xilinx_cdma_desc_sw, node);
 	struct xilinx_cdma_desc_hw *hw;
 
 	if (list_empty(&chan->pending_list))
@@ -566,8 +567,8 @@ out_splice:
 static dma_cookie_t xilinx_cdma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xilinx_cdma_chan *chan = to_xilinx_chan(tx->chan);
-	struct xilinx_cdma_desc_sw *desc = container_of(tx,
-				struct xilinx_cdma_desc_sw, async_tx);
+	struct xilinx_cdma_desc_sw *desc =
+		container_of(tx, struct xilinx_cdma_desc_sw, async_tx);
 	struct xilinx_cdma_desc_sw *child;
 	unsigned long flags;
 	dma_cookie_t cookie = -EBUSY;
@@ -609,7 +610,7 @@ static dma_cookie_t xilinx_cdma_tx_submit(struct dma_async_tx_descriptor *tx)
 }
 
 static struct xilinx_cdma_desc_sw *xilinx_cdma_alloc_descriptor(
-					struct xilinx_cdma_chan *chan)
+	struct xilinx_cdma_chan *chan)
 {
 	struct xilinx_cdma_desc_sw *desc;
 	dma_addr_t pdesc;
@@ -674,9 +675,9 @@ static struct dma_async_tx_descriptor *xilinx_cdma_prep_memcpy(
 	 */
 	if (!chan->has_dre) {
 		if ((dma_src &
-			(chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK)) ||
-			(dma_dst &
-			(chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK))) {
+		     (chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK)) ||
+		    (dma_dst &
+		     (chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK))) {
 
 			dev_err(chan->dev,
 				"Src/Dest address not aligned when no DRE\n");
@@ -699,12 +700,12 @@ static struct dma_async_tx_descriptor *xilinx_cdma_prep_memcpy(
 		/* if lite build, transfer cannot cross page boundary */
 		if (chan->is_lite)
 			copy = min(copy, (size_t)(PAGE_MASK -
-						(src & PAGE_MASK)));
+						  (src & PAGE_MASK)));
 
 		if (!copy) {
 			dev_err(chan->dev,
 				"Got zero transfer length for %x\n",
-					(unsigned int)src);
+				(unsigned int)src);
 			goto fail;
 		}
 
@@ -751,7 +752,7 @@ fail:
 
 /* Run-time device configuration for Axi CDMA */
 static int xilinx_cdma_device_control(struct dma_chan *dchan,
-				enum dma_ctrl_cmd cmd, unsigned long arg)
+				      enum dma_ctrl_cmd cmd, unsigned long arg)
 {
 	struct xilinx_cdma_chan *chan;
 	unsigned long flags;
@@ -776,7 +777,7 @@ static int xilinx_cdma_device_control(struct dma_chan *dchan,
 		 * Use value XILINX_CDMA_NO_CHANGE to signal no change
 		 */
 		struct xilinx_cdma_config *cfg =
-				(struct xilinx_cdma_config *)arg;
+			(struct xilinx_cdma_config *)arg;
 		u32 reg = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET);
 
 		if (cfg->coalesc <= XILINX_CDMA_COALESCE_MAX) {
@@ -815,7 +816,7 @@ static void xilinx_cdma_free_channels(struct xilinx_cdma_device *xdev)
  * . Initialize special channel handling routines
  */
 static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
-	struct device_node *node, u32 feature)
+				  struct device_node *node, u32 feature)
 {
 	struct xilinx_cdma_chan *chan;
 	int err;
@@ -857,7 +858,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->start_transfer = xilinx_cdma_start_transfer;
 
 	chan->has_sg = (xdev->feature & XILINX_CDMA_FTR_HAS_SG) >>
-			XILINX_CDMA_FTR_HAS_SG_SHIFT;
+		       XILINX_CDMA_FTR_HAS_SG_SHIFT;
 
 	chan->is_lite = of_property_read_bool(node, "xlnx,lite-mode");
 	if (chan->is_lite) {
@@ -870,7 +871,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 			if (!width) {
 				dev_err(xdev->dev,
 					"Lite mode w/o data width property\n");
-					return -EPERM;
+				return -EPERM;
 			}
 			chan->max_len = width * value;
 		}
@@ -883,7 +884,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	 * Can change it to be a structure to have more matching information
 	 */
 	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_CDMA |
-		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
+			(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
@@ -908,8 +909,8 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	/* Find the IRQ line, if it exists in the device tree */
 	chan->irq = irq_of_parse_and_map(node, 0);
 	err = devm_request_irq(xdev->dev, chan->irq, cdma_intr_handler,
-				IRQF_SHARED,
-				"xilinx-cdma-controller", chan);
+			       IRQF_SHARED,
+			       "xilinx-cdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
 		return err;
@@ -932,7 +933,7 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 	u32 value;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_cdma_device),
-				GFP_KERNEL);
+			    GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
@@ -961,9 +962,9 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 	xdev->common.device_control = xilinx_cdma_device_control;
 	xdev->common.device_issue_pending = xilinx_cdma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
-				xilinx_cdma_alloc_chan_resources;
+		xilinx_cdma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
-				xilinx_cdma_free_chan_resources;
+		xilinx_cdma_free_chan_resources;
 	xdev->common.device_tx_status = xilinx_tx_status;
 	xdev->common.dev = &pdev->dev;
 
@@ -1006,7 +1007,7 @@ static int xilinx_cdma_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xilinx_cdma_of_ids[] = {
-	{ .compatible = "xlnx,axi-cdma",},
+	{ .compatible = "xlnx,axi-cdma", },
 	{}
 };
 
