@@ -1,0 +1,22 @@
+Device-Tree bindings for Xilinx Chroma Resampler(CRESAMPLE)
+
+Xilinx CRESAMPLE provides the chroma resampling of YUV formats.
+
+Required properties:
+ - compatible: value should be "xlnx,v-cresample-3.01.a"
+ - reg: base address and size of the CRESAMPLE IP
+ - xlnx,input-format, xlnx,output-format: the input/output video formats of
+   CRESAMPLE. The value should be one of following format strings.
+
+	yuv422
+	yuv444
+	yuv420
+
+Example:
+
+	v_cresample_0: v-cresample@40020000 {
+		compatible = "xlnx,v-cresample-3.01.a";
+		reg = <0x40020000 0x10000>;
+		xlnx,input-format = "yuv444";
+		xlnx,output-format = "yuv422";
+	};
