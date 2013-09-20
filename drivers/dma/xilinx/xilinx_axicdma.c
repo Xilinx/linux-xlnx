@@ -925,7 +925,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	return 0;
 }
 
-static int xilinx_cdma_of_probe(struct platform_device *pdev)
+static int xilinx_cdma_probe(struct platform_device *pdev)
 {
 	struct xilinx_cdma_device *xdev;
 	struct device_node *child, *node;
@@ -996,7 +996,7 @@ free_chan_resources:
 	return ret;
 }
 
-static int xilinx_cdma_of_remove(struct platform_device *pdev)
+static int xilinx_cdma_remove(struct platform_device *pdev)
 {
 	struct xilinx_cdma_device *xdev;
 
@@ -1013,17 +1013,17 @@ static const struct of_device_id xilinx_cdma_of_ids[] = {
 	{}
 };
 
-static struct platform_driver xilinx_cdma_of_driver = {
+static struct platform_driver xilinx_cdma_driver = {
 	.driver = {
 		.name = "xilinx-cdma",
 		.owner = THIS_MODULE,
 		.of_match_table = xilinx_cdma_of_ids,
 	},
-	.probe = xilinx_cdma_of_probe,
-	.remove = xilinx_cdma_of_remove,
+	.probe = xilinx_cdma_probe,
+	.remove = xilinx_cdma_remove,
 };
 
-module_platform_driver(xilinx_cdma_of_driver);
+module_platform_driver(xilinx_cdma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx CDMA driver");
