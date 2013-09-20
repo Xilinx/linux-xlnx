@@ -30,6 +30,7 @@
 
 /* Hw specific definitions */
 #define XILINX_CDMA_MAX_TRANS_LEN		0x7FFFFF
+						/* Max transfer length */
 
 /* General register bits definitions */
 #define XILINX_CDMA_CR_RESET_MASK		0x00000004
@@ -37,21 +38,6 @@
 
 #define XILINX_CDMA_SR_IDLE_MASK		0x00000002
 						/* DMA channel idle */
-
-#define XILINX_CDMA_SR_ERR_INTERNAL_MASK	0x00000010
-						/* Datamover internal err */
-#define XILINX_CDMA_SR_ERR_SLAVE_MASK		0x00000020
-						/* Datamover slave err */
-#define XILINX_CDMA_SR_ERR_DECODE_MASK		0x00000040
-						/* Datamover decode err */
-#define XILINX_CDMA_SR_ERR_SG_INT_MASK		0x00000100
-						/* SG internal err */
-#define XILINX_CDMA_SR_ERR_SG_SLV_MASK		0x00000200
-						/* SG slave err */
-#define XILINX_CDMA_SR_ERR_SG_DEC_MASK		0x00000400
-						/* SG decode err */
-#define XILINX_CDMA_SR_ERR_ALL_MASK		0x00000770
-						/* All errors */
 
 #define XILINX_CDMA_XR_IRQ_IOC_MASK	0x00001000
 						/* Completion interrupt */
@@ -67,9 +53,8 @@
 #define XILINX_CDMA_XR_COALESCE_MASK	0x00FF0000
 						/* Coalesce counter */
 
-#define XILINX_CDMA_IRQ_SHIFT		12
-#define XILINX_CDMA_DELAY_SHIFT		24
-#define XILINX_CDMA_COALESCE_SHIFT	16
+#define XILINX_CDMA_DELAY_SHIFT		24 /* Delay counter shift */
+#define XILINX_CDMA_COALESCE_SHIFT	16 /* Coaelsce counter shift */
 
 #define XILINX_CDMA_DELAY_MAX		0xFF
 					/* Maximum delay counter value */
@@ -79,14 +64,7 @@
 #define XILINX_CDMA_CR_SGMODE_MASK	0x00000008
 					/* Scatter gather mode */
 
-#define XILINX_CDMA_SR_SGINCLD_MASK		0x00000008
-					/* Hybrid build */
-#define XILINX_CDMA_XR_IRQ_SIMPLE_ALL_MASK	0x00005000
-					/* All interrupts for simple mode */
-
 /* BD definitions for Axi Cdma */
-#define XILINX_CDMA_BD_STS_COMPL_MASK	0x80000000
-#define XILINX_CDMA_BD_STS_ERR_MASK	0x70000000
 #define XILINX_CDMA_BD_STS_ALL_MASK	0xF0000000
 
 /* Feature encodings */
