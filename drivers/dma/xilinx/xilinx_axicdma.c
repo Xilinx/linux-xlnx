@@ -845,10 +845,15 @@ static int my_log(int value)
 	return i;
 }
 
-static void xilinx_cdma_chan_remove(struct xilinx_cdma_chan *chan)
+static void xilinx_cdma_free_channels(struct xilinx_cdma_device *xdev)
 {
-	irq_dispose_mapping(chan->irq);
-	list_del(&chan->common.device_node);
+	int i;
+
+	for (i = 0; i < XILINX_CDMA_MAX_CHANS_PER_DEVICE; i++) {
+		list_del(&xdev->chan[i]->common.device_node);
+		tasklet_kill(&xdev->chan[i]->tasklet);
+		irq_dispose_mapping(xdev->chan[i]->irq);
+	}
 }
 
 /*
@@ -935,8 +940,6 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->dev = xdev->dev;
 	xdev->chan[chan->id] = chan;
 
-	tasklet_init(&chan->tasklet, cdma_do_tasklet, (unsigned long)chan);
-
 	/* Initialize the channel */
 	err = cdma_init(chan);
 	if (err) {
@@ -957,9 +960,10 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 				"xilinx-cdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
-		irq_dispose_mapping(chan->irq);
 		return err;
 	}
+
+	tasklet_init(&chan->tasklet, cdma_do_tasklet, (unsigned long)chan);
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
@@ -974,8 +978,7 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	struct device_node *child, *node;
 	int *value;
 	struct resource *res;
-
-	dev_info(&op->dev, "Probing xilinx axi cdma engine\n");
+	int ret;
 
 	xdev = devm_kzalloc(&op->dev, sizeof(struct xilinx_cdma_device),
 				GFP_KERNEL);
@@ -1023,26 +1026,37 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	platform_set_drvdata(op, xdev);
 
 	for_each_child_of_node(node, child) {
-		xilinx_cdma_chan_probe(xdev, child, xdev->feature);
+		ret = xilinx_cdma_chan_probe(xdev, child, xdev->feature);
+		if (ret) {
+			dev_err(&op->dev, "Probing channels failed\n");
+			goto free_chan_resources;
+		}
 	}
 
-	dma_async_device_register(&xdev->common);
+	ret = dma_async_device_register(&xdev->common);
+	if (ret) {
+		dev_err(&op->dev, "CDMA device registration failed\n");
+		goto free_chan_resources;
+	}
+
+	dev_info(&op->dev, "Probing xilinx axi cdma engine...Successful\n");
 
 	return 0;
+
+free_chan_resources:
+	xilinx_cdma_free_channels(xdev);
+
+	return ret;
 }
 
 static int xilinx_cdma_of_remove(struct platform_device *op)
 {
 	struct xilinx_cdma_device *xdev;
-	int i;
 
 	xdev = platform_get_drvdata(op);
 	dma_async_device_unregister(&xdev->common);
 
-	for (i = 0; i < XILINX_CDMA_MAX_CHANS_PER_DEVICE; i++) {
-		if (xdev->chan[i])
-			xilinx_cdma_chan_remove(xdev->chan[i]);
-	}
+	xilinx_cdma_free_channels(xdev);
 
 	return 0;
 }
