@@ -1,4 +1,4 @@
-/**
+/*
  * Analog Devices ADV7511 HDMI transmitter driver
  *
  * Copyright 2012 Analog Devices Inc.
