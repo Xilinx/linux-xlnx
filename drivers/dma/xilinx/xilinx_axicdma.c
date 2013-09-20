@@ -490,7 +490,7 @@ static int cdma_init(struct xilinx_cdma_chan *chan)
 	}
 
 	/* For Axi CDMA, always do sg transfers if sg mode is built in */
-	if ((chan->feature & XILINX_DMA_IP_CDMA) && chan->has_sg)
+	if (chan->has_sg)
 		CDMA_OUT(&chan->regs->cr, tmp | XILINX_CDMA_CR_SGMODE_MASK);
 
 	return 0;
@@ -907,8 +907,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	 * Used by dmatest channel matching in slave transfers
 	 * Can change it to be a structure to have more matching information
 	 */
-	chan->private = (chan->direction & 0xFF) |
-		(chan->feature & XILINX_DMA_IP_MASK) |
+	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_CDMA |
 		(device_id << XILINX_CDMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
@@ -977,23 +976,19 @@ static int xilinx_cdma_of_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	/* Axi CDMA only does memcpy */
-	if (of_device_is_compatible(node, "xlnx,axi-cdma")) {
-		xdev->feature |= XILINX_DMA_IP_CDMA;
-
-		value = (int *)of_get_property(node, "xlnx,include-sg",
-				NULL);
-		if (value) {
-			if (be32_to_cpup(value) == 1)
-				xdev->feature |= XILINX_CDMA_FTR_HAS_SG;
-		}
-
-		dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
-		xdev->common.device_prep_dma_memcpy = xilinx_cdma_prep_memcpy;
-		xdev->common.device_control = xilinx_cdma_device_control;
-		xdev->common.device_issue_pending = xilinx_cdma_issue_pending;
+	value = (int *)of_get_property(node, "xlnx,include-sg",
+			NULL);
+	if (value) {
+		if (be32_to_cpup(value) == 1)
+			xdev->feature |= XILINX_CDMA_FTR_HAS_SG;
 	}
 
+	/* Axi CDMA only does memcpy */
+	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
+	xdev->common.device_prep_dma_memcpy = xilinx_cdma_prep_memcpy;
+
+	xdev->common.device_control = xilinx_cdma_device_control;
+	xdev->common.device_issue_pending = xilinx_cdma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
 				xilinx_cdma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
