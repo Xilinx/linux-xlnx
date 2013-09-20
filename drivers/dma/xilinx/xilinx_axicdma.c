@@ -79,9 +79,6 @@
 #define XILINX_CDMA_RESET_LOOP	1000000
 #define XILINX_CDMA_HALT_LOOP	1000000
 
-/* Device Id in the private structure */
-#define XILINX_CDMA_DEVICE_ID_SHIFT	28
-
 /* IO accessors */
 #define cdma_write(addr, val)	(iowrite32(val, addr))
 #define cdma_read(addr)		(ioread32(addr))
@@ -887,7 +884,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	 * Can change it to be a structure to have more matching information
 	 */
 	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_CDMA |
-		(device_id << XILINX_CDMA_DEVICE_ID_SHIFT);
+		(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
