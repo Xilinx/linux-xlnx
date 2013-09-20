@@ -29,7 +29,6 @@
 #include <linux/amba/xilinx_dma.h>
 
 /* Hw specific definitions */
-#define XILINX_CDMA_MAX_CHANS_PER_DEVICE	0x1
 #define XILINX_CDMA_MAX_TRANS_LEN		0x7FFFFF
 
 /* General register bits definitions */
@@ -176,7 +175,7 @@ struct xilinx_cdma_device {
 	void __iomem *regs;
 	struct device *dev;
 	struct dma_device common;
-	struct xilinx_cdma_chan *chan[XILINX_CDMA_MAX_CHANS_PER_DEVICE];
+	struct xilinx_cdma_chan *chan;
 	u32 feature;
 	int irq;
 };
@@ -847,13 +846,10 @@ static int my_log(int value)
 
 static void xilinx_cdma_free_channels(struct xilinx_cdma_device *xdev)
 {
-	int i;
 
-	for (i = 0; i < XILINX_CDMA_MAX_CHANS_PER_DEVICE; i++) {
-		list_del(&xdev->chan[i]->common.device_node);
-		tasklet_kill(&xdev->chan[i]->tasklet);
-		irq_dispose_mapping(xdev->chan[i]->irq);
-	}
+	list_del(&xdev->chan->common.device_node);
+	tasklet_kill(&xdev->chan->tasklet);
+	irq_dispose_mapping(xdev->chan->irq);
 }
 
 /*
@@ -938,7 +934,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 		xdev->common.copy_align = my_log(width);
 
 	chan->dev = xdev->dev;
-	xdev->chan[chan->id] = chan;
+	xdev->chan = chan;
 
 	/* Initialize the channel */
 	err = cdma_init(chan);
