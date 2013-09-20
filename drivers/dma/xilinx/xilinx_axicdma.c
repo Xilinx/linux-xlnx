@@ -301,21 +301,6 @@ static void cdma_sg_toggle(struct xilinx_cdma_chan *chan)
 		cdma_read(&chan->regs->cr) | XILINX_CDMA_CR_SGMODE_MASK);
 }
 
-#define XILINX_CDMA_DRIVER_DEBUG	0
-
-#if (XILINX_CDMA_DRIVER_DEBUG == 1)
-static void desc_dump(struct xilinx_cdma_desc_hw *hw)
-{
-	pr_info("hw desc %x:\n", (unsigned int)hw);
-	pr_info("\tnext_desc %x\n", hw->next_desc);
-	pr_info("\tsrc_addr %x\n", hw->src_addr);
-	pr_info("\tdest_addr %x\n", hw->dest_addr);
-	pr_info("\thsize %x\n", hw->hsize);
-	pr_info("\tcontrol %x\n", hw->control);
-	pr_info("\tstatus %x\n", hw->status);
-}
-#endif
-
 static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 {
 	unsigned long flags;
