@@ -849,7 +849,6 @@ static void xilinx_cdma_chan_remove(struct xilinx_cdma_chan *chan)
 {
 	irq_dispose_mapping(chan->irq);
 	list_del(&chan->common.device_node);
-	kfree(chan);
 }
 
 /*
@@ -867,11 +866,10 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	u32 width = 0, device_id = 0;
 
 	/* alloc channel */
-	chan = kzalloc(sizeof(*chan), GFP_KERNEL);
+	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
 	if (!chan) {
 		dev_err(xdev->dev, "no free memory for DMA channels!\n");
-		err = -ENOMEM;
-		goto out_return;
+		return -ENOMEM;
 	}
 
 	chan->feature = feature;
@@ -912,7 +910,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 				if (!width) {
 					dev_err(xdev->dev,
 						"Lite mode w/o data width property\n");
-					goto out_free_chan;
+					return -EPERM;
 				}
 				chan->max_len = width *
 					be32_to_cpup(value);
@@ -940,9 +938,10 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	tasklet_init(&chan->tasklet, cdma_do_tasklet, (unsigned long)chan);
 
 	/* Initialize the channel */
-	if (cdma_init(chan)) {
+	err = cdma_init(chan);
+	if (err) {
 		dev_err(xdev->dev, "Reset channel failed\n");
-		goto out_free_chan;
+		return err;
 	}
 
 	spin_lock_init(&chan->lock);
@@ -953,11 +952,13 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 
 	/* Find the IRQ line, if it exists in the device tree */
 	chan->irq = irq_of_parse_and_map(node, 0);
-	err = request_irq(chan->irq, cdma_intr_handler, IRQF_SHARED,
+	err = devm_request_irq(xdev->dev, chan->irq, cdma_intr_handler,
+				IRQF_SHARED,
 				"xilinx-cdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
-		goto out_free_irq;
+		irq_dispose_mapping(chan->irq);
+		return err;
 	}
 
 	/* Add the channel to DMA device channel list */
@@ -965,30 +966,21 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	xdev->common.chancnt++;
 
 	return 0;
-
-out_free_irq:
-	irq_dispose_mapping(chan->irq);
-out_free_chan:
-	kfree(chan);
-out_return:
-	return err;
 }
 
 static int xilinx_cdma_of_probe(struct platform_device *op)
 {
 	struct xilinx_cdma_device *xdev;
 	struct device_node *child, *node;
-	int err;
 	int *value;
+	struct resource *res;
 
 	dev_info(&op->dev, "Probing xilinx axi cdma engine\n");
 
-	xdev = kzalloc(sizeof(struct xilinx_cdma_device), GFP_KERNEL);
-	if (!xdev) {
-		dev_err(&op->dev, "Not enough memory for device\n");
-		err = -ENOMEM;
-		goto out_return;
-	}
+	xdev = devm_kzalloc(&op->dev, sizeof(struct xilinx_cdma_device),
+				GFP_KERNEL);
+	if (!xdev)
+		return -ENOMEM;
 
 	xdev->dev = &(op->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);
@@ -997,11 +989,11 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	xdev->feature = 0;
 
 	/* iomap registers */
-	xdev->regs = of_iomap(node, 0);
+	res = platform_get_resource(op, IORESOURCE_MEM, 0);
+	xdev->regs = devm_ioremap_resource(&op->dev, res);
 	if (!xdev->regs) {
 		dev_err(&op->dev, "unable to iomap registers\n");
-		err = -ENOMEM;
-		goto out_free_xdev;
+		return -ENOMEM;
 	}
 
 	/* Axi CDMA only does memcpy */
@@ -1037,12 +1029,6 @@ static int xilinx_cdma_of_probe(struct platform_device *op)
 	dma_async_device_register(&xdev->common);
 
 	return 0;
-
-out_free_xdev:
-	kfree(xdev);
-
-out_return:
-	return err;
 }
 
 static int xilinx_cdma_of_remove(struct platform_device *op)
@@ -1057,9 +1043,6 @@ static int xilinx_cdma_of_remove(struct platform_device *op)
 		if (xdev->chan[i])
 			xilinx_cdma_chan_remove(xdev->chan[i]);
 	}
-
-	iounmap(xdev->regs);
-	kfree(xdev);
 
 	return 0;
 }
