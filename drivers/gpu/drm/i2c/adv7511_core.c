@@ -735,64 +735,56 @@ static int adv7511_parse_dt(struct device_node *np,
 			    struct adv7511_link_config *config)
 {
 	int ret;
-	u32 val;
 
-	ret = of_property_read_u32(np, "adi,input-id", &val);
+	ret = of_property_read_u32(np, "adi,input-id", &config->id);
 	if (ret < 0)
 		return ret;
-	config->id = val;
 
-	ret = of_property_read_u32(np, "adi,sync-pulse", &val);
-	if (ret < 0)
-		config->sync_pulse = ADV7511_INPUT_SYNC_PULSE_NONE;
-	else
-		config->sync_pulse = val;
+	config->sync_pulse = ADV7511_INPUT_SYNC_PULSE_NONE;
+	of_property_read_u32(np, "adi,sync-pulse", &config->sync_pulse);
 
-	ret = of_property_read_u32(np, "adi,bit-justification", &val);
+	ret = of_property_read_u32(np, "adi,bit-justification",
+				   &config->bit_justification);
 	if (ret < 0)
 		return ret;
-	config->bit_justification = val;
 
-	ret = of_property_read_u32(np, "adi,up-conversion", &val);
-	if (ret < 0)
-		config->up_conversion = ADV7511_UP_CONVERSION_ZERO_ORDER;
-	else
-		config->up_conversion = val;
+	config->up_conversion = ADV7511_UP_CONVERSION_ZERO_ORDER;
+	of_property_read_u32(np, "adi,up-conversion", &config->up_conversion);
 
-	ret = of_property_read_u32(np, "adi,timing-generation-sequence", &val);
+	ret = of_property_read_u32(np, "adi,timing-generation-sequence",
+				   &config->timing_gen_seq);
 	if (ret < 0)
 		return ret;
-	config->timing_gen_seq = val;
 
-	ret = of_property_read_u32(np, "adi,vsync-polarity", &val);
+	ret = of_property_read_u32(np, "adi,vsync-polarity",
+				   &config->vsync_polarity);
 	if (ret < 0)
 		return ret;
-	config->vsync_polarity = val;
 
-	ret = of_property_read_u32(np, "adi,hsync-polarity", &val);
+	ret = of_property_read_u32(np, "adi,hsync-polarity",
+				   &config->hsync_polarity);
 	if (ret < 0)
 		return ret;
-	config->hsync_polarity = val;
 
 	config->reverse_bitorder = of_property_read_bool(np,
 		"adi,reverse-bitorder");
 	config->tmds_clock_inversion = of_property_read_bool(np,
 		"adi,tmds-clock-inversion");
 
-	ret = of_property_read_u32(np, "adi,clock-delay", &val);
+	ret = of_property_read_u32(np, "adi,clock-delay",
+				   &config->clock_delay);
 	if (ret)
 		return ret;
-	config->clock_delay = val;
 
-	ret = of_property_read_u32(np, "adi,input-style", &val);
+	ret = of_property_read_u32(np, "adi,input-style",
+				   &config->input_style);
 	if (ret)
 		return ret;
-	config->input_style = val;
 
-	ret = of_property_read_u32(np, "adi,input-color-depth", &val);
+	ret = of_property_read_u32(np, "adi,input-color-depth",
+				   &config->input_color_depth);
 	if (ret)
 		return ret;
-	config->input_color_depth = val;
 
 	config->gpio_pd = of_get_gpio(np, 0);
 	if (config->gpio_pd == -EPROBE_DEFER)
