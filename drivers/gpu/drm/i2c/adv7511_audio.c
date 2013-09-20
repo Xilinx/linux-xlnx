@@ -21,7 +21,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 
-#include "adv7511.h"
+#include <drm/i2c/adv7511.h>
 
 static const struct snd_soc_dapm_widget adv7511_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("TMDS"),
@@ -33,7 +33,7 @@ static const struct snd_soc_dapm_route adv7511_routes[] = {
 };
 
 static void adv7511_calc_cts_n(unsigned int f_tmds, unsigned int fs,
-	unsigned int *cts, unsigned int *n)
+			       unsigned int *cts, unsigned int *n)
 {
 	switch (fs) {
 	case 32000:
@@ -61,16 +61,19 @@ static int adv7511_update_cts_n(struct adv7511 *adv7511)
 	regmap_write(adv7511->regmap, ADV7511_REG_N1, (n >> 8) & 0xff);
 	regmap_write(adv7511->regmap, ADV7511_REG_N2, n & 0xff);
 
-	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL0, (cts >> 16) & 0xf);
-	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL1, (cts >> 8) & 0xff);
-	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL2, cts & 0xff);
+	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL0,
+		     (cts >> 16) & 0xf);
+	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL1,
+		     (cts >> 8) & 0xff);
+	regmap_write(adv7511->regmap, ADV7511_REG_CTS_MANUAL2,
+		     cts & 0xff);
 
 	return 0;
 }
 
 static int adv7511_hw_params(struct snd_pcm_substream *substream,
-	struct snd_pcm_hw_params *params,
-	struct snd_soc_dai *dai)
+			     struct snd_pcm_hw_params *params,
+			     struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->codec;
@@ -126,15 +129,15 @@ static int adv7511_hw_params(struct snd_pcm_substream *substream,
 	adv7511_update_cts_n(adv7511);
 
 	regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CFG3,
-	    ADV7511_AUDIO_CFG3_LEN_MASK, len);
+			   ADV7511_AUDIO_CFG3_LEN_MASK, len);
 	regmap_update_bits(adv7511->regmap, ADV7511_REG_I2C_FREQ_ID_CFG,
-	    ADV7511_I2C_FREQ_ID_CFG_RATE_MASK, rate << 4);
+			   ADV7511_I2C_FREQ_ID_CFG_RATE_MASK, rate << 4);
 
 	return 0;
 }
 
 static int adv7511_set_dai_fmt(struct snd_soc_dai *codec_dai,
-		unsigned int fmt)
+			       unsigned int fmt)
 {
 	struct snd_soc_codec *codec = codec_dai->codec;
 	struct adv7511 *adv7511 = snd_soc_codec_get_drvdata(codec);
@@ -179,9 +182,12 @@ static int adv7511_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		return -EINVAL;
 	}
 
-	regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_SOURCE, 0x70, audio_source << 4);
-	regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CONFIG, BIT(6), invert_clock << 6);
-	regmap_update_bits(adv7511->regmap, ADV7511_REG_I2S_CONFIG, 0x03, i2s_format);
+	regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_SOURCE, 0x70,
+			   audio_source << 4);
+	regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CONFIG, BIT(6),
+			   invert_clock << 6);
+	regmap_update_bits(adv7511->regmap, ADV7511_REG_I2S_CONFIG, 0x03,
+			   i2s_format);
 
 	adv7511->audio_source = audio_source;
 
@@ -189,7 +195,7 @@ static int adv7511_set_dai_fmt(struct snd_soc_dai *codec_dai,
 }
 
 static int adv7511_set_bias_level(struct snd_soc_codec *codec,
-				 enum snd_soc_bias_level level)
+				  enum snd_soc_bias_level level)
 {
 	struct adv7511 *adv7511 = snd_soc_codec_get_drvdata(codec);
 
@@ -199,23 +205,32 @@ static int adv7511_set_bias_level(struct snd_soc_codec *codec,
 		case ADV7511_AUDIO_SOURCE_I2S:
 			break;
 		case ADV7511_AUDIO_SOURCE_SPDIF:
-			regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CONFIG, BIT(7), BIT(7));
+			regmap_update_bits(adv7511->regmap,
+					   ADV7511_REG_AUDIO_CONFIG, BIT(7),
+					   BIT(7));
 			break;
 		}
 		break;
 	case SND_SOC_BIAS_PREPARE:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_STANDBY) {
-			adv7511_packet_enable(adv7511, ADV7511_PACKET_ENABLE_AUDIO_SAMPLE);
-			adv7511_packet_enable(adv7511, ADV7511_PACKET_ENABLE_AUDIO_INFOFRAME);
-			adv7511_packet_enable(adv7511, ADV7511_PACKET_ENABLE_N_CTS);
+			adv7511_packet_enable(adv7511,
+					ADV7511_PACKET_ENABLE_AUDIO_SAMPLE);
+			adv7511_packet_enable(adv7511,
+					ADV7511_PACKET_ENABLE_AUDIO_INFOFRAME);
+			adv7511_packet_enable(adv7511,
+					ADV7511_PACKET_ENABLE_N_CTS);
 		} else {
-			adv7511_packet_disable(adv7511, ADV7511_PACKET_ENABLE_AUDIO_SAMPLE);
-			adv7511_packet_disable(adv7511, ADV7511_PACKET_ENABLE_AUDIO_INFOFRAME);
-			adv7511_packet_disable(adv7511, ADV7511_PACKET_ENABLE_N_CTS);
+			adv7511_packet_disable(adv7511,
+					ADV7511_PACKET_ENABLE_AUDIO_SAMPLE);
+			adv7511_packet_disable(adv7511,
+					ADV7511_PACKET_ENABLE_AUDIO_INFOFRAME);
+			adv7511_packet_disable(adv7511,
+					ADV7511_PACKET_ENABLE_N_CTS);
 		}
 		break;
 	case SND_SOC_BIAS_STANDBY:
-		regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CONFIG, BIT(7), 0);
+		regmap_update_bits(adv7511->regmap, ADV7511_REG_AUDIO_CONFIG,
+				   BIT(7), 0);
 		break;
 	case SND_SOC_BIAS_OFF:
 		break;
@@ -295,7 +310,7 @@ static struct snd_soc_codec_driver adv7511_codec_driver = {
 int adv7511_audio_init(struct device *dev)
 {
 	return snd_soc_register_codec(dev, &adv7511_codec_driver,
-		&adv7511_dai, 1);
+				      &adv7511_dai, 1);
 }
 
 void adv7511_audio_exit(struct device *dev)

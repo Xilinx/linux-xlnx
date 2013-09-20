@@ -229,10 +229,13 @@ enum adv7511_input_id {
 };
 
 /**
- * enum adv7511_input_bit_justifiction - Selects the input format bit justifiction
+ * enum adv7511_input_bit_justifiction - Selects the input format bit
+ *					 justifiction
  * ADV7511_INPUT_BIT_JUSTIFICATION_EVENLY: Input bits are evenly distributed
- * ADV7511_INPUT_BIT_JUSTIFICATION_RIGHT: Input bit signals have right justification
- * ADV7511_INPUT_BIT_JUSTIFICATION_LEFT: Input bit signals have left justification
+ * ADV7511_INPUT_BIT_JUSTIFICATION_RIGHT: Input bit signals have right
+ *					  justification
+ * ADV7511_INPUT_BIT_JUSTIFICATION_LEFT: Input bit signals have left
+ *					 justification
  **/
 enum adv7511_input_bit_justifiction {
 	ADV7511_INPUT_BIT_JUSTIFICATION_EVENLY = 0,
@@ -242,9 +245,12 @@ enum adv7511_input_bit_justifiction {
 
 /**
  * enum adv7511_input_color_depth - Selects the input format color depth
- * @ADV7511_INPUT_COLOR_DEPTH_8BIT: Input format color depth is 8 bits per channel
- * @ADV7511_INPUT_COLOR_DEPTH_10BIT: Input format color dpeth is 10 bits per channel
- * @ADV7511_INPUT_COLOR_DEPTH_12BIT: Input format color depth is 12 bits per channel
+ * @ADV7511_INPUT_COLOR_DEPTH_8BIT: Input format color depth is 8 bits per
+ *				    channel
+ * @ADV7511_INPUT_COLOR_DEPTH_10BIT: Input format color dpeth is 10 bits per
+ *				     channel
+ * @ADV7511_INPUT_COLOR_DEPTH_12BIT: Input format color depth is 12 bits per
+ *				     channel
  **/
 enum adv7511_input_color_depth {
 	ADV7511_INPUT_COLOR_DEPTH_8BIT = 3,
@@ -290,17 +296,18 @@ enum adv7511_input_clock_delay {
 
 /**
  * enum adv7511_sync_polarity - Polarity for the input sync signals
- * ADV7511_SYNC_POLARITY_PASSTHROUGH:  Sync polarity matches that of the currently
- *				    configured mode.
+ * ADV7511_SYNC_POLARITY_PASSTHROUGH:  Sync polarity matches that of
+ *				       the currently configured mode.
  * ADV7511_SYNC_POLARITY_LOW:	    Sync polarity is low
  * ADV7511_SYNC_POLARITY_HIGH:	    Sync polarity is high
  *
  * If the polarity is set to either ADV7511_SYNC_POLARITY_LOW or
  * ADV7511_SYNC_POLARITY_HIGH the ADV7511 will internally invert the signal if
  * it is required to match the sync polarity setting for the currently selected
- * mode. If the polarity is set to ADV7511_SYNC_POLARITY_PASSTHROUGH, the ADV7511
- * will route the signal unchanged, this is useful if the upstream graphics core
- * will already generate the sync singals with the correct polarity.
+ * mode. If the polarity is set to ADV7511_SYNC_POLARITY_PASSTHROUGH,
+ * the ADV7511 will route the signal unchanged, this is useful if the upstream
+ * graphics core will already generate the sync singals with the correct
+ * polarity.
  **/
 enum adv7511_sync_polarity {
 	ADV7511_SYNC_POLARITY_PASSTHROUGH,
@@ -309,9 +316,12 @@ enum adv7511_sync_polarity {
 };
 
 /**
- * enum adv7511_timing_gen_seq - Selects the order in which timing adjustments are performed
- * @ADV7511_TIMING_GEN_SEQ_SYN_ADJ_FIRST: Sync adjustment first, then DE generation
- * @ADV7511_TIMING_GEN_SEQ_DE_GEN_FIRST: DE generation first, then sync adjustment
+ * enum adv7511_timing_gen_seq - Selects the order in which timing adjustments
+ * are performed
+ * @ADV7511_TIMING_GEN_SEQ_SYN_ADJ_FIRST: Sync adjustment first,
+ *					  then DE generation
+ * @ADV7511_TIMING_GEN_SEQ_DE_GEN_FIRST: DE generation first,
+ *					 then sync adjustment
  *
  * This setting is only relevant if both DE generation and sync adjustment are
  * active.
