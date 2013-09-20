@@ -1,0 +1,18 @@
+Device-Tree bindings for Xilinx Video Timing Controller(VTC)
+
+Xilinx VTC provides the timings for Video IPs.
+
+Required properties:
+ - compatible: value should be "xlnx,v-tc-5.01.a"
+ - reg: base address and size of the VTC IP
+ - interrupts: the interrupt number
+ - interrupts-parent: the phandle for interrupt controller
+
+Example:
+
+	v_tc_0: v-tc@40010000 {
+		compatible = "xlnx,v-tc-5.01.a";
+		interrupt-parent = <&intc>;
+		interrupts = <0 54 4>;
+		reg = <0x40010000 0x10000>;
+	};
