@@ -1,0 +1,34 @@
+Device-Tree bindings for Xilinx DRM
+
+Xilinx DRM supports the display pipelines with Xilinx soft IPs on FPGA and
+IPs on Xilinx boards.
+
+The example hardware pipeline is depicted below
+(*IPs in parentheses() are optional. IPs in brackets[] don't require drivers).
+vdma --> [remapper] -> (osd) -> (rgb2yuv) -> (cresample) -> [axi2vid] -> adv7511
+(vdma --> [remapper]-|)                                         |
+                                                      si570 -> vtc
+
+Required properties:
+ - compatible: value should be "xlnx,drm".
+ - dmas: the phandle list of DMA specifiers
+ - dma-names: the indentifier strings for DMAs
+ - osd: the phandle for on screen display IP if used in the hardware design
+ - rgb2yuv: the phandle for rgb2ycrcb IP if used in the hardware design
+ - cresample: the phandle for chroma resampler IP if used in the hardware design
+ - vtc: the phandle for video timing controller IP
+ - encoder-slave: the phandle for the encoder slave.
+
+Example:
+
+	xilinx_drm {
+		compatible = "xlnx,drm";
+		dmas = <&axi_vdma_0 0
+			&axi_vdma_1 0>;
+		dma-names = "vdma0", "vdma1";
+		osd = <&v_osd_0>;
+		rgb2yuv = <&v_rgb2ycrcb_0>;
+		cresample = <&v_cresample_0>;
+		vtc = <&v_tc_0>;
+		encoder-slave = <&adv7511>;
+	};
