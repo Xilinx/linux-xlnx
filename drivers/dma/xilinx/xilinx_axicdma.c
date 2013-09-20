@@ -159,9 +159,9 @@ struct xilinx_cdma_chan {
 	int id;					/* Channel ID */
 	enum dma_transfer_direction direction;	/* Transfer direction */
 	int max_len;				/* Max data len per transfer */
-	int is_lite;				/* Whether is light build */
-	int has_sg;				/* Support scatter transfers */
-	int has_dre;				/* For unaligned transfers */
+	bool is_lite;				/* Whether is light build */
+	bool has_sg;				/* Support scatter transfers */
+	bool has_dre;				/* For unaligned transfers */
 	int err;				/* Channel has errors */
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
 	u32 feature;				/* IP feature */
