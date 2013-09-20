@@ -152,7 +152,6 @@ struct xilinx_cdma_device {
 	struct dma_device common;
 	struct xilinx_cdma_chan *chan;
 	u32 feature;
-	int irq;
 };
 
 #define to_xilinx_chan(chan) \
