@@ -50,6 +50,10 @@
 #define XTG_ERR_EN_OFFSET	0x0C	/* Error enable */
 #define XTG_MSTERR_INTR_OFFSET	0x10	/* Master error interrupt enable */
 #define XTG_CFG_STS_OFFSET	0x14	/* Config status */
+#define XTG_STREAM_CNTL_OFFSET	0x30	/* Streaming Control */
+#define XTG_STREAM_TL_OFFSET	0x38    /* Streaming Transfer Length */
+#define XTG_STATIC_CNTL_OFFSET	0x60	/* Static Control */
+#define XTG_STATIC_LEN_OFFSET	0x64	/* Static Length */
 
 /* Register Bitmasks */
 
@@ -133,6 +137,17 @@
 #define XTG_PARAM_OP_RPT		0x1	/* Repeat mode */
 #define XTG_PARAM_OP_DELAY		0x2	/* Delay mode */
 #define XTG_PARAM_OP_FIXEDRPT		0x3	/* Fixed repeat delay */
+
+/* Axi Traffic Generator Static Mode masks */
+#define XTG_STATIC_CNTL_TD_MASK		0x00000002	/* Transfer Done Mask */
+#define XTG_STATIC_CNTL_STEN_MASK	0x00000001	/* Static Enable Mask */
+#define XTG_STATIC_CNTL_RESET_MASK	0x00000000	/* Static Reset Mask */
+
+/* Axi Traffic Generator Stream Mode mask/shifts */
+#define XTG_STREAM_CNTL_STEN_MASK   0x00000001	/* Stream Enable Mask */
+#define XTG_STREAM_TL_TCNT_MASK	    0xFFFF0000	/* Transfer Count Mask */
+#define XTG_STREAM_TL_TLEN_MASK	    0x0000FFFF	/* Transfer Length Mask */
+#define XTG_STREAM_TL_TCNT_SHIFT    16		/* Transfer Count Shift */
 
 /* Driver Specific Definitions */
 
@@ -271,6 +286,12 @@ struct xtg_dev_info {
  * @XTG_GET_LAST_VALID_INDEX: get last valid index
  * @XTG_GET_DEVICE_ID: get device id
  * @XTG_GET_RESOURCE: get resource
+ * @XTG_GET_STATIC_ENABLE: get staic mode traffic genration state
+ * @XTG_GET_STATIC_BURSTLEN: get static mode burst length
+ * @XTG_GET_STATIC_TRANSFERDONE: get static transfer done
+ * @XTG_GET_STREAM_ENABLE : get strean mode traffic genration state
+ * @XTG_GET_STREAM_TRANSFERLEN: get streaming mode transfer length
+ * @XTG_GET_STREAM_TRANSFERCNT: get streaming mode transfer count
  * @XTG_START_MASTER_LOGIC: start master logic
  * @XTG_SET_SLV_CTRL_REG: set slave control
  * @XTG_CLEAR_ERRORS: clear errors
@@ -279,6 +300,14 @@ struct xtg_dev_info {
  * @XTG_CLEAR_MRAM: clear master ram
  * @XTG_CLEAR_CRAM: clear command ram
  * @XTG_CLEAR_PRAM: clear parameter ram
+ * @XTG_SET_STATIC_ENABLE: enable static mode traffic genration
+ * @XTG_SET_STATIC_DISABLE: disable static mode traffic genration
+ * @XTG_SET_STATIC_BURSTLEN: set static mode burst length
+ * @XTG_SET_STATIC_TRANSFERDONE: set static transfer done
+ * @XTG_SET_STREAM_ENABLE: enable streaming mode traffic genration
+ * @XTG_SET_STREAM_DISABLE: disable streaming mode traffic genration
+ * @XTG_SET_STREAM_TRANSFERLEN: set streaming mode transfer length
+ * @XTG_SET_STREAM_TRANSFERCNT: set streaming mode transfer count
  */
 enum xtg_sysfs_ioctl_opcode {
 	XTG_GET_MASTER_CMP_STS,
@@ -288,6 +317,12 @@ enum xtg_sysfs_ioctl_opcode {
 	XTG_GET_LAST_VALID_INDEX,
 	XTG_GET_DEVICE_ID,
 	XTG_GET_RESOURCE,
+	XTG_GET_STATIC_ENABLE,
+	XTG_GET_STATIC_BURSTLEN,
+	XTG_GET_STATIC_TRANSFERDONE,
+	XTG_GET_STREAM_ENABLE,
+	XTG_GET_STREAM_TRANSFERLEN,
+	XTG_GET_STREAM_TRANSFERCNT,
 	XTG_START_MASTER_LOGIC,
 	XTG_SET_SLV_CTRL_REG,
 	XTG_CLEAR_ERRORS,
@@ -295,7 +330,15 @@ enum xtg_sysfs_ioctl_opcode {
 	XTG_ENABLE_INTRS,
 	XTG_CLEAR_MRAM,
 	XTG_CLEAR_CRAM,
-	XTG_CLEAR_PRAM
+	XTG_CLEAR_PRAM,
+	XTG_SET_STATIC_ENABLE,
+	XTG_SET_STATIC_DISABLE,
+	XTG_SET_STATIC_BURSTLEN,
+	XTG_SET_STATIC_TRANSFERDONE,
+	XTG_SET_STREAM_ENABLE,
+	XTG_SET_STREAM_DISABLE,
+	XTG_SET_STREAM_TRANSFERLEN,
+	XTG_SET_STREAM_TRANSFERCNT
 };
 
 /**
@@ -420,7 +463,7 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 	unsigned long wrval;
 	ssize_t status, rdval = 0;
 
-	if (opcode > XTG_GET_RESOURCE) {
+	if (opcode > XTG_GET_STREAM_TRANSFERCNT) {
 		status = kstrtoul(buf, 16, &wrval);
 		if (status < 0)
 			return status;
@@ -456,6 +499,34 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 
 	case XTG_GET_RESOURCE:
 		rdval = (unsigned long)tg->regs;
+		break;
+
+	case XTG_GET_STATIC_ENABLE:
+		rdval = readl(tg->regs + XTG_STATIC_CNTL_OFFSET);
+		break;
+
+	case XTG_GET_STATIC_BURSTLEN:
+		rdval = readl(tg->regs + XTG_STATIC_LEN_OFFSET);
+		break;
+
+	case XTG_GET_STATIC_TRANSFERDONE:
+		rdval = (readl(tg->regs + XTG_STATIC_CNTL_OFFSET) &
+				XTG_STATIC_CNTL_TD_MASK);
+		break;
+
+	case XTG_GET_STREAM_ENABLE:
+		rdval = readl(tg->regs + XTG_STREAM_CNTL_OFFSET);
+		break;
+
+	case XTG_GET_STREAM_TRANSFERLEN:
+		rdval = (readl(tg->regs + XTG_STREAM_TL_OFFSET) &
+				XTG_STREAM_TL_TLEN_MASK);
+		break;
+
+	case XTG_GET_STREAM_TRANSFERCNT:
+		rdval = ((readl(tg->regs + XTG_STREAM_TL_OFFSET) &
+				XTG_STREAM_TL_TCNT_MASK) >>
+				XTG_STREAM_TL_TCNT_SHIFT);
 		break;
 
 	case XTG_START_MASTER_LOGIC:
@@ -521,6 +592,53 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 			xtg_access_rams(tg, XTG_PARAM_RAM_OFFSET,
 				XTG_PARAM_RAM_SIZE, XTG_WRITE_RAM |
 				XTG_WRITE_RAM_ZERO, NULL);
+		break;
+
+	case XTG_SET_STATIC_ENABLE:
+		if (wrval) {
+			wrval &= XTG_STATIC_CNTL_STEN_MASK;
+			writel(readl(tg->regs + XTG_STATIC_CNTL_OFFSET) | wrval,
+			tg->regs + XTG_STATIC_CNTL_OFFSET);
+		} else {
+			writel(readl(tg->regs + XTG_STATIC_CNTL_OFFSET) &
+				~XTG_STATIC_CNTL_STEN_MASK,
+				tg->regs + XTG_STATIC_CNTL_OFFSET);
+		}
+		break;
+
+	case XTG_SET_STATIC_BURSTLEN:
+		writel(wrval, tg->regs + XTG_STATIC_LEN_OFFSET);
+		break;
+
+	case XTG_SET_STATIC_TRANSFERDONE:
+		wrval |= XTG_STATIC_CNTL_TD_MASK;
+		writel(readl(tg->regs + XTG_STATIC_CNTL_OFFSET) | wrval,
+			tg->regs + XTG_STATIC_CNTL_OFFSET);
+		break;
+
+	case XTG_SET_STREAM_ENABLE:
+		if (wrval) {
+			wrval &= XTG_STREAM_CNTL_STEN_MASK;
+			writel(readl(tg->regs + XTG_STREAM_CNTL_OFFSET) | wrval,
+			tg->regs + XTG_STREAM_CNTL_OFFSET);
+		} else {
+			writel(readl(tg->regs + XTG_STREAM_CNTL_OFFSET) &
+			~XTG_STREAM_CNTL_STEN_MASK,
+			tg->regs + XTG_STREAM_CNTL_OFFSET);
+		}
+		break;
+
+	case XTG_SET_STREAM_TRANSFERLEN:
+		wrval &= XTG_STREAM_TL_TLEN_MASK;
+		writel(readl(tg->regs + XTG_STREAM_TL_OFFSET) | wrval,
+			tg->regs + XTG_STREAM_TL_OFFSET);
+		break;
+
+	case XTG_SET_STREAM_TRANSFERCNT:
+		wrval = ((wrval << XTG_STREAM_TL_TCNT_SHIFT) &
+				XTG_STREAM_TL_TCNT_MASK);
+		writel(readl(tg->regs + XTG_STREAM_TL_OFFSET) | wrval,
+			tg->regs + XTG_STREAM_TL_OFFSET);
 		break;
 
 	default:
@@ -665,6 +783,125 @@ static ssize_t xtg_clear_pram(struct device *dev,
 	return size;
 }
 static DEVICE_ATTR(pram_clear, 0644, NULL, xtg_clear_pram);
+
+static ssize_t xtg_show_static_enable(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_ENABLE);
+
+	return sprintf(buf, "0x%08x\n", rdval);
+}
+
+static ssize_t xtg_static_enable(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_ENABLE);
+
+	return size;
+}
+static DEVICE_ATTR(static_en, 0644, xtg_show_static_enable, xtg_static_enable);
+
+static ssize_t xtg_get_static_burstlen(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_BURSTLEN);
+
+	return sprintf(buf, "%d\n", rdval);
+}
+
+static ssize_t xtg_static_burstlen(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_BURSTLEN);
+
+	return size;
+}
+static DEVICE_ATTR(static_burstlen, 0644, xtg_get_static_burstlen,
+			xtg_static_burstlen);
+
+static ssize_t xtg_get_static_transferdone(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
+
+	return sprintf(buf, "%d\n", rdval);
+}
+
+static ssize_t xtg_static_transferdone(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_TRANSFERDONE);
+
+	return size;
+}
+static DEVICE_ATTR(static_transferdone, 0644, xtg_get_static_transferdone,
+				xtg_static_transferdone);
+
+static ssize_t xtg_reset_static_transferdone(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
+	if (rdval == XTG_STATIC_CNTL_RESET_MASK)
+		rdval = 1;
+	else
+		rdval = 0;
+	return sprintf(buf, "%d\n", rdval);
+}
+static DEVICE_ATTR(reset_static_transferdone, 0644,
+			xtg_reset_static_transferdone, NULL);
+
+static ssize_t xtg_show_stream_enable(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_ENABLE);
+
+	return sprintf(buf, "0x%08x\n", rdval);
+}
+
+static ssize_t xtg_stream_enable(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_ENABLE);
+
+	return size;
+}
+static DEVICE_ATTR(stream_en, 0644, xtg_show_stream_enable, xtg_stream_enable);
+
+static ssize_t xtg_get_stream_transferlen(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERLEN);
+
+	return sprintf(buf, "%d\n", rdval);
+}
+
+static ssize_t xtg_set_stream_transferlen(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TRANSFERLEN);
+
+	return size;
+}
+static DEVICE_ATTR(stream_transferlen, 0644, xtg_get_stream_transferlen,
+				xtg_set_stream_transferlen);
+
+static ssize_t xtg_get_stream_transfercnt(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERCNT);
+
+	return sprintf(buf, "%d\n", rdval);
+}
+
+static ssize_t xtg_set_stream_transfercnt(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TRANSFERCNT);
+
+	return size;
+}
+static DEVICE_ATTR(stream_transfercnt, 0644, xtg_get_stream_transfercnt,
+				xtg_set_stream_transfercnt);
 
 static ssize_t xtg_pram_read(struct file *filp, struct kobject *kobj,
 				struct bin_attribute *bin_attr,
@@ -923,6 +1160,13 @@ static const struct attribute *xtg_attrs[] = {
 	&dev_attr_mram_clear.attr,
 	&dev_attr_cram_clear.attr,
 	&dev_attr_pram_clear.attr,
+	&dev_attr_static_en.attr,
+	&dev_attr_static_burstlen.attr,
+	&dev_attr_static_transferdone.attr,
+	&dev_attr_stream_transfercnt.attr,
+	&dev_attr_stream_transferlen.attr,
+	&dev_attr_stream_en.attr,
+	&dev_attr_reset_static_transferdone.attr,
 	NULL,
 };
 
@@ -1031,10 +1275,8 @@ static int xtg_probe(struct platform_device *pdev)
 	int err, irq;
 
 	tg = devm_kzalloc(&pdev->dev, sizeof(struct xtg_dev_info), GFP_KERNEL);
-	if (!tg) {
-		dev_err(&pdev->dev, "Not enough memory for device\n");
+	if (!tg)
 		return -ENOMEM;
-	}
 
 	tg->dev = &(pdev->dev);
 
@@ -1061,27 +1303,27 @@ static int xtg_probe(struct platform_device *pdev)
 	/* Map the error interrupt, if it exists in the device tree. */
 	irq = platform_get_irq_byname(pdev, "err-out");
 	if (irq < 0) {
-		dev_err(&pdev->dev, "unable to get err irq");
-		return irq;
-	}
-	err = devm_request_irq(&pdev->dev, irq, xtg_err_intr_handler,
+		dev_dbg(&pdev->dev, "unable to get err irq");
+	} else {
+		err = devm_request_irq(&pdev->dev, irq, xtg_err_intr_handler,
 					0, dev_name(&pdev->dev), tg);
-	if (err < 0) {
-		dev_err(&pdev->dev, "unable to request irq %d", irq);
-		return err;
+		if (err < 0) {
+			dev_err(&pdev->dev, "unable to request irq %d", irq);
+			return err;
+		}
 	}
 
 	/* Map the completion interrupt, if it exists in the device tree. */
 	irq = platform_get_irq_byname(pdev, "irq-out");
 	if (irq < 0) {
-		dev_err(&pdev->dev, "unable to get cmp irq");
-		return irq;
-	}
-	err = devm_request_irq(&pdev->dev, irq, xtg_cmp_intr_handler,
+		dev_dbg(&pdev->dev, "unable to get cmp irq");
+	} else {
+		err = devm_request_irq(&pdev->dev, irq, xtg_cmp_intr_handler,
 					0, dev_name(&pdev->dev), tg);
-	if (err < 0) {
-		dev_err(&pdev->dev, "unable to request irq %d", irq);
-		return err;
+		if (err < 0) {
+			dev_err(&pdev->dev, "unable to request irq %d", irq);
+			return err;
+		}
 	}
 
 	/*
@@ -1115,7 +1357,7 @@ static int xtg_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, tg);
 
-	dev_info(&pdev->dev, "Probing xilinx traffic generator\n");
+	dev_info(&pdev->dev, "Probing xilinx traffic generator success\n");
 
 	return 0;
 }
