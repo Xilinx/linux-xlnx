@@ -1,0 +1,161 @@
+Device-Tree bindings for Xilinx DRM
+
+Xilinx DRM supports the display pipelines with Xilinx soft IPs on FPGA and
+IPs on Xilinx boards.
+
+The example hardware pipeline is depicted below
+(*IPs in parentheses() are optional. IPs in brackets[] don't require drivers).
+vdma-[remap]-(rgb2yuv)-(cresample)-(osd)-(rgb2yuv)-(cresample)-[axi2vid]-adv7511
+(vdma-[remap]-(rgb2yuv)-(cresample)-|)                             |
+                                                         si570 -> vtc
+
+Required properties:
+ - compatible: value should be "xlnx,drm".
+ - xlnx,osd: the phandle for on screen display IP if used in the hardware design
+ - xlnx,rgb2yuv: the phandle for rgb2ycrcb IP if used in the hardware design
+ - xlnx,cresample: the phandle for chroma resampler IP if used in the hardware
+   design
+ - xlnx,vtc: the phandle for video timing controller IP
+ - xlnx,encoder-slave: the phandle for the encoder slave.
+ - clocks: the phandle for the pixel clock
+ - planes: the subnode for resources for each plane
+ - xlnx,connector-type: the type of connector. The value should be one of
+   "HDMIA" or "DisplayPort" depending on which connector type to be used.
+
+Optional properties:
+ - xlnx,dp-sub: the phandle to DisplayPort subsystem node for ZynqMP.
+ - ports: device graph binding can be used to define connectivity. The DT
+   bindings are defined in Documentation/devicetree/bindings/graph.txt.
+
+Required planes properties:
+ - xlnx,pixel-format: the format of plane manager. The value should be one of
+   following format strings.
+
+	"yuv420"
+	"uvy422"
+	"vuy422"
+	"yuv422"
+	"yv4u22"
+	"yuv444"
+	"nv12"
+	"nv21"
+	"nv16"
+	"nv61"
+	"abgr1555"
+	"argb1555"
+	"rgba4444"
+	"bgra4444"
+	"bgr565"
+	"rgb565"
+	"bgr888"
+	"rgb888"
+	"xbgr8888"
+	"xrgb8888"
+	"abgr8888"
+	"argb8888"
+	"bgra8888"
+	"rgba8888"
+
+Required plane properties:
+ - dmas: the phandle list of DMA specifiers
+ - dma-names: the identifier strings for DMAs.
+ - xlnx,rgb2yuv: the phandle for rgb2ycrcb IP if used for plane
+ - xlnx,cresample: the phandle for chroma resampler IP if used for plane
+
+The pipeline can be configured as following examples or more.
+ - Example 1:
+vdma - [remap] - rgb2yuv - cresample - [axi2vid] - adv7511
+                                                      |
+                                             si570 - vtc
+	xilinx_drm {
+		compatible = "xlnx,drm";
+		xlnx,vtc = <&v_tc_0>;
+		xlnx,encoder-slave = <&adv7511>;
+		xlnx,connector-type = "HDMIA";
+		clocks = <&si570>;
+		planes {
+			xlnx,pixel-format = "yuv422";
+			plane0 {
+				dma = <&axi_vdma_0>;
+				dma-names = "axi_vdma_0";
+				xlnx,rgb2yuv = <&v_rgb2ycrcb_0>;
+				xlnx,cresample = <&v_cresample_0>;
+			};
+		};
+	};
+
+ - Example 2:
+vdma - [remap] --------- osd - cresample - [axi2vid] - adv7511
+vdma - [remap] - rgb2yuv -|                               |
+                                                 si570 - vtc
+
+	xilinx_drm {
+		compatible = "xlnx,drm";
+		xlnx,osd = <&v_osd_0>;
+		xlnx,cresample = <&v_cresample_0>;
+		xlnx,vtc = <&v_tc_0>;
+		xlnx,encoder-slave = <&adv7511>;
+		xlnx,connector-type = "DisplayPort";
+		clocks = <&si570>;
+		planes {
+			xlnx,pixel-format = "yuv422";
+			plane0 {
+				dma = <&axi_vdma_0>;
+				dma-names = "axi_vdma_0";
+			};
+			plane1 {
+				dma = <&axi_vdma_1>;
+				dma-names = "axi_vdma_1";
+				xlnx,rgb2yuv = <&v_rgb2ycrcb_0>;
+			};
+		};
+	};
+
+ - Example 3:
+dpdma - ZynqMP DP subsystem - DP
+
+	xilinx_drm {
+		compatible = "xlnx,drm";
+		xlnx,encoder-slave = <&xlnx_dp>;
+		clocks = <&si570 0>;
+		xlnx,connector-type = "DisplayPort";
+		xlnx,dp-sub = <&xlnx_dp_sub>;
+		planes {
+			xlnx,pixel-format = "rgb565";
+			plane0 {
+				dmas = <&xlnx_dpdma 3>;
+				dma-names = "xlnx_dpdma";
+			};
+			plane1 {
+				dmas = <&xlnx_dpdma 0>,
+				       <&xlnx_dpdma 1>,
+				       <&xlnx_dpdma 2>;
+				dma-names = "xlnx_dpdma_0",
+				            "xlnx_dpdma_1",
+				            "xlnx_dpdma_2";
+			};
+		};
+	};
+
+- Example 4:
+vdma - Xilinx MIPI DSI
+	xilinx_drm: xilinx_drm {
+		compatible = "xlnx,drm";
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				drm_port: endpoint {
+					remote-endpoint = <&mipi_port>;
+				};
+			};
+		};
+		planes {
+			xlnx,pixel-format = "rgb888";
+			plane0 {
+				dmas = <&axi_vdma_0 0>;
+				dma-names = "axi_vdma_0";
+			};
+		};
+	};
