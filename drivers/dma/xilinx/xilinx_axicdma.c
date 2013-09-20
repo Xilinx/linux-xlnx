@@ -904,7 +904,6 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
-	xdev->common.chancnt++;
 
 	return 0;
 }
