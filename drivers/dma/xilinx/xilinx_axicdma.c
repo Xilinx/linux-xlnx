@@ -15,18 +15,18 @@
  *
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/slab.h>
-#include <linux/interrupt.h>
+#include <linux/amba/xilinx_dma.h>
 #include <linux/dmapool.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
-#include <linux/platform_device.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/amba/xilinx_dma.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
 
 /* Hw specific definitions */
 #define XILINX_CDMA_MAX_TRANS_LEN		0x7FFFFF
