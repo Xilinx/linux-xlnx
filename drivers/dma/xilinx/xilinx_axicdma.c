@@ -445,7 +445,7 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
 			cdma_read(&chan->regs->cr), cdma_read(&chan->regs->sr));
-		return 1;
+		return -EBUSY;
 	}
 
 	/* For Axi CDMA, always do sg transfers if sg mode is built in */
