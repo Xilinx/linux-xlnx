@@ -1,0 +1,14 @@
+Device-Tree bindings for Xilinx RGB to YCrCb convertor(RGB2YCRCB)
+
+Xilinx RGB2YCRCB converts the pixel format from RGB to YCrCb
+
+Required properties:
+ - compatible: value should be "xlnx,v-rgb2ycrcb-6.01.a"
+ - reg: base address and size of the RGB2YCRCB IP
+
+Example:
+
+	v_rgb2ycrcb_0: v-rgb2ycrcb@40030000 {
+		compatible = "xlnx,v-rgb2ycrcb-6.01.a";
+		reg = <0x40030000 0x10000>;
+	};
