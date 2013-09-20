@@ -1,0 +1,12 @@
+config DRM_XILINX
+	tristate "Xilinx DRM"
+	depends on DRM && HAVE_CLK
+	select DRM_KMS_HELPER
+	select DRM_KMS_CMA_HELPER
+	select DRM_GEM_CMA_HELPER
+	select DMA_ENGINE
+	select DRM_XILINX_DP_SUB
+	select XILINX_FRMBUF
+	help
+	  DRM display driver for Xilinx IP based pipelines.
+
