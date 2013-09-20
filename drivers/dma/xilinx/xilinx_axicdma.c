@@ -845,8 +845,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 {
 	struct xilinx_cdma_chan *chan;
 	int err;
-	const __be32 *value;
-	u32 width = 0, device_id = 0;
+	u32 device_id, value, width = 0;
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -858,13 +857,14 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->feature = feature;
 	chan->max_len = XILINX_CDMA_MAX_TRANS_LEN;
 
-	value = of_get_property(node, "xlnx,include-dre", NULL);
-	if (value)
-		chan->has_dre = be32_to_cpup(value);
+	chan->has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
-	value = of_get_property(node, "xlnx,datawidth", NULL);
-	if (value) {
-		width = be32_to_cpup(value) >> 3; /* convert bits to bytes */
+	err = of_property_read_u32(node, "xlnx,datawidth", &value);
+	if (err) {
+		dev_err(xdev->dev, "unable to read datawidth property");
+		return err;
+	} else {
+		width = value >> 3; /* convert bits to bytes */
 
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
@@ -873,9 +873,11 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 		chan->feature |= width - 1;
 	}
 
-	value = of_get_property(node, "xlnx,device-id", NULL);
-	if (value)
-		device_id = be32_to_cpup(value);
+	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
+	if (err) {
+		dev_err(xdev->dev, "unable to read device id property");
+		return err;
+	}
 
 	chan->direction = DMA_MEM_TO_MEM;
 	chan->start_transfer = xilinx_cdma_start_transfer;
@@ -883,21 +885,20 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->has_sg = (xdev->feature & XILINX_CDMA_FTR_HAS_SG) >>
 			XILINX_CDMA_FTR_HAS_SG_SHIFT;
 
-	value = of_get_property(node, "xlnx,lite-mode", NULL);
-	if (value) {
-		if (be32_to_cpup(value) == 1) {
-			chan->is_lite = 1;
-			value = of_get_property(node,
-					"xlnx,max-burst-len", NULL);
-			if (value) {
-				if (!width) {
-					dev_err(xdev->dev,
-						"Lite mode w/o data width property\n");
+	chan->is_lite = of_property_read_bool(node, "xlnx,lite-mode");
+	if (chan->is_lite) {
+		err = of_property_read_u32(node, "xlnx,max-burst-len", &value);
+		if (err) {
+			dev_err(xdev->dev, "unable to read max burstlen property");
+			return err;
+		}
+		if (value) {
+			if (!width) {
+				dev_err(xdev->dev,
+					"Lite mode w/o data width property\n");
 					return -EPERM;
-				}
-				chan->max_len = width *
-					be32_to_cpup(value);
 			}
+			chan->max_len = width * value;
 		}
 	}
 
@@ -953,9 +954,9 @@ static int xilinx_cdma_of_probe(struct platform_device *pdev)
 {
 	struct xilinx_cdma_device *xdev;
 	struct device_node *child, *node;
-	int *value;
 	struct resource *res;
 	int ret;
+	u32 value;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_cdma_device),
 				GFP_KERNEL);
@@ -976,12 +977,10 @@ static int xilinx_cdma_of_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	value = (int *)of_get_property(node, "xlnx,include-sg",
-			NULL);
-	if (value) {
-		if (be32_to_cpup(value) == 1)
-			xdev->feature |= XILINX_CDMA_FTR_HAS_SG;
-	}
+	/* Check if SG is enabled */
+	value = of_property_read_bool(node, "xlnx,include-sg");
+	if (value)
+		xdev->feature |= XILINX_CDMA_FTR_HAS_SG;
 
 	/* Axi CDMA only does memcpy */
 	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
