@@ -20,18 +20,13 @@
  *	the message we set the HOLD bit.
  *	If the length is less than the FIFO depth, then we will directly
  *	receive a COMP interrupt and the transaction is done.
- *	If the length is more than the FIFO depth, then we enable the HOLD bit
- *	and write FIFO depth to the transfer size register.
- *	We will receive the DATA interrupt, we calculate the remaining bytes
- *	to receive and write to the transfer size register and we process the
- *	data in FIFO.
- *	In the meantime, we are receiving the complete interrupt also and the
- *	controller waits for the default timeout period before generating a stop
- *	condition even though the HOLD bit is set. So we are unable to generate
- *	the data interrupt again.
- *	To avoid this, we wrote the expected bytes to receive as FIFO depth + 1
- *	instead of FIFO depth. This generated the second DATA interrupt as there
- *	are still outstanding bytes to be received.
+ *	If the length is more than the FIFO depth, then we enable the HOLD bit.
+ *	if the requested data is greater than the  max transfer size(252 bytes)
+ *	update the transfer size register with max transfer size else update
+ *	with the requested size.
+ *	We will receive the DATA interrupt, if the transfer size register value
+ *	is zero then repeat the above step for the remaining bytes (if any) and
+ *	process the data in the fifo.
  *
  *	The bus hold flag logic provides support for repeated start.
  *
@@ -99,6 +94,9 @@
 							 * the DATA interrupt
 							 * occurs
 							 */
+#define XI2CPS_MAX_TRANSFER_SIZE	255 /* Max transfer size */
+#define XI2CPS_TRANSFER_SIZE	(XI2CPS_MAX_TRANSFER_SIZE - 3) /* Transfer size
+					in multiples of data interrupt depth */
 
 #define DRIVER_NAME		"xi2cps"
 
@@ -178,52 +176,39 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 
 	/* Handling Data interrupt */
 	if (isr_status & 0x00000002) {
-		/*
-		 * In master mode, if the device has more data to receive.
-		 * Calculate received bytes and update the receive count.
-		 */
-		if ((id->recv_count) > XI2CPS_FIFO_DEPTH) {
-			/* FIXME: snapshotting this value is a race condition as
-			 * the hardware is still recieving bytes at this time.
-			 * The number of bytes recieved (N) is read here ....
+		if (id->recv_count >= XI2CPS_DATA_INTR_DEPTH) {
+			/* Always read data interrupt threshold bytes */
+			bytes_to_recv = XI2CPS_DATA_INTR_DEPTH;
+			id->recv_count = id->recv_count -
+						XI2CPS_DATA_INTR_DEPTH;
+			avail_bytes = xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
+			/*
+			 * if the tranfer size register value is zero, then
+			 * check for the remaining bytes and update the
+			 * transfer size register.
 			 */
-			bytes_to_recv = (XI2CPS_FIFO_DEPTH + 1) -
-				xi2cps_readreg(XI2CPS_XFER_SIZE_OFFSET);
-			id->recv_count -= bytes_to_recv;
-		/*
-		 * Calculate the expected bytes to be received further and
-		 * update in transfer size register. If the expected bytes
-		 * count is less than FIFO size then clear hold bit if there
-		 * are no further messages to be processed
-		 */
-			/* ... but supposed one more byte is read by the
-			 * hardware by this time ....
-			 */
-			if (id->recv_count > XI2CPS_FIFO_DEPTH) {
-				xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
+			if (avail_bytes == 0) {
+				if (id->recv_count  > XI2CPS_TRANSFER_SIZE)
+					xi2cps_writereg(XI2CPS_TRANSFER_SIZE,
 						XI2CPS_XFER_SIZE_OFFSET);
-			} else {
-				/* Then the number bytes still to recv (M) is
-				 * updated based on old value of tx XFER_SIZE.
-				 * Hardware will recieve a total of N + M or
-				 * N + M + 1 bytes depending on whether or not
-				 * the hardware gets an extra byte between the
-				 * snapshot and here.
-				 */
-				xi2cps_writereg(id->recv_count,
+				else
+					xi2cps_writereg(id->recv_count,
 						XI2CPS_XFER_SIZE_OFFSET);
-				if (id->bus_hold_flag == 0)
-					/* Clear the hold bus bit */
-					xi2cps_writereg(
-					     (xi2cps_readreg(XI2CPS_CR_OFFSET) &
-					     (~XI2CPS_CR_HOLD_BUS_MASK)),
-					     XI2CPS_CR_OFFSET);
 			}
 			/* Process the data received */
 			while (bytes_to_recv) {
 				*(id->p_recv_buf)++ =
 					xi2cps_readreg(XI2CPS_DATA_OFFSET);
 				bytes_to_recv = bytes_to_recv - 1;
+			}
+
+			if ((id->bus_hold_flag == 0) &&
+				(id->recv_count <= XI2CPS_FIFO_DEPTH)) {
+				/* Clear the hold bus bit */
+				xi2cps_writereg(
+					(xi2cps_readreg(XI2CPS_CR_OFFSET) &
+					(~XI2CPS_CR_HOLD_BUS_MASK)),
+					XI2CPS_CR_OFFSET);
 			}
 		}
 	}
@@ -341,21 +326,20 @@ static void xi2cps_mrecv(struct xi2cps *id)
 						XI2CPS_ADDR_OFFSET);
 	/*
 	 * The no. of bytes to receive is checked against the limit of
-	 * FIFO depth. Set transfer size register with no. of bytes to
-	 * receive if it is less than FIFO depth and FIFO depth + 1 if
+	 * max transfer size. Set transfer size register with no of bytes
+	 * receive if it is less than transfer size and transfer size if
 	 * it is more. Enable the interrupts.
 	 */
-	if (id->recv_count > XI2CPS_FIFO_DEPTH) {
-		xi2cps_writereg(XI2CPS_FIFO_DEPTH + 1,
-				XI2CPS_XFER_SIZE_OFFSET);
-	} else {
+	if (id->recv_count > XI2CPS_TRANSFER_SIZE)
+		xi2cps_writereg(XI2CPS_TRANSFER_SIZE, XI2CPS_XFER_SIZE_OFFSET);
+	else
 		xi2cps_writereg(id->recv_count, XI2CPS_XFER_SIZE_OFFSET);
-
 	/*
 	 * Clear the bus hold flag if bytes to receive is less than FIFO size.
 	 */
-		if (id->bus_hold_flag == 0 &&
-		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN)) {
+	if (id->bus_hold_flag == 0 &&
+		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
+		(id->recv_count <= XI2CPS_FIFO_DEPTH)) {
 			/* Clear the hold bus bit */
 			ctrl_reg = xi2cps_readreg(XI2CPS_CR_OFFSET);
 			if ((ctrl_reg & XI2CPS_CR_HOLD_BUS_MASK) ==
@@ -363,7 +347,6 @@ static void xi2cps_mrecv(struct xi2cps *id)
 				xi2cps_writereg(
 					(ctrl_reg & (~XI2CPS_CR_HOLD_BUS_MASK)),
 					XI2CPS_CR_OFFSET);
-		}
 	}
 	xi2cps_writereg(XI2CPS_ENABLED_INTR, XI2CPS_IER_OFFSET);
 }
@@ -440,6 +423,37 @@ static void xi2cps_msend(struct xi2cps *id)
 }
 
 /**
+ * xi2cps_master_reset - Reset the interface
+ * @adap:	pointer to the i2c adapter driver instance
+ *
+ * Returns none
+ *
+ * This function cleanup the fifos, clear the hold bit and status
+ * and disable the interrupts.
+ */
+static void xi2cps_master_reset(struct i2c_adapter *adap)
+{
+	struct xi2cps *id = adap->algo_data;
+	u32 regval;
+
+	/* Disable the interrupts */
+	xi2cps_writereg(XI2CPS_IXR_ALL_INTR_MASK, XI2CPS_IDR_OFFSET);
+	/* Clear the hold bit and fifos */
+	regval = xi2cps_readreg(XI2CPS_CR_OFFSET);
+	regval &= ~XI2CPS_CR_HOLD_BUS_MASK;
+	regval |= XI2CPS_CR_CLR_FIFO_MASK;
+	xi2cps_writereg(regval, XI2CPS_CR_OFFSET);
+	/* Update the transfercount register to zero */
+	xi2cps_writereg(0x0, XI2CPS_XFER_SIZE_OFFSET);
+	/* Clear the interupt status register */
+	regval = xi2cps_readreg(XI2CPS_ISR_OFFSET);
+	xi2cps_writereg(regval, XI2CPS_ISR_OFFSET);
+	/* Clear the status register */
+	regval =  xi2cps_readreg(XI2CPS_SR_OFFSET);
+	xi2cps_writereg(regval, XI2CPS_SR_OFFSET);
+}
+
+/**
  * xi2cps_master_xfer - The main i2c transfer function
  * @adap:	pointer to the i2c adapter driver instance
  * @msgs:	pointer to the i2c message structure
@@ -465,6 +479,7 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		if (time_after(jiffies, timeout)) {
 			dev_warn(id->adap.dev.parent,
 					"timedout waiting for bus ready\n");
+			xi2cps_master_reset(adap);
 			return -ETIMEDOUT;
 		}
 		schedule_timeout(1);
@@ -525,6 +540,7 @@ retry:
 		if (ret == 0) {
 			dev_err(id->adap.dev.parent,
 				 "timeout waiting on completion\n");
+			xi2cps_master_reset(adap);
 			return -ETIMEDOUT;
 		}
 		xi2cps_writereg(XI2CPS_IXR_ALL_INTR_MASK, XI2CPS_IDR_OFFSET);
@@ -544,6 +560,7 @@ retry:
 		}
 		/* Report the other error interrupts to application as EIO */
 		if (id->err_status & 0x000000E4) {
+			xi2cps_master_reset(adap);
 			num = -EIO;
 			break;
 		}
