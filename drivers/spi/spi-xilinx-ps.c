@@ -450,7 +450,8 @@ static void xspips_work_queue(struct work_struct *work)
 		spi = msg->spi;
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
-			if (transfer->bits_per_word || transfer->speed_hz) {
+			if ((transfer->bits_per_word || transfer->speed_hz) &&
+								cs_change) {
 				status = xspips_setup_transfer(spi, transfer);
 				if (status < 0)
 					break;
@@ -491,8 +492,6 @@ static void xspips_work_queue(struct work_struct *work)
 
 		msg->status = status;
 		msg->complete(msg->context);
-
-		xspips_setup_transfer(spi, NULL);
 
 		if (!(status == 0 && cs_change))
 			xspips_chipselect(spi, 0);
