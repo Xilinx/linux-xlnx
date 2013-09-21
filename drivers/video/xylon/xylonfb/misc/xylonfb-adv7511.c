@@ -14,11 +14,11 @@
  */
 
 
+#include <linux/interrupt.h>
 #include <linux/atomic.h>
 #include <linux/workqueue.h>
 #include <linux/completion.h>
 #include <linux/console.h>
-#include <linux/interrupt.h>
 #include <linux/notifier.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -41,9 +41,11 @@ struct xylonfb_adv7511 {
 	struct fb_info *fbi;
 	struct fb_var_screeninfo *var_screeninfo;
 	struct fb_monspecs *monspecs;
+	wait_queue_head_t *misc_wait;
 	unsigned long *xfb_flags;
 	unsigned long timeout;
 	unsigned char flags;
+	u8 edid[256];
 };
 
 
@@ -62,13 +64,11 @@ static void xylonfb_adv7511_get_monspecs(u8 *edid,
 		pr_info("Display Information (EDID)\n");
 		pr_info("========================================\n");
 		pr_info("EDID Version %d.%d\n",
-			(int)monspecs->version,
-			(int)monspecs->revision);
+			(int)monspecs->version, (int)monspecs->revision);
 		pr_info("Manufacturer: %s\n", monspecs->manufacturer);
 		pr_info("Model: %x\n", monspecs->model);
 		pr_info("Serial Number: %u\n", monspecs->serial);
-		pr_info("Year: %u Week %u\n",
-			monspecs->year, monspecs->week);
+		pr_info("Year: %u Week %u\n", monspecs->year, monspecs->week);
 		pr_info("Display Characteristics:\n");
 		pr_info("   Monitor Operating Limits from EDID\n");
 		pr_info("   H: %d-%dKHz V: %d-%dHz DCLK: %dMHz\n",
@@ -249,7 +249,6 @@ static void xylonfb_adv7511_notify(struct v4l2_subdev *sd,
 	} nd;
 	struct v4l2_subdev_edid sd_edid;
 	int ret;
-	u8 edid[256];
 
 	driver_devel("%s\n", __func__);
 
@@ -267,48 +266,48 @@ static void xylonfb_adv7511_notify(struct v4l2_subdev *sd,
 		}
 		break;
 	case ADV7511_EDID_DETECT:
-		if ((*(xfb_adv7511->xfb_flags) & XYLONFB_FLAG_EDID_VMODE) &&
-			!atomic_read(&xfb_adv7511->edid_lock)) {
-			nd.ed = arg;
-			driver_devel("ADV7511 EDID%sread\n",
-				nd.ed->present ? " " : " not ");
-			if (nd.ed->present) {
-				atomic_set(&xfb_adv7511->edid_lock, 1);
-				pr_debug("EDID segment: %d\n", nd.ed->segment);
+		if (*(xfb_adv7511->xfb_flags) & XYLONFB_FLAG_EDID_VMODE) {
+			if (!atomic_read(&xfb_adv7511->edid_lock)) {
+				nd.ed = arg;
+				driver_devel("ADV7511 EDID%sread\n",
+					nd.ed->present ? " " : " not ");
+				if (nd.ed->present) {
+					atomic_set(&xfb_adv7511->edid_lock, 1);
+					pr_debug("EDID segment: %d\n", nd.ed->segment);
 
-				memset(edid, 0, sizeof(edid));
+					memset(xfb_adv7511->edid, 0, XYLONFB_EDID_SIZE);
 
-				sd_edid.pad = 0;
-				sd_edid.start_block = 0;
-				sd_edid.blocks = 1;
-				sd_edid.edid = edid;
-				ret = xfb_adv7511->sd->ops->core->ioctl(sd,
-					VIDIOC_SUBDEV_G_EDID,
-					(void *)&sd_edid);
-				if (ret) {
-					pr_warn("xylonfb ADV7511 IOCTL error %d\n",
-						ret);
-					break;
+					sd_edid.pad = 0;
+					sd_edid.start_block = 0;
+					sd_edid.blocks = 1;
+					sd_edid.edid = xfb_adv7511->edid;
+					ret = xfb_adv7511->sd->ops->core->ioctl(
+						sd, VIDIOC_SUBDEV_G_EDID, (void *)&sd_edid);
+					if (ret) {
+						pr_warn("xylonfb ADV7511 IOCTL error %d\n", ret);
+						break;
+					}
+
+					fb_parse_edid(xfb_adv7511->edid,
+						xfb_adv7511->var_screeninfo);
+					xylonfb_adv7511_get_monspecs(xfb_adv7511->edid,
+						xfb_adv7511->monspecs, xfb_adv7511->var_screeninfo);
+					xylonfb_adv7511_set_v4l2_timings(xfb_adv7511->sd,
+						xfb_adv7511->var_screeninfo);
+
+					*(xfb_adv7511->xfb_flags) |= XYLONFB_FLAG_EDID_RDY;
+
+					wake_up_interruptible(xfb_adv7511->misc_wait);
+
+					if (xfb_adv7511->flags & ADV7511_FLAG_INIT)
+						complete(&xfb_adv7511->edid_done);
+					else
+						xylonfb_adv7511_update(xfb_adv7511->fbi);
 				}
-
-				fb_parse_edid(edid,
-					xfb_adv7511->var_screeninfo);
-				xylonfb_adv7511_get_monspecs(edid,
-					xfb_adv7511->monspecs,
-					xfb_adv7511->var_screeninfo);
-				xylonfb_adv7511_set_v4l2_timings(
-					xfb_adv7511->sd,
-					xfb_adv7511->var_screeninfo);
-
-				*(xfb_adv7511->xfb_flags) |=
-					XYLONFB_FLAG_EDID_RDY;
-
-				if (xfb_adv7511->flags & ADV7511_FLAG_INIT)
-					complete(&xfb_adv7511->edid_done);
-				else
-					xylonfb_adv7511_update(
-						xfb_adv7511->fbi);
 			}
+		} else {
+			*(xfb_adv7511->xfb_flags) |= XYLONFB_FLAG_EDID_RDY;
+			wake_up_interruptible(xfb_adv7511->misc_wait);
 		}
 		break;
 	default:
@@ -329,7 +328,7 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 	driver_devel("%s\n", __func__);
 
 	if (xfb_adv7511)
-		return 0;
+		return -EEXIST;
 
 	xfb_adv7511 = kzalloc(sizeof(struct xylonfb_adv7511), GFP_KERNEL);
 	if (!xfb_adv7511) {
@@ -359,6 +358,9 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 
 	misc_data->var_screeninfo = xfb_adv7511->var_screeninfo;
 	misc_data->monspecs = xfb_adv7511->monspecs;
+	misc_data->edid = xfb_adv7511->edid;
+
+	xfb_adv7511->misc_wait = &misc_data->wait;
 
 	sd = adv7511_subdev(NULL);
 	if (!sd) {
@@ -377,8 +379,7 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 		goto error_subdev;
 	}
 
-	xfb_adv7511->irq_work_queue =
-		create_singlethread_workqueue(ADV7511_NAME);
+	xfb_adv7511->irq_work_queue = create_singlethread_workqueue(ADV7511_NAME);
 	if (xfb_adv7511->irq_work_queue == NULL) {
 		pr_err("xylonfb ADV7511 workqueue error\n");
 		goto error_subdev;
@@ -399,19 +400,21 @@ int xylonfb_adv7511_register(struct fb_info *fbi)
 
 	sd->ops->core->interrupt_service_routine(sd, 0, NULL);
 
-	if (xfb_adv7511->timeout) {
-		ret = wait_for_completion_timeout(&xfb_adv7511->edid_done,
-			xfb_adv7511->timeout);
-	} else {
-		ret = 0;
-	}
-	xfb_adv7511->flags &= ~ADV7511_FLAG_INIT;
-	if (ret == 0) {
+	if (*(xfb_adv7511->xfb_flags) & XYLONFB_FLAG_EDID_VMODE) {
 		if (xfb_adv7511->timeout) {
-			pr_err("xylonfb ADV7511 EDID error\n");
-			return -ETIMEDOUT;
+			ret = wait_for_completion_timeout(
+				&xfb_adv7511->edid_done, xfb_adv7511->timeout);
 		} else {
-			return -ENODEV;
+			ret = 0;
+		}
+		xfb_adv7511->flags &= ~ADV7511_FLAG_INIT;
+		if (ret == 0) {
+			if (xfb_adv7511->timeout) {
+				pr_err("xylonfb ADV7511 EDID error\n");
+				return -ETIMEDOUT;
+			} else {
+				return -ENODEV;
+			}
 		}
 	}
 
@@ -423,6 +426,12 @@ error_irq:
 	destroy_workqueue(xfb_adv7511->irq_work_queue);
 error_subdev:
 	v4l2_device_unregister(&xfb_adv7511->v4l2_dev);
+
+	kfree(xfb_adv7511->monspecs);
+	kfree(xfb_adv7511->var_screeninfo);
+	misc_data->edid = NULL;
+	misc_data->monspecs = NULL;
+	misc_data->var_screeninfo = NULL;
 
 	kfree(xfb_adv7511);
 
@@ -448,6 +457,7 @@ void xylonfb_adv7511_unregister(struct fb_info *fbi)
 
 	kfree(xfb_adv7511->monspecs);
 	kfree(xfb_adv7511->var_screeninfo);
+	misc_data->edid = NULL;
 	misc_data->monspecs = NULL;
 	misc_data->var_screeninfo = NULL;
 

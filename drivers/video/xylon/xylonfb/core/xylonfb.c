@@ -14,12 +14,12 @@
 
 
 #include <linux/module.h>
+#include <linux/interrupt.h>
+#include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/console.h>
-#include <linux/interrupt.h>
-#include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include "xylonfb.h"
 #if defined(CONFIG_FB_XYLON_MISC)
@@ -98,24 +98,26 @@ static void xylonfb_set_reg(u32 value,
 	writel(value, (base_virt + offset));
 }
 
-static u32 xylonfb_get_reg_mem_addr(void *base_virt, unsigned long offset,
+static unsigned long xylonfb_get_reg_mem_addr(
+	void *base_virt, unsigned long offset,
 	struct xylonfb_layer_data *ld)
 {
 	unsigned long ordinal = offset >> 3;
 
-	if ((u32)base_virt - (u32)ld->reg_base_virt) {
-		return (u32)(&ld->layer_reg_list->hpos_reg) +
-			(ordinal * sizeof(u32));
+	if ((unsigned long)base_virt - (unsigned long)ld->reg_base_virt) {
+		return (unsigned long)(&ld->layer_reg_list->hpos_reg) +
+			(ordinal * sizeof(unsigned long));
 	} else {
-		return (u32)(&ld->xylonfb_cd->reg_list->dtype_reg) +
-			(ordinal * sizeof(u32));
+		return (unsigned long)(&ld->xylonfb_cd->reg_list->dtype_reg) +
+			(ordinal * sizeof(unsigned long));
 	}
 }
 
-static u32 xylonfb_get_reg_mem(void *base_virt, unsigned long offset,
+static u32 xylonfb_get_reg_mem(
+	void *base_virt, unsigned long offset,
 	struct xylonfb_layer_data *ld)
 {
-	return *((u32 *)xylonfb_get_reg_mem_addr(
+	return *((unsigned long *)xylonfb_get_reg_mem_addr(
 		base_virt, offset, ld));
 }
 
@@ -123,8 +125,9 @@ static void xylonfb_set_reg_mem(u32 value,
 	void *base_virt, unsigned long offset,
 	struct xylonfb_layer_data *ld)
 {
-	u32 *reg_mem_addr =
-		(u32 *)xylonfb_get_reg_mem_addr(base_virt, offset, ld);
+	unsigned long *reg_mem_addr =
+		(unsigned long *)xylonfb_get_reg_mem_addr(
+			base_virt, offset, ld);
 	*reg_mem_addr = value;
 	writel((*reg_mem_addr), (base_virt + offset));
 }
@@ -256,11 +259,7 @@ static int xylonfb_set_par(struct fb_info *fbi)
 	struct xylonfb_common_data *cd = ld->xylonfb_cd;
 	int rc = 0;
 	int i;
-	char vmode_opt[20+1];
-	char vmode_ct[] = "";
-	char vmode_cvt[] = "M";
-	char vmode_cvtrb[] = "MR";
-	char *vmode_tim;
+	char vmode_opt[VMODE_NAME_SZ];
 	bool resolution_change, layer_on[LOGICVC_MAX_LAYERS];
 
 	driver_devel("%s\n", __func__);
@@ -276,15 +275,6 @@ static int xylonfb_set_par(struct fb_info *fbi)
 		resolution_change = false;
 	} else {
 		resolution_change = true;
-	}
-
-	if (cd->xylonfb_flags & XYLONFB_FLAG_VMODE_INIT) {
-		vmode_tim = vmode_cvt;
-	} else {
-		if (cd->xylonfb_flags & XYLONFB_FLAG_EDID_VMODE)
-			vmode_tim = vmode_ct;
-		else
-			vmode_tim = vmode_cvtrb;
 	}
 
 	if (resolution_change ||
@@ -307,11 +297,14 @@ static int xylonfb_set_par(struct fb_info *fbi)
 		xylonfb_logicvc_disp_ctrl(fbi, false);
 
 		if (!(cd->xylonfb_flags & XYLONFB_FLAG_VMODE_INIT)) {
-			sprintf(vmode_opt, "%dx%d%s-%d@%d",
+			/* we want 60Hz refresh rate */
+			cd->vmode_data_current.fb_vmode.refresh = 60;
+			sprintf(vmode_opt, "%dx%d%s-%d@%d%s",
 				fbi->var.xres, fbi->var.yres,
-				vmode_tim,
+				cd->vmode_data_current.fb_vmode_opts_cvt,
 				fbi->var.bits_per_pixel,
-				cd->vmode_data_current.fb_vmode.refresh);
+				cd->vmode_data_current.fb_vmode.refresh,
+				cd->vmode_data_current.fb_vmode_opts_ext);
 			if (!strcmp(cd->vmode_data.fb_vmode_name, vmode_opt)) {
 				cd->vmode_data_current = cd->vmode_data;
 			} else {
@@ -324,17 +317,18 @@ static int xylonfb_set_par(struct fb_info *fbi)
 		if (!rc) {
 			if (cd->xylonfb_flags & XYLONFB_FLAG_PIXCLK_VALID) {
 				rc = xylonfb_hw_pixclk_set(
-						cd->xylonfb_pixclk_src_id,
-						PICOS2KHZ(cd->vmode_data_current.fb_vmode.pixclock));
+					cd->xylonfb_pixclk_src_id,
+					PICOS2KHZ(cd->vmode_data_current.fb_vmode.pixclock));
 				if (rc)
 					pr_err("Error xylonfb changing pixel clock\n");
 			}
 			xylonfb_fbi_update(fbi);
-			pr_info("xylonfb video mode: %dx%d%s-%d@%d\n",
+			pr_info("xylonfb video mode: %dx%d%s-%d@%d%s\n",
 				fbi->var.xres, fbi->var.yres,
-				vmode_tim,
+				cd->vmode_data_current.fb_vmode_opts_cvt,
 				fbi->var.bits_per_pixel,
-				cd->vmode_data_current.fb_vmode.refresh);
+				cd->vmode_data_current.fb_vmode.refresh,
+				cd->vmode_data_current.fb_vmode_opts_ext);
 		}
 
 		xylonfb_enable_logicvc_output(fbi);
@@ -374,8 +368,7 @@ static int xylonfb_set_color_hw_rgb_to_yuv(
 	if (idx > (LOGICVC_CLUT_SIZE-1) || len > LOGICVC_CLUT_SIZE)
 		return -EINVAL;
 
-	if ((cd->xylonfb_display_interface_type >> 4)
-		== LOGICVC_DI_ITU656) {
+	if ((cd->xylonfb_display_interface_type >> 4) == LOGICVC_DI_ITU656) {
 		ykr  = 29900;
 		ykg  = 58700;
 		ykb  = 11400;
@@ -653,11 +646,8 @@ static int xylonfb_set_color_reg(unsigned regno, unsigned red, unsigned green,
 	driver_devel("%s\n", __func__);
 
 	return xylonfb_set_color_hw(
-			(u16 *)&transp,
-			(u16 *)&red,
-			(u16 *)&green,
-			(u16 *)&blue,
-			1, regno, fbi);
+		(u16 *)&transp, (u16 *)&red, (u16 *)&green, (u16 *)&blue,
+		1, regno, fbi);
 }
 
 static int xylonfb_set_cmap(struct fb_cmap *cmap, struct fb_info *fbi)
@@ -666,7 +656,7 @@ static int xylonfb_set_cmap(struct fb_cmap *cmap, struct fb_info *fbi)
 
 	return xylonfb_set_color_hw(
 		cmap->transp, cmap->red, cmap->green, cmap->blue,
-			cmap->len, cmap->start, fbi);
+		cmap->len, cmap->start, fbi);
 }
 
 static void xylonfb_set_pixels(struct fb_info *fbi,
@@ -794,12 +784,6 @@ static int xylonfb_pan_display(struct fb_var_screeninfo *var,
 		fbi->var.yoffset == var->yoffset)
 		return 0;
 
-	/* check for negative values */
-	if (var->xoffset < 0)
-		var->xoffset += fbi->var.xres;
-	if (var->yoffset < 0)
-		var->yoffset += fbi->var.yres;
-
 	if (fbi->var.vmode & FB_VMODE_YWRAP) {
 		return -EINVAL;
 	} else {
@@ -807,11 +791,9 @@ static int xylonfb_pan_display(struct fb_var_screeninfo *var,
 			var->yoffset + fbi->var.yres > fbi->var.yres_virtual) {
 			/* if smaller then physical layer video memory
 			   allow panning */
-			if ((var->xoffset + fbi->var.xres >
-				 ld->layer_fix.width)
+			if ((var->xoffset + fbi->var.xres > ld->layer_fix.width)
 					||
-				(var->yoffset + fbi->var.yres >
-				 ld->layer_fix.height)) {
+				(var->yoffset + fbi->var.yres > ld->layer_fix.height)) {
 				return -EINVAL;
 			}
 		}
@@ -871,13 +853,13 @@ static struct fb_ops xylonfb_ops = {
 static int xylonfb_find_next_layer(struct xylonfb_layer_fix_data *lfdata,
 	int layers, int curr)
 {
-	u32 address, temp_address, loop_address;
+	unsigned long address, temp_address, loop_address;
 	int i, next;
 
 	driver_devel("%s\n", __func__);
 
 	address = lfdata[curr].offset * lfdata[curr].width * lfdata[curr].bpp;
-	temp_address = 0xFFFFFFFF;
+	temp_address = ~0;
 	next = -1;
 
 	for (i = 0; i < layers; i++) {
@@ -915,7 +897,8 @@ static void xylonfb_set_yvirt(struct xylonfb_init_data *init_data,
 			lfdata[next].offset)
 				-
 			(lfdata[curr].width * (lfdata[curr].bpp/8) *
-			lfdata[curr].offset)) /
+			lfdata[curr].offset))
+				/
 			(lfdata[curr].width * (lfdata[curr].bpp/8));
 	} else { /* last physical logiCVC layer */
 		lfdata[curr].height = LOGICVC_MAX_LINES + 1;
@@ -945,7 +928,8 @@ static void xylonfb_set_yvirt(struct xylonfb_init_data *init_data,
 
 static int xylonfb_map(int id, int layers, struct device *dev,
 	struct xylonfb_layer_data *ld,
-	unsigned long vmem_base_addr, u32 reg_base_phys, void *reg_base_virt,
+	unsigned long vmem_base_addr,
+	unsigned long reg_base_phys, void *reg_base_virt,
 	int memmap)
 {
 	struct xylonfb_layer_fix_data *lfdata = &ld->layer_fix;
@@ -969,7 +953,7 @@ static int xylonfb_map(int id, int layers, struct device *dev,
 	if (memmap) {
 		if (ld->xylonfb_cd->xylonfb_flags & XYLONFB_FLAG_DMA_BUFFER) {
 			/* NOT USED FOR NOW! */
-			ld->fb_virt = dma_alloc_writecombine(dev,
+			ld->fb_virt = dma_alloc_coherent(NULL,
 				PAGE_ALIGN(ld->fb_size),
 				&ld->fb_phys, GFP_KERNEL);
 		} else {
@@ -982,12 +966,9 @@ static int xylonfb_map(int id, int layers, struct device *dev,
 			return -ENOMEM;
 		}
 	}
-	/* memset_io(
-		(void __iomem *)ld->fb_virt, 0, ld->fb_size); */
-	ld->layer_reg_base_virt =
-		ld->reg_base_virt + logicvc_layer_reg_offset[id];
-	ld->layer_clut_base_virt =
-		ld->reg_base_virt +
+	ld->layer_reg_base_virt = ld->reg_base_virt +
+		logicvc_layer_reg_offset[id];
+	ld->layer_clut_base_virt = ld->reg_base_virt +
 		logicvc_clut_reg_offset[id*LOGICVC_CLUT_0_INDEX_OFFSET];
 	ld->layer_use_ref = 0;
 	ld->layer_ctrl_flags = 0;
@@ -1041,7 +1022,7 @@ static void xylonfb_fbi_update(struct fb_info *fbi)
 static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 	struct xylonfb_layer_data *ld,
 	struct xylonfb_layer_fix_data *lfdata,
-	u32 reg_base_phys)
+	unsigned long reg_base_phys)
 {
 	driver_devel("%s\n", __func__);
 
@@ -1246,8 +1227,7 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 				cd->xylonfb_misc->monspecs->misc & FB_MISC_1ST_DETAIL)
 				if ((fbi->var.xres == fbi->monspecs.modedb[0].xres) &&
 					(fbi->var.yres == fbi->monspecs.modedb[0].yres)) {
-					fb_videomode_to_var(&fb_var,
-						&fbi->monspecs.modedb[0]);
+					fb_videomode_to_var(&fb_var, &fbi->monspecs.modedb[0]);
 				}
 #endif
 		}
@@ -1307,11 +1287,17 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 				*
 			(fb_var.yres + fb_var.upper_margin +
 			fb_var.lower_margin + fb_var.vsync_len)));
+	strcpy(cd->vmode_data_current.fb_vmode_opts_cvt,
+		cd->vmode_data.fb_vmode_opts_cvt);
+	strcpy(cd->vmode_data_current.fb_vmode_opts_ext,
+		cd->vmode_data.fb_vmode_opts_ext);
 	sprintf(cd->vmode_data_current.fb_vmode_name,
-		"%dx%dM-%d@%d",
+		"%dx%d%s-%d@%d%s",
 		fb_var.xres, fb_var.yres,
+		cd->vmode_data_current.fb_vmode_opts_cvt,
 		fb_var.bits_per_pixel,
-		cd->vmode_data_current.fb_vmode.refresh);
+		cd->vmode_data_current.fb_vmode.refresh,
+		cd->vmode_data_current.fb_vmode_opts_ext);
 
 	if ((cd->xylonfb_flags & XYLONFB_FLAG_EDID_RDY) ||
 		!memchr(cd->vmode_data.fb_vmode_name, 'x', 10)) {
@@ -1323,7 +1309,7 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 
 static int xylonfb_register_fb(struct fb_info *fbi,
 	struct xylonfb_layer_data *ld,
-	u32 reg_base_phys, int id, int *regfb)
+	unsigned long reg_base_phys, int id, int *regfb)
 {
 	struct xylonfb_common_data *cd = ld->xylonfb_cd;
 	struct xylonfb_layer_fix_data *lfdata = &ld->layer_fix;
@@ -1546,8 +1532,8 @@ static void xylonfb_start(struct fb_info **afbi, int layers)
 	for (i = 0; i < layers; i++) {
 		ld = afbi[i]->par;
 		driver_devel("logiCVC layer %d\n" \
-			"    Registers Base Address:     0x%X\n" \
-			"    Layer Video Memory Address: 0x%X\n" \
+			"    Registers Base Address:     0x%lX\n" \
+			"    Layer Video Memory Address: 0x%lX\n" \
 			"    X resolution:               %d\n" \
 			"    Y resolution:               %d\n" \
 			"    X resolution (virtual):     %d\n" \
@@ -1556,8 +1542,8 @@ static void xylonfb_start(struct fb_info **afbi, int layers)
 			"    Bits per Pixel:             %d\n" \
 			"\n", \
 			i,
-			(unsigned int)ld->reg_base_phys,
-			(unsigned int)ld->fb_phys,
+			(unsigned long)ld->reg_base_phys,
+			(unsigned long)ld->fb_phys,
 			afbi[i]->var.xres,
 			afbi[i]->var.yres,
 			afbi[i]->var.xres_virtual,
@@ -1589,6 +1575,37 @@ static int xylonfb_event_notify(struct notifier_block *nb,
 
 /******************************************************************************/
 
+static void xylonfb_get_vmode_opts(
+	struct xylonfb_init_data *init_data,
+	struct xylonfb_common_data *cd)
+{
+	char cvt_opt[VMODE_OPTS_SZ] = "MR";
+	char ext_opt[VMODE_OPTS_SZ] = "im";
+	char *s, *opt, *ext, *c, *pco, *peo;
+
+	if (cd->xylonfb_flags & XYLONFB_FLAG_EDID_VMODE)
+		return;
+
+	s = init_data->vmode_data.fb_vmode_name;
+	opt = cd->vmode_data.fb_vmode_opts_cvt;
+	ext = cd->vmode_data.fb_vmode_opts_ext;
+	pco = cvt_opt;
+	peo = ext_opt;
+
+	while (*pco) {
+		c = strchr(s, (int)(*pco));
+		if (c)
+			*opt++ = *c;
+		pco++;
+	}
+	while (*peo) {
+		c = strchr(s, (int)(*peo));
+		if (c)
+			*ext++ = *c;
+		peo++;
+	}
+}
+
 int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 {
 	struct device *dev;
@@ -1598,7 +1615,7 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 	struct xylonfb_layer_data *ld;
 	struct resource *reg_res, *irq_res;
 	void *reg_base_virt;
-	u32 reg_base_phys;
+	unsigned long reg_base_phys;
 	int reg_range, layers, active_layer;
 	int i, rc, memmap;
 	int regfb[LOGICVC_MAX_LAYERS];
@@ -1615,6 +1632,10 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 	}
 
 	layers = init_data->layers;
+	if (layers == 0) {
+		pr_err("Error xylonfb zero layers\n");
+		return -ENODEV;
+	}
 	active_layer = init_data->active_layer;
 	if (active_layer >= layers) {
 		pr_err("Error xylonfb default layer: set to 0\n");
@@ -1639,10 +1660,14 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 	cd->xylonfb_layers = layers;
 	cd->xylonfb_flags |= XYLONFB_FLAG_VMODE_INIT;
 	cd->xylonfb_console_layer = active_layer;
-	if (init_data->flags & XYLONFB_FLAG_EDID_VMODE)
-		cd->xylonfb_flags |= XYLONFB_FLAG_EDID_VMODE;
-	if (init_data->flags & XYLONFB_FLAG_EDID_PRINT)
-		cd->xylonfb_flags |= XYLONFB_FLAG_EDID_PRINT;
+	if (init_data->flags & XYLONFB_FLAG_ADV7511_SKIP) {
+		cd->xylonfb_flags |= XYLONFB_FLAG_ADV7511_SKIP;
+	} else {
+		if (init_data->flags & XYLONFB_FLAG_EDID_VMODE)
+			cd->xylonfb_flags |= XYLONFB_FLAG_EDID_VMODE;
+		if (init_data->flags & XYLONFB_FLAG_EDID_PRINT)
+			cd->xylonfb_flags |= XYLONFB_FLAG_EDID_PRINT;
+	}
 	if (init_data->flags & LOGICVC_READABLE_REGS) {
 		cd->xylonfb_flags |= LOGICVC_READABLE_REGS;
 		cd->reg_access.xylonfb_get_reg_val = xylonfb_get_reg;
@@ -1654,7 +1679,7 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 		cd->reg_access.xylonfb_set_reg_val = xylonfb_set_reg_mem;
 	}
 
-	sprintf(init_data->vmode_data.fb_vmode_name, "%sM-%d@%d",
+	sprintf(init_data->vmode_data.fb_vmode_name, "%s-%d@%d",
 		init_data->vmode_data.fb_vmode_name,
 		init_data->lfdata[active_layer].bpp,
 		init_data->vmode_data.fb_vmode.refresh);
@@ -1666,6 +1691,7 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 		cd->vmode_data.fb_vmode.refresh =
 			init_data->vmode_data.fb_vmode.refresh;
 	}
+	xylonfb_get_vmode_opts(init_data, cd);
 
 	if (init_data->pixclk_src_id) {
 		if (xylonfb_hw_pixclk_supported(init_data->pixclk_src_id)) {
@@ -1681,7 +1707,7 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 	ld = NULL;
 
 	reg_base_phys = reg_res->start;
-	reg_range = reg_res->end - reg_res->start;
+	reg_range = resource_size(reg_res);
 	reg_base_virt = ioremap_nocache(reg_base_phys, reg_range);
 
 	/* load layer parameters for all layers */
@@ -1712,7 +1738,7 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 			if (cd->xylonfb_misc) {
 				xylonfb_misc_init(fbi);
 			} else {
-				pr_err("Error xylonfb allocating miscellaneous internal data\n");
+				pr_err("Error xylonfb allocating misc internal data\n");
 				goto err_fb;
 			}
 		}
@@ -1722,13 +1748,11 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 
 		ld->layer_fix = init_data->lfdata[i];
 		if (!(cd->xylonfb_flags & LOGICVC_READABLE_REGS)) {
-			ld->layer_reg_list = kzalloc(
-				sizeof(struct xylonfb_layer_registers),
-				GFP_KERNEL);
+			ld->layer_reg_list =
+				kzalloc(sizeof(struct xylonfb_layer_registers), GFP_KERNEL);
 		}
 
-		rc = xylonfb_map(i, layers, dev, ld,
-			init_data->vmem_base_addr,
+		rc = xylonfb_map(i, layers, dev, ld, init_data->vmem_base_addr,
 			reg_base_phys, reg_base_virt, memmap);
 		if (rc)
 			goto err_fb;
@@ -1772,10 +1796,14 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 			ld->fb_size);
 	}
 
-	if (!(cd->xylonfb_flags & LOGICVC_READABLE_REGS))
-		cd->reg_access.xylonfb_set_reg_val(0xFFFF,
-			ld->reg_base_virt, LOGICVC_INT_MASK_ROFF,
-			ld);
+	if (ld) {
+		if (!(cd->xylonfb_flags & LOGICVC_READABLE_REGS))
+			cd->reg_access.xylonfb_set_reg_val(0xFFFF,
+				ld->reg_base_virt, LOGICVC_INT_MASK_ROFF,
+				ld);
+	} else {
+		pr_warn("Warning xylonfb initialization not completed\n");
+	}
 
 	cd->xylonfb_bg_layer_bpp = init_data->bg_layer_bpp;
 	cd->xylonfb_bg_layer_alpha_mode = init_data->bg_layer_alpha_mode;
@@ -1798,9 +1826,8 @@ int xylonfb_init_driver(struct xylonfb_init_data *init_data)
 
 	dev_set_drvdata(dev, (void *)afbi);
 
-	cd->xylonfb_flags &=
-		~(XYLONFB_FLAG_VMODE_INIT | XYLONFB_FLAG_DEFAULT_VMODE_SET |
-		XYLONFB_FLAG_VMODE_SET);
+	cd->xylonfb_flags &= ~(XYLONFB_FLAG_VMODE_INIT |
+		XYLONFB_FLAG_DEFAULT_VMODE_SET | XYLONFB_FLAG_VMODE_SET);
 	xylonfb_mode_option = NULL;
 
 	/* start HW */

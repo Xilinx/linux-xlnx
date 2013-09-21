@@ -21,8 +21,10 @@
 
 
 struct xylonfb_misc_data {
+	wait_queue_head_t wait;
 	struct fb_var_screeninfo *var_screeninfo;
 	struct fb_monspecs *monspecs;
+	u8 *edid;
 };
 
 

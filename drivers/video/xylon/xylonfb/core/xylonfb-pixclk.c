@@ -17,17 +17,9 @@
  * generation on various HW platforms.
  */
 
-#include <linux/delay.h>
-#include <linux/io.h>
-#include <linux/kernel.h>
-#include <linux/errno.h>
 
-#ifdef CONFIG_OF
-/* For open firmware. */
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
-#endif
+#include <linux/kernel.h>
+
 
 #define XYLONFB_PIXCLK_GEN_DEVS 8
 
@@ -37,6 +29,9 @@ static bool xylonfb_hw_pixclk_init;
 #if defined(CONFIG_FB_XYLON_PIXCLK_ZYNQ_PS)
 
 #define XYLONFB_PIXCLK_ZYNQ_PS 1
+
+#include <linux/io.h>
+#include <linux/errno.h>
 
 int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 {
@@ -121,6 +116,15 @@ int xylonfb_hw_pixclk_set_zynq_ps(unsigned long pixclk_khz)
 
 #define XYLONFB_PIXCLK_LOGICLK 2
 
+#include <linux/io.h>
+#include <linux/errno.h>
+#include <linux/delay.h>
+#ifdef CONFIG_OF
+/* For open firmware. */
+#include <linux/of_address.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#endif
 #include "logiclk.h"
 
 int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)
@@ -132,9 +136,9 @@ int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)
 #endif
 	u32 *logiclk_regs;
 	struct logiclk_freq_out freq_out;
-	unsigned long logiclk[LOGICLK_REGS];
-	unsigned long address, size, osc_freq_hz;
-	int i;
+	u32 logiclk[LOGICLK_REGS];
+	u32 address, osc_freq_hz;
+	int i, size;
 
 	address = 0x40010000;
 	size = LOGICLK_REGS * sizeof(u32);
@@ -151,7 +155,7 @@ int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)
 	}
 #endif
 
-	logiclk_regs = (u32 *)ioremap_nocache(address, size);
+	logiclk_regs = ioremap_nocache(address, size);
 	if (!logiclk_regs) {
 		pr_err("Error mapping logiCLK\n");
 		return -EBUSY;
@@ -160,8 +164,10 @@ int xylonfb_hw_pixclk_set_logiclk(unsigned long pixclk_khz)
 	for (i = 0; i < LOGICLK_OUTPUTS; i++)
 		freq_out.freq_out_hz[i] = pixclk_khz * 1000;
 
-	logiclk_calc_regs(&freq_out, osc_freq_hz, logiclk);
-
+	if (logiclk_calc_regs(&freq_out, osc_freq_hz, logiclk)) {
+		pr_err("Error calculating logiCLK parameters\n");
+		return -EINVAL;
+	}
 	writel(1, logiclk_regs+LOGICLK_RST_REG_OFF);
 	udelay(10);
 	writel(0, logiclk_regs+LOGICLK_RST_REG_OFF);
@@ -196,8 +202,7 @@ int xylonfb_hw_pixclk_set_si570(unsigned long pixclk_khz)
 
 	si570_client = get_i2c_client_si570();
 	if (si570_client)
-		return set_frequency_si570(
-			&si570_client->dev, (pixclk_khz * 1000));
+		return set_frequency_si570(&si570_client->dev, (pixclk_khz * 1000));
 	else
 		return -EPERM;
 }

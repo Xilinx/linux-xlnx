@@ -24,6 +24,8 @@ static void xylonfb_get_platform_layer_params(
 	struct xylonfb_platform_layer_params *lparams,
 	struct xylonfb_layer_fix_data *lfdata, int id)
 {
+	driver_devel("%s\n", __func__);
+
 	lfdata->offset = lparams->offset;
 	lfdata->buffer_offset = lparams->buffer_offset;
 	lfdata->layer_type = lparams->type;
@@ -53,6 +55,8 @@ static int xylonfb_platform_probe(struct platform_device *pdev)
 	struct xylonfb_platform_data *pdata;
 	int i;
 
+	driver_devel("%s\n", __func__);
+
 	memset(&init_data, 0, sizeof(struct xylonfb_init_data));
 
 	init_data.pdev = pdev;
@@ -74,11 +78,9 @@ static int xylonfb_platform_probe(struct platform_device *pdev)
 
 	for (i = 0; i < init_data.layers; i++) {
 		xylonfb_get_platform_layer_params(
-			&pdata->layer_params[i],
-			&init_data.lfdata[i], i);
+			&pdata->layer_params[i], &init_data.lfdata[i], i);
 		init_data.lfdata[i].width = pdata->row_stride;
-		init_data.layer_ctrl_flags[i] =
-			pdata->layer_params[i].ctrl_flags;
+		init_data.layer_ctrl_flags[i] = pdata->layer_params[i].ctrl_flags;
 	}
 
 	return xylonfb_init_driver(&init_data);
@@ -86,12 +88,16 @@ static int xylonfb_platform_probe(struct platform_device *pdev)
 
 static int xylonfb_platform_remove(struct platform_device *pdev)
 {
+	driver_devel("%s\n", __func__);
+
 	return xylonfb_deinit_driver(pdev);
 }
 
 
 void xylonfb_platform_release(struct device *dev)
 {
+	driver_devel("%s\n", __func__);
+
 	return;
 }
 
@@ -193,10 +199,14 @@ static struct platform_driver xylonfb_driver = {
 
 static int xylonfb_platform_init(void)
 {
-	int err;
-
 #ifndef MODULE
 	char *option = NULL;
+#endif
+	int err;
+
+	driver_devel("%s\n", __func__);
+
+#ifndef MODULE
 	/*
 	 *  For kernel boot options (in 'video=xxxfb:<options>' format)
 	 */

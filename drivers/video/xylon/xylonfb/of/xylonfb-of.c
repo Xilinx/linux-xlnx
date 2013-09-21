@@ -19,17 +19,19 @@
 #include "../core/xylonfb.h"
 
 
-static void set_ctrl_reg(struct xylonfb_init_data *init_data,
+static void xylonfb_set_ctrl_reg(struct xylonfb_init_data *init_data,
 	unsigned long pix_data_invert, unsigned long pix_clk_act_high)
 {
 	u32 sync = init_data->vmode_data.fb_vmode.sync;
 	u32 ctrl = CTRL_REG_INIT;
 
+	driver_devel("%s\n", __func__);
+
 	/* FB_SYNC_HOR_HIGH_ACT */
-	if (sync & (1<<0))
+	if (!(sync & (1<<0)))
 		ctrl &= (~(1<<1));
 	/* FB_SYNC_VERT_HIGH_ACT */
-	if (sync & (1<<1))
+	if (!(sync & (1<<1)))
 		ctrl &= (~(1<<3));
 	if (pix_data_invert)
 		ctrl |= LOGICVC_PIX_DATA_INVERT;
@@ -44,6 +46,8 @@ static int xylonfb_parse_hw_info(struct device_node *np,
 {
 	u32 const *prop;
 	int size;
+
+	driver_devel("%s\n", __func__);
 
 	prop = of_get_property(np, "xlnx,display-interface", &size);
 	if (!prop) {
@@ -76,6 +80,8 @@ static int xylonfb_parse_vram_info(struct device_node *np,
 	u32 const *prop;
 	int size;
 
+	driver_devel("%s\n", __func__);
+
 	prop = of_get_property(np, "xlnx,vmem-baseaddr", &size);
 	if (!prop) {
 		pr_err("Error xylonfb getting VRAM address begin\n");
@@ -101,6 +107,8 @@ static int xylonfb_parse_layer_info(struct device_node *np,
 	int size;
 	char bg_layer_name[25];
 
+	driver_devel("%s\n", __func__);
+
 	prop = of_get_property(np, "xlnx,num-of-layers", &size);
 	if (!prop) {
 		pr_err("Error getting number of layers\n");
@@ -117,8 +125,7 @@ static int xylonfb_parse_layer_info(struct device_node *np,
 		if (be32_to_cpup(prop) == 1) {
 			layers--;
 
-			sprintf(bg_layer_name,
-				"xlnx,layer-%d-data-width", layers);
+			sprintf(bg_layer_name, "xlnx,layer-%d-data-width", layers);
 			prop = of_get_property(np, bg_layer_name, &size);
 			if (!prop)
 				bg_bpp = 16;
@@ -127,10 +134,8 @@ static int xylonfb_parse_layer_info(struct device_node *np,
 			if (bg_bpp == 24)
 				bg_bpp = 32;
 
-			sprintf(bg_layer_name,
-				"xlnx,layer-%d-alpha-mode", layers);
-			prop = of_get_property(
-				np, bg_layer_name, &size);
+			sprintf(bg_layer_name, "xlnx,layer-%d-alpha-mode", layers);
+			prop = of_get_property(np, bg_layer_name, &size);
 			if (!prop)
 				bg_alpha_mode = LOGICVC_LAYER_ALPHA;
 			else
@@ -155,6 +160,8 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 	char *c;
 	unsigned long pix_data_invert, pix_clk_act_high;
 	int size, tmp;
+
+	driver_devel("%s\n", __func__);
 
 	vmode_np = NULL;
 	init_data->vmode_data.fb_vmode.refresh = 60;
@@ -185,13 +192,11 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 	prop = of_get_property(np, "pixel-component-format", &size);
 	if (prop) {
 		if (!strcmp("ABGR", (char *)prop)) {
-			prop = of_get_property(np,
-				"pixel-component-layer", &size);
+			prop = of_get_property(np, "pixel-component-layer", &size);
 			if (prop) {
 				while (size > 0) {
 					tmp = be32_to_cpup(prop);
-					init_data->layer_ctrl_flags[tmp] =
-						LOGICVC_SWAP_RB;
+					init_data->layer_ctrl_flags[tmp] = LOGICVC_SWAP_RB;
 					prop++;
 					size -= sizeof(prop);
 				}
@@ -208,7 +213,7 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 			init_data->active_layer);
 	}
 
-	dn = of_find_node_by_name(np, "edid");
+	dn = of_get_child_by_name(np, "edid");
 	if (dn) {
 		prop = of_get_property(dn, "preffered-videomode", &size);
 		if (prop) {
@@ -222,7 +227,10 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 			if (tmp)
 				init_data->flags |= XYLONFB_FLAG_EDID_PRINT;
 		}
+	} else {
+		init_data->flags |= XYLONFB_FLAG_ADV7511_SKIP;
 	}
+	of_node_put(dn);
 
 	prop = of_get_property(np, "videomode", &size);
 	if (prop) {
@@ -237,11 +245,11 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 				c = strchr((char *)prop, '_');
 				if (c)
 					*c = 0;
-				strcpy(init_data->vmode_data.fb_vmode_name,
-					(char *)prop);
+				strcpy(init_data->vmode_data.fb_vmode_name, (char *)prop);
 			} else {
-				pr_err("Error getting video mode parameters\n");
+				strcpy(init_data->vmode_data.fb_vmode_name, (char *)prop);
 			}
+			of_node_put(dn);
 		} else {
 			pr_err("Error videomode name to long\n");
 		}
@@ -336,7 +344,7 @@ static int xylonfb_parse_vmode_info(struct device_node *np,
 		pr_info("xylonfb using default driver video mode\n");
 	}
 
-	set_ctrl_reg(init_data, pix_data_invert, pix_clk_act_high);
+	xylonfb_set_ctrl_reg(init_data, pix_data_invert, pix_clk_act_high);
 
 	return 0;
 }
@@ -347,6 +355,8 @@ static int xylonfb_parse_layer_params(struct device_node *np,
 	u32 const *prop;
 	int size;
 	char layer_property_name[25];
+
+	driver_devel("%s\n", __func__);
 
 	sprintf(layer_property_name, "xlnx,layer-%d-offset", id);
 	prop = of_get_property(np, layer_property_name, &size);
@@ -426,6 +436,8 @@ static int xylonfb_of_probe(struct platform_device *pdev)
 	struct xylonfb_init_data init_data;
 	int i, rc;
 
+	driver_devel("%s\n", __func__);
+
 	memset(&init_data, 0, sizeof(struct xylonfb_init_data));
 
 	init_data.pdev = pdev;
@@ -456,13 +468,16 @@ static int xylonfb_of_probe(struct platform_device *pdev)
 
 static int xylonfb_of_remove(struct platform_device *pdev)
 {
+	driver_devel("%s\n", __func__);
+
 	return xylonfb_deinit_driver(pdev);
 }
 
 
 static struct of_device_id xylonfb_of_match[] = {
-	{ .compatible = "xylon,logicvc-2.05.c" },
 	{ .compatible = "xylon,logicvc-3.00.a" },
+	{ .compatible = "xylon,logicvc-3.01.a" },
+	{ .compatible = "xylon,logicvc-3.02.a" },
 	{/* end of table */},
 };
 MODULE_DEVICE_TABLE(of, xylonfb_of_match);

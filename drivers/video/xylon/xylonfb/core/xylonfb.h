@@ -26,7 +26,7 @@
 #define DRIVER_NAME "xylonfb"
 #define DEVICE_NAME "logicvc"
 #define DRIVER_DESCRIPTION "Xylon logiCVC frame buffer driver"
-#define DRIVER_VERSION "2.0"
+#define DRIVER_VERSION "2.1"
 
 /* XylonFB driver flags */
 #define XYLONFB_FLAG_RESERVED_0x01     LOGICVC_READABLE_REGS
@@ -43,7 +43,10 @@
 	header files for every functionality specifically
 */
 #define XYLONFB_FLAG_MISC_ADV7511 0x1000
-#define XYLONFB_FLAG_EDID_RDY     0x2000
+#define XYLONFB_FLAG_ADV7511_SKIP 0x2000
+#define XYLONFB_FLAG_EDID_RDY     0x4000
+#define XYLONFB_EDID_SIZE         256
+#define XYLONFB_EDID_WAIT_TOUT    60
 
 
 #ifdef DEBUG
@@ -54,11 +57,14 @@
 
 struct xylonfb_layer_data;
 
-#define VMODE_NAME_SZ 20
+#define VMODE_NAME_SZ (20+1)
+#define VMODE_OPTS_SZ (2+1)
 struct xylonfb_vmode_data {
 	u32 ctrl_reg;
 	struct fb_videomode fb_vmode;
-	char fb_vmode_name[VMODE_NAME_SZ+1];
+	char fb_vmode_name[VMODE_NAME_SZ];
+	char fb_vmode_opts_cvt[VMODE_OPTS_SZ];
+	char fb_vmode_opts_ext[VMODE_OPTS_SZ];
 };
 
 struct xylonfb_registers {

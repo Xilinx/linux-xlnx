@@ -12,6 +12,9 @@
  */
 
 
+#include <linux/types.h>
+
+
 #define LOGICLK_REGS                21
 #define LOGICLK_OUTPUTS             6
 #define LOGICLK_RST_REG_OFF         0
@@ -23,7 +26,7 @@
 
 
 struct logiclk_freq_out {
-	unsigned long freq_out_hz[LOGICLK_OUTPUTS];
+	u32 freq_out_hz[LOGICLK_OUTPUTS];
 };
 
 /*
@@ -31,5 +34,5 @@ struct logiclk_freq_out {
 	"freq_out" and "c_osc_clk_freq_hz" inputs.
 	Writes them to array of LOGICLK_REGS over "regs_out" pointer.
 */
-void logiclk_calc_regs(struct logiclk_freq_out *freq_out,
-	unsigned long c_osc_clk_freq_hz, unsigned long *regs_out);
+int logiclk_calc_regs(struct logiclk_freq_out *freq_out,
+	u32 c_osc_clk_freq_hz, u32 *regs_out);
