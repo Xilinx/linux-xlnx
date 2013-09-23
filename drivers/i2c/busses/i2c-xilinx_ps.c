@@ -120,8 +120,8 @@
  * @input_clk:		Input clock to I2C controller
  * @i2c_clk:		Current I2C frequency
  * @bus_hold_flag:	Flag used in repeated start for clearing HOLD bit
- * @clk			Pointer to struct clk
- * @clk_rate_change_nb	Notifier block for clock rate changes
+ * @clk:		Pointer to struct clk
+ * @clk_rate_change_nb:	Notifier block for clock rate changes
  */
 struct xi2cps {
 	void __iomem *membase;
@@ -746,7 +746,7 @@ static int xi2cps_clk_notifier_cb(struct notifier_block *nb, unsigned long
 #ifdef CONFIG_PM_SLEEP
 /**
  * xi2cps_suspend - Suspend method for the driver
- * @dev:	Address of the platform_device structure
+ * @_dev:	Address of the platform_device structure
  * Returns 0 on success and error value on error
  *
  * Put the driver into low power mode.
@@ -765,7 +765,7 @@ static int xi2cps_suspend(struct device *_dev)
 
 /**
  * xi2cps_resume - Resume from suspend
- * @dev:	Address of the platform_device structure
+ * @_dev:	Address of the platform_device structure
  * Returns 0 on success and error value on error
  *
  * Resume operation after suspend.
