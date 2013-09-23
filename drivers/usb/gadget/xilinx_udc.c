@@ -1465,8 +1465,10 @@ static void xudc_reinit(struct xusb_udc *udc)
 	for (ep_number = 0; ep_number < XUSB_MAX_ENDPOINTS; ep_number++) {
 		struct xusb_ep *ep = &udc->ep[ep_number];
 
-		if (ep_number)
+		if (ep_number) {
 			list_add_tail(&ep->ep.ep_list, &udc->gadget.ep_list);
+			ep->ep.maxpacket = (unsigned short)~0;
+		}
 		ep->desc = NULL;
 		ep->stopped = 0;
 		/*
