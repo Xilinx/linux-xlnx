@@ -2145,96 +2145,6 @@ static int xudc_stop(struct usb_gadget *gadget,
 }
 
 /**
- * xudc_init() - Initializes the USB device structures.
- * @dev:		Pointer to the device sturcutre.
- * @regs_res:	Pointer to the resource structure for memory read.
- * @irq_res:	Pointer to the resource structure for interrupt
- *		resources.
- * returns: 0 for success and error value on failure
- *
- */
-static int xudc_init(struct device *dev, struct resource *regs_res,
-		     struct resource *irq_res)
-{
-
-	struct xusb_udc *udc = &controller;
-	void __iomem *v_addr;
-	resource_size_t remap_size;
-	struct platform_device *pdev = to_platform_device(dev);
-	int retval;
-
-	device_initialize(&udc->gadget.dev);
-	udc->gadget.dev.parent = &pdev->dev;
-
-	remap_size = regs_res->end - regs_res->start + 1;
-	if (!request_mem_region(regs_res->start, remap_size,
-			driver_name)) {
-		dev_err(dev, "Couldn't lock memory region at 0x%08X\n",
-			     (u32)regs_res->start);
-		return -EBUSY;
-	}
-
-	v_addr = (void __iomem *)ioremap_nocache(regs_res->start, remap_size);
-
-	if (!v_addr) {
-		dev_err(dev, "Couldn't ioremap memory at 0x%08X\n",
-			(u32)regs_res->start);
-		release_mem_region(regs_res->start, remap_size);
-		return -EFAULT;
-
-	}
-	udc->base_address = v_addr;
-
-	spin_lock_init(&udc->lock);
-
-	/* Check for IP endianness */
-	udc->write_fn(TEST_J, (udc->base_address + XUSB_TESTMODE_OFFSET));
-	if ((udc->read_fn(udc->base_address + XUSB_TESTMODE_OFFSET))
-			!= TEST_J) {
-		controller.write_fn = xusb_write32;
-		controller.read_fn = xusb_read32;
-	}
-	udc->write_fn(0, (udc->base_address + XUSB_TESTMODE_OFFSET));
-	xudc_reinit(udc);
-
-	/* Set device address to 0.*/
-	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
-
-	/* Request UDC irqs */
-	if (request_irq
-	    (irq_res->start, xusb_udc_irq, IRQF_SHARED, driver_name, udc)) {
-		device_unregister(&udc->gadget.dev);
-		stop_activity(udc);
-		iounmap(udc->base_address);
-		release_mem_region(regs_res->start, remap_size);
-		return -EBUSY;
-	}
-	retval = device_add(&udc->gadget.dev);
-	if (retval)
-		dev_dbg(dev, "device_add returned %d\n", retval);
-
-	retval = usb_add_gadget_udc(dev, &udc->gadget);
-	if (retval)
-		dev_dbg(dev, "usb_add_gadget_udc returned %d\n", retval);
-
-	/* Enable the interrupts.*/
-	udc->write_fn((XUSB_STATUS_GLOBAL_INTR_MASK |
-		  XUSB_STATUS_RESET_MASK |
-		  XUSB_STATUS_DISCONNECT_MASK |
-		  XUSB_STATUS_SUSPEND_MASK |
-		  XUSB_STATUS_FIFO_BUFF_RDY_MASK |
-		  XUSB_STATUS_FIFO_BUFF_FREE_MASK |
-		  XUSB_STATUS_EP0_BUFF1_COMP_MASK),
-		  (udc->base_address + XUSB_IER_OFFSET));
-	platform_set_drvdata(pdev, udc);
-
-	dev_info(dev, "%s version %s\n", driver_name, DRIVER_VERSION);
-	dev_info(dev, "%s #%d at 0x%08X mapped to 0x%08X\n",
-	     driver_name, 0, (u32)regs_res->start, (u32 __force) v_addr);
-	return 0;
-}
-
-/**
  * xudc_remove() - Releases the resources allocated during the initialization.
  * @pdev:	Pointer to the platform device structure.
  *
@@ -2245,20 +2155,11 @@ static int xudc_remove(struct platform_device *pdev)
 {
 
 	struct xusb_udc *udc = platform_get_drvdata(pdev);
-	struct resource *irq_res;
-	struct resource *res; /* IO mem resources */
-	struct device *dev;
-	dev = &pdev->dev;
 
-	dev_dbg(dev, "remove\n");
+	dev_dbg(&pdev->dev, "remove\n");
 	usb_del_gadget_udc(&udc->gadget);
 	if (udc->driver)
 		return -EBUSY;
-	iounmap(udc->base_address);
-	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	free_irq(irq_res->start, udc);
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(res->start, resource_size(res));
 
 	platform_set_drvdata(pdev, NULL);
 	device_unregister(&udc->gadget.dev);
@@ -2285,27 +2186,80 @@ static int
 usb_of_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct resource res, irq_res;
-	int rc;
+	struct resource *res;
 	struct xusb_udc *udc = &controller;
+	int err;
+	int irq;
+	int ret;
 
 	dev_dbg(&pdev->dev, "%s(%p)\n", __func__, pdev);
 
-	rc = of_address_to_resource(np, 0, &res);
-	if (rc) {
-		dev_err(&pdev->dev, "invalid address\n");
-		return rc;
-	}
+	/* Map the registers */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	udc->base_address = devm_ioremap_nocache(&pdev->dev, res->start,
+						 resource_size(res));
+	if (!udc->base_address)
+		return -ENOMEM;
 
-	rc = of_irq_to_resource(np, 0, &irq_res);
-	if (rc <= 0) {
-		dev_err(&pdev->dev, "No IRQ found\n");
-		return rc;
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		dev_err(&pdev->dev, "unable to get irq\n");
+		return irq;
+	}
+	err = devm_request_irq(&pdev->dev, irq, xusb_udc_irq,
+			       0, dev_name(&pdev->dev), udc);
+	if (err < 0) {
+		dev_err(&pdev->dev, "unable to request irq %d", irq);
+		return err;
 	}
 
 	udc->dma_enabled = of_property_read_bool(np, "xlnx,include-dma");
 
-	return xudc_init(&pdev->dev, &res, &irq_res);
+	device_initialize(&udc->gadget.dev);
+	udc->gadget.dev.parent = &pdev->dev;
+
+	spin_lock_init(&udc->lock);
+
+	/* Check for IP endianness */
+	udc->write_fn(TEST_J, (udc->base_address + XUSB_TESTMODE_OFFSET));
+	if ((udc->read_fn(udc->base_address + XUSB_TESTMODE_OFFSET))
+			!= TEST_J) {
+		controller.write_fn = xusb_write32;
+		controller.read_fn = xusb_read32;
+	}
+	udc->write_fn(0, (udc->base_address + XUSB_TESTMODE_OFFSET));
+
+	xudc_reinit(udc);
+
+	/* Set device address to 0.*/
+	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
+
+	ret = device_add(&udc->gadget.dev);
+	if (ret)
+		dev_dbg(&pdev->dev, "device_add returned %d\n", ret);
+
+	ret = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
+	if (ret)
+		dev_dbg(&pdev->dev, "usb_add_gadget_udc returned %d\n", ret);
+
+	/* Enable the interrupts.*/
+	udc->write_fn((XUSB_STATUS_GLOBAL_INTR_MASK |
+		       XUSB_STATUS_RESET_MASK |
+		       XUSB_STATUS_DISCONNECT_MASK |
+		       XUSB_STATUS_SUSPEND_MASK |
+		       XUSB_STATUS_FIFO_BUFF_RDY_MASK |
+		       XUSB_STATUS_FIFO_BUFF_FREE_MASK |
+		       XUSB_STATUS_EP0_BUFF1_COMP_MASK),
+		      (udc->base_address + XUSB_IER_OFFSET));
+
+	platform_set_drvdata(pdev, udc);
+
+	dev_info(&pdev->dev, "%s version %s\n", driver_name, DRIVER_VERSION);
+	dev_info(&pdev->dev, "%s #%d at 0x%08X mapped to 0x%08X\n",
+		 driver_name, 0, (u32)res->start,
+		 (u32 __force)udc->base_address);
+
+	return 0;
 }
 
 /**
