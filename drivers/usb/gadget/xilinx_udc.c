@@ -145,6 +145,15 @@ Hardware USB controller register map related constants
 	Structures and variable declarations.
 *****************************************************************************/
 /**
+ * struct xusb_request - Xilinx USB device request structure
+ * @req: Linux usb request structure
+ * @queue: usb device request queue
+ */
+struct xusb_request {
+	struct usb_request req;
+	struct list_head queue;
+};
+/**
  * USB end point structure.
  *@ep usb endpoint instance
  *@queue endpoint message queue
@@ -163,7 +172,8 @@ Hardware USB controller register map related constants
  *@curbufnum current buffer of endpoint that will be processed next
  *@endpointoffset the endpoint register offset value
  *@desc pointer to the usb endpoint descriptor
- **/
+ * @data: pointer to the xusb_request structure
+ */
 struct xusb_ep {
 	struct usb_ep ep;
 	struct list_head queue;
@@ -182,6 +192,7 @@ struct xusb_ep {
 	u8 curbufnum;
 	u32 endpointoffset;
 	const struct usb_endpoint_descriptor *desc;
+	struct xusb_request *data;
 };
 
 /**
@@ -206,15 +217,6 @@ struct xusb_udc {
 	void (*write_fn) (u32, void __iomem *);
 };
 static struct xusb_udc controller;
-/**
- * Xilinx USB device request structure
- *@req Linux usb request structure
- *@queue usb device request queue
- **/
-struct xusb_request {
-	struct usb_request req;
-	struct list_head queue;
-};
 
 /*
  * Standard USB Command Buffer Structure defined
@@ -572,7 +574,8 @@ static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 	ep->stopped = 1;
 
 	spin_unlock(&ep->udc->lock);
-	req->req.complete(&ep->ep, &req->req);
+	if (req->req.complete)
+		req->req.complete(&ep->ep, &req->req);
 	spin_lock(&ep->udc->lock);
 
 	ep->stopped = stopped;
@@ -1069,7 +1072,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	/* Try to kickstart any empty and idle queue */
 	if (list_empty(&ep->queue)) {
 		if (!ep->epnumber) {
-
+			ep->data = req;
 			buf = req->req.buf + req->req.actual;
 			prefetch(buf);
 			length = req->req.length - req->req.actual;
@@ -1822,10 +1825,12 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
  **/
 static void ep0_out_token(struct xusb_udc *udc)
 {
+	struct xusb_ep *ep;
 	u8 count;
 	u8 *ep0rambase;
 	u16 index;
 
+	ep = &udc->ep[0];
 	switch (ch9_cmdbuf.setupseqrx) {
 	case STATUS_PHASE:
 		/*
@@ -1834,6 +1839,8 @@ static void ep0_out_token(struct xusb_udc *udc)
 		 */
 		ch9_cmdbuf.setupseqrx = SETUP_PHASE;
 		ch9_cmdbuf.setupseqtx = SETUP_PHASE;
+		ep->data->req.actual = ep->data->req.length;
+		done(ep, ep->data, 0);
 		break;
 
 	case DATA_PHASE:
@@ -1870,11 +1877,13 @@ static void ep0_out_token(struct xusb_udc *udc)
  **/
 static void ep0_in_token(struct xusb_udc *udc)
 {
+	struct xusb_ep *ep;
 	u32 epcfgreg;
 	u16 count;
 	u16 index;
 	u8 *ep0rambase;
 
+	ep = &udc->ep[0];
 	switch (ch9_cmdbuf.setupseqtx) {
 	case STATUS_PHASE:
 		if (ch9_cmdbuf.setup.bRequest == USB_REQ_SET_ADDRESS) {
@@ -1893,6 +1902,8 @@ static void ep0_in_token(struct xusb_udc *udc)
 							XUSB_TESTMODE_OFFSET));
 			}
 		}
+		ep->data->req.actual = ch9_cmdbuf.setup.wLength;
+		done(ep, ep->data, 0);
 		break;
 
 	case DATA_PHASE:
