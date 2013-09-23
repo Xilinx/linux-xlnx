@@ -147,7 +147,7 @@ struct xusb_request {
 };
 /**
  * USB end point structure.
- *@ep usb endpoint instance
+ *@ep_usb usb endpoint instance
  *@queue endpoint message queue
  *@udc xilinx usb peripheral driver instance pointer
  *@epnumber endpoint number
@@ -167,7 +167,7 @@ struct xusb_request {
  * @data: pointer to the xusb_request structure
  */
 struct xusb_ep {
-	struct usb_ep ep;
+	struct usb_ep ep_usb;
 	struct list_head queue;
 	struct xusb_udc *udc;
 	u16 epnumber;
@@ -311,7 +311,7 @@ static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 	 * EP buffer location.
 	 */
 	epcfgreg = ((ep->is_in << 29) | (ep->eptype << 28) |
-			(ep->ep.maxpacket << 15) | (ep->rambase));
+			(ep->ep_usb.maxpacket << 15) | (ep->rambase));
 	udc->write_fn(epcfgreg, (udc->base_address + ep->endpointoffset));
 
 	/* Set the Buffer count and the Buffer ready bits.*/
@@ -436,7 +436,7 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 
 			/* Get the Buffer address and copy the transmit data.*/
 			eprambase = (u32 __force *)(ep->udc->base_address +
-					ep->rambase + ep->ep.maxpacket);
+					ep->rambase + ep->ep_usb.maxpacket);
 			if (ep->udc->dma_enabled) {
 				if (direction == EP_TRANSMIT) {
 					srcaddr = dma_map_single(
@@ -581,12 +581,12 @@ static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 
 	if (status && status != -ESHUTDOWN)
 		dev_dbg(&ep->udc->gadget.dev, "%s done %p, status %d\n",
-				ep->ep.name, req, status);
+				ep->ep_usb.name, req, status);
 	ep->stopped = 1;
 
 	spin_unlock(&ep->udc->lock);
 	if (req->usb_req.complete)
-		req->usb_req.complete(&ep->ep, &req->usb_req);
+		req->usb_req.complete(&ep->ep_usb, &req->usb_req);
 	spin_lock(&ep->udc->lock);
 
 	ep->stopped = stopped;
@@ -634,7 +634,7 @@ top:
 	bufferspace = req->usb_req.length - req->usb_req.actual;
 
 	req->usb_req.actual += min(count, bufferspace);
-	is_short = (count < ep->ep.maxpacket);
+	is_short = (count < ep->ep_usb.maxpacket);
 
 	if (count) {
 		if (unlikely(!bufferspace)) {
@@ -644,13 +644,14 @@ top:
 			 */
 			if (req->usb_req.status != -EOVERFLOW)
 				dev_dbg(&ep->udc->gadget.dev,
-					"%s overflow %d\n", ep->ep.name, count);
+					"%s overflow %d\n",
+					ep->ep_usb.name, count);
 			req->usb_req.status = -EOVERFLOW;
 		} else {
 			if (!ep_sendrecv(ep, buf, count, 1)) {
 				dev_dbg(&ep->udc->gadget.dev,
 					"read %s, %d bytes%s req %p %d/%d\n",
-					ep->ep.name, count,
+					ep->ep_usb.name, count,
 					is_short ? "/S" : "", req,
 					req->usb_req.actual,
 					req->usb_req.length);
@@ -729,7 +730,7 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 		}
 		dev_dbg(&ep->udc->gadget.dev,
 			"%s: wrote %s %d bytes%s%s %d left %p\n", __func__,
-			ep->ep.name, length,
+			ep->ep_usb.name, length,
 			is_last ? "/L" : "", is_short ? "/S" : "",
 			req->usb_req.length - req->usb_req.actual, req);
 
@@ -769,7 +770,7 @@ static void nuke(struct xusb_ep *ep, int status)
  **/
 static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 {
-	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep);
+	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	unsigned long flags;
 	u32 epcfgreg;
 	struct xusb_udc *udc = &controller;
@@ -830,7 +831,7 @@ static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 static int xusb_ep_enable(struct usb_ep *_ep,
 			  const struct usb_endpoint_descriptor *desc)
 {
-	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep);
+	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	struct xusb_udc *dev = ep->udc;
 	u32 tmp;
 	u8 eptype = 0;
@@ -867,10 +868,10 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	ep->epnumber = (desc->bEndpointAddress & 0x0f);
 	ep->stopped = 0;
 	ep->desc = desc;
-	ep->ep.desc = desc;
+	ep->ep_usb.desc = desc;
 	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	spin_lock_irqsave(&ep->udc->lock, flags);
-	ep->ep.maxpacket = le16_to_cpu(desc->wMaxPacketSize);
+	ep->ep_usb.maxpacket = le16_to_cpu(desc->wMaxPacketSize);
 
 	switch (tmp) {
 	case USB_ENDPOINT_XFER_CONTROL:
@@ -882,13 +883,13 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	case USB_ENDPOINT_XFER_INT:
 		/* NON- ISO */
 		eptype = 0;
-		if (ep->ep.maxpacket > 64)
+		if (ep->ep_usb.maxpacket > 64)
 			goto bogus_max;
 		break;
 	case USB_ENDPOINT_XFER_BULK:
 		/* NON- ISO */
 		eptype = 0;
-		switch (ep->ep.maxpacket) {
+		switch (ep->ep_usb.maxpacket) {
 		case 8:
 		case 16:
 		case 32:
@@ -898,7 +899,7 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 		}
 bogus_max:
 		dev_dbg(&ep->udc->gadget.dev, "bogus maxpacket %d\n",
-			ep->ep.maxpacket);
+			ep->ep_usb.maxpacket);
 		spin_unlock_irqrestore(&ep->udc->lock, flags);
 		return -EINVAL;
 	case USB_ENDPOINT_XFER_ISOC:
@@ -916,7 +917,7 @@ ok:	ep->eptype = eptype;
 	ep_configure(ep, ep->udc);
 
 	dev_dbg(&ep->udc->gadget.dev, "Enable Endpoint %d max pkt is %d\n",
-		ep->epnumber, ep->ep.maxpacket);
+		ep->epnumber, ep->ep_usb.maxpacket);
 
 	/* Enable the End point.*/
 	epcfg = udc->read_fn(ep->udc->base_address + ep->endpointoffset);
@@ -958,7 +959,7 @@ ok:	ep->eptype = eptype;
  **/
 static int xusb_ep_disable(struct usb_ep *_ep)
 {
-	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep);
+	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	unsigned long flags;
 	u32 epcfg;
 	struct xusb_udc *udc = &controller;
@@ -975,7 +976,7 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 	 * Restore the endpoint's pristine config
 	 */
 	ep->desc = NULL;
-	ep->ep.desc = NULL;
+	ep->ep_usb.desc = NULL;
 
 	ep->stopped = 1;
 
@@ -1025,7 +1026,7 @@ static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
  **/
 static void xusb_ep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 {
-	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep);
+	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	struct xusb_request *req;
 
 	req = container_of(_req, struct xusb_request, usb_req);
@@ -1057,7 +1058,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct xusb_udc *udc = &controller;
 
 	req = container_of(_req, struct xusb_request, usb_req);
-	ep = container_of(_ep, struct xusb_ep, ep);
+	ep = container_of(_ep, struct xusb_ep, ep_usb);
 
 	if (!_req || !_req->complete || !_req->buf ||
 	    !list_empty(&req->queue)) {
@@ -1065,7 +1066,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 		return -EINVAL;
 	}
 
-	if (!_ep || (!ep->desc && ep->ep.name != ep0name)) {
+	if (!_ep || (!ep->desc && ep->ep_usb.name != ep0name)) {
 		dev_dbg(&ep->udc->gadget.dev, "invalid ep\n");
 		return -EINVAL;
 	}
@@ -1155,9 +1156,9 @@ static int xusb_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	struct xusb_request *req;
 	unsigned long flags;
 
-	ep = container_of(_ep, struct xusb_ep, ep);
+	ep = container_of(_ep, struct xusb_ep, ep_usb);
 
-	if (!_ep || ep->ep.name == ep0name)
+	if (!_ep || ep->ep_usb.name == ep0name)
 		return -EINVAL;
 
 	spin_lock_irqsave(&ep->udc->lock, flags);
@@ -1304,7 +1305,7 @@ static const struct usb_gadget_ops xusb_udc_ops = {
 static struct xusb_udc controller = {
 	.gadget = {
 		.ops = &xusb_udc_ops,
-		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep,
+		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep_usb,
 		.speed = USB_SPEED_HIGH,
 		.max_speed = USB_SPEED_HIGH,
 		.is_otg = 0,
@@ -1319,11 +1320,11 @@ static struct xusb_udc controller = {
 			},
 		},
 	.ep[0] = {
-		  .ep = {
-			 .name = ep0name,
-			 .ops = &xusb_ep_ops,
-			 .maxpacket = 0x40,
-			 },
+		.ep_usb = {
+			.name = ep0name,
+			.ops = &xusb_ep_ops,
+			.maxpacket = 0x40,
+		},
 			.udc = &controller,
 		.epnumber = 0,
 		.buffer0count = 0,
@@ -1335,10 +1336,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[1] = {
-		  .ep = {
-			 .name = "ep1",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep1",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 1,
 		.buffer0count = 0,
@@ -1350,10 +1351,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[2] = {
-		  .ep = {
-			 .name = "ep2",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep2",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 2,
 		.buffer0count = 0,
@@ -1365,10 +1366,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[3] = {
-		  .ep = {
-			 .name = "ep3",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep3",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 3,
 		.buffer0count = 0,
@@ -1380,10 +1381,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[4] = {
-		  .ep = {
-			 .name = "ep4",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep4",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 4,
 		.buffer0count = 0,
@@ -1395,10 +1396,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[5] = {
-		  .ep = {
-			 .name = "ep5",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep5",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 5,
 		.buffer0count = 0,
@@ -1410,10 +1411,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[6] = {
-		  .ep = {
-			 .name = "ep6",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep6",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 6,
 		.buffer0count = 0,
@@ -1425,10 +1426,10 @@ static struct xusb_udc controller = {
 		.endpointoffset = 0,
 		},
 	.ep[7] = {
-		  .ep = {
-			 .name = "ep7",
-			 .ops = &xusb_ep_ops,
-			 },
+		.ep_usb = {
+			.name = "ep7",
+			.ops = &xusb_ep_ops,
+		},
 		.udc = &controller,
 		.epnumber = 7,
 		.buffer0count = 0,
@@ -1460,8 +1461,9 @@ static void xudc_reinit(struct xusb_udc *udc)
 		struct xusb_ep *ep = &udc->ep[ep_number];
 
 		if (ep_number) {
-			list_add_tail(&ep->ep.ep_list, &udc->gadget.ep_list);
-			ep->ep.maxpacket = (unsigned short)~0;
+			list_add_tail(&ep->ep_usb.ep_list,
+					&udc->gadget.ep_list);
+			ep->ep_usb.maxpacket = (unsigned short)~0;
 		}
 		ep->desc = NULL;
 		ep->stopped = 0;
@@ -2093,7 +2095,7 @@ static int xudc_start(struct usb_gadget *gadget,
 	udc->gadget.speed = driver->max_speed;
 
 	/* Enable the USB device.*/
-	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep, d);
+	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep_usb, d);
 	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
 	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
 		(udc->base_address + XUSB_CONTROL_OFFSET));
