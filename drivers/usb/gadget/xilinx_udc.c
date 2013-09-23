@@ -2134,10 +2134,6 @@ static int xudc_stop(struct usb_gadget *gadget,
 
 static void xusb_release(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct xusb_udc *udc = platform_get_drvdata(pdev);
-
-	kfree(udc);
 }
 
 /**
