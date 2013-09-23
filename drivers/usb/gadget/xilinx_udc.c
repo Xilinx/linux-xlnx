@@ -38,15 +38,6 @@
 #include <linux/dma-mapping.h>
 #include "gadget_chips.h"
 
-
- /* Match table for of_platform binding */
-static const struct of_device_id usb_of_match[] = {
-	{.compatible = "xlnx,xps-usb2-device-4.00.a",},
-	{ /* end of list */ },
-};
-
-MODULE_DEVICE_TABLE(of, usb_of_match);
-
 /****************************************************************************
 DEBUG utilities
 *****************************************************************************/
@@ -2264,6 +2255,13 @@ static int usb_of_remove(struct platform_device *pdev)
 {
 	return xudc_remove(pdev);
 }
+
+/* Match table for of_platform binding */
+static const struct of_device_id usb_of_match[] = {
+	{ .compatible = "xlnx,xps-usb2-device-4.00.a", },
+	{ /* end of list */ },
+};
+MODULE_DEVICE_TABLE(of, usb_of_match);
 
 static struct platform_driver usb_of_driver = {
 	.driver = {
