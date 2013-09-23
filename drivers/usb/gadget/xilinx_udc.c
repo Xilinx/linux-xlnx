@@ -875,6 +875,7 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	ep->epnumber = (desc->bEndpointAddress & 0x0f);
 	ep->stopped = 0;
 	ep->desc = desc;
+	ep->ep.desc = desc;
 	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	spin_lock_irqsave(&ep->udc->lock, flags);
 	ep->ep.maxpacket = le16_to_cpu(desc->wMaxPacketSize);
@@ -982,6 +983,7 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 	 * Restore the endpoint's pristine config
 	 */
 	ep->desc = NULL;
+	ep->ep.desc = NULL;
 
 	ep->stopped = 1;
 
