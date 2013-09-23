@@ -824,42 +824,27 @@ static int xi2cps_probe(struct platform_device *pdev)
 	 * Get the irq resource from platform data.Initialize the adapter
 	 * structure members and also xi2cps structure.
 	 */
-	id = kzalloc(sizeof(*id), GFP_KERNEL);
-	if (!id) {
-		dev_err(&pdev->dev, "no mem for i2c private data\n");
+	id = devm_kzalloc(&pdev->dev, sizeof(*id), GFP_KERNEL);
+	if (!id)
 		return -ENOMEM;
-	}
+
 	platform_set_drvdata(pdev, id);
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r_mem) {
-		dev_err(&pdev->dev, "no mmio resources\n");
-		ret = -ENODEV;
-		goto err_free_mem;
-	}
-
-	id->membase = ioremap(r_mem->start, r_mem->end - r_mem->start + 1);
-	if (id->membase == NULL) {
-		dev_err(&pdev->dev, "Couldn't ioremap memory at 0x%08lx\n",
-			(unsigned long)r_mem->start);
-		ret = -ENOMEM;
-		goto err_free_mem;
+	id->membase = devm_ioremap_resource(&pdev->dev, r_mem);
+	if (IS_ERR(id->membase)) {
+		dev_err(&pdev->dev, "ioremap failed\n");
+		return PTR_ERR(id->membase);
 	}
 
 	id->irq = platform_get_irq(pdev, 0);
-	if (id->irq < 0) {
-		dev_err(&pdev->dev, "no IRQ resource:%d\n", id->irq);
-		ret = -ENXIO;
-		goto err_unmap;
-	}
 
 	prop = of_get_property(pdev->dev.of_node, "bus-id", NULL);
 	if (prop) {
 		id->adap.nr = be32_to_cpup(prop);
 	} else {
-		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine bus-id\n");
-		goto err_unmap ;
+		return -ENXIO;
 	}
 	id->adap.dev.of_node = pdev->dev.of_node;
 	id->adap.algo = (struct i2c_algorithm *) &xi2cps_algo;
@@ -871,16 +856,15 @@ static int xi2cps_probe(struct platform_device *pdev)
 		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
-	id->clk = clk_get(&pdev->dev, NULL);
+	id->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(id->clk)) {
 		dev_err(&pdev->dev, "input clock not found.\n");
-		ret = PTR_ERR(id->clk);
-		goto err_unmap;
+		return PTR_ERR(id->clk);
 	}
 	ret = clk_prepare_enable(id->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable clock.\n");
-		goto err_clk_put;
+		return ret;
 	}
 	id->clk_rate_change_nb.notifier_call = xi2cps_clk_notifier_cb;
 	id->clk_rate_change_nb.next = NULL;
@@ -913,16 +897,17 @@ static int xi2cps_probe(struct platform_device *pdev)
 		goto err_clk_dis;
 	}
 
-	if (request_irq(id->irq, xi2cps_isr, 0, DRIVER_NAME, id)) {
+	ret = devm_request_irq(&pdev->dev, id->irq, xi2cps_isr, 0,
+				 DRIVER_NAME, id);
+	if (ret) {
 		dev_err(&pdev->dev, "cannot get irq %d\n", id->irq);
-		ret = -EINVAL;
 		goto err_clk_dis;
 	}
 
 	ret = i2c_add_numbered_adapter(&id->adap);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
-		goto err_free_irq;
+		goto err_clk_dis;
 	}
 
 	of_i2c_register_devices(&id->adap);
@@ -932,16 +917,8 @@ static int xi2cps_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_free_irq:
-	free_irq(id->irq, id);
 err_clk_dis:
 	clk_disable_unprepare(id->clk);
-err_clk_put:
-	clk_put(id->clk);
-err_unmap:
-	iounmap(id->membase);
-err_free_mem:
-	kfree(id);
 	return ret;
 }
 
@@ -958,12 +935,8 @@ static int xi2cps_remove(struct platform_device *pdev)
 	struct xi2cps *id = platform_get_drvdata(pdev);
 
 	i2c_del_adapter(&id->adap);
-	free_irq(id->irq, id);
-	iounmap(id->membase);
 	clk_notifier_unregister(id->clk, &id->clk_rate_change_nb);
 	clk_disable_unprepare(id->clk);
-	clk_put(id->clk);
-	kfree(id);
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;
