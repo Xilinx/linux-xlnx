@@ -1969,8 +1969,8 @@ static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 			udc->write_fn(intrreg,
 				(udc->base_address + XUSB_IER_OFFSET));
 			status = process_setup_pkt(udc, &ctrl);
-			if (status) {
-
+			if (status || ((ch9_cmdbuf.setup.bRequestType &
+			USB_TYPE_MASK) == USB_TYPE_CLASS)) {
 				/*
 				 * Request is to be handled by the gadget
 				 * driver.
