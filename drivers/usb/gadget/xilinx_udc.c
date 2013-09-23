@@ -2161,7 +2161,6 @@ static int xudc_remove(struct platform_device *pdev)
 	if (udc->driver)
 		return -EBUSY;
 
-	platform_set_drvdata(pdev, NULL);
 	device_unregister(&udc->gadget.dev);
 
 	return 0;
