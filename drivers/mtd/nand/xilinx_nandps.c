@@ -17,6 +17,7 @@
  * This driver is based on plat_nand.c and mxc_nand.c drivers
  */
 
+#include <linux/err.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -829,7 +830,6 @@ static int xnandps_probe(struct platform_device *pdev)
 	struct mtd_info *mtd;
 	struct nand_chip *nand_chip;
 	struct resource *nand_res;
-	int err = 0;
 	u8 maf_id, dev_id, i;
 	u8 get_feature;
 	u8 set_feature[4] = {0x08, 0x00, 0x00, 0x00};
@@ -838,32 +838,17 @@ static int xnandps_probe(struct platform_device *pdev)
 	const unsigned int *prop;
 	u32 options = 0;
 
-	xnand = kzalloc(sizeof(struct xnandps_info), GFP_KERNEL);
-	if (!xnand) {
-		dev_err(&pdev->dev, "failed to allocate device structure.\n");
+	xnand = devm_kzalloc(&pdev->dev, sizeof(struct xnandps_info),
+					GFP_KERNEL);
+	if (!xnand)
 		return -ENOMEM;
-	}
 
 	/* Map physical address of NAND flash */
 	nand_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (nand_res == NULL) {
-		err = -ENODEV;
-		dev_err(&pdev->dev, "platform_get_resource for NAND failed\n");
-		goto out_free_data;
-	}
-	nand_res = request_mem_region(nand_res->start, resource_size(nand_res),
-					pdev->name);
-	if (nand_res == NULL) {
-		err = -ENOMEM;
-		dev_err(&pdev->dev, "request_mem_region for cont failed\n");
-		goto out_free_data;
-	}
-
-	xnand->nand_base = ioremap(nand_res->start, resource_size(nand_res));
-	if (xnand->nand_base == NULL) {
-		err = -EIO;
+	xnand->nand_base = devm_ioremap_resource(&pdev->dev, nand_res);
+	if (IS_ERR(xnand->nand_base)) {
 		dev_err(&pdev->dev, "ioremap for NAND failed\n");
-		goto out_release_nand_mem_region;
+		return PTR_ERR(xnand->nand_base);
 	}
 
 	/* Get x8 or x16 mode from device tree */
@@ -915,9 +900,8 @@ static int xnandps_probe(struct platform_device *pdev)
 
 	/* first scan to find the device and get the page size */
 	if (nand_scan_ident(mtd, 1, NULL)) {
-		err = -ENXIO;
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
-		goto out_unmap_all_mem;
+		return -ENXIO;
 	}
 
 	/* Check if On-Die ECC flash */
@@ -1019,9 +1003,8 @@ static int xnandps_probe(struct platform_device *pdev)
 
 	/* second phase scan */
 	if (nand_scan_tail(mtd)) {
-		err = -ENXIO;
 		dev_err(&pdev->dev, "nand_scan_tail for NAND failed\n");
-		goto out_unmap_all_mem;
+		return -ENXIO;
 	}
 
 	ppdata.of_node = pdev->dev.of_node;
@@ -1030,15 +1013,6 @@ static int xnandps_probe(struct platform_device *pdev)
 			NULL, 0);
 
 	return 0;
-
-out_unmap_all_mem:
-	platform_set_drvdata(pdev, NULL);
-	iounmap(xnand->nand_base);
-out_release_nand_mem_region:
-	release_mem_region(nand_res->start, resource_size(nand_res));
-out_free_data:
-	kfree(xnand);
-	return err;
 }
 
 /**
@@ -1053,7 +1027,6 @@ out_free_data:
 static int xnandps_remove(struct platform_device *pdev)
 {
 	struct xnandps_info *xnand = platform_get_drvdata(pdev);
-	struct resource *nand_res;
 
 	/* Release resources, unregister device */
 	nand_release(&xnand->mtd);
@@ -1062,11 +1035,6 @@ static int xnandps_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
-	iounmap(xnand->nand_base);
-	nand_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(nand_res->start, resource_size(nand_res));
-	/* Free the MTD device structure */
-	kfree(xnand);
 	return 0;
 }
 
