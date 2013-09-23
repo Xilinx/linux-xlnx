@@ -283,6 +283,25 @@ static unsigned int xusb_read32_be(void __iomem *addr)
 }
 
 /**
+ * setup_ctrl_wr_status_stage() - Sets up the usb device status stages.
+ * @udc:		Pointer to the usb device controller structure.
+ */
+static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
+{
+	u32 epcfgreg;
+
+	epcfgreg = (udc->read_fn(udc->base_address +
+				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset)|
+				XUSB_EP_CFG_DATA_TOGGLE_MASK);
+	udc->write_fn(epcfgreg, (udc->base_address +
+			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+	udc->write_fn(0, (udc->base_address +
+			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset +
+			  XUSB_EP_BUF0COUNT_OFFSET));
+	udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
+}
+
+/**
  * ep_configure() - Configures the given endpoint.
  * @ep:		Pointer to the usb device endpoint structure.
  * @udc:	Pointer to the usb peripheral controller structure.
@@ -1090,8 +1109,20 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 				udc->write_fn(1, (ep->udc->base_address +
 					   XUSB_BUFFREADY_OFFSET));
 				ch9_cmdbuf.contwritecount -= count;
+			} else {
+				if (ch9_cmdbuf.setup.wLength) {
+					ch9_cmdbuf.contreadptr = req->req.buf
+							+ req->req.actual;
+					udc->write_fn(req->req.length ,
+						(ep->udc->base_address +
+						XUSB_EP_BUF0COUNT_OFFSET));
+					udc->write_fn(1, (ep->udc->base_address
+						+ XUSB_BUFFREADY_OFFSET));
+				} else {
+					setup_ctrl_wr_status_stage(udc);
+					req = NULL;
+				}
 			}
-			req = NULL;
 		} else {
 
 			if (ep->is_in) {
@@ -1564,25 +1595,6 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 	}
 }
 
-/**
- * setup_ctrl_wr_status_stage() - Sets up the usb device status stages.
- * @udc:		Pointer to the usb device controller structure.
- *
- **/
-static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
-{
-	u32 epcfgreg;
-
-	epcfgreg = (udc->read_fn(udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset)|
-				XUSB_EP_CFG_DATA_TOGGLE_MASK);
-	udc->write_fn(epcfgreg, (udc->base_address +
-			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
-	udc->write_fn(0, (udc->base_address +
-			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset +
-			  XUSB_EP_BUF0COUNT_OFFSET));
-	udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
-}
 
 /**
  * set_configuration() - Sets the device configuration.
@@ -1818,8 +1830,7 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 		/* Execute the put command.*/
 		ch9_cmdbuf.setupseqrx = DATA_PHASE;
 		ch9_cmdbuf.setupseqtx = STATUS_PHASE;
-		if (!ch9_cmdbuf.setup.wLength)
-			return execute_command(udc);
+		return execute_command(udc);
 	}
 	/* Control should never come here.*/
 	return 0;
@@ -1862,14 +1873,15 @@ static void ep0_out_token(struct xusb_udc *udc)
 			*ch9_cmdbuf.contreadptr++ = *ep0rambase++;
 
 		ch9_cmdbuf.contreadcount += count;
-
-		/* Set the Tx packet size and the Tx enable bit.*/
-		udc->write_fn(count, (udc->base_address +
-						 XUSB_EP_BUF0COUNT_OFFSET));
-		udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
-
-		if (ch9_cmdbuf.setup.wLength == ch9_cmdbuf.contreadcount)
-			execute_command(udc);
+		if (ch9_cmdbuf.setup.wLength == ch9_cmdbuf.contreadcount) {
+				setup_ctrl_wr_status_stage(udc);
+		} else {
+			/* Set the Tx packet size and the Tx enable bit.*/
+			udc->write_fn(0, (udc->base_address +
+				XUSB_EP_BUF0COUNT_OFFSET));
+			udc->write_fn(1, (udc->base_address +
+				XUSB_BUFFREADY_OFFSET));
+		}
 		break;
 
 	default:
