@@ -2127,28 +2127,6 @@ static int xudc_stop(struct usb_gadget *gadget,
 	return 0;
 }
 
-/**
- * xudc_remove() - Releases the resources allocated during the initialization.
- * @pdev:	Pointer to the platform device structure.
- *
- * returns: 0 for success and error value on failure
- *
- **/
-static int xudc_remove(struct platform_device *pdev)
-{
-
-	struct xusb_udc *udc = platform_get_drvdata(pdev);
-
-	dev_dbg(&pdev->dev, "remove\n");
-	usb_del_gadget_udc(&udc->gadget);
-	if (udc->driver)
-		return -EBUSY;
-
-	device_unregister(&udc->gadget.dev);
-
-	return 0;
-}
-
 static void xusb_release(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -2245,15 +2223,24 @@ usb_of_probe(struct platform_device *pdev)
 }
 
 /**
- * usb_of_remove() - The device driver remove function.
- * @pdev:		Pointer to the platform device structure.
+ * xudc_remove() - Releases the resources allocated during the initialization.
+ * @pdev:       Pointer to the platform device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
-static int usb_of_remove(struct platform_device *pdev)
+static int xudc_remove(struct platform_device *pdev)
 {
-	return xudc_remove(pdev);
+	struct xusb_udc *udc = platform_get_drvdata(pdev);
+
+	dev_dbg(&pdev->dev, "remove\n");
+	usb_del_gadget_udc(&udc->gadget);
+	if (udc->driver)
+		return -EBUSY;
+
+	device_unregister(&udc->gadget.dev);
+
+	return 0;
 }
 
 /* Match table for of_platform binding */
@@ -2270,7 +2257,7 @@ static struct platform_driver usb_of_driver = {
 		.of_match_table = usb_of_match,
 	},
 	.probe = usb_of_probe,
-	.remove = usb_of_remove,
+	.remove = xudc_remove,
 };
 
 module_platform_driver(usb_of_driver);
