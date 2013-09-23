@@ -138,11 +138,11 @@ Hardware USB controller register map related constants
 *****************************************************************************/
 /**
  * struct xusb_request - Xilinx USB device request structure
- * @req: Linux usb request structure
+ * @usb_req: Linux usb request structure
  * @queue: usb device request queue
  */
 struct xusb_request {
-	struct usb_request req;
+	struct usb_request usb_req;
 	struct list_head queue;
 };
 /**
@@ -574,10 +574,10 @@ static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 
 	list_del_init(&req->queue);
 
-	if (req->req.status == -EINPROGRESS)
-		req->req.status = status;
+	if (req->usb_req.status == -EINPROGRESS)
+		req->usb_req.status = status;
 	else
-		status = req->req.status;
+		status = req->usb_req.status;
 
 	if (status && status != -ESHUTDOWN)
 		dev_dbg(&ep->udc->gadget.dev, "%s done %p, status %d\n",
@@ -585,8 +585,8 @@ static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 	ep->stopped = 1;
 
 	spin_unlock(&ep->udc->lock);
-	if (req->req.complete)
-		req->req.complete(&ep->ep, &req->req);
+	if (req->usb_req.complete)
+		req->usb_req.complete(&ep->ep, &req->usb_req);
 	spin_lock(&ep->udc->lock);
 
 	ep->stopped = stopped;
@@ -629,11 +629,11 @@ top:
 		"curbufnum is %d  and buf0rdy is %d, buf1rdy is %d\n",
 		ep->curbufnum, ep->buffer0ready, ep->buffer1ready);
 
-	buf = req->req.buf + req->req.actual;
+	buf = req->usb_req.buf + req->usb_req.actual;
 	prefetchw(buf);
-	bufferspace = req->req.length - req->req.actual;
+	bufferspace = req->usb_req.length - req->usb_req.actual;
 
-	req->req.actual += min(count, bufferspace);
+	req->usb_req.actual += min(count, bufferspace);
 	is_short = (count < ep->ep.maxpacket);
 
 	if (count) {
@@ -642,21 +642,22 @@ top:
 			 * is smaller than what the host sent.
 			 * discard the extra data.
 			 */
-			if (req->req.status != -EOVERFLOW)
+			if (req->usb_req.status != -EOVERFLOW)
 				dev_dbg(&ep->udc->gadget.dev,
 					"%s overflow %d\n", ep->ep.name, count);
-			req->req.status = -EOVERFLOW;
+			req->usb_req.status = -EOVERFLOW;
 		} else {
 			if (!ep_sendrecv(ep, buf, count, 1)) {
 				dev_dbg(&ep->udc->gadget.dev,
 					"read %s, %d bytes%s req %p %d/%d\n",
 					ep->ep.name, count,
 					is_short ? "/S" : "", req,
-					req->req.actual, req->req.length);
+					req->usb_req.actual,
+					req->usb_req.length);
 				bufferspace -= count;
 				/* Completion */
-				if (is_short ||
-				    req->req.actual == req->req.length) {
+				if ((req->usb_req.actual ==
+					 req->usb_req.length) || is_short) {
 					done(ep, req, 0);
 					return 1;
 				}
@@ -671,7 +672,7 @@ top:
 				"rcv fail..curbufnum is %d and buf0rdy is"
 				"%d, buf1rdy is %d\n", ep->curbufnum,
 				ep->buffer0ready, ep->buffer1ready);
-				req->req.actual -= min(count, bufferspace);
+				req->usb_req.actual -= min(count, bufferspace);
 				return -EINVAL;
 			}
 		}
@@ -701,9 +702,9 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 	max = le16_to_cpu(ep->desc->wMaxPacketSize);
 
 	if (req) {
-		buf = req->req.buf + req->req.actual;
+		buf = req->usb_req.buf + req->usb_req.actual;
 		prefetch(buf);
-		length = req->req.length - req->req.actual;
+		length = req->usb_req.length - req->usb_req.actual;
 	} else {
 		buf = NULL;
 		length = 0;
@@ -711,17 +712,17 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 
 	length = min(length, max);
 	if (ep_sendrecv(ep, buf, length, EP_TRANSMIT) == 1) {
-		buf = req->req.buf - req->req.actual;
+		buf = req->usb_req.buf - req->usb_req.actual;
 		dev_dbg(&ep->udc->gadget.dev, "Send failure\n");
 		return 0;
 	} else {
-		req->req.actual += length;
+		req->usb_req.actual += length;
 
 		if (unlikely(length != max))
 			is_last = is_short = 1;
 		else {
-			if (likely(req->req.length != req->req.actual)
-			    || req->req.zero)
+			if (likely(req->usb_req.length !=
+				req->usb_req.actual) || req->usb_req.zero)
 				is_last = 0;
 			else
 				is_last = 1;
@@ -730,7 +731,7 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 			"%s: wrote %s %d bytes%s%s %d left %p\n", __func__,
 			ep->ep.name, length,
 			is_last ? "/L" : "", is_short ? "/S" : "",
-			req->req.length - req->req.actual, req);
+			req->usb_req.length - req->usb_req.actual, req);
 
 		if (is_last) {
 			done(ep, req, 0);
@@ -1013,7 +1014,7 @@ static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
 
 	memset(req, 0, sizeof(*req));
 	INIT_LIST_HEAD(&req->queue);
-	return &req->req;
+	return &req->usb_req;
 }
 
 /**
@@ -1027,7 +1028,7 @@ static void xusb_ep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep);
 	struct xusb_request *req;
 
-	req = container_of(_req, struct xusb_request, req);
+	req = container_of(_req, struct xusb_request, usb_req);
 
 	if (!list_empty(&req->queue))
 		dev_warn(&ep->udc->gadget.dev, "Error: No memory to free");
@@ -1055,7 +1056,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	u8 *corebuf;
 	struct xusb_udc *udc = &controller;
 
-	req = container_of(_req, struct xusb_request, req);
+	req = container_of(_req, struct xusb_request, usb_req);
 	ep = container_of(_ep, struct xusb_ep, ep);
 
 	if (!_req || !_req->complete || !_req->buf ||
@@ -1086,10 +1087,11 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 		if (!ep->epnumber) {
 			ep->data = req;
 			if (ch9_cmdbuf.setup.bRequestType & USB_DIR_IN) {
-				ch9_cmdbuf.contwriteptr = req->req.buf
-							+ req->req.actual;
+				ch9_cmdbuf.contwriteptr = req->usb_req.buf +
+							req->usb_req.actual;
 				prefetch(ch9_cmdbuf.contwriteptr);
-				length = req->req.length - req->req.actual;
+				length = req->usb_req.length -
+					req->usb_req.actual;
 				corebuf = (void __force *) ((ep->rambase << 2) +
 					    ep->udc->base_address);
 				ch9_cmdbuf.contwritecount = length;
@@ -1104,9 +1106,10 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 				ch9_cmdbuf.contwritecount -= count;
 			} else {
 				if (ch9_cmdbuf.setup.wLength) {
-					ch9_cmdbuf.contreadptr = req->req.buf
-							+ req->req.actual;
-					udc->write_fn(req->req.length ,
+					ch9_cmdbuf.contreadptr =
+						req->usb_req.buf +
+							req->usb_req.actual;
+					udc->write_fn(req->usb_req.length ,
 						(ep->udc->base_address +
 						XUSB_EP_BUF0COUNT_OFFSET));
 					udc->write_fn(1, (ep->udc->base_address
@@ -1160,10 +1163,10 @@ static int xusb_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	spin_lock_irqsave(&ep->udc->lock, flags);
 	/* Make sure it's actually queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
-		if (&req->req == _req)
+		if (&req->usb_req == _req)
 			break;
 	}
-	if (&req->req != _req) {
+	if (&req->usb_req != _req) {
 		spin_unlock_irqrestore(&ep->udc->lock, flags);
 		return -EINVAL;
 	}
@@ -1812,7 +1815,7 @@ static void ep0_out_token(struct xusb_udc *udc)
 		 */
 		ch9_cmdbuf.setupseqrx = SETUP_PHASE;
 		ch9_cmdbuf.setupseqtx = SETUP_PHASE;
-		ep->data->req.actual = ep->data->req.length;
+		ep->data->usb_req.actual = ep->data->usb_req.length;
 		done(ep, ep->data, 0);
 		break;
 
@@ -1877,7 +1880,7 @@ static void ep0_in_token(struct xusb_udc *udc)
 							XUSB_TESTMODE_OFFSET));
 			}
 		}
-		ep->data->req.actual = ch9_cmdbuf.setup.wLength;
+		ep->data->usb_req.actual = ch9_cmdbuf.setup.wLength;
 		done(ep, ep->data, 0);
 		break;
 
