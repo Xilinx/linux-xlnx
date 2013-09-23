@@ -141,6 +141,7 @@ Hardware USB controller register map related constants
 #define EP_TRANSMIT		0	/* EP is IN endpoint */
 #define DRIVER_VERSION  "10 October 2010" /* Driver version date */
 
+#define EP0_MAX_PACKET		64 /* Endpoint 0 maximum packet length */
 /*****************************************************************************
 	Structures and variable declarations.
 *****************************************************************************/
@@ -1038,8 +1039,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct xusb_ep *ep;
 	struct xusb_udc *dev;
 	unsigned long flags;
-	u8 *buf;
-	u32 length;
+	u32 length, count;
 	u8 *corebuf;
 	struct xusb_udc *udc = &controller;
 
@@ -1073,18 +1073,24 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	if (list_empty(&ep->queue)) {
 		if (!ep->epnumber) {
 			ep->data = req;
-			buf = req->req.buf + req->req.actual;
-			prefetch(buf);
-			length = req->req.length - req->req.actual;
-
-			corebuf = (void __force *) ((ep->rambase << 2) +
+			if (ch9_cmdbuf.setup.bRequestType & USB_DIR_IN) {
+				ch9_cmdbuf.contwriteptr = req->req.buf
+							+ req->req.actual;
+				prefetch(ch9_cmdbuf.contwriteptr);
+				length = req->req.length - req->req.actual;
+				corebuf = (void __force *) ((ep->rambase << 2) +
 					    ep->udc->base_address);
-			while (length--)
-				*corebuf++ = *buf++;
-			udc->write_fn(req->req.length, (ep->udc->base_address +
+				ch9_cmdbuf.contwritecount = length;
+				length = count = min_t(u32, length,
+							EP0_MAX_PACKET);
+				while (length--)
+					*corebuf++ = *ch9_cmdbuf.contwriteptr++;
+				udc->write_fn(count, (ep->udc->base_address +
 					   XUSB_EP_BUF0COUNT_OFFSET));
-			udc->write_fn(1, (ep->udc->base_address +
+				udc->write_fn(1, (ep->udc->base_address +
 					   XUSB_BUFFREADY_OFFSET));
+				ch9_cmdbuf.contwritecount -= count;
+			}
 			req = NULL;
 		} else {
 
@@ -1801,6 +1807,7 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 
 	/* Restore ReadPtr to data buffer.*/
 	ch9_cmdbuf.contreadptr = &ch9_cmdbuf.contreaddatabuffer[0];
+	ch9_cmdbuf.contreadcount = 0;
 
 	if (ch9_cmdbuf.setup.bRequestType & USB_DIR_IN) {
 		/* Execute the get command.*/
@@ -1880,7 +1887,7 @@ static void ep0_in_token(struct xusb_udc *udc)
 	struct xusb_ep *ep;
 	u32 epcfgreg;
 	u16 count;
-	u16 index;
+	u16 length;
 	u8 *ep0rambase;
 
 	ep = &udc->ep[0];
@@ -1891,6 +1898,7 @@ static void ep0_in_token(struct xusb_udc *udc)
 			udc->write_fn(ch9_cmdbuf.setup.wValue,
 					(udc->base_address +
 					XUSB_ADDRESS_OFFSET));
+			break;
 		} else
 			if (ch9_cmdbuf.setup.bRequest == USB_REQ_SET_FEATURE) {
 				if (ch9_cmdbuf.setup.bRequestType ==
@@ -1924,15 +1932,12 @@ static void ep0_in_token(struct xusb_udc *udc)
 			ch9_cmdbuf.setupseqtx = STATUS_PHASE;
 
 		} else {
-			if (8 >= ch9_cmdbuf.contwritecount)
-				count = ch9_cmdbuf.contwritecount;
-			else
-				count = 8;
-
+			length = count = min_t(u32, ch9_cmdbuf.contwritecount,
+						EP0_MAX_PACKET);
 			/* Copy the data to be transmitted into the DPRAM. */
 			ep0rambase = (u8 __force *) (udc->base_address +
 				(udc->ep[XUSB_EP_NUMBER_ZERO].rambase << 2));
-			for (index = 0; index < count; index++)
+			while (length--)
 				*ep0rambase++ = *ch9_cmdbuf.contwriteptr++;
 
 			ch9_cmdbuf.contwritecount -= count;
