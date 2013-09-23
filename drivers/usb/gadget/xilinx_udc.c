@@ -2281,36 +2281,36 @@ static void xusb_release(struct device *dev)
 
 /**
  * usb_of_probe() - The device probe function for driver initialization.
- * @op:		Pointer to the platform device structure.
+ * @pdev:		Pointer to the platform device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
 static int
-usb_of_probe(struct platform_device *op)
+usb_of_probe(struct platform_device *pdev)
 {
-	struct device_node *np = op->dev.of_node;
+	struct device_node *np = pdev->dev.of_node;
 	struct resource res, irq_res;
 	int rc;
 	const u32 *dma;
 
-	dev_dbg(&op->dev, "%s(%p)\n", __func__, op);
+	dev_dbg(&pdev->dev, "%s(%p)\n", __func__, pdev);
 
 	rc = of_address_to_resource(np, 0, &res);
 	if (rc) {
-		dev_err(&op->dev, "invalid address\n");
+		dev_err(&pdev->dev, "invalid address\n");
 		return rc;
 	}
 
 	rc = of_irq_to_resource(np, 0, &irq_res);
 	if (rc <= 0) {
-		dev_err(&op->dev, "No IRQ found\n");
+		dev_err(&pdev->dev, "No IRQ found\n");
 		return rc;
 	}
 
 	dma = of_get_property(np, "xlnx,include-dma", NULL);
 	if (!dma) {
-		dev_err(&op->dev, "DMA information missing in device tree\n");
+		dev_err(&pdev->dev, "DMA information missing in device tree\n");
 		return -ENODATA;
 	}
 	if (*dma)
@@ -2319,7 +2319,7 @@ usb_of_probe(struct platform_device *op)
 		res.flags = IORESOURCE_IO;
 
 
-	return xudc_init(&op->dev, &res, &irq_res);
+	return xudc_init(&pdev->dev, &res, &irq_res);
 }
 
 /**
