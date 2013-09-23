@@ -2136,14 +2136,13 @@ static void xusb_release(struct device *dev)
 }
 
 /**
- * usb_of_probe() - The device probe function for driver initialization.
+ * xudc_probe() - The device probe function for driver initialization.
  * @pdev:		Pointer to the platform device structure.
  *
  * returns: 0 for success and error value on failure
  *
  **/
-static int
-usb_of_probe(struct platform_device *pdev)
+static int xudc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *res;
@@ -2250,17 +2249,17 @@ static const struct of_device_id usb_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, usb_of_match);
 
-static struct platform_driver usb_of_driver = {
+static struct platform_driver xudc_driver = {
 	.driver = {
 		.name = driver_name,
 		.owner = THIS_MODULE,
 		.of_match_table = usb_of_match,
 	},
-	.probe = usb_of_probe,
+	.probe = xudc_probe,
 	.remove = xudc_remove,
 };
 
-module_platform_driver(usb_of_driver);
+module_platform_driver(xudc_driver);
 
 MODULE_DESCRIPTION("Xilinx udc driver");
 MODULE_AUTHOR("Xilinx, Inc");
