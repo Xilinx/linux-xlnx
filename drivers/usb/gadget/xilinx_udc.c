@@ -1599,46 +1599,6 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 	}
 }
 
-
-/**
- * set_configuration() - Sets the device configuration.
- * @udc:		Pointer to the usb device controller structure.
- *
- *	Processes the SET_CONFIGURATION command recieved during enumeration.
- **/
-static void set_configuration(struct xusb_udc *udc)
-{
-	u32 epcfgreg;
-
-	switch (ch9_cmdbuf.setup.wValue) {
-	case 0:
-		/*
-		 * This configuration value resets the device to the
-		 * un configured state like power up.
-		 */
-		udc->status = 0;
-		/* Cause a valid status phase to be issued.*/
-		setup_ctrl_wr_status_stage(udc);
-
-		break;
-	case CONFIGURATION_ONE:
-		udc->status = 1;
-		setup_ctrl_wr_status_stage(udc);
-		break;
-
-		/* Additional configurations can be added here.*/
-	default:
-		/* Stall the end point.*/
-		epcfgreg = (udc->read_fn(udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset)|
-				XUSB_EP_CFG_STALL_MASK);
-
-		udc->write_fn(epcfgreg, (udc->base_address +
-			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
-		break;
-	}
-}
-
 /**
  * setclearfeature() - Executes the set feature and clear feature commands.
  * @udc:		Pointer to the usb device controller structure.
@@ -1775,7 +1735,7 @@ static int execute_command(struct xusb_udc *udc)
 			break;
 
 		case USB_REQ_SET_CONFIGURATION:
-			set_configuration(udc);
+			udc->status = 1;
 			return ch9_cmdbuf.setup.bRequest;
 
 		default:
