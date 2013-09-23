@@ -200,7 +200,7 @@ struct xusb_udc {
 	struct xusb_ep ep[8];
 	void __iomem *base_address;
 	struct usb_gadget_driver *driver;
-	u8 dma_enabled;
+	bool dma_enabled;
 	u8 status;
 	unsigned int (*read_fn) (void __iomem *);
 	void (*write_fn) (u32, void __iomem *);
@@ -2185,11 +2185,6 @@ static int xudc_init(struct device *dev, struct resource *regs_res,
 	}
 	udc->base_address = v_addr;
 
-	if (regs_res->flags == IORESOURCE_DMA)
-		udc->dma_enabled = 1;
-	else
-		udc->dma_enabled = 0;
-
 	spin_lock_init(&udc->lock);
 
 	/* Check for IP endianness */
@@ -2292,7 +2287,7 @@ usb_of_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct resource res, irq_res;
 	int rc;
-	const u32 *dma;
+	struct xusb_udc *udc = &controller;
 
 	dev_dbg(&pdev->dev, "%s(%p)\n", __func__, pdev);
 
@@ -2308,16 +2303,7 @@ usb_of_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	dma = of_get_property(np, "xlnx,include-dma", NULL);
-	if (!dma) {
-		dev_err(&pdev->dev, "DMA information missing in device tree\n");
-		return -ENODATA;
-	}
-	if (*dma)
-		res.flags = IORESOURCE_DMA;
-	else
-		res.flags = IORESOURCE_IO;
-
+	udc->dma_enabled = of_property_read_bool(np, "xlnx,include-dma");
 
 	return xudc_init(&pdev->dev, &res, &irq_res);
 }
