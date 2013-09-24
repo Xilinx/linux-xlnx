@@ -240,7 +240,6 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 void axienet_mdio_teardown(struct axienet_local *lp)
 {
 	mdiobus_unregister(lp->mii_bus);
-	kfree(lp->mii_bus->irq);
 	mdiobus_free(lp->mii_bus);
 	lp->mii_bus = NULL;
 }
