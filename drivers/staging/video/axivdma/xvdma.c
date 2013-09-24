@@ -356,12 +356,10 @@ static int xvdma_probe(struct platform_device *pdev)
 
 	devt = MKDEV(XVDMA_MAJOR, XVDMA_MINOR);
 
-	drvdata = kzalloc(sizeof(struct xvdma_drvdata), GFP_KERNEL);
-	if (!drvdata) {
-		dev_err(dev, "Couldn't allocate device private record\n");
-		retval = -ENOMEM;
-		goto failed0;
-	}
+	drvdata = devm_kzalloc(&pdev->dev, sizeof(struct xvdma_drvdata),
+				GFP_KERNEL);
+	if (!drvdata)
+		return -ENOMEM;
 	dev_set_drvdata(dev, (void *)drvdata);
 
 	drvdata->dev = dev;
@@ -372,18 +370,13 @@ static int xvdma_probe(struct platform_device *pdev)
 	retval = cdev_add(&drvdata->cdev, devt, 1);
 	if (retval) {
 		dev_err(dev, "cdev_add() failed\n");
-		goto failed1;
+		return retval;
 	}
 
 	xvdma_scan_channels();
 	dev_info(dev, "Xilinx VDMA probe successful\n");
 	dev_info(dev, "Devices Scanned %d\n", num_devices);
 	return 0;
-
-failed1:
-	kfree(drvdata);
-failed0:
-	return retval;
 }
 
 static int xvdma_remove(struct platform_device *op)
@@ -397,8 +390,6 @@ static int xvdma_remove(struct platform_device *op)
 
 	xvdma_release_channels();
 	cdev_del(&drvdata->cdev);
-	kfree(drvdata);
-	dev_set_drvdata(dev, NULL);
 	return 0;
 }
 
