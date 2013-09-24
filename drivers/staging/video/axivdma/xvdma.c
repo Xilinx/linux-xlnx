@@ -10,21 +10,22 @@
  * is licensed "as is" without any warranty of any kind, whether express
  * or implied.
  */
-#include <linux/module.h>
-#include <linux/kernel.h>
+
+#include <linux/amba/xilinx_dma.h>
 #include <linux/cdev.h>
-#include <linux/slab.h>
+#include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
 #include <linux/fcntl.h>
-#include <linux/sysctl.h>
 #include <linux/fs.h>
+#include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
-#include <linux/io.h>
+#include <linux/slab.h>
+#include <linux/sysctl.h>
 #include <linux/uaccess.h>
-#include <linux/dma-mapping.h>
-#include <linux/dmaengine.h>
-#include <linux/amba/xilinx_dma.h>
 #include "xvdma.h"
 
 #define XVDMA_IOCTL_BASE	'W'
