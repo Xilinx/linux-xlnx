@@ -429,3 +429,7 @@ static void __exit xvdma_exit(void)
 
 late_initcall(xvdma_init);
 module_exit(xvdma_exit);
+
+MODULE_AUTHOR("Xilinx Inc.");
+MODULE_DESCRIPTION("Xilinx AXI VDMA client driver");
+MODULE_LICENSE("GPL v2");
