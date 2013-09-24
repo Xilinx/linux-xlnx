@@ -276,7 +276,7 @@ void xvdma_device_control(struct xvdma_chan_cfg *chan_cfg)
 void xvdma_add_dev_info(struct dma_chan *tx_chan,
 				struct dma_chan *rx_chan)
 {
-	static u32 i ;
+	static u32 i;
 
 	xvdma_dev_info[i] = (struct xvdma_dev *)
 		kzalloc(sizeof(struct xvdma_dev), GFP_KERNEL);
