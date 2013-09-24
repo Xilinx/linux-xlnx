@@ -19,8 +19,15 @@ Wrapper client driver for xilinx VDMA Engine.
 #define MAX_FRAMES      5
 #define DMA_CHAN_RESET 10
 
+#define XVDMA_IOCTL_BASE        'W'
+#define XVDMA_GET_NUM_DEVICES   _IO(XVDMA_IOCTL_BASE, 0)
+#define XVDMA_GET_DEV_INFO      _IO(XVDMA_IOCTL_BASE, 1)
+#define XVDMA_DEVICE_CONTROL    _IO(XVDMA_IOCTL_BASE, 2)
+#define XVDMA_PREP_BUF          _IO(XVDMA_IOCTL_BASE, 3)
+#define XVDMA_START_TRANSFER    _IO(XVDMA_IOCTL_BASE, 4)
+#define XVDMA_STOP_TRANSFER     _IO(XVDMA_IOCTL_BASE, 5)
 
-
+#define XVDMA_DEVICE_ID_SHIFT   28
 
 struct xvdma_drvdata {
 	struct device *dev;
