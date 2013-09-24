@@ -1033,8 +1033,6 @@ static int xnandps_remove(struct platform_device *pdev)
 	/* kfree(NULL) is safe */
 	kfree(xnand->parts);
 
-	platform_set_drvdata(pdev, NULL);
-
 	return 0;
 }
 
