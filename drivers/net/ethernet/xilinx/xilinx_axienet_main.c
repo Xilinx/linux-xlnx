@@ -1252,7 +1252,7 @@ axienet_ethtools_get_pauseparam(struct net_device *ndev,
  * axienet_ethtools_set_pauseparam - Set device pause parameter(flow control)
  *				     settings.
  * @ndev:	Pointer to net_device structure
- * @epauseparam:Pointer to ethtool_pauseparam structure
+ * @epauseparm:Pointer to ethtool_pauseparam structure
  *
  * This implements ethtool command for enabling flow control on Rx and Tx
  * paths. Issue "ethtool -A ethX tx on|off" under linux prompt to execute this
@@ -1507,7 +1507,6 @@ static void axienet_dma_err_handler(unsigned long data)
 /**
  * axienet_of_probe - Axi Ethernet probe function.
  * @op:		Pointer to platform device structure.
- * @match:	Pointer to device id structure
  *
  * returns: 0, on success
  *	    Non-zero error value on failure.
