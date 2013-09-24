@@ -206,8 +206,8 @@ struct xusb_udc {
 /* Global xusb_udc variable*/
 static struct xusb_udc controller;
 
-/*
- * ch9_cmdbuf - Standard USB Command Buffer Structure defined
+/**
+ * struct cmdbuf - Standard USB Command Buffer Structure defined
  * @setup: usb_ctrlrequest structure for control requests
  * @contreadptr: pointer to endpoint0 read data
  * @contwriteptr: pointer to endpoint0 write data
@@ -217,7 +217,7 @@ static struct xusb_udc controller;
  * @setupseqrx: rx status
  * @contreaddatabuffer: read data buffer for endpoint0
  */
-static struct {
+struct cmdbuf {
 	struct usb_ctrlrequest setup;
 	u8 *contreadptr;
 	u8 *contwriteptr;
@@ -226,7 +226,9 @@ static struct {
 	u32 setupseqtx;
 	u32 setupseqrx;
 	u8 contreaddatabuffer[64];
-} ch9_cmdbuf;
+};
+
+static struct cmdbuf ch9_cmdbuf;
 
 /*
  * Initial Fixed locations provided for endpoint memory address
