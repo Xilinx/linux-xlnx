@@ -1,7 +1,7 @@
 /*
  * Xilinx USB peripheral controller driver
  *
- * (c) 2010 Xilinx, Inc.
+ * (c) 2010 - 2013 Xilinx, Inc.
  *
  * Copyright (C) 2004 by Thomas Rathbone
  * Copyright (C) 2005 by HP Labs
@@ -38,15 +38,10 @@
 #include <linux/dma-mapping.h>
 #include "gadget_chips.h"
 
-/****************************************************************************
-DEBUG utilities
-*****************************************************************************/
+/* DEBUG utilities */
 #define  DEBUG
 #define  VERBOSE_DEBUG
 
-/****************************************************************************
-Hardware USB controller register map related constants
-****************************************************************************/
 /* Register offsets for the USB device.*/
 #define XUSB_EP0_CONFIG_OFFSET		0x0000  /* EP0 Config Reg Offset */
 #define XUSB_SETUP_PKT_ADDR_OFFSET	0x0080  /* Setup Packet Address */
@@ -133,9 +128,7 @@ Hardware USB controller register map related constants
 #define DRIVER_VERSION  "10 October 2010" /* Driver version date */
 
 #define EP0_MAX_PACKET		64 /* Endpoint 0 maximum packet length */
-/*****************************************************************************
-	Structures and variable declarations.
-*****************************************************************************/
+
 /**
  * struct xusb_request - Xilinx USB device request structure
  * @usb_req: Linux usb request structure
@@ -145,25 +138,26 @@ struct xusb_request {
 	struct usb_request usb_req;
 	struct list_head queue;
 };
+
 /**
- * USB end point structure.
- *@ep_usb usb endpoint instance
- *@queue endpoint message queue
- *@udc xilinx usb peripheral driver instance pointer
- *@epnumber endpoint number
- *@is_in endpoint direction (IN or OUT)
- *@stopped endpoint active status
- *@is_iso endpoint type(isochronous or non isochronous)
- *@maxpacket maximum packet size the endpoint can store
- *@rambase the endpoint buffer address
- *@buffer0count the size of the packet recieved in the first buffer
- *@buffer0ready the busy state of first buffer
- *@buffer1count the size of the packet received in the second buffer
- *@buffer1ready the busy state of second buffer
- *@eptype endpoint transfer type (BULK, INTERRUPT)
- *@curbufnum current buffer of endpoint that will be processed next
- *@endpointoffset the endpoint register offset value
- *@desc pointer to the usb endpoint descriptor
+ * struct xusb_ep - USB end point structure.
+ * @ep_usb: usb endpoint instance
+ * @queue: endpoint message queue
+ * @udc: xilinx usb peripheral driver instance pointer
+ * @epnumber: endpoint number
+ * @is_in: endpoint direction (IN or OUT)
+ * @stopped: endpoint active status
+ * @is_iso: endpoint type(isochronous or non isochronous)
+ * @maxpacket: maximum packet size the endpoint can store
+ * @rambase: the endpoint buffer address
+ * @buffer0count: the size of the packet recieved in the first buffer
+ * @buffer0ready: the busy state of first buffer
+ * @buffer1count: the size of the packet received in the second buffer
+ * @buffer1ready: the busy state of second buffer
+ * @eptype: endpoint transfer type (BULK, INTERRUPT)
+ * @curbufnum: current buffer of endpoint that will be processed next
+ * @endpointoffset: the endpoint register offset value
+ * @desc: pointer to the usb endpoint descriptor
  * @data: pointer to the xusb_request structure
  */
 struct xusb_ep {
@@ -188,15 +182,17 @@ struct xusb_ep {
 };
 
 /**
- * USB peripheral driver structure
- *@gadget USB gadget driver instance
- *@lock instance of spinlock
- *@ep an array of endpoint structures
- *@base_address the usb device base address
- *@driver pointer to the usb gadget driver instance
- *@dma_enabled flag indicating whether the dma is included in the system
- *@status status flag indicating the device cofiguration
- **/
+ * struct xusb_udc -  USB peripheral driver structure
+ * @gadget: USB gadget driver instance
+ * @lock: instance of spinlock
+ * @ep: an array of endpoint structures
+ * @base_address: the usb device base address
+ * @driver pointer: to the usb gadget driver instance
+ * @dma_enabled: flag indicating whether the dma is included in the system
+ * @status: status flag indicating the device cofiguration
+ * @read_fn: function pointer to read device registers
+ * @write_fn: function pointer to write to device registers
+ */
 struct xusb_udc {
 	struct usb_gadget gadget;
 	spinlock_t lock;
@@ -208,11 +204,20 @@ struct xusb_udc {
 	unsigned int (*read_fn) (void __iomem *);
 	void (*write_fn) (u32, void __iomem *);
 };
+
+/* Global xusb_udc variable*/
 static struct xusb_udc controller;
 
 /*
- * Standard USB Command Buffer Structure defined
- * as unions so that the parameters can be used in the request processing.
+ * ch9_cmdbuf - Standard USB Command Buffer Structure defined
+ * @setup: usb_ctrlrequest structure for control requests
+ * @contreadptr: pointer to endpoint0 read data
+ * @contwriteptr: pointer to endpoint0 write data
+ * @contreadcount: read data bytes count
+ * @contwritecount: write data bytes count
+ * @setupseqtx: tx status
+ * @setupseqrx: rx status
+ * @contreaddatabuffer: read data buffer for endpoint0
  */
 static struct {
 	struct usb_ctrlrequest setup;
@@ -243,39 +248,60 @@ static struct usb_endpoint_descriptor config_bulk_out_desc = {
 	.bmAttributes = USB_ENDPOINT_XFER_BULK,
 	.wMaxPacketSize = __constant_cpu_to_le16(0x40),
 };
+
 /**
- *to_udc() - returns the udc instance pointer
- *@g pointer to the usb gadget driver instance
- **/
+ * to_udc - Returns the udc instance pointer
+ * @g: pointer to the usb gadget driver instance
+ *
+ * Returns: xusb_udc pointer
+ */
 static inline struct xusb_udc *to_udc(struct usb_gadget *g)
 {
 
 	return container_of(g, struct xusb_udc, gadget);
 }
 
+/**
+ * xusb_write32 - little endian write to device registers
+ * @val: data to be written
+ * @addr: addr of device register
+ */
 static void xusb_write32(u32 val, void __iomem *addr)
 {
 	iowrite32(val, addr);
 }
 
+/**
+ * xusb_read32 - little endian read from device registers
+ * @addr: addr of device register
+ */
 static unsigned int xusb_read32(void __iomem *addr)
 {
 	return ioread32(addr);
 }
 
+/**
+ * xusb_write32_be - big endian write to device registers
+ * @val: data to be written
+ * @addr: addr of device register
+ */
 static void xusb_write32_be(u32 val, void __iomem *addr)
 {
 	iowrite32be(val, addr);
 }
 
+/**
+ * xusb_read32_be - big endian read from device registers
+ * @addr: addr of device register
+ */
 static unsigned int xusb_read32_be(void __iomem *addr)
 {
 	return ioread32be(addr);
 }
 
 /**
- * setup_ctrl_wr_status_stage() - Sets up the usb device status stages.
- * @udc:		Pointer to the usb device controller structure.
+ * setup_ctrl_wr_status_stage - Sets up the usb device status stages.
+ * @udc: pointer to the usb device controller structure.
  */
 static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
 {
@@ -293,14 +319,13 @@ static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
 }
 
 /**
- * ep_configure() - Configures the given endpoint.
- * @ep:		Pointer to the usb device endpoint structure.
- * @udc:	Pointer to the usb peripheral controller structure.
+ * ep_configure - Configures the given endpoint.
+ * @ep: pointer to the usb device endpoint structure.
+ * @udc: pointer to the usb peripheral controller structure.
  *
  * This function configures a specific endpoint with the given configuration
  * data.
- *
- **/
+ */
 static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 {
 
@@ -330,18 +355,17 @@ static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 }
 
 /**
- * ep_sendrecv() - Transmits or receives data to or from an endpoint.
- * @ep:		Pointer to the usb endpoint configuration structure.
- * @bufferptr:	Pointer to buffer containing the data to be sent.
- * @bufferlen:	The number of data bytes to be sent.
- * @direction:	The direction of data transfer (transmit or receive).
+ * ep_sendrecv - Transmits or receives data to or from an endpoint.
+ * @ep: pointer to the usb endpoint configuration structure.
+ * @bufferptr: pointer to buffer containing the data to be sent.
+ * @bufferlen: The number of data bytes to be sent.
+ * @direction: The direction of data transfer (transmit or receive).
+ *
+ * Returns: 0 on success and 1 on failure
  *
  * This function copies the transmit/receive data to/from the end point buffer
  * and enables the buffer for transmission/reception.
- *
- * returns: 0 on success and 1 on failure
- *
- **/
+ */
 static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 			u8 direction)
 {
@@ -559,15 +583,14 @@ clean:
 }
 
 /**
- * done() -	Exeutes the endpoint data transfer completion tasks.
- * @ep:		Pointer to the usb device endpoint structure.
- * @req:	Pointer to the usb request structure.
- * @status:	Status of the data transfer.
+ * done - Exeutes the endpoint data transfer completion tasks.
+ * @ep: pointer to the usb device endpoint structure.
+ * @req: pointer to the usb request structure.
+ * @status: Status of the data transfer.
  *
  * Deletes the message from the queue and updates data transfer completion
  * status.
- *
- **/
+ */
 static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 {
 	u8 stopped = ep->stopped;
@@ -593,15 +616,14 @@ static void done(struct xusb_ep *ep, struct xusb_request *req, int status)
 }
 
 /**
- * read_fifo() - Reads the data from the given endpoint buffer.
- * @ep:		Pointer to the usb device endpoint structure.
- * @req:	Pointer to the usb request structure.
+ * read_fifo - Reads the data from the given endpoint buffer.
+ * @ep: pointer to the usb device endpoint structure.
+ * @req: pointer to the usb request structure.
+ *
+ * Returns: 0 for success and error value on failure
  *
  * Pulls OUT packet data from the endpoint buffer.
- *
- * returns: 0 for success and error value on failure
- *
- **/
+ */
 static int read_fifo(struct xusb_ep *ep, struct xusb_request *req)
 {
 	u8 *buf;
@@ -684,15 +706,14 @@ top:
 }
 
 /**
- * write_fifo() - Writes data into the given endpoint buffer.
- * @ep:		Pointer to the usb device endpoint structure.
- * @req:	Pointer to the usb request structure.
+ * write_fifo - Writes data into the given endpoint buffer.
+ * @ep: pointer to the usb device endpoint structure.
+ * @req: pointer to the usb request structure.
+ *
+ * Returns: 0 for success and error value on failure
  *
  * Loads endpoint buffer for an IN packet.
- *
- * returns: 0 for success and error value on failure
- *
- **/
+ */
 static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 {
 	u8 *buf;
@@ -743,11 +764,10 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 }
 
 /**
- * nuke() -	Cleans up the data transfer message list.
- * @ep:		Pointer to the usb device endpoint structure.
- * @status:	Status of the data transfer.
- *
- **/
+ * nuke - Cleans up the data transfer message list.
+ * @ep: pointer to the usb device endpoint structure.
+ * @status: Status of the data transfer.
+ */
 static void nuke(struct xusb_ep *ep, int status)
 {
 	struct xusb_request *req;
@@ -761,13 +781,12 @@ static void nuke(struct xusb_ep *ep, int status)
 
 /***************************** Endpoint related functions*********************/
 /**
- * xusb_ep_set_halt() -	Stalls/unstalls the given endpoint.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @value:	value to indicate stall/unstall.
+ * xusb_ep_set_halt - Stalls/unstalls the given endpoint.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @value: value to indicate stall/unstall.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 {
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
@@ -822,12 +841,12 @@ static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 }
 
 /**
- * xusb_ep_enable() - Enables the given endpoint.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @desc:	Pointer to usb endpoint descriptor.
+ * xusb_ep_enable - Enables the given endpoint.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @desc: pointer to usb endpoint descriptor.
  *
- * returns: 0 for success and error value on failure
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ep_enable(struct usb_ep *_ep,
 			  const struct usb_endpoint_descriptor *desc)
 {
@@ -952,11 +971,11 @@ ok:	ep->eptype = eptype;
 }
 
 /**
- * xusb_ep_disable() - Disables the given endpoint.
- * @_ep:	Pointer to the usb device endpoint structure.
+ * xusb_ep_disable - Disables the given endpoint.
+ * @_ep: pointer to the usb device endpoint structure.
  *
- * returns: 0 for success and error value on failure
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ep_disable(struct usb_ep *_ep)
 {
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
@@ -998,12 +1017,12 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 }
 
 /**
- * xusb_ep_alloc_request() - Initializes the request queue.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @gfp_flags:	Flags related to the request call.
+ * xusb_ep_alloc_request - Initializes the request queue.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @gfp_flags: Flags related to the request call.
  *
- * returns: pointer to request structure on success and a NULL on failure.
- **/
+ * Returns: pointer to request structure on success and a NULL on failure.
+ */
 static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
 						 gfp_t gfp_flags)
 {
@@ -1019,11 +1038,10 @@ static struct usb_request *xusb_ep_alloc_request(struct usb_ep *_ep,
 }
 
 /**
- * xusb_ep_free_request() - Releases the request from queue.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @_req:	Pointer to the usb request structure.
- *
- **/
+ * xusb_ep_free_request - Releases the request from queue.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @_req: pointer to the usb request structure.
+ */
 static void xusb_ep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
@@ -1038,14 +1056,13 @@ static void xusb_ep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 }
 
 /**
- * xusb_ep_queue() - Adds the request to the queue.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @_req:	Pointer to the usb request structure.
- * @gfp_flags:	Flags related to the request call.
+ * xusb_ep_queue - Adds the request to the queue.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @_req: pointer to the usb request structure.
+ * @gfp_flags: Flags related to the request call.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 			 gfp_t gfp_flags)
 {
@@ -1143,13 +1160,12 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 }
 
 /**
- * xusb_ep_dequeue() - Removes the request from the queue.
- * @_ep:	Pointer to the usb device endpoint structure.
- * @_req:	Pointer to the usb request structure.
+ * xusb_ep_dequeue - Removes the request from the queue.
+ * @_ep: pointer to the usb device endpoint structure.
+ * @_req: pointer to the usb request structure.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct xusb_ep *ep;
@@ -1191,11 +1207,11 @@ static struct usb_ep_ops xusb_ep_ops = {
 };
 
 /**
- * xusb_get_frame() - Reads the current usb frame number.
- * @gadget:	Pointer to the usb gadget structure.
+ * xusb_get_frame - Reads the current usb frame number.
+ * @gadget: pointer to the usb gadget structure.
  *
- * returns: current frame number for success and error value on failure.
- **/
+ * Returns: current frame number for success and error value on failure.
+ */
 static int xusb_get_frame(struct usb_gadget *gadget)
 {
 
@@ -1213,15 +1229,16 @@ static int xusb_get_frame(struct usb_gadget *gadget)
 }
 
 /**
- * set_testmode() - Sets the usb device into the given test mode.
- * @udc:	Pointer to the usb controller structure.
- * @testmode:	Test mode to which the device is to be set.
- * @bufptr:	Pointer to the buffer containing the test packet.
+ * set_testmode - Sets the usb device into the given test mode.
+ * @udc: pointer to the usb controller structure.
+ * @testmode: Test mode to which the device is to be set.
+ * @bufptr: pointer to the buffer containing the test packet.
  *
- *	This function is needed for USB certification tests.
- * returns: This function never returns if the command is successful
+ * Returns: This function never returns if the command is successful
  *		and -ENOTSUPP on failure.
- **/
+ *
+ * This function is needed for USB certification tests.
+ */
 static int set_testmode(struct xusb_udc *udc, u8 testmode, u8 *bufptr)
 {
 	u32 *src, *dst;
@@ -1261,14 +1278,13 @@ static int set_testmode(struct xusb_udc *udc, u8 testmode, u8 *bufptr)
 }
 
 /**
- * xusb_ioctl() - The i/o control function to call the testmode function.
- * @gadget:	Pointer to the usb gadget structure.
- * @code:	Test mode to which the device is to be set.
- * @param:	Parameter to be sent for the test.
+ * xusb_ioctl - The i/o control function to call the testmode function.
+ * @gadget: pointer to the usb gadget structure.
+ * @code: Test mode to which the device is to be set.
+ * @param: Parameter to be sent for the test.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
 		      unsigned long param)
 {
@@ -1446,10 +1462,9 @@ static struct xusb_udc controller = {
 };
 
 /**
- * xudc_reinit() - Restores inital software state.
- * @udc:	Pointer to the usb device controller structure.
- *
- **/
+ * xudc_reinit - Restores inital software state.
+ * @udc: pointer to the usb device controller structure.
+ */
 static void xudc_reinit(struct xusb_udc *udc)
 {
 	u32 ep_number;
@@ -1485,10 +1500,9 @@ static void xudc_reinit(struct xusb_udc *udc)
 }
 
 /**
- * stop_activity() - Stops any further activity on the device.
- * @udc:	Pointer to the usb device controller structure.
- *
- **/
+ * stop_activity - Stops any further activity on the device.
+ * @udc: pointer to the usb device controller structure.
+ */
 static void stop_activity(struct xusb_udc *udc)
 {
 	struct usb_gadget_driver *driver = udc->driver;
@@ -1514,12 +1528,12 @@ static void stop_activity(struct xusb_udc *udc)
 }
 
 /**
- * startup_intrhandler() - The usb device controller interrupt handler.
- * @callbackref:	Pointer to the reference value being passed.
- * @intrstatus:		The mask value containing the interrupt sources.
+ * startup_intrhandler - The usb device controller interrupt handler.
+ * @callbackref: pointer to the reference value being passed.
+ * @intrstatus: The mask value containing the interrupt sources.
  *
- *	This handler handles the RESET, SUSPEND and DISCONNECT interrupts.
- **/
+ * This handler handles the RESET, SUSPEND and DISCONNECT interrupts.
+ */
 static void startup_intrhandler(void *callbackref, u32 intrstatus)
 {
 	struct xusb_udc *udc;
@@ -1596,12 +1610,12 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 }
 
 /**
- * setclearfeature() - Executes the set feature and clear feature commands.
- * @udc:		Pointer to the usb device controller structure.
- * @flag:		Value deciding the set or clear action.
+ * setclearfeature - Executes the set feature and clear feature commands.
+ * @udc: pointer to the usb device controller structure.
+ * @flag: Value deciding the set or clear action.
  *
  * Processes the SET_FEATURE and CLEAR_FEATURE commands.
- **/
+ */
 static void set_clear_feature(struct xusb_udc *udc, int flag)
 {
 	u8 endpoint;
@@ -1704,12 +1718,11 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 }
 
 /**
- * execute_command() - Processes the USB specification chapter 9 commands.
- * @udc:		Pointer to the usb device controller structure.
+ * execute_command - Processes the USB specification chapter 9 commands.
+ * @udc: pointer to the usb device controller structure.
  *
- * returns: 0 for success and the same reuqest command if it is not handled.
- *
- **/
+ * Returns: 0 for success and the same reuqest command if it is not handled.
+ */
 static int execute_command(struct xusb_udc *udc)
 {
 
@@ -1750,14 +1763,13 @@ static int execute_command(struct xusb_udc *udc)
 }
 
 /**
- * process_setup_pkt() - Processes the setup packet.
- * @udc:		Pointer to the usb device controller structure.
- * @ctrl:		Pointer to the usb control endpoint structure.
+ * process_setup_pkt - Processes the setup packet.
+ * @udc: pointer to the usb device controller structure.
+ * @ctrl: pointer to the usb control endpoint structure.
  *
- * returns: 0 for success and request to be handled by application if
+ * Returns: 0 for success and request to be handled by application if
  *		is not handled by the driver.
- *
- **/
+ */
 static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 {
 	u32 *ep0rambase;
@@ -1797,10 +1809,9 @@ static int process_setup_pkt(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
 }
 
 /**
- * ep0_out_token() - Processes the endpoint 0 OUT token.
- * @udc:	Pointer to the usb device controller structure.
- *
- **/
+ * ep0_out_token - Processes the endpoint 0 OUT token.
+ * @udc: pointer to the usb device controller structure.
+ */
 static void ep0_out_token(struct xusb_udc *udc)
 {
 	struct xusb_ep *ep;
@@ -1850,10 +1861,9 @@ static void ep0_out_token(struct xusb_udc *udc)
 }
 
 /**
- * ep0_in_token() - Processes the endpoint 0 IN token.
- * @udc:	Pointer to the usb device controller structure.
- *
- **/
+ * ep0_in_token - Processes the endpoint 0 IN token.
+ * @udc: pointer to the usb device controller structure.
+ */
 static void ep0_in_token(struct xusb_udc *udc)
 {
 	struct xusb_ep *ep;
@@ -1925,13 +1935,13 @@ static void ep0_in_token(struct xusb_udc *udc)
 }
 
 /**
- * control_ep_intrhandler() - Endpoint 0 interrupt handler.
- * @callbackref:	Pointer to the call back reference passed by the
+ * control_ep_intrhandler - Endpoint 0 interrupt handler.
+ * @callbackref: pointer to the call back reference passed by the
  *			main interrupt handler.
  * @intrstatus:	It's the mask value for the interrupt sources on endpoint 0.
  *
- *	Processes the commands received during enumeration phase.
- **/
+ * Processes the commands received during enumeration phase.
+ */
 static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 {
 	struct xusb_udc *udc;
@@ -1986,13 +1996,12 @@ static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 }
 
 /**
- * noncontrol_ep_intrhandler() - Non control endpoint interrupt handler.
- * @callbackref:	Pointer to the call back reference passed by the
+ * noncontrol_ep_intrhandler - Non control endpoint interrupt handler.
+ * @callbackref: pointer to the call back reference passed by the
  *			main interrupt handler.
- * @epnum:	End point number for which the interrupt is to be processed
+ * @epnum: End point number for which the interrupt is to be processed
  * @intrstatus:	It's the mask value for the interrupt sources on endpoint 0.
- *
- **/
+ */
 static void noncontrol_ep_intrhandler(void *callbackref, u8 epnum,
 					u32 intrstatus)
 {
@@ -2023,13 +2032,12 @@ static void noncontrol_ep_intrhandler(void *callbackref, u8 epnum,
 }
 
 /**
- * xusb_udc_irq() - The main interrupt handler.
- * @irq:	The interrupt number.
- * @_udc:	Pointer to the usb device controller structure.
+ * xusb_udc_irq - The main interrupt handler.
+ * @irq: The interrupt number.
+ * @_udc: pointer to the usb device controller structure.
  *
- * returns: IRQ_HANDLED after the interrupt is handled.
- *
- **/
+ * Returns: IRQ_HANDLED after the interrupt is handled.
+ */
 static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 {
 	struct xusb_udc *udc = _udc;
@@ -2076,12 +2084,12 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 }
 
 /**
- * xudc_start() - Starts the device.
- * @driver:	Pointer to the usb gadget sturcutre.
- * @bind:	Function pointer to bind driver
- * returns: 0 for success and error value on failure
+ * xudc_start - Starts the device.
+ * @gadget: pointer to the usb gadget structure
+ * @driver: pointer to gadget driver structure
  *
- **/
+ * Returns: zero always
+ */
 static int xudc_start(struct usb_gadget *gadget,
 			struct usb_gadget_driver *driver)
 {
@@ -2104,11 +2112,11 @@ static int xudc_start(struct usb_gadget *gadget,
 }
 
 /**
- * xudc_stop() - stops the device.
- * @driver:	Pointer to the usb gadget sturcutre.
+ * xudc_stop - stops the device.
+ * @gadget: pointer to the usb gadget structure
+ * @driver: pointer to usb gadget driver structure
  *
- * returns: 0 for success and error value on failure
- *
+ * Returns: zero always
  */
 static int xudc_stop(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver)
@@ -2132,17 +2140,20 @@ static int xudc_stop(struct usb_gadget *gadget,
 	return 0;
 }
 
+/**
+ * xusb_release - Releases device structure
+ * @dev: pointer to device structure
+ */
 static void xusb_release(struct device *dev)
 {
 }
 
 /**
- * xudc_probe() - The device probe function for driver initialization.
- * @pdev:		Pointer to the platform device structure.
+ * xudc_probe - The device probe function for driver initialization.
+ * @pdev: pointer to the platform device structure.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xudc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -2223,12 +2234,11 @@ static int xudc_probe(struct platform_device *pdev)
 }
 
 /**
- * xudc_remove() - Releases the resources allocated during the initialization.
- * @pdev:       Pointer to the platform device structure.
+ * xudc_remove - Releases the resources allocated during the initialization.
+ * @pdev: pointer to the platform device structure.
  *
- * returns: 0 for success and error value on failure
- *
- **/
+ * Returns: 0 for success and error value on failure
+ */
 static int xudc_remove(struct platform_device *pdev)
 {
 	struct xusb_udc *udc = platform_get_drvdata(pdev);
