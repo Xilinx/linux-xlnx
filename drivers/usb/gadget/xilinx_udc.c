@@ -1,7 +1,7 @@
 /*
  * Xilinx USB peripheral controller driver
  *
- * (c) 2010 - 2013 Xilinx, Inc.
+ * Copyright (C) 2010 - 2013 Xilinx, Inc.
  *
  * Copyright (C) 2004 by Thomas Rathbone
  * Copyright (C) 2005 by HP Labs
@@ -21,7 +21,6 @@
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA
  * 02139, USA.
  */
-/***************************** Include Files *********************************/
 
 #include <linux/interrupt.h>
 #include <linux/device.h>
@@ -63,7 +62,6 @@
 #define XUSB_EP_CFGSTATUS_OFFSET	0x00	/* Endpoint Config Status  */
 #define XUSB_EP_BUF0COUNT_OFFSET	0x08	/* Buffer 0 Count */
 #define XUSB_EP_BUF1COUNT_OFFSET	0x0C	/* Buffer 1 Count */
-
 
 #define XUSB_CONTROL_USB_READY_MASK	0x80000000 /* USB ready Mask */
 
@@ -328,7 +326,6 @@ static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
  */
 static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 {
-
 	u32 epcfgreg = 0;
 
 	/*
@@ -876,7 +873,8 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 
 
 	ep->is_in = ((desc->bEndpointAddress & USB_DIR_IN) != 0);
-	/* The address of the endpoint is encoded as follows:
+	/*
+	 * The address of the endpoint is encoded as follows:
 	 * Bit 3...0: The endpoint number
 	 * Bit 6...4: Reserved, reset to zero
 	 * Bit 7: Direction, ignored for
@@ -991,21 +989,21 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 
 	nuke(ep, -ESHUTDOWN);
 
-	/*
-	 * Restore the endpoint's pristine config
-	 */
+	/* Restore the endpoint's pristine config */
 	ep->desc = NULL;
 	ep->ep_usb.desc = NULL;
 
 	ep->stopped = 1;
 
-	/* The address of the endpoint is encoded as follows:
-	   Bit 3...0: The endpoint number
-	   Bit 6...4: Reserved, reset to zero
-	   Bit 7: Direction, ignored for
-	   control endpoints
-	   0 = OUT endpoint
-	   1 = IN endpoint */
+	/*
+	 * The address of the endpoint is encoded as follows:
+	 * Bit 3...0: The endpoint number
+	 * Bit 6...4: Reserved, reset to zero
+	 * Bit 7: Direction, ignored for
+	 * control endpoints
+	 * 0 = OUT endpoint
+	 * 1 = IN endpoint
+	 */
 	dev_dbg(&ep->udc->gadget.dev, "USB Ep %d disable\n ", ep->epnumber);
 
 	/* Disable the endpoint.*/
@@ -1315,7 +1313,6 @@ static const struct usb_gadget_ops xusb_udc_ops = {
 	.udc_start = xudc_start,
 	.udc_stop  = xudc_stop,
 };
-
 
 /*-------------------------------------------------------------------------*/
 static struct xusb_udc controller = {
