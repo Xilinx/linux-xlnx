@@ -171,7 +171,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	retval = clk_prepare_enable(pdata->clk);
 	if (retval) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-		goto err_out_clk_put;
+		goto err2;
 	}
 
 	pdata->clk_rate_change_nb.notifier_call = xusbps_ehci_clk_notifier_cb;
@@ -228,8 +228,6 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 err_out_clk_unreg_notif:
 	clk_notifier_unregister(pdata->clk, &pdata->clk_rate_change_nb);
 	clk_disable_unprepare(pdata->clk);
-err_out_clk_put:
-	clk_put(pdata->clk);
 err2:
 	usb_put_hcd(hcd);
 err1:
@@ -267,7 +265,6 @@ static void usb_hcd_xusbps_remove(struct usb_hcd *hcd,
 	usb_put_hcd(hcd);
 	clk_notifier_unregister(pdata->clk, &pdata->clk_rate_change_nb);
 	clk_disable_unprepare(pdata->clk);
-	clk_put(pdata->clk);
 }
 
 static void ehci_xusbps_setup_phy(struct ehci_hcd *ehci,

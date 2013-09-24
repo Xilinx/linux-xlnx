@@ -420,7 +420,6 @@ static void xusbps_udc_clk_release(struct platform_device *pdev)
 	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
 
 	clk_disable_unprepare(pdata->clk);
-	clk_put(pdata->clk);
 }
 
 
@@ -2811,8 +2810,8 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 		goto err_iounmap;
 	}
 
-	ret = request_irq(udc_controller->irq, xusbps_udc_irq, IRQF_SHARED,
-			driver_name, udc_controller);
+	ret = devm_request_irq(&pdev->dev, udc_controller->irq, xusbps_udc_irq,
+				IRQF_SHARED, driver_name, udc_controller);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot request irq %d err %d\n",
 				udc_controller->irq, ret);
@@ -2823,7 +2822,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	if (struct_udc_setup(udc_controller, pdev)) {
 		dev_err(&pdev->dev, "Can't initialize udc data structure\n");
 		ret = -ENOMEM;
-		goto err_free_irq;
+		goto err_iounmap;
 	}
 
 	/* initialize usb hw reg except for regs for EP,
@@ -2896,8 +2895,6 @@ err_del_udc:
 	dma_pool_destroy(udc_controller->td_pool);
 err_unregister:
 	device_unregister(&udc_controller->gadget.dev);
-err_free_irq:
-	free_irq(udc_controller->irq, udc_controller);
 err_iounmap:
 	xusbps_udc_clk_release(pdev);
 err_kfree:
