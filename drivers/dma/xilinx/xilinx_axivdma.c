@@ -1147,7 +1147,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		xdev->common.copy_align = my_log(width);
 
 	chan->dev = xdev->dev;
-	xdev->chan[chan->id] = chan;
 
 	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
 
@@ -1175,6 +1174,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
+	xdev->chan[chan->id] = chan;
 	xdev->common.chancnt++;
 
 	return 0;
@@ -1282,7 +1282,9 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	platform_set_drvdata(op, xdev);
 
 	for_each_child_of_node(node, child) {
-		xilinx_vdma_chan_probe(xdev, child, xdev->feature);
+		err = xilinx_vdma_chan_probe(xdev, child, xdev->feature);
+		if (err < 0)
+			goto error;
 	}
 
 	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
@@ -1298,6 +1300,14 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 		dev_err(&op->dev, "Unable to register DMA to DT\n");
 
 	return 0;
+
+error:
+	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
+		if (xdev->chan[i])
+			xilinx_vdma_chan_remove(xdev->chan[i]);
+	}
+
+	return err;
 }
 
 static int xilinx_vdma_of_remove(struct platform_device *op)
