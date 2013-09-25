@@ -609,7 +609,7 @@ static int vdma_init(struct xilinx_vdma_chan *chan)
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
 			vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR),
 			vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR));
-		return 1;
+		return -ETIMEDOUT;
 	}
 
 	return 0;
@@ -1152,7 +1152,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
 
 	/* Initialize the channel */
-	if (vdma_init(chan)) {
+	err = vdma_init(chan);
+	if (err < 0) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
 	}
