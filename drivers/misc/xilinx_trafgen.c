@@ -998,7 +998,7 @@ static ssize_t xtg_pram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_pram_attr = {
 	.attr =	{
 		.name = "parameter_ram",
-		.mode = 0644,
+		.mode = S_IRUGO | S_IWUSR,
 	},
 	.size = XTG_PARAM_RAM_SIZE,
 	.read = xtg_pram_read,
@@ -1095,7 +1095,7 @@ static ssize_t xtg_cram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_cram_attr = {
 	.attr =	{
 		.name = "command_ram",
-		.mode = 0644,
+		.mode = S_IRUGO | S_IWUSR,
 	},
 	.size = XTG_COMMAND_RAM_SIZE,
 	.read = xtg_cram_read,
@@ -1155,7 +1155,7 @@ static ssize_t xtg_mram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_mram_attr = {
 	.attr =	{
 		.name = "master_ram",
-		.mode = 0644,
+		.mode = S_IRUGO | S_IWUSR,
 	},
 	.size = XTG_MASTER_RAM_SIZE,
 	.read = xtg_mram_read,
