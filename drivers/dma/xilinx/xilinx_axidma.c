@@ -34,6 +34,15 @@
 #define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2	/* Max no of channels */
 #define XILINX_DMA_MAX_TRANS_LEN	0x7FFFFF /* Max transfer length */
 
+/* Register Offsets */
+#define XILINX_DMA_CONTROL_OFFSET	0x00 /* Control Reg */
+#define XILINX_DMA_STATUS_OFFSET	0x04 /* Status Reg */
+#define XILINX_DMA_CDESC_OFFSET		0x08 /* Current descriptor Reg */
+#define XILINX_DMA_TDESC_OFFSET		0x10 /* Tail descriptor Reg */
+#define XILINX_DMA_SRCADDR_OFFSET	0x18 /* Source Address Reg */
+#define XILINX_DMA_DSTADDR_OFFSET	0x20 /* Dest Address Reg */
+#define XILINX_DMA_BTT_OFFSET		0x28 /* Bytes to transfer Reg */
+
 /* General register bits definitions */
 #define XILINX_DMA_CR_RESET_MASK	0x00000004
 						/* Reset DMA engine */
@@ -86,10 +95,6 @@
 #define XILINX_DMA_RESET_LOOP		1000000
 #define XILINX_DMA_HALT_LOOP		1000000
 
-/* IO accessors */
-#define dma_write(addr, val)	(iowrite32(val, addr))
-#define dma_read(addr)		(ioread32(addr))
-
 #if defined(CONFIG_XILINX_DMATEST) || defined(CONFIG_XILINX_DMATEST_MODULE)
 # define TEST_DMA_WITH_LOOPBACK
 #endif
@@ -119,24 +124,9 @@ struct xilinx_dma_desc_sw {
 	struct dma_async_tx_descriptor async_tx;
 } __aligned(64);
 
-/* AXI DMA Registers Structure */
-struct xdma_regs {
-	u32 cr;		/* 0x00 Control Register */
-	u32 sr;		/* 0x04 Status Register */
-	u32 cdr;	/* 0x08 Current Descriptor Register */
-	u32 pad1;
-	u32 tdr;	/* 0x10 Tail Descriptor Register */
-	u32 pad2;
-	u32 src;	/* 0x18 Source Address Register (sg = 0) */
-	u32 pad3;
-	u32 dst;	/* 0x20 Destination Address Register (sg = 0) */
-	u32 pad4;
-	u32 btt_ref;	/* 0x28 Bytes To Transfer (sg = 0) */
-};
-
 /* Per DMA specific operations should be embedded in the channel structure */
 struct xilinx_dma_chan {
-	struct xdma_regs __iomem *regs;	/* Control status registers */
+	void __iomem *regs;		/* Control status registers */
 	dma_cookie_t completed_cookie;	/* The maximum cookie completed */
 	dma_cookie_t cookie;		/* The current cookie */
 	spinlock_t lock;		/* Descriptor operation lock */
@@ -173,6 +163,17 @@ struct xilinx_dma_device {
 
 #define to_xilinx_chan(chan) \
 	container_of(chan, struct xilinx_dma_chan, common)
+
+/* IO accessors */
+static inline void dma_write(struct xilinx_dma_chan *chan, u32 reg, u32 val)
+{
+	writel(val, chan->regs + reg);
+}
+
+static inline u32 dma_read(struct xilinx_dma_chan *chan, u32 reg)
+{
+	return readl(chan->regs + reg);
+}
 
 /* Required functions */
 
@@ -305,13 +306,16 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 
 static int dma_is_running(struct xilinx_dma_chan *chan)
 {
-	return !(dma_read(&chan->regs->sr) & XILINX_DMA_SR_HALTED_MASK) &&
-	       (dma_read(&chan->regs->cr) & XILINX_DMA_CR_RUNSTOP_MASK);
+	return !(dma_read(chan, XILINX_DMA_STATUS_OFFSET) &
+		 XILINX_DMA_SR_HALTED_MASK) &&
+	       (dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+		XILINX_DMA_CR_RUNSTOP_MASK);
 }
 
 static int dma_is_idle(struct xilinx_dma_chan *chan)
 {
-	return dma_read(&chan->regs->sr) & XILINX_DMA_SR_IDLE_MASK;
+	return dma_read(chan, XILINX_DMA_STATUS_OFFSET) &
+	       XILINX_DMA_SR_IDLE_MASK;
 }
 
 /* Stop the hardware, the ongoing transfer will be finished */
@@ -319,12 +323,14 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 {
 	int loop = XILINX_DMA_HALT_LOOP;
 
-	dma_write(&chan->regs->cr,
-		  dma_read(&chan->regs->cr) & ~XILINX_DMA_CR_RUNSTOP_MASK);
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
+		  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+		  ~XILINX_DMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to halt */
 	while (loop) {
-		if (!(dma_read(&chan->regs->cr) & XILINX_DMA_CR_RUNSTOP_MASK))
+		if (!(dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+		      XILINX_DMA_CR_RUNSTOP_MASK))
 			break;
 
 		loop -= 1;
@@ -333,7 +339,8 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 	if (!loop) {
 		pr_debug("Cannot stop channel %x: %x\n",
 			 (unsigned int)chan,
-			 (unsigned int)dma_read(&chan->regs->cr));
+			 (unsigned int)dma_read(chan,
+						XILINX_DMA_CONTROL_OFFSET));
 		chan->err = 1;
 	}
 
@@ -345,12 +352,14 @@ static void dma_start(struct xilinx_dma_chan *chan)
 {
 	int loop = XILINX_DMA_HALT_LOOP;
 
-	dma_write(&chan->regs->cr,
-		  dma_read(&chan->regs->cr) | XILINX_DMA_CR_RUNSTOP_MASK);
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
+		  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
+		  XILINX_DMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to start */
 	while (loop) {
-		if (dma_read(&chan->regs->cr) & XILINX_DMA_CR_RUNSTOP_MASK)
+		if (dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+		    XILINX_DMA_CR_RUNSTOP_MASK)
 			break;
 
 		loop -= 1;
@@ -359,7 +368,8 @@ static void dma_start(struct xilinx_dma_chan *chan)
 	if (!loop) {
 		pr_debug("Cannot start channel %x: %x\n",
 			 (unsigned int)chan,
-			 (unsigned int)dma_read(&chan->regs->cr));
+			 (unsigned int)dma_read(chan,
+						XILINX_DMA_CONTROL_OFFSET));
 
 		chan->err = 1;
 	}
@@ -404,7 +414,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		desct = container_of(chan->pending_list.prev,
 				     struct xilinx_dma_desc_sw, node);
 
-		dma_write(&chan->regs->cdr, desch->async_tx.phys);
+		dma_write(chan, XILINX_DMA_CDESC_OFFSET, desch->async_tx.phys);
 
 		dma_start(chan);
 
@@ -413,12 +423,12 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		list_splice_tail_init(&chan->pending_list, &chan->active_list);
 
 		/* Enable interrupts */
-		dma_write(&chan->regs->cr,
-			  dma_read(&chan->regs->cr) |
+		dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
+			  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
 			  XILINX_DMA_XR_IRQ_ALL_MASK);
 
 		/* Update tail ptr register and start the transfer */
-		dma_write(&chan->regs->tdr, desct->async_tx.phys);
+		dma_write(chan, XILINX_DMA_TDESC_OFFSET, desct->async_tx.phys);
 		goto out_unlock;
 	}
 
@@ -444,13 +454,14 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	hw = &desch->hw;
 
 	/* Enable interrupts */
-	dma_write(&chan->regs->cr,
-		  dma_read(&chan->regs->cr) | XILINX_DMA_XR_IRQ_ALL_MASK);
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
+		  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
+		  XILINX_DMA_XR_IRQ_ALL_MASK);
 
-	dma_write(&chan->regs->src, hw->buf_addr);
+	dma_write(chan, XILINX_DMA_SRCADDR_OFFSET, hw->buf_addr);
 
 	/* Start the transfer */
-	dma_write(&chan->regs->btt_ref,
+	dma_write(chan, XILINX_DMA_BTT_OFFSET,
 		  hw->control & XILINX_DMA_MAX_TRANS_LEN);
 
 out_unlock:
@@ -517,20 +528,24 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 	int loop = XILINX_DMA_RESET_LOOP;
 	u32 tmp;
 
-	dma_write(&chan->regs->cr,
-		  dma_read(&chan->regs->cr) | XILINX_DMA_CR_RESET_MASK);
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
+		  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
+		  XILINX_DMA_CR_RESET_MASK);
 
-	tmp = dma_read(&chan->regs->cr) & XILINX_DMA_CR_RESET_MASK;
+	tmp = dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+	      XILINX_DMA_CR_RESET_MASK;
 
 	/* Wait for the hardware to finish reset */
 	while (loop && tmp) {
-		tmp = dma_read(&chan->regs->cr) & XILINX_DMA_CR_RESET_MASK;
+		tmp = dma_read(chan, XILINX_DMA_CONTROL_OFFSET) &
+		      XILINX_DMA_CR_RESET_MASK;
 		loop -= 1;
 	}
 
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
-			dma_read(&chan->regs->cr), dma_read(&chan->regs->sr));
+			dma_read(chan, XILINX_DMA_CONTROL_OFFSET),
+			dma_read(chan, XILINX_DMA_STATUS_OFFSET));
 		return -EBUSY;
 	}
 
@@ -545,18 +560,19 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	int to_transfer = 0;
 	u32 stat, reg;
 
-	reg = dma_read(&chan->regs->cr);
+	reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
 
 	/* Disable intr */
-	dma_write(&chan->regs->cr,
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
 		  reg & ~XILINX_DMA_XR_IRQ_ALL_MASK);
 
-	stat = dma_read(&chan->regs->sr);
+	stat = dma_read(chan, XILINX_DMA_STATUS_OFFSET);
 	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK))
 		return IRQ_NONE;
 
 	/* Ack the interrupts */
-	dma_write(&chan->regs->sr, XILINX_DMA_XR_IRQ_ALL_MASK);
+	dma_write(chan, XILINX_DMA_STATUS_OFFSET,
+		  XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	/* Check for only the interrupts which are enabled */
 	stat &= (reg & XILINX_DMA_XR_IRQ_ALL_MASK);
@@ -565,9 +581,9 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 		dev_err(chan->dev,
 			"Channel %x has errors %x, cdr %x tdr %x\n",
 			(unsigned int)chan,
-			(unsigned int)dma_read(&chan->regs->sr),
-			(unsigned int)dma_read(&chan->regs->cdr),
-			(unsigned int)dma_read(&chan->regs->tdr));
+			(unsigned int)dma_read(chan, XILINX_DMA_STATUS_OFFSET),
+			(unsigned int)dma_read(chan, XILINX_DMA_CDESC_OFFSET),
+			(unsigned int)dma_read(chan, XILINX_DMA_TDESC_OFFSET));
 		chan->err = 1;
 	}
 
@@ -866,7 +882,7 @@ static int xilinx_dma_device_control(struct dma_chan *dchan,
 		 * Use value XILINX_DMA_NO_CHANGE to signal no change
 		 */
 		struct xilinx_dma_config *cfg = (struct xilinx_dma_config *)arg;
-		u32 reg = dma_read(&chan->regs->cr);
+		u32 reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
 
 		if (cfg->coalesc <= XILINX_DMA_COALESCE_MAX) {
 			reg &= ~XILINX_DMA_XR_COALESCE_MASK;
@@ -881,7 +897,7 @@ static int xilinx_dma_device_control(struct dma_chan *dchan,
 			chan->config.delay = cfg->delay;
 		}
 
-		dma_write(&chan->regs->cr, reg);
+		dma_write(chan, XILINX_DMA_CONTROL_OFFSET, reg);
 
 		return 0;
 	} else
@@ -957,11 +973,10 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 				    "xlnx,axi-dma-s2mm-channel"))
 		chan->direction = DMA_DEV_TO_MEM;
 
-	chan->regs = (struct xdma_regs *)xdev->regs;
+	chan->regs = xdev->regs;
 
 	if (chan->direction == DMA_DEV_TO_MEM) {
-		chan->regs = (struct xdma_regs *)((u32)xdev->regs +
-						  XILINX_DMA_RX_CHANNEL_OFFSET);
+		chan->regs = (xdev->regs + XILINX_DMA_RX_CHANNEL_OFFSET);
 		chan->id = 1;
 	}
 
