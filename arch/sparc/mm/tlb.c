@@ -24,11 +24,17 @@ static DEFINE_PER_CPU(struct tlb_batch, tlb_batch);
 void flush_tlb_pending(void)
 {
 	struct tlb_batch *tb = &get_cpu_var(tlb_batch);
+	struct mm_struct *mm = tb->mm;
 
-	if (tb->tlb_nr) {
-		flush_tsb_user(tb);
+	if (!tb->tlb_nr)
+		goto out;
 
-		if (CTX_VALID(tb->mm->context)) {
+	flush_tsb_user(tb);
+
+	if (CTX_VALID(mm->context)) {
+		if (tb->tlb_nr == 1) {
+			global_flush_tlb_page(mm, tb->vaddrs[0]);
+		} else {
 #ifdef CONFIG_SMP
 			smp_flush_tlb_pending(tb->mm, tb->tlb_nr,
 					      &tb->vaddrs[0]);
@@ -37,10 +43,28 @@ void flush_tlb_pending(void)
 					    tb->tlb_nr, &tb->vaddrs[0]);
 #endif
 		}
-		tb->tlb_nr = 0;
 	}
 
+	tb->tlb_nr = 0;
+
+out:
 	put_cpu_var(tlb_batch);
+}
+
+void arch_enter_lazy_mmu_mode(void)
+{
+	struct tlb_batch *tb = &__get_cpu_var(tlb_batch);
+
+	tb->active = 1;
+}
+
+void arch_leave_lazy_mmu_mode(void)
+{
+	struct tlb_batch *tb = &__get_cpu_var(tlb_batch);
+
+	if (tb->tlb_nr)
+		flush_tlb_pending();
+	tb->active = 0;
 }
 
 static void tlb_batch_add_one(struct mm_struct *mm, unsigned long vaddr,
@@ -60,6 +84,12 @@ static void tlb_batch_add_one(struct mm_struct *mm, unsigned long vaddr,
 		nr = 0;
 	}
 
+	if (!tb->active) {
+		global_flush_tlb_page(mm, vaddr);
+		flush_tsb_user_page(mm, vaddr);
+		goto out;
+	}
+
 	if (nr == 0)
 		tb->mm = mm;
 
@@ -68,6 +98,7 @@ static void tlb_batch_add_one(struct mm_struct *mm, unsigned long vaddr,
 	if (nr >= TLB_BATCH_NR)
 		flush_tlb_pending();
 
+out:
 	put_cpu_var(tlb_batch);
 }
 
@@ -135,8 +166,15 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 			mm->context.huge_pte_count++;
 		else
 			mm->context.huge_pte_count--;
-		if (mm->context.huge_pte_count == 1)
-			hugetlb_setup(mm);
+
+		/* Do not try to allocate the TSB hash table if we
+		 * don't have one already.  We have various locks held
+		 * and thus we'll end up doing a GFP_KERNEL allocation
+		 * in an atomic context.
+		 *
+		 * Instead, we let the first TLB miss on a hugepage
+		 * take care of this.
+		 */
 	}
 
 	if (!pmd_none(orig)) {

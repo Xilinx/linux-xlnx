@@ -46,6 +46,7 @@
 #include <xen/xen.h>
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
+#include <xen/balloon.h>
 #include "common.h"
 
 /*
@@ -239,6 +240,7 @@ static void free_persistent_gnts(struct rb_root *root, unsigned int num)
 			ret = gnttab_unmap_refs(unmap, NULL, pages,
 				segs_to_unmap);
 			BUG_ON(ret);
+			free_xenballooned_pages(segs_to_unmap, pages);
 			segs_to_unmap = 0;
 		}
 
@@ -527,8 +529,8 @@ static int xen_blkbk_map(struct blkif_request *req,
 				GFP_KERNEL);
 			if (!persistent_gnt)
 				return -ENOMEM;
-			persistent_gnt->page = alloc_page(GFP_KERNEL);
-			if (!persistent_gnt->page) {
+			if (alloc_xenballooned_pages(1, &persistent_gnt->page,
+			    false)) {
 				kfree(persistent_gnt);
 				return -ENOMEM;
 			}
@@ -677,6 +679,16 @@ static int dispatch_discard_io(struct xen_blkif *blkif,
 	return err;
 }
 
+static int dispatch_other_io(struct xen_blkif *blkif,
+			     struct blkif_request *req,
+			     struct pending_req *pending_req)
+{
+	free_req(pending_req);
+	make_response(blkif, req->u.other.id, req->operation,
+		      BLKIF_RSP_EOPNOTSUPP);
+	return -EIO;
+}
+
 static void xen_blk_drain_io(struct xen_blkif *blkif)
 {
 	atomic_set(&blkif->drain, 1);
@@ -798,17 +810,30 @@ __do_block_io_op(struct xen_blkif *blkif)
 
 		/* Apply all sanity checks to /private copy/ of request. */
 		barrier();
-		if (unlikely(req.operation == BLKIF_OP_DISCARD)) {
+
+		switch (req.operation) {
+		case BLKIF_OP_READ:
+		case BLKIF_OP_WRITE:
+		case BLKIF_OP_WRITE_BARRIER:
+		case BLKIF_OP_FLUSH_DISKCACHE:
+			if (dispatch_rw_block_io(blkif, &req, pending_req))
+				goto done;
+			break;
+		case BLKIF_OP_DISCARD:
 			free_req(pending_req);
 			if (dispatch_discard_io(blkif, &req))
-				break;
-		} else if (dispatch_rw_block_io(blkif, &req, pending_req))
+				goto done;
 			break;
+		default:
+			if (dispatch_other_io(blkif, &req, pending_req))
+				goto done;
+			break;
+		}
 
 		/* Yield point for this unbounded loop. */
 		cond_resched();
 	}
-
+done:
 	return more_to_do;
 }
 
@@ -976,13 +1001,7 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
 		bio->bi_end_io  = end_block_io_op;
 	}
 
-	/*
-	 * We set it one so that the last submit_bio does not have to call
-	 * atomic_inc.
-	 */
 	atomic_set(&pending_req->pendcnt, nbio);
-
-	/* Get a reference count for the disk queue and start sending I/O */
 	blk_start_plug(&plug);
 
 	for (i = 0; i < nbio; i++)
@@ -1010,6 +1029,7 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
  fail_put_bio:
 	for (i = 0; i < nbio; i++)
 		bio_put(biolist[i]);
+	atomic_set(&pending_req->pendcnt, 1);
 	__end_block_io_op(pending_req, -EINVAL);
 	msleep(1); /* back off a bit */
 	return -EIO;
