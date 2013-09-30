@@ -43,7 +43,6 @@
 #include <linux/of_i2c.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <linux/xilinx_devices.h>
 
 /*
  * Register Map
