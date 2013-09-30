@@ -871,10 +871,8 @@ static int xi2cps_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 	id->input_clk = (unsigned int)clk_get_rate(id->clk);
 
-	prop = of_get_property(pdev->dev.of_node, "i2c-clk", NULL);
-	if (prop) {
-		id->i2c_clk = be32_to_cpup(prop);
-	} else {
+	ret = of_property_read_u32(pdev->dev.of_node, "i2c-clk", &id->i2c_clk);
+	if (ret) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
 		goto err_clk_dis;
