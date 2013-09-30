@@ -1000,7 +1000,7 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->read_reg = xcan_read_reg;
 
 	/* Getting the CAN devclk info */
-	priv->devclk = clk_get(&pdev->dev, "ref_clk");
+	priv->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(priv->devclk)) {
 		dev_err(&pdev->dev, "Device clock not found.\n");
 		ret = PTR_ERR(priv->devclk);
@@ -1009,11 +1009,11 @@ static int xcan_probe(struct platform_device *pdev)
 
 	/* Check for type of CAN device */
 	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,ps7-can")) {
-		priv->aperclk = clk_get(&pdev->dev, "aper_clk");
+		priv->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 		if (IS_ERR(priv->aperclk)) {
 			dev_err(&pdev->dev, "aper clock not found\n");
 			ret = PTR_ERR(priv->aperclk);
-			goto err_devclk;
+			goto err_free;
 		}
 	} else {
 		priv->aperclk = priv->devclk;
@@ -1022,7 +1022,7 @@ static int xcan_probe(struct platform_device *pdev)
 	ret = clk_prepare_enable(priv->devclk);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to enable device clock\n");
-		goto err_aperclk;
+		goto err_free;
 	}
 
 	ret = clk_prepare_enable(priv->aperclk);
@@ -1050,10 +1050,6 @@ err_unprepar_disableaper:
 	clk_disable_unprepare(priv->aperclk);
 err_unprepar_disabledev:
 	clk_disable_unprepare(priv->devclk);
-err_aperclk:
-	clk_put(priv->aperclk);
-err_devclk:
-	clk_put(priv->devclk);
 err_free:
 	free_candev(ndev);
 
@@ -1077,9 +1073,7 @@ static int xcan_remove(struct platform_device *pdev)
 
 	unregister_candev(ndev);
 	clk_disable_unprepare(priv->aperclk);
-	clk_put(priv->aperclk);
 	clk_disable_unprepare(priv->devclk);
-	clk_put(priv->devclk);
 
 	free_candev(ndev);
 
