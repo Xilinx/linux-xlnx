@@ -716,7 +716,7 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pdata = (struct xiic_i2c_platform_data *) pdev->dev.platform_data;
+	pdata = (struct xiic_i2c_platform_data *)dev_get_platdata(&pdev->dev);
 
 	/* hook up driver to tree */
 	platform_set_drvdata(pdev, i2c);
