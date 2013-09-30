@@ -786,15 +786,9 @@ static int xi2cps_resume(struct device *_dev)
 
 	return 0;
 }
+#endif
 
-static const struct dev_pm_ops xi2cps_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xi2cps_suspend, xi2cps_resume)
-};
-#define XI2CPS_PM	(&xi2cps_dev_pm_ops)
-
-#else /* ! CONFIG_PM_SLEEP */
-#define XI2CPS_PM	NULL
-#endif /* ! CONFIG_PM_SLEEP */
+static SIMPLE_DEV_PM_OPS(xi2cps_dev_pm_ops, xi2cps_suspend, xi2cps_resume);
 
 /************************/
 /* Platform bus binding */
@@ -949,7 +943,7 @@ static struct platform_driver xi2cps_drv = {
 		.name  = DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = xi2cps_of_match,
-		.pm = XI2CPS_PM,
+		.pm = &xi2cps_dev_pm_ops,
 	},
 	.probe  = xi2cps_probe,
 	.remove = xi2cps_remove,
