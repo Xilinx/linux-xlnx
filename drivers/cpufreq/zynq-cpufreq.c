@@ -13,6 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
 #include <linux/kernel.h>
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
@@ -71,7 +72,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 	}
 
 	ret = cpufreq_frequency_table_target(policy, freq_table, target_freq,
-			relation, &i);
+					     relation, &i);
 	if (ret) {
 		dev_dbg(mpu_dev, "%s: cpu%d: no freq match for %d(ret=%d)\n",
 			__func__, policy->cpu, target_freq, ret);
