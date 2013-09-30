@@ -31,7 +31,7 @@
 #include <linux/slab.h>
 
 /* Hw specific definitions */
-#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2	/* Max no of channels */
+#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2 /* Max no of channels */
 #define XILINX_DMA_MAX_TRANS_LEN	0x7FFFFF /* Max transfer length */
 
 /* Register Offsets */
@@ -44,52 +44,39 @@
 #define XILINX_DMA_BTT_OFFSET		0x28 /* Bytes to transfer Reg */
 
 /* General register bits definitions */
-#define XILINX_DMA_CR_RESET_MASK	0x00000004
-						/* Reset DMA engine */
-#define XILINX_DMA_CR_RUNSTOP_MASK	0x00000001
-						/* Start/stop DMA engine */
+#define XILINX_DMA_CR_RESET_MASK	0x00000004 /* Reset DMA engine */
+#define XILINX_DMA_CR_RUNSTOP_MASK	0x00000001 /* Start/stop DMA engine */
 
-#define XILINX_DMA_SR_HALTED_MASK	0x00000001
-						/* DMA channel halted */
-#define XILINX_DMA_SR_IDLE_MASK		0x00000002
-						/* DMA channel idle */
+#define XILINX_DMA_SR_HALTED_MASK	0x00000001 /* DMA channel halted */
+#define XILINX_DMA_SR_IDLE_MASK		0x00000002 /* DMA channel idle */
 
-#define XILINX_DMA_XR_IRQ_IOC_MASK	0x00001000
-						/* Completion interrupt */
-#define XILINX_DMA_XR_IRQ_DELAY_MASK	0x00002000
-						/* Delay interrupt */
-#define XILINX_DMA_XR_IRQ_ERROR_MASK	0x00004000
-						/* Error interrupt */
-#define XILINX_DMA_XR_IRQ_ALL_MASK	0x00007000
-						/* All interrupts */
+#define XILINX_DMA_XR_IRQ_IOC_MASK	0x00001000 /* Completion interrupt */
+#define XILINX_DMA_XR_IRQ_DELAY_MASK	0x00002000 /* Delay interrupt */
+#define XILINX_DMA_XR_IRQ_ERROR_MASK	0x00004000 /* Error interrupt */
+#define XILINX_DMA_XR_IRQ_ALL_MASK	0x00007000 /* All interrupts */
 
-#define XILINX_DMA_XR_DELAY_MASK	0xFF000000
-						/* Delay timeout counter */
-#define XILINX_DMA_XR_COALESCE_MASK	0x00FF0000
-						/* Coalesce counter */
+#define XILINX_DMA_XR_DELAY_MASK	0xFF000000 /* Delay timeout counter */
+#define XILINX_DMA_XR_COALESCE_MASK	0x00FF0000 /* Coalesce counter */
 
 #define XILINX_DMA_DELAY_SHIFT		24 /* Delay timeout counter shift */
 #define XILINX_DMA_COALESCE_SHIFT	16 /* Coalesce counter shift */
 
-#define XILINX_DMA_DELAY_MAX		0xFF
-					/* Maximum delay counter value */
-#define XILINX_DMA_COALESCE_MAX		0xFF
-					/* Maximum coalescing counter value */
+#define XILINX_DMA_DELAY_MAX		0xFF /* Maximum delay counter value */
+#define XILINX_DMA_COALESCE_MAX		0xFF /* Max coalescing counter value */
 
 #define XILINX_DMA_RX_CHANNEL_OFFSET	0x30 /* S2MM Channel Offset */
 
 /* BD definitions for AXI Dma */
 #define XILINX_DMA_BD_STS_ALL_MASK	0xF0000000
-#define XILINX_DMA_BD_SOP	0x08000000	/* Start of packet bit */
-#define XILINX_DMA_BD_EOP	0x04000000	/* End of packet bit */
+#define XILINX_DMA_BD_SOP		0x08000000 /* Start of packet bit */
+#define XILINX_DMA_BD_EOP		0x04000000 /* End of packet bit */
 
 /* Feature encodings */
-#define XILINX_DMA_FTR_HAS_SG		0x00000100
-						/* Has SG */
-#define XILINX_DMA_FTR_HAS_SG_SHIFT	8
-						/* Has SG shift */
+#define XILINX_DMA_FTR_HAS_SG		0x00000100 /* Has SG */
+#define XILINX_DMA_FTR_HAS_SG_SHIFT	8 /* Has SG shift */
+/* Optional feature for dma */
 #define XILINX_DMA_FTR_STSCNTRL_STRM	0x00010000
-						/* Optional feature for dma */
+
 
 /* Delay loop counter to prevent hardware failure */
 #define XILINX_DMA_RESET_LOOP		1000000
@@ -174,8 +161,6 @@ static inline u32 dma_read(struct xilinx_dma_chan *chan, u32 reg)
 {
 	return readl(chan->regs + reg);
 }
-
-/* Required functions */
 
 static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 {
@@ -343,8 +328,6 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 						XILINX_DMA_CONTROL_OFFSET));
 		chan->err = 1;
 	}
-
-	return;
 }
 
 /* Start the hardware. Transfers are not started yet */
@@ -373,10 +356,7 @@ static void dma_start(struct xilinx_dma_chan *chan)
 
 		chan->err = 1;
 	}
-
-	return;
 }
-
 
 static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 {
@@ -551,7 +531,6 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 
 	return 0;
 }
-
 
 static irqreturn_t dma_intr_handler(int irq, void *data)
 {
@@ -965,12 +944,10 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	chan->start_transfer = xilinx_dma_start_transfer;
 
-	if (of_device_is_compatible(node,
-				    "xlnx,axi-dma-mm2s-channel"))
+	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel"))
 		chan->direction = DMA_MEM_TO_DEV;
 
-	if (of_device_is_compatible(node,
-				    "xlnx,axi-dma-s2mm-channel"))
+	if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel"))
 		chan->direction = DMA_DEV_TO_MEM;
 
 	chan->regs = xdev->regs;
@@ -1000,7 +977,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
 	}
-
 
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
@@ -1065,9 +1041,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	if (value)
 		xdev->feature |= XILINX_DMA_FTR_STSCNTRL_STRM;
 
-	/*
-	 * Axi DMA only do slave transfers
-	 */
+	/* Axi DMA only do slave transfers */
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
 	xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
