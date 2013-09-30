@@ -64,7 +64,6 @@ struct xsmcps_data {
 	struct clk		*devclk;
 	struct clk		*aperclk;
 	struct notifier_block	clk_rate_change_nb;
-	struct resource		*res;
 };
 
 /* SMC virtual register base */
@@ -464,35 +463,40 @@ static int xsmcps_probe(struct platform_device *pdev)
 {
 	struct xsmcps_data *xsmcps;
 	struct device_node *child;
+	struct resource *res;
 	unsigned long flags;
 	int err;
 	struct device_node *of_node = pdev->dev.of_node;
 	const struct of_device_id *matches = NULL;
 
-	xsmcps = kzalloc(sizeof(*xsmcps), GFP_KERNEL);
-	if (!xsmcps) {
-		dev_err(&pdev->dev, "unable to allocate memory\n");
+	xsmcps = devm_kzalloc(&pdev->dev, sizeof(*xsmcps), GFP_KERNEL);
+	if (!xsmcps)
+		return -ENOMEM;
+
+	/* Get the NAND controller virtual address */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xsmcps_base = devm_ioremap_resource(&pdev->dev, res);
+	if (!xsmcps_base) {
+		dev_err(&pdev->dev, "ioremap failed\n");
 		return -ENOMEM;
 	}
 
-	xsmcps->aperclk = clk_get(&pdev->dev, "aper_clk");
+	xsmcps->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xsmcps->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		err = PTR_ERR(xsmcps->aperclk);
-		goto out_free;
+		return PTR_ERR(xsmcps->aperclk);
 	}
 
-	xsmcps->devclk = clk_get(&pdev->dev, "ref_clk");
+	xsmcps->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(xsmcps->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		err = PTR_ERR(xsmcps->devclk);
-		goto out_clk_put_aper;
+		return PTR_ERR(xsmcps->devclk);
 	}
 
 	err = clk_prepare_enable(xsmcps->aperclk);
 	if (err) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-		goto out_clk_put;
+		return err;
 	}
 
 	err = clk_prepare_enable(xsmcps->devclk);
@@ -507,27 +511,6 @@ static int xsmcps_probe(struct platform_device *pdev)
 	if (clk_notifier_register(xsmcps->devclk, &xsmcps->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
-	/* Get the NAND controller virtual address */
-	xsmcps->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!xsmcps->res) {
-		err = -ENODEV;
-		dev_err(&pdev->dev, "platform_get_resource failed\n");
-		goto out_clk_disable;
-	}
-	xsmcps->res = request_mem_region(xsmcps->res->start,
-			resource_size(xsmcps->res), pdev->name);
-	if (!xsmcps->res) {
-		err = -ENOMEM;
-		dev_err(&pdev->dev, "request_mem_region failed\n");
-		goto out_clk_disable;
-	}
-
-	xsmcps_base = ioremap(xsmcps->res->start, resource_size(xsmcps->res));
-	if (!xsmcps_base) {
-		err = -EIO;
-		dev_err(&pdev->dev, "ioremap failed\n");
-		goto out_release_mem_region;
-	}
 
 	/* clear interrupts */
 	spin_lock_irqsave(&xsmcps_lock, flags);
@@ -545,7 +528,7 @@ static int xsmcps_probe(struct platform_device *pdev)
 			} else {
 				dev_err(&pdev->dev,
 					"incompatible configuration\n");
-				goto out_release_mem_region;
+				goto out_clk_disable;
 			}
 		}
 
@@ -557,7 +540,7 @@ static int xsmcps_probe(struct platform_device *pdev)
 				if (matches != matches_nor || counts > 1) {
 					dev_err(&pdev->dev,
 						"incompatible configuration\n");
-					goto out_release_mem_region;
+					goto out_clk_disable;
 				}
 			}
 			counts++;
@@ -569,19 +552,10 @@ static int xsmcps_probe(struct platform_device *pdev)
 
 	return 0;
 
-out_release_mem_region:
-	release_mem_region(xsmcps->res->start, resource_size(xsmcps->res));
-	kfree(xsmcps->res);
 out_clk_disable:
 	clk_disable_unprepare(xsmcps->devclk);
 out_clk_dis_aper:
 	clk_disable_unprepare(xsmcps->aperclk);
-out_clk_put:
-	clk_put(xsmcps->devclk);
-out_clk_put_aper:
-	clk_put(xsmcps->aperclk);
-out_free:
-	kfree(xsmcps);
 
 	return err;
 }
@@ -591,14 +565,8 @@ static int xsmcps_remove(struct platform_device *pdev)
 	struct xsmcps_data *xsmcps = platform_get_drvdata(pdev);
 
 	clk_notifier_unregister(xsmcps->devclk, &xsmcps->clk_rate_change_nb);
-	release_mem_region(xsmcps->res->start, resource_size(xsmcps->res));
-	kfree(xsmcps->res);
-	iounmap(xsmcps_base);
 	clk_disable_unprepare(xsmcps->devclk);
 	clk_disable_unprepare(xsmcps->aperclk);
-	clk_put(xsmcps->devclk);
-	clk_put(xsmcps->aperclk);
-	kfree(xsmcps);
 
 	return 0;
 }
