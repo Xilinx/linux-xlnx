@@ -164,8 +164,7 @@ EXPORT_SYMBOL_GPL(xsmcps_ecc_is_busy);
  */
 u32 xsmcps_get_ecc_val(int ecc_reg)
 {
-	u32 reg;
-	u32 addr;
+	u32 addr, reg;
 	unsigned long flags;
 
 	ecc_reg &= 3;
@@ -257,8 +256,7 @@ EXPORT_SYMBOL_GPL(xsmcps_set_ecc_mode);
  */
 int xsmcps_set_ecc_pg_size(unsigned int pg_sz)
 {
-	u32 reg;
-	u32 sz;
+	u32 reg, sz;
 	unsigned long flags;
 
 	switch (pg_sz) {
@@ -294,7 +292,6 @@ EXPORT_SYMBOL_GPL(xsmcps_set_ecc_pg_size);
 static int xsmcps_clk_notifier_cb(struct notifier_block *nb,
 				  unsigned long event, void *data)
 {
-
 	switch (event) {
 	case PRE_RATE_CHANGE:
 		/*
