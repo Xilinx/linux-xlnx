@@ -56,9 +56,9 @@
 				 (1 << 24)) /* Read col change end cmd valid */
 /**
  * struct xsmcps_data
- * @devclk		Pointer to the peripheral clock
- * @aperclk		Pointer to the APER clock
- * @clk_rate_change_nb	Notifier block for clock frequency change callback
+ * @devclk:		Pointer to the peripheral clock
+ * @aperclk:		Pointer to the APER clock
+ * @clk_rate_change_nb:	Notifier block for clock frequency change callback
  */
 struct xsmcps_data {
 	struct clk		*devclk;
@@ -72,7 +72,7 @@ static DEFINE_SPINLOCK(xsmcps_lock);
 
 /**
  * xsmcps_set_buswidth - Set memory buswidth
- * @bw	Memory buswidth (8 | 16)
+ * @bw:	Memory buswidth (8 | 16)
  * Returns 0 on success or negative errno.
  *
  * Must be called with xsmcps_lock held.
@@ -95,13 +95,13 @@ static int xsmcps_set_buswidth(unsigned int bw)
 
 /**
  * xsmcps_set_cycles - Set memory timing parameters
- * @t0	t_rc		read cycle time
- * @t1	t_wc		write cycle time
- * @t2	t_rea/t_ceoe	output enable assertion delay
- * @t3	t_wp		write enable deassertion delay
- * @t4	t_clr/t_pc	page cycle time
- * @t5	t_ar/t_ta	ID read time/turnaround time
- * @t6	t_rr		busy to RE timing
+ * @t0:	t_rc		read cycle time
+ * @t1:	t_wc		write cycle time
+ * @t2:	t_rea/t_ceoe	output enable assertion delay
+ * @t3:	t_wp		write enable deassertion delay
+ * @t4:	t_clr/t_pc	page cycle time
+ * @t5:	t_ar/t_ta	ID read time/turnaround time
+ * @t6:	t_rr		busy to RE timing
  *
  * Sets NAND chip specific timing parameters.
  *
@@ -156,7 +156,7 @@ EXPORT_SYMBOL_GPL(xsmcps_ecc_is_busy);
 
 /**
  * xsmcps_get_ecc_val - Read ecc_valueN registers
- * @ecc_reg	Index of the ecc_value reg (0..3)
+ * @ecc_reg:	Index of the ecc_value reg (0..3)
  * Returns the content of the requested ecc_value register.
  *
  * There are four valid ecc_value registers. The argument is truncated to stay
@@ -220,7 +220,7 @@ EXPORT_SYMBOL_GPL(xsmcps_clr_nand_int);
 
 /**
  * xsmcps_set_ecc_mode - Set SMC ECC mode
- * @mode	ECC mode (BYPASS, APB, MEM)
+ * @mode:	ECC mode (BYPASS, APB, MEM)
  * Returns 0 on success or negative errno.
  */
 int xsmcps_set_ecc_mode(enum xsmcps_ecc_mode mode)
@@ -252,7 +252,7 @@ EXPORT_SYMBOL_GPL(xsmcps_set_ecc_mode);
 
 /**
  * xsmcps_set_ecc_pg_size - Set SMC ECC page size
- * @pg_sz	ECC page size
+ * @pg_sz:	ECC page size
  * Returns 0 on success or negative errno.
  */
 int xsmcps_set_ecc_pg_size(unsigned int pg_sz)
@@ -346,8 +346,8 @@ static SIMPLE_DEV_PM_OPS(xsmcps_dev_pm_ops, xsmcps_suspend, xsmcps_resume);
 
 /**
  * xsmcps_init_nand_interface - Initialize the NAND interface
- * @pdev	Pointer to the platform_device struct
- * @nand_node	Pointer to the xnandps device_node struct
+ * @pdev:	Pointer to the platform_device struct
+ * @nand_node:	Pointer to the xnandps device_node struct
  */
 static void xsmcps_init_nand_interface(struct platform_device *pdev,
 				       struct device_node *nand_node)
