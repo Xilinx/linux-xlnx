@@ -991,16 +991,17 @@ static int xilinx_cdma_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id xilinx_cdma_of_ids[] = {
+static const struct of_device_id xilinx_cdma_of_match[] = {
 	{ .compatible = "xlnx,axi-cdma", },
 	{}
 };
+MODULE_DEVICE_TABLE(of, xilinx_cdma_of_match);
 
 static struct platform_driver xilinx_cdma_driver = {
 	.driver = {
 		.name = "xilinx-cdma",
 		.owner = THIS_MODULE,
-		.of_match_table = xilinx_cdma_of_ids,
+		.of_match_table = xilinx_cdma_of_match,
 	},
 	.probe = xilinx_cdma_probe,
 	.remove = xilinx_cdma_remove,
