@@ -3,16 +3,12 @@
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
  */
 
-#ifdef CONFIG_ARCH_ZYNQ
-# define LOAD_OFFSET	CONFIG_PAGE_OFFSET
-#endif
-
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/page.h>
-
+	
 #define PROC_INFO							\
 	. = ALIGN(4);							\
 	VMLINUX_SYMBOL(__proc_info_begin) = .;				\
@@ -47,7 +43,7 @@
 #endif
 
 OUTPUT_ARCH(arm)
-ENTRY(arm_start)
+ENTRY(stext)
 
 #ifndef __ARMEB__
 jiffies = jiffies_64;
@@ -91,16 +87,14 @@ SECTIONS
 
 #ifdef CONFIG_XIP_KERNEL
 	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
-	arm_start = . ;
 #else
 	. = PAGE_OFFSET + TEXT_OFFSET;
-	arm_start = TEXT_OFFSET;
 #endif
-	.head.text : AT(ADDR(.head.text) - LOAD_OFFSET) {
+	.head.text : {
 		_text = .;
 		HEAD_TEXT
 	}
-	.text : AT(ADDR(.text) - LOAD_OFFSET){	/* Real text segment	*/
+	.text : {			/* Real text segment		*/
 		_stext = .;		/* Text and read-only data	*/
 			__exception_text_start = .;
 			*(.exception.text)
@@ -133,27 +127,17 @@ SECTIONS
 		__stop___ex_table = .;
 	}
 
-#ifdef CONFIG_ARCH_ZYNQ
-	. = ALIGN (4) ;
-	__fdt_blob : AT(ADDR(__fdt_blob) - LOAD_OFFSET) {
-		_fdt_start = . ;		/* place for fdt blob */
-		*(__fdt_blob) ;			/* Any link-placed DTB */
-	        . = _fdt_start + 0x8000;	/* Pad up to 16kbyte */
-		_fdt_end = . ;
-	}
-#endif
-
 #ifdef CONFIG_ARM_UNWIND
 	/*
 	 * Stack unwinding tables
 	 */
 	. = ALIGN(8);
-	.ARM.unwind_idx : AT(ADDR(.ARM.unwind_idx) - LOAD_OFFSET) {
+	.ARM.unwind_idx : {
 		__start_unwind_idx = .;
 		*(.ARM.exidx*)
 		__stop_unwind_idx = .;
 	}
-	.ARM.unwind_tab : AT(ADDR(.ARM.unwind_tab) - LOAD_OFFSET) {
+	.ARM.unwind_tab : {
 		__start_unwind_tab = .;
 		*(.ARM.extab*)
 		__stop_unwind_tab = .;
@@ -170,35 +154,35 @@ SECTIONS
 #endif
 
 	INIT_TEXT_SECTION(8)
-	.exit.text : AT(ADDR(.exit.text) - LOAD_OFFSET) {
+	.exit.text : {
 		ARM_EXIT_KEEP(EXIT_TEXT)
 	}
-	.init.proc.info : AT(ADDR(.init.proc.info) - LOAD_OFFSET) {
+	.init.proc.info : {
 		ARM_CPU_DISCARD(PROC_INFO)
 	}
-	.init.arch.info : AT(ADDR(.init.arch.info) - LOAD_OFFSET) {
+	.init.arch.info : {
 		__arch_info_begin = .;
 		*(.arch.info.init)
 		__arch_info_end = .;
 	}
-	.init.tagtable : AT(ADDR(.init.tagtable) - LOAD_OFFSET) {
+	.init.tagtable : {
 		__tagtable_begin = .;
 		*(.taglist.init)
 		__tagtable_end = .;
 	}
 #ifdef CONFIG_SMP_ON_UP
-	.init.smpalt : AT(ADDR(.init.smpalt) - LOAD_OFFSET) {
+	.init.smpalt : {
 		__smpalt_begin = .;
 		*(.alt.smp.init)
 		__smpalt_end = .;
 	}
 #endif
-	.init.pv_table : AT(ADDR(.init.pv_table) - LOAD_OFFSET) {
+	.init.pv_table : {
 		__pv_table_begin = .;
 		*(.pv_table)
 		__pv_table_end = .;
 	}
-	.init.data : AT(ADDR(.init.data) - LOAD_OFFSET) {
+	.init.data : {
 #ifndef CONFIG_XIP_KERNEL
 		INIT_DATA
 #endif
@@ -209,7 +193,7 @@ SECTIONS
 		INIT_RAM_FS
 	}
 #ifndef CONFIG_XIP_KERNEL
-	.exit.data : AT(ADDR(.exit.data) - LOAD_OFFSET) {
+	.exit.data : {
 		ARM_EXIT_KEEP(EXIT_DATA)
 	}
 #endif
@@ -227,7 +211,7 @@ SECTIONS
 	__data_loc = .;
 #endif
 
-	.data : AT(ADDR(.data) - LOAD_OFFSET) {
+	.data : AT(__data_loc) {
 		_data = .;		/* address in memory */
 		_sdata = .;
 

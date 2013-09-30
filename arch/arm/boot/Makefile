@@ -11,28 +11,6 @@
 # Copyright (C) 1995-2002 Russell King
 #
 
-obj-y += linked_dtb.o
-
-# Ensure system.dtb exists
-$(obj)/linked_dtb.o: $(obj)/system.dtb
-
-# Generate system.dtb from $(DTB).dtb
-ifneq ($(DTB),system)
-$(obj)/system.dtb: $(obj)/$(DTB).dtb
-	$(call if_changed,cp)
-endif
-
-quiet_cmd_cp = CP      $< $@$2
-	cmd_cp = cat $< >$@$2 || (rm -f $@ && echo false)
-
-# Rule to build device tree blobs
-DTC_FLAGS := -p 1024
-
-$(obj)/%.dtb: $(src)/dts/%.dts FORCE
-	$(call cmd,dtc)
-
-MKIMAGE         := $(srctree)/scripts/mkuboot.sh
-
 ifneq ($(MACHINE),)
 include $(srctree)/$(MACHINE)/Makefile.boot
 endif
@@ -47,17 +25,7 @@ INITRD_PHYS := $(initrd_phys-y)
 
 export ZRELADDR INITRD_PHYS PARAMS_PHYS
 
-targets := zImage Image xipImage bootpImage uImage zImage% uImage.% dtbImage% simpleImage.%
-
-# Where the DTS files live
-dtstree         := $(srctree)/$(src)/dts
-
-# Rule to build device tree blobs
-DTC = $(objtree)/scripts/dtc/dtc
-
-quiet_cmd_strip = STRIP   $@.elf
-	cmd_strip = $(STRIP) -K arm_start -K _end -K __log_buf \
-				-K _fdt_start vmlinux -o $@.elf
+targets := Image zImage xipImage bootpImage uImage
 
 ifeq ($(CONFIG_XIP_KERNEL),y)
 
@@ -87,15 +55,6 @@ $(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
 	$(call if_changed,objcopy)
 	@$(kecho) '  Kernel: $@ is ready'
 
-$(obj)/simpleImage.%: vmlinux FORCE
-	$(call if_changed,strip)
-	$(call if_changed,objcopy)
-	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
-
-$(obj)/zImage.%: $(obj)/compressed/vmlinux FORCE
-	$(call if_changed,objcopy)
-	@echo '  Kernel: $@ is ready'
-
 endif
 
 ifneq ($(LOADADDR),)
@@ -120,10 +79,6 @@ $(obj)/uImage:	$(obj)/zImage FORCE
 	@$(check_for_multiple_loadaddr)
 	$(call if_changed,uimage)
 	@$(kecho) '  Image $@ is ready'
-
-$(obj)/uImage.%: $(obj)/zImage FORCE
-	$(call if_changed,uimage)
-	@echo '  Image $@ is ready'
 
 $(obj)/bootp/bootp: $(obj)/zImage initrd FORCE
 	$(Q)$(MAKE) $(build)=$(obj)/bootp $@
@@ -161,5 +116,3 @@ i:
 	$(obj)/Image System.map "$(INSTALL_PATH)"
 
 subdir-	    := bootp compressed dts
-
-clean-files += *.dtb simpleImage.* linux.bin.ub

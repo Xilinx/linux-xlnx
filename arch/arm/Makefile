@@ -257,17 +257,6 @@ core-y				+= arch/arm/net/
 core-y				+= arch/arm/crypto/
 core-y				+= $(machdirs) $(platdirs)
 
-boot := arch/arm/boot
-
-# Are we making a simpleImage.<boardname> target? If so, crack out the boardname
-DTB:=$(subst simpleImage.,,$(filter simpleImage.%, $(MAKECMDGOALS)))
-
-ifneq ($(DTB),)
-	core-y	+= $(boot)/
-endif
-
-export DTB
-
 drivers-$(CONFIG_OPROFILE)      += arch/arm/oprofile/
 
 libs-y				:= arch/arm/lib/ $(libs-y)
@@ -295,9 +284,6 @@ archprepare:
 bzImage: zImage
 
 zImage Image xipImage bootpImage uImage: vmlinux
-	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
-
-zImage% uImage.% dtbImage% simpleImage.%: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
 
 zinstall uinstall install: vmlinux
