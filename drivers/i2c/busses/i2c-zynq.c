@@ -142,8 +142,7 @@ struct xi2cps {
 	struct notifier_block	clk_rate_change_nb;
 };
 
-#define to_xi2cps(_nb)	container_of(_nb, struct xi2cps,\
-		clk_rate_change_nb)
+#define to_xi2cps(_nb)	container_of(_nb, struct xi2cps, clk_rate_change_nb)
 #define MAX_F_ERR 10000
 
 /**
@@ -235,10 +234,11 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 					id->send_count--;
 				}
 			} else {
-		/*
-		 * Signal the completion of transaction and clear the hold bus
-		 * bit if there are no further messages to be processed.
-		 */
+				/*
+				 * Signal the completion of transaction and
+				 * clear the hold bus bit if there are no
+				 * further messages to be processed.
+				 */
 				complete(&id->xfer_done);
 			}
 			if (id->send_count == 0) {
@@ -266,11 +266,12 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 					(~XI2CPS_CR_HOLD_BUS_MASK)),
 					XI2CPS_CR_OFFSET);
 			}
-		/*
-		 * If the device is receiving data, then signal the completion
-		 * of transaction and read the data present in the FIFO.
-		 * Signal the completion of transaction.
-		 */
+			/*
+			 * If the device is receiving data, then signal
+			 * the completion of transaction and read the data
+			 * present in the FIFO. Signal the completion of
+			 * transaction.
+			 */
 			while (xi2cps_readreg(XI2CPS_SR_OFFSET)
 							& 0x00000020) {
 				*(id->p_recv_buf)++ =
@@ -353,7 +354,6 @@ static void xi2cps_mrecv(struct xi2cps *id)
 /**
  * xi2cps_msend - Prepare and start a master send operation
  * @id:		pointer to the i2c device
- *
  */
 static void xi2cps_msend(struct xi2cps *id)
 {
@@ -483,7 +483,6 @@ static int xi2cps_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		}
 		schedule_timeout(1);
 	}
-
 
 	/* The bus is free. Set the new timeout value if updated */
 	if (id->adap.timeout != id->cur_timeout) {
