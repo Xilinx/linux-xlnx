@@ -108,7 +108,7 @@ static int xsmcps_set_buswidth(unsigned int bw)
  * Must be called with xsmcps_lock held.
  */
 static void xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
-		t4, u32 t5, u32 t6)
+			      t4, u32 t5, u32 t6)
 {
 	t0 &= 0xf;
 	t1 = (t1 & 0xf) << 4;
@@ -132,7 +132,7 @@ static void xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 static int xsmcps_ecc_is_busy_noirq(void)
 {
 	return !!(readl(xsmcps_base + XSMCPS_ECC_STATUS_OFFS) &
-			XSMCPS_ECC_STATUS_BUSY);
+		  XSMCPS_ECC_STATUS_BUSY);
 }
 
 /**
@@ -292,7 +292,7 @@ int xsmcps_set_ecc_pg_size(unsigned int pg_sz)
 EXPORT_SYMBOL_GPL(xsmcps_set_ecc_pg_size);
 
 static int xsmcps_clk_notifier_cb(struct notifier_block *nb,
-		unsigned long event, void *data)
+				  unsigned long event, void *data)
 {
 
 	switch (event) {
@@ -350,7 +350,7 @@ static SIMPLE_DEV_PM_OPS(xsmcps_dev_pm_ops, xsmcps_suspend, xsmcps_resume);
  * @nand_node	Pointer to the xnandps device_node struct
  */
 static void xsmcps_init_nand_interface(struct platform_device *pdev,
-		struct device_node *nand_node)
+				       struct device_node *nand_node)
 {
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
 	unsigned int bw;
@@ -360,7 +360,7 @@ static void xsmcps_init_nand_interface(struct platform_device *pdev,
 	err = of_property_read_u32(nand_node, "xlnx,nand-width", &bw);
 	if (err) {
 		dev_warn(&pdev->dev,
-				"xlnx,nand-width not in device tree, using 8");
+			 "xlnx,nand-width not in device tree, using 8");
 		bw = 8;
 	}
 	/* nand-cycle-<X> property is refer to the NAND flash timing
