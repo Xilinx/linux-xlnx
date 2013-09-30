@@ -450,12 +450,12 @@ default_nand_timing:
 }
 
 static const struct of_device_id matches_nor[] = {
-	{.compatible = "cfi-flash"},
+	{ .compatible = "cfi-flash" },
 	{}
 };
 
 static const struct of_device_id matches_nand[] = {
-	{.compatible = "xlnx,ps7-nand-1.00.a"},
+	{ .compatible = "xlnx,ps7-nand-1.00.a" },
 	{}
 };
 
@@ -573,7 +573,7 @@ static int xsmcps_remove(struct platform_device *pdev)
 
 /* Match table for device tree binding */
 static const struct of_device_id xsmcps_of_match[] = {
-	{.compatible = "xlnx,ps7-smc"},
+	{ .compatible = "xlnx,ps7-smc" },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, xsmcps_of_match);
