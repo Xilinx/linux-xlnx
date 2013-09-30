@@ -66,7 +66,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 
 	if (!freq_table) {
 		dev_err(mpu_dev, "%s: cpu%d: no freq table!\n", __func__,
-				policy->cpu);
+			policy->cpu);
 		return -EINVAL;
 	}
 
@@ -94,7 +94,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
 	dev_dbg(mpu_dev, "cpufreq-zynq: %u MHz --> %u MHz\n",
-			freqs.old / 1000, freqs.new / 1000);
+		freqs.old / 1000, freqs.new / 1000);
 
 	ret = clk_set_rate(cpuclk, freqs.new * 1000);
 
@@ -118,7 +118,7 @@ static int __cpuinit zynq_cpu_init(struct cpufreq_policy *policy)
 
 	cpuclk = devm_clk_get(mpu_dev, "cpufreq_clk");
 	if (IS_ERR(cpuclk)) {
-		pr_warn("Xilinx: cpufreq: cpufreq_clk clock not found.");
+		dev_err(mpu_dev, "cpufreq_clk clock not found.");
 		return PTR_ERR(cpuclk);
 	}
 
@@ -132,7 +132,7 @@ static int __cpuinit zynq_cpu_init(struct cpufreq_policy *policy)
 
 	if (result) {
 		dev_err(mpu_dev, "%s: cpu%d: failed creating freq table[%d]\n",
-				__func__, policy->cpu, result);
+			__func__, policy->cpu, result);
 		return result;
 	}
 
