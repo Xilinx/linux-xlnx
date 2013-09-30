@@ -909,10 +909,8 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
-	if (!chan) {
-		dev_err(xdev->dev, "no free memory for DMA channels!\n");
+	if (!chan)
 		return -ENOMEM;
-	}
 
 	chan->feature = feature;
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
@@ -1012,10 +1010,8 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_dma_device),
 			    GFP_KERNEL);
-	if (!xdev) {
-		dev_err(&pdev->dev, "Not enough memory for device\n");
+	if (!xdev)
 		return -ENOMEM;
-	}
 
 	xdev->dev = &(pdev->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);

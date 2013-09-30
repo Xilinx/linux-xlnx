@@ -809,10 +809,8 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
-	if (!chan) {
-		dev_err(xdev->dev, "no free memory for DMA channels!\n");
+	if (!chan)
 		return -ENOMEM;
-	}
 
 	chan->feature = feature;
 	chan->max_len = XILINX_CDMA_MAX_TRANS_LEN;
