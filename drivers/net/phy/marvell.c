@@ -434,7 +434,6 @@ static int m88e1116r_config_init(struct phy_device *phydev)
 	return 0;
 }
 
-
 static int m88e1111_config_init(struct phy_device *phydev)
 {
 	int err;
