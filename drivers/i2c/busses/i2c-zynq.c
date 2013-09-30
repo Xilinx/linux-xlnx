@@ -936,7 +936,6 @@ static int xi2cps_remove(struct platform_device *pdev)
 	i2c_del_adapter(&id->adap);
 	clk_notifier_unregister(id->clk, &id->clk_rate_change_nb);
 	clk_disable_unprepare(id->clk);
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
