@@ -533,7 +533,7 @@ static int xsmcps_probe(struct platform_device *pdev)
 		}
 
 		if (of_match_node(matches_nor, child)) {
-			static int counts = 0;
+			static int counts;
 			if (!matches) {
 				matches = matches_nor;
 			} else {
