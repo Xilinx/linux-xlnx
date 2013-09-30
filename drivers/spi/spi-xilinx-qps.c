@@ -1051,24 +1051,24 @@ static int xqspips_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 
-	xqspi->aperclk = clk_get(&pdev->dev, "aper_clk");
+	xqspi->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xqspi->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
 		ret = PTR_ERR(xqspi->aperclk);
 		goto remove_master;
 	}
 
-	xqspi->devclk = clk_get(&pdev->dev, "ref_clk");
+	xqspi->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(xqspi->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
 		ret = PTR_ERR(xqspi->devclk);
-		goto clk_put_aper;
+		goto remove_master;
 	}
 
 	ret = clk_prepare_enable(xqspi->aperclk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
-		goto clk_put;
+		goto remove_master;
 	}
 
 	ret = clk_prepare_enable(xqspi->devclk);
@@ -1143,10 +1143,6 @@ clk_unreg_notif:
 	clk_disable_unprepare(xqspi->devclk);
 clk_dis_aper:
 	clk_disable_unprepare(xqspi->aperclk);
-clk_put:
-	clk_put(xqspi->devclk);
-clk_put_aper:
-	clk_put(xqspi->aperclk);
 remove_master:
 	spi_master_put(master);
 	return ret;
@@ -1178,9 +1174,6 @@ static int xqspips_remove(struct platform_device *pdev)
 	clk_notifier_unregister(xqspi->devclk, &xqspi->clk_rate_change_nb);
 	clk_disable_unprepare(xqspi->devclk);
 	clk_disable_unprepare(xqspi->aperclk);
-	clk_put(xqspi->devclk);
-	clk_put(xqspi->aperclk);
-
 
 	spi_unregister_master(master);
 	spi_master_put(master);
