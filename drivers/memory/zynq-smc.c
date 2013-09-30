@@ -450,11 +450,12 @@ default_nand_timing:
 	spin_unlock_irqrestore(&xsmcps_lock, flags);
 }
 
-const struct of_device_id matches_nor[] = {
+static const struct of_device_id matches_nor[] = {
 	{.compatible = "cfi-flash"},
 	{}
 };
-const struct of_device_id matches_nand[] = {
+
+static const struct of_device_id matches_nand[] = {
 	{.compatible = "xlnx,ps7-nand-1.00.a"},
 	{}
 };
