@@ -1,5 +1,5 @@
 /*
- * Xilinx I2C bus driver for the PS I2C Interfaces.
+ * Xilinx I2C bus driver for the Zynq I2C Interfaces.
  *
  * 2009-2011 (c) Xilinx, Inc.
  *
@@ -961,6 +961,6 @@ static struct platform_driver xi2cps_drv = {
 module_platform_driver(xi2cps_drv);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS I2C bus driver");
+MODULE_DESCRIPTION("Xilinx Zynq I2C bus driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRIVER_NAME);
