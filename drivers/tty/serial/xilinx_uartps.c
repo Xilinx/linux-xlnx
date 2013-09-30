@@ -1475,12 +1475,9 @@ static int xuartps_resume(struct device *device)
 
 	return uart_resume_port(&xuartps_uart_driver, port);
 }
+#endif
 
 static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
-#define XUARTPS_PM	(&xuartps_dev_pm_ops)
-#else /* ! CONFIG_PM_SLEEP */
-#define XUARTPS_PM	NULL
-#endif /* ! CONFIG_PM_SLEEP */
 
 /* Match table for of_platform binding */
 static struct of_device_id xuartps_of_match[] = {
@@ -1497,7 +1494,7 @@ static struct platform_driver xuartps_platform_driver = {
 		.owner = THIS_MODULE,
 		.name = XUARTPS_NAME,		/* Driver name */
 		.of_match_table = xuartps_of_match,
-		.pm = XUARTPS_PM,
+		.pm = &xuartps_dev_pm_ops,
 		},
 };
 
