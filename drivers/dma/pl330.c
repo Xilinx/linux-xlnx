@@ -2888,7 +2888,6 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	struct resource *res;
 	int i, ret, irq;
 	int num_chan;
-	u32 dma_channels;
 
 	pdat = adev->dev.platform_data;
 
@@ -2911,16 +2910,17 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 
 	amba_set_drvdata(adev, pdmac);
 
-	of_property_read_u32(adev->dev.of_node,
-			     "#dma-channels", &dma_channels);
-
-	/* irq 0 is abort IRQ */
-	for (i = 1; i <= dma_channels ; i++) {
+	for (i = 0; i <= AMBA_NR_IRQS; i++) {
 		irq = adev->irq[i];
-		ret = devm_request_irq(&adev->dev, irq, pl330_irq_handler, 0,
-				dev_name(&adev->dev), pi);
-		if (ret)
-			return ret;
+		if (irq) {
+			ret = devm_request_irq(&adev->dev, irq,
+					       pl330_irq_handler, 0,
+					       dev_name(&adev->dev), pi);
+			if (ret)
+				return ret;
+		} else {
+			break;
+		}
 	}
 
 	ret = pl330_add(pi);
