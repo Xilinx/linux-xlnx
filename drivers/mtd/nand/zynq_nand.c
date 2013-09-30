@@ -161,10 +161,9 @@ static struct nand_ecclayout ondie_nand_oob_64 = {
 	}
 };
 
-/* Generic flash bbt decriptors
-*/
-static uint8_t bbt_pattern[] = {'B', 'b', 't', '0' };
-static uint8_t mirror_pattern[] = {'1', 't', 'b', 'B' };
+/* Generic flash bbt decriptors */
+static uint8_t bbt_pattern[] = { 'B', 'b', 't', '0' };
+static uint8_t mirror_pattern[] = { '1', 't', 'b', 'B' };
 
 static struct nand_bbt_descr bbt_main_descr = {
 	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
@@ -221,9 +220,8 @@ xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
 				ecc_code++;
 			}
 		} else {
-			/* TO DO */
-			/* dev_warn(&pdev->dev, "pl350: ecc status failed\n");
-			* */
+			/* TODO */
+			/* dev_dbg(&pdev->dev, "pl350: ecc status failed\n"); */
 		}
 	}
 	return 0;
@@ -238,7 +236,7 @@ xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
  */
 static int onehot(unsigned short value)
 {
-	return ((value & (value-1)) == 0);
+	return (value & (value - 1)) == 0;
 }
 
 /**
@@ -255,7 +253,8 @@ static int onehot(unsigned short value)
  *		-1 if multiple ECC errors found.
  */
 static int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
-			unsigned char *read_ecc, unsigned char *calc_ecc)
+				unsigned char *read_ecc,
+				unsigned char *calc_ecc)
 {
 	unsigned char bit_addr;
 	unsigned int byte_addr;
@@ -298,7 +297,7 @@ static int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
  * @page:	Page number to read
  */
 static int xnandps_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
-			int page)
+			    int page)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -312,7 +311,7 @@ static int xnandps_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
-	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 	chip->read_buf(mtd, p, data_width);
 
 	return 0;
@@ -325,7 +324,7 @@ static int xnandps_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * @page:	Page number to write
  */
 static int xnandps_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
-			int page)
+			     int page)
 {
 	int status = 0;
 	const uint8_t *buf = chip->oob_poi;
@@ -340,7 +339,7 @@ static int xnandps_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 	chip->write_buf(mtd, buf, data_width);
 
 	/* Send command to program the OOB data */
@@ -359,7 +358,7 @@ static int xnandps_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * @page:		Page number to read
  */
 static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
-			      uint8_t *buf, int oob_required, int page)
+				 uint8_t *buf, int oob_required, int page)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -373,7 +372,7 @@ static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
-	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 
 	chip->read_buf(mtd, p, data_width);
 	return 0;
@@ -387,7 +386,7 @@ static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
  */
 static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
-		const uint8_t *buf, int oob_required)
+				  const uint8_t *buf, int oob_required)
 {
 	unsigned long data_width = 4;
 	unsigned long data_phase_addr = 0;
@@ -402,7 +401,7 @@ static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 
 	chip->write_buf(mtd, p, data_width);
 
@@ -419,7 +418,8 @@ static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  * This functions writes data and hardware generated ECC values in to the page.
  */
 static int xnandps_write_page_hwecc(struct mtd_info *mtd,
-		struct nand_chip *chip, const uint8_t *buf, int oob_required)
+				    struct nand_chip *chip, const uint8_t *buf,
+				    int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
@@ -440,7 +440,7 @@ static int xnandps_write_page_hwecc(struct mtd_info *mtd,
 	/* Set ECC Last bit to 1 */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= XNANDPS_ECC_LAST;
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 	chip->write_buf(mtd, p, data_width);
 
 	/* Wait for ECC to be calculated and read the error values */
@@ -453,7 +453,7 @@ static int xnandps_write_page_hwecc(struct mtd_info *mtd,
 	/* Clear ECC last bit */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr &= ~XNANDPS_ECC_LAST;
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 
 	/* Write the spare area with ECC bytes */
 	oob_ptr = chip->oob_poi;
@@ -462,7 +462,7 @@ static int xnandps_write_page_hwecc(struct mtd_info *mtd,
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
-	chip->IO_ADDR_W = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 	oob_ptr += (mtd->oobsize - data_width);
 	chip->write_buf(mtd, oob_ptr, data_width);
 
@@ -477,7 +477,8 @@ static int xnandps_write_page_hwecc(struct mtd_info *mtd,
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
  */
 static int xnandps_write_page_swecc(struct mtd_info *mtd,
-		struct nand_chip *chip, const uint8_t *buf, int oob_required)
+				    struct nand_chip *chip, const uint8_t *buf,
+				    int oob_required)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -512,7 +513,7 @@ static int xnandps_write_page_swecc(struct mtd_info *mtd,
  * returns:	0 always and updates ECC operation status in to MTD structure
  */
 static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
-		uint8_t *buf, int oob_required, int page)
+				   uint8_t *buf, int oob_required, int page)
 {
 	int i, stat, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -535,7 +536,7 @@ static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 	/* Set ECC Last bit to 1 */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= XNANDPS_ECC_LAST;
-	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 	chip->read_buf(mtd, p, data_width);
 
 	/* Read the calculated ECC value */
@@ -545,7 +546,7 @@ static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 	/* Clear ECC last bit */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr &= ~XNANDPS_ECC_LAST;
-	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 
 	/* Read the stored ECC value */
 	oob_ptr = chip->oob_poi;
@@ -554,7 +555,7 @@ static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 	/* de-assert chip select */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= XNANDPS_CLEAR_CS;
-	chip->IO_ADDR_R = (void __iomem *__force)data_phase_addr;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 
 	oob_ptr += (mtd->oobsize - data_width);
 	chip->read_buf(mtd, oob_ptr, data_width);
@@ -585,7 +586,7 @@ static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
  * @page:		Page number to read
  */
 static int xnandps_read_page_swecc(struct mtd_info *mtd, struct nand_chip *chip,
-		uint8_t *buf,  int oob_required, int page)
+				   uint8_t *buf,  int oob_required, int page)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -639,7 +640,7 @@ static void xnandps_select_chip(struct mtd_info *mtd, int chip)
  * @page_addr:	The page address for this command, -1 if none
  */
 static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
-			    int column, int page_addr)
+				 int column, int page_addr)
 {
 	struct nand_chip *chip = mtd->priv;
 	const struct xnandps_command_format *curr_cmd = NULL;
@@ -665,17 +666,16 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 
 	/* Emulate NAND_CMD_READOOB for large page device */
 	if ((mtd->writesize > XNANDPS_ECC_SIZE) &&
-		(command == NAND_CMD_READOOB)) {
+	    (command == NAND_CMD_READOOB)) {
 		column += mtd->writesize;
 		command = NAND_CMD_READ0;
 	}
 
 	/* Get the command format */
 	for (i = 0; (xnandps_commands[i].start_cmd != NAND_CMD_NONE ||
-		xnandps_commands[i].end_cmd != NAND_CMD_NONE); i++) {
+		     xnandps_commands[i].end_cmd != NAND_CMD_NONE); i++)
 		if (command == xnandps_commands[i].start_cmd)
 			curr_cmd = &xnandps_commands[i];
-	}
 
 	if (curr_cmd == NULL)
 		return;
@@ -692,24 +692,24 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 	else
 		end_cmd = curr_cmd->end_cmd;
 
-	cmd_phase_addr = (unsigned long __force)xnand->nand_base	|
-			(curr_cmd->addr_cycles << ADDR_CYCLES_SHIFT)	|
-			(end_cmd_valid << END_CMD_VALID_SHIFT)		|
-			(COMMAND_PHASE)					|
-			(end_cmd << END_CMD_SHIFT)			|
-			(curr_cmd->start_cmd << START_CMD_SHIFT);
+	cmd_phase_addr = (unsigned long __force)xnand->nand_base        |
+			 (curr_cmd->addr_cycles << ADDR_CYCLES_SHIFT)    |
+			 (end_cmd_valid << END_CMD_VALID_SHIFT)          |
+			 (COMMAND_PHASE)                                 |
+			 (end_cmd << END_CMD_SHIFT)                      |
+			 (curr_cmd->start_cmd << START_CMD_SHIFT);
 
 	cmd_addr = (void __iomem * __force)cmd_phase_addr;
 
 	/* Get the data phase address */
 	end_cmd_valid = 0;
 
-	data_phase_addr = (unsigned long __force)xnand->nand_base	|
-			(0x0 << CLEAR_CS_SHIFT)				|
-			(end_cmd_valid << END_CMD_VALID_SHIFT)		|
-			(DATA_PHASE)					|
-			(end_cmd << END_CMD_SHIFT)			|
-			(0x0 << ECC_LAST_SHIFT);
+	data_phase_addr = (unsigned long __force)xnand->nand_base       |
+			  (0x0 << CLEAR_CS_SHIFT)                         |
+			  (end_cmd_valid << END_CMD_VALID_SHIFT)          |
+			  (DATA_PHASE)                                    |
+			  (end_cmd << END_CMD_SHIFT)                      |
+			  (0x0 << ECC_LAST_SHIFT);
 
 	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 	chip->IO_ADDR_W = chip->IO_ADDR_R;
@@ -756,9 +756,9 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 	ndelay(100);
 
 	if ((command == NAND_CMD_READ0) ||
-		(command == NAND_CMD_RESET) ||
-		(command == NAND_CMD_PARAM) ||
-		(command == NAND_CMD_GET_FEATURES)) {
+	    (command == NAND_CMD_RESET) ||
+	    (command == NAND_CMD_PARAM) ||
+	    (command == NAND_CMD_GET_FEATURES)) {
 
 		while (!chip->dev_ready(mtd))
 			;
@@ -794,6 +794,7 @@ static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 	int i;
 	struct nand_chip *chip = mtd->priv;
 	unsigned long *ptr = (unsigned long *)buf;
+
 	len >>= 2;
 
 	for (i = 0; i < len; i++)
@@ -831,14 +832,14 @@ static int xnandps_probe(struct platform_device *pdev)
 	struct resource *nand_res;
 	u8 maf_id, dev_id, i;
 	u8 get_feature;
-	u8 set_feature[4] = {0x08, 0x00, 0x00, 0x00};
+	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
 	int ondie_ecc_enabled = 0;
 	struct mtd_part_parser_data ppdata;
 	const unsigned int *prop;
 	u32 options = 0;
 
 	xnand = devm_kzalloc(&pdev->dev, sizeof(struct xnandps_info),
-					GFP_KERNEL);
+			     GFP_KERNEL);
 	if (!xnand)
 		return -ENOMEM;
 
@@ -912,31 +913,31 @@ static int xnandps_probe(struct platform_device *pdev)
 	dev_id = nand_chip->read_byte(mtd);
 
 	if ((maf_id == 0x2c) &&
-				((dev_id == 0xf1) || (dev_id == 0xa1) ||
-				(dev_id == 0xb1) ||
-				(dev_id == 0xaa) || (dev_id == 0xba) ||
-				(dev_id == 0xda) || (dev_id == 0xca) ||
-				(dev_id == 0xac) || (dev_id == 0xbc) ||
-				(dev_id == 0xdc) || (dev_id == 0xcc) ||
-				(dev_id == 0xa3) || (dev_id == 0xb3) ||
-				(dev_id == 0xd3) || (dev_id == 0xc3))) {
+	    ((dev_id == 0xf1) || (dev_id == 0xa1) ||
+	     (dev_id == 0xb1) ||
+	     (dev_id == 0xaa) || (dev_id == 0xba) ||
+	     (dev_id == 0xda) || (dev_id == 0xca) ||
+	     (dev_id == 0xac) || (dev_id == 0xbc) ||
+	     (dev_id == 0xdc) || (dev_id == 0xcc) ||
+	     (dev_id == 0xa3) || (dev_id == 0xb3) ||
+	     (dev_id == 0xd3) || (dev_id == 0xc3))) {
 
 		nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
-						ONDIE_ECC_FEATURE_ADDR, -1);
+				   ONDIE_ECC_FEATURE_ADDR, -1);
 		get_feature = nand_chip->read_byte(mtd);
 
 		if (get_feature & 0x08) {
 			ondie_ecc_enabled = 1;
 		} else {
 			nand_chip->cmdfunc(mtd, NAND_CMD_SET_FEATURES,
-						ONDIE_ECC_FEATURE_ADDR, -1);
+					   ONDIE_ECC_FEATURE_ADDR, -1);
 			for (i = 0; i < 4; i++)
 				writeb(set_feature[i], nand_chip->IO_ADDR_W);
 
 			ndelay(1000);
 
 			nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
-						ONDIE_ECC_FEATURE_ADDR, -1);
+					   ONDIE_ECC_FEATURE_ADDR, -1);
 			get_feature = nand_chip->read_byte(mtd);
 
 			if (get_feature & 0x08)
@@ -1008,8 +1009,7 @@ static int xnandps_probe(struct platform_device *pdev)
 
 	ppdata.of_node = pdev->dev.of_node;
 
-	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata,
-			NULL, 0);
+	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata, NULL, 0);
 
 	return 0;
 }
