@@ -72,7 +72,7 @@
  * @end_cmd:		Second cycle command (Last command)
  * @addr_cycles:	Number of address cycles required to send the address
  * @end_cmd_valid:	The second cycle command is valid for cmd or data phase
- **/
+ */
 struct xnandps_command_format {
 	int start_cmd;
 	int end_cmd;
@@ -88,7 +88,7 @@ struct xnandps_command_format {
  * @nand_base:		Virtual address of the NAND flash device
  * @end_cmd_pending:	End command is pending
  * @end_cmd:		End command
- **/
+ */
 struct xnandps_info {
 	struct nand_chip	chip;
 	struct mtd_info		mtd;
@@ -196,7 +196,7 @@ static struct nand_bbt_descr bbt_mirror_descr = {
  * ECC data back to the MTD subsystem.
  *
  * returns:	0 on success or error value on failure
- **/
+ */
 static int
 xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
 {
@@ -231,12 +231,11 @@ xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
 
 /**
  * onehot - onehot function
- * @value:	value to check for onehot
+ * @value:	Value to check for onehot
  *
  * This function checks whether a value is onehot or not.
  * onehot is if and only if onebit is set.
- *
- **/
+ */
 static int onehot(unsigned short value)
 {
 	return ((value & (value-1)) == 0);
@@ -254,7 +253,7 @@ static int onehot(unsigned short value)
  * returns:	0 if no ECC errors found
  *		1 if single bit error found and corrected.
  *		-1 if multiple ECC errors found.
- **/
+ */
 static int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
 			unsigned char *read_ecc, unsigned char *calc_ecc)
 {
@@ -294,9 +293,9 @@ static int xnandps_correct_data(struct mtd_info *mtd, unsigned char *buf,
 
 /**
  * xnandps_read_oob - [REPLACABLE] the most common OOB data read function
- * @mtd:	mtd info structure
- * @chip:	nand chip info structure
- * @page:	page number to read
+ * @mtd:	Pointer to the mtd info structure
+ * @chip:	Pointer to the NAND chip info structure
+ * @page:	Page number to read
  */
 static int xnandps_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			int page)
@@ -321,9 +320,9 @@ static int xnandps_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * xnandps_write_oob - [REPLACABLE] the most common OOB data write function
- * @mtd:	mtd info structure
- * @chip:	nand chip info structure
- * @page:	page number to write
+ * @mtd:	Pointer to the mtd info structure
+ * @chip:	Pointer to the NAND chip info structure
+ * @page:	Page number to write
  */
 static int xnandps_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			int page)
@@ -353,11 +352,11 @@ static int xnandps_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * xnandps_read_page_raw - [Intern] read raw page data without ecc
- * @mtd:        mtd info structure
- * @chip:       nand chip info structure
- * @buf:        buffer to store read data
- * @page:       page number to read
- *
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the data buffer
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to read
  */
 static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 			      uint8_t *buf, int oob_required, int page)
@@ -382,10 +381,10 @@ static int xnandps_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * xnandps_write_page_raw - [Intern] raw page write function
- * @mtd:        mtd info structure
- * @chip:       nand chip info structure
- * @buf:        data buffer
- *
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the data buffer
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
  */
 static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 		const uint8_t *buf, int oob_required)
@@ -412,9 +411,10 @@ static int xnandps_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * nand_write_page_hwecc - Hardware ECC based page write function
- * @mtd:	Pointer to the mtd info structure
- * @chip:	Pointer to the NAND chip info structure
- * @buf:	Pointer to the data buffer
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the data buffer
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
  *
  * This functions writes data and hardware generated ECC values in to the page.
  */
@@ -471,9 +471,10 @@ static int xnandps_write_page_hwecc(struct mtd_info *mtd,
 
 /**
  * xnandps_write_page_swecc - [REPLACABLE] software ecc based page write function
- * @mtd:	mtd info structure
- * @chip:	nand chip info structure
- * @buf:	data buffer
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the data buffer
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
  */
 static int xnandps_write_page_swecc(struct mtd_info *mtd,
 		struct nand_chip *chip, const uint8_t *buf, int oob_required)
@@ -499,10 +500,11 @@ static int xnandps_write_page_swecc(struct mtd_info *mtd,
 
 /**
  * xnandps_read_page_hwecc - Hardware ECC based page read function
- * @mtd:	Pointer to the mtd info structure
- * @chip:	Pointer to the NAND chip info structure
- * @buf:	Pointer to the buffer to store read data
- * @page:	page number to read
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the buffer to store read data
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to read
  *
  * This functions reads data and checks the data integrity by comparing hardware
  * generated ECC values and read ECC values from spare area.
@@ -576,10 +578,11 @@ static int xnandps_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * xnandps_read_page_swecc - [REPLACABLE] software ecc based page read function
- * @mtd:	mtd info structure
- * @chip:	nand chip info structure
- * @buf:	buffer to store read data
- * @page:	page number to read
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the buffer to store read data
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to read
  */
 static int xnandps_read_page_swecc(struct mtd_info *mtd, struct nand_chip *chip,
 		uint8_t *buf,  int oob_required, int page)
@@ -617,12 +620,12 @@ static int xnandps_read_page_swecc(struct mtd_info *mtd, struct nand_chip *chip,
 
 /**
  * xnandps_select_chip - Select the flash device
- * @mtd:	Pointer to the mtd_info structure
- * @chip:	Chip number to be selected
+ * @mtd:	Pointer to the mtd info structure
+ * @chip:	Pointer to the NAND chip info structure
  *
  * This function is empty as the NAND controller handles chip select line
  * internally based on the chip address passed in command and data phase.
- **/
+ */
 static void xnandps_select_chip(struct mtd_info *mtd, int chip)
 {
 	return;
@@ -765,10 +768,9 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 
 /**
  * xnandps_read_buf - read chip data into buffer
- * @mtd:        MTD device structure
- * @buf:        buffer to store date
- * @len:        number of bytes to read
- *
+ * @mtd:	Pointer to the mtd info structure
+ * @buf:	Pointer to the buffer to store read data
+ * @len:	Number of bytes to read
  */
 static void xnandps_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 {
@@ -783,10 +785,9 @@ static void xnandps_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 
 /**
  * xnandps_write_buf - write buffer to chip
- * @mtd:        MTD device structure
- * @buf:        data buffer
- * @len:        number of bytes to write
- *
+ * @mtd:	Pointer to the mtd info structure
+ * @buf:	Pointer to the buffer to store read data
+ * @len:	Number of bytes to write
  */
 static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 {
@@ -804,7 +805,7 @@ static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
  * @mtd:	Pointer to the mtd_info structure
  *
  * returns:	0 on busy or 1 on ready state
- **/
+ */
 static int xnandps_device_ready(struct mtd_info *mtd)
 {
 	if (xsmcps_get_nand_int_status_raw()) {
@@ -821,7 +822,7 @@ static int xnandps_device_ready(struct mtd_info *mtd)
  * This function initializes the driver data structures and the hardware.
  *
  * returns:	0 on success or error value on failure
- **/
+ */
 static int xnandps_probe(struct platform_device *pdev)
 {
 	struct xnandps_info *xnand;
@@ -1021,7 +1022,7 @@ static int xnandps_probe(struct platform_device *pdev)
  * resources allocated to the device.
  *
  * returns:	0 on success or error value on failure
- **/
+ */
 static int xnandps_remove(struct platform_device *pdev)
 {
 	struct xnandps_info *xnand = platform_get_drvdata(pdev);
