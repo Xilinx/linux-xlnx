@@ -661,6 +661,24 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 	}
 
 	chan->err = 0;
+
+	return 0;
+}
+
+/* Reset channel: reset hardware and enable(restore) interrupts */
+static int xilinx_vdma_chan_reset(struct xilinx_vdma_chan *chan)
+{
+	int err;
+
+	/* Reset VDMA */
+	err = xilinx_vdma_reset(chan);
+	if (err)
+		return err;
+
+	/* Enable interrupts */
+	vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR,
+		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
+
 	return 0;
 }
 
@@ -742,13 +760,9 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		err = xilinx_vdma_reset(chan);
+		err = xilinx_vdma_chan_reset(chan);
 		if (err < 0)
 			return err;
-
-		/* Enable interrupts */
-		vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR,
-			      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 	}
 
 	spin_lock_irqsave(&chan->lock, flags);
@@ -872,18 +886,9 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 				    struct xilinx_vdma_config *cfg)
 {
 	u32 dmacr;
-	int err;
 
-	if (cfg->reset) {
-		err = xilinx_vdma_reset(chan);
-		if (err < 0)
-			return err;
-
-		/* Enable interrupts */
-		vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR,
-			      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
-		return 0;
-	}
+	if (cfg->reset)
+		return xilinx_vdma_chan_reset(chan);
 
 	dmacr = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
 
@@ -1087,21 +1092,13 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		      | XILINX_DMA_IP_VDMA
 		      | (device_id << XILINX_DMA_DEVICE_ID_SHIFT);
 
-	/* Reset the channel */
-	err = xilinx_vdma_reset(chan);
-	if (err < 0) {
-		dev_err(xdev->dev, "Reset channel failed\n");
-		return err;
-	}
-
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
 	err = devm_request_irq(xdev->dev, chan->irq, xilinx_vdma_irq_handler,
 			       IRQF_SHARED, "xilinx-vdma-controller", chan);
 	if (err) {
 		dev_err(xdev->dev, "unable to request IRQ\n");
-		irq_dispose_mapping(chan->irq);
-		return err;
+		goto error;
 	}
 
 	/* Initialize the DMA channel and add it to the DMA engine channels
@@ -1113,11 +1110,18 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
 	xdev->chan[chan->id] = chan;
 
-	/* Enable interrupts */
-	vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR,
-		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
+	/* Reset the channel */
+	err = xilinx_vdma_chan_reset(chan);
+	if (err < 0) {
+		dev_err(xdev->dev, "Reset channel failed\n");
+		goto error;
+	}
 
 	return 0;
+
+error:
+	irq_dispose_mapping(chan->irq);
+	return err;
 }
 
 struct of_dma_filter_xilinx_args {
