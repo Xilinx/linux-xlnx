@@ -25,12 +25,10 @@
  * struct xsdhcips
  * @devclk		Pointer to the peripheral clock
  * @aperclk		Pointer to the APER clock
- * @clk_rate_change_nb	Notifier block for clock frequency change callback
  */
 struct xsdhcips {
 	struct clk		*devclk;
 	struct clk		*aperclk;
-	struct notifier_block	clk_rate_change_nb;
 };
 
 static unsigned int zynq_of_get_max_clock(struct sdhci_host *host)
@@ -49,25 +47,6 @@ static struct sdhci_pltfm_data sdhci_zynq_pdata = {
 		SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
 	.ops = &sdhci_zynq_ops,
 };
-
-static int xsdhcips_clk_notifier_cb(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-	switch (event) {
-	case PRE_RATE_CHANGE:
-		/* if a rate change is announced we need to check whether we can
-		 * maintain the current frequency by changing the clock
-		 * dividers. And we may have to suspend operation and return
-		 * after the rate change or its abort
-		 */
-		/* fall through */
-	case POST_RATE_CHANGE:
-		return NOTIFY_OK;
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
-	}
-}
 
 #ifdef CONFIG_PM_SLEEP
 /**
@@ -167,17 +146,10 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 		goto clk_dis_aper;
 	}
 
-	xsdhcips->clk_rate_change_nb.notifier_call = xsdhcips_clk_notifier_cb;
-	xsdhcips->clk_rate_change_nb.next = NULL;
-	if (clk_notifier_register(xsdhcips->devclk,
-				&xsdhcips->clk_rate_change_nb))
-		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
-
-
 	ret = sdhci_pltfm_register(pdev, &sdhci_zynq_pdata);
 	if (ret) {
 		dev_err(&pdev->dev, "Platform registration failed\n");
-		goto clk_notif_unreg;
+		goto clk_disable_all;
 	}
 
 	host = platform_get_drvdata(pdev);
@@ -186,9 +158,7 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 
 	return 0;
 
-clk_notif_unreg:
-	clk_notifier_unregister(xsdhcips->devclk,
-			&xsdhcips->clk_rate_change_nb);
+clk_disable_all:
 	clk_disable_unprepare(xsdhcips->devclk);
 clk_dis_aper:
 	clk_disable_unprepare(xsdhcips->aperclk);
@@ -202,8 +172,6 @@ static int sdhci_zynq_remove(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct xsdhcips *xsdhcips = pltfm_host->priv;
 
-	clk_notifier_unregister(xsdhcips->devclk,
-			&xsdhcips->clk_rate_change_nb);
 	clk_disable_unprepare(xsdhcips->devclk);
 	clk_disable_unprepare(xsdhcips->aperclk);
 
