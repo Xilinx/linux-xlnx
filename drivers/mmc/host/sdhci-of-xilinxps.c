@@ -2,6 +2,7 @@
  * Xilinx Zynq Secure Digital Host Controller Interface.
  * Copyright (C) 2011 - 2012 Michal Simek <monstr@monstr.eu>
  * Copyright (c) 2012 Wind River Systems, Inc.
+ * Copyright (C) 2013 Xilinx Inc.
  *
  * Based on sdhci-of-esdhc.c
  *
