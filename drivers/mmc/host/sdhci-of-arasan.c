@@ -1,5 +1,5 @@
 /*
- * Xilinx Zynq Secure Digital Host Controller Interface.
+ * Arasan Secure Digital Host Controller Interface.
  * Copyright (C) 2011 - 2012 Michal Simek <monstr@monstr.eu>
  * Copyright (c) 2012 Wind River Systems, Inc.
  * Copyright (C) 2013 Xilinx Inc.
@@ -22,83 +22,83 @@
 #include "sdhci-pltfm.h"
 
 /**
- * struct xsdhcips
+ * struct sdhci_arasan_data
  * @devclk:	Pointer to the peripheral clock
  * @aperclk:	Pointer to the APER clock
  */
-struct xsdhcips {
+struct sdhci_arasan_data {
 	struct clk		*devclk;
 	struct clk		*aperclk;
 };
 
-static unsigned int zynq_of_get_max_clock(struct sdhci_host *host)
+static unsigned int arasan_get_max_clock(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 
 	return pltfm_host->clock;
 }
 
-static struct sdhci_ops sdhci_zynq_ops = {
-	.get_max_clock = zynq_of_get_max_clock,
+static struct sdhci_ops sdhci_arasan_ops = {
+	.get_max_clock = arasan_get_max_clock,
 };
 
-static struct sdhci_pltfm_data sdhci_zynq_pdata = {
+static struct sdhci_pltfm_data sdhci_arasan_pdata = {
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
 		SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
-	.ops = &sdhci_zynq_ops,
+	.ops = &sdhci_arasan_ops,
 };
 
 #ifdef CONFIG_PM_SLEEP
 /**
- * xsdhcips_suspend - Suspend method for the driver
+ * sdhci_arasan_suspend - Suspend method for the driver
  * @dev:	Address of the device structure
  * Returns 0 on success and error value on error
  *
  * Put the device in a low power state.
  */
-static int xsdhcips_suspend(struct device *dev)
+static int sdhci_arasan_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct xsdhcips *xsdhcips = pltfm_host->priv;
+	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
 	int ret;
 
 	ret = sdhci_suspend_host(host);
 	if (ret)
 		return ret;
 
-	clk_disable(xsdhcips->devclk);
-	clk_disable(xsdhcips->aperclk);
+	clk_disable(sdhci_arasan->devclk);
+	clk_disable(sdhci_arasan->aperclk);
 
 	return 0;
 }
 
 /**
- * xsdhcips_resume - Resume method for the driver
+ * sdhci_arasan_resume - Resume method for the driver
  * @dev:	Address of the device structure
  * Returns 0 on success and error value on error
  *
  * Resume operation after suspend
  */
-static int xsdhcips_resume(struct device *dev)
+static int sdhci_arasan_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct xsdhcips *xsdhcips = pltfm_host->priv;
+	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
 	int ret;
 
-	ret = clk_enable(xsdhcips->aperclk);
+	ret = clk_enable(sdhci_arasan->aperclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable APER clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xsdhcips->devclk);
+	ret = clk_enable(sdhci_arasan->devclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xsdhcips->aperclk);
+		clk_disable(sdhci_arasan->aperclk);
 		return ret;
 	}
 
@@ -106,45 +106,46 @@ static int xsdhcips_resume(struct device *dev)
 }
 #endif /* ! CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(xsdhcips_dev_pm_ops, xsdhcips_suspend,
-			 xsdhcips_resume);
+static SIMPLE_DEV_PM_OPS(sdhci_arasan_dev_pm_ops, sdhci_arasan_suspend,
+			 sdhci_arasan_resume);
 
-static int sdhci_zynq_probe(struct platform_device *pdev)
+static int sdhci_arasan_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct sdhci_host *host;
 	struct sdhci_pltfm_host *pltfm_host;
-	struct xsdhcips *xsdhcips;
+	struct sdhci_arasan_data *sdhci_arasan;
 
-	xsdhcips = devm_kzalloc(&pdev->dev, sizeof(*xsdhcips), GFP_KERNEL);
-	if (!xsdhcips)
+	sdhci_arasan = devm_kzalloc(&pdev->dev, sizeof(*sdhci_arasan),
+			GFP_KERNEL);
+	if (!sdhci_arasan)
 		return -ENOMEM;
 
-	xsdhcips->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(xsdhcips->aperclk)) {
+	sdhci_arasan->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
+	if (IS_ERR(sdhci_arasan->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		return PTR_ERR(xsdhcips->aperclk);
+		return PTR_ERR(sdhci_arasan->aperclk);
 	}
 
-	xsdhcips->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(xsdhcips->devclk)) {
+	sdhci_arasan->devclk = devm_clk_get(&pdev->dev, "ref_clk");
+	if (IS_ERR(sdhci_arasan->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		return PTR_ERR(xsdhcips->devclk);
+		return PTR_ERR(sdhci_arasan->devclk);
 	}
 
-	ret = clk_prepare_enable(xsdhcips->aperclk);
+	ret = clk_prepare_enable(sdhci_arasan->aperclk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 		return ret;
 	}
 
-	ret = clk_prepare_enable(xsdhcips->devclk);
+	ret = clk_prepare_enable(sdhci_arasan->devclk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable device clock.\n");
 		goto clk_dis_aper;
 	}
 
-	ret = sdhci_pltfm_register(pdev, &sdhci_zynq_pdata);
+	ret = sdhci_pltfm_register(pdev, &sdhci_arasan_pdata);
 	if (ret) {
 		dev_err(&pdev->dev, "Platform registration failed\n");
 		goto clk_disable_all;
@@ -152,50 +153,51 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 
 	host = platform_get_drvdata(pdev);
 	pltfm_host = sdhci_priv(host);
-	pltfm_host->priv = xsdhcips;
+	pltfm_host->priv = sdhci_arasan;
 
 	return 0;
 
 clk_disable_all:
-	clk_disable_unprepare(xsdhcips->devclk);
+	clk_disable_unprepare(sdhci_arasan->devclk);
 clk_dis_aper:
-	clk_disable_unprepare(xsdhcips->aperclk);
+	clk_disable_unprepare(sdhci_arasan->aperclk);
 
 	return ret;
 }
 
-static int sdhci_zynq_remove(struct platform_device *pdev)
+static int sdhci_arasan_remove(struct platform_device *pdev)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct xsdhcips *xsdhcips = pltfm_host->priv;
+	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
 
-	clk_disable_unprepare(xsdhcips->devclk);
-	clk_disable_unprepare(xsdhcips->aperclk);
+	clk_disable_unprepare(sdhci_arasan->devclk);
+	clk_disable_unprepare(sdhci_arasan->aperclk);
 
 	return sdhci_pltfm_unregister(pdev);
 }
 
-static const struct of_device_id sdhci_zynq_of_match[] = {
+static const struct of_device_id sdhci_arasan_of_match[] = {
+	{ .compatible = "arasan,sdhci" },
 	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
 	{ .compatible = "generic-sdhci" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, sdhci_zynq_of_match);
+MODULE_DEVICE_TABLE(of, sdhci_arasan_of_match);
 
-static struct platform_driver sdhci_zynq_driver = {
+static struct platform_driver sdhci_arasan_driver = {
 	.driver = {
-		.name = "sdhci-zynq",
+		.name = "sdhci-arasan",
 		.owner = THIS_MODULE,
-		.of_match_table = sdhci_zynq_of_match,
-		.pm = &xsdhcips_dev_pm_ops,
+		.of_match_table = sdhci_arasan_of_match,
+		.pm = &sdhci_arasan_dev_pm_ops,
 	},
-	.probe = sdhci_zynq_probe,
-	.remove = sdhci_zynq_remove,
+	.probe = sdhci_arasan_probe,
+	.remove = sdhci_arasan_remove,
 };
 
-module_platform_driver(sdhci_zynq_driver);
+module_platform_driver(sdhci_arasan_driver);
 
-MODULE_DESCRIPTION("Secure Digital Host Controller Interface OF driver");
+MODULE_DESCRIPTION("Driver for the Arasan SDHCI Controller");
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu>, Vlad Lungu <vlad.lungu@windriver.com>");
 MODULE_LICENSE("GPL v2");

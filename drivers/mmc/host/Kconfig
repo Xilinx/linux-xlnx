@@ -130,14 +130,13 @@ config MMC_SDHCI_OF_HLWD
 
 	  If unsure, say N.
 
-config MMC_SDHCI_OF_XILINX_PS
-	tristate "SDHCI OF support for the Xilinx Zynq SDHCI controllers"
+config MMC_SDHCI_OF_ARASAN
+	tristate "SDHCI OF support for the Arasan SDHCI controllers"
 	depends on MMC_SDHCI_PLTFM
 	depends on OF
-	depends on ARCH_ZYNQ
 	help
-	  This selects the Secure Digital Host Controller Interface (SDHCI)
-	  found in the Xilinx Zynq.
+	  This selects the Arasan Secure Digital Host Controller Interface
+	  (SDHCI). This hardware is found e.g. in Xilinx' Zynq SoC.
 
 	  If you have a controller with this interface, say Y or M here.
 
