@@ -200,4 +200,4 @@ module_platform_driver(sdhci_arasan_driver);
 
 MODULE_DESCRIPTION("Driver for the Arasan SDHCI Controller");
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu>, Vlad Lungu <vlad.lungu@windriver.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
