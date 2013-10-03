@@ -117,10 +117,8 @@ static int sdhci_zynq_probe(struct platform_device *pdev)
 	struct xsdhcips *xsdhcips;
 
 	xsdhcips = devm_kzalloc(&pdev->dev, sizeof(*xsdhcips), GFP_KERNEL);
-	if (!xsdhcips) {
-		dev_err(&pdev->dev, "unable to allocate memory\n");
+	if (!xsdhcips)
 		return -ENOMEM;
-	}
 
 	xsdhcips->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xsdhcips->aperclk)) {
