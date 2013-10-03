@@ -23,12 +23,12 @@
 
 /**
  * struct sdhci_arasan_data
- * @devclk:	Pointer to the peripheral clock
- * @aperclk:	Pointer to the APER clock
+ * @clk_xin:	Pointer to the SD clock
+ * @clk_ahb:	Pointer to the AHB clock
  */
 struct sdhci_arasan_data {
-	struct clk		*devclk;
-	struct clk		*aperclk;
+	struct clk	*clk_xin;
+	struct clk	*clk_ahb;
 };
 
 static unsigned int arasan_get_max_clock(struct sdhci_host *host)
@@ -68,8 +68,8 @@ static int sdhci_arasan_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
-	clk_disable(sdhci_arasan->devclk);
-	clk_disable(sdhci_arasan->aperclk);
+	clk_disable(sdhci_arasan->clk_xin);
+	clk_disable(sdhci_arasan->clk_ahb);
 
 	return 0;
 }
@@ -89,16 +89,16 @@ static int sdhci_arasan_resume(struct device *dev)
 	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
 	int ret;
 
-	ret = clk_enable(sdhci_arasan->aperclk);
+	ret = clk_enable(sdhci_arasan->clk_ahb);
 	if (ret) {
-		dev_err(dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable AHB clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(sdhci_arasan->devclk);
+	ret = clk_enable(sdhci_arasan->clk_xin);
 	if (ret) {
-		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(sdhci_arasan->aperclk);
+		dev_err(dev, "Cannot enable SD clock.\n");
+		clk_disable(sdhci_arasan->clk_ahb);
 		return ret;
 	}
 
@@ -121,28 +121,28 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	if (!sdhci_arasan)
 		return -ENOMEM;
 
-	sdhci_arasan->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(sdhci_arasan->aperclk)) {
-		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		return PTR_ERR(sdhci_arasan->aperclk);
+	sdhci_arasan->clk_ahb = devm_clk_get(&pdev->dev, "clk_ahb");
+	if (IS_ERR(sdhci_arasan->clk_ahb)) {
+		dev_err(&pdev->dev, "clk_ahb clock not found.\n");
+		return PTR_ERR(sdhci_arasan->clk_ahb);
 	}
 
-	sdhci_arasan->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(sdhci_arasan->devclk)) {
-		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		return PTR_ERR(sdhci_arasan->devclk);
+	sdhci_arasan->clk_xin = devm_clk_get(&pdev->dev, "clk_xin");
+	if (IS_ERR(sdhci_arasan->clk_xin)) {
+		dev_err(&pdev->dev, "clk_xin clock not found.\n");
+		return PTR_ERR(sdhci_arasan->clk_xin);
 	}
 
-	ret = clk_prepare_enable(sdhci_arasan->aperclk);
+	ret = clk_prepare_enable(sdhci_arasan->clk_ahb);
 	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable AHB clock.\n");
 		return ret;
 	}
 
-	ret = clk_prepare_enable(sdhci_arasan->devclk);
+	ret = clk_prepare_enable(sdhci_arasan->clk_xin);
 	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable device clock.\n");
-		goto clk_dis_aper;
+		dev_err(&pdev->dev, "Unable to enable SD clock.\n");
+		goto clk_dis_ahb;
 	}
 
 	ret = sdhci_pltfm_register(pdev, &sdhci_arasan_pdata);
@@ -158,9 +158,9 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	return 0;
 
 clk_disable_all:
-	clk_disable_unprepare(sdhci_arasan->devclk);
-clk_dis_aper:
-	clk_disable_unprepare(sdhci_arasan->aperclk);
+	clk_disable_unprepare(sdhci_arasan->clk_xin);
+clk_dis_ahb:
+	clk_disable_unprepare(sdhci_arasan->clk_ahb);
 
 	return ret;
 }
@@ -171,8 +171,8 @@ static int sdhci_arasan_remove(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
 
-	clk_disable_unprepare(sdhci_arasan->devclk);
-	clk_disable_unprepare(sdhci_arasan->aperclk);
+	clk_disable_unprepare(sdhci_arasan->clk_xin);
+	clk_disable_unprepare(sdhci_arasan->clk_ahb);
 
 	return sdhci_pltfm_unregister(pdev);
 }
