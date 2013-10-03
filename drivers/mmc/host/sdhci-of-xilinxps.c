@@ -23,8 +23,8 @@
 
 /**
  * struct xsdhcips
- * @devclk		Pointer to the peripheral clock
- * @aperclk		Pointer to the APER clock
+ * @devclk:	Pointer to the peripheral clock
+ * @aperclk:	Pointer to the APER clock
  */
 struct xsdhcips {
 	struct clk		*devclk;
