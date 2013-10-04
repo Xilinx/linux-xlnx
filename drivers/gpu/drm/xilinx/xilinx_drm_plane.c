@@ -92,12 +92,6 @@ struct xilinx_drm_plane_manager {
 	struct xilinx_drm_plane *planes[MAX_PLANES];
 };
 
-/* supported plane formats */
-static const uint32_t xilinx_drm_plane_formats[] = {
-	DRM_FORMAT_XRGB8888,
-	DRM_FORMAT_YUYV,
-};
-
 #define to_xilinx_plane(x)	container_of(x, struct xilinx_drm_plane, base)
 
 /* set plane dpms */
