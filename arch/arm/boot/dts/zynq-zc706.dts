@@ -103,6 +103,7 @@
 			#dma-channels = <8>;
 			#dma-requests = <4>;
 			arm,primecell-periphid = <0x41330>;
+			clock-names = "apb_pclk";
 			clocks = <&clkc 27>;
 			compatible = "xlnx,ps7-dma-1.00.a", "arm,primecell", "arm,pl330";
 			interrupt-parent = <&ps7_scugic_0>;
