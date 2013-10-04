@@ -244,7 +244,7 @@
 			clock-frequency = <50000000>;
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 21>, <&clkc 32>;
-			compatible = "xlnx,ps7-sdio-1.00.a", "generic-sdhci";
+			compatible = "xlnx,ps7-sdio-1.00.a", "generic-sdhci", "arasan,sdhci";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 24 4>;
 			reg = <0xe0100000 0x1000>;
