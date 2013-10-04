@@ -471,17 +471,18 @@ err_out:
 }
 
 /* initialize a plane manager: num_planes, format, max_width */
-static void
+static int
 xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 {
 	unsigned int format;
+	int ret = 0;
 
 	if (manager->osd) {
 		manager->num_planes = xilinx_osd_get_num_layers(manager->osd);
 		manager->max_width = xilinx_osd_get_max_width(manager->osd);
 
 		format = xilinx_osd_get_format(manager->osd);
-		xilinx_drm_format(format, &manager->format);
+		ret = xilinx_drm_format(format, &manager->format);
 	} else {
 		/* without osd, only one plane is supported */
 		manager->num_planes = 1;
@@ -489,6 +490,8 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 		manager->format = DRM_FORMAT_XRGB8888;
 		manager->max_width = 4096;
 	}
+
+	return ret;
 }
 
 struct xilinx_drm_plane_manager *
@@ -497,6 +500,7 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	struct xilinx_drm_plane_manager *manager;
 	struct device *dev = drm->dev;
 	struct device_node *sub_node;
+	int ret;
 
 	manager = devm_kzalloc(dev, sizeof(*manager), GFP_KERNEL);
 	if (!manager)
@@ -515,7 +519,11 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 		}
 	}
 
-	xilinx_drm_plane_init_manager(manager);
+	ret = xilinx_drm_plane_init_manager(manager);
+	if (ret) {
+		DRM_ERROR("failed to init a plane manager\n");
+		return ERR_PTR(ret);
+	}
 
 	return manager;
 }
