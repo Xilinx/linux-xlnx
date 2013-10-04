@@ -60,6 +60,5 @@ struct device_node;
 
 struct xilinx_osd *xilinx_osd_probe(struct device *dev,
 				    struct device_node *node);
-void xilinx_osd_remove(struct xilinx_osd *osd);
 
 #endif /* _XILINX_OSD_H_ */

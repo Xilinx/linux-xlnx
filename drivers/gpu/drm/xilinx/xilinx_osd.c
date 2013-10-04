@@ -356,8 +356,3 @@ struct xilinx_osd *xilinx_osd_probe(struct device *dev,
 
 	return osd;
 }
-
-void xilinx_osd_remove(struct xilinx_osd *osd)
-{
-	xilinx_osd_reset(osd);
-}

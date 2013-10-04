@@ -545,9 +545,4 @@ void xilinx_drm_plane_remove_manager(struct xilinx_drm_plane_manager *manager)
 			manager->planes[i] = NULL;
 		}
 	}
-
-	if (manager->osd) {
-		xilinx_osd_disable(manager->osd);
-		xilinx_osd_remove(manager->osd);
-	}
 }
