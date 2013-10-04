@@ -479,22 +479,9 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 	if (manager->osd) {
 		manager->num_planes = xilinx_osd_get_num_layers(manager->osd);
 		manager->max_width = xilinx_osd_get_max_width(manager->osd);
-		format = xilinx_osd_get_format(manager->osd);
 
-		switch (format) {
-		case OSD_VIDEO_FORMAT_YUV422:
-			manager->format = DRM_FORMAT_YUV422;
-			break;
-		case OSD_VIDEO_FORMAT_YUV444:
-			manager->format = DRM_FORMAT_YUV444;
-			break;
-		case OSD_VIDEO_FORMAT_RGB:
-			manager->format = DRM_FORMAT_XRGB8888;
-			break;
-		case OSD_VIDEO_FORMAT_YUV420:
-			manager->format = DRM_FORMAT_YUV420;
-			break;
-		}
+		format = xilinx_osd_get_format(manager->osd);
+		xilinx_drm_format(format, &manager->format);
 	} else {
 		/* without osd, only one plane is supported */
 		manager->num_planes = 1;

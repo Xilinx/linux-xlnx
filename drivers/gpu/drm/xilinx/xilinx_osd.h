@@ -43,11 +43,6 @@ unsigned int xilinx_osd_get_num_layers(struct xilinx_osd *osd);
 unsigned int xilinx_osd_get_max_width(struct xilinx_osd *osd);
 unsigned int xilinx_osd_get_format(struct xilinx_osd *osd);
 
-#define OSD_VIDEO_FORMAT_YUV422	0
-#define OSD_VIDEO_FORMAT_YUV444	1
-#define OSD_VIDEO_FORMAT_RGB	2
-#define OSD_VIDEO_FORMAT_YUV420	3
-
 /* osd operation */
 void xilinx_osd_reset(struct xilinx_osd *osd);
 void xilinx_osd_enable(struct xilinx_osd *osd);

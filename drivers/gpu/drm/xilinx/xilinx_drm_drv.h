@@ -18,6 +18,16 @@
 #ifndef _XILINX_DRM_H_
 #define _XILINX_DRM_H_
 
+enum xilinx_video_format {
+	XILINX_VIDEO_FORMAT_YUV422 = 0,
+	XILINX_VIDEO_FORMAT_YUV444 = 1,
+	XILINX_VIDEO_FORMAT_RGB = 2,
+	XILINX_VIDEO_FORMAT_YUV420 = 3,
+};
+
+/* convert the xilinx format to the drm format */
+int xilinx_drm_format(unsigned int xilinx_format, uint32_t *drm_format);
+
 /* io write operations */
 static inline void xilinx_drm_writel(void __iomem *base, int offset, u32 val)
 {
