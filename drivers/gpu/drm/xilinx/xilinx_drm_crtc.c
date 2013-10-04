@@ -233,9 +233,6 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
-
-	if (crtc->rgb2yuv)
-		xilinx_rgb2yuv_remove(crtc->rgb2yuv);
 }
 
 /* cancel page flip functions */
@@ -408,8 +405,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	crtc->plane_manager = xilinx_drm_plane_probe_manager(drm);
 	if (IS_ERR(crtc->plane_manager)) {
 		DRM_ERROR("failed to probe a plane manager\n");
-		ret = PTR_ERR(crtc->plane_manager);
-		goto err_plane_manager;
+		return ERR_CAST(crtc->plane_manager);
 	}
 
 	/* create a private plane. there's only one crtc now */
@@ -466,8 +462,5 @@ err_out:
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 err_plane:
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
-err_plane_manager:
-	if (crtc->rgb2yuv)
-		xilinx_rgb2yuv_remove(crtc->rgb2yuv);
 	return ERR_PTR(ret);
 }

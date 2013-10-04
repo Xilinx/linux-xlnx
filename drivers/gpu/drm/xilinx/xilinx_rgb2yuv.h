@@ -31,6 +31,5 @@ struct device_node;
 
 struct xilinx_rgb2yuv *xilinx_rgb2yuv_probe(struct device *dev,
 					    struct device_node *node);
-void xilinx_rgb2yuv_remove(struct xilinx_rgb2yuv *rgb2yuv);
 
 #endif /* _XILINX_RGB2YUV_H_ */

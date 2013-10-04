@@ -103,9 +103,3 @@ struct xilinx_rgb2yuv *xilinx_rgb2yuv_probe(struct device *dev,
 
 	return rgb2yuv;
 }
-
-/* remove rgb2yuv */
-void xilinx_rgb2yuv_remove(struct xilinx_rgb2yuv *rgb2yuv)
-{
-	xilinx_rgb2yuv_reset(rgb2yuv);
-}
