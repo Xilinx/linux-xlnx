@@ -31,6 +31,5 @@ struct device_node;
 
 struct xilinx_cresample *xilinx_cresample_probe(struct device *dev,
 						struct device_node *node);
-void xilinx_cresample_remove(struct xilinx_cresample *cresample);
 
 #endif /* _XILINX_CRESAMPLE_H_ */

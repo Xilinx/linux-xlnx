@@ -236,9 +236,6 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 
 	if (crtc->rgb2yuv)
 		xilinx_rgb2yuv_remove(crtc->rgb2yuv);
-
-	if (crtc->cresample)
-		xilinx_cresample_remove(crtc->cresample);
 }
 
 /* cancel page flip functions */
@@ -403,8 +400,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 		of_node_put(sub_node);
 		if (IS_ERR(crtc->rgb2yuv)) {
 			DRM_ERROR("failed to probe a rgb2yuv\n");
-			ret = PTR_ERR(crtc->rgb2yuv);
-			goto err_rgb2yuv;
+			return ERR_CAST(crtc->rgb2yuv);
 		}
 	}
 
@@ -473,8 +469,5 @@ err_plane:
 err_plane_manager:
 	if (crtc->rgb2yuv)
 		xilinx_rgb2yuv_remove(crtc->rgb2yuv);
-err_rgb2yuv:
-	if (crtc->cresample)
-		xilinx_cresample_remove(crtc->cresample);
 	return ERR_PTR(ret);
 }

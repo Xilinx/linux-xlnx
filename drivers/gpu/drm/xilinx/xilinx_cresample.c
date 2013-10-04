@@ -108,8 +108,3 @@ struct xilinx_cresample *xilinx_cresample_probe(struct device *dev,
 
 	return cresample;
 }
-
-void xilinx_cresample_remove(struct xilinx_cresample *cresample)
-{
-	xilinx_cresample_reset(cresample);
-}
