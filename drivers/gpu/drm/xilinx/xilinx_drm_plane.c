@@ -199,6 +199,11 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
+	if (fb->pixel_format != plane->format) {
+		DRM_ERROR("unsupported pixel format %08x\n", fb->pixel_format);
+		return -EINVAL;
+	}
+
 	obj = drm_fb_cma_get_gem_obj(fb, 0);
 	if (!obj) {
 		DRM_ERROR("failed to get a gem obj for fb\n");
