@@ -538,7 +538,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 static void xiic_start_send(struct xiic_i2c *i2c)
 {
 	struct i2c_msg *msg = i2c->tx_msg;
-	u32 cr;
 
 	xiic_irq_clr(i2c, XIIC_INTR_TX_ERROR_MASK);
 
@@ -558,10 +557,6 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
 	}
-
-	cr = xiic_getreg32(i2c, XIIC_CR_REG_OFFSET);
-	cr |= XIIC_CR_DIR_IS_TX_MASK;
-	xiic_setreg32(i2c, XIIC_CR_REG_OFFSET, cr);
 
 	xiic_fill_tx_fifo(i2c);
 
