@@ -142,8 +142,6 @@ source "drivers/staging/dwc2/Kconfig"
 
 source "drivers/staging/video/axivdma/Kconfig"
 
-source "drivers/staging/video/imageon/Kconfig"
-
 source "drivers/staging/apf/Kconfig"
 
 endif # STAGING
