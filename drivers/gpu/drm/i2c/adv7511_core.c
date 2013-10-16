@@ -818,6 +818,9 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	if (!adv7511)
 		return -ENOMEM;
 
+	adv7511->dpms_mode = DRM_MODE_DPMS_OFF;
+	adv7511->status = connector_status_disconnected;
+
 	adv7511->gpio_pd = link_config.gpio_pd;
 
 	if (gpio_is_valid(adv7511->gpio_pd)) {
