@@ -29,6 +29,7 @@
 #include <linux/string.h>
 #include <linux/clk.h>
 #include <linux/usb/ulpi.h>
+#include <linux/of_gpio.h>
 
 #include "ehci-xilinx-usbps.h"
 
@@ -155,7 +156,7 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 	const unsigned char *prop;
 	static unsigned int idx;
 	struct resource *res;
-	int i, phy_init;
+	int i, phy_init, reset_gpio;
 	int ret;
 
 	pdata = &data;
@@ -187,6 +188,19 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 		dev_err(&ofdev->dev, "unable to iomap registers\n");
 		release_mem_region(res->start, resource_size(res));
 		return -EFAULT;
+	}
+
+	/* Find out reset gpio and reset usb phy */
+	reset_gpio = of_get_named_gpio(ofdev->dev.of_node, "usb-reset", 0);
+	if (reset_gpio >= 0) {
+		ret = devm_gpio_request_one(&ofdev->dev, reset_gpio,
+					    GPIOF_OUT_INIT_HIGH, "usb_reset");
+		if (ret) {
+			dev_err(&ofdev->dev, "Please specify usb reset pin\n");
+			return ret;
+		}
+		gpio_set_value(reset_gpio, 0);
+		gpio_set_value(reset_gpio, 1);
 	}
 
 	dev_data = get_dr_mode_data(np);
