@@ -526,12 +526,6 @@
 			};
 		};
 
-		imageon_rx {
-			compatible = "xlnx,imageon-rx";
-			slave_adapter = <&i2c_adv7611>;
-			hpd-gpio = <&ioexp 2 0>;
-		};
-
 		logicvc0: logicvc@40030000 {
 			compatible = "xylon,logicvc-3.00.a";
 			reg = <0x40030000 0x6000>;
