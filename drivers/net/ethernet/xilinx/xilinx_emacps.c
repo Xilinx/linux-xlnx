@@ -1983,6 +1983,26 @@ static int xemacps_set_mac_address(struct net_device *ndev, void *addr)
 }
 
 /**
+ * xemacps_clear_csum - Clear the csum field for  transport protocols
+ * @skb: socket buffer
+ * @ndev: network interface device structure
+ * return 0 on success, other value if error
+ **/
+static int xemacps_clear_csum(struct sk_buff *skb, struct net_device *ndev)
+{
+	/* Only run for packets requiring a checksum. */
+	if (skb->ip_summed != CHECKSUM_PARTIAL)
+		return 0;
+
+	if (unlikely(skb_cow_head(skb, 0)))
+		return -1;
+
+	*(__sum16 *)(skb->head + skb->csum_start + skb->csum_offset) = 0;
+
+	return 0;
+}
+
+/**
  * xemacps_start_xmit - transmit a packet (called by kernel)
  * @skb: socket buffer
  * @ndev: network interface device structure
@@ -2008,6 +2028,12 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		netif_stop_queue(ndev); /* stop send queue */
 		spin_unlock_bh(&lp->tx_lock);
 		return NETDEV_TX_BUSY;
+	}
+
+	if(xemacps_clear_csum(skb,ndev)) {
+		spin_unlock_bh(&lp->tx_lock);
+		kfree(skb);
+		return NETDEV_TX_OK;
 	}
 
 	bd_tail = lp->tx_bd_tail;
