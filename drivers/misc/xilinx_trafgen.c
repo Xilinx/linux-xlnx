@@ -39,9 +39,10 @@
 /* Hw specific definitions */
 
 /* Internal RAM Offsets */
-#define XTG_PARAM_RAM_OFFSET	0x1000	/* Parameter RAM offset */
-#define XTG_COMMAND_RAM_OFFSET	0x8000	/* Command RAM offset */
-#define XTG_MASTER_RAM_OFFSET	0x10000	/* Master RAM offset */
+#define XTG_PARAM_RAM_OFFSET	   0x1000  /* Parameter RAM offset */
+#define XTG_COMMAND_RAM_OFFSET	   0x8000  /* Command RAM offset */
+#define XTG_MASTER_RAM_INIT_OFFSET 0x10000 /* Master RAM initial offset(v1.0) */
+#define XTG_MASTER_RAM_OFFSET	   0xc000  /* Master RAM offset */
 
 /* Register Offsets */
 #define XTG_MCNTL_OFFSET	0x00	/* Master control */
@@ -55,7 +56,7 @@
 #define XTG_STATIC_CNTL_OFFSET	0x60	/* Static Control */
 #define XTG_STATIC_LEN_OFFSET	0x64	/* Static Length */
 
-/* Register Bitmasks */
+/* Register Bitmasks/shifts */
 
 /* Master logic enable */
 #define XTG_MCNTL_MSTEN_MASK		0x00100000
@@ -69,6 +70,8 @@
 #define XTG_ERR_STS_MSTDONE_MASK	0x80000000
 /* Error mask for error status/enable registers */
 #define XTG_ERR_ALL_ERRS_MASK		0x001F0003
+/* Core Revision shift */
+#define XTG_MCNTL_REV_SHIFT		24
 
 /* Axi Traffic Generator Command RAM Entry field mask/shifts */
 
@@ -176,6 +179,17 @@
 #define XTG_MASTER_ERR_INTR	0x2	/* Master error intr flag */
 #define XTG_SLAVE_ERR_INTR	0x4	/* Slave error intr flag */
 
+/*
+ * Version value of the trafgen core.
+ * For the initial IP release the version(v1.0) value is 0x47
+ * From the v2.0 IP and onwards the value starts from  0x20.
+ * For eg:
+ * v2.1 -> 0x21
+ * v2.2 -> 0x22 ... so on.
+ *
+ */
+#define XTG_INIT_VERSION	0x47	/* Trafgen initial version(v1.0) */
+
 /* Macro */
 #define to_xtg_dev_info(n)	((struct xtg_dev_info *)dev_get_drvdata(n))
 
@@ -267,6 +281,7 @@ struct xtg_pram {
  * @last_rd_valid_idx: Last Read Valid Command Index
  * @last_wr_valid_idx: Last Write Valid Command Index
  * @id: Device instance id
+ * @xtg_mram_offset: MasterRam offset
  */
 struct xtg_dev_info {
 	void __iomem *regs;
@@ -275,6 +290,7 @@ struct xtg_dev_info {
 	s16 last_rd_valid_idx;
 	s16 last_wr_valid_idx;
 	u32 id;
+	u32 xtg_mram_offset;
 };
 
 /**
@@ -575,7 +591,7 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 
 	case XTG_CLEAR_MRAM:
 		if (wrval)
-			xtg_access_rams(tg, XTG_MASTER_RAM_OFFSET,
+			xtg_access_rams(tg, tg->xtg_mram_offset,
 				XTG_MASTER_RAM_SIZE, XTG_WRITE_RAM |
 				XTG_WRITE_RAM_ZERO, NULL);
 		break;
@@ -1094,7 +1110,7 @@ static ssize_t xtg_mram_read(struct file *filp, struct kobject *kobj,
 	struct xtg_dev_info *tg =
 		to_xtg_dev_info(container_of(kobj, struct device, kobj));
 
-	off += XTG_MASTER_RAM_OFFSET;
+	off += tg->xtg_mram_offset;
 	xtg_access_rams(tg, off, count, XTG_READ_RAM, (u32 *)buf);
 
 	return count;
@@ -1112,7 +1128,7 @@ static ssize_t xtg_mram_write(struct file *filp, struct kobject *kobj,
 		return -ENOMEM;
 	}
 
-	off += XTG_MASTER_RAM_OFFSET;
+	off += tg->xtg_mram_offset;
 	xtg_access_rams(tg, off, count, XTG_WRITE_RAM, (u32 *)buf);
 
 	return count;
@@ -1130,7 +1146,7 @@ static ssize_t xtg_mram_mmap(struct file *filp, struct kobject *kobj,
 	vma->vm_flags |= VM_IO;
 
 	ret = remap_pfn_range(vma, vma->vm_start, (tg->phys_base_addr +
-			XTG_MASTER_RAM_OFFSET) >> PAGE_SHIFT,
+			tg->xtg_mram_offset) >> PAGE_SHIFT,
 			XTG_MASTER_RAM_SIZE,
 			vma->vm_page_prot);
 	return ret;
@@ -1272,7 +1288,7 @@ static int xtg_probe(struct platform_device *pdev)
 	struct xtg_dev_info *tg;
 	struct device_node *node;
 	struct resource *res;
-	int err, irq;
+	int err, irq, var;
 
 	tg = devm_kzalloc(&pdev->dev, sizeof(struct xtg_dev_info), GFP_KERNEL);
 	if (!tg)
@@ -1356,6 +1372,12 @@ static int xtg_probe(struct platform_device *pdev)
 	tg->last_rd_valid_idx = -1;
 
 	dev_set_drvdata(&pdev->dev, tg);
+
+	/* Update the Proper MasterRam offset */
+	tg->xtg_mram_offset = XTG_MASTER_RAM_OFFSET;
+	var = readl(tg->regs + XTG_MCNTL_OFFSET) >> XTG_MCNTL_REV_SHIFT;
+	if (var == XTG_INIT_VERSION)
+		tg->xtg_mram_offset = XTG_MASTER_RAM_INIT_OFFSET;
 
 	dev_info(&pdev->dev, "Probing xilinx traffic generator success\n");
 
