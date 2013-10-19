@@ -433,14 +433,14 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	if (!crtc->si570) {
 		DRM_DEBUG_KMS("failed to get si570 clock\n");
 		ret = -EPROBE_DEFER;
-		goto err_si570;
+		goto err_out;
 	}
 
 	sub_node = of_parse_phandle(drm->dev->of_node, "vtc", 0);
 	if (!sub_node) {
 		DRM_ERROR("failed to get a video timing controller node\n");
 		ret = -ENODEV;
-		goto err_vtc;
+		goto err_out;
 	}
 
 	crtc->vtc = xilinx_vtc_probe(drm->dev, sub_node);
@@ -448,7 +448,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	if (IS_ERR(crtc->vtc)) {
 		DRM_ERROR("failed to probe video timing controller\n");
 		ret = PTR_ERR(crtc->vtc);
-		goto err_vtc;
+		goto err_out;
 	}
 
 	crtc->dpms = DRM_MODE_DPMS_OFF;
@@ -465,8 +465,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 
 err_init:
 	xilinx_vtc_remove(crtc->vtc);
-err_si570:
-err_vtc:
+err_out:
 	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 err_plane:
