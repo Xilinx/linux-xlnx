@@ -228,8 +228,6 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 
 	drm_crtc_cleanup(base_crtc);
 
-	xilinx_vtc_remove(crtc->vtc);
-
 	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
@@ -449,14 +447,12 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	ret = drm_crtc_init(drm, &crtc->base, &xilinx_drm_crtc_funcs);
 	if (ret) {
 		DRM_ERROR("failed to initialize crtc\n");
-		goto err_init;
+		goto err_out;
 	}
 	drm_crtc_helper_add(&crtc->base, &xilinx_drm_crtc_helper_funcs);
 
 	return &crtc->base;
 
-err_init:
-	xilinx_vtc_remove(crtc->vtc);
 err_out:
 	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);

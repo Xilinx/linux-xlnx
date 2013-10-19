@@ -572,9 +572,3 @@ struct xilinx_vtc *xilinx_vtc_probe(struct device *dev,
 
 	return vtc;
 }
-
-/* remove vtc */
-void xilinx_vtc_remove(struct xilinx_vtc *vtc)
-{
-	xilinx_vtc_reset(vtc);
-}
