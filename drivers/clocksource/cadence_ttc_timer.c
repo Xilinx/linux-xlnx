@@ -221,43 +221,6 @@ static void ttc_set_mode(enum clock_event_mode mode,
 	}
 }
 
-static int ttc_rate_change_clocksource_cb(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-	struct clk_notifier_data *ndata = data;
-	struct ttc_timer *ttc = to_ttc_timer(nb);
-	struct ttc_timer_clocksource *ttccs = container_of(ttc,
-			struct ttc_timer_clocksource, ttc);
-
-	switch (event) {
-	case POST_RATE_CHANGE:
-		/*
-		 * Do whatever is necessary to maintain a proper time base
-		 *
-		 * I cannot find a way to adjust the currently used clocksource
-		 * to the new frequency. __clocksource_updatefreq_hz() sounds
-		 * good, but does not work. Not sure what's that missing.
-		 *
-		 * This approach works, but triggers two clocksource switches.
-		 * The first after unregister to clocksource jiffies. And
-		 * another one after the register to the newly registered timer.
-		 *
-		 * Alternatively we could 'waste' another HW timer to ping pong
-		 * between clock sources. That would also use one register and
-		 * one unregister call, but only trigger one clocksource switch
-		 * for the cost of another HW timer used by the OS.
-		 */
-		clocksource_unregister(&ttccs->cs);
-		clocksource_register_hz(&ttccs->cs,
-				ndata->new_rate / PRESCALE);
-		/* fall through */
-	case PRE_RATE_CHANGE:
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
-	}
-}
-
 static void __init ttc_setup_clocksource(struct clk *clk, void __iomem *base)
 {
 	struct ttc_timer_clocksource *ttccs;
@@ -274,13 +237,6 @@ static void __init ttc_setup_clocksource(struct clk *clk, void __iomem *base)
 		kfree(ttccs);
 		return;
 	}
-
-	ttccs->ttc.clk_rate_change_nb.notifier_call =
-		ttc_rate_change_clocksource_cb;
-	ttccs->ttc.clk_rate_change_nb.next = NULL;
-	if (clk_notifier_register(ttccs->ttc.clk,
-				&ttccs->ttc.clk_rate_change_nb))
-		pr_warn("Unable to register clock notifier.\n");
 
 	ttccs->ttc.base_addr = base;
 	ttccs->cs.name = "ttc_clocksource";
