@@ -1830,6 +1830,7 @@ static int xemacps_open(struct net_device *ndev)
 		goto err_free_rings;
 	}
 
+	napi_enable(&lp->napi);
 	xemacps_init_hw(lp);
 	rc = xemacps_mii_probe(ndev);
 	if (rc != 0) {
@@ -1849,7 +1850,6 @@ static int xemacps_open(struct net_device *ndev)
 	mod_timer(&(lp->gen_purpose_timer),
 		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
 
-	napi_enable(&lp->napi);
 	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
