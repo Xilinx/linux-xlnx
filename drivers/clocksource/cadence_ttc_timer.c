@@ -296,6 +296,10 @@ static int ttc_rate_change_clockevent_cb(struct notifier_block *nb,
 		/* update cached frequency */
 		ttc->freq = ndata->new_rate;
 
+		if (ttcce->ce.mode == CLOCK_EVT_MODE_PERIODIC)
+			ttc_set_interval(ttc, DIV_ROUND_CLOSEST(ttc->freq,
+						PRESCALE * HZ));
+
 		/* fall through */
 	}
 	case PRE_RATE_CHANGE:
