@@ -171,13 +171,15 @@
 			xlnx,has-interrupt = <0x0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			osc@55 {
-				compatible = "si570";
+
+			si570: clock-generator@55 {
+				#clock-cells = <0>;
+				compatible = "silabs,si570";
+				temperature-stability = <50>;
 				reg = <0x55>;
 				factory-fout = <156250000>;
-				initial-fout = <148500000>;
+				clock-frequency = <148500000>;
 			};
-
 		} ;
 		ps7_iop_bus_config_0: ps7-iop-bus-config@e0200000 {
 			compatible = "xlnx,ps7-iop-bus-config-1.00.a";
