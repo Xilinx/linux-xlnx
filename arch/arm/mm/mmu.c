@@ -996,37 +996,8 @@ void __init sanity_check_meminfo(void)
 	for (i = 0, j = 0; i < meminfo.nr_banks; i++) {
 		struct membank *bank = &meminfo.bank[j];
 		phys_addr_t size_limit;
-		phys_addr_t end;
 
 		*bank = meminfo.bank[i];
-
-		end = bank->start + bank->size - 1;
-		/*
-		 * Test some cases
-		 * 1. HIGHMEM off - reg = <0x0 0x40000000>;
-		 * 2. HIGHMEM off - reg = <0x10000000 0x30000000>;
-		 * 3. HIGHMEM off - reg = <0x0 0x10000000 0x10000000 0x30000000>;
-		 * 4. HIGHMEM on - reg = <0x0 0x40000000>;
-		 * 5. HIGHMEM on - reg = <0x10000000 0x30000000>;
-		 * 6. HIGHMEM on - reg = <0x0 0x10000000 0x10000000 0x30000000>;
-		 */
-		if (bank->start < __pa(PAGE_OFFSET) &&
-			__pa(PAGE_OFFSET) <= (bank->start + bank->size - 1)) {
-			phys_addr_t offset = __pa(PAGE_OFFSET) - bank->start;
-
-
-			bank->start += offset;
-			bank->size -= offset;
-			end = bank->start + bank->size - 1;
-			pr_notice("Change memory bank to %pa-%pa\n",
-				  &bank->start, &end);
-		}
-		if (__va(end) < (void *)PAGE_OFFSET) {
-			pr_notice("Ignoring RAM at %pa-%pa\n",
-				  &bank->start, &end);
-			continue;
-		}
-
 		size_limit = bank->size;
 
 		if (bank->start >= vmalloc_limit)

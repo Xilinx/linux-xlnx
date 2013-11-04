@@ -656,6 +656,19 @@ int __init arm_add_memory(u64 start, u64 size)
 	}
 #endif
 
+	if (aligned_start < PHYS_OFFSET) {
+		if (aligned_start + size <= PHYS_OFFSET) {
+			pr_info("Ignoring memory below PHYS_OFFSET: 0x%08llx-0x%08llx\n",
+				aligned_start, aligned_start + size);
+			return -EINVAL;
+		}
+
+		size -= PHYS_OFFSET - aligned_start;
+		aligned_start = PHYS_OFFSET;
+		pr_info("Align memory to PHYS_OFFSET: 0x%08llx-0x%08llx\n",
+			aligned_start, aligned_start + size);
+	}
+
 	bank->start = aligned_start;
 	bank->size = size & ~(phys_addr_t)(PAGE_SIZE - 1);
 
