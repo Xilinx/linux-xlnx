@@ -59,7 +59,7 @@ MODULE_PARM_DESC(nowayout,
 struct xwdtps {
 	void __iomem		*regs;		/* Base address */
 	unsigned long		busy;		/* Device Status */
-	int			rst;		/* Reset flag */
+	u32			rst;		/* Reset flag */
 	struct clk		*clk;
 	u32			prescalar;
 	u32			ctrl_clksel;
@@ -275,9 +275,8 @@ static struct notifier_block xwdtps_notifier = {
  */
 static int xwdtps_probe(struct platform_device *pdev)
 {
-	struct resource *regs;
-	int res;
-	const void *prop;
+	struct resource *res;
+	int ret;
 	int irq;
 	unsigned long clock_f;
 
@@ -288,55 +287,42 @@ static int xwdtps_probe(struct platform_device *pdev)
 		return -EBUSY;
 	}
 
-	/* Get the device base address */
-	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!regs) {
-		dev_err(&pdev->dev, "Unable to locate mmio resource\n");
-		return -ENODEV;
-	}
-
 	/* Allocate an instance of the xwdtps structure */
-	wdt = kzalloc(sizeof(*wdt), GFP_KERNEL);
-	if (!wdt) {
-		dev_err(&pdev->dev, "No memory for wdt structure\n");
+	wdt = devm_kzalloc(&pdev->dev, sizeof(*wdt), GFP_KERNEL);
+	if (!wdt)
 		return -ENOMEM;
-	}
 
-	wdt->regs = ioremap(regs->start, regs->end - regs->start + 1);
-	if (!wdt->regs) {
-		res = -ENOMEM;
-		dev_err(&pdev->dev, "Could not map I/O memory\n");
-		goto err_free;
-	}
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	wdt->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(wdt->regs))
+		return PTR_ERR(wdt->regs);
 
 	/* Register the reboot notifier */
-	res = register_reboot_notifier(&xwdtps_notifier);
-	if (res != 0) {
+	ret = register_reboot_notifier(&xwdtps_notifier);
+	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
-			res);
-		goto err_iounmap;
+			ret);
+		return ret;
 	}
 
 	/* Register the interrupt */
-	prop = of_get_property(pdev->dev.of_node, "reset", NULL);
-	wdt->rst = prop ? be32_to_cpup(prop) : 0;
+	of_property_read_u32(pdev->dev.of_node, "reset", &wdt->rst);
 	irq = platform_get_irq(pdev, 0);
 	if (!wdt->rst && irq >= 0) {
-		res = request_irq(irq, xwdtps_irq_handler, 0, pdev->name, pdev);
-		if (res) {
+		ret = devm_request_irq(&pdev->dev, irq, xwdtps_irq_handler, 0,
+				       pdev->name, pdev);
+		if (ret) {
 			dev_err(&pdev->dev,
 				   "cannot register interrupt handler err=%d\n",
-				   res);
+				   ret);
 			goto err_notifier;
 		}
 	}
 
 	/* Initialize the members of xwdtps structure */
 	xwdtps_device.parent = &pdev->dev;
-	prop = of_get_property(pdev->dev.of_node, "timeout", NULL);
-	if (prop) {
-		xwdtps_device.timeout = be32_to_cpup(prop);
-	} else if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
+	of_get_property(pdev->dev.of_node, "timeout", &xwdtps_device.timeout);
+	if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
 			wdt_timeout > XWDTPS_MIN_TIMEOUT) {
 		xwdtps_device.timeout = wdt_timeout;
 	} else {
@@ -349,17 +335,17 @@ static int xwdtps_probe(struct platform_device *pdev)
 	watchdog_set_nowayout(&xwdtps_device, nowayout);
 	watchdog_set_drvdata(&xwdtps_device, &wdt);
 
-	wdt->clk = clk_get(&pdev->dev, NULL);
+	wdt->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(wdt->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
-		res = PTR_ERR(wdt->clk);
-		goto err_irq;
+		ret = PTR_ERR(wdt->clk);
+		goto err_notifier;
 	}
 
-	res = clk_prepare_enable(wdt->clk);
-	if (res) {
+	ret = clk_prepare_enable(wdt->clk);
+	if (ret) {
 		dev_err(&pdev->dev, "unable to enable clock\n");
-		goto err_clk_put;
+		goto err_notifier;
 	}
 
 	clock_f = clk_get_rate(wdt->clk);
@@ -379,8 +365,8 @@ static int xwdtps_probe(struct platform_device *pdev)
 	spin_lock_init(&wdt->io_lock);
 
 	/* Register the WDT */
-	res = watchdog_register_device(&xwdtps_device);
-	if (res) {
+	ret = watchdog_register_device(&xwdtps_device);
+	if (ret) {
 		dev_err(&pdev->dev, "Failed to register wdt device\n");
 		goto err_clk_disable;
 	}
@@ -393,18 +379,9 @@ static int xwdtps_probe(struct platform_device *pdev)
 
 err_clk_disable:
 	clk_disable_unprepare(wdt->clk);
-err_clk_put:
-	clk_put(wdt->clk);
-err_irq:
-	free_irq(irq, pdev);
 err_notifier:
 	unregister_reboot_notifier(&xwdtps_notifier);
-err_iounmap:
-	iounmap(wdt->regs);
-err_free:
-	kfree(wdt);
-	wdt = NULL;
-	return res;
+	return ret;
 }
 
 /**
@@ -426,13 +403,7 @@ static int __exit xwdtps_remove(struct platform_device *pdev)
 		watchdog_unregister_device(&xwdtps_device);
 		unregister_reboot_notifier(&xwdtps_notifier);
 		irq = platform_get_irq(pdev, 0);
-		free_irq(irq, pdev);
-		iounmap(wdt->regs);
 		clk_disable_unprepare(wdt->clk);
-		clk_put(wdt->clk);
-		kfree(wdt);
-		wdt = NULL;
-		platform_set_drvdata(pdev, NULL);
 	} else {
 		dev_err(&pdev->dev, "Cannot stop watchdog, still ticking\n");
 		return -ENOTSUPP;
@@ -451,7 +422,6 @@ static void xwdtps_shutdown(struct platform_device *pdev)
 	/* Stop the device */
 	xwdtps_stop(&xwdtps_device);
 	clk_disable_unprepare(wdt->clk);
-	clk_put(wdt->clk);
 }
 
 #ifdef CONFIG_PM_SLEEP
