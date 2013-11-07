@@ -1290,7 +1290,7 @@ static int xtg_probe(struct platform_device *pdev)
 	struct resource *res;
 	int err, irq, var;
 
-	tg = devm_kzalloc(&pdev->dev, sizeof(struct xtg_dev_info), GFP_KERNEL);
+	tg = devm_kzalloc(&pdev->dev, sizeof(*tg), GFP_KERNEL);
 	if (!tg)
 		return -ENOMEM;
 
@@ -1301,10 +1301,9 @@ static int xtg_probe(struct platform_device *pdev)
 	/* Map the registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	tg->regs = devm_ioremap_resource(&pdev->dev, res);
-	if (!tg->regs) {
-		dev_err(&pdev->dev, "unable to iomap registers\n");
-		return -ENOMEM;
-	}
+	if (IS_ERR(tg->regs))
+		return PTR_ERR(tg->regs);
+
 
 	/* Save physical base address */
 	tg->phys_base_addr = res->start;
