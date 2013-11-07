@@ -1260,7 +1260,7 @@ static int m25p_probe(struct spi_device *spi)
 					flash->isparallel = 1;
 					flash->isstacked = 0;
 				} else {
-#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 					/* dual stacked */
 					flash->shift = 0;
 					flash->mtd.size <<= 1;

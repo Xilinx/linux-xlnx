@@ -284,7 +284,7 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 			 XQSPIPS_LCFG_SEP_BUS_MASK |
 			 (1 << XQSPIPS_LCFG_DUMMY_SHIFT) |
 			 XQSPIPS_FAST_READ_QOUT_CODE));
-#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	/* Enable two memories on shared bus */
 	xqspips_write(regs_base + XQSPIPS_LINEAR_CFG_OFFSET,
 		 (XQSPIPS_LCFG_TWO_MEM_MASK |
@@ -686,7 +686,7 @@ static void xqspips_work_queue(struct work_struct *work)
 {
 	struct xqspips *xqspi = container_of(work, struct xqspips, work);
 	unsigned long flags;
-#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	u32 lqspi_cfg_reg;
 #endif
 
@@ -715,7 +715,7 @@ static void xqspips_work_queue(struct work_struct *work)
 		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
 		qspi = msg->spi;
 
-#ifdef CONFIG_SPI_XILINX_PS_QSPI_DUAL_STACKED
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 		lqspi_cfg_reg = xqspips_read(xqspi->regs +
 					XQSPIPS_LINEAR_CFG_OFFSET);
 		if (qspi->master->flags & SPI_MASTER_U_PAGE)

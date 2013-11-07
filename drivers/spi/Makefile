@@ -75,4 +75,4 @@ obj-$(CONFIG_SPI_TXX9)			+= spi-txx9.o
 obj-$(CONFIG_SPI_XCOMM)		+= spi-xcomm.o
 obj-$(CONFIG_SPI_XILINX)		+= spi-xilinx.o
 obj-$(CONFIG_SPI_ZYNQ)			+= spi-zynq.o
-obj-$(CONFIG_SPI_XILINX_PS_QSPI)	+= spi-xilinx-qps.o
+obj-$(CONFIG_SPI_ZYNQ_QSPI)		+= spi-zynq-qspi.o
