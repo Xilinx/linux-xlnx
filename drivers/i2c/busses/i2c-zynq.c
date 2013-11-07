@@ -824,10 +824,8 @@ static int xi2cps_probe(struct platform_device *pdev)
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	id->membase = devm_ioremap_resource(&pdev->dev, r_mem);
-	if (IS_ERR(id->membase)) {
-		dev_err(&pdev->dev, "ioremap failed\n");
+	if (IS_ERR(id->membase))
 		return PTR_ERR(id->membase);
-	}
 
 	id->irq = platform_get_irq(pdev, 0);
 
