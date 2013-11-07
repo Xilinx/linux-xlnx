@@ -1009,8 +1009,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	int ret;
 	u32 value;
 
-	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xilinx_dma_device),
-			    GFP_KERNEL);
+	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
@@ -1022,10 +1021,8 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	/* iomap registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
-	if (!xdev->regs) {
-		dev_err(&pdev->dev, "unable to iomap registers\n");
-		return -ENOMEM;
-	}
+	if (IS_ERR(xdev->regs))
+		return PTR_ERR(xdev->regs);
 
 	/* Check if SG is enabled */
 	value = of_property_read_bool(node, "xlnx,include-sg");
