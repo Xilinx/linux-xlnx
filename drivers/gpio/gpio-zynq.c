@@ -558,42 +558,21 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	unsigned int irq_num;
 	struct zynq_gpio *gpio;
 	struct gpio_chip *chip;
-	resource_size_t remap_size;
-	struct resource *mem_res = NULL;
+	struct resource *res;
 	int pin_num, bank_num, gpio_irq;
 
-	gpio = kzalloc(sizeof(struct zynq_gpio), GFP_KERNEL);
-	if (!gpio) {
-		dev_err(&pdev->dev,
-			"couldn't allocate memory for gpio private data\n");
+	gpio = devm_kzalloc(&pdev->dev, sizeof(struct zynq_gpio), GFP_KERNEL);
+	if (!gpio)
 		return -ENOMEM;
-	}
 
 	spin_lock_init(&gpio->gpio_lock);
 
 	platform_set_drvdata(pdev, gpio);
 
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!mem_res) {
-		dev_err(&pdev->dev, "No memory resource\n");
-		ret = -ENODEV;
-		goto err_free_gpio;
-	}
-
-	remap_size = mem_res->end - mem_res->start + 1;
-	if (!request_mem_region(mem_res->start, remap_size, pdev->name)) {
-		dev_err(&pdev->dev, "Cannot request IO\n");
-		ret = -ENXIO;
-		goto err_free_gpio;
-	}
-
-	gpio->base_addr = ioremap(mem_res->start, remap_size);
-	if (gpio->base_addr == NULL) {
-		dev_err(&pdev->dev, "Couldn't ioremap memory at 0x%08lx\n",
-			(unsigned long)mem_res->start);
-		ret = -ENOMEM;
-		goto err_release_region;
-	}
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	gpio->base_addr = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(gpio->base_addr))
+		return PTR_ERR(gpio->base_addr);
 
 	irq_num = platform_get_irq(pdev, 0);
 	gpio->irq = irq_num;
@@ -618,8 +597,7 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	gpio->irq_base = irq_alloc_descs(-1, 0, chip->ngpio, 0);
 	if (gpio->irq_base < 0) {
 		dev_err(&pdev->dev, "Couldn't allocate IRQ numbers\n");
-		ret = -ENODEV;
-		goto err_iounmap;
+		return -ENODEV;
 	}
 
 	irq_domain = irq_domain_add_legacy(pdev->dev.of_node,
@@ -628,26 +606,24 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 
 	/* report a bug if gpio chip registration fails */
 	ret = gpiochip_add(chip);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "gpio chip registration failed\n");
-		goto err_iounmap;
-	} else {
-		dev_info(&pdev->dev, "gpio at 0x%08lx mapped to 0x%08lx\n",
-			 (unsigned long)mem_res->start,
-			 (unsigned long)gpio->base_addr);
-	}
+	if (ret < 0)
+		return ret;
+
+	dev_info(&pdev->dev, "gpio at 0x%08lx mapped to 0x%08lx\n",
+		 (unsigned long)res->start, (unsigned long)gpio->base_addr);
 
 	/* Enable GPIO clock */
-	gpio->clk = clk_get(&pdev->dev, NULL);
+	gpio->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(gpio->clk)) {
 		dev_err(&pdev->dev, "input clock not found.\n");
-		ret = PTR_ERR(gpio->clk);
-		goto err_chip_remove;
+		gpiochip_remove(chip);
+		return PTR_ERR(gpio->clk);
 	}
 	ret = clk_prepare_enable(gpio->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable clock.\n");
-		goto err_clk_put;
+		gpiochip_remove(chip);
+		return ret;
 	}
 
 	/* disable interrupts for all banks */
@@ -678,17 +654,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_clk_put:
-	clk_put(gpio->clk);
-err_chip_remove:
-	gpiochip_remove(chip);
-err_iounmap:
-	iounmap(gpio->base_addr);
-err_release_region:
-	release_mem_region(mem_res->start, remap_size);
-err_free_gpio:
-	platform_set_drvdata(pdev, NULL);
-	kfree(gpio);
 
 	return ret;
 }
@@ -698,7 +663,6 @@ static int zynq_gpio_remove(struct platform_device *pdev)
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
 
 	clk_disable_unprepare(gpio->clk);
-	clk_put(gpio->clk);
 	device_set_wakeup_capable(&pdev->dev, 0);
 	return 0;
 }
