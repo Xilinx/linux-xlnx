@@ -829,7 +829,7 @@ static int xnandps_probe(struct platform_device *pdev)
 	struct xnandps_info *xnand;
 	struct mtd_info *mtd;
 	struct nand_chip *nand_chip;
-	struct resource *nand_res;
+	struct resource *res;
 	u8 maf_id, dev_id, i;
 	u8 get_feature;
 	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
@@ -838,18 +838,15 @@ static int xnandps_probe(struct platform_device *pdev)
 	const unsigned int *prop;
 	u32 options = 0;
 
-	xnand = devm_kzalloc(&pdev->dev, sizeof(struct xnandps_info),
-			     GFP_KERNEL);
+	xnand = devm_kzalloc(&pdev->dev, sizeof(*xnand), GFP_KERNEL);
 	if (!xnand)
 		return -ENOMEM;
 
 	/* Map physical address of NAND flash */
-	nand_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xnand->nand_base = devm_ioremap_resource(&pdev->dev, nand_res);
-	if (IS_ERR(xnand->nand_base)) {
-		dev_err(&pdev->dev, "ioremap for NAND failed\n");
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xnand->nand_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(xnand->nand_base))
 		return PTR_ERR(xnand->nand_base);
-	}
 
 	/* Get x8 or x16 mode from device tree */
 	prop = of_get_property(pdev->dev.of_node, "xlnx,nand-width", NULL);
