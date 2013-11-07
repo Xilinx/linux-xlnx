@@ -990,7 +990,6 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->reg_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(priv->reg_base)) {
 		ret = PTR_ERR(priv->reg_base);
-		dev_err(&pdev->dev, "Could not allocate iomem\n");
 		goto err_free;
 	}
 	ndev->mem_start = res->start;
