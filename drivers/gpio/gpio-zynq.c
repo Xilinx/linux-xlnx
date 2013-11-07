@@ -561,7 +561,7 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	struct resource *res;
 	int pin_num, bank_num, gpio_irq;
 
-	gpio = devm_kzalloc(&pdev->dev, sizeof(struct zynq_gpio), GFP_KERNEL);
+	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
 		return -ENOMEM;
 
