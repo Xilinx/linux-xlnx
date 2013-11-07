@@ -1897,18 +1897,13 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	struct device *dev;
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(*drvdata), GFP_KERNEL);
-	if (!drvdata) {
-		dev_err(&pdev->dev,
-				"Couldn't allocate device private record\n");
+	if (!drvdata)
 		return -ENOMEM;
-	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	drvdata->base_address = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(drvdata->base_address)) {
-		dev_err(&pdev->dev, "ioremap() failed\n");
+	if (IS_ERR(drvdata->base_address))
 		return PTR_ERR(drvdata->base_address);
-	}
 
 	drvdata->irq = platform_get_irq(pdev, 0);
 	retval = devm_request_irq(&pdev->dev, drvdata->irq, &xdevcfg_irq,
