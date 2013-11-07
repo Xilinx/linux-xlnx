@@ -473,10 +473,8 @@ static int xsmcps_probe(struct platform_device *pdev)
 	/* Get the NAND controller virtual address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xsmcps_base = devm_ioremap_resource(&pdev->dev, res);
-	if (!xsmcps_base) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		return -ENOMEM;
-	}
+	if (IS_ERR(xsmcps_base))
+		return PTR_ERR(xsmcps_base);
 
 	xsmcps->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xsmcps->aperclk)) {
