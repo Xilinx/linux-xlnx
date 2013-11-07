@@ -1029,7 +1029,6 @@ static int xqspips_probe(struct platform_device *pdev)
 	xqspi->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xqspi->regs)) {
 		ret = PTR_ERR(xqspi->regs);
-		dev_err(&pdev->dev, "ioremap failed\n");
 		goto remove_master;
 	}
 
