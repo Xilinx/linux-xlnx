@@ -661,18 +661,15 @@ static int xadc_probe(struct platform_device *pdev)
 	int ret;
 
 	xadc = devm_kzalloc(&pdev->dev, sizeof(*xadc), GFP_KERNEL);
-	if (!xadc) {
-		dev_err(&pdev->dev, "Failed to allocate driver structure\n");
+	if (!xadc)
 		return -ENOMEM;
-	}
+
 	xadc->dev = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xadc->iobase = devm_ioremap_resource(&pdev->dev, res);
-	if (!xadc->iobase) {
-		dev_err(xadc->dev, "Failed to ioremap memory\n");
-		return -ENODEV;
-	}
+	if (IS_ERR(xadc->iobase))
+		return PTR_ERR(xadc->iobase);
 
 	xadc->irq = platform_get_irq(pdev, 0);
 	ret = devm_request_irq(&pdev->dev, xadc->irq, &xadc_irq, IRQF_SHARED,
@@ -682,7 +679,7 @@ static int xadc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	xadc->clk = clk_get(&pdev->dev, NULL);
+	xadc->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xadc->clk)) {
 		dev_err(&pdev->dev, "input clock not found\n");
 		return PTR_ERR(xadc->clk);
@@ -691,7 +688,7 @@ static int xadc_probe(struct platform_device *pdev)
 	ret = clk_prepare_enable(xadc->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to enable clock\n");
-		goto err_clk_put;
+		return ret;
 	}
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &xadc_group);
@@ -739,8 +736,6 @@ err_group:
 	sysfs_remove_group(&pdev->dev.kobj, &xadc_group);
 err_clk_disable:
 	clk_disable_unprepare(xadc->clk);
-err_clk_put:
-	clk_put(xadc->clk);
 
 	return ret;
 }
@@ -754,7 +749,6 @@ static int xadc_remove(struct platform_device *pdev)
 	sysfs_remove_group(&pdev->dev.kobj, &xadc_group);
 
 	clk_unprepare(xadc->clk);
-	clk_put(xadc->clk);
 
 	return 0;
 }
