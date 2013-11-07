@@ -197,10 +197,8 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 	struct mb_rproc_pdata *local;
 
 	local = devm_kzalloc(&pdev->dev, sizeof(*local), GFP_KERNEL);
-	if (!local) {
-		dev_err(&pdev->dev, "Unable to alloc private data\n");
+	if (!local)
 		return -ENOMEM;
-	}
 
 	platform_set_drvdata(pdev, local);
 
@@ -331,10 +329,8 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 	}
 	res = platform_get_resource(bram_pdev, IORESOURCE_MEM, 0);
 	local->vbase = devm_ioremap_resource(&pdev->dev, res);
-	if (!local->vbase) {
-		dev_err(&pdev->dev, "BRAM devm ioremap failed\n");
+	if (!local->vbase)
 		return -ENODEV;
-	}
 
 	/* Load simple bootloader to bram */
 	local->bootloader = of_get_property(pdev->dev.of_node,
