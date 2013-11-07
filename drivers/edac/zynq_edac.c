@@ -512,10 +512,8 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 	/* Get the data from the platform device */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	baseaddr = devm_ioremap_resource(&pdev->dev, res);
-	if (baseaddr == NULL) {
-		dev_err(&pdev->dev, "devm ioremap failed\n");
-		return -ENOMEM;
-	}
+	if (IS_ERR(baseaddr))
+		return PTR_ERR(baseaddr);
 
 	/* Check for the ecc enable status */
 	if (zynq_edac_get_eccstate(baseaddr) == false) {
