@@ -155,5 +155,3 @@ obj-$(CONFIG_NTB)		+= ntb/
 obj-$(CONFIG_FMC)		+= fmc/
 
 obj-y				+= xilinx_common/
-
-obj-$(CONFIG_PMODS)		+= pmods/

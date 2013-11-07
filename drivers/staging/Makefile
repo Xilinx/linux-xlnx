@@ -65,3 +65,4 @@ obj-$(CONFIG_LUSTRE_FS)		+= lustre/
 obj-$(CONFIG_USB_BTMTK)		+= btmtk_usb/
 obj-$(CONFIG_XILINX_VIDEO_IP)	+= video/axivdma/
 obj-$(CONFIG_XILINX_APF)	+= apf/
+obj-$(CONFIG_PMODS)		+= pmods/

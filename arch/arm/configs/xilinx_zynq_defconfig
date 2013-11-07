@@ -2367,7 +2367,6 @@ CONFIG_ZYNQ_SMC=y
 # CONFIG_IIO is not set
 # CONFIG_VME_BUS is not set
 # CONFIG_PWM is not set
-# CONFIG_PMODS is not set
 CONFIG_IRQCHIP=y
 CONFIG_ARM_GIC=y
 # CONFIG_IPACK_BUS is not set
