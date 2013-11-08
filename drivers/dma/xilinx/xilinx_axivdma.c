@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/dmapool.h>
 #include <linux/io.h>
+#include <linux/irqdomain.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>

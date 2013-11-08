@@ -275,7 +275,7 @@ static int vdmatest_slave_func(void *data)
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
 							DMA_MEM_TO_DEV);
 			pr_debug("src buf %x dma %x\n", (unsigned int)buf,
-							dma_srcs[i]);
+				 (unsigned int)dma_srcs[i]);
 			sg_dma_address(&tx_sg[i]) = dma_srcs[i];
 			sg_dma_len(&tx_sg[i]) = len;
 		}
@@ -286,8 +286,8 @@ static int vdmatest_slave_func(void *data)
 							test_buf_size,
 							DMA_DEV_TO_MEM);
 			pr_debug("dst %x dma %x\n",
-					(unsigned int)thread->dsts[i],
-					dma_dsts[i]);
+				 (unsigned int)thread->dsts[i],
+				 (unsigned int)dma_dsts[i]);
 			sg_dma_address(&rx_sg[i]) = dma_dsts[i];
 			sg_dma_len(&rx_sg[i]) = len;
 		}
