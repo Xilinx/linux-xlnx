@@ -29,7 +29,6 @@
 #include <linux/workqueue.h>
 #include <linux/v4l2-dv-timings.h>
 #include <media/v4l2-device.h>
-#include <media/v4l2-chip-ident.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
 #include <media/adv7511.h>
@@ -518,10 +517,6 @@ static const struct v4l2_ctrl_config adv7511_ctrl_rgb_quantization_range = {
 static int adv7511_g_register(struct v4l2_subdev *sd,
 	struct v4l2_dbg_register *reg)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (!v4l2_chip_match_i2c_client(client, &reg->match))
-		return -EINVAL;
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 	reg->val = adv7511_rd(sd, reg->reg & 0xff);
@@ -531,12 +526,8 @@ static int adv7511_g_register(struct v4l2_subdev *sd,
 }
 
 static int adv7511_s_register(struct v4l2_subdev *sd,
-	struct v4l2_dbg_register *reg)
+			      const struct v4l2_dbg_register *reg)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (!v4l2_chip_match_i2c_client(client, &reg->match))
-		return -EINVAL;
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
@@ -545,14 +536,6 @@ static int adv7511_s_register(struct v4l2_subdev *sd,
 	return 0;
 }
 #endif
-
-static int adv7511_g_chip_ident(struct v4l2_subdev *sd,
-	struct v4l2_dbg_chip_ident *chip)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	return v4l2_chip_ident_i2c_client(client, chip, V4L2_IDENT_ADV7511, 0);
-}
 
 static int adv7511_log_status(struct v4l2_subdev *sd)
 {
@@ -787,7 +770,6 @@ static long adv7511_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 static const struct v4l2_subdev_core_ops adv7511_core_ops = {
 	.log_status = adv7511_log_status,
-	.g_chip_ident = adv7511_g_chip_ident,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	.g_register = adv7511_g_register,
 	.s_register = adv7511_s_register,
@@ -2092,7 +2074,7 @@ MODULE_DEVICE_TABLE(of, i2c_adv7511_of_match);
 #endif
 
 static struct i2c_device_id adv7511_id[] = {
-	{ "adv7511", V4L2_IDENT_ADV7511 },
+	{ "adv7511", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, adv7511_id);

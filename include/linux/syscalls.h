@@ -802,7 +802,7 @@ asmlinkage long sys_vfork(void);
 asmlinkage long sys_clone(unsigned long, unsigned long, int __user *, int,
 	       int __user *);
 #else
-#if CONFIG_CLONE_BACKWARDS3
+#ifdef CONFIG_CLONE_BACKWARDS3
 asmlinkage long sys_clone(unsigned long, unsigned long, int, int __user *,
 			  int __user *, int);
 #else

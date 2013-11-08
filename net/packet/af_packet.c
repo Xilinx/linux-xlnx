@@ -3259,9 +3259,11 @@ static int packet_getsockopt(struct socket *sock, int level, int optname,
 
 		if (po->tp_version == TPACKET_V3) {
 			lv = sizeof(struct tpacket_stats_v3);
+			st.stats3.tp_packets += st.stats3.tp_drops;
 			data = &st.stats3;
 		} else {
 			lv = sizeof(struct tpacket_stats);
+			st.stats1.tp_packets += st.stats1.tp_drops;
 			data = &st.stats1;
 		}
 
@@ -3330,10 +3332,11 @@ static int packet_getsockopt(struct socket *sock, int level, int optname,
 }
 
 
-static int packet_notifier(struct notifier_block *this, unsigned long msg, void *data)
+static int packet_notifier(struct notifier_block *this,
+			   unsigned long msg, void *ptr)
 {
 	struct sock *sk;
-	struct net_device *dev = data;
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct net *net = dev_net(dev);
 
 	rcu_read_lock();

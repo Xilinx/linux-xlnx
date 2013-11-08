@@ -78,8 +78,8 @@ __ref void *alloc_low_pages(unsigned int num)
 	return __va(pfn << PAGE_SHIFT);
 }
 
-/* need 4 4k for initial PMD_SIZE, 4k for 0-ISA_END_ADDRESS */
-#define INIT_PGT_BUF_SIZE	(5 * PAGE_SIZE)
+/* need 3 4k for initial PMD_SIZE,  3 4k for 0-ISA_END_ADDRESS */
+#define INIT_PGT_BUF_SIZE	(6 * PAGE_SIZE)
 RESERVE_BRK(early_pgt_alloc, INIT_PGT_BUF_SIZE);
 void  __init early_alloc_pgt_buf(void)
 {
@@ -494,7 +494,6 @@ int devmem_is_allowed(unsigned long pagenr)
 
 void free_init_pages(char *what, unsigned long begin, unsigned long end)
 {
-	unsigned long addr;
 	unsigned long begin_aligned, end_aligned;
 
 	/* Make sure boundaries are page aligned */
@@ -508,8 +507,6 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 	if (begin >= end)
 		return;
-
-	addr = begin;
 
 	/*
 	 * If debugging page accesses then do not free this memory but
@@ -529,18 +526,13 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 	set_memory_nx(begin, (end - begin) >> PAGE_SHIFT);
 	set_memory_rw(begin, (end - begin) >> PAGE_SHIFT);
 
-	printk(KERN_INFO "Freeing %s: %luk freed\n", what, (end - begin) >> 10);
-
-	for (; addr < end; addr += PAGE_SIZE) {
-		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
-		free_reserved_page(virt_to_page(addr));
-	}
+	free_reserved_area((void *)begin, (void *)end, POISON_FREE_INITMEM, what);
 #endif
 }
 
 void free_initmem(void)
 {
-	free_init_pages("unused kernel memory",
+	free_init_pages("unused kernel",
 			(unsigned long)(&__init_begin),
 			(unsigned long)(&__init_end));
 }
@@ -566,7 +558,7 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 	 *   - relocate_initrd()
 	 * So here We can do PAGE_ALIGN() safely to get partial page to be freed
 	 */
-	free_init_pages("initrd memory", start, PAGE_ALIGN(end));
+	free_init_pages("initrd", start, PAGE_ALIGN(end));
 }
 #endif
 

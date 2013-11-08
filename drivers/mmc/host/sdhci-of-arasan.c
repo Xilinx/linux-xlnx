@@ -145,7 +145,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 		goto clk_dis_ahb;
 	}
 
-	ret = sdhci_pltfm_register(pdev, &sdhci_arasan_pdata);
+	ret = sdhci_pltfm_register(pdev, &sdhci_arasan_pdata, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "Platform registration failed\n");
 		goto clk_disable_all;

@@ -209,18 +209,17 @@ static void __init zynq_irq_init(void)
 	irqchip_init();
 }
 
-static void zynq_system_reset(char mode, const char *cmd)
+static void zynq_system_reset(enum reboot_mode mode, const char *cmd)
 {
 	zynq_slcr_system_reset();
 }
 
 static const char * const zynq_dt_match[] = {
-	"xlnx,zynq-zc770",
 	"xlnx,zynq-7000",
 	NULL
 };
 
-MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
+DT_MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.smp		= smp_ops(zynq_smp_ops),
 	.map_io		= zynq_map_io,
 	.init_irq	= zynq_irq_init,

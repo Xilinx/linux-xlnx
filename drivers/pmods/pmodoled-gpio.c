@@ -170,8 +170,8 @@ static ssize_t gpio_pmodoled_write(struct file *fp, const char __user *buffer, s
 	}
 
 	if (buffer == NULL) {
-		dev_err(&dev->spi->dev, "oled_write: ERROR: invalid buffer address: 0x%08x\n",
-					(__force unsigned int) buffer);
+		dev_err(&dev->spi->dev, "oled_write: ERROR: invalid buffer address: 0x%08lx\n",
+					(__force unsigned long) buffer);
 		retval = -EINVAL;
 		goto quit_write;
 	}
@@ -225,7 +225,7 @@ static ssize_t	gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t l
 
 	if (buffer == NULL) {
 		dev_err(&dev->spi->dev, "OLED_read: ERROR: invalid buffer "
-				"address: 0x%08X\n", (__force unsigned int)buffer);
+				"address: 0x%08lx\n", (__force unsigned long)buffer);
 		retval = -EINVAL;
 		goto quit_read;
 	}

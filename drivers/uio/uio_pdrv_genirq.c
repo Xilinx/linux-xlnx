@@ -272,7 +272,7 @@ static struct of_device_id uio_of_genirq_match[] = {
 	{ /* Sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, uio_of_genirq_match);
-module_param_string(of_id, uio_of_genirq_match[1].compatible, 128, 0);
+module_param_string(of_id, uio_of_genirq_match[0].compatible, 128, 0);
 MODULE_PARM_DESC(of_id, "Openfirmware id of the device to be handled by uio");
 #endif
 

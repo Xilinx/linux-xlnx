@@ -160,8 +160,10 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	 * "clock-frequency" from the CPU
 	 */
 	np1 = of_get_parent(lp->phy_node);
-	if (np1)
+	if (np1) {
 		npp = of_get_parent(np1);
+		of_node_put(np1);
+	}
 	if (!npp) {
 		dev_warn(lp->dev,
 			"Could not find ethernet controller device node.");
@@ -198,6 +200,7 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 				"based on %u Hz host clock.\n",
 				clk_div, host_clock);
 		}
+		of_node_put(npp);
 	}
 
 	axienet_iow(lp, XAE_MDIO_MC_OFFSET, (((u32)clk_div) |
