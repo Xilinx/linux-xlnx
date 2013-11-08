@@ -1171,10 +1171,8 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 
 	/* Allocate and initialize the DMA engine structure */
 	xdev = devm_kzalloc(&op->dev, sizeof(*xdev), GFP_KERNEL);
-	if (!xdev) {
-		dev_err(&op->dev, "Not enough memory for device\n");
+	if (!xdev)
 		return -ENOMEM;
-	}
 
 	xdev->dev = &op->dev;
 
