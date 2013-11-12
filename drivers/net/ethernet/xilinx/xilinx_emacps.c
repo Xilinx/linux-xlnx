@@ -224,13 +224,13 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 						Seconds */
 #define XEMACPS_PTPERXNS_OFFSET		0x000001EC /* PTP Event Frame Received
 						Nanoseconds */
-#define XEMACPS_PTPPTXS_OFFSET		0x000001E0 /* PTP Peer Frame
+#define XEMACPS_PTPPTXS_OFFSET		0x000001F0 /* PTP Peer Frame
 						Transmitted Seconds */
-#define XEMACPS_PTPPTXNS_OFFSET		0x000001E4 /* PTP Peer Frame
+#define XEMACPS_PTPPTXNS_OFFSET		0x000001F4 /* PTP Peer Frame
 						Transmitted Nanoseconds */
-#define XEMACPS_PTPPRXS_OFFSET		0x000001E8 /* PTP Peer Frame Received
+#define XEMACPS_PTPPRXS_OFFSET		0x000001F8 /* PTP Peer Frame Received
 						Seconds */
-#define XEMACPS_PTPPRXNS_OFFSET		0x000001EC /* PTP Peer Frame Received
+#define XEMACPS_PTPPRXNS_OFFSET		0x000001FC /* PTP Peer Frame Received
 						Nanoseconds */
 
 /* network control register bit definitions */
