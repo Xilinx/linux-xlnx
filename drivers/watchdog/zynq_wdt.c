@@ -322,14 +322,12 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	zynq_wdt_device.parent = &pdev->dev;
 	of_get_property(pdev->dev.of_node, "timeout", &zynq_wdt_device.timeout);
 	if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
-			wdt_timeout > XWDTPS_MIN_TIMEOUT) {
+			wdt_timeout > XWDTPS_MIN_TIMEOUT)
 		zynq_wdt_device.timeout = wdt_timeout;
-	} else {
+	else
 		dev_info(&pdev->dev,
 			    "timeout limited to 1 - %d sec, using default=%d\n",
 			    XWDTPS_MAX_TIMEOUT, XWDTPS_DEFAULT_TIMEOUT);
-		zynq_wdt_device.timeout = XWDTPS_DEFAULT_TIMEOUT;
-	}
 
 	watchdog_set_nowayout(&zynq_wdt_device, nowayout);
 	watchdog_set_drvdata(&zynq_wdt_device, &wdt);
