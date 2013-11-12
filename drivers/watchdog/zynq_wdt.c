@@ -57,7 +57,6 @@ MODULE_PARM_DESC(nowayout,
  */
 struct zynq_wdt {
 	void __iomem		*regs;		/* Base address */
-	unsigned long		busy;		/* Device Status */
 	u32			rst;		/* Reset flag */
 	struct clk		*clk;
 	u32			prescalar;
@@ -360,8 +359,6 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 		wdt->ctrl_clksel = 3;
 	}
 
-	/* Initialize the busy flag to zero */
-	clear_bit(0, &wdt->busy);
 	spin_lock_init(&wdt->io_lock);
 
 	/* Register the WDT */
