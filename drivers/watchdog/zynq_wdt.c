@@ -30,18 +30,18 @@
 #include <linux/uaccess.h>
 #include <linux/watchdog.h>
 
-#define XWDTPS_DEFAULT_TIMEOUT	10
+#define ZYNQ_WDT_DEFAULT_TIMEOUT	10
 /* Supports 1 - 516 sec */
-#define XWDTPS_MIN_TIMEOUT	1
-#define XWDTPS_MAX_TIMEOUT	516
+#define ZYNQ_WDT_MIN_TIMEOUT	1
+#define ZYNQ_WDT_MAX_TIMEOUT	516
 
-static int wdt_timeout = XWDTPS_DEFAULT_TIMEOUT;
+static int wdt_timeout = ZYNQ_WDT_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
 module_param(wdt_timeout, int, 0);
 MODULE_PARM_DESC(wdt_timeout,
 		 "Watchdog time in seconds. (default="
-		 __MODULE_STRING(XWDTPS_DEFAULT_TIMEOUT) ")");
+		 __MODULE_STRING(ZYNQ_WDT_DEFAULT_TIMEOUT) ")");
 
 module_param(nowayout, int, 0);
 MODULE_PARM_DESC(nowayout,
@@ -81,26 +81,26 @@ static struct watchdog_info zynq_wdt_info = {
 /*************************Register Map**************************************/
 
 /* Register Offsets for the WDT */
-#define XWDTPS_ZMR_OFFSET	0x0	/* Zero Mode Register */
-#define XWDTPS_CCR_OFFSET	0x4	/* Counter Control Register */
-#define XWDTPS_RESTART_OFFSET	0x8	/* Restart Register */
-#define XWDTPS_SR_OFFSET	0xC	/* Status Register */
+#define ZYNQ_WDT_ZMR_OFFSET	0x0	/* Zero Mode Register */
+#define ZYNQ_WDT_CCR_OFFSET	0x4	/* Counter Control Register */
+#define ZYNQ_WDT_RESTART_OFFSET	0x8	/* Restart Register */
+#define ZYNQ_WDT_SR_OFFSET	0xC	/* Status Register */
 
 /*
  * Zero Mode Register - This register controls how the time out is indicated
  * and also contains the access code to allow writes to the register (0xABC).
  */
-#define XWDTPS_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
-#define XWDTPS_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
-#define XWDTPS_ZMR_IRQEN_MASK	0x00000004 /* Enable IRQ output */
-#define XWDTPS_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
-#define XWDTPS_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
+#define ZYNQ_WDT_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
+#define ZYNQ_WDT_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
+#define ZYNQ_WDT_ZMR_IRQEN_MASK	0x00000004 /* Enable IRQ output */
+#define ZYNQ_WDT_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
+#define ZYNQ_WDT_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
 /*
  * Counter Control register - This register controls how fast the timer runs
  * and the reset value and also contains the access code to allow writes to
  * the register.
  */
-#define XWDTPS_CCR_CRV_MASK	0x00003FFC /* Counter reset value */
+#define ZYNQ_WDT_CCR_CRV_MASK	0x00003FFC /* Counter reset value */
 
 /**
  * zynq_wdt_stop -  Stop the watchdog.
@@ -111,8 +111,8 @@ static struct watchdog_info zynq_wdt_info = {
 static int zynq_wdt_stop(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg((XWDTPS_ZMR_ZKEY_VAL & (~XWDTPS_ZMR_WDEN_MASK)),
-			 XWDTPS_ZMR_OFFSET);
+	zynq_wdt_writereg((ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK)),
+			 ZYNQ_WDT_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	return 0;
 }
@@ -125,7 +125,7 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 static int zynq_wdt_reload(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
+	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	return 0;
 }
@@ -161,28 +161,28 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 		count = 0xFFF;
 
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(XWDTPS_ZMR_ZKEY_VAL, XWDTPS_ZMR_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_ZMR_ZKEY_VAL, ZYNQ_WDT_ZMR_OFFSET);
 
 	/* Shift the count value to correct bit positions */
-	count = (count << 2) & XWDTPS_CCR_CRV_MASK;
+	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* 0x00920000 - Counter register key value. */
 	data = (count | 0x00920000 | (wdt->ctrl_clksel));
-	zynq_wdt_writereg(data, XWDTPS_CCR_OFFSET);
-	data = XWDTPS_ZMR_WDEN_MASK | XWDTPS_ZMR_RSTLEN_16 |
-			XWDTPS_ZMR_ZKEY_VAL;
+	zynq_wdt_writereg(data, ZYNQ_WDT_CCR_OFFSET);
+	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
+			ZYNQ_WDT_ZMR_ZKEY_VAL;
 
 	/* Reset on timeout if specified in device tree. */
 	if (wdt->rst) {
-		data |= XWDTPS_ZMR_RSTEN_MASK;
-		data &= ~XWDTPS_ZMR_IRQEN_MASK;
+		data |= ZYNQ_WDT_ZMR_RSTEN_MASK;
+		data &= ~ZYNQ_WDT_ZMR_IRQEN_MASK;
 	} else {
-		data &= ~XWDTPS_ZMR_RSTEN_MASK;
-		data |= XWDTPS_ZMR_IRQEN_MASK;
+		data &= ~ZYNQ_WDT_ZMR_RSTEN_MASK;
+		data |= ZYNQ_WDT_ZMR_IRQEN_MASK;
 	}
-	zynq_wdt_writereg(data, XWDTPS_ZMR_OFFSET);
+	zynq_wdt_writereg(data, ZYNQ_WDT_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
-	zynq_wdt_writereg(0x00001999, XWDTPS_RESTART_OFFSET);
+	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
 	return 0;
 }
 
@@ -232,9 +232,9 @@ static struct watchdog_ops zynq_wdt_ops = {
 static struct watchdog_device zynq_wdt_device = {
 	.info = &zynq_wdt_info,
 	.ops = &zynq_wdt_ops,
-	.timeout = XWDTPS_DEFAULT_TIMEOUT,
-	.min_timeout = XWDTPS_MIN_TIMEOUT,
-	.max_timeout = XWDTPS_MAX_TIMEOUT,
+	.timeout = ZYNQ_WDT_DEFAULT_TIMEOUT,
+	.min_timeout = ZYNQ_WDT_MIN_TIMEOUT,
+	.max_timeout = ZYNQ_WDT_MAX_TIMEOUT,
 };
 
 /**
@@ -321,13 +321,13 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	/* Initialize the members of zynq_wdt structure */
 	zynq_wdt_device.parent = &pdev->dev;
 	of_get_property(pdev->dev.of_node, "timeout", &zynq_wdt_device.timeout);
-	if (wdt_timeout < XWDTPS_MAX_TIMEOUT &&
-			wdt_timeout > XWDTPS_MIN_TIMEOUT)
+	if (wdt_timeout < ZYNQ_WDT_MAX_TIMEOUT &&
+			wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
 		zynq_wdt_device.timeout = wdt_timeout;
 	else
 		dev_info(&pdev->dev,
 			    "timeout limited to 1 - %d sec, using default=%d\n",
-			    XWDTPS_MAX_TIMEOUT, XWDTPS_DEFAULT_TIMEOUT);
+			    ZYNQ_WDT_MAX_TIMEOUT, ZYNQ_WDT_DEFAULT_TIMEOUT);
 
 	watchdog_set_nowayout(&zynq_wdt_device, nowayout);
 	watchdog_set_drvdata(&zynq_wdt_device, &wdt);
