@@ -38,6 +38,8 @@
 
 struct xilinx_cresample {
 	void __iomem *base;
+	const char *input_format_name;
+	const char *output_format_name;
 };
 
 /* enable cresample */
@@ -83,6 +85,20 @@ void xilinx_cresample_reset(struct xilinx_cresample *cresample)
 			  reg | CRESAMPLE_CTL_RU);
 }
 
+/* get an input format */
+const char *
+xilinx_cresample_get_input_format_name(struct xilinx_cresample *cresample)
+{
+	return cresample->input_format_name;
+}
+
+/* get an output format */
+const char *
+xilinx_cresample_get_output_format_name(struct xilinx_cresample *cresample)
+{
+	return cresample->output_format_name;
+}
+
 struct xilinx_cresample *xilinx_cresample_probe(struct device *dev,
 						struct device_node *node)
 {
@@ -103,6 +119,20 @@ struct xilinx_cresample *xilinx_cresample_probe(struct device *dev,
 	cresample->base = devm_ioremap_resource(dev, &res);
 	if (IS_ERR(cresample->base))
 		return ERR_CAST(cresample->base);
+
+	ret = of_property_read_string(node, "xlnx,input-format",
+				      &cresample->input_format_name);
+	if (ret) {
+		dev_warn(dev, "failed to get an input format prop\n");
+		return ERR_PTR(ret);
+	}
+
+	ret = of_property_read_string(node, "xlnx,output-format",
+				      &cresample->output_format_name);
+	if (ret) {
+		dev_warn(dev, "failed to get an output format prop\n");
+		return ERR_PTR(ret);
+	}
 
 	xilinx_cresample_reset(cresample);
 

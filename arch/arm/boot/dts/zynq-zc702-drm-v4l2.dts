@@ -548,8 +548,8 @@
 		cresample_0: v-cresample@40020000 {
 			compatible = "xlnx,v-cresample-4.0";
 			reg = <0x40020000 0x10000>;
-			xlnx,input-format = <1>;
-			xlnx,output-format = <0>;
+			xlnx,input-format = "yuv444";
+			xlnx,output-format = "yuv422";
 		};
 
 		rgb2ycrcb_0: v-rgb2ycrcb@40030000 {
