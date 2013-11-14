@@ -324,12 +324,18 @@ int xilinx_drm_plane_get_max_width(struct drm_plane *base_plane)
 	return plane->manager->max_width;
 }
 
-/* get a plane format */
-uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane)
+/* check if format is supported */
+bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
+				   uint32_t format)
 {
-	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	int i;
 
-	return plane->manager->format;
+	for (i = 0; i < MAX_PLANES; i++)
+		if (manager->planes[i] &&
+		    (manager->planes[i]->format == format))
+			return true;
+
+	return false;
 }
 
 /* create a plane */
