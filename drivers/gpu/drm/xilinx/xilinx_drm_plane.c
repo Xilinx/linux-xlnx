@@ -482,7 +482,7 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 		manager->max_width = xilinx_osd_get_max_width(manager->osd);
 
 		format = xilinx_osd_get_format(manager->osd);
-		ret = xilinx_drm_format(format, &manager->format);
+		ret = xilinx_drm_format_by_code(format, &manager->format);
 	} else {
 		/* without osd, only one plane is supported */
 		manager->num_planes = 1;

@@ -26,7 +26,7 @@ enum xilinx_video_format {
 };
 
 /* convert the xilinx format to the drm format */
-int xilinx_drm_format(unsigned int xilinx_format, uint32_t *drm_format);
+int xilinx_drm_format_by_code(unsigned int xilinx_format, uint32_t *drm_format);
 
 /* io write operations */
 static inline void xilinx_drm_writel(void __iomem *base, int offset, u32 val)

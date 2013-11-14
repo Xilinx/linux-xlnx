@@ -135,22 +135,18 @@ static void xilinx_drm_mode_config_init(struct drm_device *drm)
 	drm->mode_config.funcs = &xilinx_drm_mode_config_funcs;
 }
 
-/* convert xilinx format to drm format */
-int xilinx_drm_format(unsigned int xilinx_format, uint32_t *drm_format)
+/* convert xilinx format to drm format by code */
+int xilinx_drm_format_by_code(unsigned int xilinx_format, uint32_t *drm_format)
 {
-	switch (xilinx_format) {
-	case XILINX_VIDEO_FORMAT_YUV422:
-		*drm_format = DRM_FORMAT_YUV422;
-		return 0;
-	case XILINX_VIDEO_FORMAT_YUV444:
-		*drm_format = DRM_FORMAT_YUV444;
-		return 0;
-	case XILINX_VIDEO_FORMAT_RGB:
-		*drm_format = DRM_FORMAT_XRGB8888;
-		return 0;
-	case XILINX_VIDEO_FORMAT_YUV420:
-		*drm_format = DRM_FORMAT_YUV420;
-		return 0;
+	const struct xilinx_video_format_desc *format;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_video_formats); i++) {
+		format = &xilinx_video_formats[i];
+		if (format->xilinx_format == xilinx_format) {
+			*drm_format = format->drm_format;
+			return 0;
+		}
 	}
 
 	DRM_ERROR("Unknown Xilinx video format: %d\n", xilinx_format);
