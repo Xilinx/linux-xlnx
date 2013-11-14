@@ -51,6 +51,25 @@ struct xilinx_drm_private {
 	struct platform_device *pdev;
 };
 
+/**
+ * struct xilinx_video_format_desc - Xilinx Video IP video format description
+ * @name: Xilinx video format name
+ * @xilinx_format: xilinx format code
+ * @drm_format: drm format code
+ */
+struct xilinx_video_format_desc {
+	const char *name;
+	unsigned int xilinx_format;
+	uint32_t drm_format;
+};
+
+static const struct xilinx_video_format_desc xilinx_video_formats[] = {
+	{ "yuv422", XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
+	{ "yuv444", XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
+	{ "xrgb888", XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
+	{ "yuv420", XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
+};
+
 /* create a fb */
 static struct drm_framebuffer *
 xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
