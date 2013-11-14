@@ -1,11 +1,10 @@
 config DRM_XILINX
 	tristate "Xilinx DRM"
-	depends on DRM && ARCH_ZYNQ
+	depends on DRM && ARCH_ZYNQ && HAVE_CLK
 	select DRM_KMS_HELPER
 	select DRM_KMS_CMA_HELPER
 	select DRM_GEM_CMA_HELPER
 	select DRM_ENCODER_ADV7511
-	select SI570
 	select XILINX_AXIVDMA
 	help
 	  DRM display driver for Xilinx IP based pipelines.

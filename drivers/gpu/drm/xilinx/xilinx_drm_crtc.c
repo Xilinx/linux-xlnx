@@ -21,10 +21,10 @@
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/i2c.h>
-#include <linux/i2c/si570.h>
 
 #include <video/videomode.h>
 
@@ -40,7 +40,7 @@ struct xilinx_drm_crtc {
 	struct drm_plane *priv_plane;
 	struct xilinx_cresample *cresample;
 	struct xilinx_rgb2yuv *rgb2yuv;
-	struct i2c_client *si570;
+	struct clk *pixel_clock;
 	struct xilinx_vtc *vtc;
 	struct xilinx_drm_plane_manager *plane_manager;
 	int dpms;
@@ -119,14 +119,20 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 {
 	struct xilinx_drm_crtc *crtc = to_xilinx_crtc(base_crtc);
 	struct videomode vm;
+	long diff;
 	int ret;
 
-	/* set si570 pixel clock */
-	set_frequency_si570(&crtc->si570->dev, adjusted_mode->clock * 1000);
+	/* set pixel clock */
+	ret = clk_set_rate(crtc->pixel_clock, adjusted_mode->clock * 1000);
+	if (ret) {
+		DRM_ERROR("failed to set a pixel clock\n");
+		return ret;
+	}
 
-	/* TODO: delay required for si570 clock, and this will be removed
-	 * with a si570 ccf driver */
-	usleep_range(10000, 10001);
+	diff = clk_get_rate(crtc->pixel_clock) - adjusted_mode->clock * 1000;
+	if (abs(diff) > (adjusted_mode->clock * 1000) / 20)
+		DRM_INFO("actual pixel clock rate(%d) is off by %ld\n",
+				adjusted_mode->clock, diff);
 
 	/* set video timing */
 	vm.hactive = adjusted_mode->hdisplay;
@@ -227,6 +233,8 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 	xilinx_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_OFF);
 
 	drm_crtc_cleanup(base_crtc);
+
+	clk_disable_unprepare(crtc->pixel_clock);
 
 	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
 	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
@@ -415,11 +423,16 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	/* create extra planes */
 	xilinx_drm_plane_create_planes(crtc->plane_manager, possible_crtcs);
 
-	/* TODO: this will be removed with a si570 ccf driver */
-	crtc->si570 = get_i2c_client_si570();
-	if (!crtc->si570) {
-		DRM_DEBUG_KMS("failed to get si570 clock\n");
+	crtc->pixel_clock = devm_clk_get(drm->dev, 0);
+	if (IS_ERR(crtc->pixel_clock)) {
+		DRM_DEBUG_KMS("failed to get pixel clock\n");
 		ret = -EPROBE_DEFER;
+		goto err_out;
+	}
+
+	ret = clk_prepare_enable(crtc->pixel_clock);
+	if (ret) {
+		DRM_DEBUG_KMS("failed to prepare/enable clock\n");
 		goto err_out;
 	}
 
