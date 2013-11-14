@@ -28,7 +28,9 @@
 
 #include "xilinx_drm_drv.h"
 
+#include "xilinx_cresample.h"
 #include "xilinx_osd.h"
+#include "xilinx_rgb2yuv.h"
 
 /**
  * struct xilinx_drm_plane_vdma: Xilinx drm plane VDMA object
@@ -54,6 +56,8 @@ struct xilinx_drm_plane_vdma {
  * @bpp: bytes per pixel
  * @format: pixel format
  * @vdma: vdma object
+ * @rgb2yuv: rgb2yuv instance
+ * @cresample: cresample instance
  * @osd_layer: osd layer
  * @manager: plane manager
  */
@@ -68,6 +72,8 @@ struct xilinx_drm_plane {
 	int bpp;
 	uint32_t format;
 	struct xilinx_drm_plane_vdma vdma;
+	struct xilinx_rgb2yuv *rgb2yuv;
+	struct xilinx_cresample *cresample;
 	struct xilinx_osd_layer *osd_layer;
 	struct xilinx_drm_plane_manager *manager;
 };
@@ -116,6 +122,12 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 		/* start vdma engine */
 		dma_async_issue_pending(plane->vdma.chan);
 
+		if (plane->rgb2yuv)
+			xilinx_rgb2yuv_enable(plane->rgb2yuv);
+
+		if (plane->cresample)
+			xilinx_cresample_enable(plane->cresample);
+
 		/* enable osd */
 		if (manager->osd) {
 			xilinx_osd_disable_rue(manager->osd);
@@ -149,6 +161,16 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 				xilinx_osd_reset(manager->osd);
 
 			xilinx_osd_enable_rue(manager->osd);
+		}
+
+		if (plane->cresample) {
+			xilinx_cresample_disable(plane->cresample);
+			xilinx_cresample_reset(plane->cresample);
+		}
+
+		if (plane->rgb2yuv) {
+			xilinx_rgb2yuv_disable(plane->rgb2yuv);
+			xilinx_rgb2yuv_reset(plane->rgb2yuv);
 		}
 
 		/* reset vdma */
@@ -206,6 +228,14 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		DRM_ERROR("unsupported pixel format %08x\n", fb->pixel_format);
 		return -EINVAL;
 	}
+
+	/* configure cresample */
+	if (plane->cresample)
+		xilinx_cresample_configure(plane->cresample, crtc_w, crtc_h);
+
+	/* configure rgb2yuv */
+	if (plane->rgb2yuv)
+		xilinx_rgb2yuv_configure(plane->rgb2yuv, crtc_w, crtc_h);
 
 	obj = drm_fb_cma_get_gem_obj(fb, 0);
 	if (!obj) {
@@ -294,7 +324,9 @@ static void xilinx_drm_plane_destroy(struct drm_plane *base_plane)
 	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_OFF);
 
 	plane->manager->planes[plane->id] = NULL;
+
 	drm_plane_cleanup(base_plane);
+
 	dma_release_channel(plane->vdma.chan);
 
 	if (plane->manager->osd) {
@@ -350,6 +382,10 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	struct device *dev = manager->drm->dev;
 	char plane_name[16];
 	struct device_node *plane_node;
+	struct device_node *sub_node;
+	uint32_t fmt_in = -1;
+	uint32_t fmt_out = -1;
+	const char *fmt;
 	int i;
 	int ret;
 
@@ -378,6 +414,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->priv = priv;
 	plane->id = i;
 	plane->dpms = DRM_MODE_DPMS_OFF;
+	plane->format = -1;
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
 	plane->vdma.chan = of_dma_request_slave_channel(plane_node, "vdma");
@@ -387,19 +424,83 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		goto err_out;
 	}
 
+	/* probe color space converter */
+	sub_node = of_parse_phandle(plane_node, "rgb2yuv", i);
+	if (sub_node) {
+		plane->rgb2yuv = xilinx_rgb2yuv_probe(dev, sub_node);
+		of_node_put(sub_node);
+		if (IS_ERR(plane->rgb2yuv)) {
+			DRM_ERROR("failed to probe a rgb2yuv\n");
+			ret = PTR_ERR(plane->rgb2yuv);
+			goto err_dma;
+		}
+
+		/* rgb2yuv input format */
+		plane->format = DRM_FORMAT_XRGB8888;
+
+		/* rgb2yuv output format */
+		fmt_out = DRM_FORMAT_YUV444;
+	}
+
+	/* probe chroma resampler */
+	sub_node = of_parse_phandle(plane_node, "cresample", i);
+	if (sub_node) {
+		plane->cresample = xilinx_cresample_probe(dev, sub_node);
+		of_node_put(sub_node);
+		if (IS_ERR(plane->cresample)) {
+			DRM_ERROR("failed to probe a cresample\n");
+			ret = PTR_ERR(plane->cresample);
+			goto err_dma;
+		}
+
+		/* cresample input format */
+		fmt = xilinx_cresample_get_input_format_name(plane->cresample);
+		ret = xilinx_drm_format_by_name(fmt, &fmt_in);
+		if (ret)
+			goto err_dma;
+
+		/* format sanity check */
+		if ((fmt_out != -1) && (fmt_out != fmt_in)) {
+			DRM_ERROR("input/output format mismatch\n");
+			ret = -EINVAL;
+			goto err_dma;
+		}
+
+		if (plane->format == -1)
+			plane->format = fmt_in;
+
+		/* cresample output format */
+		fmt = xilinx_cresample_get_output_format_name(plane->cresample);
+		ret = xilinx_drm_format_by_name(fmt, &fmt_out);
+		if (ret)
+			goto err_dma;
+	}
+
 	/* create an OSD layer when OSD is available */
 	if (manager->osd) {
+		/* format sanity check */
+		if ((fmt_out != -1) && (fmt_out != manager->format)) {
+			DRM_ERROR("input/output format mismatch\n");
+			ret = -EINVAL;
+			goto err_dma;
+		}
+
 		/* create an osd layer */
 		plane->osd_layer = xilinx_osd_layer_get(manager->osd);
 		if (IS_ERR(plane->osd_layer)) {
 			DRM_ERROR("failed to create a osd layer\n");
 			ret = PTR_ERR(plane->osd_layer);
 			plane->osd_layer = NULL;
-			goto err_osd_layer;
+			goto err_dma;
 		}
+
+		if (plane->format == -1)
+			plane->format = manager->format;
 	}
 
-	plane->format = manager->format;
+	/* If there's no IP other than VDMA, choose XRGB8888 */
+	if (plane->format == -1)
+		plane->format = DRM_FORMAT_XRGB8888;
 
 	/* initialize drm plane */
 	ret = drm_plane_init(manager->drm, &plane->base, possible_crtcs,
@@ -420,7 +521,7 @@ err_init:
 		xilinx_osd_layer_disable(plane->osd_layer);
 		xilinx_osd_layer_put(plane->osd_layer);
 	}
-err_osd_layer:
+err_dma:
 	dma_release_channel(plane->vdma.chan);
 err_out:
 	of_node_put(plane_node);

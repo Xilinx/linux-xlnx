@@ -5,9 +5,9 @@ IPs on Xilinx boards.
 
 The example hardware pipeline is depicted below
 (*IPs in parentheses() are optional. IPs in brackets[] don't require drivers).
-vdma --> [remapper] -> (osd) -> (rgb2yuv) -> (cresample) -> [axi2vid] -> adv7511
-(vdma --> [remapper]-|)                                         |
-                                                      si570 -> vtc
+vdma-[remap]-(rgb2yuv)-(cresample)-(osd)-(rgb2yuv)-(cresample)-[axi2vid]-adv7511
+(vdma-[remap]-(rgb2yuv)-(cresample)-|)                             |
+                                                         si570 -> vtc
 
 Required properties:
  - compatible: value should be "xlnx,drm".
@@ -21,13 +21,36 @@ Required properties:
 Required plane properties:
  - dmas: the phandle list of DMA specifiers
  - dma-names: the indentifier strings for DMAs
+ - rgb2yuv: the phandle for rgb2ycrcb IP if used for plane
+ - cresample: the phandle for chroma resampler IP if used for plane
 
-Example:
+The pipeline can be configured as following examples or more.
+ - Example 1:
+vdma - [remap] - rgb2yuv - cresample - [axi2vid] - adv7511
+                                                      |
+                                             si570 - vtc
+	xilinx_drm {
+		compatible = "xlnx,drm";
+		vtc = <&v_tc_0>;
+		encoder-slave = <&adv7511>;
+		planes {
+			plane0 {
+				dma = <&axi_vdma_0>;
+				dma-names = "vdma";
+				rgb2yuv = <&v_rgb2ycrcb_0>;
+				cresample = <&v_cresample_0>;
+			};
+		};
+	};
+
+ - Example 2:
+vdma - [remap] --------- osd - cresample - [axi2vid] - adv7511
+vdma - [remap] - rgb2yuv -|                               |
+                                                 si570 - vtc
 
 	xilinx_drm {
 		compatible = "xlnx,drm";
 		osd = <&v_osd_0>;
-		rgb2yuv = <&v_rgb2ycrcb_0>;
 		cresample = <&v_cresample_0>;
 		vtc = <&v_tc_0>;
 		encoder-slave = <&adv7511>;
@@ -39,6 +62,7 @@ Example:
 			plane1 {
 				dma = <&axi_vdma_1>;
 				dma-names = "vdma";
+				rgb2yuv = <&v_rgb2ycrcb_0>;
 			};
 		};
 	};
