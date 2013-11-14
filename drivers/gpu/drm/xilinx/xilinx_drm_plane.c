@@ -23,6 +23,7 @@
 #include <linux/amba/xilinx_dma.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
+#include <linux/of_dma.h>
 #include <linux/platform_device.h>
 
 #include "xilinx_drm_drv.h"
@@ -77,6 +78,7 @@ struct xilinx_drm_plane {
  * struct xilinx_drm_plane_manager: Xilinx drm plane manager object
  *
  * @drm: drm device
+ * @node: plane device node
  * @osd: osd instance
  * @num_planes: number of available planes
  * @format: video format
@@ -85,6 +87,7 @@ struct xilinx_drm_plane {
  */
 struct xilinx_drm_plane_manager {
 	struct drm_device *drm;
+	struct device_node *node;
 	struct xilinx_osd *osd;
 	int num_planes;
 	uint32_t format;
@@ -345,7 +348,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 {
 	struct xilinx_drm_plane *plane;
 	struct device *dev = manager->drm->dev;
-	char dma_name[16];
+	char plane_name[16];
+	struct device_node *plane_node;
 	int i;
 	int ret;
 
@@ -358,20 +362,29 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		return ERR_PTR(-ENODEV);
 	}
 
+	snprintf(plane_name, sizeof(plane_name), "plane%d", i);
+	plane_node = of_get_child_by_name(manager->node, plane_name);
+	if (!plane_node) {
+		DRM_ERROR("failed to find a plane node\n");
+		return ERR_PTR(-ENODEV);
+	}
+
 	plane = devm_kzalloc(dev, sizeof(*plane), GFP_KERNEL);
-	if (!plane)
-		return ERR_PTR(-ENOMEM);
+	if (!plane) {
+		ret = -ENOMEM;
+		goto err_out;
+	}
 
 	plane->priv = priv;
 	plane->id = i;
 	plane->dpms = DRM_MODE_DPMS_OFF;
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
-	snprintf(dma_name, sizeof(dma_name), "vdma%d", i);
-	plane->vdma.chan = dma_request_slave_channel(dev, dma_name);
+	plane->vdma.chan = of_dma_request_slave_channel(plane_node, "vdma");
 	if (!plane->vdma.chan) {
 		DRM_ERROR("failed to request dma channel\n");
-		return ERR_PTR(-ENODEV);
+		ret = -ENODEV;
+		goto err_out;
 	}
 
 	/* create an OSD layer when OSD is available */
@@ -398,6 +411,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->manager = manager;
 	manager->planes[i] = plane;
 
+	of_node_put(plane_node);
+
 	return plane;
 
 err_init:
@@ -407,6 +422,8 @@ err_init:
 	}
 err_osd_layer:
 	dma_release_channel(plane->vdma.chan);
+err_out:
+	of_node_put(plane_node);
 	return ERR_PTR(ret);
 }
 
@@ -512,6 +529,13 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	if (!manager)
 		return ERR_PTR(-ENOMEM);
 
+	/* this node is used to create a plane */
+	manager->node = of_get_child_by_name(dev->of_node, "planes");
+	if (!manager->node) {
+		DRM_ERROR("failed to get a planes node\n");
+		return ERR_PTR(-EINVAL);
+	}
+
 	manager->drm = drm;
 
 	/* probe an OSD. proceed even if there's no OSD */
@@ -520,6 +544,7 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 		manager->osd = xilinx_osd_probe(dev, sub_node);
 		of_node_put(sub_node);
 		if (IS_ERR(manager->osd)) {
+			of_node_put(manager->node);
 			DRM_ERROR("failed to probe an osd\n");
 			return ERR_CAST(manager->osd);
 		}
@@ -546,4 +571,6 @@ void xilinx_drm_plane_remove_manager(struct xilinx_drm_plane_manager *manager)
 			manager->planes[i] = NULL;
 		}
 	}
+
+	of_node_put(manager->node);
 }
