@@ -154,6 +154,25 @@ int xilinx_drm_format_by_code(unsigned int xilinx_format, uint32_t *drm_format)
 	return -EINVAL;
 }
 
+/* convert xilinx format to drm format by name */
+int xilinx_drm_format_by_name(const char *name, uint32_t *drm_format)
+{
+	const struct xilinx_video_format_desc *format;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_video_formats); i++) {
+		format = &xilinx_video_formats[i];
+		if (strcmp(format->name, name) == 0) {
+			*drm_format = format->drm_format;
+			return 0;
+		}
+	}
+
+	DRM_ERROR("Unknown Xilinx video format: %s\n", name);
+
+	return -EINVAL;
+}
+
 /* load xilinx drm */
 static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 {
