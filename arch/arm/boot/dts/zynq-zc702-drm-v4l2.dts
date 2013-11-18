@@ -495,32 +495,7 @@
 			};
 		};
 
-		axi_vdma_2: axivdma@0x40070000 {
-			compatible = "xlnx,axi-vdma";
-			reg = <0x40070000 0x10000>;
-
-			xlnx,flush-fsync = <1>;
-			xlnx,num-fstores = <1>;
-			xlnx,family = "zynq-770";
-
-			#dma-cells = <1>;
-			dma-mm2schannel@0x40070000 {
-				compatible = "xlnx,axi-vdma-mm2s-channel";
-				interrupt-parent = <&ps7_scugic_0>;
-				interrupts = <0 52 4>;
-				xlnx,datawidth = <0x40>;
-				xlnx,device-id = <0>;
-			};
-			dma-s2mmchannel@0x40070000 {
-				compatible = "xlnx,axi-vdma-s2mm-channel";
-				interrupt-parent = <&ps7_scugic_0>;
-				interrupts = <0 36 4>;
-				xlnx,datawidth = <0x40>;
-				xlnx,device-id = <1>;
-			};
-		};
-
-		axi_vdma_3: axivdma@400a0000 {
+		axi_vdma_2: axivdma@400a0000 {
 			compatible = "xlnx,axi-vdma";
 			reg = <0x400a0000 0x10000>;
 
@@ -562,7 +537,6 @@
 			reg = <0x40040000 0x10000>;
 			xlnx,num-layers = <3>;
 			xlnx,screen-width = <1920>;
-			xlnx,video-format = <0>;
 		};
 
 		xilinx_drm {
@@ -582,7 +556,7 @@
 					dma-names = "vdma";
 				};
 				plane2 {
-					dmas = <&axi_vdma_3 0>;
+					dmas = <&axi_vdma_2 0>;
 					dma-names = "vdma";
 				};
 			};
@@ -611,57 +585,6 @@
 				port {
 					vcap0_in: endpoint {
 						remote-endpoint = <&tpg0_out>;
-					};
-				};
-			};
-		};
-
-		axi_sobel_0: axi-sobel@0x40080000 {
-			compatible = "xlnx,axi-sobel";
-			reg = <0x40080000 0x10000>;
-			interrupts = <0 53 4>;
-			interrupt-parent = <&ps7_scugic_0>;
-
-			xlnx,axi-video-width = <8>;
-			xlnx,axi-video-format = "yuv422";
-
-			ports {
-				#address-cells = <1>;
-				#size-cells = <0>;
-
-				port@0 {
-					reg = <0>;
-					sobel0_in: endpoint {
-						remote-endpoint = <&m2m0_out>;
-					};
-				};
-				port@1 {
-					reg = <1>;
-					sobel0_out: endpoint {
-						remote-endpoint = <&m2m0_in>;
-					};
-				};
-			};
-		};
-
-		axi_video_m2m {
-			compatible = "xlnx,axi-video";
-			dmas = <&axi_vdma_2 0
-				&axi_vdma_2 1>;
-			dma-names = "vdma-mm2s", "vdma-s2mm";
-
-			vdma-s2mm {
-				port {
-					m2m0_in: endpoint {
-						remote-endpoint = <&sobel0_out>;
-					};
-				};
-			};
-
-			vdma-mm2s {
-				port {
-					m2m0_out: endpoint {
-						remote-endpoint = <&sobel0_in>;
 					};
 				};
 			};
