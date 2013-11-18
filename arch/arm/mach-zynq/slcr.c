@@ -62,9 +62,9 @@ void zynq_slcr_system_reset(void)
 /**
  * zynq_slcr_write - Write to a register in SLCR block
  *
- * @offset:	Register offset in SLCR block
  * @val:	Value to write to the register
- **/
+ * @offset:	Register offset in SLCR block
+ */
 void zynq_slcr_write(u32 val, u32 offset)
 {
 	writel(val, zynq_slcr_base + offset);
@@ -77,7 +77,7 @@ EXPORT_SYMBOL(zynq_slcr_write);
  * @offset:	Register offset in SLCR block
  *
  * return:	Value read from the SLCR register
- **/
+ */
 u32 zynq_slcr_read(u32 offset)
 {
 	return readl(zynq_slcr_base + offset);
