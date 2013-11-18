@@ -47,6 +47,7 @@ static void __iomem *zynq_slcr_base_priv;
 #define SLCR_CAN_MIOCLK_CTRL		(zynq_slcr_base_priv + 0x160)
 #define SLCR_DBG_CLK_CTRL		(zynq_slcr_base_priv + 0x164)
 #define SLCR_PCAP_CLK_CTRL		(zynq_slcr_base_priv + 0x168)
+#define SLCR_TOPSW_CLK_CTRL		(zynq_slcr_base_priv + 0x16c)
 #define SLCR_FPGA0_CLK_CTRL		(zynq_slcr_base_priv + 0x170)
 #define SLCR_621_TRUE			(zynq_slcr_base_priv + 0x1c4)
 #define SLCR_SWDT_CLK_SEL		(zynq_slcr_base_priv + 0x304)
@@ -106,6 +107,8 @@ unsigned int zynq_clk_suspended;
 static struct clk *armpll_save_parent;
 static struct clk *iopll_save_parent;
 
+#define TOPSW_CLK_CTRL_DIS_MASK	BIT(0)
+
 int zynq_clk_suspend_early(void)
 {
 	int ret;
@@ -132,6 +135,24 @@ void zynq_clk_resume_late(void)
 	clk_set_parent(clks[iopll], iopll_save_parent);
 
 	zynq_clk_suspended = 0;
+}
+
+void zynq_clk_topswitch_enable(void)
+{
+	u32 reg;
+
+	reg = readl(SLCR_TOPSW_CLK_CTRL);
+	reg &= ~TOPSW_CLK_CTRL_DIS_MASK;
+	writel(reg, SLCR_TOPSW_CLK_CTRL);
+}
+
+void zynq_clk_topswitch_disable(void)
+{
+	u32 reg;
+
+	reg = readl(SLCR_TOPSW_CLK_CTRL);
+	reg |= TOPSW_CLK_CTRL_DIS_MASK;
+	writel(reg, SLCR_TOPSW_CLK_CTRL);
 }
 #endif
 
