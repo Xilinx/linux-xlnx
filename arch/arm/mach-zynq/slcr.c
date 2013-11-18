@@ -16,15 +16,12 @@
 
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/platform_device.h>
-#include <linux/slab.h>
 #include <linux/of_address.h>
 #include <linux/clk/zynq.h>
 #include "common.h"
 
 /* register offsets */
 #define SLCR_UNLOCK_OFFSET		0x8   /* SCLR unlock register */
-#define SLCR_UNLOCK_MAGIC		0xDF0D
 
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
 #define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
