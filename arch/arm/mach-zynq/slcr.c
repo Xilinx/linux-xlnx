@@ -16,9 +16,9 @@
 
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of_address.h>
 #include <linux/clk/zynq.h>
 #include "common.h"
 
@@ -27,13 +27,14 @@
 #define SLCR_UNLOCK_MAGIC		0xDF0D
 
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
-#define SLCR_A9_CPU_CLKSTOP		0x10
-#define SLCR_A9_CPU_RST			0x1
-
 #define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define SLCR_A9_CPU_RST_CTRL_OFFSET	0x244 /* CPU Software Reset Control */
 #define SLCR_REBOOT_STATUS_OFFSET	0x258 /* PS Reboot Status */
 #define SLCR_LVL_SHFTR_EN_OFFSET	0x900 /* Level Shifters Enable */
+
+#define SLCR_UNLOCK_MAGIC		0xDF0D
+#define SLCR_A9_CPU_CLKSTOP		0x10
+#define SLCR_A9_CPU_RST			0x1
 
 void __iomem *zynq_slcr_base;
 

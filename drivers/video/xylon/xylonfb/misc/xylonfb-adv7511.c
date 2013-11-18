@@ -316,6 +316,8 @@ static void xylonfb_adv7511_notify(struct v4l2_subdev *sd,
 	}
 }
 
+extern struct v4l2_subdev *adv7511_subdev(struct v4l2_subdev *sd);
+
 int xylonfb_adv7511_register(struct fb_info *fbi)
 {
 	struct v4l2_subdev *sd;

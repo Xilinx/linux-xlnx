@@ -1,8 +1,7 @@
 /*
  * Analog Devices ADV7511 HDMI Transmitter Device Driver
  *
- * Copyright 2012 Cisco Systems, Inc. and/or its affiliates.
- * All rights reserved.
+ * Copyright 2013 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
  *
  * This program is free software; you may redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +24,7 @@
 #define ADV7511_MONITOR_DETECT 0
 #define ADV7511_EDID_DETECT 1
 
+
 struct adv7511_monitor_detect {
 	int present;
 };
@@ -34,13 +34,15 @@ struct adv7511_edid_detect {
 	int segment;
 };
 
-struct adv7511_platform_data {
-	uint8_t edid_addr;
-	/* I/O expander on ADI adv7511 ez-extender board */
-	uint8_t i2c_ex;
+struct adv7511_cec_arg {
+	void *arg;
+	u32 f_flags;
 };
 
-
-extern struct v4l2_subdev *adv7511_subdev(struct v4l2_subdev *sd);
+struct adv7511_platform_data {
+	uint8_t i2c_edid;
+	uint8_t i2c_cec;
+	uint32_t cec_clk;
+};
 
 #endif

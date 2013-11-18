@@ -21,9 +21,7 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/slab.h>
-#include <linux/clk-provider.h>
-
-#include <asm/sched_clock.h>
+#include <linux/sched_clock.h>
 
 /*
  * This driver configures the 2 16-bit count-up timers as follows:

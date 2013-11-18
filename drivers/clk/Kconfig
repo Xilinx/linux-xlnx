@@ -27,7 +27,7 @@ config COMMON_CLK_DEBUG
 	bool "DebugFS representation of clock tree"
 	select DEBUG_FS
 	---help---
-	  Creates a directory hierchy in debugfs for visualizing the clk
+	  Creates a directory hierarchy in debugfs for visualizing the clk
 	  tree structure.  Each directory contains read-only members
 	  that export information specific to that clk node: clk_rate,
 	  clk_flags, clk_prepare_count, clk_enable_count &
@@ -73,6 +73,12 @@ config COMMON_CLK_SI570
 	---help---
 	  This driver supports Silicon Labs 570/571/598/599 programmable
 	  clock generators.
+
+config COMMON_CLK_S2MPS11
+	tristate "Clock driver for S2MPS11 MFD"
+	depends on MFD_SEC_CORE
+	---help---
+	  This driver supports S2MPS11 crystal oscillator clock.
 
 config CLK_TWL6040
 	tristate "External McPDM functional clock from twl6040"

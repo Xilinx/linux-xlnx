@@ -40,7 +40,6 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_i2c.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
@@ -897,8 +896,6 @@ static int xi2cps_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
 		goto err_clk_dis;
 	}
-
-	of_i2c_register_devices(&id->adap);
 
 	dev_info(&pdev->dev, "%d kHz mmio %08lx irq %d\n",
 		 id->i2c_clk/1000, (unsigned long)r_mem->start, id->irq);

@@ -41,7 +41,6 @@
 #include <linux/i2c-xiic.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#include <linux/of_i2c.h>
 
 #define DRIVER_NAME "xiic-i2c"
 
@@ -742,8 +741,6 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 		for (i = 0; i < pdata->num_devices; i++)
 			i2c_new_device(&i2c->adap, pdata->devices + i);
 	}
-
-	of_i2c_register_devices(&i2c->adap);
 
 	return 0;
 }
