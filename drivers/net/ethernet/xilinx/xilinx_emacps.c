@@ -688,18 +688,15 @@ static void xemacps_adjust_link(struct net_device *ndev)
 				gmii2rgmii_reg |= XEMACPS_GMII2RGMII_SPEED1000;
 				xemacps_set_freq(lp->devclk, 125000000,
 						&lp->pdev->dev);
-			}
-			else if (phydev->speed == SPEED_100) {
+			} else if (phydev->speed == SPEED_100) {
 				regval |= XEMACPS_NWCFG_100_MASK;
 				gmii2rgmii_reg |= XEMACPS_GMII2RGMII_SPEED100;
 				xemacps_set_freq(lp->devclk, 25000000,
 						&lp->pdev->dev);
-			}
-			else if (phydev->speed == SPEED_10) {
+			} else if (phydev->speed == SPEED_10) {
 				xemacps_set_freq(lp->devclk, 2500000,
 						&lp->pdev->dev);
-			}
-			else {
+			} else {
 				dev_err(&lp->pdev->dev,
 					"%s: unknown PHY speed %d\n",
 					__func__, phydev->speed);
@@ -2030,7 +2027,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		return NETDEV_TX_BUSY;
 	}
 
-	if(xemacps_clear_csum(skb,ndev)) {
+	if (xemacps_clear_csum(skb, ndev)) {
 		spin_unlock_bh(&lp->tx_lock);
 		kfree(skb);
 		return NETDEV_TX_OK;
