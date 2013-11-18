@@ -131,10 +131,10 @@
 			mdio {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				phy0: phy@7 {
+				phy0: phy@0 {
 					compatible = "marvell,88e1510";
 					device_type = "ethernet-phy";
-					reg = <7>;
+					reg = <0>;
 				} ;
 			} ;
 		} ;
