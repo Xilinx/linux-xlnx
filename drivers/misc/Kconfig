@@ -4,6 +4,10 @@
 
 menu "Misc devices"
 
+config AXI_COPROCESSOR_INTERFACE
+	tristate "Axi coprocessor interface"
+	default m
+
 config SENSORS_LIS3LV02D
 	tristate
 	depends on INPUT
