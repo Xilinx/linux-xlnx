@@ -91,9 +91,9 @@ static int zynq_pm_suspend(unsigned long arg)
 	}
 
 	/* Topswitch clock stop disable */
-	reg = xslcr_read(SLCR_TOPSW_CLK_CTRL);
+	reg = zynq_slcr_read(SLCR_TOPSW_CLK_CTRL);
 	reg |= TOPSW_CLK_CTRL_DIS_MASK;
-	xslcr_write(reg, SLCR_TOPSW_CLK_CTRL);
+	zynq_slcr_write(reg, SLCR_TOPSW_CLK_CTRL);
 
 	/* A9 clock gating */
 	asm volatile ("mrc  p15, 0, r12, c15, c0, 0\n"
@@ -147,9 +147,9 @@ static int zynq_pm_suspend(unsigned long arg)
 	}
 
 	/* Topswitch clock stop disable */
-	reg = xslcr_read(SLCR_TOPSW_CLK_CTRL);
+	reg = zynq_slcr_read(SLCR_TOPSW_CLK_CTRL);
 	reg &= ~TOPSW_CLK_CTRL_DIS_MASK;
-	xslcr_write(reg, SLCR_TOPSW_CLK_CTRL);
+	zynq_slcr_write(reg, SLCR_TOPSW_CLK_CTRL);
 
 	/* SCU standby mode */
 	if (zynq_scu_base) {

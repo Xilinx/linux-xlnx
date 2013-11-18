@@ -63,60 +63,60 @@ void zynq_slcr_system_reset(void)
 }
 
 /**
- * xslcr_write - Write to a register in SLCR block
+ * zynq_slcr_write - Write to a register in SLCR block
  *
  * @offset:	Register offset in SLCR block
  * @val:	Value to write to the register
  **/
-void xslcr_write(u32 val, u32 offset)
+void zynq_slcr_write(u32 val, u32 offset)
 {
 	writel(val, zynq_slcr_base + offset);
 }
-EXPORT_SYMBOL(xslcr_write);
+EXPORT_SYMBOL(zynq_slcr_write);
 
 /**
- * xslcr_read - Read a register in SLCR block
+ * zynq_slcr_read - Read a register in SLCR block
  *
  * @offset:	Register offset in SLCR block
  *
  * return:	Value read from the SLCR register
  **/
-u32 xslcr_read(u32 offset)
+u32 zynq_slcr_read(u32 offset)
 {
 	return readl(zynq_slcr_base + offset);
 }
-EXPORT_SYMBOL(xslcr_read);
+EXPORT_SYMBOL(zynq_slcr_read);
 
 /**
- * xslcr_init_preload_fpga - Disable communication from the PL to PS.
+ * zynq_slcr_init_preload_fpga - Disable communication from the PL to PS.
  */
-void xslcr_init_preload_fpga(void)
+void zynq_slcr_init_preload_fpga(void)
 {
 
 	/* Assert FPGA top level output resets */
-	xslcr_write(0xF, SLCR_FPGA_RST_CTRL_OFFSET);
+	zynq_slcr_write(0xF, SLCR_FPGA_RST_CTRL_OFFSET);
 
 	/* Disable level shifters */
-	xslcr_write(0, SLCR_LVL_SHFTR_EN_OFFSET);
+	zynq_slcr_write(0, SLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Enable output level shifters */
-	xslcr_write(0xA, SLCR_LVL_SHFTR_EN_OFFSET);
+	zynq_slcr_write(0xA, SLCR_LVL_SHFTR_EN_OFFSET);
 }
-EXPORT_SYMBOL(xslcr_init_preload_fpga);
+EXPORT_SYMBOL(zynq_slcr_init_preload_fpga);
 
 /**
- * xslcr_init_postload_fpga - Re-enable communication from the PL to PS.
+ * zynq_slcr_init_postload_fpga - Re-enable communication from the PL to PS.
  */
-void xslcr_init_postload_fpga(void)
+void zynq_slcr_init_postload_fpga(void)
 {
 
 	/* Enable level shifters */
-	xslcr_write(0xf, SLCR_LVL_SHFTR_EN_OFFSET);
+	zynq_slcr_write(0xf, SLCR_LVL_SHFTR_EN_OFFSET);
 
 	/* Deassert AXI interface resets */
-	xslcr_write(0, SLCR_FPGA_RST_CTRL_OFFSET);
+	zynq_slcr_write(0, SLCR_FPGA_RST_CTRL_OFFSET);
 }
-EXPORT_SYMBOL(xslcr_init_postload_fpga);
+EXPORT_SYMBOL(zynq_slcr_init_postload_fpga);
 
 /**
  * zynq_slcr_cpu_start - Start cpu
