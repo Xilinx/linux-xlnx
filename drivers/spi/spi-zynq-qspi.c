@@ -63,10 +63,15 @@
  * This register contains various control bits that effect the operation
  * of the QSPI controller
  */
+#define XQSPIPS_CONFIG_IFMODE_MASK	0x80000000 /* Flash Memory Interface */
 #define XQSPIPS_CONFIG_MANSRT_MASK	0x00010000 /* Manual TX Start */
+#define XQSPIPS_CONFIG_MANSRTEN_MASK	0x00008000 /* Enable Manual TX Mode */
+#define XQSPIPS_CONFIG_SSFORCE_MASK	0x00004000 /* Manual Chip Select */
+#define XQSPIPS_CONFIG_BDRATE_MASK	0x00000038 /* Baud Rate Divisor Mask */
 #define XQSPIPS_CONFIG_CPHA_MASK	0x00000004 /* Clock Phase Control */
 #define XQSPIPS_CONFIG_CPOL_MASK	0x00000002 /* Clock Polarity Control */
 #define XQSPIPS_CONFIG_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define XQSPIPS_CONFIG_MSTREN_MASK	0x00000001 /* Master Mode */
 
 /*
  * QSPI Interrupt Registers bit Masks
@@ -99,6 +104,7 @@
 #define XQSPIPS_LCFG_DUMMY_SHIFT	8
 
 #define XQSPIPS_FAST_READ_QOUT_CODE	0x6B	/* read instruction code */
+#define XQSPIPS_FIFO_DEPTH		63	/* FIFO depth in words */
 
 /*
  * The modebits configurable by the driver to make the SPI support different
@@ -273,8 +279,16 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 
 	xqspips_write(regs_base + XQSPIPS_STATUS_OFFSET , 0x7F);
 	config_reg = xqspips_read(regs_base + XQSPIPS_CONFIG_OFFSET);
-	config_reg &= 0xFBFFFFFF; /* Set little endian mode of TX FIFO */
-	config_reg |= 0x8000FCC1;
+	config_reg &= ~(XQSPIPS_CONFIG_MSTREN_MASK |
+			XQSPIPS_CONFIG_CPOL_MASK |
+			XQSPIPS_CONFIG_CPHA_MASK |
+			XQSPIPS_CONFIG_BDRATE_MASK |
+			XQSPIPS_CONFIG_SSFORCE_MASK |
+			XQSPIPS_CONFIG_MANSRTEN_MASK |
+			XQSPIPS_CONFIG_MANSRT_MASK);
+	config_reg |= (XQSPIPS_CONFIG_MSTREN_MASK |
+			XQSPIPS_CONFIG_SSFORCE_MASK |
+			XQSPIPS_CONFIG_IFMODE_MASK);
 	xqspips_write(regs_base + XQSPIPS_CONFIG_OFFSET, config_reg);
 
 	if (is_dual == 1)
@@ -497,9 +511,10 @@ static int xqspips_setup(struct spi_device *qspi)
 static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
 {
 	u32 data = 0;
+	u32 fifocount;
 
-	while ((!(xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET) &
-		XQSPIPS_IXR_TXFULL_MASK)) && (xqspi->bytes_to_transfer >= 4)) {
+	for (fifocount = 0; (fifocount < XQSPIPS_FIFO_DEPTH) &&
+			(xqspi->bytes_to_transfer >= 4); fifocount++) {
 		xqspips_copy_write_data(xqspi, &data, 4);
 		xqspips_write(xqspi->regs + XQSPIPS_TXD_00_00_OFFSET, data);
 	}
@@ -522,6 +537,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 	u32 intr_status;
 	u8 offset[3] =	{XQSPIPS_TXD_00_01_OFFSET, XQSPIPS_TXD_00_10_OFFSET,
 		XQSPIPS_TXD_00_11_OFFSET};
+	u32 rxcount;
 
 	intr_status = xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET);
 	xqspips_write(xqspi->regs + XQSPIPS_STATUS_OFFSET , intr_status);
@@ -533,12 +549,13 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		/* This bit is set when Tx FIFO has < THRESHOLD entries. We have
 		   the THRESHOLD value set to 1, so this bit indicates Tx FIFO
 		   is empty */
-		u32 config_reg;
 		u32 data;
 
+		rxcount = xqspi->bytes_to_receive - xqspi->bytes_to_transfer;
+		rxcount = (rxcount % 4) ? ((rxcount/4) + 1) : (rxcount/4);
+
 		/* Read out the data from the RX FIFO */
-		while (xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET) &
-			XQSPIPS_IXR_RXNEMTY_MASK) {
+		while (rxcount) {
 
 			data = xqspips_read(xqspi->regs + XQSPIPS_RXD_OFFSET);
 
@@ -547,6 +564,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 					xqspi->bytes_to_receive);
 			else
 				xqspips_copy_read_data(xqspi, data, 4);
+			rxcount--;
 		}
 
 		if (xqspi->bytes_to_transfer) {
@@ -567,15 +585,6 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 			}
 			xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 					XQSPIPS_IXR_ALL_MASK);
-
-			spin_lock(&xqspi->config_reg_lock);
-			config_reg = xqspips_read(xqspi->regs +
-						XQSPIPS_CONFIG_OFFSET);
-
-			config_reg |= XQSPIPS_CONFIG_MANSRT_MASK;
-			xqspips_write(xqspi->regs + XQSPIPS_CONFIG_OFFSET,
-				config_reg);
-			spin_unlock(&xqspi->config_reg_lock);
 		} else {
 			/* If transfer and receive is completed then only send
 			 * complete signal */
@@ -583,10 +592,10 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 				/* There is still some data to be received.
 				   Enable Rx not empty interrupt */
 				xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
-						XQSPIPS_IXR_RXNEMTY_MASK);
+						XQSPIPS_IXR_ALL_MASK);
 			} else {
 				xqspips_write(xqspi->regs + XQSPIPS_IDIS_OFFSET,
-						XQSPIPS_IXR_RXNEMTY_MASK);
+						XQSPIPS_IXR_ALL_MASK);
 				complete(&xqspi->done);
 			}
 		}
@@ -610,8 +619,6 @@ static int xqspips_start_transfer(struct spi_device *qspi,
 			struct spi_transfer *transfer)
 {
 	struct xqspips *xqspi = spi_master_get_devdata(qspi->master);
-	u32 config_reg;
-	unsigned long flags;
 	u32 data = 0;
 	u8 instruction = 0;
 	u8 index;
@@ -666,12 +673,6 @@ xfer_data:
 xfer_start:
 	xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
 			XQSPIPS_IXR_ALL_MASK);
-	/* Start the transfer by enabling manual start bit */
-	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
-	config_reg = xqspips_read(xqspi->regs +
-			XQSPIPS_CONFIG_OFFSET) | XQSPIPS_CONFIG_MANSRT_MASK;
-	xqspips_write(xqspi->regs + XQSPIPS_CONFIG_OFFSET, config_reg);
-	spin_unlock_irqrestore(&xqspi->config_reg_lock, flags);
 
 	wait_for_completion(&xqspi->done);
 
