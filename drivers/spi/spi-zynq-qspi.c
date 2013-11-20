@@ -82,7 +82,8 @@
 #define XQSPIPS_IXR_TXNFULL_MASK	0x00000004 /* QSPI TX FIFO Overflow */
 #define XQSPIPS_IXR_TXFULL_MASK		0x00000008 /* QSPI TX FIFO is full */
 #define XQSPIPS_IXR_RXNEMTY_MASK	0x00000010 /* QSPI RX FIFO Not Empty */
-#define XQSPIPS_IXR_ALL_MASK		(XQSPIPS_IXR_TXNFULL_MASK)
+#define XQSPIPS_IXR_ALL_MASK		(XQSPIPS_IXR_TXNFULL_MASK | \
+					XQSPIPS_IXR_RXNEMTY_MASK)
 
 /*
  * QSPI Enable Register bit Masks
@@ -105,6 +106,7 @@
 
 #define XQSPIPS_FAST_READ_QOUT_CODE	0x6B	/* read instruction code */
 #define XQSPIPS_FIFO_DEPTH		63	/* FIFO depth in words */
+#define XQSPIPS_RX_THRESHOLD		32	/* Rx FIFO threshold level */
 
 /*
  * The modebits configurable by the driver to make the SPI support different
@@ -291,6 +293,8 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 			XQSPIPS_CONFIG_IFMODE_MASK);
 	xqspips_write(regs_base + XQSPIPS_CONFIG_OFFSET, config_reg);
 
+	xqspips_write(regs_base + XQSPIPS_RX_THRESH_OFFSET,
+				XQSPIPS_RX_THRESHOLD);
 	if (is_dual == 1)
 		/* Enable two memories on seperate buses */
 		xqspips_write(regs_base + XQSPIPS_LINEAR_CFG_OFFSET,
@@ -507,12 +511,13 @@ static int xqspips_setup(struct spi_device *qspi)
 /**
  * xqspips_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
  * @xqspi:	Pointer to the xqspips structure
+ * @size:	Size of the fifo to be filled
  */
-static void xqspips_fill_tx_fifo(struct xqspips *xqspi)
+static void xqspips_fill_tx_fifo(struct xqspips *xqspi, u32 size)
 {
 	u32 fifocount;
 
-	for (fifocount = 0; (fifocount < XQSPIPS_FIFO_DEPTH) &&
+	for (fifocount = 0; (fifocount < size) &&
 			(xqspi->bytes_to_transfer >= 4); fifocount++) {
 		if (xqspi->txbuf) {
 			xqspips_write(xqspi->regs + XQSPIPS_TXD_00_00_OFFSET,
@@ -546,6 +551,7 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 	u8 offset[3] =	{XQSPIPS_TXD_00_01_OFFSET, XQSPIPS_TXD_00_10_OFFSET,
 		XQSPIPS_TXD_00_11_OFFSET};
 	u32 rxcount;
+	u32 rxindex = 0;
 
 	intr_status = xqspips_read(xqspi->regs + XQSPIPS_STATUS_OFFSET);
 	xqspips_write(xqspi->regs + XQSPIPS_STATUS_OFFSET , intr_status);
@@ -563,7 +569,8 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 		rxcount = (rxcount % 4) ? ((rxcount/4) + 1) : (rxcount/4);
 
 		/* Read out the data from the RX FIFO */
-		while (rxcount) {
+		while ((rxindex < rxcount) &&
+				(rxindex < XQSPIPS_RX_THRESHOLD)) {
 
 			if (xqspi->bytes_to_receive < 4 && !xqspi->is_dual) {
 				data = xqspips_read(xqspi->regs +
@@ -584,13 +591,14 @@ static irqreturn_t xqspips_irq(int irq, void *dev_id)
 				if (xqspi->bytes_to_receive < 0)
 					xqspi->bytes_to_receive = 0;
 			}
-			rxcount--;
+			rxindex++;
 		}
 
 		if (xqspi->bytes_to_transfer) {
 			if (xqspi->bytes_to_transfer >= 4) {
 				/* There is more data to send */
-				xqspips_fill_tx_fifo(xqspi);
+				xqspips_fill_tx_fifo(xqspi,
+						XQSPIPS_RX_THRESHOLD);
 			} else {
 				int tmp;
 				tmp = xqspi->bytes_to_transfer;
@@ -688,7 +696,7 @@ xfer_data:
 	      (instruction != XQSPIPS_FLASH_OPCODE_FAST_READ) &&
 	      (instruction != XQSPIPS_FLASH_OPCODE_DUAL_READ) &&
 	      (instruction != XQSPIPS_FLASH_OPCODE_QUAD_READ)))
-		xqspips_fill_tx_fifo(xqspi);
+		xqspips_fill_tx_fifo(xqspi, XQSPIPS_FIFO_DEPTH);
 
 xfer_start:
 	xqspips_write(xqspi->regs + XQSPIPS_IEN_OFFSET,
