@@ -141,7 +141,7 @@ struct pci_controller *pci_find_hose_for_OF_device(struct device_node *node)
 	return NULL;
 }
 
-void pcibios_set_master(struct pci_dev *dev)
+void __weak pcibios_set_master(struct pci_dev *dev)
 {
 	/* No special bus mastering setup handling */
 }
