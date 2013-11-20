@@ -143,8 +143,8 @@
 /*
  * Macros for the QSPI controller read/write
  */
-#define xqspips_read(addr)		readl(addr)
-#define xqspips_write(addr, val)	writel((val), (addr))
+#define xqspips_read(addr)		readl_relaxed(addr)
+#define xqspips_write(addr, val)	writel_relaxed((val), (addr))
 
 /**
  * struct xqspips - Defines qspi driver instance
