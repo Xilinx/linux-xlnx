@@ -187,7 +187,7 @@ int pcibios_add_platform_entries(struct pci_dev *pdev)
 	return device_create_file(&pdev->dev, &dev_attr_devspec);
 }
 
-void pcibios_set_master(struct pci_dev *dev)
+void __weak pcibios_set_master(struct pci_dev *dev)
 {
 	/* No special bus mastering setup handling */
 }
