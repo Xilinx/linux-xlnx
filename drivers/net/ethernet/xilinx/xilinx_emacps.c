@@ -2740,7 +2740,7 @@ err_out_unregister_netdev:
 	unregister_netdev(ndev);
 err_out_free_netdev:
 	free_netdev(ndev);
-	platform_set_drvdata(pdev, NULL);
+
 	return rc;
 }
 
