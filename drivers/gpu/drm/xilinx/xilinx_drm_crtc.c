@@ -281,7 +281,8 @@ static void xilinx_drm_crtc_finish_page_flip(struct drm_crtc *base_crtc)
 /* page flip functions */
 static int xilinx_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 				     struct drm_framebuffer *fb,
-				     struct drm_pending_vblank_event *event)
+				     struct drm_pending_vblank_event *event,
+				     uint32_t page_flip_flags)
 {
 	struct xilinx_drm_crtc *crtc = to_xilinx_crtc(base_crtc);
 	struct drm_device *drm = base_crtc->dev;

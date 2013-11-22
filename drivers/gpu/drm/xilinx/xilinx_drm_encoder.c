@@ -25,7 +25,6 @@
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/of.h>
-#include <linux/of_i2c.h>
 #include <linux/platform_device.h>
 
 #include "xilinx_drm_drv.h"

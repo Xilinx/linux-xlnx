@@ -299,7 +299,6 @@ static const struct file_operations xilinx_drm_fops = {
 	.unlocked_ioctl	= drm_ioctl,
 	.mmap		= drm_gem_cma_mmap,
 	.poll		= drm_poll,
-	.fasync		= drm_fasync,
 	.read		= drm_read,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= drm_compat_ioctl,
@@ -332,7 +331,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.gem_vm_ops			= &drm_gem_cma_vm_ops,
 	.dumb_create			= drm_gem_cma_dumb_create,
 	.dumb_map_offset		= drm_gem_cma_dumb_map_offset,
-	.dumb_destroy			= drm_gem_cma_dumb_destroy,
+	.dumb_destroy			= drm_gem_dumb_destroy,
 
 	.fops				= &xilinx_drm_fops,
 
