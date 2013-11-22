@@ -544,6 +544,7 @@
 			osd = <&osd_0>;
 			vtc = <&vtc_0>;
 			encoder-slave = <&adv7511>;
+			clocks = <&si570>;
 			planes {
 				plane0 {
 					dmas = <&axi_vdma_0 0>;
