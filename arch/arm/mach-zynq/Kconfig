@@ -14,7 +14,6 @@ config ARCH_ZYNQ
 	select SPARSE_IRQ
 	select CACHE_L2X0
 	select ARCH_REQUIRE_GPIOLIB
-	select COMMON_CLK
 	select ARCH_HAS_CPUFREQ
 	select ARCH_HAS_OPP
 	select MIGHT_HAVE_PCI
