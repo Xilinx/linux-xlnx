@@ -37,10 +37,6 @@
 #include <linux/dma-mapping.h>
 #include "gadget_chips.h"
 
-/* DEBUG utilities */
-#define  DEBUG
-#define  VERBOSE_DEBUG
-
 /* Register offsets for the USB device.*/
 #define XUSB_EP0_CONFIG_OFFSET		0x0000  /* EP0 Config Reg Offset */
 #define XUSB_SETUP_PKT_ADDR_OFFSET	0x0080  /* Setup Packet Address */
