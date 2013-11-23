@@ -1229,11 +1229,10 @@ static struct uart_driver xuartps_uart_driver = {
  **/
 static int xuartps_probe(struct platform_device *pdev)
 {
-	int rc;
 	struct uart_port *port;
 	struct resource *res, *res2;
 	unsigned int clk = 0;
-	int ret = 0;
+	int ret;
 	int id = 0;
 
 	struct xuartps *xuartps;
@@ -1302,13 +1301,12 @@ static int xuartps_probe(struct platform_device *pdev)
 		port->private_data = xuartps;
 		xuartps->port = port;
 		platform_set_drvdata(pdev, port);
-		rc = uart_add_one_port(&xuartps_uart_driver, port);
-		if (rc) {
+		ret = uart_add_one_port(&xuartps_uart_driver, port);
+		if (ret) {
 			dev_err(&pdev->dev,
-				"uart_add_one_port() failed; err=%i\n", rc);
+				"uart_add_one_port() failed; err=%i\n", ret);
 			port->private_data = NULL;
 			xuartps->port = NULL;
-			ret = rc;
 			goto err_out_clk_dis;
 		}
 		return 0;
