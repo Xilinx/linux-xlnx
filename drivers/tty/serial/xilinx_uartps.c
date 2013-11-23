@@ -164,7 +164,6 @@ MODULE_PARM_DESC (rx_timeout, "Rx timeout, 1-255");
 #define XUARTPS_SR_RXTRIG	0x00000001 /* Rx Trigger */
 
 struct xuartps {
-	int			uartnum;
 	struct uart_port	*port;
 	unsigned int		baud;
 	struct clk		*devclk;
@@ -1256,10 +1255,6 @@ static int xuartps_probe(struct platform_device *pdev)
 
 	port = xuartps_get_port(id);
 	xuartps = devm_kzalloc(&pdev->dev, sizeof(*xuartps), GFP_KERNEL);
-	if (res2->start == 59)
-		xuartps->uartnum = 0;
-	else
-		xuartps->uartnum = 1;
 
 	xuartps->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 	if (IS_ERR(xuartps->aperclk)) {
