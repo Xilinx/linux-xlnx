@@ -1,0 +1,17 @@
+Device tree bindings for Zynq's OCM Controller
+
+The OCM is divided to 4 64kB segments which can be separately configured
+to low or high location. Location is controlled via SLCR.
+
+Required properties:
+ compatible: Compatibility string. Must be "xlnx,zynq-ocmc-1.0".
+ reg: Specify the base and size of the OCM controller registers
+      in the memory map. E.g.: reg = <0xf800c000 0x1000>;
+
+Example:
+ocmc: ocmc@f800c000 {
+	compatible = "xlnx,zynq-ocmc-1.0";
+	interrupt-parent = <&intc>;
+	interrupts = <0 3 4>;
+	reg = <0xf800c000 0x1000>;
+} ;
