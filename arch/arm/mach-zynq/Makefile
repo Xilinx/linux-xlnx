@@ -3,7 +3,7 @@
 #
 
 # Common support
-obj-y				:= common.o slcr.o
+obj-y				:= common.o slcr.o zynq_ocm.o
 
 obj-$(CONFIG_PCI_MSI)           += xaxipcie-msi.o
 CFLAGS_REMOVE_hotplug.o		=-march=armv6k

@@ -23,10 +23,12 @@
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
 #include <linux/err.h>
+#include <linux/genalloc.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/slab.h>
 #include <linux/suspend.h>
 #include <asm/cacheflush.h>
@@ -60,13 +62,7 @@ static int zynq_pm_suspend(unsigned long arg)
 {
 	u32 reg;
 	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *);
-	void *ocm_swap_area;
 	int do_ddrpll_bypass = 1;
-
-	/* Allocate some space for temporary OCM storage */
-	ocm_swap_area = kmalloc(zynq_sys_suspend_sz, GFP_ATOMIC);
-	if (!ocm_swap_area)
-		do_ddrpll_bypass = 0;
 
 	/* Enable DDR self-refresh and clock stop */
 	if (ddrc_base) {
@@ -99,12 +95,7 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : /* no inputs */
 		      : "r12");
 
-
-	if (ocm_swap_area && ocm_base) {
-		/* Backup a small area of OCM used for the suspend code */
-		memcpy(ocm_swap_area, (__force void *)ocm_base,
-			zynq_sys_suspend_sz);
-
+	if (ocm_base) {
 		/*
 		 * Copy code to suspend system into OCM. The suspend code
 		 * needs to run from OCM as DRAM may no longer be available
@@ -133,13 +124,6 @@ static int zynq_pm_suspend(unsigned long arg)
 	} else {
 		WARN_ONCE(1, "DRAM self-refresh not available\n");
 		cpu_do_idle();
-	}
-
-	/* Restore original OCM contents */
-	if (do_ddrpll_bypass) {
-		memcpy((__force void *)ocm_base, ocm_swap_area,
-			zynq_sys_suspend_sz);
-		kfree(ocm_swap_area);
 	}
 
 	/* Topswitch clock stop enable */
@@ -230,18 +214,45 @@ static void __iomem *zynq_pm_ioremap(const char *comp)
 static void __iomem *zynq_pm_remap_ocm(void)
 {
 	struct device_node *np;
-	struct resource res;
-	const char *comp = "xlnx,ps7-ocm";
+	const char *comp = "xlnx,zynq-ocm-1.0";
 	void __iomem *base = NULL;
 
 	np = of_find_compatible_node(NULL, NULL, comp);
 	if (np) {
-		if (of_address_to_resource(np, 0, &res))
-			return NULL;
-		WARN_ON(!request_mem_region(res.start, resource_size(&res),
-					"OCM"));
-		base = __arm_ioremap(res.start, resource_size(&res), MT_MEMORY);
+		struct device *dev;
+		unsigned long pool_addr;
+		unsigned long pool_addr_virt;
+		struct gen_pool *pool;
+
 		of_node_put(np);
+
+		dev = &(of_find_device_by_node(np)->dev);
+
+		/* Get OCM pool from device tree or platform data */
+		pool = dev_get_gen_pool(dev);
+		if (!pool) {
+			pr_warn("%s: OCM pool is not available\n", __func__);
+			return NULL;
+		}
+
+		pool_addr_virt = gen_pool_alloc(pool, zynq_sys_suspend_sz);
+		if (!pool_addr_virt) {
+			pr_warn("%s: Can't get OCM poll\n", __func__);
+			return NULL;
+		}
+		pool_addr = gen_pool_virt_to_phys(pool, pool_addr_virt);
+		if (!pool_addr) {
+			pr_warn("%s: Can't get physical address of OCM pool\n",
+				__func__);
+			return NULL;
+		}
+		base = __arm_ioremap(pool_addr, zynq_sys_suspend_sz, MT_MEMORY);
+		if (!base) {
+			pr_warn("%s: IOremap OCM pool failed\n", __func__);
+			return NULL;
+		}
+		pr_debug("%s: Remap OCM %s from %lx to %lx\n", __func__, comp,
+			 pool_addr_virt, (unsigned long)base);
 	} else {
 		pr_warn("%s: no compatible node found for '%s'\n", __func__,
 				comp);

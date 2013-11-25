@@ -1,0 +1,17 @@
+Device tree bindings for Zynq's OCM
+
+The OCM is divided to 4 64kB segments which can be separately configured
+to low or high location. Location is controlled via SLCR.
+
+Required properties:
+ compatible: Compatibility string. Must be "xlnx,zynq-ocm-1.0".
+ reg: Specify the base and size of the OCM registers in the memory map.
+      E.g.: reg = <0xf800c000 0x1000>;
+
+Example:
+ps7_ram_0: ps7-ram@f800c000 {
+	compatible = "xlnx,zynq-ocm-1.0";
+	reg = <0xf800c000 0x1000>;
+	interrupt-parent = <&ps7_scugic_0>;
+	interrupts = <0 3 4>;
+} ;

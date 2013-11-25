@@ -246,6 +246,12 @@
 			compatible = "xlnx,ps7-iop-bus-config-1.00.a";
 			reg = <0xe0200000 0x1000>;
 		} ;
+		ps7_ocmc_0: ps7-ocmc@f800c000 {
+			compatible = "xlnx,ps7-ocmc-1.00.a", "xlnx,zynq-ocm-1.0";
+			interrupt-parent = <&ps7_scugic_0>;
+			interrupts = <0 3 4>;
+			reg = <0xf800c000 0x1000>;
+		} ;
 		ps7_pl310_0: ps7-pl310@f8f02000 {
 			arm,data-latency = <3 2 2>;
 			arm,tag-latency = <2 2 2>;
@@ -303,12 +309,6 @@
 			clocks = <&clkc 10>, <&clkc 43>;
 			compatible = "xlnx,ps7-qspi-linear-1.00.a";
 			reg = <0xfc000000 0x1000000>;
-		} ;
-		ps7_ram_0: ps7-ram@0 {
-			compatible = "xlnx,ps7-ram-1.00.a", "xlnx,ps7-ocm";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 3 4>;
-			reg = <0xfffc0000 0x40000>;
 		} ;
 		ps7_scugic_0: ps7-scugic@f8f01000 {
 			#address-cells = <2>;
