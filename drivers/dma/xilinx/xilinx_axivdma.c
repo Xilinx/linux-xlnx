@@ -1001,7 +1001,6 @@ static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
 	vdma_ctrl_clr(chan, XILINX_VDMA_REG_DMACR,
 		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
-	irq_dispose_mapping(chan->irq);
 	list_del(&chan->common.device_node);
 }
 
@@ -1120,7 +1119,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	return 0;
 
 error:
-	irq_dispose_mapping(chan->irq);
 	return err;
 }
 
