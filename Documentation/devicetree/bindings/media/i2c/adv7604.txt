@@ -1,0 +1,56 @@
+* Analog Devices ADV7604/11 video decoder with HDMI receiver
+
+The ADV7604 and ADV7611 are multiformat video decoders with an integrated HDMI
+receiver. The ADV7604 has four multiplexed HDMI inputs and one analog input,
+and the ADV7611 has one HDMI input and no analog input.
+
+Required Properties:
+
+  - compatible: Must contain one of the following
+    - "adi,adv7604" for the ADV7604
+    - "adi,adv7611" for the ADV7611
+
+  - reg: I2C slave address
+
+  - hpd-gpios: References to the GPIOs that control the HDMI hot-plug
+    detection pins, one per HDMI input. The active flag indicates the GPIO
+    level that enables hot-plug detection.
+
+Optional Properties:
+
+  - reset-gpios: Reference to the GPIO connected to the device's reset pin.
+
+  - adi,default-input: Index of the input to be configured as default. Valid
+    values are 0..5 for the ADV7604 and 0 for the ADV7611.
+
+  - adi,disable-power-down: Boolean property. When set forces the device to
+    ignore the power-down pin. The property is valid for the ADV7604 only as
+    the ADV7611 has no power-down pin.
+
+  - adi,disable-cable-reset: Boolean property. When set disables the HDMI
+    receiver automatic reset when the HDMI cable is unplugged.
+
+Example:
+
+	hdmi_receiver@4c {
+		compatible = "adi,adv7611";
+		reg = <0x4c>;
+
+		reset-gpios = <&ioexp 0 GPIO_ACTIVE_LOW>;
+		hpd-gpios = <&ioexp 2 GPIO_ACTIVE_HIGH>;
+
+		adi,default-input = <0>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+		};
+		port@1 {
+			reg = <1>;
+			hdmi_in: endpoint {
+				remote-endpoint = <&ccdc_in>;
+			};
+		};
+	};
