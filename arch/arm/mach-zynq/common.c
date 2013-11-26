@@ -122,11 +122,13 @@ static void __init zynq_init_machine(void)
 
 	platform_device_register(&zynq_cpuidle_device);
 	platform_device_register_full(&devinfo);
+
+	zynq_slcr_init();
 }
 
 static void __init zynq_timer_init(void)
 {
-	zynq_slcr_init();
+	zynq_early_slcr_init();
 
 	zynq_clock_init(zynq_slcr_base);
 	clocksource_of_init();

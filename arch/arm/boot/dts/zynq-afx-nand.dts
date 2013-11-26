@@ -170,7 +170,7 @@
 			reg = <0xf8f00620 0xe0>;
 		} ;
 		ps7_slcr_0: ps7-slcr@f8000000 {
-			compatible = "xlnx,ps7-slcr-1.00.a", "xlnx,zynq-slcr";
+			compatible = "xlnx,zynq-slcr", "syscon";
 			reg = <0xf8000000 0x1000>;
 			clocks {
 				#address-cells = <1>;
