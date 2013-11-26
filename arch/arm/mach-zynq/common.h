@@ -15,6 +15,7 @@ extern void zynq_slcr_cpu_stop(int cpu);
 extern void zynq_slcr_cpu_start(int cpu);
 extern bool zynq_slcr_cpu_state_read(int cpu);
 extern void zynq_slcr_cpu_state_write(int cpu, bool die);
+extern u32 zynq_slcr_get_ocm_config(void);
 extern u32 zynq_slcr_get_device_id(void);
 
 extern bool zynq_efuse_cpu_state(int cpu);
