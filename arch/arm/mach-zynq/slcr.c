@@ -100,7 +100,6 @@ u32 zynq_slcr_get_ocm_config(void)
  */
 void zynq_slcr_init_preload_fpga(void)
 {
-
 	/* Assert FPGA top level output resets */
 	zynq_slcr_write(0xF, SLCR_FPGA_RST_CTRL_OFFSET);
 
@@ -117,7 +116,6 @@ EXPORT_SYMBOL(zynq_slcr_init_preload_fpga);
  */
 void zynq_slcr_init_postload_fpga(void)
 {
-
 	/* Enable level shifters */
 	zynq_slcr_write(0xf, SLCR_LVL_SHFTR_EN_OFFSET);
 
