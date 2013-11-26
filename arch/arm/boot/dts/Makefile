@@ -268,6 +268,7 @@ dtb-$(CONFIG_ARCH_ZYNQ) += zynq-zc702.dtb \
 			zynq-zc702-drm-v4l2.dtb \
 			zynq-afx-nand.dtb \
 			zynq-afx-nor.dtb \
+			zynq-cc108.dtb \
 			zynq-zc770-xm010.dtb \
 			zynq-zc770-xm011.dtb \
 			zynq-zc770-xm012.dtb \
