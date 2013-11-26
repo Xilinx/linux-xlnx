@@ -19,9 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
-#include <linux/bitops.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
