@@ -67,7 +67,7 @@
 
 #define INTR_DUMMY_MASK (USBSTS_SLI | USBSTS_URI | USBSTS_PCI)
 
-enum xusbps_otg_timer_type {
+enum zynq_otg_timer_type {
 	TA_WAIT_VRISE_TMR,
 	TA_WAIT_BCON_TMR,
 	TA_AIDL_BDIS_TMR,
@@ -87,7 +87,7 @@ enum xusbps_otg_timer_type {
 #define TB_SRP_FAIL	5500
 #define TB_BUS_SUSPEND	500
 
-struct xusbps_otg_timer {
+struct zynq_otg_timer {
 	unsigned long expires;	/* Number of count increase to timeout */
 	unsigned long count;	/* Tick counter */
 	void (*function)(unsigned long);	/* Timeout function */
@@ -160,7 +160,7 @@ struct otg_hsm {
 	int vbus_srp_up;
 };
 
-struct xusbps_otg {
+struct zynq_otg {
 	struct usb_phy		otg;
 	struct usb_phy		*ulpi;
 
@@ -202,11 +202,11 @@ struct xusbps_otg {
 };
 
 static inline
-struct xusbps_otg *xceiv_to_xotg(struct usb_phy *otg)
+struct zynq_otg *xceiv_to_xotg(struct usb_phy *otg)
 {
-	return container_of(otg, struct xusbps_otg, otg);
+	return container_of(otg, struct zynq_otg, otg);
 }
 
-void xusbps_update_transceiver(void);
+void zynq_update_transceiver(void);
 
 #endif /* __ZYNQ_OTG_H__ */

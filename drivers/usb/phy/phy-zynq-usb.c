@@ -40,16 +40,16 @@
 #include <linux/xilinx_devices.h>
 #include <linux/usb/zynq_otg.h>
 
-#define	DRIVER_NAME	"xusbps-otg"
+#define	DRIVER_NAME	"zynq-otg"
 
 static const char driver_name[] = DRIVER_NAME;
 
 /* HSM timers */
-static inline struct xusbps_otg_timer *otg_timer_initializer
+static inline struct zynq_otg_timer *otg_timer_initializer
 (void (*function)(unsigned long), unsigned long expires, unsigned long data)
 {
-	struct xusbps_otg_timer *timer;
-	timer = kmalloc(sizeof(struct xusbps_otg_timer), GFP_KERNEL);
+	struct zynq_otg_timer *timer;
+	timer = kmalloc(sizeof(struct zynq_otg_timer), GFP_KERNEL);
 	if (timer == NULL)
 		return timer;
 
@@ -59,17 +59,17 @@ static inline struct xusbps_otg_timer *otg_timer_initializer
 	return timer;
 }
 
-static struct xusbps_otg_timer *a_wait_vrise_tmr, *a_aidl_bdis_tmr,
+static struct zynq_otg_timer *a_wait_vrise_tmr, *a_aidl_bdis_tmr,
 	*b_se0_srp_tmr, *b_srp_init_tmr;
 
 static struct list_head active_timers;
 
-static struct xusbps_otg *the_transceiver;
+static struct zynq_otg *the_transceiver;
 
 /* host/client notify transceiver when event affects HNP state */
-void xusbps_update_transceiver(void)
+void zynq_update_transceiver(void)
 {
-	struct xusbps_otg *xotg = the_transceiver;
+	struct zynq_otg *xotg = the_transceiver;
 
 	dev_dbg(xotg->dev, "transceiver is updated\n");
 
@@ -78,9 +78,9 @@ void xusbps_update_transceiver(void)
 
 	queue_work(xotg->qwork, &xotg->work);
 }
-EXPORT_SYMBOL(xusbps_update_transceiver);
+EXPORT_SYMBOL(zynq_update_transceiver);
 
-static int xusbps_otg_set_host(struct usb_otg *otg,
+static int zynq_otg_set_host(struct usb_otg *otg,
 					struct usb_bus *host)
 {
 	otg->host = host;
@@ -95,7 +95,7 @@ static int xusbps_otg_set_host(struct usb_otg *otg,
 	return 0;
 }
 
-static int xusbps_otg_set_peripheral(struct usb_otg *otg,
+static int zynq_otg_set_peripheral(struct usb_otg *otg,
 					struct usb_gadget *gadget)
 {
 	otg->gadget = gadget;
@@ -110,16 +110,16 @@ static int xusbps_otg_set_peripheral(struct usb_otg *otg,
 	return 0;
 }
 
-static int xusbps_otg_set_power(struct usb_phy *otg,
+static int zynq_otg_set_power(struct usb_phy *otg,
 				unsigned mA)
 {
 	return 0;
 }
 
 /* A-device drives vbus, controlled through PMIC CHRGCNTL register*/
-static int xusbps_otg_set_vbus(struct usb_otg *otg, bool enabled)
+static int zynq_otg_set_vbus(struct usb_otg *otg, bool enabled)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32 val;
 
 	dev_dbg(xotg->dev, "%s <--- %s\n", __func__, enabled ? "on" : "off");
@@ -141,9 +141,9 @@ static int xusbps_otg_set_vbus(struct usb_otg *otg, bool enabled)
 }
 
 /* Charge vbus for VBUS pulsing in SRP */
-static void xusbps_otg_chrg_vbus(int on)
+static void zynq_otg_chrg_vbus(int on)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	u32	val;
 
 	val = readl(xotg->base + CI_OTGSC) & ~OTGSC_INTSTS_MASK;
@@ -161,9 +161,9 @@ static void xusbps_otg_chrg_vbus(int on)
 #if 0
 
 /* Discharge vbus through a resistor to ground */
-static void xusbps_otg_dischrg_vbus(int on)
+static void zynq_otg_dischrg_vbus(int on)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	u32	val;
 
 	val = readl(xotg->base + CI_OTGSC) & ~OTGSC_INTSTS_MASK;
@@ -180,9 +180,9 @@ static void xusbps_otg_dischrg_vbus(int on)
 #endif
 
 /* Start SRP */
-static int xusbps_otg_start_srp(struct usb_otg *otg)
+static int zynq_otg_start_srp(struct usb_otg *otg)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32				val;
 
 	dev_warn(xotg->dev, "Starting SRP...\n");
@@ -204,7 +204,7 @@ static int xusbps_otg_start_srp(struct usb_otg *otg)
 		dev_dbg(xotg->dev, "no b_sess_vld interrupt\n");
 
 		xotg->hsm.b_sess_vld = 1;
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 		return 0;
 	}
 
@@ -216,9 +216,9 @@ static int xusbps_otg_start_srp(struct usb_otg *otg)
 	writel(val, xotg->base + CI_OTGSC);
 
 	/* Start VBus SRP, drive vbus to generate VBus pulse */
-	xusbps_otg_chrg_vbus(1);
+	zynq_otg_chrg_vbus(1);
 	msleep(15);
-	xusbps_otg_chrg_vbus(0);
+	zynq_otg_chrg_vbus(0);
 
 	/* Enable interrupt - b_sess_vld*/
 	val = readl(xotg->base + CI_OTGSC);
@@ -232,7 +232,7 @@ static int xusbps_otg_start_srp(struct usb_otg *otg)
 		dev_dbg(xotg->dev, "no b_sess_vld interrupt\n");
 
 		xotg->hsm.b_sess_vld = 1;
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 	}
 
 	dev_dbg(xotg->dev, "%s <---\n", __func__);
@@ -240,9 +240,9 @@ static int xusbps_otg_start_srp(struct usb_otg *otg)
 }
 
 /* Start HNP */
-static int xusbps_otg_start_hnp(struct usb_otg *otg)
+static int zynq_otg_start_hnp(struct usb_otg *otg)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	unsigned long flag = 0;
 
 	dev_warn(xotg->dev, "Starting HNP...\n");
@@ -262,7 +262,7 @@ static int xusbps_otg_start_hnp(struct usb_otg *otg)
 
 	if (flag) {
 		if (spin_trylock(&xotg->wq_lock)) {
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 			spin_unlock(&xotg->wq_lock);
 		}
 	} else
@@ -273,32 +273,32 @@ static int xusbps_otg_start_hnp(struct usb_otg *otg)
 }
 
 /* stop SOF via bus_suspend */
-static void xusbps_otg_loc_sof(int on)
+static void zynq_otg_loc_sof(int on)
 {
 	/* Not used */
 }
 
-static void xusbps_otg_phy_low_power(int on)
+static void zynq_otg_phy_low_power(int on)
 {
 	/* Not used */
 }
 
 /* After drv vbus, add 2 ms delay to set PHCD */
-static void xusbps_otg_phy_low_power_wait(int on)
+static void zynq_otg_phy_low_power_wait(int on)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 
 	dev_dbg(xotg->dev, "add 2ms delay before programing PHCD\n");
 
 	mdelay(2);
-	xusbps_otg_phy_low_power(on);
+	zynq_otg_phy_low_power(on);
 }
 
 #ifdef CONFIG_PM_SLEEP
 /* Enable/Disable OTG interrupt */
-static void xusbps_otg_intr(int on)
+static void zynq_otg_intr(int on)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32				val;
 
 	dev_dbg(xotg->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
@@ -319,15 +319,15 @@ static void xusbps_otg_intr(int on)
 #endif
 
 /* set HAAR: Hardware Assist Auto-Reset */
-static void xusbps_otg_HAAR(int on)
+static void zynq_otg_HAAR(int on)
 {
 	/* Not used */
 }
 
 /* set HABA: Hardware Assist B-Disconnect to A-Connect */
-static void xusbps_otg_HABA(int on)
+static void zynq_otg_HABA(int on)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32				val;
 
 	dev_dbg(xotg->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
@@ -343,9 +343,9 @@ static void xusbps_otg_HABA(int on)
 	dev_dbg(xotg->dev, "%s <---\n", __func__);
 }
 
-static int xusbps_otg_check_se0_srp(int on)
+static int zynq_otg_check_se0_srp(int on)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	int			delay_time = TB_SE0_SRP * 10;
 	u32			val;
 
@@ -369,9 +369,9 @@ static void set_tmout(unsigned long indicator)
 	*(int *)indicator = 1;
 }
 
-static void xusbps_otg_msg(unsigned long indicator)
+static void zynq_otg_msg(unsigned long indicator)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 
 	switch (indicator) {
 	case 2:
@@ -392,7 +392,7 @@ static void xusbps_otg_msg(unsigned long indicator)
 }
 
 /* Initialize timers */
-static int xusbps_otg_init_timers(struct otg_hsm *hsm)
+static int zynq_otg_init_timers(struct otg_hsm *hsm)
 {
 	/* HSM used timers */
 	a_wait_vrise_tmr = otg_timer_initializer(&set_tmout, TA_WAIT_VRISE,
@@ -416,7 +416,7 @@ static int xusbps_otg_init_timers(struct otg_hsm *hsm)
 }
 
 /* Free timers */
-static void xusbps_otg_free_timers(void)
+static void zynq_otg_free_timers(void)
 {
 	kfree(a_wait_vrise_tmr);
 	kfree(a_aidl_bdis_tmr);
@@ -425,21 +425,21 @@ static void xusbps_otg_free_timers(void)
 }
 
 /* The timeout callback function to set time out bit */
-static void xusbps_otg_timer_fn(unsigned long indicator)
+static void zynq_otg_timer_fn(unsigned long indicator)
 {
-	struct xusbps_otg *xotg = the_transceiver;
+	struct zynq_otg *xotg = the_transceiver;
 
 	*(int *)indicator = 1;
 
 	dev_dbg(xotg->dev, "kernel timer - timeout\n");
 
-	xusbps_update_transceiver();
+	zynq_update_transceiver();
 }
 
 /* kernel timer used instead of HW based interrupt */
-static void xusbps_otg_add_ktimer(enum xusbps_otg_timer_type timers)
+static void zynq_otg_add_ktimer(enum zynq_otg_timer_type timers)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	unsigned long		j = jiffies;
 	unsigned long		data, time;
 
@@ -485,7 +485,7 @@ static void xusbps_otg_add_ktimer(enum xusbps_otg_timer_type timers)
 	}
 
 	xotg->hsm_timer.data = data;
-	xotg->hsm_timer.function = xusbps_otg_timer_fn;
+	xotg->hsm_timer.function = zynq_otg_timer_fn;
 	xotg->hsm_timer.expires = j + time * HZ / 1000; /* milliseconds */
 
 	add_timer(&xotg->hsm_timer);
@@ -494,11 +494,11 @@ static void xusbps_otg_add_ktimer(enum xusbps_otg_timer_type timers)
 }
 
 /* Add timer to timer list */
-static void xusbps_otg_add_timer(void *gtimer)
+static void zynq_otg_add_timer(void *gtimer)
 {
-	struct xusbps_otg *xotg = the_transceiver;
-	struct xusbps_otg_timer *timer = (struct xusbps_otg_timer *)gtimer;
-	struct xusbps_otg_timer *tmp_timer;
+	struct zynq_otg *xotg = the_transceiver;
+	struct zynq_otg_timer *timer = (struct zynq_otg_timer *)gtimer;
+	struct zynq_otg_timer *tmp_timer;
 	u32	val32;
 
 	/* Check if the timer is already in the active list,
@@ -520,11 +520,11 @@ static void xusbps_otg_add_timer(void *gtimer)
 }
 
 /* Remove timer from the timer list; clear timeout status */
-static void xusbps_otg_del_timer(void *gtimer)
+static void zynq_otg_del_timer(void *gtimer)
 {
-	struct xusbps_otg *xotg = the_transceiver;
-	struct xusbps_otg_timer *timer = (struct xusbps_otg_timer *)gtimer;
-	struct xusbps_otg_timer *tmp_timer, *del_tmp;
+	struct zynq_otg *xotg = the_transceiver;
+	struct zynq_otg_timer *timer = (struct zynq_otg_timer *)gtimer;
+	struct zynq_otg_timer *tmp_timer, *del_tmp;
 	u32 val32;
 
 	list_for_each_entry_safe(tmp_timer, del_tmp, &active_timers, list)
@@ -538,10 +538,10 @@ static void xusbps_otg_del_timer(void *gtimer)
 }
 
 /* Reduce timer count by 1, and find timeout conditions.*/
-static int xusbps_otg_tick_timer(u32 *int_sts)
+static int zynq_otg_tick_timer(u32 *int_sts)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
-	struct xusbps_otg_timer *tmp_timer, *del_tmp;
+	struct zynq_otg	*xotg = the_transceiver;
+	struct zynq_otg_timer *tmp_timer, *del_tmp;
 	int expired = 0;
 
 	list_for_each_entry_safe(tmp_timer, del_tmp, &active_timers, list) {
@@ -563,7 +563,7 @@ static int xusbps_otg_tick_timer(u32 *int_sts)
 
 static void reset_otg(void)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	int			delay_time = 1000;
 	u32			val;
 
@@ -582,7 +582,7 @@ static void reset_otg(void)
 
 static void set_host_mode(void)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	u32			val;
 
 	reset_otg();
@@ -593,7 +593,7 @@ static void set_host_mode(void)
 
 static void set_client_mode(void)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	u32			val;
 
 	reset_otg();
@@ -604,7 +604,7 @@ static void set_client_mode(void)
 
 static void init_hsm(void)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32				val32;
 
 	/* read OTGSC after reset */
@@ -644,13 +644,13 @@ static void init_hsm(void)
 	/* no system error */
 	xotg->hsm.a_clr_err = 0;
 
-	xusbps_otg_phy_low_power_wait(1);
+	zynq_otg_phy_low_power_wait(1);
 }
 
 #ifdef CONFIG_PM_SLEEP
 static void update_hsm(void)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	u32				val32;
 
 	/* read OTGSC */
@@ -669,7 +669,7 @@ static void update_hsm(void)
 
 static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	void __iomem		*reg_base = _dev;
 	u32			val;
 	u32			int_mask = 0;
@@ -693,7 +693,7 @@ static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 	if (xotg->hsm.b_conn) {
 		xotg->hsm.b_conn = 0;
 		if (spin_trylock(&xotg->wq_lock)) {
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 			spin_unlock(&xotg->wq_lock);
 		}
 	}
@@ -703,7 +703,7 @@ static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 
 static irqreturn_t otg_irq(int irq, void *_dev)
 {
-	struct xusbps_otg		*xotg = _dev;
+	struct zynq_otg		*xotg = _dev;
 	u32				int_sts, int_en;
 	u32				int_mask = 0;
 	int				flag = 0;
@@ -765,12 +765,12 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 
 	if (int_mask & OTGSC_1MSS) {
 		/* need to schedule otg_work if any timer is expired */
-		if (xusbps_otg_tick_timer(&int_sts))
+		if (zynq_otg_tick_timer(&int_sts))
 			flag = 1;
 	}
 
 	if (flag)
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 
 	spin_unlock_irqrestore(&xotg->lock, flags);
 	return IRQ_HANDLED;
@@ -790,7 +790,7 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 static int xotg_usbdev_notify(struct notifier_block *self,
 			       unsigned long action, void *dev)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	struct usb_phy *otg = &xotg->otg;
 	unsigned long otg_port;
 	struct usb_device *udev_otg = NULL;
@@ -829,17 +829,17 @@ static int xotg_usbdev_notify(struct notifier_block *self,
 		break;
 	}
 	if (flag)
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 
 	return NOTIFY_OK;
 }
 
-static void xusbps_otg_work(struct work_struct *work)
+static void zynq_otg_work(struct work_struct *work)
 {
-	struct xusbps_otg		*xotg;
+	struct zynq_otg		*xotg;
 	int				retval;
 
-	xotg = container_of(work, struct xusbps_otg, work);
+	xotg = container_of(work, struct zynq_otg, work);
 
 	dev_dbg(xotg->dev, "%s: old state = %s\n", __func__,
 		usb_otg_state_string(xotg->otg.state));
@@ -848,25 +848,25 @@ static void xusbps_otg_work(struct work_struct *work)
 	case OTG_STATE_UNDEFINED:
 	case OTG_STATE_B_IDLE:
 		if (!xotg->hsm.id) {
-			xusbps_otg_del_timer(b_srp_init_tmr);
+			zynq_otg_del_timer(b_srp_init_tmr);
 			del_timer_sync(&xotg->hsm_timer);
 
 			xotg->otg.otg->default_a = 1;
 			xotg->hsm.a_srp_det = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 
 			xotg->otg.state = OTG_STATE_A_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.b_sess_vld) {
-			xusbps_otg_del_timer(b_srp_init_tmr);
+			zynq_otg_del_timer(b_srp_init_tmr);
 			del_timer_sync(&xotg->hsm_timer);
 			xotg->hsm.b_bus_req = 0;
 			xotg->hsm.b_sess_end = 0;
 			xotg->hsm.a_bus_suspend = 0;
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 
 			if (xotg->start_peripheral) {
 				xotg->start_peripheral(&xotg->otg);
@@ -882,27 +882,27 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->hsm.b_bus_req = 0;
 
 			/* No silence failure */
-			xusbps_otg_msg(6);
+			zynq_otg_msg(6);
 			dev_warn(xotg->dev, "SRP failed\n");
 		} else if (xotg->hsm.b_bus_req && xotg->hsm.b_sess_end) {
 			del_timer_sync(&xotg->hsm_timer);
 			/* workaround for b_se0_srp detection */
-			retval = xusbps_otg_check_se0_srp(0);
+			retval = zynq_otg_check_se0_srp(0);
 			if (retval) {
 				xotg->hsm.b_bus_req = 0;
 				dev_dbg(xotg->dev, "LS isn't SE0, try later\n");
 			} else {
 				/* clear the PHCD before start srp */
-				xusbps_otg_phy_low_power(0);
+				zynq_otg_phy_low_power(0);
 
 				/* Start SRP */
-				xusbps_otg_add_timer(b_srp_init_tmr);
+				zynq_otg_add_timer(b_srp_init_tmr);
 				xotg->otg.otg->start_srp(xotg->otg.otg);
-				xusbps_otg_del_timer(b_srp_init_tmr);
-				xusbps_otg_add_ktimer(TB_SRP_FAIL_TMR);
+				zynq_otg_del_timer(b_srp_init_tmr);
+				zynq_otg_add_ktimer(TB_SRP_FAIL_TMR);
 
 				/* reset PHY low power mode here */
-				xusbps_otg_phy_low_power_wait(1);
+				zynq_otg_phy_low_power_wait(1);
 			}
 		}
 		break;
@@ -913,13 +913,13 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_A_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.b_sess_vld) {
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 			if (xotg->start_peripheral) {
 				xotg->start_peripheral(&xotg->otg);
 				xotg->otg.state = OTG_STATE_B_PERIPHERAL;
@@ -933,7 +933,7 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->otg.otg->default_a = 1;
 			xotg->hsm.a_srp_det = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 
 			if (xotg->stop_peripheral)
 				xotg->stop_peripheral(&xotg->otg);
@@ -942,9 +942,9 @@ static void xusbps_otg_work(struct work_struct *work)
 					"client driver has been removed.\n");
 
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_A_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.b_sess_vld) {
 			xotg->hsm.b_hnp_enable = 0;
 			xotg->hsm.b_bus_req = 0;
@@ -967,7 +967,7 @@ static void xusbps_otg_work(struct work_struct *work)
 				dev_dbg(xotg->dev,
 					"client driver has been removed.\n");
 
-			xusbps_otg_HAAR(1);
+			zynq_otg_HAAR(1);
 			xotg->hsm.a_conn = 0;
 
 			xotg->otg.state = OTG_STATE_B_WAIT_ACON;
@@ -978,7 +978,7 @@ static void xusbps_otg_work(struct work_struct *work)
 						"host driver not loaded.\n");
 
 			xotg->hsm.a_bus_resume = 0;
-			xusbps_otg_add_ktimer(TB_ASE0_BRST_TMR);
+			zynq_otg_add_ktimer(TB_ASE0_BRST_TMR);
 		}
 		break;
 
@@ -990,9 +990,9 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->otg.otg->default_a = 1;
 			xotg->hsm.a_srp_det = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 
-			xusbps_otg_HAAR(0);
+			zynq_otg_HAAR(0);
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
 			else
@@ -1000,9 +1000,9 @@ static void xusbps_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_A_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.b_sess_vld) {
 			/* delete hsm timer for b_ase0_brst_tmr */
 			del_timer_sync(&xotg->hsm_timer);
@@ -1010,8 +1010,8 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->hsm.b_hnp_enable = 0;
 			xotg->hsm.b_bus_req = 0;
 
-			xusbps_otg_chrg_vbus(0);
-			xusbps_otg_HAAR(0);
+			zynq_otg_chrg_vbus(0);
+			zynq_otg_HAAR(0);
 
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
@@ -1020,23 +1020,23 @@ static void xusbps_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
 		} else if (xotg->hsm.a_conn) {
 			/* delete hsm timer for b_ase0_brst_tmr */
 			del_timer_sync(&xotg->hsm_timer);
 
-			xusbps_otg_HAAR(0);
+			zynq_otg_HAAR(0);
 			xotg->otg.state = OTG_STATE_B_HOST;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.a_bus_resume ||
 				xotg->hsm.b_ase0_brst_tmout) {
 			dev_warn(xotg->dev, "A device connect failed\n");
 			/* delete hsm timer for b_ase0_brst_tmr */
 			del_timer_sync(&xotg->hsm_timer);
 
-			xusbps_otg_HAAR(0);
-			xusbps_otg_msg(7);
+			zynq_otg_HAAR(0);
+			zynq_otg_msg(7);
 
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
@@ -1060,7 +1060,7 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->otg.otg->default_a = 1;
 			xotg->hsm.a_srp_det = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
@@ -1069,14 +1069,14 @@ static void xusbps_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_A_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.b_sess_vld) {
 			xotg->hsm.b_hnp_enable = 0;
 			xotg->hsm.b_bus_req = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
 			else
@@ -1084,12 +1084,12 @@ static void xusbps_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
 		} else if ((!xotg->hsm.b_bus_req) ||
 				(!xotg->hsm.a_conn)) {
 			xotg->hsm.b_bus_req = 0;
-			xusbps_otg_loc_sof(0);
+			zynq_otg_loc_sof(0);
 
 			/* Fix: The kernel crash in usb_port_suspend
 				during HNP */
@@ -1118,57 +1118,57 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->hsm.b_bus_req = 0;
 			xotg->hsm.vbus_srp_up = 0;
 
-			xusbps_otg_chrg_vbus(0);
+			zynq_otg_chrg_vbus(0);
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.a_bus_drop &&
 			(xotg->hsm.a_srp_det || xotg->hsm.a_bus_req)) {
 			dev_warn(xotg->dev,
 			"SRP detected or User has requested for the Bus\n");
-			xusbps_otg_phy_low_power(0);
+			zynq_otg_phy_low_power(0);
 
 			/* Turn on VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, true);
 
 			xotg->hsm.vbus_srp_up = 0;
 			xotg->hsm.a_wait_vrise_tmout = 0;
-			xusbps_otg_add_timer(a_wait_vrise_tmr);
+			zynq_otg_add_timer(a_wait_vrise_tmr);
 			xotg->otg.state = OTG_STATE_A_WAIT_VRISE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.a_bus_drop && xotg->hsm.a_sess_vld) {
 			xotg->hsm.vbus_srp_up = 1;
 		} else if (!xotg->hsm.a_sess_vld && xotg->hsm.vbus_srp_up) {
 			msleep(10);
-			xusbps_otg_phy_low_power(0);
+			zynq_otg_phy_low_power(0);
 
 			/* Turn on VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, true);
 			xotg->hsm.a_srp_det = 1;
 			xotg->hsm.vbus_srp_up = 0;
 			xotg->hsm.a_wait_vrise_tmout = 0;
-			xusbps_otg_add_timer(a_wait_vrise_tmr);
+			zynq_otg_add_timer(a_wait_vrise_tmr);
 			xotg->otg.state = OTG_STATE_A_WAIT_VRISE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.a_sess_vld &&
 				!xotg->hsm.vbus_srp_up) {
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 		}
 		break;
 	case OTG_STATE_A_WAIT_VRISE:
 		if (xotg->hsm.id) {
-			xusbps_otg_del_timer(a_wait_vrise_tmr);
+			zynq_otg_del_timer(a_wait_vrise_tmr);
 			xotg->hsm.b_bus_req = 0;
 			xotg->otg.otg->default_a = 0;
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
 			set_client_mode();
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
 		} else if (xotg->hsm.a_vbus_vld) {
-			xusbps_otg_del_timer(a_wait_vrise_tmr);
+			zynq_otg_del_timer(a_wait_vrise_tmr);
 			xotg->hsm.b_conn = 0;
 			if (xotg->start_host)
 				xotg->start_host(&xotg->otg);
@@ -1176,7 +1176,7 @@ static void xusbps_otg_work(struct work_struct *work)
 				dev_dbg(xotg->dev, "host driver not loaded.\n");
 				break;
 			}
-			xusbps_otg_add_ktimer(TA_WAIT_BCON_TMR);
+			zynq_otg_add_ktimer(TA_WAIT_BCON_TMR);
 			xotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		} else if (xotg->hsm.a_wait_vrise_tmout) {
 			xotg->hsm.b_conn = 0;
@@ -1188,13 +1188,13 @@ static void xusbps_otg_work(struct work_struct *work)
 						"host driver not loaded.\n");
 					break;
 				}
-				xusbps_otg_add_ktimer(TA_WAIT_BCON_TMR);
+				zynq_otg_add_ktimer(TA_WAIT_BCON_TMR);
 				xotg->otg.state = OTG_STATE_A_WAIT_BCON;
 			} else {
 
 				/* Turn off VBus */
 				xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-				xusbps_otg_phy_low_power_wait(1);
+				zynq_otg_phy_low_power_wait(1);
 				xotg->otg.state = OTG_STATE_A_VBUS_ERR;
 			}
 		}
@@ -1216,9 +1216,9 @@ static void xusbps_otg_work(struct work_struct *work)
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
 			set_client_mode();
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.a_vbus_vld) {
 			/* delete hsm timer for a_wait_bcon_tmr */
 			del_timer_sync(&xotg->hsm_timer);
@@ -1231,7 +1231,7 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (xotg->hsm.a_bus_drop ||
 				(xotg->hsm.a_wait_bcon_tmout &&
@@ -1274,9 +1274,9 @@ static void xusbps_otg_work(struct work_struct *work)
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
 			set_client_mode();
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.a_bus_drop ||
 				(xotg->otg.otg->host &&
 				!xotg->otg.otg->host->b_hnp_enable &&
@@ -1299,7 +1299,7 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (xotg->otg.otg->host &&
 				xotg->otg.otg->host->b_hnp_enable &&
@@ -1318,23 +1318,23 @@ static void xusbps_otg_work(struct work_struct *work)
 						xotg->irq);
 			}
 			/* set HABA */
-			xusbps_otg_HABA(1);
+			zynq_otg_HABA(1);
 			xotg->hsm.b_bus_resume = 0;
 			xotg->hsm.a_aidl_bdis_tmout = 0;
-			xusbps_otg_loc_sof(0);
+			zynq_otg_loc_sof(0);
 			/* clear PHCD to enable HW timer */
-			xusbps_otg_phy_low_power(0);
-			xusbps_otg_add_timer(a_aidl_bdis_tmr);
+			zynq_otg_phy_low_power(0);
+			zynq_otg_add_timer(a_aidl_bdis_tmr);
 			xotg->otg.state = OTG_STATE_A_SUSPEND;
 		} else if (!xotg->hsm.b_conn || !xotg->hsm.a_bus_req) {
-			xusbps_otg_add_ktimer(TA_WAIT_BCON_TMR);
+			zynq_otg_add_ktimer(TA_WAIT_BCON_TMR);
 			xotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		}
 		break;
 	case OTG_STATE_A_SUSPEND:
 		if (xotg->hsm.id) {
-			xusbps_otg_del_timer(a_aidl_bdis_tmr);
-			xusbps_otg_HABA(0);
+			zynq_otg_del_timer(a_aidl_bdis_tmr);
+			zynq_otg_HABA(0);
 			free_irq(xotg->irq, xotg->base);
 			xotg->otg.otg->default_a = 0;
 			xotg->hsm.b_bus_req = 0;
@@ -1348,22 +1348,22 @@ static void xusbps_otg_work(struct work_struct *work)
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.a_bus_req ||
 				xotg->hsm.b_bus_resume) {
-			xusbps_otg_del_timer(a_aidl_bdis_tmr);
-			xusbps_otg_HABA(0);
+			zynq_otg_del_timer(a_aidl_bdis_tmr);
+			zynq_otg_HABA(0);
 			free_irq(xotg->irq, xotg->base);
 			xotg->hsm.a_suspend_req = 0;
-			xusbps_otg_loc_sof(1);
+			zynq_otg_loc_sof(1);
 			xotg->otg.state = OTG_STATE_A_HOST;
 		} else if (xotg->hsm.a_aidl_bdis_tmout ||
 				xotg->hsm.a_bus_drop) {
 			dev_warn(xotg->dev, "B disconnect timeout\n");
-			xusbps_otg_del_timer(a_aidl_bdis_tmr);
-			xusbps_otg_HABA(0);
+			zynq_otg_del_timer(a_aidl_bdis_tmr);
+			zynq_otg_HABA(0);
 			free_irq(xotg->irq, xotg->base);
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
@@ -1376,8 +1376,8 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!xotg->hsm.b_conn && xotg->otg.otg->host &&
 				xotg->otg.otg->host->b_hnp_enable) {
-			xusbps_otg_del_timer(a_aidl_bdis_tmr);
-			xusbps_otg_HABA(0);
+			zynq_otg_del_timer(a_aidl_bdis_tmr);
+			zynq_otg_HABA(0);
 			free_irq(xotg->irq, xotg->base);
 
 			if (xotg->stop_host)
@@ -1396,11 +1396,11 @@ static void xusbps_otg_work(struct work_struct *work)
 			else
 				dev_dbg(xotg->dev,
 					"client driver not loaded.\n");
-			xusbps_otg_add_ktimer(TB_BUS_SUSPEND_TMR);
+			zynq_otg_add_ktimer(TB_BUS_SUSPEND_TMR);
 			break;
 		} else if (!xotg->hsm.a_vbus_vld) {
-			xusbps_otg_del_timer(a_aidl_bdis_tmr);
-			xusbps_otg_HABA(0);
+			zynq_otg_del_timer(a_aidl_bdis_tmr);
+			zynq_otg_HABA(0);
 			free_irq(xotg->irq, xotg->base);
 			if (xotg->stop_host)
 				xotg->stop_host(&xotg->otg);
@@ -1410,7 +1410,7 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		}
 		break;
@@ -1429,9 +1429,9 @@ static void xusbps_otg_work(struct work_struct *work)
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
 			set_client_mode();
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (!xotg->hsm.a_vbus_vld) {
 			/* delete hsm timer for b_bus_suspend_tmr */
 			del_timer_sync(&xotg->hsm_timer);
@@ -1444,7 +1444,7 @@ static void xusbps_otg_work(struct work_struct *work)
 
 			/* Turn off VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, false);
-			xusbps_otg_phy_low_power_wait(1);
+			zynq_otg_phy_low_power_wait(1);
 			xotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (xotg->hsm.a_bus_drop) {
 			/* delete hsm timer for b_bus_suspend_tmr */
@@ -1476,7 +1476,7 @@ static void xusbps_otg_work(struct work_struct *work)
 			else
 				dev_dbg(xotg->dev,
 						"host driver not loaded.\n");
-			xusbps_otg_add_ktimer(TA_WAIT_BCON_TMR);
+			zynq_otg_add_ktimer(TA_WAIT_BCON_TMR);
 		} else if (xotg->hsm.b_bus_suspend_tmout) {
 			u32	val;
 			val = readl(xotg->base + CI_PORTSC1);
@@ -1495,7 +1495,7 @@ static void xusbps_otg_work(struct work_struct *work)
 			else
 				dev_dbg(xotg->dev,
 						"host driver not loaded.\n");
-			xusbps_otg_add_ktimer(TA_WAIT_BCON_TMR);
+			zynq_otg_add_ktimer(TA_WAIT_BCON_TMR);
 		}
 		break;
 	case OTG_STATE_A_VBUS_ERR:
@@ -1504,40 +1504,40 @@ static void xusbps_otg_work(struct work_struct *work)
 			xotg->hsm.a_clr_err = 0;
 			xotg->hsm.a_srp_det = 0;
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.a_clr_err) {
 			xotg->hsm.a_clr_err = 0;
 			xotg->hsm.a_srp_det = 0;
 			reset_otg();
 			init_hsm();
 			if (xotg->otg.state == OTG_STATE_A_IDLE)
-				xusbps_update_transceiver();
+				zynq_update_transceiver();
 		} else {
 			/* FW will clear PHCD bit when any VBus
 			 * event detected. Reset PHCD to 1 again */
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 		}
 		break;
 	case OTG_STATE_A_WAIT_VFALL:
 		if (xotg->hsm.id) {
 			xotg->otg.otg->default_a = 0;
 			set_client_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_B_IDLE;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		} else if (xotg->hsm.a_bus_req) {
 
 			/* Turn on VBus */
 			xotg->otg.otg->set_vbus(xotg->otg.otg, true);
 			xotg->hsm.a_wait_vrise_tmout = 0;
-			xusbps_otg_add_timer(a_wait_vrise_tmr);
+			zynq_otg_add_timer(a_wait_vrise_tmr);
 			xotg->otg.state = OTG_STATE_A_WAIT_VRISE;
 		} else if (!xotg->hsm.a_sess_vld) {
 			xotg->hsm.a_srp_det = 0;
 			set_host_mode();
-			xusbps_otg_phy_low_power(1);
+			zynq_otg_phy_low_power(1);
 			xotg->otg.state = OTG_STATE_A_IDLE;
 		}
 		break;
@@ -1552,7 +1552,7 @@ static void xusbps_otg_work(struct work_struct *work)
 static ssize_t
 show_registers(struct device *_dev, struct device_attribute *attr, char *buf)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	char			*next;
 	unsigned		size, t;
 
@@ -1586,7 +1586,7 @@ static DEVICE_ATTR(registers, S_IRUGO, show_registers, NULL);
 static ssize_t
 show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	char				*next;
 	unsigned			size, t;
 
@@ -1668,7 +1668,7 @@ static DEVICE_ATTR(hsm, S_IRUGO, show_hsm, NULL);
 static ssize_t
 get_a_bus_req(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	char			*next;
 	unsigned		size, t;
 
@@ -1686,7 +1686,7 @@ static ssize_t
 set_a_bus_req(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 
 	if (!xotg->otg.otg->default_a)
 		return -1;
@@ -1704,7 +1704,7 @@ set_a_bus_req(struct device *dev, struct device_attribute *attr,
 		dev_dbg(xotg->dev, "User request: a_bus_req = 1\n");
 	}
 	if (spin_trylock(&xotg->wq_lock)) {
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 		spin_unlock(&xotg->wq_lock);
 	}
 	return count;
@@ -1714,7 +1714,7 @@ static DEVICE_ATTR(a_bus_req, S_IRUGO | S_IWUSR, get_a_bus_req, set_a_bus_req);
 static ssize_t
 get_a_bus_drop(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	char			*next;
 	unsigned		size, t;
 
@@ -1732,7 +1732,7 @@ static ssize_t
 set_a_bus_drop(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 
 	if (!xotg->otg.otg->default_a)
 		return -1;
@@ -1749,7 +1749,7 @@ set_a_bus_drop(struct device *dev, struct device_attribute *attr,
 		dev_dbg(xotg->dev, "User request: and a_bus_req = 0\n");
 	}
 	if (spin_trylock(&xotg->wq_lock)) {
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 		spin_unlock(&xotg->wq_lock);
 	}
 	return count;
@@ -1760,7 +1760,7 @@ static DEVICE_ATTR(a_bus_drop, S_IRUGO | S_IWUSR, get_a_bus_drop,
 static ssize_t
 get_b_bus_req(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	char			*next;
 	unsigned		size, t;
 
@@ -1778,7 +1778,7 @@ static ssize_t
 set_b_bus_req(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 
 	if (xotg->otg.otg->default_a)
 		return -1;
@@ -1794,7 +1794,7 @@ set_b_bus_req(struct device *dev, struct device_attribute *attr,
 		dev_dbg(xotg->dev, "User request: b_bus_req = 1\n");
 	}
 	if (spin_trylock(&xotg->wq_lock)) {
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 		spin_unlock(&xotg->wq_lock);
 	}
 	return count;
@@ -1805,7 +1805,7 @@ static ssize_t
 set_a_clr_err(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 
 	if (!xotg->otg.otg->default_a)
 		return -1;
@@ -1817,7 +1817,7 @@ set_a_clr_err(struct device *dev, struct device_attribute *attr,
 		dev_dbg(xotg->dev, "User request: a_clr_err = 1\n");
 	}
 	if (spin_trylock(&xotg->wq_lock)) {
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 		spin_unlock(&xotg->wq_lock);
 	}
 	return count;
@@ -1836,7 +1836,7 @@ static DEVICE_ATTR(a_clr_err, S_IWUSR, NULL, set_a_clr_err);
  **/
 static int suspend_otg_device(struct usb_phy *otg)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	unsigned long otg_port = otg->otg->host->otg_port;
 	struct usb_device *udev;
 	int err;
@@ -1861,7 +1861,7 @@ static ssize_t
 do_hnp(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	unsigned long ret;
 
 	if (count > 2)
@@ -1887,7 +1887,7 @@ do_hnp(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(do_hnp, S_IWUSR, NULL, do_hnp);
 
-static int xusbps_otg_clk_notifier_cb(struct notifier_block *nb,
+static int zynq_otg_clk_notifier_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 
@@ -1920,15 +1920,15 @@ static struct attribute_group debug_dev_attr_group = {
 	.attrs = inputs_attrs,
 };
 
-static int xusbps_otg_remove(struct platform_device *pdev)
+static int zynq_otg_remove(struct platform_device *pdev)
 {
-	struct xusbps_otg *xotg = the_transceiver;
+	struct zynq_otg *xotg = the_transceiver;
 
 	if (xotg->qwork) {
 		flush_workqueue(xotg->qwork);
 		destroy_workqueue(xotg->qwork);
 	}
-	xusbps_otg_free_timers();
+	zynq_otg_free_timers();
 
 	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
 	writel(0, xotg->base + CI_OTGSC);
@@ -1943,13 +1943,13 @@ static int xusbps_otg_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int xusbps_otg_probe(struct platform_device *pdev)
+static int zynq_otg_probe(struct platform_device *pdev)
 {
 	int			retval;
 	u32			val32;
-	struct xusbps_otg	*xotg;
-	char			qname[] = "xusbps_otg_queue";
-	struct xusbps_usb2_platform_data *pdata;
+	struct zynq_otg	*xotg;
+	char			qname[] = "zynq_otg_queue";
+	struct zynq_usb2_platform_data *pdata;
 
 	pdata = pdev->dev.platform_data;
 	if (!pdata)
@@ -1984,7 +1984,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 		retval = -ENOMEM;
 		goto err;
 	}
-	INIT_WORK(&xotg->work, xusbps_otg_work);
+	INIT_WORK(&xotg->work, zynq_otg_work);
 
 	xotg->clk = pdata->clk;
 	retval = clk_prepare_enable(xotg->clk);
@@ -1993,7 +1993,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	xotg->clk_rate_change_nb.notifier_call = xusbps_otg_clk_notifier_cb;
+	xotg->clk_rate_change_nb.notifier_call = zynq_otg_clk_notifier_cb;
 	xotg->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(xotg->clk, &xotg->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
@@ -2002,12 +2002,12 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	xotg->dev = &pdev->dev;
 	xotg->otg.dev = xotg->dev;
 	xotg->otg.label = driver_name;
-	xotg->otg.otg->set_host = xusbps_otg_set_host;
-	xotg->otg.otg->set_peripheral = xusbps_otg_set_peripheral;
-	xotg->otg.set_power = xusbps_otg_set_power;
-	xotg->otg.otg->set_vbus = xusbps_otg_set_vbus;
-	xotg->otg.otg->start_srp = xusbps_otg_start_srp;
-	xotg->otg.otg->start_hnp = xusbps_otg_start_hnp;
+	xotg->otg.otg->set_host = zynq_otg_set_host;
+	xotg->otg.otg->set_peripheral = zynq_otg_set_peripheral;
+	xotg->otg.set_power = zynq_otg_set_power;
+	xotg->otg.otg->set_vbus = zynq_otg_set_vbus;
+	xotg->otg.otg->start_srp = zynq_otg_start_srp;
+	xotg->otg.otg->start_hnp = zynq_otg_start_hnp;
 	xotg->otg.state = OTG_STATE_UNDEFINED;
 
 	if (usb_add_phy(&xotg->otg, USB_PHY_TYPE_USB2)) {
@@ -2023,7 +2023,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	spin_lock_init(&xotg->lock);
 	spin_lock_init(&xotg->wq_lock);
 	INIT_LIST_HEAD(&active_timers);
-	retval = xusbps_otg_init_timers(&xotg->hsm);
+	retval = zynq_otg_init_timers(&xotg->hsm);
 	if (retval) {
 		dev_dbg(&pdev->dev, "Failed to init timers\n");
 		goto err_out_clk_disable;
@@ -2069,7 +2069,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	}
 
 	if (xotg->otg.state == OTG_STATE_A_IDLE)
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 
 	return 0;
 
@@ -2077,7 +2077,7 @@ err_out_clk_disable:
 	clk_notifier_unregister(xotg->clk, &xotg->clk_rate_change_nb);
 	clk_disable_unprepare(xotg->clk);
 err:
-	xusbps_otg_remove(pdev);
+	zynq_otg_remove(pdev);
 
 	return retval;
 }
@@ -2085,17 +2085,17 @@ err:
 #ifdef CONFIG_PM_SLEEP
 static void transceiver_suspend(struct platform_device *pdev)
 {
-	xusbps_otg_phy_low_power(1);
+	zynq_otg_phy_low_power(1);
 }
 
-static int xusbps_otg_suspend(struct device *dev)
+static int zynq_otg_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct xusbps_otg		*xotg = the_transceiver;
+	struct zynq_otg		*xotg = the_transceiver;
 	int				ret = 0;
 
 	/* Disbale OTG interrupts */
-	xusbps_otg_intr(0);
+	zynq_otg_intr(0);
 
 	if (xotg->irq)
 		free_irq(xotg->irq, xotg);
@@ -2115,7 +2115,7 @@ static int xusbps_otg_suspend(struct device *dev)
 		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_WAIT_VRISE:
-		xusbps_otg_del_timer(a_wait_vrise_tmr);
+		zynq_otg_del_timer(a_wait_vrise_tmr);
 		xotg->hsm.a_srp_det = 0;
 
 		/* Turn off VBus */
@@ -2152,8 +2152,8 @@ static int xusbps_otg_suspend(struct device *dev)
 		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_SUSPEND:
-		xusbps_otg_del_timer(a_aidl_bdis_tmr);
-		xusbps_otg_HABA(0);
+		zynq_otg_del_timer(a_aidl_bdis_tmr);
+		zynq_otg_HABA(0);
 		if (xotg->stop_host)
 			xotg->stop_host(&xotg->otg);
 		else
@@ -2202,7 +2202,7 @@ static int xusbps_otg_suspend(struct device *dev)
 		/* delete hsm timer for b_ase0_brst_tmr */
 		del_timer_sync(&xotg->hsm_timer);
 
-		xusbps_otg_HAAR(0);
+		zynq_otg_HAAR(0);
 
 		if (xotg->stop_host)
 			xotg->stop_host(&xotg->otg);
@@ -2227,10 +2227,10 @@ static void transceiver_resume(struct platform_device *pdev)
 	/* Not used */
 }
 
-static int xusbps_otg_resume(struct device *dev)
+static int zynq_otg_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct xusbps_otg	*xotg = the_transceiver;
+	struct zynq_otg	*xotg = the_transceiver;
 	int			ret = 0;
 
 	ret = clk_enable(xotg->clk);
@@ -2241,9 +2241,9 @@ static int xusbps_otg_resume(struct device *dev)
 
 	transceiver_resume(pdev);
 
-	xotg->qwork = create_singlethread_workqueue("xusbps_otg_queue");
+	xotg->qwork = create_singlethread_workqueue("zynq_otg_queue");
 	if (!xotg->qwork) {
-		dev_dbg(&pdev->dev, "cannot create xusbps otg workqueuen");
+		dev_dbg(&pdev->dev, "cannot create zynq otg workqueuen");
 		ret = -ENOMEM;
 		goto error;
 	}
@@ -2256,44 +2256,44 @@ static int xusbps_otg_resume(struct device *dev)
 	}
 
 	/* enable OTG interrupts */
-	xusbps_otg_intr(1);
+	zynq_otg_intr(1);
 
 	update_hsm();
 
-	xusbps_update_transceiver();
+	zynq_update_transceiver();
 
 	return ret;
 error:
-	xusbps_otg_intr(0);
+	zynq_otg_intr(0);
 	transceiver_suspend(pdev);
 	return ret;
 }
 
-static const struct dev_pm_ops xusbps_otg_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xusbps_otg_suspend, xusbps_otg_resume)
+static const struct dev_pm_ops zynq_otg_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(zynq_otg_suspend, zynq_otg_resume)
 };
-#define XUSBPS_OTG_PM	(&xusbps_otg_dev_pm_ops)
+#define ZYNQ_OTG_PM	(&zynq_otg_dev_pm_ops)
 
 #else /* ! CONFIG_PM_SLEEP */
-#define XUSBPS_OTG_PM	NULL
+#define ZYNQ_OTG_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
 #ifndef CONFIG_USB_ZYNQ_DR_OF
-static struct platform_driver xusbps_otg_driver = {
+static struct platform_driver zynq_otg_driver = {
 #else
-struct platform_driver xusbps_otg_driver = {
+struct platform_driver zynq_otg_driver = {
 #endif
-	.probe		= xusbps_otg_probe,
-	.remove		= xusbps_otg_remove,
+	.probe		= zynq_otg_probe,
+	.remove		= zynq_otg_remove,
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= DRIVER_NAME,
-		.pm	= XUSBPS_OTG_PM,
+		.pm	= ZYNQ_OTG_PM,
 	},
 };
 
 #ifndef CONFIG_USB_ZYNQ_DR_OF
-module_platform_driver(xusbps_otg_driver);
+module_platform_driver(zynq_otg_driver);
 #endif
 
 MODULE_AUTHOR("Xilinx, Inc.");

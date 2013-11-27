@@ -28,16 +28,16 @@
 /********************************************************************
  * OTG related functions
  ********************************************************************/
-static int ehci_xusbps_reinit(struct ehci_hcd *ehci);
+static int ehci_zynq_reinit(struct ehci_hcd *ehci);
 
 /* This connection event is useful when a OTG test device is connected.
    In that case, the device connect notify event will not be generated
    since the device will be suspended before complete enumeration.
 */
-static int ehci_xusbps_update_device(struct usb_hcd *hcd, struct usb_device
+static int ehci_zynq_update_device(struct usb_hcd *hcd, struct usb_device
 		*udev)
 {
-	struct xusbps_otg *xotg = xceiv_to_xotg(hcd->phy);
+	struct zynq_otg *xotg = xceiv_to_xotg(hcd->phy);
 
 	if (udev->portnum == hcd->self.otg_port) {
 		/* HNP test device */
@@ -47,13 +47,13 @@ static int ehci_xusbps_update_device(struct usb_hcd *hcd, struct usb_device
 				xotg->hsm.b_conn = 1;
 			else
 				xotg->hsm.a_conn = 1;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		}
 	}
 	return 0;
 }
 
-static void ehci_xusbps_start_hnp(struct ehci_hcd *ehci)
+static void ehci_zynq_start_hnp(struct ehci_hcd *ehci)
 {
 	const unsigned	port = ehci_to_hcd(ehci)->self.otg_port - 1;
 	struct usb_hcd *hcd = ehci_to_hcd(ehci);
@@ -69,17 +69,17 @@ static void ehci_xusbps_start_hnp(struct ehci_hcd *ehci)
 	otg_start_hnp(hcd->phy->otg);
 }
 
-static int ehci_xusbps_otg_start_host(struct usb_phy *otg)
+static int ehci_zynq_otg_start_host(struct usb_phy *otg)
 {
 	struct usb_hcd		*hcd = bus_to_hcd(otg->otg->host);
-	struct xusbps_otg *xotg =
+	struct zynq_otg *xotg =
 			xceiv_to_xotg(hcd->phy);
 
 	usb_add_hcd(hcd, xotg->irq, IRQF_SHARED);
 	return 0;
 }
 
-static int ehci_xusbps_otg_stop_host(struct usb_phy *otg)
+static int ehci_zynq_otg_stop_host(struct usb_phy *otg)
 {
 	struct usb_hcd		*hcd = bus_to_hcd(otg->otg->host);
 
@@ -88,7 +88,7 @@ static int ehci_xusbps_otg_stop_host(struct usb_phy *otg)
 }
 #endif
 
-static int xusbps_ehci_clk_notifier_cb(struct notifier_block *nb,
+static int zynq_ehci_clk_notifier_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 
@@ -111,7 +111,7 @@ static int xusbps_ehci_clk_notifier_cb(struct notifier_block *nb,
 /* always called with process context; sleeping is OK */
 
 /**
- * usb_hcd_xusbps_probe - initialize XUSBPS-based HCDs
+ * usb_hcd_zynq_probe - initialize ZYNQ-based HCDs
  * @driver: Driver to be used for this HCD
  * @pdev: USB Host Controller being probed
  * Context: !in_interrupt()
@@ -119,18 +119,18 @@ static int xusbps_ehci_clk_notifier_cb(struct notifier_block *nb,
  * Allocates basic resources for this USB host controller.
  *
  */
-static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
+static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 			     struct platform_device *pdev)
 {
-	struct xusbps_usb2_platform_data *pdata;
+	struct zynq_usb2_platform_data *pdata;
 	struct usb_hcd *hcd;
 	int irq;
 	int retval;
 
-	pr_debug("initializing XUSBPS-SOC USB Controller\n");
+	pr_debug("initializing ZYNQ-SOC USB Controller\n");
 
 	/* Need platform data for setup */
-	pdata = (struct xusbps_usb2_platform_data *)pdev->dev.platform_data;
+	pdata = (struct zynq_usb2_platform_data *)pdev->dev.platform_data;
 	if (!pdata) {
 		dev_err(&pdev->dev,
 			"No platform data for %s.\n", dev_name(&pdev->dev));
@@ -141,9 +141,9 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 	 * This is a host mode driver, verify that we're supposed to be
 	 * in host mode.
 	 */
-	if (!((pdata->operating_mode == XUSBPS_USB2_DR_HOST) ||
-	      (pdata->operating_mode == XUSBPS_USB2_MPH_HOST) ||
-	      (pdata->operating_mode == XUSBPS_USB2_DR_OTG))) {
+	if (!((pdata->operating_mode == ZYNQ_USB2_DR_HOST) ||
+	      (pdata->operating_mode == ZYNQ_USB2_MPH_HOST) ||
+	      (pdata->operating_mode == ZYNQ_USB2_DR_OTG))) {
 		dev_err(&pdev->dev, "Non Host Mode configured for %s. Wrong \
 				driver linked.\n", dev_name(&pdev->dev));
 		return -ENODEV;
@@ -170,7 +170,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		goto err2;
 	}
 
-	pdata->clk_rate_change_nb.notifier_call = xusbps_ehci_clk_notifier_cb;
+	pdata->clk_rate_change_nb.notifier_call = zynq_ehci_clk_notifier_cb;
 	pdata->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
@@ -186,7 +186,7 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 
 #ifdef CONFIG_USB_ZYNQ_PHY
 	if (pdata->otg) {
-		struct xusbps_otg *xotg;
+		struct zynq_otg *xotg;
 		struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 
 		hcd->self.otg_port = 1;
@@ -196,11 +196,11 @@ static int usb_hcd_xusbps_probe(const struct hc_driver *driver,
 		if (retval)
 			goto err_out_clk_unreg_notif;
 		xotg = xceiv_to_xotg(hcd->phy);
-		ehci->start_hnp = ehci_xusbps_start_hnp;
-		xotg->start_host = ehci_xusbps_otg_start_host;
-		xotg->stop_host = ehci_xusbps_otg_stop_host;
+		ehci->start_hnp = ehci_zynq_start_hnp;
+		xotg->start_host = ehci_zynq_otg_start_host;
+		xotg->stop_host = ehci_zynq_otg_stop_host;
 		/* inform otg driver about host driver */
-		xusbps_update_transceiver();
+		zynq_update_transceiver();
 	} else {
 		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 		if (retval)
@@ -238,17 +238,17 @@ err1:
 /* may be called with controller, bus, and devices active */
 
 /**
- * usb_hcd_xusbps_remove - shutdown processing for XUSBPS-based HCDs
+ * usb_hcd_zynq_remove - shutdown processing for ZYNQ-based HCDs
  * @dev: USB Host Controller being removed
  * Context: !in_interrupt()
  *
- * Reverses the effect of usb_hcd_xusbps_probe().
+ * Reverses the effect of usb_hcd_zynq_probe().
  *
  */
-static void usb_hcd_xusbps_remove(struct usb_hcd *hcd,
+static void usb_hcd_zynq_remove(struct usb_hcd *hcd,
 			       struct platform_device *pdev)
 {
-	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
 
 	usb_remove_hcd(hcd);
 
@@ -263,8 +263,8 @@ static void usb_hcd_xusbps_remove(struct usb_hcd *hcd,
 	clk_disable_unprepare(pdata->clk);
 }
 
-static void ehci_xusbps_setup_phy(struct ehci_hcd *ehci,
-			       enum xusbps_usb2_phy_modes phy_mode,
+static void ehci_zynq_setup_phy(struct ehci_hcd *ehci,
+			       enum zynq_usb2_phy_modes phy_mode,
 			       unsigned int port_offset)
 {
 	u32 portsc;
@@ -273,40 +273,40 @@ static void ehci_xusbps_setup_phy(struct ehci_hcd *ehci,
 	portsc &= ~(PORT_PTS_MSK | PORT_PTS_PTW);
 
 	switch (phy_mode) {
-	case XUSBPS_USB2_PHY_ULPI:
+	case ZYNQ_USB2_PHY_ULPI:
 		portsc |= PORT_PTS_ULPI;
 		break;
-	case XUSBPS_USB2_PHY_SERIAL:
+	case ZYNQ_USB2_PHY_SERIAL:
 		portsc |= PORT_PTS_SERIAL;
 		break;
-	case XUSBPS_USB2_PHY_UTMI_WIDE:
+	case ZYNQ_USB2_PHY_UTMI_WIDE:
 		portsc |= PORT_PTS_PTW;
 		/* fall through */
-	case XUSBPS_USB2_PHY_UTMI:
+	case ZYNQ_USB2_PHY_UTMI:
 		portsc |= PORT_PTS_UTMI;
 		break;
-	case XUSBPS_USB2_PHY_NONE:
+	case ZYNQ_USB2_PHY_NONE:
 		break;
 	}
 	ehci_writel(ehci, portsc, &ehci->regs->port_status[port_offset]);
 }
 
-static void ehci_xusbps_usb_setup(struct ehci_hcd *ehci)
+static void ehci_zynq_usb_setup(struct ehci_hcd *ehci)
 {
 	struct usb_hcd *hcd = ehci_to_hcd(ehci);
-	struct xusbps_usb2_platform_data *pdata;
+	struct zynq_usb2_platform_data *pdata;
 
 	pdata = hcd->self.controller->platform_data;
 
-	if ((pdata->operating_mode == XUSBPS_USB2_DR_HOST) ||
-			(pdata->operating_mode == XUSBPS_USB2_DR_OTG))
-		ehci_xusbps_setup_phy(ehci, pdata->phy_mode, 0);
+	if ((pdata->operating_mode == ZYNQ_USB2_DR_HOST) ||
+			(pdata->operating_mode == ZYNQ_USB2_DR_OTG))
+		ehci_zynq_setup_phy(ehci, pdata->phy_mode, 0);
 
-	if (pdata->operating_mode == XUSBPS_USB2_MPH_HOST) {
-		if (pdata->port_enables & XUSBPS_USB2_PORT0_ENABLED)
-			ehci_xusbps_setup_phy(ehci, pdata->phy_mode, 0);
-		if (pdata->port_enables & XUSBPS_USB2_PORT1_ENABLED)
-			ehci_xusbps_setup_phy(ehci, pdata->phy_mode, 1);
+	if (pdata->operating_mode == ZYNQ_USB2_MPH_HOST) {
+		if (pdata->port_enables & ZYNQ_USB2_PORT0_ENABLED)
+			ehci_zynq_setup_phy(ehci, pdata->phy_mode, 0);
+		if (pdata->port_enables & ZYNQ_USB2_PORT1_ENABLED)
+			ehci_zynq_setup_phy(ehci, pdata->phy_mode, 1);
 	}
 }
 
@@ -333,13 +333,13 @@ static void ehci_port_power (struct ehci_hcd *ehci, int is_on)
 }
 
 /* called after powerup, by probe or system-pm "wakeup" */
-static int ehci_xusbps_reinit(struct ehci_hcd *ehci)
+static int ehci_zynq_reinit(struct ehci_hcd *ehci)
 {
 #ifdef CONFIG_USB_ZYNQ_PHY
 	struct usb_hcd *hcd = ehci_to_hcd(ehci);
 #endif
 
-	ehci_xusbps_usb_setup(ehci);
+	ehci_zynq_usb_setup(ehci);
 #ifdef CONFIG_USB_ZYNQ_PHY
 	/* Don't turn off port power in OTG mode */
 	if (!hcd->phy)
@@ -349,7 +349,7 @@ static int ehci_xusbps_reinit(struct ehci_hcd *ehci)
 	return 0;
 }
 
-struct ehci_xusbps {
+struct ehci_zynq {
 	struct ehci_hcd	ehci;
 
 #ifdef CONFIG_PM
@@ -359,7 +359,7 @@ struct ehci_xusbps {
 };
 
 /* called during probe() after chip reset completes */
-static int ehci_xusbps_setup(struct usb_hcd *hcd)
+static int ehci_zynq_setup(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 	int retval;
@@ -389,11 +389,11 @@ static int ehci_xusbps_setup(struct usb_hcd *hcd)
 
 	ehci_reset(ehci);
 
-	retval = ehci_xusbps_reinit(ehci);
+	retval = ehci_zynq_reinit(ehci);
 	return retval;
 }
 
-static void ehci_xusbps_shutdown(struct usb_hcd *hcd)
+static void ehci_zynq_shutdown(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 
@@ -402,10 +402,10 @@ static void ehci_xusbps_shutdown(struct usb_hcd *hcd)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int ehci_xusbps_drv_suspend(struct device *dev)
+static int ehci_zynq_drv_suspend(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
-	struct xusbps_usb2_platform_data *pdata = dev->platform_data;
+	struct zynq_usb2_platform_data *pdata = dev->platform_data;
 
 	ehci_prepare_ports_for_controller_suspend(hcd_to_ehci(hcd),
 			device_may_wakeup(dev));
@@ -415,11 +415,11 @@ static int ehci_xusbps_drv_suspend(struct device *dev)
 	return 0;
 }
 
-static int ehci_xusbps_drv_resume(struct device *dev)
+static int ehci_zynq_drv_resume(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
-	struct xusbps_usb2_platform_data *pdata = dev->platform_data;
+	struct zynq_usb2_platform_data *pdata = dev->platform_data;
 	int ret;
 
 	ret = clk_enable(pdata->clk);
@@ -433,25 +433,25 @@ static int ehci_xusbps_drv_resume(struct device *dev)
 	usb_root_hub_lost_power(hcd->self.root_hub);
 
 	ehci_reset(ehci);
-	ehci_xusbps_reinit(ehci);
+	ehci_zynq_reinit(ehci);
 
 	return 0;
 }
 
-static const struct dev_pm_ops ehci_xusbps_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(ehci_xusbps_drv_suspend, ehci_xusbps_drv_resume)
+static const struct dev_pm_ops ehci_zynq_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(ehci_zynq_drv_suspend, ehci_zynq_drv_resume)
 };
-#define EHCI_XUSBPS_PM_OPS	(&ehci_xusbps_pm_ops)
+#define EHCI_ZYNQ_PM_OPS	(&ehci_zynq_pm_ops)
 
 #else /* ! CONFIG_PM_SLEEP */
-#define EHCI_XUSBPS_PM_OPS	NULL
+#define EHCI_ZYNQ_PM_OPS	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
 
-static const struct hc_driver ehci_xusbps_hc_driver = {
+static const struct hc_driver ehci_zynq_hc_driver = {
 	.description = hcd_name,
 	.product_desc = "Xilinx Zynq USB EHCI Host Controller",
-	.hcd_priv_size = sizeof(struct ehci_xusbps),
+	.hcd_priv_size = sizeof(struct ehci_zynq),
 
 	/*
 	 * generic hardware linkage
@@ -462,10 +462,10 @@ static const struct hc_driver ehci_xusbps_hc_driver = {
 	/*
 	 * basic lifecycle operations
 	 */
-	.reset = ehci_xusbps_setup,
+	.reset = ehci_zynq_setup,
 	.start = ehci_run,
 	.stop = ehci_stop,
-	.shutdown = ehci_xusbps_shutdown,
+	.shutdown = ehci_zynq_shutdown,
 
 	/*
 	 * managing i/o requests and associated device resources
@@ -492,36 +492,36 @@ static const struct hc_driver ehci_xusbps_hc_driver = {
 
 	.clear_tt_buffer_complete = ehci_clear_tt_buffer_complete,
 #ifdef CONFIG_USB_ZYNQ_PHY
-	.update_device = ehci_xusbps_update_device,
+	.update_device = ehci_zynq_update_device,
 #endif
 };
 
-static int ehci_xusbps_drv_probe(struct platform_device *pdev)
+static int ehci_zynq_drv_probe(struct platform_device *pdev)
 {
 	if (usb_disabled())
 		return -ENODEV;
 
 	/* FIXME we only want one one probe() not two */
-	return usb_hcd_xusbps_probe(&ehci_xusbps_hc_driver, pdev);
+	return usb_hcd_zynq_probe(&ehci_zynq_hc_driver, pdev);
 }
 
-static int ehci_xusbps_drv_remove(struct platform_device *pdev)
+static int ehci_zynq_drv_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 
 	/* FIXME we only want one one remove() not two */
-	usb_hcd_xusbps_remove(hcd, pdev);
+	usb_hcd_zynq_remove(hcd, pdev);
 	return 0;
 }
 
-MODULE_ALIAS("platform:xusbps-ehci");
+MODULE_ALIAS("platform:zynq-ehci");
 
-static struct platform_driver ehci_xusbps_driver = {
-	.probe = ehci_xusbps_drv_probe,
-	.remove = ehci_xusbps_drv_remove,
+static struct platform_driver ehci_zynq_driver = {
+	.probe = ehci_zynq_drv_probe,
+	.remove = ehci_zynq_drv_remove,
 	.shutdown = usb_hcd_platform_shutdown,
 	.driver = {
-		.name = "xusbps-ehci",
-		.pm = EHCI_XUSBPS_PM_OPS,
+		.name = "zynq-ehci",
+		.pm = EHCI_ZYNQ_PM_OPS,
 	},
 };

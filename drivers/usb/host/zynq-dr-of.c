@@ -31,35 +31,35 @@
 
 static u64 dma_mask = 0xFFFFFFF0;
 
-struct xusbps_dev_data {
+struct zynq_dev_data {
 	char *dr_mode;		/* controller mode */
 	char *drivers[3];	/* drivers to instantiate for this mode */
-	enum xusbps_usb2_operating_modes op_mode;	/* operating mode */
+	enum zynq_usb2_operating_modes op_mode;	/* operating mode */
 };
 
-struct xusbps_host_data {
+struct zynq_host_data {
 	struct clk *clk;
 };
 
-static struct xusbps_dev_data dr_mode_data[] = {
+static struct zynq_dev_data dr_mode_data[] = {
 	{
 		.dr_mode = "host",
-		.drivers = { "xusbps-ehci", NULL, NULL, },
-		.op_mode = XUSBPS_USB2_DR_HOST,
+		.drivers = { "zynq-ehci", NULL, NULL, },
+		.op_mode = ZYNQ_USB2_DR_HOST,
 	},
 	{
 		.dr_mode = "otg",
-		.drivers = { "xusbps-otg", "xusbps-ehci", "xusbps-udc", },
-		.op_mode = XUSBPS_USB2_DR_OTG,
+		.drivers = { "zynq-otg", "zynq-ehci", "zynq-udc", },
+		.op_mode = ZYNQ_USB2_DR_OTG,
 	},
 	{
 		.dr_mode = "peripheral",
-		.drivers = { "xusbps-udc", NULL, NULL, },
-		.op_mode = XUSBPS_USB2_DR_DEVICE,
+		.drivers = { "zynq-udc", NULL, NULL, },
+		.op_mode = ZYNQ_USB2_DR_DEVICE,
 	},
 };
 
-static struct xusbps_dev_data * get_dr_mode_data(
+static struct zynq_dev_data *get_dr_mode_data(
 		struct device_node *np)
 {
 	const unsigned char *prop;
@@ -77,31 +77,31 @@ static struct xusbps_dev_data * get_dr_mode_data(
 	return &dr_mode_data[0]; /* mode not specified, use host */
 }
 
-static enum xusbps_usb2_phy_modes determine_usb_phy(const char *phy_type)
+static enum zynq_usb2_phy_modes determine_usb_phy(const char *phy_type)
 {
 	if (!phy_type)
-		return XUSBPS_USB2_PHY_NONE;
+		return ZYNQ_USB2_PHY_NONE;
 	if (!strcasecmp(phy_type, "ulpi"))
-		return XUSBPS_USB2_PHY_ULPI;
+		return ZYNQ_USB2_PHY_ULPI;
 	if (!strcasecmp(phy_type, "utmi"))
-		return XUSBPS_USB2_PHY_UTMI;
+		return ZYNQ_USB2_PHY_UTMI;
 	if (!strcasecmp(phy_type, "utmi_wide"))
-		return XUSBPS_USB2_PHY_UTMI_WIDE;
+		return ZYNQ_USB2_PHY_UTMI_WIDE;
 	if (!strcasecmp(phy_type, "serial"))
-		return XUSBPS_USB2_PHY_SERIAL;
+		return ZYNQ_USB2_PHY_SERIAL;
 
-	return XUSBPS_USB2_PHY_NONE;
+	return ZYNQ_USB2_PHY_NONE;
 }
 
-static struct platform_device * xusbps_device_register(
+static struct platform_device *zynq_device_register(
 					struct platform_device *ofdev,
-					struct xusbps_usb2_platform_data *pdata,
+					struct zynq_usb2_platform_data *pdata,
 					const char *name, int id)
 {
 	struct platform_device *pdev;
 	const struct resource *res = ofdev->resource;
 	unsigned int num = ofdev->num_resources;
-	struct xusbps_usb2_platform_data *pdata1;
+	struct zynq_usb2_platform_data *pdata1;
 	int retval;
 
 	pdev = platform_device_alloc(name, id);
@@ -141,13 +141,13 @@ error:
 	return ERR_PTR(retval);
 }
 
-static int xusbps_dr_of_probe(struct platform_device *ofdev)
+static int zynq_dr_of_probe(struct platform_device *ofdev)
 {
 	struct device_node *np = ofdev->dev.of_node;
 	struct platform_device *usb_dev;
-	struct xusbps_usb2_platform_data data, *pdata;
-	struct xusbps_dev_data *dev_data;
-	struct xusbps_host_data *hdata;
+	struct zynq_usb2_platform_data data, *pdata;
+	struct zynq_dev_data *dev_data;
+	struct zynq_host_data *hdata;
 	const unsigned char *prop;
 	static unsigned int idx;
 	struct resource *res;
@@ -198,12 +198,12 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 	pdata->clk = hdata->clk;
 
 	/* If ULPI phy type, set it up */
-	if (pdata->phy_mode == XUSBPS_USB2_PHY_ULPI) {
+	if (pdata->phy_mode == ZYNQ_USB2_PHY_ULPI) {
 		pdata->ulpi = otg_ulpi_create(&ulpi_viewport_access_ops,
 			ULPI_OTG_DRVVBUS | ULPI_OTG_DRVVBUS_EXT);
 		if (pdata->ulpi) {
 			pdata->ulpi->io_priv = pdata->regs +
-							XUSBPS_SOC_USB_ULPIVP;
+							ZYNQ_SOC_USB_ULPIVP;
 
 			phy_init = usb_phy_init(pdata->ulpi);
 			if (phy_init) {
@@ -221,7 +221,7 @@ static int xusbps_dr_of_probe(struct platform_device *ofdev)
 	for (i = 0; i < ARRAY_SIZE(dev_data->drivers); i++) {
 		if (!dev_data->drivers[i])
 			continue;
-		usb_dev = xusbps_device_register(ofdev, pdata,
+		usb_dev = zynq_device_register(ofdev, pdata,
 					dev_data->drivers[i], idx);
 		if (IS_ERR(usb_dev)) {
 			dev_err(&ofdev->dev, "Can't register usb device\n");
@@ -244,9 +244,9 @@ static int __unregister_subdev(struct device *dev, void *d)
 	return 0;
 }
 
-static int xusbps_dr_of_remove(struct platform_device *ofdev)
+static int zynq_dr_of_remove(struct platform_device *ofdev)
 {
-	struct xusbps_host_data *hdata = platform_get_drvdata(ofdev);
+	struct zynq_host_data *hdata = platform_get_drvdata(ofdev);
 
 	device_for_each_child(&ofdev->dev, NULL, __unregister_subdev);
 	clk_disable_unprepare(hdata->clk);
@@ -254,18 +254,18 @@ static int xusbps_dr_of_remove(struct platform_device *ofdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int xusbps_dr_of_suspend(struct device *dev)
+static int zynq_dr_of_suspend(struct device *dev)
 {
-	struct xusbps_host_data *hdata = dev_get_drvdata(dev);
+	struct zynq_host_data *hdata = dev_get_drvdata(dev);
 
 	clk_disable(hdata->clk);
 
 	return 0;
 }
 
-static int xusbps_dr_of_resume(struct device *dev)
+static int zynq_dr_of_resume(struct device *dev)
 {
-	struct xusbps_host_data *hdata = dev_get_drvdata(dev);
+	struct zynq_host_data *hdata = dev_get_drvdata(dev);
 	int ret;
 
 	ret = clk_enable(hdata->clk);
@@ -278,51 +278,51 @@ static int xusbps_dr_of_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(xusbps_pm_ops, xusbps_dr_of_suspend,
-		xusbps_dr_of_resume);
+static SIMPLE_DEV_PM_OPS(zynq_pm_ops, zynq_dr_of_suspend,
+		zynq_dr_of_resume);
 
-static const struct of_device_id xusbps_dr_of_match[] = {
+static const struct of_device_id zynq_dr_of_match[] = {
 	{ .compatible = "xlnx,ps7-usb-1.00.a" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, xusbps_dr_of_match);
+MODULE_DEVICE_TABLE(of, zynq_dr_of_match);
 
-static struct platform_driver xusbps_dr_driver = {
+static struct platform_driver zynq_dr_driver = {
 	.driver = {
-		.name = "xusbps-dr",
+		.name = "zynq-dr",
 		.owner = THIS_MODULE,
-		.of_match_table = xusbps_dr_of_match,
-		.pm = &xusbps_pm_ops,
+		.of_match_table = zynq_dr_of_match,
+		.pm = &zynq_pm_ops,
 	},
-	.probe	= xusbps_dr_of_probe,
-	.remove	= xusbps_dr_of_remove,
+	.probe	= zynq_dr_of_probe,
+	.remove	= zynq_dr_of_remove,
 };
 
 #ifdef CONFIG_USB_ZYNQ_PHY
-extern struct platform_driver xusbps_otg_driver;
+extern struct platform_driver zynq_otg_driver;
 
-static int __init xusbps_dr_init(void)
+static int __init zynq_dr_init(void)
 {
 	int retval;
 
 	/* Register otg driver first */
-	retval = platform_driver_register(&xusbps_otg_driver);
+	retval = platform_driver_register(&zynq_otg_driver);
 	if (retval != 0)
 		return retval;
 
-	return platform_driver_register(&xusbps_dr_driver);
+	return platform_driver_register(&zynq_dr_driver);
 }
-module_init(xusbps_dr_init);
+module_init(zynq_dr_init);
 
-static void __exit xusbps_dr_exit(void)
+static void __exit zynq_dr_exit(void)
 {
-	platform_driver_unregister(&xusbps_dr_driver);
+	platform_driver_unregister(&zynq_dr_driver);
 }
-module_exit(xusbps_dr_exit);
+module_exit(zynq_dr_exit);
 #else
-module_platform_driver(xusbps_dr_driver);
+module_platform_driver(zynq_dr_driver);
 #endif
 
-MODULE_DESCRIPTION("XUSBPS DR OF devices driver");
+MODULE_DESCRIPTION("ZYNQ DR OF devices driver");
 MODULE_AUTHOR("Xilinx");
 MODULE_LICENSE("GPL");

@@ -262,12 +262,12 @@ struct ep_td_struct {
 
 /* ### driver private data
  */
-struct xusbps_req {
+struct zynq_req {
 	struct usb_request req;
 	struct list_head queue;
 	/* ep_queue() func will add
 	   a request->queue into a udc_ep->queue 'd tail */
-	struct xusbps_ep *ep;
+	struct zynq_ep *ep;
 	unsigned mapped:1;
 
 	struct ep_td_struct *head, *tail;	/* For dTD List
@@ -277,10 +277,10 @@ struct xusbps_req {
 
 #define REQ_UNCOMPLETE			1
 
-struct xusbps_ep {
+struct zynq_ep {
 	struct usb_ep ep;
 	struct list_head queue;
-	struct xusbps_udc *udc;
+	struct zynq_udc *udc;
 	struct ep_queue_head *qh;
 	struct usb_gadget *gadget;
 
@@ -292,16 +292,16 @@ struct xusbps_ep {
 #define EP_DIR_IN	1
 #define EP_DIR_OUT	0
 
-struct xusbps_udc {
+struct zynq_udc {
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
 	struct completion *done;	/* to make sure release() is done */
-	struct xusbps_ep *eps;
+	struct zynq_ep *eps;
 	unsigned int max_ep;
 	unsigned int irq;
 
-	/* xusbps otg transceiver */
-	struct xusbps_otg	*xotg;
+	/* zynq otg transceiver */
+	struct zynq_otg	*xotg;
 
 	struct usb_ctrlrequest local_setup_buff;
 	spinlock_t lock;
@@ -312,9 +312,9 @@ struct xusbps_udc {
 	unsigned remote_wakeup:1;
 
 	struct ep_queue_head *ep_qh;	/* Endpoints Queue-Head */
-	struct xusbps_req *status_req;	/* ep0 status request */
+	struct zynq_req *status_req;	/* ep0 status request */
 	struct dma_pool *td_pool;	/* dma pool for DTD */
-	enum xusbps_usb2_phy_modes phy_mode;
+	enum zynq_usb2_phy_modes phy_mode;
 
 	size_t ep_qh_size;		/* size after alignment adjustment*/
 	dma_addr_t ep_qh_dma;		/* dma address of QH */
@@ -368,7 +368,7 @@ struct xusbps_udc {
 					* 2 + ((windex & USB_DIR_IN) ? 1 : 0))
 
 
-static int xusbps_udc_clk_notifier_cb(struct notifier_block *nb,
+static int zynq_udc_clk_notifier_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 
@@ -387,9 +387,9 @@ static int xusbps_udc_clk_notifier_cb(struct notifier_block *nb,
 	}
 }
 
-static int xusbps_udc_clk_init(struct platform_device *pdev)
+static int zynq_udc_clk_init(struct platform_device *pdev)
 {
-	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
 	int rc;
 
 	rc = clk_prepare_enable(pdata->clk);
@@ -398,7 +398,7 @@ static int xusbps_udc_clk_init(struct platform_device *pdev)
 		goto err_out_clk_put;
 	}
 
-	pdata->clk_rate_change_nb.notifier_call = xusbps_udc_clk_notifier_cb;
+	pdata->clk_rate_change_nb.notifier_call = zynq_udc_clk_notifier_cb;
 	pdata->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
@@ -411,9 +411,9 @@ err_out_clk_put:
 	return rc;
 }
 
-static void xusbps_udc_clk_release(struct platform_device *pdev)
+static void zynq_udc_clk_release(struct platform_device *pdev)
 {
-	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
 
 	clk_disable_unprepare(pdata->clk);
 }
@@ -421,16 +421,16 @@ static void xusbps_udc_clk_release(struct platform_device *pdev)
 
 #define	DMA_ADDR_INVALID	(~(dma_addr_t)0)
 
-static const char driver_name[] = "xusbps-udc";
+static const char driver_name[] = "zynq-udc";
 static const char driver_desc[] = DRIVER_DESC;
 
 static struct usb_dr_device __iomem *dr_regs;
 
 /* it is initialized in probe()  */
-static struct xusbps_udc *udc_controller;
+static struct zynq_udc *udc_controller;
 
 static const struct usb_endpoint_descriptor
-xusbps_ep0_desc = {
+zynq_ep0_desc = {
 	.bLength =		USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType =	USB_DT_ENDPOINT,
 	.bEndpointAddress =	0,
@@ -438,14 +438,14 @@ xusbps_ep0_desc = {
 	.wMaxPacketSize =	USB_MAX_CTRL_PAYLOAD,
 };
 
-static void xusbps_ep_fifo_flush(struct usb_ep *_ep);
+static void zynq_ep_fifo_flush(struct usb_ep *_ep);
 
-static inline u32 xusbps_readl(const unsigned __iomem *addr)
+static inline u32 zynq_readl(const unsigned __iomem *addr)
 {
 	return readl(addr);
 }
 
-static inline void xusbps_writel(u32 val32, unsigned __iomem *addr)
+static inline void zynq_writel(u32 val32, unsigned __iomem *addr)
 {
 	writel(val32, addr);
 }
@@ -458,15 +458,15 @@ static inline void xusbps_writel(u32 val32, unsigned __iomem *addr)
  * @status : request status to be set, only works when
  *	request is still in progress.
  *--------------------------------------------------------------*/
-static void done(struct xusbps_ep *ep, struct xusbps_req *req, int status)
+static void done(struct zynq_ep *ep, struct zynq_req *req, int status)
 {
-	struct xusbps_udc *udc = NULL;
+	struct zynq_udc *udc = NULL;
 	unsigned char stopped = ep->stopped;
 	struct ep_td_struct *curr_td, *next_td;
 	int j;
 
-	udc = (struct xusbps_udc *)ep->udc;
-	/* Removed the req from xusbps_ep->queue */
+	udc = (struct zynq_udc *)ep->udc;
+	/* Removed the req from zynq_ep->queue */
 	list_del_init(&req->queue);
 
 	/* req.status should be set as -EINPROGRESS in ep_queue() */
@@ -520,18 +520,18 @@ static void done(struct xusbps_ep *ep, struct xusbps_req *req, int status)
  * nuke(): delete all requests related to this ep
  * called with spinlock held
  *--------------------------------------------------------------*/
-static void nuke(struct xusbps_ep *ep, int status)
+static void nuke(struct zynq_ep *ep, int status)
 {
 	ep->stopped = 1;
 
 	/* Flush fifo */
-	xusbps_ep_fifo_flush(&ep->ep);
+	zynq_ep_fifo_flush(&ep->ep);
 
 	/* Whether this eq has request linked */
 	while (!list_empty(&ep->queue)) {
-		struct xusbps_req *req = NULL;
+		struct zynq_req *req = NULL;
 
-		req = list_entry(ep->queue.next, struct xusbps_req, queue);
+		req = list_entry(ep->queue.next, struct zynq_req, queue);
 		done(ep, req, status);
 	}
 }
@@ -540,45 +540,45 @@ static void nuke(struct xusbps_ep *ep, int status)
 	Internal Hardware related function
  ------------------------------------------------------------------*/
 
-static int dr_controller_setup(struct xusbps_udc *udc)
+static int dr_controller_setup(struct zynq_udc *udc)
 {
 	unsigned int tmp, portctrl;
 	unsigned long timeout;
-#define XUSBPS_UDC_RESET_TIMEOUT 1000
+#define ZYNQ_UDC_RESET_TIMEOUT 1000
 
 	/* Config PHY interface */
-	portctrl = xusbps_readl(&dr_regs->portsc1);
+	portctrl = zynq_readl(&dr_regs->portsc1);
 	portctrl &= ~(PORTSCX_PHY_TYPE_SEL | PORTSCX_PORT_WIDTH);
 	switch (udc->phy_mode) {
-	case XUSBPS_USB2_PHY_ULPI:
+	case ZYNQ_USB2_PHY_ULPI:
 		portctrl |= PORTSCX_PTS_ULPI;
 		break;
-	case XUSBPS_USB2_PHY_UTMI_WIDE:
+	case ZYNQ_USB2_PHY_UTMI_WIDE:
 		portctrl |= PORTSCX_PTW_16BIT;
 		/* fall through */
-	case XUSBPS_USB2_PHY_UTMI:
+	case ZYNQ_USB2_PHY_UTMI:
 		portctrl |= PORTSCX_PTS_UTMI;
 		break;
-	case XUSBPS_USB2_PHY_SERIAL:
+	case ZYNQ_USB2_PHY_SERIAL:
 		portctrl |= PORTSCX_PTS_FSLS;
 		break;
 	default:
 		return -EINVAL;
 	}
-	xusbps_writel(portctrl, &dr_regs->portsc1);
+	zynq_writel(portctrl, &dr_regs->portsc1);
 
 	/* Stop and reset the usb controller */
-	tmp = xusbps_readl(&dr_regs->usbcmd);
+	tmp = zynq_readl(&dr_regs->usbcmd);
 	tmp &= ~USB_CMD_RUN_STOP;
-	xusbps_writel(tmp, &dr_regs->usbcmd);
+	zynq_writel(tmp, &dr_regs->usbcmd);
 
-	tmp = xusbps_readl(&dr_regs->usbcmd);
+	tmp = zynq_readl(&dr_regs->usbcmd);
 	tmp |= USB_CMD_CTRL_RESET;
-	xusbps_writel(tmp, &dr_regs->usbcmd);
+	zynq_writel(tmp, &dr_regs->usbcmd);
 
 	/* Wait for reset to complete */
-	timeout = jiffies + XUSBPS_UDC_RESET_TIMEOUT;
-	while (xusbps_readl(&dr_regs->usbcmd) & USB_CMD_CTRL_RESET) {
+	timeout = jiffies + ZYNQ_UDC_RESET_TIMEOUT;
+	while (zynq_readl(&dr_regs->usbcmd) & USB_CMD_CTRL_RESET) {
 		if (time_after(jiffies, timeout)) {
 			ERR("udc reset timeout!\n");
 			return -ETIMEDOUT;
@@ -587,33 +587,33 @@ static int dr_controller_setup(struct xusbps_udc *udc)
 	}
 
 	/* Set the controller as device mode */
-	tmp = xusbps_readl(&dr_regs->usbmode);
+	tmp = zynq_readl(&dr_regs->usbmode);
 	tmp |= USB_MODE_CTRL_MODE_DEVICE;
 	/* Disable Setup Lockout */
 	tmp |= USB_MODE_SETUP_LOCK_OFF;
-	xusbps_writel(tmp, &dr_regs->usbmode);
+	zynq_writel(tmp, &dr_regs->usbmode);
 
 	/* Set OTG Terminate bit */
-	tmp = xusbps_readl(&dr_regs->otgsc);
+	tmp = zynq_readl(&dr_regs->otgsc);
 	tmp |= OTGSC_CTRL_OTG_TERM;
-	xusbps_writel(tmp, &dr_regs->otgsc);
+	zynq_writel(tmp, &dr_regs->otgsc);
 
 	/* Clear the setup status */
-	xusbps_writel(0, &dr_regs->usbsts);
+	zynq_writel(0, &dr_regs->usbsts);
 
 	tmp = udc->ep_qh_dma;
 	tmp &= USB_EP_LIST_ADDRESS_MASK;
-	xusbps_writel(tmp, &dr_regs->endpointlistaddr);
+	zynq_writel(tmp, &dr_regs->endpointlistaddr);
 
 	VDBG("vir[qh_base] is %p phy[qh_base] is 0x%8x reg is 0x%8x",
 		udc->ep_qh, (int)tmp,
-		xusbps_readl(&dr_regs->endpointlistaddr));
+		zynq_readl(&dr_regs->endpointlistaddr));
 
 	return 0;
 }
 
 /* Enable DR irq and set controller to run state */
-static void dr_controller_run(struct xusbps_udc *udc)
+static void dr_controller_run(struct zynq_udc *udc)
 {
 	u32 temp;
 
@@ -636,7 +636,7 @@ static void dr_controller_run(struct xusbps_udc *udc)
 		| USB_INTR_DEVICE_SUSPEND | USB_INTR_SYS_ERR_EN;
 #endif
 
-	xusbps_writel(temp, &dr_regs->usbintr);
+	zynq_writel(temp, &dr_regs->usbintr);
 
 	/*
 	 * Enable disconnect notification using B session end interrupt.
@@ -644,37 +644,37 @@ static void dr_controller_run(struct xusbps_udc *udc)
 	 * in AR# 47538
 	 */
 	if (!gadget_is_otg(&udc->gadget)) {
-		temp = xusbps_readl(&dr_regs->otgsc);
+		temp = zynq_readl(&dr_regs->otgsc);
 		temp |= OTGSC_BSEIE;
-		xusbps_writel(temp, &dr_regs->otgsc);
+		zynq_writel(temp, &dr_regs->otgsc);
 	}
 
 	/* Clear stopped bit */
 	udc->stopped = 0;
 
 	/* Set the controller as device mode */
-	temp = xusbps_readl(&dr_regs->usbmode);
+	temp = zynq_readl(&dr_regs->usbmode);
 	temp |= USB_MODE_CTRL_MODE_DEVICE;
 	temp |= USB_MODE_SETUP_LOCK_OFF;
-	xusbps_writel(temp, &dr_regs->usbmode);
+	zynq_writel(temp, &dr_regs->usbmode);
 
 	/* Set OTG Terminate bit */
-	temp = xusbps_readl(&dr_regs->otgsc);
+	temp = zynq_readl(&dr_regs->otgsc);
 	temp |= OTGSC_CTRL_OTG_TERM;
-	xusbps_writel(temp, &dr_regs->otgsc);
+	zynq_writel(temp, &dr_regs->otgsc);
 
 	/* Set controller to Run */
-	temp = xusbps_readl(&dr_regs->usbcmd);
+	temp = zynq_readl(&dr_regs->usbcmd);
 	temp |= USB_CMD_RUN_STOP;
-	xusbps_writel(temp, &dr_regs->usbcmd);
+	zynq_writel(temp, &dr_regs->usbcmd);
 }
 
-static void dr_controller_stop(struct xusbps_udc *udc)
+static void dr_controller_stop(struct zynq_udc *udc)
 {
 	unsigned int tmp;
 
 	/* disable all INTR */
-	xusbps_writel(0, &dr_regs->usbintr);
+	zynq_writel(0, &dr_regs->usbintr);
 
 	/* Set stopped bit for isr */
 	udc->stopped = 1;
@@ -683,9 +683,9 @@ static void dr_controller_stop(struct xusbps_udc *udc)
 /*	usb_sys_regs->control = 0; */
 
 	/* set controller to Stop */
-	tmp = xusbps_readl(&dr_regs->usbcmd);
+	tmp = zynq_readl(&dr_regs->usbcmd);
 	tmp &= ~USB_CMD_RUN_STOP;
-	xusbps_writel(tmp, &dr_regs->usbcmd);
+	zynq_writel(tmp, &dr_regs->usbcmd);
 }
 
 static void dr_ep_setup(unsigned char ep_num, unsigned char dir,
@@ -693,7 +693,7 @@ static void dr_ep_setup(unsigned char ep_num, unsigned char dir,
 {
 	unsigned int tmp_epctrl = 0;
 
-	tmp_epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+	tmp_epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 	if (dir) {
 		if (ep_num)
 			tmp_epctrl |= EPCTRL_TX_DATA_TOGGLE_RST;
@@ -708,7 +708,7 @@ static void dr_ep_setup(unsigned char ep_num, unsigned char dir,
 				<< EPCTRL_RX_EP_TYPE_SHIFT);
 	}
 
-	xusbps_writel(tmp_epctrl, &dr_regs->endptctrl[ep_num]);
+	zynq_writel(tmp_epctrl, &dr_regs->endptctrl[ep_num]);
 }
 
 static void
@@ -716,7 +716,7 @@ dr_ep_change_stall(unsigned char ep_num, unsigned char dir, int value)
 {
 	u32 tmp_epctrl = 0;
 
-	tmp_epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+	tmp_epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 
 	if (value) {
 		/* set the stall bit */
@@ -734,7 +734,7 @@ dr_ep_change_stall(unsigned char ep_num, unsigned char dir, int value)
 			tmp_epctrl |= EPCTRL_RX_DATA_TOGGLE_RST;
 		}
 	}
-	xusbps_writel(tmp_epctrl, &dr_regs->endptctrl[ep_num]);
+	zynq_writel(tmp_epctrl, &dr_regs->endptctrl[ep_num]);
 }
 
 /* Get stall status of a specific ep
@@ -743,7 +743,7 @@ static int dr_ep_get_stall(unsigned char ep_num, unsigned char dir)
 {
 	u32 epctrl;
 
-	epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+	epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 	if (dir)
 		return (epctrl & EPCTRL_TX_EP_STALL) ? 1 : 0;
 	else
@@ -759,7 +759,7 @@ static int dr_ep_get_stall(unsigned char ep_num, unsigned char dir)
  * @zlt: Zero Length Termination Select (1: disable; 0: enable)
  * @mult: Mult field
  ------------------------------------------------------------------*/
-static void struct_ep_qh_setup(struct xusbps_udc *udc, unsigned char ep_num,
+static void struct_ep_qh_setup(struct zynq_udc *udc, unsigned char ep_num,
 		unsigned char dir, unsigned char ep_type,
 		unsigned int max_pkt_len,
 		unsigned int zlt, unsigned char mult)
@@ -795,10 +795,10 @@ static void struct_ep_qh_setup(struct xusbps_udc *udc, unsigned char ep_num,
 }
 
 /* Setup qh structure and ep register for ep0. */
-static void ep0_setup(struct xusbps_udc *udc)
+static void ep0_setup(struct zynq_udc *udc)
 {
 	/* the intialization of an ep includes: fields in QH, Regs,
-	 * xusbps_ep struct */
+	 * zynq_ep struct */
 	struct_ep_qh_setup(udc, 0, USB_RECV, USB_ENDPOINT_XFER_CONTROL,
 			USB_MAX_CTRL_PAYLOAD, 1, 0);
 	struct_ep_qh_setup(udc, 0, USB_SEND, USB_ENDPOINT_XFER_CONTROL,
@@ -820,17 +820,17 @@ static void ep0_setup(struct xusbps_udc *udc)
  * the driver will enable or disable the relevant endpoints
  * ep0 doesn't use this routine. It is always enabled.
 -------------------------------------------------------------------------*/
-static int xusbps_ep_enable(struct usb_ep *_ep,
+static int zynq_ep_enable(struct usb_ep *_ep,
 		const struct usb_endpoint_descriptor *desc)
 {
-	struct xusbps_udc *udc = NULL;
-	struct xusbps_ep *ep = NULL;
+	struct zynq_udc *udc = NULL;
+	struct zynq_ep *ep = NULL;
 	unsigned short max = 0;
 	unsigned char mult = 0, zlt;
 	int retval = -EINVAL;
 	unsigned long flags = 0;
 
-	ep = container_of(_ep, struct xusbps_ep, ep);
+	ep = container_of(_ep, struct zynq_ep, ep);
 
 	/* catch various bogus parameters */
 	if (!_ep || !desc
@@ -910,15 +910,15 @@ en_done:
  * @ep : the ep being unconfigured. May not be ep0
  * Any pending and uncomplete req will complete with status (-ESHUTDOWN)
 *---------------------------------------------------------------------*/
-static int xusbps_ep_disable(struct usb_ep *_ep)
+static int zynq_ep_disable(struct usb_ep *_ep)
 {
-	struct xusbps_udc *udc = NULL;
-	struct xusbps_ep *ep = NULL;
+	struct zynq_udc *udc = NULL;
+	struct zynq_ep *ep = NULL;
 	unsigned long flags = 0;
 	u32 epctrl;
 	int ep_num;
 
-	ep = container_of(_ep, struct xusbps_ep, ep);
+	ep = container_of(_ep, struct zynq_ep, ep);
 	if (!_ep || !ep->ep.desc) {
 		VDBG("%s not enabled", _ep ? ep->ep.name : NULL);
 		return -EINVAL;
@@ -926,14 +926,14 @@ static int xusbps_ep_disable(struct usb_ep *_ep)
 
 	/* disable ep on controller */
 	ep_num = ep_index(ep);
-	epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+	epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 	if (ep_is_in(ep))
 		epctrl &= ~EPCTRL_TX_ENABLE;
 	else
 		epctrl &= ~EPCTRL_RX_ENABLE;
-	xusbps_writel(epctrl, &dr_regs->endptctrl[ep_num]);
+	zynq_writel(epctrl, &dr_regs->endptctrl[ep_num]);
 
-	udc = (struct xusbps_udc *)ep->udc;
+	udc = (struct zynq_udc *)ep->udc;
 	spin_lock_irqsave(&udc->lock, flags);
 
 	/* nuke all pending requests (does flush) */
@@ -953,9 +953,9 @@ static int xusbps_ep_disable(struct usb_ep *_ep)
  * Returns the request, or null if one could not be allocated
 *---------------------------------------------------------------------*/
 static struct usb_request *
-xusbps_alloc_request(struct usb_ep *_ep, gfp_t gfp_flags)
+zynq_alloc_request(struct usb_ep *_ep, gfp_t gfp_flags)
 {
-	struct xusbps_req *req = NULL;
+	struct zynq_req *req = NULL;
 
 	req = kzalloc(sizeof *req, gfp_flags);
 	if (!req)
@@ -967,18 +967,18 @@ xusbps_alloc_request(struct usb_ep *_ep, gfp_t gfp_flags)
 	return &req->req;
 }
 
-static void xusbps_free_request(struct usb_ep *_ep, struct usb_request *_req)
+static void zynq_free_request(struct usb_ep *_ep, struct usb_request *_req)
 {
-	struct xusbps_req *req = NULL;
+	struct zynq_req *req = NULL;
 
-	req = container_of(_req, struct xusbps_req, req);
+	req = container_of(_req, struct zynq_req, req);
 
 	if (_req)
 		kfree(req);
 }
 
 /*-------------------------------------------------------------------------*/
-static void xusbps_queue_td(struct xusbps_ep *ep, struct xusbps_req *req)
+static void zynq_queue_td(struct zynq_ep *ep, struct zynq_req *req)
 {
 	int i = ep_index(ep) * 2 + ep_is_in(ep);
 	u32 temp, bitmask, tmp_stat;
@@ -994,40 +994,41 @@ static void xusbps_queue_td(struct xusbps_ep *ep, struct xusbps_req *req)
 	/* check if the pipe is empty */
 	if (!(list_empty(&ep->queue))) {
 		/* Add td to the end */
-		struct xusbps_req *lastreq;
-		lastreq = list_entry(ep->queue.prev, struct xusbps_req, queue);
+		struct zynq_req *lastreq;
+		lastreq = list_entry(ep->queue.prev, struct zynq_req, queue);
 		lastreq->tail->next_td_ptr =
 			cpu_to_le32(req->head->td_dma & DTD_ADDR_MASK);
 		wmb();
 		/* Read prime bit, if 1 goto done */
-		if (xusbps_readl(&dr_regs->endpointprime) & bitmask)
+		if (zynq_readl(&dr_regs->endpointprime) & bitmask)
 			goto out;
 
 		do {
 			/* Set ATDTW bit in USBCMD */
-			temp = xusbps_readl(&dr_regs->usbcmd);
-			xusbps_writel(temp | USB_CMD_ATDTW, &dr_regs->usbcmd);
+			temp = zynq_readl(&dr_regs->usbcmd);
+			zynq_writel(temp | USB_CMD_ATDTW, &dr_regs->usbcmd);
 
 			/* Read correct status bit */
-			tmp_stat = xusbps_readl(&dr_regs->endptstatus) &
+			tmp_stat = zynq_readl(&dr_regs->endptstatus) &
 				bitmask;
 
 #ifdef CONFIG_USB_ZYNQ_ERRATA_DT654401
 			/* Workaround for USB errata DT# 654401 */
-			temp = xusbps_readl(&dr_regs->usbcmd);
+			temp = zynq_readl(&dr_regs->usbcmd);
 			if (temp & USB_CMD_ATDTW) {
 				udelay(5);
-				if (xusbps_readl(&dr_regs->usbcmd) & USB_CMD_ATDTW)
+				if (zynq_readl(&dr_regs->usbcmd) &
+				    USB_CMD_ATDTW)
 					break;
 			}
 		} while (1);
 #else
-		} while (!(xusbps_readl(&dr_regs->usbcmd) & USB_CMD_ATDTW));
+		} while (!(zynq_readl(&dr_regs->usbcmd) & USB_CMD_ATDTW));
 #endif
 
 		/* Write ATDTW bit to 0 */
-		temp = xusbps_readl(&dr_regs->usbcmd);
-		xusbps_writel(temp & ~USB_CMD_ATDTW, &dr_regs->usbcmd);
+		temp = zynq_readl(&dr_regs->usbcmd);
+		zynq_writel(temp & ~USB_CMD_ATDTW, &dr_regs->usbcmd);
 
 		if (tmp_stat)
 			goto out;
@@ -1049,7 +1050,7 @@ static void xusbps_queue_td(struct xusbps_ep *ep, struct xusbps_req *req)
 	temp = ep_is_in(ep)
 		? (1 << (ep_index(ep) + 16))
 		: (1 << (ep_index(ep)));
-	xusbps_writel(temp, &dr_regs->endpointprime);
+	zynq_writel(temp, &dr_regs->endpointprime);
 out:
 	return;
 }
@@ -1060,7 +1061,7 @@ out:
  * @dma: return dma address of the dTD
  * @is_last: return flag if it is the last dTD of the request
  * return: pointer to the built dTD */
-static struct ep_td_struct *xusbps_build_dtd(struct xusbps_req *req, unsigned
+static struct ep_td_struct *zynq_build_dtd(struct zynq_req *req, unsigned
 		*length, dma_addr_t *dma, int *is_last)
 {
 	u32 swap_temp;
@@ -1120,7 +1121,7 @@ static struct ep_td_struct *xusbps_build_dtd(struct xusbps_req *req, unsigned
 }
 
 /* Generate dtd chain for a request */
-static int xusbps_req_to_dtd(struct xusbps_req *req)
+static int zynq_req_to_dtd(struct zynq_req *req)
 {
 	unsigned	count;
 	int		is_last;
@@ -1129,7 +1130,7 @@ static int xusbps_req_to_dtd(struct xusbps_req *req)
 	dma_addr_t dma;
 
 	do {
-		dtd = xusbps_build_dtd(req, &count, &dma, &is_last);
+		dtd = zynq_build_dtd(req, &count, &dma, &is_last);
 		if (dtd == NULL)
 			return -ENOMEM;
 
@@ -1155,11 +1156,11 @@ static int xusbps_req_to_dtd(struct xusbps_req *req)
 
 /* queues (submits) an I/O request to an endpoint */
 static int
-xusbps_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
+zynq_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 {
-	struct xusbps_ep *ep = container_of(_ep, struct xusbps_ep, ep);
-	struct xusbps_req *req = container_of(_req, struct xusbps_req, req);
-	struct xusbps_udc *udc;
+	struct zynq_ep *ep = container_of(_ep, struct zynq_ep, ep);
+	struct zynq_req *req = container_of(_req, struct zynq_req, req);
+	struct zynq_udc *udc;
 	unsigned long flags;
 
 	/* catch various bogus parameters */
@@ -1207,8 +1208,8 @@ xusbps_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 	spin_lock_irqsave(&udc->lock, flags);
 
 	/* build dtds and push them to device queue */
-	if (!xusbps_req_to_dtd(req)) {
-		xusbps_queue_td(ep, req);
+	if (!zynq_req_to_dtd(req)) {
+		zynq_queue_td(ep, req);
 	} else {
 		spin_unlock_irqrestore(&udc->lock, flags);
 		return -ENOMEM;
@@ -1227,10 +1228,10 @@ xusbps_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 }
 
 /* dequeues (cancels, unlinks) an I/O request from an endpoint */
-static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
+static int zynq_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
-	struct xusbps_ep *ep = container_of(_ep, struct xusbps_ep, ep);
-	struct xusbps_req *req;
+	struct zynq_ep *ep = container_of(_ep, struct zynq_ep, ep);
+	struct zynq_req *req;
 	unsigned long flags;
 	int ep_num, stopped, ret = 0;
 	u32 epctrl;
@@ -1244,12 +1245,12 @@ static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	/* Stop the ep before we deal with the queue */
 	ep->stopped = 1;
 	ep_num = ep_index(ep);
-	epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+	epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 	if (ep_is_in(ep))
 		epctrl &= ~EPCTRL_TX_ENABLE;
 	else
 		epctrl &= ~EPCTRL_RX_ENABLE;
-	xusbps_writel(epctrl, &dr_regs->endptctrl[ep_num]);
+	zynq_writel(epctrl, &dr_regs->endptctrl[ep_num]);
 
 	/* make sure it's actually queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
@@ -1264,30 +1265,30 @@ static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	/* The request is in progress, or completed but not dequeued */
 	if (ep->queue.next == &req->queue) {
 		_req->status = -ECONNRESET;
-		xusbps_ep_fifo_flush(_ep);	/* flush current transfer */
+		zynq_ep_fifo_flush(_ep);	/* flush current transfer */
 
 		/* The request isn't the last request in this ep queue */
 		if (req->queue.next != &ep->queue) {
 			struct ep_queue_head *qh;
-			struct xusbps_req *next_req;
+			struct zynq_req *next_req;
 
 			qh = ep->qh;
 			next_req = list_entry(req->queue.next, struct
-					xusbps_req, queue);
+					zynq_req, queue);
 
 			/* Point the QH to the first TD of next request */
-			xusbps_writel((u32) next_req->head,
+			zynq_writel((u32) next_req->head,
 				(void __force __iomem *)&qh->curr_dtd_ptr);
 		}
 
 		/* The request hasn't been processed, patch up the TD chain */
 	} else {
-		struct xusbps_req *prev_req;
+		struct zynq_req *prev_req;
 
-		prev_req = list_entry(req->queue.prev, struct xusbps_req,
+		prev_req = list_entry(req->queue.prev, struct zynq_req,
 				queue);
-		xusbps_writel(
-		xusbps_readl((void __force __iomem *)&req->tail->next_td_ptr),
+		zynq_writel(
+		zynq_readl((void __force __iomem *)&req->tail->next_td_ptr),
 			(void __force __iomem *)&prev_req->tail->next_td_ptr);
 
 	}
@@ -1295,12 +1296,12 @@ static int xusbps_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	done(ep, req, -ECONNRESET);
 
 	/* Enable EP */
-out:	epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
+out:	epctrl = zynq_readl(&dr_regs->endptctrl[ep_num]);
 	if (ep_is_in(ep))
 		epctrl |= EPCTRL_TX_ENABLE;
 	else
 		epctrl |= EPCTRL_RX_ENABLE;
-	xusbps_writel(epctrl, &dr_regs->endptctrl[ep_num]);
+	zynq_writel(epctrl, &dr_regs->endptctrl[ep_num]);
 	ep->stopped = stopped;
 
 	spin_unlock_irqrestore(&ep->udc->lock, flags);
@@ -1315,15 +1316,15 @@ out:	epctrl = xusbps_readl(&dr_regs->endptctrl[ep_num]);
  * @value: 1--set halt  0--clear halt
  * Returns zero, or a negative error code.
 *----------------------------------------------------------------*/
-static int xusbps_ep_set_halt(struct usb_ep *_ep, int value)
+static int zynq_ep_set_halt(struct usb_ep *_ep, int value)
 {
-	struct xusbps_ep *ep = NULL;
+	struct zynq_ep *ep = NULL;
 	unsigned long flags = 0;
 	int status = -EOPNOTSUPP;	/* operation not supported */
 	unsigned char ep_dir = 0, ep_num = 0;
-	struct xusbps_udc *udc = NULL;
+	struct zynq_udc *udc = NULL;
 
-	ep = container_of(_ep, struct xusbps_ep, ep);
+	ep = container_of(_ep, struct zynq_ep, ep);
 	udc = ep->udc;
 	if (!_ep || !ep->ep.desc) {
 		status = -EINVAL;
@@ -1362,12 +1363,12 @@ out:
 	return status;
 }
 
-static int xusbps_ep_set_wedge(struct usb_ep *_ep)
+static int zynq_ep_set_wedge(struct usb_ep *_ep)
 {
-	struct xusbps_ep *ep = NULL;
+	struct zynq_ep *ep = NULL;
 	unsigned long flags = 0;
 
-	ep = container_of(_ep, struct xusbps_ep, ep);
+	ep = container_of(_ep, struct zynq_ep, ep);
 
 	if (!ep || !ep->ep.desc)
 		return -EINVAL;
@@ -1379,18 +1380,18 @@ static int xusbps_ep_set_wedge(struct usb_ep *_ep)
 	return usb_ep_set_halt(_ep);
 }
 
-static void xusbps_ep_fifo_flush(struct usb_ep *_ep)
+static void zynq_ep_fifo_flush(struct usb_ep *_ep)
 {
-	struct xusbps_ep *ep;
+	struct zynq_ep *ep;
 	int ep_num, ep_dir;
 	u32 bits;
 	unsigned long timeout;
-#define XUSBPS_UDC_FLUSH_TIMEOUT 1000
+#define ZYNQ_UDC_FLUSH_TIMEOUT 1000
 
 	if (!_ep) {
 		return;
 	} else {
-		ep = container_of(_ep, struct xusbps_ep, ep);
+		ep = container_of(_ep, struct zynq_ep, ep);
 		if (!ep->ep.desc)
 			return;
 	}
@@ -1404,12 +1405,12 @@ static void xusbps_ep_fifo_flush(struct usb_ep *_ep)
 	else
 		bits = 1 << ep_num;
 
-	timeout = jiffies + XUSBPS_UDC_FLUSH_TIMEOUT;
+	timeout = jiffies + ZYNQ_UDC_FLUSH_TIMEOUT;
 	do {
-		xusbps_writel(bits, &dr_regs->endptflush);
+		zynq_writel(bits, &dr_regs->endptflush);
 
 		/* Wait until flush complete */
-		while (xusbps_readl(&dr_regs->endptflush)) {
+		while (zynq_readl(&dr_regs->endptflush)) {
 			if (time_after(jiffies, timeout)) {
 				ERR("ep flush timeout\n");
 				return;
@@ -1417,22 +1418,22 @@ static void xusbps_ep_fifo_flush(struct usb_ep *_ep)
 			cpu_relax();
 		}
 		/* See if we need to flush again */
-	} while (xusbps_readl(&dr_regs->endptstatus) & bits);
+	} while (zynq_readl(&dr_regs->endptstatus) & bits);
 }
 
-static struct usb_ep_ops xusbps_ep_ops = {
-	.enable = xusbps_ep_enable,
-	.disable = xusbps_ep_disable,
+static struct usb_ep_ops zynq_ep_ops = {
+	.enable = zynq_ep_enable,
+	.disable = zynq_ep_disable,
 
-	.alloc_request = xusbps_alloc_request,
-	.free_request = xusbps_free_request,
+	.alloc_request = zynq_alloc_request,
+	.free_request = zynq_free_request,
 
-	.queue = xusbps_ep_queue,
-	.dequeue = xusbps_ep_dequeue,
+	.queue = zynq_ep_queue,
+	.dequeue = zynq_ep_dequeue,
 
-	.set_halt = xusbps_ep_set_halt,
-	.set_wedge = xusbps_ep_set_wedge,
-	.fifo_flush = xusbps_ep_fifo_flush,	/* flush fifo */
+	.set_halt = zynq_ep_set_halt,
+	.set_wedge = zynq_ep_set_wedge,
+	.fifo_flush = zynq_ep_fifo_flush,	/* flush fifo */
 };
 
 /*-------------------------------------------------------------------------
@@ -1442,17 +1443,17 @@ static struct usb_ep_ops xusbps_ep_ops = {
 /*----------------------------------------------------------------------
  * Get the current frame number (from DR frame_index Reg )
  *----------------------------------------------------------------------*/
-static int xusbps_get_frame(struct usb_gadget *gadget)
+static int zynq_get_frame(struct usb_gadget *gadget)
 {
-	return (int)(xusbps_readl(&dr_regs->frindex) & USB_FRINDEX_MASKS);
+	return (int)(zynq_readl(&dr_regs->frindex) & USB_FRINDEX_MASKS);
 }
 
 /*-----------------------------------------------------------------------
  * Tries to wake up the host connected to this gadget
  -----------------------------------------------------------------------*/
-static int xusbps_wakeup(struct usb_gadget *gadget)
+static int zynq_wakeup(struct usb_gadget *gadget)
 {
-	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
+	struct zynq_udc *udc = container_of(gadget, struct zynq_udc,
 			gadget);
 	u32 portsc;
 
@@ -1460,37 +1461,37 @@ static int xusbps_wakeup(struct usb_gadget *gadget)
 	if (!udc->remote_wakeup)
 		return -ENOTSUPP;
 
-	portsc = xusbps_readl(&dr_regs->portsc1);
+	portsc = zynq_readl(&dr_regs->portsc1);
 	/* not suspended? */
 	if (!(portsc & PORTSCX_PORT_SUSPEND))
 		return 0;
 	/* trigger force resume */
 	portsc |= PORTSCX_PORT_FORCE_RESUME;
-	xusbps_writel(portsc, &dr_regs->portsc1);
+	zynq_writel(portsc, &dr_regs->portsc1);
 	return 0;
 }
 
-static int can_pullup(struct xusbps_udc *udc)
+static int can_pullup(struct zynq_udc *udc)
 {
 	return udc->driver && udc->softconnect && udc->vbus_active;
 }
 
 /* Notify controller that VBUS is powered, Called by whatever
    detects VBUS sessions */
-static int xusbps_vbus_session(struct usb_gadget *gadget, int is_active)
+static int zynq_vbus_session(struct usb_gadget *gadget, int is_active)
 {
-	struct xusbps_udc	*udc;
+	struct zynq_udc	*udc;
 	unsigned long	flags;
 
-	udc = container_of(gadget, struct xusbps_udc, gadget);
+	udc = container_of(gadget, struct zynq_udc, gadget);
 	spin_lock_irqsave(&udc->lock, flags);
 	VDBG("VBUS %s", is_active ? "on" : "off");
 	udc->vbus_active = (is_active != 0);
 	if (can_pullup(udc))
-		xusbps_writel((xusbps_readl(&dr_regs->usbcmd) |
+		zynq_writel((zynq_readl(&dr_regs->usbcmd) |
 					USB_CMD_RUN_STOP), &dr_regs->usbcmd);
 	else
-		xusbps_writel((xusbps_readl(&dr_regs->usbcmd) &
+		zynq_writel((zynq_readl(&dr_regs->usbcmd) &
 					~USB_CMD_RUN_STOP), &dr_regs->usbcmd);
 	spin_unlock_irqrestore(&udc->lock, flags);
 	return 0;
@@ -1503,11 +1504,11 @@ static int xusbps_vbus_session(struct usb_gadget *gadget, int is_active)
  *
  * Returns zero on success, else negative errno.
  */
-static int xusbps_vbus_draw(struct usb_gadget *gadget, unsigned mA)
+static int zynq_vbus_draw(struct usb_gadget *gadget, unsigned mA)
 {
-	struct xusbps_udc *udc;
+	struct zynq_udc *udc;
 
-	udc = container_of(gadget, struct xusbps_udc, gadget);
+	udc = container_of(gadget, struct zynq_udc, gadget);
 	if (udc->transceiver)
 		return usb_phy_set_power(udc->transceiver, mA);
 	return -ENOTSUPP;
@@ -1516,32 +1517,32 @@ static int xusbps_vbus_draw(struct usb_gadget *gadget, unsigned mA)
 /* Change Data+ pullup status
  * this func is used by usb_gadget_connect/disconnet
  */
-static int xusbps_pullup(struct usb_gadget *gadget, int is_on)
+static int zynq_pullup(struct usb_gadget *gadget, int is_on)
 {
-	struct xusbps_udc *udc;
+	struct zynq_udc *udc;
 
-	udc = container_of(gadget, struct xusbps_udc, gadget);
+	udc = container_of(gadget, struct zynq_udc, gadget);
 	udc->softconnect = (is_on != 0);
 	if (can_pullup(udc))
-		xusbps_writel((xusbps_readl(&dr_regs->usbcmd) |
+		zynq_writel((zynq_readl(&dr_regs->usbcmd) |
 					USB_CMD_RUN_STOP), &dr_regs->usbcmd);
 	else
-		xusbps_writel((xusbps_readl(&dr_regs->usbcmd) &
+		zynq_writel((zynq_readl(&dr_regs->usbcmd) &
 					~USB_CMD_RUN_STOP), &dr_regs->usbcmd);
 
 	return 0;
 }
 
-static void udc_reset_ep_queue(struct xusbps_udc *udc, u8 pipe)
+static void udc_reset_ep_queue(struct zynq_udc *udc, u8 pipe)
 {
-	struct xusbps_ep *ep = get_ep_by_pipe(udc, pipe);
+	struct zynq_ep *ep = get_ep_by_pipe(udc, pipe);
 
 	if (ep->name)
 		nuke(ep, -ESHUTDOWN);
 }
 
 /* Clear up all ep queues */
-static int reset_queues(struct xusbps_udc *udc)
+static int reset_queues(struct zynq_udc *udc)
 {
 	u8 pipe;
 
@@ -1560,10 +1561,10 @@ static int reset_queues(struct xusbps_udc *udc)
 /*----------------------------------------------------------------
  * OTG Related changes
  *--------------------------------------------------------------*/
-static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
+static int zynq_udc_start_peripheral(struct usb_phy  *otg)
 {
 	struct usb_gadget	*gadget = otg->otg->gadget;
-	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
+	struct zynq_udc *udc = container_of(gadget, struct zynq_udc,
 						gadget);
 	unsigned long flags = 0;
 	unsigned int tmp;
@@ -1577,7 +1578,7 @@ static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
 		/* A-device HABA resets the controller */
 		tmp = udc->ep_qh_dma;
 		tmp &= USB_EP_LIST_ADDRESS_MASK;
-		xusbps_writel(tmp, &dr_regs->endpointlistaddr);
+		zynq_writel(tmp, &dr_regs->endpointlistaddr);
 	}
 	ep0_setup(udc);
 	dr_controller_run(udc);
@@ -1591,10 +1592,10 @@ static int xusbps_udc_start_peripheral(struct usb_phy  *otg)
 	return 0;
 }
 
-static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
+static int zynq_udc_stop_peripheral(struct usb_phy *otg)
 {
 	struct usb_gadget	*gadget = otg->otg->gadget;
-	struct xusbps_udc *udc = container_of(gadget, struct xusbps_udc,
+	struct zynq_udc *udc = container_of(gadget, struct zynq_udc,
 						gadget);
 
 	dr_controller_stop(udc);
@@ -1611,7 +1612,7 @@ static int xusbps_udc_stop_peripheral(struct usb_phy *otg)
  * Hook to gadget drivers
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
-static int xusbps_udc_start(struct usb_gadget *g,
+static int zynq_udc_start(struct usb_gadget *g,
 				struct usb_gadget_driver *driver)
 {
 	int retval = 0;
@@ -1639,9 +1640,9 @@ static int xusbps_udc_start(struct usb_gadget *g,
 		}
 		/* Exporting start and stop routines */
 		udc_controller->xotg->start_peripheral =
-					xusbps_udc_start_peripheral;
+					zynq_udc_start_peripheral;
 		udc_controller->xotg->stop_peripheral =
-					xusbps_udc_stop_peripheral;
+					zynq_udc_stop_peripheral;
 
 		if (!udc_controller->transceiver->otg->default_a &&
 					udc_controller->stopped &&
@@ -1653,7 +1654,7 @@ static int xusbps_udc_start(struct usb_gadget *g,
 			udc_controller->usb_state = USB_STATE_ATTACHED;
 			udc_controller->ep0_state = WAIT_FOR_SETUP;
 			udc_controller->ep0_dir = 0;
-			xusbps_update_transceiver();
+			zynq_update_transceiver();
 		}
 	} else {
 		/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
@@ -1679,10 +1680,10 @@ static int xusbps_udc_start(struct usb_gadget *g,
 }
 
 /* Disconnect from gadget driver */
-static int xusbps_udc_stop(struct usb_gadget *g,
+static int zynq_udc_stop(struct usb_gadget *g,
 		struct usb_gadget_driver *driver)
 {
-	struct xusbps_ep *loop_ep;
+	struct zynq_ep *loop_ep;
 	unsigned long flags;
 
 	if (udc_controller->transceiver)
@@ -1718,36 +1719,36 @@ static int xusbps_udc_stop(struct usb_gadget *g,
 }
 
 /* defined in gadget.h */
-static struct usb_gadget_ops xusbps_gadget_ops = {
-	.get_frame = xusbps_get_frame,
-	.wakeup = xusbps_wakeup,
-/*	.set_selfpowered = xusbps_set_selfpowered, */ /* Always selfpowered */
-	.vbus_session = xusbps_vbus_session,
-	.vbus_draw = xusbps_vbus_draw,
-	.pullup = xusbps_pullup,
-	.udc_start = xusbps_udc_start,
-	.udc_stop = xusbps_udc_stop,
+static struct usb_gadget_ops zynq_gadget_ops = {
+	.get_frame = zynq_get_frame,
+	.wakeup = zynq_wakeup,
+/*	.set_selfpowered = zynq_set_selfpowered, */ /* Always selfpowered */
+	.vbus_session = zynq_vbus_session,
+	.vbus_draw = zynq_vbus_draw,
+	.pullup = zynq_pullup,
+	.udc_start = zynq_udc_start,
+	.udc_stop = zynq_udc_stop,
 };
 
 /* Set protocol stall on ep0, protocol stall will automatically be cleared
    on new transaction */
-static void ep0stall(struct xusbps_udc *udc)
+static void ep0stall(struct zynq_udc *udc)
 {
 	u32 tmp;
 
 	/* must set tx and rx to stall at the same time */
-	tmp = xusbps_readl(&dr_regs->endptctrl[0]);
+	tmp = zynq_readl(&dr_regs->endptctrl[0]);
 	tmp |= EPCTRL_TX_EP_STALL | EPCTRL_RX_EP_STALL;
-	xusbps_writel(tmp, &dr_regs->endptctrl[0]);
+	zynq_writel(tmp, &dr_regs->endptctrl[0]);
 	udc->ep0_state = WAIT_FOR_SETUP;
 	udc->ep0_dir = 0;
 }
 
 /* Prime a status phase for ep0 */
-static int ep0_prime_status(struct xusbps_udc *udc, int direction)
+static int ep0_prime_status(struct zynq_udc *udc, int direction)
 {
-	struct xusbps_req *req = udc->status_req;
-	struct xusbps_ep *ep;
+	struct zynq_req *req = udc->status_req;
+	struct zynq_ep *ep;
 
 	if (direction == EP_DIR_IN)
 		udc->ep0_dir = USB_DIR_IN;
@@ -1768,8 +1769,8 @@ static int ep0_prime_status(struct xusbps_udc *udc, int direction)
 				ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 	req->mapped = 1;
 
-	if (xusbps_req_to_dtd(req) == 0)
-		xusbps_queue_td(ep, req);
+	if (zynq_req_to_dtd(req) == 0)
+		zynq_queue_td(ep, req);
 	else
 		return -ENOMEM;
 
@@ -1781,7 +1782,7 @@ static int ep0_prime_status(struct xusbps_udc *udc, int direction)
 /*
  * ch9 Set address
  */
-static void ch9setaddress(struct xusbps_udc *udc, u16 value, u16 index, u16
+static void ch9setaddress(struct zynq_udc *udc, u16 value, u16 index, u16
 		length)
 {
 	/* Save the new address to device struct */
@@ -1796,12 +1797,12 @@ static void ch9setaddress(struct xusbps_udc *udc, u16 value, u16 index, u16
 /*
  * ch9 Get status
  */
-static void ch9getstatus(struct xusbps_udc *udc, u8 request_type, u16 value,
+static void ch9getstatus(struct zynq_udc *udc, u8 request_type, u16 value,
 		u16 index, u16 length)
 {
 	u16 tmp = 0;		/* Status, cpu endian */
-	struct xusbps_req *req;
-	struct xusbps_ep *ep;
+	struct zynq_req *req;
+	struct zynq_ep *ep;
 
 	ep = &udc->eps[0];
 
@@ -1815,7 +1816,7 @@ static void ch9getstatus(struct xusbps_udc *udc, u8 request_type, u16 value,
 		tmp = 0;
 	} else if ((request_type & USB_RECIP_MASK) == USB_RECIP_ENDPOINT) {
 		/* Get endpoint status */
-		struct xusbps_ep *target_ep;
+		struct zynq_ep *target_ep;
 
 		target_ep = get_ep_by_pipe(udc, get_pipe_by_windex(index));
 
@@ -1843,8 +1844,8 @@ static void ch9getstatus(struct xusbps_udc *udc, u8 request_type, u16 value,
 	req->mapped = 1;
 
 	/* prime the data phase */
-	if ((xusbps_req_to_dtd(req) == 0))
-		xusbps_queue_td(ep, req);
+	if ((zynq_req_to_dtd(req) == 0))
+		zynq_queue_td(ep, req);
 	else			/* no mem */
 		goto stall;
 
@@ -1855,7 +1856,7 @@ stall:
 	ep0stall(udc);
 }
 
-static void setup_received_irq(struct xusbps_udc *udc,
+static void setup_received_irq(struct zynq_udc *udc,
 		struct usb_ctrlrequest *setup)
 {
 	u16 wValue = le16_to_cpu(setup->wValue);
@@ -1892,7 +1893,7 @@ static void setup_received_irq(struct xusbps_udc *udc,
 		if ((setup->bRequestType & (USB_RECIP_MASK | USB_TYPE_MASK))
 				== (USB_RECIP_ENDPOINT | USB_TYPE_STANDARD)) {
 			int pipe = get_pipe_by_windex(wIndex);
-			struct xusbps_ep *ep;
+			struct zynq_ep *ep;
 
 			if (wValue != 0 || wLength != 0 || pipe > udc->max_ep)
 				break;
@@ -1900,10 +1901,10 @@ static void setup_received_irq(struct xusbps_udc *udc,
 
 			spin_unlock(&udc->lock);
 			if (setup->bRequest == USB_REQ_SET_FEATURE) {
-				 rc = xusbps_ep_set_halt(&ep->ep, 1);
+				rc = zynq_ep_set_halt(&ep->ep, 1);
 			} else {
 				if (!ep->wedge)
-					rc = xusbps_ep_set_halt(&ep->ep, 0);
+					rc = zynq_ep_set_halt(&ep->ep, 0);
 				else
 					rc = 0;
 			}
@@ -1949,9 +1950,9 @@ status_phase:
 					u32 tmp;
 					/* Wait for status phase to complete */
 					mdelay(1);
-					tmp = xusbps_readl(&dr_regs->portsc1);
+					tmp = zynq_readl(&dr_regs->portsc1);
 					tmp |= (testsel << 16);
-					xusbps_writel(tmp, &dr_regs->portsc1);
+					zynq_writel(tmp, &dr_regs->portsc1);
 				}
 			}
 		}
@@ -1988,13 +1989,13 @@ status_phase:
 
 /* Process request for Data or Status phase of ep0
  * prime status phase if needed */
-static void ep0_req_complete(struct xusbps_udc *udc, struct xusbps_ep *ep0,
-		struct xusbps_req *req)
+static void ep0_req_complete(struct zynq_udc *udc, struct zynq_ep *ep0,
+		struct zynq_req *req)
 {
 	if (udc->usb_state == USB_STATE_ADDRESS) {
 		/* Set the new address */
 		u32 new_address = (u32) udc->device_address;
-		xusbps_writel(new_address << USB_DEVICE_ADDRESS_BIT_POS,
+		zynq_writel(new_address << USB_DEVICE_ADDRESS_BIT_POS,
 				&dr_regs->deviceaddr);
 	}
 
@@ -2025,7 +2026,7 @@ static void ep0_req_complete(struct xusbps_udc *udc, struct xusbps_ep *ep0,
 
 /* Tripwire mechanism to ensure a setup packet payload is extracted without
  * being corrupted by another incoming setup packet */
-static void tripwire_handler(struct xusbps_udc *udc, u8 ep_num, u8 *buffer_ptr)
+static void tripwire_handler(struct zynq_udc *udc, u8 ep_num, u8 *buffer_ptr)
 {
 	u32 temp;
 	struct ep_queue_head *qh;
@@ -2033,27 +2034,27 @@ static void tripwire_handler(struct xusbps_udc *udc, u8 ep_num, u8 *buffer_ptr)
 	qh = &udc->ep_qh[ep_num * 2 + EP_DIR_OUT];
 
 	/* Clear bit in ENDPTSETUPSTAT */
-	temp = xusbps_readl(&dr_regs->endptsetupstat);
-	xusbps_writel(temp | (1 << ep_num), &dr_regs->endptsetupstat);
+	temp = zynq_readl(&dr_regs->endptsetupstat);
+	zynq_writel(temp | (1 << ep_num), &dr_regs->endptsetupstat);
 
 	/* while a hazard exists when setup package arrives */
 	do {
 		/* Set Setup Tripwire */
-		temp = xusbps_readl(&dr_regs->usbcmd);
-		xusbps_writel(temp | USB_CMD_SUTW, &dr_regs->usbcmd);
+		temp = zynq_readl(&dr_regs->usbcmd);
+		zynq_writel(temp | USB_CMD_SUTW, &dr_regs->usbcmd);
 
 		/* Copy the setup packet to local buffer */
 		memcpy(buffer_ptr, (u8 *) qh->setup_buffer, 8);
-	} while (!(xusbps_readl(&dr_regs->usbcmd) & USB_CMD_SUTW));
+	} while (!(zynq_readl(&dr_regs->usbcmd) & USB_CMD_SUTW));
 
 	/* Clear Setup Tripwire */
-	temp = xusbps_readl(&dr_regs->usbcmd);
-	xusbps_writel(temp & ~USB_CMD_SUTW, &dr_regs->usbcmd);
+	temp = zynq_readl(&dr_regs->usbcmd);
+	zynq_writel(temp & ~USB_CMD_SUTW, &dr_regs->usbcmd);
 }
 
 /* process-ep_req(): free the completed Tds for this req */
-static int process_ep_req(struct xusbps_udc *udc, int pipe,
-		struct xusbps_req *curr_req)
+static int process_ep_req(struct zynq_udc *udc, int pipe,
+		struct zynq_req *curr_req)
 {
 	struct ep_td_struct *curr_td;
 	int	td_complete, actual, remaining_length, j, tmp;
@@ -2129,16 +2130,16 @@ static int process_ep_req(struct xusbps_udc *udc, int pipe,
 }
 
 /* Process a DTD completion interrupt */
-static void dtd_complete_irq(struct xusbps_udc *udc)
+static void dtd_complete_irq(struct zynq_udc *udc)
 {
 	u32 bit_pos;
 	int i, ep_num, direction, bit_mask, status;
-	struct xusbps_ep *curr_ep;
-	struct xusbps_req *curr_req, *temp_req;
+	struct zynq_ep *curr_ep;
+	struct zynq_req *curr_req, *temp_req;
 
 	/* Clear the bits in the register */
-	bit_pos = xusbps_readl(&dr_regs->endptcomplete);
-	xusbps_writel(bit_pos, &dr_regs->endptcomplete);
+	bit_pos = zynq_readl(&dr_regs->endptcomplete);
+	zynq_writel(bit_pos, &dr_regs->endptcomplete);
 
 	if (!bit_pos)
 		return;
@@ -2170,7 +2171,7 @@ static void dtd_complete_irq(struct xusbps_udc *udc)
 			if (status == REQ_UNCOMPLETE)
 				break;
 			/* Clear the endpoint complete events */
-			xusbps_writel(bit_pos, &dr_regs->endptcomplete);
+			zynq_writel(bit_pos, &dr_regs->endptcomplete);
 			/* write back status to req */
 			curr_req->req.status = status;
 
@@ -2184,14 +2185,14 @@ static void dtd_complete_irq(struct xusbps_udc *udc)
 }
 
 /* Process a port change interrupt */
-static void port_change_irq(struct xusbps_udc *udc)
+static void port_change_irq(struct zynq_udc *udc)
 {
 	u32 speed;
 
 	/* Bus resetting is finished */
-	if (!(xusbps_readl(&dr_regs->portsc1) & PORTSCX_PORT_RESET)) {
+	if (!(zynq_readl(&dr_regs->portsc1) & PORTSCX_PORT_RESET)) {
 		/* Get the speed */
-		speed = (xusbps_readl(&dr_regs->portsc1)
+		speed = (zynq_readl(&dr_regs->portsc1)
 				& PORTSCX_PORT_SPEED_MASK);
 		switch (speed) {
 		case PORTSCX_PORT_SPEED_HIGH:
@@ -2215,7 +2216,7 @@ static void port_change_irq(struct xusbps_udc *udc)
 }
 
 /* Process suspend interrupt */
-static void suspend_irq(struct xusbps_udc *udc)
+static void suspend_irq(struct zynq_udc *udc)
 {
 	udc->resume_state = udc->usb_state;
 	udc->usb_state = USB_STATE_SUSPENDED;
@@ -2226,7 +2227,7 @@ static void suspend_irq(struct xusbps_udc *udc)
 			udc->xotg->hsm.b_bus_suspend = 1;
 			/* notify transceiver the state changes */
 			if (spin_trylock(&udc->xotg->wq_lock)) {
-				xusbps_update_transceiver();
+				zynq_update_transceiver();
 				spin_unlock(&udc->xotg->wq_lock);
 			}
 		} else {
@@ -2235,7 +2236,7 @@ static void suspend_irq(struct xusbps_udc *udc)
 				udc->xotg->hsm.b_bus_req = 1;
 				/* notify transceiver the state changes */
 				if (spin_trylock(&udc->xotg->wq_lock)) {
-					xusbps_update_transceiver();
+					zynq_update_transceiver();
 					spin_unlock(&udc->xotg->wq_lock);
 				}
 			}
@@ -2247,7 +2248,7 @@ static void suspend_irq(struct xusbps_udc *udc)
 		udc->driver->suspend(&udc->gadget);
 }
 
-static void bus_resume(struct xusbps_udc *udc)
+static void bus_resume(struct zynq_udc *udc)
 {
 	udc->usb_state = udc->resume_state;
 	udc->resume_state = 0;
@@ -2258,14 +2259,14 @@ static void bus_resume(struct xusbps_udc *udc)
 }
 
 /* Process reset interrupt */
-static void reset_irq(struct xusbps_udc *udc)
+static void reset_irq(struct zynq_udc *udc)
 {
 	u32 temp;
 	unsigned long timeout;
 
 	/* Clear the device address */
-	temp = xusbps_readl(&dr_regs->deviceaddr);
-	xusbps_writel(temp & ~USB_DEVICE_ADDRESS_MASK, &dr_regs->deviceaddr);
+	temp = zynq_readl(&dr_regs->deviceaddr);
+	zynq_writel(temp & ~USB_DEVICE_ADDRESS_MASK, &dr_regs->deviceaddr);
 
 	udc->device_address = 0;
 
@@ -2279,15 +2280,15 @@ static void reset_irq(struct xusbps_udc *udc)
 	udc->gadget.a_alt_hnp_support = 0;
 
 	/* Clear all the setup token semaphores */
-	temp = xusbps_readl(&dr_regs->endptsetupstat);
-	xusbps_writel(temp, &dr_regs->endptsetupstat);
+	temp = zynq_readl(&dr_regs->endptsetupstat);
+	zynq_writel(temp, &dr_regs->endptsetupstat);
 
 	/* Clear all the endpoint complete status bits */
-	temp = xusbps_readl(&dr_regs->endptcomplete);
-	xusbps_writel(temp, &dr_regs->endptcomplete);
+	temp = zynq_readl(&dr_regs->endptcomplete);
+	zynq_writel(temp, &dr_regs->endptcomplete);
 
 	timeout = jiffies + 100;
-	while (xusbps_readl(&dr_regs->endpointprime)) {
+	while (zynq_readl(&dr_regs->endpointprime)) {
 		/* Wait until all endptprime bits cleared */
 		if (time_after(jiffies, timeout)) {
 			ERR("Timeout for reset\n");
@@ -2297,7 +2298,7 @@ static void reset_irq(struct xusbps_udc *udc)
 	}
 
 	/* Write 1s to the flush register */
-	xusbps_writel(0xffffffff, &dr_regs->endptflush);
+	zynq_writel(0xffffffff, &dr_regs->endptflush);
 
 	VDBG("Bus reset");
 	/* Reset all the queues, include XD, dTD, EP queue
@@ -2309,9 +2310,9 @@ static void reset_irq(struct xusbps_udc *udc)
 /*
  * USB device controller interrupt handler
  */
-static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
+static irqreturn_t zynq_udc_irq(int irq, void *_udc)
 {
-	struct xusbps_udc *udc = _udc;
+	struct zynq_udc *udc = _udc;
 	u32 irq_src, otg_sts;
 	irqreturn_t status = IRQ_NONE;
 	unsigned long flags;
@@ -2335,11 +2336,11 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	}
 #endif
 	spin_lock_irqsave(&udc->lock, flags);
-	irq_src = xusbps_readl(&dr_regs->usbsts) &
-		xusbps_readl(&dr_regs->usbintr);
+	irq_src = zynq_readl(&dr_regs->usbsts) &
+		zynq_readl(&dr_regs->usbintr);
 
 	/* Clear notification bits */
-	xusbps_writel(irq_src, &dr_regs->usbsts);
+	zynq_writel(irq_src, &dr_regs->usbsts);
 
 	/*
 	 * Check disconnect event from B session end interrupt.
@@ -2347,9 +2348,9 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	 * in AR# 47538
 	 */
 	if (!gadget_is_otg(&udc->gadget)) {
-		otg_sts = xusbps_readl(&dr_regs->otgsc);
+		otg_sts = zynq_readl(&dr_regs->otgsc);
 		if (otg_sts & OTGSC_BSEIS) {
-			xusbps_writel(otg_sts, &dr_regs->otgsc);
+			zynq_writel(otg_sts, &dr_regs->otgsc);
 			reset_queues(udc);
 			status = IRQ_HANDLED;
 		}
@@ -2359,7 +2360,7 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 
 	/* Need to resume? */
 	if (udc->usb_state == USB_STATE_SUSPENDED)
-		if ((xusbps_readl(&dr_regs->portsc1) &
+		if ((zynq_readl(&dr_regs->portsc1) &
 					PORTSCX_PORT_SUSPEND) == 0)
 			bus_resume(udc);
 
@@ -2367,7 +2368,7 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 	if (irq_src & USB_STS_INT) {
 		VDBG("Packet int");
 		/* Setup package, we only support ep0 as control ep */
-		if (xusbps_readl(&dr_regs->endptsetupstat) &
+		if (zynq_readl(&dr_regs->endptsetupstat) &
 						EP_SETUP_STATUS_EP0) {
 			tripwire_handler(udc, 0,
 					(u8 *) (&udc->local_setup_buff));
@@ -2376,7 +2377,7 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 		}
 
 		/* completion of dtd */
-		if (xusbps_readl(&dr_regs->endptcomplete)) {
+		if (zynq_readl(&dr_regs->endptcomplete)) {
 			dtd_complete_irq(udc);
 			status = IRQ_HANDLED;
 		}
@@ -2398,16 +2399,16 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 #ifdef CONFIG_USB_ZYNQ_PHY
 		if (gadget_is_otg(&udc->gadget)) {
 			/* Clear any previous suspend status bit */
-			temp = xusbps_readl(&dr_regs->usbsts);
+			temp = zynq_readl(&dr_regs->usbsts);
 			if (temp & USB_INTR_DEVICE_SUSPEND) {
 				udc->usb_state = USB_STATE_SUSPENDED;
 				temp |= USB_INTR_DEVICE_SUSPEND;
-				xusbps_writel(temp, &dr_regs->usbsts);
+				zynq_writel(temp, &dr_regs->usbsts);
 			}
 			/* Enable suspend interrupt */
-			temp = xusbps_readl(&dr_regs->usbintr);
+			temp = zynq_readl(&dr_regs->usbintr);
 			temp |= USB_INTR_DEVICE_SUSPEND;
-			xusbps_writel(temp, &dr_regs->usbintr);
+			zynq_writel(temp, &dr_regs->usbintr);
 		}
 #endif
 		status = IRQ_HANDLED;
@@ -2433,16 +2434,16 @@ static irqreturn_t xusbps_udc_irq(int irq, void *_udc)
 
 #include <linux/seq_file.h>
 
-static const char proc_filename[] = "driver/xusbps_udc";
+static const char proc_filename[] = "driver/zynq_udc";
 
-static int xusbps_proc_read(struct seq_file *m, void *v)
+static int zynq_proc_read(struct seq_file *m, void *v)
 {
 	unsigned long flags;
 	int i;
 	u32 tmp_reg;
-	struct xusbps_ep *ep = NULL;
-	struct xusbps_req *req;
-	struct xusbps_udc *udc = udc_controller;
+	struct zynq_ep *ep = NULL;
+	struct zynq_req *req;
+	struct zynq_udc *udc = udc_controller;
 
 	spin_lock_irqsave(&udc->lock, flags);
 
@@ -2454,14 +2455,14 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 			udc->driver ? udc->driver->driver.name : "(none)");
 
 	/* ------ DR Registers ----- */
-	tmp_reg = xusbps_readl(&dr_regs->usbcmd);
+	tmp_reg = zynq_readl(&dr_regs->usbcmd);
 	seq_printf(m, "USBCMD reg:\n"
 			"SetupTW: %d\n"
 			"Run/Stop: %s\n\n",
 			(tmp_reg & USB_CMD_SUTW) ? 1 : 0,
 			(tmp_reg & USB_CMD_RUN_STOP) ? "Run" : "Stop");
 
-	tmp_reg = xusbps_readl(&dr_regs->usbsts);
+	tmp_reg = zynq_readl(&dr_regs->usbsts);
 	seq_printf(m, "USB Status Reg:\n"
 			"Dr Suspend: %d Reset Received: %d System Error: %s "
 			"USB Error Interrupt: %s\n\n",
@@ -2470,7 +2471,7 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 			(tmp_reg & USB_STS_SYS_ERR) ? "Err" : "Normal",
 			(tmp_reg & USB_STS_ERR) ? "Err detected" : "No err");
 
-	tmp_reg = xusbps_readl(&dr_regs->usbintr);
+	tmp_reg = zynq_readl(&dr_regs->usbintr);
 	seq_printf(m, "USB Intrrupt Enable Reg:\n"
 			"Sleep Enable: %d SOF Received Enable: %d "
 			"Reset Enable: %d\n"
@@ -2485,20 +2486,20 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 			(tmp_reg & USB_INTR_ERR_INT_EN) ? 1 : 0,
 			(tmp_reg & USB_INTR_INT_EN) ? 1 : 0);
 
-	tmp_reg = xusbps_readl(&dr_regs->frindex);
+	tmp_reg = zynq_readl(&dr_regs->frindex);
 	seq_printf(m, "USB Frame Index Reg: Frame Number is 0x%x\n\n",
 			(tmp_reg & USB_FRINDEX_MASKS));
 
-	tmp_reg = xusbps_readl(&dr_regs->deviceaddr);
+	tmp_reg = zynq_readl(&dr_regs->deviceaddr);
 	seq_printf(m, "USB Device Address Reg: Device Addr is 0x%x\n\n",
 			(tmp_reg & USB_DEVICE_ADDRESS_MASK));
 
-	tmp_reg = xusbps_readl(&dr_regs->endpointlistaddr);
+	tmp_reg = zynq_readl(&dr_regs->endpointlistaddr);
 	seq_printf(m, "USB Endpoint List Address Reg: "
 			"Device Addr is 0x%x\n\n",
 			(tmp_reg & USB_EP_LIST_ADDRESS_MASK));
 
-	tmp_reg = xusbps_readl(&dr_regs->portsc1);
+	tmp_reg = zynq_readl(&dr_regs->portsc1);
 	seq_printf(m, "USB Port Status&Control Reg:\n"
 		"Port Transceiver Type : %s Port Speed: %s\n"
 		"PHY Low Power Suspend: %s Port Reset: %s "
@@ -2544,7 +2545,7 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 		(tmp_reg & PORTSCX_CURRENT_CONNECT_STATUS) ?
 		"Attached" : "Not-Att");
 
-	tmp_reg = xusbps_readl(&dr_regs->usbmode);
+	tmp_reg = zynq_readl(&dr_regs->usbmode);
 	seq_printf(m, "USB Mode Reg: Controller Mode is: %s\n\n", ({
 				char *s;
 				switch (tmp_reg & USB_MODE_CTRL_MODE_HOST) {
@@ -2560,19 +2561,19 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 				s;
 			}));
 
-	tmp_reg = xusbps_readl(&dr_regs->endptsetupstat);
+	tmp_reg = zynq_readl(&dr_regs->endptsetupstat);
 	seq_printf(m, "Endpoint Setup Status Reg: SETUP on ep 0x%x\n\n",
 			(tmp_reg & EP_SETUP_STATUS_MASK));
 
 	for (i = 0; i < udc->max_ep / 2; i++) {
-		tmp_reg = xusbps_readl(&dr_regs->endptctrl[i]);
+		tmp_reg = zynq_readl(&dr_regs->endptctrl[i]);
 		seq_printf(m, "EP Ctrl Reg [0x%x]: = [0x%x]\n",
 				i, tmp_reg);
 	}
-	tmp_reg = xusbps_readl(&dr_regs->endpointprime);
+	tmp_reg = zynq_readl(&dr_regs->endpointprime);
 	seq_printf(m, "EP Prime Reg = [0x%x]\n\n", tmp_reg);
 
-	/* ------xusbps_udc, xusbps_ep, xusbps_request structure information
+	/* ------zynq_udc, zynq_ep, zynq_request structure information
 	 * ----- */
 	ep = &udc->eps[0];
 	seq_printf(m, "For %s Maxpkt is 0x%x index is 0x%x\n",
@@ -2618,20 +2619,20 @@ static int xusbps_proc_read(struct seq_file *m, void *v)
 /*
  * seq_file wrappers for procfile show routines.
  */
-static int xusbps_proc_open(struct inode *inode, struct file *file)
+static int zynq_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, xusbps_proc_read, NULL);
+	return single_open(file, zynq_proc_read, NULL);
 }
 
-static const struct file_operations proc_xusbps_fops = {
-	.open		= xusbps_proc_open,
+static const struct file_operations proc_zynq_fops = {
+	.open		= zynq_proc_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
 
 #define create_proc_file()	proc_create(proc_filename, \
-					0, NULL, &proc_xusbps_fops)
+					0, NULL, &proc_zynq_fops)
 
 #define remove_proc_file()	remove_proc_entry(proc_filename, NULL)
 
@@ -2645,7 +2646,7 @@ static const struct file_operations proc_xusbps_fops = {
 /*-------------------------------------------------------------------------*/
 
 /* Release udc structures */
-static void xusbps_udc_release(struct device *dev)
+static void zynq_udc_release(struct device *dev)
 {
 	complete(udc_controller->done);
 	dma_free_coherent(dev->parent, udc_controller->ep_qh_size,
@@ -2660,10 +2661,10 @@ static void xusbps_udc_release(struct device *dev)
  * init resource for globle controller
  * Return the udc handle on success or NULL on failure
  ------------------------------------------------------------------*/
-static int struct_udc_setup(struct xusbps_udc *udc,
+static int struct_udc_setup(struct zynq_udc *udc,
 		struct platform_device *pdev)
 {
-	struct xusbps_usb2_platform_data *pdata;
+	struct zynq_usb2_platform_data *pdata;
 	size_t size;
 
 	pdata = pdev->dev.platform_data;
@@ -2671,7 +2672,7 @@ static int struct_udc_setup(struct xusbps_udc *udc,
 
 	udc->eps = kzalloc(sizeof(*udc->eps) * udc->max_ep, GFP_KERNEL);
 	if (!udc->eps) {
-		dev_err(&pdev->dev, "malloc xusbps_ep failed\n");
+		dev_err(&pdev->dev, "malloc zynq_ep failed\n");
 		return -1;
 	}
 
@@ -2694,9 +2695,9 @@ static int struct_udc_setup(struct xusbps_udc *udc,
 	udc->ep_qh_size = size;
 
 	/* Initialize ep0 status request structure */
-	/* FIXME: xusbps_alloc_request() ignores ep argument */
-	udc->status_req = container_of(xusbps_alloc_request(NULL, GFP_KERNEL),
-			struct xusbps_req, req);
+	/* FIXME: zynq_alloc_request() ignores ep argument */
+	udc->status_req = container_of(zynq_alloc_request(NULL, GFP_KERNEL),
+			struct zynq_req, req);
 	/* allocate a small amount of memory to get valid address */
 	udc->status_req->req.buf = kmalloc(8, GFP_KERNEL);
 
@@ -2709,21 +2710,21 @@ static int struct_udc_setup(struct xusbps_udc *udc,
 }
 
 /*----------------------------------------------------------------
- * Setup the xusbps_ep struct for eps
- * Link xusbps_ep->ep to gadget->ep_list
+ * Setup the zynq_ep struct for eps
+ * Link zynq_ep->ep to gadget->ep_list
  * ep0out is not used so do nothing here
  * ep0in should be taken care
  *--------------------------------------------------------------*/
-static int struct_ep_setup(struct xusbps_udc *udc,
+static int struct_ep_setup(struct zynq_udc *udc,
 				unsigned char index, char *name, int link)
 {
-	struct xusbps_ep *ep = &udc->eps[index];
+	struct zynq_ep *ep = &udc->eps[index];
 
 	ep->udc = udc;
 	strcpy(ep->name, name);
 	ep->ep.name = ep->name;
 
-	ep->ep.ops = &xusbps_ep_ops;
+	ep->ep.ops = &zynq_ep_ops;
 	ep->stopped = 0;
 
 	/* for ep0: maxP defined in desc
@@ -2747,12 +2748,12 @@ static int struct_ep_setup(struct xusbps_udc *udc,
  * all intialization operations implemented here except enabling usb_intr reg
  * board setup should have been done in the platform code
  */
-static int xusbps_udc_probe(struct platform_device *pdev)
+static int zynq_udc_probe(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 	unsigned int i;
 	u32 dccparams;
-	struct xusbps_usb2_platform_data *pdata;
+	struct zynq_usb2_platform_data *pdata;
 
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
@@ -2787,12 +2788,12 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	}
 #endif
 	/* Initialize USB clocks */
-	ret = xusbps_udc_clk_init(pdev);
+	ret = zynq_udc_clk_init(pdev);
 	if (ret < 0)
 		goto err_kfree;
 
 	/* Read Device Controller Capability Parameters register */
-	dccparams = xusbps_readl(&dr_regs->dccparams);
+	dccparams = zynq_readl(&dr_regs->dccparams);
 	if (!(dccparams & DCCPARAMS_DC)) {
 		dev_err(&pdev->dev, "This SOC doesn't support device role\n");
 		ret = -ENODEV;
@@ -2808,7 +2809,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 		goto err_iounmap;
 	}
 
-	ret = devm_request_irq(&pdev->dev, udc_controller->irq, xusbps_udc_irq,
+	ret = devm_request_irq(&pdev->dev, udc_controller->irq, zynq_udc_irq,
 				IRQF_SHARED, driver_name, udc_controller);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot request irq %d err %d\n",
@@ -2833,7 +2834,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 #endif
 
 	/* Setup gadget structure */
-	udc_controller->gadget.ops = &xusbps_gadget_ops;
+	udc_controller->gadget.ops = &zynq_gadget_ops;
 	udc_controller->gadget.max_speed = USB_SPEED_HIGH;
 	udc_controller->gadget.ep0 = &udc_controller->eps[0].ep;
 	INIT_LIST_HEAD(&udc_controller->gadget.ep_list);
@@ -2844,7 +2845,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 
 	/* Setup gadget.dev and register with kernel */
 	dev_set_name(&udc_controller->gadget.dev, "gadget");
-	udc_controller->gadget.dev.release = xusbps_udc_release;
+	udc_controller->gadget.dev.release = zynq_udc_release;
 	udc_controller->gadget.dev.parent = &pdev->dev;
 
 	/* setup QH and epctrl for ep0 */
@@ -2855,7 +2856,7 @@ static int xusbps_udc_probe(struct platform_device *pdev)
 	/* for ep0: the desc defined here;
 	 * for other eps, gadget layer called ep_enable with defined desc
 	 */
-	udc_controller->eps[0].ep.desc = &xusbps_ep0_desc;
+	udc_controller->eps[0].ep.desc = &zynq_ep0_desc;
 	udc_controller->eps[0].ep.maxpacket = USB_MAX_CTRL_PAYLOAD;
 
 	/* setup the udc->eps[] for non-control endpoints and link
@@ -2894,7 +2895,7 @@ err_del_udc:
 err_unregister:
 	device_unregister(&udc_controller->gadget.dev);
 err_iounmap:
-	xusbps_udc_clk_release(pdev);
+	zynq_udc_clk_release(pdev);
 err_kfree:
 	kfree(udc_controller);
 	udc_controller = NULL;
@@ -2904,7 +2905,7 @@ err_kfree:
 /* Driver removal function
  * Free resources and finish pending transactions
  */
-static int __exit xusbps_udc_remove(struct platform_device *pdev)
+static int __exit zynq_udc_remove(struct platform_device *pdev)
 {
 	DECLARE_COMPLETION(done);
 
@@ -2914,7 +2915,7 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
 	usb_del_gadget_udc(&udc_controller->gadget);
 	udc_controller->done = &done;
 
-	xusbps_udc_clk_release(pdev);
+	zynq_udc_clk_release(pdev);
 
 	/* DR has been stopped in usb_gadget_unregister_driver() */
 	remove_proc_file();
@@ -2938,10 +2939,10 @@ static int __exit xusbps_udc_remove(struct platform_device *pdev)
  * Modify Power management attributes
  * Used by OTG statemachine to disable gadget temporarily
  -----------------------------------------------------------------*/
-static int xusbps_udc_suspend(struct device *dev)
+static int zynq_udc_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
 
 	dr_controller_stop(udc_controller);
 
@@ -2954,10 +2955,10 @@ static int xusbps_udc_suspend(struct device *dev)
  * Invoked on USB resume. May be called in_interrupt.
  * Here we start the DR controller and enable the irq
  *-----------------------------------------------------------------*/
-static int xusbps_udc_resume(struct device *dev)
+static int zynq_udc_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct xusbps_usb2_platform_data *pdata = pdev->dev.platform_data;
+	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
 	int ret;
 
 	ret = clk_enable(pdata->clk);
@@ -2977,13 +2978,13 @@ static int xusbps_udc_resume(struct device *dev)
 	return 0;
 }
 
-static const struct dev_pm_ops xusbps_udc_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(xusbps_udc_suspend, xusbps_udc_resume)
+static const struct dev_pm_ops zynq_udc_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(zynq_udc_suspend, zynq_udc_resume)
 };
-#define XUSBPS_UDC_PM	(&xusbps_udc_dev_pm_ops)
+#define ZYNQ_UDC_PM	(&zynq_udc_dev_pm_ops)
 
 #else /* ! CONFIG_PM_SLEEP */
-#define XUSBPS_UDC_PM	NULL
+#define ZYNQ_UDC_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
 /*-------------------------------------------------------------------------
@@ -2991,13 +2992,13 @@ static const struct dev_pm_ops xusbps_udc_dev_pm_ops = {
 --------------------------------------------------------------------------*/
 
 static struct platform_driver udc_driver = {
-	.probe   = xusbps_udc_probe,
-	.remove  = xusbps_udc_remove,
+	.probe   = zynq_udc_probe,
+	.remove  = zynq_udc_remove,
 	/* these suspend and resume are not usb suspend and resume */
 	.driver  = {
 		.name = (char *)driver_name,
 		.owner = THIS_MODULE,
-		.pm = XUSBPS_UDC_PM,
+		.pm = ZYNQ_UDC_PM,
 	},
 };
 
@@ -3006,4 +3007,4 @@ module_platform_driver(udc_driver);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:xusbps-udc");
+MODULE_ALIAS("platform:zynq-udc");

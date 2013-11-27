@@ -21,28 +21,28 @@
 #include <linux/platform_device.h>
 
 /*- PS USB Controller IP -*/
-enum xusbps_usb2_operating_modes {
-	XUSBPS_USB2_MPH_HOST,
-	XUSBPS_USB2_DR_HOST,
-	XUSBPS_USB2_DR_DEVICE,
-	XUSBPS_USB2_DR_OTG,
+enum zynq_usb2_operating_modes {
+	ZYNQ_USB2_MPH_HOST,
+	ZYNQ_USB2_DR_HOST,
+	ZYNQ_USB2_DR_DEVICE,
+	ZYNQ_USB2_DR_OTG,
 };
 
-enum xusbps_usb2_phy_modes {
-	XUSBPS_USB2_PHY_NONE,
-	XUSBPS_USB2_PHY_ULPI,
-	XUSBPS_USB2_PHY_UTMI,
-	XUSBPS_USB2_PHY_UTMI_WIDE,
-	XUSBPS_USB2_PHY_SERIAL,
+enum zynq_usb2_phy_modes {
+	ZYNQ_USB2_PHY_NONE,
+	ZYNQ_USB2_PHY_ULPI,
+	ZYNQ_USB2_PHY_UTMI,
+	ZYNQ_USB2_PHY_UTMI_WIDE,
+	ZYNQ_USB2_PHY_SERIAL,
 };
 
 struct clk;
 struct platform_device;
 
-struct xusbps_usb2_platform_data {
+struct zynq_usb2_platform_data {
 	/* board specific information */
-	enum xusbps_usb2_operating_modes	operating_mode;
-	enum xusbps_usb2_phy_modes	phy_mode;
+	enum zynq_usb2_operating_modes	operating_mode;
+	enum zynq_usb2_phy_modes	phy_mode;
 	unsigned int			port_enables;
 	unsigned int			workaround;
 
@@ -63,8 +63,8 @@ struct xusbps_usb2_platform_data {
 	unsigned	invert_pwr_fault:1;
 };
 
-#define XUSBPS_USB2_PORT0_ENABLED	0x00000001
-#define XUSBPS_USB2_PORT1_ENABLED	0x00000002
+#define ZYNQ_USB2_PORT0_ENABLED	0x00000001
+#define ZYNQ_USB2_PORT1_ENABLED	0x00000002
 
 #endif /* _XILINX_DEVICE_H_ */
 #endif /* __KERNEL__ */

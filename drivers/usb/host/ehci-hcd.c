@@ -1286,7 +1286,7 @@ MODULE_LICENSE ("GPL");
 
 #ifdef CONFIG_USB_EHCI_ZYNQ
 #include "ehci-zynq.c"
-#define PLATFORM_DRIVER		ehci_xusbps_driver
+#define PLATFORM_DRIVER		ehci_zynq_driver
 #endif
 
 #ifdef CONFIG_USB_W90X900_EHCI

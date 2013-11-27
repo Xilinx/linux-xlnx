@@ -16,14 +16,14 @@
 
 #include <linux/usb/zynq_otg.h>
 
-/* offsets for the non-ehci registers in the XUSBPS SOC USB controller */
-#define XUSBPS_SOC_USB_ULPIVP	0x170
-#define XUSBPS_SOC_USB_PORTSC1	0x184
+/* offsets for the non-ehci registers in the ZYNQ SOC USB controller */
+#define ZYNQ_SOC_USB_ULPIVP	0x170
+#define ZYNQ_SOC_USB_PORTSC1	0x184
 #define PORT_PTS_MSK		(3<<30)
 #define PORT_PTS_UTMI		(0<<30)
 #define PORT_PTS_ULPI		(2<<30)
 #define	PORT_PTS_SERIAL		(3<<30)
 #define PORT_PTS_PTW		(1<<28)
-#define XUSBPS_SOC_USB_PORTSC2	0x188
+#define ZYNQ_SOC_USB_PORTSC2	0x188
 
 #endif /* _EHCI_ZYNQ_H */
