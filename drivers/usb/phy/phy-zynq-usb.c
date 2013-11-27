@@ -2282,7 +2282,7 @@ static const struct dev_pm_ops xusbps_otg_dev_pm_ops = {
 #define XUSBPS_OTG_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
 
-#ifndef CONFIG_USB_XUSBPS_DR_OF
+#ifndef CONFIG_USB_ZYNQ_DR_OF
 static struct platform_driver xusbps_otg_driver = {
 #else
 struct platform_driver xusbps_otg_driver = {
@@ -2296,7 +2296,7 @@ struct platform_driver xusbps_otg_driver = {
 	},
 };
 
-#ifndef CONFIG_USB_XUSBPS_DR_OF
+#ifndef CONFIG_USB_ZYNQ_DR_OF
 module_platform_driver(xusbps_otg_driver);
 #endif
 

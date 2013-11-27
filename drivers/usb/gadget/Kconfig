@@ -190,7 +190,7 @@ config USB_ZYNQ
 	depends on ARCH_ZYNQ
 	default USB_GADGET
 	select USB_GADGET_DUALSPEED
-	select USB_XUSBPS_DR_OF if OF
+	select USB_ZYNQ_DR_OF if OF
 	select USB_GADGET_SELECTED
 	help
 	   Xilinx PS USB controller core supports device mode.
