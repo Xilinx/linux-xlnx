@@ -30,7 +30,7 @@
 #include <linux/clk.h>
 #include <linux/usb/ulpi.h>
 
-#include "ehci-xilinx-usbps.h"
+#include "ehci-zynq.h"
 
 static u64 dma_mask = 0xFFFFFFF0;
 

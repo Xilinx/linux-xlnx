@@ -26,7 +26,7 @@
 #include <linux/usb/otg.h>
 #include <linux/usb/xilinx_usbps_otg.h>
 
-#include "ehci-xilinx-usbps.h"
+#include "ehci-zynq.h"
 
 #ifdef CONFIG_USB_ZYNQ_PHY
 /********************************************************************

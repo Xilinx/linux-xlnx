@@ -1,5 +1,5 @@
 /*
- * Xilinx PS USB Host Controller Driver Header file.
+ * Xilinx Zynq USB Host Controller Driver Header file.
  *
  * Copyright (C) 2011 Xilinx, Inc.
  *
@@ -11,8 +11,8 @@
  * the Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  */
-#ifndef _EHCI_XILINX_XUSBPS_H
-#define _EHCI_XILINX_XUSBPS_H
+#ifndef _EHCI_ZYNQ_H
+#define _EHCI_ZYNQ_H
 
 #include <linux/usb/xilinx_usbps_otg.h>
 
@@ -26,4 +26,4 @@
 #define PORT_PTS_PTW		(1<<28)
 #define XUSBPS_SOC_USB_PORTSC2	0x188
 
-#endif				/* _EHCI_XILINX_XUSBPS_H */
+#endif /* _EHCI_ZYNQ_H */

@@ -1284,8 +1284,8 @@ MODULE_LICENSE ("GPL");
 #define XILINX_OF_PLATFORM_DRIVER	ehci_hcd_xilinx_of_driver
 #endif
 
-#ifdef CONFIG_USB_EHCI_XUSBPS
-#include "ehci-xilinx-usbps.c"
+#ifdef CONFIG_USB_EHCI_ZYNQ
+#include "ehci-zynq.c"
 #define PLATFORM_DRIVER		ehci_xusbps_driver
 #endif
 

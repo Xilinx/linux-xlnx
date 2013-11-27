@@ -121,7 +121,7 @@ config USB_ZYNQ_DR_OF
 	select USB_ULPI
 	select USB_ULPI_VIEWPORT
 
-config USB_EHCI_XUSBPS
+config USB_EHCI_ZYNQ
 	bool "Support for Xilinx PS EHCI USB controller"
 	depends on USB_EHCI_HCD && ARCH_ZYNQ
 	select USB_EHCI_ROOT_HUB_TT

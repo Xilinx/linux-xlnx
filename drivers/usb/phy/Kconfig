@@ -230,7 +230,7 @@ config USB_ULPI_VIEWPORT
 
 config USB_ZYNQ_PHY
 	tristate "Xilinx Zynq USB OTG dual-role support"
-	depends on USB && ARCH_ZYNQ && USB_EHCI_XUSBPS && USB_ZYNQ && USB_OTG
+	depends on USB && ARCH_ZYNQ && USB_EHCI_ZYNQ && USB_ZYNQ && USB_OTG
 	select USB_OTG_UTILS
 	help
 	  Say Y here if you want to build Xilinx USB PS OTG
