@@ -45,12 +45,12 @@
 #define ZYNQ_SMC_DC_UPT_NAND_REGS	((4 << 23) |	/* CS: NAND chip */ \
 				 (2 << 21))	/* UpdateRegs operation */
 
-#define XNANDPS_ECC_CMD1	((0x80)       |	/* Write command */ \
+#define ZYNQ_NAND_ECC_CMD1	((0x80)       |	/* Write command */ \
 				 (0 << 8)     |	/* Read command */ \
 				 (0x30 << 16) |	/* Read End command */ \
 				 (1 << 24))	/* Read End command calid */
 
-#define XNANDPS_ECC_CMD2	((0x85)	      |	/* Write col change cmd */ \
+#define ZYNQ_NAND_ECC_CMD2	((0x85)	      |	/* Write col change cmd */ \
 				 (5 << 8)     |	/* Read col change cmd */ \
 				 (0xE0 << 16) |	/* Read col change end cmd */ \
 				 (1 << 24)) /* Read col change end cmd valid */
@@ -345,7 +345,7 @@ static SIMPLE_DEV_PM_OPS(zynq_smc_dev_pm_ops, zynq_smc_suspend,
 /**
  * zynq_smc_init_nand_interface - Initialize the NAND interface
  * @pdev:	Pointer to the platform_device struct
- * @nand_node:	Pointer to the xnandps device_node struct
+ * @nand_node:	Pointer to the zynq_nand device_node struct
  */
 static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 				       struct device_node *nand_node)
@@ -442,8 +442,8 @@ default_nand_timing:
 	while (zynq_smc_ecc_is_busy_noirq())
 		cpu_relax();
 	/* Set the command1 and command2 register */
-	writel(XNANDPS_ECC_CMD1, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD1_OFFS);
-	writel(XNANDPS_ECC_CMD2, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD2_OFFS);
+	writel(ZYNQ_NAND_ECC_CMD1, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD1_OFFS);
+	writel(ZYNQ_NAND_ECC_CMD2, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD2_OFFS);
 
 	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 }
