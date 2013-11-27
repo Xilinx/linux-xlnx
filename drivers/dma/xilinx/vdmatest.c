@@ -292,19 +292,16 @@ static int vdmatest_slave_func(void *data)
 			sg_dma_len(&rx_sg[i]) = len;
 		}
 
+		/* Zero out configuration */
+		memset(&config, 0, sizeof(struct xilinx_vdma_config));
+
 		/* Set up hardware configuration information */
 		config.vsize = vsize;
 		config.hsize = hsize;
 		config.stride = hsize;
 		config.frm_cnt_en = 1;
 		config.coalesc = frm_cnt * 10;
-		config.delay = 0;
-		/* The following is do-not-care, need to set to 0 */
-		config.frm_dly = 0;
 		config.park = 1;
-		config.gen_lock = 0;
-		config.master = 0;
-		config.park_frm = 0;
 		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG,
 					(unsigned long)&config);
 
