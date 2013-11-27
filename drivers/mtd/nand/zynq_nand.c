@@ -200,12 +200,12 @@ xnandps_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
 	u32 ecc_status;
 
 	/* Wait till the ECC operation is complete */
-	while (xsmcps_ecc_is_busy())
+	while (zynq_smc_ecc_is_busy())
 		cpu_relax();
 
 	for (ecc_reg = 0; ecc_reg < 4; ecc_reg++) {
 		/* Read ECC value for each block */
-		ecc_value = xsmcps_get_ecc_val(ecc_reg);
+		ecc_value = zynq_smc_get_ecc_val(ecc_reg);
 		ecc_status = (ecc_value >> 24) & 0xFF;
 		/* ECC value valid */
 		if (ecc_status & 0x40) {
@@ -677,7 +677,7 @@ static void xnandps_cmd_function(struct mtd_info *mtd, unsigned int command,
 		return;
 
 	/* Clear interrupt */
-	xsmcps_clr_nand_int();
+	zynq_smc_clr_nand_int();
 
 	/* Get the command phase address */
 	if (curr_cmd->end_cmd_valid == XNANDPS_CMD_PHASE)
@@ -805,8 +805,8 @@ static void xnandps_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
  */
 static int xnandps_device_ready(struct mtd_info *mtd)
 {
-	if (xsmcps_get_nand_int_status_raw()) {
-		xsmcps_clr_nand_int();
+	if (zynq_smc_get_nand_int_status_raw()) {
+		zynq_smc_clr_nand_int();
 		return 1;
 	}
 	return 0;
@@ -946,7 +946,7 @@ static int xnandps_probe(struct platform_device *pdev)
 	nand_chip->ecc.write_page_raw = xnandps_write_page_raw;
 	if (ondie_ecc_enabled) {
 		/* bypass the controller ECC block */
-		xsmcps_set_ecc_mode(XSMCPS_ECCMODE_BYPASS);
+		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
 
 		/* The software ECC routines won't work with the
 				SMC controller */
@@ -969,12 +969,12 @@ static int xnandps_probe(struct platform_device *pdev)
 		nand_chip->ecc.size = XNANDPS_ECC_SIZE;
 		nand_chip->ecc.write_page = xnandps_write_page_hwecc;
 
-		xsmcps_set_ecc_pg_size(mtd->writesize);
+		zynq_smc_set_ecc_pg_size(mtd->writesize);
 		switch (mtd->writesize) {
 		case 512:
 		case 1024:
 		case 2048:
-			xsmcps_set_ecc_mode(XSMCPS_ECCMODE_APB);
+			zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_APB);
 			break;
 		default:
 			/* The software ECC routines won't work with the

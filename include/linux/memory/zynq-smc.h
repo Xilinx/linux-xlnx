@@ -16,17 +16,17 @@
 #ifndef __LINUX_MEMORY_ZYNQ_SMC_H
 #define __LINUX_MEMORY_ZYNQ_SMC_H
 
-enum xsmcps_ecc_mode {
-	XSMCPS_ECCMODE_BYPASS = 0,
-	XSMCPS_ECCMODE_APB = 1,
-	XSMCPS_ECCMODE_MEM = 2
+enum zynq_smc_ecc_mode {
+	ZYNQ_SMC_ECCMODE_BYPASS = 0,
+	ZYNQ_SMC_ECCMODE_APB = 1,
+	ZYNQ_SMC_ECCMODE_MEM = 2
 };
 
-u32 xsmcps_get_ecc_val(int ecc_reg);
-int xsmcps_ecc_is_busy(void);
-int xsmcps_get_nand_int_status_raw(void);
-void xsmcps_clr_nand_int(void);
-int xsmcps_set_ecc_mode(enum xsmcps_ecc_mode mode);
-int xsmcps_set_ecc_pg_size(unsigned int pg_sz);
+u32 zynq_smc_get_ecc_val(int ecc_reg);
+int zynq_smc_ecc_is_busy(void);
+int zynq_smc_get_nand_int_status_raw(void);
+void zynq_smc_clr_nand_int(void);
+int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode);
+int zynq_smc_set_ecc_pg_size(unsigned int pg_sz);
 
 #endif

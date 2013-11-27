@@ -29,20 +29,20 @@
 #include <linux/slab.h>
 
 /* Register definitions */
-#define XSMCPS_MEMC_STATUS_OFFS		0	/* Controller status reg, RO */
-#define XSMCPS_CFG_CLR_OFFS		0xC	/* Clear config reg, WO */
-#define XSMCPS_DIRECT_CMD_OFFS		0x10	/* Direct command reg, WO */
-#define XSMCPS_SET_CYCLES_OFFS		0x14	/* Set cycles register, WO */
-#define XSMCPS_SET_OPMODE_OFFS		0x18	/* Set opmode register, WO */
-#define XSMCPS_ECC_STATUS_OFFS		0x400	/* ECC status register */
-#define XSMCPS_ECC_MEMCFG_OFFS		0x404	/* ECC mem config reg */
-#define XSMCPS_ECC_MEMCMD1_OFFS		0x408	/* ECC mem cmd1 reg */
-#define XSMCPS_ECC_MEMCMD2_OFFS		0x40C	/* ECC mem cmd2 reg */
-#define XSMCPS_ECC_VALUE0_OFFS		0x418	/* ECC value 0 reg */
+#define ZYNQ_SMC_MEMC_STATUS_OFFS	0	/* Controller status reg, RO */
+#define ZYNQ_SMC_CFG_CLR_OFFS		0xC	/* Clear config reg, WO */
+#define ZYNQ_SMC_DIRECT_CMD_OFFS	0x10	/* Direct command reg, WO */
+#define ZYNQ_SMC_SET_CYCLES_OFFS	0x14	/* Set cycles register, WO */
+#define ZYNQ_SMC_SET_OPMODE_OFFS	0x18	/* Set opmode register, WO */
+#define ZYNQ_SMC_ECC_STATUS_OFFS	0x400	/* ECC status register */
+#define ZYNQ_SMC_ECC_MEMCFG_OFFS	0x404	/* ECC mem config reg */
+#define ZYNQ_SMC_ECC_MEMCMD1_OFFS	0x408	/* ECC mem cmd1 reg */
+#define ZYNQ_SMC_ECC_MEMCMD2_OFFS	0x40C	/* ECC mem cmd2 reg */
+#define ZYNQ_SMC_ECC_VALUE0_OFFS	0x418	/* ECC value 0 reg */
 
-#define XSMCPS_CFG_CLR_INT_1	0x10
-#define XSMCPS_ECC_STATUS_BUSY	(1 << 6)
-#define XSMCPS_DC_UPT_NAND_REGS	((4 << 23) |	/* CS: NAND chip */ \
+#define ZYNQ_SMC_CFG_CLR_INT_1	0x10
+#define ZYNQ_SMC_ECC_STATUS_BUSY	(1 << 6)
+#define ZYNQ_SMC_DC_UPT_NAND_REGS	((4 << 23) |	/* CS: NAND chip */ \
 				 (2 << 21))	/* UpdateRegs operation */
 
 #define XNANDPS_ECC_CMD1	((0x80)       |	/* Write command */ \
@@ -55,46 +55,46 @@
 				 (0xE0 << 16) |	/* Read col change end cmd */ \
 				 (1 << 24)) /* Read col change end cmd valid */
 /**
- * struct xsmcps_data
+ * struct zynq_smc_data
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
  * @clk_rate_change_nb:	Notifier block for clock frequency change callback
  */
-struct xsmcps_data {
+struct zynq_smc_data {
 	struct clk		*devclk;
 	struct clk		*aperclk;
 	struct notifier_block	clk_rate_change_nb;
 };
 
 /* SMC virtual register base */
-static void __iomem *xsmcps_base;
-static DEFINE_SPINLOCK(xsmcps_lock);
+static void __iomem *zynq_smc_base;
+static DEFINE_SPINLOCK(zynq_smc_lock);
 
 /**
- * xsmcps_set_buswidth - Set memory buswidth
+ * zynq_smc_set_buswidth - Set memory buswidth
  * @bw:	Memory buswidth (8 | 16)
  * Returns 0 on success or negative errno.
  *
- * Must be called with xsmcps_lock held.
+ * Must be called with zynq_smc_lock held.
  */
-static int xsmcps_set_buswidth(unsigned int bw)
+static int zynq_smc_set_buswidth(unsigned int bw)
 {
 	u32 reg;
 
 	if (bw != 8 && bw != 16)
 		return -EINVAL;
 
-	reg = readl(xsmcps_base + XSMCPS_SET_OPMODE_OFFS);
+	reg = readl(zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
 	reg &= ~3;
 	if (bw == 16)
 		reg |= 1;
-	writel(reg, xsmcps_base + XSMCPS_SET_OPMODE_OFFS);
+	writel(reg, zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
 
 	return 0;
 }
 
 /**
- * xsmcps_set_cycles - Set memory timing parameters
+ * zynq_smc_set_cycles - Set memory timing parameters
  * @t0:	t_rc		read cycle time
  * @t1:	t_wc		write cycle time
  * @t2:	t_rea/t_ceoe	output enable assertion delay
@@ -105,9 +105,9 @@ static int xsmcps_set_buswidth(unsigned int bw)
  *
  * Sets NAND chip specific timing parameters.
  *
- * Must be called with xsmcps_lock held.
+ * Must be called with zynq_smc_lock held.
  */
-static void xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
+static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 			      t4, u32 t5, u32 t6)
 {
 	t0 &= 0xf;
@@ -120,126 +120,126 @@ static void xsmcps_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 
 	t0 |= t1 | t2 | t3 | t4 | t5 | t6;
 
-	writel(t0, xsmcps_base + XSMCPS_SET_CYCLES_OFFS);
+	writel(t0, zynq_smc_base + ZYNQ_SMC_SET_CYCLES_OFFS);
 }
 
 /**
- * xsmcps_ecc_is_busy_noirq - Read ecc busy flag
+ * zynq_smc_ecc_is_busy_noirq - Read ecc busy flag
  * Returns the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
  *
- * Must be called with xsmcps_lock held.
+ * Must be called with zynq_smc_lock held.
  */
-static int xsmcps_ecc_is_busy_noirq(void)
+static int zynq_smc_ecc_is_busy_noirq(void)
 {
-	return !!(readl(xsmcps_base + XSMCPS_ECC_STATUS_OFFS) &
-		  XSMCPS_ECC_STATUS_BUSY);
+	return !!(readl(zynq_smc_base + ZYNQ_SMC_ECC_STATUS_OFFS) &
+		  ZYNQ_SMC_ECC_STATUS_BUSY);
 }
 
 /**
- * xsmcps_ecc_is_busy - Read ecc busy flag
+ * zynq_smc_ecc_is_busy - Read ecc busy flag
  * Returns the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
  */
-int xsmcps_ecc_is_busy(void)
+int zynq_smc_ecc_is_busy(void)
 {
 	unsigned long flags;
 	int ret;
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	ret = xsmcps_ecc_is_busy_noirq();
+	ret = zynq_smc_ecc_is_busy_noirq();
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(xsmcps_ecc_is_busy);
+EXPORT_SYMBOL_GPL(zynq_smc_ecc_is_busy);
 
 /**
- * xsmcps_get_ecc_val - Read ecc_valueN registers
+ * zynq_smc_get_ecc_val - Read ecc_valueN registers
  * @ecc_reg:	Index of the ecc_value reg (0..3)
  * Returns the content of the requested ecc_value register.
  *
  * There are four valid ecc_value registers. The argument is truncated to stay
  * within this valid boundary.
  */
-u32 xsmcps_get_ecc_val(int ecc_reg)
+u32 zynq_smc_get_ecc_val(int ecc_reg)
 {
 	u32 addr, reg;
 	unsigned long flags;
 
 	ecc_reg &= 3;
-	addr = XSMCPS_ECC_VALUE0_OFFS + (ecc_reg << 2);
+	addr = ZYNQ_SMC_ECC_VALUE0_OFFS + (ecc_reg << 2);
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	reg = readl(xsmcps_base + addr);
+	reg = readl(zynq_smc_base + addr);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return reg;
 }
-EXPORT_SYMBOL_GPL(xsmcps_get_ecc_val);
+EXPORT_SYMBOL_GPL(zynq_smc_get_ecc_val);
 
 /**
- * xsmcps_get_nand_int_status_raw - Get NAND interrupt status bit
+ * zynq_smc_get_nand_int_status_raw - Get NAND interrupt status bit
  * Returns the raw_int_status1 bit from the memc_status register
  */
-int xsmcps_get_nand_int_status_raw(void)
+int zynq_smc_get_nand_int_status_raw(void)
 {
 	u32 reg;
 	unsigned long flags;
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	reg = readl(xsmcps_base + XSMCPS_MEMC_STATUS_OFFS);
+	reg = readl(zynq_smc_base + ZYNQ_SMC_MEMC_STATUS_OFFS);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	reg >>= 6;
 	reg &= 1;
 
 	return reg;
 }
-EXPORT_SYMBOL_GPL(xsmcps_get_nand_int_status_raw);
+EXPORT_SYMBOL_GPL(zynq_smc_get_nand_int_status_raw);
 
 /**
- * xsmcps_clr_nand_int - Clear NAND interrupt
+ * zynq_smc_clr_nand_int - Clear NAND interrupt
  */
-void xsmcps_clr_nand_int(void)
+void zynq_smc_clr_nand_int(void)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	writel(XSMCPS_CFG_CLR_INT_1, xsmcps_base + XSMCPS_CFG_CLR_OFFS);
+	writel(ZYNQ_SMC_CFG_CLR_INT_1, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 }
-EXPORT_SYMBOL_GPL(xsmcps_clr_nand_int);
+EXPORT_SYMBOL_GPL(zynq_smc_clr_nand_int);
 
 /**
- * xsmcps_set_ecc_mode - Set SMC ECC mode
+ * zynq_smc_set_ecc_mode - Set SMC ECC mode
  * @mode:	ECC mode (BYPASS, APB, MEM)
  * Returns 0 on success or negative errno.
  */
-int xsmcps_set_ecc_mode(enum xsmcps_ecc_mode mode)
+int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode)
 {
 	u32 reg;
 	unsigned long flags;
 	int ret = 0;
 
 	switch (mode) {
-	case XSMCPS_ECCMODE_BYPASS:
-	case XSMCPS_ECCMODE_APB:
-	case XSMCPS_ECCMODE_MEM:
-		spin_lock_irqsave(&xsmcps_lock, flags);
+	case ZYNQ_SMC_ECCMODE_BYPASS:
+	case ZYNQ_SMC_ECCMODE_APB:
+	case ZYNQ_SMC_ECCMODE_MEM:
+		spin_lock_irqsave(&zynq_smc_lock, flags);
 
-		reg = readl(xsmcps_base + XSMCPS_ECC_MEMCFG_OFFS);
+		reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 		reg &= ~0xc;
 		reg |= mode << 2;
-		writel(reg, xsmcps_base + XSMCPS_ECC_MEMCFG_OFFS);
+		writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 
-		spin_unlock_irqrestore(&xsmcps_lock, flags);
+		spin_unlock_irqrestore(&zynq_smc_lock, flags);
 		break;
 	default:
 		ret = -EINVAL;
@@ -247,14 +247,14 @@ int xsmcps_set_ecc_mode(enum xsmcps_ecc_mode mode)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(xsmcps_set_ecc_mode);
+EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_mode);
 
 /**
- * xsmcps_set_ecc_pg_size - Set SMC ECC page size
+ * zynq_smc_set_ecc_pg_size - Set SMC ECC page size
  * @pg_sz:	ECC page size
  * Returns 0 on success or negative errno.
  */
-int xsmcps_set_ecc_pg_size(unsigned int pg_sz)
+int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 {
 	u32 reg, sz;
 	unsigned long flags;
@@ -276,20 +276,20 @@ int xsmcps_set_ecc_pg_size(unsigned int pg_sz)
 		return -EINVAL;
 	}
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	reg = readl(xsmcps_base + XSMCPS_ECC_MEMCFG_OFFS);
+	reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 	reg &= ~3;
 	reg |= sz;
-	writel(reg, xsmcps_base + XSMCPS_ECC_MEMCFG_OFFS);
+	writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(xsmcps_set_ecc_pg_size);
+EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_pg_size);
 
-static int xsmcps_clk_notifier_cb(struct notifier_block *nb,
+static int zynq_smc_clk_notifier_cb(struct notifier_block *nb,
 				  unsigned long event, void *data)
 {
 	switch (event) {
@@ -308,45 +308,46 @@ static int xsmcps_clk_notifier_cb(struct notifier_block *nb,
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int xsmcps_suspend(struct device *dev)
+static int zynq_smc_suspend(struct device *dev)
 {
-	struct xsmcps_data *xsmcps = dev_get_drvdata(dev);
+	struct zynq_smc_data *zynq_smc = dev_get_drvdata(dev);
 
-	clk_disable(xsmcps->devclk);
-	clk_disable(xsmcps->aperclk);
+	clk_disable(zynq_smc->devclk);
+	clk_disable(zynq_smc->aperclk);
 
 	return 0;
 }
 
-static int xsmcps_resume(struct device *dev)
+static int zynq_smc_resume(struct device *dev)
 {
 	int ret;
-	struct xsmcps_data *xsmcps = dev_get_drvdata(dev);
+	struct zynq_smc_data *zynq_smc = dev_get_drvdata(dev);
 
-	ret = clk_enable(xsmcps->aperclk);
+	ret = clk_enable(zynq_smc->aperclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable APER clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xsmcps->devclk);
+	ret = clk_enable(zynq_smc->devclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xsmcps->aperclk);
+		clk_disable(zynq_smc->aperclk);
 		return ret;
 	}
 	return ret;
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(xsmcps_dev_pm_ops, xsmcps_suspend, xsmcps_resume);
+static SIMPLE_DEV_PM_OPS(zynq_smc_dev_pm_ops, zynq_smc_suspend,
+			 zynq_smc_resume);
 
 /**
- * xsmcps_init_nand_interface - Initialize the NAND interface
+ * zynq_smc_init_nand_interface - Initialize the NAND interface
  * @pdev:	Pointer to the platform_device struct
  * @nand_node:	Pointer to the xnandps device_node struct
  */
-static void xsmcps_init_nand_interface(struct platform_device *pdev,
+static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 				       struct device_node *nand_node)
 {
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
@@ -420,11 +421,11 @@ default_nand_timing:
 		t_wp = t_clr = t_ar = 2;
 	}
 
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	if (xsmcps_set_buswidth(bw)) {
+	if (zynq_smc_set_buswidth(bw)) {
 		dev_warn(&pdev->dev, "xlnx,nand-width not valid, using 8");
-		xsmcps_set_buswidth(8);
+		zynq_smc_set_buswidth(8);
 	}
 
 	/*
@@ -433,17 +434,18 @@ default_nand_timing:
 	 * Look in to the device datasheet and change its value, This value
 	 * is for 2Gb Numonyx flash.
 	 */
-	xsmcps_set_cycles(t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr);
-	writel(XSMCPS_CFG_CLR_INT_1, xsmcps_base + XSMCPS_CFG_CLR_OFFS);
-	writel(XSMCPS_DC_UPT_NAND_REGS, xsmcps_base + XSMCPS_DIRECT_CMD_OFFS);
+	zynq_smc_set_cycles(t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr);
+	writel(ZYNQ_SMC_CFG_CLR_INT_1, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
+	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
+	       ZYNQ_SMC_DIRECT_CMD_OFFS);
 	/* Wait till the ECC operation is complete */
-	while (xsmcps_ecc_is_busy_noirq())
+	while (zynq_smc_ecc_is_busy_noirq())
 		cpu_relax();
 	/* Set the command1 and command2 register */
-	writel(XNANDPS_ECC_CMD1, xsmcps_base + XSMCPS_ECC_MEMCMD1_OFFS);
-	writel(XNANDPS_ECC_CMD2, xsmcps_base + XSMCPS_ECC_MEMCMD2_OFFS);
+	writel(XNANDPS_ECC_CMD1, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD1_OFFS);
+	writel(XNANDPS_ECC_CMD2, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD2_OFFS);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 }
 
 static const struct of_device_id matches_nor[] = {
@@ -456,9 +458,9 @@ static const struct of_device_id matches_nand[] = {
 	{}
 };
 
-static int xsmcps_probe(struct platform_device *pdev)
+static int zynq_smc_probe(struct platform_device *pdev)
 {
-	struct xsmcps_data *xsmcps;
+	struct zynq_smc_data *zynq_smc;
 	struct device_node *child;
 	struct resource *res;
 	unsigned long flags;
@@ -466,58 +468,59 @@ static int xsmcps_probe(struct platform_device *pdev)
 	struct device_node *of_node = pdev->dev.of_node;
 	const struct of_device_id *matches = NULL;
 
-	xsmcps = devm_kzalloc(&pdev->dev, sizeof(*xsmcps), GFP_KERNEL);
-	if (!xsmcps)
+	zynq_smc = devm_kzalloc(&pdev->dev, sizeof(*zynq_smc), GFP_KERNEL);
+	if (!zynq_smc)
 		return -ENOMEM;
 
 	/* Get the NAND controller virtual address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xsmcps_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xsmcps_base))
-		return PTR_ERR(xsmcps_base);
+	zynq_smc_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(zynq_smc_base))
+		return PTR_ERR(zynq_smc_base);
 
-	xsmcps->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(xsmcps->aperclk)) {
+	zynq_smc->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
+	if (IS_ERR(zynq_smc->aperclk)) {
 		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		return PTR_ERR(xsmcps->aperclk);
+		return PTR_ERR(zynq_smc->aperclk);
 	}
 
-	xsmcps->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(xsmcps->devclk)) {
+	zynq_smc->devclk = devm_clk_get(&pdev->dev, "ref_clk");
+	if (IS_ERR(zynq_smc->devclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		return PTR_ERR(xsmcps->devclk);
+		return PTR_ERR(zynq_smc->devclk);
 	}
 
-	err = clk_prepare_enable(xsmcps->aperclk);
+	err = clk_prepare_enable(zynq_smc->aperclk);
 	if (err) {
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 		return err;
 	}
 
-	err = clk_prepare_enable(xsmcps->devclk);
+	err = clk_prepare_enable(zynq_smc->devclk);
 	if (err) {
 		dev_err(&pdev->dev, "Unable to enable device clock.\n");
 		goto out_clk_dis_aper;
 	}
 
-	platform_set_drvdata(pdev, xsmcps);
+	platform_set_drvdata(pdev, zynq_smc);
 
-	xsmcps->clk_rate_change_nb.notifier_call = xsmcps_clk_notifier_cb;
-	if (clk_notifier_register(xsmcps->devclk, &xsmcps->clk_rate_change_nb))
+	zynq_smc->clk_rate_change_nb.notifier_call = zynq_smc_clk_notifier_cb;
+	if (clk_notifier_register(zynq_smc->devclk,
+				  &zynq_smc->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
 
 	/* clear interrupts */
-	spin_lock_irqsave(&xsmcps_lock, flags);
+	spin_lock_irqsave(&zynq_smc_lock, flags);
 
-	writel(0x52, xsmcps_base + XSMCPS_CFG_CLR_OFFS);
+	writel(0x52, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 
-	spin_unlock_irqrestore(&xsmcps_lock, flags);
+	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	/* Find compatible children. Only a single child is supported */
 	for_each_available_child_of_node(of_node, child) {
 		if (of_match_node(matches_nand, child)) {
-			xsmcps_init_nand_interface(pdev, child);
+			zynq_smc_init_nand_interface(pdev, child);
 			if (!matches) {
 				matches = matches_nand;
 			} else {
@@ -548,43 +551,44 @@ static int xsmcps_probe(struct platform_device *pdev)
 	return 0;
 
 out_clk_disable:
-	clk_disable_unprepare(xsmcps->devclk);
+	clk_disable_unprepare(zynq_smc->devclk);
 out_clk_dis_aper:
-	clk_disable_unprepare(xsmcps->aperclk);
+	clk_disable_unprepare(zynq_smc->aperclk);
 
 	return err;
 }
 
-static int xsmcps_remove(struct platform_device *pdev)
+static int zynq_smc_remove(struct platform_device *pdev)
 {
-	struct xsmcps_data *xsmcps = platform_get_drvdata(pdev);
+	struct zynq_smc_data *zynq_smc = platform_get_drvdata(pdev);
 
-	clk_notifier_unregister(xsmcps->devclk, &xsmcps->clk_rate_change_nb);
-	clk_disable_unprepare(xsmcps->devclk);
-	clk_disable_unprepare(xsmcps->aperclk);
+	clk_notifier_unregister(zynq_smc->devclk,
+				&zynq_smc->clk_rate_change_nb);
+	clk_disable_unprepare(zynq_smc->devclk);
+	clk_disable_unprepare(zynq_smc->aperclk);
 
 	return 0;
 }
 
 /* Match table for device tree binding */
-static const struct of_device_id xsmcps_of_match[] = {
+static const struct of_device_id zynq_smc_of_match[] = {
 	{ .compatible = "xlnx,ps7-smc" },
 	{ },
 };
-MODULE_DEVICE_TABLE(of, xsmcps_of_match);
+MODULE_DEVICE_TABLE(of, zynq_smc_of_match);
 
-static struct platform_driver xsmcps_driver = {
-	.probe		= xsmcps_probe,
-	.remove		= xsmcps_remove,
+static struct platform_driver zynq_smc_driver = {
+	.probe		= zynq_smc_probe,
+	.remove		= zynq_smc_remove,
 	.driver		= {
-		.name	= "xsmcps",
+		.name	= "zynq_smc",
 		.owner	= THIS_MODULE,
-		.pm	= &xsmcps_dev_pm_ops,
-		.of_match_table = xsmcps_of_match,
+		.pm	= &zynq_smc_dev_pm_ops,
+		.of_match_table = zynq_smc_of_match,
 	},
 };
 
-module_platform_driver(xsmcps_driver);
+module_platform_driver(zynq_smc_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx Zynq SMC Driver");
