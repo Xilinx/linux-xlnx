@@ -1016,7 +1016,7 @@ static void xusbps_queue_td(struct xusbps_ep *ep, struct xusbps_req *req)
 			tmp_stat = xusbps_readl(&dr_regs->endptstatus) &
 				bitmask;
 
-#ifdef CONFIG_XUSBPS_ERRATA_DT654401
+#ifdef CONFIG_USB_ZYNQ_ERRATA_DT654401
 			/* Workaround for USB errata DT# 654401 */
 			temp = xusbps_readl(&dr_regs->usbcmd);
 			if (temp & USB_CMD_ATDTW) {
