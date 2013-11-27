@@ -133,7 +133,6 @@
 			phy-handle = <&phy0>;
 			phy-mode = "rgmii-id";
 			reg = <0xe000b000 0x1000>;
-			xlnx,enet-reset = <0xffffffff>;
 			xlnx,eth-mode = <0x1>;
 			xlnx,has-mdio = <0x1>;
 			xlnx,ptp-enet-clock = <111111115>;
@@ -168,7 +167,6 @@
 			interrupts = <0 25 4>;
 			reg = <0xe0004000 0x1000>;
 			xlnx,has-interrupt = <0x0>;
-			xlnx,i2c-reset = <0xffffffff>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			m24c02_eeprom@52 {
@@ -357,7 +355,7 @@
 			interrupts = <0 21 4>;
 			phy_type = "ulpi";
 			reg = <0xe0002000 0x1000>;
-			xlnx,usb-reset = "MIO 7";
+			usb-reset = <&ps7_gpio_0 7 0>;
 		} ;
 		ps7_wdt_0: ps7-wdt@f8005000 {
 			clocks = <&clkc 45>;

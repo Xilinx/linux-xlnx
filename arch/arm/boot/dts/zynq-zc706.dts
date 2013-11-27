@@ -118,13 +118,13 @@
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 13>, <&clkc 30>;
 			compatible = "xlnx,ps7-ethernet-1.00.a";
+			enet-reset = <&ps7_gpio_0 47 0>;
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 22 4>;
 			local-mac-address = [00 0a 35 00 00 00];
 			phy-handle = <&phy0>;
 			phy-mode = "rgmii-id";
 			reg = <0xe000b000 0x1000>;
-			xlnx,enet-reset = "MIO 47";
 			xlnx,eth-mode = <0x1>;
 			xlnx,has-mdio = <0x1>;
 			xlnx,ptp-enet-clock = <111111115>;
@@ -155,11 +155,11 @@
 			clocks = <&clkc 38>;
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			i2c-clk = <400000>;
+			i2c-reset = <&ps7_gpio_0 46 0>;
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 25 4>;
 			reg = <0xe0004000 0x1000>;
 			xlnx,has-interrupt = <0x0>;
-			xlnx,i2c-reset = "MIO 46";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			i2cswitch@74 {
@@ -392,7 +392,7 @@
 			interrupts = <0 21 4>;
 			phy_type = "ulpi";
 			reg = <0xe0002000 0x1000>;
-			xlnx,usb-reset = "MIO 7";
+			usb-reset = <&ps7_gpio_0 7 0>;
 		} ;
 		ps7_wdt_0: ps7-wdt@f8005000 {
 			clocks = <&clkc 45>;

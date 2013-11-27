@@ -307,7 +307,6 @@
 			interrupts = <0 44 4>;
 			phy_type = "ulpi";
 			reg = <0xe0003000 0x1000>;
-			xlnx,usb-reset = <0xffffffff>;
 		} ;
 		ps7_wdt_0: ps7-wdt@f8005000 {
 			clocks = <&clkc 45>;

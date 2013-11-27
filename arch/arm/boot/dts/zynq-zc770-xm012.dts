@@ -141,7 +141,6 @@
 			interrupts = <0 25 4>;
 			reg = <0xe0004000 0x1000>;
 			xlnx,has-interrupt = <0x0>;
-			xlnx,i2c-reset = <0xffffffff>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			m24c02_eeprom@52 {

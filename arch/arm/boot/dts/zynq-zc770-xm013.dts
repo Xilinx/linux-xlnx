@@ -133,7 +133,6 @@
 			phy-handle = <&phy0>;
 			phy-mode = "rgmii-id";
 			reg = <0xe000c000 0x1000>;
-			xlnx,enet-reset = <0xffffffff>;
 			xlnx,eth-mode = <0x1>;
 			xlnx,has-mdio = <0x1>;
 			xlnx,ptp-enet-clock = <111111115>;

@@ -123,7 +123,6 @@
 			phy-handle = <&phy0>;
 			phy-mode = "rgmii-id";
 			reg = <0xe000b000 0x1000>;
-			xlnx,enet-reset = <0xffffffff>;
 			xlnx,eth-mode = <0x1>;
 			xlnx,has-mdio = <0x1>;
 			xlnx,ptp-enet-clock = <111111115>;
@@ -306,7 +305,6 @@
 			interrupts = <0 21 4>;
 			phy_type = "ulpi";
 			reg = <0xe0002000 0x1000>;
-			xlnx,usb-reset = <0xffffffff>;
 		} ;
 		ps7_xadc: ps7-xadc@f8007100 {
 			clocks = <&clkc 12>;
