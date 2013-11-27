@@ -10,6 +10,9 @@ Required properties:
 - compatible (child node): It should be either "xlnx,axi-vdma-mm2s-channel" or
 	"xlnx,axi-vdma-s2mm-channel". It depends on the hardware design and it
 	can also have both channels.
+- xlnx,device-id: Should contain device number in each channel. It should be
+	{0,1,2...so on} to the number of VDMA devices configured in hardware.
+- xlnx,num-fstores: Should be the number of framebuffers as configured in h/w.
 
 Example:
 ++++++++
@@ -20,9 +23,13 @@ axi_vdma_0: axivdma@40030000 {
 	dma-channel@40030000 {
 		compatible = "xlnx,axi-vdma-mm2s-channel";
 		interrupts = < 0 54 4 >;
+		xlnx,num-fstores = <0x8>;
+		xlnx,device-id = <0x0>;
 	} ;
 	dma-channel@40030030 {
 		compatible = "xlnx,axi-vdma-s2mm-channel";
 		interrupts = < 0 53 4 >;
+		xlnx,num-fstores = <0x8>;
+		xlnx,device-id = <0x0>;
 	} ;
 } ;
