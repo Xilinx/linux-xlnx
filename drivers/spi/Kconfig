@@ -508,14 +508,14 @@ config SPI_XILINX
 	  Or for the DS570, see "XPS Serial Peripheral Interface (SPI) (v2.00b)"
 
 config SPI_ZYNQ_QSPI
-	tristate "Xilinx PS QSPI controller"
+	tristate "Xilinx Zynq QSPI controller"
 	depends on ARCH_ZYNQ
 	depends on SPI_MASTER
 	help
 	  This selects the Xilinx ZYNQ Quad SPI controller master driver.
 
 config SPI_ZYNQ_QSPI_DUAL_STACKED
-	bool "Xilinx PS QSPI Dual stacked configuration"
+	bool "Xilinx Zynq QSPI Dual stacked configuration"
 	depends on SPI_ZYNQ_QSPI
 	help
 	  This selects the Xilinx ZYNQ Quad SPI controller in dual stacked mode.

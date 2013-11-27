@@ -1,10 +1,10 @@
 /*
- * Xilinx PS USB Device Controller Driver.
+ * Xilinx Zynq USB Device Controller Driver.
  *
  * Copyright (C) 2011 Xilinx, Inc.
  *
  * This file is based on fsl_udc_core.c file with few minor modifications
- * to support Xilinx PS USB controller.
+ * to support Xilinx Zynq USB controller.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published bydrive
@@ -45,7 +45,7 @@
 
 #include <linux/usb/zynq_otg.h>
 
-#define	DRIVER_DESC	"Xilinx PS USB Device Controller driver"
+#define	DRIVER_DESC	"Xilinx Zynq USB Device Controller driver"
 #define	DRIVER_AUTHOR	"Xilinx, Inc."
 #define	DRIVER_VERSION	"Apr 01, 2011"
 

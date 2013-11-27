@@ -83,7 +83,7 @@ config XILINX_LLTEMAC_XILINX_1000BASEX
 endchoice
 
 config XILINX_PS_EMAC
-	tristate "Xilinx PS tri-speed EMAC support"
+	tristate "Xilinx Zynq tri-speed EMAC support"
 	depends on ARCH_ZYNQ
 	select PHYLIB
 	---help---

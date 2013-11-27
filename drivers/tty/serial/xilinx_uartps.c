@@ -1,5 +1,5 @@
 /*
- * Xilinx PS UART driver
+ * Xilinx Zynq UART driver
  *
  * 2011 - 2013 (C) Xilinx Inc.
  *

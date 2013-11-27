@@ -1,10 +1,10 @@
 /*
  *
- * Xilinx PS Quad-SPI (QSPI) controller driver (master mode only)
+ * Xilinx Zynq Quad-SPI (QSPI) controller driver (master mode only)
  *
  * (c) 2009-2011 Xilinx, Inc.
  *
- * based on Xilinx PS SPI Driver (xspips.c)
+ * based on Xilinx Zynq SPI Driver (spi-zynq.c)
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License version 2 as published by the
@@ -1233,5 +1233,5 @@ static struct platform_driver xqspips_driver = {
 module_platform_driver(xqspips_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS QSPI driver");
+MODULE_DESCRIPTION("Xilinx Zynq QSPI driver");
 MODULE_LICENSE("GPL");

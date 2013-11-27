@@ -1,10 +1,10 @@
 /*
- * Xilinx PS USB OTG Driver Header file.
+ * Xilinx Zynq USB OTG Driver Header file.
  *
  * Copyright 2011 Xilinx, Inc.
  *
  * This file is based on langwell_otg.h file with few minor modifications
- * to support Xilinx PS USB controller.
+ * to support Xilinx Zynq USB controller.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License version 2 as published by the

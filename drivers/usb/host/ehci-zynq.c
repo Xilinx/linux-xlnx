@@ -1,10 +1,10 @@
 /*
- * Xilinx PS USB Host Controller Driver.
+ * Xilinx Zynq USB Host Controller Driver.
  *
  * Copyright (C) 2011 Xilinx, Inc.
  *
  * This file is based on ehci-fsl.c file with few minor modifications
- * to support Xilinx PS USB controller.
+ * to support Xilinx Zynq USB controller.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -450,7 +450,7 @@ static const struct dev_pm_ops ehci_xusbps_pm_ops = {
 
 static const struct hc_driver ehci_xusbps_hc_driver = {
 	.description = hcd_name,
-	.product_desc = "Xilinx PS USB EHCI Host Controller",
+	.product_desc = "Xilinx Zynq USB EHCI Host Controller",
 	.hcd_priv_size = sizeof(struct ehci_xusbps),
 
 	/*

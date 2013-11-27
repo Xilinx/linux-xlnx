@@ -1,10 +1,10 @@
 /*
- * Xilinx PS USB Driver for device tree support.
+ * Xilinx Zynq USB Driver for device tree support.
  *
  * Copyright (C) 2011 Xilinx, Inc.
  *
  * This file is based on fsl-mph-dr-of.c file with few minor modifications
- * to support Xilinx PS USB controller.
+ * to support Xilinx Zynq USB controller.
  *
  * Setup platform devices needed by the dual-role USB controller modules
  * based on the description in flat device tree.

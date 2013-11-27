@@ -1,5 +1,5 @@
 /*
- * Xilinx PS GPIO device driver
+ * Xilinx Zynq GPIO device driver
  *
  * 2009-2011 (c) Xilinx, Inc.
  *

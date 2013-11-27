@@ -1052,5 +1052,5 @@ module_platform_driver(xnandps_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_ALIAS("platform:" XNANDPS_DRIVER_NAME);
-MODULE_DESCRIPTION("Xilinx PS NAND Flash Driver");
+MODULE_DESCRIPTION("Xilinx Zynq NAND Flash Driver");
 MODULE_LICENSE("GPL");

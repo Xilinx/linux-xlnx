@@ -1,10 +1,10 @@
 /*
- * Xilinx PS USB otg driver.
+ * Xilinx Zynq USB otg driver.
  *
  * Copyright 2011 Xilinx, Inc.
  *
  * This file is based on langwell_otg.c file with few minor modifications
- * to support Xilinx PS USB controller.
+ * to support Xilinx Zynq USB controller.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -2297,6 +2297,6 @@ module_platform_driver(xusbps_otg_driver);
 #endif
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS USB OTG driver");
+MODULE_DESCRIPTION("Xilinx Zynq USB OTG driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRIVER_NAME);

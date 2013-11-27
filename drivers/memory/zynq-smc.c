@@ -587,5 +587,5 @@ static struct platform_driver xsmcps_driver = {
 module_platform_driver(xsmcps_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS SMC Driver");
+MODULE_DESCRIPTION("Xilinx Zynq SMC Driver");
 MODULE_LICENSE("GPL");

@@ -1,6 +1,6 @@
 /*
  *
- * Xilinx PS SPI controller driver (master mode only)
+ * Xilinx Zynq SPI controller driver (master mode only)
  *
  * (c) 2008-2011 Xilinx, Inc.
  *
@@ -911,6 +911,6 @@ static struct platform_driver xspips_driver = {
 module_platform_driver(xspips_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx PS SPI driver");
+MODULE_DESCRIPTION("Xilinx Zynq SPI driver");
 MODULE_LICENSE("GPL");
 

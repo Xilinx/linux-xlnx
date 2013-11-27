@@ -122,12 +122,12 @@ config USB_ZYNQ_DR_OF
 	select USB_ULPI_VIEWPORT
 
 config USB_EHCI_ZYNQ
-	bool "Support for Xilinx PS EHCI USB controller"
+	bool "Support for Xilinx Zynq EHCI USB controller"
 	depends on USB_EHCI_HCD && ARCH_ZYNQ
 	select USB_EHCI_ROOT_HUB_TT
 	select USB_ZYNQ_DR_OF
 	---help---
-		Xilinx PS USB host controller core is EHCI compilant and has
+		Xilinx Zynq USB host controller core is EHCI compilant and has
 		transaction translator built-in.
 
 config USB_EHCI_FSL
