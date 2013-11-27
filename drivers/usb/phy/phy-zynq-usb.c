@@ -42,7 +42,7 @@
 #include "../core/usb.h"
 
 #include <linux/xilinx_devices.h>
-#include <linux/usb/xilinx_usbps_otg.h>
+#include <linux/usb/zynq_otg.h>
 
 #define	DRIVER_NAME	"xusbps-otg"
 

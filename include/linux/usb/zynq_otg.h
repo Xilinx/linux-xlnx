@@ -11,8 +11,8 @@
  * Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  */
-#ifndef __XILINX_XUSBPS_OTG_H
-#define __XILINX_XUSBPS_OTG_H
+#ifndef __ZYNQ_OTG_H
+#define __ZYNQ_OTG_H
 
 #define CI_USBCMD		0x140
 #	define USBCMD_RST		BIT(1)
@@ -209,4 +209,4 @@ struct xusbps_otg *xceiv_to_xotg(struct usb_phy *otg)
 
 void xusbps_update_transceiver(void);
 
-#endif /* __XILINX_XUSBPS_OTG_H__ */
+#endif /* __ZYNQ_OTG_H__ */

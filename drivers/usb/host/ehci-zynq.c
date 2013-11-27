@@ -24,7 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/xilinx_devices.h>
 #include <linux/usb/otg.h>
-#include <linux/usb/xilinx_usbps_otg.h>
+#include <linux/usb/zynq_otg.h>
 
 #include "ehci-zynq.h"
 

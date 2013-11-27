@@ -14,7 +14,7 @@
 #ifndef _EHCI_ZYNQ_H
 #define _EHCI_ZYNQ_H
 
-#include <linux/usb/xilinx_usbps_otg.h>
+#include <linux/usb/zynq_otg.h>
 
 /* offsets for the non-ehci registers in the XUSBPS SOC USB controller */
 #define XUSBPS_SOC_USB_ULPIVP	0x170

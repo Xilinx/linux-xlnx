@@ -47,7 +47,7 @@
 #include <asm/unaligned.h>
 #include <asm/dma.h>
 
-#include <linux/usb/xilinx_usbps_otg.h>
+#include <linux/usb/zynq_otg.h>
 
 #define	DRIVER_DESC	"Xilinx PS USB Device Controller driver"
 #define	DRIVER_AUTHOR	"Xilinx, Inc."
