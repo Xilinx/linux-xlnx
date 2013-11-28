@@ -1961,7 +1961,7 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 
 	dev_dbg(&pdev->dev, "\notg controller is detected.\n");
 
-	xotg = devm_kzalloc(&pdev->dev, sizeof *xotg, GFP_KERNEL);
+	xotg = devm_kzalloc(&pdev->dev, sizeof(*xotg), GFP_KERNEL);
 	if (xotg == NULL)
 		return -ENOMEM;
 
@@ -1970,7 +1970,8 @@ static int xusbps_otg_probe(struct platform_device *pdev)
 	/* Setup ulpi phy for OTG */
 	xotg->ulpi = pdata->ulpi;
 
-	xotg->otg.otg = devm_kzalloc(sizeof(struct usb_otg), GFP_KERNEL);
+	xotg->otg.otg = devm_kzalloc(&pdev->dev, sizeof(*xotg->otg.otg),
+			GFP_KERNEL);
 	if (!xotg->otg.otg)
 		return -ENOMEM;
 
