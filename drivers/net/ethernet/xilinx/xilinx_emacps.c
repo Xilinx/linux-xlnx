@@ -1235,8 +1235,8 @@ static void xemacps_tx_poll(unsigned long data)
 	struct ring_info *rp;
 	struct sk_buff *skb;
 	unsigned long flags;
+	unsigned int txbdcount;
 
-	spin_lock(&lp->tx_lock);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_TXSR_OFFSET, regval);
 	dev_dbg(&lp->pdev->dev, "TX status 0x%x\n", regval);
@@ -1271,10 +1271,10 @@ static void xemacps_tx_poll(unsigned long data)
 		cur_p = &lp->tx_bd[cur_i];
 	}
 	numbdstofree = bdcount - bdpartialcount;
-	lp->tx_bd_freecnt += numbdstofree;
+	txbdcount = numbdstofree;
 	numbdsinhw -= numbdstofree;
 	if (!numbdstofree)
-		goto tx_poll_out;
+		return;
 
 	cur_p = &lp->tx_bd[lp->tx_bd_ci];
 	while (numbdstofree) {
@@ -1325,7 +1325,10 @@ static void xemacps_tx_poll(unsigned long data)
 		cur_p = &lp->tx_bd[lp->tx_bd_ci];
 		numbdstofree--;
 	}
-	wmb();
+
+	spin_lock(&lp->tx_lock);
+	lp->tx_bd_freecnt += txbdcount;
+	spin_unlock(&lp->tx_lock);
 
 	if (numbdsinhw) {
 		spin_lock_irqsave(&lp->nwctrlreg_lock, flags);
@@ -1336,9 +1339,6 @@ static void xemacps_tx_poll(unsigned long data)
 	}
 
 	netif_wake_queue(ndev);
-
-tx_poll_out:
-	spin_unlock(&lp->tx_lock);
 }
 
 /**
@@ -2019,23 +2019,18 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 bd_tail;
 
 	nr_frags = skb_shinfo(skb)->nr_frags + 1;
-	spin_lock_bh(&lp->tx_lock);
-
 	if (nr_frags > lp->tx_bd_freecnt) {
 		netif_stop_queue(ndev); /* stop send queue */
-		spin_unlock_bh(&lp->tx_lock);
 		return NETDEV_TX_BUSY;
 	}
 
 	if (xemacps_clear_csum(skb, ndev)) {
-		spin_unlock_bh(&lp->tx_lock);
 		kfree(skb);
 		return NETDEV_TX_OK;
 	}
 
 	bd_tail = lp->tx_bd_tail;
 	cur_p = &lp->tx_bd[bd_tail];
-	lp->tx_bd_freecnt -= nr_frags;
 	frag = &skb_shinfo(skb)->frags[0];
 
 	for (i = 0; i < nr_frags; i++) {
@@ -2074,7 +2069,6 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		lp->tx_bd_tail = lp->tx_bd_tail % XEMACPS_SEND_BD_CNT;
 		cur_p = &(lp->tx_bd[lp->tx_bd_tail]);
 	}
-	wmb();
 
 	/* commit first buffer to hardware -- do this after
 	 * committing the other buffers to avoid an underrun */
@@ -2082,7 +2076,10 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	regval = cur_p->ctrl;
 	regval &= ~XEMACPS_TXBUF_USED_MASK;
 	cur_p->ctrl = regval;
-	wmb();
+
+	spin_lock_bh(&lp->tx_lock);
+	lp->tx_bd_freecnt -= nr_frags;
+	spin_unlock_bh(&lp->tx_lock);
 
 	spin_lock_irqsave(&lp->nwctrlreg_lock, flags);
 	regval = xemacps_read(lp->baseaddr, XEMACPS_NWCTRL_OFFSET);
@@ -2090,7 +2087,6 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			(regval | XEMACPS_NWCTRL_STARTTX_MASK));
 	spin_unlock_irqrestore(&lp->nwctrlreg_lock, flags);
 
-	spin_unlock_bh(&lp->tx_lock);
 	ndev->trans_start = jiffies;
 	return 0;
 }
