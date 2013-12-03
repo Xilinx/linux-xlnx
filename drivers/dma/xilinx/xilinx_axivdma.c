@@ -110,28 +110,29 @@
 /* Hw specific definitions */
 #define XILINX_VDMA_MAX_CHANS_PER_DEVICE	0x2
 
-#define XILINX_VDMA_DMAXR_ALL_IRQ_MASK		(XILINX_VDMA_DMASR_FRM_CNT_IRQ | \
-						 XILINX_VDMA_DMASR_DLY_CNT_IRQ | \
-						 XILINX_VDMA_DMASR_ERR_IRQ)
+#define XILINX_VDMA_DMAXR_ALL_IRQ_MASK	(XILINX_VDMA_DMASR_FRM_CNT_IRQ | \
+					 XILINX_VDMA_DMASR_DLY_CNT_IRQ | \
+					 XILINX_VDMA_DMASR_ERR_IRQ)
 
-#define XILINX_VDMA_DMASR_ALL_ERR_MASK		(XILINX_VDMA_DMASR_EOL_LATE_ERR | \
-						 XILINX_VDMA_DMASR_SOF_LATE_ERR | \
-						 XILINX_VDMA_DMASR_SG_DEC_ERR | \
-						 XILINX_VDMA_DMASR_SG_SLV_ERR | \
-						 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
-						 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
-						 XILINX_VDMA_DMASR_DMA_DEC_ERR | \
-						 XILINX_VDMA_DMASR_DMA_SLAVE_ERR | \
-						 XILINX_VDMA_DMASR_DMA_INT_ERR)
+#define XILINX_VDMA_DMASR_ALL_ERR_MASK	(XILINX_VDMA_DMASR_EOL_LATE_ERR | \
+					 XILINX_VDMA_DMASR_SOF_LATE_ERR | \
+					 XILINX_VDMA_DMASR_SG_DEC_ERR | \
+					 XILINX_VDMA_DMASR_SG_SLV_ERR | \
+					 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
+					 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
+					 XILINX_VDMA_DMASR_DMA_DEC_ERR | \
+					 XILINX_VDMA_DMASR_DMA_SLAVE_ERR | \
+					 XILINX_VDMA_DMASR_DMA_INT_ERR)
 /*
  * Recoverable errors are DMA Internal error, SOF Early, EOF Early and SOF Late.
  * They are only recoverable only when C_FLUSH_ON_FSYNC is enabled in the
  * hardware system.
  */
-#define XILINX_VDMA_DMASR_ERR_RECOVER_MASK	(XILINX_VDMA_DMASR_SOF_LATE_ERR | \
-						 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
-						 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
-						 XILINX_VDMA_DMASR_DMA_INT_ERR)
+#define XILINX_VDMA_DMASR_ERR_RECOVER_MASK	\
+					(XILINX_VDMA_DMASR_SOF_LATE_ERR | \
+					 XILINX_VDMA_DMASR_EOF_EARLY_ERR | \
+					 XILINX_VDMA_DMASR_SOF_EARLY_ERR | \
+					 XILINX_VDMA_DMASR_DMA_INT_ERR)
 
 /* Axi VDMA Flush on Fsync bits */
 #define XILINX_VDMA_FLUSH_S2MM			3
@@ -681,10 +682,12 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 			&& (config->park_frm < chan->num_frms)) {
 		if (chan->direction == DMA_MEM_TO_DEV)
 			vdma_write(chan, XILINX_VDMA_REG_PARK_PTR,
-				config->park_frm << XILINX_VDMA_PARK_PTR_RD_REF_SHIFT);
+				config->park_frm <<
+					XILINX_VDMA_PARK_PTR_RD_REF_SHIFT);
 		else
 			vdma_write(chan, XILINX_VDMA_REG_PARK_PTR,
-				config->park_frm << XILINX_VDMA_PARK_PTR_WR_REF_SHIFT);
+				config->park_frm <<
+					XILINX_VDMA_PARK_PTR_WR_REF_SHIFT);
 	}
 
 	/* Start the hardware */
@@ -1218,7 +1221,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
 
-	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet, (unsigned long)chan);
+	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
+			(unsigned long)chan);
 
 	/* Retrieve the channel properties from the device tree */
 	if (of_property_read_bool(node, "xlnx,include-dre"))
@@ -1255,7 +1259,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		if (xdev->flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
 		    xdev->flush_fsync == XILINX_VDMA_FLUSH_MM2S)
 			chan->flush_fsync = true;
-	} else if (of_device_is_compatible(node, "xlnx,axi-vdma-s2mm-channel")) {
+	} else if (of_device_is_compatible(node,
+					    "xlnx,axi-vdma-s2mm-channel")) {
 		chan->direction = DMA_DEV_TO_MEM;
 		chan->id = 1;
 
