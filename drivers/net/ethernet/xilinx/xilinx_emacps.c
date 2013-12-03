@@ -1224,18 +1224,17 @@ static void xemacps_tx_poll(unsigned long data)
 	struct net_device *ndev = (struct net_device *)data;
 	struct net_local *lp = netdev_priv(ndev);
 	u32 regval;
-	u32 len = 0;
-	unsigned int bdcount = 0;
-	unsigned int bdpartialcount = 0;
-	unsigned int sop = 0;
 	struct xemacps_bd *cur_p;
-	u32 cur_i;
-	u32 numbdstofree;
 	u32 numbdsinhw;
 	struct ring_info *rp;
 	struct sk_buff *skb;
 	unsigned long flags;
-	unsigned int txbdcount;
+	u32 txbdcount = 0;
+	bool isfrag = false;
+
+	numbdsinhw = XEMACPS_SEND_BD_CNT - lp->tx_bd_freecnt;
+	if (!numbdsinhw)
+		return;
 
 	regval = xemacps_read(lp->baseaddr, XEMACPS_TXSR_OFFSET);
 	xemacps_write(lp->baseaddr, XEMACPS_TXSR_OFFSET, regval);
@@ -1243,45 +1242,18 @@ static void xemacps_tx_poll(unsigned long data)
 	if (regval & (XEMACPS_TXSR_HRESPNOK_MASK | XEMACPS_TXSR_BUFEXH_MASK))
 		dev_err(&lp->pdev->dev, "TX error 0x%x\n", regval);
 
-	cur_i = lp->tx_bd_ci;
-	cur_p = &lp->tx_bd[cur_i];
-	numbdsinhw = XEMACPS_SEND_BD_CNT - lp->tx_bd_freecnt;
-	while (bdcount < numbdsinhw) {
-		if (sop == 0) {
-			if (cur_p->ctrl & XEMACPS_TXBUF_USED_MASK)
-				sop = 1;
-			else
+	cur_p = &lp->tx_bd[lp->tx_bd_ci];
+
+	while (numbdsinhw) {
+
+		if ((cur_p->ctrl & XEMACPS_TXBUF_USED_MASK) !=
+					XEMACPS_TXBUF_USED_MASK) {
+			if (isfrag == false)
 				break;
 		}
-
-		bdcount++;
-		bdpartialcount++;
-
-		/* hardware has processed this BD so check the "last" bit.
-		 * If it is clear, then there are more BDs for the current
-		 * packet. Keep a count of these partial packet BDs.
-		 */
-		if (cur_p->ctrl & XEMACPS_TXBUF_LAST_MASK) {
-			sop = 0;
-			bdpartialcount = 0;
-		}
-
-		cur_i++;
-		cur_i = cur_i % XEMACPS_SEND_BD_CNT;
-		cur_p = &lp->tx_bd[cur_i];
-	}
-	numbdstofree = bdcount - bdpartialcount;
-	txbdcount = numbdstofree;
-	numbdsinhw -= numbdstofree;
-	if (!numbdstofree)
-		return;
-
-	cur_p = &lp->tx_bd[lp->tx_bd_ci];
-	while (numbdstofree) {
 		rp = &lp->tx_skb[lp->tx_bd_ci];
 		skb = rp->skb;
-
-		len += (cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK);
+		lp->stats.tx_bytes += cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK;
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.tx_type == HWTSTAMP_TX_ON) &&
@@ -1306,24 +1278,25 @@ static void xemacps_tx_poll(unsigned long data)
 			DMA_TO_DEVICE);
 		rp->skb = NULL;
 		dev_kfree_skb(skb);
-		/* log tx completed packets and bytes, errors logs
+		/* log tx completed packets, errors logs
 		 * are in other error counters.
 		 */
 		if (cur_p->ctrl & XEMACPS_TXBUF_LAST_MASK) {
 			lp->stats.tx_packets++;
-			lp->stats.tx_bytes += len;
-			len = 0;
+			isfrag = false;
+		} else {
+			isfrag = true;
 		}
 
 		/* Set used bit, preserve wrap bit; clear everything else. */
 		cur_p->ctrl |= XEMACPS_TXBUF_USED_MASK;
 		cur_p->ctrl &= (XEMACPS_TXBUF_USED_MASK |
 					XEMACPS_TXBUF_WRAP_MASK);
-
 		lp->tx_bd_ci++;
 		lp->tx_bd_ci = lp->tx_bd_ci % XEMACPS_SEND_BD_CNT;
 		cur_p = &lp->tx_bd[lp->tx_bd_ci];
-		numbdstofree--;
+		numbdsinhw--;
+		txbdcount++;
 	}
 
 	spin_lock(&lp->tx_lock);
