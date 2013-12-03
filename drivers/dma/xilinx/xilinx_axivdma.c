@@ -1360,13 +1360,13 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 
 /**
  * xilinx_vdma_of_probe - Driver probe function
- * @op: Pointer to the platform_device structure
+ * @pdev: Pointer to the platform_device structure
  *
  * Returns '0' on success and failure value on error
  */
-static int xilinx_vdma_of_probe(struct platform_device *op)
+static int xilinx_vdma_of_probe(struct platform_device *pdev)
 {
-	struct device_node *node = op->dev.of_node;
+	struct device_node *node = pdev->dev.of_node;
 	struct xilinx_vdma_device *xdev;
 	struct device_node *child;
 	struct resource *io;
@@ -1374,18 +1374,18 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	unsigned int i;
 	int err;
 
-	dev_info(&op->dev, "Probing xilinx axi vdma engine\n");
+	dev_info(&pdev->dev, "Probing xilinx axi vdma engine\n");
 
 	/* Allocate and initialize the DMA engine structure */
-	xdev = devm_kzalloc(&op->dev, sizeof(*xdev), GFP_KERNEL);
+	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
-	xdev->dev = &op->dev;
+	xdev->dev = &pdev->dev;
 
 	/* Request and map I/O memory */
-	io = platform_get_resource(op, IORESOURCE_MEM, 0);
-	xdev->regs = devm_ioremap_resource(&op->dev, io);
+	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xdev->regs = devm_ioremap_resource(&pdev->dev, io);
 	if (IS_ERR(xdev->regs))
 		return PTR_ERR(xdev->regs);
 
@@ -1402,7 +1402,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	of_property_read_u32(node, "xlnx,flush-fsync", &xdev->flush_fsync);
 
 	/* Initialize the DMA engine */
-	xdev->common.dev = &op->dev;
+	xdev->common.dev = &pdev->dev;
 
 	INIT_LIST_HEAD(&xdev->common.channels);
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
@@ -1417,7 +1417,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	xdev->common.device_tx_status = xilinx_vdma_tx_status;
 	xdev->common.device_issue_pending = xilinx_vdma_issue_pending;
 
-	platform_set_drvdata(op, xdev);
+	platform_set_drvdata(pdev, xdev);
 
 	/* Initialize the channels */
 	for_each_child_of_node(node, child) {
@@ -1437,7 +1437,7 @@ static int xilinx_vdma_of_probe(struct platform_device *op)
 	err = of_dma_controller_register(node, of_dma_xilinx_xlate,
 					 &xdev->common);
 	if (err < 0)
-		dev_err(&op->dev, "Unable to register DMA to DT\n");
+		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
 
 	return 0;
 
@@ -1452,18 +1452,18 @@ error:
 
 /**
  * xilinx_vdma_of_remove - Driver remove function
- * @op: Pointer to the platform_device structure
+ * @pdev: Pointer to the platform_device structure
  *
  * Always returns '0'
  */
-static int xilinx_vdma_of_remove(struct platform_device *op)
+static int xilinx_vdma_of_remove(struct platform_device *pdev)
 {
 	struct xilinx_vdma_device *xdev;
 	int i;
 
-	of_dma_controller_free(op->dev.of_node);
+	of_dma_controller_free(pdev->dev.of_node);
 
-	xdev = platform_get_drvdata(op);
+	xdev = platform_get_drvdata(pdev);
 	dma_async_device_unregister(&xdev->common);
 
 	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
