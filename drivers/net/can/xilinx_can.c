@@ -951,10 +951,9 @@ static int xcan_probe(struct platform_device *pdev)
 
 	/* Create a CAN device instance */
 	ndev = alloc_candev(sizeof(struct xcan_priv), XCAN_ECHO_SKB_MAX);
-	if (!ndev) {
-		dev_err(dev, "Could not allocate Xilinx CAN device\n");
+	if (!ndev)
 		return -ENOMEM;
-	}
+
 	priv = netdev_priv(ndev);
 	priv->dev = ndev;
 	priv->can.bittiming_const = &xcan_bittiming_const;
