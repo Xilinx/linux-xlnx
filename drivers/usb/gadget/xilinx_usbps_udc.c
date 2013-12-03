@@ -2173,6 +2173,8 @@ static void dtd_complete_irq(struct xusbps_udc *udc)
 					status, ep_num);
 			if (status == REQ_UNCOMPLETE)
 				break;
+			/* Clear the endpoint complete events */
+			xusbps_writel(bit_pos, &dr_regs->endptcomplete);
 			/* write back status to req */
 			curr_req->req.status = status;
 
