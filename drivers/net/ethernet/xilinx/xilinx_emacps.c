@@ -15,6 +15,10 @@
  * TODO:
  * 1. JUMBO frame is not enabled per EPs spec. Please update it if this
  *    support is added in and set MAX_MTU to 9000.
+ * 2. PTP slave mode: Findout and implement the proper equation and algorithm
+ *    for adjusting the hw timer frequency inorder to sync with the master
+ *    clock offset. Also formula for deriving the max adjustable frequency
+ *    value in ppb.
  */
 
 #include <linux/module.h>
@@ -42,6 +46,7 @@
 #include <linux/of_address.h>
 #include <linux/of_mdio.h>
 #include <linux/timer.h>
+#include <linux/ptp_clock_kernel.h>
 
 /************************** Constant Definitions *****************************/
 
@@ -466,6 +471,12 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 #define NS_PER_SEC			1000000000ULL /* Nanoseconds per
 							second */
+/* Sum of Ethernet, IP and UDP header length */
+#define XEMACPS_TX_PTPHDR_OFFSET	42
+#define XEMACPS_RX_PTPHDR_OFFSET	28 /* Sum of IP and UDP header length */
+#define XEMACPS_IP_PROTO_OFFSET		9  /* Protocol field offset */
+#define XEMACPS_UDP_PORT_OFFSET		22 /* UDP dst port offset */
+#define XEMACPS_PTP_EVENT_PORT_NUM	0x13F /* Transport port for ptp */
 #endif
 
 #define xemacps_read(base, reg)						\
@@ -525,11 +536,6 @@ struct net_local {
 
 	struct timer_list gen_purpose_timer; /* Used for stats update */
 
-	/* Manage internal timer for packet timestamping */
-	struct cyclecounter cycles;
-	struct timecounter clock;
-	struct hwtstamp_config hwtstamp_config;
-
 	struct mii_bus *mii_bus;
 	struct phy_device *phy_dev;
 	struct phy_device *gmii2rgmii_phy_dev;
@@ -542,7 +548,12 @@ struct net_local {
 	unsigned int enetnum;
 	unsigned int lastrxfrmscntr;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-	unsigned int ptpenetclk;
+	struct hwtstamp_config hwtstamp_config;
+	struct ptp_clock *ptp_clock;
+	struct ptp_clock_info ptp_caps;
+	spinlock_t tmreg_lock;
+	int phc_index;
+	unsigned int tmr_add;
 #endif
 };
 #define to_net_local(_nb)	container_of(_nb, struct net_local,\
@@ -974,98 +985,253 @@ static void xemacps_reset_hw(struct net_local *lp)
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 
 /**
- * xemacps_get_hwticks - get the current value of the GEM internal timer
- * @lp: local device instance pointer
- * return: nothing
- **/
-static inline void
-xemacps_get_hwticks(struct net_local *lp, u64 *sec, u64 *nsec)
+ * xemacps_ptp_read - Read timestamp information from the timer counters
+ * @lp: Local device instance pointer
+ * @ts: Timespec structure to hold the current time value
+ * return: None
+ */
+static inline void xemacps_ptp_read(struct net_local *lp,
+				    struct timespec *ts)
 {
-	do {
-		*nsec = xemacps_read(lp->baseaddr, XEMACPS_1588NS_OFFSET);
-		*sec = xemacps_read(lp->baseaddr, XEMACPS_1588S_OFFSET);
-	} while (*nsec > xemacps_read(lp->baseaddr, XEMACPS_1588NS_OFFSET));
+	ts->tv_sec = xemacps_read(lp->baseaddr, XEMACPS_1588S_OFFSET);
+	ts->tv_nsec = xemacps_read(lp->baseaddr, XEMACPS_1588NS_OFFSET);
+
+	if (ts->tv_sec < xemacps_read(lp->baseaddr, XEMACPS_1588S_OFFSET))
+		ts->tv_nsec = xemacps_read(lp->baseaddr, XEMACPS_1588NS_OFFSET);
 }
 
 /**
- * xemacps_read_clock - read raw cycle counter (to be used by time counter)
+ * xemacps_ptp_write - Update the currenrt time value to the timer counters
+ * @lp: Local device instance pointer
+ * @ts: Timespec structure to hold the time value
+ * return: None
  */
-static cycle_t xemacps_read_clock(const struct cyclecounter *tc)
+static inline void xemacps_ptp_write(struct net_local *lp,
+				     const struct timespec *ts)
 {
-	struct net_local *lp =
-			container_of(tc, struct net_local, cycles);
-	u64 stamp;
-	u64 sec, nsec;
-
-	xemacps_get_hwticks(lp, &sec, &nsec);
-	stamp = (sec << 32) | nsec;
-
-	return stamp;
+	xemacps_write(lp->baseaddr, XEMACPS_1588S_OFFSET, ts->tv_sec);
+	xemacps_write(lp->baseaddr, XEMACPS_1588NS_OFFSET, ts->tv_nsec);
 }
-
 
 /**
- * xemacps_systim_to_hwtstamp - convert system time value to hw timestamp
- * @adapter: board private structure
- * @shhwtstamps: timestamp structure to update
- * @regval: unsigned 64bit system time value.
- *
- * We need to convert the system time value stored in the RX/TXSTMP registers
- * into a hwtstamp which can be used by the upper level timestamping functions
+ * xemacps_rx_hwtstamp - Read rx timestamp from hw and update it to the skbuff
+ * @lp: Local device instance pointer
+ * @skb: Pointer to the socket buffer
+ * @msg_type: PTP message type
+ * return: None
  */
-static void xemacps_systim_to_hwtstamp(struct net_local *lp,
-				struct skb_shared_hwtstamps *shhwtstamps,
-				u64 regval)
+static void xemacps_rx_hwtstamp(struct net_local *lp,
+				struct sk_buff *skb, unsigned msg_type)
 {
-	u64 ns;
+	u32 sec, nsec;
 
-	ns = timecounter_cyc2time(&lp->clock, regval);
-	timecompare_update(&lp->compare, ns);
-	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
-	shhwtstamps->hwtstamp = ns_to_ktime(ns);
-	shhwtstamps->syststamp = timecompare_transform(&lp->compare, ns);
-}
-
-static void
-xemacps_rx_hwtstamp(struct net_local *lp,
-			struct sk_buff *skb, unsigned msg_type)
-{
-	u64 time64, sec, nsec;
-
-	if (!msg_type) {
-		/* PTP Event Frame packets */
-		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPERXS_OFFSET);
-		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPERXNS_OFFSET);
-	} else {
+	if (msg_type) {
 		/* PTP Peer Event Frame packets */
 		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPPRXS_OFFSET);
 		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPPRXNS_OFFSET);
+	} else {
+		/* PTP Event Frame packets */
+		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPERXS_OFFSET);
+		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPERXNS_OFFSET);
 	}
-	time64 = (sec << 32) | nsec;
-	xemacps_systim_to_hwtstamp(lp, skb_hwtstamps(skb), time64);
+	skb_hwtstamps(skb)->hwtstamp = ktime_set(sec, nsec);
 }
 
-static void
-xemacps_tx_hwtstamp(struct net_local *lp,
-			struct sk_buff *skb, unsigned msg_type)
+/**
+ * xemacps_tx_hwtstamp - Read tx timestamp from hw and update it to the skbuff
+ * @lp: Local device instance pointer
+ * @skb: Pointer to the socket buffer
+ * @msg_type: PTP message type
+ * return: None
+ */
+static void xemacps_tx_hwtstamp(struct net_local *lp,
+				struct sk_buff *skb, unsigned msg_type)
 {
-	u64 time64, sec, nsec;
+	u32 sec, nsec;
 
-	if (!msg_type) {
-		/* PTP Event Frame packets */
-		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPETXS_OFFSET);
-		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPETXNS_OFFSET);
-	} else {
+	if (msg_type)  {
 		/* PTP Peer Event Frame packets */
 		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPPTXS_OFFSET);
 		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPPTXNS_OFFSET);
+	} else {
+		/* PTP Event Frame packets */
+		sec = xemacps_read(lp->baseaddr, XEMACPS_PTPETXS_OFFSET);
+		nsec = xemacps_read(lp->baseaddr, XEMACPS_PTPETXNS_OFFSET);
 	}
-
-	time64 = (sec << 32) | nsec;
-	xemacps_systim_to_hwtstamp(lp, skb_hwtstamps(skb), time64);
+	skb_hwtstamps(skb)->hwtstamp = ktime_set(sec, nsec);
 	skb_tstamp_tx(skb, skb_hwtstamps(skb));
 }
 
+/**
+ * xemacps_ptp_enable - Select the mode of operation
+ * @ptp: PTP clock structure
+ * @rq: Requested feature to change
+ * @on: Whether to enable or disable the feature
+ * return: Always returns EOPNOTSUPP
+ */
+static int xemacps_ptp_enable(struct ptp_clock_info *ptp,
+			      struct ptp_clock_request *rq, int on)
+{
+	return -EOPNOTSUPP;
+}
+
+/**
+ * xemacps_ptp_gettime - Get the current time from the timer counter registers
+ * @ptp: PTP clock structure
+ * @ts: Timespec structure to hold the current time value
+ * return: Always returns zero
+ */
+static int xemacps_ptp_gettime(struct ptp_clock_info *ptp, struct timespec *ts)
+{
+	unsigned long flags;
+	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
+
+	spin_lock_irqsave(&lp->tmreg_lock, flags);
+	xemacps_ptp_read(lp, ts);
+	spin_unlock_irqrestore(&lp->tmreg_lock, flags);
+
+	return 0;
+}
+
+/**
+ * xemacps_ptp_settime - Apply the time info to the timer counter registers
+ * @ptp: PTP clock structure
+ * @ts: Timespec structure to hold the current time value
+ * return: Always returns zero
+ */
+static int xemacps_ptp_settime(struct ptp_clock_info *ptp,
+			       const struct timespec *ts)
+{
+	unsigned long flags;
+	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
+
+	spin_lock_irqsave(&lp->tmreg_lock, flags);
+	xemacps_ptp_write(lp, ts);
+	spin_unlock_irqrestore(&lp->tmreg_lock, flags);
+
+	return 0;
+}
+
+/**
+ * xemacps_ptp_adjfreq - Adjust the clock freequency
+ * @ptp: PTP clock info structure
+ * @ppb: Frequency in parts per billion
+ * return: Always returns zero
+ */
+static int xemacps_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+{
+	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
+	u64 adj;
+	u32 diff, addend;
+	int neg_adj = 0;
+
+	/* FIXME: the following logic is not working and need to
+	 * fine tune the algorithm and parameters
+	 */
+	if (ppb < 0) {
+		neg_adj = 1;
+		ppb = -ppb;
+	}
+
+	addend = lp->tmr_add;
+	adj = addend;
+	adj *= ppb;
+	diff = div_u64(adj, 1000000000ULL);
+
+	addend = neg_adj ? addend - diff : addend + diff;
+	xemacps_write(lp->baseaddr, XEMACPS_1588INC_OFFSET, addend);
+
+	return 0;
+}
+
+/**
+ * xemacps_ptp_adjtime - Adjust the timer counter value with delta
+ * @ptp: PTP clock info structure
+ * @delta: Delta value in nano seconds
+ * return: Always returns zero
+ */
+static int xemacps_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
+{
+	unsigned long flags;
+	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
+	struct timespec now, then = ns_to_timespec(delta);
+
+	spin_lock_irqsave(&lp->tmreg_lock, flags);
+	xemacps_ptp_read(lp, &now);
+	now = timespec_add(now, then);
+	xemacps_ptp_write(lp, (const struct timespec *)&now);
+	spin_unlock_irqrestore(&lp->tmreg_lock, flags);
+	return 0;
+}
+
+/**
+ * xemacps_ptp_init - Initialize the clock and register with ptp sub system
+ * @lp: Local device instance pointer
+ * return: None
+ */
+static void xemacps_ptp_init(struct net_local *lp)
+{
+	struct timespec now;
+	unsigned long rate;
+	u32 delta;
+
+	lp->ptp_caps.owner = THIS_MODULE;
+	snprintf(lp->ptp_caps.name, 16, "zynq ptp");
+	lp->ptp_caps.n_alarm = 0;
+	lp->ptp_caps.n_ext_ts = 0;
+	lp->ptp_caps.n_per_out = 0;
+	lp->ptp_caps.pps = 0;
+	lp->ptp_caps.adjfreq = xemacps_ptp_adjfreq;
+	lp->ptp_caps.adjtime = xemacps_ptp_adjtime;
+	lp->ptp_caps.gettime = xemacps_ptp_gettime;
+	lp->ptp_caps.settime = xemacps_ptp_settime;
+	lp->ptp_caps.enable = xemacps_ptp_enable;
+
+	rate = clk_get_rate(lp->aperclk);
+
+	spin_lock_init(&lp->tmreg_lock);
+	getnstimeofday(&now);
+	xemacps_ptp_write(lp, (const struct timespec *)&now);
+	lp->tmr_add = (NS_PER_SEC/rate);
+	xemacps_write(lp->baseaddr, XEMACPS_1588INC_OFFSET,
+			lp->tmr_add);
+
+	/* Having eight bits for the number of increments field,
+	 * the max adjustable frequency is inputfreq/(2 pow 8)
+	 * formula for converting the freq hz to ppm is
+	 * Delta(Hz)  = (inputfreq(Hz) * ppm)/(10 pow 6)
+	 */
+
+	delta = rate / 256;
+	rate = rate / 1000000;
+	lp->ptp_caps.max_adj = (delta / rate) * 1000;
+
+	lp->ptp_clock = ptp_clock_register(&lp->ptp_caps, &lp->pdev->dev);
+	if (IS_ERR(lp->ptp_clock))
+		pr_err("ptp_clock_register failed\n");
+
+	lp->phc_index = ptp_clock_index(lp->ptp_clock);
+}
+
+/**
+ * xemacps_ptp_close - Disable the ptp interface
+ * @lp: Local device instance pointer
+ * return: None
+ */
+static void xemacps_ptp_close(struct net_local *lp)
+{
+	/* Clear the time counters */
+	xemacps_write(lp->baseaddr, XEMACPS_1588NS_OFFSET, 0x0);
+	xemacps_write(lp->baseaddr, XEMACPS_1588S_OFFSET, 0x0);
+	xemacps_write(lp->baseaddr, XEMACPS_1588ADJ_OFFSET, 0x0);
+	xemacps_write(lp->baseaddr, XEMACPS_1588INC_OFFSET, 0x0);
+
+	ptp_clock_unregister(lp->ptp_clock);
+
+	/* Initialize hwstamp config */
+	lp->hwtstamp_config.rx_filter = HWTSTAMP_FILTER_NONE;
+	lp->hwtstamp_config.tx_type = HWTSTAMP_TX_OFF;
+}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
 /**
@@ -1121,9 +1287,9 @@ static int xemacps_rx(struct net_local *lp, int budget)
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 		if ((lp->hwtstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) &&
-		    (ntohs(skb->protocol) == 0x800)) {
-			unsigned ip_proto, dest_port, msg_type;
-
+		    (ntohs(skb->protocol) == ETH_P_IP)) {
+			u8 transport_poto, msg_type;
+			u16 dst_port;
 			/* While the GEM can timestamp PTP packets, it does
 			 * not mark the RX descriptor to identify them.  This
 			 * is entirely the wrong place to be parsing UDP
@@ -1132,14 +1298,19 @@ static int xemacps_rx(struct net_local *lp, int budget)
 			 * depend on the use of Ethernet_II encapsulation,
 			 * IPv4 without any options.
 			 */
-			ip_proto = *((u8 *)skb->mac_header + 14 + 9);
-			dest_port = ntohs(*(((u16 *)skb->mac_header) +
-						((14 + 20 + 2)/2)));
-			msg_type = *((u8 *)skb->mac_header + 42);
-			if ((ip_proto == IPPROTO_UDP) &&
-			    (dest_port == 0x13F)) {
-				/* Timestamp this packet */
-				xemacps_rx_hwtstamp(lp, skb, msg_type & 0x2);
+			skb_copy_from_linear_data_offset(skb,
+				XEMACPS_IP_PROTO_OFFSET, &transport_poto, 1);
+			if (transport_poto == IPPROTO_UDP) {
+				skb_copy_from_linear_data_offset(skb,
+					XEMACPS_UDP_PORT_OFFSET, &dst_port, 2);
+				if (ntohs(dst_port) ==
+						XEMACPS_PTP_EVENT_PORT_NUM) {
+					skb_copy_from_linear_data_offset(skb,
+						XEMACPS_RX_PTPHDR_OFFSET,
+							&msg_type, 1);
+					xemacps_rx_hwtstamp(lp, skb,
+							msg_type & 0x2);
+				}
 			}
 		}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
@@ -1256,21 +1427,11 @@ static void xemacps_tx_poll(unsigned long data)
 		lp->stats.tx_bytes += cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK;
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-		if ((lp->hwtstamp_config.tx_type == HWTSTAMP_TX_ON) &&
-			(ntohs(skb->protocol) == 0x800)) {
-			unsigned ip_proto, dest_port, msg_type;
-
-			skb_reset_mac_header(skb);
-
-			ip_proto = *((u8 *)skb->mac_header + 14 + 9);
-			dest_port = ntohs(*(((u16 *)skb->mac_header) +
-					((14 + 20 + 2)/2)));
-			msg_type = *((u8 *)skb->mac_header + 42);
-			if ((ip_proto == IPPROTO_UDP) &&
-				(dest_port == 0x13F)) {
-				/* Timestamp this packet */
-				xemacps_tx_hwtstamp(lp, skb, msg_type & 0x2);
-			}
+		if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+			u8 msg_type;
+			skb_copy_from_linear_data_offset(skb,
+				XEMACPS_TX_PTPHDR_OFFSET, &msg_type, 1);
+			xemacps_tx_hwtstamp(lp, skb, msg_type & 0x2);
 		}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
 
@@ -1538,50 +1699,6 @@ err_out:
 	return -ENOMEM;
 }
 
-#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-/*
- * Initialize the GEM Time Stamp Unit
- */
-static void xemacps_init_tsu(struct net_local *lp)
-{
-
-	memset(&lp->cycles, 0, sizeof(lp->cycles));
-	lp->cycles.read = xemacps_read_clock;
-	lp->cycles.mask = CLOCKSOURCE_MASK(64);
-	lp->cycles.mult = 1;
-	lp->cycles.shift = 0;
-
-	/* Set registers so that rollover occurs soon to test this. */
-	xemacps_write(lp->baseaddr, XEMACPS_1588NS_OFFSET, 0x00000000);
-	xemacps_write(lp->baseaddr, XEMACPS_1588S_OFFSET, 0xFF800000);
-
-	/* program the timer increment register with the numer of nanoseconds
-	 * per clock tick.
-	 *
-	 * Note: The value is calculated based on the current operating
-	 * frequency 50MHz
-	 */
-	xemacps_write(lp->baseaddr, XEMACPS_1588INC_OFFSET,
-			(NS_PER_SEC/lp->ptpenetclk));
-
-	timecounter_init(&lp->clock, &lp->cycles,
-				ktime_to_ns(ktime_get_real()));
-	/*
-	 * Synchronize our NIC clock against system wall clock.
-	 */
-	memset(&lp->compare, 0, sizeof(lp->compare));
-	lp->compare.source = &lp->clock;
-	lp->compare.target = ktime_get_real;
-	lp->compare.num_samples = 10;
-	timecompare_update(&lp->compare, 0);
-
-	/* Initialize hwstamp config */
-	lp->hwtstamp_config.rx_filter = HWTSTAMP_FILTER_NONE;
-	lp->hwtstamp_config.tx_type = HWTSTAMP_TX_OFF;
-
-}
-#endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
-
 /**
  * xemacps_init_hw - Initialize hardware to known good state
  * @lp: local device instance pointer
@@ -1638,8 +1755,8 @@ static void xemacps_init_hw(struct net_local *lp)
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-	/* Initialize the Time Stamp Unit */
-	xemacps_init_tsu(lp);
+	/* Initialize the ptp clock */
+	xemacps_ptp_init(lp);
 #endif
 
 	/* Enable interrupts */
@@ -1859,6 +1976,9 @@ static int xemacps_close(struct net_device *ndev)
 	if (lp->gmii2rgmii_phy_node)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
 	xemacps_reset_hw(lp);
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+	xemacps_ptp_close(lp);
+#endif
 	mdelay(500);
 	xemacps_descriptor_free(lp);
 
@@ -2440,6 +2560,31 @@ static struct net_device_stats
 	return nstat;
 }
 
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+/**
+ * xemacps_get_ts_info - Get the interface timestamp capabilities
+ * @dev: Network device
+ * @info: Holds the interface timestamp capability info
+ * retur: Always return zero
+ */
+static int xemacps_get_ts_info(struct net_device *dev,
+			struct ethtool_ts_info *info)
+{
+	struct net_local *lp = netdev_priv(dev);
+
+	info->so_timestamping =
+			SOF_TIMESTAMPING_TX_HARDWARE |
+			SOF_TIMESTAMPING_RX_HARDWARE |
+			SOF_TIMESTAMPING_RAW_HARDWARE;
+	info->phc_index = lp->phc_index;
+	info->tx_types = (1 << HWTSTAMP_TX_OFF) |
+			(1 << HWTSTAMP_TX_ON);
+	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
+			(1 << HWTSTAMP_FILTER_ALL);
+	return 0;
+}
+#endif
+
 static struct ethtool_ops xemacps_ethtool_ops = {
 	.get_settings   = xemacps_get_settings,
 	.set_settings   = xemacps_set_settings,
@@ -2450,6 +2595,9 @@ static struct ethtool_ops xemacps_ethtool_ops = {
 	.set_wol        = xemacps_set_wol,
 	.get_pauseparam = xemacps_get_pauseparam,
 	.set_pauseparam = xemacps_set_pauseparam,
+#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
+	.get_ts_info    = xemacps_get_ts_info,
+#endif
 };
 
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
@@ -2639,15 +2787,6 @@ static int xemacps_probe(struct platform_device *pdev)
 	if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
 		dev_warn(&pdev->dev,
 			"Unable to register clock notifier.\n");
-
-#ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
-	prop = of_get_property(lp->pdev->dev.of_node,
-				"xlnx,ptp-enet-clock", NULL);
-	if (prop)
-		lp->ptpenetclk = (u32)be32_to_cpup(prop);
-	else
-		lp->ptpenetclk = 133333328;
-#endif
 
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
