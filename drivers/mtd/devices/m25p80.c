@@ -617,7 +617,7 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 	/* Set up the opcode in the write buffer. */
 	flash->command[0] = flash->program_opcode;
-	m25p_addr2cmd(flash, to, flash->command);
+	m25p_addr2cmd(flash, (to >> flash->shift), flash->command);
 
 	page_offset = to & (flash->page_size - 1);
 
@@ -1371,34 +1371,49 @@ static int m25p_probe(struct spi_device *spi)
 		flash->fast_read = false;
 
 	/* Default commands */
-	if (flash->fast_read)
+	if (flash->fast_read) {
 		flash->read_opcode = OPCODE_FAST_READ;
-	else
-		flash->read_opcode = OPCODE_NORM_READ;
+		flash->dummycount = 1;
+	}
 
 	flash->program_opcode = OPCODE_PP;
 
 	if (spi->master->flags & SPI_MASTER_QUAD_MODE) {
 		flash->read_opcode = OPCODE_QUAD_READ;
 		flash->program_opcode = OPCODE_QPP;
+		flash->dummycount = 1;
 	}
 
 	if (info->addr_width)
 		flash->addr_width = info->addr_width;
 	else if (flash->mtd.size > 0x1000000) {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
-		flash->addr_width = 4;
-		if (JEDEC_MFR(info->jedec_id) == CFI_MFR_AMD) {
-			/* Dedicated 4-byte command set */
-			flash->read_opcode = flash->fast_read ?
-				OPCODE_FAST_READ_4B :
-				OPCODE_NORM_READ_4B;
-			flash->program_opcode = OPCODE_PP_4B;
-			/* No small sector erase for 4-byte command set */
-			flash->erase_opcode = OPCODE_SE_4B;
-			flash->mtd.erasesize = info->sector_size;
-		} else
-			set_4byte(flash, info->jedec_id, 1);
+#ifdef CONFIG_OF
+		const char *comp_str;
+		np = of_get_next_parent(spi->dev.of_node);
+		of_property_read_string(np, "compatible", &comp_str);
+		if (!strcmp(comp_str, "xlnx,ps7-qspi-1.00.a")) {
+			flash->addr_width = 3;
+			set_4byte(flash, info->jedec_id, 0);
+		} else {
+#endif
+			flash->addr_width = 4;
+			if (JEDEC_MFR(info->jedec_id) == CFI_MFR_AMD) {
+				/* Dedicated 4-byte command set */
+				flash->read_opcode = flash->fast_read ?
+					OPCODE_FAST_READ_4B :
+					OPCODE_NORM_READ_4B;
+				flash->program_opcode = OPCODE_PP_4B;
+				/* No small sector erase for 4-byte
+				 * command set
+				 */
+				flash->erase_opcode = OPCODE_SE_4B;
+				flash->mtd.erasesize = info->sector_size;
+			} else
+				set_4byte(flash, info->jedec_id, 1);
+#ifdef CONFIG_OF
+		}
+#endif
 	} else {
 		flash->addr_width = 3;
 	}
