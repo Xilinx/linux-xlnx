@@ -1944,6 +1944,7 @@ static int xemacps_open(struct net_device *ndev)
 	return 0;
 
 err_pm_put:
+	napi_disable(&lp->napi);
 	xemacps_reset_hw(lp);
 	pm_runtime_put(&lp->pdev->dev);
 err_free_rings:
