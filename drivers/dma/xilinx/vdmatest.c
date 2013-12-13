@@ -1,9 +1,16 @@
 /*
- * XILINX VDMA Engine test module
+ * XILINX VDMA Engine test client driver
  *
- * Copyright (C) 2012 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010-2013 Xilinx, Inc. All rights reserved.
  *
  * Based on Atmel DMA Test Client
+ *
+ * Description:
+ * This is a simple Xilinx VDMA test client for AXI VDMA driver.
+ * This test assumes both the channels of VDMA are enabled in the
+ * hardware design and configured in back-to-back connection. Test
+ * starts by pumping the data onto one channel (MM2S) and then
+ * compares the data that is received on the other channel (S2MM).
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
