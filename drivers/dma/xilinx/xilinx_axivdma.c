@@ -24,19 +24,15 @@
 
 #include <linux/amba/xilinx_dma.h>
 #include <linux/bitops.h>
-#include <linux/dmaengine.h>
 #include <linux/dmapool.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/irqdomain.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_dma.h>
 #include <linux/of_platform.h>
 #include <linux/of_irq.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
 
 /* Register/Descriptor Offsets */
