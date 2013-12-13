@@ -247,7 +247,7 @@ struct xilinx_vdma_chan {
 	int num_frms;
 	bool has_sg;
 	bool genlock;
-	int err;
+	bool err;
 	struct tasklet_struct tasklet;
 	u32 private;
 	struct xilinx_vdma_config config;
