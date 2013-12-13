@@ -47,6 +47,9 @@ MODULE_PARM_DESC(iterations,
 #define PATTERN_OVERWRITE	0x20
 #define PATTERN_COUNT_MASK	0x1f
 
+/* Maximum number of frame buffers */
+#define MAX_NUM_FRAMES	32
+
 struct vdmatest_slave_thread {
 	struct list_head node;
 	struct task_struct *task;
@@ -67,6 +70,10 @@ struct vdmatest_chan {
 static LIST_HEAD(vdmatest_channels);
 static unsigned int nr_channels;
 static unsigned int frm_cnt;
+static dma_addr_t dma_srcs[MAX_NUM_FRAMES];
+static dma_addr_t dma_dsts[MAX_NUM_FRAMES];
+static struct scatterlist tx_sg[MAX_NUM_FRAMES];
+static struct scatterlist rx_sg[MAX_NUM_FRAMES];
 
 static void vdmatest_init_srcs(u8 **bufs, unsigned int start, unsigned int len)
 {
@@ -225,14 +232,11 @@ static int vdmatest_slave_func(void *data)
 		struct dma_device *rx_dev = rx_chan->device;
 		struct dma_async_tx_descriptor *txd = NULL;
 		struct dma_async_tx_descriptor *rxd = NULL;
-		dma_addr_t dma_srcs[frm_cnt], dma_dsts[frm_cnt];
 		struct completion rx_cmp, tx_cmp;
 		unsigned long rx_tmo =
 				msecs_to_jiffies(30000); /* RX takes longer */
 		unsigned long tx_tmo = msecs_to_jiffies(30000);
 		u8 align = 0;
-		struct scatterlist tx_sg[frm_cnt];
-		struct scatterlist rx_sg[frm_cnt];
 
 		total_tests++;
 
