@@ -50,6 +50,16 @@ MODULE_PARM_DESC(iterations,
 /* Maximum number of frame buffers */
 #define MAX_NUM_FRAMES	32
 
+/**
+ * struct vdmatest_slave_thread - VDMA test thread
+ * @node: Thread node
+ * @task: Task structure pointer
+ * @tx_chan: Tx channel pointer
+ * @rx_chan: Rx Channel pointer
+ * @srcs: Source buffer
+ * @dsts: Destination buffer
+ * @type: DMA transaction type
+ */
 struct xilinx_vdmatest_slave_thread {
 	struct list_head node;
 	struct task_struct *task;
@@ -60,6 +70,12 @@ struct xilinx_vdmatest_slave_thread {
 	enum dma_transaction_type type;
 };
 
+/**
+ * struct vdmatest_chan - VDMA Test channel
+ * @node: Channel node
+ * @chan: DMA channel pointer
+ * @threads: List of VDMA test threads
+ */
 struct xilinx_vdmatest_chan {
 	struct list_head node;
 	struct dma_chan *chan;
