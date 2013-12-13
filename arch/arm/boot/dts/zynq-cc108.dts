@@ -247,6 +247,7 @@
 		} ;
 		ps7_sd_1: ps7-sdio@e0101000 {
 			broken-cd ;
+			wp-inverted ;
 			clock-frequency = <50000000>;
 			clock-names = "clk_xin", "clk_ahb";
 			clocks = <&clkc 22>, <&clkc 33>;
