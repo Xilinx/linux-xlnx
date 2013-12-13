@@ -397,42 +397,6 @@ xilinx_vdma_free_tx_descriptor(struct xilinx_vdma_chan *chan,
 /* Required functions */
 
 /**
- * xilinx_vdma_alloc_chan_resources - Allocate channel resources
- * @dchan: DMA channel
- *
- * Returns '1' on success and failure value on error
- */
-static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
-{
-	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
-
-	/* Has this channel already been allocated? */
-	if (chan->desc_pool)
-		return 1;
-
-	/*
-	 * We need the descriptor to be aligned to 64bytes
-	 * for meeting Xilinx VDMA specification requirement.
-	 */
-	chan->desc_pool = dma_pool_create("xilinx_vdma_desc_pool",
-				chan->dev,
-				sizeof(struct xilinx_vdma_tx_segment),
-				__alignof__(struct xilinx_vdma_tx_segment), 0);
-	if (!chan->desc_pool) {
-		dev_err(chan->dev,
-			"unable to allocate channel %d descriptor pool\n",
-			chan->id);
-		return -ENOMEM;
-	}
-
-	chan->completed_cookie = DMA_MIN_COOKIE;
-	chan->cookie = DMA_MIN_COOKIE;
-
-	/* There is at least one descriptor free to be allocated */
-	return 1;
-}
-
-/**
  * xilinx_vdma_free_descriptors - Free descriptors list
  * @chan: Driver specific VDMA channel
  * @list: List to parse and delete the descriptor
@@ -477,6 +441,7 @@ static void xilinx_vdma_free_chan_resources(struct dma_chan *dchan)
 
 	dev_dbg(chan->dev, "Free all channel resources.\n");
 
+	tasklet_kill(&chan->tasklet);
 	xilinx_vdma_free_descriptors(chan);
 	dma_pool_destroy(chan->desc_pool);
 	chan->desc_pool = NULL;
@@ -515,6 +480,56 @@ static void xilinx_vdma_chan_desc_cleanup(struct xilinx_vdma_chan *chan)
 	}
 
 	spin_unlock_irqrestore(&chan->lock, flags);
+}
+
+/**
+ * xilinx_vdma_do_tasklet - Schedule completion tasklet
+ * @data: Pointer to the Xilinx VDMA channel structure
+ */
+static void xilinx_vdma_do_tasklet(unsigned long data)
+{
+	struct xilinx_vdma_chan *chan = (struct xilinx_vdma_chan *)data;
+
+	xilinx_vdma_chan_desc_cleanup(chan);
+}
+
+/**
+ * xilinx_vdma_alloc_chan_resources - Allocate channel resources
+ * @dchan: DMA channel
+ *
+ * Returns '1' on success and failure value on error
+ */
+static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
+{
+	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
+
+	/* Has this channel already been allocated? */
+	if (chan->desc_pool)
+		return 1;
+
+	/*
+	 * We need the descriptor to be aligned to 64bytes
+	 * for meeting Xilinx VDMA specification requirement.
+	 */
+	chan->desc_pool = dma_pool_create("xilinx_vdma_desc_pool",
+				chan->dev,
+				sizeof(struct xilinx_vdma_tx_segment),
+				__alignof__(struct xilinx_vdma_tx_segment), 0);
+	if (!chan->desc_pool) {
+		dev_err(chan->dev,
+			"unable to allocate channel %d descriptor pool\n",
+			chan->id);
+		return -ENOMEM;
+	}
+
+	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
+			(unsigned long)chan);
+
+	chan->completed_cookie = DMA_MIN_COOKIE;
+	chan->cookie = DMA_MIN_COOKIE;
+
+	/* There is at least one descriptor free to be allocated */
+	return 1;
 }
 
 /**
@@ -892,17 +907,6 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 }
 
 /**
- * xilinx_vdma_do_tasklet - Schedule completion tasklet
- * @data: Pointer to the Xilinx VDMA channel structure
- */
-static void xilinx_vdma_do_tasklet(unsigned long data)
-{
-	struct xilinx_vdma_chan *chan = (struct xilinx_vdma_chan *)data;
-
-	xilinx_vdma_chan_desc_cleanup(chan);
-}
-
-/**
  * xilinx_vdma_tx_submit - Submit DMA transaction
  * @tx: Async transaction descriptor
  *
@@ -1217,9 +1221,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
-
-	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
-			(unsigned long)chan);
 
 	/* Retrieve the channel properties from the device tree */
 	has_dre = of_property_read_bool(node, "xlnx,include-dre");
