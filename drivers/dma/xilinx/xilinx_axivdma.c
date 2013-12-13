@@ -1222,11 +1222,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 			(unsigned long)chan);
 
 	/* Retrieve the channel properties from the device tree */
-	if (of_property_read_bool(node, "xlnx,include-dre"))
-		has_dre = true;
+	has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
-	if (of_property_read_bool(node, "xlnx,genlock-mode"))
-		chan->genlock = true;
+	chan->genlock = of_property_read_bool(node, "xlnx,genlock-mode");
 
 	err = of_property_read_u32(node, "xlnx,datawidth", &value);
 	if (!err) {
@@ -1390,8 +1388,7 @@ static int xilinx_vdma_of_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Retrieve the DMA engine properties from the device tree */
-	if (of_property_read_bool(node, "xlnx,include-sg"))
-		xdev->has_sg = true;
+	xdev->has_sg = of_property_read_bool(node, "xlnx,include-sg");
 
 	err = of_property_read_u32(node, "xlnx,num-fstores", &num_frames);
 	if (err < 0) {
