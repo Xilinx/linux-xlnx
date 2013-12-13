@@ -552,7 +552,7 @@ static int xilinx_vdmatest_add_slave_channels(struct dma_chan *tx_chan,
 	return 0;
 }
 
-static int xilinx_vdmatest_of_probe(struct platform_device *pdev)
+static int xilinx_vdmatest_probe(struct platform_device *pdev)
 {
 	struct dma_chan *chan, *rx_chan;
 	int err;
@@ -592,7 +592,7 @@ free_tx:
 	return err;
 }
 
-static int xilinx_vdmatest_of_remove(struct platform_device *pdev)
+static int xilinx_vdmatest_remove(struct platform_device *pdev)
 {
 	struct xilinx_vdmatest_chan *dtc, *_dtc;
 	struct dma_chan *chan;
@@ -613,17 +613,17 @@ static const struct of_device_id xilinx_vdmatest_of_ids[] = {
 	{}
 };
 
-static struct platform_driver xilinx_vdmatest_of_driver = {
+static struct platform_driver xilinx_vdmatest_driver = {
 	.driver = {
 		.name = "xilinx_vdmatest",
 		.owner = THIS_MODULE,
 		.of_match_table = xilinx_vdmatest_of_ids,
 	},
-	.probe = xilinx_vdmatest_of_probe,
-	.remove = xilinx_vdmatest_of_remove,
+	.probe = xilinx_vdmatest_probe,
+	.remove = xilinx_vdmatest_remove,
 };
 
-module_platform_driver(xilinx_vdmatest_of_driver);
+module_platform_driver(xilinx_vdmatest_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx AXI VDMA Test Client");
