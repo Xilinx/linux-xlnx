@@ -83,10 +83,10 @@ static void vdmatest_init_srcs(u8 **bufs, unsigned int start, unsigned int len)
 	for (; (buf = *bufs); bufs++) {
 		for (i = 0; i < start; i++)
 			buf[i] = PATTERN_SRC | (~i & PATTERN_COUNT_MASK);
-		for ( ; i < start + len; i++)
+		for (; i < start + len; i++)
 			buf[i] = PATTERN_SRC | PATTERN_COPY
 				| (~i & PATTERN_COUNT_MASK);
-		for ( ; i < test_buf_size; i++)
+		for (; i < test_buf_size; i++)
 			buf[i] = PATTERN_SRC | (~i & PATTERN_COUNT_MASK);
 		buf++;
 	}
@@ -100,10 +100,10 @@ static void vdmatest_init_dsts(u8 **bufs, unsigned int start, unsigned int len)
 	for (; (buf = *bufs); bufs++) {
 		for (i = 0; i < start; i++)
 			buf[i] = PATTERN_DST | (~i & PATTERN_COUNT_MASK);
-		for ( ; i < start + len; i++)
+		for (; i < start + len; i++)
 			buf[i] = PATTERN_DST | PATTERN_OVERWRITE
 				| (~i & PATTERN_COUNT_MASK);
-		for ( ; i < test_buf_size; i++)
+		for (; i < test_buf_size; i++)
 			buf[i] = PATTERN_DST | (~i & PATTERN_COUNT_MASK);
 	}
 }
@@ -200,6 +200,9 @@ static int vdmatest_slave_func(void *data)
 	iterations = 1;
 	test_buf_size = hsize * vsize;
 
+	/* This barrier ensures 'thread' is initialized and
+	 * we get valid DMA channels
+	 */
 	smp_rmb();
 	tx_chan = thread->tx_chan;
 	rx_chan = thread->rx_chan;
@@ -470,6 +473,10 @@ static int vdmatest_add_slave_threads(struct vdmatest_chan *tx_dtc,
 	thread->tx_chan = tx_chan;
 	thread->rx_chan = rx_chan;
 	thread->type = (enum dma_transaction_type)DMA_SLAVE;
+
+	/* This barrier ensures the DMA channels in the 'thread'
+	 * are initialized
+	 */
 	smp_wmb();
 	thread->task = kthread_run(vdmatest_slave_func, thread, "%s-%s",
 		dma_chan_name(tx_chan), dma_chan_name(rx_chan));
