@@ -1360,12 +1360,12 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 }
 
 /**
- * xilinx_vdma_of_probe - Driver probe function
+ * xilinx_vdma_probe - Driver probe function
  * @pdev: Pointer to the platform_device structure
  *
  * Returns '0' on success and failure value on error
  */
-static int xilinx_vdma_of_probe(struct platform_device *pdev)
+static int xilinx_vdma_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
 	struct xilinx_vdma_device *xdev;
@@ -1449,12 +1449,12 @@ error:
 }
 
 /**
- * xilinx_vdma_of_remove - Driver remove function
+ * xilinx_vdma_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
  * Always returns '0'
  */
-static int xilinx_vdma_of_remove(struct platform_device *pdev)
+static int xilinx_vdma_remove(struct platform_device *pdev)
 {
 	struct xilinx_vdma_device *xdev;
 	int i;
@@ -1477,17 +1477,17 @@ static const struct of_device_id xilinx_vdma_of_ids[] = {
 	{}
 };
 
-static struct platform_driver xilinx_vdma_of_driver = {
+static struct platform_driver xilinx_vdma_driver = {
 	.driver = {
 		.name = "xilinx-vdma",
 		.owner = THIS_MODULE,
 		.of_match_table = xilinx_vdma_of_ids,
 	},
-	.probe = xilinx_vdma_of_probe,
-	.remove = xilinx_vdma_of_remove,
+	.probe = xilinx_vdma_probe,
+	.remove = xilinx_vdma_remove,
 };
 
-module_platform_driver(xilinx_vdma_of_driver);
+module_platform_driver(xilinx_vdma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx VDMA driver");
