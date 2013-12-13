@@ -68,6 +68,7 @@ struct vdmatest_chan {
  */
 static LIST_HEAD(vdmatest_channels);
 static unsigned int nr_channels;
+static unsigned int frm_cnt;
 
 static void vdmatest_init_srcs(u8 **bufs, unsigned int start, unsigned int len)
 {
@@ -192,7 +193,6 @@ static int vdmatest_slave_func(void *data)
 	enum dma_status status;
 	enum dma_ctrl_flags flags;
 	int ret;
-	int frm_cnt = 8;
 	int i;
 	int hsize = 64;
 	int vsize = 32;
@@ -545,6 +545,13 @@ static int vdmatest_of_probe(struct platform_device *pdev)
 {
 	struct dma_chan *chan, *rx_chan;
 	int err;
+
+	err = of_property_read_u32(pdev->dev.of_node,
+					"xlnx,num-fstores", &frm_cnt);
+	if (err < 0) {
+		pr_err("vdmatest: missing xlnx,num-fstores property\n");
+		return err;
+	}
 
 	chan = dma_request_slave_channel(&pdev->dev, "vdma0");
 	if (IS_ERR(chan)) {

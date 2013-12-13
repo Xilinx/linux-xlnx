@@ -6,6 +6,8 @@ Required properties:
 	where Channel ID is '0' for write/tx and '1' for read/rx
 	channel.
 - dma-names: a list of DMA channel names, one per "dmas" entry
+- xlnx,num-fstores: Should be the number of framebuffers as configured in
+	VDMA device node.
 
 Example:
 ++++++++
@@ -15,6 +17,7 @@ vdmatest_0: vdmatest@0 {
 	dmas = <&axi_vdma_0 0
 		&axi_vdma_0 1>;
 	dma-names = "vdma0", "vdma1";
+	xlnx,num-fstores = <0x8>;
 } ;
 
 
@@ -25,8 +28,12 @@ axi_vdma_0: axivdma@44A40000 {
 	...
 	dma-channel@44A40000 {
 		...
+		xlnx,num-fstores = <0x8>;
+		...
 	} ;
 	dma-channel@44A40030 {
+		...
+		xlnx,num-fstores = <0x8>;
 		...
 	} ;
 } ;
