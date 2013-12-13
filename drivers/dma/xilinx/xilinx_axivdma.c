@@ -1268,6 +1268,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		if (xdev->flush_on_fsync == XILINX_VDMA_FLUSH_BOTH ||
 		    xdev->flush_on_fsync == XILINX_VDMA_FLUSH_S2MM)
 			chan->flush_on_fsync = true;
+	} else {
+		dev_err(xdev->dev, "Invalid channel compatible node\n");
+		return -EINVAL;
 	}
 
 	/*
