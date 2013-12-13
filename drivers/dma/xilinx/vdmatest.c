@@ -9,16 +9,17 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
+#include <linux/amba/xilinx_dma.h>
 #include <linux/delay.h>
-#include <linux/of_dma.h>
 #include <linux/init.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
+#include <linux/of_dma.h>
 #include <linux/platform_device.h>
 #include <linux/random.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
-#include <linux/amba/xilinx_dma.h>
 
 static unsigned int test_buf_size = 64;
 module_param(test_buf_size, uint, S_IRUGO);
@@ -62,10 +63,7 @@ struct vdmatest_chan {
 	struct list_head threads;
 };
 
-/*
- * These are protected by dma_list_mutex since they're only used by
- * the DMA filter function callback
- */
+/* Global variables */
 static LIST_HEAD(vdmatest_channels);
 static unsigned int nr_channels;
 static unsigned int frm_cnt;
@@ -133,11 +131,8 @@ static unsigned int vdmatest_verify(u8 **bufs, unsigned int start,
 		unsigned int end, unsigned int counter, u8 pattern,
 		bool is_srcbuf)
 {
-	unsigned int i;
-	unsigned int error_count = 0;
-	u8 actual;
-	u8 expected;
-	u8 *buf;
+	unsigned int i, error_count = 0;
+	u8 actual, expected, *buf;
 	unsigned int counter_orig = counter;
 
 	for (; (buf = *bufs); bufs++) {
@@ -181,27 +176,20 @@ static void vdmatest_slave_rx_callback(void *completion)
 static int vdmatest_slave_func(void *data)
 {
 	struct vdmatest_slave_thread *thread = data;
-	struct dma_chan *tx_chan;
-	struct dma_chan *rx_chan;
+	struct dma_chan *tx_chan, *rx_chan;
 	const char *thread_name;
-	unsigned int len;
-	unsigned int error_count;
-	unsigned int failed_tests = 0;
-	unsigned int total_tests = 0;
-	dma_cookie_t tx_cookie;
-	dma_cookie_t rx_cookie;
+	unsigned int len, error_count;
+	unsigned int failed_tests = 0, total_tests = 0;
+	dma_cookie_t tx_cookie, rx_cookie;
 	enum dma_status status;
 	enum dma_ctrl_flags flags;
-	int ret;
-	int i;
-	int hsize = 64;
-	int vsize = 32;
+	int ret = -ENOMEM, i;
+	int hsize = 64, vsize = 32;
 	struct xilinx_vdma_config config;
+
 	thread_name = current->comm;
 
-	ret = -ENOMEM;
-
-	/* JZ: limit testing scope here */
+	/* Limit testing scope here */
 	iterations = 1;
 	test_buf_size = hsize * vsize;
 
@@ -217,7 +205,6 @@ static int vdmatest_slave_func(void *data)
 		if (!thread->srcs[i])
 			goto err_srcbuf;
 	}
-	thread->srcs[i] = NULL;
 
 	thread->dsts = kcalloc(frm_cnt+1, sizeof(u8 *), GFP_KERNEL);
 	if (!thread->dsts)
@@ -227,7 +214,6 @@ static int vdmatest_slave_func(void *data)
 		if (!thread->dsts[i])
 			goto err_dstbuf;
 	}
-	thread->dsts[i] = NULL;
 
 	set_user_nice(current, 10);
 
@@ -239,10 +225,8 @@ static int vdmatest_slave_func(void *data)
 		struct dma_device *rx_dev = rx_chan->device;
 		struct dma_async_tx_descriptor *txd = NULL;
 		struct dma_async_tx_descriptor *rxd = NULL;
-		dma_addr_t dma_srcs[frm_cnt];
-		dma_addr_t dma_dsts[frm_cnt];
-		struct completion rx_cmp;
-		struct completion tx_cmp;
+		dma_addr_t dma_srcs[frm_cnt], dma_dsts[frm_cnt];
+		struct completion rx_cmp, tx_cmp;
 		unsigned long rx_tmo =
 				msecs_to_jiffies(30000); /* RX takes longer */
 		unsigned long tx_tmo = msecs_to_jiffies(30000);
@@ -453,8 +437,7 @@ err_srcs:
 
 static void vdmatest_cleanup_channel(struct vdmatest_chan *dtc)
 {
-	struct vdmatest_slave_thread *thread;
-	struct vdmatest_slave_thread *_thread;
+	struct vdmatest_slave_thread *thread, *_thread;
 	int ret;
 
 	list_for_each_entry_safe(thread, _thread,
@@ -476,11 +459,9 @@ static int vdmatest_add_slave_threads(struct vdmatest_chan *tx_dtc,
 	struct dma_chan *rx_chan = rx_dtc->chan;
 
 	thread = kzalloc(sizeof(struct vdmatest_slave_thread), GFP_KERNEL);
-	if (!thread) {
+	if (!thread)
 		pr_warn("vdmatest: No memory for slave thread %s-%s\n",
 			   dma_chan_name(tx_chan), dma_chan_name(rx_chan));
-
-	}
 
 	thread->tx_chan = tx_chan;
 	thread->rx_chan = rx_chan;
@@ -494,8 +475,6 @@ static int vdmatest_add_slave_threads(struct vdmatest_chan *tx_dtc,
 		kfree(thread);
 	}
 
-	/* srcbuf and dstbuf are allocated by the thread itself */
-
 	list_add_tail(&thread->node, &tx_dtc->threads);
 
 	/* Added one thread with 2 channels */
@@ -505,23 +484,16 @@ static int vdmatest_add_slave_threads(struct vdmatest_chan *tx_dtc,
 static int vdmatest_add_slave_channels(struct dma_chan *tx_chan,
 					struct dma_chan *rx_chan)
 {
-	struct vdmatest_chan *tx_dtc;
-	struct vdmatest_chan *rx_dtc;
+	struct vdmatest_chan *tx_dtc, *rx_dtc;
 	unsigned int thread_count = 0;
 
 	tx_dtc = kmalloc(sizeof(struct vdmatest_chan), GFP_KERNEL);
-	if (!tx_dtc) {
-		pr_warn("vdmatest: No memory for tx %s\n",
-					dma_chan_name(tx_chan));
+	if (!tx_dtc)
 		return -ENOMEM;
-	}
 
 	rx_dtc = kmalloc(sizeof(struct vdmatest_chan), GFP_KERNEL);
-	if (!rx_dtc) {
-		pr_warn("vdmatest: No memory for rx %s\n",
-					dma_chan_name(rx_chan));
+	if (!rx_dtc)
 		return -ENOMEM;
-	}
 
 	tx_dtc->chan = tx_chan;
 	rx_dtc->chan = rx_chan;
