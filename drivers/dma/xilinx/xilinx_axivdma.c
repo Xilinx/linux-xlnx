@@ -627,6 +627,7 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	struct xilinx_vdma_tx_descriptor *desc;
 	unsigned long flags;
 	u32 reg;
+	struct xilinx_vdma_tx_segment *head, *tail = NULL;
 
 	if (chan->err)
 		return;
@@ -657,6 +658,14 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 	 * If hardware is idle, then all descriptors on the running lists are
 	 * done, start new transfers
 	 */
+	if (chan->has_sg) {
+		head = list_first_entry(&desc->segments,
+					struct xilinx_vdma_tx_segment, node);
+		tail = list_entry(desc->segments.prev,
+				  struct xilinx_vdma_tx_segment, node);
+
+		vdma_ctrl_write(chan, XILINX_VDMA_REG_CURDESC, head->phys);
+	}
 
 	/* Configure the hardware using info in the config structure */
 	reg = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR);
@@ -698,14 +707,6 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 
 	/* Start the transfer */
 	if (chan->has_sg) {
-		struct xilinx_vdma_tx_segment *head, *tail;
-
-		head = list_first_entry(&desc->segments,
-					struct xilinx_vdma_tx_segment, node);
-		tail = list_entry(desc->segments.prev,
-				  struct xilinx_vdma_tx_segment, node);
-
-		vdma_ctrl_write(chan, XILINX_VDMA_REG_CURDESC, head->phys);
 		vdma_ctrl_write(chan, XILINX_VDMA_REG_TAILDESC, tail->phys);
 	} else {
 		struct xilinx_vdma_tx_segment *segment;
