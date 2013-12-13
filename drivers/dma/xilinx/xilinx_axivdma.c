@@ -221,7 +221,7 @@ struct xilinx_vdma_tx_descriptor {
  * @tasklet: Cleanup work after irq
  * @private: Match info for channel request
  * @config: Device configuration info
- * @flush_fsync: Flush on Frame sync
+ * @flush_on_fsync: Flush on Frame sync
  */
 struct xilinx_vdma_chan {
 	struct xilinx_vdma_device *xdev;
@@ -246,7 +246,7 @@ struct xilinx_vdma_chan {
 	struct tasklet_struct tasklet;
 	u32 private;
 	struct xilinx_vdma_config config;
-	bool flush_fsync;
+	bool flush_on_fsync;
 };
 
 /**
@@ -256,7 +256,7 @@ struct xilinx_vdma_chan {
  * @common: DMA device structure
  * @chan: Driver specific VDMA channel
  * @has_sg: Specifies whether Scatter-Gather is present or not
- * @flush_fsync: Flush on frame sync
+ * @flush_on_fsync: Flush on frame sync
  */
 struct xilinx_vdma_device {
 	void __iomem *regs;
@@ -264,7 +264,7 @@ struct xilinx_vdma_device {
 	struct dma_device common;
 	struct xilinx_vdma_chan *chan[XILINX_VDMA_MAX_CHANS_PER_DEVICE];
 	bool has_sg;
-	u32 flush_fsync;
+	u32 flush_on_fsync;
 };
 
 #define to_xilinx_chan(chan) \
@@ -867,7 +867,7 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 		vdma_ctrl_write(chan, XILINX_VDMA_REG_DMASR,
 				errors & XILINX_VDMA_DMASR_ERR_RECOVER_MASK);
 
-		if (!chan->flush_fsync ||
+		if (!chan->flush_on_fsync ||
 		    (errors & ~XILINX_VDMA_DMASR_ERR_RECOVER_MASK)) {
 			dev_err(chan->dev,
 				"Channel %p has errors %x, cdr %x tdr %x\n",
@@ -1261,9 +1261,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		chan->ctrl_offset = XILINX_VDMA_MM2S_CTRL_OFFSET;
 		chan->desc_offset = XILINX_VDMA_MM2S_DESC_OFFSET;
 
-		if (xdev->flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
-		    xdev->flush_fsync == XILINX_VDMA_FLUSH_MM2S)
-			chan->flush_fsync = true;
+		if (xdev->flush_on_fsync == XILINX_VDMA_FLUSH_BOTH ||
+		    xdev->flush_on_fsync == XILINX_VDMA_FLUSH_MM2S)
+			chan->flush_on_fsync = true;
 	} else if (of_device_is_compatible(node,
 					    "xlnx,axi-vdma-s2mm-channel")) {
 		chan->direction = DMA_DEV_TO_MEM;
@@ -1272,9 +1272,9 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		chan->ctrl_offset = XILINX_VDMA_S2MM_CTRL_OFFSET;
 		chan->desc_offset = XILINX_VDMA_S2MM_DESC_OFFSET;
 
-		if (xdev->flush_fsync == XILINX_VDMA_FLUSH_BOTH ||
-		    xdev->flush_fsync == XILINX_VDMA_FLUSH_S2MM)
-			chan->flush_fsync = true;
+		if (xdev->flush_on_fsync == XILINX_VDMA_FLUSH_BOTH ||
+		    xdev->flush_on_fsync == XILINX_VDMA_FLUSH_S2MM)
+			chan->flush_on_fsync = true;
 	}
 
 	/*
@@ -1409,7 +1409,7 @@ static int xilinx_vdma_of_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	of_property_read_u32(node, "xlnx,flush-fsync", &xdev->flush_fsync);
+	of_property_read_u32(node, "xlnx,flush-fsync", &xdev->flush_on_fsync);
 
 	/* Initialize the DMA engine */
 	xdev->common.dev = &pdev->dev;
