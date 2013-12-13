@@ -1,21 +1,25 @@
 /*
- * Xilinx Video DMA Engine support
+ * DMA driver for Xilinx Video DMA Engine
  *
- * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010-2013 Xilinx, Inc. All rights reserved.
  *
  * Based on the Freescale DMA driver.
  *
  * Description:
- *  . Axi VDMA engine, it does transfers between memory and video devices.
- *    It can be configured to have one channel or two channels. If configured
- *    as two channels, one is to transmit to the video device and another is
- *    to receive from the video device.
+ * The AXI Video Direct Memory Access (AXI VDMA) core is a soft Xilinx IP
+ * core that provides high-bandwidth direct memory access between memory
+ * and AXI4-Stream type video target peripherals. The core provides efficient
+ * two dimensional DMA operations with independent asynchronous read (S2MM)
+ * and write (MM2S) channel operation. It can be configured to have either
+ * one channel or two channels. If configured as two channels, one is to
+ * transmit to the video device (MM2S) and another is to receive from the
+ * video device (S2MM). Initialization, status, interrupt and management
+ * registers are accessed through an AXI4-Lite slave interface.
  *
- * This is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
- *
  */
 
 #include <linux/amba/xilinx_dma.h>
