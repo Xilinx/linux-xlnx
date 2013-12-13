@@ -1272,8 +1272,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	}
 
 	/*
-	 * Used by dmatest channel matching in slave transfers
-	 * Can change it to be a structure to have more matching information
+	 * Used by DMA clients who doesnt have a device node and can request
+	 * the channel by passing this as a filter to 'dma_request_channel()'.
 	 */
 	chan->private = (chan->direction & 0xff) |
 			XILINX_DMA_IP_VDMA |

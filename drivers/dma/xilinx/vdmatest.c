@@ -10,10 +10,11 @@
  * published by the Free Software Foundation.
  */
 #include <linux/delay.h>
-#include <linux/dmaengine.h>
+#include <linux/of_dma.h>
 #include <linux/init.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/random.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
@@ -540,67 +541,40 @@ static int vdmatest_add_slave_channels(struct dma_chan *tx_chan,
 	return 0;
 }
 
-static bool xdma_filter(struct dma_chan *chan, void *param)
+static int vdmatest_of_probe(struct platform_device *pdev)
 {
-	if (*((int *)chan->private) == *(int *)param)
-		return true;
+	struct dma_chan *chan, *rx_chan;
+	int err;
 
-	return false;
-}
-
-static int __init vdmatest_init(void)
-{
-	dma_cap_mask_t mask;
-	struct dma_chan *chan;
-	int err = 0;
-
-	enum dma_data_direction direction;
-	u32 match, device_id = 0;
-	struct dma_chan *rx_chan;
-
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_SLAVE | DMA_PRIVATE, mask);
-
-	for (;;) {
-		direction = DMA_MEM_TO_DEV;
-		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA |
-				device_id << XILINX_DMA_DEVICE_ID_SHIFT;
-		pr_debug("vdmatest: match is %x\n", match);
-
-		chan = dma_request_channel(mask, xdma_filter, (void *)&match);
-
-		if (chan)
-			pr_debug("vdmatest: Found tx device\n");
-		else
-			pr_debug("vdmatest: No more tx channels available\n");
-
-		direction = DMA_DEV_TO_MEM;
-		match = (direction & 0xFF) | XILINX_DMA_IP_VDMA |
-				device_id << XILINX_DMA_DEVICE_ID_SHIFT;
-		rx_chan = dma_request_channel(mask, xdma_filter, &match);
-
-		if (rx_chan)
-			pr_debug("vdmatest: Found rx device\n");
-		else
-			pr_debug("vdmatest: No more rx channels available\n");
-
-		if (chan && rx_chan) {
-			err = vdmatest_add_slave_channels(chan, rx_chan);
-			if (err) {
-				dma_release_channel(chan);
-				dma_release_channel(rx_chan);
-			}
-		} else
-			break;
-
-		device_id++;
+	chan = dma_request_slave_channel(&pdev->dev, "vdma0");
+	if (IS_ERR(chan)) {
+		pr_err("vdmatest: No Tx channel\n");
+		return PTR_ERR(chan);
 	}
+
+	rx_chan = dma_request_slave_channel(&pdev->dev, "vdma1");
+	if (IS_ERR(rx_chan)) {
+		err = PTR_ERR(rx_chan);
+		pr_err("vdmatest: No Rx channel\n");
+		goto free_tx;
+	}
+
+	err = vdmatest_add_slave_channels(chan, rx_chan);
+	if (err) {
+		pr_err("vdmatest: Unable to add channels\n");
+		goto free_rx;
+	}
+	return 0;
+
+free_rx:
+	dma_release_channel(rx_chan);
+free_tx:
+	dma_release_channel(chan);
+
 	return err;
 }
-/* when compiled-in wait for drivers to load first */
-late_initcall(vdmatest_init);
 
-static void __exit vdmatest_exit(void)
+static int vdmatest_of_remove(struct platform_device *pdev)
 {
 	struct vdmatest_chan *dtc, *_dtc;
 	struct dma_chan *chan;
@@ -613,8 +587,25 @@ static void __exit vdmatest_exit(void)
 			dma_chan_name(chan));
 		dma_release_channel(chan);
 	}
+	return 0;
 }
-module_exit(vdmatest_exit);
+
+static const struct of_device_id vdmatest_of_ids[] = {
+	{ .compatible = "xlnx,axi-vdma-test",},
+	{}
+};
+
+static struct platform_driver vdmatest_of_driver = {
+	.driver = {
+		.name = "vdmatest",
+		.owner = THIS_MODULE,
+		.of_match_table = vdmatest_of_ids,
+	},
+	.probe = vdmatest_of_probe,
+	.remove = vdmatest_of_remove,
+};
+
+module_platform_driver(vdmatest_of_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx AXI VDMA Test Client");

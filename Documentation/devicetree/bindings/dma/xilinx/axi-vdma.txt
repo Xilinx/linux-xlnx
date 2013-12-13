@@ -5,6 +5,7 @@ to receive from the video device.
 
 Required properties:
 - compatible: Should be "xlnx,axi-vdma"
+- #dma-cells: Should be <1>, see "dmas" property below
 - reg: Should contain VDMA registers location and length.
 - interrupts: Should contain per channel VDMA interrupts.
 - compatible (child node): It should be either "xlnx,axi-vdma-mm2s-channel" or
@@ -19,6 +20,7 @@ Example:
 
 axi_vdma_0: axivdma@40030000 {
 	compatible = "xlnx,axi-vdma";
+	#dma_cells = <1>;
 	reg = < 0x40030000 0x10000 >;
 	dma-channel@40030000 {
 		compatible = "xlnx,axi-vdma-mm2s-channel";
@@ -32,4 +34,23 @@ axi_vdma_0: axivdma@40030000 {
 		xlnx,num-fstores = <0x8>;
 		xlnx,device-id = <0x0>;
 	} ;
+} ;
+
+
+* Xilinx Video DMA client
+
+Required properties:
+- dmas: a list of <[Video DMA device phandle] [Channel ID]> pairs,
+	where Channel ID is '0' for write/tx and '1' for read/rx
+	channel.
+- dma-names: a list of DMA channel names, one per "dmas" entry
+
+VDMA Test Client Example:
++++++++++++++++++++++++++
+
+vdmatest_0: vdmatest@0 {
+	compatible ="xlnx,axi-vdma-test";
+	dmas = <&axi_vdma_0 0
+		&axi_vdma_0 1>;
+	dma-names = "vdma0", "vdma1";
 } ;
