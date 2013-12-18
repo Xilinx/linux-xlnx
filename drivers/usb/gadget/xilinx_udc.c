@@ -2181,7 +2181,6 @@ static int xudc_probe(struct platform_device *pdev)
 
 	udc->dma_enabled = of_property_read_bool(np, "xlnx,include-dma");
 
-	device_initialize(&udc->gadget.dev);
 	udc->gadget.dev.parent = &pdev->dev;
 
 	spin_lock_init(&udc->lock);
@@ -2199,10 +2198,6 @@ static int xudc_probe(struct platform_device *pdev)
 
 	/* Set device address to 0.*/
 	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
-
-	ret = device_add(&udc->gadget.dev);
-	if (ret)
-		dev_dbg(&pdev->dev, "device_add returned %d\n", ret);
 
 	ret = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (ret)
