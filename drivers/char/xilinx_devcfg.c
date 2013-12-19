@@ -285,12 +285,12 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 		/* Look for sync word */
 		for (i = 0; i < count - 4; i++) {
 			if (memcmp(kbuf + i, "\x66\x55\x99\xAA", 4) == 0) {
-				printk("Found normal sync word\n");
+				pr_debug("Found normal sync word\n");
 				drvdata->endian_swap = 0;
 				break;
 			}
 			if (memcmp(kbuf + i, "\xAA\x99\x55\x66", 4) == 0) {
-				printk("Found swapped sync word\n");
+				pr_debug("Found swapped sync word\n");
 				drvdata->endian_swap = 1;
 				break;
 			}
