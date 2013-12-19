@@ -946,7 +946,6 @@ static int xcan_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	struct net_device *ndev;
 	struct xcan_priv *priv;
-	struct device *dev = &pdev->dev;
 	int ret, irq;
 
 	/* Create a CAN device instance */
