@@ -30,6 +30,7 @@ config MICROBLAZE
 	select CLONE_BACKWARDS3
 	select CLKSRC_OF
 	select BUILDTIME_EXTABLE_SORT
+	select GENERIC_SCHED_CLOCK
 
 config SWAP
 	def_bool n

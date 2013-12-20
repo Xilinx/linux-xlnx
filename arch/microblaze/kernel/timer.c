@@ -12,11 +12,11 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
+#include <linux/sched_clock.h>
 #include <linux/clk.h>
 #include <linux/clockchips.h>
 #include <linux/of_address.h>
 #include <asm/cpuinfo.h>
-#include <linux/cnt32_to_63.h>
 
 static void __iomem *timer_baseaddr;
 
@@ -166,10 +166,15 @@ static __init void xilinx_clockevent_init(void)
 	clockevents_register_device(&clockevent_xilinx_timer);
 }
 
+static u32 xilinx_clock_read(void)
+{
+	return in_be32(timer_baseaddr + TCR1);
+}
+
 static cycle_t xilinx_read(struct clocksource *cs)
 {
 	/* reading actual value of timer 1 */
-	return (cycle_t) (in_be32(timer_baseaddr + TCR1));
+	return (cycle_t)xilinx_clock_read();
 }
 
 static struct timecounter xilinx_tc = {
@@ -221,12 +226,6 @@ static int __init xilinx_clocksource_init(void)
 	return 0;
 }
 
-/*
- * We have to protect accesses before timer initialization
- * and return 0 for sched_clock function below.
- */
-static int timer_initialized;
-
 static void __init xilinx_timer_init(struct device_node *timer)
 {
 	u32 irq;
@@ -262,18 +261,8 @@ static void __init xilinx_timer_init(struct device_node *timer)
 #endif
 	xilinx_clocksource_init();
 	xilinx_clockevent_init();
-	timer_initialized = 1;
-}
 
-unsigned long long notrace sched_clock(void)
-{
-	if (timer_initialized) {
-		struct clocksource *cs = &clocksource_microblaze;
-
-		cycle_t cyc = cnt32_to_63(cs->read(NULL)) & LLONG_MAX;
-		return clocksource_cyc2ns(cyc, cs->mult, cs->shift);
-	}
-	return 0;
+	setup_sched_clock(xilinx_clock_read, 32, timer_clock_freq);
 }
 
 CLOCKSOURCE_OF_DECLARE(xilinx_timer, "xlnx,xps-timer-1.00.a",
