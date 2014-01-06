@@ -239,7 +239,8 @@ err1:
 
 /**
  * usb_hcd_zynq_remove - shutdown processing for ZYNQ-based HCDs
- * @dev: USB Host Controller being removed
+ * @hcd: host controller for this root hub
+ * @pdev: reference to platform device
  * Context: !in_interrupt()
  *
  * Reverses the effect of usb_hcd_zynq_probe().
