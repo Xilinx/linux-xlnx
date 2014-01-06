@@ -183,7 +183,7 @@ static const struct platform_suspend_ops zynq_pm_ops = {
 
 /**
  * zynq_pm_ioremap() - Create IO mappings
- * @comp	DT compatible string
+ * @comp:	DT compatible string
  * Returns a pointer to the mapped memory or NULL.
  *
  * Remap the memory region for a compatible DT node.
