@@ -79,6 +79,9 @@ static unsigned int zynq_gpio_pin_table[] = {
  * struct zynq_gpio - gpio device private data structure
  * @chip:	instance of the gpio_chip
  * @base_addr:	base address of the GPIO device
+ * @irq:	irq associated with the controller
+ * @irq_base:	base of IRQ number for interrupt
+ * @clk:	clock resource for this controller
  * @gpio_lock:	lock used for synchronization
  */
 struct zynq_gpio {
@@ -265,7 +268,7 @@ static void zynq_gpio_irq_ack(struct irq_data *irq_data)
 
 /**
  * zynq_gpio_irq_mask - Disable the interrupts for a gpio pin
- * @irq:	irq number of gpio pin for which interrupt is to be disabled
+ * @irq_data:	per irq and chip data passed down to chip functions
  *
  * This function calculates gpio pin number from irq number and sets the
  * bit in the Interrupt Disable register of the corresponding bank to disable
