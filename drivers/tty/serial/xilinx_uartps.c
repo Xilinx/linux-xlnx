@@ -1040,6 +1040,8 @@ static struct uart_port xuartps_port[2];
  * xuartps_get_port - Configure the port from the platform device resource
  *			info
  *
+ * @id: Port id
+ *
  * Returns a pointer to a uart_port or NULL for failure
  **/
 static struct uart_port *xuartps_get_port(int id)
@@ -1103,7 +1105,7 @@ static void xuartps_console_putchar(struct uart_port *port, int ch)
 
 /**
  * xuartps_console_write - perform write operation
- * @port: Handle to the uart port structure
+ * @co: Console handle
  * @s: Pointer to character array
  * @count: No of characters
  **/
