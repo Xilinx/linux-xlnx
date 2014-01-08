@@ -78,13 +78,6 @@ enum adv7604_op_format_sel {
 	ADV7604_OP_FORMAT_SEL_SDR_ITU656_24_MODE2 = 0x8a,
 };
 
-enum adv7604_int1_config {
-	ADV7604_INT1_CONFIG_OPEN_DRAIN,
-	ADV7604_INT1_CONFIG_ACTIVE_LOW,
-	ADV7604_INT1_CONFIG_ACTIVE_HIGH,
-	ADV7604_INT1_CONFIG_DISABLED,
-};
-
 /* Platform dependent definition */
 struct adv7604_platform_data {
 	/* connector - HDMI or DVI? */
@@ -104,9 +97,6 @@ struct adv7604_platform_data {
 
 	/* Select output format */
 	enum adv7604_op_format_sel op_format_sel;
-
-	/* Configuration of the INT1 pin */
-	enum adv7604_int1_config int1_config;
 
 	/* IO register 0x02 */
 	unsigned alt_gamma:1;
