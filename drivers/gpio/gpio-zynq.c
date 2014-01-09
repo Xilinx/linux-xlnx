@@ -125,7 +125,8 @@ static inline void zynq_gpio_get_bank_pin(unsigned int pin_num,
  * @pin:	gpio pin number within the device
  *
  * This function reads the state of the specified pin of the GPIO device.
- * It returns 0 if the pin is low, 1 if pin is high.
+ *
+ * Return: 0 if the pin is low, 1 if pin is high.
  */
 static int zynq_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 {
@@ -186,7 +187,9 @@ static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
  * @pin:	gpio pin number within the device
  *
  * This function uses the read-modify-write sequence to set the direction of
- * the gpio pin as input. Returns 0 always.
+ * the gpio pin as input.
+ *
+ * Return: 0 always
  */
 static int zynq_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 {
@@ -212,7 +215,9 @@ static int zynq_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
  *
  * This function sets the direction of specified GPIO pin as output, configures
  * the Output Enable register for the pin and uses zynq_gpio_set to set
- * the state of the pin to the value specified. Returns 0 always.
+ * the state of the pin to the value specified.
+ *
+ * Return: 0 always
  */
 static int zynq_gpio_dir_out(struct gpio_chip *chip, unsigned int pin,
 			     int state)
@@ -312,8 +317,9 @@ static void zynq_gpio_irq_unmask(struct irq_data *irq_data)
  * @type:	interrupt type that is to be set for the gpio pin
  *
  * This function gets the gpio pin number and its bank from the gpio pin number
- * and configures the INT_TYPE, INT_POLARITY and INT_ANY registers. Returns 0,
- * negative error otherwise.
+ * and configures the INT_TYPE, INT_POLARITY and INT_ANY registers.
+ *
+ * Return: 0, negative error otherwise.
  * TYPE-EDGE_RISING,  INT_TYPE - 1, INT_POLARITY - 1,  INT_ANY - 0;
  * TYPE-EDGE_FALLING, INT_TYPE - 1, INT_POLARITY - 0,  INT_ANY - 0;
  * TYPE-EDGE_BOTH,    INT_TYPE - 1, INT_POLARITY - NA, INT_ANY - 1;
@@ -549,7 +555,8 @@ static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
  * all the banks of the device. It will also set up interrupts for the gpio
  * pins.
  * Note: Interrupts are disabled for all the banks during initialization.
- * Returns 0 on success, negative error otherwise.
+ *
+ * Return: 0 on success, negative error otherwise.
  */
 static int zynq_gpio_probe(struct platform_device *pdev)
 {
@@ -657,6 +664,12 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	return ret;
 }
 
+/**
+ * zynq_gpio_remove - Driver removal function
+ * @pdev:	platform device instance
+ *
+ * Return: 0 always
+ */
 static int zynq_gpio_remove(struct platform_device *pdev)
 {
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
@@ -685,6 +698,8 @@ static struct platform_driver zynq_gpio_driver = {
 
 /**
  * zynq_gpio_init - Initial driver registration call
+ *
+ * Return: value from platform_driver_register
  */
 static int __init zynq_gpio_init(void)
 {
