@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
-#include <linux/init.h>
 #include <linux/err.h>
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
