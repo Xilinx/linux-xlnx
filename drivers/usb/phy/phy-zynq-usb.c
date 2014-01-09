@@ -785,7 +785,7 @@ static irqreturn_t otg_irq(int irq, void *_dev)
  * This function is a call back function used by usb core to notify
  * device attach/detach events. This is used by OTG state machine.
  *
- * returns:	Always returns NOTIFY_OK.
+ * Return:	Always returns NOTIFY_OK.
  **/
 static int xotg_usbdev_notify(struct notifier_block *self,
 			       unsigned long action, void *dev)
@@ -1832,7 +1832,7 @@ static DEVICE_ATTR(a_clr_err, S_IWUSR, NULL, set_a_clr_err);
  * This function suspends usb devices connected to the otg port
  * of the host controller.
  *
- * returns:	0 on success or error value on failure
+ * Return:	0 on success or error value on failure
  **/
 static int suspend_otg_device(struct usb_phy *otg)
 {
