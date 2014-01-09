@@ -55,7 +55,7 @@
 				 (0xE0 << 16) |	/* Read col change end cmd */ \
 				 (1 << 24)) /* Read col change end cmd valid */
 /**
- * struct zynq_smc_data
+ * struct zynq_smc_data - Private smc driver structure
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
  * @clk_rate_change_nb:	Notifier block for clock frequency change callback
@@ -73,7 +73,7 @@ static DEFINE_SPINLOCK(zynq_smc_lock);
 /**
  * zynq_smc_set_buswidth - Set memory buswidth
  * @bw:	Memory buswidth (8 | 16)
- * Returns 0 on success or negative errno.
+ * Return: 0 on success or negative errno.
  *
  * Must be called with zynq_smc_lock held.
  */
@@ -125,7 +125,7 @@ static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 
 /**
  * zynq_smc_ecc_is_busy_noirq - Read ecc busy flag
- * Returns the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
+ * Return: the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
  *
  * Must be called with zynq_smc_lock held.
  */
@@ -137,7 +137,7 @@ static int zynq_smc_ecc_is_busy_noirq(void)
 
 /**
  * zynq_smc_ecc_is_busy - Read ecc busy flag
- * Returns the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
+ * Return: the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
  */
 int zynq_smc_ecc_is_busy(void)
 {
@@ -157,7 +157,7 @@ EXPORT_SYMBOL_GPL(zynq_smc_ecc_is_busy);
 /**
  * zynq_smc_get_ecc_val - Read ecc_valueN registers
  * @ecc_reg:	Index of the ecc_value reg (0..3)
- * Returns the content of the requested ecc_value register.
+ * Return: the content of the requested ecc_value register.
  *
  * There are four valid ecc_value registers. The argument is truncated to stay
  * within this valid boundary.
@@ -182,7 +182,7 @@ EXPORT_SYMBOL_GPL(zynq_smc_get_ecc_val);
 
 /**
  * zynq_smc_get_nand_int_status_raw - Get NAND interrupt status bit
- * Returns the raw_int_status1 bit from the memc_status register
+ * Return: the raw_int_status1 bit from the memc_status register
  */
 int zynq_smc_get_nand_int_status_raw(void)
 {
@@ -220,7 +220,7 @@ EXPORT_SYMBOL_GPL(zynq_smc_clr_nand_int);
 /**
  * zynq_smc_set_ecc_mode - Set SMC ECC mode
  * @mode:	ECC mode (BYPASS, APB, MEM)
- * Returns 0 on success or negative errno.
+ * Return: 0 on success or negative errno.
  */
 int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode)
 {
@@ -252,7 +252,7 @@ EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_mode);
 /**
  * zynq_smc_set_ecc_pg_size - Set SMC ECC page size
  * @pg_sz:	ECC page size
- * Returns 0 on success or negative errno.
+ * Return: 0 on success or negative errno.
  */
 int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 {
