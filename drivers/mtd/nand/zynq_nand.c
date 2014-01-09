@@ -190,7 +190,7 @@ static struct nand_bbt_descr bbt_mirror_descr = {
  * This function retrieves the Hardware ECC data from the controller and returns
  * ECC data back to the MTD subsystem.
  *
- * returns:	0 on success or error value on failure
+ * Return:	0 on success or error value on failure
  */
 static int
 zynq_nand_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
@@ -244,7 +244,7 @@ static int onehot(unsigned short value)
  *
  * This function corrects the ECC single bit errors & detects 2-bit errors.
  *
- * returns:	0 if no ECC errors found
+ * Return:	0 if no ECC errors found
  *		1 if single bit error found and corrected.
  *		-1 if multiple ECC errors found.
  */
@@ -507,7 +507,7 @@ static int zynq_nand_write_page_swecc(struct mtd_info *mtd,
  * This functions reads data and checks the data integrity by comparing hardware
  * generated ECC values and read ECC values from spare area.
  *
- * returns:	0 always and updates ECC operation status in to MTD structure
+ * Return:	0 always and updates ECC operation status in to MTD structure
  */
 static int zynq_nand_read_page_hwecc(struct mtd_info *mtd,
 				     struct nand_chip *chip,
@@ -805,7 +805,7 @@ static void zynq_nand_write_buf(struct mtd_info *mtd, const uint8_t *buf,
  * zynq_nand_device_ready - Check device ready/busy line
  * @mtd:	Pointer to the mtd_info structure
  *
- * returns:	0 on busy or 1 on ready state
+ * Return:	0 on busy or 1 on ready state
  */
 static int zynq_nand_device_ready(struct mtd_info *mtd)
 {
@@ -822,7 +822,7 @@ static int zynq_nand_device_ready(struct mtd_info *mtd)
  *
  * This function initializes the driver data structures and the hardware.
  *
- * returns:	0 on success or error value on failure
+ * Return:	0 on success or error value on failure
  */
 static int zynq_nand_probe(struct platform_device *pdev)
 {
@@ -1018,7 +1018,7 @@ static int zynq_nand_probe(struct platform_device *pdev)
  * This function is called if the driver module is being unloaded. It frees all
  * resources allocated to the device.
  *
- * returns:	0 on success or error value on failure
+ * Return:	0 on success or error value on failure
  */
 static int zynq_nand_remove(struct platform_device *pdev)
 {
