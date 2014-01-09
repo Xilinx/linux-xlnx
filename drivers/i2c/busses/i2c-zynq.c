@@ -146,7 +146,7 @@ struct zynq_i2c {
  * @irq:	irq number for the I2C device
  * @ptr:	void pointer to zynq_i2c structure
  *
- * Returns IRQ_HANDLED always
+ * Return: IRQ_HANDLED always
  *
  * This function handles the data interrupt, transfer complete interrupt and
  * the error interrupts of the I2C device.
@@ -426,7 +426,7 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
  * zynq_i2c_master_reset - Reset the interface
  * @adap:	pointer to the i2c adapter driver instance
  *
- * Returns none
+ * Return: none
  *
  * This function cleanup the fifos, clear the hold bit and status
  * and disable the interrupts.
@@ -459,7 +459,7 @@ static void zynq_i2c_master_reset(struct i2c_adapter *adap)
  * @msgs:	pointer to the i2c message structure
  * @num:	the number of messages to transfer
  *
- * Returns number of msgs processed on success, negative error otherwise
+ * Return: number of msgs processed on success, negative error otherwise
  *
  * This function waits for the bus idle condition and updates the timeout if
  * modified by user. Then initiates the send/recv activity based on the
@@ -577,7 +577,7 @@ retry:
  * zynq_i2c_func - Returns the supported features of the I2C driver
  * @adap:	pointer to the i2c adapter structure
  *
- * Returns 32 bit value, each bit corresponding to a feature
+ * Return: 32 bit value, each bit corresponding to a feature
  */
 static u32 zynq_i2c_func(struct i2c_adapter *adap)
 {
@@ -592,13 +592,14 @@ static const struct i2c_algorithm zynq_i2c_algo = {
 };
 
 /**
- * zynq_i2c_calc_divs() - Calculate clock dividers
+ * zynq_i2c_calc_divs - Calculate clock dividers
  * @f:		I2C clock frequency
  * @input_clk:	Input clock frequency
  * @a:		First divider (return value)
  * @b:		Second divider (return value)
  * @err:	Frequency error
- * Return 0 on success, negative errno otherwise.
+ *
+ * Return: 0 on success, negative errno otherwise.
  *
  * f is used as input and output variable. As input it is used as target I2C
  * frequency. On function exit f holds the actually resulting I2C frequency.
@@ -657,7 +658,7 @@ static int zynq_i2c_calc_divs(unsigned int *f, unsigned int input_clk,
  * @fscl:	The clock frequency in Hz
  * @id:		Pointer to the I2C device structure
  *
- * Returns zero on success, negative error otherwise
+ * Return: zero on success, negative error otherwise
  *
  * The device must be idle rather than busy transferring data before setting
  * these device options.
@@ -692,7 +693,7 @@ static int zynq_i2c_setclk(unsigned int fscl, struct zynq_i2c *id)
  * @nb:		Pointer to notifier block
  * @event:	Notification reason
  * @data:	Pointer to notification data object
- * Returns NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
+ * Return: NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
  * otherwise.
  *
  * This function is called when the zynq_i2c input clock frequency changes.
@@ -749,7 +750,7 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 /**
  * zynq_i2c_suspend - Suspend method for the driver
  * @_dev:	Address of the platform_device structure
- * Returns 0 on success and error value on error
+ * Return: 0 on success and error value on error
  *
  * Put the driver into low power mode.
  */
@@ -768,7 +769,7 @@ static int zynq_i2c_suspend(struct device *_dev)
 /**
  * zynq_i2c_resume - Resume from suspend
  * @_dev:	Address of the platform_device structure
- * Returns 0 on success and error value on error
+ * Return: 0 on success and error value on error
  *
  * Resume operation after suspend.
  */
@@ -802,7 +803,7 @@ static SIMPLE_DEV_PM_OPS(zynq_i2c_dev_pm_ops, zynq_i2c_suspend,
  * zynq_i2c_probe - Platform registration call
  * @pdev:	Handle to the platform device structure
  *
- * Returns zero on success, negative error otherwise
+ * Return: zero on success, negative error otherwise
  *
  * This function does all the memory allocation and registration for the i2c
  * device. User can modify the address mode to 10 bit address mode using the
@@ -917,7 +918,7 @@ err_clk_dis:
  * zynq_i2c_remove - Unregister the device after releasing the resources
  * @pdev:	Handle to the platform device structure
  *
- * Returns zero always
+ * Return: zero always
  *
  * This function frees all the resources allocated to the device.
  */
