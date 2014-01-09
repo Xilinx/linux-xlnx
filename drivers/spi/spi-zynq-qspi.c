@@ -436,7 +436,7 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, int is_on)
  * Sets the operational mode of QSPI controller for the next QSPI transfer and
  * sets the requested clock frequency.
  *
- * returns:	0 on success and -EINVAL on invalid input parameter
+ * Return:	0 on success and -EINVAL on invalid input parameter
  *
  * Note: If the requested frequency is not an exact match with what can be
  * obtained using the prescalar value, the driver sets the clock frequency which
@@ -511,7 +511,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
  * Sets the operational mode of QSPI controller for the next QSPI transfer, baud
  * rate and divisor value to setup the requested qspi clock.
  *
- * returns:	0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static int zynq_qspi_setup(struct spi_device *qspi)
 {
@@ -563,7 +563,7 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
  * On TX empty interrupt this function reads the received data from RX FIFO and
  * fills the TX FIFO if there is any data remaining to be transferred.
  *
- * returns:	IRQ_HANDLED always
+ * Return:	IRQ_HANDLED always
  */
 static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 {
@@ -665,7 +665,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
  * This function fills the TX FIFO, starts the QSPI transfer, and waits for the
  * transfer to be completed.
  *
- * returns:	Number of bytes transferred in the last transfer
+ * Return:	Number of bytes transferred in the last transfer
  */
 static int zynq_qspi_start_transfer(struct spi_device *qspi,
 			struct spi_transfer *transfer)
@@ -847,7 +847,7 @@ static void zynq_qspi_work_queue(struct work_struct *work)
  * @message:	Pointer to the spi_transfer structure which provides information
  *		about next transfer parameters
  *
- * returns:	0 on success, -EINVAL on invalid input parameter and
+ * Return:	0 on success, -EINVAL on invalid input parameter and
  *		-ESHUTDOWN if queue is stopped by module unload function
  */
 static int zynq_qspi_transfer(struct spi_device *qspi,
@@ -887,7 +887,7 @@ static int zynq_qspi_transfer(struct spi_device *qspi,
  * zynq_qspi_start_queue - Starts the queue of the QSPI driver
  * @xqspi:	Pointer to the zynq_qspi structure
  *
- * returns:	0 on success and -EBUSY if queue is already running or device is
+ * Return:	0 on success and -EBUSY if queue is already running or device is
  *		busy
  */
 static inline int zynq_qspi_start_queue(struct zynq_qspi *xqspi)
@@ -914,7 +914,7 @@ static inline int zynq_qspi_start_queue(struct zynq_qspi *xqspi)
  * This function waits till queue is empty and then stops the queue.
  * Maximum time out is set to 5 seconds.
  *
- * returns:	0 on success and -EBUSY if queue is not empty or device is busy
+ * Return:	0 on success and -EBUSY if queue is not empty or device is busy
  */
 static inline int zynq_qspi_stop_queue(struct zynq_qspi *xqspi)
 {
@@ -948,7 +948,7 @@ static inline int zynq_qspi_stop_queue(struct zynq_qspi *xqspi)
  * zynq_qspi_destroy_queue - Destroys the queue of the QSPI driver
  * @xqspi:	Pointer to the zynq_qspi structure
  *
- * returns:	0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static inline int zynq_qspi_destroy_queue(struct zynq_qspi *xqspi)
 {
@@ -989,7 +989,7 @@ static int zynq_qspi_clk_notifier_cb(struct notifier_block *nb,
  *
  * This function stops the QSPI driver queue and disables the QSPI controller
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_qspi_suspend(struct device *_dev)
 {
@@ -1019,7 +1019,7 @@ static int zynq_qspi_suspend(struct device *_dev)
  *
  * The function starts the QSPI driver queue and initializes the QSPI controller
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_qspi_resume(struct device *dev)
 {
@@ -1064,7 +1064,7 @@ static SIMPLE_DEV_PM_OPS(zynq_qspi_dev_pm_ops, zynq_qspi_suspend,
  *
  * This function initializes the driver data structures and the hardware.
  *
- * returns:	0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static int zynq_qspi_probe(struct platform_device *pdev)
 {
@@ -1211,7 +1211,7 @@ remove_master:
  * if the driver module is being unloaded. It frees all resources allocated to
  * the device.
  *
- * returns:	0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static int zynq_qspi_remove(struct platform_device *pdev)
 {
