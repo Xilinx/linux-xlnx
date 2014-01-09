@@ -196,7 +196,7 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
  * Sets the operational mode of SPI controller for the next SPI transfer and
  * sets the requested clock frequency.
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  *
  * Note: If the requested frequency is not an exact match with what can be
  * obtained using the prescalar value the driver sets the clock frequency which
@@ -273,7 +273,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
  * Sets the operational mode of SPI controller for the next SPI transfer, sets
  * the baud rate and divisor value to setup the requested spi clock.
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_setup(struct spi_device *spi)
 {
@@ -317,7 +317,7 @@ static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
  * the SPI subsystem will identify the error as the remaining bytes to be
  * transferred is non-zero.
  *
- * returns:	IRQ_HANDLED always
+ * Return:	IRQ_HANDLED always
  */
 static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 {
@@ -389,7 +389,7 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
  * This function fills the TX FIFO, starts the SPI transfer, and waits for the
  * transfer to be completed.
  *
- * returns:	Number of bytes transferred in the last transfer
+ * Return:	Number of bytes transferred in the last transfer
  */
 static int zynq_spi_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
@@ -513,7 +513,7 @@ static void zynq_spi_work_queue(struct work_struct *work)
  * @message:	Pointer to the spi_transfer structure which provide information
  *		about next transfer parameters
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_transfer(struct spi_device *spi,
 			     struct spi_message *message)
@@ -553,7 +553,7 @@ static int zynq_spi_transfer(struct spi_device *spi,
  * zynq_spi_start_queue - Starts the queue of the SPI driver
  * @xspi:	Pointer to the zynq_spi structure
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static inline int zynq_spi_start_queue(struct zynq_spi *xspi)
 {
@@ -579,7 +579,7 @@ static inline int zynq_spi_start_queue(struct zynq_spi *xspi)
  * This function waits till queue is empty and then stops the queue.
  * Maximum time out is set to 5 seconds.
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static inline int zynq_spi_stop_queue(struct zynq_spi *xspi)
 {
@@ -613,7 +613,7 @@ static inline int zynq_spi_stop_queue(struct zynq_spi *xspi)
  * zynq_spi_destroy_queue - Destroys the queue of the SPI driver
  * @xspi:	Pointer to the zynq_spi structure
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static inline int zynq_spi_destroy_queue(struct zynq_spi *xspi)
 {
@@ -653,7 +653,7 @@ static int zynq_spi_clk_notifier_cb(struct notifier_block *nb,
  *
  * This function initializes the driver data structures and the hardware.
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_probe(struct platform_device *pdev)
 {
@@ -795,7 +795,7 @@ remove_master:
  * if the driver module is being unloaded. It frees all resources allocated to
  * the device.
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_remove(struct platform_device *pdev)
 {
@@ -829,7 +829,7 @@ static int zynq_spi_remove(struct platform_device *pdev)
  *
  * This function stops the SPI driver queue and disables the SPI controller
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_suspend(struct device *dev)
 {
@@ -859,7 +859,7 @@ static int zynq_spi_suspend(struct device *dev)
  *
  * This function starts the SPI driver queue and initializes the SPI controller
  *
- * returns:	0 on success and error value on error
+ * Return:	0 on success and error value on error
  */
 static int zynq_spi_resume(struct device *dev)
 {
