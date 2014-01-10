@@ -158,6 +158,7 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 {
 	unsigned int isr_status, avail_bytes;
 	unsigned int bytes_to_recv, bytes_to_send;
+	unsigned long timeout;
 	unsigned int ctrl_reg = 0;
 	struct xi2cps *id = ptr;
 
@@ -271,8 +272,18 @@ static irqreturn_t xi2cps_isr(int irq, void *ptr)
 			 * present in the FIFO. Signal the completion of
 			 * transaction.
 			 */
+			 
+			/* Waiting for bus-ready. If bus not ready, it returns after timeout */
+			timeout = jiffies + XI2CPS_TIMEOUT;
+			
 			while (xi2cps_readreg(XI2CPS_SR_OFFSET)
 							& 0x00000020) {
+				if (time_after(jiffies, timeout)) {
+					dev_warn(id->adap.dev.parent,
+							"timedout waiting for bus transfer\n");
+					xi2cps_master_reset(adap);
+					return -ETIMEDOUT;
+				}
 				*(id->p_recv_buf)++ =
 					xi2cps_readreg(XI2CPS_DATA_OFFSET);
 				id->recv_count--;
