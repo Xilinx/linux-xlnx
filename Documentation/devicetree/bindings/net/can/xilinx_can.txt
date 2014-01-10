@@ -18,7 +18,7 @@ Example:
 
 For Zynq CANPS Dts file:
 	ps7_can_0: ps7-can@e0008000 {
-			compatible = "xlnx,ps7-can";
+			compatible = "xlnx,ps7-can-1.00.a";
 			clocks = <&clkc 19>, <&clkc 36>;
 			clock-names = "ref_clk", "aper_clk";
 			reg = <0xe0008000 0x1000>;

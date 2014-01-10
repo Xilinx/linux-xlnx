@@ -1079,7 +1079,7 @@ static int xcan_remove(struct platform_device *pdev)
 
 /* Match table for OF platform binding */
 static struct of_device_id xcan_of_match[] = {
-	{ .compatible = "xlnx,ps7-can", },
+	{ .compatible = "xlnx,ps7-can-1.00.a", },
 	{ .compatible = "xlnx,axi-can-1.00.a", },
 	{ /* end of list */ },
 };
