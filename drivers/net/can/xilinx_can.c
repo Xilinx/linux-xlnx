@@ -436,7 +436,7 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			/* Extended frames remote TX request */
 			id |= XCAN_IDR_SRR_MASK;
 	} else {
-		/* Extended CAN ID formact */
+		/* Extended CAN ID format */
 		id = ((cf->can_id & CAN_EFF_MASK) << XCAN_IDR_ID2_SHIFT) &
 			XCAN_IDR_ID2_MASK;
 		id |= (((cf->can_id & CAN_EFF_MASK) >>
