@@ -993,7 +993,7 @@ static int xcan_probe(struct platform_device *pdev)
 	ndev->mem_start = res->start;
 	ndev->mem_end = res->end;
 
-	priv->write_reg	= xcan_write_reg;
+	priv->write_reg = xcan_write_reg;
 	priv->read_reg = xcan_read_reg;
 
 	/* Getting the CAN devclk info */
