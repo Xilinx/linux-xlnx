@@ -28,7 +28,7 @@
 /*
  * Name of this driver
  */
-#define DRIVER_NAME			"zynq_qspi"
+#define DRIVER_NAME			"zynq-qspi"
 
 /*
  * Register offset definitions
