@@ -572,7 +572,7 @@ static int zynq_smc_remove(struct platform_device *pdev)
 
 /* Match table for device tree binding */
 static const struct of_device_id zynq_smc_of_match[] = {
-	{ .compatible = "xlnx,ps7-smc" },
+	{ .compatible = "xlnx,zynq-smc-1.00.a" },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, zynq_smc_of_match);

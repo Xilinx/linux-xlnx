@@ -240,7 +240,7 @@
 			#size-cells = <1>;
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 11>, <&clkc 44>;
-			compatible = "xlnx,ps7-smcc-1.00.a", "xlnx,ps7-smc";
+			compatible = "xlnx,ps7-smcc-1.00.a", "xlnx,ps7-smc", "xlnx,zynq-smc-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 18 4>;
 			ranges ;

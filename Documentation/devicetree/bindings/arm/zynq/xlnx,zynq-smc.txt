@@ -4,7 +4,7 @@ The SMC supports NAND, NOR and SRAM memory. The SMC driver handles generic
 tasks, while children drivers handle memory type specifics.
 
 Required properties:
- compatible: Compatibility string. Must be "xlnx,ps7-smc".
+ compatible: Compatibility string. Must be "xlnx,zynq-smc-1.00.a".
  reg: Specify the base and size of the SMC registers in the memory map.
       E.g.: reg = <0xe000e000 0x1000>;
  #address-cells: Address cells, must be 1.
@@ -16,8 +16,8 @@ Child nodes:
  as child nodes.
 
 Example:
-	ps7_smc_0: ps7-smc@e000e000 {
-		compatible = "xlnx,ps7-smc";
+	zynq_smc_0: zynq-smc@e000e000 {
+		compatible = "xlnx,zynq-smc-1.00.a";
 		reg = <0xe000e000 0x1000>;
 		#address-cells = <1>;
 		#size-cells = <1>;
