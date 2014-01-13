@@ -228,7 +228,7 @@ static struct cmdbuf ch9_cmdbuf;
 static u32 rambase[8] = { 0x22, 0x1000, 0x1100, 0x1200, 0x1300, 0x1400, 0x1500,
 			0x1600 };
 
-static const char driver_name[] = "xilinx_udc";
+static const char driver_name[] = "xilinx-udc";
 static const char ep0name[] = "ep0";
 
 /* Control endpoint configuration.*/
@@ -1321,7 +1321,7 @@ static struct xusb_udc controller = {
 		.a_alt_hnp_support = 0,
 		.name = driver_name,
 		.dev = {
-			.init_name = "xilinx_udc",
+			.init_name = "xilinx-udc",
 			.release = xusb_release,
 			},
 		},
