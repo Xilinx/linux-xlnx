@@ -228,7 +228,7 @@ static struct of_device_id zynq_ocm_dt_ids[] = {
 
 static struct platform_driver zynq_ocm_driver = {
 	.driver = {
-		.name = "zynq_ocm",
+		.name = "zynq-ocm",
 		.of_match_table = zynq_ocm_dt_ids,
 	},
 	.probe = zynq_ocm_probe,
