@@ -30,7 +30,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-#define ZYNQ_NAND_DRIVER_NAME "xilinx_nandps"
+#define ZYNQ_NAND_DRIVER_NAME "zynq-nand"
 
 /* NAND flash driver defines */
 #define ZYNQ_NAND_CMD_PHASE	1	/* End command valid in command phase */
