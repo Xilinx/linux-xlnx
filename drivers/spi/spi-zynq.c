@@ -28,7 +28,7 @@
 /*
  * Name of this driver
  */
-#define ZYNQ_SPI_NAME		"zynq_spi"
+#define ZYNQ_SPI_NAME		"zynq-spi"
 
 /*
  * Register offset definitions
