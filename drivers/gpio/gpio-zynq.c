@@ -26,7 +26,7 @@
 #include <linux/irqdomain.h>
 #include <linux/irqchip/chained_irq.h>
 
-#define DRIVER_NAME "zynq_gpio"
+#define DRIVER_NAME "zynq-gpio"
 #define ZYNQ_GPIO_NR_GPIOS	118
 
 static struct irq_domain *irq_domain;
