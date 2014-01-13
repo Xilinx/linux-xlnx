@@ -92,7 +92,7 @@
 /* Transfer size in multiples of data interrupt depth */
 #define ZYNQ_I2C_TRANSFER_SIZE	(ZYNQ_I2C_MAX_TRANSFER_SIZE - 3)
 
-#define DRIVER_NAME		"zynq_i2c"
+#define DRIVER_NAME		"zynq-i2c"
 
 #define zynq_i2c_readreg(offset)	__raw_readl(id->membase + offset)
 #define zynq_i2c_writereg(val, offset)	__raw_writel(val, id->membase + offset)
