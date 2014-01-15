@@ -57,6 +57,7 @@ MODULE_LICENSE("GPL");
 #define ADV7511_MAX_HEIGHT 1200
 #define ADV7511_MIN_PIXELCLOCK 20000000
 #define ADV7511_MAX_PIXELCLOCK 225000000
+#define XYLON_LOGICVC_INTG
 
 /*
 **********************************************************************
@@ -361,6 +362,9 @@ static void adv7511_set_IT_content_AVI_InfoFrame(struct v4l2_subdev *sd)
 
 static int adv7511_set_rgb_quantization_mode(struct v4l2_subdev *sd, struct v4l2_ctrl *ctrl)
 {
+#ifdef XYLON_LOGICVC_INTG
+	return 0;
+#endif
 	switch (ctrl->val) {
 	default:
 		return -EINVAL;
@@ -1533,7 +1537,7 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 			 client->addr << 1);
 
 	v4l2_i2c_subdev_init(sd, client, &adv7511_ops);
-
+	adv7511_subdev(sd);
 	hdl = &state->hdl;
 	v4l2_ctrl_handler_init(hdl, 10);
 	/* add in ascending ID order */
@@ -1596,10 +1600,13 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 
 	INIT_DELAYED_WORK(&state->edid_handler, adv7511_edid_handler);
 
+#ifndef XYLON_LOGICVC_INTG
 	adv7511_init_setup(sd);
+#endif
 	adv7511_set_isr(sd, true);
+#ifndef XYLON_LOGICVC_INTG
 	adv7511_check_monitor_present_status(sd);
-
+#endif
 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
 			  client->addr << 1, client->adapter->name);
 	return 0;
