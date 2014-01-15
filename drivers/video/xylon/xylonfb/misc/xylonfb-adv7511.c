@@ -281,8 +281,8 @@ static void xylonfb_adv7511_notify(struct v4l2_subdev *sd,
 					sd_edid.start_block = 0;
 					sd_edid.blocks = 1;
 					sd_edid.edid = xfb_adv7511->edid;
-					ret = xfb_adv7511->sd->ops->core->ioctl(
-						sd, VIDIOC_SUBDEV_G_EDID, (void *)&sd_edid);
+					ret = v4l2_subdev_call(xfb_adv7511->sd, pad,
+							get_edid, (void *)&sd_edid);
 					if (ret) {
 						pr_warn("xylonfb ADV7511 IOCTL error %d\n", ret);
 						break;
