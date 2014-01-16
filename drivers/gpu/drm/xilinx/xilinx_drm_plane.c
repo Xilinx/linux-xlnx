@@ -373,6 +373,12 @@ bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 	return false;
 }
 
+/* get the plane format */
+uint32_t xilinx_drm_plane_get_format(struct xilinx_drm_plane *plane)
+{
+	return plane->format;
+}
+
 /* create a plane */
 static struct xilinx_drm_plane *
 xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
