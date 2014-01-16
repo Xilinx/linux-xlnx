@@ -1,7 +1,7 @@
 /*
  * pmodolde-gpio.c - PmodOLED-GPIO driver
  *
- * Copyright (c) 2012 Digilent.  All right reserved.
+ * Copyright (c) 2012 Digilent. All right reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -10,7 +10,7 @@
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -40,23 +40,23 @@
 #define DRIVER_NAME "pmodoled-gpio"
 #define SPI_DRIVER_NAME "pmodoled-gpio-spi"
 #define MAX_PMODOLED_GPIO_DEV_NUM 16
-#define DISPLAY_BUF_SZ	512 /* 32 x 128 bit monochrome  == 512 bytes        */
-#define MAX_LINE_LEN	16 /* 128 bits wide and current char width is 8 bit */
-#define MAX_ROW			4
-#define OLED_MAX_PG_CNT      4 /* number of display pages in OLED controller */
-#define OLED_CONTROLLER_PG_SZ	128
-#define OLED_CONTROLLER_CMD	0
-#define OLED_CONTROLLER_DATA	1
+#define DISPLAY_BUF_SZ 512      /* 32 x 128 bit monochrome == 512 bytes */
+#define MAX_LINE_LEN 16         /* 128 bits wide and current char width is 8 bit */
+#define MAX_ROW 4
+#define OLED_MAX_PG_CNT 4       /* number of display pages in OLED controller */
+#define OLED_CONTROLLER_PG_SZ 128
+#define OLED_CONTROLLER_CMD 0
+#define OLED_CONTROLLER_DATA 1
 
 /* commands for the OLED display controller	*/
-#define OLED_SET_PG_ADDR		0x22
-#define OLED_DISPLAY_OFF		0xAE
-#define OLED_DISPLAY_ON			0xAF
-#define OLED_CONTRAST_CTRL		0x81
-#define OLED_SET_PRECHARGE_PERIOD	0xD9
-#define OLED_SET_SEGMENT_REMAP		0xA1
-#define OLED_SET_COM_DIR			0xC8
-#define OLED_SET_COM_PINS		0xDA
+#define OLED_SET_PG_ADDR 0x22
+#define OLED_DISPLAY_OFF 0xAE
+#define OLED_DISPLAY_ON 0xAF
+#define OLED_CONTRAST_CTRL 0x81
+#define OLED_SET_PRECHARGE_PERIOD 0xD9
+#define OLED_SET_SEGMENT_REMAP 0xA1
+#define OLED_SET_COM_DIR 0xC8
+#define OLED_SET_COM_PINS 0xDA
 
 static dev_t gpio_pmodoled_dev_id;
 static unsigned int device_num;
@@ -117,8 +117,8 @@ static int screen_buf_to_display(uint8_t *screen_buf, struct gpio_pmodoled_devic
 		}
 
 		gpio_set_value(dev->iDC, OLED_CONTROLLER_DATA);
-		status = spi_write(dev->spi, (uint8_t *) (screen_buf +
-						(pg*OLED_CONTROLLER_PG_SZ)), OLED_CONTROLLER_PG_SZ);
+		status = spi_write(dev->spi, (uint8_t *)(screen_buf +
+							 (pg * OLED_CONTROLLER_PG_SZ)), OLED_CONTROLLER_PG_SZ);
 		if (status) {
 			dev_err(&dev->spi->dev, "screen_buf_to_display: Error writing to SPI\n");
 			break;
@@ -131,7 +131,7 @@ static int screen_buf_to_display(uint8_t *screen_buf, struct gpio_pmodoled_devic
  * A basic open function. It exists mainly to save the id of
  * the OLED and some other basic information.
  */
-static int 	gpio_pmodoled_open(struct inode *inode, struct file *fp)
+static int gpio_pmodoled_open(struct inode *inode, struct file *fp)
 {
 	struct gpio_pmodoled_device *dev;
 
@@ -141,7 +141,7 @@ static int 	gpio_pmodoled_open(struct inode *inode, struct file *fp)
 	return 0;
 }
 
-static int 	gpio_pmodoled_close(struct inode *inode, struct file *fp)
+static int gpio_pmodoled_close(struct inode *inode, struct file *fp)
 {
 	return 0;
 }
@@ -171,7 +171,7 @@ static ssize_t gpio_pmodoled_write(struct file *fp, const char __user *buffer, s
 
 	if (buffer == NULL) {
 		dev_err(&dev->spi->dev, "oled_write: ERROR: invalid buffer address: 0x%08lx\n",
-					(__force unsigned long) buffer);
+			(__force unsigned long)buffer);
 		retval = -EINVAL;
 		goto quit_write;
 	}
@@ -208,7 +208,7 @@ write_lock_err:
  * It returns data in the buffer generated for the display that was used when the OLED
  * was last programmed.
  */
-static ssize_t	gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t length, loff_t *offset)
+static ssize_t gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t length, loff_t *offset)
 {
 	ssize_t retval = 0;
 	struct gpio_pmodoled_device *dev;
@@ -225,7 +225,7 @@ static ssize_t	gpio_pmodoled_read(struct file *fp, char __user *buffer, size_t l
 
 	if (buffer == NULL) {
 		dev_err(&dev->spi->dev, "OLED_read: ERROR: invalid buffer "
-				"address: 0x%08lx\n", (__force unsigned long)buffer);
+			"address: 0x%08lx\n", (__force unsigned long)buffer);
 		retval = -EINVAL;
 		goto quit_read;
 	}
@@ -245,11 +245,11 @@ read_lock_err:
 }
 
 static struct file_operations gpio_pmodoled_cdev_fops = {
-	.owner = THIS_MODULE,
-	.write = gpio_pmodoled_write,
-	.read = gpio_pmodoled_read,
-	.open = gpio_pmodoled_open,
-	.release = gpio_pmodoled_close,
+	.owner		= THIS_MODULE,
+	.write		= gpio_pmodoled_write,
+	.read		= gpio_pmodoled_read,
+	.open		= gpio_pmodoled_open,
+	.release	= gpio_pmodoled_close,
 };
 
 static int add_gpio_pmodoled_device_to_bus(struct gpio_pmodoled_device *dev)
@@ -275,7 +275,7 @@ static int add_gpio_pmodoled_device_to_bus(struct gpio_pmodoled_device *dev)
 	spi_device->max_speed_hz = 4000000;
 	spi_device->mode = SPI_MODE_0;
 	spi_device->bits_per_word = 8;
-	spi_device->controller_data = (void *) dev->iCS;
+	spi_device->controller_data = (void *)dev->iCS;
 	spi_device->dev.platform_data = dev;
 	strlcpy(spi_device->modalias, SPI_DRIVER_NAME, sizeof(SPI_DRIVER_NAME));
 
@@ -319,12 +319,12 @@ static int gpio_pmodoled_setup_cdev(struct gpio_pmodoled_device *dev, dev_t *dev
 
 	/* Add Device node in system */
 	device = device_create(gpio_pmodoled_class, NULL,
-					*dev_id, NULL,
-					"%s", dev->name);
+			       *dev_id, NULL,
+			       "%s", dev->name);
 	if (IS_ERR(device)) {
 		status = PTR_ERR(device);
 		dev_err(&spi->dev, "failed to create device node %s, err %d\n",
-				dev->name, status);
+			dev->name, status);
 		cdev_del(&dev->cdev);
 	}
 
@@ -342,10 +342,10 @@ static int gpio_pmodoled_setup_cdev(struct gpio_pmodoled_device *dev, dev_t *dev
 static int gpio_pmodoled_init_gpio(struct gpio_pmodoled_device *dev)
 {
 	struct gpio gpio_pmodoled_ctrl[] = {
-		{dev->iVBAT, GPIOF_OUT_INIT_HIGH, "OLED VBat"},
-		{dev->iVDD, GPIOF_OUT_INIT_HIGH, "OLED VDD"},
-		{dev->iRES, GPIOF_OUT_INIT_HIGH, "OLED_RESET"},
-		{dev->iDC, GPIOF_OUT_INIT_HIGH, "OLED_D/C"},
+		{ dev->iVBAT, GPIOF_OUT_INIT_HIGH, "OLED VBat"	},
+		{ dev->iVDD,  GPIOF_OUT_INIT_HIGH, "OLED VDD"	},
+		{ dev->iRES,  GPIOF_OUT_INIT_HIGH, "OLED_RESET" },
+		{ dev->iDC,   GPIOF_OUT_INIT_HIGH, "OLED_D/C"	},
 	};
 	int status;
 	int i;
@@ -354,15 +354,15 @@ static int gpio_pmodoled_init_gpio(struct gpio_pmodoled_device *dev)
 		status = gpio_is_valid(gpio_pmodoled_ctrl[i].gpio);
 		if (!status) {
 			dev_err(&dev->spi->dev, "!! gpio_is_valid for GPIO %d, %s FAILED!, status: %d\n",
-					gpio_pmodoled_ctrl[i].gpio, gpio_pmodoled_ctrl[i].label, status);
+				gpio_pmodoled_ctrl[i].gpio, gpio_pmodoled_ctrl[i].label, status);
 			goto gpio_invalid;
 		}
 	}
 
 	status = gpio_request_array(gpio_pmodoled_ctrl, ARRAY_SIZE(gpio_pmodoled_ctrl));
 	if (status) {
-		dev_err(&dev->spi->dev, "!!  gpio_request_array FAILED!\n");
-		dev_err(&dev->spi->dev, "          status is: %d\n", status);
+		dev_err(&dev->spi->dev, "!! gpio_request_array FAILED!\n");
+		dev_err(&dev->spi->dev, " status is: %d\n", status);
 		gpio_free_array(gpio_pmodoled_ctrl, 4);
 		goto gpio_invalid;
 	}
@@ -417,8 +417,8 @@ static void gpio_pmodoled_disp_init(struct gpio_pmodoled_device *dev)
 	wr_buf[1] = 0x0F;
 
 	/* Invert the display */
-	wr_buf[2] = OLED_SET_SEGMENT_REMAP; /* Remap Columns */
-	wr_buf[3] = OLED_SET_COM_DIR;	/* Remap Rows */
+	wr_buf[2] = OLED_SET_SEGMENT_REMAP;     /* Remap Columns */
+	wr_buf[3] = OLED_SET_COM_DIR;           /* Remap Rows */
 
 	/* Select sequential COM configuration */
 	wr_buf[4] = OLED_SET_COM_PINS;
@@ -432,7 +432,6 @@ static void gpio_pmodoled_disp_init(struct gpio_pmodoled_device *dev)
 
 	status = spi_write(dev->spi, wr_buf, 10);
 }
-
 
 /**
  * SPI hardware probe. Sets correct SPI mode, attempts
@@ -460,23 +459,23 @@ static int gpio_pmodoled_spi_probe(struct spi_device *spi)
 	status = spi_setup(spi);
 	if (status < 0) {
 		dev_err(&spi->dev, "needs SPI mode %02x, %d KHz; %d\n",
-				spi->mode, spi->max_speed_hz / 1000,
-				status);
+			spi->mode, spi->max_speed_hz / 1000,
+			status);
 		goto spi_err;
 	}
 
 	/* Get gpio_pmodoled_device structure */
-	gpio_pmodoled_dev = (struct gpio_pmodoled_device *) spi->dev.platform_data;
+	gpio_pmodoled_dev = (struct gpio_pmodoled_device *)spi->dev.platform_data;
 	if (gpio_pmodoled_dev == NULL) {
 		dev_err(&spi->dev, "Cannot get gpio_pmodoled_device.\n");
 		status = -EINVAL;
 		goto spi_platform_data_err;
 	}
 
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] SPI Probing\n", gpio_pmodoled_dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] SPI Probing\n", gpio_pmodoled_dev->name);
 
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_probe: setup char device\n", gpio_pmodoled_dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] spi_probe: setup char device\n", gpio_pmodoled_dev->name);
 #endif
 
 	/* Setup char driver */
@@ -496,7 +495,7 @@ static int gpio_pmodoled_spi_probe(struct spi_device *spi)
 	 * instructed to do so.
 	 */
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_probe: initialize device\n", gpio_pmodoled_dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] spi_probe: initialize device\n", gpio_pmodoled_dev->name);
 #endif
 
 	status = gpio_pmodoled_init_gpio(gpio_pmodoled_dev);
@@ -531,7 +530,7 @@ static int gpio_pmodoled_spi_remove(struct spi_device *spi)
 	struct gpio_pmodoled_device *dev;
 	uint8_t wr_buf[10];
 
-	dev = (struct gpio_pmodoled_device *) spi->dev.platform_data;
+	dev = (struct gpio_pmodoled_device *)spi->dev.platform_data;
 
 	if (dev == NULL) {
 		dev_err(&spi->dev, "spi_remove: Error fetch gpio_pmodoled_device struct\n");
@@ -539,7 +538,7 @@ static int gpio_pmodoled_spi_remove(struct spi_device *spi)
 	}
 
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_remove: Clearing Display\n", dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] spi_remove: Clearing Display\n", dev->name);
 #endif
 
 	/* Clear Display */
@@ -558,23 +557,23 @@ static int gpio_pmodoled_spi_remove(struct spi_device *spi)
 	/* TUrn off VDD Power */
 	gpio_set_value(dev->iVDD, 1);
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_remove: Free GPIOs\n", dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] spi_remove: Free GPIOs\n", dev->name);
 #endif
 
-{
-	struct gpio gpio_pmodoled_ctrl[] = {
-		{dev->iVBAT, GPIOF_OUT_INIT_HIGH, "OLED VBat"},
-		{dev->iVDD, GPIOF_OUT_INIT_HIGH, "OLED VDD"},
-		{dev->iRES, GPIOF_OUT_INIT_HIGH, "OLED_RESET"},
-		{dev->iDC, GPIOF_OUT_INIT_HIGH, "OLED_D/C"},
-	};
+	{
+		struct gpio gpio_pmodoled_ctrl[] = {
+			{ dev->iVBAT, GPIOF_OUT_INIT_HIGH, "OLED VBat"	},
+			{ dev->iVDD,  GPIOF_OUT_INIT_HIGH, "OLED VDD"	},
+			{ dev->iRES,  GPIOF_OUT_INIT_HIGH, "OLED_RESET" },
+			{ dev->iDC,   GPIOF_OUT_INIT_HIGH, "OLED_D/C"	},
+		};
 
-	gpio_free_array(gpio_pmodoled_ctrl, 4);
-}
+		gpio_free_array(gpio_pmodoled_ctrl, 4);
+	}
 
 	if (&dev->cdev) {
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_remove: Destroy Char Device\n", dev->name);
+		pr_info(SPI_DRIVER_NAME " [%s] spi_remove: Destroy Char Device\n", dev->name);
 #endif
 		device_destroy(gpio_pmodoled_class, dev->dev_id);
 		cdev_del(&dev->cdev);
@@ -582,19 +581,19 @@ static int gpio_pmodoled_spi_remove(struct spi_device *spi)
 
 	cur_minor--;
 
-	printk(KERN_INFO SPI_DRIVER_NAME " [%s] spi_remove: Device Removed\n", dev->name);
+	pr_info(SPI_DRIVER_NAME " [%s] spi_remove: Device Removed\n", dev->name);
 
 	return status;
 }
 
 static struct spi_driver gpio_pmodoled_spi_driver = {
-	.driver = {
-		.name = SPI_DRIVER_NAME,
-		.bus = &spi_bus_type,
-		.owner = THIS_MODULE,
+	.driver		= {
+		.name	= SPI_DRIVER_NAME,
+		.bus	= &spi_bus_type,
+		.owner	= THIS_MODULE,
 	},
-	.probe = gpio_pmodoled_spi_probe,
-	.remove = gpio_pmodoled_spi_remove,
+	.probe		= gpio_pmodoled_spi_probe,
+	.remove		= gpio_pmodoled_spi_remove,
 };
 
 static const struct of_device_id gpio_pmodoled_of_match[] = {
@@ -623,14 +622,14 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	int status = 0;
 
 	/* Alloc Space for platform device structure */
-	gpio_pmodoled_dev = (struct gpio_pmodoled_device *) kzalloc(sizeof(*gpio_pmodoled_dev), GFP_KERNEL);
+	gpio_pmodoled_dev = (struct gpio_pmodoled_device *)kzalloc(sizeof(*gpio_pmodoled_dev), GFP_KERNEL);
 	if (!gpio_pmodoled_dev) {
 		status = -ENOMEM;
 		goto dev_alloc_err;
 	}
 
 	/* Alloc Graphic Buffer for device */
-	gpio_pmodoled_dev->disp_buf = (uint8_t *) kmalloc(DISPLAY_BUF_SZ, GFP_KERNEL);
+	gpio_pmodoled_dev->disp_buf = (uint8_t *)kmalloc(DISPLAY_BUF_SZ, GFP_KERNEL);
 	if (!gpio_pmodoled_dev->disp_buf) {
 		status = -ENOMEM;
 		dev_err(&pdev->dev, "Device Display data buffer allocation failed: %d\n", status);
@@ -647,13 +646,13 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	status = of_get_named_gpio(np, "spi-cs-gpio", 0);
 	gpio_pmodoled_dev->iCS = (status < 0) ? SPI_GPIO_NO_CHIPSELECT : status;
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO DRIVER_NAME " %s: iVBAT: 0x%lx\n", np->name, gpio_pmodoled_dev->iVBAT);
-	printk(KERN_INFO DRIVER_NAME " %s: iVDD : 0x%lx\n", np->name, gpio_pmodoled_dev->iVDD);
-	printk(KERN_INFO DRIVER_NAME " %s: iRES : 0x%lx\n", np->name, gpio_pmodoled_dev->iRES);
-	printk(KERN_INFO DRIVER_NAME " %s: iDC  : 0x%lx\n", np->name, gpio_pmodoled_dev->iDC);
-	printk(KERN_INFO DRIVER_NAME " %s: iSCLK: 0x%lx\n", np->name, gpio_pmodoled_dev->iSCLK);
-	printk(KERN_INFO DRIVER_NAME " %s: iSDIN: 0x%lx\n", np->name, gpio_pmodoled_dev->iSDIN);
-	printk(KERN_INFO DRIVER_NAME " %s: iCS  : 0x%lx\n", np->name, gpio_pmodoled_dev->iCS);
+	pr_info(DRIVER_NAME " %s: iVBAT: 0x%lx\n", np->name, gpio_pmodoled_dev->iVBAT);
+	pr_info(DRIVER_NAME " %s: iVDD : 0x%lx\n", np->name, gpio_pmodoled_dev->iVDD);
+	pr_info(DRIVER_NAME " %s: iRES : 0x%lx\n", np->name, gpio_pmodoled_dev->iRES);
+	pr_info(DRIVER_NAME " %s: iDC : 0x%lx\n", np->name, gpio_pmodoled_dev->iDC);
+	pr_info(DRIVER_NAME " %s: iSCLK: 0x%lx\n", np->name, gpio_pmodoled_dev->iSCLK);
+	pr_info(DRIVER_NAME " %s: iSDIN: 0x%lx\n", np->name, gpio_pmodoled_dev->iSDIN);
+	pr_info(DRIVER_NAME " %s: iCS : 0x%lx\n", np->name, gpio_pmodoled_dev->iCS);
 #endif
 
 	/* Get SPI Related Params */
@@ -661,12 +660,12 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	if (tree_info) {
 		gpio_pmodoled_dev->spi_id = be32_to_cpup((tree_info));
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " %s: BUS_ID\t%x\n", np->name, gpio_pmodoled_dev->spi_id);
+		pr_info(DRIVER_NAME " %s: BUS_ID\t%x\n", np->name, gpio_pmodoled_dev->spi_id);
 #endif
 	}
 
 	/* Alloc Space for platform data structure */
-	gpio_pmodoled_pdata = (struct spi_gpio_platform_data *) kzalloc(sizeof(*gpio_pmodoled_pdata), GFP_KERNEL);
+	gpio_pmodoled_pdata = (struct spi_gpio_platform_data *)kzalloc(sizeof(*gpio_pmodoled_pdata), GFP_KERNEL);
 	if (!gpio_pmodoled_pdata) {
 		status = -ENOMEM;
 		goto pdata_alloc_err;
@@ -679,7 +678,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	gpio_pmodoled_pdata->num_chipselect = 1;
 
 	/* Alloc Space for platform data structure */
-	gpio_pmodoled_pdev = (struct platform_device *) kzalloc(sizeof(*gpio_pmodoled_pdev), GFP_KERNEL);
+	gpio_pmodoled_pdev = (struct platform_device *)kzalloc(sizeof(*gpio_pmodoled_pdev), GFP_KERNEL);
 	if (!gpio_pmodoled_pdev) {
 		status = -ENOMEM;
 		goto pdev_alloc_err;
@@ -699,7 +698,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO DRIVER_NAME " %s: spi_gpio platform device registered.\n", np->name);
+	pr_info(DRIVER_NAME " %s: spi_gpio platform device registered.\n", np->name);
 #endif
 	gpio_pmodoled_dev->name = np->name;
 
@@ -711,7 +710,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_PMODS_DEBUG
-	printk(KERN_INFO DRIVER_NAME " %s: spi device registered.\n", np->name);
+	pr_info(DRIVER_NAME " %s: spi device registered.\n", np->name);
 #endif
 
 	/* Point device node data to gpio_pmodoled_device structure */
@@ -726,8 +725,8 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 			goto err_alloc_chrdev_region;
 		}
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " : Char Device Region Registered, with Major: %d.\n",
-						MAJOR(gpio_pmodoled_dev_id));
+		pr_info(DRIVER_NAME " : Char Device Region Registered, with Major: %d.\n",
+			MAJOR(gpio_pmodoled_dev_id));
 #endif
 	}
 
@@ -739,7 +738,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 			goto err_create_class;
 		}
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " : pmodoled_gpio device class registered.\n");
+		pr_info(DRIVER_NAME " : pmodoled_gpio device class registered.\n");
 #endif
 	}
 
@@ -796,17 +795,17 @@ static int gpio_pmodoled_of_remove(struct platform_device *pdev)
 		dev_err(&pdev->dev, "pmodoled %s: ERROR: No gpio_pmodoled_device structure found!\n", np->name);
 		return -ENOSYS;
 	}
-	gpio_pmodoled_dev = (struct gpio_pmodoled_device *) (np->data);
+	gpio_pmodoled_dev = (struct gpio_pmodoled_device *)(np->data);
 
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " %s : Free display buffer.\n", np->name);
+	pr_info(DRIVER_NAME " %s : Free display buffer.\n", np->name);
 #endif
 
 	if (gpio_pmodoled_dev->disp_buf != NULL)
 		kfree(gpio_pmodoled_dev->disp_buf);
 
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " %s : Unregister gpio_spi Platform Devices.\n", np->name);
+	pr_info(DRIVER_NAME " %s : Unregister gpio_spi Platform Devices.\n", np->name);
 #endif
 
 	if (gpio_pmodoled_dev->pdev != NULL)
@@ -820,13 +819,13 @@ static int gpio_pmodoled_of_remove(struct platform_device *pdev)
 	 */
 	if (device_num == 0) {
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " : Unregister SPI Driver.\n");
+		pr_info(DRIVER_NAME " : Unregister SPI Driver.\n");
 #endif
 		spi_unregister_driver(&gpio_pmodoled_spi_driver);
 		spi_drv_registered = 0;
 
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " : Destroy pmodoled_gpio Class.\n");
+		pr_info(DRIVER_NAME " : Destroy pmodoled_gpio Class.\n");
 #endif
 
 		if (gpio_pmodoled_class)
@@ -835,7 +834,7 @@ static int gpio_pmodoled_of_remove(struct platform_device *pdev)
 		gpio_pmodoled_class = NULL;
 
 #ifdef CONFIG_PMODS_DEBUG
-		printk(KERN_INFO DRIVER_NAME " : Release Char Device Region.\n");
+		pr_info(DRIVER_NAME " : Release Char Device Region.\n");
 #endif
 
 		unregister_chrdev_region(gpio_pmodoled_dev_id, MAX_PMODOLED_GPIO_DEV_NUM);
@@ -846,18 +845,18 @@ static int gpio_pmodoled_of_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver gpio_pmodoled_driver = {
-	.driver = {
-		.name = DRIVER_NAME,
-		.owner = THIS_MODULE,
+	.driver			= {
+		.name		= DRIVER_NAME,
+		.owner		= THIS_MODULE,
 		.of_match_table = gpio_pmodoled_of_match,
 	},
-	.probe = gpio_pmodoled_of_probe,
-	.remove = gpio_pmodoled_of_remove,
+	.probe			= gpio_pmodoled_of_probe,
+	.remove			= gpio_pmodoled_of_remove,
 };
 
 module_platform_driver(gpio_pmodoled_driver);
 
 MODULE_AUTHOR("Digilent, Inc.");
 MODULE_LICENSE("GPL v2");
-MODULE_DESCRIPTION(DRIVER_NAME": PmodOLED display driver");
+MODULE_DESCRIPTION(DRIVER_NAME ": PmodOLED display driver");
 MODULE_ALIAS(DRIVER_NAME);

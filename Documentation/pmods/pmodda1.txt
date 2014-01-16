@@ -1,0 +1,120 @@
+﻿PmodDA1
+========
+
+Copyright 2012, Digilent Inc.
+
+
+Description
+-----------
+
+The Digilent PmodDA1 Digital To Analog Module Converter Board (the DA1) converts
+signals from digital to analog at up to one MSa per second.
+
+The Digilent PmodDA1 relies on two Analog Devices AD7303, thus implementing four
+simultaneous D/A conversion channels, each with an 8-bit converter that can
+process a separate digital signal.
+
+The PmodDA1 converts an 8 bit digital value to an analog output
+ranging from 0-3.3 volts.
+
+This Linux driver is based on SPI. Because SPI can not write on Data Out line of
+SPI, only the 2 channels corresponding to the first AD7303 (the channels corresponding
+to A1 and B1 pins of J2 connector of PmodDA1) can be accessed using this driver.
+
+The driver is implemented as a character driver. Corresponding to each channel,
+two separates nodes are created by the driver code, having different minor numbers.
+
+The basic action of the driver is write, when 8 bits data is outputted to each of the
+two channels. Still, read function is also implemented, by providing the last written
+value.
+
+The Reference Manual for PmodDA1 device is available online at
+Digilent Inc. Website (www.digilentinc.com).
+
+
+Interface
+---------
+
+Signal     Description
+
+SDIN       SPI Data Out (MOSI)
+SCLK       SPI Clock
+SS	   Slave Select
+
+
+Devicetree
+----------
+
+Required Properties:
+- compatible : Should be "dlgnt,pmodda1"
+- spi-bus-num :  Should specify the bus number for PmodDA1 SPI controller.
+  This value cannot be shared by any other SPI controller present in the
+  device tree.
+- spi-sclk-gpio :  Should specify the GPIO for SCLK, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- spi-sdin-gpio :  Should specify the GPIO for SDIN, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Optional Properties:
+- spi-cs-gpio :  Should specify the GPIO for CS, see "gpios property" in
+  Documentation/devicetree/gpio.txt. If unspecified, CS is assumed to be
+  tied to ground.
+- spi-speed-hz : Should specify the spi speed (in Hz). If unspecified, spi
+  speed is assumed to be 625000 (625 kHz).
+
+Examples:
+
+		pmodda1 {
+			compatible = "dglnt,pmodda1";
+			spi-bus-num = <0x4>;
+			spi-speed-hz = <625000>;
+			spi-sclk-gpio = <0x8 85 0>;
+			spi-sdin-gpio = <0x8 83 0>;
+			spi-cs-gpio = <0x8 82 0>;
+		};
+
+
+Configuration
+-------------
+
+The PmodDA1 is located in the kernel configuration menu at
+Device Drivers -> Pmods -> PmodDA1. The driver can be built into the kernel
+by selecting (*) for it, or loadable module by selecting (M) for it.
+
+
+Device Nodes
+------------
+
+Two char device nodes are created for each PmodDA1 device automatically,
+having 0 and 1 as minor numbers.
+
+The name of the nodes is by default the one declared in the device tree,
+postfixed with "_0" (for channel A1) and "_1" (for channel B1).
+
+
+Writing to the device
+-----------
+Characters written to the device are used as 8 bits values sent to the appropriate
+converter channel. While writing to a channel the other channel is not disabled,
+allowing it to perform its current task.
+
+
+Reading from the device
+-----------
+The PmodDA1 is a "write only" device. Still, the driver implements a shadow register
+that also maintains the last value written to the converter. When read occurs, this
+value is used to fill the read buffer.
+
+
+Example of commands
+-----------
+
+- Write 0x80 value to second channel (B1) of the device
+echo -n -e "\x80" > /dev/pmodda1_1
+
+- Read (repeatedly) first channel (A1) of the device
+hexdump -C -v /dev/pmodda1_0
+
+
+
+

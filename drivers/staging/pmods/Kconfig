@@ -17,4 +17,27 @@ config PMODOLED
 		The Digilent PmodOLED1, as well as ZED on-board OLED. Uses SPI over GPIO.
 		Configuration SPI_BITBANG and SPI_GPIO will be selected automatically.
 
+config PMODCLS
+	tristate "pmodcls"
+	select SPI_BITBANG
+	help
+		This is the Digilent PmodCLS driver. Uses SPI over GPIO.
+
+config PMODCLP
+	tristate "pmodclp"
+	help
+		This is the Digilent PmodCLP driver. Implements parallel access.
+
+config PMODDA1
+	tristate "pmodda1"
+	select SPI_BITBANG
+	help
+		This is the Digilent PmodDA1 driver. Uses SPI over GPIO.
+
+config PMODAD1
+	tristate "pmodad1"
+	select SPI_BITBANG
+	help
+		This is the Digilent PmodAD1 driver. Uses SPI over GPIO.
+
 endif # PMODS

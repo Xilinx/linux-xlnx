@@ -1,0 +1,97 @@
+PmodAD1
+========
+
+Copyright 2012, Digilent Inc.
+
+
+Description
+-----------
+
+The Analog to Digital Module Converter Board converts signals at a
+maximum sampling rate of one million samples per second.
+
+The Digilent PmodAD1 relies on two Analog Devices AD7476, thus implementing two
+simultaneous A/D conversion channels, each with an 12-bit converter.
+
+The AD1 converts an analog input signal ranging from 0-3.3 volts to a 12-bit
+digital value in the range 0 to 4095 (0x0FFF).
+
+This Linux driver is based on SPI. Because SPI can not read on Data Out line of
+SPI, only the channel corresponding to the second AD7476 can be accessed using
+this driver (the channel corresponding to P3, P4 pins of J2 connector of PmodAD1).
+
+The driver is implemented as a character driver. The basic action of the driver is
+read, when 12 bits data is read over SPI.
+
+The Reference Manual for PmodAD1 display is available online at
+Digilent Inc. Website (www.digilentinc.com).
+
+
+Interface
+---------
+
+Signal     Description
+
+SDOUT      SPI Data In (MISO)
+SCLK       SPI Clock
+SS	   Slave Select
+
+
+Devicetree
+----------
+
+Required Properties:
+- compatible : Should be "dlgnt,pmodad1"
+- spi-bus-num :  Should specify the bus number for PmodAD1 SPI controller.
+  This value cannot be shared by any other SPI controller present in the
+  device tree.
+- spi-sclk-gpio :  Should specify the GPIO for SCLK, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- spi-sdout-gpio :  Should specify the GPIO for SDOUT, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Optional Properties:
+- spi-cs-gpio :  Should specify the GPIO for CS, see "gpios property" in
+  Documentation/devicetree/gpio.txt. If unspecified, CS is assumed to be
+  tied to ground.
+- spi-speed-hz : Should specify the spi speed (in Hz). If unspecified, spi
+  speed is assumed to be 625000 (625 kHz).
+
+Example:
+
+		pmodad1 {
+			compatible = "dglnt,pmodad1";
+			spi-bus-num = <0x5>;
+			spi-speed-hz = <1000000>;
+			spi-sclk-gpio = <0x8 85 0>;
+			spi-sdout-gpio = <0x8 84 0>;
+			spi-cs-gpio = <0x8 82 0>;
+		};
+
+This example corresponds to PmodAD1 plugged into JA connector, pins 1-7.
+
+Configuration
+-------------
+
+The PmodAD1 is located in the kernel configuration menu at
+Device Drivers -> Pmods -> PmodAD1. The driver can be built into the kernel
+by selecting (*) for it, or loadable module by selecting (M) for it.
+
+
+Device Nodes
+------------
+
+A char device node will be created for each PmodAD1 device automatically.
+The name of the node is default to the one declared in the device tree.
+
+Reading from the device
+-----------
+The PmodAD1 is a "read only" device, read being its main action.
+2 bytes of data are read over the spi, a mask is applied so that the 12 LSB
+bits are used to fill the read buffer.
+
+Example of commands
+-----------
+
+- Read (repeatedly) the device
+hexdump -v -d /dev/pmodad1

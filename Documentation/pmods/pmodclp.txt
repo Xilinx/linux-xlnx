@@ -1,0 +1,198 @@
+﻿PmodCLP
+========
+
+Copyright 2012, Digilent Inc.
+
+
+Description
+-----------
+
+The PmodCLP is a 16x2 character LCD module that uses two Pmod connectors to present a
+8-bit parallel data interface to system boards.
+The PmodCLP features an SPI-controlled monochrome LCD 16x2 Character Display,
+perfect for embedded applications requiring small, simple text output.
+
+The PmodCLP uses simple terminal-like display interface. It provides
+flexible communications using UART, SPI or TWI interface.
+
+Some of the PmodCLP implement a backlight feature. This is implemented by using the
+optional bk-gpio in the Device Tree.
+
+This Linux character driver sends commands and data to the device using parallel access
+to GPIOs. The set of commands is based on escape characters.
+
+The Reference Manual for PmodCLP device is available online at
+Digilent Inc. Website (www.digilentinc.com).
+
+
+Interface
+---------
+
+Signal     Description
+
+RS       	RS (Register Select) signal of the parallel interface
+RW       	RW (Read/Write) signal of the parallel interface
+E		E (Enable) signal of the parallel interface
+BK		(Optional) - BackLight signal
+DATA0		Signal for Bit 0 of the parallel interface
+DATA1		Signal for Bit 1 of the parallel interface
+DATA2		Signal for Bit 2 of the parallel interface
+DATA3		Signal for Bit 3 of the parallel interface
+DATA4		Signal for Bit 4 of the parallel interface
+DATA5		Signal for Bit 5 of the parallel interface
+DATA6		Signal for Bit 6 of the parallel interface
+DATA7		Signal for Bit 7 of the parallel interface
+
+Devicetree
+----------
+
+Required Properties:
+- compatible : Should be "dlgnt,pmodclp"
+- rs-gpio :  Should specify the GPIO for RS, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- rw-gpio :  Should specify the GPIO for RW, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- e-gpio :  Should specify the GPIO for E, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data0-gpio :  Should specify the GPIO for DATA0, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data1-gpio :  Should specify the GPIO for DATA1, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data2-gpio :  Should specify the GPIO for DATA2, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data3-gpio :  Should specify the GPIO for DATA3, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data4-gpio :  Should specify the GPIO for DATA4, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data5-gpio :  Should specify the GPIO for DATA5, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data6-gpio :  Should specify the GPIO for DATA6, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- data7-gpio :  Should specify the GPIO for DATA7, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Optional Properties:
+- bk-gpio :  Should specify the GPIO for BK, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Example:
+(corresponds to
+J1 connector of PmodCLP connected to JA connector of Zed
+J2 connector of PmodCLP connected to Jb connector of Zed):
+
+		pmodclp {
+			compatible = "dglnt,pmodclp";
+			rs-gpio = <0x8 94 0>;
+			rw-gpio = <0x8 95 0>;
+			e-gpio = <0x8 96 0>;
+			bk-gpio = <0x8 97 0>;
+			data0-gpio = <0x8 82 0>;
+			data1-gpio = <0x8 83 0>;
+			data2-gpio = <0x8 84 0>;
+			data3-gpio = <0x8 85 0>;
+			data4-gpio = <0x8 86 0>;
+			data5-gpio = <0x8 87 0>;
+			data6-gpio = <0x8 88 0>;
+			data7-gpio = <0x8 89 0>;
+		};
+
+
+Configuration
+-------------
+
+The PmodCLP is located in the kernel configuration menu at
+Device Drivers -> Pmods -> PmodCLP. The driver can be built into the kernel
+by selecting (*) for it, or loadable module by selecting (M) for it.
+
+
+Device Nodes
+------------
+
+A char device node will be created for each PmodCLP device automatically.
+The name of the node is default to the one declared in the device tree.
+
+
+Instruction set
+-----------
+Instructions are sent using escape sequences. An escape sequence
+begins with ESC (character code 0x1B) followed by the left
+square bracket ‘[‘ , followed by 0 or more parameters separated by
+semicolons ‘;’ and ending with the command character.
+
+The implemented commands are:
+
+<pr>;<pc>H 	- set cursor position to <pr> row and <pc> col
+
+<pn>@		- scroll left <pn> columns
+
+<pn>A		- scroll right <pn> columns
+
+<ps>e 		- enable/disable display
+		0 = display off,
+		      backlight off
+		1 = display on,
+		      backlight off
+		2 = display off,
+		      backlight on
+		3 = display on,
+		      backlight on
+
+<ps>c		- set cursor mode
+		0 = cursor off
+		1 = cursor on,
+			blink off
+		2 = cursor on,
+			blink on
+
+j		- clear display and home cursor
+
+
+<pn>;…<pn>;<ps>d	- define user programmable character
+Be aware that after defining a user character you must issue a
+set position command.
+
+Notations:
+<pr> 		row number (0 - 1)
+<pc> 		column number (0 – 39)
+<pn> 		numeric parameter
+		- decimal: 122 for ex.
+		- hex: 0x7A for ex.
+		- binary: 0b01111010 for ex.
+<ps> 		decimal selection parameter
+
+
+Examples of commands
+-----------
+
+- Set display on, backlight on
+echo -n -e "\x1B[3e" > /dev/pmodclp
+
+- Clear screen, cursor home
+echo -n -e "\x1B[j" > /dev/pmodclp
+
+- Position cursor (row 1, col 0)
+echo -n -e "\x1B[1;0H" > /dev/pmodclp
+
+- Display string
+echo -n -e "Digilent" > /dev/pmodclp
+
+- Display string on 2 rows (when current row is the first)
+echo -n -e "Hello\nDigilent" > /dev/pmodclp
+
+- Scroll right 2 positions
+echo -n -e "\x1B[2A" > /dev/pmodclp
+
+- Scroll left 2 positions
+echo -n -e "\x1B[2@" > /dev/pmodclp
+
+
+- Define user char 1
+echo -n -e "\x1B[0x00;0x0A;0x15;0x11;0x0A;0x04;0x00;0x00;1d" > /dev/pmodclp
+
+- Display user char 1 on row 1, col 3
+echo -n -e "\x1B[1;3H" > /dev/pmodclp
+echo -n -e "\x01" > /dev/pmodclp
+
+
+
+
