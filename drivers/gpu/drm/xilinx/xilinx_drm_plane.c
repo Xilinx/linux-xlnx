@@ -610,8 +610,8 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 	} else {
 		/* without osd, only one plane is supported */
 		manager->num_planes = 1;
-		/* XRGB based on the current pipeline design without osd */
-		manager->format = DRM_FORMAT_XRGB8888;
+		/* YUV422 based on the current pipeline design without osd */
+		manager->format = DRM_FORMAT_YUV422;
 		manager->max_width = 4096;
 	}
 
