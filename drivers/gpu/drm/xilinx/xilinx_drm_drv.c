@@ -54,20 +54,22 @@ struct xilinx_drm_private {
 /**
  * struct xilinx_video_format_desc - Xilinx Video IP video format description
  * @name: Xilinx video format name
+ * @bpp: bits per pixel
  * @xilinx_format: xilinx format code
  * @drm_format: drm format code
  */
 struct xilinx_video_format_desc {
 	const char *name;
+	unsigned int bpp;
 	unsigned int xilinx_format;
 	uint32_t drm_format;
 };
 
 static const struct xilinx_video_format_desc xilinx_video_formats[] = {
-	{ "yuv422", XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
-	{ "yuv444", XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
-	{ "xrgb888", XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
-	{ "yuv420", XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
+	{ "yuv422", 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
+	{ "yuv444", 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
+	{ "xrgb888", 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
+	{ "yuv420", 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
 };
 
 /* create a fb */
