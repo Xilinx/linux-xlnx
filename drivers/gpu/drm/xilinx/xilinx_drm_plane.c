@@ -498,9 +498,9 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 			plane->format = manager->format;
 	}
 
-	/* If there's no IP other than VDMA, choose XRGB8888 */
+	/* If there's no IP other than VDMA, pick the manager's format */
 	if (plane->format == -1)
-		plane->format = DRM_FORMAT_XRGB8888;
+		plane->format = manager->format;
 
 	/* initialize drm plane */
 	ret = drm_plane_init(manager->drm, &plane->base, possible_crtcs,
