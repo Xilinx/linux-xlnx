@@ -175,6 +175,23 @@ int xilinx_drm_format_by_name(const char *name, uint32_t *drm_format)
 	return -EINVAL;
 }
 
+/* get bpp of given format */
+static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
+{
+	const struct xilinx_video_format_desc *format;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_video_formats); i++) {
+		format = &xilinx_video_formats[i];
+		if (format->drm_format == drm_format)
+			return format->bpp;
+	}
+
+	DRM_ERROR("Unknown/unsupported DRM format: %d\n", drm_format);
+
+	return -EINVAL;
+}
+
 /* load xilinx drm */
 static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 {
