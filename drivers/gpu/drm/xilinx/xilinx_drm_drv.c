@@ -197,6 +197,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 {
 	struct xilinx_drm_private *private;
 	struct platform_device *pdev = drm->platformdev;
+	unsigned int bpp;
 	int ret;
 
 	private = devm_kzalloc(drm->dev, sizeof(*private), GFP_KERNEL);
@@ -242,7 +243,8 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	drm->vblank_disable_allowed = 1;
 
 	/* initialize xilinx cma framebuffer */
-	private->fbdev = drm_fbdev_cma_init(drm, 32, 1, 1);
+	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
+	private->fbdev = drm_fbdev_cma_init(drm, bpp, 1, 1);
 	if (IS_ERR(private->fbdev)) {
 		DRM_ERROR("failed to initialize drm cma fbdev\n");
 		ret = PTR_ERR(private->fbdev);
