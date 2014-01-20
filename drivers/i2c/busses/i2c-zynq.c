@@ -130,7 +130,7 @@ struct zynq_i2c {
 	int recv_count;
 	int irq;
 	int cur_timeout;
-	unsigned int input_clk;
+	unsigned long input_clk;
 	unsigned int i2c_clk;
 	unsigned int bus_hold_flag;
 	struct clk	*clk;
@@ -604,13 +604,12 @@ static const struct i2c_algorithm zynq_i2c_algo = {
  * f is used as input and output variable. As input it is used as target I2C
  * frequency. On function exit f holds the actually resulting I2C frequency.
  */
-static int zynq_i2c_calc_divs(unsigned int *f, unsigned int input_clk,
+static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 		unsigned int *a, unsigned int *b, unsigned int *err)
 {
-	unsigned int fscl = *f;
+	unsigned long fscl = *f, best_fscl = *f, actual_fscl, temp;
 	unsigned int div_a, div_b, calc_div_a = 0, calc_div_b = 0;
 	unsigned int last_error, current_error;
-	unsigned int best_fscl = *f, actual_fscl, temp;
 
 	/* calculate (divisor_a+1) x (divisor_b+1) */
 	temp = input_clk / (22 * fscl);
@@ -669,7 +668,7 @@ static int zynq_i2c_calc_divs(unsigned int *f, unsigned int input_clk,
  * clock rate. The clock can not be faster than the input clock divide by 22.
  * The two most common clock rates are 100KHz and 400KHz.
  */
-static int zynq_i2c_setclk(unsigned int fscl, struct zynq_i2c *id)
+static int zynq_i2c_setclk(unsigned long fscl, struct zynq_i2c *id)
 {
 	unsigned int div_a, div_b;
 	unsigned int ctrl_reg;
@@ -719,10 +718,9 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		 * dividers. Probably we could also define an acceptable
 		 * frequency range.
 		 */
-		unsigned int input_clk = (unsigned int)ndata->new_rate;
-		unsigned int fscl = id->i2c_clk;
-		unsigned int div_a, div_b;
-		unsigned int err = 0;
+		unsigned long input_clk = ndata->new_rate;
+		unsigned long fscl = id->i2c_clk;
+		unsigned int div_a, div_b, err = 0;
 		int ret;
 
 		ret = zynq_i2c_calc_divs(&fscl, input_clk, &div_a, &div_b,
@@ -864,7 +862,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	id->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
-	id->input_clk = (unsigned int)clk_get_rate(id->clk);
+	id->input_clk = clk_get_rate(id->clk);
 
 	ret = of_property_read_u32(pdev->dev.of_node, "i2c-clk", &id->i2c_clk);
 	if (ret) {
@@ -884,7 +882,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 
 	ret = zynq_i2c_setclk(id->i2c_clk, id);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "invalid SCL clock: %dkHz\n", id->i2c_clk);
+		dev_err(&pdev->dev, "invalid SCL clock: %u Hz\n", id->i2c_clk);
 		ret = -EINVAL;
 		goto err_clk_dis;
 	}
@@ -902,7 +900,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 		goto err_clk_dis;
 	}
 
-	dev_info(&pdev->dev, "%d kHz mmio %08lx irq %d\n",
+	dev_info(&pdev->dev, "%u kHz mmio %08lx irq %d\n",
 		 id->i2c_clk/1000, (unsigned long)r_mem->start, id->irq);
 
 	return 0;
