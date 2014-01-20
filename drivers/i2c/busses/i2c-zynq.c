@@ -813,8 +813,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 {
 	struct resource *r_mem = NULL;
 	struct zynq_i2c *id;
-	int ret = 0;
-	const unsigned int *prop;
+	int ret;
 	/*
 	 * Allocate memory for zynq_i2c structure.
 	 * Initialize the structure to zero and set the platform data.
@@ -835,10 +834,9 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 
 	id->irq = platform_get_irq(pdev, 0);
 
-	prop = of_get_property(pdev->dev.of_node, "bus-id", NULL);
-	if (prop) {
-		id->adap.nr = be32_to_cpup(prop);
-	} else {
+	ret = of_property_read_u32(pdev->dev.of_node, "bus-id",
+			(u32 *)&id->adap.nr);
+	if (ret) {
 		dev_err(&pdev->dev, "couldn't determine bus-id\n");
 		return -ENXIO;
 	}
