@@ -1,7 +1,7 @@
 /*
  * Xilinx I2C bus driver for the Zynq I2C Interfaces.
  *
- * 2009-2011 (c) Xilinx, Inc.
+ * 2009-2014 (c) Xilinx, Inc.
  *
  * This program is free software; you can redistribute it
  * and/or modify it under the terms of the GNU General Public
@@ -23,7 +23,6 @@
  *	process the data in the fifo.
  *
  *	The bus hold flag logic provides support for repeated start.
- *
  */
 
 #include <linux/clk.h>
@@ -47,10 +46,7 @@
 #define ZYNQ_I2C_DATA_OFFSET	0x0C /* I2C Data Register, RW */
 #define ZYNQ_I2C_ISR_OFFSET	0x10 /* Interrupt Status Register, RW */
 #define ZYNQ_I2C_XFER_SIZE_OFFSET	0x14 /* Transfer Size Register, RW */
-/* Slave monitor pause Register, RW */
-#define ZYNQ_I2C_SLV_PAUSE_OFFSET	0x18
 #define ZYNQ_I2C_TIME_OUT_OFFSET	0x1C /* Time Out Register, RW */
-#define ZYNQ_I2C_IMR_OFFSET	0x20 /* Interrupt Mask Register, RO */
 #define ZYNQ_I2C_IER_OFFSET	0x24 /* Interrupt Enable Register, WO */
 #define ZYNQ_I2C_IDR_OFFSET	0x28 /* Interrupt Disable Register, WO */
 
@@ -161,15 +157,15 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 
 	/* Handling Nack interrupt */
-	if (isr_status & 0x00000004)
+	if (isr_status & 0x4)
 		complete(&id->xfer_done);
 
 	/* Handling Arbitration lost interrupt */
-	if (isr_status & 0x00000200)
+	if (isr_status & 0x200)
 		complete(&id->xfer_done);
 
 	/* Handling Data interrupt */
-	if (isr_status & 0x00000002) {
+	if (isr_status & 0x2) {
 		if (id->recv_count >= ZYNQ_I2C_DATA_INTR_DEPTH) {
 			/* Always read data interrupt threshold bytes */
 			bytes_to_recv = ZYNQ_I2C_DATA_INTR_DEPTH;
@@ -182,8 +178,8 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 			 * check for the remaining bytes and update the
 			 * transfer size register.
 			 */
-			if (avail_bytes == 0) {
-				if (id->recv_count  > ZYNQ_I2C_TRANSFER_SIZE)
+			if (!avail_bytes) {
+				if (id->recv_count > ZYNQ_I2C_TRANSFER_SIZE)
 					zynq_i2c_writereg(
 						ZYNQ_I2C_TRANSFER_SIZE,
 						ZYNQ_I2C_XFER_SIZE_OFFSET);
@@ -198,26 +194,26 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				bytes_to_recv = bytes_to_recv - 1;
 			}
 
-			if ((id->bus_hold_flag == 0) &&
+			if (!id->bus_hold_flag &&
 				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
 				/* Clear the hold bus bit */
 				zynq_i2c_writereg(
-					(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-					(~ZYNQ_I2C_CR_HOLD_BUS_MASK)),
+					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
+					~ZYNQ_I2C_CR_HOLD_BUS_MASK,
 					ZYNQ_I2C_CR_OFFSET);
 			}
 		}
 	}
 
 	/* Handling Transfer Complete interrupt */
-	if (isr_status & 0x00000001) {
-		if ((id->p_recv_buf) == NULL) {
+	if (isr_status & 1) {
+		if (!id->p_recv_buf) {
 			/*
 			 * If the device is sending data If there is further
 			 * data to be sent. Calculate the available space
 			 * in FIFO and fill the FIFO with that many bytes.
 			 */
-			if (id->send_count > 0) {
+			if (id->send_count) {
 				avail_bytes = ZYNQ_I2C_FIFO_DEPTH -
 				zynq_i2c_readreg(ZYNQ_I2C_XFER_SIZE_OFFSET);
 				if (id->send_count > avail_bytes)
@@ -239,31 +235,26 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				 */
 				complete(&id->xfer_done);
 			}
-			if (id->send_count == 0) {
-				if (id->bus_hold_flag == 0) {
+			if (!id->send_count) {
+				if (!id->bus_hold_flag) {
 					/* Clear the hold bus bit */
 					ctrl_reg =
 					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-					if ((ctrl_reg &
+					if (ctrl_reg &
 					     ZYNQ_I2C_CR_HOLD_BUS_MASK)
-						== ZYNQ_I2C_CR_HOLD_BUS_MASK)
-						zynq_i2c_writereg(
-						(ctrl_reg &
-						(~ZYNQ_I2C_CR_HOLD_BUS_MASK)),
+						zynq_i2c_writereg(ctrl_reg &
+						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
 						ZYNQ_I2C_CR_OFFSET);
 				}
 			}
 		} else {
-			if (id->bus_hold_flag == 0) {
+			if (!id->bus_hold_flag) {
 				/* Clear the hold bus bit */
-				ctrl_reg =
-				zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-				if ((ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
-					== ZYNQ_I2C_CR_HOLD_BUS_MASK)
-					zynq_i2c_writereg(
-					(ctrl_reg &
-					(~ZYNQ_I2C_CR_HOLD_BUS_MASK)),
-					ZYNQ_I2C_CR_OFFSET);
+				ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
+				if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
+					zynq_i2c_writereg(ctrl_reg &
+						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
+						ZYNQ_I2C_CR_OFFSET);
 			}
 			/*
 			 * If the device is receiving data, then signal
@@ -271,8 +262,7 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 			 * present in the FIFO. Signal the completion of
 			 * transaction.
 			 */
-			while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET)
-							& 0x00000020) {
+			while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) & 0x20) {
 				*(id->p_recv_buf)++ =
 					zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
 				id->recv_count--;
@@ -282,7 +272,7 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 	}
 
 	/* Update the status for errors */
-	id->err_status = isr_status & 0x000002EC;
+	id->err_status = isr_status & 0x2EC;
 	zynq_i2c_writereg(isr_status, ZYNQ_I2C_ISR_OFFSET);
 	return IRQ_HANDLED;
 }
@@ -290,7 +280,6 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 /**
  * zynq_i2c_mrecv - Prepare and start a master receive operation
  * @id:		pointer to the i2c device structure
- *
  */
 static void zynq_i2c_mrecv(struct zynq_i2c *id)
 {
@@ -308,7 +297,7 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	 * Clear the interrupts in interrupt status register.
 	 */
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	ctrl_reg |= (ZYNQ_I2C_CR_RW_MASK | ZYNQ_I2C_CR_CLR_FIFO_MASK);
+	ctrl_reg |= ZYNQ_I2C_CR_RW_MASK | ZYNQ_I2C_CR_CLR_FIFO_MASK;
 
 	if ((id->p_msg->flags & I2C_M_RECV_LEN) == I2C_M_RECV_LEN)
 		id->recv_count = I2C_SMBUS_BLOCK_MAX + 1;
@@ -321,7 +310,7 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 	zynq_i2c_writereg(isr_status, ZYNQ_I2C_ISR_OFFSET);
 
-	zynq_i2c_writereg((id->p_msg->addr & ZYNQ_I2C_ADDR_MASK),
+	zynq_i2c_writereg(id->p_msg->addr & ZYNQ_I2C_ADDR_MASK,
 						ZYNQ_I2C_ADDR_OFFSET);
 	/*
 	 * The no. of bytes to receive is checked against the limit of
@@ -337,17 +326,15 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	/*
 	 * Clear the bus hold flag if bytes to receive is less than FIFO size.
 	 */
-	if (id->bus_hold_flag == 0 &&
+	if (!id->bus_hold_flag &&
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
 		(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
 			/* Clear the hold bus bit */
 			ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-			if ((ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK) ==
-					ZYNQ_I2C_CR_HOLD_BUS_MASK)
-				zynq_i2c_writereg(
-					(ctrl_reg &
-					 (~ZYNQ_I2C_CR_HOLD_BUS_MASK)),
-					ZYNQ_I2C_CR_OFFSET);
+			if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
+				zynq_i2c_writereg(ctrl_reg &
+						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
+						ZYNQ_I2C_CR_OFFSET);
 	}
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
 }
@@ -378,7 +365,7 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 	ctrl_reg &= ~ZYNQ_I2C_CR_RW_MASK;
 	ctrl_reg |= ZYNQ_I2C_CR_CLR_FIFO_MASK;
 
-	if ((id->send_count) > ZYNQ_I2C_FIFO_DEPTH)
+	if (id->send_count > ZYNQ_I2C_FIFO_DEPTH)
 		ctrl_reg |= ZYNQ_I2C_CR_HOLD_BUS_MASK;
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
@@ -403,20 +390,18 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 		id->send_count--;
 	}
 
-	zynq_i2c_writereg((id->p_msg->addr & ZYNQ_I2C_ADDR_MASK),
+	zynq_i2c_writereg(id->p_msg->addr & ZYNQ_I2C_ADDR_MASK,
 						ZYNQ_I2C_ADDR_OFFSET);
 
 	/*
 	 * Clear the bus hold flag if there is no more data
 	 * and if it is the last message.
 	 */
-	if (id->bus_hold_flag == 0 && id->send_count == 0) {
+	if (!id->bus_hold_flag && !id->send_count) {
 		/* Clear the hold bus bit */
 		ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-		if ((ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK) ==
-				ZYNQ_I2C_CR_HOLD_BUS_MASK)
-			zynq_i2c_writereg(
-				(ctrl_reg & (~ZYNQ_I2C_CR_HOLD_BUS_MASK)),
+		if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
+			zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD_BUS_MASK,
 				ZYNQ_I2C_CR_OFFSET);
 	}
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
@@ -444,12 +429,12 @@ static void zynq_i2c_master_reset(struct i2c_adapter *adap)
 	regval |= ZYNQ_I2C_CR_CLR_FIFO_MASK;
 	zynq_i2c_writereg(regval, ZYNQ_I2C_CR_OFFSET);
 	/* Update the transfercount register to zero */
-	zynq_i2c_writereg(0x0, ZYNQ_I2C_XFER_SIZE_OFFSET);
+	zynq_i2c_writereg(0, ZYNQ_I2C_XFER_SIZE_OFFSET);
 	/* Clear the interupt status register */
 	regval = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 	zynq_i2c_writereg(regval, ZYNQ_I2C_ISR_OFFSET);
 	/* Clear the status register */
-	regval =  zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET);
+	regval = zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET);
 	zynq_i2c_writereg(regval, ZYNQ_I2C_SR_OFFSET);
 }
 
@@ -475,7 +460,7 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
 	timeout = jiffies + ZYNQ_I2C_TIMEOUT;
-	while ((zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET)) & 0x00000100) {
+	while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) & 0x100) {
 		if (time_after(jiffies, timeout)) {
 			dev_warn(id->adap.dev.parent,
 					"timedout waiting for bus ready\n");
@@ -506,7 +491,6 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 
 	/* Process the msg one by one */
 	for (count = 0; count < num; count++, msgs++) {
-
 		if (count == (num - 1))
 			id->bus_hold_flag = 0;
 		retries = adap->retries;
@@ -518,14 +502,13 @@ retry:
 		/* Check for the TEN Bit mode on each msg */
 		if (msgs->flags & I2C_M_TEN) {
 			zynq_i2c_writereg(
-				(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-					(~0x00000004)), ZYNQ_I2C_CR_OFFSET);
+				zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) & ~0x4,
+				ZYNQ_I2C_CR_OFFSET);
 		} else {
-			if ((zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) & 0x00000004)
-								== 0)
+			if (!(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) & 0x4))
 				zynq_i2c_writereg(
-					(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
-					 (0x00000004)), ZYNQ_I2C_CR_OFFSET);
+					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
+					 0x4, ZYNQ_I2C_CR_OFFSET);
 		}
 
 		/* Check for the R/W flag on each msg */
@@ -537,7 +520,7 @@ retry:
 		/* Wait for the signal of completion */
 		ret = wait_for_completion_interruptible_timeout(
 							&id->xfer_done, HZ);
-		if (ret == 0) {
+		if (!ret) {
 			dev_err(id->adap.dev.parent,
 				 "timeout waiting on completion\n");
 			zynq_i2c_master_reset(adap);
@@ -547,7 +530,7 @@ retry:
 				  ZYNQ_I2C_IDR_OFFSET);
 
 		/* If it is bus arbitration error, try again */
-		if (id->err_status & 0x00000200) {
+		if (id->err_status & 0x200) {
 			dev_dbg(id->adap.dev.parent,
 				 "Lost ownership on bus, trying again\n");
 			if (retries--) {
@@ -560,7 +543,7 @@ retry:
 			break;
 		}
 		/* Report the other error interrupts to application as EIO */
-		if (id->err_status & 0x000000E4) {
+		if (id->err_status & 0xE4) {
 			zynq_i2c_master_reset(adap);
 			num = -EIO;
 			break;
@@ -625,7 +608,7 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 	for (div_b = 0; div_b < 64; div_b++) {
 		div_a = input_clk / (22 * fscl * (div_b + 1));
 
-		if (div_a != 0)
+		if (div_a)
 			div_a = div_a - 1;
 
 		if (div_a > 3)
@@ -680,7 +663,7 @@ static int zynq_i2c_setclk(unsigned long fscl, struct zynq_i2c *id)
 		return ret;
 
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	ctrl_reg &= ~(0x0000C000 | 0x00003F00);
+	ctrl_reg &= ~(0xC000 | 0x3F00);
 	ctrl_reg |= ((div_a << 14) | (div_b << 8));
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
@@ -839,7 +822,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 	id->adap.dev.of_node = pdev->dev.of_node;
-	id->adap.algo = (struct i2c_algorithm *) &zynq_i2c_algo;
+	id->adap.algo = &zynq_i2c_algo;
 	id->adap.timeout = 0x1F;	/* Default timeout value */
 	id->adap.retries = 3;		/* Default retry value. */
 	id->adap.algo_data = id;
@@ -877,11 +860,11 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	 * Set the timeout and I2C clock and request the IRQ(ISR mapped).
 	 * Call to the i2c_add_numbered_adapter registers the adapter.
 	 */
-	zynq_i2c_writereg(0x0000000E, ZYNQ_I2C_CR_OFFSET);
+	zynq_i2c_writereg(0xE, ZYNQ_I2C_CR_OFFSET);
 	zynq_i2c_writereg(id->adap.timeout, ZYNQ_I2C_TIME_OUT_OFFSET);
 
 	ret = zynq_i2c_setclk(id->i2c_clk, id);
-	if (ret < 0) {
+	if (ret) {
 		dev_err(&pdev->dev, "invalid SCL clock: %u Hz\n", id->i2c_clk);
 		ret = -EINVAL;
 		goto err_clk_dis;
@@ -901,7 +884,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	}
 
 	dev_info(&pdev->dev, "%u kHz mmio %08lx irq %d\n",
-		 id->i2c_clk/1000, (unsigned long)r_mem->start, id->irq);
+		 id->i2c_clk / 1000, (unsigned long)r_mem->start, id->irq);
 
 	return 0;
 
