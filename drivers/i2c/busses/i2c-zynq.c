@@ -126,8 +126,8 @@ struct zynq_i2c {
 	unsigned char *p_send_buf;
 	unsigned char *p_recv_buf;
 	u8 suspended;
-	int send_count;
-	int recv_count;
+	unsigned int send_count;
+	unsigned int recv_count;
 	int irq;
 	int cur_timeout;
 	unsigned long input_clk;
@@ -469,9 +469,9 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 				int num)
 {
 	struct zynq_i2c *id = adap->algo_data;
-	unsigned int count, retries;
+	unsigned int retries;
 	unsigned long timeout;
-	int ret;
+	int ret, count;
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
 	timeout = jiffies + ZYNQ_I2C_TIMEOUT;
