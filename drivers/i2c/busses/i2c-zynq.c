@@ -828,7 +828,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	id->adap.algo_data = id;
 	id->adap.dev.parent = &pdev->dev;
 	snprintf(id->adap.name, sizeof(id->adap.name),
-		 "XILINX I2C at %08lx", (unsigned long)r_mem->start);
+		 "Zynq I2C at %08lx", (unsigned long)r_mem->start);
 
 	id->cur_timeout = id->adap.timeout;
 	id->clk = devm_clk_get(&pdev->dev, NULL);
