@@ -187,9 +187,7 @@ static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 			return format->bpp;
 	}
 
-	DRM_ERROR("Unknown/unsupported DRM format: %d\n", drm_format);
-
-	return -EINVAL;
+	return 0;
 }
 
 /* load xilinx drm */
