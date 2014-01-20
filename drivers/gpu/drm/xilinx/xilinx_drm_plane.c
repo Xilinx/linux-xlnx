@@ -33,7 +33,7 @@
 #include "xilinx_rgb2yuv.h"
 
 /**
- * struct xilinx_drm_plane_vdma: Xilinx drm plane VDMA object
+ * struct xilinx_drm_plane_vdma - Xilinx drm plane VDMA object
  *
  * @chan: dma channel
  * @dma_config: vdma config
@@ -44,7 +44,7 @@ struct xilinx_drm_plane_vdma {
 };
 
 /**
- * struct xilinx_drm_plane: Xilinx drm plane object
+ * struct xilinx_drm_plane - Xilinx drm plane object
  *
  * @base: base drm plane object
  * @id: plane id
@@ -81,7 +81,7 @@ struct xilinx_drm_plane {
 #define MAX_PLANES 8
 
 /**
- * struct xilinx_drm_plane_manager: Xilinx drm plane manager object
+ * struct xilinx_drm_plane_manager - Xilinx drm plane manager object
  *
  * @drm: drm device
  * @node: plane device node

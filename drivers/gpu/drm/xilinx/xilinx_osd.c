@@ -89,7 +89,7 @@
 #define OSD_RST_RESET	(1 << 31)
 
 /**
- * struct xilinx_osd_layer: Xilinx OSD layer object
+ * struct xilinx_osd_layer - Xilinx OSD layer object
  *
  * @base: base address
  * @id: id
@@ -104,7 +104,7 @@ struct xilinx_osd_layer {
 };
 
 /**
- * struct xilinx_osd: Xilinx OSD object
+ * struct xilinx_osd - Xilinx OSD object
  *
  * @base: base address
  * @layers: layers

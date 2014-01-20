@@ -163,7 +163,7 @@
 				VTC_IXR_D_ALL_MASK |		\
 				VTC_IXR_LOCKALL_MASK)
 /**
- * struct xilinx_vtc: Xilinx VTC object
+ * struct xilinx_vtc - Xilinx VTC object
  *
  * @base: base addr
  * @irq: irq
@@ -178,7 +178,7 @@ struct xilinx_vtc {
 };
 
 /**
- * struct xilinx_vtc_polarity: vtc polarity config
+ * struct xilinx_vtc_polarity - vtc polarity config
  *
  * @active_chroma: active chroma polarity
  * @active_video: active video polarity
@@ -199,7 +199,7 @@ struct xilinx_vtc_polarity {
 };
 
 /**
- * struct xilinx_vtc_hori_offset: vtc horizontal offset config
+ * struct xilinx_vtc_hori_offset - vtc horizontal offset config
  *
  * @vblank_hori_start: vblank horizontal start
  * @vblank_hori_end: vblank horizontal end
@@ -214,7 +214,7 @@ struct xilinx_vtc_hori_offset {
 };
 
 /**
- * struct xilinx_vtc_src_config: vtc source config
+ * struct xilinx_vtc_src_config - vtc source config
  *
  * @field_id_pol: filed id polarity source
  * @active_chroma_pol: active chroma polarity source
