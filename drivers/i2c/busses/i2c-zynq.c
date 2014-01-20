@@ -155,7 +155,7 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 {
 	unsigned int isr_status, avail_bytes;
 	unsigned int bytes_to_recv, bytes_to_send;
-	unsigned int ctrl_reg = 0;
+	unsigned int ctrl_reg;
 	struct zynq_i2c *id = ptr;
 
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
@@ -811,7 +811,7 @@ static SIMPLE_DEV_PM_OPS(zynq_i2c_dev_pm_ops, zynq_i2c_suspend,
  */
 static int zynq_i2c_probe(struct platform_device *pdev)
 {
-	struct resource *r_mem = NULL;
+	struct resource *r_mem;
 	struct zynq_i2c *id;
 	int ret;
 	/*
