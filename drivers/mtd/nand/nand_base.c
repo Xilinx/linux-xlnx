@@ -2940,7 +2940,7 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 	int i;
 	int val;
 
-#ifdef CONFIG_MTD_NAND_XILINX_PS
+#ifdef CONFIG_MTD_NAND_ZYNQ
 	uint8_t *buf;
 	unsigned int options;
 	int j;
@@ -2960,7 +2960,7 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 
 	chip->cmdfunc(mtd, NAND_CMD_PARAM, 0, -1);
 	for (i = 0; i < 3; i++) {
-#ifdef CONFIG_MTD_NAND_XILINX_PS
+#ifdef CONFIG_MTD_NAND_ZYNQ
 		buf = (uint8_t *)p;
 		for(j = 0;j < 256;j++)
 			buf[j] = chip->read_byte(mtd);
@@ -3030,13 +3030,13 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 			pr_info("Failed to detect the extended param page.\n");
 	}
 
-#ifdef CONFIG_MTD_NAND_XILINX_PS
+#ifdef CONFIG_MTD_NAND_ZYNQ
 	/* Read the chip options before clearing the bits */
 	options = chip->options;
 #endif
 
 	pr_info("ONFI flash detected\n");
-#ifdef CONFIG_MTD_NAND_XILINX_PS
+#ifdef CONFIG_MTD_NAND_ZYNQ
 	/* set the bus width option */
 	if (options & NAND_BUSWIDTH_16)
 		chip->options |= NAND_BUSWIDTH_16;
