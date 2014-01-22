@@ -23,7 +23,7 @@
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/module.h>
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 #include <linux/platform_device.h>
 #include <asm/smp_plat.h>
 #include <asm/cpu.h>
@@ -109,7 +109,7 @@ static int zynq_target(struct cpufreq_policy *policy,
 static inline void freq_table_free(void)
 {
 	if (atomic_dec_and_test(&freq_table_users))
-		opp_free_cpufreq_table(mpu_dev, &freq_table);
+		dev_pm_opp_free_cpufreq_table(mpu_dev, &freq_table);
 }
 
 static int __cpuinit zynq_cpu_init(struct cpufreq_policy *policy)
@@ -128,7 +128,7 @@ static int __cpuinit zynq_cpu_init(struct cpufreq_policy *policy)
 	policy->cur = policy->min = policy->max = zynq_getspeed(policy->cpu);
 
 	if (!freq_table)
-		result = opp_init_cpufreq_table(mpu_dev, &freq_table);
+		result = dev_pm_opp_init_cpufreq_table(mpu_dev, &freq_table);
 
 	if (result) {
 		dev_err(mpu_dev, "%s: cpu%d: failed creating freq table[%d]\n",

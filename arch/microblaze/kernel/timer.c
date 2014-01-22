@@ -16,6 +16,7 @@
 #include <linux/clk.h>
 #include <linux/clockchips.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <asm/cpuinfo.h>
 
 static void __iomem *timer_baseaddr;

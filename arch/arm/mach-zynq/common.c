@@ -21,7 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 #include <linux/clocksource.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -59,6 +59,10 @@ static void __init zynq_memory_init(void)
 	if (!__pa(PAGE_OFFSET))
 		memblock_reserve(0, 0x4000);
 }
+
+static struct platform_device zynq_cpuidle_device = {
+	.name = "cpuidle-zynq",
+};
 
 #ifdef CONFIG_CPU_FREQ
 #define CPUFREQ_MIN_FREQ_HZ	200000000
@@ -104,16 +108,16 @@ static int __init zynq_opp_init(void)
 
 	/* frequency/voltage operating points. For now use f only */
 	freq = clk_get_rate(cpuclk);
-	ret |= opp_add(dev, xilinx_calc_opp_freq(cpuclk, freq), 0);
+	ret |= dev_pm_opp_add(dev, xilinx_calc_opp_freq(cpuclk, freq), 0);
 	for (i = 0; i < ARRAY_SIZE(freq_divs); i++) {
 		long tmp = xilinx_calc_opp_freq(cpuclk, freq / freq_divs[i]);
 		if (tmp >= CPUFREQ_MIN_FREQ_HZ)
-			ret |= opp_add(dev, tmp, 0);
+			ret |= dev_pm_opp_add(dev, tmp, 0);
 	}
 	freq = xilinx_calc_opp_freq(cpuclk, CPUFREQ_MIN_FREQ_HZ);
-	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(opp_find_freq_exact(dev, freq,
-				1)))
-		ret |= opp_add(dev, freq, 0);
+	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(dev_pm_opp_find_freq_exact(
+							dev, freq, 1)))
+		ret |= dev_pm_opp_add(dev, freq, 0);
 
 	if (ret)
 		pr_warn("%s: Error adding OPPs.", __func__);
@@ -168,6 +172,8 @@ static void __init zynq_init_late(void)
 static void __init zynq_init_machine(void)
 {
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+
+	platform_device_register(&zynq_cpuidle_device);
 }
 
 static void __init zynq_timer_init(void)

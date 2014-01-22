@@ -106,6 +106,8 @@ int snd_soc_dai_set_clkdiv(struct snd_soc_dai *dai,
 int snd_soc_dai_set_pll(struct snd_soc_dai *dai,
 	int pll_id, int source, unsigned int freq_in, unsigned int freq_out);
 
+int snd_soc_dai_set_bclk_ratio(struct snd_soc_dai *dai, unsigned int ratio);
+
 /* Digital Audio interface formatting */
 int snd_soc_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt);
 
@@ -132,6 +134,7 @@ struct snd_soc_dai_ops {
 	int (*set_pll)(struct snd_soc_dai *dai, int pll_id, int source,
 		unsigned int freq_in, unsigned int freq_out);
 	int (*set_clkdiv)(struct snd_soc_dai *dai, int div_id, int div);
+	int (*set_bclk_ratio)(struct snd_soc_dai *dai, unsigned int ratio);
 
 	/*
 	 * DAI format configuration
@@ -167,6 +170,13 @@ struct snd_soc_dai_ops {
 		struct snd_soc_dai *);
 	int (*prepare)(struct snd_pcm_substream *,
 		struct snd_soc_dai *);
+	/*
+	 * NOTE: Commands passed to the trigger function are not necessarily
+	 * compatible with the current state of the dai. For example this
+	 * sequence of commands is possible: START STOP STOP.
+	 * So do not unconditionally use refcounting functions in the trigger
+	 * function, e.g. clk_enable/disable.
+	 */
 	int (*trigger)(struct snd_pcm_substream *, int,
 		struct snd_soc_dai *);
 	int (*bespoke_trigger)(struct snd_pcm_substream *, int,
@@ -275,6 +285,13 @@ static inline void snd_soc_dai_set_dma_data(struct snd_soc_dai *dai,
 		dai->playback_dma_data = data;
 	else
 		dai->capture_dma_data = data;
+}
+
+static inline void snd_soc_dai_init_dma_data(struct snd_soc_dai *dai,
+					     void *playback, void *capture)
+{
+	dai->playback_dma_data = playback;
+	dai->capture_dma_data = capture;
 }
 
 static inline void snd_soc_dai_set_drvdata(struct snd_soc_dai *dai,

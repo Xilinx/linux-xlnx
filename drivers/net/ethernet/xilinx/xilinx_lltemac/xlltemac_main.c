@@ -37,6 +37,7 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/of_net.h>
+#include <linux/of_irq.h>
 #endif
 
 #include "xbasic_types.h"

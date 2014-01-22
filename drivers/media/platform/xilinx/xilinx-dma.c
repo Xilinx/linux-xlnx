@@ -153,12 +153,10 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	u32 flags;
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK
-		      | DMA_COMPL_SKIP_DEST_UNMAP;
+		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 		dir = DMA_DEV_TO_MEM;
 	} else {
-		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK
-		      | DMA_COMPL_SKIP_SRC_UNMAP;
+		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 		dir = DMA_MEM_TO_DEV;
 	}
 

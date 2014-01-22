@@ -202,8 +202,7 @@ void xvdma_prep_slave_sg(struct xvdma_buf_info *buf_info)
 	device_id = buf_info->device_id;
 
 	if (chan) {
-		flags = DMA_CTRL_ACK | DMA_COMPL_SKIP_DEST_UNMAP
-			| DMA_PREP_INTERRUPT;
+		flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 
 		if (buf_info->fixed_buffer) {
 			chan_dev = chan->device;

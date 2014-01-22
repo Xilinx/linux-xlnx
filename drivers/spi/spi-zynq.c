@@ -400,7 +400,7 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 	xspi->txbuf = transfer->tx_buf;
 	xspi->rxbuf = transfer->rx_buf;
 	xspi->remaining_bytes = transfer->len;
-	INIT_COMPLETION(xspi->done);
+	reinit_completion(&xspi->done);
 
 	zynq_spi_fill_tx_fifo(xspi);
 
