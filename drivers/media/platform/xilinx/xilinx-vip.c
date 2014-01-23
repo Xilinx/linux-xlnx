@@ -195,80 +195,6 @@ EXPORT_SYMBOL_GPL(xvip_clr_and_set);
  */
 
 /**
- * xvip_enum_mbus_code - Enumerate the media format code
- * @subdev: V4L2 subdevice
- * @fh: V4L2 subdevice file handle
- * @code: returning media bus code
- *
- * Enumerate the media bus code of the subdevice. Return the corresponding
- * pad format code. This function only works for subdevices with fixed format
- * on all pads. Subdevices with multiple format should have their own
- * function to enumerate mbus codes.
- *
- * Return: 0 if the media bus code is found, or -EINVAL if the format index
- * is not valid.
- */
-int xvip_enum_mbus_code(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
-			struct v4l2_subdev_mbus_code_enum *code)
-{
-	struct v4l2_mbus_framefmt *format;
-
-	if (code->index)
-		return -EINVAL;
-
-	format = v4l2_subdev_get_try_format(fh, code->pad);
-
-	code->code = format->code;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(xvip_enum_mbus_code);
-
-/**
- * xvip_enum_frame_size - Enumerate the media bus frame size
- * @subdev: V4L2 subdevice
- * @fh: V4L2 subdevice file handle
- * @fse: returning media bus frame size
- *
- * This function is a drop-in implementation of the subdev enum_frame_size pad
- * operation. It assumes that the subdevice has one sink pad and one source
- * pad, and that the format on the source pad is always identical to the
- * format on the sink pad. Entities with different requirements need to
- * implement their own enum_frame_size handlers.
- *
- * Return: 0 if the media bus frame size is found, or -EINVAL
- * if the index or the code is not valid.
- */
-int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
-			 struct v4l2_subdev_frame_size_enum *fse)
-{
-	struct v4l2_mbus_framefmt *format;
-
-	format = v4l2_subdev_get_try_format(fh, fse->pad);
-
-	if (fse->index || fse->code != format->code)
-		return -EINVAL;
-
-	if (fse->pad == XVIP_PAD_SINK) {
-		fse->min_width = XVIP_MIN_WIDTH;
-		fse->max_width = XVIP_MAX_WIDTH;
-		fse->min_height = XVIP_MIN_HEIGHT;
-		fse->max_height = XVIP_MAX_HEIGHT;
-	} else {
-		/* The size on the source pad is fixed and always identical to
-		 * the size on the sink pad.
-		 */
-		fse->min_width = format->width;
-		fse->max_width = format->width;
-		fse->min_height = format->height;
-		fse->max_height = format->height;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(xvip_enum_frame_size);
-
-/**
  * xvip_get_pad_format - Get the frame format on media bus for the pad
  * @fh: V4L2 subdevice file handle
  * @format: V4L2 active frame format on media bus
@@ -356,6 +282,84 @@ void xvip_init_formats(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	v4l2_subdev_call(subdev, pad, set_fmt, fh, &format);
 }
 EXPORT_SYMBOL_GPL(xvip_init_formats);
+
+/* -----------------------------------------------------------------------------
+ * Subdev operations handlers
+ */
+
+/**
+ * xvip_enum_mbus_code - Enumerate the media format code
+ * @subdev: V4L2 subdevice
+ * @fh: V4L2 subdevice file handle
+ * @code: returning media bus code
+ *
+ * Enumerate the media bus code of the subdevice. Return the corresponding
+ * pad format code. This function only works for subdevices with fixed format
+ * on all pads. Subdevices with multiple format should have their own
+ * function to enumerate mbus codes.
+ *
+ * Return: 0 if the media bus code is found, or -EINVAL if the format index
+ * is not valid.
+ */
+int xvip_enum_mbus_code(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
+			struct v4l2_subdev_mbus_code_enum *code)
+{
+	struct v4l2_mbus_framefmt *format;
+
+	if (code->index)
+		return -EINVAL;
+
+	format = v4l2_subdev_get_try_format(fh, code->pad);
+
+	code->code = format->code;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xvip_enum_mbus_code);
+
+/**
+ * xvip_enum_frame_size - Enumerate the media bus frame size
+ * @subdev: V4L2 subdevice
+ * @fh: V4L2 subdevice file handle
+ * @fse: returning media bus frame size
+ *
+ * This function is a drop-in implementation of the subdev enum_frame_size pad
+ * operation. It assumes that the subdevice has one sink pad and one source
+ * pad, and that the format on the source pad is always identical to the
+ * format on the sink pad. Entities with different requirements need to
+ * implement their own enum_frame_size handlers.
+ *
+ * Return: 0 if the media bus frame size is found, or -EINVAL
+ * if the index or the code is not valid.
+ */
+int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
+			 struct v4l2_subdev_frame_size_enum *fse)
+{
+	struct v4l2_mbus_framefmt *format;
+
+	format = v4l2_subdev_get_try_format(fh, fse->pad);
+
+	if (fse->index || fse->code != format->code)
+		return -EINVAL;
+
+	if (fse->pad == XVIP_PAD_SINK) {
+		fse->min_width = XVIP_MIN_WIDTH;
+		fse->max_width = XVIP_MAX_WIDTH;
+		fse->min_height = XVIP_MIN_HEIGHT;
+		fse->max_height = XVIP_MAX_HEIGHT;
+	} else {
+		/* The size on the source pad is fixed and always identical to
+		 * the size on the sink pad.
+		 */
+		fse->min_width = format->width;
+		fse->max_width = format->width;
+		fse->min_height = format->height;
+		fse->max_height = format->height;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xvip_enum_frame_size);
 
 /* -----------------------------------------------------------------------------
  * Initialization and cleanup
