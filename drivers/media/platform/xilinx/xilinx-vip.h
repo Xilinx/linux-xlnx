@@ -88,12 +88,20 @@
  * @subdev: V4L2 subdevice
  * @dev: (OF) device
  * @iomem: device I/O register space remapped to kernel virtual memory
+ * @npads: number of pads on the subdevice
+ * @pads: media pads
+ * @formats: active formats on the pads
  * @saved_ctrl: saved control register for resume / suspend
  */
 struct xvip_device {
 	struct v4l2_subdev subdev;
 	struct device *dev;
 	void __iomem *iomem;
+
+	unsigned int npads;
+	struct media_pad *pads;
+	struct v4l2_mbus_framefmt *formats;
+
 	u32 saved_ctrl;
 };
 
@@ -114,6 +122,9 @@ struct xvip_video_format {
 	u32 fourcc;
 	const char *description;
 };
+
+int xvip_device_init(struct xvip_device *xvip);
+void xvip_device_cleanup(struct xvip_device *xvip);
 
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code);
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc);
