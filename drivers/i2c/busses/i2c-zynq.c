@@ -90,6 +90,8 @@
 
 #define DRIVER_NAME		"zynq-i2c"
 
+#define ZYNQ_I2C_SPEED_MAX	400000
+
 #define zynq_i2c_readreg(offset)	__raw_readl(id->membase + offset)
 #define zynq_i2c_writereg(val, offset)	__raw_writel(val, id->membase + offset)
 
@@ -108,7 +110,7 @@
  * @irq:		IRQ number
  * @cur_timeout:	The current timeout value used by the device
  * @input_clk:		Input clock to I2C controller
- * @i2c_clk:		Current I2C frequency
+ * @i2c_clk:		Maximum I2C clock speed
  * @bus_hold_flag:	Flag used in repeated start for clearing HOLD bit
  * @clk:		Pointer to struct clk
  * @clk_rate_change_nb:	Notifier block for clock rate changes
@@ -842,12 +844,10 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 	id->input_clk = clk_get_rate(id->clk);
 
-	ret = of_property_read_u32(pdev->dev.of_node, "i2c-clk", &id->i2c_clk);
-	if (ret) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "couldn't determine i2c-clk\n");
-		goto err_clk_dis;
-	}
+	ret = of_property_read_u32(pdev->dev.of_node, "clock-frequency",
+			&id->i2c_clk);
+	if (ret || (id->i2c_clk > ZYNQ_I2C_SPEED_MAX))
+		id->i2c_clk = ZYNQ_I2C_SPEED_MAX;
 
 	/*
 	 * Set Master Mode,Normal addressing mode (7 bit address),

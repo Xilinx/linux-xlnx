@@ -161,7 +161,7 @@
 		ps7_i2c_0: ps7-i2c@e0004000 {
 			clocks = <&clkc 38>;
 			compatible = "xlnx,ps7-i2c-1.00.a";
-			i2c-clk = <400000>;
+			clock-frequency = <400000>;
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 25 4>;
 			reg = <0xe0004000 0x1000>;
