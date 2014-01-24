@@ -660,7 +660,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 
 	return 0;
 
-
 	return ret;
 }
 
