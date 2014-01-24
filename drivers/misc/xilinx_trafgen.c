@@ -1,7 +1,7 @@
 /*
  * Xilinx AXI Traffic Generator
  *
- * Copyright (C) 2013 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2013 - 2014 Xilinx, Inc.
  *
  * Description:
  * This driver is developed for AXI Traffic Generator IP, which is
