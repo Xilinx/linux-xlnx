@@ -48,7 +48,6 @@
 #define	DRIVER_AUTHOR	"Xilinx, Inc."
 #define	DRIVER_VERSION	"Apr 01, 2011"
 
-
 /* USB registers */
 #define USB_MAX_CTRL_PAYLOAD		64
 
@@ -184,7 +183,6 @@ struct usb_dr_device {
 /* bit 19-18 and 3-2 are endpoint type */
 #define  EPCTRL_TX_EP_TYPE_SHIFT              18
 #define  EPCTRL_RX_EP_TYPE_SHIFT              2
-
 
 /* Endpoint Queue Head data struct
  * Rem: all the variables of qh are LittleEndian Mode
@@ -336,7 +334,6 @@ struct zynq_udc {
 #define DBG(fmt, args...)	do {} while (0)
 #endif
 
-
 #ifdef VERBOSE
 #define VDBG		DBG
 #else
@@ -365,7 +362,6 @@ struct zynq_udc {
 					&udc->eps[pipe])
 #define get_pipe_by_windex(windex)	((windex & USB_ENDPOINT_NUMBER_MASK) \
 					* 2 + ((windex & USB_DIR_IN) ? 1 : 0))
-
 
 static int zynq_udc_clk_notifier_cb(struct notifier_block *nb,
 		unsigned long event, void *data)
@@ -416,7 +412,6 @@ static void zynq_udc_clk_release(struct platform_device *pdev)
 
 	clk_disable_unprepare(pdata->clk);
 }
-
 
 #define	DMA_ADDR_INVALID	(~(dma_addr_t)0)
 
