@@ -92,6 +92,9 @@
 
 #define ZYNQ_I2C_SPEED_MAX	400000
 
+#define ZYNQ_I2C_DIVA_MAX	4
+#define ZYNQ_I2C_DIVB_MAX	64
+
 #define zynq_i2c_readreg(offset)	__raw_readl(id->membase + offset)
 #define zynq_i2c_writereg(val, offset)	__raw_writel(val, id->membase + offset)
 
@@ -137,8 +140,6 @@ struct zynq_i2c {
 
 #define to_zynq_i2c(_nb)	container_of(_nb, struct zynq_i2c, \
 					     clk_rate_change_nb)
-#define MAX_F_ERR 10000
-
 /**
  * zynq_i2c_isr - Interrupt handler for the I2C device
  * @irq:	irq number for the I2C device
@@ -603,20 +604,21 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 	 * If the calculated value is negative or 0, the fscl input is out of
 	 * range. Return error.
 	 */
-	if (!temp)
+	if (!temp || (temp > (ZYNQ_I2C_DIVA_MAX * ZYNQ_I2C_DIVB_MAX)))
 		return -EINVAL;
 
 	last_error = -1;
-	for (div_b = 0; div_b < 64; div_b++) {
-		div_a = input_clk / (22 * fscl * (div_b + 1));
+	for (div_a = 0; div_a < ZYNQ_I2C_DIVA_MAX; div_a++) {
+		div_b = DIV_ROUND_UP(input_clk, 22 * fscl * (div_a + 1));
 
-		if (div_a)
-			div_a = div_a - 1;
-
-		if (div_a > 3)
+		if ((div_b < 1) || (div_b > ZYNQ_I2C_DIVB_MAX))
 			continue;
+		div_b--;
 
 		actual_fscl = input_clk / (22 * (div_a + 1) * (div_b + 1));
+
+		if (actual_fscl > fscl)
+			continue;
 
 		current_error = ((actual_fscl > fscl) ? (actual_fscl - fscl) :
 							(fscl - actual_fscl));
@@ -639,7 +641,7 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 
 /**
  * zynq_i2c_setclk - This function sets the serial clock rate for the I2C device
- * @fscl:	The clock frequency in Hz
+ * @clk_in:	I2C clock input frequency in Hz
  * @id:		Pointer to the I2C device structure
  *
  * Return: zero on success, negative error otherwise
@@ -653,14 +655,15 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
  * clock rate. The clock can not be faster than the input clock divide by 22.
  * The two most common clock rates are 100KHz and 400KHz.
  */
-static int zynq_i2c_setclk(unsigned long fscl, struct zynq_i2c *id)
+static int zynq_i2c_setclk(unsigned long clk_in, struct zynq_i2c *id)
 {
 	unsigned int div_a, div_b;
 	unsigned int ctrl_reg;
 	unsigned int err;
 	int ret = 0;
+	unsigned long fscl = id->i2c_clk;
 
-	ret = zynq_i2c_calc_divs(&fscl, id->input_clk, &div_a, &div_b, &err);
+	ret = zynq_i2c_calc_divs(&fscl, clk_in, &div_a, &div_b, &err);
 	if (ret)
 		return ret;
 
@@ -712,18 +715,24 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 					 &err);
 		if (ret)
 			return NOTIFY_STOP;
-		if (err > MAX_F_ERR)
-			return NOTIFY_STOP;
+
+		/* scale up */
+		if (ndata->new_rate > ndata->old_rate)
+			zynq_i2c_setclk(ndata->new_rate, id);
 
 		return NOTIFY_OK;
 	}
 	case POST_RATE_CHANGE:
 		id->input_clk = ndata->new_rate;
-		/* We probably need to stop the HW before this and restart
-		 * afterwards */
-		zynq_i2c_setclk(id->i2c_clk, id);
+		/* scale down */
+		if (ndata->new_rate < ndata->old_rate)
+			zynq_i2c_setclk(ndata->new_rate, id);
 		return NOTIFY_OK;
 	case ABORT_RATE_CHANGE:
+		/* scale up */
+		if (ndata->new_rate > ndata->old_rate)
+			zynq_i2c_setclk(ndata->old_rate, id);
+		return NOTIFY_OK;
 	default:
 		return NOTIFY_DONE;
 	}
@@ -858,7 +867,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	zynq_i2c_writereg(0xE, ZYNQ_I2C_CR_OFFSET);
 	zynq_i2c_writereg(id->adap.timeout, ZYNQ_I2C_TIME_OUT_OFFSET);
 
-	ret = zynq_i2c_setclk(id->i2c_clk, id);
+	ret = zynq_i2c_setclk(id->input_clk, id);
 	if (ret) {
 		dev_err(&pdev->dev, "invalid SCL clock: %u Hz\n", id->i2c_clk);
 		ret = -EINVAL;
