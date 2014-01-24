@@ -85,7 +85,6 @@
 #define zynq_spi_read(addr)	__raw_readl(addr)
 #define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
 
-
 /**
  * struct zynq_spi - This definition defines spi driver instance
  * @workqueue:		Queue of all the transfers
@@ -125,7 +124,6 @@ struct zynq_spi {
 	u8 dev_busy;
 	struct completion done;
 };
-
 
 /**
  * zynq_spi_init_hw - Initialize the hardware and configure the SPI controller
