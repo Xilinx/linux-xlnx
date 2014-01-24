@@ -24,6 +24,9 @@
 
 #include "ehci-zynq.h"
 
+#define ZYNQ_USB2_PORT0_ENABLED	0x00000001
+#define ZYNQ_USB2_PORT1_ENABLED	0x00000002
+
 #ifdef CONFIG_USB_ZYNQ_PHY
 /********************************************************************
  * OTG related functions

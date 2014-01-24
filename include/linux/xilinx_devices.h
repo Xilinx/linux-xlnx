@@ -63,8 +63,5 @@ struct zynq_usb2_platform_data {
 	unsigned	invert_pwr_fault:1;
 };
 
-#define ZYNQ_USB2_PORT0_ENABLED	0x00000001
-#define ZYNQ_USB2_PORT1_ENABLED	0x00000002
-
 #endif /* _XILINX_DEVICE_H_ */
 #endif /* __KERNEL__ */
