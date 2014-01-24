@@ -178,7 +178,6 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
-
 	/*
 	 * do platform specific init: check the clock, grab/config pins, etc.
 	 */
@@ -450,7 +449,6 @@ static const struct dev_pm_ops ehci_zynq_pm_ops = {
 #else /* ! CONFIG_PM_SLEEP */
 #define EHCI_ZYNQ_PM_OPS	NULL
 #endif /* ! CONFIG_PM_SLEEP */
-
 
 static const struct hc_driver ehci_zynq_hc_driver = {
 	.description = hcd_name,
