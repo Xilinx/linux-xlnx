@@ -167,7 +167,7 @@ static __init void xilinx_clockevent_init(void)
 	clockevents_register_device(&clockevent_xilinx_timer);
 }
 
-static u32 xilinx_clock_read(void)
+static u64 xilinx_clock_read(void)
 {
 	return in_be32(timer_baseaddr + TCR1);
 }
@@ -273,7 +273,7 @@ static void __init xilinx_timer_init(struct device_node *timer)
 	xilinx_clocksource_init();
 	xilinx_clockevent_init();
 
-	setup_sched_clock(xilinx_clock_read, 32, timer_clock_freq);
+	sched_clock_register(xilinx_clock_read, 32, timer_clock_freq);
 }
 
 CLOCKSOURCE_OF_DECLARE(xilinx_timer, "xlnx,xps-timer-1.00.a",
