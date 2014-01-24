@@ -1,8 +1,7 @@
 /*
- *
  * Xilinx Zynq Quad-SPI (QSPI) controller driver (master mode only)
  *
- * (c) 2009-2011 Xilinx, Inc.
+ * Copyright (C) 2009 - 2014 Xilinx, Inc.
  *
  * based on Xilinx Zynq SPI Driver (spi-zynq.c)
  *
@@ -11,7 +10,6 @@
  * Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  */
-
 
 #include <linux/clk.h>
 #include <linux/delay.h>
