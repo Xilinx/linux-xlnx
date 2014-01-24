@@ -60,7 +60,6 @@
 /* Macros for the NAND controller register read/write */
 #define zynq_nand_write32(addr, val)	__raw_writel((val), (addr))
 
-
 /**
  * struct zynq_nand_command_format - Defines NAND flash command format
  * @start_cmd:		First cycle command (Start command)
