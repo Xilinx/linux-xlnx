@@ -1,8 +1,7 @@
 /*
- *
  * Xilinx Zynq SPI controller driver (master mode only)
  *
- * (c) 2008-2011 Xilinx, Inc.
+ * Copyright (C) 2008 - 2014 Xilinx, Inc.
  *
  * based on Blackfin On-Chip SPI Driver (spi_bfin5xx.c)
  *
@@ -11,7 +10,6 @@
  * Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  */
-
 
 #include <linux/clk.h>
 #include <linux/delay.h>
