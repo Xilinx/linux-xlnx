@@ -1,7 +1,7 @@
 /*
  * Xilinx USB peripheral controller driver
  *
- * Copyright (C) 2010 - 2013 Xilinx, Inc.
+ * Copyright (C) 2010 - 2014 Xilinx, Inc.
  *
  * Copyright (C) 2004 by Thomas Rathbone
  * Copyright (C) 2005 by HP Labs
