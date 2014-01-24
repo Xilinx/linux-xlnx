@@ -159,7 +159,6 @@
 			reg = <0xe000a000 0x1000>;
 		} ;
 		ps7_i2c_0: ps7-i2c@e0004000 {
-			bus-id = <0>;
 			clocks = <&clkc 38>;
 			compatible = "xlnx,ps7-i2c-1.00.a";
 			i2c-clk = <400000>;

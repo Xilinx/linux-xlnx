@@ -815,12 +815,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 
 	id->irq = platform_get_irq(pdev, 0);
 
-	ret = of_property_read_u32(pdev->dev.of_node, "bus-id",
-			(u32 *)&id->adap.nr);
-	if (ret) {
-		dev_err(&pdev->dev, "couldn't determine bus-id\n");
-		return -ENXIO;
-	}
+	id->adap.nr = pdev->id;
 	id->adap.dev.of_node = pdev->dev.of_node;
 	id->adap.algo = &zynq_i2c_algo;
 	id->adap.timeout = 0x1F;	/* Default timeout value */
