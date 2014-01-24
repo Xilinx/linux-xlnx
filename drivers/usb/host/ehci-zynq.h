@@ -1,7 +1,7 @@
 /*
  * Xilinx Zynq USB Host Controller Driver Header file.
  *
- * Copyright (C) 2011 Xilinx, Inc.
+ * Copyright (C) 2011 - 2014 Xilinx, Inc.
  *
  * This file is based on ehci-fsl.h file with few minor modifications
  * to support Xilinx Zynq USB controller.
