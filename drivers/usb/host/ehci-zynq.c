@@ -18,7 +18,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/platform_device.h>
-#include <linux/xilinx_devices.h>
+#include <linux/usb/zynq_usb.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/zynq_otg.h>
 

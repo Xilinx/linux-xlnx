@@ -36,7 +36,7 @@
 
 #include "../core/usb.h"
 
-#include <linux/xilinx_devices.h>
+#include <linux/usb/zynq_usb.h>
 #include <linux/usb/zynq_otg.h>
 
 #define	DRIVER_NAME	"zynq-otg"

@@ -18,7 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/xilinx_devices.h>
+#include <linux/usb/zynq_usb.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/of_platform.h>

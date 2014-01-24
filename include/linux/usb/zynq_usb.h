@@ -1,6 +1,4 @@
 /*
- * include/linux/xilinx_devices.h
- *
  * Definitions for any platform device related flags or structures for
  * Xilinx EDK IPs
  *
