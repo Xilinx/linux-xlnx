@@ -1,7 +1,7 @@
 /*
  * Xilinx CAN device driver
  *
- * Copyright (C) 2012 - 2013 Xilinx, Inc.
+ * Copyright (C) 2012 - 2014 Xilinx, Inc.
  * Copyright (C) 2009 PetaLogix. All rights reserved.
  *
  * Description:
