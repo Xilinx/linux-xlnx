@@ -509,7 +509,6 @@ static int zynq_smc_probe(struct platform_device *pdev)
 				  &zynq_smc->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
-
 	/* clear interrupts */
 	spin_lock_irqsave(&zynq_smc_lock, flags);
 
