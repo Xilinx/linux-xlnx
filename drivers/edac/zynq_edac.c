@@ -2,7 +2,7 @@
  * Xilinx Zynq DDR ECC Driver
  * This driver is based on ppc4xx_edac.c drivers
  *
- * Copyright (C) 2012 - 2013 Xilinx, Inc.
+ * Copyright (C) 2012 - 2014 Xilinx, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
