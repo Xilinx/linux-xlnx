@@ -1,7 +1,7 @@
 /*
  * Xilinx Zynq NAND Flash Controller Driver
  *
- * Copyright (C) 2009 - 2013 Xilinx, Inc.
+ * Copyright (C) 2009 - 2014 Xilinx, Inc.
  *
  * This driver is based on plat_nand.c and mxc_nand.c drivers
  *
