@@ -1910,8 +1910,6 @@ static int adv7842_set_edid(struct v4l2_subdev *sd, struct v4l2_subdev_edid *e)
 		return -EINVAL;
 	if (e->blocks > 2)
 		return -E2BIG;
-	if (!e->edid)
-		return -EINVAL;
 
 	/* todo, per edid */
 	state->aspect_ratio = v4l2_calc_aspect_ratio(e->edid[0x15],
