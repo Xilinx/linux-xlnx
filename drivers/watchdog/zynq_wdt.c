@@ -46,13 +46,17 @@ MODULE_PARM_DESC(nowayout,
 /**
  * struct zynq_wdt - Watchdog device structure.
  * @regs: baseaddress of device.
- * @busy: flag for the device.
+ * @rst: reset flag
+ * @clk: struct clk * of a clock source
+ * @prescaler: for saving prescaler value
+ * @ctrl_clksel: counter clock prescaler selection
+ * @io_lock: spinlock for IO register access
  *
  * Structure containing parameters specific to ps watchdog.
  */
 struct zynq_wdt {
-	void __iomem		*regs;		/* Base address */
-	u32			rst;		/* Reset flag */
+	void __iomem		*regs;
+	u32			rst;
 	struct clk		*clk;
 	u32			prescaler;
 	u32			ctrl_clksel;
@@ -100,8 +104,12 @@ static struct watchdog_info zynq_wdt_info = {
 /**
  * zynq_wdt_stop -  Stop the watchdog.
  *
+ * @wdd: watchdog device
+ *
  * Read the contents of the ZMR register, clear the WDEN bit
  * in the register and set the access key for successful write.
+ *
+ * Return: always 0
  */
 static int zynq_wdt_stop(struct watchdog_device *wdd)
 {
@@ -115,7 +123,11 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 /**
  * zynq_wdt_reload -  Reload the watchdog timer (i.e. pat the watchdog).
  *
+ * @wdd: watchdog device
+ *
  * Write the restart key value (0x00001999) to the restart register.
+ *
+ * Return: always 0
  */
 static int zynq_wdt_reload(struct watchdog_device *wdd)
 {
@@ -128,6 +140,8 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
 /**
  * zynq_wdt_start -  Enable and start the watchdog.
  *
+ * @wdd: watchdog device
+ *
  * The counter value is calculated according to the formula:
  *		calculated count = (timeout * clock) / prescaler + 1.
  * The calculated count is divided by 0x1000 to obtain the field value
@@ -138,6 +152,8 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
  * Sets the WDT (WDEN bit) and either the Reset signal(RSTEN bit)
  * or Interrupt signal(IRQEN) with a specified cycles and the access
  * key to write to ZMR Register.
+ *
+ * Return: always 0
  */
 static int zynq_wdt_start(struct watchdog_device *wdd)
 {
@@ -162,7 +178,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* 0x00920000 - Counter register key value. */
-	data = (count | 0x00920000 | (wdt->ctrl_clksel));
+	data = (count | 0x00920000 | wdt->ctrl_clksel);
 	zynq_wdt_writereg(data, ZYNQ_WDT_CCR_OFFSET);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
 			ZYNQ_WDT_ZMR_ZKEY_VAL;
@@ -184,8 +200,9 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 /**
  * zynq_wdt_settimeout -  Set a new timeout value for the watchdog device.
  *
+ * @wdd: watchdog device
  * @new_time: new timeout value that needs to be set.
- * Returns 0 on success.
+ * Return: 0 on success.
  *
  * Update the watchdog_device timeout with new value which is used when
  * zynq_wdt_start is called.
@@ -202,7 +219,7 @@ static int zynq_wdt_settimeout(struct watchdog_device *wdd,
  *
  * @irq: interrupt number
  * @dev_id: pointer to a platform device structure
- * Returns IRQ_HANDLED
+ * Return: IRQ_HANDLED
  *
  * The handler is invoked when the watchdog times out and a
  * reset on timeout has not been enabled.
@@ -238,7 +255,7 @@ static struct watchdog_device zynq_wdt_device = {
  * @this: handle to notifier block.
  * @code: turn off indicator.
  * @unused: unused.
- * Returns NOTIFY_DONE.
+ * Return: NOTIFY_DONE.
  *
  * This notifier is invoked whenever the system reboot or shutdown occur
  * because we need to disable the WDT before system goes down as WDT might
@@ -263,7 +280,7 @@ static struct notifier_block zynq_wdt_notifier = {
  * zynq_wdt_probe -  Probe call for the device.
  *
  * @pdev: handle to the platform device structure.
- * Returns 0 on success, negative error otherwise.
+ * Return: 0 on success, negative error otherwise.
  *
  * It does all the memory allocation and registration for the device.
  */
@@ -379,7 +396,7 @@ err_notifier:
  * zynq_wdt_remove -  Probe call for the device.
  *
  * @pdev: handle to the platform device structure.
- * Returns 0 on success, otherwise negative error.
+ * Return: 0 on success, otherwise negative error.
  *
  * Unregister the device after releasing the resources.
  * Stop is allowed only when nowayout is disabled.
@@ -420,7 +437,7 @@ static void zynq_wdt_shutdown(struct platform_device *pdev)
  * zynq_wdt_suspend -  Stop the device.
  *
  * @dev: handle to the device structure.
- * Returns 0 always.
+ * Return: 0 always.
  */
 static int zynq_wdt_suspend(struct device *dev)
 {
@@ -434,7 +451,7 @@ static int zynq_wdt_suspend(struct device *dev)
  * zynq_wdt_resume -  Resume the device.
  *
  * @dev: handle to the device structure.
- * Returns 0 on success, errno otherwise.
+ * Return: 0 on success, errno otherwise.
  */
 static int zynq_wdt_resume(struct device *dev)
 {
@@ -475,7 +492,7 @@ static struct platform_driver zynq_wdt_driver = {
 /**
  * zynq_wdt_init -  Register the WDT.
  *
- * Returns 0 on success, otherwise negative error.
+ * Return: 0 on success, otherwise negative error.
  *
  * If using noway out, the use count will be incremented.
  * This will prevent unloading the module. An attempt to
