@@ -45,7 +45,7 @@
 void __iomem *zynq_scu_base;
 
 /**
- * zynq_memory_init() - Initialize special memory
+ * zynq_memory_init - Initialize special memory
  *
  * We need to stop things allocating the low memory as DMA can't work in
  * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
@@ -85,7 +85,7 @@ static long __init xilinx_calc_opp_freq(struct clk *clk, long rate)
 }
 
 /**
- * zynq_opp_init() - Register OPPs
+ * zynq_opp_init - Register OPPs
  *
  * Registering frequency/voltage operating points for voltage and frequency
  * scaling. Currently we only support frequency scaling.
