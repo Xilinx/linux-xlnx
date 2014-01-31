@@ -60,7 +60,7 @@ static void __init zynq_memory_init(void)
 	 * 0x8000 - 0x80000 kernel .text
 	 */
 	if (!__pa(PAGE_OFFSET))
-		memblock_reserve(0, 0x4000);
+		memblock_reserve(__pa(PAGE_OFFSET), __pa(swapper_pg_dir));
 }
 
 static struct platform_device zynq_cpuidle_device = {
