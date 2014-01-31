@@ -54,7 +54,7 @@ struct zynq_wdt {
 	void __iomem		*regs;		/* Base address */
 	u32			rst;		/* Reset flag */
 	struct clk		*clk;
-	u32			prescalar;
+	u32			prescaler;
 	u32			ctrl_clksel;
 	spinlock_t		io_lock;
 };
@@ -129,11 +129,11 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
  * zynq_wdt_start -  Enable and start the watchdog.
  *
  * The counter value is calculated according to the formula:
- *		calculated count = (timeout * clock) / prescalar + 1.
+ *		calculated count = (timeout * clock) / prescaler + 1.
  * The calculated count is divided by 0x1000 to obtain the field value
  * to write to counter control register.
- * Clears the contents of prescalar and counter reset value. Sets the
- * prescalar to 4096 and the calculated count and access key
+ * Clears the contents of prescaler and counter reset value. Sets the
+ * prescaler to 4096 and the calculated count and access key
  * to write to CCR Register.
  * Sets the WDT (WDEN bit) and either the Reset signal(RSTEN bit)
  * or Interrupt signal(IRQEN) with a specified cycles and the access
@@ -149,7 +149,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = (wdd->timeout * (clock_f / (wdt->prescalar))) / 0x1000 + 1;
+	count = (wdd->timeout * (clock_f / (wdt->prescaler))) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
@@ -342,13 +342,13 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 
 	clock_f = clk_get_rate(wdt->clk);
 	if (clock_f <= 10000000) {/* For PEEP */
-		wdt->prescalar = 64;
+		wdt->prescaler = 64;
 		wdt->ctrl_clksel = 1;
 	} else if (clock_f <= 75000000) {
-		wdt->prescalar = 256;
+		wdt->prescaler = 256;
 		wdt->ctrl_clksel = 2;
 	} else { /* For Zynq */
-		wdt->prescalar = 4096;
+		wdt->prescaler = 4096;
 		wdt->ctrl_clksel = 3;
 	}
 
