@@ -165,7 +165,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = (wdd->timeout * (clock_f / (wdt->prescaler))) / 0x1000 + 1;
+	count = (wdd->timeout * (clock_f / wdt->prescaler)) / 0x1000 + 1;
 
 	/* Check for boundary conditions of counter value */
 	if (count > 0xFFF)
