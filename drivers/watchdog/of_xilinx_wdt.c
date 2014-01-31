@@ -182,10 +182,9 @@ static int xilinx_wdt_probe(struct platform_device *pdev)
 		no_timeout = true;
 	}
 
-	/* FIXME this is weird */
 	rc = of_property_read_u32(pdev->dev.of_node, "xlnx,wdt-enable-once",
 				  &enable_once);
-	if (rc || enable_once) {
+	if (!rc && enable_once) {
 		dev_warn(&pdev->dev,
 			 "Parameter \"xlnx,wdt-enable-once\" not found\n");
 		watchdog_set_nowayout(xilinx_wdt_wdd, true);
