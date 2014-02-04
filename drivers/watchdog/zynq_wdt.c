@@ -471,7 +471,7 @@ static int zynq_wdt_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(zynq_wdt_pm_ops, zynq_wdt_suspend, zynq_wdt_resume);
 
 static struct of_device_id zynq_wdt_of_match[] = {
-	{ .compatible = "xlnx,ps7-wdt-1.00.a", },
+	{ .compatible = "xlnx,zynq-wdt-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, zynq_wdt_of_match);

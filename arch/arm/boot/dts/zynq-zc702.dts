@@ -403,7 +403,7 @@
 		} ;
 		ps7_wdt_0: ps7-wdt@f8005000 {
 			clocks = <&clkc 45>;
-			compatible = "xlnx,ps7-wdt-1.00.a";
+			compatible = "xlnx,ps7-wdt-1.00.a", "xlnx,zynq-wdt-1.00.a";
 			device_type = "watchdog";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 9 1>;
