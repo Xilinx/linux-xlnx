@@ -401,43 +401,18 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		netdev_err(ndev, "TX register is still full!\n");
 		return NETDEV_TX_BUSY;
 	} else if (priv->waiting_ech_skb_num == priv->xcan_echo_skb_max_tx) {
+		netif_stop_queue(ndev);
 		netdev_err(ndev, "waiting:0x%08x, max:0x%08x\n",
 			priv->waiting_ech_skb_num, priv->xcan_echo_skb_max_tx);
-		/* Theoretically, if TX interrupts get lost, we might end here
-		 * without ever recovering.Check if TX FIFO is empty recover
-		 * in this case
-		 */
-		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXFEMP_MASK);
-		netdev_err(ndev, "Trying to recover...\n");
-		if (priv->read_reg(priv, XCAN_ISR_OFFSET) &
-				XCAN_IXR_TXFEMP_MASK) {
-			spin_lock_irqsave(&priv->ech_skb_lock, flags);
-			while (priv->waiting_ech_skb_num > 0) {
-				spin_unlock_irqrestore(&priv->ech_skb_lock,
-				flags);
-				can_get_echo_skb(ndev,
-				priv->waiting_ech_skb_index);
-				priv->waiting_ech_skb_index =
-					(priv->waiting_ech_skb_index + 1) %
-					priv->xcan_echo_skb_max_tx;
-				spin_lock_irqsave(&priv->ech_skb_lock, flags);
-				priv->waiting_ech_skb_num--;
-			}
-			spin_unlock_irqrestore(&priv->ech_skb_lock, flags);
-			netdev_err(ndev, "...recovered!\n");
-		} else {
-			netdev_err(ndev, "...could not recover (yet)!\n");
-		}
 		return NETDEV_TX_BUSY;
 	}
-
 	/* Watch carefully on the bit sequence */
 	if ((cf->can_id & CAN_EFF_FLAG) == 0) {
 		/* Standard CAN ID format */
 		id = ((cf->can_id & CAN_SFF_MASK) << XCAN_IDR_ID1_SHIFT) &
 			XCAN_IDR_ID1_MASK;
 
-		if ((cf->can_id & CAN_RTR_FLAG) != 0)
+		if (cf->can_id & CAN_RTR_FLAG)
 			/* Extended frames remote TX request */
 			id |= XCAN_IDR_SRR_MASK;
 	} else {
@@ -467,8 +442,6 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		data2 = htonl(tmp_dw2);
 	}
 
-	netdev_dbg(ndev, "can:id=0x%08x,dlc=0x%08x,d1=0x%08x,d2=0x%08x\n",
-			cf->can_id, cf->can_dlc, tmp_dw1, tmp_dw2);
 	netdev_dbg(ndev, "tx:id=0x%08x,dlc=0x%08x,d1=0x%08x,d2=0x%08x\n",
 			id, dlc, data1, data2);
 
@@ -477,7 +450,7 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	priv->write_reg(priv, XCAN_TXFIFO_DLC_OFFSET, dlc);
 	priv->write_reg(priv, XCAN_TXFIFO_DW1_OFFSET, data1);
 	priv->write_reg(priv, XCAN_TXFIFO_DW2_OFFSET, data2);
-	stats->tx_bytes += (dlc & 0xf);
+	stats->tx_bytes += cf->can_dlc;
 	ndev->trans_start = jiffies;
 
 	can_put_echo_skb(skb, ndev, priv->ech_skb_next);
@@ -737,22 +710,25 @@ static void xcan_tx_interrupt(struct net_device *ndev)
 	unsigned long flags;
 	struct xcan_priv *priv = netdev_priv(ndev);
 	struct net_device_stats *stats = &ndev->stats;
+	u32 processed = 0, txpackets;
 
 	stats->tx_packets++;
 	netdev_dbg(ndev, "%s: waiting total:%d,current:%d\n", __func__,
 			priv->waiting_ech_skb_num, priv->waiting_ech_skb_index);
 
-	spin_lock_irqsave(&priv->ech_skb_lock, flags);
+	txpackets = priv->waiting_ech_skb_num;
 
-	if (priv->waiting_ech_skb_num != 0) {
-		spin_unlock_irqrestore(&priv->ech_skb_lock, flags);
+	if (txpackets) {
 		can_get_echo_skb(ndev, priv->waiting_ech_skb_index);
 		priv->waiting_ech_skb_index =
 			(priv->waiting_ech_skb_index + 1) %
 			priv->xcan_echo_skb_max_tx;
-		spin_lock_irqsave(&priv->ech_skb_lock, flags);
-		priv->waiting_ech_skb_num--;
+		processed++;
+		txpackets--;
 	}
+
+	spin_lock_irqsave(&priv->ech_skb_lock, flags);
+	priv->waiting_ech_skb_num -= processed;
 	spin_unlock_irqrestore(&priv->ech_skb_lock, flags);
 
 	netdev_dbg(ndev, "%s: waiting total:%d,current:%d\n", __func__,
