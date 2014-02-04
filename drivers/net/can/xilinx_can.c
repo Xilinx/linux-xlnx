@@ -810,6 +810,26 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 }
 
 /**
+ * xcan_stop - Driver stop routine
+ * @ndev:	Pointer to net_device structure
+ *
+ * This is the drivers stop routine. It will disable the
+ * interrupts and put the device into configuration mode.
+ */
+static void xcan_stop(struct net_device *ndev)
+{
+	struct xcan_priv *priv = netdev_priv(ndev);
+	u32 ier;
+
+	/* Disable interrupts and leave the can in configuration mode */
+	ier = priv->read_reg(priv, XCAN_IER_OFFSET);
+	ier &= ~XCAN_INTR_ALL;
+	priv->write_reg(priv, XCAN_IER_OFFSET, ier);
+	priv->write_reg(priv, XCAN_SRR_OFFSET, XCAN_SRR_RESET_MASK);
+	priv->can.state = CAN_STATE_STOPPED;
+}
+
+/**
  * xcan_open - Driver open routine
  * @ndev:	Pointer to net_device structure
  *
@@ -835,7 +855,6 @@ static int xcan_open(struct net_device *ndev)
 	if (err < 0)
 		netdev_err(ndev, "xcan_start failed!\n");
 
-	priv->open_time = jiffies;
 
 	can_led_event(ndev, CAN_LED_EVENT_OPEN);
 	napi_enable(&priv->napi);
@@ -845,10 +864,10 @@ static int xcan_open(struct net_device *ndev)
 }
 
 /**
- * xcan_close - Driver stop routine
+ * xcan_close - Driver close routine
  * @ndev:	Pointer to net_device structure
  *
- * Return: 0 on success
+ * Return: 0 always
  */
 static int xcan_close(struct net_device *ndev)
 {
@@ -856,11 +875,8 @@ static int xcan_close(struct net_device *ndev)
 
 	netif_stop_queue(ndev);
 	napi_disable(&priv->napi);
-		netdev_err(ndev, "mode resetting failed failed!\n");
-
+	xcan_stop(ndev);
 	close_candev(ndev);
-
-	priv->open_time = 0;
 
 	can_led_event(ndev, CAN_LED_EVENT_STOP);
 
