@@ -140,7 +140,7 @@
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;
-			compatible = "xlnx,ps7-gpio-1.00.a";
+			compatible = "xlnx,ps7-gpio-1.00.a", "xlnx,zynq-gpio-1.00.a";
 			emio-gpio-width = <64>;
 			gpio-controller ;
 			gpio-mask-high = <0x0>;
