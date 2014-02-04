@@ -535,7 +535,7 @@ static int xcan_rx(struct net_device *ndev)
 /**
  * xcan_err_interrupt - error frame Isr
  * @ndev:	net_device pointer
- * @isr:	Interrupts status register value
+ * @isr:	interrupt status register value
  *
  * This is the CAN error interrupt and it will
  * check the the type of error and forward the error
@@ -548,30 +548,34 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 	struct can_frame *cf;
 	struct sk_buff *skb;
 	u32 err_status, status;
-	u8 i;
 
 	skb = alloc_can_err_skb(ndev, &cf);
-	if (!skb)
+	if (!skb) {
+		netdev_err(ndev, "alloc_can_err_skb() failed!\n");
 		return;
+	}
 
 	err_status = priv->read_reg(priv, XCAN_ESR_OFFSET);
+	priv->write_reg(priv, XCAN_ESR_OFFSET, err_status);
 	status = priv->read_reg(priv, XCAN_SR_OFFSET);
 
-	cf->can_id = CAN_ERR_FLAG;
-	memset(cf->data, 0, sizeof(cf->data));
-
 	if (isr & XCAN_IXR_BSOFF_MASK) {
-		cf->can_id |= CAN_ERR_BUSOFF;
 		priv->can.state = CAN_STATE_BUS_OFF;
+		cf->can_id |= CAN_ERR_BUSOFF;
+		priv->can.can_stats.bus_off++;
+		/* Leave device in Config Mode in bus-off state */
+		priv->write_reg(priv, XCAN_SRR_OFFSET, XCAN_SRR_RESET_MASK);
 		can_bus_off(ndev);
 	} else if ((status & XCAN_SR_ESTAT_MASK) == XCAN_SR_ESTAT_MASK) {
 		cf->can_id |= CAN_ERR_CRTL;
 		priv->can.state = CAN_STATE_ERROR_PASSIVE;
+		priv->can.can_stats.error_passive++;
 		cf->data[1] |= CAN_ERR_CRTL_RX_PASSIVE |
 					CAN_ERR_CRTL_TX_PASSIVE;
 	} else if (status & XCAN_SR_ERRWRN_MASK) {
 		cf->can_id |= CAN_ERR_CRTL;
 		priv->can.state = CAN_STATE_ERROR_WARNING;
+		priv->can.can_stats.error_warning++;
 		cf->data[1] |= CAN_ERR_CRTL_RX_WARNING |
 					CAN_ERR_CRTL_TX_WARNING;
 	}
@@ -580,56 +584,65 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 	if (isr & XCAN_IXR_ARBLST_MASK) {
 		cf->can_id |= CAN_ERR_LOSTARB;
 		cf->data[0] = CAN_ERR_LOSTARB_UNSPEC;
+		priv->can.can_stats.arbitration_lost++;
 	}
 
 	/* Check for RX FIFO Overflow interrupt */
 	if (isr & XCAN_IXR_RXOFLW_MASK) {
 		cf->can_id |= CAN_ERR_CRTL;
 		cf->data[1] |= CAN_ERR_CRTL_RX_OVERFLOW;
+		stats->rx_over_errors++;
+		stats->rx_errors++;
+		priv->write_reg(priv, XCAN_SRR_OFFSET, XCAN_SRR_RESET_MASK);
 	}
 
 	/* Check for error interrupt */
-	if (isr & XCAN_IXR_ERROR_MASK)
-		cf->can_id |= CAN_ERR_PROT;
+	if (isr & XCAN_IXR_ERROR_MASK) {
+		cf->can_id |= CAN_ERR_PROT | CAN_ERR_BUSERROR;
+		cf->data[2] |= CAN_ERR_PROT_UNSPEC;
 
-	/* Check for Ack error interrupt */
-	if (err_status & XCAN_ESR_ACKER_MASK)
-		cf->can_id |= CAN_ERR_ACK;
+		/* Check for Ack error interrupt */
+		if (err_status & XCAN_ESR_ACKER_MASK) {
+			cf->can_id |= CAN_ERR_ACK;
+			cf->data[3] |= CAN_ERR_PROT_LOC_ACK;
+			stats->tx_errors++;
+		}
 
-	/* Check for Bit error interrupt */
-	if (err_status & XCAN_ESR_BERR_MASK) {
-		cf->can_id |= CAN_ERR_PROT;
-		cf->data[2] = CAN_ERR_PROT_BIT;
+		/* Check for Bit error interrupt */
+		if (err_status & XCAN_ESR_BERR_MASK) {
+			cf->can_id |= CAN_ERR_PROT;
+			cf->data[2] = CAN_ERR_PROT_BIT;
+			stats->tx_errors++;
+		}
+
+		/* Check for Stuff error interrupt */
+		if (err_status & XCAN_ESR_STER_MASK) {
+			cf->can_id |= CAN_ERR_PROT;
+			cf->data[2] = CAN_ERR_PROT_STUFF;
+			stats->rx_errors++;
+		}
+
+		/* Check for Form error interrupt */
+		if (err_status & XCAN_ESR_FMER_MASK) {
+			cf->can_id |= CAN_ERR_PROT;
+			cf->data[2] = CAN_ERR_PROT_FORM;
+			stats->rx_errors++;
+		}
+
+		/* Check for CRC error interrupt */
+		if (err_status & XCAN_ESR_CRCER_MASK) {
+			cf->can_id |= CAN_ERR_PROT;
+			cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ |
+					CAN_ERR_PROT_LOC_CRC_DEL;
+			stats->rx_errors++;
+		}
+			priv->can.can_stats.bus_error++;
 	}
 
-	/* Check for Stuff error interrupt */
-	if (err_status & XCAN_ESR_STER_MASK) {
-		cf->can_id |= CAN_ERR_PROT;
-		cf->data[2] = CAN_ERR_PROT_STUFF;
-	}
-
-	/* Check for Form error interrupt */
-	if (err_status & XCAN_ESR_FMER_MASK) {
-		cf->can_id |= CAN_ERR_PROT;
-		cf->data[2] = CAN_ERR_PROT_FORM;
-	}
-
-	/* Check for CRC error interrupt */
-	if (err_status & XCAN_ESR_CRCER_MASK) {
-		cf->can_id |= CAN_ERR_PROT;
-		cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ |
-				CAN_ERR_PROT_LOC_CRC_DEL;
-	}
-
-	for (i = 0; i < XCAN_FRAME_MAX_DATA_LEN; )
-		if (cf->data[i++] != 0)
-			cf->can_dlc = i;
 	netif_rx(skb);
-
 	stats->rx_packets++;
 	stats->rx_bytes += cf->can_dlc;
 
-	priv->write_reg(priv, XCAN_ESR_OFFSET, err_status);
 	netdev_dbg(ndev, "%s: error status register:0x%x\n",
 			__func__, priv->read_reg(priv, XCAN_ESR_OFFSET));
 }
