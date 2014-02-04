@@ -206,7 +206,8 @@
 			xlnx,sram-chip-sel0 = <0x0>;
 			xlnx,sram-chip-sel1 = <0x0>;
 			ps7_nand_0: ps7-nand@e1000000 {
-				compatible = "xlnx,ps7-nand-1.00.a";
+				compatible = "xlnx,ps7-nand-1.00.a", "xlnx,zynq-nand-1.00.a";
+				nand-bus-width = <16>;
 				reg = <0xe1000000 0x1000000>;
 				xlnx,nand-cycle-t0 = <0x4>;
 				xlnx,nand-cycle-t1 = <0x4>;

@@ -12,7 +12,7 @@ Required properties:
  ranges
 
 Child nodes:
- For NAND the "xlnx,ps7-nand" and for NOR the "cfi-flash" drivers are supported
+ For NAND the "xlnx,zynq-nand-1.00.a" and for NOR the "cfi-flash" drivers are supported
  as child nodes.
 
 Example:
@@ -23,8 +23,8 @@ Example:
 		#size-cells = <1>;
 		ranges;
 
-		ps7_nand_0: ps7-nand@e1000000 {
-			compatible = "xlnx,ps7-nand-1.00.a";
+		zynq_nand_0: zynq-nand@e1000000 {
+			compatible = "xlnx,zynq-nand-1.00.a";
 			(...)
 		};
 	};

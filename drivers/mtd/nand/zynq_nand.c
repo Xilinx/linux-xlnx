@@ -1032,7 +1032,7 @@ static int zynq_nand_remove(struct platform_device *pdev)
 
 /* Match table for device tree binding */
 static const struct of_device_id zynq_nand_of_match[] = {
-	{ .compatible = "xlnx,ps7-nand-1.00.a" },
+	{ .compatible = "xlnx,zynq-nand-1.00.a" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, zynq_nand_of_match);
