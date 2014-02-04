@@ -481,19 +481,19 @@ static int xcan_rx(struct net_device *ndev)
 	struct net_device_stats *stats = &ndev->stats;
 	struct can_frame *cf;
 	struct sk_buff *skb;
-	u32 id_xcan, dlc, tmp_dw1, tmp_dw2, data1, data2 = 0;
+	u32 id_xcan, dlc, data1, data2;
 
 	skb = alloc_can_skb(ndev, &cf);
 	if (!skb)
-		return;
+		return -ENOMEM;
 
 	/* Read a frame from Xilinx zynq CANPS */
 	id_xcan = priv->read_reg(priv, XCAN_RXFIFO_ID_OFFSET);
 	dlc = priv->read_reg(priv, XCAN_RXFIFO_DLC_OFFSET) & XCAN_DLCR_DLC_MASK;
-	tmp_dw1 = priv->read_reg(priv, XCAN_RXFIFO_DW1_OFFSET);
-	tmp_dw2 = priv->read_reg(priv, XCAN_RXFIFO_DW2_OFFSET);
+	data1 = priv->read_reg(priv, XCAN_RXFIFO_DW1_OFFSET);
+	data2 = priv->read_reg(priv, XCAN_RXFIFO_DW2_OFFSET);
 	netdev_dbg(ndev, "rx:id=0x%08x,dlc=0x%08x,d1=0x%08x,d2=0x%08x\n",
-		id_xcan, dlc, tmp_dw1, tmp_dw2);
+		id_xcan, dlc, data1, data2);
 
 	/* Change Xilinx CAN data length format to socketCAN data format */
 	cf->can_dlc = get_can_dlc((dlc & XCAN_DLCR_DLC_MASK) >>
@@ -517,14 +517,11 @@ static int xcan_rx(struct net_device *ndev)
 	}
 
 	/* Change Xilinx CAN data format to socketCAN data format */
-	data1 = cpu_to_le32((u32 *)tmp_dw1);
 	*(u32 *)(cf->data) = ntohl(data1);
-	if (cf->can_dlc > 4) {
-		data2 = cpu_to_le32((u32 *)tmp_dw2);
-		*(u32 *)(cf->data+4) = ntohl(data2);
-	} else {
-		*(u32 *)(cf->data+4) = 0;
-	}
+	if (cf->can_dlc > 4)
+		*(u32 *)(cf->data + 4) = ntohl(data2);
+	else
+		*(u32 *)(cf->data + 4) = 0;
 	stats->rx_bytes += cf->can_dlc;
 
 	can_led_event(ndev, CAN_LED_EVENT_RX);
