@@ -422,4 +422,3 @@ static void __init ttc_timer_init(struct device_node *timer)
 }
 
 CLOCKSOURCE_OF_DECLARE(ttc, "cdns,ttc", ttc_timer_init);
-CLOCKSOURCE_OF_DECLARE(ttc1, "xlnx,ps7-ttc-1.00.a", ttc_timer_init);
