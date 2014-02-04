@@ -299,7 +299,7 @@
 		ps7_spi_0: ps7-spi@e0006000 {
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 25>, <&clkc 34>;
-			compatible = "xlnx,ps7-spi-1.00.a";
+			compatible = "xlnx,ps7-spi-1.00.a", "xlnx,zynq-spi-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 26 4>;
 			num-chip-select = <4>;

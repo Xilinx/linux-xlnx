@@ -897,7 +897,7 @@ static SIMPLE_DEV_PM_OPS(zynq_spi_dev_pm_ops, zynq_spi_suspend,
 MODULE_ALIAS("platform:" ZYNQ_SPI_NAME);
 
 static struct of_device_id zynq_spi_of_match[] = {
-	{ .compatible = "xlnx,ps7-spi-1.00.a", },
+	{ .compatible = "xlnx,zynq-spi-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, zynq_spi_of_match);
