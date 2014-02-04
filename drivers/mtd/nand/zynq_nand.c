@@ -869,7 +869,7 @@ static int zynq_nand_probe(struct platform_device *pdev)
 	nand_chip->priv = xnand;
 	mtd->priv = nand_chip;
 	mtd->owner = THIS_MODULE;
-	mtd->name = "xilinx_nand";
+	mtd->name = ZYNQ_NAND_DRIVER_NAME;
 
 	/* Set address of NAND IO lines */
 	nand_chip->IO_ADDR_R = xnand->nand_base;
