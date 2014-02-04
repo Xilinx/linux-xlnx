@@ -171,7 +171,7 @@
 		ps7_qspi_0: ps7-qspi@e000d000 {
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 10>, <&clkc 43>;
-			compatible = "xlnx,ps7-qspi-1.00.a";
+			compatible = "xlnx,ps7-qspi-1.00.a", "xlnx,ps7-qspi-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 19 4>;
 			is-dual = <0>;
