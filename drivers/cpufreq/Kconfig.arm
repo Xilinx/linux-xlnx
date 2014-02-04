@@ -232,12 +232,3 @@ config ARM_VEXPRESS_SPC_CPUFREQ
         help
           This add the CPUfreq driver support for Versatile Express
 	  big.LITTLE platforms using SPC for power management.
-
-config ARM_ZYNQ_CPUFREQ
-	bool "Xilinx Zynq"
-	depends on ARCH_ZYNQ
-	default n
-	select CPU_FREQ_TABLE
-	select PM_OPP
-	help
-	  This adds the CPUFreq driver for Xilinx Zynq SoCs.

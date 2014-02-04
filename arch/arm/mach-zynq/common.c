@@ -16,12 +16,9 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/cpu.h>
-#include <linux/cpumask.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/clk/zynq.h>
-#include <linux/pm_opp.h>
 #include <linux/clocksource.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -66,69 +63,6 @@ static void __init zynq_memory_init(void)
 static struct platform_device zynq_cpuidle_device = {
 	.name = "cpuidle-zynq",
 };
-
-#ifdef CONFIG_CPU_FREQ
-#define CPUFREQ_MIN_FREQ_HZ	200000000
-static unsigned int freq_divs[] __initdata = {
-	2, 3
-};
-
-static long __init xilinx_calc_opp_freq(struct clk *clk, long rate)
-{
-	long rate_nearest = clk_round_rate_nearest(clk, rate);
-	long rate_round = clk_round_rate(clk, rate_nearest / 1000 * 1000);
-
-	if (rate_round != rate_nearest)
-		rate_nearest += 1000;
-
-	return rate_nearest;
-}
-
-/**
- * zynq_opp_init - Register OPPs
- *
- * Registering frequency/voltage operating points for voltage and frequency
- * scaling. Currently we only support frequency scaling.
- */
-static int __init zynq_opp_init(void)
-{
-	long freq;
-	unsigned int i;
-	struct device *dev = get_cpu_device(0);
-	int ret = 0;
-	struct clk *cpuclk = clk_get(NULL, "cpufreq_clk");
-
-	if (!dev) {
-		pr_warn("%s: no cpu device. DVFS not available.", __func__);
-		return -ENODEV;
-	}
-
-	if (IS_ERR(cpuclk)) {
-		pr_warn("%s: CPU clock not found. DVFS not available.",
-				__func__);
-		return PTR_ERR(cpuclk);
-	}
-
-	/* frequency/voltage operating points. For now use f only */
-	freq = clk_get_rate(cpuclk);
-	ret |= dev_pm_opp_add(dev, xilinx_calc_opp_freq(cpuclk, freq), 0);
-	for (i = 0; i < ARRAY_SIZE(freq_divs); i++) {
-		long tmp = xilinx_calc_opp_freq(cpuclk, freq / freq_divs[i]);
-		if (tmp >= CPUFREQ_MIN_FREQ_HZ)
-			ret |= dev_pm_opp_add(dev, tmp, 0);
-	}
-	freq = xilinx_calc_opp_freq(cpuclk, CPUFREQ_MIN_FREQ_HZ);
-	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(dev_pm_opp_find_freq_exact(
-							dev, freq, 1)))
-		ret |= dev_pm_opp_add(dev, freq, 0);
-
-	if (ret)
-		pr_warn("%s: Error adding OPPs.", __func__);
-
-	return ret;
-}
-device_initcall(zynq_opp_init);
-#endif
 
 #ifdef CONFIG_CACHE_L2X0
 static int __init zynq_l2c_init(void)
