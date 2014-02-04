@@ -1145,6 +1145,6 @@ static struct platform_driver xcan_driver = {
 
 module_platform_driver(xcan_driver);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Xilinx Inc");
 MODULE_DESCRIPTION("Xilinx CAN interface");
