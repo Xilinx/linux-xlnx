@@ -95,7 +95,7 @@
 			reg = <0xe0008000 0x1000>;
 		} ;
 		ps7_ddrc_0: ps7-ddrc@f8006000 {
-			compatible = "xlnx,ps7-ddrc-1.00.a", "xlnx,ps7-ddrc";
+			compatible = "xlnx,ps7-ddrc-1.00.a", "xlnx,ps7-ddrc", "xlnx,zynq-ddrc-1.00.a";
 			reg = <0xf8006000 0x1000>;
 			xlnx,has-ecc = <0x0>;
 		} ;

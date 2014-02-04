@@ -263,7 +263,7 @@ static void __iomem *zynq_pm_remap_ocm(void)
 
 int __init zynq_pm_late_init(void)
 {
-	ddrc_base = zynq_pm_ioremap("xlnx,ps7-ddrc");
+	ddrc_base = zynq_pm_ioremap("xlnx,zynq-ddrc-1.00.a");
 	if (!ddrc_base)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 

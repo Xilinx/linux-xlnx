@@ -245,7 +245,7 @@ static void zynq_edac_generate_message(const struct mem_ctl_info *mci,
  * @mci:	Pointer to the edac memory controller instance
  * @perrstatus:	Pointer to the zynq ecc status structure
  *
- * This routine handles an xilinx,ps7-ddrc controller ECC correctable error.
+ * This routine handles the controller ECC correctable error.
  */
 static void zynq_edac_handle_error(struct mem_ctl_info *mci,
 			struct zynq_ecc_status *perrstatus)
@@ -332,8 +332,7 @@ static enum dev_type zynq_edac_get_dtype(void __iomem *base)
  * zynq_edac_get_eccstate - Return the controller ecc enable/disable status
  * @base:	Pointer to the ddr memory contoller base address
  *
- * This routine returns the ECC enable/diable status for the xlnx,ps7-ddrc
- * controller
+ * This routine returns the ECC enable/diable status for the controller
  *
  * Return: a ecc status boolean i.e true/false - enabled/disabled.
  */
@@ -445,7 +444,7 @@ static int zynq_edac_init_csrows(struct mem_ctl_info *mci)
  *
  * This routine performs initialization of the EDAC memory controller
  * instance and related driver-private data associated with the
- * xlnx,ps7-ddrc memory controller the instance is bound to.
+ * memory controller the instance is bound to.
  *
  * Return: 0 if OK; otherwise, < 0 on error.
  */
@@ -494,7 +493,7 @@ static int zynq_edac_mc_init(struct mem_ctl_info *mci,
  * zynq_edac_mc_probe - Check controller and bind driver
  * @pdev:	Pointer to the platform_device struct
  *
- * This routine probes a specific xilinx,ps7-ddrc controller
+ * This routine probes a specific controller
  * instance for binding with the driver.
  *
  * Return: 0 if the controller instance was successfully bound to the
@@ -573,7 +572,7 @@ free_edac_mc:
  * @pdev:	Pointer to the platform_device struct
  *
  * This routine unbinds the EDAC memory controller instance associated
- * with the specified xilinx,ps7-ddrc controller described by the
+ * with the specified controller described by the
  * OpenFirmware device tree node passed as a parameter.
  *
  * Return: Unconditionally 0
