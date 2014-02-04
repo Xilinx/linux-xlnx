@@ -282,7 +282,7 @@ static SIMPLE_DEV_PM_OPS(zynq_pm_ops, zynq_dr_of_suspend,
 		zynq_dr_of_resume);
 
 static const struct of_device_id zynq_dr_of_match[] = {
-	{ .compatible = "xlnx,ps7-usb-1.00.a" },
+	{ .compatible = "xlnx,zynq-usb-1.00.a" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, zynq_dr_of_match);

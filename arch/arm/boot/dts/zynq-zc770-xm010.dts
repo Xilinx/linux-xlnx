@@ -349,7 +349,7 @@
 		} ;
 		ps7_usb_0: ps7-usb@e0002000 {
 			clocks = <&clkc 28>;
-			compatible = "xlnx,ps7-usb-1.00.a";
+			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
 			dr_mode = "host";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 21 4>;
