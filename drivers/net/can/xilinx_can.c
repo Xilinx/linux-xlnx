@@ -102,6 +102,7 @@
 #define XCAN_IDR_ID1_SHIFT		21 /* Standard Messg Identifier */
 #define XCAN_IDR_ID2_SHIFT		1  /* Extended Message Identifier */
 #define XCAN_DLCR_DLC_SHIFT		28 /* Data length code */
+#define XCAN_ESR_REC_SHIFT		8  /* Rx Error Count */
 
 /* CAN frame length constants */
 #define XCAN_ECHO_SKB_MAX		64
@@ -886,17 +887,16 @@ static int xcan_close(struct net_device *ndev)
  * @bec:	Pointer to can_berr_counter structure
  *
  * This is the driver error counter routine.
- * Return: 0 on success
+ * Return: 0 always
  */
 static int xcan_get_berr_counter(const struct net_device *ndev,
 					struct can_berr_counter *bec)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
 
-	bec->txerr = priv->read_reg(priv, XCAN_ECR_OFFSET) & XCAN_ECR_REC_MASK;
-	bec->rxerr = priv->read_reg(priv, XCAN_ECR_OFFSET) & XCAN_ECR_TEC_MASK;
-	netdev_dbg(ndev, "Bus Tx err count=0x%08x,Bus Rx err count=0x%08x\n",
-			bec->txerr, bec->rxerr);
+	bec->txerr = priv->read_reg(priv, XCAN_ECR_OFFSET) & XCAN_ECR_TEC_MASK;
+	bec->rxerr = ((priv->read_reg(priv, XCAN_ECR_OFFSET) &
+			XCAN_ECR_REC_MASK) >> XCAN_ESR_REC_SHIFT);
 	return 0;
 }
 
