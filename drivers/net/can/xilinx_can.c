@@ -115,7 +115,8 @@
  * @waiting_ech_skb_index:	Pointer for skb
  * @ech_skb_next:		This tell the next packet in the queue
  * @waiting_ech_skb_num:	Gives the number of packets waiting
- * @xcan_echo_skb_max:		Maximum number packets the driver CAN send
+ * @xcan_echo_skb_max_tx:	Maximum number packets the driver can send
+ * @xcan_echo_skb_max_rx:	Maximum number packets the driver can receive
  * @ech_skb_lock:		For spinlock purpose
  * @read_reg:			For reading data from CAN registers
  * @write_reg:			For writing data to CAN registers
@@ -131,7 +132,8 @@ struct xcan_priv {
 	int waiting_ech_skb_index;
 	int ech_skb_next;
 	int waiting_ech_skb_num;
-	int xcan_echo_skb_max;
+	int xcan_echo_skb_max_tx;
+	int xcan_echo_skb_max_rx;
 	spinlock_t ech_skb_lock;
 	u32 (*read_reg)(const struct xcan_priv *priv, int reg);
 	void (*write_reg)(const struct xcan_priv *priv, int reg, u32 val);
@@ -394,9 +396,9 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		netif_stop_queue(ndev);
 		netdev_err(ndev, "TX register is still full!\n");
 		return NETDEV_TX_BUSY;
-	} else if (priv->waiting_ech_skb_num == priv->xcan_echo_skb_max) {
+	} else if (priv->waiting_ech_skb_num == priv->xcan_echo_skb_max_tx) {
 		netdev_err(ndev, "waiting:0x%08x, max:0x%08x\n",
-			priv->waiting_ech_skb_num, priv->xcan_echo_skb_max);
+			priv->waiting_ech_skb_num, priv->xcan_echo_skb_max_tx);
 		/* Theoretically, if TX interrupts get lost, we might end here
 		 * without ever recovering.Check if TX FIFO is empty recover
 		 * in this case
@@ -413,7 +415,7 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 				priv->waiting_ech_skb_index);
 				priv->waiting_ech_skb_index =
 					(priv->waiting_ech_skb_index + 1) %
-					priv->xcan_echo_skb_max;
+					priv->xcan_echo_skb_max_tx;
 				spin_lock_irqsave(&priv->ech_skb_lock, flags);
 				priv->waiting_ech_skb_num--;
 			}
@@ -476,7 +478,8 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	can_put_echo_skb(skb, ndev, priv->ech_skb_next);
 
-	priv->ech_skb_next = (priv->ech_skb_next + 1) % priv->xcan_echo_skb_max;
+	priv->ech_skb_next = (priv->ech_skb_next + 1) %
+					priv->xcan_echo_skb_max_tx;
 
 	spin_lock_irqsave(&priv->ech_skb_lock, flags);
 	priv->waiting_ech_skb_num++;
@@ -718,7 +721,7 @@ static void xcan_tx_interrupt(struct net_device *ndev)
 		can_get_echo_skb(ndev, priv->waiting_ech_skb_index);
 		priv->waiting_ech_skb_index =
 			(priv->waiting_ech_skb_index + 1) %
-			priv->xcan_echo_skb_max;
+			priv->xcan_echo_skb_max_tx;
 		spin_lock_irqsave(&priv->ech_skb_lock, flags);
 		priv->waiting_ech_skb_num--;
 	}
@@ -945,7 +948,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	struct net_device *ndev;
 	struct xcan_priv *priv;
-	int ret, irq;
+	int ret, irq, fifodep = 0;
 
 	/* Create a CAN device instance */
 	ndev = alloc_candev(sizeof(struct xcan_priv), XCAN_ECHO_SKB_MAX);
@@ -962,7 +965,7 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->waiting_ech_skb_index = 0;
 	priv->ech_skb_next = 0;
 	priv->waiting_ech_skb_num = 0;
-	priv->xcan_echo_skb_max = XCAN_ECHO_SKB_MAX;
+	priv->xcan_echo_skb_max_tx = XCAN_ECHO_SKB_MAX;
 
 	/* Get IRQ for the device */
 	ndev->irq = platform_get_irq(pdev, 0);
@@ -1013,6 +1016,16 @@ static int xcan_probe(struct platform_device *pdev)
 		}
 	} else {
 		priv->aperclk = priv->devclk;
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"xlnx,can-tx-dpth", &fifodep);
+		if (ret < 0)
+			goto err_free;
+		priv->xcan_echo_skb_max_tx = fifodep;
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"xlnx,can-rx-dpth", &fifodep);
+		if (ret < 0)
+			goto err_free;
+		priv->xcan_echo_skb_max_rx = fifodep;
 	}
 
 	ret = clk_prepare_enable(priv->devclk);
@@ -1038,7 +1051,7 @@ static int xcan_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev,
 			"reg_base=0x%p irq=%d clock=%d, tx fifo depth:%d\n",
 			priv->reg_base, ndev->irq, priv->can.clock.freq,
-			priv->xcan_echo_skb_max);
+			priv->xcan_echo_skb_max_tx);
 
 	return 0;
 
