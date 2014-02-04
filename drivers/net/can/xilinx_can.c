@@ -1052,7 +1052,8 @@ static int xcan_probe(struct platform_device *pdev)
 	}
 
 	/* Check for type of CAN device */
-	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,ps7-can-1.00.a")) {
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "xlnx,zynq-can-1.00.a")) {
 		priv->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
 		if (IS_ERR(priv->aperclk)) {
 			dev_err(&pdev->dev, "aper clock not found\n");
@@ -1139,7 +1140,7 @@ static int xcan_remove(struct platform_device *pdev)
 
 /* Match table for OF platform binding */
 static struct of_device_id xcan_of_match[] = {
-	{ .compatible = "xlnx,ps7-can-1.00.a", },
+	{ .compatible = "xlnx,zynq-can-1.00.a", },
 	{ .compatible = "xlnx,axi-can-1.00.a", },
 	{ /* end of list */ },
 };

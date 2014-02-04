@@ -90,7 +90,7 @@
 		ps7_can_1: ps7-can@e0009000 {
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 20>, <&clkc 37>;
-			compatible = "xlnx,ps7-can-1.00.a", "xlnx,ps7-can";
+			compatible = "xlnx,ps7-can-1.00.a", "xlnx,zynq-can-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 51 4>;
 			reg = <0xe0009000 0x1000>;
