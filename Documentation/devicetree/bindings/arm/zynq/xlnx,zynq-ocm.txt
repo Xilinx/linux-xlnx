@@ -9,9 +9,9 @@ Required properties:
       E.g.: reg = <0xf800c000 0x1000>;
 
 Example:
-ps7_ram_0: ps7-ram@f800c000 {
+ocmc: ocmc@f800c000 {
 	compatible = "xlnx,zynq-ocm-1.0";
-	reg = <0xf800c000 0x1000>;
-	interrupt-parent = <&ps7_scugic_0>;
+	interrupt-parent = <&intc>;
 	interrupts = <0 3 4>;
+	reg = <0xf800c000 0x1000>;
 } ;
