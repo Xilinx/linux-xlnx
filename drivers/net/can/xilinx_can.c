@@ -60,6 +60,7 @@
 
 /* CAN register bit masks - XCAN_<REG>_<BIT>_MASK */
 #define XCAN_SRR_CEN_MASK		0x00000002 /* CAN enable */
+#define XCAN_SRR_RESET_MASK		0x00000001 /* Soft Reset the CAN core */
 #define XCAN_MSR_LBACK_MASK		0x00000002 /* Loop back mode select */
 #define XCAN_MSR_SLEEP_MASK		0x00000001 /* Sleep mode select */
 #define XCAN_BRPR_BRP_MASK		0x000000FF /* Baud rate prescaler */
@@ -95,6 +96,11 @@
 #define XCAN_IDR_ID2_MASK		0x0007FFFE /* Extended message ident */
 #define XCAN_IDR_RTR_MASK		0x00000001 /* Remote TX request */
 #define XCAN_DLCR_DLC_MASK		0xF0000000 /* Data length code */
+
+#define XCAN_INTR_ALL		(XCAN_IXR_TXOK_MASK | XCAN_IXR_BSOFF_MASK |\
+				 XCAN_IXR_WKUP_MASK | XCAN_IXR_SLP_MASK | \
+				 XCAN_IXR_RXNEMP_MASK | XCAN_IXR_ERROR_MASK | \
+				 XCAN_IXR_ARBLST_MASK | XCAN_IXR_RXOK_MASK)
 
 /* CAN register bit shift - XCAN_<REG>_<BIT>_SHIFT */
 #define XCAN_BTR_SJW_SHIFT		7  /* Synchronous jump width */
@@ -220,7 +226,7 @@ static int set_reset_mode(struct net_device *ndev)
  * xcan_set_bittiming - CAN set bit timing routine
  * @ndev:	Pointer to net_device structure
  *
- * This is the driver setbittiming  routine.
+ * This is the driver set bittiming  routine.
  * Return: 0 on success and failure value on error
  */
 static int xcan_set_bittiming(struct net_device *ndev)
@@ -273,21 +279,25 @@ static int xcan_set_bittiming(struct net_device *ndev)
 }
 
 /**
- * set_normal_mode - CAN device mode setting routine
+ * xcan_start - This the drivers start routine
  * @ndev:	Pointer to net_device structure
  *
- * This routine sets the CAN device  mode.
- * Return: 0 on success
+ * This is the drivers start routine.
+ * Based on the State of the CAN device it puts
+ * the CAN device into a proper mode.
+ *
+ * Return: 0 always
  */
-static int set_normal_mode(struct net_device *ndev)
+static int xcan_start(struct net_device *ndev)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
 
+	/* Check if it is in reset mode */
+	if (priv->can.state != CAN_STATE_STOPPED)
+		set_reset_mode(ndev);
+
 	/* Enable interrupts */
-	priv->write_reg(priv, XCAN_IER_OFFSET, XCAN_IXR_TXOK_MASK |
-			XCAN_IXR_BSOFF_MASK | XCAN_IXR_WKUP_MASK |
-			XCAN_IXR_SLP_MASK | XCAN_IXR_RXNEMP_MASK |
-			XCAN_IXR_ERROR_MASK | XCAN_IXR_ARBLST_MASK);
+	priv->write_reg(priv, XCAN_IER_OFFSET, XCAN_INTR_ALL);
 
 	/* Check whether it is loopback mode or normal mode  */
 	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK)
@@ -313,30 +323,8 @@ static int set_normal_mode(struct net_device *ndev)
 		netdev_dbg(ndev, "status:#x%08x\n",
 				priv->read_reg(priv, XCAN_SR_OFFSET));
 	}
-
+	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 	return 0;
-}
-
-/**
- * xcan_start - This the drivers start routine
- * @ndev:	Pointer to net_device structure
- *
- * This is the drivers start routine.
- * Based on the State of the CAN device it puts
- * the CAN device into a proper mode.
- *
- * Return: 0 on success, negative errno otherwise
- */
-static int xcan_start(struct net_device *ndev)
-{
-	struct xcan_priv *priv = netdev_priv(ndev);
-
-	/* Check if it is in reset mode */
-	if (priv->can.state != CAN_STATE_STOPPED)
-		set_reset_mode(ndev);
-
-	/* Leave reset mode */
-	return set_normal_mode(ndev);
 }
 
 /**
@@ -914,7 +902,7 @@ static const struct net_device_ops xcan_netdev_ops = {
  * @_dev:	Address of the platform_device structure
  *
  * Put the driver into low power mode.
- * Return: 0 on success
+ * Return: 0 always
  */
 static int xcan_suspend(struct device *_dev)
 {
@@ -942,7 +930,7 @@ static int xcan_suspend(struct device *_dev)
  * @dev:	Address of the platformdevice structure
  *
  * Resume operation after suspend.
- * Return: 0 on success
+ * Return: 0 on success and failure value on error
  */
 static int xcan_resume(struct device *dev)
 {
@@ -992,7 +980,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	struct net_device *ndev;
 	struct xcan_priv *priv;
-	int ret, irq, fifodep = 0;
+	int ret, fifodep = 0;
 
 	/* Create a CAN device instance */
 	ndev = alloc_candev(sizeof(struct xcan_priv), XCAN_ECHO_SKB_MAX);
@@ -1005,20 +993,17 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->can.do_set_bittiming = xcan_set_bittiming;
 	priv->can.do_set_mode = xcan_do_set_mode;
 	priv->can.do_get_berr_counter = xcan_get_berr_counter;
-	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK;
-	priv->waiting_ech_skb_index = 0;
-	priv->ech_skb_next = 0;
-	priv->waiting_ech_skb_num = 0;
+	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
+					CAN_CTRLMODE_BERR_REPORTING;
 	priv->xcan_echo_skb_max_tx = XCAN_ECHO_SKB_MAX;
 	priv->xcan_echo_skb_max_rx = XCAN_NAPI_WEIGHT;
 
 	/* Get IRQ for the device */
 	ndev->irq = platform_get_irq(pdev, 0);
-	irq = devm_request_irq(&pdev->dev, ndev->irq, &xcan_interrupt,
+	ret = devm_request_irq(&pdev->dev, ndev->irq, &xcan_interrupt,
 				priv->irq_flags, dev_name(&pdev->dev),
 				(void *)ndev);
-	if (irq < 0) {
-		ret = irq;
+	if (ret < 0) {
 		dev_err(&pdev->dev, "Irq allocation for CAN failed\n");
 		goto err_free;
 	}
@@ -1096,6 +1081,7 @@ static int xcan_probe(struct platform_device *pdev)
 		goto err_unprepar_disableaper;
 	}
 
+	devm_can_led_init(ndev);
 	dev_info(&pdev->dev,
 			"reg_base=0x%p irq=%d clock=%d, tx fifo depth:%d\n",
 			priv->reg_base, ndev->irq, priv->can.clock.freq,
@@ -1118,7 +1104,7 @@ err_free:
  * @pdev:	Handle to the platform device structure
  *
  * This function frees all the resources allocated to the device.
- * Return: 0 on success
+ * Return: 0 always
  */
 static int xcan_remove(struct platform_device *pdev)
 {
