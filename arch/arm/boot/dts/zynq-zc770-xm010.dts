@@ -34,6 +34,7 @@
 		#size-cells = <0>;
 		ps7_cortexa9_0: cpu@0 {
 			bus-handle = <&ps7_axi_interconnect_0>;
+			clocks = <&clkc 3>;
 			compatible = "arm,cortex-a9";
 			d-cache-line-size = <0x20>;
 			d-cache-size = <0x8000>;
@@ -41,10 +42,12 @@
 			i-cache-line-size = <0x20>;
 			i-cache-size = <0x8000>;
 			interrupt-handle = <&ps7_scugic_0>;
+			operating-points = <666667 1000000 333334 1000000 222223 1000000>;
 			reg = <0x0>;
 		} ;
 		ps7_cortexa9_1: cpu@1 {
 			bus-handle = <&ps7_axi_interconnect_0>;
+			clocks = <&clkc 3>;
 			compatible = "arm,cortex-a9";
 			d-cache-line-size = <0x20>;
 			d-cache-size = <0x8000>;
