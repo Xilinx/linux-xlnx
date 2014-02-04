@@ -41,6 +41,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-dv-timings.h>
+#include <media/v4l2-of.h>
 
 static int debug;
 module_param(debug, int, 0644);
@@ -2680,11 +2681,39 @@ MODULE_DEVICE_TABLE(of, adv7604_of_id);
 
 static int adv7604_parse_dt(struct adv7604_state *state)
 {
+	struct v4l2_of_endpoint bus_cfg;
+	struct device_node *endpoint;
 	struct device_node *np;
+	unsigned int flags;
 	int ret;
 
 	np = state->i2c_clients[ADV7604_PAGE_IO]->dev.of_node;
 
+	/* Parse the endpoint. */
+	endpoint = v4l2_of_get_next_endpoint(np, NULL);
+	if (!endpoint)
+		return -EINVAL;
+
+	v4l2_of_parse_endpoint(endpoint, &bus_cfg);
+	of_node_put(endpoint);
+
+	flags = bus_cfg.bus.parallel.flags;
+
+	if (flags & V4L2_MBUS_HSYNC_ACTIVE_HIGH)
+		state->pdata.inv_hs_pol = 1;
+
+	if (flags & V4L2_MBUS_VSYNC_ACTIVE_HIGH)
+		state->pdata.inv_vs_pol = 1;
+
+	if (flags & V4L2_MBUS_PCLK_SAMPLE_RISING)
+		state->pdata.inv_llc_pol = 1;
+
+	if (bus_cfg.bus_type == V4L2_MBUS_BT656) {
+		state->pdata.insert_av_codes = 1;
+		state->pdata.op_656_range = 1;
+	}
+
+	/* Parse device-specific properties. */
 	state->pdata.disable_pwrdnb =
 		of_property_read_bool(np, "adi,disable-power-down");
 	state->pdata.disable_cable_det_rst =
@@ -2714,9 +2743,7 @@ static int adv7604_parse_dt(struct adv7604_state *state)
 
 	/* HACK: Hardcode the remaining platform data fields. */
 	state->pdata.blank_data = 1;
-	state->pdata.op_656_range = 1;
 	state->pdata.alt_data_sat = 1;
-	state->pdata.insert_av_codes = 1;
 	state->pdata.op_format_mode_sel = ADV7604_OP_FORMAT_MODE0;
 	state->pdata.bus_order = ADV7604_BUS_ORDER_RGB;
 
