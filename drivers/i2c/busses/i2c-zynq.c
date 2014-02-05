@@ -575,7 +575,6 @@ static const struct i2c_algorithm zynq_i2c_algo = {
  * @input_clk:	Input clock frequency
  * @a:		First divider (return value)
  * @b:		Second divider (return value)
- * @err:	Frequency error
  *
  * Return: 0 on success, negative errno otherwise.
  *
@@ -583,7 +582,7 @@ static const struct i2c_algorithm zynq_i2c_algo = {
  * frequency. On function exit f holds the actually resulting I2C frequency.
  */
 static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
-		unsigned int *a, unsigned int *b, unsigned int *err)
+		unsigned int *a, unsigned int *b)
 {
 	unsigned long fscl = *f, best_fscl = *f, actual_fscl, temp;
 	unsigned int div_a, div_b, calc_div_a = 0, calc_div_b = 0;
@@ -623,7 +622,6 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 		}
 	}
 
-	*err = last_error;
 	*a = calc_div_a;
 	*b = calc_div_b;
 	*f = best_fscl;
@@ -651,11 +649,10 @@ static int zynq_i2c_setclk(unsigned long clk_in, struct zynq_i2c *id)
 {
 	unsigned int div_a, div_b;
 	unsigned int ctrl_reg;
-	unsigned int err;
 	int ret = 0;
 	unsigned long fscl = id->i2c_clk;
 
-	ret = zynq_i2c_calc_divs(&fscl, clk_in, &div_a, &div_b, &err);
+	ret = zynq_i2c_calc_divs(&fscl, clk_in, &div_a, &div_b);
 	if (ret)
 		return ret;
 
@@ -697,11 +694,10 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 	{
 		unsigned long input_clk = ndata->new_rate;
 		unsigned long fscl = id->i2c_clk;
-		unsigned int div_a, div_b, err = 0;
+		unsigned int div_a, div_b;
 		int ret;
 
-		ret = zynq_i2c_calc_divs(&fscl, input_clk, &div_a, &div_b,
-					 &err);
+		ret = zynq_i2c_calc_divs(&fscl, input_clk, &div_a, &div_b);
 		if (ret)
 			return NOTIFY_STOP;
 
