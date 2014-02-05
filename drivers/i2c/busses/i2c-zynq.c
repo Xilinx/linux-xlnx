@@ -667,13 +667,15 @@ static int zynq_i2c_setclk(unsigned long clk_in, struct zynq_i2c *id)
  * @nb:		Pointer to notifier block
  * @event:	Notification reason
  * @data:	Pointer to notification data object
- * Return: NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
- * otherwise.
+ * Return:	NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
+ *		to acknowedge the change, NOTIFY_DONE if the notification is
+ *		considered irrelevant.
  *
  * This function is called when the zynq_i2c input clock frequency changes.
- * In the pre-rate change notification here it is determined if the rate change
- * may be allowed or not.
- * In th post-change case necessary adjustments are conducted.
+ * The callback checks whether a valid bus frequency can be generated after the
+ * change. If so, the change is acknowledged, otherwise the change is aborted.
+ * New dividers are written to the HW in the pre- or post change notification
+ * depending on the scaling direction.
  */
 static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		event, void *data)
@@ -687,12 +689,6 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 	switch (event) {
 	case PRE_RATE_CHANGE:
 	{
-		/*
-		 * if a rate change is announced we need to check whether we can
-		 * maintain the current frequency by changing the clock
-		 * dividers. Probably we could also define an acceptable
-		 * frequency range.
-		 */
 		unsigned long input_clk = ndata->new_rate;
 		unsigned long fscl = id->i2c_clk;
 		unsigned int div_a, div_b, err = 0;
