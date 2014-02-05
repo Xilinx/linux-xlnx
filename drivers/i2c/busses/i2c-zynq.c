@@ -48,11 +48,22 @@
 #define ZYNQ_I2C_IDR_OFFSET	0x28 /* Interrupt Disable Register, WO */
 
 /* Control Register Bit mask definitions */
-#define ZYNQ_I2C_CR_HOLD_BUS_MASK	0x00000010 /* Hold Bus bit */
+#define ZYNQ_I2C_CR_HOLD		BIT(4) /* Hold Bus bit */
+#define ZYNQ_I2C_CR_NEA			BIT(2)
 /* Read or Write Master transfer 0 = Transmitter, 1 = Receiver */
-#define ZYNQ_I2C_CR_RW_MASK		0x00000001
+#define ZYNQ_I2C_CR_RW			BIT(0)
 /* 1 = Auto init FIFO to zeroes */
-#define ZYNQ_I2C_CR_CLR_FIFO_MASK	0x00000040
+#define ZYNQ_I2C_CR_CLR_FIFO		BIT(6)
+#define ZYNQ_I2C_CR_DIVA_SHIFT		14
+#define ZYNQ_I2C_CR_DIVA_MASK		(3 << ZYNQ_I2C_CR_DIVA_SHIFT)
+#define ZYNQ_I2C_CR_DIVB_SHIFT		8
+#define ZYNQ_I2C_CR_DIVB_MASK		(0x3f << ZYNQ_I2C_CR_DIVB_SHIFT)
+
+/* Status Register Bit mask definitions */
+#define ZYNQ_I2C_SR_BA		BIT(8)
+#define ZYNQ_I2C_SR_RXDV	BIT(5)
+
+#define ZYNQ_I2C_TIME_OUT_TO_MASK	0xff
 
 /*
  * I2C Address Register Bit mask definitions
@@ -68,6 +79,11 @@
  * bit definitions.
  */
 #define ZYNQ_I2C_IXR_ALL_INTR_MASK	0x000002FF /* All ISR Mask */
+#define ZYNQ_I2C_IXR_ERR_INTR_MASK	0x000002EC
+#define ZYNQ_I2C_IXR_ARB_LOST		BIT(9)
+#define ZYNQ_I2C_IXR_NACK		BIT(2)
+#define ZYNQ_I2C_IXR_DATA		BIT(1)
+#define ZYNQ_I2C_IXR_COMP		BIT(0)
 
 #define ZYNQ_I2C_FIFO_DEPTH	16		/* FIFO Depth */
 #define ZYNQ_I2C_TIMEOUT	(50 * HZ)	/* Timeout for bus busy check */
@@ -151,15 +167,15 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 
 	/* Handling Nack interrupt */
-	if (isr_status & 0x4)
+	if (isr_status & ZYNQ_I2C_IXR_NACK)
 		complete(&id->xfer_done);
 
 	/* Handling Arbitration lost interrupt */
-	if (isr_status & 0x200)
+	if (isr_status & ZYNQ_I2C_IXR_ARB_LOST)
 		complete(&id->xfer_done);
 
 	/* Handling Data interrupt */
-	if (isr_status & 0x2) {
+	if (isr_status & ZYNQ_I2C_IXR_DATA) {
 		if (id->recv_count >= ZYNQ_I2C_DATA_INTR_DEPTH) {
 			/* Always read data interrupt threshold bytes */
 			bytes_to_recv = ZYNQ_I2C_DATA_INTR_DEPTH;
@@ -193,14 +209,14 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				/* Clear the hold bus bit */
 				zynq_i2c_writereg(
 					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-					~ZYNQ_I2C_CR_HOLD_BUS_MASK,
+					~ZYNQ_I2C_CR_HOLD,
 					ZYNQ_I2C_CR_OFFSET);
 			}
 		}
 	}
 
 	/* Handling Transfer Complete interrupt */
-	if (isr_status & 1) {
+	if (isr_status & ZYNQ_I2C_IXR_COMP) {
 		if (!id->p_recv_buf) {
 			/*
 			 * If the device is sending data If there is further
@@ -234,21 +250,20 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 					/* Clear the hold bus bit */
 					ctrl_reg =
 					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-					if (ctrl_reg &
-					     ZYNQ_I2C_CR_HOLD_BUS_MASK)
+					if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
 						zynq_i2c_writereg(ctrl_reg &
-						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
-						ZYNQ_I2C_CR_OFFSET);
+							~ZYNQ_I2C_CR_HOLD,
+							ZYNQ_I2C_CR_OFFSET);
 				}
 			}
 		} else {
 			if (!id->bus_hold_flag) {
 				/* Clear the hold bus bit */
 				ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-				if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
+				if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
 					zynq_i2c_writereg(ctrl_reg &
-						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
-						ZYNQ_I2C_CR_OFFSET);
+							~ZYNQ_I2C_CR_HOLD,
+							ZYNQ_I2C_CR_OFFSET);
 			}
 			/*
 			 * If the device is receiving data, then signal
@@ -256,7 +271,8 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 			 * present in the FIFO. Signal the completion of
 			 * transaction.
 			 */
-			while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) & 0x20) {
+			while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) &
+					ZYNQ_I2C_SR_RXDV) {
 				*(id->p_recv_buf)++ =
 					zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
 				id->recv_count--;
@@ -266,7 +282,7 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 	}
 
 	/* Update the status for errors */
-	id->err_status = isr_status & 0x2EC;
+	id->err_status = isr_status & ZYNQ_I2C_IXR_ERR_INTR_MASK;
 	zynq_i2c_writereg(isr_status, ZYNQ_I2C_ISR_OFFSET);
 	return IRQ_HANDLED;
 }
@@ -285,7 +301,7 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 
 	/* Put the controller in master receive mode and clear the FIFO */
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	ctrl_reg |= ZYNQ_I2C_CR_RW_MASK | ZYNQ_I2C_CR_CLR_FIFO_MASK;
+	ctrl_reg |= ZYNQ_I2C_CR_RW | ZYNQ_I2C_CR_CLR_FIFO;
 
 	if ((id->p_msg->flags & I2C_M_RECV_LEN) == I2C_M_RECV_LEN)
 		id->recv_count = I2C_SMBUS_BLOCK_MAX + 1;
@@ -295,7 +311,7 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	 * 'hold bus' bit if it is greater than FIFO depth.
 	 */
 	if (id->recv_count > ZYNQ_I2C_FIFO_DEPTH)
-		ctrl_reg |= ZYNQ_I2C_CR_HOLD_BUS_MASK;
+		ctrl_reg |= ZYNQ_I2C_CR_HOLD;
 
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
@@ -323,9 +339,8 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 		(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
 			/* Clear the hold bus bit */
 			ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-			if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
-				zynq_i2c_writereg(ctrl_reg &
-						~ZYNQ_I2C_CR_HOLD_BUS_MASK,
+			if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
+				zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD,
 						ZYNQ_I2C_CR_OFFSET);
 	}
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
@@ -348,15 +363,15 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 
 	/* Set the controller in Master transmit mode and clear the FIFO. */
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	ctrl_reg &= ~ZYNQ_I2C_CR_RW_MASK;
-	ctrl_reg |= ZYNQ_I2C_CR_CLR_FIFO_MASK;
+	ctrl_reg &= ~ZYNQ_I2C_CR_RW;
+	ctrl_reg |= ZYNQ_I2C_CR_CLR_FIFO;
 
 	/*
 	 * Check for the message size against FIFO depth and set the
 	 * 'hold bus' bit if it is greater than FIFO depth.
 	 */
 	if (id->send_count > ZYNQ_I2C_FIFO_DEPTH)
-		ctrl_reg |= ZYNQ_I2C_CR_HOLD_BUS_MASK;
+		ctrl_reg |= ZYNQ_I2C_CR_HOLD;
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
 	/* Clear the interrupts in interrupt status register. */
@@ -392,8 +407,8 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 	if (!id->bus_hold_flag && !id->send_count) {
 		/* Clear the hold bus bit */
 		ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-		if (ctrl_reg & ZYNQ_I2C_CR_HOLD_BUS_MASK)
-			zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD_BUS_MASK,
+		if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
+			zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD,
 				ZYNQ_I2C_CR_OFFSET);
 	}
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
@@ -415,8 +430,8 @@ static void zynq_i2c_master_reset(struct i2c_adapter *adap)
 	zynq_i2c_writereg(ZYNQ_I2C_IXR_ALL_INTR_MASK, ZYNQ_I2C_IDR_OFFSET);
 	/* Clear the hold bit and fifos */
 	regval = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	regval &= ~ZYNQ_I2C_CR_HOLD_BUS_MASK;
-	regval |= ZYNQ_I2C_CR_CLR_FIFO_MASK;
+	regval &= ~ZYNQ_I2C_CR_HOLD;
+	regval |= ZYNQ_I2C_CR_CLR_FIFO;
 	zynq_i2c_writereg(regval, ZYNQ_I2C_CR_OFFSET);
 	/* Update the transfercount register to zero */
 	zynq_i2c_writereg(0, ZYNQ_I2C_XFER_SIZE_OFFSET);
@@ -450,7 +465,7 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
 	timeout = jiffies + ZYNQ_I2C_TIMEOUT;
-	while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) & 0x100) {
+	while (zynq_i2c_readreg(ZYNQ_I2C_SR_OFFSET) & ZYNQ_I2C_SR_BA) {
 		if (time_after(jiffies, timeout)) {
 			dev_warn(id->adap.dev.parent,
 					"timedout waiting for bus ready\n");
@@ -462,7 +477,7 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 
 	/* The bus is free. Set the new timeout value if updated */
 	if (id->adap.timeout != id->cur_timeout) {
-		zynq_i2c_writereg((id->adap.timeout & 0xFF),
+		zynq_i2c_writereg(id->adap.timeout & ZYNQ_I2C_TIME_OUT_TO_MASK,
 					ZYNQ_I2C_TIME_OUT_OFFSET);
 		id->cur_timeout = id->adap.timeout;
 	}
@@ -474,7 +489,7 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	if (num > 1) {
 		id->bus_hold_flag = 1;
 		zynq_i2c_writereg((zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
-				ZYNQ_I2C_CR_HOLD_BUS_MASK), ZYNQ_I2C_CR_OFFSET);
+				ZYNQ_I2C_CR_HOLD), ZYNQ_I2C_CR_OFFSET);
 	} else {
 		id->bus_hold_flag = 0;
 	}
@@ -492,13 +507,14 @@ retry:
 		/* Check for the TEN Bit mode on each msg */
 		if (msgs->flags & I2C_M_TEN) {
 			zynq_i2c_writereg(
-				zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) & ~0x4,
-				ZYNQ_I2C_CR_OFFSET);
+				zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
+				~ZYNQ_I2C_CR_NEA, ZYNQ_I2C_CR_OFFSET);
 		} else {
-			if (!(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) & 0x4))
+			if (!(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
+						ZYNQ_I2C_CR_NEA))
 				zynq_i2c_writereg(
 					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
-					 0x4, ZYNQ_I2C_CR_OFFSET);
+					ZYNQ_I2C_CR_NEA, ZYNQ_I2C_CR_OFFSET);
 		}
 
 		/* Check for the R/W flag on each msg */
@@ -520,7 +536,7 @@ retry:
 				  ZYNQ_I2C_IDR_OFFSET);
 
 		/* If it is bus arbitration error, try again */
-		if (id->err_status & 0x200) {
+		if (id->err_status & ZYNQ_I2C_IXR_ARB_LOST) {
 			dev_dbg(id->adap.dev.parent,
 				 "Lost ownership on bus, trying again\n");
 			if (retries--) {
@@ -655,8 +671,9 @@ static int zynq_i2c_setclk(unsigned long clk_in, struct zynq_i2c *id)
 		return ret;
 
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-	ctrl_reg &= ~(0xC000 | 0x3F00);
-	ctrl_reg |= ((div_a << 14) | (div_b << 8));
+	ctrl_reg &= ~(ZYNQ_I2C_CR_DIVA_MASK | ZYNQ_I2C_CR_DIVB_MASK);
+	ctrl_reg |= ((div_a << ZYNQ_I2C_CR_DIVA_SHIFT) |
+			(div_b << ZYNQ_I2C_CR_DIVB_SHIFT));
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
 	return 0;
