@@ -139,6 +139,13 @@
 				} ;
 			} ;
 		} ;
+		ps7_globaltimer_0: ps7-globaltimer@f8f00200 {
+			clocks = <&clkc 4>;
+			compatible = "xlnx,ps7-globaltimer-1.00.a", "arm,cortex-a9-global-timer";
+			interrupt-parent = <&ps7_scugic_0>;
+			interrupts = <1 11 0x301>;
+			reg = <0xf8f00200 0x100>;
+		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;

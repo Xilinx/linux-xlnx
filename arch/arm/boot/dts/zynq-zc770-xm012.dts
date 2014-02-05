@@ -123,6 +123,13 @@
 			interrupts = <0 13 4>, <0 14 4>, <0 15 4>, <0 16 4>, <0 17 4>, <0 40 4>, <0 41 4>, <0 42 4>, <0 43 4>;
 			reg = <0xf8003000 0x1000>;
 		} ;
+		ps7_globaltimer_0: ps7-globaltimer@f8f00200 {
+			clocks = <&clkc 4>;
+			compatible = "xlnx,ps7-globaltimer-1.00.a", "arm,cortex-a9-global-timer";
+			interrupt-parent = <&ps7_scugic_0>;
+			interrupts = <1 11 0x301>;
+			reg = <0xf8f00200 0x100>;
+		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;
