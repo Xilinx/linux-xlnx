@@ -166,53 +166,42 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 
-	/* Handling Nack interrupt */
-	if (isr_status & ZYNQ_I2C_IXR_NACK)
-		complete(&id->xfer_done);
-
-	/* Handling Arbitration lost interrupt */
-	if (isr_status & ZYNQ_I2C_IXR_ARB_LOST)
+	/* Handling nack and arbitration lost interrupt */
+	if (isr_status & (ZYNQ_I2C_IXR_NACK | ZYNQ_I2C_IXR_ARB_LOST))
 		complete(&id->xfer_done);
 
 	/* Handling Data interrupt */
-	if (isr_status & ZYNQ_I2C_IXR_DATA) {
-		if (id->recv_count >= ZYNQ_I2C_DATA_INTR_DEPTH) {
-			/* Always read data interrupt threshold bytes */
-			bytes_to_recv = ZYNQ_I2C_DATA_INTR_DEPTH;
-			id->recv_count = id->recv_count -
-						ZYNQ_I2C_DATA_INTR_DEPTH;
-			avail_bytes = zynq_i2c_readreg(
-						ZYNQ_I2C_XFER_SIZE_OFFSET);
-			/*
-			 * if the tranfer size register value is zero, then
-			 * check for the remaining bytes and update the
-			 * transfer size register.
-			 */
-			if (!avail_bytes) {
-				if (id->recv_count > ZYNQ_I2C_TRANSFER_SIZE)
-					zynq_i2c_writereg(
-						ZYNQ_I2C_TRANSFER_SIZE,
-						ZYNQ_I2C_XFER_SIZE_OFFSET);
-				else
-					zynq_i2c_writereg(id->recv_count,
-						ZYNQ_I2C_XFER_SIZE_OFFSET);
-			}
-			/* Process the data received */
-			while (bytes_to_recv) {
-				*(id->p_recv_buf)++ =
-					zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
-				bytes_to_recv = bytes_to_recv - 1;
-			}
+	if ((isr_status & ZYNQ_I2C_IXR_DATA) &&
+			(id->recv_count >= ZYNQ_I2C_DATA_INTR_DEPTH)) {
+		/* Always read data interrupt threshold bytes */
+		bytes_to_recv = ZYNQ_I2C_DATA_INTR_DEPTH;
+		id->recv_count = id->recv_count - ZYNQ_I2C_DATA_INTR_DEPTH;
+		avail_bytes = zynq_i2c_readreg(ZYNQ_I2C_XFER_SIZE_OFFSET);
 
-			if (!id->bus_hold_flag &&
-				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
-				/* Clear the hold bus bit */
-				zynq_i2c_writereg(
-					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-					~ZYNQ_I2C_CR_HOLD,
-					ZYNQ_I2C_CR_OFFSET);
-			}
+		/*
+		 * if the tranfer size register value is zero, then
+		 * check for the remaining bytes and update the
+		 * transfer size register.
+		 */
+		if (!avail_bytes) {
+			if (id->recv_count > ZYNQ_I2C_TRANSFER_SIZE)
+				zynq_i2c_writereg(ZYNQ_I2C_TRANSFER_SIZE,
+						ZYNQ_I2C_XFER_SIZE_OFFSET);
+			else
+				zynq_i2c_writereg(id->recv_count,
+						ZYNQ_I2C_XFER_SIZE_OFFSET);
 		}
+
+		/* Process the data received */
+		while (bytes_to_recv--)
+			*(id->p_recv_buf)++ =
+				zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
+
+		if (!id->bus_hold_flag &&
+				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH))
+			/* Clear the hold bus bit */
+			zynq_i2c_writereg(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
+					~ZYNQ_I2C_CR_HOLD, ZYNQ_I2C_CR_OFFSET);
 	}
 
 	/* Handling Transfer Complete interrupt */
@@ -245,16 +234,13 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				 */
 				complete(&id->xfer_done);
 			}
-			if (!id->send_count) {
-				if (!id->bus_hold_flag) {
-					/* Clear the hold bus bit */
-					ctrl_reg =
-					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-					if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
-						zynq_i2c_writereg(ctrl_reg &
+			if (!id->send_count && !id->bus_hold_flag) {
+				/* Clear the hold bus bit */
+				ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
+				if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
+					zynq_i2c_writereg(ctrl_reg &
 							~ZYNQ_I2C_CR_HOLD,
 							ZYNQ_I2C_CR_OFFSET);
-				}
 			}
 		} else {
 			if (!id->bus_hold_flag) {
