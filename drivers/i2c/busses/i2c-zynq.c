@@ -848,7 +848,6 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 	id->clk_rate_change_nb.notifier_call = zynq_i2c_clk_notifier_cb;
-	id->clk_rate_change_nb.next = NULL;
 	if (clk_notifier_register(id->clk, &id->clk_rate_change_nb))
 		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 	id->input_clk = clk_get_rate(id->clk);
