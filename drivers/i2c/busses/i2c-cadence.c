@@ -870,7 +870,6 @@ static int cdns_i2c_remove(struct platform_device *pdev)
 
 static const struct of_device_id cdns_i2c_of_match[] = {
 	{ .compatible = "cdns,i2c-r1p10", },
-	{ .compatible = "xlnx,ps7-i2c-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, cdns_i2c_of_match);
