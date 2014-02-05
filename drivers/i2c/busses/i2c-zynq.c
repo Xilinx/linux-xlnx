@@ -27,14 +27,11 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
-#include <linux/err.h>
-#include <linux/export.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
 
 /* Register offsets for the I2C device. */
 #define ZYNQ_I2C_CR_OFFSET	0x00 /* Control Register, RW */
