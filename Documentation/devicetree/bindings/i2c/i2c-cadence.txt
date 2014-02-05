@@ -1,0 +1,22 @@
+Binding for the Cadence I2C controller
+
+Required properties:
+  compatible: Compatibility string. Must be 'cdns,i2c-r1p10'.
+  clocks: From common clock bindings. Phandle to input clock.
+
+Optional properties:
+  clock-frequency: Desired operating frequency, in Hz, of the bus (actual may
+		   be lower). Defaults to 400000 if not specified.
+
+Example:
+
+	i2c0: cdns-i2c@e0004000 {
+		compatible = "cdns,i2c-r1p10";
+		clocks = <&clkc 38>;
+		interrupt-parent = <&intc>;
+		interrupts = <0 25 4>;
+		reg = <0xE0004000 0x1000>;
+		clock-frequency = <400000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
