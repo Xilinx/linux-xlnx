@@ -198,10 +198,12 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
 
 		if (!id->bus_hold_flag &&
-				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH))
+				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
 			/* Clear the hold bus bit */
-			zynq_i2c_writereg(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-					~ZYNQ_I2C_CR_HOLD, ZYNQ_I2C_CR_OFFSET);
+			ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
+			ctrl_reg &= ~ZYNQ_I2C_CR_HOLD;
+			zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
+		}
 	}
 
 	/* Handling Transfer Complete interrupt */
@@ -448,6 +450,7 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	unsigned int retries;
 	unsigned long timeout;
 	int ret, count;
+	u32 reg;
 
 	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
 	timeout = jiffies + ZYNQ_I2C_TIMEOUT;
@@ -474,8 +477,9 @@ static int zynq_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	 */
 	if (num > 1) {
 		id->bus_hold_flag = 1;
-		zynq_i2c_writereg((zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
-				ZYNQ_I2C_CR_HOLD), ZYNQ_I2C_CR_OFFSET);
+		reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
+		reg |= ZYNQ_I2C_CR_HOLD;
+		zynq_i2c_writereg(reg, ZYNQ_I2C_CR_OFFSET);
 	} else {
 		id->bus_hold_flag = 0;
 	}
@@ -491,16 +495,15 @@ retry:
 		init_completion(&id->xfer_done);
 
 		/* Check for the TEN Bit mode on each msg */
+		reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
 		if (msgs->flags & I2C_M_TEN) {
-			zynq_i2c_writereg(
-				zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-				~ZYNQ_I2C_CR_NEA, ZYNQ_I2C_CR_OFFSET);
+			if (reg & ZYNQ_I2C_CR_NEA)
+				zynq_i2c_writereg(reg & ~ZYNQ_I2C_CR_NEA,
+						ZYNQ_I2C_CR_OFFSET);
 		} else {
-			if (!(zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) &
-						ZYNQ_I2C_CR_NEA))
-				zynq_i2c_writereg(
-					zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET) |
-					ZYNQ_I2C_CR_NEA, ZYNQ_I2C_CR_OFFSET);
+			if (!(reg & ZYNQ_I2C_CR_NEA))
+				zynq_i2c_writereg(reg | ZYNQ_I2C_CR_NEA,
+						ZYNQ_I2C_CR_OFFSET);
 		}
 
 		/* Check for the R/W flag on each msg */
