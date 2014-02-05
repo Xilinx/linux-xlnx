@@ -36,10 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-/*
- * Register Map
- * Register offsets for the I2C device.
- */
+/* Register offsets for the I2C device. */
 #define ZYNQ_I2C_CR_OFFSET	0x00 /* Control Register, RW */
 #define ZYNQ_I2C_SR_OFFSET	0x04 /* Status Register, RO */
 #define ZYNQ_I2C_ADDR_OFFSET	0x08 /* I2C Address Register, RW */
@@ -50,13 +47,9 @@
 #define ZYNQ_I2C_IER_OFFSET	0x24 /* Interrupt Enable Register, WO */
 #define ZYNQ_I2C_IDR_OFFSET	0x28 /* Interrupt Disable Register, WO */
 
-/*
- * Control Register Bit mask definitions
- * This register contains various control bits that affect the operation of the
- * I2C controller.
- */
+/* Control Register Bit mask definitions */
 #define ZYNQ_I2C_CR_HOLD_BUS_MASK	0x00000010 /* Hold Bus bit */
-/* Read or Write Master transfer 0= Transmitter, 1= Receiver */
+/* Read or Write Master transfer 0 = Transmitter, 1 = Receiver */
 #define ZYNQ_I2C_CR_RW_MASK		0x00000001
 /* 1 = Auto init FIFO to zeroes */
 #define ZYNQ_I2C_CR_CLR_FIFO_MASK	0x00000040
@@ -80,10 +73,8 @@
 #define ZYNQ_I2C_TIMEOUT	(50 * HZ)	/* Timeout for bus busy check */
 #define ZYNQ_I2C_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
 
-#define ZYNQ_I2C_DATA_INTR_DEPTH (ZYNQ_I2C_FIFO_DEPTH - 2)/* FIFO depth at which
-							 * the DATA interrupt
-							 * occurs
-							 */
+/* FIFO depth at which the DATA interrupt occurs */
+#define ZYNQ_I2C_DATA_INTR_DEPTH	(ZYNQ_I2C_FIFO_DEPTH - 2)
 #define ZYNQ_I2C_MAX_TRANSFER_SIZE	255 /* Max transfer size */
 /* Transfer size in multiples of data interrupt depth */
 #define ZYNQ_I2C_TRANSFER_SIZE	(ZYNQ_I2C_MAX_TRANSFER_SIZE - 3)
@@ -121,7 +112,7 @@
 struct zynq_i2c {
 	void __iomem *membase;
 	struct i2c_adapter adap;
-	struct i2c_msg	*p_msg;
+	struct i2c_msg *p_msg;
 	int err_status;
 	struct completion xfer_done;
 	unsigned char *p_send_buf;
@@ -134,8 +125,8 @@ struct zynq_i2c {
 	unsigned long input_clk;
 	unsigned int i2c_clk;
 	unsigned int bus_hold_flag;
-	struct clk	*clk;
-	struct notifier_block	clk_rate_change_nb;
+	struct clk *clk;
+	struct notifier_block clk_rate_change_nb;
 };
 
 #define to_zynq_i2c(_nb)	container_of(_nb, struct zynq_i2c, \
@@ -218,7 +209,7 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 			 */
 			if (id->send_count) {
 				avail_bytes = ZYNQ_I2C_FIFO_DEPTH -
-				zynq_i2c_readreg(ZYNQ_I2C_XFER_SIZE_OFFSET);
+				    zynq_i2c_readreg(ZYNQ_I2C_XFER_SIZE_OFFSET);
 				if (id->send_count > avail_bytes)
 					bytes_to_send = avail_bytes;
 				else
@@ -292,27 +283,27 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	id->p_recv_buf = id->p_msg->buf;
 	id->recv_count = id->p_msg->len;
 
-	/*
-	 * Set the controller in master receive mode and clear the FIFO.
-	 * Set the slave address in address register.
-	 * Check for the message size against FIFO depth and set the
-	 * HOLD bus bit if it is more than FIFO depth.
-	 * Clear the interrupts in interrupt status register.
-	 */
+	/* Put the controller in master receive mode and clear the FIFO */
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
 	ctrl_reg |= ZYNQ_I2C_CR_RW_MASK | ZYNQ_I2C_CR_CLR_FIFO_MASK;
 
 	if ((id->p_msg->flags & I2C_M_RECV_LEN) == I2C_M_RECV_LEN)
 		id->recv_count = I2C_SMBUS_BLOCK_MAX + 1;
 
+	/*
+	 * Check for the message size against FIFO depth and set the
+	 * 'hold bus' bit if it is greater than FIFO depth.
+	 */
 	if (id->recv_count > ZYNQ_I2C_FIFO_DEPTH)
 		ctrl_reg |= ZYNQ_I2C_CR_HOLD_BUS_MASK;
 
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
+	/* Clear the interrupts in interrupt status register */
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 	zynq_i2c_writereg(isr_status, ZYNQ_I2C_ISR_OFFSET);
 
+	/* Set the slave address in address register */
 	zynq_i2c_writereg(id->p_msg->addr & ZYNQ_I2C_ADDR_MASK,
 						ZYNQ_I2C_ADDR_OFFSET);
 	/*
@@ -326,9 +317,7 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 				  ZYNQ_I2C_XFER_SIZE_OFFSET);
 	else
 		zynq_i2c_writereg(id->recv_count, ZYNQ_I2C_XFER_SIZE_OFFSET);
-	/*
-	 * Clear the bus hold flag if bytes to receive is less than FIFO size.
-	 */
+	/* Clear the bus hold flag if bytes to receive is less than FIFO size */
 	if (!id->bus_hold_flag &&
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
 		(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
@@ -357,21 +346,20 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 	id->p_send_buf = id->p_msg->buf;
 	id->send_count = id->p_msg->len;
 
-	/*
-	 * Set the controller in Master transmit mode and clear the FIFO.
-	 * Set the slave address in address register.
-	 * Check for the message size against FIFO depth and set the
-	 * HOLD bus bit if it is more than FIFO depth.
-	 * Clear the interrupts in interrupt status register.
-	 */
+	/* Set the controller in Master transmit mode and clear the FIFO. */
 	ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
 	ctrl_reg &= ~ZYNQ_I2C_CR_RW_MASK;
 	ctrl_reg |= ZYNQ_I2C_CR_CLR_FIFO_MASK;
 
+	/*
+	 * Check for the message size against FIFO depth and set the
+	 * 'hold bus' bit if it is greater than FIFO depth.
+	 */
 	if (id->send_count > ZYNQ_I2C_FIFO_DEPTH)
 		ctrl_reg |= ZYNQ_I2C_CR_HOLD_BUS_MASK;
 	zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
 
+	/* Clear the interrupts in interrupt status register. */
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
 	zynq_i2c_writereg(isr_status, ZYNQ_I2C_ISR_OFFSET);
 
@@ -393,6 +381,7 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 		id->send_count--;
 	}
 
+	/* Set the slave address in address register. */
 	zynq_i2c_writereg(id->p_msg->addr & ZYNQ_I2C_ADDR_MASK,
 						ZYNQ_I2C_ADDR_OFFSET);
 
@@ -413,8 +402,6 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 /**
  * zynq_i2c_master_reset - Reset the interface
  * @adap:	pointer to the i2c adapter driver instance
- *
- * Return: none
  *
  * This function cleanup the fifos, clear the hold bit and status
  * and disable the interrupts.
@@ -644,7 +631,7 @@ static int zynq_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
  * @clk_in:	I2C clock input frequency in Hz
  * @id:		Pointer to the I2C device structure
  *
- * Return: zero on success, negative error otherwise
+ * Return: 0 on success, negative error otherwise
  *
  * The device must be idle rather than busy transferring data before setting
  * these device options.
@@ -742,7 +729,7 @@ static int zynq_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 /**
  * zynq_i2c_suspend - Suspend method for the driver
  * @_dev:	Address of the platform_device structure
- * Return: 0 on success and error value on error
+ * Return: 0 always
  *
  * Put the driver into low power mode.
  */
@@ -787,15 +774,11 @@ static int zynq_i2c_resume(struct device *_dev)
 static SIMPLE_DEV_PM_OPS(zynq_i2c_dev_pm_ops, zynq_i2c_suspend,
 			 zynq_i2c_resume);
 
-/************************/
-/* Platform bus binding */
-/************************/
-
 /**
  * zynq_i2c_probe - Platform registration call
  * @pdev:	Handle to the platform device structure
  *
- * Return: zero on success, negative error otherwise
+ * Return: 0 on success, negative error otherwise
  *
  * This function does all the memory allocation and registration for the i2c
  * device. User can modify the address mode to 10 bit address mode using the
@@ -806,13 +789,7 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	struct resource *r_mem;
 	struct zynq_i2c *id;
 	int ret;
-	/*
-	 * Allocate memory for zynq_i2c structure.
-	 * Initialize the structure to zero and set the platform data.
-	 * Obtain the resource base address from platform data and remap it.
-	 * Get the irq resource from platform data.Initialize the adapter
-	 * structure members and also zynq_i2c structure.
-	 */
+
 	id = devm_kzalloc(&pdev->dev, sizeof(*id), GFP_KERNEL);
 	if (!id)
 		return -ENOMEM;
@@ -857,12 +834,6 @@ static int zynq_i2c_probe(struct platform_device *pdev)
 	if (ret || (id->i2c_clk > ZYNQ_I2C_SPEED_MAX))
 		id->i2c_clk = ZYNQ_I2C_SPEED_MAX;
 
-	/*
-	 * Set Master Mode,Normal addressing mode (7 bit address),
-	 * Enable Transmission of Ack in Control Register.
-	 * Set the timeout and I2C clock and request the IRQ(ISR mapped).
-	 * Call to the i2c_add_numbered_adapter registers the adapter.
-	 */
 	zynq_i2c_writereg(0xE, ZYNQ_I2C_CR_OFFSET);
 	zynq_i2c_writereg(id->adap.timeout, ZYNQ_I2C_TIME_OUT_OFFSET);
 
@@ -900,7 +871,7 @@ err_clk_dis:
  * zynq_i2c_remove - Unregister the device after releasing the resources
  * @pdev:	Handle to the platform device structure
  *
- * Return: zero always
+ * Return: 0 always
  *
  * This function frees all the resources allocated to the device.
  */
