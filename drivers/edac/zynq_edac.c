@@ -532,7 +532,7 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 	layers[1].size = ZYNQ_EDAC_NR_CHANS;
 	layers[1].is_virt_csrow = false;
 
-	mci = edac_mc_alloc(pdev->id, ARRAY_SIZE(layers), layers,
+	mci = edac_mc_alloc(0, ARRAY_SIZE(layers), layers,
 			    sizeof(struct zynq_edac_priv));
 	if (mci == NULL) {
 		pr_err("Failed memory allocation for mci instance!\n");
