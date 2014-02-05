@@ -147,6 +147,20 @@ struct zynq_i2c {
 
 #define to_zynq_i2c(_nb)	container_of(_nb, struct zynq_i2c, \
 					     clk_rate_change_nb)
+
+/**
+ * zynq_i2c_clear_bus_hold() - Clar bus hold bit
+ * @id:	Pointer to driver data struct
+ *
+ * Helper to clear the controller's bus hold bit.
+ */
+static void zynq_i2c_clear_bus_hold(struct zynq_i2c *id)
+{
+	u32 reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
+	if (reg & ZYNQ_I2C_CR_HOLD)
+		zynq_i2c_writereg(reg & ~ZYNQ_I2C_CR_HOLD, ZYNQ_I2C_CR_OFFSET);
+}
+
 /**
  * zynq_i2c_isr - Interrupt handler for the I2C device
  * @irq:	irq number for the I2C device
@@ -161,7 +175,6 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 {
 	unsigned int isr_status, avail_bytes;
 	unsigned int bytes_to_recv, bytes_to_send;
-	unsigned int ctrl_reg;
 	struct zynq_i2c *id = ptr;
 
 	isr_status = zynq_i2c_readreg(ZYNQ_I2C_ISR_OFFSET);
@@ -198,12 +211,8 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				zynq_i2c_readreg(ZYNQ_I2C_DATA_OFFSET);
 
 		if (!id->bus_hold_flag &&
-				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
-			/* Clear the hold bus bit */
-			ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-			ctrl_reg &= ~ZYNQ_I2C_CR_HOLD;
-			zynq_i2c_writereg(ctrl_reg, ZYNQ_I2C_CR_OFFSET);
-		}
+				(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH))
+			zynq_i2c_clear_bus_hold(id);
 	}
 
 	/* Handling Transfer Complete interrupt */
@@ -236,23 +245,11 @@ static irqreturn_t zynq_i2c_isr(int irq, void *ptr)
 				 */
 				complete(&id->xfer_done);
 			}
-			if (!id->send_count && !id->bus_hold_flag) {
-				/* Clear the hold bus bit */
-				ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-				if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
-					zynq_i2c_writereg(ctrl_reg &
-							~ZYNQ_I2C_CR_HOLD,
-							ZYNQ_I2C_CR_OFFSET);
-			}
+			if (!id->send_count && !id->bus_hold_flag)
+				zynq_i2c_clear_bus_hold(id);
 		} else {
-			if (!id->bus_hold_flag) {
-				/* Clear the hold bus bit */
-				ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-				if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
-					zynq_i2c_writereg(ctrl_reg &
-							~ZYNQ_I2C_CR_HOLD,
-							ZYNQ_I2C_CR_OFFSET);
-			}
+			if (!id->bus_hold_flag)
+				zynq_i2c_clear_bus_hold(id);
 			/*
 			 * If the device is receiving data, then signal
 			 * the completion of transaction and read the data
@@ -324,13 +321,8 @@ static void zynq_i2c_mrecv(struct zynq_i2c *id)
 	/* Clear the bus hold flag if bytes to receive is less than FIFO size */
 	if (!id->bus_hold_flag &&
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
-		(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH)) {
-			/* Clear the hold bus bit */
-			ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-			if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
-				zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD,
-						ZYNQ_I2C_CR_OFFSET);
-	}
+		(id->recv_count <= ZYNQ_I2C_FIFO_DEPTH))
+			zynq_i2c_clear_bus_hold(id);
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
 }
 
@@ -392,13 +384,8 @@ static void zynq_i2c_msend(struct zynq_i2c *id)
 	 * Clear the bus hold flag if there is no more data
 	 * and if it is the last message.
 	 */
-	if (!id->bus_hold_flag && !id->send_count) {
-		/* Clear the hold bus bit */
-		ctrl_reg = zynq_i2c_readreg(ZYNQ_I2C_CR_OFFSET);
-		if (ctrl_reg & ZYNQ_I2C_CR_HOLD)
-			zynq_i2c_writereg(ctrl_reg & ~ZYNQ_I2C_CR_HOLD,
-				ZYNQ_I2C_CR_OFFSET);
-	}
+	if (!id->bus_hold_flag && !id->send_count)
+		zynq_i2c_clear_bus_hold(id);
 	zynq_i2c_writereg(ZYNQ_I2C_ENABLED_INTR, ZYNQ_I2C_IER_OFFSET);
 }
 
