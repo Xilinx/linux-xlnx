@@ -18,6 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/clk/zynq.h>
 #include <linux/clocksource.h>
 #include <linux/of_address.h>
@@ -131,6 +132,7 @@ static void __init zynq_timer_init(void)
 	zynq_early_slcr_init();
 
 	zynq_clock_init();
+	of_clk_init(NULL);
 	clocksource_of_init();
 }
 
