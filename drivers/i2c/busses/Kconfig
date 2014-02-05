@@ -374,6 +374,13 @@ config I2C_BLACKFIN_TWI_CLK_KHZ
 	help
 	  The unit of the TWI clock is kHz.
 
+config I2C_CADENCE
+	tristate "Cadence I2C Controller"
+	depends on ARCH_ZYNQ
+	help
+	  Say yes here to select Cadence I2C Host Controller. This controller is
+	  e.g. used by Xilinx Zynq.
+
 config I2C_CBUS_GPIO
 	tristate "CBUS I2C driver"
 	depends on GPIOLIB
@@ -753,12 +760,6 @@ config I2C_VERSATILE
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-versatile.
-
-config I2C_ZYNQ
-	tristate "XILINX ZYNQ I2C Controller"
-	depends on ARCH_ZYNQ
-	help
-	  Say yes here to select Xilnx ZYNQ I2C Host Controller
 
 config I2C_WMT
 	tristate "Wondermedia WM8xxx SoC I2C bus support"
