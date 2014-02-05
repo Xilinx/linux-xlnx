@@ -980,7 +980,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	struct net_device *ndev;
 	struct xcan_priv *priv;
-	int ret, fifodep = 0;
+	int ret, fifodep;
 
 	/* Create a CAN device instance */
 	ndev = alloc_candev(sizeof(struct xcan_priv), XCAN_ECHO_SKB_MAX);
