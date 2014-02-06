@@ -20,7 +20,6 @@
 
 #include <linux/clk/zynq.h>
 #include <linux/clk-provider.h>
-#include <linux/clkdev.h>
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -346,7 +345,6 @@ static void __init zynq_clk_setup(struct device_node *np)
 	clks[cpu_6or4x] = clk_register_gate(NULL, clk_output_name[cpu_6or4x],
 			"cpu_div", CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 			SLCR_ARM_CLK_CTRL, 24, 0, &armclk_lock);
-	clk_register_clkdev(clks[cpu_6or4x], "cpufreq_clk", NULL);
 
 	clk = clk_register_fixed_factor(NULL, "cpu_3or2x_div", "cpu_div", 0,
 			1, 2);
