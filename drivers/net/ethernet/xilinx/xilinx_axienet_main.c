@@ -198,9 +198,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	lp->tx_bd_tail = 0;
 	lp->rx_bd_ci = 0;
 
-	/*
-	 * Allocate the Tx and Rx buffer descriptors.
-	 */
+	/* Allocate the Tx and Rx buffer descriptors. */
 	lp->tx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
 					  sizeof(*lp->tx_bd_v) * TX_BD_NUM,
 					  &lp->tx_bd_p, GFP_KERNEL);
@@ -712,6 +710,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p->app4 = (unsigned long)skb;
 
 	tail_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
+	/* Ensure BD write before starting transfer */
 	wmb();
 
 	/* Start the transfer */
@@ -742,6 +741,7 @@ static void axienet_recv(struct net_device *ndev)
 	struct sk_buff *skb, *new_skb;
 	struct axidma_bd *cur_p;
 
+	/* Get relevat BD status value */
 	rmb();
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 
