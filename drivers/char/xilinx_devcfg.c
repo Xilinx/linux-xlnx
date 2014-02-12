@@ -1836,7 +1836,9 @@ static void xdevcfg_fclk_init(struct device *dev)
 		dev_warn(dev, "failed to create fclk class\n");
 		return;
 	}
-	sysfs_create_group(&dev->kobj, &fclk_exp_attr_grp);
+
+	if (sysfs_create_group(&dev->kobj, &fclk_exp_attr_grp))
+		dev_warn(dev, "failed to create sysfs entries\n");
 
 	return;
 }
