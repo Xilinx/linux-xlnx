@@ -133,6 +133,7 @@ struct xusb_request {
  * @ep_usb: usb endpoint instance
  * @queue: endpoint message queue
  * @udc: xilinx usb peripheral driver instance pointer
+ * @name: name of the endpoint
  * @epnumber: endpoint number
  * @is_in: endpoint direction (IN or OUT)
  * @stopped: endpoint active status
@@ -153,6 +154,7 @@ struct xusb_ep {
 	struct usb_ep ep_usb;
 	struct list_head queue;
 	struct xusb_udc *udc;
+	char name[4];
 	u16 epnumber;
 	u8 is_in;
 	u8 stopped;
@@ -193,9 +195,6 @@ struct xusb_udc {
 	unsigned int (*read_fn) (void __iomem *);
 	void (*write_fn) (u32, void __iomem *);
 };
-
-/* Global xusb_udc variable*/
-static struct xusb_udc controller;
 
 /**
  * struct cmdbuf - Standard USB Command Buffer Structure defined
@@ -366,7 +365,7 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 	u32 srcaddr = 0;
 	u32 dstaddr = 0;
 	int rc = 0;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = ep->udc;
 
 	bytestosend = bufferlen;
 
@@ -620,7 +619,7 @@ static int read_fifo(struct xusb_ep *ep, struct xusb_request *req)
 	u32 is_short, count, bufferspace;
 	u8 bufoffset;
 	u8 two_pkts = 0;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = ep->udc;
 
 	if ((ep->buffer0ready == 1) && (ep->buffer1ready == 1)) {
 		dev_dbg(&ep->udc->gadget.dev, "%s: Packet NOT ready!\n",
@@ -782,7 +781,7 @@ static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	unsigned long flags;
 	u32 epcfgreg;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = ep->udc;
 
 	if (!_ep || (!ep->desc && ep->epnumber))
 		return -EINVAL;
@@ -846,7 +845,7 @@ static int xusb_ep_enable(struct usb_ep *_ep,
 	u8 eptype = 0;
 	unsigned long flags;
 	u32 epcfg;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = ep->udc;
 
 	/*
 	 * The check for _ep->name == ep0name is not done as this enable i used
@@ -972,7 +971,7 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 	struct xusb_ep *ep = container_of(_ep, struct xusb_ep, ep_usb);
 	unsigned long flags;
 	u32 epcfg;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = ep->udc;
 
 	if (ep == &ep->udc->ep[XUSB_EP_NUMBER_ZERO]) {
 		dev_dbg(&ep->udc->gadget.dev, "Ep0 disable called\n");
@@ -1063,10 +1062,11 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	unsigned long flags;
 	u32 length, count;
 	u8 *corebuf;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc;
 
 	req = container_of(_req, struct xusb_request, usb_req);
 	ep = container_of(_ep, struct xusb_ep, ep_usb);
+	udc = ep->udc;
 
 	if (!_req || !_req->complete || !_req->buf ||
 	    !list_empty(&req->queue)) {
@@ -1307,150 +1307,6 @@ static const struct usb_gadget_ops xusb_udc_ops = {
 	.udc_stop  = xudc_stop,
 };
 
-/*-------------------------------------------------------------------------*/
-static struct xusb_udc controller = {
-	.gadget = {
-		.ops = &xusb_udc_ops,
-		.ep0 = &controller.ep[XUSB_EP_NUMBER_ZERO].ep_usb,
-		.speed = USB_SPEED_HIGH,
-		.max_speed = USB_SPEED_HIGH,
-		.is_otg = 0,
-		.is_a_peripheral = 0,
-		.b_hnp_enable = 0,
-		.a_hnp_support = 0,
-		.a_alt_hnp_support = 0,
-		.name = driver_name,
-		.dev = {
-			.init_name = "xilinx-udc",
-			.release = xusb_release,
-			},
-		},
-	.ep[0] = {
-		.ep_usb = {
-			.name = ep0name,
-			.ops = &xusb_ep_ops,
-			.maxpacket = 0x40,
-		},
-			.udc = &controller,
-		.epnumber = 0,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[1] = {
-		.ep_usb = {
-			.name = "ep1",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 1,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[2] = {
-		.ep_usb = {
-			.name = "ep2",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 2,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[3] = {
-		.ep_usb = {
-			.name = "ep3",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 3,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[4] = {
-		.ep_usb = {
-			.name = "ep4",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 4,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[5] = {
-		.ep_usb = {
-			.name = "ep5",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 5,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.ep[6] = {
-		.ep_usb = {
-			.name = "ep6",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 6,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.eptype = 0,
-		.curbufnum = 0,
-		.endpointoffset = 0,
-		},
-	.ep[7] = {
-		.ep_usb = {
-			.name = "ep7",
-			.ops = &xusb_ep_ops,
-		},
-		.udc = &controller,
-		.epnumber = 7,
-		.buffer0count = 0,
-		.buffer0ready = 0,
-		.buffer1count = 0,
-		.buffer1ready = 0,
-		.curbufnum = 0,
-		.eptype = 0,
-		.endpointoffset = 0,
-		},
-	.status = 0,
-	.write_fn = xusb_write32_be,
-	.read_fn = xusb_read32_be,
-};
-
 /**
  * xudc_reinit - Restores inital software state.
  * @udc: pointer to the usb device controller structure.
@@ -1458,6 +1314,7 @@ static struct xusb_udc controller = {
 static void xudc_reinit(struct xusb_udc *udc)
 {
 	u32 ep_number;
+	char name[4];
 
 	INIT_LIST_HEAD(&udc->gadget.ep_list);
 	INIT_LIST_HEAD(&udc->gadget.ep0->ep_list);
@@ -1469,7 +1326,17 @@ static void xudc_reinit(struct xusb_udc *udc)
 			list_add_tail(&ep->ep_usb.ep_list,
 					&udc->gadget.ep_list);
 			ep->ep_usb.maxpacket = (unsigned short)~0;
+			sprintf(name, "ep%d", ep_number);
+			strncpy(ep->name, name, sizeof(name));
+			ep->ep_usb.name = ep->name;
+		} else {
+			ep->ep_usb.name = ep0name;
+			ep->ep_usb.maxpacket = 0x40;
 		}
+
+		ep->ep_usb.ops = &xusb_ep_ops;
+		ep->udc = udc;
+		ep->epnumber = ep_number;
 		ep->desc = NULL;
 		ep->stopped = 0;
 		/*
@@ -2083,7 +1950,7 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 static int xudc_start(struct usb_gadget *gadget,
 			struct usb_gadget_driver *driver)
 {
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = to_udc(gadget);
 	const struct usb_endpoint_descriptor *d = &config_bulk_out_desc;
 
 	driver->driver.bus = NULL;
@@ -2111,7 +1978,7 @@ static int xudc_start(struct usb_gadget *gadget,
 static int xudc_stop(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver)
 {
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc = to_udc(gadget);
 	unsigned long flags;
 	u32 crtlreg;
 
@@ -2148,12 +2015,16 @@ static int xudc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *res;
-	struct xusb_udc *udc = &controller;
+	struct xusb_udc *udc;
 	int err;
 	int irq;
 	int ret;
 
 	dev_dbg(&pdev->dev, "%s(%p)\n", __func__, pdev);
+
+	udc = devm_kzalloc(&pdev->dev, sizeof(*udc), GFP_KERNEL);
+	if (!udc)
+		return -ENOMEM;
 
 	/* Map the registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -2176,16 +2047,27 @@ static int xudc_probe(struct platform_device *pdev)
 
 	udc->dma_enabled = of_property_read_bool(np, "xlnx,include-dma");
 
+	/* Setup gadget structure */
+	udc->gadget.ops = &xusb_udc_ops;
+	udc->gadget.max_speed = USB_SPEED_HIGH;
+	udc->gadget.speed = USB_SPEED_HIGH;
+	udc->gadget.ep0 = &udc->ep[XUSB_EP_NUMBER_ZERO].ep_usb;
+	udc->gadget.name = driver_name;
+
+	dev_set_name(&udc->gadget.dev, "xilinx_udc");
+	udc->gadget.dev.release = xusb_release;
 	udc->gadget.dev.parent = &pdev->dev;
 
 	spin_lock_init(&udc->lock);
 
 	/* Check for IP endianness */
+	udc->write_fn = xusb_write32_be;
+	udc->read_fn = xusb_read32_be;
 	udc->write_fn(TEST_J, (udc->base_address + XUSB_TESTMODE_OFFSET));
 	if ((udc->read_fn(udc->base_address + XUSB_TESTMODE_OFFSET))
 			!= TEST_J) {
-		controller.write_fn = xusb_write32;
-		controller.read_fn = xusb_read32;
+		udc->write_fn = xusb_write32;
+		udc->read_fn = xusb_read32;
 	}
 	udc->write_fn(0, (udc->base_address + XUSB_TESTMODE_OFFSET));
 
