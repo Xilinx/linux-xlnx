@@ -529,9 +529,6 @@ retry:
 		}
 	}
 
-	id->p_msg = NULL;
-	id->err_status = 0;
-
 	return num;
 }
 
