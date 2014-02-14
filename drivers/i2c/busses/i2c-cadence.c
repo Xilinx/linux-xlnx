@@ -518,14 +518,12 @@ retry:
 			}
 			dev_err(id->adap.dev.parent,
 					 "Retries completed, exit\n");
-			num = -EREMOTEIO;
-			break;
+			return -EREMOTEIO;
 		}
 		/* Report the other error interrupts to application as EIO */
 		if (id->err_status & 0xE4) {
 			cdns_i2c_master_reset(adap);
-			num = -EIO;
-			break;
+			return -EIO;
 		}
 	}
 
