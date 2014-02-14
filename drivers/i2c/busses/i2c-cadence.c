@@ -473,9 +473,9 @@ static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		if (count == (num - 1))
 			id->bus_hold_flag = 0;
 		retries = adap->retries;
+		id->p_msg = msgs;
 retry:
 		id->err_status = 0;
-		id->p_msg = msgs;
 		init_completion(&id->xfer_done);
 
 		/* Check for the TEN Bit mode on each msg */
