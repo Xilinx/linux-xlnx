@@ -622,13 +622,15 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	gpio->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(gpio->clk)) {
 		dev_err(&pdev->dev, "input clock not found.\n");
-		gpiochip_remove(chip);
+		if (gpiochip_remove(chip))
+			dev_err(&pdev->dev, "Failed to remove gpio chip\n");
 		return PTR_ERR(gpio->clk);
 	}
 	ret = clk_prepare_enable(gpio->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable clock.\n");
-		gpiochip_remove(chip);
+		if (gpiochip_remove(chip))
+			dev_err(&pdev->dev, "Failed to remove gpio chip\n");
 		return ret;
 	}
 
