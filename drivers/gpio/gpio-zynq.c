@@ -659,8 +659,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	device_set_wakeup_capable(&pdev->dev, 1);
 
 	return 0;
-
-	return ret;
 }
 
 /**
