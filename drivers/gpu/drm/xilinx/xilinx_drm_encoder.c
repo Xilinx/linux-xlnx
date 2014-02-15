@@ -214,7 +214,8 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 {
 	struct xilinx_drm_encoder *encoder;
 	struct device_node *sub_node;
-	struct drm_i2c_encoder_driver *i2c_driver;
+	struct i2c_driver *i2c_driver;
+	struct drm_i2c_encoder_driver *drm_i2c_driver;
 	int ret;
 
 	encoder = devm_kzalloc(drm->dev, sizeof(*encoder), GFP_KERNEL);
@@ -238,15 +239,16 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 	}
 
 	/* initialize slave encoder */
-	i2c_driver = to_drm_i2c_encoder_driver(encoder->i2c_slave->driver);
-	if (!i2c_driver) {
+	i2c_driver = to_i2c_driver(encoder->i2c_slave->dev.driver);
+	drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
+	if (!drm_i2c_driver) {
 		DRM_ERROR("failed to initialize encoder slave\n");
 		ret = -EPROBE_DEFER;
 		goto err_out;
 	}
 
-	ret = i2c_driver->encoder_init(encoder->i2c_slave, drm,
-				       &encoder->slave);
+	ret = drm_i2c_driver->encoder_init(encoder->i2c_slave, drm,
+					   &encoder->slave);
 	if (ret) {
 		DRM_ERROR("failed to initialize encoder slave\n");
 		goto err_out;
