@@ -28,6 +28,7 @@
 #include <linux/platform_device.h>
 
 #include "xilinx_drm_drv.h"
+#include "xilinx_drm_encoder.h"
 
 struct xilinx_drm_encoder {
 	struct drm_encoder_slave slave;

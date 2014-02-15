@@ -24,6 +24,8 @@
 
 #include "xilinx_drm_drv.h"
 
+#include "xilinx_cresample.h"
+
 /* registers */
 /* general control registers */
 #define CRESAMPLE_CONTROL		0x0000

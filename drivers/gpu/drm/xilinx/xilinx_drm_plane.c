@@ -27,6 +27,7 @@
 #include <linux/platform_device.h>
 
 #include "xilinx_drm_drv.h"
+#include "xilinx_drm_plane.h"
 
 #include "xilinx_cresample.h"
 #include "xilinx_osd.h"
@@ -374,8 +375,9 @@ bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 }
 
 /* get the plane format */
-uint32_t xilinx_drm_plane_get_format(struct xilinx_drm_plane *plane)
+uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane)
 {
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	return plane->format;
 }
 

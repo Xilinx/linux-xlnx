@@ -24,6 +24,8 @@
 
 #include "xilinx_drm_drv.h"
 
+#include "xilinx_rgb2yuv.h"
+
 /* registers */
 /* control register */
 #define RGB_CONTROL	0x000

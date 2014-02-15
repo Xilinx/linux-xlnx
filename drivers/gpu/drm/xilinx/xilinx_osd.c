@@ -27,6 +27,8 @@
 
 #include "xilinx_drm_drv.h"
 
+#include "xilinx_osd.h"
+
 /* registers */
 #define OSD_CTL	0x000	/* control */
 #define OSD_SS	0x020	/* screen size */

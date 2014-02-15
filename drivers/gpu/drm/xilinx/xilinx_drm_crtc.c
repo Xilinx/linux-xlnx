@@ -28,6 +28,7 @@
 
 #include <video/videomode.h>
 
+#include "xilinx_drm_crtc.h"
 #include "xilinx_drm_drv.h"
 #include "xilinx_drm_plane.h"
 
@@ -432,7 +433,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	/* create extra planes */
 	xilinx_drm_plane_create_planes(crtc->plane_manager, possible_crtcs);
 
-	crtc->pixel_clock = devm_clk_get(drm->dev, 0);
+	crtc->pixel_clock = devm_clk_get(drm->dev, NULL);
 	if (IS_ERR(crtc->pixel_clock)) {
 		DRM_DEBUG_KMS("failed to get pixel clock\n");
 		ret = -EPROBE_DEFER;
