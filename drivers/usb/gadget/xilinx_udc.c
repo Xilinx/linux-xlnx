@@ -1204,81 +1204,6 @@ static int xusb_get_frame(struct usb_gadget *gadget)
 	return retval;
 }
 
-/**
- * set_testmode - Sets the usb device into the given test mode.
- * @udc: pointer to the usb controller structure.
- * @testmode: Test mode to which the device is to be set.
- * @bufptr: pointer to the buffer containing the test packet.
- *
- * Returns: This function never returns if the command is successful
- *		and -ENOTSUPP on failure.
- *
- * This function is needed for USB certification tests.
- */
-static int set_testmode(struct xusb_udc *udc, u8 testmode, u8 *bufptr)
-{
-	u32 *src, *dst;
-	u32 count;
-	u32 crtlreg;
-
-	/* Stop the SIE.*/
-	crtlreg = udc->read_fn(udc->base_address + XUSB_CONTROL_OFFSET);
-	crtlreg &= ~XUSB_CONTROL_USB_READY_MASK;
-	udc->write_fn(crtlreg, (udc->base_address + XUSB_CONTROL_OFFSET));
-	if (testmode == TEST_PKT) {
-
-		if (bufptr == NULL)
-			/* Null pointer is passed.*/
-			return -EINVAL;
-
-
-		src = (u32 *) bufptr;
-		dst = (u32 __force *) (udc->base_address);
-		count = 14;
-
-		/* Copy Leurker PKT to DPRAM at 0.*/
-		while (count--)
-			*dst++ = *src++;
-	}
-
-	/* Set the test mode.*/
-	udc->write_fn(testmode, (udc->base_address + XUSB_TESTMODE_OFFSET));
-	/* Re-start the SIE.*/
-	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
-		(udc->base_address + XUSB_CONTROL_OFFSET));
-
-	while (1)
-		;		/* Only way out is through hardware reset! */
-
-	return 0;
-}
-
-/**
- * xusb_ioctl - The i/o control function to call the testmode function.
- * @gadget: pointer to the usb gadget structure.
- * @code: Test mode to which the device is to be set.
- * @param: Parameter to be sent for the test.
- *
- * Returns: 0 for success and error value on failure
- */
-static int xusb_ioctl(struct usb_gadget *gadget, unsigned code,
-		      unsigned long param)
-{
-	struct xusb_udc *udc = to_udc(gadget);
-	u8 *BufPtr;
-
-	BufPtr = (u8 *) param;
-
-	if ((code == TEST_J) || (code == TEST_K) ||
-	    (code == TEST_SE0_NAK) || (code == TEST_PKT))
-
-		return set_testmode(udc, code, BufPtr);
-	else
-		return -EINVAL;
-
-	return 0;
-}
-
 static int xudc_start(struct usb_gadget *gadget,
 			struct usb_gadget_driver *driver);
 static int xudc_stop(struct usb_gadget *gadget,
@@ -1287,7 +1212,6 @@ static void xusb_release(struct device *dev);
 
 static const struct usb_gadget_ops xusb_udc_ops = {
 	.get_frame = xusb_get_frame,
-	.ioctl = xusb_ioctl,
 	.udc_start = xudc_start,
 	.udc_stop  = xudc_stop,
 };
