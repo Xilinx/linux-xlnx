@@ -113,8 +113,6 @@
 #define STATUS_PHASE			0x0002  /* Status Phase */
 
 #define EP_TRANSMIT		0	/* EP is IN endpoint */
-#define DRIVER_VERSION  "10 October 2010" /* Driver version date */
-
 #define EP0_MAX_PACKET		64 /* Endpoint 0 maximum packet length */
 
 /**
@@ -2091,7 +2089,6 @@ static int xudc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, udc);
 
-	dev_info(&pdev->dev, "%s version %s\n", driver_name, DRIVER_VERSION);
 	dev_info(&pdev->dev, "%s #%d at 0x%08X mapped to 0x%08X\n",
 		 driver_name, 0, (u32)res->start,
 		 (u32 __force)udc->base_address);
