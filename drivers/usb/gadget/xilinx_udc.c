@@ -218,8 +218,7 @@ struct cmdbuf {
 static struct cmdbuf ch9_cmdbuf;
 
 /*
- * Initial Fixed locations provided for endpoint memory address
- * in the USB core. The user needs to modify this as per his application.
+ * Endpoint buffer start addresses in the core
  */
 static u32 rambase[8] = { 0x22, 0x1000, 0x1100, 0x1200, 0x1300, 0x1400, 0x1500,
 			0x1600 };
@@ -237,10 +236,10 @@ static struct usb_endpoint_descriptor config_bulk_out_desc = {
 };
 
 /**
- * to_udc - Returns the udc instance pointer
+ * to_udc - Return the udc instance pointer
  * @g: pointer to the usb gadget driver instance
  *
- * Returns: xusb_udc pointer
+ * Return: xusb_udc pointer
  */
 static inline struct xusb_udc *to_udc(struct usb_gadget *g)
 {
@@ -261,6 +260,7 @@ static void xudc_write32(u32 val, void __iomem *addr)
 /**
  * xudc_read32 - little endian read from device registers
  * @addr: addr of device register
+ * Return: value at addr
  */
 static unsigned int xudc_read32(void __iomem *addr)
 {
@@ -280,6 +280,7 @@ static void xudc_write32_be(u32 val, void __iomem *addr)
 /**
  * xudc_read32_be - big endian read from device registers
  * @addr: addr of device register
+ * Return: value at addr
  */
 static unsigned int xudc_read32_be(void __iomem *addr)
 {
@@ -347,7 +348,7 @@ static void xudc_epconfig(struct xusb_ep *ep, struct xusb_udc *udc)
  * @bufferlen: The number of data bytes to be sent.
  * @direction: The direction of data transfer (transmit or receive).
  *
- * Returns: 0 on success and 1 on failure
+ * Return: 0 on success and 1 on failure
  *
  * This function copies the transmit/receive data to/from the end point buffer
  * and enables the buffer for transmission/reception.
@@ -604,7 +605,7 @@ static void xudc_done(struct xusb_ep *ep, struct xusb_request *req, int status)
  * @ep: pointer to the usb device endpoint structure.
  * @req: pointer to the usb request structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  *
  * Pulls OUT packet data from the endpoint buffer.
  */
@@ -693,7 +694,7 @@ top:
  * @ep: pointer to the usb device endpoint structure.
  * @req: pointer to the usb request structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  *
  * Loads endpoint buffer for an IN packet.
  */
@@ -768,7 +769,7 @@ static void xudc_nuke(struct xusb_ep *ep, int status)
  * @_ep: pointer to the usb device endpoint structure.
  * @value: value to indicate stall/unstall.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_ep_set_halt(struct usb_ep *_ep, int value)
 {
@@ -828,7 +829,7 @@ static int xudc_ep_set_halt(struct usb_ep *_ep, int value)
  * @_ep: pointer to the usb device endpoint structure.
  * @desc: pointer to usb endpoint descriptor.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_ep_enable(struct usb_ep *_ep,
 			  const struct usb_endpoint_descriptor *desc)
@@ -860,13 +861,7 @@ static int xudc_ep_enable(struct usb_ep *_ep,
 
 	ep->is_in = ((desc->bEndpointAddress & USB_DIR_IN) != 0);
 	/*
-	 * The address of the endpoint is encoded as follows:
-	 * Bit 3...0: The endpoint number
-	 * Bit 6...4: Reserved, reset to zero
-	 * Bit 7: Direction, ignored for
-	 * control endpoints
-	 * 0 = OUT endpoint
-	 * 1 = IN endpoint
+	 * Bit 3...0: endpoint number
 	 */
 	ep->epnumber = (desc->bEndpointAddress & 0x0f);
 	ep->stopped = 0;
@@ -958,7 +953,7 @@ ok:	ep->eptype = eptype;
  * xudc_ep_disable - Disables the given endpoint.
  * @_ep: pointer to the usb device endpoint structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_ep_disable(struct usb_ep *_ep)
 {
@@ -996,7 +991,7 @@ static int xudc_ep_disable(struct usb_ep *_ep)
  * @_ep: pointer to the usb device endpoint structure.
  * @gfp_flags: Flags related to the request call.
  *
- * Returns: pointer to request structure on success and a NULL on failure.
+ * Return: pointer to request structure on success and a NULL on failure.
  */
 static struct usb_request *xudc_ep_alloc_request(struct usb_ep *_ep,
 						 gfp_t gfp_flags)
@@ -1036,7 +1031,7 @@ static void xudc_free_request(struct usb_ep *_ep, struct usb_request *_req)
  * @_req: pointer to the usb request structure.
  * @gfp_flags: Flags related to the request call.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 			 gfp_t gfp_flags)
@@ -1140,7 +1135,7 @@ static int xudc_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
  * @_ep: pointer to the usb device endpoint structure.
  * @_req: pointer to the usb request structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
@@ -1186,7 +1181,7 @@ static struct usb_ep_ops xusb_ep_ops = {
  * xudc_get_frame - Reads the current usb frame number.
  * @gadget: pointer to the usb gadget structure.
  *
- * Returns: current frame number for success and error value on failure.
+ * Return: current frame number for success and error value on failure.
  */
 static int xudc_get_frame(struct usb_gadget *gadget)
 {
@@ -1286,7 +1281,7 @@ static void xudc_stop_activity(struct xusb_udc *udc)
  * @gadget: pointer to the usb gadget structure
  * @driver: pointer to gadget driver structure
  *
- * Returns: zero always
+ * Return: zero always
  */
 static int xudc_start(struct usb_gadget *gadget,
 			struct usb_gadget_driver *driver)
@@ -1314,7 +1309,7 @@ static int xudc_start(struct usb_gadget *gadget,
  * @gadget: pointer to the usb gadget structure
  * @driver: pointer to usb gadget driver structure
  *
- * Returns: zero always
+ * Return: zero always
  */
 static int xudc_stop(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver)
@@ -1538,7 +1533,7 @@ static void xudc_set_clear_feature(struct xusb_udc *udc, int flag)
  * xudc_execute_cmd - Processes the USB specification chapter 9 commands.
  * @udc: pointer to the usb device controller structure.
  *
- * Returns: 0 for success and the same reuqest command if it is not handled.
+ * Return: 0 for success and the same reuqest command if it is not handled.
  */
 static int xudc_execute_cmd(struct xusb_udc *udc)
 {
@@ -1585,7 +1580,7 @@ static int xudc_execute_cmd(struct xusb_udc *udc)
  * @udc: pointer to the usb device controller structure.
  * @ctrl: pointer to the usb control endpoint structure.
  *
- * Returns: 0 for success and request to be handled by application if
+ * Return: 0 for success and request to be handled by application if
  *		is not handled by the driver.
  */
 static int xudc_handle_setup(struct xusb_udc *udc, struct usb_ctrlrequest *ctrl)
@@ -1853,7 +1848,7 @@ static void xudc_nonctrl_ep_handler(void *callbackref, u8 epnum,
  * @irq: The interrupt number.
  * @_udc: pointer to the usb device controller structure.
  *
- * Returns: IRQ_HANDLED after the interrupt is handled.
+ * Return: IRQ_HANDLED after the interrupt is handled.
  */
 static irqreturn_t xudc_irq(int irq, void *_udc)
 {
@@ -1914,7 +1909,7 @@ static void xudc_release(struct device *dev)
  * xudc_probe - The device probe function for driver initialization.
  * @pdev: pointer to the platform device structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_probe(struct platform_device *pdev)
 {
@@ -2010,7 +2005,7 @@ fail0:
  * xudc_remove - Releases the resources allocated during the initialization.
  * @pdev: pointer to the platform device structure.
  *
- * Returns: 0 for success and error value on failure
+ * Return: 0 for success and error value on failure
  */
 static int xudc_remove(struct platform_device *pdev)
 {
