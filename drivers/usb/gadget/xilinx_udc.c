@@ -1390,10 +1390,6 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 	switch (ch9_cmdbuf.setup.bRequestType) {
 	case STANDARD_OUT_DEVICE:
 		switch (ch9_cmdbuf.setup.wValue) {
-		case USB_DEVICE_REMOTE_WAKEUP:
-			/* User needs to add code here.*/
-			break;
-
 		case USB_DEVICE_TEST_MODE:
 			/*
 			 * The Test Mode will be executed
