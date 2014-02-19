@@ -1,11 +1,10 @@
 /*
  * Xilinx USB peripheral controller driver
  *
- * Copyright (C) 2010 - 2014 Xilinx, Inc.
- *
  * Copyright (C) 2004 by Thomas Rathbone
  * Copyright (C) 2005 by HP Labs
  * Copyright (C) 2005 by David Brownell
+ * Copyright (C) 2010 - 2014 Xilinx, Inc.
  *
  * Some parts of this driver code is based on the driver for at91-series
  * USB peripheral controller (at91_udc.c).
