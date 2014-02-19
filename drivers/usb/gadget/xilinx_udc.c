@@ -1925,7 +1925,6 @@ static int xudc_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *res;
 	struct xusb_udc *udc;
-	int err;
 	int irq;
 	int ret;
 
@@ -1947,11 +1946,10 @@ static int xudc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "unable to get irq\n");
 		return irq;
 	}
-	err = devm_request_irq(&pdev->dev, irq, xusb_udc_irq,
-			       0, dev_name(&pdev->dev), udc);
-	if (err < 0) {
-		dev_err(&pdev->dev, "unable to request irq %d", irq);
-		return err;
+	ret = request_irq(irq, xusb_udc_irq, 0, dev_name(&pdev->dev), udc);
+	if (ret < 0) {
+		dev_dbg(&pdev->dev, "unable to request irq %d", irq);
+		goto fail0;
 	}
 
 	udc->dma_enabled = of_property_read_bool(np, "xlnx,include-dma");
@@ -1987,7 +1985,7 @@ static int xudc_probe(struct platform_device *pdev)
 
 	ret = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (ret)
-		dev_dbg(&pdev->dev, "usb_add_gadget_udc returned %d\n", ret);
+		goto fail1;
 
 	/* Enable the interrupts.*/
 	udc->write_fn(XUSB_STATUS_GLOBAL_INTR_MASK | XUSB_STATUS_RESET_MASK |
@@ -2004,6 +2002,12 @@ static int xudc_probe(struct platform_device *pdev)
 		 (u32 __force)udc->base_address);
 
 	return 0;
+
+fail1:
+	free_irq(irq, udc);
+fail0:
+	dev_dbg(&pdev->dev, "probe failed, %d\n", ret);
+	return ret;
 }
 
 /**
