@@ -1204,18 +1204,6 @@ static int xusb_get_frame(struct usb_gadget *gadget)
 	return retval;
 }
 
-static int xudc_start(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver);
-static int xudc_stop(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver);
-static void xusb_release(struct device *dev);
-
-static const struct usb_gadget_ops xusb_udc_ops = {
-	.get_frame = xusb_get_frame,
-	.udc_start = xudc_start,
-	.udc_stop  = xudc_stop,
-};
-
 /**
  * xudc_reinit - Restores inital software state.
  * @udc: pointer to the usb device controller structure.
@@ -1292,6 +1280,69 @@ static void stop_activity(struct xusb_udc *udc)
 
 	xudc_reinit(udc);
 }
+
+/**
+ * xudc_start - Starts the device.
+ * @gadget: pointer to the usb gadget structure
+ * @driver: pointer to gadget driver structure
+ *
+ * Returns: zero always
+ */
+static int xudc_start(struct usb_gadget *gadget,
+			struct usb_gadget_driver *driver)
+{
+	struct xusb_udc *udc = to_udc(gadget);
+	const struct usb_endpoint_descriptor *d = &config_bulk_out_desc;
+
+	driver->driver.bus = NULL;
+	/* hook up the driver */
+	udc->driver = driver;
+	udc->gadget.dev.driver = &driver->driver;
+	udc->gadget.speed = driver->max_speed;
+
+	/* Enable the USB device.*/
+	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep_usb, d);
+	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
+	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
+		udc->base_address + XUSB_CONTROL_OFFSET);
+
+	return 0;
+}
+
+/**
+ * xudc_stop - stops the device.
+ * @gadget: pointer to the usb gadget structure
+ * @driver: pointer to usb gadget driver structure
+ *
+ * Returns: zero always
+ */
+static int xudc_stop(struct usb_gadget *gadget,
+		struct usb_gadget_driver *driver)
+{
+	struct xusb_udc *udc = to_udc(gadget);
+	unsigned long flags;
+	u32 crtlreg;
+
+	/* Disable USB device.*/
+	crtlreg = udc->read_fn(udc->base_address + XUSB_CONTROL_OFFSET);
+	crtlreg &= ~XUSB_CONTROL_USB_READY_MASK;
+	udc->write_fn(crtlreg, udc->base_address + XUSB_CONTROL_OFFSET);
+	spin_lock_irqsave(&udc->lock, flags);
+	udc->gadget.speed = USB_SPEED_UNKNOWN;
+	stop_activity(udc);
+	spin_unlock_irqrestore(&udc->lock, flags);
+
+	udc->gadget.dev.driver = NULL;
+	udc->driver = NULL;
+
+	return 0;
+}
+
+static const struct usb_gadget_ops xusb_udc_ops = {
+	.get_frame = xusb_get_frame,
+	.udc_start = xudc_start,
+	.udc_stop  = xudc_stop,
+};
 
 /**
  * startup_intrhandler - The usb device controller interrupt handler.
@@ -1849,62 +1900,7 @@ static irqreturn_t xusb_udc_irq(int irq, void *_udc)
 	return IRQ_HANDLED;
 }
 
-/**
- * xudc_start - Starts the device.
- * @gadget: pointer to the usb gadget structure
- * @driver: pointer to gadget driver structure
- *
- * Returns: zero always
- */
-static int xudc_start(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver)
-{
-	struct xusb_udc *udc = to_udc(gadget);
-	const struct usb_endpoint_descriptor *d = &config_bulk_out_desc;
 
-	driver->driver.bus = NULL;
-	/* hook up the driver */
-	udc->driver = driver;
-	udc->gadget.dev.driver = &driver->driver;
-	udc->gadget.speed = driver->max_speed;
-
-	/* Enable the USB device.*/
-	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep_usb, d);
-	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
-	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
-		udc->base_address + XUSB_CONTROL_OFFSET);
-
-	return 0;
-}
-
-/**
- * xudc_stop - stops the device.
- * @gadget: pointer to the usb gadget structure
- * @driver: pointer to usb gadget driver structure
- *
- * Returns: zero always
- */
-static int xudc_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver)
-{
-	struct xusb_udc *udc = to_udc(gadget);
-	unsigned long flags;
-	u32 crtlreg;
-
-	/* Disable USB device.*/
-	crtlreg = udc->read_fn(udc->base_address + XUSB_CONTROL_OFFSET);
-	crtlreg &= ~XUSB_CONTROL_USB_READY_MASK;
-	udc->write_fn(crtlreg, udc->base_address + XUSB_CONTROL_OFFSET);
-	spin_lock_irqsave(&udc->lock, flags);
-	udc->gadget.speed = USB_SPEED_UNKNOWN;
-	stop_activity(udc);
-	spin_unlock_irqrestore(&udc->lock, flags);
-
-	udc->gadget.dev.driver = NULL;
-	udc->driver = NULL;
-
-	return 0;
-}
 
 /**
  * xusb_release - Releases device structure
