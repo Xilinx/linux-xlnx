@@ -315,7 +315,7 @@ static void setup_ctrl_wr_status_stage(struct xusb_udc *udc)
  */
 static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 {
-	u32 epcfgreg = 0;
+	u32 epcfgreg;
 
 	/*
 	 * Configure the end point direction, type, Max Packet Size and the
@@ -327,17 +327,17 @@ static void ep_configure(struct xusb_ep *ep, struct xusb_udc *udc)
 
 	/* Set the Buffer count and the Buffer ready bits.*/
 	udc->write_fn(ep->buffer0count,
-			(udc->base_address + ep->endpointoffset +
-			XUSB_EP_BUF0COUNT_OFFSET));
+			udc->base_address + ep->endpointoffset +
+			XUSB_EP_BUF0COUNT_OFFSET);
 	udc->write_fn(ep->buffer1count,
-			(udc->base_address + ep->endpointoffset +
-			XUSB_EP_BUF1COUNT_OFFSET));
+			udc->base_address + ep->endpointoffset +
+			XUSB_EP_BUF1COUNT_OFFSET);
 	if (ep->buffer0ready == 1)
 		udc->write_fn(1 << ep->epnumber,
-			(udc->base_address + XUSB_BUFFREADY_OFFSET));
+			udc->base_address + XUSB_BUFFREADY_OFFSET);
 	if (ep->buffer1ready == 1)
 		udc->write_fn(1 << (ep->epnumber + XUSB_STATUS_EP_BUFF2_SHIFT),
-			(udc->base_address + XUSB_BUFFREADY_OFFSET));
+			udc->base_address + XUSB_BUFFREADY_OFFSET);
 }
 
 /**
@@ -367,7 +367,7 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 	bytestosend = bufferlen;
 
 	/* Put the transmit buffer into the correct ping-pong buffer.*/
-	if ((!(ep->curbufnum)) && (!(ep->buffer0ready))) {
+	if (!ep->curbufnum && !ep->buffer0ready) {
 		/* Get the Buffer address and copy the transmit data.*/
 		eprambase = (u32 __force *)(ep->udc->base_address +
 				ep->rambase);
@@ -379,13 +379,13 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 					bufferptr, bufferlen, DMA_TO_DEVICE);
 				dstaddr = virt_to_phys(eprambase);
 				udc->write_fn(bufferlen,
-						(ep->udc->base_address +
+						ep->udc->base_address +
 						ep->endpointoffset +
-						XUSB_EP_BUF0COUNT_OFFSET));
+						XUSB_EP_BUF0COUNT_OFFSET);
 				udc->write_fn(XUSB_DMA_BRR_CTRL |
-						(1 << (ep->epnumber)),
-						(ep->udc->base_address +
-						XUSB_DMA_CONTROL_OFFSET));
+						(1 << ep->epnumber),
+						ep->udc->base_address +
+						XUSB_DMA_CONTROL_OFFSET);
 			} else {
 				srcaddr = virt_to_phys(eprambase);
 				dstaddr = dma_map_single(
@@ -393,32 +393,32 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 					bufferptr, bufferlen, DMA_FROM_DEVICE);
 				udc->write_fn(XUSB_DMA_BRR_CTRL |
 					XUSB_DMA_READ_FROM_DPRAM |
-					(1 << (ep->epnumber)),
-					(ep->udc->base_address +
-					XUSB_DMA_CONTROL_OFFSET));
+					(1 << ep->epnumber),
+					ep->udc->base_address +
+					XUSB_DMA_CONTROL_OFFSET);
 			}
 			/*
 			 * Set the addresses in the DMA source and destination
 			 * registers and then set the length into the DMA length
 			 * register.
 			 */
-			udc->write_fn(srcaddr, (ep->udc->base_address +
-				XUSB_DMA_DSAR_ADDR_OFFSET));
-			udc->write_fn(dstaddr, (ep->udc->base_address +
-				XUSB_DMA_DDAR_ADDR_OFFSET));
-			udc->write_fn(bufferlen, (ep->udc->base_address +
-					XUSB_DMA_LENGTH_OFFSET));
+			udc->write_fn(srcaddr, ep->udc->base_address +
+				XUSB_DMA_DSAR_ADDR_OFFSET);
+			udc->write_fn(dstaddr, ep->udc->base_address +
+				XUSB_DMA_DDAR_ADDR_OFFSET);
+			udc->write_fn(bufferlen, ep->udc->base_address +
+					XUSB_DMA_LENGTH_OFFSET);
 		} else {
 
 			while (bytestosend > 3) {
 				if (direction == EP_TRANSMIT)
-					*eprambase++ = *(u32 *) bufferptr;
+					*eprambase++ = *(u32 *)bufferptr;
 				else
-					*(u32 *) bufferptr = *eprambase++;
+					*(u32 *)bufferptr = *eprambase++;
 				bufferptr += 4;
 				bytestosend -= 4;
 			}
-			temprambase = (u8 *) eprambase;
+			temprambase = (u8 *)eprambase;
 			while (bytestosend--) {
 				if (direction == EP_TRANSMIT)
 					*temprambase++ = *bufferptr++;
@@ -431,18 +431,18 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 			 */
 			if (direction == EP_TRANSMIT)
 				udc->write_fn(bufferlen,
-					(ep->udc->base_address +
+					ep->udc->base_address +
 					ep->endpointoffset +
-					XUSB_EP_BUF0COUNT_OFFSET));
+					XUSB_EP_BUF0COUNT_OFFSET);
 			udc->write_fn(1 << ep->epnumber,
-					(ep->udc->base_address +
-					XUSB_BUFFREADY_OFFSET));
+					ep->udc->base_address +
+					XUSB_BUFFREADY_OFFSET);
 		}
 		ep->buffer0ready = 1;
 		ep->curbufnum = 1;
 
 	} else
-		if ((ep->curbufnum == 1) && (!(ep->buffer1ready))) {
+		if ((ep->curbufnum == 1) && (!ep->buffer1ready)) {
 
 			/* Get the Buffer address and copy the transmit data.*/
 			eprambase = (u32 __force *)(ep->udc->base_address +
@@ -455,26 +455,26 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 						DMA_TO_DEVICE);
 					dstaddr = virt_to_phys(eprambase);
 					udc->write_fn(bufferlen,
-						(ep->udc->base_address +
+						ep->udc->base_address +
 						ep->endpointoffset +
-						XUSB_EP_BUF1COUNT_OFFSET));
+						XUSB_EP_BUF1COUNT_OFFSET);
 					udc->write_fn(XUSB_DMA_BRR_CTRL |
 						(1 << (ep->epnumber +
 						XUSB_STATUS_EP_BUFF2_SHIFT)),
-						(ep->udc->base_address +
-						XUSB_DMA_CONTROL_OFFSET));
+						ep->udc->base_address +
+						XUSB_DMA_CONTROL_OFFSET);
 				} else {
 					srcaddr = virt_to_phys(eprambase);
 					dstaddr = dma_map_single(
 						ep->udc->gadget.dev.parent,
 						bufferptr, bufferlen,
 						DMA_FROM_DEVICE);
-				udc->write_fn(XUSB_DMA_BRR_CTRL |
+					udc->write_fn(XUSB_DMA_BRR_CTRL |
 						XUSB_DMA_READ_FROM_DPRAM |
 						(1 << (ep->epnumber +
 						XUSB_STATUS_EP_BUFF2_SHIFT)),
-						(ep->udc->base_address +
-						XUSB_DMA_CONTROL_OFFSET));
+						ep->udc->base_address +
+						XUSB_DMA_CONTROL_OFFSET);
 				}
 				/*
 				 * Set the addresses in the DMA source and
@@ -482,26 +482,26 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 				 * into the DMA length register.
 				 */
 				udc->write_fn(srcaddr,
-					(ep->udc->base_address +
-					XUSB_DMA_DSAR_ADDR_OFFSET));
+						ep->udc->base_address +
+						XUSB_DMA_DSAR_ADDR_OFFSET);
 				udc->write_fn(dstaddr,
-					(ep->udc->base_address +
-					XUSB_DMA_DDAR_ADDR_OFFSET));
+						ep->udc->base_address +
+						XUSB_DMA_DDAR_ADDR_OFFSET);
 				udc->write_fn(bufferlen,
-					(ep->udc->base_address +
-					XUSB_DMA_LENGTH_OFFSET));
+						ep->udc->base_address +
+						XUSB_DMA_LENGTH_OFFSET);
 			} else {
 				while (bytestosend > 3) {
 					if (direction == EP_TRANSMIT)
 						*eprambase++ =
-							*(u32 *) bufferptr;
+							*(u32 *)bufferptr;
 					else
-						*(u32 *) bufferptr =
+						*(u32 *)bufferptr =
 							*eprambase++;
 					bufferptr += 4;
 					bytestosend -= 4;
 				}
-				temprambase = (u8 *) eprambase;
+				temprambase = (u8 *)eprambase;
 				while (bytestosend--) {
 					if (direction == EP_TRANSMIT)
 						*temprambase++ = *bufferptr++;
@@ -515,22 +515,23 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 				 */
 				if (direction == EP_TRANSMIT)
 					udc->write_fn(bufferlen,
-						(ep->udc->base_address +
+						ep->udc->base_address +
 						ep->endpointoffset +
-						XUSB_EP_BUF1COUNT_OFFSET));
+						XUSB_EP_BUF1COUNT_OFFSET);
 				udc->write_fn(1 << (ep->epnumber +
 						XUSB_STATUS_EP_BUFF2_SHIFT),
-						(ep->udc->base_address +
-						XUSB_BUFFREADY_OFFSET));
+						ep->udc->base_address +
+						XUSB_BUFFREADY_OFFSET);
 			}
 			ep->buffer1ready = 1;
 			ep->curbufnum = 0;
-		} else
+		} else {
 			/*
 			 * None of the ping-pong buffer is free. Return a
 			 * failure.
 			 */
 			return 1;
+		}
 
 	if (ep->udc->dma_enabled) {
 		/*
@@ -539,8 +540,8 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 		 * successful.
 		 */
 		while ((udc->read_fn(ep->udc->base_address +
-			XUSB_DMA_STATUS_OFFSET) & XUSB_DMA_DMASR_BUSY) ==
-			XUSB_DMA_DMASR_BUSY) {
+				XUSB_DMA_STATUS_OFFSET) &
+				XUSB_DMA_DMASR_BUSY) == XUSB_DMA_DMASR_BUSY) {
 			timeout = jiffies + 10000;
 
 			if (time_after(jiffies, timeout)) {
@@ -550,20 +551,17 @@ static int ep_sendrecv(struct xusb_ep *ep, u8 *bufferptr, u32 bufferlen,
 
 		}
 		if ((udc->read_fn(ep->udc->base_address +
-			XUSB_DMA_STATUS_OFFSET) & XUSB_DMA_DMASR_ERROR) ==
-			XUSB_DMA_DMASR_ERROR)
+				XUSB_DMA_STATUS_OFFSET) &
+				XUSB_DMA_DMASR_ERROR) == XUSB_DMA_DMASR_ERROR)
 			dev_dbg(&ep->udc->gadget.dev, "DMA Error\n");
 clean:
 		if (direction == EP_TRANSMIT) {
-
 			dma_unmap_single(ep->udc->gadget.dev.parent,
 				srcaddr, bufferlen, DMA_TO_DEVICE);
 		} else {
-
 			dma_unmap_single(ep->udc->gadget.dev.parent,
 				dstaddr, bufferlen, DMA_FROM_DEVICE);
 		}
-
 	}
 	return rc;
 }
@@ -642,11 +640,12 @@ top:
 	bufferspace = req->usb_req.length - req->usb_req.actual;
 
 	req->usb_req.actual += min(count, bufferspace);
-	is_short = (count < ep->ep_usb.maxpacket);
+	is_short = count < ep->ep_usb.maxpacket;
 
 	if (count) {
 		if (unlikely(!bufferspace)) {
-			/* This happens when the driver's buffer
+			/*
+			 * This happens when the driver's buffer
 			 * is smaller than what the host sent.
 			 * discard the extra data.
 			 */
@@ -670,12 +669,10 @@ top:
 					done(ep, req, 0);
 					return 1;
 				}
-
 				if (two_pkts) {
 					two_pkts = 0;
 					goto top;
 				}
-
 			} else {
 				dev_dbg(&ep->udc->gadget.dev,
 				"rcv fail..curbufnum is %d and buf0rdy is"
@@ -685,9 +682,9 @@ top:
 				return -EINVAL;
 			}
 		}
-	} else
+	} else {
 		return -EINVAL;
-
+	}
 	return 0;
 }
 
@@ -726,9 +723,9 @@ static int write_fifo(struct xusb_ep *ep, struct xusb_request *req)
 	} else {
 		req->usb_req.actual += length;
 
-		if (unlikely(length != max))
+		if (unlikely(length != max)) {
 			is_last = is_short = 1;
-		else {
+		} else {
 			if (likely(req->usb_req.length !=
 				req->usb_req.actual) || req->usb_req.zero)
 				is_last = 0;
@@ -811,14 +808,14 @@ static int xusb_ep_set_halt(struct usb_ep *_ep, int value)
 					    ep->endpointoffset);
 		epcfgreg &= ~XUSB_EP_CFG_STALL_MASK;
 		udc->write_fn(epcfgreg,
-		(ep->udc->base_address + ep->endpointoffset));
+		ep->udc->base_address + ep->endpointoffset);
 		if (ep->epnumber) {
 			/* Reset the toggle bit.*/
 			epcfgreg = udc->read_fn(ep->udc->base_address +
 						    ep->endpointoffset);
 			epcfgreg &= ~XUSB_EP_CFG_DATA_TOGGLE_MASK;
-			udc->write_fn(epcfgreg, (ep->udc->base_address +
-					   ep->endpointoffset));
+			udc->write_fn(epcfgreg, ep->udc->base_address +
+					   ep->endpointoffset);
 		}
 	}
 
@@ -929,7 +926,7 @@ ok:	ep->eptype = eptype;
 	epcfg = udc->read_fn(ep->udc->base_address + ep->endpointoffset);
 	epcfg |= XUSB_EP_CFG_VALID_MASK;
 	udc->write_fn(epcfg,
-		(ep->udc->base_address + ep->endpointoffset));
+		ep->udc->base_address + ep->endpointoffset);
 	if (ep->epnumber)
 		ep->rambase <<= 2;
 
@@ -938,17 +935,17 @@ ok:	ep->eptype = eptype;
 				XUSB_IER_OFFSET) |
 				(XUSB_STATUS_INTR_BUFF_COMP_SHIFT_MASK <<
 				ep->epnumber)),
-				(ep->udc->base_address + XUSB_IER_OFFSET));
-	if ((ep->epnumber) && (!ep->is_in)) {
+				ep->udc->base_address + XUSB_IER_OFFSET);
+	if (ep->epnumber && !ep->is_in) {
 
 		/* Set the buffer ready bits.*/
-		udc->write_fn(1 << ep->epnumber, (ep->udc->base_address +
-				  XUSB_BUFFREADY_OFFSET));
+		udc->write_fn(1 << ep->epnumber, ep->udc->base_address +
+				  XUSB_BUFFREADY_OFFSET);
 		ep->buffer0ready = 1;
 		udc->write_fn((1 << (ep->epnumber +
 				XUSB_STATUS_EP_BUFF2_SHIFT)),
-				(ep->udc->base_address +
-				XUSB_BUFFREADY_OFFSET));
+				ep->udc->base_address +
+				XUSB_BUFFREADY_OFFSET);
 		ep->buffer1ready = 1;
 	}
 
@@ -984,21 +981,12 @@ static int xusb_ep_disable(struct usb_ep *_ep)
 
 	ep->stopped = 1;
 
-	/*
-	 * The address of the endpoint is encoded as follows:
-	 * Bit 3...0: The endpoint number
-	 * Bit 6...4: Reserved, reset to zero
-	 * Bit 7: Direction, ignored for
-	 * control endpoints
-	 * 0 = OUT endpoint
-	 * 1 = IN endpoint
-	 */
 	dev_dbg(&ep->udc->gadget.dev, "USB Ep %d disable\n ", ep->epnumber);
 
 	/* Disable the endpoint.*/
 	epcfg = udc->read_fn(ep->udc->base_address + ep->endpointoffset);
 	epcfg &= ~XUSB_EP_CFG_VALID_MASK;
-	udc->write_fn(epcfg, (ep->udc->base_address + ep->endpointoffset));
+	udc->write_fn(epcfg, ep->udc->base_address + ep->endpointoffset);
 	spin_unlock_irqrestore(&ep->udc->lock, flags);
 	return 0;
 }
@@ -1066,7 +1054,7 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	udc = ep->udc;
 
 	if (!_req || !_req->complete || !_req->buf ||
-	    !list_empty(&req->queue)) {
+			!list_empty(&req->queue)) {
 		dev_dbg(&ep->udc->gadget.dev, "invalid request\n");
 		return -EINVAL;
 	}
@@ -1105,10 +1093,10 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 							EP0_MAX_PACKET);
 				while (length--)
 					*corebuf++ = *ch9_cmdbuf.contwriteptr++;
-				udc->write_fn(count, (ep->udc->base_address +
-					   XUSB_EP_BUF0COUNT_OFFSET));
-				udc->write_fn(1, (ep->udc->base_address +
-					   XUSB_BUFFREADY_OFFSET));
+				udc->write_fn(count, ep->udc->base_address +
+					   XUSB_EP_BUF0COUNT_OFFSET);
+				udc->write_fn(1, ep->udc->base_address +
+					   XUSB_BUFFREADY_OFFSET);
 				ch9_cmdbuf.contwritecount -= count;
 			} else {
 				if (ch9_cmdbuf.setup.wLength) {
@@ -1116,10 +1104,10 @@ static int xusb_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 						req->usb_req.buf +
 							req->usb_req.actual;
 					udc->write_fn(req->usb_req.length ,
-						(ep->udc->base_address +
-						XUSB_EP_BUF0COUNT_OFFSET));
-					udc->write_fn(1, (ep->udc->base_address
-						+ XUSB_BUFFREADY_OFFSET));
+						ep->udc->base_address +
+						XUSB_EP_BUF0COUNT_OFFSET);
+					udc->write_fn(1, ep->udc->base_address
+						+ XUSB_BUFFREADY_OFFSET);
 				} else {
 					setup_ctrl_wr_status_stage(udc);
 					req = NULL;
@@ -1394,7 +1382,6 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 	u32 intrreg;
 
 	udc = (struct xusb_udc *) callbackref;
-
 	if (intrstatus & XUSB_STATUS_RESET_MASK) {
 		dev_dbg(&udc->gadget.dev, "Reset\n");
 		if (intrstatus & XUSB_STATUS_HIGH_SPEED_MASK)
@@ -1405,22 +1392,22 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 		if (udc->status == 1) {
 			udc->status = 0;
 			/* Set device address to 0.*/
-			udc->write_fn(0, (udc->base_address +
-						XUSB_ADDRESS_OFFSET));
+			udc->write_fn(0, udc->base_address +
+						XUSB_ADDRESS_OFFSET);
 		}
 		/* Disable the Reset interrupt.*/
 		intrreg = udc->read_fn(udc->base_address +
 					XUSB_IER_OFFSET);
 
 		intrreg &= ~XUSB_STATUS_RESET_MASK;
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 		/* Enable thesuspend and disconnect.*/
 		intrreg =
 			udc->read_fn(udc->base_address + XUSB_IER_OFFSET);
 		intrreg |=
 			(XUSB_STATUS_SUSPEND_MASK |
 			 XUSB_STATUS_DISCONNECT_MASK);
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 	}
 
 	if (intrstatus & XUSB_STATUS_DISCONNECT_MASK) {
@@ -1429,37 +1416,37 @@ static void startup_intrhandler(void *callbackref, u32 intrstatus)
 		intrreg =
 			udc->read_fn(udc->base_address + XUSB_IER_OFFSET);
 		intrreg &= ~XUSB_STATUS_DISCONNECT_MASK;
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 		dev_dbg(&udc->gadget.dev, "Disconnect\n");
 		if (udc->status == 1) {
 			udc->status = 0;
 			/* Set device address to 0.*/
-			udc->write_fn(0, (udc->base_address +
-					XUSB_ADDRESS_OFFSET));
+			udc->write_fn(0, udc->base_address +
+					XUSB_ADDRESS_OFFSET);
 			/* Enable the USB device.*/
 			udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
-				(udc->base_address + XUSB_CONTROL_OFFSET));
+				udc->base_address + XUSB_CONTROL_OFFSET);
 		}
 
 		/* Enable the suspend and reset interrupts.*/
-		intrreg = (udc->read_fn(udc->base_address + XUSB_IER_OFFSET) |
-				(XUSB_STATUS_SUSPEND_MASK |
-				XUSB_STATUS_RESET_MASK));
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		intrreg = udc->read_fn(udc->base_address + XUSB_IER_OFFSET) |
+				XUSB_STATUS_SUSPEND_MASK |
+				XUSB_STATUS_RESET_MASK;
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 		stop_activity(udc);
 	}
 
 	if (intrstatus & XUSB_STATUS_SUSPEND_MASK) {
 		dev_dbg(&udc->gadget.dev, "Suspend\n");
 		/* Disable the Suspend interrupt.*/
-		intrreg = (udc->read_fn(udc->base_address + XUSB_IER_OFFSET) &
-					~XUSB_STATUS_SUSPEND_MASK);
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		intrreg = udc->read_fn(udc->base_address + XUSB_IER_OFFSET) &
+					~XUSB_STATUS_SUSPEND_MASK;
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 		/* Enable the Disconnect and reset interrupts. */
-		intrreg = (udc->read_fn(udc->base_address + XUSB_IER_OFFSET)|
-				(XUSB_STATUS_DISCONNECT_MASK |
-				XUSB_STATUS_RESET_MASK));
-		udc->write_fn(intrreg, (udc->base_address + XUSB_IER_OFFSET));
+		intrreg = udc->read_fn(udc->base_address + XUSB_IER_OFFSET) |
+				XUSB_STATUS_DISCONNECT_MASK |
+				XUSB_STATUS_RESET_MASK;
+		udc->write_fn(intrreg, udc->base_address + XUSB_IER_OFFSET);
 	}
 }
 
@@ -1494,8 +1481,8 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 			epcfgreg = udc->read_fn(udc->base_address +
 				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 			epcfgreg |= XUSB_EP_CFG_STALL_MASK;
-			udc->write_fn(epcfgreg, (udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+			udc->write_fn(epcfgreg, udc->base_address +
+				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 			break;
 		}
 		break;
@@ -1509,48 +1496,53 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 			/* Make sure direction matches.*/
 			if (outinbit != udc->ep[endpoint].is_in) {
 				epcfgreg = udc->read_fn(udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
+						udc->ep[XUSB_EP_NUMBER_ZERO].
+						endpointoffset);
 				epcfgreg |= XUSB_EP_CFG_STALL_MASK;
 
-				udc->write_fn(epcfgreg, (udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+				udc->write_fn(epcfgreg, udc->base_address +
+					udc->ep[XUSB_EP_NUMBER_ZERO].
+					endpointoffset);
 				return;
 			}
 
 			if (!endpoint) {
 				/* Clear the stall.*/
 				epcfgreg = udc->read_fn(udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
+						udc->ep[XUSB_EP_NUMBER_ZERO].
+						endpointoffset);
 
 				epcfgreg &= ~XUSB_EP_CFG_STALL_MASK;
 
-				udc->write_fn(epcfgreg, (udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+				udc->write_fn(epcfgreg, udc->base_address +
+					udc->ep[XUSB_EP_NUMBER_ZERO].
+					endpointoffset);
 				break;
 			} else {
 				if (flag == 1) {
 					epcfgreg =
 						udc->read_fn(udc->base_address +
-					udc->ep[XUSB_EP_NUMBER_ZERO].
-					endpointoffset);
+						udc->ep[XUSB_EP_NUMBER_ZERO].
+						endpointoffset);
 					epcfgreg |= XUSB_EP_CFG_STALL_MASK;
 
 					udc->write_fn(epcfgreg,
-						(udc->base_address +
+						udc->base_address +
 						udc->ep[XUSB_EP_NUMBER_ZERO].
-						endpointoffset));
+						endpointoffset);
 				} else {
 					/* Unstall the endpoint.*/
 					epcfgreg =
 						udc->read_fn(udc->base_address +
-					udc->ep[endpoint].endpointoffset);
+						udc->ep[endpoint].
+						endpointoffset);
 					epcfgreg &=
 						~(XUSB_EP_CFG_STALL_MASK |
 						  XUSB_EP_CFG_DATA_TOGGLE_MASK);
 					udc->write_fn(epcfgreg,
-						(udc->base_address +
+						udc->base_address +
 						udc->ep[endpoint].
-						endpointoffset));
+						endpointoffset);
 				}
 			}
 		}
@@ -1560,8 +1552,8 @@ static void set_clear_feature(struct xusb_udc *udc, int flag)
 		epcfgreg = udc->read_fn(udc->base_address +
 				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 		epcfgreg |= XUSB_EP_CFG_STALL_MASK;
-		udc->write_fn(epcfgreg, (udc->base_address +
-			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+		udc->write_fn(epcfgreg, udc->base_address +
+			udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 		return;
 	}
 
@@ -1581,7 +1573,7 @@ static int execute_command(struct xusb_udc *udc)
 {
 
 	if ((ch9_cmdbuf.setup.bRequestType & USB_TYPE_MASK) ==
-	    USB_TYPE_STANDARD) {
+			USB_TYPE_STANDARD) {
 		/* Process the chapter 9 command.*/
 		switch (ch9_cmdbuf.setup.bRequest) {
 
@@ -1609,10 +1601,11 @@ static int execute_command(struct xusb_udc *udc)
 			return ch9_cmdbuf.setup.bRequest;
 		}
 
-	} else
+	} else {
 		if ((ch9_cmdbuf.setup.bRequestType & USB_TYPE_MASK) ==
-					USB_TYPE_CLASS)
+		     USB_TYPE_CLASS)
 			return ch9_cmdbuf.setup.bRequest;
+	}
 	return 0;
 }
 
@@ -1702,10 +1695,10 @@ static void ep0_out_token(struct xusb_udc *udc)
 				setup_ctrl_wr_status_stage(udc);
 		} else {
 			/* Set the Tx packet size and the Tx enable bit.*/
-			udc->write_fn(0, (udc->base_address +
-				XUSB_EP_BUF0COUNT_OFFSET));
-			udc->write_fn(1, (udc->base_address +
-				XUSB_BUFFREADY_OFFSET));
+			udc->write_fn(0, udc->base_address +
+				XUSB_EP_BUF0COUNT_OFFSET);
+			udc->write_fn(1, udc->base_address +
+				XUSB_BUFFREADY_OFFSET);
 		}
 		break;
 
@@ -1735,15 +1728,16 @@ static void ep0_in_token(struct xusb_udc *udc)
 					(udc->base_address +
 					XUSB_ADDRESS_OFFSET));
 			break;
-		} else
+		} else {
 			if (ch9_cmdbuf.setup.bRequest == USB_REQ_SET_FEATURE) {
 				if (ch9_cmdbuf.setup.bRequestType ==
-					STANDARD_OUT_DEVICE) {
+				    STANDARD_OUT_DEVICE) {
 					if (ch9_cmdbuf.setup.wValue ==
-						USB_DEVICE_TEST_MODE)
+					    USB_DEVICE_TEST_MODE)
 						udc->write_fn(TEST_J,
-							(udc->base_address +
-							XUSB_TESTMODE_OFFSET));
+							udc->base_address +
+							XUSB_TESTMODE_OFFSET);
+				}
 			}
 		}
 		ep->data->usb_req.actual = ch9_cmdbuf.setup.wLength;
@@ -1760,9 +1754,8 @@ static void ep0_in_token(struct xusb_udc *udc)
 			epcfgreg = udc->read_fn(udc->base_address +
 				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 			epcfgreg |= XUSB_EP_CFG_DATA_TOGGLE_MASK;
-			udc->write_fn(epcfgreg,
-				(udc->base_address +
-				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset));
+			udc->write_fn(epcfgreg, udc->base_address +
+				udc->ep[XUSB_EP_NUMBER_ZERO].endpointoffset);
 			count = 0;
 
 			ch9_cmdbuf.setupseqtx = STATUS_PHASE;
@@ -1778,9 +1771,9 @@ static void ep0_in_token(struct xusb_udc *udc)
 
 			ch9_cmdbuf.contwritecount -= count;
 		}
-		udc->write_fn(count, (udc->base_address +
-						XUSB_EP_BUF0COUNT_OFFSET));
-		udc->write_fn(1, (udc->base_address + XUSB_BUFFREADY_OFFSET));
+		udc->write_fn(count, udc->base_address +
+				XUSB_EP_BUF0COUNT_OFFSET);
+		udc->write_fn(1, udc->base_address + XUSB_BUFFREADY_OFFSET);
 		break;
 
 	default:
@@ -1805,7 +1798,6 @@ static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 	u32 intrreg;
 
 	udc = (struct xusb_udc *) callbackref;
-
 	/* Process the end point zero buffer interrupt.*/
 	if (intrstatus & XUSB_STATUS_EP0_BUFF1_COMP_MASK) {
 		if (intrstatus & XUSB_STATUS_SETUP_PACKET_MASK) {
@@ -1815,14 +1807,14 @@ static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 			 */
 			intrreg = udc->read_fn(udc->base_address +
 					XUSB_IER_OFFSET);
-			intrreg |= (XUSB_STATUS_DISCONNECT_MASK |
+			intrreg |= XUSB_STATUS_DISCONNECT_MASK |
 					 XUSB_STATUS_SUSPEND_MASK |
-					 XUSB_STATUS_RESET_MASK);
+					 XUSB_STATUS_RESET_MASK;
 			udc->write_fn(intrreg,
-				(udc->base_address + XUSB_IER_OFFSET));
+				udc->base_address + XUSB_IER_OFFSET);
 			status = process_setup_pkt(udc, &ctrl);
 			if (status || ((ch9_cmdbuf.setup.bRequestType &
-			USB_TYPE_MASK) == USB_TYPE_CLASS)) {
+					USB_TYPE_MASK) == USB_TYPE_CLASS)) {
 				/*
 				 * Request is to be handled by the gadget
 				 * driver.
@@ -1840,12 +1832,13 @@ static void control_ep_intrhandler(void *callbackref, u32 intrstatus)
 					udc->ep[epnum].stopped = 1;
 				}
 			}
-		} else
+		} else {
 			if (intrstatus & XUSB_STATUS_FIFO_BUFF_RDY_MASK)
 				ep0_out_token(udc);
 			else if (intrstatus &
 				XUSB_STATUS_FIFO_BUFF_FREE_MASK)
 				ep0_in_token(udc);
+		}
 	}
 }
 
@@ -1866,7 +1859,6 @@ static void noncontrol_ep_intrhandler(void *callbackref, u8 epnum,
 
 	udc = (struct xusb_udc *) callbackref;
 	ep = &udc->ep[epnum];
-
 	/* Process the End point interrupts.*/
 	if (intrstatus & (XUSB_STATUS_EP0_BUFF1_COMP_MASK << epnum))
 		ep->buffer0ready = 0;
@@ -1880,9 +1872,9 @@ static void noncontrol_ep_intrhandler(void *callbackref, u8 epnum,
 	if (!req)
 		return;
 	if (ep->is_in)
-		(void)write_fifo(ep, req);
+		write_fifo(ep, req);
 	else
-		(void)read_fifo(ep, req);
+		read_fifo(ep, req);
 }
 
 /**
@@ -1960,7 +1952,7 @@ static int xudc_start(struct usb_gadget *gadget,
 	xusb_ep_enable(&udc->ep[XUSB_EP_NUMBER_ZERO].ep_usb, d);
 	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
 	udc->write_fn(XUSB_CONTROL_USB_READY_MASK,
-		(udc->base_address + XUSB_CONTROL_OFFSET));
+		udc->base_address + XUSB_CONTROL_OFFSET);
 
 	return 0;
 }
@@ -1982,7 +1974,7 @@ static int xudc_stop(struct usb_gadget *gadget,
 	/* Disable USB device.*/
 	crtlreg = udc->read_fn(udc->base_address + XUSB_CONTROL_OFFSET);
 	crtlreg &= ~XUSB_CONTROL_USB_READY_MASK;
-	udc->write_fn(crtlreg, (udc->base_address + XUSB_CONTROL_OFFSET));
+	udc->write_fn(crtlreg, udc->base_address + XUSB_CONTROL_OFFSET);
 	spin_lock_irqsave(&udc->lock, flags);
 	udc->gadget.speed = USB_SPEED_UNKNOWN;
 	stop_activity(udc);
@@ -2060,32 +2052,30 @@ static int xudc_probe(struct platform_device *pdev)
 	/* Check for IP endianness */
 	udc->write_fn = xusb_write32_be;
 	udc->read_fn = xusb_read32_be;
-	udc->write_fn(TEST_J, (udc->base_address + XUSB_TESTMODE_OFFSET));
+	udc->write_fn(TEST_J, udc->base_address + XUSB_TESTMODE_OFFSET);
 	if ((udc->read_fn(udc->base_address + XUSB_TESTMODE_OFFSET))
 			!= TEST_J) {
 		udc->write_fn = xusb_write32;
 		udc->read_fn = xusb_read32;
 	}
-	udc->write_fn(0, (udc->base_address + XUSB_TESTMODE_OFFSET));
+	udc->write_fn(0, udc->base_address + XUSB_TESTMODE_OFFSET);
 
 	xudc_reinit(udc);
 
 	/* Set device address to 0.*/
-	udc->write_fn(0, (udc->base_address + XUSB_ADDRESS_OFFSET));
+	udc->write_fn(0, udc->base_address + XUSB_ADDRESS_OFFSET);
 
 	ret = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (ret)
 		dev_dbg(&pdev->dev, "usb_add_gadget_udc returned %d\n", ret);
 
 	/* Enable the interrupts.*/
-	udc->write_fn((XUSB_STATUS_GLOBAL_INTR_MASK |
-		       XUSB_STATUS_RESET_MASK |
-		       XUSB_STATUS_DISCONNECT_MASK |
-		       XUSB_STATUS_SUSPEND_MASK |
-		       XUSB_STATUS_FIFO_BUFF_RDY_MASK |
-		       XUSB_STATUS_FIFO_BUFF_FREE_MASK |
-		       XUSB_STATUS_EP0_BUFF1_COMP_MASK),
-		      (udc->base_address + XUSB_IER_OFFSET));
+	udc->write_fn(XUSB_STATUS_GLOBAL_INTR_MASK | XUSB_STATUS_RESET_MASK |
+		      XUSB_STATUS_DISCONNECT_MASK | XUSB_STATUS_SUSPEND_MASK |
+		      XUSB_STATUS_FIFO_BUFF_RDY_MASK |
+		      XUSB_STATUS_FIFO_BUFF_FREE_MASK |
+		      XUSB_STATUS_EP0_BUFF1_COMP_MASK,
+		      udc->base_address + XUSB_IER_OFFSET);
 
 	platform_set_drvdata(pdev, udc);
 
