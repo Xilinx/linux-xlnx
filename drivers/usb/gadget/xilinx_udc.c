@@ -130,88 +130,88 @@ struct xusb_request {
  * @ep_usb: usb endpoint instance
  * @queue: endpoint message queue
  * @udc: xilinx usb peripheral driver instance pointer
- * @name: name of the endpoint
- * @epnumber: endpoint number
- * @is_in: endpoint direction (IN or OUT)
- * @stopped: endpoint active status
- * @is_iso: endpoint type(isochronous or non isochronous)
- * @maxpacket: maximum packet size the endpoint can store
+ * @desc: pointer to the usb endpoint descriptor
+ * @data: pointer to the xusb_request structure
  * @rambase: the endpoint buffer address
+ * @endpointoffset: the endpoint register offset value
+ * @epnumber: endpoint number
+ * @maxpacket: maximum packet size the endpoint can store
  * @buffer0count: the size of the packet recieved in the first buffer
  * @buffer0ready: the busy state of first buffer
  * @buffer1count: the size of the packet received in the second buffer
  * @buffer1ready: the busy state of second buffer
  * @eptype: endpoint transfer type (BULK, INTERRUPT)
  * @curbufnum: current buffer of endpoint that will be processed next
- * @endpointoffset: the endpoint register offset value
- * @desc: pointer to the usb endpoint descriptor
- * @data: pointer to the xusb_request structure
+ * @is_in: endpoint direction (IN or OUT)
+ * @stopped: endpoint active status
+ * @is_iso: endpoint type(isochronous or non isochronous)
+ * @name: name of the endpoint
  */
 struct xusb_ep {
 	struct usb_ep ep_usb;
 	struct list_head queue;
 	struct xusb_udc *udc;
-	char name[4];
-	u16 epnumber;
-	u8 is_in;
-	u8 stopped;
-	u8 is_iso;
-	u16 maxpacket;
+	const struct usb_endpoint_descriptor *desc;
+	struct xusb_request *data;
 	u32 rambase;
+	u32 endpointoffset;
+	u16 epnumber;
+	u16 maxpacket;
 	u16 buffer0count;
-	u8 buffer0ready;
 	u16 buffer1count;
+	u8 buffer0ready;
 	u8 buffer1ready;
 	u8 eptype;
 	u8 curbufnum;
-	u32 endpointoffset;
-	const struct usb_endpoint_descriptor *desc;
-	struct xusb_request *data;
+	u8 is_in;
+	u8 stopped;
+	u8 is_iso;
+	char name[4];
 };
 
 /**
  * struct xusb_udc -  USB peripheral driver structure
  * @gadget: USB gadget driver instance
- * @lock: instance of spinlock
  * @ep: an array of endpoint structures
- * @base_address: the usb device base address
- * @driver pointer: to the usb gadget driver instance
- * @dma_enabled: flag indicating whether the dma is included in the system
- * @status: status flag indicating the device cofiguration
+ * @driver: pointer to the usb gadget driver instance
  * @read_fn: function pointer to read device registers
  * @write_fn: function pointer to write to device registers
+ * @base_address: the usb device base address
+ * @lock: instance of spinlock
+ * @dma_enabled: flag indicating whether the dma is included in the system
+ * @status: status flag indicating the device cofiguration
  */
 struct xusb_udc {
 	struct usb_gadget gadget;
-	spinlock_t lock;
 	struct xusb_ep ep[8];
-	void __iomem *base_address;
 	struct usb_gadget_driver *driver;
-	bool dma_enabled;
-	u8 status;
 	unsigned int (*read_fn) (void __iomem *);
 	void (*write_fn) (u32, void __iomem *);
+	void __iomem *base_address;
+	spinlock_t lock;
+	bool dma_enabled;
+	u8 status;
 };
 
 /**
  * struct cmdbuf - Standard USB Command Buffer Structure defined
  * @setup: usb_ctrlrequest structure for control requests
- * @contreadptr: pointer to endpoint0 read data
- * @contwriteptr: pointer to endpoint0 write data
  * @contreadcount: read data bytes count
  * @contwritecount: write data bytes count
  * @setupseqtx: tx status
  * @setupseqrx: rx status
+ * @contreadptr: pointer to endpoint0 read data
+ * @contwriteptr: pointer to endpoint0 write data
  * @contreaddatabuffer: read data buffer for endpoint0
  */
 struct cmdbuf {
 	struct usb_ctrlrequest setup;
-	u8 *contreadptr;
-	u8 *contwriteptr;
 	u32 contreadcount;
 	u32 contwritecount;
 	u32 setupseqtx;
 	u32 setupseqrx;
+	u8 *contreadptr;
+	u8 *contwriteptr;
 	u8 contreaddatabuffer[64];
 };
 
