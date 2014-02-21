@@ -83,7 +83,7 @@
 #define CDNS_I2C_IXR_COMP		BIT(0)
 
 #define CDNS_I2C_FIFO_DEPTH	16		/* FIFO Depth */
-#define CDNS_I2C_TIMEOUT	(50 * HZ)	/* Timeout for bus busy check */
+#define CDNS_I2C_TIMEOUT	(2 * HZ)	/* Timeout for bus busy check */
 #define CDNS_I2C_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
 
 /* FIFO depth at which the DATA interrupt occurs */
