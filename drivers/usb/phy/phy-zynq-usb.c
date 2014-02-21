@@ -2267,15 +2267,10 @@ error:
 	transceiver_suspend(pdev);
 	return ret;
 }
-
-static const struct dev_pm_ops zynq_otg_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(zynq_otg_suspend, zynq_otg_resume)
-};
-#define ZYNQ_OTG_PM	(&zynq_otg_dev_pm_ops)
-
-#else /* ! CONFIG_PM_SLEEP */
-#define ZYNQ_OTG_PM	NULL
 #endif /* ! CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(zynq_otg_dev_pm_ops, zynq_otg_suspend,
+			 zynq_otg_resume);
 
 #ifndef CONFIG_USB_ZYNQ_DR_OF
 static struct platform_driver zynq_otg_driver = {
@@ -2287,7 +2282,7 @@ struct platform_driver zynq_otg_driver = {
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= DRIVER_NAME,
-		.pm	= ZYNQ_OTG_PM,
+		.pm	= &zynq_otg_dev_pm_ops,
 	},
 };
 
